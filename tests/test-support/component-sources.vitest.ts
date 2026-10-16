@@ -6,6 +6,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { componentSources, stripLineComments } from "./component-sources";
+import { nonEmpty } from "./non-empty";
 
 describe("componentSources", () => {
   it("★ 一个前缀能收到**多个**文件（这就是「扩到组件级」的全部意义）", () => {
@@ -37,7 +38,7 @@ describe("componentSources", () => {
 
   it("返回的 code 已剥注释（守卫不必再剥一遍）", () => {
     const hooks = componentSources("cc-bus-section");
-    expect(hooks.length).toBeGreaterThan(0);
+    nonEmpty(hooks);
     // 文件头注是 `//` 开头的整行，剥完不该还在
     expect(hooks[0]!.code.split("\n").some((l) => l.trimStart().startsWith("//"))).toBe(
       false,

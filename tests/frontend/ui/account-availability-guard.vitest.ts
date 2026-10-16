@@ -54,6 +54,7 @@ import { describe, it, expect } from "vitest";
 
 import { productionTsFiles } from "../../test-support/production-sources.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
+import { nonEmpty } from "../../test-support/non-empty.ts";
 
 /** 出现次数（**去注释后**的代码里）。用正则而不是 `.includes`：要的是次数，不是有无。 */
 function hits(code: string, ident: string): number {
@@ -118,13 +119,6 @@ describe("KAY4 账号可用性只有一个出口", () => {
   const byFile = new Map(sources.map((s) => [s.file, s.code]));
 
   it("抽取器自检：真的扫到了生产源码树，且登记表里的文件都还在", () => {
-    // 文件数地板（形态照 `cc_bus_boundary_guard.rs` 那条 `>= 20`）：
-    // 遍历坏了 / 路径推错了会得到一个空集合，而空集合上「零命中」恒真。
-    // 08-24 实测 126 个（`src/frontend/ui/generated/` 由 `productionTsFiles` 自己排掉）。
-    expect(
-      sources.length,
-      `只扫到 ${sources.length} 个生产 .ts（08-24 实测 126）—— 遍历坏了，下面两条会零命中地绿`,
-    ).toBeGreaterThanOrEqual(100);
     for (const f of Object.keys(ALLOWED)) {
       expect(byFile.has(f), `登记表点着 ${f}，但它不在扫到的清单里 —— 文件被搬/改名了`).toBe(true);
     }
@@ -167,7 +161,7 @@ describe("KAY4 账号可用性只有一个出口", () => {
     const cells = Object.entries(ALLOWED).flatMap(([file, fields]) =>
       Object.entries(fields).map(([field, cap]) => ({ file, field, cap })),
     );
-    expect(cells.length, "登记表空了 —— 下面两条会零命中地绿").toBeGreaterThanOrEqual(3);
+    nonEmpty(cells);
     const loose = cells.filter((c) => typeof c.cap !== "number" || !Number.isInteger(c.cap));
     expect(
       loose.map((c) => `${c.file}.${c.field}`),

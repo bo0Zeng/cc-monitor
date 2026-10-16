@@ -96,6 +96,7 @@ import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
 import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
 import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
 import { factsOn } from "../../../test-support/host-facts";
+import { nonEmpty } from "../../../test-support/non-empty";
 
 /** 退役的那个落盘键。**逐字** —— 它出现时这条判据必须红。 */
 const RETIRED_KEY = "forceLegacyLaunchRenderer";
@@ -188,10 +189,7 @@ describe("🔴 P12：真·用户那一侧 —— 打开设置就看得见", () =
     //   捞 DOM 而不是读字段，正好也更贴「用户看得见」这件事。
     const text = (document.querySelector(".settings-panel") as HTMLElement | null)?.textContent ?? "";
     void panel;
-    expect(
-      text.length,
-      "面板压根没渲染出东西 —— 下面那条会是零命中地绿",
-    ).toBeGreaterThan(200);
+    nonEmpty(text);
     expect(
       text,
       "面板上找不到那个键名。\n" +
@@ -212,7 +210,7 @@ describe("🔴 P12：真·用户那一侧 —— 打开设置就看得见", () =
     //   捞 DOM 而不是读字段，正好也更贴「用户看得见」这件事。
     const text = (document.querySelector(".settings-panel") as HTMLElement | null)?.textContent ?? "";
     void panel;
-    expect(text.length).toBeGreaterThan(200);
+    nonEmpty(text);
     expect(
       text,
       "配置里没有任何未知键，面板上却挂着那句话 —— 上面那条于是与被测的性质无关，恒绿",

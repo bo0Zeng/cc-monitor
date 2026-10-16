@@ -115,6 +115,7 @@ import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
 import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
 import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
 import { factsOn } from "../../../test-support/host-facts";
+import { nonEmpty } from "../../../test-support/non-empty";
 
 /**
  * 登记表 ①：**落地页（机器）**这一趟该打的命令。
@@ -191,7 +192,7 @@ describe(" 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () => {
     new SettingsPanel({ windowMode: true });
     await tick();
     expect(uniq(ipc.calls)).toEqual(uniq([...LANDING_IPC]));
-    expect(ipc.calls.length, "一条都没录到 ⇒ 本文件全部断言都是空转").toBeGreaterThan(0);
+    nonEmpty(ipc.calls);
   });
 
   it("构造面板只发落地页那几条 —— 「应用」「改动足迹」「机器子页」的一条都不许有", async () => {

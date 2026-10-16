@@ -63,6 +63,7 @@ import { describe, expect, it } from "vitest";
 import { productionRsFiles, productionTsFiles } from "../../test-support/production-sources.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
+import { nonEmpty } from "../../test-support/non-empty.ts";
 
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
@@ -1218,7 +1219,7 @@ describe("DUP1 判定只有一个家", () => {
   it("① 人群两向：盘上 `src/common/` 各 crate 的 pub 项 == 登记表（逐 crate）", () => {
     // 人群是 `src/common/` 下的全部 crate（D5：从文件系统全集来）—— 从前按 `*-core` 后缀筛，`deploy-contract` 会静默出列。
     const diskCrates = [...byCrate.keys()].sort();
-    expect(diskCrates.length, "一个共享 crate 都没扫到 —— 路径断了，下面会零命中地绿").toBeGreaterThan(0);
+    nonEmpty(diskCrates);
     expect(diskCrates, "盘上 `src/common/` 的 crate 集合 ≠ 登记表 crate 集合 ∪ {guard-core}").toEqual(
       [...Object.keys(CORE_ITEMS), TEST_INFRA_CRATE].sort(),
     );
@@ -1258,7 +1259,7 @@ describe("DUP1 判定只有一个家", () => {
       }
     }
     for (const [id, j] of Object.entries(JUDGMENTS)) {
-      expect(j.homes.length, `${id} 没有住址`).toBeGreaterThan(0);
+      nonEmpty(j.homes);
       for (const h of j.homes) {
         const [where, name] = [h.slice(0, h.lastIndexOf("::")), h.slice(h.lastIndexOf("::") + 2)];
         if (where.endsWith(".rs")) {
@@ -1273,7 +1274,6 @@ describe("DUP1 判定只有一个家", () => {
   });
 
   it("③ TS 侧对登记名：zero 行零实现，open 行恰如登记（自退役）", () => {
-    expect(ts.length, "一个 TS 生产文件都没扫到 —— 下面零命中地绿").toBeGreaterThan(0);
     const bad: string[] = [];
     for (const [id, j] of Object.entries(JUDGMENTS)) {
       if (j.status === "open" && !(j.owner && j.why)) bad.push(`${id} 是 open，但没写 owner / why`);
@@ -1343,7 +1343,7 @@ describe("DUP1 判定只有一个家", () => {
       if (!j.parity) continue;
       seen++;
       if (!existsSync(resolve(REPO_ROOT, j.parity.via))) bad.push(`${id}：对拍的对象 ${j.parity.via} 不在盘上`);
-      expect(j.parity.tests.length, `${id} 的 parity 没有测试`).toBeGreaterThan(0);
+      nonEmpty(j.parity.tests);
       for (const t of j.parity.tests) {
         const p = resolve(REPO_ROOT, t);
         if (!existsSync(p)) bad.push(`${id}：对拍测试 ${t} 不在盘上`);

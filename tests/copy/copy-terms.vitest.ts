@@ -27,6 +27,7 @@ import { describe, expect, it } from "vitest";
 
 import { REPO_ROOT } from "../test-support/repo-root.ts";
 import { censusList, limitedHits, limitedMismatches, loadTable, loadTerms, r1Hits, scannerOf, type Term } from "./copy-support.ts";
+import { nonEmpty } from "../test-support/non-empty.ts";
 
 const CENSUS = resolve(REPO_ROOT, "tests", "evidence", "K-T68-A1-outward-copy-census.py");
 const LEDGER = resolve(REPO_ROOT, "tests", "evidence", "CP1-copy-verdicts.tsv");
@@ -99,7 +100,7 @@ describe("CP2a · 术语对照表", () => {
   const tsv = readFileSync(LEDGER, "utf8");
 
   it("表的形状：三档 · 禁词有换法且换法指向登记过的词 · 扫描正则不死、不误中反例", () => {
-    expect(terms.length, "术语表一条都没读出来 —— 下面的对拍会零命中地绿").toBeGreaterThan(0);
+    nonEmpty(terms);
     expect(shapeProblems(terms)).toEqual([]);
   });
 
@@ -167,7 +168,7 @@ describe("CP2a · 术语对照表", () => {
   it("★ 限用词逐条声明：每条文案的 tally 命中集合 == 它自己的 limited", () => {
     const table = loadTable();
     const limited = terms.filter((t) => t.tier === "限用");
-    expect(limited.length, "一条限用词都没有 —— 下面的相等零命中地绿").toBeGreaterThan(0);
+    nonEmpty(limited);
     expect(
       Object.values(table).some((e) => (e.limited ?? []).length > 0),
       "文案表里一条声明了限用词的都没有 —— 下面的两向相等零命中地绿",

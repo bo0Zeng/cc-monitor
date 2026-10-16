@@ -9,6 +9,7 @@ import type { Fact } from "../../../src/frontend/ui/generated/Fact";
 import type { RotFormCell } from "../../../src/frontend/ui/generated/RotFormCell";
 import type { RotationStrategiesReply } from "../../../src/frontend/ui/generated/RotationStrategiesReply";
 import type { RotationViewReply } from "../../../src/frontend/ui/generated/RotationViewReply";
+import { nonEmpty } from "../../test-support/non-empty";
 
 const NOW = 1_800_000_000;
 const fact = (account: string, u5: number, u7: number, blocked = false): Fact => ({
@@ -261,7 +262,7 @@ describe("号牌与点开一个号", () => {
     const pane = root.querySelector<HTMLElement>('[data-account="lab"]:not(button)')!;
     const keys = [...new Set(texts(pane, "span").filter((t) => t.startsWith("夹具")))];
     expect(keys).toEqual([copyText("rot.cell.win", { label: "夹具·上限", win: copyText("rot.win.fiveHour") }), copyText("rot.cell.win", { label: "夹具·上限", win: copyText("rot.win.sevenDay") }), "夹具·开关", "夹具·延迟"]);
-    expect(pane.querySelectorAll('[data-inherited="true"]').length).toBeGreaterThan(0);
+    nonEmpty(pane.querySelectorAll('[data-inherited="true"]'));
     pane.querySelector<HTMLButtonElement>('[role="switch"]')!.click();
     expect(a.settings).toHaveBeenCalledOnce();
     const next = a.settings.mock.calls[0][0] as { accounts: Record<string, unknown>[] };

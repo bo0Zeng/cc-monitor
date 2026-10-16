@@ -148,6 +148,7 @@ import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { beforeEach, afterEach } from "vitest";
 import { copyPattern } from "../../../test-support/copy-pattern";
 import { factsOn } from "../../../test-support/host-facts";
+import { nonEmpty } from "../../../test-support/non-empty";
 
 // S9：jsdom 的 UA 含 `linux`。从前非 Windows 上「终端集成」那块**根本不构造**，钉成 windows 为的是守完整那组；
 // 那块并进了「别名」、两个平台都构造 ⇒ 这一钉只是沿用本文件一直以来的 Windows 形态。
@@ -278,7 +279,7 @@ describe("通用页不再有恢复命令那一格（启动程序 · 恢复到 tm
     await p.open();
     const general = [...document.querySelectorAll<HTMLElement>(".settings-switch-row label")].map((l) => l.querySelector("span")?.firstChild?.textContent);
     expect(general).not.toContain(copyText("settingsPanel.behavior.resumeInTmux"));
-    expect(general.length, "别的开关还在（空真自检）").toBeGreaterThan(0);
+    nonEmpty(general);
     expect(document.querySelector(".settings-group [data-role=resume-select]")).toBeNull();
   });
 });

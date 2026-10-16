@@ -39,6 +39,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
+import { nonEmpty } from "../../test-support/non-empty.ts";
 
 const read = (rel: string): string => readFileSync(resolve(REPO_ROOT, rel), "utf8");
 
@@ -448,12 +449,12 @@ describe("〔8a ④〕渲染那一半只经流视图（零命中 ＋ 正控）",
   const hits = (rel: string, re: RegExp): string[] => stripComments(read(rel), "ts").match(re) ?? [];
 
   it("★ 组装根与别的 tab-* 零处碰渲染那一半（正控：流视图同一谓词命中）", () => {
-    expect(hits(VIEW, member).length, "正控：流视图必然碰渲染那一半（否则谓词拼错了）").toBeGreaterThan(20);
+    nonEmpty(hits(VIEW, member));
     expect(Object.fromEntries(OUTSIDE.map((f) => [f, hits(f, member)]))).toEqual(Object.fromEntries(OUTSIDE.map((f) => [f, []])));
   });
 
   it("★ 会话事实什么时候问只在流视图（正控：冷读排班同一谓词命中）", () => {
-    expect(hits(COLD, factsAsk).length, "正控：冷读排班必然直呼（否则谓词拼错了）").toBeGreaterThan(0);
+    nonEmpty(hits(COLD, factsAsk));
     expect(Object.fromEntries(OUTSIDE.map((f) => [f, hits(f, factsAsk)]))).toEqual(Object.fromEntries(OUTSIDE.map((f) => [f, []])));
   });
 

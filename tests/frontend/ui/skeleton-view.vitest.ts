@@ -16,6 +16,7 @@ import { SkeletonLedger } from "../../../src/frontend/ui/live-window";
 import { RecordTimeline } from "../../../src/frontend/ui/record-timeline";
 import { SKELETON_GAP_CLASS, SkeletonView, ledgerFromIndex } from "../../../src/frontend/ui/skeleton-view";
 import { MessageStream } from "../../../src/frontend/ui/stream";
+import { nonEmpty } from "../../test-support/non-empty";
 
 // 列宽那一组要真 `TabStreamView`（它只在被问时才碰到 IPC；这里一次都不问）
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(null) }));
@@ -289,7 +290,7 @@ describe("🔴 取回中的行留着占位（10-10「视口里的占位一直不
     const blockTop = block.getBoundingClientRect().top;
     f.view.landed(lo, hi, () => f.host.build(lo, hi));
     expect(block.isConnected).toBe(false);
-    expect(f.inView().length).toBeGreaterThan(0);
+    nonEmpty(f.inView());
     const first = cardsIn(f.content).find((c) => (c as HTMLElement).dataset.seq === String(lo))!;
     expect(first.getBoundingClientRect().top).toBeCloseTo(blockTop);
     expect(f.layout.scrollTop).toBe(gapH / 2);

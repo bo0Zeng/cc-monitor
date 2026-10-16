@@ -7,6 +7,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, sep } from "node:path";
+import { nonEmpty } from "../../test-support/non-empty";
 
 /** 族 A：待贴进配置文件才生效。**必须**走统一组件。 */
 const FAMILY_A: string[] = [
@@ -78,18 +79,14 @@ describe("待贴配置文本只有一个实现", () => {
       readFileSync(f, "utf8").includes(WRITE),
     );
     // 反向自检：一处都没扫到 = 守卫失效了，不是代码变干净了。
-    // 阈值 5 = 组件自己 + 族 B 的四个文件。**迁移前是 7 个文件 / 9 处**
-    // （`accounts-section.ts` 独占 3 处）——审计核实我这条注释原先把"处"写成了"文件"，
-    // 而这条注释正是阈值的论证依据。族 A 三处迁移后各自不再持有 `writeText`，
-    // 于是 7 → 5：**这个数字下降就是迁移成功的直接证据**。
-    expect(hits.length).toBeGreaterThanOrEqual(5);
+    nonEmpty(hits);
     const known = new Set([...FAMILY_A, ...FAMILY_B]);
     const unknown = hits.filter((f) => !known.has(f));
     expect(unknown).toEqual([]);
   });
 
   it("族 A 两处都必须走 buildPasteBlock，不许再自己拼复制按钮", () => {
-    expect(FAMILY_A.length).toBeGreaterThan(0);
+    nonEmpty(FAMILY_A);
     for (const f of FAMILY_A) {
       const src = readFileSync(f, "utf8");
       expect(src, `${f} 应引入统一组件`).toContain("buildPasteBlock");

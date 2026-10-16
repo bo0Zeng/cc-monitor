@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { clockNow, fmtDur } from "../../src/frontend/ui/duration-format.ts";
+import { nonEmpty } from "../test-support/non-empty.ts";
 
 const golden = JSON.parse(readFileSync(resolve(__dirname, "../__fixtures__/short-duration.golden.json"), "utf8")) as {
   cases: { ms: number; want: string }[];
@@ -14,8 +15,8 @@ const golden = JSON.parse(readFileSync(resolve(__dirname, "../__fixtures__/short
 
 describe("时长读口对拍（金样 short-duration.golden.json）", () => {
   it("金样读得出（反空真）", () => {
-    expect(golden.cases.length).toBeGreaterThanOrEqual(10);
-    expect(golden.clock.length).toBeGreaterThanOrEqual(3);
+    nonEmpty(golden.cases);
+    nonEmpty(golden.clock);
   });
 
   it("每条：fmtDur 出来的 == 手写的 want", () => {

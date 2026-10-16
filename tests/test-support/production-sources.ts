@@ -89,6 +89,8 @@ function collect(subdir: string, ext: string): ProductionSource[] {
     }
   };
   walk(root);
+  // 人群为空 ⇒ 当场抛：扫描判据在空人群上的「零命中」恒真，各判据不再各自数份数。
+  if (out.length === 0) throw new Error(`${subdir} 下一份 ${ext} 生产文件都没扫到 —— 遍历坏了`);
   out.sort((a, b) => a.file.localeCompare(b.file));
   return out;
 }

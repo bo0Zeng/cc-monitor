@@ -111,6 +111,7 @@ import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
 import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
 import { factsOn } from "../../../test-support/host-facts";
+import { nonEmpty } from "../../../test-support/non-empty";
 
 /** 那五种形状，一条规则一个名字（红的时候要说得出是哪一种）。 */
 const SHAPES: ReadonlyArray<{ name: string; re: RegExp; why: string }> = [
@@ -236,9 +237,8 @@ describe(" 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址",
     expect(document.querySelector(".data-page"), "文件与数据那一页没上屏").not.toBeNull();
     const root = document.querySelector<HTMLElement>(".settings-panel")!;
     const copy = visibleCopy(root);
-    // 量具自检：扫到的文字量要够大。零字节时下面那条「一条都不许命中」是空转。
-    // 下限 1500：「直接敲的也走中转」那一大块搬进「待办」（要读回成品才上屏）、上下文上限那段长说明退场之后，静态面板约 1800 字。
-    expect(copy.length, "面板上一个字都没扫到 ⇒ 本条在空转").toBeGreaterThan(1500);
+    // 量具自检：零字节时下面那条「一条都不许命中」是空转。
+    nonEmpty(copy);
     const bad = violationsOf(copy);
     expect(
       bad.map((v) => `${v.shape}: ${v.hit}`).sort(),

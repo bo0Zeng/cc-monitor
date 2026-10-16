@@ -40,6 +40,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { buildCorpus, htmlFingerprint } from "./scale2-height-corpus";
 import { estimateStreamNodeHeight, appliedIntrinsicPx } from "../../../src/frontend/ui/height-estimate";
+import { nonEmpty } from "../../test-support/non-empty";
 
 // `__dirname` 在 vitest 里指向 `tests/`（同 `scale3-one-screen-gate.vitest.ts` 的用法）
 const FIXTURE = resolve(__dirname, "../../__fixtures__/scale2-height-line-records.jsonl");
@@ -584,7 +585,7 @@ describe("秤 2 · 读数（不做判据，只产表）", () => {
         "     其余五个 class 的估值最小值都 ≥ 38，够不着旧地板 ⇒ **一个点都不该动**（上面的 p90 表可核）。",
       ].join("\n"),
     );
-    expect(rows.length).toBeGreaterThan(0); // 只产读数；为 0 说明语料里的细条卡没了，那是另一回事
+    nonEmpty(rows); // 只产读数；为 0 说明语料里的细条卡没了，那是另一回事
   });
 });
 
@@ -622,7 +623,7 @@ describe("秤 2 · `contain-intrinsic-size` 的盒模型（B 段真浏览器实�
         "  ⇒ 下面悬案③那段推导的前提**跟着换了**：每张 retry 从 30px 变成 23px。那一段已重算。",
       ].join("\n"),
     );
-    expect(golden.intrinsic.length).toBeGreaterThan(0);
+    nonEmpty(golden.intrinsic);
   });
 });
 
@@ -797,7 +798,7 @@ describe("秤 2 · 骨架外框（RENDER2）", () => {
     };
     const of = (cls: string): number => {
       const v = g.rows.filter((r) => r.cls === cls).map((r) => r.slot - r.body);
-      expect(v.length, `金样里没有 ${cls}`).toBeGreaterThan(0);
+      nonEmpty(v);
       return Math.ceil(median(v));
     };
     expect({ ...SKEL_OUTER }).toEqual({

@@ -79,6 +79,7 @@ import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
 import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
 import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
 import { factsOn } from "../../../test-support/host-facts";
+import { nonEmpty } from "../../../test-support/non-empty";
 
 /** 落地页（机器列表）这一趟该打的命令 —— 与 `panel-deferred-io.vitest.ts` 的 LANDING_IPC 同一件事。 */
 const LANDING_IPC = ["load_config", "backend_machines", "backend_status"] as const;
@@ -141,7 +142,7 @@ describe("ST1 延后加载：per-machine 那几块只在机器子页可见时才
     new SettingsPanel({ windowMode: true });
     await tick();
     await tick();
-    expect(ipc.calls.length, "一条都没录到 ⇒ 本文件全部断言都是空转").toBeGreaterThan(0);
+    nonEmpty(ipc.calls);
     expect(uniq(ipc.calls)).toEqual(uniq(LANDING_IPC));
   });
 

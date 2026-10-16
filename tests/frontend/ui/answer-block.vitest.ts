@@ -21,6 +21,7 @@ import { LIVE, LIVE_ATTACHABLE } from "../../../src/frontend/ui/tab-session-stat
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { waitedNow } from "../../../src/frontend/ui/duration-format";
+import { nonEmpty } from "../../test-support/non-empty";
 
 const ASKS = JSON.parse(readFileSync(resolve(__dirname, "../../__fixtures__/needs-ask.golden.json"), "utf8")) as Record<"approve" | "subAgent" | "plan" | "question", Ask>;
 const NOW = Date.parse("2026-10-11T12:00:00Z");
@@ -330,7 +331,7 @@ describe("每一种需手动都有地方出（钉条删了以后）", () => {
     const src = readFileSync(resolve(__dirname, "../../../src/common/cmd-wire/src/needs.rs"), "utf8");
     const body = src.slice(src.indexOf("pub enum NeedsKind {"));
     const variants = [...body.slice(0, body.indexOf("}")).matchAll(/^\s*([A-Z][A-Za-z]*),/gm)].map((m) => m[1][0].toLowerCase() + m[1].slice(1));
-    expect(variants.length).toBeGreaterThanOrEqual(8);
+    nonEmpty(variants);
     for (const kind of variants) {
       document.body.innerHTML = "";
       const { b } = rig(tab(needs(null, { kind: kind as Needs["kind"], head: `核心·${kind}`, manualText: `核心·${kind}·那一句` })));

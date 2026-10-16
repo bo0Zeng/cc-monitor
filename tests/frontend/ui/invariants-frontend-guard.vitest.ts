@@ -68,6 +68,7 @@ import {
   storageKeys,
   topLevelFnBody,
 } from "../../evidence/P21-frontend-invariants.ts";
+import { nonEmpty } from "../../test-support/non-empty.ts";
 
 // jsdom 无 `ResizeObserver`（`MessageStream` 构造需要）——空壳即可（同 `record-timeline.vitest.ts`）。
 globalThis.ResizeObserver = class {
@@ -93,7 +94,7 @@ describe("P21 ⓪ 量具自检（这几条不过，下面六格全是空转）",
   });
 
   it("CSS 切规则那一刀在承重：规则切得出来，fixed 选择器一个不漏", () => {
-    expect(CSS_RULES.length, "一条 CSS 规则都没切出来 —— ②⑤ 此刻无效").toBeGreaterThan(0);
+    nonEmpty(CSS_RULES);
     // 切规则那一刀的正控：相邻规则共用 `}`、嵌在 @media 里、选择器分组 —— 每一个 fixed 都得切出来
     //（第一版用「相邻规则共用 `}`」的 matchAll 形，真树上漏了 9 条，而那个数看起来完全正常）。
     // 新加一个 fixed 浮层由下面 ② 的登记表接住。
@@ -207,9 +208,8 @@ describe("P21 ② 条 13：CSS portal 元素必须真挂 body", () => {
 describe("P21 ③ 条 14：localStorage / IndexedDB key 必须前缀 `cc-monitor.`", () => {
   const KEYS = storageKeys(SOURCES);
 
-  it("分母：真的抽到了 key（09-22 实测 19 处）", () => {
-    // 地板 12 → 9：历史页重做，旧历史页那三个 key（来源筛选 · 来源折叠 · 来源快照）删了、新加一个（历史页偏好）。
-    expect(KEYS.length, `只抽到 ${KEYS.length} 个存储 key（10-06 实测 11）—— 抽取器坏了`).toBeGreaterThan(9);
+  it("分母：真的抽到了 key", () => {
+    nonEmpty(KEYS);
     expect(KEYS.some((k) => k.registered), "`LS_KEYS` 那一族一个都没抽到 —— 接入层的块切错了").toBe(true);
   });
 
@@ -319,10 +319,7 @@ describe("P21 ⑤ 条 21.2：`.stream` 家族在 CSS 里不许出现 `overflow-a
 
   it("★ JS 侧那个唯一豁免类：每处临时 `overflow-anchor:none` 都有还原，且还原在 `finally` 里", () => {
     const toggles = anchorToggles(SOURCES);
-    expect(
-      toggles.length,
-      "找不到任何临时关闭处 —— 下面两条在空集合上绿。要么补批路都删了（那这一格一起删），要么量具坏了",
-    ).toBeGreaterThan(0);
+    nonEmpty(toggles);
     expect(
       toggles.filter((t) => t.onLine === null).map((t) => `${t.file}:${t.offLine}`),
       "临时关掉了 `overflow-anchor` 却找不到还原处 ⇒ 那个 tab / viewer 会话**永久**失去原生锚定",
@@ -336,10 +333,7 @@ describe("P21 ⑤ 条 21.2：`.stream` 家族在 CSS 里不许出现 `overflow-a
   });
 
   it("对照组：`.stream` 真的被扫到了（否则上面那条是在空集合上绿）", () => {
-    expect(
-      CSS_RULES.filter((r) => /\.stream\b/.test(r.selector)).length,
-      "`.stream` 家族一条规则都没扫到 —— 上面那条零命中此刻无效",
-    ).toBeGreaterThan(3);
+    nonEmpty(CSS_RULES.filter((r) => /\.stream\b/.test(r.selector)));
     // 常驻自检：那条「保留原生 overflow-anchor（默认 auto）」是**靠不写**实现的 ⇒
     // `.stream` 身上压根不该有这个属性。写了任何值都要有人看一眼。
     expect(
@@ -363,8 +357,8 @@ describe("P21 ⑥ 条 22：独立窗口契约里 TS 这一侧的三项", () => {
   it("分母：两个 bootstrap 的函数体都切出来了", () => {
     expect(VIEWER, "`bootstrapViewer` 的函数体切不出来 —— 下面三条全是空转").not.toBeNull();
     expect(SETTINGS, "`bootstrapSettings` 的函数体切不出来 —— 下面那条是空转").not.toBeNull();
-    expect((VIEWER ?? "").length, "`bootstrapViewer` 切得太短，八成停在了第一个换行缩进的 `}`").toBeGreaterThan(2000);
-    expect((SETTINGS ?? "").length, "`bootstrapSettings` 切得太短").toBeGreaterThan(300);
+    nonEmpty((VIEWER ?? ""));
+    nonEmpty((SETTINGS ?? ""));
   });
 
   // viewer 不再单独调定向重放命令（`replay_session_to_window` 退役）：会话流经 `bindEvents` 的

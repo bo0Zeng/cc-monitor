@@ -51,6 +51,7 @@ import { budgetWithin, saidFrom } from "../../../src/frontend/ui/ipc/chan-caller
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { stripComments } from "../../test-support/strip-comments";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { nonEmpty } from "../../test-support/non-empty";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
@@ -226,14 +227,14 @@ describe("〔C4a〕webview 通道客户端", () => {
 
 /** 往交格事件里投一次（`{sub, items}`）。 */
 function deliver(sub: number, items: unknown[]): void {
-  expect(itemsListeners.length, "交格事件没人听 —— 本组会零命中地绿").toBeGreaterThan(0);
+  nonEmpty(itemsListeners);
   for (const l of itemsListeners) l({ payload: { sub, items } });
 }
 
 /** 取最近一次 `chan_subscribe` 用的编号（本侧给的）。 */
 function lastSubId(): number {
   const calls = invokeMock.mock.calls.filter((c) => c[0] === "chan_subscribe");
-  expect(calls.length, "没登记到 monitor").toBeGreaterThan(0);
+  nonEmpty(calls);
   return (calls[calls.length - 1][1] as { id: number }).id;
 }
 

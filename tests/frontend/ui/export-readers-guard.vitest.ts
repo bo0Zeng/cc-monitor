@@ -19,6 +19,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { TEST_HOOK, zeroReaderExports, type Found } from "../../test-support/zero-reader-exports.ts";
+import { nonEmpty } from "../../test-support/non-empty.ts";
 
 /** 量具（与正控用的同一份代码）：全仓那一趟另起一个 node 进程跑，见它的头注。 */
 const METER = pathToFileURL(resolve(REPO_ROOT, "tests", "test-support", "zero-reader-exports.ts")).href;
@@ -77,7 +78,7 @@ describe("零读者导出：产品代码里每个导出都有产品读者", () =
         maxBuffer: 16 * 1024 * 1024,
       }),
     ) as Found[];
-    expect(found.length, "一个零读者都没扫到 —— 量具多半坏了（复位口至少有十来个）").toBeGreaterThan(5);
+    nonEmpty(found);
     // 复位口只在真有测试用它时豁免（连测试都不用的复位口一样是死代码）。
     const unexplained = found.filter((f) => !(TEST_HOOK.test(nameOf(f.key)) && f.testReaders > 0) && !(f.key in EXEMPT)).map((f) => `${f.key}（测试里 ${f.testReaders} 处）`);
     expect(unexplained, "这些导出产品里没人读：真没人用就删（连带只为它的测试与文案）；有理由留就进 EXEMPT 写一句为什么").toEqual([]);

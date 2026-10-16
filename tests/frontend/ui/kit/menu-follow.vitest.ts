@@ -10,6 +10,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeMenu, openMenu } from "../../../../src/frontend/ui/kit/menu";
+import { nonEmpty } from "../../../test-support/non-empty";
 
 class FakeResizeObserver {
   static live: FakeResizeObserver[] = [];
@@ -77,10 +78,7 @@ describe("锚在触发物上的菜单跟着触发物走", () => {
     const watching = FakeResizeObserver.live.filter((o) =>
       o.seen.includes(dialog),
     );
-    expect(
-      watching.length,
-      "菜单开着时没人看着触发物所在的那个框",
-    ).toBeGreaterThan(0);
+    nonEmpty(watching);
     for (const o of watching) o.cb([], o as unknown as ResizeObserver);
     expect(menu?.style.top).toBe(`${327 + 28 + 4}px`);
   });

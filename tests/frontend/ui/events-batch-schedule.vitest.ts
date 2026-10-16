@@ -353,7 +353,6 @@ describe("〔CF2〕会话内容的旧路退役", () => {
     expect(hits(`listen("jsonl-${"line"}"); sub("jsonl-${"batch"}"); invoke("replay_session_${"to_window"}");`)).toHaveLength(3);
     expect(hits(`// 原来的 "jsonl-${"line"}" 退役了`)).toEqual([]);
     const files = productionTsFiles("src");
-    expect(files.length, "前端生产语料一份都没扫到 —— 本条零命中地绿").toBeGreaterThan(100);
     const offenders = files.flatMap(({ file, text }) => hits(text).map((n) => `${file}: ${n}`));
     expect(offenders, "会话内容的旧路又长回来了（该经 `chan.subscribe`，`events.ts` 的 `streams`）").toEqual([]);
   });

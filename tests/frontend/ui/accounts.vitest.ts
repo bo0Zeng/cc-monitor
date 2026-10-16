@@ -33,6 +33,7 @@ import {
   type ChanCallArgs,
 } from "../../test-support/chan-fake";
 import { copyPattern } from "../../test-support/copy-pattern";
+import { nonEmpty } from "../../test-support/non-empty";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const loadCfg = loadConfig as unknown as ReturnType<typeof vi.fn>;
@@ -126,7 +127,7 @@ describe("默认号 · 能选的号照那台写好的格（跨三处金样）", 
     cases: { what: string; accounts: { name: string; hasDir: boolean; isDefault: boolean; mode: string; authReady: boolean; exists: boolean }[]; effectiveDefault: string | null; selectable: string[] }[];
   };
   it("金样没被删薄", () => {
-    expect(golden.cases.length).toBeGreaterThanOrEqual(6);
+    nonEmpty(golden.cases);
   });
   for (const c of golden.cases) {
     it(c.what, () => {

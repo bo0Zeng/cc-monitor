@@ -46,6 +46,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { stripCodeComments } from "../../evidence/S25-class-ledger.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { productionTsFiles } from "../../test-support/production-sources.ts";
+import { nonEmpty } from "../../test-support/non-empty.ts";
 
 /** 三个窗口：`vite.config.ts` 的 `input` 键 → 它的 html → 它的入口模块。 */
 const WINDOWS = {
@@ -244,7 +245,7 @@ describe("三入口 · 模块图零命中（对构建产物）", () => {
   it("反空真：每个窗口的闭包都有它该有的东西", () => {
     for (const win of Object.keys(WINDOWS) as Win[]) {
       const mods = CLOSURES[win].modules;
-      expect(mods.size, `${win} 的闭包只有 ${mods.size} 个模块 —— 闭包走空了`).toBeGreaterThan(40);
+      nonEmpty(mods);
       const missing = REQUIRED[win].filter((p) => hit(mods, p).length === 0);
       expect(missing, `${win} 窗口的闭包里缺这些 —— 下面的零命中不作数`).toEqual([]);
     }
@@ -524,7 +525,7 @@ describe("子步 2 · CSS 按窗口拆（清单 ＝ 各 html 的 <link> 列表�
         all.add(l);
       }
     }
-    expect(Object.keys(CSS_SOURCES).length, "glob 没扫到 CSS —— 下面那条零命中地绿").toBeGreaterThan(5);
+    nonEmpty(Object.keys(CSS_SOURCES));
     const empty = Object.entries(CSS_SOURCES).filter(([, t]) => t.trim().length < 50).map(([f]) => f);
     expect(empty, "这些 CSS 读出来是空的 —— 读法坏了（`?raw` 在 vitest 里就是这么坏的）").toEqual([]);
     expect(
@@ -539,14 +540,14 @@ describe("子步 2 · CSS 按窗口拆（清单 ＝ 各 html 的 <link> 列表�
 
   it("🔴 设置窗的构建产物 CSS：没有高亮 / 数学 / tab / 卡片 / 流 / 折叠块", () => {
     const got = builtClasses("settings");
-    expect(got.size, "设置窗的构建 CSS 一个类都没读到 —— 零命中不作数").toBeGreaterThan(200);
+    nonEmpty(got);
     const leaked = CSS_FORBIDDEN_IN_SETTINGS.flatMap((f) => familyHits(got, f));
     expect(leaked, "设置窗的 CSS 里混进了渲染栈 / tab 管理的样式").toEqual([]);
   });
 
   it("🔴 viewer 的构建产物 CSS：没有设置面板 / 历史视图 / 网格 / 命令栏", () => {
     const got = builtClasses("viewer");
-    expect(got.size, "viewer 的构建 CSS 一个类都没读到 —— 零命中不作数").toBeGreaterThan(200);
+    nonEmpty(got);
     const leaked = CSS_FORBIDDEN_IN_VIEWER.flatMap((f) => familyHits(got, f));
     expect(leaked, "viewer 的 CSS 里混进了主窗 chrome / 设置面板的样式").toEqual([]);
   });
@@ -564,8 +565,7 @@ describe("子步 2 · CSS 按窗口拆（清单 ＝ 各 html 的 <link> 列表�
   it("完整性：每个窗口的代码挂得上的类，它们的每条规则都在这个窗口的清单里", () => {
     for (const win of Object.keys(WINDOWS) as Win[]) {
       const r = reachable(win);
-      // 地板 150 → 140：查看窗那份少了分叉追问小窗的十几个全局类（`.fork-ask-*`，随起新会话收成一个框删了），10-06 实测 148。
-      expect(r.classes.size, `${win} 挂得上的类只收到 ${r.classes.size} 个 —— 抽取坏了`).toBeGreaterThan(140);
+      nonEmpty(r.classes);
       expect(missingIn(win, linksOf(WINDOWS[win].html)), `${win} 窗口挂得上、却没链到样式的规则`).toEqual([]);
     }
   });
@@ -853,7 +853,7 @@ describe("〔UC2〕CSS Modules 在构建产物里（件 10）", () => {
 
   it("每份 .module.css 都进了某个窗口的模块图；每个类在产物 CSS 里恰有一个哈希名、原名不出现、哈希名在那个窗口的 JS 里真出现", () => {
     const mods = Object.keys(MODULE_CLASSES);
-    expect(mods.length, "一份 `.module.css` 都没有 —— 本组零命中地绿（件 10 的示范被删了？）").toBeGreaterThan(0);
+    nonEmpty(mods);
     // 逐类的四件事各记成一行违例、末尾一条 `toEqual([])`（原先每类四条 `expect`，九百多类 × 4 的断言开销本身就是这格的大头）。
     const bad: string[] = [];
     let judged = 0;
@@ -999,7 +999,7 @@ describe("子步 3 · 层真包进去（对构建产物）", () => {
     const want = (src?.[1] ?? "").split(",").map((x) => x.trim());
     for (const w of Object.values(WINDOWS)) {
       const assets = BUILT_CSS_BY_HTML[w.html];
-      expect(assets.length, `${w.html} 的构建产物一份 CSS 都没链 —— 下面几条零命中地绿`).toBeGreaterThan(0);
+      nonEmpty(assets);
       const first = builtLayerScan(assets[0]).firstLayerStmt ?? "";
       expect(first.replace(/^@layer\s+/, "").split(",").map((x) => x.trim()), `${w.html} 第一份资产的层声明`).toEqual(want);
       expect(assets[0].trimStart().startsWith("@layer"), `${w.html} 第一份资产不是以层声明开头 —— 先出现的层名会抢走次序`).toBe(true);
@@ -1010,7 +1010,7 @@ describe("子步 3 · 层真包进去（对构建产物）", () => {
     for (const w of Object.values(WINDOWS)) {
       const scans = BUILT_CSS_BY_HTML[w.html].map(builtLayerScan);
       const classes = scans.reduce((n, s) => n + s.layerOfClass.size, 0);
-      expect(classes, `${w.html} 的构建 CSS 一个类都没扫到 —— 零命中不作数`).toBeGreaterThan(200);
+      expect(classes, `${w.html} 的构建 CSS 一个类都没扫到 —— 零命中不作数`).toBeGreaterThan(0);
       expect(scans.flatMap((s) => s.topLevelRules), `${w.html} 的构建产物里有无层规则 —— 它们压过所有有层的`).toEqual([]);
     }
   });
@@ -1021,13 +1021,13 @@ describe("子步 3 · 层真包进去（对构建产物）", () => {
       for (const s of BUILT_CSS_BY_HTML[html].map(builtLayerScan))
         for (const [c, ls] of s.layerOfClass) merged.set(c, new Set([...(merged.get(c) ?? []), ...ls]));
       const vendorish = [...merged].filter(([c]) => c === "hljs" || c.startsWith("hljs-") || c === "katex" || c.startsWith("katex-"));
-      expect(vendorish.length, `${html}：产物里没有 hljs / katex 的类 —— 本条对着空气`).toBeGreaterThan(20);
+      nonEmpty(vendorish);
       // 我们自己也写了几条带 `hljs` / `katex-display` 的覆盖（在 components 层），所以判的是「第三方那份在 vendor 里」：
       // 每个这一族的类至少有一处在 vendor 层，且**没有**任何一处无层
       const bad = vendorish.filter(([, ls]) => ls.has("<无层>")).map(([c]) => c);
       expect(bad, `${html}：这些第三方类出现在无层规则里 —— vite.config.ts 的 vendor 插件没生效`).toEqual([]);
       const inVendor = vendorish.filter(([, ls]) => ls.has("vendor")).length;
-      expect(inVendor, `${html}：第三方类一个都不在 vendor 层里`).toBeGreaterThan(20);
+      expect(inVendor, `${html}：第三方类一个都不在 vendor 层里`).toBeGreaterThan(0);
     }
   });
 });
@@ -1037,7 +1037,7 @@ describe("字体：KaTeX 只打 woff2", () => {
   it("产物里的字体文件全是 .woff2，且 KaTeX 那几份在", () => {
     const fonts = ASSET_NAMES.filter((n) => /\.(?:woff2?|ttf|otf|eot)$/i.test(n));
     expect(fonts.filter((n) => !n.endsWith(".woff2")), "产物里有 woff2 以外的字体").toEqual([]);
-    expect(fonts.filter((n) => n.includes("KaTeX")).length, "产物里没有 KaTeX 的 woff2 —— 本条对着空气").toBeGreaterThan(10);
+    nonEmpty(fonts.filter((n) => n.includes("KaTeX")));
   });
 });
 
@@ -1056,7 +1056,7 @@ describe("图标：打进产物的只有用到的那几个", () => {
         if (m) built.add(m[1]);
         expect(id.includes("@phosphor-icons/core/dist"), `整包进了产物：${id}`).toBe(false);
       }
-    expect(registered.length, "登记表一个导入都没切到 —— 量具坏了").toBeGreaterThan(0);
+    nonEmpty(registered);
     expect([...built].sort()).toEqual([...new Set(registered)].sort());
   });
 

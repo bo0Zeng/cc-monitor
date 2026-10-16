@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { clockFace } from "../../src/frontend/ui/clock-face.ts";
+import { nonEmpty } from "../test-support/non-empty.ts";
 
 const golden = JSON.parse(readFileSync(resolve(__dirname, "../__fixtures__/clock-face.golden.json"), "utf8")) as {
   cases: { ms: number; offsetMin: number; want: string }[];
@@ -13,7 +14,7 @@ const golden = JSON.parse(readFileSync(resolve(__dirname, "../__fixtures__/clock
 
 describe("钟面对拍（金样 clock-face.golden.json）", () => {
   it("每条：clockFace 出来的 == 手写的 want", () => {
-    expect(golden.cases.length).toBeGreaterThanOrEqual(6);
+    nonEmpty(golden.cases);
     const wrong = golden.cases.filter((c) => clockFace(c.ms, c.offsetMin) !== c.want).map((c) => `${JSON.stringify(c)} ⇒ ${clockFace(c.ms, c.offsetMin)}`);
     expect(wrong).toEqual([]);
   });

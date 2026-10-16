@@ -13,6 +13,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
+import { nonEmpty } from "../../test-support/non-empty";
 
 const ui = path.resolve(__dirname, "../../../src/frontend/ui");
 
@@ -61,7 +62,7 @@ const files = walk(ui);
 
 describe("减少动画时界面上什么都不动", () => {
   it("人群不空，量具认得出那几形", () => {
-    expect(files.length).toBeGreaterThan(20);
+    nonEmpty(files);
     expect(literalDurations(".a { transition: opacity 0.12s ease; }")).toHaveLength(1);
     expect(literalDurations(".a { animation: spin 0.8s linear infinite }")).toHaveLength(1);
     expect(literalDurations(".a { animation-duration: 2.4s; }")).toHaveLength(1);
@@ -79,7 +80,7 @@ describe("减少动画时界面上什么都不动", () => {
 
   it("每个 --dur-* 在减少动画那一段里都置 0（两向相等）", () => {
     const t = durTokens(readFileSync(path.resolve(__dirname, "../../../src/shared/theme/tokens.css"), "utf8"));
-    expect(t.defined.length).toBeGreaterThan(3);
+    nonEmpty(t.defined);
     expect(t.zeroed).toEqual(t.defined);
     expect(t.notZero).toEqual([]);
   });

@@ -40,6 +40,7 @@ import { describe, expect, it } from "vitest";
 
 import { productionTsFiles } from "../../test-support/production-sources.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
+import { nonEmpty } from "../../test-support/non-empty.ts";
 
 // ─────────────────────────────── L1 ───────────────────────────────
 
@@ -139,7 +140,7 @@ describe("〔STC〕L1 · onLine 上只剩真事件", () => {
 
   it("★ 人群 == 登记表（两向）", () => {
     const got = recordConsumers(tabsSrc, "TabManager", "onLine");
-    expect(got.length, "一个调用都没抽到 —— 抽取器或方法名坏了，下面会拿空集比").toBeGreaterThan(0);
+    nonEmpty(got);
     expect(got, "`onLine` 上吃记录的调用变了 —— 新的一条回登记表写清它是哪一类（没有「记账员」这一类）").toEqual(
       ONLINE_CALLS.map(([c]) => c).sort(),
     );
@@ -249,7 +250,6 @@ describe("〔STC〕L2 · 会话事实字段只有登记的写者（记账员换�
 
   it("★ 人群 == 登记表（两向，按文件 ＋ 所在声明）", () => {
     const files = productionTsFiles("src");
-    expect(files.length, "一个 TS 生产文件都没扫到").toBeGreaterThan(0);
     const got: string[] = [];
     for (const { file, text } of files) for (const o of factWriters(text)) got.push(`${file} :: ${o}`);
     expect(got.sort(), "事实字段多了 / 少了写者 —— 从流上攒全会话事实回来了？").toEqual(

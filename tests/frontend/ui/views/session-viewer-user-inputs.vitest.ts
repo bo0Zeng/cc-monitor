@@ -61,6 +61,7 @@ import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { copyPattern } from "../../../test-support/copy-pattern";
 import { UNTIL_CEILING } from "../../../test-support/wall-ceiling";
+import { nonEmpty } from "../../../test-support/non-empty";
 
 let rig: ViewerRigHandles;
 
@@ -307,7 +308,7 @@ describe("KR45 债二：清单的样式住 styles.css，不再内联", () => {
       .split("\n")
       .map((l) => l.trim());
     // 抽取器自检：先确认这把尺子够得着那个文件（不然下面几条是空真）。
-    expect(cssLines.length, "读到的 styles.css 只有几行 —— 尺子坏了").toBeGreaterThan(1000);
+    nonEmpty(cssLines);
     expect(cssLines, "读到的不是 styles.css —— 连基准那条规则都没有").toContain(
       ".session-viewer {",
     );

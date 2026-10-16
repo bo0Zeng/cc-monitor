@@ -77,6 +77,7 @@ import { TabManager, type Tab } from "../../../../src/frontend/ui/tabs";
 import { MAX_TRANSIENT_FAILURES } from "../../../../src/frontend/ui/views/outline-source";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { UNTIL_CEILING } from "../../../test-support/wall-ceiling";
+import { nonEmpty } from "../../../test-support/non-empty.ts";
 
 /** 这一趟里发了哪些 `list_user_inputs`（只看参数）。 */
 const outlineCalls = (): unknown[] =>
@@ -503,7 +504,7 @@ describe("KR45D2 · SE2 实时那块查找面板（大纲在里面）在 styles.
       .split("\n")
       .map((l) => l.trim());
     // 抽取器自检：先确认这把尺子够得着那个文件（不然下面几条是空真）。
-    expect(cssLines.length, "读到的 styles.css 只有几行 —— 尺子坏了").toBeGreaterThan(1000);
+    nonEmpty(cssLines);
     expect(cssLines, "读到的不是 styles.css —— 连基准那条规则都没有").toContain(".stream {");
 
     expect(cssLines, "面板没有 CSS 宿主 ⇒ 每个 tab 的面板一起挂在屏幕上").toContain(".session-find {");

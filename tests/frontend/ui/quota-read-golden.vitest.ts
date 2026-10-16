@@ -5,6 +5,7 @@ import GOLDEN from "../../__fixtures__/quota-read.golden.json";
 import { tookQuota } from "../../../src/frontend/ui/quota-reads";
 import type { QuotaRead } from "../../../src/frontend/ui/acct-words";
 import { accountLabel, fiveHourCell } from "../../../src/frontend/ui/acct-words";
+import { nonEmpty } from "../../test-support/non-empty";
 
 const TONES = new Set(["plain", "fail", "warn", "need", "now", "busy"]);
 
@@ -14,7 +15,7 @@ describe("quota-read 线上金样", () => {
     it(c.name, () => {
       const r = tookQuota(c.reply as unknown as QuotaRead);
       for (const a of [...r.accounts, ...r.unseen]) {
-        expect(a.rows.length).toBeGreaterThan(0);
+        nonEmpty(a.rows);
         for (const row of a.rows) for (const cell of row) expect(TONES.has(cell.tone), JSON.stringify(cell)).toBe(true);
         expect(a.warm.text).not.toBe("");
       }

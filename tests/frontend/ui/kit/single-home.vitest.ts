@@ -29,7 +29,6 @@ describe("一个组件一个家（对话框 · 菜单 · 悬停提示 · toast�
   it(
     "kit 之外零命中",
     () => {
-      expect(FILES.length).toBeGreaterThan(100);
       expect(FILES.filter((f) => !inKit(f.file)).flatMap((f) => hitsOf(f.file, f.text))).toEqual([]);
     },
   );

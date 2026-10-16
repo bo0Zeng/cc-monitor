@@ -52,6 +52,7 @@ import { createRequire } from "node:module";
 import { dirname, relative, resolve } from "node:path";
 import { describe, it, expect } from "vitest";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
+import { nonEmpty } from "../../test-support/non-empty.ts";
 
 /**
  * 全仓 `npx eslint .` 的既有错误数。**基线/顾问式**（同 clippy 不强制）——
@@ -175,10 +176,7 @@ describe("eslint 基线与作用面", () => {
     const results = runEslintCached();
 
     // 抽取器自检：eslint 必须真的扫到了东西。**没有这一格，删光 `files:` 块本条会零命中地绿。**
-    expect(
-      results.length,
-      "eslint 一个文件都没扫到 —— 要么 `ignores` 被改成吃掉全仓，要么本条跑歪了（会零命中地绿）",
-    ).toBeGreaterThan(100);
+    nonEmpty(results);
 
     const errors = results.reduce((n, r) => n + r.errorCount, 0);
     const offenders = results
@@ -200,11 +198,7 @@ describe("eslint 基线与作用面", () => {
       const src = read(file);
       const claims = [...src.matchAll(PROSE_CLAIM)].map((m) => Number(m[1]));
       // 抽取器自检：那句话还在不在。措辞改了就该在这里红，而不是静静地零命中。
-      expect(
-        claims.length,
-        `${file} 里找不到「全仓 N 个/项」那句散文 —— 措辞改了？改了就把本条的正则一起改，\n` +
-          `别让它零命中地绿（这正是上次那处腐坏能活六天的机制）`,
-      ).toBeGreaterThan(0);
+      nonEmpty(claims);
       for (const n of claims) {
         expect(
           n,
@@ -233,7 +227,7 @@ describe("eslint 基线与作用面", () => {
       .filter(Boolean);
 
     // 抽取器自检：全集不许是空的。
-    expect(tracked.length, "git ls-files '*.mjs' 零命中 —— 抽取器坏了，本条会零命中地绿").toBeGreaterThan(0);
+    nonEmpty(tracked);
 
     const cfg = read("eslint.config.js");
     // eslint 实际扫到了哪些 .mjs（`ignores` 已经生效过一遍）—— 只对这批要求认领。
@@ -254,10 +248,7 @@ describe("eslint 基线与作用面", () => {
     // 将来新增的 `.mjs` 都默认放过，正好废掉本条要接的那个机制（「新目录进来时没人管」）。
     // ⇒ 换成**按认领目录前缀真匹配**，与目录深几层无关。
     const claimedDirs = [...cfg.matchAll(/"([A-Za-z0-9._/-]+)\/\*\*\/\*\.mjs"/g)].map((m) => m[1]);
-    expect(
-      claimedDirs.length,
-      '`eslint.config.js` 里抽不出任何 `"<目录>/**/*.mjs"` 的 files: 块 —— 抽取器坏了，本条会零命中地绿',
-    ).toBeGreaterThan(0);
+    nonEmpty(claimedDirs);
     const unclaimed = [...linted].filter((p) => !claimedDirs.some((d) => p.startsWith(`${d}/`)));
 
     expect(

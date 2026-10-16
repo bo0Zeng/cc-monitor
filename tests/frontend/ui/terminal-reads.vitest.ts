@@ -26,6 +26,7 @@ import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, refusedReply, UNSUPPORTED, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { copyPattern } from "../../test-support/copy-pattern";
+import { nonEmpty } from "../../test-support/non-empty";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
@@ -74,7 +75,7 @@ const saidBy = async (origin: string): Promise<string> => (await failureOf(() =>
 describe("抓一屏：金样与形状", () => {
   it("★★ 金样：后端真出的成品读得出（每行 `text` 用换行接起来）", () => {
     const lines = (PREVIEW.reply.lines as { text: string }[]).map((l) => l.text);
-    expect(lines.length, "金样里没有行 —— 下面是空转").toBeGreaterThan(0);
+    nonEmpty(lines);
     expect(decodeShot("devbox", PREVIEW.reply).text).toBe(lines.join("\n"));
   });
 
@@ -169,7 +170,7 @@ describe("抓一屏：失败怎么说", () => {
   });
 
   it("★★ 拒绝码（取自金样）：那台写好的那一句原样上屏、复制详情带码（逐码一句由后端判：`said_tests.rs`）；那台没写 ⇒ 无原因那一句带名字", async () => {
-    expect(PREVIEW.codes.length, "金样里一个码都没有 —— 下面全是空转").toBeGreaterThan(0);
+    nonEmpty(PREVIEW.codes);
     for (const code of PREVIEW.codes) {
       answer({ "terminal-preview": { fail: refusedReply(code, `S-${code}`) } });
       const e = await failureOf(() => previewText("devbox", { sid: "sid-a" }, "demo-cc"));
