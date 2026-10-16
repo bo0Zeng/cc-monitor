@@ -337,6 +337,15 @@ fn corpus(name: &str) -> Vec<Value> {
             // 答题口没接上那一格：真跑要一个带那个变量的活进程，这里照它写好的那一句配一份。
             let mut off = f.clone();
             off["answerOff"] = serde_json::json!(copy_core::copy_text("beAsk.manual.noHook", &[]));
+            // 没人答时自动答那两格：注解里设了 · 上一条替人答过（真跑要一条挂过的提问），照写好的那一句配一份。
+            off["autoAnswer"] = serde_json::json!(10);
+            off["autoAnswered"] = serde_json::json!(copy_core::copy_text(
+                "beAsk.auto.answered",
+                &[
+                    ("dur", &copy_core::format_duration(600_000)),
+                    ("say", &crate::control::asks::auto_say())
+                ]
+            ));
             out.push(off);
             for n in dressed_needs(base) {
                 let mut g = f.clone();

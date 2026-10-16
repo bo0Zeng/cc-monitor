@@ -4777,6 +4777,30 @@
       "zh": "解散分组",
       "args": []
     },
+    "tabMenu.autoAnswer.label": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "没人答时自动答",
+      "args": []
+    },
+    "tabMenu.autoAnswer.tip": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "只答提问 · 等满没人答就替人答一句；批准与计划照常等人",
+      "args": []
+    },
+    "tabMenu.autoAnswer.off": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "关",
+      "args": []
+    },
+    "tabMenu.autoAnswer.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "自动答设置失败",
+      "args": []
+    },
     "tabMenu.pin.pin": {
       "kind": "action",
       "role": "菜单项",
@@ -18099,6 +18123,18 @@
       "kind": "error",
       "role": "报错",
       "zh": "已有人答过",
+      "args": []
+    },
+    "beAsk.auto.answered": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{dur}没人答，已自动答：{say}",
+      "args": ["dur", "say"]
+    },
+    "beAsk.auto.say": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "不要卡着，按推荐的做，继续",
       "args": []
     },
     "beAsk.answer.closed": {

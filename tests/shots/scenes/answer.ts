@@ -10,7 +10,8 @@ import { HOME } from "../disk";
 import { Convo, jsonlOf } from "../fake/records";
 import { defaultWorld, LOCAL, session, sidOf } from "../fake/world";
 import { WALL_CEILING_MS } from "../../test-support/wall-ceiling";
-import { click, mainReady, sleep, until } from "./helpers";
+import { byText, click, hover, mainReady, rightClick, sleep, until } from "./helpers";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 const N = 31;
 const SID = sidOf(N);
@@ -127,4 +128,30 @@ export const ANSWER_SCENES: Scene[] = [
     await until(() => document.querySelector("[role=group] [data-part=gone]"));
     await sleep(1500);
   }),
+  shot("answer-auto-menu", "答批准 · 没人答时自动答 ▸（甲8）", "会话头菜单（右键标签页同一份）「没人答时自动答 ▸」：关 · 5m · 15m · 30m 一组单选，勾在会话注解里那一格上（这里经真后端设成 15 分钟）", async ({ backend }) => {
+    await mainReady(1);
+    await backend.annotate(LOCAL, SID, { autoAnswer: { afterMin: 15 } });
+    await sleep(800);
+    await rightClick("#tab-bar .tab");
+    await hover(await byText("[role=menu] > [role=none]", copyText("tabMenu.autoAnswer.label")));
+    await sleep(900);
+  }, world("AskUserQuestion", { questions: QUESTIONS }, "permission prompt")),
+  shot("answer-auto-answered", "答批准 · 没人答、已自动答（甲9）", "会话设了 1 分钟没人答就自动答：提问挂上、一分钟没人点 ⇒ 真后端替人答了（每题答「其他」＋ 缺省那一句），块收起、留一行核心写的「1 分钟没人答，已自动答：…」", async ({ backend }) => {
+    await mainReady(1);
+    await backend.annotate(LOCAL, SID, { autoAnswer: { afterMin: 1 } });
+    await asked(backend, hook("AskUserQuestion", { questions: QUESTIONS }), "[data-option]");
+    // 那台到点替人答（真钟一分钟）；记录里那一步的结果照真的接上、pidfile 改回在跑。
+    const t0 = performance.now();
+    while ((await backend.askIdOf(LOCAL, SID)) !== null) {
+      if (performance.now() - t0 > WALL_CEILING_MS) throw new Error(`真后端 ${WALL_CEILING_MS}ms 没替人答 ${SID} 的提问`);
+      await sleep(500);
+    }
+    const c = backend.world.sessions[0].convo!;
+    const from = c.lines.length;
+    c.answer(lastCall(c), "AskUserQuestion", { questions: QUESTIONS }, "");
+    await backend.appendLines(LOCAL, c, from);
+    await backend.setStatus(LOCAL, SID, "busy");
+    await until(() => document.querySelector("[role=group] [data-part=gone]"));
+    await sleep(1500);
+  }, world("AskUserQuestion", { questions: QUESTIONS }, "permission prompt")),
 ];

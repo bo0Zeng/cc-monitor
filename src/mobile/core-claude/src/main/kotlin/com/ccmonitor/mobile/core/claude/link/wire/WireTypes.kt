@@ -191,6 +191,14 @@ enum class Tone {
 @JsonClass(generateAdapter = true)
 data class NeedsList(
     val waiting: List<NeedsRow>,
+    val answered: List<AnsweredRow>,
+)
+
+@WireOf("AnsweredRow")
+@JsonClass(generateAdapter = true)
+data class AnsweredRow(
+    val sid: String,
+    val said: String,
 )
 
 @WireOf("NeedsRow")
@@ -736,6 +744,8 @@ data class Crumb(
 @WireOf("StatReply")
 @JsonClass(generateAdapter = true)
 data class StatReply(
+    val name: Any,
+    val up: Any?,
     val kind: FileKind,
     val mode: Long?,
 )
