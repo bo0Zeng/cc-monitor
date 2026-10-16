@@ -139,10 +139,17 @@ class FilesViewModel(
             when (val at = ops.open(text).onFailure(::say).getOrNull() ?: return@launch) {
                 is FileOps.Opening.Dir -> navigateTo(at.dir)
                 is FileOps.Opening.File -> {
-                    navigateTo(at.dir)
+                    // 进上一级，照那一行上那台给的预览门读（与点那一行同一道门）。
                     _busy.value = true
-                    ops.readText(at.file).onSuccess { _opened.tryEmit(at.name.shown to it.text) }.onFailure(::say)
+                    val listed = ops.list(at.dir, _sortBySize.value).onFailure(::say).getOrNull()
                     _busy.value = false
+                    if (listed != null) {
+                        _listing.value = listed
+                        _cwd.value = at.dir
+                        listed.entries.find { it.path == at.file }?.let { e ->
+                            readText(e, e.preview).onSuccess { _opened.tryEmit(at.name.shown to it.text) }
+                        }
+                    }
                 }
             }
         }
