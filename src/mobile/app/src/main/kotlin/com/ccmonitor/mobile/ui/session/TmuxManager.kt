@@ -269,7 +269,7 @@ private fun TmuxNewSessionRow(
             modifier = Modifier.weight(1f),
         )
         SecondaryButton(enabled = newName.isNotBlank(), onClick = { onNewDetached(newName.trim()) }) { Text(copyText("mobTmux.new.detached")) }
-        // 后台起一个跑着 claude 的 detached 会话，不进入，之后可附着回来。
+        // 后台起一个跑着 agent 的 tmux 会话，不进入，之后可打开。
         SecondaryButton(enabled = newName.isNotBlank(), onClick = { onNewDetachedCc(newName.trim()) }) { Text(copyText("mobTmux.new.detachedCc")) }
         SecondaryButton(enabled = newName.isNotBlank(), onClick = { onNewAttach(newName.trim()) }) { Text(copyText("mobTmux.new.attach")) }
     }

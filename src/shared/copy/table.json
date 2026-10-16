@@ -28962,13 +28962,13 @@
     "mobDrawer.item.newChat": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "新建会话",
+      "zh": "新对话",
       "args": []
     },
     "mobDrawer.item.chats": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "会话",
+      "zh": "对话",
       "args": []
     },
     "mobDrawer.item.files": {
@@ -30237,7 +30237,7 @@
     "mobTmux.new.detachedCc": {
       "kind": "action",
       "role": "按钮",
-      "zh": "启动 Claude",
+      "zh": "后台 agent",
       "args": []
     },
     "mobTmux.new.attach": {
@@ -30553,7 +30553,7 @@
     "mobHostEdit.os.windowsHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "可用  连接 · 终端 · 文件\n不可用  tmux · 启动 Claude",
+      "zh": "可用  连接 · 终端 · 文件\n不可用  tmux · 后台 agent",
       "args": [],
       "limited": ["tmux", "连接"]
     },

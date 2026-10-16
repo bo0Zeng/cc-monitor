@@ -36,7 +36,7 @@ class DrawerTest {
         assertEquals("行首图标", listOf(Ph.PlusCircle, Ph.Chats, Ph.FolderSimple, Ph.TerminalWindow), entries.map { it.icon })
         assertEquals("顶上的名字", "cc-monitor", DRAWER_TITLE)
         assertEquals("「最近」小标题", "最近", RECENT_HEADER)
-        assertEquals("底行", "服务器 · devbox", serverRowLabel("devbox"))
+        assertEquals("底行", "机器 · devbox", serverRowLabel("devbox"))
     }
 
     @Test
@@ -162,7 +162,7 @@ class DrawerTest {
         assertFalse("对话列表不再有自己的「新对话」", conversations.contains("ExtendedFloatingActionButton"))
 
         val hosts = codeOnly(source("HostScreens.kt"))
-        assertFalse("服务器列表不再有自己进设置的那颗", Regex("""\bonSettings\b""").containsMatchIn(hosts))
+        assertFalse("机器列表不再有自己进设置的那颗", Regex("""\bonSettings\b""").containsMatchIn(hosts))
     }
 
     // ---- 文案 -----------------------------------------------------------------------
