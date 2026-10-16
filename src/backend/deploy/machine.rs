@@ -133,25 +133,25 @@ pub fn product(e: &Entry, machine: &str, enabled: bool) -> MachineState {
 
 /// 名字旁那个词（连着时空；版本不可比的那台说「开发版」）。
 fn word(state: K, relation: Option<Relation>) -> String {
-    let key = match state {
-        K::Up if relation == Some(Relation::Incomparable) => "machineState.word.incomparable",
-        K::Up | K::Unknown => return String::new(),
-        K::Connecting => "machineState.word.connecting",
-        K::Installing => "machineState.word.installing",
-        K::Updating => "machineState.word.updating",
-        K::Down => "machinePage.state.down",
-        K::HostKeyChanged => "machineState.word.hostKey",
-        K::NeedsUpdate => "machineState.word.needsUpdate",
-        K::Newer => "machineState.word.newer",
-        K::Disabled => "machinePage.state.disabled",
-        K::Unsupported => "machineState.word.unsupported",
-    };
-    copy_text(key, &[])
+    match state {
+        K::Up if relation == Some(Relation::Incomparable) => {
+            copy_text("machineState.word.incomparable", &[])
+        }
+        K::Up | K::Unknown => String::new(),
+        K::Connecting => copy_text("machineState.word.connecting", &[]),
+        K::Installing => copy_text("machineState.word.installing", &[]),
+        K::Updating => copy_text("machineState.word.updating", &[]),
+        K::Down => copy_text("machinePage.state.down", &[]),
+        K::HostKeyChanged => copy_text("machineState.word.hostKey", &[]),
+        K::NeedsUpdate => copy_text("machineState.word.needsUpdate", &[]),
+        K::Newer => copy_text("machineState.word.newer", &[]),
+        K::Disabled => copy_text("machinePage.state.disabled", &[]),
+        K::Unsupported => copy_text("machineState.word.unsupported", &[]),
+    }
 }
 
 /// 问题行那一句（空 ⇒ 不出问题行）。正在连 / 装 / 更新那一句与部署每一步那一句是同一句（[`Step::said`]）。
 fn said(state: K, stage: Option<Stage>, why: Option<Why>, machine: &str) -> String {
-    let m = [("machine", machine)];
     match state {
         K::Up | K::Unknown => String::new(),
         K::Connecting => match stage {
@@ -168,13 +168,15 @@ fn said(state: K, stage: Option<Stage>, why: Option<Why>, machine: &str) -> Stri
             Why::Password => copy_text("machineState.down.password", &[]),
             Why::KeyUnreadable => copy_text("machineState.down.keyUnreadable", &[]),
             Why::Jump => copy_text("machineState.down.jump", &[]),
-            Why::HostKey | Why::Other => copy_text("machinePage.problem.offline", &m),
+            Why::HostKey | Why::Other => {
+                copy_text("machinePage.problem.offline", &[("machine", machine)])
+            }
         },
         K::HostKeyChanged => copy_text("machineState.problem.hostKey", &[]),
-        K::NeedsUpdate => copy_text("machineState.problem.needsUpdate", &m),
-        K::Newer => copy_text("machineState.problem.newer", &m),
+        K::NeedsUpdate => copy_text("machineState.problem.needsUpdate", &[("machine", machine)]),
+        K::Newer => copy_text("machineState.problem.newer", &[("machine", machine)]),
         K::Disabled => copy_text("machinePage.problem.disabled", &[]),
-        K::Unsupported => copy_text("machineState.problem.notUnix", &m),
+        K::Unsupported => copy_text("machineState.problem.notUnix", &[("machine", machine)]),
     }
 }
 
@@ -205,16 +207,15 @@ fn fixes(state: K, why: Option<Why>) -> Vec<MachineFix> {
 
 /// 修法按钮上的字。
 pub fn label(fix: MachineFix) -> String {
-    let key = match fix {
-        MachineFix::Retry => "machineState.fix.retry",
-        MachineFix::ConnSettings => "machinePage.conn.toggle",
-        MachineFix::PushKey => "machineCard.build.pushKey",
-        MachineFix::CompareFingerprint => "machineState.fix.compareFingerprint",
-        MachineFix::Update => "machineState.fix.update",
-        MachineFix::Connect => "machinePage.problem.connect",
-        MachineFix::Install => "machineState.fix.install",
-    };
-    copy_text(key, &[])
+    match fix {
+        MachineFix::Retry => copy_text("machineState.fix.retry", &[]),
+        MachineFix::ConnSettings => copy_text("machinePage.conn.toggle", &[]),
+        MachineFix::PushKey => copy_text("machineCard.build.pushKey", &[]),
+        MachineFix::CompareFingerprint => copy_text("machineState.fix.compareFingerprint", &[]),
+        MachineFix::Update => copy_text("machineState.fix.update", &[]),
+        MachineFix::Connect => copy_text("machinePage.problem.connect", &[]),
+        MachineFix::Install => copy_text("machineState.fix.install", &[]),
+    }
 }
 
 /// 复制详情里「码」那一项：没连上 ⇒ 原因码（线上那个名字）；做不了 ⇒ `not_unix`。

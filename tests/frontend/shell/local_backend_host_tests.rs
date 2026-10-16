@@ -4746,20 +4746,10 @@ fn the_local_row_matches_the_cross_language_golden() {
 /// 壳里造机器状态成品只许本机那一处（远端各台的成品在后端定）：壳生产段里写 `MachineState {` 字面构造的文件恰好是这一份。
 #[test]
 fn only_the_local_row_is_built_in_the_shell() {
-    fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
-        for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
-            let p = e.path();
-            if p.is_dir() {
-                walk(&p, out);
-            } else if p.extension().is_some_and(|x| x == "rs") {
-                out.push(p);
-            }
-        }
-    }
-    let mut files = Vec::new();
-    for root in guard_core::addr::shell_population_roots() {
-        walk(&root, &mut files);
-    }
+    let files: Vec<(std::path::PathBuf, String)> = guard_core::addr::shell_population_roots()
+        .iter()
+        .flat_map(|root| guard_core::scan_tree!(root, &["rs"]))
+        .collect();
     assert!(
         files.len() > 50,
         "壳的人群只扫到 {} 份 —— 走法坏了",
@@ -4767,14 +4757,13 @@ fn only_the_local_row_is_built_in_the_shell() {
     );
     let builds: std::collections::BTreeSet<String> = files
         .iter()
-        .filter(|p| {
-            let src = std::fs::read_to_string(p).unwrap_or_default();
-            guard_core::production_code(&src).lines().any(|l| {
+        .filter(|(_, src)| {
+            guard_core::production_code(src).lines().any(|l| {
                 let l = l.trim();
                 l.contains("MachineState {") && !l.contains("-> MachineState {")
             })
         })
-        .map(|p| guard_core::addr::rel_of(p))
+        .map(|(p, _)| guard_core::addr::rel_of(p))
         .collect();
     assert_eq!(
         builds,

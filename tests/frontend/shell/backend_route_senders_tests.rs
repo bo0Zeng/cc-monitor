@@ -114,6 +114,14 @@ const SENDERS: &[(&str, Verdict)] = &[
     // 手机那一侧一台的常驻流（`resident-client/feed.rs`）：报在看名单 · 问那台新旧只记一行日志、没有第二条路；
     //   替宿主转发的一问一答把 `CallError` 原样交回宿主（手机核心按它说那一句），这里不做回落判断。
     ("feed.rs", Verdict::ProbeOnlyNoFallbackDecision),
+    // 每条远端循环那一轮的结论交本机后端（`stream_source/run.rs::send_round`，`machine-round`）：没交上只记一行日志 ——
+    //   本机通道接上那一刻会整份重交，没有第二条路，成败也不交给任何人。
+    ("run.rs", Verdict::ProbeOnlyNoFallbackDecision),
+    // 诊断信息问远端各台的状态（`diagnostics_report.rs::remote_machines`，`machine-read`）：问不到只记一行日志、那几台照「说不出」写。
+    (
+        "diagnostics_report.rs",
+        Verdict::ProbeOnlyNoFallbackDecision,
+    ),
 ];
 
 /// 分流器的**两个出口**：分层结果（`05` 形状）与从它收拢出来的旧三态。

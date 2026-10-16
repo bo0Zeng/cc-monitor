@@ -129,7 +129,7 @@ fn every_fact_lands_on_its_state_word_sentence_and_fixes() {
             ),
         ),
         (
-            "核对版本",
+            "预检",
             vec![round(Round::Connecting), Fact::Step(Step::Plan)],
             true,
             (

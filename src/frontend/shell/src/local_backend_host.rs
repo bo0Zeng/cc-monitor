@@ -1705,7 +1705,6 @@ pub(crate) fn local_product(channel: bool, mine: Option<&str>) -> MachineState {
         (false, _) => MachineStateKind::Down,
     };
     let name = copy_text("remote.cards.local", &[]);
-    let machine = [("machine", name.as_str())];
     let (word, said) = match state {
         MachineStateKind::Up if relation == Relation::Incomparable => (
             copy_text("machineState.word.incomparable", &[]),
@@ -1713,11 +1712,11 @@ pub(crate) fn local_product(channel: bool, mine: Option<&str>) -> MachineState {
         ),
         MachineStateKind::NeedsUpdate => (
             copy_text("machineState.word.needsUpdate", &[]),
-            copy_text("machineState.problem.needsUpdate", &machine),
+            copy_text("machineState.problem.needsUpdate", &[("machine", &name)]),
         ),
         MachineStateKind::Newer => (
             copy_text("machineState.word.newer", &[]),
-            copy_text("machineState.problem.newer", &machine),
+            copy_text("machineState.problem.newer", &[("machine", &name)]),
         ),
         MachineStateKind::Down => (
             copy_text("machinePage.state.down", &[]),
