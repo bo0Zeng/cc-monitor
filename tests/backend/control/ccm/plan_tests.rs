@@ -1426,10 +1426,10 @@ fn the_relay_route_follows_the_target_account_not_the_outer_shell() {
         Some("http://127.0.0.1:8788/t/claude-code/q".to_string()),
         Some(format!("http://127.0.0.1:8788/{key}/s/claude-code/q")),
     ];
+    // `/t/` ⇒ 那一行照字面插这台的只许直通那一把。
+    let pass = "d".repeat(64);
     let route = |seg: &str| {
-        format!(
-            "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'$(cat ~/.cc-monitor/relay-key)'/t/claude-code/{seg}'; "
-        )
+        format!("export ANTHROPIC_BASE_URL=http://127.0.0.1:8788/{pass}/t/claude-code/{seg}; ")
     };
     // 直起：(起法, 参数, 期望的账号段)。
     for (what, args, seg) in [
@@ -1445,6 +1445,7 @@ fn the_relay_route_follows_the_target_account_not_the_outer_shell() {
         for outer in &outers {
             let mut e = env();
             e.relay = Some(listening);
+            e.relay_pass_key = Some(pass.clone());
             e.inherited_base_url = outer.clone();
             let line = render(&plan_of(args, &e, &t));
             assert_eq!(
@@ -1930,7 +1931,7 @@ fn the_three_options_are_judged_and_account_dir_excludes_the_other_account_forms
     }
 }
 
-/// 中转地址只在最终 exec 那一处定：问上游选择那一只手（带上这一发的账号），注入的那一句钥匙段是读钥匙文件的命令替换；
+/// 中转地址只在最终 exec 那一处定：问上游选择那一只手（带上这一发的账号），注入的那一句插上那条路由要的钥匙（`/t/` ⇒ 只许直通那一把）；
 /// 环境里已经有用户自己的端点 ⇒ 不问、不动、记下要说一句；有的是我们那一形 ⇒ 照样问；拒 ⇒ 用法错带那一句。
 #[test]
 fn the_relay_address_is_decided_at_the_final_exec_and_only_there() {
@@ -1963,6 +1964,8 @@ fn the_relay_address_is_decided_at_the_final_exec_and_only_there() {
     let args = ["--resume", "s1", "--", "--account-dir", "/h/.claude-alt/w"];
     let mut e = env();
     e.relay = Some(inject);
+    let pass = "e".repeat(64);
+    e.relay_pass_key = Some(pass.clone());
     let Plan::Direct(d) = plan_split(&args, &e).unwrap() else {
         panic!()
     };
@@ -1971,9 +1974,9 @@ fn the_relay_address_is_decided_at_the_final_exec_and_only_there() {
         Some("http://127.0.0.1:8788/t/claude-code/w")
     );
     assert!(
-        render(&Plan::Direct(d)).contains(
-            "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'$(cat ~/.cc-monitor/relay-key)'/t/claude-code/w'; "
-        ),
+        render(&Plan::Direct(d)).contains(&format!(
+            "export ANTHROPIC_BASE_URL=http://127.0.0.1:8788/{pass}/t/claude-code/w; "
+        )),
         "注入那一句的形状变了"
     );
     e.relay = Some(never);
@@ -2185,14 +2188,14 @@ fn on_windows_the_printed_line_speaks_powershell() {
     // 同一条计划在 POSIX 那一侧照旧（真跑经 `sh -c` 的那一趟读的是它）。
     let p = plan_of(&["--cwd", "/p"], &env(), &AccountTable::default());
     assert_eq!(render_for(&p, Shell::Posix), render(&p));
-    // 中转地址：钥匙现读家目录底下那份文件，不进打印出来的命令。
+    // `/s/` 中转地址：钥匙现读家目录底下那份文件，不进打印出来的命令。
     let mut d = match p {
         Plan::Direct(d) => d,
         other => panic!("{other:?}"),
     };
     let url = relay_route_core::base_url(
         relay_route_core::PORT,
-        relay_route_core::RouteMode::Passthrough,
+        relay_route_core::RouteMode::Substitute,
         "claude-code",
         "claude",
     )
@@ -2215,9 +2218,9 @@ fn on_windows_the_printed_line_speaks_powershell() {
     );
 }
 
-/// ★ 怎么指到中转只看那一家的注入格：认地址环境变量的那一家 ⇒ 插钥匙的地址进**它那个**变量；
-/// 地址只能拼进参数的那一家 ⇒ 地址垫在透传之前，那个词里的钥匙段写成读**只许直通那一把**钥匙文件的命令替换
-/// （计划里的 argv 不带钥匙，exec 那一刻才插），两家都不出对方那一形。合成注册表里两家只差注入格。
+/// ★ 地址放哪只看那一家的注入格：认地址环境变量的那一家 ⇒ 插钥匙的地址进**它那个**变量；
+/// 地址只能拼进参数的那一家 ⇒ 地址垫在透传之前（计划里的 argv 不带钥匙，exec 那一刻才插）。插哪一把只看路由：
+/// 同一条 `/t/` 地址两家都照字面插只许直通那一把。合成注册表里两家只差注入格。
 #[test]
 fn the_relay_is_injected_the_way_that_family_declares() {
     use crate::agents::{Adapter, DefaultUpstream, Inject};
@@ -2289,14 +2292,12 @@ fn the_relay_is_injected_the_way_that_family_declares() {
     );
     let line = render(&Plan::Direct(d));
     assert!(
-        line.contains(
-            "export FAKE_URL_VAR='http://127.0.0.1:8788/'$(cat ~/.cc-monitor/relay-key)'/t/x/w'; "
-        ),
+        line.contains(&format!("export FAKE_URL_VAR={pass_word}; ")),
         "{line}"
     );
     assert!(
-        !line.contains(&pass),
-        "认环境变量那一家的那一行里有只许直通那一把：{line}"
+        !line.contains(full_key),
+        "`/t/` 那一行读了全权那一把：{line}"
     );
 
     let d = plan_for("via-args");
@@ -2888,5 +2889,65 @@ fn a_users_own_settings_get_the_answer_hook_merged_in_or_say_it_could_not() {
             "原样交出去"
         );
         assert!(render(&Plan::Direct(d)).contains(crate::agents::asks::ANSWER_HOOK_OFF_ENV));
+    }
+}
+
+/// 非得经 shell 那一趟，钥匙段按地址的路由写：`/t/` ⇒ 照字面插只许直通那一把（不读钥匙文件）；`/s/` ⇒ 读钥匙文件的命令替换
+/// （全权那一把不以字面出现）。认地址环境变量的那一家（claude）两种 shell 都是这样。
+#[test]
+fn the_shell_line_writes_the_key_the_route_takes() {
+    fn pass_route(
+        _: &str,
+        _: &crate::accounts::upstream_select::endpoint::LaunchAccount,
+    ) -> Result<Option<String>, String> {
+        Ok(Some("http://127.0.0.1:8788/t/claude-code/w".into()))
+    }
+    fn full_route(
+        _: &str,
+        _: &crate::accounts::upstream_select::endpoint::LaunchAccount,
+    ) -> Result<Option<String>, String> {
+        Ok(Some("http://127.0.0.1:8788/s/claude-code/w".into()))
+    }
+    use crate::platform::shell::dialect::Shell;
+    let pass = "c".repeat(64);
+    let mut e = env();
+    e.relay_pass_key = Some(pass.clone());
+    let args = ["--resume", "s1", "--", "--account-dir", "/h/.claude-alt/w"];
+    let line_of = |e: &Env, shell: Shell| {
+        let Plan::Direct(d) = plan_split(&args, e).unwrap() else {
+            panic!("该是直路")
+        };
+        render_for(&Plan::Direct(d), shell)
+    };
+    e.relay = Some(pass_route);
+    for shell in [Shell::Posix, Shell::PowerShell] {
+        let line = line_of(&e, shell);
+        assert!(
+            line.contains(&format!("http://127.0.0.1:8788/{pass}/t/claude-code/w")),
+            "{shell:?} `/t/` 那一行没照字面插只许直通那一把：{line}"
+        );
+        assert!(
+            !line.contains(relay_route_core::KEY_FILE_REL),
+            "{shell:?} `/t/` 那一行还在读钥匙文件（全权那一把）：{line}"
+        );
+    }
+    e.relay = Some(full_route);
+    assert!(
+        line_of(&e, Shell::Posix).contains(
+            "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'$(cat ~/.cc-monitor/relay-key)'/s/claude-code/w'; "
+        ),
+        "{}",
+        line_of(&e, Shell::Posix)
+    );
+    for shell in [Shell::Posix, Shell::PowerShell] {
+        let line = line_of(&e, shell);
+        assert!(
+            line.contains(relay_route_core::KEY_FILE_REL),
+            "{shell:?}：{line}"
+        );
+        assert!(
+            !line.contains(&pass),
+            "{shell:?} `/s/` 那一行插了只许直通那一把：{line}"
+        );
     }
 }

@@ -161,45 +161,27 @@ pub(crate) fn relay_for_exec(
         relay_port(&get),
         &super::file_face::machine_rows(),
         &|port, url| {
-            keyed_for_exec(url, key_kind_of(agent), &get).is_some()
+            keyed_for_exec(url, &get).is_some()
                 && std::net::TcpStream::connect(("127.0.0.1", port)).is_ok()
         },
     )
 }
 
-/// `ccm` exec 那一刻：认地址环境变量的那一家，插全权那一把（进 agent 进程环境）。
-pub(crate) fn keyed_for_env(url: &str, get: &dyn Fn(&str) -> Option<String>) -> Option<String> {
-    keyed_for_exec(url, crate::relay::KeyKind::Full, get)
-}
-
-/// `ccm` exec 那一刻：地址拼进参数的那一家，插只许直通那一把（argv 同机别的用户读得到）。
-pub(crate) fn keyed_for_args(url: &str, get: &dyn Fn(&str) -> Option<String>) -> Option<String> {
-    keyed_for_exec(url, crate::relay::KeyKind::Pass, get)
-}
-
-/// 非得经 shell 那一趟、地址拼进参数的那一家：照字面插进那个词的只许直通那一把（这台家目录下根钥匙派生的那一个）。只读。
+/// 非得经 shell 那一趟、`/t/` 地址照字面插的只许直通那一把（这台家目录下根钥匙派生的那一个）。只读。
 pub(crate) fn pass_key_for_shell(home: &std::path::Path) -> Option<String> {
     crate::relay::pass_key_on_disk(home)
 }
 
-/// 一条不带钥匙的中转地址 ⇒ 插上这台盘上 `kind` 那把钥匙的那一形（agent 进程要的就是它）。
-/// 插钥匙只经中转那一处（`relay::keyed_with_key_on_disk`）；没有家目录 / 钥匙不在 / 地址不是构造口的产物 ⇒ `None`。只读。
-pub(crate) fn keyed_for_exec(
-    url: &str,
-    kind: crate::relay::KeyKind,
-    get: &dyn Fn(&str) -> Option<String>,
-) -> Option<String> {
-    let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into))?;
-    crate::relay::keyed_with_key_on_disk(&home, url, kind)
+/// 非得经 shell 那一趟：这条地址的钥匙段照字面写只许直通那一把（`/t/`），否则写成读钥匙文件的命令替换（`/s/`）。
+pub(crate) fn takes_pass_key(url: &str) -> bool {
+    crate::relay::KeyKind::for_url(url) == Some(crate::relay::KeyKind::Pass)
 }
 
-/// `ccm` 起会话那一发的地址插哪一把钥匙：地址只能经命令行参数交给它的那一家（注入格 `Inject::Args`）⇒ 只许直通那一把
-/// （argv 同机别的用户读得到、它也会写进自己的日志）；其余 ⇒ 全权那一把。
-pub(crate) fn key_kind_of(agent: &str) -> crate::relay::KeyKind {
-    match crate::agents::inject_of_route(agent) {
-        Some(crate::agents::Inject::Args(_)) => crate::relay::KeyKind::Pass,
-        _ => crate::relay::KeyKind::Full,
-    }
+/// `ccm` exec 那一刻：一条不带钥匙的中转地址 ⇒ 插上这台盘上那条路由要的那一把（`/t/` 只许直通 · `/s/` 全权）的那一形。
+/// 插钥匙只经中转那一处（`relay::keyed_with_key_on_disk`）；没有家目录 / 钥匙不在 / 地址不是构造口的产物 ⇒ `None`。只读。
+pub(crate) fn keyed_for_exec(url: &str, get: &dyn Fn(&str) -> Option<String>) -> Option<String> {
+    let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into))?;
+    crate::relay::keyed_with_key_on_disk(&home, url)
 }
 
 /// 同上，答的是常驻后端自己（别名预览 `ccm-print`）：中转就在本进程里，读本进程的监听状态。
@@ -337,9 +319,8 @@ pub(crate) fn optin_report_at(
         routed,
         registered,
     ) {
-        // 插哪一把按地址定（这一发恒是 `/t/` ⇒ 只许直通那一把，全权那一把不出后端）。
-        Endpoint::Inject { url, .. } => crate::relay::KeyKind::for_url(&url)
-            .and_then(|kind| crate::relay::keyed_with_key_on_disk(home, &url, kind)),
+        // 这一发恒是 `/t/` ⇒ 插的是只许直通那一把，全权那一把不出后端。
+        Endpoint::Inject { url, .. } => crate::relay::keyed_with_key_on_disk(home, &url),
         Endpoint::None => None,
     };
     let current = expected.as_deref();

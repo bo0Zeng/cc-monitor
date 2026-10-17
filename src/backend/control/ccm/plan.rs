@@ -23,27 +23,59 @@ use shell_quote_core::posix_quote as sq;
 
 /// 本机起新会话回填 sid 用的身份 token 那个环境变量（读侧 `observe/accounts_query.rs` 的同名常量）。
 
-/// 直路注入中转地址那一句（`--ccm-print` 与非得经 shell 那一趟同一份）：`var` ＝ 那一家认的地址环境变量。
-pub(crate) fn relay_export(var: &str, url: &str) -> String {
-    posix::export(var, &relay_word(url))
+/// 直路注入中转地址那一句（`--ccm-print` 与非得经 shell 那一趟同一份）：`var` ＝ 那一家认的地址环境变量，
+/// `pass` ＝ 这台的只许直通那一把（[`Env::relay_pass_key`]）。
+pub(crate) fn relay_export(var: &str, url: &str, pass: Option<&str>) -> String {
+    posix::export(
+        var,
+        &posix_relay_word(url, url, pass).unwrap_or_else(|| qarg(url)),
+    )
 }
 
 /// 地址拼进参数的那一家：argv 里装着那条不带钥匙的地址的那个词 ⇒ 切成（地址前那一截 ＋ 口之后那一格, 路由起那一截 ＋ 地址后那一截），
-/// 钥匙插在两截中间。不是这个词 / 地址不是构造口产物 ⇒ `None`。exec 插真钥匙与两种 shell 写成命令替换都按它切。
+/// 钥匙插在两截中间。不是这个词 / 地址不是构造口产物 ⇒ `None`。exec 插真钥匙与 shell 那一行插钥匙段都按它切。
 pub(crate) fn split_at_key<'w>(word: &'w str, url: &str) -> Option<(String, String)> {
     let (before, after) = word.split_once(url)?;
     let (head, tail) = crate::accounts::upstream_select::endpoint::base_url_halves(url)?;
     Some((format!("{before}{head}"), format!("{tail}{after}")))
 }
 
-/// 一条不带钥匙的中转地址 ⇒ `--ccm-print` 里那个 shell 词：钥匙段写成读那台钥匙文件的命令替换（钥匙不进打印出来的命令）。
-fn relay_word(url: &str) -> String {
-    match crate::accounts::upstream_select::endpoint::base_url_halves(url) {
-        Some((head, tail)) => {
-            posix::home_file_between(&sq(head), relay_route_core::KEY_FILE_REL, &sq(tail))
-        }
-        None => sq(url),
+/// 装着那条中转地址的那个词在 shell 那一行里怎么插钥匙段：按地址的路由（`/t/` ⇒ 照字面插只许直通那一把；
+/// `/s/` ⇒ 读那台钥匙文件的命令替换，全权那一把不进打印出来的命令）。
+enum KeyedWord {
+    Literal(String),
+    FromFile(String, String),
+}
+
+/// 不是那个词 / `/t/` 而这台读不到那一把 ⇒ `None`（照原样写，地址不带钥匙）。
+fn keyed_word(word: &str, url: &str, pass: Option<&str>) -> Option<KeyedWord> {
+    let (head, tail) = split_at_key(word, url)?;
+    if crate::accounts::upstream_select::endpoint::takes_pass_key(url) {
+        Some(KeyedWord::Literal(format!("{head}{}{tail}", pass?)))
+    } else {
+        Some(KeyedWord::FromFile(head, tail))
     }
+}
+
+fn posix_relay_word(word: &str, url: &str, pass: Option<&str>) -> Option<String> {
+    Some(match keyed_word(word, url, pass)? {
+        KeyedWord::Literal(w) => qarg(&w),
+        KeyedWord::FromFile(head, tail) => {
+            posix::home_file_between(&sq(&head), relay_route_core::KEY_FILE_REL, &sq(&tail))
+        }
+    })
+}
+
+fn ps_relay_word(word: &str, url: &str, pass: Option<&str>) -> Option<String> {
+    use crate::platform::shell::dialect::ps_literal as pq;
+    Some(match keyed_word(word, url, pass)? {
+        KeyedWord::Literal(w) => pq(&w),
+        KeyedWord::FromFile(head, tail) => crate::platform::shell::powershell::home_file_between(
+            &pq(&head),
+            relay_route_core::KEY_FILE_REL,
+            &pq(&tail),
+        ),
+    })
 }
 
 /// 环境里继承来的那一条上游地址（[`Env::base_url_env`] 那个变量）里，**用户自己的端点**那一个（不是我们的中转那一形）。
@@ -272,8 +304,8 @@ pub(crate) struct Env {
     pub(crate) inherited_parent: Option<(String, String)>,
     /// 〔会话血缘〕这一趟现铸的来处（拼进中转地址尾上，中转第一次看见就绑给这个新会话）。`None` ＝ 不铸（预览 / 判据）。
     pub(crate) origin_token: Option<String>,
-    /// 这台盘上根钥匙派生出来的只许直通那一把（地址只能拼进参数的那一家要它）：非得经 shell 那一趟照字面写进那个词
-    /// （它本来就进 argv）。读不到 ⇒ `None`（那个词写成不带钥匙的地址）。预览那一份不读（界面上不出现钥匙）。
+    /// 这台盘上根钥匙派生出来的只许直通那一把：非得经 shell 那一趟、`/t/` 地址照字面写进那一行（它只开得了 `/t/`）。
+    /// 读不到 ⇒ `None`（那条地址写成不带钥匙的）。
     pub(crate) relay_pass_key: Option<String>,
     /// 答题 hook 叫的那个 `ccm`（这台的入口 `<家>/.cc-monitor/bin/ccm`，绝对路径；后端升级换真身也不变）。
     /// `None` ＝ 不挂（预览 / 判据 / 家目录说不出）：这一发起的会话里的框只能在终端里答。
@@ -412,8 +444,10 @@ impl Env {
             // 预览是「从这台家目录里的一个新终端敲」：不在任何会话里，也不铸来处（每次预览都一样）。
             inherited_parent: None,
             origin_token: None,
-            // 预览不读钥匙：界面上不出现任何一把（参数里那个词写成不带钥匙的地址）。
-            relay_pass_key: None,
+            // 与真跑同一行：`/t/` 照字面带只许直通那一把（它只开得了 `/t/`）；全权那一把照旧写成读钥匙文件。
+            relay_pass_key: crate::accounts::upstream_select::endpoint::pass_key_for_shell(
+                std::path::Path::new(&home),
+            ),
             // 预览不挂答题 hook：那一串设置是起会话那一下的事，别名本身不带它（真跑那一份照常挂）。
             answer_hook_entry: None,
             read_text: None,
@@ -757,7 +791,7 @@ pub(crate) struct Direct {
     pub(crate) keeps_user_base_url: bool,
     /// 环境里继承来的是我们的中转那一形（别的号的），而这一发不注入 ⇒ exec 之前清掉它。
     pub(crate) clears_inherited_relay: bool,
-    /// 地址拼进参数的那一家：非得经 shell 那一趟照字面插进那个词的只许直通那一把（[`Env::relay_pass_key`]；别的形 ⇒ `None`）。
+    /// 非得经 shell 那一趟、`/t/` 地址照字面插的只许直通那一把（[`Env::relay_pass_key`]；不注入 ⇒ `None`）。
     pub(crate) relay_pass_key: Option<String>,
     /// 答题 hook 挂不上（用户自己给的会话级设置并不进去 · 自定义启动器起的）⇒ 起的进程环境里带 [`crate::agents::asks::ANSWER_HOOK_OFF_ENV`]
     /// （值是原因的短码），会话事实据此写明为什么在这里答不了。
@@ -784,7 +818,7 @@ pub(crate) struct NoRotation {
 pub(crate) enum RelayVia {
     /// 插上钥匙的地址进这个环境变量（继承来的我们那一形不注入时清掉它）。
     Env(String),
-    /// 不带钥匙的地址已经拼进 argv；exec 那一刻在那个词里插上只许直通那一把（[`split_at_key`]）。
+    /// 不带钥匙的地址已经拼进 argv；exec 那一刻在那个词里插上钥匙（[`split_at_key`]）。
     Args,
     #[default]
     None,
@@ -1620,9 +1654,7 @@ pub(crate) fn build_among(
         cwd,
         argv,
         has_identity: face.is_some_and(|f| f.has_identity),
-        relay_pass_key: (relay_via == RelayVia::Args)
-            .then(|| env.relay_pass_key.clone())
-            .flatten(),
+        relay_pass_key: relay.as_ref().and(env.relay_pass_key.clone()),
         relay,
         relay_via,
         keeps_user_base_url,
@@ -2127,20 +2159,17 @@ pub(crate) fn render_container_tail(c: &Container) -> String {
     seq
 }
 
-/// 地址拼进参数的那一家：argv 里装着那条地址的那个词，照字面插上只许直通那一把（它本来就进 argv）。
-/// 不是那个词 / 没有那一把 ⇒ `None`（照原样写，地址不带钥匙）。
-fn args_word(d: &Direct, word: &str) -> Option<String> {
-    let (head, tail) = args_relay(d).and_then(|u| split_at_key(word, u))?;
-    let key = d.relay_pass_key.as_deref()?;
-    Some(format!("{head}{key}{tail}"))
-}
-
-/// 地址拼进参数的那一趟要注入的那条不带钥匙的地址（别的形 ⇒ `None`）。
-pub(crate) fn args_relay(d: &Direct) -> Option<&str> {
-    match (&d.relay, &d.relay_via) {
-        (Some(url), RelayVia::Args) => Some(url),
-        _ => None,
-    }
+/// argv 里的一个词在 shell 那一行里的写法：地址拼进参数的那一家，装着那条地址的那个词插上钥匙段（[`keyed_word`]）。
+fn argv_word(
+    d: &Direct,
+    word: &str,
+    relay_word: fn(&str, &str, Option<&str>) -> Option<String>,
+) -> Option<String> {
+    let url = match (&d.relay, &d.relay_via) {
+        (Some(url), RelayVia::Args) => url,
+        _ => return None,
+    };
+    relay_word(word, url, d.relay_pass_key.as_deref())
 }
 
 fn render_direct(d: &Direct) -> String {
@@ -2164,7 +2193,9 @@ fn render_direct(d: &Direct) -> String {
         line.push_str(&posix::unset(&d.nested));
     }
     match (&d.relay, &d.relay_via) {
-        (Some(url), RelayVia::Env(var)) => line.push_str(&relay_export(var, url)),
+        (Some(url), RelayVia::Env(var)) => {
+            line.push_str(&relay_export(var, url, d.relay_pass_key.as_deref()))
+        }
         (None, RelayVia::Env(var)) if d.clears_inherited_relay => {
             line.push_str(&posix::unset(&[var]))
         }
@@ -2185,7 +2216,7 @@ fn render_direct(d: &Direct) -> String {
     let words: Vec<String> = d
         .argv
         .iter()
-        .map(|a| args_word(d, a).map_or_else(|| qarg(a), |w| qarg(&w)))
+        .map(|a| argv_word(d, a, posix_relay_word).unwrap_or_else(|| qarg(a)))
         .collect();
     line.push_str(&posix::exec(&words));
     line
@@ -2226,12 +2257,8 @@ fn render_direct_ps(d: &Direct) -> String {
     }
     match (&d.relay, &d.relay_via) {
         (Some(url), RelayVia::Env(var)) => {
-            let word = match crate::accounts::upstream_select::endpoint::base_url_halves(url) {
-                Some((head, tail)) => {
-                    ps::home_file_between(&pq(head), relay_route_core::KEY_FILE_REL, &pq(tail))
-                }
-                None => pq(url),
-            };
+            let word =
+                ps_relay_word(url, url, d.relay_pass_key.as_deref()).unwrap_or_else(|| pq(url));
             line.push_str(&ps::set_env(var, &word));
         }
         (None, RelayVia::Env(var)) if d.clears_inherited_relay => {
@@ -2254,7 +2281,7 @@ fn render_direct_ps(d: &Direct) -> String {
     let words: Vec<String> = d
         .argv
         .iter()
-        .map(|a| args_word(d, a).map_or_else(|| pq(a), |w| pq(&w)))
+        .map(|a| argv_word(d, a, ps_relay_word).unwrap_or_else(|| pq(a)))
         .collect();
     line.push_str(&ps::call(&words));
     line
