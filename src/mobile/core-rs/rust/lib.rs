@@ -1050,7 +1050,9 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_batchStart<'l>(
     want: JString<'l>,
 ) -> jlong {
     guarded(0, || {
-        let Some(want) = string(&mut env, &want) else { return 0 };
+        let Some(want) = string(&mut env, &want) else {
+            return 0;
+        };
         let _rt = runtime().enter();
         batch::start(handle, &want, on_resident())
     })
@@ -1110,11 +1112,12 @@ mod tests {
     fn the_pick_menu_reads_the_ls_rows_as_they_came() {
         let rows = r#"[{"path":"/h/docs","name":"docs","kind":"dir","class":"folder","type_text":"","mtime_secs":12}]"#;
         let up = pick_core::Here::default();
-        let v: serde_json::Value =
-            serde_json::from_str(&super::pick_menu_json(rows, &up)).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&super::pick_menu_json(rows, &up)).unwrap();
         assert_eq!(v["bar"][0]["id"], "download");
         assert_eq!(v["bar"][0]["enabled"], false);
-        assert!(v["bar"][0]["why"].as_str().is_some_and(|w| w.contains("docs")));
+        assert!(v["bar"][0]["why"]
+            .as_str()
+            .is_some_and(|w| w.contains("docs")));
         assert_eq!(v["more"][0].as_object().map(|o| o.len()), Some(4));
         assert_eq!(v["tap"], "open");
         let off = pick_core::Here {
@@ -1129,7 +1132,10 @@ mod tests {
         );
         let none: serde_json::Value =
             serde_json::from_str(&super::pick_menu_json("{", &up)).unwrap();
-        assert_eq!((none["bar"].clone(), none["tap"].clone()), (serde_json::json!([]), serde_json::Value::Null));
+        assert_eq!(
+            (none["bar"].clone(), none["tap"].clone()),
+            (serde_json::json!([]), serde_json::Value::Null)
+        );
     }
 
     /// 一问一答撞了同名：清单 ⇒ 抽屉那几行（说明由核心写、答法照那台给的）；读不动 ⇒ `[]`。

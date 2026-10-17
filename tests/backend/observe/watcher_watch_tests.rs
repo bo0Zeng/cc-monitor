@@ -395,14 +395,7 @@ fn reporting_again_answers_only_the_new_ones() {
 // ── 拥塞：通了先一句 overflow（那台写的）；丢过行以外的 ⇒ 原连接上就地重报，客户端不判、不重接 ──
 
 /// 一条通道恰好装得下 8 帧填料（[`filler`]，比重报里哪一帧都大）的连接：在看 A、要 A 的主线外清单、手上留着 k（那台不在说）；接上那一份读掉。
-fn narrow(
-    tag: &str,
-) -> (
-    PathBuf,
-    ReaderState,
-    FrameSink,
-    FrameRx,
-) {
+fn narrow(tag: &str) -> (PathBuf, ReaderState, FrameSink, FrameRx) {
     let (dir, mut state, _, _rx0) = rig(tag);
     let mut sink = ledgered(true);
     let pa = file(&dir, A);

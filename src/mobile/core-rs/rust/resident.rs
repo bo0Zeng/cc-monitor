@@ -490,7 +490,10 @@ pub fn close(h: i64) {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .remove(&h);
-    unavailables().lock().unwrap_or_else(|e| e.into_inner()).remove(&h);
+    unavailables()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&h);
     if let Some(f) = feeds().lock().unwrap_or_else(|e| e.into_inner()).remove(&h) {
         f.close();
     }
