@@ -870,10 +870,7 @@ fn finding_a_session_asks_every_family_under_its_own_root() {
     );
     assert_eq!(
         at(&reg, "alpha-sid"),
-        Ok((
-            PathBuf::from("/h/alpha-tree"),
-            PathBuf::from("/alpha/rec")
-        ))
+        Ok((PathBuf::from("/h/alpha-tree"), PathBuf::from("/alpha/rec")))
     );
     assert_eq!(at(&reg, "nobody"), Err("alpha: not mine".to_string()));
     // 说不出根的那一家不问（这里 beta 没有根 ⇒ 只剩 alpha 那一句）。
