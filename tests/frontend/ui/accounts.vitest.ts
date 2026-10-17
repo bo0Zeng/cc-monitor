@@ -15,7 +15,8 @@ vi.mock("../../../src/frontend/ui/last-seen", () => ({ rememberSeen: vi.fn(async
 import { invoke } from "@tauri-apps/api/core";
 import { loadConfig } from "../../../src/frontend/ui/config";
 import { deriveUi, defaultAccount, currentAccountForBadge, accountColorsActive, selectableAccounts, detectAccountMismatch, sessionBadge, shouldShowAccountBadge, type AccountsState, type Account, type SessionAccount } from "../../../src/frontend/ui/accounts";
-import { fetchAccounts, fetchSessionAccounts, parseSessionAccountLines, SESSION_ACCOUNTS_BUDGET_MS } from "../../../src/frontend/ui/account-reads";
+import { accountsAgentProfile, fetchAccounts, fetchSessionAccounts, parseSessionAccountLines, SESSION_ACCOUNTS_BUDGET_MS } from "../../../src/frontend/ui/account-reads";
+import { AGENT_PROFILE_TABLE } from "../../../src/frontend/ui/generated/agent-profile-table";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
@@ -305,6 +306,18 @@ describe("fetchAccounts：要用时问后端，界面不存一份", () => {
     expect(down.available).toBe(false);
     expect(down.accounts, "上次的混进了此刻的事实").toEqual([]);
     expect(down.last ?? null, "本机后端没记着那台，界面也不另记一份").toBeNull();
+  });
+  it("账号页那一家的画像与 `accounts-list` 线上交的 `agent` 是同一家，画像取自后端生成的画像表（不写死）", async () => {
+    loadCfg.mockResolvedValue({});
+    invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => ({ available: true, error: null, meta: null, accounts: [acct({})] }))));
+    await fetchAccounts("<local>");
+    const sent = invokeMock.mock.calls.filter((c) => isChanCall(c[0] as string, c[1], "accounts-list"));
+    expect(sent).toHaveLength(1);
+    const agent = (chanArgsJson(sent[0][1] as ChanCallArgs) as { agent: string }).agent;
+    const p = accountsAgentProfile();
+    expect(p, "查不到账号页那一家的画像").not.toBeNull();
+    expect(AGENT_PROFILE_TABLE).toContain(p);
+    expect(p!.agent).toBe(agent);
   });
   it("invoke throw（远端没配）→ available:false 不崩", async () => {
     loadCfg.mockResolvedValue({});
