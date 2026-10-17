@@ -9,7 +9,6 @@ import { appStore, putIn } from "./app-store";
 import type { Origin } from "./ipc/origin";
 import { budgetWithin, callTyped, isOldBackend } from "./ipc/chan-caller";
 import { DEFAULT_AGENT, lookupAgentProfile, type AgentProfileRow } from "./agent-profile";
-import { AGENT_PROFILE_TABLE } from "./generated/agent-profile-table";
 import type { AccountsState } from "./accounts";
 import { recallSeen, rememberSeen } from "./last-seen";
 import { saidOf } from "./kit/detail";
@@ -68,23 +67,17 @@ const TRUST_BUDGET_MS = 30_000;
 
 /**
  * 账号库那一家（线上的 kind，每条命令收的 `agent` 都是它）：新会话默认起的那一家 —— 账号 chip · 设置页 · 「新会话默认」说的都是它。
- * **值从后端来**：生成物里的 `DEFAULT_AGENT`（注册表里声明默认的那一家）。表里没有 ⇒ 抛（不回落到任何一家）。
+ * **值从后端来**：生成物里的 `DEFAULT_AGENT`（注册表里声明默认的那一家）。
  */
 export function launchAgentId(): string {
-  const got = lookupAgentProfile(DEFAULT_AGENT);
-  if (!got.known) throw new Error(got.message);
-  return got.facts.agent;
+  return accountsAgentProfile().agent;
 }
 
-/** 账号页那一家的画像（与 [`launchAgentId`] 同一个出处）：叫法 · 认得的模型。查不到 ⇒ `null`。 */
-export function accountsAgentProfile(): AgentProfileRow | null {
-  let id: string;
-  try {
-    id = launchAgentId();
-  } catch {
-    return null;
-  }
-  return AGENT_PROFILE_TABLE.find((r) => r.agent === id) ?? null;
+/** 账号页那一家的画像（与 [`launchAgentId`] 同一个出处）：叫法 · 认得的模型。表里没有 ⇒ 抛（不回落到任何一家）。 */
+export function accountsAgentProfile(): AgentProfileRow {
+  const got = lookupAgentProfile(DEFAULT_AGENT);
+  if (!got.known) throw new Error(got.message);
+  return got.facts;
 }
 
 /** 换号前的目录信任预检（A5 会用；A3 先提供）。available:false → 视为"未知"，调用方只警告不拦。 */

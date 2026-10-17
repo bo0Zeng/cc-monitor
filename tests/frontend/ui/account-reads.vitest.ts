@@ -50,6 +50,21 @@ describe("账号页那一家的画像", () => {
   });
 });
 
+describe("默认那一家不在画像表里", () => {
+  it("★ 抛表里那一句，不回落到任何一家", async () => {
+    vi.resetModules();
+    vi.doMock("../../../src/frontend/ui/agent-profile", async (orig) => ({ ...(await orig<object>()), DEFAULT_AGENT: "no-such-agent" }));
+    try {
+      const m = await import("../../../src/frontend/ui/account-reads");
+      expect(() => m.launchAgentId()).toThrow(/no-such-agent/);
+      expect(() => m.accountsAgentProfile()).toThrow(/no-such-agent/);
+    } finally {
+      vi.doUnmock("../../../src/frontend/ui/agent-profile");
+      vi.resetModules();
+    }
+  });
+});
+
 describe("上次那份不是这一版", () => {
   it("★ 那台问不到、本机后端说记着的那份读不懂 ⇒ 不画上次的（last 为 null），此刻照旧不可用", async () => {
     replies.set("<local>:last-seen-read", { accounts: { state: "unreadable", atMs: 7 }, data: null });
