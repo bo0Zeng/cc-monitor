@@ -340,6 +340,17 @@ val MIGRATION_19_20 =
         }
     }
 
+// 加「在做的一组」那张表（进程没了再开，带同一张票再问）。别的表一字不动。
+val MIGRATION_20_21 =
+    object : Migration(20, 21) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `pending_batches` (`hostId` TEXT NOT NULL, `ticket` TEXT NOT NULL, `plan` TEXT NOT NULL, " +
+                    "PRIMARY KEY(`hostId`, `ticket`))",
+            )
+        }
+    }
+
 val ALL_MIGRATIONS: Array<Migration> =
     arrayOf(
         MIGRATION_1_2,
@@ -361,4 +372,5 @@ val ALL_MIGRATIONS: Array<Migration> =
         MIGRATION_17_18,
         MIGRATION_18_19,
         MIGRATION_19_20,
+        MIGRATION_20_21,
     )

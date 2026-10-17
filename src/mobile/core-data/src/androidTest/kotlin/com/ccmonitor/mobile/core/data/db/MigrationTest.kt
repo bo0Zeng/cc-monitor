@@ -636,11 +636,37 @@ class MigrationTest {
         }
     }
 
-    /** 全链路 1→20 schema 校验（validateDroppedTables=true 严格比对导出 schema）；一路种过的旧默认键到头成了三组。 */
+    /** 20→21：加「在做的一组」那张表、能写能读；机器 · 草稿一字不动。 */
     @Test
-    fun migrateAll1To20Validates() {
+    fun migrate20To21AddsThePendingBatchesAndKeepsTheRest() {
+        helper.createDatabase(dbName, 20).apply {
+            execSQL(
+                "INSERT INTO hosts (id,label,host,port,username,sortOrder,autoReconnect) VALUES ('h1','pi','example.com',22,'pi',0,1)",
+            )
+            execSQL("INSERT INTO drafts (hostId,sid,text,updatedAt) VALUES ('h1','s1','没发的字',5)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(dbName, 21, true, MIGRATION_20_21)
+        db.execSQL("INSERT INTO pending_batches (hostId,ticket,plan) VALUES ('h1','t-1','{\"cmd\":\"files-delete\"}')")
+        db.query("SELECT plan FROM pending_batches WHERE hostId='h1' AND ticket='t-1'").use { c ->
+            assertTrue(c.moveToFirst())
+            assertEquals("{\"cmd\":\"files-delete\"}", c.getString(0))
+        }
+        db.query("SELECT label FROM hosts WHERE id='h1'").use { c ->
+            assertTrue("机器表应原样还在", c.moveToFirst())
+            assertEquals("pi", c.getString(0))
+        }
+        db.query("SELECT text FROM drafts WHERE hostId='h1' AND sid='s1'").use { c ->
+            assertTrue("草稿应原样还在", c.moveToFirst())
+            assertEquals("没发的字", c.getString(0))
+        }
+    }
+
+    /** 全链路 1→21 schema 校验（validateDroppedTables=true 严格比对导出 schema）；一路种过的旧默认键到头成了三组。 */
+    @Test
+    fun migrateAll1To21Validates() {
         helper.createDatabase(dbName, 1).close()
-        val db = helper.runMigrationsAndValidate(dbName, 20, true, *ALL_MIGRATIONS)
+        val db = helper.runMigrationsAndValidate(dbName, 21, true, *ALL_MIGRATIONS)
         db.query("SELECT name FROM key_groups ORDER BY sortOrder").use { c ->
             val names = generateSequence { if (c.moveToNext()) c.getString(0) else null }.toList()
             assertEquals(listOf("常用", "shell", "vim"), names)

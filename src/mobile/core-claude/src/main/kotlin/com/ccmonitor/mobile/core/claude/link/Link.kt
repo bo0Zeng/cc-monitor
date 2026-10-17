@@ -100,6 +100,12 @@ interface CoreLink {
     val batches: SharedFlow<BatchEvent>
 
     /**
+     * 落过盘、这一趟开起来接回来的那几组（[BatchEvent.kept]）各自最后那一格：屏后开也照画。
+     * 收场的那一格只交一次（交过 · 收场时 [batches] 上有人在看 ⇒ 不再交）。
+     */
+    fun resumed(): List<BatchEvent>
+
+    /**
      * 起一组（全过程与字在核心里，桌面同一份）：[want] 是要做什么 —— `delete {root, items [{rel, name, dir}]}` ·
      * `chmod {root, items [{rel, name}], mode}` · `copy {from, names, to}` · `retry id` · `undo id`，入参由核心拼。
      * 回编号；这台不在 ⇒ 0。

@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -136,7 +137,10 @@ class FilesViewModel(
     init {
         hostConnector.retain(hostId, holderToken)
         connect()
-        viewModelScope.launch { feed.batches.collect(::onBatch) }
+        // 落过盘、开起来接回来的那几组：屏后开也照最后那一格画。
+        viewModelScope.launch {
+            feed.batches.onSubscription { feed.resumed().forEach(::show) }.collect(::onBatch)
+        }
         // 换了一条流（`epoch` 变了）：之前在路上的问答作废了 ⇒ 打不开的那一屏再问一次，列着的那一屏重列。
         viewModelScope.launch {
             feed.epoch.drop(1).collect {
@@ -278,14 +282,14 @@ class FilesViewModel(
     /** 全成了、撤得了（改权限）：那一句 ＋ 那一组的编号（屏上 toast［撤销］）。 */
     val undos: SharedFlow<Pair<String, Long>> = _undos.asSharedFlow()
 
-    /** 这一屏起的那几组（别处起的不画）。 */
+    /** 这一屏起的那几组（别处起的不画；接回来的那几组 [BatchEvent.kept] 也画）。 */
     private val mine = mutableSetOf<Long>()
 
     /** 编号还没回到这里、核心已经交来的那一格（每组只留最后一格；编号一回来照它画）。 */
     private val early = LinkedHashMap<Long, BatchEvent>()
 
     private fun onBatch(e: BatchEvent) {
-        if (e.id !in mine) {
+        if (e.id !in mine && !e.kept) {
             early[e.id] = e
             if (early.size > EARLY_KEPT) early.remove(early.keys.first())
             return

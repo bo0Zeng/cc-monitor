@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 嵌的 Rust 核心里那一台常驻流的几个口（`Core.resident*`，手写 JNI、走消息）。生产上直通 JNI；JVM 单测给假的。
- * 交回来的事经 [open] 时给的 `events` 回（`state` · `frame` · `unread` · `watch_from` · `ssh` · `reply` · `moved` · `deploy`）。
+ * 交回来的事经 [open] 时给的 `events` 回（`state` · `frame` · `unread` · `watch_from` · `ssh` · `reply` · `moved` · `deploy` · `batch` · `batch_keep`）。
  */
 interface ResidentCore {
     fun open(
@@ -77,7 +77,7 @@ interface ResidentCore {
     /** 撤那一趟（[stage] · [pull] 回的编号）：本机那一份当场不再读写。 */
     fun transferStop(id: Long)
 
-    /** 起一组（[want] 是 JSON）：回编号，事经 `batch` 那一种交回；这台不在 ⇒ 0。 */
+    /** 起一组（[want] 是 JSON；`{kept}` ⇒ 接回落盘那一份）：回编号，事经 `batch` 那一种交回、落盘那一份经 `batch_keep`；这台不在 · 读不动 ⇒ 0。 */
     fun batchStart(
         handle: Long,
         want: String,
@@ -133,6 +133,8 @@ class ResidentFeed(
     private val mine: String,
     /** 看的这一台的时区（IANA 名）。 */
     private val tz: String,
+    /** 这一台在做的几组落盘的那一份（核心交 `batch_keep` 时写 · 删；开起来交回核心再问）。 */
+    private val kept: KeptBatches,
     private val onBreak: (String) -> Unit = {},
 ) : CoreLink,
     SessionWatch {
@@ -196,6 +198,10 @@ class ResidentFeed(
         scope.launch {
             val h = core.open(machine(), mine, tz) { kind, body -> inbox.trySend(kind to body) }
             opened.complete(h)
+            // 落过盘的那几组交回核心、照同一张票再问；核心读不动的那一份不留。
+            for ((ticket, plan) in kept.all()) {
+                if (core.batchStart(h, Json.args(mapOf("kept" to plan))) == 0L) kept.drop(ticket)
+            }
             // 按值比：SSH 那层在同一份身份上换一条（跟着这条流换的那种）请求一字不差 ⇒ 不交，流不被打断。
             ssh.distinctUntilChanged().collect {
                 core.ssh(h, it)
@@ -273,6 +279,12 @@ class ResidentFeed(
     private val batchFlow = MutableSharedFlow<BatchEvent>(extraBufferCapacity = BUFFER)
     override val batches: SharedFlow<BatchEvent> = batchFlow.asSharedFlow()
 
+    /** 接回来的那几组各自最后那一格（[resumed]）。 */
+    private val resumedLast = LinkedHashMap<Long, BatchEvent>()
+
+    override fun resumed(): List<BatchEvent> =
+        synchronized(resumedLast) { resumedLast.values.toList().also { resumedLast.values.removeAll(BatchEvent::over) } }
+
     override suspend fun batch(want: Map<String, Any?>): Long {
         ensure()
         val h = withTimeoutOrNull(DEFAULT_CALL_MS) { opened.await() } ?: return 0L
@@ -340,6 +352,7 @@ class ResidentFeed(
             "moved" -> onMoved(body)
             "deploy" -> onDeployLine(body)
             "batch" -> onBatchLine(body)
+            "batch_keep" -> onKeepLine(body)
             else -> broke(kind, body)
         }
     }
@@ -380,9 +393,25 @@ class ResidentFeed(
         RecordLine.of(frame)?.let { lineFlow.emit(it) }
     }
 
-    /** `batch` 那一行落进 [batches]；认不出 ⇒ 报一次契约对不上。 */
+    /** `batch` 那一行落进 [batches]（接回来的那几组另记最后那一格：收场时有人在看 ⇒ 算交过）；认不出 ⇒ 报一次契约对不上。 */
     private suspend fun onBatchLine(body: String) {
-        Json.obj(body)?.let(BatchEvent::of)?.let { batchFlow.emit(it) } ?: broke("batch", body)
+        val e = Json.obj(body)?.let(BatchEvent::of) ?: return broke("batch", body)
+        if (e.kept) {
+            synchronized(resumedLast) {
+                if (e.over && batchFlow.subscriptionCount.value > 0) resumedLast.remove(e.id) else resumedLast[e.id] = e
+            }
+        }
+        batchFlow.emit(e)
+    }
+
+    /** `batch_keep {ticket, plan}`：那一串原样落盘；`plan` 是 `null` ⇒ 删。 */
+    private suspend fun onKeepLine(body: String) {
+        val m = Json.obj(body) ?: return broke("batch_keep", body)
+        val ticket = m.str("ticket") ?: return broke("batch_keep", body)
+        when (val plan = m.str("plan")) {
+            null -> kept.drop(ticket)
+            else -> kept.put(ticket, plan)
+        }
     }
 
     /** `deploy` 那一行落进 [deploying]；认不出 ⇒ 报一次契约对不上、不动。 */

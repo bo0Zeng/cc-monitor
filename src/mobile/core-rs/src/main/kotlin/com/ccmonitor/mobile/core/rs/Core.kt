@@ -193,8 +193,8 @@ object Core {
     external fun transferStop(id: Long)
 
     /**
-     * 起一组一条命令（[want]：删 · 改权限 · 复制到 · 重试 · 撤销，JSON；入参由核心拼）。回编号，
-     * 走到哪 · 同名那一问 · 结局经 [Sink.resident] 的 `batch` 那一种回来（字是核心写好的）。这台不在 · 读不动 ⇒ 0。
+     * 起一组一条命令（[want]：删 · 改权限 · 复制到 · 重试 · 撤销，JSON；入参由核心拼；`{kept}` ⇒ 接回落盘的那一组）。回编号，
+     * 走到哪 · 同名那一问 · 结局经 [Sink.resident] 的 `batch` 那一种回来（字是核心写好的），落盘那一份经 `batch_keep`。这台不在 · 读不动 ⇒ 0。
      */
     external fun batchStart(
         handle: Long,

@@ -74,6 +74,8 @@ internal class FakeCoreLink :
     private val batchFlow = MutableSharedFlow<BatchEvent>(extraBufferCapacity = 64)
     override val batches: SharedFlow<BatchEvent> = batchFlow.asSharedFlow()
 
+    override fun resumed(): List<BatchEvent> = emptyList()
+
     /** 起过的每一组（要做什么）· 每一答 · 每一停。 */
     val wants = mutableListOf<Map<String, Any?>>()
     val answered = mutableListOf<Pair<Long, BatchAnswer?>>()

@@ -1345,7 +1345,25 @@ def walk():
 
     with Step("8-杀进程"):
         # 进程整个没了（停掉，连前台服务一起）：内存里的续点都没了；重开 ⇒ 核心重接、先取尾巴，被杀那段的话照样在。
+        # 杀之前起一组慢的删除（台架造一棵大树）：在做的那一组落了盘，重开 ⇒ 核心带同一张票再问，卡在、结局与台架一致。
         name = tmux_name_of(f"{T} new session")
+        tree = f"tree{T}"
+        sh(f"rm -rf ~/work/tree* && mkdir -p ~/work/{tree} && cd ~/work/{tree} && for i in $(seq 1 400); do mkdir d$i && (cd d$i && seq 1 500 | xargs touch); done")
+        drawer(t("mobDrawer.item.files"))
+        if not wait("work", 30):
+            raise Step.Fail("文件页没列出家目录")
+        tap("work")
+        if not wait(tree, 15):
+            raise Step.Fail(f"work 里没有 {tree}")
+        long_press(tree)
+        de = t("rsFilewinWriteops.label.delete")
+        tap(de); time.sleep(1)
+        tap_last(de)
+        title = t("rsFilewinBatch.row.title", action=t("beFiles.batch.verbDelete"), n=1)
+        done = t("beFiles.batch.done", action=t("beFiles.batch.verbDelete"), n=1)
+        time.sleep(1)
+        if not wait(title, 10):
+            raise Step.Fail("删除那一组没上卡（或杀之前已做完：树不够大）")
         adb("shell", "am", "force-stop", PKG)
         time.sleep(2)
         if adb("shell", "pidof", PKG).strip():
@@ -1353,6 +1371,18 @@ def walk():
         rig("tmux", "send-keys", "-t", name or "", f"{T} while dead", "Enter")
         time.sleep(4)
         launch()
+        drawer(t("mobDrawer.item.files"))
+        seen_done = wait(done, 30)
+        if not seen_done and ui.find(title) is None:
+            raise Step.Fail("重开之后文件页上没有那一组（卡 · 结局都不在）")
+        shot("8-重开那一组")
+        end = ui.within(120)
+        while time.time() < end and tree in sh("ls ~/work"):
+            time.sleep(2)
+        if tree in sh("ls ~/work"):
+            raise Step.Fail("那一组没在那台上做完（树还在）")
+        if not seen_done and not wait(done, 60):
+            raise Step.Fail(f"台架上树已删完，屏上没出结局「{done}」")
         drawer(t("mobDrawer.item.sessions"))
         if not wait(f"{T} new session", 30):
             raise Step.Fail("重开之后会话列表里没有那条会话")

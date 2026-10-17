@@ -78,12 +78,15 @@ class ResidentFeedTest {
         val batches = mutableListOf<String>()
         val answers = mutableListOf<Pair<Long, String?>>()
 
+        /** 读不动的那一份（`{kept}`）回 0。 */
+        var unreadable: String? = null
+
         override fun batchStart(
             handle: Long,
             want: String,
         ): Long {
             batches += want
-            return 40L + batches.size
+            return if (unreadable?.let { it in want } == true) 0L else 40L + batches.size
         }
 
         override fun batchAnswer(
@@ -160,10 +163,29 @@ class ResidentFeedTest {
         ) = events!!.invoke(kind, body)
     }
 
+    /** 落盘那张表的替身：票 ⇒ 那一串。 */
+    private class Disk : KeptBatches {
+        val rows = linkedMapOf<String, String>()
+
+        override suspend fun all(): List<Pair<String, String>> = rows.toList()
+
+        override suspend fun put(
+            ticket: String,
+            plan: String,
+        ) {
+            rows[ticket] = plan
+        }
+
+        override suspend fun drop(ticket: String) {
+            rows -= ticket
+        }
+    }
+
     private fun TestScope.feed(
         core: FakeCore,
         ssh: Flow<String?> = MutableStateFlow("""{"host":"h"}"""),
         onBreak: (String) -> Unit = {},
+        disk: KeptBatches = Disk(),
     ): ResidentFeed =
         ResidentFeed(
             scope = backgroundScope,
@@ -172,6 +194,7 @@ class ResidentFeedTest {
             ssh = ssh,
             mine = "p10g-mine",
             tz = "Asia/Shanghai",
+            kept = disk,
             onBreak = onBreak,
         ).also { it.ensure() }
 
@@ -422,6 +445,37 @@ class ResidentFeedTest {
         }
 
     @Test
+    fun `一组落盘那一份原样存；进程没了再开，带去再问的那一份逐字节等于落盘那一份；接回来的卡交给屏；收场删`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val disk = Disk()
+            val before = FakeCore()
+            feed(before, disk = disk)
+            // 带转义 · 非 ASCII · 键序不按字母：经 JSON 一来一回也得一字不差。
+            val plan = """{"cmd":"files-delete","args":{"root":"/w/文档","items":[{"rel":"a \"b\""}],"ticket":"t-1"},"done":1}"""
+            before.emit("batch_keep", Json.args(mapOf("ticket" to "t-1", "plan" to plan)))
+            before.emit("batch_keep", Json.args(mapOf("ticket" to "t-2", "plan" to "坏的")))
+            assertEquals(mapOf("t-1" to plan, "t-2" to "坏的"), disk.rows)
+
+            val after = FakeCore().apply { unreadable = "坏的" }
+            val f = feed(after, disk = disk)
+            val asked = after.batches.map { (Json.value(it) as Map<*, *>)["kept"] }
+            assertEquals(listOf(plan, "坏的"), asked)
+            assertEquals("核心读不动的那一份不留", listOf("t-1"), disk.rows.keys.toList())
+
+            // 接回来的那一组：屏后开也照最后那一格画；收场的那一格只交一次（屏上没人看着时交给后开的那一屏）。
+            after.emit("batch", """{"id":41,"phase":"cut","title":"删除 1 项","line":"box 连接已断开","kept":true}""")
+            after.emit("batch", """{"id":7,"phase":"running","title":"复制 2 项"}""")
+            val phases = { f.resumed().map { it.id to it.phase } }
+            assertEquals("只记接回来的那几组", listOf(41L to BatchEvent.CUT), phases())
+            assertEquals("没收场的一直交", listOf(41L to BatchEvent.CUT), phases())
+            after.emit("batch", """{"id":41,"phase":"ended","title":"删除 1 项","said":"已删除 1 项","kept":true}""")
+            assertEquals(listOf(41L to BatchEvent.ENDED), phases())
+            assertEquals("收场那一格只交一次", emptyList<Pair<Long, String>>(), phases())
+            after.emit("batch_keep", """{"ticket":"t-1","plan":null}""")
+            assertEquals(emptyMap<String, String>(), disk.rows.toMap())
+        }
+
+    @Test
     fun `活卡帧解出来发到 live；认不出的那一帧只报一次契约对不上、不发`() =
         runTest(UnconfinedTestDispatcher()) {
             val core = FakeCore()
@@ -434,6 +488,7 @@ class ResidentFeedTest {
                     ssh = MutableStateFlow("""{"host":"h"}"""),
                     mine = "p10g-mine",
                     tz = "Asia/Shanghai",
+                    kept = Disk(),
                     onBreak = { broken += it },
                 ).also { it.ensure() }
             val got = mutableListOf<LiveFrame>()

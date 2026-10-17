@@ -1,13 +1,15 @@
 package com.ccmonitor.mobile.cache
 
+import com.ccmonitor.mobile.core.claude.link.KeptBatches
 import com.ccmonitor.mobile.core.claude.link.RawJson
 import com.ccmonitor.mobile.core.data.db.CacheDao
 import com.ccmonitor.mobile.core.data.db.Draft
+import com.ccmonitor.mobile.core.data.db.PendingBatch
 import com.ccmonitor.mobile.core.data.db.PendingSend
 import com.ccmonitor.mobile.core.data.db.RecordPage
 import com.ccmonitor.mobile.core.data.db.SyncAnchor
 
-/** 缓存落在 Room 那五张表里（`CacheDao`）：一台一份，成品原样写成 JSON 文本存、读回来原样交还。 */
+/** 缓存落在 Room 那六张表里（`CacheDao`）：一台一份，成品原样写成 JSON 文本存、读回来原样交还。 */
 class LocalCache(
     private val dao: CacheDao,
     private val now: () -> Long = System::currentTimeMillis,
@@ -15,6 +17,22 @@ class LocalCache(
     fun chat(hostId: String): ChatCache = RoomChatCache(dao, hostId, now)
 
     fun list(hostId: String): ListCache = RoomListCache(dao, hostId)
+
+    fun batches(hostId: String): KeptBatches = RoomKeptBatches(dao, hostId)
+}
+
+private class RoomKeptBatches(
+    private val dao: CacheDao,
+    private val hostId: String,
+) : KeptBatches {
+    override suspend fun all(): List<Pair<String, String>> = dao.batches(hostId).map { it.ticket to it.plan }
+
+    override suspend fun put(
+        ticket: String,
+        plan: String,
+    ) = dao.putBatch(PendingBatch(hostId, ticket, plan))
+
+    override suspend fun drop(ticket: String) = dao.dropBatch(hostId, ticket)
 }
 
 private class RoomListCache(

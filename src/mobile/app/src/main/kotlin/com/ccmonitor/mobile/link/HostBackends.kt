@@ -2,6 +2,7 @@ package com.ccmonitor.mobile.link
 
 import android.util.Log
 import com.ccmonitor.mobile.core.claude.link.EmbeddedBuild
+import com.ccmonitor.mobile.core.claude.link.KeptBatches
 import com.ccmonitor.mobile.core.claude.link.ResidentCore
 import com.ccmonitor.mobile.core.claude.link.ResidentFeed
 import com.ccmonitor.mobile.ssh.HostConnector
@@ -24,6 +25,8 @@ import java.util.concurrent.ConcurrentHashMap
 class HostBackends(
     private val connector: HostConnector,
     private val labelOf: suspend (hostId: String) -> String,
+    /** 这台在做的几组落盘那一份（`LocalCache.batches`）。 */
+    private val keptOf: (hostId: String) -> KeptBatches,
     /** 包里那几格后端解到私有目录、交核心的那一段（装 / 更新后端用；解压在 IO 线程上）。 */
     private val backendSlots: () -> String = { "[]" },
     private val core: ResidentCore = CoreResident,
@@ -60,6 +63,7 @@ class HostBackends(
             ssh = connector.dialOf(hostId),
             mine = EmbeddedBuild.ID,
             tz = ZoneId.systemDefault().id,
+            kept = keptOf(hostId),
             onBreak = ::onBreak,
         ).also { f -> scope.launch { f.sshReached.collect { connector.loopReached(hostId, it) } } }
     }
