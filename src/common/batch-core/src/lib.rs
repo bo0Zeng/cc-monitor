@@ -475,6 +475,20 @@ pub fn cut_line(p: &Plan, t: &Tick) -> String {
     )
 }
 
+/// 下载那一圈（手机逐项拉）断开那一行：`devbox 断开 · 下载 5 项 · 完成 2 · 中断 3`（没下完的连回来整份重下）。
+pub fn cut_left_line(p: &Plan, ok: usize, left: usize) -> String {
+    copy_text(
+        "beFiles.batch.cut",
+        &[
+            ("machine", &p.machine),
+            ("action", &p.verb.text()),
+            ("n", &p.names.len().to_string()),
+            ("ok", &ok.to_string()),
+            ("left", &left.to_string()),
+        ],
+    )
+}
+
 /// 同名那一行的说明：`2.1 MB · 10-12 14:02 → 已有 1.8 MB · 10-01 09:10`；不给覆盖（目录不合并）⇒ `目录不合并 · 跳过或保留两份`。
 /// 大小 · 时刻照抄后端写好的字（按看的那一台的钟），不换算。
 pub fn conflict_meta(c: &Conflict) -> String {

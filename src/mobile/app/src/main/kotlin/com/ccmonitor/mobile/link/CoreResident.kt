@@ -86,6 +86,11 @@ object CoreResident : ResidentCore {
         return Core.clashRows(data)
     }
 
+    override fun downloadEvent(want: String): String {
+        ensureRustCore()
+        return Core.downloadEvent(want)
+    }
+
     override fun deploy(
         handle: Long,
         slots: String,

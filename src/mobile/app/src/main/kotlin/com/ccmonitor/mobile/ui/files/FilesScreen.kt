@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.ui.files
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
@@ -220,7 +221,7 @@ private fun UploadClash(vm: FilesViewModel) {
 
 /** 条目级动作（下载 · 预览 · 编辑 · 改权限要先读的那几件）。 */
 private class EntryActions(
-    val download: (FilesLs.Entry) -> Unit,
+    val download: (List<FilesLs.Entry>) -> Unit,
     val preview: (FilesLs.Entry) -> Unit,
     val startEdit: (FilesLs.Entry) -> Unit,
     val startChmod: (List<FilesLs.Entry>) -> Unit,
@@ -232,11 +233,11 @@ private fun entryActions(
     vm: FilesViewModel,
     onDialog: (FilesDialog) -> Unit,
 ): EntryActions {
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val download = rememberDownloadLauncher(vm)
     return remember(vm) {
         EntryActions(
-            download = { e -> vm.download(e, context.getExternalFilesDir(null)) },
+            download = download,
             preview = { e -> scope.launch { vm.readText(e.path, e.preview).onSuccess { onDialog(FilesDialog.Preview(e.name, it.text)) } } },
             startEdit = { e -> scope.launch { vm.readText(e.path, e.edit).onSuccess { onDialog(FilesDialog.Edit(e, it.text, it.sha256)) } } },
             startChmod = { es -> scope.launch { onDialog(FilesDialog.Chmod(es, es.singleOrNull()?.let { vm.modeText(it) })) } },
@@ -248,6 +249,35 @@ private fun entryActions(
                 }
             },
         )
+    }
+}
+
+/**
+ * 下载那几项 ⇒ 系统「选文件夹」（从上次那一棵开）⇒ 记下那一棵的长期授权 ⇒ 交 VM 下进去。
+ * 没选（返回）⇒ 什么都不做。
+ */
+@Composable
+private fun rememberDownloadLauncher(vm: FilesViewModel): (List<FilesLs.Entry>) -> Unit {
+    val context = LocalContext.current
+    val pending = remember { mutableStateOf<List<FilesLs.Entry>>(emptyList()) }
+    val launcher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
+            val es = pending.value
+            pending.value = emptyList()
+            if (tree == null || es.isEmpty()) return@rememberLauncherForActivityResult
+            val r = context.contentResolver
+            runCatching { r.takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
+            vm.download(es, TreeFolder(r, tree))
+        }
+    return remember(launcher) {
+        { es ->
+            pending.value = es
+            launcher.launch(
+                context.contentResolver.persistedUriPermissions
+                    .lastOrNull { it.isWritePermission }
+                    ?.uri,
+            )
+        }
     }
 }
 
@@ -344,7 +374,7 @@ private fun EntryList(
                         when (vm.tapOf(e)) {
                             "open" -> vm.navigateTo(e.path)
                             "preview" -> actions.preview(e)
-                            "download" -> actions.download(e)
+                            "download" -> actions.download(listOf(e))
                         }
                     }
                 },
@@ -371,7 +401,7 @@ private fun picked(
         return
     }
     when (item.id) {
-        "download" -> es.forEach(actions.download)
+        "download" -> actions.download(es)
         "delete" -> onDialog(FilesDialog.Delete(es))
         "chmod" -> actions.startChmod(es)
         "copyTo" -> actions.startCopy(es)

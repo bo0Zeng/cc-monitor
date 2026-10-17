@@ -4,6 +4,7 @@ package com.ccmonitor.mobile.core.claude.link
  * 一组一条命令走到哪（核心交的 `batch` 那一行；字全由核心写好，这里不拼一个字）。
  * [phase]：`running`（[current] 手上那一项 · [frac] 几成）· `asking`（[conflicts] 同名那几项）· `cut`（[line] 断开那一行）·
  * `asking` 时 [go] 是逐项选完那一颗的字（那个动作）。
+ * `cut` 带 [resume] ⇒ 停在那里等［继续］（下载一组：没下完的那几项整份重下）。
  * `ended`（[said] 结局句 · [failed] 没成的那几行（[failedTitle] 那一屏的标题）· [details] 复制详情 · [retry] / [undo] 给不给）· `failed`（[said] · [details]）· `dropped`（取消了）。
  */
 data class BatchEvent(
@@ -22,13 +23,18 @@ data class BatchEvent(
     val undo: Boolean = false,
     val conflicts: List<Clash> = emptyList(),
     val go: String? = null,
+    val resume: Boolean = false,
 ) {
-    /** 同名的一项：键 · 名字 · 那一行的说明（核心写好）· 这一项能怎么答（那台给的：`overwrite` · `skip` · `keep_both`）。 */
+    /**
+     * 同名的一项：键 · 名字 · 那一行的说明（核心写好）· 这一项能怎么答（那台给的：`overwrite` · `skip` · `keep_both`）·
+     * 撞的那一份叫什么（本机同名才有：盖它时开的是它）。
+     */
     data class Clash(
         val key: String,
         val name: String,
         val meta: String,
         val answers: List<String>,
+        val there: String? = null,
     ) {
         companion object {
             /** 核心那一行 ⇒ 一项；认不出 ⇒ `null`。 */
@@ -38,6 +44,7 @@ data class BatchEvent(
                     name = c.str("name") ?: return null,
                     meta = c.str("meta").orEmpty(),
                     answers = c.strs("answers").orEmpty(),
+                    there = c.str("there"),
                 )
         }
     }
@@ -70,6 +77,7 @@ data class BatchEvent(
                 undo = m.bool("undo") == true,
                 conflicts = m.objs("conflicts").orEmpty().map { Clash.of(it) ?: return null },
                 go = m.str("go"),
+                resume = m.bool("resume") == true,
             )
     }
 }

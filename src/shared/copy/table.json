@@ -10685,6 +10685,12 @@
       "zh": "已取消 {left}",
       "args": ["left"]
     },
+    "beFiles.batch.cut": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "{machine} 断开 · {action} {n} 项 · 完成 {ok} · 中断 {left}",
+      "args": ["machine", "action", "n", "ok", "left"]
+    },
     "beFiles.batch.verbDownload": {
       "kind": "body",
       "role": "片段",
@@ -31475,12 +31481,6 @@
       "role": "确认框",
       "zh": "返回编辑",
       "args": []
-    },
-    "mobFiles.download.done": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已下载到 {path}",
-      "args": ["path"]
     },
     "mobFiles.upload.done": {
       "kind": "body",

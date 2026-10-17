@@ -95,6 +95,8 @@ class ResidentFeedTest {
 
         override fun clashRows(data: String): String = """[{"key":"0","name":"a","meta":"m","answers":["skip"]}]"""
 
+        override fun downloadEvent(want: String): String = """{"id":-1,"phase":"cut","title":"t","line":"l","resume":true}"""
+
         override fun pickMenu(
             handle: Long,
             rows: String,

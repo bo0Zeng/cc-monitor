@@ -121,6 +121,12 @@ interface CoreLink {
 
     /** 一问一答撞了同名（码 `exists` 的 `data`）⇒ 抽屉那几行（说明由核心写，一组那一问同一份）；认不出 ⇒ 空。 */
     fun clashes(data: Any?): List<BatchEvent.Clash>
+
+    /**
+     * 下载一组那几格（逐项拉在手机这一圈里走，字在核心）：`{id, machine, names, phase, …}` ⇒ 一格（[BatchEvent]）；读不动 ⇒ `null`。
+     * `phase`：`asking`（`here` 本机文件夹里已有的名字）· `running`（`done` · `part` · `current`）· `cut` · `ended`（`outcomes` 逐项结局）。
+     */
+    fun downloadEvent(want: Map<String, Any?>): BatchEvent?
 }
 
 /** 分块传哪一半（[CoreLink.transfer]）。 */

@@ -107,6 +107,39 @@ internal class FakeCoreLink :
             BatchEvent.Clash(m["key"] as String, m["name"] as String, m["there_size_text"] as String, (m["answers"] as List<*>).map { it as String })
         }
 
+    /** 下载一组那几问（每一问一份）。 */
+    val downloads = mutableListOf<Map<String, Any?>>()
+
+    /**
+     * 下载一组那几格（核心那一份的替身）：同名照名字逐字比（`there` 照抄）；断开 · 结局那一句把逐项结局原样排出来
+     * （`cut:done,cancelled` · `ended:done,failed`），看得出 Kotlin 交的是哪几格；没成的那几行是 `名字：原因`。
+     */
+    override fun downloadEvent(want: Map<String, Any?>): BatchEvent? {
+        downloads += want
+        val names = (want["names"] as List<*>).map { it as String }
+        val head = mapOf("id" to want["id"], "title" to "下载 ${names.size} 项")
+        val outs = (want["outcomes"] as? List<*>).orEmpty().map { it as Map<*, *> }
+        val states = outs.joinToString(",") { it["state"] as String }
+        val m: Map<String, Any?> =
+            when (want["phase"]) {
+                "asking" -> {
+                    val here = (want["here"] as List<*>).toSet()
+                    val rows =
+                        names.withIndex().filter { it.value in here }.map { (i, n) ->
+                            mapOf("key" to "$i", "name" to n, "there" to n, "meta" to "", "answers" to listOf("overwrite", "skip", "keep_both"))
+                        }
+                    if (rows.isEmpty()) head + ("phase" to "running") else head + mapOf("phase" to "asking", "conflicts" to rows, "go" to "下载")
+                }
+                "running" -> head + mapOf("phase" to "running", "current" to want["current"])
+                "cut" -> head + mapOf("phase" to "cut", "line" to "cut:$states", "resume" to true)
+                else -> {
+                    val bad = outs.filter { it["state"] == "failed" }.map { "${names[(it["key"] as String).toInt()]}：${it["reason"]}" }
+                    head + mapOf("phase" to "ended", "said" to "ended:$states", "failed" to bad, "retry" to bad.isNotEmpty())
+                }
+            }
+        return BatchEvent.of(m)
+    }
+
     override fun picks(rows: List<Any?>): PickMenu {
         picked.add(rows)
         return menu(rows)

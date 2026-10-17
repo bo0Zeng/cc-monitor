@@ -93,6 +93,9 @@ interface ResidentCore {
     /** 同名清单（JSON）⇒ 抽屉那几行（JSON 数组）。 */
     fun clashRows(data: String): String
 
+    /** 下载一组那几格（JSON）⇒ `batch` 那一形的一行（[BatchEvent.of]）；读不动 ⇒ 空串。 */
+    fun downloadEvent(want: String): String
+
     /** 给那台装 / 更新后端（[slots] = 包里那几格解到的文件，JSON）；事经 `deploy` 那一种交回。那台不在 · 正在装 ⇒ `false`。 */
     fun deploy(
         handle: Long,
@@ -281,6 +284,11 @@ class ResidentFeed(
             @Suppress("UNCHECKED_CAST")
             (m as? Map<String, Any?>)?.let(BatchEvent.Clash::of)
         }
+
+    override fun downloadEvent(want: Map<String, Any?>): BatchEvent? {
+        @Suppress("UNCHECKED_CAST")
+        return (Json.value(core.downloadEvent(Json.args(want))) as? Map<String, Any?>)?.let(BatchEvent::of)
+    }
 
     override fun hold(sid: String): AutoCloseable {
         ensure()

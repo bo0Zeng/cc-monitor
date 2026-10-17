@@ -93,6 +93,9 @@ object Core {
     /** 同名清单（码 `exists` 的 `data`）⇒ 抽屉那几行 `[{key, name, meta, answers}]`。 */
     external fun clashRows(data: String): String
 
+    /** 下载一组那几格（`{id, machine, names, phase, …}` JSON）⇒ `batch` 那一形的一行；读不动 ⇒ 空串。 */
+    external fun downloadEvent(want: String): String
+
     /** 开一条链路，回编号；请求读不动 ⇒ 0。 */
     external fun open(request: String): Long
 

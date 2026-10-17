@@ -92,6 +92,9 @@ class FileOpsTest {
             assertEquals(listOf(Transfer.Pull(RemotePath.of("/w/f"), "/sd/f") to 18), link.transfers)
             val e = FileOps(link) { "box" }.download(RemotePath.of("/w/f"), { throw java.io.IOException("EROFS") }, "/sd/f") { _, _ -> }.exceptionOrNull() as FileOps.Failed
             assertEquals(copyText("mobFiles.local.writeFailed", "path" to "/sd/f"), e.problem.text)
+            assertTrue("本机那一份开不了不是断了", !e.cut)
+            val down = FakeCoreLink().apply { transferred = { Reply.LinkDown } }
+            assertTrue("通道断了 ⇒ 断了（下载一组停在那里等继续）", (FileOps(down) { "box" }.download(RemotePath.of("/w/f"), { 18 }, "f") { _, _ -> }.exceptionOrNull() as FileOps.Failed).cut)
         }
 
     @Test

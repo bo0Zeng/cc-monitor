@@ -30,9 +30,10 @@ class FileOps(
     private val feed: CoreLink,
     private val machine: suspend () -> String,
 ) {
-    /** 没做成：那台写好的那一句（或走不通时那一句）＋ 复制详情。 */
+    /** 没做成：那台写好的那一句（或走不通时那一句）＋ 复制详情；[cut] ＝ 通道那一跳没走通（断了 · 到点），不是那台拒的。 */
     class Failed(
         val problem: Problem,
+        val cut: Boolean = false,
     ) : Exception(problem.text)
 
     /** 那台这个用户的家（起点）。 */
@@ -224,7 +225,7 @@ class FileOps(
         val m = machine()
         return when (r) {
             is Reply.Ok -> decode(r.data)?.let { Result.success(it) } ?: Result.failure(Failed(unreadableReply(m, command, r.data.toString())))
-            else -> Result.failure(Failed(r.problem(m, command) ?: Problem("", "")))
+            else -> Result.failure(Failed(r.problem(m, command) ?: Problem("", ""), cut = r is Reply.LinkDown || r is Reply.TimedOut || r is Reply.Cancelled))
         }
     }
 

@@ -6,7 +6,7 @@
 
 use crate::resident::{self, OnEvent};
 use batch_core::{Board, Failed, Phase, Plan, Rebuff, Tick, Verb};
-use cmd_wire::batch::{BatchReply, Conflict, Decide};
+use cmd_wire::batch::{BatchReply, Conflict, Decide, ItemState};
 use cmd_wire::files::{Call, WirePath};
 use resident_client::client::CallError;
 use std::collections::{BTreeMap, HashMap};
@@ -159,6 +159,93 @@ pub fn clash_rows(conflicts: &[Conflict]) -> serde_json::Value {
                 "meta": batch_core::conflict_meta(c),
                 "answers": c.answers,
             })
+        })
+        .collect()
+}
+
+/// 下载一组那几格（逐项拉在 Kotlin 那一圈里走：每项交一个本机描述符，见 [`crate::transfer`]）：字照一组那一份写。
+/// `want`：`{id, machine, names, phase, …}`，`phase` ＝
+/// - `asking`（`here`：本机那个文件夹里已有的名字）⇒ 同名那一问（每行带 `there` ＝ 盘上撞的那一份）；一项都不撞 ⇒ `running`；
+/// - `running`（`done` 下完几项 · `part` 手上那一项几成 · `current`）；
+/// - `cut` · `ended`（`outcomes`：逐项结局，同后端一组的那一形）⇒ 断开那一行（给［继续］）· 结局句与没成的那几行。
+///
+/// 读不动 ⇒ `None`。
+pub fn download_event(want: &serde_json::Value) -> Option<serde_json::Value> {
+    let names: Vec<String> = want
+        .get("names")?
+        .as_array()?
+        .iter()
+        .map(|n| n.as_str().map(str::to_string))
+        .collect::<Option<_>>()?;
+    let plan = Plan {
+        verb: Verb::Download,
+        cmd: <cmd_wire::files::ReadChunkReq as Call>::NAME,
+        args: serde_json::json!({ "items": names }),
+        names,
+        into: None,
+        machine: want.get("machine")?.as_str()?.to_string(),
+    };
+    let id = want.get("id")?.as_i64()?;
+    let head = serde_json::json!({ "id": id, "title": batch_core::title_of(&plan) });
+    let with = |phase: &str, extra: serde_json::Value| {
+        let mut v = head.clone();
+        v["phase"] = phase.into();
+        if let (Some(o), Some(e)) = (v.as_object_mut(), extra.as_object()) {
+            o.extend(e.clone());
+        }
+        v
+    };
+    let outcomes = || {
+        serde_json::from_value::<Vec<cmd_wire::batch::BatchOutcome>>(want.get("outcomes")?.clone()).ok()
+    };
+    let running = |done: f64, part: f64, current: Option<&str>| {
+        let n = plan.names.len().max(1) as f64;
+        with("running", serde_json::json!({ "current": current, "frac": ((done + part) / n) as f32 }))
+    };
+    Some(match want.get("phase")?.as_str()? {
+        "asking" => {
+            let here: Vec<&str> = want.get("here")?.as_array()?.iter().filter_map(|h| h.as_str()).collect();
+            let rows = local_clashes(&plan.names, &here);
+            if rows.is_empty() {
+                return Some(running(0.0, 0.0, None));
+            }
+            with("asking", serde_json::json!({ "conflicts": rows, "go": plan.verb.text() }))
+        }
+        "running" => {
+            let n = |k: &str| want.get(k).and_then(|v| v.as_f64()).unwrap_or(0.0);
+            running(n("done"), n("part"), want.get("current").and_then(|c| c.as_str()))
+        }
+        "cut" => {
+            let outs = outcomes()?;
+            let count = |s: ItemState| outs.iter().filter(|o| o.state == s).count();
+            let line = batch_core::cut_left_line(&plan, count(ItemState::Done), count(ItemState::Cancelled));
+            with("cut", serde_json::json!({ "line": line, "resume": true }))
+        }
+        "ended" => {
+            let outcomes = outcomes()?;
+            let said = batch_core::said_of(&plan.verb.text(), &outcomes, None);
+            let board = PhoneBoard::new(id, 0, plan, String::new(), Arc::new(|_, _, _| {}));
+            board.event(&Phase::Ended(BatchReply { outcomes, said }))
+        }
+        _ => return None,
+    })
+}
+
+/// 本机同名那一步：要下的名字里，文件夹里已有（不分大小写：手机的共享存储不分）的那几项 ⇒ 抽屉那几行（只有名字一格；目录不下，恒给覆盖）。
+fn local_clashes(names: &[String], here: &[&str]) -> Vec<serde_json::Value> {
+    let answers = [Decide::Overwrite, Decide::Skip, Decide::KeepBoth];
+    names
+        .iter()
+        .enumerate()
+        .filter_map(|(i, n)| {
+            let there = here.iter().find(|h| h.to_lowercase() == n.to_lowercase())?;
+            Some(serde_json::json!({
+                "key": i.to_string(),
+                "name": n,
+                "there": there,
+                "meta": "",
+                "answers": answers,
+            }))
         })
         .collect()
 }
@@ -552,6 +639,57 @@ mod tests {
         assert!(hits.is_empty(), "Kotlin 里拼了一组的字：{hits:?}");
         let core = std::fs::read_to_string(src.join("../common/batch-core/src/lib.rs")).unwrap();
         assert!(core.contains("\"beFiles.batch.segBad\""), "正控：共用那一份取这几个键");
+    }
+
+    fn pull(phase: &str, extra: serde_json::Value) -> serde_json::Value {
+        let mut w = serde_json::json!({"id": -3, "machine": "devbox", "names": ["a.txt", "B.md", "c"], "phase": phase});
+        if let (Some(o), Some(e)) = (w.as_object_mut(), extra.as_object()) {
+            o.extend(e.clone());
+        }
+        download_event(&w).unwrap()
+    }
+
+    /// 🔴 下载一组本机同名那一步（纯函数）：文件夹里已有的名字 ⇒ 同名那几项（不分大小写，记下盘上那一份叫什么）；一项都不撞 ⇒ 不问。
+    #[test]
+    fn the_names_already_in_the_folder_become_the_clash_rows() {
+        let ask = pull("asking", serde_json::json!({"here": ["A.TXT", "b.md", "z"]}));
+        assert_eq!(ask["phase"], "asking");
+        assert_eq!(ask["title"], "下载 3 项");
+        assert_eq!(ask["go"], "下载");
+        assert_eq!(
+            ask["conflicts"],
+            serde_json::json!([
+                {"key": "0", "name": "a.txt", "there": "A.TXT", "meta": "", "answers": ["overwrite", "skip", "keep_both"]},
+                {"key": "1", "name": "B.md", "there": "b.md", "meta": "", "answers": ["overwrite", "skip", "keep_both"]},
+            ])
+        );
+        assert_eq!(pull("asking", serde_json::json!({"here": ["z"]}))["phase"], "running", "不撞就直接下");
+    }
+
+    /// 🔴 下载一组的几格字都在核心：走到哪（手上那一项连同它下到几成）· 断开那一行（中断 ＝ 没下完的项数，给［继续］）·
+    /// 结局句（同后端那一句）与没成的那几行、给重试。
+    #[test]
+    fn a_download_group_is_spelt_by_the_core() {
+        let run = pull("running", serde_json::json!({"done": 1, "part": 0.5, "current": "B.md"}));
+        assert_eq!((run["phase"].as_str(), run["current"].as_str()), (Some("running"), Some("B.md")));
+        assert_eq!(run["frac"], 0.5);
+        let cut = pull(
+            "cut",
+            serde_json::json!({"outcomes": [{"key": "0", "state": "done"}, {"key": "1", "state": "cancelled"}, {"key": "2", "state": "cancelled"}]}),
+        );
+        assert_eq!(cut["line"], "devbox 断开 · 下载 3 项 · 完成 1 · 中断 2");
+        assert_eq!(cut["resume"], true);
+        let end = pull(
+            "ended",
+            serde_json::json!({"outcomes": [{"key": "0", "state": "done"}, {"key": "1", "state": "failed", "reason": "写不进本机", "detail": "EROFS"}, {"key": "2", "state": "done"}]}),
+        );
+        assert_eq!(end["said"], "下载 3 项 · 完成 2 · 失败 ×1");
+        assert_eq!(end["failed"], serde_json::json!(["B.md：写不进本机"]));
+        assert_eq!((end["retry"].as_bool(), end["undo"].as_bool()), (Some(true), Some(false)));
+        assert!(end["details"].as_str().unwrap().contains("EROFS"));
+        let all = pull("ended", serde_json::json!({"outcomes": [{"key": "0", "state": "done"}, {"key": "1", "state": "done"}, {"key": "2", "state": "skipped"}]}));
+        assert_eq!(all["failed"], serde_json::json!([]));
+        assert!(download_event(&serde_json::json!({"phase": "ended"})).is_none(), "读不动 ⇒ 不给");
     }
 
     /// 🔴 `files_batch` 帧按票进那一组的进度（`running` 带手上那一项 · 几成），不交 Kotlin 的帧流；别的帧照交。

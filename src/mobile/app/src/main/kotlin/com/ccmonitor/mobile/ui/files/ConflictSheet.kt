@@ -69,7 +69,7 @@ fun ConflictSheet(
                                     )
                                 }
                             }
-                        } else {
+                        } else if (c.meta.isNotEmpty()) {
                             Text(c.meta, style = monoSmall, color = tokens.textFaint)
                         }
                     }

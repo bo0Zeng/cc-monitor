@@ -29,7 +29,7 @@ import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 
 /**
- * 一组的底部浮卡（不抢焦点，列表照常可点）：标题 · 手上那一项 · 进度条 ·［停］；断开 ⇒ 虚线框写断开那一行；
+ * 一组的底部浮卡（不抢焦点，列表照常可点）：标题 · 手上那一项 · 进度条 ·［停］；断开 ⇒ 虚线框写断开那一行（等［继续］的那一种 ⇒［继续］）；
  * 收场了有没成的 ⇒ 结局句 ＋［看失败的］［重试失败的］；没成（整组）⇒ 那一句 ＋ 复制详情。字全由核心写好。
  */
 @Composable
@@ -60,7 +60,14 @@ fun BatchCard(
                 }
                 BatchEvent.CUT -> {
                     Text(e.line.orEmpty(), color = tokens.textFaint)
-                    Row { SecondaryButton(onClick = onStop) { Text(copyText("rsFilewinProgress.action.stop")) } }
+                    if (e.resume) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            SecondaryButton(onClick = onRetry) { Text(copyText("rsFilewinBatch.btn.resume")) }
+                            SecondaryButton(onClick = onDismiss) { Text(copyText("kit.toast.close")) }
+                        }
+                    } else {
+                        Row { SecondaryButton(onClick = onStop) { Text(copyText("rsFilewinProgress.action.stop")) } }
+                    }
                 }
                 BatchEvent.ENDED -> {
                     Text(e.said.orEmpty())

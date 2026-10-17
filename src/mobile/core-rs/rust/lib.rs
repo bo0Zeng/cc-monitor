@@ -311,6 +311,15 @@ pub fn clash_rows_json(data: &str) -> String {
         .unwrap_or_else(|_| "[]".to_string())
 }
 
+/// 下载一组那几格（[`batch::download_event`]）；读不动 ⇒ 空串。
+pub fn download_event_json(want: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(want)
+        .ok()
+        .and_then(|w| batch::download_event(&w))
+        .map(|v| v.to_string())
+        .unwrap_or_default()
+}
+
 // ═══ 链路表 ═════════════════════════════════════════════════════════════════════
 
 struct Link {
@@ -651,6 +660,21 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_clashRows<'l>(
     guarded(std::ptr::null_mut(), || {
         let text = string(&mut env, &data).unwrap_or_default();
         env.new_string(clash_rows_json(&text))
+            .map(|s| s.into_raw())
+            .unwrap_or(std::ptr::null_mut())
+    })
+}
+
+/// `Core.downloadEvent(want)`：下载一组那几格（[`download_event_json`]）。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_downloadEvent<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    want: JString<'l>,
+) -> jstring {
+    guarded(std::ptr::null_mut(), || {
+        let text = string(&mut env, &want).unwrap_or_default();
+        env.new_string(download_event_json(&text))
             .map(|s| s.into_raw())
             .unwrap_or(std::ptr::null_mut())
     })

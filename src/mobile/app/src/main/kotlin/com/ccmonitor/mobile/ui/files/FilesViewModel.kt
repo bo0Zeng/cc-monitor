@@ -33,7 +33,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 import java.util.UUID
 
 /** 文件屏此刻（在接 / 那台说打不开 / 列出来了）。 */
@@ -118,7 +117,7 @@ class FilesViewModel(
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy.asStateFlow()
 
-    /** 上传 · 下载在走时的进度（0..1）；不知道总数 · 不在传 ⇒ `null`。 */
+    /** 上传在走时的进度（0..1）；不知道总数 · 不在传 ⇒ `null`。 */
     private val _progress = MutableStateFlow<Float?>(null)
     val progress: StateFlow<Float?> = _progress.asStateFlow()
 
@@ -288,6 +287,12 @@ class FilesViewModel(
             if (early.size > EARLY_KEPT) early.remove(early.keys.first())
             return
         }
+        show(e)
+        if (e.over) viewModelScope.launch { refresh() }
+    }
+
+    /** 浮卡照这一格画（核心跑的那几组与这台下载那几组同一张）；全成了 ⇒ 结局句走 toast（撤得了带［撤销］）。 */
+    private fun show(e: BatchEvent) {
         when {
             e.phase == BatchEvent.ENDED && e.failed.isEmpty() -> {
                 _batch.value = null
@@ -296,7 +301,17 @@ class FilesViewModel(
             e.phase == BatchEvent.DROPPED -> _batch.value = null
             else -> _batch.value = e
         }
-        if (e.over) viewModelScope.launch { refresh() }
+    }
+
+    private val downloads = Downloads(feed, ops, viewModelScope, io, ::machine, ::show)
+
+    /** 把选中的那几项（或点的那一份）下到本机 [folder]（系统「选文件夹」给的那一棵）：一组，见 [Downloads]。 */
+    fun download(
+        entries: List<FilesLs.Entry>,
+        folder: LocalFolder,
+    ) {
+        unpick()
+        downloads.start(entries, folder)
     }
 
     /** 起一组（[start] 回编号；0 ＝ 这台不在 ⇒ 那一句）；起了就退出选择模式。 */
@@ -333,16 +348,22 @@ class FilesViewModel(
     fun again(
         id: Long,
         undo: Boolean,
-    ) = group { ops.again(id, undo) }
+    ) {
+        if (!downloads.again(id)) group { ops.again(id, undo) }
+    }
 
     /** 同名那一问的答（`null` ＝ 取消）。 */
     fun answerBatch(
         id: Long,
         answer: BatchAnswer?,
-    ) = feed.batchAnswer(id, answer)
+    ) {
+        if (!downloads.answer(id, answer)) feed.batchAnswer(id, answer)
+    }
 
     /** 浮卡上的［停］。 */
-    fun stopBatch(id: Long) = feed.batchStop(id)
+    fun stopBatch(id: Long) {
+        if (!downloads.stop(id)) feed.batchStop(id)
+    }
 
     /** 收场了还留着的那张卡收起。 */
     fun dismissBatch() {
@@ -351,26 +372,6 @@ class FilesViewModel(
 
     /** 改权限那一框的起点：此刻的权限位（八进制）；那台没有这一说 · 读不到 ⇒ `null`。 */
     suspend fun modeText(entry: FilesLs.Entry): String? = ops.mode(entry.path).getOrNull()?.toString(OCTAL)
-
-    /** 下载到 [destDir]（Composable 传 App 自己的外部文件目录）：[open] 开本机那一份、交出描述符。 */
-    fun download(
-        entry: FilesLs.Entry,
-        destDir: File?,
-        open: (File) -> Int,
-    ) {
-        viewModelScope.launch {
-            _busy.value = true
-            val local = File(destDir, entry.name)
-            withContext(io) { ops.download(entry.path, { open(local) }, local.absolutePath, ::track) }
-                .onSuccess { _events.tryEmit(Notice(copyText("mobFiles.download.done", "path" to local.absolutePath))) }
-                .onFailure {
-                    local.delete()
-                    say(it)
-                }
-            _progress.value = null
-            _busy.value = false
-        }
-    }
 
     /** 上传撞了同名、在问（[FileOps.Upload.Clash]：那台的同名清单与那一句；在哪个目录）；没在问 ⇒ `null`。 */
     private val _clash = MutableStateFlow<Pair<RemotePath, FileOps.Upload.Clash>?>(null)
