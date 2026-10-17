@@ -25,11 +25,6 @@ const EXEMPT: &[(&str, &str, &str)] = &[
         "客户端那一侧按两端同一份类型解回包：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/resident.rs`，后端那棵 workspace，不在扫描面里）",
     ),
     (
-        "src/common/cmd-wire/src/record.rs",
-        "mend_line_frame",
-        "客户端那一侧流上 `line` 帧里解不开的那条记录换成认不出那一条：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/resident.rs`，后端那棵 workspace，不在扫描面里）",
-    ),
-    (
         "src/comms/resident-client/feed.rs",
         "set_transport",
         "手机那一侧一台常驻流的口：读者是手机嵌的 Rust 核心（`src/mobile/core-rs`，后端那棵 workspace，不在 monitor 的扫描面里）与本 crate 的判据",
@@ -38,11 +33,6 @@ const EXEMPT: &[(&str, &str, &str)] = &[
         "src/comms/resident-client/feed.rs",
         "client_by",
         "手机那一侧一问一答取连接的口：读者是手机嵌的 Rust 核心（`src/mobile/core-rs`，不在 monitor 的扫描面里）与本 crate 的判据",
-    ),
-    (
-        "src/comms/resident-client/feed.rs",
-        "watch_none",
-        "手机那一侧「名单从空开始报」的口（桌面的在看名单经登记表上的客户端报，不经循环）：读者是手机嵌的 Rust 核心（`src/mobile/core-rs`，不在 monitor 的扫描面里）与本 crate 的判据",
     ),
     (
         "src/backend/files/mod.rs",

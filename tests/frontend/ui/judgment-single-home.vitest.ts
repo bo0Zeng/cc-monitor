@@ -763,17 +763,25 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     //   界面直接读记录上的 `kind`，不另判，TS 侧没有孪生。
     kind: NONE,
     of: NONE,
-    // 认不出的那一条（`record`）：那一句 · 原文摘录的截法 · 那一形（后端适配层认不出的那一行与手机核心解不开的那一条同这一份），
-    //   流上 `line` 帧里解不开的那条换成它（手机核心）。界面照记录上写好的 `text` · `excerpt` 画，TS 侧没有孪生。
+    // 认不出的那一条（`record`）：那一句 · 原文摘录的截法 · 那一形（后端适配层认不出的那一行与手机核心解不开的那一条同这一份）。
+    //   界面照记录上写好的 `text` · `excerpt` 画，TS 侧没有孪生。
     EXCERPT_BYTES: NONE,
     excerpt_of: NONE,
     unread_text: NONE,
     unread: NONE,
-    mend_line_frame: NONE,
     // 帧的线上形（`frame`）：一行解一帧 · 宿主那个词（`terminals-list` 的 `host` 与容器那一格同一套）。
     //   解帧的是 Rust 那几端（壳 · 通信层 · 手机核心）；界面读壳转过的载荷，TS 侧没有孪生。
     decode: NONE,
+    // 一行的 `kind`（帧门与解帧共用）：界面不解线上帧，TS 侧没有孪生。
+    kind_of: NONE,
+    // 接常驻流那两行（`attach`）的一整行写法：握手只在 Rust 那几端（后端 · 通信层 · 本机宿主），界面不握手，TS 侧没有孪生。
+    line: NONE,
     as_wire: NONE,
+    // 帧表（`frame_shapes` · `frame::gated_tys`）与指纹算法（`fingerprint`，测试档）：两端比的那一张由类型现算；界面不比，TS 侧没有孪生。
+    FRAMES: NONE,
+    gated_tys: NONE,
+    ty_of: NONE,
+    fnv32: NONE,
     // 传输台开单那两条：窗口那一份补上拨号成后端那一份（monitor 的 `sftp_pool::transfer_call` 用）。界面不开单，TS 侧没有孪生。
     dialed: NONE,
     // 线上一家 agent 的名字（`AgentKind`）：收下 · 取串。不是判定（kind ⇄ 路由名那一换住后端 `agents`）；界面拿生成的类型当串用，没有孪生。
@@ -785,6 +793,11 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   "copy-core": {
     backend_old: "J22",
     backend_differs: NONE,
+    // 帧种形状对不上那一句（`copy-core::backend_frames_differ`）只在通信层：它在握手那一刻比帧表、写好带机器名的那一句。
+    backend_frames_differ: NONE,
+    // 接上时那台较新 · 新旧比不出那两句同上：通信层按那台在 attach 回话里给的新旧写好，界面只照抄。
+    backend_newer: NONE,
+    backend_incomparable: NONE,
     // 测试按文案键断言用（占位处任意值）；TS 那一侧的同形在测试支架 `tests/test-support/copy-pattern.ts`，不是生产判定。
     copy_matches: NONE,
     // 同上，只钉给了值的那几格（TS 那一侧是 `copyPattern(键, 已知值)`）。

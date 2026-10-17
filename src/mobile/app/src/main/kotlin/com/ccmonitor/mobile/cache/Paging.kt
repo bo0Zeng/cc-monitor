@@ -30,33 +30,3 @@ fun appendRows(
     out += cur.copy(end = maxOf(cur.end, end ?: cur.end))
     return out
 }
-
-/** 续读怎么接：从 [from] 字节往下读 · 整份从头读（读最后一屏）。 */
-sealed interface Resume {
-    data class Continue(
-        val from: Long,
-    ) : Resume
-
-    data object FromScratch : Resume
-}
-
-/**
- * 接着读之前先比那台文件的身份与大小（`history-tail` 回的 `file` · `end`，最后一个完整行之后的字节）：
- * 换了一份（路径或身份对不上）· 比续点短了（被截过）⇒ 续点那个位置已经不在了 ⇒ 从头读；没有续点 · 手上一行都没有 ⇒ 从头读；
- * 中间缺得太多（超过 [maxGap] 行）⇒ 从头读最后一屏、更早的往上翻再取。其余从续点往下读到 `end`。
- */
-fun resumeOf(
-    anchor: Anchor?,
-    havePages: Boolean,
-    path: String,
-    file: String,
-    end: Long,
-    total: Long,
-    maxGap: Long,
-): Resume =
-    when {
-        anchor == null || !havePages || anchor.path != path || anchor.file != file -> Resume.FromScratch
-        end < anchor.offset || total < anchor.seq -> Resume.FromScratch
-        total - anchor.seq > maxGap -> Resume.FromScratch
-        else -> Resume.Continue(anchor.offset)
-    }

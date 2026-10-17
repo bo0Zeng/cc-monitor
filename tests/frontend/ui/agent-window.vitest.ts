@@ -78,7 +78,7 @@ function say(uuid: string, text: string): unknown {
 }
 
 function frame(runs: RunInfo[]): void {
-  h.sink?.({ t: "runs", payload: { session_id: "s1", runs, ended: [] } } satisfies FollowEvent);
+  h.sink?.({ t: "runs", payload: { sid: "s1", runs, ended: [] } } satisfies FollowEvent);
 }
 
 async function settle(): Promise<void> {

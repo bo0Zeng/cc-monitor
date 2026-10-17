@@ -30,6 +30,9 @@ mod backend_policy;
 use crate::detail::Said;
 use comms_inward::{backend_route, origin, ssh_link};
 #[cfg(test)]
+#[path = "../../../../tests/frontend/shell/frame_fixtures.rs"]
+mod frame_fixtures; // 判据用的几帧（hello · 去向 · 宣告）
+#[cfg(test)]
 #[path = "../../../../tests/frontend/shell/backend_route_senders_tests.rs"]
 mod backend_route_senders_tests; // 每个走后端的发送端都经那一份分流规则（遍历 monitor 源码树）
 #[cfg(test)]
@@ -136,7 +139,7 @@ mod deploy;
 // 问自己放下去的那份后端一次（帧命令的 CLI 面）：本机后端自举那一问。
 mod backend_once;
 mod stream_source;
-// 每条长连接报「在看哪几个会话」（那台后端 `stream-watch`）：主窗口在看的 tab ∪ 查看窗跟着的会话。
+// 每台的「在看」名单（主窗口在看的 tab ∪ 查看窗跟着的会话）交那台的名单台（`resident_client::watch::Desk`）。
 mod stream_watch;
 // 拨号应答的客户端（通信层面 A 的 SSH 链路那一段）。
 // `inproc_dial`（界面进程里最后一份 russh 拨号，只剩 SFTP 一个用户）删了：
@@ -704,7 +707,7 @@ pub fn run() {
                         );
                         // 就绪点：主界面在发 `frontend-ready` 之前已经订好了各台机器的会话流（`chan.subscribe`），
                         //   这里按 credit 交完留存；起停的成品（骨架在行前、终局在行后，`session_book::Book::replay`）在同一条流里原位交，
-                        //   不吃 credit。〔从前这一段在就绪点前后各发一轮 Tauri 事件：重宣告 · 容器 · 可重连 · 对账补发已结束 / 说不清 · 清单。〕
+                        //   没 credit 也照交。〔从前这一段在就绪点前后各发一轮 Tauri 事件：重宣告 · 容器 · 可重连 · 对账补发已结束 / 说不清 · 清单。〕
                         replay.ready_point(priority_sid.as_deref()).await;
                     });
                 });
@@ -756,6 +759,7 @@ pub fn run() {
             //   `src/frontend/ui/assets-sync-reads.ts` · `src/frontend/ui/skill-install-reads.ts`）。
             forget_session,
             watch_sessions,
+            kept_sessions,
             // issue #10: 独立只读窗口（多窗口 / 双屏）
             open_session_in_new_window,
             // F82a(#56+#47): 设置独立窗口
@@ -928,7 +932,7 @@ pub(crate) fn wire_replay_outlets(replay: &Arc<event_replay::EventReplay>) {
         });
     }
     // 会话成品的**唯一**出口线程（本机远端同一个）：monitor 自己那几样副作用（拉前绑定）＋
-    //   原样交会话流（`EventReplay::on_lifecycle`：`subscribe(origin, "session-lines")` 里的格，不吃 credit、不丢）。
+    //   原样交会话流（`EventReplay::on_lifecycle`：`subscribe(origin, "session-lines")` 里的格，没 credit 也照交、不丢）。
     //   不裁决（可重连 / 已结束由那台后端裁）；原先这里是本机 / 远端两个 emitter，各自裁、发 9 个 Tauri 事件。
     {
         let replay = replay.clone();
@@ -936,7 +940,7 @@ pub(crate) fn wire_replay_outlets(replay: &Arc<event_replay::EventReplay>) {
             .name("session-book-emitter".into())
             .spawn(move || {
                 while let Ok(out) = book_rx.recv() {
-                    replay.on_lifecycle(out.origin(), out.frames());
+                    replay.on_lifecycle(out.origin(), vec![out.frame()]);
                 }
             });
         if let Err(e) = spawned {
@@ -1222,10 +1226,10 @@ fn forget_session(
 }
 
 /// 主窗口此刻在看的会话（整份换；切 tab 时界面报）：与查看窗跟着的会话合成每台的「在看」名单，
-/// 由 `stream_watch` 报给那台那条长连接（没在看的会话，它的行不上流）。
+/// 由 `stream_watch` 交那台的名单台（没在看的会话，它的行不上流）。
 #[tauri::command]
 fn watch_sessions(
-    sessions: Vec<ui_contract::WatchedSession>,
+    sessions: Vec<ui_contract::TabSession>,
     replay: tauri::State<'_, Arc<event_replay::EventReplay>>,
 ) -> Result<(), Said> {
     let r: Result<(), Said> = (move || -> Result<(), Said> {
@@ -1237,6 +1241,23 @@ fn watch_sessions(
         Ok(())
     })();
     r.map_err(|s| s.named("watch_sessions"))
+}
+
+/// 主窗口手上的 tab（整份换；多一个 · 少一个时界面报）：随名单交各台的名单台，那台不在说的它答已结束。
+#[tauri::command]
+fn kept_sessions(
+    sessions: Vec<ui_contract::TabSession>,
+    replay: tauri::State<'_, Arc<event_replay::EventReplay>>,
+) -> Result<(), Said> {
+    let r: Result<(), Said> = (move || -> Result<(), Said> {
+        replay.set_main_kept(
+            sessions
+                .into_iter()
+                .map(|w| (w.origin.as_wire_str().to_string(), w.session_id)),
+        );
+        Ok(())
+    })();
+    r.map_err(|s| s.named("kept_sessions"))
 }
 
 /// issue #10：把某 session 在一个独立 WebviewWindow（`viewer-<sid>`）里打开，

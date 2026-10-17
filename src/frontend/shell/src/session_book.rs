@@ -15,203 +15,14 @@ use parking_lot::RwLock;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::OnceLock;
 
-/// 终端宿主（后端 `session_added.container.host`）。认得的就这几种，词由 serde 从变体名派生（不另写字面量表）；
-/// 别的取值进 [`SessionContainer::Other`]，不吞。
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-#[serde(rename_all = "snake_case")]
-pub enum TerminalHost {
-    Tmux,
-}
-
-/// 「不在任何宿主里」的那个 `host` 词。
-pub const HOST_NONE: &str = "none";
-
-/// 一条活会话住在什么容器里（后端 `session_added.container`；缺席 = 不知道，不在这里）。开放联合：认得的 ＋ 其它。
-/// 原样交给界面（`ui_contract::SessionContainerPayload`），`ts-rs` 生成同形的判别联合。
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-#[serde(tag = "form", rename_all = "snake_case")]
-pub enum SessionContainer {
-    /// 在某个认得的宿主的终端里；`terminal` 是 `terminals-list` 那一行的句柄（后端算不出就没有）。
-    Hosted {
-        host: TerminalHost,
-        terminal: Option<String>,
-    },
-    /// 不在任何宿主里（＝ 就在起它的那个终端里）。
-    None,
-    /// 这边不认识的宿主（那台比这边新）：原词带着，界面记成「不认识的终端形式」。
-    Other { host: String },
-}
-
-impl SessionContainer {
-    /// 线上那一格（对象）⇒ 容器。不是 `{host: 字符串, terminal?: 字符串}` ⇒ `Err(为什么)`。
-    pub fn from_wire(v: &serde_json::Value) -> Result<Self, &'static str> {
-        let o = v.as_object().ok_or("`container` is not an object")?;
-        let host = o
-            .get("host")
-            .and_then(serde_json::Value::as_str)
-            .ok_or("`container.host` is not a string")?;
-        let terminal = match o.get("terminal") {
-            None => None,
-            Some(serde_json::Value::String(t)) => Some(t.clone()),
-            Some(_) => return Err("`container.terminal` is not a string"),
-        };
-        if host == HOST_NONE {
-            return Ok(SessionContainer::None);
-        }
-        Ok(
-            match serde_json::from_value::<TerminalHost>(serde_json::Value::String(host.into())) {
-                Ok(host) => SessionContainer::Hosted { host, terminal },
-                Err(_) => SessionContainer::Other { host: host.into() },
-            },
-        )
-    }
-}
-
-/// 后端 `session_state.state`：离开「活」之后是什么。线上两个字面量与后端 `wire::SessionFate` 逐字一致。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Fate {
-    Reconnectable,
-    Ended,
-}
-
-/// 去向那一种写好的字与语气（那台核心写的 `session_state.state_text` · `state_hint` · `state_tone`，原样转交）。
-/// 壳自己补的「已结束」（那台报完清单、这条不在）没有这一份 ⇒ `None`。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FateWords {
-    pub text: String,
-    pub hint: String,
-    pub tone: String,
-    /// 此刻能不能换模型 · 权限档（`session_state.switch`，离开「活」那一形）。
-    pub switch: SwitchCells,
-}
-
-pub const FATE_RECONNECTABLE: &str = "reconnectable";
-pub const FATE_ENDED: &str = "ended";
-
-impl Fate {
-    /// 不认识的取值 ⇒ `None`（那一帧当坏帧跳过，不猜）。
-    pub fn from_wire(s: &str) -> Option<Self> {
-        match s {
-            FATE_RECONNECTABLE => Some(Fate::Reconnectable),
-            FATE_ENDED => Some(Fate::Ended),
-            _ => None,
-        }
-    }
-}
-
-/// 一条活会话此刻在干什么（后端 `session_added.activity` · `session_status.activity`，那台后端的适配层翻好的）。
-/// 原样交给界面（`ui_contract::SessionActivityPayload`）；缺席 ＝ 说不清。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-#[serde(rename_all = "snake_case")]
-pub enum SessionActivity {
-    /// 一轮在跑。
-    Working,
-    /// 在等人。
-    NeedsYou,
-    /// 闲着，等下一句输入。
-    Idle,
-    /// 一轮停了，它在后台起的命令还在跑。
-    BackgroundWork,
-}
-
-impl SessionActivity {
-    /// 线上词 ⇒ 这一态；认不出 ⇒ `None`（解码那一侧当契约对不上）。
-    pub fn from_wire(w: &str) -> Option<Self> {
-        match w {
-            "working" => Some(Self::Working),
-            "needs_you" => Some(Self::NeedsYou),
-            "idle" => Some(Self::Idle),
-            "background_work" => Some(Self::BackgroundWork),
-            _ => None,
-        }
-    }
-}
-
-/// 一条活会话此刻在干什么那几格（那台核心的 `wire::ActivityFace`，原样转交）：那一态（`None` ＝ 说不清）·
-/// 写好的字与语气（运行中 / 需手动 / 空闲 · `now` / `need` / `plain`）· 监控板组内的序（`activity_order`，小的在前，核心排的）。
-/// 解码只一处（`stream_source::frame` 的 `activity_cells`）。
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-pub struct ActivityCells {
-    pub activity: Option<SessionActivity>,
-    pub activity_text: String,
-    pub activity_tone: String,
-    pub activity_order: u8,
-    /// 此刻能不能换模型 · 权限档（那台核心判的，随那一态带）。
-    pub switch: SwitchCells,
-}
-
-/// 此刻能不能换模型 · 权限档那一格（那台核心的 `wire::Switch`，原样转交；界面照 `can` 灰不灰、照 `why` 写悬停）。
-/// 解码只一处（`stream_source::frame` 的 `switch_cells`）。
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-pub struct SwitchCells {
-    /// 换模型（`session-model`）。
-    pub model: CanSwitch,
-    /// 切权限档（`session-permission`）。
-    pub permission: CanSwitch,
-}
-
-/// 一样此刻能不能换：`{can: "yes"}` · `{can: "no", why: 那台写好的那一句}`。
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-#[serde(tag = "can", rename_all = "snake_case")]
-pub enum CanSwitch {
-    /// 能换。
-    #[default]
-    Yes,
-    /// 此刻不能。
-    No { why: String },
-}
-
-/// 叫这条会话什么那两格（那台核心的 `wire::NameFace`，原样转交）：名字（`session_label` 出的，标签页 · 历史清单 · 通知同一个）·
-/// 项目那一格（名字是起出来的才有；界面拼「[项目] 名字」）。解码只一处（`stream_source::frame` 的 `name_cells`）。
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-pub struct NameCells {
-    pub label: String,
-    pub label_project: Option<String>,
-}
-
-/// 一条活会话宣告时带来的那几格（后端 `session_added`）。之后按 `session_status` 更新灯。
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct LiveMeta {
-    /// 后台会话（那台后端判好的 `background`）。
-    pub background: bool,
-    pub attachable: Option<bool>,
-    /// pidfile 记的起会话目录（认「我刚起的那条」用）。
-    pub cwd: Option<String>,
-    /// 会话的项目目录（那台后端给的；tab 标题用它）。
-    pub project_dir: Option<String>,
-    pub name: Option<String>,
-    pub activity: ActivityCells,
-    /// 叫它什么（之后按 `session_status` 更新）。
-    pub naming: NameCells,
-    pub waiting_for: Option<String>,
-    /// 隐藏那一格（那台后端判好的 `{by, said}`；不隐藏 ⇒ `None`）。原样转给界面，壳不判。
-    pub hidden: Option<cmd_wire::session::Hidden>,
-    pub container: Option<SessionContainer>,
-    /// 那个 claude 进程的 pid（本机 ↗ 点那一刻从它往上找窗口；没索要 ⇒ `None`）。
-    pub pid: Option<u32>,
-}
+use cmd_wire::frame::{SessionAdded, SessionFate, SessionRuns, SessionState, SessionStatus};
 
 /// 一条会话此刻的最新成品。
 #[derive(Debug, Clone, PartialEq)]
 pub enum Product {
-    Live(LiveMeta),
-    Left(Fate, Option<FateWords>),
+    Live(SessionAdded),
+    /// 那台答的去向（`session_state`：哪一种 · 写好的字与语气 · 监控板组内的序 · 能不能换），原样转交。
+    Left(SessionState),
 }
 
 /// 两条流交进来的一件事。`origin` 是线上串（本机 `<local>`）。
@@ -220,31 +31,28 @@ pub enum In {
     Live {
         origin: String,
         sid: String,
-        meta: LiveMeta,
+        meta: SessionAdded,
     },
     Status {
         origin: String,
-        sid: String,
-        activity: ActivityCells,
-        naming: NameCells,
-        waiting_for: Option<String>,
+        status: SessionStatus,
     },
     Left {
         origin: String,
-        sid: String,
-        fate: Fate,
-        words: Option<FateWords>,
+        state: SessionState,
     },
     /// `sessions_replayed`：那台的活会话清单报完了（可重连的也已报过）。
-    Listed { origin: String },
+    Listed {
+        origin: String,
+    },
     /// 到那台的连接断了。
-    LinkLost { origin: String },
-    /// `session_runs`：那台后端给的一个会话的运行表 ＋ 被挤出表的已收场那几个（JSON 数组原文，不解释）。
+    LinkLost {
+        origin: String,
+    },
+    /// `session_runs`：那台后端给的一个会话的运行表 ＋ 被挤出表的已收场那几个。
     Runs {
         origin: String,
-        sid: String,
-        runs: crate::ui_contract::RecordBody,
-        ended: crate::ui_contract::RecordBody,
+        runs: SessionRuns,
     },
     /// `session_branch`：那台后端给的一个会话的主线外清单的一截 ——「那份记录（`path`）的清单前 `at` 条照旧，其后换成 `off`」
     /// （记录 `id`，不解释）。账照它拼成整份，交出去的是整份。`sum` ＝ 那台铸的「到这一帧末尾为止」那一截的摘要（只记、在 `stream-watch` 里交回）。
@@ -264,38 +72,37 @@ pub enum Out {
     Live {
         origin: String,
         sid: String,
-        meta: LiveMeta,
+        meta: SessionAdded,
     },
     Status {
         origin: String,
-        sid: String,
-        activity: ActivityCells,
-        naming: NameCells,
-        waiting_for: Option<String>,
+        status: SessionStatus,
     },
     Left {
         origin: String,
-        sid: String,
-        fate: Fate,
-        words: Option<FateWords>,
+        state: SessionState,
     },
     /// `all` = 这一刻机器表里的每一台都报完了（「各台都报完」那一刻：前端据此收空组、说记住的那一格没出现）。
-    Listed { origin: String, all: bool },
+    Listed {
+        origin: String,
+        all: bool,
+    },
     /// 那台看不见了（**机器级**：线上只一格 `unseen {origin}`，前端按机器落说不清）。
     /// `sids` = 这一刻落说不清的那几条（排好序），只给 monitor 自己的旁路账用（本机那两份缓存），不上线。
-    Unseen { origin: String, sids: Vec<String> },
+    Unseen {
+        origin: String,
+        sids: Vec<String>,
+    },
     /// 一个会话的运行表（原样转）。
     Runs {
         origin: String,
-        sid: String,
-        runs: crate::ui_contract::RecordBody,
-        ended: crate::ui_contract::RecordBody,
+        runs: SessionRuns,
     },
-    /// 一个会话的主线外清单（原样转）。
+    /// 一个会话的主线外清单（拼好的整份）。
     Branch {
         origin: crate::origin::Origin,
         sid: String,
-        off: crate::ui_contract::RecordBody,
+        off: Vec<String>,
     },
 }
 
@@ -304,13 +111,7 @@ struct OriginBook {
     sessions: BTreeMap<String, Product>,
     listed: bool,
     /// 活会话的最新运行表（F5 重放跟在它的宣告后面再说一次）；会话离开 ⇒ 摘。
-    runs: BTreeMap<
-        String,
-        (
-            crate::ui_contract::RecordBody,
-            crate::ui_contract::RecordBody,
-        ),
-    >,
+    runs: BTreeMap<String, SessionRuns>,
 }
 
 /// 手上一个会话的主线外清单：哪份记录的 · 拼好的整份 · 那台给的摘要（`None` ＝ 拼的时候中间缺过一截，说不准 ⇒ 下次要整份）。
@@ -326,14 +127,6 @@ struct BranchCopy {
 pub struct Replay {
     pub before: Vec<Out>,
     pub after: Vec<Out>,
-}
-
-/// 拼好的整份清单写成交给界面的那一格（JSON 数组原文）。
-fn branch_body(off: &[String]) -> crate::ui_contract::RecordBody {
-    crate::ui_contract::RecordBody::from_json(serde_json::to_string(off).unwrap_or_default())
-        .unwrap_or_else(|| {
-            crate::ui_contract::RecordBody::from_json("[]".to_string()).expect("[] is JSON")
-        })
 }
 
 /// 全部机器的成品账（见模块头注）。
@@ -359,67 +152,35 @@ impl Book {
                     .insert(sid.clone(), Product::Live(meta.clone()));
                 vec![Out::Live { origin, sid, meta }]
             }
-            In::Status {
-                origin,
-                sid,
-                activity,
-                naming,
-                waiting_for,
-            } => {
+            In::Status { origin, status } => {
                 if let Some(Product::Live(m)) = self
                     .origins
                     .get_mut(&origin)
-                    .and_then(|b| b.sessions.get_mut(&sid))
+                    .and_then(|b| b.sessions.get_mut(&status.sid))
                 {
-                    m.activity = activity.clone();
-                    m.naming = naming.clone();
-                    m.waiting_for = waiting_for.clone();
+                    m.face = status.face.clone();
+                    m.name_face = status.name_face.clone();
+                    m.waiting_for = status.waiting_for.clone();
                 }
-                vec![Out::Status {
-                    origin,
-                    sid,
-                    activity,
-                    naming,
-                    waiting_for,
-                }]
+                vec![Out::Status { origin, status }]
             }
-            In::Left {
-                origin,
-                sid,
-                fate,
-                words,
-            } => {
+            In::Left { origin, state } => {
                 let b = self.origins.entry(origin.clone()).or_default();
                 b.sessions
-                    .insert(sid.clone(), Product::Left(fate, words.clone()));
-                b.runs.remove(&sid);
+                    .insert(state.sid.clone(), Product::Left(state.clone()));
+                b.runs.remove(&state.sid);
                 if let Some(m) = self.branch.get_mut(&origin) {
-                    m.remove(&sid);
+                    m.remove(&state.sid);
                 }
-                vec![Out::Left {
-                    origin,
-                    sid,
-                    fate,
-                    words,
-                }]
+                vec![Out::Left { origin, state }]
             }
-            In::Runs {
-                origin,
-                sid,
-                runs,
-                ended,
-            } => {
+            In::Runs { origin, runs } => {
                 self.origins
                     .entry(origin.clone())
                     .or_default()
                     .runs
-                    .insert(sid.clone(), (runs.clone(), ended.clone()));
-                vec![Out::Runs {
-                    origin,
-                    sid,
-                    runs,
-                    ended,
-                }]
+                    .insert(runs.sid.clone(), runs.clone());
+                vec![Out::Runs { origin, runs }]
             }
             In::Branch {
                 origin,
@@ -451,7 +212,7 @@ impl Book {
                 vec![Out::Branch {
                     origin,
                     sid,
-                    off: branch_body(&held.off),
+                    off: held.off.clone(),
                 }]
             }
             In::Listed { origin } => {
@@ -471,7 +232,9 @@ impl Book {
                 let sids: Vec<String> = b
                     .sessions
                     .into_iter()
-                    .filter(|(_, p)| !matches!(p, Product::Left(Fate::Ended, _)))
+                    .filter(
+                        |(_, p)| !matches!(p, Product::Left(s) if s.state == SessionFate::Ended),
+                    )
                     .map(|(s, _)| s)
                     .collect();
                 if sids.is_empty() {
@@ -487,7 +250,7 @@ impl Book {
         &self,
         origin: &crate::origin::Origin,
         sids: &std::collections::BTreeSet<String>,
-    ) -> Vec<resident_client::watch::BranchHeld> {
+    ) -> Vec<cmd_wire::watch::BranchHeld> {
         let mine = self.branch.get(origin.as_wire_str());
         sids.iter()
             .map(|sid| match mine.and_then(|m| m.get(sid)) {
@@ -495,13 +258,16 @@ impl Book {
                     path,
                     off,
                     sum: Some(sum),
-                }) => resident_client::watch::BranchHeld {
+                }) => cmd_wire::watch::BranchHeld {
                     sid: sid.clone(),
                     path: Some(path.clone()),
                     at: off.len() as u64,
                     sum: Some(sum.clone()),
                 },
-                _ => resident_client::watch::BranchHeld::nothing(sid),
+                _ => cmd_wire::watch::BranchHeld {
+                    sid: sid.to_string(),
+                    ..Default::default()
+                },
             })
             .collect()
     }
@@ -545,7 +311,7 @@ impl Book {
             .get(origin.as_wire_str())
             .and_then(|b| b.sessions.get(sid))
         {
-            Some(Product::Live(meta)) => meta.pid,
+            Some(Product::Live(meta)) => Some(meta.pid),
             _ => None,
         }
     }
@@ -561,12 +327,12 @@ impl Book {
         }
     }
 
-    /// **F5 重放计划**（纯）：`buffered` = 重放缓冲里有行的 `(sid, 它所在的那台)`。
+    /// **F5 重放计划**（纯）：`kept` = 手上留着的 `(sid, 它所在的那台)`（留存里有行的 · 主窗口的 tab）。
     ///
     /// - `before`：活会话重宣告（骨架 ＋ 初始灯 ＋ 容器，本机远端同一形）；
-    /// - `after`：全部可重连的 · 有行却不活的（这条连接上说过已结束 ⇒ 已结束；没说过 ⇒ 那台报完了清单 ⇒ 已结束，没报完 ⇒ 说不清）·
+    /// - `after`：全部可重连的 · 手上留着却不活的（这条连接上说过已结束 ⇒ 已结束；没说过 ⇒ 那台没报完清单 ⇒ 说不清，报完了 ⇒ 不说，那台答）·
     ///   报完了清单的那几台再说一次「报完了」（排在最后：前端处理它时活着的已经翻回活）。
-    pub fn replay(&self, buffered: &[(String, String)]) -> Replay {
+    pub fn replay(&self, kept: &[(String, String)]) -> Replay {
         let mut r = Replay::default();
         let mut origins: Vec<&String> = self.origins.keys().collect();
         origins.sort();
@@ -580,50 +346,43 @@ impl Book {
                             sid: sid.clone(),
                             meta: m.clone(),
                         });
-                        if let Some((runs, ended)) = b.runs.get(sid) {
+                        if let Some(runs) = b.runs.get(sid) {
                             r.before.push(Out::Runs {
                                 origin: (*o).clone(),
-                                sid: sid.clone(),
                                 runs: runs.clone(),
-                                ended: ended.clone(),
                             });
                         }
                         if let Some(c) = self.branch.get(*o).and_then(|m| m.get(sid)) {
                             r.before.push(Out::Branch {
                                 origin: crate::origin::Origin((*o).clone()),
                                 sid: sid.clone(),
-                                off: branch_body(&c.off),
+                                off: c.off.clone(),
                             });
                         }
                     }
-                    Product::Left(Fate::Reconnectable, words) => r.after.push(Out::Left {
-                        origin: (*o).clone(),
-                        sid: sid.clone(),
-                        fate: Fate::Reconnectable,
-                        words: words.clone(),
-                    }),
-                    _ => {}
+                    Product::Left(s) if s.state == SessionFate::Reconnectable => {
+                        r.after.push(Out::Left {
+                            origin: (*o).clone(),
+                            state: s.clone(),
+                        })
+                    }
+                    Product::Left(_) => {}
                 }
             }
         }
         let mut unseen: BTreeMap<String, Vec<String>> = BTreeMap::new();
         let mut settled = Vec::new();
-        for (sid, origin) in buffered {
+        for (sid, origin) in kept {
             let b = self.origins.get(origin);
             match b.and_then(|b| b.sessions.get(sid)) {
-                Some(Product::Live(_)) | Some(Product::Left(Fate::Reconnectable, _)) => {}
-                Some(Product::Left(Fate::Ended, words)) => settled.push(Out::Left {
+                Some(Product::Live(_)) => {}
+                Some(Product::Left(s)) if s.state == SessionFate::Reconnectable => {}
+                Some(Product::Left(s)) => settled.push(Out::Left {
                     origin: origin.clone(),
-                    sid: sid.clone(),
-                    fate: Fate::Ended,
-                    words: words.clone(),
+                    state: s.clone(),
                 }),
-                None if b.is_some_and(|b| b.listed) => settled.push(Out::Left {
-                    origin: origin.clone(),
-                    sid: sid.clone(),
-                    fate: Fate::Ended,
-                    words: None,
-                }),
+                // 那台报完了清单、这条没被说过 ⇒ 不说：那台后端照手上留着的答它的去向（答过就在账里）。
+                None if b.is_some_and(|b| b.listed) => {}
                 None => unseen.entry(origin.clone()).or_default().push(sid.clone()),
             }
         }
@@ -662,96 +421,25 @@ impl Out {
         }
     }
 
-    /// 这件事 ⇒ 会话流里的几格（前端照原样收）。活会话 = `live` ＋ 初始灯 ＋ 容器（判不了的不发）。
-    pub fn frames(&self) -> Vec<crate::ui_contract::SessionStreamFrame> {
+    /// 这件事 ⇒ 会话流里的一格（前端照原样收；起停那几种就是那台的帧）。
+    pub fn frame(&self) -> crate::ui_contract::SessionStreamFrame {
         use crate::ui_contract::{self as b, SessionStreamFrame as F};
         match self {
-            Out::Live { origin, sid, meta } => {
-                let mut v = vec![
-                    F::Live(b::SessionLivePayload {
-                        session_id: sid.clone(),
-                        origin: origin.clone(),
-                        background: meta.background,
-                        attachable: meta.attachable,
-                        cwd: meta.cwd.clone(),
-                        project_dir: meta.project_dir.clone(),
-                        name: meta.name.clone(),
-                        hidden: meta.hidden.clone(),
-                    }),
-                    F::Activity(b::SessionActivityPayload {
-                        session_id: sid.clone(),
-                        activity: meta.activity.clone(),
-                        naming: meta.naming.clone(),
-                        waiting_for: meta.waiting_for.clone(),
-                    }),
-                ];
-                if let Some(c) = &meta.container {
-                    v.push(F::Container(b::SessionContainerPayload {
-                        session_id: sid.clone(),
-                        container: c.clone(),
-                    }));
-                }
-                v
-            }
-            Out::Status {
-                sid,
-                activity,
-                naming,
-                waiting_for,
-                ..
-            } => vec![F::Activity(b::SessionActivityPayload {
-                session_id: sid.clone(),
-                activity: activity.clone(),
-                naming: naming.clone(),
-                waiting_for: waiting_for.clone(),
-            })],
-            Out::Left {
-                sid, fate, words, ..
-            } => {
-                let (text, hint, tone, switch) = match words {
-                    Some(w) => (
-                        Some(w.text.clone()),
-                        Some(w.hint.clone()),
-                        Some(w.tone.clone()),
-                        Some(w.switch.clone()),
-                    ),
-                    None => (None, None, None, None),
-                };
-                vec![match fate {
-                    Fate::Reconnectable => F::Idle(b::SessionIdlePayload {
-                        session_id: sid.clone(),
-                        text,
-                        hint,
-                        tone,
-                        switch,
-                    }),
-                    Fate::Ended => F::Ended(b::SessionEndedPayload {
-                        session_id: sid.clone(),
-                        text,
-                        hint,
-                        tone,
-                        switch,
-                    }),
-                }]
-            }
-            Out::Listed { origin, all } => vec![F::Listed(b::OriginSessionsListedPayload {
+            Out::Live { meta, .. } => F::Added(meta.clone()),
+            Out::Status { status, .. } => F::Status(status.clone()),
+            Out::Left { state, .. } => F::State(state.clone()),
+            Out::Listed { origin, all } => F::Listed(b::OriginSessionsListedPayload {
                 origin: crate::origin::Origin(origin.clone()),
                 all: *all,
-            })],
-            Out::Unseen { origin, .. } => vec![F::Unseen(b::SessionUnseenPayload {
+            }),
+            Out::Unseen { origin, .. } => F::Unseen(b::SessionUnseenPayload {
                 origin: crate::origin::Origin(origin.clone()),
-            })],
-            Out::Runs {
-                sid, runs, ended, ..
-            } => vec![F::Runs(b::SessionRunsPayload {
-                session_id: sid.clone(),
-                runs: runs.clone(),
-                ended: ended.clone(),
-            })],
-            Out::Branch { sid, off, .. } => vec![F::Branch(b::SessionBranchPayload {
-                session_id: sid.clone(),
+            }),
+            Out::Runs { runs, .. } => F::Runs(runs.clone()),
+            Out::Branch { sid, off, .. } => F::Branch(b::SessionBranchPayload {
+                sid: sid.clone(),
                 off: off.clone(),
-            })],
+            }),
         }
     }
 }
@@ -759,23 +447,16 @@ impl Out {
 impl Book {
     /// 旁路快照被取消（会话离开了 / 连接断了）时那条会话**此刻**的终局 —— 快照行可能已经把刚落定的 tab 翻活，
     /// 原样再说一次它现在是什么（原先这里恒补「已结束」，那是 monitor 自己在裁）。活着 ⇒ 不说；这条连接上没说过 ⇒ 说不清。
-    /// 没说过它、而那台已报完清单 ⇒ 不在清单里 = 已结束；还没报完 ⇒ 机器级说不清（见 [`Self::unseen_block`]）。
+    /// 没说过它：那台还没报完清单 ⇒ 机器级说不清（见 [`Self::unseen_block`]）；报完了 ⇒ 不说（去向由那台答）。
     pub fn settle_again(&self, origin: &str, sid: &str) -> Vec<Out> {
         let b = self.origins.get(origin);
         match b.and_then(|b| b.sessions.get(sid)) {
             Some(Product::Live(_)) => Vec::new(),
-            Some(Product::Left(fate, words)) => vec![Out::Left {
+            Some(Product::Left(s)) => vec![Out::Left {
                 origin: origin.to_string(),
-                sid: sid.to_string(),
-                fate: *fate,
-                words: words.clone(),
+                state: s.clone(),
             }],
-            None if b.is_some_and(|b| b.listed) => vec![Out::Left {
-                origin: origin.to_string(),
-                sid: sid.to_string(),
-                fate: Fate::Ended,
-                words: None,
-            }],
+            None if b.is_some_and(|b| b.listed) => Vec::new(),
             None => self.unseen_block(origin, vec![sid.to_string()]),
         }
     }
@@ -795,13 +476,13 @@ impl Book {
                         sid: sid.clone(),
                         meta: m.clone(),
                     }),
-                    Product::Left(Fate::Reconnectable, words) => v.push(Out::Left {
-                        origin: origin.to_string(),
-                        sid: sid.clone(),
-                        fate: Fate::Reconnectable,
-                        words: words.clone(),
-                    }),
-                    Product::Left(Fate::Ended, _) => {}
+                    Product::Left(s) if s.state == SessionFate::Reconnectable => {
+                        v.push(Out::Left {
+                            origin: origin.to_string(),
+                            state: s.clone(),
+                        })
+                    }
+                    Product::Left(_) => {}
                 }
             }
         }

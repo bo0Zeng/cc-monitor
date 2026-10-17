@@ -132,6 +132,7 @@ import type { HistoryRunReq } from "./HistoryRunReq";
 import type { HistorySearchMergeReq } from "./HistorySearchMergeReq";
 import type { HistorySearchReply } from "./HistorySearchReply";
 import type { HistorySearchReq } from "./HistorySearchReq";
+import type { HistoryTail } from "./HistoryTail";
 import type { HistoryTailReq } from "./HistoryTailReq";
 import type { HistoryTurns } from "./HistoryTurns";
 import type { HistoryTurnsReq } from "./HistoryTurnsReq";
@@ -313,7 +314,6 @@ import type { SshImportReq } from "./SshImportReq";
 import type { SshImported } from "./SshImported";
 import type { StatReply } from "./StatReply";
 import type { StatReq } from "./StatReq";
-import type { TailPlan } from "./TailPlan";
 import type { TasksList } from "./TasksList";
 import type { TasksListReq } from "./TasksListReq";
 import type { TerminalInputReq } from "./TerminalInputReq";
@@ -334,8 +334,6 @@ import type { UserInputs } from "./UserInputs";
 import type { UserInputsReq } from "./UserInputsReq";
 import type { UserPath } from "./UserPath";
 import type { UserPathReq } from "./UserPathReq";
-import type { VerdictReply } from "./VerdictReply";
-import type { VerdictReq } from "./VerdictReq";
 import type { VerifyReport } from "./VerifyReport";
 import type { WatchAsk } from "./WatchAsk";
 import type { WatchReply } from "./WatchReply";
@@ -440,7 +438,7 @@ export interface TypedCommands {
   "history-run": { req: HistoryRunReq; reply: HistoryRun; code: "bad_args" | "failed" | "not_found" | "path_refused" | "refused" | "too_large" };
   "history-search": { req: HistorySearchReq; reply: HistorySearchReply; code: "bad_args" | "failed" | "too_large" };
   "history-search-merge": { req: HistorySearchMergeReq; reply: Merged; code: "bad_args" };
-  "history-tail": { req: HistoryTailReq; reply: TailPlan; code: "bad_args" | "failed" };
+  "history-tail": { req: HistoryTailReq; reply: HistoryTail; code: "bad_args" | "failed" };
   "history-turns": { req: HistoryTurnsReq; reply: HistoryTurns; code: "bad_args" | "failed" | "too_large" };
   "history-user-inputs": { req: UserInputsReq; reply: UserInputs; code: "bad_args" | "failed" | "too_large" };
   "hooks-diag": { req: NoArgs; reply: HooksReport; code: "bad_args" | "too_large" };
@@ -493,7 +491,6 @@ export interface TypedCommands {
   "quota-read": { req: NoArgs; reply: QuotaRead; code: "bad_args" };
   "remote-probe": { req: ProbeReq; reply: null; code: "bad_args" | "bad_jump" | "failed" };
   "remote-reach": { req: ReachReq; reply: Reached; code: "bad_args" };
-  "resident-verdict": { req: VerdictReq; reply: VerdictReply; code: "bad_args" };
   "resolve": { req: ResumeSpec; reply: CommandPlan; code: "bad_args" | "invalid_session_id" | "unsafe_launch_candidate" };
   "resync": { req: ResyncReq; reply: Resynced; code: "bad_args" };
   "rotation-facts": { req: RotationFactsReq; reply: RotationFactsReply; code: "bad_args" };
@@ -550,4 +547,11 @@ export interface TypedCommands {
   "transfer-start": { req: TransferIdReq; reply: null; code: "bad_args" | "no_such_transfer" | "already_started" };
   "transfer-stop": { req: TransferIdReq; reply: null; code: "bad_args" };
   "transfer-upload": { req: TransferUploadReq; reply: TransferOpened; code: "bad_args" | "exists" };
+}
+
+/** `changed` 帧里现算小成品的主题 ⇒ 那一份的类型（＝ 重问那条命令的回包，形状随那条命令的指纹核过）。 */
+export interface TopicProducts {
+  "quota": TypedCommands["quota-read"]["reply"];
+  "rotation_strategies": TypedCommands["rotation-strategies"]["reply"];
+  "tasks": TypedCommands["tasks-list"]["reply"];
 }

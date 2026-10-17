@@ -231,40 +231,46 @@ fn withdraw_is_asked_only_when_the_peer_offers_cancel_and_the_op_is_not_stuck() 
     assert!(o.admits(free) && !o.admits("pong"));
 }
 
-/// hello / resync 里 `unavailable` 那一格与 hello 的 `shapes`：坏项逐项丢、不丢整份；缺格 ⇒ 空。`shapes` 里值不是串的那一项丢掉。
+/// hello 交的能力事实按类型收：命令 · 做不到的 · 命令形状表原样；帧那一张当场比出对不上的那几种（指纹不同 · 没交），本侧不认的 kind 同对不上。
 #[test]
-fn offer_facts_drop_bad_items_one_by_one() {
-    let v = serde_json::json!({
-        "unavailable": [
-            {"command": "tmux-ls", "code": "no_tmux"},
-            {"command": "x"},
-            7,
-            {"command": "kill", "code": "unsupported"}
-        ],
-        "shapes": {"a": "h1", "b": 2}
-    });
-    let obj = v.as_object().unwrap();
-    let unavailable = Offer::facts_of(obj);
-    assert_eq!(
-        unavailable,
-        vec![
-            ("tmux-ls".to_string(), "no_tmux".to_string()),
-            ("kill".to_string(), "unsupported".to_string())
-        ]
-    );
-    assert_eq!(
-        Offer::shapes_of(obj),
-        vec![("a".to_string(), "h1".to_string())]
-    );
-    let none = serde_json::Map::new();
-    assert!(Offer::facts_of(&none).is_empty());
-    assert!(Offer::shapes_of(&none).is_empty());
-
-    let mut o = Offer::new(vec!["tmux-ls".into()], unavailable);
+fn an_offer_takes_the_hello_as_typed_and_names_the_frame_kinds_that_differ() {
+    use cmd_wire::frame_shapes::FRAMES;
+    let mut frames: std::collections::BTreeMap<String, String> = FRAMES
+        .iter()
+        .map(|(k, h)| (k.to_string(), h.to_string()))
+        .collect();
+    frames.insert("session_status".into(), "00000000".into());
+    frames.remove("line");
+    let hello = cmd_wire::frame::Hello {
+        build_id: "b".into(),
+        host_arch: "x86_64".into(),
+        commands: vec!["tmux-ls".into()],
+        unavailable: vec![cmd_wire::frame::Unavailable {
+            command: "tmux-ls".into(),
+            code: "no_tmux".into(),
+        }],
+        host_env: Default::default(),
+        shapes: [("a".to_string(), "h1".to_string())].into(),
+        frames,
+    };
+    let mut o = Offer::of(&hello);
+    assert_eq!(o.frames_differ(), ["line", "session_status"]);
+    assert!(o.frame_differs("line") && o.frame_differs("session_status"));
+    assert!(!o.frame_differs("session_added"));
+    assert!(o.frame_differs("no_such_kind"), "本侧不认的 kind 同对不上");
     assert_eq!(o.unavailable("tmux-ls"), Some("no_tmux"));
-    o.refresh_facts(Vec::new());
+    o.refresh_facts(&[]);
     assert_eq!(o.unavailable("tmux-ls"), None);
     assert_eq!(o.ops(), ["tmux-ls"]);
+    let all = Offer::of(&cmd_wire::frame::Hello {
+        frames: Default::default(),
+        ..hello
+    });
+    assert_eq!(
+        all.frames_differ().len(),
+        FRAMES.len(),
+        "没交帧表 ⇒ 全部对不上"
+    );
 }
 
 /// 期限：剩余只减不增、过了就是零；换钟面不改时刻。撤单手柄拨一下，等它的都醒。

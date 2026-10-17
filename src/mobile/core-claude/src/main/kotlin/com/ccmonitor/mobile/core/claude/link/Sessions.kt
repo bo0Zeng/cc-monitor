@@ -2,8 +2,11 @@ package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.claude.link.wire.AgentFacts
 import com.ccmonitor.mobile.core.claude.link.wire.FirstSay
+import com.ccmonitor.mobile.core.claude.link.wire.Held
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryLinesPage
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryReadPage
+import com.ccmonitor.mobile.core.claude.link.wire.HistoryTailReply
+import com.ccmonitor.mobile.core.claude.link.wire.LineFrame
 import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
 import com.ccmonitor.mobile.core.claude.link.wire.ModeSwitched
 import com.ccmonitor.mobile.core.claude.link.wire.ModelSwitched
@@ -14,7 +17,6 @@ import com.ccmonitor.mobile.core.claude.link.wire.SessionCommands
 import com.ccmonitor.mobile.core.claude.link.wire.SessionFacts
 import com.ccmonitor.mobile.core.claude.link.wire.SessionNewOutcome
 import com.ccmonitor.mobile.core.claude.link.wire.SessionNewReply
-import com.ccmonitor.mobile.core.claude.link.wire.TailPlan
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
 import com.ccmonitor.mobile.core.claude.link.wire.Sent as SentWire
 
@@ -212,20 +214,25 @@ object TerminalInput {
         }
 }
 
-/** `history-tail`：一份会话最新 [n] 行从哪个字节起。 */
+/**
+ * `history-tail`：一份会话最新 [n] 行在哪 ＋ 手上那一份（[held]，上一次回的、之后流上的行推过的）怎么接，连第一页正文一问回来。
+ * 怎么接那台判（续得上 · 变短 · 被改写 · 缺得比 [n] 多）；第一页与 `history-read` 同一形（`rows` · `next` · `eof`，[HistoryRead.of] 解）。
+ */
 object HistoryTail {
     const val COMMAND: String = "history-tail"
 
     fun args(
         path: String,
         n: Int,
-    ): Map<String, Any?> = mapOf("path" to path, "n" to n.toLong())
+        held: Held? = null,
+    ): Map<String, Any?> =
+        buildMap {
+            put("path", path)
+            put("n", n.toLong())
+            held?.let { put("held", mapOf("path" to it.path, "next" to it.next, "next_byte" to it.nextByte, "mark" to it.mark)) }
+        }
 
-    /**
-     * 回包就是 `cmd-wire` 的 `TailPlan`（字节 `end` · 尾段起点 `splitAt` · 尾段第一行行号 `tailFrom`，与 `line` 帧的 `seq` 同一个空间 · 可计行总数 `total` ·
-     * 文件身份 `file`：同一路径换了一份就变）。
-     */
-    fun of(data: Any?): TailPlan? = Wire.bind<TailPlan>(data)
+    fun of(data: Any?): HistoryTailReply? = Wire.bind<HistoryTailReply>(data)
 }
 
 /** `history-read`：按字节读 `[offset, until)` 那一段，每行一条通用记录（不进界面的行没有记录、不出）。 */
@@ -313,10 +320,9 @@ data class RecordLine(
     companion object {
         fun of(frame: Map<String, Any?>): RecordLine? {
             if (frame.str("kind") != "line") return null
+            val f = Wire.bind<LineFrame>(frame) ?: return null
             val record = frame["record"]?.let { Wire.bind<LineRecord>(it) }
-            return decoding {
-                RecordLine(frame.str("session_id").need(), frame.str("path").need(), frame.num("seq").need(), frame.num("byte_offset"), record, frame["record"])
-            }
+            return RecordLine(f.sid, f.path, f.seq, f.byteOffset, record, frame["record"])
         }
     }
 }

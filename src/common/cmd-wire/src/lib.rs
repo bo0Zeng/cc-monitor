@@ -5,6 +5,8 @@
 //! - [`live`]：活卡（`live_card` 帧）的线上形与归一流里一块的种类（[`live::BlockKind`]）；
 //! - [`machine`]：「这一趟问的是哪台机器」的唯一类型 [`Machine`]（线上就是一个字符串，本机逐字 `"<local>"`）；
 //! - [`agent`]：线上一家 agent 的名字 [`AgentKind`]（kind；后端里面的路由名不上线）；
+//! - [`attach`]：接常驻流那一段握手的两行（attach 行 · 回话）与新旧三态 [`attach::Relation`]；
+//! - [`watch`]：「这条流在看哪几个会话」（`stream-watch` 的入参与应答；attach 行带的就是同一份入参）；
 //! - [`accounts`]：账号库那几条命令（`accounts-*`）的入参与成品；
 //! - [`quota`]：`quota-read` 的回包（额度账的显示态 · 写好的几行 · 开窗那一判）；
 //! - [`rotation`]：轮换那几条（`rotation-*`）的回包与失败带的 `data`；
@@ -19,11 +21,15 @@
 
 pub mod accounts;
 pub mod agent;
+pub mod attach;
 pub mod batch;
 pub mod cells;
 pub mod files;
 pub mod fnv;
+#[cfg(any(test, feature = "ts"))]
+pub mod fingerprint;
 pub mod frame;
+pub mod frame_shapes;
 pub mod listing;
 pub mod live;
 pub mod machine;
@@ -35,6 +41,7 @@ pub mod rotation;
 pub mod session;
 pub mod shapes;
 pub mod transfer;
+pub mod watch;
 
 pub use agent::AgentKind;
 pub use machine::{Machine, Route, LOCAL};

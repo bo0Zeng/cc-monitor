@@ -21,11 +21,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::asynchronous::<crate::control::deploy_plan::DeployPlan>(
         "那台的后端要不要换、换成哪一格",
     ),
-    // **远端常驻后端 hello 的新旧**：`{mine, theirs, replaced}` → `{action, older}`（纯判定，不碰盘不拨号 ⇒ 不进阻塞档）。
-    //   本体 `control/deploy_plan.rs::answer_resident_verdict`（判定只在后端）。
-    crate::wire::typed::asynchronous::<crate::control::deploy_plan::ResidentVerdict>(
-        "远端常驻后端要不要换一次",
-    ),
     // **本机那一份放不放**：`{dest, machine}` → `{action: place|keep, why}`（只读落点那一个文件 ⇒ 阻塞档）。
     //   monitor 放本机后端之前还没有常驻后端 ⇒ 跑手上那份字节的 CLI 面问它（`--place-verdict`）。本体 `control/deploy_plan.rs::answer_place`。
     crate::wire::typed::blocking::<crate::control::deploy_plan::PlaceVerdict>("本机那一份放不放"),

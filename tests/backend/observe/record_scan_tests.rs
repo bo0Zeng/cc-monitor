@@ -155,7 +155,7 @@ fn r1_one_pass_equals_each_scan_on_its_own() {
 
     for n in [0usize, 1, 2, 5, 1000] {
         let want = crate::observe::history_query::tail_plan_of(bytes, n).unwrap();
-        assert_eq!(map.tail(n, want.file.clone()), want, "尾段 n={n}");
+        assert_eq!(map.tail(n), want, "尾段 n={n}");
     }
 }
 
@@ -305,7 +305,7 @@ fn whole(map: &ScanMap) -> String {
         rows(&map.turns),
         map.off,
         map.facts(&limits, None),
-        map.tail(3, String::new()),
+        map.tail(3),
     )
 }
 

@@ -5,11 +5,13 @@
 //! `watch_from`（JSON 数组）· `ssh`（SSH 够没够着那一台：`true` / `false`，与流通不通分开；SSH 那层跟它走）· `reply`（一问一答的结局，JSON，带 `call` 编号）·
 //! `moved`（分块传走到哪，`transfer.rs`）。
 
+use cmd_wire::record::OrUnread;
 use resident_client::client::CallError;
 use resident_client::feed::{
     sink, Boxed, Config, Event, Exec, Feed, Problem, Progress, State, Transport,
 };
-use std::collections::HashMap;
+use resident_client::watch::Desk;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
@@ -241,40 +243,25 @@ pub(crate) fn feed(h: i64) -> Option<Arc<Feed<PhoneLink>>> {
         .cloned()
 }
 
-/// 一件事 ⇒ `(种类, 文本)`（帧原样，只有 `line` 帧里解不开的那条记录换成认不出那一条：`cmd_wire::record::mend_line_frame`）；Kotlin 用不着的（接上那一刻的 hello 与客户端：问答经 [`call`] 走 · 超长丢行的缺口）⇒ `None`。
+/// 一件事 ⇒ `(种类, 文本)`。帧按 `cmd-wire` 那一份类型解过、再按类型写一行（`line` 帧里解不开的那条记录成认不出那一条：[`OrUnread`]）；
+/// 解不开 ⇒ `unread` 原样那一行。Kotlin 用不着的（接上那一刻的 hello 与客户端：问答经 [`call`] 走 · 超长丢行的缺口）⇒ `None`。
 pub fn event_of(e: &Event) -> Option<(&'static str, String)> {
     Some(match e {
         Event::State(s) => ("state", state_json(s)),
-        Event::Frame(line) => (
-            "frame",
-            cmd_wire::record::mend_line_frame(line).unwrap_or_else(|| line.clone()),
-        ),
-        Event::WatchFrom(rows) => (
-            "watch_from",
-            serde_json::to_string(rows).unwrap_or_else(|_| "[]".into()),
-        ),
+        Event::Frame(line) => match cmd_wire::frame::decode::<OrUnread>(line)
+            .and_then(|f| serde_json::to_string(&f))
+        {
+            Ok(typed) => ("frame", typed),
+            Err(_) => ("unread", line.clone()),
+        },
         Event::Ssh(reached) => ("ssh", reached.to_string()),
         Event::Attached { .. } | Event::Gap => return None,
     })
 }
 
-/// 状态那一行；通着、但那台旧了（`notice`）⇒ 另点名 `fix: update`（同断着时的 `fix`：［更新后端］按得了）。
+/// 状态那一行（要不要「更新后端」由循环定好在 `fix` 里：通着 · 断着同一格）。
 pub fn state_json(s: &State) -> String {
-    let mut v =
-        serde_json::to_value(s).unwrap_or_else(|_| serde_json::json!({"state": "connecting"}));
-    if let (
-        State::Up {
-            notice: Some(_), ..
-        },
-        Some(o),
-    ) = (s, v.as_object_mut())
-    {
-        o.insert(
-            "fix".into(),
-            serde_json::to_value(resident_client::feed::Fix::Update).unwrap_or_default(),
-        );
-    }
-    v.to_string()
+    serde_json::to_string(s).unwrap_or_else(|_| r#"{"state":"connecting"}"#.to_string())
 }
 
 /// 看一台（在当前运行时上起它的循环）。`mine` = 手上这一版的身份（版本门的对照物）。回编号。
@@ -287,21 +274,36 @@ pub fn open(machine: String, mine: Option<String>, tz: Option<String>, on_event:
         tz,
         handshake: HANDSHAKE,
     };
+    // 名单从空开始：一条会话都还没人看 ⇒ 那台一条都不发（屏上开了哪条再经 [`watch`] 报）。手机不读主线外清单 ⇒ 一份都不要。
+    let rows_to = Arc::clone(&on_event);
+    let desk = Desk::new(
+        |_| Vec::new(),
+        move |rows| {
+            rows_to(
+                id,
+                "watch_from",
+                serde_json::to_string(&rows).unwrap_or_else(|_| "[]".into()),
+            );
+        },
+    );
     let feed = Feed::start(
         cfg,
         None,
+        Arc::clone(&desk),
         sink(move |e: Event| {
             if let Some((kind, body)) = event_of(&e) {
                 on_event(id, kind, body);
             }
         }),
     );
-    // 一条会话都还没人看 ⇒ 那台一条都不发（屏上开了哪条再经 [`watch`] 报）。
-    feed.watch_none();
     feeds()
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .insert(id, feed);
+    watching()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(id, (desk, Watched::default()));
     id
 }
 
@@ -351,10 +353,55 @@ pub fn call(h: i64, cmd: String, args: &str, within_ms: u64, on_event: OnEvent) 
     id
 }
 
-/// 多一处 / 少一处在看这条会话。
+/// 多一处 / 少一处在看这条会话。名单变了 ⇒ 交那台的名单台（整份）。
 pub fn watch(h: i64, sid: &str, holding: bool) {
-    if let Some(f) = feed(h) {
-        f.watch(sid, holding);
+    let mut t = watching().lock().unwrap_or_else(|e| e.into_inner());
+    let Some((desk, w)) = t.get_mut(&h) else {
+        return;
+    };
+    let moved = if holding { w.hold(sid) } else { w.release(sid) };
+    if moved {
+        desk.set(w.sids(), Default::default());
+    }
+}
+
+/// 每台的名单台与「几处在看」的计数（[`open`] 起、[`close`] 摘）。
+fn watching() -> &'static Mutex<HashMap<i64, (Arc<Desk>, Watched)>> {
+    static W: OnceLock<Mutex<HashMap<i64, (Arc<Desk>, Watched)>>> = OnceLock::new();
+    W.get_or_init(Default::default)
+}
+
+/// 此刻有人在看的那几条（每条记有几处在看：一处放手不影响别处）。名单 = 计数大于零的那几条。
+#[derive(Debug, Default, Clone)]
+pub struct Watched {
+    held: BTreeMap<String, u32>,
+}
+
+impl Watched {
+    /// 多一处在看。回名单变没变。
+    pub fn hold(&mut self, sid: &str) -> bool {
+        let n = self.held.entry(sid.to_string()).or_insert(0);
+        *n += 1;
+        *n == 1
+    }
+
+    /// 少一处在看。回名单变没变（本来就没在看 ⇒ 不变）。
+    pub fn release(&mut self, sid: &str) -> bool {
+        match self.held.get_mut(sid) {
+            Some(n) if *n > 1 => {
+                *n -= 1;
+                false
+            }
+            Some(_) => {
+                self.held.remove(sid);
+                true
+            }
+            None => false,
+        }
+    }
+
+    pub fn sids(&self) -> BTreeSet<String> {
+        self.held.keys().cloned().collect()
     }
 }
 
@@ -371,6 +418,10 @@ pub fn kick(h: i64, retry: bool) {
 
 pub fn close(h: i64) {
     bases().lock().unwrap_or_else(|e| e.into_inner()).remove(&h);
+    watching()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&h);
     if let Some(f) = feeds().lock().unwrap_or_else(|e| e.into_inner()).remove(&h) {
         f.close();
     }
@@ -593,7 +644,7 @@ mod tests {
         );
         assert!(!rec["id"].as_str().unwrap().is_empty());
 
-        // 流上的 `line` 帧：同一个解法（那一条成卡、帧照交）；别的帧原样。
+        // 流上的 `line` 帧：同一个解法（那一条成卡、帧照交）。
         let frame = serde_json::json!({"kind": "line", "session_id": "s", "path": "/p", "seq": 7, "byte_offset": 70, "record": short});
         let (k, b) = event_of(&Event::Frame(frame.to_string())).unwrap();
         assert_eq!(k, "frame");
@@ -603,24 +654,47 @@ mod tests {
             (v["seq"].as_u64(), v["byte_offset"].as_u64()),
             (Some(7), Some(70))
         );
-        let fine = serde_json::json!({"kind": "line", "session_id": "s", "path": "/p", "seq": 8, "record": good});
+        let fine = serde_json::json!({"kind": "line", "session_id": "s", "path": "/p", "seq": 8, "byte_offset": 80, "record": good});
         let v: serde_json::Value =
             serde_json::from_str(&event_of(&Event::Frame(fine.to_string())).unwrap().1).unwrap();
         assert_eq!(v, fine);
     }
 
-    /// 交 Kotlin 的几种事：状态是带 `state` 标签的 JSON · 帧原样。
+    /// 帧按 `cmd-wire` 那一份类型解过、再按类型写一行交 Kotlin（线上同名的格；类型里没有的格不交）；解不开 ⇒ 照实交认不出的那一行。
+    #[test]
+    fn frames_are_rewritten_by_type_and_an_unreadable_one_says_so() {
+        let removed = r#"{"kind":"session_removed","sid":"s","cause":"gone","later":1}"#;
+        let (k, b) = event_of(&Event::Frame(removed.into())).unwrap();
+        assert_eq!(k, "frame");
+        let v: serde_json::Value = serde_json::from_str(&b).unwrap();
+        assert_eq!(
+            (v["kind"].as_str(), v["sid"].as_str()),
+            (Some("session_removed"), Some("s"))
+        );
+        assert!(v.get("later").is_none(), "类型里没有的格不交：{v}");
+        assert_eq!(
+            event_of(&Event::Frame("{\"kind\":\"x\"}".into())),
+            Some(("unread", "{\"kind\":\"x\"}".to_string()))
+        );
+    }
+
+    /// 交 Kotlin 的几种事：状态是带 `state` 标签的 JSON。
     #[test]
     fn events_are_tagged_and_frames_go_through_untouched() {
         let (k, b) = event_of(&Event::State(State::Up {
             epoch: 3,
-            notice: None,
+            relation: cmd_wire::attach::Relation::Newer,
+            differs: vec![],
+            notice: Some(Problem::new("box 后端较新 · 不会换回", "")),
+            fix: None,
         }))
         .unwrap();
         assert_eq!(k, "state");
         let v: serde_json::Value = serde_json::from_str(&b).unwrap();
         assert_eq!(v["state"], "up");
         assert_eq!(v["epoch"], 3);
+        assert_eq!(v["relation"], "newer");
+        assert!(v.get("fix").is_none(), "那台新 ⇒ 不点名「更新」：{v}");
         let (k, b) = event_of(&Event::State(State::Down {
             problem: Problem::new("box 离线", ""),
             needs_hand: true,
@@ -638,15 +712,25 @@ mod tests {
             ),
             (Some("down"), Some(true), Some("box 离线"))
         );
-        assert_eq!(
-            event_of(&Event::Frame("{\"kind\":\"x\"}".into())),
-            Some(("frame", "{\"kind\":\"x\"}".to_string()))
-        );
         assert_eq!(event_of(&Event::Gap), None, "缺口 Kotlin 用不着");
         assert_eq!(
             event_of(&Event::Ssh(true)),
             Some(("ssh", "true".to_string()))
         );
+    }
+
+    /// 几处在看同一条：计数到零才出名单；两处 hold、放一处 ⇒ 名单不变。
+    #[test]
+    fn a_session_leaves_the_list_only_when_the_last_holder_lets_go() {
+        let mut w = Watched::default();
+        assert!(w.sids().is_empty(), "从空开始");
+        assert!(w.hold("a"), "第一处在看 ⇒ 名单变了");
+        assert!(!w.hold("a"), "第二处在看 ⇒ 名单没变");
+        assert!(!w.release("a"));
+        assert_eq!(w.sids().len(), 1);
+        assert!(w.release("a"), "最后一处放手 ⇒ 名单变了");
+        assert!(w.sids().is_empty());
+        assert!(!w.release("a"), "本来就没在看 ⇒ 不变");
     }
 
     /// ack 与 capture 那一行的读法。

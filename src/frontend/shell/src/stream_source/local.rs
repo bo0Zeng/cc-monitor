@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::event_replay::EventReplay;
-use crate::session_book::{In as BookIn, LiveMeta};
+use crate::session_book::In as BookIn;
 use std::sync::Arc;
 
 /// 活会话的记录文件怎么了。线上（后端 `session_file_gone` / `session_file_reread.why`）与交前端的
@@ -18,15 +18,6 @@ pub enum FileChange {
 }
 
 impl FileChange {
-    /// `session_file_reread.why` → 那一形；认不出 ⇒ `None`（整帧跳过，不猜）。
-    pub fn reread_from_wire(why: &str) -> Option<Self> {
-        match why {
-            "truncated" => Some(FileChange::Truncated),
-            "rewritten" => Some(FileChange::Rewritten),
-            _ => None,
-        }
-    }
-
     /// 交前端那一格的字面量。
     pub fn as_wire(self) -> &'static str {
         match self {
@@ -40,179 +31,12 @@ impl FileChange {
 /// 本机那条流交进来的东西（`local_lines` 通道上的一件）。
 #[derive(Debug)]
 pub(crate) enum LocalItem {
-    /// 读循环从 `absorb_local_frame` 手里接回的内容帧（`line` / `session_added` / `session_removed`）。
-    Frame(InboundFrame),
+    /// 读循环分派第一层交回的有序那一件（[`route`]）。
+    Frame(Ordered),
     /// 这条流结束了（两条读循环的收尾各送一次）。
     StreamEnded,
     /// 这条流上一行超长、整行丢了（说不出是哪个会话的哪一行）。
     LineLost,
-}
-
-/// 本机消费者对一件东西的处置 —— **纯函数**的输出，异步那半只照做。
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum LocalStep {
-    /// 进 [`LineIntake::line`]。
-    Line {
-        session_id: String,
-        path: String,
-        seq: u64,
-        record: Option<crate::ui_contract::RecordBody>,
-        cwd: Option<String>,
-        end: Option<u64>,
-        rid: Option<String>,
-    },
-    /// 进 [`LineIntake::announced`]。
-    Announce {
-        sid: String,
-        path: Option<String>,
-        lines: Option<u64>,
-    },
-    /// 冲掉残批，再进 [`LineIntake::removed`]。
-    Remove { sid: String },
-    /// 本机的某样东西变了 ⇒ 交重放缓冲那张订阅表（与远端同一个 `changed`）。
-    Changed { topic: String, cell: String },
-    /// 进 [`LineIntake::notice`]（冲掉残批、交一格出声）。
-    Notice {
-        sid: String,
-        path: String,
-        change: FileChange,
-        lines: Option<u64>,
-    },
-    /// 这一件不进内容流（不是内容帧）。
-    Skip,
-    /// 冲掉残批、换一个新的 [`LineIntake`]（下一条流从头来）。
-    StreamEnded,
-    /// 进 [`LineIntake::lost`]（冲掉残批、原位给一格 `Gap`）。
-    Lost,
-}
-
-/// 本机那条流上的一件东西 ⇒ 交 `session_book` 的成品（**纯**）。隐藏的会话照样到这里（隐不隐藏是帧上那一格，界面读；需手动不因隐藏而丢）。
-///
-/// 与远端 `stream_source/run.rs::dispatch` 那几条臂交同一种成品（本机 ＝ 不走 ssh 的远端，`INVARIANTS §40`）。流断 ⇒ 这台的成品作废（说不清）。
-pub(crate) fn local_product(item: &LocalItem, label: &str) -> Option<BookIn> {
-    let origin = || label.to_string();
-    match item {
-        LocalItem::StreamEnded => Some(BookIn::LinkLost { origin: origin() }),
-        LocalItem::LineLost => None,
-        LocalItem::Frame(InboundFrame::SessionAdded {
-            sid,
-            background,
-            attachable,
-            cwd,
-            project_dir,
-            name,
-            activity,
-            naming,
-            waiting_for,
-            hidden,
-            container,
-            pid,
-            ..
-        }) => Some(BookIn::Live {
-            origin: origin(),
-            sid: sid.clone(),
-            meta: LiveMeta {
-                background: *background,
-                attachable: *attachable,
-                cwd: cwd.clone(),
-                project_dir: project_dir.clone(),
-                name: name.clone(),
-                activity: activity.clone(),
-                naming: naming.clone(),
-                waiting_for: waiting_for.clone(),
-                hidden: hidden.clone(),
-                container: container.clone(),
-                pid: *pid,
-            },
-        }),
-        LocalItem::Frame(InboundFrame::SessionStatus {
-            sid,
-            activity,
-            naming,
-            waiting_for,
-        }) => Some(BookIn::Status {
-            origin: origin(),
-            sid: sid.clone(),
-            activity: activity.clone(),
-            naming: naming.clone(),
-            waiting_for: waiting_for.clone(),
-        }),
-        LocalItem::Frame(InboundFrame::SessionState { sid, state, words }) => Some(BookIn::Left {
-            origin: origin(),
-            sid: sid.clone(),
-            fate: *state,
-            words: Some(words.clone()),
-        }),
-        LocalItem::Frame(InboundFrame::SessionsReplayed) => {
-            Some(BookIn::Listed { origin: origin() })
-        }
-        LocalItem::Frame(InboundFrame::SessionRuns { sid, runs, ended }) => Some(BookIn::Runs {
-            origin: origin(),
-            sid: sid.clone(),
-            runs: runs.clone(),
-            ended: ended.clone(),
-        }),
-        LocalItem::Frame(InboundFrame::SessionBranch {
-            sid,
-            path,
-            at,
-            off,
-            sum,
-        }) => Some(BookIn::Branch {
-            origin: crate::origin::Origin(label.to_string()),
-            sid: sid.clone(),
-            path: path.clone(),
-            at: *at,
-            off: off.clone(),
-            sum: sum.clone(),
-        }),
-        LocalItem::Frame(_) => None,
-    }
-}
-
-/// 本机消费者的**纯分派核**：一件东西 ⇒ 怎么处置。
-pub(crate) fn local_step(item: LocalItem) -> LocalStep {
-    match item {
-        LocalItem::StreamEnded => LocalStep::StreamEnded,
-        LocalItem::LineLost => LocalStep::Lost,
-        LocalItem::Frame(InboundFrame::Line {
-            session_id,
-            path,
-            seq,
-            record,
-            cwd,
-            end,
-            rid,
-        }) => LocalStep::Line {
-            session_id,
-            path,
-            seq,
-            record,
-            cwd,
-            end: Some(end),
-            rid,
-        },
-        LocalItem::Frame(InboundFrame::SessionPrimed { sid, path, lines }) => {
-            LocalStep::Announce { sid, path, lines }
-        }
-        LocalItem::Frame(InboundFrame::SessionRemoved { sid }) => LocalStep::Remove { sid },
-        LocalItem::Frame(InboundFrame::SessionFileNotice {
-            sid,
-            path,
-            change,
-            lines,
-        }) => LocalStep::Notice {
-            sid,
-            path,
-            change,
-            lines,
-        },
-        // 「X 变了」：界面按主题 · key 取（隐藏那一格变了也走这里，主题 `session_hidden`）。
-        LocalItem::Frame(InboundFrame::Changed { topic, cell }) => {
-            LocalStep::Changed { topic, cell }
-        }
-        LocalItem::Frame(_) => LocalStep::Skip,
-    }
 }
 
 /// **本机会话内容的消费者**：吃 `local_lines` 通道，交给与远端同一个 [`LineIntake`]。
@@ -222,7 +46,7 @@ pub(crate) fn local_step(item: LocalItem) -> LocalStep {
 /// 下一条流换新的 —— 与远端「每条连接一套」同形。本机后端重连之后会重新宣告每个活会话，
 /// 旁路快照按续点接着拉（`snapshot_resume`）。
 ///
-/// **本机会话的起停也从这条流来**：后端出的成品经 [`local_product`] 交 `session_book`（与远端同一个口）；
+/// **本机会话的起停也从这条流来**：有序的那几种经 [`apply`] 交 `session_book` 与收口（与远端同一处）；
 /// 流断 ⇒ 本机的成品作废、当时活的 / 可重连的说不清（`session_book::In::LinkLost`），不归档。
 /// ⚠ 本任务**绝不**等一个经本机通道的应答（快照那几问在分发器的任务里）：读循环可能正停在往本通道送东西上，
 ///   这里要是也等它 ⇒ 互等。
@@ -232,6 +56,7 @@ pub(crate) async fn consume_local(
     replay: Arc<EventReplay>,
     health: HealthOut,
 ) {
+    let origin = crate::origin::Origin(label.clone());
     loop {
         let mut intake = LineIntake::open(label.clone(), &replay, &health);
         // 这条流交来第一件东西 ⇒ 本机那台「看得见」（订阅原位收 `Seen`）；流结束 ⇒ `Unseen`。
@@ -244,65 +69,18 @@ pub(crate) async fn consume_local(
             };
             if !seen && !matches!(item, LocalItem::StreamEnded) {
                 seen = true;
-                replay.origin_seen(&crate::origin::Origin(label.clone()), true);
+                replay.origin_seen(&origin, true);
             }
-            // 本机起停的成品：先交 `session_book`。
-            //   流断 / 去向那两件先冲掉残批再交（与远端同序：行先落、再说「离开了 / 看不见了」）。
-            if matches!(
-                item,
-                LocalItem::StreamEnded | LocalItem::Frame(InboundFrame::SessionState { .. })
-            ) {
-                intake.flush().await;
-            }
-            if let Some(ev) = local_product(&item, &label) {
-                crate::session_book::feed(ev);
-            }
-            match local_step(item) {
-                LocalStep::Line {
-                    session_id,
-                    path,
-                    seq,
-                    record,
-                    cwd,
-                    end,
-                    rid,
-                } => {
-                    intake
-                        .line(JsonlLine {
-                            session_id,
-                            path: std::path::PathBuf::from(path),
-                            seq,
-                            record,
-                            cwd,
-                            end,
-                            rid,
-                            catch_up: false,
-                        })
-                        .await
-                }
-                LocalStep::Announce { sid, path, lines } => intake.announced(&sid, path, lines),
-                LocalStep::Remove { sid } => {
+            match item {
+                LocalItem::Frame(f) => apply(&origin, f, &mut intake, &replay, &health).await,
+                LocalItem::LineLost => intake.lost().await,
+                LocalItem::StreamEnded => {
+                    // 残批先冲完、再说「看不见了」（与远端同序：行先落）。
                     intake.flush().await;
-                    intake.removed(&sid);
-                }
-                LocalStep::Notice {
-                    sid,
-                    path,
-                    change,
-                    lines,
-                } => intake.notice(&sid, &path, change, lines).await,
-                LocalStep::Changed { topic, cell } => {
-                    // 本机的机器表变了 ⇒ 本壳自己也重问一次、对齐远端流（界面的订阅照常收这一格）。
-                    if topic == "machines" {
-                        crate::machine_table::refresh();
-                    }
-                    replay.changed(&crate::origin::Origin(label.clone()), &topic, cell)
-                }
-                LocalStep::Skip => {}
-                LocalStep::Lost => intake.lost().await,
-                LocalStep::StreamEnded => {
-                    intake.flush().await;
-                    replay.origin_seen(&crate::origin::Origin(label.clone()), false);
+                    crate::session_book::feed(BookIn::LinkLost {
+                        origin: label.clone(),
+                    });
+                    replay.origin_seen(&origin, false);
                     tracing::info!(
                         "本机那条流结束：内容收口换新（下一条流重新宣告、快照按续点接着拉）"
                     );

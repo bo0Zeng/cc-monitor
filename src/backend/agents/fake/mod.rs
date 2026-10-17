@@ -25,7 +25,7 @@
 //!
 //! # 走全流程
 //!
-//! [`walk`] 把假 agent 推过六段，每一段都经通用层：发现（`agents::visible_among`）· 宣告（`wire::Frame::Hello`）·
+//! [`walk`] 把假 agent 推过五段，每一段都经通用层：发现（注册表那一行的 home）·
 //! 读会话 / 判活 / 账号（注册表里这一家那几格，经 `agents::*_among`）· resume（`resolve_query::resolve`）。
 //! 挖掉任一种能力（[`FakeCaps::without`]），那一格的面就拼不出来，流程停在点得出名字的那一段。
 
@@ -34,7 +34,7 @@ use std::path::{Path, PathBuf};
 
 /// 本假 agent 在 wire 上的 `agent_kind` 值。
 ///
-/// ⚠ 它**永远不会**出现在真 `hello.homes` 里 —— 本层不进 `agents::REGISTRY`
+/// ⚠ 本层不进 `agents::REGISTRY`
 /// （`the_fixture_agent_never_ships` 钉住）。
 // 子运行形状（与 Claude Code 每一格都不同形；通用层的运行判据拿它跑）。
 pub(crate) mod runs;
@@ -243,15 +243,8 @@ impl FakeCaps {
     }
 }
 
-/// 全流程的 6 段。名字进错误信息，所以是常量而不是字面量。
-pub(crate) const STAGES: &[&str] = &[
-    "发现",
-    "宣告（hello.homes）",
-    "读会话",
-    "判活",
-    "账号",
-    "resume",
-];
+/// 全流程的 5 段。名字进错误信息，所以是常量而不是字面量。
+pub(crate) const STAGES: &[&str] = &["发现", "读会话", "判活", "账号", "resume"];
 
 /// 流程停下来的原因：点名是哪一段缺了哪一种能力（不许静默当成「这个 agent 没有会话」）。
 #[derive(Debug, PartialEq, Eq)]
@@ -487,8 +480,7 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         mcp: Some(MCP),
         ..bare_row(home_fn)
     };
-    let discovered = crate::agents::visible_among(std::slice::from_ref(&adapter));
-    if discovered.len() != 1 {
+    if !(adapter.home)().is_some_and(|h| h.is_dir()) {
         return Err(Stop::MissingCapability {
             stage: STAGES[0],
             capability: "解析本机 home",
@@ -496,43 +488,17 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
     }
     done.push(STAGES[0]);
 
-    // ── ② 宣告：**真的走通用层**（塞进 `Hello.homes` 并序列化成一行）。
-    let line = crate::wire::to_line(&crate::wire::Frame::Hello(crate::wire::Hello {
-        v: 1,
-        build_id: "s6".into(),
-        host_arch: "x86_64".into(),
-        claude_dir: "/c".into(),
-        homes: discovered.clone(),
-        emits: vec![],
-        commands: vec![],
-        // 握手帧的「这台做不到」：第三家 agent 不带命令，空表 ⇒ 省略 ⇒ 下面那串期望字节不变。
-        unavailable: vec![],
-        host_env: Default::default(),
-        shapes: Default::default(),
-    }))
-    .map_err(|_| Stop::MissingCapability {
-        stage: STAGES[1],
-        capability: "解析本机 home",
-    })?;
-    if !line.contains(&format!("\"agent_kind\":\"{AGENT_KIND}\"")) {
-        return Err(Stop::MissingCapability {
-            stage: STAGES[1],
-            capability: "解析本机 home",
-        });
-    }
-    done.push(STAGES[1]);
-
-    // ── ③ 读会话：经通用层（注册表里这一家的记录树根 · 会话文件判定 · 新会话文件命名）。
+    // ── ② 读会话：经通用层（注册表里这一家的记录树根 · 会话文件判定 · 新会话文件命名）。
     let root_fn = caps.records_root.ok_or(Stop::MissingCapability {
-        stage: STAGES[2],
+        stage: STAGES[1],
         capability: "会话记录根",
     })?;
     let is_session = caps.is_session_file.ok_or(Stop::MissingCapability {
-        stage: STAGES[2],
+        stage: STAGES[1],
         capability: "会话文件判定",
     })?;
     let file_name = caps.session_file_name.ok_or(Stop::MissingCapability {
-        stage: STAGES[2],
+        stage: STAGES[1],
         capability: "会话文件命名",
     })?;
     let reg = [crate::agents::Adapter {
@@ -556,7 +522,7 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
     }
     if found.is_empty() {
         return Err(Stop::MissingCapability {
-            stage: STAGES[2],
+            stage: STAGES[1],
             capability: "会话记录根",
         });
     }
@@ -568,19 +534,19 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         .any(|p| p.file_name().and_then(|n| n.to_str()) == named.as_deref())
     {
         return Err(Stop::MissingCapability {
-            stage: STAGES[2],
+            stage: STAGES[1],
             capability: "会话文件命名",
         });
     }
-    done.push(STAGES[2]);
+    done.push(STAGES[1]);
 
-    // ── ④ 判活：经通用层（注册表里这一家的 pidfile 目录 + cmdline 认法）。
+    // ── ③ 判活：经通用层（注册表里这一家的 pidfile 目录 + cmdline 认法）。
     let pid_root = caps.pidfile_root.ok_or(Stop::MissingCapability {
-        stage: STAGES[3],
+        stage: STAGES[2],
         capability: "pidfile 目录",
     })?;
     let cmdline = caps.cmdline_may_be_agent.ok_or(Stop::MissingCapability {
-        stage: STAGES[3],
+        stage: STAGES[2],
         capability: "判活 cmdline",
     })?;
     let reg = [crate::agents::Adapter {
@@ -591,7 +557,7 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
     }];
     let local =
         crate::agents::local_face_among(&reg, AGENT_KIND).ok_or(Stop::MissingCapability {
-            stage: STAGES[3],
+            stage: STAGES[2],
             capability: "pidfile 目录",
         })?;
     let pidfiles = Ro::read_dir((local.pidfile_dir)(fixture_home))
@@ -599,7 +565,7 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         .unwrap_or(0);
     if pidfiles == 0 {
         return Err(Stop::MissingCapability {
-            stage: STAGES[3],
+            stage: STAGES[2],
             capability: "pidfile 目录",
         });
     }
@@ -607,19 +573,19 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         || (local.cmdline_may_be_agent)("/usr/bin/vim")
     {
         return Err(Stop::MissingCapability {
-            stage: STAGES[3],
+            stage: STAGES[2],
             capability: "判活 cmdline",
         });
     }
-    done.push(STAGES[3]);
+    done.push(STAGES[2]);
 
-    // ── ⑤ 账号：经通用层（注册表里这一家账号库面的会话环境键 + 信任预检）。
+    // ── ④ 账号：经通用层（注册表里这一家账号库面的会话环境键 + 信任预检）。
     let env_name = caps.account_dir_env.ok_or(Stop::MissingCapability {
-        stage: STAGES[4],
+        stage: STAGES[3],
         capability: "账号环境变量名",
     })?;
     caps.trust_of_config.ok_or(Stop::MissingCapability {
-        stage: STAGES[4],
+        stage: STAGES[3],
         capability: "账号信任判定",
     })?;
     let reg = [crate::agents::Adapter {
@@ -628,12 +594,12 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
     }];
     let face =
         crate::agents::accounts_face_among(&reg, AGENT_KIND).ok_or(Stop::MissingCapability {
-            stage: STAGES[4],
+            stage: STAGES[3],
             capability: "账号环境变量名",
         })?;
     if face.session_env.config_dir.trim().is_empty() {
         return Err(Stop::MissingCapability {
-            stage: STAGES[4],
+            stage: STAGES[3],
             capability: "账号环境变量名",
         });
     }
@@ -643,28 +609,28 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         .is_some_and(|v| v["trusted"] == true);
     if !trusted {
         return Err(Stop::MissingCapability {
-            stage: STAGES[4],
+            stage: STAGES[3],
             capability: "账号信任判定",
         });
     }
-    done.push(STAGES[4]);
+    done.push(STAGES[3]);
 
-    // ── ⑥ resume：默认命令 + 命令形 + 会话名前缀 —— **真的走通用层**（resume 规格 → 注册表里这一家那一格）。
+    // ── ⑤ resume：默认命令 + 命令形 + 会话名前缀 —— **真的走通用层**（resume 规格 → 注册表里这一家那一格）。
     let base = caps.default_command.ok_or(Stop::MissingCapability {
-        stage: STAGES[5],
+        stage: STAGES[4],
         capability: "resume 默认命令",
     })?;
     let cmd = caps.resume_command.ok_or(Stop::MissingCapability {
-        stage: STAGES[5],
+        stage: STAGES[4],
         capability: "resume 命令形",
     })?;
     let prefix = caps.session_name_prefix.ok_or(Stop::MissingCapability {
-        stage: STAGES[5],
+        stage: STAGES[4],
         capability: "resume 会话名前缀",
     })?;
     if base.trim().is_empty() || prefix.trim().is_empty() || !cmd(base, sid).contains(sid) {
         return Err(Stop::MissingCapability {
-            stage: STAGES[5],
+            stage: STAGES[4],
             capability: "resume 命令形",
         });
     }
@@ -686,7 +652,7 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         .ok()
         .and_then(|p| serde_json::to_value(p).ok())
         .ok_or_else(|| Stop::MissingCapability {
-            stage: STAGES[5],
+            stage: STAGES[4],
             capability: "resume 命令形",
         })?;
     let head: String = sid.chars().take(8).collect();
@@ -694,11 +660,11 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         || plan["sessionName"] != serde_json::json!(format!("{prefix}-{head}"))
     {
         return Err(Stop::MissingCapability {
-            stage: STAGES[5],
+            stage: STAGES[4],
             capability: "resume 会话名前缀",
         });
     }
-    done.push(STAGES[5]);
+    done.push(STAGES[4]);
 
     Ok(done)
 }

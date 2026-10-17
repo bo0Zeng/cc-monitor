@@ -28,22 +28,22 @@ pub use topic::TopicExt;
 /// （扩展特征：孤儿规则不许在那边的类型上加固有方法）。
 pub use cmd_wire::frame::{decode, Frame, Hello, Line, SessionAdded, SessionPrimed, SessionStatus};
 pub use cmd_wire::frame::{ActivityFace, CanSwitch, NameFace, SessionActivity, Switch};
-pub use cmd_wire::frame::{AgentHome, LostFrame, RemovalCause, SessionFate, Topic, Unavailable};
 pub use cmd_wire::frame::{Cancelled, Changed, Overflow, Reply, SessionRemoved, SessionState};
 pub use cmd_wire::frame::{FilesBatch, LinkData, LinkEnd, Probe, SessionsReplayed, Transfer};
 pub use cmd_wire::frame::{FollowEnd, RereadWhy, SessionContainer, TerminalHost, TransferEnd};
+pub use cmd_wire::frame::{RemovalCause, SessionFate, Topic, Unavailable};
 pub use cmd_wire::frame::{RunDid, RunEnded, RunInfo, RunState, RunWhy};
 pub use cmd_wire::frame::{SessionBranch, SessionRuns, TerminalFollowEnd, TerminalScreen};
 pub use cmd_wire::frame::{SessionFileGone, SessionFileReread};
 
-/// 写好的字与语气（短名 · 悬停那一句 · 语气）：`session_state` 帧上带着，出口照抄。
+/// 写好的字与语气（短名 · 悬停那一句 · 语气）与监控板的序：`session_state` 帧上带着，出口照抄。
 pub(crate) trait SessionFateExt {
-    fn cells(self) -> (Words, Words, Tone);
+    fn cells(self) -> (Words, Words, Tone, u8);
 }
 
 impl SessionFateExt for SessionFate {
-    /// 写好的字与语气（短名 · 悬停那一句 · 语气）：`session_state` 帧上带着，出口照抄。
-    fn cells(self) -> (Words, Words, Tone) {
+    /// 写好的字与语气 ＋ 序：接在活会话（[`ActivityFaceExt::of`] 的 0–3）之后，可重连 4 · 已结束 5。
+    fn cells(self) -> (Words, Words, Tone, u8) {
         match self {
             SessionFate::Reconnectable => (
                 Words(copy_core::copy_text("sessionState.reconnectable.name", &[])),
@@ -52,11 +52,13 @@ impl SessionFateExt for SessionFate {
                     &[],
                 )),
                 Tone::Plain,
+                4,
             ),
             SessionFate::Ended => (
                 Words(copy_core::copy_text("sessionState.ended.name", &[])),
                 Words(copy_core::copy_text("sessionState.ended.tooltip", &[])),
                 Tone::Plain,
+                5,
             ),
         }
     }
@@ -255,6 +257,9 @@ pub(crate) trait FrameMake {
     /// `session_state` 帧：去向 ＋ 它写好的字与语气（只此一处造这一帧）。
     fn session_state(sid: String, state: SessionFate) -> Frame;
 
+    /// `overflow` 帧：这条连接拥塞丢了约 `lines` 行 · 会话状态要不要（已）重新对齐，写成那一句。
+    fn overflow(lines: u64, realigned: bool) -> Frame;
+
     /// 失败应答：那一份失败（[`crate::wire::detail::Failed`]，CLI 面的信封出自同一份）装进 `reply`。
     fn failed(id: String, f: crate::wire::detail::Failed) -> Frame;
 
@@ -293,14 +298,25 @@ impl FrameMake for Frame {
         })
     }
 
+    fn overflow(lines: u64, realigned: bool) -> Frame {
+        let n = lines.to_string();
+        let said = match (realigned, lines) {
+            (false, _) => copy_core::copy_text("beStream.overflow.lines", &[("n", &n)]),
+            (true, 0) => copy_core::copy_text("beStream.overflow.realigned", &[]),
+            (true, _) => copy_core::copy_text("beStream.overflow.realignedLines", &[("n", &n)]),
+        };
+        Frame::Overflow(Overflow { said: Words(said) })
+    }
+
     fn session_state(sid: String, state: SessionFate) -> Frame {
-        let (state_text, state_hint, state_tone) = state.cells();
+        let (state_text, state_hint, state_tone, state_order) = state.cells();
         Frame::SessionState(SessionState {
             sid,
             state,
             state_text,
             state_hint,
             state_tone,
+            state_order,
             switch: Switch::gone(),
         })
     }
@@ -327,10 +343,10 @@ impl FrameMake for Frame {
     }
 }
 
-/// 帧上的规矩：丢了能不能恢复 · 是不是某个会话的整行内容 · 丢帧身份 · 主线外清单分页 · 推出去那一下写钟面。
+/// 帧上的规矩：丢了能不能恢复 · 是不是某个会话的整行内容 · 主线外清单分页 · 推出去那一下写钟面。
 pub trait FrameRules {
     /// **丢了还能不能恢复**：出方向那条大通道按帧种分「丢了别处还在」与「丢了就没了」（应答走独立通道、阻塞背压，不在此列）。
-    /// 拿不准的一律按不可恢复算（错判成可恢复 ＝ 静默丢数据；错判成不可恢复 ＝ `overflow` 多报一条身份）。
+    /// 拿不准的一律按不可恢复算（错判成可恢复 ＝ 静默丢数据；错判成不可恢复 ＝ 多一次就地重报）。
     /// ⚠ **穷尽 `match`，不许 `_ =>`** —— 新增帧种时编译期就被逼着表态。
     fn loss_is_recoverable(&self) -> bool;
 
@@ -339,11 +355,6 @@ pub trait FrameRules {
     ///
     /// 穷尽 `match`，同 [`Self::loss_is_recoverable`]：新增帧种时编译期就得表态。
     fn content_of(&self) -> Option<&str>;
-
-    /// 丢帧时给客户端用来**重同步**的身份：帧种 + 主体（sid / tmux 会话名）。
-    ///
-    /// ⚠ 与 [`Self::loss_is_recoverable`] 同样是穷尽 `match`：新增帧种时两处一起被逼着表态。
-    fn loss_identity(&self) -> LostFrame;
 
     /// 一份主线外清单「前 `at` 条照旧，其后是 `off[at..]`」切成几帧 `session_branch`（每帧至多 `REPLY_PAGE_BYTES` 字节，一条单独超了 ⇒ 那一帧只有它）。
     /// 后面没有了（`at` 就是全长）也发一帧空的：它说「清单到第 `at` 条为止」。
@@ -381,10 +392,10 @@ impl FrameRules for Frame {
             Frame::Reply(_) => false,
             Frame::Cancelled(_) => false,
             // 「X 变了」：按主题表答。可丢的那几样在盘上（重问随时拿得到）、走 tap 那条；
-            //   不可丢的（账号清单 · 配置文件 · 任务清单）是一次变化的通知，没有「下一次必然重发」⇒ 丢了按身份报，客户端重问。
+            //   不可丢的（账号清单 · 配置文件 · 任务清单）是一次变化的通知，没有「下一次必然重发」⇒ 丢了那台在重报里再发一帧（不带体），客户端重问。
             Frame::Changed(Changed { topic, .. }) => topic.spec().lossy,
             // 一次性的标记，没有「下一次必然重发」⇒ 丢了客户端就一直停在「说不清」
-            //   （保守的那一侧：不会把一条说不清的会话说成已结束）。按不可恢复报身份，客户端才知道要重连。
+            //   （保守的那一侧：不会把一条说不清的会话说成已结束）。按不可恢复算，那台就地重报一次。
             Frame::SessionsReplayed(_) => false,
             // 一次性的出声，没有「下一次必然重发」⇒ 丢了那个 tab 就不说那句话（内容本身照旧对：游标已按它处置）。
             Frame::SessionFileGone(_) => false,
@@ -402,7 +413,7 @@ impl FrameRules for Frame {
             // SSE 只保快：它说的事 jsonl 那一侧都有（落盘保对），丢了由位置号 `n` 原位说出来。
             // ⚠ 它**不走**出方向那条通道（走 tap 自己那条），列在这里只为穷尽。
             Frame::LiveCard(_) => true,
-            // 整份快照：下一次表一变就整份重发；丢了那个会话的子运行行停在旧的那一份，直到下一次变（带身份，客户端知道）。
+            // 整份快照：丢了那台就地重报时再给一份（重报里有在看的会话的运行表）。
             Frame::SessionRuns(_) => false,
             // 只发变了的那一截：丢了那一帧，那条连接手上的清单就对不上 —— 发帧那一层记下（`FrameSink`），下一次给它整份。
             Frame::SessionBranch(_) => false,
@@ -438,61 +449,6 @@ impl FrameRules for Frame {
             | Frame::FilesBatch(_)
             | Frame::TerminalScreen(_)
             | Frame::TerminalFollowEnd(_) => None,
-        }
-    }
-
-    fn loss_identity(&self) -> LostFrame {
-        let (kind, subject) = match self {
-            Frame::Hello(_) => ("hello", None),
-            Frame::Line(Line { session_id, .. }) => ("line", Some(session_id.clone())),
-            Frame::SessionAdded(SessionAdded { sid, .. }) => ("session_added", Some(sid.clone())),
-            Frame::SessionPrimed(SessionPrimed { sid, .. }) => {
-                ("session_primed", Some(sid.clone()))
-            }
-            Frame::SessionStatus(SessionStatus { sid, .. }) => {
-                ("session_status", Some(sid.clone()))
-            }
-            Frame::SessionRemoved(SessionRemoved { sid, .. }) => {
-                ("session_removed", Some(sid.clone()))
-            }
-            Frame::SessionState(SessionState { sid, .. }) => ("session_state", Some(sid.clone())),
-            Frame::Overflow(_) => ("overflow", None),
-            Frame::Reply(Reply { id, .. }) => ("reply", Some(id.clone())),
-            Frame::Cancelled(Cancelled { id }) => ("cancelled", Some(id.clone())),
-            Frame::Changed(Changed { topic, key, .. }) => (
-                "changed",
-                Some(match key {
-                    Some(k) => format!("{}/{k}", topic.name()),
-                    None => topic.name().to_string(),
-                }),
-            ),
-            Frame::SessionsReplayed(_) => ("sessions_replayed", None),
-            Frame::SessionFileGone(SessionFileGone { session_id, .. }) => {
-                ("session_file_gone", Some(session_id.clone()))
-            }
-            Frame::SessionFileReread(SessionFileReread { session_id, .. }) => {
-                ("session_file_reread", Some(session_id.clone()))
-            }
-            Frame::LinkData(LinkData { link, .. }) => ("link_data", Some(link.clone())),
-            Frame::LinkEnd(LinkEnd { link, .. }) => ("link_end", Some(link.clone())),
-            Frame::Transfer(Transfer { id, .. }) => ("transfer", Some(id.clone())),
-            Frame::Probe(Probe { ticket, .. }) => ("probe", Some(ticket.clone())),
-            Frame::FilesBatch(FilesBatch { ticket, .. }) => ("files_batch", Some(ticket.clone())),
-            Frame::LiveCard(l) => ("live_card", Some(l.sid.clone())),
-            Frame::SessionRuns(SessionRuns { sid, .. }) => ("session_runs", Some(sid.clone())),
-            Frame::SessionBranch(SessionBranch { sid, .. }) => {
-                ("session_branch", Some(sid.clone()))
-            }
-            Frame::TerminalScreen(TerminalScreen { ticket, .. }) => {
-                ("terminal_screen", Some(ticket.clone()))
-            }
-            Frame::TerminalFollowEnd(TerminalFollowEnd { ticket, .. }) => {
-                ("terminal_follow_end", Some(ticket.clone()))
-            }
-        };
-        LostFrame {
-            kind: kind.to_string(),
-            subject,
         }
     }
 
@@ -585,63 +541,8 @@ pub fn branch_sum(ids: &[String]) -> String {
 /// 链路字节进 JSON 串的编码与它的逆：住拨号核心那一份（`ssh_dial::b64`；那边的 files 一问一答也用它，两处只许一份）。
 pub use ssh_dial::b64::{b64_decode, b64_encode};
 
-/// `stream-watch` 应答里的一格：这个会话刚进了这条流的名单，它的这份记录从第 `seq` 行起上流
-/// （`seq` 与行帧同一个行号空间）；`[0, seq)` 那段客户端按骨架补（`history-index` 从上次的末端续）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct WatchFrom {
-    /// 会话 id。
-    pub sid: String,
-    /// 这份会话记录在那台机器上的绝对路径。
-    pub path: String,
-    /// 这条流从这一行起发它。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub seq: u64,
-}
-
-/// `stream-watch` 的入参：在看哪几个（整份换）＋ 要哪几个的主线外清单、手上各有什么（`branch`；不报 ＝ 一份都不要）。
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub struct WatchAsk {
-    /// 在看的会话 id（空 ＝ 一个都不看）。
-    pub sids: Vec<String>,
-    /// 要哪几个会话的主线外清单、手上各有什么（可缺 ＝ 一份都不要）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub branch: Vec<BranchHeld>,
-}
-
-/// `stream-watch.branch` 的一格：这条连接要这个会话的主线外清单；手上已有那份记录（`path`）的前 `at` 条、摘要 `sum`（上一帧 `session_branch` 给的）。
-/// 手上什么都没有 ⇒ `at: 0`、不带 `path` / `sum`。
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub struct BranchHeld {
-    pub sid: String,
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub path: Option<String>,
-    /// 手上那份的前几条（照手上最后一帧 `session_branch` 的 `at + off.len()`；手上没有 ⇒ `0`）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number"))]
-    pub at: u64,
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub sum: Option<String>,
-}
-
-/// `stream-watch` 的应答。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct WatchReply {
-    /// 刚进名单的会话每份记录一格（先前就在名单里的不回）。
-    pub from: Vec<WatchFrom>,
-}
+/// 「这条流在看哪几个会话」那一问（`stream-watch`，attach 行的 `watch` 同形）的入参与应答：住 `cmd-wire`（客户端同一份）。
+pub use cmd_wire::watch::{BranchHeld, WatchAsk, WatchFrom, WatchReply};
 
 /// U6b-1：**入方向**请求信封。只 `Deserialize` —— backend 是读的那一方。
 ///
@@ -801,36 +702,19 @@ impl Default for SeqCounter {
     }
 }
 
-/// 读一份 hello 帧成人读摘要（`v=.. build=.. arch=.. home=.. caps=.. cmds=..`）。
-/// `home`：`homes` 里第一项，缺 ⇒ 那个冻结字段（`S4` 的消费侧口径；通用层不认 agent 名字，只拿值）。
-/// 住 hello 的家：测试连接（`dial/probe.rs`）读**那台**后端的 hello 时用（原 monitor 那一份人读摘要）。
+/// 读一份 hello 帧成人读摘要（`build=.. arch=.. cmds=..`）：测试连接（`dial/probe.rs`）读**那台**后端的 hello 时进日志。
 pub(crate) fn hello_summary(h: &serde_json::Value) -> String {
     use serde_json::Value;
     let s = |k: &str| h.get(k).and_then(Value::as_str).unwrap_or("?").to_string();
-    let home = h
-        .get("homes")
+    let cmds: Vec<&str> = h
+        .get("commands")
         .and_then(Value::as_array)
-        .and_then(|a| a.first())
-        .and_then(|e| e.get("path").and_then(Value::as_str))
-        .map(str::to_string)
-        .unwrap_or_else(|| s("claude_dir"));
-    let list = |k: &str| -> Vec<String> {
-        h.get(k)
-            .and_then(Value::as_array)
-            .map(|a| {
-                a.iter()
-                    .filter_map(Value::as_str)
-                    .map(str::to_string)
-                    .collect()
-            })
-            .unwrap_or_default()
-    };
+        .map(|a| a.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
     format!(
-        "v={} build={} arch={} home={home} cmds={:?}",
-        h.get("v").and_then(Value::as_u64).unwrap_or(0),
+        "build={} arch={} cmds={cmds:?}",
         s("build_id"),
-        s("host_arch"),
-        list("commands"),
+        s("host_arch")
     )
 }
 

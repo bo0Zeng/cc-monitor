@@ -14,22 +14,7 @@
     ],
     "src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/Products.kt": [
       {
-        "text": "session_added 缺 sid / activity_text",
-        "use": "内部",
-        "why": "两端契约对不上时的诊断：经 onBreak 只进日志（HostBackends，一种报一次），不上屏"
-      },
-      {
-        "text": "session_status 缺 sid / activity_text",
-        "use": "内部",
-        "why": "两端契约对不上时的诊断：经 onBreak 只进日志（HostBackends，一种报一次），不上屏"
-      },
-      {
-        "text": "session_removed 缺 sid",
-        "use": "内部",
-        "why": "两端契约对不上时的诊断：经 onBreak 只进日志（HostBackends，一种报一次），不上屏"
-      },
-      {
-        "text": "session_state 缺 sid / state / state_text，或 state 认不出",
+        "text": "{…} 装不进声明的那一份",
         "use": "内部",
         "why": "两端契约对不上时的诊断：经 onBreak 只进日志（HostBackends，一种报一次），不上屏"
       }

@@ -534,8 +534,8 @@ fn snap_item(seq: u64, snap: &crate::sftp_pool::Snap) -> Item {
             if let Some(c) = code {
                 v["code"] = serde_json::Value::from(c.as_str());
             }
-            if !detail.is_empty() {
-                v["detail"] = serde_json::Value::from(detail.as_str());
+            if let Some(d) = detail.as_deref().filter(|d| !d.is_empty()) {
+                v["detail"] = serde_json::Value::from(d);
             }
             Item::Closed {
                 by: By::Peer(json(v)),

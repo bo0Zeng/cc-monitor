@@ -34,7 +34,7 @@ import {
 } from "./tab-bar-state";
 import { patchConfig, type ConfigEdit } from "./config";
 import type { Tab } from "./tab-model";
-import { ENDED, UNSEEN, isLive } from "./tab-session-state";
+import { LIVE, UNSEEN, isLive } from "./tab-session-state";
 import { copyText } from "./copy-table";
 import { toast, failToast, silentUndo, undoToast } from "./kit/toast";
 import type { TabStore } from "./tab-store";
@@ -369,7 +369,7 @@ export class TabBarPrefs {
   /**
    * 启动时把固定的 tab 复活出来（宿主在 `loadCollections` 之后调一次；与 `loadOrder` 谁先谁后都排得回来，
    * 复活的 tab 走 `placeInOrder` 时会再应用一次顺序意图）。逐条 `createSkeletonTab`，标 pinned、标题用存下来的那份；
-   * 状态：那台还没报完清单 ⇒ 说不清，报完了 ⇒ 已结束（活着的话事件流会改回活）。不读内容（已结束的会话只能 resume）。
+   * 状态：没人说过它 ⇒ 说不清（去向由那台答：手上的 tab 随名单报给它；活着的话事件流会改回活）。不读内容（已结束的会话只能 resume）。
    * 已经存在的 sid 不重建：只补 `pinned = true`，状态一个字不碰（它真活着时按回已结束是假话）。
    */
   async loadPinned(): Promise<void> {
@@ -381,10 +381,11 @@ export class TabBarPrefs {
         this.host.createSkeletonTab(p.sid, p.cwd, p.origin, p.background, p.name);
         const t = this.store.tabs.get(p.sid);
         if (!t) continue;
-        // 凭空造的 tab ⇒ 直接置位（不走 `archiveTab`）。那台还没报完清单 ⇒ 说不清（不许显示成已结束）；
-        // 报完了 ⇒ 已结束 —— 它若活着，清单里就有它、tab 早建成活的了（上面 `existed` 那支）。
-        t.state = this.store.seenOrigins.has(p.origin) ? ENDED : UNSEEN;
-        t.activity = null;
+        // 凭空造的 tab：那台早到的去向（暂存的已结束 / 可重连）建 tab 时已落实；没人说过它 ⇒ 说不清。
+        if (t.state === LIVE) {
+          t.state = UNSEEN;
+          t.activity = null;
+        }
         t.parentPath = p.jsonlPath; // resume 与「有没有记录」都靠它
         t.title = p.title; // 骨架期就显示正确标题，不等读文件
         t.pinned = true;

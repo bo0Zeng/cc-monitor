@@ -827,20 +827,6 @@ impl<'de> Deserialize<'de> for OrUnread {
     }
 }
 
-/// 流上的 `line` 帧（一行 JSON）：`record` 在、却解不开 ⇒ 换成认不出那一条（[`OrUnread`]）的那一行；别的（解得开 · 不是 `line` 帧 · 不是 JSON）⇒ `None`（原样交）。
-pub fn mend_line_frame(frame: &str) -> Option<String> {
-    let mut v: Value = serde_json::from_str(frame).ok()?;
-    if v.get("kind").and_then(Value::as_str) != Some("line") {
-        return None;
-    }
-    let raw = v.get("record").filter(|r| !r.is_null())?.clone();
-    if Record::deserialize(&raw).is_ok() {
-        return None;
-    }
-    v["record"] = serde_json::to_value(OrUnread::of(raw)).ok()?;
-    Some(v.to_string())
-}
-
 #[cfg(test)]
 mod lenient_tests {
     use super::*;

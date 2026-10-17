@@ -1,5 +1,5 @@
-//! `history-lines` 的字节位置与 `history-tail` 的文件身份：按行号补完之后手上的续点（路径 · 字节 · 行号）三样对得上，
-//! 同一路径换了一份文件认得出来。夹具只造结构（占位字）。
+//! `history-lines` 的字节位置与 `history-tail` 怎么接：按行号补完之后手上的续点（路径 · 字节 · 行号）三样对得上，
+//! 续传 · 变短 · 被改写 · 缺得多各回一形。夹具只造结构（占位字）。
 
 use super::*;
 use serde_json::json;
@@ -100,39 +100,100 @@ fn every_line_carries_its_end_and_the_reply_ends_after_the_last_counted_line() {
     assert_eq!(past.end, after(&rows[5]));
 }
 
-/// 文件身份：头一个可计行没变 ⇒ 同一个；同一路径换成另一份（长度一样、头一行不同）⇒ 不同；一行都没有 ⇒ 空串。
-/// 扫描图留着那一支（`peek` 命中）与现数那一支给同一个值。
+/// `history-tail` 一问交回「怎么接」：续得上 ⇒ 从交来的 `held.next` 那一行起；变短 · 被改写 · 换了一份 ⇒ 尾段并说为什么；
+/// 缺得比 `n` 多 ⇒ 那一截不读；换了路径 ⇒ 尾段。每一形都带第一页正文与读到头之后要存的 `held`。扫描图留着那一支给同一个答案。
 #[test]
-fn the_tail_names_the_file_by_its_first_line() {
+fn the_tail_says_how_to_go_on_from_what_the_caller_holds() {
     let home = scratch("tail");
-    let a = format!("\n{}\n{}\n", user(0), user(1));
-    let path = write(&home, "s-tail", &a);
-    let req = |n| HistoryTailReq {
-        path: path.clone(),
-        n,
+    let tz = crate::Tz::default();
+    let text =
+        |ks: std::ops::Range<usize>| ks.map(|k| format!("{}\n", user(k))).collect::<String>();
+    let path = write(&home, "s-tail", &format!("\n{}", text(0..4)));
+    let ask = |n: u64, held: Option<Held>| {
+        tail_at(
+            &home,
+            HistoryTailReq {
+                path: path.clone(),
+                n,
+                held,
+            },
+            &tz,
+        )
+        .unwrap()
     };
-    let first = tail_at(&home, req(1)).unwrap();
-    assert_eq!(first.file.len(), 16, "{:?}", first.file);
+    let seqs = |t: &HistoryTail| (t.from..t.from + t.rows.len() as u64).collect::<Vec<_>>();
+
+    // 手上什么都没有 ⇒ 尾段；读到头之后存的那一份停在文件尾。
+    let first = ask(2, None);
     assert_eq!(
-        tail_at(&home, req(5)).unwrap().file,
-        first.file,
-        "要几行不改身份"
+        (first.how, first.from, seqs(&first)),
+        (TailHow::Tail, 2, vec![2, 3])
     );
-    std::fs::write(&path, format!("{a}{}\n", user(2))).unwrap();
-    assert_eq!(
-        tail_at(&home, req(1)).unwrap().file,
-        first.file,
-        "长了一行还是那一份"
-    );
-    // 同长的另一份：头一行换了。
-    let b = format!("\n{}\n{}\n", user(7), user(1));
-    assert_eq!(a.len(), b.len());
-    std::fs::write(&path, &b).unwrap();
-    let other = tail_at(&home, req(1)).unwrap();
-    assert_ne!(other.file, first.file);
-    // 扫描图那一支：扫过一遍留着之后再问，同一个值。
+    assert!(first.eof);
+    assert_eq!((first.held.next, first.held.next_byte), (4, first.plan.end));
+    assert!(!first.held.mark.is_empty());
+
+    // 又长了两行 ⇒ 从第 4 行接着读，一行不多。
+    std::fs::write(&path, format!("\n{}", text(0..6))).unwrap();
+    let resumed = ask(2, Some(first.held.clone()));
+    assert_eq!((resumed.how, seqs(&resumed)), (TailHow::Resume, vec![4, 5]));
+    // 扫描图留着那一支：同一个答案。
     let _ = crate::observe::history_query::cold_scan(&home, &path);
-    assert_eq!(tail_at(&home, req(1)).unwrap().file, other.file);
+    let again = ask(2, Some(first.held.clone()));
+    assert_eq!(
+        (again.how, seqs(&again), &again.held),
+        (TailHow::Resume, vec![4, 5], &resumed.held)
+    );
+
+    // 缺的比 `n` 多 ⇒ 那一截不读，从文件尾接着来。
+    let far = ask(1, Some(first.held.clone()));
+    assert_eq!(
+        (far.how, far.from, far.rows.len()),
+        (TailHow::Handoff, 6, 0)
+    );
+    assert_eq!(far.held, resumed.held);
+
+    // 换了路径 ⇒ 尾段，不说变了。
+    let other = Held {
+        path: "/elsewhere.jsonl".into(),
+        ..first.held.clone()
+    };
+    assert_eq!(ask(2, Some(other)).how, TailHow::Tail);
+
+    // 变短了（比交来的那一份短）⇒ 尾段、说变短。
+    let held6 = resumed.held.clone();
+    std::fs::write(&path, format!("\n{}", text(0..3))).unwrap();
+    let short = ask(2, Some(held6.clone()));
+    assert_eq!((short.how, seqs(&short)), (TailHow::Truncated, vec![1, 2]));
+
+    // 同样长、记号那一行换了内容（被改写）⇒ 尾段、说被改写。
+    let same_len = format!("\n{}{}", text(0..5), user(9) + "\n");
+    assert_eq!(same_len.len(), format!("\n{}", text(0..6)).len());
+    std::fs::write(&path, &same_len).unwrap();
+    assert_eq!(ask(2, Some(held6.clone())).how, TailHow::Rewritten);
+
+    // 换了一份、而且更长（头一行起就不同）⇒ 同上。
+    std::fs::write(
+        &path,
+        format!(
+            "\n{}",
+            (10..20)
+                .map(|k| format!("{}\n", user(k)))
+                .collect::<String>()
+        ),
+    )
+    .unwrap();
+    let replaced = ask(2, Some(held6));
+    assert_eq!(
+        (replaced.how, seqs(&replaced)),
+        (TailHow::Rewritten, vec![8, 9])
+    );
+
+    // 一行都没有 ⇒ 记号是空串、下一次不核。
     std::fs::write(&path, "\n\n").unwrap();
-    assert_eq!(tail_at(&home, req(1)).unwrap().file, "");
+    let empty = ask(2, None);
+    assert_eq!(
+        (empty.how, empty.held.next, empty.held.mark.as_str()),
+        (TailHow::Tail, 0, "")
+    );
 }

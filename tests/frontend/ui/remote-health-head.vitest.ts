@@ -1,5 +1,5 @@
 /**
- * 远端健康提示的标题按壳给的类别挑（`stream_source/version.rs::version_health_kind` 判好要更新 · 较新 · 不可比），
+ * 远端健康提示的标题按壳给的类别挑（`stream_source/run.rs::version_health_kind` 按那台回的新旧挑好要更新 · 较新 · 不可比），
  * 界面不自己猜哪一种；壳那边三个类别字每个都在这里有自己那一句，不落到通用「远端提示」。
  */
 import { describe, expect, it, vi } from "vitest";
@@ -12,19 +12,26 @@ import { headlineFor } from "../../../src/frontend/ui/remote-health";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { REPO_ROOT } from "../../test-support/repo-root";
 
-const src = readFileSync(resolve(REPO_ROOT, "src/frontend/shell/src/stream_source/version.rs"), "utf8");
+const src = readFileSync(resolve(REPO_ROOT, "src/frontend/shell/src/stream_source/run.rs"), "utf8");
 const kind = (name: string): string => {
   const m = new RegExp(`const ${name}: &str = "([^"]+)";`).exec(src);
-  if (!m) throw new Error(`version.rs 里没有 ${name}`);
+  if (!m) throw new Error(`run.rs 里没有 ${name}`);
   return m[1];
 };
 
 describe("远端健康提示：版本那条的标题", () => {
   it("要更新 · 较新 · 不可比 各说各的，都不落到通用标题", () => {
-    expect(headlineFor(kind("VERSION_KIND_OLDER"))).toBe(copyText("remoteHealth.head.backendOld"));
-    expect(headlineFor(kind("VERSION_KIND_NEWER"))).toBe(copyText("remoteHealth.head.backendNewer"));
-    expect(headlineFor(kind("VERSION_KIND_INCOMPARABLE"))).toBe(copyText("remoteHealth.head.versionIncomparable"));
-    expect(headlineFor("version"), "旧的总称类别不再有").toBe(copyText("remoteHealth.head.notice"));
+    expect(headlineFor(kind("VERSION_KIND_OLDER"), "devbox")).toBe(copyText("remoteHealth.head.backendOld"));
+    expect(headlineFor(kind("VERSION_KIND_NEWER"), "devbox")).toBe(copyText("remoteHealth.head.backendNewer"));
+    expect(headlineFor(kind("VERSION_KIND_INCOMPARABLE"), "devbox")).toBe(copyText("remoteHealth.head.versionIncomparable"));
+    expect(headlineFor("version", "devbox"), "旧的总称类别不再有").toBe(copyText("remoteHealth.head.notice"));
+  });
+});
+
+describe("远端健康提示：拥塞那一条的标题", () => {
+  it("正文是那台后端写的那一句（不带机器名）⇒ 标题是机器名，本机称「本机」那一格", () => {
+    expect(headlineFor("overflow", "devbox")).toBe("devbox");
+    expect(headlineFor("overflow", "<local>")).toBe(copyText("acct.machine.here"));
   });
 });
 

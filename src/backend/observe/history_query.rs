@@ -160,33 +160,52 @@ pub(crate) fn scan_from(
 }
 
 /// 尾段那张图：扫描图留着且没变 ⇒ 从它切；否则现数一遍行（只数行、不解析，比等整遍扫描快得多 —— 冷开时界面最先要它）。
-pub(crate) fn tail_now(agent_home: &Path, jsonl_path: &str, n: usize) -> Result<TailPlan, String> {
+pub(crate) fn tail_now(agent_home: &Path, jsonl_path: &str, n: usize) -> Result<Tail, String> {
     let target = validate_session_path(agent_home, jsonl_path)?;
     if let Some(map) = super::record_scan::global().peek(&target) {
-        let f = Ro::open(&target).map_err(|e| format!("open failed: {e}"))?;
-        let head =
-            first_counted(std::io::BufReader::new(f)).map_err(|e| format!("scan failed: {e}"))?;
-        return Ok(map.tail(n, file_id(head.as_deref())));
+        return Ok(map.tail(n));
     }
-    tail_plan(agent_home, jsonl_path, n).map(|(plan, _)| plan)
+    let f = Ro::open(&target).map_err(|e| format!("open failed: {e}"))?;
+    tail_plan_of(std::io::BufReader::new(f), n).map_err(|e| format!("scan failed: {e}"))
 }
 
-/// 文件身份（`history-tail.file`）：第一个可计行正文的摘要（[`super::record_page::line_hash`]，16 位十六进制）；没有 ⇒ 空串。
-pub(crate) fn file_id(first: Option<&[u8]>) -> String {
-    first.map_or_else(String::new, |b| {
-        format!("{:016x}", super::record_page::line_hash(b))
-    })
+/// 记号（`history-tail` 的 `held.mark`）：`[start, end)` 那一段原始字节的位置与摘要。
+/// 文件不到 `end` ⇒ `None`；那一段比一行的上限还长 ⇒ 空串（不记，下一次不核）。核的时候按同一个函数重算、比相等。
+pub(crate) fn mark_at(
+    agent_home: &Path,
+    jsonl_path: &str,
+    start: u64,
+    end: u64,
+    cap: usize,
+) -> Result<Option<String>, String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let target = validate_session_path(agent_home, jsonl_path)?;
+    let mut f = Ro::open(&target).map_err(|e| format!("open failed: {e}"))?;
+    let len = f.metadata().map_err(|e| format!("stat failed: {e}"))?.len();
+    if end > len || start > end {
+        return Ok(None);
+    }
+    if end - start > cap as u64 {
+        return Ok(Some(String::new()));
+    }
+    f.seek(SeekFrom::Start(start))
+        .map_err(|e| format!("seek failed: {e}"))?;
+    let mut bytes = vec![0; (end - start) as usize];
+    f.read_exact(&mut bytes)
+        .map_err(|e| format!("read failed: {e}"))?;
+    Ok(Some(format!(
+        "{start}-{end}-{:016x}",
+        super::record_page::line_hash(&bytes)
+    )))
 }
 
-/// 从头读到第一个可计行（不含 `\n`）；一行都没有 ⇒ `None`。
-fn first_counted<R: std::io::BufRead>(r: R) -> std::io::Result<Option<Vec<u8>>> {
-    let mut lines = super::lines::Lines::new(r, 0);
-    while let Some(row) = lines.next()? {
-        if super::lines::counts(row.body()) {
-            return Ok(Some(row.body().to_vec()));
-        }
-    }
-    Ok(None)
+/// 记号里的那一段 `[start, end)`；认不出 ⇒ `None`。
+pub(crate) fn mark_span(mark: &str) -> Option<(u64, u64)> {
+    let mut it = mark.splitn(3, '-');
+    let start = it.next()?.parse().ok()?;
+    let end = it.next()?.parse().ok()?;
+    it.next()?;
+    Some((start, end))
 }
 
 /// `history-facts` 的项目目录那一格：过读会话那同一道围栏，再问记录归属的那一家（只读开头）。
@@ -460,38 +479,27 @@ fn count_prose(s: &str, row: &mut IndexRow) {
     }
 }
 
-/// 尾段那一趟扫描的结果：线上形住 `cmd-wire::session`（`history-tail` 的回包）。
+/// 尾段那一趟扫描的结果：线上形住 `cmd-wire::session`（`history-tail` 的回包里那一块）。
 pub(crate) use cmd_wire::session::TailPlan;
 
-/// 扫一遍，出 [`TailPlan`] 与已打开的那份文件（调用方按区间去读）。
-pub(crate) fn tail_plan(
-    agent_home: &Path,
-    jsonl_path: &str,
-    n: usize,
-) -> Result<(TailPlan, RoFile), String> {
-    let target = validate_session_path(agent_home, jsonl_path)?;
-    // 审计 D：整文件 std::fs::read 在 Pi 级设备上对数百 MB 会话有 OOM 风险
-    // （更早的整份透传是 io::copy 流式）——改单遍流式扫描（环形缓冲只存
-    // 最近 N 个可计行的字节偏移，O(N) 内存）+ 两次 seek 范围拷贝。
-    let f = Ro::open(&target).map_err(|e| format!("open failed: {e}"))?;
-    let mut reader = std::io::BufReader::new(f);
-    let plan = tail_plan_of(&mut reader, n).map_err(|e| format!("scan failed: {e}"))?;
-    Ok((plan, reader.into_inner()))
+/// 尾段那张图 ＋ 最后一个可计行的起点（记号从它算到 `end`；一行都没有 ⇒ `None`）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Tail {
+    pub(crate) plan: TailPlan,
+    pub(crate) last: Option<u64>,
 }
 
-/// [`tail_plan`] 的扫描本体：读 `reader`（从字节 0 起）出 [`TailPlan`]。**纯 I/O 泛型**。
-pub(crate) fn tail_plan_of<R: std::io::BufRead>(reader: R, n: usize) -> std::io::Result<TailPlan> {
+/// 尾段那张图的扫描本体：读 `reader`（从字节 0 起）出 [`Tail`]。**纯 I/O 泛型**。
+///
+/// 流式单遍（环形缓冲只存最近 N 个可计行的字节偏移，O(N) 内存）：整文件读进内存在 Pi 级设备上对数百 MB 会话有 OOM 风险。
+pub(crate) fn tail_plan_of<R: std::io::BufRead>(reader: R, n: usize) -> std::io::Result<Tail> {
     let mut recent: std::collections::VecDeque<u64> = std::collections::VecDeque::new();
     let keep = n.max(1);
     let mut total: u64 = 0;
-    let mut head: Option<Vec<u8>> = None;
     let mut lines = super::lines::Lines::new(reader, 0);
     while let Some(row) = lines.next()? {
         if !super::lines::counts(row.body()) {
             continue; // 空行不计（与实时跟读同一个判定：`lines::counts`）
-        }
-        if head.is_none() {
-            head = Some(row.body().to_vec());
         }
         total += 1;
         recent.push_back(row.at);
@@ -502,12 +510,14 @@ pub(crate) fn tail_plan_of<R: std::io::BufRead>(reader: R, n: usize) -> std::io:
     let complete_end = lines.end();
     let tail_from = total - recent.len() as u64;
     let split_at = recent.front().copied().unwrap_or(complete_end);
-    Ok(TailPlan {
-        total,
-        tail_from,
-        split_at,
-        end: complete_end,
-        file: file_id(head.as_deref()),
+    Ok(Tail {
+        plan: TailPlan {
+            total,
+            tail_from,
+            split_at,
+            end: complete_end,
+        },
+        last: recent.back().copied(),
     })
 }
 

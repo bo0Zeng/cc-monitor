@@ -10,7 +10,7 @@
  */
 import type { SessionAccount } from "./accounts";
 import type { TaskEntry } from "./tasks-panel";
-import type { SwitchCells } from "./generated/SwitchCells";
+import type { Switch } from "./generated/Switch";
 import type { Tab, TabsSummary } from "./tab-model";
 import { isLive, isResumeOnly, type ContainerEvent } from "./tab-session-state";
 import { Slice } from "./app-store";
@@ -86,26 +86,23 @@ export class TabStore {
    * 归档信号（ended 格）早于这个 sid 的 Tab 建出来时记在这里，ensureTab 建 Tab 时落实。
    * ended 与行同一条队列，正常路径下不会先到；这一层兜「ended 先于该 sid 任何行」的异常序（§ 17a）。
    */
-  readonly pendingArchive = new Set<string>();
+  readonly pendingArchive = new Map<string, number | null>();
   /**
    * 灰灯（idle-tmux）信号早于 Tab 建出时暂存（同 pendingArchive）：F5 后重发的 idle 可能早于骨架建 Tab，不暂存灰灯就丢了。
-   * ensureTab 建 Tab 时落实（同时有 pendingArchive ⇒ 归档优先）。
+   * ensureTab 建 Tab 时落实（同时有 pendingArchive ⇒ 归档优先）。两张表的值都是那一帧带的监控板序。
    */
-  readonly pendingTmuxIdle = new Set<string>();
+  readonly pendingTmuxIdle = new Map<string, number | null>();
   /** 红绿灯信号早于 Tab 建出来时暂存（activity 格当场派，而建 Tab 的行走异步队列）。ensureTab 时落实。 */
   /**
    * 容器事实（`container` 格）早于 Tab 建出时暂存。ensureTab 建 Tab 时落实
    * （建出来就是活的；早到的死亡信号优先 —— 那时容器一格由死的那一刻的裁决说了算）。
    */
   readonly pendingContainer = new Map<string, ContainerEvent>();
-  /**
-   * 已经把活会话清单报完了的机器（会话流的 `listed` 格）。
-   * 固定复活时据它分：报完了 ⇒ 已结束（它不在清单里，不然 tab 早就被建成活的了）；没报完 ⇒ 说不清。
-   */
+  /** 已经把活会话清单报完了的机器（会话流的 `listed` 格）：「没回来的组员」等每台都报完了才认。 */
   readonly seenOrigins = new Set<string>();
   readonly pendingActivity = new Map<string, NonNullable<Tab["activity"]>>();
   /** 「此刻能不能换」早于建 Tab 到达（随活动那几格 · 去向那一帧）⇒ 暂存，建 Tab 时落实。 */
-  readonly pendingSwitch = new Map<string, SwitchCells>();
+  readonly pendingSwitch = new Map<string, Switch>();
   /** Tab 还没建时先到的名字（`updateName`），建 Tab 时落实。 */
   readonly pendingName = new Map<string, { label: string; labelProject: string | null }>();
 

@@ -5,32 +5,7 @@ use std::path::{Path, PathBuf};
 ///
 /// 每一处碰本机 claude 目录的源码按「文件 × 外层项」认（[`guard_core::addr::enclosing_fn`]）：
 /// 新的一处 ⇒ 下面那条红（直读点不许无声地长）；退役了 ⇒ **也红**（把那一行删掉）。
-const REGISTERED: &[(&str, &str, &str, &str)] = &[
-    (
-        "src/stream_source/run.rs",
-        "on_attached",
-        "remote",
-        "接上那一刻 hello 那一臂解出的**远端** `claude_dir`（打日志用）。说的是远端主机的 claude 目录 ⇒ 不属本机读面。",
-    ),
-    (
-        "src/stream_source/frame.rs",
-        "InboundFrame",
-        "remote",
-        "backend `hello` 帧的 `claude_dir` 字段（冻结的线上格）。说的是远端主机的 claude 目录 ⇒ 不属本机读面。",
-    ),
-    (
-        "src/stream_source/frame.rs",
-        "parse_frame",
-        "remote",
-        "解 `hello` 帧时取 `claude_dir` 那一格。远端主机的目录 ⇒ 不属本机读面。",
-    ),
-    (
-        "src/stream_source/frame.rs",
-        "claude_home_from_hello",
-        "remote",
-        "hello 里远端后端自陈的 Claude home（优先 `homes`、回退 `claude_dir`）。远端的目录 ⇒ 不属本机读面。",
-    ),
-];
+const REGISTERED: &[(&str, &str, &str, &str)] = &[];
 
 fn root() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR"))

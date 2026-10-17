@@ -2037,26 +2037,6 @@ mod g6_staged_zero {
             "自己就是那条判据",
             "跨 crate",
         ),
-        // 住址跟着**判据**搬：这两条的第二栏是判据名，
-        // 而那两条判据这一轮从 `src/backend/wire/mod.rs` 的测试段搬进了
-        // `tests/backend/wire/wire_tests.rs`。**表的条数一格没变。**
-        // ⚠ 顺带收紧了一格：旧住址（生产段那份 `wire.rs`）里今天只剩一句**散文**提到
-        //   第一个名字 —— 存在性检查在散文上照样过，而那不是「判据还在」。
-        //   指到判据真住的那份文件之后，它认的是那个 `fn` 本身。
-        (
-            "tests/backend/wire/wire_tests.rs",
-            "production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen",
-            "`main.rs` 生产段给 `homes` 赋值**恰好 1 处**且逐字是空构造",
-            "自己就是那条判据",
-            "本 crate",
-        ),
-        (
-            "tests/backend/wire/wire_tests.rs",
-            "the_backend_can_already_discover_homes_it_just_does_not_send_them",
-            "反锚：发现能力**还在**（合成夹具走真发现路 + 精确字节断言）",
-            "自己就是那条判据",
-            "本 crate",
-        ),
         // `agents/codex/parse.rs` 的 turn-end 那两行**摘了**：函数连同判据删了（零读者判据那次）。
         // `plugin/probe.rs::negotiate` 那一行**摘了**：接线那天到了 ——
         //   `control/panorama.rs`（代码全景小程序的能力协商）是它第一个跨文件生产消费者，
@@ -2134,11 +2114,10 @@ mod g6_staged_zero {
     /// ★ 正题一：表里每条的住址今天真的在，且那个名字真的还在那份文件里（**幽灵检查**）。
     #[test]
     fn the_staged_zero_registry_has_no_ghost_entries() {
-        // 7 → 6：`negotiate` 接上了生产；6 → 4：codex turn-end 那两个连同判据删了（见表里那段摘除说明）。
         assert_eq!(
             STAGED_ZERO.len(),
-            4,
-            "这一族的登记表从 4 条变成 {} 条了 —— 加成员是好事，\
+            2,
+            "这一族的登记表从 2 条变成 {} 条了 —— 加成员是好事，\
              但每加一条都要说清「被钉的那个零逐字是什么」与「接线那天为什么该红」",
             STAGED_ZERO.len()
         );

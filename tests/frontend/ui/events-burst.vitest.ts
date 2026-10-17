@@ -35,6 +35,8 @@ import { bindEvents } from "../../../src/frontend/ui/events";
 import { streamFake } from "../../test-support/chan-stream-fake.ts";
 
 const STREAMS = { streams: [{ origin: "<local>", kind: "session-lines" }] };
+/** 本机一条 · 远端一条（哪台由订阅说）。 */
+const TWO = { streams: [{ origin: "<local>", kind: "session-lines" }, { origin: "pi", kind: "session-lines" }] };
 
 function line(seq: number): unknown {
   return {
@@ -210,11 +212,10 @@ describe("live 格的项目目录交到处理器", () => {
       onRemoteSessionAdded: added,
       onBatchStart: vi.fn(),
       onBatchEnd: vi.fn(),
-    } as never, STREAMS);
-    const live = (origin: string, projectDir: string | null) => ({
-      live: { session_id: `s-${origin}`, origin, background: false, attachable: null, cwd: "/launched", project_dir: projectDir, name: null, hidden: null },
-    });
-    streamFake.lifecycle([live("<local>", "/a/proj"), live("pi", null)]);
+    } as never, TWO);
+    const cell = (sid: string, projectDir?: string) => ({ added: { sid, agent_kind: "claude", pid: 1, cwd: "/launched", project_dir: projectDir } });
+    streamFake.lifecycle([cell("s-<local>", "/a/proj")], 0);
+    streamFake.lifecycle([cell("s-pi")], 1);
     await vi.runAllTimersAsync();
     expect(started).toHaveBeenCalledWith("s-<local>", expect.objectContaining({ projectDir: "/a/proj", cwd: "/launched" }));
     expect(added).toHaveBeenCalledWith("s-pi", "pi", expect.objectContaining({ projectDir: null, cwd: "/launched" }));
@@ -223,11 +224,10 @@ describe("live 格的项目目录交到处理器", () => {
   it("★ 隐藏那一格（后端判好、壳原样转的 `{by, said} | null`）原样交给处理器：哪一档都认（含命令行当场写的 `launch`）", async () => {
     const started = vi.fn();
     const added = vi.fn();
-    await bindEvents({ onLine: vi.fn(), onSessionEnded: vi.fn(), onSessionStarted: started, onRemoteSessionAdded: added, onBatchStart: vi.fn(), onBatchEnd: vi.fn() } as never, STREAMS);
-    const live = (sid: string, origin: string, hidden: unknown) => ({
-      live: { session_id: sid, origin, background: true, attachable: null, cwd: null, project_dir: null, name: null, hidden },
-    });
-    streamFake.lifecycle([live("a", "<local>", { by: "bg", said: "占位·分身" }), live("b", "pi", { by: "child", said: "占位·子" }), live("c", "<local>", null), live("d", "pi", { by: "launch", said: "占位·命令行" })]);
+    await bindEvents({ onLine: vi.fn(), onSessionEnded: vi.fn(), onSessionStarted: started, onRemoteSessionAdded: added, onBatchStart: vi.fn(), onBatchEnd: vi.fn() } as never, TWO);
+    const live = (sid: string, hidden?: unknown) => ({ added: { sid, agent_kind: "claude", pid: 1, background: true, hidden } });
+    streamFake.lifecycle([live("a", { by: "bg", said: "占位·分身" }), live("c")], 0);
+    streamFake.lifecycle([live("b", { by: "child", said: "占位·子" }), live("d", { by: "launch", said: "占位·命令行" })], 1);
     await vi.runAllTimersAsync();
     expect(started.mock.calls.map((c) => [c[0], c[1].hidden])).toEqual([["a", { by: "bg", said: "占位·分身" }], ["c", null]]);
     expect(added.mock.calls.map((c) => [c[0], c[2].hidden])).toEqual([["b", { by: "child", said: "占位·子" }], ["d", { by: "launch", said: "占位·命令行" }]]);

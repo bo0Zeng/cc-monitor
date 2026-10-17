@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.core.claude.link
 
+import com.ccmonitor.mobile.core.claude.link.wire.ChangedFrame
 import com.ccmonitor.mobile.core.claude.link.wire.RotationSettingsReply
 import com.ccmonitor.mobile.core.claude.link.wire.RotationViewReply
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
@@ -196,6 +197,6 @@ data class Changed(
     companion object {
         const val KIND = "changed"
 
-        fun of(frame: Map<String, Any?>): Changed? = if (frame.str("kind") == KIND) frame.str("topic")?.let { Changed(it, frame.str("key")) } else null
+        fun of(frame: Map<String, Any?>): Changed? = if (frame.str("kind") == KIND) Wire.bind<ChangedFrame>(frame)?.let { Changed(it.topic, it.key) } else null
     }
 }

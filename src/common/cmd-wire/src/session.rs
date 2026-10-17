@@ -270,7 +270,7 @@ impl<'de> Deserialize<'de> for Ability {
     }
 }
 /// `terminal-preview` 的回包（终端实时预览每一帧也是它）。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
@@ -300,7 +300,7 @@ pub struct Preview {
 }
 
 /// 光标。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
@@ -316,7 +316,7 @@ pub struct Cursor {
 }
 
 /// 一屏里的一行。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
@@ -999,8 +999,6 @@ pub struct BusFailed {
 }
 
 /// 尾段那一趟扫描的结果：可计行总数 · 尾段起点行号 · 两段的字节边界。
-///
-/// 帧面那条（`history-tail`）只要**这张图**，正文按字节区间另走 `history-read` 分页拉 —— 一帧应答装不下几十 MB 的会话。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -1020,8 +1018,77 @@ pub struct TailPlan {
     /// 最后一个完整行（`\n` 收尾）之后的字节位置；torn 残尾不在任何一段里。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub end: u64,
-    /// 这份文件的身份：第一个可计行的摘要（16 位十六进制）；一行都没有 ⇒ 空串。同一路径换了一份 ⇒ 变；只往后长 ⇒ 不变。
-    pub file: String,
+}
+
+/// 客户端手上「拿到哪了」：上一次 `history-tail` 回的那一份，之后实时行连续接上时推 `next` · `next_byte`；下一次原样交回。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct Held {
+    /// 那份记录的路径（换了路径 ⇒ 续不上）。
+    pub path: String,
+    /// 客户端缺的第一行的行号。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub next: u64,
+    /// 第 `next` 行从哪个字节起。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub next_byte: u64,
+    /// 后端自己核的记号（那一刻文件最后一行的位置与摘要）：客户端只存、原样交回，不解。空串 ＝ 那一刻一行都没有。
+    pub mark: String,
+}
+
+/// 这一次怎么接（`history-tail.how`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "snake_case")]
+pub enum TailHow {
+    /// 没交 `held` · 换了路径：正文是尾段（第 `tail_from` 行起）。
+    Tail,
+    /// 续得上：正文从交来的 `held.next` 那一行起。
+    Resume,
+    /// 续得上，但缺的比要的尾段（`n`）还多：那一截不读，正文为空；客户端从 `total` 起接着来、缺的自己按需取。
+    Handoff,
+    /// 文件比交来的 `held` 短了：手上那一份作废，正文是尾段。
+    Truncated,
+    /// 交来的记号那一行不再是那一行（文件被改写 · 换了一份）：手上那一份作废，正文是尾段。
+    Rewritten,
+}
+
+/// `history-tail` 的回包：尾段那张图 ＋ 这一次怎么接 ＋ 那一段（`[起点, end)`）的第一页正文 ＋ 读完之后要存的 `held`。
+/// 一页装不下的从 `next` 起接着走 `history-read` 分页。
+#[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, concrete(R = crate::record::Record), bound = "", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct HistoryTail<R = serde_json::Value> {
+    /// 尾段那张图。
+    #[serde(flatten)]
+    pub plan: TailPlan,
+    /// 怎么接。
+    pub how: TailHow,
+    /// `rows` 第一行的行号（续传 ＝ 交来的 `held.next`；`handoff` ＝ `total`；其余 ＝ `tail_from`）。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub from: u64,
+    /// 第一页里每个可计行一条（同 `history-read.rows[]`）。
+    #[cfg_attr(
+        any(test, feature = "ts"),
+        ts(as = "Vec<crate::record::ReadRow<crate::record::Record>>")
+    )]
+    pub rows: Vec<crate::record::ReadRow<R>>,
+    /// 下一页从这里起（同 `history-read.next`）。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub next: u64,
+    /// 这一段读完了。
+    pub eof: bool,
+    /// 读到 `end` 之后存的那一份（下一次原样交回）。
+    pub held: Held,
 }
 
 #[cfg(test)]

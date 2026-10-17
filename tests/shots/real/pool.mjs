@@ -7,6 +7,7 @@
  *   POST /__ccm/call   {key, origin, op, args, view?, leftMs?} ⇒ 壳 `chan_call` 那一跳的结局：`{ok:true, body}` / `{ok:false, fail:{err, body, detail}}`
  *   POST /__ccm/sub    {key, id, origin, kind, want} · /__ccm/want {key, id, more} · /__ccm/stop {key, id} · /__ccm/ready {key, priority_sid}
  *   POST /__ccm/watch  {key, sessions: [{origin, sessionId}]}  ⇒ 主窗口在看哪几个（同 Tauri 命令 `watch_sessions`）
+ *   POST /__ccm/kept   {key, sessions: [{origin, sessionId}]}  ⇒ 主窗口手上的 tab（同 Tauri 命令 `kept_sessions`）
  *   POST /__ccm/write  {key, origin, rel, text, append?}    ⇒ 场景在开页之后改那台盘上的一份文件（相对家目录；`append` ⇒ 接在末尾写）
  *   POST /__ccm/status {key, origin, sid, status, waitingFor?} ⇒ 场景演那一家改了自己 pidfile 里的状态（答了框 ⇒ busy）
  *   POST /__ccm/paint  {key, origin, sid, text}            ⇒ 那个会话的替身往自己的窗格里再印一段（原样的终端输出）
@@ -501,6 +502,7 @@ export function backendPool({ repo, sandbox }) {
     else if (url === "/__ccm/ready") w.sh.send({ t: "ready", priority_sid: body.priority_sid ?? null });
     else if (url === "/__ccm/kill") w.sh.send({ t: "kill", origin: body.origin });
     else if (url === "/__ccm/watch") w.sh.send({ t: "watch", sessions: body.sessions });
+    else if (url === "/__ccm/kept") w.sh.send({ t: "kept", sessions: body.sessions });
     else if (url === "/__ccm/status") {
       // 那一家改了自己 pidfile 里的状态（答了框 ⇒ 接着跑）：找到那个会话的那一份，改状态那几格（原词）。
       const dir = path.join(w.homes.get(body.origin) ?? "", ".claude", "sessions");
@@ -541,7 +543,7 @@ export function backendPool({ repo, sandbox }) {
       req.on("error", reject);
     });
 
-  const TELL = new Set(["/__ccm/sub", "/__ccm/want", "/__ccm/stop", "/__ccm/ready", "/__ccm/kill", "/__ccm/watch", "/__ccm/write", "/__ccm/status", "/__ccm/paint"]);
+  const TELL = new Set(["/__ccm/sub", "/__ccm/want", "/__ccm/stop", "/__ccm/ready", "/__ccm/kill", "/__ccm/watch", "/__ccm/kept", "/__ccm/write", "/__ccm/status", "/__ccm/paint"]);
 
   async function serve(req, res, next) {
     if (req.method === "GET" && req.url?.startsWith("/__ccm/items?")) {

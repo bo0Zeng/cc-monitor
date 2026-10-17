@@ -6,7 +6,6 @@
  * - S1 转移表：3 态 × 5 事件 = 15 格，逐格相等。**期望手写自设计表**，不从实现生成。
  * 扩成 7 态 × 10 事件 = 70 格（T1）；呈现表 7 态（T2）；T4「说不清不许说成已结束」。
  * 加一行事件 `unseen`（那台机器看不见了）⇒ 7 × 11 = 77 格。
- * 容器开放联合：加一态「活·形式未知」与一行事件 `container-other` ⇒ 8 × 12 = 96 格。
  * - S2 呈现表：3 态 → {类开关 · 状态名 · 提示句}。期望串是本文件里的字面量（抄自那张表），
  *   被测串从文案表 `src/shared/copy/table.json` 取 —— 两份语料。
  * - S4 两轴是唯一读法：tab 层 ＋ 两个快照消费者里，旧的一轴半写法（`tmuxIdle` · `"archived"` 状态字面量 ·
@@ -27,7 +26,6 @@ import {
   LIVE,
   LIVE_ATTACHABLE,
   LIVE_RESUMABLE,
-  LIVE_UNKNOWN_HOST,
   RECONNECTABLE,
   UNSEEN,
   canResume,
@@ -42,54 +40,48 @@ import {
 } from "../../../src/frontend/ui/tab-session-state";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
-/** 八个态（列序 == 转移表的列序）。 */
-const FROM: SessionState[] = [LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, LIVE_UNKNOWN_HOST, RECONNECTABLE, ENDED, GONE, UNSEEN];
+/** 七个态（列序 == 转移表的列序）。 */
+const FROM: SessionState[] = [LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, RECONNECTABLE, ENDED, GONE, UNSEEN];
 const NAME = new Map<SessionState, string>([
   [LIVE, "活"],
   [LIVE_ATTACHABLE, "活·可接回"],
   [LIVE_RESUMABLE, "活·只能重开"],
-  [LIVE_UNKNOWN_HOST, "活·形式未知"],
   [RECONNECTABLE, "可重连"],
   [ENDED, copyText("sessionState.ended.name")],
   [GONE, "记录没了"],
   [UNSEEN, "说不清"],
 ]);
-const nameOf = (s: SessionState): string => NAME.get(s) ?? `〈不是八个常量之一：${JSON.stringify(s)}〉`;
+const nameOf = (s: SessionState): string => NAME.get(s) ?? `〈不是七个常量之一：${JSON.stringify(s)}〉`;
 
 describe("S1 / T1 转移表（〔U4b〕7 态 × 10 事件 ＋〔GP1〕`unseen` 一行，逐格 == 手写表）", () => {
-  // 行 = 事件；列 = 此刻（活·没报 · 活·可接回 · 活·只能重开 · 活·形式未知 · 可重连 · 已结束 · 记录没了 · 说不清）。
+  // 行 = 事件；列 = 此刻（活·没报 · 活·可接回 · 活·只能重开 · 可重连 · 已结束 · 记录没了 · 说不清）。
   // 「=」表示不变（且必须是同一个对象：调用方靠它判「变没变」）。**手写自设计表，不从实现生成。**
-  type Row = [string, string, string, string, string, string, string, string];
+  type Row = [string, string, string, string, string, string, string];
   const TABLE: Record<StateEvent, Row> = {
-    ended: [copyText("sessionState.ended.name"), copyText("sessionState.ended.name"), copyText("sessionState.ended.name"), copyText("sessionState.ended.name"), copyText("sessionState.ended.name"), "=", "=", copyText("sessionState.ended.name")],
-    idle: ["可重连", "可重连", "可重连", "可重连", "=", "=", "=", "可重连"],
-    started: ["=", "=", "=", "=", "活", "活", "活", "活"],
-    "remote-line": ["=", "=", "=", "=", "活", "活", "活", "活"],
-    activity: ["=", "=", "=", "=", "活", "=", "=", "="],
-    "container-hosted": ["活·可接回", "=", "活·可接回", "活·可接回", "=", "=", "=", "="],
-    "container-none": ["活·只能重开", "活·只能重开", "=", "活·只能重开", "=", "=", "=", "="],
-    // 不认识的宿主：活着的都落「形式未知」（不当可接回）；死了的不动。
-    "container-other": ["活·形式未知", "活·形式未知", "活·形式未知", "=", "=", "=", "=", "="],
-    "record-gone": ["=", "=", "=", "=", "=", "记录没了", "=", "="],
-    "record-present": ["=", "=", "=", "=", "=", "=", copyText("sessionState.ended.name"), "="],
-    "seen-absent": ["=", "=", "=", "=", "=", "=", "=", copyText("sessionState.ended.name")],
+    ended: [copyText("sessionState.ended.name"), copyText("sessionState.ended.name"), copyText("sessionState.ended.name"), copyText("sessionState.ended.name"), "=", "=", copyText("sessionState.ended.name")],
+    idle: ["可重连", "可重连", "可重连", "=", "=", "=", "可重连"],
+    started: ["=", "=", "=", "活", "活", "活", "活"],
+    "remote-line": ["=", "=", "=", "活", "活", "活", "活"],
+    activity: ["=", "=", "=", "活", "=", "=", "="],
+    "container-hosted": ["活·可接回", "=", "活·可接回", "=", "=", "=", "="],
+    "container-none": ["活·只能重开", "活·只能重开", "=", "=", "=", "=", "="],
+    "record-gone": ["=", "=", "=", "=", "记录没了", "=", "="],
+    "record-present": ["=", "=", "=", "=", "=", copyText("sessionState.ended.name"), "="],
     // 那台机器看不见了：还有终端可去的两态（活 · 可重连）⇒ 说不清；死透了的不动（看不见推翻不了它们的死）。
-    unseen: ["说不清", "说不清", "说不清", "说不清", "说不清", "=", "=", "="],
+    unseen: ["说不清", "说不清", "说不清", "说不清", "=", "=", "="],
   };
 
-  it("★ 96 格两向相等（事件集 == 表的行集；每格结果 == 表）", () => {
+  it("★ 70 格两向相等（事件集 == 表的行集；每格结果 == 表）", () => {
     const events = Object.keys(TABLE) as StateEvent[];
     expect([...events].sort()).toEqual([
       "activity",
       "container-hosted",
       "container-none",
-      "container-other",
       "ended",
       "idle",
       "record-gone",
       "record-present",
       "remote-line",
-      "seen-absent",
       "started",
       "unseen",
     ]);
@@ -103,12 +95,11 @@ describe("S1 / T1 转移表（〔U4b〕7 态 × 10 事件 ＋〔GP1〕`unseen` �
     expect(got).toEqual(TABLE);
   });
 
-  it("★ 八个常量的两轴取值 == 设计，且都冻结", () => {
+  it("★ 七个常量的两轴取值 == 设计，且都冻结", () => {
     expect(FROM).toEqual([
       { liveness: "live", recoverability: null },
       { liveness: "live", recoverability: "attachable" },
       { liveness: "live", recoverability: "resumable" },
-      { liveness: "live", recoverability: "unknown-host" },
       { liveness: "dead", recoverability: "attachable" },
       { liveness: "dead", recoverability: "resumable" },
       { liveness: "dead", recoverability: "gone" },
@@ -118,7 +109,7 @@ describe("S1 / T1 转移表（〔U4b〕7 态 × 10 事件 ＋〔GP1〕`unseen` �
     expect(FROM.every((s) => Object.isFrozen(s))).toBe(true);
   });
 
-  it("★ 行为谓词在八个态上 == 设计（前三列是 U4b 新添的活态，行为必须 == 旧「活」；说不清不给恢复、只在右键菜单里关）", () => {
+  it("★ 行为谓词在七个态上 == 设计（前三列是 U4b 新添的活态，行为必须 == 旧「活」；说不清不给恢复、只在右键菜单里关）", () => {
     const row = (f: (s: SessionState) => boolean): boolean[] => FROM.map(f);
     expect({
       isResumeOnly: row(isResumeOnly),
@@ -127,23 +118,22 @@ describe("S1 / T1 转移表（〔U4b〕7 态 × 10 事件 ＋〔GP1〕`unseen` �
       hasTerminal: row(hasTerminal),
       isLive: row(isLive),
     }).toEqual({
-      //                 活     活·接回 活·重开 活·未知 可重连  已结束 记录没了 说不清
-      isResumeOnly: [false, false, false, false, false, true, true, true],
-      canResume: [false, false, false, false, false, true, true, false],
-      closesWithoutMenu: [false, false, false, false, false, true, true, false],
-      hasTerminal: [true, true, true, true, true, false, false, false],
-      isLive: [true, true, true, true, false, false, false, false],
+      //                 活     活·接回 活·重开 可重连  已结束 记录没了 说不清
+      isResumeOnly: [false, false, false, false, true, true, true],
+      canResume: [false, false, false, false, true, true, false],
+      closesWithoutMenu: [false, false, false, false, true, true, false],
+      hasTerminal: [true, true, true, true, false, false, false],
+      isLive: [true, true, true, false, false, false, false],
     });
   });
 });
 
 describe("S2 / T2 呈现表（〔U4b〕7 态 → 类 · 状态名 · 提示句 == 手写表）", () => {
-  it("★ 八个态逐格相等（期望串是本文件的字面量，被测串来自文案表）", () => {
+  it("★ 七个态逐格相等（期望串是本文件的字面量，被测串来自文案表）", () => {
     expect(FROM.map(stateView)).toEqual([
       { ended: false, unseen: false, reconnectable: false, name: null, tooltip: null },
       { ended: false, unseen: false, reconnectable: false, name: null, tooltip: copyText("sessionState.liveAttachable.tooltip") },
       { ended: false, unseen: false, reconnectable: false, name: null, tooltip: copyText("sessionState.liveResumable.tooltip") },
-      { ended: false, unseen: false, reconnectable: false, name: null, tooltip: copyText("sessionState.liveUnknownHost.tooltip") },
       { ended: false, unseen: false, reconnectable: true, name: copyText("sessionState.reconnectable.name"), tooltip: copyText("sessionState.reconnectable.tooltip") },
       { ended: true, unseen: false, reconnectable: false, name: copyText("sessionState.ended.name"), tooltip: copyText("sessionState.ended.tooltip") },
       { ended: true, unseen: false, reconnectable: false, name: copyText("sessionState.gone.name"), tooltip: copyText("sessionState.gone.tooltip") },

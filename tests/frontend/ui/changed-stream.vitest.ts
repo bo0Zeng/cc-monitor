@@ -36,15 +36,12 @@ describe("changed 流", () => {
     ]);
   });
 
-  it("帧里的成品按给的解码器收：解得开的进 got、没带 / 解不开的 key 进 ask；all 照传", () => {
-    const dec = (v: unknown): number => {
-      if (typeof v !== "number") throw new Error("not a number");
-      return v;
-    };
-    const p = pushedProducts({ cells: [{ key: "a", rev: null, body: 1 }, { key: "b", rev: null, body: undefined }, { key: "c", rev: null, body: "x" }], all: false }, dec);
-    expect([...p.got]).toEqual([["a", 1]]);
-    expect(p.ask).toEqual(["b", "c"]);
-    expect(pushedProducts({ cells: [], all: true }, dec).all).toBe(true);
+  it("帧里带了成品的进 got（按主题的回包类型）、没带的 key 进 ask；all 照传", () => {
+    const list = { tasks: [] };
+    const p = pushedProducts({ cells: [{ key: "a", rev: null, body: list }, { key: "b", rev: null, body: undefined }], all: false }, "tasks");
+    expect([...p.got]).toEqual([["a", list]]);
+    expect(p.ask).toEqual(["b"]);
+    expect(pushedProducts({ cells: [], all: true }, "quota").all).toBe(true);
   });
 
   it("流名 changed/<topic>；主题名就是后端生成的那一份（从 Rust 主题表抠，异源）", () => {

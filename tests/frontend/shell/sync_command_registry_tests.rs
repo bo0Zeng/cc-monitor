@@ -104,6 +104,10 @@ const SYNC_ALLOWED: &[(&str, &str)] = &[
         "把主窗口在看的会话记进进程内那张订阅表（内存）；报给那台由 `stream_watch` 的任务去做，命令不等",
     ),
     (
+        "lib.rs::kept_sessions",
+        "把主窗口手上的 tab 记进进程内那张表（内存）；报给那台由 `stream_watch` 的任务去做，命令不等",
+    ),
+    (
         "lib.rs::forget_session",
         "从进程内的回放表与会话成品表里忘掉一条（内存）",
     ),

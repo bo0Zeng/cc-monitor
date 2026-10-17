@@ -104,24 +104,29 @@ fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back
     );
 }
 
-/// 远端那条流的 attach 行：「我要流」＋ 时区 ＋ 声明（`session_added.pid` 去掉）；没有旗标、没有钥匙。本机远端同一处拼（`local_backend_host::attach_line`）；
-/// 远端那一行由重连循环（`resident-client` 的 `feed.rs`，两端同一条）带上声明。
+/// 远端那条流的 attach 行：「我要流」＋ 时区 ＋ 名单；没有旗标、没有钥匙、没有出口声明（会话帧远端本机同一形）。
+/// 本机远端同一处拼（`local_backend_host::attach_line`）。
 #[test]
-fn the_attach_line_asks_for_the_stream_with_the_remote_declaration() {
-    let l = crate::local_backend_host::attach_line(
-        Some("Asia/Shanghai"),
-        Some(&resident_client::attach::remote_stream_view()),
-    );
+fn the_attach_line_asks_for_the_stream_and_nothing_else() {
+    let watch = cmd_wire::watch::WatchAsk {
+        sids: vec!["s1".into()],
+        ..Default::default()
+    };
+    let l = crate::local_backend_host::attach_line(Some("Asia/Shanghai"), None, Some(watch));
     assert!(l.ends_with('\n'));
     let v: serde_json::Value = serde_json::from_str(l.trim()).unwrap();
     assert_eq!(
         v,
-        serde_json::json!({"attach": true, "tz": "Asia/Shanghai", "view": {"omit": {"session_added": ["pid"]}}})
+        serde_json::json!({"attach": true, "tz": "Asia/Shanghai", "watch": {"sids": ["s1"], "branch": []}})
     );
     let src =
         guard_core::production_code(include_str!("../../../src/comms/resident-client/feed.rs"));
-    guard_core::find_pinned(&src, "Some(&attach::remote_stream_view())")
-        .unwrap_or_else(|e| panic!("远端那一行没带声明：{e}"));
+    assert!(
+        !src.contains("remote_stream_view"),
+        "远端那一行又带上了出口声明"
+    );
+    guard_core::find_pinned(&src, "attach::handshake(")
+        .unwrap_or_else(|e| panic!("远端那一行不经 attach 握手：{e}"));
 }
 
 /// T4 **停的结局只认三个词**（本机远端同一个读法）：`graceful` · `killed` · `not_running` 各落一格、pid 原样；
@@ -217,8 +222,8 @@ fn the_one_shot_deadline_outlasts_the_remote_stop() {
     );
 }
 
-// 中继 `absent` 时等着再接的编排 · 「没带字节就不问换不换」随重连循环住 `resident-client`：
-//   `feed_tests.rs::a_relay_that_stays_absent_is_tried_a_capped_number_of_times` · `gate_tests.rs::without_an_own_identity_nothing_is_asked_and_the_link_goes_ahead`。
+// 中继 `absent` 时等着再接的编排 · 「没带字节就不比新旧」随重连循环住 `resident-client`：
+//   `feed_tests.rs::a_relay_that_stays_absent_is_tried_a_capped_number_of_times` · `feed_tests.rs::without_its_own_build_the_relation_is_incomparable`。
 
 /// 小中继的第一行（读法住 `resident-client`，两端同一份）：拒绝那一形读出理由，别的（hello）照 hello 读。理由词与后端那一侧逐字相同（跨 crate 字面量）。
 #[test]

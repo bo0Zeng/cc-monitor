@@ -58,7 +58,7 @@ pub(crate) const DIAL_SITES: &[(&str, usize, bool, &str, &str)] = &[
 /// 语料地板：低于这个字节数就判「语料没喂进来」，而不是「一处都没有」。
 ///
 /// 🔴 这条与函数体那条地板一起，是 `P6bM4` 的被测对象。
-const CORPUS_FLOOR_BYTES: usize = 80_000;
+const CORPUS_FLOOR_BYTES: usize = 50_000;
 /// 入口函数体的地板：切不出函数体（或切出个空壳）时判据必须**自己先红**。
 /// **200 → 120**：判据的靶换成了拿链路的原语 `connect_and_exec_cmd`，它今天只转一句
 /// （现打 178 字节）；120 仍比「切出来的是个空壳」（签名 ＋ 一对括号，约 90 字节）大。

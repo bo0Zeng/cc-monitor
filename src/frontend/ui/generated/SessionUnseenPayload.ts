@@ -2,7 +2,7 @@
 import type { Origin } from "./Origin";
 
 /**
- * 「说不清」的 payload（会话流 `unseen` 那一格）。独立命名，理由同 [`SessionIdlePayload`]：unseen ≠ ended。
+ * 「说不清」的 payload（会话流 `unseen` 那一格）。
  * **机器级**：说的是「那台看不见了 / 那台还没报完清单」，前端对那台上活的 · 可重连的 tab 一并落说不清
  * （原先逐会话发一格 `session_id`）。
  */

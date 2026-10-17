@@ -141,14 +141,6 @@ impl SnapshotQueue {
     }
 }
 
-/// 排到的这一份快照拉不拉：那台报过名单（`Some`）⇒ 只拉在看的；没报过（`None` ＝ 全看，与后端同一个口径）⇒ 都拉。**纯函数**。
-pub(super) fn wants_snapshot(
-    watched: Option<&std::collections::BTreeSet<String>>,
-    sid: &str,
-) -> bool {
-    watched.is_none_or(|w| w.contains(sid))
-}
-
 /// 分发器：每连接一个 task。并发 ≤SNAPSHOT_CONCURRENCY 地把队列里的会话交给
 /// [`fetch_snapshot`]；每项失败重试 1 次（间隔 1s），仍败 → remote-health toast
 /// （该 tab 只有实时行，历史浏览器兜底可看全量）。取消（会话 removed/断连）
@@ -169,7 +161,7 @@ pub(super) async fn snapshot_dispatcher(
         };
         // 没在看的会话不拉（它的行也不上流）：进名单那一刻由 `stream-watch` 的 `from[]` 叫界面自己补。
         let origin = crate::origin::Origin(host_label.clone());
-        if !wants_snapshot(replay.watched(&origin).as_ref(), &item.sid) {
+        if !replay.watched(&origin).contains(&item.sid) {
             tracing::debug!("snapshot [{host_label}] {}: 没在看，不拉", item.sid);
             drop(permit);
             continue;
@@ -254,7 +246,7 @@ fn snapshot_inflight_change(replay: &EventReplay, delta: isize) {
     } else {
         n.saturating_sub(1)
     };
-    // 持锁交：保证到达序 == 计数变化序（会话流里的一格，不吃 credit、不丢）。
+    // 持锁交：保证到达序 == 计数变化序（会话流里的一格，没 credit 也照交、不丢）。
     replay.on_snapshot_inflight(*n as u32);
     drop(n);
 }
@@ -271,19 +263,16 @@ enum FetchOutcome {
 
 // 快照只含可计行：口径只住后端 `observe::lines::counts`。
 
-/// 拉取单个会话的尾段快照（续点在就只续读断线期间新到的那一截）并灌进既有管线。
+/// 拉取单个会话的尾段快照（手上有那台上一次给的 `held` 就交回去、只续读断线期间新到的那一截）并灌进既有管线。
 ///
-/// 🔴 **不再为每份快照单拨一条 SSH。** 此前这里 exec 一次
-/// `<backend> --read-session-tail <p> 500`，读它一口气印出来的「meta ＋ 尾段 ＋ 头段」；
-/// 现在走已有长连接：先 `history-tail` 问那张图（`total` / `tail_from` / 两段的字节边界），
-/// 再只按 `[split_at, end)` 一段用 `history-read` 分页取正文（第 `tail_from` 行起）。
-/// 头段 `[0, split_at)` 不读（原先连上就整份读回来、壳与界面只留尾巴、其余当场丢 —— 沙箱 6 个活会话 16.5 MB → 3.4 MB）。
+/// 走已有长连接：一问 `history-tail`（交 `held`）拿回那张图 · 怎么接（后端判：续传 · 尾段 · 变短 / 被改写之后的尾段 · 缺得多不读）·
+/// 第一页正文；一页装不下的照 `next` 用 `history-read` 分页接着拉到 `end`。头段 `[0, split_at)` 不读，界面往上翻时按行号 / 按偏移取回。
 ///
 /// 每个 chunk 边界查取消（会话 removed / 连接断）——中止并**补偿 emit 一次
 /// ended 格**：若某个已 flush 的 chunk 恰把归档 tab"见行复活"，这里把它
 /// 压回 archived（审计 D-B1 僵尸复活的封口；archiveTab 幂等，重复无害）。
 ///
-/// 完整性校验（审计 D-I2）：到达的可计行数必须**恰好等于** `total - tail_from`（续传：`total` 减去锚）。
+/// 完整性校验（审计 D-I2）：到达的可计行数必须**恰好等于** `total - from`。
 async fn fetch_snapshot(
     q: &std::sync::Arc<SnapshotQueue>,
     item: &SnapshotItem,
@@ -291,154 +280,107 @@ async fn fetch_snapshot(
     replay: &Arc<EventReplay>,
 ) -> Result<FetchOutcome, String> {
     use crate::frame_query;
+    use cmd_wire::session::TailHow;
     let sid = &item.sid;
     let path = &item.path;
     let origin = crate::origin::Origin(host_label.to_string());
-    // 快照是两件事、各一个期限：先问图（一问，`PAGE_BUDGET`）；
-    //   读正文（分页）在知道要读多少字节之后再造、按大小给（`frame_query::read_budget`），每一页都拿同一个时刻去等。
-    let plan = frame_query::tail(
+    let held = crate::snapshot_resume::cursor_of(&origin, sid);
+    // 快照是两件事、各一个期限：先问（一问，`PAGE_BUDGET`）；剩下的正文（分页）在知道还差多少字节之后再造、按大小给。
+    let tail = frame_query::tail(
         &origin,
         path,
         SNAPSHOT_TAIL_LINES,
+        held.as_ref(),
         frame_query::Deadline::within(frame_query::PAGE_BUDGET),
     )
     .await?;
-    // 断线重连后从续点接着拉（`snapshot_resume` 头注），续点对不上就只读尾段。
-    let cursor = crate::snapshot_resume::cursor_of(&origin, sid);
-    let mut how = crate::snapshot_resume::plan_read(cursor.as_ref(), path, &plan);
-    // 断线期间文件变短了（续点比这一次的图长）⇒ 这一次读出来的是另一代的行号：
-    //   先交那个会话一格「变短了、已从头重读」（前端据它整份重来、留存丢旧的一代），再读尾段。
-    //   续点不必另丢：这一次读完立的新锚盖掉它。
-    if crate::snapshot_resume::shrank(cursor.as_ref(), path, &plan) {
+    let plan = tail.plan;
+    // 断线期间文件变短了 / 被改写了 ⇒ 这一次读出来的是另一代的行号：先交那个会话一格「已从头重读」（前端据它整份重来、留存丢旧的一代），再读尾段。
+    let changed = match tail.how {
+        TailHow::Truncated => Some(FileChange::Truncated),
+        TailHow::Rewritten => Some(FileChange::Rewritten),
+        TailHow::Tail | TailHow::Resume | TailHow::Handoff => None,
+    };
+    if let Some(change) = changed {
+        tracing::warn!(
+            "snapshot [{host_label}] {sid}: 记录文件在断线期间变了（{}），从尾段重读",
+            change.as_wire()
+        );
         replay
             .on_session_notice(crate::ui_contract::SessionFileNoticePayload {
                 session_id: sid.to_string(),
                 origin: host_label.to_string(),
                 path: path.to_string(),
-                change: FileChange::Truncated.as_wire().to_string(),
+                change: change.as_wire().to_string(),
             })
             .await;
     }
-    // 续传之前先核锚那一行还是不是那一行（`snapshot_resume` 头注「截断 / 改写检测」）：
-    //   断线期间被整份改写而且变长的文件，上面那道「文件没变短」拦不住。对不上 ⇒ 续点作废、从尾段重读、交那个会话一格「被改过」。
-    if let (
-        crate::snapshot_resume::Read::Resume { .. } | crate::snapshot_resume::Read::Handoff { .. },
-        Some(w),
-    ) = (&how, cursor.as_ref().and_then(|c| c.witness.clone()))
-    {
-        let page = frame_query::read_page(
-            &origin,
-            path,
-            w.start,
-            Some(w.end),
-            frame_query::Deadline::within(frame_query::PAGE_BUDGET),
-        )
-        .await?;
-        // 一页没读满那一行（`next < end` 且没到头）⇒ 核不了，照续传（不许把「没读全」说成「被改过」）。
-        let whole = page.eof || page.next >= w.end;
-        if whole && !crate::snapshot_resume::witness_holds(&w, &page.rows) {
-            tracing::warn!(
-                "snapshot [{host_label}] {sid}: 续点那一行（字节 {}–{}）与上次不是同一行 —— 记录文件在断线期间被改写过，从尾段重读",
-                w.start,
-                w.end
+    match tail.how {
+        TailHow::Resume => tracing::info!(
+            "snapshot [{host_label}] {sid}: 续传 —— 从第 {} 行读到第 {} 行",
+            tail.from,
+            plan.total
+        ),
+        // 缺得比留存还多 ⇒ 断线那一截不读：交会话流一格「从第 `from` 行起接着来」（界面那一路自己取最后那一截）。
+        TailHow::Handoff => {
+            tracing::info!(
+                "snapshot [{host_label}] {sid}: 断线期间缺得比留存多 —— 不读那一截，从第 {} 行起接着来（界面自己取最后那一截）",
+                tail.from
             );
-            crate::snapshot_resume::forget(&origin, sid);
-            replay
-                .on_session_notice(crate::ui_contract::SessionFileNoticePayload {
-                    session_id: sid.to_string(),
-                    origin: host_label.to_string(),
+            replay.on_watch_from(
+                &origin,
+                vec![cmd_wire::watch::WatchFrom {
+                    sid: sid.to_string(),
                     path: path.to_string(),
-                    change: FileChange::Rewritten.as_wire().to_string(),
-                })
-                .await;
-            how = crate::snapshot_resume::Read::Tail;
+                    seq: tail.from,
+                }],
+            );
         }
+        TailHow::Tail | TailHow::Truncated | TailHow::Rewritten => {}
     }
-    if let crate::snapshot_resume::Read::Resume {
-        from_byte,
-        upto,
-        first_seq,
-        skip_below,
-    } = &how
-    {
-        tracing::info!(
-            "snapshot [{host_label}] {sid}: 续传 —— 从字节 {from_byte}（第 {first_seq} 行）读到 {upto}，\
-             第 {skip_below} 行之前的已发过、不再发"
-        );
-    }
-    // 续得上、缺得比留存还多 ⇒ 断线那一截不读：交会话流一格「从第 `seq` 行起接着来」（界面那一路自己取最后那一截），
-    //   见证换成文件此刻的最后一行（新锚那一行）。
-    let mut handed: Option<Option<crate::snapshot_resume::Witness>> = None;
-    if let crate::snapshot_resume::Read::Handoff { seq } = how {
-        tracing::info!(
-            "snapshot [{host_label}] {sid}: 断线期间缺 {} 行、比留存多 —— 不读那一截，从第 {seq} 行起接着来（界面自己取最后那一截）",
-            seq - cursor.as_ref().map_or(seq, |c| c.next)
-        );
-        replay.on_watch_from(
-            &origin,
-            vec![crate::ui_contract::SessionWatchPayload {
-                session_id: sid.to_string(),
-                path: path.to_string(),
-                seq,
-            }],
-        );
-        handed = Some(last_line_witness(&origin, path, &plan).await?);
-    }
-    let mut walk = crate::snapshot_resume::Walk::new(&how, &plan);
-    // 走读时顺手挑下一次续传要核的那一行（文件最后一个可计行）。
-    let mut pick = crate::snapshot_resume::WitnessPick::default();
+    let mut seq = tail.from;
     let mut total_bytes: u64 = 0;
     let mut chunk: Vec<JsonlLine> = Vec::with_capacity(SNAPSHOT_CHUNK_LINES);
     let mut runs = crate::SkipRuns::default(); // 这一次快照自己一份（与实时那一路不交错）
     let mut cancelled = false;
-    let segments = walk.segments().to_vec();
-    let body_bytes: u64 = segments
-        .iter()
-        .map(|(from, upto)| upto.saturating_sub(*from))
-        .sum();
-    let body =
-        frame_query::Deadline::within(frame_query::read_budget(body_bytes.min(SNAPSHOT_MAX_BYTES)));
-    'read: for (from, upto) in segments {
-        let mut offset = from;
-        while offset < upto {
-            let page = frame_query::read_page(&origin, path, offset, Some(upto), body).await?;
-            total_bytes += page.next - offset;
-            if total_bytes > SNAPSHOT_MAX_BYTES {
-                // 防御上限：不再继续拉（完整性校验会把截断判为失败 → toast）。
-                tracing::warn!(
-                    "snapshot [{host_label}] {sid}: 超过 {SNAPSHOT_MAX_BYTES} 字节上限，截断"
-                );
-                break 'read;
-            }
-            let spans = crate::snapshot_resume::row_spans(offset, &page.rows);
-            // 后端只交可计行、每行带成品（进不进界面 · `cwd` · 摘要都是它给的）；这里只编号、挑见证、攒批。
-            for (row, span) in page.rows.into_iter().zip(spans) {
-                pick.see(upto, plan.end, row.hash, span);
-                let Some(seq) = walk.step() else {
-                    continue; // 续传：锚到续点之间的行前端已有，数掉不发
-                };
-                chunk.push(JsonlLine {
-                    session_id: sid.to_string(),
-                    path: std::path::PathBuf::from(path),
-                    seq,
-                    record: row.record,
-                    cwd: row.cwd,
-                    end: span.map(|(_, e)| e),
-                    rid: None,
-                    catch_up: catch_up_at(item.expected_lines, seq),
-                });
-                if chunk.len() >= SNAPSHOT_CHUNK_LINES {
-                    if q.is_cancelled(sid) {
-                        cancelled = true;
-                        break 'read;
-                    }
-                    flush_lines(replay, host_label, std::mem::take(&mut chunk), &mut runs).await;
+    let mut page = tail.page;
+    let body = frame_query::Deadline::within(frame_query::read_budget(
+        plan.end.saturating_sub(page.next).min(SNAPSHOT_MAX_BYTES),
+    ));
+    'read: loop {
+        // 后端只交可计行、每行带成品（进不进界面 · `cwd` · 末端都是它给的）；这里只编号、攒批。
+        for row in std::mem::take(&mut page.rows) {
+            chunk.push(JsonlLine {
+                session_id: sid.to_string(),
+                path: std::path::PathBuf::from(path),
+                seq,
+                record: row.record,
+                cwd: row.cwd,
+                end: row.end,
+                rid: None,
+                catch_up: catch_up_at(item.expected_lines, seq),
+            });
+            seq += 1;
+            if chunk.len() >= SNAPSHOT_CHUNK_LINES {
+                if q.is_cancelled(sid) {
+                    cancelled = true;
+                    break 'read;
                 }
+                flush_lines(replay, host_label, std::mem::take(&mut chunk), &mut runs).await;
             }
-            offset = page.next;
-            if page.eof {
-                break;
-            }
+        }
+        if page.eof || page.next >= plan.end {
+            break;
+        }
+        let offset = page.next;
+        page = frame_query::read_page(&origin, path, offset, Some(plan.end), body).await?;
+        total_bytes += page.next - offset;
+        if total_bytes > SNAPSHOT_MAX_BYTES {
+            // 防御上限：不再继续拉（完整性校验会把截断判为失败 → toast）。
+            tracing::warn!(
+                "snapshot [{host_label}] {sid}: 超过 {SNAPSHOT_MAX_BYTES} 字节上限，截断"
+            );
+            break;
         }
     }
     if cancelled || q.is_cancelled(sid) {
@@ -449,7 +391,7 @@ async fn fetch_snapshot(
                 .read()
                 .settle_again(origin.as_wire_str(), sid);
             for out in again {
-                replay.on_lifecycle(out.origin(), out.frames());
+                replay.on_lifecycle(out.origin(), vec![out.frame()]);
             }
         }
         return Ok(FetchOutcome::Cancelled);
@@ -457,8 +399,8 @@ async fn fetch_snapshot(
     if !chunk.is_empty() {
         flush_lines(replay, host_label, chunk, &mut runs).await;
     }
-    // 完整性校验：精确对账（F30）—— 只读尾段时对尾段几行，续传时对「锚之后那一截」。
-    let (arrived, want) = (walk.arrived(), walk.want());
+    // 完整性校验：精确对账（F30）—— `[from, total)` 每一行都到了。
+    let (arrived, want) = (seq - tail.from, plan.total - tail.from);
     if arrived != want {
         return Err(copy_text(
             "rsSshSource.snapshot.incomplete",
@@ -480,44 +422,9 @@ async fn fetch_snapshot(
             ));
         }
     }
-    // `[tail_from, total)` 全到了（尾段：刚发完；续传：锚之前的早有、之后的刚发完）⇒ 立锚。尾段之下的前端按需取回。
-    crate::snapshot_resume::note_snapshot_done(&origin, sid, path, &plan);
-    crate::snapshot_resume::note_witness(&origin, sid, handed.or_else(|| pick.done()));
+    // `[from, total)` 全到了 ⇒ 存后端给的那一份（下一次原样交回）。尾段之下的前端按需取回。
+    crate::snapshot_resume::note_done(&origin, sid, tail.held);
     Ok(FetchOutcome::Done(arrived))
-}
-
-/// 文件此刻最后一个可计行（＝ 锚 `(plan.total, plan.end)` 那一行）的见证：问一行的尾段图、读回那一行。
-/// 这一问看到的文件已经又长了（不再是锚那一行）⇒ `None`（这一次不记，下一次续传不核）。
-async fn last_line_witness(
-    origin: &crate::origin::Origin,
-    path: &str,
-    plan: &crate::frame_query::TailPlan,
-) -> Result<Option<crate::snapshot_resume::Witness>, String> {
-    use crate::frame_query;
-    let one = frame_query::tail(
-        origin,
-        path,
-        1,
-        frame_query::Deadline::within(frame_query::PAGE_BUDGET),
-    )
-    .await?;
-    if one.total != plan.total || one.end != plan.end {
-        return Ok(None);
-    }
-    let page = frame_query::read_page(
-        origin,
-        path,
-        one.split_at,
-        Some(one.end),
-        frame_query::Deadline::within(frame_query::PAGE_BUDGET),
-    )
-    .await?;
-    let spans = crate::snapshot_resume::row_spans(one.split_at, &page.rows);
-    let mut pick = crate::snapshot_resume::WitnessPick::default();
-    for (row, span) in page.rows.iter().zip(spans) {
-        pick.see(one.end, plan.end, row.hash, span);
-    }
-    Ok(pick.done().flatten())
 }
 
 /// 这个会话的第 `seq` 行是不是补历史：宣告那一刻那台说的行数 `announced`（`session_added.lines`）以前的是；

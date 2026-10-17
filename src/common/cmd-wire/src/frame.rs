@@ -3,7 +3,8 @@
 //! 一帧一行 JSON，`kind` 是标签、写在最前，其余格平铺；每种帧一个具名结构（变体名就是 `kind` 的驼峰写法）。
 //! 记录那一格（`line.record`）是类型参数 `R`：后端用 [`Record`]；原文照转的一端用 `Box<RawValue>`（不建树）；
 //! 手机用 [`crate::record::OrUnread`]（解不开的那一条成认不出那一条，整帧不失败）。
-//! 体格 `Probe.cell` · `TerminalScreen.view` · `Reply.data` · `Changed.body` 仍是 JSON 值（各有自己的严格收处）。
+//! TS 名带 `Wire` 前缀的那几样（只进形状指纹，不导出）：界面另有壳给的同名形状。
+//! 体格 `Probe.cell` · `Reply.data` · `Changed.body` 仍是 JSON 值（各有自己的严格收处）。
 
 use crate::cells::{Tone, Words};
 use crate::files::WirePath;
@@ -50,17 +51,73 @@ const LINE: &str = "line";
 /// 一行 ⇒ 一帧。`line` 那一种直接解它自己的结构（记录那一格可能是进不了内部标签枚举的 `RawValue`），别的经枚举。
 /// 标签照例在行首（`{"kind":"…"`），不在行首就整行扫一次找它。
 pub fn decode<'a, R: Deserialize<'a>>(line: &'a str) -> serde_json::Result<Frame<R>> {
-    let kind = match line
-        .strip_prefix(r#"{"kind":""#)
-        .and_then(|r| r.split_once('"'))
-    {
-        Some((k, _)) => k.to_string(),
-        None => serde_json::from_str::<KindOnly>(line)?.kind,
-    };
+    let kind = kind_of(line)?;
     if kind == LINE {
         serde_json::from_str::<Line<R>>(line).map(Frame::Line)
     } else {
         serde_json::from_str(line)
+    }
+}
+
+/// 帧表里 `line` 那一行按它算：记录那一格不进帧的指纹（记录认不认得一条一条判：手机的 [`crate::record::OrUnread`] · 界面认不出那张卡）。
+#[cfg(any(test, feature = "ts"))]
+#[derive(ts_rs::TS)]
+#[ts(type = "unknown", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))]
+pub struct OpaqueRecord;
+
+/// 进帧表的每种帧（`hello` 除外：门靠它）与它的 TS 形状。变体多一种这里编不过（`all` 那张 `match` 是穷尽的）。
+#[cfg(any(test, feature = "ts"))]
+pub fn gated_tys() -> Vec<(&'static str, crate::fingerprint::Ty)> {
+    use crate::fingerprint::ty_of;
+    macro_rules! table {
+        ($($v:ident => $k:literal),* $(,)?) => {{
+            #[allow(dead_code)]
+            fn all(f: &Frame<OpaqueRecord>) {
+                match f {
+                    Frame::Hello(_) => {}
+                    $(Frame::$v(_) => {})*
+                }
+            }
+            vec![$(($k, ty_of::<table!(@ty $v)>())),*]
+        }};
+        (@ty Line) => { Line<OpaqueRecord> };
+        (@ty $v:ident) => { $v };
+    }
+    table! {
+        Line => "line",
+        SessionAdded => "session_added",
+        SessionPrimed => "session_primed",
+        SessionStatus => "session_status",
+        SessionState => "session_state",
+        SessionRemoved => "session_removed",
+        Overflow => "overflow",
+        Reply => "reply",
+        Cancelled => "cancelled",
+        Changed => "changed",
+        SessionsReplayed => "sessions_replayed",
+        SessionFileGone => "session_file_gone",
+        SessionFileReread => "session_file_reread",
+        LinkData => "link_data",
+        LinkEnd => "link_end",
+        Transfer => "transfer",
+        FilesBatch => "files_batch",
+        Probe => "probe",
+        LiveCard => "live_card",
+        SessionRuns => "session_runs",
+        SessionBranch => "session_branch",
+        TerminalScreen => "terminal_screen",
+        TerminalFollowEnd => "terminal_follow_end",
+    }
+}
+
+/// 一行的 `kind`（不解别的格）：照例在行首就直接切出来，不在就整行扫一次。
+pub fn kind_of(line: &str) -> serde_json::Result<String> {
+    match line
+        .strip_prefix(r#"{"kind":""#)
+        .and_then(|r| r.split_once('"'))
+    {
+        Some((k, _)) => Ok(k.to_string()),
+        None => Ok(serde_json::from_str::<KindOnly>(line)?.kind),
     }
 }
 
@@ -69,72 +126,102 @@ struct KindOnly {
     kind: String,
 }
 
-fn is_false(b: &bool) -> bool {
-    !*b
+/// hello 的头：版本门第一步只解它（全形解不开时也认得出是不是我们的后端、是哪一版）。
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct HelloHead {
+    /// 这份后端二进制的身份（`BUILD_ID`）。
+    pub build_id: String,
+}
+
+impl HelloHead {
+    /// 这一行是 hello、头那一格解得出 ⇒ `Some`；别的 ⇒ `None`（那头不是我们的后端）。
+    pub fn of(line: &str) -> Option<HelloHead> {
+        if kind_of(line).ok()? != "hello" {
+            return None;
+        }
+        serde_json::from_str(line).ok()
+    }
 }
 
 fn is_zero(n: &u32) -> bool {
     *n == 0
 }
 
-/// Handshake sent once when a client connects.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// 握手：连上之后那台发的第一帧。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct Hello {
-    /// 协议版本号。
-    pub v: u32,
     /// 这份后端二进制的身份（`BUILD_ID`）；换不换后端按它判。
     pub build_id: String,
     /// 这台机器的架构（`x86_64` / `aarch64` …）。
     pub host_arch: String,
-    /// ⚠ **冻结兼容字段，不是欠账**。字段名里带 agent 名（违反「agent 维度只许出现在值里」）；解锁条件登记在 `agent_boundary_guard::FROZEN_COMPAT`。
-    pub claude_dir: String,
-    /// `S4`（`D3`）：本机上**各 agent 的 home 目录**（`[{agent_kind, path}]`）。今天恒空 ⇒ 不上线。
+    /// 这台后端接受的入方向命令；空 ⇒ 它不读命令。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub homes: Vec<AgentHome>,
-    /// phase②（backend-08，additive）：本 backend **会发射的帧 kind 集**（snake_case）。空/缺 → 省略。
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub emits: Vec<String>,
-    /// U6b-2（additive）：本 backend **接受的入方向命令集**。空/缺 = 这个后端不读 stdin，客户端别发命令。
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<String>>"))]
     pub commands: Vec<String>,
-    /// `K-P4`（09-04，additive，**与上面两条都正交**）：本 backend **接得下、但在这台机器上做不到**的命令，以及原因（`[{command, code}]`，见 [`Unavailable`]）。
-    ///
-    /// 空/缺 = 没有任何「做不到」的把握（不是「全都做得到」）；列出来的那条 = 别画那个按钮。它是提示不是闸门：
-    /// 同一帧被这个进程后续的所有连接共用，读数可以任意旧，后端自己绝不拿它拒命令。
+    /// 接得下、但这台做不到的命令与原因（见 [`Unavailable`]）；空 ＝ 没有「做不到」的把握。是提示不是闸门。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(
+        any(test, feature = "ts"),
+        ts(optional, as = "Option<Vec<Unavailable>>")
+    )]
     pub unavailable: Vec<Unavailable>,
-    /// 〔additive〕**起我的宿主交给我的那几格环境，原样回显**（`{名: 值}`，名单住后端 `wire::HOST_ECHO_ENVS`）。一格都没被交 ⇒ 省略。
+    /// 起它的宿主交给它的那几格环境，原样回显（`{名: 值}`，名单住后端 `wire::HOST_ECHO_ENVS`）。一格都没被交 ⇒ 省略。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[cfg_attr(
+        any(test, feature = "ts"),
+        ts(optional, as = "Option<BTreeMap<String, String>>")
+    )]
     pub host_env: BTreeMap<String, String>,
     /// typed 命令的形状指纹 `{命令: 8 位十六进制}`（[`crate::shapes::SHAPES`]）。客户端拿它自己编进来的那一张比：
     /// 对得上就直接按类型用，对不上就说「那台后端版本不同」、一个字节不发。没有 typed 命令 ⇒ 省略。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[cfg_attr(
+        any(test, feature = "ts"),
+        ts(optional, as = "Option<BTreeMap<String, String>>")
+    )]
     pub shapes: BTreeMap<String, String>,
+    /// 每种帧（`hello` 除外）的形状指纹 `{kind: 8 位十六进制}`（[`crate::frame_shapes::FRAMES`]）。客户端拿它自己编进来的那一张比：
+    /// 对不上的那几种不解、说一次「那台后端版本不同」，别的照常。空 ⇒ 省略（那就是一种都对不上）。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[cfg_attr(
+        any(test, feature = "ts"),
+        ts(optional, as = "Option<BTreeMap<String, String>>")
+    )]
+    pub frames: BTreeMap<String, String>,
 }
 
 /// 会话记录里的一行 —— 带的是**成品**：这一行在界面里是什么（`record`，缺 ＝ 不进界面、照占号）与它自己的 `cwd`。
 ///
 /// **两个前端共同的契约面**：`session_id` · `path` · `seq` · `byte_offset` 四格在冻结表里（`wire_tests::the_shapes_the_second_frontend_reads_stay_put`）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct Line<R = Record> {
     /// 会话 id。
     pub session_id: String,
     /// 这份会话记录在那台机器上的绝对路径。
     pub path: String,
     /// 这一行在本条流里的序号（按文件单调递增）；不是续传键，续传用 `byte_offset`。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub seq: u64,
     /// 这一行的通用记录；缺 ＝ 不进界面、照占号。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub record: Option<R>,
     /// 这条记录自己的工作目录。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub cwd: Option<String>,
     /// backend-01（gap#2，additive 不 bump PROTO_VERSION）：本行末尾（含 `\n`）在文件中的**累计原始字节 offset**——
     /// 语义逐字节对齐手机端 `LineFramer.endOffset`：计 CRLF 的 `\r`、含 `\n`、残行不计；resume N ⇒ `tail -c +(N+1)`。
     #[serde(default)]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub byte_offset: u64,
     /// 这一行的对账键（适配层给；流的「开始」带同一个值）。没有 ⇒ 不上线。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub rid: Option<String>,
 }
 
@@ -142,6 +229,8 @@ pub struct Line<R = Record> {
 ///
 /// 附带 pidfile 元信息（`cwd` · `name` …）；缺的格不上线。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct SessionAdded {
     /// 会话 id。
     pub sid: String,
@@ -149,21 +238,27 @@ pub struct SessionAdded {
     pub agent_kind: String,
     /// 是不是后台会话（不是人坐在终端里对话的那种）。适配层判，客户端只读这一格；只在 `true` 时上线。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
     pub background: bool,
     /// **E73（additive）：attach 进去对人有没有意义。** `false` = 别给 attach / ↗ / 「杀死空 tmux」这几个动作；**省略 = `true`**。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub attachable: Option<bool>,
     /// pidfile 记的 `cwd`：进程起在哪个目录（客户端认「我刚起的那条起来了」用）。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub cwd: Option<String>,
     /// 会话的项目目录：会话起在哪个目录（tab 标题 · 打开工作目录 · 分组都用它）。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub project_dir: Option<String>,
     /// pidfile 里的会话名。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub name: Option<String>,
     /// Batch8-F25（additive）：该会话 jsonl 的远端绝对路径（同 sid 多文件时取 mtime 最新者）；宣告时还没写首行 ⇒ 缺。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub path: Option<String>,
     /// 宣告时此刻在干什么（[`ActivityFace`]，平铺在帧上）。
     #[serde(flatten)]
@@ -173,12 +268,15 @@ pub struct SessionAdded {
     pub name_face: NameFace,
     /// 宣告时在等什么（同 `session_status`）。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub waiting_for: Option<String>,
     /// 隐藏那一格（不占标签页）；不隐藏 ⇒ 不上线。之后变了经主题 `session_hidden` 推。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub hidden: Option<Hidden>,
     /// 〔additive〕这条会话住在什么容器里（见 [`SessionContainer`]）。**判不了 ⇒ 不上线**（缺席是「不知道」，不是 `none`）。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub container: Option<SessionContainer>,
     /// 那个 claude 进程的 **pid**（恒在）。不要它的出口在声明里去掉（`omit: {session_added: ["pid"]}`）。
     pub pid: u32,
@@ -188,19 +286,25 @@ pub struct SessionAdded {
 ///
 /// 会话没有记录（刚起还没写首行）⇒ 两格都缺：之后的行天然从 0 起全量到。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct SessionPrimed {
     /// 会话 id。
     pub sid: String,
     /// 读完的那份记录（修改时刻最新的那份）。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub path: Option<String>,
     /// 那份记录此刻的完整行数 L（之后的第一帧 `line` 的 `seq` 就是它）。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub lines: Option<u64>,
 }
 
 /// Batch9-F27：会话 status 变化（pidfile modify diff；CC 仅状态转换时重写，天然稀疏）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct SessionStatus {
     /// 会话 id。
     pub sid: String,
@@ -212,14 +316,18 @@ pub struct SessionStatus {
     pub name_face: NameFace,
     /// 在等什么（pidfile 里的 `waitingFor`）。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub waiting_for: Option<String>,
     /// 这条会话的记录路径（同 `session_added` 那一格）：宣告之后才定下来 · 换了一份 ⇒ 带上最新的；没变 ⇒ 不上线。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub path: Option<String>,
 }
 
 /// **会话账本的成品**：这条会话离开「活」之后是可重连还是已结束（见 [`SessionFate`]）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct SessionState {
     /// 会话 id。
     pub sid: String,
@@ -231,41 +339,45 @@ pub struct SessionState {
     pub state_hint: Words,
     /// 语气。
     pub state_tone: Tone,
+    /// 监控板组内的序（与活会话的 `activity_order` 同一把尺、排在它们之后；小的在前）。
+    pub state_order: u8,
     /// 此刻能不能换模型 · 权限档（离开「活」那一形）。
     pub switch: Switch,
 }
 
 /// A session file went away.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct SessionRemoved {
     /// 会话 id。
     pub sid: String,
     /// **S0（additive）：这个 sid 是「死了」还是「被顶替了」。** [`RemovalCause::Gone`] 不写字段；只有 `Superseded` 才出现 `"cause":"superseded"`。
     #[serde(default, skip_serializing_if = "RemovalCause::is_gone")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<RemovalCause>"))]
     pub cause: RemovalCause,
     /// 被顶替时（`cause: superseded`），顶替它的那条会话的 sid；不是顶替 ⇒ 不上线。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub by: Option<String>,
 }
 
-/// The bounded frame channel back-pressured and the reader had to drop
-/// `dropped` frames (a slow/wedged SSH pipe).
+/// 这条连接拥塞丢过帧：那台写好的那一句（只丢了行 · 会话状态已重新对齐 · 两样都有）。
+/// 丢了会话状态那一类的，那台紧跟着在同一条连接上把此刻的样子整份重报一次，客户端不判、不重接。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct Overflow {
-    /// 自上一次哨兵以来丢掉的帧数。
-    pub dropped: u64,
-    /// 〔audit-0805 F03，**additive**〕那批丢帧里**不可恢复**的那些的身份。空集时**不序列化**。
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub lost: Vec<LostFrame>,
-    /// 身份表是**有界**的（后端 `watcher.rs` 的 `LOST_IDENTITY_CAP`）。触顶后置位。
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub lost_truncated: bool,
+    /// 那一句。
+    pub said: Words,
 }
 
 /// U6b-1：**入方向命令的应答**。`id` 是客户端给的不透明串，backend **原样回显、不解析**。
 ///
 /// 错误形状 `{code, message}`（协议 v1 §3），不发明第二种错误 JSON。成功时两者都省略。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct Reply {
     /// 回显请求的 `id`。
     pub id: String,
@@ -273,20 +385,26 @@ pub struct Reply {
     pub ok: bool,
     /// 失败时的码（协议级或命令级）。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub code: Option<String>,
     /// 失败时给人看的那一句（不含下层原话与码：那些进 `detail`）。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub message: Option<String>,
     /// 失败时「复制详情」那几行（时刻 · 机器 · 命令 · 码 · 原话），后端写好、界面原样复制。成功时省略。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub detail: Option<String>,
     /// U6b-3：命令的返回值（如 `resolve` 的 CommandPlan）。无返回值的命令省略。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "unknown"))]
     pub data: Option<Value>,
 }
 
 /// U6b-1：某个在跑的命令**已被取消**。取消是一条普通命令（`cmd:"cancel"`）、不是带外信号。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct Cancelled {
     /// 被取消的那条命令的 `id`。
     pub id: String,
@@ -296,17 +414,22 @@ pub struct Cancelled {
 ///
 /// `key` 说是哪一个（会话 · 工作区）；`rev` 说变成了哪一版；`body` 是那一样的小成品（超了上限就不带，客户端重问）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct Changed {
     /// 哪一样变了。
     pub topic: Topic,
     /// 哪一个（会话 id · 工作区根）；主题不带 ⇒ 缺。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub key: Option<String>,
     /// 变成了哪一版；主题不带 ⇒ 缺。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub rev: Option<String>,
     /// 那一样的小成品；主题不带或超了上限 ⇒ 缺（客户端重问）。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "unknown"))]
     pub body: Option<Value>,
 }
 
@@ -314,10 +437,14 @@ pub struct Changed {
 ///
 /// 无载荷：清单本身就是它前面那些 `session_added`（同一条有序的流）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct SessionsReplayed {}
 
 /// **活会话的记录文件不见了**（被删 / 被改名走了）。每次「在 → 不在」只发一帧。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct SessionFileGone {
     /// 会话 id。
     pub session_id: String,
@@ -329,6 +456,8 @@ pub struct SessionFileGone {
 ///
 /// 重读那一趟照读照数、不逐行上流；行号从 0 重数 ⇒ 下游据这一帧把这个会话旧的一代整份作废，照宣告那样从尾段取到第 `lines` 行。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct SessionFileReread {
     /// 会话 id。
     pub session_id: String,
@@ -342,6 +471,8 @@ pub struct SessionFileReread {
 
 /// **一条链路的下行字节**。`data` 是 base64（标准字母表、带补位）。🔴 **不丢**：走应答那条独立通道。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct LinkData {
     /// 链路 id（`link-open` 时客户端给的）。
     pub link: String,
@@ -351,45 +482,60 @@ pub struct LinkData {
 
 /// **一条链路不会再有字节了**；后端已经忘掉这个 `link` id。`error` 省略 = 正常收尾。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct LinkEnd {
     /// 链路 id。
     pub link: String,
     /// 非正常收尾的原话；缺 ＝ 正常收尾。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub error: Option<String>,
 }
 
 /// **一趟传输此刻的样子**（`transfer-start` 之后才出现）。每一帧都是一整份快照；带 `end` 的那一帧是这一趟的最后一帧。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct Transfer {
     /// 传输单 id。
     pub id: String,
     /// 已传字节。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub got: u64,
     /// 总字节。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub total: u64,
     /// 只在最后一帧：这一趟怎么收场的。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub end: Option<TransferEnd>,
 }
 
 /// **一组（同一台上的复制 · 删除 · 改权限，两台之间的复制）此刻做到哪了**。每一帧都是一整份快照；结局在那一问的应答里。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct FilesBatch {
     /// 那一组的票（发起时交来的，后端只当不透明的串回填）。
     pub ticket: String,
     /// 做完了几项。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub done: u64,
     /// 一共几项。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub total: u64,
     /// 手上那一项（根底下的相对段）；做完了缺席。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub current: Option<WirePath>,
     /// 整组按字节已传几个（只有搬字节的那一种报：两台之间的复制）；不报 ⇒ 缺席。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub bytes_done: Option<u64>,
     /// 整组按字节一共几个（同 `bytes_done`，两格同在同缺）。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub bytes_total: Option<u64>,
 }
 
@@ -397,15 +543,20 @@ pub struct FilesBatch {
 ///
 /// `cell` 恰好一个键：`stage`（握手那几行）· `reached`（`ssh` / `hello` / `control` 走完了那一段）· `end`（结局，最后一格）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct Probe {
     /// 测试连接那一趟的票（`remote-probe` 交来的）。
     pub ticket: String,
     /// 一格进度，恰好一个键：`stage` · `reached` · `end`。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "unknown"))]
     pub cell: Value,
 }
 
 /// 一个会话的运行表（主运行之外的那几个子运行）。表变了就整份发一次；`ended`：被挤出运行表的已收场子运行。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct SessionRuns {
     /// 会话 id。
     pub sid: String,
@@ -419,12 +570,15 @@ pub struct SessionRuns {
 ///
 /// **「前 `at` 条照旧，其后换成 `off`」**：变了才发，只发变了的那一截；整份从 `at = 0` 起、按页切成几帧接着发。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct SessionBranch {
     /// 会话 id。
     pub sid: String,
     /// 这份会话记录在那台机器上的绝对路径。
     pub path: String,
     /// 前几条照旧。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub at: u64,
     /// 第 `at` 条起的那几条 `id`（之后没有了：清单到此为止）。
     pub off: Vec<String>,
@@ -436,17 +590,22 @@ pub struct SessionBranch {
 ///
 /// `view` 与 `terminal-preview` 的回话同一份成品；每帧整屏、不是增量；一帧在途（客户端回执之后才推下一帧）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct TerminalScreen {
     /// 订阅票（`terminal-follow` 时客户端给的，后端只当不透明的串回填）。
     pub ticket: String,
     /// 这条订阅里第几帧（从 1 连续）。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub seq: u64,
     /// 那一屏（同 `terminal-preview` 的回话）。
-    pub view: Value,
+    pub view: crate::session::Preview,
 }
 
 /// **一条终端订阅停了**（不会再有画面）；后端已经忘掉这张票。客户端自己退订的不发这一帧。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct TerminalFollowEnd {
     /// 订阅票。
     pub ticket: String,
@@ -461,6 +620,8 @@ pub struct TerminalFollowEnd {
 /// 一条活会话此刻在干什么（与哪一家无关的几态；适配层从那一家的进程状态翻过来，翻不出 ⇒ 不给）。
 /// 线上 `session_added.activity` · `session_status.activity` 送它。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(rename = "WireSessionActivity", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "snake_case")]
 pub enum SessionActivity {
     /// 一轮在跑。
@@ -477,8 +638,11 @@ pub enum SessionActivity {
 /// 那一态（`activity`，说不清 ⇒ 不上线）· 写好的字 · 语气 · 监控板组内的序（`activity_order`，小的在前）· 能不能换。
 /// 只由后端那一处造（判据 `the_written_faces_are_built_in_one_place_only` 守）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct ActivityFace {
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub activity: Option<SessionActivity>,
     pub activity_text: Words,
     pub activity_tone: Tone,
@@ -489,6 +653,8 @@ pub struct ActivityFace {
 
 /// **此刻能不能换模型 · 权限档**（会话帧上的 `switch`）。界面只照 `can` 灰不灰、照 `why` 写 chip 上方那一行，不自己判。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct Switch {
     /// 换模型（`session-model`）。
     pub model: CanSwitch,
@@ -498,6 +664,8 @@ pub struct Switch {
 
 /// 一样此刻能不能换：`{can: "yes"}` · `{can: "no", why: 写好的那一句}`。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(rename = "WireCanSwitch", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(tag = "can", rename_all = "snake_case")]
 pub enum CanSwitch {
     /// 能换。
@@ -509,14 +677,19 @@ pub enum CanSwitch {
 /// **这条会话叫什么那两格**（`session_added` · `session_status` 都带它，平铺在帧上；一轮结束的通知标题也读它）：
 /// `label` 与历史清单 · 全文搜索同一个函数算；`label_project` ＝ 项目目录最后一截（不知道项目目录 ⇒ 不带）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct NameFace {
     pub label: Words,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub label_project: Option<Words>,
 }
 
 /// 终端住在哪种宿主里（线上 `host`）。容器那一格（[`SessionContainer`]）与 `terminals-list` 每一行的 `host` 同一套词。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(rename = "WireTerminalHost", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "snake_case")]
 pub enum TerminalHost {
     Tmux,
@@ -536,11 +709,14 @@ impl TerminalHost {
 /// 线上是对象：`{"host":"tmux","terminal":"tmux-3-7"}` · `{"host":"none"}`。在宿主里的，claude 退了终端还在（「可重连」）；
 /// 不在的，只能 resume。`terminal` 是 `terminals-list` 里那一行的句柄；打标那一刻算不出 ⇒ 不写这一格。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(rename = "WireSessionContainer", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(tag = "host", rename_all = "snake_case")]
 pub enum SessionContainer {
     /// 在 tmux 的终端里（`TMUX_PANE` 核过形状、tmux 认得那个 pane）。
     Tmux {
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         terminal: Option<String>,
     },
     /// 环境读得到、不在任何宿主里。
@@ -549,6 +725,8 @@ pub enum SessionContainer {
 
 /// `session_state` 的 `state`：**一条会话离开「活」之后是什么** —— 那台机器的后端自己裁，客户端只收成品、不再猜。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "snake_case")]
 pub enum SessionFate {
     /// claude 退了、它的 tmux 会话还在 ⇒ 接得回去。
@@ -559,6 +737,8 @@ pub enum SessionFate {
 
 /// `session_removed` 的 `cause`。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "snake_case")]
 pub enum RemovalCause {
     /// 真的没了：pidfile 被删 / 进程退出 / 原地翻成非交互 kind。**默认值** —— 缺字段就是它。
@@ -573,25 +753,6 @@ impl RemovalCause {
     fn is_gone(&self) -> bool {
         matches!(self, RemovalCause::Gone)
     }
-}
-
-/// 一条**丢了就不可恢复**的帧的身份（`overflow.lost` 的一项）：给那些帧带上身份，让客户端能精确地重新问那几个主体。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LostFrame {
-    /// 帧种（与 `kind` tag 同一套 snake_case 名字）。
-    pub kind: String,
-    /// 主体：会话 sid / tmux 会话名。取不到就是 `None`（如 `hello`）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub subject: Option<String>,
-}
-
-/// `hello.homes` 的一项 —— **某个 agent 在这台机器上的 home 目录**〔`S4` / `D3`〕：agent 维度只在值里（`agent_kind`），不在字段名里。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AgentHome {
-    /// 哪个 agent —— **值**，与 `session_added.agent_kind` 同一套取值空间。
-    pub agent_kind: String,
-    /// 该 agent 在这台机器上的 home 目录（绝对路径）。
-    pub path: String,
 }
 
 /// `hello.unavailable` 的一项 —— **这条命令我接得下，但在这台机器上做不到，以及为什么**
@@ -676,6 +837,8 @@ pub enum Topic {
 
 /// [`Frame::SessionFileReread`] 的「为什么从头重读」。线上两个字面量。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "snake_case")]
 pub enum RereadWhy {
     /// 变短了（比读到过的最长还短）。
@@ -686,12 +849,16 @@ pub enum RereadWhy {
 
 /// 一趟传输怎么收场的（[`Frame::Transfer`] 的 `end`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum TransferEnd {
     /// 传完了。上传那一路带 `sha256`（整份本机文件的摘要，窗口提交 `files-commit-upload` 时原样交回当 `expect`）；下载那一路没有（不上线）。
     Done {
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
         bytes: u64,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         sha256: Option<String>,
     },
     /// 失败（那一句 ＋ 复制详情）。上传那一路的暂存件**留着**给续传；下载那一路的 `.part` 删了。
@@ -699,8 +866,10 @@ pub enum TransferEnd {
     Failed {
         why: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         code: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         detail: Option<String>,
     },
     /// 撤了（`transfer-stop` / 本机流断了）。上传那一路的暂存件已删；下载那一路的 `.part` 留着。
@@ -709,6 +878,8 @@ pub enum TransferEnd {
 
 /// 一条终端订阅为什么停了（[`Frame::TerminalFollowEnd`] 的 `why`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "snake_case")]
 pub enum FollowEnd {
     /// 那个终端没了（窗格 / tmux 会话关了）。

@@ -2948,20 +2948,20 @@ fn the_host_never_writes_the_resident_dir_and_carries_no_key() {
         }
     }
     assert_eq!(
-        crate::local_backend_host::attach_line(None, None),
+        crate::local_backend_host::attach_line(None, None, None),
         "{\"attach\":true}\n"
     );
     assert_eq!(
-        crate::local_backend_host::attach_line(Some("Asia/Shanghai"), None),
+        crate::local_backend_host::attach_line(Some("Asia/Shanghai"), None, None),
         "{\"attach\":true,\"tz\":\"Asia/Shanghai\"}\n",
-        "看的这一台的时区跟在旁边一格（后端 `listen::attach_flags` 读 `tz`）"
+        "看的这一台的时区跟在旁边一格（后端按 `cmd_wire::attach::AttachLine` 读 `tz`）"
     );
-    // 本机这条要全量（`session_added.pid` 给 ↗ 绑窗口）⇒ 不交声明。
+    // 本机换装只认同一版（`hello_verdict`）⇒ 不带这一版、不问新旧；名单照本机名单台此刻那份带上。
     guard_core::find_pinned(
         &host,
-        "attach_line(host_core::viewer_tz().as_deref(), None)",
+        "attach_line(host_core::viewer_tz().as_deref(), None, Some(watch.clone()))",
     )
-    .expect("本机常驻那条 attach 行带了声明");
+    .expect("本机常驻那条 attach 行带了这一版 / 没带名单");
     for w in ["token", "LISTEN_TOKEN"] {
         assert!(
             !guard_core::contains_word(&host, w),
@@ -3722,7 +3722,7 @@ fn local_health() -> crate::backend_policy::Health {
 ///
 /// 两半缺一不可：
 /// ① **纯函数**那一半 —— 拿一份**真的**见证进去得到「说过话」。
-///    见证只有一个构造入口（`BackendHello::from_hello_frame`，由 `inbound_client`
+///    见证只有一个构造入口（`BackendHello::of`，由 `inbound_client`
 ///    那条「见证不许凭空造」的判据钉着）⇒ 这一格拿不到假见证，
 ///    而那正是这条推理**在类型上**成立的地方。
 ///    死值验：把 `handshake_from_hello` 的返回改成 `NeverSpoke` ⇒ 本格当场红。
@@ -3730,11 +3730,11 @@ fn local_health() -> crate::backend_policy::Health {
 #[test]
 fn the_detached_handshake_is_derived_from_the_hello_gate() {
     let line = concat!(
-        r#"{"kind":"hello","v":1,"build_id":"kp3b-jia","host_arch":"x86_64","#,
-        r#""claude_dir":"/dev/null","commands":["ping"]}"#
+        r#"{"kind":"hello","build_id":"kp3b-jia","host_arch":"x86_64","#,
+        r#""commands":["ping"]}"#
     );
-    let frame = crate::stream_source::parse_frame(line).expect("这一行该解析成 hello 帧");
-    let witness = crate::inbound_client::BackendHello::from_hello_frame(&frame)
+    let frame = crate::stream_source::decode(line).expect("这一行该解析成 hello 帧");
+    let witness = crate::inbound_client::witness_of(&frame)
         .expect("hello 帧该给得出见证 —— 给不出的话下面那一格是空转的");
     assert_eq!(
         handshake_from_hello(&witness),
@@ -3754,7 +3754,7 @@ fn the_detached_handshake_is_derived_from_the_hello_gate() {
         prod.len()
     );
     // 那道门本身（`attach_stream` 的前两行之一）：它没了，上面那条推理就没了前提。
-    guard_core::find_pinned(&prod, "BackendHello::from_hello_frame(&frame)").unwrap_or_else(|e| {
+    guard_core::find_pinned(&prod, "inbound_client::witness_of(&frame)").unwrap_or_else(|e| {
         panic!(
             "`attach_stream` 那道 hello 门不是恰好一处（{e}）——\n\
                      ⇒ 「进得了流循环 = 一帧合法 hello 已经到手」这条推理没有前提了，\n\

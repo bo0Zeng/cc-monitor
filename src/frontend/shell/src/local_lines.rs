@@ -28,7 +28,7 @@
 use std::sync::{Arc, OnceLock};
 
 use crate::event_replay::EventReplay;
-use crate::stream_source::{InboundFrame, LocalItem};
+use crate::stream_source::{LocalItem, Ordered};
 
 /// 通道容量（件数，一件 = 一帧）。
 ///
@@ -64,7 +64,7 @@ fn sender() -> Option<&'static tokio::sync::mpsc::Sender<LocalItem>> {
 }
 
 /// 常驻载体（tokio 任务）送一帧。
-pub(crate) async fn deliver(frame: InboundFrame) {
+pub(crate) async fn deliver(frame: Ordered) {
     send(LocalItem::Frame(frame)).await
 }
 
@@ -99,7 +99,7 @@ pub(crate) enum StdioOut {
 
 impl StdioOut {
     /// 送一帧。
-    pub(crate) fn deliver(&self, frame: InboundFrame) {
+    pub(crate) fn deliver(&self, frame: Ordered) {
         self.send(LocalItem::Frame(frame))
     }
 

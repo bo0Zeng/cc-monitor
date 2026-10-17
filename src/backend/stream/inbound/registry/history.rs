@@ -82,8 +82,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryFindCmd>("会话内查找"),
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryIndexCmd>("会话骨架索引"),
     crate::wire::typed::blocking::<crate::faces::history_face::UserInputsCmd>("「人说过的话」清单"),
+    // 尾段那张图 ＋ 手上那一份（`held`）续不续得上 ＋ 第一页正文，一问交回（续传的判定只在这里）。
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryTailCmd>(
-        "一份会话的尾段从哪个字节起",
+        "一份会话的尾段：手上那一份怎么接，连第一页正文",
     ),
     // 分叉：本体 `control/fork_write.rs::run_inner`（
     //   读 → 适配层的分叉变换（`agents::build_branch_records`）→ `O_EXCL` 新建）。本机远端同一条长连接；读整份 jsonl ⇒ 阻塞档。

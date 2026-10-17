@@ -162,6 +162,11 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
         Own::Replay,
         "主窗口在看的会话记进会话流句柄那张表（与查看窗的订阅合成每台的「在看」名单）",
     ),
+    (
+        "kept_sessions",
+        Own::Replay,
+        "主窗口手上的 tab 记进会话流句柄那张表（与留存合成每台手上留着的，随名单报给那台）",
+    ),
     ("chan_want", Own::Channel, "通信层面 A：credit"),
     ("chan_stop", Own::Channel, "通信层面 A：撤订"),
     (

@@ -16,7 +16,8 @@
 //! `{"t":"sub","id","origin","kind","want"}` · `{"t":"want","id","more"}` · `{"t":"stop","id"}` · `{"t":"ready","priority_sid"}` ·
 //! `{"t":"call","n","origin","op","payload","view"?,"left_ms"}`（`payload` 是请求体原文）· `{"t":"kill","origin"}`（那台后端当场杀掉：演「断了」）·
 //! `{"t":"offer","n","origin"}`（那台握上手没有；台架按它等各台起好，等法住台架那一侧）·
-//! `{"t":"watch","sessions":[{"origin","sessionId"}]}`（主窗口在看哪几个，同 Tauri 命令 `watch_sessions`：各台的「在看」名单经产品那条 `stream_watch` 报给那台后端）。
+//! `{"t":"watch","sessions":[{"origin","sessionId"}]}`（主窗口在看哪几个，同 Tauri 命令 `watch_sessions`：各台的「在看」名单经产品那条 `stream_watch` 报给那台后端）·
+//! `{"t":"kept","sessions":[…]}`（主窗口手上的 tab，同 Tauri 命令 `kept_sessions`：随名单报给那台）。
 //! 发：`{"t":"items","sub","items"}`（同 `chan-items` 事件体）· `{"t":"reply","n","ok","body"|"fail"}` · `{"t":"offer","n","up"}` · `{"t":"health",…}`。
 
 use crate::chan::host::InboundBackends;
@@ -77,7 +78,10 @@ enum Cmd {
         origin: crate::origin::Origin,
     },
     Watch {
-        sessions: Vec<crate::ui_contract::WatchedSession>,
+        sessions: Vec<crate::ui_contract::TabSession>,
+    },
+    Kept {
+        sessions: Vec<crate::ui_contract::TabSession>,
     },
 }
 
@@ -156,6 +160,11 @@ pub fn main() {
                 say(serde_json::json!({ "t": "offer", "n": n, "up": up }));
             }
             Cmd::Watch { sessions } => replay.set_main_watch(
+                sessions
+                    .into_iter()
+                    .map(|w| (w.origin.as_wire_str().to_string(), w.session_id)),
+            ),
+            Cmd::Kept { sessions } => replay.set_main_kept(
                 sessions
                     .into_iter()
                     .map(|w| (w.origin.as_wire_str().to_string(), w.session_id)),

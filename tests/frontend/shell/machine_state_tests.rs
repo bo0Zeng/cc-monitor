@@ -29,7 +29,7 @@ fn a_round_walks_connecting_then_up_with_the_version() {
         (p.state, p.stage.as_deref()),
         (MachineStateKind::Connecting, Some("attach"))
     );
-    up(&o, "p7z", VersionRelation::Same);
+    up(&o, "p7z", Relation::Same);
     let p = product(&o, true);
     assert_eq!(p.state, MachineStateKind::Up);
     assert_eq!(
@@ -86,7 +86,7 @@ fn deploying_says_install_first_then_update_once_seen() {
     let o = fresh("装");
     deploying_auto(&o);
     assert_eq!(product(&o, true).state, MachineStateKind::Installing);
-    up(&o, "p7a", VersionRelation::Older);
+    up(&o, "p7a", Relation::Older);
     deploying_auto(&o);
     assert_eq!(
         product(&o, true).state,
@@ -104,7 +104,7 @@ fn a_foreign_local_backend_is_judged_by_build_order() {
     let p = local_product(false, Some("p8c-mine"));
     assert_eq!(
         (p.state, p.version_relation),
-        (MachineStateKind::NeedsUpdate, Some(VersionRelation::Older))
+        (MachineStateKind::NeedsUpdate, Some(Relation::Older))
     );
     assert_eq!(p.fixes, vec![MachineFix::Retry], "本机那一台的修法只有重试");
     note_local_foreign(Some("p9a-new"));
@@ -122,7 +122,7 @@ fn a_foreign_local_backend_is_judged_by_build_order() {
     let p = local_product(true, Some("p8c-mine"));
     assert_eq!(
         (p.state, p.version_relation),
-        (MachineStateKind::Up, Some(VersionRelation::Same))
+        (MachineStateKind::Up, Some(Relation::Same))
     );
     assert_eq!(
         local_product(false, Some("p8c-mine")).state,
@@ -164,21 +164,21 @@ fn a_refused_local_start_carries_the_next_step() {
 #[test]
 fn the_version_relation_decides_up_needs_update_newer() {
     for (rel, want, fixes) in [
-        (VersionRelation::Same, MachineStateKind::Up, vec![]),
-        (VersionRelation::Incomparable, MachineStateKind::Up, vec![]),
+        (Relation::Same, MachineStateKind::Up, vec![]),
+        (Relation::Incomparable, MachineStateKind::Up, vec![]),
         (
-            VersionRelation::Older,
+            Relation::Older,
             MachineStateKind::NeedsUpdate,
             vec![MachineFix::Update],
         ),
-        (VersionRelation::Newer, MachineStateKind::Newer, vec![]),
+        (Relation::Newer, MachineStateKind::Newer, vec![]),
     ] {
         let o = fresh(&format!("{rel:?}"));
         up(&o, "b1", rel);
         let p = product(&o, true);
         assert_eq!((p.state, p.version_relation), (want, Some(rel)), "{rel:?}");
         // 只有同一份字节报得出产品版本号；构建标识不上界面。
-        assert_eq!(p.version.is_some(), rel == VersionRelation::Same, "{rel:?}");
+        assert_eq!(p.version.is_some(), rel == Relation::Same, "{rel:?}");
         assert_ne!(p.version.as_deref(), Some("b1"), "构建标识漏进了版本那一格");
         assert_eq!(p.fixes, fixes, "{rel:?}");
     }
@@ -223,7 +223,7 @@ fn the_product_matches_the_cross_language_golden() {
     let make = |name: &str| -> MachineState {
         let o = fresh(&format!("金样-{name}"));
         match name {
-            "连着" => up(&o, "p7z", VersionRelation::Same),
+            "连着" => up(&o, "p7z", Relation::Same),
             "正在连" => connecting(&o, "attach"),
             "密钥被拒" => {
                 dial_failed(&o, Some("auth"), None, &said("拨号没成"));
@@ -237,9 +237,9 @@ fn the_product_matches_the_cross_language_golden() {
                 dial_failed(&o, Some("host_key"), Some("SHA256:new"), &said("拨号没成"));
                 down(&o)
             }
-            "要更新" => up(&o, "p7a", VersionRelation::Older),
-            "较新" => up(&o, "p9a", VersionRelation::Newer),
-            "版本不可比" => up(&o, "dev", VersionRelation::Incomparable),
+            "要更新" => up(&o, "p7a", Relation::Older),
+            "较新" => up(&o, "p9a", Relation::Newer),
+            "版本不可比" => up(&o, "dev", Relation::Incomparable),
             "不是 Unix" => unsupported(&o, NOT_UNIX),
             "要密码" => {
                 dial_failed(&o, Some("password"), None, &said("拨号没成"));
@@ -311,6 +311,6 @@ fn a_failed_round_carries_the_copy_detail() {
     assert_eq!(product(&o, true).detail, None, "沿用了上一轮的详情");
     // 连上 ⇒ 清掉。
     dial_failed(&o, Some("timeout"), None, &said("x"));
-    up(&o, "p7z", VersionRelation::Same);
+    up(&o, "p7z", Relation::Same);
     assert_eq!(product(&o, true).detail, None);
 }

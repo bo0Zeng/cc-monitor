@@ -478,7 +478,9 @@ pub(crate) fn swap_out(own: &Own, mine: &str, grace_ms: u32) -> Result<Swap, Sai
     let older = l
         .build
         .as_deref()
-        .is_none_or(|theirs| deploy::resident_verdict(mine, theirs, false).replace);
+        .is_none_or(|theirs| {
+            deploy_contract::build_relation(theirs, mine) == deploy_contract::Relation::Older
+        });
     if !older {
         return Ok(Swap::Kept(l.pid));
     }

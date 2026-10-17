@@ -10,7 +10,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 /**
@@ -240,7 +240,7 @@ class ResidentFeedTest {
         }
 
     @Test
-    fun `流上的帧折成会话表与几条流；丢了会话帧就叫核心整份重来`() =
+    fun `流上的帧折成会话表与几条流；拥塞那一句不叫重接（那台就地重报）`() =
         runTest(UnconfinedTestDispatcher()) {
             val core = FakeCore()
             val f = feed(core)
@@ -248,8 +248,9 @@ class ResidentFeedTest {
             backgroundScope.launch { f.changes.collect { kinds += it } }
             core.emit("frame", """{"kind":"sessions_replayed"}""")
             assertEquals(listOf("sessions_replayed"), kinds)
-            core.emit("frame", """{"kind":"overflow","dropped":3,"lost":[],"lost_truncated":true}""")
-            assertTrue("丢了会话帧 ⇒ ［重试］那一下（整份重来）", core.kicks.contains(true))
+            core.emit("frame", """{"kind":"overflow","said":"连接拥塞 · 会话状态已重新对齐"}""")
+            assertEquals(listOf("sessions_replayed", "overflow"), kinds)
+            assertFalse("拥塞不重接：那台在原连接上整份重报", core.kicks.contains(true))
         }
 
     @Test

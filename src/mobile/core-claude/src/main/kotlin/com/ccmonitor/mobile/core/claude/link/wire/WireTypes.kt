@@ -156,14 +156,41 @@ data class Killed(
     val killed: Boolean,
 )
 
-@WireOf("TailPlan")
+@WireOf("HistoryTail")
 @JsonClass(generateAdapter = true)
-data class TailPlan(
+data class HistoryTailReply(
     val end: Long,
     @Json(name = "split_at") val splitAt: Long,
-    @Json(name = "tail_from") val tailFrom: Long,
     val total: Long,
-    val file: String,
+    val how: TailHow,
+    val held: Held,
+)
+
+@JsonClass(generateAdapter = false)
+enum class TailHow {
+    @Json(name = "tail")
+    TAIL,
+
+    @Json(name = "resume")
+    RESUME,
+
+    @Json(name = "handoff")
+    HANDOFF,
+
+    @Json(name = "truncated")
+    TRUNCATED,
+
+    @Json(name = "rewritten")
+    REWRITTEN,
+}
+
+@WireOf("Held")
+@JsonClass(generateAdapter = true)
+data class Held(
+    val path: String,
+    val next: Long,
+    @Json(name = "next_byte") val nextByte: Long,
+    val mark: String,
 )
 
 @JsonClass(generateAdapter = false)
@@ -1440,4 +1467,168 @@ enum class UsageTone {
 
     @Json(name = "warn")
     WARN,
+// 流上的会话帧（核心按 `cmd-wire` 那一份类型重写过的一行）。
+
+@WireOf("SessionAdded")
+@JsonClass(generateAdapter = true)
+data class SessionAddedFrame(
+    val sid: String,
+    val path: String?,
+    val cwd: String?,
+    val name: String?,
+    @Json(name = "agent_kind") val agentKind: String,
+    val attachable: Boolean?,
+    val activity: SessionActivityWord?,
+    @Json(name = "activity_text") val activityText: String,
+    @Json(name = "activity_tone") val activityTone: Tone,
+    val switch: SwitchCell,
+)
+
+@WireOf("SessionStatus")
+@JsonClass(generateAdapter = true)
+data class SessionStatusFrame(
+    val sid: String,
+    val path: String?,
+    val activity: SessionActivityWord?,
+    @Json(name = "activity_text") val activityText: String,
+    @Json(name = "activity_tone") val activityTone: Tone,
+    val switch: SwitchCell,
+)
+
+@WireOf("SessionState")
+@JsonClass(generateAdapter = true)
+data class SessionStateFrame(
+    val sid: String,
+    val state: SessionFateWord,
+    @Json(name = "state_text") val stateText: String,
+    val switch: SwitchCell,
+)
+
+@WireOf("SessionRemoved")
+@JsonClass(generateAdapter = true)
+data class SessionRemovedFrame(
+    val sid: String,
+    val by: String?,
+)
+
+@WireOf("SessionFileReread")
+@JsonClass(generateAdapter = true)
+data class SessionFileRereadFrame(
+    @Json(name = "session_id") val sid: String,
+)
+
+@JsonClass(generateAdapter = false)
+enum class SessionActivityWord {
+    @Json(name = "working")
+    WORKING,
+
+    @Json(name = "needs_you")
+    NEEDS_YOU,
+
+    @Json(name = "idle")
+    IDLE,
+
+    @Json(name = "background_work")
+    BACKGROUND_WORK,
+}
+
+@JsonClass(generateAdapter = false)
+enum class SessionFateWord {
+    @Json(name = "reconnectable")
+    RECONNECTABLE,
+
+    @Json(name = "ended")
+    ENDED,
+}
+
+@WireOf("Switch")
+@JsonClass(generateAdapter = true)
+data class SwitchCell(
+    val model: CanSwitchCell,
+    val permission: CanSwitchCell,
+)
+
+@WireOf("WireCanSwitch")
+@JsonClass(generateAdapter = true)
+data class CanSwitchCell(
+    val can: CanWord,
+    val why: String?,
+)
+
+@JsonClass(generateAdapter = false)
+enum class CanWord {
+    @Json(name = "yes")
+    YES,
+
+    @Json(name = "no")
+    NO,
+}
+
+@WireOf("Line")
+@JsonClass(generateAdapter = true)
+data class LineFrame(
+    @Json(name = "session_id") val sid: String,
+    val path: String,
+    val seq: Long,
+    @Json(name = "byte_offset") val byteOffset: Long,
+)
+
+@WireOf("Changed")
+@JsonClass(generateAdapter = true)
+data class ChangedFrame(
+    val topic: String,
+    val key: String?,
+)
+
+@WireOf("LiveCard")
+@JsonClass(generateAdapter = true)
+data class LiveCardFrame(
+    val sid: String,
+    val run: String?,
+    val card: Long,
+    val n: Long,
+    val op: LiveOpWord,
+    val rid: String?,
+    val phase: LivePhaseWord?,
+    val clipped: Boolean?,
+    val blocks: List<LiveBlockCell>?,
+    val i: Long?,
+    val block: String?,
+    val tool: String?,
+    val s: String?,
+)
+
+@WireOf("LiveBlock")
+@JsonClass(generateAdapter = true)
+data class LiveBlockCell(
+    val kind: String,
+    val text: String?,
+    val tool: String?,
+)
+
+@JsonClass(generateAdapter = false)
+enum class LiveOpWord {
+    @Json(name = "open")
+    OPEN,
+
+    @Json(name = "block")
+    BLOCK,
+
+    @Json(name = "text")
+    TEXT,
+
+    @Json(name = "awaiting")
+    AWAITING,
+
+    @Json(name = "close")
+    CLOSE,
+}
+
+@JsonClass(generateAdapter = false)
+enum class LivePhaseWord {
+    @Json(name = "streaming")
+    STREAMING,
+
+    @Json(name = "awaiting")
+    AWAITING,
 }

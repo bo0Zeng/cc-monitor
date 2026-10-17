@@ -1,11 +1,11 @@
 //! 远端一台的那条流，monitor 这一侧。**重连循环不在这里**：断线重连 · 握手 · ensure · 版本门（旧了换装）· 退避都是
 //! `resident-client` 那一条（[`Feed`]，手机同一份；全仓只这一处，`one_loop_guard`）。这里只接宿主那几根线：
-//! - 链路（[`DeskLink`]）：本机常驻后端给的那条（`dial_host`）· 每一轮之前的部署预检 · 版本门问本机常驻后端（装得了后端）；
+//! - 链路（[`DeskLink`]）：本机常驻后端给的那条（`dial_host`）· 每一轮之前的部署预检 · 装得了后端（那台旧了换装）；
 //! - 循环交出来的事落到哪（[`consume_remote`]）：登记表 · 机器状态 · 会话账本 · 会话流 · 攒批 · 旁路快照。
 
 use super::*;
 use crate::event_replay::EventReplay;
-use crate::session_book::{In as BookIn, LiveMeta};
+use crate::session_book::In as BookIn;
 use resident_client::feed::{Boxed, Event, Exec, Feed, Problem, Progress, State, Transport};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
@@ -162,7 +162,12 @@ pub async fn run(cfg: RemoteConfig, replay: Arc<EventReplay>, health: HealthOut)
         cfg: cfg.clone(),
         health: health.clone(),
     });
-    let feed = Feed::start(feed_config(&origin), Some(link), queue_sink(tx));
+    let feed = Feed::start(
+        feed_config(&origin),
+        Some(link),
+        crate::stream_watch::desk(&crate::origin::Origin(origin.clone())),
+        queue_sink(tx),
+    );
     feeds()
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -230,7 +235,7 @@ struct Conn {
 
 /// **循环交出来的事 → monitor**（这台那条队列读到头为止）：
 /// - `Attached` ＋ 紧跟的 `Up`：登记这条连接的客户端 · 资产同步 · 记账（版本提示 · 自证记忆）· 订了这台的订阅收 `Seen`；
-/// - 帧：解成 [`InboundFrame`]，行进攒批、会话起停的成品原样交 `session_book`（后端裁、monitor 只转交）；
+/// - 帧：按类型解、经 [`route`] · [`apply`] 落下（本机那条流同一处）；
 /// - 断了（`Down`）：残批冲完、摘登记、这台的成品整份作废（说不清）、订阅收 `Unseen`；这一轮没接上 ⇒ 那台记「离线」（不是 Unix ⇒「不支持」并出声）。
 pub(crate) async fn consume_remote(
     cfg: RemoteConfig,
@@ -258,16 +263,19 @@ pub(crate) async fn consume_remote(
         };
         match ev {
             Event::Attached { hello, client } => attached = Some((hello, client)),
-            Event::State(State::Up { notice, .. }) => {
+            Event::State(State::Up {
+                relation, notice, ..
+            }) => {
                 let Some((hello, client)) = attached.take() else {
-                    continue; // 同一条连接补交的那一句（装得了后端的这一侧不会有）
+                    continue;
                 };
                 conn = Some(on_attached(
                     &cfg,
                     Round {
                         replay: &replay,
                         health: &health,
-                        remote_older: notice.is_some(),
+                        relation,
+                        notice: notice.as_ref(),
                         t_connect_start: round_started,
                     },
                     &hello,
@@ -302,7 +310,20 @@ pub(crate) async fn consume_remote(
                 });
             }
             Event::Frame(line) => match conn.as_mut() {
-                Some(c) => dispatch(c, &host_label, &replay, &health, &line).await,
+                Some(c) => {
+                    let say = |p| {
+                        if let Err(e) = health(p) {
+                            tracing::warn!("stream_source remote-health (frame) emit failed: {e}");
+                        }
+                    };
+                    let origin = crate::origin::Origin(host_label.clone());
+                    let frame = c.unread.take(&line, None, &mut c.tally, &say);
+                    let ordered =
+                        frame.and_then(|f| route(Via::Remote, &origin, Some(&c.client), f));
+                    if let Some(item) = ordered {
+                        apply(&origin, item, &mut c.intake, &replay, &health).await;
+                    }
+                }
                 None => tracing::warn!(
                     "stream_source [{host_label}] 还没接上就来了一帧，丢掉：{}",
                     line.chars().take(200).collect::<String>()
@@ -314,8 +335,6 @@ pub(crate) async fn consume_remote(
                     c.intake.lost().await;
                 }
             }
-            // monitor 的在看名单经登记表上的客户端报（`stream_watch.rs`，本机远端同一处），不经循环 ⇒ 这一件不会来。
-            Event::WatchFrom(_) => {}
             // 桌面没有另一层 SSH 跟着它走（终端走本机后端那一套）⇒ 用不着。
             Event::Ssh(_) => {}
         }
@@ -346,15 +365,12 @@ fn on_attached(
         }
     };
     // 循环那一侧认过它是 hello（不然接不上）；这一侧的帧类型解不出 ⇒ 两边对 hello 的读法漂了，说出来。
-    let Some(InboundFrame::Hello {
-        v,
+    let Some(Frame::Hello(cmd_wire::frame::Hello {
         build_id,
         host_arch,
-        claude_dir,
-        homes,
         commands,
         ..
-    }) = conn.unread.take(hello, &mut conn.tally, &say_health)
+    })) = conn.unread.take(hello, None, &mut conn.tally, &say_health)
     else {
         tracing::warn!("stream_source [{host_label}] hello 这一侧解不出：{hello}");
         return conn;
@@ -363,12 +379,8 @@ fn on_attached(
         host_label,
         round,
         HelloSeen {
-            v,
             build_id,
             host_arch,
-            // 日志报的是解析后的 Claude home（优先 `homes`、回退 `claude_dir`），同时把原样的 `homes` 一起打出来：排障时一眼看出这台后端发没发新字段。
-            claude_home: claude_home_from_hello(&homes, &claude_dir).to_string(),
-            homes,
             commands,
         },
     );
@@ -404,246 +416,23 @@ fn on_round_failed(host_label: &str, health: &HealthOut, problem: &Problem, unsu
     }
 }
 
-/// 一帧：解成 [`InboundFrame`] 分派。未知 kind / 形状不对 → 记账、每种说一次、跳过，绝不中断流。
-async fn dispatch(
-    c: &mut Conn,
-    host_label: &str,
-    replay: &Arc<EventReplay>,
-    health: &HealthOut,
-    line: &str,
-) {
-    let host_label = host_label.to_string();
-    let say_health = |p: crate::ui_contract::RemoteHealthPayload| {
-        if let Err(e) = health(p) {
-            tracing::warn!("stream_source remote-health (frame) emit failed: {e}");
-        }
-    };
-    let frame = c.unread.take(line, &mut c.tally, &say_health);
-    let intake = &mut c.intake;
-    // SessionRemoved 是唯一顺序敏感的攒批边界：它的行必须先落前端，否则归档后迟到的行把 Tab 复活成僵尸 live。
-    // SessionAdded / Overflow / 坏帧不作边界（多个小会话的 snapshot 才能聚成大批；行先于 Added 到达无妨：前端 ensureTab 见行即建）。
-    // `session_state`（可重连 / 已结束的成品）同理：它说的「离开了」必须排在这个会话的行之后。
-    if matches!(
-        frame,
-        Some(InboundFrame::SessionRemoved { .. } | InboundFrame::SessionState { .. })
-    ) {
-        intake.flush().await;
-    }
-    match frame {
-        Some(InboundFrame::Line {
-            session_id,
-            path,
-            seq,
-            record,
-            cwd,
-            end,
-            rid,
-        }) => {
-            // 进攒批缓冲（达 cap / 批龄立即整批出）；静默窗口 / SessionRemoved 边界触发的 flush 在收事那一头。
-            intake
-                .line(JsonlLine {
-                    session_id,
-                    path: std::path::PathBuf::from(path),
-                    seq,
-                    record,
-                    cwd,
-                    end: Some(end),
-                    rid,
-                    catch_up: false,
-                })
-                .await;
-        }
-        Some(InboundFrame::SessionAdded {
-            sid,
-            background,
-            attachable,
-            cwd,
-            project_dir,
-            name,
-            path: _,
-            activity,
-            naming,
-            waiting_for,
-            hidden,
-            container,
-            // pid 只给本机那条流用（本机 ↗ 绑窗口）；远端这条流的声明去掉了它（`resident_client::attach::remote_stream_view`）。
-            pid: _,
-        }) => on_session_added(
-            &host_label,
-            sid,
-            LiveMeta {
-                background,
-                attachable,
-                cwd,
-                project_dir,
-                name,
-                activity,
-                naming,
-                waiting_for,
-                hidden,
-                container,
-                pid: None,
-            },
-        ),
-        // 读完了：有记录文件就排旁路快照（无 path = 会话刚起还没写 jsonl ⇒ 无历史可拉，后续行天然从 tail 全量到达）。
-        //   队列按 sid 幂等（重复宣告不重拉）。
-        Some(InboundFrame::SessionPrimed { sid, path, lines }) => {
-            intake.announced(&sid, path, lines)
-        }
-        Some(InboundFrame::SessionStatus {
-            sid,
-            activity,
-            naming,
-            waiting_for,
-        }) => {
-            // 红绿灯这一跳也要看得见：「全绿」既可能是都在忙，也可能是 status 一条都没到。
-            tracing::info!(
-                "session-status: [{host_label}] sid={sid} activity={activity:?} \
-                 waiting_for={waiting_for:?} → 成品交出口"
-            );
-            crate::session_book::feed(BookIn::Status {
-                origin: host_label.clone(),
-                sid,
-                activity,
-                naming,
-                waiting_for,
-            });
-        }
-        Some(InboundFrame::SessionRuns { sid, runs, ended }) => {
-            crate::session_book::feed(BookIn::Runs {
-                origin: host_label.clone(),
-                sid,
-                runs,
-                ended,
-            });
-        }
-        Some(InboundFrame::SessionBranch {
-            sid,
-            path,
-            at,
-            off,
-            sum,
-        }) => {
-            crate::session_book::feed(BookIn::Branch {
-                origin: crate::origin::Origin(host_label.clone()),
-                sid,
-                path,
-                at,
-                off,
-                sum,
-            });
-        }
-        Some(InboundFrame::SessionRemoved { sid }) => {
-            // 只剩内容流的边界：残批已在上面冲掉；这里摘排队中的快照 ＋ 给在途的打取消标记（归档后迟到的快照行会经「见行复活」造出僵尸 tab）、续点作废。
-            // 它离开之后是什么由下一帧 `session_state` 说。
-            tracing::info!(
-                "session-removed: [{host_label}] sid={sid}（内容流收口；去向看 session_state）"
-            );
-            intake.removed(&sid);
-        }
-        // 后端裁好的去向（可重连 / 已结束）原样交出口（残批已在上面冲掉）。
-        Some(InboundFrame::SessionState { sid, state, words }) => {
-            tracing::info!("session-state: [{host_label}] sid={sid} → {state:?}");
-            crate::session_book::feed(BookIn::Left {
-                origin: host_label.clone(),
-                sid,
-                fate: state,
-                words: Some(words),
-            });
-        }
-        Some(InboundFrame::Overflow {
-            dropped,
-            lost,
-            lost_truncated,
-        }) => on_overflow(&host_label, health, dropped, &lost, lost_truncated),
-        // 那台的某样东西变了 ⇒ 订了这台 `changed/<topic>` 的订阅收一格（格体原样；账号表 · 设置页 · 任务面板 · 额度 · 计划据此重读）。
-        Some(InboundFrame::Changed { topic, cell }) => {
-            replay.changed(&crate::origin::Origin(host_label.clone()), &topic, cell);
-        }
-        // 那台一条活会话的记录文件不见了 / 被改过已从头重读 ⇒ 残批先冲、再交那个会话的内容流一格。
-        Some(InboundFrame::SessionFileNotice {
-            sid,
-            path,
-            change,
-            lines,
-        }) => {
-            intake.notice(&sid, &path, change, lines).await;
-        }
-        // 那台的活会话清单报完了（后端把它压到第一份 tmux 快照之后、那一份推出的可重连之后才放）。
-        //   与上面的宣告同一条流、同序交出口 ⇒ 前端收到它时，这台全部的活会话与可重连会话都已报过。
-        Some(InboundFrame::SessionsReplayed) => {
-            tracing::info!("sessions-replayed: [{host_label}] 活会话清单报完了 → 成品交出口");
-            crate::session_book::feed(BookIn::Listed {
-                origin: host_label.clone(),
-            });
-        }
-        // hello 只在接上那一刻来（循环那一侧握手时读走、交 `Attached`）；应答由循环交回请求方。流中间再来 ⇒ 协议对不上，照实说、丢掉。
-        Some(
-            InboundFrame::Hello { .. }
-            | InboundFrame::Reply { .. }
-            | InboundFrame::Cancelled { .. },
-        ) => {
-            tracing::warn!("stream_source [{host_label}] 流中间来了 hello / 应答帧，丢掉：{line}");
-        }
-        // 链路帧只该出现在**本机后端**那条流上（monitor 只在那里开链路）。
-        // 远端后端发来 ⇒ 协议对不上，照实说、丢掉。
-        Some(InboundFrame::LinkData { link, .. } | InboundFrame::LinkEnd { link, .. }) => {
-            tracing::warn!(
-                "stream_source [{host_label}] 远端后端发来了链路帧（link={link}）—— monitor 没在远端开过链路，丢掉"
-            );
-        }
-        // 传输帧同理：传输台住**本机**后端，远端后端发来 ⇒ 协议对不上，照实说、丢掉。
-        Some(InboundFrame::Transfer { id, .. }) => {
-            tracing::warn!(
-                "stream_source [{host_label}] 远端后端发来了传输帧（id={id}）—— 传输台在本机后端，丢掉"
-            );
-        }
-        // 测试连接的进度帧同理：测试连接在**本机**后端里跑，远端后端发来 ⇒ 协议对不上，照实说、丢掉。
-        Some(InboundFrame::Probe { ticket, .. }) => {
-            tracing::warn!(
-                "stream_source [{host_label}] 远端后端发来了测试连接的进度帧（ticket={ticket}）—— 测试连接在本机后端，丢掉"
-            );
-        }
-        // 一组复制 · 删除 · 改权限的进度：按票交给订了它的那扇文件窗口（从不阻塞；没人订就丢）。
-        Some(InboundFrame::FilesBatch { ticket, cell }) => {
-            crate::files_batch_relay::deliver(&ticket, cell)
-        }
-        // 远端中转住进远端常驻后端（进程内），它抄出来的 SSE 事件沿这条流回来 ⇒ 与本机那条流同一个口转前端
-        //   （origin = 这台；标签就是 claude 自己的 sid，不用对账）。从不阻塞、不进内容通道。
-        Some(InboundFrame::LiveCard(l)) => crate::live_card::deliver(&host_label, l),
-        // 终端实时预览：这台推来的一屏 / 收尾 ⇒ 交订了这台 `terminal-screen/<票>` 的那条订阅（从不阻塞）。
-        Some(
-            InboundFrame::TerminalScreen { ticket, cell }
-            | InboundFrame::TerminalFollowEnd { ticket, cell },
-        ) => crate::terminal_screen_relay::deliver(
-            &crate::origin::Origin(host_label.clone()),
-            &ticket,
-            cell,
-        ),
-        // 不认识的种类 / 形状不对：`take` 已记账、每种说过一次；跳过，绝不中断流。
-        None => {}
-    }
-}
-
 /// 这一条连接定下来、hello 那一臂要用的几样。
 #[derive(Clone, Copy)]
 struct Round<'a> {
     replay: &'a Arc<EventReplay>,
     health: &'a HealthOut,
-    /// 接上那一刻本机常驻后端答的「那台比手上这一版旧」—— 版本提示那句话按它挑。
-    remote_older: bool,
+    /// 那台相对手上这一版（那台在 attach 回话里判的）。
+    relation: cmd_wire::attach::Relation,
+    /// 版本那一句（同一版 ⇒ 无；字由循环那一侧写）。
+    notice: Option<&'a Problem>,
     /// 这一轮连接的起点（`[perf]` 埋点从这里算）。
     t_connect_start: std::time::Instant,
 }
 
 /// hello 帧里要读的那几样。
 struct HelloSeen {
-    v: u64,
     build_id: String,
     host_arch: String,
-    /// 解析后的 Claude home（[`claude_home_from_hello`]）。
-    claude_home: String,
-    homes: Vec<AgentHome>,
     commands: Vec<String>,
 }
 
@@ -652,38 +441,29 @@ fn on_hello(host_label: String, round: Round, hello: HelloSeen) {
     let Round {
         replay,
         health,
-        remote_older,
+        relation,
+        notice,
         t_connect_start,
     } = round;
     let HelloSeen {
-        v,
         build_id,
         host_arch,
-        claude_home,
-        homes,
         commands,
     } = hello;
     tracing::info!(
-        "stream_source backend hello: v={v} build_id={build_id} host_arch={host_arch} claude_home={claude_home} homes={homes:?} cmds={commands:?}"
+        "stream_source backend hello: build_id={build_id} host_arch={host_arch} cmds={commands:?}"
     );
     // 订了这台会话流的那些订阅原位收一格 `Seen`（`Item::Seen`）。
     replay.origin_seen(&crate::origin::Origin(host_label.clone()), true);
-    // issue #33：版本协商。不兼容/偏旧经 SS-F remote-health 通道醒目提示；类别（要更新 · 较新 · 不可比）
-    // 这里判好（`version_health_kind`），前端按类别挑标题。不 hard-disconnect（向前兼容）。
-    // 手上没带后端字节（「我这一版」是 `None`）⇒ 同一条通道说一句「版本不可比」，照常接。
-    let mine = crate::byte_table::my_backend_id();
-    let rel = version_relation(v, &build_id, remote_older, mine);
-    crate::machine_state::up(&host_label, &build_id, rel);
-    if let (Some(kind), Some(msg)) = (
-        version_health_kind(rel),
-        version_warning(v, &build_id, &host_label, remote_older, mine),
-    ) {
-        tracing::warn!("stream_source remote [{host_label}] version: {msg}");
+    // 版本：新旧那台判好（attach 回话），那一句循环那一侧写好；这里按新旧挑类别（界面按它挑标题），照常接、不断开。
+    crate::machine_state::up(&host_label, &build_id, relation);
+    if let (Some(kind), Some(p)) = (version_health_kind(relation), notice) {
+        tracing::warn!("stream_source remote [{host_label}] version: {}", p.text);
         let payload = crate::ui_contract::RemoteHealthPayload {
             origin: host_label.clone(),
             kind: kind.to_string(),
-            message: msg,
-            detail: String::new(),
+            message: p.text.clone(),
+            detail: p.detail.clone(),
         };
         if let Err(e) = health(payload) {
             tracing::warn!("stream_source remote-health (version) emit failed: {e}");
@@ -696,61 +476,76 @@ fn on_hello(host_label: String, round: Round, hello: HelloSeen) {
     // ★ F05 下半：**自证记忆的唯一写入点**。backend 自己说它是谁，我们才记。
     // build_id 不是「我这一版」（或手上没带字节、无从比）⇒ **抹掉**（这台机器上装的不是当前 build，
     // 下一轮必须照跑预检去部署），不是「留着上次的」。
-    if mine == Some(build_id.as_str()) {
+    if crate::byte_table::my_backend_id() == Some(build_id.as_str()) {
         record_verified_build(&host_label, &build_id);
     } else {
         forget_verified_build(&host_label);
     }
 }
 
-/// 新宣告一个活会话：成品（元信息 ＋ 初始灯 ＋ 容器）原样交 `session_book`（本机那条流同一个口）。旁路快照等它读完那一帧（`session_primed`）再排。
-fn on_session_added(host_label: &str, sid: String, meta: LiveMeta) {
-    // ★★ 这一跳要看得见（「帧到 monitor 了吗」）；每个会话一次，不淹日志。
-    tracing::info!("session-added: [{host_label}] sid={sid} → 成品交出口");
-    crate::session_book::feed(BookIn::Live {
-        origin: host_label.to_string(),
-        sid: sid.clone(),
-        meta,
-    });
-}
+/// 版本那条健康信息（`RemoteHealthPayload::kind`）的三类：界面按它挑标题（`remote-health.ts::headlineFor`），不自己判。
+pub(super) const VERSION_KIND_OLDER: &str = "version-older";
+pub(super) const VERSION_KIND_NEWER: &str = "version-newer";
+pub(super) const VERSION_KIND_INCOMPARABLE: &str = "version-incomparable";
 
-/// 那台管道拥塞丢了帧：日志 ＋ 经 `remote-health` 告诉用户（丢了的不可恢复帧点名）。
-fn on_overflow(
-    host_label: &str,
-    health: &HealthOut,
-    dropped: u64,
-    lost: &[LostFrameInfo],
-    lost_truncated: bool,
-) {
-    // issue #32：远端管道拥塞丢了 dropped 帧。warn + 经 SS-F remote-health
-    // 通道提示用户（前端按 origin 节流弹 toast）。
-    //
-    // ★**这里此前对用户说了一句假话**：「重开该会话可看完整
-    // 历史」只对**内容帧**成立。状态增量帧（session_added/session_removed/
-    // tmux_session_closed/session_status）是一次差分的结果、**别处不存在**，
-    // 重开会话补不回来 —— 那正是 B-3 的正题。backend 从 `p1x` 起会把这些帧的
-    // 身份放进 `Overflow.lost`；有身份就说实话，并点名是哪几个会话。
-    tracing::warn!(
-        "stream_source remote [{host_label}] overflow: backend dropped {dropped} frame(s), \
-         {} unrecoverable{}",
-        lost.len(),
-        if lost_truncated {
-            " (list truncated)"
-        } else {
-            ""
-        }
-    );
-    let message = overflow_health_message(host_label, dropped, lost, lost_truncated);
-    let payload = crate::ui_contract::RemoteHealthPayload {
-        origin: host_label.to_string(),
-        kind: "overflow".to_string(),
-        message,
-        detail: String::new(),
-    };
-    if let Err(e) = health(payload) {
-        tracing::warn!("stream_source remote-health emit failed: {e}");
+/// 新旧 → 健康信息的类别（同 ⇒ 不说）。
+fn version_health_kind(rel: cmd_wire::attach::Relation) -> Option<&'static str> {
+    use cmd_wire::attach::Relation as R;
+    match rel {
+        R::Same => None,
+        R::Older => Some(VERSION_KIND_OLDER),
+        R::Newer => Some(VERSION_KIND_NEWER),
+        R::Incomparable => Some(VERSION_KIND_INCOMPARABLE),
     }
 }
+
+/// 冷启动预检的自证记忆：远端已经是当前 build 时，每次重连都付的那两条预检连接（`byte_table::probe_key` 的 `uname -s -m` 一次性 exec ·
+/// 读远端 `.build_id` 的那一趟）可以跳过。记的是 hello 自报的 build_id（「这台机器上一次真的跑起来的后端就是当前期望的那个」），不是预检算出来的结论。
+/// 跳的条件只有一个：记忆里那台机器的 build_id 恰好等于「我这一版」（`byte_table::my_backend_id`）；其余一律照跑。
+/// 记忆过期（远端二进制被删 / 换旧）⇒ 这一轮 exec 失败，失败路径清掉记忆 ⇒ 下一轮重新预检并部署。代价是多一次重连。
+static VERIFIED_BUILD: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
+
+/// 纯函数：这一轮能不能跳过那两条预检连接。`verified` = [`VERIFIED_BUILD`] 里这台机器的记录（`None` = 没记过）；`mine` = 「我这一版」（`None` = 手上没带后端字节）。
+/// 逐字相等，不是包含（前缀相等会把 `abc123` 与 `abc123-dirty` 混为一谈）；`mine` 是 `None` ⇒ 恒不跳。
+fn preflight_can_be_skipped(verified: Option<&str>, mine: Option<&str>) -> bool {
+    matches!((verified, mine), (Some(v), Some(m)) if v == m)
+}
+
+/// 读这台机器的自证记录。
+fn verified_build_of(origin: &str) -> Option<String> {
+    VERIFIED_BUILD.lock().ok()?.as_ref()?.get(origin).cloned()
+}
+
+/// 记下「这台机器上一次真的跑起来的后端是 `build_id`」。
+///
+/// ⚠ **只许在收到 hello 的那一处调**（backend 自报）。别处调就把「自证」变回了「猜」。
+fn record_verified_build(origin: &str, build_id: &str) {
+    if let Ok(mut g) = VERIFIED_BUILD.lock() {
+        g.get_or_insert_with(HashMap::new)
+            .insert(origin.to_string(), build_id.to_string());
+    }
+}
+
+/// 抹掉这台机器的自证记录（连接没起来 / backend 换了身份）。
+fn forget_verified_build(origin: &str) {
+    if let Ok(mut g) = VERIFIED_BUILD.lock() {
+        if let Some(m) = g.as_mut() {
+            m.remove(origin);
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "../../../../../tests/frontend/shell/stream_source/coldstart_preflight_guard.rs"]
+mod coldstart_preflight_guard;
+
+#[cfg(test)]
+#[path = "../../../../../tests/frontend/shell/stream_source/coldstart_perf_guard.rs"]
+mod coldstart_perf_guard;
+
+#[cfg(test)]
+#[path = "../../../../../tests/frontend/shell/stream_source/stream_flag_gate_tests.rs"]
+mod stream_flag_gate_tests;
 
 /// 收事那一头的接缝：overflow 那一句 · 「hello 之后才登记」等随循环搬走的那几条的去向（文件头注）。
 #[cfg(test)]
@@ -766,7 +561,3 @@ mod write_half_guard;
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/stream_source/reconnect_cells_tests.rs"]
 mod reconnect_cells_tests;
-
-#[cfg(test)]
-#[path = "../../../../../tests/frontend/shell/stream_source/frame_dispatch_shape.rs"]
-mod frame_dispatch_shape;

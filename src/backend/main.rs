@@ -279,7 +279,7 @@ async fn main() {
     // 判定住 [`listen::mode_from`]（**纯函数**，所以「只写了一半」那两条错误支都测得到），在 [`claim_then_log`] 里定、抢口。
 
     // (b) Emit the Hello handshake FIRST, flushed, before anything else.
-    let hello = build_hello(&agent_home);
+    let hello = build_hello();
 
     // 别的进程（命令行 · quota-warm · AI 照 skill 调）写了这台的轮换 ⇒ 这一路也推 `changed {rotation}`（广播通道是进程内的）。
     inbound::watch_rotation(&own);
@@ -298,7 +298,6 @@ async fn main() {
                     held,
                     hello,
                     agent_home,
-                    wants,
                     own,
                 ) => {}
                 _ = stop => {
@@ -334,37 +333,10 @@ async fn main() {
 
 /// 造那一帧 hello。**抽出来是因为两条载体都要发它**，而它必须只有一份 ——
 /// 两份 hello 会各自漂，而这一帧是手机端按精确字节在读的东西。
-fn build_hello(agent_home: &std::path::Path) -> Frame {
+fn build_hello() -> Frame {
     Frame::Hello(wire::Hello {
-        v: PROTO_VERSION,
         build_id: BUILD_ID.to_string(),
         host_arch: std::env::consts::ARCH.to_string(),
-        // ⚠ **左边的字段名与右边的变量名刻意不一致**，这不是笔误：
-        // 左边 `claude_dir` 是 **wire 字段**，冻结兼容（真在线上、手机端在读），
-        // 登记在 `agent_boundary_guard::FROZEN_COMPAT`，带解锁条件，**不许改名**；
-        // 右边 `agent_home` 是**仓内的参数名**，`S4b` 已把它从 `claude_dir` 改过来
-        //（通用层不该在标识符里叫得出某个 agent 的名字 —— `D3` 的同一条道理往仓内推）。
-        // ⇒ 这一行正是两条纪律的交界处：**字段名归契约，变量名归架构**。
-        claude_dir: agent_home.to_string_lossy().into_owned(),
-        // `S4`（`D3`）：wire 面已换成通用的 `homes`（`[{agent_kind, path}]`）。
-        //
-        // ★★**这一行是空表，但已经不是因为"做不到"了。**
-        // `agents::visible_homes()` 今天就能答出这台机器看得见哪些 agent
-        //（判准：home 目录存在；理由与被排除的另两条候选写在那个函数的头注里）。
-        // 换过去只要改这一行 —— `S5` 的口径是 **能填不真填**：
-        //   填 = 一次**与手机端的契约变更**（它的 hello fixture 按精确字节对），
-        //   而手机端那一侧的运行时这里验不了（前提 `P3`）
-        //   ⇒ 把"何时真填"留成一次**纯发布决策**，而不是顺手改过去。
-        // 真填那天要同轮做的三件事：① 换这一行；② 更新
-        //   `dg3_codex_fields_skipped_when_absent_claude_byte_equivalent` 的期望串；
-        //   ③ **bump `BUILD_ID`**（那天线上字节真的变了，已部署的远端得被判 stale）。
-        // ⚠ 无论如何**不要再加第二个目录字段** —— 那正是 `D3` 排除掉的路。
-        // 这一行由 `production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen` 钉住
-        //（它会在那天**故意变红**：那是提醒，不是障碍）；旁边那条
-        // `the_backend_can_already_discover_homes_it_just_does_not_send_them`
-        // 钉的是另一半 —— 空表不等于没能力。
-        homes: Vec::new(),
-        emits: EMITS.iter().map(|s| s.to_string()).collect(),
         commands: inbound::command_names()
             .into_iter()
             .map(str::to_string)
@@ -380,6 +352,11 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
         shapes: cmd_wire::shapes::SHAPES
             .iter()
             .map(|(c, h)| (c.to_string(), h.to_string()))
+            .collect(),
+        // 每种帧的形状指纹：同上，客户端按帧种比。
+        frames: cmd_wire::frame_shapes::FRAMES
+            .iter()
+            .map(|(k, h)| (k.to_string(), h.to_string()))
             .collect(),
     })
 }
@@ -426,9 +403,10 @@ async fn run_over_stdio(
     let (poke, book) = observe::watcher::spawn(agent_home, own.clone(), WATCH_REACTIONS);
     tap::adopt(&book);
     let (tz, view) = (wants.tz.clone(), wants.view.clone());
-    let (rx, attached) = poke.attach(&wants.tz);
+    // stdio 载体没有 attach 行 ⇒ 名单等 `stream-watch` 报上来（之前全发）。
+    let (rx, attached) = poke.attach(&wants.tz, None);
     // 这条流连接最低优先那一路（活卡的发件箱 ＋ 几种推送）；名单与 watcher 那份同拍交给它。
-    let tap_rx = tap::attach(tz.clone());
+    let tap_rx = tap::attach(tz.clone(), None);
     let mut inbound_task = inbound::spawn(
         tokio::io::stdin(),
         reply_tx.clone(),
@@ -570,8 +548,10 @@ struct Attached {
     reader: tokio::io::BufReader<tokio::io::ReadHalf<own_chan::Stream>>,
     writer: BufWriter<tokio::io::WriteHalf<own_chan::Stream>>,
     hello_flushed: wire::HelloFlushed,
-    /// 这条连接要什么（attach 行里的 `tz` · `view`）；`None` = 用进程起参那一份。
-    flags: Option<StreamWants>,
+    /// 看的这一台的时区（attach 行里的 `tz`）。
+    tz: cc_monitor_backend::Tz,
+    /// attach 行带的在看名单（没带 ⇒ 全发，等 `stream-watch`）。
+    watch: Option<crate::wire::WatchAsk>,
 }
 
 /// 一条连接的**握手**：先写 hello，再读一行 attach 请求，然后分档。
@@ -616,32 +596,28 @@ async fn handshake_one(
             return;
         }
     };
-    // flags 写坏了与整行坏了同一格拒（`malformed-attach`）。
-    let flags = inbound::views::attach_flags(&line);
-    let verdict = match (listen::attach_verdict(&line), &flags) {
-        (listen::Verdict::Attach, Err(())) => listen::Verdict::Malformed,
-        (v, _) => v,
-    };
-    match listen::admit(verdict) {
+    match listen::admit(&line, cc_monitor_backend::BUILD_ID) {
         listen::Admit::Refuse(reason) => {
             // **出声地拒**（照 `relay::serve` 那条 503 的形状：宁可拒绝，也不静默 FIN）。
             // 静默 FIN 会让对端只能靠「等了很久没动静」去猜，而那是猜不出原因的。
             let _ = listen::write_line(&mut w, &listen::refusal_line(reason)).await;
             tracing::warn!("拒绝一条 attach 请求：{reason}");
         }
-        listen::Admit::Stream => {
-            if listen::write_line(&mut w, listen::ATTACH_OK_LINE)
-                .await
-                .is_err()
-            {
+        listen::Admit::Stream { tz, reply, watch } => {
+            if listen::write_line(&mut w, &reply.line()).await.is_err() {
                 return;
             }
+            let tz = tz
+                .as_deref()
+                .and_then(cc_monitor_backend::Tz::named)
+                .unwrap_or_default();
             let _ = attached
                 .send(Attached {
                     reader: r,
                     writer: w,
                     hello_flushed,
-                    flags: flags.unwrap_or(None),
+                    tz,
+                    watch,
                 })
                 .await;
         }
@@ -757,7 +733,6 @@ async fn serve_listening(
     _held: cc_monitor_backend::platform::OwnLock,
     hello: Frame,
     agent_home: PathBuf,
-    defaults: StreamWants,
     own: cc_monitor_backend::platform::Own,
 ) {
     tracing::info!("常驻后端已在听这台家里的套接字（多条流 + 不限次「只读 hello 就走」）");
@@ -798,15 +773,14 @@ async fn serve_listening(
             // ② 有人认证通过 ⇒ 接上这台那份 watcher（先收一份此刻的样子），起流。
             Some(att) = attached_rx.recv() => {
                 let id = clients.join();
-                let Attached { reader, writer, hello_flushed, flags } = att;
-                let wants = flags.unwrap_or_else(|| defaults.clone());
-                let (tz, view) = (wants.tz.clone(), wants.view.clone());
-                let (rx, poke) = watcher.attach(&wants.tz);
+                let Attached { reader, writer, hello_flushed, tz, watch } = att;
+                // 名单在接上那一刻就定（watcher 那份与活卡同拍）：这条流从第一帧起只发名单里的。
+                let (rx, poke) = watcher.attach(&tz, watch.clone());
                 // 应答走**独立通道**：出方向丢一条内容帧可恢复，丢一条应答会让客户端永远等下去。
                 let (reply_tx, reply_rx) =
                     tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
                 // 这条流连接最低优先那一路（活卡的发件箱：整台一份活卡、每条连接按名单一个发件箱）。
-                let tap_rx = tap::attach(tz.clone());
+                let tap_rx = tap::attach(tz.clone(), watch.as_ref().map(|w| &w.sids[..]));
                 let mut inbound_task =
                     inbound::spawn(reader, reply_tx.clone(), watch_desk(&poke, &tap_rx), own.clone(), hello_flushed);
                 let done = done_tx.clone();
@@ -818,7 +792,7 @@ async fn serve_listening(
                     // 一个**空闲**的后端根本没有东西可写 ⇒ 客户走了也不知道 ⇒ 连接计数永远不归零。
                     // ⇒ 再认一个事件：**入方向读到 EOF**（客户端关了它的写半边 / 进程没了）。
                     tokio::select! {
-                        _ = writer_task(writer, rx, reply_rx, tap_rx, tz, view) => {
+                        _ = writer_task(writer, rx, reply_rx, tap_rx, tz, None) => {
                             tracing::info!("流结束：写不出去了（客户端走了）");
                         }
                         _ = &mut inbound_task => {

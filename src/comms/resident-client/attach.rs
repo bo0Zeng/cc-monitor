@@ -1,10 +1,11 @@
 //! 接常驻流那一段握手（`ccm -- --resident-attach`，`IPC-PROTOCOL.md` 载体表「常驻套接字」）：
-//! 小中继的拒绝行 → hello → attach 行 → `{"attach":"ok"}`。桌面与手机同一份零件；
-//! 两端都整段走 [`handshake`]（经 [`crate::feed`]）。
+//! 链路一开就写 attach 行（不等 hello：hello 写在分档之前），再读小中继的拒绝行或 hello、读回话（带那台相对这一版的新旧）——
+//! 从开出链路到通着一个来回。桌面与手机同一份零件；两端都整段走 [`handshake`]（经 [`crate::feed`]）。
 
-use crate::client::{split_and_park, HelloFrame, ParkedWriter};
+use crate::client::{split_and_park, BackendHello, ParkedWriter};
 use crate::line::{read_capped_line, CappedLine};
-use comms_inward::chan::wire::Offer;
+use cmd_wire::attach::{AttachLine, AttachReply, Relation, Yes};
+use cmd_wire::watch::WatchAsk;
 use copy_core::copy_text;
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, ReadHalf, WriteHalf};
@@ -21,103 +22,84 @@ pub const HANDSHAKE_LINE_CAP: usize = 64 * 1024;
 
 /// 小中继断开时第一行就是它（`{"attach":"refused","reason":…}`）⇒ 那个原因；不是 ⇒ `None`。
 pub fn relay_refusal(first: &str) -> Option<String> {
-    let v: serde_json::Value = serde_json::from_str(first.trim()).ok()?;
-    (v["attach"] == "refused").then(|| v["reason"].as_str().unwrap_or_default().to_string())
-}
-
-/// attach 行：「我要流」＋ 看的这一台的时区 ＋ 这条流的出口声明（后端 `listen::attach_flags` 的逆；本机 · 远端 · 手机同一处拼）。
-/// `tz` ⇒ `None` 不带（后端按 UTC 写推来的钟面）；`view` ＝ 请求信封同一套词（`None` ⇒ 不带 ＝ 全量）。
-pub fn attach_line(tz: Option<&str>, view: Option<&serde_json::Value>) -> String {
-    let mut o = serde_json::Map::new();
-    o.insert("attach".into(), true.into());
-    if let Some(tz) = tz {
-        o.insert("tz".into(), tz.into());
+    match AttachReply::of(first)? {
+        AttachReply::Refused { reason } => Some(reason),
+        AttachReply::Ok { .. } => None,
     }
-    if let Some(v) = view {
-        o.insert("view".into(), v.clone());
+}
+
+/// attach 行：「我要流」＋ 看的这一台的时区 ＋ 手上这一版的身份 ＋ 在看名单（本机 · 远端 · 手机同一处拼）。
+/// `tz` ⇒ `None` 不带（后端按 UTC 写推来的钟面）；`mine` ⇒ `None` 不带（那台就不回新旧）；`watch` 照名单台此刻那份（[`crate::watch::Desk::ask_for_attach`]）。
+pub fn attach_line(tz: Option<&str>, mine: Option<&str>, watch: Option<WatchAsk>) -> String {
+    AttachLine {
+        attach: Yes,
+        tz: tz.map(str::to_string),
+        mine: mine.map(str::to_string),
+        watch,
     }
-    format!("{}\n", serde_json::Value::Object(o))
+    .line()
 }
 
-/// 远端那条流的出口声明：会话帧里不要本机才用得上的 `pid`。
-pub fn remote_stream_view() -> serde_json::Value {
-    serde_json::json!({ "omit": { "session_added": ["pid"] } })
-}
-
-/// attach 回话：`{"attach":"ok"}` ⇒ 成；别的 ⇒ 那一句（带那头说的原因）。
-pub fn attach_reply(line: &str) -> Result<(), String> {
-    let v: serde_json::Value = serde_json::from_str(line).unwrap_or_default();
-    if v["attach"] == "ok" {
-        return Ok(());
+/// attach 回话：「可以」⇒ 那台相对 `mine` 的新旧（没回 ⇒ 不可比）；拒了 ⇒ [`AttachFail::Refused`]（原因原样）；别的 ⇒ 那一句。
+pub fn attach_reply(line: &str) -> Result<Relation, AttachFail> {
+    match AttachReply::of(line) {
+        Some(AttachReply::Ok { relation }) => Ok(relation.unwrap_or(Relation::Incomparable)),
+        Some(AttachReply::Refused { reason }) => Err(AttachFail::Refused(reason)),
+        None => Err(AttachFail::Reply(copy_text(
+            "rsRemoteResident.handshake.refused",
+            &[(
+                "why",
+                &copy_text("rsRemoteResident.handshake.notAttachReply", &[]),
+            )],
+        ))),
     }
-    let why = match v["reason"].as_str() {
-        Some(r) => r.to_string(),
-        None => copy_text("reason.dial.unparsable", &[]),
-    };
-    Err(copy_text(
-        "rsRemoteResident.handshake.refused",
-        &[("why", &why)],
-    ))
 }
 
-/// 一行 hello：协议版本 · 自报的身份 · 能力事实。
+/// 一行 hello：自报的身份 ＋ 全形（解不开 ⇒ 只有头）。
 #[derive(Debug, Clone)]
 pub struct Hello {
-    pub v: u64,
     pub build_id: String,
     /// 那一行原样（宿主要读别的几格时照它的帧类型再解一遍）。
     pub line: String,
-    offer: Offer,
+    /// 全形解得开 ⇒ 那一帧；解不开 ⇒ `None`（认得出是我们的后端、哪一版，别的一格都不信：一条命令不发、一帧不进）。
+    pub frame: Option<cmd_wire::frame::Hello>,
 }
 
 impl Hello {
-    /// 是 hello 那一形 ⇒ `Some`；别的 ⇒ `None`。能力事实缺格 ⇒ 当空（旧后端）。
+    /// 两步：先只解头（不是 hello / 头解不出 ⇒ `None`：那头不是我们的后端），再解全形。
     pub fn parse(line: &str) -> Option<Hello> {
-        let v: serde_json::Value = serde_json::from_str(line.trim()).ok()?;
-        let obj = v.as_object()?;
-        if obj.get("kind")?.as_str()? != "hello" {
-            return None;
-        }
-        let strs = |k: &str| -> Vec<String> {
-            obj.get(k)
-                .and_then(serde_json::Value::as_array)
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|x| x.as_str().map(str::to_string))
-                        .collect()
-                })
-                .unwrap_or_default()
+        let line = line.trim();
+        let head = cmd_wire::frame::HelloHead::of(line)?;
+        let frame = match cmd_wire::frame::decode::<serde::de::IgnoredAny>(line) {
+            Ok(cmd_wire::frame::Frame::Hello(h)) => Some(h),
+            _ => None,
         };
-        // 能力事实的另两格：读法住 `Offer::facts_of` · `Offer::shapes_of`（monitor 解 hello 同调它们）。
-        let offer =
-            Offer::new(strs("commands"), Offer::facts_of(obj)).with_shapes(Offer::shapes_of(obj));
         Some(Hello {
-            v: obj
-                .get("v")
-                .and_then(serde_json::Value::as_u64)
-                .unwrap_or(0),
-            build_id: obj
-                .get("build_id")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or_default()
-                .to_string(),
-            line: line.trim().to_string(),
-            offer,
+            build_id: head.build_id,
+            line: line.to_string(),
+            frame,
         })
     }
-}
 
-impl HelloFrame for Hello {
-    fn hello_offer(&self) -> Option<Offer> {
-        Some(self.offer.clone())
+    /// 见证：全形解不开 ⇒ 按只有头的那一帧给（能力事实全空、帧种全对不上）。
+    pub fn witness(&self) -> BackendHello {
+        match &self.frame {
+            Some(h) => BackendHello::of(h),
+            None => BackendHello::of(&cmd_wire::frame::Hello {
+                build_id: self.build_id.clone(),
+                ..Default::default()
+            }),
+        }
     }
 }
 
 /// 握手走不通在哪一步。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AttachFail {
-    /// 小中继拒了（`absent` 没人在听 · `unreachable` 别的原因 · 常驻后端嫌 attach 行不对），原因原样。
+    /// 小中继拒了（`absent` 没人在听 · `unreachable` 别的原因），原因原样。
     Refused(String),
+    /// 那台认不得这一形 attach 行（回 `malformed-attach`）：比这一形早 ⇒ 当旧。
+    Old,
     /// 第一行不是 hello：那头不是 cc-monitor 后端（原样带回）。
     NotOurs(String),
     /// 没说完就断了 / 读不动 / 超过期限（`hello` = 断在等 hello 那一步）；带那一句与原话。
@@ -130,11 +112,13 @@ pub enum AttachFail {
     Reply(String),
 }
 
-/// 握完手的那一条：读半边（带缓冲，紧跟 attach 的帧已在里面）· 停着的写半边 · hello。
+/// 握完手的那一条：读半边（带缓冲，紧跟 attach 的帧已在里面）· 停着的写半边 · hello · 那台相对这一版 · attach 行带过的名单。
 pub struct Attached<S> {
     pub reader: BufReader<ReadHalf<S>>,
     pub writer: ParkedWriter<WriteHalf<S>>,
     pub hello: Hello,
+    pub relation: Relation,
+    pub carried: Option<WatchAsk>,
 }
 
 async fn line_within<R>(r: &mut R, hello: bool, within: Duration) -> Result<String, AttachFail>
@@ -168,29 +152,37 @@ fn read_failed(hello: bool, raw: String) -> AttachFail {
     }
 }
 
-/// 整段握手（手机那一侧）：读第一行（拒绝 ⇒ [`AttachFail::Refused`]；不是 hello ⇒ [`AttachFail::NotOurs`]）→ 写 attach 行 → 等「可以」。
-/// 每一行各等至多 `within`。写半边在切开的那一刻就停住（[`split_and_park`]），握手那一行经切开之前的流写。
+/// 常驻后端认不得 attach 行时回的原因（后端 `wire/listen.rs` 的 `REFUSE_MALFORMED`）。
+pub const REFUSE_MALFORMED: &str = "malformed-attach";
+
+/// 整段握手：写 attach 行（`mine` ＝ 手上这一版；没带 ⇒ 新旧记不可比；`watch` ＝ 在看名单）→ 读第一行（拒绝 ⇒ [`AttachFail::Refused`]；不是 hello ⇒
+/// [`AttachFail::NotOurs`]）→ 读回话（认不得这一形 ⇒ [`AttachFail::Old`]）。每一行各等至多 `within`。
+/// 写半边在写完 attach 行那一刻就停住（[`split_and_park`]）。attach 行没写出去（链路已断）照读第一行：小中继的拒绝行先于断开。
 pub async fn handshake<S>(
     mut stream: S,
     tz: Option<&str>,
-    view: Option<&serde_json::Value>,
+    mine: Option<&str>,
+    watch: Option<WatchAsk>,
     within: Duration,
 ) -> Result<Attached<S>, AttachFail>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-    // 握手那两行读在切开之前（attach 行要经同一条流写回去）：一字节一字节读，不预读过 hello 那一行。
-    let first = read_line_unbuffered(&mut stream, true, within).await?;
-    if let Some(reason) = relay_refusal(&first) {
-        return Err(AttachFail::Refused(reason));
-    }
-    let hello = Hello::parse(&first).ok_or_else(|| AttachFail::NotOurs(first.clone()))?;
-    let line = attach_line(tz, view);
     let sent = async {
-        stream.write_all(line.as_bytes()).await?;
+        stream
+            .write_all(attach_line(tz, mine, watch.clone()).as_bytes())
+            .await?;
         stream.flush().await
     }
     .await;
+    let (rd, writer) = split_and_park(stream);
+    let mut reader = BufReader::new(rd);
+    let first = line_within(&mut reader, true, within).await;
+    if let Ok(first) = &first {
+        if let Some(reason) = relay_refusal(first) {
+            return Err(AttachFail::Refused(reason));
+        }
+    }
     if let Err(e) = sent {
         return Err(AttachFail::Cut {
             hello: false,
@@ -201,58 +193,24 @@ where
             raw: e.to_string(),
         });
     }
-    let (rd, writer) = split_and_park(stream);
-    let mut reader = BufReader::new(rd);
+    let first = first?;
+    let hello = Hello::parse(&first).ok_or_else(|| AttachFail::NotOurs(first.clone()))?;
     let reply = line_within(&mut reader, false, within).await?;
-    if let Some(reason) = relay_refusal(&reply) {
-        return Err(AttachFail::Refused(reason));
-    }
-    attach_reply(&reply).map_err(AttachFail::Reply)?;
+    let relation = match attach_reply(&reply) {
+        Err(AttachFail::Refused(r)) if r == REFUSE_MALFORMED => return Err(AttachFail::Old),
+        r => r?,
+    };
     Ok(Attached {
         reader,
         writer,
         hello,
+        relation: if mine.is_some() {
+            relation
+        } else {
+            Relation::Incomparable
+        },
+        carried: watch,
     })
-}
-
-/// 切开之前读一行（不带缓冲：多读一个字节都会被切开之后的读半边丢掉）。
-async fn read_line_unbuffered<S>(
-    s: &mut S,
-    hello: bool,
-    within: Duration,
-) -> Result<String, AttachFail>
-where
-    S: AsyncRead + Unpin,
-{
-    use tokio::io::AsyncReadExt;
-    let read = async {
-        let mut out = Vec::new();
-        let mut one = [0u8; 1];
-        loop {
-            match s.read(&mut one).await {
-                Ok(0) => return Err(cut_short(hello, String::new())),
-                Ok(_) if one[0] == b'\n' => return Ok(out),
-                Ok(_) => {
-                    out.push(one[0]);
-                    if out.len() > HANDSHAKE_LINE_CAP {
-                        return Err(cut_short(
-                            hello,
-                            format!("line over {HANDSHAKE_LINE_CAP} bytes"),
-                        ));
-                    }
-                }
-                Err(e) => return Err(read_failed(hello, e.to_string())),
-            }
-        }
-    };
-    match tokio::time::timeout(within, read).await {
-        Err(_) => Err(cut_short(hello, format!("{} ms", within.as_millis()))),
-        Ok(r) => r.map(|b| {
-            String::from_utf8_lossy(&b)
-                .trim_end_matches('\r')
-                .to_string()
-        }),
-    }
 }
 
 #[cfg(test)]

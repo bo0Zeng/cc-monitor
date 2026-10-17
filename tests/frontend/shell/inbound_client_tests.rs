@@ -5,23 +5,8 @@ use super::*;
 // 写在 `command_args` 的头注里，不在这里抄第二份。
 use tokio::io::AsyncBufReadExt;
 
-fn hello_frame(commands: &[&str]) -> InboundFrame {
-    InboundFrame::Hello {
-        v: 1,
-        build_id: "test".into(),
-        host_arch: "x86_64".into(),
-        claude_dir: "/tmp".into(),
-        // backend-split `S4`：`hello.homes` 与本用例无关（它测的是入方向命令协商），
-        // 空表 = 今天所有已部署后端的形态。
-        homes: vec![],
-        commands: commands.iter().map(|s| s.to_string()).collect(),
-        unavailable: vec![],
-        // 同一版的后端：typed 那几条的形状指纹照本侧编进来的那一份交。
-        shapes: cmd_wire::shapes::SHAPES
-            .iter()
-            .map(|(c, h)| (c.to_string(), h.to_string()))
-            .collect(),
-    }
+fn hello_frame(commands: &[&str]) -> crate::stream_source::Frame {
+    crate::frame_fixtures::our_hello(commands)
 }
 
 /// ★ **一律带超时地读**。D 审计变异 MU16（`encode_request` 不 push `\n`）时，
@@ -44,7 +29,7 @@ fn client_on_duplex(
     tokio::io::BufReader<tokio::io::DuplexStream>,
 ) {
     let (mine, theirs) = tokio::io::duplex(64 * 1024);
-    let hello = BackendHello::from_hello_frame(&hello_frame(commands)).expect("是 Hello 帧");
+    let hello = witness_of(&hello_frame(commands)).expect("是 Hello 帧");
     (
         park(mine).into_client(hello),
         tokio::io::BufReader::new(theirs),
@@ -149,7 +134,7 @@ fn the_only_way_to_build_an_inbound_client_is_into_client() {
 
 /// ★★ **那两句「唯一入口 / 唯一出口」必须有人读**〔audit-0805 08-07，Phase G 第 45 件〕。
 ///
-/// 本模块头注逐字写着「`BackendHello` 的**唯一构造入口**是 `from_hello_frame`」
+/// 本模块头注逐字写着「`BackendHello` 的**唯一构造入口**是 `of`」
 /// 与「`ParkedWriter` 的**唯一出口**是 `into_client`，而它要一个 `BackendHello`」。
 /// 整条「Hello 之前不许写」的类型保证就压在这两句上 ——
 /// `stream_source` 那两条判据的诊断也是这么写的（「在这里直接写 = 静默绕过那条类型保证」）。
@@ -204,8 +189,8 @@ fn each_type_has_exactly_one_door_and_the_exit_needs_the_witness() {
     let witness_doors = doors("impl BackendHello {");
     assert_eq!(
         witness_doors,
-        vec!["from_hello_frame".to_string()],
-        "`BackendHello` 的公开关联函数不再只有 `from_hello_frame`。\n\
+        vec!["of".to_string()],
+        "`BackendHello` 的公开关联函数不再只有 `of`。\n\
              多出来的那个**就是第二个构造入口** —— 见证一旦能凭空造出来，\n\
              `ParkedWriter::into_client` 那道门就形同虚设，「Hello 之前不许写」当场破。\n\
              ⚠ 08-07 实测：加一个 `pub fn forged(..) -> Self`，全仓判据一条不红。\n\
@@ -281,13 +266,13 @@ fn each_type_has_exactly_one_door_and_the_exit_needs_the_witness() {
 
 #[test]
 fn the_hello_witness_can_only_come_from_a_hello_frame() {
-    assert!(BackendHello::from_hello_frame(&hello_frame(&["ping"])).is_some());
+    assert!(witness_of(&hello_frame(&["ping"])).is_some());
     assert!(
-        BackendHello::from_hello_frame(&InboundFrame::Overflow {
-            dropped: 1,
-            lost: Vec::new(),
-            lost_truncated: false
-        })
+        witness_of(&cmd_wire::frame::Frame::Overflow(
+            cmd_wire::frame::Overflow {
+                said: cmd_wire::cells::Words("拥塞".into())
+            }
+        ))
         .is_none(),
         "非 Hello 帧换出了见证 —— 「Hello 之前不许写」就破了"
     );
@@ -1073,7 +1058,7 @@ async fn shutdown_wakes_every_waiter_with_disconnected() {
 fn ids_from_two_connections_never_collide() {
     let mk = || {
         let (mine, _theirs) = tokio::io::duplex(1024);
-        let hello = BackendHello::from_hello_frame(&hello_frame(&["ping"])).expect("是 Hello 帧");
+        let hello = witness_of(&hello_frame(&["ping"])).expect("是 Hello 帧");
         park(mine).into_client(hello)
     };
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -1096,7 +1081,7 @@ fn unregister_never_removes_someone_elses_client() {
         .expect("rt");
     let mk = || {
         let (mine, _theirs) = tokio::io::duplex(1024);
-        let hello = BackendHello::from_hello_frame(&hello_frame(&["ping"])).expect("是 Hello 帧");
+        let hello = witness_of(&hello_frame(&["ping"])).expect("是 Hello 帧");
         park(mine).into_client(hello)
     };
     let (old, new) = rt.block_on(async { (mk(), mk()) });
@@ -1150,19 +1135,19 @@ fn the_shared_stripper_keeps_the_construction_site_this_guard_must_scan() {
 /// 握手里的能力事实从线上一路进 `Offer`，调用侧照它办：
 /// ① `unavailable` 列了的命令 ⇒ 不发、回 `Unavailable{code}`（与那台事后回的码同一个）；没列的照发。
 /// ② 本侧那张撤不动的表（`cmd_wire::shapes::UNCANCELLABLE`）里的命令超时 ⇒ `NotOffered`、一条撤单都不补；不在表里的 ⇒ `Asked`、补一条。
-/// 两侧异源：左边是真 hello 行经 `stream_source::parse_frame` 解出来的，右边是本条手写的期望。
+/// 两侧异源：左边是真 hello 行经 `stream_source::decode` 解出来的，右边是本条手写的期望。
 #[tokio::test]
 async fn the_hello_facts_decide_what_is_sent_and_what_is_withdrawn() {
     // `kill` · `launch` · `ping` 是 typed 命令：那台交了与本份同一张形状指纹（形状对不上那一档另有判据），这一条只看能力事实。
     let shape = |c: &str| cmd_wire::shapes::shape_of(c).expect("typed 命令");
     let line = format!(
-        r#"{{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["cancel","kill","ping","launch"],"unavailable":[{{"command":"kill","code":"no_tmux"}},{{"command":7}}],"shapes":{{"kill":"{}","launch":"{}","ping":"{}"}}}}"#,
+        r#"{{"kind":"hello","build_id":"b","host_arch":"x86_64","commands":["cancel","kill","ping","launch"],"unavailable":[{{"command":"kill","code":"no_tmux"}}],"shapes":{{"kill":"{}","launch":"{}","ping":"{}"}}}}"#,
         shape("kill"),
         shape("launch"),
         shape("ping")
     );
-    let frame = crate::stream_source::parse_frame(&line).expect("是 hello");
-    let hello = BackendHello::from_hello_frame(&frame).expect("是 Hello 帧");
+    let frame = crate::stream_source::decode(&line).expect("是 hello");
+    let hello = witness_of(&frame).expect("是 Hello 帧");
     let (mine, theirs) = tokio::io::duplex(64 * 1024);
     let client = park(mine).into_client(hello);
     let mut peer = tokio::io::BufReader::new(theirs);
@@ -1221,8 +1206,8 @@ async fn a_resync_reply_refreshes_the_offer_with_the_facts_of_this_moment() {
         r#"{{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["cancel","kill","resync"],"unavailable":[{{"command":"kill","code":"no_tmux"}}],"shapes":{{"resync":"{}"}}}}"#,
         cmd_wire::shapes::shape_of("resync").expect("typed 命令")
     );
-    let frame = crate::stream_source::parse_frame(&line).expect("是 hello");
-    let hello = BackendHello::from_hello_frame(&frame).expect("是 Hello 帧");
+    let frame = crate::stream_source::decode(&line).expect("是 hello");
+    let hello = witness_of(&frame).expect("是 Hello 帧");
     let (mine, theirs) = tokio::io::duplex(64 * 1024);
     let client = park(mine).into_client(hello);
     let mut peer = tokio::io::BufReader::new(theirs);
@@ -1262,8 +1247,8 @@ async fn the_link_fact_follows_register_unregister_and_failed_rounds() {
     let mut rx = link_changes();
     rx.borrow_and_update();
     let line = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["cancel"]}"#;
-    let frame = crate::stream_source::parse_frame(line).expect("是 hello");
-    let hello = BackendHello::from_hello_frame(&frame).expect("是 Hello 帧");
+    let frame = crate::stream_source::decode(line).expect("是 hello");
+    let hello = witness_of(&frame).expect("是 Hello 帧");
     let (mine, _theirs) = tokio::io::duplex(1024);
     let client = park(mine).into_client(hello);
     register(&origin, client.clone());
@@ -1297,8 +1282,8 @@ async fn a_typed_command_with_a_different_shape_is_refused_by_name_and_not_sent(
         let line = format!(
             r#"{{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["{op}"],"shapes":{{"{op}":"{hash}"}}}}"#
         );
-        let frame = crate::stream_source::parse_frame(&line).expect("是 hello");
-        BackendHello::from_hello_frame(&frame).expect("是 Hello 帧")
+        let frame = crate::stream_source::decode(&line).expect("是 hello");
+        witness_of(&frame).expect("是 Hello 帧")
     };
     let name = "b8-shape-devbox";
     let (ours, theirs) = tokio::io::duplex(64 * 1024);

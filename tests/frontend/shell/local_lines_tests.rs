@@ -6,19 +6,17 @@
 //!
 //! | # | 判什么 | 异源 / 两向 |
 //! |---|---|---|
-//! | F1 | 本机吸收点交回的帧种类 == {line, session_added, session_removed} ∪{session_status, sessions_replayed} ∪{session_file_gone, session_file_reread} ∪{changed}（全部主题，本机账号清单 / 配置文件变了从前在这里被丢）；喂的种类 == `parse_frame` 认得的全部种类 | 帧是手写线上 JSON；种类全集从 `parse_frame` 源码里摘（两向） |
-//! | F2 | 本机消费者的纯分派核真值表 | 期望手写 |
+//! | F1 | 本机那条流上分派第一层交回的帧种类 == 会话内容 ＋ 起停 ＋ 记录文件出声 ＋ `changed` ＋ `overflow`；每种帧都喂到 | 帧取跨语言金样（后端序列化器写）；期望手写 |
 //! | F3 | 两条读循环各恰好一处把交回的帧送进本机内容通道（送法各按载体）、各恰好一处送「流结束」 | 源码锚，恰好一处 |
 //! | F4 | 内容出口的调用方集合（`batch_to_payloads` / `on_line_batch_awaited` / `flush_lines` / `LineIntake::open` / `Batcher::new` / `SnapshotQueue::new`） | 全仓生产段扫描，两向集合相等 |
 //! | F5 | 两条载体的起参是同一份常量，且其中每一个旗标都 ∈ 后端 `STREAM_FLAGS`；`--tail-only` 在 ⟺ 消费者认定 tail-only | 后端源码 —— 住 `stream_source/stream_flag_gate_tests.rs`（同一条跨半边已登记，不另开一条） |
 //! | F6 | 快照被撤时的补偿归档：本机不补、远端补 | — |
 //! | F7 | monitor 生产段里那套 watcher 的名字零命中（带正控） | — |
-//! | L1 | 本机起停帧 ⇒ 本机活会话表的起停事实（藏起来的 bg 不进；流断带上可重连那一摞） | 期望手写 |
-//! | Q1 | 本机后端推来的 `changed`（账号清单 · 额度 · 轮换 · 规则）走生产那一串（吸收点 → 本机通道 → `consume_local`）⇒ `<local>` 上各主题的 `changed/<主题>` 订阅逐格收到；交这一格的生产调用方 == {远端 `dispatch`, 本机 `consume_local`} | 期望手写；全仓生产段扫描，两向集合相等 |
+//! | Q1 | 本机后端推来的 `changed` 走生产那一串（分派第一层 → 本机通道 → `consume_local` → 第二层）⇒ `<local>` 上各主题的 `changed/<主题>` 订阅逐格收到；交这一格的生产调用方只有分派第二层 | 期望手写；全仓生产段扫描，两向集合相等 |
 //! | F8 | 真后端 × 生产 stdio 读循环 ⇒ 宣告带 `path`/`lines`、新行的 `seq` == 行号（`#[ignore]`，由 `tests/evidence/CF1-local-lines.py` 带二进制跑） | 两侧各是真实现 |
 
 use super::*;
-use crate::stream_source::{local_step, parse_frame, InboundFrame, LocalItem, LocalStep};
+use crate::stream_source::{LocalItem, Ordered};
 use std::collections::BTreeSet;
 
 // ─── 小工具：函数范围（rustfmt 保证收尾 `}` 与签名同缩进）───────────────────────────
@@ -96,152 +94,53 @@ fn tap() -> Option<tokio::sync::mpsc::Receiver<LocalItem>> {
 
 // ─── F1 ────────────────────────────────────────────────────────────────────
 
-/// 每一种帧一行手写线上 JSON（**不从实现生成**）。
-///
-/// tmux 观测那两种帧删了（后端不再发，monitor 不再认）。
-///
-/// ⇒ 表的种类 == `parse_frame` 的全部臂（两向），新长一种帧就红：先答它是不是内容。
-const FRAMES: &[(&str, &str)] = &[
-    (
-        "hello",
-        r#"{"kind":"hello","v":1,"build_id":"x","host_arch":"x86_64","claude_dir":"/h/.claude"}"#,
-    ),
-    (
-        "line",
-        r#"{"kind":"line","session_id":"s1","path":"/h/.claude/projects/p/s1.jsonl","seq":7,"byte_offset":70}"#,
-    ),
-    (
-        "session_added",
-        r#"{"kind":"session_added","agent_kind":"claude","sid":"s1","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","path":"/h/.claude/projects/p/s1.jsonl"}"#,
-    ),
-    // 读完了、从第几行起 —— 会话内容那一族（排在宣告之后、它的第一行之前；本机消费者在这一帧排旁路快照）。
-    (
-        "session_primed",
-        r#"{"kind":"session_primed","sid":"s1","path":"/h/.claude/projects/p/s1.jsonl","lines":7}"#,
-    ),
-    (
-        "session_status",
-        r#"{"kind":"session_status","sid":"s1","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","status":"idle","activity":"idle"}"#,
-    ),
-    (
-        "session_removed",
-        r#"{"kind":"session_removed","sid":"s1"}"#,
-    ),
-    // 后端会话账本的成品（去向）—— 进内容通道（去向必须排在那个会话的行之后）。
-    (
-        "session_state",
-        r#"{"kind":"session_state","sid":"s1","state":"ended","state_text":"t","state_hint":"h","state_tone":"plain","switch":{"model":{"can":"yes"},"permission":{"can":"yes"}}}"#,
-    ),
-    ("overflow", r#"{"kind":"overflow","dropped":3}"#),
-    (
-        "reply",
-        r#"{"kind":"reply","id":"cf1-no-such-id","ok":true}"#,
-    ),
-    ("cancelled", r#"{"kind":"cancelled","id":"cf1-no-such-id"}"#),
-    // 「X 变了」（全部主题）—— 交回读循环（本机消费者交 `changed/<主题>` 订阅，与远端同一个口）。
-    (
-        "changed",
-        r#"{"kind":"changed","topic":"plan","key":"/w","rev":"r1","body":{"needs":2}}"#,
-    ),
-    (
-        "link_data",
-        r#"{"kind":"link_data","link":"cf1-no-such-link","data":"aGk="}"#,
-    ),
-    (
-        "link_end",
-        r#"{"kind":"link_end","link":"cf1-no-such-link"}"#,
-    ),
-    // U4b 的「A 的清单报完了」与 SR1b 的传输进度 —— 都不是会话内容。
-    // 「清单报完了」从此交回（本机活会话表要它，且要排在它前面那些宣告之后）；传输进度仍就地吸收。
-    ("sessions_replayed", r#"{"kind":"sessions_replayed"}"#),
-    // 记录文件不见了 / 被改过 —— **是**会话内容那一族（与行同序进内容通道）。
-    (
-        "session_file_gone",
-        r#"{"kind":"session_file_gone","session_id":"s1","path":"/h/.claude/projects/p/s1.jsonl"}"#,
-    ),
-    (
-        "session_file_reread",
-        r#"{"kind":"session_file_reread","session_id":"s1","path":"/h/.claude/projects/p/s1.jsonl","why":"rewritten","lines":3}"#,
-    ),
-    (
-        "transfer",
-        r#"{"kind":"transfer","id":"cf1-no-such-ticket","got":1,"total":2}"#,
-    ),
-    // 测试连接的进度格 —— 不是会话内容，就地交中继（`probe_relay`），不进内容通道。
-    (
-        "probe",
-        r#"{"kind":"probe","ticket":"no-such-ticket","cell":{"reached":"ssh"}}"#,
-    ),
-    // 一组复制 · 删除 · 改权限的进度 —— 不是会话内容，就地记一行（窗口还没订这一口），不进内容通道。
-    (
-        "files_batch",
-        r#"{"kind":"files_batch","ticket":"no-such-ticket","done":1,"total":2}"#,
-    ),
-    // 终端实时预览的一屏 / 收尾 —— 不是会话内容，就地交中继（`terminal_screen_relay`），不进内容通道。
-    (
-        "terminal_screen",
-        r#"{"kind":"terminal_screen","ticket":"no-such-ticket","seq":1,"view":{}}"#,
-    ),
-    (
-        "terminal_follow_end",
-        r#"{"kind":"terminal_follow_end","ticket":"no-such-ticket","why":"gone","said":"x"}"#,
-    ),
-    // 活卡 —— 不是会话内容（jsonl 才是），就地转给前端，不进内容通道。
-    (
-        "live_card",
-        r#"{"kind":"live_card","sid":"s1","card":0,"n":0,"op":"awaiting"}"#,
-    ),
-    // 一个会话的运行表 —— 会话成品，与起停同一条有序通道。
-    (
-        "session_runs",
-        r#"{"kind":"session_runs","sid":"s1","runs":[],"ended":[]}"#,
-    ),
-    // 一个会话的主线外清单 —— 会话成品，同上。
-    (
-        "session_branch",
-        r#"{"kind":"session_branch","sid":"s1","path":"/p/s1.jsonl","at":0,"off":["u2"],"sum":"00ff"}"#,
-    ),
-];
+const GOLDEN: &str = include_str!("../../__fixtures__/session-stream.golden.jsonl");
 
+/// 本机那条流上，分派第一层交回（进本机内容通道）的恰好是会话内容与起停那几种；每种帧喂一行（跨语言金样的最少格那一行）。
 #[test]
-fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
-    // 两向：表里的种类 == parse_frame 的全部臂。
-    let fed: BTreeSet<String> = FRAMES.iter().map(|(k, _)| k.to_string()).collect();
-    let all = guard_core::addr::parse_frame_kinds();
-    assert_eq!(
-        fed, all,
-        "喂进吸收点的帧种类与 `parse_frame` 认得的种类对不上 —— 新长了一种帧：\
-         先答它是不是会话内容（是 ⇒ 吸收点要把它交回、本机消费者要处置它），再补进 `FRAMES`"
-    );
+fn the_first_layer_hands_back_exactly_the_content_and_lifecycle_frames() {
+    let mut fed = BTreeSet::new();
     let mut handed_back = BTreeSet::new();
-    for (kind, line) in FRAMES {
-        let f = parse_frame(line)
-            .unwrap_or_else(|e| panic!("手写的 `{kind}` 帧 parse_frame 解不出来（{e}）：{line}"));
-        if let Some(back) =
-            crate::local_backend::absorb_local_frame(f, None, &crate::origin::Origin::local())
-        {
-            // 交回的就是喂进去的那一种（不是别的东西）。
-            let same = matches!(
-                (kind, &back),
-                (&"line", InboundFrame::Line { .. })
-                    | (&"changed", InboundFrame::Changed { .. })
-                    | (&"session_added", InboundFrame::SessionAdded { .. })
-                    | (&"session_primed", InboundFrame::SessionPrimed { .. })
-                    | (&"session_removed", InboundFrame::SessionRemoved { .. })
-                    | (&"session_state", InboundFrame::SessionState { .. })
-                    | (&"session_status", InboundFrame::SessionStatus { .. })
-                    | (&"sessions_replayed", InboundFrame::SessionsReplayed)
-                    | (&"session_runs", InboundFrame::SessionRuns { .. })
-                    | (&"session_branch", InboundFrame::SessionBranch { .. })
-                    | (
-                        &("session_file_gone" | "session_file_reread"),
-                        InboundFrame::SessionFileNotice { .. }
-                    )
-            );
-            assert!(same, "喂的是 `{kind}`，交回来的是别的：{back:?}");
-            handed_back.insert(kind.to_string());
+    for line in GOLDEN.lines() {
+        let f = crate::stream_source::decode(line)
+            .unwrap_or_else(|e| panic!("金样解不开（{e}）：{line}"));
+        let kind = serde_json::to_value(&f).unwrap()["kind"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        fed.insert(kind.clone());
+        if let Some(back) = crate::stream_source::route(
+            crate::stream_source::Via::Local,
+            &crate::origin::Origin::local(),
+            None,
+            f,
+        ) {
+            let back_kind = format!("{back:?}");
+            let name: String = back_kind
+                .chars()
+                .take_while(|c| c.is_alphanumeric())
+                .collect();
+            let snake: String = name
+                .chars()
+                .enumerate()
+                .flat_map(|(i, c)| {
+                    let lower = c.to_ascii_lowercase();
+                    if c.is_uppercase() && i > 0 {
+                        vec!['_', lower]
+                    } else {
+                        vec![lower]
+                    }
+                })
+                .collect();
+            assert_eq!(snake, kind, "喂的是 `{kind}`，交回来的是别的：{back:?}");
+            handed_back.insert(kind);
         }
     }
+    assert_eq!(
+        fed.len(),
+        cmd_wire::frame_shapes::FRAMES.len() + 1,
+        "金样没把每种帧都喂到：{fed:?}"
+    );
     assert_eq!(
         handed_back,
         [
@@ -261,95 +160,14 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
             // 运行表 · 主线外清单（会话成品，交会话账）。
             "session_runs",
             "session_branch",
+            // 拥塞丢帧那一句（本机那条流也说）。
+            "overflow",
         ]
         .iter()
         .map(|s| s.to_string())
         .collect::<BTreeSet<_>>(),
-        "本机吸收点交回的帧种类 ≠ 内容三种 ＋ 起停两种（红绿灯 · 清单报完了：本机活会话表由这条流喂）＋ 记录文件出声两种 ＋ `changed`：\
-         多交 ⇒ 别的帧混进来；少交 ⇒ 本机那一种又被就地丢了"
+        "本机分派第一层交回的帧种类不对：多交 ⇒ 别的帧混进内容通道；少交 ⇒ 本机那一种又被就地丢了"
     );
-}
-
-// ─── F2 ────────────────────────────────────────────────────────────────────
-
-fn frame(line: &str) -> LocalItem {
-    LocalItem::Frame(parse_frame(line).expect("手写帧解不出来"))
-}
-
-/// `consume_local` 那一刻：每一件都分派（隐不隐藏是帧上那一格、界面读，壳不丢帧）。
-fn step(item: LocalItem) -> LocalStep {
-    local_step(item)
-}
-
-#[test]
-fn the_local_dispatch_core_matches_the_hand_written_table() {
-    const LINE_A: &str = r#"{"kind":"line","session_id":"a","path":"/p/a.jsonl","seq":4,"record":{"x":1},"byte_offset":50}"#;
-    const LINE_B: &str =
-        r#"{"kind":"line","session_id":"b","path":"/p/b.jsonl","seq":0,"byte_offset":10}"#;
-    const ADD_A: &str = r#"{"kind":"session_added","agent_kind":"claude","sid":"a","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","session_kind":"interactive","path":"/p/a.jsonl"}"#;
-    const PRIMED_A: &str = r#"{"kind":"session_primed","sid":"a","path":"/p/a.jsonl","lines":4}"#;
-    const PRIMED_A_EMPTY: &str = r#"{"kind":"session_primed","sid":"a"}"#;
-    const PRIMED_B: &str = r#"{"kind":"session_primed","sid":"b","path":"/p/b.jsonl","lines":9}"#;
-    const ADD_A_OLD_CC: &str = r#"{"kind":"session_added","agent_kind":"claude","sid":"a","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L"}"#;
-    const ADD_B_BG: &str = r#"{"kind":"session_added","agent_kind":"claude","sid":"b","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","session_kind":"bg","background":true,"path":"/p/b.jsonl"}"#;
-    const REM_B: &str = r#"{"kind":"session_removed","sid":"b"}"#;
-    const STATUS: &str = r#"{"kind":"session_status","sid":"a","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","status":"busy","activity":"working"}"#;
-
-    let line_a = LocalStep::Line {
-        session_id: "a".into(),
-        path: "/p/a.jsonl".into(),
-        seq: 4,
-        record: crate::ui_contract::RecordBody::from_json(r#"{"x":1}"#.into()),
-        cwd: None,
-        end: Some(50),
-        rid: None,
-    };
-    let line_b = LocalStep::Line {
-        session_id: "b".into(),
-        path: "/p/b.jsonl".into(),
-        seq: 0,
-        record: None,
-        cwd: None,
-        end: Some(10),
-        rid: None,
-    };
-
-    // 一切照转：分身会话与交互会话同一条路（隐不隐藏由后端判好、帧上带着，壳不藏）。
-    assert_eq!(step(frame(LINE_A)), line_a);
-    // 宣告本身不排快照（它不等记录）；读完那一帧才排。
-    assert_eq!(step(frame(ADD_A)), LocalStep::Skip);
-    assert_eq!(
-        step(frame(PRIMED_A)),
-        LocalStep::Announce {
-            sid: "a".into(),
-            path: Some("/p/a.jsonl".into()),
-            lines: Some(4)
-        }
-    );
-    assert_eq!(step(frame(ADD_B_BG)), LocalStep::Skip);
-    assert_eq!(
-        step(frame(PRIMED_B)),
-        LocalStep::Announce {
-            sid: "b".into(),
-            path: Some("/p/b.jsonl".into()),
-            lines: Some(9)
-        }
-    );
-    assert_eq!(step(frame(LINE_B)), line_b);
-    assert_eq!(step(frame(REM_B)), LocalStep::Remove { sid: "b".into() });
-    assert_eq!(step(frame(STATUS)), LocalStep::Skip);
-    assert_eq!(step(frame(ADD_A_OLD_CC)), LocalStep::Skip);
-    assert_eq!(
-        step(frame(PRIMED_A_EMPTY)),
-        LocalStep::Announce {
-            sid: "a".into(),
-            path: None,
-            lines: None
-        }
-    );
-    // 流结束 · 丢行。
-    assert_eq!(step(LocalItem::StreamEnded), LocalStep::StreamEnded);
-    assert_eq!(step(LocalItem::LineLost), LocalStep::Lost);
 }
 
 /// 分身会话不再在壳里整条丢（从前「显示分身会话」关掉 ⇒ 连它的批准框一起丢；隐藏只管占不占标签页，在等人的会话照样要人答）：
@@ -415,20 +233,20 @@ fn both_read_loops_hand_content_frames_to_the_local_channel_exactly_once() {
             d < e,
             "{name}：「流结束」要送在读循环**之后**（它前面是送帧的那一处）"
         );
-        // 送进通道的就是吸收点交回来的那个 `Some(f)`：它紧跟在 `if let Some(f) = …absorb_local_frame(…) {` 后面。
+        // 送进通道的就是分派第一层交回来的那个 `Some(f)`：它紧跟在 `if let Some(f) = crate::stream_source::route(…) {` 后面。
         let head = &src[..d];
         let a = head
-            .rfind("absorb_local_frame(")
-            .unwrap_or_else(|| panic!("{name}：送帧之前没有吸收点"));
+            .rfind("crate::stream_source::route(")
+            .unwrap_or_else(|| panic!("{name}：送帧之前没有分派"));
         assert!(
             head[..a]
                 .rfind("if let Some(f) =")
                 .is_some_and(|k| a - k < 80),
-            "{name}：送进通道的必须就是吸收点交回来的那一帧（`if let Some(f) = …absorb_local_frame(…)`）"
+            "{name}：送进通道的必须就是分派交回来的那一帧（`if let Some(f) = crate::stream_source::route(…)`）"
         );
         assert!(
             head[a..].trim_end().ends_with('{') && !head[a..].contains(';'),
-            "{name}：吸收点与送帧之间不许夹别的语句"
+            "{name}：分派与送帧之间不许夹别的语句"
         );
         assert!(
             !src.contains(wrong),
@@ -661,12 +479,8 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
     // ① 宣告（不等记录）之后读完那一帧：带 path 与预读到的完整行数；它之前不许有这个会话的行帧。
     let (path, lines) = loop {
         match next(&mut rx) {
-            LocalItem::Frame(InboundFrame::SessionPrimed {
-                sid: s,
-                path,
-                lines,
-            }) if s == sid => break (path, lines),
-            LocalItem::Frame(InboundFrame::Line { session_id, .. }) if session_id == sid => {
+            LocalItem::Frame(Ordered::SessionPrimed(p)) if p.sid == sid => break (p.path, p.lines),
+            LocalItem::Frame(Ordered::Line(l)) if l.session_id == sid => {
                 panic!("宣告之前就来了这个会话的行帧")
             }
             _ => continue,
@@ -697,12 +511,9 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
     let mut nudges = 0;
     let (seq, message) = loop {
         match wait_line(&mut rx) {
-            Some(LocalItem::Frame(InboundFrame::Line {
-                session_id,
-                seq,
-                record,
-                ..
-            })) if session_id == sid => break (seq, record),
+            Some(LocalItem::Frame(Ordered::Line(l))) if l.session_id == sid => {
+                break (l.seq, l.record)
+            }
             Some(_) => continue,
             None => {
                 nudges += 1;
@@ -738,148 +549,12 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
     println!("CF1-LOCAL-LINES ok");
 }
 
-// ─── L1本机起停帧 ⇒ 交 `session_book` 的成品 ──────────────────────────────────
-//
-// 要求住址：`INVARIANTS §40` 逐字「我的目的就是把本地当成不走 ssh 的远端」· 「一切判定都在后端」。
-
-#[test]
-fn the_local_product_core_matches_the_hand_written_table() {
-    use crate::session_book::{Fate, In, LiveMeta};
-    use crate::stream_source::local_product;
-    // 带启动期令牌：成品要把它原样交给前端（`launch-arrival.ts` 认「我刚起的那条」）。
-    const ADD_A: &str = r#"{"kind":"session_added","agent_kind":"claude","sid":"a","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","session_kind":"interactive","cwd":"/w","project_dir":"/w/p","name":"n","status":"busy","activity":"working","pid":42,"container":{"host":"tmux","terminal":"tmux-3-7"}}"#;
-    const ADD_B_BG: &str = r#"{"kind":"session_added","agent_kind":"claude","sid":"b","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","session_kind":"bg","background":true}"#;
-    const STATUS_A: &str = r#"{"kind":"session_status","sid":"a","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","status":"idle","activity":"idle"}"#;
-    const STATUS_B: &str = r#"{"kind":"session_status","sid":"b","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","status":"idle","activity":"idle"}"#;
-    const LEFT_A: &str = r#"{"kind":"session_state","sid":"a","state":"reconnectable","state_text":"t","state_hint":"h","state_tone":"plain","switch":{"model":{"can":"yes"},"permission":{"can":"yes"}}}"#;
-    const LEFT_B: &str = r#"{"kind":"session_state","sid":"b","state":"ended","state_text":"t","state_hint":"h","state_tone":"plain","switch":{"model":{"can":"yes"},"permission":{"can":"yes"}}}"#;
-    const REM_A: &str = r#"{"kind":"session_removed","sid":"a"}"#;
-    const LISTED: &str = r#"{"kind":"sessions_replayed"}"#;
-    const LINE: &str =
-        r#"{"kind":"line","session_id":"a","path":"/p/a.jsonl","seq":0,"byte_offset":10}"#;
-    let local = || "<local>".to_string();
-
-    assert_eq!(
-        local_product(&frame(ADD_A), crate::origin::LOCAL),
-        Some(In::Live {
-            origin: local(),
-            sid: "a".into(),
-            meta: LiveMeta {
-                cwd: Some("/w".into()),
-                project_dir: Some("/w/p".into()),
-                name: Some("n".into()),
-                activity: crate::session_book::ActivityCells {
-                    activity: Some(crate::session_book::SessionActivity::Working),
-                    activity_text: "T".into(),
-                    activity_tone: "now".into(),
-                    activity_order: 1,
-                    switch: Default::default(),
-                },
-                naming: crate::session_book::NameCells {
-                    label: "L".into(),
-                    label_project: None
-                },
-                container: Some(crate::session_book::SessionContainer::Hosted {
-                    host: crate::session_book::TerminalHost::Tmux,
-                    terminal: Some("tmux-3-7".into()),
-                }),
-                pid: Some(42),
-                ..Default::default()
-            }
-        })
-    );
-    assert_eq!(
-        local_product(&frame(STATUS_A), crate::origin::LOCAL),
-        Some(In::Status {
-            origin: local(),
-            sid: "a".into(),
-            activity: crate::session_book::ActivityCells {
-                activity: Some(crate::session_book::SessionActivity::Idle),
-                activity_text: "T".into(),
-                activity_tone: "now".into(),
-                activity_order: 1,
-                switch: Default::default(),
-            },
-            naming: crate::session_book::NameCells {
-                label: "L".into(),
-                label_project: None
-            },
-            waiting_for: None
-        })
-    );
-    assert_eq!(
-        local_product(&frame(LEFT_A), crate::origin::LOCAL),
-        Some(In::Left {
-            origin: local(),
-            sid: "a".into(),
-            fate: Fate::Reconnectable,
-            words: Some(crate::session_book::FateWords {
-                text: "t".into(),
-                hint: "h".into(),
-                tone: "plain".into(),
-                switch: Default::default(),
-            }),
-        }),
-        "去向原样交（后端裁的，连写好的字一起）"
-    );
-    assert_eq!(
-        local_product(&frame(REM_A), crate::origin::LOCAL),
-        None,
-        "摘除本身只是内容流的边界"
-    );
-    assert_eq!(
-        local_product(&frame(LISTED), crate::origin::LOCAL),
-        Some(In::Listed { origin: local() })
-    );
-    assert_eq!(
-        local_product(&frame(LINE), crate::origin::LOCAL),
-        None,
-        "内容行不是起停成品"
-    );
-    assert_eq!(
-        local_product(&LocalItem::StreamEnded, crate::origin::LOCAL),
-        Some(In::LinkLost { origin: local() })
-    );
-    // 分身会话的宣告 · 灯（需手动跟着它）· 去向照样交起停成品（壳不藏）。
-    let product = |item: LocalItem| local_product(&item, crate::origin::LOCAL);
-    assert!(product(frame(ADD_B_BG)).is_some(), "分身会话的宣告没进");
-    assert!(product(frame(STATUS_B)).is_some(), "分身会话的灯没进");
-    assert!(product(frame(LEFT_B)).is_some(), "分身会话的去向没进");
-}
-
-/// 本机分派核：记录文件的出声交 `Notice`（分身会话的也交）。
-#[test]
-fn a_session_file_notice_is_dispatched_for_every_session() {
-    const GONE: &str = r#"{"kind":"session_file_gone","session_id":"a","path":"/p/a.jsonl"}"#;
-    const REREAD_B: &str = r#"{"kind":"session_file_reread","session_id":"b","path":"/p/b.jsonl","why":"truncated","lines":4}"#;
-    const ADD_B_BG: &str = r#"{"kind":"session_added","agent_kind":"claude","sid":"b","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","session_kind":"bg","background":true}"#;
-    assert_eq!(
-        step(frame(GONE)),
-        LocalStep::Notice {
-            sid: "a".into(),
-            path: "/p/a.jsonl".into(),
-            change: crate::stream_source::FileChange::Gone,
-            lines: None,
-        }
-    );
-    assert_eq!(step(frame(ADD_B_BG)), LocalStep::Skip);
-    assert_eq!(
-        step(frame(REREAD_B)),
-        LocalStep::Notice {
-            sid: "b".into(),
-            path: "/p/b.jsonl".into(),
-            change: crate::stream_source::FileChange::Truncated,
-            lines: Some(4),
-        }
-    );
-}
-
 // ─── Q1 本机那条路上的 `changed` ⇒ 界面那条订阅收得到 ───────────────────────
 //
-// 要求住址：`INVARIANTS §40` 逐字「我的目的就是把本地当成不走 ssh 的远端」—— 远端那条收事那一头（`stream_source/run.rs::dispatch`）
+// 要求住址：`INVARIANTS §40` 逐字「我的目的就是把本地当成不走 ssh 的远端」—— 远端那条收事那一头
 // 收到 `changed` 就交 `changed/<主题>` 订阅；本机这条从前在吸收点丢过额度 · 账号清单 · 配置文件，界面只能等别的事件顺带重读。
 
-/// 手写线上帧走生产那一串：`parse_frame` → 吸收点 → 本机内容通道 → `consume_local` → 重放缓冲；
+/// 手写线上帧走生产那一串：`decode` → 分派第一层 → 本机内容通道 → `consume_local` → 第二层 → 重放缓冲；
 /// 订了 `<local>` 上 `changed/quota` · `changed/rotation` · `changed/accounts` 的订阅各逐格收到自己那一格（期望手写）。
 #[tokio::test]
 async fn local_changed_pushes_reach_the_ui_subscription() {
@@ -925,10 +600,13 @@ async fn local_changed_pushes_reach_the_ui_subscription() {
         r#"{"kind":"changed","topic":"rotation","key":"s1"}"#,
         r#"{"kind":"changed","topic":"accounts"}"#,
     ] {
-        let f = parse_frame(line).expect("手写帧解不出来");
-        if let Some(f) =
-            crate::local_backend::absorb_local_frame(f, None, &crate::origin::Origin::local())
-        {
+        let f = crate::stream_source::decode(line).expect("手写帧解不出来");
+        if let Some(f) = crate::stream_source::route(
+            crate::stream_source::Via::Local,
+            &crate::origin::Origin::local(),
+            None,
+            f,
+        ) {
             tx.send(LocalItem::Frame(f)).await.unwrap();
         }
     }
@@ -948,14 +626,10 @@ async fn local_changed_pushes_reach_the_ui_subscription() {
     );
 }
 
-/// 两条路交界面的是同一个口：`changed` 那一格在 monitor 生产段里恰好由
-/// 远端读循环与本机消费者各调一处（多一处 ⇒ 又长出第三条路；少一处 ⇒ 那条路又把它丢了）。
+/// 两条路交界面的是同一个口：`changed` 那一格在 monitor 生产段里恰好由分派第二层调一处（本机远端同一处）。
 #[test]
 fn both_paths_hand_changed_pushes_to_the_same_replay_entry() {
-    let want = set(&[
-        ("stream_source/local.rs", "consume_local"),
-        ("stream_source/run.rs", "dispatch"),
-    ]);
+    let want = set(&[("stream_source/dispatch.rs", "apply")]);
     for needle in ["replay.changed("] {
         assert_eq!(callers_of(needle), want, "`{needle}` 的生产调用方对不上");
     }

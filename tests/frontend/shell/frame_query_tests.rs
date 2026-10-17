@@ -840,7 +840,7 @@ const HELD_BACK: &[(&str, &str)] = &[
     // `history-subagents` 那一行摘了（命令换成出成品的 `history-subagent`，进了 [`CHANNELED`]）。
     (
         "history-read",
-        "**monitor 旁路快照的流机器在用**（续点 · 见证 · 分段编号，`stream_source::fetch_snapshot`）：应答已是后端出的逐行成品\
+        "**monitor 旁路快照的流机器在用**（`history-tail` 第一页之后的分页，`stream_source::fetch_snapshot`）：应答已是后端出的逐行成品\
          （`{rows: [{end, hash, message?, cwd?}]}`，记录解释住后端 `agents/claudecode/`），monitor 只编号、攒批、转交 —— \
          它是会话流那一路的输入，不是前端查询（同 `history-tail`）",
     ),
@@ -1215,7 +1215,7 @@ fn local_queries_reach_the_running_resident_backend_not_a_file_beside_the_exe() 
 //  「**造**期限的那一手住调用方」。
 // ════════════════════════════════════════════════════════════════════════════
 
-use crate::inbound_client::{park, BackendHello, InboundClient};
+use crate::inbound_client::{park, InboundClient};
 use tokio::io::AsyncBufReadExt;
 
 /// 一个真 `InboundClient` 接一根内存双工管子，登记在全局表里一个**只有本用例用**的 origin 名下；
@@ -1228,21 +1228,8 @@ fn client_for_test(
     tokio::io::BufReader<tokio::io::DuplexStream>,
 ) {
     let (mine, theirs) = tokio::io::duplex(64 * 1024);
-    let hello = BackendHello::from_hello_frame(&crate::stream_source::InboundFrame::Hello {
-        v: 1,
-        build_id: "test".into(),
-        host_arch: "x86_64".into(),
-        claude_dir: "/tmp".into(),
-        homes: vec![],
-        commands: commands.iter().map(|s| s.to_string()).collect(),
-        unavailable: vec![],
-        // typed 那几条照这一版的形状指纹交（对不上 monitor 事前就拒，判据要的是请求发出去）。
-        shapes: commands
-            .iter()
-            .filter_map(|c| cmd_wire::shapes::shape_of(c).map(|h| (c.to_string(), h.to_string())))
-            .collect(),
-    })
-    .expect("是 Hello 帧");
+    let hello = crate::inbound_client::witness_of(&crate::frame_fixtures::our_hello(commands))
+        .expect("是 Hello 帧");
     let client = park(mine).into_client(hello);
     inbound_client::register(origin, client.clone());
     (client, tokio::io::BufReader::new(theirs))
@@ -1267,7 +1254,7 @@ async fn an_expired_deadline_sends_nothing() {
     let origin = Origin("dl1-d3-expired".into());
     let (client, mut peer) = client_for_test(origin.as_wire_str(), &["history-tail"]);
     let gone = Deadline::within(Duration::ZERO);
-    let err = tail(&origin, "/p/s.jsonl", 10, gone)
+    let err = tail(&origin, "/p/s.jsonl", 10, None, gone)
         .await
         .expect_err("期限已过却问成了");
     assert_eq!(
@@ -1295,6 +1282,7 @@ async fn an_expired_deadline_sends_nothing() {
             &o,
             "/p/s.jsonl",
             10,
+            None,
             Deadline::within(Duration::from_secs(5)),
         )
         .await
@@ -1309,7 +1297,11 @@ async fn an_expired_deadline_sends_nothing() {
         None,
         None,
         None,
-        Some(json!({"total": 3, "tail_from": 0, "split_at": 0, "end": 30})),
+        Some(
+            json!({"total": 3, "tail_from": 0, "split_at": 0, "end": 30, "how": "tail", "from": 0,
+            "rows": [], "next": 30, "eof": true,
+            "held": {"path": "/p/s.jsonl", "next": 3, "next_byte": 30, "mark": ""}}),
+        ),
     );
     assert!(asking.await.expect("task").is_ok());
     assert!(
@@ -1378,9 +1370,8 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
     (
         "stream_source/snapshot.rs",
         "fetch_snapshot",
-        3,
-        "快照是两件事：先问图（一问，`PAGE_BUDGET`）· 读正文（分页，问图之后按要读的字节数给 `read_budget`）；\
-续传时多一件：读正文之前先读回续点那一行核见证（一问，`PAGE_BUDGET`）—— 2 → 3，多的就是这一处",
+        2,
+        "快照是两件事：先问（一问，连第一页正文，`PAGE_BUDGET`）· 剩下的正文（分页，问过之后按还差的字节数给 `read_budget`）",
     ),
     (
         "prefs_migration.rs",
@@ -1399,12 +1390,6 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
         "pin_host_key",
         1,
         "拨号成了、要固化指纹：交本机后端一条 `machines-set`（一问，10 秒）",
-    ),
-    (
-        "stream_source/snapshot.rs",
-        "last_line_witness",
-        2,
-        "read8c：重连缺得多、断线那一截不读（交界面自己取）时，见证换成文件此刻的最后一行：问一行的尾段图 · 读回那一行，各一问、各 `PAGE_BUDGET`",
     ),
     // LOC1a / LOC1b 新长的四个发起点（各自带着自己的值，DL1 只把形状换成 `Deadline`）：
     // acct-iso 两问那两个发起点摘了：界面经通道直问（`src/frontend/ui/acct-iso-reads.ts`），期限在那边造。
@@ -1492,7 +1477,7 @@ fn paged_jobs_make_their_deadline_before_the_first_page() {
     // 历史浏览器读整份那一件进了界面，后来查看器改成骨架 ＋ 按视口取（`src/frontend/ui/record-reads.ts::readRange`），整份读这件事没了。
     let snapshot_src = guard_core::addr::stream_source_file("snapshot.rs");
     let cases: [(&str, &str, &str); 1] =
-        [(&snapshot_src, "async fn fetch_snapshot(", "'read: for ")];
+        [(&snapshot_src, "async fn fetch_snapshot(", "'read: loop ")];
     fn made_after_loop(prod: &str, head: &str, loop_head: &str) -> Result<bool, String> {
         let at = guard_core::find_pinned(prod, head)?;
         let rest = &prod[at..];
@@ -1520,9 +1505,9 @@ fn paged_jobs_make_their_deadline_before_the_first_page() {
             "`{head}` 的期限造在翻页循环里（或找不到）—— 每页重新计时回来了"
         );
     }
-    let synthetic = "async fn fetch_snapshot(x: u8) {\n    'read: for p in pages {\n        let d = Deadline::within(PAGE_BUDGET);\n    }\n}\n";
+    let synthetic = "async fn fetch_snapshot(x: u8) {\n    'read: loop {\n        let d = Deadline::within(PAGE_BUDGET);\n    }\n}\n";
     assert_eq!(
-        made_after_loop(synthetic, "async fn fetch_snapshot(", "'read: for "),
+        made_after_loop(synthetic, "async fn fetch_snapshot(", "'read: loop "),
         Ok(true),
         "识别器瞎了 —— 上面那条不可信"
     );
@@ -1541,18 +1526,15 @@ fn the_read_budget_grows_with_the_bytes_from_one_page_up() {
 
 /// ★跨语言金样的 monitor 那一侧：后端 `history-read` 真出的逐行成品
 /// （`tests/__fixtures__/record-reads.golden.json`，后端 `read_face_tests.rs` 钉着它 == 帧面现打）
-/// 经 [`row_of`] 读得懂：可计行三条、末端是原始字节、不进界面的那条没有成品、`cwd` 与成品原样转交。
+/// 按 `cmd-wire` 的类型解开、经 [`rows_of`] 读得懂：可计行三条、末端是原始字节、不进界面的那条没有成品、`cwd` 与成品原样转交。
 #[test]
-fn the_snapshot_rows_of_the_golden_decode_through_row_of() {
+fn the_snapshot_rows_of_the_golden_decode_through_rows_of() {
     let golden: Value =
         serde_json::from_str(include_str!("../../__fixtures__/record-reads.golden.json"))
             .expect("金样不是合法 JSON");
-    let rows: Vec<Row> = golden["history-read"]["rows"]
-        .as_array()
-        .expect("金样里没有 rows")
-        .iter()
-        .map(|r| row_of(r).expect("一行成品认不出"))
-        .collect();
+    let page: cmd_wire::record::HistoryRead =
+        serde_json::from_value(golden["history-read"].clone()).expect("按类型解不开");
+    let rows = rows_of(page.rows).expect("一行成品认不出");
     assert_eq!(
         rows.iter().map(|r| r.end).collect::<Vec<_>>(),
         vec![Some(54), Some(152), Some(273)]
@@ -1564,8 +1546,10 @@ fn the_snapshot_rows_of_the_golden_decode_through_row_of() {
         m, golden["history-read"]["rows"][1]["record"],
         "成品没原样转交"
     );
-    // 反向：多一格类型不对的 ⇒ 认不出（不猜）。
-    assert!(row_of(&serde_json::json!({"end": 1, "hash": 1, "record": "x"})).is_none());
+    // 反向：记录那一格不是一团 ⇒ 认不出（不猜）。
+    let odd: cmd_wire::record::ReadRow =
+        serde_json::from_value(serde_json::json!({"end": 1, "hash": 1, "record": "x"})).unwrap();
+    assert!(rows_of(vec![odd]).is_none());
 }
 
 /// ★ 旁路快照那一页（`read_page` → `history-read`）交「折起那一行」那份声明：就是 `src/shared/views/folded-record.json`

@@ -255,7 +255,7 @@ fn total_retention_stays_under_the_cap_however_many_sessions() {
 /// C2：满了先丢已经不活的会话（成品缓存说已结束 / 可重连），活的哪怕更久没进过行也后丢。
 #[test]
 fn when_full_sessions_that_are_not_live_go_first() {
-    use crate::session_book::{Fate, In, LiveMeta};
+    use crate::session_book::In;
     let book: &'static parking_lot::RwLock<crate::session_book::Book> =
         Box::leak(Box::new(parking_lot::RwLock::new(Default::default())));
     let mut r = EventReplay::new();
@@ -264,13 +264,11 @@ fn when_full_sessions_that_are_not_live_go_first() {
     book.write().step(In::Live {
         origin: "<local>".into(),
         sid: "live".into(),
-        meta: LiveMeta::default(),
+        meta: crate::frame_fixtures::session_added("x", serde_json::json!({})),
     });
     book.write().step(In::Left {
         origin: "<local>".into(),
-        sid: "done".into(),
-        fate: Fate::Ended,
-        words: None,
+        state: ended_state("done", "T"),
     });
     let rows = |sid: &str| -> Vec<JsonlLinePayload> {
         (0..10).map(|i| sized(None, sid, i, 100)).collect()
@@ -451,11 +449,9 @@ fn what(i: &WItem) -> (&'static str, u64, u64) {
             } else {
                 // 起停那几格：按键名认。
                 let k = [
-                    "live",
-                    "activity",
-                    "container",
-                    "idle",
-                    "ended",
+                    "added",
+                    "status",
+                    "state",
                     "unseen",
                     "listed",
                     "snapshot_inflight",
@@ -600,7 +596,7 @@ async fn the_ready_point_replays_retained_lines_by_credit_and_waits_for_want() {
             ("line", 4, 3),
             ("line", 5, 4),
             ("end", 6, 0),
-            // 有行、成品缓存里没说过、那台没报完清单 ⇒ 终局是「说不清」（不吃 credit，排在行后）。
+            // 有行、成品缓存里没说过、那台没报完清单 ⇒ 终局是「说不清」（没 credit 也照交，排在行后）。
             ("unseen", 7, 0)
         ]
     );
@@ -1036,158 +1032,180 @@ async fn a_line_lost_somewhere_is_said_in_place_as_an_open_gap() {
     );
 }
 
-/// ★ 「起停帧不吃 credit、不许丢（登记一条例外）」：一格 credit 都没有时，行照丢（原位 `Gap`），
-/// 起停那几格照交、照占位置；就绪点把起停按成品缓存原位重放 —— 骨架在留存行之前、终局在之后。
+/// 那台答的去向（`text` 是那台写的短名）。
+fn ended_state(sid: &str, text: &str) -> cmd_wire::frame::SessionState {
+    crate::frame_fixtures::session_state(sid, "ended", text)
+}
+
+fn ended(sid: &str) -> crate::ui_contract::SessionStreamFrame {
+    crate::session_book::Out::Left {
+        origin: "<local>".into(),
+        state: ended_state(sid, "T"),
+    }
+    .frame()
+}
+
+/// ★ 就绪点把起停按成品缓存原位重放 —— 骨架在留存行之前、终局在之后；手里有没说的丢失时，起停那一格之前原位先给 `Gap`。
 #[tokio::test]
-async fn mig1_lifecycle_frames_take_no_credit_and_the_ready_point_puts_them_around_the_lines() {
-    use crate::session_book::{Fate, In, LiveMeta};
+async fn the_ready_point_puts_lifecycle_frames_around_the_lines() {
+    use crate::session_book::In;
     let ((r, rec), book) = hub_with_book();
     r.origin_seen(&local(), true);
     book.write().step(In::Live {
         origin: "<local>".into(),
         sid: "a".into(),
-        meta: LiveMeta::default(),
+        meta: crate::frame_fixtures::session_added("x", serde_json::json!({})),
     });
     book.write().step(In::Left {
         origin: "<local>".into(),
-        sid: "b".into(),
-        fate: Fate::Ended,
-        words: None,
+        state: ended_state("b", "T"),
     });
     r.on_line_batch_awaited(lines("b", 0..2)).await; // 就绪点之前：只进留存
     r.subscribe("w", 1, &local(), "session-lines", None, 10);
     r.ready_point(None).await;
     assert_eq!(
         rec.all().iter().map(|i| what(i).0).collect::<Vec<_>>(),
-        vec!["live", "activity", "start", "line", "line", "end", "ended"],
-        "就绪点：骨架 → 留存行 → 终局"
+        vec!["added", "start", "line", "line", "end", "state"],
+        "就绪点：骨架（一条活会话一格）→ 留存行 → 终局"
     );
     rec.clear();
-    r.want("w", 1, 0);
-    // 把 credit 用光（10 − 2 行 ＝ 8）。
-    r.on_line_batch_awaited(lines("c", 0..8)).await;
+    r.on_line_batch_awaited(lines("c", 0..10)).await; // 10 − 6 格 ⇒ 交 4 行、丢 6 行
     rec.clear();
-    r.on_line_batch_awaited(lines("c", 8..9)).await; // 没 credit ⇒ 丢
-    assert!(rec.all().is_empty());
-    r.on_lifecycle(
-        "<local>",
-        vec![crate::ui_contract::SessionStreamFrame::Ended(
-            crate::ui_contract::SessionEndedPayload {
-                session_id: "c".into(),
-                text: None,
-                hint: None,
-                tone: None,
-                switch: None,
-            },
-        )],
-    );
+    r.on_lifecycle("<local>", vec![ended("c")]);
     assert_eq!(
-        rec.all()
-            .iter()
-            .map(what)
-            .map(|(k, _, _)| k)
-            .collect::<Vec<_>>(),
-        vec!["gap", "ended"],
+        rec.all().iter().map(|i| what(i).0).collect::<Vec<_>>(),
+        vec!["gap", "state"],
         "没 credit 也照交起停（先原位说丢在哪）"
     );
 }
 
-/// ★ 「起停帧不吃 credit、不许丢（登记一条例外）」—— 例外表就是 `SessionStreamFrame::takes_credit`：
-/// 每一种格造一个、读它上线的键名，按吃不吃 credit 分两摞 == 金样（TS 那一侧 `CREDIT_EXEMPT_FRAMES` 读同一份，异源）。
-#[test]
-fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
-    use crate::ui_contract::{self as b, SessionStreamFrame as F};
-    let sid = || "s".to_string();
-    let all = vec![
-        F::Line(payload("s", 0)),
-        F::Batch(b::BatchEdge::Start),
-        F::FileNotice(b::SessionFileNoticePayload {
-            session_id: sid(),
-            origin: "<local>".into(),
-            path: "/p".into(),
-            change: "gone".into(),
-        }),
-        F::Live(b::SessionLivePayload {
-            session_id: sid(),
-            origin: "<local>".into(),
-            background: false,
-            attachable: None,
-            cwd: None,
-            project_dir: None,
-            name: None,
-            hidden: None,
-        }),
-        F::Activity(b::SessionActivityPayload {
-            session_id: sid(),
-            activity: crate::session_book::ActivityCells {
-                activity: None,
-                activity_text: "T".into(),
-                activity_tone: "now".into(),
-                activity_order: 1,
-                switch: Default::default(),
-            },
-            naming: crate::session_book::NameCells {
-                label: "L".into(),
-                label_project: None,
-            },
-            waiting_for: None,
-        }),
-        F::Container(b::SessionContainerPayload {
-            session_id: sid(),
-            container: crate::session_book::SessionContainer::None,
-        }),
-        F::Idle(b::SessionIdlePayload {
-            session_id: sid(),
-            text: None,
-            hint: None,
-            tone: None,
-            switch: None,
-        }),
-        F::Ended(b::SessionEndedPayload {
-            session_id: sid(),
-            text: None,
-            hint: None,
-            tone: None,
-            switch: None,
-        }),
-        F::Unseen(b::SessionUnseenPayload {
-            origin: crate::origin::Origin::local(),
-        }),
-        F::Listed(b::OriginSessionsListedPayload {
-            origin: crate::origin::Origin::local(),
-            all: false,
-        }),
-        F::SnapshotInflight(b::SnapshotInflightPayload { count: 1 }),
-        F::Runs(b::SessionRunsPayload {
-            session_id: "s".into(),
-            runs: b::RecordBody::from_json("[]".into()).unwrap(),
-            ended: b::RecordBody::from_json("[]".into()).unwrap(),
-        }),
-        F::Branch(b::SessionBranchPayload {
-            session_id: "s".into(),
-            off: b::RecordBody::from_json("[]".into()).unwrap(),
-        }),
-        F::Watch(b::SessionWatchPayload {
-            session_id: "s".into(),
-            path: "/p".into(),
-            seq: 3,
-        }),
-    ];
-    let key = |f: &F| -> String {
-        let v = serde_json::to_value(f).unwrap();
-        v.as_object().unwrap().keys().next().unwrap().clone()
-    };
-    let mut credit: Vec<String> = all.iter().filter(|f| f.takes_credit()).map(key).collect();
-    let mut exempt: Vec<String> = all.iter().filter(|f| !f.takes_credit()).map(key).collect();
-    credit.sort();
-    exempt.sort();
-    let golden: serde_json::Value = serde_json::from_str(include_str!(
-        "../../__fixtures__/session-stream-credit.golden.json"
-    ))
-    .unwrap();
+/// 手上留着的 ＝ 留存里那台有行的会话：多一条 · 少一条都叫醒名单那一侧重报；同一条多进几行不叫。
+#[tokio::test]
+async fn what_is_kept_follows_the_retention_and_wakes_the_list() {
+    let (r, _rec) = hub();
+    let mut ticks = r.watch_changes();
+    ticks.borrow_and_update();
+    r.on_line_batch_awaited(lines("x", 0..2)).await;
+    assert!(ticks.has_changed().unwrap(), "多了一条没叫");
+    ticks.borrow_and_update();
+    assert_eq!(r.kept(&local()), BTreeSet::from(["x".to_string()]));
+    r.on_line_batch_awaited(lines("x", 2..3)).await;
+    assert!(!ticks.has_changed().unwrap(), "同一条多几行不该叫");
+    r.forget("x");
+    assert!(ticks.has_changed().unwrap(), "少了一条没叫");
+    assert!(r.kept(&local()).is_empty());
+}
+
+/// 手上留着的也含主窗口的 tab（固定复活的那几条没行）：报上来的多一条 · 少一条叫醒名单那一侧，同一份再报不叫。
+#[tokio::test]
+async fn the_main_window_tabs_are_kept_too() {
+    let (r, _rec) = hub();
+    let mut ticks = r.watch_changes();
+    ticks.borrow_and_update();
+    r.set_main_kept([("<local>".to_string(), "p".to_string())]);
+    assert!(ticks.has_changed().unwrap(), "多了一条没叫");
+    ticks.borrow_and_update();
+    assert_eq!(r.kept(&local()), BTreeSet::from(["p".to_string()]));
+    r.set_main_kept([("<local>".to_string(), "p".to_string())]);
+    assert!(!ticks.has_changed().unwrap(), "同一份再报不该叫");
+    r.set_main_kept([]);
+    assert!(ticks.has_changed().unwrap(), "少了一条没叫");
+    assert!(r.kept(&local()).is_empty());
+}
+
+/// 主窗口手上一个没行的 tab、那台答过它已结束 ⇒ F5 重放里照样有那一格（不只留存有行的那几条）。
+#[tokio::test]
+async fn a_tab_without_lines_gets_its_answered_end_replayed() {
+    use crate::session_book::In;
+    let ((r, rec), book) = hub_with_book();
+    r.origin_seen(&local(), true);
+    book.write().step(In::Listed {
+        origin: "<local>".into(),
+    });
+    book.write().step(In::Left {
+        origin: "<local>".into(),
+        state: ended_state("p", "那台写的"),
+    });
+    r.set_main_kept([("<local>".to_string(), "p".to_string())]);
+    r.subscribe("w", 1, &local(), "session-lines", None, 100);
+    r.ready_point(None).await;
+    let ended: Vec<String> = rec
+        .all()
+        .iter()
+        .filter_map(|i| match i {
+            WItem::Frame { body, .. } => {
+                let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
+                v.get("state").map(|e| e["sid"].to_string())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(ended, vec!["\"p\"".to_string()]);
+}
+
+/// ★ 「已结束」只由那台答：那台报完了清单、留存有 x、账里没有 x ⇒ 重放不替它说；那台答了 x 已结束 ⇒
+/// 交界面的 `ended` 那一格只有一格，字是那台写的那句。
+#[tokio::test]
+async fn an_ended_cell_carries_the_words_of_the_backend_that_answered_it() {
+    use crate::session_book::In;
+    let ((r, rec), book) = hub_with_book();
+    r.origin_seen(&local(), true);
+    book.write().step(In::Listed {
+        origin: "<local>".into(),
+    });
+    r.on_line_batch_awaited(lines("x", 0..1)).await;
+    r.subscribe("w", 1, &local(), "session-lines", None, 100);
+    r.ready_point(None).await;
+    let out = book.write().step(In::Left {
+        origin: "<local>".into(),
+        state: ended_state("x", "那台写的"),
+    });
+    r.on_lifecycle("<local>", out.iter().map(|o| o.frame()).collect());
+    let ended: Vec<serde_json::Value> = rec
+        .all()
+        .iter()
+        .filter_map(|i| match i {
+            WItem::Frame { body, .. } => {
+                let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
+                v.get("state").cloned()
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(ended.len(), 1, "只该有那台答的那一格：{ended:?}");
+    assert_eq!(ended[0]["sid"], "x");
+    assert_eq!(ended[0]["state"], "ended");
+    assert_eq!(ended[0]["state_text"], "那台写的");
+}
+
+/// ★ 起停那几格没 credit 也照交、照扣（credit 可欠）：欠着的时候行照丢、原位 `Gap`；还清之后下一行照交。
+#[tokio::test]
+async fn lifecycle_frames_go_out_without_credit_and_are_owed() {
+    let (r, rec) = hub();
+    r.origin_seen(&local(), true);
+    r.subscribe("w", 1, &local(), "session-lines", None, 0);
+    r.ready_point(None).await;
+    rec.clear();
+    r.on_lifecycle("<local>", vec![ended("c")]); // credit 0 ⇒ 照交，欠一格
     assert_eq!(
-        serde_json::json!({ "credit": credit, "exempt": exempt }),
-        golden
+        rec.all().iter().map(|i| what(i).0).collect::<Vec<_>>(),
+        vec!["state"]
+    );
+    rec.clear();
+    r.on_line_batch_awaited(lines("c", 0..1)).await; // 欠着 ⇒ 丢，位置 1
+    assert!(rec.all().is_empty(), "欠着 credit 却交了行");
+    r.want("w", 1, 1); // 还上欠的那一格：仍是 0
+    assert!(rec.all().is_empty(), "credit 还没回正就说了丢失");
+    r.want("w", 1, 1);
+    assert_eq!(
+        rec.all().iter().map(what).collect::<Vec<_>>(),
+        vec![("gap", 1, 2)]
+    );
+    rec.clear();
+    r.on_line_batch_awaited(lines("c", 1..2)).await;
+    assert_eq!(
+        rec.all().iter().map(what).collect::<Vec<_>>(),
+        vec![("line", 2, 1)]
     );
 }
 
@@ -1203,13 +1221,7 @@ fn a_single_session_subscription_hears_the_machine_level_unseen_only() {
         origin: crate::origin::Origin::local(),
         all: false,
     });
-    let other = F::Ended(b::SessionEndedPayload {
-        session_id: "other".into(),
-        text: None,
-        hint: None,
-        tone: None,
-        switch: None,
-    });
+    let other = ended("other");
     assert!(unseen.reaches(Some("mine")) && unseen.reaches(None));
     assert!(!listed.reaches(Some("mine")) && listed.reaches(None));
     assert!(!other.reaches(Some("mine")) && other.reaches(Some("other")));
@@ -1364,22 +1376,36 @@ async fn dropping_a_terminal_screen_subscription_unfollows_that_ticket_on_that_o
 
 // ==== 「在看哪几个会话」（`stream-watch`）====
 
-fn watch_from(sid: &str, seq: u64) -> crate::ui_contract::SessionWatchPayload {
-    crate::ui_contract::SessionWatchPayload {
-        session_id: sid.into(),
+fn watch_from(sid: &str, seq: u64) -> cmd_wire::watch::WatchFrom {
+    cmd_wire::watch::WatchFrom {
+        sid: sid.into(),
         path: format!("/p/{sid}.jsonl"),
         seq,
     }
 }
 
-/// 名单 ＝ 主窗口在看的那台上的会话 ∪ 那台上有 `session-lines/<sid>` 订阅的会话；主窗口没报过 ⇒ 不报（全看）。
+/// 名单 ＝ 主窗口在看的那台上的会话 ∪ 那台上有 `session-lines/<sid>` 订阅的会话；主窗口从起来就在、初值是空的（没报过 ＝ 一个都不看，不是全看）。
 /// 报了一份不一样的 · 查看窗来了 / 走了 ⇒ 醒一次；同一份再报一遍不醒。
 #[tokio::test]
 async fn the_watch_list_is_the_main_windows_tabs_plus_the_followed_sessions_per_machine() {
     let (r, _rec) = hub();
     let mut ticks = r.watch_changes();
     r.subscribe("viewer-b", 1, &local(), "session-lines/b", None, 10);
-    assert_eq!(r.watched(&local()), None, "主窗口没报过就不该替那台报名单");
+    let set = |v: &[&str]| {
+        v.iter()
+            .map(|s| s.to_string())
+            .collect::<BTreeSet<String>>()
+    };
+    assert_eq!(
+        r.watched(&local()),
+        set(&["b"]),
+        "主窗口还没报：只有查看窗那一条"
+    );
+    assert_eq!(
+        r.watched(&crate::origin::Origin("box".into())),
+        set(&[]),
+        "主窗口还没报：别的台是空名单（不是全看）"
+    );
     assert!(ticks.has_changed().unwrap());
     ticks.mark_unchanged();
 
@@ -1389,20 +1415,12 @@ async fn the_watch_list_is_the_main_windows_tabs_plus_the_followed_sessions_per_
     ]);
     assert!(ticks.has_changed().unwrap());
     ticks.mark_unchanged();
-    let set = |v: &[&str]| {
-        v.iter()
-            .map(|s| s.to_string())
-            .collect::<BTreeSet<String>>()
-    };
-    assert_eq!(r.watched(&local()), Some(set(&["a", "b"])));
-    assert_eq!(
-        r.watched(&crate::origin::Origin("box".into())),
-        Some(set(&["c"]))
-    );
+    assert_eq!(r.watched(&local()), set(&["a", "b"]));
+    assert_eq!(r.watched(&crate::origin::Origin("box".into())), set(&["c"]));
     assert_eq!(
         r.watched(&crate::origin::Origin("far".into())),
-        Some(set(&[])),
-        "报过了 ⇒ 没在看的那台报空名单"
+        set(&[]),
+        "没在看的那台报空名单"
     );
 
     r.set_main_watch([
@@ -1413,11 +1431,11 @@ async fn the_watch_list_is_the_main_windows_tabs_plus_the_followed_sessions_per_
 
     r.stop("viewer-b", 1);
     assert!(ticks.has_changed().unwrap());
-    assert_eq!(r.watched(&local()), Some(set(&["a"])));
+    assert_eq!(r.watched(&local()), set(&["a"]));
 }
 
 /// 「从第 seq 行起上流」：留存里 seq 之下那段与 seq 隔着缺口 ⇒ 整段丢、之后更低的行不进（F5 重放的是连着的一段）；
-/// 连着的不动。会话流里交一格 `watch`（不吃 credit），只给那台、订了那个会话的订阅。
+/// 连着的不动。会话流里交一格 `watch`（没 credit 也照交），只给那台、订了那个会话的订阅。
 #[tokio::test]
 async fn a_watch_point_cuts_the_held_tail_to_one_contiguous_run_and_reaches_its_session() {
     let (r, rec) = hub();
@@ -1454,7 +1472,7 @@ async fn a_watch_point_cuts_the_held_tail_to_one_contiguous_run_and_reaches_its_
                     Some((
                         label.clone(),
                         *id,
-                        w["session_id"].as_str().unwrap().to_string(),
+                        w["sid"].as_str().unwrap().to_string(),
                         w["seq"].as_u64().unwrap(),
                     ))
                 }
@@ -1472,7 +1490,7 @@ async fn a_watch_point_cuts_the_held_tail_to_one_contiguous_run_and_reaches_its_
             ("w".to_string(), 1, "a".to_string(), 10),
             ("w".to_string(), 1, "b".to_string(), 3),
         ],
-        "credit 0 也该交到（不吃 credit），且只给订了那个会话的"
+        "credit 0 也该交到（没 credit 也照交），且只给订了那个会话的"
     );
 }
 
@@ -1482,33 +1500,30 @@ async fn a_watch_point_cuts_the_held_tail_to_one_contiguous_run_and_reaches_its_
 #[test]
 fn the_codex_sample_frames_decode() {
     const GOLDEN: &str = include_str!("../../__fixtures__/codex-session-stream.golden.jsonl");
-    use crate::stream_source::{parse_frame, InboundFrame};
+    use cmd_wire::frame::Frame;
     let mut added = Vec::new();
     let mut lines = 0;
     let (mut announced_text, mut working_text) = (None, None);
     for l in GOLDEN.lines() {
-        match parse_frame(l).unwrap_or_else(|_| panic!("壳解不开这一帧：{l}")) {
-            InboundFrame::SessionAdded {
-                sid,
-                path,
-                activity,
-                ..
-            } => {
-                announced_text = Some(activity.activity_text.clone());
+        match crate::stream_source::decode(l).unwrap_or_else(|_| panic!("壳解不开这一帧：{l}"))
+        {
+            Frame::SessionAdded(a) => {
+                announced_text = Some(a.face.activity_text.clone());
                 // 判不出 ⇒ 语气 plain（不是「在跑」那一种）：壳原样转交，不自己补。
                 assert_eq!(
-                    activity.activity_tone, "plain",
+                    a.face.activity_tone,
+                    cmd_wire::cells::Tone::Plain,
                     "宣告那一帧判不出却用了在跑的语气"
                 );
-                assert_eq!(activity.activity, None, "宣告那一帧不说判出了哪一态");
-                added.push((sid, path))
+                assert_eq!(a.face.activity, None, "宣告那一帧不说判出了哪一态");
+                added.push((a.sid, a.path))
             }
-            InboundFrame::SessionStatus { activity, .. }
-                if activity.activity == Some(crate::session_book::SessionActivity::Working) =>
+            Frame::SessionStatus(st)
+                if st.face.activity == Some(cmd_wire::frame::SessionActivity::Working) =>
             {
-                working_text.get_or_insert(activity.activity_text.clone());
+                working_text.get_or_insert(st.face.activity_text.clone());
             }
-            InboundFrame::Line { .. } => lines += 1,
+            Frame::Line(_) => lines += 1,
             _ => {}
         }
     }

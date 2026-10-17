@@ -44,7 +44,8 @@
 //!   下一次交出去之前原位先给 `Item::Gap`（级 2）。**绝不攒着等 credit** —— 攒着的行会晚于
 //!   其间发出的 `ended` 格（僵尸 tab）；也**绝不让管线等** —— 一个不给 credit 的窗口会卡住那台机器的整条流。
 //! - **重放那一份**（就绪点 / 独立窗口开窗）按 credit **等**：它不在起停事件的顺序里（对账由同一个任务在它交完之后发）。
-//! - `Gap` / `Unseen` / `Seen` 不占 credit；`Frame`（含两种边界）每格占一个。
+//! - `Gap` / `Unseen` / `Seen` 不占 credit；`Frame`（含两种边界）每格占一个。起停那几格没 credit 也照交、照扣
+//!   （credit 可欠，[`SessionStreamFrame::never_dropped`]）：欠着的时候行照丢，还清了才再交。
 //!
 //! 丢了什么由前端自己补（「判可恢复归上层」）：它收到 `Gap` 就把那台机器上各 tab 的账本当成不可信、
 //! 按行号往回取（`history-lines`）。
@@ -146,12 +147,16 @@ struct Inner {
     sink: Option<Arc<dyn ItemSink>>,
     /// 终端画面流（`terminal-screen/<票>`）撤掉时替界面退订的那一口（`lib.rs` 起步时装：向那台发退订）。
     screen_dropped: Option<ScreenDropped>,
-    /// 主窗口报的「此刻在看的会话」（`(origin 线上串, sid)`，整份换）。`None` ＝ 还没报过 ⇒ 不替任何一台报名单（那台全看）。
-    main_watch: Option<BTreeSet<TailKey>>,
+    /// 主窗口报的「此刻在看的会话」（`(origin 线上串, sid)`，整份换）。从起来就在、初值是空的（还没报过 ＝ 一个都不看）。
+    main_watch: BTreeSet<TailKey>,
+    /// 主窗口报的「手上的 tab」（`(origin 线上串, sid)`，整份换）：随名单报给那台，那台不在说的它答已结束。
+    main_kept: BTreeSet<TailKey>,
     /// 旁路快照在途的电平：最近一次交出去的那个数（[`EventReplay::on_snapshot_inflight`] 在本锁里记）。
     /// 重放补电平读它、不回头读 `stream_source` 那把计数锁 —— 交电平的那一边是「持计数锁 → 要本锁」，
     /// 这边再「持本锁 → 要计数锁」就是两条线程互等（截图台架偶发整条流停住，抓栈就是这一对）。
     snapshot_level: u32,
+    /// 留存里「哪几条有行」变了（多了 · 少了一条）还没告诉名单那一侧（[`EventReplay::kept`]）。
+    kept_moved: bool,
 }
 
 /// 终端画面流撤掉了：`(哪台, 票)`。
@@ -168,8 +173,8 @@ struct Sub {
     kind: SubKind,
     /// `session-lines/<sid>` 那一形：只要这一个会话。
     only: Option<String>,
-    /// 还能交几格 `Frame`（`want` 累加）。
-    credit: u64,
+    /// 还能交几格 `Frame`（`want` 累加）；起停那几格照扣，可欠成负数。
+    credit: i64,
     /// 下一格的位置。
     next: u64,
     /// 丢了还没说的那一段从哪个位置起（下一次交出去之前原位给 `Gap`）。
@@ -319,7 +324,7 @@ fn batch_chunks(chunks: Vec<Vec<JsonlLinePayload>>) -> Vec<Vec<Body>> {
 /// 这一次交出去的第一格之前，若有没说的丢失 ⇒ 原位先给 `Gap`。返回要交的格（可能为空）。
 fn plan_live(sub: &mut Sub, frames: Vec<Body>) -> Vec<Item> {
     let n = frames.len() as u64;
-    let can = sub.credit.min(n);
+    let can = sub.credit.clamp(0, n as i64) as u64;
     let mut out = Vec::new();
     if can > 0 {
         if let Some(from_seq) = sub.gap_from.take() {
@@ -336,7 +341,7 @@ fn plan_live(sub: &mut Sub, frames: Vec<Body>) -> Vec<Item> {
         });
         sub.next += 1;
     }
-    sub.credit -= can;
+    sub.credit -= can as i64;
     if can < n {
         sub.gap_from.get_or_insert(sub.next);
         sub.next += n - can;
@@ -347,7 +352,7 @@ fn plan_live(sub: &mut Sub, frames: Vec<Body>) -> Vec<Item> {
 /// **重放那一份**的一步（纯函数）：只交手里 credit 够的那几格、**不丢**；返回 `(要交的格, 用掉了几格)`。
 /// credit 为零 ⇒ `(空, 0)`，调用方去等。
 fn plan_replay(sub: &mut Sub, rest: &[Body]) -> (Vec<Item>, usize) {
-    let take = (sub.credit.min(rest.len() as u64)) as usize;
+    let take = sub.credit.clamp(0, rest.len() as i64) as usize;
     if take == 0 {
         return (Vec::new(), 0);
     }
@@ -365,12 +370,12 @@ fn plan_replay(sub: &mut Sub, rest: &[Body]) -> (Vec<Item>, usize) {
         });
         sub.next += 1;
     }
-    sub.credit -= take as u64;
+    sub.credit -= take as i64;
     (out, take)
 }
 
-/// 〔登记的例外〕**起停那几格**交给一条订阅的计划（纯函数）：不看 credit、**不丢**、照占位置；
-/// 手里有没说的丢失 ⇒ 原位先给 `Gap`（位置号照样连得上）。只许交 [`SessionStreamFrame::takes_credit`] 为假的那几种。
+/// **起停那几格**交给一条订阅的计划（纯函数）：没 credit 也照交、**不丢**、照扣（可欠）、照占位置；
+/// 手里有没说的丢失 ⇒ 原位先给 `Gap`（位置号照样连得上）。只许交 [`SessionStreamFrame::never_dropped`] 那几种。
 fn plan_lifecycle(sub: &mut Sub, frames: &[Body]) -> Vec<Item> {
     let mut out = Vec::with_capacity(frames.len() + 1);
     if frames.is_empty() {
@@ -389,30 +394,37 @@ fn plan_lifecycle(sub: &mut Sub, frames: &[Body]) -> Vec<Item> {
         });
         sub.next += 1;
     }
+    sub.credit -= frames.len() as i64;
     out
 }
 
 /// 一条订阅（整台 / 一个会话）的起停重放：骨架在行前（`before`）、终局在行后（`after`）—— 计划住 `session_book::Book::replay`，
-/// 这里只按订阅的那台 / 那一个会话挑、换成格。`history` = 留存里这条订阅要的那些行（[`held_for`]）。
+/// 这里只按订阅的那台 / 那一个会话挑、换成格。`history` = 留存里这条订阅要的那些行（[`held_for`]）；
+/// `main_kept` = 主窗口手上的 tab（没行的那几条也要它的终局）。
 fn lifecycle_replay(
     book: &parking_lot::RwLock<crate::session_book::Book>,
     level: u32,
     origin: &str,
     only: Option<&str>,
     history: &[JsonlLinePayload],
+    main_kept: &BTreeSet<TailKey>,
 ) -> (Vec<Body>, Vec<Body>) {
-    let mut buffered: Vec<(String, String)> = Vec::new();
-    for p in history {
-        let pair = (p.session_id.clone(), origin.to_string());
-        if !buffered.contains(&pair) {
-            buffered.push(pair);
+    let mut kept: Vec<(String, String)> = Vec::new();
+    let tabs = main_kept
+        .iter()
+        .filter(|k| k.0 == origin)
+        .map(|k| k.1.clone());
+    for sid in history.iter().map(|p| p.session_id.clone()).chain(tabs) {
+        let pair = (sid, origin.to_string());
+        if !kept.contains(&pair) {
+            kept.push(pair);
         }
     }
-    let plan = book.read().replay(&buffered);
+    let plan = book.read().replay(&kept);
     let pick = |outs: Vec<crate::session_book::Out>| -> Vec<Body> {
         outs.into_iter()
             .filter(|o| o.origin() == origin)
-            .flat_map(|o| o.frames())
+            .map(|o| o.frame())
             .filter(|f| f.reaches(only))
             .map(|f| body_of(&f))
             .collect()
@@ -525,8 +537,10 @@ impl EventReplay {
                 seen: HashMap::new(),
                 sink: None,
                 screen_dropped: None,
-                main_watch: None,
+                main_watch: BTreeSet::new(),
+                main_kept: BTreeSet::new(),
                 snapshot_level: 0,
+                kept_moved: false,
             }),
             credit_changed: tokio::sync::Notify::new(),
             watch_tick: tokio::sync::watch::channel(0).0,
@@ -613,6 +627,7 @@ impl EventReplay {
                     &mut inner,
                     &(notice.origin.clone(), notice.session_id.clone()),
                 );
+                self.tell_kept(&mut inner);
             }
             let Some(sink) = inner.sink.clone() else {
                 return;
@@ -671,6 +686,7 @@ impl EventReplay {
         let (sink, plans) = {
             let mut inner = self.inner.lock();
             hold(&mut inner, self.book, &payloads);
+            self.tell_kept(&mut inner);
             let Some(sink) = inner.sink.clone() else {
                 return;
             };
@@ -733,6 +749,7 @@ impl EventReplay {
                 subs,
                 ready_labels,
                 snapshot_level,
+                main_kept,
                 ..
             } = &mut *inner;
             let mut jobs: Vec<ReplayJob> = Vec::new();
@@ -748,6 +765,7 @@ impl EventReplay {
                         &sub.origin,
                         sub.only.as_deref(),
                         &mine,
+                        main_kept,
                     )
                 } else {
                     (Vec::new(), Vec::new())
@@ -784,7 +802,7 @@ impl EventReplay {
             after,
         } = job;
         let label = label.as_str();
-        // 骨架（活会话 ＋ 灯 ＋ 容器）先于行，不吃 credit。
+        // 骨架（活会话 ＋ 灯 ＋ 容器）先于行，没 credit 也照交。
         if !self.deliver_lifecycle(sink, label, id, generation, &before) {
             return;
         }
@@ -796,7 +814,7 @@ impl EventReplay {
         self.deliver_lifecycle(sink, label, id, generation, &after);
     }
 
-    /// 按计划交一串起停格给一条订阅（不吃 credit、不丢）；订阅没了 ⇒ `false`。
+    /// 按计划交一串起停格给一条订阅（没 credit 也照交、不丢）；订阅没了 ⇒ `false`。
     fn deliver_lifecycle(
         &self,
         sink: &dyn ItemSink,
@@ -927,7 +945,7 @@ impl EventReplay {
                 origin: origin.to_string(),
                 kind,
                 only,
-                credit: u64::from(want),
+                credit: i64::from(want),
                 next: 0,
                 gap_from: None,
                 live: immediate,
@@ -941,6 +959,7 @@ impl EventReplay {
                     origin,
                     sub.only.as_deref(),
                     &mine,
+                    &inner.main_kept,
                 );
                 ReplayJob {
                     label: label.to_string(),
@@ -978,10 +997,10 @@ impl EventReplay {
     }
 
     /// 那台机器的会话起停成品（`session_book` 的出口线程调）：交给订了那台 `session-lines` 的每条实时订阅
-    /// （`session-lines/<sid>` 那一形只交它那一个会话的）—— **不吃 credit、不丢**、照占位置（登记的例外，[`plan_lifecycle`]）。
+    /// （`session-lines/<sid>` 那一形只交它那一个会话的）—— 没 credit 也照交、**不丢**、照占位置（[`plan_lifecycle`]）。
     /// 不进留存：F5 / 开窗的重放从成品缓存重算（[`lifecycle_replay`]）。
     pub fn on_lifecycle(&self, origin: &str, frames: Vec<SessionStreamFrame>) {
-        debug_assert!(frames.iter().all(|f| !f.takes_credit()), "只许交起停那几格");
+        debug_assert!(frames.iter().all(|f| f.never_dropped()), "只许交起停那几格");
         if frames.is_empty() {
             return;
         }
@@ -1020,7 +1039,7 @@ impl EventReplay {
         }
     }
 
-    /// 旁路快照在途份数变了（全局电平）：交给每条实时的整台会话流订阅（不吃 credit、不丢），并记下这个数（重放补电平读它）。
+    /// 旁路快照在途份数变了（全局电平）：交给每条实时的整台会话流订阅（没 credit 也照交、不丢），并记下这个数（重放补电平读它）。
     pub fn on_snapshot_inflight(&self, count: u32) {
         let body = body_of(&SessionStreamFrame::SnapshotInflight(
             crate::ui_contract::SnapshotInflightPayload { count },
@@ -1089,7 +1108,7 @@ impl EventReplay {
                 .iter_mut()
                 .find(|s| s.label == label && s.id == id)
                 .and_then(|sub| {
-                    sub.credit += u64::from(more);
+                    sub.credit += i64::from(more);
                     if sub.credit > 0 {
                         sub.gap_from.take().map(|from_seq| Item::Gap {
                             from_seq,
@@ -1221,8 +1240,22 @@ impl EventReplay {
         let next: BTreeSet<TailKey> = sessions.into_iter().collect();
         let moved = {
             let mut inner = self.inner.lock();
-            let moved = inner.main_watch.as_ref() != Some(&next);
-            inner.main_watch = Some(next);
+            let moved = inner.main_watch != next;
+            inner.main_watch = next;
+            moved
+        };
+        if moved {
+            self.watch_moved();
+        }
+    }
+
+    /// 主窗口报「手上有这几个 tab」（整份换；`(origin 线上串, sid)`）。没变就不惊动谁。
+    pub fn set_main_kept(&self, sessions: impl IntoIterator<Item = (String, String)>) {
+        let next: BTreeSet<TailKey> = sessions.into_iter().collect();
+        let moved = {
+            let mut inner = self.inner.lock();
+            let moved = inner.main_kept != next;
+            inner.main_kept = next;
             moved
         };
         if moved {
@@ -1231,12 +1264,12 @@ impl EventReplay {
     }
 
     /// 那台那条流该报的「在看」名单：主窗口在看的那台上的会话 ∪ 那台上有 `session-lines/<sid>` 订阅的会话。
-    /// 主窗口还没报过 ⇒ `None`（不报 ＝ 那台全看，与从没报过的流同一个口径）。
-    pub fn watched(&self, origin: &crate::origin::Origin) -> Option<BTreeSet<String>> {
+    /// 主窗口还没报过 ⇒ 只有查看窗那几条（冷起不全发全拉：界面第一次报的那个 tab 照「刚进名单」补）。
+    pub fn watched(&self, origin: &crate::origin::Origin) -> BTreeSet<String> {
         let origin = origin.as_wire_str();
         let inner = self.inner.lock();
-        let main = inner.main_watch.as_ref()?;
-        let mut out: BTreeSet<String> = main
+        let mut out: BTreeSet<String> = inner
+            .main_watch
             .iter()
             .filter(|(o, _)| o == origin)
             .map(|(_, sid)| sid.clone())
@@ -1248,10 +1281,23 @@ impl EventReplay {
                 .filter(|s| s.kind == SubKind::Lines && s.origin == origin)
                 .filter_map(|s| s.only.clone()),
         );
-        Some(out)
+        out
     }
 
-    /// 「在看」可能变了就醒的那个收端（`stream_watch` 拿它等）。
+    /// 那台手上留着的会话：留存里那台有行的那几条 ∪ 主窗口那台上的 tab（随名单报给那台，那台不在说的它答已结束）。
+    pub fn kept(&self, origin: &crate::origin::Origin) -> BTreeSet<String> {
+        let inner = self.inner.lock();
+        kept_of(&inner.tails, &inner.main_kept, origin.as_wire_str())
+    }
+
+    /// 留存里有行的那几条变了 ⇒ 名单那一侧重报（与「在看」同一个收端）。
+    fn tell_kept(&self, inner: &mut Inner) {
+        if std::mem::take(&mut inner.kept_moved) {
+            self.watch_moved();
+        }
+    }
+
+    /// 「在看」或手上留着的可能变了就醒的那个收端（`stream_watch` 拿它等）。
     pub fn watch_changes(&self) -> tokio::sync::watch::Receiver<u64> {
         self.watch_tick.subscribe()
     }
@@ -1264,22 +1310,19 @@ impl EventReplay {
     ///
     /// ① 留存修成**连着的**：这个会话留存里 `seq` 之下那段要是与 `seq` 之间有缺口（没在看的那段没上流），整段丢、
     ///   底线抬到 `seq`（之后到的更低的行不进）⇒ F5 / 开窗重放出来的永远是连着的一段，往下的由界面按行号 / 按骨架取回；
-    /// ② 交那台的会话流一格 `watch`（不吃 credit、不丢）：主窗口的 tab 与那个会话的查看窗据它补上 `[已有, seq)`。
+    /// ② 交那台的会话流一格 `watch`（没 credit 也照交、不丢）：主窗口的 tab 与那个会话的查看窗据它补上 `[已有, seq)`。
     pub fn on_watch_from(
         &self,
         origin: &crate::origin::Origin,
-        from: Vec<crate::ui_contract::SessionWatchPayload>,
+        from: Vec<cmd_wire::watch::WatchFrom>,
     ) {
         let origin = origin.as_wire_str();
         {
             let mut inner = self.inner.lock();
             for w in &from {
-                cut_to_contiguous(
-                    &mut inner,
-                    &(origin.to_string(), w.session_id.clone()),
-                    w.seq,
-                );
+                cut_to_contiguous(&mut inner, &(origin.to_string(), w.sid.clone()), w.seq);
             }
+            self.tell_kept(&mut inner);
         }
         let frames: Vec<SessionStreamFrame> =
             from.into_iter().map(SessionStreamFrame::Watch).collect();
@@ -1299,6 +1342,7 @@ impl EventReplay {
         for k in keys {
             drop_tail(&mut inner, &k);
         }
+        self.tell_kept(&mut inner);
     }
 
     /// 读数口（日志与判据用）。
@@ -1335,6 +1379,21 @@ impl Default for EventReplay {
 }
 
 /// 留存里这条订阅要的那些行：订的那台上的各条（只要一个会话的只取那一条），按键序、每条内到达序。
+/// 那台手上留着的（[`EventReplay::kept`]）：留存里那台有行的 ∪ 主窗口那台上的 tab。
+fn kept_of(
+    tails: &BTreeMap<TailKey, Tail>,
+    main_kept: &BTreeSet<TailKey>,
+    origin: &str,
+) -> BTreeSet<String> {
+    tails
+        .iter()
+        .filter(|(k, t)| k.0 == origin && !t.lines.is_empty())
+        .map(|(k, _)| k)
+        .chain(main_kept.iter().filter(|k| k.0 == origin))
+        .map(|k| k.1.clone())
+        .collect()
+}
+
 fn held_for(tails: &BTreeMap<TailKey, Tail>, sub: &Sub) -> Vec<JsonlLinePayload> {
     if sub.kind != SubKind::Lines {
         return Vec::new();
@@ -1352,6 +1411,7 @@ fn drop_tail(inner: &mut Inner, key: &TailKey) -> usize {
         return 0;
     };
     inner.held_bytes -= t.bytes;
+    inner.kept_moved |= !t.lines.is_empty();
     if !t.lines.is_empty() {
         tracing::info!(
             "event_replay drop [{}] {}: {} entries / {} bytes",
@@ -1372,6 +1432,7 @@ fn cut_to_contiguous(inner: &mut Inner, key: &TailKey, seq: u64) {
     if below.is_some_and(|b| b + 1 >= seq) {
         return;
     }
+    let had = !t.lines.is_empty();
     let mut freed = 0;
     t.lines.retain(|p| {
         let keep = p.seq >= seq;
@@ -1382,7 +1443,9 @@ fn cut_to_contiguous(inner: &mut Inner, key: &TailKey, seq: u64) {
     });
     t.bytes -= freed;
     t.floor = Some(t.floor.map_or(seq, |f| f.max(seq)));
+    let emptied = had && t.lines.is_empty();
     inner.held_bytes -= freed;
+    inner.kept_moved |= emptied;
 }
 
 /// 进留存的唯一入口：修尾巴（[`push_and_trim`]）＋ 总量超了就丢（[`evict_over_cap`]）。
@@ -1403,12 +1466,14 @@ fn push_and_trim(inner: &mut Inner, payloads: &[JsonlLinePayload]) {
     inner.tick += 1;
     let tick = inner.tick;
     let mut over: Vec<TailKey> = Vec::new();
+    let mut fresh = false;
     for p in payloads {
         let key = tail_key(p);
         let t = inner.tails.entry(key.clone()).or_default();
         if t.floor.is_some_and(|f| p.seq < f) {
             continue;
         }
+        fresh |= t.lines.is_empty();
         let size = held_size(p);
         t.lines.push_back(p.clone());
         t.bytes += size;
@@ -1418,6 +1483,7 @@ fn push_and_trim(inner: &mut Inner, payloads: &[JsonlLinePayload]) {
         }
         inner.held_bytes += size;
     }
+    inner.kept_moved |= fresh;
     for key in over {
         trim_to_tail(inner, &key);
     }

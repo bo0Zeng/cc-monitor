@@ -224,6 +224,8 @@ const LEDGER: &[(&str, &str, Side)] = &[
     ("chan_subscribe", "comm.face-a.subscribe", Side::Both),
     // 主窗口在看的会话（与 `session-lines/<sid>` 订阅合成每台的「在看」名单，`stream_watch.rs` 报给那台）：本机远端同一张表、同一条命令。
     ("watch_sessions", "comm.face-a.subscribe", Side::Both),
+    // 主窗口手上的 tab（随名单报给那台，那台不在说的它答已结束）：同上，本机远端同一张表。
+    ("kept_sessions", "comm.face-a.subscribe", Side::Both),
     ("chan_want", "comm.face-a.subscribe", Side::Both),
     ("chan_stop", "comm.face-a.subscribe", Side::Both),
     // 能力 `accounts.trust` 那一行（`check_account_trust`，A3 起 `Both`）退役：信任预检上了帧面
@@ -623,7 +625,8 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     // - **+1**（`clipboard_read`，`Both`，归已有能力 `app.window.self`：登录抽屉［粘贴］读面前这台的剪贴板）。
     // - **−1**（`notify_desktop`，`Both`：界面不再发系统通知）。
     // - **−2**（本机 ccm 那一格 · 装 cc-bus 前那道本机 ccm 预检，都 `Local`：前一条进了那台后端 `ccm-probe`，后一条删了）。
-    const EXPECTED_LOCAL_OR_BOTH: usize = 35;
+    // - **+1**（`kept_sessions`，`Both`，归已有能力 `comm.face-a.subscribe`：主窗口手上的 tab 随名单报给那台）。
+    const EXPECTED_LOCAL_OR_BOTH: usize = 36;
     assert_eq!(
         checked, EXPECTED_LOCAL_OR_BOTH,
         "检到 {checked} 条 Local/Both 命令（Local {n_local} + Both {n_both}），\

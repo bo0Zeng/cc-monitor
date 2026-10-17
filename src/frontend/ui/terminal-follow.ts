@@ -15,7 +15,9 @@ import { budgetWithin, callTyped, machineName, refusalOf } from "./ipc/chan-call
 import { copyText } from "./copy-table";
 import { isObj } from "./ipc/decode";
 import type { Origin } from "./ipc/origin";
-import { decodeShot, type TerminalShot } from "./terminal-reads";
+import { shotOf, type TerminalShot } from "./terminal-reads";
+import type { TerminalFollowEnd } from "./generated/TerminalFollowEnd";
+import type { TerminalScreen } from "./generated/TerminalScreen";
 
 /** 那条画面流（与壳 `event_replay.rs::TERMINAL_SCREEN_KIND` 同一个串；后面跟 `/<票>`）。流名刻意不叫命令名（命令是 `terminal-follow`）。 */
 export const TERMINAL_SCREEN_KIND = "terminal-screen";
@@ -75,9 +77,12 @@ function stopOfStart(origin: Origin, e: unknown): FollowStop {
   return isObj(r.data) && r.data.live === "snapshot_only" ? { kind: "snapshotOnly", said: r.message } : { kind: "stopped", said: r.message, offline: false };
 }
 
-/** 收尾那一格（`{why, said}`）⇒ 停了，那一句原样；没有那一句 ⇒ `null`（当读不懂）。 */
-function stopOfEnd(cell: Record<string, unknown>): FollowStop | null {
-  return typeof cell.said === "string" && cell.said.trim() !== "" ? { kind: "stopped", said: cell.said, offline: false } : null;
+/** 画面流的一格：那台的 `terminal_screen` / `terminal_follow_end` 帧去掉票（壳按票分流）。 */
+type ScreenCell = Omit<TerminalScreen, "ticket"> | Omit<TerminalFollowEnd, "ticket">;
+
+/** 收尾那一格 ⇒ 停了，那一句原样；那一句是空的 ⇒ `null`（当读不懂）。 */
+function stopOfEnd(cell: Omit<TerminalFollowEnd, "ticket">): FollowStop | null {
+  return cell.said.trim() !== "" ? { kind: "stopped", said: cell.said, offline: false } : null;
 }
 
 /** 订 `origin` 上 `terminal` 那个终端的实时画面。 */
@@ -120,26 +125,19 @@ export function startFollow(origin: Origin, terminal: string, events: FollowEven
     for (const it of items) {
       if (over) return;
       if (it.t === "frame") {
-        let cell: unknown;
+        let cell: ScreenCell;
         try {
-          cell = JSON.parse(it.body);
-        } catch {
-          cell = null;
-        }
-        if (isObj(cell) && "why" in cell) {
-          halt(stopOfEnd(cell) ?? lost());
-          return;
-        }
-        let shot: TerminalShot;
-        try {
-          if (!isObj(cell) || typeof cell.seq !== "number") throw new Error("no seq");
-          shot = decodeShot(origin, cell.view);
+          cell = JSON.parse(it.body) as ScreenCell;
         } catch {
           halt(lost());
           return;
         }
-        events.screen(shot);
-        ack(cell.seq as number);
+        if ("why" in cell) {
+          halt(stopOfEnd(cell) ?? lost());
+          return;
+        }
+        events.screen(shotOf(cell.view));
+        ack(cell.seq);
       } else if (it.t === "gap" || it.t === "closed" || it.t === "unseen") {
         halt(offline(origin));
         return;

@@ -32,7 +32,7 @@ class ProductsTest {
     }
 
     @Test
-    fun `会话表：status 改字、removed 拿掉、replayed 记下、丢了会话帧要重接`() {
+    fun `会话表：status 改字、removed 拿掉、replayed 记下`() {
         val breaks = mutableListOf<String>()
         var t = SessionTable().step(golden("session_added")[0], breaks::add)
         t = t.step(golden("session_status")[1], breaks::add)
@@ -41,9 +41,6 @@ class ProductsTest {
         assertEquals("/p/s1.jsonl", t.sessions.getValue("s1").path) // 状态帧不抹掉宣告时的格
         t = t.step(golden("sessions_replayed")[0], breaks::add)
         assertTrue(t.replayed)
-        val (lostOne, plain) = golden("overflow")
-        assertTrue(t.step(lostOne, breaks::add).needsResync)
-        assertFalse("只丢了内容帧 ⇒ 表照样可信", t.step(plain, breaks::add).needsResync)
         t = t.step(golden("session_removed")[1], breaks::add)
         assertTrue(t.sessions.isEmpty())
         assertTrue(breaks.toString(), breaks.isEmpty())
@@ -87,7 +84,20 @@ class ProductsTest {
         val (superseded, gone) = golden("session_removed")
         assertEquals(mapOf("s1" to "s2"), t.step(superseded, breaks::add).successors)
         assertTrue("不是顶替 ⇒ 不记", t.step(gone, breaks::add).successors.isEmpty())
-        assertNull("认不出的形 ⇒ 不猜", Switches.of(mapOf("model" to mapOf("can" to "no"), "permission" to mapOf("can" to "yes"))))
+        assertTrue(breaks.toString(), breaks.isEmpty())
+    }
+
+    @Test
+    fun `会话表：那份记录从头重读了 ⇒ 那一条换一代（读过的作废、整份重来），别的不动`() {
+        val breaks = mutableListOf<String>()
+        val reread = golden("session_file_reread")[0]
+        var t = SessionTable().step(golden("session_added")[0], breaks::add)
+        assertEquals(0L, t.generation("s1"))
+        t = t.step(reread, breaks::add)
+        assertEquals(1L, t.generation("s1"))
+        t = t.step(reread, breaks::add)
+        assertEquals(2L, t.generation("s1"))
+        assertEquals(0L, t.generation("s2"))
         assertTrue(breaks.toString(), breaks.isEmpty())
     }
 

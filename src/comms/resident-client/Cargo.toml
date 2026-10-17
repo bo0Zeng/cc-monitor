@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 workspace = "../../frontend/shell"
 publish = false
-description = "连远端常驻后端的客户端那一侧（桌面 monitor 与手机嵌的 Rust 核心同一份）：帧客户端（hello 之前不许写 · 期限与撤单）· 握手 · 重连退避 · 版本门 · 在看名单。下面接任何 AsyncRead + AsyncWrite。"
+description = "连远端常驻后端的客户端那一侧（桌面 monitor 与手机嵌的 Rust 核心同一份）：帧客户端（hello 之前不许写 · 期限与撤单）· 握手（带新旧）· 重连退避 · 帧门 · 在看名单。下面接任何 AsyncRead + AsyncWrite。"
 
 [lib]
 path = "lib.rs"
@@ -13,6 +13,8 @@ path = "lib.rs"
 # 能力事实（`Offer`）· 撤单的词（`Withdraw`）· 问后端失败了的那一套（`CallError` · `MAX_PENDING`）：通信层面 A 那一份。
 comms-inward = { path = "../inward" }
 copy-core = { path = "../../common/copy-core" }
+# 帧的线上形与两张形状表：hello 与应答按类型解、帧门按帧种比。
+cmd-wire = { path = "../../common/cmd-wire" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "io-util", "sync", "time", "macros"] }
@@ -22,10 +24,10 @@ relay-route-core = { path = "../../common/relay-route-core" }
 
 [dev-dependencies]
 test-home = { path = "../../common/test-home" }
-# 判据里替身后端握手交的形状指纹：跟本侧编进来的同一份。
-cmd-wire = { path = "../../common/cmd-wire" }
 # 等条件的兜底上限（`wall::CEILING`）：全仓同一个数。
 guard-core = { path = "../../common/guard-core" }
+# 替身后端回 attach 行的新旧照后端同一个函数算。
+deploy-contract = { path = "../../common/deploy-contract" }
 tokio = { version = "1", features = ["rt-multi-thread", "io-util", "sync", "time", "macros", "test-util"] }
 
 [features]

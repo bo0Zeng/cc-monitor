@@ -12,11 +12,6 @@
 //!
 //! 回计划，一个字节都不写：放字节（mkdir · 原子上传 ＋ 读回比对，`ssh_dial::sftp::put_verified`）与删残件是 monitor 经 `files` 链路做。
 //!
-//! # 帧命令 `resident-verdict`（同一家）
-//!
-//! 接上的这一台 hello 报的 build 比问的那一端手上这一版旧没有（[`resident_verdict`]）：版本门那一句按 `older` 挑（`resident_client::gate`）。
-//! 换不换常驻不在这里：`--resident-ensure --replace` 自己比（`control/resident.rs::swap_out`，同一个纯函数）。
-//!
 //! # 帧命令 `place-verdict`（同一家：本机那一份放不放）
 //!
 //! monitor 放本机后端之前还没有常驻后端可问 ⇒ 问手上那份字节自己（写成暂存件、跑它的 CLI 面）：表 B 本机那一行 · 落点那一份
@@ -41,8 +36,8 @@ use serde_json::Value;
 
 /// 判定与计划的本体住 `deploy` crate（桌面与手机同一份）；本文件只是帧面那一层（入参 · 回包形状 · 码）。
 pub use deploy::{
-    identity_decision, interpret_target_probe, judge, promised, resident_verdict, stale_leftovers,
-    DialFacing, Facing, Fut, Plan, TargetBinary, Verdict, LEFTOVER_STALE_SECS, MARKS,
+    identity_decision, interpret_target_probe, judge, promised, stale_leftovers, DialFacing,
+    Facing, Fut, Plan, TargetBinary, LEFTOVER_STALE_SECS, MARKS,
 };
 
 /// 这一串的失败：码 ＋ 那一句 ＋ 下层原话（那台答 `uname` 的原话进复制详情，不上句子）。
@@ -217,88 +212,6 @@ impl crate::wire::typed::Handle for DeployPlan {
                 .map_err(|f| crate::wire::typed::of_fail(f, DeployPlanErr::IoFailed))
         }
     }
-}
-
-// ═══ 远端常驻后端 hello 的新旧（帧命令 `resident-verdict`）═══════════════════════════
-//
-// 两端接上一台时问它自己「我手上这一版比你新吗」（版本门那一句）。
-
-/// `resident-verdict` 的入参：手上这一版 · 那台 hello 报的 · 这一趟换过没有（只有事实）。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct VerdictReq {
-    /// monitor 手上这一版后端自报的身份（非空）。
-    pub(crate) mine: String,
-    /// 那台 hello 报的 `build_id`（缺 ⇒ 空串）。
-    pub(crate) theirs: String,
-    /// 这一趟是不是已经换过一次。
-    pub(crate) replaced: bool,
-}
-
-/// `resident-verdict` 的回包。
-#[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct VerdictReply {
-    /// 换掉再接 · 接上它。
-    pub(crate) action: VerdictAction,
-    /// 那台是不是比手上这一版旧（与 `replaced` 无关；版本提示那句话按它挑「会换掉」还是「不会换回去」）。
-    pub(crate) older: bool,
-}
-
-/// [`VerdictReply::action`]。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum VerdictAction {
-    Replace,
-    Attach,
-}
-
-crate::wire::typed::codes! {
-    /// `resident-verdict` 的码：`mine` 是空串。
-    pub(crate) enum VerdictErr {}
-}
-
-/// `resident-verdict`：远端常驻后端 hello 的新旧（纯判定，不碰盘不拨号 ⇒ 不进阻塞档）。
-pub(crate) struct ResidentVerdict;
-
-impl crate::wire::typed::Command for ResidentVerdict {
-    const NAME: &'static str = "resident-verdict";
-    type Req = VerdictReq;
-    type Reply = VerdictReply;
-    type Err = VerdictErr;
-}
-
-impl crate::wire::typed::Handle for ResidentVerdict {
-    type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
-        req: VerdictReq,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<VerdictReply, VerdictErr>> + Send + 'static {
-        std::future::ready(answer_resident_verdict(&req))
-    }
-}
-
-/// [`ResidentVerdict`] 的本体：`mine` 空 ⇒ `bad_args`。
-pub(crate) fn answer_resident_verdict(req: &VerdictReq) -> Result<VerdictReply, VerdictErr> {
-    if req.mine.is_empty() {
-        return Err(VerdictErr::BadArgs(crate::common::contract::malformed(
-            "missing `mine` (non-empty string)",
-        )));
-    }
-    let v = resident_verdict(&req.mine, &req.theirs, req.replaced);
-    Ok(VerdictReply {
-        action: if v.replace {
-            VerdictAction::Replace
-        } else {
-            VerdictAction::Attach
-        },
-        older: v.older,
-    })
 }
 
 // ═══ 本机那一份放不放（帧命令 `place-verdict`）═══════════════════════════════════════════

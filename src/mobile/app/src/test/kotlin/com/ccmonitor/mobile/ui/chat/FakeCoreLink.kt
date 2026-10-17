@@ -125,10 +125,32 @@ internal class FakeCoreLink :
             mapOf("agent" to "claude", "id" to id, "t" to "reply", "autoReply" to false, "blocks" to listOf(mapOf("type" to "text", "text" to text)))
 
         fun failed(message: String) = Reply.Failed(CoreFailure("start_failed", message, "detail"))
+
+        /** `history-tail` 的一份回包：尾段 `[splitAt, end)` 一页读完（[rows] 是 `rows[]` 原样）、手上那一份停在 [end]。 */
+        fun tail(
+            end: Long,
+            splitAt: Long,
+            total: Long,
+            rows: List<Map<String, Any?>> = emptyList(),
+        ): Map<String, Any?> =
+            mapOf(
+                "end" to end,
+                "split_at" to splitAt,
+                "tail_from" to total - rows.size,
+                "total" to total,
+                "how" to "tail",
+                "from" to total - rows.size,
+                "rows" to rows,
+                "next" to end,
+                "eof" to true,
+                "held" to mapOf("path" to "/p/s1.jsonl", "next" to total, "next_byte" to end, "mark" to "m"),
+            )
     }
 
     /**
-     * 一份会话记录的替身：第 i 行（行号 i）占字节 `[10i, 10i+10)`、每行都进界面；文件身份 [id]。照它答 history-tail · history-read · history-lines。
+     * 一份会话记录的替身：第 i 行（行号 i）占字节 `[10i, 10i+10)`、每行都进界面；那台给的记号是 [id]（换了一份 ⇒ 换 [id]）。
+     * 照它答 history-tail（怎么接照那台的规矩判：没交 · 换了路径 ⇒ 尾段；比交来的短 ⇒ 变短；记号对不上 ⇒ 被改写；缺得比 n 多 ⇒ 不读那一截）·
+     * history-read · history-lines。
      */
     class File(
         val records: MutableList<Map<String, Any?>> = mutableListOf(),
@@ -141,13 +163,43 @@ internal class FakeCoreLink :
             val n = records.size.toLong()
             return when (cmd) {
                 "history-tail" -> {
-                    val from = (n - (args!!["n"] as Long)).coerceAtLeast(0)
-                    Reply.Ok(mapOf("end" to n * W, "split_at" to from * W, "tail_from" to from, "total" to n, "file" to id))
+                    val want = args!!["n"] as Long
+                    val tailFrom = (n - want).coerceAtLeast(0)
+                    val held = args["held"] as? Map<*, *>
+                    val next = held?.get("next") as? Long
+                    val how =
+                        when {
+                            held == null || held["path"] != args["path"] -> "tail"
+                            next!! > n || (held["next_byte"] as Long) > n * W -> "truncated"
+                            held["mark"] != id -> "rewritten"
+                            n - next > want -> "handoff"
+                            else -> "resume"
+                        }
+                    val from =
+                        when (how) {
+                            "resume" -> next!!
+                            "handoff" -> n
+                            else -> tailFrom
+                        }
+                    Reply.Ok(
+                        mapOf(
+                            "end" to n * W,
+                            "split_at" to tailFrom * W,
+                            "tail_from" to tailFrom,
+                            "total" to n,
+                            "how" to how,
+                            "from" to from,
+                            "rows" to rows(from, n),
+                            "next" to n * W,
+                            "eof" to true,
+                            "held" to mapOf("path" to args["path"], "next" to n, "next_byte" to n * W, "mark" to id),
+                        ),
+                    )
                 }
                 "history-read" -> {
                     val a = (args!!["offset"] as Long) / W
                     val b = (args["until"] as Long) / W
-                    Reply.Ok(mapOf("rows" to (a until b).map { mapOf("end" to (it + 1) * W, "record" to records[it.toInt()]) }, "next" to b * W, "eof" to true))
+                    Reply.Ok(mapOf("rows" to rows(a, b), "next" to b * W, "eof" to true))
                 }
                 "history-lines" -> {
                     val a = args!!["from"] as Long
@@ -164,6 +216,12 @@ internal class FakeCoreLink :
                 else -> null
             }
         }
+
+        /** `[a, b)` 那几行的 `rows[]`（`{end, record}`）。 */
+        private fun rows(
+            a: Long,
+            b: Long,
+        ) = (a until b).map { mapOf("end" to (it + 1) * W, "record" to records[it.toInt()]) }
 
         private companion object {
             const val W = 10L

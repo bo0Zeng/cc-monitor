@@ -247,7 +247,7 @@ export class FakeBackend {
   }
 
   /** 订阅那几样交给无头壳。 */
-  private tell(what: "sub" | "want" | "stop" | "ready" | "kill" | "end" | "watch" | "paint", body: Record<string, unknown>): Promise<void> {
+  private tell(what: "sub" | "want" | "stop" | "ready" | "kill" | "end" | "watch" | "kept" | "paint", body: Record<string, unknown>): Promise<void> {
     return this.ready.then(async () => {
       const r = await fetch(`/__ccm/${what}`, { method: "POST", body: JSON.stringify({ key: this.key, ...body }) });
       if (!r.ok) throw new Error(`/__ccm/${what}：${await r.text()}`);
@@ -314,6 +314,9 @@ export class FakeBackend {
         // 交给无头壳的这几条一律等它收下了才回（同产品：Tauri 命令登记完才返回）—— 主界面 `await` 完订阅才发 `frontend-ready`，
         // 当场回的话就绪点可能抢在订阅前面到无头壳，那条订阅就永远过不了就绪点（判据 `tests/shots/fake-order.vitest.ts`）。
         return this.tell("watch", { sessions: args.sessions ?? [] }).then(() => null);
+      case "kept_sessions":
+        // 主窗口手上的 tab（整份换）：同上转给无头壳，它随名单报给那台后端（那台不在说的答已结束）。
+        return this.tell("kept", { sessions: args.sessions ?? [] }).then(() => null);
       case "chan_subscribe":
         return this.subscribe(args);
       case "chan_want":

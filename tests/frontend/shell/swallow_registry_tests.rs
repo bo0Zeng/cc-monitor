@@ -129,7 +129,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/stream/inbound/mod.rs", "let _ = replies_sup.send(Frame::err(&id_sup, \"handler_panicked\", &copy_text(\"reason.code.bug\", &[]))).await;", Why::PeerGone, ""),
     // 多客户：流结束那一格带上连接号（原 `done.send(())`）；认证通过的连接交主循环 —— 主循环不在了 = 进程在收尾。
     ("src/backend/main.rs", "let _ = done.send(id).await;", Why::Signal, ""),
-    ("src/backend/main.rs", "let _ = attached.send(Attached { reader: r, writer: w, hello_flushed, flags: flags.unwrap_or(None), }).await;", Why::PeerGone, ""),
+    ("src/backend/main.rs", "let _ = attached.send(Attached { reader: r, writer: w, hello_flushed, tz, watch, }).await;", Why::PeerGone, ""),
     ("src/backend/main.rs", "let _ = listen::write_line(&mut w, &listen::refusal_line(reason)).await;", Why::DeadLink, ""),
     ("src/backend/observe/one_wait.rs", "let _ = t.send(got);", Why::PeerGone, "一次性等待到了：等的那一侧可能已经撤了（撤单 / 期限到），没人要这一声"),
     ("src/backend/observe/watcher.rs", "let _ = debouncer.watcher().unwatch(dir);", Why::Reap, "撤旧 inode 上的 watch：目录被删 / 换过 inode 时 unwatch 本来就会失败"),
@@ -142,7 +142,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/observe/watcher.rs", "let _ = self.tx.send(WatchEvent::Watch { sub: self.id, ask, done, });", Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = done.send(watch_sessions(sub, ask, &mut state, &mut sink));", Why::PeerGone, ""),
     // read8a：连接接上 / 走了交给这台那份 watcher（它正在退出 ⇒ 没人收；走了那一声没人收也就没有要摘的）。
-    ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Join(Sub::new(id, tx, tz.clone())));", Why::PeerGone, "watcher 已停：这条连接的出方向通道随即读到关闭，按「流结束」收场"),
+    ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Join(Sub::new(id, tx, tz.clone()), watch));", Why::PeerGone, "watcher 已停：这条连接的出方向通道随即读到关闭，按「流结束」收场"),
     ("src/backend/observe/watcher.rs", "let _ = self.0.tx.send(WatchEvent::Leave(self.0.id));", Why::PeerGone, "watcher 已停：连接本来就不在它的名单上了"),
     // read8a：预读交回 watcher（它在退出 ⇒ 结果没人要）；任务交线程池（池子的线程都退了 ⇒ 进程在收尾）。
     ("src/backend/observe/watcher.rs", "let _ = events.send(WatchEvent::Primed(done));", Why::PeerGone, "watcher 已停：这一趟预读的结果没人要"),

@@ -2,7 +2,7 @@
  * 截图工具的合成世界：几台机器、几个会话、各个面板要的成品。全是结构占位，不含任何真会话正文。
  * 形状挂在产品生成物类型上 ⇒ 后端改了线上形状，这里当场编不过。
  */
-import type { SessionActivity } from "../../../src/frontend/ui/generated/SessionActivity";
+import type { WireSessionActivity } from "../../../src/frontend/ui/generated/WireSessionActivity";
 import type { Convo } from "./records";
 
 export interface TaskSpec {
@@ -24,7 +24,7 @@ export interface SessionSpec {
   /** 后台会话（pidfile 的 `kind: "bg"`）。 */
   background: boolean;
   /** 此刻在干什么（写进 pidfile 的 `status`，后端照它翻）；`null` = 没写（说不清）。 */
-  activity: SessionActivity | null;
+  activity: WireSessionActivity | null;
   /** 在等什么框（pidfile 的 `waitingFor`）。 */
   waitingFor: string | null;
   /** 在等你时从何时起等（epoch ms；pidfile 的 `statusUpdatedAt`）。缺 ⇒ 不知道。 */

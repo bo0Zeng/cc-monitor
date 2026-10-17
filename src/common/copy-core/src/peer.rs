@@ -1,4 +1,4 @@
-//! 因对方版本说不成的那两句，和一句话里怎么称呼那台机器。全产品各一份（界面那一侧是 `chan-caller.ts::peerVersionSaid`）。
+//! 因对方版本说不成的那几句（命令发不成 · 接上时的新旧），和一句话里怎么称呼那台机器。全产品各一份（界面那一侧是 `chan-caller.ts::peerVersionSaid`）。
 
 use crate::copy_text;
 
@@ -25,6 +25,21 @@ pub fn backend_old(machine: &str) -> String {
 /// 见 [`backend_old`]：那台后端认得这条命令，但它那一版的形状跟这一侧不一样（typed 命令的形状指纹对不上，事前就不发）。
 pub fn backend_differs(machine: &str) -> String {
     copy_text("peerVersion.said.differs", &[("machine", machine)])
+}
+
+/// 见 [`backend_old`]：接上了，那台比这一版新（这一侧不会把它换回去）。
+pub fn backend_newer(machine: &str) -> String {
+    copy_text("peerVersion.said.newer", &[("machine", machine)])
+}
+
+/// 见 [`backend_old`]：接上了，两边的版本比不出先后（任一边的构建标识解不出序 · 手上没带后端字节）。
+pub fn backend_incomparable(machine: &str) -> String {
+    copy_text("peerVersion.said.incomparable", &[("machine", machine)])
+}
+
+/// 见 [`backend_old`]：接上了，那台有几种帧的形状跟这一侧不一样（那几种收不到，别的照常）。
+pub fn backend_frames_differ(machine: &str) -> String {
+    copy_text("peerVersion.said.framesDiffer", &[("machine", machine)])
 }
 
 /// 见 [`backend_old`]。

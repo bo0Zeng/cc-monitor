@@ -1,14 +1,11 @@
 //! 「monitor 只收成品帧」· 「`Unseen` 不许被显示成已结束」—— `session_book` 只记账、不裁决。
 //!
 //! 钉两件：① 交进来的成品原样交出去（顺序不变），monitor 自己只说「连接断了 ⇒ 当时活的 / 可重连的说不清」；
-//! ② F5 重放计划：骨架在前、终局在后，有行却没成品的按「那台报完清单没有」分已结束 / 说不清。
+//! ② F5 重放计划：骨架在前、终局在后；有行却没成品的：那台没报完清单 ⇒ 说不清，报完了 ⇒ 不说（去向由那台后端答）。
 use super::*;
 
-fn meta(cwd: &str) -> LiveMeta {
-    LiveMeta {
-        cwd: Some(cwd.into()),
-        ..Default::default()
-    }
+fn meta(cwd: &str) -> cmd_wire::frame::SessionAdded {
+    crate::frame_fixtures::session_added("x", serde_json::json!({ "cwd": cwd }))
 }
 
 fn live(o: &str, s: &str) -> In {
@@ -19,12 +16,14 @@ fn live(o: &str, s: &str) -> In {
     }
 }
 
-fn left(o: &str, s: &str, fate: Fate) -> In {
+fn left(o: &str, s: &str, fate: SessionFate) -> In {
+    let state = match fate {
+        SessionFate::Reconnectable => "reconnectable",
+        SessionFate::Ended => "ended",
+    };
     In::Left {
         origin: o.into(),
-        sid: s.into(),
-        fate,
-        words: None,
+        state: crate::frame_fixtures::session_state(s, state, "T"),
     }
 }
 
@@ -36,8 +35,8 @@ fn products_pass_through_in_order_and_only_a_lost_link_is_the_monitors_own_word(
         live("pi", "a"),
         live("pi", "b"),
         live("pi", "c"),
-        left("pi", "b", Fate::Reconnectable),
-        left("pi", "c", Fate::Ended),
+        left("pi", "b", SessionFate::Reconnectable),
+        left("pi", "c", SessionFate::Ended),
         In::Listed {
             origin: "pi".into(),
         },
@@ -55,13 +54,13 @@ fn products_pass_through_in_order_and_only_a_lost_link_is_the_monitors_own_word(
         .iter()
         .map(|o| match o {
             Out::Live { sid, .. } => format!("live {sid}"),
-            Out::Status { sid, .. } => format!("status {sid}"),
-            Out::Left { sid, fate, .. } => format!("left {sid} {fate:?}"),
+            Out::Status { status, .. } => format!("status {}", status.sid),
+            Out::Left { state, .. } => format!("left {} {:?}", state.sid, state.state),
             Out::Listed { origin, all } => {
                 format!("listed {origin}{}", if *all { " all" } else { "" })
             }
             Out::Unseen { origin, sids } => format!("unseen {origin} {sids:?}"),
-            Out::Runs { sid, .. } => format!("runs {sid}"),
+            Out::Runs { runs, .. } => format!("runs {}", runs.sid),
             Out::Branch { sid, .. } => format!("branch {sid}"),
         })
         .collect();
@@ -86,8 +85,8 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
     let mut b = Book::default();
     for ev in [
         live("pi", "a"),
-        left("pi", "r", Fate::Reconnectable),
-        left("pi", "e", Fate::Ended),
+        left("pi", "r", SessionFate::Reconnectable),
+        left("pi", "e", SessionFate::Ended),
         In::Listed {
             origin: "pi".into(),
         },
@@ -111,15 +110,15 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
         v.iter()
             .map(|o| match o {
                 Out::Live { origin, sid, .. } => format!("live {origin}/{sid}"),
-                Out::Left {
-                    origin, sid, fate, ..
-                } => format!("left {origin}/{sid} {fate:?}"),
+                Out::Left { origin, state } => {
+                    format!("left {origin}/{} {:?}", state.sid, state.state)
+                }
                 Out::Listed { origin, all } => {
                     format!("listed {origin}{}", if *all { " all" } else { "" })
                 }
                 Out::Unseen { origin, sids } => format!("unseen {origin} {sids:?}"),
-                Out::Status { sid, .. } => format!("status {sid}"),
-                Out::Runs { origin, sid, .. } => format!("runs {origin}/{sid}"),
+                Out::Status { status, .. } => format!("status {}", status.sid),
+                Out::Runs { origin, runs } => format!("runs {origin}/{}", runs.sid),
                 Out::Branch { origin, sid, .. } => format!("branch {}/{sid}", origin.as_wire_str()),
             })
             .collect()
@@ -135,27 +134,25 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
             r#"unseen zz ["far"]"#,
             "left pi/r Reconnectable",
             "left pi/e Ended",
-            // 那台报完了清单 ⇒ 不在清单里 = 已结束。
-            "left pi/gone Ended",
+            // 那台报完了清单、这条没被说过（`gone`）⇒ 不说：去向由那台后端答（这里补一句就是 monitor 自己在裁）。
             "listed pi",
         ]
     );
 }
 
 /// 〔「说不清」是**那台**的〕线上一格机器级 `unseen {origin}`（不再逐会话一格）；旁路快照被撤时
-/// 没说过的那一条：那台报完了清单 ⇒ 已结束，没报完 ⇒ 机器级说不清 ＋ 那台说过的活 / 可重连的再说一次（前端按机器落，紧跟着翻回来）。
+/// 没说过的那一条：那台没报完 ⇒ 机器级说不清 ＋ 那台说过的活 / 可重连的再说一次（前端按机器落，紧跟着翻回来）；报完了 ⇒ 不说（那台答）。
 #[test]
 fn unseen_is_one_machine_level_cell_and_settle_again_follows_the_list() {
     let mut b = Book::default();
     b.step(live("pi", "a"));
-    b.step(left("pi", "r", Fate::Reconnectable));
+    b.step(left("pi", "r", SessionFate::Reconnectable));
     let lost = b.step(In::LinkLost {
         origin: "pi".into(),
     });
     let frames: Vec<String> = lost
         .iter()
-        .flat_map(|o| o.frames())
-        .map(|f| serde_json::to_string(&f).unwrap())
+        .map(|o| serde_json::to_string(&o.frame()).unwrap())
         .collect();
     assert_eq!(frames, vec![r#"{"unseen":{"origin":"pi"}}"#.to_string()]);
 
@@ -164,7 +161,7 @@ fn unseen_is_one_machine_level_cell_and_settle_again_follows_the_list() {
         v.iter()
             .map(|o| match o {
                 Out::Live { sid, .. } => format!("live {sid}"),
-                Out::Left { sid, fate, .. } => format!("left {sid} {fate:?}"),
+                Out::Left { state, .. } => format!("left {} {:?}", state.sid, state.state),
                 Out::Unseen { origin, .. } => format!("unseen {origin}"),
                 other => format!("{other:?}"),
             })
@@ -174,46 +171,50 @@ fn unseen_is_one_machine_level_cell_and_settle_again_follows_the_list() {
     b.step(In::Listed {
         origin: "pi".into(),
     });
-    assert_eq!(said(b.settle_again("pi", "q")), vec!["left q Ended"]);
+    assert!(b.settle_again("pi", "q").is_empty(), "报完了、没说过的不说");
     assert!(b.settle_again("pi", "a").is_empty(), "活着的不说");
 }
 
-/// 活会话那一格：项目目录原样带给前端（缺席的那几格按 `null` 出）。期望值手写。
+/// ★ 活会话一格 `added`，就是那台的 `session_added`：骨架那几格 · 此刻的灯与名字 · 容器 · 隐藏那一格一起带（不再拆成三格、不重拼）。期望值手写。
 #[test]
-fn the_live_cell_carries_the_project_dir() {
-    let with = Out::Live {
-        origin: "pi".into(),
-        sid: "a".into(),
-        meta: LiveMeta {
-            project_dir: Some("/a/proj".into()),
-            ..Default::default()
-        },
-    };
-    let first = |o: &Out| serde_json::to_string(&o.frames()[0]).unwrap();
-    assert_eq!(
-        first(&with),
-        r#"{"live":{"session_id":"a","origin":"pi","background":false,"attachable":null,"cwd":null,"project_dir":"/a/proj","name":null,"hidden":null}}"#
-    );
-}
-
-/// ★ 隐藏那一格（后端判好的 `{by, said}`）原样转给界面：分身会话不占标签页靠它，壳这里丢了它分身就冒进标签栏。期望值手写。
-#[test]
-fn the_live_cell_carries_the_hidden_cell_verbatim() {
+fn the_live_cell_is_the_backends_session_added_frame() {
     let o = Out::Live {
         origin: "pi".into(),
         sid: "a".into(),
-        meta: LiveMeta {
-            background: true,
-            hidden: Some(cmd_wire::session::Hidden {
-                by: cmd_wire::session::HiddenBy::Bg,
-                said: "后端那一句".into(),
+        meta: crate::frame_fixtures::session_added(
+            "a",
+            serde_json::json!({
+                "project_dir": "/a/proj",
+                "background": true,
+                "hidden": {"by": "bg", "said": "后端那一句"},
+                "container": {"host": "tmux", "terminal": "tmux-1-2"},
+                "activity": "working",
+                "activity_text": "跑着",
             }),
-            ..Default::default()
-        },
+        ),
     };
+    let v = serde_json::to_value(o.frame()).unwrap();
+    let a = &v["added"];
+    assert_eq!(v.as_object().unwrap().len(), 1, "{v}");
     assert_eq!(
-        serde_json::to_string(&o.frames()[0]).unwrap(),
-        r#"{"live":{"session_id":"a","origin":"pi","background":true,"attachable":null,"cwd":null,"project_dir":null,"name":null,"hidden":{"by":"bg","said":"后端那一句"}}}"#
+        (&a["sid"], &a["project_dir"], &a["background"]),
+        (
+            &serde_json::json!("a"),
+            &serde_json::json!("/a/proj"),
+            &serde_json::json!(true)
+        )
+    );
+    assert_eq!(
+        a["hidden"],
+        serde_json::json!({"by": "bg", "said": "后端那一句"})
+    );
+    assert_eq!(
+        a["container"],
+        serde_json::json!({"host": "tmux", "terminal": "tmux-1-2"})
+    );
+    assert_eq!(
+        (&a["activity"], &a["activity_text"]),
+        (&serde_json::json!("working"), &serde_json::json!("跑着"))
     );
 }
 
@@ -281,7 +282,7 @@ fn all_listed_holds_only_when_every_machine_in_the_table_has_listed() {
 /// F5 重放跟在那个活会话的宣告后面再说一次（拼好的最新那一份）；会话离开 ⇒ 不再重放。
 #[test]
 fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
-    let off = |ids: &str| crate::ui_contract::RecordBody::from_json(ids.to_string()).unwrap();
+    let off = |ids: &[&str]| -> Vec<String> { ids.iter().map(|i| i.to_string()).collect() };
     let branch = |s: &str, path: &str, at: u64, ids: &[&str]| In::Branch {
         origin: crate::origin::Origin("pi".into()),
         sid: s.into(),
@@ -298,7 +299,7 @@ fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
         vec![Out::Branch {
             origin: crate::origin::Origin("pi".into()),
             sid: "a".into(),
-            off: off(r#"["u1"]"#)
+            off: off(&["u1"])
         }]
     );
     // 只来变了的那一截 ⇒ 交出去的是拼好的整份。
@@ -307,20 +308,20 @@ fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
         vec![Out::Branch {
             origin: crate::origin::Origin("pi".into()),
             sid: "a".into(),
-            off: off(r#"["u1","u2","u3"]"#)
+            off: off(&["u1", "u2", "u3"])
         }]
     );
     // 前 2 条照旧、其后没有了 ⇒ 截短。
     b.step(branch("a", "/a.jsonl", 2, &[]));
     // 另一份记录 ⇒ 从空的起拼（不接在上一份后面）。
     let got = b.step(branch("b", "/b1.jsonl", 0, &["x"]));
-    assert!(matches!(&got[..], [Out::Branch { off: o, .. }] if o.0.get() == r#"["x"]"#));
+    assert!(matches!(&got[..], [Out::Branch { off: o, .. }] if o == &off(&["x"])));
     let got = b.step(branch("b", "/b2.jsonl", 1, &["y"]));
     assert!(
-        matches!(&got[..], [Out::Branch { off: o, .. }] if o.0.get() == r#"["y"]"#),
+        matches!(&got[..], [Out::Branch { off: o, .. }] if o == &off(&["y"])),
         "{got:?}"
     );
-    b.step(left("pi", "b", Fate::Ended));
+    b.step(left("pi", "b", SessionFate::Ended));
     // 同一个 sid 又活了（续接）：它离开前那份清单不算数，等那台再说。
     b.step(live("pi", "b"));
     let r = b.replay(&[]);
@@ -329,18 +330,22 @@ fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
         .iter()
         .map(|o| match o {
             Out::Live { sid, .. } => format!("live {sid}"),
-            Out::Branch { sid, off, .. } => format!("branch {sid} {}", off.0.get()),
+            Out::Branch { sid, off, .. } => format!("branch {sid} {off:?}"),
             other => format!("{other:?}"),
         })
         .collect();
-    assert_eq!(got, vec!["live a", r#"branch a ["u1","u2"]"#, "live b"]);
+    assert_eq!(got, vec!["live a", r#"branch a ["u1", "u2"]"#, "live b"]);
 }
 
 /// read8c：报名单时交回手上那份主线外清单（条数 ＋ 那台给的最后一帧的摘要）—— 断线不摘（重接之后交回，那台只补缺的）；
 /// 拼的时候中间缺过一截（`at` 比手上的长）⇒ 说不准，交 `at: 0`；没有的、会话离开了的 ⇒ `at: 0`；那台报完清单时不在了 ⇒ 摘。
 #[test]
 fn the_branch_list_on_hand_is_handed_back_across_a_lost_link() {
-    use resident_client::watch::BranchHeld;
+    use cmd_wire::watch::BranchHeld;
+    let nothing = |sid: &str| BranchHeld {
+        sid: sid.into(),
+        ..Default::default()
+    };
     let pi = crate::origin::Origin("pi".into());
     let branch = |s: &str, at: u64, ids: &[&str], sum: &str| In::Branch {
         origin: pi.clone(),
@@ -374,8 +379,8 @@ fn the_branch_list_on_hand_is_handed_back_across_a_lost_link() {
                 at: 3,
                 sum: Some("s3".into())
             },
-            BranchHeld::nothing("b"),
-            BranchHeld::nothing("c"),
+            nothing("b"),
+            nothing("c"),
         ],
         "断线之后交回的手上那份不对"
     );
@@ -384,8 +389,53 @@ fn the_branch_list_on_hand_is_handed_back_across_a_lost_link() {
     b.step(In::Listed {
         origin: "pi".into(),
     });
+    assert_eq!(b.branch_held(&pi, &sids(&["a"])), vec![nothing("a")]);
+}
+
+/// 名单并进 attach 行之后，手上那份清单在写 attach 行时就读：旧连接队列里还压着一帧 `session_branch` 没落账时读到的是更早一刻的
+/// （`at` ＋ `sum` 出自同一帧，仍是一份自洽的前缀）。那台照它补缺的那一截（从更早的 `at` 起）；旧那帧之后再落账、新补来的那一帧再覆盖 ⇒
+/// 落完账手上的与那台一致，只是多补了一点。
+#[test]
+fn a_branch_list_read_before_the_old_links_last_frame_still_ends_where_the_peer_is() {
+    use cmd_wire::watch::BranchHeld;
+    let pi = crate::origin::Origin("pi".into());
+    let branch = |at: u64, ids: &[&str], sum: &str| In::Branch {
+        origin: pi.clone(),
+        sid: "a".into(),
+        path: "/a.jsonl".into(),
+        at,
+        off: ids.iter().map(|i| i.to_string()).collect(),
+        sum: sum.into(),
+    };
+    let only_a: std::collections::BTreeSet<String> = ["a".to_string()].into();
+    let mut b = Book::default();
+    b.step(live("pi", "a"));
+    b.step(branch(0, &["u1", "u2"], "s2"));
+    // 写 attach 行那一刻读的：旧连接那一帧（前 2 条照旧，其后 u3）还压在队列里。
+    let read_early = b.branch_held(&pi, &only_a);
     assert_eq!(
-        b.branch_held(&pi, &sids(&["a"])),
-        vec![BranchHeld::nothing("a")]
+        read_early,
+        vec![BranchHeld {
+            sid: "a".into(),
+            path: Some("/a.jsonl".into()),
+            at: 2,
+            sum: Some("s2".into()),
+        }]
+    );
+    b.step(branch(2, &["u3"], "s3"));
+    // 新连接上那台照读早的那份补：此刻它的清单是 u1..u4，从第 2 条起补。
+    let out = b.step(branch(2, &["u3", "u4"], "s4"));
+    let Some(Out::Branch { off, .. }) = out.last() else {
+        panic!("{out:?}");
+    };
+    assert_eq!(off, &["u1", "u2", "u3", "u4"].map(String::from).to_vec());
+    assert_eq!(
+        b.branch_held(&pi, &only_a),
+        vec![BranchHeld {
+            sid: "a".into(),
+            path: Some("/a.jsonl".into()),
+            at: 4,
+            sum: Some("s4".into()),
+        }]
     );
 }

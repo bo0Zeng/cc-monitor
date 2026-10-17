@@ -115,11 +115,13 @@ fn hx2_build_order_reads_generation_and_letter_and_refuses_other_shapes() {
     }
 }
 
-/// B1a 后半：另一份相对手上这一版 —— 两边都解得出才分新旧；同序不同名 · 任一边解不出 ⇒ 不可比。
+/// B1a 后半：另一份相对手上这一版 —— 逐字相同 ⇒ 同；两边都解得出才分新旧；同序不同名 · 任一边解不出 ⇒ 不可比。
 #[test]
 fn hx2_relation_is_newer_or_older_only_when_both_orders_parse_and_differ() {
-    use BuildRelation::{Incomparable, Newer, Older};
-    let cases: &[(&str, &str, BuildRelation)] = &[
+    use Relation::{Incomparable, Newer, Older, Same};
+    let cases: &[(&str, &str, Relation)] = &[
+        ("p3m-a", "p3m-a", Same),
+        ("junk", "junk", Same),
         ("p3m-b", "p3n-a", Older),
         ("p3z-b", "p4a-a", Older),
         ("p3n-b", "p3m-a", Newer),

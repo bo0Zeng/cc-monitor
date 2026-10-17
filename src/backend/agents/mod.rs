@@ -42,13 +42,7 @@
 //!
 //! # **注册表**：本文件从"目录索引"变成了"这台机器认得哪几个 agent"
 //!
-//! [`REGISTRY`] + [`visible_homes`] 让 backend **有能力**声明它看得见哪些 agent
-//! （`G1` 成功标准③）。⚠ **能力先建、生产路径今天不接** —— `main.rs` 仍硬写
-//! `homes: Vec::new()`，一个线上字节都没变。理由不是保守：填 `homes` 是一次**与手机端的契约变更**
-//! （手机端的 hello fixture 按精确字节对），而手机端那一侧的运行时这里验不了
-//! （前提 `P3`）。⇒ 把"何时真填"留成**一次纯发布决策**：改 `main.rs` 那一行，
-//! `wire::tests::production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen`
-//! 当场变红，逼那一天的人重新裁一次。**那条判据是提醒，不是障碍，别删它。**
+//! [`REGISTRY`] 是这台机器认得的那几家。
 //!
 //! ## 为什么注册表住这里，而不是通用层的某个新文件
 //!
@@ -115,11 +109,7 @@ pub(crate) struct Adapter {
     /// ⚠ 只给换形那一段（`control/prefs_migration.rs`）用：新的那一格是 `prefs.json` 的 `agentHomes`（按 kind）。
     /// 下一版随 `prefs_migration.rs` 一起删。键名是那一家的知识，所以住适配层、经 [`old_home_pref_of`] 一处读。
     pub(crate) old_home_pref: Option<&'static str>,
-    /// 这个 agent 在本机的 home 目录候选。`None` = 连候选都说不出（⇒ 一定看不见）。
-    ///
-    /// ⚠ 它**只答"该在哪"**。"在不在"由 [`home_is_visible`] 统一判 ——
-    /// 让每家自己定判准的话，「看得见一个 agent」就成了两套语义，
-    /// 而 `S6` 的最小假 agent 得先猜自己该伪造哪一套。
+    /// 这个 agent 在本机的 home 目录候选。`None` = 连候选都说不出。只答"该在哪"。
     pub(crate) home: fn() -> Option<PathBuf>,
     /// 这一家的**资产面**（skill · 项目级 MCP 住哪、怎么认出来）。
     /// `None` = 这一家今天没有可记进资产目录的东西。
@@ -2541,84 +2531,6 @@ pub(crate) fn compact_request_of(kind: &str) -> Option<&'static str> {
 /// `kind` 那一家的这条记录是不是压缩之后续接用的摘要（同渲染模型里 `compactSummary` 那一种来源）。
 pub(crate) fn is_compact_summary(kind: &str, v: &serde_json::Value) -> bool {
     user_text_of(kind, v).is_some_and(|t| matches!(t.speaker, Speaker::CompactSummary { .. }))
-}
-
-/// `hello.homes` 的一项：线上形住 `cmd-wire`。
-pub use cmd_wire::frame::AgentHome;
-
-/// **这台机器上看得见哪些 agent** —— 直接产出 `hello.homes` 的那张表〔`S5`，`G1` 成功标准③〕。
-///
-/// # 判准是「**home 目录存在**」，三选一，理由写在这里
-///
-/// 候选三条语义不同：home 目录存在（**装了**）· 目录下有会话记录（**用过**）·
-/// 可执行文件在 `PATH` 里（**能起**）。取第一条：
-///
-/// 1. **字段语义只允许这一条**。`homes` 的每一项是 `{agent_kind, path}` —— 一个**路径**。
-///    按 `PATH` 判的话，claude 那家 [`claudecode::home`] 恒 `Some`（有默认值），
-///    我们就得为一个**不存在的目录**报一个路径 —— 那是在说谎，消费方拿它去列会话只会得到空。
-/// 2. **它与后端真正能干的事对齐**。四类能力里的三类（会话发现与判活 · 会话内容读 ·
-///    用量）**全部** root 在 home 之下；home 不在，这三类一律零输出。
-///    ⇒「home 在」就是「backend 对这个 agent 的观测面能干活」。
-///    ⚠ 第四类（起会话/resume）确实靠 `PATH`，本判准**覆盖不到** —— 如实登记，见 `§4`。
-/// 3. **排除「目录下有会话记录」**：那是"用过"不是"装了"。三条具体害处 ——
-///    ① 刚装好还没开过会话的 agent 会被判成看不见，而后端的 watcher 正是要
-///    inotify 那个目录**等第一条会话出现**（自相矛盾）；② `hello` 一次连接只发一次，
-///    而"有没有会话记录"在连接期内会变（清理/轮转）—— 会中途变旧的值不该进握手帧；
-///    ③ 它要扫盘，而 hello 是 flush 前的**第一件事**，给握手加一次全树扫描是加了一段不确定的延迟。
-/// 4. **排除「可执行文件在 `PATH` 里」**：① 它答不出 `path` 该填什么（见 1）；
-///    ② backend 自己的 `PATH` 与用户在 tmux 里的 `PATH` 常常不是一回事（非交互 SSH 登录）
-///    —— 拿后端的 `PATH` 判"用户能不能起 claude"是**问错了人群**；
-///    ③ 它答的是"能不能起"，而 `homes` 声明的是"数据在哪"。
-///
-/// ⇒ 对 `S6` 的含义（判准决定假 agent 怎么伪造自己）：**`mkdir` 一个 home 目录就够了**。
-/// 这是三条里最容易伪造的一条，而这正合适 —— `S6` 要证的是"通用层零改动"，
-/// 不是"假 agent 起得来"。
-///
-/// # ⚠ 生产路径今天**不调它**
-///
-/// 见本模块头注：`main.rs` 仍硬写 `homes: Vec::new()`。摘掉下面这个 `allow` 的那天，
-/// 就是把那一行换成 `agents::visible_homes()` 的那天。
-#[allow(dead_code)] // `S5`：能填不真填 —— 接线是一次纯发布决策，不是忘了。
-pub(crate) fn visible_homes() -> Vec<AgentHome> {
-    visible_among(REGISTRY)
-}
-
-/// [`visible_homes`] 的**可喂夹具**那一半：注册表进、看得见的那些出，**顺序保持注册序**。
-///
-/// # 为什么要多这一层（而不是让 [`visible_homes`] 直接读 `REGISTRY`）
-///
-/// 真 home 由**环境变量**解析（`CLAUDE_CONFIG_DIR` / `HOME` / `CODEX_HOME`），
-/// 而在测试里改进程环境既不可靠（并行跑的别的测试也在读）又不安全。
-/// 传注册表进来之后，判据可以喂一张**合成注册表**（`Adapter.home` 是 `fn` 指针 ⇒
-/// 非捕获闭包/普通 fn 就够），于是**整条链**（`None` 候选 · 缺席的 home · 同名文件 ·
-/// 顺序）全部可以在夹具里验，不依赖跑测试这台机器上装了什么。
-///
-/// ⚠ 它**仍然真的碰文件系统** —— 判准就是文件系统事实，把那一步也抽成参数就只剩一个
-/// 恒真的壳，那种"能力"验的是它自己。
-///
-/// ★ `S6` 的入口就是这里：最小假 agent = 一条 `Adapter` + 一个 `mkdir` 出来的 home。
-#[allow(dead_code)] // 同上：唯一的生产调用点是 `visible_homes`，而它今天不接线。
-pub(crate) fn visible_among(registry: &[Adapter]) -> Vec<AgentHome> {
-    registry
-        .iter()
-        // `None` = 这家连候选路径都说不出（如 codex 在没有 `HOME`/`CODEX_HOME` 的环境里）
-        // ⇒ 直接出局，不要拿一个空路径去 stat。
-        .filter_map(|a| (a.home)().map(|home| (a.kind, home)))
-        .filter(|(_, home)| home_is_visible(home))
-        .map(|(kind, home)| AgentHome {
-            agent_kind: kind.to_string(),
-            path: home.to_string_lossy().into_owned(),
-        })
-        .collect()
-}
-
-/// 判准本身：**是一个存在的目录**。
-///
-/// ⚠ `is_dir()` 而不是 `exists()`：同名的**文件**不是一个 agent 的家。
-/// 这条区分不是洁癖 —— 报出去的 `path` 会被消费方当目录去拼子路径。
-#[allow(dead_code)] // 同上。
-fn home_is_visible(home: &Path) -> bool {
-    home.is_dir()
 }
 
 #[cfg(test)]

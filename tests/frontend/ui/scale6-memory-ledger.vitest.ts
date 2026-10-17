@@ -412,7 +412,7 @@ describe("秤 6 丙：三个账本的大小进 `debugSnapshot`", () => {
 
   const feed = (p: RigPayload): void => tm.onLine(p as never);
   /** 后端给的主线外清单（会话流里的 `branch` 格，整份）。 */
-  const branch = (off: string[]): void => tm.onSessionBranch({ session_id: "s1", off } satisfies SessionBranchPayload);
+  const branch = (off: string[]): void => tm.onSessionBranch({ sid: "s1", off } satisfies SessionBranchPayload);
   const peek = (sid: string): Tab =>
     (tm as unknown as { store: { tabs: Map<string, Tab> } }).store.tabs.get(sid)!;
   const snap = (): Record<string, unknown> =>
@@ -489,7 +489,7 @@ describe("秤 6 丙：三个账本的大小进 `debugSnapshot`", () => {
 
   it("别的会话的清单不动这个会话的数", async () => {
     await threeLedgersNonEmpty();
-    tm.onSessionBranch({ session_id: "s-other", off: ["x", "y", "z", "w", "v"] });
+    tm.onSessionBranch({ sid: "s-other", off: ["x", "y", "z", "w", "v"] });
     expect(snap().branchOff).toBe(4);
   });
 

@@ -8,7 +8,7 @@
 //! 链路的 monitor 这一侧（`link_mux.rs`）的判据。
 //!
 //! 台架：一条内存管道两头 —— monitor 这头是**真的** `InboundClient`（经 `park → into_client`）＋
-//! **真的**本机吸收点（`local_backend::absorb_local_frame`），对面是一个会说链路协议的小假后端
+//! **真的**分派第一层（`stream_source::route`），对面是一个会说链路协议的小假后端
 //! （记下每条请求、每条都回 `ok`，下行帧由用例自己塞）。后端那一半的真实现另有 `dial_link_tests`，
 //! 两半接在一起的真进程读数见 `tests/evidence/SR1a-link-loopback.py`。
 //!
@@ -16,8 +16,7 @@
 //! 而每个用例各有自己的台架客户端 —— 锁是再加一道保险，不是靠它才对）。
 
 use super::*;
-use crate::inbound_client::{park, BackendHello};
-use crate::stream_source::{parse_frame, InboundFrame};
+use crate::inbound_client::park;
 use serde_json::Value;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
@@ -43,35 +42,21 @@ fn rig_fresh() -> Rig {
 fn rig() -> Rig {
     let (mon_w, be_r) = tokio::io::duplex(1 << 20);
     let (be_w, mon_r) = tokio::io::duplex(1 << 20);
-    let hello = InboundFrame::Hello {
-        v: 1,
-        build_id: "t".into(),
-        host_arch: "x86_64".into(),
-        claude_dir: "/tmp".into(),
-        homes: vec![],
-        commands: ["link-open", "link-data", "link-credit", "link-close"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect(),
-        unavailable: vec![],
-        // 同一版的后端：typed 那几条的形状指纹照本侧编进来的那一份交。
-        shapes: cmd_wire::shapes::SHAPES
-            .iter()
-            .map(|(c, h)| (c.to_string(), h.to_string()))
-            .collect(),
-    };
-    let witness = BackendHello::from_hello_frame(&hello).expect("是 hello");
+    let hello =
+        crate::frame_fixtures::our_hello(&["link-open", "link-data", "link-credit", "link-close"]);
+    let witness = crate::inbound_client::witness_of(&hello).expect("是 hello");
     let client = park(mon_w).into_client(witness);
     // monitor 这头的读循环：解帧 → **真的**吸收点。
     let c2 = Arc::clone(&client);
     tauri::async_runtime::spawn(async move {
         let mut lines = tokio::io::BufReader::new(mon_r).lines();
         while let Ok(Some(l)) = lines.next_line().await {
-            if let Ok(f) = parse_frame(&l) {
-                crate::local_backend::absorb_local_frame(
-                    f,
-                    Some(&c2),
+            if let Ok(f) = crate::stream_source::decode(&l) {
+                crate::stream_source::route(
+                    crate::stream_source::Via::Local,
                     &crate::origin::Origin::local(),
+                    Some(&c2),
+                    f,
                 );
             }
         }
@@ -374,32 +359,5 @@ async fn an_error_end_and_an_over_window_flood_both_surface_as_read_errors() {
         sink.len() as u64 <= LINK_WINDOW_BYTES,
         "判坏之前交出去的字节超过了一窗：{}",
         sink.len()
-    );
-}
-
-/// 解帧：`link_data` 的 base64 在解帧这一步解开；解不开 ⇒ 整帧 `None`（不交一段猜出来的字节）。
-#[test]
-fn parse_frame_decodes_link_frames_and_refuses_bad_base64() {
-    match parse_frame(r#"{"kind":"link_data","link":"L","data":"aGkK"}"#) {
-        Ok(InboundFrame::LinkData { link, data }) => {
-            assert_eq!(link, "L");
-            assert_eq!(data, b"hi\n");
-        }
-        other => panic!("解出来的不对：{other:?}"),
-    }
-    assert!(parse_frame(r#"{"kind":"link_data","link":"L","data":"a!"}"#).is_err());
-    assert_eq!(
-        parse_frame(r#"{"kind":"link_end","link":"L","error":"e"}"#),
-        Ok(InboundFrame::LinkEnd {
-            link: "L".into(),
-            error: Some("e".into())
-        })
-    );
-    assert_eq!(
-        parse_frame(r#"{"kind":"link_end","link":"L"}"#),
-        Ok(InboundFrame::LinkEnd {
-            link: "L".into(),
-            error: None
-        })
     );
 }

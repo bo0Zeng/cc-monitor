@@ -11,36 +11,26 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 // 仍然 `export`：不缩小已经导出的表面（要用的话从这个枢纽拿）。
 import type { JsonlLinePayload } from "./generated/JsonlLinePayload";
 import type { SessionStreamFrame } from "./generated/SessionStreamFrame";
-import type { SessionEndedPayload } from "./generated/SessionEndedPayload";
-import type { SessionIdlePayload } from "./generated/SessionIdlePayload";
-import type { SessionActivityPayload } from "./generated/SessionActivityPayload";
+import type { SessionStatus } from "./generated/SessionStatus";
 import type { SessionLiveCardPayload } from "./generated/SessionLiveCardPayload";
-import type { SessionRunsPayload } from "./generated/SessionRunsPayload";
-import { decodeRunsPayload } from "./runs";
+import type { SessionRuns } from "./generated/SessionRuns";
 import type { SessionBranchPayload } from "./generated/SessionBranchPayload";
-import type { SessionWatchPayload } from "./generated/SessionWatchPayload";
-import type { SessionContainer } from "./generated/SessionContainer";
-import type { SwitchCells } from "./generated/SwitchCells";
-// 本文件内部也用这些名字（8 处），所以 import + re-export 都要有：
-// 只写 `export type { … } from` 不会把名字带进本地作用域。
-export type {
-  JsonlLinePayload,
-  SessionEndedPayload,
-  SessionIdlePayload,
-  SessionActivityPayload,
-};
+import type { WatchFrom } from "./generated/WatchFrom";
+import type { WireSessionContainer } from "./generated/WireSessionContainer";
+import type { Switch } from "./generated/Switch";
+export type { JsonlLinePayload };
 
 
 export interface EventHandlers {
   /** 一行记录。payload 带 seq，RecordTimeline 按 seq 排进 DOM，先到后到不影响画面。 */
   onLine: (e: JsonlLinePayload) => void;
-  /** 会话已结束；`sw` ＝ 那台随去向带来的「此刻能不能换」（壳自己补的已结束没有 ⇒ `null`）。 */
-  onSessionEnded: (sessionId: string, sw?: SwitchCells | null) => void;
+  /** 会话已结束；`sw` · `order` ＝ 那台随去向带来的「此刻能不能换」与组内序。 */
+  onSessionEnded: (sessionId: string, sw?: Switch | null, order?: number | null) => void;
   /**
    * 远端 claude 退出但 tmux 会话仍在 → 灰灯（idle-tmux），不归档。后端在会话没了而 `@ccm_sid` 还在时发 `idle` 格（与 ended 格对同一 sid 二选一）。
    * 与 ended 格同进 queue：要相对该会话的行与之后的 remote-added 保序。前端 tabs.markTmuxIdle 置灰点。
    */
-  onSessionIdle?: (sessionId: string, sw?: SwitchCells | null) => void;
+  onSessionIdle?: (sessionId: string, sw?: Switch | null, order?: number | null) => void;
   /**
    * 会话（重新）变活。后端在 sessions/<PID>.json 新增且 PID 探活通过时发 —— 崩溃 → Tab 灰显 → `/resume` 后回 live，无需 F5。
    * 与 ended 格同进 queue（保持结束 / 复活的先后）。
@@ -80,12 +70,12 @@ export interface EventHandlers {
    * 活会话住在什么容器里（`container` 格，本机与远端同一个事件）。
    * 进 queue：与 `remote-added` / 行保序（先建 tab、再落容器；早到的由 TabManager 暂存）。
    */
-  onSessionContainer?: (sessionId: string, container: SessionContainer) => void;
+  onSessionContainer?: (sessionId: string, container: WireSessionContainer) => void;
   /**
    * 一个会话的运行表（会话流里的 `runs` 格，那台后端的成品）：列在 agent 面板里，状态标到派出它的那张工具卡上（不进主 tab 的消息流）。
    * 进 queue：排在那个会话的宣告之后（处理它时 tab 已在）。
    */
-  onSessionRuns?: (p: SessionRunsPayload) => void;
+  onSessionRuns?: (p: SessionRuns) => void;
   /**
    * 一个会话的主线外清单（会话流里的 `branch` 格，那台后端的成品、整份）：清单里那几条卡折成「回退掉的」一段。
    * 进 queue：排在那个会话的宣告之后（处理它时 tab 已在）。
@@ -133,10 +123,9 @@ export interface EventHandlers {
    */
   onChanged?: (origin: Origin, topic: Topic, change: Changed) => void;
   /**
-   * 会话红绿灯：后端只在 sessions/<PID>.json 的官方 status 变化时发（天然稀疏，当场派）。
-   * "busy" = 运行中 / "idle"、"shell" = 等输入 / "waiting" = 等弹窗决定（waiting_for 细分原因）。
+   * 会话红绿灯与名字（那台 `session_status`；宣告那一格也带一份）：天然稀疏，当场派。
    */
-  onSessionActivity?: (payload: SessionActivityPayload) => void;
+  onSessionActivity?: (payload: SessionStatus) => void;
   /**
    * 那台机器的会话流里**丢了几格**（没 credit 时句柄丢了、原位报的 `gap`）。
    * 丢的是哪几个会话的哪几行，流里说不出来（一条订阅里混着多个会话）⇒ 宿主对那台机器的每个 tab 按行号补
@@ -147,7 +136,7 @@ export interface EventHandlers {
    * 这个会话刚进了那台那条流的「在看」名单（`watch` 格）：它的这份记录从第 `seq` 行起上流，之前没上流的那段由宿主补
    * （`TabManager.onSessionWatch`）。进 queue：排在那之前到的行后面（补的起点按已有的算）。
    */
-  onSessionWatch?: (origin: Origin, p: SessionWatchPayload) => void;
+  onSessionWatch?: (origin: Origin, p: WatchFrom) => void;
 }
 
 /**
@@ -159,25 +148,6 @@ export interface EventHandlers {
  * 落后超过一整个窗口的实时行被句柄丢掉、原位报 `gap`（`onStreamGap` 按行号补）。
  */
 export const STREAM_WINDOW = 20_000;
-
-/**
- * 〔登记的例外〕会话流里**不吃 credit、不丢**的那几种格（会话起停 / 状态的成品）。
- * 收到它们不还 credit（monitor 那一侧交它们时本来就没扣）。Rust 那一侧同一张表是 `ui_contract.rs::SessionStreamFrame::takes_credit`，
- * 两侧对金样 `tests/__fixtures__/session-stream-credit.golden.json`。
- */
-export const CREDIT_EXEMPT_FRAMES = [
-  "live",
-  "activity",
-  "container",
-  "idle",
-  "ended",
-  "unseen",
-  "listed",
-  "snapshot_inflight",
-  "runs",
-  "branch",
-  "watch",
-] as const;
 
 /**
  * `session-live-card` 订阅的 credit 窗口（格）：webview 这一跳在途的活卡帧最多这么多格，超了 monitor 那一侧丢、
@@ -192,17 +162,17 @@ interface StreamHold {
   owed: number;
 }
 
-/** queue 中的不同事件类型，drain 按 kind 派发 */
-type QueueItem =
-  // 流里来的三种带 `grant`：处理掉它就还那条订阅一格 credit。
-  | { kind: "payload"; payload: JsonlLinePayload; grant?: StreamHold }
-  | { kind: "batch-start"; grant?: StreamHold }
-  | { kind: "batch-end"; grant?: StreamHold }
+/** queue 中的不同事件类型，drain 按 kind 派发；流里来的每一格带 `grant`：处理掉它就还那条订阅一格 credit。 */
+type QueueItem = Queued & { grant?: StreamHold };
+type Queued =
+  | { kind: "payload"; payload: JsonlLinePayload }
+  | { kind: "batch-start" }
+  | { kind: "batch-end" }
   // 那台机器的流里丢了几格（`gap`）。
   | { kind: "gap"; origin: Origin }
-  | { kind: "ended"; sessionId: string; switch: SwitchCells | null }
+  | { kind: "ended"; sessionId: string; switch: Switch | null; order: number | null }
   // 灰灯（idle-tmux）—— 与 ended 同 queue 保序，见 onSessionIdle。
-  | { kind: "idle"; sessionId: string; switch: SwitchCells | null }
+  | { kind: "idle"; sessionId: string; switch: Switch | null; order: number | null }
   | {
       kind: "started";
       sessionId: string;
@@ -226,15 +196,15 @@ type QueueItem =
       hidden: SessionHidden | null;
     }
   // 容器事实 / 某台清单报完了 —— 同一 queue 保序（见 EventHandlers 里两条的注释）。
-  | { kind: "container"; sessionId: string; container: SessionContainer }
-  | { kind: "runs"; payload: SessionRunsPayload }
+  | { kind: "container"; sessionId: string; container: WireSessionContainer }
+  | { kind: "runs"; payload: SessionRuns }
   | { kind: "branch"; payload: SessionBranchPayload }
-  | { kind: "watch"; origin: Origin; payload: SessionWatchPayload }
+  | { kind: "watch"; origin: Origin; payload: WatchFrom }
   | { kind: "listed"; origin: string; all: boolean }
   // 那台机器看不见了 —— 同一 queue 保序（见 EventHandlers.onOriginUnseen）。
   | { kind: "unseen"; origin: string }
   // 记录文件不见了 / 被改过已从头重读 —— 流里的一格，与行同序（见 EventHandlers.onSessionFileNotice）。
-  | { kind: "file-notice"; sessionId: string; change: string; grant?: StreamHold };
+  | { kind: "file-notice"; sessionId: string; change: string };
 
 /**
  * drain 用的 FIFO：**数组 ＋ 头下标**，出队 O(1)。
@@ -482,9 +452,9 @@ export async function bindEvents(
         perf.batchDrainEnd = performance.now();
         scheduleBatchEnd();
       } else if (item.kind === "ended") {
-        handlers.onSessionEnded(item.sessionId, item.switch);
+        handlers.onSessionEnded(item.sessionId, item.switch, item.order);
       } else if (item.kind === "idle") {
-        handlers.onSessionIdle?.(item.sessionId, item.switch);
+        handlers.onSessionIdle?.(item.sessionId, item.switch, item.order);
       } else if (item.kind === "started") {
         handlers.onSessionStarted?.(item.sessionId, {
           cwd: item.cwd,
@@ -607,6 +577,12 @@ export async function bindEvents(
   };
 
   const onStreamItems = (origin: Origin, hold: StreamHold, items: Item[]): void => {
+    // 每一格都占过一格 credit：进队的处理掉再还，当场派的 · 读不懂的当场记还。
+    const take = (q: Queued): void => void queue.push({ ...q, grant: hold });
+    const owe = (): void => {
+      hold.owed += 1;
+      owedHolds.add(hold);
+    };
     for (const it of items) {
       if (it.t === "frame") {
         let f: SessionStreamFrame | null = null;
@@ -616,7 +592,7 @@ export async function bindEvents(
           f = null;
         }
         if (f !== null && typeof f === "object" && "line" in f) {
-          queue.push({ kind: "payload", payload: f.line, grant: hold });
+          take({ kind: "payload", payload: f.line });
           // 突发检测：逐行来的实时格没有批哨兵包着，任何突发源积压到阈值就主动进批模式 —— 哨兵插到队首，剩下的积压走惰性路径。
           // 已在批模式或哨兵已入队则不重复；退出走 drain 清空后的 grace 补排。
           if (!inBatchMode && !burstArmed && queue.size > BURST_ENTER_THRESHOLD) {
@@ -624,67 +600,56 @@ export async function bindEvents(
             queue.pushFront({ kind: "batch-start" });
           }
         } else if (f !== null && typeof f === "object" && "file_notice" in f) {
-          queue.push({
-            kind: "file-notice",
-            sessionId: f.file_notice.session_id,
-            change: f.file_notice.change,
-            grant: hold,
-          });
-        } else if (f !== null && typeof f === "object" && "live" in f) {
-          // 会话起停 / 状态的成品：与行同一条流、同序；不吃 credit（不带 grant）。本机远端同一形，只差建 tab 那一跳。
-          const p = f.live;
-          // 隐藏那一格：后端判好、壳原样转来，界面照抄。
-          const hidden = p.hidden;
-          if (isLocalOrigin(p.origin)) {
-            queue.push({
+          take({ kind: "file-notice", sessionId: f.file_notice.session_id, change: f.file_notice.change });
+        } else if (f !== null && typeof f === "object" && "added" in f) {
+          // 活会话（那台的 `session_added`）：与行同一条流、同序。本机远端同一形，只差建 tab 那一跳；哪台由订阅说。
+          const p = f.added;
+          if (isLocalOrigin(origin)) {
+            take({
               kind: "started",
-              sessionId: p.session_id,
+              sessionId: p.sid,
               cwd: p.cwd ?? null,
               projectDir: p.project_dir ?? null,
-              background: p.background,
+              background: p.background ?? false,
               name: p.name ?? null,
-              hidden,
+              hidden: p.hidden ?? null,
             });
           } else {
-            queue.push({
+            take({
               kind: "remote-added",
-              sessionId: p.session_id,
-              origin: p.origin,
-              background: p.background,
+              sessionId: p.sid,
+              origin,
+              background: p.background ?? false,
               attachable: p.attachable ?? null,
               cwd: p.cwd ?? null,
               projectDir: p.project_dir ?? null,
               name: p.name ?? null,
-              hidden,
+              hidden: p.hidden ?? null,
             });
           }
-        } else if (f !== null && typeof f === "object" && "activity" in f) {
+          // 此刻的灯与名字当场派（同 `status`）；容器排在建 tab 之后（这一格的 credit 已随宣告记过）。
+          handlers.onSessionActivity?.(p);
+          if (p.container) queue.push({ kind: "container", sessionId: p.sid, container: p.container });
+        } else if (f !== null && typeof f === "object" && "status" in f) {
           // 红绿灯稀疏，当场派（不进 queue）。
-          handlers.onSessionActivity?.(f.activity);
-        } else if (f !== null && typeof f === "object" && "container" in f) {
-          queue.push({ kind: "container", sessionId: f.container.session_id, container: f.container.container });
+          owe();
+          handlers.onSessionActivity?.(f.status);
         } else if (f !== null && typeof f === "object" && "runs" in f) {
-          const runs = decodeRunsPayload(f.runs);
-          if (runs) queue.push({ kind: "runs", payload: runs });
-          else console.warn("[events] 运行表那一格形状不对，不收：", JSON.stringify(f.runs).slice(0, 200));
+          take({ kind: "runs", payload: f.runs });
         } else if (f !== null && typeof f === "object" && "branch" in f) {
-          const branch = decodeBranchPayload(f.branch);
-          if (branch) queue.push({ kind: "branch", payload: branch });
-          else console.warn("[events] 主线外清单那一格形状不对，不收：", JSON.stringify(f.branch).slice(0, 200));
+          take({ kind: "branch", payload: f.branch });
         } else if (f !== null && typeof f === "object" && "watch" in f) {
-          const w = decodeWatchPayload(f.watch);
-          if (w) queue.push({ kind: "watch", origin, payload: w });
-          else console.warn("[events] 上流点那一格形状不对，不收：", JSON.stringify(f.watch).slice(0, 200));
-        } else if (f !== null && typeof f === "object" && "idle" in f) {
-          queue.push({ kind: "idle", sessionId: f.idle.session_id, switch: f.idle.switch });
-        } else if (f !== null && typeof f === "object" && "ended" in f) {
-          queue.push({ kind: "ended", sessionId: f.ended.session_id, switch: f.ended.switch });
+          take({ kind: "watch", origin, payload: f.watch });
+        } else if (f !== null && typeof f === "object" && "state" in f) {
+          const st = f.state;
+          take({ kind: st.state === "ended" ? "ended" : "idle", sessionId: st.sid, switch: st.switch, order: st.state_order });
         } else if (f !== null && typeof f === "object" && "unseen" in f) {
-          queue.push({ kind: "unseen", origin: f.unseen.origin });
+          take({ kind: "unseen", origin: f.unseen.origin });
         } else if (f !== null && typeof f === "object" && "listed" in f) {
-          queue.push({ kind: "listed", origin: f.listed.origin, all: f.listed.all === true });
+          take({ kind: "listed", origin: f.listed.origin, all: f.listed.all === true });
         } else if (f !== null && typeof f === "object" && "snapshot_inflight" in f) {
           // 快照在途电平 —— 纯批调度信号，不进 queue。
+          owe();
           snapshotInflight = f.snapshot_inflight.count;
         } else if (f !== null && typeof f === "object" && "batch" in f) {
           if (f.batch === "start") {
@@ -692,16 +657,15 @@ export async function bindEvents(
               perf.firstJsonlBatch = performance.now();
               console.info(`[perf] first stream batch received @ ${perf.firstJsonlBatch.toFixed(0)}ms`);
             }
-            queue.push({ kind: "batch-start", grant: hold });
+            take({ kind: "batch-start" });
           } else {
             // 每块末尾一个 —— 300ms grace 内有新 payload / 新块都续期
-            queue.push({ kind: "batch-end", grant: hold });
+            take({ kind: "batch-end" });
           }
         } else {
-          // 两端契约对不上的一格：不猜，记一笔；它占过 credit，照还。
+          // 两端契约对不上的一格：不猜，记一笔。
+          owe();
           console.warn("[events] 会话流里一格读不懂，跳过：", it.body.slice(0, 200));
-          hold.owed += 1;
-          owedHolds.add(hold);
         }
       } else if (it.t === "gap") {
         console.warn(
@@ -810,24 +774,6 @@ function openStream(origin: Origin, kind: string, window: number, sink: (items: 
   return chan.subscribe(origin, kind, null, window, sink);
 }
 
-/** 会话流的 `watch` 格 ⇒ 成品；形状不对 ⇒ `null`（不收，也不猜）。 */
-export function decodeWatchPayload(v: unknown): SessionWatchPayload | null {
-  if (v === null || typeof v !== "object") return null;
-  const o = v as Record<string, unknown>;
-  if (typeof o.session_id !== "string" || typeof o.path !== "string") return null;
-  if (typeof o.seq !== "number" || !Number.isInteger(o.seq) || o.seq < 0) return null;
-  return { session_id: o.session_id, path: o.path, seq: o.seq };
-}
-
-/** 会话流的 `branch` 格 ⇒ 成品；形状不对 ⇒ `null`（不收，也不猜）。 */
-export function decodeBranchPayload(v: unknown): SessionBranchPayload | null {
-  if (v === null || typeof v !== "object" || Array.isArray(v)) return null;
-  const o = v as { session_id?: unknown; off?: unknown };
-  if (typeof o.session_id !== "string" || !Array.isArray(o.off)) return null;
-  if (!o.off.every((x): x is string => typeof x === "string")) return null;
-  return { session_id: o.session_id, off: o.off };
-}
-
 /** 跟着一个会话（查看器 · 独立查看窗）：流里那一个会话的事。 */
 export type FollowEvent =
   /** 新的记录行（含订阅当场交的留存；已经有的由调用方按 `seq` 去重）。 */
@@ -839,7 +785,7 @@ export type FollowEvent =
   /** 那台看不看得见（看不见 ⇒ 这条流此刻不在交东西）。 */
   | { t: "sight"; seen: boolean }
   /** 这个会话的运行表（每次变都是整份）。 */
-  | { t: "runs"; payload: SessionRunsPayload }
+  | { t: "runs"; payload: SessionRuns }
   /** 这个会话的主线外清单（每次变都是整份）。 */
   | { t: "branch"; off: string[] }
   /** 这个会话刚进了这条流的「在看」名单：从第 `seq` 行起上流，之前没上流的那段调用方按行号补。 */
@@ -847,44 +793,37 @@ export type FollowEvent =
 
 /**
  * **跟着一个会话**：订 `session-lines/<sid>`（与独立查看窗同一条订阅；留存订阅当场交、之后的实时行接着交），
- * 每一批格翻成 [`FollowEvent`] 交给 `sink`；吃 credit 的格交完当场还。返回时 monitor 那一侧已登记好。
+ * 每一批格翻成 [`FollowEvent`] 交给 `sink`；每一格交完当场还一格 credit。返回时 monitor 那一侧已登记好。
  */
 export async function followSession(origin: Origin, sid: string, sink: (e: FollowEvent) => void): Promise<{ stop(): void }> {
   const hold: StreamHold = { sub: null, owed: 0 };
-  const exempt: readonly string[] = CREDIT_EXEMPT_FRAMES;
   const feed = (items: Item[]): void => {
     const lines: JsonlLinePayload[] = [];
     let used = 0;
     const out: FollowEvent[] = [];
     for (const it of items) {
       if (it.t === "frame") {
-        let f: Record<string, unknown> | null = null;
+        let f: SessionStreamFrame | null = null;
         try {
-          const v: unknown = JSON.parse(it.body);
-          f = v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+          f = JSON.parse(it.body) as SessionStreamFrame;
         } catch {
           f = null;
         }
-        const kind = f ? Object.keys(f)[0] : undefined;
-        if (kind === undefined || !exempt.includes(kind)) used += 1;
-        if (!f) continue;
-        const line = f.line as JsonlLinePayload | undefined;
-        if (line && line.session_id === sid) lines.push(line);
-        else if ("ended" in f && (f.ended as { session_id?: string }).session_id === sid) out.push({ t: "live", live: false });
-        else if ("live" in f && (f.live as { session_id?: string }).session_id === sid) out.push({ t: "live", live: true });
-        else if ("unseen" in f) out.push({ t: "sight", seen: false });
+        used += 1;
+        if (f === null || typeof f !== "object") continue;
+        if ("line" in f) {
+          if (f.line.session_id === sid) lines.push(f.line);
+        } else if ("state" in f) {
+          if (f.state.sid === sid && f.state.state === "ended") out.push({ t: "live", live: false });
+        } else if ("added" in f) {
+          if (f.added.sid === sid) out.push({ t: "live", live: true });
+        } else if ("unseen" in f) out.push({ t: "sight", seen: false });
         else if ("runs" in f) {
-          const p = decodeRunsPayload(f.runs);
-          if (p === null) console.warn("[events] 运行表那一格形状不对，不收：", JSON.stringify(f.runs).slice(0, 200));
-          else if (p.session_id === sid) out.push({ t: "runs", payload: p });
+          if (f.runs.sid === sid) out.push({ t: "runs", payload: f.runs });
         } else if ("branch" in f) {
-          const p = decodeBranchPayload(f.branch);
-          if (p === null) console.warn("[events] 主线外清单那一格形状不对，不收：", JSON.stringify(f.branch).slice(0, 200));
-          else if (p.session_id === sid) out.push({ t: "branch", off: p.off });
+          if (f.branch.sid === sid) out.push({ t: "branch", off: f.branch.off });
         } else if ("watch" in f) {
-          const p = decodeWatchPayload(f.watch);
-          if (p === null) console.warn("[events] 上流点那一格形状不对，不收：", JSON.stringify(f.watch).slice(0, 200));
-          else if (p.session_id === sid) out.push({ t: "from", path: p.path, seq: p.seq });
+          if (f.watch.sid === sid) out.push({ t: "from", path: f.watch.path, seq: f.watch.seq });
         }
       } else if (it.t === "gap") {
         out.push({ t: "gap" });
@@ -894,7 +833,7 @@ export async function followSession(origin: Origin, sid: string, sink: (e: Follo
         out.push({ t: "sight", seen: true });
       }
     }
-    // 吃 credit 的格当场还（订阅返回之前到的欠着，返回时一起还）。
+    // 每一格当场还（订阅返回之前到的欠着，返回时一起还）。
     if (used > 0) {
       if (hold.sub) {
         hold.sub.want(used + hold.owed);

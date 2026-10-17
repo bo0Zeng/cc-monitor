@@ -178,18 +178,19 @@ pub(crate) fn hello_verdict(
     want_build: Option<&str>,
     want_env: &[(String, String)],
 ) -> HelloVerdict {
-    let Ok(frame) = crate::stream_source::parse_frame(line) else {
+    if cmd_wire::frame::kind_of(line).is_err() {
         return HelloVerdict::Stranger(copy_text(
             "rsLocalBackendHost.hello.notBackendLine",
             &[("bytes", &(line.len()).to_string())],
         ));
-    };
-    let crate::stream_source::InboundFrame::Hello { build_id, .. } = &frame else {
+    }
+    let Some(cmd_wire::frame::HelloHead { build_id, .. }) = cmd_wire::frame::HelloHead::of(line)
+    else {
         return HelloVerdict::Stranger(
             copy_text("rsLocalBackendHost.hello.notBackend", &[]).into(),
         );
     };
-    if let Some(ours) = want_build.filter(|w| build_id != w) {
+    if let Some(ours) = want_build.filter(|w| build_id != *w) {
         return HelloVerdict::Stranger(copy_text(
             "rsLocalBackendHost.hello.buildMismatch",
             &[
@@ -336,8 +337,8 @@ fn probe_listen_socket(sock_path: &std::path::Path, want_env: &[(String, String)
         }
         HelloVerdict::Stranger(why) => {
             // 在听的是另一份构建（终端里先起的那一份）⇒ 本机那一台的状态成品按两边构建的序说。
-            if let Ok(crate::stream_source::InboundFrame::Hello { build_id, .. }) =
-                crate::stream_source::parse_frame(&line)
+            if let Some(cmd_wire::frame::HelloHead { build_id, .. }) =
+                cmd_wire::frame::HelloHead::of(&line)
             {
                 if mine.is_some_and(|m| m != build_id) {
                     crate::machine_state::note_local_foreign(Some(&build_id));
@@ -391,43 +392,37 @@ fn read_handshake_line(mut sock: &own_chan::BlockingStream) -> Result<String, Sa
     }
 }
 
-// attach 行（「我要流」＋ 时区 ＋ 出口声明）住 `resident-client`（本机 · 远端 · 手机同一处拼）。
+// attach 行（「我要流」＋ 时区 ＋ 手上这一版 ＋ 在看名单）住 `resident-client`（本机 · 远端 · 手机同一处拼）；本机不带这一版（换装只认同一版，`hello_verdict`）。
 pub(crate) use resident_client::attach::attach_line;
 
-/// 交 attach 行，换一句「可以」。门在连上那一刻（套接字只给本人 ＋ 对端 uid），这一行只是「我要流」。
-fn send_attach(sock: &own_chan::BlockingStream) -> Result<(), Said> {
+/// 交 attach 行（带在看名单），换一句「可以」。门在连上那一刻（套接字只给本人 ＋ 对端 uid），这一行只是「我要流」。
+fn send_attach(
+    sock: &own_chan::BlockingStream,
+    watch: &cmd_wire::watch::WatchAsk,
+) -> Result<(), Said> {
     use std::io::Write;
     let mut w = sock;
-    w.write_all(attach_line(host_core::viewer_tz().as_deref(), None).as_bytes())
-        .and_then(|()| w.flush())
-        .map_err(|e| {
-            Said::with_raw(
-                copy_text(
-                    "rsLocalBackendHost.attach.sendFailed",
-                    &[("why", &copy_core::io_reason(e.kind()))],
-                ),
-                &e,
-            )
-        })?;
-    let line = read_handshake_line(sock)?;
-    let v: serde_json::Value = serde_json::from_str(line.trim()).map_err(|e| {
+    w.write_all(
+        attach_line(host_core::viewer_tz().as_deref(), None, Some(watch.clone())).as_bytes(),
+    )
+    .and_then(|()| w.flush())
+    .map_err(|e| {
         Said::with_raw(
-            copy_text("rsLocalBackendHost.attach.notJson", &[]),
-            format!("{e}\n{line}"),
+            copy_text(
+                "rsLocalBackendHost.attach.sendFailed",
+                &[("why", &copy_core::io_reason(e.kind()))],
+            ),
+            &e,
         )
     })?;
-    match v.get("attach").and_then(|x| x.as_str()) {
-        Some("ok") => Ok(()),
+    let line = read_handshake_line(sock)?;
+    match cmd_wire::attach::AttachReply::of(&line) {
+        Some(cmd_wire::attach::AttachReply::Ok { .. }) => Ok(()),
         // 对面**出声地**拒了 —— 把它的理由原样带上来，别翻译成一句更含糊的话。
-        Some("refused") => {
-            let reason = v.get("reason").and_then(|x| x.as_str()).unwrap_or("?");
-            Err(Said::of(
-                "rsLocalBackendHost.attach.refused",
-                &[("reason", &reason.to_string())],
-            )
-            .into())
+        Some(cmd_wire::attach::AttachReply::Refused { reason }) => {
+            Err(Said::of("rsLocalBackendHost.attach.refused", &[("reason", &reason)]).into())
         }
-        _ => Err(Said::of(
+        None => Err(Said::of(
             "rsLocalBackendHost.attach.unreadable",
             &[("line", &line.to_string())],
         )
@@ -647,11 +642,11 @@ fn outcome_of_status(status: std::process::ExitStatus) -> Option<crate::backend_
 /// 脱离那条路上「它跟我们说过话没有」这一维。
 ///
 /// ★ **它是从一个事实推出来的，不是一个孤零零的字面量**：入参就是那道门的产物。
-/// [`attach_stream`] 开头两行是 `parse_frame` + `BackendHello::from_hello_frame`，
+/// [`attach_stream`] 开头两行是 `stream_source::decode` + `inbound_client::witness_of`，
 /// 任一给不出东西就 `Err` 返回、**根本进不到流循环**，也就没有人调得到 [`reap_detached`]。
 /// ⇒ **拿得出一份 [`crate::inbound_client::BackendHello`] = 一帧合法 hello 已经到手**，
 /// 而那正是「它说过话」的定义。要这个参数是为了让这条推理**在类型上**成立：
-/// 没有见证就调不出这个函数（见证的构造入口只有 `from_hello_frame` 一个，
+/// 没有见证就调不出这个函数（见证的构造入口只有 `BackendHello::of` 一个，
 /// 由 `inbound_client` 那条「见证不许凭空造」的判据钉着）。
 ///
 /// ⚠ 前提哪天变了（有人让 `attach_stream` 不带 hello 也能进流循环），
@@ -731,13 +726,18 @@ fn shout_if_the_ledger_refused(rec: Option<crate::backend_policy::Recorded>) {
 /// # 它与 `local_backend::local_stdio_consumer` 是同一件事的两种载体
 ///
 /// 那一份吃 `ChildStdin`/`ChildStdout`，这一份吃一条套接字的两半。
-/// **复用的是纯零件**（`parse_frame` · `BackendHello::from_hello_frame` ·
+/// **复用的是纯零件**（`stream_source::decode` · `inbound_client::witness_of` ·
 /// `park_owned_writer` · `read_capped_line`），没有把一个绑传输的循环硬掰成泛型 ——
 /// 那是 `local_stdio_consumer` 头注自己给的分寸。
-fn attach_stream(sock: own_chan::BlockingStream, hello_line: &str) -> Result<(), Said> {
-    let frame = crate::stream_source::parse_frame(hello_line)
+/// `carried` ＝ attach 行带过的那份名单（接上之后交本机名单台：握手中变了 ⇒ 它当场补报）。
+fn attach_stream(
+    sock: own_chan::BlockingStream,
+    hello_line: &str,
+    carried: &cmd_wire::watch::WatchAsk,
+) -> Result<(), Said> {
+    let frame = crate::stream_source::decode(hello_line)
         .map_err(|_| Said::of("rsLocalBackendHost.stream.badFirstLine", &[]))?;
-    let witness = crate::inbound_client::BackendHello::from_hello_frame(&frame)
+    let witness = crate::inbound_client::witness_of(&frame)
         .ok_or_else(|| Said::of("rsLocalBackendHost.stream.notHello", &[]))?;
     // ★ `K-P3b`：**「它说过话没有」这一维就在这一行变真的** —— 上面那道门给出见证的那一刻。
     //   下面把它一路带到收尸那一刻，而不是在那边写一个 `Handshake::Spoke` 字面量。
@@ -750,6 +750,7 @@ fn attach_stream(sock: own_chan::BlockingStream, hello_line: &str) -> Result<(),
             })?;
     let client = crate::inbound_client::park_owned_writer(wr).into_client(witness);
     crate::inbound_client::register(crate::inbound_client::LOCAL_ORIGIN, client.clone());
+    crate::stream_watch::desk(&crate::origin::Origin::local()).up(&client, Some(carried));
     tracing::info!(
         "本机入方向通道已登记（常驻载体）：origin={}",
         crate::inbound_client::LOCAL_ORIGIN
@@ -800,16 +801,20 @@ fn attach_stream(sock: own_chan::BlockingStream, hello_line: &str) -> Result<(),
                 }
                 continue;
             };
-            let Some(f) = unread.take(line, &mut tally, &crate::stream_source::local_health) else {
+            let Some(f) = unread.take(
+                line,
+                Some(&client),
+                &mut tally,
+                &crate::stream_source::local_health,
+            ) else {
                 continue;
             };
-            // 本机的 tmux 帧（`P3` 刀 1）·应答 · 链路帧 —— 与 stdio 那条载体**同一个吸收点**，
-            // 理由与前置条件写在 `local_backend::absorb_local_frame` 的头注上，这里不再抄一份散文。
-            // 交回来的内容帧送进本机内容通道 —— 这是 tokio 任务 ⇒ `.await` 那一形（满了就停读：级 1 回推）。
-            if let Some(f) = crate::local_backend::absorb_local_frame(
-                f,
-                Some(&client),
+            // 与 stdio 那条载体同一处分派；有序的那几种送进本机内容通道 —— 这是 tokio 任务 ⇒ `.await` 那一形（满了就停读：级 1 回推）。
+            if let Some(f) = crate::stream_source::route(
+                crate::stream_source::Via::Local,
                 &crate::origin::Origin::local(),
+                Some(&client),
+                f,
             ) {
                 crate::local_lines::deliver(f).await;
             }
@@ -1020,7 +1025,11 @@ fn adopt_with(
     match got {
         Ok(None) => Adopt::None,
         Ok(Some((conn, hello))) => {
-            match send_attach(&conn).and_then(|()| attach_stream(conn, &hello)) {
+            // attach 行带本机名单台此刻那份：后端从第一帧起照它发；接上之后把这条连接交给名单台。
+            let carried =
+                crate::stream_watch::desk(&crate::origin::Origin::local()).ask_for_attach();
+            match send_attach(&conn, &carried).and_then(|()| attach_stream(conn, &hello, &carried))
+            {
                 Ok(()) => Adopt::Attached,
                 Err(e) => Adopt::Refused(e),
             }

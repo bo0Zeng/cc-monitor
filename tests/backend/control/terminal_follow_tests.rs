@@ -140,7 +140,7 @@ fn eventually(mut f: impl FnMut() -> bool) -> bool {
 fn screen_of(f: &Frame) -> (String, u64, Value) {
     match f {
         Frame::TerminalScreen(crate::wire::TerminalScreen { ticket, seq, view }) => {
-            (ticket.clone(), *seq, view.clone())
+            (ticket.clone(), *seq, serde_json::to_value(view).unwrap())
         }
         other => panic!("等的是一帧画面，来的是 {other:?}"),
     }

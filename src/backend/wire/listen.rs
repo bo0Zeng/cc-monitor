@@ -10,7 +10,7 @@
 //!
 //! # 两档连接，hello 写在分档之前
 //!
-//! - 流：attach 行形状对 ⇒ 这条连接接管出 / 入两个方向（[`admit`]）；
+//! - 流：attach 行形状对 ⇒ 这条连接接管出 / 入两个方向（[`admit`]），回话里带这台相对客户端那一版的新旧；
 //!   这台一份 watcher，每条连接各一份投影（出方向通道 · 名单 · 丢帧账）/ inbound / writer（`main.rs::serve_listening`），几个前端可以同时挂着。
 //! - 不限次的「只读 hello 就走」：连上就有 hello，读完即关。
 //!
@@ -23,6 +23,8 @@
 //!    （换地方 = 每台机 N 个 backend，中转口与全部 SSH 各 N 份）。宿主连上去先读 hello 比对，对不上就出声并拒绝。
 //! 2. 一个定时器都没有：`accept` 与读一行都阻塞在内核事件上（`src/backend/clippy.toml` 的 `disallowed-methods`）。
 //! 3. 别的 uid 连进来（root 例外不了：内核报的就是它的 uid）⇒ 关掉、出声，hello 都不给。
+
+use cmd_wire::attach::{AttachLine, AttachReply};
 
 /// 宿主告诉后端「你是常驻的那一个」的 env 名（值 `1`）。听哪个套接字不交：按家算，宿主与后端同一个函数。
 pub const ENV_RESIDENT: &str = crate::platform::child_env::RESIDENT;
@@ -37,10 +39,7 @@ pub const EXIT_ADDR_IN_USE: i32 = 3;
 /// 常驻配置不成立（开关值不认得 · 沙箱跑却要占真家 · 绑不上）的退出码。**fail closed**：宁可不起。
 pub const EXIT_BAD_LISTEN_CONFIG: i32 = 4;
 
-/// 认证通过之后回给客户端的那一行。
-pub const ATTACH_OK_LINE: &str = "{\"attach\":\"ok\"}\n";
-
-/// 一行 attach 请求的字节上限。请求形如 `{"attach":true,"flags":[…]}`（几十字节），8 KiB 给了两个量级余量。
+/// 一行 attach 请求的字节上限。请求形如 `{"attach":true,"tz":…,"mine":…}`（几十字节），8 KiB 给了两个量级余量。
 /// 少了它就是一个无界堆分配：对端可以一直发字节不发换行。
 /// 超限：拒收 + 回错（关连接并出声，不静默截断成一行看起来对的 JSON）。登记住址 `tests/frontend/shell/byte_cap_registry.rs`。
 pub const ATTACH_LINE_CAP: usize = 8 * 1024;
@@ -134,51 +133,43 @@ pub fn mode_from(get: &dyn Fn(&str) -> Option<String>) -> Result<Mode, String> {
     }
 }
 
-/// 一条 attach 请求的裁决。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Verdict {
-    /// 形状对：要流。
-    Attach,
-    /// 根本不是一条 attach 请求（不是 JSON / 没有 `attach` 字段 / 值不是 `true`）。
-    Malformed,
-}
-
-/// 判一行 attach 请求。**纯函数**。形状：`{"attach":true}`（可带 `tz` · `view`，见 `stream::inbound::views::attach_flags`）。
-///
-/// 刻意**不复用 `wire::Frame`** —— 那是冻结兼容面（手机端在读），往它加变体是一次与手机端的契约变更；
-/// 而握手这件事只发生在 hello 之后、流之前，它不该出现在任何一条被消费的帧流里。
-pub fn attach_verdict(line: &str) -> Verdict {
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(line.trim()) else {
-        return Verdict::Malformed;
-    };
-    if v.get("attach") == Some(&serde_json::Value::Bool(true)) {
-        Verdict::Attach
-    } else {
-        Verdict::Malformed
-    }
-}
-
 /// 拒绝那一行。`reason` 只许是本模块的常量。
-pub fn refusal_line(reason: &str) -> String {
-    format!("{{\"attach\":\"refused\",\"reason\":\"{reason}\"}}\n")
+pub fn refusal_line(reason: &'static str) -> String {
+    AttachReply::Refused {
+        reason: reason.to_string(),
+    }
+    .line()
 }
 
-/// 这条连接给什么档。**把「谁占着流」这件事做成入参**，而不是去读一个全局 ——
-/// 入参才测得到「已经有人占着」那一支（否则那一支要真起两个客户端才走得到，
-/// 而那正是**空真**）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// 这条连接给什么档。
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Admit {
-    /// 交出流。
-    Stream,
+    /// 交出流：看的那一台的时区（原样，认不得 ⇒ UTC 由读的那一处定）· 回话里那一格（这台相对 attach 行的 `mine`；没带 ⇒ 缺）·
+    /// 在看名单（这条流从第一帧起照它发；没带 ⇒ 全发）。
+    Stream {
+        tz: Option<String>,
+        reply: AttachReply,
+        watch: Option<crate::wire::WatchAsk>,
+    },
     /// 拒绝，并把理由写回去（**出声**，不是静默 FIN —— 照 `relay::serve` 那条 503 的形状）。
     Refuse(&'static str),
 }
 
-/// 分档。多客户：形状对就交流，不看「有没有人占着」。
-pub fn admit(verdict: Verdict) -> Admit {
-    match verdict {
-        Verdict::Malformed => Admit::Refuse(REFUSE_MALFORMED),
-        Verdict::Attach => Admit::Stream,
+/// 判一行 attach 请求、分档。**纯函数**。形状是 `cmd_wire::attach::AttachLine`（认不得的格 · `attach` 不是 `true` · 不是 JSON ⇒ malformed）；
+/// 多客户：形状对就交流，不看「有没有人占着」。新旧按 `deploy_contract::build_relation(own, mine)` 判（序键是 `BUILD_ID` 的，哪一版后端算都一样）。
+pub fn admit(line: &str, own: &str) -> Admit {
+    match serde_json::from_str::<AttachLine>(line.trim()) {
+        Ok(l) => Admit::Stream {
+            reply: AttachReply::Ok {
+                relation: l
+                    .mine
+                    .as_deref()
+                    .map(|m| deploy_contract::build_relation(own, m)),
+            },
+            tz: l.tz,
+            watch: l.watch,
+        },
+        Err(_) => Admit::Refuse(REFUSE_MALFORMED),
     }
 }
 

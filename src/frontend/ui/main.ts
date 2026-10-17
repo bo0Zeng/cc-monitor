@@ -76,7 +76,7 @@ import { openSettingsWindow } from "./open-settings"; // 点「设置」有反�
 import * as dest from "./settings-dest";
 import { collectAccountRows, createEventRefresher } from "./session-accounts-poll";
 import { lastAccounts } from "./history-reads";
-import { decodeTasks, TasksPanel } from "./tasks-panel";
+import { TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
 import { MainDrawer } from "./main-drawer";
 import { TerminalPage, type Watched } from "./terminal-page";
@@ -857,14 +857,14 @@ window.addEventListener("DOMContentLoaded", async () => {
       tabs.onLine(e);
       recordFile.afterLine(e.session_id); // 又来了一行 ⇒ 「记录文件不见了」那一句收掉
     },
-    onSessionEnded: (sessionId, sw) => {
+    onSessionEnded: (sessionId, sw, order) => {
       const origin = tabs.tabsInOrder().find((t) => t.sessionId === sessionId)?.origin ?? null;
-      tabs.archiveTab(sessionId, sw ?? null);
+      tabs.archiveTab(sessionId, sw ?? null, order ?? null);
       accountsRefresher.request(); // 会话结束了
       if (origin !== null) void planNeeds.refresh(origin); // 接手的会话停了 ⇒ 那台的「需手动」可能多一条
     },
     // 远端 claude 退了但 tmux 会话仍在 → 灰灯（idle-tmux，不归档）。
-    onSessionIdle: (sessionId, sw) => tabs.markTmuxIdle(sessionId, sw ?? null),
+    onSessionIdle: (sessionId, sw, order) => tabs.markTmuxIdle(sessionId, sw ?? null, order ?? null),
     // 活会话的容器 · 某台机器的活会话清单报完了（说不清 → 已结束）。
     onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container),
     onOriginSessionsListed: (origin, all) => {
@@ -918,9 +918,9 @@ window.addEventListener("DOMContentLoaded", async () => {
           onAccountsChanged();
           break;
         case "tasks": {
-          // 帧里带了那个会话的清单（同 `tasks-list` 的应答）⇒ 同一个解码器收、直接落账；没带 / 解不开 / 可能漏了 ⇒ 重问。
-          const p = pushedProducts(change, decodeTasks);
-          for (const [sid, list] of p.got) if (sid !== null) tabs.updateTasks(sid, list);
+          // 帧里带了那个会话的清单（同 `tasks-list` 的应答）⇒ 直接落账；没带 / 可能漏了 ⇒ 重问。
+          const p = pushedProducts(change, "tasks");
+          for (const [sid, list] of p.got) if (sid !== null) tabs.updateTasks(sid, list.tasks);
           const ask = p.ask.filter((s): s is string => s !== null);
           if (p.all || ask.length > 0 || p.ask.includes(null)) tabs.refreshTasks(origin, ask, p.all || p.ask.includes(null));
           break;
@@ -957,8 +957,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     },
     // 会话红绿灯（后端翻好的活动态）
     onSessionActivity: (e) => {
-      tabs.updateName(e.session_id, e.label, e.label_project);
-      tabs.updateActivity(e.session_id, e.activity, e.waiting_for, e.activity_text, e.activity_tone, e.activity_order, e.switch);
+      tabs.updateName(e.sid, e.label, e.label_project ?? null);
+      tabs.updateActivity(e.sid, e.activity ?? null, e.waiting_for ?? null, e.activity_text, e.activity_tone, e.activity_order, e.switch);
     },
     // 远端会话宣告 → 骨架 Tab，附项目目录 / kind / name：骨架标题当场完整（bg → ⚙ ＋ 任务名）；没给项目目录 ⇒ 标题退到 aiTitle / sid。
     onRemoteSessionAdded: (sessionId, origin, meta) => {

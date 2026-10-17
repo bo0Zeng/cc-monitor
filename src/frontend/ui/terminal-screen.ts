@@ -7,9 +7,6 @@
  * - 反显 ＝ 前景背景对调，缺的那一边用画面的默认色（`default-fg` · `default-bg`）。
  * - 段越界截到行尾；重叠的后一段从前一段结束处起（字一个不丢不重）。
  */
-import { isObj } from "./ipc/decode";
-import { unreadable } from "./control-said";
-import type { Origin } from "./ipc/origin";
 import css from "./terminal-screen.module.css";
 
 /** 一段属性（列下标按字符，`from` 含、`to` 不含）。 */
@@ -37,32 +34,6 @@ const BASE = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "whi
 /** 认得的颜色名：8 色 ＋ 亮 8 色 ＋ 反显时补位的两格默认色。 */
 const NAMED = new Set([...BASE, ...BASE.map((c) => `bright-${c}`), "default-fg", "default-bg"]);
 const HEX = /^#[0-9a-f]{6}$/i;
-
-function spanOf(v: unknown): ScreenSpan | null {
-  if (!isObj(v) || !Number.isInteger(v.from) || !Number.isInteger(v.to)) return null;
-  const from = v.from as number;
-  const to = v.to as number;
-  if (from < 0 || to < from) return null;
-  const s: ScreenSpan = { from, to };
-  if (typeof v.fg === "string") s.fg = v.fg;
-  if (typeof v.bg === "string") s.bg = v.bg;
-  for (const f of FLAGS) if (v[f] === true) s[f] = true;
-  return s;
-}
-
-/** `terminal-preview` 的成品 ⇒ 每一行。`lines` 缺 / 某行没有字符串 `text` / `spans` 不是合法的段 ⇒ 抛。空屏是合法的成功。 */
-export function decodeScreenLines(origin: Origin, v: unknown): ScreenLine[] {
-  const lines = isObj(v) ? v.lines : undefined;
-  if (!Array.isArray(lines)) throw unreadable(origin, "terminal-preview", "has no `lines: [{text, spans?}]`");
-  return lines.map((l) => {
-    if (!isObj(l) || typeof l.text !== "string") throw unreadable(origin, "terminal-preview", "has no `lines: [{text, spans?}]`");
-    if (l.spans === undefined) return { text: l.text, spans: [] };
-    if (!Array.isArray(l.spans)) throw unreadable(origin, "terminal-preview", "`spans` is not a list");
-    const spans = l.spans.map(spanOf);
-    if (spans.some((s) => s === null)) throw unreadable(origin, "terminal-preview", "a span is not `{from, to}`");
-    return { text: l.text, spans: spans as ScreenSpan[] };
-  });
-}
 
 /** 一块画面（`pre`）：只挂画面那一族的字与底；版位与滚动归调用方套在外面的那一格。 */
 export function screenPre(): HTMLPreElement {

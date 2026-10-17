@@ -44,9 +44,9 @@ data class SyncAnchor(
     val path: String,
     val offset: Long,
     val seq: Long,
-    /** 那份文件的身份（`history-tail` 的 `file`）：同一路径换了一份 ⇒ 对不上 ⇒ 从头读。17 → 18 之前存的行是空串（下一次从头读一回）。 */
-    @ColumnInfo(defaultValue = "")
-    val file: String,
+    /** 那台给的记号（`history-tail` 的 `held.mark`）：续读时原样交回，对不上那台说从头读。 */
+    @ColumnInfo(name = "file", defaultValue = "")
+    val mark: String,
 )
 
 /** 待发：一句送出去、结局还没定或没送到的话。[outcome] 照 `session-say` 的回包：[PendingOutcome] 那四种。 */

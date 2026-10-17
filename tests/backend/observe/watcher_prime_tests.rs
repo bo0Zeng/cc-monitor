@@ -117,7 +117,10 @@ fn brief(frames: &[Frame]) -> Vec<String> {
             Frame::Line(crate::wire::Line {
                 session_id, seq, ..
             }) => format!("line {session_id} {seq}"),
-            other => other.loss_identity().kind.to_string(),
+            other => serde_json::to_value(other).unwrap()["kind"]
+                .as_str()
+                .unwrap()
+                .to_string(),
         })
         .collect()
 }
@@ -284,6 +287,7 @@ fn three_connections_on_one_record_prime_it_once() {
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
         join(
             Sub::new(id, tx, crate::Tz::default()),
+            None,
             &mut state,
             &mut sink,
         );
@@ -342,7 +346,7 @@ fn the_watched_session_is_primed_first() {
         0,
         crate::wire::WatchAsk {
             sids: vec!["p-w-b".to_string()],
-            branch: vec![],
+            ..Default::default()
         },
         &mut state,
         &mut sink,
