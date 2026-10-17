@@ -76,7 +76,7 @@ pub struct Fact {
     pub w7d: WinFact,
     /// 有周上限：读数里有周用量那一格（没有 · 没出过数 ⇒ 缺）。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    #[cfg_attr(any(test, feature = "ts"), ts(as = "Option<bool>", optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
     pub weekly: bool,
     pub login: LoginState,
     /// 额度账上最后一次看到它（没出过数 ⇒ 缺）。
