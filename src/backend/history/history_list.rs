@@ -318,7 +318,7 @@ pub(crate) enum Sort {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct HistoryListReq {
-    /// 那台的名字（行与组都标上它）。缺 ⇒ 这台。
+    /// 那台的名字（行与组都标上它）。缺 ⇒ 这台。问那一台要带期限（请求信封 `within_ms`）：等多久归发起方，没带 ⇒ `bad_args`。
     #[serde(default)]
     #[cfg_attr(test, ts(optional, as = "Option<String>"))]
     pub(crate) origin: Option<cmd_wire::Machine>,

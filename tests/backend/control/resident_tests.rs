@@ -629,3 +629,21 @@ async fn a_resident_call_says_what_the_resident_said_or_that_nobody_listens() {
     peer.abort();
     let _ = std::fs::remove_dir_all(&mute);
 }
+
+/// ★ 等多久只归发起方：`--within-ms` 不给 · 给的不是正整数 ⇒ `bad_args`（说缺的是哪一格），后端不自己定一个；给了 ⇒ 照它等、原样往常驻带。
+#[test]
+fn a_resident_call_waits_only_as_long_as_the_asker_said() {
+    let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    for bad in [
+        args(&["--stdin-line"]),
+        args(&["--stdin-line", "--within-ms", "0"]),
+        args(&["--within-ms", "x"]),
+    ] {
+        let e = deadline_of(&bad).unwrap_err();
+        assert_eq!(e.0, "bad_args", "{bad:?}");
+        assert!(e.1.contains("--within-ms"), "没说缺的是哪一格：{e:?}");
+    }
+    let (ms, total) = deadline_of(&args(&["--stdin-line", "--within-ms", "45000"])).unwrap();
+    assert_eq!(ms, 45_000);
+    assert_eq!(total, Deadline::millis(45_000), "没照发起方给的等");
+}

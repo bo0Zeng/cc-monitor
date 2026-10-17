@@ -24,7 +24,7 @@ pub const TZ_FLAG: &str = "--tz";
 /// 只该认得这个字面量，不该因此在引用图上连到 CLI 面的分派口（`target_parity_guard` 那条「够不够得着 tmux」按文件级引用图走）。
 pub const STDIN_LINE_FLAG: &str = "--stdin-line";
 
-/// **问这台的常驻**：`--resident-call --stdin-line [--within-ms <毫秒>] [--tz <IANA 名>]`，stdin 一行 `{cmd, args}`（[`crate::wire::listen::ResidentCall`]）⇒
+/// **问这台的常驻**：`--resident-call --stdin-line --within-ms <毫秒> [--tz <IANA 名>]`，stdin 一行 `{cmd, args}`（[`crate::wire::listen::ResidentCall`]）⇒
 /// 连这台家里常驻后端的套接字问那一条、stdout 一行它的回包（同 CLI 面的信封：成功 ＝ 回包 · 失败 ＝ stderr 一行失败信封、退出 2）。
 /// 后端问后端（`remote_ask::ask_resident`）发它：问到的是那台热着的常驻，不是一次性的冷进程。住这里同 [`STDIN_LINE_FLAG`]：收发两头只认这个字面量。
 pub const RESIDENT_CALL_FLAG: &str = "--resident-call";

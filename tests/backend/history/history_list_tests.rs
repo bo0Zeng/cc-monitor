@@ -498,7 +498,16 @@ fn groups_rank_live_then_starred_then_recent_and_keep_failed_dirs() {
 /// `fresh` 不带 `origin` ⇒ `bad_args`；界面当信差的那两格（`raw` · `listing`）不认了 ⇒ `bad_args`。
 #[tokio::test]
 async fn a_remote_listing_comes_from_that_machine_or_fails_plainly() {
-    let e = answer_wire(json!({"origin": "never-reached"}))
+    // 等多久只归发起方：问那一台却没带期限 ⇒ `bad_args`（后端不自己定一个）；带了 ⇒ 照它去问（这台够不着那台 ⇒ `unreachable`）。
+    let req: HistoryListReq =
+        crate::wire::typed::take(&json!({"origin": "never-reached"})).unwrap();
+    let e = super::answer(req.clone(), Default::default(), None)
+        .await
+        .unwrap_err();
+    assert_eq!(e.0, "bad_args", "没带期限却去问了那台：{e:?}");
+    assert!(e.1.contains("within_ms"), "没说缺的是哪一格：{e:?}");
+    let until = crate::platform::child::Until::after(crate::platform::child::Deadline::secs(5));
+    let e = super::answer(req, Default::default(), until)
         .await
         .unwrap_err();
     assert_eq!(e.0, "unreachable", "{e:?}");

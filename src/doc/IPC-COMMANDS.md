@@ -4198,7 +4198,7 @@ type HistoryList = { rows: Array<HistoryRow>, groups: Array<HistoryGroup>, total
 notice: string | null, };
 type HistoryListReq = { 
 /**
- * 那台的名字（行与组都标上它）。缺 ⇒ 这台。
+ * 那台的名字（行与组都标上它）。缺 ⇒ 这台。问那一台要带期限（请求信封 `within_ms`）：等多久归发起方，没带 ⇒ `bad_args`。
  */
 origin?: string, 
 /**
@@ -14116,7 +14116,7 @@ type Words = string;
 | `--quota-read` | ＝ 帧命令 `quota-read`：这台的额度账 |
 | `--remote-reach` | ＝ 帧命令 `remote-reach`：本机后端的可达表登记 |
 | `--resident-attach` | 小中继：连这台家里常驻后端的套接字，stdin → 套接字、套接字 → stdout 原样对拷，任一边断就退；断开 ⇒ stdout 一行 `{attach:"refused", reason: absent\|unreachable}`、退出 2 |
-| `--resident-call` `[--stdin-line] [--within-ms <毫秒>] [--tz <IANA 名>]` | 问这台的常驻后端一条帧命令（stdin 一行 `{cmd, args}`）：连套接字、握手（在看名单交空的）、发请求、等那一条应答，stdout 一行回包、退出 0；常驻答了失败 ⇒ stderr 一行它那一份失败信封、退出 2；没人在听 ⇒ `resident_absent`（不起冷进程顶上）；到期限没回 ⇒ `timed_out` |
+| `--resident-call` `[--stdin-line] --within-ms <毫秒> [--tz <IANA 名>]` | 问这台的常驻后端一条帧命令（stdin 一行 `{cmd, args}`）：连套接字、握手（在看名单交空的）、发请求、等那一条应答，stdout 一行回包、退出 0；常驻答了失败 ⇒ stderr 一行它那一份失败信封、退出 2；没人在听 ⇒ `resident_absent`（不起冷进程顶上）；`--within-ms` 必给（等多久归发起方，缺 ⇒ `bad_args`），到期限没回 ⇒ `timed_out` |
 | `--resident-ensure` `[--replace]` | 确保这台的常驻后端在听：已在 ⇒ `{pid, replaced: false}`（pid 是套接字对端）；没在 ⇒ 起一个脱离的自己、回 `{pid, replaced}`；`--replace` 在听那一位比自己旧才停掉再起（只升不降） |
 | `--resident-stop` `[--grace <秒>]` | 停这台的常驻后端：问套接字在听的是谁 → SIGTERM → 宽限（缺省 35 秒）→ SIGKILL；回 `{stopped: graceful\|killed\|not_running, pid}` |
 | `--resolve` | ＝ 帧命令 `resolve`：按 `ResumeSpec` 推出恢复命令 `CommandPlan` |

@@ -6,7 +6,7 @@ import type { HistorySort } from "./HistorySort";
  */
 export type HistoryListReq = { 
 /**
- * 那台的名字（行与组都标上它）。缺 ⇒ 这台。
+ * 那台的名字（行与组都标上它）。缺 ⇒ 这台。问那一台要带期限（请求信封 `within_ms`）：等多久归发起方，没带 ⇒ `bad_args`。
  */
 origin?: string, 
 /**

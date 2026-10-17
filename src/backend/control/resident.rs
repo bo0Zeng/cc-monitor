@@ -8,10 +8,10 @@
 //! - `--resident-attach`：**小中继**。连这台的套接字，stdin → 套接字、套接字 → stdout 原样对拷，任一边断就退。
 //!   monitor 经 ssh exec 跑它（ssh 证明了本人，它在那台以本人身份连本人通道）；断开 ⇒ stdout 回一行
 //!   `{"attach":"refused","reason":"absent"|"unreachable"}` 再退（monitor 读第一行就分得出）。
-//! - `--resident-call --stdin-line [--within-ms <毫秒>] [--tz <IANA 名>]`：**问这台的常驻一条帧命令**（stdin 一行 `{cmd, args}`）。
+//! - `--resident-call --stdin-line --within-ms <毫秒> [--tz <IANA 名>]`：**问这台的常驻一条帧命令**（stdin 一行 `{cmd, args}`）。
 //!   连套接字 → 读 hello → 交 attach 行（在看名单交空的：只问不看）→ 发请求 → 等那一条应答（别的帧略过）→ stdout 一行回包、退出 0；
 //!   失败 ⇒ stderr 一行失败信封（常驻答的码原样）、退出 2。没人在听 ⇒ `resident_absent`（不起一个冷的顶上：后端是给定的）。
-//!   等多久归发起方（`--within-ms`，缺 ⇒ [`RESIDENT_CALL_CAP`]），经期限原语 `platform::child::bounded` 那一处有界等待。
+//!   等多久只归发起方（`--within-ms` 必给，缺 ⇒ `bad_args`），经期限原语 `platform::child::bounded` 那一处有界等待。
 //!   后端问后端的那一跳（`dial/remote_ask.rs::ask_resident`）经 ssh exec 跑它。
 //! - `--resident-stop [--grace <秒>]`：**同机监督者**那一形（k8s `terminationGracePeriodSeconds` · systemd `TimeoutStopSec`）：
 //!   连这台的套接字问在听的是谁（对端 pid 由内核报，不靠盘上的记录）→ SIGTERM（它排空后自己退）→ 在宽限期内等内核通知 →
@@ -21,7 +21,7 @@
 //! 门牌按这台的家算（`~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`）⇒ 一台机器一个家一个常驻后端，与 Claude 目录、与哪一家 agent 都无关。
 //! 套接字 · 目录独占锁都住 `<家>/run/`，由常驻后端自己写（本机远端一个写者）；没有钥匙（门由内核给：目录 `0700` ＋ 对端 uid，`own-chan`）。
 
-use crate::platform::child::{Child, ChildFail, Deadline, Until};
+use crate::platform::child::{Child, ChildFail, Deadline};
 use crate::platform::child_env::OWN_ENVS;
 use crate::platform::fs::{Own, OwnLock, OwnPath};
 use std::path::{Path, PathBuf};
@@ -175,9 +175,6 @@ pub async fn attach() -> i32 {
     0
 }
 
-/// `--resident-call` 等常驻回话的上限（发起方没给 `--within-ms` 时按它；给了更早的 ⇒ 照那个）。
-pub(crate) const RESIDENT_CALL_CAP: Deadline = Deadline::secs(30);
-
 /// `--resident-call` 那一条请求的 id（一条连接只问这一次）。
 const CALL_ID: &str = "resident-call";
 
@@ -193,8 +190,8 @@ pub async fn call(args: &[String], tz: &crate::Tz) -> i32 {
             tz,
         )
     };
-    let within_ms = match crate::control::cli_args::within_of(args) {
-        Ok(ms) => ms,
+    let (within_ms, total) = match deadline_of(args) {
+        Ok(x) => x,
         Err((code, message)) => return refuse(code, message),
     };
     let line = match crate::control::cli_args::read_args(
@@ -217,17 +214,25 @@ pub async fn call(args: &[String], tz: &crate::Tz) -> i32 {
     let Some(dh) = data_home() else {
         return refuse("no_home", copy_text("beResident.home.missing", &[]));
     };
-    let total = match within_ms {
-        Some(ms) => Deadline::within(RESIDENT_CALL_CAP, Until::after(Deadline::millis(ms))),
-        None => RESIDENT_CALL_CAP,
-    };
-    match call_at(&dh, &asked, within_ms, tz, total).await {
+    match call_at(&dh, &asked, Some(within_ms), tz, total).await {
         Ok(data) => {
             println!("{data}");
             0
         }
         Err(f) => f.emit_to(&mut std::io::stderr(), false, tz),
     }
+}
+
+/// 期限口（`--within-ms`）⇒ 原样往常驻那一跳带的毫秒数 ＋ 本进程等多久（就是那么久）。等多久只归发起方：
+/// 不给 · 给的不是正整数 ⇒ `bad_args`，这里不自己定一个。
+pub(crate) fn deadline_of(args: &[String]) -> Result<(u64, Deadline), (&'static str, String)> {
+    let flag = crate::wire::cli_words::WITHIN_MS_FLAG;
+    let ms = crate::control::cli_args::within_of(args)?.ok_or_else(|| {
+        crate::control::cli_args::bad_args(&format!(
+            "{flag} <ms> is required: how long to wait belongs to the asker"
+        ))
+    })?;
+    Ok((ms, Deadline::millis(ms)))
 }
 
 /// [`call`] 的本体（这台的家 · 期限由调用方给）：常驻答成 ⇒ 回包；答了失败 ⇒ 它那一份失败原样（码 · 那一句 · 复制详情）；

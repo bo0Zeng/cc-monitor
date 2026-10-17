@@ -12,6 +12,7 @@
 //! 3. 那台一条会话变了 ⇒ 回包只带那一行。
 //! 4. 那台重启过（另一份备忘）⇒ 整份。
 //! 5. 不 `fresh`、手上有副本 ⇒ 不问那台。
+//! 7. 本机后端交给那台的期限就是发起方给的那个（`--within-ms` 原样往下带）。
 //! 6. 问的永远是那台的常驻（命令行是 `--resident-call`，命令名与入参走 stdin）；那台常驻不在 ⇒ `resident_absent`、那句说的是那台的名字。
 //!
 //! # 买不到
@@ -212,6 +213,10 @@ async fn it_asks_the_resident_and_an_absent_one_fails_plainly() {
     ask(&peer, &copies, &t, false).await.unwrap();
     let (line, stdin) = peer.asked.lock().unwrap()[0].clone();
     assert!(line.contains("'--resident-call'"), "{line}");
+    assert!(
+        line.contains("'--within-ms' '5000'"),
+        "期限没照发起方的往下带：{line}"
+    );
     assert!(
         !line.contains("--history-list"),
         "问了那台的一次性 CLI 面：{line}"

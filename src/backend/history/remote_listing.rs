@@ -10,7 +10,8 @@
 //! - 问的是那台**热着的常驻**（`--resident-call`）：那台扫过的清单缓存与这一问的备忘都在它那里；
 //!   那台常驻不在 ⇒ 照实失败（`resident_absent`），不在那台起一个冷进程顶上。
 //! - 副本只在内存里（按机器名），本机后端重启后第一问整份一次；不按时间过期（这一层不看钟）：开页 · 刷新带 `fresh` 才同步。
-//! - 期限归发起方：`history-list` 那一发交来的截止时刻与 [`REMOTE_LISTING_CAP`] 里早的那个，经 `remote_ask` 那一处有界等待。
+//! - 等多久只归发起方：`history-list` 那一发交来的截止时刻（请求信封 `within_ms`）原样往下带（本机等它、那台 `--resident-call --within-ms` 也等它）；
+//!   没带 ⇒ `bad_args`，这里不自己定一个。
 //! - 压缩照旧在 SSH 那一层，这里不另做。
 
 use std::collections::BTreeMap;
@@ -23,9 +24,6 @@ use serde::{Deserialize, Serialize};
 use crate::common::views::{ViewSource, Views};
 use crate::dial::remote_ask::{Remote, Table};
 use crate::platform::child::{Deadline, Until};
-
-/// 问那台一次最多等多久（发起方给了更早的截止时刻 ⇒ 照那个）：一整份清单经 SSH 回来、那台冷着时现扫一遍。
-pub(crate) const REMOTE_LISTING_CAP: Deadline = Deadline::secs(30);
 
 // ───────────────────────── 那台怎么答 ─────────────────────────
 
@@ -123,18 +121,26 @@ impl Copies {
 /// 本进程那一份副本表。
 static COPIES: std::sync::LazyLock<Copies> = std::sync::LazyLock::new(Copies::default);
 
-/// 那一台的清单（生产：可达表 · 池里那条 SSH · 本进程的副本表）。`until` ＝ 发起方给的截止时刻。
+/// 那一台的清单（生产：可达表 · 池里那条 SSH · 本进程的副本表）。`until` ＝ 发起方给的截止时刻（没给 ⇒ `bad_args`）。
 pub(crate) async fn listing(
     machine: &str,
     fresh: bool,
     tz: &crate::Tz,
     until: Option<Until>,
 ) -> Result<Listing, (&'static str, String)> {
+    let Some(until) = until else {
+        return Err((
+            "bad_args",
+            crate::common::contract::malformed(
+                "`within_ms` is required when asking another machine: how long to wait belongs to the asker",
+            ),
+        ));
+    };
     listing_with(
         machine,
         fresh,
         tz,
-        Deadline::within(REMOTE_LISTING_CAP, until),
+        Deadline::millis(until.left_ms()),
         &crate::dial::remote_ask::REACH,
         &crate::dial::remote_ask::DialRemote,
         &COPIES,
