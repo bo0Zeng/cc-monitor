@@ -18,7 +18,7 @@ fn a(id: &str, used: f64, rate: Option<f64>) -> Acct {
 }
 
 fn source() -> String {
-    crate::accounts::quota::rules::upgrade::material(0).to_string()
+    crate::accounts::quota::setup::upgrade::material(0).to_string()
 }
 
 fn settings() -> serde_json::Value {
@@ -82,7 +82,7 @@ fn it_decides_and_simulates_from_the_given_facts() {
     );
     let src = got.source.expect("给了设置 ⇒ 回换了头的原文");
     assert_eq!(
-        crate::accounts::quota::rules::script::parse(&src)
+        crate::accounts::quota::setup::script::parse(&src)
             .expect("读得回")
             .head
             .settings,

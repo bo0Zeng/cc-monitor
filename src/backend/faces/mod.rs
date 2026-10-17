@@ -25,7 +25,8 @@ pub(crate) mod quota_read; // `quota-read` 的成品（有类型：每号 ＝ �
 pub(crate) mod quota_rows; // `quota-read` 每号的 `rows`（额度每号几行，唯一的行模型）与开窗那一判 `warm`
 pub mod read_face; // 只读查询的帧面宿主（8 条：history-* / accounts-*）—— 薄壳，本体在 observe/，住顶层的理由同 files/
 pub(crate) mod remote_reach_face; // 帧面 `remote-reach`（typed）：可达表登记（dial）＋ 登记完交一次待交的偏好（control）—— 两边只在这里接上
-pub(crate) mod rotation_edit_face; // 帧面：轮换的写（typed）：设置 · 存 · 换一份 · 拖出来的顺序 · 现在用 · 策略文件 · 24 小时条的算术
+pub(crate) mod rotation_act_face; // 帧面：轮换的切换（typed，基础功能层）：拖出来的先后 · 现在用
+pub(crate) mod rotation_edit_face; // 帧面：轮换配置的写（typed，配置编辑层）：设置 · 存 · 换一份 · 新会话用哪份 · 策略文件 · 起之前那一笔
 pub mod rotation_face; // 换号那一族的帧面宿主：账号库读成上游选择换号要的那几格（两边只在这里接上）
 pub(crate) mod rotation_facts_face; // 帧面 `rotation-facts`（typed）：每个号此刻的事实，本体在 Hop::facts
 pub(crate) mod rotation_try_face; // 帧面 `rotation-try`（typed）：拿一份策略原文判一次、推演，不写盘

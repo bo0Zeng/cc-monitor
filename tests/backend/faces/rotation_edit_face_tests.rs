@@ -2,7 +2,7 @@
 //! 拖出来的顺序 · 现在用（只拿事实拦）· 策略文件加 / 复制 / 改名 / 删 · 24 小时条的算术。临时家目录。
 
 use super::*;
-use crate::faces::rotation_view_face::tests::{now, seen, Home, S1, S2};
+use crate::faces::rotation_view_face::tests::{Home, S1, S2};
 use crate::wire::typed::Handle;
 use serde_json::json;
 
@@ -45,7 +45,7 @@ fn session_settings_become_a_draft_and_are_checked() {
             },
         )
     };
-    let draft = || ctx.hop.store.now().sessions[S1].strategy.draft.clone();
+    let draft = || ctx.setup.uses.now().sessions[S1].draft.clone();
     let got = edit(RotEdit::Add {
         account: "b".into(),
     })
@@ -167,7 +167,7 @@ fn saving_rewrites_only_the_head_and_detects_conflicts() {
         script::parse(&after).expect("读得懂").head.settings,
         json!({"caps": {}, "capKind": "soft", "accounts": [{"start": true}, {"id": "b"}]})
     );
-    assert_eq!(ctx.hop.store.now().sessions[S1].strategy.draft, None);
+    assert_eq!(ctx.setup.uses.now().sessions[S1].draft, None);
 
     let as_new = save_with(
         &ctx,
@@ -183,7 +183,7 @@ fn saving_rewrites_only_the_head_and_detects_conflicts() {
     )
     .expect("另存");
     assert_eq!(as_new.id, "夜里省着用", "标题就是文件名");
-    assert_eq!(ctx.hop.store.now().sessions[S1].strategy.id, as_new.id);
+    assert_eq!(ctx.setup.uses.now().sessions[S1].id, as_new.id);
     assert_eq!(code_of(&file(&home, &as_new.id)), code_of(&before));
     assert!(
         matches!(
@@ -213,10 +213,11 @@ fn revert_use_and_for_new() {
     let home = Home::new("use");
     let ctx = home.ctx();
     home.saw(&ctx, S1);
-    rotation::face_change(&ctx.hop.store, &home.own(), |b| {
-        b.sessions.get_mut(S1).expect("s1").strategy.draft = Some(mine());
-    })
-    .expect("w");
+    ctx.setup
+        .change(&home.own(), |b| {
+            b.sessions.get_mut(S1).expect("s1").draft = Some(mine());
+        })
+        .expect("w");
     let to = |discard: bool| RotationUseReq {
         sid: S1.into(),
         strategy: Some("third".into()),
@@ -227,11 +228,8 @@ fn revert_use_and_for_new() {
         Err(RotationUseErr::Dirty(_))
     ));
     use_with(&ctx, &home.own(), &to(true)).expect("换");
-    let s = ctx.hop.store.now().sessions[S1].clone();
-    assert_eq!(
-        (s.strategy.id.as_str(), s.strategy.draft.is_none()),
-        ("third", true)
-    );
+    let s = ctx.setup.uses.now().sessions[S1].clone();
+    assert_eq!((s.id.as_str(), s.draft.is_none()), ("third", true));
     use_with(
         &ctx,
         &home.own(),
@@ -242,7 +240,7 @@ fn revert_use_and_for_new() {
         },
     )
     .expect("不轮换");
-    assert_eq!(ctx.hop.store.now().sessions[S1].strategy.id, "");
+    assert_eq!(ctx.setup.uses.now().sessions[S1].id, "");
     revert_with(&ctx, &home.own(), &RotationRevertReq { sid: S1.into() }).expect("还原");
     assert!(matches!(
         revert_with(&ctx, &home.own(), &RotationRevertReq { sid: S2.into() }),
@@ -256,9 +254,9 @@ fn revert_use_and_for_new() {
         },
     )
     .expect("设");
-    assert_eq!(ctx.hop.store.now().for_new, "by-reset");
+    assert_eq!(ctx.setup.uses.now().for_new, "by-reset");
     for_new_with(&ctx, &home.own(), &RotationForNewReq { strategy: None }).expect("设回不轮换");
-    assert_eq!(ctx.hop.store.now().for_new, "");
+    assert_eq!(ctx.setup.uses.now().for_new, "");
     assert!(matches!(
         for_new_with(
             &ctx,
@@ -269,77 +267,6 @@ fn revert_use_and_for_new() {
         ),
         Err(RotationForNewErr::NoStrategy(_))
     ));
-}
-
-/// ★ 拖出来的顺序：放到第几位（越界取末尾、已在就挪）· 清掉；不在这台账号里的号 ⇒ `not_listed`。
-#[test]
-fn the_dragged_order_is_placed_and_cleared() {
-    let home = Home::new("temp");
-    let ctx = home.ctx();
-    home.saw(&ctx, S1);
-    let place = |account: &str, at: usize| {
-        temp_with(
-            &ctx,
-            &home.own(),
-            &RotationTempReq {
-                sid: S1.into(),
-                op: RotTempOp::Place {
-                    account: account.into(),
-                    at,
-                },
-            },
-        )
-    };
-    assert_eq!(place("b", 0).expect("ok").temp, ["b"]);
-    assert_eq!(place("c", 9).expect("ok").temp, ["b", "c"]);
-    assert_eq!(place("c", 0).expect("ok").temp, ["c", "b"]);
-    assert!(matches!(place("zz", 0), Err(RotationTempErr::NotListed(_))));
-    let cleared = temp_with(
-        &ctx,
-        &home.own(),
-        &RotationTempReq {
-            sid: S1.into(),
-            op: RotTempOp::Clear,
-        },
-    )
-    .expect("ok");
-    assert!(cleared.temp.is_empty());
-}
-
-/// ★ 「现在用」：事实上发得出去 ⇒ 当场换过去、放进拖出来的顺序最前、记一条；发不出去（被拒）⇒ 不换、说几点恢复。
-/// 策略的上限不拦它（a 用到 85 也照换回 a）。
-#[test]
-fn use_now_is_stopped_only_by_facts() {
-    let home = Home::new("usenow");
-    let ctx = home.ctx();
-    home.saw(&ctx, S1);
-    let back = now() + 600;
-    seen(&ctx, "b", 0.0, Some(back));
-    let go = |account: &str| {
-        use_now_with(
-            &ctx,
-            &home.own(),
-            &RotationUseNowReq {
-                sid: S1.into(),
-                account: account.into(),
-            },
-            now(),
-        )
-    };
-    match go("b") {
-        Err(RotationUseNowErr::Unusable(_, u)) => assert_eq!(u.until, Some(back)),
-        other => panic!("该拒：{other:?}"),
-    }
-    assert_eq!(ctx.hop.store.now().sessions[S1].current, "a");
-    go("api").expect("换");
-    let s = ctx.hop.store.now().sessions[S1].clone();
-    assert_eq!(
-        (s.current.as_str(), s.temp.first().map(String::as_str)),
-        ("api", Some("api"))
-    );
-    assert_eq!(s.log.last().map(|l| &l.cause), Some(&book::Cause::UseNow));
-    seen(&ctx, "a", 0.85, None);
-    go("a").expect("策略的上限不拦");
 }
 
 /// ★ 策略文件：加（读不懂 ⇒ `bad_strategy` 带行；文件名就是给的名字）· 复制（另起一个文件名，内容一字不改）·
@@ -414,11 +341,12 @@ fn strategy_files_are_added_copied_renamed_and_deleted() {
         Err(RotationStrategyRenameErr::Conflict(..))
     ));
     home.saw(&ctx, S1);
-    rotation::face_change(&ctx.hop.store, &home.own(), |b| {
-        b.sessions.get_mut(S1).expect("s1").strategy.id = copied.id.clone();
-        b.for_new = copied.id.clone();
-    })
-    .expect("w");
+    ctx.setup
+        .change(&home.own(), |b| {
+            b.sessions.get_mut(S1).expect("s1").id = copied.id.clone();
+            b.for_new = copied.id.clone();
+        })
+        .expect("w");
     assert!(
         matches!(
             rename_with(
@@ -453,16 +381,15 @@ fn strategy_files_are_added_copied_renamed_and_deleted() {
             .exists(),
         "旧文件名没了"
     );
-    let b = ctx.hop.store.now();
+    let b = ctx.setup.uses.now();
     assert_eq!(
-        (b.sessions[S1].strategy.id.as_str(), b.for_new.as_str()),
+        (b.sessions[S1].id.as_str(), b.for_new.as_str()),
         ("改了", "改了"),
         "指它的跟着改"
     );
-    rotation::face_change(&ctx.hop.store, &home.own(), |b| {
-        b.for_new = "by-list".into()
-    })
-    .expect("w");
+    ctx.setup
+        .change(&home.own(), |b| b.for_new = "by-list".into())
+        .expect("w");
     let copied = renamed;
     let del = |id: &str| {
         delete_with(

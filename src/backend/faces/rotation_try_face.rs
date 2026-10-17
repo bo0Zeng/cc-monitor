@@ -2,9 +2,9 @@
 //! skill 试跑与测试台用它。
 
 use crate::accounts::quota::rules::decide::{self, Pick, Sigma};
-use crate::accounts::quota::rules::script;
 use crate::accounts::quota::rules::simulate;
 use crate::accounts::quota::rules::Acct;
+use crate::accounts::quota::setup::{self, script};
 use crate::wire::typed::Command;
 pub(crate) use cmd_wire::rotation::{
     RotTryDecision, RotTryLane, RotTryLaneSeg, RotTryRow, RotTrySwitch, RotTryTick, RotTryTimeline,
@@ -113,12 +113,9 @@ pub(crate) fn try_with(
         )))
     })?;
     // 分时段照策略头里的时区算；时刻的字照看的那一台（`tz`）写。
-    let rule_tz = crate::accounts::quota::rules::tz_of(Some(&file.head));
-    let clock_of = |t: u64| crate::accounts::quota::rules::clock_at(&rule_tz, t);
-    let settings = req
-        .settings
-        .clone()
-        .unwrap_or_else(|| file.head.settings.clone());
+    let plan = setup::adopted_of_file("", "", &file, req.settings.as_ref());
+    let clock_of = |t: u64| crate::accounts::quota::rules::clock_at(&plan.tz, t);
+    let settings = &plan.settings;
     let start = req
         .start
         .clone()
@@ -137,13 +134,13 @@ pub(crate) fn try_with(
             Err(at) => use_now_refused = Some(at),
         }
     }
-    let d = decide::turn(&sigma, facts, &settings, &file, clock_of(now), now, &[]);
+    let d = decide::turn(&sigma, facts, settings, &plan, clock_of(now), now, &[]);
     let hours = u64::from(req.hours.unwrap_or(12).clamp(1, 48));
-    let budget = script::Budgeted::new(&file);
+    let budget = crate::accounts::quota::rules::code::Budgeted::new(&plan);
     let tl = simulate::simulate(
         &sigma,
         facts,
-        &settings,
+        settings,
         &budget,
         &clock_of,
         now,

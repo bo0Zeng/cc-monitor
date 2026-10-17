@@ -173,7 +173,7 @@ export function putBrokenQuota(d: MachineDisk): void {
   d.files[".cc-monitor/quota.json"] = "";
 }
 
-// ── 轮换账本（`<家>/.cc-monitor/rotation.json` 第三版：每个会话那一条；策略文件不写 ⇒ 会话不轮换）──
+// ── 轮换账本（`<家>/.cc-monitor/rotation.json` 第三版 ＋ `rotation-uses.json`：每个会话各一条；策略文件不写 ⇒ 会话不轮换）──
 
 export interface RotationSessionSpec {
   agent?: string;
@@ -193,11 +193,11 @@ export interface RotationSessionSpec {
 }
 
 export function putRotation(d: MachineDisk, book: { forNew?: string; sessions?: Record<string, RotationSessionSpec> }): void {
+  const sessions = Object.entries(book.sessions ?? {});
   d.files[".cc-monitor/rotation.json"] = json({
     version: 3,
-    forNew: book.forNew ?? "",
     sessions: Object.fromEntries(
-      Object.entries(book.sessions ?? {}).map(([sid, s]) => [
+      sessions.map(([sid, s]) => [
         sid,
         {
           agent: s.agent ?? "claude-code",
@@ -205,9 +205,23 @@ export function putRotation(d: MachineDisk, book: { forNew?: string; sessions?: 
           current: s.current,
           since: Math.round(s.since),
           seen: Math.round(s.seen ?? s.since),
-          strategy: { id: s.strategy ?? "", ...(s.rev ? { rev: s.rev } : {}), ...(s.draft !== undefined ? { draft: s.draft } : {}) },
           ...(s.temp ? { temp: s.temp } : {}),
           ...(s.log ? { log: s.log.map((l) => ({ ...l, at: Math.round(l.at) })) } : {}),
+        },
+      ]),
+    ),
+  });
+  d.files[".cc-monitor/rotation-uses.json"] = json({
+    version: 1,
+    forNew: book.forNew ?? "",
+    sessions: Object.fromEntries(
+      sessions.map(([sid, s]) => [
+        sid,
+        {
+          id: s.strategy ?? "",
+          ...(s.rev ? { rev: s.rev } : {}),
+          ...(s.draft !== undefined ? { draft: s.draft } : {}),
+          since: Math.round(s.since),
         },
       ]),
     ),

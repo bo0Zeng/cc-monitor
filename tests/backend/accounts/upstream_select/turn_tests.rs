@@ -5,7 +5,7 @@ use crate::accounts::quota::ledger::{self, Ledger};
 use crate::accounts::quota::nodes::Source;
 use crate::accounts::quota::rotation::{self, RotationStore};
 use crate::accounts::quota::rules::book::{self, Cause};
-use crate::accounts::quota::rules::script;
+use crate::accounts::quota::setup::{script, shelf, uses};
 use crate::accounts::upstream_select::rotate::{Go, Hop, LibAccount, Library, Turn};
 use crate::agents::{QuotaReading, QuotaStatus, QuotaWindow};
 use std::sync::Arc;
@@ -90,6 +90,7 @@ impl Home {
                 Some(self.root.join(rotation::FILE_NAME)),
                 self.tx.clone(),
             )),
+            &crate::faces::rotation_face::adoptions_at(),
             self.ledger(),
             Some(self.root.clone()),
             Arc::new(move |_| Library {
@@ -114,7 +115,7 @@ impl Home {
             Some(n) => serde_json::json!({"5h": [{"from": 0, "to": 1440, "v": n}]}),
             None => serde_json::json!({}),
         };
-        let src = crate::accounts::quota::rules::upgrade::material(0);
+        let src = crate::accounts::quota::setup::upgrade::material(0);
         let mut head = script::parse(&src).expect("读得懂").head;
         head.settings = serde_json::json!({
             "caps": caps,
@@ -122,17 +123,16 @@ impl Home {
             "accounts": [{"start": true}, {"id": "b"}],
         });
         head.tz = Some("UTC".into());
-        rotation::strategy_file_write(
+        shelf::write_file(
             &self.own(),
             "t",
             &script::with_head(&src, &head).expect("头"),
         )
         .expect("写");
-        rotation::face_change(
-            &RotationStore::at(Some(self.root.join(rotation::FILE_NAME))),
-            &self.own(),
-            |b| b.for_new = "t".into(),
-        )
+        uses::Setup::of(Arc::new(RotationStore::at(Some(
+            self.root.join(rotation::FILE_NAME),
+        ))))
+        .change(&self.own(), |b| b.for_new = "t".into())
         .expect("w");
     }
 
@@ -214,7 +214,9 @@ fn without_a_strategy_a_session_keeps_its_start_account() {
         assert_eq!(which(&steer(&hop, &own, t + i)), "a");
     }
     assert_eq!(runs(&hop), 0, "没选策略也叫了策略");
-    assert_eq!(home.session().strategy.id, "", "会话该记下、不带策略");
+    assert!(home.session().log.is_empty(), "会话该记下");
+    let u = uses::Setup::of(Arc::clone(&hop.store)).uses.now();
+    assert_eq!(u.sessions[SID].id, "", "会话该记下、不带策略");
 }
 
 /// ★ #28：两个节点之间 100 发，策略一次都不重跑（第一发判一次，之后照缓存），结论没变不写盘；过了下一个已知节点（a 的重置）⇒ 重跑。
@@ -415,9 +417,9 @@ fn two_sends_in_the_same_second_judging_the_same_switch_log_it_once() {
     };
     let stale = hop.entry(&own, &turn).expect("会话记下了");
     assert_eq!(stale.current, "a");
-    let loaded = hop.load(&stale.strategy);
-    let facts = hop.accts(&stale, &loaded.settings, &none, t + 1);
-    let d = hop.judge_session(&stale, &loaded, &facts, t + 1, &[]);
+    let plan = hop.adoptions.adopted(&own, SID, t + 1);
+    let facts = hop.accts(&stale, &plan.settings, &none, t + 1);
+    let d = hop.judge_session(&stale, &plan, &facts, t + 1, &[]);
     assert_eq!(
         d.pick,
         crate::accounts::quota::rules::decide::Pick::Use("b".into()),
@@ -617,8 +619,9 @@ fn acct(id: &str, used: f64, rate: Option<f64>, t: u64) -> crate::accounts::quot
     }
 }
 
-fn fixture_by_list() -> script::File {
-    script::parse(crate::accounts::quota::rules::upgrade::material(0)).expect("读得懂")
+fn fixture_by_list() -> crate::accounts::quota::rules::Adopted {
+    let f = script::parse(crate::accounts::quota::setup::upgrade::material(0)).expect("读得懂");
+    crate::accounts::quota::setup::adopted_of_file("", "", &f, None)
 }
 
 /// ★ 推演：在用的号额度账里量不到用速 ⇒ 推演里不出现估出来的换号时刻（那一段标「用到上限的时刻还不知道」），也不拿别的号的数顶；

@@ -13,6 +13,7 @@ use crate::accounts::oauth::{self, TokenEndpoint};
 use crate::accounts::quota::facts::Kind;
 use crate::accounts::quota::ledger::Ledger;
 use crate::accounts::quota::rotation::RotationStore;
+use crate::accounts::quota::rules::{Adoptions, AdoptionsAt};
 use crate::accounts::quota::show::{self, LoginState};
 use crate::agents::{IdentityCell, LoginFace};
 use crate::platform::fs::{Own, Ro};
@@ -132,9 +133,10 @@ pub(crate) type Live = Arc<dyn Fn() -> std::collections::BTreeSet<String> + Send
 
 type IdentityCache = Mutex<BTreeMap<PathBuf, (Option<(std::time::SystemTime, u64)>, String)>>;
 
-/// 换号要的几样：轮换的账本 · 额度账 · 家目录 · 账号库 · 令牌端点（缺省用那一家登记的）。
+/// 换号要的几样：轮换的账本 · 会话用哪份策略问谁 · 额度账 · 家目录 · 账号库 · 令牌端点（缺省用那一家登记的）。
 pub(crate) struct Hop {
     pub(crate) store: Arc<RotationStore>,
+    pub(crate) adoptions: Arc<dyn Adoptions>,
     pub(crate) quota: Arc<Ledger>,
     pub(crate) home: Option<PathBuf>,
     pub(crate) library: LibraryRead,
@@ -148,8 +150,10 @@ pub(crate) struct Hop {
 
 impl Hop {
     /// `token`：续令牌发到哪（`None` ＝ 那一家登记的端点；判据一律给一个本机的假端点）。
+    /// `adoptions`：会话用哪份策略问谁（宿主交进来，照这份 `store` 给出那一位）。
     pub(crate) fn new(
         store: Arc<RotationStore>,
+        adoptions: &AdoptionsAt,
         quota: Arc<Ledger>,
         home: Option<PathBuf>,
         library: LibraryRead,
@@ -157,6 +161,7 @@ impl Hop {
         token: Option<TokenEndpoint>,
     ) -> Self {
         Self {
+            adoptions: adoptions(&store),
             store,
             quota: quota.clone(),
             home,

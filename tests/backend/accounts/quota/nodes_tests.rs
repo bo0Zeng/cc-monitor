@@ -86,7 +86,7 @@ fn a_foreign_write_of_the_quota_file_sends_a_quota_file_node() {
     let home = temp_home("qf");
     let own = crate::platform::fs::Own::issue_data_at(&home);
     let mut rx = bus().subscribe();
-    let _w = super::super::rotation::watch(&own).expect("watch");
+    let _w = super::super::setup::uses::watch(&own).expect("watch");
     let side = home.join("quota.json.tmp");
     std::fs::write(&side, "{\"version\":1,\"accounts\":[]}").expect("w");
     std::fs::rename(&side, home.join(super::super::ledger::FILE_NAME)).expect("mv");

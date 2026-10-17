@@ -51,6 +51,7 @@ fn every_upgrade_material_reads() {
     for (id, src) in &fixtures() {
         let f = parse(src).unwrap_or_else(|e| panic!("{id} 读不懂：{e:?}"));
         let v = f
+            .code
             .decide(&ctx_of(4_000_000_000))
             .unwrap_or_else(|e| panic!("{id} 跑不通：{e:?}"));
         assert_eq!(v.order, ["a"], "{id}");
@@ -66,7 +67,7 @@ fn a_strategy_reads_the_size_of_one_percent_and_nothing_where_unmeasured() {
     .expect("编得过");
     let mut c = ctx_of(1);
     c.accounts[0].per_pct = [Some(25_000), None];
-    let v = f.decide(&c).expect("跑得通");
+    let v = f.code.decide(&c).expect("跑得通");
     assert_eq!(v.why, [("a".to_string(), "25000|()".to_string())]);
 }
 
@@ -92,7 +93,7 @@ fn rewriting_the_head_leaves_the_code_byte_for_byte() {
 fn the_sandbox_stops_loops_and_offers_no_files_clock_or_randomness() {
     let f = parse(&with_code("fn decide(ctx) { loop { } }")).expect("编得过");
     assert_eq!(
-        f.decide(&ctx_of(1)).expect_err("该掐住").kind,
+        f.code.decide(&ctx_of(1)).expect_err("该掐住").kind,
         FailKind::Timeout
     );
     for code in [
@@ -103,7 +104,7 @@ fn the_sandbox_stops_loops_and_offers_no_files_clock_or_randomness() {
     ] {
         let f = parse(&with_code(code)).expect("编得过（函数是跑的时候才找）");
         assert_eq!(
-            f.decide(&ctx_of(1)).expect_err(code).kind,
+            f.code.decide(&ctx_of(1)).expect_err(code).kind,
             FailKind::Broke,
             "{code}"
         );
@@ -112,7 +113,7 @@ fn the_sandbox_stops_loops_and_offers_no_files_clock_or_randomness() {
         "fn decide(ctx) { print(\"x\"); debug(\"y\"); #{ order: [] } }",
     ))
     .expect("编得过");
-    assert!(f.decide(&ctx_of(1)).is_ok());
+    assert!(f.code.decide(&ctx_of(1)).is_ok());
 }
 
 /// ★ 跑出错 ⇒ 是哪一种（照 Rhai 的错归成几种常见的，提示照它写）· 第几行（文件里的行；出在自己写的函数里 ⇒ 报那一行，不报调用处；
@@ -166,6 +167,7 @@ fn run_errors_say_which_kind_and_on_which_line() {
     ] {
         let e = parse(&with_code(code))
             .expect("编得过")
+            .code
             .decide(&ctx_of(1))
             .expect_err(code);
         assert_eq!((e.why, e.line), (why, line), "{code}：{e:?}");
@@ -174,7 +176,8 @@ fn run_errors_say_which_kind_and_on_which_line() {
     assert_eq!(e.why, FailWhy::Other, "编不过 ⇒ 代码出错");
     // 推演里累计耗时用完 ⇒ 超时（不是超出运算上限）。
     let slow = parse(&with_code("fn decide(ctx) {\n  loop { }\n}")).expect("编得过");
-    let b = Budgeted::new(&slow);
+    let slow = super::super::adopted_of_file("", "", &slow, None);
+    let b = crate::accounts::quota::rules::code::Budgeted::new(&slow);
     while !b.exhausted() {
         let _ = b.decide(&ctx_of(1));
     }
@@ -194,7 +197,7 @@ fn returns_are_shape_checked_and_deterministic() {
         ("fn decide(ctx) { #{ order: [], wake: #{ when: [#{ acct: \"a\", w: \"1d\", used_at_least: 90 }] } } }", true),
         ("fn decide(ctx) { #{ order: [\"a\"], wake: #{ at: ctx.now + 60, when: [#{ acct: \"a\", w: \"5h\", used_at_least: 90 }] } } }", false),
     ] {
-        let r = parse(&with_code(code)).expect("编得过").decide(&ctx_of(1));
+        let r = parse(&with_code(code)).expect("编得过").code.decide(&ctx_of(1));
         assert_eq!(r.as_ref().err().map(|e| e.kind.clone()) == Some(FailKind::BadShape), bad, "{code}：{r:?}");
     }
     let f = parse(
@@ -205,7 +208,10 @@ fn returns_are_shape_checked_and_deterministic() {
             .1,
     )
     .expect("读");
-    assert_eq!(f.decide(&ctx_of(77)).ok(), f.decide(&ctx_of(77)).ok());
+    assert_eq!(
+        f.code.decide(&ctx_of(77)).ok(),
+        f.code.decide(&ctx_of(77)).ok()
+    );
 }
 
 /// ★ 读不懂的几种：没有头 · 头的形状不对 · 编不过（带行）· 没有 decide。
@@ -232,7 +238,7 @@ fn the_backend_knows_no_strategy_and_no_rule() {
         .into_iter()
         .filter(|(p, _)| {
             // 一次性的升级那两份（认第二版的编号 1 2 3、写出升级材料认的设置）。
-            !p.ends_with("rotation/migrate.rs") && !p.ends_with("rules/upgrade.rs")
+            !p.ends_with("setup/migrate.rs") && !p.ends_with("setup/upgrade.rs")
         })
         .flat_map(|(p, t)| {
             let t = guard_core::production_code(&t);
@@ -297,7 +303,7 @@ fn the_backend_knows_no_strategy_and_no_rule() {
                 &sigma,
                 &f,
                 &file.head.settings,
-                &file,
+                &super::super::adopted_of_file("", "", &file, None),
                 0,
                 4_000_000_000,
                 &[],

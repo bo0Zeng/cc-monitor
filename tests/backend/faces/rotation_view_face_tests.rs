@@ -4,8 +4,10 @@
 use super::*;
 use crate::accounts::quota::ledger::{self, Ledger};
 use crate::accounts::quota::rotation::{self, RotationStore};
+use crate::accounts::quota::setup::shelf;
 use crate::accounts::upstream_select::rotate::{Hop, LibAccount, Library};
-use crate::faces::rotation_face::{forget_preset_with, preset_with, quota_read_with};
+use crate::faces::rotation_edit_face::{forget_preset_with, preset_with};
+use crate::faces::rotation_face::quota_read_with;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -68,17 +70,15 @@ impl Home {
             root,
             live: Arc::default(),
         };
-        let m = crate::accounts::quota::rules::upgrade::material;
+        let m = crate::accounts::quota::setup::upgrade::material;
         let (list, third, reset) = (m(0).to_string(), m(0).to_string(), m(1).to_string());
         for (id, text) in [("by-list", list), ("by-reset", reset), ("third", third)] {
-            rotation::strategy_file_write(&h.own(), id, &text).expect("写策略");
+            shelf::write_file(&h.own(), id, &text).expect("写策略");
         }
-        rotation::face_change(
-            &rotation::RotationStore::at(Some(h.root.join(rotation::FILE_NAME))),
-            &h.own(),
-            |b| b.for_new = "by-list".into(),
-        )
-        .expect("新会话用哪份");
+        h.ctx()
+            .setup
+            .change(&h.own(), |b| b.for_new = "by-list".into())
+            .expect("新会话用哪份");
         h
     }
 
@@ -89,8 +89,12 @@ impl Home {
     pub(crate) fn ctx(&self) -> Ctx {
         let accts = self.root.join("accts");
         Ctx {
+            setup: Arc::new(crate::accounts::quota::setup::uses::Setup::of(Arc::new(
+                RotationStore::at(Some(self.root.join(rotation::FILE_NAME))),
+            ))),
             hop: Hop::new(
                 Arc::new(RotationStore::at(Some(self.root.join(rotation::FILE_NAME)))),
+                &crate::faces::rotation_face::adoptions_at(),
                 Arc::new(Ledger::at(Some(self.root.join(ledger::FILE_NAME)))),
                 Some(self.root.clone()),
                 Arc::new(move |_| Library {
@@ -120,6 +124,7 @@ impl Home {
             b.saw(sid, "claude-code", "a", now())
         })
         .expect("write");
+        ctx.hop.adoptions.adopted(&self.own(), sid, now());
         self.live.lock().expect("lock").insert(sid.to_string());
     }
 
@@ -322,10 +327,11 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
         v.hints
     );
 
-    rotation::face_change(&ctx.hop.store, &home.own(), |b| {
-        b.sessions.get_mut(S1).expect("s1").strategy.id = "gone".into();
-    })
-    .expect("w");
+    ctx.setup
+        .change(&home.own(), |b| {
+            b.sessions.get_mut(S1).expect("s1").id = "gone".into();
+        })
+        .expect("w");
     let v = session_view(&ctx, &home, S1);
     assert!(
         v.hints
@@ -341,10 +347,11 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
     );
 
     // 不轮换的会话：没有策略、不判不推演，只说开会话的号 · 在用的号。
-    rotation::face_change(&ctx.hop.store, &home.own(), |b| {
-        b.sessions.get_mut(S1).expect("s1").strategy.id = String::new();
-    })
-    .expect("w");
+    ctx.setup
+        .change(&home.own(), |b| {
+            b.sessions.get_mut(S1).expect("s1").id = String::new();
+        })
+        .expect("w");
     let v = session_view(&ctx, &home, S1);
     assert!(v.strategy.is_none() && v.decision.is_none() && v.timeline.is_none());
     assert_eq!((v.start.as_str(), v.current.as_str()), ("a", "a"));
@@ -399,7 +406,10 @@ fn a_strategy_view_takes_a_draft_and_checks_it() {
     .expect("ok");
     assert!(v.dirty);
     assert_eq!(v.settings, draft);
-    assert!(home.root.join(rotation::FILE_NAME).exists());
+    assert!(home
+        .root
+        .join(crate::accounts::quota::setup::uses::FILE_NAME)
+        .exists());
     match view_with(
         &ctx,
         &req(Some(json!({"nope": 99})), "by-list"),
@@ -444,13 +454,14 @@ fn a_preset_session_keeps_its_strategy_when_the_relay_first_sees_it() {
     let ctx = home.ctx();
     preset_with(&ctx, &home.own(), S1, "claude", "third", now()).expect("ok");
     home.saw(&ctx, S1);
-    assert_eq!(ctx.hop.store.now().sessions[S1].strategy.id, "third");
+    assert_eq!(ctx.setup.uses.now().sessions[S1].id, "third");
     assert_eq!(
         preset_with(&ctx, &home.own(), S2, "claude", "nope", now()).map_err(|e| e.0),
         Err("no_strategy")
     );
     forget_preset_with(&ctx, &home.own(), S1);
     assert!(!ctx.hop.store.now().sessions.contains_key(S1));
+    assert!(!ctx.setup.uses.now().sessions.contains_key(S1));
 }
 
 /// ★ 线上只认 kind：起之前记那一笔时，后端里面的路由名当 `agent` 交来 ⇒ `bad_args`，账本里一条都不记。
@@ -465,6 +476,7 @@ fn a_preset_session_does_not_take_a_route_name_as_an_agent() {
         Err("bad_args")
     );
     assert!(!ctx.hop.store.now().sessions.contains_key(S1));
+    assert!(!ctx.setup.uses.now().sessions.contains_key(S1));
 }
 
 /// ★ 新会话框选「不轮换」：起之前写成不轮换的会话（策略 id 空），不去策略目录里找。
@@ -474,7 +486,7 @@ fn a_preset_session_can_be_written_as_not_rotating() {
     let ctx = home.ctx();
     preset_with(&ctx, &home.own(), S1, "claude", "", now()).expect("ok");
     home.saw(&ctx, S1);
-    assert_eq!(ctx.hop.store.now().sessions[S1].strategy.id, "");
+    assert_eq!(ctx.setup.uses.now().sessions[S1].id, "");
     let v = session_view(&ctx, &home, S1);
     assert!(v.strategy.is_none(), "起成了不轮换的会话");
 }
@@ -547,10 +559,14 @@ fn a_session_view_draws_what_already_happened() {
     let n = now();
     seen_resetting(&ctx, "a", 0.3, None, n + 4 * 3600);
     seen(&ctx, "b", 1.0, None);
+    ctx.setup
+        .change(&home.own(), |b| {
+            b.sessions.get_mut(S1).expect("s1").draft = Some(json!({"caps": {}, "capKind": "hard",
+                "accounts": [{"start": true}, {"id": "b"}]}));
+        })
+        .expect("w");
     rotation::face_change(&ctx.hop.store, &home.own(), |b| {
         let s = b.sessions.get_mut(S1).expect("s1");
-        s.strategy.draft = Some(json!({"caps": {}, "capKind": "hard",
-            "accounts": [{"start": true}, {"id": "b"}]}));
         s.log = vec![
             book::Log {
                 at: n - 9000,
@@ -747,10 +763,11 @@ fn the_hints_carry_what_their_buttons_need() {
         "/*--- rotation\n{\"format\": 5}\n---*/\n",
     )
     .expect("w");
-    rotation::face_change(&ctx.hop.store, &home.own(), |b| {
-        b.sessions.get_mut(S1).expect("s1").strategy.id = "broken".into();
-    })
-    .expect("w");
+    ctx.setup
+        .change(&home.own(), |b| {
+            b.sessions.get_mut(S1).expect("s1").id = "broken".into();
+        })
+        .expect("w");
     let v = session_view(&ctx, &home, S1);
     let path = v.hints.iter().find_map(|h| match &h.hint {
         RotHint::StrategyError { path, .. } => Some(path.clone()),
@@ -770,16 +787,17 @@ fn a_strategy_error_is_said_in_words_with_its_line_and_the_raw_text_as_detail() 
     let home = Home::new("view-error-words");
     let ctx = home.ctx();
     home.saw(&ctx, S1);
-    rotation::strategy_file_write(
+    shelf::write_file(
         &home.own(),
         "div",
         "// 说明\n/*--- rotation\n{\"format\": 5, \"settings\": {\"accounts\": [{\"start\": true}]}}\n---*/\nfn decide(ctx) {\n  let x = 1 / 0;\n  #{ order: [] }\n}\n",
     )
     .expect("写策略");
-    rotation::face_change(&ctx.hop.store, &home.own(), |b| {
-        b.sessions.get_mut(S1).expect("s1").strategy.id = "div".into();
-    })
-    .expect("w");
+    ctx.setup
+        .change(&home.own(), |b| {
+            b.sessions.get_mut(S1).expect("s1").id = "div".into();
+        })
+        .expect("w");
     let v = session_view(&ctx, &home, S1);
     let n = v
         .hints
@@ -799,10 +817,11 @@ fn a_strategy_error_is_said_in_words_with_its_line_and_the_raw_text_as_detail() 
     let detail = n.detail.as_deref().expect("带复制详情");
     assert!(detail.contains("Division by zero"), "{detail}");
 
-    rotation::face_change(&ctx.hop.store, &home.own(), |b| {
-        b.sessions.get_mut(S1).expect("s1").strategy.id = "gone".into();
-    })
-    .expect("w");
+    ctx.setup
+        .change(&home.own(), |b| {
+            b.sessions.get_mut(S1).expect("s1").id = "gone".into();
+        })
+        .expect("w");
     let v = session_view(&ctx, &home, S1);
     let n = v
         .hints
@@ -837,18 +856,20 @@ fn a_draft_on_an_older_version_is_flagged_as_changed_elsewhere() {
     home.saw(&ctx, S1);
     let newer = |v: &RotationViewReply| v.hints.iter().any(|h| h.hint == RotHint::Newer);
     let file_rev = session_view(&ctx, &home, S1).strategy.expect("在轮换").rev;
-    rotation::face_change(&ctx.hop.store, &home.own(), |b| {
-        b.sessions.get_mut(S1).expect("s1").strategy.rev = "h:000000000000".into();
-    })
-    .expect("w");
+    ctx.setup
+        .change(&home.own(), |b| {
+            b.sessions.get_mut(S1).expect("s1").rev = "h:000000000000".into();
+        })
+        .expect("w");
     let v = session_view(&ctx, &home, S1);
     assert!(!newer(&v), "没草稿不该提示");
     assert_eq!(v.base_rev, file_rev);
-    rotation::face_change(&ctx.hop.store, &home.own(), |b| {
-        b.sessions.get_mut(S1).expect("s1").strategy.draft =
-            Some(json!({"caps": {}, "capKind": "hard", "accounts": [{"start": true}]}));
-    })
-    .expect("w");
+    ctx.setup
+        .change(&home.own(), |b| {
+            b.sessions.get_mut(S1).expect("s1").draft =
+                Some(json!({"caps": {}, "capKind": "hard", "accounts": [{"start": true}]}));
+        })
+        .expect("w");
     let v = session_view(&ctx, &home, S1);
     assert!(newer(&v), "{:?}", v.hints);
     assert!(v

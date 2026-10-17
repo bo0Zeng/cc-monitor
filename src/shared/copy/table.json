@@ -20588,7 +20588,13 @@
     "rsDataPaths.backend.rotation": {
       "kind": "body",
       "role": "说明",
-      "zh": "账号轮换 · 默认顺序 · 换号时机 · 各会话账号与换号记录",
+      "zh": "账号轮换 · 各会话在用的号 · 拖出来的先后 · 换号记录",
+      "args": []
+    },
+    "rsDataPaths.backend.rotationUses": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "轮换策略 · 各会话用哪份与改过的设置 · 新会话默认用哪份",
       "args": []
     },
     "rsDataPaths.backend.lineage": {
@@ -20606,7 +20612,13 @@
     "rsToolRegistry.tools.rotationNote": {
       "kind": "body",
       "role": "说明",
-      "zh": "账号轮换 · 默认顺序 · 换号时机 · 各会话账号与换号记录",
+      "zh": "账号轮换 · 各会话在用的号 · 拖出来的先后 · 换号记录",
+      "args": []
+    },
+    "rsToolRegistry.tools.rotationUsesNote": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "轮换策略 · 各会话用哪份与改过的设置 · 新会话默认用哪份",
       "args": []
     },
     "beOauthStore.read.notObject": {

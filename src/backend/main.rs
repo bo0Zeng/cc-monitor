@@ -242,11 +242,7 @@ async fn main() {
         }
         tracing::info!(
             "{}",
-            accounts::upstream_select::host_relay(
-                faces::rotation_face::library(),
-                stream::tap::port(),
-                relay_own
-            )
+            faces::rotation_face::host_relay(stream::tap::port(), relay_own)
         );
         if resident {
             inbound::fill_account_colors();

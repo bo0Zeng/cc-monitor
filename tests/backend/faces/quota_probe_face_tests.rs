@@ -68,8 +68,12 @@ impl Home {
                 .collect(),
             });
         Ctx {
+            setup: Arc::new(crate::accounts::quota::setup::uses::Setup::of(Arc::new(
+                RotationStore::at(Some(self.root.join(rotation::FILE_NAME))),
+            ))),
             hop: Hop::new(
                 Arc::new(RotationStore::at(Some(self.root.join(rotation::FILE_NAME)))),
+                &crate::faces::rotation_face::adoptions_at(),
                 Arc::new(Ledger::at(Some(self.root.join(ledger::FILE_NAME)))),
                 Some(self.root.clone()),
                 library,

@@ -448,7 +448,7 @@ impl Home {
     /// 新会话（和已经有的会话）用的那份策略写成「照列表先后」那份代码 ＋ 这样的设置：起会话的号 ＋ `enabled` 里的号（照 a · b 的先后），
     /// 两窗上限 `line`（`None` ＝ 用满为止）；`at_limit` ＝ 都到上限后：`continue` ⇒ 软上限（接着用）· `stop` ⇒ 硬上限（停下）。
     fn set_default_at(&self, enabled: &[&str], line: Option<u8>, at_limit: &str) {
-        use crate::accounts::quota::rules::script;
+        use crate::accounts::quota::setup::{script, shelf};
         let caps = match line {
             Some(n) => {
                 serde_json::json!({"5h": [{"from": 0, "to": 1440, "v": n}], "7d": [{"from": 0, "to": 1440, "v": n}]})
@@ -463,24 +463,28 @@ impl Home {
                 .map(|a| serde_json::json!({"id": a})),
         );
         let kind = if at_limit == "stop" { "hard" } else { "soft" };
-        let src = crate::accounts::quota::rules::upgrade::material(0);
+        let src = crate::accounts::quota::setup::upgrade::material(0);
         let mut head = script::parse(src).expect("读得懂").head;
         head.settings = serde_json::json!({"caps": caps, "capKind": kind, "accounts": accounts});
         head.tz = Some("UTC".into());
         let text = script::with_head(src, &head).expect("头");
-        rotation::strategy_file_write(&self.own(), "t-default", &text).expect("写策略");
-        rotation::face_change(
-            &RotationStore::at(Some(self.rotation_path())),
-            &self.own(),
-            |b| {
+        shelf::write_file(&self.own(), "t-default", &text).expect("写策略");
+        self.setup()
+            .change(&self.own(), |b| {
                 b.for_new = "t-default".into();
                 // 已经有的会话也改用它（同在下拉里换一份）。
                 for x in b.sessions.values_mut() {
-                    x.strategy.id = "t-default".into();
+                    x.id = "t-default".into();
                 }
-            },
-        )
-        .expect("write");
+            })
+            .expect("write");
+    }
+
+    /// 配置编辑层那一份（跟着这里的 `rotation.json`）。
+    fn setup(&self) -> crate::accounts::quota::setup::uses::Setup {
+        crate::accounts::quota::setup::uses::Setup::of(Arc::new(RotationStore::at(Some(
+            self.rotation_path(),
+        ))))
     }
 
     /// 起一个中转（一个后端进程那一份）：额度账 ＋ 轮换都落在这个家里。
@@ -497,6 +501,7 @@ impl Home {
         let quota = Arc::new(Ledger::at(Some(self.root.join(ledger::FILE_NAME))));
         let hop = Hop::new(
             Arc::new(RotationStore::at(Some(self.rotation_path()))),
+            &crate::faces::rotation_face::adoptions_at(),
             Arc::clone(&quota),
             Some(self.root.clone()),
             library,
@@ -522,6 +527,7 @@ impl Home {
         let quota = Arc::new(Ledger::at(Some(self.root.join(ledger::FILE_NAME))));
         let hop = Hop::new(
             Arc::new(RotationStore::at(Some(self.rotation_path()))),
+            &crate::faces::rotation_face::adoptions_at(),
             Arc::clone(&quota),
             Some(self.root.clone()),
             self.library(),
@@ -555,6 +561,7 @@ impl Home {
         let quota = Arc::new(Ledger::at(Some(self.root.join(ledger::FILE_NAME))));
         let hop = Hop::new(
             Arc::new(RotationStore::at(Some(self.rotation_path()))),
+            &crate::faces::rotation_face::adoptions_at(),
             Arc::clone(&quota),
             Some(self.root.clone()),
             self.library(),
@@ -1071,17 +1078,14 @@ fn a_session_started_inside_another_opens_the_default_config() {
     let relay = home.relay_tracing(up);
     let path = "/t/claude-code/a/~0a1b2c3d4e5f6071/v1/messages";
     assert!(send_on(relay, path, "s-owner", "").starts_with("HTTP/1.1 200"));
-    rotation::face_change(
-        &RotationStore::at(Some(home.rotation_path())),
-        &home.own(),
-        |b| {
-            b.sessions.get_mut("s-owner").expect("owner").strategy.id = "other".into();
-        },
-    )
-    .expect("write");
+    home.setup()
+        .change(&home.own(), |b| {
+            b.sessions.get_mut("s-owner").expect("owner").id = "other".into();
+        })
+        .expect("write");
     assert!(send_on(relay, path, "s-kid", "").starts_with("HTTP/1.1 200"));
-    let book = RotationStore::at(Some(home.rotation_path())).now();
-    assert_eq!(book.sessions["s-kid"].strategy.id, book.for_new);
+    let uses = home.setup().uses.now();
+    assert_eq!(uses.sessions["s-kid"].id, uses.for_new);
 }
 
 /// 额度预热那一发（点名一个号、从别的会话的 shell 里起）：主会话已经换到 b，它里面起的、点名 a 的新会话照 a 发 ——
@@ -1100,12 +1104,9 @@ fn a_session_started_inside_a_swapped_one_keeps_the_account_it_names() {
         "台架没过：主会话没换到 b"
     );
     // 预热那一发照「新会话用」那一份：这里清成不轮换，只看它跟不跟主会话。
-    rotation::face_change(
-        &RotationStore::at(Some(home.rotation_path())),
-        &home.own(),
-        |b| b.for_new = String::new(),
-    )
-    .expect("write");
+    home.setup()
+        .change(&home.own(), |b| b.for_new = String::new())
+        .expect("write");
     assert!(send_on(relay, path, "s-owner", "").starts_with("HTTP/1.1 200"));
     let warm = "/t/claude-code/a/~ffff000011112222~s-owner/v1/messages";
     let resp = send_on(relay, warm, "s-warm", "");
@@ -1143,8 +1144,8 @@ fn a_launch_that_says_no_rotation_stays_on_the_account_it_names_whatever_new_ses
     home.set_default(&["b"], None);
     let (up, got) = spawn_judging_upstream(a_refused_b_serves);
     let relay = home.relay_tracing(up);
-    rotation::preset(
-        &RotationStore::at(Some(home.rotation_path())),
+    crate::accounts::quota::setup::uses::preset(
+        &home.setup(),
         &home.own(),
         "s-warm",
         crate::agents::pick_route(Some(&crate::agents::AgentKind::new("claude"))).unwrap(),
@@ -1342,6 +1343,7 @@ fn the_undeclared_account_is_not_taken_for_the_default_login() {
     home.identity("0", UUID_ZERO);
     let hop = Hop::new(
         Arc::new(RotationStore::at(Some(home.rotation_path()))),
+        &crate::faces::rotation_face::adoptions_at(),
         Arc::new(Ledger::at(Some(home.root.join(ledger::FILE_NAME)))),
         Some(home.root.clone()),
         home.library_of(&["0", "a", "b"]),

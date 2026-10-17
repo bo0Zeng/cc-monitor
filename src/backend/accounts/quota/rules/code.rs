@@ -1,56 +1,16 @@
-//! 策略文件：标题 ＝ 文件名；文件最开头连着的 `//` 行是说明；接着一段块注释是 JSON 头（格式 · `timeVarying` · 时区 · 设置 · 声明），
-//! 后面是 Rhai 代码。文件仍是合法的 Rhai；存设置只重写头那一块，说明和代码一个字不动。代码里一个函数 `decide(ctx)`，跑在沙箱里（同第三版的上限），挂着只读的积木库 `lib`（`src/shared/rotation/lib.rhai`）。
+//! 策略的代码：编一次 · 在沙箱里调 `decide(ctx)`（挂着只读的积木库 `lib`，`src/shared/rotation/lib.rhai`）· 回值照形状收 · 一趟推演的总时限。
+//! 文件的格式（说明 · 头 · 只重写头）归配置编辑层；这里只认代码。
 
 use super::decide::{Ctx, Strategy, Verdict, WakeWhen};
 use crate::accounts::quota::strategy::{Fail, FailKind};
-/// 头里能写成一句、也能分语言写的字（线上形住 `cmd-wire`）。
-pub(crate) use cmd_wire::rotation::StrategyText as Text;
 use rhai::{Dynamic, Map, AST};
-use serde::{Deserialize, Serialize};
 
-/// 头那一段的开头与结尾。
-const HEAD_OPEN: &str = "/*--- rotation\n";
-const HEAD_CLOSE: &str = "\n---*/";
-
-/// JSON 头。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct Head {
-    pub(crate) format: u32,
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub(crate) time_varying: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) tz: Option<String>,
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub(crate) tz_unknown: bool,
-    /// 这份策略自己的设置（形状它自己定，后端原样交给它）。
-    pub(crate) settings: serde_json::Value,
-    /// 设置怎么画、怎么校验：界面照它画，后端照它校验形状，不认意思。
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) form: Vec<super::form::Cell>,
-}
-
-/// 这一版的格式号。
-pub(crate) const FORMAT: u32 = 5;
-
-/// 一份读懂了的策略文件：说明 ＋ 头 ＋ 编好的代码。
-pub(crate) struct File {
-    /// 文件开头那段 `//` 注释：去掉行首的 `// `，一行一行用 `\n` 接起来，空行是分段。界面只显示它。
-    pub(crate) about: String,
-    pub(crate) head: Head,
+/// 编好的代码（要有 `fn decide(ctx)`）。
+pub(crate) struct Code {
     ast: AST,
 }
 
-impl std::fmt::Debug for File {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("File")
-            .field("about", &self.about)
-            .field("head", &self.head)
-            .finish_non_exhaustive()
-    }
-}
-
-fn fail(kind: FailKind, line: Option<usize>, msg: impl Into<String>) -> Fail {
+pub(crate) fn fail(kind: FailKind, line: Option<usize>, msg: impl Into<String>) -> Fail {
     Fail {
         why: if kind == FailKind::Timeout {
             crate::accounts::quota::strategy::FailWhy::Timeout
@@ -64,93 +24,10 @@ fn fail(kind: FailKind, line: Option<usize>, msg: impl Into<String>) -> Fail {
     }
 }
 
-/// 拆成 说明那一段原文（含它后面的空行）· 头 JSON 原文 · 代码。说明只能是连着的 `//` 行，跟头之间只许空行。
-fn split(source: &str) -> Result<(&str, &str, &str), Fail> {
-    let mut at = 0;
-    let mut line_no = 1;
-    for l in source.split_inclusive('\n') {
-        let s = l.trim_end_matches(['\n', '\r']);
-        if s.starts_with("//") || s.trim().is_empty() {
-            at += l.len();
-            line_no += 1;
-            continue;
-        }
-        break;
-    }
-    let rest = source[at..].strip_prefix(HEAD_OPEN).ok_or_else(|| {
-        fail(
-            FailKind::BadShape,
-            Some(line_no),
-            "after the leading `//` lines the file must go on with the `/*--- rotation` head",
-        )
-    })?;
-    let end = rest.find(HEAD_CLOSE).ok_or_else(|| {
-        fail(
-            FailKind::BadShape,
-            Some(line_no),
-            "the head is not closed with `---*/`",
-        )
-    })?;
-    Ok((&source[..at], &rest[..end], &rest[end + HEAD_CLOSE.len()..]))
-}
-
-/// 说明那一段原文 ⇒ 显示用的字：去行首 `// `（或 `//`），首尾的空行去掉，连着几个空行算一个。
-fn about_of(lead: &str) -> String {
-    let mut out: Vec<&str> = Vec::new();
-    for l in lead.lines() {
-        let Some(c) = l.trim_end().strip_prefix("//") else {
-            continue;
-        };
-        let c = c.strip_prefix(' ').unwrap_or(c);
-        if c.trim().is_empty() && out.last().is_none_or(|x| x.is_empty()) {
-            continue;
-        }
-        out.push(if c.trim().is_empty() { "" } else { c });
-    }
-    while out.last().is_some_and(|x| x.is_empty()) {
-        out.pop();
-    }
-    out.join("\n")
-}
-
-/// 这一份是不是第五版的策略文件（说明之后是那一段头）：不是的（第三版脚本）升级时挪开。
-pub(crate) fn has_head(source: &str) -> bool {
-    split(source).is_ok()
-}
-
-/// ★ 读一份策略文件：头照形状解、代码编一次、要有 `decide`。
-pub(crate) fn parse(source: &str) -> Result<File, Fail> {
-    let (lead, head, code) = split(source)?;
-    let about = about_of(lead);
-    let head: Head = serde_json::from_str(head).map_err(|e| {
-        let base = lead.matches('\n').count() + 1;
-        fail(FailKind::BadShape, Some(base + e.line()), e.to_string())
-    })?;
-    if head.format != FORMAT {
-        return Err(fail(
-            FailKind::BadShape,
-            Some(2),
-            format!("format {} is not {FORMAT}", head.format),
-        ));
-    }
-    super::form::check_form(&head.form).map_err(|m| fail(FailKind::BadShape, Some(2), m))?;
-    if let Some(b) = super::form::check(&head.form, &head.settings).first() {
-        if !head.form.is_empty() {
-            return Err(fail(
-                FailKind::BadShape,
-                Some(2),
-                format!("settings.{} does not fit the form ({})", b.cell, b.code),
-            ));
-        }
-    }
+/// ★ 编一份代码：`code` 前面已垫好空行（报第几行时与文件对得上）。
+pub(crate) fn compile(code: &str) -> Result<Code, Fail> {
     let e = engine().map_err(|m| fail(FailKind::Broke, None, m))?;
-    // 代码的行号接在头后面（报第几行时与文件对得上）。
-    let lead = source.len() - code.len();
-    let padded = format!(
-        "{}{code}",
-        "\n".repeat(source[..lead].matches('\n').count())
-    );
-    let ast = e.compile(&padded).map_err(|x| {
+    let ast = e.compile(code).map_err(|x| {
         let p = x.position();
         fail(FailKind::Broke, p.line(), x.to_string())
     })?;
@@ -164,15 +41,7 @@ pub(crate) fn parse(source: &str) -> Result<File, Fail> {
             "the code has no `fn decide(ctx)`",
         ));
     }
-    Ok(File { about, head, ast })
-}
-
-/// ★ 换掉头那一块；说明和代码原样接回去，一个字节不动（存设置那一下）。
-pub(crate) fn with_head(source: &str, head: &Head) -> Result<String, Fail> {
-    let (lead, _, code) = split(source)?;
-    let json = serde_json::to_string_pretty(head)
-        .map_err(|e| fail(FailKind::BadShape, None, e.to_string()))?;
-    Ok(format!("{lead}{HEAD_OPEN}{json}{HEAD_CLOSE}{code}"))
+    Ok(Code { ast })
 }
 
 /// 积木库的源码（随包、只读）。
@@ -346,23 +215,18 @@ fn shape(v: Dynamic) -> Result<Verdict, Fail> {
     Ok(out)
 }
 
-impl File {
-    /// 在给定的沙箱里判（[`Strategy::decide`] 给的是进程里那一份 [`engine`]）。
+impl Code {
+    /// 在给定的沙箱里判。
     pub(crate) fn decide_in(&self, e: &rhai::Engine, ctx: &Ctx<'_>) -> Result<Verdict, Fail> {
         let (r, _) =
             crate::accounts::quota::strategy::call_in(e, &self.ast, "decide", (ctx_dynamic(ctx),));
         shape(r.map_err(|x| Fail::of_eval(&x))?)
     }
-}
 
-impl Strategy for File {
-    fn decide(&self, ctx: &Ctx<'_>) -> Result<Verdict, Fail> {
+    /// 在进程里那一份 [`engine`] 上判。
+    pub(crate) fn decide(&self, ctx: &Ctx<'_>) -> Result<Verdict, Fail> {
         let e = engine().map_err(|m| fail(FailKind::Broke, None, m))?;
         self.decide_in(e, ctx)
-    }
-
-    fn time_varying(&self) -> bool {
-        self.head.time_varying
     }
 }
 
@@ -370,7 +234,7 @@ impl Strategy for File {
 /// 只是累计耗时的一把尺子（每调一次策略前后读一次钟、加起来比），不等、不睡、不让谁醒来。登记在零定时器的期限表里。
 #[allow(
     clippy::disallowed_methods,
-    reason = "一趟推演里给策略的总耗时（`rules::script::SIMULATE_BUDGET`）：每调一次策略前后读一次钟、把耗时加起来跟它比，到了就不再调、推演停在那里"
+    reason = "一趟推演里给策略的总耗时（`rules::code::SIMULATE_BUDGET`）：每调一次策略前后读一次钟、把耗时加起来跟它比，到了就不再调、推演停在那里"
 )]
 pub(crate) const SIMULATE_BUDGET: std::time::Duration = std::time::Duration::from_millis(500);
 
@@ -418,7 +282,3 @@ impl Strategy for Budgeted<'_> {
         self.spent.get() >= SIMULATE_BUDGET
     }
 }
-
-#[cfg(test)]
-#[path = "../../../../../tests/backend/accounts/quota/rules/script_tests.rs"]
-mod tests;

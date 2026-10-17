@@ -10,8 +10,7 @@ pub(crate) use cmd_wire::rotation::{
 use serde::Deserialize;
 use serde_json::Value;
 
-/// 号列表那一格的键（固定，不进 `form`）。
-pub(crate) const ACCOUNTS: &str = "accounts";
+pub(crate) use crate::accounts::quota::rules::ACCOUNTS;
 
 /// 一天里的分钟数（`daySegments` 的上界）。
 pub(crate) const DAY_MIN: u64 = 1440;
@@ -517,5 +516,5 @@ pub(crate) fn day_paint(
 }
 
 #[cfg(test)]
-#[path = "../../../../../tests/backend/accounts/quota/rules/form_tests.rs"]
+#[path = "../../../../../tests/backend/accounts/quota/setup/form_tests.rs"]
 mod tests;

@@ -99,7 +99,7 @@ pub(crate) fn with_launch_ctx<T>(
     let ctx = super::rotation_face::Ctx::here();
     let sid = crate::accounts::quota::rotation::new_session_id;
     let write = |sid: &str, kind: &str, rule: &str| {
-        super::rotation_face::preset_with(
+        super::rotation_edit_face::preset_with(
             &ctx,
             own,
             sid,
@@ -108,7 +108,7 @@ pub(crate) fn with_launch_ctx<T>(
             crate::accounts::quota::now_unix(),
         )
     };
-    let forget = |sid: &str| super::rotation_face::forget_preset_with(&ctx, own, sid);
+    let forget = |sid: &str| super::rotation_edit_face::forget_preset_with(&ctx, own, sid);
     let pre = PreRotation {
         sid: &sid,
         write: &write,
