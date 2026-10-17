@@ -5,6 +5,7 @@
         "machine": {
           "detail": null,
           "fixes": [],
+          "next": null,
           "os": null,
           "reason": null,
           "said": "连接 box · 启动 cc-monitor",
@@ -25,6 +26,7 @@
         "machine": {
           "detail": null,
           "fixes": [],
+          "next": null,
           "os": null,
           "reason": null,
           "said": "",
@@ -50,6 +52,7 @@
               "label": "更新"
             }
           ],
+          "next": null,
           "os": null,
           "reason": null,
           "said": "box 要更新",
@@ -70,6 +73,7 @@
         "machine": {
           "detail": null,
           "fixes": [],
+          "next": null,
           "os": null,
           "reason": null,
           "said": "box 版本较新 · 部分功能不可用",
@@ -94,6 +98,7 @@
               "label": "安装"
             }
           ],
+          "next": null,
           "os": null,
           "reason": "other",
           "said": "远端没有后端",
@@ -118,6 +123,7 @@
               "label": "更新"
             }
           ],
+          "next": null,
           "os": null,
           "reason": null,
           "said": "box 要更新",
@@ -146,6 +152,7 @@
               "label": "连接设置"
             }
           ],
+          "next": null,
           "os": null,
           "reason": "auth",
           "said": "连接失败 · 密钥被拒",
@@ -174,6 +181,7 @@
               "label": "连接设置"
             }
           ],
+          "next": null,
           "os": null,
           "reason": "other",
           "said": "box 离线",
@@ -193,6 +201,7 @@
         "machine": {
           "detail": "setsid",
           "fixes": [],
+          "next": null,
           "os": null,
           "reason": null,
           "said": "box · 仅支持 Unix",
