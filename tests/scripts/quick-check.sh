@@ -12,6 +12,7 @@
 #   `--all` 四段全跑（gate-affected --trust-ci 这样调）；`--plan` 只印四段跑不跑、为什么；`--only <段>` 只跑那一段（照挑）。
 #   「加了子命令要打版本号」那一条在各路树上必红（版本号合并时打：bump-build-id.sh）⇒ 单列成「待打版本号」，不算红。
 # 环境：每一步经 session-scrub.sh 摘掉会话继承来的变量（表在 session-vars）；HOME 与 TMUX_TMPDIR 指到 `.build/` 下一次性沙箱目录。
+#   cargo 那几步的 TMPDIR 是外面临时目录下一个一次性的空目录，收尾判它还是空的（tmp-left：测试进程退出时删自己的沙箱根，见 test-home）。
 #   cargo / rustup / npm 的家照外面的 CARGO_HOME / RUSTUP_HOME / npm_config_cache，没设就是真家目录下的默认位置（换 HOME 之前定下）。
 #   手机工具链：外面给了 JAVA_HOME 与 ANDROID_HOME 就用；没给就照 src/mobile/scripts/env.sh 探真家目录下的 android-dev。
 # 红了：每条失败测试的 panic 原话印出来；整趟输出存 `.build/quick-check/<时刻>.log`。
@@ -74,8 +75,9 @@ real_home=$HOME
 cargo_home=${CARGO_HOME:-$HOME/.cargo}
 rustup_home=${RUSTUP_HOME:-$HOME/.rustup}
 npm_cache=${npm_config_cache:-$HOME/.npm}
-trap 'rm -rf "$box"' EXIT
-trap 'rm -rf "$box"; exit 130' INT TERM
+ctmp=$(mktemp -d "${TMPDIR:-/tmp}/qc.XXXXXX") || exit 2
+trap 'rm -rf "$box" "$ctmp"' EXIT
+trap 'rm -rf "$box" "$ctmp"; exit 130' INT TERM
 mkdir -p "$box/home" "$box/tmux"
 # 每路测试的并行数：几路快检同时跑时，每路的测试按默认各起满核数的线程 / worker，互相挤（10-15 量过：
 #   每路 8 个比默认省一到三成 CPU、墙钟持平；4 个墙钟变长）⇒ Rust 测试线程 · vitest worker · gradle worker
@@ -88,7 +90,7 @@ run() { bash "$HERE/session-scrub.sh" env HOME="$box/home" TMUX_TMPDIR="$box/tmu
   RUST_TEST_THREADS="${RUST_TEST_THREADS:-$share}" GATE_VITEST_WORKERS="${GATE_VITEST_WORKERS:-$share}" "$@"; }
 # 每路 cargo 并行数默认 4。要改就在外面设 CARGO_BUILD_JOBS。
 # cargo 那几步不按墙钟判 ⇒ 降到 nice 10，机器忙时给别处按墙钟判的测试让路（vitest / tsc 不降）。
-runcargo() { run nice -n 10 "$@"; }
+runcargo() { run env TMPDIR="$ctmp" nice -n 10 "$@"; }
 
 [ $# -gt 0 ] && echo "  --   过滤词 $* 不再需要：两棵树整套都跑"
 fails=(); notes=()
@@ -138,6 +140,10 @@ clippy_step() {
   step clippy-backend runcargo bash -c 'cd src/backend && cargo clippy --all-targets "$@"' _ "${pkgs[@]}"
 }
 verdict() {
+  left=$(ls -A "$ctmp")
+  if [ -z "$left" ]; then printf '  ok   %-16s cargo 那几步跑完临时目录是空的\n' tmp-left
+  else printf '  红   %-16s cargo 那几步跑完临时目录里留下（建的那一处改成随作用域删）：\n' tmp-left
+    printf '%s\n' "$left" | sed 's/^/       /'; fails+=(tmp-left); fi
   echo
   echo "  重的四段：跑了 ${ran[*]:-（无）}；没跑 ${skipped[*]:-（无）}"
   echo "  墙钟 $((SECONDS-t_all))s · 负载 $(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null) · 整趟输出 ${log#"$root"/}"

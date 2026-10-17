@@ -223,6 +223,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/backend/test_home_guard.rs", needle: "test_home_guard::child_sees_no_outer_session" },
     ),
     (
+        "tests/backend/test_home_guard.rs",
+        "child_litters_the_temp_dir",
+        Trigger::Filter { by: "tests/backend/test_home_guard.rs", needle: "test_home_guard::child_litters_the_temp_dir" },
+    ),
+    (
         "tests/backend/stream/caps_tests.rs",
         "caps_child",
         Trigger::Filter { by: "tests/backend/stream/caps_tests.rs", needle: "stream::inbound::caps_tests::caps_child" },

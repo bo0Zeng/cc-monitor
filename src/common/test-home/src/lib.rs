@@ -11,11 +11,21 @@
 //! 判据 `env_clear()` 后起的子进程）环境是给的那一方配的，照用（父判据给子进程设的 `CCM_RELAY_PORT` 之类不摘）。
 //!
 //! 判据要真家的只能自己显式去拿账号数据库那一格；本 crate 不给。
+//!
+//! 临时目录也一样：每个测试进程起来时在外面给的临时目录下建自己的沙箱根，`TMPDIR`（Windows 上 `TMP` · `TEMP`）指进去，
+//! 进程退出时（判据红了也一样）整个删掉 —— 判据各自建的临时目录、它起的子进程留下的套接字目录都随它走，不在系统临时目录里攒着。
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
-/// 已经换过家的标记（值 ＝ 沙箱根）：判据起的子进程继承它 ⇒ 子进程里不再换。
-pub const SANDBOX_MARK: &str = "RUST_TEST_SANDBOX_HOME";
+/// 沙箱根已经建好的标记（值 ＝ 沙箱根）：判据起的子进程继承它 ⇒ 子进程里不再建、不再换家。
+pub const SANDBOX_MARK: &str = "RUST_TEST_SANDBOX_ROOT";
+
+/// 指向临时目录的那几个变量（`std::env::temp_dir` 与各家临时目录库都照它们）。
+const TEMP_VARS: &[&str] = &["TMPDIR", "TMP", "TEMP"];
+
+/// 沙箱根是本进程建的 ⇒ 退出时删。继承来的（父判据建的）归父进程删。
+static OWNED: AtomicBool = AtomicBool::new(false);
 
 /// 会话继承来的环境变量表（仓里 `tests/scripts/session-vars`，跑测试的脚本也读这一张）：一行一个名字，`*` 结尾按前缀认，
 /// `!` 起头是族里照留的判据输入。
@@ -47,13 +57,12 @@ const DATA_DIR_ENV: &str = "CCM_DATA_DIR";
 /// 各 crate 根上那一行 `static` 指着它：让链接器把本 crate 的目标文件（连同启动段）带进测试二进制。什么都不做。
 pub fn linked() {}
 
-/// 这个测试进程的沙箱根（换过家 ⇒ 标记里那一个；没换 ⇒ 按进程号算出的那一个，还没建）。
+/// 这个测试进程的沙箱根（标记里那一个；没有 ⇒ 按进程号在临时目录下算出的那一个，还没建）。临时目录就是它，换了家 ⇒ 家是它下面的 `home`。
+/// 名字短：判据在它下面绑 Unix 套接字，整条路径要压在 108 字节里。
 pub fn sandbox_root() -> PathBuf {
     std::env::var_os(SANDBOX_MARK)
         .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            std::env::temp_dir().join(format!("ccm-test-home-{}", std::process::id()))
-        })
+        .unwrap_or_else(|| std::env::temp_dir().join(format!("ccm-{}", std::process::id())))
 }
 
 /// 本账号在账号数据库里登记的家目录（`getpwuid_r`，不看 `$HOME`）；查不到 · 非 unix ⇒ `None`。
@@ -105,6 +114,16 @@ fn sandbox_home() {
     if std::env::var_os(SANDBOX_MARK).is_some() {
         return;
     }
+    let root = sandbox_root();
+    // 建不出来也照样指过去（判据宁可在沙箱里红，也不往外面的临时目录里攒）。
+    if let Err(e) = std::fs::create_dir_all(&root) {
+        eprintln!("test-home: 建不出 {}：{e}", root.display());
+    }
+    OWNED.store(true, Ordering::Relaxed);
+    std::env::set_var(SANDBOX_MARK, &root);
+    for k in TEMP_VARS {
+        std::env::set_var(k, &root);
+    }
     let home = std::env::var_os("HOME").map(PathBuf::from);
     if !must_move(home.as_deref(), real.as_deref()) {
         return;
@@ -119,13 +138,10 @@ fn sandbox_home() {
             std::env::remove_var(k);
         }
     }
-    let root = sandbox_root();
     let home = root.join("home");
-    // 建不出来也照样换（判据宁可在沙箱里红，也不回到真家）。
     if let Err(e) = std::fs::create_dir_all(&home) {
         eprintln!("test-home: 建不出 {}：{e}", home.display());
     }
-    std::env::set_var(SANDBOX_MARK, &root);
     std::env::set_var("HOME", &home);
     std::env::set_var("USERPROFILE", &home);
     for (k, sub) in [
@@ -135,5 +151,16 @@ fn sandbox_home() {
         ("XDG_STATE_HOME", ".local/state"),
     ] {
         std::env::set_var(k, home.join(sub));
+    }
+}
+
+/// 进程退出（`main` 返回 · `process::exit`，判据红了走的也是它）时删掉本进程建的沙箱根；被信号杀掉的留下。
+#[ctor::dtor]
+fn drop_sandbox() {
+    if OWNED.load(Ordering::Relaxed) {
+        let root = sandbox_root();
+        if let Err(e) = std::fs::remove_dir_all(&root) {
+            eprintln!("test-home: 删不掉 {}：{e}", root.display());
+        }
     }
 }

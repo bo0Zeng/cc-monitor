@@ -987,6 +987,11 @@ fn agent_home(config_dir: Option<&std::path::Path>, from_env: bool) -> PathBuf {
     agents::home_at(config_dir, from_env)
 }
 
+// 本二进制的测试段不链 lib 的测试段 ⇒ 测试档的家与临时目录这一行自己挂。
+#[cfg(test)]
+#[used]
+static TEST_HOME: fn() = test_home::linked;
+
 #[cfg(test)]
 #[path = "../../tests/backend/main_claim_tests.rs"]
 mod claim_tests;

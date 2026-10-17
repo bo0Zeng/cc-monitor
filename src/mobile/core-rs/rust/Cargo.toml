@@ -42,6 +42,8 @@ tokio = { version = "1", features = ["rt-multi-thread", "io-util", "sync", "time
 jni = { version = "0.21", default-features = false }
 
 [dev-dependencies]
+# 测试档的家与临时目录一开始就是沙箱（判据碰不到这台用户的真家，跑完不在临时目录里留东西）。
+test-home = { path = "../../../common/test-home" }
 # 单测里按墙钟等的那一处用兜底的那一个数（`guard_core::wall::CEILING`）。
 guard-core = { path = "../../../common/guard-core" }
 # 期限那几条判据在虚拟钟上走（`start_paused`）。

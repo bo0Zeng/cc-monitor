@@ -14,6 +14,10 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
+#[cfg(test)]
+#[used]
+static TEST_HOME: fn() = test_home::linked;
+
 use jni::objects::{GlobalRef, JByteArray, JClass, JObject, JObjectArray, JString, JValue};
 use jni::sys::{jboolean, jint, jlong, jstring, JNI_FALSE, JNI_TRUE};
 use jni::{JNIEnv, JavaVM};
