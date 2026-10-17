@@ -125,10 +125,7 @@ impl PhoneHostKeys {
         }
         let said = copy_core::copy_text(
             "mobSsh.hostKey.unmigrated",
-            &[
-                ("n", &rows.len().to_string()),
-                ("m", &read.to_string()),
-            ],
+            &[("n", &rows.len().to_string()), ("m", &read.to_string())],
         );
         *self.unmigrated.lock().unwrap_or_else(|e| e.into_inner()) = Some(said.clone());
         Some(said)
@@ -138,7 +135,11 @@ impl PhoneHostKeys {
     /// 闸关着时库里只有迁进来的那些（读库就拒 ⇒ 首见记不进来），整份清空即只清迁进来的。没对不上 ⇒ `false`，一行不动。
     pub fn forget_all(&self) -> bool {
         let mut gate = self.unmigrated.lock().unwrap_or_else(|e| e.into_inner());
-        if gate.is_none() || self.rewrite(&mut |t| (!t.is_empty()).then(String::new)).is_err() {
+        if gate.is_none()
+            || self
+                .rewrite(&mut |t| (!t.is_empty()).then(String::new))
+                .is_err()
+        {
             return false;
         }
         *gate = None;
@@ -181,8 +182,10 @@ impl HostKeys for PhoneHostKeys {
 mod tests {
     use super::*;
 
-    const ED: &str = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH6Bv4yRS04VSkWcl9S10D9LjpurtRpINBdZiZpLhXHd";
-    const ED2: &str = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOANKshIlRrz0AhOUZAikn+rxmdOeexg0tdpEwkB4mBf";
+    const ED: &str =
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH6Bv4yRS04VSkWcl9S10D9LjpurtRpINBdZiZpLhXHd";
+    const ED2: &str =
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOANKshIlRrz0AhOUZAikn+rxmdOeexg0tdpEwkB4mBf";
     const EC: &str = "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBJm7kzon0dT8iSRRKFOAo/KRt5r1yFo3HvtUQroP/W+xCqxtDGJszr9PKxtduCWA8L9Sc8XDBtsyrNOrTtJE/9A=";
 
     /// 一份只给这一条判据的库文件（沙箱：系统临时目录下按进程号与名字分开）。
@@ -220,7 +223,10 @@ mod tests {
             std::fs::read_to_string(&b.path).unwrap(),
             format!("[box]:2222 {ED}\n")
         );
-        assert_eq!(lines_of(&known_hosts::known(&b.read().unwrap(), &at("box", 2222))).len(), 1);
+        assert_eq!(
+            lines_of(&known_hosts::known(&b.read().unwrap(), &at("box", 2222))).len(),
+            1
+        );
     }
 
     #[test]
@@ -244,7 +250,10 @@ mod tests {
         assert_eq!(b.migrate(&rows), None);
         let text = b.read().unwrap();
         assert_eq!(text.lines().count(), 3, "{text}");
-        assert_eq!(lines_of(&known_hosts::known(&text, &at("box", 22))).len(), 2);
+        assert_eq!(
+            lines_of(&known_hosts::known(&text, &at("box", 22))).len(),
+            2
+        );
         assert!(text.contains(&format!("[other]:2200 {ED2}")));
         // 再迁一次（旧表删之前又起来了）：不重写。
         assert_eq!(b.migrate(&rows), None);
@@ -257,7 +266,10 @@ mod tests {
         // 认不出的那一行写进去也读不回来 ⇒ 对不上。
         let rows = [row("box", 22, ED), row("bad", 22, "ssh-ed25519 not-base64")];
         let said = b.migrate(&rows).expect("对不上要说一句");
-        assert_eq!(said, copy_core::copy_text("mobSsh.hostKey.unmigrated", &[("n", "2"), ("m", "1")]));
+        assert_eq!(
+            said,
+            copy_core::copy_text("mobSsh.hostKey.unmigrated", &[("n", "2"), ("m", "1")])
+        );
         // 闸关着：读库就拒（这台记过的也拒，没迁完不认首见）。
         assert_eq!(b.read().unwrap_err().said, said);
     }
@@ -273,7 +285,8 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&b.path).unwrap_or_default(), "");
         let text = b.read().unwrap();
         assert!(known_hosts::known(&text, &at("box", 22)).is_empty());
-        b.rewrite(&mut |t| known_hosts::remembered(t, &at("box", 22), ED)).unwrap();
+        b.rewrite(&mut |t| known_hosts::remembered(t, &at("box", 22), ED))
+            .unwrap();
         assert_eq!(b.read().unwrap(), format!("box {ED}\n"));
     }
 
@@ -287,10 +300,20 @@ mod tests {
 
     #[test]
     fn the_rows_kotlin_hands_over_parse_and_a_broken_one_still_counts() {
-        let cells: Vec<String> = ["box", "2222", "ssh-ed25519", "AAAA", "x"].map(String::from).to_vec();
+        let cells: Vec<String> = ["box", "2222", "ssh-ed25519", "AAAA", "x"]
+            .map(String::from)
+            .to_vec();
         let rows = OldRow::flat(&cells);
         assert_eq!(rows.len(), 2);
-        assert_eq!((rows[0].host.as_str(), rows[0].port, rows[0].key_type.as_str(), rows[0].key.as_str()), ("box", 2222, "ssh-ed25519", "AAAA"));
+        assert_eq!(
+            (
+                rows[0].host.as_str(),
+                rows[0].port,
+                rows[0].key_type.as_str(),
+                rows[0].key.as_str()
+            ),
+            ("box", 2222, "ssh-ed25519", "AAAA")
+        );
         assert_eq!(rows[1].port, 0);
     }
 

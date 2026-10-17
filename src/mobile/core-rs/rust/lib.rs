@@ -543,7 +543,10 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_migrateHostKeys<'l
 
 /// `Core.forgetAllHostKeys()`：迁移对不上那一句的出路（点了、确认过才调）：清空库、开闸；`true` ⇒ Kotlin 删旧表。没对不上 · 写不成 ⇒ `false`。
 #[no_mangle]
-pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_forgetAllHostKeys<'l>(_env: JNIEnv<'l>, _class: JClass<'l>) -> jboolean {
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_forgetAllHostKeys<'l>(
+    _env: JNIEnv<'l>,
+    _class: JClass<'l>,
+) -> jboolean {
     guarded(JNI_FALSE, || match BOOK.get().map(|b| b.forget_all()) {
         Some(true) => JNI_TRUE,
         _ => JNI_FALSE,
@@ -941,7 +944,10 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_transferPull<'l>(
 ) -> jlong {
     guarded(0, || {
         let Some(file) = file_of(fd) else { return 0 };
-        let (Some(args), shown) = (string(&mut env, &args), string(&mut env, &shown).unwrap_or_default()) else {
+        let (Some(args), shown) = (
+            string(&mut env, &args),
+            string(&mut env, &shown).unwrap_or_default(),
+        ) else {
             return 0;
         };
         let _rt = runtime().enter();
@@ -1104,7 +1110,11 @@ mod tests {
     /// 手机自己经 SFTP 只剩部署要写的那两处。
     #[test]
     fn the_phone_installs_the_deploy_write_rule() {
-        super::install_env(std::env::temp_dir().join(format!("mobcore-env-{}", std::process::id())).join("known_hosts"));
+        super::install_env(
+            std::env::temp_dir()
+                .join(format!("mobcore-env-{}", std::process::id()))
+                .join("known_hosts"),
+        );
         assert!(ssh_dial::env::installed());
         assert_eq!(
             ssh_dial::env::get().files,
