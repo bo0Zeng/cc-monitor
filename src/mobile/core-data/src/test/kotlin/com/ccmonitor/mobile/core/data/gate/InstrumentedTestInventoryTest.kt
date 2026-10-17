@@ -149,7 +149,7 @@ class InstrumentedTestInventoryTest {
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/HostDaoTest.kt" to 1,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/KeystoreCryptoTest.kt" to 3,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/CacheDaoTest.kt" to 3,
-                "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/MigrationTest.kt" to 19,
+                "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/MigrationTest.kt" to 20,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/RestoreDefaultKeysTest.kt" to 2,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/SeedOnCreateTest.kt" to 1,
                 "core-rs/src/androidTest/kotlin/com/ccmonitor/mobile/core/rs/CoreLoadTest.kt" to 1,
@@ -157,7 +157,7 @@ class InstrumentedTestInventoryTest {
                 "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/RustTransportTest.kt" to 5,
             )
 
-        const val PINNED_TOTAL_TESTS = 38
+        const val PINNED_TOTAL_TESTS = 39
         const val CI_WORKFLOW = "scripts/android-test.sh"
         const val ANDROID_TEST_JOB = "connectedDebugAndroidTest"
         const val CLASS_FILTER = "testInstrumentationRunnerArguments.class="

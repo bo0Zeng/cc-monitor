@@ -109,7 +109,8 @@ class ChatSessionTest {
             val s = draft(link)
             s.send("你好")
             runCurrent()
-            assertEquals("你好", link.calls("session-open").single().what()?.get("prompt"))
+            val opened = link.calls("session-open").single().what()
+            assertEquals("你好", opened?.get("prompt"))
             assertEquals("pre", s.state.value.sid)
             assertTrue("第一句已随起交了，不再送一遍", link.calls("session-say").isEmpty())
             assertNull("送到了的不挂标", s.local().single().delivery)
@@ -189,7 +190,8 @@ class ChatSessionTest {
             val s = draft(link, agent = "codex")
             s.send("看一下")
             runCurrent()
-            assertEquals("codex", link.calls("session-open").single().what()?.get("agent"))
+            val opened = link.calls("session-open").single().what()
+            assertEquals("codex", opened?.get("agent"))
             link.report("cx", "/h/proj")
             runCurrent()
             assertEquals(listOf(mapOf("sid" to "cx", "text" to "看一下", "client" to "mobile")), link.calls("session-say"))
@@ -384,7 +386,8 @@ class ChatSessionTest {
                 }
                 draft(link, agent = stored).send("你好")
                 runCurrent()
-                assertEquals("存的是 $stored", want, link.calls("session-open").single().what()?.get("agent"))
+                val opened = link.calls("session-open").single().what()
+                assertEquals("存的是 $stored", want, opened?.get("agent"))
             }
         }
 

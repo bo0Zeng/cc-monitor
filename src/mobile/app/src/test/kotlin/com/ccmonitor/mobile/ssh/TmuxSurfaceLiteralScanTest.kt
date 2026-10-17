@@ -41,7 +41,11 @@ class TmuxSurfaceLiteralScanTest {
     private fun census(files: Map<String, String>): Map<String, Map<String, Int>> {
         val literalsOf = files.mapValues { (_, text) -> stringLiteralsOf(text) }
         return ANCHORS.associateWith { mark ->
-            literalsOf.mapValues { (_, lits) -> countOccurrences(lits, mark) }.filterValues { it > 0 }.toSortedMap().toMap()
+            literalsOf
+                .mapValues { (_, lits) -> countOccurrences(lits, mark) }
+                .filterValues { it > 0 }
+                .toSortedMap()
+                .toMap()
         }
     }
 
