@@ -1,8 +1,10 @@
 //! 批量停 / 起：每一个的结局与「单个那一条会做的事」相等（替身记下被调了什么；tmux 一个都不起）。
 
 use super::*;
+use crate::control::launch_account as la;
 use serde_json::json;
 use std::cell::RefCell;
+use std::collections::BTreeSet;
 
 /// 线上那一份入参 ⇒ 本体 ⇒ 线上那一份回包（解入参同 typed 分派那一步：形状不对 ⇒ `bad_args`）。
 fn wired<R: serde::de::DeserializeOwned, T: serde::Serialize>(
@@ -82,6 +84,8 @@ struct Rig {
     list_err: Option<&'static str>,
     /// 预标信任那几下：`pretrust <号目录> <工作目录> @<此前已交的 ccm 数>/<此前已键入的数>`。
     marks: RefCell<Vec<String>>,
+    /// 这台的偏好。
+    prefs: crate::control::machine_prefs::Prefs,
 }
 
 impl Rig {
@@ -99,6 +103,7 @@ impl Rig {
             live: vec![],
             list_err: None,
             marks: RefCell::new(vec![]),
+            prefs: Default::default(),
         }
     }
     fn run<T>(&self, f: impl FnOnce(&Deps) -> T) -> T {
@@ -189,7 +194,8 @@ impl Rig {
                 accounts,
                 writers: &writers,
                 pretrust: &pretrust,
-                prefs: &crate::control::machine_prefs::Prefs::default(),
+                open_shell: &|_, _| unreachable!("不开空 shell"),
+                prefs: &self.prefs,
             })
         })
     }
@@ -350,13 +356,26 @@ fn the_standing_of_a_sid_is_judged_once_for_menu_stop_and_start() {
               "terminals": [{ "host": "tmux", "terminal": "tmux-b-cc" }] },
             { "sid": C, "standing": "ambiguous", "names": ["c-cc", "c-cc-2"],
               "terminals": [{ "host": "tmux", "terminal": "tmux-c-cc" }, { "host": "tmux", "terminal": "tmux-c-cc-2" }] },
-        ] })
+        ], "run": "direct" })
     );
     let none = Rig::new(None);
     assert_eq!(
         none.run(|d| where_(&json!({ "sids": [A] }), d)).unwrap()["results"][0]["standing"],
         "no_tmux"
     );
+}
+
+/// ★ `sessions-where` 顺带答这台恢复默认放在哪：偏好「恢复时进 tmux」× 有没有 tmux（同 `session-open` 恢复没说 `run` 时那一条）。
+#[test]
+fn where_also_says_where_a_resume_lands_by_default() {
+    let run = |rows: Option<Vec<TmuxEntry>>, pref: bool| {
+        let mut rig = Rig::new(rows);
+        rig.prefs.resume_in_tmux = pref;
+        rig.run(|d| where_(&json!({ "sids": [A] }), d)).unwrap()["run"].clone()
+    };
+    assert_eq!(run(Some(vec![]), true), "tmux");
+    assert_eq!(run(Some(vec![]), false), "direct");
+    assert_eq!(run(None, true), "direct");
 }
 
 #[test]
@@ -499,7 +518,7 @@ fn a_window_start_renders_what_the_single_item_renders() {
         single_line(A, Some("/w/proj"), json!({ "kind": "base" }))
     );
     assert!(rig.launched.borrow().is_empty());
-    // 本机：同 `launch-local`（这台铸的名建进 tmux）；身份 token 用的就是 sid ⇒ 两次渲逐字相等。
+    // 本机：直路就是直路（不先建 tmux）、不带工作目录（终端由 monitor 在那个目录开），同 `launch-local` 不给名字那一行。
     let args = batch("window", true, vec![item(A, json!({ "kind": "base" }))]);
     let out = rig.run(|d| start(&args, d)).unwrap();
     let single = with_accounts(|f| {
@@ -510,7 +529,6 @@ fn a_window_start_renders_what_the_single_item_renders() {
                     "action": { "kind": "resume", "sid": A },
                     "cwd": "/w/proj",
                     "account": { "kind": "base" },
-                    "tmuxName": "proj-cc-2",
                 }),
             )
             .unwrap()
@@ -520,7 +538,7 @@ fn a_window_start_renders_what_the_single_item_renders() {
     })
     .unwrap();
     assert_eq!(out["results"][0]["cmd"], single.cmd);
-    assert_eq!(out["results"][0]["session"], "proj-cc-2");
+    assert_eq!(out["results"][0]["session"], Value::Null);
 }
 
 /// 一个 tmux 会话里几个窗格各挂一个 sid：空着的那个（agent 已退）就地接回时，送字带着它的 sid
@@ -598,6 +616,7 @@ fn the_first_stuck_item_spends_the_batch_total_and_the_rest_time_out_on_their_ow
         },
         writers: &|_| Vec::new(),
         pretrust: &|_, _| {},
+        open_shell: &|_, _| unreachable!("不开空 shell"),
         prefs: &crate::control::machine_prefs::Prefs::default(),
     };
     let sids: Vec<String> = [A, B, C].map(str::to_string).to_vec();
@@ -687,20 +706,6 @@ fn a_fresh_terminal_item_never_lands_on_the_parent_terminal_name() {
         .calls
         .borrow()
         .contains(&"mint-fork proj-cc".to_string()));
-
-    // 本机开终端那一形：名字同本机 Resume（按工作目录铸、这台避让），同样不落在父会话那个名字上。
-    let mut here = Rig::new(Some(vec![row("proj-cc", Some(A), true)]));
-    here.cwd_name = "proj-cc-2";
-    let out = here
-        .run(|d| start(&batch("window", true, vec![fresh_item(N)]), d))
-        .unwrap();
-    let r = &out["results"][0];
-    assert_eq!(r["outcome"], "done", "{out}");
-    assert_eq!(r["session"], "proj-cc-2");
-    assert!(
-        r["cmd"].as_str().unwrap().contains("--ccm-tmux=proj-cc-2"),
-        "{out}"
-    );
 }
 
 /// 这台铸回来的名字仍落在名单里某个上（快照晚了一拍）⇒ 不起、说名字被占，绝不复用。
@@ -717,14 +722,6 @@ fn a_fresh_name_that_is_already_listed_is_refused_not_reused() {
         (json!("failed"), json!("name_taken"), json!("proj-fork-cc"))
     );
     assert!(rig.ccm.borrow().is_empty(), "撞名了还起了");
-    // 本机开终端那一形：这台铸回的名字（快照晚了一拍）正是父会话那个 ⇒ 同样不起。
-    let mut here = Rig::new(Some(vec![row("proj-cc", Some(A), true)]));
-    here.cwd_name = "proj-cc";
-    let out = here
-        .run(|d| start(&batch("window", true, vec![fresh_item(N)]), d))
-        .unwrap();
-    assert_eq!(out["results"][0]["why"], "name_taken");
-    assert_eq!(out["results"][0]["cmd"], Value::Null);
 }
 
 /// 要铸新名的那一项不键进已有的终端（哪怕那个终端挂着它）；不带这一格的照旧就地键入。
@@ -878,124 +875,4 @@ fn a_listing_that_ran_out_of_time_answers_child_timed_out_not_unobservable() {
             "start {err}"
         );
     }
-}
-
-// ── 恢复再送（`session-say` 终端没了）────────────────────────────────
-
-/// 恢复再送那一项：带那一句 · 记录里最后那个模型 · 权限档。
-fn saying(sid: &str, model: Option<&str>, mode: Option<&str>) -> Item {
-    Item {
-        sid: sid.into(),
-        cwd: "/w/proj".into(),
-        account: AccountAsk::Follow,
-        fresh: false,
-        fork_of: None,
-        say: Some("-接着做\n第二行".into()),
-        model: model.map(str::to_string),
-        permission_mode: mode.map(str::to_string),
-    }
-}
-
-fn has_pair(argv: &[String], a: &str, b: &str) -> bool {
-    argv.windows(2).any(|w| w[0] == a && w[1] == b)
-}
-
-/// ★ 起的那一项带上那一句（交给那一家的那一半末尾、`--` 之后）· `--model`（记录里那一个）· 权限档 ——
-/// 本机那一形（`launch-local` 那条起法）与远端那一形（`launch-render-cli` 那条）两条都带。
-#[test]
-fn a_resumed_item_carries_the_line_the_model_and_the_mode_on_both_launch_forms() {
-    for here in [true, false] {
-        let rig = Rig::new(Some(vec![]));
-        let a = rig.run(|d| {
-            start_named(
-                &saying(A, Some("opus"), Some("acceptEdits")),
-                &Batch::of("claude", d.prefs),
-                &Settled::Unsaid,
-                "proj-cc-2".into(),
-                here,
-                d,
-            )
-        });
-        assert_eq!(a.outcome, "done", "here={here}: {a:?}");
-        let argv = rig.ccm.borrow()[0].clone();
-        assert!(
-            has_pair(&argv, "--", "-接着做\n第二行"),
-            "here={here}: {argv:?}"
-        );
-        assert!(has_pair(&argv, "--model", "opus"), "here={here}: {argv:?}");
-        assert!(
-            has_pair(&argv, "--permission-mode", "acceptEdits"),
-            "here={here}: {argv:?}"
-        );
-    }
-}
-
-/// ★ 越过批准的档（`bypassPermissions`）· 那一家不认的档不给（跟随）；不是模型名的不给（跟随偏好表）。那一句照带。
-#[test]
-fn a_bypass_mode_or_a_bad_model_from_the_record_is_dropped_not_passed() {
-    for here in [true, false] {
-        for (model, mode) in [
-            (Some("bad model;"), Some("bypassPermissions")),
-            (None, Some("auto")),
-        ] {
-            let rig = Rig::new(Some(vec![]));
-            rig.run(|d| {
-                start_named(
-                    &saying(A, model, mode),
-                    &Batch::of("claude", d.prefs),
-                    &Settled::Unsaid,
-                    "proj-cc-2".into(),
-                    here,
-                    d,
-                )
-            });
-            let argv = rig.ccm.borrow()[0].clone();
-            assert!(
-                !argv
-                    .iter()
-                    .any(|a| a == "--permission-mode" || a == "--model"),
-                "here={here} {model:?} {mode:?}: {argv:?}"
-            );
-            assert!(has_pair(&argv, "--", "-接着做\n第二行"), "{argv:?}");
-        }
-    }
-}
-
-/// ★ 恢复再送那一项照批量起的 tmux 那一形走：号跟随、问记录、铸名起（`--detach`），那一句在行里；
-/// 已有活进程在写 ⇒ 不起；没 tmux ⇒ 不起；那一家不收第一句 ⇒ 不起。
-#[test]
-fn resuming_to_say_goes_the_tmux_start_way_and_stops_where_it_would() {
-    let rig = Rig::new(Some(vec![]));
-    let a = rig.run(|d| resume_saying(&saying(A, None, None), "claude", d));
-    assert_eq!(a.outcome, "done", "{a:?}");
-    assert_eq!(a.session.as_deref(), Some("proj-cc-2"));
-    let argv = rig.ccm.borrow()[0].clone();
-    assert!(argv.iter().any(|t| t == "--detach"), "{argv:?}");
-    assert!(has_pair(&argv, "--", "-接着做\n第二行"), "{argv:?}");
-    assert!(rig
-        .calls
-        .borrow()
-        .iter()
-        .any(|c| c.starts_with(&format!("record {A}"))));
-
-    let mut live = Rig::new(Some(vec![]));
-    live.live = vec![(A, 42)];
-    let a = live.run(|d| resume_saying(&saying(A, None, None), "claude", d));
-    assert_eq!(
-        (a.outcome, a.why.as_deref()),
-        ("skipped", Some(ALREADY_LIVE))
-    );
-    assert!(live.ccm.borrow().is_empty());
-
-    let none = Rig::new(None);
-    let a = none.run(|d| resume_saying(&saying(A, None, None), "claude", d));
-    assert_eq!((a.outcome, a.why.as_deref()), ("skipped", Some("no_tmux")));
-
-    let rig = Rig::new(Some(vec![]));
-    let a = rig.run(|d| resume_saying(&saying(A, None, None), "no-such-agent", d));
-    assert_eq!(
-        (a.outcome, a.why.as_deref()),
-        ("skipped", Some("no_first_prompt"))
-    );
-    assert!(rig.ccm.borrow().is_empty());
 }

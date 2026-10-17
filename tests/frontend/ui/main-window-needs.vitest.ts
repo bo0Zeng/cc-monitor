@@ -4,7 +4,7 @@
  * - `session-face.ts`：状态点 · 状态句 · peek · 需手动（活动信号说不在等了 ⇒ 手上那份当场不认；说在等、种类没到 ⇒ 不猜）；
  * - `needs-order.ts`：`Ctrl+J` 的先后问后端（各台 `sessions-needs`，跨台本机 `sessions-needs-merge`），界面只把条上的对上去；
  * - 标签页栏：「需手动 N」只在 N ≥ 1 时出、点它开浮层（浮层本身见 `needs-panel.vitest.ts`）、`Ctrl+J` 跳等得最久的；机器离线条（`{machine} 离线 · N 会话状态不明`）＋［重新连接］；
- * - 窗口标题与系统通知（消息流底部的答题块另见 `answer-block.vitest.ts`）；
+ * - 窗口标题（消息流底部的答题块另见 `answer-block.vitest.ts`）；
  * - 会话头：按状态多一颗（已结束［恢复 ▾］· Claude 已退出（远端）［在终端里打开］· 状态不明［重新连接］）。
  *
  * 夹具只造结构（sid · 路径 · 占位工具名），不采会话正文。

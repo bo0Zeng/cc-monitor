@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.ui.rotation
 
-import com.ccmonitor.mobile.core.claude.link.AccountsList
 import com.ccmonitor.mobile.core.claude.link.Changed
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Reply
@@ -8,6 +7,7 @@ import com.ccmonitor.mobile.core.claude.link.RotEdit
 import com.ccmonitor.mobile.core.claude.link.RotWhere
 import com.ccmonitor.mobile.core.claude.link.Rotation
 import com.ccmonitor.mobile.core.claude.link.RotationStrategies
+import com.ccmonitor.mobile.core.claude.link.wire.RotPlate
 import com.ccmonitor.mobile.core.claude.link.wire.RotationStrategiesReply
 import com.ccmonitor.mobile.core.claude.link.wire.RotationViewReply
 import com.ccmonitor.mobile.core.copy.copyText
@@ -76,11 +76,12 @@ data class RotationUi(
     /** 旧格式那几份的抽屉开着。 */
     val oldOpen: Boolean = false,
     val ask: RotAsk? = null,
-    /** 号牌上的号色与名字（那台账号库的事实，`accounts-list`）。 */
-    val accounts: Map<String, AccountsList.Account> = emptyMap(),
     /** 一件写没成那一句（底部提示一次）。 */
     val failure: Problem? = null,
 ) {
+    /** 视图里这个号身上那一枚号牌（号色 · 号名 · 号牌字，那台写好的）；视图里没有 ⇒ `null`。 */
+    fun plate(account: String): RotPlate? = view?.accounts?.firstOrNull { it.account == account }?.plate
+
     companion object {
         const val HOURS_12 = 12
         const val HOURS_24 = 24
@@ -112,10 +113,7 @@ class RotationBoard(
     val inSession: Boolean get() = sid != null
 
     init {
-        scope.launch {
-            loadAccounts()
-            refresh()
-        }
+        scope.launch { refresh() }
         changes?.let { flow ->
             scope.launch {
                 flow.collect { c ->
@@ -149,12 +147,6 @@ class RotationBoard(
 
     /** 看哪一处：会话 ⇒ 它；设置页 ⇒ 新会话用的那份（没有 ⇒ `null`，只画第一行）。 */
     private fun where(list: RotationStrategiesReply): RotWhere? = sid?.let { RotWhere.Session(it) } ?: list.forNew.takeIf { it.isNotEmpty() }?.let { RotWhere.Strategy(it) }
-
-    private suspend fun loadAccounts() {
-        val r = link.call(AccountsList.COMMAND, AccountsList.args(""), READ_MS)
-        val got = (r as? Reply.Ok)?.let { AccountsList.of(it.data) } ?: return
-        _state.update { it.copy(accounts = got.accounts.associateBy { a -> a.name }) }
-    }
 
     /** 显示的这份设置照哪个版本（那台给的）：写的时候当 `ifRev`。 */
     private fun rev(): String =
@@ -407,7 +399,7 @@ class RotationBoard(
     fun toggleOld() = _state.update { it.copy(oldOpen = !it.oldOpen) }
 
     /** 号在人眼里叫什么（那台账号库写的 `label`；没有 ⇒ 号名）。 */
-    fun label(account: String): String = _state.value.accounts[account]?.label ?: account
+    fun label(account: String): String = _state.value.plate(account)?.label ?: account
 
     private fun problemOf(
         r: Reply,

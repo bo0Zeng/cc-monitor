@@ -204,16 +204,11 @@ check(r.get("ok") and os.path.isdir(os.path.join(root, "d")), "files-mkdir 建�
 r = A.ask("files-rename", {"root": root, "from": "a.txt", "to": "d/b.txt"})
 check(r.get("ok") and not os.path.exists(os.path.join(root, "a.txt"))
       and open(os.path.join(root, "d/b.txt"), "rb").read() == b"hello\n", "files-rename 同根内移动", r)
-r = A.ask("files-put", {"root": root, "rel": "d/c.txt", "content": "put-1\n", "expect": None})
-check(r.get("ok") and open(os.path.join(root, "d/c.txt"), "rb").read() == b"put-1\n", "files-put 新存一份", r)
-r = A.ask("files-put", {"root": root, "rel": "d/c.txt", "content": "put-2\n", "expect": "put-1\n"})
-check(r.get("ok") and open(os.path.join(root, "d/c.txt"), "rb").read() == b"put-2\n", "files-put 带 expect 覆盖", r)
-r = A.ask("files-put", {"root": root, "rel": "d/c.txt", "content": "put-3\n", "expect": "stale\n"})
-check(not r.get("ok") and open(os.path.join(root, "d/c.txt"), "rb").read() == b"put-2\n",
-      "files-put 的 expect 对不上 ⇒ 拒，盘上照旧", r)
+r = A.ask("files-create", {"root": root, "rel": "d/c.txt", "content": "c\n"})
+check(r.get("ok") and open(os.path.join(root, "d/c.txt"), "rb").read() == b"c\n", "files-create 建进子目录", r)
 r = A.ask("files-copy", {"root": root, "items": [{"from": "d", "to": "d2"}]})
 check(all_done(r) and open(os.path.join(root, "d2/b.txt"), "rb").read() == b"hello\n"
-      and open(os.path.join(root, "d2/c.txt"), "rb").read() == b"put-2\n", "files-copy 复制目录", r)
+      and open(os.path.join(root, "d2/c.txt"), "rb").read() == b"c\n", "files-copy 复制目录", r)
 r = A.ask("files-delete", {"root": root, "items": [{"rel": "d2/b.txt"}]})
 check(all_done(r) and not os.path.exists(os.path.join(root, "d2/b.txt")), "files-delete 删一份文件", r)
 r = A.ask("files-delete", {"root": root, "items": [{"rel": "d2", "recursive": True}]})
@@ -266,7 +261,6 @@ for cmd, args, what in [
     ("files-create", {"root": root, "rel": os.path.join(outside, "abs.txt"), "content": "x"}, "绝对路径"),
     ("files-create", {"root": root, "rel": "out-link/via-link.txt", "content": "x"}, "根里一条指向根外的链接"),
     ("files-mkdir", {"root": root, "rel": "out-link/dir"}, "建目录穿过链接"),
-    ("files-put", {"root": root, "rel": "out-link/p.txt", "content": "x", "expect": None}, "存穿过链接"),
     ("files-rename", {"root": root, "from": "up.bin", "to": "out-link/moved.bin"}, "改名到根外"),
 ]:
     r = A.ask(cmd, args)
@@ -288,10 +282,9 @@ check(code_of(r) == "exists" and open(os.path.join(root, "keep.txt"), "rb").read
 # ── ③ 只读的那几条在同一棵树上跑一遍，树前后逐字节相同 ────────────────────────────
 snap = tree(root)
 for cmd, args in [("files-ls", {"path": root}), ("files-stat", {"path": os.path.join(root, "keep.txt")}),
-                  ("files-read", {"path": os.path.join(root, "keep.txt")}),
-                  ("files-peek", {"root": root, "rel": "keep.txt"})]:
+                  ("files-read", {"path": os.path.join(root, "keep.txt")})]:
     A.ask(cmd, args)
-check(tree(root) == snap, "只读那几条（ls · stat · read · peek）跑完，树逐字节没变")
+check(tree(root) == snap, "只读那几条（ls · stat · read）跑完，树逐字节没变")
 
 # ── 传输：两个沙箱后端之间（本机后端经 sftp 连远端那台的沙箱家）────────────────────
 if sshd_why:

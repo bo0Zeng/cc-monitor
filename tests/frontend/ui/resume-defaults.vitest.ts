@@ -50,7 +50,7 @@ describe("「运行于」的默认：照那台的偏好，那台没 tmux 回落�
     defaultPick("win-box");
     defaultPick("devbox");
     await settle();
-    standingsFrom("win-box", { results: [{ sid: "s1", standing: "no_tmux", names: [], terminals: [] }] });
+    standingsFrom("win-box", { results: [{ sid: "s1", standing: "no_tmux", names: [], terminals: [] }], run: "direct" });
     expect(defaultPick("win-box").tmux).toBe(false);
     expect(defaultPick("devbox").tmux).toBe(true);
   });
@@ -63,6 +63,7 @@ describe("「运行于」的默认：照那台的偏好，那台没 tmux 回落�
     expect(defaultPick("box2").tmux).toBe(false);
     standingsFrom("box2", {
       results: [{ sid: "s1", standing: "idle", names: ["cc-1"], terminals: [{ host: "tmux", terminal: "cc-1" }] }],
+      run: "direct",
     });
     expect(defaultPick("box2").tmux).toBe(true);
   });

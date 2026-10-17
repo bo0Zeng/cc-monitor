@@ -80,4 +80,11 @@ class TerminalsTest {
             SessionNew.inTmux(agent = "claude", name = "work", ticket = "t-2"),
         )
     }
+
+    @Test
+    fun `session-resume 只交 sid 与自报的前端；回它落在的那个 tmux 会话`() {
+        assertEquals(mapOf("sid" to "s1", "client" to "mobile"), SessionResume.args("s1"))
+        assertEquals("proj-cc", SessionResume.of(mapOf("session" to "proj-cc")))
+        assertNull(SessionResume.of(mapOf("name" to "proj-cc")))
+    }
 }

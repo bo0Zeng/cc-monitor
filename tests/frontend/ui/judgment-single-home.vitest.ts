@@ -763,6 +763,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 线上一家 agent 的名字（`AgentKind`）：收下 · 取串。不是判定（kind ⇄ 路由名那一换住后端 `agents`）；界面拿生成的类型当串用，没有孪生。
     new: NONE,
     as_str: NONE,
+    // `files-ls` 那一列是不是从大到小（后端排序 · 文件窗口表头的箭头）。界面不列目录，TS 侧没有孪生。
+    descending: NONE,
   },
   "copy-core": {
     backend_old: "J22",

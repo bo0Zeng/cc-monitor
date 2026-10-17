@@ -249,7 +249,7 @@ pub struct LsReq {
 
 /// `files-ls` 按哪一列排：`by` 那一列的第一下（名称 A 在前 · 大小大的在前 · 时间新的在前），`reverse` 只反那一列；
 /// 相持按名称小写、再按原字节。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
@@ -263,8 +263,8 @@ pub struct LsSort {
     pub reverse: bool,
 }
 
-/// [`LsSort::by`] 的三列。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// [`LsSort::by`] 的四列。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
@@ -272,9 +272,101 @@ pub struct LsSort {
 )]
 #[serde(rename_all = "snake_case")]
 pub enum LsSortBy {
+    #[default]
     Name,
     Size,
     Mtime,
+    /// 「类型」那一列：[`FileClass`]（链接自成一种），再扩展名。
+    Type,
+}
+
+impl LsSort {
+    /// 这一屏那一列是不是从大到小（第一下：大小 · 时间大的在前，名称 · 类型 A 在前；`reverse` 反过来）。
+    pub fn descending(self) -> bool {
+        matches!(self.by, LsSortBy::Size | LsSortBy::Mtime) != self.reverse
+    }
+}
+
+/// 一项按名字看是哪一种：图标 · 「类型」那一列 · 按类型排都看它（那台判）。
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "lowercase")]
+pub enum FileClass {
+    Folder,
+    Text,
+    Code,
+    Image,
+    Archive,
+    Pdf,
+    Link,
+    #[default]
+    Other,
+}
+
+/// 一项读得起来的那几道门（只在文件上有；那台按名字与大小判好，两端照画）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct Gates {
+    pub preview: PreviewGate,
+    /// 查看页：只在两端解得开的那几种图上有。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub view: Option<Gate>,
+    pub edit: Gate,
+}
+
+/// 预览：当文本读（读多少以内 · 按哪种语法上色）· 当图读（读多少以内）· 不预览（那一句）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "snake_case")]
+pub enum PreviewGate {
+    Text(TextPreview),
+    Image(#[cfg_attr(any(test, feature = "ts"), ts(type = "number"))] u64),
+    No(String),
+}
+
+/// [`PreviewGate::Text`]：读多少以内 · 认得的代码 / 标记文本按哪种语法上色（扩展名；认不得 ⇒ 缺）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct TextPreview {
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub cap: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub lang: Option<String>,
+}
+
+/// 一道门：许读多少以内 · 不许（那一句）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "snake_case")]
+pub enum Gate {
+    Cap(#[cfg_attr(any(test, feature = "ts"), ts(type = "number"))] u64),
+    No(String),
 }
 
 /// 面包屑的一段：这一段叫什么 · 点它去哪（[`LsReply::crumbs`]）。
@@ -325,6 +417,14 @@ pub struct LsEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub link_to: Option<LinkTo>,
+    /// 画哪种图标（链接画它指向的那一种：指向目录 ⇒ 文件夹，其余按名字）。
+    pub class: FileClass,
+    /// 「类型」那一列的字（那台写好）。
+    pub type_text: String,
+    /// 读得起来的那几道门；目录（含指向目录的链接）缺。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub gates: Option<Gates>,
 }
 
 /// `files-ls` 的回包。
@@ -388,9 +488,7 @@ pub struct SizeReq {
 #[serde(deny_unknown_fields)]
 pub struct StatReply {
     pub path: WirePath,
-    /// 末段名（那台按自己的分隔符切好；到顶 ⇒ 空）。
-    pub name: WirePath,
-    /// 上一级；到顶 ⇒ `null`。
+    /// 上一级（那台按自己的路径规则切）；到顶 ⇒ `null`。
     pub up: Option<WirePath>,
     pub kind: FileKind,
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
@@ -716,6 +814,8 @@ pub struct FindReq {
 pub struct FilesFindHit {
     pub path: WirePath,
     pub kind: FileKind,
+    /// 画哪种图标（索引不跟链接 ⇒ 链接画 [`FileClass::Link`]）。
+    pub class: FileClass,
     /// 相对搜索起点的那一段（所在目录）。
     pub location: WirePath,
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]

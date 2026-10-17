@@ -100,9 +100,9 @@ function at(e: HTMLElement, x: number, w?: number): void {
   if (w !== undefined) e.style.setProperty("--rot-w", String(w));
 }
 
-/** 视图里这个号的号牌（后端带好号色 · 号名）；视图里没有 ⇒ `undefined`。 */
+/** 视图里这个号的号牌（后端带好号色 · 号名 · 号牌字）；视图里没有 ⇒ `undefined`。 */
 function acctIn(view: RotationViewReply | null | undefined, account: string): RotPlate | undefined {
-  return view?.plates[account];
+  return view?.accounts.find((a) => a.account === account)?.plate;
 }
 
 /** 号名：照视图里那一格；视图里没有的号照原名。 */
@@ -112,7 +112,8 @@ function nameIn(view: RotationViewReply | null | undefined, account: string): st
 
 /** 号的头像（号色照视图里那一格；视图里没有 ⇒ 中性的头像）。 */
 function avatar(view: RotationViewReply | null | undefined, account: string, origin: Origin): HTMLElement {
-  return accountAvatarEl(account, { size: 16, origin, color: acctIn(view, account)?.color ?? null });
+  const plate = acctIn(view, account);
+  return accountAvatarEl(account, { size: 16, origin, color: plate?.color ?? null, plate: plate?.text });
 }
 
 

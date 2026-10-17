@@ -45,31 +45,11 @@ fn answer(
     own: &crate::platform::fs::Own,
     nf: &crate::platform::fs::NewFile,
 ) -> Result<session_new::SessionNew, session_new::Failed> {
-    let home = crate::history::listing::agent_home();
-    let fork =
-        |sid: &str, uuid: &str| crate::control::fork_write::fork_for_launch(nf, &home, sid, uuid);
-    let user_home = crate::platform::paths::home_dir();
-    let ctx = super::rotation_face::Ctx::here();
-    let sid = crate::accounts::quota::rotation::new_session_id;
-    let write = |sid: &str, kind: &str, rule: &str| {
-        super::rotation_face::preset_with(
-            &ctx,
-            own,
-            sid,
-            kind,
-            rule,
-            crate::accounts::quota::now_unix(),
-        )
-    };
-    let forget = |sid: &str| super::rotation_face::forget_preset_with(&ctx, own, sid);
-    let pre = session_new::PreRotation {
-        sid: &sid,
-        write: &write,
-        forget: &forget,
-    };
     let agent = req.agent.clone();
-    super::session_batch_face::with_deps_as(None, &agent, Some(files), |d| {
-        session_new::answer(req, d, &fork, &pre, user_home.as_deref())
+    super::session_open_face::with_launch_ctx(own, nf, |fork, pre, home| {
+        super::session_batch_face::with_deps_as(None, &agent, Some(files), |d| {
+            session_new::answer(req, d, fork, pre, home)
+        })
     })
 }
 

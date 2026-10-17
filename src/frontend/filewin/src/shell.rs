@@ -216,12 +216,10 @@ pub struct Listing {
     /// 它必须画出来：「这个目录里就这么多」与「后端只给了前 N 条」
     /// 在屏幕上长得一样，而用户会据此以为某个文件不存在。
     pub truncated: Arc<std::sync::atomic::AtomicBool>,
-    /// 隐藏文件切成不显示时，收起来的那几行（不在 [`Self::rows`] 里，下标不受它们影响）。
-    pub hidden: Arc<Mutex<Vec<Listed>>>,
+    /// 隐藏文件切成不显示时，收起来的那几行，各带它在后端那一屏里的位置（不在 [`Self::rows`] 里，下标不受它们影响）。
+    pub hidden: Arc<Mutex<Vec<(usize, Listed)>>>,
     /// 隐藏文件显示着吗（缺省 `true`）。一屏落地时按它分。
     pub show_hidden: Arc<std::sync::atomic::AtomicBool>,
-    /// 此刻选的那一档排序（[`FileWindow::set_sort`] 先改它再重排）：一屏落地时出发那一档与它不同 ⇒ 按它重排。
-    pub sort: Arc<Mutex<Sort>>,
     /// 上一趟有几项读不出来（后端照数，没列出）。
     pub unreadable: Arc<AtomicU64>,
     /// 上一趟目录里一共读到几项（截断时那一句要它）。
@@ -244,7 +242,6 @@ impl Default for Listing {
             truncated: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             hidden: Arc::new(Mutex::new(Vec::new())),
             show_hidden: Arc::new(std::sync::atomic::AtomicBool::new(true)),
-            sort: Arc::new(Mutex::new(Sort::default())),
             unreadable: Arc::new(AtomicU64::new(0)),
             total: Arc::new(AtomicU64::new(0)),
             open_fail: Arc::new(Mutex::new(None)),
@@ -258,12 +255,10 @@ impl Default for Listing {
 ///
 /// 🔴 与它**刻意是两个函数**：没问成的那几形（无运行时 / 无通道）交不出这一格，
 /// 而给它编一个「不知道」的第三态，只会让「没问过」与「问了没被截断」混在一起。
-/// `by` ＝ 出发时那一档排序：落地时用户已经换了档 ⇒ 按现在那一档重排（表头指着哪一列，行就按哪一列）。
 pub fn store_listed_if_current(
     l: &Listing,
     mine: u64,
     r: Result<(Vec<Listed>, super::source::Cut), super::source::Failed>,
-    by: Sort,
 ) -> bool {
     match r {
         Ok((rows, cut)) => {
@@ -275,12 +270,6 @@ pub fn store_listed_if_current(
                 l.unreadable.store(cut.unreadable, Ordering::SeqCst);
                 l.total.store(cut.total, Ordering::SeqCst);
                 *l.open_fail.lock().unwrap() = None;
-                // 落地之后才读那一档：在这之前换的档由这里补排，在这之后换的由 `set_sort` 就地排。
-                let now = *l.sort.lock().unwrap();
-                if now != by {
-                    super::source::sort_rows(&mut l.rows.lock().unwrap(), now);
-                    super::source::sort_rows(&mut l.hidden.lock().unwrap(), now);
-                }
             }
             kept
         }
@@ -307,8 +296,7 @@ pub fn store_if_current(
             let (shown, hidden) = if l.show_hidden.load(Ordering::SeqCst) {
                 (v, Vec::new())
             } else {
-                v.into_iter()
-                    .partition(|r| !super::kind::is_hidden(&r.name))
+                split_hidden(v)
             };
             *l.rows.lock().unwrap() = shown;
             *l.hidden.lock().unwrap() = hidden;
@@ -325,6 +313,20 @@ pub fn store_if_current(
         }
     }
     true
+}
+
+/// 一屏分成显示的与收起来的（隐藏文件）；收起来的记下它在那一屏里的位置，插回时照原样。
+fn split_hidden(v: Vec<Listed>) -> (Vec<Listed>, Vec<(usize, Listed)>) {
+    let mut shown = Vec::with_capacity(v.len());
+    let mut gone = Vec::new();
+    for (i, r) in v.into_iter().enumerate() {
+        if super::kind::is_hidden(&r.name) {
+            gone.push((i, r));
+        } else {
+            shown.push(r);
+        }
+    }
+    (shown, gone)
 }
 
 impl Listing {
@@ -347,18 +349,18 @@ impl Listing {
         *self.plan.lock().unwrap() = None;
     }
 
-    /// 切隐藏文件显不显示：显示 ⇒ 收起来的那几行并回来、按 `sort` 重排；不显示 ⇒ 挪到一边。
-    pub fn set_show_hidden(&self, on: bool, sort: Sort) {
+    /// 切隐藏文件显不显示：显示 ⇒ 收起来的那几行插回它们在后端那一屏里的位置；不显示 ⇒ 挪到一边。
+    pub fn set_show_hidden(&self, on: bool) {
         self.show_hidden.store(on, Ordering::SeqCst);
         let mut rows = self.rows.lock().unwrap();
         let mut hidden = self.hidden.lock().unwrap();
         if on {
-            rows.append(&mut hidden);
-            super::source::sort_rows(&mut rows, sort);
+            for (at, r) in std::mem::take(&mut *hidden) {
+                let at = at.min(rows.len());
+                rows.insert(at, r);
+            }
         } else {
-            let (shown, gone): (Vec<Listed>, Vec<Listed>) = std::mem::take(&mut *rows)
-                .into_iter()
-                .partition(|r| !super::kind::is_hidden(&r.name));
+            let (shown, gone) = split_hidden(std::mem::take(&mut *rows));
             *rows = shown;
             *hidden = gone;
         }
@@ -718,13 +720,7 @@ impl FileWindow {
         // 🔴〔补齐五项〕第一屏走的是 `Vec<Listed>`（〔09-28 裁 3〕窗口进程自己列的，`proc::first_screen`）
         //    ⇒ 链接与时间两格第一屏就有。入参收 `Into<Listed>` 是为了
         //    判据夹具照旧能喂 `Vec<Row>`（那一形 ＝ `Listed::plain`，两格都「没送」）。
-        // ⚠ **这一屏刻意不再排一次**：第一屏列的时候（〔09-28 裁 3〕窗口进程的 `proc::first_screen` → `source::list_dir`）已经按缺省那一档排过
-        //   （`source::rows_from_ls_data`），再排一遍是恒等。
-        //   在这儿插一次 `sort_rows` 试过一趟，读数如实记：
-        //   `shell_tests::a_write_from_the_menu_reaches_the_right_row` 当场红 ——
-        //   它喂的夹具是乱序的，于是「第 1 行是哪一行」被改掉了。
-        //   ⇒ 那是一次**谁都没要求的行为变更**（生产上零收益，判据上真伤），撤掉。
-        //   用户换档那一下由 [`FileWindow::set_sort`] 就地重排，不经这里。
+        // 这一屏照给的先后摆（第一屏是后端按缺省那一档排好的）。
         *listing.rows.lock().unwrap() = rows.into_iter().map(Into::into).collect();
         Self {
             source,
@@ -849,7 +845,7 @@ impl FileWindow {
                     return;
                 };
                 let origin = self.source.origin();
-                // ⚠ 带**这一刻**选的那一档走；落地时用户已换了档 ⇒ [`store_listed_if_current`] 按现在那一档重排。
+                // 带这一刻选的那一档走；换档会重列一趟，号 +1，这一趟落地时就作废了。
                 let by = self.sort;
                 h.spawn(async move {
                     let r = super::source::list_via_backend_at(
@@ -865,7 +861,7 @@ impl FileWindow {
                         super::source::OpenFail::of_code(f.code.as_deref())
                             .map(|k| (k, f.said.clone()))
                     });
-                    if store_listed_if_current(&l, mine, r, by) {
+                    if store_listed_if_current(&l, mine, r) {
                         *l.open_fail.lock().unwrap() = fail;
                     }
                 });
@@ -979,35 +975,22 @@ impl FileWindow {
         self.navigate_to_at(up);
     }
 
-    /// 换一种排序，并**把手上这一摞就地重排**。回值 = 真的换了（同一档 ⇒ `false`）。
-    ///
-    /// # 🔴 为什么不是「记下来，下次列目录的时候用」
-    ///
-    /// 那样点了下拉之后屏幕上一动不动，要等用户自己按一下刷新 ——
-    /// 而「点了没反应」与「这个目录本来就是这个序」在屏幕上分不开。
-    ///
-    /// # ⚠ 为什么不是「每帧排一次」
-    ///
-    /// 那条纪律：64 万行那一档每帧一次 `sort` 直接把帧时打穿
-    /// （虚拟滚动省的是**画**，不是遍历）。⇒ 排序只在两个时刻发生：
-    /// **一屏落地**（[`super::source::list_dir`]）与**用户换档**（这里）。
-    pub fn set_sort(&mut self, sort: impl Into<Sort>) -> bool {
-        let sort = sort.into();
-        if self.sort == sort {
+    /// 换一种排序：记下这一档、按它重列一趟（先后由后端排）。回值 = 真的换了（同一档 ⇒ `false`）。
+    /// 和那台断着、手上摆着上一屏 ⇒ 不换（列不了，表头不许指着一列、行却是另一种序）。
+    pub fn set_sort(&mut self, sort: Sort) -> bool {
+        if self.sort == sort
+            || (self.link.offline() && !self.listing.rows.lock().unwrap().is_empty())
+        {
             return false;
         }
         self.sort = sort;
-        // 先记下这一档，再排手上这一摞（在路上的那一趟落地时比这一档，见 `store_listed_if_current`）。
-        *self.listing.sort.lock().unwrap() = sort;
-        super::source::sort_rows(&mut self.listing.rows.lock().unwrap(), sort);
-        super::source::sort_rows(&mut self.listing.hidden.lock().unwrap(), sort);
+        self.reload();
         true
     }
 
     /// 点了表头那一列（同一列再点 ⇒ 反过来）。
     pub fn click_header(&mut self, by: super::source::SortBy) -> bool {
-        let next = self.sort.after_click(by);
-        self.set_sort(next)
+        self.set_sort(super::source::after_click(self.sort, by))
     }
 
     /// 隐藏文件显示着吗（缺省显示，淡一级）。
@@ -1020,7 +1003,7 @@ impl FileWindow {
         if self.shows_hidden() == on {
             return false;
         }
-        self.listing.set_show_hidden(on, self.sort);
+        self.listing.set_show_hidden(on);
         if !on {
             let rows = self.listing.rows.lock().unwrap();
             let keep: std::collections::BTreeSet<String> = rows
@@ -1236,7 +1219,7 @@ impl FileWindow {
                 return None;
             }
             let found = super::rows::reveal_index(&rows, &want);
-            let hidden = found.is_none() && super::rows::reveal_index(&hidden, &want).is_some();
+            let hidden = found.is_none() && hidden.iter().any(|(_, r)| r.name == want);
             (found, hidden)
         };
         // 它是一个隐藏文件、而隐藏文件关着 ⇒ 打开显示隐藏文件、照样跳过去，说一句（不说「可能被删了」）。
@@ -2869,7 +2852,7 @@ impl FileWindow {
             (
                 r.clone(),
                 self.row_path(r),
-                super::editor::why_not_editable_listed(r),
+                super::editor::why_not_editable(r),
             )
         }) else {
             return false;
@@ -2899,8 +2882,9 @@ impl FileWindow {
         }
         self.edit_row = Some(listed.clone());
         let row = listed.row.clone();
-        // 🔴 本地预判 —— 出声，不灰置。
-        if let Some(why) = refused {
+        // 本地预判（后端那道编辑门）—— 出声，不灰置；放行了 ⇒ 那道门给的数就是这一份的上限。
+        let cap = super::editor::edit_cap(&listed).unwrap_or_default();
+        if let Some(why) = refused.or_else(|| super::editor::why_not_editable(&listed)) {
             let said = copy_text(
                 "rsFilewinShell.edit.refused",
                 &[("name", &row.name.to_string()), ("why", &why.to_string())],
@@ -2928,14 +2912,15 @@ impl FileWindow {
         self.edit_raw = at.raw.clone().map(|b| (row.path.clone(), b));
         h.spawn(async move {
             use super::editor::Arrived;
-            // 读文本经通道问后端（`files-read-text`），不再拨 SFTP。路径按字节发。
-            let got = super::editor::read_text_at(&line, &origin, &at).await;
+            // 读文本经通道问后端（`files-read-text`）。路径按字节发。
+            let got = super::editor::read_text_at(&line, &origin, &at, cap).await;
             board.deliver(match got {
                 Ok(Some(o)) => Arrived::Text {
                     path: row.path.clone(),
                     name: row.name.clone(),
                     text: o.text,
                     sha256: o.sha256,
+                    cap,
                 },
                 Ok(None) => Arrived::NotText { path: row.path },
                 Err(why) => Arrived::Failed {
@@ -2962,8 +2947,9 @@ impl FileWindow {
                 name,
                 text,
                 sha256,
+                cap,
             } => {
-                let mut pane = super::editor::Pane::opened(&path, &name, text, sha256);
+                let mut pane = super::editor::Pane::opened(&path, &name, text, sha256, cap);
                 // 有损名：读的时候记下的字节交给编辑面（存盘走它）。
                 pane.raw_path = self
                     .edit_raw
@@ -3015,11 +3001,7 @@ impl FileWindow {
                     "rsFilewinShell.edit.tooBig",
                     &[
                         ("n", &(p.text.len()).to_string()),
-                        (
-                            "limit",
-                            &(copy_core::size_text(super::editor::MAX_EDIT_BYTES as u64))
-                                .to_string(),
-                        ),
+                        ("limit", &(copy_core::size_text(p.cap)).to_string()),
                     ],
                 )
                 .into(),
@@ -3041,8 +3023,15 @@ impl FileWindow {
         board.begin_save(&p.path);
         h.spawn(async move {
             let at = super::source::RemotePath::of(&p.path, p.raw_path.as_deref());
-            let r =
-                super::editor::write_text_at(&line, &origin, &at, &p.text, p.expect_sha256()).await;
+            let r = super::editor::write_text_at(
+                &line,
+                &origin,
+                &at,
+                &p.text,
+                p.expect_sha256(),
+                p.cap,
+            )
+            .await;
             board.deliver_save(r);
         });
         true
@@ -3071,7 +3060,7 @@ impl FileWindow {
         board.begin_save(&p.path);
         h.spawn(async move {
             let at = super::source::RemotePath::of(&p.path, p.raw_path.as_deref());
-            let r = super::editor::overwrite_anyway_at(&line, &origin, &at, &p.text).await;
+            let r = super::editor::overwrite_anyway_at(&line, &origin, &at, &p.text, p.cap).await;
             board.deliver_save(r);
         });
         true
@@ -3086,7 +3075,7 @@ impl FileWindow {
         let Some(p) = self.editing.as_ref() else {
             return false;
         };
-        let (path, name) = (p.path.clone(), p.name.clone());
+        let (path, name, cap) = (p.path.clone(), p.name.clone(), p.cap);
         let at = super::source::RemotePath::of(&path, p.raw_path.as_deref());
         self.edit_raw = at.raw.clone().map(|b| (path.clone(), b));
         let (Some(h), Some(line)) = (self.rt.clone(), self.line.clone()) else {
@@ -3100,13 +3089,14 @@ impl FileWindow {
         board.begin_open(&path);
         h.spawn(async move {
             use super::editor::Arrived;
-            let got = super::editor::read_text_at(&line, &origin, &at).await;
+            let got = super::editor::read_text_at(&line, &origin, &at, cap).await;
             board.deliver(match got {
                 Ok(Some(o)) => Arrived::Text {
                     path,
                     name,
                     text: o.text,
                     sha256: o.sha256,
+                    cap,
                 },
                 Ok(None) => Arrived::NotText { path },
                 Err(why) => Arrived::Failed { path, why },
@@ -3767,10 +3757,7 @@ impl FileWindow {
             "rsFilewinEditPage.foot.size",
             &[
                 ("size", &copy_core::size_text(e.text.len() as u64)),
-                (
-                    "cap",
-                    &copy_core::size_text(super::editor::MAX_EDIT_BYTES as u64),
-                ),
+                ("cap", &copy_core::size_text(e.cap)),
             ],
         ));
         let over = e.over_cap().then(|| {
@@ -4353,11 +4340,8 @@ impl FileWindow {
         } else {
             copy_core::size_text(row.size)
         };
-        self.write_board.describe(
-            &row.path,
-            super::kind::icon(super::kind::icon_kind(row)),
-            meta,
-        );
+        self.write_board
+            .describe(&row.path, super::kind::icon(row.class), meta);
     }
 
     /// 🔴 **胶水**：列表说「第 `i` 行被单击了（带着这几个修饰键）」→ 选中态跟着变。

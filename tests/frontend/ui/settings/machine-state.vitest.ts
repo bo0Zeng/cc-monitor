@@ -12,7 +12,7 @@ const cases = golden.cases as Case[];
 
 describe("机器状态成品", () => {
   it("★ 金样每一形都收得下、原样交出", () => {
-    expect(cases.length, "金样缩水了 —— 下面的逐形比在空人群上恒绿").toBe(14);
+    expect(cases.length, "金样缩水了 —— 下面的逐形比在空人群上恒绿").toBe(15);
     for (const c of cases) expect(decodeMachineState(c.machine), c.name).toEqual(c.machine);
   });
 
@@ -41,6 +41,19 @@ describe("机器状态成品", () => {
     expect(face("不是 Unix").problem).toBe(copyText("machineState.problem.notUnix", { machine: "gpu-01" }));
     expect(face("停用")).toMatchObject({ dot: "exited", problem: copyText("machinePage.problem.disabled") });
     expect(face("本机没连上").problem).toBe(copyText("machineState.down.local"));
+    expect(face("本机被拒")).toMatchObject({ problem: copyText("machineState.down.local"), next: "结束口上那个进程再重开（结构夹具）" });
+  });
+
+  it("★ 壳写了下一步那一句 ⇒ 问题行下面照原样画；别的形不出那一行", () => {
+    const decoded = (name: string) => decodeMachineState(cases.find((c) => c.name === name)!.machine)!;
+    for (const c of cases) {
+      const el = document.createElement("div");
+      paintProblem(el, machineFace(decoded(c.name), "gpu-01"), () => {});
+      const next = el.querySelector(".machine-problem-next");
+      if (c.name === "本机被拒") expect(next?.textContent, c.name).toBe("结束口上那个进程再重开（结构夹具）");
+      else expect(next, c.name).toBeNull();
+    }
+    expect(decodeMachineState({ ...cases[0]!.machine, next: "" }), "下一步是空串").toBeNull();
   });
 
   it("★ 收不下就是收不下：多一格 · 少一格 · 认不出的态 / 关系 / 修法 · 空串", () => {

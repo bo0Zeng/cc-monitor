@@ -2,11 +2,12 @@ package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.claude.link.wire.BatchItemState
 import com.ccmonitor.mobile.core.claude.link.wire.BatchReply
+import com.ccmonitor.mobile.core.claude.link.wire.Conflict
+import com.ccmonitor.mobile.core.claude.link.wire.Conflicts
 import com.ccmonitor.mobile.core.claude.link.wire.FileKind
 import com.ccmonitor.mobile.core.claude.link.wire.FilesPathReply
 import com.ccmonitor.mobile.core.claude.link.wire.LsEntry
 import com.ccmonitor.mobile.core.claude.link.wire.LsReply
-import com.ccmonitor.mobile.core.claude.link.wire.ReadChunkReply
 import com.ccmonitor.mobile.core.claude.link.wire.ReadTextReply
 import com.ccmonitor.mobile.core.claude.link.wire.StatReply
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
@@ -15,7 +16,7 @@ import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 
 /*
- * 那台的文件：列 · 读 · 存回 · 新建 · 改名 · 删 · 改权限 · 分块上传 · 分块下载。都是那台后端的帧命令，
+ * 那台的文件：列 · 读 · 存回 · 新建 · 改名 · 删 · 改权限 · 上传的提交（分块那一圈在核心里，[CoreLink.transfer]）。都是那台后端的帧命令，
  * 桌面文件窗口问的同一族；能不能做 · 出错那一句 · 冲突都由那台判、那台写。手机只拼入参，回包由嵌的 Rust 核心按 `cmd-wire` 那一份解过、
  * 装进 `link/wire/` 的声明类。写的那几问照桌面的切法：`root` ＝ 当前目录，`rel` ＝ 一段名字（敲的名字带 `single`，合不合法那台判）。
  */
@@ -74,12 +75,9 @@ class RemotePath(
 }
 
 /** 字节 ⇒ 小写十六进制（`{"b16": …}` 那一形）。 */
-internal fun hex(
-    b: ByteArray,
-    n: Int = b.size,
-): String {
-    val s = StringBuilder(n * 2)
-    for (i in 0 until n) s.append(HEX[(b[i].toInt() shr 4) and 0xf]).append(HEX[b[i].toInt() and 0xf])
+internal fun hex(b: ByteArray): String {
+    val s = StringBuilder(b.size * 2)
+    for (i in b.indices) s.append(HEX[(b[i].toInt() shr 4) and 0xf]).append(HEX[b[i].toInt() and 0xf])
     return s.toString()
 }
 
@@ -122,10 +120,20 @@ object FilesLs {
         val size: Long?,
         /** 那台按它的钟写好的短写法。 */
         val mtime: String?,
+        /** 预览那道门（那台判的）；目录 · 手机不画的那几种（图）⇒ `null`。 */
+        val preview: Open? = null,
+        /** 编辑那道门（那台判的）；目录 ⇒ `null`。 */
+        val edit: Open? = null,
     ) {
         /** 屏上那一串名字。 */
         val name: String get() = rel.shown
     }
+
+    /** 一道门：许读 [cap] 以内；不许 ⇒ [said]（那台写好的那一句）。 */
+    data class Open(
+        val cap: Long? = null,
+        val said: String? = null,
+    )
 
     data class Listing(
         /** 那台排好的先后，照画。 */
@@ -164,7 +172,11 @@ object FilesLs {
     private fun entryOf(e: LsEntry): Entry? {
         val path = RemotePath.of(e.path) ?: return null
         val rel = RemotePath.of(e.name) ?: return null
-        return Entry(path, rel, e.kind == FileKind.DIR || (e.kind == FileKind.SYMLINK && e.linkDir == true), e.size, e.mtimeText)
+        val g = e.gates
+        val preview = g?.preview?.let { p -> p.text?.let { Open(cap = it.cap) } ?: p.no?.let { Open(said = it) } }
+        val edit = g?.edit?.let { Open(it.cap, it.no) }
+        val isDir = e.kind == FileKind.DIR || (e.kind == FileKind.SYMLINK && e.linkDir == true)
+        return Entry(path, rel, isDir, e.size, e.mtimeText, preview, edit)
     }
 
     /** 新建会话的目录浏览：只列文件夹（含指向目录的链接）。路径是那台写好的全路径。 */
@@ -189,7 +201,7 @@ object FilesLs {
     }
 }
 
-/** `files-stat`：一个路径的元数据（改权限那一框要它此刻的权限位 · 打开一个路径要它是不是目录）。 */
+/** `files-stat`：一个路径的元数据（改权限那一框要它此刻的权限位 · 打开一个路径要它是不是目录、在哪个目录里）。 */
 object FilesStat {
     const val COMMAND: String = "files-stat"
 
@@ -198,15 +210,15 @@ object FilesStat {
     /** unix 权限位；那台没有这一说 ⇒ `null`；解不出 ⇒ `null`。 */
     fun modeOf(data: Any?): Long? = Wire.bind<StatReply>(data)?.mode
 
-    /** 是什么（跟链接，那台判的）· 在哪一级 · 末段名（那台切好的）；解不出 ⇒ `null`。 */
-    fun placeOf(data: Any?): Place? =
-        Wire.bind<StatReply>(data)?.let { r -> RemotePath.of(r.name)?.let { Place(r.kind, RemotePath.of(r.up), it) } }
+    /** 是什么（跟链接）· 上一级（到顶 ⇒ `null`），都是那台判的；解不出 ⇒ `null`。 */
+    fun placeOf(data: Any?): Place? {
+        val r = Wire.bind<StatReply>(data) ?: return null
+        return Place(r.kind, r.up?.let { RemotePath.of(it) ?: return null })
+    }
 
-    /** 一个路径是什么、在哪：[up] 到顶 ⇒ `null`。 */
     data class Place(
         val kind: FileKind,
         val up: RemotePath?,
-        val name: RemotePath,
     )
 }
 
@@ -214,16 +226,17 @@ object FilesStat {
 object FilesReadText {
     const val COMMAND: String = "files-read-text"
 
-    /** 一趟许读的上限。 */
-    const val MAX_BYTES: Long = 256L * 1024
-
     data class Text(
         val text: String,
         /** 读到的那一份字节的 SHA-256：存回时交回去（盘上被改过 ⇒ 那台拒）。 */
         val sha256: String,
     )
 
-    fun args(path: RemotePath): Map<String, Any?> = mapOf("path" to path.wire, "max_bytes" to MAX_BYTES)
+    /** [cap] ＝ 列表那一行上那台给的那道门许读多少。 */
+    fun args(
+        path: RemotePath,
+        cap: Long,
+    ): Map<String, Any?> = mapOf("path" to path.wire, "max_bytes" to cap)
 
     fun of(data: Any?): Text? = Wire.bind<ReadTextReply>(data)?.let { Text(it.text, it.sha256) }
 }
@@ -321,58 +334,48 @@ object Batch {
     }
 }
 
-/** `files-stage-chunk`：上传的一块进那台的暂存区（同一份上传同一个 `key`，`seq` 从 0 数）。 */
-object FilesStageChunk {
-    const val COMMAND: String = "files-stage-chunk"
-
-    fun args(
-        key: String,
-        seq: Long,
-        buf: ByteArray,
-        n: Int,
-    ): Map<String, Any?> = mapOf("key" to key, "seq" to seq, "content" to mapOf("b16" to hex(buf, n)))
-}
-
-/** `files-commit-upload`：暂存区里传完的那一份挪进当前目录（整份摘要那台照核；不覆盖：目标在就拒；名字带 single，那台判，那一句那台写）。 */
+/**
+ * `files-commit-upload`：暂存区里传完的那一份挪进当前目录（整份摘要那台照核；名字带 single，那台判，那一句那台写）。同名怎么办 [onExists]：
+ * 不带 ⇒ 那台问（码 `exists` ＋ 同名清单，块与暂存件都留着）；`overwrite` · `keep_both` ⇒ 同一份暂存件再交一次。
+ */
 object FilesCommitUpload {
     const val COMMAND: String = "files-commit-upload"
+
+    /** 上传那一件撞了同名能怎么答（`skip` 那台不收：只有一件，不放就不提交）。 */
+    val ANSWERS: List<String> = listOf("overwrite", "keep_both")
 
     fun args(
         dir: RemotePath,
         name: String,
-        key: String,
-        sha256: String,
-        chunks: Long,
-        bytes: Long,
+        staged: Staged,
+        onExists: String? = null,
     ): Map<String, Any?> =
         mapOf(
             "root" to dir.wire,
             "rel" to name,
-            "key" to key,
-            "expect" to mapOf("sha256" to sha256),
-            "chunks" to chunks,
-            "bytes" to bytes,
+            "key" to staged.key,
+            "expect" to mapOf("sha256" to staged.sha256),
+            "chunks" to staged.chunks,
+            "bytes" to staged.bytes,
             "single" to true,
-        )
-}
+        ) + listOfNotNull(onExists?.let { "on_exists" to it })
 
-/** `files-read-chunk`：按字节分块读回（下载）。 */
-object FilesReadChunk {
-    const val COMMAND: String = "files-read-chunk"
+    /** 核心送完的那一份（[CoreLink.transfer] 的 [Transfer.Stage] 回的那一形）。 */
+    data class Staged(
+        val key: String,
+        val chunks: Long,
+        val bytes: Long,
+        val sha256: String,
+    ) {
+        companion object {
+            fun of(data: Any?): Staged? =
+                (data as? Map<*, *>)?.let { m ->
+                    val n = { k: String -> (m[k] as? Number)?.toLong() }
+                    Staged(m["key"] as? String ?: return null, n("chunks") ?: return null, n("bytes") ?: return null, m["sha256"] as? String ?: return null)
+                }
+        }
+    }
 
-    /** 一块多大（同那台一块的上限 `READ_CHUNK_MAX_BYTES`）。 */
-    const val LEN: Long = 256L * 1024
-
-    class Chunk(
-        val bytes: ByteArray,
-        val size: Long,
-        val eof: Boolean,
-    )
-
-    fun args(
-        path: RemotePath,
-        offset: Long,
-    ): Map<String, Any?> = mapOf("path" to path.wire, "offset" to offset, "len" to LEN)
-
-    fun of(data: Any?): Chunk? = Wire.bind<ReadChunkReply>(data)?.let { r -> unhex(r.content.b16)?.let { Chunk(it, r.size, r.eof) } }
+    /** 码 `exists` 的 `data` ⇒ 同名清单；解不出 ⇒ `null`。 */
+    fun conflictsOf(data: Any?): List<Conflict>? = Wire.bind<Conflicts>(data)?.conflicts
 }

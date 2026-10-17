@@ -2,6 +2,7 @@ package com.ccmonitor.mobile.ui.files
 
 import android.content.Context
 import android.net.Uri
+import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -47,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ccmonitor.mobile.core.claude.link.FilesCommitUpload
 import com.ccmonitor.mobile.core.claude.link.FilesLs
 import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.copy.SizeFormat
@@ -173,6 +175,10 @@ fun FilesScreen(
     }
 
     DialogHost(dialog = dialog, vm = vm, actions = actions, onDialog = { dialog = it })
+    val clash by vm.clash.collectAsState()
+    clash?.let { (dir, c) ->
+        ConflictSheet(copyText("rsFilewinBatch.verb.upload"), dir, c.said, c.conflicts, FilesCommitUpload.ANSWERS, vm::answer)
+    }
 }
 
 /** 条目级动作（下载 · 预览 · 编辑 · 改权限要先读的那几件）。 */
@@ -192,9 +198,13 @@ private fun entryActions(
     val scope = rememberCoroutineScope()
     return remember(vm) {
         EntryActions(
-            download = { e -> vm.download(e, context.getExternalFilesDir(null)) },
-            preview = { e -> scope.launch { vm.readText(e).onSuccess { onDialog(FilesDialog.Preview(e.name, it.text)) } } },
-            startEdit = { e -> scope.launch { vm.readText(e).onSuccess { onDialog(FilesDialog.Edit(e, it.text, it.sha256)) } } },
+            download = { e ->
+                vm.download(e, context.getExternalFilesDir(null)) { f ->
+                    ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_WRITE_ONLY or ParcelFileDescriptor.MODE_CREATE or ParcelFileDescriptor.MODE_TRUNCATE).detachFd()
+                }
+            },
+            preview = { e -> scope.launch { vm.readText(e.path, e.preview).onSuccess { onDialog(FilesDialog.Preview(e.name, it.text)) } } },
+            startEdit = { e -> scope.launch { vm.readText(e.path, e.edit).onSuccess { onDialog(FilesDialog.Edit(e, it.text, it.sha256)) } } },
             startChmod = { e -> scope.launch { onDialog(FilesDialog.Chmod(e, vm.modeText(e))) } },
         )
     }
@@ -206,9 +216,8 @@ private fun rememberUploadLauncher(vm: FilesViewModel): ManagedActivityResultLau
     val context = LocalContext.current
     return rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        val (name, size) = displayOf(context, uri)
-        vm.upload(name ?: uri.lastPathSegment.orEmpty(), size ?: -1) {
-            context.contentResolver.openInputStream(uri) ?: throw IOException(uri.toString())
+        vm.upload(nameOf(context, uri) ?: uri.lastPathSegment.orEmpty()) {
+            context.contentResolver.openFileDescriptor(uri, "r")?.detachFd() ?: throw IOException(uri.toString())
         }
     }
 }
@@ -453,7 +462,9 @@ private fun EntryMenu(
         text = {
             Column {
                 if (!entry.isDir) {
-                    SecondaryButton(onClick = { then(actions.preview) }) { Text(copyText("rsFilewinWorkspace.label.preview")) }
+                    if (entry.preview != null) {
+                        SecondaryButton(onClick = { then(actions.preview) }) { Text(copyText("rsFilewinWorkspace.label.preview")) }
+                    }
                     SecondaryButton(onClick = { then(actions.startEdit) }) { Text(copyText("rsFilewinEditor.label.edit")) }
                     SecondaryButton(onClick = { then(actions.download) }) { Text(copyText("rsFilewinDownload.label.download")) }
                 }
@@ -658,19 +669,16 @@ private fun EntryRow(
     }
 }
 
-/** 选中那一份的显示名与大小（系统给的；没有 ⇒ `null`）。 */
-private fun displayOf(
+/** 选中那一份的显示名（系统给的；没有 ⇒ `null`）。 */
+private fun nameOf(
     context: Context,
     uri: Uri,
-): Pair<String?, Long?> =
+): String? =
     runCatching {
-        context.contentResolver.query(uri, null, null, null, null)?.use { c ->
-            if (!c.moveToFirst()) return@use null to null
-            val n = c.getColumnIndex(OpenableColumns.DISPLAY_NAME).takeIf { it >= 0 }?.let(c::getString)
-            val s = c.getColumnIndex(OpenableColumns.SIZE).takeIf { it >= 0 && !c.isNull(it) }?.let(c::getLong)
-            n to s
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) c.getColumnIndex(OpenableColumns.DISPLAY_NAME).takeIf { it >= 0 }?.let(c::getString) else null
         }
-    }.getOrNull() ?: (null to null)
+    }.getOrNull()
 
 /** 面包屑至多排几段（含「…」那一段）。 */
 private const val CRUMBS_SHOWN = 4

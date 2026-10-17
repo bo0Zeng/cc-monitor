@@ -510,6 +510,8 @@ def files_page():
     """文件页那几步：列目录 · 进一层 · 预览 · 新建 · 改名 · 删除 · 上传 · 下载；读写都问那台后端（台架盘上看结果）。"""
     d = f"files{T}"
     sh(f"mkdir -p ~/work/{d} && printf 'hello {T}\\n' > ~/work/{d}/a.txt")
+    # 11b 量大文本编辑用的那一份：接近编辑上限（8 MB），一行 80 字。
+    sh(f"yes 'line of text 0123456789 abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123' | head -c 7900000 > ~/work/{d}/big.txt")
     drawer(t("mobDrawer.item.files"))
     if not wait("work", 30):
         raise Step.Fail("家目录没列出来")
@@ -581,6 +583,76 @@ def files_page():
         raise Step.Fail("上传落到那台之后，提交 · 重列两问的期限都过了，忙线还在")
     if ui.find(up) is None:
         raise Step.Fail("上传完、重列也回来了，列表里没有它")
+    # 同一份再传一次：那台说同名 ⇒ 底部抽屉问（标题 · 那台那一句 · 要放过去的 → 已有的）⇒［保留两份］⇒ 那台另起名放下，块不重送。
+    tap(t("rsFilewinUpload.label.upload"))
+    if not wait(up, 15):
+        tap("Downloads", must=False) or tap("Download", must=False)
+    tap(up)
+    if not wait(t("rsFilewinBatch.btn.keepBoth"), 2 * FILES_ASK_S):
+        raise Step.Fail("同名再传一次，没出冲突抽屉")
+    if ui.find(t("rsFilewinBatch.ask.title", action=t("rsFilewinBatch.verb.upload"), n=1, dir="")[:4]) is None:
+        raise Step.Fail("冲突抽屉的标题不是「上传 1 项到 …」")
+    shot("11-上传同名")
+    tap(t("rsFilewinBatch.btn.keepBoth"))
+    both = up.replace(".txt", " (2).txt")
+    end = ui.within(2 * FILES_ASK_S)
+    while time.time() < end and f"up {T}" not in sh(f"cat ~/work/{d}/'{both}' 2>/dev/null; true"):
+        time.sleep(1)
+    if time.time() >= end:
+        raise Step.Fail(f"答了保留两份，那台上没有 {both}")
+
+
+def big_text():
+    """量法（只记数、不判红绿）：接近编辑上限（8 MB）的一份文本开编辑页 —— 首帧 · 滚动帧 · 敲字之后的帧 · 内存 · 有没有 ANR。
+    数写进 `bigtext.txt` 与输出；开着那一页不再 dump 界面（整份字会进 dump），量完按返回收掉。"""
+    name = "big.txt"
+    if not wait(name, 15):
+        raise Step.Fail("那份大文本没列出来")
+    pss = lambda: re.search(r"TOTAL PSS:\s+(\d+)", adb("shell", "dumpsys", "meminfo", PKG)) or re.search(r"TOTAL\s+(\d+)", adb("shell", "dumpsys", "meminfo", PKG))
+    before = pss()
+    long_press(name)
+    adb("shell", "dumpsys", "gfxinfo", PKG, "reset")
+    wins = lambda: adb("shell", "dumpsys", "window", "windows").count(PKG)
+    base = wins()
+    tap(t("rsFilewinEditor.label.edit"))
+    t0 = time.time()
+    first = None
+    while time.time() - t0 < 120:
+        if wins() > base:
+            first = time.time() - t0
+            break
+        time.sleep(0.2)
+    open_gfx = adb("shell", "dumpsys", "gfxinfo", PKG)
+    adb("shell", "dumpsys", "gfxinfo", PKG, "reset")
+    size = adb("shell", "wm", "size").split()[-1].split("x")
+    w, h = int(size[0]), int(size[1])
+    for _ in range(5):
+        adb("shell", "input", "swipe", str(w // 2), str(h * 2 // 3), str(w // 2), str(h // 3), "300")
+    scroll_gfx = adb("shell", "dumpsys", "gfxinfo", PKG)
+    adb("shell", "dumpsys", "gfxinfo", PKG, "reset")
+    adb("shell", "input", "tap", str(w // 2), str(h // 2))
+    t1 = time.time()
+    adb("shell", "input", "text", "xyz")
+    typed_s = time.time() - t1
+    type_gfx = adb("shell", "dumpsys", "gfxinfo", PKG)
+    after = pss()
+    anr = "ANR in " + PKG in adb("logcat", "-d", "-s", "ActivityManager:E")
+    pick = lambda g: " · ".join(m.group(0) for m in re.finditer(r"(Total frames rendered|Janky frames|90th percentile|99th percentile): [^\n]+", g))
+    said = "\n".join([
+        f"首帧（点「编辑」到那一页的窗口出来，含读回那 8 MB）: {first if first is None else round(first, 2)} s",
+        f"开页那一段: {pick(open_gfx)}",
+        f"滚动 5 下: {pick(scroll_gfx)}",
+        f"敲 3 个字（input 回来用时 {round(typed_s, 2)} s）: {pick(type_gfx)}",
+        f"内存 PSS: {before and before.group(1)} KB → {after and after.group(1)} KB",
+        f"ANR: {anr}",
+    ])
+    open(os.path.join(OUT, "bigtext.txt"), "w").write(said + "\n")
+    print(said, flush=True)
+    shot("11b-大文本编辑")
+    adb("shell", "input", "keyevent", "4")
+    time.sleep(1)
+    adb("shell", "input", "keyevent", "4")
+    time.sleep(2)
 
 
 # 轮换屏那一步用的两份策略（合成的：照号牌顺序用；一格「权重容差」）。写进台架家里的策略目录（不是真家目录）。
@@ -843,6 +915,8 @@ def walk():
             drawer(t("mobDrawer.item.chats"))
         with Step("11-文件页"):
             files_page()
+        with Step("11b-大文本编辑"):
+            big_text()
         return report()
 
     with Step("1-加机器连上"):
@@ -1136,6 +1210,32 @@ def walk():
         adb("shell", "input", "keyevent", "4")
         time.sleep(2)
 
+    with Step("4i-恢复后再附着") as st:
+        # 那条会话的终端没了 ⇒ ⋯ 里那一项第二行写「恢复后在新终端中显示」，点了那台先恢复它、终端屏再附着到它落在的那个 tmux 会话。
+        st.back_to(f"{T} new session")
+        old = tmux_name_of(f"{T} new session")
+        rig("tmux", "kill-session", "-t", f"={old}")
+        before = set(tmux_sessions())
+        hide_keyboard()
+        tap(t("history.row.more"))
+        if not wait(t("terminal.empty.endedHint"), 15):
+            raise Step.Fail("终端没了，⋯ 里那一项第二行不是「恢复后在新终端中显示」")
+        shot("4i-菜单")
+        tap(t("terminal.empty.endedHint"))
+
+        def landed():
+            rows = rig("tmux", "list-sessions", "-F", "#{session_name} #{session_attached}").stdout.splitlines()
+            return [r.rsplit(" ", 1)[0] for r in rows if r.rsplit(" ", 1)[-1] != "0" and r.rsplit(" ", 1)[0] not in before]
+
+        end = ui.within(45)
+        while time.time() < end and not landed():
+            time.sleep(1)
+        if time.time() >= end:
+            raise Step.Fail("点了没恢复出新终端、也没附着上")
+        shot("4i-终端屏")
+        adb("shell", "input", "keyevent", "4")
+        time.sleep(2)
+
     with Step("6-断网再连") as st:
         st.back_to(f"{T} new session")
         name = tmux_name_of(f"{T} new session")
@@ -1301,6 +1401,9 @@ def walk():
         launch()
         files_page()
 
+    with Step("11b-大文本编辑"):
+        big_text()
+
     report()
 
 
@@ -1383,6 +1486,42 @@ def report():
         tap(t("mobSettings.entry.rotation"))
         if not wait(t("rot.top.here", machine="smokebox"), 15):
             raise Step.Fail("设置进的轮换屏顶栏不是「设置 · 那台」")
+
+    with Step("13-设置改一项"):
+        # 设置 → 那台上的偏好：子会话拨到另一段，马上存进那台（prefs-read 读回）；退出设置再进，那一段还亮着。
+        def child_tab():
+            return ((frames("prefs-read", {}).get("data") or {}).get("prefs") or {}).get("childTab")
+
+        was = child_tab()
+        if was not in ("show", "hide"):
+            raise Step.Fail(f"台架读不到那台的偏好：{was!r}")
+        want = "hide" if was == "show" else "show"
+        seg = t("settings.machine.tabShow" if want == "show" else "settings.machine.tabHide")
+        adb("shell", "input", "keyevent", "4")
+        time.sleep(1)
+        drawer(t("mobDrawer.settings.aria"))
+        if not wait(t("settings.machine.childTab"), 15):
+            raise Step.Fail("设置里没有「子会话」那一行")
+        tap_in_row(t("settings.machine.childTab"), seg)
+        end = ui.within(20)
+        while time.time() < end and child_tab() != want:
+            time.sleep(1)
+        if child_tab() != want:
+            raise Step.Fail(f"拨了「{seg}」，那台的偏好没写进 {want}")
+        shot("13-拨过")
+        adb("shell", "input", "keyevent", "4")
+        time.sleep(1)
+        drawer(t("mobDrawer.settings.aria"))
+        if not wait(t("settings.machine.childTab"), 15):
+            raise Step.Fail("再进设置没有「子会话」那一行")
+        ns = ui.nodes()
+        row = next(n for n in ns if n.get("text") == t("settings.machine.childTab"))
+        y = ui.center(row)[1]
+        lit = [n for n in ns if n.get("text") == seg and abs(ui.center(n)[1] - y) < 80 and "true" in (n.get("checked"), n.get("selected"))]
+        if not lit:
+            raise Step.Fail(f"再进设置，子会话那一行亮着的不是「{seg}」")
+        # 拨回去，台架那台的偏好留成进来时那样。
+        tap_in_row(t("settings.machine.childTab"), t("settings.machine.tabShow" if was == "show" else "settings.machine.tabHide"))
 
     summary()
 

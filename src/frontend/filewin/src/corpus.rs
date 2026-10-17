@@ -193,6 +193,9 @@ pub fn synth_rows(n: usize, seed: u64) -> Vec<super::source::Listed> {
                 mtime_full: Some("2026-10-02 15:01:23".to_string()),
                 raw_name: None,
                 link_broken: false,
+                class: Default::default(),
+                type_text: String::new(),
+                gates: None,
                 row: Row {
                     name,
                     path: p,

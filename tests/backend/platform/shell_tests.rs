@@ -401,3 +401,26 @@ fn the_fresh_path_query_brackets_its_answer_with_the_mark() {
     assert_eq!(q.matches(lit.as_str()).count(), 2, "{q}");
     assert!(q.contains("'Machine'") && q.contains("'User'"), "{q}");
 }
+
+/// ★ 进一个目录那一行：方言按这台（POSIX ⇒ `cd`，PowerShell ⇒ `Set-Location -LiteralPath`），目录照各自的引号器成一个词。
+#[test]
+fn entering_a_dir_is_written_in_each_dialect() {
+    use super::dialect::Shell;
+    assert_eq!(
+        super::enter_dir_line_in(Shell::Posix, "/a b/it's"),
+        r"cd '/a b/it'\''s'"
+    );
+    assert_eq!(
+        super::enter_dir_line_in(Shell::PowerShell, r"C:\a b\it's"),
+        r"Set-Location -LiteralPath 'C:\a b\it''s'"
+    );
+    let here = if cfg!(windows) {
+        Shell::PowerShell
+    } else {
+        Shell::Posix
+    };
+    assert_eq!(
+        super::enter_dir_line("/p"),
+        super::enter_dir_line_in(here, "/p")
+    );
+}

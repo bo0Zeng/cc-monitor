@@ -201,7 +201,7 @@ async fn opening_a_symlink_for_write_is_refused() {
     let s = rig::session_on(fs.clone()).await;
     let r = open_for_write(&s, ".cc-monitor/staging/k.part", false).await;
     assert!(
-        matches!(r, Err(Refusal::Fenced { said: ref m, .. }) if m.contains(copy_core::copy_static!("rsFilewinKind.label.link"))),
+        matches!(r, Err(Refusal::Fenced { said: ref m, .. }) if m.contains(copy_core::copy_static!("beFilesKind.label.link"))),
         "链接没拦住"
     );
     assert!(fs.lock().unwrap().mutated.is_empty());

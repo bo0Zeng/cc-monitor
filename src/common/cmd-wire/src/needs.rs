@@ -183,6 +183,26 @@ pub struct Choice {
     pub tone: Tone,
     /// 要不要附一句话：none · optional · required。
     pub note: NoteNeed,
+    /// 排在哪一段（出口照它分段，不按 id 认）。
+    pub row: ChoiceRow,
+}
+
+/// 选项排在哪一段：照做那一族 · 不照做那一族（拒绝 · 继续规划）· 放开这一条（改到终端里答 · 有题时的不回答）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(
+        export,
+        rename = "NeedsChoiceRow",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
+    )
+)]
+pub enum ChoiceRow {
+    Main,
+    Hold,
+    Release,
 }
 
 /// 选项要不要附一句话。

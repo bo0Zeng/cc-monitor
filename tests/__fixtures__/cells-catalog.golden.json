@@ -909,6 +909,12 @@
         },
         {
           "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.choices[].row",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
           "kind": "text",
           "path": "needs.ask.choices[].text",
           "type": "string"
@@ -1390,6 +1396,12 @@
           "frozen": false,
           "kind": "value",
           "path": "needs.ask.choices[].note",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.choices[].row",
           "type": "enum"
         },
         {

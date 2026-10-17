@@ -552,7 +552,6 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_notification::init())
         .setup(move |app| {
             // **重放缓冲与本机内容消费者先于本机后端就位。** 本机会话内容从此是
             // 本机后端的 `line` 帧（`local_lines` 头注）；后端一接上就开始宣告、发行 ⇒ 接住它们的那一头
@@ -563,31 +562,9 @@ pub fn run() {
             local_lines::install(app.handle().clone(), replay.clone());
             stream_watch::spawn(replay.clone());
 
-            // F05a（定框 C7：没有 daemonless）：起并看住**本机后端进程**。
-            // 〔`K-R59` 09-11：`C7` 的第二格今天补上了 —— 远端那个 `daemonless`
-            //  每机开关整格删除（定框 `K35`），从此**没有「没有后端」这回事**。〕
-            //
-            // ⚠ **走哪一支取决于用户手里是哪一份产物**〔订正 2026-09-10，v3.7.0〕。
-            //
-            //
-            // 证伪它的读数：09-10 干净 win11 虚拟机上现打（PM，真安装包 + 真裸 exe 各一趟）——
-            // **装出来那份** `C:\Program Files\cc-monitor\` 下 `cc-monitor-backend.exe`
-            // **2 个进程在跑**；**裸 `monitor.exe`** 那份 **0 个**。
-            // F05b 已经做完并随 v3.7.0 发出去了：`externalBin` 配在
-            // `src/frontend/shell/tauri.sidecar.conf.json`，发版那一步用
-            // `npx tauri build --config src/frontend/shell/tauri.sidecar.conf.json` 注入。
-            // ⚠ 它**刻意不进基础 `tauri.conf.json`** —— 进了会让 `cargo test` 也要求当前
-            // target 的那份二进制存在。⇒ **「基础配置里没有」≠「没配」，别再把这两句写成一句。**
-            //
-            // ⇒ 降级那一支仍然在（裸 exe · 开发树走的就是它），只是**不再是常数**。
-            // 它**不是**「接线没做」：接线在这里，是**这一份产物里没带**，两者的区别就在那个
-            // tagged 返回值上。它**刻意不扫仓库 dev 产物** —— backend 一起来就无条件往
-            // tmux server 装三条全局 hook 且没有开关，扫到 dev 产物就起它 = 去改用户真实
-            // tmux 的状态（F05 摸底 §2.5）。
+            // 起本机后端：字节用这一份产物内嵌的那份，释放到 `~/.cc-monitor/bin`（文件名带 build_id）再起；exe 旁不找、不扫开发产物。
+            // 失败只进日志：被拒（口上有东西、接不上）那一句下一步由 `local_backend_host` 交给本机那一台的状态成品，设置窗照画。
             {
-                use local_backend::Resolved;
-                // 本机后端只取这一份产物内嵌的那份（exe 旁边不找），放到 `~/.cc-monitor/bin` 再起；
-                // 落点与按 (OS, arch) 挑字节都在 `start_local_backend` 里给，没内嵌 ⇒ 原样交出那句拒绝的话。
                 use local_backend_host::StartOutcome;
                 match local_backend_host::start_local_backend() {
                     StartOutcome::Started(p) => {
@@ -596,60 +573,11 @@ pub fn run() {
                     StartOutcome::AlreadyRunning => {
                         tracing::info!("本机后端已经在跑（启动路径不重复起）")
                     }
-                    StartOutcome::Failed { reason, looked_at } => {
-                        // ★★ `K-P1-D1` `重-2`：**「对不上就出声并拒绝」那句话，
-                        //    在这条路上不许只进日志。**
-                        //
-                        // 两条起法只有手动那条会让用户看见（`crate::backend_control::backend_start`
-                        // 回 `Err` ⇒ 前端 toast）。而这一条 —— 用户每天真正走的那条 ——
-                        // 回修前是 `tracing::info!`，连 `warn` 都不是。
-                        //
-                        // 触发场景不是理论：口按家目录算死，`hello_verdict` 逐字比
-                        // 「我这一版」（`byte_table::my_backend_id`）⇒ **升级 monitor 之后上一次脱离留下的那个
-                        // backend 还在听同一个口** ⇒ `Stranger` ⇒ `Adopt::Refused`
-                        // ⇒ 本机后端起不来，而界面上什么都不说。
-                        // ⚠ 这是**常驻带来的新场景**：翻面之前 backend 153ms 就死了。
-                        //
-                        // ⚠ 分两档，因为这两件事不是一回事：
-                        //   · **拒绝**（口上有东西、接不上）= 一件用户能动手解决的事 ⇒ 说到眼前；
-                        //   · 别的失败（**这一份产物里没带 local_backend** —— 裸 exe / 开发树，
-                        //     或释放内嵌那一份也失败了）= **诚实降级**，
-                        //     每次启动都弹一次就成了噪音 ⇒ 仍走日志。
-                        //     〔订正 2026-09-10（v3.7.0）—— 原话逐字：「别的失败（安装包里
-                        //      还没有 local_backend…）= 今天的**诚实降级**」。括号里那句今天不成立：
-                        //      09-10 干净 win11 现打（PM）装出来那份跑着 2 个
-                        //      `cc-monitor-backend.exe`、裸 `monitor.exe` 那份 0 个。
-                        //      ⚠ **分档标准本身一格没动**，换掉的只是它举的那个例子 ——
-                        //      「诚实降级」这一档今天仍然有人（裸 exe · 开发树 · 释放失败）。〕
-                        //   分档的依据是 `local_backend_host` 里那条**只在真的被拒绝时才写下**的记录，
-                        //   **不是**去 `reason` 串里认字（那是 `KPY5` 治的那种假信号）。
-                        match local_backend_host::take_start_refusal() {
-                            Some(next_step) => {
-                                tracing::warn!(
-                                    "本机后端未启动: {}（{}）；找过 {looked_at:?}",
-                                    reason.said,
-                                    reason.raw()
-                                );
-                                if let Err(e) = crate::platform::notify::show(
-                                    app.handle(),
-                                    &copy_text("rsLib.run.localBackendDown", &[]),
-                                    &next_step,
-                                ) {
-                                    // 通知发不出去也要留痕，别让「说出口」这件事静默失败。
-                                    tracing::warn!(
-                                        "本机后端拒绝的通知发不出去（{e}）：{next_step}"
-                                    );
-                                }
-                            }
-                            None => {
-                                tracing::info!(
-                                    "本机后端未启动: {}（{}）；找过 {looked_at:?}",
-                                    reason.said,
-                                    reason.raw()
-                                )
-                            }
-                        }
-                    }
+                    StartOutcome::Failed { reason, looked_at } => tracing::warn!(
+                        "本机后端未启动: {}（{}）；找过 {looked_at:?}",
+                        reason.said,
+                        reason.raw()
+                    ),
                 }
             }
 

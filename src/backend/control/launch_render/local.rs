@@ -5,11 +5,9 @@
 //! 环境与中转地址由 `ccm` 自己定。
 //! 事实（平台 · 目录在不在）由 [`Facts`] 给，[`plan`] 是纯的 —— 判据喂确定的事实驱动生产那一条。
 
-use super::ccm_invocation as ci;
 use crate::control::launch_account::{self as la, AccountAsk, Settled};
 use copy_core::copy_text;
 use serde::Deserialize;
-use std::collections::BTreeSet;
 
 /// `launch-local` 的入参。
 #[derive(Debug, Deserialize)]
@@ -49,12 +47,9 @@ pub(crate) struct LocalLaunchRequest {
 impl LocalLaunchRequest {
     /// 填上不上线的那两格：启动命令照这台的偏好，默认启动器问适配层。
     pub(crate) fn with_prefs(mut self, prefs: &crate::control::machine_prefs::Prefs) -> Self {
-        self.default_launcher =
-            crate::agents::launch_face_among(crate::agents::REGISTRY, &self.agent)
-                .map_or("", |f| f.default_launcher)
-                .to_string();
-        let l = prefs.launcher_for(&self.agent, &self.default_launcher);
-        self.launcher = Some(l).filter(|l| l != &self.default_launcher);
+        let (l, d) = super::Launch::launchers(&self.agent, prefs);
+        self.launcher = Some(l).filter(|l| l != &d);
+        self.default_launcher = d;
         self
     }
 }
@@ -115,136 +110,56 @@ pub(crate) fn plan(
     account: &Settled,
     facts: &Facts,
 ) -> Result<String, String> {
-    let windows = facts.windows;
-    plan_with(req, account, facts, false, |spec, caps| {
-        if windows {
-            ci::render_ccm_invocation_ps(spec, caps)
-        } else {
-            ci::render_ccm_invocation(spec, caps)
-        }
-    })
+    let (l, entry) = launch_of(req, facts)?;
+    super::line_of(&l, account, here(facts), &super::own_caps(), &entry)
 }
 
-/// 本机那一行的 argv 形（同 [`plan`]：同一份计划、同一个渲染器），`detach` ⇒ 建进 tmux 之后不接进去。
-/// 这台后端替人在 tmux 里起会话时用（tab 栏在 tmux 里起）；名字是调用方铸好的。
-pub(crate) fn plan_argv(
-    req: &LocalLaunchRequest,
-    account: &Settled,
-    facts: &Facts,
-    detach: bool,
-) -> Result<Vec<String>, String> {
-    plan_with(req, account, facts, detach, |spec, caps| {
-        ci::ccm_argv(spec, caps)
-    })
+fn here(facts: &Facts) -> super::Here {
+    super::Here::Local {
+        windows: facts.windows,
+    }
 }
 
-/// 整条计划，渲成什么形由 `out` 定（一行字 · argv）。
-fn plan_with<T>(
-    req: &LocalLaunchRequest,
-    account: &Settled,
-    facts: &Facts,
-    detach: bool,
-    out: impl Fn(&ci::CliSpec, &BTreeSet<String>) -> Result<T, ci::Refusal>,
-) -> Result<T, String> {
+/// 本机那一形的入参 ⇒ [`super::Launch`]（接回要名字；新起核目录在不在）＋ 这台 `ccm` 的入口。
+fn launch_of(req: &LocalLaunchRequest, facts: &Facts) -> Result<(super::Launch, String), String> {
     let name = req.tmux_name.as_deref().filter(|n| !n.is_empty());
     let entry = (facts.entry)().ok_or_else(|| copy_text("beLaunchRender.entry.noHome", &[]))?;
-    if let LocalAction::Attach = req.action {
-        if facts.windows {
-            return Err(copy_text("rsHistory.attach.windows", &[]));
+    let act = match &req.action {
+        LocalAction::Attach if facts.windows => {
+            return Err(copy_text("rsHistory.attach.windows", &[]))
         }
-        let Some(name) = name else {
-            return Err(copy_text("rsHistory.launch.noSessionName", &[]));
-        };
-        return with_spec(
-            req,
-            account,
-            ci::Action::Attach { name },
-            Some(name),
-            detach,
-            &entry,
-            &out,
-        );
-    }
-    if let (LocalAction::New, Some(dir)) = (&req.action, req.cwd.as_deref()) {
-        if !dir.is_empty() && !(facts.is_dir)(dir) {
-            return Err(copy_text("rsHistory.newSession.noDir", &[("cwd", dir)]));
-        }
-    }
-    let action = match &req.action {
-        LocalAction::Resume { sid } => ci::Action::Resume { sid },
-        _ => ci::Action::New,
-    };
-    // Windows 上没有 tmux ⇒ 直路（ccm 在那个 PowerShell 窗口里起 agent、等它退）。
-    // §36（只绑 Windows）：Windows 这一行里不渲清嵌套会话变量的那一段 —— 清它们是 `ccm` 在最终 exec 那一处做的。
-    let container = if facts.windows { None } else { name };
-    with_spec(req, account, action, container, detach, &entry, &out)
-}
-
-/// 本机那一形的入参 ⇒ 渲染器那份 spec（唯一的映射）。
-fn with_spec<T>(
-    req: &LocalLaunchRequest,
-    account: &Settled,
-    action: ci::Action,
-    tmux: Option<&str>,
-    detach: bool,
-    ccm_path: &str,
-    f: impl Fn(&ci::CliSpec, &BTreeSet<String>) -> Result<T, ci::Refusal>,
-) -> Result<T, String> {
-    let launcher = checked_launcher(req.launcher.as_deref())?;
-    // 账号逐态对：账号 0 ⇒ `--base`；账号库里的号 ⇒ `--account <名>`；不表态 ⇒ 继承（不吐）。
-    let account = match account {
-        Settled::Base => ci::CliAccount::Base,
-        Settled::Account(a) => ci::CliAccount::Named {
-            name: a.name.as_str(),
+        LocalAction::Attach => match name {
+            Some(n) => super::Act::Attach(n.to_string()),
+            None => return Err(copy_text("rsHistory.launch.noSessionName", &[])),
         },
-        Settled::Unsaid => ci::CliAccount::Inherit,
+        LocalAction::Resume { sid } => super::Act::Resume(sid.clone()),
+        LocalAction::New => {
+            if let Some(dir) = req.cwd.as_deref().filter(|d| !d.is_empty()) {
+                if !(facts.is_dir)(dir) {
+                    return Err(copy_text("rsHistory.newSession.noDir", &[("cwd", dir)]));
+                }
+            }
+            super::Act::New
+        }
     };
-    let sid = match action {
-        ci::Action::Resume { sid } => Some(sid),
+    // 身份标记打在建出来的 tmux 会话上（resume 才说得出 sid）。
+    let ccm_sid = match (&act, name) {
+        (super::Act::Resume(sid), Some(_)) => Some(sid.clone()),
         _ => None,
     };
-    let args: Vec<&str> = req.preset_args.iter().map(String::as_str).collect();
-    let spec = ci::CliSpec {
-        agent: &req.agent,
-        action,
-        container: match tmux {
-            Some(name) => ci::Container::Tmux {
-                name,
-                send_into: false,
-            },
-            None => ci::Container::None,
-        },
-        cwd: None,
-        account,
-        // 身份标记打在建出来的 tmux 会话上（resume 才说得出 sid）。
-        ccm_sid: sid.filter(|_| tmux.is_some()),
-        model: req.model.as_deref(),
-        launcher: launcher.as_deref().unwrap_or(&req.default_launcher),
-        default_launcher: &req.default_launcher,
-        args: &args,
-        ccm_path,
-        detach,
+    let l = super::Launch {
+        agent: req.agent.clone(),
+        act,
+        tmux: name.map(str::to_string),
+        send_into: false,
+        cwd: req.cwd.clone(),
+        ccm_sid,
+        model: req.model.clone(),
+        launcher: req.launcher.clone().unwrap_or_default(),
+        default_launcher: req.default_launcher.clone(),
+        preset_args: req.preset_args.clone(),
     };
-    // 能力是这台 ccm 自己的（渲染就在这台后端里）。
-    let caps: BTreeSet<String> = crate::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
-        .into_iter()
-        .map(str::to_string)
-        .collect();
-    f(&spec, &caps).map_err(|r| r.reason())
-}
-
-/// 自定义启动命令：拼进命令之前过全仓那一张命令片段白名单（`shell_quote_core::launcher_refused_char`）。空 / 纯空白 = 没设。
-fn checked_launcher(launcher: Option<&str>) -> Result<Option<String>, String> {
-    let Some(l) = launcher.map(str::trim).filter(|l| !l.is_empty()) else {
-        return Ok(None);
-    };
-    if let Some(c) = shell_quote_core::launcher_refused_char(l) {
-        return Err(copy_text(
-            "rsHistory.launcher.badChars",
-            &[("launcher", &format!("{l:?}")), ("c", &format!("{c:?}"))],
-        ));
-    }
-    Ok(Some(l.to_string()))
+    Ok((l, entry))
 }
 
 #[cfg(test)]

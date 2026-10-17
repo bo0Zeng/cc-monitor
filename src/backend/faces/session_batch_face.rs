@@ -64,6 +64,8 @@ pub(crate) fn with_deps_as<T>(
         crate::observe::accounts_query::session_writers(&crate::history::listing::agent_home(), sid)
     };
     let pretrust = |dir: &str, cwd: &str| pretrust_with(files, agent, dir, cwd);
+    let open_shell =
+        |name: &str, cwd: Option<&str>| crate::control::launch::open_shell(name, cwd, client);
     let caps = crate::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
         .into_iter()
         .map(str::to_string)
@@ -83,6 +85,7 @@ pub(crate) fn with_deps_as<T>(
             accounts,
             writers: &writers,
             pretrust: &pretrust,
+            open_shell: &open_shell,
             prefs: &prefs,
         })
     })

@@ -135,7 +135,22 @@ const pushed = (state: string, extra: Record<string, unknown> = {}): Record<stri
   fixes: [],
   seenHostKey: null,
   detail: null,
+  next: null,
   ...extra,
+});
+
+/** 起本机后端被拒（口上是上一版留下的后端）那一刻本机那一台的成品；下一步那句照壳的文案拼。 */
+const localRefused = pushed("needs_update", {
+  reason: "local",
+  version: null,
+  versionRelation: "older",
+  os: null,
+  fixes: ["retry"],
+  next: copyText("rsLocalBackendHost.start.refusedNext", {
+    why: copyText("rsLocalBackendHost.hello.buildMismatch", { theirs: "p7a-4.1.0", ours: "p8c-4.1.1" }),
+    pid: "4242",
+    sock: "/home/user/.cc-monitor/run/backend.sock",
+  }),
 });
 
 export const SETTINGS_SCENES: Scene[] = [
@@ -182,6 +197,16 @@ export const SETTINGS_SCENES: Scene[] = [
     await sleep(800);
   }),
 
+  settings("settings-machines-local-refused", "设置 · 机器 · 本机后端被拒", "升级后旧的本机后端还占着口：本机那一行「要更新」＋［重试］，问题行下面是壳写好的下一步（结束哪个进程 · 进程号记在哪）", async () => {
+    await go("machines");
+    await emit("machine-state", { origin: "<local>", machine: localRefused });
+    await sleep(800);
+  }),
+  settings("settings-machine-local-refused", "设置 · 本机 · 本机后端被拒", "同上，本机那一页卡头：问题行 ＋ 下一步", async () => {
+    await go("machine:（本机）");
+    await emit("machine-state", { origin: "<local>", machine: localRefused });
+    await sleep(800);
+  }),
   settings("settings-landing", "设置 · 打开时", "设置窗打开时落在的那一页", async () => {
     await waitFor(".settings-nav");
     await sleep(1500);

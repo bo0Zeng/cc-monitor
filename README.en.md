@@ -196,7 +196,7 @@ The "Data locations" page in Settings shows the full path of every file.
 - On Windows, sessions cannot yet be sent to the background, re-attached, previewed or typed into; the local backend exits together with the UI.
 - macOS is not supported, neither as the local machine nor as a remote one; Linux arm64 works as a remote machine only.
 - Multi-account currently works on Linux machines only; the account store cannot be set up on a local Windows machine.
-- The Windows side has been regression-tested in a Windows 11 virtual machine (copy-details, icons, the terminal drawer, the file window, ↗ bringing the right window and the right Windows Terminal tab forward); terminals opened as administrator have not been tested yet, and desktop notifications cannot be judged in the VM.
+- The Windows side has been regression-tested in a Windows 11 virtual machine (copy-details, icons, the terminal drawer, the file window, ↗ bringing the right window and the right Windows Terminal tab forward); terminals opened as administrator have not been tested yet.
 - ↗ only brings the window forward (and says why) when the tab name does not follow the program title (renamed by hand, or "suppress title changes" is set) or the tabs cannot be read; terminals connected through a jump host or port translation cannot be matched.
 - The signed Android app ships with each Release (`cc-monitor-<version>.apk`); it cannot install or upgrade a backend on a machine yet and only reports "needs update"; its SSH is still its own, and moves to the same core as the desktop in the next release.
 

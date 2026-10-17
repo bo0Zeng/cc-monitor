@@ -2710,281 +2710,73 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
     );
 }
 
-/// ★★ `重-2`：**自动起那条路的「拒绝」不许只进日志。**
-///
-/// # 它治的那一格
-///
-/// 「连上去先读 hello 比对，**对不上就出声并拒绝**」（`§0b-2㈡` / `listen.rs` 诚实边界②）——
-/// 两条起法只有**手动点「起」**那条兑现了「出声」（`backend_control::backend_start` 回 `Err`
-/// ⇒ 前端 toast，A6 那次修就是为这个）；**自动起**那条（`lib.rs` 的 `setup`，
-/// 用户每天真正走的那条）回修前是 `tracing::info!` —— 连 `warn` 都不是。
-///
-/// 触发场景不是理论：套接字按家目录算死（`relay_route_core::listen_socket_for`），`hello_verdict` 逐字比
-/// `BACKEND_BUILD_ID` ⇒ **升级 monitor 之后上一次脱离留下的那个后端还在听同一个口**
-/// ⇒ `Stranger` ⇒ `Adopt::Refused` ⇒ 本机后端起不来，而界面上什么都不说。
-/// ⚠ 这是**常驻带来的新场景**，是常驻引入的：翻面之前 backend 153ms 就死了。
-/// `K14` 那条精神逐字是「不许只做常驻不做那句话」。
-///
-/// # 钉四件（少一件这条就只证明了一半）
-///
-/// ① 分档的依据是那条**只在真的被拒绝时才写下**的记录，不是去 `reason` 串里认字
-///    （认字就是 `KPY5` 治的那种假信号：它不会报错，只会一直说是）；
-/// ② 拒绝那一支里有 `warn!`（不是 `info!`）；
-/// ③ **把日志行整段拿掉之后，那一支里仍然剩着一个用户看得见的出口** ——
-///    这一条才是「不许**只**进日志」的正面表述，只查「有没有 warn」是查不出来的；
-/// ④ 那句话**说得出下一步能做什么**（不是只报「起不来」）。
-/// ⑤ **那句话真的进了那个出口** —— 见下面那段。
-///
-/// # ⑤ 为什么必须单列：「有出口」离「话进了出口」还差一个参数〔`D2` `重-D2-1`，08-27 补〕
-///
-/// `D2` 实打了这一刀：把 `lib.rs` 那条通知的 `.body(&next_step)` 换成 `.body("")`
-/// ⇒ **1194 passed / 0 failed，一条都不红**，五条判据全绿。
-/// ⇒ 那句由 ④ 逐字钉过（必须含「下一步」、必须含 `pid_path(&dir, port)`）、
-/// 在 `local_backend_host` 里花了 8 行去写的话，**可以一个字都不进通知**，
-/// 而用户看到的是一个标题写着「本机后端没起来」、**正文空白**的通知。
-///
-/// ★ ③ 钉的是「**有没有出口**」（那一臂里有 `.notification()` 和 `.show()`），
-/// **不是「被钉过内容的那个串真的流进了那个出口」** —— 这两件事之间隔着一个参数。
-/// 而这一格**不需要真机就能钉**（一行），所以它不该躺在诚实边界里。
-///
-/// # 它挡不住什么
-///
-/// 它认的是 `lib.rs` 那一臂里的字面锚点。有人把通知换成另一条同样可见的通道
-/// （比如 emit 一个事件给前端）⇒ 本条会红，而那**正是要的**：换出口就该有人回来重判。
-/// 反过来，它证不了那条通知**在真机上真的弹出来了** —— 那要真跑一次 GUI，
-/// 这里没有，**如实登记为未验**。
-/// ⚠ 这一句今天的射程要读准：加上 ⑤ 之后它管到「**那句话进了出口的参数**」为止；
-/// **出口自己有没有把它画到屏幕上**（通知权限被系统关掉、桌面环境不支持…）仍然不管。
+/// 起本机后端被拒（口上有东西、接不上：升级后上一次脱离留下的旧后端还占着口最常见）是一件动得了手的事，
+/// 下一步那一句要进本机那一台的状态成品（设置窗本机那一行照画），不许只进日志。
+/// 判据：那一句写在真被拒的那一臂（不从 `reason` 串里认字）、取的是那条文案、带着占口进程的 pid；每次起之前先清掉上一次的。
+/// 成品带不带它由 `machine_state_tests::a_refused_local_start_carries_the_next_step` 钉。
 #[test]
-fn the_auto_start_refusal_is_not_only_a_log_line() {
-    let lib = guard_core::production_code(include_str!("../../../src/frontend/shell/src/lib.rs"));
-    // 反空真①：自动起那条路本身还在（0 处 = 接线没了，下面切什么都没意义）。
-    assert_eq!(
-        lib.matches("start_local_backend()").count(),
-        1,
-        "`lib.rs` 里 `start_local_backend()` 不是恰好一处 —— \
-             自动起那条路搬家或没了，本条会零命中地绿"
-    );
-    let arm = braced_block(
-        &lib,
-        "StartOutcome::Failed { reason, looked_at }",
-        300,
-        4000,
-    );
-
-    // ① 分档的依据是那条记录，不是认字符串。
-    assert!(
-        arm.contains("take_start_refusal()"),
-        "自动起那条路不再问「这一次是不是**被拒绝**」——\n\
-             ★ 别改成去 `reason` 串里认字：那是 `KPY5` 花一整条 DoD 治的那种假信号。"
-    );
-    // ② 拒绝那一支要 `warn`，不是 `info`。
-    //
-    // ⚠⚠ **人群必须切到那一支里去**〔08-27 死值验当场逮到的〕：本条第一版查的是
-    //    **整条 `Failed` 臂**含不含 `tracing::warn!` —— 而这条臂里还有另一个 `warn!`
-    //    （「通知发不出去」那条兜底）⇒ 把拒绝那支的 `warn!` 改回 `info!`，
-    //    实测 **1194 passed / 0 failed，一条都不红**。它是个安慰剂，而它读起来完全正常。
-    //    ★ 这就是「守卫范围 ≠ 性质范围」的第七形：**人群比性质大了一格**。
-    // ⚠ 下限刻意压到 100：拒绝那一支只剩「一句 warn」时它有 189 字节 ——
-    //   下限定在 200 会让这一刀红在「配平切错了」上，而那句诊断是**假的**
-    //   （切法没错，是那一支被掏空了）。假诊断比不红更贵：它把人引到错的地方。
-    let refusal_branch = braced_block(&lib, "Some(next_step) =>", 100, 3000);
-    assert!(
-        refusal_branch.contains("tracing::warn!"),
-        "拒绝那一支里没有 `warn!` —— 「出声」这两个字在这条路上就没兑现"
-    );
-    assert!(
-        !refusal_branch.contains("tracing::info!"),
-        "拒绝那一支里出现了 `info!` —— 「口被别人占着」不是一条 info：\
-             它是一件用户能动手解决、而且不动手就没有本机后端的事"
-    );
-    // ③ ★ 正题：**把日志行整段拿掉之后，仍然剩着一个用户看得见的出口。**
-    let without_logs: String = refusal_branch
-        .lines()
-        .filter(|l| !l.trim_start().starts_with("tracing::"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    assert!(
-        without_logs.contains("crate::platform::notify::show("),
-        "把 `tracing::` 那些行拿掉之后，这一臂里**只剩日志** ——\n\
-             ★ 这正是 `重-2` 那条病：日志不是「说给用户听」，是「说给下一个来查日志的人听」。\n\
-             ⇒ 拒绝这一格必须有一个用户看得见的出口（今天是系统通知 `platform/notify.rs::show`）。\n\
-             换出口可以，回来改本条并写明新出口是什么；**别退回只写日志**。"
-    );
-
-    // ⑤ ★★ 那句话**真的进了那个出口** —— ③ 只买到「有出口」，中间隔着一个参数。
-    //    〔`D2` 实打：`.body(&next_step)` → `.body("")` ⇒ 1194/0，五条判据全绿。〕
-    //    出口换成 `platform::notify::show(app, 标题, 正文)` 之后，正文是那一调用的第三个实参（单独一行，`&next_step,`）。
-    //    ⚠ 认的是「正文那一行的实参里有 `next_step`」，不是那一行的逐字长相。
-    //    ⚠⚠ **先断言它唯一再取**〔收工前自查逮到的：`重-D2-3` 那一形长在我自己刚写的这一行上〕：
-    //    `.lines().find(…)` 又是一次「**取第一处**」。`.body(` 出现两次时（builder 被调两遍）
-    //    生效的是**后一个**，而这里读的是**前一个** ⇒ 本条会对着一个不生效的参数说「进了」。
-    let body_lines: Vec<&str> = refusal_branch
-        .lines()
-        .filter(|l| l.trim_start().starts_with("&next_step") || l.contains(".body("))
-        .collect();
-    assert_eq!(
-        body_lines.len(),
-        1,
-        "拒绝那一支里通知正文那一行有 {} 行（该恰好 1 行）：{body_lines:?}\n\
-             ★ 0 行 = 用户可见出口换了形状 ⇒ **回来把本条改成新出口那一格**：\n\
-               ③ 只钉「有出口」、不钉「那句话进没进出口」，光靠 ③ 会留下一个正文空白的通知。\n\
-             ★ ≥2 行 = 生效的是**后一个**，而下面读的是**前一个** —— 本条会对着一个\n\
-               不生效的参数说「进了」。**别放宽这条断言，把人群切窄。**",
-        body_lines.len()
-    );
-    let body_line = body_lines[0];
-    assert!(
-        body_line.contains("next_step"),
-        "通知正文里没有 `next_step`：{}\n\
-             ★ 上面 ④ 逐字钉过的那句话（含 `pid_path(&dir, port)`）\n\
-             **一个字都没进到用户眼前** —— 用户看到的是一个标题写着「本机后端没起来」、\n\
-             正文**空白**的通知，而那句他照着做就能解决问题的话躺在日志里。\n\
-             ⇒ 「有一个出口」与「那句话进了出口」是两件事，中间隔着一个参数。",
-        body_line.trim()
-    );
-
-    // ④ 那句话说得出**下一步能做什么**，而且它是在**真的被拒绝**那一臂里写下的。
+fn the_start_refusal_reaches_the_local_machine_row() {
     let me = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/local_backend_host.rs"
     ));
-    // ⚠ 标记带上 `=> {`：裸的 `Adopt::Refused(why) =>` 在生产段里**命中 2 处**
-    //   （另一处是 `probe_and_attach_after_spawn` 的 `=> Err(why),`），
-    //   而 `braced_block` 今天会断言唯一 ⇒ 不加这两个字符本条当场红。
+    // 标记带上 `=> {`：裸的 `Adopt::Refused(why) =>` 在生产段里命中 2 处。
     let refused = with_copy(braced_block(&me, "Adopt::Refused(why) => {", 300, 3000));
-    assert!(
-        refused.contains("note_start_refusal("),
-        "那条记录不再写在 `Adopt::Refused` 那一臂里 —— \
-             写在别处就等于又回到「从别的信号反推这一次是不是拒绝」"
-    );
-    // 按文案键断言，不按原文：原先钉着「下一步」三个字（CP1 裁「改·§2.3」处方形），
-    //   现在认那一臂取的是拒绝那一条、并把套接字对端的 pid 交给它当 `pid`。
     for (needle, why) in [
         (
-            "\"rsLocalBackendHost.start.refusedNotice\"",
-            "只报「起不来」是没用的：用户要的是**现在该干什么** —— 那一句住这条文案",
+            "crate::machine_state::note_local_refused(Some(",
+            "被拒那一臂不再把下一步交给本机那一台的状态成品 —— 用户什么都看不到",
+        ),
+        (
+            "\"rsLocalBackendHost.start.refusedNext\"",
+            "只报「起不来」没用：要说现在该干什么，那一句住这条文案",
         ),
         (
             "(\"pid\", &listener_pid(&sock)",
-            "「把那个进程停掉」要说得出它是哪个进程 —— pid 由内核报（套接字的对端）",
+            "「结束该进程」要说得出是哪个进程 —— pid 由内核报（套接字的对端）",
         ),
     ] {
         assert!(
             refused.contains(needle),
-            "拒绝那句话里没有 `{needle}`。\n说法：{why}"
+            "被拒那一臂里没有 `{needle}`。\n说法：{why}"
         );
     }
+    let start = body_of(&me, "pub fn start_local_backend() -> StartOutcome {");
+    assert!(
+        start.contains("crate::machine_state::note_local_refused(None)"),
+        "起之前不清上一次被拒的那句 ⇒ 这一次起成了，本机那一行还挂着旧的下一步"
+    );
 }
 
-/// ★★ `重-D2-1`：**「用户动得了手」那一档的每一条路，都要走到用户眼前。**
-///
-/// # 它治的那一格（分母是 `D2` 实打出来的）
-///
-/// `重-2` 上一轮只治了**一条**路：`Adopt::Refused` 那一臂。而 `StartOutcome::Failed`
-/// 的构造点**现打 6 处**，写记录的只有 **1** 处 —— 而没写记录的那 5 处里，
-/// 当时「宿主自己铸钥匙失败」那一支**正是同一轮 `阻-4` 刚改好的那一支**（今天钥匙由常驻后端写，那一支删了）：
-/// 空 token ⇒ `Err` ⇒ **自动起**那条路对没有记录的失败走 `tracing::info!`
-/// ⇒ 用户什么都看不到，`阻-4` 花力气写出来的那句「`rm <路径>`」**只说给日志听**。
-///
-/// ★ 这撞的是 `lib.rs` 自己写下的分档标准〔逐字，引的是 **2026-09-10 之前**那一版原话，
-/// 保着不改 —— 这一段说的是当时那次判断〕：「**拒绝**（口上有东西、接不上）=
-/// **一件用户能动手解决的事** ⇒ 说到眼前；别的失败（安装包里还没有 local_backend…）=
-/// 诚实降级 ⇒ 仍走日志」。
-/// ⚠ 括号里那个例子今天不成立（09-10 干净 win11 现打，PM：装出来那份跑着 2 个
-/// `cc-monitor-backend.exe`、裸 `monitor.exe` 那份 0 个），`lib.rs` 那处已订正为
-/// 「这一份产物里没带本机后端」；**分档标准本身、本条判据的靶，两样都一格没动。**
-/// 「盘上有个零字节的 token 文件，删掉它再起一次」按这条标准
-/// **属于前者**，而上一轮把它落在了后者。
-/// ⇒ **`阻-4` 只修了一半**：它让诊断**指对了地方**，而「指对了的那句话**被谁听见**」
-/// 落在 `重-2` 的人群外面 —— 两处修各治一半，中间那一格谁都没管。
-///
-/// # 钉四件
-///
-/// ① **分母钉死**：`StartOutcome::Failed` 的构造点恰好 5 处 —— 新增或删掉一处本条就红，
-///    **回来给它分档**。这正是上一轮缺的那道门：没有它，第 6 处失败照样可以静默走日志。
-/// ② **钥匙文件读不动 / 空**走「接不上」那一臂（`Adopt::Refused`），那一臂调了 [`note_start_refusal`]。
-/// ③ 转交的是读钥匙那句话本身，而那句话说得出是哪个文件。
-/// ④ 写记录的**唯一入口**就是它，今天恰好 2 处（1 定义 + 1 调用点）。
-///
-/// ⚠ **②③ 排在 ④ 前面是有意的**：把那条路断掉时，先红的该是说得出病在哪的诊断，
-/// 而不是「计数变了」这句要人再去查一遍的记账话。
-///
-/// # 它挡不住什么（如实登记，别读大）
-///
-/// 「哪一条失败算**用户动得了手**」是**自然语言判断**，机检不了。本条买的是两样：
-/// **分母不许在没人回来重判的情况下变**，以及已经分好档的那两条路不许悄悄退回日志。
-/// 有人新加一处 `Failed` 再把 ① 的数字改大就能过 —— 但那时他**必须动本条**，
-/// 而动本条要读这段话。**这是触发器，不是证明**（本仓已成型的那一档）。
-///
-/// ⚠ 还有一格如实记：它钉的是**源码形状**，不是「用户真的看到了」——
-/// 那半在 `the_auto_start_refusal_is_not_only_a_log_line` 的 ③⑤ 两条，
-/// 而**真机上弹没弹**两条判据都证不了（要真跑一次 GUI）。
+/// 起本机后端的失败分两档：动得了手的（删文件 / 停进程 / 改权限位）把下一步交给本机那一台的状态成品；
+/// 诚实降级（这一份产物里没带本机后端 · 释放内嵌也失败）只进日志。`Failed` 的构造点数钉死：新增一处就回来分档。
 #[test]
 fn the_user_actionable_start_failures_all_reach_the_user() {
     let prod = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/local_backend_host.rs"
     ));
-    // 反空真：语料塌了 ⇒ 下面几条全是 `0 == 0` 的空真。
     assert!(
         prod.len() > 20_000,
         "`local_backend_host.rs` 的生产段只剩 {} 字节（下限 20_000）—— 剥过头了，本条在空转",
         prod.len()
     );
-    // ① 分母：失败的构造点今天恰好 6 处。
-    //
-    // 〔订正 2026-09-10（v3.7.0）—— 动的是**失败文案**，不是判据。
-    //  文案里举的「还没有本机后端」那个例子今天不成立：09-10 干净 win11 虚拟机上现打（PM，真安装包 + 真裸 exe
-    //  各一趟）—— 装出来那份 `C:\Program Files\cc-monitor\` 下 `cc-monitor-backend.exe`
-    //  **2 个进程在跑**、裸 `monitor.exe` 那份 **0 个** ⇒ 发版包里本机后端就在 exe 旁边。
-    //
-    //  ⚠ **判据守的那个性质没跟着过期** —— 它守的是「**分母不许在没人回来重判的情况下变**」，
-    //  与本机后端在不在**一点关系都没有**：触发条件仍是 `count() != 6`，一格没挪。
-    //  过期的只是文案里举的那个例子。
-    //  ★ 「诚实降级」这一档今天还有真人群，一批都不靠 F05b 有没有做：
-    //  ① **裸 exe**（PM 那一趟实测 0 个后端进程）· ② **开发树**（`externalBin` 刻意不进基础
-    //  `tauri.conf.json` ⇒ exe 旁恒空）· ③ **释放内嵌那一份也失败**
-    //  （走 `local_backend::extraction_failure_reason` 那句话）。
-    //  〔`K-R43` 订正 ③ 的**住址**：它原先写的是「`resolve_backend_bin` 里那条
-    //   `exe 旁无本机后端，且释放内嵌后端失败`」—— 那一句是 `K-R42` 从
-    //   `start_or_extract` 删掉的**同一句**，`K-R43` 把它从这条路上也删了。
-    //   ⚠ **这一档的人群没变**（释放失败仍走诚实降级），变的只是它今天说哪一句话：
-    //   从「把两件事说成一件」换成「带了，但这台机器不让我放下来」。〕
-    //  ⇒ 人群从「所有人」缩成这三批，**性质没变**，所以这条不换靶。
-    //  与 `local_backend.rs` 那条「换靶」不同形：那条的**目的**随 F05b 过期，必须换；
-    //  本条改的只是红了之后说给人听的那句话。〕
-    // 〔E §E4〕6 → 7：另一个 monitor 正连着那一臂 —— 分在「用户动得了手」那一档（关掉另一个 monitor），
-    //   同拍调了 `note_start_refusal`（下面 ④ 那个数 3 → 4）。
-    // 〔HOST 余项〕7 → 6：常驻后端多客户之后那一臂成死路、删了（④ 那个数 4 → 3）。
-    // 〔换钥匙〕6 → 5：钥匙改由常驻后端绑上口之后自己写，宿主「拿不到钥匙」那一臂删了；
-    //   钥匙文件读不动 / 空走「接不上」那一臂（④ 那个数 3 → 2）。
     assert_eq!(
         prod.matches("StartOutcome::Failed {").count(),
         5,
-        "`StartOutcome::Failed` 的构造点不是 5 处了 —— \n\
-             ★ **新增一处失败就要给它分档**：用户动得了手（删文件 / 停进程 / 改权限位）\n\
-             ⇒ 调 `note_start_refusal` 把话说到眼前；\n\
-             诚实降级（**这一份产物里没带 local_backend** 那种 —— 裸 exe / 开发树 / 释放内嵌也失败）\n\
-             ⇒ 仍走日志。\n\
-             ⇒ 改完把这个数改对，**别只改数**。"
+        "`StartOutcome::Failed` 的构造点不是 5 处了 —— 新增一处失败就给它分档：\n\
+             动得了手 ⇒ 调 `machine_state::note_local_refused` 把下一步交给本机那一行；诚实降级 ⇒ 只进日志。\n\
+             改完把这个数改对，别只改数。"
     );
-    // ② 接不上（握手 / attach 失败）：那句话原样进「接不上」那一臂，那一臂写记录。
+    // 握手 / 钥匙读不动都原样进「接不上」那一臂，那一臂交下一步。
     let adopt = body_of(&prod, "fn adopt_with(");
     assert!(
         adopt.contains("Err(e) => Adopt::Refused(e)"),
         "握手失败不再原样交给「接不上」那一臂"
     );
-    let refused = braced_block(&prod, "Adopt::Refused(why) => {", 300, 3000);
-    assert!(
-        refused.contains("note_start_refusal("),
-        "「接不上」那一臂不再写记录 —— 用户什么都看不到"
-    );
-    // ④ 写记录只有一个入口，今天恰好一条路在用它（+1 另一个 monitor 那一臂 ·−1 那一臂删了 ·−1 宿主不再铸钥匙）。
     assert_eq!(
-        prod.matches("note_start_refusal(").count(),
+        prod.matches("note_local_refused(").count(),
         2,
-        "`note_start_refusal` 在生产段里不是 2 处（1 个定义 + 1 个调用点）——\n\
-             少了 = 某一条「用户动得了手」的路退回了只写日志；\n\
-             多了 = 又有一条路被分进这一档，回来把本条与那段分档说明一起改。"
+        "`note_local_refused` 在这里不是 2 处（被拒那一臂交一句 · 起之前清一次）——\n\
+             少了 = 某一条动得了手的路退回了只写日志；多了 = 又有一条路分进这一档，回来把本条一起改。"
     );
 }
 
@@ -4220,8 +4012,7 @@ fn three_fake_backends_land_in_three_different_cells() {
 /// ★ 扫描面自检：共享剥法留住了本文件要扫的那几段，而便宜近似留不住。
 #[test]
 fn the_shared_stripper_keeps_the_exit_and_refusal_arms_this_guard_must_scan() {
-    // 本文件对 `lib.rs` 的两条判据取的针：`kill_on_exit_now(`（退出臂那一条的正控，接替已删的旧缝名）·
-    // `start_local_backend()`（568）· `take_start_refusal()`（602）—— 都在 59 之后。
+    // 本文件对 `lib.rs` 取的针：`kill_on_exit_now(`（退出臂那一条的正控）—— 在第一个 `#[cfg(test)]` 之后。
     //
     // ⚠ 本文件另有一条 `the_strip_rule_this_file_leans_on_is_still_on_disk`，它是剥法的
     //    **住址钉**，头注自己逐字声明「买不到剥法对不对」——**那条与本条不重叠**：
@@ -4229,11 +4020,7 @@ fn the_shared_stripper_keeps_the_exit_and_refusal_arms_this_guard_must_scan() {
     guard_core::assert_stripper_keeps(
         "local_backend_host_tests · lib.rs",
         include_str!("../../../src/frontend/shell/src/lib.rs"),
-        &[
-            "kill_on_exit_now(",
-            "start_local_backend()",
-            "take_start_refusal()",
-        ],
+        &["kill_on_exit_now("],
     );
 }
 

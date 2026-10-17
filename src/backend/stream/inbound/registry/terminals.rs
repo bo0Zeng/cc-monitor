@@ -44,6 +44,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         "会话开着时切权限档（按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按）",
     ),
     crate::wire::typed::blocking::<crate::faces::session_say_face::SessionSay>("往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车；终端没了 ⇒ 按记下的号恢复、那一句当第一句交）"),
+    crate::wire::typed::blocking::<crate::faces::session_say_face::SessionResume>(
+        "终端没了的会话先在这台恢复（同说一句里恢复那一支，不带那一句），回它落在哪个 tmux 会话",
+    ),
     // 终端实时预览三条（`control/terminal_follow.rs`）：订阅名单里一个终端的画面，有变化就推一整屏（`terminal_screen` 帧），
     //   一帧在途、客户端回执之后才推下一帧；停了推 `terminal_follow_end`。都是 `Run::Builtin`：要碰本连接的票表与应答通道 ⇒ **只在帧面**。
     crate::wire::typed::frame::<crate::control::terminal_follow::TerminalFollow>(
@@ -75,6 +78,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // **起新会话 —— 全产品一个请求**（`control/session_new.rs`，宿主 `faces/session_new_face.rs`）：这台判目录 · 号（选不了带替代号）·
     //   终端名 · 分叉（只在这一步写分支记录）· 起；回「起好了 / 要开窗跑那一行」，某一格不行 ⇒ 失败信封 `data.field` 说是哪一格。
     crate::wire::typed::blocking::<crate::faces::session_new_face::SessionNew>("起一个新会话（全产品一个框、一个请求）"),
+    // **起会话 · 恢复 · 接回 —— 一个请求**（`control/session_open.rs`，宿主 `faces/session_open_face.rs`）：意图进去，这台判号 · 放在哪 ·
+    //   记录在不在 · 已有进程在写 · 在跑 / 就地 / 新开，回「落在哪 ＋ 要开终端就跑这一行」；每个码的那一句后端写好。
+    crate::wire::typed::blocking::<crate::faces::session_open_face::SessionOpen>("起会话 · 恢复 · 接回（一个请求：落在哪 ＋ 要开终端就跑的那一行）"),
     // 起新会话框打开时问一次：这台最近用过的目录 · 有没有 tmux · 能起哪几家 · 分叉源会话的三格（只读，不写分支记录）。
     crate::wire::typed::blocking::<crate::faces::session_new_face::SessionNewFacts>(
         "起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法",

@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
@@ -141,17 +142,17 @@ internal fun PickRow(
     }
 }
 
-/** 号牌：号色那一格做底、两个字（同桌面 `badgeText`）。号色没分到 ⇒ 用第一格。 */
+/** 号牌：号色那一格做底、号牌字照那台写好的（[text]）。那台没给这个号 ⇒ 号色第一格、字写「—」。 */
 @Composable
 internal fun AccountBadge(
-    name: String,
+    text: String?,
     color: Int?,
     size: Int = 22,
 ) {
     val acct = LocalAppTokens.current.acct
     val (bg, ink) = acct[(color ?: 0).mod(acct.size)]
     Box(Modifier.size(size.dp).background(bg, RoundedCornerShape(4.dp)), contentAlignment = Alignment.Center) {
-        Text(badgeText(name), color = ink, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, maxLines = 1)
+        Text(text ?: copyText("accounts.sessionBadge.none"), color = ink, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, maxLines = 1)
     }
 }
 
@@ -168,13 +169,6 @@ internal fun MachineDot(up: Boolean?) {
 }
 
 private const val DIM = 0.45f
-
-/** 账号牌上的字：名字开头是字母数字 ⇒ 前两个；否则第一个字（同桌面 `accounts.ts::badgeText`）。 */
-internal fun badgeText(name: String): String {
-    if (name.isEmpty()) return "?"
-    if (name.first().isLetterOrDigit() && name.first().code < 128) return name.take(2)
-    return String(Character.toChars(name.codePointAt(0)))
-}
 
 /** 路径里那台的家目录缩成 `~`（同桌面 `kit/path.ts::homeShort`）；家目录不知道 ⇒ 原样。 */
 internal fun homeShort(

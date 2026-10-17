@@ -1,14 +1,13 @@
 //! **一批会话一次问**：「这个 sid 由哪个 tmux 会话在跑」· 停 · 起。tab 栏的单个菜单与批量菜单都走这里（单个 = 一个 sid 的一批）。
 //!
 //! 「这个 sid 此刻在这台 tmux 里是什么样」只在 [`standing`] 判一次，停 / 起 / 菜单就绪三处共用：
-//! 停 = 同 `kill`（三道门、杀句柄、顺手注销 cc-bus）；起在 tmux 里 = 在跑不另起 · 空 tmux 就地键入直路那一行（同 `launch send-into`）·
-//! 都不是就铸名、交一行 ccm（同界面那一行、同一个渲染器，只多 `--detach`：建完不接进去）；开终端 = 只渲那一行，窗口由 monitor 开。
-//! 起之前先问记录还在不在（同 `history-record`，查这次要用的那棵账号树）。一个不成不挡下一个。
+//! 停 = 同 `kill`（三道门、杀句柄、顺手注销 cc-bus）；起 = 逐项走 `session-open` 恢复那一支（[`super::session_open`]）。一个不成不挡下一个。
 //!
 //! 要动 tmux / 读记录 / 起 ccm 的几样由入口经 [`Deps`] 交进来（control 不引用 observe），判据交替身。
 
-use super::launch_account::{self as la, AccountAsk, AccountUnavailable, LaunchedAccount, Settled};
-use super::launch_render::{local, wire};
+use super::launch_account::{AccountAsk, AccountUnavailable, LaunchedAccount, Settled};
+use super::launch_render::local;
+use super::session_open as open;
 use crate::platform::child::{Child, Deadline};
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -59,11 +58,13 @@ pub(crate) struct Deps<'a> {
     /// 本机那一形的事实（平台 · 目录在不在）。
     pub(crate) local_facts: local::Facts,
     /// 起会话挑号要的事实（这台的账号库 · 某条会话上次用的号）。
-    pub(crate) accounts: &'a la::Facts<'a>,
+    pub(crate) accounts: &'a super::launch_account::Facts<'a>,
     /// sid ⇒ 此刻持着它的活进程 pid（这台的 pidfile，升序）。起之前问：已有在写的 ⇒ 不再起一个。
     pub(crate) writers: &'a dyn Fn(&str) -> Vec<u32>,
     /// `(号目录, 工作目录)` ⇒ 起之前把工作目录标成那个号信任过（那一家没有「信任」这件事 ⇒ 什么都不做；写不成只出声、照常起）。
     pub(crate) pretrust: &'a dyn Fn(&str, &str),
+    /// `(会话名, 工作目录)` ⇒ 开一个空 shell 的 tmux 会话（不在才建）；回「这一趟建的」。失败带 tmux 原话。
+    pub(crate) open_shell: &'a dyn Fn(&str, Option<&str>) -> Result<bool, crate::wire::spec::Fail>,
     /// 这台的偏好（启动命令 · 模型表；一趟读一次 `prefs.json`）。
     pub(crate) prefs: &'a crate::control::machine_prefs::Prefs,
 }
@@ -175,6 +176,8 @@ pub(crate) struct Outcome {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct Whereabouts {
     pub(crate) results: Vec<Whereabout>,
+    /// 这台恢复默认放在哪（这台的偏好「恢复时进 tmux」× 有没有 tmux）。
+    pub(crate) run: open::Run,
 }
 
 /// 一个 sid 此刻在这台 tmux 里的样子（[`Standing`] 上线那一形 ＋ 这台没 tmux）。
@@ -239,6 +242,12 @@ impl Answer {
     }
     fn done(sid: &str) -> Self {
         Self::new(sid, "done", None, String::new())
+    }
+    fn with_unavailable(self, unavailable: Option<AccountUnavailable>) -> Self {
+        Self {
+            unavailable,
+            ..self
+        }
     }
     /// `cmd`：`sessions-stop` / `sessions-start`。失败那一项多两格：`said`（停的那一句与单条结束同一张表，[`crate::control::kill::said`]；
     /// 起的那几句要那台的称呼，界面说）· `copyDetail`（复制详情：码 ＋ 那一项的原话）。
@@ -379,7 +388,12 @@ pub(crate) fn where_(req: &SidsReq, deps: &Deps) -> Result<Whereabouts, CmdErr> 
             }
         })
         .collect();
-    Ok(Whereabouts { results })
+    let run = open::default_run(
+        open::Intent::Resume,
+        deps.prefs.resume_in_tmux,
+        rows.is_some(),
+    );
+    Ok(Whereabouts { results, run })
 }
 
 /// `sessions-stop`：逐个停，与入参同序答。
@@ -424,33 +438,6 @@ fn stop_one(sid: &str, rows: Option<&[TmuxEntry]>, deps: &Deps) -> Answer {
     }
 }
 
-/// 一个要起的会话（已过形状关）。
-pub(crate) struct Item {
-    pub(crate) sid: String,
-    pub(crate) cwd: String,
-    pub(crate) account: AccountAsk,
-    /// 必铸新终端名（分叉出来的那一条）：不就地键入已有的终端、不复用任何已有的名字（父会话那个尤其）。
-    pub(crate) fresh: bool,
-    /// 分叉出来的那一条的源会话 sid：新名从源会话此刻所在终端的名字铸（同 `terminal-name-mint` 的 `forkOf`）。
-    pub(crate) fork_of: Option<String>,
-    /// 起的时候就交的第一句（`session-say` 终端没了、恢复再送那一项；批量起 · 换号重启恒空）。
-    pub(crate) say: Option<String>,
-    /// 这一趟用的模型（恢复再送那一项：会话记录里最后那一个）；缺 ＝ 跟随偏好表。
-    pub(crate) model: Option<String>,
-    /// 起在哪一个权限档（恢复再送那一项：会话记录里最后那一档）；缺 ＝ 跟随那一家自己的默认。
-    pub(crate) permission_mode: Option<String>,
-}
-
-/// 整批共用的几样：哪一家 · 启动器 · 这台的模型偏好表（后两样都读这台的偏好 `prefs.json`，界面不交）。
-pub(crate) struct Batch {
-    pub(crate) agent: String,
-    launcher: String,
-    default_launcher: String,
-    pub(crate) models: std::collections::BTreeMap<String, String>,
-    /// 那一家起会话的说法（权限档旗标 · 收不收第一句）；注册表里没有这一家 ⇒ `None`。
-    face: Option<crate::agents::LaunchFace>,
-}
-
 /// `sessions-start` 一项的入参。
 #[derive(Debug, Clone, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -475,7 +462,7 @@ pub(crate) struct StartItemReq {
     pub(crate) fork_of: Option<String>,
 }
 
-fn item_of(v: &StartItemReq) -> Result<Item, CmdErr> {
+fn item_of(v: &StartItemReq) -> Result<open::Item, CmdErr> {
     if !shell_quote_core::session_id_ok(&v.sid) {
         return Err(bad(&format!("not a session id: {:?}", v.sid)));
     }
@@ -488,7 +475,7 @@ fn item_of(v: &StartItemReq) -> Result<Item, CmdErr> {
         Some(_) if !fresh => return Err(bad("`fork_of` goes with `fresh_terminal: true`")),
         Some(s) => Some(s.to_string()),
     };
-    Ok(Item {
+    Ok(open::Item {
         sid: v.sid.clone(),
         cwd: v.cwd.clone(),
         // 缺席 ＝ 跟随。
@@ -499,94 +486,6 @@ fn item_of(v: &StartItemReq) -> Result<Item, CmdErr> {
         model: None,
         permission_mode: None,
     })
-}
-
-impl Batch {
-    /// 整批一份的那几样：那一家的默认启动器问适配层，启动命令与模型表照这台的偏好（[`crate::control::machine_prefs`]）。
-    pub(crate) fn of(agent: &str, prefs: &crate::control::machine_prefs::Prefs) -> Batch {
-        let face = crate::agents::launch_face_among(crate::agents::REGISTRY, agent);
-        let default_launcher = face.map_or("", |f| f.default_launcher).to_string();
-        Batch {
-            agent: agent.to_string(),
-            launcher: prefs.launcher_for(agent, &default_launcher),
-            default_launcher,
-            models: prefs.models.clone(),
-            face,
-        }
-    }
-
-    /// 那一家起的时候收不收第一句。
-    fn takes_first_say(&self) -> bool {
-        self.face.is_some_and(|f| f.first_prompt_arg)
-    }
-}
-
-/// 这一项交给那一家的那一半末尾（两条起法同一份，照 `session_new` 那一形）：权限档旗标 ＋ `--` ＋ 那一句。
-/// 权限档只认那一家声明可选的那几档（越过批准的不在里面）⇒ 别的不给、跟随；那一家不收第一句 ⇒ 不带（[`resume_saying`] 先拦）。
-fn tail_args(it: &Item, b: &Batch) -> Vec<String> {
-    let mut out = Vec::new();
-    if let (Some(m), Some(p)) = (
-        it.permission_mode.as_deref(),
-        b.face.and_then(|f| f.permission),
-    ) {
-        if p.modes.iter().any(|c| c.value == m) {
-            out.extend([p.flag.to_string(), m.to_string()]);
-        }
-    }
-    if let Some(text) = it.say.as_ref().filter(|_| b.takes_first_say()) {
-        out.extend([crate::ccm_line::argv::flag::END.to_string(), text.clone()]);
-    }
-    out
-}
-
-/// 这一项的模型：过全仓那一条模型名判；不过 ⇒ 缺（跟随偏好表）。
-fn model_of(it: &Item) -> Option<String> {
-    it.model
-        .clone()
-        .filter(|m| shell_quote_core::model_name_ok(m))
-}
-
-/// 界面那一行的上线入参（`launch-render-cli`），由这一个起会话项拼：`tmux` = 要新建的会话名（`None` = 直路）。
-/// 单个那条在界面拼的就是这一份（直路：cwd 只在开终端那一形带；建进 tmux：带 cwd、打 sid 标记）。
-fn wire_req(it: &Item, b: &Batch, tmux: Option<&str>, cwd: bool) -> wire::CliRenderRequest {
-    wire::CliRenderRequest {
-        agent: b.agent.clone(),
-        action: wire::WireAction::Resume {
-            sid: it.sid.clone(),
-        },
-        container: match tmux {
-            Some(name) => wire::WireContainer::Tmux {
-                name: name.to_string(),
-                send_into: false,
-            },
-            None => wire::WireContainer::None,
-        },
-        cwd: Some(it.cwd.clone()).filter(|c| cwd && !c.is_empty()),
-        account: it.account.clone(),
-        ccm_sid: tmux.map(|_| it.sid.clone()),
-        model: model_of(it),
-        models: b.models.clone(),
-        launcher: b.launcher.clone(),
-        default_launcher: b.default_launcher.clone(),
-        preset_args: tail_args(it, b),
-    }
-}
-
-/// 本机那一形的入参（`launch-local`）。
-fn local_req(it: &Item, b: &Batch, tmux: Option<String>) -> local::LocalLaunchRequest {
-    local::LocalLaunchRequest {
-        agent: b.agent.clone(),
-        action: local::LocalAction::Resume {
-            sid: it.sid.clone(),
-        },
-        cwd: Some(it.cwd.clone()).filter(|c| !c.is_empty()),
-        launcher: Some(b.launcher.clone()).filter(|l| l != &b.default_launcher),
-        account: Some(it.account.clone()),
-        tmux_name: tmux,
-        default_launcher: b.default_launcher.clone(),
-        preset_args: tail_args(it, b),
-        model: model_of(it),
-    }
 }
 
 /// `sessions-start` 的起法：在 tmux 里后台起 · 只渲那一行交回（窗口由界面开）。
@@ -619,10 +518,8 @@ pub(crate) struct SessionsStartReq {
     pub(crate) client: Option<String>,
 }
 
-/// `sessions-start`：逐个起，与入参同序答。
+/// `sessions-start`：逐项走 `session-open` 恢复那一支（[`open::resume_item`]），与入参同序答。
 pub(crate) fn start(req: &SessionsStartReq, deps: &Deps) -> Result<Batched, CmdErr> {
-    let tmux = req.mode == StartMode::Tmux;
-    let here = req.local;
     if req.items.is_empty() || req.items.len() > MAX_BATCH {
         return Err(bad(&format!("`items` must hold 1..={MAX_BATCH} entries")));
     }
@@ -631,301 +528,80 @@ pub(crate) fn start(req: &SessionsStartReq, deps: &Deps) -> Result<Batched, CmdE
         .iter()
         .map(item_of)
         .collect::<Result<Vec<_>, _>>()?;
-    let batch = Batch::of(&req.agent, deps.prefs);
     for (i, it) in items.iter().enumerate() {
         if items[..i].iter().any(|x| x.sid == it.sid) {
             return Err(bad(&format!("duplicate session id: {:?}", it.sid)));
         }
     }
-    // tmux 那一形先看一眼这台的名单（一批一次）；开终端那一形只有本机要铸新名的那几项用得着（核新名不落在已有的名字上）。
-    let fresh_here = here && !deps.local_facts.windows && items.iter().any(|i| i.fresh);
-    let rows = if tmux || fresh_here {
-        Some(listed(deps)?)
-    } else {
-        None
+    let run = match req.mode {
+        StartMode::Tmux => {
+            // 名单看不见 ⇒ 整条不成（同别的先列名单的命令）。
+            listed(deps)?;
+            open::Run::Tmux
+        }
+        StartMode::Window => open::Run::Direct,
     };
     let results = items
         .iter()
-        .map(|it| start_one(it, &batch, tmux, rows.as_ref(), here, deps).to_wire("sessions-start"))
+        .map(|it| {
+            outcome_of(
+                &it.sid,
+                open::resume_item(it, &req.agent, run, req.local, deps),
+            )
+            .to_wire("sessions-start")
+        })
         .collect();
     Ok(Batched { results })
 }
 
-/// 一个：先判用哪个号（选不了 ⇒ 跳过、不挡别的），再问记录在不在（查这个号那棵树），再按那一形做。
-/// `rows` = 这台的 tmux 名单（`Some(None)` = 这台没 tmux；没看 ⇒ `None`）。
-fn start_one(
-    it: &Item,
-    b: &Batch,
-    tmux: bool,
-    rows: Option<&Option<Vec<TmuxEntry>>>,
-    here: bool,
-    deps: &Deps,
-) -> Answer {
-    // 模型偏好只用在远端那一行上（本机那一行今天不带模型）。
-    let none = Default::default();
-    let models = if here { &none } else { &b.models };
-    let account = match la::settle(&it.account, Some(&it.sid), models, deps.accounts) {
-        Ok(a) => a,
-        Err(u) => {
-            let requested = u.requested.clone();
-            return Answer {
-                unavailable: Some(u),
-                ..Answer::skipped(&it.sid, "account_unavailable", requested)
-            };
-        }
-    };
-    let root = match &account {
-        Settled::Account(a) => Some(a.config_dir.as_str()),
-        Settled::Base | Settled::Unsaid => None,
-    };
-    match (deps.record)(&it.sid, root) {
-        Err(e) => return Answer::failed(&it.sid, ("bad_args", e)),
-        Ok((false, root)) => return Answer::skipped(&it.sid, "record_gone", root),
-        Ok((true, _)) => {}
-    }
-    let rows = rows.and_then(Option::as_deref);
-    let live = (deps.writers)(&it.sid);
-    let done = match tmux {
-        true => start_in_tmux(it, b, &account, rows, here, &live, deps),
-        false if !live.is_empty() => already_live(&it.sid, &live),
-        false if here => {
-            pretrust(&account, &it.cwd, deps);
-            start_window_here(it, b, &account, rows, deps)
-        }
-        false => {
-            pretrust(&account, &it.cwd, deps);
-            let line = own_entry(deps).and_then(|entry| {
-                wire::render_ccm_launch_with(
-                    &wire_req(it, b, None, true),
-                    &account,
-                    deps.caps,
-                    &entry,
-                )
-            });
-            match line {
-                Ok(cmd) => Answer {
-                    cmd: Some(cmd),
-                    ..Answer::done(&it.sid)
+/// `session-open` 那一项的结局 ⇒ 批量那一形（在跑 ⇒ 跳过；码照旧名）。
+fn outcome_of(sid: &str, r: Result<open::Opened, open::Failed>) -> Answer {
+    match r {
+        Ok(o) => match o.landed {
+            open::Landed::Running => {
+                let why = if o.note.is_some() {
+                    "ambiguous"
+                } else {
+                    "running"
+                };
+                Answer {
+                    session: o.session.clone(),
+                    ..Answer::skipped(sid, why, o.session.unwrap_or_default())
+                }
+            }
+            open::Landed::Window => Answer {
+                cmd: o.line,
+                account: o.account,
+                ..Answer::done(sid)
+            },
+            _ => Answer {
+                session: o.session,
+                account: o.account,
+                ..Answer::done(sid)
+            },
+        },
+        Err((code, said, data, raw)) => {
+            let detail = raw.unwrap_or(said);
+            match code {
+                "account_unavailable" => {
+                    let u = data
+                        .and_then(|d| {
+                            serde_json::from_value::<super::session_new::SessionNewRefusal>(d).ok()
+                        })
+                        .and_then(|r| r.unavailable);
+                    let requested = u.as_ref().map_or(detail, |u| u.requested.clone());
+                    Answer::skipped(sid, code, requested).with_unavailable(u)
+                }
+                "record_gone" => Answer::skipped(sid, code, detail),
+                "already_live" => Answer::skipped(sid, ALREADY_LIVE, detail),
+                "place_unavailable" => Answer::skipped(sid, "no_tmux", String::new()),
+                "tmux_taken" => Answer {
+                    session: Some(detail.clone()),
+                    ..Answer::failed(sid, ("name_taken", detail))
                 },
-                Err(said) => Answer::failed(&it.sid, ("refused", said)),
+                _ => Answer::failed(sid, (code, detail)),
             }
         }
-    };
-    Answer {
-        account: match &account {
-            Settled::Account(a) if done.outcome == "done" => Some(a.clone()),
-            _ => None,
-        },
-        ..done
-    }
-}
-
-/// 已有活进程在写 ⇒ 这一项跳过，`detail` 是那几个 pid。
-fn already_live(sid: &str, live: &[u32]) -> Answer {
-    Answer::skipped(sid, ALREADY_LIVE, pids_said(live))
-}
-
-/// 在 tmux 里起（不接进去）：在跑 ⇒ 不另起；已有活进程在写（不在这台的 tmux 里跑着）⇒ 不起；
-/// 空 tmux ⇒ 就地键入直路那一行；都不是 ⇒ 铸名、交那一行 ccm（`--detach`）。
-fn start_in_tmux(
-    it: &Item,
-    b: &Batch,
-    account: &Settled,
-    rows: Option<&[TmuxEntry]>,
-    here: bool,
-    live: &[u32],
-    deps: &Deps,
-) -> Answer {
-    let Some(rows) = rows else {
-        return Answer::skipped(&it.sid, "no_tmux", String::new());
-    };
-    match standing(rows, &it.sid) {
-        Standing::Running(n) => Answer {
-            session: Some(n.clone()),
-            ..Answer::skipped(&it.sid, "running", n)
-        },
-        Standing::Ambiguous(ns) => Answer {
-            session: ns.first().cloned(),
-            ..Answer::skipped(&it.sid, "ambiguous", ns.join(", "))
-        },
-        _ if !live.is_empty() => already_live(&it.sid, live),
-        // 必铸新名的那一项不键进已有的终端。
-        Standing::Idle(_) | Standing::None if it.fresh => {
-            match fresh_name(fork_base(it, rows), rows, deps) {
-                Ok(name) => start_named(it, b, account, name, here, deps),
-                Err(e) => not_minted(&it.sid, e),
-            }
-        }
-        Standing::Idle(n) => {
-            let line = own_entry(deps).and_then(|entry| {
-                wire::render_ccm_launch_with(
-                    &wire_req(it, b, None, false),
-                    account,
-                    deps.caps,
-                    &entry,
-                )
-            });
-            let done = match line {
-                Err(said) => Answer::failed(&it.sid, ("refused", said)),
-                Ok(line) => {
-                    pretrust(account, &it.cwd, deps);
-                    match (deps.send_into)(&n, &it.sid, &line) {
-                        Ok(()) => Answer::done(&it.sid),
-                        Err(f) => {
-                            let code = f.code.clone();
-                            Answer::failed(
-                                &it.sid,
-                                (&code, crate::common::said::Said::from(f).logged()),
-                            )
-                        }
-                    }
-                }
-            };
-            Answer {
-                session: Some(n),
-                ..done
-            }
-        }
-        Standing::None => match (deps.mint)(NameBase::Cwd(&it.cwd)) {
-            Ok(name) => start_named(it, b, account, name, here, deps),
-            Err(e) => Answer::failed(&it.sid, e),
-        },
-    }
-}
-
-/// 原因码：那一家起的时候不收第一句（恢复再送那一项起不了）。
-pub(crate) const NO_FIRST_PROMPT: &str = "no_first_prompt";
-
-/// **恢复再送那一项**（`session-say` 送的时候终端已经没了）：同批量起的 tmux 那一形走一项（号照 `it.account`，
-/// 问记录 · 已有活进程在写 ⇒ 不起 · 空 tmux 就地键入 · 都不是就铸名起、`--detach`），那一句随行交给那一家。
-/// 起法用 tmux 那一形的远端那一行（同 `session-new` 的 tmux 那一支）。那一家起的时候不收第一句 ⇒ 不起。
-pub(crate) fn resume_saying(it: &Item, agent: &str, deps: &Deps) -> Answer {
-    let batch = Batch::of(agent, deps.prefs);
-    if it.say.is_some() && !batch.takes_first_say() {
-        return Answer::skipped(&it.sid, NO_FIRST_PROMPT, agent.to_string());
-    }
-    let rows = match listed(deps) {
-        Ok(rows) => rows,
-        Err(e) => return Answer::failed(&it.sid, e),
-    };
-    start_one(it, &batch, true, Some(&rows), false, deps)
-}
-
-/// 铸不出新名：落在已有的名字上 ⇒ `session` 带那个名字（同 ccm 说名字被占那一形）。
-fn not_minted(sid: &str, e: CmdErr) -> Answer {
-    Answer {
-        session: (e.0 == "name_taken").then(|| e.1.clone()),
-        ..Answer::failed(sid, e)
-    }
-}
-
-/// 必铸新终端名：问这台铸（避让这台此刻的全部会话名），再核一遍不落在名单里任何一个上 ——
-/// 父会话那个名字绝不复用（同名 ⇒ `ccm` 会把新会话接进原会话那个窗口）。落上了 ⇒ `name_taken`，不起。
-/// 基名（`base`）由调用方定：后台起那一形按分叉那一形（[`fork_base`]），本机开终端那一形同本机 Resume（按工作目录）。
-fn fresh_name(base: NameBase, rows: &[TmuxEntry], deps: &Deps) -> Result<String, CmdErr> {
-    let name = (deps.mint)(base)?;
-    if rows.iter().any(|r| r.name == name) {
-        return Err(("name_taken", name));
-    }
-    Ok(name)
-}
-
-/// 分叉那一形的基名：源会话此刻所在终端的名字（在跑的那一个，同 `sessions-where`；命中多个取第一个）；
-/// 源会话不在任何终端里 ⇒ 这一项的工作目录。
-fn fork_base<'a>(it: &'a Item, rows: &'a [TmuxEntry]) -> NameBase<'a> {
-    let source = it
-        .fork_of
-        .as_deref()
-        .and_then(|sid| match carriers(rows, sid) {
-            Standing::Running(e) => Some(e.name.as_str()),
-            Standing::Ambiguous(es) => es.first().map(|e| e.name.as_str()),
-            Standing::Idle(_) | Standing::None => None,
-        })
-        .unwrap_or(&it.cwd);
-    NameBase::ForkOf(source)
-}
-
-/// 这台 `ccm` 的入口（那几行直接叫它，不靠 `PATH`）。
-fn own_entry(deps: &Deps) -> Result<String, String> {
-    (deps.local_facts.entry)()
-        .ok_or_else(|| copy_core::copy_text("beLaunchRender.entry.noHome", &[]))
-}
-
-/// 以 `name` 新建一个 tmux 会话、在里面起这一个（交一行 ccm，`--detach`）。换号重启复用让出来的旧名也走这一条。
-pub(crate) fn start_named(
-    it: &Item,
-    b: &Batch,
-    account: &Settled,
-    name: String,
-    here: bool,
-    deps: &Deps,
-) -> Answer {
-    let argv = if here {
-        local::plan_argv(
-            &local_req(it, b, Some(name.clone())),
-            account,
-            &deps.local_facts,
-            true,
-        )
-    } else {
-        own_entry(deps).and_then(|entry| {
-            wire::ccm_launch_argv(
-                &wire_req(it, b, Some(&name), true),
-                account,
-                deps.caps,
-                &entry,
-                true,
-            )
-        })
-    };
-    let done = match argv {
-        Err(said) => Answer::failed(&it.sid, ("refused", said)),
-        Ok(argv) => {
-            pretrust(account, &it.cwd, deps);
-            match (deps.run_ccm)(&argv) {
-                Ok((0, _, _)) => Answer::done(&it.sid),
-                // ccm 的退出码 3 = 会话名被占（它响亮失败，不接回别人的会话）。
-                Ok((3, _, _)) => Answer::failed(&it.sid, ("name_taken", name.clone())),
-                Ok((_, _, err)) => {
-                    Answer::failed(&it.sid, ("start_failed", err.trim().to_string()))
-                }
-                Err(e) => Answer::failed(&it.sid, e),
-            }
-        }
-    };
-    Answer {
-        session: Some(name),
-        ..done
-    }
-}
-
-/// 本机开终端：同 `launch-local` 那一条（POSIX 上铸名建进 tmux；Windows 上直路）。`rows` ＝ 要铸新名那一项看过的名单。
-fn start_window_here(
-    it: &Item,
-    b: &Batch,
-    account: &Settled,
-    rows: Option<&[TmuxEntry]>,
-    deps: &Deps,
-) -> Answer {
-    let minted = match (deps.local_facts.windows, it.fresh) {
-        (true, _) => Ok(None),
-        (false, true) => {
-            fresh_name(NameBase::Cwd(&it.cwd), rows.unwrap_or_default(), deps).map(Some)
-        }
-        (false, false) => (deps.mint)(NameBase::Cwd(&it.cwd)).map(Some),
-    };
-    let name = match minted {
-        Ok(n) => n,
-        Err(e) => return not_minted(&it.sid, e),
-    };
-    let req = local_req(it, b, name.clone());
-    match local::plan(&req, account, &deps.local_facts) {
-        Ok(cmd) => Answer {
-            cmd: Some(cmd),
-            session: name,
-            ..Answer::done(&it.sid)
-        },
-        Err(said) => Answer::failed(&it.sid, ("refused", said)),
     }
 }
 

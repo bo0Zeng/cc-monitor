@@ -55,7 +55,6 @@ crate: libappindicator 0.9.0
 crate: libappindicator-sys 0.9.0
 crate: libloading 0.7.4
 crate: libredox 0.1.16
-crate: mac-notification-sys 0.6.15
 crate: ndk 0.9.0
 crate: ndk-context 0.1.1
 crate: ndk-sys 0.6.0+11769913

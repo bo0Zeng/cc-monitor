@@ -96,7 +96,7 @@ fn plan_and_question_choices() {
 #[test]
 fn the_first_answer_lands_and_the_rest_are_already_answered() {
     let sid = "t-first";
-    let mut rx = open(AGENT, approve(sid), 9001);
+    let mut rx = open_id(AGENT, approve(sid), 9001).1;
     let a = pending(sid).pop().expect("挂上了");
     assert_eq!(
         answer_of(sid, &a.id, "always-0").unwrap(),
@@ -120,7 +120,7 @@ fn the_first_answer_lands_and_the_rest_are_already_answered() {
 fn when_the_hook_side_goes_away_the_request_is_withdrawn_and_closed_elsewhere() {
     let sid = "t-gone";
     let desk = Desk::new();
-    let _rx = open(AGENT, approve(sid), desk.conn());
+    let _rx = open_id(AGENT, approve(sid), desk.conn()).1;
     let a = pending(sid).pop().unwrap();
     drop(desk); // hook 那条连接断了（终端先答了 · 被打断 · 到点）
     assert!(pending(sid).is_empty());
@@ -137,7 +137,7 @@ fn when_the_hook_side_goes_away_the_request_is_withdrawn_and_closed_elsewhere() 
 #[test]
 fn a_dead_receiver_is_closed_elsewhere_not_answered() {
     let sid = "t-deadrx";
-    drop(open(AGENT, approve(sid), 9002));
+    drop(open_id(AGENT, approve(sid), 9002).1);
     let a = pending(sid).pop().unwrap();
     assert_eq!(
         answer_of(sid, &a.id, "allow").unwrap_err().0,
@@ -152,7 +152,7 @@ fn a_sub_agent_request_lands_in_needs_carries_its_id_and_is_answered() {
     a.agent_id = Some("agent-7".into());
     a.agent_type = Some("general-purpose".into());
     a.blocks_terminal = true;
-    let mut rx = open(AGENT, a, 9003);
+    let mut rx = open_id(AGENT, a, 9003).1;
     // 挡着终端：pidfile 不说在等 ⇒ 照挂着的请求补出一份 needs。
     let needs =
         crate::observe::facts_query::dress_ask_with(None, pending(sid).into_iter().next(), 0)
@@ -184,12 +184,12 @@ fn release_hands_back_no_decision() {
     let mut a = approve(sid);
     a.agent_id = Some("a".into());
     a.blocks_terminal = true;
-    let mut rx = open(AGENT, a, 9004);
+    let mut rx = open_id(AGENT, a, 9004).1;
     let id = pending(sid).pop().unwrap().id;
     answer_of(sid, &id, "release").unwrap();
     assert_eq!(rx.try_recv().unwrap(), None, "不给决定 ⇒ 框在终端里出来");
     let id2 = {
-        let _rx2 = open(AGENT, approve(sid), 9004);
+        let _rx2 = open_id(AGENT, approve(sid), 9004).1;
         pending(sid).pop().unwrap().id
     };
     assert_eq!(
@@ -202,7 +202,7 @@ fn release_hands_back_no_decision() {
 #[test]
 fn notes_and_picks_are_checked_before_anything_is_delivered() {
     let sid = "t-check";
-    let mut rx = open(AGENT, approve(sid), 9005);
+    let mut rx = open_id(AGENT, approve(sid), 9005).1;
     let id = pending(sid).pop().unwrap().id;
     assert_eq!(
         answer_of(sid, &id, "deny-note").unwrap_err().0,
@@ -258,7 +258,7 @@ fn notes_and_picks_are_checked_before_anything_is_delivered() {
             ],
         },
     ];
-    let mut rx = open(AGENT, q, 9006);
+    let mut rx = open_id(AGENT, q, 9006).1;
     let id = pending(qsid).pop().unwrap().id;
     let try_picks =
         |p: Value| answer(&json!({"sid": qsid, "ask": id, "choice": "answer", "picks": p}));
@@ -472,7 +472,7 @@ async fn a_question_nobody_answers_gets_the_sentence_when_the_time_is_up() {
     let e = answer_of(sid, &id, "dismiss").unwrap_err();
     assert_eq!(e, ("already_answered", said));
     // 下一次挂上提问 ⇒ 那条记录换掉。
-    let _rx = open(AGENT, approve(sid), 9102);
+    let _rx = open_id(AGENT, approve(sid), 9102).1;
     assert_eq!(answered(sid), None);
 }
 

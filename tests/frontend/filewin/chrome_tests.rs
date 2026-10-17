@@ -132,9 +132,9 @@ fn the_status_line_counts_items_selection_and_hidden_files() {
         "/m",
         vec![
             row("d", true, 4096, 1),
+            row(".env", false, 10, 4),
             row("a.txt", false, 1024, 2),
             row("b.txt", false, 2048, 3),
-            row(".env", false, 10, 4),
         ],
     );
     assert_eq!(
@@ -182,7 +182,7 @@ fn the_status_line_counts_items_selection_and_hidden_files() {
     assert_eq!(
         names,
         ["d", ".env", "a.txt", "b.txt"],
-        "并回来要按当前那一列重排"
+        "并回来要回到它在那一屏里的位置"
     );
 }
 
@@ -222,25 +222,21 @@ fn clicking_a_header_sorts_and_clicking_again_reverses() {
     );
     let ctx = egui::Context::default();
     let _ = frame(&ctx, &mut w, Vec::new());
-    let mtime = crate::source::SortBy::Mtime.label();
+    let mtime = crate::rows::column_label(crate::source::SortBy::Mtime);
     let _ = click(&ctx, &mut w, &mtime);
-    let names = |w: &FileWindow| -> Vec<String> {
-        w.listing
-            .rows
-            .lock()
-            .unwrap()
-            .iter()
-            .map(|r| r.name.clone())
-            .collect()
+    // 先后由后端排：点下去换的是这一档（重列一趟），时间第一下新的在前。
+    let by = |reverse| crate::source::Sort {
+        by: crate::source::SortBy::Mtime,
+        reverse,
     };
-    assert_eq!(names(&w), ["dir", "new", "mid", "old"]);
+    assert_eq!(w.sort, by(false));
     // 再点：那一格的字带上了箭头，找带箭头的那一段。
     let painted = frame(&ctx, &mut w, Vec::new());
     let shown = format!("{mtime} {}", egui_phosphor::regular::CARET_DOWN);
     let at = rects_of(&painted, &shown);
     assert_eq!(at.len(), 1, "表头上该写着「{shown}」：{painted:?}");
     let _ = frame(&ctx, &mut w, crate::rows::testing::click_at(at[0].center()));
-    assert_eq!(names(&w), ["dir", "old", "mid", "new"]);
+    assert_eq!(w.sort, by(true));
     // 列宽：拖「修改时间|类型」那条线往右 40 ⇒ 修改时间那一列宽 40、类型那一列窄 40。
     let before = w.cols;
     w.cols.drag(1, 40.0);

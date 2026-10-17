@@ -11,6 +11,7 @@ import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.claude.link.Switches
 import com.ccmonitor.mobile.core.claude.link.Toned
+import com.ccmonitor.mobile.core.claude.link.Transfer
 import com.ccmonitor.mobile.core.claude.link.WatchFrom
 import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
 import com.ccmonitor.mobile.core.claude.link.wire.Tone
@@ -49,6 +50,24 @@ internal class FakeCoreLink :
     }
 
     fun calls(cmd: String) = calls.filter { it.first == cmd }.map { it.second }
+
+    /** 分块传每一趟：哪一半 ＋ 交出来的描述符。 */
+    val transfers = mutableListOf<Pair<Transfer, Int>>()
+
+    /** 分块传怎么答：先报几下走到哪（[moved]），再回结局。 */
+    var moves: List<Pair<Long, Long>> = emptyList()
+    var transferred: (Transfer) -> Reply = { Reply.LinkDown }
+
+    override suspend fun transfer(
+        how: Transfer,
+        fd: () -> Int,
+        withinMs: Long,
+        moved: (Long, Long) -> Unit,
+    ): Reply {
+        transfers += how to fd()
+        moves.forEach { (d, t) -> moved(d, t) }
+        return transferred(how)
+    }
 
     suspend fun line(
         sid: String,

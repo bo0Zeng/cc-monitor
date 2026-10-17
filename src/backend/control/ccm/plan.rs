@@ -189,7 +189,7 @@ pub(crate) const INHERIT: &[Inherit] = &[
         direct: Pass::Machine,
         tmux: Pass::Machine,
         change: Change::Flags(&[flag::LAUNCHER, flag::TMUX, flag::TMUX_BASE]),
-        judge: "crate::control::launch_render::wire::CliRenderRequest::with_prefs",
+        judge: "crate::control::launch_render::Launch::launchers",
     },
     Inherit {
         item: Item::MachineEnv,

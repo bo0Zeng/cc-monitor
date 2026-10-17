@@ -212,6 +212,18 @@ fn label_chars() -> std::collections::BTreeSet<char> {
             set.extend(zh.chars().filter(|c| !c.is_ascii()));
         }
     }
+    // 后端写好、窗口照画的那几句（种类 · 「类型」那一列 · 预览 / 看图 / 编辑那几道门不许时那一句）。
+    for (key, e) in entries {
+        if key.starts_with("beFilesKind.") || key.starts_with("beFilesOpen.") {
+            set.extend(
+                e["zh"]
+                    .as_str()
+                    .unwrap_or("")
+                    .chars()
+                    .filter(|c| !c.is_ascii()),
+            );
+        }
+    }
     set
 }
 

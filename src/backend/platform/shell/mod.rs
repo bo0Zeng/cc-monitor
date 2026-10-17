@@ -274,6 +274,26 @@ fn powershell_command(host: PsHost, script: &str) -> Child {
         .no_console_window()
 }
 
+/// 这台 shell 里进 `dir` 那一行（Windows 上 PowerShell，别处 POSIX）；不跟别的命令。
+pub(crate) fn enter_dir_line(dir: &str) -> String {
+    let here = if speaks_powershell() {
+        dialect::Shell::PowerShell
+    } else {
+        dialect::Shell::Posix
+    };
+    enter_dir_line_in(here, dir)
+}
+
+/// [`enter_dir_line`] 按给定方言写（两臂都在这台判得到）。
+pub(crate) fn enter_dir_line_in(shell: dialect::Shell, dir: &str) -> String {
+    match shell {
+        dialect::Shell::Posix => posix::cd(&shell_quote_core::posix_quote(dir)),
+        dialect::Shell::PowerShell => powershell::set_location(&dialect::ps_literal(dir))
+            .trim_end_matches("; ")
+            .to_string(),
+    }
+}
+
 /// 这台后端**说不说 PowerShell** —— 别名方言那一道闸（`assets/aliases::dialect_here`）只问它。
 /// 「本机」与「远端」对后端没有区别（本机＝不走 ssh 的远端）：PowerShell ⇔ 这台是 Windows。
 pub(crate) fn speaks_powershell() -> bool {

@@ -2218,15 +2218,6 @@ pub(crate) fn settings_env_families() -> Vec<(&'static str, &'static str, Settin
         .collect()
 }
 
-/// 路由名那一家「直接敲的也走中转」那一格。没登记 / 没有这一形 ⇒ `None`。
-pub(crate) fn settings_env_face(route_id: &str) -> Option<SettingsEnvFace> {
-    REGISTRY
-        .iter()
-        .filter_map(|a| a.upstream.as_ref())
-        .find(|u| u.route_id == route_id)
-        .and_then(|u| u.settings_env)
-}
-
 /// 各家登记的会话标识头（注册序、去重）：中转经上游选择拿到这份名单，按它从请求里认会话 —— 会话 id 归 agent 自己。
 pub(crate) fn session_headers() -> Vec<&'static str> {
     let mut v: Vec<&'static str> = Vec::new();
