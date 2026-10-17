@@ -381,12 +381,18 @@ fn a_refusal_rejudges_inside_the_ledger_lock() {
     let (held_tx, held_rx) = std::sync::mpsc::channel();
     let path = home.root.join(rotation::FILE_NAME);
     let other_own = home.own();
+    let mut nodes = home.tx.subscribe();
     let other = std::thread::spawn(move || {
         let store = RotationStore::at(Some(path));
         rotation::relay_change(&store, &other_own, |b| {
             held_tx.send(()).expect("通知");
-            // 拿着锁的这一段里，别处去掉了 b（锁外读的那一份看不见）。
-            std::thread::sleep(std::time::Duration::from_millis(300));
+            // 拿着锁、等那一发报了「被拒」（重判已经开始）之后，别处去掉了 b（锁外读的那一份看不见）。
+            for _ in guard_core::wall::rounds() {
+                if matches!(nodes.try_recv(), Ok(n) if matches!(n.source, Source::Refused)) {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
             if let Some(s) = b.sessions.get_mut(SID) {
                 s.off.push("b".into());
             }
