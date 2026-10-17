@@ -3,9 +3,10 @@
 use super::*;
 use crate::agents::claudecode::parse::parse_line;
 use crate::agents::claudecode::schema::JsonlRecord;
-use crate::agents::ResultKind;
+use crate::agents::{ResultKind, StepBody, TextChange};
 use crate::common::cells::Words;
 use serde_json::json;
+use serde_json::Value;
 
 #[test]
 fn a_step_is_tool_main_arg_and_note() {
@@ -489,4 +490,163 @@ fn a_dispatch_result_says_whether_it_is_a_launch_receipt_or_a_handback() {
     // 出口那一形：一个字段 `kind`。
     let v = serde_json::to_value(result_of(&block, Some(&launched))).unwrap();
     assert_eq!(v["kind"], json!("launched"));
+}
+
+/// 写类那几个工具展开画的改动（`body`）：一处改 · 新写整份（改前为空）· 一次改几处；入参形状不对 ⇒ 缺（界面照原文画入参）。
+#[test]
+fn a_write_step_carries_what_changed() {
+    let ch = |old: &str, new: &str| TextChange {
+        old: old.into(),
+        new: new.into(),
+    };
+    let body = |name: &str, input: Value| step_of(name, &input).body;
+    assert_eq!(
+        body(
+            "Edit",
+            json!({"file_path": "/w/a", "old_string": "x", "new_string": "y"})
+        ),
+        Some(StepBody::Changes {
+            changes: vec![ch("x", "y")]
+        })
+    );
+    assert_eq!(
+        body("Write", json!({"file_path": "/w/a", "content": "l1\nl2"})),
+        Some(StepBody::Changes {
+            changes: vec![ch("", "l1\nl2")]
+        })
+    );
+    assert_eq!(
+        body(
+            "MultiEdit",
+            json!({"file_path": "/w/a", "edits": [
+                {"old_string": "a", "new_string": "b"},
+                {"old_string": "c", "new_string": "d"}
+            ]})
+        ),
+        Some(StepBody::Changes {
+            changes: vec![ch("a", "b"), ch("c", "d")]
+        })
+    );
+    // 形状不对：缺一格 · 非字符串 · 改几处那张表空 / 不是表 / 有一项不对 ⇒ 整格缺。
+    for (name, input) in [
+        ("Edit", json!({"file_path": "x", "replace_all": true})),
+        ("Edit", json!({"old_string": 1, "new_string": "x"})),
+        ("Write", json!({"content": 123})),
+        ("MultiEdit", json!({})),
+        ("MultiEdit", json!({"edits": "nope"})),
+        ("MultiEdit", json!({"edits": []})),
+        (
+            "MultiEdit",
+            json!({"edits": [{"old_string": "a", "new_string": "b"}, {"old_string": "c"}]}),
+        ),
+        ("NotebookEdit", json!({"new_source": "x"})),
+        ("Read", json!({"file_path": "/w/a"})),
+    ] {
+        assert_eq!(body(name, input.clone()), None, "{name} {input}");
+    }
+}
+
+/// 命令那一步展开画整行命令原样（多行、不截；收着那一行的 `arg` 才压成一行截 200 字）；没有命令 ⇒ 缺。
+#[test]
+fn a_command_step_carries_its_whole_line() {
+    let long = format!("echo {}\n  && ls", "a".repeat(ARG_MAX + 10));
+    let s = step_of("Bash", &json!({"command": long, "description": " 构建 "}));
+    assert_eq!(s.body, Some(StepBody::Command { line: long.clone() }));
+    assert_eq!(s.note.as_deref(), Some("构建"));
+    assert_eq!(step_of("Bash", &json!({"command": ""})).body, None);
+    assert_eq!(step_of("Bash", &json!({"description": "x"})).body, None);
+}
+
+/// 有 `body` 的那几步，卡型与它同类（改动 ⇒ diff 卡 · 命令 ⇒ 命令卡）；两张词表各认各的，这里钉它们不分叉。
+#[test]
+fn the_body_kind_agrees_with_the_card_kind() {
+    use crate::agents::ToolCard;
+    for (name, input) in [
+        ("Edit", json!({"old_string": "a", "new_string": "b"})),
+        ("Write", json!({"content": "a"})),
+        (
+            "MultiEdit",
+            json!({"edits": [{"old_string": "a", "new_string": "b"}]}),
+        ),
+        ("Bash", json!({"command": "ls"})),
+    ] {
+        let card = super::super::cards::tool_card(name);
+        match step_of(name, &input).body {
+            Some(StepBody::Changes { .. }) => assert_eq!(card, Some(ToolCard::Diff), "{name}"),
+            Some(StepBody::Command { .. }) => assert_eq!(card, Some(ToolCard::Command), "{name}"),
+            None => panic!("{name} 没出 body"),
+        }
+    }
+}
+
+/// 这一步说的那份文件（`file`）：主参数是路径、且是绝对路径 ⇒ 原样（不压行、不截）；相对路径 · 不是路径的工具 ⇒ 缺。
+#[test]
+fn a_path_step_names_its_file_when_absolute() {
+    let file = |name: &str, input: Value| step_of(name, &input).file;
+    let deep = format!("/w/{}/a.ts", "d".repeat(ARG_MAX));
+    assert_eq!(
+        file("Read", json!({ "file_path": deep })),
+        Some(deep.clone())
+    );
+    assert_eq!(
+        file("NotebookEdit", json!({"notebook_path": "/w/n.ipynb"})),
+        Some("/w/n.ipynb".into())
+    );
+    assert_eq!(file("Edit", json!({"file_path": "src/a.ts"})), None);
+    assert_eq!(file("Edit", json!({"file_path": ""})), None);
+    assert_eq!(file("Bash", json!({"command": "/bin/ls"})), None);
+}
+
+/// ★ 工具入参的键名是这一家的格式知识，只许住适配层：界面（`src/frontend/` 的 TS）与手机（`src/mobile/` 的 Kotlin，测试源除外）
+/// 零出现；正控：同一把扫描在 `agents/claudecode/` 里把它们一个不少地找到。
+#[test]
+fn the_frontends_never_read_a_tool_input_key() {
+    const KEYS: &[&str] = &["old_string", "new_string", "file_path", "notebook_path"];
+    let root = guard_core::addr::repo_root();
+    let word = |text: &str, k: &str| {
+        let is_id = |c: char| c.is_ascii_alphanumeric() || c == '_';
+        text.match_indices(k).any(|(i, _)| {
+            !text[..i].chars().next_back().is_some_and(is_id)
+                && !text[i + k.len()..].chars().next().is_some_and(is_id)
+        })
+    };
+    let scan = |dir: &str, exts: &[&str]| -> Vec<(String, String)> {
+        let files: Vec<_> = guard_core::scan_tree_excluding(&root.join(dir), exts, &[])
+            .into_iter()
+            .filter(|(p, _)| {
+                let p = p.to_string_lossy().replace('\\', "/");
+                !p.contains("/src/test/") && !p.contains("/src/androidTest/")
+            })
+            .collect();
+        assert!(!files.is_empty(), "{dir} 下一份文件都没扫到 —— 扫描空转");
+        files
+            .iter()
+            .flat_map(|(p, text)| {
+                KEYS.iter()
+                    .filter(|k| word(text, k))
+                    .map(move |k| (k.to_string(), p.display().to_string()))
+            })
+            .collect()
+    };
+    let mut found = scan("src/frontend", &["ts"]);
+    found.extend(scan("src/mobile", &["kt"]));
+    assert!(
+        found.is_empty(),
+        "界面 / 手机读了工具入参的键名（改读 `steps` 里的通用格）：\n{}",
+        found
+            .iter()
+            .map(|(k, p)| format!("  {k}  ←  {p}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    let in_adapter: std::collections::BTreeSet<String> =
+        scan("src/backend/agents/claudecode", &["rs"])
+            .into_iter()
+            .map(|(k, _)| k)
+            .collect();
+    assert_eq!(
+        in_adapter,
+        KEYS.iter().map(|k| k.to_string()).collect(),
+        "正控：适配层里这几个键名该一个不少（扫描瞎了，或键名换了）"
+    );
 }

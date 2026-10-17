@@ -49,16 +49,14 @@ fn tasks_list_answers_the_product_and_refuses_a_missing_sid() {
     );
 }
 
-/// ★ `tasks-list` 的成品 == 跨语言金样（`tests/__fixtures__/tasks-list.golden.json`）。
+/// ★ `tasks-list` 的成品 == 金样（`tests/__fixtures__/tasks-list.golden.json`）。
 ///
-/// 要求：「正路是把解释挪进后端、直接出成品……线上形状由一份跨语言金样钉住（后端测试产出 == 金样 ·
-/// TS 解码器读同一份）」。异源：金样里的 `files` 由**生产**路径（`answer_at` → `session_tasks` → `task_entry`）现算，
-/// 与手写的 `product` 逐格相等；界面那一侧（`tests/frontend/ui/tasks-decode.vitest.ts`）读同一份。
-/// 生产路径现在是 `tasks_at` → `session_tasks` → `task_entry`（typed）。
+/// 异源：金样里的 `files` 由**生产**路径（`tasks_at` → `session_tasks` → `task_entry`）现算，与手写的 `product` 逐格相等。
+/// 界面按生成类型用这一份（问回来的与帧里带的同一个类型），形状由那条命令的指纹核。
 /// 金样的 `files` 覆盖了旧口径（serde `TaskEntry`）的每一档：多余键不带 · BOM · `null` 可选格不出现 · id 不是串 / blocks 是 null /
 /// 缺必填 / 半截 JSON / 不是数字名 ⇒ 都不算任务。
 #[test]
-fn the_tasks_product_matches_the_cross_language_golden() {
+fn the_tasks_product_matches_the_golden() {
     let g: serde_json::Value =
         serde_json::from_str(include_str!("../../__fixtures__/tasks-list.golden.json")).unwrap();
     let h = scratch("tasks-golden");

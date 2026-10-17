@@ -51,7 +51,7 @@ describe("快捷键编辑器 · 单条恢复默认", () => {
     expect(confirms.length).toBe(2);
     expect(dispatcher.effectiveChord("tab.next")).toBe("BracketRight");
     expect(dispatcher.effectiveChord("tab.prev")).toBeNull();
-    expect(changes).toBeGreaterThan(0);
+    expect(changes, "答是那一下改了键 ⇒ 报一次变更").toBe(1);
   });
 
   it("★ 同一个键在作用范围不相交的动作上不算撞（Alt+↑：主区上一轮 · 栏里往上挪）⇒ 不问，两条都留着", async () => {

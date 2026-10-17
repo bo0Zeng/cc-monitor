@@ -7,7 +7,7 @@ use cmd_wire::batch::{BatchReply, ItemState, OnExists};
 use cmd_wire::files as wire;
 use copy_core::copy_text;
 
-/// 一次 `files-peek` 读回来的。
+/// 一次 `Door::peek` 读回来的。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Peeked {
     /// 读的是哪一份（解过链接的那一个，给人看）。
@@ -16,7 +16,7 @@ pub(crate) struct Peeked {
     pub text: Option<String>,
 }
 
-/// 一次 `files-put` 真写了之后的回执。
+/// 一次 `Door::put` 真写了之后的回执。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Landed {
     pub path: String,
@@ -210,6 +210,7 @@ pub(crate) fn copy(d: &dyn Door, root: &str, from: &str, to: &str) -> Result<(),
         on_exists: Some(OnExists::Ask),
         decide: None,
         ticket: None,
+        single: None,
     }))
     .map_err(|e| refused(e).said())
 }
@@ -225,7 +226,7 @@ pub(crate) fn mkdir(d: &dyn Door, root: &str, rel: &str) -> Result<(), String> {
     .map_err(|e| refused(e).said())
 }
 
-/// 建一条链接（`files-link`：目标文本原样，链接那条路径过根底下的解析；已在 ⇒ 拒）。
+/// 建一条链接（`Door::link`：目标文本原样，链接那条路径过根底下的解析；已在 ⇒ 拒）。
 pub(crate) fn link(d: &dyn Door, root: &str, rel: &str, target: &str) -> Result<(), String> {
     d.link(wire::FilesLinkReq {
         root: wp(root),
@@ -252,7 +253,7 @@ pub(crate) fn chmod(d: &dyn Door, root: &str, rel: &str, mode: u32) -> Result<()
     only(d.chmod(wire::FilesChmodReq {
         root: wp(root),
         items: vec![wire::ChmodItem { rel: wp(rel) }],
-        mode,
+        mode: format!("{mode:o}"),
         ticket: None,
     }))
     .map_err(|e| refused(e).said())
@@ -305,7 +306,7 @@ pub(crate) fn edit(
     for _ in 0..EDIT_ATTEMPTS {
         let got = match peek(d, root, rel) {
             Ok(p) => p,
-            // `files-peek` 先解父目录：父目录还不在时它报错 —— 而那一形就是「这份文件不在」。
+            // `Door::peek` 先解父目录：父目录还不在时它报错 —— 而那一形就是「这份文件不在」。
             //   要逐级补目录（`parents`）的那一种写，这时按「不存在」算（`$PROFILE` 所在目录常常要装的时候才建）；
             //   父目录在、却读不了 ⇒ 原话交出去。
             Err(_) if parents && parent_absent(d, root, rel)? => Peeked {

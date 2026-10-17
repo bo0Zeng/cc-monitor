@@ -1,9 +1,13 @@
 package com.ccmonitor.mobile.core.claude.link
 
+import com.ccmonitor.mobile.core.claude.link.wire.LiveCardFrame
+import com.ccmonitor.mobile.core.claude.link.wire.LiveOpWord
+import com.ccmonitor.mobile.core.claude.link.wire.LivePhaseWord
+import com.ccmonitor.mobile.core.claude.link.wire.Wire
+
 /**
  * 流上的 `live_card` 帧（`IPC-COMMANDS.md`「`live_card`」，后端 `stream/live.rs` 出的成品）：某个会话某个运行里正在说的那一次上游应答，
  * 一张一张地开、长、撤。只发 `stream-watch` 名单里的会话。对账 · 缺口 · 截头 · 挤谁全在后端，这里只认几种 `op`。
- * 按名字取（同 [RecordLine]）：帧的类型住后端 `wire`，还不在 `cmd-wire`。
  */
 data class LiveFrame(
     val sid: String,
@@ -48,37 +52,30 @@ data class LiveFrame(
     }
 
     companion object {
-        /** 是活卡帧 ⇒ 解出来；不是 ⇒ `null`；是却缺格 · 认不出 `op` / 相 ⇒ `null`（调用方报一次契约对不上）。 */
+        /** 是活卡帧 ⇒ 装进声明的类（核心按 `cmd-wire` 那一份重写过）；不是 ⇒ `null`；装不进 · 那一种 `op` 该有的格缺 ⇒ `null`（调用方报一次契约对不上）。 */
         fun of(frame: Map<String, Any?>): LiveFrame? {
             if (frame.str("kind") != KIND) return null
+            val f = Wire.bind<LiveCardFrame>(frame) ?: return null
             return decoding {
                 val op =
-                    when (frame.str("op")) {
-                        "open" ->
+                    when (f.op) {
+                        LiveOpWord.OPEN ->
                             Op.Open(
-                                rid = frame.str("rid").need(),
-                                awaiting = awaitingOf(frame.str("phase")).need(),
-                                clipped = frame.bool("clipped").need(),
-                                blocks = frame.objs("blocks").need().map { LiveBlock(it.str("kind").need(), it.str("text").orEmpty(), it.str("tool")) },
+                                rid = f.rid.need(),
+                                awaiting = f.phase.need() == LivePhaseWord.AWAITING,
+                                clipped = f.clipped.need(),
+                                blocks = f.blocks.need().map { LiveBlock(it.kind, it.text.orEmpty(), it.tool) },
                             )
-                        "block" -> Op.Block(frame.num("i").need().toInt(), frame.str("block").need(), frame.str("tool"))
-                        "text" -> Op.Text(frame.num("i").need().toInt(), frame.str("s").need())
-                        "awaiting" -> Op.Awaiting
-                        "close" -> Op.Close
-                        else -> null.need()
+                        LiveOpWord.BLOCK -> Op.Block(f.i.need().toInt(), f.block.need(), f.tool)
+                        LiveOpWord.TEXT -> Op.Text(f.i.need().toInt(), f.s.need())
+                        LiveOpWord.AWAITING -> Op.Awaiting
+                        LiveOpWord.CLOSE -> Op.Close
                     }
-                LiveFrame(frame.str("sid").need(), frame.str("run"), frame.num("card").need(), frame.num("n").need(), op)
+                LiveFrame(f.sid, f.run, f.card, f.n, op)
             }
         }
 
         const val KIND: String = "live_card"
-
-        private fun awaitingOf(phase: String?): Boolean? =
-            when (phase) {
-                "streaming" -> false
-                "awaiting" -> true
-                else -> null
-            }
     }
 }
 

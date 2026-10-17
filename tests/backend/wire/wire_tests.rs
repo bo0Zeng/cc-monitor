@@ -48,7 +48,7 @@ fn the_outbound_stream_has_exactly_one_writer() {
                  与 write_and_flush_hello 同一个性质：那一刻这条连接上还没有第二个写者。",
         ),
     ];
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let verb = format!("write_{}(", "all");
     let mut found: Vec<(String, usize)> = Vec::new();
     // ⚠ 本条的人群里**必须有 `wire.rs`** —— 握手帧就写在这里。
@@ -215,6 +215,7 @@ fn the_hello_witness_has_exactly_one_way_to_exist() {
     );
 }
 use super::*;
+use crate::wire::SessionFaceExt as _;
 use serde_json::Value;
 
 /// Helper: assert a line is a single JSON object ending in exactly one
@@ -246,8 +247,8 @@ const SESSION_STREAM_GOLDEN: &str = "tests/__fixtures__/session-stream.golden.js
 fn golden_pairs() -> Vec<[Frame; 2]> {
     use crate::agents::{BlockKind, RunDid};
     use crate::wire::{
-        LiveBlock, LiveCard, LiveOp, LivePhase, LostFrame, RereadWhy, RunEnded, RunInfo, RunState,
-        RunWhy, SessionContainer, SessionFate, TransferEnd, Unavailable,
+        LiveBlock, LiveCard, LiveOp, LivePhase, RereadWhy, RunEnded, RunInfo, RunState, RunWhy,
+        SessionContainer, SessionFate, TransferEnd, Unavailable,
     };
     let s = |v: &str| v.to_string();
     let both = |f: Frame| [f.clone(), f];
@@ -310,7 +311,8 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 project_dir: Some(s("/w")),
                 name: Some(s("n")),
                 path: Some(s("/p/s1.jsonl")),
-                face: crate::wire::ActivityFace::of(Some(crate::agents::SessionActivity::NeedsYou)),
+                face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: Some(crate::agents::SessionActivity::NeedsYou), tmux: None })
+                    .under(Some(s("b"))),
                 name_face: crate::history::search_rules::name_face(
                     &crate::history::search_rules::LabelFacts {
                         title: Some(s("t")),
@@ -333,7 +335,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     terminal: Some("tmux-3-7".into()),
                 }),
                 pid: 42,
-                account: Some("b".to_string()),
             }),
             Frame::SessionAdded(crate::wire::SessionAdded {
                 sid: s("s1"),
@@ -344,13 +345,12 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 project_dir: None,
                 name: None,
                 path: None,
-                face: crate::wire::ActivityFace::of(None),
+                face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: None, tmux: None }),
                 name_face: crate::history::search_rules::name_face(&Default::default()),
                 waiting_for: None,
                 hidden: None,
                 container: None,
                 pid: 0,
-                account: None,
             }),
         ],
         [
@@ -368,7 +368,8 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
         [
             Frame::SessionStatus(crate::wire::SessionStatus {
                 sid: s("s1"),
-                face: crate::wire::ActivityFace::of(Some(crate::agents::SessionActivity::NeedsYou)),
+                face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: Some(crate::agents::SessionActivity::NeedsYou), tmux: None })
+                    .under(Some(s("b"))),
                 name_face: crate::history::search_rules::name_face(
                     &crate::history::search_rules::LabelFacts {
                         title: Some(s("t")),
@@ -381,13 +382,19 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             }),
             Frame::SessionStatus(crate::wire::SessionStatus {
                 sid: s("s1"),
-                face: crate::wire::ActivityFace::of(None),
+                face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: None, tmux: None }),
                 name_face: crate::history::search_rules::name_face(&Default::default()),
                 waiting_for: None,
                 path: None,
             }),
         ],
-        both(Frame::session_state(s("s1"), SessionFate::Reconnectable)),
+        {
+            // 全格：可重连；最少格：已结束（不能那几样带为什么）。
+            [
+                Frame::session_state(s("s1"), SessionFate::Reconnectable, Some(s("b"))),
+                Frame::session_state(s("s1"), SessionFate::Ended, None),
+            ]
+        },
         [
             Frame::SessionRemoved(crate::wire::SessionRemoved {
                 sid: s("s1"),
@@ -400,21 +407,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 by: None,
             }),
         ],
-        [
-            Frame::Overflow(crate::wire::Overflow {
-                dropped: 7,
-                lost: vec![LostFrame {
-                    kind: "session_added".to_string(),
-                    subject: Some(s("s1")),
-                }],
-                lost_truncated: true,
-            }),
-            Frame::Overflow(crate::wire::Overflow {
-                dropped: 7,
-                lost: vec![],
-                lost_truncated: false,
-            }),
-        ],
+        [Frame::overflow(0, true), Frame::overflow(7, false)],
         [
             Frame::Reply(crate::wire::Reply {
                 id: s("q1"),
@@ -452,6 +445,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             session_id: s("s1"),
             path: s("/p/s1.jsonl"),
             why: RereadWhy::Truncated,
+            lines: 7,
         })),
         both(Frame::LinkData(crate::wire::LinkData {
             link: s("L1"),
@@ -594,12 +588,12 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             Frame::TerminalScreen(crate::wire::TerminalScreen {
                 ticket: s("t1"),
                 seq: 2,
-                view: serde_json::json!({"screen": "00000000000000a1", "cols": 80, "rows": 1, "cursor": {"x": 0, "y": 0, "visible": true}, "lines": [{"text": "ok", "spans": [{"from": 0, "to": 2, "fg": "green"}]}], "scrollback_lines": 0, "capped": false, "captured_at": 1, "captured_at_text": "00:00:01"}),
+                view: serde_json::from_value(serde_json::json!({"screen": "00000000000000a1", "cols": 80, "rows": 1, "cursor": {"x": 0, "y": 0, "visible": true}, "lines": [{"text": "ok", "spans": [{"from": 0, "to": 2, "fg": "green"}]}], "scrollback_lines": 0, "capped": false, "captured_at": 1, "captured_at_text": "00:00:01"})).unwrap(),
             }),
             Frame::TerminalScreen(crate::wire::TerminalScreen {
                 ticket: s("t1"),
                 seq: 1,
-                view: serde_json::json!({}),
+                view: serde_json::from_value(serde_json::json!({"screen": "0000000000000000", "cols": 1, "rows": 0, "cursor": {"x": 0, "y": 0, "visible": false}, "lines": [], "scrollback_lines": 0, "capped": false, "captured_at": 0, "captured_at_text": "00:00:00"})).unwrap(),
             }),
         ],
         [
@@ -651,7 +645,7 @@ fn frame_variant_kinds() -> std::collections::BTreeSet<String> {
 
 /// ★ 会话流跨语言金样：金样 == 真序列化器此刻的产出（逐行字节）；金样的 kind 集合 == `Frame` 的全部变体。
 ///
-/// 每一行都是单行 JSON、`\n` 收尾、kind 与 `loss_identity` 报的一致。
+/// 每一行都是单行 JSON、`\n` 收尾。
 /// 重打是显式动作：`REGOLD_SESSION_STREAM=1` 跑本条写盘；不设就只比、不一致就红并打印差异。
 #[test]
 fn the_session_stream_golden_is_what_the_serializer_writes() {
@@ -663,11 +657,6 @@ fn the_session_stream_golden_is_what_the_serializer_writes() {
             .map(|f| {
                 let line = to_line(f).expect("serialize");
                 let kind = parse_kind(&line);
-                assert_eq!(
-                    kind,
-                    f.loss_identity().kind,
-                    "kind 标签与 loss_identity 不一致"
-                );
                 produced.push_str(&line);
                 kind
             })
@@ -1024,18 +1013,25 @@ fn the_name_face_carries_the_name_and_the_project() {
     );
 }
 
+/// `overflow` 只有那一句：只丢了行 · 已重新对齐 · 两样都有，三种各一句（数在句子里）。
 #[test]
-fn overflow_frame_serializes_with_dropped_count() {
-    let line = to_line(&Frame::Overflow(crate::wire::Overflow {
-        dropped: 42,
-        lost: Vec::new(),
-        lost_truncated: false,
-    }))
-    .expect("serialize");
-    let body = line.strip_suffix('\n').unwrap();
-    let v: Value = serde_json::from_str(body).expect("valid json");
-    assert_eq!(v["kind"], "overflow");
-    assert_eq!(v["dropped"], 42);
+fn the_overflow_frame_is_the_one_sentence() {
+    let said = |f: Frame| -> Value {
+        let line = to_line(&f).expect("serialize");
+        serde_json::from_str(line.strip_suffix('\n').unwrap()).expect("valid json")
+    };
+    assert_eq!(
+        said(Frame::overflow(42, false)),
+        serde_json::json!({ "kind": "overflow", "said": copy_core::copy_text("beStream.overflow.lines", &[("n", "42")]) })
+    );
+    assert_eq!(
+        said(Frame::overflow(0, true))["said"],
+        copy_core::copy_text("beStream.overflow.realigned", &[])
+    );
+    assert_eq!(
+        said(Frame::overflow(3, true))["said"],
+        copy_core::copy_text("beStream.overflow.realignedLines", &[("n", "3")])
+    );
 }
 
 // `tmux_sessions` 帧单行转义那条随帧删了（tmux 原文只在进程内喂会话账本）。
@@ -1165,63 +1161,55 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
             project_dir: None,
             name: None,
             path: None,
-            face: crate::wire::ActivityFace::of(None),
+            face: crate::wire::SessionFace::of(crate::wire::Life::Live {
+                activity: None,
+                tmux: None,
+            }),
             name_face: crate::history::search_rules::name_face(&Default::default()),
             waiting_for: None,
             hidden: None,
             container: c,
             pid: 0,
-            account: None,
         }))
         .unwrap()
     };
     let hosted = |t: Option<&str>| SessionContainer::Tmux {
         terminal: t.map(str::to_string),
     };
-    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"label\":\"没有说过话的会话\",\"pid\":0}\n");
+    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"face\":{\"dot\":\"idle\",\"live\":{\"is\":\"yes\"},\"settled\":false,\"name\":\"状态不明\",\"tip\":\"状态不明\",\"line\":\"状态不明\",\"tone\":\"plain\",\"order\":3,\"can\":{\"close\":{\"can\":\"no\",\"why\":\"运行中\"},\"resume\":{\"can\":\"no\",\"why\":\"运行中\"},\"term\":{\"can\":\"yes\",\"tmux\":false},\"reattach\":{\"can\":\"no\",\"why\":\"运行中\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}}},\"label\":\"没有说过话的会话\",\"pid\":0}\n");
     assert_eq!(
         frame(Some(hosted(Some("tmux-3-7")))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"},\"pid\":0}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"face\":{\"dot\":\"idle\",\"live\":{\"is\":\"yes\"},\"settled\":false,\"name\":\"状态不明\",\"tip\":\"状态不明\",\"line\":\"状态不明\",\"tone\":\"plain\",\"order\":3,\"can\":{\"close\":{\"can\":\"no\",\"why\":\"运行中\"},\"resume\":{\"can\":\"no\",\"why\":\"运行中\"},\"term\":{\"can\":\"yes\",\"tmux\":false},\"reattach\":{\"can\":\"no\",\"why\":\"运行中\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}}},\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"},\"pid\":0}\n"
     );
     assert_eq!(
         frame(Some(hosted(None))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"tmux\"},\"pid\":0}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"face\":{\"dot\":\"idle\",\"live\":{\"is\":\"yes\"},\"settled\":false,\"name\":\"状态不明\",\"tip\":\"状态不明\",\"line\":\"状态不明\",\"tone\":\"plain\",\"order\":3,\"can\":{\"close\":{\"can\":\"no\",\"why\":\"运行中\"},\"resume\":{\"can\":\"no\",\"why\":\"运行中\"},\"term\":{\"can\":\"yes\",\"tmux\":false},\"reattach\":{\"can\":\"no\",\"why\":\"运行中\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}}},\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"tmux\"},\"pid\":0}\n"
     );
     assert_eq!(
         frame(Some(SessionContainer::None)),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"none\"},\"pid\":0}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"face\":{\"dot\":\"idle\",\"live\":{\"is\":\"yes\"},\"settled\":false,\"name\":\"状态不明\",\"tip\":\"状态不明\",\"line\":\"状态不明\",\"tone\":\"plain\",\"order\":3,\"can\":{\"close\":{\"can\":\"no\",\"why\":\"运行中\"},\"resume\":{\"can\":\"no\",\"why\":\"运行中\"},\"term\":{\"can\":\"yes\",\"tmux\":false},\"reattach\":{\"can\":\"no\",\"why\":\"运行中\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}}},\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"none\"},\"pid\":0}\n"
     );
 }
 
-/// `session_state` 的**逐字节**金标准：两个取值、字段顺序 `sid` 在前；写好的字与语气跟在 `state` 后面。
+/// `session_state` 的**逐字节**金标准：两个取值、字段顺序 `sid` 在前；整份脸跟在 `state` 后面。
 /// 客户端按 `cmd-wire` 的类型认这两个字面量。
 #[test]
 fn mig1_session_state_has_exactly_these_bytes() {
     use crate::wire::SessionFate;
-    for (state, word, name, hint, order) in [
-        (
-            SessionFate::Reconnectable,
-            "reconnectable",
-            "sessionState.reconnectable.name",
-            "sessionState.reconnectable.tooltip",
-            4,
-        ),
-        (
-            SessionFate::Ended,
-            "ended",
-            "sessionState.ended.name",
-            "sessionState.ended.tooltip",
-            5,
-        ),
+    for (state, word) in [
+        (SessionFate::Reconnectable, "reconnectable"),
+        (SessionFate::Ended, "ended"),
     ] {
-        let (name, hint) = (
-            copy_core::copy_text(name, &[]),
-            copy_core::copy_text(hint, &[]),
-        );
-        let ended = copy_core::copy_text("beSessionSwitch.why.ended", &[]);
+        let face = serde_json::to_string(
+            &<crate::wire::SessionFace as crate::wire::SessionFaceExt>::of(match state {
+                SessionFate::Reconnectable => crate::wire::Life::Reconnectable,
+                SessionFate::Ended => crate::wire::Life::Ended,
+            }),
+        )
+        .unwrap();
         assert_eq!(
-            to_line(&Frame::session_state("abc".into(), state)).unwrap(),
-            format!("{{\"kind\":\"session_state\",\"sid\":\"abc\",\"state\":\"{word}\",\"state_text\":\"{name}\",\"state_hint\":\"{hint}\",\"state_tone\":\"plain\",\"state_order\":{order},\"switch\":{{\"model\":{{\"can\":\"no\",\"why\":\"{ended}\"}},\"permission\":{{\"can\":\"no\",\"why\":\"{ended}\"}}}}}}\n")
+            to_line(&Frame::session_state("abc".into(), state, None)).unwrap(),
+            format!("{{\"kind\":\"session_state\",\"sid\":\"abc\",\"state\":\"{word}\",\"face\":{face}}}\n")
         );
     }
 }
@@ -1248,18 +1236,20 @@ fn loc1b_session_added_carries_the_pid() {
         project_dir: None,
         name: None,
         path: None,
-        face: crate::wire::ActivityFace::of(None),
+        face: crate::wire::SessionFace::of(crate::wire::Life::Live {
+            activity: None,
+            tmux: None,
+        }),
         name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
         hidden: None,
         container: None,
         pid: 4242,
-        account: None,
     }))
     .unwrap();
     assert_eq!(
         line,
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"label\":\"没有说过话的会话\",\"pid\":4242}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"face\":{\"dot\":\"idle\",\"live\":{\"is\":\"yes\"},\"settled\":false,\"name\":\"状态不明\",\"tip\":\"状态不明\",\"line\":\"状态不明\",\"tone\":\"plain\",\"order\":3,\"can\":{\"close\":{\"can\":\"no\",\"why\":\"运行中\"},\"resume\":{\"can\":\"no\",\"why\":\"运行中\"},\"term\":{\"can\":\"yes\",\"tmux\":false},\"reattach\":{\"can\":\"no\",\"why\":\"运行中\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}}},\"label\":\"没有说过话的会话\",\"pid\":4242}\n"
     );
 }
 
@@ -1359,9 +1349,7 @@ pub(crate) const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
     // 〔第二个前端 2026-10-10〕通用记录那一团。里面的格（`said.results` 的 `patch` · `patchTruncated` · `file` …）整件冻结在格目录
     // （格目录冻结表 `cells_catalog::tests::FROZEN` 的 `record`，`Frozen::All`）；这里只钉「line 帧上有这一格」。
     ("line", "record", "object"),
-    ("overflow", "dropped", "number"),
-    ("overflow", "lost", "array"),
-    ("overflow", "lost_truncated", "bool"),
+    ("overflow", "said", "string"),
     // 〔第二个前端 live1 10-13〕**活卡**（聊天屏的逐字长出，核心拼好的成品）。`live_frames_have_exactly_these_bytes` 钉的是字节，
     // 本表钉的是**有人在读它**。⚠ 一份样本只带得动一种 `op`：取整卡（`open`）那一支；增量与撤卡那几种的字节由逐字节判据钉。
     ("live_card", "sid", "string"),
@@ -1410,14 +1398,7 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             byte_offset: 9,
             rid: None,
         }),
-        Frame::Overflow(crate::wire::Overflow {
-            dropped: 2,
-            lost: vec![LostFrame {
-                kind: "session_status".to_string(),
-                subject: s.clone(),
-            }],
-            lost_truncated: true,
-        }),
+        Frame::overflow(2, true),
         Frame::LiveCard(crate::wire::LiveCard {
             sid: "s".into(),
             run: s.clone(),
@@ -1563,24 +1544,27 @@ fn the_subcommands_the_second_frontend_calls_stay_put() {
     }
 }
 
-/// 〔G2〕会话状态带写好的字与语气（对所有出口一次补齐）：活着的三态在 `session_added` · `session_status` 上
-/// （`activity_text` · `activity_tone`，没有 `activity` ⇒ 两格都不上线）；离开「活」之后的两种在 `session_state` 上
-/// （`state_text` 短名 · `state_hint` 悬停那一句 · `state_tone`）。字走文案表，出口照抄、不按码取字。
+/// 〔G2〕会话状态带写好的字与语气（对所有出口一次补齐）：整份脸的 `name` · `tone` · `order`（活着的几态 · 读记录中 ·
+/// 离开「活」之后的两种，后两种另带悬停那一句 `tip`）。字走文案表，出口照抄、不按码取字。
 #[test]
 fn session_frames_carry_the_state_written_and_toned() {
     use crate::agents::SessionActivity as A;
-    use crate::wire::{ActivityFace, SessionFate};
+    use crate::wire::{Life, SessionFate};
     let status = |a: Option<A>| {
         serde_json::to_value(Frame::<crate::agents::record::Record>::SessionStatus(
             crate::wire::SessionStatus {
                 sid: "s".into(),
-                face: ActivityFace::of(a),
+                face: crate::wire::SessionFace::of(Life::Live {
+                    activity: a,
+                    tmux: None,
+                }),
                 name_face: crate::history::search_rules::name_face(&Default::default()),
                 waiting_for: None,
                 path: None,
             },
         ))
-        .unwrap()
+        .unwrap()["face"]
+            .clone()
     };
     for (a, key, tone) in [
         (A::Working, "beSession.activity.working", "now"),
@@ -1593,28 +1577,24 @@ fn session_frames_carry_the_state_written_and_toned() {
         ),
     ] {
         let v = status(Some(a));
-        assert_eq!(v["activity_text"], copy_core::copy_text(key, &[]), "{a:?}");
-        assert_eq!(v["activity_tone"], tone, "{a:?}");
+        assert_eq!(v["name"], copy_core::copy_text(key, &[]), "{a:?}");
+        assert_eq!(v["tone"], tone, "{a:?}");
     }
     // 说不清在干什么（活着、那一家没说）⇒ 核心照实写「说不清」、语气 plain（不说一句没判出来的「运行中」）。
     let none = status(None);
     assert_eq!(
-        none["activity_text"],
+        none["name"],
         copy_core::copy_text("beSession.activity.unclear", &[])
     );
     assert_ne!(
-        none["activity_text"],
+        none["name"],
         copy_core::copy_text("beSession.activity.working", &[]),
         "判不出却写了运行中"
     );
-    assert_eq!(none["activity_tone"], "plain");
+    assert_eq!(none["tone"], "plain");
 
-    // V10 监控板组内的序由核心给（`activity_order`，小的在前）：等人 > 在干活 > 后台任务运行中 > 闲着 ＝ 说不清（序跟着语气走）。
-    let order = |a: Option<A>| {
-        status(a)["activity_order"]
-            .as_u64()
-            .expect("activity_order 必有")
-    };
+    // V10 监控板组内的序由核心给（`order`，小的在前）：等人 > 在干活 > 后台任务运行中 > 闲着 ＝ 说不清（序跟着语气走）。
+    let order = |a: Option<A>| status(a)["order"].as_u64().expect("order 必有");
     let ranked = [
         Some(A::NeedsYou),
         Some(A::Working),
@@ -1629,12 +1609,13 @@ fn session_frames_carry_the_state_written_and_toned() {
         order(Some(A::Idle)),
         "说不清与闲着同一档（语气都是 plain）"
     );
-    // 读记录中：同「说不清」那一格，字照实说。
-    let reading = serde_json::to_value(crate::wire::ActivityFace::reading()).unwrap();
-    assert_eq!(reading["activity_tone"], "plain");
-    assert_eq!(reading["activity_order"], none["activity_order"]);
+    // 读记录中：同「说不清」那一档，字照实说。
+    let reading =
+        serde_json::to_value(crate::wire::SessionFace::of(Life::Reading { tmux: None })).unwrap();
+    assert_eq!(reading["tone"], "plain");
+    assert_eq!(reading["order"], none["order"]);
     assert!(
-        reading.get("activity").is_none(),
+        reading["live"].get("activity").is_none(),
         "读记录中不说判出了哪一态"
     );
 
@@ -1650,10 +1631,10 @@ fn session_frames_carry_the_state_written_and_toned() {
             "sessionState.ended.tooltip",
         ),
     ] {
-        let v = serde_json::to_value(Frame::session_state("s".into(), f)).unwrap();
-        assert_eq!(v["state_text"], copy_core::copy_text(name, &[]), "{f:?}");
-        assert_eq!(v["state_hint"], copy_core::copy_text(hint, &[]), "{f:?}");
-        assert_eq!(v["state_tone"], "plain", "{f:?}");
+        let v = &serde_json::to_value(Frame::session_state("s".into(), f, None)).unwrap()["face"];
+        assert_eq!(v["name"], copy_core::copy_text(name, &[]), "{f:?}");
+        assert_eq!(v["tip"], copy_core::copy_text(hint, &[]), "{f:?}");
+        assert_eq!(v["tone"], "plain", "{f:?}");
     }
 }
 
@@ -1676,19 +1657,13 @@ fn a_changed_body_over_its_cap_is_left_off() {
     }
 }
 
-/// `changed` 丢了能不能恢复照主题表答；丢了报的身份是 `changed` ＋ `主题[/key]`。
+/// `changed` 丢了能不能恢复照主题表答。
 #[test]
 fn changed_loss_follows_the_topic_table() {
     for t in Topic::ALL {
         let f = Frame::changed(t, None, None, None);
         assert_eq!(f.loss_is_recoverable(), t.spec().lossy, "{t:?}");
     }
-    let f = Frame::changed(Topic::Tasks, Some("s1".into()), None, None);
-    let id = f.loss_identity();
-    assert_eq!(
-        (id.kind.as_str(), id.subject.as_deref()),
-        ("changed", Some("tasks/s1"))
-    );
 }
 
 /// 8a b：整份主线外清单切成几帧 `session_branch`：每帧一行 ≤ `REPLY_PAGE_BYTES`；`at` 依次接上；拼起来 ＝ 原清单；
@@ -1741,65 +1716,149 @@ fn a_long_branch_list_goes_out_in_page_sized_frames_that_add_up() {
     );
 }
 
-/// 会话帧上的 `switch`（此刻能不能换模型 · 权限档）由核心判、随那一态带：
-/// 在跑 ⇒ 模型灰、权限档可换；需手动 ⇒ 都灰；闲着 · 后台命令在跑 · 说不清 · 读记录中 ⇒ 都可换；离开「活」（可重连 · 已结束）⇒ 都灰。
+/// 整份脸上能不能换模型 · 权限档（`can.model` · `can.permission`）由核心判、随那一态带：
+/// 在跑 ⇒ 模型灰、权限档可换；需手动 ⇒ 都灰；闲着 · 后台命令在跑 · 说不清 · 读记录中 ⇒ 都可换；
+/// 离开「活」（可重连 · 已结束）⇒ 都可换（记在注解上、下次恢复用上）；记录已不在 ⇒ 都灰（恢复不了，那一句同恢复）。
 /// 灰的那一格（`can: no`）带写好的那一句，可换的（`can: yes`）不带。
 #[test]
 fn session_frames_say_whether_model_and_permission_can_switch_now() {
     use crate::agents::SessionActivity as A;
-    use crate::wire::ActivityFace;
+    use crate::wire::Life;
     let yes = serde_json::json!({"can": "yes"});
     let no = |key: &str| serde_json::json!({"can": "no", "why": copy_core::copy_text(key, &[])});
-    let switch = |face: ActivityFace| serde_json::to_value(face).unwrap()["switch"].clone();
+    let switch = |life: Life| {
+        let c = serde_json::to_value(crate::wire::SessionFace::of(life)).unwrap()["can"].clone();
+        serde_json::json!({"model": c["model"], "permission": c["permission"]})
+    };
+    let live = |a: Option<A>| Life::Live {
+        activity: a,
+        tmux: None,
+    };
     assert_eq!(
-        switch(ActivityFace::of(Some(A::Working))),
+        switch(live(Some(A::Working))),
         serde_json::json!({"model": no("beSessionSwitch.why.running"), "permission": yes})
     );
     assert_eq!(
-        switch(ActivityFace::of(Some(A::NeedsYou))),
+        switch(live(Some(A::NeedsYou))),
         serde_json::json!({"model": no("beSessionSwitch.why.waiting"), "permission": no("beSessionSwitch.why.waiting")})
     );
-    for face in [
-        ActivityFace::of(Some(A::Idle)),
-        ActivityFace::of(Some(A::BackgroundWork)),
-        ActivityFace::of(None),
-        ActivityFace::reading(),
+    for life in [
+        live(Some(A::Idle)),
+        live(Some(A::BackgroundWork)),
+        live(None),
+        Life::Reading { tmux: None },
     ] {
         assert_eq!(
-            switch(face),
+            switch(life),
             serde_json::json!({"model": yes, "permission": yes})
         );
     }
-    for fate in [SessionFate::Reconnectable, SessionFate::Ended] {
-        let v = serde_json::to_value(Frame::session_state("s".into(), fate)).unwrap();
+    for life in [Life::Reconnectable, Life::Ended] {
         assert_eq!(
-            v["switch"],
-            serde_json::json!({"model": no("beSessionSwitch.why.ended"), "permission": no("beSessionSwitch.why.ended")}),
-            "{v}"
+            switch(life),
+            serde_json::json!({"model": yes, "permission": yes}),
+            "{life:?}"
         );
     }
+    assert_eq!(
+        switch(Life::Gone),
+        serde_json::json!({"model": no("sessionState.gone.tooltip"), "permission": no("sessionState.gone.tooltip")})
+    );
+}
+
+/// 会话整份脸的金样住址（仓根相对）：桌面与手机读同一份，各自对它画点。
+const SESSION_FACE_GOLDEN: &str = "tests/__fixtures__/session-face.golden.json";
+
+/// 每一段一份整脸（点 · 字 · 序 · 能做什么）＝ 金样。形状或字是有意改的 ⇒ `REGOLD_SESSION_FACE=1` 重打，连两端一起对。
+#[test]
+fn every_life_has_one_whole_face_and_it_matches_the_golden() {
+    use crate::agents::SessionActivity as A;
+    use crate::wire::{Life, SessionFace};
+    let lives: Vec<(&str, Life)> = vec![
+        (
+            "live-needs-you-tmux",
+            Life::Live {
+                activity: Some(A::NeedsYou),
+                tmux: Some(true),
+            },
+        ),
+        (
+            "live-working-plain",
+            Life::Live {
+                activity: Some(A::Working),
+                tmux: Some(false),
+            },
+        ),
+        (
+            "live-background",
+            Life::Live {
+                activity: Some(A::BackgroundWork),
+                tmux: None,
+            },
+        ),
+        (
+            "live-idle",
+            Life::Live {
+                activity: Some(A::Idle),
+                tmux: None,
+            },
+        ),
+        (
+            "live-unclear",
+            Life::Live {
+                activity: None,
+                tmux: None,
+            },
+        ),
+        ("reading", Life::Reading { tmux: Some(true) }),
+        ("reconnectable", Life::Reconnectable),
+        ("ended", Life::Ended),
+        ("gone", Life::Gone),
+        ("unclear", Life::Unclear),
+    ];
+    let produced: serde_json::Map<String, Value> = lives
+        .into_iter()
+        .map(|(k, l)| {
+            (
+                k.to_string(),
+                serde_json::to_value(SessionFace::of(l)).unwrap(),
+            )
+        })
+        .collect();
+    let produced = serde_json::to_string_pretty(&produced).unwrap() + "\n";
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(SESSION_FACE_GOLDEN);
+    if std::env::var_os("REGOLD_SESSION_FACE").is_some() {
+        std::fs::write(&path, &produced).expect("写金样");
+    }
+    let on_disk = std::fs::read_to_string(&path).unwrap_or_default();
+    assert!(
+        on_disk == produced,
+        "会话整份脸与金样不一致（有意改的 ⇒ `REGOLD_SESSION_FACE=1` 重打）：\n{produced}"
+    );
 }
 
 /// 会话帧上那几格写好的字（此刻在干什么 · 能不能换 · 叫什么）的格是公开的（客户端要解），
-/// 「只经那几个函数造」由这条守：全仓（源码 ＋ 判据）写 `ActivityFace {` · `Switch {` · `NameFace {` · `CanSwitch::No {` 结构字面量的地方
+/// 「只经那几个函数造」由这条守：全仓（源码 ＋ 判据）写 `SessionFace {` · `NameFace {` 结构字面量的地方
 /// ＝ 后端 `wire` 那几个构造口（集合相等）。删除条件：哪天 Rust 能按 crate 限定构造。
 #[test]
 fn the_written_faces_are_built_in_one_place_only() {
-    let repo = crate::guard_support::repo_root();
+    let repo = guard_core::addr::repo_root();
     let mut seen = std::collections::BTreeSet::new();
     for dir in ["src", "tests"] {
         for (path, raw) in guard_core::scan_tree!(&repo.join(dir), &["rs"]) {
             if path.starts_with(repo.join("src/vendor")) {
                 continue;
             }
-            let code = crate::guard_support::production_code(&raw);
+            let code = guard_core::production_code(&raw);
             let rel = path
                 .strip_prefix(&repo)
                 .unwrap_or(&path)
                 .to_string_lossy()
                 .replace('\\', "/");
             // 运行时拼，免得命中本条自己。
-            for name in ["ActivityFace", "Switch", "NameFace", "CanSwitch::No"] {
+            for name in ["SessionFace", "NameFace"] {
                 let needle = format!("{name} {{");
                 for (at, _) in code.match_indices(&needle) {
                     let before = &code[..at];
@@ -1833,12 +1892,8 @@ fn the_written_faces_are_built_in_one_place_only() {
         }
     }
     let want: std::collections::BTreeSet<String> = [
-        "of · ActivityFace",
-        "reading · ActivityFace",
-        "live · Switch",
-        "live · CanSwitch::No",
-        "gone · Switch",
-        "gone · CanSwitch::No",
+        "of · SessionFace",
+        "live_face · SessionFace",
         "of_parts · NameFace",
     ]
     .iter()
@@ -1846,11 +1901,66 @@ fn the_written_faces_are_built_in_one_place_only() {
     .collect();
     assert_eq!(
         seen, want,
-        "会话帧那几格写好的字只许经后端 `wire` 的构造口造（`ActivityFace::of` · `Switch::live` / `gone` · `NameFace::of_parts`）"
+        "会话那几格写好的字只许经后端 `wire` 的构造口造（`SessionFace::of` · `NameFace::of_parts`）"
     );
 }
 
-/// 监控板组内一把尺：可重连 · 已结束的 `session_state` 带序，都排在任何活会话的序（`activity_order`）之后；
+/// 会话帧 · 清单行上「此刻是什么样」只有整份脸一格：平铺的旧格（活动三格 · 去向三格 · 两个序 · 能不能换）
+/// 在生产源（`src/` 的 rs · ts · kt，注释不算）零命中；正控：同一把尺在三种文件里都量得到 `SessionFace`。
+#[test]
+fn the_flat_state_cells_are_gone_from_the_sources() {
+    let repo = guard_core::addr::repo_root();
+    // 运行时拼，免得命中本条自己。
+    let gone: Vec<String> = [
+        ["Activity", "Face"],
+        ["Can", "Switch"],
+        ["activity", "_text"],
+        ["activity", "_tone"],
+        ["activity", "_order"],
+        ["state", "_text"],
+        ["state", "_hint"],
+        ["state", "_tone"],
+        ["state", "_order"],
+    ]
+    .iter()
+    .map(|p| p.concat())
+    .collect();
+    let mut hits = Vec::new();
+    let mut control = std::collections::BTreeSet::new();
+    for (path, raw) in guard_core::scan_tree!(&repo.join("src"), &["rs", "ts", "kt"]) {
+        if path.starts_with(repo.join("src/vendor"))
+            || path.components().any(|c| c.as_os_str() == "node_modules")
+        {
+            continue;
+        }
+        let code = guard_core::production_code(&raw);
+        let ext = path
+            .extension()
+            .map(|e| e.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if guard_core::contains_word(&code, "SessionFace") {
+            control.insert(ext);
+        }
+        let rel = path
+            .strip_prefix(&repo)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        for g in &gone {
+            if code.contains(g.as_str()) {
+                hits.push(format!("{rel} · {g}"));
+            }
+        }
+    }
+    assert_eq!(
+        control,
+        ["kt", "rs", "ts"].iter().map(|s| s.to_string()).collect(),
+        "正控：三种文件里都该量得到 `SessionFace`（没量到 ⇒ 本条在空转）"
+    );
+    assert!(hits.is_empty(), "平铺的旧状态格还在：{hits:#?}");
+}
+
+/// 监控板组内一把尺：可重连 · 已结束的 `session_state` 那份脸的序，都排在任何活会话的序之后；
 /// 界面只按这一格排、不再自己按状态分段。
 #[test]
 fn the_fates_sort_after_every_live_session_on_one_ruler() {
@@ -1863,10 +1973,18 @@ fn the_fates_sort_after_every_live_session_on_one_ruler() {
         Some(A::Idle),
     ]
     .into_iter()
-    .map(|a| u64::from(crate::wire::ActivityFace::of(a).activity_order))
+    .map(|a| {
+        u64::from(
+            crate::wire::SessionFace::of(crate::wire::Life::Live {
+                activity: a,
+                tmux: None,
+            })
+            .order,
+        )
+    })
     .collect();
     let fate = |f| {
-        serde_json::to_value(Frame::session_state("s".into(), f)).unwrap()["state_order"].as_u64()
+        serde_json::to_value(Frame::session_state("s".into(), f, None)).unwrap()["face"]["order"].as_u64()
     };
     assert_eq!(live, [0, 1, 2, 3].into());
     assert_eq!(

@@ -453,7 +453,7 @@ fn warming_the_listing_leaves_nothing_to_rescan() {
 /// 〔perfC #4〕接线：`main.rs` 起来就热清单缓存，恰好一处（按行为量要起真二进制再从外面看缓存）。
 #[test]
 fn main_warms_the_listing_once() {
-    let main = crate::guard_support::production_code(include_str!("../../../src/backend/main.rs"));
+    let main = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
     guard_core::find_pinned(
         &main,
         "history::listing::warm_listing_in_background(agent_home.clone());",
@@ -461,7 +461,7 @@ fn main_warms_the_listing_once() {
     .unwrap_or_else(|e| panic!("`main.rs` 里热清单缓存不是恰好一处：{e}"));
 }
 
-/// 〔perfC #4〕后台那两条热缓存的线程真降了优先级（Linux：这条线程的 nice 值），而且只降它自己。
+/// 〔perfC #4〕后台热清单缓存的线程真降了优先级（Linux：这条线程的 nice 值），而且只降它自己。
 #[cfg(target_os = "linux")]
 #[test]
 fn background_warmers_run_at_low_priority() {
@@ -483,22 +483,11 @@ fn background_warmers_run_at_low_priority() {
         i64::from(crate::platform::proc::BACKGROUND_NICE).max(before)
     );
     assert_eq!(nice_of_this_thread(), before, "降到了别的线程身上");
-    for (file, src) in [
-        (
-            "history/listing.rs",
-            include_str!("../../../src/backend/history/listing.rs"),
-        ),
-        (
-            "observe/search_query.rs",
-            include_str!("../../../src/backend/observe/search_query.rs"),
-        ),
-    ] {
-        let src = crate::guard_support::production_code(src);
-        assert!(
-            src.contains("crate::platform::proc::lower_this_thread();"),
-            "{file} 的后台热缓存线程没降优先级"
-        );
-    }
+    let src = guard_core::production_code(include_str!("../../../src/backend/history/listing.rs"));
+    assert!(
+        src.contains("crate::platform::proc::lower_this_thread();"),
+        "history/listing.rs 的后台热缓存线程没降优先级"
+    );
 }
 
 /// d：清单缓存的追加读按块 —— 两问之间长了 8 MiB，读的时候本线程手里最多两块多一点（今天整截读进一个 `Vec`）；
@@ -595,4 +584,82 @@ fn the_history_readers_stream_instead_of_slurping() {
                  慢不会让任何测试变红 —— 所以这条只能靠源码形态钉。"
         );
     }
+}
+
+/// 清单缓存落盘：内存那一份没了（重启）之后照盘上那一份接着认 —— 没变的一个字节都不读、变长的只读见证与追加的那一截；
+/// 答案与整份重扫逐字相同。家在沙箱的数据目录里。
+#[test]
+fn a_restart_takes_the_listing_from_disk() {
+    use std::io::Write as _;
+    let tmp = std::env::temp_dir().join(format!("ccm-hq-disk-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(tmp.join("data")).unwrap();
+    let (data, home) = (
+        tmp.join("data").to_string_lossy().into_owned(),
+        tmp.to_string_lossy().into_owned(),
+    );
+    let own = crate::platform::fs::Own::issue_with(&|k| match k {
+        creds_core::store::DATA_DIR_ENV => Some(data.clone()),
+        "HOME" => Some(home.clone()),
+        _ => None,
+    });
+    let dir = fixture_project(&tmp, "proj-disk");
+    let rec = |i: usize| {
+        format!(
+            "{{\"type\":\"user\",\"cwd\":\"/w/disk\",\"timestamp\":\"2026-10-01T08:{:02}:00Z\",\"message\":{{\"role\":\"user\",\"content\":\"第 {i} 句 {}\"}}}}\n",
+            i % 60,
+            "填".repeat(2000)
+        )
+    };
+    let p = dir.join("s-disk.jsonl");
+    std::fs::write(&p, (0..100).map(rec).collect::<String>()).unwrap();
+    let title = dir.join("s-disk-title.jsonl");
+    std::fs::write(
+        &title,
+        format!(
+            "{}{{\"type\":\"ai-title\",\"aiTitle\":\"盘上的标题\"}}\n",
+            rec(0)
+        ),
+    )
+    .unwrap();
+    let read = |p: &Path| SESSION_META.lock().unwrap().get(p).map(|e| e.last_bytes);
+    let forget = || {
+        let mut t = SESSION_META.lock().unwrap();
+        t.remove(&p);
+        t.remove(&title);
+    };
+    for q in [&p, &title] {
+        analyze_session_cached(q);
+    }
+    save_to(&own);
+    forget();
+    load_from(&own);
+    for q in [&p, &title] {
+        assert_eq!(
+            analyze_session_cached(q),
+            analyze_session(q),
+            "{}",
+            q.display()
+        );
+        assert_eq!(read(q), Some(0), "重启之后没变的 {} 又读了", q.display());
+    }
+    // 重启之后变长：只读见证与追加的那一行。
+    forget();
+    load_from(&own);
+    let one = rec(100);
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&p)
+        .unwrap()
+        .write_all(one.as_bytes())
+        .unwrap();
+    let v = analyze_session_cached(&p);
+    assert_eq!(v, analyze_session(&p));
+    assert_eq!(v["messageCountApprox"], 101);
+    let got = read(&p).unwrap();
+    assert!(
+        got < (one.len() + 1024) as u64,
+        "重启之后追加一行读了 {got} 字节 —— 整份重扫了"
+    );
+    std::fs::remove_dir_all(&tmp).ok();
 }

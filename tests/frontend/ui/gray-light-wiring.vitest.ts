@@ -1,31 +1,7 @@
 /**
- * `P0b`（`#60` 灰灯不出现）**最后一跳里唯一便宜可测的那一段**。
- *
- * # 为什么是这一段
- *
- * 08-13 全链真跑把 `#60` 的搜索面收到了**只剩前端**：后端每一跳都量到了，逐条有读数 ——
- * backend 发 `session_removed`（`cause=Gone`）· `stream_source` 转发 ·
- * 消费者判 `tmux_origin=Some(...)` → `RemovedDisposition::Idle` → emit `session-idle`
- *（`remote session idle-tmux` 那行日志）。
- *
- * 剩下的链条是：`session-idle` 事件 → `bindEvents` 的订阅 → `onSessionIdle`
- * → `tabs.markTmuxIdle` → 灰点。三段里：
- *
- * | 段 | 谁在钉 |
- * |---|---|
- * | `markTmuxIdle` → 灰点 | `tabs.vitest.ts` F03.2 那组（**已有**） |
- * | `session-idle` 事件 → `onSessionIdle` | **本文件**（此前是 0 条） |
- * | `onSessionIdle` → `markTmuxIdle` 的接线（`main.ts:703`） | 仍无（要真机 DOM，记为诚实边界） |
- *
- * ⚠ 中间那段此前**一条判据都没有**：`grep '"idle 格"' src/*.vitest.ts` 零命中。
- * 也就是说「后端喊了、前端听没听见」这件事，本仓一直没人验 —— 而 `#60` 问的正是它。
- *
- * # 保序也要钉
- *
- * `idle` 与 `ended` **同一个 queue**（`events.ts:116` 逐字：「与 ended 同 queue 保序，
- * 见 onSessionIdle」）。灰灯必须落在**该会话最后一行之后**：反过来的话，
- * 灰点先出现、随后那行 jsonl 又把 tab 拽回 live，用户看到的是「闪一下又亮了」。
- * ⇒ 除了「听见了」，还要钉**顺序**。
+ * 「Claude 已退出 · tmux 会话还在」那一跳的前端一段：会话流里去向那一帧（带整份脸）→ `bindEvents` → `onSessionFace` →
+ * `tabs.onFace`。脸落到 tab 上怎么画由 `tabs.vitest.ts` 钉；这里钉听见了、接对了、与行同队保序
+ * （去向必须落在该会话最后一行之后，反过来就是「闪一下又亮了」）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -49,7 +25,7 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
 vi.mock("../src/commands", () => ({
   commands: { frontend_perf_log: vi.fn(() => Promise.resolve()) },
 }));
-// 可重连 / 已结束并进了会话流（`{"idle": …}` / `{"ended": …}` 那两格）：换成会话流的桩往里灌。
+// 去向那一帧在会话流里（`{"state": …}`）：换成会话流的桩往里灌。
 vi.mock("../../../src/comms/inward/chan", async () => (await import("../../test-support/chan-stream-fake.ts")).chanStreamModule);
 
 import { bindEvents } from "../../../src/frontend/ui/events";
@@ -59,60 +35,41 @@ const STREAMS = { streams: [{ origin: "<local>", kind: "session-lines" }] };
 
 import { srcDirOf } from "../../test-support/repo-root";
 import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
-describe("#60 最后一跳：会话流里的 idle 那一格真的走到 onSessionIdle", () => {
+const face = (dot: string) => ({ dot, live: { is: "no" }, settled: dot === "ended", name: dot, tip: dot, line: dot, tone: "plain", order: 4, can: {} });
+
+describe("#60 最后一跳：会话流里的去向那一帧真的走到 onSessionFace", () => {
   beforeEach(() => {
     subs.clear();
     streamFake.reset();
   });
 
-  it("后端说可重连 ⇒ 前端 onSessionIdle 拿到那个 sid", async () => {
-    const onSessionIdle = vi.fn();
-    const onSessionEnded = vi.fn();
-    await bindEvents({ onSessionIdle, onSessionEnded } as never, STREAMS);
-    // 抽取器自检：**没订到就零命中地绿** —— 本仓一路在治的那种空真。
+  it("后端说 Claude 已退出 ⇒ 前端 onSessionFace 拿到那个 sid 与那张脸", async () => {
+    const onSessionFace = vi.fn();
+    await bindEvents({ onSessionFace } as never, STREAMS);
+    // 抽取器自检：**没订到就零命中地绿**。
     expect(streamFake.subscriptions.length, "没订到会话流 —— 本条会零命中地绿").toBe(1);
-    const gone = { model: { can: "no", why: "w" }, permission: { can: "no", why: "w" } };
-    streamFake.lifecycle([{ idle: { session_id: "sid-gray", text: null, hint: null, tone: null, order: 4, switch: gone } }]);
-    await vi.waitFor(() => expect(onSessionIdle, "连同那台随去向带来的「此刻能不能换」与监控板的序").toHaveBeenCalledWith("sid-gray", gone, 4), UNTIL_CEILING);
-    // 反向：它不该顺手把 ended 也叫了（灰灯 ≠ 归档，两条路在后端就分开了）。
-    expect(onSessionEnded).not.toHaveBeenCalled();
+    streamFake.lifecycle([{ state: { sid: "sid-gray", state: "reconnectable", face: face("exited") } }]);
+    await vi.waitFor(() => expect(onSessionFace).toHaveBeenCalledWith("sid-gray", face("exited")), UNTIL_CEILING);
   });
 
-  it("★ 最后那行接线在：onSessionIdle → tabs.markTmuxIdle（两个窗口各一处）", async () => {
-    // # 射程（先说清楚它够不到什么）
-    //
-    // 这条**证明不了 tab 真的画成了灰** —— 那要真机 DOM（待决 `U10i`）。
-    // 它只钉「那行接线还在、且接的是 `markTmuxIdle` 而不是别的」。
-    // 值得钉的理由：08-13 全链量到后端四跳全通、前端事件层也通（上面两条），
-    // **唯独这一行没有任何判据** —— 它是 `#60` 剩下的搜索面里唯一没人看着的一格。
-    //
-    // ⚠ 照 `backend-policy.vitest.ts` 那条的写法**整行钉**，不做裸子串匹配：
-    //   子串匹配对 `onSessionIdle: (s) => tabs.archiveTab(s)`（接错了函数）照样绿。
+  it("★ 最后那行接线在：onSessionFace → tabs.onFace（主窗一处，独立查看窗零处）", async () => {
+    // 证明不了 tab 真的画成了灰（那要真机 DOM）；只钉那行接线还在、接的是 `onFace`。整行钉，不做裸子串匹配。
     const { readFileSync } = await import("node:fs");
     const { resolve } = await import("node:path");
     const src = readFileSync(resolve(srcDirOf(__dirname), "main.ts"), "utf8");
     const lines = src.split("\n").map((l) => l.trim());
-    // 主窗：无条件把该 sid 置灰。
-    expect(
-      lines.filter((l) => l === "onSessionIdle: (sessionId, sw, order) => tabs.markTmuxIdle(sessionId, sw ?? null, order ?? null),").length,
-      "main.ts 主窗少了那行 `onSessionIdle: (sessionId, sw, order) => tabs.markTmuxIdle(sessionId, sw ?? null, order ?? null),`。\n" +
-        "① 没有 ⇒ 后端喊了灰灯、前端一个字不做（`#60` 的现象 1 就长这样）；\n" +
-        "② 形状变了（接到别的函数）⇒ 灰灯变成归档或复活，UI 说的不是同一件事。",
-    ).toBe(1);
-    // 独立查看窗不画灯（只读查看器，不建标签页）：起停走它自己那一条订阅（`followSession` 的 `live`），它不接 idle 那一格。
+    expect(lines.filter((l) => l === "tabs.onFace(sessionId, face);").length, "main.ts 主窗少了那行 `tabs.onFace(sessionId, face);`").toBe(1);
+    // 独立查看窗不建标签页：起停走它自己那一条订阅（`followSession` 的 `live`），它不接脸。
     const viewer = readFileSync(resolve(srcDirOf(__dirname), "entry-viewer.ts"), "utf8");
-    expect(viewer.includes("markTmuxIdle"), "独立查看窗又接了灯 —— 它不建标签页，接了也没有灯可画").toBe(false);
+    expect(viewer.includes("onFace"), "独立查看窗又接了脸 —— 它不建标签页，接了也没有点可画").toBe(false);
     expect(viewer.includes("follow: {"), "独立查看窗没跟着会话流（起停 · 跟着长都靠它）").toBe(true);
   });
 
-  it("idle 与 ended 同队保序：先发的先到（灰灯不会插到该会话末行之前）", async () => {
+  it("去向那几帧与行同队保序：先发的先到", async () => {
     const order: string[] = [];
-    await bindEvents({
-      onSessionIdle: (s: string) => order.push(`idle:${s}`),
-      onSessionEnded: (s: string) => order.push(`ended:${s}`),
-    } as never, STREAMS);
-    streamFake.lifecycle([{ ended: { session_id: "a" } }, { idle: { session_id: "b" } }]);
+    await bindEvents({ onSessionFace: (s: string, f: { dot: string }) => order.push(`${f.dot}:${s}`) } as never, STREAMS);
+    streamFake.lifecycle([{ state: { sid: "a", state: "ended", face: face("ended") } }, { state: { sid: "b", state: "reconnectable", face: face("exited") } }]);
     await vi.waitFor(() => expect(order.length).toBe(2), UNTIL_CEILING);
-    expect(order).toEqual(["ended:a", "idle:b"]);
+    expect(order).toEqual(["ended:a", "exited:b"]);
   });
 });

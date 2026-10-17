@@ -189,7 +189,7 @@ pub(crate) const INHERIT: &[Inherit] = &[
         direct: Pass::Machine,
         tmux: Pass::Machine,
         change: Change::Flags(&[flag::LAUNCHER, flag::TMUX, flag::TMUX_BASE]),
-        judge: "crate::control::launch_render::wire::CliRenderRequest::with_prefs",
+        judge: "crate::control::launch_render::Launch::launchers",
     },
     Inherit {
         item: Item::MachineEnv,
@@ -810,7 +810,7 @@ pub(crate) fn qarg(s: &str) -> String {
 /// 结果可能是空串（输入全是分隔符 / 根目录），调用方给兜底。
 ///
 /// 全仓**唯一一份**：前端那份（`shell-quote.ts::tmuxNameSegment` · `remote-launch.ts::deriveTmuxName`）删了，
-/// 界面要名字就问这台后端的 `terminal-name-mint`（[`super::TerminalNameMint`]）。
+/// 起会话要名字由这台铸（[`super::terminal_name_mint_with`]）。
 fn name_segment(raw: &str) -> String {
     let trimmed = raw.trim_end_matches('/');
     let base = trimmed.rsplit('/').next().unwrap_or("");
@@ -864,7 +864,7 @@ pub(crate) fn fork_tmux_base(source: &str) -> String {
 }
 
 /// 给一个基名、一份**那张快照**里的已占用名 ⇒ 最终名（撞了往后排）。
-/// 帧命令 `terminal-name-mint` 与 [`build`] 走同一个 [`next_free_name`]；`taken` 只收 [`TakenNames`]（造不出第二份）。
+/// 起会话铸名（[`super::terminal_name_mint_with`]）与 [`build`] 走同一个 [`next_free_name`]；`taken` 只收 [`TakenNames`]（造不出第二份）。
 pub(crate) fn mint_tmux_name(base: &str, taken: &TakenNames) -> String {
     next_free_name(base, taken.as_slice())
 }

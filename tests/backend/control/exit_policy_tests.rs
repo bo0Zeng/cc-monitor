@@ -331,9 +331,8 @@ fn the_production_wire_reads_the_carrier_from_the_listen_mode() {
 /// 本模块生产段里的写原语 —— **恰好**一处（按词找，钉住「只有一个写口」）。
 #[test]
 fn the_module_has_exactly_one_commit_point() {
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/exit_policy.rs"
-    ));
+    let prod =
+        guard_core::production_code(include_str!("../../../src/backend/control/exit_policy.rs"));
     for (needle, why) in [(
         "own.write(",
         "那一下原子写进去 —— 真正落进 `backend.json` 的**唯一**一下",
@@ -349,7 +348,7 @@ fn the_module_has_exactly_one_commit_point() {
 /// `.sh` 走 `strip_hash_comment_lines`。
 fn code_of(path: &std::path::Path, src: &str) -> String {
     match path.extension().and_then(|e| e.to_str()) {
-        Some("rs") => crate::guard_support::production_code(src),
+        Some("rs") => guard_core::production_code(src),
         Some("ts") => guard_core::strip_comment_lines(src),
         _ => guard_core::strip_hash_comment_lines(src),
     }
@@ -365,7 +364,7 @@ fn code_of(path: &std::path::Path, src: &str) -> String {
 /// 仓外的脚本 / 用户手工编辑不在人群里（那也不是「我们的写者」）。
 #[test]
 fn the_file_name_has_exactly_one_home_in_all_production_code() {
-    let src = crate::guard_support::repo_root().join("src");
+    let src = guard_core::addr::repo_root().join("src");
     let needle = format!("{}.{}", "backend", "json");
     let via_const = format!("{}_{}_REL", "BACKEND", "POLICY");
     let mut scanned = 0usize;
@@ -430,14 +429,10 @@ fn cache_points(prod: &str) -> Vec<&'static str> {
         .collect()
 }
 
-/// 读取路径上**登记在案**的缓存点。今天是 **0**，而这张表就是那个 0 的住址（`E2` 的反空真自检：
-/// 绿必须来自一次**相等断言**，不是「扫不到缓存就绿」）。
-const CACHE_POINTS: &[(&str, &str)] = &[];
-
-/// ★★ `E2` 的结构半：本模块生产段的缓存构件 == 登记表（0）。**带正控**：
+/// ★★ `E2` 的结构半：本模块生产段零缓存构件。**带正控**：
 /// 扫描器对一份真的带缓存的样本必须报出来，否则下面那条相等是在一台瞎了的尺子上成立的。
 #[test]
-fn the_decision_path_has_exactly_the_registered_cache_points() {
+fn the_decision_path_has_no_cache_point() {
     let sample =
         "fn f() -> bool { static V: OnceLock<bool> = OnceLock::new(); *V.get_or_init(|| true) }";
     assert_eq!(
@@ -449,21 +444,18 @@ fn the_decision_path_has_exactly_the_registered_cache_points() {
         cache_points("fn g() -> &'static str { \"x\" }").is_empty(),
         "负控失败：生命周期 `'static` 被当成了一个缓存点 —— 那会逼人去「绕」这条判据"
     );
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/exit_policy.rs"
-    ));
+    let prod =
+        guard_core::production_code(include_str!("../../../src/backend/control/exit_policy.rs"));
     assert!(
         prod.contains("fn read_at("),
         "生产段里找不到 `read_at` —— 剥法或住址坏了，下面那条相等在空串上成立"
     );
     let found = cache_points(&prod);
-    assert_eq!(
-        found.len(),
-        CACHE_POINTS.len(),
-        "`exit_policy.rs` 生产段的缓存构件 {found:?} 与登记表（{} 条）对不上。\n\
+    assert!(
+        found.is_empty(),
+        "`exit_policy.rs` 生产段里有缓存构件 {found:?}。\n\
 **不缓存、不在启动时读一次存内存** —— 用户可能刚从另一台 monitor 改过它。\n\
-         缓存回来 ⇒ 远端改了不生效，**而且不报错**（E2 防的就是这一形）。",
-        CACHE_POINTS.len()
+         缓存回来 ⇒ 远端改了不生效，**而且不报错**（E2 防的就是这一形）。"
     );
 }
 
@@ -474,7 +466,7 @@ fn the_decision_path_has_exactly_the_registered_cache_points() {
 /// 那需要第二处引用，或者引用不在那一臂里。
 #[test]
 fn the_only_decision_site_is_the_stream_end_arm() {
-    let main = crate::guard_support::production_code(include_str!("../../../src/backend/main.rs"));
+    let main = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
     let needle = "exit_policy::";
     assert_eq!(
         main.matches(needle).count(),

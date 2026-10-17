@@ -1,9 +1,11 @@
 //! 待答请求的**成品**（会话 `needs.ask`）与它怎么写字：通用、不认是哪一家（那一家的 hook 输入由各家适配层翻成 [`super::AskIn`]）。
-//! 住 `agents/` 这一层（同过程里那张提问卡 [`super::StepAsk`]）：登记表（`control::asks`）与会话事实（`observe::facts_query` 的 `needs`）都要它，
+//! 住 `agents/` 这一层（同过程里那张提问卡 [`super::StepAsk`]）：登记表（`control::asks`）与会话事实（`observe::recognize::facts` 的 `needs`）都要它，
 //! 而那两层彼此不引。
 
 use super::{AskIn, AskKind};
-pub(crate) use cmd_wire::needs::{Ask, AskRun, Choice, NoteNeed, Question, QuestionOption};
+pub(crate) use cmd_wire::needs::{
+    Ask, AskRun, Choice, ChoiceRow, NoteNeed, Question, QuestionOption,
+};
 
 /// 会话级答题 hook 叫 ccm 的那个子命令（`control::asks::hook`；那一家的 hook 设置里写的就是它）。
 pub const ANSWER_HOOK_FLAG: &str = "--answer-hook";
@@ -141,6 +143,16 @@ use crate::common::cells::{Tone, Words};
 use copy_core::copy_text;
 use serde_json::Value;
 
+/// 一个选项排在哪一段（唯一一处）：拒绝一族 · 继续规划 ⇒ 不照做那一段；改到终端里答 · 有题时的不回答 ⇒ 放开那一段；其余照做。
+pub(crate) fn row_of(a: &AskIn, id: &str) -> ChoiceRow {
+    match id {
+        "release" => ChoiceRow::Release,
+        "dismiss" if !a.questions.is_empty() => ChoiceRow::Release,
+        "deny" | "deny-note" | "deny-stop" | "plan-keep" => ChoiceRow::Hold,
+        _ => ChoiceRow::Main,
+    }
+}
+
 /// 成品：选项按种类写好字。
 pub(crate) fn product_of(id: &str, a: &AskIn, since_ms: u64) -> Ask {
     let c = |id: &str, text: String, tone: Tone, note: NoteNeed| Choice {
@@ -148,6 +160,7 @@ pub(crate) fn product_of(id: &str, a: &AskIn, since_ms: u64) -> Ask {
         text: Words(text),
         tone,
         note,
+        row: row_of(a, id),
     };
     let mut choices = Vec::new();
     match a.kind {
@@ -159,12 +172,12 @@ pub(crate) fn product_of(id: &str, a: &AskIn, since_ms: u64) -> Ask {
                 NoteNeed::None,
             ));
             for (i, s) in a.suggestions.iter().enumerate() {
-                choices.push(Choice {
-                    id: format!("always-{i}"),
-                    text: Words(copy_text("beAsk.choice.allowAlways", &[("rule", &s.text)])),
-                    tone: Tone::Plain,
-                    note: NoteNeed::None,
-                });
+                choices.push(c(
+                    &format!("always-{i}"),
+                    copy_text("beAsk.choice.allowAlways", &[("rule", &s.text)]),
+                    Tone::Plain,
+                    NoteNeed::None,
+                ));
             }
             choices.push(c(
                 "deny",

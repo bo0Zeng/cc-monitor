@@ -156,9 +156,12 @@ fn prepare(
         .home_dir()
         .map_err(|_| crate::common::said::Said::from(copy_text("beRelayListen.key.noHome", &[])))
         .and_then(|_| key::ensure_key(own))
-        .map(|full| comms_outward::Keys {
-            pass: key::pass_of(&full),
-            full,
+        .map(|(full, verdict)| {
+            announce_key_perm(&verdict, &mut std::io::stderr());
+            comms_outward::Keys {
+                pass: key::pass_of(&full),
+                full,
+            }
         }) {
         Ok(k) => k,
         Err(e) => {
@@ -227,9 +230,30 @@ fn note_listening(port: u16) {
         .insert(port);
 }
 
+/// 钥匙文件宽了 / 查不出 ⇒ 印出来（与凭据文件 `[apikey]` 那几行同形）；只给本人 ⇒ 不印。返回印了几行。
+pub(crate) fn announce_key_perm(
+    verdict: &creds_core::perm::Verdict,
+    out: &mut dyn std::io::Write,
+) -> usize {
+    use creds_core::perm::Verdict;
+    use std::io::Write as _;
+    match verdict {
+        Verdict::OwnerOnly => 0,
+        Verdict::TooWide { how, fix } => {
+            let _ = writeln!(out, "[relay] key file permissions too wide: {how}");
+            let _ = writeln!(out, "[relay] how to fix: {fix}");
+            2
+        }
+        Verdict::Undetermined { why, .. } => {
+            let _ = writeln!(out, "[relay] key file permissions unknown: {why}");
+            1
+        }
+    }
+}
+
 /// **这个进程里我们的中转在不在听这个口** —— 读宿主自己那份监听状态，不从外面探自己
 /// （中转就住在这个进程里，；一个事实一个家）。读者：上游选择出的两份成品
-/// （账号清单徽章的 `relay_running` · `relay-optin` 的 `listening` · 别名预览）。没起中转的进程（一次性 exec · 测试连接探针）恒答 `false`。
+/// （账号清单徽章的 `relay_running` · 别名预览）。没起中转的进程（一次性 exec · 测试连接探针）恒答 `false`。
 pub(crate) fn our_relay_listening(port: u16) -> bool {
     HOSTED_PORTS
         .lock()

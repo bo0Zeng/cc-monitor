@@ -8,9 +8,9 @@
  */
 import { dispatcher } from "../keybindings/registry";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
-import { sessionDot, type GridSessionSnapshot, type SessionPeek } from "../session-status";
+import type { GridSessionSnapshot, SessionPeek } from "../session-status";
 import { backgroundLine } from "../session-face";
-import { isLive, stateView } from "../tab-session-state";
+import { isEnded, isLive } from "../face-can";
 import { copyText } from "../copy-table";
 import { setDot, statusDot } from "../kit/status-dot";
 
@@ -49,13 +49,12 @@ export function groupSessionsByOrigin(sessions: GridSessionSnapshot[]): OriginGr
   return groups;
 }
 
-/** 组内排序：只按核心给的序（`order`，小的在前：活会话 0–3 · 可重连 4 · 已结束 5，同一把尺）；没有序的（说不清 · 还没收到）排最后。
+/** 组内排序：只按脸上的序（`face.order`，小的在前：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 5）。
  *  同序保持输入序（稳定）。纯函数——不改入参，返回新数组。 */
 export function sortSessionsInGroup(sessions: GridSessionSnapshot[]): GridSessionSnapshot[] {
-  const order = (s: GridSessionSnapshot): number => s.order ?? Number.POSITIVE_INFINITY;
   return sessions
     .map((s, i) => ({ s, i }))
-    .sort((a, b) => order(a.s) - order(b.s) || a.i - b.i)
+    .sort((a, b) => a.s.face.order - b.s.face.order || a.i - b.i)
     .map((x) => x.s);
 }
 
@@ -72,7 +71,7 @@ export function summarizeSessions(sessions: GridSessionSnapshot[]): GridSummary 
   let runningAgents = 0;
   for (const s of sessions) {
     origins.add(s.origin);
-    if (isLive(s.state)) liveSessions += 1; // 按活性：可重连的不算活
+    if (isLive(s.face)) liveSessions += 1; // 进程在：Claude 已退出的不算活
     runningAgents += s.runningAgents;
   }
   return { machines: origins.size, liveSessions, runningAgents };
@@ -90,9 +89,7 @@ function peekSignature(selected: GridSessionSnapshot | null, peek: SessionPeek |
     selected.title,
     selected.origin,
     selected.cwd,
-    selected.state.liveness, // 两轴都签：「状态」一格从两轴派生
-    selected.state.recoverability,
-    selected.activityText,
+    selected.face.name,
     selected.needs,
     peek?.model ?? null,
     peek?.agents.length ?? 0,
@@ -134,7 +131,7 @@ function badgesInputs(s: GridSessionSnapshot, now: number): string {
     s.context?.tone ?? "",
     s.unread,
     s.needs ?? "",
-    s.activity === "background_work" && s.backgroundWork ? `${s.backgroundWork.what ?? ""}\u0000${backgroundLine(s.backgroundWork, now)}` : "",
+    s.face.dot === "background" && s.backgroundWork ? `${s.backgroundWork.what ?? ""}\u0000${backgroundLine(s.backgroundWork, now)}` : "",
   ].join("\u0000");
 }
 
@@ -171,7 +168,7 @@ function renderBadges(s: GridSessionSnapshot, badges: HTMLElement, now: number):
     badges.appendChild(b);
   }
   // 后台任务运行中：徽标写命令那一格（核心写的），悬停给整句（时长那一截按此刻走）。
-  const bg = s.activity === "background_work" ? s.backgroundWork : null;
+  const bg = s.face.dot === "background" ? s.backgroundWork : null;
   if (bg?.what) {
     const b = document.createElement("span");
     b.className = "grid-monitor-badge badge-bgwork";
@@ -454,15 +451,8 @@ export class GridMonitorView {
       facts.appendChild(row);
     };
     if (selected.cwd) addFact(copyText("gridMonitor.fact.dir"), selected.cwd);
-    const doing = selected.activityText;
-    const act =
-      doing === null
-        ? copyText("gridMonitor.renderPeek.unknown")
-        : selected.needs
-          ? copyText("gridMonitor.renderPeek.statusWaiting", { activityStatus: doing, needs: selected.needs })
-          : doing;
-    // 活着 ⇒ 活动状态；死了 ⇒ 状态名（已结束 / 可重连）—— 死会话的活动是陈旧的。
-    addFact(copyText("gridMonitor.fact.status"), stateView(selected.state).name ?? act);
+    const doing = selected.face.name;
+    addFact(copyText("gridMonitor.fact.status"), selected.needs ? copyText("gridMonitor.renderPeek.statusWaiting", { activityStatus: doing, needs: selected.needs }) : doing);
     if (peek?.model) addFact(copyText("gridMonitor.fact.model"), peek.model);
     this.peekEl.appendChild(facts);
 
@@ -548,14 +538,13 @@ export class GridMonitorView {
   private updateCell(refs: CellRefs, s: GridSessionSnapshot): void {
     const { cell } = refs;
     // `toggle(x, 布尔)` 状态没变时不写 DOM（规范：force 与现状一致直接返回）。
-    const view = stateView(s.state); // 类与灯只从两轴派生（与 tab 栏同一份）
-    cell.classList.toggle("ended", view.ended);
+    cell.classList.toggle("ended", isEnded(s.face));
     cell.classList.toggle("cell-bg", s.background);
     cell.classList.toggle("is-selected", s.sessionId === this.selectedId); // 选中高亮
 
-    // 状态点：与标签栏同一个点（颜色 ＝ 核心的语气，形状 ＝ 两轴）；名字：活着照抄核心的字，否则那一态的名字。
-    const dot = sessionDot(s.state, s.activityTone);
-    const label = (isLive(s.state) ? s.activityText : null) ?? view.name ?? "";
+    // 状态点与名字：与标签栏同一张脸。
+    const dot = s.face.dot;
+    const label = s.face.name;
     if (refs.dot.dataset.state !== dot || refs.dot.title !== label) setDot(refs.dot, dot, label);
     if (refs.name.textContent !== s.title) refs.name.textContent = s.title;
 

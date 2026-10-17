@@ -12,7 +12,7 @@ use super::{
 };
 
 fn prod() -> String {
-    crate::guard_support::stream_source_files()
+    guard_core::addr::stream_source_files()
         .iter()
         .map(|(_, src)| guard_core::production_source(src))
         .collect::<Vec<_>>()

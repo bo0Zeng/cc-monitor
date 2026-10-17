@@ -35,7 +35,7 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
 }));
 vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
   MACHINE_PAGE_PREFIX: "machine:",
-  LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
+  LOCAL_MACHINE_PAGE_ID: "machine:<local>",
   RemoteSection: class {
     headActions = (): HTMLElement[] => [];
     pageIdOfMachine = (): string | null => null;
@@ -51,7 +51,7 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
     }) {
       setTimeout(() => {
         opts?.pages?.addMachinePage(
-          "machine:（本机）",
+          "machine:<local>",
           "本机",
           document.createElement("div"),
         );
@@ -88,7 +88,7 @@ vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ close: vi.
 
 import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
 import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
-import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
+import { __resetMachineContextForTests } from "../../../../src/frontend/ui/machine-context";
 import {
   SKELETON_PX,
   makeSkeleton,
@@ -97,6 +97,7 @@ import {
   type SkeletonKey,
 } from "../../../../src/frontend/ui/settings/skeleton";
 import { factsOn } from "../../../test-support/host-facts";
+import { nonEmpty } from "../../../test-support/non-empty";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 const sorted = (xs: Iterable<string>) => [...new Set(xs)].sort();
@@ -106,7 +107,7 @@ async function openAllPages(): Promise<HTMLElement> {
   const p = new SettingsPanel({ windowMode: true });
   await p.open();
   await tick();
-  for (const id of ["app", "app-appearance", "app-logs", "app-data", "machine:（本机）", "machines"]) {
+  for (const id of ["app", "app-appearance", "app-logs", "app-data", "machine:<local>", "machines"]) {
     document.querySelector<HTMLButtonElement>(`[id="settings-tab-${id}"]`)?.click();
     await tick();
   }
@@ -121,10 +122,10 @@ describe("：骨架与它替代的那块内容**同一个高度**（第一刀 ·
   });
 
   it("🔴 量具自检：登记表非空，且屏幕上真扫得到骨架", async () => {
-    expect(Object.keys(SKELETON_PX).length, "登记表空了 ⇒ 下面的集合相等恒真").toBeGreaterThan(0);
+    nonEmpty(Object.keys(SKELETON_PX));
     const root = await openAllPages();
     const seen = root.querySelectorAll("[data-skeleton], [data-skeleton-hold]");
-    expect(seen.length, "一块骨架都没扫到 ⇒ 本文件全部断言都是空转").toBeGreaterThan(0);
+    nonEmpty(seen);
   });
 
   it("🔴 登记表 == 屏幕上真出现的那一批（两向集合相等）", async () => {
@@ -151,7 +152,7 @@ describe("：骨架与它替代的那块内容**同一个高度**（第一刀 ·
       ...root.querySelectorAll<HTMLElement>("[data-skeleton]"),
       ...root.querySelectorAll<HTMLElement>("[data-skeleton-hold]"),
     ];
-    expect(all.length).toBeGreaterThan(0);
+    nonEmpty(all);
     for (const el of all) {
       const key = (el.dataset.skeleton ?? el.dataset.skeletonHold) as SkeletonKey;
       expect(el.style.minHeight, `${key} 这一处的高度与登记表对不上`).toBe(

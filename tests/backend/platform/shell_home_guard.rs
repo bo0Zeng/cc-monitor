@@ -179,7 +179,7 @@ fn census_of(src: &str) -> BTreeMap<&'static str, usize> {
 
 /// 后端生产树：`(相对 src/backend 的路径, 记号) → 处数`。
 fn census() -> BTreeMap<(String, &'static str), usize> {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let files = guard_core::scan_tree_excluding(&root, &["rs"], &[]);
     // 抽取器自检：人群里必须有适配层那几份与登记散文的那两份（遍历塌了 ⇒ 本条零命中地绿）。
     for must in [
@@ -267,7 +267,7 @@ fn the_literal_census_sees_planted_syntax_and_ignores_comments() {
     let planted = base.replace("String::new()", "format!(\"export X={}; \", 1)");
     assert_ne!(planted, base, "正控的锚没落在靶上");
     assert_eq!(census_of(&planted), BTreeMap::from([("export ", 1)]));
-    let real = include_str!("../../../src/backend/control/launch_render/local.rs");
+    let real = include_str!("../../../src/backend/control/launch_render/mod.rs");
     let planted_real =
         format!("{real}\nfn planted() -> String {{ String::from(\"Get-Alias x; [char]9\") }}\n");
     assert_eq!(
@@ -306,7 +306,7 @@ fn sq_census_of(src: &str) -> BTreeMap<&'static str, usize> {
 /// 两根手写形的命中 == [`SQ_ELSEWHERE`]（两向）；正控：往副本里塞回旧的只转 ASCII 那一形数得出。
 #[test]
 fn powershell_single_quoted_literals_have_one_exit() {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let mut got = BTreeMap::new();
     for (p, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
         let rel = p
@@ -361,7 +361,7 @@ fn home_census_of(src: &str) -> (BTreeMap<&'static str, usize>, usize) {
 /// 正控：往副本里塞回一处手写读数 · 一处 `std::env::home_dir` 都数得出。
 #[test]
 fn the_home_directory_is_read_in_one_place() {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let mut vars = BTreeMap::new();
     let mut std_calls = BTreeMap::new();
     for (p, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {

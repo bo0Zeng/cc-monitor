@@ -901,12 +901,12 @@ fn the_commit_checks_the_whole_staged_file_against_the_digest_it_is_given() {
     assert!(!staged.exists());
 }
 
-/// 〔RK1 小尾巴〕后端**这一趟建出来的** `~/.cc-monitor` 与暂存区是 0700（不按 umask）；**已在的**不动。
+/// 〔RK1 小尾巴〕后端**这一趟建出来的** `~/.cc-monitor` 与暂存区是 0700（不按 umask）；**已在的**放宽了 ⇒ 收回 0700，是链接 ⇒ 拒、不往里写。
 /// 守的要求：RK1 报备 §5.4 最后一条「`~/.cc-monitor` 这一层目录若由中转第一个建出来，权限是 umask 默认（本机现打 0775）」，
-/// 要求：「`~/.cc-monitor` 首建权限按 umask ⇒ 0700」。形状：两向（新建 ⇒ 0700 · 已在 0755 ⇒ 仍 0755）。
+/// 要求：「`~/.cc-monitor` 首建权限按 umask ⇒ 0700」。形状：三向（新建 ⇒ 0700 · 已在 0755 ⇒ 0700 · 链接 ⇒ 拒）。
 #[test]
 #[cfg(unix)]
-fn hx1_the_staging_dirs_are_born_private_and_an_existing_one_is_left_alone() {
+fn hx1_the_staging_dirs_are_born_private_and_an_existing_one_is_kept_private() {
     use std::os::unix::fs::PermissionsExt as _;
     let mode =
         |p: &std::path::Path| std::fs::metadata(p).expect("meta").permissions().mode() & 0o777;
@@ -937,13 +937,28 @@ fn hx1_the_staging_dirs_are_born_private_and_an_existing_one_is_left_alone() {
     stage_chunk(&Face::issue(), &home, key, 0, b"x").expect("写一块");
     assert_eq!(
         mode(&home.join(".cc-monitor")),
-        0o755,
-        "已在的那一层被改了权限"
+        crate::common::own_dir::PRIVATE_DIR_MODE,
+        "已在的那一层放宽着没收回"
     );
     assert_eq!(
         mode(&home.join(STAGING_DIR)),
         crate::common::own_dir::PRIVATE_DIR_MODE
     );
+    std::fs::remove_dir_all(&home).ok();
+
+    // `~/.cc-monitor` 是一条链接（哪怕指向本人的 0700 目录）⇒ 拒、出声，那头一个字节不落。
+    let home = std::env::temp_dir().join(format!("ccm-hx1-stg-link-{}", std::process::id()));
+    std::fs::remove_dir_all(&home).ok();
+    let elsewhere = home.join("elsewhere");
+    std::fs::create_dir_all(&elsewhere).expect("预置");
+    std::fs::set_permissions(&elsewhere, std::fs::Permissions::from_mode(0o700)).expect("chmod");
+    std::os::unix::fs::symlink(&elsewhere, home.join(".cc-monitor")).expect("链接");
+    let got = stage_chunk(&Face::issue(), &home, key, 0, b"x");
+    assert!(
+        matches!(&got, Err(WriteRefusal::Refused(s)) if copy_core::copy_matches("beOwnState.dir.link", s)),
+        "链接那一层没拒：{got:?}"
+    );
+    assert!(!elsewhere.join("staging").exists(), "链接那头被写了");
     std::fs::remove_dir_all(&home).ok();
 }
 
@@ -1180,4 +1195,24 @@ fn a_clash_after_assembling_is_asked_too_and_the_resend_reuses_the_staged_file()
     at(v("overwrite")).expect("暂存件在、块已收 ⇒ 照那一份提交");
     assert_eq!(std::fs::read(h.join("dst/r.bin")).unwrap(), b"abc");
     std::fs::remove_dir_all(&h).ok();
+}
+
+/// 上传名与新建同一套名字规则：`single` 时只许一段（别的 App 交来的显示名可以带 `/`）、拒 ⇒ `bad_name`、一个字节不落、暂存件留着；一段名字照落。
+#[test]
+fn an_upload_name_goes_through_the_same_name_rules_as_create() {
+    let (home, root) = rig("upname");
+    stage(&home, KEY, b"x");
+    let args = |rel: &str| {
+        serde_json::json!({
+            "root": root.to_str().expect("utf8"), "rel": rel, "key": KEY,
+            "expect": {"sha256": staged_sha(&home, KEY)}, "single": true,
+        })
+    };
+    std::fs::create_dir_all(root.join("sub")).expect("建子目录");
+    let e = answer_commit_at(&Face::issue(), &home, &args("sub/a.bin"))
+        .expect_err("带 / 的名字落进了子目录");
+    assert_eq!(e.code, super::super::files_write::BAD_NAME, "{e:?}");
+    assert!(!root.join("sub/a.bin").exists());
+    answer_commit_at(&Face::issue(), &home, &args("a.bin")).expect("一段名字该照落");
+    assert_eq!(std::fs::read(root.join("a.bin")).expect("读落点"), b"x");
 }

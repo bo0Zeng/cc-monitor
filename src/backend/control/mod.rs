@@ -11,7 +11,7 @@
 //! - [`launch`]：起 tmux 会话 / 往已有会话键入载荷（argv 直传不过 shell）；不 attach —— backend 在远端开不了你面前的窗。
 //! - [`cli_args`]：CLI 面读入参的唯一一处（`stream::cli` 经它读）。
 //! - [`cc_bus`]：cc-bus 的基础命令（`bus-list` / `bus-send`），转调本机的 cc-bus 命令；不读 cc-bus 的任何数据文件，只把它的命令当接口。
-//! - [`deploy_plan`]：部署计划（帧命令 `deploy-plan`）；只读那台，放字节归 monitor。
+//! - [`deploy_plan`]：给那台装 / 升级后端（帧命令 `deploy-install`；编排住 `deploy` crate）。
 //! - [`resolve_query`]：产出 `CommandPlan`（「这个会话该怎么起」）—— 名字里有 `query`，但它是计划面，属于控制的前半。
 //!
 //! # 这一层不许引用 [`crate::observe`]
@@ -31,6 +31,7 @@ pub mod files_commit;
 pub(crate) mod machine_prefs;
 pub(crate) mod session_hidden; // 一条会话隐不隐藏：判定只住这里（会话宣告 · history-list · sessions-needs 三处同调）
 pub use machine_prefs::apply_agent_homes;
+pub(crate) mod machine_state;
 pub(crate) mod machines;
 // 第 7 批那一次换形（`config.json` 那几格 ⇒ 各台 `prefs.json`；下一版删）。
 pub mod prefs_migration;
@@ -53,10 +54,11 @@ pub(crate) mod launch;
 pub mod launch_account;
 // 起会话的计划与渲染：本机起会话 · `ccm …` 调用行 · 载荷 ＋ 外层 tmux 三格。
 pub mod launch_render;
+pub mod place_self;
 pub mod resident;
 pub mod resolve_query;
 pub(crate) mod session_batch;
-pub(crate) mod session_new;
+pub(crate) mod session_open;
 pub(crate) mod ship_text; // CLI `--text`：回包里写好的格（顶上 `text` · 每一处 `rows`）拼成字，所有命令通用
                           // 起新会话那一趟的票（期限到了再问一次 ⇒ 认出同一趟，不起第二个）。
 pub(crate) mod session_new_ticket;

@@ -61,6 +61,10 @@ pub struct HistoryRow {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub forked_from_message_uuid: Option<String>,
+    /// 分叉来的：父会话那一行（显示标题）；不是分叉来的 · 父会话不在这台的清单里 ⇒ 缺（界面写「分叉自其他会话」）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub forked_from: Option<ForkedFrom>,
     pub project_dir: String,
     pub group: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -70,12 +74,8 @@ pub struct HistoryRow {
     pub label: Words,
     /// 改过的标题 · 标题 · 第一句都没有（界面写「没有说过话的会话」）。
     pub untitled: bool,
-    /// `live` 在跑 · `reconnectable` claude 退了、tmux 里还挂着它 · `ended` 已结束 · `unknown` 说不清（活不活只出这一格）。
-    #[cfg_attr(
-        any(test, feature = "ts"),
-        ts(type = "\"live\" | \"reconnectable\" | \"ended\" | \"unknown\"")
-    )]
-    pub status: String,
+    /// 那台此刻对这一行的说法（活着的照它的进程状态文件判在干什么；判不了活 ⇒ 状态不明）。
+    pub face: crate::frame::SessionFace,
     pub can: Can,
     /// 行上那一家的小牌（对用户的叫法）；默认那一家 ⇒ `null`。
     pub agent_tag: Option<Words>,
@@ -93,6 +93,15 @@ pub struct HistoryRow {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<String>"))]
     pub origin: Option<Machine>,
+}
+
+/// 分叉来的那一行的父会话：显示标题（同父会话自己那一行的 `label`）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct ForkedFrom {
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
+    pub label: Words,
 }
 
 /// 按项目看时的一组。
@@ -113,6 +122,9 @@ pub struct HistoryGroup {
     pub starred: bool,
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub last_activity: i64,
+    /// `last_activity` 写好的字（同行尾那一格的写法）；读不了的那一组 ⇒ `null`。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "string | null"))]
+    pub at_text: Option<Words>,
     /// 几台的组并成一列时按它（大的在前）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub order: i64,
@@ -168,6 +180,28 @@ pub struct FailedDir {
     pub error: String,
 }
 
+/// 清单那一行这台判的活不活：在跑（那一家说在干什么，判不出 ⇒ 缺）· 可重连（claude 退了、tmux 里还挂着它，会话账本说的）· 已结束。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(
+        export,
+        rename = "HistoryRowLife",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
+    )
+)]
+#[serde(tag = "is", rename_all = "snake_case")]
+pub enum RowLife {
+    Live {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        activity: Option<crate::frame::SessionActivity>,
+    },
+    Reconnectable,
+    Ended,
+}
+
 /// 清单里的一行（这台判过活、注解格先按没有填）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -194,12 +228,8 @@ pub struct RawRow {
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub updated_at: i64,
     pub jsonl_path: String,
-    /// 判不了活（合成历史没有 pidfile）⇒ `null`。
-    pub is_live: Option<bool>,
-    /// 不在跑、claude 退了而 tmux 里还挂着它（那台的会话账本说的）；否 ⇒ 缺。
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
-    pub reconnectable: bool,
+    /// 这台判的活不活（判不了：合成历史没有 pidfile ⇒ `null`）。
+    pub life: Option<RowLife>,
     pub message_count_approx: u32,
     pub is_bg: bool,
     pub starred: bool,
@@ -278,9 +308,42 @@ pub struct Entry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub hide: Option<Hide>,
+    /// 没人答的提问等几分钟替人答一句（判定住后端 `control::asks`）；缺 ＝ 关。
+    #[serde(
+        default,
+        rename = "autoAnswer",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub auto_answer: Option<crate::needs::AutoAnswer>,
+    /// 终端没了时换的模型 / 权限档，下次恢复照它起（只由那两条换的命令写）；缺 ＝ 没记。
+    #[serde(
+        default,
+        rename = "resumeWith",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub resume_with: Option<ResumeWith>,
     #[serde(default, rename = "updatedAt", alias = "updated_at")]
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub updated_at: i64,
+}
+
+/// 下次恢复用的那一项（[`Entry::resume_with`]）：原值同 `session-model` · `session-permission` 交的那一格。
+/// `end` ＝ 记下那一刻记录的字节长度：记录长过它（恢复过 · 又写过）⇒ 这一份作废，照记录。
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(rename_all = "camelCase")]
+pub struct ResumeWith {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub permission_mode: Option<String>,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub end: u64,
 }
 
 /// sid → 注解。

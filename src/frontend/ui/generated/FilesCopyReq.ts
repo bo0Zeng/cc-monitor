@@ -7,4 +7,8 @@ import type { WirePath } from "./WirePath";
 /**
  * `files-copy`：同根内复制一组；目录整棵复制（不合并）。同名照 `on_exists`（缺 ⇒ `ask`），`decide` 逐项答。回包 [`crate::batch::BatchReply`]。
  */
-export type FilesCopyReq = { root: WirePath, items: Array<CopyItem>, on_exists?: OnExists, decide?: { [key in string]: Decide }, ticket?: string, };
+export type FilesCopyReq = { root: WirePath, items: Array<CopyItem>, on_exists?: OnExists, decide?: { [key in string]: Decide }, ticket?: string, 
+/**
+ * `true` ⇒ 每项的 `to` 只许是一段名字、且不同于 `from`（界面「复制为」那一格敲的就是一个名字）。
+ */
+single?: boolean, };

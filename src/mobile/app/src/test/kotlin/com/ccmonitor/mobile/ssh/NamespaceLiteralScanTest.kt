@@ -16,6 +16,7 @@ import java.io.File
  * |---|---|
  * | ① | `.aterm` 与 `atermpipe-` 两个字面在生产代码里一次都不出现 |
  * | ② | `.cc-monitor` 一次都不出现（后端落点在嵌的核心里拼，桌面同一份） |
+ * | ③ | `authorized_keys` 一次都不出现（推公钥是那台后端写） |
  *
  * 注意：一条读别的模块源文件的判据，必须住在那个 task 的输入涵盖得到的地方。放在 `core-claude` 里的话，
  * 改 `app/` 下的文件不会让 `:core-claude:test` 重跑（它照样 `UP-TO-DATE`），判据就成了恒绿。
@@ -65,6 +66,24 @@ class NamespaceLiteralScanTest {
             if (n > 0) found[f.relativeTo(root).invariantSeparatorsPath] = n
         }
         assertEquals("`$CC_MONITOR` 是后端的名字空间：落点在嵌的核心里拼，Kotlin 这一侧不碰。", emptyMap<String, Int>(), found.toMap())
+    }
+
+    /**
+     * `authorized_keys` 在 Kotlin 生产代码里一次都不出现：推公钥是那台后端的 `authorized-keys-add`（写哪 · 权限 · 去重都在那台），
+     * 手机不拼写那份文件的命令。正控：同一把尺子在种了一处的语料上要数得出来。
+     */
+    @Test
+    fun theAuthorizedKeysFileIsNeverNamedOnThePhone() {
+        val root = repoRoot()
+        val sources = productionSources(root)
+        assertTrue("前提：得真扫到源文件，否则这条是空跑（实得 ${sources.size} 个）", sources.size > 100)
+        val found = sortedMapOf<String, Int>()
+        for (f in sources) {
+            val n = countLiteral(codeOnly(f.readText()), AUTHORIZED_KEYS)
+            if (n > 0) found[f.relativeTo(root).invariantSeparatorsPath] = n
+        }
+        assertEquals("手机拼了写 `$AUTHORIZED_KEYS` 的东西：改问那台 `authorized-keys-add`。", emptyMap<String, Int>(), found.toMap())
+        assertEquals("正控：种的那一处要数得出来", 1, countLiteral(codeOnly("val c = \"grep -qxF k ~/.ssh/authorized_keys\""), AUTHORIZED_KEYS))
     }
 
     /**
@@ -155,5 +174,6 @@ class NamespaceLiteralScanTest {
         private const val DOT_ATERM = ".aterm"
         private const val PIPE_PREFIX = "atermpipe-"
         private const val CC_MONITOR = ".cc-monitor"
+        private const val AUTHORIZED_KEYS = "authorized_keys"
     }
 }

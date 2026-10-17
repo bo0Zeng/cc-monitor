@@ -112,6 +112,8 @@ pub struct TapRx {
     manual: Option<tokio::sync::broadcast::Receiver<()>>,
     /// 这一端的机器表变了的铃（推一帧 `changed {machines}`）；`None` ＝ 不订。
     machines: Option<tokio::sync::broadcast::Receiver<()>>,
+    /// 这一端连的某台远端的状态成品变了的通道（推一帧 `changed {machine, key: 那台, body: 成品}`）；`None` ＝ 不订。
+    machine: Option<tokio::sync::broadcast::Receiver<(String, cmd_wire::machine::MachineState)>>,
     /// 帧里的小成品怎么现算（生产 ＝ [`crate::wire::topic_hook::body`]；判据自己接的那一形不现算）。
     bodies: crate::wire::topic_hook::Bodies,
     /// 这条连接看的那一台的时区（attach 带来的）：小成品里的时刻字按它写。
@@ -187,7 +189,7 @@ impl TapSource for TapRx {
                     }
                     None => self.nodes = None,
                 },
-                moved = plan_moved(&mut self.plan) => match moved {
+                moved = item_moved(&mut self.plan) => match moved {
                     Some(Some((workspace, rev, needs))) => self.out.push_back(Frame::changed(
                         Topic::Plan,
                         Some(workspace),
@@ -214,7 +216,18 @@ impl TapSource for TapRx {
                     }
                     None => self.machines = None,
                 },
-                moved = rotation_moved(&mut self.needs) => match moved {
+                moved = item_moved(&mut self.machine) => match moved {
+                    Some(Some((name, p))) => self.out.push_back(Frame::changed(
+                        Topic::Machine,
+                        Some(name),
+                        None,
+                        serde_json::to_value(p).ok(),
+                    )),
+                    // 落后丢了几件：可丢的通道，下一次变化或重问就补上。
+                    Some(None) => {}
+                    None => self.machine = None,
+                },
+                moved = item_moved(&mut self.needs) => match moved {
                     Some(Some(sid)) => {
                         let f = self.changed(Topic::Needs, Some(sid));
                         self.out.push_back(f);
@@ -229,23 +242,28 @@ impl TapSource for TapRx {
 }
 
 /// 一条流连接接上了 ⇒ 在进程级 hub 的活卡上登记一条连接（两条载体各在「流开始」那一处调一次）。
-/// `tz` ＝ 这条连接看的那一台的时区（帧里小成品的时刻字按它写）。
-pub fn attach(tz: crate::Tz) -> TapRx {
+/// `tz` ＝ 这条连接看的那一台的时区（帧里小成品的时刻字按它写）；`watch` ＝ attach 行带的名单（没带 ⇒ 全看，等 `stream-watch`）。
+pub fn attach(tz: crate::Tz, watch: Option<&[String]>) -> TapRx {
     let mut rx = attach_rx(hub());
+    if let Some(sids) = watch {
+        // 写者还没开始取：名单外的卡还没欠下的那几张当场撤掉，一张都不发。
+        rx.watch_handle().watch(sids);
+    }
     rx.nodes = Some(crate::accounts::quota::nodes::bus().subscribe());
     rx.plan = Some(crate::plan::watch::changes().subscribe());
     rx.needs = Some(crate::control::asks::changes().subscribe());
     rx.manual = Some(crate::accounts::sign_in::manual_changes().subscribe());
     rx.machines = Some(crate::control::machines::changes().subscribe());
+    rx.machine = Some(crate::control::machine_state::changes().subscribe());
     rx.bodies = crate::wire::topic_hook::body;
     rx.tz = tz;
     rx
 }
 
-/// 某个工作区的计划变了 ⇒ `Some(Some((工作区, 摘要, 要你看的数)))`；落后丢了几件 ⇒ `Some(None)`；通道没了 ⇒ `None`；没订 ⇒ 永远不醒。
-async fn plan_moved(
-    r: &mut Option<tokio::sync::broadcast::Receiver<crate::plan::watch::Change>>,
-) -> Option<Option<crate::plan::watch::Change>> {
+/// 带东西的那几条（计划 · 待答请求 · 机器状态）来了一件 ⇒ `Some(Some(那一件))`；落后丢了几件 ⇒ `Some(None)`；通道没了 ⇒ `None`；没订 ⇒ 永远不醒。
+async fn item_moved<T: Clone>(
+    r: &mut Option<tokio::sync::broadcast::Receiver<T>>,
+) -> Option<Option<T>> {
     use tokio::sync::broadcast::error::RecvError;
     match r {
         Some(r) => match r.recv().await {
@@ -288,6 +306,10 @@ async fn node_moved(
             if n.source == Source::Strategies {
                 out.push((Topic::RotationStrategies, None));
             }
+            // 续令牌没成：「需重新登录」那一项可能进了需手动清单。
+            if n.source == Source::Login {
+                out.push((Topic::Manual, None));
+            }
             if let Some(sid) = n.sid {
                 out.push((Topic::Rotation, Some(sid)));
             }
@@ -298,21 +320,6 @@ async fn node_moved(
             (Topic::RotationStrategies, None),
         ]),
         Err(RecvError::Closed) => None,
-    }
-}
-
-/// 某个会话变了 ⇒ `Some(Some(sid))`；落后丢了几件 ⇒ `Some(None)`；通道没了 ⇒ `None`（调用方把它摘掉）；没订 ⇒ 永远不醒。
-async fn rotation_moved(
-    r: &mut Option<tokio::sync::broadcast::Receiver<String>>,
-) -> Option<Option<String>> {
-    use tokio::sync::broadcast::error::RecvError;
-    match r {
-        Some(r) => match r.recv().await {
-            Ok(sid) => Some(Some(sid)),
-            Err(RecvError::Lagged(_)) => Some(None),
-            Err(RecvError::Closed) => None,
-        },
-        None => std::future::pending().await,
     }
 }
 
@@ -329,6 +336,7 @@ pub(crate) fn attach_rx(hub: Arc<TapHub>) -> TapRx {
         needs: None,
         manual: None,
         machines: None,
+        machine: None,
         bodies: no_bodies,
         tz: crate::Tz::default(),
     }

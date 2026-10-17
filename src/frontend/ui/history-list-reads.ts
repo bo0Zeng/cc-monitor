@@ -8,16 +8,15 @@
  * 问谁（含远端那一份的装运）、按类型收（入参 · 回包从后端类型生成，形状由握手指纹核；跨语言金样 `tests/__fixtures__/history-list.golden.json`）、
  * 把各台各自排好的行按 `at` 并成一列。
  */
-import { ChanError } from "../../comms/inward/chan";
-import { budgetWithin, callTyped, refusalOf, saidFrom } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, refusalIn, ReplyUnreadable } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./ipc/origin";
-import { HistoryShapeError } from "./history-reads";
 import type { HistoryList } from "./generated/HistoryList";
 import type { HistoryRow } from "./generated/HistoryRow";
 import type { HistoryGroup } from "./generated/HistoryGroup";
 import type { HistoryListing } from "./generated/HistoryListing";
 import type { HistoryListReply } from "./generated/HistoryListReply";
 import type { HistoryListReq } from "./generated/HistoryListReq";
+import { saidOf } from "./kit/detail";
 
 /** 一行会话 · 按项目看时的一组 · 一台的成品（类型从后端生成）。 */
 export type { HistoryList, HistoryRow, HistoryGroup };
@@ -40,16 +39,16 @@ const LIST_BUDGET_MS = 30_000;
 /** 回包两形里平时那一形（成品带 `groups`）；问的不是 `raw` 却回了清单 ⇒ 抛（细目只进日志）。 */
 function listOf(r: HistoryListReply): HistoryList {
   if ("groups" in r) return r;
-  throw new HistoryShapeError("history-list answered a raw listing to a non-raw ask");
+  throw new ReplyUnreadable(LOCAL_ORIGIN, "history-list answered a raw listing to a non-raw ask");
 }
 
 /** 回包两形里 `raw` 那一形（这台自己的清单）；回了成品 ⇒ 抛。 */
 function listingOf(r: HistoryListReply): HistoryListing {
   if (!("groups" in r)) return r;
-  throw new HistoryShapeError("history-list answered a product to a raw ask");
+  throw new ReplyUnreadable(LOCAL_ORIGIN, "history-list answered a product to a raw ask");
 }
 
-/** 一台的清单（`origin` 缺席 = 本机）。失败 ⇒ 抛（给人看的那句：`history-reads.ts::historyReasonOf`）。 */
+/** 一台的清单（`origin` 缺席 = 本机）。失败 ⇒ 抛（给人看的那句 `kit/detail.ts::saidOf` 取）。 */
 export async function fetchList(origin: string | undefined, ask: HistoryListAsk): Promise<HistoryList> {
   // 只带给了的那几格（缺 = 后端缺省）。
   const args: HistoryListReq = {
@@ -84,14 +83,14 @@ async function askRemoteRaw(origin: string): Promise<HistoryListing> {
   try {
     reply = await callTyped(origin, "history-list", { raw: true }, budgetWithin(LIST_BUDGET_MS));
   } catch (e) {
-    throw new Error(saidFrom(e, origin));
+    throw new Error(saidOf(e));
   }
   return listingOf(reply);
 }
 
 /** 本机后端说「那台的清单还没取回」。 */
 function notHeld(e: unknown): boolean {
-  return e instanceof ChanError && e.error.layer === "peer" && e.error.why === "refused" && refusalOf(e.error.body)?.code === "no_listing";
+  return refusalIn(e)?.code === "no_listing";
 }
 
 /** 各台各自按 `key` 倒序排好的一列 ⇒ 并成一列（同值保持台的先后，稳定）。只并、不另判。 */

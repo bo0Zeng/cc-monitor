@@ -9,6 +9,7 @@
  * 6. 删除只问一次（R2-2-2）；在跑的不问、直接说「运行中 · 先结束」。
  * 7. 分叉挂在父会话下（默认收起，「1 个分叉 ▸」）；父会话被筛掉 ⇒ 后端带来的 `context` 行淡显（R5W-H05）。
  */
+import { goldenFace, liveFace } from "../../../test-support/session-faces";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -39,7 +40,8 @@ vi.mock("../../../../src/frontend/ui/views/session-viewer", () => ({
     openFind(): void {}
   },
 }));
-vi.mock("../../../../src/frontend/ui/tmux-resume", () => ({ startInTmuxThenAttach: vi.fn().mockResolvedValue(undefined) }));
+// 恢复交那台（`session-open`）：这里换成 spy，判的是交了什么；发 · 说 · 开窗住 `session-open.vitest.ts`。
+vi.mock("../../../../src/frontend/ui/session-open", () => ({ openSession: vi.fn().mockResolvedValue(true) }));
 // 那台的号由 `resumeAccounts` 现问（账号库 ＋ 额度账）；这里只替它答，菜单怎么摆用真的。
 vi.mock("../../../../src/frontend/ui/resume-menu", async (orig) => {
   const real = await orig<typeof import("../../../../src/frontend/ui/resume-menu")>();
@@ -60,11 +62,6 @@ vi.mock("../../../../src/frontend/ui/resume-menu", async (orig) => {
   };
 });
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), undoToast: vi.fn() }));
-vi.mock("../../../../src/frontend/ui/local-resume", () => ({ resumeLocalSession: vi.fn().mockResolvedValue(true) }));
-vi.mock("../../../../src/frontend/ui/remote-launch-run", () => ({
-  runRemoteResume: vi.fn().mockResolvedValue(undefined),
-  runNewSessionRemote: vi.fn().mockResolvedValue(undefined),
-}));
 vi.mock("../../../../src/frontend/ui/behavior", () => ({
   getBehavior: () => Promise.resolve({ resumeCommand: "" }),
 }));
@@ -73,8 +70,7 @@ vi.mock("../../../../src/frontend/ui/remote-config", () => ({ resumeCommandFor: 
 import { invoke } from "@tauri-apps/api/core";
 import { HistoryView } from "../../../../src/frontend/ui/views/history";
 import { toast } from "../../../../src/frontend/ui/kit/toast";
-import { resumeLocalSession } from "../../../../src/frontend/ui/local-resume";
-import { startInTmuxThenAttach } from "../../../../src/frontend/ui/tmux-resume";
+import { openSession } from "../../../../src/frontend/ui/session-open";
 import { resumeAccounts } from "../../../../src/frontend/ui/resume-menu";
 import { chanArgsJson, chanReply, NO_CHANNEL, refusedReply, type ChanCallArgs } from "../../../test-support/chan-fake";
 import { answerAskDialog, answerAskText, noAskDialog } from "../../../test-support/ask-dialog-driver.ts";
@@ -113,7 +109,7 @@ function row(over: Record<string, unknown>): Record<string, unknown> {
     starred: false,
     customTitle: null,
     hidden: null,
-    status: "ended",
+    face: goldenFace("ended"),
     can: { resume: "yes", accounts: true, fork: true, delete: "yes" },
     ...over,
   };
@@ -160,8 +156,7 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = () => {};
   document.body.replaceChildren();
   vi.mocked(toast).mockClear();
-  vi.mocked(resumeLocalSession).mockClear();
-  vi.mocked(startInTmuxThenAttach).mockClear();
+  vi.mocked(openSession).mockClear();
   vi.mocked(resumeAccounts).mockClear();
   viewerStub.last = null;
   viewerStub.banner = null;
@@ -186,7 +181,7 @@ beforeEach(() => {
     if (c.op === "history-search") {
       if (world.search === "fail") return Promise.reject(new Error("搜不动"));
       return chanReply({
-        sessions: [{ agent: "claude", sessionId: "a", projectPath: "/w/p", projectName: "p", jsonlPath: "/x/a.jsonl", title: "标题 a", updatedAt: NOW, hitCount: 1, hits: [{ uuid: "u1", tsMs: NOW, kind: "user", before: "**前", matched: "词", after: "`后`" }], hitsTruncated: false, isBg: false, status: "ended", can: { resume: "yes", accounts: true, fork: true, delete: "yes" } }],
+        sessions: [{ agent: "claude", sessionId: "a", projectPath: "/w/p", projectName: "p", jsonlPath: "/x/a.jsonl", title: "标题 a", updatedAt: NOW, hitCount: 1, hits: [{ uuid: "u1", tsMs: NOW, kind: "user", before: "**前", matched: "词", after: "`后`" }], hitsTruncated: false, isBg: false, face: goldenFace("ended"), can: { resume: "yes", accounts: true, fork: true, delete: "yes" } }],
         unreadable: 0,
         skipped: [],
       });
@@ -197,6 +192,8 @@ beforeEach(() => {
       const ss = ms.flatMap((m) => m.sessions.map((s) => ({ ...s, ...(m.origin === LOCAL_ORIGIN ? {} : { origin: m.origin }), atText: "12:00", spanText: "12:00–12:00" })));
       return chanReply({ totalHits: ss.reduce((n, s) => n + s.hitCount, 0), sessionCount: ss.length, truncated: false, sessions: ss });
     }
+    // 这台恢复默认放在哪（那台答的；勾画在它上面）。
+    if (c.op === "sessions-where") return chanReply({ results: (args.sids as string[]).map((sid) => ({ sid, standing: "none", names: [], terminals: [] })), run: "direct" });
     if (c.op === "history-annotate") return chanReply({ entry: { starred: false, customTitle: null, hide: "on", updatedAt: 1 }, prev: null });
     if (c.op === "files-delete-session") return chanReply({ path: "/x" });
     if (c.op === "history-forget") return chanReply({ removed: true, sid: "a" });
@@ -290,31 +287,31 @@ describe("内容搜索", () => {
 
 describe("行上的动作照 can 画", () => {
   it("在跑的 ⇒「切过去」，点了切主窗口、不起第二份", async () => {
-    world.local = [row({ sessionId: "a", status: "live", can: { resume: "switch", accounts: true, fork: true, delete: "live" } })];
+    world.local = [row({ sessionId: "a", face: liveFace("working"), can: { resume: "switch", accounts: true, fork: true, delete: "live" } })];
     const v = await opened();
     const went: string[] = [];
     v.switchTo = (sid) => went.push(sid);
     byText("button", copyText("history.row.switch"))!.click();
     await flush();
     expect(went).toEqual(["a"]);
-    expect(resumeLocalSession).not.toHaveBeenCalled();
+    expect(openSession).not.toHaveBeenCalled();
     expect(v.isVisible()).toBe(false);
   });
 
-  it("Codex 行恢复 ⇒ 按它自己那一家起（E1）", async () => {
-    world.local = [row({ sessionId: "cx", agent: "codex", agentTag: "Codex", status: "unknown", can: { resume: "yes", accounts: false, fork: false, delete: "unsure" } })];
+  it("Codex 行恢复 ⇒ 交那台的只有那一条（哪一家那台从记录里读）", async () => {
+    world.local = [row({ sessionId: "cx", agent: "codex", agentTag: "Codex", face: goldenFace("unclear"), can: { resume: "yes", accounts: false, fork: false, delete: "unsure" } })];
     const v = await opened();
     expect(byText('[role="option"]', "Codex")).toBeTruthy();
     byText("button", copyText("history.row.resume"))!.click();
     await flush();
-    expect(vi.mocked(resumeLocalSession).mock.calls[0][0]).toMatchObject({ agent: "codex", sid: "cx" });
+    expect(vi.mocked(openSession).mock.calls[0].slice(0, 2)).toEqual([LOCAL_ORIGIN, { what: { kind: "resume", sid: "cx" }, local: true }]);
     v.close();
   });
 });
 
 describe("删除", () => {
   it("只问一次；在跑的不问、说「运行中 · 先结束」", async () => {
-    world.local = [row({ sessionId: "a" }), row({ sessionId: "l", status: "live", can: { resume: "switch", accounts: true, fork: true, delete: "live" } })];
+    world.local = [row({ sessionId: "a" }), row({ sessionId: "l", face: liveFace("working"), can: { resume: "switch", accounts: true, fork: true, delete: "live" } })];
     const v = await opened();
     const key = (sid: string) => rows().find((r) => r.dataset.key?.endsWith(sid))!;
     key("l").click();
@@ -428,7 +425,7 @@ describe("键盘与菜单", () => {
     document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
     document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true }));
     await flush();
-    expect(vi.mocked(resumeLocalSession).mock.calls[0][0]).toMatchObject({ sid: "a", agent: "claude" });
+    expect(vi.mocked(openSession).mock.calls[0][1]).toMatchObject({ what: { kind: "resume", sid: "a" } });
     const v2 = await opened();
     const menuItem = (label: string) => [...document.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find((b) => b.textContent?.startsWith(label));
     const openMenuOn = (sid: string) => rows().find((r) => r.dataset.key?.endsWith(sid))!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 3, clientY: 3 }));
@@ -483,7 +480,9 @@ describe("内容头 · 恢复 ▾（乙4-④⑤）", () => {
       copyText("resumeMenu.hint.pick", {
         pick: copyText("resumeMenu.pick.account", { account, run: tmux ? copyText("resumeMenu.hint.tmux") : copyText("resumeMenu.run.direct") }),
       });
-    expect(main.title, "没开过 ▾：上次的号 · 不用 tmux").toBe(pick("work", false));
+    expect(main.title, "没开过 ▾：上次的号 · 照机器设置").toBe(
+      copyText("resumeMenu.hint.pick", { pick: copyText("resumeMenu.pick.account", { account: "work", run: copyText("resumeMenu.run.machine") }) }),
+    );
     expect(inHead(copyText("history.menu.openWindow"))).toBeTruthy();
     expect(inHead(copyText("history.row.more"))).toBeTruthy();
     expect(head().textContent).toContain("p");
@@ -511,34 +510,29 @@ describe("内容头 · 恢复 ▾（乙4-④⑤）", () => {
     expect(menuItem("work")!.getAttribute("aria-checked")).toBe("false");
     expect(menuItem("home")!.getAttribute("aria-checked")).toBe("true");
     expect(menuItem(copyText("resumeMenu.run.tmux"))!.getAttribute("aria-checked")).toBe("true");
-    expect(startInTmuxThenAttach).not.toHaveBeenCalled();
-    expect(resumeLocalSession).not.toHaveBeenCalled();
+    expect(openSession).not.toHaveBeenCalled();
     expect(main.title).toBe(pick("home", true));
     // 主按钮按勾着的那一组起：tmux 那一支（不依赖标签页对象），带点名的号
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     main.click();
     await flush();
-    expect(vi.mocked(startInTmuxThenAttach).mock.calls[0].slice(0, 2)).toEqual([
-      { origin: "<local>", agent: "claude", sid: "a", cwd: "/w/p" },
-      { kind: "named", name: "home" },
+    expect(vi.mocked(openSession).mock.calls.map((c) => c.slice(0, 2))).toEqual([
+      [LOCAL_ORIGIN, { what: { kind: "resume", sid: "a" }, account: { kind: "named", name: "home" }, run: "tmux", local: true }],
     ]);
-    expect(resumeLocalSession).not.toHaveBeenCalled();
     v.close();
   });
 
-  it("主按钮 ＝ 默认那一种（跟随的号 · 不用 tmux）；没起来 ⇒ 头下一条错误条 ＋［重试］，不关历史页", async () => {
+  it("★ 主按钮 ＝ 人没动过的那一种：恰好一问、不带号也不带放在哪（那台照跟随 · 照自己的设置）；没起来 ⇒ 不关历史页；起了 ⇒ 关", async () => {
     world.local = [row({ sessionId: "a" })];
     const v = await opened();
     await showRow("a");
-    vi.mocked(resumeLocalSession).mockRejectedValueOnce(new Error("开不了终端"));
+    vi.mocked(openSession).mockResolvedValueOnce(false);
     inHead(copyText("history.row.resume"))!.click();
     await flush();
-    expect(vi.mocked(resumeLocalSession).mock.calls[0][0]).toMatchObject({ sid: "a", account: { kind: "follow" } });
-    expect(viewerStub.banner?.textContent).toContain(copyText("history.resume.failed", { machine: copyText("history.filter.local"), why: "Error: 开不了终端" }));
+    expect(vi.mocked(openSession).mock.calls.map((c) => c.slice(0, 2))).toEqual([[LOCAL_ORIGIN, { what: { kind: "resume", sid: "a" }, local: true }]]);
     expect(v.isVisible()).toBe(true);
-    [...viewerStub.banner!.querySelectorAll("button")].find((b) => b.textContent === copyText("history.group.retry"))!.click();
+    inHead(copyText("history.row.resume"))!.click();
     await flush();
-    expect(resumeLocalSession).toHaveBeenCalledTimes(2);
     expect(v.isVisible(), "起了 ⇒ 关历史页").toBe(false);
   });
 
@@ -551,17 +545,15 @@ describe("内容头 · 恢复 ▾（乙4-④⑤）", () => {
     expect(vi.mocked(resumeAccounts).mock.calls[0][0]).toBe("dev");
     menuItem("不指定账号 · ~/.claude")!.click();
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    const { runRemoteResume } = await import("../../../../src/frontend/ui/remote-launch-run");
     inHead(copyText("history.row.resume"))!.click();
     await flush();
-    expect(vi.mocked(runRemoteResume).mock.calls.at(-1)!.slice(0, 4)).toEqual(["dev", "claude", "r", "/w/p"]);
-    expect(vi.mocked(runRemoteResume).mock.calls.at(-1)![4]).toEqual({ account: { kind: "base" } });
+    expect(vi.mocked(openSession).mock.calls.at(-1)!.slice(0, 2)).toEqual(["dev", { what: { kind: "resume", sid: "r" }, account: { kind: "base" }, local: false }]);
     v.close();
     await v.open();
     await flush();
     await showRow("r");
     expect(inHead(copyText("history.row.resume"))!.title, "重开页 ⇒ 回到默认那一组").toBe(
-      copyText("resumeMenu.hint.pick", { pick: copyText("resumeMenu.run.direct") }),
+      copyText("resumeMenu.hint.pick", { pick: copyText("resumeMenu.run.machine") }),
     );
     v.close();
   });
@@ -569,13 +561,13 @@ describe("内容头 · 恢复 ▾（乙4-④⑤）", () => {
   it("Codex 行：▾ 不问账号，灰一行「Codex · 无账号维」；在跑的 ⇒［切过去］；分身 ⇒ 恢复灰着说为什么", async () => {
     world.local = [
       row({ sessionId: "cx", agent: "codex", agentTag: "Codex", can: { resume: "yes", accounts: false, fork: false, delete: "yes" } }),
-      row({ sessionId: "l", status: "live", can: { resume: "switch", accounts: true, fork: true, delete: "live" } }),
+      row({ sessionId: "l", face: liveFace("working"), can: { resume: "switch", accounts: true, fork: true, delete: "live" } }),
       row({ sessionId: "bg", isBg: true, can: { resume: "bg", accounts: true, fork: false, delete: "yes" } }),
     ];
     const v = await opened();
     await showRow("cx");
     expect(inHead(copyText("history.row.resume"))!.title).toBe(
-      copyText("resumeMenu.hint.pick", { pick: copyText("resumeMenu.pick.account", { account: "Codex", run: copyText("resumeMenu.run.direct") }) }),
+      copyText("resumeMenu.hint.pick", { pick: copyText("resumeMenu.pick.account", { account: "Codex", run: copyText("resumeMenu.run.machine") }) }),
     );
     inHead(copyText("history.resume.more"))!.click();
     await flush();
@@ -857,7 +849,7 @@ describe("筛选浮层的其余几格 · 按项目收起与新建", () => {
     invokeMock.mock.calls.length = 0;
     box(copyText("history.filter.tools")).click();
     await flush();
-    expect(calls("history-search").length).toBeGreaterThan(0);
+    expect(calls("history-search").map((a) => a.include_tools), "勾上工具 ⇒ 两台各再搜一次、带上工具").toEqual([true, true]);
     expect(byText("button", copyText("history.page.filter"))!.textContent).toContain("2");
     v.close();
   });

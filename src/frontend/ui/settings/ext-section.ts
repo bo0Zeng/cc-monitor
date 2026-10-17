@@ -21,7 +21,6 @@
 import { copyText } from "../copy-table";
 import { icon, type IconName } from "../kit/icon";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
-import { commands } from "../ipc/commands";
 import { syncAssets } from "../assets-sync-reads";
 import { openFileWindow } from "../file-window";
 import { revealInFolder } from "../reveal-in-folder";
@@ -287,7 +286,7 @@ export class ExtSection {
   /** 重读那张表；`sync` = 先让本机后端对那台（`LOCAL_ORIGIN` = 各台）同步一趟。 */
   private async reload(visit: boolean, sync: Origin | null): Promise<void> {
     const my = ++this.seq;
-    if (!this.list) this.status.textContent = copyText("extPage.status.loading");
+    if (!this.list) this.status.textContent = copyText("kit.state.reading");
     try {
       const synced = sync === null ? "" : await this.syncOnce(sync);
       const list = await extList(visit);
@@ -580,7 +579,7 @@ export class ExtSection {
       const line = el("div", "ext-hook");
       line.appendChild(el("span", "ext-machine-name", machineName(m)));
       const h = this.hooks.get(machineKey(m));
-      if (!m.reachable) line.appendChild(el("div", "settings-hint", copyText("extPage.hooks.offline")));
+      if (!m.reachable) line.appendChild(el("div", "settings-hint", copyText("kit.offline.later")));
       else if (!h || h.kind === "loading") line.appendChild(el("div", "settings-hint", copyText("extPage.hooks.loading")));
       else if (h.kind === "failed") line.appendChild(el("div", "ext-error", copyText("extPage.hooks.failed", { said: h.said })));
       else this.hookReport(line, h.report);
@@ -914,9 +913,7 @@ export class ExtSection {
         const key = m.to ?? "";
         if (m.done) {
           const text = copyText("extPage.install.doneOne", { machine: m.name, said: m.done.note ?? copyText("extPage.done.written", { n: String(m.done.changed.length) }) });
-          const here = m.to === null;
-          const warn = r.builtin !== null && here ? await commands.cc_bus_ccm_precheck() : null;
-          inst.results.set(key, { ok: true, text: warn ? `${text} ${copyText("extPage.done.warn", { said: warn })}` : text });
+          inst.results.set(key, { ok: true, text });
           inst.picked.delete(key);
         } else if (m.error) {
           inst.results.set(key, { ok: false, text: copyText("extPage.error.install", { machine: m.name, said: m.error }), detail: m.detail });

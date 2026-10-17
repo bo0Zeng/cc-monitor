@@ -115,7 +115,8 @@ fn machine(tag: &str) -> Tmp {
     t
 }
 
-type KeyLog = Mutex<Vec<Value>>;
+/// 写 key 那一口收到的：其余几格（JSON）＋ 那把 key（只比是不是同一串，不取明文）。
+type KeyLog = Mutex<Vec<(Value, creds_core::SecretKey)>>;
 
 /// 这台 key 表落在临时家目录里的那一份。
 fn key_table(t: &Tmp) -> PathBuf {
@@ -207,7 +208,10 @@ pub(crate) fn answer(
 fn call_with(t: &Tmp, keys: &KeyLog, cmd: &str, args: Value) -> Answer {
     let table = key_table(t);
     let set = |v: &file_face::KeySetReq| -> Result<file_face::KeySet, Fail> {
-        keys.lock().unwrap().push(serde_json::to_value(v).unwrap());
+        keys.lock().unwrap().push((
+            json!({ "configDir": v.config_dir, "baseUrl": v.base_url }),
+            v.key.clone(),
+        ));
         file_face::answer_set_at(
             &crate::platform::fs::Own::issue_data_at(table.parent().expect("表所在的那一层")),
             v,
@@ -307,7 +311,40 @@ fn init_moves_the_identity_links_the_rest_and_writes_the_manifest_and_alias() {
         json!({ "name": "lab", "dryRun": true }),
     );
     assert_eq!(dry["applied"], false);
-    assert!(dry["steps"].as_array().unwrap().len() >= 8, "{dry}");
+    let h = t.0.display().to_string();
+    let (acct, lab, cl) = (
+        format!("{h}/.cc-monitor/accounts"),
+        format!("{h}/.cc-monitor/accounts/lab"),
+        format!("{h}/.claude"),
+    );
+    let mut steps = vec![format!("建目录 {acct}"), format!("建目录 {lab}")];
+    for (from, name) in [
+        (format!("{cl}/.credentials.json"), ".credentials.json"),
+        (format!("{h}/.claude.json"), ".claude.json"),
+        (format!("{cl}/backups"), "backups"),
+        (format!("{cl}/policy-limits.json"), "policy-limits.json"),
+        (
+            format!("{cl}/remote-settings.json.synced-at"),
+            "remote-settings.json.synced-at",
+        ),
+        (format!("{cl}/stats-cache.json"), "stats-cache.json"),
+    ] {
+        steps.push(format!("搬文件 {from} → {lab}/{name}"));
+    }
+    steps.extend(["agents", "plans"].map(|d| format!("建目录 {cl}/{d}")));
+    for name in [
+        "CLAUDE.md",
+        "agents",
+        "plans",
+        "projects",
+        "settings.json",
+        "skills",
+    ] {
+        steps.push(format!("建链接 {lab}/{name} → {cl}/{name}"));
+    }
+    steps.extend([".credentials.json", ".claude.json"].map(|f| format!("改权限 {lab}/{f} → 600")));
+    steps.push(format!("写账号清单 {acct}/accounts.json"));
+    assert_eq!(dry["steps"], json!(steps), "{dry}");
     assert_eq!(tree(&t.0), before, "预演动了盘");
 
     let got = ok(&t, "accounts-init", json!({ "name": "lab" }));
@@ -655,12 +692,17 @@ fn api_key_account_lands_its_key_in_the_apikey_table_not_in_the_manifest() {
     assert!(got["keyProblem"].is_null());
     assert_eq!(key_ids(&t), vec!["k".to_string()]);
     assert!(got.get("loginCmd").is_none());
+    let sent = keys.lock().unwrap();
     assert_eq!(
-        *keys.lock().unwrap(),
+        sent.iter().map(|(v, _)| v.clone()).collect::<Vec<_>>(),
         vec![
-            json!({ "configDir": t.s(".cc-monitor/accounts/k"), "key": "sk-secret-abcd", "baseUrl": "https://api.example.test" })
+            json!({ "configDir": t.s(".cc-monitor/accounts/k"), "baseUrl": "https://api.example.test" })
         ]
     );
+    assert!(sent[0]
+        .1
+        .same_secret(&creds_core::SecretKey::new("sk-secret-abcd")));
+    drop(sent);
     assert_eq!(t.manifest()["accounts"][1]["authKind"], "api-key");
     assert!(!t
         .read(".cc-monitor/accounts/accounts.json")

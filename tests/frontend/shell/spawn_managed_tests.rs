@@ -107,7 +107,7 @@ fn the_spawn_verbs_and_platform_primitives_live_only_here() {
     // 而报文教人「把 `cmd.spawn()` 换成 `spawn_managed_cmd(..)`」——**在它自己的实现里**。
     // ⇒ 换成明写的排除（摘不到它，`scan_tree_excluding` 当场红）。
     let files = guard_core::scan_tree_excluding(
-        &crate::guard_support::crate_src_root(),
+        &guard_core::addr::shell_src_root(),
         &["rs"],
         // 出口的平台那一半（`.creation_flags(` · `.process_group(`）住 `platform/spawn.rs`：同一个出口的下半截，一起排掉。
         &[

@@ -7,11 +7,7 @@ import type { WirePath } from "./WirePath";
  */
 export type StatReply = { path: WirePath, 
 /**
- * 末段名（那台按自己的分隔符切好；到顶 ⇒ 空）。
- */
-name: WirePath, 
-/**
- * 上一级；到顶 ⇒ `null`。
+ * 上一级（那台按自己的路径规则切）；到顶 ⇒ `null`。
  */
 up: WirePath | null, kind: FileKind, size: number, readonly: boolean, 
 /**

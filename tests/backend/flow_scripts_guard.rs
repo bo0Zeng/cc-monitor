@@ -1,4 +1,4 @@
-//! 流程工具住在仓里（10-10 flow3）：门禁入口 `gate-clean.sh` · 按改动挑格 `gate-affected.sh`（＋ `gate-affected/plan.py` · `gate-affected/map`）·
+//! 流程工具住在仓里：门禁入口 `gate-clean.sh` · 按改动挑格 `gate-affected.sh`（＋ `gate-affected/plan.py` · `gate-affected/map`）·
 //! 重活隔离 `heavy.sh` · 推候选分支 `push-candidate.sh`，连同早先进仓的 `quick-check.sh` · `bump-build-id.sh`。
 //!
 //! 从前它们在仓外、只认一台机器、没有版本：门禁入口的 tmux 隔离改坏了几天没人发现，挑格的表与仓里的格对不上也只有跑起来才知道。
@@ -9,8 +9,9 @@
 //! - `heavy.sh` 在没有 `systemd-run --user` 的机器上（CI · Windows · 没有 user session）退成直接跑，并说一声；起的命令看不见外面会话的变量
 //!   （表 `session-vars`；枚举环境的只有 `session-scrub.sh`，e2e 的 `sandbox-env.sh` 照它摘）；
 //! - 「这棵树自己改了哪些」的起点（`base.sh`）先认分支上游；没提交的生成物（`generated-drift.sh`）逐份印出；
-//! - `quick-check.sh` 的手机那一段：相对 main 改到手机读的东西才跑（经 heavy、gradle 带 `--no-daemon`），没改到就跳过并说一声；
-//!   「手机读的东西」那张表（`mobile_reads`）对着 `src/mobile` 里字面写到的仓内路径核，漏一处就红。
+//!   金样判据落下的现打那份由 `bless-golden.sh` 逐份拷回原处；
+//! - `quick-check.sh` 重的那四段（后端 · 壳 · vitest · 手机）照挑格那张表挑：前三段恒跑，手机那一段改到它读的东西才跑，没改到说一声；
+//!   手机读的仓外路径对着 `src/mobile` 里字面写到的核（`plan.py --cover mobile`），漏一处就红。
 
 #[cfg(all(test, unix))]
 mod tests {
@@ -32,6 +33,7 @@ mod tests {
         "tests/scripts/session-scrub.sh",
         "tests/scripts/base.sh",
         "tests/scripts/generated-drift.sh",
+        "tests/scripts/bless-golden.sh",
     ];
 
     /// 带 `--help` 的入口。
@@ -43,7 +45,7 @@ mod tests {
     ];
 
     fn root() -> PathBuf {
-        crate::guard_support::repo_root()
+        guard_core::addr::repo_root()
     }
 
     fn scratch(tag: &str) -> PathBuf {
@@ -96,7 +98,7 @@ mod tests {
     }
 
     /// 私人扫描只认 PATH 上的 `private-scan.sh`：门禁与推送都在做任何事之前找它，找不到就停（门禁不许落成 OK、推送拒推），
-    /// 并说缺的是哪一个；环境变量指过去的不算。正控：PATH 上有它就过了这一关、停在后面的「不在仓里」。
+    /// 并说缺的是哪一个。正控：PATH 上有它就过了这一关、停在后面的「不在仓里」。
     #[test]
     fn gate_and_push_stop_without_the_private_scan_on_path() {
         const MISSING: &str = "PATH 上没有 private-scan.sh";
@@ -107,12 +109,10 @@ mod tests {
             for on_path in [false, true] {
                 let d = scratch("pscan");
                 let bin = tool_bin(&d, &["bash", "git", "sed", "dirname", "cat", "mkdir"]);
-                let fake = d.join("fake-scan.sh");
-                std::fs::write(&fake, "exit 0\n").unwrap();
                 if on_path {
                     use std::os::unix::fs::PermissionsExt;
                     let on = bin.join("private-scan.sh");
-                    std::fs::copy(&fake, &on).unwrap();
+                    std::fs::write(&on, "exit 0\n").unwrap();
                     std::fs::set_permissions(&on, std::fs::Permissions::from_mode(0o755)).unwrap();
                 }
                 let out = Command::new(bin.join("bash"))
@@ -120,7 +120,6 @@ mod tests {
                     .args(args)
                     .current_dir(&d)
                     .env("PATH", &bin)
-                    .env("PRIVATE_SCAN", &fake)
                     .env("GATE_STATE_DIR", d.join("state"))
                     .env_remove("TMUX")
                     .env_remove("TMUX_PANE")
@@ -154,8 +153,7 @@ mod tests {
                 .arg(root())
                 .stdin(std::process::Stdio::piped())
                 .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .env_remove("GATE_AFFECTED_MAP");
+                .stderr(std::process::Stdio::piped());
             if trust {
                 c.arg("--trust-ci");
             }
@@ -204,6 +202,101 @@ mod tests {
         let (rc, said) = plan("A\tnowhere/never.txt\n", false);
         assert_eq!(rc, 0, "{said}");
         assert_eq!(line(&said, "PLAN-MODE:"), "full", "{said}");
+    }
+
+    /// 挑格那一半的一趟：(退出码, 输出)。`args` 跟在仓根后面。
+    fn plan_py(repo: &Path, args: &[&str], stdin: &str) -> (i32, String) {
+        let mut ch = Command::new("python3")
+            .arg(root().join("tests/scripts/gate-affected/plan.py"))
+            .arg(repo)
+            .args(args)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .env_remove("GATE_AFFECTED_MAP")
+            .spawn()
+            .expect("python3 起不来");
+        use std::io::Write;
+        ch.stdin
+            .take()
+            .unwrap()
+            .write_all(stdin.as_bytes())
+            .unwrap();
+        let out = ch.wait_with_output().unwrap();
+        (
+            out.status.code().unwrap_or(-1),
+            format!(
+                "{}{}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            ),
+        )
+    }
+
+    /// `plan.py --cover <格>`：改了不会挑上这一格的那几条。
+    fn cover(repo: &Path, cell: &str, paths: &str) -> Vec<String> {
+        let (rc, said) = plan_py(repo, &["--cover", cell], paths);
+        let miss: Vec<String> = said
+            .lines()
+            .filter_map(|l| l.strip_prefix("COVER-MISS: "))
+            .map(str::to_string)
+            .collect();
+        assert_eq!(
+            rc,
+            i32::from(!miss.is_empty()),
+            "--cover 的退出码与漏的条数对不上：{said}"
+        );
+        miss
+    }
+
+    /// 重的那几格（后端 · 壳 · vitest · 手机的单测）：前三格恒跑（它们都扫全仓）；手机那一格只在改到手机读的东西时挑上 ——
+    /// 手机树本身 · 手机嵌的 Rust 核心顺 path 依赖链到的共享 crate（新加的文件也算）；只动界面不挑；表不认识的 ⇒ 全量。
+    #[test]
+    fn the_plan_picks_mobile_by_what_it_reads_and_always_runs_the_other_suites() {
+        let cells = |changes: &str| -> (String, BTreeSet<String>) {
+            let (rc, said) = plan_py(&root(), &[], changes);
+            assert_eq!(rc, 0, "{said}");
+            let line = |key: &str| {
+                said.lines()
+                    .find_map(|l| l.strip_prefix(key))
+                    .unwrap_or_else(|| panic!("计划里没有 `{key}`：{said}"))
+                    .trim()
+                    .to_string()
+            };
+            let picked = line("PLAN-CELLS:")
+                .split_whitespace()
+                .filter(|c| ["backend", "cargo", "npm", "mobile"].contains(c))
+                .map(str::to_string)
+                .collect();
+            (line("PLAN-MODE:"), picked)
+        };
+        let set = |c: &[&str]| c.iter().map(|s| s.to_string()).collect::<BTreeSet<_>>();
+        let suites = ["backend", "cargo", "npm"];
+        let with_mobile = set(&["backend", "cargo", "npm", "mobile"]);
+        for change in [
+            "M\tsrc/mobile/app/src/main/kotlin/X.kt\n",
+            "M\tsrc/common/copy-core/src/lib.rs\n",
+            "A\tsrc/common/copy-core/src/new_part.rs\n",
+            "M\tsrc/backend/ssh-dial/lib.rs\n",
+            "M\tsrc/vendor/russh/russh/src/lib.rs\n",
+        ] {
+            assert_eq!(
+                cells(change),
+                ("affected".into(), with_mobile.clone()),
+                "{change}"
+            );
+        }
+        for change in [
+            "M\tsrc/frontend/ui/main.ts\n",
+            "M\tsrc/common/guard-core/src/lib.rs\n",
+        ] {
+            assert_eq!(cells(change), ("affected".into(), set(&suites)), "{change}");
+        }
+        assert_eq!(
+            cells("A\tnowhere/never.txt\n"),
+            ("full".into(), set(&[])),
+            "表不认识"
+        );
     }
 
     /// PATH 里没有 `systemd-run` ⇒ 直接跑，并在 stderr 说一声；命令的退出码照传。
@@ -487,6 +580,95 @@ mod tests {
             .unwrap()
     }
 
+    /// ★ 槽位先来先得：三个槽位都占着时先后来了 A、B，放开一个 ⇒ A 先拿到。
+    /// B 那一份认 4 个槽位、第 4 个空着：各自去问槽位的写法 B 一进门就拿走第 4 个、插到 A 前面；
+    /// 排队的写法 B 排在 A 后面，轮到它之前不问槽位。
+    #[test]
+    fn heavy_hands_a_freed_slot_to_whoever_waited_first() {
+        use std::io::{BufRead, BufReader};
+        use std::process::{Child, Stdio};
+        let d = scratch("heavy-fifo");
+        let bin = tool_bin(
+            &d,
+            &[
+                "bash", "sh", "flock", "seq", "sleep", "mkdir", "echo", "cat", "true", "rm",
+            ],
+        );
+        let slots = d.join("state/heavy-slots");
+        std::fs::create_dir_all(&slots).unwrap();
+        // 三个槽位各由一个持锁的子进程占着；关掉它的标准输入就放开。
+        let mut holders: Vec<Child> = (1..=3)
+            .map(|i| {
+                let mut h = Command::new("bash")
+                    .args(["-c", "exec 9>\"$0\"; flock 9; echo held; read _"])
+                    .arg(slots.join(i.to_string()))
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .spawn()
+                    .unwrap();
+                let mut line = String::new();
+                BufReader::new(h.stdout.as_mut().unwrap())
+                    .read_line(&mut line)
+                    .unwrap();
+                assert_eq!(line, "held\n");
+                h
+            })
+            .collect();
+        let order = d.join("order");
+        // 起一个等的人，等它说出「排队等」才回（它已经问过一圈、没拿到）。
+        let waiter = |name: &str, slots: &str| -> Child {
+            let mut c = Command::new(bin.join("bash"))
+                .arg(root().join("tests/scripts/heavy.sh"))
+                .args(["bash", "-c", "echo \"$0\" >> order", name])
+                .current_dir(&d)
+                .env("PATH", &bin)
+                .env("GATE_STATE_DIR", d.join("state"))
+                .env("HEAVY_SLOTS", slots)
+                .env_remove("HEAVY_HELD")
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            let mut err = BufReader::new(c.stderr.take().unwrap());
+            let mut line = String::new();
+            while line.trim_end() != format!("heavy: {slots} 个槽位都占着，排队等…") {
+                line.clear();
+                assert!(
+                    err.read_line(&mut line).unwrap() > 0,
+                    "{name} 没排队就拿到了槽位（插在先来的前面）"
+                );
+            }
+            std::thread::spawn(move || std::io::copy(&mut err, &mut std::io::sink()));
+            c
+        };
+        let mut a = waiter("A", "3");
+        let mut b = waiter("B", "4");
+        drop(holders[0].stdin.take());
+        let _ = holders[0].wait();
+        let first = guard_core::wall::rounds()
+            .find_map(|()| {
+                let got = std::fs::read_to_string(&order).unwrap_or_default();
+                if got.is_empty() {
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                    return None;
+                }
+                Some(got)
+            })
+            .expect("放开一个槽位后谁都没拿到");
+        assert_eq!(
+            first.lines().next(),
+            Some("A"),
+            "后来的 B 抢在先来的 A 前面拿到了槽位"
+        );
+        for h in &mut holders[1..] {
+            drop(h.stdin.take());
+            let _ = h.wait();
+        }
+        assert!(a.wait().unwrap().success());
+        assert!(b.wait().unwrap().success());
+        assert_eq!(std::fs::read_to_string(&order).unwrap(), "A\nB\n");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     /// 本进程的 nice 值再降 10（封顶 19）：判据自己可能就跑在一份降过的重活里。
     fn lowered_nice() -> String {
         let stat = std::fs::read_to_string("/proc/self/stat").unwrap();
@@ -635,15 +817,23 @@ mod tests {
         std::fs::write(p, text).unwrap();
     }
 
-    /// 一棵假仓：main 上有一份假 gradlew（记下参数、写一份三条的 test-results），工作分支上只改 `changed` 那一条。
-    /// 返回 quick-check `--mobile` 的输出与假 gradlew 收到的参数（没被调就是 None）。
-    fn quick_mobile(tag: &str, changed: &str) -> (String, String, Option<String>) {
+    /// quick-check `--only mobile` 那一趟：输出 · 假 gradlew 收到的参数 · 它看到的那几个并行数变量（没被调就是 None）。
+    struct QuickMobile {
+        plan: String,
+        said: String,
+        args: Option<String>,
+        env: Option<String>,
+    }
+
+    /// 一棵假仓：main 上有一份假 gradlew（记下参数 · 它看得见的变量名 · 并行数变量，写一份三条的 test-results），工作分支上只改 `changed` 那一条。
+    /// `envs`：跑 quick-check 时另设（`Some`）或清掉（`None`）的变量；`nproc` 另给一个假的、说 24（判据不随跑它的机器变）。
+    fn quick_mobile(tag: &str, changed: &str, envs: &[(&str, Option<&str>)]) -> QuickMobile {
         let d = scratch(tag);
         git(&d, &["init", "-q", "-b", "main"]);
         write(
             &d,
             "src/mobile/gradlew",
-            "#!/bin/sh\necho \"$@\" > ../../gradlew-args\nenv | cut -d= -f1 > ../../gradlew-env\nmkdir -p ../../.build/mobile/app/test-results/t\necho '<testsuite name=\"x\" tests=\"3\" failures=\"0\">' > ../../.build/mobile/app/test-results/t/TEST-x.xml\n",
+            "#!/bin/sh\necho \"$@\" > ../../gradlew-args\nenv | cut -d= -f1 > ../../gradlew-env\necho \"RUST_TEST_THREADS=$RUST_TEST_THREADS GATE_VITEST_WORKERS=$GATE_VITEST_WORKERS\" > ../../gradlew-share\nmkdir -p ../../.build/mobile/app/test-results/t\necho '<testsuite name=\"x\" tests=\"3\" failures=\"0\">' > ../../.build/mobile/app/test-results/t/TEST-x.xml\n",
         );
         assert!(Command::new("chmod")
             .args(["+x", "src/mobile/gradlew"])
@@ -651,7 +841,11 @@ mod tests {
             .status()
             .unwrap()
             .success());
-        write(&d, ".gitignore", ".build/\ngradlew-args\ngradlew-env\n");
+        write(
+            &d,
+            ".gitignore",
+            ".build/\ngradlew-args\ngradlew-env\ngradlew-share\nbin/\n",
+        );
         git(&d, &["add", "-A"]);
         git(&d, &["commit", "-q", "-m", "base"]);
         git(&d, &["checkout", "-q", "-b", "work"]);
@@ -659,15 +853,33 @@ mod tests {
         git(&d, &["add", "-A"]);
         git(&d, &["commit", "-q", "-m", "work"]);
         let script = root().join("tests/scripts/quick-check.sh");
+        let bin = d.join("bin");
+        write(&d, "bin/nproc", "#!/bin/sh\necho 24\n");
+        assert!(Command::new("chmod")
+            .args(["+x", "bin/nproc"])
+            .current_dir(&d)
+            .status()
+            .unwrap()
+            .success());
+        let path = format!(
+            "{}:{}",
+            bin.display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
         let (outer, kept) = outer_session();
-        let run = |arg: &str| {
-            let mut c = Command::new("bash");
+        let run_args = |args: &[&str]| {
+            let mut cmd = Command::new("bash");
             for k in outer.iter().chain(&kept) {
-                c.env(k, "outer-session");
+                cmd.env(k, "outer-session");
             }
-            c.arg(&script)
-                .arg(arg)
-                .current_dir(&d)
+            cmd.arg(&script).args(args).env("PATH", &path);
+            for (k, v) in envs {
+                match v {
+                    Some(v) => cmd.env(k, v),
+                    None => cmd.env_remove(k),
+                };
+            }
+            cmd.current_dir(&d)
                 .env("JAVA_HOME", d.join("no-jdk"))
                 .env("ANDROID_HOME", d.join("no-sdk"))
                 .env("GRADLE_USER_HOME", d.join("no-gradle"))
@@ -678,8 +890,8 @@ mod tests {
                 .output()
                 .unwrap()
         };
-        let plan = String::from_utf8_lossy(&run("--mobile-plan").stdout).into_owned();
-        let out = run("--mobile");
+        let plan = String::from_utf8_lossy(&run_args(&["--plan"]).stdout).into_owned();
+        let out = run_args(&["--only", "mobile"]);
         let said = format!(
             "{}{}",
             String::from_utf8_lossy(&out.stdout),
@@ -697,8 +909,14 @@ mod tests {
             let lost: Vec<&String> = kept.iter().filter(|k| !seen.contains(k.as_str())).collect();
             assert!(lost.is_empty(), "判据输入没传到 gradle：{lost:?}");
         }
+        let env = std::fs::read_to_string(d.join("gradlew-share")).ok();
         let _ = std::fs::remove_dir_all(&d);
-        (plan, said, args)
+        QuickMobile {
+            plan,
+            said,
+            args,
+            env,
+        }
     }
 
     #[test]
@@ -708,7 +926,9 @@ mod tests {
             "tests/__fixtures__/history-list.golden.json",
             "src/mobile/app/src/main/kotlin/X.kt",
         ] {
-            let (plan, said, args) = quick_mobile("mobile-run", changed);
+            let QuickMobile {
+                plan, said, args, ..
+            } = quick_mobile("mobile-run", changed, &[]);
             assert!(
                 plan.contains(&format!("MOBILE: 跑 —— 改到 {changed}")),
                 "{plan}"
@@ -729,18 +949,111 @@ mod tests {
             assert!(said.trim_end().contains("QUICK: OK"), "{said}");
         }
         // 没改到 ⇒ 跳过，并说一声；gradle 一次都没调。
-        let (plan, said, args) = quick_mobile("mobile-skip", "src/frontend/ui/x.ts");
-        assert!(plan.contains("MOBILE: 跳过"), "{plan}");
+        let QuickMobile {
+            plan, said, args, ..
+        } = quick_mobile("mobile-skip", "src/frontend/ui/x.ts", &[]);
+        assert!(plan.contains("MOBILE: 不跑"), "{plan}");
         assert!(args.is_none(), "没改到手机读的东西却调了 gradle：{said}");
         assert!(
-            said.contains("跳过：相对 main 没改到"),
+            said.contains("不跑：相对 main 的改动没有一条落在它读的面上"),
             "跳过了却没说：{said}"
         );
         assert!(said.trim_end().contains("QUICK: OK"), "{said}");
     }
 
-    /// `mobile_reads` 漏没漏：`src/mobile` 的 Kotlin / Gradle 源里字面写到的仓内（手机树外）路径，每一条都得落在表里某一项下。
-    /// 按路径段比（`src/backend` 不会被 `src/backend-x` 冒认）；Gradle 脚本里 `rootProject.file("../X")` 的 X 相对的是 `src/`。
+    /// quick-check 重的四段照挑格表：前三段恒跑；只动手机 ⇒ 手机那一段跑、只动界面 ⇒ 不跑；表不认识的 ⇒ 四段全跑（说不准的一律跑）。
+    #[test]
+    fn quick_check_plans_the_heavy_segments_by_the_map() {
+        let plan = quick_mobile("plan-mobile", "src/mobile/app/src/main/kotlin/X.kt", &[]).plan;
+        let lines = |p: &str| p.lines().map(str::to_string).collect::<Vec<_>>();
+        let skip = "不跑 —— 相对 main 的改动没有一条落在它读的面上（gate-affected/map）";
+        let run = |why: &str| format!("跑 —— 改到 {why}");
+        let always = "跑 —— 恒跑（gate-affected/map 的 @suites）";
+        assert_eq!(
+            lines(&plan),
+            vec![
+                format!("BACKEND: {always}"),
+                format!("SHELL: {always}"),
+                format!("VITEST: {always}"),
+                format!("MOBILE: {}", run("src/mobile/app/src/main/kotlin/X.kt")),
+            ],
+            "{plan}"
+        );
+        let plan = quick_mobile("plan-ui", "src/frontend/ui/x.ts", &[]).plan;
+        assert_eq!(
+            lines(&plan),
+            vec![
+                format!("BACKEND: {always}"),
+                format!("SHELL: {always}"),
+                format!("VITEST: {always}"),
+                format!("MOBILE: {skip}"),
+            ],
+            "{plan}"
+        );
+        let plan = quick_mobile("plan-unknown", "nowhere/never.txt", &[]).plan;
+        let all = run("nowhere/never.txt，表说这条要全量");
+        assert_eq!(
+            lines(&plan),
+            ["BACKEND", "SHELL", "VITEST", "MOBILE"]
+                .map(|s| format!("{s}: {all}"))
+                .to_vec(),
+            "{plan}"
+        );
+    }
+
+    /// 快检每路的测试并行数（10-15）：几路快检同时跑时，每路的测试按默认各起满核数的线程 / worker，互相挤
+    ///   （量过：8 个线程比默认省一到三成 CPU、墙钟持平；4 个墙钟变长）。⇒ Rust 测试线程 · vitest worker · gradle worker
+    ///   都拿「核数 ÷ heavy 槽位数」那一份（槽位数照 `HEAVY_SLOTS`，默认与 heavy.sh 同一个 3）；外面设了 Rust / vitest 那两个变量就听外面的。
+    /// 观测点是假 gradlew：它跑在 `run` 给的环境里（cargo 与 vitest 那几步同一个 `run`），收到的参数与变量就是各步拿到的。
+    #[test]
+    fn quick_check_gives_each_test_runner_its_share_of_the_cores() {
+        let changed = "src/mobile/app/src/main/kotlin/X.kt";
+        let clear: [(&str, Option<&str>); 3] = [
+            ("RUST_TEST_THREADS", None),
+            ("GATE_VITEST_WORKERS", None),
+            ("HEAVY_SLOTS", None),
+        ];
+        let seen = |envs: &[(&str, Option<&str>)]| {
+            let q = quick_mobile("mobile-share", changed, envs);
+            let args = q.args.unwrap_or_else(|| panic!("没调 gradle：{}", q.said));
+            let env = q.env.unwrap_or_default();
+            (args, env.trim().to_string())
+        };
+        // 默认：24 核 ÷ 3 槽 = 8
+        let (args, env) = seen(&clear);
+        assert!(
+            args.split_whitespace().any(|a| a == "--max-workers=8"),
+            "gradle 没拿到那一份：{args}"
+        );
+        assert_eq!(env, "RUST_TEST_THREADS=8 GATE_VITEST_WORKERS=8");
+        // 槽位数跟着 HEAVY_SLOTS：24 ÷ 4 = 6
+        let (args, env) = seen(&[clear[0], clear[1], ("HEAVY_SLOTS", Some("4"))]);
+        assert!(
+            args.split_whitespace().any(|a| a == "--max-workers=6"),
+            "{args}"
+        );
+        assert_eq!(env, "RUST_TEST_THREADS=6 GATE_VITEST_WORKERS=6");
+        // 外面设了就听外面的
+        let (_, env) = seen(&[
+            ("RUST_TEST_THREADS", Some("5")),
+            ("GATE_VITEST_WORKERS", Some("7")),
+            clear[2],
+        ]);
+        assert_eq!(env, "RUST_TEST_THREADS=5 GATE_VITEST_WORKERS=7");
+        // heavy.sh 的槽位默认与这里同一个数（这一份是按槽位分的）：两边那一行整行钉住，上面 24 ÷ 3 = 8 那一趟已证快检真按 3 算
+        let heavy = std::fs::read_to_string(root().join("tests/scripts/heavy.sh")).unwrap();
+        let qc = std::fs::read_to_string(root().join("tests/scripts/quick-check.sh")).unwrap();
+        guard_core::pin_line(&heavy, "slots=${HEAVY_SLOTS:-3}")
+            .unwrap_or_else(|e| panic!("heavy.sh 的槽位默认不是 3 了（快检那一份要跟着改）：{e}"));
+        guard_core::pin_line(
+            &qc,
+            r#"share=$(( $(nproc) / ${HEAVY_SLOTS:-3} )); [ "$share" -ge 1 ] || share=1"#,
+        )
+        .unwrap_or_else(|e| panic!("快检按的槽位默认认不出了：{e}"));
+    }
+
+    /// 手机读的仓内路径挑格表漏没漏：`src/mobile` 的 Kotlin / Gradle 源里字面写到的仓内（手机树外）路径，改了每一条都得挑上 `mobile`
+    /// （`plan.py --cover mobile`；目录或带模板的那几条拿目录下一份新文件当探针）。Gradle 脚本里 `rootProject.file("../X")` 的 X 相对的是 `src/`。
     /// 手机嵌的 Rust 核心用的 NDK 只钉在一处（`src/mobile/gradle.properties` 的 `ccm.ndkVersion`，Gradle 与门禁 `androidbuild` 读它）；
     /// CI 的 `mobile` job 与发版的 `build-mobile` job 装的就是那一版（装错一版 ⇒ Gradle 找不到 NDK、CI 才红）。
     #[test]
@@ -791,21 +1104,13 @@ mod tests {
     }
 
     #[test]
-    fn the_mobile_reads_cover_every_repo_path_the_mobile_tree_names() {
+    fn the_plan_runs_mobile_for_every_repo_path_the_mobile_tree_names() {
         let segs = |p: &str| -> Vec<String> {
             p.split('/')
                 .filter(|s| !s.is_empty())
                 .map(str::to_string)
                 .collect()
         };
-        let qc = std::fs::read_to_string(root().join("tests/scripts/quick-check.sh")).unwrap();
-        let line = qc
-            .lines()
-            .find_map(|l| l.strip_prefix("mobile_reads=("))
-            .and_then(|l| l.strip_suffix(')'))
-            .expect("quick-check.sh 里没有 `mobile_reads=(…)` 那一行");
-        let reads: Vec<Vec<String>> = line.split_whitespace().map(|r| segs(r)).collect();
-        assert!(reads.contains(&segs("src/mobile")), "{reads:?}");
         let outside: Vec<Vec<String>> = [
             "tests",
             "src/backend",
@@ -860,13 +1165,18 @@ mod tests {
                 .any(|(_, p)| segs(p).starts_with(&segs("tests/__fixtures__"))),
             "一条金样路径都没认出来 —— 扫法坏了：{named:?}"
         );
-        let missed: Vec<_> = named
-            .iter()
-            .filter(|(_, p)| !reads.iter().any(|r| segs(p).starts_with(r)))
-            .collect();
+        let probe = |p: &str| {
+            if root().join(p).is_file() {
+                p.to_string()
+            } else {
+                format!("{p}/__new__")
+            }
+        };
+        let paths: Vec<String> = named.iter().map(|(_, p)| probe(p)).collect();
+        let missed = cover(&root(), "mobile", &paths.join("\n"));
         assert!(
             missed.is_empty(),
-            "手机树读了这些仓内路径，quick-check 的 mobile_reads 里没有 —— 改了它们 quick-check 不会跑手机那一套：{missed:?}"
+            "手机树读了这些仓内路径，挑格表改了它们不挑手机那一格（quick-check 不跑手机那一套）：{missed:?}\n{named:?}"
         );
     }
 
@@ -907,8 +1217,8 @@ mod tests {
         let emu = read("tests/mobile-smoke/emu.sh");
         pinned(
             &emu,
-            "systemd-run --user --scope --quiet -p MemoryHigh=6G -p MemoryMax=8G",
-            "模拟器不在自己封了内存的 scope 里",
+            "systemd-run --user --scope --quiet -p MemoryMax=8G --",
+            "模拟器不在自己封了内存的 scope 里（只封顶、不设 MemoryHigh：一开机就顶到 6G 那条线，回收节流把线程压在 D 态）",
         );
     }
 
@@ -1153,7 +1463,7 @@ mod tests {
         (d, a, b)
     }
 
-    /// ★ 「这棵树自己改了哪些」的起点（`base.sh`，quick-check 挑手机那一套与 gate-affected 挑格都用它）：
+    /// ★ 「这棵树自己改了哪些」的起点（`base.sh`，quick-check 挑段与 gate-affected 挑格都用它）：
     /// 分支设了上游 ⇒ 与上游的 merge-base；没设 ⇒ origin/main；再没有 ⇒ main。上游比 origin/main 先认。
     /// 连着 quick-check 的计划核：别的路在合并分支上改了手机读的文件，这条分支设了上游就不该因此跑手机那一套。
     #[test]
@@ -1165,11 +1475,7 @@ mod tests {
             String::from_utf8_lossy(&o.stdout).trim().to_string()
         };
         let plan = |d: &Path| {
-            let o = bash(
-                &root().join("tests/scripts/quick-check.sh"),
-                &["--mobile-plan"],
-                d,
-            );
+            let o = bash(&root().join("tests/scripts/quick-check.sh"), &["--plan"], d);
             String::from_utf8_lossy(&o.stdout).into_owned()
         };
         assert_eq!(base(&d), format!("{a} main"));
@@ -1185,7 +1491,7 @@ mod tests {
         assert_eq!(base(&d), format!("{b} merge"), "设了上游却没先认上游");
         let p = plan(&d);
         assert!(
-            p.contains("MOBILE: 跳过 —— 相对 merge 没改到"),
+            p.contains("MOBILE: 不跑 —— 相对 merge 的改动没有一条落在它读的面上"),
             "别的路改的手机文件算到了这条分支头上：{p}"
         );
         let _ = std::fs::remove_dir_all(&d);
@@ -1228,6 +1534,34 @@ mod tests {
         assert_eq!(o.status.code(), Some(1), "{said}");
         let got: BTreeSet<String> = said.lines().map(|l| l[3..].to_string()).collect();
         assert_eq!(got, want, "印出来的与没提交的生成物对不上");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// ★ 重打金样（`bless-golden.sh`）：金样判据落在 `.build/golden/` 下的现打那份逐份拷回仓里原处、删掉现打的那份、逐份印出；
+    /// 一份都没有 ⇒ 退 1。落点取判据那一侧的 [`crate::golden::FRESH_DIR`]：两边对不上这条就红。
+    #[test]
+    fn bless_golden_copies_each_fresh_golden_back_and_clears_it() {
+        let d = scratch("bless");
+        git(&d, &["init", "-q", "-b", "main"]);
+        let bless = |d: &Path| bash(&root().join("tests/scripts/bless-golden.sh"), &[], d);
+        write(&d, "tests/g/a.json", "old\n");
+        let fresh = crate::golden::FRESH_DIR;
+        write(&d, &format!("{fresh}/tests/g/a.json"), "new\n");
+        write(&d, &format!("{fresh}/src/doc/X.md"), "doc\n");
+        let o = bless(&d);
+        let said = String::from_utf8_lossy(&o.stdout);
+        assert_eq!(o.status.code(), Some(0), "{said}");
+        let got: BTreeSet<&str> = said.lines().collect();
+        assert_eq!(
+            got,
+            BTreeSet::from(["重打 src/doc/X.md", "重打 tests/g/a.json"])
+        );
+        let read = |rel: &str| std::fs::read_to_string(d.join(rel)).unwrap();
+        assert_eq!(read("tests/g/a.json"), "new\n");
+        assert_eq!(read("src/doc/X.md"), "doc\n");
+        assert!(!d.join(fresh).exists(), "拷回之后现打的那份还在");
+        let o = bless(&d);
+        assert_eq!(o.status.code(), Some(1), "没有现打的金样却没说");
         let _ = std::fs::remove_dir_all(&d);
     }
 }

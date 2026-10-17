@@ -83,7 +83,7 @@ describe("↗ 结局族", () => {
       acts: [copyText("front.act.openHere")],
     });
     expect(shape({ kind: "desktop-wont-switch", desktop: "" })?.body, "桌面名读不到：不写空名字").toBe(copyText("front.body.desktopWontSwitchBare"));
-    expect(shape({ kind: "unknown", detail: "x" })).toEqual({ title: copyText("front.title.failed"), body: copyText("front.body.unknown"), hint: null, tone: "red", acts: [copyText("detail.act.copy")] });
+    expect(shape({ kind: "unknown", detail: "x" })).toEqual({ title: copyText("front.title.failed"), body: copyText("reason.io.unknown"), hint: null, tone: "red", acts: [copyText("detail.act.copy")] });
   });
 
   it("Windows 那几句不提登记、不指新开标签页（Windows 上没有登记这回事）", () => {

@@ -5,6 +5,7 @@
 use crate::client::{split_and_park, BackendHello, ParkedWriter};
 use crate::line::{read_capped_line, CappedLine};
 use cmd_wire::attach::{AttachLine, AttachReply, Relation, Yes};
+use cmd_wire::watch::WatchAsk;
 use copy_core::copy_text;
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, ReadHalf, WriteHalf};
@@ -27,13 +28,14 @@ pub fn relay_refusal(first: &str) -> Option<String> {
     }
 }
 
-/// attach 行：「我要流」＋ 看的这一台的时区 ＋ 手上这一版的身份（本机 · 远端 · 手机同一处拼）。
-/// `tz` ⇒ `None` 不带（后端按 UTC 写推来的钟面）；`mine` ⇒ `None` 不带（那台就不回新旧）。
-pub fn attach_line(tz: Option<&str>, mine: Option<&str>) -> String {
+/// attach 行：「我要流」＋ 看的这一台的时区 ＋ 手上这一版的身份 ＋ 在看名单（本机 · 远端 · 手机同一处拼）。
+/// `tz` ⇒ `None` 不带（后端按 UTC 写推来的钟面）；`mine` ⇒ `None` 不带（那台就不回新旧）；`watch` 照名单台此刻那份（[`crate::watch::Desk::ask_for_attach`]）。
+pub fn attach_line(tz: Option<&str>, mine: Option<&str>, watch: Option<WatchAsk>) -> String {
     AttachLine {
         attach: Yes,
         tz: tz.map(str::to_string),
         mine: mine.map(str::to_string),
+        watch,
     }
     .line()
 }
@@ -110,12 +112,13 @@ pub enum AttachFail {
     Reply(String),
 }
 
-/// 握完手的那一条：读半边（带缓冲，紧跟 attach 的帧已在里面）· 停着的写半边 · hello · 那台相对这一版。
+/// 握完手的那一条：读半边（带缓冲，紧跟 attach 的帧已在里面）· 停着的写半边 · hello · 那台相对这一版 · attach 行带过的名单。
 pub struct Attached<S> {
     pub reader: BufReader<ReadHalf<S>>,
     pub writer: ParkedWriter<WriteHalf<S>>,
     pub hello: Hello,
     pub relation: Relation,
+    pub carried: Option<WatchAsk>,
 }
 
 async fn line_within<R>(r: &mut R, hello: bool, within: Duration) -> Result<String, AttachFail>
@@ -136,11 +139,7 @@ where
 
 /// 握手那一行没说完（等 hello · 等 attach 回话）。
 fn cut_short(hello: bool, raw: String) -> AttachFail {
-    let said = if hello {
-        copy_text("rsRemoteResident.handshake.helloCut", &[])
-    } else {
-        copy_text("rsRemoteResident.handshake.replyCut", &[])
-    };
+    let said = copy_text("reason.link.lost", &[]);
     AttachFail::Cut { hello, said, raw }
 }
 
@@ -156,20 +155,23 @@ fn read_failed(hello: bool, raw: String) -> AttachFail {
 /// 常驻后端认不得 attach 行时回的原因（后端 `wire/listen.rs` 的 `REFUSE_MALFORMED`）。
 pub const REFUSE_MALFORMED: &str = "malformed-attach";
 
-/// 整段握手：写 attach 行（`mine` ＝ 手上这一版；没带 ⇒ 新旧记不可比）→ 读第一行（拒绝 ⇒ [`AttachFail::Refused`]；不是 hello ⇒
+/// 整段握手：写 attach 行（`mine` ＝ 手上这一版；没带 ⇒ 新旧记不可比；`watch` ＝ 在看名单）→ 读第一行（拒绝 ⇒ [`AttachFail::Refused`]；不是 hello ⇒
 /// [`AttachFail::NotOurs`]）→ 读回话（认不得这一形 ⇒ [`AttachFail::Old`]）。每一行各等至多 `within`。
 /// 写半边在写完 attach 行那一刻就停住（[`split_and_park`]）。attach 行没写出去（链路已断）照读第一行：小中继的拒绝行先于断开。
 pub async fn handshake<S>(
     mut stream: S,
     tz: Option<&str>,
     mine: Option<&str>,
+    watch: Option<WatchAsk>,
     within: Duration,
 ) -> Result<Attached<S>, AttachFail>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
     let sent = async {
-        stream.write_all(attach_line(tz, mine).as_bytes()).await?;
+        stream
+            .write_all(attach_line(tz, mine, watch.clone()).as_bytes())
+            .await?;
         stream.flush().await
     }
     .await;
@@ -207,6 +209,7 @@ where
         } else {
             Relation::Incomparable
         },
+        carried: watch,
     })
 }
 

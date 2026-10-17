@@ -134,7 +134,7 @@ fn 要装只报确实缺的_查不动的不算缺_缺了起不了会话的才进
 }
 
 #[test]
-fn 成品五格_tmux_原样带_角标数照各件算() {
+fn 成品五格_tmux_原样带_各类件数照各件算() {
     let chore = |kind, state| {
         let mut c = Chore::new("x", kind, ChoreAction::How);
         c.state = state;
@@ -142,7 +142,12 @@ fn 成品五格_tmux_原样带_角标数照各件算() {
     };
     let todo = vec![
         chore(ChoreKind::Must, ChoreState::Todo),
+        chore(ChoreKind::Must, ChoreState::Expired),
+        chore(ChoreKind::Install, ChoreState::Todo),
+        chore(ChoreKind::InstallOptional, ChoreState::Todo),
         chore(ChoreKind::Optional, ChoreState::Todo),
+        chore(ChoreKind::Optional, ChoreState::Blocked),
+        chore(ChoreKind::Optional, ChoreState::Declined),
         chore(ChoreKind::Decide, ChoreState::Done),
     ];
     for tmux in [Some(true), Some(false), None] {
@@ -156,11 +161,70 @@ fn 成品五格_tmux_原样带_角标数照各件算() {
         keys.sort();
         assert_eq!(
             keys,
-            vec!["changedFiles", "chores", "home", "own", "tmux", "todo"]
+            vec![
+                "changedFiles",
+                "counts",
+                "home",
+                "own",
+                "rank",
+                "tmux",
+                "todo"
+            ]
         );
         assert_eq!(got["tmux"], json!(tmux), "查不动不许说成没有");
-        assert_eq!(got["chores"], json!(1));
+        assert_eq!(
+            got["counts"],
+            json!({ "badge": 3, "open": 6, "must": 2, "decide": 0, "install": 1, "optional": 3, "done": 1 }),
+            "角标 ＝ 要做 ＋ 待定 ＋ 要装；没做完 ＝ 不是已做也不是不用了；可选含要装 · 可选与先决没满足的"
+        );
     }
+}
+
+#[test]
+fn 跨台合计_各类逐格相加_一台没有就是全零() {
+    use crate::footprint::chores::{merge_counts, ChoreCounts};
+    let one = |badge, open, must, done| ChoreCounts {
+        badge,
+        open,
+        must,
+        decide: 0,
+        install: badge - must,
+        optional: open - badge,
+        done,
+    };
+    assert_eq!(
+        serde_json::to_value(merge_counts(vec![one(1, 3, 1, 0), one(2, 2, 0, 4)])).unwrap(),
+        json!({ "badge": 3, "open": 5, "must": 1, "decide": 0, "install": 2, "optional": 2, "done": 4 })
+    );
+    assert_eq!(merge_counts(vec![]), ChoreCounts::default());
+}
+
+#[test]
+fn 先后键_有进角标的件在前_只剩别的没做完的次之_没事的最后() {
+    let chore = |kind, state| {
+        let mut c = Chore::new("x", kind, ChoreAction::How);
+        c.state = state;
+        c
+    };
+    let rank = |todo: Vec<Chore>| {
+        serde_json::to_value(shape(&report(vec![]), todo, None, vec![])).unwrap()["rank"].clone()
+    };
+    assert_eq!(
+        rank(vec![chore(ChoreKind::Install, ChoreState::Expired)]),
+        json!(0)
+    );
+    assert_eq!(
+        rank(vec![chore(ChoreKind::Optional, ChoreState::Blocked)]),
+        json!(1)
+    );
+    assert_eq!(
+        rank(vec![
+            chore(ChoreKind::Must, ChoreState::Done),
+            chore(ChoreKind::Optional, ChoreState::Declined),
+        ]),
+        json!(2)
+    );
+    assert_eq!(rank(vec![]), json!(2));
 }
 
 /// 改过你的文件那一格（旧测试只看它）。

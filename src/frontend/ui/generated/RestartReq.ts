@@ -29,11 +29,11 @@ compact_within_ms: number,
  */
 arrive_within_ms: number, 
 /**
- * 这台是不是界面所在那台（同 `sessions-start`）。
+ * 这台是不是界面所在那台（同 `session-open`）。
  */
 local: boolean, 
 /**
- * 哪一家（线上的 kind；同 `sessions-start` 的整批那一格）。启动命令 · 模型表这台自己读。
+ * 哪一家（线上的 kind）。启动命令 · 模型表这台自己读。
  */
 agent: string, 
 /**

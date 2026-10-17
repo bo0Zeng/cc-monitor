@@ -11,11 +11,6 @@ const ALLOWED: &[(&str, &str)] = &[
              ⚠ 它只能**打开**，不能读写内容",
     ),
     ("dialog:default", "文件选择框（SFTP 上传/下载选本地路径）"),
-    (
-        "notification:default",
-        "notification 插件往每个页面里注入一层 `window.Notification`，加载时就问一次权限 —— 不给这一格每个窗口一开就是一条 \
-             「not allowed」。界面不发通知；壳自己发（`platform/notify.rs`；Windows 那一臂在壳里用插件）",
-    ),
     ("core:window:allow-minimize", "最小化"),
     ("core:window:allow-set-title", "窗口标题写「cc-monitor · 需手动 N」（任务栏、Alt+Tab 里看得见谁在等你）"),
     ("core:window:allow-set-fullscreen", "全屏"),
@@ -23,7 +18,7 @@ const ALLOWED: &[(&str, &str)] = &[
     ("core:window:allow-close", "关窗"),
     (
         "core:window:allow-unminimize",
-        "把窗口拉到前面那一下先还原：主窗口（点系统通知 · 设置窗跳回账号面板 · 起会话落地）与 agent 窗口（滚到派出卡）",
+        "把窗口拉到前面那一下先还原：主窗口（设置窗跳回账号面板 · 起会话落地）与 agent 窗口（滚到派出卡）",
     ),
     ("core:window:allow-set-focus", "同上，还原之后给它焦点"),
     (
@@ -1038,7 +1033,7 @@ fn the_build_time_execution_surface_stays_registered() {
         "postpack",
     ];
     let pkg: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(crate::guard_support::repo_root().join("package.json"))
+        &std::fs::read_to_string(guard_core::addr::repo_root().join("package.json"))
             .expect("读不到 package.json"),
     )
     .expect("package.json 不是合法 JSON");
@@ -1068,7 +1063,7 @@ fn the_build_time_execution_surface_stays_registered() {
 
     // ③ cargo 配置：红不红取决于**文件里有没有那三个键**，不取决于文件在不在。
     //    人群 = 3 个发起面 × cargo 认的 2 种文件名 = 6 格（依据见本条头注那张表）。
-    let root = crate::guard_support::repo_root().to_path_buf();
+    let root = guard_core::addr::repo_root().to_path_buf();
     let mut slots: Vec<String> = Vec::new();
     for dir in CARGO_CFG_DIRS {
         for name in CARGO_CFG_NAMES {

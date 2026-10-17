@@ -732,7 +732,7 @@ fn cell(
         ));
     }
     let (bring, note) = if !live {
-        (None, Some(copy_text("beExt.note.offline", &[])))
+        (None, Some(copy_text("kit.offline.later", &[])))
     } else {
         match source {
             None => (None, Some(copy_text("beExt.note.noSource", &[]))),

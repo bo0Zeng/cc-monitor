@@ -40,12 +40,7 @@ pub fn ty_of<T: ts_rs::TS + 'static>() -> Ty {
 
 /// 一段文字的 FNV-1a 32 位，8 位十六进制。
 pub fn fnv32(text: &str) -> String {
-    let mut h: u32 = 0x811c_9dc5;
-    for b in text.bytes() {
-        h ^= u32::from(b);
-        h = h.wrapping_mul(0x0100_0193);
-    }
-    format!("{h:08x}")
+    format!("{:08x}", crate::fnv::fnv1a32(text.as_bytes()))
 }
 
 /// 一个类型的形状指纹：名 ＋ 每份声明逐行拼起来。

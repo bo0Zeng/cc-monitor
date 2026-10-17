@@ -1,28 +1,18 @@
-//! `ssh-dial/sftp.rs` 的判据：远端写围栏（只许两处）· 解链接 · files 链路的一问一答。
+//! `ssh-dial/sftp.rs` 的判据：远端写围栏（只许暂存区一处）· 解链接 · files 链路的一问一答。
 //!
 //! 台架是 `sftp_rig`（合成 SFTP 服务端，逐条记改动路径）。**判据看服务端的改动表，不信被测侧的自述。**
 
 use super::rig::{self, HOME};
-use super::{fence_lexical, open_for_write, serve_files, Intent, Refusal, REMOTE_WRITE_ROOTS};
+use super::{fence_lexical, open_for_write, serve_files, Intent, Refusal, STAGING_ROOT};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 // ═══ B3 · 词法那一道：逐形正反 ════════════════════════════════════════════════════════
 
 #[test]
-fn the_lexical_fence_admits_exactly_the_two_roots_and_nothing_else() {
+fn the_lexical_fence_admits_exactly_the_staging_root_and_nothing_else() {
     let home = "/home/u";
     // (路径, 形, 期望：Some(根) = 放行且落在那个根；Some("") = 放行且是 `.cc-monitor` 本身；None = 拒)
     let cases: &[(&str, Intent, Option<&str>)] = &[
-        (
-            ".cc-monitor/bin/cc-monitor-backend",
-            Intent::File,
-            Some(".cc-monitor/bin"),
-        ),
-        (
-            "/home/u/.cc-monitor/bin/.build_id",
-            Intent::File,
-            Some(".cc-monitor/bin"),
-        ),
         (
             ".cc-monitor/staging/00ff.part",
             Intent::File,
@@ -34,31 +24,33 @@ fn the_lexical_fence_admits_exactly_the_two_roots_and_nothing_else() {
             Some(".cc-monitor/staging"),
         ),
         (
-            ".cc-monitor/bin/sub/dir",
+            ".cc-monitor/staging/sub/dir",
             Intent::Dir,
-            Some(".cc-monitor/bin"),
+            Some(".cc-monitor/staging"),
         ),
-        (".cc-monitor/bin", Intent::Dir, Some(".cc-monitor/bin")),
         (
             ".cc-monitor/staging/",
             Intent::Dir,
             Some(".cc-monitor/staging"),
         ),
         (".cc-monitor", Intent::Dir, Some("")),
-        // —— 拒 ——
-        (".cc-monitor/bin", Intent::File, None),
+        // —— 拒（安装位置那一层也是：换进去 · 删掉都由传上去的那一份在那台上自己做）——
+        (".cc-monitor/bin/cc-monitor-backend", Intent::File, None),
+        ("/home/u/.cc-monitor/bin/ccm", Intent::File, None),
+        (".cc-monitor/bin", Intent::Dir, None),
+        (".cc-monitor/staging", Intent::File, None),
         (".cc-monitor", Intent::File, None),
-        (".cc-monitor/binx/y", Intent::File, None),
-        (".cc-monitor/bin-old/y", Intent::Dir, None),
-        (".cc-monitor/bin/../../.bashrc", Intent::File, None),
-        (".cc-monitor/./bin/x", Intent::File, None),
-        (".cc-monitor//bin/x", Intent::File, None),
+        (".cc-monitor/stagingx/y", Intent::File, None),
+        (".cc-monitor/staging-old/y", Intent::Dir, None),
+        (".cc-monitor/staging/../../.bashrc", Intent::File, None),
+        (".cc-monitor/./staging/x", Intent::File, None),
+        (".cc-monitor//staging/x", Intent::File, None),
         (".bashrc", Intent::File, None),
         (".local/bin/ccm", Intent::File, None),
         (".cc-monitor/other/x", Intent::Dir, None),
         ("/etc/passwd", Intent::File, None),
-        ("/home/u2/.cc-monitor/bin/x", Intent::File, None),
-        ("/home/uu/.cc-monitor/bin/x", Intent::File, None),
+        ("/home/u2/.cc-monitor/staging/x", Intent::File, None),
+        ("/home/uu/.cc-monitor/staging/x", Intent::File, None),
         ("/home/u", Intent::Dir, None),
         ("", Intent::File, None),
         ("   ", Intent::Dir, None),
@@ -85,42 +77,38 @@ fn the_lexical_fence_admits_exactly_the_two_roots_and_nothing_else() {
     // SFTP 起始目录不是 POSIX 绝对路径（Windows 远端那一形）⇒ 绝对路径一律拒，不猜。
     assert!(fence_lexical(
         "C:\\Users\\u",
-        "/C:/Users/u/.cc-monitor/bin/x",
+        "/C:/Users/u/.cc-monitor/staging/x",
         Intent::File
     )
     .is_err());
 }
 
-/// 🔴 写根**恰好两处**：暂存区与部署目录（异源：期望手写，不取自本文件的常量）。
+/// 🔴 写根**恰好暂存区一处**（异源：期望手写，不取自本文件的常量）。
 #[test]
-fn the_declared_write_roots_are_exactly_staging_and_bin() {
-    let want: std::collections::BTreeSet<&str> = [".cc-monitor/staging", ".cc-monitor/bin"]
-        .into_iter()
-        .collect();
-    let got: std::collections::BTreeSet<&str> = REMOTE_WRITE_ROOTS.into_iter().collect();
-    assert_eq!(got, want);
+fn the_declared_write_root_is_exactly_staging() {
+    assert_eq!(STAGING_ROOT, ".cc-monitor/staging");
     // 暂存区那一根与提交那一侧（后端 `files_commit`）是同一个串：那一条住后端（`dial_tests`），这里够不到后端。
 }
 
 // ═══ 解链接那一道 ══════════════════════════════════════════════════════════════════════
 
-/// 根底下一条**目录链接**指到根外（`bin/evil -> ~/.ssh`）：词法那一道放行，解链接那一道必须拒，服务端零改动。
+/// 根底下一条**目录链接**指到根外（`staging/evil -> ~/.ssh`）：词法那一道放行，解链接那一道必须拒，服务端零改动。
 #[tokio::test]
 async fn a_symlinked_directory_under_a_root_cannot_carry_a_write_out() {
-    let fs = rig::home(true, false);
+    let fs = rig::home(false, true);
     {
         let mut g = fs.lock().unwrap();
         g.dirs.insert(".ssh".to_string());
         g.links
-            .insert(".cc-monitor/bin/evil".to_string(), ".ssh".to_string());
+            .insert(".cc-monitor/staging/evil".to_string(), ".ssh".to_string());
     }
     let s = rig::session_on(fs.clone()).await;
-    let r = super::put_atomic(&s, ".cc-monitor/bin/evil/authorized_keys", b"k", 0o600).await;
+    let r = super::put_atomic(&s, ".cc-monitor/staging/evil/authorized_keys", b"k", 0o600).await;
     assert!(
         matches!(&r, Err(Refusal::Fenced { said: m, .. }) if copy_core::copy_matches("beSftp.fence.escaped", &m)),
         "解链接那一道没拦住：{r:?}"
     );
-    let r2 = super::make_dirs(&s, ".cc-monitor/bin/evil/deeper").await;
+    let r2 = super::make_dirs(&s, ".cc-monitor/staging/evil/deeper").await;
     assert!(
         matches!(r2, Err(Refusal::Fenced { .. })),
         "建目录也要拦：{r2:?}"
@@ -134,14 +122,56 @@ async fn a_symlinked_directory_under_a_root_cannot_carry_a_write_out() {
     fs.lock()
         .unwrap()
         .dirs
-        .insert(".cc-monitor/bin/sub".to_string());
-    super::put_atomic(&s, ".cc-monitor/bin/sub/x", b"k", 0o600)
+        .insert(".cc-monitor/staging/sub".to_string());
+    super::put_atomic(&s, ".cc-monitor/staging/sub/x", b"k", 0o600)
         .await
         .expect("根底下的真子目录该放行");
     assert_eq!(
-        fs.lock().unwrap().bytes(".cc-monitor/bin/sub/x"),
+        fs.lock().unwrap().bytes(".cc-monitor/staging/sub/x"),
         Some(b"k".to_vec())
     );
+}
+
+/// 写根**本身**是链接（`staging -> ~/.ssh` · `.cc-monitor -> 别处`）：解链接之后「在根底下」恒成立，只问父目录拦不住；
+/// 围栏问根本身 ⇒ 拒、出声、服务端零改动。
+#[tokio::test]
+async fn a_write_root_that_is_itself_a_link_is_refused() {
+    for (link, target, make) in [
+        (".cc-monitor/staging", ".ssh", vec![".ssh"]),
+        (
+            ".cc-monitor",
+            "elsewhere",
+            vec!["elsewhere", "elsewhere/staging"],
+        ),
+    ] {
+        let fs = rig::home(false, false);
+        {
+            let mut g = fs.lock().unwrap();
+            if link == ".cc-monitor" {
+                g.dirs.remove(".cc-monitor");
+            }
+            for d in make {
+                g.dirs.insert(d.to_string());
+            }
+            g.links.insert(link.to_string(), target.to_string());
+        }
+        let s = rig::session_on(fs.clone()).await;
+        let r = super::put_atomic(&s, ".cc-monitor/staging/ccm", b"k", 0o700).await;
+        assert!(
+            matches!(&r, Err(Refusal::Fenced { said: m, .. }) if copy_core::copy_matches("beSftp.fence.rootNotOwn", m)),
+            "`{link}` 是链接，写却没拦住：{r:?}"
+        );
+        let r2 = super::make_dirs(&s, ".cc-monitor/staging").await;
+        assert!(
+            matches!(r2, Err(Refusal::Fenced { .. })),
+            "`{link}` 是链接，建目录没拦住：{r2:?}"
+        );
+        assert!(
+            fs.lock().unwrap().mutated.is_empty(),
+            "被拒的请求在服务端留下了改动：{:?}",
+            fs.lock().unwrap().mutated
+        );
+    }
 }
 
 /// 开写之前问一次 `lstat`：最后一段是链接 ⇒ 拒（开写会跟过去）。
@@ -159,7 +189,7 @@ async fn opening_a_symlink_for_write_is_refused() {
     let s = rig::session_on(fs.clone()).await;
     let r = open_for_write(&s, ".cc-monitor/staging/k.part", false).await;
     assert!(
-        matches!(r, Err(Refusal::Fenced { said: ref m, .. }) if m.contains(copy_core::copy_static!("rsFilewinKind.label.link"))),
+        matches!(r, Err(Refusal::Fenced { said: ref m, .. }) if m.contains(copy_core::copy_static!("beFilesKind.label.link"))),
         "链接没拦住"
     );
     assert!(fs.lock().unwrap().mutated.is_empty());
@@ -202,21 +232,21 @@ async fn ask(
     serde_json::from_str(&back).unwrap_or_else(|e| panic!("应答不是 JSON（{e}）：{back:?}"))
 }
 
-/// 🔴🔴 **B2：一趟部署 ＋ 暂存区写跑下来，服务端记下的改动路径落在的根 == 两处**（相等，不是 ⊆）；
-/// 越界的四种请求一律 `fenced`、服务端改动表**零增长**。
+/// 🔴🔴 **B2：一趟部署 ＋ 暂存区写跑下来，服务端记下的改动路径全在暂存区里**（非空、全在根下）；
+/// 越界的五种请求（含往安装位置那一层写）一律 `fenced`、服务端改动表**零增长**。
 #[tokio::test]
-async fn a_deploy_shaped_session_touches_exactly_the_two_roots_and_refuses_everything_else() {
-    let fs = rig::home(false, true);
+async fn a_deploy_shaped_session_touches_only_staging_and_refuses_everything_else() {
+    let fs = rig::home(false, false);
     let (mut w, mut r) = link_on(fs.clone()).await;
 
     let home = ask(&mut w, &mut r, serde_json::json!({"op":"home"}), None).await;
     assert_eq!(home["home"], HOME);
 
-    // 首次部署：`bin` 还不在 ⇒ 逐级建。
+    // 首次部署：暂存区还不在 ⇒ 逐级建。
     let v = ask(
         &mut w,
         &mut r,
-        serde_json::json!({"op":"mkdirs","path": format!("{HOME}/.cc-monitor/bin")}),
+        serde_json::json!({"op":"mkdirs","path": format!("{HOME}/.cc-monitor/staging")}),
         None,
     )
     .await;
@@ -225,7 +255,7 @@ async fn a_deploy_shaped_session_touches_exactly_the_two_roots_and_refuses_every
     let v = ask(
         &mut w,
         &mut r,
-        serde_json::json!({"op":"put","path": format!("{HOME}/.cc-monitor/bin/cc-monitor-backend"),
+        serde_json::json!({"op":"put","path": format!("{HOME}/.cc-monitor/staging/cc-monitor-backend"),
                            "size": bin.len(), "mode": 0o700, "verify": true}),
         Some(&bin),
     )
@@ -235,14 +265,14 @@ async fn a_deploy_shaped_session_touches_exactly_the_two_roots_and_refuses_every
     assert_eq!(
         fs.lock()
             .unwrap()
-            .bytes(".cc-monitor/bin/cc-monitor-backend"),
+            .bytes(".cc-monitor/staging/cc-monitor-backend"),
         Some(bin.clone())
     );
     // 再放一次（盖掉旧的）：旧的改名成 `.bak` 再删，临时件上位 —— 目录里只剩那一份。
     let v = ask(
         &mut w,
         &mut r,
-        serde_json::json!({"op":"put","path": ".cc-monitor/bin/cc-monitor-backend","size": 3,"mode": 0o700,"verify": false}),
+        serde_json::json!({"op":"put","path": ".cc-monitor/staging/cc-monitor-backend","size": 3,"mode": 0o700,"verify": false}),
         Some(b"new"),
     )
     .await;
@@ -260,7 +290,7 @@ async fn a_deploy_shaped_session_touches_exactly_the_two_roots_and_refuses_every
     let v = ask(
         &mut w,
         &mut r,
-        serde_json::json!({"op":"read","path": ".cc-monitor/bin/cc-monitor-backend","max": 1024}),
+        serde_json::json!({"op":"read","path": ".cc-monitor/staging/cc-monitor-backend","max": 1024}),
         None,
     )
     .await;
@@ -269,7 +299,7 @@ async fn a_deploy_shaped_session_touches_exactly_the_two_roots_and_refuses_every
     let v = ask(
         &mut w,
         &mut r,
-        serde_json::json!({"op":"stat","path": ".cc-monitor/bin/nope"}),
+        serde_json::json!({"op":"stat","path": ".cc-monitor/staging/nope"}),
         None,
     )
     .await;
@@ -299,8 +329,12 @@ async fn a_deploy_shaped_session_touches_exactly_the_two_roots_and_refuses_every
             None,
         ),
         (
-            serde_json::json!({"op":"mkdirs","path": ".cc-monitor/bin/../../.ssh"}),
+            serde_json::json!({"op":"mkdirs","path": ".cc-monitor/staging/../../.ssh"}),
             None,
+        ),
+        (
+            serde_json::json!({"op":"put","path": ".cc-monitor/bin/ccm","size": 1,"mode": 0o700}),
+            Some(&b"x"[..]),
         ),
     ] {
         let v = ask(&mut w, &mut r, req.clone(), bytes).await;
@@ -321,31 +355,27 @@ async fn a_deploy_shaped_session_touches_exactly_the_two_roots_and_refuses_every
     .await;
     assert_eq!(v["code"], "unknown_op");
 
-    // 🔴 相等：改动落在的根 == 两处。
+    // 🔴 改动全在暂存区里（非空：这一趟确实写到了）。
     let g = fs.lock().unwrap();
-    let roots: std::collections::BTreeSet<&str> = g
-        .touched()
-        .iter()
-        .map(|p| {
-            REMOTE_WRITE_ROOTS
-                .into_iter()
-                .find(|root| p == root || p.starts_with(&format!("{root}/")))
-                .unwrap_or_else(|| panic!("服务端记下了一处两根之外的改动：{p}"))
-        })
-        .collect();
-    assert_eq!(
-        roots,
-        REMOTE_WRITE_ROOTS.into_iter().collect(),
-        "这一趟应当两个根都写到（否则这个相等在一侧空集上成立）"
+    let touched = g.touched();
+    assert!(
+        !touched.is_empty(),
+        "这一趟一处都没写到（全称在空集上成立）"
     );
-    let bin_files: Vec<&String> = g
+    for p in &touched {
+        assert!(
+            p == STAGING_ROOT || p.starts_with(&format!("{STAGING_ROOT}/")),
+            "服务端记下了一处暂存区之外的改动：{p}"
+        );
+    }
+    let staged: Vec<&String> = g
         .files
         .keys()
-        .filter(|k| k.starts_with(".cc-monitor/bin/"))
+        .filter(|k| k.starts_with(".cc-monitor/staging/"))
         .collect();
     assert_eq!(
-        bin_files,
-        vec![".cc-monitor/bin/cc-monitor-backend"],
+        staged,
+        vec![".cc-monitor/staging/cc-monitor-backend"],
         "盖掉旧的之后不许留临时件 / 备份"
     );
 }
@@ -461,7 +491,7 @@ async fn a_read_over_the_callers_cap_is_refused_not_truncated() {
 /// 门禁跑的是 `--locked`，**声明面与锁定面不一致时 cargo 自己就先失败了**
 /// ⇒ 构造不出「声明面还是 3、锁定面掉到 2」这个状态。
 /// ⇒ 那两条今天是**加固**，不是被验过的牙。**别把它们读成「验过了」。**
-/// 认残件的形状 == `put_atomic` 真起的名字（异源 = 生产那个 `trip_tag`）：临时件 · 备份件都认；
+/// 认残件的形状 == `put_atomic` · 暂存那一份真起的名字（异源 = 生产那个 `trip_tag`）：临时件 · 备份件 · 暂存件都认；
 /// 同一个名字换掉后缀 / 去掉一段 ⇒ 不认。
 #[test]
 fn the_leftover_shape_is_exactly_what_put_atomic_names() {
@@ -472,6 +502,8 @@ fn the_leftover_shape_is_exactly_what_put_atomic_names() {
             "{tag}.{suffix}"
         );
     }
+    let staged = super::staged_name("cc-monitor-backend");
+    assert!(super::is_trip_leftover(&staged), "{staged}");
     let short = tag.rsplit_once('-').unwrap().0;
     for not in [
         format!("ccm.{tag}.part"),
@@ -557,8 +589,8 @@ fn the_sftp_dependency_is_really_on_russh_sftp_three() {
 /// 改动表里零处固定名（正控：带这一趟后缀的临时件与备份件各数得到一处），完了之后自己的临时件 / 备份件一个不剩。
 #[tokio::test]
 async fn hx2_a_deploy_never_touches_another_deployers_temp_or_backup() {
-    let fs = rig::home(true, false);
-    let target = ".cc-monitor/bin/cc-monitor-backend";
+    let fs = rig::home(false, true);
+    let target = ".cc-monitor/staging/cc-monitor-backend";
     let (their_tmp, their_bak) = (format!("{target}.tmp"), format!("{target}.bak"));
     {
         let mut g = fs.lock().unwrap();
@@ -626,8 +658,8 @@ async fn hx2_a_deploy_never_touches_another_deployers_temp_or_backup() {
 /// 目录里一个临时件 / 备份件都不剩（失败那一趟把自己挪走的旧件挪回或删掉）。
 #[tokio::test]
 async fn hx2_two_interleaved_deploys_leave_one_whole_copy_and_no_litter() {
-    let fs = rig::home(true, false);
-    let target = ".cc-monitor/bin/cc-monitor-backend";
+    let fs = rig::home(false, true);
+    let target = ".cc-monitor/staging/cc-monitor-backend";
     {
         let mut g = fs.lock().unwrap();
         g.files.insert(
@@ -673,16 +705,16 @@ async fn hx1_the_dirs_a_deploy_creates_are_made_private_and_an_existing_one_is_l
     let v = ask(
         &mut w,
         &mut r,
-        serde_json::json!({"op":"mkdirs","path": ".cc-monitor/bin"}),
+        serde_json::json!({"op":"mkdirs","path": ".cc-monitor/staging"}),
         None,
     )
     .await;
     assert!(v.get("code").is_none(), "{v}");
     let g = fs.lock().unwrap();
     assert_eq!(
-        g.dir_modes.get(".cc-monitor/bin").copied(),
+        g.dir_modes.get(".cc-monitor/staging").copied(),
         Some(crate::guard_support::TEST_DIR_MODE),
-        "新建的 bin 没收成只给本人：{:?}",
+        "新建的暂存区没收成只给本人：{:?}",
         g.mutated
     );
     assert!(
@@ -720,7 +752,7 @@ fn sftp_failures_wrapped_in_io_errors_still_land_on_the_right_reason_word() {
             Io::other("Operation unsupported"),
             word("reason.sftp.unsupported"),
         ),
-        (Io::other("Bad message"), word("reason.sftp.badMessage")),
+        (Io::other("Bad message"), word("reason.code.bug")),
         (Io::other("Failure"), word("reason.io.unknown")),
         // 整个包进去那一形。
         (Io::from(st(C::NoSuchFile)), word("reason.io.notFound")),
@@ -729,20 +761,11 @@ fn sftp_failures_wrapped_in_io_errors_still_land_on_the_right_reason_word() {
             Io::from(st(C::OpUnsupported)),
             word("reason.sftp.unsupported"),
         ),
-        (Io::from(E::Timeout), word("reason.sftp.noAnswer")),
-        (
-            Io::from(st(C::ConnectionLost)),
-            word("reason.sftp.connectionLost"),
-        ),
-        (
-            Io::other("Connection lost"),
-            word("reason.sftp.connectionLost"),
-        ),
-        (Io::from(K::BrokenPipe), word("reason.sftp.connectionLost")),
-        (
-            Io::from(K::ConnectionReset),
-            word("reason.sftp.connectionLost"),
-        ),
+        (Io::from(E::Timeout), word("reason.link.noAnswer")),
+        (Io::from(st(C::ConnectionLost)), word("reason.link.lost")),
+        (Io::other("Connection lost"), word("reason.link.lost")),
+        (Io::from(K::BrokenPipe), word("reason.link.lost")),
+        (Io::from(K::ConnectionReset), word("reason.link.lost")),
         (
             Io::from(E::Limited("n".into())),
             word("reason.sftp.overLimit"),
@@ -848,33 +871,36 @@ async fn the_files_link_lists_resolves_renames_and_removes_empty_dirs() {
 /// 读回逐字节相同 ⇒ 过；落点上是那一份。
 #[tokio::test]
 async fn a_verified_put_that_reads_back_the_same_bytes_passes() {
-    let fs = rig::home(true, false);
+    let fs = rig::home(false, true);
     let s = rig::session_on(fs.clone()).await;
     let bin = rig::corpus(70_000);
-    super::put_verified(&s, ".cc-monitor/bin/ccm", &bin, 0o700)
+    super::put_verified(&s, ".cc-monitor/staging/ccm", &bin, 0o700)
         .await
         .expect("读回相同该过");
-    assert_eq!(fs.lock().unwrap().bytes(".cc-monitor/bin/ccm"), Some(bin));
+    assert_eq!(
+        fs.lock().unwrap().bytes(".cc-monitor/staging/ccm"),
+        Some(bin)
+    );
 }
 
 /// 要求：「读回不对就删」。等长、首字节翻了一位（只比长度查不出来）⇒ 失败那一句说清坏在哪 ＋ 已删掉；落点上不留那一份。
 #[tokio::test]
 async fn a_verified_put_that_reads_back_wrong_bytes_removes_what_it_put() {
-    let fs = rig::home(true, false);
+    let fs = rig::home(false, true);
     fs.lock().unwrap().corrupt_reads = true;
     let s = rig::session_on(fs.clone()).await;
     let bin = rig::corpus(70_000);
-    let e = super::put_verified(&s, ".cc-monitor/bin/ccm", &bin, 0o700)
+    let e = super::put_verified(&s, ".cc-monitor/staging/ccm", &bin, 0o700)
         .await
         .unwrap_err();
     assert!(
         matches!(&e, Refusal::Io { said, .. } if copy_core::copy_matches("rsSftp.upload.badRemoved", said)
             && said.contains(&copy_core::copy_text("rsSftp.verify.contentDiffers", &[
-                ("path", ".cc-monitor/bin/ccm"), ("expectedLen", &bin.len().to_string()), ("at", "0")]))),
+                ("path", ".cc-monitor/staging/ccm"), ("expectedLen", &bin.len().to_string()), ("at", "0")]))),
         "{e:?}"
     );
     assert_eq!(
-        fs.lock().unwrap().bytes(".cc-monitor/bin/ccm"),
+        fs.lock().unwrap().bytes(".cc-monitor/staging/ccm"),
         None,
         "传坏的那一份还在"
     );
@@ -883,7 +909,7 @@ async fn a_verified_put_that_reads_back_wrong_bytes_removes_what_it_put() {
             .unwrap()
             .mutated
             .iter()
-            .any(|(v, p)| v == "remove" && p == ".cc-monitor/bin/ccm"),
+            .any(|(v, p)| v == "remove" && p == ".cc-monitor/staging/ccm"),
         "没删落点那一份：{:?}",
         fs.lock().unwrap().mutated
     );
@@ -892,7 +918,7 @@ async fn a_verified_put_that_reads_back_wrong_bytes_removes_what_it_put() {
 /// 读回不对、删也删不掉 ⇒ 那一句照实说「未删掉」，删那一步的原话进详情；不许说成「已删掉」。
 #[tokio::test]
 async fn a_bad_readback_that_cannot_be_removed_says_so() {
-    let fs = rig::home(true, false);
+    let fs = rig::home(false, true);
     let s = rig::session_on(fs.clone()).await;
     let bin = rig::corpus(5_000);
     {
@@ -900,7 +926,7 @@ async fn a_bad_readback_that_cannot_be_removed_says_so() {
         g.corrupt_reads = true;
         g.refuse_remove = true;
     }
-    let e = super::put_verified(&s, ".cc-monitor/bin/ccm", &bin, 0o700)
+    let e = super::put_verified(&s, ".cc-monitor/staging/ccm", &bin, 0o700)
         .await
         .unwrap_err();
     assert!(

@@ -39,16 +39,17 @@ export function defaultOps(): Record<string, OpHandler> {
       ]),
     ),
     "tasks-list": (_o, req, w) => ({ tasks: w.sessions.find((s) => s.sid === req.sid)?.tasks ?? [] }),
-    "session-new-dir": (_o, req) => ({ exists: !String(req.cwd).includes("nope"), tmuxName: `${String(req.cwd).split("/").filter(Boolean).pop() ?? "session"}-cc` }),
-    "session-new": (_o, req) => ({
-      outcome: req.place === "tmux" ? "started" : "open",
-      session: req.place === "tmux" ? "orders-cc-2" : null,
-      sid: null,
-      cmd: req.place === "tmux" ? null : "ccm -- new",
-      account: null,
-      agent: req.agent,
-      cwd: req.cwd,
-      prompt: null,
-    }),
+    // 起新会话框的另两问：那个目录在不在 · 起会话那一下的结局（那份事实交真后端答）。
+    "session-open-dir": (_o, req) => ({ exists: !String(req.cwd).includes("nope"), tmuxName: `${String(req.cwd).split("/").filter(Boolean).pop() ?? "session"}-cc` }),
+    // 起新的 · 恢复 · 接回：那台照意图答落在哪 ＋ 那一行（新起 ⇒ tmux 里起好 / 开窗起；恢复 ⇒ 开窗起；接回 ⇒ 接上在跑的那个）。
+    "session-open": (_o, req) => {
+      const what = req.what as { kind: string; sid?: string; session?: string; agent?: string; cwd?: string };
+      if (what.kind === "look") return { landed: "running", session: what.session ?? "cc-proj", line: `ccm --attach ${what.session ?? "cc-proj"}`, sid: what.sid ?? null, agent: null, cwd: null, account: null, note: null, prompt: null };
+      if (what.kind === "new") {
+        const tmux = req.run !== "direct";
+        return { landed: tmux ? "started" : "window", session: tmux ? "orders-cc-2" : null, line: tmux ? "ccm --attach orders-cc-2" : "ccm -- new", sid: null, agent: what.agent ?? "claude", cwd: what.cwd ?? "~", account: null, note: null, prompt: null };
+      }
+      return { landed: "window", session: null, line: `ccm --resume ${what.sid ?? ""}`, sid: what.sid ?? null, agent: "claude", cwd: "~", account: null, note: null, prompt: null };
+    },
   };
 }

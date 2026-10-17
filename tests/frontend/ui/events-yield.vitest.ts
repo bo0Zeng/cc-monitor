@@ -89,7 +89,7 @@ async function bind(): Promise<{ onLine: ReturnType<typeof vi.fn> }> {
   const onLine = vi.fn();
   await bindEvents({
     onLine,
-    onSessionEnded: vi.fn(),
+    onSessionFace: vi.fn(),
     onBatchStart: vi.fn(),
     onBatchEnd: vi.fn(),
   } as never, { streams: [{ origin: "<local>", kind: "session-lines" }] });
@@ -176,8 +176,7 @@ describe("步 4②：一批干多久 —— 能问就问，问不了才猜", () 
     feed(100);
     await vi.advanceTimersToNextTimerAsync();
     const first = onLine.mock.calls.length;
-    expect(first, "有人在操作还闷头干满一批 ⇒ 鼠标就是卡在这里").toBeLessThan(12);
-    expect(first, "一条都不处理就让开 ⇒ 永远干不完").toBeGreaterThan(0);
+    expect(first, "有人在操作还闷头干满一批（多于 5 条）⇒ 鼠标就是卡在这里；0 条 ⇒ 永远干不完").toBe(5);
   });
 
   it("🔴 能问也要有硬上限：`isInputPending` 说不急，也不许一直干下去", async () => {
@@ -189,7 +188,6 @@ describe("步 4②：一批干多久 —— 能问就问，问不了才猜", () 
     const first = onLine.mock.calls.length;
     // `isInputPending()` 只报告**输入**事件 —— 它不知道"该画一帧了"。
     // 只听它的话，一个没人碰鼠标的长队列能把主线程占住几秒而它一路说"不急"。
-    expect(first, "没有硬上限 ⇒ 400 条一口气跑完，掉帧没人管").toBeLessThan(400);
-    expect(first, "上限不该把它掐得比固定预算还狠").toBeGreaterThan(39);
+    expect(first, "没有硬上限 ⇒ 400 条一口气跑完，掉帧没人管；比固定预算的 39 条还少 ⇒ 掐得太狠").toBe(47);
   });
 });

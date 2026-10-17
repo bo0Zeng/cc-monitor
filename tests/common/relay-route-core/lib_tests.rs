@@ -116,6 +116,36 @@ fn a_keyed_url_splits_only_when_the_key_and_the_route_both_have_our_shape() {
     assert!(key_shape_ok(&key) && !key_shape_ok(&key[..63]) && !key_shape_ok(&key.to_uppercase()));
 }
 
+/// 藏钥匙：一行里每条插好钥匙的我们那一形地址，钥匙段换成 `…`、其余逐字不变；不是那一形的地址原样。
+#[test]
+fn hiding_the_key_replaces_only_the_key_segment_of_our_keyed_urls() {
+    let k1 = "0123456789abcdef".repeat(4);
+    let k2 = "fedcba9876543210".repeat(4);
+    let json =
+        format!(r#"    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8788/{k1}/t/claude-code/_","#);
+    assert_eq!(
+        hide_key(&json),
+        r#"    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8788/…/t/claude-code/_","#
+    );
+    let toml = format!(
+        "openai_base_url = \"http://127.0.0.1:8788/{k1}/s/codex/w\" # http://127.0.0.1:1/{k2}/t/a/b/~tok"
+    );
+    assert_eq!(
+        hide_key(&toml),
+        "openai_base_url = \"http://127.0.0.1:8788/…/s/codex/w\" # http://127.0.0.1:1/…/t/a/b/~tok"
+    );
+    for plain in [
+        format!("x http://127.0.0.1:8788/{}/t/claude-code/_ y", &k1[..63]),
+        format!("http://localhost:8788/{k1}/t/claude-code/_"),
+        format!("http://127.0.0.1:8788/{k1}/x/a/b"),
+        "http://127.0.0.1:8788/t/claude-code/_".to_string(),
+        format!("token = \"{k1}\""),
+        "中文 http://127.0.0.1:".to_string(),
+    ] {
+        assert_eq!(hide_key(&plain), plain, "不是那一形 ⇒ 原样");
+    }
+}
+
 /// 插钥匙是切钥匙的逆：插出来的切得回原来两半、钥匙段恰是那一把；地址或钥匙形状不对 ⇒ 不插。
 #[test]
 fn keying_a_url_is_the_inverse_of_splitting_it() {

@@ -2,6 +2,7 @@ package com.ccmonitor.mobile.ui.files
 
 import android.content.Context
 import android.net.Uri
+import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -47,9 +48,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ccmonitor.mobile.core.claude.link.FilesCommitUpload
 import com.ccmonitor.mobile.core.claude.link.FilesLs
 import com.ccmonitor.mobile.core.claude.link.RemotePath
-import com.ccmonitor.mobile.core.copy.SizeFormat
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Bookmark
 import com.ccmonitor.mobile.core.data.repo.BookmarkRepository
@@ -173,6 +174,10 @@ fun FilesScreen(
     }
 
     DialogHost(dialog = dialog, vm = vm, actions = actions, onDialog = { dialog = it })
+    val clash by vm.clash.collectAsState()
+    clash?.let { (dir, c) ->
+        ConflictSheet(copyText("rsFilewinBatch.verb.upload"), dir, c.said, c.conflicts, FilesCommitUpload.ANSWERS, vm::answer)
+    }
 }
 
 /** 条目级动作（下载 · 预览 · 编辑 · 改权限要先读的那几件）。 */
@@ -192,9 +197,13 @@ private fun entryActions(
     val scope = rememberCoroutineScope()
     return remember(vm) {
         EntryActions(
-            download = { e -> vm.download(e, context.getExternalFilesDir(null)) },
-            preview = { e -> scope.launch { vm.readText(e).onSuccess { onDialog(FilesDialog.Preview(e.name, it.text)) } } },
-            startEdit = { e -> scope.launch { vm.readText(e).onSuccess { onDialog(FilesDialog.Edit(e, it.text, it.sha256)) } } },
+            download = { e ->
+                vm.download(e, context.getExternalFilesDir(null)) { f ->
+                    ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_WRITE_ONLY or ParcelFileDescriptor.MODE_CREATE or ParcelFileDescriptor.MODE_TRUNCATE).detachFd()
+                }
+            },
+            preview = { e -> scope.launch { vm.readText(e.path, e.preview).onSuccess { onDialog(FilesDialog.Preview(e.name, it.text)) } } },
+            startEdit = { e -> scope.launch { vm.readText(e.path, e.edit).onSuccess { onDialog(FilesDialog.Edit(e, it.text, it.sha256)) } } },
             startChmod = { e -> scope.launch { onDialog(FilesDialog.Chmod(e, vm.modeText(e))) } },
         )
     }
@@ -206,9 +215,8 @@ private fun rememberUploadLauncher(vm: FilesViewModel): ManagedActivityResultLau
     val context = LocalContext.current
     return rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        val (name, size) = displayOf(context, uri)
-        vm.upload(name ?: uri.lastPathSegment.orEmpty(), size ?: -1) {
-            context.contentResolver.openInputStream(uri) ?: throw IOException(uri.toString())
+        vm.upload(nameOf(context, uri) ?: uri.lastPathSegment.orEmpty()) {
+            context.contentResolver.openFileDescriptor(uri, "r")?.detachFd() ?: throw IOException(uri.toString())
         }
     }
 }
@@ -453,7 +461,9 @@ private fun EntryMenu(
         text = {
             Column {
                 if (!entry.isDir) {
-                    SecondaryButton(onClick = { then(actions.preview) }) { Text(copyText("rsFilewinWorkspace.label.preview")) }
+                    if (entry.preview != null) {
+                        SecondaryButton(onClick = { then(actions.preview) }) { Text(copyText("rsFilewinWorkspace.label.preview")) }
+                    }
                     SecondaryButton(onClick = { then(actions.startEdit) }) { Text(copyText("rsFilewinEditor.label.edit")) }
                     SecondaryButton(onClick = { then(actions.download) }) { Text(copyText("rsFilewinDownload.label.download")) }
                 }
@@ -501,15 +511,14 @@ private fun DeleteDialog(
     )
 }
 
-/** 改权限：敲八进制（同桌面）；此刻的权限位写在框下。 */
+/** 改权限：敲八进制（同桌面），原样交那台判；此刻的权限位写在框下。 */
 @Composable
 private fun ChmodDialog(
     d: FilesDialog.Chmod,
     onDismiss: () -> Unit,
-    onConfirm: (Long) -> Unit,
+    onConfirm: (String) -> Unit,
 ) {
     var value by remember(d) { mutableStateOf(d.now.orEmpty()) }
-    val parsed = FileOps.modeOf(value)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(copyText("rsFilewinWriteops.heading.chmodOne", "name" to d.entry.name), maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -517,19 +526,16 @@ private fun ChmodDialog(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value, { value = it }, singleLine = true, textStyle = monoSmall, modifier = Modifier.fillMaxWidth())
                 val hint =
-                    parsed.exceptionOrNull()?.message
-                        ?: d.now?.let { copyText("rsFilewinWriteops.mode.now", "mode" to it) }
+                    d.now?.let { copyText("rsFilewinWriteops.mode.now", "mode" to it) }
                         ?: copyText("rsFilewinWriteops.mode.unreadable")
                 Text(hint, style = monoSmall, color = LocalAppTokens.current.textFaint)
             }
         },
         confirmButton = {
             SecondaryButton(onClick = {
-                parsed.onSuccess {
-                    onConfirm(it)
-                    onDismiss()
-                }
-            }, enabled = parsed.isSuccess) { Text(copyText("rsFilewinWriteops.label.chmod")) }
+                onConfirm(value)
+                onDismiss()
+            }) { Text(copyText("rsFilewinWriteops.label.chmod")) }
         },
         dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
@@ -658,23 +664,20 @@ private fun EntryRow(
             Text(e.name, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface)
             e.mtime?.let { Text(it, style = monoSmall, color = tokens.textFaint) }
         }
-        if (!e.isDir) e.size?.let { Text(SizeFormat.text(it), style = monoSmall, color = tokens.textFaint) }
+        e.sizeText?.let { Text(it, style = monoSmall, color = tokens.textFaint) }
     }
 }
 
-/** 选中那一份的显示名与大小（系统给的；没有 ⇒ `null`）。 */
-private fun displayOf(
+/** 选中那一份的显示名（系统给的；没有 ⇒ `null`）。 */
+private fun nameOf(
     context: Context,
     uri: Uri,
-): Pair<String?, Long?> =
+): String? =
     runCatching {
-        context.contentResolver.query(uri, null, null, null, null)?.use { c ->
-            if (!c.moveToFirst()) return@use null to null
-            val n = c.getColumnIndex(OpenableColumns.DISPLAY_NAME).takeIf { it >= 0 }?.let(c::getString)
-            val s = c.getColumnIndex(OpenableColumns.SIZE).takeIf { it >= 0 && !c.isNull(it) }?.let(c::getLong)
-            n to s
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) c.getColumnIndex(OpenableColumns.DISPLAY_NAME).takeIf { it >= 0 }?.let(c::getString) else null
         }
-    }.getOrNull() ?: (null to null)
+    }.getOrNull()
 
 /** 面包屑至多排几段（含「…」那一段）。 */
 private const val CRUMBS_SHOWN = 4

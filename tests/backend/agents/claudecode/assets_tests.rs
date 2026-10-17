@@ -1,6 +1,6 @@
 //! `agents/claudecode/assets.rs` 的判据：Claude 的资产布局认得对。
 //!
-//! 守的要求：用户原话「本机后端在本机看见一个skill并记录下来」「mcp保持项目级别」；
+//! 守的要求：「本机后端在本机看见一个skill并记录下来」「mcp保持项目级别」；
 //! 资产 = skill（`~/.claude/skills/*`）与 MCP 定义（项目 `.mcp.json` 里的条目）。
 //!
 //! 买到：临时目录上真读 —— skill 逐个目录（链接跟到底、文件与点开头的跳过）· `description:` 从 front matter 取 ·

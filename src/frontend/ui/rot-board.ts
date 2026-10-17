@@ -5,8 +5,7 @@
  * - 全照 `rotation-view` 与 `rotation-strategies` 的回包画：标题 ＝ 文件名、说明 ＝ 文件开头的注释、格照策略的 `form`
  *   （名字 `label`，悬停 `help`）、先后 · 换号时刻 · 停到几点 · 跳过哪段照 `decision` · `timeline`，时刻的字照回包里写好的 `…Text`。
  *   界面不判、不排、不算时刻、不拼句子；手势经 `BoardActs` 翻成 typed 命令（调用方发）。
- * - 设置是策略自己的形状（`settings`），这里只照声明取、放：`scope: all` ⇒ `settings[key]`；`scope: each` ⇒ `settings.accounts[i][key]`
- *   （`inherit` 且号没另设 ⇒ 跟总体，画虚线）。改一格 ⇒ 整份新设置交 `acts.settings`（后端照声明校验）。
+ * - 设置那几格照回包的 `board` 画（此刻的值 · 从哪来 · 字都是后端解好的；跟总体的画虚线）；改一格 ⇒ 交一个意图（`acts.edit`），后端改完、校验、重读。
  * 判据：`tests/frontend/ui/rot-board.vitest.ts`。
  */
 import { accountAvatarEl } from "./account-color";
@@ -18,24 +17,21 @@ import { button } from "./kit/button";
 import { icon } from "./kit/icon";
 import { openMenu, type MenuItem } from "./kit/menu";
 import { closePopover, openPopover } from "./kit/popover";
-import { firstLine } from "./rot-reads";
-import { isObj } from "./ipc/decode";
 import { hintText } from "./rot-words";
 import { select } from "./kit/select";
 import { toggleSwitch } from "./kit/switch";
 import { segmented } from "./kit/tabs";
 import { attachTooltip } from "./kit/tooltip";
 import type { Fact } from "./generated/Fact";
-import type { RotFormCell } from "./generated/RotFormCell";
-import type { RotSeg } from "./generated/RotSeg";
+import type { RotCell } from "./generated/RotCell";
+import type { RotDaySeg } from "./generated/RotDaySeg";
+import type { RotEdit } from "./generated/RotEdit";
+import type { RotRow } from "./generated/RotRow";
 import type { RotTempOp } from "./generated/RotTempOp";
 import type { RotationStrategiesReply } from "./generated/RotationStrategiesReply";
 import type { RotPlate } from "./generated/RotPlate";
 import type { RotationViewReply } from "./generated/RotationViewReply";
-import type { StrategyText } from "./generated/StrategyText";
 import s from "./rot-board.module.css";
-
-type Obj = Record<string, unknown>;
 
 /** 画的时候界面手上的那几样（不进后端）：推几小时 · 点开了哪个号 · 「现在用」被拦下的那一句 · 旧格式那几份展开没有。 */
 export interface BoardState {
@@ -54,17 +50,10 @@ export interface BoardActs {
   forNew(id: string): void;
   remove(id: string): void;
   add(): void;
-  /** 改了一格 / 拖了号牌 / 移出 / 加号：整份新设置。 */
-  settings(next: Obj): void;
+  /** 改了一格 / 刷了一段 / 拖了号牌 / 移出 / 加号：一个意图（后端照声明改）。 */
+  edit(e: RotEdit): void;
   save(): void;
   revert(): void;
-  /** 24 小时条上刷一段（`v: null` ＝ 删这段）⇒ 刷完的那一组（后端算）。 */
-  dayPaint(
-    segs: RotSeg[],
-    from: number,
-    to: number,
-    v: number | null,
-  ): Promise<RotSeg[]>;
   useNow?: (account: string) => void;
   temp?: (op: RotTempOp) => void;
   hours(h: 12 | 24): void;
@@ -111,9 +100,9 @@ function at(e: HTMLElement, x: number, w?: number): void {
   if (w !== undefined) e.style.setProperty("--rot-w", String(w));
 }
 
-/** 视图里这个号的号牌（后端带好号色 · 号名）；视图里没有 ⇒ `undefined`。 */
+/** 视图里这个号的号牌（后端带好号色 · 号名 · 号牌字）；视图里没有 ⇒ `undefined`。 */
 function acctIn(view: RotationViewReply | null | undefined, account: string): RotPlate | undefined {
-  return view?.plates[account];
+  return view?.accounts.find((a) => a.account === account)?.plate;
 }
 
 /** 号名：照视图里那一格；视图里没有的号照原名。 */
@@ -123,26 +112,10 @@ function nameIn(view: RotationViewReply | null | undefined, account: string): st
 
 /** 号的头像（号色照视图里那一格；视图里没有 ⇒ 中性的头像）。 */
 function avatar(view: RotationViewReply | null | undefined, account: string, origin: Origin): HTMLElement {
-  return accountAvatarEl(account, { size: 16, origin, color: acctIn(view, account)?.color ?? null });
+  const plate = acctIn(view, account);
+  return accountAvatarEl(account, { size: 16, origin, color: plate?.color ?? null, plate: plate?.text });
 }
 
-/** 策略写的字（一句，或分语言）。 */
-export function textOf(t: StrategyText | undefined): string {
-  if (t === undefined) return "";
-  return typeof t === "string" ? t : t.zh;
-}
-
-
-/** 设置里号列表那一排（`settings.accounts`）。 */
-function rowsOf(settings: unknown): Obj[] {
-  const a = isObj(settings) ? settings.accounts : undefined;
-  return Array.isArray(a) ? a.filter(isObj) : [];
-}
-
-/** 换掉号列表那一排，别的原样（整份新的）。 */
-function withRows(settings: unknown, rows: Obj[]): Obj {
-  return { ...(isObj(settings) ? settings : {}), accounts: rows };
-}
 
 /** 一天里的分钟 ⇒ `HH:MM`（24:00 写成 24:00）。 */
 function dayClock(min: number): string {
@@ -177,7 +150,7 @@ function firstRow(spec: BoardSpec): HTMLElement {
             : undefined,
         detail: st.error
           ? copyText("rot.top.unreadable")
-          : firstLine(st.description),
+          : st.summary,
       })),
     ],
     value: current,
@@ -324,8 +297,8 @@ function hints(spec: BoardSpec): HTMLElement[] {
 
 // ─────────────────────────────── 号牌
 
-/** 号牌上的两条小计量（上 5h、下 7d）。 */
-function meters(f: Fact): HTMLElement {
+/** 号牌上的两条小计量（上 5h、下 7d）；悬停那一句后端写好。 */
+function meters(f: Fact, row: RotRow | undefined): HTMLElement {
   const m = el("span", (e) => (e.className = s.rotMeters));
   for (const [w, wf] of [
     ["5h", f.w5h],
@@ -347,20 +320,13 @@ function meters(f: Fact): HTMLElement {
     );
     m.appendChild(r);
   }
-  attachTooltip(
-    m,
-    copyText("rot.card.hover", {
-      u5: Math.round(f.w5h.used),
-      u7: Math.round(f.w7d.used),
-    }),
-  );
+  if (row) attachTooltip(m, row.hover);
   return m;
 }
 
 function cards(spec: BoardSpec, view: RotationViewReply): HTMLElement {
   const wrap = el("div", (e) => (e.className = s.rotCards));
   const listed = view.accounts.slice(0, view.listed);
-  const rows = rowsOf(view.settings);
   listed.forEach((f, i) => {
     const c = el("button", (e) => (e.className = s.rotCard));
     c.type = "button";
@@ -375,7 +341,7 @@ function cards(spec: BoardSpec, view: RotationViewReply): HTMLElement {
       el("span", (e) => (e.className = s.rotCardIx), String(i + 1)),
       avatar(view, f.account, spec.origin),
       el("span", (e) => (e.className = s.rotCardName), nameIn(view, f.account)),
-      meters(f),
+      meters(f, view.board.rows[i]),
     );
     // 按下拖过 4px ⇒ 拖号牌改默认优先级（松在哪张号牌上 ⇒ 排到它前头）；没拖开 ⇒ 点：展开 / 收起这个号。
     c.addEventListener("pointerdown", (e) => {
@@ -403,11 +369,7 @@ function cards(spec: BoardSpec, view: RotationViewReply): HTMLElement {
           return u.clientX >= r.left && u.clientX <= r.right && u.clientY >= r.top && u.clientY <= r.bottom;
         });
         const to = hit ? listed.findIndex((x) => x.account === hit.dataset.account) : -1;
-        if (to < 0 || to === i || i >= rows.length) return;
-        const next = rows.slice();
-        const [moved] = next.splice(i, 1);
-        next.splice(to > i ? to - 1 : to, 0, moved);
-        spec.acts.settings(withRows(view.settings, next));
+        if (to >= 0 && to !== i) spec.acts.edit({ move: { from: i, to } });
       };
       document.addEventListener("pointermove", move);
       document.addEventListener("pointerup", up);
@@ -434,10 +396,7 @@ function cards(spec: BoardSpec, view: RotationViewReply): HTMLElement {
       rest.map((f) => ({
         label: nameIn(view, f.account),
         avatar: avatar(view, f.account, spec.origin),
-        onClick: () =>
-          spec.acts.settings(
-            withRows(view.settings, [...rows, { id: f.account }]),
-          ),
+        onClick: () => spec.acts.edit({ add: { account: f.account } }),
       })),
       { label: copyText("rot.card.add") },
     );
@@ -454,7 +413,7 @@ function accountPane(
 ): HTMLElement | null {
   const i = view.accounts.findIndex((f) => f.account === account);
   if (i < 0 || i >= view.listed) return null;
-  const f = view.accounts[i];
+  const row = view.board.rows[i];
   const pane = el("div", (e) => (e.className = s.rotPane));
   pane.dataset.account = account;
   const top = el("div", (e) => (e.className = s.rotPaneTop));
@@ -462,24 +421,7 @@ function accountPane(
     avatar(view, account, spec.origin),
     el("b", (e) => (e.className = s.rotPaneName), nameIn(view, account)),
   );
-  const reset = f.w5h.resetsText
-    ? copyText("rot.acct.reset", { at: f.w5h.resetsText })
-    : "";
-  top.appendChild(
-    el(
-      "span",
-      (e) => (e.className = s.rotPaneLine),
-      [
-        copyText("rot.acct.line", {
-          u5: Math.round(f.w5h.used),
-          u7: Math.round(f.w7d.used),
-        }),
-        reset,
-      ]
-        .filter((x) => x !== "")
-        .join(copyText("kit.text.sep")),
-    ),
-  );
+  top.appendChild(el("span", (e) => (e.className = s.rotPaneLine), row?.line ?? ""));
   top.appendChild(el("span", (e) => (e.className = s.rotSpacer)));
   if (spec.acts.useNow && account !== view.current) {
     const use = spec.acts.useNow;
@@ -492,19 +434,12 @@ function accountPane(
       }),
     );
   }
-  const rows = rowsOf(view.settings);
   top.appendChild(
     button({
       label: copyText("rot.acct.remove"),
       kind: "ghost",
       size: "compact",
-      onClick: () =>
-        spec.acts.settings(
-          withRows(
-            view.settings,
-            rows.filter((_, k) => k !== i),
-          ),
-        ),
+      onClick: () => spec.acts.edit({ remove: { row: i } }),
     }),
   );
   pane.appendChild(top);
@@ -514,8 +449,7 @@ function accountPane(
     pane.appendChild(why);
   }
   const grid = el("div", (e) => (e.className = s.rotCells));
-  for (const cell of view.form.filter((c) => c.scope === "each"))
-    grid.append(...cellRows(spec, view, cell, i));
+  for (const cell of row?.cells ?? []) grid.append(...cellRows(spec, cell, i));
   pane.appendChild(grid);
   return pane;
 }
@@ -523,63 +457,16 @@ function accountPane(
 // ─────────────────────────────── 格
 
 
-/** 一格此刻的值：号另设的 · 跟总体的 · 声明里的默认。 */
-function valueOf(
-  view: RotationViewReply,
-  cell: RotFormCell,
-  row: number | null,
-): { v: unknown; inherited: boolean } {
-  const settings = isObj(view.settings) ? view.settings : {};
-  if (row !== null) {
-    const r = rowsOf(view.settings)[row] ?? {};
-    if (r[cell.key] !== undefined) return { v: r[cell.key], inherited: false };
-    if (cell.inherit)
-      return { v: (settings[cell.key] !== undefined ? settings[cell.key] : cell.default), inherited: true };
-    return { v: cell.default, inherited: false };
-  }
-  return { v: (settings[cell.key] !== undefined ? settings[cell.key] : cell.default), inherited: false };
-}
-
-/** 放回一格（整份新设置）。 */
-function put(
-  view: RotationViewReply,
-  cell: RotFormCell,
-  row: number | null,
-  v: unknown,
-): Obj {
-  const settings: Obj = isObj(view.settings) ? { ...view.settings } : {};
-  if (row === null) {
-    settings[cell.key] = v;
-    return settings;
-  }
-  const rows = rowsOf(view.settings).map((r) => ({ ...r }));
-  if (!rows[row]) return settings;
-  if (v === undefined) delete rows[row][cell.key];
-  else rows[row][cell.key] = v;
-  return withRows(settings, rows);
-}
-
-function label(
-  cell: RotFormCell,
-  inherited: boolean,
-  extra?: string,
-): HTMLElement {
-  const k = el(
-    "span",
-    (e) => (e.className = s.rotCellKey),
-    extra
-      ? copyText("rot.cell.win", { label: textOf(cell.label), win: extra })
-      : textOf(cell.label),
-  );
-  if (inherited) k.dataset.inherited = "true";
-  const help = textOf(cell.help);
-  if (help !== "") attachTooltip(k, help);
+function label(cell: RotCell): HTMLElement {
+  const k = el("span", (e) => (e.className = s.rotCellKey), cell.label);
+  if (cell.from === "all") k.dataset.inherited = "true";
+  if (cell.help !== undefined) attachTooltip(k, cell.help);
   return k;
 }
 
 function numberBox(
   value: number,
-  cell: RotFormCell,
+  cell: RotCell,
   unit: string,
   inherited: boolean,
   onSet: (n: number) => void,
@@ -592,7 +479,7 @@ function numberBox(
   if (cell.min !== undefined) input.min = String(cell.min);
   if (cell.max !== undefined) input.max = String(cell.max);
   input.value = String(value);
-  input.setAttribute("aria-label", textOf(cell.label));
+  input.setAttribute("aria-label", cell.label);
   input.addEventListener("change", () => {
     const n = Number(input.value);
     if (input.value.trim() !== "" && Number.isFinite(n)) onSet(n);
@@ -602,120 +489,70 @@ function numberBox(
 }
 
 /** 数格（百分数 · 分钟）：可空的带一颗空值说法的按钮；空着时数画虚线。 */
-function numberCell(cell: RotFormCell, v: unknown, inherited: boolean, unit: string, set: (next: unknown) => void): HTMLElement[] {
+function numberCell(cell: RotCell, unit: string, set: (next: unknown) => void): HTMLElement[] {
   const ctl = el("span", (e) => (e.className = s.rotCtl));
-  const num =
-    typeof v === "number"
-      ? v
-      : typeof cell.default === "number"
-        ? cell.default
-        : (cell.min ?? 0);
+  const num = cell.num ?? 0;
+  const inherited = cell.from === "all";
   if (cell.nullable !== undefined) {
-    const isNull = v === null || v === undefined;
+    const isNull = cell.v === null;
     const nul = button({
-      label: textOf(cell.nullable),
+      label: cell.nullable,
       kind: "secondary",
       size: "compact",
       onClick: () => set(isNull ? num : null),
     });
     nul.classList.add(s.rotNull);
     nul.setAttribute("aria-pressed", String(isNull));
-    ctl.append(
-      nul,
-      numberBox(num, cell, unit, isNull || inherited, (n) => set(n)),
-    );
+    ctl.append(nul, numberBox(num, cell, unit, isNull || inherited, (n) => set(n)));
   } else {
     ctl.append(numberBox(num, cell, unit, inherited, (n) => set(n)));
   }
-  return [label(cell, inherited), ctl];
+  return [label(cell), ctl];
 }
 
-/** 一格 ⇒ 一行或几行（`[标签, 控件]` 两两一组排进格子）。 */
-function cellRows(
-  spec: BoardSpec,
-  view: RotationViewReply,
-  cell: RotFormCell,
-  row: number | null,
-): HTMLElement[] {
-  const { v, inherited } = valueOf(view, cell, row);
-  const set = (next: unknown): void =>
-    spec.acts.settings(put(view, cell, row, next));
+/** 一格 ⇒ `[标签, 控件]`（排进格子）；`row` ＝ 号列表第几行（总体那几格 ⇒ `null`）。 */
+function cellRows(spec: BoardSpec, cell: RotCell, row: number | null): HTMLElement[] {
+  const inRow = row === null ? {} : { row };
+  const set = (v: unknown): void => spec.acts.edit({ set: { key: cell.key, v, ...inRow } });
   switch (cell.kind) {
     case "toggle": {
-      const sw = toggleSwitch({
-        label: textOf(cell.label),
-        on: v === true,
-        onChange: (on) => set(on),
-      });
+      const sw = toggleSwitch({ label: cell.label, on: cell.v === true, onChange: (on) => set(on) });
       sw.root.classList.add(s.rotSwitch);
-      return [label(cell, inherited), sw.root];
+      return [label(cell), sw.root];
     }
     case "percent":
-      return numberCell(cell, v, inherited, copyText("rot.unit.percent"), set);
+      return numberCell(cell, copyText("rot.unit.percent"), set);
     case "minutes":
-      return numberCell(cell, v, inherited, copyText("rot.unit.minutes"), set);
+      return numberCell(cell, copyText("rot.unit.minutes"), set);
     case "choice": {
       const choices = cell.choices ?? [];
-      const cur = typeof v === "string" ? v : "";
-      if (choices.length <= 3) {
+      const cur = typeof cell.v === "string" ? cell.v : "";
+      if (choices.length <= 3)
         return [
-          label(cell, inherited),
+          label(cell),
           segmented({
-            label: textOf(cell.label),
-            items: choices.map((c) => ({ key: c.v, label: textOf(c.label) })),
+            label: cell.label,
+            items: choices.map((c) => ({ key: c.v, label: c.label })),
             current: cur,
             onChange: (k) => set(k),
           }),
         ];
-      }
       const sel = select({
-        label: textOf(cell.label),
-        options: choices.map((c) => ({ value: c.v, label: textOf(c.label) })),
+        label: cell.label,
+        options: choices.map((c) => ({ value: c.v, label: c.label })),
         value: cur,
         onChange: (k) => set(k),
       });
-      return [label(cell, inherited), sel.el];
+      return [label(cell), sel.el];
     }
     case "daySegments": {
-      // 每个窗口一条：号另设了这一窗 ⇒ 用它的；否则跟总体（虚线）。
-      const out: HTMLElement[] = [];
-      const settings = isObj(view.settings) ? view.settings : {};
-      const total = isObj(settings[cell.key])
-        ? (settings[cell.key] as Obj)
-        : {};
-      const ownRow =
-        row !== null ? rowsOf(view.settings)[row]?.[cell.key] : undefined;
-      const own = isObj(ownRow) ? ownRow : {};
-      for (const w of cell.windows ?? []) {
-        const mine = row === null ? total[w] : own[w];
-        const follows =
-          row !== null && cell.inherit === true && !Array.isArray(mine);
-        const segs = (
-          Array.isArray(mine)
-            ? mine
-            : follows && Array.isArray(total[w])
-              ? total[w]
-              : []
-        ) as RotSeg[];
-        const winText =
-          w === "5h"
-            ? copyText("rot.win.fiveHour")
-            : w === "7d"
-              ? copyText("rot.win.sevenDay")
-              : copyText("rot.win.other", { w });
-        out.push(
-          label(cell, follows, winText),
-          dayBar(spec, segs, follows, (next) => {
-            const base = { ...(row === null ? total : own) };
-            if (next.length === 0) delete base[w];
-            else base[w] = next;
-            set(
-              row !== null && Object.keys(base).length === 0 ? undefined : base,
-            );
-          }),
-        );
-      }
-      return out;
+      const win = cell.window ?? "";
+      return [
+        label(cell),
+        dayBar(cell.segs ?? [], cell.from === "all", (from, to, v) =>
+          spec.acts.edit({ day: { key: cell.key, window: win, from, to, v, ...inRow } }),
+        ),
+      ];
     }
   }
 }
@@ -726,11 +563,11 @@ const DAY = 1440;
 /** 拖的时候按半小时吸附。 */
 const SNAP = 30;
 
+/** 24 小时条：段与字照回包画；拖出一截、选个值 ⇒ `paint(from, to, v)`（`v: null` ＝ 删这截）。 */
 function dayBar(
-  spec: BoardSpec,
-  segs: readonly RotSeg[],
+  segs: readonly RotDaySeg[],
   inherited: boolean,
-  onSegs: (next: RotSeg[]) => void,
+  paint: (from: number, to: number, v: number | null) => void,
 ): HTMLElement {
   const wrap = el("div", (e) => (e.className = s.rotDay));
   const bar = el("div", (e) => (e.className = s.rotDayBar));
@@ -739,21 +576,10 @@ function dayBar(
   for (const g of segs) {
     const from = Number(g.from);
     const to = Number(g.to);
-    const seg = el(
-      "span",
-      (e) => (e.className = s.rotDaySeg),
-      g.v === 0 ? copyText("rot.day.zero") : copyText("rot.day.v", { v: g.v }),
-    );
+    const seg = el("span", (e) => (e.className = s.rotDaySeg), g.text);
     if (g.v === 0) seg.dataset.zero = "true";
     at(seg, from / DAY, (to - from) / DAY);
-    attachTooltip(
-      seg,
-      copyText("rot.day.seg", {
-        from: dayClock(from),
-        to: dayClock(to),
-        v: g.v,
-      }),
-    );
+    attachTooltip(seg, g.tip);
     bar.appendChild(seg);
   }
   const minAt = (x: number): number => {
@@ -792,7 +618,7 @@ function dayBar(
       from = hit ? Number(hit.from) : 0;
       to = hit ? Number(hit.to) : DAY;
     }
-    paintPop(spec, bar, segs, from, to, onSegs, () => ghost?.remove());
+    paintPop(bar, from, to, paint, () => ghost?.remove());
   });
   wrap.appendChild(bar);
   const axis = el("div", (e) => (e.className = s.rotDayAxis));
@@ -807,12 +633,10 @@ function dayBar(
 
 /** 松手弹出的那一张：`20:00–23:00 · 上限 [0 %]` · 0% · 50% · 100% · 删这段。 */
 function paintPop(
-  spec: BoardSpec,
   anchor: HTMLElement,
-  segs: readonly RotSeg[],
   from: number,
   to: number,
-  onSegs: (next: RotSeg[]) => void,
+  onPaint: (from: number, to: number, v: number | null) => void,
   done: () => void,
 ): void {
   const pop = el("div", (e) => (e.className = s.rotDayPop));
@@ -826,9 +650,7 @@ function paintPop(
   const paint = (v: number | null): void => {
     closePopover();
     // 一整天（0–24）交「相等」，到 24:00 为止交「到 0 点」（后端的写法：`to ≤ from` 跨午夜）。
-    void spec.acts
-      .dayPaint(segs.slice(), from % DAY, to % DAY, v)
-      .then(onSegs, () => undefined);
+    onPaint(from % DAY, to % DAY, v);
   };
   const input = document.createElement("input");
   input.type = "number";
@@ -1011,22 +833,15 @@ function simulation(spec: BoardSpec, view: RotationViewReply): HTMLElement {
     const track = el("div", (e) => (e.className = s.rotSimTrack));
     // 过去那一截：只有说得出的几段（说不出的空着）；字只有重置那段的 ↻HH:MM。
     for (const g of past?.lanes.find((l) => l.account === lane.account)?.segs ?? []) {
-      const seg = el("span", (e) => (e.className = s.rotSimSeg), g.sendable && g.reset ? copyText("rot.sim.reset", { at: g.fromText }) : "");
+      const seg = el("span", (e) => (e.className = s.rotSimSeg), g.text);
       place(seg, g.from, g.to);
       seg.dataset.state = g.sendable ? "ok" : "out";
       seg.dataset.past = "true";
       track.appendChild(seg);
     }
-    lane.segs.forEach((g, k) => {
+    lane.segs.forEach((g) => {
       if (g.to <= a || g.from >= b) return;
-      const text = !g.sendable
-        ? ""
-        : g.reset
-          ? copyText("rot.sim.reset", { at: g.fromText })
-          : k === 0
-            ? copyText("rot.sim.left", { n: Math.round(g.left) })
-            : "";
-      const seg = el("span", (e) => (e.className = s.rotSimSeg), text);
+      const seg = el("span", (e) => (e.className = s.rotSimSeg), g.text);
       place(seg, g.from, g.to);
       seg.dataset.state = g.sendable ? "ok" : "out";
       if (g.from > a) seg.dataset.future = "true";
@@ -1094,11 +909,11 @@ export function board(spec: BoardSpec): HTMLElement {
     const pane = accountPane(spec, view, spec.state.open);
     if (pane) root.appendChild(pane);
   }
-  const all = view.form.filter((c) => c.scope === "all");
+  const all = view.board.all;
   if (all.length > 0) {
     root.appendChild(header(copyText("rot.h.all")));
     const grid = el("div", (e) => (e.className = s.rotCells));
-    for (const cell of all) grid.append(...cellRows(spec, view, cell, null));
+    for (const cell of all) grid.append(...cellRows(spec, cell, null));
     root.appendChild(grid);
   }
   if (view.timeline) {

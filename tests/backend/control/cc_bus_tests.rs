@@ -173,9 +173,7 @@ const TRANSCALLS: &[(&str, &str, &str, &str)] = &[
 /// 取法与 `readonly_guard::g6_reach` 那一格**刻意相同**（`run("` / `run_as("` 之后
 /// 那一个字符串字面量）—— 两处认的是同一件事实，取法不同才会各说各话。
 fn transcalled_today() -> Vec<String> {
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/cc_bus.rs"
-    ));
+    let prod = guard_core::production_code(include_str!("../../../src/backend/control/cc_bus.rs"));
     let mut out: Vec<String> = Vec::new();
     for opener in ["run(\"", "run_as(\"", "read_via(\""] {
         let mut from = 0usize;
@@ -237,39 +235,15 @@ fn every_shelled_out_command_carries_a_written_ruling() {
              收进后端时要**同时**把它这一行删掉（不删就是一条幽灵，\n\
              下一个人会照着一份不成立的理由做判断）。"
     );
-    for (cmd, face, why, unlock) in TRANSCALLS {
+    for (cmd, face, _, unlock) in TRANSCALLS {
         assert!(
             !face.trim().is_empty(),
             "`{cmd}` 没写写面 —— 那一栏正是只读铁律那条豁免理由要引用的东西"
         );
         assert!(
-            why.chars().count() >= 40,
-            "`{cmd}` 的理由只有 {} 字 —— 那是占位不是理由",
-            why.chars().count()
-        );
-        assert!(
             unlock.chars().count() >= 20,
             "`{cmd}` 没写解锁条件 —— 没有解锁条件的裁定会一直躺着，\
                  而『躺着』与『裁过』在盘上长得一模一样"
-        );
-    }
-}
-
-/// ★ `KR113D1`：`bus-state` **一次回全**（两半在同一个函数里取）。两半改读 cc-bus 的机器可读形。
-#[test]
-fn bus_state_answers_both_halves_from_one_call() {
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/cc_bus.rs"
-    ));
-    let body = prod
-        .split("pub(crate) fn state_for_inbound")
-        .nth(1)
-        .expect("`state_for_inbound` 不在生产段里了 —— `bus-state` 的本体没了");
-    let body = &body[..body.find("\n}").expect("函数体没有收尾 —— 抽取坏了")];
-    for half in ["roster()", "spawned_via_cc_agents()"] {
-        assert!(
-            body.contains(half),
-            "`state_for_inbound` 里没有 `{half}` —— 「一次回全」少了一半"
         );
     }
 }

@@ -180,7 +180,7 @@ if [ "$GATE_PAR" = 1 ]; then GATE_VITEST_EACH=$(( $(nproc) / ${#GATE_VITEST_CELL
 gate_vitest_share() { ( export GATE_VITEST_WORKERS="$GATE_VITEST_EACH"; "$@" ); }
 #
 # ② **不按墙钟判的格让路**（`nice -n 10`：负载涨上来时 CPU 先给按墙钟判的那些）：
-#    · 按墙钟判（有期限、超时即红 ⇒ 普通优先级）—— `npm` · `coverage`（vitest 每条有期限）· `cargo` · `backend`
+#    · 按墙钟判（有期限、超时即红 ⇒ 普通优先级）—— `npm` · `coverage`（vitest 每条有期限）· `cargo` · `creds-harden` · `backend`
 #      · `rotation-500`（沙箱里的策略每判有墙钟兜底）
 #      · `comm-boundary` · `test-tiers`（`cargo test` 里有带期限 / 等待上限的用例；这两格的 `cargo test --no-run` 那一半让路，
 #      见 `gate_cargo_test_nonet`）· `ccbus-twophase`（真跑、带等待上限）· e2e 各套 · `env-sandbox` · `weak-net`
@@ -190,7 +190,7 @@ gate_vitest_share() { ( export GATE_VITEST_WORKERS="$GATE_VITEST_EACH"; "$@" ); 
 #      读文本类 `worktree-clean` · `hooks` · `copy2` · `shellcheck` · `e2e-smoke` · `release-gate` · `platform` · `installface`
 #      · `fmt` · `fmt-backend` · `audit` · `generated` · `tmux-default`。
 #    两张表与盘上的格两向相等（同一个判据文件钉）：新加一格就得在这里归一边。
-GATE_WALL_CELLS=" npm coverage cargo backend rotation-500 comm-boundary test-tiers ccbus-twophase e2e env-sandbox weak-net mobile android-device "
+GATE_WALL_CELLS=" npm coverage cargo creds-harden backend rotation-500 comm-boundary test-tiers ccbus-twophase e2e env-sandbox weak-net mobile android-device "
 GATE_YIELD_CELLS=" deadcode deadcode-backend clippy clippy-backend appbuild shotsshell winchk winchk-backend winlink muslbuild androidbuild tsc e2e-prep worktree-clean hooks copy2 shellcheck e2e-smoke release-gate platform installface fmt fmt-backend audit generated tmux-default "
 gate_yields() { case "$GATE_YIELD_CELLS" in *" $1 "*) return 0 ;; esac; return 1; }
 # 只降调它所在的那个子 shell（`$BASHPID`）及其往后起的子进程；调用方负责把它放进子 shell 里。
@@ -724,7 +724,7 @@ run_gate copy2 '`evidence/*.py` 里 `shutil` 保元数据复制族（copy2 · co
 # 人群的唯一住址是下面这一行（CI 调本格）；`shell_lint_registry` 读它判每个 shell 脚本要么在人群里、要么登记豁免。
 # 本段不让任何注释行以 `#` ＋ 空格 ＋ 那个工具名开头：那是它的指令语法。
 # 反空真：展开出的份数 > 0 且本文件在里面；某组 glob 一个都不匹配由 `shell_lint_registry` 接住。本地与 CI 的二进制版本可能不同。
-GATE_SHELLCHECK_GLOBS='tests/e2e/*.sh tests/__fixtures__/*.sh tests/mobile-smoke/*.sh src/shared/cc-bus/scripts/* src/shared/cc-bus/examples/cc-keepalive tests/e2e/fake-claude tests/e2e/weak-net/*.sh tests/e2e/local-backend-container/*.sh tests/evidence/*.sh tests/scripts/*.sh tests/hooks/* tests/shots/perf/*.sh src/mobile/scripts/*.sh src/mobile/gradlew'
+GATE_SHELLCHECK_GLOBS='tests/e2e/*.sh tests/__fixtures__/*.sh tests/mobile-smoke/*.sh src/shared/cc-bus/scripts/* src/shared/cc-bus/examples/cc-keepalive tests/e2e/fake-claude tests/e2e/weak-net/*.sh tests/e2e/local-backend-container/*.sh tests/evidence/*.sh tests/scripts/*.sh tests/hooks/* tests/shots/perf/*.sh tests/shots/perf/backend/*.sh src/mobile/scripts/*.sh src/mobile/gradlew'
 gate_shellcheck() {
   local out rc n self=0 f
   command -v shellcheck >/dev/null 2>&1 || {
@@ -821,6 +821,11 @@ if [ -d src/frontend/shell/embedded-backends ]; then
 else
   printf '  分母 %-14s %s\n' "cargo" "本树未铺 src/frontend/shell/embedded-backends/ ⇒ embedded_backends cfg 不置 ⇒ 上面那个合计里少了「本地后端真的能起来吗」那一族（4 条，逐个点名见上方注释）"
 fi
+
+# ── `creds-harden`：凭据那份共享 crate 开 `harden` 那一档的单测 ─────────────────────────────
+# 壳那棵不开 `harden`（monitor 不写那份文件），后端那棵只把共享 crate 当依赖、不跑它的测试 ⇒ 建文件即只给本人那几条只在这一格跑。
+run_gate creds-harden '`creds-core` 开 `harden` 那一档的 lib 单测（写那一半只在这一档编进来）' \
+         gate_cargo_test_nonet src/frontend/shell -p creds-core --features harden --lib
 
 # ── `comm-boundary` · `test-tiers`：两族判据还在不在 ─────────────────────────────────────
 # 两族各挂在一个模块上，那一行 `mod` 被摘掉时整族消失，而 `cargo` 那格只会合计小一点。
@@ -1363,7 +1368,7 @@ run_gate mobile '这一趟 Gradle test-results 里的单测条数（各模块合
 
 # ── `android-device`：手机端要设备的 instrumentation 测（androidTest，10-11 起进全量门禁）────────────────────
 # 起因：从前它们不在任何一格里（上一格「不起模拟器」），`SmokeTest` 红了很久没人看见（10-11 才撞见）。
-# 起停：`tests/mobile-smoke/emu.sh up|down` —— 无头 KVM 模拟器，自己一个 `systemd-run --user --scope`（MemoryHigh 6G / MemoryMax 8G），
+# 起停：`tests/mobile-smoke/emu.sh up|down` —— 无头 KVM 模拟器，自己一个 `systemd-run --user --scope`（MemoryMax 8G，不设 MemoryHigh），
 #   不占 heavy 的槽位；adb 用私有端口（默认 5139 / 模拟器 5592，与冒烟台架的 5137 / 5590 错开），不碰本机正在跑的 adb 与真手机。
 #   AVD 默认建在这棵树的 `.build/android-device/avd`，`GATE_ANDROID_AVD_HOME` 可指别处（`gate-clean.sh` 只清 `CCM_*` 等会话变量，不清它）。
 # 跑：`src/mobile/scripts/android-test.sh`（唯一入口：装 app → `pm clear` 判成没成 → 三个模块的设备测；gradle 带 --no-daemon）。

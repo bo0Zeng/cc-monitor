@@ -180,9 +180,11 @@ pub(crate) fn copy_with(
                         name: cwf::WirePath::from(base(from)),
                         kind: kind(src_dir),
                         size: None,
+                        size_text: None,
                         mtime_text: None,
                         there: kind(there_dir),
                         there_size: None,
+                        there_size_text: None,
                         there_mtime_text: None,
                         dir_into: src_dir || there_dir,
                     });
@@ -428,7 +430,7 @@ impl Wired {
             if let Ok(at) =
                 crate::common::root_path::resolve_in_root(&home, relay_route_core::STAGING_DIR_REL)
             {
-                let _ = face.make_dir_private(&at);
+                let _ = face.own_dir(&at);
             }
         }
         let w = Wired {

@@ -185,7 +185,7 @@ fn every_one_shot_wait_takes_the_deadline_its_caller_gave() {
             ".within(req.arrive_within_ms)",
         ),
     ];
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let mut seen = Vec::new();
     for (p, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
         let rel = p
@@ -196,7 +196,7 @@ fn every_one_shot_wait_takes_the_deadline_its_caller_gave() {
         if rel == "observe/one_wait.rs" {
             continue;
         }
-        let prod = crate::guard_support::production_code(&src);
+        let prod = guard_core::production_code(&src);
         for (at, _) in prod.match_indices(".within(") {
             let end = prod[at..].find(')').map_or(prod.len(), |e| at + e + 1);
             seen.push((rel.clone(), prod[at..end].to_string()));

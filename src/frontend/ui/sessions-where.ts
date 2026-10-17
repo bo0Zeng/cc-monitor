@@ -6,50 +6,43 @@
  * 界面不拿名单自己筛、不按目录猜。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import { machineName, settleTyped, type Refusals } from "./control-said";
+import { machineName, settleTyped } from "./control-said";
 import type { StandingWord } from "./generated/StandingWord";
 import type { Whereabouts } from "./generated/Whereabouts";
 import type { Origin } from "./ipc/origin";
+import type { Run } from "./generated/Run";
 import { copyText } from "./copy-table";
-import { noteMachineTmux } from "./resume-defaults";
 
 /**
  * 一个会话的样子：`running` 恰好一个在跑（`names[0]`）· `ambiguous` 在跑的不止一个（按名单顺序）·
  * `idle` 没有在跑的、有带着它的空 tmux（`names[0]`）· `none` 没有哪个会话带着它 · `no_tmux` 那台没装 tmux。
- * `terminals` 与 `names` 同序同数：各自的终端句柄（预览按它指，不按 tmux 名）。
+ * `terminals` 与 `names` 同序同数：各自的终端句柄（预览按它指，不按 tmux 名）。`run` ＝ 这台恢复默认放在哪（恢复菜单的勾画在它上面）。
  */
 export interface Standing {
   kind: StandingWord;
   names: string[];
   terminals: string[];
+  run: Run;
 }
 
 /** 期限：那台问一次 tmux 名单就答。 */
 const STANDING_BUDGET_MS = 10_000;
 
-function refusals(origin: Origin): Refusals {
-  return {
-    byCode: (_code, said) => copyText("tabBatch.why.batchRefused", { machine: machineName(origin), said }),
-    noReason: () => copyText("tabBatch.why.batchRefused", { machine: machineName(origin), said: copyText("reason.io.unknown") }),
-  };
+/** 整批被那台拒了：那一句前面带上是哪台（批量的提示里机器只有界面知道）。停 · 起 · 问样子共用。 */
+export function batchRefused(origin: Origin): (said: string) => string {
+  return (said) => copyText("tabBatch.why.batchRefused", { machine: machineName(origin), said });
 }
 
-/** 应答 ⇒ 逐个样子（类型从 Rust 生成，形状由握手指纹核过）；顺手记下那台有没有 tmux。 */
-export function standingsFrom(origin: Origin, reply: Whereabouts): Standing[] {
-  return reply.results.map((r) => {
-    const kind = r.standing;
-    // 那台答的就是它有没有 tmux（没有 ⇒ `no_tmux`；有带着它的 tmux 会话 ⇒ 有）：恢复菜单默认的「运行于」照它回落。
-    if (kind === "no_tmux") noteMachineTmux(origin, false);
-    else if (kind !== "none") noteMachineTmux(origin, true);
-    return { kind, names: r.names, terminals: r.terminals.map((t) => t.terminal) };
-  });
+/** 应答 ⇒ 逐个样子（类型从 Rust 生成，形状由握手指纹核过）。 */
+export function standingsFrom(reply: Whereabouts): Standing[] {
+  return reply.results.map((r) => ({ kind: r.standing, names: r.names, terminals: r.terminals.map((t) => t.terminal), run: reply.run }));
 }
 
-/** 那台上这几个会话各自的样子（与 `sids` 同序）。问不到 ⇒ 抛 `ControlError`（那一句已经说好）。 */
+/** 那台上这几个会话各自的样子（与 `sids` 同序）。问不到 ⇒ 抛（那一句已经说好）。 */
 export async function standingsOf(origin: Origin, sids: readonly string[]): Promise<Standing[]> {
   const budget = budgetWithin(STANDING_BUDGET_MS);
-  const v = await settleTyped(origin, "sessions-where", callTyped(origin, "sessions-where", { sids: [...sids] }, budget), refusals(origin));
-  return standingsFrom(origin, v);
+  const v = await settleTyped(origin, "sessions-where", callTyped(origin, "sessions-where", { sids: [...sids] }, budget), batchRefused(origin));
+  return standingsFrom(v);
 }
 
 /** 一个会话的样子；问不到 ⇒ `undefined`（不知道，不是「不在」）。 */

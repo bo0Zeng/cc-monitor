@@ -2,8 +2,8 @@
 //!
 //! # 为什么单住一个文件
 //!
-//! 与隔壁 `creds_guard.rs` / `bind_guard.rs`（以及已退役的 `nodelay_guard.rs`）同一个理由，
-//! 它们的头注逐字写着：扫描型判据要走 `guard_core::scan_tree!`
+//! 与隔壁 `creds_guard.rs`（以及已退役的 `nodelay_guard.rs`）同一个理由，
+//! 它的头注逐字写着：扫描型判据要走 `guard_core::scan_tree!`
 //! ⇒ **判据与被扫的代码必须不在同一个文件**，否则「摘掉自己」正好把靶子摘了
 //!（⚠ 那一刀经 `#[path]` 挂载时**不生效**，也就是本仓今天的全部判据 —— 详见下一段）。
 //! 本模块扫的是 `table.rs`，所以它不能住 `table.rs`。
@@ -22,7 +22,7 @@
 //! |---|---|---|---|
 //! | ㈠ `Row{base` 字面量（**去空白后**数，09-09 起） | **哪个上游配哪把 key**（焊接那一步） | 本文件 | **1** |
 //! | ㈡ `upstream::connect(` 调用点 | **这条请求实际连到哪儿** | 本文件 | **1** |
-//! | ㈢ `expose_for_auth_header(` 调用点 | **换上去的是哪把 key** | `creds_guard.rs`（`KS2`，`K-H2a` 就有） | **1** |
+//! | ㈢ `expose_for_auth_header(` 调用点 | **换上去的是哪把 key** | `creds_store_exits.rs`（`KS2`，扫三棵树） | **1** |
 //!
 //! ⇒ 三条加起来才是「决定点」。**少一条都不是** ——
 //! 只钉㈠，有人可以另开一条 `upstream::connect` 绕过表；只钉㈡，
@@ -68,7 +68,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::guard_support::production_code;
+    use guard_core::production_code;
 
     /// 从 `at` 之后第一个 `{` 起，切出配平的花括号块（不含首尾那对括号）。
     ///
@@ -97,11 +97,10 @@ mod tests {
 
     /// 整个后端 crate 的生产段（逐文件）。
     ///
-    /// ★ 人群是**整个 crate**，不是 `relay/` —— 与 `creds_guard::crate_production` 同一条理由：
-    /// 「决定点只有一处」这句话的分母如果只到 `relay/`，那么有人在 `observe/` 里
+    /// ★ 人群是**整个 crate**，不是 `relay/`：「决定点只有一处」这句话的分母如果只到 `relay/`，那么有人在 `observe/` 里
     /// 再开一条上游连接就不会红。**人群要恰好等于性质。**
     fn crate_production() -> Vec<(String, String)> {
-        let dir = crate::guard_support::src_root();
+        let dir = guard_core::addr::backend_src_root();
         guard_core::scan_tree!(&dir, &["rs"])
             .into_iter()
             .map(|(p, raw)| (p.display().to_string(), production_code(&raw)))
@@ -616,8 +615,8 @@ mod tests {
 
         // 反空真自检㈠：真的切到了那一块（它里面必须有这两个今天确实在的字段）。
         assert!(
-            block.contains("tee:") && block.contains("served:"),
-            "切出来的窗口里没有 `tee:` / `served:` —— 取法坏了，下面的断言在空转"
+            block.contains("tee:") && block.contains("door:"),
+            "切出来的窗口里没有 `tee:` / `door:` —— 取法坏了，下面的断言在空转"
         );
         // 反空真自检㈡：窗口没有跨进下一个 item。
         assert!(

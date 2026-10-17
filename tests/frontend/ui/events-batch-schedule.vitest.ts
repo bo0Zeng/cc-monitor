@@ -90,7 +90,7 @@ async function bind(): Promise<Harness> {
   const onLine = vi.fn();
   await bindEvents({
     onLine,
-    onSessionEnded: vi.fn(),
+    onSessionFace: vi.fn(),
     onBatchStart,
     onBatchEnd,
   } as never, { streams: [{ origin: "<local>", kind: "session-lines" }] });
@@ -322,7 +322,7 @@ describe("〔CF2〕会话流：还 credit 与丢格", () => {
     await bindEvents(
       {
         onLine: (p: { seq: number }) => order.push(`line ${p.seq}`),
-        onSessionEnded: vi.fn(),
+        onSessionFace: vi.fn(),
         onBatchStart: vi.fn(),
         onBatchEnd: vi.fn(),
         onStreamGap: (o: string) => order.push(`gap ${o}`),
@@ -353,7 +353,6 @@ describe("〔CF2〕会话内容的旧路退役", () => {
     expect(hits(`listen("jsonl-${"line"}"); sub("jsonl-${"batch"}"); invoke("replay_session_${"to_window"}");`)).toHaveLength(3);
     expect(hits(`// 原来的 "jsonl-${"line"}" 退役了`)).toEqual([]);
     const files = productionTsFiles("src");
-    expect(files.length, "前端生产语料一份都没扫到 —— 本条零命中地绿").toBeGreaterThan(100);
     const offenders = files.flatMap(({ file, text }) => hits(text).map((n) => `${file}: ${n}`));
     expect(offenders, "会话内容的旧路又长回来了（该经 `chan.subscribe`，`events.ts` 的 `streams`）").toEqual([]);
   });

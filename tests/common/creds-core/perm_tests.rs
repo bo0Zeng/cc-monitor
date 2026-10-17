@@ -135,11 +135,16 @@ fn the_windows_create_path_really_creates_with_a_dacl() {
 /// `KS11`：Unix 上「过宽」的判断，以及它**说不说得清怎么修**。
 #[test]
 fn a_unix_mode_wider_than_owner_only_is_called_out_with_a_fix() {
-    assert_eq!(judge(&Protection::Unix { mode: 0o600 }), Verdict::OwnerOnly);
-    assert_eq!(judge(&Protection::Unix { mode: 0o400 }), Verdict::OwnerOnly);
+    let unix = |mode| Protection::Unix {
+        mode,
+        owner: 1000,
+        me: 1000,
+    };
+    assert_eq!(judge(&unix(0o600)), Verdict::OwnerOnly);
+    assert_eq!(judge(&unix(0o400)), Verdict::OwnerOnly);
     // 分母 = 我列出的这 4 形（组可读 / 其他可读 / 全开 / 只多一位）。
     for mode in [0o640, 0o604, 0o666, 0o601] {
-        match judge(&Protection::Unix { mode }) {
+        match judge(&unix(mode)) {
             Verdict::TooWide { how, fix } => {
                 assert!(
                     how.contains(&format!("{mode:04o}")),
@@ -152,35 +157,97 @@ fn a_unix_mode_wider_than_owner_only_is_called_out_with_a_fix() {
     }
 }
 
-/// `KS11`：Windows 那半按 DACL 里的宽泛主体判。
+/// 0600 但属主是别人 ⇒ 过宽（属主读得到、还改得了权限），说出属主是谁。
 #[test]
-fn a_windows_dacl_with_a_wide_principal_is_called_out() {
-    let tight = wide_principals_in_sddl("D:P(A;;FA;;;S-1-5-21-1-2-3-1001)(A;;FA;;;SY)");
-    assert!(
-        tight.is_empty(),
-        "只给本人 + SYSTEM 的 DACL 不该被判宽：{tight:?}"
-    );
+fn an_owner_only_mode_held_by_someone_else_is_too_wide() {
+    match judge(&Protection::Unix {
+        mode: 0o600,
+        owner: 1001,
+        me: 1000,
+    }) {
+        Verdict::TooWide { how, .. } => assert!(how.contains("1001"), "{how}"),
+        other => panic!("属主是别人应当判过宽，实得 {other:?}"),
+    }
+}
+
+const ME: &str = "S-1-5-21-1-2-3-1001";
+const OTHER: &str = "S-1-5-21-1-2-3-1002";
+/// `FILE_ALL_ACCESS`。
+const FA: u32 = 0x001f_01ff;
+
+fn ace(allow: bool, who: &str, mask: u32) -> Ace {
+    Ace {
+        allow,
+        who: who.to_string(),
+        mask,
+    }
+}
+
+fn win(owner: &str, dacl: Option<Vec<Ace>>) -> Verdict {
+    judge(&Protection::Windows {
+        owner: owner.to_string(),
+        me: ME.to_string(),
+        dacl,
+    })
+}
+
+/// `KS11` Windows 那半：白名单（本人 · SYSTEM · Administrators），逐条读 ACE。
+#[test]
+fn a_windows_dacl_is_judged_against_a_whitelist() {
+    // 只有本人 ＋ SYSTEM ＋ Administrators ⇒ 只给本人。
+    let tight = vec![
+        ace(true, ME, FA),
+        ace(true, "S-1-5-18", FA),
+        ace(true, "S-1-5-32-544", FA),
+    ];
+    assert_eq!(win(ME, Some(tight.clone())), Verdict::OwnerOnly);
+    // 拒绝 Everyone ＋ 本人全权 ⇒ 只给本人（拒绝不会放宽）。
     assert_eq!(
-        judge(&Protection::Windows {
-            wide_principals: tight
-        }),
+        win(ME, Some(vec![ace(false, "S-1-1-0", FA), ace(true, ME, FA)])),
         Verdict::OwnerOnly
     );
-
-    let loose = wide_principals_in_sddl("D:AI(A;;FA;;;WD)(A;;0x1200a9;;;BU)(A;;FA;;;SY)");
-    assert_eq!(loose, vec!["WD".to_string(), "BU".to_string()]);
-    match judge(&Protection::Windows {
-        wide_principals: loose,
-    }) {
-        Verdict::TooWide { how, fix } => {
-            assert!(
-                how.contains("WD") && how.contains("BU"),
-                "说法里没点名主体：{how}"
-            );
-            assert!(fix.contains("Everyone"), "没说清怎么修：{fix}");
+    // 别人只有读权限位 · 同步位（碰不到内容）⇒ 只给本人。
+    assert_eq!(
+        win(
+            ME,
+            Some(vec![ace(true, ME, FA), ace(true, OTHER, 0x0012_0080)])
+        ),
+        Verdict::OwnerOnly
+    );
+    // 另一个本地用户能读数据 ⇒ 过宽，点名是谁（名单外的谁都算，不只五个简称）。
+    for (who, mask) in [
+        (OTHER, 0x0012_0089),
+        ("S-1-5-32-546", 0x8000_0000),
+        ("S-1-1-0", 0x2),
+        (OTHER, 0x4_0000),
+    ] {
+        let mut dacl = tight.clone();
+        dacl.push(ace(true, who, mask));
+        match win(ME, Some(dacl)) {
+            Verdict::TooWide { how, fix } => {
+                assert!(how.contains(who), "说法里没点名主体：{how}");
+                assert!(fix.contains("SYSTEM"), "没说清怎么修：{fix}");
+            }
+            other => panic!("{who} {mask:#x} 应当判过宽，实得 {other:?}"),
         }
-        other => panic!("带 Everyone 的 DACL 应当判过宽，实得 {other:?}"),
     }
+}
+
+/// 没有 DACL（空指针，人人全权）⇒ 过宽，不是「一个宽主体都没有」。
+#[test]
+fn a_missing_dacl_is_too_wide() {
+    assert!(matches!(win(ME, None), Verdict::TooWide { .. }));
+}
+
+/// 属主不在白名单里 ⇒ 过宽（属主改得了 DACL）；Administrators 当属主照常。
+#[test]
+fn a_windows_owner_outside_the_whitelist_is_too_wide() {
+    let dacl = Some(vec![ace(true, ME, FA)]);
+    match win(OTHER, dacl.clone()) {
+        Verdict::TooWide { how, .. } => assert!(how.contains(OTHER), "{how}"),
+        other => panic!("属主是别人应当判过宽，实得 {other:?}"),
+    }
+    assert_eq!(win("S-1-5-32-544", dacl), Verdict::OwnerOnly);
 }
 
 /// ★ **「查不出来」不是绿灯。**
@@ -214,32 +281,6 @@ fn undetermined_is_not_a_green_light() {
         fix: String::new()
     }
     .needs_attention());
-}
-
-/// `probe` 在 Unix 上真的量到了盘上的位（不是编的）。
-#[cfg(unix)]
-#[test]
-fn probe_reads_the_real_mode_off_the_disk() {
-    use std::os::unix::fs::PermissionsExt;
-    let dir = std::env::temp_dir().join(format!("kh2a-perm-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("建临时目录");
-    let f = dir.join("probe-target");
-    std::fs::write(&f, b"{}").expect("写夹具");
-
-    std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o644)).expect("放宽");
-    assert_eq!(probe(&f), Protection::Unix { mode: 0o644 });
-    assert!(judge(&probe(&f)).needs_attention(), "0644 应当出声");
-
-    std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o600)).expect("收紧");
-    assert_eq!(probe(&f), Protection::Unix { mode: 0o600 });
-    assert_eq!(judge(&probe(&f)), Verdict::OwnerOnly);
-
-    // 不存在的文件 ⇒ **查不出来**，不是「没问题」。
-    assert!(matches!(
-        probe(&dir.join("nope")),
-        Protection::Undetermined { .. }
-    ));
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// ★★★ **`KS5` 阻-2 的行为那一半〔D1，08-27〕：文件在**出生那一刻**就只给本人。**
@@ -278,11 +319,10 @@ fn a_file_created_through_create_private_is_born_owner_only() {
     }
     // ★ **出生那一刻**（文件还在原地，没被 rename 走）就量。
     assert_eq!(
-        probe(&born),
-        Protection::Unix { mode: 0o600 },
+        open_checked(&born).expect("量").1,
+        Verdict::OwnerOnly,
         "文件出生时不是只给本人 —— 那一刻里已经有明文了"
     );
-    assert_eq!(judge(&probe(&born)), Verdict::OwnerOnly);
     // 内容确实在里面（否则「窄」的是一个空文件，没意义）。
     assert_eq!(
         std::fs::read_to_string(&born).expect("读回"),
@@ -293,9 +333,8 @@ fn a_file_created_through_create_private_is_born_owner_only() {
     let wide = dir.join("wide");
     std::fs::write(&wide, b"x").expect("建对照");
     std::fs::set_permissions(&wide, std::fs::Permissions::from_mode(0o644)).expect("放宽");
-    assert_eq!(probe(&wide), Protection::Unix { mode: 0o644 });
     assert!(
-        judge(&probe(&wide)).needs_attention(),
+        open_checked(&wide).expect("量").1.needs_attention(),
         "尺子对 0644 都不出声 ⇒ 上面那条「0600」证不了什么"
     );
 
@@ -308,16 +347,12 @@ fn a_file_created_through_create_private_is_born_owner_only() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// 量不动（文件不在）：句子只给原因词，系统原话另带在 `raw`（进复制详情 / 日志），不上句子。
-#[cfg(unix)]
+/// 量不动：句子只给原因词，系统原话另带在 `raw`（进复制详情 / 日志），不上句子。
 #[test]
-fn an_unreadable_probe_keeps_the_system_words_out_of_the_sentence() {
-    match probe(std::path::Path::new("/nonexistent-perm-probe/x")) {
-        Protection::Undetermined { why, raw } => {
-            assert!(
-                copy_core::copy_matches("credsPerm.probe.noMetadata", &why),
-                "{why}"
-            );
+fn a_failed_measurement_keeps_the_system_words_out_of_the_sentence() {
+    let e = std::io::Error::from_raw_os_error(13);
+    match open_failed(&e) {
+        Verdict::Undetermined { why, raw } => {
             let raw = raw.expect("系统原话另带");
             assert!(
                 !raw.trim().is_empty() && !why.contains(raw.trim()),

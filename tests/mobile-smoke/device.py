@@ -38,7 +38,7 @@ WITHIN = float(os.environ.get("CCM_DEVICE_WITHIN", "60"))
 # 静默断网之后网回来多久内要重连上（秒）：连接自己的保活判死、重拨的间隔都要短到网回来几秒内接上。
 REJOIN = float(os.environ.get("CCM_DEVICE_REJOIN", "10"))
 # 跳板那台 sshd 的口（rig.sh hop）。慢链路那一格的往返（模拟器出方向 netem 加的那一段）。
-HOP_PORT = os.environ.get("CCM_SMOKE_HOP_PORT", "22423")
+HOP_PORT = os.environ["CCM_SMOKE_HOP_PORT"]
 SLOW_RTT_MS = int(os.environ.get("CCM_DEVICE_SLOW_RTT", "1500"))
 D = "d" + str(int(time.time()))[-5:]
 rows = []  # (项, 结果 绿/红/没核, 说明)
@@ -220,14 +220,12 @@ def prepare():
     key = open(os.path.join(BOX, "sshd", "client_ed25519")).read().splitlines()
     smoke.launch(fresh=True)
     tap(t("mobIdentity.page.title")); time.sleep(1)
-    smoke.stop_ime()
     smoke.open_import()
     tap(t("mobIdentity.import.name")); smoke.typed("smoke")
     tap(t("mobIdentity.import.pem")); time.sleep(0.5)
     smoke.type_key(key)
     tap(t("mobIdentity.import.ok"))
     ok = wait("SHA256:", 40)
-    smoke.restore_ime()
     if not ok:
         raise Red("钥匙没导进来")
     tap(t("mobKit.act.back")); time.sleep(1)
@@ -526,13 +524,13 @@ def add_host_via(name, host, port, jump=None):
     smoke.drawer(t("mobDrawer.server.named", name=""))
     tap(t("mobHosts.fab.aria"))
     time.sleep(1.5)
-    tap(t("mobHostEdit.field.name")); smoke.typed(name)
-    tap(t("mobHostEdit.field.host")); smoke.typed(host)
+    tap(t("machineForm.field.name")); smoke.typed(name)
+    tap(t("machineForm.field.host")); smoke.typed(host)
     tap("22")
     for k in ("123",) + ("67",) * 4:
         adb("shell", "input", "keyevent", k)
     smoke.typed(str(port))
-    tap(t("mobHostEdit.field.user")); smoke.typed(smoke.USER)
+    tap(t("machineForm.field.user")); smoke.typed(smoke.USER)
     smoke.hide_keyboard()
     adb("shell", "input", "swipe", "540", "1600", "540", "400", "400")
     time.sleep(1)

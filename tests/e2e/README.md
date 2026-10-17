@@ -165,8 +165,7 @@ CI 的 e2e job 就是调门禁（`GATE_ONLY=e2e`），不另记一份名单。
 
 跨进程整链(后端→帧→emitter→前端灯)的 `[e2e] tab-state` 断言,单测碰不到。**红线:后端
 零行为改动**——只加下列 `tests/e2e/` fixture(外部 wrapper/shim)+ 前端 DEV 探针(`import.meta.env.DEV`
-门控,生产零包含)。探针出口:`tabs.emitTabStateProbe`(markTmuxIdle/archiveTab/reviveTab/ensureTab
-清灰四真值点)+ `tabs.debugSessionsSnapshot()`(Ctrl+Alt+F10 / 中键账号 chip → `[e2e] sessions`)。
+门控,生产零包含)。探针出口:`tabs.emitTabStateProbe`(`onFace` 里点变了的那一刻)+ `tabs.debugSessionsSnapshot()`(Ctrl+Alt+F10 / 中键账号 chip → `[e2e] sessions`)。
 
 fixtures:
 - `fake-claude`——确定性 claude shim:记 argv+env → `$CLAUDE_CONFIG_DIR/argv.log`;写自身
@@ -187,8 +186,8 @@ fixtures:
 
 2. **全链级(GUI + loopback SSH)**:前置同 f40(Xvfb + dev 实例)+ config.json 配一个 loopback 远端,
    `backendPath` 指向 `backend-wrapper.sh`。然后 `E2E_DISPLAY=:80 bash tests/e2e/graylight-suite.sh`。断言 monitor
-   日志:`[e2e] tab-state … liveness=dead recoverability=attachable`(可重连;原先是 `status=live tmuxIdle=1`)→
-   `… liveness=dead recoverability=resumable`(已结束)。**★ app 会自动部署后端**:backendPath 同目录须放一个 `.build_id`(内容=app
+   日志:`[e2e] tab-state … dot=exited`(Claude 已退出)→
+   `… dot=ended`(已结束)。**★ app 会自动部署后端**:backendPath 同目录须放一个 `.build_id`(内容=app
    **内嵌** 后端的 build_id;那条按旁挂标记判的路已删,今天后端读字节自报的身份戳,见后端 `deploy` crate 的 `identity_decision`——不是 monitor 的「我这一版」),否则
    app 会用内嵌二进制覆盖写 backendPath(把 wrapper 冲掉)。杀 fake-claude **前须等 > 一个 8s 发帧周期**,
    让 app 先收到含 @ccm_sid 的 `TmuxSessions` 帧,否则 removed 到达时 tmux 账本无此 sid → 判 Archive 丢灰。
@@ -199,21 +198,19 @@ fixtures:
 孤儿**(治 #76),且账号注入正确的 `CLAUDE_CONFIG_DIR`(治 #75)。复用 F-E0 的 fake-claude/gen-idle-tmux。
 
 **★ 诚实分层**:GUI resume 一键拉起要真开一个终端窗口(`platform/terminal.rs::open_local`),无头门禁里不开窗。因此 argv/孤儿断言的诚实天花板
-= **命令级**:直接驱**生产渲染链**(生产 `launch-requests.ts::plan*` → 生产 `buildLaunchRenderRequest` →
-生产 Rust `render_launch_payload`,经 `resume-cmd-driver.ts` → `launch-render-driver.ts`,不重写)拿到 app **真正会跑**的命令串,再把该串真跑到真 tmux + fake-claude,
+= **命令级**:取 `session-open` 本体交出去的那一行(`open-line-emit.sh`,不重写)拿到 app **真正会跑**的命令串,再把该串真跑到真 tmux + fake-claude,
 断言 argv.log(`--resume <sid>` + `CLAUDE_CONFIG_DIR`)与 `tmux ls` 孤儿数。复活(灰→live)的**检测**由
-后端判活边沿断言(后端半场)。本地 resume(`resume_history_session`)同为 Windows-only,Linux 不可执行。
+后端判活边沿断言(后端半场)。
 
 fixtures / 驱动:
-- `resume-cmd-driver.ts`——tsx 驱动器,命令串经 `launch-render-driver.ts` 走生产渲染链(生产 TS 请求 → 生产 Rust
-  `render_launch_payload`,后者经 `cargo test --lib emit_launch_render_for_e2e -- --ignored` 那个数据出口),
-  账号解析 import 真实 `accounts.ts`,打印 app 真会跑的 resume 命令串 / 账号解析结果(套件据其 stdout 断言并真跑到 tmux)。
-  ⚠ 第一次跑要编 monitor 的 lib 测试(几分钟);之后走缓存。
+- `open-line-emit.sh`——跑 `#[ignore]` 数据出口 `session_open_tests.rs::emit_open_line_for_e2e`:意图照 `session-open` 的入参
+  走一遍本体(替身只记不做),印它交出去的那一行(交给 ccm 的 argv · 键进空 tmux 的那一行 · 回包里的 `line`)。
+  ⚠ 第一次跑要编后端的 lib 测试(几分钟);之后走缓存。
 - `fake-claude` 必须可执行(`chmod +x`;直接被 `gen-idle-tmux` 内联 exec)——F-E0 提交时误落 100644,已修 100755。
 
 两级跑法(都无需 GUI,全自动):
 
-1. **命令级整合(最全,主套件)**:`bash tests/e2e/resume-suite.sh`。逐边界:①`resume-cmd-driver.ts` 取真源命令串,
+1. **命令级整合(最全,主套件)**:`bash tests/e2e/resume-suite.sh`。逐边界:①`open-line-emit.sh` 取真源命令串,
    ②断言命令形状(复用名/无 new-session/无 -N/`CLAUDE_CONFIG_DIR` 前缀),③真 send-keys 进 idle pane 的 sh,
    ④断言 argv.log(sid 命中行的 `CLAUDE_CONFIG_DIR` + `--resume`)与 `tmux list-sessions` 孤儿计数。覆盖:idle
    就地复用无孤儿 / 无 tmux 新建注账号 / 带 pin 落 X 目录(两隔离账号) / 不带 pin 走基座
@@ -245,9 +242,6 @@ fixtures / 驱动:
     机检只钉到「写命令没发出去」,「远端真的没被改」只有真机看得见;
 5. 「在此打开终端」→ wt.exe 起 ssh 落到当前目录;非 UTF-8 名文件行写按钮灰置;
 6. 拒写验证:导航到 ~/.claude/projects 试删/传 jsonl → 应被守卫拒(提示用历史浏览器)。
-
-**F42 turn-end 系统通知(真机观感)**:窗口切到后台,让某会话跑完一轮 → 应出系统通知
-「Claude 完成一轮 — <tab 标题>」;窗口在前台时不应有通知;启动 monitor(历史重放)不应放礼花。
 
 **F41 远端一键 resume(Windows 真机)**:触发面 = wt.exe/PowerShell 拉起 + Windows OpenSSH,
 本仓 e2e 跑在 Linux 无法覆盖。人工验证流程(装含 F41 的版本后):

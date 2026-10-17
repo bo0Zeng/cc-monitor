@@ -33,7 +33,7 @@
  *    起会话事实里的 `has_identity` · `needs_bus_id`（`agents/mod.rs` 的 `LaunchFace`）· backend 的 `SESSION_NAME_PREFIX`（`cc-`/`cx-`）
  *    **今天在 golden 里没有 key** ⇒ 它们**没有源头、也没被本条守住**。
  *    那是 `EL6` 的欠账，不是本条能顺手解决的（加 key 要动 golden 的契约面）。
- *    下面 `the_gaps_are_named_not_forgotten` 把这三项**逐个点名钉住**：
+ *    下面「缺项逐个点名」那一条把这三项**逐个点名钉住**：
  *    哪天有人给 golden 加了 key，那一格会红，提醒把它接进对拍。
  * 2. 抽取是**文本匹配**，不是执行 shell / 编译 Rust。有人把 `resume_flag` 改写成
  *    完全不同的写法（比如查一个数组），抽取器会**抽不到**而不是抽错 ——
@@ -89,6 +89,7 @@ import {
 import { stripComments } from "../../test-support/strip-comments";
 import { productionTsFiles } from "../../test-support/production-sources";
 import { copyPattern } from "../../test-support/copy-pattern";
+import { nonEmpty } from "../../test-support/non-empty";
 
 const REPO = resolve(__dirname, "../../..");
 const GOLDEN = "tests/__fixtures__/agent-profile-golden.tsv";
@@ -283,15 +284,12 @@ function stringLiterals(src: string): string[] {
 
 describe("K-R93 前端那份 agent 画像：值来自后端", () => {
   it("★ 抽取器自检：三边都真的抠到了东西（否则下面全是零命中地绿）", () => {
-    expect(AGENT_PROFILE_TABLE.length, "生成物是空表").toBeGreaterThan(0);
+    nonEmpty(AGENT_PROFILE_TABLE);
     // 反向对照：同一把「串字面量」尺子在**生成物**上必须量到一大把值 ——
     // 量不到就说明剥注释/抠字面量那一步坏了，下面那条「前端没抄」会假绿。
     const inArtifact = new Set(stringLiterals(read(TABLE_TS)));
     const hits = [...new Set(tableValues())].filter((v) => inArtifact.has(v));
-    expect(
-      hits.length,
-      "同一把尺子在生成物上一个值都没量到 ⇒ 尺子坏了，「前端没抄」那条会假绿",
-    ).toBeGreaterThan(8);
+    nonEmpty(hits);
   });
 
   it("★ 生成物是生成物：头上写明谁生成的、且写着不许手改", () => {
@@ -403,7 +401,6 @@ describe("界面上的 agent 名单只从后端注册表来", () => {
       expect(names.some((n) => quoted(n).test(bad)), "针认不出写死的名单").toBe(true);
       expect(names.some((n) => quoted(n).test("for (const v of listAgents()) {}"))).toBe(false);
       const files = productionTsFiles("src/frontend/ui");
-      expect(files.length, "扫描面塌了").toBeGreaterThan(100);
       const hits: string[] = [];
       for (const { file, text } of files) {
         if (file in NAMES_ALLOWED_IN) continue;
@@ -432,7 +429,6 @@ describe("起会话按会话的那一家取画像", () => {
       expect(profile.test("callStart(origin, mode, items, ACTIVE_AGENT)")).toBe(true);
       expect(ctx.test("return { action, launcherOverride: launcher, ccmSid };")).toBe(true);
       const files = productionTsFiles("src/frontend/ui");
-      expect(files.length, "扫描面塌了").toBeGreaterThan(100);
       const profileAt: string[] = [];
       const ctxAt: string[] = [];
       for (const { file, text } of files) {

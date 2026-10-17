@@ -442,7 +442,7 @@
     {
       "word": "英文实现词",
       "tier": "禁",
-      "say": "不说实现，说结果：watcher →「自动刷新」· invoke / spawn / dispatch →「启动」「执行」· panic →「程序出错」· rollback →「还原」· flock →「锁」· uuid →「ID」· vendored / 编译期内嵌 →「随 cc-monitor 一起安装」· sftp-server →「远端的 SFTP 服务」· 其余（pidfd · tokio 运行时 · Win32 · SessionMap · ToolSpec · CLI 渲染器 · SFTP 句柄 · copy-data）→ 不说。",
+      "say": "不说实现，说结果：watcher →「自动刷新」· invoke / spawn / dispatch →「启动」「执行」· panic →「程序出错」· rollback →「还原」· flock →「锁」· uuid →「ID」· vendored / 编译期内嵌 →「随 cc-monitor 一起安装」· sftp-server →「远端的 SFTP 服务」· 其余（pidfd · tokio 运行时 · Win32 · SessionMap · ToolSpec · CLI 渲染器 · copy-data）→ 不说。",
       "scan": { "re": "\\b(?:watcher|invoke|spawn|dispatch|panic|tokio|pidfd|rollback|flock|uuid|vendored|Win32|SessionMap|ToolSpec|copy-data|sftp-server)\\b|CLI\\s*渲染器|SFTP\\s*句柄|编译期内嵌|交叉编译内嵌", "flags": "i" },
       "examples": ["tokio运行时", "watcher", "SFTP句柄"],
       "ledger": [],
@@ -556,9 +556,10 @@
     {
       "word": "常驻实例",
       "tier": "禁",
-      "say": "「上次留下的后端」（接管 → 「接着用」）。",
+      "say": "「后端」；指上次留下的那个时写「上次留下的后端」（接管 → 「接着用」）。",
       "points": "后端",
-      "scan": { "re": "常驻实例", "flags": "" },
+      "scan": { "re": "常驻", "flags": "" },
+      "examples": ["常驻实例", "常驻后端"],
       "source": "CP1 台账",
       "note": "「接管」是普通词，不扫。"
     },
@@ -702,8 +703,10 @@
     {
       "word": "杀死",
       "tier": "禁",
-      "say": "「结束」（结束会话 / 结束进程）。",
-      "scan": { "re": "杀死", "flags": "" },
+      "say": "「结束」（结束会话 / 结束进程）；「强杀」写「强制结束」。",
+      "scan": { "re": "杀(?!毒)", "flags": "" },
+      "examples": ["杀死", "强杀", "杀"],
+      "counterExamples": ["杀毒软件"],
       "source": "旧名进禁档"
     },
     {
@@ -851,7 +854,7 @@
     {
       "word": "需手动",
       "tier": "正名",
-      "meaning": "会话此刻在等人（等批准 · 等回答 · 计划等过目）。标签栏那颗「需手动 N」、Ctrl+J、组头汇总、会话状态词、命令面板那一组、系统通知都叫这个。",
+      "meaning": "会话此刻在等人（等批准 · 等回答 · 计划等过目）。标签栏那颗「需手动 N」、Ctrl+J、组头汇总、会话状态词、命令面板那一组都叫这个。",
       "source": "「需要你 改为需手动」",
       "note": "与「待办」是两件事：待办是产品做不了、要人去做的设置步骤；需手动是会话停着等人答。"
     },
@@ -907,6 +910,127 @@
       "points": "连接",
       "scan": { "re": "SSH ?会话", "flags": "" },
       "source": "手机端核对"
+    },
+    {
+      "word": "抢回 / 抢前台",
+      "tier": "禁",
+      "say": "「切到终端」；系统没放行时写「系统未允许切到前台」。",
+      "scan": { "re": "抢回|抢前台", "flags": "" },
+      "examples": ["抢回窗口", "系统阻止抢前台"],
+      "source": "文案对规范（内部行话与口语进禁档）"
+    },
+    {
+      "word": "兜底",
+      "tier": "禁",
+      "say": "说结果：「改用 X」「未改动」。",
+      "scan": { "re": "兜底", "flags": "" },
+      "source": "文案对规范（内部行话与口语进禁档）"
+    },
+    {
+      "word": "回切",
+      "tier": "禁",
+      "say": "「改回 X」。",
+      "scan": { "re": "回切", "flags": "" },
+      "source": "文案对规范（内部行话与口语进禁档）"
+    },
+    {
+      "word": "派生",
+      "tier": "禁",
+      "say": "「新开 agent」（状态写「已新开」）。",
+      "points": "新开 agent",
+      "scan": { "re": "派生", "flags": "" },
+      "examples": ["派生新 agent", "确认派生"],
+      "source": "文案对规范（内部行话与口语进禁档）"
+    },
+    {
+      "word": "钥匙（SSH）",
+      "tier": "禁",
+      "say": "SSH 那一侧写「密钥」，主机那一侧写「主机指纹」。",
+      "scan": { "re": "(?<!中转)钥匙", "flags": "" },
+      "examples": ["钥匙", "添一把钥匙", "主机钥匙"],
+      "counterExamples": ["中转钥匙"],
+      "source": "文案对规范（内部行话与口语进禁档）"
+    },
+    {
+      "word": "附着",
+      "tier": "禁",
+      "say": "「打开」（tmux 会话）。",
+      "scan": { "re": "附着", "flags": "" },
+      "source": "文案对规范（内部行话与口语进禁档）"
+    },
+    {
+      "word": "抓屏",
+      "tier": "禁",
+      "say": "「读取画面」。",
+      "points": "画面",
+      "scan": { "re": "抓屏", "flags": "" },
+      "source": "文案对规范（内部行话与口语进禁档）"
+    },
+    {
+      "word": "回包",
+      "tier": "禁",
+      "say": "说结果：「内容无法解析」「读取 X 失败」。",
+      "scan": { "re": "回包", "flags": "" },
+      "source": "文案对规范（内部行话与口语进禁档）"
+    },
+    {
+      "word": "看门狗",
+      "tier": "禁",
+      "say": "说结果：「连接断开」。",
+      "scan": { "re": "看门狗", "flags": "" },
+      "source": "文案对规范（内部行话与口语进禁档）"
+    },
+    {
+      "word": "幂等",
+      "tier": "禁",
+      "say": "「已有则跳过」。",
+      "scan": { "re": "幂等", "flags": "" },
+      "source": "文案对规范（内部行话与口语进禁档）"
+    },
+    {
+      "word": "落库",
+      "tier": "禁",
+      "say": "「存于本机」。",
+      "scan": { "re": "落库", "flags": "" },
+      "source": "文案对规范（内部行话与口语进禁档）"
+    },
+    {
+      "word": "发现（会话出现）",
+      "tier": "禁",
+      "say": "「出现」（会话出现在列表里）。",
+      "scan": { "re": "发现.{0,4}会话|会话.{0,4}被发现", "flags": "" },
+      "examples": ["发现新会话", "会话被发现"],
+      "counterExamples": ["无人发现"],
+      "source": "文案对规范（内部行话与口语进禁档）"
+    },
+    {
+      "word": "活着 / 判活",
+      "tier": "禁",
+      "say": "「运行中」「在运行」。",
+      "scan": { "re": "活着|判活", "flags": "" },
+      "examples": ["还活着", "判活失败"],
+      "source": "文案对规范（内部行话与口语进禁档）"
+    },
+    {
+      "word": "保活",
+      "tier": "禁",
+      "say": "「后台连接」。",
+      "scan": { "re": "保活", "flags": "" },
+      "source": "文案对规范（内部行话与口语进禁档）"
+    },
+    {
+      "word": "句柄",
+      "tier": "禁",
+      "say": "不说；说结果「停止进程失败」。",
+      "scan": { "re": "句柄", "flags": "" },
+      "source": "文案对规范（内部行话与口语进禁档）"
+    },
+    {
+      "word": "名册",
+      "tier": "禁",
+      "say": "「名单」。",
+      "scan": { "re": "名册", "flags": "" },
+      "source": "文案对规范（内部行话与口语进禁档）"
     },
     {
       "word": "主窗口",

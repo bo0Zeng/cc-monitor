@@ -183,8 +183,9 @@ pub(crate) fn merge(user: &Value, entry: &str) -> Option<Value> {
     Some(Value::Object(v))
 }
 
-const ASK_TOOL: &str = "AskUserQuestion";
-const PLAN_TOOL: &str = "ExitPlanMode";
+pub(crate) const ASK_TOOL: &str = "AskUserQuestion";
+pub(crate) const PLAN_TOOL: &str = "ExitPlanMode";
+pub(crate) const INTERACTIVE_TOOLS: &[&str] = &[ASK_TOOL, PLAN_TOOL];
 
 /// hook 的 stdin ⇒ 通用待答请求。不是 `PermissionRequest` · 缺会话 id / 工具名 ⇒ `None`。
 pub(crate) fn read(v: &Value) -> Option<AskIn> {
@@ -251,18 +252,20 @@ fn what_of(tool: &str, input: &Value, questions: &[AskQuestion]) -> Option<Strin
     match tool {
         ASK_TOOL => questions.first().map(|q| q.question.clone()),
         PLAN_TOOL => None,
-        _ => [
-            "command",
-            "file_path",
-            "notebook_path",
-            "url",
-            "pattern",
-            "path",
-        ]
-        .iter()
-        .find_map(|k| str_of(input, k))
-        .and_then(first_line)
-        .filter(|s| !s.is_empty()),
+        _ => super::steps::main_arg(tool)
+            .map(|(k, _)| k)
+            .into_iter()
+            .chain([
+                "command",
+                "file_path",
+                "notebook_path",
+                "url",
+                "pattern",
+                "path",
+            ])
+            .find_map(|k| str_of(input, k))
+            .and_then(first_line)
+            .filter(|s| !s.is_empty()),
     }
 }
 

@@ -54,6 +54,8 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
     project_dir: Some(history::project_dir),
     mcp_said: None,
     quiet_unread: None,
+    beats: None,
+    fork: None,
 };
 
 /// 本 agent 在 wire 上的 **`agent_kind` 值**。
@@ -95,6 +97,7 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     models: None,
     model_default: None,
     model_text: None,
+    model_pick: None,
     model_switch: None,
 };
 

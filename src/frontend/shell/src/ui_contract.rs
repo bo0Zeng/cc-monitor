@@ -11,7 +11,7 @@ use serde::Serialize;
 pub mod events {
     // 会话起停 / 状态那 9 个事件（`session-started` / `-ended` / `-idle` / `-container` / `-unseen` /
     //   `-activity` · `remote-session-added` · `origin-sessions-listed` · `snapshot-inflight`）并进了会话流 `subscribe(origin, "session-lines")`：
-    //   流里的一格（[`super::SessionStreamFrame`] 的起停那几种），不吃 credit、不丢（[`super::SessionStreamFrame::takes_credit`]）。
+    //   流里的一格（[`super::SessionStreamFrame`] 的起停那几种），没 credit 也照交、不丢（[`super::SessionStreamFrame::never_dropped`]）。
     // `task-update` 事件退役：任务变更经通道 `subscribe(origin, "changed/tasks")`（后端 `changed {tasks}` 帧）。
     /// **方向相反的那一个**（前端 emit、Rust `app.listen` 收）：前端注册完 listener 后
     /// 通知后端开始 replay 历史，payload 见 [`FrontendReadyPayload`]。
@@ -26,8 +26,8 @@ pub mod events {
     /// 弹 toast。`kind` 区分类别（"overflow" / "version" / …），payload 见
     /// [`RemoteHealthPayload`]。#33 版本协商复用同通道、只换 kind/message，不另造。
     pub const REMOTE_HEALTH: &str = "remote-health";
-    /// **某台机器的状态成品变了**：`{origin, machine}`（`machine` 与 `backend_status` 那一格同形，
-    /// `machine_state.rs`）。正在连 / 装 / 更新、连上、没连上、指纹不对 …… 一变就推一帧，界面不轮询。
+    /// **本机那一台的状态成品变了**：`{origin, machine}`（`machine` 与 `backend_status` 那一格同形，
+    /// `local_backend_host::local_product`）。通道接上 / 断了 · 口上换了人就推一帧；远端各台走本机后端的 `changed {machine}`。
     pub const MACHINE_STATE: &str = "machine-state";
     /// **要让用户知道的出错**（`ui_error::UiErrorPayload`：码 ＋ 文案键 ＋ 那句话 ＋ 复制详情）。
     /// 壳推给界面的出错只这一种；日志行不上屏。
@@ -134,54 +134,47 @@ pub enum SessionStreamFrame {
     /// `session_file_reread`）。与行同一条流、同序（行先冲出去再交它）⇒ 前端落到那个 tab 上说一句话。
     /// ⚠ 不进留存：F5 之后那句话没了（已知缺口）。
     FileNotice(SessionFileNoticePayload),
-    /// **会话起停 / 状态的成品**（那台后端裁、`session_book` 原样转）—— 与行同一条流、同一个顺序
+    /// **会话起停 / 状态的成品**（那台后端裁、`session_book` 原样转，形状就是那台的帧）—— 与行同一条流、同一个顺序
     /// （行与起停的先后就是流的先后，那条「ended 抢在行前面 ⇒ 僵尸」由构造排除）。
-    /// ⚠ 这几种**不吃 credit、不许丢**（[`Self::takes_credit`]；登记的唯一例外）：丢一格起停别处补不回来。
-    /// 活会话（本机远端同一形；`origin` 说哪台）。
-    Live(SessionLivePayload),
-    /// 红绿灯。
-    Activity(SessionActivityPayload),
-    /// 活会话住在什么容器里。
-    Container(SessionContainerPayload),
-    /// 可重连（claude 退了、tmux 会话还在）。
-    Idle(SessionIdlePayload),
-    /// 已结束。
-    Ended(SessionEndedPayload),
+    /// ⚠ 这几种**不许丢**（[`Self::never_dropped`]）：丢一格起停别处补不回来。哪台由订阅说（每条订阅按台订）。
+    /// 活会话（`session_added`：骨架 · 此刻的灯与名字 · 容器）。
+    Added(cmd_wire::frame::SessionAdded),
+    /// 灯与名字变了（`session_status`）。
+    Status(cmd_wire::frame::SessionStatus),
+    /// 离开「活」之后的去向（`session_state`：可重连 · 已结束）。
+    State(cmd_wire::frame::SessionState),
     /// 说不清（那台看不见了 / F5 时那台还没报完清单）。
     Unseen(SessionUnseenPayload),
     /// 那台的活会话清单报完了。
     Listed(OriginSessionsListedPayload),
     /// 旁路快照在途几份（全局电平；批模式据此不提前收尾）。
     SnapshotInflight(SnapshotInflightPayload),
-    /// 一个会话的运行表（那台后端给，原样转）：列在 agent 面板里，状态标到派出它的那张工具卡上。
-    Runs(SessionRunsPayload),
-    /// 一个会话的主线外清单（那台后端给，原样转）：清单里的那几条卡折成一段（ESC 回退掉的）。
+    /// 一个会话的运行表（`session_runs`）：列在 agent 面板里，状态标到派出它的那张工具卡上。
+    Runs(cmd_wire::frame::SessionRuns),
+    /// 一个会话的主线外清单（账拼好的整份）：清单里的那几条卡折成一段（ESC 回退掉的）。
     Branch(SessionBranchPayload),
-    /// 这个会话刚进了那台那条流的「在看」名单（`stream-watch` 应答的一格，壳原样转）：它的这份记录从第 `seq` 行起上流，
+    /// 这个会话刚进了那台那条流的「在看」名单（`stream-watch` 应答的一格）：它的这份记录从第 `seq` 行起上流，
     /// 之前没上流的那段由界面自己补（按行号 / 按骨架）。不进留存：留存在这一刻按它修成「连着的」（见 `event_replay::on_watch_from`）。
-    Watch(SessionWatchPayload),
+    Watch(cmd_wire::watch::WatchFrom),
 }
 
 impl SessionStreamFrame {
-    /// 〔⑬ 登记的例外〕这一格吃不吃 credit：行与批边界 · 记录文件出声吃（可丢、丢了按行号补）；
-    /// 起停那几种**不吃、不丢**（丢了别处补不回来）。穷尽 `match`：新长一种格编译期就要表态。
-    /// TS 那一侧同一张表住 `src/frontend/ui/events.ts::CREDIT_EXEMPT_FRAMES`，两侧对金样 `tests/__fixtures__/session-stream-credit.golden.json`。
-    pub fn takes_credit(&self) -> bool {
+    /// 没 credit 时这一格丢不丢：行与批边界 · 记录文件出声丢（丢了按行号补）；起停那几种**照交、照扣**（credit 可欠，
+    /// 丢了别处补不回来）。界面不分格种，每格还一格。穷尽 `match`：新长一种格编译期就要表态。
+    pub fn never_dropped(&self) -> bool {
         match self {
             SessionStreamFrame::Line(_)
             | SessionStreamFrame::Batch(_)
-            | SessionStreamFrame::FileNotice(_) => true,
-            SessionStreamFrame::Live(_)
-            | SessionStreamFrame::Activity(_)
-            | SessionStreamFrame::Container(_)
-            | SessionStreamFrame::Idle(_)
-            | SessionStreamFrame::Ended(_)
+            | SessionStreamFrame::FileNotice(_) => false,
+            SessionStreamFrame::Added(_)
+            | SessionStreamFrame::Status(_)
+            | SessionStreamFrame::State(_)
             | SessionStreamFrame::Unseen(_)
             | SessionStreamFrame::Listed(_)
             | SessionStreamFrame::SnapshotInflight(_)
             | SessionStreamFrame::Runs(_)
             | SessionStreamFrame::Branch(_)
-            | SessionStreamFrame::Watch(_) => false,
+            | SessionStreamFrame::Watch(_) => true,
         }
     }
 
@@ -200,14 +193,12 @@ impl SessionStreamFrame {
         match self {
             SessionStreamFrame::Line(p) => Some(&p.session_id),
             SessionStreamFrame::FileNotice(p) => Some(&p.session_id),
-            SessionStreamFrame::Live(p) => Some(&p.session_id),
-            SessionStreamFrame::Activity(p) => Some(&p.session_id),
-            SessionStreamFrame::Container(p) => Some(&p.session_id),
-            SessionStreamFrame::Idle(p) => Some(&p.session_id),
-            SessionStreamFrame::Ended(p) => Some(&p.session_id),
-            SessionStreamFrame::Runs(p) => Some(&p.session_id),
-            SessionStreamFrame::Branch(p) => Some(&p.session_id),
-            SessionStreamFrame::Watch(p) => Some(&p.session_id),
+            SessionStreamFrame::Added(p) => Some(&p.sid),
+            SessionStreamFrame::Status(p) => Some(&p.sid),
+            SessionStreamFrame::State(p) => Some(&p.sid),
+            SessionStreamFrame::Runs(p) => Some(&p.sid),
+            SessionStreamFrame::Branch(p) => Some(&p.sid),
+            SessionStreamFrame::Watch(p) => Some(&p.sid),
             SessionStreamFrame::Batch(_)
             | SessionStreamFrame::Unseen(_)
             | SessionStreamFrame::Listed(_)
@@ -216,47 +207,22 @@ impl SessionStreamFrame {
     }
 }
 
-/// [`SessionStreamFrame::Runs`] 的体：那台后端 `session_runs` 帧的 `runs` 与 `ended`（原样，不解释）。
-#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-pub struct SessionRunsPayload {
-    pub session_id: String,
-    #[cfg_attr(test, ts(type = "Array<import(\"./RunInfo\").RunInfo>"))]
-    pub runs: RecordBody,
-    #[cfg_attr(test, ts(type = "Array<import(\"./RunEnded\").RunEnded>"))]
-    pub ended: RecordBody,
-}
-
-/// [`SessionStreamFrame::Branch`] 的体：那台后端 `session_branch` 帧的 `off`（整份，原样，不解释）。
+/// [`SessionStreamFrame::Branch`] 的体：一个会话的主线外清单（那台给的一截一截，账拼成整份）。
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SessionBranchPayload {
-    pub session_id: String,
-    #[cfg_attr(test, ts(type = "Array<string>"))]
-    pub off: RecordBody,
+    pub sid: String,
+    /// 清单里那几条记录的 `id`（整份）。
+    pub off: Vec<String>,
 }
 
-/// [`SessionStreamFrame::Watch`] 的体：那台后端 `stream-watch` 应答 `from[]` 的一格（原样）。
-#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-pub struct SessionWatchPayload {
-    pub session_id: String,
-    /// 那份记录在那台机器上的绝对路径。
-    pub path: String,
-    /// 这条流从这一行起发它（与行的 `seq` 同一个行号空间）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub seq: u64,
-}
-
-/// 界面报「在看」的一格（Tauri 命令 `watch_sessions` 的入参）：哪台的哪个会话。
+/// 界面报给壳的一格（Tauri 命令 `watch_sessions` · `kept_sessions` 的入参）：哪台的哪个会话。
 #[derive(Debug, serde::Deserialize, Clone, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 #[serde(rename_all = "camelCase")]
-pub struct WatchedSession {
+pub struct TabSession {
     pub origin: crate::origin::Origin,
     pub session_id: String,
 }
@@ -292,39 +258,7 @@ pub enum BatchEdge {
     End,
 }
 
-#[derive(Debug, Serialize, Clone)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-pub struct SessionEndedPayload {
-    pub session_id: String,
-    /// 那台核心写好的短名 · 悬停那一句 · 语气（`session_state` 带来的）；壳自己补的「已结束」没有 ⇒ `None`。
-    pub text: Option<String>,
-    pub hint: Option<String>,
-    pub tone: Option<String>,
-    /// 监控板组内的序（`session_state.state_order`，与活会话的序同一把尺）；壳自己补的「已结束」没有 ⇒ `None`（排在那台最后）。
-    pub order: Option<u8>,
-    /// 此刻能不能换模型 · 权限档（`session_state.switch`）；壳自己补的「已结束」没有 ⇒ `None`。
-    #[cfg_attr(test, ts(as = "Option<SwitchCells>"))]
-    pub switch: Option<cmd_wire::frame::Switch>,
-}
-
-/// audit-fixes F03.2：可重连（idle-tmux 灰灯）的 payload（会话流 `idle` 那一格）。独立命名（非复用
-/// `SessionEndedPayload`）便于 grep 与语义分离——idle ≠ ended。
-#[derive(Debug, Serialize, Clone)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-pub struct SessionIdlePayload {
-    pub session_id: String,
-    /// 同 [`SessionEndedPayload`] 那五格。
-    pub text: Option<String>,
-    pub hint: Option<String>,
-    pub tone: Option<String>,
-    pub order: Option<u8>,
-    #[cfg_attr(test, ts(as = "Option<SwitchCells>"))]
-    pub switch: Option<cmd_wire::frame::Switch>,
-}
-
-/// 「说不清」的 payload（会话流 `unseen` 那一格）。独立命名，理由同 [`SessionIdlePayload`]：unseen ≠ ended。
+/// 「说不清」的 payload（会话流 `unseen` 那一格）。
 /// **机器级**：说的是「那台看不见了 / 那台还没报完清单」，前端对那台上活的 · 可重连的 tab 一并落说不清
 /// （原先逐会话发一格 `session_id`）。
 #[derive(Debug, Serialize, Clone)]
@@ -332,93 +266,6 @@ pub struct SessionIdlePayload {
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SessionUnseenPayload {
     pub origin: crate::origin::Origin,
-}
-
-/// 活会话的成品（会话流里的 [`SessionStreamFrame::Live`]；本机远端同一形，`origin` 说哪台）。
-/// 前端：本机 ⇒ 复活已有 tab / 建骨架（原 `session-started`）；远端 ⇒ 建骨架（原 `remote-session-added`）。先于该会话的行。
-#[derive(Debug, Serialize, Clone)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-pub struct SessionLivePayload {
-    pub session_id: String,
-    /// 哪台机器（本机 `<local>`；远端是 `[label]` Tab 前缀）。
-    pub origin: String,
-    /// 后台会话（那台后端判好的，⚙ 标识；平铺为普通 tab）。
-    pub background: bool,
-    /// **E73（additive）：attach 进去对人有没有意义。**
-    ///
-    /// `kind` 此前把两件事压在一个轴上：①「该不该在 UI 出现」②「是不是一个人坐在终端里
-    /// 跟它对话」。SDK / 脚本驱动的会话正好「①要②不要」—— 它有 tmux、`@ccm_sid` 也对，
-    /// 但 `stdin=DEVNULL`。`false` ⇒ 前端不给 attach / ↗ / 「杀死空 tmux」。
-    /// **None = true**（存量会话与旧后端一律照旧）。
-    pub attachable: Option<bool>,
-    /// pidfile 记的起会话目录：前端认「我刚起的那条起来了」用（`launch-arrival.ts`）。
-    pub cwd: Option<String>,
-    /// 会话的项目目录（会话起在哪个目录）：那台后端读记录开头给的。tab 标题 · 打开工作目录 · 分组只认这一格；
-    /// 老后端不带 ⇒ `null`，标题退到 aiTitle / sid。
-    pub project_dir: Option<String>,
-    pub name: Option<String>,
-    /// 隐藏那一格（那台后端判好的 `{by, said}`，`session_added.hidden` 原样；不隐藏 ⇒ `null`）：界面照它决定占不占标签页，不自己判。
-    /// 之后变了走推帧主题 `session_hidden`（`changed`，壳原样交）。
-    pub hidden: Option<cmd_wire::session::Hidden>,
-    /// 这条会话跑在哪个号下（那台后端宣告时判好的，`session_added.account` 原样；判不了 ⇒ `null`）：账号徽章 · 账号按钮只读这一格。
-    pub account: Option<String>,
-}
-
-/// `container` 格 的 payload：在认得的宿主里（带终端句柄）· 不在任何宿主里 · 不认识的宿主（判不了的不发这一格）。
-#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-pub struct SessionContainerPayload {
-    pub session_id: String,
-    #[serde(serialize_with = "container_form")]
-    #[cfg_attr(test, ts(as = "SessionContainer"))]
-    pub container: cmd_wire::frame::SessionContainer,
-}
-
-/// 容器那一格交界面的形状（界面按 `form` 分：认得的宿主 · 不在任何宿主里）。
-fn container_form<S: serde::Serializer>(
-    c: &cmd_wire::frame::SessionContainer,
-    s: S,
-) -> Result<S::Ok, S::Error> {
-    use cmd_wire::frame::{SessionContainer as C, TerminalHost};
-    match c {
-        C::Tmux { terminal } => serde_json::json!({
-            "form": "hosted",
-            "host": TerminalHost::Tmux.as_wire(),
-            "terminal": terminal,
-        }),
-        C::None => serde_json::json!({ "form": "none" }),
-    }
-    .serialize(s)
-}
-
-/// 终端宿主（界面那一形的 `host`）。
-#[cfg(test)]
-#[derive(ts_rs::TS)]
-#[ts(export, export_to = "../../ui/generated/")]
-#[allow(dead_code)]
-pub enum TerminalHost {
-    #[ts(rename = "tmux")]
-    Tmux,
-}
-
-/// 一条活会话住在什么容器里（界面那一形）：在某个认得的宿主的终端里（`terminal` 是 `terminals-list` 那一行的句柄，算不出就没有）·
-/// 不在任何宿主里 · 这边不认识的宿主。
-#[cfg(test)]
-#[derive(ts_rs::TS)]
-#[ts(export, export_to = "../../ui/generated/")]
-#[ts(tag = "form", rename_all = "snake_case")]
-#[allow(dead_code)]
-pub enum SessionContainer {
-    Hosted {
-        host: TerminalHost,
-        terminal: Option<String>,
-    },
-    None,
-    Other {
-        host: String,
-    },
 }
 
 /// 会话流 `session-live-card`（通道 `subscribe`）里一格的体：后端 `live` 帧的帧体原样（核心拼好的活卡，见后端 `wire::LiveCard`）＋ 哪台机器。
@@ -468,121 +315,4 @@ pub struct RemoteHealthPayload {
     pub message: String,
     /// 「复制详情」那几行（壳写；空 ⇒ 界面不出按钮）。今天只有文件窗口开了又退那一形带（退出状态 · stderr 末几行）。
     pub detail: String,
-}
-
-/// 会话红绿灯：此刻在干什么（那台后端翻好的 [`SessionActivity`]；`None` ＝ 说不清）；
-/// `waiting_for` 是在等人时那一家给的细分（原样）。
-#[derive(Debug, Serialize, Clone)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-pub struct SessionActivityPayload {
-    pub session_id: String,
-    /// 那一态 · 写好的字与语气 · 监控板组内的序（那台核心写的，平铺在载荷上）。
-    #[serde(flatten)]
-    pub activity: ActivityCells,
-    /// 叫这条会话什么（那台核心写的，平铺在载荷上；标签页照抄）。
-    #[serde(flatten)]
-    pub naming: NameCells,
-    pub waiting_for: Option<String>,
-}
-
-/// 一条活会话此刻在干什么（界面那一形；那台核心的 `session_added.activity` · `session_status.activity`）。缺席 ＝ 说不清。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-#[serde(rename_all = "snake_case")]
-pub enum SessionActivity {
-    /// 一轮在跑。
-    Working,
-    /// 在等人。
-    NeedsYou,
-    /// 闲着，等下一句输入。
-    Idle,
-    /// 一轮停了，它在后台起的命令还在跑。
-    BackgroundWork,
-}
-
-/// 一条活会话此刻在干什么那几格（那台核心的 `ActivityFace`，界面那一形）：那一态（`None` ＝ 说不清）·
-/// 写好的字与语气 · 监控板组内的序（`activity_order`，小的在前，核心排的）· 能不能换。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-pub struct ActivityCells {
-    pub activity: Option<SessionActivity>,
-    pub activity_text: String,
-    pub activity_tone: String,
-    pub activity_order: u8,
-    /// 此刻能不能换模型 · 权限档（那台核心判的，随那一态带）。
-    #[cfg_attr(test, ts(as = "SwitchCells"))]
-    pub switch: cmd_wire::frame::Switch,
-}
-
-impl ActivityCells {
-    pub fn of(f: &cmd_wire::frame::ActivityFace) -> Self {
-        use cmd_wire::frame::SessionActivity as A;
-        ActivityCells {
-            activity: f.activity.map(|a| match a {
-                A::Working => SessionActivity::Working,
-                A::NeedsYou => SessionActivity::NeedsYou,
-                A::Idle => SessionActivity::Idle,
-                A::BackgroundWork => SessionActivity::BackgroundWork,
-            }),
-            activity_text: f.activity_text.0.clone(),
-            activity_tone: tone_word(f.activity_tone),
-            activity_order: f.activity_order,
-            switch: f.switch.clone(),
-        }
-    }
-}
-
-/// 语气那一格的线上词（`plain` · `now` …）。
-pub fn tone_word(t: cmd_wire::cells::Tone) -> String {
-    serde_json::to_value(t)
-        .ok()
-        .and_then(|v| v.as_str().map(str::to_string))
-        .unwrap_or_default()
-}
-
-/// 此刻能不能换模型 · 权限档那一格（那台核心的 `Switch`，原样转交；界面照 `can` 灰不灰、照 `why` 写悬停）。
-#[cfg(test)]
-#[derive(ts_rs::TS)]
-#[ts(export, export_to = "../../ui/generated/")]
-#[allow(dead_code)]
-pub struct SwitchCells {
-    /// 换模型（`session-model`）。
-    pub model: CanSwitch,
-    /// 切权限档（`session-permission`）。
-    pub permission: CanSwitch,
-}
-
-/// 一样此刻能不能换：`{can: "yes"}` · `{can: "no", why: 那台写好的那一句}`。
-#[cfg(test)]
-#[derive(ts_rs::TS)]
-#[ts(export, export_to = "../../ui/generated/")]
-#[ts(tag = "can", rename_all = "snake_case")]
-#[allow(dead_code)]
-pub enum CanSwitch {
-    /// 能换。
-    Yes,
-    /// 此刻不能。
-    No { why: String },
-}
-
-/// 叫这条会话什么那两格（那台核心的 `NameFace`，界面那一形）：名字（标签页 · 历史清单 · 通知同一个）·
-/// 项目那一格（名字是起出来的才有；界面拼「[项目] 名字」）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-pub struct NameCells {
-    pub label: String,
-    pub label_project: Option<String>,
-}
-
-impl NameCells {
-    pub fn of(f: &cmd_wire::frame::NameFace) -> Self {
-        NameCells {
-            label: f.label.0.clone(),
-            label_project: f.label_project.as_ref().map(|w| w.0.clone()),
-        }
-    }
 }

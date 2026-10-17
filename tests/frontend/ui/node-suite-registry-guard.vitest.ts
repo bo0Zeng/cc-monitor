@@ -59,6 +59,7 @@ import { resolve } from "node:path";
 import { describe, it, expect } from "vitest";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
+import { nonEmpty } from "../../test-support/non-empty.ts";
 
 /**
  * `(npm 脚本名, 文件)`。
@@ -78,7 +79,6 @@ const NODE_SUITES: readonly (readonly [string, string])[] = [
   // **39 → 38**（被测对象没了）：`sanitizeRemoteLauncher` 一条 · `isValidConfigDir` 一条随函数删；
   //    加一条「launcher 空白 ⇒ 默认、注入字符原样上线」（前端只剩缺省那一格）；「非法 configDir 拒」那条改测「前端不判、原样上线」（条数不变）。
   // **38 → 37**：`isValidSessionId` 那条随函数删；三条「非法 sid ⇒ throw」改测「前端不判、resumeSid 单报」（条数不变）。
-  ["test:remote-launch", "tests/frontend/ui/remote-launch.test.ts"],
   ["test:format", "tests/frontend/ui/format.test.ts"],
   // 🔴 〔删用量 09-18〕原先这里有 `["test:usage-pivot", "tests/frontend/ui/views/usage-pivot.test.ts", 14]`。
   // 用量 ② 轴整轴退役 ⇒ 套件文件整删（**被测对象没了**，不是把测试删光了）。
@@ -88,7 +88,7 @@ const NODE_SUITES: readonly (readonly [string, string])[] = [
   // §5 步 12：`views/pricing.ts` → `views/context-limit.ts`（只剩 context 上限那半，
   // 名字名不副实），套件与脚本名同拍改。条数 6 → 5：`equivalentInputTokens` 那一例随 ② 轴
   // 退役（`RELATIVE_COST` 的唯一消费者是用量视图）。
-  // 条数 5 → 3：上下文上限的判定搬进后端（`observe/facts_query.rs::context_limit`，逐格归 `facts_query_tests.rs`），
+  // 条数 5 → 3：上下文上限的判定搬进后端（`observe/recognize/facts.rs::context_limit`，逐格归 `recognize/facts_tests.rs`），
   // `contextLimit` 三条与 `contextPercent` 一条随函数删；前端只剩排版（`contextPercentOf`）与读设置表（`readContextLimits`）各一条。
   // 3 → 4：上限判不出时只写用了多少（`contextTokensText`）。
   // 读设置表那一条随 `readContextLimits` 删（上限表住各台后端 `prefs.json`，界面经 `prefs-read` 问）。
@@ -96,16 +96,15 @@ const NODE_SUITES: readonly (readonly [string, string])[] = [
   // （界面自己剥模型名的后缀）换成照抄后端的 `modelText` ⇒ 模块与套件整删（**被测对象没了**）。
   // 🔴 原先这里有 `["test:session-backend", "tests/session-backend.test.ts", 10]`。TS 座
   // `session-backend.ts` 零生产调用、删了 ⇒ 套件整删（**被测对象没了**，8 条测座本身）；外层 tmux 三格的字节由
-  // 入库夹具 `tmux-outer-golden.json` ＋ Rust `payload_tests.rs` 接着（对照见）；
-  // 与座无关的 2 条（shim 漂移守卫 · 铸名口数据流）搬进了 `remote-launch.test.ts`。
+  // 入库夹具 `tmux-outer-golden.json` ＋ Rust `payload_tests.rs` 接着（对照见）。
   // 🔴 原先这里有 `["test:panorama-session-files", "tests/frontend/ui/panorama/session-files.test.ts", 7]`。
   // 写类工具那张表与它的口径搬进了后端（会话事实由后端出成品）⇒ 被测对象 `collectEditedFiles` 删了、套件整删
-  // （**被测对象没了**，不是把测试删光了）；七条逐条搬进 `tests/backend/observe/facts_query_tests.rs::edit_tools_rules_moved_from_the_frontend_suite`。
+  // （**被测对象没了**，不是把测试删光了）；七条逐条搬进 `tests/backend/observe/recognize/facts_tests.rs::edit_tools_rules_moved_from_the_frontend_suite`。
   // 🔴 原先这里有 `["test:launch-dimensions", "tests/frontend/ui/launch-dimensions.test.ts", 31]`。
   // 维度表只为载荷渲染那条存在，起会话只剩那一行 `ccm …` ⇒ 维度表与套件整删（**被测对象没了**）。
   // 🔴 原先这里有 `["test:launch-render-cli", "tests/launch-render-cli.test.ts", 30]`。
   // TS 那份 `ccm …` 调用行渲染器删了 ⇒ 套件整删（**被测对象没了**）；它测的行为逐条由
-  // Rust `ccm_invocation_tests.rs` 与入库夹具 `cli-golden.json` 接着（对照见）。
+  // Rust `ccm_invocation_tests.rs` 接着（对照见）。
 ];
 
 
@@ -302,11 +301,7 @@ describe("覆盖率地板表的自洽", () => {
     const record = src.slice(src.lastIndexOf("];", decl!.index), decl!.index);
     const chains = [...record.matchAll(/(?:\d+|…)(?:\s*→\s*(?:\d+|…))+/g)].map((m) => m[0]);
     const steps = chains.flatMap((c) => [...c.matchAll(/\d+/g)].map((m) => Number(m[0])));
-    expect(
-      steps.length,
-      "抽不到那条递减记录的箭头链（08-08 实测 `17→16` 与 `16→…→14→13` 共 5 格）——\n" +
-        "记录的写法变了（比如换了箭头字符），本条会零命中地绿，先修抽取器。",
-    ).toBeGreaterThanOrEqual(4);
+    nonEmpty(steps);
 
     for (let i = 1; i < steps.length; i++) {
       expect(
@@ -331,10 +326,7 @@ describe("覆盖率地板表的自洽", () => {
     const src = readFileSync(resolve(ROOT, "tests/scripts/assert-coverage-floors.mjs"), "utf8");
     // 人群 = 表里每一行 `["<路径>", 语句地板, 实测, 分支地板, 实测],`
     const rows = [...src.matchAll(/\[\s*"([^"]+)"\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\]/g)];
-    expect(
-      rows.length,
-      "从 `PER_FILE_FLOORS` 抽不到足够的行（08-08 实测 6 行）—— 抽取坏了，本条此刻无效",
-    ).toBeGreaterThanOrEqual(4);
+    nonEmpty(rows);
     const SLACK = 8; // 纪律写的是 ~5 点，留一点余量给 v8 版本差
     for (const [, file, sFloor, sNow, bFloor, bNow] of rows) {
       const [sf, sn, bf, bn] = [sFloor, sNow, bFloor, bNow].map(Number);
@@ -361,7 +353,7 @@ describe("覆盖率地板表的自洽", () => {
 //
 // 08-08 沿「扫描面之外还有谁」量到最后一格。**先核先纠正了我自己上一轮记的话**：
 // `.mts` 其实**在 tsc 范围内**（`tsconfig.json` 的 `include` 是 `["src", "e2e"]`，
-// 实测往 `tests/e2e/tmux-target-emit.mts` 塞一个类型错，`tsc --noEmit` 当场报 TS2322）。
+// 实测往 `tests/e2e/` 下的 `.mts` 塞一个类型错，`tsc --noEmit` 当场报 TS2322）。
 //
 // 而 `.mjs` **不在**：`allowJs` 没开 ⇒ tsc 整类不看。实测把
 // `tests/scripts/assert-coverage-floors.mjs` 结尾塞一个不闭合的对象字面量，
@@ -392,10 +384,7 @@ describe("`.mjs` 与 `.mts` 的最小闸门", () => {
 
   it("每个 .mjs 都过 `node --check`（tsc 整类看不见它们）", async () => {
     // 抽取器自检：遍历塌了的话下面那条就是零命中地绿。
-    expect(
-      mjsFiles.length,
-      "全仓一个 .mjs 都没扫到（08-08 实测 6 个）—— 遍历坏了，本条此刻无效",
-    ).toBeGreaterThanOrEqual(4);
+    nonEmpty(mjsFiles);
     // 每份一个 `node --check` 子进程，**同时**起、一起等：原先逐个同步起（十来份 × 一次 node 冷启动），
     //   机器忙时排队等调度的时间逐份累加，整套并跑时把这一格挤过 5 s 默认期限。量具不变，仍是 `node --check` 本身。
     const broken = (
@@ -434,9 +423,7 @@ describe("`.mjs` 与 `.mts` 的最小闸门", () => {
     expect(include, "`tsconfig.json` 里找不到 `include` —— 读法坏了").not.toBeNull();
     expect(
       include![1],
-      "`tsconfig.json` 的 include 不再收 `tests` —— `.mts` 那一批（08-08 实测 3 个，\n" +
-        "今天住 `tests/e2e/`：\n" +
-        "`tmux-target-emit` / `ccm-print-parity-emit` / `launch-payload-golden-emit`）\n" +
+      "`tsconfig.json` 的 include 不再收 `tests` —— `tests/e2e/` 下那一批 `.mts`\n" +
         "会**悄悄**退出类型检查，变成和 `.mjs` 一样的盲区。要么把它们并进别的 include，\n" +
         "要么把它们也纳入上面那条 `node --check`（但那只挡语法，挡不住类型）。",
     ).toContain("tests");

@@ -71,7 +71,7 @@ const DIR_CREATORS: &[(&str, &str, &str)] = &[
     (
         "control/files_write.rs",
         "make_parents",
-        "用户的目录（`files-put` 显式要了父目录）",
+        "用户的目录（`Door::put` 显式要了父目录）",
     ),
     // 〔W5-FILES 与 HX1 合并〕复制目录的执行趟逐条建目录（`files-copy` 的 `recursive: true`）。
     //   HX1 立本表时它还在另一棵树上 ⇒ 两边各自绿、合起来才红，按实数 +1。
@@ -99,7 +99,7 @@ const DIR_CREATORS: &[(&str, &str, &str)] = &[
 
 #[test]
 fn o2_every_dir_creation_is_registered_and_only_the_helper_builds_our_home() {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let mut found: Vec<(String, String)> = Vec::new();
     let mut scanned = 0usize;
     for (path, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
@@ -109,7 +109,7 @@ fn o2_every_dir_creation_is_registered_and_only_the_helper_builds_our_home() {
             .to_string_lossy()
             .replace('\\', "/");
         scanned += 1;
-        let prod = crate::guard_support::production_side_of(&path, &src);
+        let prod = guard_core::addr::production_side_of(&path, &src);
         found.extend(dir_creations(&rel, &prod));
     }
     assert!(scanned >= 60, "只扫到 {scanned} 份 —— 遍历坏了");
@@ -155,21 +155,21 @@ const MOVED_TO_OWN: &[&str] = &[
 #[test]
 fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
     let src = |p: &str| {
-        crate::guard_support::production_code(
-            &std::fs::read_to_string(crate::guard_support::src_root().join(p)).expect("读"),
+        guard_core::production_code(
+            &std::fs::read_to_string(guard_core::addr::backend_src_root().join(p)).expect("读"),
         )
     };
-    // 暂存区那两层：经文件管理面句柄那一个带权限位建目录的方法（`Face::make_dir_private`，本体同上那一个函数），恰好一处。
+    // 暂存区那两层：经文件管理面句柄那一个自家目录方法（`Face::own_dir`，本体同 `Own::own_dir` 那一个函数），恰好一处。
     assert_eq!(
         src("control/files_commit.rs")
-            .matches("face.make_dir_private(")
+            .matches("face.own_dir(")
             .count(),
         1,
-        "暂存区建目录不是经 `Face::make_dir_private` 恰好一处"
+        "暂存区建目录不是经 `Face::own_dir` 恰好一处"
     );
     assert!(
-        src("platform/fs/face.rs").contains("super::own::create_dir_private("),
-        "`Face::make_dir_private` 的本体不是自家目录那一个函数了"
+        src("platform/fs/face.rs").contains("super::own::own_dir("),
+        "`Face::own_dir` 的本体不是自家目录那一个函数了"
     );
     // 已搬上 `Own` 的（只读只读护栏第二刀逐份搬）：建那一层经 `Own::ensure_dir` 恰好一处。
     for f in MOVED_TO_OWN {
@@ -188,9 +188,9 @@ fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
     )
     .expect("本后端交给拨号核心的建目录权限位不是 own_dir 那一个");
     // 手机那一份（`mobcore`）装的也是部署那一种，权限位与本后端交的同值（它够不着本 crate，常量自写一份，这里钉相等）。
-    let phone = crate::guard_support::production_code(
+    let phone = guard_core::production_code(
         &std::fs::read_to_string(
-            crate::guard_support::src_root().join("../mobile/core-rs/rust/lib.rs"),
+            guard_core::addr::backend_src_root().join("../mobile/core-rs/rust/lib.rs"),
         )
         .expect("读手机核心"),
     );

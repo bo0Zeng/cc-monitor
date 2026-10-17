@@ -117,7 +117,10 @@ fn brief(frames: &[Frame]) -> Vec<String> {
             Frame::Line(crate::wire::Line {
                 session_id, seq, ..
             }) => format!("line {session_id} {seq}"),
-            other => other.loss_identity().kind.to_string(),
+            other => serde_json::to_value(other).unwrap()["kind"]
+                .as_str()
+                .unwrap()
+                .to_string(),
         })
         .collect()
 }
@@ -147,7 +150,7 @@ fn a_stuck_prime_holds_back_nothing_but_its_own_session() {
     std::fs::write(&fine, lines(0..3)).unwrap();
     let (ev_tx, ev_rx) = std::sync::mpsc::channel::<WatchEvent>();
     let mut state = rig.state();
-    state.pool = Some(PrimePool::start(ev_tx));
+    state.pool = Some(PrimePool::start(ev_tx, None));
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
     let mut sink = FrameSink::hub();
     sink.subs.push(Sub::new(0, tx, crate::Tz::default()));
@@ -191,7 +194,7 @@ fn nothing_streams_before_the_prime_lands_and_then_it_streams_on_from_its_count(
     std::fs::write(&rec, lines(0..5)).unwrap();
     let (ev_tx, ev_rx) = std::sync::mpsc::channel::<WatchEvent>();
     let mut state = rig.state();
-    state.pool = Some(PrimePool::start(ev_tx));
+    state.pool = Some(PrimePool::start(ev_tx, None));
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
     let mut sink = FrameSink::new(tx);
     initial_session_scan(&rig.sessions, &mut state, &mut sink);
@@ -227,7 +230,7 @@ fn no_more_primes_run_at_once_than_the_pool_has_threads() {
     let _iso = crate::control::identity_tag::door::isolate();
     let mut rig = Rig::new("cap");
     let (ev_tx, ev_rx) = std::sync::mpsc::channel::<WatchEvent>();
-    let pool = PrimePool::start(ev_tx);
+    let pool = PrimePool::start(ev_tx, None);
     let (cap, load) = (pool.pool.size(), pool.pool.load());
     let mut ends = Vec::new();
     for i in 0..cap + 2 {
@@ -284,6 +287,7 @@ fn three_connections_on_one_record_prime_it_once() {
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
         join(
             Sub::new(id, tx, crate::Tz::default()),
+            None,
             &mut state,
             &mut sink,
         );
@@ -316,7 +320,7 @@ fn the_watched_session_is_primed_first() {
     let _iso = crate::control::identity_tag::door::isolate();
     let mut rig = Rig::new("watched");
     let (ev_tx, ev_rx) = std::sync::mpsc::channel::<WatchEvent>();
-    let pool = PrimePool::start(ev_tx);
+    let pool = PrimePool::start(ev_tx, None);
     let cap = pool.pool.size();
     let mut state = rig.state();
     state.pool = Some(pool);
@@ -342,7 +346,7 @@ fn the_watched_session_is_primed_first() {
         0,
         crate::wire::WatchAsk {
             sids: vec!["p-w-b".to_string()],
-            branch: vec![],
+            ..Default::default()
         },
         &mut state,
         &mut sink,
@@ -393,10 +397,15 @@ fn prime_once(
     rec: &Path,
 ) -> (u64, Vec<String>, Vec<String>) {
     let mut state = rig.state();
-    state.skeletons = Some(home.clone());
+    // 一次「重启」：新的一份冷开扫描图（进程里什么都没留着）、同一个骨架的家。
+    let scans: &'static crate::observe::record_scan::RecordScans = Box::leak(Box::new(
+        crate::observe::record_scan::RecordScans::new(16, 64 << 20).with_skeletons(home.clone()),
+    ));
+    state.scans = Some(scans);
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(256);
     let mut sink = FrameSink::new(tx);
     initial_session_scan(&rig.sessions, &mut state, &mut sink);
+    scans.flush();
     let got: Vec<String> = brief(&drain(&mut rx))
         .into_iter()
         .filter(|s| s.starts_with("primed"))
@@ -409,8 +418,9 @@ fn prime_once(
     (state.prime_bytes, got, off)
 }
 
-/// ⑥ 骨架落盘（数字节）：重启后（新的一份读者、同一个骨架的家）记录没变 ⇒ 预读读 0 字节、
-/// 行数与主线外清单跟整份读的一样；追加 k 字节 ⇒ 读 k ＋ 见证；改写过（同长）⇒ 整份。
+/// ⑥ 骨架落盘（数字节）：头一次接上读整份、读完交给冷开扫描图扫一遍落骨架（只这一份，预读不另落）；
+/// 重启后（新的一份读者、同一个骨架的家）记录没变 ⇒ 预读读 0 字节、行数与主线外清单跟整份读的一样；
+/// 改写过（同长）⇒ 整份；之后追加 k 字节 ⇒ 读 k ＋ 见证。
 #[test]
 fn a_restart_reads_only_what_the_skeleton_has_not_seen() {
     let _iso = crate::control::identity_tag::door::isolate();
@@ -434,6 +444,18 @@ fn a_restart_reads_only_what_the_skeleton_has_not_seen() {
         "照骨架装回的跟整份读的不一样"
     );
 
+    // 改写（同长、内容变了、修改时刻变了）⇒ 整份。
+    let now = std::fs::read_to_string(&rec).unwrap();
+    let flipped = now.replace("old wording", "odd wording");
+    assert_eq!(flipped.len(), now.len());
+    std::fs::write(&rec, &flipped).unwrap();
+    let f = std::fs::OpenOptions::new().write(true).open(&rec).unwrap();
+    f.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(5))
+        .unwrap();
+    drop(f);
+    let (bytes, _, _) = prime_once(&rig, &home, &rec);
+    assert_eq!(bytes, now.len() as u64, "改写过还照骨架读了");
+
     let more = lines(40..43);
     {
         use std::io::Write;
@@ -448,63 +470,5 @@ fn a_restart_reads_only_what_the_skeleton_has_not_seen() {
     );
     assert_eq!(got3, vec!["primed p-skel Some(48)".to_string()]);
     assert_eq!(off3, off, "接着骨架读，链索引丢了");
-
-    // 改写（同长、内容变了、修改时刻变了）⇒ 整份。
-    let now = std::fs::read_to_string(&rec).unwrap();
-    let flipped = now.replace("old wording", "odd wording");
-    assert_eq!(flipped.len(), now.len());
-    std::fs::write(&rec, &flipped).unwrap();
-    let f = std::fs::OpenOptions::new().write(true).open(&rec).unwrap();
-    f.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(5))
-        .unwrap();
-    drop(f);
-    let (bytes, _, _) = prime_once(&rig, &home, &rec);
-    assert_eq!(bytes, now.len() as u64, "改写过还照骨架读了");
-    let _ = std::fs::remove_dir_all(&d);
-}
-
-/// 8a b 后续：**实时增量回写骨架** —— 读完之后实时读进来的过了门槛（上一次落盘时长度的四分之一，夹具门槛 0）⇒ 照账上此刻的游标 ·
-/// 行号 · 链索引回写一份；之后重启只读回写之后长出来的那一截 ＋ 见证（数字节），行数接得上。
-#[test]
-fn live_reads_past_the_threshold_write_the_skeleton_back() {
-    let _iso = crate::control::identity_tag::door::isolate();
-    let mut rig = Rig::new("skel-live");
-    let rec = rig.session("p-skel-live");
-    let body = chained(0..40);
-    std::fs::write(&rec, &body).unwrap();
-    let (d, own) = crate::observe::skeleton::tests::sandbox("prime-skel-live");
-    let home = crate::observe::skeleton::Skeletons::at(own, 0);
-    let append = |s: &str| {
-        use std::io::Write;
-        let mut f = std::fs::OpenOptions::new().append(true).open(&rec).unwrap();
-        f.write_all(s.as_bytes()).unwrap();
-    };
-    {
-        let mut state = rig.state();
-        state.skeletons = Some(home.clone());
-        let (tx, _rx) = tokio::sync::mpsc::channel::<Frame>(4096);
-        let mut sink = FrameSink::new(tx);
-        initial_session_scan(&rig.sessions, &mut state, &mut sink);
-        let more = lines(40..80);
-        assert!(more.len() >= body.len() / 4, "要过门槛");
-        append(&more);
-        process_jsonl(&rec, &mut state, &mut sink);
-        let h = state
-            .skel_live
-            .get_mut(&path_key(&rec))
-            .and_then(|s| s.writing.take())
-            .expect("实时读过了门槛却没回写骨架");
-        h.join().unwrap();
-    }
-    let tail = lines(80..81);
-    append(&tail);
-    let (bytes, got, off) = prime_once(&rig, &home, &rec);
-    assert_eq!(
-        bytes,
-        tail.len() as u64 + TAIL_PROBE,
-        "回写之后重启应只读回写之后的那一截 ＋ 见证"
-    );
-    assert_eq!(got, vec!["primed p-skel-live Some(86)".to_string()]);
-    assert_eq!(off, ["u2", "a2"], "回写的链索引丢了");
     let _ = std::fs::remove_dir_all(&d);
 }

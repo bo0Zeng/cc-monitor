@@ -12,15 +12,15 @@ monitor 的 Rust 半：Tauri 2 应用，crate `monitor`（lib 名 `monitor_lib`�
 |---|---|
 | 装配 | `lib.rs`（`run()`：插件 · State · Tauri 命令注册 · 工作线程）· `main.rs` |
 | 本机后端 | `local_backend_host.rs`（起 / 停 / 状态；常驻那一种经本人 Unix 套接字 `<家>/run/backend.sock` 接上）· `local_backend.rs`（stdio 监护那一种）· `backend_control.rs` · `backend_policy.rs` |
-| 远端 | `remote_resident.rs`（远端常驻后端：经本机后端那条 SSH 跑 `--resident-attach` 中继）· `dial_host.rs`（一台远端的配置 → 拨号请求）· `link_mux.rs`（经本机后端开链路）· `sftp.rs`（自部署那一半）· `sftp_pool.rs`（传输台中继）· `byte_table.rs`（全仓唯一的取字节口） |
+| 远端 | `remote_resident.rs`（远端常驻后端：经本机后端那条 SSH 跑 `--resident-attach` 中继）· `dial_host.rs`（一台远端的配置 → 拨号请求）· `link_mux.rs`（经本机后端开链路）· `deploy.rs`（自部署那一半）· `sftp_pool.rs`（传输台中继）· `byte_table.rs`（全仓唯一的取字节口） |
 | 会话流 | `stream_source/`（远端与本机两条流进同一个收口 `batch.rs` 的 `LineIntake`）· `local_lines.rs` · `event_replay.rs`（重放缓冲 · 订阅 · 就绪点）· `stream_watch.rs`（每条长连接报「在看哪几个会话」）· `session_book.rs`（那台说过的会话成品，纯缓存）· `live_card.rs` · `snapshot_resume.rs` · `frame_query.rs` · `frame_tally.rs` · `inbound_client.rs` |
 | 通道 | `chan/`（`webview.rs`：主界面的 `chan_call` / `chan_subscribe`；`host.rs`：文件窗口那对父子管道）；路由器与线上词汇住 `src/comms/inward/` |
 | 终端与窗口 | `launch.rs`（开终端窗口）· `bind.rs`（↗ 认窗口：点那一刻沿进程链问每一级显示在哪个窗口）· `terminal_screen_relay.rs` · `spawn_managed.rs`（起子进程的唯一出口） |
 | 文件窗口 | `filewin/`（开窗那一侧；窗口本体是独立包 `src/frontend/filewin/`） |
-| monitor 自己的事 | `config.rs`（`config.json` 唯一写口 `patch_config_at`）· `logging.rs` · `ui_error.rs`（要让用户知道的出错只此一种事件）· `ui_contract.rs`（事件名与载荷）· `data_paths.rs` · `diagnostics_report.rs` · `auto_launch.rs` · `app_restart.rs` · `clipboard.rs` · `footprint_client.rs` · `machine_state.rs` · `probe_relay.rs` · `asset_sync.rs` · `creds_store.rs` · `copy_table.rs` · `detail.rs` · `utils.rs` |
-| 本机 `ccm` 与集成 | `ccm_probe.rs` · `ccm_cli_contract.rs` · `profile_installer.rs`（`~/.cc-monitor/bin` 在不在用户级 PATH 上）· `cc_bus.rs` · `cc_bus_deploy.rs` |
+| monitor 自己的事 | `config.rs`（`config.json` 唯一写口 `patch_config_at`）· `logging.rs` · `ui_error.rs`（要让用户知道的出错只此一种事件）· `ui_contract.rs`（事件名与载荷）· `data_paths.rs` · `diagnostics_report.rs` · `auto_launch.rs` · `app_restart.rs` · `clipboard.rs` · `footprint_client.rs` · `machine_state.rs` · `probe_relay.rs` · `asset_sync.rs` · `copy_table.rs` · `detail.rs` · `utils.rs` |
+| 本机 `ccm` 与集成 | `backend_once.rs`（问自己放下去的那份后端一次）· `ccm_cli_contract.rs` · `cc_bus.rs` |
 | 平台原语 | `platform/`（壳里平台 cfg 的唯一住址：文件原语 · 控制台 · 窗口 · 进程 · 通知 · 单实例 …） |
-| 判据宿主 | 名字带 `_registry` / `_guard` / `_ledger` 的，以及 `structural_scan.rs` · `history.rs` · `guard_support.rs`：生产树里只挂 `#[cfg(test)]` 模块，判据本体住 `tests/frontend/shell/`（`lib.rs` 里经 `#[path]` 挂进来的那一批也是） |
+| 判据宿主 | 名字带 `_registry` / `_guard` / `_ledger` 的，以及 `structural_scan.rs` · `history.rs`：生产树里只挂 `#[cfg(test)]` 模块，判据本体住 `tests/frontend/shell/`（`lib.rs` 里经 `#[path]` 挂进来的那一批也是） |
 | 截图台架 | `shots_shell.rs`：壳那几块真代码不带窗口跑起来给截图台架用，只在特性 `shots` 下编，发版构建里没有 |
 
 ## 要加什么去哪

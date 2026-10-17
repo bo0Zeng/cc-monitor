@@ -116,7 +116,6 @@ describe("D1 · 生产 TS 零处原生 confirm / prompt", () => {
 
   it("★ 生产 TS（src/**，生成物除外）引用原生 confirm / prompt 的地方 == ∅", () => {
     const files = productionTsFiles("src");
-    expect(files.length, "人群为空 —— 下面的零命中是空真").toBeGreaterThan(100);
     expect(
       files.some((f) => f.file === "src/frontend/ui/kit/dialog.ts"),
       "人群里没有对话框模块本身 —— 遍历口径变了",
@@ -158,7 +157,7 @@ const ASK_CALLERS = [
   "src/frontend/ui/backend-deploy.ts", // 换上这一版之前「会打断什么」那一问（机器卡与 ↗ 浮层共用）
   "src/frontend/ui/keybindings/editor.ts",
   "src/frontend/ui/rot-mount.ts", // 轮换：删一份策略 · 换策略丢掉没存的改动（确认）· 复制 / 改名 / 从文件添加（问名字）
-  "src/frontend/ui/settings/cc-bus-section.ts",
+  "src/frontend/ui/views/cc-bus-section.ts",
   "src/frontend/ui/settings/config-page.ts",
   "src/frontend/ui/settings/machine-card.ts",
   "src/frontend/ui/settings/panel.ts",

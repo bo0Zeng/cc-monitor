@@ -69,9 +69,9 @@ pub fn ensure_private_dir(dir: &Path) -> Result<(), Said> {
     b.create(dir).map_err(|e| {
         Said::with_raw(
             copy_text(
-                "rsPlatformFs.mkdir.failed",
+                "reason.fs.writeFailed",
                 &[
-                    ("dir", &(dir.display()).to_string()),
+                    ("path", &(dir.display()).to_string()),
                     ("why", &copy_core::io_reason(e.kind())),
                 ],
             ),
@@ -150,15 +150,11 @@ extern "system" {
     fn CloseHandle(handle: std::os::windows::io::RawHandle) -> i32;
 }
 
-/// 互斥量的名字（与后端 `platform/lock.rs::mutex_name` 逐字同一种拼法：小写路径的 FNV-1a）。
+/// 互斥量的名字（与后端 `platform/lock.rs::mutex_name` 同一种拼法：小写路径的 [`cmd_wire::fnv::fnv1a64`]）。
 #[cfg(windows)]
 fn dir_lock_name(namespace: &str, dir: &Path) -> Vec<u16> {
     let key = dir.to_string_lossy().to_ascii_lowercase();
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in key.as_bytes() {
-        h ^= u64::from(*b);
-        h = h.wrapping_mul(0x1000_0000_01b3);
-    }
+    let h = cmd_wire::fnv::fnv1a64(key.as_bytes());
     format!("{namespace}\\ccm-own-state-{h:016x}")
         .encode_utf16()
         .chain(std::iter::once(0))
@@ -214,39 +210,4 @@ impl Drop for DirLock {
             CloseHandle(self.mutex);
         }
     }
-}
-
-// 原住 `config.rs`（逐字）：monitor 自己的文件（config.json）的原子替换，两个平台臂。
-/// 把 src 原子替换到 dst。
-///
-/// ⚠ 要原子替换的调用方复用这一份，**不许自己写一个 `fs::rename`**：`atomic_replace_registry` 按
-/// 「`rename` / `MoveFileExW` 的**出现次数**」逐文件登记。
-/// 选它（`MoveFileExW` 那套语义）而不是 `ReplaceFileW` 是**有理由的**：
-/// `INVARIANTS §4` 那条 ACL 保留只限定在**用户的**文件，而凭据文件与 `config.json` 同类
-/// ——**都是 monitor 自己的文件**（登记表里那两行逐字这么写的；住址今天是 `platform/fs.rs`）。
-/// std::fs::rename 在 Windows 上目标文件已存在时会失败（不像 POSIX 原子覆盖），
-/// 所以这里走 MoveFileExW(MOVEFILE_REPLACE_EXISTING)；非 Windows 走 std::fs::rename。
-#[cfg(windows)]
-pub(crate) fn atomic_replace(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
-    use windows::core::PCWSTR;
-    use windows::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_REPLACE_EXISTING};
-
-    // 带长路径前缀：过 260 字符的路径照样换得上。
-    let (src_w, dst_w) = (
-        win_path_core::win32_path(src)?,
-        win_path_core::win32_path(dst)?,
-    );
-    unsafe {
-        MoveFileExW(
-            PCWSTR(src_w.as_ptr()),
-            PCWSTR(dst_w.as_ptr()),
-            MOVEFILE_REPLACE_EXISTING,
-        )
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.message().to_string()))
-    }
-}
-
-#[cfg(not(windows))]
-pub(crate) fn atomic_replace(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
-    std::fs::rename(src, dst)
 }

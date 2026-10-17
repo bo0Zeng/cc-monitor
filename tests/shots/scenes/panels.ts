@@ -3,10 +3,10 @@
  */
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { copyPattern } from "../../test-support/copy-pattern";
-import { hms } from "../fake/clock";
+import { LAUNCH_FAILED_SCREEN } from "../disk/screen";
 import type { Scene } from "./index";
 import { Refuse, type World } from "../fake/types";
-import { defaultWorld } from "../fake/world";
+import { defaultWorld, LOCAL } from "../fake/world";
 import { byText, click, hover, key, mainReady, openTab, rightClick, sleep, type, waitFor } from "./helpers";
 import { emit } from "@tauri-apps/api/event";
 
@@ -38,12 +38,10 @@ function remoteEndedWorld(): World {
 /** 同上，且那台说这条会话上次用的号（personal）现在选不了，替代是它的默认号 work。 */
 function accountGoneWorld(): World {
   const w = remoteEndedWorld();
-  w.ops["launch-render-cli"] = () => {
-    throw new Refuse("account_unavailable", "账号 personal 不可用，未启动", {
-      requested: "personal",
-      pinned: true,
-      listKnown: true,
-      alternative: "work",
+  w.ops["session-open"] = () => {
+    throw new Refuse("account_unavailable", copyText("beLaunchAccount.unavailable.lastToDefault", { name: "personal", alt: "work" }), {
+      field: null,
+      unavailable: { requested: "personal", pinned: true, listKnown: true, alternative: "work" },
     });
   };
   return w;
@@ -52,7 +50,7 @@ function accountGoneWorld(): World {
 /** 分叉沿用的那个号选不了：那台回 `account_unavailable`、带替代号（不起、不悄悄换号）。 */
 function forkUnavailableWorld(): World {
   const w = defaultWorld();
-  w.ops["session-new"] = () => {
+  w.ops["session-open"] = () => {
     throw new Refuse("account_unavailable", "personal 选不了", {
       field: "account",
       unavailable: { requested: "personal", pinned: true, listKnown: true, alternative: "work" },
@@ -64,7 +62,7 @@ function forkUnavailableWorld(): World {
 /** 起新会话框：目录那一格那台说不在。 */
 function noDirWorld(): World {
   const w = defaultWorld();
-  w.ops["session-new"] = () => {
+  w.ops["session-open"] = () => {
     throw new Refuse("no_dir", "目录不存在", { field: "cwd", unavailable: null });
   };
   return w;
@@ -73,11 +71,11 @@ function noDirWorld(): World {
 /** 起新会话框：点［新建］那一问两次都没等到回话（那台卡住）：「起没起未知」＋［再核一次］（同一张票，不会起第二个）＋［复制详情］。 */
 function noAnswerWorld(): World {
   const w = defaultWorld();
-  w.ops["session-new"] = () => {
+  w.ops["session-open"] = () => {
     throw {
       err: { Hop: { idx: 1, tag: "wait", reach: "Sent", why: "Overrun" } },
       body: [],
-      detail: "机器：devbox\n命令：session-new\n断在：第 1 跳 · 等回话\n码：Overrun",
+      detail: "机器：devbox\n命令：session-open\n断在：第 1 跳 · 等回话\n码：Overrun",
     };
   };
   return w;
@@ -86,7 +84,7 @@ function noAnswerWorld(): World {
 /** 起新会话框：那台说整体不行（不落在哪一格）：按钮行上方一行红字 ＋［复制详情］。 */
 function startFailedWorld(): World {
   const w = defaultWorld();
-  w.ops["session-new"] = () => {
+  w.ops["session-open"] = () => {
     throw new Refuse("start_failed", copyText("beSessionNew.start.failed"), { field: null, unavailable: null }, "exit 1\nccm: launcher exited 1");
   };
   return w;
@@ -95,17 +93,7 @@ function startFailedWorld(): World {
 /** 点了［新建］、那台起好了（tmux 里）但会话一直没报到：那个 tmux 会话还在，画面末几行是启动器的报错。 */
 function unarrivedWorld(): World {
   const w = defaultWorld();
-  const list = w.ops["terminals-list"];
-  w.ops["terminals-list"] = (o, r, ww) => {
-    const got = list(o, r, ww) as { terminals: Record<string, unknown>[] };
-    return { ...got, terminals: [...got.terminals, { ...got.terminals[0], terminal: "tmux-orders-cc-2", tmux_name: "orders-cc-2", title: "orders-cc-2", session: null, clients: [] }] };
-  };
-  w.ops["terminal-preview"] = () => ({
-    lines: ["$ ccm -- claude --modle opus", "claude: error: unknown option '--modle'", "(Did you mean --model?)", "$ "].map((text) => ({ text })),
-    screen: "00000000000000b2",
-    captured_at: Math.floor(Date.parse("2026-10-06T10:42:05") / 1000),
-    captured_at_text: hms(Date.parse("2026-10-06T10:42:05")),
-  });
+  w.disk[LOCAL].bareTmux = [{ name: "orders-cc-2", screen: LAUNCH_FAILED_SCREEN }];
   return w;
 }
 

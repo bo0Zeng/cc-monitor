@@ -10,7 +10,7 @@
  *
  * ⚠ 本文件**不是**通信层成员（它造期限、解释载荷）；也不认识任何一条具体命令 —— 那是各调用方的事。
  */
-import { chan, ChanError, type Budget, type CallError } from "../../../comms/inward/chan";
+import { chan, ChanError, type Budget } from "../../../comms/inward/chan";
 import { copyText } from "../copy-table";
 import { isLocalOrigin, type Origin } from "./origin";
 import type { TypedCommands } from "../generated/TypedCommands";
@@ -36,8 +36,8 @@ export async function callTyped<K extends keyof TypedCommands>(
  * 造一个期限：从现在起 `ms` 毫秒（`performance.now()` 钟面的绝对时刻）。
  * 「这条路该等多久」由每个调用点自己说（`X6`：调用点一律显式给期限，零处用库里的默认）。
  */
-export function budgetWithin(ms: number, cancel?: AbortSignal): Budget {
-  return { until: performance.now() + ms, cancel };
+export function budgetWithin(ms: number): Budget {
+  return { until: performance.now() + ms };
 }
 
 const enc = new TextEncoder();
@@ -51,21 +51,6 @@ export function jsonBody(args: Record<string, unknown>): Uint8Array {
 /** 帧命令应答体 ⇒ JSON 值。解不出来就抛（那是两端契约对不上，不是「空答案」）。 */
 export function readJson(body: Uint8Array): unknown {
   return JSON.parse(dec.decode(body));
-}
-
-/**
- * 按行那一族（`read_face` 的 `{"lines": [...]}`，C1 那几条）⇒ 逐行，trim 过、剔空行 ——
- * 与 monitor 侧 `frame_query::lines` 同形（那一份在迁过来的命令上已经没有调用方）。
- * 应答里没有 `lines` 数组 ⇒ 抛（两端契约对不上）。
- */
-export function linesOf(body: Uint8Array): string[] {
-  const v = readJson(body);
-  const rows = v !== null && typeof v === "object" ? (v as { lines?: unknown }).lines : undefined;
-  if (!Array.isArray(rows)) throw new Error(copyText("chanCaller.linesOf.badShape"));
-  return rows
-    .filter((r): r is string => typeof r === "string")
-    .map((r) => r.trim())
-    .filter((r) => r !== "");
 }
 
 /**
@@ -85,96 +70,38 @@ export function refusalOf(body: Uint8Array): { code: string; message: string; da
   return null;
 }
 
-/**
- * 因对方版本说不成的两个码，全产品各一句（文案表 `peerVersion.said.*`）：
- * - `backend_old`：那台后端事前就说不认这条命令（`peer/unsupported`）；
- * - `reply_unreadable`：那台回了，但回的东西认不出（不是 JSON / 形状不对）—— 只说认不出，不猜版本。
- * typed 命令两端形状对不上（「{机器} 后端版本不同」）不在这里：monitor 比的指纹、它写好那一句（带机器名），界面照抄拒绝里的那句。
- */
-export type PeerVersionCode = "backend_old" | "reply_unreadable";
-
 /** 一句话里怎么称呼这台机器：本机说「本机」，远端说它的名字。 */
 export function machineName(origin: Origin): string {
   return isLocalOrigin(origin) ? copyText("control.machine.local") : origin;
 }
 
-/** 码 ⇒ 那一句（唯一住址）。 */
-export function peerVersionSaid(code: PeerVersionCode, origin: Origin): string {
-  const machine = machineName(origin);
-  return code === "backend_old"
-    ? copyText("peerVersion.said.old", { machine })
-    : copyText("peerVersion.said.unreadable", { machine });
+/** 那台回了、回的东西认不出那一句（[`ReplyUnreadable`] 的 `message`；不抛、只要那一句的几处直接取）。 */
+export function unreadableSaid(origin: Origin): string {
+  return copyText("peerVersion.said.unreadable", { machine: machineName(origin) });
 }
 
-/** 那台回的东西认不出。`message` 只是细目（进日志）；给人看的那句由 [`saidFrom`] 按码取。 */
+/**
+ * 那台回了，但回的东西认不出（不是 JSON / 形状不对）—— 只说认不出，不猜版本。这一句是界面自己知道的事，界面说
+ * （通道上的失败那一句由 monitor 写，在 `ChanError.message`）。`detail` 恒空串：屏上就是这一句、不出［复制详情］；细目只进日志。
+ */
 export class ReplyUnreadable extends Error {
-  constructor(detail: string) {
-    super(detail);
+  readonly detail = "";
+  constructor(origin: Origin, why: string) {
+    super(unreadableSaid(origin));
     this.name = "ReplyUnreadable";
+    console.warn(`reply unreadable from ${origin}: ${why}`);
   }
 }
 
-/** 已经知道是哪台回的东西认不出 ⇒ 直接带那一句的 `Error`（不经 [`saidFrom`] 的那几处用）。 */
-export function unreadableFrom(origin: Origin, detail: string): Error {
-  console.warn(`reply unreadable from ${origin}: ${detail}`);
-  return new Error(peerVersionSaid("reply_unreadable", origin));
-}
-
-/** 这一次失败落在两个码的哪一个上；都不是 ⇒ `null`（按层说别的原因）。JSON 解不出（`SyntaxError`）算认不出。 */
-export function peerVersionCodeOf(e: unknown): PeerVersionCode | null {
-  if (e instanceof ReplyUnreadable || e instanceof SyntaxError) return "reply_unreadable";
-  if (e instanceof ChanError && unsupported(e.error)) return "backend_old";
-  return null;
-}
-
-/**
- * 问 `origin` 那台的一次查询失败了 ⇒ 给人看的那句话。两个码按码取句（[`peerVersionSaid`]），其余按层说（[`saidByLayer`]）。
- */
-export function saidFrom(e: unknown, origin: Origin): string {
-  const code = peerVersionCodeOf(e);
-  if (code !== null) {
-    if (code === "reply_unreadable") console.warn(`reply unreadable from ${origin}:`, e instanceof Error ? e.message : e);
-    return peerVersionSaid(code, origin);
-  }
-  return saidByLayer(e);
-}
-
-/**
- * 不落在两个码上的失败 ⇒ 按层说的那一句（[`saidFrom`] 的另一支）。
- * 不是 `ChanError` 的（调用方自己抛的）原样用它的 `message`。
- */
-function saidByLayer(e: unknown): string {
-  if (!(e instanceof ChanError)) return e instanceof Error ? e.message : String(e);
-  const err = e.error;
-  switch (err.layer) {
-    case "peer": {
-      // 「不认这条命令」由 [`saidFrom`] 先按码接走，到不了这里。
-      if (unsupported(err)) return copyText("chanCaller.said.error");
-      // 对端答了一个错误 ⇒ 就说它那一句（码不上屏：调用方要按码分支的自己读 `refusalOf`）。
-      const r = refusalOf(err.body);
-      return r && r.message.trim() !== "" ? r.message : copyText("chanCaller.said.error");
-    }
-    case "hop":
-      return err.why === "Overrun"
-        ? copyText("chanCaller.said.timeout")
-        : copyText("chanCaller.said.unreachable");
-    case "ours":
-      if (err.why !== "Cancelled") return copyText("chanCaller.said.internal");
-      // 那台对这一条不认撤 ⇒ 说它可能还在跑。
-      return err.runsOn === true ? copyText("chanCaller.said.withdrawnRunsOn") : copyText("chanCaller.said.withdrawn");
-  }
+/** 这一次失败是对端拒了 ⇒ 拒绝体（码 · 那一句 · `data`，[`refusalOf`]）；别的失败 · 体解不出 ⇒ `null`。按码分支的调用方只经这里读。 */
+export function refusalIn(e: unknown): { code: string; message: string; data?: unknown } | null {
+  return e instanceof ChanError && e.error.layer === "peer" && e.error.why === "refused" ? refusalOf(e.error.body) : null;
 }
 
 /**
  * 这一次失败是不是「那台后端比这条查询老」（对端**事前**就说不认这条命令）。按层判、不看文字；
- * 「需要更新」只许从这里来 —— 够不着 / 期限到 / 对端说不行都不是它（那几形照 [`saidByLayer`] 说查询失败的原因）。
+ * 那一句 monitor 已经写在 `message` 里，这里只给要换样子的那几处（「需要更新」）判形。
  */
 export function isOldBackend(e: unknown): boolean {
-  return e instanceof ChanError && unsupported(e.error);
+  return e instanceof ChanError && e.error.layer === "peer" && e.error.why === "unsupported";
 }
-
-/** 那一形的唯一判法（[`peerVersionCodeOf`] 与 [`isOldBackend`] 共用；类型守卫 ⇒ 另一支里 `body` 可读）。 */
-function unsupported(err: CallError): err is Extract<CallError, { why: "unsupported" }> {
-  return err.layer === "peer" && err.why === "unsupported";
-}
-

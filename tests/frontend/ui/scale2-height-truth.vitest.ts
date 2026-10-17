@@ -40,6 +40,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { buildCorpus, htmlFingerprint } from "./scale2-height-corpus";
 import { estimateStreamNodeHeight, appliedIntrinsicPx } from "../../../src/frontend/ui/height-estimate";
+import { nonEmpty } from "../../test-support/non-empty";
 
 // `__dirname` 在 vitest 里指向 `tests/`（同 `scale3-one-screen-gate.vitest.ts` 的用法）
 const FIXTURE = resolve(__dirname, "../../__fixtures__/scale2-height-line-records.jsonl");
@@ -139,12 +140,9 @@ function relErrByClass(
  * 🔴 **装上去当天，9 个卡型里 5 个不满足。** 所以这张表分两段：
  *
  * - **达标段**（≤ 0.30）：就按设计门槛钉死。新卡型默认进这一段。
- * - **超标段**（> 0.30）：逐条登记今天的实测值 + 一点裕度，并写明**为什么超**。
- *   登记不是豁免 —— `EXCEEDS_DESIGN_GATE` 那一格会把这份名单原样抬到人眼前，
- *   名单变长变短都红，谁也没法安静地多加一个。
+ * - **超标段**（> 0.30）：逐条登记今天的实测值 + 一点裕度，并写明**为什么超**（今天一条都没有）。
  *
- * ⚠ 上限只许降。修好了就回来把数字改小（并把名字从 `EXCEEDS_DESIGN_GATE` 里删掉）——
- * 那一步会让门禁红一次，**那正是它想要的**：没有人能靠"修好了"绕过登记。
+ * ⚠ 上限只许降。
  */
 const P90_CEILING: Record<string, number> = {
   // ⚠ 下面每条注释里的实测值都是 **2026-09-18 去掉地板之后**重打的
@@ -174,8 +172,7 @@ const P90_CEILING: Record<string, number> = {
   //   地板去掉之后它们**第一次**量的是常数自己。
   "card-bash-input": 0.3, //   实测 p90 2.2% / 0.0%（地板去掉前 29.1% / 26.3%）
   "card-slash": 0.3, //        实测 p90 2.2% / 5.6%（地板去掉前 29.1% / **33.3% 超线**）
-  // 🔴 这一条 2026-09-18 从超标段**回到达标段**：上限 0.45 → 0.3，名字同步从
-  //   `EXCEEDS_DESIGN_GATE` 里删掉（那一步让门禁红了一次，那正是登记制度想要的）。
+  // 🔴 这一条 2026-09-18 从超标段**回到达标段**：上限 0.45 → 0.3。
   "card-api-retry": 0.3, //    实测 p90 0.3% / 0.0%（地板去掉前 40.8% / 41.2%）
   // ── 超标段：逐条写明成因 ──
   // 反向：常数 40 是**单行**错误卡的高度，可 `card-api-error` 有 `.api-error-body`
@@ -184,22 +181,6 @@ const P90_CEILING: Record<string, number> = {
   //   这也正是「地板改动的爆炸半径只有四个 class」那句话的对照组。
   "card-api-error": 0.3, //    实测 p90 7.5% / 4.8%（虚低）。主窗口第 2 批：报错卡改成固定三行（抬头 · 下一步 · 原文折叠），常数 40 → 60；此前 70.7% / 69.8%
 };
-
-/**
- * 今天**不满足**设计那句「p90 < 30%」的 class（只许变短；变长变短都要回来改这里）。
- *
- * 这份名单 2026-09-18 一天里缩了两次：
- *   · 上半场 **5 条 → 2 条**：`card-assistant`（正文卡 ~2× 虚高，根是 `extractProseText`
- *     把排版换行当硬断行）、`card-bash-input`、`card-slash` 三条随 `extractProseText`
- *     与三条 content-box 常数一起修掉；
- *   · 🔴 下半场 **2 条 → 1 条**：`applyIntrinsicSize` 的 `Math.max(24, …)` 地板去掉之后，
- *     `card-api-retry` 的 p90 从 40.8% 掉到 **0.3%**。
- *     它此前之所以在名单上，**不是常数算错**，是常数 17 被地板顶回 24 —— 那一格是**地板的账**。
- *
- * 原来剩的那一条（`card-api-error`：常数 40 假设单行、长报错虚低）随主窗口第 2 批修了：报错原文收进「原文」折叠，
- * 卡固定三行、常数 60（p90 7.5% / 4.8%）。名单清空。
- */
-const EXCEEDS_DESIGN_GATE: string[] = [];
 
 /**
  * ★ **F1 · 每个 class 的估值最小值 ≥ 该 class 登记的常数**。
@@ -416,22 +397,6 @@ describe("秤 2 · 门禁：各 class 的 p90 相对误差", () => {
     ).toEqual([]);
   });
 
-  it("★ 登记表：今天不满足设计那句「p90 < 30%」的就是这几个（名单只许变短）", () => {
-    const byCls = relErrByClass((row) => row.estAppliedBrowser);
-    const over = [...byCls.entries()]
-      .filter(([, errs]) => p(errs, 0.9) > 0.3)
-      .map(([cls]) => cls)
-      .sort();
-    expect(
-      over,
-      "★ 给秤 2 的门槛逐字是「各 class 的 p90 相对误差 < 30%」。\n" +
-        "  这一格把**今天还够不着那条线的卡型**原样抬到人眼前。\n" +
-        "  名单变长 ⇒ 有卡型的估高退步了或新卡型没调准；\n" +
-        "  名单变短 ⇒ 修好了，回来把它从 `EXCEEDS_DESIGN_GATE` 删掉、并把 `P90_CEILING` 拧到 0.3。\n" +
-        "  **两个方向都红是故意的** —— 登记表不是豁免，是让豁免没法安静地留着。",
-    ).toEqual(EXCEEDS_DESIGN_GATE);
-  });
-
   it("★ 常数型卡：jsdom 现算的估值必须与真浏览器逐位相同", () => {
     const diffs: string[] = [];
     for (const item of corpus) {
@@ -620,7 +585,7 @@ describe("秤 2 · 读数（不做判据，只产表）", () => {
         "     其余五个 class 的估值最小值都 ≥ 38，够不着旧地板 ⇒ **一个点都不该动**（上面的 p90 表可核）。",
       ].join("\n"),
     );
-    expect(rows.length).toBeGreaterThan(0); // 只产读数；为 0 说明语料里的细条卡没了，那是另一回事
+    nonEmpty(rows); // 只产读数；为 0 说明语料里的细条卡没了，那是另一回事
   });
 });
 
@@ -658,7 +623,7 @@ describe("秤 2 · `contain-intrinsic-size` 的盒模型（B 段真浏览器实�
         "  ⇒ 下面悬案③那段推导的前提**跟着换了**：每张 retry 从 30px 变成 23px。那一段已重算。",
       ].join("\n"),
     );
-    expect(golden.intrinsic.length).toBeGreaterThan(0);
+    nonEmpty(golden.intrinsic);
   });
 });
 
@@ -833,7 +798,7 @@ describe("秤 2 · 骨架外框（RENDER2）", () => {
     };
     const of = (cls: string): number => {
       const v = g.rows.filter((r) => r.cls === cls).map((r) => r.slot - r.body);
-      expect(v.length, `金样里没有 ${cls}`).toBeGreaterThan(0);
+      nonEmpty(v);
       return Math.ceil(median(v));
     };
     expect({ ...SKEL_OUTER }).toEqual({

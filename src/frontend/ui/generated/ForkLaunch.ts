@@ -3,7 +3,7 @@ import type { ForkSlot } from "./ForkSlot";
 import type { ForkTerminal } from "./ForkTerminal";
 
 /**
- * 三格推断的结果（线上 `session-fork` 回复的 `launch`，`session-new-facts` 的 `fork.launch` 同一形）。
+ * 三格推断的结果（线上 `session-fork` 回复的 `launch`，`session-open-facts` 的 `fork.launch` 同一形）。
  */
 export type ForkLaunch = { cwd: ForkSlot<string>, 
 /**

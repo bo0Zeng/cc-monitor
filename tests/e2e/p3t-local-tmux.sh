@@ -4,8 +4,8 @@
 # 与 tests/e2e/ccm-acceptance.sh 的分工：那个验 ccm CLI 自己的行为；本脚本验的是
 # **cc-monitor 渲染出来的那一条本机拉起命令**在真 tmux 上干了什么。
 #
-# ★★ 命令串**不在本脚本里手抄** —— 从 Rust 渲染器的出口取
-# （`tests/backend/control/launch_render/local_tests.rs::emit_local_launch_command_for_e2e`）。手抄一份的话，
+# ★★ 命令串**不在本脚本里手抄** —— 从 `session-open` 本体交出去的那一行取（`tests/e2e/open-line-emit.sh`，
+# 本机 · 恢复进新建的 tmux）。手抄一份的话，
 # 渲染器改了、脚本没改，实测照样绿：那就成了「验我自己抄得对不对」。
 #
 # ★★ C7i 红线（2026-08-11 事故后立）：**tmux 命令一律带 socket 选择器**。
@@ -143,24 +143,21 @@ ok "C7d 前置：登录 shell 里的 $LAUNCHER 是假 launcher（$GOT_LAUNCHER�
 #   ⇒ 下面取到命令串之后，还要断言串里**显式带了** `--launcher <假的>`：
 #     那样 ccm 根本不会去 PATH 上找 `claude`，「真 claude 不许被起」就不再依赖 PATH 顺序。
 
-# ── 取生产渲染器的真输出
-# 本机起会话的计划与渲染住进本机后端（`src/backend/control/launch_render/local.rs`）⇒ 在后端那个工程里跑出口。
-RAW="$(cd "$REPO/src/backend" && P3T_E2E_SID="$SID" P3T_E2E_TMUX="$TMUXNAME" P3T_E2E_LAUNCHER="$LAUNCHER" \
-  cargo test --lib -- --ignored --nocapture emit_local_launch_command_for_e2e 2>/dev/null)"
-CMD="$(printf '%s' "$RAW" | sed -n 's/.*P3T_CMD<<<\(.*\)>>>.*/\1/p')"
+# ── 取 `session-open` 交出去的那一行（本机 · 恢复进新建的 tmux · 账号 0）
+CMD="$(bash "$HERE/open-line-emit.sh" shape=resume-tmux sid="$SID" cwd=/tmp name="$TMUXNAME" launcher="$LAUNCHER" account=base here=local 2>/dev/null)"
 if [ -z "$CMD" ]; then
-  echo "  ABORT 取不到渲染器输出 —— e2e 无对象可跑（别当绿过）"
+  echo "  ABORT 取不到 session-open 交出去的那一行 —— e2e 无对象可跑（别当绿过）"
   exit 2
 fi
-ok "拿到生产渲染器的串：$CMD"
+ok "拿到 session-open 交出去的那一行：$CMD"
 
-# 〔MIG-1 续四〕**自足**：串以 `ccm` 这个名字打头，按名字解析就要看登录 shell 的 PATH —— profile 会把 `~/.local/bin` 排到最前，
+# 〔MIG-1 续四〕**自足**：串打头的是这台装好的那一份入口（在家目录下，按登录 shell 解析会落到别处的旧 `ccm` —— profile 会把 `~/.local/bin` 排到最前，
 #   那里可能躺着一份与本树无关的旧 `ccm`（主线上本套件 5 红就是撞上了它：旧 shim 不认 `--cwd` / `--ccm-tmux`）。
 #   ⇒ 把打头那个词换成本树这一份的**绝对路径**（软链 `$BIN/ccm` → 本树刚编出来的后端二进制）。容器里键入的内层命令
 #   取的是外层的 `argv[0]`（`plan.rs`），于是内层也是这一份；送法照旧是生产那一形（`bash -lic <串>`）。**不碰用户家目录里的任何文件**。
 case "$CMD" in
-  "ccm "*) CMD="'$BIN/ccm' ${CMD#ccm }" ;;
-  *) echo "  ABORT 串不是以 \`ccm \` 打头 —— 没法钉成本树这一份：$CMD"; exit 2 ;;
+  *" -- "*) CMD="'$BIN/ccm' ${CMD#* }" ;;
+  *) echo "  ABORT 串不是一行 ccm —— 没法钉成本树这一份：$CMD"; exit 2 ;;
 esac
 # 前置断言（fail-closed）：打头那一份解析到的就是本树的后端二进制。
 if [ "$(readlink -f "$BIN/ccm")" != "$(readlink -f "$CCM_NATIVE")" ]; then

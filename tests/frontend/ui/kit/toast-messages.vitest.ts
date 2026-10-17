@@ -66,11 +66,12 @@ describe("toast 排版 ＋「消息」记录", () => {
   it("🔴 记录带时刻与还能做的动作；撤销期过了（到点提交）⇒ 记录里不再给「撤销」，重试照留", () => {
     const undo = vi.fn();
     const commit = vi.fn();
+    vi.setSystemTime(1_700_000_000_000);
     kit.undoToast(copyText("tabBar.close.done", { title: "周报草稿" }), undo, commit);
     kit.toast(copyText("tabSessionActions.kill.failed", { title: "排序模型蒸馏" }), "gpu-01 断开", { level: "error", action: { label: "重试", run: vi.fn() } });
     const [retry, closed] = kit.recentToasts();
     expect(closed.actions.map((a) => a.label)).toEqual([copyText("kit.toast.undo")]);
-    expect(closed.at).toBeGreaterThan(0);
+    expect(closed.at, "记录的时刻不是收起那一刻").toBe(1_700_000_000_000);
     vi.advanceTimersByTime(8000);
     expect(commit).toHaveBeenCalledTimes(1);
     expect(closed.actions, "撤销期过了还给撤销 ⇒ 点了也撤不回").toEqual([]);

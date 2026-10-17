@@ -1,7 +1,7 @@
 //! 别名做成 `~/.cc-monitor/bin/<名>` → `ccm` 的链接（只在 POSIX）：ccm 看到自己被叫成 `<名>` 就等同 `ccm @<名>`
 //! （`control/ccm/mod.rs::route`）。新建的别名已开的终端马上能用（那个目录在 `PATH` 里，别名块装的那一行），任何 shell 都行。
 //!
-//! 经这台的文件管理面（`files-ls` · `files-stat` · `files-link` · `files-delete`），不自己碰盘。
+//! 经这台的文件管理面（`files-ls` · `files-stat` · `Door::link` · `files-delete`），不自己碰盘。
 //! 认「是我们放的」只凭一条：那个目录里、指向 `ccm`（链接文本逐字）的链接。别的文件一个都不动。
 
 use crate::common::door::{self, Door};

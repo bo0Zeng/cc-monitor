@@ -228,3 +228,185 @@ pub enum Route<'a> {
 }
 
 // 判据 `tests/comms/inward/origin_tests.rs` 挂在 monitor 的 `lib.rs`（它的棘轮扫的是 monitor 的命令面）；那边经 `comms_inward::origin` 的再导出用它。
+
+/// 拨一台没拨成的原因（闭集）：拨号核心判、写进拨号应答的 `reason`；接这台的宿主随断开那一句带着它，后端按它定那一态与修法。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, rename = "DialWhy", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "snake_case")]
+pub enum Why {
+    /// 地址解析不出来（DNS）。
+    Resolve,
+    /// 那个口拨不通（拒绝 / 主机或网络不可达）。
+    Unreachable,
+    /// 拨号 / 握手超时。
+    Timeout,
+    /// 主机指纹与记下的不一样。
+    HostKey,
+    /// 密钥被拒（公钥 · agent 都没过）。
+    Auth,
+    /// 那台只收密码（服务端剩下的方法里没有公钥）。
+    Password,
+    /// 私钥文件读不出来。
+    KeyUnreadable,
+    /// 跳板那一台断开（拨号 · 鉴权 · 经它开隧道任一步）。
+    Jump,
+    /// 别的（看那一句）。
+    Other,
+}
+
+/// 那台此刻是什么样（闭集）：`up` 连着 · `connecting` 正在连（`stage` 说到哪一步）· `installing` 正在把 cc-monitor 装上去 ·
+/// `updating` 正在换成这一版 · `down` 这一轮没连上（`reason` 说为什么）· `host_key_changed` 主机指纹与记下的不一样 ·
+/// `needs_update` 连着但那台旧（或帧形状对不上）· `newer` 连着但那台比这一版新 · `disabled` 「连接这台」关着 ·
+/// `unsupported` 那台做不了 · `unknown` 还没有任何一轮的结论。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "snake_case")]
+pub enum MachineStateKind {
+    Up,
+    Connecting,
+    Installing,
+    Updating,
+    Down,
+    HostKeyChanged,
+    NeedsUpdate,
+    Newer,
+    Disabled,
+    Unsupported,
+    Unknown,
+}
+
+/// 正在连时到哪一步：部署预检（核对版本）· 接那台的常驻后端。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, rename = "MachineStage", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "snake_case")]
+pub enum Stage {
+    Deploy,
+    Attach,
+}
+
+/// 那一行上给的修法（闭集）。`install` 只给自己不装后端的宿主（手机）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "snake_case")]
+pub enum MachineFix {
+    Retry,
+    ConnSettings,
+    PushKey,
+    CompareFingerprint,
+    Update,
+    Connect,
+    Install,
+}
+
+/// 一颗修法按钮：做什么 ＋ 按钮上的字。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, rename = "MachineFixButton", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct FixButton {
+    pub fix: MachineFix,
+    pub label: String,
+}
+
+/// 一台的状态成品（判定在后端 `deploy::machine`；本机那一行由壳照同一批键出）。界面照画：字取 `word` · `said` · `fixes[].label`。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MachineState {
+    pub state: MachineStateKind,
+    /// 没连上的原因码（`down` · `host_key_changed` 才有）。
+    pub reason: Option<Why>,
+    /// 正在连时到哪一步。
+    pub stage: Option<Stage>,
+    /// 那台 cc-monitor 的产品版本号：与这一版同一份字节时就是这一版的号；别的报不出 ⇒ 空。
+    pub version: Option<String>,
+    /// 与这一版的版本关系（握手过才有）。
+    pub version_relation: Option<crate::attach::Relation>,
+    /// 那台的系统（部署问到过才有）。
+    pub os: Option<String>,
+    /// 名字旁那个词（连着时空）。
+    pub word: String,
+    /// 问题行那一句（空 ⇒ 不出问题行）。
+    pub said: String,
+    pub fixes: Vec<FixButton>,
+    /// 指纹不对时那台这一次出示的主机指纹（`host_key_changed` 才有）。
+    pub seen_host_key: Option<String>,
+    /// 这一轮没连上 / 做不了时的复制详情（界面照原样跟在问题行那句后面）。
+    pub detail: Option<String>,
+    /// 下一步那一句（壳写好的；只有本机起后端被拒时有）。界面照原样画在问题行下面。
+    pub next: Option<String>,
+}
+
+/// 接常驻那一段的一轮结论（宿主把通信层交出的那一态原样转给后端，只有事实）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, rename = "MachineRound", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Round {
+    Connecting,
+    /// 通着：那台相对手上这一版 · 握手那一刻比出形状对不上的那几种帧。
+    Up {
+        relation: crate::attach::Relation,
+        differs: Vec<String>,
+    },
+    /// 断着：那一句 ＋ 详情 ＋ 原因码与那台出示的指纹；`blocker` ⇒ 断在那台本身（不是路上），是哪一种。
+    Down {
+        problem: RoundProblem,
+        blocker: Option<Blocker>,
+    },
+}
+
+/// 一轮断在那台本身的哪一处（闭集）：不是 Unix（怎样都不会好）· 没有我们的后端（没装 · 起不了常驻 · 不是我们的）· 后端旧了（不认这一版的子命令）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, rename = "MachineBlocker", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "snake_case")]
+pub enum Blocker {
+    NotUnix,
+    NoBackend,
+    OldBackend,
+}
+
+/// [`Round::Down`] 那一句。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, rename = "MachineRoundProblem", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct RoundProblem {
+    pub text: String,
+    pub detail: String,
+    pub why: Option<Why>,
+    pub seen_key: Option<String>,
+}

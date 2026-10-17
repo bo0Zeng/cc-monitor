@@ -2,6 +2,6 @@
 import type { Outcome } from "./Outcome";
 
 /**
- * `sessions-stop` / `sessions-start` 的应答：逐个结果，与入参同序。
+ * `sessions-stop` 的应答：逐个结果，与入参同序。
  */
 export type Batched = { results: Array<Outcome>, };

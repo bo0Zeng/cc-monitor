@@ -7,7 +7,7 @@
 //!
 //! # 怎么测：驱动**真的发货二进制**，一行生产代码都不抄
 //!
-//! 取尾那一趟（`history_query::tail_now`，数行 ＋ 读尾段第一页 ＋ 最后一行的记号）是后端的私有 fn ⇒ 外部 target 够不着。
+//! 取尾那一趟（`query::tail::tail_now`，数行 ＋ 读尾段第一页 ＋ 最后一行的记号）是后端的私有 fn ⇒ 外部 target 够不着。
 //! 本秤 **spawn 真二进制的真 CLI 入口** `--history-tail`（帧命令 `history-tail` 派生的那一面，入参经
 //! `--args-b64`）。`CARGO_BIN_EXE_*` 由 cargo 在**构建 bench target 时**注入，指向同一 profile 下编出来的那个 bin
 //! ⇒ 被测的就是发货路径本身，零漂移。

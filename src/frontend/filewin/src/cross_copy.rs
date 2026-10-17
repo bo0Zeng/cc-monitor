@@ -79,7 +79,7 @@ impl Pick {
     /// 落点目录（[`Self::picked`] 选了 ⇒ 它；否则在看的那个目录）。
     pub fn target(&self) -> String {
         match &self.picked {
-            Some(n) => super::writeops::join_remote(&self.path, n),
+            Some(n) => super::source::child_of(&self.path, n),
             None => self.path.clone(),
         }
     }
@@ -164,7 +164,7 @@ impl DirPick {
                 &to,
                 &path,
                 super::source::LS_LIMIT,
-                super::source::SortBy::Name,
+                super::source::Sort::default(),
             )
             .await
             .map(|(rows, _)| {
@@ -193,7 +193,8 @@ impl DirPick {
         h.spawn(async move {
             let to = comms_inward::chan::wire::Origin(now.machine.clone());
             let op = super::writeops::WriteOp::Mkdir {
-                path: super::writeops::join_remote(&now.path, &name),
+                dir: now.path.clone(),
+                name: name.clone(),
             };
             let made = super::writeops::apply_remote_coded(&line, &to, &op, None).await;
             let got = super::source::list_via_backend(
@@ -201,7 +202,7 @@ impl DirPick {
                 &to,
                 &now.path,
                 super::source::LS_LIMIT,
-                super::source::SortBy::Name,
+                super::source::Sort::default(),
             )
             .await
             .map(|(rows, _)| {

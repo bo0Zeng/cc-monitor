@@ -10,7 +10,7 @@
 //!
 //! - 地址取竞速顺序的第一条（交了 `prefer` 且它仍在这台的地址里 ⇒ 就是上次赢的那条，F45：终端与数据源走同一条路）；
 //! - 远端命令包成 `bash -lic '<命令>'`（PATH / 别名按「用户粘贴进交互终端」解析），再以本机方言的单引号字面量嵌入；
-//! - 主机钥匙认 cc-monitor 自己那份 known_hosts（[`super::known_hosts`]：握手时认下的那把），终端里不再问、不写用户的 `~/.ssh`；
+//! - 主机钥匙认 cc-monitor 自己那份 known_hosts（[`super::known_hosts`]：握手时认下、鉴权也过了的那把），终端里不再问、不写用户的 `~/.ssh`；
 //!   跳板那一跳（`-J`）是 ssh 另起的一个进程，不吃 `-o`，仍走 ssh 自己的默认；
 //! - 钥匙路径尾 `\` 剥掉（PS < 7.3 给含空格参数加壳时尾部 `\"` 会吃掉收尾引号）；没给钥匙 ⇒ 走 ssh-agent，不带 `-i`。
 //!
@@ -38,16 +38,18 @@ fn refused(msg: String) -> CmdErr {
     ("refused", msg)
 }
 
-/// 用户名：非空，仅 `[A-Za-z0-9._-]`（拼进命令体的裸词，白名单杜绝注入）。
+/// 用户名：非空，仅 `[A-Za-z0-9._-]`、不以 `-` 打头（拼进命令体的裸词，白名单杜绝注入；打头的 `-` 会被 `ssh` 读成选项）。
 fn user_ok(u: &str) -> bool {
     !u.is_empty()
+        && !u.starts_with('-')
         && u.chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
 }
 
-/// 地址：非空，仅 `[A-Za-z0-9._:\[\]-]`（域名 / IPv4 / IPv6 字面量）。
+/// 地址：非空，仅 `[A-Za-z0-9._:\[\]-]`、不以 `-` 打头（域名 / IPv4 / IPv6 字面量）。
 fn host_ok(h: &str) -> bool {
     !h.is_empty()
+        && !h.starts_with('-')
         && h.chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | ':' | '[' | ']'))
 }
@@ -111,7 +113,7 @@ fn known_hosts_value(path: &str) -> String {
     }
 }
 
-/// ` -o 'UserKnownHostsFile=<cc-monitor 那份>'`：终端那一跳认 cc-monitor 握手时认下的那把钥匙（`super::known_hosts`），
+/// ` -o 'UserKnownHostsFile=<cc-monitor 那份>'`：终端那一跳认 cc-monitor 连上时记下的那把钥匙（`super::known_hosts`），
 /// 不再问一遍、也不写用户的 `~/.ssh/known_hosts`；主机钥匙核对照旧开着。家目录说不出 ⇒ 不带（照 ssh 自己的默认）。
 pub(crate) fn known_hosts_arg(path: Option<&std::path::Path>, powershell: bool) -> String {
     match path {

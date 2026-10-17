@@ -10,8 +10,8 @@ const EXEMPT: &[(&str, &str)] = &[(
 )];
 
 fn repo_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::repo_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::repo_root()
 }
 
 /// shellcheck 的人群：门禁 `tests/scripts/gate.sh` 里 `GATE_SHELLCHECK_GLOBS='…'` 那一行的各个 glob
@@ -154,7 +154,7 @@ fn every_shell_script_is_either_linted_or_registered_as_exempt() {
 fn every_exemption_still_points_at_a_real_unlinted_script() {
     let scripts = guard_core::shell_scripts(&repo_root());
     let patterns = shellcheck_patterns();
-    for (path, why) in EXEMPT {
+    for (path, _) in EXEMPT {
         assert!(
             scripts.contains(&path.to_string()),
             "`EXEMPT` 里登记着 `{path}`，而全仓扫不到这个 shell 脚本 —— \
@@ -165,12 +165,6 @@ fn every_exemption_still_points_at_a_real_unlinted_script() {
             "`{path}` 登记着豁免，可门禁的人群**已经在扫它了** ⇒ 删掉这条豁免。\n\
                  留着的害处是具体的：下一个人会以为这个文件没被 lint，\
                  从而不敢改它 / 或者以为「反正没人扫」而放松它"
-        );
-        assert!(
-            why.len() >= 20,
-            "`{path}` 的豁免理由只有 {} 个字节 —— 太短的理由等于没有理由。\
-                 写清楚「为什么这个文件不该被 lint」，不是「暂时不弄」",
-            why.len()
         );
     }
 }

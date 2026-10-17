@@ -15,8 +15,7 @@ use resident_client::feed::OLD_BACKEND_MARKER;
 pub(crate) enum AttachErr {
     /// 那台不是 Unix（后端脱离不了）⇒ **永久不支持**：记在那台的连接状态里，
     /// 不再自动按退避重连；界面出声，用户点「起」（`backend_start`）才再试一次。
-    /// 第二格是那台状态成品里的原因码（`machine_state::NOT_UNIX`）。
-    Unsupported(Said, &'static str),
+    Unsupported(Said),
     /// 别的失败 ⇒ 照常按退避重连。
     Failed(Said),
 }
@@ -24,18 +23,10 @@ pub(crate) enum AttachErr {
 impl PartialEq for AttachErr {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (AttachErr::Unsupported(a, x), AttachErr::Unsupported(b, y)) => {
-                a.said == b.said && x == y
-            }
+            (AttachErr::Unsupported(a), AttachErr::Unsupported(b)) => a.said == b.said,
             (AttachErr::Failed(a), AttachErr::Failed(b)) => a.said == b.said,
             _ => false,
         }
-    }
-}
-
-impl From<String> for AttachErr {
-    fn from(s: String) -> Self {
-        AttachErr::Failed(s.into())
     }
 }
 
@@ -49,7 +40,7 @@ impl AttachErr {
     /// 给人看的那句 ＋ 复制详情。
     pub(crate) fn said(self) -> Said {
         match self {
-            AttachErr::Unsupported(s, _) | AttachErr::Failed(s) => s,
+            AttachErr::Unsupported(s) | AttachErr::Failed(s) => s,
         }
     }
 }
@@ -62,7 +53,7 @@ pub(crate) fn parse_answer(
     machine: &str,
 ) -> Result<serde_json::Value, AttachErr> {
     if exec.stdout.contains(OLD_BACKEND_MARKER) {
-        return Err(copy_core::backend_old(machine).into());
+        return Err(Said::written(copy_core::backend_old(machine)).into());
     }
     match exec.exit_status {
         Some(0) => serde_json::from_str(exec.stdout.trim()).map_err(|e| {
@@ -92,17 +83,14 @@ pub(crate) fn parse_answer(
             if err["code"] == "unsupported" {
                 // 那台的 `message` 这一格就是它的原话（脱离不了的系统报错）：句子由这边说，原话进详情。
                 let said = copy_text("rsRemoteResident.ensure.unsupported", &[]);
-                Err(AttachErr::Unsupported(
-                    match wrote {
-                        Some(d) => Said::relayed_from(said, d, Some(&msg)),
-                        None => Said::with_raw(said, &msg),
-                    },
-                    crate::machine_state::NOT_UNIX,
-                ))
+                Err(AttachErr::Unsupported(match wrote {
+                    Some(d) => Said::relayed_from(said, d, Some(&msg)),
+                    None => Said::with_raw(said, &msg),
+                }))
             } else {
                 Err(AttachErr::Failed(match wrote {
                     Some(d) => Said::relayed_from(msg, d, None),
-                    None => msg.into(),
+                    None => Said::written(msg),
                 }))
             }
         }

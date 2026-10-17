@@ -1,11 +1,11 @@
 package com.ccmonitor.mobile.ui.identity
 
 import com.ccmonitor.mobile.core.copy.copyText
-import com.ccmonitor.mobile.core.data.crypto.CryptoBox
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.db.IdentityDao
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
 import com.ccmonitor.mobile.core.ssh.PublicKeyDeriver
+import com.ccmonitor.mobile.testing.PlainCryptoBox
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -42,7 +42,7 @@ class IdentityOpStatusTest {
     fun importSuccessEmitsDone() =
         runTest(dispatcher) {
             val dao = RecordingDao()
-            val vm = IdentityViewModel(IdentityRepository(dao, NoopCrypto), io = dispatcher, derive = derive)
+            val vm = IdentityViewModel(IdentityRepository(dao, PlainCryptoBox), io = dispatcher, derive = derive)
             vm.importPrivateKey("k", good)
             advanceUntilIdle()
             assertTrue("成功应 Done：${vm.op.value}", vm.op.value is IdentityOp.Done)
@@ -64,7 +64,7 @@ class IdentityOpStatusTest {
             val truncated = text.lines().take(3).joinToString("\n")
             for (pem in listOf(firstLineOnly, truncated, "not-a-real-pem", "")) {
                 val dao = RecordingDao()
-                val vm = IdentityViewModel(IdentityRepository(dao, NoopCrypto), io = dispatcher, derive = derive)
+                val vm = IdentityViewModel(IdentityRepository(dao, PlainCryptoBox), io = dispatcher, derive = derive)
                 vm.importPrivateKey("k", pem.toByteArray())
                 advanceUntilIdle()
                 assertEquals("「${pem.take(20)}」应当场拒", IdentityOp.Failed(copyText("mobIdentity.import.unreadable")), vm.op.value)
@@ -75,7 +75,7 @@ class IdentityOpStatusTest {
     @Test
     fun repoFailureEmitsFailed() =
         runTest(dispatcher) {
-            val vm = IdentityViewModel(IdentityRepository(ThrowingDao(), NoopCrypto), io = dispatcher, derive = derive)
+            val vm = IdentityViewModel(IdentityRepository(ThrowingDao(), PlainCryptoBox), io = dispatcher, derive = derive)
             vm.importPrivateKey("k", good)
             advanceUntilIdle()
             assertTrue("异常应 Failed（不静默）", vm.op.value is IdentityOp.Failed)
@@ -84,7 +84,7 @@ class IdentityOpStatusTest {
     @Test
     fun ackOpResetsToIdle() =
         runTest(dispatcher) {
-            val vm = IdentityViewModel(IdentityRepository(RecordingDao(), NoopCrypto), io = dispatcher, derive = derive)
+            val vm = IdentityViewModel(IdentityRepository(RecordingDao(), PlainCryptoBox), io = dispatcher, derive = derive)
             vm.importPrivateKey("k", good)
             advanceUntilIdle()
             assertTrue(vm.op.value is IdentityOp.Done)
@@ -92,14 +92,6 @@ class IdentityOpStatusTest {
             assertTrue("ackOp 后应 Idle", vm.op.value is IdentityOp.Idle)
         }
     // 注：不测"观察到 Working 中间态"——op 是 conflated StateFlow，Working→Done 可能被合并，晚订阅者不保证看到中间值（非 bug）。
-}
-
-private object NoopCrypto : CryptoBox {
-    override fun encrypt(plain: ByteArray) = plain
-
-    override fun decrypt(blob: ByteArray) = blob
-
-    override fun isEncrypted(blob: ByteArray) = false
 }
 
 private open class RecordingDao : IdentityDao {

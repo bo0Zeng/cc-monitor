@@ -17,6 +17,9 @@
  * （± `OVERSCAN` 屏）交给宿主建卡，其余的一张卡都不建。先全量渲染再盖一层骨架是假骨架 ——
  * 判据 `tests/frontend/ui/skeleton-view.vitest.ts` 的「只物化可见区」那一组钉的就是这件事。
  *
+ * 反方向同样只认视口：离视口超过 ±`KEEP_SCREENS` 屏的已建卡交回占位（`release`，宿主滚动时调；tab 收起时只留视口那一截），
+ * 建过的卡数因此有上界（判据同一个文件的「视口外的卡交回占位」那一组）。
+ *
  * # 滚动补偿（手动，同 `fillAbove` 的纪律）
  *
  * 物化会把一段估高换成真高。规则：**视口里若有已渲染的卡，就钉住最上面那张的屏幕位置**；
@@ -41,7 +44,8 @@
  */
 import type { RecordTimeline } from "./record-timeline";
 import { SkeletonLedger, type TurnFolds } from "./live-window";
-import { initialColumnWidth, skeletonKind, type SkeletonFacts } from "./height-estimate";
+import { initialColumnWidth, skeletonKind } from "./height-estimate";
+import type { HistoryIndex } from "./generated/HistoryIndex";
 import { copyText } from "./copy-table";
 
 /** 视口上下各多物化多少屏（相对视口高）。 */
@@ -60,6 +64,8 @@ export interface SkeletonHost {
    * 落地时宿主调 [`SkeletonView.landed`]（取不到 ⇒ [`SkeletonView.failed`]）。
    */
   materialize(lo: number, hi: number): ReadonlyArray<readonly [number, number]>;
+  /** 这几段（半开）已建的卡（`cards`）摘了、交回占位（[`SkeletonView.release`]）：宿主清掉还指着它们的表、重折。 */
+  released(ranges: ReadonlyArray<readonly [number, number]>, cards: readonly HTMLElement[]): void;
 }
 
 interface Gap {
@@ -312,6 +318,104 @@ export class SkeletonView {
     return total;
   }
 
+  /** 视口上下各留几屏已建的卡，更远的交回占位（每多留一屏约多一万个 DOM 元素、帧间隔不随它变；两屏够来回看几眼不用重取）。 */
+  static readonly KEEP_SCREENS = 2;
+
+  /**
+   * **物化的反方向**：离视口超过 ±`screens` 屏的已建卡交回占位（滚回来照物化可见区那条路重建）。
+   * 只在轮与回答的开头切（[`cutsAt`]）：调用与它的结果、并进左邻居的那几行总在同一段里。
+   * 摘之前把这一段的真高量进账本（`measured`）⇒ 占位与摘下来的卡一样高，总高不变；视口钉法同 [`pinned`]。
+   * 取回中的占位隔开的两边各算各的。视口拿不到布局 ⇒ 什么都不做。返回交回的行数。
+   */
+  release(screens: number = SkeletonView.KEEP_SCREENS): number {
+    if (this.disposed) return 0;
+    const view = this.scrollEl.getBoundingClientRect();
+    if (view.height <= 0) return 0;
+    const top = view.top - view.height * screens;
+    const bottom = view.bottom + view.height * screens;
+    const ranges: Array<readonly [number, number]> = [];
+    for (const cuts of this.cutsAt()) {
+      let k = 0;
+      while (k + 1 < cuts.length && cuts[k + 1].top <= top) k++;
+      if (k > 0) ranges.push([cuts[0].seq, cuts[k].seq]);
+      const j = cuts.findIndex((c) => c.top >= bottom);
+      if (j >= 0 && j < cuts.length - 1) ranges.push([cuts[j].seq, cuts[cuts.length - 1].seq]);
+    }
+    if (ranges.length === 0) return 0;
+    let n = 0;
+    const cards: HTMLElement[] = [];
+    this.pinned(() => {
+      const heights = ranges.map(([a, b]) => this.measure(a, b));
+      for (const h of heights) this.ledger.measured(h);
+      for (const [a, b] of ranges) {
+        const gaps = new Set(this.gaps.map((g) => g.el));
+        const gone = new Set<HTMLElement>();
+        for (const e of this.timeline.removeBetween(a, b)) {
+          if (!gaps.has(e.element)) cards.push(e.element);
+          gone.add(e.element);
+          e.element.remove();
+        }
+        this.gaps = this.gaps.filter((g) => !gone.has(g.el));
+        this.cover(a, b);
+        n += b - a;
+      }
+    });
+    this.host.released(ranges, cards);
+    return n;
+  }
+
+  /**
+   * 能切的地方（已建的、轮的开头 · 带正文的回答，按 seq 升序、带屏幕上的顶），被取回中的占位隔成几串。
+   * 人说的话之前、回答正文之前不会有还没回结果的调用，也不会有要并进它的左邻居（重试细条 · 后台通知各并各的）。
+   */
+  private cutsAt(): Array<Array<{ seq: number; top: number }>> {
+    const out: Array<Array<{ seq: number; top: number }>> = [[]];
+    for (const e of this.timeline.between(this.ledger.base - 1, this.ledger.endSeq)) {
+      if (e.element.classList.contains(SKELETON_GAP_CLASS)) {
+        if (e.element.dataset.skeletonFetching !== undefined) out.push([]);
+        continue;
+      }
+      const f = this.ledger.factsOf(e.seq);
+      if (e.kind !== "card" || !f || skeletonKind(f) !== "card" || !(f.t === "reply" || (f.t === "said" && f.sp === undefined))) continue;
+      const r = e.element.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) continue; // 藏着的（折着的过程里建过的卡）
+      out[out.length - 1].push({ seq: e.seq, top: r.top });
+    }
+    return out;
+  }
+
+  /**
+   * `[a, b)` 这一段每行在流里占多高（`a`、`b` 都是已建的切点）：一个条目占到下一个条目的顶（夹在中间的过程行 · 收起行算它的）；
+   * 没建卡的行 0；段里的占位那几行照账本、不量，多出来的（排在占位后面的那几样）算前一张卡的。
+   */
+  private measure(a: number, b: number): Array<[number, number]> {
+    const byEl = new Map(this.gaps.map((g) => [g.el, g]));
+    const px = new Map<number, number>();
+    const inGap = new Set<number>();
+    let prev: { top: number; seq: number; gap: Gap | undefined } | null = null;
+    let card: number | null = null;
+    const close = (top: number): void => {
+      if (!prev) return;
+      const h = top - prev.top;
+      if (!prev.gap) px.set(prev.seq, (px.get(prev.seq) ?? 0) + h);
+      else if (card !== null) px.set(card, (px.get(card) ?? 0) + Math.max(0, h - this.ledger.heightOf(prev.gap.lo, prev.gap.hi)));
+    };
+    for (const e of this.timeline.between(a, b)) {
+      const r = e.element.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) continue;
+      const gap = byEl.get(e.element);
+      if (gap) for (let q = gap.lo; q < gap.hi; q++) inGap.add(q);
+      close(r.top);
+      prev = { top: r.top, seq: e.seq, gap };
+      if (!gap) card = e.seq;
+    }
+    const end = this.timeline.between(b, b + 1)[0]?.element;
+    if (end) close(end.getBoundingClientRect().top);
+    const out: Array<[number, number]> = [];
+    for (let q = a; q < b; q++) if (!inGap.has(q)) out.push([q, px.get(q) ?? 0]);
+    return out;
+  }
+
   /** 跳转用：确保 seq 附近 `±radius` 行已物化（不管在不在视口里）。 */
   ensure(seq: number, radius = 30): void {
     this.ensureRange(seq - radius, seq + radius + 1);
@@ -349,19 +453,21 @@ export class SkeletonView {
     if (at < b) free.push([at, b]);
     if (free.length === 0) return;
     this.pinned(() => {
-      for (const [x, y] of free) {
-        // 与紧挨着的占位并成一块（一段取不到就该回到取之前的样子，不留几块拼起来的占位）
-        let lo = x;
-        let hi = y;
-        for (const g of [...this.gaps]) {
-          if (g.fetching || (g.hi !== lo && g.lo !== hi)) continue;
-          lo = Math.min(lo, g.lo);
-          hi = Math.max(hi, g.hi);
-          this.dropGap(g);
-        }
-        this.addGap(lo, hi);
-      }
+      for (const [x, y] of free) this.cover(x, y);
     });
+  }
+
+  /** `[x, y)` 画成一块占位，与紧挨着的占位并成一块（不留几块拼起来的占位）。 */
+  private cover(x: number, y: number): void {
+    let lo = x;
+    let hi = y;
+    for (const g of [...this.gaps]) {
+      if (g.fetching || (g.hi !== lo && g.lo !== hi)) continue;
+      lo = Math.min(lo, g.lo);
+      hi = Math.max(hi, g.hi);
+      this.dropGap(g);
+    }
+    this.addGap(lo, hi);
   }
 
   private dropGap(g: Gap): void {
@@ -550,7 +656,7 @@ export interface RowRun {
 }
 
 /**
- * **`[lo, hi)` 里要按偏移取回的那几段**（主窗口 tab 与查看器同一处）：会建卡、`have` 里没有的行连成段，
+ * **`[lo, hi)` 里要按偏移取回的那几段**（主窗口 tab 与查看器同一处）：会建卡（含注入细条）、`have` 里没有的行连成段，
  * 夹在中间不建卡的行（不进界面 · 标题 · 不画的来源）不切段（多几十字节，省一次往返），已经有的行切段；段的两头都是要的行。
  * 回来的载荷里也就可能带着夹在中间那几行 —— 宿主只认要的那几行时按 `skeletonKind` 自己筛。
  */
@@ -589,9 +695,9 @@ export type LedgerFetch =
  * （冷启动 0；续传 = 旧账本的 `endSeq`，由调用方 `append`）。
  */
 export function ledgerFromIndex(
-  res: { available: boolean; reason?: string; end: number; rows: SkeletonFacts[] },
+  res: { available: boolean; reason?: string; end: number; pages: readonly HistoryIndex[] },
   base = 0,
 ): LedgerFetch {
   if (!res.available) return { ok: false, reason: res.reason ?? copyText("skeletonView.ledgerFromIndex.noIndex") };
-  return { ok: true, ledger: new SkeletonLedger(base, res.rows), end: res.end };
+  return { ok: true, ledger: new SkeletonLedger(base, res.pages), end: res.end };
 }

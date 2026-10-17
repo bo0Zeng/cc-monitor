@@ -22,7 +22,7 @@ const VIEW = golden["terminal-preview"].reply;
 
 const enc = (v: unknown): Uint8Array => new TextEncoder().encode(JSON.stringify(v));
 const refused = (code: string, live?: string): ChanError =>
-  new ChanError({ layer: "peer", why: "refused", body: enc({ code, message: `said ${code}`, ...(live !== undefined ? { data: { live } } : {}) }) });
+  new ChanError({ layer: "peer", why: "refused", body: enc({ code, message: `said ${code}`, ...(live !== undefined ? { data: { live } } : {}) }) }, `said ${code}`);
 
 interface Rig {
   port: FollowPort;
@@ -175,15 +175,15 @@ describe("停", () => {
     }
   });
 
-  it("★ 流断了（gap · closed · 那台看不见了）⇒ 停了（那台断开）；读不懂的一格 ⇒ 停了（画面中断）", async () => {
+  it("★ 流断了（gap · closed · 那台看不见了）⇒ 停了（那台断开）；读不懂的一格 · 收尾没有那一句 ⇒ 停了（画面中断）", async () => {
     const offline = { kind: "stopped", said: copyText("terminal.liveWhy.offline", { machine: "devbox" }), offline: true };
     const lost = { kind: "stopped", said: copyText("terminal.liveWhy.lost"), offline: false };
     for (const [item, want] of [
       [{ t: "closed", by: { ours: "Broken" } }, offline],
       [{ t: "gap", fromSeq: 0, toSeq: 1 }, offline],
       [{ t: "unseen", at: { idx: 1, tag: "read" }, why: "Dropped" }, offline],
-      [frame(0, { seq: 1, view: { lines: "x" } }), lost],
-      [frame(0, { why: "gone" }), lost],
+      [{ t: "frame", seq: 0, body: "{" }, lost],
+      [frame(0, { why: "gone", said: " " }), lost],
     ] as const) {
       const r = rig();
       startFollow("devbox", "tmux-1", r.events, r.port);
@@ -195,18 +195,16 @@ describe("停", () => {
     }
   });
 
-  it("★★ 订不上：后端说「只能快照 / 停了」＋ 那一句，原样交；后端旧 ⇒ 只能快照；通道不通 ⇒ 停了（那台断开）", async () => {
+  it("★★ 订不上：后端说「只能快照 / 停了」＋ 那一句，原样交；后端旧 ⇒ 只能快照；通道不通 ⇒ 停了（那台断开）；那一句都是 monitor 写的", async () => {
     const cases: [unknown, FollowStop][] = [
       [refused("tmux_too_old", "snapshot_only"), { kind: "snapshotOnly", said: "said tmux_too_old" }],
       [refused("no_tmux", "snapshot_only"), { kind: "snapshotOnly", said: "said no_tmux" }],
       [refused("not_known", "stopped"), { kind: "stopped", said: "said not_known", offline: false }],
       [refused("too_many_follows", "stopped"), { kind: "stopped", said: "said too_many_follows", offline: false }],
       [refused("bad_args"), { kind: "stopped", said: "said bad_args", offline: false }],
-      [new ChanError({ layer: "peer", why: "unsupported" }), { kind: "snapshotOnly", said: copyText("terminal.head.snapshotOnlyOld", { machine: "devbox" }) }],
-      [
-        new ChanError({ layer: "hop", at: { idx: 1, tag: "open" }, reach: "NotSent", why: "Unreachable" }),
-        { kind: "stopped", said: copyText("terminal.liveWhy.offline", { machine: "devbox" }), offline: true },
-      ],
+      [new ChanError({ layer: "peer", why: "unsupported" }, "壳·需更新"), { kind: "snapshotOnly", said: "壳·需更新" }],
+      [new ChanError({ layer: "hop", at: { idx: 1, tag: "open" }, reach: "NotSent", why: "Unreachable" }, "壳·离线"), { kind: "stopped", said: "壳·离线", offline: true }],
+      [new ChanError({ layer: "ours", why: "Broken" }, ""), { kind: "stopped", said: copyText("terminal.liveWhy.lost"), offline: false }],
     ];
     for (const [err, want] of cases) {
       const r = rig();

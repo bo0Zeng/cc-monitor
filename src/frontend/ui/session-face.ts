@@ -2,41 +2,36 @@
  * **一个会话在主窗口上读成什么**：状态点 · 状态一句 · 需手动 · 悬停卡那一句 · 标题拆成几段。
  * 标签页行、悬停卡、会话头、「需手动」那几处都从这里取，不各拼一份。
  *
- * 只排版：两轴状态（`tab-session-state.ts`）、活动信号（`Tab.activity`）、会话事实（`needs` · `pending` · `lastSay`）
- * 都是后端给的事实；这里只挑哪一样露、怎么写。唯一的「合」：活动信号说不在等了，手上那份 `needs` 当场不认
- * （活动信号比会话事实来得早；两者对不上时以它为准，不留一条已经答完的「需手动」）；说在等、会话事实还没到 ⇒
- * 先写「需手动」（分不出是哪种，不猜）。
+ * 只排版：点 · 短名 · 状态一句是那台后端判好的整份脸（`Tab.face`，经 `face-can.ts::faceOf` 读）；会走的那一句与需手动的种类在
+ * 会话事实里（`Tab.line` · `Tab.needs`），只在它写的那一态（`line.for`）与脸上那一态相同时用 —— 两份是同一刻的；对不上就用脸上那一句。
  */
 import type { DotState } from "./kit/status-dot";
 import type { BackgroundWork, Needs } from "./session-reads";
-import type { Tone } from "./generated/Tone";
+import type { FactsLine } from "./generated/FactsLine";
 import type { Tab } from "./tab-model";
 import { projectNameFromCwd } from "./tab-model";
-import { sessionDot } from "./session-status";
-import { isLive } from "./tab-session-state";
-import { isRemoteOrigin } from "./ipc/origin";
-import { copyText } from "./copy-table";
-import { dotLabel } from "./session-words";
-import { clockNow, spanNow, waitedNow } from "./duration-format";
+import { faceOf } from "./face-can";
+import { clockNow, spanNow } from "./duration-format";
 
-/** 此刻在等你（活着 ＋ 活动信号说在等人）⇒ 等的是什么；不在等 ⇒ `null`。会话事实还没到 ⇒ 种类判不出，字照抄活动信号带来的那个。 */
+/** 会话事实里那一句此刻作数：写它时那一态与脸上那一态相同。不作数 ⇒ `null`。 */
+function lineOf(tab: Tab): FactsLine | null {
+  const f = faceOf(tab);
+  return f.live.is === "yes" && tab.line !== null && tab.line.for === f.live.activity ? tab.line : null;
+}
+
+/** 此刻在等人 ⇒ 等的是什么（会话事实那一份，与脸同一刻才认）；不在等 ⇒ `null`。 */
 export function needsOf(tab: Tab): Needs | null {
-  if (!isLive(tab.state) || tab.activity?.doing !== "needs_you") return null;
-  return tab.needs ?? { kind: "unknown", tool: null, call: null, what: null, sinceMs: null, text: tab.activity.text, head: tab.activity.text, headCode: null, tone: tab.activity.tone as Tone, rank: Number.MAX_SAFE_INTEGER, waitedMs: null, waitedText: null, ask: null, manualText: null, receivedAt: 0 };
+  return lineOf(tab)?.for === "needs_you" ? tab.needs : null;
 }
 
-/**
- * 状态点的名字（读屏名 / 悬停名）：活着 ⇒ 那台核心写好的那个字（活动信号带来的，照抄）；
- * 活动信号说不清、或不是活着的那几种 ⇒ 状态点那一档的名字（`session-words.ts::dotLabel`）。
- */
+/** 状态点的名字（读屏名 / 悬停名）：脸上的短名。 */
 export function stateWord(tab: Tab): string {
-  const text = isLive(tab.state) ? tab.activity?.text : null;
-  return text ?? dotLabel(dotOf(tab));
+  return faceOf(tab).name;
 }
 
-/** 状态点：颜色 ＝ 在干什么，形状 ＝ 进程还在不在。 */
+/** 状态点（那台判好的那一颗）。 */
 export function dotOf(tab: Tab): DotState {
-  return sessionDot(tab.state, tab.activity?.tone ?? null);
+  return faceOf(tab).dot;
 }
 
 /** 后台任务运行中那一句此刻的字：有会走的那一句 ⇒ 时长那一截按此刻填（那一个读口，与核心对同一份金样）；否则照抄核心写好的那一句。 */
@@ -49,61 +44,19 @@ export function sinceText(atMs: number | null, now: number): string | null {
   return atMs === null ? null : spanNow(atMs, now);
 }
 
-/** 这个会话在哪台：本机写「本机」，远端写机器名。 */
-export function machineOf(tab: Tab): string {
-  return isRemoteOrigin(tab.origin) ? tab.origin : copyText("sessionFace.machine.local");
-}
-
 /**
- * 状态一句（会话头 · 悬停卡第三行）：`运行中 · Bash 2m` · `等批准 · 2m` · `后台任务运行中 · make test-all · 12m` · `空闲 · 完成 3m 前` · `已结束` ·
- * `Claude 已退出` · `状态不明 · gpu-01 不可见` · `记录已不在`。`needs` ＝ 这一句是不是「需手动」（琥珀）。
+ * 状态一句（会话头 · 悬停卡第三行）：会话事实那一句（会走的那一截按此刻填）与脸同一刻 ⇒ 用它；否则脸上那一句。
+ * `needs` ＝ 这一句是不是「需手动」（琥珀）。
  */
 export function stateLine(tab: Tab, now: number): { text: string; needs: boolean } {
-  const n = needsOf(tab);
-  if (n) {
-    const waited = waitedNow(n, now);
-    const word = n.text;
-    return { text: waited ? copyText("sessionFace.state.waiting", { kind: word, waited }) : word, needs: true };
-  }
-  switch (dotOf(tab)) {
-    case "running": {
-      const p = tab.pending[0];
-      if (!p) return { text: stateWord(tab), needs: false };
-      const dur = sinceText(p.atMs, now);
-      return { text: dur ? copyText("sessionFace.state.runningFor", { tool: p.name, dur }) : copyText("sessionFace.state.running", { tool: p.name }), needs: false };
-    }
-    case "background": {
-      // 那一句由核心写（命令 · 几条 · 时长）；时长那一截按会走的那一句走字（`fmtDur`，与核心对同一份金样）。拿不到 ⇒ 核心写的那个字。
-      const b = tab.backgroundWork;
-      return { text: b ? backgroundLine(b, now) : stateWord(tab), needs: false };
-    }
-    case "idle": {
-      const ago = sinceText(tab.lastSay?.atMs ?? null, now);
-      if (!ago) return { text: stateWord(tab), needs: false };
-      return { text: tab.unread > 0 ? copyText("sessionFace.state.idleUnseen", { ago }) : copyText("sessionFace.state.idleSeen", { ago }), needs: false };
-    }
-    case "unknown":
-      return { text: copyText("sessionFace.state.unseen", { machine: machineOf(tab) }), needs: false };
-    case "exited":
-      return { text: copyText("sessionState.reconnectable.tooltip"), needs: false };
-    case "ended":
-      return { text: copyText("sessionState.ended.tooltip"), needs: false };
-    case "gone":
-      return { text: copyText("sessionState.gone.tooltip"), needs: false };
-    case "needs-you":
-    case "failed":
-      return { text: stateWord(tab), needs: false };
-  }
+  const f = faceOf(tab);
+  const l = lineOf(tab);
+  return { text: l ? (l.clock ? clockNow(l.clock, now) : l.text) : f.line, needs: f.dot === "needs-you" };
 }
 
-/** 悬停卡里那一句 peek：在等你 ⇒ 它在等的那一句；在跑 ⇒ 正在做的那一步；空闲 · 后台任务运行中 ⇒ 它最后一句。拿不到 ⇒ `null`（不出这一行）。 */
+/** 悬停卡里那一句 peek（会话事实写的：在等 ⇒ 等的那一句 · 在跑 ⇒ 那一步 · 空闲 / 后台 ⇒ 最后一句）；不作数 / 没有 ⇒ `null`（不出这一行）。 */
 export function peekLine(tab: Tab): string | null {
-  const n = needsOf(tab);
-  if (n) return n.what;
-  const d = dotOf(tab);
-  if (d === "running") return tab.pending[0]?.what ?? null;
-  if (d === "idle" || d === "background") return tab.lastSay?.text ?? null;
-  return null;
+  return lineOf(tab)?.peek ?? null;
 }
 
 /** 标题拆成几段（标签页行 · 会话头）：项目名（`--text-2`）· 标题 · 后台（齿轮）· 分叉来的（`↳`）。 */
@@ -158,28 +111,6 @@ export function abbrOf(tab: Tab): string {
   const name = (tab.projectDir ? projectNameFromCwd(tab.projectDir) : null) ?? tab.label ?? tab.sessionId;
   const letters = name.replace(/[^a-z]/gi, "");
   return (letters.length >= 2 ? letters : name).slice(0, 2).toLowerCase();
-}
-
-/**
- * 两条「需手动」先答哪个 —— 照核心那一处（Rust `facts_query::needs_first`，对同一份金样 `needs-order.golden.json`）：
- * 危险度在前（`rank`，核心判好的）；同一档里等得久的在前；不知道等了多久的排这一档最后。
- * 「等了多久」＝ 那台答出那一刻算好的 `waitedMs` ＋ 本机从收到起走过的（各在一台钟上量，不跨机器比时刻）。
- */
-export function needsFirst(a: Needs, b: Needs, now: number): number {
-  if (a.rank !== b.rank) return a.rank - b.rank;
-  const wa = a.waitedMs === null ? null : a.waitedMs + Math.max(0, now - a.receivedAt);
-  const wb = b.waitedMs === null ? null : b.waitedMs + Math.max(0, now - b.receivedAt);
-  if (wa === null || wb === null) return wa === wb ? 0 : wa === null ? 1 : -1;
-  return wb - wa;
-}
-
-/** `Ctrl+J` 的顺序：需手动的那几个按 [`needsFirst`] 排，同档按条上看到的顺序。`tabs` 按条上看到的顺序给。 */
-export function needsOrder(tabs: readonly Tab[], now: number): string[] {
-  return tabs
-    .map((t, i) => ({ t, i, n: needsOf(t) }))
-    .filter((x): x is { t: Tab; i: number; n: Needs } => x.n !== null)
-    .sort((a, b) => needsFirst(a.n, b.n, now) || a.i - b.i)
-    .map((x) => x.t.sessionId);
 }
 
 /**

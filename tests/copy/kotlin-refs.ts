@@ -1,6 +1,6 @@
 /**
  * 手机端生产 Kotlin 里的取文调用点（`copyText("…", "名" to 值, …)`）：按调用形状读，不是编译器解析（同 `rust-refs.ts`）。
- * 读者：文案表 ↔ 代码两向相等（`copy-table.vitest.ts`）。手机的取文口住 `KT_HOME`，从同一张 `table.json` 构建时生成条目。
+ * 读者：文案表 ↔ 代码两向相等（`copy-table.vitest.ts`）。手机的取文口住 `KT_HOME`，经 JNI 调核心那份 `copy-core`。
  */
 import { productionKtFiles } from "../test-support/production-sources.ts";
 import type { Ref } from "./copy-support.ts";

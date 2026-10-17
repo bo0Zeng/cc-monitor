@@ -17,15 +17,17 @@ import { accountAvatarEl } from "./account-color";
 import { fiveHourCell, accountLabel } from "./acct-words";
 import { lookupAgentProfile } from "./agent-profile";
 import type { Origin } from "./ipc/origin";
-import { resumeInTmuxFor } from "./resume-defaults";
+import type { Run } from "./generated/Run";
+import type { AccountAsk } from "./generated/AccountAsk";
+import { chosenAccount } from "./launch-account";
 import type { MenuItem } from "./kit/menu";
 import type { IconName } from "./kit/icon";
 
 const NEW_IN_DIR_ICON: IconName = "plus";
 
-/** 勾着的那一组：`tmux` = 在 tmux 里（否则不用 tmux）· `account` = 点名的号（缺 = 跟随上次的号）· `useBase` = 基座（不隔离）。 */
+/** 勾着的那一组：`run` = 放在哪（`null` ＝ 照这台的设置）· `account` = 点名的号（缺 = 跟随上次的号）· `useBase` = 基座（不隔离）。 */
 export interface ResumePick {
-  tmux: boolean;
+  run: Run | null;
   account: string | undefined;
   useBase: boolean;
 }
@@ -46,6 +48,8 @@ export interface ResumeMenuSpec {
   accounts: ResumeAccounts;
   /** 勾着的那一组（点单选时就地改它）。 */
   pick: ResumePick;
+  /** 这台恢复默认放在哪（`sessions-where` 答的）；`run` 没动过时勾画在它上面。没问到 ⇒ 两项都不勾。 */
+  machineRun?: Run;
   onChange?: (p: ResumePick) => void;
   /** 有它 ⇒ 最上面一行「恢复」，按勾着的那一组起（标签页右键：没有主按钮）。 */
   run?: (p: ResumePick) => void;
@@ -53,9 +57,15 @@ export interface ResumeMenuSpec {
   newInDir?: () => void;
 }
 
-/** 默认那一组：上次的号（跟随）· 运行于照通用页那一格；那台说了没有 tmux ⇒ 不用 tmux（没问到 ⇒ 照那一格）。 */
-export function defaultPick(origin?: Origin): ResumePick {
-  return { tmux: resumeInTmuxFor(origin), account: undefined, useBase: false };
+/** 默认那一组：上次的号（跟随）· 放在哪照这台（那台判）。 */
+export function defaultPick(): ResumePick {
+  return { run: null, account: undefined, useBase: false };
+}
+
+/** 勾着的那一组 ⇒ 请求里那两格：人没动过的不带（那台照跟随 · 照这台的设置）。 */
+export function pickAsk(p: ResumePick): { account?: AccountAsk; run?: Run } {
+  const account = p.useBase ? chosenAccount(null) : p.account !== undefined ? chosenAccount(p.account) : undefined;
+  return { ...(account ? { account } : {}), ...(p.run !== null ? { run: p.run } : {}) };
 }
 
 /** 勾着的号叫什么；跟随 ⇒ 上次的号（知道的话）；这一家没有账号这一维 ⇒ 那一家的名字。 */
@@ -67,16 +77,17 @@ function pickedAccountLabel(accounts: ResumeAccounts, p: ResumePick): string | n
   return accounts.items.find((a) => a.last && a.name !== null)?.name ?? null;
 }
 
-/** 勾着的那一组怎么说：`personal · tmux 里` / 没有号可说时 `tmux 里`。 */
-export function pickWords(accounts: ResumeAccounts, p: ResumePick): string {
-  const run = p.tmux ? copyText("resumeMenu.hint.tmux") : copyText("resumeMenu.run.direct");
+/** 勾着的那一组怎么说：`personal · tmux 里` / 没有号可说时 `tmux 里`；放在哪没动过、也没问到这台 ⇒ 照这台的设置。 */
+export function pickWords(accounts: ResumeAccounts, p: ResumePick, machineRun?: Run): string {
+  const r = p.run ?? machineRun;
+  const run = r === undefined ? copyText("resumeMenu.run.machine") : r === "tmux" ? copyText("resumeMenu.hint.tmux") : copyText("resumeMenu.run.direct");
   const account = pickedAccountLabel(accounts, p);
   return account === null ? run : copyText("resumeMenu.pick.account", { account, run });
 }
 
 /** 主按钮的悬停：`恢复 · personal · tmux 里`。 */
-export function resumeHint(accounts: ResumeAccounts, p: ResumePick): string {
-  return copyText("resumeMenu.hint.pick", { pick: pickWords(accounts, p) });
+export function resumeHint(accounts: ResumeAccounts, p: ResumePick, machineRun?: Run): string {
+  return copyText("resumeMenu.hint.pick", { pick: pickWords(accounts, p, machineRun) });
 }
 
 /**
@@ -116,13 +127,14 @@ function accountDetail(a: ResumeAccount): string | undefined {
 
 /** 「恢复」那一组的菜单项。 */
 export function resumeMenuItems(spec: ResumeMenuSpec): MenuItem[] {
-  const { accounts, pick } = spec;
+  const { accounts, pick, machineRun } = spec;
+  const placed = pick.run ?? machineRun;
   const changed = (): void => spec.onChange?.(pick);
   const items: MenuItem[] = [];
   if (spec.run) {
     const run = spec.run;
     items.push(
-      { label: copyText("history.row.resume"), detailOf: () => pickWords(accounts, pick), onClick: () => run(pick) },
+      { label: copyText("history.row.resume"), detailOf: () => pickWords(accounts, pick, machineRun), onClick: () => run(pick) },
       { label: "", divider: true },
     );
   }
@@ -155,18 +167,18 @@ export function resumeMenuItems(spec: ResumeMenuSpec): MenuItem[] {
     {
       label: copyText("resumeMenu.run.tmux"),
       radio: "run",
-      checked: pick.tmux,
+      checked: placed === "tmux",
       onClick: () => {
-        pick.tmux = true;
+        pick.run = "tmux";
         changed();
       },
     },
     {
       label: copyText("resumeMenu.run.direct"),
       radio: "run",
-      checked: !pick.tmux,
+      checked: placed === "direct",
       onClick: () => {
-        pick.tmux = false;
+        pick.run = "direct";
         changed();
       },
     },

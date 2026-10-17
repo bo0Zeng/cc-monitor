@@ -5,10 +5,11 @@ import com.ccmonitor.mobile.core.claude.link.HistoryFacts
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionModel
-import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
+import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
 import com.ccmonitor.mobile.core.claude.link.SessionPermission
+import com.ccmonitor.mobile.core.claude.link.blocked
+import com.ccmonitor.mobile.core.claude.link.wire.AgentPick
 import com.ccmonitor.mobile.core.claude.link.wire.ModeSwitchResult
-import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
@@ -32,7 +33,7 @@ internal class ChatChips(
      * 换模型：那台送命令、从记录里读回换成了什么（`session-model`）。读回 `done` 才换字；没读回（`unsure` · 超时）· 被拒 ⇒ 回原字 ＋ chip 上方那一句。
      * 已经在换（模型或权限档）⇒ 不再起一趟。
      */
-    fun switchModel(pick: NewSessionPick) =
+    fun switchModel(pick: AgentPick) =
         switching(pick, { it.model }, { st, c -> st.copy(model = c) }) { s ->
             val r = link.call(SessionModel.COMMAND, SessionModel.args(s, pick.value), SWITCH_MS)
             when {
@@ -45,7 +46,7 @@ internal class ChatChips(
         }
 
     /** 切权限档（`session-permission`）：同 [switchModel]，读回的字是那一档写给人看的字。 */
-    fun switchPermission(pick: NewSessionPick) =
+    fun switchPermission(pick: AgentPick) =
         switching(pick, { it.permission }, { st, c -> st.copy(permission = c) }) { s ->
             val r = link.call(SessionPermission.COMMAND, SessionPermission.args(s, pick.value), SWITCH_MS)
             when {
@@ -72,7 +73,7 @@ internal class ChatChips(
     }
 
     private fun switching(
-        pick: NewSessionPick,
+        pick: AgentPick,
         chipOf: (ChatUiState) -> SwitchChip,
         put: (ChatUiState, SwitchChip) -> ChatUiState,
         ask: suspend (String) -> Switched,
@@ -94,21 +95,21 @@ internal class ChatChips(
     fun loadPicks(agent: String?) {
         if (state.value.picks?.error == null && state.value.picks != null) return
         scope.launch {
-            val r = link.call(SessionNewFacts.COMMAND, emptyMap(), READ_MS)
+            val r = link.call(SessionOpenFacts.COMMAND, emptyMap(), READ_MS)
             val picks =
                 when (r) {
                     is Reply.Ok ->
-                        SessionNewFacts.of(r.data)?.let { all -> SessionNewFacts.pick(all.agents, agent).let { Picks(it?.models.orEmpty(), it?.permissionModes.orEmpty(), it?.modelDefault, it?.modelNote) } }
-                            ?: Picks(error = unreadableReply(machine, SessionNewFacts.COMMAND, r.data.toString()).text)
-                    else -> Picks(error = r.problem(machine, SessionNewFacts.COMMAND)?.text.orEmpty())
+                        SessionOpenFacts.of(r.data)?.let { all -> SessionOpenFacts.pick(all.agents, agent).let { Picks(it?.models.orEmpty(), it?.permissionModes.orEmpty(), it?.modelDefault, it?.modelNote) } }
+                            ?: Picks(error = unreadableReply(machine, SessionOpenFacts.COMMAND, r.data.toString()).text)
+                    else -> Picks(error = r.problem(machine, SessionOpenFacts.COMMAND)?.text.orEmpty())
                 }
             state.value = state.value.copy(picks = picks)
         }
     }
 
     /**
-     * 两颗 chip 此刻能不能换：照会话帧的 `switch`（不在会话表里了 ⇒ 离开「活」那一帧带的）；那台离线 ⇒ 两颗都灰、写离线那一句。
-     * 帧上没有这一格 ⇒ 不灰（由两条命令自己照实回）。
+     * 两颗 chip 此刻能不能换：照那台给的这条会话的脸（`can.model` · `can.permission`）；那台离线 ⇒ 两颗都灰、写离线那一句。
+     * 流上还没有它的脸 ⇒ 不灰（由两条命令自己照实回）。
      */
     fun CoroutineScope.watch(s: String) {
         launch {
@@ -117,8 +118,8 @@ internal class ChatChips(
                     if (st is LinkState.Down) {
                         copyText("newSession.machine.offline", "machine" to machine).let { it to it }
                     } else {
-                        val sw = t.sessions[s]?.switch ?: t.fates[s]?.switch
-                        sw?.model?.why to sw?.permission?.why
+                        val can = t.faces[s]?.can
+                        can?.model?.blocked() to can?.permission?.blocked()
                     }
                 val now = state.value
                 if (now.model.blocked != model || now.permission.blocked != permission) {
@@ -128,13 +129,13 @@ internal class ChatChips(
         }
     }
 
-    /** chip 上的两个字（那台从记录里读的此刻的模型 · 权限档）：还没换过（没有读回的字）才用它；问不到就算了，chip 写这颗是什么。 */
+    /** chip 上的两个字（那台从记录里读的此刻的模型 · 权限档）与模型抽屉勾哪一项（`modelPick`）：还没换过才用它；问不到就算了，chip 写这颗是什么。 */
     suspend fun readFacts(p: String) {
         val f = (link.call(HistoryFacts.COMMAND, HistoryFacts.args(p), READ_MS) as? Reply.Ok)?.let { HistoryFacts.of(it.data) } ?: return
         val now = state.value
         state.value =
             now.copy(
-                model = if (now.model.text == null) now.model.copy(text = f.modelText) else now.model,
+                model = now.model.copy(text = now.model.text ?: f.modelText, value = now.model.value ?: f.modelPick),
                 permission = if (now.permission.text == null) now.permission.copy(text = f.permissionModeText) else now.permission,
             )
     }

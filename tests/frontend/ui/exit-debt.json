@@ -19,7 +19,7 @@
       "lang": "kt"
     }
   ],
-  "ceiling": 177,
+  "ceiling": 132,
   "entries": [
     {
       "file": "src/frontend/ui/account-chip.ts",
@@ -71,13 +71,6 @@
       "why": "界面自己出的事（状态栏提示）的钟面：那件事生在这一台、不经后端，看的人就在这一台 ⇒ 按这一台的钟本来就对；写法与核心 `common/time.rs::hm` 同一套、对同一份金样 `clock-face.golden.json`。界面里只此一处换算时刻"
     },
     {
-      "file": "src/frontend/ui/control-said.ts",
-      "rule": "caseWord",
-      "n": 2,
-      "kind": "第 1 批",
-      "why": "这台不可用的原因码（no_tmux · no_unix_mode）⇒ 字：后端回包带 said"
-    },
-    {
       "file": "src/frontend/ui/e2e-probe.ts",
       "rule": "toFixed",
       "n": 1,
@@ -113,13 +106,6 @@
       "why": "↗ 浮层上的按钮名（界面自己的动作闭集），骨架词"
     },
     {
-      "file": "src/frontend/ui/ipc/chan-caller.ts",
-      "rule": "codeWord",
-      "n": 2,
-      "kind": "留",
-      "why": "通道层自己的失败句（对端版本码 backend_old · 超时 Overrun），宿主本职"
-    },
-    {
       "file": "src/frontend/ui/kit/detail.ts",
       "rule": "codeWord",
       "n": 2,
@@ -149,13 +135,6 @@
     },
     {
       "file": "src/frontend/ui/new-session.ts",
-      "rule": "codeWord",
-      "n": 1,
-      "kind": "留",
-      "why": "起会话那一下界面自己等超时（timeout）的那一句，宿主本职"
-    },
-    {
-      "file": "src/frontend/ui/new-session.ts",
       "rule": "caseWord",
       "n": 2,
       "kind": "第 1 批",
@@ -171,9 +150,9 @@
     {
       "file": "src/frontend/ui/remote-health.ts",
       "rule": "caseWord",
-      "n": 7,
+      "n": 3,
       "kind": "第 7 批",
-      "why": "远端健康事件 kind ⇒ 标题（版本三类 · overflow · deploy …）：壳判好的种类再由界面取字；壳那一侧的事件带写好的标题（与机器状态一起收）"
+      "why": "远端健康事件 kind ⇒ 标题（overflow · deploy …）：壳判好的种类再由界面取字；壳那一侧的事件带写好的标题（与机器状态一起收）"
     },
     {
       "file": "src/frontend/ui/runs.ts",
@@ -188,20 +167,6 @@
       "n": 5,
       "kind": "第 1 批",
       "why": "子运行状态码 ⇒ 字（running · done · failed · stopped · unknown）：子运行成品带写好的状态字"
-    },
-    {
-      "file": "src/frontend/ui/session-face.ts",
-      "rule": "caseWord",
-      "n": 4,
-      "kind": "第 1 批",
-      "why": "V7：状态一句自己拼（核心写这一句，会走的那一截走 `{dur}`）"
-    },
-    {
-      "file": "src/frontend/ui/session-words.ts",
-      "rule": "caseWord",
-      "n": 9,
-      "kind": "第 1 批",
-      "why": "V11：不活着的那几档状态点 ⇒ 字（会话帧对所有状态都带 state_text）"
     },
     {
       "file": "src/frontend/ui/settings/account-new-form.ts",
@@ -258,27 +223,6 @@
       "n": 9,
       "kind": "第 7 批",
       "why": "测试连接停在哪一步 / 拨号阶段码 ⇒ 字（start · handshake … · dialing · hostKey …）：机器状态成品带 said（V12 同批）"
-    },
-    {
-      "file": "src/frontend/ui/settings/machine-state.ts",
-      "rule": "caseWord",
-      "n": 14,
-      "kind": "第 7 批",
-      "why": "V12：断开的原因码 ⇒ 字（机器状态成品带 said）"
-    },
-    {
-      "file": "src/frontend/ui/tab-batch-menu.ts",
-      "rule": "codeWord",
-      "n": 1,
-      "kind": "第 1 批",
-      "why": "会话在不在码 `liveness === \"unseen\"` ⇒ 字：会话帧带写好的状态字（V11 同批）"
-    },
-    {
-      "file": "src/frontend/ui/tab-batch-run.ts",
-      "rule": "caseWord",
-      "n": 8,
-      "kind": "第 1 批",
-      "why": "批量起 / 停的拒绝码（no_tmux · ambiguous · name_taken …）⇒ 字：每个会话的结局带 said"
     },
     {
       "file": "src/frontend/ui/tab-stream-view.ts",

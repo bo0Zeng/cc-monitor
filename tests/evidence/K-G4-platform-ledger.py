@@ -8,7 +8,7 @@
 「独立进程那个壳要为**每一个我们发布的平台**编得过，且这条要在门禁里。」
 （「折进前端那个壳要能链接进前端」那一半随那一档放弃作废 —— 见下面 `P4` 的墓志。）
 行数由**平台承诺面**定：承诺的是**三格**（本机 Windows x86_64 · 远端 Linux · 本机 Linux x86_64），
-(Windows, aarch64) **显式拒绝**。本机 (Linux, aarch64) **不承诺**（用户原话
+(Windows, aarch64) **显式拒绝**。本机 (Linux, aarch64) **不承诺**（要求
 「不承诺. 适配部分, 即os适配部分后面单独写单独做.」）—— 它不是零脚印（远端那格有 musl 字节），
 所以不进 `REFUSED`，进 `NOT_PROMISED`：代码里后端 `deploy/lib.rs::promised` 对它答「否」，由后端
 `deploy_plan_tests.rs::the_promise_face_in_the_ledger_equals_the_code`（随 `promised` 从 monitor `byte_table_tests.rs` 搬来） 把下面 `PROMISE_FACE` / `NOT_PROMISED`
@@ -73,7 +73,7 @@ PROMISE_FACE = [
 ]
 
 # ── 不承诺（有产线、却不承诺；与 `REFUSED` 不同：它不是零脚印）────────────────────────
-# 用户原话「不承诺. 适配部分, 即os适配部分后面单独写单独做.」
+# 要求「不承诺. 适配部分, 即os适配部分后面单独写单独做.」
 NOT_PROMISED = [
     ("Local", "Linux", "aarch64",
      "本机 (Linux, aarch64) 不承诺；OS 适配以后单独写设计、单独做。起不来时出声「这台不在承诺里」"),

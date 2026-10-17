@@ -216,7 +216,6 @@ fn the_registry_has_the_v5_commands_and_none_of_the_old_ones() {
         "rotation-strategy-rename",
         "rotation-strategy-delete",
         "rotation-strategy-tz",
-        "rotation-day-paint",
         "quota-read",
     ] {
         assert!(names.contains(&want), "缺 {want}");
@@ -262,6 +261,8 @@ fn the_strategy_list_shows_every_file_with_who_uses_it() {
     assert_eq!(ids, ["broken", "by-list", "by-reset", "third"]);
     let lo = &got.strategies[1];
     assert!(lo.for_new && lo.error.is_none() && !lo.words_bad);
+    assert_eq!(lo.summary, "换号时按账号列表顺序。", "说明的第一行");
+    assert_eq!(got.strategies[0].summary, "");
     assert_eq!(lo.in_use, [S1], "走了的会话也数进去了");
     assert!(got.strategies[0].error.is_some(), "读不懂的没带原因");
     assert_eq!(got.for_new, "by-list");
@@ -281,24 +282,32 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
     let st = v.strategy.as_ref().expect("在轮换");
     assert_eq!(st.id, "by-list");
     assert_eq!(
-        v.form.len(),
-        5,
-        "照号列表那份的声明（用量上限 · 上限类型 · 耗尽后启用 · 启用延迟 · 单次用量上限）"
+        v.board.rows[0]
+            .cells
+            .iter()
+            .map(|c| c.key.as_str())
+            .collect::<Vec<_>>(),
+        ["caps", "caps", "capKind", "fallback", "delay", "stint"],
+        "照号列表那份的声明（用量上限两窗 · 上限类型 · 耗尽后启用 · 启用延迟 · 单次用量上限）"
     );
+    assert!(v.board.all.is_empty());
     assert_eq!((v.start.as_str(), v.current.as_str()), ("a", "a"));
     assert_eq!(
         v.title.as_deref(),
         Some(&S1[..8]),
         "这台记录树里没有它 ⇒ 会话 id 前 8 位"
     );
-    assert_eq!(v.accounts[0].account, "a", "号列表里的在前");
-    // 每个号带号色与号名（界面不再另问账号清单去对）：号色同 `accounts-list` 那一格的规则（库里没给 ⇒ 按名字算），号名同额度那几处。
-    let plate = &v.plates["a"];
+    assert_eq!(v.accounts[0].fact.account, "a", "号列表里的在前");
+    // 每个号身上带号牌（界面不再另问账号清单去对）：号色同 `accounts-list` 那一格的规则（库里没给 ⇒ 按名字算），号名同额度那几处，号牌字同号行那一格。
+    let plate = &v.accounts[0].plate;
     assert_eq!(
-        (plate.color, plate.label.0.as_str()),
-        (crate::accounts::manage::model::color_fallback("a"), "a")
+        (plate.color, plate.label.0.as_str(), plate.text.0.as_str()),
+        (
+            crate::accounts::manage::model::color_fallback("a"),
+            "a",
+            "a"
+        )
     );
-    assert_eq!(v.plates.len(), v.accounts.len(), "每个号一枚");
     assert_eq!(v.listed, 1);
     assert_eq!(
         v.decision.as_ref().and_then(|d| d.pick.as_deref()),
@@ -339,6 +348,16 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
     let v = session_view(&ctx, &home, S1);
     assert!(v.strategy.is_none() && v.decision.is_none() && v.timeline.is_none());
     assert_eq!((v.start.as_str(), v.current.as_str()), ("a", "a"));
+    let only: Vec<_> = v
+        .accounts
+        .iter()
+        .map(|a| (a.fact.account.as_str(), a.plate.text.0.as_str()))
+        .collect();
+    assert_eq!(
+        (only, v.listed),
+        (vec![("a", "a")], 0),
+        "只带开会话那个号的号牌，不算在号列表里"
+    );
 
     // 记录树里有它 ⇒ 顶栏写那条会话的名字（第一句），不轮换的那一形也带。
     let dir = crate::history::listing::records_root(&crate::history::listing::agent_home())
@@ -471,20 +490,17 @@ fn a_session_view_writes_every_time_it_carries() {
     let hm = |t: &str| t.len() == 5 && t.as_bytes()[2] == b':';
     assert!(hm(&v.now_text), "{}", v.now_text);
     let tl = v.timeline.as_ref().expect("推演");
-    assert!(tl.ticks.len() >= 5, "12 小时每 2 小时一格：{:?}", tl.ticks);
-    for t in &tl.ticks {
-        assert!(
-            hm(&t.text)
-                && t.text.ends_with(":00")
-                && t.at > v.past.as_ref().map_or(v.now, |p| p.from),
-            "{t:?}"
-        );
-    }
+    // 01:00–15:00（UTC）这一截里每个整两点一格：02:00 起到 14:00。
+    let want: Vec<(u64, String)> = (0..7u64)
+        .map(|k| (now() - 3600 + k * 7200, format!("{:02}:00", 2 + 2 * k)))
+        .collect();
+    let got: Vec<(u64, String)> = tl.ticks.iter().map(|t| (t.at, t.text.clone())).collect();
+    assert_eq!(got, want, "12 小时每 2 小时一格");
     for w in tl.switches.iter() {
         assert!(hm(&w.at_text), "{w:?}");
     }
     let seg = &tl.lanes[0].segs[0];
-    assert!(hm(&seg.from_text), "{seg:?}");
+    assert_eq!(seg.text, "剩 60%", "{seg:?}");
     assert!(
         (seg.left - 60.0).abs() < 1e-6,
         "剩 ＝ 100 − 两窗里用得多的：{seg:?}"
@@ -594,7 +610,11 @@ fn a_session_view_draws_what_already_happened() {
     let a = lane("a");
     assert_eq!(a.segs.len(), 1, "{:?}", a.segs);
     assert!(a.segs[0].reset && a.segs[0].sendable && near(a.segs[0].from, n - 3600));
-    assert!(a.segs[0].from_text.len() == 5, "{:?}", a.segs[0]);
+    assert!(
+        a.segs[0].text.starts_with('↻') && a.segs[0].text.chars().count() == 6,
+        "{:?}",
+        a.segs[0]
+    );
     let b = lane("b");
     assert_eq!(
         b.segs.iter().map(|s| s.sendable).collect::<Vec<_>>(),
@@ -703,6 +723,17 @@ fn the_hints_carry_what_their_buttons_need() {
         _ => None,
     });
     let (n, files) = old.expect("旧格式那一条");
+    assert!(
+        v.hints
+            .iter()
+            .filter(|h| matches!(
+                h.hint,
+                RotHint::TzUnknown { .. } | RotHint::OldScripts { .. }
+            ))
+            .all(|h| h.tone == Tone::Need),
+        "要人动手的那两种是「需手动」：{:?}",
+        v.hints
+    );
     assert_eq!(n, 1);
     assert_eq!(files[0].name, "old-one.rhai");
     assert!(
@@ -903,4 +934,84 @@ fn quota_read_hands_over_the_candidates_without_the_unnamed_account() {
         .map(|c| c["account"].as_str().unwrap_or(""))
         .collect();
     assert_eq!(ids, ["a", "api", "b", "c"], "{got}");
+}
+
+/// ★ 设置那几格照声明解好再出（两端照画，不各自解继承）：号那一行设成空的那一项（`null`）算自己设的；号没设、声明说跟总体 ⇒ 总体的值、`all`；
+/// 24 小时条每窗一格、段带字；策略字挑好、窗那一格的标签拼好；号那一行带写好的头一行与悬停那一句。
+#[test]
+fn the_board_carries_each_cell_resolved_once() {
+    let home = Home::new("board");
+    let ctx = home.ctx();
+    seen(&ctx, "b", 0.4, None);
+    let draft = json!({"force": null, "capKind": "hard", "caps": {"5h": [{"from": 0, "to": 600, "v": 0}, {"from": 600, "to": 1440, "v": 80}]},
+                       "accounts": [{"start": true, "stint": null}, {"id": "b", "capKind": "soft"}]});
+    let v = view_with(
+        &ctx,
+        &RotationViewReq {
+            target: RotTarget::Strategy {
+                strategy: "by-reset".into(),
+                settings: Some(draft),
+                rev: None,
+            },
+            hours: None,
+        },
+        now(),
+        &crate::Tz::default(),
+        &home.alive(),
+    )
+    .expect("ok");
+    let pick = |cells: &[RotCell], key: &str, w: Option<&str>| -> RotCell {
+        cells
+            .iter()
+            .find(|c| c.key == key && c.window.as_deref() == w)
+            .cloned()
+            .unwrap_or_else(|| panic!("{key}"))
+    };
+    let force = pick(&v.board.all, "force", None);
+    assert_eq!(
+        (force.v.clone(), force.from),
+        (Value::Null, form::RotFrom::Own)
+    );
+    assert_eq!(force.label, "强制切换阈值");
+    assert_eq!(force.nullable.as_deref(), Some("不强制切换"));
+    assert_eq!(
+        force.num,
+        Some(0.0),
+        "空的那一项：框里写声明默认 · 下限 · 0 里头一个是数的"
+    );
+    assert_eq!(v.board.rows.len(), v.listed);
+    let (r0, r1) = (&v.board.rows[0].cells, &v.board.rows[1].cells);
+    assert_eq!(v.board.rows[1].account, "b");
+    assert!(
+        v.board.rows[1].line.starts_with("5h 40% · 7d "),
+        "{}",
+        v.board.rows[1].line
+    );
+    assert!(
+        v.board.rows[1].hover.contains("40%"),
+        "{}",
+        v.board.rows[1].hover
+    );
+    let stint0 = pick(r0, "stint", None);
+    assert_eq!((stint0.v, stint0.from), (Value::Null, form::RotFrom::Own));
+    assert_eq!(pick(r1, "stint", None).from, form::RotFrom::Default);
+    let kind0 = pick(r0, "capKind", None);
+    assert_eq!((kind0.v, kind0.from), (json!("hard"), form::RotFrom::All));
+    assert_eq!(pick(r1, "capKind", None).from, form::RotFrom::Own);
+    assert!(!kind0.choices.is_empty() && kind0.choices.iter().all(|c| !c.label.is_empty()));
+    let caps = pick(r0, "caps", Some("5h"));
+    assert_eq!(caps.from, form::RotFrom::All);
+    assert_eq!(caps.label, "用量上限 · 5h");
+    let zero = copy_core::copy_text("rot.day.zero", &[]);
+    assert_eq!(
+        caps.segs
+            .iter()
+            .map(|s| (s.from, s.to, s.text.as_str(), s.tip.as_str()))
+            .collect::<Vec<_>>(),
+        [
+            (0, 600, zero.as_str(), "00:00–10:00 · 上限 0%"),
+            (600, 1440, "80%", "10:00–24:00 · 上限 80%")
+        ]
+    );
+    assert_eq!(pick(r0, "caps", Some("7d")).segs, []);
 }

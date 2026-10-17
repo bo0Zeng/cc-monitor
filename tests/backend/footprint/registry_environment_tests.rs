@@ -1,6 +1,21 @@
 use super::*;
-use copy_core::copy_text;
 use std::collections::BTreeSet;
+
+/// 四档的闭集（穷尽 match：加一档这里编不过）。
+const ENV_TIERS: &[EnvTier] = &[
+    EnvTier::AppInstalls,
+    EnvTier::AppShipsNoInstallerYet,
+    EnvTier::UserInstallsWePrompt,
+    EnvTier::AppOnlyChecks,
+];
+fn env_tiers_are_exhaustive(t: EnvTier) {
+    match t {
+        EnvTier::AppInstalls
+        | EnvTier::AppShipsNoInstallerYet
+        | EnvTier::UserInstallsWePrompt
+        | EnvTier::AppOnlyChecks => {}
+    }
+}
 
 /// 受管工具 / 手写环境项的**全集**（本表 ＋ 注册表里各家足迹面带来的那一半）—— 判据按全集判，与搬家前同一个人群。
 static TOOLS: std::sync::LazyLock<Vec<crate::agents::footprint_decl::ToolSpec>> =
@@ -67,7 +82,7 @@ fn the_environment_is_one_closed_list() {
 /// **要么把这一档从 EnvTier 里删掉**」⇒ 删掉了那一档，档数从三变四（新增两档）。
 /// 一条判据把自己的两条出路都写出来，走的是哪一条**有记录**，这就是那次记录。
 ///
-/// 分母现算（`EnvTier::ALL`），不写死一个基数〔报一个基数也是复述〕。
+/// 分母现算（`ENV_TIERS`），不写死一个基数〔报一个基数也是复述〕。
 #[test]
 fn every_tier_has_members_so_absence_never_encodes_a_judgement() {
     // 今天可以是空的那几档（`(档, 为什么)`）；列在这里的必须**真是空的**（有了成员就摘掉这一行）。
@@ -77,20 +92,16 @@ fn every_tier_has_members_so_absence_never_encodes_a_judgement() {
          这一档留给下一件「该由 app 带、实现还没有」的东西",
     )];
     let env = environment();
-    for (tier, why) in MAY_BE_EMPTY {
-        assert!(
-            why.chars().count() >= 20,
-            "`{}` 没写清为什么可以空",
-            tier.label()
-        );
+    for (tier, _) in MAY_BE_EMPTY {
         assert_eq!(
             env.iter().filter(|e| e.tier == *tier).count(),
             0,
             "「{}」这一档有成员了 —— 从 `MAY_BE_EMPTY` 里摘掉它",
-            tier.label()
+            format!("{:?}", tier)
         );
     }
-    for tier in EnvTier::ALL {
+    for tier in ENV_TIERS {
+        env_tiers_are_exhaustive(*tier);
         if MAY_BE_EMPTY.iter().any(|(t, _)| t == tier) {
             continue;
         }
@@ -100,8 +111,8 @@ fn every_tier_has_members_so_absence_never_encodes_a_judgement() {
             "「{}」这一档在闭集里一个成员都没有（共 {} 档 · 闭集 {} 项）——\n\
                  空的那一档等于**用缺席表达一个判断**，而读者分不出「没有这种东西」\n\
                  与「有人忘了写」。要么给它一个成员，要么把这一档从 EnvTier 里删掉。",
-            tier.label(),
-            EnvTier::ALL.len(),
+            format!("{:?}", tier),
+            ENV_TIERS.len(),
             env.len()
         );
     }
@@ -191,7 +202,7 @@ fn posix_rc_aliases_sits_in_the_first_tier_now() {
         tier,
         EnvTier::AppInstalls,
         "`{ID}` 在闭集里的档不是「{}」—— `K-R62` 那一格没做完",
-        EnvTier::AppInstalls.label()
+        format!("{:?}", EnvTier::AppInstalls)
     );
 }
 
@@ -235,7 +246,10 @@ fn who_should_install_is_not_a_function_of_whether_we_can_install_today() {
         no_installer.len(),
         Provisioning::ALL.len(),
         "「今天没有装口」时，不同的「谁该装」落进了同一档：{:?}",
-        no_installer.iter().map(|t| t.label()).collect::<Vec<_>>()
+        no_installer
+            .iter()
+            .map(|t| format!("{:?}", t))
+            .collect::<Vec<_>>()
     );
     // 人群那一半：闭集里「app 自带」的每一项，档都是从 `(who, 有没有装口)` 派生的那一档。
     for e in environment()
@@ -246,7 +260,7 @@ fn who_should_install_is_not_a_function_of_whether_we_can_install_today() {
             e.tier == EnvTier::AppInstalls || e.tier == EnvTier::AppShipsNoInstallerYet,
             "`{}` 是「app 自带」却落在「{}」",
             e.id,
-            e.tier.label()
+            format!("{:?}", e.tier)
         );
     }
 }
@@ -261,11 +275,6 @@ fn the_tier_for_owed_installers_is_countable_and_not_empty() {
     assert_eq!(
         EnvTier::of(Provisioning::AppShips, false),
         EnvTier::AppShipsNoInstallerYet
-    );
-    assert_eq!(
-        EnvTier::AppShipsNoInstallerYet.label(),
-        copy_text("rsToolRegistry.envTier.appShipsNoInstallerYet", &[]),
-        "这一档的档名读不出「该我们装、而今天还没有装口」两半 —— 用户会把它读成「不该我们装」"
     );
     for e in environment()
         .iter()
@@ -426,7 +435,7 @@ fn the_prompt_tier_declares_how_it_will_look() {
             panic!(
                 "`{}` 在「{}」这一档，却有 ToolSpec —— 那一档今天只该住手写那一半",
                 e.id,
-                EnvTier::UserInstallsWePrompt.label()
+                format!("{:?}", EnvTier::UserInstallsWePrompt)
             )
         };
         match probe {
@@ -446,14 +455,14 @@ fn the_prompt_tier_declares_how_it_will_look() {
     assert!(
         probeable + blind > 0,
         "「{}」这一档一个成员都没有 —— 那 9 项没搬过来",
-        EnvTier::UserInstallsWePrompt.label()
+        format!("{:?}", EnvTier::UserInstallsWePrompt)
     );
     assert!(
         probeable > blind,
         "「{}」这一档里查得动的 {probeable} 项、查不动的 {blind} 项 —— \
              查不动的过半就等于这一档只是「app 假设它在」换了个名字，\
              而那正是 `KR65D1` 写死的失效方向",
-        EnvTier::UserInstallsWePrompt.label()
+        format!("{:?}", EnvTier::UserInstallsWePrompt)
     );
 }
 

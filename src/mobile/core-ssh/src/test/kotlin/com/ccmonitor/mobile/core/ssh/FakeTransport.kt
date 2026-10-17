@@ -2,7 +2,6 @@ package com.ccmonitor.mobile.core.ssh
 
 import com.ccmonitor.mobile.core.remote.ExecResult
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.flow.Flow
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -87,8 +86,6 @@ class FakeTransport(
         cols: Int,
         rows: Int,
     ): ShellChannel = nope()
-
-    override fun execStream(command: String): Flow<ByteArray> = nope()
 
     override suspend fun execCapture(command: String): ExecResult = nope()
 

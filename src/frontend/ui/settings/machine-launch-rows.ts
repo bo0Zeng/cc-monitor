@@ -6,6 +6,8 @@
  * - 启动程序：下拉（`ResumeSelect`；空 ＝ 那一家自己的默认启动器）⇒ `prefs-set {launchers: {<默认那一家>: 值}}`；用过的记进界面那份预设
  *   （只是输入历史）；越层启动器那条诊断摆在行下。
  * - 恢复到 tmux 里：开关 ⇒ `prefs-set {resumeInTmux}`。
+ * - 新会话的权限档：下拉（首项「默认」＝ 删那一条；选项是那台 `session-open-facts` 里默认那一家的权限档）⇒
+ *   `prefs-set {permissionModes: {<默认那一家>: 值 | null}}`；那一家没有权限档 ⇒ 这一行不画。
  * - 读不懂（那台 `state: "unreadable"`）⇒ 两格禁用、行下摆那台写好的那一句（那台也拒写，不拿空的盖原文）；问不到 ⇒ 禁用、说读不到。
  * - 存成了 ⇒ 广播「设置改过了」（主窗口忘掉记着的「运行于」默认、下次重问）；存失败 ⇒ 退回读回的那份、行下一句。
  */
@@ -16,6 +18,8 @@ import { rememberResumePreset, getBehavior } from "../behavior";
 import { DEFAULT_AGENT } from "../agent-profile";
 import { diagnoseRemoteLauncher } from "../launcher-diagnostics";
 import { readPrefs, setPrefs, type PrefsReply } from "../machine-prefs";
+import { askFacts } from "../new-session-reads";
+import { select } from "../kit/select";
 import type { Prefs } from "../generated/Prefs";
 import { ResumeSelect } from "./resume-select";
 import { toggleSwitch } from "../kit/switch";
@@ -192,6 +196,47 @@ export function machineLaunchRows(
   tmuxRow.dataset.role = "resume-tmux";
   tmuxRow.append(sw.root, tmuxErr);
 
+  // ── 新会话的权限档（默认那一家）──
+  const permErr = document.createElement("div");
+  permErr.className = "settings-row-error";
+  permErr.hidden = true;
+  const permHelp = document.createElement("div");
+  permHelp.textContent = copyText("settings.machine.permissionModeHelp");
+  permHelp.append(permErr);
+  let permSaved = "";
+  const permSel = select({
+    label: copyText("settings.machine.permissionMode"),
+    options: [],
+    onChange: (v) => {
+      permErr.hidden = true;
+      setPrefs(origin, { permissionModes: { [DEFAULT_AGENT]: v === "" ? null : v } }).then(
+        (r) => {
+          permSaved = r.prefs.permissionModes[DEFAULT_AGENT] ?? "";
+          permSel.setValue(permSaved);
+          applied();
+        },
+        (e: unknown) => {
+          permSel.setValue(permSaved);
+          sayWithDetail(permErr, copyText("settings.behavior.saveFailedLine", { why: String(e) }), detailOf(e));
+          permErr.hidden = false;
+        },
+      );
+    },
+  });
+  permSel.setDisabled(true);
+  const permRow = ccRow(copyText("settings.machine.permissionMode"), permHelp, [permSel.el]);
+  permRow.dataset.role = "permission-mode";
+  permRow.hidden = true;
+  const fillPerm = (r: PrefsReply, modes: { value: string; text: string }[]): void => {
+    permRow.hidden = modes.length === 0;
+    permSaved = r.prefs.permissionModes[DEFAULT_AGENT] ?? "";
+    permSel.setOptions(
+      [{ value: "", label: copyText("resumeSelect.option.defaultBare") }, ...modes.map((m) => ({ value: m.value, label: m.text }))],
+      permSaved,
+    );
+    permSel.setDisabled(r.state === "unreadable");
+  };
+
   // ── 子会话 · 分身会话进不进标签栏 ──
   const place = placeRows(origin);
 
@@ -223,15 +268,23 @@ export function machineLaunchRows(
           (b) => b.resumeCommandPresets,
           () => [] as string[],
         );
-        return Promise.all([readPrefs(origin), p]);
+        // 权限档那一行的选项：那台能起的默认那一家声明的档（问不到 ⇒ 这一行不画）。
+        const modes = askFacts(origin, null).then(
+          (f) => f.agents.find((a) => a.kind === DEFAULT_AGENT)?.permissionModes ?? [],
+          () => [],
+        );
+        return Promise.all([readPrefs(origin), p, modes]);
       })
       .then(
-        ([r, p]) => fill(r, p),
+        ([r, p, modes]) => {
+          fill(r, p);
+          fillPerm(r, modes);
+        },
         (e: unknown) => {
           sayFailure(err, copyText("machinePrefs.read.failed"), e);
           err.hidden = false;
         },
       );
   };
-  return { rows: [launchRow, tmuxRow, ...place.rows], load };
+  return { rows: [launchRow, tmuxRow, permRow, ...place.rows], load };
 }

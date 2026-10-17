@@ -30,7 +30,7 @@ import { restartNowButton } from "./restart-now";
 import { FirstRun } from "./first-run";
 import { claudeDirProblem } from "./claude-dir-check";
 import { createUnknownKeysBar, rerenderUnknownKeys } from "./unknown-keys-notice"; // 🔴 P12：未知键要出声
-import { setCurrentMachine } from "./machine-context";
+import { setCurrentMachine } from "../machine-context";
 import { LOCAL_ORIGIN, isLocalOrigin } from "../ipc/origin";
 import { failToast } from "../kit/toast";
 import { toggleSwitch } from "../kit/switch";
@@ -64,7 +64,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { BEHAVIOR_TOGGLED_EVENT, SETTINGS_APPLIED_EVENT, SETTINGS_GO_EVENT, type BehaviorToggled } from "./events";
 import { confirmDialog } from "../kit/dialog";
 import { copyText } from "../copy-table";
-import { parseSettingsTarget, type SettingsTarget } from "./open-settings";
+import { parseSettingsTarget, type SettingsTarget } from "../open-settings";
 import { detailOf, failSaid, sayFailure, sayWithDetail, writtenSaid } from "../kit/detail";
 import { ControlError } from "../control-said";
 import { RotationSection } from "./rot-section";
@@ -487,7 +487,7 @@ export class SettingsPanel {
     const pageId = local ? LOCAL_MACHINE_PAGE_ID : this.remoteSection?.pageIdOfMachine(origin);
     if (!pageId) return;
     const machine = local ? copyText("remote.cards.local") : origin;
-    const face = machineFace(m, machine);
+    const face = machineFace(m);
     this.remoteSection?.setFacts(origin, { os: m.os, version: m.version, dev: m.versionRelation === "incomparable" });
     this.remoteSection?.setMachine(pageId, m);
     this.router.setNavDot(pageId, face.dot, face.word ? `${machine} · ${face.word}` : copyText("settingsNav.dot.up", { machine }));
@@ -908,6 +908,7 @@ export class SettingsPanel {
         hosted: true,
         onChannel: (origin, connected) => this.paintNavDot(origin, connected),
         onMachine: (origin, machine) => this.paintMachine(origin, machine),
+        machineOf: (origin) => this.machineOf.get(origin) ?? null,
       });
       this.backendSection = backend;
     } catch (e) {
@@ -1028,7 +1029,7 @@ export class SettingsPanel {
     this.perMachineSlot.hidden = true;
     this.perMachineFallbackHint = makeSkeleton(
       "backend",
-      copyText("settingsPanel.machines.loading"),
+      copyText("kit.state.reading"),
     );
     machinesPage.appendChild(this.perMachineFallbackHint);
     machinesPage.appendChild(this.perMachineSlot);

@@ -228,11 +228,11 @@ pub enum ToolCard {
     Agent,
     /// agent 在等用户决定（默认展开，不收成过程里的一步）。
     Interactive,
-    /// 写类工具（参数按行级 diff 画）。
+    /// 写类工具：展开按行级 diff 画（[`StepBody::Changes`]）。
     Diff,
     /// 结果默认按 Markdown 画。
     Md,
-    /// 跑一行命令的工具：入参里 `command` 是那一行、`description` 是可缺的说明 —— 展开画命令本身，不画入参 JSON。
+    /// 跑一行命令的工具：展开画命令本身（[`StepBody::Command`]，说明在 [`ToolStep::note`]），不画入参 JSON。
     Command,
 }
 
@@ -247,8 +247,8 @@ pub struct ChildRunTag {
     pub kind: Option<String>,
 }
 
-/// 过程里一步的「一行人话」：assistant 记录成品的 `toolSteps`（`tool_use.id` ⇒ 它）。
-/// 怎么从入参里挑主参数与说明是各家的格式知识（`agents/<名>/steps.rs`）；界面只排版，不认入参结构。
+/// 过程里一步的「一行人话」与展开要画的东西：assistant 记录成品的 `toolSteps`（`tool_use.id` ⇒ 它）。
+/// 怎么从入参里读出这几格是各家的格式知识（`agents/<名>/steps.rs`）；界面只按这几格画，入参只当原文整份显示。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
@@ -263,10 +263,18 @@ pub struct ToolStep {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
     pub path: bool,
-    /// 说明（Bash 的 `description` 那一类）。
+    /// 说明（命令那一句注一类）。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub note: Option<String>,
+    /// 这一步说的那份文件：绝对路径原样（界面「在文件窗口里定位」按它）；不是路径 · 相对路径 ⇒ 缺。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub file: Option<String>,
+    /// 展开那一下画什么（改动 · 命令）；没有 ⇒ 界面照原文画入参。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub body: Option<StepBody>,
     /// 这一家认不认得这个工具（`false` ⇒ 界面画问号、给原文）。
     pub known: bool,
     /// 认不出的工具：结果到了之后右侧那一句（「未识别结果」）；认得的 ⇒ 缺（照结果那一句）。
@@ -278,6 +286,27 @@ pub struct ToolStep {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub ask: Option<StepAsk>,
+}
+
+/// 一步展开要画的东西（[`ToolStep::body`]）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum StepBody {
+    /// 改了一份文件的哪几处（新写整份 ⇒ 一处、改前为空）。
+    Changes { changes: Vec<TextChange> },
+    /// 跑的那一行命令原样（多行、不截）。
+    Command { line: String },
+}
+
+/// 一处改动：改前 · 改后的原文。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct TextChange {
+    pub old: String,
+    pub new: String,
 }
 
 /// 提问 / 计划卡的内容（[`ToolStep::ask`]）。
@@ -780,7 +809,7 @@ impl OrUnread {
         let text = raw.to_string();
         let id = s("id")
             .filter(|i| !i.is_empty())
-            .unwrap_or_else(|| format!("unread:{:016x}", fnv1a(text.as_bytes())));
+            .unwrap_or_else(|| format!("unread:{:016x}", crate::fnv::fnv1a64(text.as_bytes())));
         Self(Record {
             agent: s("agent").unwrap_or_default(),
             id,
@@ -796,27 +825,6 @@ impl<'de> Deserialize<'de> for OrUnread {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         Value::deserialize(d).map(Self::of)
     }
-}
-
-/// 摘身份用的 64 位 FNV-1a（只求稳定、不求抗碰撞）。
-fn fnv1a(bytes: &[u8]) -> u64 {
-    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |h, b| {
-        (h ^ u64::from(*b)).wrapping_mul(0x0000_0100_0000_01b3)
-    })
-}
-
-/// 流上的 `line` 帧（一行 JSON）：`record` 在、却解不开 ⇒ 换成认不出那一条（[`OrUnread`]）的那一行；别的（解得开 · 不是 `line` 帧 · 不是 JSON）⇒ `None`（原样交）。
-pub fn mend_line_frame(frame: &str) -> Option<String> {
-    let mut v: Value = serde_json::from_str(frame).ok()?;
-    if v.get("kind").and_then(Value::as_str) != Some("line") {
-        return None;
-    }
-    let raw = v.get("record").filter(|r| !r.is_null())?.clone();
-    if Record::deserialize(&raw).is_ok() {
-        return None;
-    }
-    v["record"] = serde_json::to_value(OrUnread::of(raw)).ok()?;
-    Some(v.to_string())
 }
 
 #[cfg(test)]

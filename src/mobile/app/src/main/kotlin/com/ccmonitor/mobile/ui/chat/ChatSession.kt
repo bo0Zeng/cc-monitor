@@ -14,13 +14,13 @@ import com.ccmonitor.mobile.core.claude.link.LiveCardState
 import com.ccmonitor.mobile.core.claude.link.RecordLine
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionCommandList
-import com.ccmonitor.mobile.core.claude.link.SessionNew
+import com.ccmonitor.mobile.core.claude.link.SessionOpen
 import com.ccmonitor.mobile.core.claude.link.SessionSay
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.claude.link.TerminalInput
+import com.ccmonitor.mobile.core.claude.link.wire.AgentPick
 import com.ccmonitor.mobile.core.claude.link.wire.Held
 import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
-import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
 import com.ccmonitor.mobile.core.claude.link.wire.RecordKind
 import com.ccmonitor.mobile.core.claude.link.wire.SessionCommands
 import com.ccmonitor.mobile.core.claude.link.wire.TailHow
@@ -43,8 +43,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.launch
@@ -57,7 +59,7 @@ import java.util.UUID
 data class ChatUiState(
     /** 记录 ＋ 手机这边还没在记录里出现的那几句。 */
     val units: List<RenderUnit> = emptyList(),
-    /** 这条会话此刻在跑（会话帧的语气 `now`）：右端是 ■。 */
+    /** 这条会话此刻在跑（那台给的脸上在干什么是 `working`）：右端是 ■。 */
     val running: Boolean = false,
     /** 会话那一层的失败（起不来 · 读不出记录）那一句；`null` ＝ 没有。 */
     val failedWhy: String? = null,
@@ -97,17 +99,17 @@ data class SwitchChip(
     /** 上一次换成了的那一项（原值）：抽屉里勾它。 */
     val value: String? = null,
     /** 正在换成的那一项（写它的字、转圈）；不在换 ⇒ `null`。 */
-    val pending: NewSessionPick? = null,
+    val pending: AgentPick? = null,
     /** 此刻不能换：那台写好的那一句（会话帧的 `switch`；那台离线 ⇒ 离线那一句）；能换 ⇒ `null`。 */
     val blocked: String? = null,
 )
 
-/** 两个 chip 抽屉里列的：那台 `session-new-facts` 给这条会话那一家的模型与权限档；问不到 ⇒ [error] 是那一句。 */
+/** 两个 chip 抽屉里列的：那台 `session-open-facts` 给这条会话那一家的模型与权限档；问不到 ⇒ [error] 是那一句。 */
 data class Picks(
-    val models: List<NewSessionPick> = emptyList(),
-    val modes: List<NewSessionPick> = emptyList(),
+    val models: List<AgentPick> = emptyList(),
+    val modes: List<AgentPick> = emptyList(),
     /** 模型抽屉第一项「默认」（那台给的值与字）；那一家没有 ⇒ `null`。 */
-    val modelDefault: NewSessionPick? = null,
+    val modelDefault: AgentPick? = null,
     /** 模型抽屉底那一行灰字（那台写的）；没有 ⇒ `null`。 */
     val modelNote: String? = null,
     val error: String? = null,
@@ -140,14 +142,14 @@ sealed interface ChatTarget {
         val ticket: String,
         /** 从哪进来的那个目录（在一条会话里点「新建会话」⇒ 那条的目录）；没有 ⇒ `null`（那台最近的第一个 · `~`，见 [NewSessionPicker]）。 */
         val cwd: String?,
-        /** 这台存的那一家（线上 kind，主机设置里选的）；没选 ⇒ `null`。起的时候照那台 `session-new-facts` 认：认得 ⇒ 它，否则那台列的第一家。 */
+        /** 这台存的那一家（线上 kind，主机设置里选的）；没选 ⇒ `null`。起的时候照那台 `session-open-facts` 认：认得 ⇒ 它，否则那台列的第一家。 */
         val agent: String?,
     ) : ChatTarget
 }
 
 /**
  * 一条会话的聊天状态。起会话、送字、正文都走那台的核心（[CoreLink]）：
- * - 新建会话：第一条按 ➤ ⇒ `session-new`（在那台 tmux 里起，桌面那一侧看得到、接得上），那一句随起交（`prompt`：那台作为启动参数交给 agent，
+ * - 新建会话：第一条按 ➤ ⇒ `session-open`（在那台 tmux 里起，桌面那一侧看得到、接得上），那一句随起交（`prompt`：那台作为启动参数交给 agent，
  *   作为启动参数交，送没送到看回包）；那台没交（回包没有 `prompt`）⇒ 等它报到（会话表里那个目录新出现的一条）再经 `terminal-input` 送。
  *   新起的会话记录要等第一句进去才落盘 ⇒ 读正文之前先等那台推来它的记录路径（[freshPath]）。
  * - 送字 / 停：`terminal-input`（字 · `esc`）；送没送到是那台判的（`delivered` · `unsure` · `refused`）。
@@ -213,7 +215,7 @@ class ChatSession(
         var deliveryText: String?,
         var attempts: Int = 1,
     ) {
-        /** 这一句已随 `session-new` 交出去了（结局已标上）。 */
+        /** 这一句已随 `session-open` 交出去了（结局已标上）。 */
         var handed = false
     }
 
@@ -302,9 +304,9 @@ class ChatSession(
     }
 
     /** 换模型（见 [ChatChips.switchModel]）。 */
-    fun switchModel(pick: NewSessionPick) = chips.switchModel(pick)
+    fun switchModel(pick: AgentPick) = chips.switchModel(pick)
 
-    fun switchPermission(pick: NewSessionPick) = chips.switchPermission(pick)
+    fun switchPermission(pick: AgentPick) = chips.switchPermission(pick)
 
     fun loadPicks() =
         chips.loadPicks(
@@ -420,7 +422,7 @@ class ChatSession(
             else -> failed(r.problem(machine, SessionSay.COMMAND)?.text)
         }
 
-    /** 那台判的送没送到（`terminal-input` 的回话 · `session-new` 回包里第一句的结局）⇒ 标与那一句。 */
+    /** 那台判的送没送到（`terminal-input` 的回话 · `session-open` 回包里第一句的结局）⇒ 标与那一句。 */
     private fun outcomeOf(res: TerminalInput.Result): Pair<DeliveryState?, String?> =
         when (res) {
             TerminalInput.Result.Delivered -> null to null
@@ -479,15 +481,17 @@ class ChatSession(
         val p = picker ?: return
         p.settled()
         val c = p.chosen()
-        val args = SessionNew.args(c.cwd, d.ticket, c.agent, first.text, c.account, c.rotation)
-        val answer =
-            when (val r = link.call(SessionNew.COMMAND, args, NEW_MS)) {
-                is Reply.Ok -> SessionNew.of(r.data) ?: return failSession(unreadableReply(machine, SessionNew.COMMAND, r.data.toString()).text)
-                else -> return failSession(r.problem(machine, SessionNew.COMMAND)?.text)
+        val args = SessionOpen.newIn(c.cwd, d.ticket, c.agent, first.text, c.account, c.rotation)
+        val (answer, cwd) =
+            when (val r = link.call(SessionOpen.COMMAND, args, NEW_MS)) {
+                is Reply.Ok ->
+                    SessionOpen.of(r.data)?.let { a -> a.cwd?.let { a to it } }
+                        ?: return failSession(unreadableReply(machine, SessionOpen.COMMAND, r.data.toString()).text)
+                else -> return failSession(r.problem(machine, SessionOpen.COMMAND)?.text)
             }
         val arrived =
             answer.sid ?: withTimeoutOrNull(arrivalMs) {
-                link.table.mapNotNull { SessionNew.arrived(it, answer.cwd, before)?.sid }.first()
+                link.table.mapNotNull { SessionOpen.arrived(it, cwd, before)?.sid }.first()
             } ?: return failSession(copyText("launchArrival.missed.title"))
         answer.prompt?.let { said ->
             first.handed = true
@@ -496,7 +500,7 @@ class ChatSession(
         }
         sid = arrived
         cache.bind(outgoing.map { it.localId }, arrived)
-        _state.value = _state.value.copy(sid = arrived, cwd = answer.cwd)
+        _state.value = _state.value.copy(sid = arrived, cwd = cwd)
         syncHold()
         follow = scope.launch { attach(arrived, fresh = true) }
     }
@@ -518,6 +522,9 @@ class ChatSession(
 
         /** 换了一条流（`CoreLink.epoch` 变了）：断开那段的行没收到。 */
         data object Reconnected : Event
+
+        /** 那份记录被那台从头重读了（会话表里那一条换了一代）：读过的那一代作废。 */
+        data object Reread : Event
     }
 
     /** 先订上这条会话的 `line` 帧与 `from`（攒着），再读最后一屏；读完按行号接上攒着的，之后来一样接一样。[fresh]：刚起的那条（见 [pathOf]）。 */
@@ -540,6 +547,13 @@ class ChatSession(
         if (!fresh) lock.withLock { restoreLocked(s) }
         cache.viewed(s)
         launch { link.epoch.drop(1).collect { events.send(Event.Reconnected) } }
+        launch {
+            link.table
+                .map { it.generation(s) }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect { events.send(Event.Reread) }
+        }
         followLive(s)
         attached = true
         syncHold()
@@ -554,7 +568,7 @@ class ChatSession(
         suspend fun take(e: Event) =
             lock.withLock {
                 if (!loaded) {
-                    if (e == Event.Reconnected) loaded = reloadLocked(p)
+                    if (e == Event.Reconnected || e == Event.Reread) loaded = reloadLocked(p)
                 } else if (stepLocked(p, e)) {
                     publishLocked()
                 }
@@ -599,6 +613,11 @@ class ChatSession(
             is Event.From -> e.seq <= nextSeq || fillLocked(p, e.seq)
             // 换了一条流：交手上那一份问一次，断开那一段怎么补那台判（续得上就只读那一截）。
             Event.Reconnected -> reloadLocked(p)
+            // 从头重读了：手上那一份不交（续点作废），读最后一屏、整份重来（同桌面那一 tab 整份重来）。
+            Event.Reread -> {
+                anchorOffset = null
+                reloadLocked(p)
+            }
         }
 
     /**
@@ -739,7 +758,7 @@ class ChatSession(
         launch {
             link.table.collect { t ->
                 // 只有那台判得出「在跑」才亮停止键；判不出（说不清 · 读记录中）不亮。
-                val running = t.sessions[s]?.running == true
+                val running = t.running(s)
                 if (running != _state.value.running) _state.value = _state.value.copy(running = running)
             }
         }
@@ -859,7 +878,7 @@ class ChatSession(
         /** 等新起的会话报到多久（同桌面 `ARRIVAL_BUDGET_MS`）。 */
         const val ARRIVAL_MS = 45_000L
 
-        /** 这边等起会话多久（`session-new` 是阻塞档：不交 `within_ms`、到点不撤单；第一句作为启动参数交，起好就回）。 */
+        /** 这边等起会话多久（`session-open` 是阻塞档：不交 `within_ms`、到点不撤单；第一句作为启动参数交，起好就回）。 */
         private const val NEW_MS = 45_000L
         private const val INPUT_MS = 20_000L
 

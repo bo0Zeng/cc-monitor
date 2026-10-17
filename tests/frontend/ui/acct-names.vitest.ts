@@ -6,7 +6,7 @@ import { tookQuota } from "../../../src/frontend/ui/quota-reads";
 import type { QuotaRead } from "../../../src/frontend/ui/acct-words";
 
 const NAMES = { accounts: { _: "家里那个号" }, slots: { "5h": "五小时", "7d": "七天" } };
-const quota = (names: QuotaRead["names"]): QuotaRead => ({ state: "absent", reason: null, detail: null, path: null, now: 1, accounts: [], unseen: [], usableNow: [], candidates: [], earliestReturn: null, text: null, fiveHour: null, names });
+const quota = (names: QuotaRead["names"]): QuotaRead => ({ state: "absent", reason: null, detail: null, path: null, now: 1, accounts: [], unseen: [], usableNow: [], candidates: [], earliestReturn: null, text: null, fiveHour: null, names, verdict: null });
 
 describe("号名 / 位名照核心那张表", () => {
   it("没收到表之前照原样", () => {

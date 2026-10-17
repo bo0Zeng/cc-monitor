@@ -76,7 +76,7 @@ pub fn resolve_window_bin() -> Result<PathBuf, ProcFail> {
 
 /// 自带那份放到哪：本机后端落点所在的那个目录（`~/.cc-monitor/bin`）。家目录问不到 ⇒ `None`（不发明一个目录）。
 fn landing_dir() -> Option<PathBuf> {
-    let rel = crate::profile_installer::ccm_bin_dir_rel()?;
+    let (rel, _) = relay_route_core::BACKEND_LANDING_REL.rsplit_once('/')?;
     creds_core::store::home_dir().map(|h| rel.split('/').fold(h, |p, seg| p.join(seg)))
 }
 
@@ -131,7 +131,7 @@ pub fn resolve_window_bin_in(
 /// 进程这一层「程序出错」那一形：下层原话进复制详情。
 fn crashed(raw: String) -> ProcFail {
     ProcFail {
-        said: copy_text("rsFilewinProc.open.exited", &[]),
+        said: copy_text("reason.code.bug", &[]),
         code: None,
         raw: Some(raw),
     }
@@ -299,7 +299,7 @@ pub fn exit_said(why: &str, code: Option<String>, tail: &[String]) -> ProcFail {
 fn write_seed(child: &mut crate::spawn_managed::ManagedChild, seed: &str) -> Result<(), ProcFail> {
     use std::io::Write;
     let pipe = child.stdin.as_mut().ok_or_else(|| ProcFail {
-        said: copy_text("rsFilewinProc.open.exited", &[]),
+        said: copy_text("reason.code.bug", &[]),
         code: Some("no_stdin".to_string()),
         raw: None,
     })?;
@@ -355,7 +355,7 @@ pub fn open_in_new_process(req: &OpenRequest, late: LateExit) -> Result<(u32, us
     let piped = match (child.stdin.take(), child.stdout.take()) {
         (Some(inp), Some(out)) => start_channel(inp, out).map_err(crashed),
         _ => Err(ProcFail {
-            said: copy_text("rsFilewinProc.open.exited", &[]),
+            said: copy_text("reason.code.bug", &[]),
             code: Some("no_stdio".to_string()),
             raw: None,
         }),
@@ -377,8 +377,8 @@ pub fn open_in_new_process(req: &OpenRequest, late: LateExit) -> Result<(u32, us
         }
         Ok(None) => {
             let (why, code) = match child.wait_for_status() {
-                Ok(st) => (copy_text("rsFilewinProc.open.exited", &[]), st.to_string()),
-                Err(e) => (copy_text("rsFilewinProc.open.exited", &[]), e.to_string()),
+                Ok(st) => (copy_text("reason.code.bug", &[]), st.to_string()),
+                Err(e) => (copy_text("reason.code.bug", &[]), e.to_string()),
             };
             return Err(Unopened::Process(exit_said(
                 &why,
@@ -402,15 +402,9 @@ pub fn open_in_new_process(req: &OpenRequest, late: LateExit) -> Result<(u32, us
         EARLY_FAILURE_BUDGET,
     ) {
         let (why, code) = match child.try_wait() {
-            Ok(Some(st)) => (
-                copy_text("rsFilewinProc.open.exited", &[]),
-                Some(st.to_string()),
-            ),
-            Ok(None) => (copy_text("rsFilewinProc.open.exited", &[]), None),
-            Err(e) => (
-                copy_text("rsFilewinProc.open.exited", &[]),
-                Some(e.to_string()),
-            ),
+            Ok(Some(st)) => (copy_text("reason.code.bug", &[]), Some(st.to_string())),
+            Ok(None) => (copy_text("reason.code.bug", &[]), None),
+            Err(e) => (copy_text("reason.code.bug", &[]), Some(e.to_string())),
         };
         // 已经退了（预算内结束）⇒ 等它的 stderr 读完、带着原因说。
         let said = if matches!(child.try_wait(), Ok(Some(_))) {

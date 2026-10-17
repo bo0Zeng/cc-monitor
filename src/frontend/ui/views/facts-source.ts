@@ -5,10 +5,9 @@
  *
  * # 形状（形照大纲的 `OutlineSource`）
  *
- * 一个 tab 一份。它只记：上一份成品（交回它的 `{end, rev}` 当续传令牌 —— 成品不读、不改、不合并）· 在途与否 · 失败了几次。
+ * 一个 tab 一份。它只记：上一份成品（成品不读、不改、不合并）· 在途与否 · 失败了几次。
  *
- * - `refresh()`：把上一份成品的令牌当 `prior` 交回去，要回累加了新写那一截的整份成品。在途时再叫 ⇒ 这一趟回来后**只补一趟**。
- * - 带着 `prior` 要不到（那台续算表里没有了 `stale_prior` · 续点越过文件尾 / 不在行边界 = 文件被截断或重写，或者别的原因）⇒ **不带 `prior` 从 0 重要一趟**。
+ * - `refresh()`：只交路径，要回此刻的整份成品（接着上一次算由那台后端按路径记着）。在途时再叫 ⇒ 这一趟回来后**只补一趟**。
  * - 要不到：结构性（`oldBackend`：对面不认这条命令）⇒ 不再要；瞬时 ⇒ 下一次触发再要，连续 [`MAX_TRANSIENT_FAILURES`] 次按结构性。
  *   手上已经有成品时瞬时失败**不动它**；放弃了、或一份都还没要到 ⇒ `unavailableReason` 非空（宿主据此出声）。
  *
@@ -104,12 +103,8 @@ export class FactsSource {
     if (!where) return;
     const gen = this.gen;
     this.stale = false;
-    let res: FactsResult = await readSessionFacts(where.origin, where.jsonlPath, this.last);
+    const res: FactsResult = await readSessionFacts(where.origin, where.jsonlPath);
     if (gen !== this.gen) return;
-    if (!res.available && this.last) {
-      res = await readSessionFacts(where.origin, where.jsonlPath, null);
-      if (gen !== this.gen) return;
-    }
     this.fetched = true;
     if (!res.available) {
       this.failed(res.failure, res.reason);

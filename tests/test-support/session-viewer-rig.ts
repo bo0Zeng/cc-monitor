@@ -65,6 +65,19 @@ export const outlineBackend: {
   failNext: number;
 } = { entries: [], available: true, reason: "", failure: "oldBackend", failNext: 0 };
 
+/**
+ * 后端给的行号的替身：那一条在台子索引里排第几（用例塞了索引 ⇒ 按那份的 `u`；没塞 ⇒ `chunk` 里那条记录的 `seq`）；找不到 ⇒ 0。
+ * 清单项 · 命中由用例只写 uuid，过线之前照它补上 `line`（同后端：行号与 uuid 同一处来）。
+ */
+export function lineOf(uuid: string): number {
+  const rows = (viewerRig.index as { rows?: Array<{ u?: string }> } | undefined)?.rows;
+  if (rows) return Math.max(0, rows.findIndex((r) => r.u === uuid));
+  const p = (viewerRig.chunk as RigPayload[]).find((q) => (q.record as { id?: string } | undefined)?.id === uuid);
+  return p?.seq ?? 0;
+}
+
+const lined = <T extends { uuid: string; line?: number }>(e: T): T & { line: number } => ({ ...e, line: e.line ?? lineOf(e.uuid) });
+
 /** 按上面那份替身回一趟 `list_user_inputs`。 */
 export function answerListUserInputs(args: { fromOffset: number }): unknown {
   const from = args.fromOffset;
@@ -83,7 +96,7 @@ export function answerListUserInputs(args: { fromOffset: number }): unknown {
   }
   if (!outlineBackend.available) return no(outlineBackend.failure, outlineBackend.reason);
   if (from > all.length) return no("transport", "越过 EOF");
-  return { available: true, from, end: all.length, entries: all.slice(from) };
+  return { available: true, from, end: all.length, entries: all.slice(from).map((e) => ({ at: 0, ...lined(e) })) };
 }
 
 /** 造一条后端清单项（摘要默认就是 uuid，判据要比对文字时再给）。 */
@@ -130,7 +143,10 @@ export function tauriCoreMock(): Record<string, unknown> {
         if (viewerRig.failPage) throw new Error("devbox 断开");
         return rigIndex();
       }
-      if (cmd === "find_in_session") return viewerRig.find;
+      if (cmd === "find_in_session") {
+        const f = viewerRig.find as { hits?: Array<{ uuid: string; line?: number }> } | undefined;
+        return f?.hits ? { ...f, hits: f.hits.map(lined) } : f;
+      }
       return undefined;
     })),
   };

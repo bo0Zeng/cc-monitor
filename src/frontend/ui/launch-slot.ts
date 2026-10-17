@@ -3,14 +3,15 @@
  *
  * 那台回了「起好了 / 开窗」⇒ 标签页栏末尾长出一行「正在启动」（转圈、机器 ＋ 项目名），主区换成它那一页；
  * 那台报出这个会话 ⇒ 这一行摘掉、换成真的标签页（还看着它 ⇒ 切过去）。20 s 没报到 ⇒ 红点「未报到」，那一页是一张报错卡：
- * 在 tmux 里起的 ⇒ 那个 tmux 会话在不在 ＋ 画面末几行 ＋［终端画面］［在终端里打开］（远端）［结束 tmux 会话］·［关闭标签页］；
+ * 在 tmux 里起的 ⇒ 那个 tmux 会话在不在 ＋ 画面末几行 ＋［终端画面］（开抽屉的终端页看那个终端）［在终端里打开］（远端）［结束 tmux 会话］·［关闭标签页］；
  * 开窗起的 ⇒ 只有一句 ＋［关闭标签页］。到点不放弃：之后又报到了照样换成真的。
  *
  * 是不是那一个由 `launch-arrival.ts` 认（同一份比对）；tmux 会话在不在、画面是什么问那台（`terminal-reads.ts`）。这里只排版。
  */
 import { copyText } from "./copy-table";
+import { fmtDur } from "./duration-format";
 import { machineName } from "./control-said";
-import { isRemoteOrigin, type Origin } from "./ipc/origin";
+import { isLocalOrigin, isRemoteOrigin, type Origin } from "./ipc/origin";
 import { button } from "./kit/button";
 import { tag } from "./kit/badge";
 import { icon } from "./kit/icon";
@@ -20,8 +21,7 @@ import { confirmDialog, type ConfirmFn } from "./kit/dialog";
 import { toast, failToast } from "./kit/toast";
 import { lastWords, watchUntilArrived, type SlotSpec } from "./launch-arrival";
 import { listTerminals, previewText } from "./terminal-reads";
-import { openPanePreview } from "./views/pane-preview";
-import { runRemoteAttach } from "./remote-launch-run";
+import { openSession } from "./session-open";
 import { killSession } from "./tmux-control";
 import s from "./launch-slot.module.css";
 
@@ -33,11 +33,10 @@ export type { SlotSpec };
 /** 没报到时那个 tmux 会话的样子：在（画面是这几行）· 不在 · 读不到（那一句）。 */
 export type SlotScreen = { kind: "there"; terminal: string; words: string } | { kind: "gone" } | { kind: "unread"; why: string };
 
-/** 问那台的两件事与动手的三件（缺省走通道；测试换成假的）。 */
+/** 问那台的一件事与动手的两件（缺省走通道；测试换成假的）。 */
 export interface SlotActs {
   screen(origin: Origin, tmuxName: string): Promise<SlotScreen>;
-  preview(origin: Origin, tmuxName: string, terminal: string): void;
-  attach(origin: Origin, agent: string, tmuxName: string): void;
+  attach(origin: Origin, tmuxName: string): void;
   kill(origin: Origin, tmuxName: string): Promise<void>;
   confirm: ConfirmFn;
 }
@@ -52,6 +51,8 @@ export interface SlotHost {
   switchTo(sid: string): void;
   /** 那一页显没显（会话头跟着让开）。 */
   shown(on: boolean): void;
+  /** ［终端画面］：开底部抽屉的终端页（它看的是 [`LaunchSlots.watched`]）。 */
+  viewTerminal(): void;
 }
 
 interface Slot {
@@ -139,6 +140,13 @@ export class LaunchSlots {
     return this.showing !== null;
   }
 
+  /** 正看着的那个占位起在的那个终端（没报到、问到了它还在才有）：抽屉的终端页看它。 */
+  watched(): { origin: Origin; terminal: string; name: string; title: string } | null {
+    const sl = this.showing === null ? undefined : this.slots.get(this.showing);
+    if (!sl || sl.screen?.kind !== "there" || sl.spec.tmuxName === null) return null;
+    return { origin: sl.spec.origin, terminal: sl.screen.terminal, name: sl.spec.tmuxName, title: projOf(sl.spec.cwd) };
+  }
+
   /** 只给判据用：此刻有几行 · 正看着哪一个。 */
   debug(): { ids: number[]; showing: number | null } {
     return { ids: [...this.slots.keys()], showing: this.showing };
@@ -214,7 +222,7 @@ export class LaunchSlots {
   private paintPanel(sl: Slot): void {
     const { origin, cwd, tmuxName } = sl.spec;
     const machine = machineName(origin);
-    const secs = String(Math.round(SLOT_MISS_MS / 1000));
+    const dur = fmtDur(SLOT_MISS_MS / 1000);
 
     const head = document.createElement("div");
     head.className = s.slotHead;
@@ -229,7 +237,7 @@ export class LaunchSlots {
     if (sl.missed) {
       const st = document.createElement("span");
       st.className = s.slotState;
-      st.textContent = copyText("launch.slot.missedState", { secs });
+      st.textContent = copyText("launch.slot.missedState", { dur });
       head.appendChild(st);
     }
     if (!sl.missed) {
@@ -243,7 +251,7 @@ export class LaunchSlots {
     const body = document.createElement("div");
     body.className = s.slotBody;
     const line1 = document.createElement("div");
-    line1.textContent = copyText("launch.slot.missedCard", { secs });
+    line1.textContent = copyText("launch.slot.missedCard", { dur });
     body.appendChild(line1);
 
     const acts: HTMLElement[] = [];
@@ -267,12 +275,11 @@ export class LaunchSlots {
         body.appendChild(out);
       }
       if (sc.kind === "there") {
-        const terminal = sc.terminal;
-        const shot = button({ label: copyText("launch.slot.screen"), size: "compact", icon: "search", onClick: () => this.acts.preview(origin, tmuxName, terminal) });
+        const shot = button({ label: copyText("launch.slot.screen"), size: "compact", icon: "search", onClick: () => this.host.viewTerminal() });
         shot.dataset.act = "screen";
         acts.push(shot);
         if (isRemoteOrigin(origin)) {
-          const att = button({ label: copyText("sessionHead.act.openTerm"), size: "compact", onClick: () => this.acts.attach(origin, sl.spec.agent, tmuxName) });
+          const att = button({ label: copyText("sessionHead.act.openTerm"), size: "compact", onClick: () => this.acts.attach(origin, tmuxName) });
           att.dataset.act = "attach";
           acts.push(att);
         }
@@ -319,12 +326,11 @@ export class LaunchSlots {
 /** 缺省的那几件：走通道。 */
 export const CHANNEL_ACTS: SlotActs = {
   async screen(origin, tmuxName) {
-    const row = (await listTerminals(origin, tmuxName)).find((r) => r.tmuxName === tmuxName);
+    const row = (await listTerminals(origin)).find((r) => r.tmuxName === tmuxName);
     if (row === undefined) return { kind: "gone" };
-    return { kind: "there", terminal: row.terminal, words: lastWords(await previewText(origin, { terminal: row.terminal }, tmuxName)) };
+    return { kind: "there", terminal: row.terminal, words: lastWords(await previewText(origin, { terminal: row.terminal })) };
   },
-  preview: (origin, tmuxName, terminal) => void openPanePreview(origin, tmuxName, { terminal }),
-  attach: (origin, agent, tmuxName) => void runRemoteAttach(origin, agent, tmuxName),
+  attach: (origin, tmuxName) => void openSession(origin, { what: { kind: "look", session: tmuxName }, local: isLocalOrigin(origin) }),
   kill: async (origin, tmuxName) => void (await killSession(origin, tmuxName)),
   confirm: confirmDialog,
 };

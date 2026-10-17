@@ -1,4 +1,4 @@
-//! 命令表 · 资产：`assets-*` · `ext-*` · `skill-*` · `mcp-*` · `hooks-*` · `footprint-report` · `data-report` · `cc-bus-*`。
+//! 命令表 · 资产：`assets-*` · `ext-*` · `skill-*` · `mcp-*` · `hooks-*` · `footprint-report` · `data-report` · `chores-*` · `cc-bus-*`。
 
 use crate::wire::spec::CommandSpec;
 
@@ -30,6 +30,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::faces::footprint_face::ChoresMarkCmd>(
         "记下「待办」里的一个选择",
     ),
+    // 几台的「待办」件数合成一份（纯计算 ⇒ 异步档，同 `sessions-needs-merge`）：界面逐台问 `data-report`，本机后端相加。
+    crate::wire::typed::asynchronous::<crate::faces::footprint_face::ChoresMergeCmd>(
+        "把几台的「待办」件数合成一份",
+    ),
     // 设置里换 agent 家目录存之前那一问：在不在 · 是不是目录 · 有没有那一家的记录树，回一个码（`footprint/agent_home_check.rs`）。只读，阻塞档（stat）。
     crate::wire::typed::blocking::<crate::faces::footprint_face::AgentHomeCheckCmd>(
         "那个目录能不能当 agent 家目录",
@@ -51,7 +55,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     // **skill「装到这台」**：`skill-read` 在来源那台读出这个 skill 的全部文件（原文 ＋ 执行位）；
     //   `skill-install-plan` 在要被写的那一台判 —— 差异四态与「不同的要显式说盖」那道闸原样用 AS1 的 `mcp_sync::{diff, plan}`，
-    //   可疑项（可执行 · 二进制 · 绝对路径 · `#!` 要的命令）带那台的事实。两条都只读；写经 `files-put`（CAS）。阻塞档（扫盘）。
+    //   可疑项（可执行 · 二进制 · 绝对路径 · `#!` 要的命令）带那台的事实。两条都只读；写经 `Door::put`（CAS）。阻塞档（扫盘）。
     crate::wire::typed::blocking::<crate::faces::hub_inner_face::SkillReadCmd>(
         "读来源那台上的一个 skill",
     ),

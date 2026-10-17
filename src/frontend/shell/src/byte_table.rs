@@ -16,7 +16,7 @@
 //!
 //! - 表 A 的键与行 · 拒绝五形与它们的话 · `uname` 的解读：契约 crate `deploy-contract`（两侧同一份）；表 B 的承诺住后端 `control/deploy_plan.rs`。
 //!   本文件再导出那几个名字，自己只留槽与取字节口。
-//! - 字节落到哪（一个常量，与来源无关）；推上去怎么推（`sftp.rs` 部署）。
+//! - 字节落到哪（一个常量，与来源无关）；推上去怎么推（`deploy.rs` 部署）。
 //! - 那台机器上已有的那一份是谁（本机常驻后端出计划时读它字节里的身份戳）。
 
 // 表 B 的承诺是裁决（「判定只在后端」）⇒ 住后端 `deploy/lib.rs::promised`；本文件只剩表 A 的行与槽。
@@ -138,13 +138,16 @@ pub(crate) fn choose(key: Result<Key, Refusal>) -> Result<Picked, Refusal> {
     pick(key).ok_or(Refusal::NotCarried { os, arch })
 }
 
-/// 这一版为远端**真带着**哪几格后端字节（表 A 有产线的格里 [`pick`] 取得到的）、各自自报的身份 ——
-/// 交给本机常驻后端出部署计划的那一份事实（「这一版带没带」只有放字节的一侧知道）。
-/// **不按承诺筛**：承不承诺是后端判（`deploy-plan`）。
-pub(crate) fn carried_backends() -> Vec<(Key, &'static str)> {
+/// 这一版为远端**真带着**哪几格后端字节（表 A 有产线的格里 [`pick`] 取得到的）、各自自报的身份 ＋ 那一份字节 ——
+/// 交给本机常驻后端装那一趟的那一份事实（「这一版带没带」只有放字节的一侧知道；字节落成文件交路径，`deploy.rs`）。
+/// **不按承诺筛**：承不承诺是后端判（`deploy-install`）。
+pub(crate) fn carried_backends() -> Vec<(Key, &'static str, &'static [u8])> {
     LINES
         .iter()
-        .filter_map(|k| Some((*k, pick(*k)?.build_id?)))
+        .filter_map(|k| {
+            let p = pick(*k)?;
+            Some((*k, p.build_id?, p.bytes))
+        })
         .collect()
 }
 

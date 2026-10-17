@@ -12,27 +12,9 @@
 //! 上一版这里写的是「远端这一侧直接 `await` 池子那条列目录命令（同进程、同一个连接池）」。
 //! 窗口改成独立进程之后那句话早就只对一半（换进程就换一份池），F2 把那条路整条摘了。
 //!
-//! # ⚠ 排序：一个契约，盘上有两份实现 —— 而**显示序**这一半只有一个家
+//! # 排序在后端
 //!
-//! 🔴 **如实登记这个缝**：后端不排（它答的是目录项，不是一屏）⇒ 窗口这一侧的显示序
-//! 只经 [`sort_rows`]；池子那一份今天只服务旧面板。
-//! [`tests::the_two_orderings_agree_on_a_synthetic_set`] 把两份契约对拍成相等，
-//! 所以「两份漂开」这件事照旧有判据；
-//! 而「排两次会不会把序搅了」有一条结构上的答案：`slice::sort_by` 是**稳定**的，
-//! 把同一个比较器再作用一次在已经有序的那一摞上是恒等
-//! （[`tests::sorting_an_already_sorted_screenful_by_name_changes_nothing`] 现打钉着）。
-//!
-//! ⚠ **池子那一份没退役**（它排的是 `SftpEntry`，不是这一侧的行），
-//! 提级成共用件仍然要等 `sftp*.rs` 那棵树 —— **这里不动它**（另一路在改那棵树）。
-//!
-//! # 🔴 排序**可选**（`名称 / 大小 / 类型`）—— 默认那一档与今天逐字节相同
-//!
-//! 旧面板表头上那个下拉（`src/sftp/paths.ts::sortEntries` 的三档）窗口这侧此前一格都没有：
-//! [`sort_rows`] 是一个**写死**的纯函数。这一刀把「按什么排」提成 [`SortBy`] 一个入参，
-//! 而 [`SortBy::Name`]（缺省）那一支**逐字节等于改之前那一份**：
-//! 多出来的只是一个在 `Name` 那档返回 `Equal` 的 `then_with`，它对结果零影响。
-//! 这句话不是推的 —— [`tests::the_default_order_is_byte_for_byte_what_it_was_before`]
-//! 把**基线那一趟真跑出来的序**压成一个指纹钉在判据里（那个数是在基线提交上量的）。
+//! 一屏的先后（四列 · 目录在前 · 反过来只反那一列）由 `files-ls` 的 `sort` 排好送来，窗口照摆、不重排。
 
 use copy_core::copy_text;
 use std::path::Path;
@@ -108,6 +90,15 @@ pub struct Listed {
     /// 断了的链接（后端 `files-ls` 的 `link_to: "missing"`：指向的东西不在 / 读不到）。
     #[serde(default)]
     pub link_broken: bool,
+    /// 画哪种图标（后端判的 `class`）。
+    pub class: cmd_wire::files::FileClass,
+    /// 「类型」那一列的字（后端写好的；问不出 ⇒ 空）。
+    pub type_text: String,
+    /// 预览 · 看图 · 编辑那几道门（后端判好的；目录与问不出的路 ⇒ `None`）。
+    pub gates: Option<cmd_wire::files::Gates>,
+    /// 大小那一格的字（后端写好的；问不出 ⇒ `None`，那一格空着）。
+    #[serde(default)]
+    pub size_text: Option<String>,
 }
 
 impl Listed {
@@ -117,7 +108,6 @@ impl Listed {
     /// 是「问不出来」。⇒ 画的时候两格都不画，而不是画一个编出来的值。
     pub fn plain(row: Row) -> Self {
         Self {
-            row,
             link: false,
             link_dir: false,
             mtime_secs: None,
@@ -125,12 +115,36 @@ impl Listed {
             mtime_full: None,
             raw_name: None,
             link_broken: false,
+            class: if row.is_dir {
+                cmd_wire::files::FileClass::Folder
+            } else {
+                cmd_wire::files::FileClass::Other
+            },
+            type_text: String::new(),
+            gates: None,
+            size_text: None,
+            row,
         }
     }
 
     /// 点得进去：目录，或指向目录的链接。
     pub fn opens_as_dir(&self) -> bool {
         self.row.is_dir || self.link_dir
+    }
+
+    /// 这一行交给「能做什么」那一套（`pick-core`）的那几格。
+    pub fn pick(&self) -> pick_core::Pick<'_> {
+        pick_core::Pick {
+            name: &self.row.name,
+            is_dir: self.row.is_dir,
+            link: self.link,
+            link_dir: self.link_dir,
+            link_broken: self.link_broken,
+            lossy: self.row.lossy_name,
+            raw: self.raw_name.is_some(),
+            class: self.class,
+            gates: self.gates.as_ref(),
+        }
     }
 }
 
@@ -201,112 +215,15 @@ impl Source {
 //   monitor 开窗入口（`filewin/entry.rs::plan_target`：「跳到这个文件」切成目录 ＋ 名字）与窗口两边都切，切法只许一份。
 pub use filewin_contract::{parent_dir, remote_basename};
 
-/// 按哪一列排（详情视图的四列，闭集）。
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum SortBy {
-    /// 名称（小写不敏感）。**缺省**。
-    #[default]
-    Name,
-    /// 修改时间，**新的在前**。
-    Mtime,
-    /// 「类型」那一列（种类，再扩展名）。
-    Type,
-    /// 大小，**大的在前**。
-    Size,
-}
+/// 一屏按哪一列排、反没反：线上那一形，窗口状态（关窗即没）。
+pub use cmd_wire::files::{LsSort as Sort, LsSortBy as SortBy};
 
-impl SortBy {
-    /// 四列全体（表头按它画）。
-    pub const ALL: [SortBy; 4] = [SortBy::Name, SortBy::Mtime, SortBy::Type, SortBy::Size];
-
-    /// 表头那一格写什么。
-    pub fn label(self) -> String {
-        match self {
-            SortBy::Name => copy_text("rsFilewinSource.sort.name", &[]),
-            SortBy::Mtime => copy_text("rsFilewinSource.sort.mtime", &[]),
-            SortBy::Size => copy_text("rsFilewinSource.sort.size", &[]),
-            SortBy::Type => copy_text("rsFilewinSource.sort.type", &[]),
-        }
+/// 点了表头 `by` 那一列之后怎么排：同一列 ⇒ 反过来；换了一列 ⇒ 那一列的第一下。
+pub fn after_click(now: Sort, by: SortBy) -> Sort {
+    Sort {
+        by,
+        reverse: now.by == by && !now.reverse,
     }
-
-    /// 这一列第一次点下去是不是从大到小（时间 · 大小：新的 / 大的在前；名称 · 类型：A 在前）。
-    pub fn starts_descending(self) -> bool {
-        matches!(self, SortBy::Mtime | SortBy::Size)
-    }
-}
-
-/// 一屏怎么排：哪一列 ＋ 有没有被再点一次反过来。窗口状态，关窗即没。
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Sort {
-    pub by: SortBy,
-    /// 点过同一列第二次 ⇒ 反过来。
-    pub reversed: bool,
-}
-
-impl From<SortBy> for Sort {
-    fn from(by: SortBy) -> Self {
-        Self {
-            by,
-            reversed: false,
-        }
-    }
-}
-
-impl Sort {
-    /// 这一屏是不是从大到小。
-    pub fn descending(self) -> bool {
-        self.by.starts_descending() != self.reversed
-    }
-
-    /// 点了表头 `by` 那一列之后怎么排：同一列 ⇒ 反过来；换了一列 ⇒ 那一列的第一下。
-    pub fn after_click(self, by: SortBy) -> Self {
-        if self.by == by {
-            Self {
-                by,
-                reversed: !self.reversed,
-            }
-        } else {
-            by.into()
-        }
-    }
-}
-
-/// 目录在前，再按那一列排；相持一律回落到名称小写。反过来时只反那一列（目录照旧在前，同资源管理器）。
-///
-/// 🔴 **这是「屏幕上那一屏是什么序」的唯一住址。**「类型」那一列按 [`super::kind`] 判的种类，再扩展名（与那一列写的字同源）。
-pub fn sort_rows(v: &mut [Listed], sort: impl Into<Sort>) {
-    let sort: Sort = sort.into();
-    // 排序键每行先算一次（小写名 · 扩展名），比较时不再分配。
-    v.sort_by_cached_key(|r| {
-        let lower = r.name.to_lowercase();
-        let key = match sort.by {
-            SortBy::Name => By::Name(lower.clone()),
-            SortBy::Mtime => By::Num(r.mtime_secs.unwrap_or(0)),
-            SortBy::Size => By::Num(r.size),
-            SortBy::Type => By::Type(super::kind::kind_of(r), super::kind::ext_of(&r.name)),
-        };
-        let key = if sort.descending() {
-            Order::Desc(std::cmp::Reverse(key))
-        } else {
-            Order::Asc(key)
-        };
-        (std::cmp::Reverse(r.is_dir), key, lower)
-    });
-}
-
-/// [`sort_rows`] 那一列的排序键（一次排序里每行同一形）。
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
-enum By {
-    Name(String),
-    Num(u64),
-    Type(super::kind::Kind, Option<String>),
-}
-
-/// 那一列正着排还是反着排（一次排序里每行同一形）。
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
-enum Order {
-    Asc(By),
-    Desc(std::cmp::Reverse<By>),
 }
 
 /// 一条远端绝对路径 → **可点的那几段**：`(这一段叫什么, 点它去哪儿)`，根排在最前。
@@ -413,6 +330,11 @@ impl RemotePath {
         wire_bytes(tail_bytes(&self.bytes()))
     }
 
+    /// 底下名叫 `name` 的那一项（按字节拼，[`child_bytes`]）。
+    pub fn child(&self, name: &[u8]) -> Self {
+        Self::from_bytes(&child_bytes(&self.bytes(), name))
+    }
+
     /// 这条路径是有损的（显示串寻址不到真字节）。
     pub fn is_lossy(&self) -> bool {
         self.raw.is_some()
@@ -435,6 +357,20 @@ fn trim_slashes(b: &[u8]) -> &[u8] {
         end -= 1;
     }
     &b[..end]
+}
+
+/// 目录 ＋ `/` ＋ 名字（按字节；目录尾巴的 `/` 不重复，根上就是 `/名字`）。窗口里拼路径只这一处；
+/// 名字合不合法不在这里判（交那台：写面带 `single`）。
+pub fn child_bytes(dir: &[u8], name: &[u8]) -> Vec<u8> {
+    let mut b = trim_slashes(dir).to_vec();
+    b.push(b'/');
+    b.extend_from_slice(name);
+    b
+}
+
+/// [`child_bytes`] 的串版（两头都是合法 UTF-8）。
+pub fn child_of(dir: &str, name: &str) -> String {
+    String::from_utf8_lossy(&child_bytes(dir.as_bytes(), name.as_bytes())).into_owned()
 }
 
 /// [`parent_dir`] 的字节版（同一个口径：根的上一级是根）。
@@ -575,7 +511,6 @@ pub fn list_local(dir: &Path) -> Result<Vec<Listed>, String> {
             name,
         }));
     }
-    sort_rows(&mut out, SortBy::default());
     Ok(out)
 }
 
@@ -665,7 +600,7 @@ pub fn home_from_reply(r: cmd_wire::files::FilesPathReply) -> Result<String, Str
 //
 // 上一版这里是「先问后端，问不到就退回 SFTP 并出声」（那一格的裁决类型叫 `ListVerdict`，
 // 退路走池子那条列目录命令）。**整条拿掉了**：问不到就是错，原话画在窗口上。
-// 窗口进程里列目录这件事从此只有一条路、一份排序（[`sort_rows`]）。
+// 窗口进程里列目录这件事从此只有一条路（排序在后端）。
 // 那条退路的判据（「退路在、排在问后端之后、只有一支」）随它一起换成了反面：
 // `source_tests::listing_has_no_second_road_when_the_backend_refuses`（行为）＋
 // `boundary_tests` 的窗口侧登记表（池子那条列目录命令不在表里 ⇒ 写上就红）。
@@ -703,10 +638,14 @@ pub const CMD_LS: &str = "files-ls";
 /// | `kind`（`dir`/`file`/`symlink`/`other`） | `is_dir` ＋ `link` | `dir` ⇒ 目录；`symlink` ⇒ 链接。**两格，不是一格** |
 /// | `link_dir`（只在链接上、可能缺） | `link_dir` | 链接且它为真 ⇒ 指向目录；缺 ⇒ 否 |
 /// | `size`（可能缺） | `size` | 缺就是 0（同本机那条：读不到 stat 不整趟失败） |
+/// | `size_text`（可能缺） | `size_text` | 后端写好的大小那一格，原样；缺 ⇒ `None` |
 /// | `mtime_secs`（可能缺） | `mtime_secs` | 原样带上来；缺就是 `None`（＝**没送**，不是 1970） |
 /// | `mtime_text`（可能缺） | `mtime_text` | 后端按那台本地钟写好的短写法，原样；缺 ⇒ `None` |
 /// | `mtime_full`（可能缺） | `mtime_full` | 后端按那台本地钟写好的完整写法，原样；缺 ⇒ `None` |
-/// | `entries` | 那一屏有几行 | 由 [`rows_from_ls_data`] 摊开 |
+/// | `class` | `class` | 原样（画哪种图标） |
+/// | `type_text` | `type_text` | 原样（「类型」那一列） |
+/// | `gates`（目录缺） | `gates` | 原样（预览 · 看图 · 编辑许不许、许多少） |
+/// | `entries` | 那一屏有几行 | 由 [`rows_from_ls_data`] 摊开（后端排好的先后） |
 /// | `truncated` | 界面上那句「只拿到了前 N 条」 | 同上 |
 /// | `unreadable` | 界面上那句「有 n 项读不出来」 | 同上；缺 ⇒ 0 |
 ///
@@ -753,6 +692,10 @@ pub fn row_from_ls_entry(v: &cmd_wire::files::LsEntry) -> Listed {
         mtime_full: v.mtime_full.clone(),
         raw_name,
         link_broken: link && v.link_to == Some(LinkTo::Missing),
+        class: v.class,
+        type_text: v.type_text.clone(),
+        gates: v.gates.clone(),
+        size_text: v.size_text.clone(),
     }
 }
 
@@ -776,14 +719,14 @@ pub async fn list_via_backend(
     origin: &Origin,
     dir: &str,
     limit: usize,
-    by: impl Into<Sort>,
+    sort: Sort,
 ) -> Result<(Vec<Listed>, Cut), String> {
     list_via_backend_at(
         line,
         origin,
         cmd_wire::files::WirePath::from(dir),
         limit,
-        by,
+        sort,
     )
     .await
     .map_err(|f| f.said)
@@ -795,16 +738,16 @@ pub async fn list_via_backend_at(
     origin: &Origin,
     dir: cmd_wire::files::WirePath,
     limit: usize,
-    by: impl Into<Sort>,
+    sort: Sort,
 ) -> Result<(Vec<Listed>, Cut), Failed> {
     let req = cmd_wire::files::LsReq {
         path: dir,
         limit: Some(limit as u64),
         dirs_only: None,
-        sort: None,
+        sort: Some(sort),
     };
     let r = ask_typed(line, origin, &req, std::time::Duration::from_secs(20)).await?;
-    Ok(rows_from_ls_data(r, by))
+    Ok(rows_from_ls_data(r))
 }
 
 /// 目录打不开的那几种（后端的码；界面按它说一句、给出路）。
@@ -829,25 +772,11 @@ impl OpenFail {
     }
 }
 
-/// 一趟 `files-ls` 的回包 → **一屏**。
-///
-/// 🔴 **把整段抽出来（而不是只抽一条 entry）是为了让这三件都变成行为可判的**：
-/// ① 排序真的做了；② 解不出的一行**整趟报错**而不是被悄悄跳过；③ 截断那一格带回来。
-/// 第一版只抽了 `row_from_ls_entry`，于是 ②③ 只能靠源码代理钉 ——
-/// 而死值验当场量到 ② **一条判据都不红**（把 `?` 换成 `if let Ok` 静悄悄地过）。
-///
-/// # ⚠ 为什么「解不出一行」要整趟失败
-///
-/// 悄悄跳过的后果：目录里少一个文件，屏幕上没有任何提示
-/// ⇒ 与「这个文件不存在」**分不开**。而用户会据此以为文件丢了。
-pub fn rows_from_ls_data(d: cmd_wire::files::LsReply, by: impl Into<Sort>) -> (Vec<Listed>, Cut) {
-    // 解不出一行 ⇒ 整趟失败（悄悄跳过 ⇒ 目录里少一个文件，屏幕上没有任何提示）：那一步在按回包类型解（[`ask_typed`]）。
-    let mut out: Vec<Listed> = d.entries.iter().map(row_from_ls_entry).collect();
-    // 🔴 **排序在这一侧，而且它只有一份** —— 后端不排（它答的是目录项，不是一屏）。
-    //    「按什么排」由调用方给（用户在工具栏上选的那一档），算法只有 `sort_rows` 这一个家。
-    sort_rows(&mut out, by);
+/// 一趟 `files-ls` 的回包 → **一屏**（后端排好的先后照摆）＋ 截断那几格。
+/// 解不出一行 ⇒ 整趟失败（悄悄跳过 ⇒ 目录里少一个文件，屏幕上没有任何提示）：那一步在按回包类型解（[`ask_typed`]）。
+pub fn rows_from_ls_data(d: cmd_wire::files::LsReply) -> (Vec<Listed>, Cut) {
     (
-        out,
+        d.entries.iter().map(row_from_ls_entry).collect(),
         Cut {
             truncated: d.truncated,
             unreadable: d.unreadable,
@@ -866,14 +795,14 @@ pub const LS_LIMIT: usize = 50_000;
 
 /// 列一个目录 —— **只问后端**（`D11`：没有退路）。
 ///
-/// 回 `(行, 截断了吗)`。问不到 ⇒ 那句原话（[`said`] 翻过的）原样交出去。
+/// 回 `(行, 截断了吗)`。问不到 ⇒ 那句原话（[`comms_inward::chan::said::said`] 翻过的）原样交出去。
 pub async fn list_dir(
     line: &Line,
     source: &Source,
     dir: &str,
-    by: impl Into<Sort>,
+    sort: Sort,
 ) -> Result<(Vec<Listed>, Cut), String> {
-    list_via_backend(line, &source.origin(), dir, LS_LIMIT, by).await
+    list_via_backend(line, &source.origin(), dir, LS_LIMIT, sort).await
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -911,12 +840,12 @@ pub async fn ask(
 ///
 /// 🔴为什么要把码留下来：编辑器读文本那一问，后端的
 /// `too_large` / `not_text` 与「断开」是**两件事**（前者说「这份不是一份能编辑的文本」，
-/// 后者说「这一趟没走通」），而 [`said`] 翻完之后只剩一句话 —— 分它们就只能猜字符串前缀。
+/// 后者说「这一趟没走通」），而 [`comms_inward::chan::said::said`] 翻完之后只剩一句话 —— 分它们就只能猜字符串前缀。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Failed {
     /// 对端拒绝时它给的那个码（`None` = 不是对端拒的：没走通 / 这一侧拼错 / 对端不认这条命令）。
     pub code: Option<String>,
-    /// 给人看的那句话（[`said`] 翻过的，或这一侧自己的那句）。
+    /// 给人看的那句话（[`comms_inward::chan::said::said`] 翻过的，或这一侧自己的那句）。
     pub said: String,
     /// 「复制详情」那几行（首行之外）：对端拒了 ⇒ 那台后端写好的那份；通道没走通 / 这一侧的错 ⇒ 窗口进程自己写（[`detail_of`]）。
     /// 空 ⇒ 不出按钮。
@@ -1022,7 +951,7 @@ fn now_stamp() -> String {
 pub fn detail_of(at: &Origin, cmd: &str, e: &comms_inward::chan::wire::CallError) -> String {
     let origin = at.0.as_str();
     use comms_inward::chan::wire::{CallError, PeerFault};
-    // 拒绝体读不懂（不是 JSON）⇒ 那段原文进「原话」（句子只说被拒，[`said`]）。
+    // 拒绝体读不懂（不是 JSON）⇒ 那段原文进「原话」（句子只说被拒，[`comms_inward::chan::said::said`]）。
     let mut raw_body: Option<String> = None;
     if let CallError::Peer {
         why: PeerFault::Refused { body },
@@ -1084,7 +1013,7 @@ pub async fn ask_typed<C: cmd_wire::files::Call>(
 ) -> Result<C::Reply, Failed> {
     let args = serde_json::to_value(req).map_err(|e| {
         Failed::here(
-            copy_text("rsFilewinSource.ask.badArgs", &[]),
+            copy_text("reason.code.bug", &[]),
             origin,
             C::NAME,
             Some(&e.to_string()),
@@ -1093,7 +1022,7 @@ pub async fn ask_typed<C: cmd_wire::files::Call>(
     let d = ask_coded(line, origin, C::NAME, &args, t).await?;
     reply_of::<C>(d).map_err(|e| {
         Failed::here(
-            copy_text("rsFilewinSource.said.badReply", &[]),
+            copy_text("reason.content.unparsable", &[]),
             origin,
             C::NAME,
             Some(&e),
@@ -1117,10 +1046,7 @@ pub fn opened_one(
 ) -> Result<(String, Option<String>), Failed> {
     use cmd_wire::transfer::OpenState;
     let Some(o) = r.items.into_iter().next() else {
-        return Err(Failed::local(copy_text(
-            "rsFilewinSource.said.badReply",
-            &[],
-        )));
+        return Err(Failed::local(copy_text("reason.content.unparsable", &[])));
     };
     match (o.state, o.id) {
         (OpenState::Opened, Some(id)) => Ok((id, o.staged)),
@@ -1227,7 +1153,7 @@ async fn ask_raw(
     };
     let payload = Body(serde_json::to_vec(args).map_err(|e| {
         plain(Failed::here(
-            copy_text("rsFilewinSource.ask.badArgs", &[]),
+            copy_text("reason.code.bug", &[]),
             origin,
             cmd,
             Some(&e.to_string()),
@@ -1240,7 +1166,7 @@ async fn ask_raw(
         .map_err(|e| super::batch::Rebuff {
             failed: Failed {
                 code: refused_code(&e),
-                said: said(origin, cmd, &e),
+                said: comms_inward::chan::said::said(&e, origin),
                 detail: detail_of(origin, cmd, &e),
             },
             data: refused_data(&e),
@@ -1256,7 +1182,7 @@ async fn ask_raw(
     })?;
     if v.is_null() {
         return Err(plain(Failed::here(
-            copy_text("rsFilewinSource.said.badReply", &[]),
+            copy_text("reason.content.unparsable", &[]),
             origin,
             cmd,
             None,
@@ -1410,10 +1336,9 @@ pub async fn watch_coded(
                         Err(f)
                     }
                     "cancelled" => Err(plain(super::transfer::CANCELLED.to_string())),
-                    _ => Err(plain(super::find::refusal(
-                        kind,
-                        text("code"),
+                    _ => Err(plain(comms_inward::chan::said::refused(
                         text("message"),
+                        origin,
                     ))),
                 };
             }
@@ -1527,70 +1452,6 @@ pub fn refused_code(e: &comms_inward::chan::wire::CallError) -> Option<String> {
             .as_str()
             .map(str::to_string),
         _ => None,
-    }
-}
-
-/// 通道那三层失败→ 窗口上那一句话。**穷尽 `match`，不许 `_ =>`。**
-///
-/// 🔴 对端说了话（`Peer{Refused}`）时 body 是宿主那一侧拼的 `{"code","message"}`
-/// （`backend_route::layer_call_error` 逐字），翻成人话走 [`super::find::refusal`] ——
-/// 与从前经 `inbound_client` 直连时**同一个翻译**，一句都没换。
-///
-/// ⚠ `reach` 那一格要说出来：`Sent` / `Unknown` 的意思是「对面可能已经做了」，
-/// 对写面那几条这一句是承重的（用户据此决定要不要再点一次）。
-pub fn said(origin: &Origin, cmd: &str, e: &comms_inward::chan::wire::CallError) -> String {
-    use comms_inward::chan::wire::{CallError, HopFault, OursFault, PeerFault, Reach};
-    match e {
-        CallError::Peer { why } => match why {
-            PeerFault::Refused { body } => {
-                match serde_json::from_slice::<serde_json::Value>(&body.0) {
-                    Ok(v) => super::find::refusal(
-                        cmd,
-                        v.get("code")
-                            .and_then(serde_json::Value::as_str)
-                            .unwrap_or(""),
-                        v.get("message")
-                            .and_then(serde_json::Value::as_str)
-                            .unwrap_or(""),
-                    ),
-                    // 拒绝体读不懂：句子只说被拒，那段原文进详情（[`detail_of`]）。
-                    Err(_) => copy_text("rsFilewinSource.said.refused", &[]),
-                }
-            }
-            // 那台不认这条命令：全产品同一句，名字是这扇窗看着的那台。
-            PeerFault::Unsupported => copy_core::backend_old(&origin.0),
-        },
-        CallError::Hop { at, reach, why } => {
-            let what = match why {
-                HopFault::Unreachable => &copy_text("rsFilewinSource.said.unreachable", &[]),
-                HopFault::Dropped => &copy_text("rsFilewinSource.said.broken", &[]),
-                HopFault::Overrun => &copy_text("rsFilewinSource.said.timeout", &[]),
-            };
-            let did = match reach {
-                Reach::NotSent => &copy_text("rsFilewinSource.said.notSent", &[]),
-                Reach::Sent | Reach::Unknown => &copy_text("rsFilewinSource.said.mayHaveRun", &[]),
-            };
-            let leg = if at.idx == 0 {
-                &copy_text("rsFilewinSource.said.legWindow", &[])
-            } else {
-                &copy_text("rsFilewinSource.said.legHost", &[])
-            };
-            copy_text(
-                "rsFilewinSource.said.hopFault",
-                &[
-                    ("leg", &leg.to_string()),
-                    ("what", &what.to_string()),
-                    ("did", &did.to_string()),
-                ],
-            )
-        }
-        CallError::Ours { why, runs_on } => match why {
-            // 那台对这一条不认撤 ⇒ 说它可能还在跑。
-            OursFault::Cancelled if *runs_on => copy_text("rsChanWire.ours.cancelledRunsOn", &[]),
-            OursFault::Cancelled => copy_text("rsFilewinSource.said.cancelled", &[]),
-            OursFault::Misuse => copy_text("rsFilewinSource.said.internal", &[]),
-            OursFault::Broken => copy_text("rsFilewinSource.said.badReply", &[]),
-        },
     }
 }
 

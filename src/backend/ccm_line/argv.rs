@@ -38,7 +38,7 @@ pub(crate) mod flag {
     pub(crate) const TAB_FROM: &str = "--tab-from";
     /// 直接给账号配置目录（说不出账号名的那一形：分叉继承源会话的目录）。
     pub(crate) const ACCOUNT_DIR: &str = "--account-dir";
-    /// 这一发不轮换，只用起它的那个号（同 `session-new` 的 `rotation: {strategy: null}`）：起之前按这一发定好的会话ID记成「不轮换」。
+    /// 这一发不轮换，只用起它的那个号（同 `session-open` 的 `rotation: {strategy: null}`）：起之前按这一发定好的会话ID记成「不轮换」。
     pub(crate) const NO_ROTATION: &str = "--no-rotation";
     /// 分隔符：最后一个 `--` 左边交 agent、右边归 ccm。
     pub(crate) const END: &str = "--";

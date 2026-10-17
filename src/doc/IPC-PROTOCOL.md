@@ -3,15 +3,15 @@
 两件事：**后端的线上协议**（monitor 与第二个前端都按它接后端）与**本机进程之间的几份文件**（PowerShell 绑窗 · 设置 · 历史注解）。
 
 本页只写不随命令变的总述。每一帧、每一条命令、每一个子命令的逐格形状在 **[IPC-COMMANDS.md](IPC-COMMANDS.md)** —— 那一份从代码生成
-（`tests/backend/protocol_doc_gen.rs`，判据「重新生成 == 仓里那份」），改了帧字段或命令登记之后在 `src/backend` 下跑
-`CCM_REGEN_PROTOCOL_DOC=yes cargo test --lib -- protocol_doc_gen` 重生成。
+（`tests/backend/protocol_doc_gen.rs`，判据「重新生成 == 仓里那份」），改了帧字段或命令登记之后那条判据红、
+现打的那份落在 `.build/golden/`，对过后 `bash tests/scripts/bless-golden.sh` 拷回。
 
 ## 1. 载体
 
 | 载体 | 谁用 | 怎么接 |
 |---|---|---|
 | SSH exec | 远端（monitor 经本机常驻后端的连接池 · 第二个前端直连） | `ccm -- --stream …`：后端写 stdout、读 stdin |
-| 常驻套接字 | 本机常驻后端 · 远端常驻后端（经 `link-open` 的 `use:"stream"` 在那台跑 `ccm -- --resident-attach` 小中继，原样对拷） | Unix 套接字 `<家>/run/backend.sock`（家 = `~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`；目录只给本人，收连接时核对端 uid，没有钥匙）；连上就交一行 `{"attach":true}`（可带 `"tz"` · `"mine"`，见 §2；别的键一律当 malformed；不必等 hello，hello 写在分档之前），再读 hello、读回话：`{"attach":"ok"}`（带了 `mine` ⇒ 多一格 `"relation":"same"|"older"|"newer"|"incomparable"`，这台相对 `mine`，序键是 `BUILD_ID` 的）或 `{"attach":"refused","reason":"malformed-attach"}`（认不得这一形的就是比这一形早的，客户端当旧）；中继找不到或够不着那台常驻时第一行就是 `{"attach":"refused","reason":"absent"|"unreachable"}`；这台一份 watcher（会话账本 · 记录读者 · 运行簿整台一份，记录整台只预读一次），每条连接各一份投影（出方向通道 · 名单 · 丢帧账）/ 入方向 / writer |
+| 常驻套接字 | 本机常驻后端 · 远端常驻后端（经 `link-open` 的 `use:"stream"` 在那台跑 `ccm -- --resident-attach` 小中继，原样对拷） | Unix 套接字 `<家>/run/backend.sock`（家 = `~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`；目录只给本人，收连接时核对端 uid，没有钥匙）；连上就交一行 `{"attach":true}`（可带 `"tz"` · `"mine"` · `"watch"`，见 §2；别的键一律当 malformed；不必等 hello，hello 写在分档之前），再读 hello、读回话：`{"attach":"ok"}`（带了 `mine` ⇒ 多一格 `"relation":"same"|"older"|"newer"|"incomparable"`，这台相对 `mine`，序键是 `BUILD_ID` 的）或 `{"attach":"refused","reason":"malformed-attach"}`（认不得这一形的就是比这一形早的，客户端当旧）；中继找不到或够不着那台常驻时第一行就是 `{"attach":"refused","reason":"absent"|"unreachable"}`；这台一份 watcher（会话账本 · 记录读者 · 运行簿整台一份，记录整台只预读一次），每条连接各一份投影（出方向通道 · 名单 · 丢帧账）/ 入方向 / writer |
 | 一次性 exec | CLI 子命令（脚本 · skill · 第二个前端的查询） | `ccm -- --子命令 …`，干完即退、不进流 |
 
 后端二进制叫 `ccm`（`~/.cc-monitor/bin/ccm`）：零参数是「起会话」，打头的 `--` 之后才归后端（`<交给 claude 的…> -- <ccm 自己的…>`）。
@@ -27,20 +27,21 @@
 | 载体 | 怎么交 |
 |---|---|
 | SSH exec / stdio（CLI 那一臂） | `ccm -- --stream [--tz <IANA 名>] [--view <声明>]`。`--stream` 是「我是流模式」的显式词；`--view` 的值同 §8 CLI 面那一格（JSON 原样或 base64）。声明认不出 ⇒ 不起流：stderr 一行失败信封（`bad_args`）、退出 2 |
-| 常驻那条连接 | attach 行 `{"attach":true,"tz":"Asia/Shanghai","mine":"<BUILD_ID>"}`：两格都可缺；别的键 ⇒ `{"attach":"refused","reason":"malformed-attach"}` |
+| 常驻那条连接 | attach 行 `{"attach":true,"tz":"Asia/Shanghai","mine":"<BUILD_ID>","watch":{"sids":[…],"branch":[…],"kept":[…]}}`：三格都可缺；`watch` 与 `stream-watch` 的入参同形，这条流从第一帧起照它发；别的键 ⇒ `{"attach":"refused","reason":"malformed-attach"}` |
 
 - **`tz`**：这条流**推**出去的钟面（`line.record.timeText` · `session_runs.runs[].startedText`）按它写。缺 · 认不得 ⇒ UTC。见 §4「时刻按谁的钟」。
 - **`view`**（只 CLI 那一臂）：与请求信封的 `view` 同一套词、同一处解（§4）；只许点推送帧里住着的成品：`record`（`line.record`）· `session_added` · `session_status` · `session_state` · `session_removed`（整帧就是那件成品，`kind` 不受裁）。
   点了别的成品 ⇒ 当认不出。缺 ＝ 全量。应答不受它管（应答各按各的请求信封）。
 - **`mine`**（只常驻那条）：手上这一版的 `BUILD_ID`；回话里那一格 `relation` 由它算，客户端不另问新旧。
+- **`watch`**（只常驻那条）：在看名单 `{sids, branch?, kept?}`（同 `stream-watch` 的入参，下一节）；那台接上那一刻就照它定这条连接的名单，宣告之后的运行表 · 行 · 活卡只发名单里的，`branch` 里的会话接上即补清单。缺 ＝ 全看（不报名单的载体）。
 
 ### 流只发要看的会话
 
-一条流用 `stream-watch {sids, branch}` 报它此刻在看哪几个会话（整份换；从没报过 ＝ 全看）。不在名单里的会话，它的 `line` · `session_runs` · `session_branch` 不上这条流（后端照读照数，行号不断）；宣告 · 状态 · 去向 · 文件重读 / 不在了 · `changed` 照发。`session_branch` 另要订：只给 `branch` 里列了的会话（`[{sid, path?, at, sum?}]`，交回手上那份的条数与摘要），后端照它只补缺的那一截；不读主线外清单的一头（手机）交空的，一帧都不收。
+一条流此刻在看哪几个会话（整份换）：常驻那条连接在 attach 行的 `watch` 里带上，从第一帧起生效；之后变了用 `stream-watch {sids, branch, kept}` 报（同形）；stdio 载体没有 attach 行，接上之后报一次（报之前 ＝ 全看）。客户端名单从空开始（还没人看 ＝ 一个都不看），每台一张名单台（`resident-client` 的 `watch::Desk`）管报、重报与 `from[]`，桌面与手机同一份。不在名单里的会话，它的 `line` · `session_runs` · `session_branch` 不上这条流（后端照读照数，行号不断）；宣告 · 状态 · 去向 · 文件重读 / 不在了 · `changed` 照发。`session_branch` 另要订：只给 `branch` 里列了的会话（`[{sid, path?, at, sum?}]`，交回手上那份的条数与摘要），后端照它只补缺的那一截；不读主线外清单的一头（手机）交空的，一帧都不收。`kept`（可缺）：手上留着记录、要那台说清去向的会话 id（桌面 ＝ 重放留存里那台有行的）；那台清单报完了、会话账上没有它（不活 · 不可重连 · 不在等裁）⇒ 只给这条连接一帧 `session_state {state: ended}`（清单还没报完 ⇒ 放出 `sessions_replayed` 那一刻答，排在它后面），一条只答一次。「已结束」只由那台答，客户端不自己推。
 应答 `from[]` 给刚进名单的会话每份记录一格 `{sid, path, seq}`：这条流从第 `seq` 行起发它，`[0, seq)` 由客户端按骨架补（`history-index` 从上次的末端续）；同时补发一帧整份的运行表与主线外清单。两段合起来不重复也不漏（重叠处按 `(sid, seq)` 去重）。
 
 桌面那一侧（monitor）：每台的名单 ＝ 主窗口当前那个 tab ∪ 开着查看窗跟着的会话；名单一变、或那台换了一条新连接（新连接 ＝ 没报过），就在那台的长连接上重报一次（`src/frontend/shell/src/stream_watch.rs`）。主窗口还没报过之前一台都不报（全看）。
-`from[]` 原样进会话流（`watch` 格，不吃 credit）：tab 与查看窗补上 `[已有, seq)`（缺得不多按行号取到 `seq`；缺得多 ⇒ tab 整份重来、只取 `seq` 之下一截尾巴，更早的往上翻再取）；壳的留存同一拍修成连着的一段（F5 重放不出洞）。
+`from[]` 原样进会话流（`watch` 格，没 credit 也照交）：tab 与查看窗补上 `[已有, seq)`（缺得不多按行号取到 `seq`；缺得多 ⇒ tab 整份重来、只取 `seq` 之下一截尾巴，更早的往上翻再取）；壳的留存同一拍修成连着的一段（F5 重放不出洞）。
 
 ## 3. hello：先读它，再说话
 
@@ -73,8 +74,6 @@
   认不出的那几处写进 `detail`。今天出成品、收 `view` 的命令与成品住处：`history-read`（`rows[]` 是 `read_row`，其中 `record` 是 `record`）·
   `history-page` / `history-lines`（`lines[].record`）· `history-run`（`rows[].record`）· `history-facts`（整份应答是 `facts`）；别的命令带 `view` 一律 `bad_args`。
   投影只是「这一次不发」：成品与格目录（冻结的那几件也一样）一格不动。
-  续算令牌那几格投影不去（`history-facts` 的 `end` · `rev`：`cells` 没点、`omit` 点了都照样在），下一问把它们当 `prior: {end, rev}` 交回。
-  令牌对不上那台常驻后端续算表里的任何一份（挤掉了 · 后端重启过 · 一次性 CLI 进程）⇒ `stale_prior`，调用方不带令牌从 0 要一份。
 - **`tz`（时刻按谁的钟）**：看的那一台（桌面 · 手机）的时区，IANA 名。回包里写成字的时刻（`…Text` · `timeText` · `tsText` · `startText` · `mtime_text` · 今天 / 昨天那几格）**一律按它写**，不按答话那台后端自己的钟；远端那一跳（这台替看的人问另一台）回来的原始时刻也由这台按它写。
   不是串 · 时区库里没有这个名 · 没带 ⇒ **按 UTC 写**（不拒），但当成「看的那一台说不出自己的时区」：要那一台时区名的地方不冒充成 `UTC`
   （`rotation-view` 的「时区不明」那一条不带 `zone`、句子里照实说一句）。`local` ＝ 看的人就在答话这一台：按这台系统的钟，要那一台时区名时给这台系统的时区名（说不出同上）。替看的人问别台时照算的那一个转过去（没说 ⇒ 明说 `UTC`）。偏移按**那一刻**算（夏令时跟着那一刻，冬天看夏天的记录照样对）；时区库随后端二进制带，各平台同一份。
@@ -85,7 +84,7 @@
 - **超时归客户端**：后端零定时器，不替客户端掐表；客户端的期限覆盖「写入 ＋ 等应答」两段，到点就撤单（`cancel`）。
 - **取消是一条普通命令**。撤一个不存在的 `id` 也回 `ok`。阻塞档的命令开跑之后打不断，`cancel` 回 `not_cancellable`（去等它自己的应答），不会回一条假的 `cancelled`。
 - **应答走独立的小通道**（256 条），与出方向的实时帧（10 000 条）分开：丢一条内容帧可恢复，丢一条应答客户端会永远等下去。writer 有界地优先应答。
-  同走这条通道的还有几种「丢了就停住」的帧：链路字节（`link_data` / `link_end`）· 传输进度（`transfer`）· 测试连接进度（`probe`）· 终端实时预览的画面与收尾（`terminal_screen` / `terminal_follow_end`）。
+  同走这条通道的还有几种「丢了就停住」的帧：链路字节（`link_data` / `link_end`）· 传输进度（`transfer`）· 测试连接进度（`probe`）· 装后端那一趟的进度（`deploy`）· 终端实时预览的画面与收尾（`terminal_screen` / `terminal_follow_end`）。
   终端画面每条订阅至多一帧在途（客户端回执才推下一帧）、每条连接至多 8 条订阅，单帧至多 512 KiB，所以占不满这条通道。
 - **信任边界**：单行上限 1 MiB（超了整行丢、回 `line_too_long`，`id` 从行首至多 4 KiB 里尽力抠）· 坏 JSON 回 `bad_request` 并继续读 · 任何失败都不结束读循环、不结束进程。
 - **码分两层**：协议级码（闭集，见 IPC-COMMANDS.md 第 3 节）与命令无关、只有入方向那一层发得出；命令自己的码列在各命令下面。客户端拿到协议级码 ＝ 客户端代码写错了，别重试。
@@ -97,8 +96,8 @@
 
 ## 5. 会话流：帧的先后与续传
 
-1. 连上：`hello` → 每个活会话一帧 `session_added`（宣告时带初始 `activity` / `waiting_for`；后台会话带 `background: true`）→ `sessions_replayed`（「清单报完了」：分清「还没说完」与「说完了、里面没有它」）。
-   `session_added.agent_kind` 每条都带（那一家的 kind）；`account` 是这条会话跑在账号库里哪个号下（宣告时读会话进程环境里的配置目录判一次；那一家没有账号库 · 判不了 ⇒ 缺），界面的账号徽章只读它，起停不再回头问。哪几家进流、各自怎么判活由适配层在注册表那一行声明（`Adapter::live`：认 pidfile · 认开着写 · 判不了），
+1. 连上：`hello` → 每个活会话一帧 `session_added`（宣告时带那条会话的整份脸 `face` 与 `waiting_for`；后台会话带 `background: true`）→ `sessions_replayed`（「清单报完了」：分清「还没说完」与「说完了、里面没有它」）。
+   `session_added.agent_kind` 每条都带（那一家的 kind）；脸上的 `account` 是这条会话跑在账号库里哪个号下（宣告时读会话进程环境里的配置目录判一次，之后那几帧的脸照带；判不了 ⇒ 缺），界面的账号徽章只读它，起停不回头问。哪几家进流、各自怎么判活由适配层在注册表那一行声明（`Adapter::live`：认 pidfile · 认开着写 · 判不了），
    冷读（`history-facts` 的 `writers` 与「状态不明」的原因 · `history-turns` 还在跑那一轮）问同一个声明（`accounts_query::session_holders`）：
    - 有 pidfile 的那一家（Claude Code）：活会话 ＝ pidfile 在、进程在。
    - 没有 pidfile 的那一家（Codex）：活会话 ＝ **有进程开着它的那份记录写**（看 `/proc/<pid>/fdinfo` 的打开方式，不看进程名）；
@@ -111,9 +110,9 @@
      只在 Linux 上判得了；别的平台照实判不了，这一家的会话不宣告。
 2. 内容：每条记录一帧 `line`，带成品 `record`（通用记录，见下面「通用记录」一节；缺 ＝ 不进界面、照占号）、`seq`（本条流里按文件单调递增）与 `byte_offset`（这一行末尾在文件里的累计字节）。
    **续传用 `byte_offset`，不用 `seq`**：断线重连后拿它当偏移再读（`history-read`）。
-3. 状态：`session_status`（红绿灯变了才发，天然稀疏；`activity` ＝ `working` · `needs_you` · `idle` · `background_work`（一轮停了、它在后台起的命令还在跑），后端适配层从那一家的进程状态翻过来；没有进程状态文件的那一家照它记录里的事件翻（一轮开始 ⇒ `working`，一轮完了 / 中止 ⇒ `idle`），翻不出就不带）· `session_runs`（子运行表，整份）· `changed`（「这台的某样东西变了」，下面「`changed` 主题表」）。
-4. 离开：`session_removed`（`cause`：`gone` 真没了 · `superseded` 同一个 pidfile 原地换了 sid，后者客户端直接归档、别去查 tmux）→ `session_state`（这台后端自己裁：`reconnectable` 容器还在、接得回去 · `ended` 只能 resume）。
-5. 记录文件被动过：`session_file_gone`（不见了，不误判结束）· `session_file_reread`（被截短 / 改写过、已从头重读；紧排在重读出来的 `line` 之前）。
+3. 状态：`session_status`（红绿灯变了才发，天然稀疏；带整份脸 `face`：点 · 短名 · 悬停句 · 状态一句 · 序 · 能做什么，在干什么在 `face.live.activity` ＝ `working` · `needs_you` · `idle` · `background_work`（一轮停了、它在后台起的命令还在跑），后端适配层从那一家的进程状态翻过来；没有进程状态文件的那一家照它记录里的事件翻（一轮开始 ⇒ `working`，一轮完了 / 中止 ⇒ `idle`），翻不出就不带）· `session_runs`（子运行表，整份）· `changed`（「这台的某样东西变了」，下面「`changed` 主题表」）。
+4. 离开：`session_removed`（`cause`：`gone` 真没了 · `superseded` 同一个 pidfile 原地换了 sid，后者客户端直接归档、别去查 tmux）→ `session_state`（这台后端自己裁：`reconnectable` 容器还在、接得回去 · `ended` 只能 resume；带离开「活」之后那份 `face`）。
+5. 记录文件被动过：`session_file_gone`（不见了，不误判结束）· `session_file_reread`（被截短 / 改写过、已从头重读；重读的行不逐行上流，帧带读完的行数，客户端照宣告那样从尾段取）。
 6. 背压：实时通道满时丢帧，排空后发一帧 `overflow`（丢了几帧 ＋ 不可恢复的那些帧的身份 `lost`）。`line` 丢了可以从记录文件补；`session_added` / `session_removed` / `session_status` / `session_state` / 不可丢主题的 `changed`（`lost` 里 `kind: "changed"`、`subject` ＝ `主题` 或 `主题/key`）这类一次性结论丢了别处没有，客户端按 `lost` 重同步。
 
 ### `changed` 主题表
@@ -137,15 +136,16 @@
 | `login` | 否 | 带 | — | 带（≤ 8192 B） | `manual-list` |
 | `manual` | 是 | — | — | — | `manual-list` |
 | `machines` | 是 | — | — | — | `machines-read` |
+| `machine` | 是 | 带 | — | 带（≤ 8192 B） | `machine-read` |
 | `session_hidden` | 否 | 带 | — | 带（≤ 1024 B） | `history-list` |
 <!-- topic-table:end -->
 
 `key`：`rotation` · `tasks` · `needs` 是会话 id，`plan` 是工作区根。`needs`：那个会话挂着的待答请求变了（答题 hook 挂上 · 撤掉 · 有人答掉），重读它的 `needs`（`sessions-needs` 或那个会话的 `history-facts`）。`rev`：`plan` 是新的输出摘要（同 `plan-read` 的 `rev`），与手上那一份相同 ⇒ 不用问。
 `body`：`plan` 是 `{needs}`（这个工作区此刻要你看的数：没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）；其余带 `body` 的就是「重问」那条命令的应答（`tasks` 问 `{sid: key}`、另两样不带参数；`rotation` 不带，客户端照 `{target: {sid: key}}` 重问 `rotation-view`），由同一个处理器在发帧时现算，超了上限或答不成就不带。
 账号清单不带（`accounts-list` 要客户端说是哪一家）；配置文件不带（整份大）。
-`login`：一份登录作业自己收了（本机浏览器回调登完 · 登录子命令先退了），`key` 是作业号，`body` 是 `{state: "done"}` 或 `{state: "failed", said, detail}`；只推给发起它（`login-start`）的那条连接。`manual`：会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了 · 某个号记「MCP 要登录」的那份文件翻了），重问 `manual-list`。`machines`：这一端的机器表被改写（`machines-set` · 换形那一次），重问 `machines-read`；monitor 照它对齐远端流。
+`login`：一份登录作业自己收了（本机浏览器回调登完 · 登录子命令先退了），`key` 是作业号，`body` 是 `{state: "done"}` 或 `{state: "failed", said, detail}`；只推给发起它（`login-start`）的那条连接。`manual`：会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了 · 某个号记「MCP 要登录」的那份文件翻了），重问 `manual-list`。`machines`：这一端的机器表被改写（`machines-set` · 换形那一次），重问 `machines-read`；monitor 照它对齐远端流。`machine`：这一端连的某台远端此刻的状态变了（接常驻那一轮 · 部署走到哪一步 · 「连接这台」开关），`key` 是那台的名字，`body` 是那台的状态成品（同 `machine-read` 里那一格）；本机常驻后端才推。
 `session_hidden`：这台某个活会话隐不隐藏变了（注解 · 这台偏好 `childTab` / `bgTab` · 会话血缘动了之后重判的），`key` 是会话 id，`body` 是 `{hidden}`（那一格 `{by, said}`，不隐藏 ⇒ `null`；判定只住后端一处，`session_added` · `history-list` 每行 · `sessions-needs` 每行带的是同一格），收到就换、不重读整份清单；万一没收到，重问 `history-list {sid}` 那一行。
-可丢的走 tap 那条（丢了下一次变化或重问就补上），不可丢的走 watcher 的出方向（丢了进 `overflow.lost`）；`login` 走发起它的那条连接的应答通道（不丢）。带了 `body` 不改可丢性。
+可丢的走 tap 那条（丢了下一次变化或重问就补上），不可丢的走 watcher 的出方向（丢了那台就地重报时再发一帧）；`login` 走发起它的那条连接的应答通道（不丢）。带了 `body` 不改可丢性。
 
 历史不重放 ⇒ 客户端先取快照（尾部优先：`history-tail`）。宣告不等记录：`session_added` 一认出来就发，记录在后台预读，读完发 `session_primed {sid, path?, lines?}` —— `session_primed.lines` 是那一刻那份记录的完整行数，这条会话的 `line` 从这一行起来（之前一帧都不发，`session_runs` · `session_branch` 同），客户端在这一帧排快照、拿它核快照拉全了没有。半路接上来的连接先收一份此刻的样子：每个活会话一帧 `session_added`（现值）、读完了的再一帧 `session_primed`（行数是此刻已计完的）、运行表 · 可重连的 `session_state`（主线外清单不在里面：报名单时照 `branch` 给） · 清单已报完就一帧 `sessions_replayed`。
 
@@ -167,21 +167,21 @@
 桌面端（monitor）与第二个前端（手机端）吃同一个后端。第二个前端按下面这些格读，缺一格就把整帧当坏帧丢 ⇒ 它们**冻结**：不许改名、删、换类型，只许加新字段；非改不可就两边同拍。
 
 - 帧：`hello` `v` `build_id` `host_arch` `claude_dir` `emits` · `line` `session_id` `path` `seq` `byte_offset` `record` ·
-  `overflow` `dropped` `lost` `lost_truncated` · `live` `sid` `run` `card` `n` `op` `rid` `phase` `clipped` `blocks` ·
+  `overflow` `said` · `live` `sid` `run` `card` `n` `op` `rid` `phase` `clipped` `blocks` ·
   `reply` `id` `ok` `code` `message` `detail` `data` · `cancelled` `id` · 请求信封 `id` `cmd` `args` `within_ms`（可缺）`tz`（可缺）`view`（可缺）。
-- 会话三帧与成品面在格目录里：每格带 `frozen`。`session_added`（`sid` `path` `cwd` `name` `waiting_for` `agent_kind` `attachable` `activity` `activity_text` `activity_tone` `background`）·
-  `session_status`（`sid` `waiting_for` `activity` `activity_text` `activity_tone`）· `session_removed`（`sid` `cause`）只冻这几格；
+- 会话三帧与成品面在格目录里：每格带 `frozen`。`session_added`（`sid` `path` `cwd` `name` `waiting_for` `agent_kind` `attachable` `background` 与整份脸 `face` 里手机读的那几格）·
+  `session_status`（`sid` `waiting_for` 与 `face` 那几格）· `session_state`（`sid` 与 `face` 那几格）· `session_removed`（`sid` `cause`）只冻这几格；
   `line.record` 与 `history-read` 的 `rows`（`end` `hash` `record` `cwd`）整件冻结 —— 通用记录的公共格、六类各自的格、`who`、`error`、各种内容块逐格冻结（见下面「通用记录」一节）；
   `history-page` / `history-lines` / `history-run` 的 `record` 是同一形；
-  `quota-read`（`quota_read`：每号的 `rows` · `fiveHour` · `warm` 与号名表 `names` 等）· `history-list`（`history_list`：每行的标题 · 时刻 · 段头 · 注解三格等）只冻手机读的那几格。新加一格随格目录金样重写（`cells_catalog_tests::the_golden_is_what_the_command_writes`，删 / 改名 / 换类型 / 解冻重写也不放行）。
+  `quota-read`（`quota_read`：每号的 `rows` · `fiveHour` · `warm` 与号名表 `names` 等）· `history-list`（`history_list`：每行的标题 · 时刻 · 段头 · 注解三格 · 整份脸那几格等）只冻手机读的那几格。新加一格随格目录金样重写（`cells_catalog_tests::the_golden_is_what_the_command_writes`，删 / 改名 / 换类型 / 解冻重写也不放行）。
   `line.raw` 逐字节等于记录文件里那一行，去掉行尾（`\n`；CRLF 行连 `\r` 一起去）。
 - **改了冻结的格就得打版本号**（同加子命令）：`build_id_guard` 的指纹带一行冻结格的摘要 ⇒ 第二个前端连上只核 `BUILD_ID` 这一处，不用逐格核。
 - 一次性子命令：第二个前端只调 `--backend-probe` · `--resident-ensure`（可带 `--replace`）· `--resident-attach`，其余都走常驻流上的帧命令。
-- 会话是不是后台、此刻在干什么只看后端判好的 `background` · `activity`；那一家的原词不上线。
+- 会话是不是后台、此刻在干什么只看后端判好的 `background` · `face`；那一家的原词不上线。
 - 判据：`wire_tests::the_shapes_the_second_frontend_reads_stay_put`（帧那张表，类型逐格对）· `cells_catalog_tests::the_golden_is_what_the_command_writes`（格目录里冻结的格）· `build_id_guard::tests::adding_a_subcommand_forces_a_build_id_bump`（子命令集或冻结格变了 ⇒ 打版本号）· `wire_tests::the_subcommands_the_second_frontend_calls_stay_put`（子命令那三条）。
 - 跨语言金样：`tests/__fixtures__/session-stream.golden.jsonl`，每种帧两行（「全格」与「最少格」），由后端真序列化器写；最少格里的格就是必填格。
   终端管理 `tests/__fixtures__/terminals.golden.json` · `resolve` `tests/__fixtures__/resolve-contract.golden.json`。
-- 部署：第二个前端不部署后端。它连上一台先 `--backend-probe`，那台的 `BUILD_ID` 与自己这一版不同就提示那台要更新、不接；远端的后端由桌面端按 `deploy-plan` 放。Release 资产名（含两个 musl 后端与 `SHA256SUMS-linux.txt`）登记在 [RELEASING.md](RELEASING.md)。
+- 部署：第二个前端不部署后端。它连上一台先 `--backend-probe`，那台的 `BUILD_ID` 与自己这一版不同就提示那台要更新、不接；远端的后端由桌面端经本机后端 `deploy-install` 装。Release 资产名（含两个 musl 后端与 `SHA256SUMS-linux.txt`）登记在 [RELEASING.md](RELEASING.md)。
 
 ### 通用记录
 
@@ -203,7 +203,7 @@
 | 类 | 格 |
 |---|---|
 | `said`（人那一侧说的：人 · 工具结果 · 派活 · 来话 · 通知 …） | `who`（`UserText`：`speaker` 谁说的，`kind` 闭集 `human` `slashCommand` `bashInput` `bashOutput` `commandOutput` `taskNotification` `agentMessage` `peerSession` `coordinator` `agentTask` `system` `compactSummary` `interrupt` `toolResult`；`text` 要显示的正文；`pasted?` 粘贴块）· `blocks` · `results?`（工具调用 id ⇒ 结果一句：`ok` `rejected?` `lines?` `added?` `removed?` `files?` `answer?` `exitCode?` `file?` `patch?` `patchTruncated?`；`patch` 至多 32 KiB、整段不劈）· `cwd?` |
-| `reply`（代理的回复） | `blocks` · `model?` · `autoReply`（代理那一侧自动写的应答，不建卡）· `cards?`（工具调用 id ⇒ 卡型 `agent` `interactive` `diff` `md` `command`）· `steps?`（工具调用 id ⇒ 过程一行：`tool` · `arg?` · `path?` · `note?` · `known`）· `runs?`（工具调用 id ⇒ 派出的子运行 `{label, kind?}`）· `error?`（上游最终失败写的报错：`reason` 闭集 `overloaded` `quota` `network` `auth` `context` `unknown`，`status?` HTTP 状态码；报错正文在 `blocks` 里） |
+| `reply`（代理的回复） | `blocks` · `model?` · `autoReply`（代理那一侧自动写的应答，不建卡）· `cards?`（工具调用 id ⇒ 卡型 `agent` `interactive` `diff` `md` `command`）· `steps?`（工具调用 id ⇒ 过程一行：`tool` · `arg?` · `path?` · `note?` · `known`；展开画的 `body?`：改动 `{kind: changes, changes: [{old, new}]}` · 命令 `{kind: command, line}`；可在文件窗口定位的绝对路径 `file?`。界面只按这几格画，不读 `tool_use.input` 的键）· `runs?`（工具调用 id ⇒ 派出的子运行 `{label, kind?}`）· `error?`（上游最终失败写的报错：`reason` 闭集 `overloaded` `quota` `network` `auth` `context` `unknown`，`status?` HTTP 状态码；报错正文在 `blocks` 里） |
 | `retry`（上游失败、将重试） | `reason`（同上闭集）· `attempt?` · `max?` |
 | `title`（会话标题） | `text` · `by`（`agent` 代理起的 · `user` 人起的） |
 | `queued`（人在一轮跑着时插进去的一句） | `who`（同 `said`） |
@@ -263,7 +263,7 @@
 | `machines.json` | `machines-set`（按键认那一台；指纹记于哪天由它盖；写完整张表要成立：`control/machines.rs::check_table`） | `machines-read` · monitor（照它起停远端流） | 这一端连各台用的机器表：名字 · 地址 · 端口 · 用户 · 钥匙路径 · 指纹 · 备用地址 · 跳板 · 连不连 |
 | `prefs-handoff.json` | 本机常驻后端起来时那一次换形 · `remote-reach` 之后交出去那一下 | `remote-reach`（那台连上时） | 升级时从 `config.json` 搬来的远端每台的偏好，那台还没有偏好时交过去（`prefs-set`），交完删那一条；下一版删 |
 
-设置窗机器列表那一格的成品（`state` · `reason` · `fixes` …）判定只在 `machine_state.rs`，形状以金样 `tests/__fixtures__/machine-state.golden.json` 为准。
+设置窗机器列表那一格的成品（`state` · `word` · `said` · `fixes` …）：远端各台判定只在后端 `deploy/machine.rs`（本机常驻后端答 `machine-read`、推 `changed {machine}`；壳把接常驻那一轮的结论经 `machine-round` 原样交过去），本机那一行由壳照同一批文案键出（`backend_status` 的 `machine`）；形状以金样 `tests/__fixtures__/machine-state.golden.json` 为准。
 
 **Claude Code 自己写、后端只读的两份**（集成方要自己写 pidfile 时看这里）：
 

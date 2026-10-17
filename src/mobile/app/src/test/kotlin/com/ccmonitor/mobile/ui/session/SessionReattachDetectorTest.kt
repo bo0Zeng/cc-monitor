@@ -7,7 +7,6 @@ import com.ccmonitor.mobile.core.ssh.ShellChannel
 import com.ccmonitor.mobile.core.ssh.SshConnectEvent
 import com.ccmonitor.mobile.core.ssh.SshTransport
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -42,8 +41,6 @@ class SessionReattachDetectorTest {
             cols: Int,
             rows: Int,
         ): ShellChannel = error("unused")
-
-        override fun execStream(command: String): Flow<ByteArray> = error("unused")
 
         override suspend fun execCapture(command: String): ExecResult = error("unused")
     }

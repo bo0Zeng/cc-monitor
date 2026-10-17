@@ -30,7 +30,7 @@ vi.mock("../../../src/frontend/ui/ipc/chan-caller", async (orig) => ({
       refuse.delete(name);
       throw Object.assign(new Error(code), { code });
     }
-    return { segs: [] };
+    return name === "rotation-settings" ? { dirty: true, settings: { 夹具: "改完的那份", n: calls.filter((c) => c.name === name).length } } : {};
   }),
 }));
 
@@ -39,18 +39,17 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { RotationStrategiesReply } from "../../../src/frontend/ui/generated/RotationStrategiesReply";
 import type { RotationViewReply } from "../../../src/frontend/ui/generated/RotationViewReply";
 
-const LIST: RotationStrategiesReply = { strategies: [{ id: "按权重轮换", description: "说明", rev: "h:1", inUse: [], forNew: true, wordsBad: false, tzUnknown: false }], forNew: "按权重轮换", oldScripts: 0 };
+const LIST: RotationStrategiesReply = { strategies: [{ id: "按权重轮换", description: "说明", summary: "说明", rev: "h:1", inUse: [], forNew: true, wordsBad: false, tzUnknown: false }], forNew: "按权重轮换", oldScripts: 0 };
 const VIEW: RotationViewReply = {
   now: 1,
   nowText: "00:00", title: null,
   strategy: LIST.strategies[0],
-  form: [{ key: "close", kind: "percent", scope: "all", min: 0, max: 100, default: 25, label: "夹具·容差" }],
   settings: { accounts: [{ id: "work" }], close: 25 },
+  board: { all: [{ key: "close", kind: "percent", label: "夹具·容差", v: 25, num: 25, from: "own", min: 0, max: 100 }], rows: [{ account: "work", line: "", hover: "", cells: [] }] },
   dirty: true,
   start: "work",
   current: "team",
-  plates: { work: { color: 0, label: "work" } },
-  accounts: [{ account: "work", kind: "sub", w5h: { open: true, used: 99 }, w7d: { open: true, used: 1 }, login: "ok", blocked: { why: "used", text: "后端写的那一句" } }],
+  accounts: [{ account: "work", plate: { color: 0, label: "work", text: "wo" }, kind: "sub", w5h: { open: true, used: 99 }, w7d: { open: true, used: 1 }, login: "ok", blocked: { why: "used", text: "后端写的那一句" } }],
   listed: 1,
   decision: null,
   timeline: null,
@@ -79,12 +78,12 @@ beforeEach(() => {
 });
 
 describe("会话面板（目标 {sid}）", () => {
-  it("★ 改一格 ⇒ rotation-settings（整份设置 ＋ 读到的版本）；存 ⇒ rotation-save；还原 ⇒ rotation-revert", async () => {
+  it("★ 改一格 ⇒ rotation-settings（那个意图 ＋ 读到的版本，不带整份）；存 ⇒ rotation-save；还原 ⇒ rotation-revert", async () => {
     const m = mountRotation({ origin: "<local>", sid: "s1" });
     await m.refresh();
     editClose(m.root, "30");
     await settle();
-    expect(calls.find((c) => c.name === "rotation-settings")?.req).toEqual({ target: { sid: "s1" }, settings: { accounts: [{ id: "work" }], close: 30 }, ifRev: "h:1" });
+    expect(calls.find((c) => c.name === "rotation-settings")?.req).toEqual({ target: { sid: "s1" }, edit: { set: { key: "close", v: 30 } }, ifRev: "h:1" });
     btn(m.root, copyText("rot.top.save")).click();
     await settle();
     expect(calls.find((c) => c.name === "rotation-save")?.req).toEqual({ target: { sid: "s1" }, ifRev: "h:1" });
@@ -126,17 +125,21 @@ describe("会话面板（目标 {sid}）", () => {
 });
 
 describe("设置窗（目标 {strategy, settings}）", () => {
-  it("★ 改一格只改手上的草稿、照它重推（rotation-view 带 settings），不写盘；存 ⇒ rotation-save 带草稿", async () => {
+  it("★ 改一格 ⇒ 后端照手上的草稿改、回改完的那份；界面原样存着、照它重推（rotation-view 带 settings）；存 ⇒ rotation-save 带它", async () => {
     const m = mountRotation({ origin: "<local>", sid: null, machine: "夹具机" });
     await m.refresh();
     expect(calls.at(-1)).toEqual({ name: "rotation-view", req: { strategy: "按权重轮换" } });
     editClose(m.root, "40");
     await settle();
-    expect(calls.some((c) => c.name === "rotation-settings")).toBe(false);
-    expect(calls.at(-1)).toEqual({ name: "rotation-view", req: { strategy: "按权重轮换", settings: { accounts: [{ id: "work" }], close: 40 }, rev: "h:1" } });
+    expect(calls.at(-2)).toEqual({ name: "rotation-settings", req: { target: { strategy: "按权重轮换" }, edit: { set: { key: "close", v: 40 } } } });
+    const first = { 夹具: "改完的那份", n: 1 };
+    expect(calls.at(-1)).toEqual({ name: "rotation-view", req: { strategy: "按权重轮换", settings: first, rev: "h:1" } });
+    editClose(m.root, "41");
+    await settle();
+    expect(calls.at(-2)?.req, "下一笔照上一次回的那份改").toEqual({ target: { strategy: "按权重轮换" }, settings: first, edit: { set: { key: "close", v: 41 } } });
     btn(m.root, copyText("rot.top.save")).click();
     await settle();
-    expect(calls.find((c) => c.name === "rotation-save")?.req).toEqual({ target: { strategy: "按权重轮换" }, settings: { accounts: [{ id: "work" }], close: 40 }, ifRev: "h:1" });
+    expect(calls.find((c) => c.name === "rotation-save")?.req).toEqual({ target: { strategy: "按权重轮换" }, settings: { 夹具: "改完的那份", n: 2 }, ifRev: "h:1" });
   });
 });
 
@@ -146,14 +149,14 @@ describe("提示里的按钮", () => {
     strategy: { ...LIST.strategies[0], rev: "h:2" },
     baseRev: "h:1",
     hints: [
-      { hint: { k: "newer" }, text: "夹具·别处改了那一句" },
-      { hint: { k: "tzUnknown", zone: "Asia/Shanghai" }, text: "时区不明" },
-      { hint: { k: "strategyError", error: { msg: "坏了" }, path: "/夹具/strategies/按权重轮换.rhai" }, text: "夹具·出错那一句" },
+      { hint: { k: "newer" }, tone: "plain", text: "夹具·别处改了那一句" },
+      { hint: { k: "tzUnknown", zone: "Asia/Shanghai" }, tone: "need", text: "时区不明" },
+      { hint: { k: "strategyError", error: { msg: "坏了" }, path: "/夹具/strategies/按权重轮换.rhai" }, tone: "fail", text: "夹具·出错那一句" },
     ],
     ...over,
   });
 
-  it("★ 会话：写的时候 ifRev 照 baseRev（草稿基于的）；留着这边的 ⇒ rotation-settings 草稿照旧、ifRev 跟上文件此刻的；载入新的 ⇒ rotation-revert", async () => {
+  it("★ 会话：写的时候 ifRev 照 baseRev（草稿基于的）；留着这边的 ⇒ rotation-settings 交 keep、ifRev 跟上文件此刻的；载入新的 ⇒ rotation-revert", async () => {
     shown.view = withHints();
     const m = mountRotation({ origin: "<local>", sid: "s1" });
     await m.refresh();
@@ -163,7 +166,7 @@ describe("提示里的按钮", () => {
     calls.length = 0;
     btn(m.root, copyText("rot.hint.keepMine")).click();
     await settle();
-    expect(calls.find((c) => c.name === "rotation-settings")?.req).toEqual({ target: { sid: "s1" }, settings: VIEW.settings, ifRev: "h:2" });
+    expect(calls.find((c) => c.name === "rotation-settings")?.req).toEqual({ target: { sid: "s1" }, edit: "keep", ifRev: "h:2" });
     btn(m.root, copyText("rot.hint.loadNew")).click();
     await settle();
     expect(calls.find((c) => c.name === "rotation-revert")?.req).toEqual({ sid: "s1" });
@@ -203,7 +206,7 @@ describe("提示里的按钮", () => {
     await m.refresh();
     btn(m.root, copyText("rot.hint.keepMine")).click();
     await settle();
-    expect(calls.at(-1)?.req).toMatchObject({ settings: { close: 40 }, rev: "h:2" });
+    expect(calls.at(-1)?.req).toMatchObject({ settings: { 夹具: "改完的那份" }, rev: "h:2" });
     btn(m.root, copyText("rot.hint.loadNew")).click();
     await settle();
     expect(calls.at(-1)?.req).toEqual({ strategy: "按权重轮换" });

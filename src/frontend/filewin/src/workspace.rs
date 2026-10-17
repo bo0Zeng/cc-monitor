@@ -822,7 +822,7 @@ impl Workspace {
             self.notice = Some(copy_text("rsFilewinSelect.refusal.none", &[]));
             return false;
         }
-        if let Some(r) = rows.iter().find(|r| !super::copy::copyable(r)) {
+        if let Some(r) = rows.iter().find(|r| !r.pick().copyable()) {
             self.notice = Some(copy_text(
                 "rsFilewinWorkspace.copyToOther.unaddressable",
                 &[("name", &r.name.to_string())],
@@ -830,7 +830,6 @@ impl Workspace {
             return false;
         }
         let other = 1 - self.focus;
-        let dest_dir = self.pane_on(other).cwd.clone();
         let dest_path = self.pane_on(other).cwd_path();
         if dest_path == from.cwd_path() {
             self.notice = Some(copy_text("rsFilewinWorkspace.copyToOther.sameDir", &[]).into());
@@ -841,14 +840,10 @@ impl Workspace {
             .map(|r| {
                 // 〔有损名全寻址〕源 ＝ 源那一栏当前目录的字节 ＋ 名字的字节；目标 ＝ 另一栏当前目录的字节 ＋ 同一个名字。
                 let src = from.row_path(r);
-                let dst = super::shell::join_path(&dest_path, &super::shell::name_bytes(r));
+                let dst = dest_path.child(&super::shell::name_bytes(r));
                 CopyJob {
                     from: src.shown.clone(),
-                    to: if dst.is_lossy() {
-                        dst.shown.clone()
-                    } else {
-                        super::writeops::join_remote(&dest_dir, &r.name)
-                    },
+                    to: dst.shown.clone(),
                     name: r.name.clone(),
                     is_dir: r.is_dir,
                     from_raw: src.raw,
@@ -1698,6 +1693,7 @@ pub fn across_req(jobs: &[CopyJob]) -> Result<cmd_wire::files::FilesCopyReq, Str
         on_exists: None,
         decide: None,
         ticket: None,
+        single: None,
     })
 }
 

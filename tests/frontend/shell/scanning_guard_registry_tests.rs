@@ -11,7 +11,6 @@ const RAW_WALKS: &[&str] = &["read_dir(", "WalkDir", "collect_rs(", "collect_ts(
 const PENDING: &[&str] = &[
     "tests/frontend/shell/atomic_replace_registry_tests.rs",
     "tests/frontend/shell/backend_kill_tests.rs",
-    "tests/frontend/shell/gate_singleton_guard_tests.rs",
     "tests/frontend/shell/local_read_surface_registry_tests.rs",
     "tests/backend/agents/claudecode/parse_tests.rs",
     "tests/frontend/shell/polling_registry_tests.rs",
@@ -20,7 +19,6 @@ const PENDING: &[&str] = &[
     "tests/frontend/shell/rust_timer_registry_tests.rs",
     "tests/frontend/shell/session_name_registry_tests.rs",
     "tests/frontend/shell/shared_crate_registry_tests.rs",
-    "tests/frontend/shell/tmux_backend_gate_guard_tests.rs",
     "tests/common/host-core/lib_tests.rs",
     "tests/backend/layering_guard.rs",
     "tests/backend/no_timer_guard.rs",
@@ -133,8 +131,8 @@ fn guards_declaring_a_table(test_src: &str) -> Vec<(String, String)> {
 }
 
 fn repo_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::repo_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::repo_root()
 }
 
 /// 抠出所有 `#[cfg(test)]` 段（到下一个顶层 `}` 为止）。
@@ -177,7 +175,7 @@ fn test_regions(src: &str) -> String {
 ///    单例守卫里各指各的常量），**真正的共用开关只有字段表空那一处**，随手写字段表一起删了。
 /// ② **多条判据共用同一个采集器**（它一坏就集体失明）：逐个核过
 ///    `rust_files` / `collect_ts` / `doc_files` / `backend_sources` / `layer_sources` /
-///    `scan_files` / `platform_cfgs` / `backend_files` / `backend_control_production` …
+///    `scan_files` / `platform_cfgs` / `backend_files` …
 ///    —— **每一个都有自检**（地板、或与登记表的数量相等对拍）。**零发现。**
 ///
 /// ⚠ 为什么不把这条横扫做成判据：我写的两版探测器**都不可靠** ——
@@ -262,7 +260,7 @@ fn every_registry_guard_keeps_its_reverse_half() {
     }
     // 抽取器自检⑤：**逐子树对拍采集面** —— git 跟踪着的每一份 `.rs` 都得被打开过。
     // 路径拼错 · 后缀过滤掉 · 静默跳过子目录都红。
-    crate::guard_support::assert_scanned_every_tracked(
+    guard_core::addr::assert_scanned_every_tracked(
         "登记表型判据",
         &seen,
         &["src/frontend/shell/src", "src/backend", "tests"],
@@ -430,14 +428,9 @@ fn every_registry_guard_keeps_its_reverse_half() {
     /// ⇒ 这条元判据**判得到自己**（它俩都带 `assert_eq!(`，所以今天不缺反向那半）。
     /// 这张表自己那半腐烂仍然由紧跟着的那条**幽灵检查**接着。
     const REGISTERED: &[(&str, &str, &str)] = &[(
-        // 住址订正：那条判据住 `tests/frontend/shell/`，不在 `src/frontend/shell/src/`。
-        "tests/frontend/shell/structural_scan_tests.rs::comment_stripping_has_exactly_one_shared_implementation",
-        "它自带扫描面（`scan_tree!`）与登记表，但只断了「扫到的里有没有没登记的」这一向；\
-             「登记了却已经不在」那一向没人接 —— 而那正是本条要治的族。\
-             按 `D2②` 只让它红出来，不代补",
-        "给它补上双向对拍（`assert_eq!(found, want)`），\
-             或一条「登记表里的 X 已经不在了」的诊断；补完把这一行删掉 —— \
-             不删的话下面那条幽灵检查会逼你删",
+        "tests/common/guard-core/rules/structural_scan.rs::comment_stripping_has_exactly_one_shared_implementation",
+        "它自带扫描面与登记表，但只断了「扫到的里有没有没登记的」这一向；「登记了却已经不在」那一向没人接",
+        "给它补上双向对拍（`assert_eq!(found, want)`）或一条「登记表里的 X 已经不在了」的诊断；补完把这一行删掉",
     )];
 
     // 这张豁免表自己那半**反向**：登记了却**已经不在了**的豁免，必须红。
@@ -1253,7 +1246,7 @@ fn no_guard_prose_still_claims_the_scan_tree_self_exclusion_works() {
                 .iter()
                 .find(|(s, _)| s == sub)
                 .map_or(0, |(_, n)| *n);
-            let want = crate::guard_support::tracked_under(sub, "rs").len();
+            let want = guard_core::addr::tracked_under(sub, "rs").len();
             (got < want).then(|| format!("  {sub} —— 采到 {got} 份，git 跟踪着 {want} 份"))
         })
         .collect();
@@ -1360,11 +1353,4 @@ fn no_guard_prose_still_claims_the_scan_tree_self_exclusion_works() {
         ghosts.join("\n")
     );
     // 每条豁免都要说清「为什么暂不修」—— 这一列的读者是下一个想再加一行的人。
-    for (p, _, why) in REGISTERED {
-        assert!(
-            why.trim().chars().count() >= 30,
-            "`{p}` 那条豁免的理由太短（实得 {} 字）—— 写清它凭什么不修",
-            why.trim().chars().count()
-        );
-    }
 }

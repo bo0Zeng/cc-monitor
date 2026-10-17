@@ -154,9 +154,9 @@ pub(crate) async fn apply(
         Ordered::SessionPrimed(p) => intake.announced(&p.sid, p.path, p.lines),
         Ordered::SessionStatus(s) => {
             tracing::info!(
-                "session-status: [{at}] sid={} activity={:?} waiting_for={:?} → 成品交出口",
+                "session-status: [{at}] sid={} live={:?} waiting_for={:?} → 成品交出口",
                 s.sid,
-                s.face.activity,
+                s.face.live,
                 s.waiting_for
             );
             crate::session_book::feed(BookIn::Status {
@@ -173,13 +173,11 @@ pub(crate) async fn apply(
             intake.removed(&sid);
         }
         Ordered::SessionState(s) => {
-            let (sid, state) = (s.sid.clone(), s.state);
+            let (sid, state) = (&s.sid, s.state);
             tracing::info!("session-state: [{host_label}] sid={sid} → {state:?}");
             crate::session_book::feed(BookIn::Left {
                 origin: at,
-                sid,
-                fate: state,
-                words: Some(crate::session_book::FateWords::of(s)),
+                state: s,
             });
         }
         Ordered::Overflow(o) => on_overflow(origin, health, &o),
@@ -200,7 +198,7 @@ pub(crate) async fn apply(
         }
         Ordered::SessionFileGone(g) => {
             intake
-                .notice(&g.session_id, &g.path, FileChange::Gone)
+                .notice(&g.session_id, &g.path, FileChange::Gone, None)
                 .await
         }
         Ordered::SessionFileReread(r) => {
@@ -208,14 +206,11 @@ pub(crate) async fn apply(
                 wire::RereadWhy::Truncated => FileChange::Truncated,
                 wire::RereadWhy::Rewritten => FileChange::Rewritten,
             };
-            intake.notice(&r.session_id, &r.path, change).await
+            intake
+                .notice(&r.session_id, &r.path, change, Some(r.lines))
+                .await
         }
-        Ordered::SessionRuns(r) => crate::session_book::feed(BookIn::Runs {
-            origin: at,
-            sid: r.sid,
-            runs: array_body(&r.runs),
-            ended: array_body(&r.ended),
-        }),
+        Ordered::SessionRuns(runs) => crate::session_book::feed(BookIn::Runs { origin: at, runs }),
         Ordered::SessionBranch(b) => crate::session_book::feed(BookIn::Branch {
             origin: origin.clone(),
             sid: b.sid,
@@ -227,37 +222,15 @@ pub(crate) async fn apply(
     }
 }
 
-/// 运行表那两格交界面的原文（JSON 数组）。
-fn array_body<T: serde::Serialize>(rows: &[T]) -> crate::ui_contract::RecordBody {
-    crate::ui_contract::RecordBody::from_json(serde_json::to_string(rows).unwrap_or_default())
-        .unwrap_or_else(|| {
-            crate::ui_contract::RecordBody::from_json("[]".to_string()).expect("[] is JSON")
-        })
-}
-
-/// 那台管道拥塞丢了帧：日志 ＋ 经 `remote-health` 说一句（丢了的不可恢复帧点名）。
+/// 那台管道拥塞丢过帧：日志 ＋ 经 `remote-health` 原样交那台写的那一句（标题位界面排机器名）。
+/// 丢了会话状态那一类的，那台紧跟着在同一条连接上整份重报，这里不判、不重接。
 fn on_overflow(origin: &crate::origin::Origin, health: &HealthOut, o: &wire::Overflow) {
     let at = origin.as_wire_str();
-    // 那一句里怎么称呼那台：本机说「本机」，远端说它的名字。
-    let label = if *origin == crate::origin::Origin::local() {
-        crate::copy_table::copy_text("control.machine.local", &[])
-    } else {
-        at.to_string()
-    };
-    tracing::warn!(
-        "stream_source [{at}] overflow: backend dropped {} frame(s), {} unrecoverable{}",
-        o.dropped,
-        o.lost.len(),
-        if o.lost_truncated {
-            " (list truncated)"
-        } else {
-            ""
-        }
-    );
+    tracing::warn!("stream_source [{at}] overflow: {}", o.said.0);
     let payload = crate::ui_contract::RemoteHealthPayload {
         origin: at.to_string(),
         kind: "overflow".to_string(),
-        message: overflow_health_message(&label, o),
+        message: o.said.0.clone(),
         detail: String::new(),
     };
     if let Err(e) = health(payload) {

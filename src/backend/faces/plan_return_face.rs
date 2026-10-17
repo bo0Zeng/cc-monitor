@@ -83,7 +83,8 @@ pub(crate) fn return_with(
         ));
     };
     let resume = req.resume == Some(true);
-    let alive = to.get("alive").and_then(Value::as_bool) == Some(true);
+    let live = needs::live_of(&to);
+    let alive = live.is_some();
     if !alive && !resume {
         return Ok(reply(
             &line,
@@ -93,7 +94,7 @@ pub(crate) fn return_with(
             Some(copy_text("sessionState.planReturn.ended", &[])),
         ));
     }
-    if to.get("activity").and_then(Value::as_str) == Some("needs_you") {
+    if live == Some(Some(crate::agents::SessionActivity::NeedsYou)) {
         return Ok(reply(
             &line,
             &to,
@@ -166,7 +167,11 @@ fn give_back(
         use crate::faces::session_say_face as say;
         let req: say::SessionSayReq =
             serde_json::from_value(a.clone()).map_err(|e| bad(&e.to_string()))?;
-        let again = |r: &say::SessionSayReq| resume.then(|| say::resume_here(r, files)).flatten();
+        let again = |r: &say::SessionSayReq| {
+            resume
+                .then(|| say::resume_here(&r.sid, r.client.as_deref(), Some(&r.text), files))
+                .flatten()
+        };
         say::say_with(&req, &waiting, &crate::control::terminals_wire::say, &again)
             .and_then(|sent| crate::wire::spec::wire(&sent))
     };

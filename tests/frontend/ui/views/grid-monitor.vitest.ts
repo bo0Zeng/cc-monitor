@@ -20,19 +20,18 @@ import {
 } from "../../../../src/frontend/ui/views/grid-monitor";
 import type { GridSessionSnapshot } from "../../../../src/frontend/ui/session-status";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
-import { ENDED, LIVE, RECONNECTABLE } from "../../../../src/frontend/ui/tab-session-state";
+import { goldenFace, liveFace } from "../../../test-support/session-faces";
+import type { SessionFace } from "../../../../src/frontend/ui/generated/SessionFace";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
+/** 那张脸换一个序。 */
+const ordered = (f: SessionFace, order: number): SessionFace => ({ ...f, order });
 const snap = (over: Partial<GridSessionSnapshot>): GridSessionSnapshot => ({
   sessionId: "s",
   title: "t",
   origin: LOCAL_ORIGIN,
   cwd: null,
-  state: LIVE,
-  activity: null,
-  activityText: null,
-  activityTone: null,
-  order: null,
+  face: liveFace("working"),
   needs: null,
   runningAgents: 0,
   totalAgents: 0,
@@ -68,22 +67,22 @@ describe("F91 groupSessionsByOrigin", () => {
 });
 
 describe("F91 sortSessionsInGroup", () => {
-  it("只按核心给的序（order，小的在前：活会话 0–3 · 可重连 4 · 已结束 5）；同序稳定；没有序的（说不清 · 还没收到）排最后", () => {
+  it("只按脸上的序（face.order，小的在前：活会话 0–3 · Claude 已退出 4 · 已结束 5）；同序稳定", () => {
     // 序故意与 activity 码 · 状态对不上：界面只照核心那一格排，不按码 · 不按状态另判。
     const sorted = sortSessionsInGroup([
-      snap({ sessionId: "arch", state: ENDED, order: 5 }),
-      snap({ sessionId: "o3", activity: "needs_you", order: 3 }),
-      snap({ sessionId: "none", activity: null }),
-      snap({ sessionId: "o2", activity: "idle", order: 2 }),
-      snap({ sessionId: "tidle", state: RECONNECTABLE, activity: "working", order: 4 }),
-      snap({ sessionId: "o0", activity: "idle", order: 0 }),
-      snap({ sessionId: "o1", activity: "working", order: 1 }),
-      snap({ sessionId: "o0b", activity: "background_work", order: 0 }),
+      snap({ sessionId: "arch", face: ordered(goldenFace("ended"), 5) }),
+      snap({ sessionId: "o3", face: ordered(liveFace("needs_you"), 3) }),
+      snap({ sessionId: "none", face: liveFace(null) }),
+      snap({ sessionId: "o2", face: ordered(liveFace("idle"), 2) }),
+      snap({ sessionId: "tidle", face: ordered(goldenFace("reconnectable"), 4) }),
+      snap({ sessionId: "o0", face: ordered(liveFace("idle"), 0) }),
+      snap({ sessionId: "o1", face: ordered(liveFace("working"), 1) }),
+      snap({ sessionId: "o0b", face: ordered(liveFace("background_work"), 0) }),
     ]);
-    expect(sorted.map((s) => s.sessionId)).toEqual(["o0", "o0b", "o1", "o2", "o3", "tidle", "arch", "none"]);
+    expect(sorted.map((s) => s.sessionId)).toEqual(["o0", "o0b", "o1", "o2", "o3", "none", "tidle", "arch"]);
   });
   it("不改入参（返回新数组）", () => {
-    const input = [snap({ sessionId: "a", activity: "idle" }), snap({ sessionId: "b", activity: "working" })];
+    const input = [snap({ sessionId: "a", face: liveFace("idle") }), snap({ sessionId: "b", face: liveFace("working") })];
     const before = input.map((s) => s.sessionId);
     sortSessionsInGroup(input);
     expect(input.map((s) => s.sessionId)).toEqual(before);
@@ -101,12 +100,12 @@ describe("F91 sortSessionsInGroup", () => {
 describe("F91 summarizeSessions", () => {
   it("机器数（本机算一台）/ 活会话数 / 运行中 agent 总数", () => {
     const r = summarizeSessions([
-      snap({ origin: LOCAL_ORIGIN, state: LIVE, runningAgents: 2 }),
-      snap({ origin: LOCAL_ORIGIN, state: ENDED, runningAgents: 0 }),
-      snap({ origin: "h1", state: LIVE, runningAgents: 1 }),
-      snap({ origin: "h1", state: LIVE, runningAgents: 0 }),
+      snap({ origin: LOCAL_ORIGIN, runningAgents: 2, face: liveFace("working") }),
+      snap({ origin: LOCAL_ORIGIN, runningAgents: 0, face: goldenFace("ended") }),
+      snap({ origin: "h1", runningAgents: 1, face: liveFace("working") }),
+      snap({ origin: "h1", runningAgents: 0, face: liveFace("working") }),
       // 可重连：claude 已经没了 ⇒ 按活性不算活（改两轴之前它借着 status: live 被算进来）
-      snap({ origin: "h1", state: RECONNECTABLE, runningAgents: 0 }),
+      snap({ origin: "h1", runningAgents: 0, face: goldenFace("reconnectable") }),
     ]);
     expect(r).toEqual({ machines: 2, liveSessions: 3, runningAgents: 3 });
   });
@@ -124,8 +123,8 @@ describe("F91 GridMonitorView", () => {
   it("open 渲染分组标题 + 摘要 + cell；F91b 点 cell = 高亮不关（不 switchTo、板保持开）", () => {
     document.body.replaceChildren();
     const source = mkSource([
-      snap({ sessionId: "l1", title: "本地会话", origin: LOCAL_ORIGIN, activity: "working", runningAgents: 2 }),
-      snap({ sessionId: "r1", title: `${copyText("rsConfigSurface.host.remote")}${copyText("commandBar.group.sessions")}`, origin: "pi", activity: "needs_you", needs: "核心·等批准" }),
+      snap({ sessionId: "l1", title: "本地会话", origin: LOCAL_ORIGIN, runningAgents: 2, face: liveFace("working") }),
+      snap({ sessionId: "r1", title: `${copyText("rsConfigSurface.host.remote")}${copyText("commandBar.group.sessions")}`, origin: "pi", needs: "核心·等批准", face: liveFace("needs_you") }),
     ]);
     const view = new GridMonitorView(source);
     view.open();
@@ -156,14 +155,13 @@ describe("F91 GridMonitorView", () => {
     view.close();
   });
 
-  it("★ 格子的点与标签栏同一个点：颜色按核心的语气、形状按两轴；名字活着照抄核心的字（空闲不画成红）", () => {
+  it("★ 格子的点与标签栏同一个点：点与名字照抄脸上那两格（空闲不画成红）", () => {
     document.body.replaceChildren();
     const source = mkSource([
-      // 可重连：语气还是旧的「在跑」，形状按两轴盖过它。
-      snap({ sessionId: "gi", title: "灰会话", origin: "pi", state: RECONNECTABLE, activity: "working", activityText: "核心·运行中", activityTone: "now" }),
-      snap({ sessionId: "id", title: "闲", activity: "idle", activityText: "核心·空闲", activityTone: "plain" }),
-      snap({ sessionId: "bg", title: "bg", activity: "background_work", activityText: "核心·后台", activityTone: "busy" }),
-      snap({ sessionId: "nk", title: "说不清", activity: null, activityText: "核心·说不清", activityTone: "now" }),
+      snap({ sessionId: "gi", title: "灰会话", origin: "pi", face: goldenFace("reconnectable") }),
+      snap({ sessionId: "id", title: "闲", face: { ...liveFace("idle"), name: "核心·空闲" } }),
+      snap({ sessionId: "bg", title: "bg", face: { ...liveFace("background_work"), name: "核心·后台" } }),
+      snap({ sessionId: "nk", title: "说不清", face: { ...liveFace(null), name: "核心·说不清" } }),
     ]);
     const view = new GridMonitorView(source);
     view.open();
@@ -171,7 +169,7 @@ describe("F91 GridMonitorView", () => {
     expect(dot("gi").dataset.state).toBe("exited");
     expect([dot("id").dataset.state, dot("id").title]).toEqual(["idle", "核心·空闲"]);
     expect([dot("bg").dataset.state, dot("bg").title], "后台任务运行中：单独一色").toEqual(["background", "核心·后台"]);
-    expect([dot("nk").dataset.state, dot("nk").title]).toEqual(["running", "核心·说不清"]);
+    expect([dot("nk").dataset.state, dot("nk").title], "判不出在干什么：那台给的那一颗").toEqual([goldenFace("live-unclear").dot, "核心·说不清"]);
     expect(document.querySelector(".live-dot")).toBeNull();
     view.close();
   });
@@ -181,8 +179,8 @@ describe("F91 GridMonitorView", () => {
     const from = Date.now() - 12 * 60_000 - 5_000;
     const bw = { text: "x", clock: { text: "L · {dur}", from }, what: "make test-all", count: 1, tone: "busy" as const };
     const source = mkSource([
-      snap({ sessionId: "bw", origin: "pi", activity: "background_work", activityTone: "busy", backgroundWork: bw }),
-      snap({ sessionId: "id", origin: "pi", activity: "idle", backgroundWork: bw }),
+      snap({ sessionId: "bw", origin: "pi", backgroundWork: bw, face: liveFace("background_work") }),
+      snap({ sessionId: "id", origin: "pi", backgroundWork: bw, face: liveFace("idle") }),
     ]);
     const view = new GridMonitorView(source);
     view.open();
@@ -485,11 +483,11 @@ describe("F91 GridMonitorView interval 生命周期", () => {
 describe("UP1 机器总览按行更新", () => {
   /** 三台机器、七个会话；`snapshotSessions` 每拍都返回**新对象**（与 `TabManager.snapshotSessions` 同形）。 */
   const base = (): GridSessionSnapshot[] => [
-    snap({ sessionId: "l1", title: "本机一", cwd: "/w/a", activity: "working", order: 1, runningAgents: 2, totalAgents: 3 }),
+    snap({ sessionId: "l1", title: "本机一", cwd: "/w/a", runningAgents: 2, totalAgents: 3, face: ordered(liveFace("working"), 1) }),
     snap({ sessionId: "l2", title: "本机二", cwd: "/w/b", context: { text: "85%", tone: "warn", percent: 85 }, unread: 4 }),
-    snap({ sessionId: "l3", title: "本机三", state: ENDED }),
-    snap({ sessionId: "p1", title: "派一", origin: "pi", activity: "needs_you", order: 0, needs: "核心·等批准" }),
-    snap({ sessionId: "p2", title: "派二", origin: "pi", state: RECONNECTABLE, background: true }),
+    snap({ sessionId: "l3", title: "本机三", face: goldenFace("ended") }),
+    snap({ sessionId: "p1", title: "派一", origin: "pi", needs: "核心·等批准", face: ordered(liveFace("needs_you"), 0) }),
+    snap({ sessionId: "p2", title: "派二", origin: "pi", background: true, face: goldenFace("reconnectable") }),
     snap({ sessionId: "n1", title: "诺一", origin: "nano", cwd: "/srv", unread: 120 }),
     snap({ sessionId: "n2", title: "诺二", origin: "nano", context: { text: "12%", tone: "plain", percent: 12 } }),
   ];
@@ -566,11 +564,9 @@ describe("UP1 机器总览按行更新", () => {
     try {
       const before = new Map(["l1", "l2", "l3", "p1", "p2", "n1", "n2"].map((sid) => [sid, t.cellOf(sid)]));
       t.set((s) => {
-        s[1].activity = "needs_you"; // l2 排到本机组最前
-        s[1].order = 0;
+        s[1].face = ordered(liveFace("needs_you"), 0); // l2 排到本机组最前
         s[1].needs = "核心·等批准";
-        s[3].activity = "working"; // p1 不再等
-        s[3].order = 1;
+        s[3].face = ordered(liveFace("working"), 1); // p1 不再等
         s[3].needs = null;
         s[5].cwd = null; // n1 的 cwd 行摘掉
         s[6].unread = 1;
@@ -593,7 +589,7 @@ describe("UP1 机器总览按行更新", () => {
       const steps: ((s: GridSessionSnapshot[]) => void)[] = [
         (s) => {
           s[0].runningAgents = 0;
-          s[2].state = LIVE;
+          s[2].face = liveFace("working");
         },
         (s) => {
           s.splice(4, 1); // p2 没了
@@ -643,8 +639,7 @@ describe("UP1 机器总览按行更新", () => {
       vi.advanceTimersByTime(1000);
       expect(document.activeElement).toBe(t.cellOf("n2"));
       t.set((s) => {
-        s[6].activity = "needs_you"; // n2 排到 nano 组最前（被 insertBefore 挪动）
-        s[6].order = 0;
+        s[6].face = ordered(liveFace("needs_you"), 0); // n2 排到 nano 组最前（被 insertBefore 挪动）
         s[6].needs = "x";
       });
       vi.advanceTimersByTime(1000);

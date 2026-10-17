@@ -1,12 +1,12 @@
 package com.ccmonitor.mobile.ssh
 
-import com.ccmonitor.mobile.core.data.crypto.NoopCryptoBox
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.db.IdentityDao
 import com.ccmonitor.mobile.core.data.db.isKeystoreBacked
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
 import com.ccmonitor.mobile.core.ssh.AuthMethod
+import com.ccmonitor.mobile.testing.PlainCryptoBox
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
@@ -78,7 +78,7 @@ class AuthRoutingTest {
     // === resolveAuthMethod：路由单一来源——keystore→KeystoreSigner（不解密）/ 否则→PrivateKey（解密）===
     @Test fun resolveAuthMethodRoutesKeystoreIdentityToSigner() {
         runBlocking {
-            val repo = IdentityRepository(FakeIdentityDao(identity(keystoreAlias = "ccm-key-1")), NoopCryptoBox())
+            val repo = IdentityRepository(FakeIdentityDao(identity(keystoreAlias = "ccm-key-1")), PlainCryptoBox)
             val auth = resolveAuthMethod("i", repo)
             assertTrue(auth is AuthMethod.KeystoreSigner)
             assertEquals("ccm-key-1", (auth as AuthMethod.KeystoreSigner).alias)
@@ -88,8 +88,8 @@ class AuthRoutingTest {
     @Test fun resolveAuthMethodRoutesImportedIdentityToPrivateKey() {
         runBlocking {
             val pem = "PEM-PRIVATE-KEY".toByteArray()
-            // NoopCryptoBox 直通：privateKeyEnc 即明文私钥字节 → decrypt 后原样。
-            val repo = IdentityRepository(FakeIdentityDao(identity().copy(privateKeyEnc = pem)), NoopCryptoBox())
+            // PlainCryptoBox 直通：privateKeyEnc 即明文私钥字节 → decrypt 后原样。
+            val repo = IdentityRepository(FakeIdentityDao(identity().copy(privateKeyEnc = pem)), PlainCryptoBox)
             val auth = resolveAuthMethod("i", repo)
             assertTrue(auth is AuthMethod.PrivateKey)
             assertArrayEquals(pem, (auth as AuthMethod.PrivateKey).pem)

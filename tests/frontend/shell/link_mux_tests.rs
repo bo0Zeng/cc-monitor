@@ -43,7 +43,7 @@ fn rig() -> Rig {
     let (mon_w, be_r) = tokio::io::duplex(1 << 20);
     let (be_w, mon_r) = tokio::io::duplex(1 << 20);
     let hello =
-        crate::guard_support::our_hello(&["link-open", "link-data", "link-credit", "link-close"]);
+        crate::frame_fixtures::our_hello(&["link-open", "link-data", "link-credit", "link-close"]);
     let witness = crate::inbound_client::witness_of(&hello).expect("是 hello");
     let client = park(mon_w).into_client(witness);
     // monitor 这头的读循环：解帧 → **真的**吸收点。

@@ -39,6 +39,7 @@ pub trait KeySource: Send + Sync {
 }
 
 /// 认下的 host key 记到哪（桌面：cc-monitor 那份 known_hosts，开终端那一跳认同一把；手机：回调进 Room）。
+/// 只在那一台鉴权过了之后才交（鉴权不过的对端写不进信任库）。
 pub trait HostKeys: Send + Sync {
     /// `key` = OpenSSH 公钥那一行的前两段（算法 ＋ base64）。写不了只记日志，不拦这条连接。
     fn remember(&self, host: &str, port: u16, key: &str);
@@ -71,7 +72,7 @@ pub struct Env {
     /// `None` ⇒ 这个宿主没有 agent（手机）：没配钥匙就报「此系统不支持连 SSH agent」。
     pub agent: Option<Box<dyn Agent>>,
     pub facts: Box<dyn Facts>,
-    /// 远端写的规矩（后端 · 手机都是部署那两处；没装宿主那一套 ⇒ 一个字节都不许写）。
+    /// 远端写的规矩（后端 · 手机都是暂存区那一处；没装宿主那一套 ⇒ 一个字节都不许写）。
     pub files: crate::sftp::WriteRules,
 }
 

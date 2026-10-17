@@ -46,7 +46,7 @@ pub(crate) fn change(
         // 预演不带 key（界面填表时每改一格问一次，明文不必跟着走）；真建号之前先判 key 与地址写不写得进去，
         // 不然号建好了、key 却落不下。
         wire::Request::Add(a) if a.kind == AccountKind::ApiKey && a.dry_run != Some(true) => {
-            let k = a.key.clone().unwrap_or_default();
+            let k = creds_core::SecretKey::new(a.key.clone().unwrap_or_default());
             file_face::check_inputs(&k, a.base_url.as_deref())?;
             Some((k, a.base_url.clone()))
         }
@@ -90,7 +90,7 @@ pub(crate) fn change(
     }
     if change.applied {
         if let (Some((k, base)), Some(acct)) = (key, change.account.clone()) {
-            put_key(&mut change, keys.set, &acct.config_dir, &k, base.as_deref());
+            put_key(&mut change, keys.set, &acct.config_dir, k, base.as_deref());
         }
     }
     if !done.alias_events.is_empty() {
@@ -561,12 +561,12 @@ fn put_key(
     change: &mut AccountChange,
     key_set: &dyn Fn(&file_face::KeySetReq) -> Result<file_face::KeySet, Fail>,
     config_dir: &str,
-    key: &str,
+    key: creds_core::SecretKey,
     base_url: Option<&str>,
 ) {
     match key_set(&file_face::KeySetReq {
         config_dir: config_dir.to_string(),
-        key: key.to_string(),
+        key,
         base_url: base_url.map(str::to_string),
     }) {
         Ok(v) => change.key_masked = Some(v.masked),

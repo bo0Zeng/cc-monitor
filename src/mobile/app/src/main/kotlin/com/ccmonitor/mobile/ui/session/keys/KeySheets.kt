@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.ui.session.keys
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -36,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -61,6 +63,8 @@ import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
+import com.ccmonitor.mobile.ui.session.KEY_ICONS
+import com.ccmonitor.mobile.ui.session.iconName
 
 /** 抽屉外框：`--card` 底，标题一行（主标题 ＋ 一小段灰字；[title] 为 null ⇒ 不画这一行），内容随后。 */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -184,6 +188,42 @@ internal fun GroupPickSheet(
     KeysSheet(copyText("mobKeys.edit.group"), null, onDismiss) {
         Column(Modifier.verticalScroll(rememberScrollState())) {
             groups.forEach { g -> SheetRow(null, g.name, onClick = { onPick(g.id) }, checked = g.id == current) }
+        }
+    }
+}
+
+/** 选键帽图标：一格一个（[KEY_ICONS] 的先后），当前那个点亮；已选了图标时最上一行「不用图标」。回图标名，null ＝ 不用。 */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun IconPickSheet(
+    current: String?,
+    onPick: (String?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val tokens = LocalAppTokens.current
+    val shape = RoundedCornerShape(tokens.radius.m)
+    KeysSheet(copyText("mobKeys.icon.title"), null, onDismiss) {
+        if (current != null) SheetRow(null, copyText("mobKeys.icon.none"), onClick = { onPick(null) })
+        FlowRow(
+            Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
+        ) {
+            KEY_ICONS.forEach { ph ->
+                val name = ph.iconName()
+                val on = name == current
+                Box(
+                    Modifier
+                        .size(Touch.target)
+                        .clip(shape)
+                        .background(if (on) tokens.selectedBg else tokens.card)
+                        .border(1.dp, if (on) tokens.accent else MaterialTheme.colorScheme.outlineVariant, shape)
+                        .clickable { onPick(name) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    PhIcon(ph, contentDescription = name, tint = if (on) tokens.accent else MaterialTheme.colorScheme.onSurface)
+                }
+            }
         }
     }
 }
@@ -356,7 +396,7 @@ internal fun UnconvertedSheet(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md),
                     ) {
-                        MiniCap(k.cap(groupName))
+                        MiniCap(k.cap(groupName), icon = k.icon)
                         Column(Modifier.weight(1f)) {
                             Text(n.original, style = MaterialTheme.typography.bodyMedium)
                             HintLine(issueLine(n))

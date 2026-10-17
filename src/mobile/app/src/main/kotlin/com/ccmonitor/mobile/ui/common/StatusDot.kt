@@ -23,7 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.SessionDot
+import com.ccmonitor.mobile.core.claude.link.wire.SessionDot
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.ThemeTokens
 
@@ -34,48 +34,72 @@ private val RING = 1.5.dp
 private const val BREATHE_LOW = 0.6f
 
 /**
- * 一颗状态点（V10，与桌面 `kit/status-dot` 同一套）：8 dp、固定一列宽，状态变了不挤字。颜色 ＝ 在干什么，形状 ＝ 进程还在不在：
- * 实心（运行中 `--success` 呼吸 · 机器已连接 `--success` 不呼吸 · 需手动 `--warn` · 后台任务 `--bgwork` · 空闲 `--text-2` · 出错 `--error`）·
+ * 一颗会话状态点（V10，与桌面 `kit/status-dot` 同一套）：8 dp、固定一列宽，状态变了不挤字。颜色 ＝ 在干什么，形状 ＝ 进程还在不在：
+ * 实心（运行中 `--success` 呼吸 · 需手动 `--warn` · 后台任务 `--bgwork` · 空闲 `--text-2`）·
  * 空心环（已退出 `--text-2` · 已结束 `--text-faint`）· 虚线环（说不清 `--text-2`）· 短横（记录已不在 `--text-faint`）。
- * [dot] 为 `null` ⇒ 只占位不画。[label] 是读屏念的那一句（人话状态）；系统关了动画 ⇒ 不呼吸、常亮。
+ * [label] 是读屏念的那一句（人话状态）；系统关了动画 ⇒ 不呼吸、常亮。
  */
 @Composable
 fun StatusDot(
-    dot: SessionDot?,
-    label: String?,
+    dot: SessionDot,
+    label: String,
     modifier: Modifier = Modifier,
 ) {
     val tokens = LocalAppTokens.current
-    val face = dot?.let { faceOf(it) }
-    val sem = if (label == null || dot == null) Modifier.clearAndSetSemantics {} else Modifier.clearAndSetSemantics { contentDescription = label }
-    val alpha = if (dot == SessionDot.RUNNING) breathe() else 1f
-    Canvas(modifier.size(tokens.dotSize).then(sem)) { face?.let { drawFace(it, alpha) } }
+    val text2 = MaterialTheme.colorScheme.onSurfaceVariant
+    val color =
+        when (dot) {
+            SessionDot.RUNNING -> tokens.success
+            SessionDot.NEEDS_YOU -> tokens.warn
+            SessionDot.BACKGROUND -> tokens.bgwork
+            SessionDot.IDLE, SessionDot.EXITED, SessionDot.UNKNOWN -> text2
+            SessionDot.ENDED, SessionDot.GONE -> tokens.textFaint
+        }
+    Dot(Face(formOf(dot), color), label, breathing = dot == SessionDot.RUNNING, modifier)
 }
 
-/** 点画成什么样：形 ＋ 色。 */
-private enum class Form { SOLID, RING, DASHED, DASH }
+/** 机器那一颗：已连接（实心 `--success`、不呼吸）· 连接失败（实心 `--error`）。 */
+enum class MachineDot { UP, FAILED }
 
-private data class Face(
-    val form: Form,
-    val color: Color,
-)
+/** 机器那一颗点；[dot] 为 `null`（未连接 · 连接中）⇒ 只占位不画。 */
+@Composable
+fun StatusDot(
+    dot: MachineDot?,
+    label: String?,
+    modifier: Modifier = Modifier,
+) {
+    val color = if (dot == MachineDot.FAILED) MaterialTheme.colorScheme.error else LocalAppTokens.current.success
+    Dot(dot?.let { Face(DotForm.SOLID, color) }, label, breathing = false, modifier)
+}
 
 @Composable
-private fun faceOf(dot: SessionDot): Face {
-    val tokens = LocalAppTokens.current
-    val text2 = MaterialTheme.colorScheme.onSurfaceVariant
-    return when (dot) {
-        SessionDot.RUNNING, SessionDot.UP -> Face(Form.SOLID, tokens.success)
-        SessionDot.NEEDS_YOU -> Face(Form.SOLID, tokens.warn)
-        SessionDot.BACKGROUND -> Face(Form.SOLID, tokens.bgwork)
-        SessionDot.IDLE -> Face(Form.SOLID, text2)
-        SessionDot.FAILED -> Face(Form.SOLID, MaterialTheme.colorScheme.error)
-        SessionDot.EXITED -> Face(Form.RING, text2)
-        SessionDot.ENDED -> Face(Form.RING, tokens.textFaint)
-        SessionDot.UNKNOWN -> Face(Form.DASHED, text2)
-        SessionDot.GONE -> Face(Form.DASH, tokens.textFaint)
-    }
+private fun Dot(
+    face: Face?,
+    label: String?,
+    breathing: Boolean,
+    modifier: Modifier,
+) {
+    val sem = if (label == null || face == null) Modifier.clearAndSetSemantics {} else Modifier.clearAndSetSemantics { contentDescription = label }
+    val alpha = if (breathing) breathe() else 1f
+    Canvas(modifier.size(LocalAppTokens.current.dotSize).then(sem)) { face?.let { drawFace(it, alpha) } }
 }
+
+/** 点画成什么形。 */
+internal enum class DotForm { SOLID, RING, DASHED, DASH }
+
+/** 会话点的形 ＝ 进程还在不在：在 ⇒ 实心；退了 · 结束了 ⇒ 环；说不清 ⇒ 虚线环；记录已不在 ⇒ 短横。 */
+internal fun formOf(dot: SessionDot): DotForm =
+    when (dot) {
+        SessionDot.RUNNING, SessionDot.NEEDS_YOU, SessionDot.BACKGROUND, SessionDot.IDLE -> DotForm.SOLID
+        SessionDot.EXITED, SessionDot.ENDED -> DotForm.RING
+        SessionDot.UNKNOWN -> DotForm.DASHED
+        SessionDot.GONE -> DotForm.DASH
+    }
+
+private data class Face(
+    val form: DotForm,
+    val color: Color,
+)
 
 private fun DrawScope.drawFace(
     f: Face,
@@ -84,10 +108,10 @@ private fun DrawScope.drawFace(
     val r = size.minDimension / 2
     val w = RING.toPx()
     when (f.form) {
-        Form.SOLID -> drawCircle(f.color, r, alpha = alpha)
-        Form.RING -> drawCircle(f.color, r - w / 2, style = Stroke(w))
-        Form.DASHED -> drawCircle(f.color, r - w / 2, style = Stroke(w, pathEffect = PathEffect.dashPathEffect(floatArrayOf(w * DASH_ON, w * DASH_OFF))))
-        Form.DASH -> drawRoundRect(f.color, topLeft = Offset(0f, (size.height - w) / 2), size = Size(size.width, w), cornerRadius = CornerRadius(w / 2))
+        DotForm.SOLID -> drawCircle(f.color, r, alpha = alpha)
+        DotForm.RING -> drawCircle(f.color, r - w / 2, style = Stroke(w))
+        DotForm.DASHED -> drawCircle(f.color, r - w / 2, style = Stroke(w, pathEffect = PathEffect.dashPathEffect(floatArrayOf(w * DASH_ON, w * DASH_OFF))))
+        DotForm.DASH -> drawRoundRect(f.color, topLeft = Offset(0f, (size.height - w) / 2), size = Size(size.width, w), cornerRadius = CornerRadius(w / 2))
     }
 }
 

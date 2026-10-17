@@ -338,9 +338,9 @@ pub(crate) fn record_at(
             "io_failed",
             crate::common::said::Said::with_raw(
                 copy_text(
-                    "beSkillLedger.write.mkdirFailed",
+                    "reason.fs.writeFailed",
                     &[
-                        ("dir", &lock_dir.as_path().display().to_string()),
+                        ("path", &lock_dir.as_path().display().to_string()),
                         ("why", &copy_core::io_reason(e.kind())),
                     ],
                 ),

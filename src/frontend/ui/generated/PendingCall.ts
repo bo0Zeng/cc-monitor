@@ -16,7 +16,7 @@ id: string,
  */
 name: string, 
 /**
- * 主参数一行（[`WHAT_KEYS`]；提问取第一问）；没登记 / 入参里没有 ⇒ `null`。
+ * 主参数一行（那一家的「工具 → 主参数」表；提问取第一问）；没登记 / 入参里没有 ⇒ `null`。
  */
 what: string | null, 
 /**
@@ -28,7 +28,7 @@ at: string | null,
  */
 atMs: number | null, 
 /**
- * 这一步此刻的样子（[`settle_pending`] 每次现判，不累加；`prior` 里那一份不用）。
+ * 这一步此刻的样子（[`settle_pending`] 每次现判，不累加）。
  */
 state: StepWait, 
 /**

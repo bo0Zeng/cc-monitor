@@ -1,26 +1,28 @@
 //! **SFTP 住本机常驻后端**：在池里那条 SSH 连接上开 sftp 子系统 ·
-//! **远端写围栏（只许两处）** · 远端写原语 · 部署那条链路（`use:"files"`）的一问一答。
+//! **远端写围栏（只许暂存区一处）** · 远端写原语 · 部署那条链路（`use:"files"`）的一问一答。
 //!
 //! # 要求
 //!
 //! 「SFTP 怎么进单一常驻后端」一题选「**进本机常驻后端，只写暂存区**」：SFTP 连接由本机常驻后端管、
 //! 与其它 SSH 复用；只往远端暂存区写，落进用户目录仍只经远端后端文件管理提交（`files-commit-upload`）；
-//! 界面进程零 SSH。F08（自部署后端）**按构造搬不进远端后端**（那时它还不在），搬进**本机**后端没这个问题
-//! ⇒ 第二个写根是部署目录 `~/.cc-monitor/bin/`。
+//! 界面进程零 SSH。F08（自部署后端）也只往暂存区放字节：换进 `~/.cc-monitor/bin/`、卸载都由传上去的那一份在那台上自己做
+//! （`--place-self` · `--unplace-self`）⇒ 写根只有暂存区一处。
 //!
 //! # 🔴 本文件是后端里**唯一**一份能改远端文件系统的代码（红线 `I7`，`INVARIANTS §41.6`）
 //!
 //! `readonly_guard::remote_write_layer` 钉三件：① 生产段里命中远端写能力网 / 动词网的文件 == `{ssh-dial/sftp.rs}`；
-//! ② 本文件声明的写根（[`REMOTE_WRITE_ROOTS`]）== `{~/.cc-monitor/staging, ~/.cc-monitor/bin}`；
+//! ② 本文件声明的写根（[`STAGING_ROOT`]）== `~/.cc-monitor/staging`；
 //! ③ 本文件里每个含远端改动动词的函数，第一个改动之前先有一次 [`fenced_remote`] 调用。
 //! ⇒ **写原语只许住这里、只许从这里的函数进**；别的文件（`control/transfer.rs`、`uses.rs`）只调它们。
 //!
 //! # 围栏（[`fence_lexical`] 纯函数 ＋ [`fenced_remote`] 解链接）
 //!
 //! - 路径归一成 home 相对（home = SFTP `realpath(".")`，即起始目录）：绝对路径必须在 `<home>/` 底下；
-//! - 词法：不许 `..` / `.` / 空段；前两段必须恰好是某一个根；写文件必须**在根底下**（不是根自己）；
-//!   建目录另放行两个根自己与它们唯一的祖先 `.cc-monitor`（首次部署要建）；
-//! - 解链接：目标的父目录 `realpath` 之后必须仍在那个根的 `realpath` 之下（挡「`bin/x` 是指向 `~/.ssh` 的链接」）；
+//! - 词法：不许 `..` / `.` / 空段；前两段必须恰好是写根；写文件必须**在根底下**（不是根自己）；
+//!   建目录另放行根自己与它的祖先 `.cc-monitor`（首次部署要建）；
+//! - 写根本身：`.cc-monitor` 与写根 `lstat` 不是链接、`realpath` 仍在 home 底下（挡「`staging` 本身是指向 `~/.ssh` 的链接」）；
+//!   与本机后端自家目录同一条规矩（不是链接；本机那一份另核属主与权限位：`platform/fs/own.rs::own_dir`）；
+//! - 解链接：目标的父目录 `realpath` 之后必须仍在写根的 `realpath` 之下（挡「`staging/x` 是指向 `~/.ssh` 的链接」）；
 //!   打开写的那一格另问一次 `lstat`，最后一段是链接就拒（开写会跟过去）。
 //!
 //! # 买不到什么（逐条）
@@ -44,16 +46,13 @@ use crate::connect::Linked;
 use crate::uses::{Lane, Lease};
 use crate::{pool, write_line, DialRequest, StageSink};
 
-/// 🔴 **远端写根：恰好这两处**（home 相对）。`readonly_guard::remote_write_layer` 现读本行源码逐字比。
+/// 🔴 **远端写根：恰好暂存区这一处**（home 相对）。`readonly_guard::remote_write_layer` 现读本行源码逐字比。
 ///
-/// - `staging`：上传只写暂存区，落进用户目录由远端后端 `files-commit-upload` 做；
-/// - `bin`：自部署（F08 后端二进制 ＋ `.build_id` · `ccm` 入口），后端还不在时只能靠它放上去。
-pub const REMOTE_WRITE_ROOTS: [&str; 2] = [".cc-monitor/staging", ".cc-monitor/bin"];
+/// 上传只写这里，落进用户目录由远端后端 `files-commit-upload` 做；自部署也只把后端字节放进这里，换进 `~/.cc-monitor/bin/` · 卸载都由
+/// 传上去的那一份自己在那台上做（`--place-self` · `--unplace-self`）。与 `control/files_commit.rs::STAGING_DIR` 相等（同一个 crate，判据直接比）。
+pub const STAGING_ROOT: &str = ".cc-monitor/staging";
 
-/// 暂存区那一根（与 `control/files_commit.rs::STAGING_DIR` 相等 —— 同一个 crate，判据直接比）。
-pub const STAGING_ROOT: &str = REMOTE_WRITE_ROOTS[0];
-
-/// 两个根唯一的祖先：后端的家。只在「建目录」那一形里放行（首次部署要建它）。
+/// 写根的祖先：后端的家。只在「建目录」那一形里放行（首次部署要建它）。
 const ROOTS_HOME: &str = ".cc-monitor";
 
 /// **远端写的规矩**（宿主装进 [`crate::env::Env::files`]，一个进程一种；线上交来的请求改不动它）。
@@ -61,7 +60,7 @@ const ROOTS_HOME: &str = ".cc-monitor";
 pub enum WriteRules {
     /// 一个字节都不许写（没装宿主那一套时的缺省：宁可写不成，不许写错地方）。
     ReadOnly,
-    /// 部署：只许 [`REMOTE_WRITE_ROOTS`] 那两处（后端 · 手机）；建出来的目录当场收成 `dir_mode`（宿主交后端自家目录那一个权限位）。
+    /// 部署：只许 [`STAGING_ROOT`] 那一处（后端 · 手机）；建出来的目录当场收成 `dir_mode`（宿主交后端自家目录那一个权限位）。
     Deploy { dir_mode: u32 },
 }
 
@@ -282,7 +281,7 @@ impl Session {
 pub enum Intent {
     /// 建 / 写 / 删 / 改名一份文件：必须**在某个根底下**（不是根自己）。
     File,
-    /// 建一个目录：根底下、根自己、或两个根唯一的祖先 `.cc-monitor`。
+    /// 建一个目录：根底下、根自己、或它的祖先 `.cc-monitor`。
     Dir,
 }
 
@@ -373,7 +372,7 @@ fn why_of(e: &(dyn std::error::Error + 'static)) -> String {
 pub fn why_of_io(e: &std::io::Error) -> String {
     use std::io::ErrorKind as K;
     match e.kind() {
-        K::TimedOut => return copy_text("reason.sftp.noAnswer", &[]),
+        K::TimedOut => return copy_text("reason.link.noAnswer", &[]),
         K::BrokenPipe | K::ConnectionReset => {
             // 传输中对端断了 ＝ SFTP 标准码 7（连接断）那一件。
             return copy_core::sftp_status_reason(7);
@@ -409,14 +408,14 @@ fn why_of_sftp(e: &russh_sftp::client::error::Error) -> String {
     use russh_sftp::client::error::Error as E;
     match e {
         E::Status(st) => copy_core::sftp_status_reason(st.status_code as u32),
-        E::Timeout => copy_text("reason.sftp.noAnswer", &[]),
+        E::Timeout => copy_text("reason.link.noAnswer", &[]),
         E::Limited(_) => copy_text("reason.sftp.overLimit", &[]),
-        E::UnexpectedPacket => copy_text("reason.sftp.badMessage", &[]),
+        E::UnexpectedPacket => copy_text("reason.code.bug", &[]),
         E::IO(_) | E::UnexpectedBehavior(_) => copy_core::io_reason(std::io::ErrorKind::Other),
     }
 }
 
-/// **纯词法那一道**：把 `path` 归一成 home 相对，判它落不落在两个根里。
+/// **纯词法那一道**：把 `path` 归一成 home 相对，判它落不落在写根里。
 ///
 /// 回 `(home 相对路径, 它在哪个根底下)`；第二项 `None` = 它是 `.cc-monitor` 本身（只有建目录那一形放行）。
 pub fn fence_lexical(
@@ -450,32 +449,25 @@ pub fn fence_lexical(
         p
     };
     let rel = rel.trim_end_matches('/');
-    let comps: Vec<&str> = rel.split('/').collect();
-    if comps
-        .iter()
-        .any(|c| c.is_empty() || *c == "." || *c == ".." || c.contains('\0'))
-    {
+    // 普通段那一道是共用的；远端这一层另拒空段与 NUL（远端路径是串，`a//b` 不替调用方归一）。
+    let plain =
+        crate::plain_path::plain_segments(rel.as_bytes(), false, crate::plain_path::Dots::Reject);
+    if plain.is_err() || rel.is_empty() || rel.contains("//") || rel.contains('\0') {
         return Err(copy_text("beSftp.fence.irregular", &[("path", p)]));
     }
-    let rel = comps.join("/");
+    let rel = rel.to_string();
     if intent == Intent::Dir && rel == ROOTS_HOME {
         return Ok((rel, None));
     }
-    for root in REMOTE_WRITE_ROOTS {
-        let under = rel
-            .strip_prefix(root)
-            .is_some_and(|rest| rest.starts_with('/'));
-        if under || (intent == Intent::Dir && rel == root) {
-            return Ok((rel, Some(root)));
-        }
+    let under = rel
+        .strip_prefix(STAGING_ROOT)
+        .is_some_and(|rest| rest.starts_with('/'));
+    if under || (intent == Intent::Dir && rel == STAGING_ROOT) {
+        return Ok((rel, Some(STAGING_ROOT)));
     }
     Err(copy_text(
-        "beSftp.fence.outsideRoots",
-        &[
-            ("a", REMOTE_WRITE_ROOTS[0]),
-            ("b", REMOTE_WRITE_ROOTS[1]),
-            ("path", p),
-        ],
+        "beSftp.fence.outsideRoot",
+        &[("path", p), ("root", STAGING_ROOT)],
     ))
 }
 
@@ -484,7 +476,54 @@ fn parent_of(rel: &str) -> &str {
     rel.rsplit_once('/').map(|(p, _)| p).unwrap_or(".")
 }
 
-/// **围栏**：词法那一道 ＋ 父目录解链接之后仍在那个根之下。回 home 相对路径（SFTP 起始目录就是 home）。
+/// 写根**本身**：`.cc-monitor` 与那个根都不是链接、解开后仍在家目录底下（根是链接 ⇒ 后面「在根底下」恒成立）。
+/// 回解开的根；`.cc-monitor` 或根还不在 ⇒ `None`（底下没有东西可写错，建的那一下再问）。
+async fn own_root(s: &Session, root: &str) -> Result<Option<String>, Refusal> {
+    let unresolved = |dir: &str, e: &russh_sftp::client::error::Error| {
+        fenced_raw(
+            copy_text(
+                "beSftp.fence.rootUnresolved",
+                &[("root", dir), ("why", &why_of(e))],
+            ),
+            e,
+        )
+    };
+    let not_own = |real: &str| {
+        fenced(copy_text(
+            "beSftp.fence.rootNotOwn",
+            &[("root", root), ("real", real)],
+        ))
+    };
+    for dir in [ROOTS_HOME, root] {
+        match s.sftp().symlink_metadata(dir).await {
+            Ok(m) if m.is_symlink() => {
+                let real = s.sftp().canonicalize(dir).await.unwrap_or_default();
+                return Err(not_own(&real));
+            }
+            Ok(_) => {}
+            Err(russh_sftp::client::error::Error::Status(st))
+                if st.status_code == russh_sftp::protocol::StatusCode::NoSuchFile =>
+            {
+                return Ok(None)
+            }
+            Err(e) => return Err(unresolved(dir, &e)),
+        }
+    }
+    let real = s
+        .sftp()
+        .canonicalize(root)
+        .await
+        .map_err(|e| unresolved(root, &e))?;
+    let under_home = real
+        .strip_prefix(s.home.as_str())
+        .is_some_and(|rest| rest.starts_with('/'));
+    if !under_home {
+        return Err(not_own(&real));
+    }
+    Ok(Some(real))
+}
+
+/// **围栏**：词法那一道 ＋ 写根本身是家目录里的真目录（[`own_root`]）＋ 父目录解链接之后仍在那个根之下。回 home 相对路径（SFTP 起始目录就是 home）。
 pub async fn fenced_remote(s: &Session, path: &str, intent: Intent) -> Result<String, Refusal> {
     match crate::env::get().files {
         WriteRules::ReadOnly => {
@@ -499,18 +538,12 @@ pub async fn fenced_remote(s: &Session, path: &str, intent: Intent) -> Result<St
     let Some(root) = root else {
         return Ok(rel);
     };
+    let Some(real_root) = own_root(s, root).await? else {
+        return Ok(rel);
+    };
     if rel == root {
         return Ok(rel);
     }
-    let real_root = s.sftp().canonicalize(root).await.map_err(|e| {
-        fenced_raw(
-            copy_text(
-                "beSftp.fence.rootUnresolved",
-                &[("root", root), ("why", &why_of(&e))],
-            ),
-            &e,
-        )
-    })?;
     let parent = parent_of(&rel);
     let real_parent = s.sftp().canonicalize(parent).await.map_err(|e| {
         fenced_raw(
@@ -546,7 +579,7 @@ pub async fn fenced_remote(s: &Session, path: &str, intent: Intent) -> Result<St
 /// 写 `<path>.<这一趟独有的后缀>.tmp`（从前是固定 `<path>.tmp` ＋ 先删残留；**EXCLUDE** 创建：临时件是一条预置的链接也不会跟过去 —— F89a 审计）
 /// → 旧目标**改名成 `.<后缀>.bak`**（不是删：「先删旧」一旦后续改名失败就丢原件，DN-7 订正过那句注释）
 /// → 临时件上位 → 删 `.bak`。临时件与 `.bak` 都在目标**同一个父目录**里，那个父目录已经过了围栏。
-/// 标准 SFTP 的改名不覆盖（`russh-sftp` 没有 `posix-rename@openssh.com`）⇒ 只能这样近似原子。两个部署者交错时临时件 / 备份件各是各的（唯一名）；仍剩的一格如实记：`rel → .bak` 与 `tmp → rel` 之间 `rel` 有一瞬不在。
+/// 标准 SFTP 的改名不覆盖（`russh-sftp` 没有 `posix-rename@openssh.com`）⇒ 只能这样近似原子。两个部署者交错时临时件 / 备份件各是各的（唯一名）；`rel → .bak` 与 `tmp → rel` 之间 `rel` 有一瞬不在 ⇒ 部署不经它换落点（只放进暂存区，落点由那一份自己 `--place-self` 原子换进去）。
 ///
 /// ⚠ **改名之后绝不 `set_metadata` 兜底 chmod** —— 真机 e2e 实证：OpenSSH sftp-server 上那一次 setstat 把刚上位的
 /// 后端**截成 0 字节** ⇒ 不可 exec → 连接 EOF → 标记变空 → 无限重部署。权限只在 open-create 的属性里设一次。
@@ -666,12 +699,11 @@ pub async fn put_atomic(s: &Session, path: &str, bytes: &[u8], mode: u32) -> Res
     Ok(())
 }
 
-/// **原子上传 ＋ 整份读回比对**（部署那一趟：桌面经 `files` 链路的 `put`（`verify`）· 手机经 `deploy` crate，同一份）：
+/// **原子上传 ＋ 整份读回比对**（部署那一趟放进暂存区：`deploy` crate，桌面手机同一份；`files` 链路的 `put`（`verify`）也是它）：
 /// [`put_atomic`] 放上去 → [`read_all`] 读回 → [`verify_readback`] 判；**读回不对 ⇒ 当场删掉传坏的那一份**（删不掉也照实说）。
 ///
-/// 删的理由（从 monitor `sftp.rs::upload_verified` 随判定一起搬来）：身份读字节自己的戳 —— 一份传坏的字节若恰好还带着对的戳，
-/// 下次会被判「已是这一版」⇒ 坏字节永久驻留。删掉它，下次就是「落点没有 ⇒ 装」。
-/// 中途断了（读回之前 · 删之前）：落点上留的是这一趟放上去的那一份（没读回过），下次连上照计划扫它的戳再判。
+/// 删的理由：一份传坏的字节留着没用，下一趟按残件清还得等期限；当场删掉，下一趟从头传。
+/// 中途断了（读回之前 · 删之前）：留下的那一份是唯一名的暂存件，下次连上照计划当残件清。
 pub async fn put_verified(s: &Session, path: &str, bytes: &[u8], mode: u32) -> Result<(), Refusal> {
     put_atomic(s, path, bytes, mode).await?;
     let back = read_all(s, path).await;
@@ -748,12 +780,17 @@ fn trip_tag() -> String {
     )
 }
 
-/// 这个名字是不是 [`put_atomic`] 留下的临时件 / 备份件：`<名>.<trip_tag>.tmp` 或 `.bak`
-/// （`trip_tag` = 三段非空小写十六进制、`-` 相连）。形状只认这一种 —— 别的名字不是我们放的，一个不碰。
+/// 部署往暂存区放的那一份的名字：`<stem>.<trip_tag>.new`（每趟一个；没换进落点就断了 ⇒ 下一趟按 [`is_trip_leftover`] 认作残件）。
+pub fn staged_name(stem: &str) -> String {
+    format!("{stem}.{}.new", trip_tag())
+}
+
+/// 这个名字是不是一趟部署留下的件：[`put_atomic`] 的临时件 / 备份件（`<名>.<trip_tag>.tmp` · `.bak`）或部署放进暂存区、
+/// 还没换进落点的那一份（`<名>.<trip_tag>.new`；`trip_tag` = 三段非空小写十六进制、`-` 相连）。形状只认这几种 —— 别的名字不是我们放的，一个不碰。
 pub fn is_trip_leftover(name: &str) -> bool {
-    let Some(stem) = name
-        .strip_suffix(".tmp")
-        .or_else(|| name.strip_suffix(".bak"))
+    let Some(stem) = [".tmp", ".bak", ".new"]
+        .iter()
+        .find_map(|sfx| name.strip_suffix(sfx))
     else {
         return false;
     };
@@ -953,7 +990,7 @@ pub async fn open_for_read(s: &Session, path: &str) -> Result<RemoteFile, Said> 
         .map_err(|e| {
             Said::with_raw(
                 copy_text(
-                    "beSftp.open.readFailed",
+                    "reason.fs.readFailed",
                     &[("path", path), ("why", &why_of(&e))],
                 ),
                 &e,

@@ -284,7 +284,7 @@ fn the_report_wire_matches_the_cross_language_golden() {
     )
     .unwrap();
     let path =
-        crate::guard_support::repo_root().join("tests/__fixtures__/footprint-report.golden.json");
+        guard_core::addr::repo_root().join("tests/__fixtures__/footprint-report.golden.json");
     let want: Value = serde_json::from_str(
         &std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读不到金样 {path:?}：{e}")),
     )

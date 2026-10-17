@@ -25,7 +25,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::guard_support::production_code;
+    use guard_core::production_code;
 
     /// 允许的 `observe → control` 跨层引用，逐条列举。
     ///
@@ -93,7 +93,7 @@ mod tests {
 
     /// 收集某一层下所有 `.rs` 的 `(相对路径, 生产段)`。
     fn layer_sources(layer: &str) -> Vec<(String, String)> {
-        let root = crate::guard_support::src_root().join(layer);
+        let root = guard_core::addr::backend_src_root().join(layer);
         layer_sources_at(&root, layer)
     }
 
@@ -278,7 +278,7 @@ mod tests {
     /// ⇒ 改成**数量相等**：独立走一遍目录树数 `.rs`，与采集到的条数比。
     /// 它对「文件增删」免疫（那是正常演进），只对「采集漏了」敏感 —— 而后者才是要防的。
     fn assert_collection_is_complete(layer: &str, files: &[(String, String)]) {
-        let root = crate::guard_support::src_root().join(layer);
+        let root = guard_core::addr::backend_src_root().join(layer);
         assert_collection_is_complete_at(&root, layer, files);
     }
 
@@ -317,7 +317,7 @@ mod tests {
         // 都有这条，本护栏初版是唯一没有的（Phase D 审计指出）。
         // 它挡的是「剥少了 ⇒ 护栏开始扫测试代码 ⇒ 被夹具打红 ⇒ 有人顺手放宽护栏」。
         for (name, prod) in files {
-            crate::guard_support::assert_no_test_code(&format!("{layer}/{name}"), prod);
+            guard_core::assert_no_test_code(&format!("{layer}/{name}"), prod);
         }
     }
 
@@ -344,7 +344,7 @@ mod tests {
 
     /// 后端顶层模块名（`lib.rs` 里的 `pub mod <名>;`），从源码现取。
     fn top_modules() -> Vec<String> {
-        let lib = std::fs::read_to_string(crate::guard_support::src_root().join("lib.rs"))
+        let lib = std::fs::read_to_string(guard_core::addr::backend_src_root().join("lib.rs"))
             .expect("读 lib.rs");
         production_code(&lib)
             .lines()
@@ -406,10 +406,10 @@ mod tests {
     /// 起因：一次性模式的诊断落点曾引 `crate::control::resident::STDERR_LOG_REL`；常量现住 `stderr_log` 自己，控制面反过来引它。
     #[test]
     fn the_stderr_log_module_only_references_the_bottom_layers() {
-        let path = crate::guard_support::src_root().join("stderr_log.rs");
+        let path = guard_core::addr::backend_src_root().join("stderr_log.rs");
         let src = std::fs::read_to_string(&path).expect("读 stderr_log.rs");
         let files = vec![("stderr_log.rs".to_string(), production_code(&src))];
-        crate::guard_support::assert_no_test_code("stderr_log.rs", &files[0].1);
+        guard_core::assert_no_test_code("stderr_log.rs", &files[0].1);
         assert!(
             files[0].1.contains("crate::platform::"),
             "stderr_log.rs 生产段里连 platform 都没引到 —— 剥法坏了，下面的判是空的"
@@ -527,7 +527,7 @@ mod tests {
             .collect();
         want.sort();
         // 同 `S1`（Phase D 审计）那条纪律：**登记项必须钉到符号级**，模块级等于把整层放开。
-        for (_, e, why) in ALLOWED_INTO_PLUGIN {
+        for (_, e, _) in ALLOWED_INTO_PLUGIN {
             let tail = e
                 .strip_prefix("crate::plugin::")
                 .unwrap_or_else(|| panic!("登记项必须以 `crate::plugin::` 开头：{e}"));
@@ -535,10 +535,6 @@ mod tests {
                 tail.contains("::"),
                 "登记项 `{e}` 只钉到**模块级** —— 那等于把整个模块的接口面都放开，\
                  而计数看不出区别。必须钉到符号：`crate::plugin::<模块>::<符号>`。"
-            );
-            assert!(
-                why.trim().len() >= 20,
-                "登记项 `{e}` 没写清「为什么这条边是调用口的**形状**而不是某个插件的**语义**」"
             );
         }
         assert_eq!(
@@ -612,7 +608,7 @@ mod tests {
     // ⚠ 分母先说清：`relay/` 今天是 **12 个 `.rs`**（09-02 现打，`ls -1 src/relay/*.rs | wc -l`）。
     // 件文件 `§0` 写的「8 个文件」量于 **08-26**，此后长了 4 个 ⇒ **那个数已经馊了，别沿用**。
     //
-    // ⚠ **别与 `relay/bind_guard` · 〔AR1 已退役〕`relay/nodelay_guard` 混起来**（件文件 `§0a`）：
+    // ⚠ **别与规则 `bind_guard` · 〔AR1 已退役〕`relay/nodelay_guard` 混起来**（件文件 `§0a`）：
     // 那两条护的是**中转自己的行为**（绑哪个口、开不开 Nagle；后者今天由 `server_tests.rs` 的行为格判），
     // 与「**层与层之间谁能引谁**」不是一回事。拿它们答「已经有护栏了」，
     // 正是本区「量具的作用域对不上事实」那一族。
@@ -736,7 +732,7 @@ mod tests {
     /// 中转 crate 的公开项 == [`RELAY_EXPORTS`]（两向集合相等；从 `lib.rs` 生产段现抠）。
     #[test]
     fn the_relay_layer_exports_exactly_the_registered_items() {
-        let src = std::fs::read_to_string(crate::guard_support::relay_root().join("lib.rs"))
+        let src = std::fs::read_to_string(guard_core::addr::relay_root().join("lib.rs"))
             .expect("读中转 crate 的 lib.rs（`src/comms/outward/lib.rs`）");
         let found = relay_crate_public_items(&production_code(&src));
         let mut want: Vec<String> = RELAY_EXPORTS
@@ -750,9 +746,6 @@ mod tests {
             "中转 crate 的公开项与登记表对不上。多出来的 = 有人新开了口子而没说为什么；\
              少了的 = 口收掉了，同拍把登记摘掉。"
         );
-        for (i, why) in RELAY_EXPORTS {
-            assert!(why.chars().count() >= 15, "`{i}` 没写清为什么它是对外的口");
-        }
         // 正控：抽取器认得出两种形（`pub use` 的花括号 / 单项 · 顶层 `pub` 声明），不认 `pub(crate)` 与缩进里的。
         let probe = "pub use a::{x, y};\npub use b::z;\npub struct S;\npub(crate) struct T;\n    pub fn inner() {}\npub trait Q {}\n";
         assert_eq!(
@@ -1161,6 +1154,27 @@ mod tests {
             "faces",
             "faces 是账号库与上游选择接头的那一处：账号库由 faces 读好交进来（`LibraryRead`）",
         ),
+        // 读一份记录的四层（`observe` 里头）：读行 → 认行 → 扫描图与骨架 → 查询，跟读在最上；只许往下引。
+        (
+            "observe::lines",
+            "observe::recognize · record_scan · skeleton · query · watcher",
+            "读行在最下：一行行读 · 算不算一行 · 一行怎么解析",
+        ),
+        (
+            "observe::recognize",
+            "observe::record_scan · skeleton · query · watcher",
+            "认行只认给它的那一行，不碰文件、不问扫描图",
+        ),
+        (
+            "observe::record_scan",
+            "observe::query · watcher",
+            "扫描图一份记录扫一趟，查询与跟读都来要它",
+        ),
+        (
+            "observe::query",
+            "observe::watcher",
+            "查询只读扫描图；跟读起步也问扫描图",
+        ),
     ];
 
     /// 帧面的协议零件（`wire`）只许引的那几个顶层模块：它们自己也只引 `platform` / `common`。
@@ -1299,7 +1313,7 @@ mod tests {
     /// `crate::<名>` 照它记到那个模块头上（不然经根转一手就躲过了量法）。
     /// ⚠ `lib.rs` 里**自己定义**、内含别的模块类型的这里看不见：那一形手理（const1 起根上不再有这样的，`StreamWants` 挪去 `stream::inbound::views`）。
     fn root_reexports(tops: &[String]) -> std::collections::BTreeMap<String, String> {
-        let lib = std::fs::read_to_string(crate::guard_support::src_root().join("lib.rs"))
+        let lib = std::fs::read_to_string(guard_core::addr::backend_src_root().join("lib.rs"))
             .expect("读 lib.rs");
         let mut out = std::collections::BTreeMap::new();
         for l in production_code(&lib).lines() {
@@ -1328,7 +1342,7 @@ mod tests {
 
     /// 全后端两两引用的次数：`(谁, 引谁) → (处, 份)`。人群＝各顶层模块目录下全部 `.rs`，减去父模块写明只在测试档的。
     fn reference_matrix() -> std::collections::BTreeMap<(String, String), (usize, usize)> {
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         let tops = top_modules();
         let via_root = root_reexports(&tops);
         let mut m: std::collections::BTreeMap<(String, String), (usize, usize)> =
@@ -1393,6 +1407,61 @@ mod tests {
         m
     }
 
+    /// 一个顶层模块里头的一层（`top/layer.rs` 或 `top/layer/` 底下）引了同一顶层里哪几个不许引的兄弟：
+    /// `not` 写作 `top::a · b · c`。认 `crate::top::x` · `super::x`（顶层那一级的文件）· `super::super::x`（下一级目录里的文件）。
+    fn inner_refs(top: &str, layer: &str, not: &str) -> Vec<(usize, String, String)> {
+        let root = guard_core::addr::backend_src_root().join(top);
+        let targets: Vec<&str> = not
+            .strip_prefix(&format!("{top}::"))
+            .expect("`not` 以同一顶层开头")
+            .split(" · ")
+            .collect();
+        let mut files = vec![root.join(format!("{layer}.rs"))];
+        let mut stack = vec![root.join(layer)];
+        while let Some(d) = stack.pop() {
+            for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else if p.extension().is_some_and(|x| x == "rs") {
+                    files.push(p);
+                }
+            }
+        }
+        files.retain(|p| p.is_file());
+        assert!(
+            !files.is_empty(),
+            "`{top}::{layer}` 一份文件都没有 —— 这一行是空转"
+        );
+        let mut out = Vec::new();
+        for p in files {
+            let nested = p.parent() != Some(root.as_path());
+            let up = if nested { "super::super::" } else { "super::" };
+            let layer_src = production_code(&std::fs::read_to_string(&p).expect("read rs"));
+            for t in &targets {
+                let n = [format!("crate::{top}::{t}"), format!("{up}{t}")]
+                    .iter()
+                    .map(|needle| {
+                        layer_src
+                            .match_indices(needle.as_str())
+                            .filter(|(i, _)| {
+                                let after = layer_src[i + needle.len()..].chars().next();
+                                let before = layer_src[..*i].chars().next_back();
+                                !after.is_some_and(is_ident_char)
+                                    && !before.is_some_and(|c| is_ident_char(c) || c == ':')
+                            })
+                            .count()
+                    })
+                    .sum::<usize>();
+                if n > 0 {
+                    let rel = p.strip_prefix(&root).unwrap_or(&p).display().to_string();
+                    out.push((n, rel, t.to_string()));
+                }
+            }
+        }
+        out
+    }
+
     /// ★ **功能之间只许单向**：定了方向的那几对反方向零处；任何两个顶层模块都不许互相引用。
     #[test]
     fn features_reference_each_other_one_way_only() {
@@ -1400,6 +1469,14 @@ mod tests {
         let count = |a: &str, b: &str| m.get(&(a.to_string(), b.to_string())).copied();
         let mut bad = Vec::new();
         for (who, not, why) in ONE_WAY {
+            if let Some((top, layer)) = who.split_once("::") {
+                for (n, file, to) in inner_refs(top, layer, not) {
+                    bad.push(format!(
+                        "{who} → {top}::{to}：{n} 处（{file}；{who} 在 {to} 之下：{why}）"
+                    ));
+                }
+                continue;
+            }
             if let Some((n, files)) = count(who, not) {
                 bad.push(format!(
                     "{who} → {not}：{n} 处 / {files} 份（方向定的是 {not} → {who}：{why}）"

@@ -14,12 +14,12 @@ import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/to
 import { askText } from "../../../src/frontend/ui/kit/dialog";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { showMessage } from "../../../src/frontend/ui/status-messages";
-import { LIVE, ENDED, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
+import { goldenFace, liveFace } from "../../test-support/session-faces";
 import { LOCAL_ORIGIN, originFromWire } from "../../../src/frontend/ui/ipc/origin";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 
 const tab = (sid: string, live: boolean, extra: Partial<Tab> = {}): Tab =>
-  ({ sessionId: sid, origin: LOCAL_ORIGIN, title: `T-${sid}`, label: `T-${sid}`, labelProject: null, projectDir: null, background: false, bgName: null, forkedFromSessionId: null, state: live ? LIVE : ENDED, pinned: false, group: null, ...extra }) as Tab;
+  ({ sessionId: sid, origin: LOCAL_ORIGIN, title: `T-${sid}`, label: `T-${sid}`, labelProject: null, projectDir: null, background: false, bgName: null, forkedFromSessionId: null, face: live ? liveFace("working", true) : goldenFace("ended"), pinned: false, group: null, ...extra }) as Tab;
 
 let tabs: Tab[];
 let host: TabBatchHost;
@@ -86,13 +86,29 @@ describe("批量菜单", () => {
   });
 
   it("说不清（那台暂时看不见）的不算可起、也不说「已经结束了」：理由说看不见", async () => {
-    tabs = [tab("a", false), tab("u", false, { state: UNSEEN })];
+    tabs = [tab("a", false), tab("u", false, { face: null })];
     run.start.mockResolvedValue([{ sid: "a", outcome: "done", why: "" }]);
     open();
     await press(copyText("tabBatch.menu.startTmux", { n: 1 }));
     expect(run.start.mock.calls[0][0].map((t: Tab) => t.sessionId)).toEqual(["a"]);
-    const unseen = copyText("tabBatch.result.skippedLine", { title: "T-u", why: copyText("sessionState.unseen.tooltip") });
+    const unseen = copyText("tabBatch.result.skippedLine", { title: "T-u", why: copyText("sessionState.unseen.noResume") });
     expect(toastBody().split("\n")).toContain(unseen);
+  });
+
+  it("★ 杀：能做的照脸上 can.term 数，跳过的理由照抄各自那一格的 why；「已结束几个」按点数（不拿句子比）", async () => {
+    const ended = { ...goldenFace("ended"), can: { ...goldenFace("ended").can, term: { can: "no" as const, why: "核心·e" } } };
+    const gone = { ...goldenFace("gone"), can: { ...goldenFace("gone").can, term: { can: "no" as const, why: "核心·g" } } };
+    tabs = [tab("e1", false, { face: ended }), tab("e2", false, { face: ended }), tab("g", false, { face: gone }), tab("r", true)];
+    run.stop.mockResolvedValue([{ sid: "r", outcome: "done", why: "" }]);
+    open();
+    await press(copyText("tabBatch.menu.stop", { n: 1 }));
+    expect(run.stop.mock.calls[0][0].map((t: Tab) => t.sessionId)).toEqual(["r"]);
+    expect((run.confirm.mock.calls[0][0] as { note?: string }).note).toBe(copyText("sessionState.batch.skipped", { n: 3 }));
+    expect(toastBody().split("\n")).toEqual([
+      copyText("tabBatch.result.skippedLine", { title: "T-e1", why: "核心·e" }),
+      copyText("tabBatch.result.skippedLine", { title: "T-e2", why: "核心·e" }),
+      copyText("tabBatch.result.skippedLine", { title: "T-g", why: "核心·g" }),
+    ]);
   });
 
   it("B2 · 杀：确认框列出这一批，只交还在跑的；结果一条：做了 · 跳过（为什么）· 失败（为什么）", async () => {
@@ -136,7 +152,7 @@ describe("批量菜单", () => {
     expect((vi.mocked(showActionFailureToast).mock.calls.at(-1)?.[2] as { action?: unknown }).action).toBeUndefined();
   });
 
-  it("远端那几行机器只出一次：标题不带 `[机器]` 前缀，机器写在括号里", async () => {
+  it("远端那几行机器只出一次：标题不带 `[机器]` 前缀，机器写在括号里（确认框与结果那几行同一形；原因那台写、不带机器）", async () => {
     const devbox = originFromWire("devbox");
     tabs = [
       tab("r", true, { origin: devbox, title: "[devbox] [billing] 账单导出改成流式", projectDir: "/w/billing", label: "账单导出改成流式", labelProject: "billing" }),
@@ -149,8 +165,8 @@ describe("批量菜单", () => {
     open();
     await press(copyText("tabBatch.menu.stop", { n: 2 }));
     const spec = run.confirm.mock.calls[0][0] as { list: string[] };
-    expect(spec.list).toEqual([copyText("tabBatch.stop.line", { title: "billing 账单导出改成流式", machine: "devbox" }), "web 首页"]);
-    expect(toastBody().split("\n")).toEqual([copyText("tabBatch.result.failedLine", { title: "billing 账单导出改成流式", why: "门拦下了" })]);
+    expect(spec.list).toEqual([copyText("tabBatch.line.remote", { title: "billing 账单导出改成流式", machine: "devbox" }), "web 首页"]);
+    expect(toastBody().split("\n")).toEqual([copyText("tabBatch.result.failedLine", { title: spec.list[0], why: "门拦下了" })]);
   });
 
   it("B3 · 固定 / 分组：一次交出能做的那几个；新建分组整批进同一个新组，不问名字", async () => {

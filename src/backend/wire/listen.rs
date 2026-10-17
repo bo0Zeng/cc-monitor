@@ -144,10 +144,12 @@ pub fn refusal_line(reason: &'static str) -> String {
 /// 这条连接给什么档。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Admit {
-    /// 交出流：看的那一台的时区（原样，认不得 ⇒ UTC 由读的那一处定）· 回话里那一格（这台相对 attach 行的 `mine`；没带 ⇒ 缺）。
+    /// 交出流：看的那一台的时区（原样，认不得 ⇒ UTC 由读的那一处定）· 回话里那一格（这台相对 attach 行的 `mine`；没带 ⇒ 缺）·
+    /// 在看名单（这条流从第一帧起照它发；没带 ⇒ 全发）。
     Stream {
         tz: Option<String>,
         reply: AttachReply,
+        watch: Option<crate::wire::WatchAsk>,
     },
     /// 拒绝，并把理由写回去（**出声**，不是静默 FIN —— 照 `relay::serve` 那条 503 的形状）。
     Refuse(&'static str),
@@ -165,6 +167,7 @@ pub fn admit(line: &str, own: &str) -> Admit {
                     .map(|m| deploy_contract::build_relation(own, m)),
             },
             tz: l.tz,
+            watch: l.watch,
         },
         Err(_) => Admit::Refuse(REFUSE_MALFORMED),
     }

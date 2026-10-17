@@ -8,7 +8,7 @@
 //!
 //! # 形状
 //!
-//! `{"version": 1, "entries": {sid: {"starred", "customTitle", "hide"?, "updatedAt"}}}`；两个键认蛇形别名（`custom_title` / `updated_at`），缺格取缺省。
+//! `{"version": 1, "entries": {sid: {"starred", "customTitle", "hide"?, "autoAnswer"?, "resumeWith"?, "updatedAt"}}}`；两个键认蛇形别名（`custom_title` / `updated_at`），缺格取缺省。
 //! `hide` 是单个那一格（`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则，判定住 `control/session_hidden.rs`）。
 //!
 //! # 升级链（一节，下一个大版本删）
@@ -28,7 +28,7 @@
 
 use crate::platform::fs::{Own, OwnLock, OwnPath};
 use crate::wire::typed::{codes, of_fail, Command};
-pub use cmd_wire::listing::{Entry, Table};
+pub use cmd_wire::listing::{Entry, ResumeWith, Table};
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -107,6 +107,32 @@ pub enum Loaded {
     Unreadable(String),
 }
 
+/// 这条会话「没人答时自动答」那一格（现读这台那一份；读不到 ⇒ 关）。
+pub(crate) fn auto_answer_of(sid: &str) -> Option<cmd_wire::needs::AutoAnswer> {
+    path().and_then(|p| auto_answer_at(&p, sid))
+}
+
+/// [`auto_answer_of`]，文件是参数。
+pub(crate) fn auto_answer_at(path: &Path, sid: &str) -> Option<cmd_wire::needs::AutoAnswer> {
+    match load_at(path) {
+        Loaded::Read(t) => t.get(sid).and_then(|e| e.auto_answer.clone()),
+        _ => None,
+    }
+}
+
+/// 这条会话「下次恢复用」那一格（现读这台那一份；读不到 ⇒ 没记）。还算不算数由读的那一方照记录长度判（`session_open_face::kept_for_resume`）。
+pub(crate) fn resume_with_of(sid: &str) -> Option<ResumeWith> {
+    path().and_then(|p| resume_with_at(&p, sid))
+}
+
+/// [`resume_with_of`]，文件是参数。
+pub(crate) fn resume_with_at(path: &Path, sid: &str) -> Option<ResumeWith> {
+    match load_at(path) {
+        Loaded::Read(t) => t.get(sid).and_then(|e| e.resume_with.clone()),
+        _ => None,
+    }
+}
+
 /// 那份文件的路径：这台的家根上那一份；推不出家 ⇒ `None`。
 pub fn path() -> Option<PathBuf> {
     path_from(&|k| std::env::var(k).ok())
@@ -173,9 +199,9 @@ fn lock_for_write(own: &Own, dir: &OwnPath) -> Result<OwnLock, crate::wire::spec
             "io_failed",
             crate::common::said::Said::with_raw(
                 copy_text(
-                    "beHistoryAnnotations.writeAt.mkdirFailed",
+                    "reason.fs.writeFailed",
                     &[
-                        ("dir", &(d.display()).to_string()),
+                        ("path", &(d.display()).to_string()),
                         ("why", &copy_core::io_reason(e.kind())),
                     ],
                 ),
@@ -206,6 +232,10 @@ pub(crate) struct Patch {
     #[serde(default)]
     #[cfg_attr(test, ts(optional = nullable))]
     hide: Option<HideAsk>,
+    /// 没人答时自动答：`{afterMin, say?}`，`afterMin: 0` 摘掉（关）；没给 `say` ⇒ 留着原来那一句、空白 ⇒ 回到缺省；值怎么算数由 `control::asks::auto_checked` 判。
+    #[serde(default, rename = "autoAnswer")]
+    #[cfg_attr(test, ts(optional = nullable))]
+    auto_answer: Option<cmd_wire::needs::AutoAnswer>,
 }
 
 /// 被改那一条身上要摘掉的蛇形别名（写回时一律驼峰）。
@@ -315,8 +345,10 @@ fn put_entry(raw: &mut Value, sid: &str, entry: Option<&Entry>) {
             for a in ALIASES {
                 obj.remove(a);
             }
-            // 单个那一格摘掉（回到规则）时序列化里没有它 ⇒ 原文里那一格也摘。
+            // 可缺的那几格摘掉时序列化里没有它 ⇒ 原文里那一格也摘。
             obj.remove("hide");
+            obj.remove("autoAnswer");
+            obj.remove("resumeWith");
             if let Value::Object(norm) = serde_json::to_value(e).expect("Entry 总能序列化") {
                 for (k, v) in norm {
                     obj.insert(k, v);
@@ -493,11 +525,87 @@ pub(crate) fn annotate_at(
         Some(HideAsk::Off) => entry.hide = Some(Hide::Off),
         Some(HideAsk::Rule) => entry.hide = None,
     }
+    let auto_changed = patch.auto_answer.is_some();
+    if let Some(mut a) = patch.auto_answer {
+        // 没给那一句 ⇒ 留着原来那一句（只换分钟）；给了空白 ⇒ 回到缺省。
+        if a.say.is_none() {
+            a.say = entry.auto_answer.as_ref().and_then(|p| p.say.clone());
+        }
+        entry.auto_answer =
+            crate::control::asks::auto_checked(a).map_err(AnnotationErr::BadArgs)?;
+    }
     entry.updated_at = now;
     put_entry(&mut raw, sid, Some(&entry));
     write_at(own, &file, &held, &raw)
         .map_err(|e| err(crate::wire::spec::Fail::from(("io_failed", e))))?;
+    // 会话事实里那一格（`autoAnswer`）跟着变：出口照推帧重读，不自己去问。
+    if auto_changed {
+        crate::control::asks::moved(sid);
+    }
     Ok(Annotated { entry, prev })
+}
+
+/// 「下次恢复用」那一格的唯一写者（`session-model` · `session-permission` 在终端没了时调）：同一个 `end` 上先后记的并成一份，
+/// `end` 变了 ⇒ 整份换掉。别的格不动。
+pub(crate) fn keep_resume_at(
+    own: &Own,
+    sid: &str,
+    pick: ResumeWith,
+    now: i64,
+) -> Result<(), crate::wire::spec::Fail> {
+    use crate::wire::typed::Codes as _;
+    let sid = checked_sid(sid).map_err(|e| e.into_fail())?;
+    let (dir, file) = need_path(own)?;
+    let held = lock_for_write(own, &dir)?;
+    let (doc, mut raw, moved) = read_for_write(file.as_path())?;
+    let io = |e| crate::wire::spec::Fail::from(("io_failed", e));
+    if moved {
+        keep_old(own, &dir, &file, &held).map_err(io)?;
+    }
+    let mut entry = doc.entries.get(sid).cloned().unwrap_or_default();
+    entry.resume_with = Some(match entry.resume_with.take() {
+        Some(old) if old.end == pick.end => ResumeWith {
+            model: pick.model.or(old.model),
+            permission_mode: pick.permission_mode.or(old.permission_mode),
+            end: pick.end,
+        },
+        _ => pick,
+    });
+    entry.updated_at = now;
+    put_entry(&mut raw, sid, Some(&entry));
+    write_at(own, &file, &held, &raw).map_err(io)
+}
+
+/// 终端没了时换的那一项（注解 `resumeWith`）此刻还算不算数：记录还是记下那一刻那么长 ⇒ 算；长了（恢复过 · 又写过）· 读不到记录 ⇒ 作废。
+/// 恢复（`session_open_face::resume_of`）与会话事实读同一份。
+pub(crate) fn kept_for_resume(kept: Option<ResumeWith>, record: &Path) -> Option<ResumeWith> {
+    let len = crate::platform::fs::Ro::metadata(record).ok()?.len();
+    kept.filter(|k| k.end == len)
+}
+
+/// 终端没了时换模型 / 权限档：把选的那一项记在这条会话上（`end` ＝ 此刻记录多长），下次恢复照它起。
+pub(crate) fn keep_for_resume(
+    own: &Own,
+    sid: &str,
+    record: &Path,
+    model: Option<&str>,
+    permission_mode: Option<&str>,
+) -> Result<(), crate::wire::spec::Fail> {
+    let end = crate::platform::fs::Ro::metadata(record)
+        .map_err(|e| crate::wire::spec::Fail::new("io_failed", copy_core::io_reason(e.kind())))?
+        .len();
+    keep_resume_at(
+        own,
+        sid,
+        ResumeWith {
+            model: model.map(str::to_string),
+            permission_mode: permission_mode.map(str::to_string),
+            end,
+        },
+        crate::common::time::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis() as i64),
+    )
 }
 
 /// `history-annotate` 的回包：改完的那一条 ＋ 改之前单个隐藏那一格。

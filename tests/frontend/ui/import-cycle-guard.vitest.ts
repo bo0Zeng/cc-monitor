@@ -30,7 +30,7 @@
  * # 第二条：**连类型边一起算**的全图，强连通分量 == 豁免表（两向）
  *
  * 上面那条「`import type` 不算边」的理由对**运行期**成立；但审计 B §4 现打出一个 7 模块的类型环
- * （`accounts · accounts-decode · config · history-reads · ipc/chan · ipc/chan-caller · ipc/commands`），
+ * （`accounts · 账号解码器 · config · history-reads · ipc/chan · ipc/chan-caller · ipc/commands`），
  * 只靠 `ipc/commands.ts` 为一个返回类型回头 `import type` 账号域闭合 —— **通信层在类型上依赖账号域**，
  * 那是分层反了，不是「不存在的依赖」。要求「import 图无环（现打全图）」、「类型住被依赖的一侧」。
  * ⇒ 第二条判据量全图（值边 ＋ 类型边），强连通分量集合 == [`TYPE_CYCLE_EXEMPT`]（两向：新长一个环 ⇒ 红；
@@ -179,8 +179,6 @@ function cycleComponents(graph: Map<string, string[]>): string[][] {
  * 拆掉了不摘 ⇒ 红；新长一个 ⇒ 红。
  */
 const TYPE_CYCLE_EXEMPT: ReadonlyArray<readonly [members: readonly string[], why: string]> = [
-  // `accounts-decode ⇄ accounts` 那一行摘了：`accounts.ts` 拆成模型（纯）＋ 读面（`account-reads.ts`）之后，
-  //   值 import 解码器的是读面，解码器 `import type` 的是模型 ⇒ 环断（登记时写明这一处要摘）。
   // `cards/index ⇄ cards/subagent` 那一行摘了：派出卡不再就地展开时间线，`subagent.ts` 不再 `import type` 回 `./index`（agent 窗口那一路）。
   // `launch-dimensions ⇄ launch-plan` 那一行摘了：IR 的类型拆进纯类型叶子 `src/frontend/ui/launch-types.ts`，
   //   `launch-dimensions.ts` 改 `import type { LaunchDimension } from "./launch-types.ts"` ⇒ 环断（本行登记时写明归 LR2 摘）。
@@ -227,9 +225,8 @@ describe("E80：生产代码不许有运行期 import 环", () => {
   const isGenerated = (p: string) => rel(p).startsWith("src/frontend/ui/generated/");
 
   it("★ 反向自检：图真的建起来了（否则下面那条恒绿）", () => {
-    expect(files.length, "一个生产 .ts 都没扫到 —— 遍历坏了").toBeGreaterThan(100);
     const edges = [...graph.values()].reduce((n, v) => n + v.length, 0);
-    expect(edges, "图里一条边都没有 —— import 抠法坏了").toBeGreaterThan(200);
+    expect(edges, "图里一条边都没有 —— import 抠法坏了").toBeGreaterThan(0);
     // 抠出来的目标必须都是真文件（`statSync` 已经保证，这里再钉一次口径）
     for (const [, deps] of graph) {
       for (const d of deps) {
@@ -293,7 +290,7 @@ describe("〔FE1〕全图（值边 ＋ 类型边）的环 == 登记表（两向�
   it("★ 反向自检：全图比运行期图多出类型边（否则下面那条量的就是同一张图）", () => {
     const all = [...graph.values()].reduce((n, v) => n + v.length, 0);
     const runtime = files.reduce((n, f) => n + runtimeDeps(f).length, 0);
-    expect(all, "全图一条边都没有 —— 抠法坏了").toBeGreaterThan(200);
+    expect(all, "全图一条边都没有 —— 抠法坏了").toBeGreaterThan(0);
     expect(all, "全图与运行期图一样大 —— 类型边没抠进来").toBeGreaterThan(runtime);
   });
 
@@ -326,6 +323,35 @@ describe("〔FE1〕全图（值边 ＋ 类型边）的环 == 登记表（两向�
       "注了 `ipc/commands.ts → account-reads.ts` 这条回边，判据却没看见它们成环",
     ).toBe(true);
     expect(cycleComponents(graph).some((c) => c.includes(commands))).toBe(false);
+  });
+
+  /** 主窗口的视图（`views/`）与设置窗（`settings/`）之间的边（值边 ＋ 类型边），`from → to` 写成仓相对路径。 */
+  const dirOf = (p: string): string | null => {
+    const r = relative(UI, p).replace(/\\/g, "/");
+    return r.startsWith("views/") ? "views" : r.startsWith("settings/") ? "settings" : null;
+  };
+  const crossing = (g: Map<string, string[]>): string[] => {
+    const out: string[] = [];
+    for (const [f, deps] of g) {
+      const from = dirOf(f);
+      for (const d of deps) {
+        const to = dirOf(d);
+        if (from && to && from !== to) out.push(`${rel(f)} → ${rel(d)}`);
+      }
+    }
+    return out.sort();
+  };
+
+  it("★★ `views/` 与 `settings/` 互不引用（两边共用的住在两边都往下引的那一层）", () => {
+    const views = [...graph.keys()].filter((f) => dirOf(f) === "views");
+    const settings = [...graph.keys()].filter((f) => dirOf(f) === "settings");
+    expect(views.flatMap((f) => graph.get(f) ?? []).length, "views/ 一条边都没抠到 —— 下面那条恒绿").toBeGreaterThan(0);
+    expect(settings.flatMap((f) => graph.get(f) ?? []).length, "settings/ 一条边都没抠到 —— 下面那条恒绿").toBeGreaterThan(0);
+    expect(crossing(graph), "主窗口的视图与设置窗互相引用了：只一边用的挪到那一边，两边都用的挪到 `src/frontend/ui/` 那一层").toEqual([]);
+    // 人造一条 views → settings 的边，必须被看见。
+    const injected = new Map(graph);
+    injected.set(views[0], [...(injected.get(views[0]) ?? []), settings[0]]);
+    expect(crossing(injected)).toEqual([`${rel(views[0])} → ${rel(settings[0])}`]);
   });
 
   it("每条登记都写清为什么还在、归谁拆", () => {

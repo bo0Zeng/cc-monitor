@@ -16,9 +16,7 @@
 /// ⇒ 本条只做一件事：钉住那条 `match` 里**没有兜底臂**。
 #[test]
 fn the_event_dispatch_has_no_catch_all_arm() {
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/observe/watcher.rs"
-    ));
+    let prod = guard_core::production_code(include_str!("../../../src/backend/observe/watcher.rs"));
     let anchor = "WatchEvent::Notify(Ok(events)) =>";
     let at = prod
         .find(anchor)
@@ -57,6 +55,14 @@ fn the_event_dispatch_has_no_catch_all_arm() {
     );
 }
 use super::*;
+
+/// 一帧的帧种（线上 `kind` 那一格）。
+fn kind_of(f: &Frame) -> String {
+    serde_json::to_value(f).unwrap()["kind"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
 
 /// 夹具那一份发帧口：一条连接（号 0）、不带会话账本（生产那一份是 [`FrameSink::hub`]，连接经 `join` 接上来）。
 impl FrameSink {
@@ -329,9 +335,7 @@ fn arm_pid_watcher_is_a_noop_without_sender() {
 /// 扫描抽成 `initial_session_scan` 之后，锚点换成 `watch_loop` 里它的调用点；10-07 起再经 `arm_then_scan`（见函数体）。
 #[test]
 fn events_channel_is_created_before_the_initial_scan() {
-    let src = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/observe/watcher.rs"
-    ));
+    let src = guard_core::production_code(include_str!("../../../src/backend/observe/watcher.rs"));
     let tx_at = src
         .find("state.events_tx = Some(events_tx.clone());")
         .expect("找不到 events_tx 注入点——守卫锚点漂了，先修锚点别改断言");
@@ -408,7 +412,7 @@ fn poke_shares_the_probe_arm_with_the_ticker() {
     //    而剖分之后 `watcher.rs` 里那三行桩中间多了一行 `#[path = "…"]`
     //    ⇒ 那根针**恒不命中** ⇒ `prod` 退化成全文，下面数的就是全文。
     //    它自己的反空真（`prod.len() < me.len()`）当场红 —— 红得对。
-    let prod = crate::guard_support::production_code(me);
+    let prod = guard_core::production_code(me);
     let prod = prod.as_str();
     let arm = format!("WatchEvent::TmuxProbeDue {} WatchEvent::Poke =>", "|");
     assert!(
@@ -424,7 +428,7 @@ fn poke_shares_the_probe_arm_with_the_ticker() {
         "只读到 {} 字节生产段 —— 语料塌了，这条断言在空转",
         prod.len()
     );
-    crate::guard_support::assert_no_test_code("observe/watcher.rs", prod);
+    guard_core::assert_no_test_code("observe/watcher.rs", prod);
 }
 
 /// ★ S0：pidfile **绑的 sid 变了**才重探 tmux —— 不是「有 .json 事件就探」。
@@ -445,7 +449,7 @@ fn tmux_reprobe_triggers_on_sid_drift_not_on_every_json_event() {
     //    而剖分之后 `watcher.rs` 里那三行桩中间多了一行 `#[path = "…"]`
     //    ⇒ 那根针**恒不命中** ⇒ `prod` 退化成全文，下面数的就是全文。
     //    它自己的反空真（`prod.len() < me.len()`）当场红 —— 红得对。
-    let prod = crate::guard_support::production_code(me);
+    let prod = guard_core::production_code(me);
     let prod = prod.as_str();
     // 反空真（换了说法）：原来断的是「剥掉了东西」（`prod.len() < me.len()`），
     // 而剖分之后那份生产文件里**本来就没有测试段可剥** ⇒ 那句话恒假。
@@ -456,7 +460,7 @@ fn tmux_reprobe_triggers_on_sid_drift_not_on_every_json_event() {
         "只读到 {} 字节生产段 —— 语料塌了，这条断言在空转",
         prod.len()
     );
-    crate::guard_support::assert_no_test_code("observe/watcher.rs", prod);
+    guard_core::assert_no_test_code("observe/watcher.rs", prod);
     // 触发器 = 处理前后拿同一个 key 的 sid 比一次。判据运行时拼，避免本测试自己的
     // 源码把 `contains` 喂成恒真（那正是 P4 那条守卫初版栽的跟头）。
     let before = format!(
@@ -529,7 +533,7 @@ fn still_exactly_one_event_channel() {
     //    而剖分之后 `watcher.rs` 里那三行桩中间多了一行 `#[path = "…"]`
     //    ⇒ 那根针**恒不命中** ⇒ `prod` 退化成全文，下面数的就是全文。
     //    它自己的反空真（`prod.len() < me.len()`）当场红 —— 红得对。
-    let prod = crate::guard_support::production_code(me);
+    let prod = guard_core::production_code(me);
     let prod = prod.as_str();
     let n = prod
         .matches("std::sync::mpsc::channel::<WatchEvent>()")
@@ -548,7 +552,7 @@ fn still_exactly_one_event_channel() {
         "只读到 {} 字节生产段 —— 语料塌了，这条断言在空转",
         prod.len()
     );
-    crate::guard_support::assert_no_test_code("observe/watcher.rs", prod);
+    guard_core::assert_no_test_code("observe/watcher.rs", prod);
 }
 
 // ---------- P3（zero-poll-liveness）：tmux server 生 / 死 / 复活 ----------
@@ -1376,7 +1380,7 @@ fn the_session_name_follows_the_records_even_when_nobody_watches() {
         0,
         crate::wire::WatchAsk {
             sids: vec!["other".into()],
-            branch: vec![],
+            ..Default::default()
         },
         &mut state,
         &mut sink,
@@ -1513,7 +1517,7 @@ fn plain_lifecycle_regression() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// 宣告带上这条会话跑在哪个号下（会话进程环境里的配置目录对上账号库里那个号）：界面徽章只读这一格，起停不再回头问。
+/// 宣告那张脸带上这条会话跑在哪个号下（会话进程环境里的配置目录对上账号库里那个号）：界面徽章只读这一格，起停不再回头问。
 /// 进程环境读不出号（没设、账号库里也没有账号 0）⇒ 那一格不上线。
 #[cfg(target_os = "linux")]
 #[test]
@@ -1559,15 +1563,18 @@ fn the_announcement_says_which_account_the_session_runs_under() {
         .unwrap();
         process_session_added(&path, &mut state, &mut sink);
         let got = match rx.try_recv() {
-            Ok(Frame::SessionAdded(a)) => a.account,
+            Ok(Frame::SessionAdded(a)) => a.face.account,
             other => panic!("expected SessionAdded, got {other:?}"),
         };
+        // 之后那几张活的脸（在干什么变了）照旧带宣告时判的号。
+        let later = state.live_face(sid, None).account;
         let _ = child.kill();
         let _ = child.wait();
-        got
+        (got, later)
     };
-    assert_eq!(announce(Some(&cfg), "acct-b").as_deref(), Some("b"));
-    assert_eq!(announce(None, "acct-none"), None, "没设配置目录、账号库里也没有账号 0 ⇒ 不说");
+    let b = Some("b".to_string());
+    assert_eq!(announce(Some(&cfg), "acct-b"), (b.clone(), b));
+    assert_eq!(announce(None, "acct-none"), (None, None), "没设配置目录、账号库里也没有账号 0 ⇒ 不说");
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -1611,8 +1618,10 @@ fn status_diff_emits_session_status_frame() {
         })) => {
             assert_eq!(sid, "st-sid");
             assert_eq!(
-                face,
-                crate::wire::ActivityFace::of(Some(SessionActivity::Working)),
+                face.live,
+                crate::wire::FaceLive::Yes {
+                    activity: Some(SessionActivity::Working)
+                },
                 "适配层翻好的活动态"
             );
             assert!(!background, "不写 kind ⇒ 交互");
@@ -1638,8 +1647,10 @@ fn status_diff_emits_session_status_frame() {
         })) => {
             assert_eq!(sid, "st-sid");
             assert_eq!(
-                face,
-                crate::wire::ActivityFace::of(Some(SessionActivity::NeedsYou))
+                face.live,
+                crate::wire::FaceLive::Yes {
+                    activity: Some(SessionActivity::NeedsYou)
+                }
             );
             assert_eq!(waiting_for.as_deref(), Some("permission prompt"));
         }
@@ -1654,7 +1665,7 @@ fn status_diff_emits_session_status_frame() {
             face,
             waiting_for: None,
             ..
-        })) if face == crate::wire::ActivityFace::of(Some(SessionActivity::Idle))
+        })) if face.live == crate::wire::FaceLive::Yes { activity: Some(SessionActivity::Idle) }
     ));
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -1711,9 +1722,11 @@ fn a_custom_title_in_the_annotations_renames_a_live_session() {
         })) => {
             assert_eq!(name_face.label.0, "乙");
             assert_eq!(
-                face,
-                crate::wire::ActivityFace::of(Some(crate::agents::SessionActivity::Working)),
-                "活动那几格照记着的带全"
+                face.live,
+                crate::wire::FaceLive::Yes {
+                    activity: Some(crate::agents::SessionActivity::Working)
+                },
+                "整份脸照记着的那一态带全"
             );
         }
         other => panic!("expected SessionStatus, got {other:?}"),
@@ -2208,158 +2221,6 @@ fn is_same_live_process_truth_table() {
     assert!(is_same_live_process(true, None, None));
 }
 
-// === #32 overflow signal (F05) ===
-
-/// FrameSink: a full channel drops + counts; once the channel drains, the
-/// next send emits a single `Overflow{dropped}` before the real frame and
-/// resets the counter. tokio's `try_send`/`try_recv` are sync, so no runtime.
-#[test]
-fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
-    let (tx, mut rx) = mpsc::channel::<Frame>(2);
-    let mut sink = FrameSink::new(tx);
-
-    // Fill both slots — these go through cleanly, no overflow owed.
-    sink.send(Frame::SessionAdded(crate::wire::SessionAdded {
-        sid: "a".into(),
-        agent_kind: "claude".to_string(),
-        background: false,
-        attachable: None,
-        cwd: None,
-        project_dir: None,
-        name: None,
-        path: None,
-        face: crate::wire::ActivityFace::of(None),
-        name_face: crate::history::search_rules::name_face(&Default::default()),
-        waiting_for: None,
-        hidden: None,
-        container: None,
-        account: None,
-        pid: 0,
-    }));
-    sink.send(Frame::SessionAdded(crate::wire::SessionAdded {
-        sid: "b".into(),
-        agent_kind: "claude".to_string(),
-        background: false,
-        attachable: None,
-        cwd: None,
-        project_dir: None,
-        name: None,
-        path: None,
-        face: crate::wire::ActivityFace::of(None),
-        name_face: crate::history::search_rules::name_face(&Default::default()),
-        waiting_for: None,
-        hidden: None,
-        container: None,
-        account: None,
-        pid: 0,
-    }));
-    assert_eq!(
-        sink.subs[0].dropped, 0,
-        "nothing dropped while the channel had room"
-    );
-
-    // Channel is full now: three sends are dropped and counted.
-    sink.send(Frame::SessionAdded(crate::wire::SessionAdded {
-        sid: "c".into(),
-        agent_kind: "claude".to_string(),
-        background: false,
-        attachable: None,
-        cwd: None,
-        project_dir: None,
-        name: None,
-        path: None,
-        face: crate::wire::ActivityFace::of(None),
-        name_face: crate::history::search_rules::name_face(&Default::default()),
-        waiting_for: None,
-        hidden: None,
-        container: None,
-        account: None,
-        pid: 0,
-    }));
-    sink.send(Frame::SessionAdded(crate::wire::SessionAdded {
-        sid: "d".into(),
-        agent_kind: "claude".to_string(),
-        background: false,
-        attachable: None,
-        cwd: None,
-        project_dir: None,
-        name: None,
-        path: None,
-        face: crate::wire::ActivityFace::of(None),
-        name_face: crate::history::search_rules::name_face(&Default::default()),
-        waiting_for: None,
-        hidden: None,
-        container: None,
-        account: None,
-        pid: 0,
-    }));
-    sink.send(Frame::SessionAdded(crate::wire::SessionAdded {
-        sid: "e".into(),
-        agent_kind: "claude".to_string(),
-        background: false,
-        attachable: None,
-        cwd: None,
-        project_dir: None,
-        name: None,
-        path: None,
-        face: crate::wire::ActivityFace::of(None),
-        name_face: crate::history::search_rules::name_face(&Default::default()),
-        waiting_for: None,
-        hidden: None,
-        container: None,
-        account: None,
-        pid: 0,
-    }));
-    assert_eq!(sink.subs[0].dropped, 3);
-
-    // Drain both queued frames (they are the first two, not the dropped ones).
-    assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded(_))));
-    assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded(_))));
-
-    // Next send (channel now empty, cap 2): emits Overflow{3} into slot 1,
-    // resets the counter, then the real frame into slot 2.
-    sink.send(Frame::SessionRemoved(crate::wire::SessionRemoved {
-        sid: "f".into(),
-        cause: RemovalCause::Gone,
-        by: None,
-    }));
-    assert_eq!(
-        sink.subs[0].dropped, 0,
-        "overflow signal flushed, counter reset"
-    );
-    assert!(
-        matches!(
-            rx.try_recv(),
-            Ok(Frame::Overflow(crate::wire::Overflow { dropped: 3, .. }))
-        ),
-        "overflow signal carries the dropped count and arrives first"
-    );
-    assert!(
-        matches!(rx.try_recv(), Ok(Frame::SessionRemoved(_))),
-        "the real frame follows the overflow signal"
-    );
-
-    // Steady state: no spurious Overflow once recovered.
-    sink.send(Frame::SessionAdded(crate::wire::SessionAdded {
-        sid: "g".into(),
-        agent_kind: "claude".to_string(),
-        background: false,
-        attachable: None,
-        cwd: None,
-        project_dir: None,
-        name: None,
-        path: None,
-        face: crate::wire::ActivityFace::of(None),
-        name_face: crate::history::search_rules::name_face(&Default::default()),
-        waiting_for: None,
-        hidden: None,
-        container: None,
-        account: None,
-        pid: 0,
-    }));
-    assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded(_))));
-}
-
 /// ★★ **「只数不建」必须与「建了再数」得出同一个数、同一个游标、同一批 seq**
 /// 〔audit-0805 F04 第 3 步〕。
 ///
@@ -2605,125 +2466,6 @@ fn a_chunk_that_stops_short_of_eof_panics_instead_of_silently_wedging() {
     );
 }
 
-/// ★★ **丢的是「别处没有」的帧时，`Overflow` 必须带上身份**〔audit-0805 F03，定框 E4〕。
-///
-/// 只有计数的 `Overflow` 对**内容帧**够用（行还在远端 jsonl 里），对**状态增量帧**不够：
-/// 它是一次差分的结果、别处不存在，客户端拿着「丢了 N 条」**没法重同步**。
-///
-/// ⚠ 这条钉的是**行为**，不是「代码里有没有那个字段」——
-/// 塞满通道、真丢一条 `SessionRemoved`，再看排空后那条 `Overflow` 认不认得它。
-#[test]
-fn dropping_an_unrecoverable_frame_puts_its_identity_in_the_overflow() {
-    let (tx, mut rx) = mpsc::channel::<Frame>(1);
-    let mut sink = FrameSink::new(tx);
-
-    // 占满（cap 1）。
-    sink.send(Frame::Line(crate::wire::Line {
-        session_id: "occupy".into(),
-        path: "/p".into(),
-        seq: 0,
-        record: None,
-        cwd: None,
-        byte_offset: 0,
-        rid: None,
-    }));
-    // 丢一条内容帧（可恢复 ⇒ 只计数、不留身份）与一条状态增量帧（不可恢复 ⇒ 留身份）。
-    sink.send(Frame::Line(crate::wire::Line {
-        session_id: "content-lost".into(),
-        path: "/p".into(),
-        seq: 1,
-        record: None,
-        cwd: None,
-        byte_offset: 1,
-        rid: None,
-    }));
-    sink.send(Frame::SessionRemoved(crate::wire::SessionRemoved {
-        sid: "sid-gone".into(),
-        cause: RemovalCause::Gone,
-        by: None,
-    }));
-    assert_eq!(sink.subs[0].dropped, 2, "两条都该计入 dropped");
-
-    // 排空后下一次 send 会先补 Overflow。
-    assert!(matches!(rx.try_recv(), Ok(Frame::Line(_))));
-    sink.send(Frame::SessionFileGone(crate::wire::SessionFileGone {
-        session_id: "x".into(),
-        path: "p".into(),
-    }));
-    match rx.try_recv() {
-        Ok(Frame::Overflow(crate::wire::Overflow {
-            dropped,
-            lost,
-            lost_truncated,
-        })) => {
-            assert_eq!(dropped, 2);
-            assert!(!lost_truncated, "才两条，远没到上限");
-            assert_eq!(
-                lost,
-                vec![crate::wire::LostFrame {
-                    kind: "session_removed".to_string(),
-                    subject: Some("sid-gone".into()),
-                }],
-                "只有不可恢复的那条留身份；内容帧丢了别处还有，不该占位"
-            );
-        }
-        other => panic!("期望带身份的 Overflow，实得 {other:?}"),
-    }
-}
-
-/// 身份表**有界**，且超限**不是静默截断**〔定框 E5：上限与超限语义成对定义〕。
-///
-/// 没有这个界，就等于把 `CHANNEL_CAPACITY` 想防的内存增长从帧挪到了 `Overflow` 自己身上。
-#[test]
-fn the_identity_list_is_bounded_and_says_so_when_it_truncates() {
-    let (tx, mut rx) = mpsc::channel::<Frame>(1);
-    let mut sink = FrameSink::new(tx);
-    sink.send(Frame::Line(crate::wire::Line {
-        session_id: "occupy".into(),
-        path: "/p".into(),
-        seq: 0,
-        record: None,
-        cwd: None,
-        byte_offset: 0,
-        rid: None,
-    }));
-    let over = LOST_IDENTITY_CAP + 5;
-    for i in 0..over {
-        sink.send(Frame::SessionRemoved(crate::wire::SessionRemoved {
-            sid: format!("sid-{i}"),
-            cause: RemovalCause::Gone,
-            by: None,
-        }));
-    }
-    assert_eq!(
-        sink.subs[0].dropped, over as u64,
-        "超出上限的仍然计入 dropped"
-    );
-    assert_eq!(
-        sink.subs[0].lost.len(),
-        LOST_IDENTITY_CAP,
-        "身份表不许越界增长"
-    );
-    assert!(sink.subs[0].lost_truncated, "截断了就要说出来，不许静默");
-
-    assert!(matches!(rx.try_recv(), Ok(Frame::Line(_))));
-    sink.send(Frame::SessionFileGone(crate::wire::SessionFileGone {
-        session_id: "x".into(),
-        path: "p".into(),
-    }));
-    match rx.try_recv() {
-        Ok(Frame::Overflow(crate::wire::Overflow {
-            lost,
-            lost_truncated,
-            ..
-        })) => {
-            assert_eq!(lost.len(), LOST_IDENTITY_CAP);
-            assert!(lost_truncated, "标志要真的上线，不能只留在 sink 里");
-        }
-        other => panic!("期望 Overflow，实得 {other:?}"),
-    }
-}
-
 /// 分类表**不许用 `_ =>` 兜底**〔LEDGER S1 的钉法〕。
 ///
 /// 穷尽 `match` 的全部价值就在于**新增帧种时编译期躲不掉**。
@@ -2888,9 +2630,7 @@ fn vis2_s3_an_agent_home_created_after_start_still_announces_its_session() {
 /// 接线：`watch_loop` 经 `HomeEars` 恰好 `arm` 一处、`on_path` 一处（上一条才在执行链上）；旧那句话零命中。带正控。
 #[test]
 fn vis2_s3_the_watch_loop_goes_through_the_home_ears_exactly_once() {
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/observe/watcher.rs"
-    ));
+    let prod = guard_core::production_code(include_str!("../../../src/backend/observe/watcher.rs"));
     let at = prod.find("fn watch_loop(").expect("`watch_loop` 不在了");
     let end = prod[at..]
         .find("\nstruct ReaderState")
@@ -2961,7 +2701,7 @@ fn a_batch_counts_as_an_accounts_change_only_when_the_manifest_is_in_it() {
 #[test]
 fn the_notify_arm_asks_once_per_batch_before_the_per_event_loop() {
     let src = include_str!("../../../src/backend/observe/watcher.rs");
-    let prod = crate::guard_support::production_code(src);
+    let prod = guard_core::production_code(src);
     let ask = guard_core::find_pinned(&prod, "if manifest_touched(")
         .expect("Notify 那一臂里不是恰好一处问 manifest_touched");
     // 「重新对齐」那一臂也发一帧（整机时）⇒ 全文两处；这里只认 Notify 那一臂里、问完之后的那一处。
@@ -3007,7 +2747,7 @@ fn a_needs_login_cache_in_an_account_dir_or_the_agent_home_is_recognised() {
 #[test]
 fn the_notify_arm_rings_the_manual_bell_when_a_needs_login_cache_turns() {
     let src = include_str!("../../../src/backend/observe/watcher.rs");
-    let prod = crate::guard_support::production_code(src);
+    let prod = guard_core::production_code(src);
     let ask = guard_core::find_pinned(&prod, "if needs_login_touched(")
         .expect("Notify 那一臂里不是恰好一处问 needs_login_touched");
     let ring = prod[ask..]
@@ -3123,7 +2863,7 @@ fn one_sid_in_two_pidfiles_is_announced_once() {
     process_session_removed(&files[0], &mut state, &mut sink);
     let mut got = Vec::new();
     while let Ok(f) = rx.try_recv() {
-        got.push(f.loss_identity().kind.to_string());
+        got.push(kind_of(&f));
     }
     for k in kids.iter_mut() {
         let _ = k.kill();
@@ -3156,7 +2896,7 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
     fn kinds(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<String> {
         let mut out = Vec::new();
         while let Ok(f) = rx.try_recv() {
-            out.push(f.loss_identity().kind.to_string());
+            out.push(kind_of(&f));
         }
         out
     }
@@ -3202,10 +2942,7 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
         vec![Some(crate::wire::SessionContainer::None); 2],
         "没有 TMUX_PANE、环境读得到的会话，帧上要说 `none`"
     );
-    let got: Vec<String> = frames
-        .iter()
-        .map(|f| f.loss_identity().kind.to_string())
-        .collect();
+    let got: Vec<String> = frames.iter().map(kind_of).collect();
     for k in kids.iter_mut() {
         let _ = k.kill();
         let _ = k.wait();
@@ -3279,10 +3016,7 @@ fn a_pidfile_landing_once_the_ears_are_up_is_announced_by_the_initial_scan() {
             _ => None,
         })
         .collect();
-    let kinds: Vec<String> = frames
-        .iter()
-        .map(|f| f.loss_identity().kind.to_string())
-        .collect();
+    let kinds: Vec<String> = frames.iter().map(kind_of).collect();
     // 排队的那两件事件交给主循环（同 `watch_loop` 里 `is_session_json` 那一支：在 ⇒ 加，不在 ⇒ 删）。
     let mut later = Vec::new();
     for p in [&live, &gone] {
@@ -3293,7 +3027,7 @@ fn a_pidfile_landing_once_the_ears_are_up_is_announced_by_the_initial_scan() {
         }
     }
     while let Ok(f) = rx.try_recv() {
-        later.push(f.loss_identity().kind.to_string());
+        later.push(kind_of(&f));
     }
     let _ = kid.kill();
     let _ = kid.wait();
@@ -3377,11 +3111,14 @@ fn fw1_drain(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<String> {
                 format!("gone:{session_id}")
             }
             Frame::SessionFileReread(crate::wire::SessionFileReread {
-                session_id, why, ..
+                session_id,
+                why,
+                lines,
+                ..
             }) => {
-                format!("reread:{session_id}:{why:?}")
+                format!("reread:{session_id}:{why:?}:{lines}")
             }
-            other => format!("other:{}", other.loss_identity().kind),
+            other => format!("other:{}", kind_of(&other)),
         });
     }
     out
@@ -3429,13 +3166,13 @@ fn a_vanished_session_file_is_said_once_and_a_recreated_one_is_read_from_zero() 
     );
 
     // agent 按路径追加 ⇒ 同名文件重新长出来，只有新行（比读到过的短也好、长也好，都从 0 读）。
-    // 长回来的是另一份文件 ⇒ 先说「已从头重读」（行号从 0 重数，下游据它作废旧号）。
+    // 长回来的是另一份文件 ⇒ 说「已从头重读」带行数（行号从 0 重数，下游据它作废旧号、从尾段重取），重读的行不逐行出。
     std::fs::write(&path, "{\"n\":3}\n").unwrap();
     process_jsonl(&path, &mut state, &mut sink);
     assert_eq!(
         fw1_drain(&mut rx),
-        vec!["reread:s-fw1:Rewritten", "line:0"],
-        "重建之后不是「出声 ＋ 从 0 读」"
+        vec!["reread:s-fw1:Rewritten:1"],
+        "重建之后不是「出声带行数、不逐行出」"
     );
     std::fs::write(&path, "{\"n\":3}\n{\"n\":4-a-longer-line-than-before}\n").unwrap();
     process_jsonl(&path, &mut state, &mut sink);
@@ -3448,7 +3185,7 @@ fn a_vanished_session_file_is_said_once_and_a_recreated_one_is_read_from_zero() 
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// ★ **截短 ⇒ 先出声（why = 截短）再从头重读**；行号从 0 重数（`watcher_lines_tests` 钉号）。
+/// ★ **截短 ⇒ 从头重读、出声（why = 截短，带行数）**；行号从 0 重数（`watcher_lines_tests` 钉号）。
 #[test]
 fn a_truncated_session_file_is_said_and_reread_from_zero() {
     let (dir, path, mut state, mut sink, mut rx) = fw1_rig("trunc");
@@ -3457,12 +3194,12 @@ fn a_truncated_session_file_is_said_and_reread_from_zero() {
     let _ = fw1_drain(&mut rx);
     std::fs::write(&path, "{\"n\":9}\n").unwrap();
     process_jsonl(&path, &mut state, &mut sink);
-    assert_eq!(fw1_drain(&mut rx), vec!["reread:s-fw1:Truncated", "line:0"]);
+    assert_eq!(fw1_drain(&mut rx), vec!["reread:s-fw1:Truncated:1"]);
     std::fs::remove_dir_all(&dir).ok();
 }
 
 /// ★★ **原地整份改写且变长**（编辑器整份覆盖多了几个字）：长度没变短，截断判不出 ——
-/// 末尾指纹对不上 ⇒ 先出声（why = 改写）再从头重读；读到的是新文件的每一行，**没有**从旧偏移读出来的半行。
+/// 末尾指纹对不上 ⇒ 从头重读、出声（why = 改写，带新文件的行数）；不从旧偏移读出半行来。
 /// 阴性对照：纯追加 ⇒ 不出声、只来新的那一行。
 #[test]
 fn an_in_place_rewrite_that_grew_is_caught_by_the_tail_fingerprint() {
@@ -3483,10 +3220,14 @@ fn an_in_place_rewrite_that_grew_is_caught_by_the_tail_fingerprint() {
     assert!(rewritten.len() >= appended.len());
     std::fs::write(&path, &rewritten).unwrap();
     process_jsonl(&path, &mut state, &mut sink);
-    let want: Vec<String> = std::iter::once("reread:s-fw1:Rewritten".to_string())
-        .chain((0..rewritten.lines().count()).map(|k| format!("line:{k}")))
-        .collect();
-    assert_eq!(fw1_drain(&mut rx), want, "改写之后不是「出声 ＋ 整份重读」");
+    assert_eq!(
+        fw1_drain(&mut rx),
+        vec![format!(
+            "reread:s-fw1:Rewritten:{}",
+            rewritten.lines().count()
+        )],
+        "改写之后不是「出声带行数、不逐行出」"
+    );
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -3510,10 +3251,11 @@ fn the_two_session_file_frames_have_exactly_these_bytes() {
             session_id: "s".into(),
             path: "/p/s.jsonl".into(),
             why,
+            lines: 7,
         });
         assert_eq!(
             to_line(&f).unwrap(),
-            format!("{{\"kind\":\"session_file_reread\",\"session_id\":\"s\",\"path\":\"/p/s.jsonl\",\"why\":\"{lit}\"}}\n")
+            format!("{{\"kind\":\"session_file_reread\",\"session_id\":\"s\",\"path\":\"/p/s.jsonl\",\"why\":\"{lit}\",\"lines\":7}}\n")
         );
         assert!(!f.loss_is_recoverable());
     }
@@ -3780,7 +3522,7 @@ fn resync_reconciles_the_table_against_the_disk_and_emits_only_the_difference() 
                 Frame::SessionRemoved(crate::wire::SessionRemoved { sid, .. }) => {
                     format!("removed {sid}")
                 }
-                other => other.loss_identity().kind.to_string(),
+                other => kind_of(&other),
             });
         }
         v.sort();
@@ -3876,6 +3618,43 @@ fn resync_waits_for_every_live_watcher_and_never_hangs_on_a_gone_one() {
             1
         )
     );
+}
+
+/// 恢复问过记录（`session-open` · `session-say` 恢复那一支同一处）⇒ 在不在交到每一份在跑的 watcher（会话账本据此翻已结束 ⇄ 记录已不在）：
+/// 记录不在 ⇒ 交「不在」、不恢复（回记录已不在）；记录在 ⇒ 交「在」、照记录起（哪一家 · 目录）。
+#[test]
+fn resuming_hands_whether_the_record_is_there_to_the_session_ledger() {
+    crate::observe::record_hook::install(record_seen);
+    let home = std::env::temp_dir().join(format!("ccm-resume-seen-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let proj = home.join("projects").join("-w");
+    std::fs::create_dir_all(&proj).unwrap();
+    let sid = "7e1f0c2a-9b3d-4e5f-8a6b-0c1d2e3f4a5b";
+    let (tx, rx) = std::sync::mpsc::channel::<WatchEvent>();
+    let me = live_enter(tx);
+    let ours = |rx: &std::sync::mpsc::Receiver<WatchEvent>| {
+        rx.try_iter()
+            .filter_map(|ev| match ev {
+                WatchEvent::RecordSeen { sid: s, present } if s == sid => Some(present),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    let open = crate::faces::session_open_face::resume_in;
+
+    assert!(open(&home, sid).is_none(), "记录不在 ⇒ 不恢复");
+    assert_eq!(ours(&rx), [false]);
+
+    std::fs::write(
+        proj.join(format!("{sid}.jsonl")),
+        format!("{{\"type\":\"user\",\"cwd\":\"/w\",\"sessionId\":\"{sid}\"}}\n"),
+    )
+    .unwrap();
+    let r = open(&home, sid).expect("记录在 ⇒ 照起");
+    assert_eq!(r.cwd, "/w");
+    assert_eq!(ours(&rx), [true]);
+    live_leave(me);
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 /// 帧面 `resync` 的成品 == 跨语言金样的形状（键集合相等、每格是计数）；`sid` 给了却不是非空字符串 ⇒ `bad_args`。
@@ -4035,7 +3814,7 @@ fn fix_the_one_shot_scan_sees_exactly_the_live_interactive_sessions() {
     std::fs::remove_dir_all(&home).ok();
     assert_eq!(got, vec![("live-1".to_string(), me)]);
     // 接线：`ccm` 入口注入的就是这一份扫描（恰一处）。
-    let main = crate::guard_support::production_code(include_str!("../../../src/backend/main.rs"));
+    let main = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
     guard_core::find_pinned(&main, "observe::watcher::running_sessions(&home)")
         .unwrap_or_else(|e| panic!("`main.rs` 注入的不是观测层那一份扫描：{e}"));
 }
@@ -4112,9 +3891,7 @@ fn a_task_written_after_start_is_heard_for_its_session() {
 /// 接线：`Notify` 那一臂里恰好一处问 `tasks_touched`、逐个发 `changed {tasks}`，排在逐条处理事件的 `for` 之前。
 #[test]
 fn the_notify_arm_reports_task_changes_before_the_per_event_loop() {
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/observe/watcher.rs"
-    ));
+    let prod = guard_core::production_code(include_str!("../../../src/backend/observe/watcher.rs"));
     let ask = guard_core::find_pinned(&prod, "tasks_touched(events.iter()")
         .expect("Notify 那一臂里不是恰好一处问 tasks_touched");
     let emit = prod[ask..]
@@ -4146,7 +3923,7 @@ fn main_and_sub_run_lines_carry_their_own_reply_key() {
             byte_offset: 0,
             start: 0,
         };
-        send_line("s", "/p/s.jsonl", line, &mut state, &mut sink);
+        send_line("s", "/p/s.jsonl", line, &mut state, &mut sink, false);
     }
     let mut got = Vec::new();
     while let Ok(f) = rx.try_recv() {
@@ -4183,7 +3960,7 @@ fn a_queued_line_on_the_live_stream_carries_the_moment_it_was_typed() {
             byte_offset: 0,
             start,
         };
-        send_line("s", path, line, &mut state, &mut sink);
+        send_line("s", path, line, &mut state, &mut sink, false);
     }
     let mut got = Vec::new();
     while let Ok(f) = rx.try_recv() {
@@ -4256,7 +4033,7 @@ fn announcing_a_session_finds_its_records_from_the_table_not_a_full_walk() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-/// ★ 配置文件（`profiles.toml`）那道耳朵，真 debouncer：直接写 · 写旁名再换名上位（设置窗与 `files-put` 的写法）都听得见；
+/// ★ 配置文件（`profiles.toml`）那道耳朵，真 debouncer：直接写 · 写旁名再换名上位（设置窗与 `Door::put` 的写法）都听得见；
 /// 同目录别的文件不算；目录起步不在、后建出来也听得见。
 #[cfg(target_os = "linux")]
 #[test]
@@ -4648,6 +4425,7 @@ fn a_connection_gets_only_the_branch_tail_it_says_it_lacks() {
     let ask = |held: Option<BranchHeld>| WatchAsk {
         sids: vec!["rw-sid".into()],
         branch: held.into_iter().collect(),
+        ..Default::default()
     };
     let none = BranchHeld {
         sid: "rw-sid".into(),
@@ -4659,6 +4437,7 @@ fn a_connection_gets_only_the_branch_tail_it_says_it_lacks() {
     let (tx1, mut rx1) = tokio::sync::mpsc::channel::<Frame>(1 << 12);
     join(
         Sub::new(1, tx1, crate::Tz::default()),
+        None,
         &mut state,
         &mut sink,
     );
@@ -4693,7 +4472,7 @@ fn a_connection_gets_only_the_branch_tail_it_says_it_lacks() {
         0,
         WatchAsk {
             sids: vec!["other".into()],
-            branch: vec![],
+            ..Default::default()
         },
         &mut state,
         &mut sink,
@@ -4760,7 +4539,7 @@ fn a_live_line_is_parsed_from_text_once() {
     let parses = crate::agents::LINE_PARSES.with(std::cell::Cell::get);
     let mut kinds = Vec::new();
     while let Ok(f) = rx.try_recv() {
-        kinds.push(f.loss_identity().kind);
+        kinds.push(kind_of(&f));
     }
     std::fs::remove_dir_all(&dir).ok();
     assert_eq!(

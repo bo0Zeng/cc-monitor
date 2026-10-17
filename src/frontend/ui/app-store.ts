@@ -75,8 +75,6 @@ export const appStore = {
   accounts: new Slice<ReadonlyMap<Origin, AccountsState>>(new Map()),
   /** 账号徽章要的清单那一侧（`null` = 还没问过）。 */
   accountFacts: new Slice<AccountFacts | null>(null),
-  /** sid → 会话宣告说的它跑在哪个号下（那台后端判的；没说的不在表里）。 */
-  sessionAccount: new Slice<ReadonlyMap<string, string>>(new Map()),
   /** 每台的额度账（`quota-read` 那一份；`null` = 那一问没结果）。 */
   quota: new Slice<ReadonlyMap<Origin, QuotaRead | null>>(new Map()),
   /** 每个会话的轮换（按 sid；标签页上的账号格照它画）。 */

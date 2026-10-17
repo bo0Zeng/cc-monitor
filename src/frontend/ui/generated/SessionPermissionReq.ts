@@ -9,7 +9,7 @@ export type SessionPermissionReq = {
  */
 sid: string, 
 /**
- * 要切到的档（原值；必须是 `session-new-facts` 那一家 `permissionModes` 里的一个）。
+ * 要切到的档（原值；必须是 `session-open-facts` 那一家 `permissionModes` 里的一个）。
  */
 mode: string, 
 /**

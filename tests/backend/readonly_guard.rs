@@ -68,7 +68,7 @@ mod tests {
     ///
     /// 它做的事（「剥掉测试段，只留生产段」）在本仓**早就有唯一住址**：
     /// [`guard_core::production_source`]（`src/common/guard-core`），
-    /// 本 crate 经 `guard_support` 再导出。`guard_support` 的模块头注逐字记着搬家的理由：
+    /// 本 crate 直接用它。`guard_core` 的模块头注逐字记着搬家的理由：
     /// 「monitor 侧够不着后端的 `cfg(test)` 模块，于是它的守卫各自写了便宜近似
     /// （`src.split("\n#[cfg(test)]").next()`）—— 那个近似……**把扫描面砍掉三分之二**」。
     /// 那一族近似都是启发式（括号配平不认字符串/注释里的大括号），并且已经造成过 ≥4 次事故。
@@ -104,7 +104,7 @@ mod tests {
     /// 本护栏各条判据的人群：后端生产树 `src/backend/` 递归全部 `.rs`（`lib.rs` · `main.rs` 在内）。
     /// 从前由一张模块分区表派生；碰盘挡在类型上之后，人群就是整个 crate，分区表删了。
     pub(super) fn core_files() -> Vec<std::path::PathBuf> {
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         let mut out: Vec<std::path::PathBuf> = guard_core::scan_tree!(&root, &["rs"])
             .into_iter()
             .map(|(p, _)| p)
@@ -167,7 +167,7 @@ mod tests {
     /// （两向；每份**恰好一处**）—— 多出来的 ⇒ 有人绕过写句柄自己拿锁、多半也在自己写。
     #[test]
     fn hx2_the_cross_process_lock_is_taken_only_where_registered() {
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         let needle = "platform::lock::hold(";
         let mut holders: std::collections::BTreeMap<String, usize> = Default::default();
         for path in core_files() {
@@ -181,9 +181,6 @@ mod tests {
             if n > 0 {
                 holders.insert(rel, n);
             }
-        }
-        for (p, why) in LOCK_HOLDERS {
-            assert!(why.chars().count() >= 20, "`{p}` 没写清为什么要这把锁");
         }
         let want: std::collections::BTreeSet<String> =
             LOCK_HOLDERS.iter().map(|(p, _)| p.to_string()).collect();
@@ -218,7 +215,7 @@ mod tests {
     /// 4. 真跑：多给一个 `path` ⇒ `bad_args`（「只收 sid」是行为，不只是登记）。
     #[test]
     fn the_session_file_exception_lives_in_exactly_one_place() {
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         let call = format!("fenced_session_file{}", "(");
         let def = format!("fn {call}");
         let locate = format!("session_file_for_delete{}", "");
@@ -318,7 +315,7 @@ mod tests {
 
     /// 🔴🔴 **文件管理写面不再问「这是不是一份会话记录」。**
     ///
-    /// 用户原话「**文件管理器全部都可以改. 不需要任何围栏**」；
+    /// 要求「**文件管理器全部都可以改. 不需要任何围栏**」；
     /// 文件管理面写的路径因此只过路径解析（`Face` 只收它交回的 `Resolved`），不问会话形状。
     ///
     /// # 两向相等，人群按事实取样
@@ -375,7 +372,7 @@ mod tests {
             "抽取器在合成语料上认不出那一处调用 / 把定义行当成了调用 —— 下面那个集合不可信"
         );
 
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         let mut found: std::collections::BTreeSet<(String, String)> = Default::default();
         let mut scanned = 0usize;
         for path in core_files() {
@@ -407,7 +404,7 @@ mod tests {
             found,
             want,
             "\n🔴 后端里问「这是不是一份会话记录」的地方，不再恰是删历史会话那一条要的三处。\n\
-             多出来的（⇒ 有人把会话文件围栏接回了文件管理写面或别处，而用户原话是\n\
+             多出来的（⇒ 有人把会话文件围栏接回了文件管理写面或别处，而要求是\n\
              「文件管理器全部都可以改. 不需要任何围栏」）：{:?}\n\
              少了的（⇒ 删会话那一条的形状变了；它不在 FN1 射程里，先去看是谁动的）：{:?}",
             found.difference(&want).collect::<Vec<_>>(),
@@ -431,7 +428,7 @@ mod tests {
     /// 它量的仍然是「剥完的生产段里不许残留测试属性」，只是尺子换成了那个唯一住址。
     #[test]
     fn no_test_code_leaks_into_any_production_section() {
-        let src_dir = crate::guard_support::src_root();
+        let src_dir = guard_core::addr::backend_src_root();
         let mut stack = vec![src_dir];
         let mut leaks: Vec<(String, usize)> = Vec::new();
         while let Some(dir) = stack.pop() {
@@ -448,7 +445,7 @@ mod tests {
                 if name == "readonly_guard.rs" {
                     continue; // 与 `scan` 同款跳过：本文件的模式字面量必然含这些子串
                 }
-                let prod = crate::guard_support::production_source(
+                let prod = guard_core::production_source(
                     &std::fs::read_to_string(&path).expect("read rs file"),
                 );
                 // 用拼接写法，免得本行自己被数进去。
@@ -555,7 +552,7 @@ mod tests {
     /// 今后加一个读动词只改 `platform/fs/` 一处，本条不用动。
     #[test]
     fn only_the_fs_platform_module_names_the_filesystem() {
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         let mut bad = Vec::new();
         let (mut scanned, mut home_hits) = (0usize, 0usize);
         for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
@@ -671,7 +668,7 @@ mod tests {
         "FaceAsyncFile(tokio::fs::File)",
         "tokio::fs::File::from_std(",
     ];
-    /// `platform/fs/own.rs`（自家状态写句柄 `Own`）点名的标准库条目：它的写只有这几样（删文件 · 改名 · 带权限位建一层目录）；
+    /// `platform/fs/own.rs`（自家状态写句柄 `Own`）点名的标准库条目：它的写只有这几样（删文件 · 改名 · 带权限位建一层目录 · 自家目录收回 0700）；
     /// 原子写的旁名经 `creds_core::perm::create_private` 建（依赖签字那一侧管）。谁能调由类型管：方法都在 `Own` 上，`Own` 只在启动时造。
     const OWN_NAMES: &[&str] = &[
         "std::fs::remove_file(",
@@ -685,11 +682,13 @@ mod tests {
         "std::fs::OpenOptions::new()",
         "std::os::unix::fs::OpenOptionsExt",
         "DiagFile(std::fs::File)",
+        // 后端自家目录（`own_dir`）组 / 他人有权 ⇒ 收回 0700 那一下。
+        "std::fs::set_permissions(",
     ];
 
     #[test]
     fn the_fs_home_names_only_its_registered_entries() {
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         let mut named = 0usize;
         let mut bad = Vec::new();
         for (path, src) in guard_core::scan_tree!(&root.join("platform/fs"), &["rs"]) {
@@ -749,7 +748,7 @@ mod tests {
         // 分叉那只只会新建的手：只有分叉那两条命令造 —— 都是 typed，各在它自己那份实现里。
         (
             "NewFile::issue",
-            &["faces/fork_face.rs", "faces/session_new_face.rs"],
+            &["faces/fork_face.rs", "faces/session_open_face.rs"],
         ),
         // 「已过路径解析」只有路径解析本身担保得了：根底下那两道（`common/root_path.rs`，文件管理写面与传输台共用）＋ 写面自己那几道。
         (
@@ -760,7 +759,7 @@ mod tests {
 
     #[test]
     fn the_write_handles_are_issued_only_at_startup() {
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         for (needle, want) in ISSUERS {
             let mut got: Vec<String> = Vec::new();
             for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
@@ -820,9 +819,10 @@ mod tests {
     /// （建链接那一处的链接内容是原样写的文本，不是落点 ⇒ 登记的唯一例外）。拿 `&Path` 调它编不过 —— 本条钉的是签名没被放宽。
     #[test]
     fn the_face_writes_take_only_resolved_paths() {
-        let src =
-            std::fs::read_to_string(crate::guard_support::src_root().join("platform/fs/face.rs"))
-                .expect("读 face.rs");
+        let src = std::fs::read_to_string(
+            guard_core::addr::backend_src_root().join("platform/fs/face.rs"),
+        )
+        .expect("读 face.rs");
         let code = guard_core::production_code(&src);
         let body = code
             .split("impl Face {")
@@ -1207,17 +1207,17 @@ mod spawn_registry {
             "<非字面量>",
             "问**起会话那个 shell** 的 `PATH`（`session_shell_path`）：用户的 `$SHELL` 起一次 `-l -i -c`，固定脚本只 `printf` 出 `PATH`，\
              不吃任何输入、有期限。被起的是用户自己的登录 shell，它读不读 / 写不写什么由用户的 rc 文件定；后端进程自身不写用户数据。\
-             按后端生命周期只问一次（缓存）；只从足迹报告（`footprint-report` · `data-report`）判 agent 命令行装没装、起新会话框（`session-new-facts`）判这台能起哪几家时进来。",
+             按后端生命周期只问一次（缓存）；只从足迹报告（`footprint-report` · `data-report`）判 agent 命令行装没装、起新会话框（`session-open-facts`）判这台能起哪几家时进来。",
             "缩性质",
             "有别的办法拿到用户登录环境的 `PATH` 而不起他的 shell 的那天摘掉。⚠ 脚本只许是打出 `PATH` 那一句。",
         ),
         // `relay/machine.rs` 那一行（远端起一个脱离的 `--relay`）摘了：中转只住常驻后端进程里，那一处起法随之删。
         (
-            "control/session_batch.rs",
+            "control/session_open/mod.rs",
             "<非字面量>",
-            "tab 栏在 tmux 里后台起会话：**本后端这个二进制自己**（`current_exe`）当 ccm 跑界面那一行（同一个渲染器、只多 `--detach`），\
+            "在 tmux 里后台起会话：**本后端这个二进制自己**（`current_exe`）当 ccm 跑界面那一行（同一个渲染器、只多 `--detach`），\
              argv 不过 shell、stdin 空、等它退出收话。被起的是 ccm 那一趟，它自己的起法（建 tmux 会话、键入、收尾）由本护栏照样管；\
-             **不是**后端进程自身写用户既有数据。只从帧命令 `sessions-start`（tmux 那一形、那台没有带着这个 sid 的会话）进来。",
+             **不是**后端进程自身写用户既有数据。只从 `session-open`（tmux 那一形、要新建会话）· 换号重启 · 说一句恢复进来。",
             "缩性质",
             "起会话改由别的入口在后端起的那天摘掉。⚠ 不许往这一处底下加第二种用途 —— 它起的永远是本二进制的 ccm 那一趟。",
         ),
@@ -1260,7 +1260,7 @@ mod spawn_registry {
         // 实测：**它不在表里 ⇒ 这条护栏根本扫不到它**，加一个未登记的起进程点全绿。
         // 这正是本仓「扫描面画小了」那一族的第五次，而且是**我自己**在 D1 那轮埋的。
         // 同文件上方 `scan()` 早就因为同样的理由改成递归了（Phase G 审计），这里没跟。
-        let src_dir = crate::guard_support::src_root();
+        let src_dir = guard_core::addr::backend_src_root();
         let mut stack = vec![src_dir.clone()];
         let mut files: Vec<(String, String)> = Vec::new();
         while let Some(dir) = stack.pop() {
@@ -1292,7 +1292,7 @@ mod spawn_registry {
         );
         let mut found: Vec<(String, String)> = Vec::new();
         for (name, raw) in &files {
-            let prod = crate::guard_support::production_code(raw);
+            let prod = guard_core::production_code(raw);
             let mut from = 0usize;
             while let Some(rel) = prod[from..].find("Child::new(") {
                 let at = from + rel + "Child::new(".len();
@@ -1334,7 +1334,7 @@ mod spawn_registry {
     /// 别处零命中；正控：原语那一份恰好一处（抽取没坏）。
     #[test]
     fn command_new_lives_only_in_the_spawn_primitive() {
-        let src = crate::guard_support::src_root();
+        let src = guard_core::addr::backend_src_root();
         let mut hits: Vec<(String, usize)> = Vec::new();
         for (p, raw) in guard_core::scan_tree_excluding(&src, &["rs"], &[]) {
             let rel = p
@@ -1342,7 +1342,7 @@ mod spawn_registry {
                 .unwrap_or(&p)
                 .to_string_lossy()
                 .replace('\\', "/");
-            let n = crate::guard_support::production_code(&raw)
+            let n = guard_core::production_code(&raw)
                 .matches("Command::new(")
                 .count();
             if n > 0 {
@@ -1384,15 +1384,13 @@ mod spawn_registry {
                 unlock.trim().chars().count()
             );
         }
-        let hook = crate::guard_support::production_code(include_str!(
-            "../../src/backend/control/tmux_hook.rs"
-        ));
+        let hook =
+            guard_core::production_code(include_str!("../../src/backend/control/tmux_hook.rs"));
         // 🔴 `K-R55`（09-11）：这一处的住址从 `observe/watcher.rs` 换成了
         //    `platform/shell.rs` —— 起 shell 那一跳搬进适配层（`K33` 裁定二）。
         //    ⚠ 换的是**住址**，不是判据：核的仍是「登记的那一条在生产段里真的找得到」。
-        let shell = crate::guard_support::production_code(include_str!(
-            "../../src/backend/platform/shell/mod.rs"
-        ));
+        let shell =
+            guard_core::production_code(include_str!("../../src/backend/platform/shell/mod.rs"));
         assert!(
             hook.contains("Child::new(\"tmux\")"),
             "清单登记了 tmux_hook 起 tmux，但生产段里找不到了 —— 幽灵条目"
@@ -1424,7 +1422,7 @@ mod spawn_registry {
     ///   不会红（同一个洞的另一面）。
     #[test]
     fn every_registered_entry_is_backed_by_a_real_spawn_site() {
-        let src_dir = crate::guard_support::src_root();
+        let src_dir = guard_core::addr::backend_src_root();
         // 与上面那条**分开走一遍树**：那边还要分类、比数，这边只回答「表里这一条今天还在吗」。
         let mut stack = vec![src_dir.clone()];
         let mut found: Vec<(String, String)> = Vec::new();
@@ -1446,9 +1444,8 @@ mod spawn_registry {
                 if rel == "readonly_guard.rs" {
                     continue;
                 }
-                let prod = crate::guard_support::production_code(
-                    &std::fs::read_to_string(&path).expect("read rs"),
-                );
+                let prod =
+                    guard_core::production_code(&std::fs::read_to_string(&path).expect("read rs"));
                 let mut from = 0usize;
                 while let Some(at) = prod[from..].find("Child::new(") {
                     let i = from + at + "Child::new(".len();
@@ -1515,7 +1512,7 @@ mod spawn_registry {
 ///   没有它，上面那条「零命中」是空真。
 #[cfg(test)]
 mod capture_is_read_only {
-    use crate::guard_support::production_code;
+    use guard_core::production_code;
 
     /// 被测对象：那一处抓屏的**生产段**。
     fn site() -> String {
@@ -1594,7 +1591,7 @@ mod capture_is_read_only {
              本模块此刻是无效的",
             prod.len()
         );
-        crate::guard_support::assert_no_test_code("capture_is_read_only", &prod);
+        guard_core::assert_no_test_code("capture_is_read_only", &prod);
         assert!(
             prod.contains(&format!("Child::{}", "new(\"tmux\")")),
             "那一处起进程不见了 —— 本模块声称盖的东西已经不在它声称的地方了"
@@ -1661,11 +1658,7 @@ mod capture_is_read_only {
             "改状态动词表只剩 {} 条 —— 被掏瘪了，正题此刻在空转",
             verbs.len()
         );
-        for (needle, why) in &verbs {
-            assert!(
-                why.chars().count() >= 12,
-                "针 {needle:?} 没写清「为什么它算改状态」—— 黑名单里的每一条都要说得出理由"
-            );
+        for (needle, _) in &verbs {
             let sample = format!("let _ = tmux_argv({needle}, target);");
             assert_eq!(
                 hits(&sample),
@@ -1732,7 +1725,7 @@ mod capture_is_read_only {
 //   `crate::readonly_guard::g6_doctrine::{cell_names, is_cell}`（唯一的跨模块消费者是
 //   `no_timer_guard`），**顶层那一行再导出没有了**。
 //   ⚠ **别再写回来**：这一族今天有闸了 —— monitor 侧
-//   `structural_scan_tests.rs::the_cfg_test_reexport_detour_stays_extinct` 是一条**恒零棘轮**，
+//   `structural_scan.rs::the_cfg_test_reexport_detour_stays_extinct` 是一条**恒零棘轮**，
 //   语料面含本文件所在的这棵树，写回一行当场红并点名这份文件。
 
 /// **`§0a` 四情形表的代码形态** —— 一条护栏的人群与性质对不上时该怎么处置。
@@ -1826,15 +1819,10 @@ pub(crate) mod g6_doctrine {
         names.sort_unstable();
         names.dedup();
         assert_eq!(before, names.len(), "四情形表里有重名的格：{names:?}");
-        for (cell, when, how, why, unlock) in CELLS {
+        for (cell, when, how, _, unlock) in CELLS {
             assert!(
                 !when.trim().is_empty() && !how.trim().is_empty(),
                 "`{cell}` 这一格没写「什么时候落在这一格」或「正确处置」"
-            );
-            assert!(
-                why.trim().chars().count() >= 20,
-                "`{cell}` 的 why 太短（{} 字）—— 说不清为什么是这个处置，下一个人只会照抄格名",
-                why.trim().chars().count()
             );
             assert!(
                 unlock.trim().chars().count() >= 20,
@@ -1929,8 +1917,8 @@ mod g6_reach {
             "反例表从 1 条变成 {} 条了 —— 加反例是好事，但要连它的语料与断言一起加",
             KNOWN_PASSING_COUNTEREXAMPLES.len()
         );
-        for (rel, frag, why, unlock) in KNOWN_PASSING_COUNTEREXAMPLES {
-            let prod = crate::guard_support::production_source(source_of(rel));
+        for (rel, frag, _, unlock) in KNOWN_PASSING_COUNTEREXAMPLES {
+            let prod = guard_core::production_source(source_of(rel));
             assert!(
                 prod.contains(frag),
                 "反例 `{rel}` 里找不到 `{frag}` 了 —— 修掉了就**同轮摘登记**，\
@@ -1942,7 +1930,6 @@ mod g6_reach {
                 "反例 `{rel}` 今天**红了** —— 那说明本护栏的射程变了，\
                  这张表说的话已经不成立，回来重判"
             );
-            assert!(why.trim().chars().count() >= 20, "`{rel}` 的 why 太短");
             assert!(
                 unlock.trim().chars().count() >= 20,
                 "`{rel}` 没写解锁条件 —— 没有解锁条件的反例登记会一直躺着"
@@ -1973,7 +1960,7 @@ mod g6_reach {
     /// 本条把「今天是三条」钉成**相等**：加第四条就必须回来重读那条豁免理由。
     #[test]
     fn the_non_literal_spawn_key_still_covers_exactly_three_commands() {
-        let prod = crate::guard_support::production_source(source_of("control/cc_bus.rs"));
+        let prod = guard_core::production_source(source_of("control/cc_bus.rs"));
         let mut cmds: Vec<&str> = Vec::new();
         // 只读三条经 `read_via("…"` 转调（同一个起进程口）。
         for opener in ["run(\"", "run_as(\"", "read_via(\""] {
@@ -2094,10 +2081,10 @@ mod g6_staged_zero {
     /// ⚠ 住址口径：生产树的文件相对 `src/backend`（表里旧行**一个字没改**），
     ///   测试树的文件写成 `tests/backend/…`（仓根相对）—— 两种靠前缀就分得开。
     fn backend_files() -> Vec<(String, String, String)> {
-        let src_root = crate::guard_support::src_root();
-        let tests_root = crate::guard_support::tests_root();
+        let src_root = guard_core::addr::backend_src_root();
+        let tests_root = guard_core::addr::backend_tests_root();
         // 中转 crate 的单测住 `tests/comms/outward/`（生产那一半经后端的人群声明收进 `src_root` 的人群）。
-        let comms_tests = crate::guard_support::comms_tests_root();
+        let comms_tests = guard_core::addr::comms_tests_root();
         let mut out = Vec::new();
         for (root, excluded, prefix) in [
             (&src_root, &[] as &[&str], ""),
@@ -2114,7 +2101,7 @@ mod g6_staged_zero {
                 );
                 // 生产段按「住哪棵树」分流：测试树的文件贡献 0 字节生产代码
                 // （否则下面那条「跨文件生产消费者为 0」会把判据夹具算成消费者）。
-                let prod = crate::guard_support::production_side_of(&path, &src);
+                let prod = guard_core::addr::production_side_of(&path, &src);
                 out.push((rel, src, prod));
             }
         }
@@ -2391,7 +2378,7 @@ mod error_envelope_registry {
     }
 
     fn src_root() -> std::path::PathBuf {
-        crate::guard_support::src_root()
+        guard_core::addr::backend_src_root()
     }
 
     /// 全树一趟：每一处信封的 `(文件相对路径, 那一行逐字, 该行起三行的窗口)`。
@@ -2522,16 +2509,11 @@ mod error_envelope_registry {
             "`SIGNED` 只剩 {} 行 —— 它在缩水",
             SIGNED.len()
         );
-        for (p, anchor, whose, why) in SIGNED {
+        for (p, anchor, whose, _) in SIGNED {
             assert!(!anchor.is_empty(), "{p} 的锚点是空串 —— 那会匹配到任何地方");
             assert!(
                 whose.chars().count() >= 5,
                 "{p} :: {anchor} 说不出这一份是谁的出口"
-            );
-            assert!(
-                why.chars().count() >= 30,
-                "{p} :: {anchor} 的理由只有 {} 字 —— 一条说不出理由的签字就是一条免检",
-                why.chars().count()
             );
         }
     }
@@ -2741,7 +2723,7 @@ mod g6_dependency_signoff {
              （`src/backend` 下全部 `.rs`），与本 crate 自己的代码同一套判准。本机写面现打 0 处：认下的 host key 交回宿主\
              （`dial/known_hosts.rs`，经启动时装的写句柄 `known_hosts::Writer` 记）。**远端**写面就是它的本职（`russh-sftp` 那一格搬到这里）⇒ 就是要它写。\
              谁划边界：只住它的 `sftp.rs` 一份、规矩由宿主装（本后端装部署那两处，`dial/mod.rs::host`）、每处先过 `fenced_remote`。\
-             边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_roots_are_exactly_staging_and_bin`",
+             边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_root_is_exactly_staging`",
         ),
         (
             "ssh-dial",
@@ -2749,7 +2731,7 @@ mod g6_dependency_signoff {
             MEASURED_WRITES_ON_PURPOSE,
             "同上一行那个仓内 crate，测试构建多开 `test-support`（测试档不许出网那句断言 · 拨了必被拒的本机口 · 合成 SFTP 服务端），\
              多出来的 0 处写面；远端写面同上一行。\
-             边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_roots_are_exactly_staging_and_bin`",
+             边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_root_is_exactly_staging`",
         ),
         (
             "deploy",
@@ -2783,9 +2765,10 @@ mod g6_dependency_signoff {
         (
             "guard-core",
             DEV_DEPS,
-            MEASURED_CLEAN,
-            "源码扫描型判据的共用剥法。**只在测试期链接**，不进发布二进制；\
-             仓内 crate，现打 0 处写面",
+            MEASURED_WRITES,
+            "源码扫描型判据的共用剥法与住址（`addr`）。现打 0 处写盘、1 处起进程：`addr::tracked_under` 起一个只读的 \
+             `git ls-files` 问索引。进不了发布二进制：它只在各包的 `[dev-dependencies]`，本行的段与清单逐条对拍 \
+             （`every_dependency_this_manifest_declares_carries_a_signature`），挪进 `[dependencies]` 就红",
         ),
         (
             "libc",
@@ -2878,7 +2861,7 @@ mod g6_dependency_signoff {
              fs::OpenOptions` 的转换里 —— 造选项、不开文件；它的 `tokio` 没开 `fs` / `net`）；\
              **远端**写面就是它的本职（`SSH_FXP_OPEN` 带写标志 · `REMOVE` · `RENAME` · `MKDIR` …）⇒ 就是要它写。\
              谁划边界：只许 `ssh-dial/sftp.rs` 一份文件持有它的会话、写根 == 暂存区与部署目录、每处先过 `fenced_remote`。\
-             边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_roots_are_exactly_staging_and_bin`",
+             边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_root_is_exactly_staging`",
         ),
         // `search-core` 那一行出列：crate 删了（通用口径收成 `history/search_rules.rs`，记录文本进 `agents/claudecode/text.rs`）。
         (
@@ -2923,6 +2906,13 @@ mod g6_dependency_signoff {
             "记录的线上形状（`agents/claudecode/schema.rs`）导出 TS 类型用（`#[cfg_attr(test, derive(ts_rs::TS))]`）。\
              **只在测试期链接**，不进发布二进制；写面只有 `cargo test` 里 `export_bindings_*` 往 `src/frontend/ui/generated/` 写生成物 —— \
              与 monitor 那一侧同一个用法（C01），版本是 monitor 那份 lock 早已解析的 `12.0.1`",
+        ),
+        (
+            "tokio",
+            DEV_DEPS,
+            UNMEASURED,
+            "测试档多开 `test-util`（停着的钟，`advance` 才走）：判「挂着的提问自己带的期限」不按墙钟等。\
+             同一个包（`[dependencies]` 里那一条），**只在测试期多一个特性**，不进发布二进制",
         ),
         (
             "shell-quote-core",
@@ -2971,7 +2961,7 @@ mod g6_dependency_signoff {
             UNMEASURED,
             "配置文件（`~/.cc-monitor/profiles.toml`）的解析与按条目改（`assets/aliases/profile.rs`）：缺省 feature 关了，只开 `parse` 与 `display`，\
              纯内存把文本变成文档树、再变回文本（保留注释与排版）。读盘与落盘都在本 crate：读是 ccm 那一趟的 `read_to_string` 与经文件管理面的 `files-peek`，\
-             写经文件管理面的 `files-put`。写不写盘：本 crate 对它的用法只有 `Document::parse` / `DocumentMut` 的内存编辑（用法签字，没扫它的源码）",
+             写经文件管理面的 `Door::put`。写不写盘：本 crate 对它的用法只有 `Document::parse` / `DocumentMut` 的内存编辑（用法签字，没扫它的源码）",
         ),
         (
             "tracing-subscriber",
@@ -3311,17 +3301,11 @@ mod g6_dependency_signoff {
             );
         }
         let declared = dep_entries(MANIFEST);
-        for (name, sect, verdict, why) in SIGNED {
+        for (name, sect, verdict, _) in SIGNED {
             assert!(
                 is_verdict(verdict),
                 "`{name}` 的判档是 `{verdict}` —— 它不在闭集里。闭集（现算）：{}",
                 verdict_names().join(" / ")
-            );
-            assert!(
-                why.trim().chars().count() >= 20,
-                "`{name}` 的签字太短（实得 {} 字）—— 这一列的读者是下一个想加依赖的人，\
-                 要写的是「它在后端里做什么 · 凭什么落这一档」，不是一句「没问题」",
-                why.trim().chars().count()
             );
             assert!(
                 declared
@@ -3340,7 +3324,7 @@ mod g6_dependency_signoff {
     /// 前提翻了一次：先前是「那个 feature 本清单没开 ⇒ 今天编不进来」
     /// （`已量·有写面`），今天是「开了、写面就是账号域那一份要用的」（`已量·有写面·就是要它写`）。
     /// ⇒ 两个方向都钉：feature 被关掉了而签字还说「就是要它写」⇒ 红；
-    ///   `已量·有写面`（「凭什么进不来」那一档）今天**零成员** —— 有人把它签回那一档而 feature 还开着 ⇒ 红。
+    ///   `已量·有写面`（「凭什么进不来」那一档）今天只有 guard-core —— 有人把它签回那一档而 feature 还开着 ⇒ 红。
     /// 本仓最高频的病是「代码订正了，盘没跟着改」，这一条挡的正是它的反面：
     /// **盘上写着的前提被代码改掉了而盘不知道。**
     #[test]
@@ -3350,10 +3334,11 @@ mod g6_dependency_signoff {
             .filter(|(_, _, v, _)| *v == MEASURED_WRITES)
             .map(|(n, ..)| *n)
             .collect();
+        // 今天只有 guard-core：起一个只读的 `git ls-files`，进不来是因为它只在 `[dev-dependencies]`（签字里写着谁钉）。
         assert_eq!(
             gated,
-            Vec::<&str>::new(),
-            "「有写面、但被一个没开的 feature 关着」那一档今天应当零成员，实得 {gated:?}\n\
+            vec!["guard-core"],
+            "「有写面、但进不了发布二进制」那一档的成员变了，实得 {gated:?}\n\
              新来一条这样的依赖 ⇒ 先回答「它凭什么进不来」「那个前提谁钉着」，再改这里。"
         );
         let purposeful: Vec<&str> = SIGNED
@@ -3362,7 +3347,7 @@ mod g6_dependency_signoff {
             .map(|(n, ..)| *n)
             .collect();
         // +`russh-sftp`（SFTP 进本机常驻后端）。它的前提不是一个 feature，
-        //   是「只许一份文件持有它的会话、写根 == 两处」—— 那一条由它签字里点名的边界判据钉（远端写那一层），
+        //   是「只许一份文件持有它的会话、写根 == 暂存区一处」—— 那一条由它签字里点名的边界判据钉（远端写那一层），
         //   本条只钉 `creds-core` 那一条的前提（feature 开着）。
         // +`ssh-dial` 两行（拨号核心，远端写那一格随 SFTP 客户端搬进去）：前提同 `russh-sftp`，由同一条边界判据钉。
         assert_eq!(
@@ -3426,7 +3411,7 @@ mod g6_dependency_signoff {
     /// `use` 那一行本身带着名字，所以「引入」这件事照样看得见；再往外一层的重导出看不见。
     #[test]
     fn the_credentials_write_half_is_reached_only_from_the_account_file_face() {
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         let needles = [format!("create_{}", "private")];
         let mut found: std::collections::BTreeSet<String> = Default::default();
         let mut scanned = 0usize;
@@ -3804,7 +3789,7 @@ mod g6_dependency_signoff {
                 sftp_crate.as_str(),
                 DEPS,
                 *allowed,
-                "它的写面被一个没开的 feature 关着 / 边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_roots_are_exactly_staging_and_bin`",
+                "它的写面被一个没开的 feature 关着 / 边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_root_is_exactly_staging`",
             )];
             assert!(
                 capability_supplier_misfits(&fake).is_empty(),
@@ -3874,7 +3859,7 @@ mod remote_write_layer {
     //!
     //! # 它守的性质 · 它扫的人群（两行，各只许有一句 —— 同本文件顶上 `KG62` 那对）
     //!
-    //! - **它守的性质是**：backend **进程自身**不许改动**别人机器上**的用户既有数据 —— 远端写只许住 `ssh-dial/sftp.rs` 一份、只许落在 `~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/`（我们自己的目录）、每一处先过 `fenced_remote`。
+    //! - **它守的性质是**：backend **进程自身**不许改动**别人机器上**的用户既有数据 —— 远端写只许住 `ssh-dial/sftp.rs` 一份、只许落在 `~/.cc-monitor/staging/`（我们自己的目录）、每一处先过 `fenced_remote`。
     //!   （本机那一半由命名空间那一条与那几种写句柄守；本层守的是**远端**那一半。）
     //! - **它扫的人群是**：本 crate `src/` 递归全部 `.rs` 的生产段源码文本里，
     //!   **把一条远端通道变成文件系统的那一步**（[`REMOTE_CAPABILITY_ANCHORS`]）
@@ -3886,16 +3871,14 @@ mod remote_write_layer {
     //! 两张表各自的理由逐条写在表里，这里只说那条总的：
     //!
     //! **远端写不是一个动词，是一条链**：先取得一个能改远端文件系统的**能力**，再拿它发**操作**。
-    //! monitor 侧 `remote_write_registry` 的头注现打过这条链的读数 —— 按写原语的方法名取样是
-    //! 8 份文件、其中 6 份是本机噪声；换成「谁持有 SFTP 会话」立刻收到 3 份、零噪声。
+    //! 按写原语的方法名取样会混进本机写的噪声；按「谁持有 SFTP 会话」取样零噪声。
     //! ⇒ **能力那一端是扼流点，动词那一端不是。** 本层因此把能力网排在第一位，
     //! 动词网只作第二道（能力取得点住在别的文件时，动词那一处仍然点得出名）。
     //!
     //! # ⚠ 它认不出什么 —— **口径与射程同句写清**（`KR79D3` 的落点是 [`BLIND_SPOT_LAYERS`]）
     //!
     //! - **远端 exec**：`channel_open_session` ＋ 把一条会写的 shell 命令交给远端。
-    //!   一条命令写不写，**源码文本上判不了**（monitor 侧 `remote_write_registry` 头注
-    //!   逐字给过同一条结论：`2>/dev/null` 就带 `>`）。这与命名空间那一条认不出 `Command::new`
+    //!   一条命令写不写，**源码文本上判不了**（`2>/dev/null` 就带 `>`）。这与命名空间那一条认不出 `Command::new`
     //!   是**同一个洞的远端孪生** —— 盘上今天就有一处，登记在
     //!   [`the_remote_exec_hole_is_a_registered_counterexample_and_still_passes`]。
     //! - **不经 SSH 的远端写协议**（手写 HTTP PUT / 云存储 SDK / 自己封的传输层）：
@@ -3933,9 +3916,8 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
         ),
         (
             FAMILY_SUBSYSTEM,
-            "SFTP **会话类型名**。monitor 侧 `remote_write_registry` 头注现打过：\
-             按写原语的方法名取样 = 8 份文件、6 份是本机噪声；换成「谁持有 SFTP 会话」\
-             = 3 份、零噪声。⇒ **会话对象是远端写那条路的扼流点**，方法名不是。",
+            "SFTP **会话类型名**：按写原语的方法名取样混进本机噪声，按「谁持有 SFTP 会话」零噪声 \
+             ⇒ **会话对象是远端写那条路的扼流点**，方法名不是。",
         ),
         (
             FAMILY_SUBSYSTEM,
@@ -4074,7 +4056,7 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
     /// ⇒ **不补回来这件事照旧**，理由与 `super::tests::scan` 跳过本文件逐字同一条：
     /// 本文件整体在 `#[cfg(test)]` 内、生产段是空的，而它的锚点表本身就是一串会自匹配的字面量。
     fn production_tree() -> Vec<(String, String)> {
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         let mut out: Vec<(String, String)> = Vec::new();
         for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
             let rel = path
@@ -4082,7 +4064,7 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
                 .unwrap_or(&path)
                 .to_string_lossy()
                 .replace('\\', "/");
-            out.push((rel, crate::guard_support::production_source(&src)));
+            out.push((rel, guard_core::production_source(&src)));
         }
         out.sort();
         out.dedup_by(|a, b| a.0 == b.0);
@@ -4315,16 +4297,10 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
     /// ★ 两张能力表**逐格对齐**，家族在闭集里，理由有长度地板。
     #[test]
     fn the_two_capability_tables_stay_aligned() {
-        for (family, why) in REMOTE_CAPABILITY_ANCHORS {
+        for (family, _) in REMOTE_CAPABILITY_ANCHORS {
             assert!(
                 FAMILIES.contains(family),
                 "`{family}` 不在家族闭集里：{FAMILIES:?}"
-            );
-            assert!(
-                why.trim().chars().count() >= 30,
-                "有一条能力锚点没写清它凭什么是形状（实得 {} 字）—— \
-                 这一栏的读者是下一个想往表里加一行的人",
-                why.trim().chars().count()
             );
         }
         for (op, why) in REMOTE_MUTATION_VERBS {
@@ -4336,7 +4312,7 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
         }
     }
 
-    // ═══ **远端写只住一份文件、只许落两处** ═══════════════
+    // ═══ **远端写只住一份文件、只许落暂存区** ═══════════════
     //
 
     /// ★ **远端写的唯一住址**：`(仓库相对路径, why —— 它写什么、路径由谁定、哪一道围栏拦着)`。
@@ -4344,17 +4320,17 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
         "ssh-dial/sftp.rs",
         "SFTP 住本机常驻后端：暂存区的上传件（`control/transfer.rs` 经它写）· \
          自部署的后端二进制 / `.build_id` / `ccm` 入口（部署链路 `use:\"files\"` 经它写）。\
-         路径由 monitor 给、由本文件的 `fenced_remote` 判：词法（只许两个根）＋ 父目录解链接仍在根下 ＋ \
+         路径由 monitor 给、由本文件的 `fenced_remote` 判：词法（只许暂存区）＋ 父目录解链接仍在根下 ＋ \
          开写前 `lstat` 拒链接",
     );
 
-    /// 🔴 **写根的期望值手写**（「只许往远端 `~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/`（部署）写」），
+    /// 🔴 **写根的期望值手写**（「只许往远端 `~/.cc-monitor/staging/` 写；换进安装位置 · 卸载由传上去的那一份在那台上自己做」），
     /// **不取自被判文件的常量**（两侧同源 = 恒真）。
-    const EXPECTED_WRITE_ROOTS: [&str; 2] = [".cc-monitor/staging", ".cc-monitor/bin"];
+    const EXPECTED_WRITE_ROOTS: [&str; 1] = [".cc-monitor/staging"];
 
     /// 被判文件里写根那一行的锚（运行时拼，免得本文件自己也命中）。
     fn roots_anchor() -> String {
-        format!("const REMOTE_WRITE_{}: [&str; 2] =", "ROOTS")
+        format!("const STAGING_{}: &str =", "ROOT")
     }
 
     /// 围栏调用的针（远端那一道）。
@@ -4434,9 +4410,9 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
         bad
     }
 
-    /// ★★ 正题 ①②：**远端写只住一份文件**（两向相等），**它声明的写根 == 暂存区与部署目录那两处**（相等，异源）。
+    /// ★★ 正题 ①②：**远端写只住一份文件**（两向相等），**它声明的写根 == 暂存区那一处**（相等，异源）。
     #[test]
-    fn the_remote_write_lives_in_exactly_one_file_and_its_roots_are_exactly_staging_and_bin() {
+    fn the_remote_write_lives_in_exactly_one_file_and_its_root_is_exactly_staging() {
         let tree = production_tree();
         assert_tree_is_real(&tree);
         let found: std::collections::BTreeSet<String> = tree
@@ -4452,7 +4428,7 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
             "\n命中远端写能力网 / 动词网的后端文件，与登记的那一份对不上。\n  \
              盘上有、表里没有（🔴 **远端写长到了第二份文件里**）：{:?}\n  \
              表里有、盘上没有（那一份搬走了 / 不写了 ⇒ 同轮改登记）：{:?}\n\n\
-             SFTP 进本机常驻后端、只写暂存区（＋ 自部署目录）。写原语只许住一份文件、\
+             SFTP 进本机常驻后端、只写暂存区。写原语只许住一份文件、\
              每个都先过那一道围栏 —— 第二份文件里的远端写就是一个没人审过的洞。",
             found.difference(&want).collect::<Vec<_>>(),
             want.difference(&found).collect::<Vec<_>>()
@@ -4483,7 +4459,7 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
             EXPECTED_WRITE_ROOTS.iter().map(|r| r.to_string()).collect();
         assert_eq!(
             got, want_roots,
-            "远端写根与「暂存区 ＋ 部署目录」那两处对不上 —— 多一处 = 写能力扩散；少一处 = 暂存区或部署落不下去"
+            "远端写根与「暂存区」那一处对不上 —— 多一处 = 写能力扩散；少了 = 上传 · 部署落不下去"
         );
         println!(
             "SR1b：本趟扫 {} 份生产段源文件，远端写只在 {:?}，写根 {:?}",

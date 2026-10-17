@@ -3,8 +3,8 @@ use std::path::PathBuf;
 const INVARIANTS: &str = include_str!("../../../src/doc/INVARIANTS.md");
 
 fn repo_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::repo_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::repo_root()
 }
 
 /// 本族判据的人群：仓里**跟踪着**的文件（`git ls-files` 口径，仓根相对、正斜杠）。
@@ -375,10 +375,16 @@ fn every_code_symbol_named_in_the_docs_still_resolves() {
 #[test]
 fn every_repo_path_named_in_the_docs_still_resolves() {
     /// 例外：**解析不到却是对的**。三种形状，每种都在本仓真实出现过。
-    const EXCEPTIONS: &[(&str, &str)] = &[(
-        "src/frontend/shell/gen/schemas/acl-manifests.json",
-        "tauri 构建生成物 + gitignore：磁盘上有、`git ls-files` 里没有，且不同环境有无不定",
-    )];
+    const EXCEPTIONS: &[(&str, &str)] = &[
+        (
+            "src/frontend/shell/gen/schemas/acl-manifests.json",
+            "tauri 构建生成物 + gitignore：磁盘上有、`git ls-files` 里没有，且不同环境有无不定",
+        ),
+        (
+            "cache/listing.json",
+            "数据目录里后端运行时落的文件（历史清单缓存），不是仓内路径；§2.1 那张表按这个名字与足迹逐样对拍",
+        ),
+    ];
     const EXTS: &[&str] = &["rs", "ts", "sh", "mjs", "json", "yml", "toml", "md", "py"];
 
     // 解析口径：跟踪着的文件（自检在 [`tracked_files`] 里：清单太短 ⇒ 口径坏了）。
@@ -532,7 +538,7 @@ fn every_repo_path_named_in_the_docs_still_resolves() {
 fn the_linux_job_still_inherits_the_version_guard() {
     let rel = guard_core::strip_hash_comment_lines(
         &std::fs::read_to_string(
-            crate::guard_support::repo_root().join(".github/workflows/release.yml"),
+            guard_core::addr::repo_root().join(".github/workflows/release.yml"),
         )
         .expect("读不到 release.yml"),
     );

@@ -82,7 +82,7 @@ fn listing_annotations(listing: &Value) -> Result<Table, String> {
 }
 
 fn fixtures() -> PathBuf {
-    crate::guard_support::repo_root().join("tests/__fixtures__")
+    guard_core::addr::repo_root().join("tests/__fixtures__")
 }
 
 /// 这台的注解：S1 星标 · S2 隐藏 · S4 星标 ＋ 隐藏（S3 S5 没有注解）。
@@ -206,7 +206,14 @@ fn listing() -> Value {
         }],
         no_excerpt as fn(&std::path::Path) -> String,
     )];
-    let live = LiveSet([S1.to_string()].into_iter().collect());
+    let live = LiveSet(
+        [(
+            S1.to_string(),
+            Some(crate::agents::SessionActivity::Working),
+        )]
+        .into_iter()
+        .collect(),
+    );
     listing_from(tree, &synth, &live, &json!({ S1: "work", S3: "home" }))
 }
 
@@ -268,14 +275,14 @@ fn the_machine_listing_carries_group_dir_failures_synth_and_last_accounts() {
     let cx = rows.iter().find(|r| r["agent"] == "codex").unwrap();
     assert_eq!(cx["projectDir"], "codex:/w/delta");
     assert_eq!(
-        cx["isLive"],
+        cx["life"],
         Value::Null,
         "合成历史判不了活 ⇒ null，不是 false"
     );
     assert_eq!(
-        answer(json!({}))["rows"][0].get("isLive"),
+        answer(json!({}))["rows"][0].get("life"),
         None,
-        "成品里活不活只出 status 一格"
+        "成品里活不活只在整份脸里"
     );
     assert_eq!(
         l["failed"],
@@ -290,7 +297,7 @@ fn rows_carry_annotations_label_and_what_can_be_done() {
     let s1 = find(&v, S1);
     assert_eq!(s1["starred"], true);
     assert_eq!(s1["label"], "支付回调验签");
-    assert_eq!(s1["status"], "live");
+    assert_eq!(s1["face"]["live"]["is"], "yes");
     assert_eq!(
         s1["can"],
         json!({"resume": "switch", "accounts": true, "fork": true, "delete": "live"})
@@ -313,7 +320,7 @@ fn rows_carry_annotations_label_and_what_can_be_done() {
         .iter()
         .find(|r| r["agent"] == "codex")
         .unwrap();
-    assert_eq!(cx["status"], "unknown");
+    assert_eq!(cx["face"]["dot"], "unknown", "合成历史判不了活 ⇒ 状态不明");
     assert_eq!(cx["agentTag"], "Codex", "不是默认那一家 ⇒ 行上画它的叫法");
     assert_eq!(s1["agentTag"], Value::Null, "默认那一家不画");
     assert_eq!(
@@ -569,7 +576,7 @@ fn the_remote_listing_never_spawns_a_oneshot_process() {
     )));
 }
 
-/// ★ 判据 9：跨语言金样（远端一台的成品，带 context 父会话与读不了的那一组）。`CCM_BLESS=1` 重写。
+/// ★ 判据 9：跨语言金样（远端一台的成品，带 context 父会话与读不了的那一组）。
 #[test]
 fn the_product_matches_the_cross_language_golden() {
     let got = answer_from(
@@ -580,19 +587,10 @@ fn the_product_matches_the_cross_language_golden() {
         1_000,
         &Default::default(),
     );
-    let path = fixtures().join("history-list.golden.json");
-    if std::env::var_os("CCM_BLESS").is_some() {
-        std::fs::write(
-            &path,
-            format!("{}\n", serde_json::to_string_pretty(&got).unwrap()),
-        )
-        .unwrap();
-    }
-    let golden: Value =
-        serde_json::from_str(&std::fs::read_to_string(&path).expect("金样")).unwrap();
-    assert_eq!(
-        got, golden,
-        "成品形状变了：TS 解码器读的是同一份金样，两边一起改（CCM_BLESS=1 重写）"
+    crate::golden::assert_golden(
+        "tests/__fixtures__/history-list.golden.json",
+        &format!("{}\n", serde_json::to_string_pretty(&got).unwrap()),
+        "成品形状变了：TS 解码器读的是同一份金样，两边一起改",
     );
 }
 
@@ -649,7 +647,7 @@ fn a_real_record_tree_becomes_the_machine_listing() {
     let tree = crate::history::listing::sessions_by_dir(&home)
         .expect("读得了")
         .expect("记录树在");
-    let live = LiveSet([S4.to_string()].into_iter().collect());
+    let live = LiveSet([(S4.to_string(), None)].into_iter().collect());
     let v = listing_from(tree, &[], &live, &json!({}));
     let _ = std::fs::remove_dir_all(&home);
     let agent = crate::agents::record_tree_kind().unwrap_or_default();
@@ -663,7 +661,7 @@ fn a_real_record_tree_becomes_the_machine_listing() {
                 r["sessionId"].as_str().unwrap_or_default().to_string(),
                 r["projectDir"].as_str().unwrap_or_default().to_string(),
                 r["projectPath"].as_str().unwrap_or_default().to_string(),
-                r["isLive"].as_bool().unwrap_or_default(),
+                r["life"]["is"] == "live",
             )
         })
         .collect();
@@ -702,11 +700,9 @@ fn asking_by_sid_scans_one_session_and_answers_the_same() {
     let locked = home.join("projects").join("-w-locked");
     std::fs::create_dir_all(&locked).unwrap();
     std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
-    let live = LiveSet([S4.to_string()].into_iter().collect());
+    let live = LiveSet([(S4.to_string(), None)].into_iter().collect());
     let listing = |only: Option<&str>| {
-        let tree = crate::history::listing::sessions_by_dir_for(&home, only)
-            .expect("读得了")
-            .expect("记录树在");
+        let tree = tree_for(&home, only).expect("读得了").expect("记录树在");
         listing_from(tree, &[], &live, &json!({ S1: "work" }))
     };
     let whole = listing(None);
@@ -725,9 +721,11 @@ fn asking_by_sid_scans_one_session_and_answers_the_same() {
         }
         for r in narrow["rows"].as_array().unwrap() {
             let scanned = r["jsonlPath"].as_str().is_some_and(|p| !p.is_empty());
+            // 分叉来的那一条（S4 分自 S1）⇒ 父会话那一份也整份扫（那一行要父会话的显示标题）。
+            let parent = sid == S4 && r["sessionId"] == S1;
             assert_eq!(
                 scanned,
-                r["sessionId"] == sid,
+                r["sessionId"] == sid || parent,
                 "只扫一份那一形扫了别的会话：{r}"
             );
         }
@@ -953,13 +951,53 @@ fn a_session_the_ledger_calls_reconnectable_is_listed_as_reconnectable() {
     let live = session_row(
         &v(sid),
         "-w-a",
-        &LiveSet([sid.to_string()].into_iter().collect()),
+        &LiveSet([(sid.to_string(), None)].into_iter().collect()),
     )
     .unwrap();
     crate::history::live::set_reconnectable(&Default::default());
-    assert!(r.reconnectable && !o.reconnectable && !live.reconnectable);
     assert_eq!(
-        [&r, &o, &live].map(|x| crate::history::listing::status_of(x.is_live, x.reconnectable)),
-        ["reconnectable", "ended", "live"]
+        [&r, &o, &live].map(|x| x.life),
+        [
+            Some(RowLife::Reconnectable),
+            Some(RowLife::Ended),
+            Some(RowLife::Live { activity: None })
+        ]
     );
+}
+
+/// ★ 分叉来的那一行带父会话的显示标题（同父会话自己那一行的 `label`，父会话被筛掉 / 隐藏也照它）；父会话不在这台的清单里 ⇒ 缺；
+/// 不是分叉来的 ⇒ 缺。按项目看的每一组带最近活动写好的字（同行尾那一格的写法）；读不了的那一组 ⇒ `null`。
+#[test]
+fn a_forked_row_names_its_parent_and_groups_say_when() {
+    let tz = crate::Tz::default();
+    let v = answer(json!({"query": "分出来"}));
+    assert_eq!(
+        find(&v, S5)["forkedFrom"],
+        json!({"label": find(&answer(json!({"hidden": true})), S4)["label"]})
+    );
+    assert!(find(&v, S4).get("forkedFrom").is_none(), "不是分叉来的");
+    let mut l = listing();
+    let rows = l["rows"].as_array_mut().unwrap();
+    rows.retain(|r| r["sessionId"] != S4);
+    let orphan = answer_from(&l, None, Ok(&ann()), &ask(json!({})), 1_000, &tz);
+    assert!(
+        find(&orphan, S5).get("forkedFrom").is_none(),
+        "父会话不在这台的清单里 ⇒ 缺"
+    );
+    let all = answer(json!({"hidden": true}));
+    for g in all["groups"].as_array().unwrap() {
+        let want = if g["failed"].is_null() {
+            json!(
+                crate::common::time::history_at_text(
+                    g["lastActivity"].as_i64().unwrap(),
+                    1_000,
+                    &tz
+                )
+                .0
+            )
+        } else {
+            Value::Null
+        };
+        assert_eq!(g["atText"], want, "{g}");
+    }
 }

@@ -1,18 +1,18 @@
 //! **装 / 升级远端后端的判定与编排**：桌面与手机同一份。
 //!
-//! 照桌面五步走：① 出计划（[`plan`]）· ② 取字节 ＋ 自检 · ③ 放 ＋ 读回（`ssh_dial::sftp::put_verified`）· ④ 判读回 ＋ 收拾残件 ·
+//! 照桌面五步走：① 出计划（[`plan`]）· ② 取字节 ＋ 自检 · ③ 放进暂存区 ＋ 读回（`ssh_dial::sftp::put_verified`）→ 那一份自己换进落点（`--place-self`）· ④ 判读回 ＋ 收拾残件 ·
 //! ⑤ 起常驻 / 换旧的（远端 ccm 自己的 `--resident-ensure [--replace]`；新旧由那台常驻后端回 attach 行时判）。
 //!
-//! - 桌面：本机常驻后端答帧命令 `deploy-plan`（`control/deploy_plan.rs`，薄薄一层：入参 · 回包形状 · 码）调 [`plan`]；
-//!   字节在 monitor 手里，②④ 由 monitor 照计划做，③ 经后端那条 `files` 链路落到 `put_verified`。
-//! - 手机：mobcore 直接调 [`install`]（①–④ 一趟，字节是 App 从包里解出来的那一份文件）；⑤ 由 mobcore 跑 `--resident-ensure --replace`。
+//! 两端都调 [`install`]（①–④ 一趟，字节是宿主交来的一份文件，每一步那一句是 [`Step::said`]、结局那一句是 [`Plan::said`]）；⑤ 由宿主跑 `--resident-ensure --replace`
+//! （那一步那一句也是 [`Step::said`]）。卸载是 [`uninstall`]：同样只写暂存区，由传上去的那一份删落点那一份。
+//! - 桌面：本机常驻后端答帧命令 `deploy-install`（`control/deploy_plan.rs`，薄薄一层：入参 · 进度帧 · 回包形状 · 码），字节是 monitor 落成的文件；
+//! - 手机：mobcore 直接调，字节是 App 从包里解出来的那一份文件。
 //!
 //! 契约那一半（表 A 的键与行 · 戳格式 · 答话形状 · 落点路径）住 `deploy_contract` / `relay_route_core`；本 crate 只放判定与编排。
 //!
 //! # 买不到的
 //!
 //! - 判定与放字节之间有窗（TOCTOU）：计划出来之后那台上的文件被人换了，照计划放。
-//! - `rel → .bak` 与 `tmp → rel` 两次改名之间落点有一瞬不在（`put_atomic` 头注）。
 
 use std::future::Future;
 use std::pin::Pin;
@@ -26,7 +26,8 @@ use serde_json::Value;
 use ssh_dial::{Captured, DialRequest};
 
 mod install;
-pub use install::{install, Load, Place, Slot, Step};
+pub mod machine;
+pub use install::{install, uninstall, Load, Place, Removed, Slot, Step, STAGED_STEM};
 
 /// 身份戳的两个界标（住契约 crate）。
 pub const MARKS: Marks<'static> = Marks {
@@ -222,7 +223,7 @@ pub fn identity_decision(
 /// ⇒ 另一个部署者正在写的那一份（修改时间随写不断刷新）不会被当成残件；也容得下两台机器之间一些钟差。
 pub const LEFTOVER_STALE_SECS: u64 = 3600;
 
-/// `dir` 里哪几份是 `ssh_dial::sftp::put_atomic` 留下、已经没人要的临时件 / 备份件（`dir/名字`，排序）。
+/// `dir` 里哪几份是一趟部署留下、已经没人要的件（`dir/名字`，排序）。
 /// 只认那个形状（`ssh_dial::sftp::is_trip_leftover`）；修改时间缺 / 比 `now` 新 ⇒ 不算（宁可多留一轮）。
 pub fn stale_leftovers(dir: &str, entries: &[(String, Option<u64>)], now_secs: u64) -> Vec<String> {
     let mut out: Vec<String> = entries
@@ -244,7 +245,7 @@ pub struct Plan {
     /// 这一版带着的那一格自报的身份（对照物）。
     pub expected: String,
     pub action: DeployAction,
-    /// 落点目录里没人要的临时件 / 备份件（家目录相对）；照删。列不出那个目录 ⇒ 空（下次再问）。
+    /// 暂存区里上一趟部署没人要的件（家目录相对）；照删。列不出那个目录 ⇒ 空（下次再问）。
     pub leftovers: Vec<String>,
     /// 问 `uname` 那一趟的 ack：桌面那一侧原样交回 monitor，按它固化指纹（`dial_host::settle_host_key`）；手机不用（拨号时已经回调落进 Room）。
     pub ack: Value,
@@ -344,11 +345,11 @@ pub(crate) async fn plan_and_landing(
     let had_one = !matches!(id, RemoteIdentity::Missing | RemoteIdentity::Empty);
     let action = identity_decision(&id, &expected, machine, &format!("~/{landing}"))
         .map_err(|e| Fail::new("undecidable", e))?;
-    let bin = landing_dir();
+    let staging = ssh_dial::sftp::STAGING_ROOT;
     let leftovers = facing
-        .list(bin)
+        .list(staging)
         .await
-        .map(|entries| stale_leftovers(bin, &entries, now_secs))
+        .map(|entries| stale_leftovers(staging, &entries, now_secs))
         .unwrap_or_default();
     Ok((
         Plan {

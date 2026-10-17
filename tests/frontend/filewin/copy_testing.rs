@@ -18,8 +18,6 @@
 //! - **颜色买不到**（`Shape::Text` 上那个「覆盖文字颜色」的字段这里没读）。
 //! - **真机上看得见买不到** —— 本机 `XDG_SESSION_TYPE=tty`，没有图形会话。
 
-use super::*;
-
 /// 这一帧画出来的一段文字：内容 ＋ 它的矩形。
 pub type PaintedText = (String, egui::Rect);
 

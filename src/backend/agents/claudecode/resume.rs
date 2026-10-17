@@ -147,10 +147,7 @@ pub(crate) fn resume_command(base: &str, session_id: &str) -> String {
 /// 系列名取起会话那张表（[`MODEL_ALIASES`]）里同名那一项的字，版本取原值里一两位的数段（八位的日期段不算）。
 /// 不是 `claude-` 开头 · 认不出系列 · 没有版本段 ⇒ `None`（不猜）。
 pub(crate) fn model_text(raw: &str) -> Option<String> {
-    let parts: Vec<&str> = raw.strip_prefix("claude-")?.split('-').collect();
-    let family = parts
-        .iter()
-        .find_map(|p| MODEL_ALIASES.iter().find(|c| c.value == *p))?;
+    let (family, parts) = family_of(raw)?;
     let version: Vec<&str> = parts
         .iter()
         .copied()
@@ -166,6 +163,30 @@ pub(crate) fn model_text(raw: &str) -> Option<String> {
             ("version", &version.join(".")),
         ],
     ))
+}
+
+/// 记录里的模型原值 ⇒ 系列（[`MODEL_ALIASES`] 里同名那一项）＋ 拆开的各段；不是 `claude-` 开头 · 认不出系列 ⇒ `None`。
+fn family_of(raw: &str) -> Option<(&'static Choice, Vec<&str>)> {
+    let parts: Vec<&str> = raw.strip_prefix("claude-")?.split('-').collect();
+    let family = parts
+        .iter()
+        .find_map(|p| MODEL_ALIASES.iter().find(|c| c.value == *p))?;
+    Some((family, parts))
+}
+
+/// 记录里的模型原值 ⇒ 别名表里**唯一**对得上的那一项（`claude-opus-4-1-20250805` ⇒ `opus`）：系列同 [`model_text`] 那样认；
+/// 那个系列在表里不止一项（`sonnet` · `sonnet[1m]`：记录里分不出带没带长上下文）· 认不出 ⇒ `None`（不猜）。
+pub(crate) fn model_pick(raw: &str) -> Option<&'static str> {
+    let (family, _) = family_of(raw)?;
+    let mut same = MODEL_ALIASES.iter().filter(|c| {
+        c.value
+            .strip_prefix(family.value)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with('['))
+    });
+    match (same.next(), same.next()) {
+        (Some(c), None) => Some(c.value),
+        _ => None,
+    }
 }
 
 /// 会话开着时换模型送的那一行：`/model <值>`（它也把这个模型存成这个号以后新会话的默认，那一家自己说的）。

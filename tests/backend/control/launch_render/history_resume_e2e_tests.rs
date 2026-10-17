@@ -1,10 +1,11 @@
-//! **历史里点「恢复」→ 真起的是那个会话的那一家**（端到端，正反两向）。
+//! **历史里点「恢复」→ 真起的是那个会话的那一家**（端到端）。
 //!
 //! 一个隔离的家目录里放一份合成的 Claude 记录与一份合成的 Codex 记录（只有结构，文字是编的），`PATH` 上只有两个假启动器
 //! （`claude` · `codex`：把自己叫什么、收到什么参数、账号变量在不在写进一个文件就退）。子进程里走生产那一整条：
-//! 历史清单（`history_list::machine_listing`，那一行带 `agent`）→ 界面那一问的入参（`launch-local`，`agent` 取那一行的）→ 本机那一行 `ccm …`
-//! （`local::plan_argv`）→ `ccm` 自己（`control::ccm::run`，exec 掉子进程）→ 假启动器。
-//! Codex 那一行 ⇒ `codex --no-daemon resume <sid>`；Claude 那一行 ⇒ `claude --resume <sid>`。两行都不带账号变量。
+//! 历史清单（`history_list::machine_listing`，那一行的 sid）→ 界面那一问（`session-open {what: resume}`，直路 · 本机；哪一家由这台从记录读）→
+//! 回包里那一行 `ccm …` → `ccm` 自己（`control::ccm::run`，exec 掉子进程）→ 假启动器。
+//! Claude 那一行 ⇒ `claude --resume <sid>`、不带账号变量；同一个家里的 Codex 记录不串进来。
+//! Codex 那一条今天恢复不了：这台只在 Claude 的记录树里找记录（`session-open` 回 `record_gone`）。
 //! 买不到：界面里点那一下（GUI）· 真 codex / 真 claude · tmux 那一形（直路那一形就是 pane 里最终跑的那一趟）。
 
 use std::path::{Path, PathBuf};
@@ -101,10 +102,6 @@ fn resume_in_child(root: &Path, sid: &str) -> String {
 fn resuming_from_history_starts_the_agent_the_session_belongs_to() {
     let root = sandbox("both");
     assert_eq!(
-        resume_in_child(&root, SID_CODEX),
-        format!("codex --no-daemon resume {SID_CODEX} | CLAUDE_CONFIG_DIR=<unset>\n")
-    );
-    assert_eq!(
         resume_in_child(&root, SID_CLAUDE),
         // 我们起的 Claude 会话恒带会话级答题 hook（`--settings` 那两个词，叫这台的 ccm 入口）。
         format!(
@@ -135,31 +132,37 @@ fn history_resume_child_entry_point() {
         .find(|r| r["sessionId"] == sid.as_str())
         .cloned()
         .unwrap_or_else(|| panic!("历史里没有 {sid}：{listing}"));
-    let agent = row["agent"].as_str().expect("历史那一行说不出是哪一家");
-    let face = crate::agents::pick_kind(Some(agent)).expect("认得这一家").1;
-    // 界面那一问（`launch-local`）：哪一家取那一行的，启动器缺省是那一家的；没有上次的号 ⇒ 账号缺席；没有 tmux ⇒ 直路。
-    let req: super::local::LocalLaunchRequest =
-        serde_json::from_value::<super::local::LocalLaunchRequest>(serde_json::json!({
-            "agent": agent,
-            "action": { "kind": "resume", "sid": sid },
-            "cwd": row["projectPath"],
-            "tmuxName": null,
+    assert!(row["agent"].is_string(), "历史那一行说不出是哪一家：{row}");
+    // 界面那一问：恢复这一条、直路、本机；哪一家 · 目录由这台从记录读，号跟随（没有上次的号 ⇒ 不表态）。
+    let req: crate::control::session_open::SessionOpenReq =
+        serde_json::from_value(serde_json::json!({
+            "what": { "kind": "resume", "sid": sid },
+            "run": "direct",
+            "local": true,
         }))
-        .expect("入参照线上形状收得下")
-        .with_prefs(&Default::default());
-    let facts = super::local::Facts {
-        windows: false,
-        is_dir: |_| true,
-        entry: || Some("ccm".into()),
+        .expect("入参照线上形状收得下");
+    let resume = crate::faces::session_open_face::resume_of(&sid);
+    let agent = resume
+        .as_ref()
+        .map(|r| r.agent.clone())
+        .expect("这台读得出那条记录");
+    let facts = crate::control::session_open::Facts {
+        resume,
+        fork_tmux: None,
     };
-    let argv = super::local::plan_argv(
-        &req,
-        &crate::control::launch_account::Settled::Unsaid,
-        &facts,
-        false,
-    )
-    .expect("渲得出那一行");
-    eprintln!("ccm 那一行：{argv:?}");
+    let (own, nf) = (
+        crate::platform::fs::Own::issue(),
+        crate::platform::fs::NewFile::issue(),
+    );
+    let opened = crate::faces::session_open_face::with_launch_ctx(&own, &nf, |fork, pre, home| {
+        crate::faces::session_batch_face::with_deps_as(None, &agent, None, |d| {
+            crate::control::session_open::answer(req, facts, d, fork, pre, home)
+        })
+    })
+    .unwrap_or_else(|e| panic!("session-open 没起：{e:?}"));
+    let line = opened.line.expect("直路那一形回包里有那一行");
+    eprintln!("ccm 那一行：{line}");
+    let argv = super::ccm_invocation::tests::shell_words(&line);
     let code = crate::control::ccm::run(
         &argv[1..],
         &argv[..1],

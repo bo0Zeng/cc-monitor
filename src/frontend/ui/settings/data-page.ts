@@ -1,13 +1,13 @@
 /**
  * 设置窗「文件与数据」页：两栏 —— 待办（角标）· cc-monitor 放了什么。
  *
- * - 待办：顶上一行总数 ＋［全部重查］；按机器分段（有事的在前），段头 机器名 · 那台的数 ·［打开该机器］；
+ * - 待办：顶上一行总数 ＋［全部重查］；按机器分段（照各台成品的先后键），段头 机器名 · 那台的数 ·［打开该机器］；
  *   每件一行：状态点 · 名字 · 类的小标签 · 下一行 文件位置小标签 ＋ 一句现状 · 主按钮。断开的那台：「{machine} 离线 · 未检查」。
  *   今天的件来自那台后端的 `data-report`（要装 / 要装 · 可选）；单件里每一格都照那份成品画，界面不判。
  * - cc-monitor 放了什么：机器 chip 切换；本机先「Claude 目录」（宿主交进来那一块），再「改过你的文件」（每处 改了什么 · 撤回在哪 ［前往］），
  *   再「cc-monitor 的文件」：那台后端家里那几样照那台 `data-report` 的 `own` 排（本机远端同一套行，`own-block.ts`）；
  *   本机后面再接宿主交进来的界面自己那几份（monitor 数据目录 · 网页引擎 · 本地存储）。
- * - 左栏角标 ＝ 各台 `chores` 相加（问不到的那台不算）；主窗口状态栏读同一个数（`data-reads.ts::choresOf`）。
+ * - 左栏角标与顶上那一行 ＝ 各台 `counts` 交本机后端合的那一份（问不到的那台不交）；主窗口状态栏读同一个数（`data-reads.ts::mergeChores`）。
  * 构造零 I/O：宿主在这一页第一次可见时调 [`loadNow`]；之后［全部重查］显式补一刀（切页不重读，不轮询）。
  */
 import { tabs } from "../kit/tabs";
@@ -19,8 +19,7 @@ import { copyText } from "../copy-table";
 import { writeClipboard } from "../clipboard";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { hostKey, readRemoteConfig } from "../remote-config";
-import { noteMachineTmux } from "../resume-defaults";
-import { markChore, readDataReport, recallDataReport, type Chore, type ChoreState, type DataReport } from "./data-reads";
+import { markChore, mergeChores, readDataReport, recallDataReport, type Chore, type ChoreCounts, type ChoreState, type DataReport } from "./data-reads";
 import { ownBlock, remoteOpen } from "./own-block";
 import { localOpenButtons } from "./data-section";
 import { spanNow } from "../duration-format";
@@ -29,7 +28,7 @@ import { countTags } from "./chore-tags";
 import { fold } from "../kit/fold";
 import { failToast } from "../kit/toast";
 import { openOnMachine } from "../file-window";
-import type { SettingsTarget } from "./open-settings";
+import type { SettingsTarget } from "../open-settings";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 export type DataTab = "chores" | "placed";
@@ -44,7 +43,7 @@ export interface DataPageHost {
   ownFiles: HTMLElement;
   /** 跳到设置窗里那一页那一栏那一节。 */
   goTo: (t: SettingsTarget) => void;
-  /** 左栏角标（各台进角标的件数相加）。 */
+  /** 左栏角标（各台合计的 `badge`）。 */
   setBadge: (n: number) => void;
 }
 
@@ -74,6 +73,8 @@ export class DataPage {
   private readonly ownBody: HTMLElement;
   private machines: Machine[] = [{ origin: LOCAL_ORIGIN, name: copyText("remote.cards.local") }];
   private readings = new Map<Origin, Reading>();
+  /** 读成的那几台合起来的件数（本机后端合的；没合成 ⇒ `null`，顶上不出数）。 */
+  private total: ChoreCounts | null = null;
   private picked: Origin = LOCAL_ORIGIN;
   /** 点过复制、那台还没认出已做的那几件（界面只多记这一样）。键 ＝ 机器 ＋ 件。 */
   private readonly copied = new Set<string>();
@@ -200,23 +201,18 @@ export class DataPage {
         if (gen !== this.generation) return;
         this.readings.set(m.origin, r);
         this.noteRecognized(m.origin, r);
-        if (r.ok && r.report.tmux !== null) noteMachineTmux(m.origin, r.report.tmux);
       }),
     );
     if (gen !== this.generation) return;
-    const total = this.choresTotal();
-    this.host.setBadge(total);
-    this.paintTabs(total);
+    const counts = [...this.readings.values()].flatMap((r) => (r.ok ? [r.report.counts] : []));
+    const total = await mergeChores(counts).catch(() => null);
+    if (gen !== this.generation) return;
+    this.total = total;
+    this.host.setBadge(total?.badge ?? 0);
+    this.paintTabs(total?.badge ?? 0);
     this.paintChores();
     this.paintPlaced();
     this.landFocus();
-  }
-
-  /** 进角标的件数：各台 `chores` 相加（读不到的那台不算）。 */
-  private choresTotal(): number {
-    let n = 0;
-    for (const r of this.readings.values()) if (r.ok) n += r.report.chores;
-    return n;
   }
 
   private paintTabs(total: number): void {
@@ -265,20 +261,24 @@ export class DataPage {
   private paintChores(): void {
     const pane = this.choresPane;
     pane.replaceChildren();
-    const all = [...this.readings.values()].flatMap((r) => (r.ok ? r.report.todo : []));
     const head = document.createElement("div");
     head.className = "data-summary";
-    const lead = document.createElement("span");
-    lead.textContent = copyText("dataPage.chores.open", { n: all.filter((c) => c.state !== "done" && c.state !== "declined").length });
-    head.appendChild(lead);
-    for (const t of countTags(all)) head.appendChild(t);
+    if (this.total) {
+      const lead = document.createElement("span");
+      lead.textContent = copyText("dataPage.chores.open", { n: this.total.open });
+      head.append(lead, ...countTags(this.total));
+    }
     const sp = document.createElement("span");
     sp.className = "data-sp";
     head.appendChild(sp);
     head.appendChild(button({ label: copyText("dataPage.chores.recheck"), icon: "refresh", kind: "ghost", size: "compact", onClick: () => void this.refresh() }));
     pane.appendChild(head);
-    // 有事的那几台在前（顺序照机器表；同一档内不挪）。
-    const order = [...this.machines].sort((a, b) => weight(this.readings.get(b.origin)) - weight(this.readings.get(a.origin)));
+    // 照各台成品的先后键排（同一档照机器表）；没读成的那几台排最后。
+    const rank = (m: Machine): number => {
+      const r = this.readings.get(m.origin);
+      return r?.ok ? r.report.rank : Number.MAX_SAFE_INTEGER;
+    };
+    const order = [...this.machines].sort((a, b) => rank(a) - rank(b));
     for (const m of order) pane.appendChild(this.machineSection(m));
   }
 
@@ -293,7 +293,7 @@ export class DataPage {
     name.textContent = m.name;
     head.appendChild(name);
     const r = this.readings.get(m.origin);
-    if (r?.ok) for (const t of countTags(r.report.todo)) head.appendChild(t);
+    if (r?.ok) head.append(...countTags(r.report.counts));
     const sp = document.createElement("span");
     sp.className = "data-sp";
     head.appendChild(sp);
@@ -307,7 +307,7 @@ export class DataPage {
     );
     sec.appendChild(head);
     if (!r) {
-      sec.appendChild(note(copyText("dataPage.chores.reading")));
+      sec.appendChild(note(copyText("kit.state.reading")));
       return sec;
     }
     if (!r.ok) {
@@ -433,7 +433,7 @@ export class DataPage {
     }
     this.changedBox.replaceChildren();
     if (!r) {
-      this.changedBox.appendChild(note(copyText("dataPage.chores.reading")));
+      this.changedBox.appendChild(note(copyText("kit.state.reading")));
       return;
     }
     // 断开的那台：有上次的就照上次的画（警告条说多旧），没有就照实说读不到。
@@ -483,14 +483,6 @@ function undoWhere(u: { page: string; tab?: string }): string {
   if (u.page === "ext") return copyText("dataPage.undo.ext");
   if (u.page === "machine" && u.tab === "config") return copyText("dataPage.undo.config");
   return u.page;
-}
-
-/** 有事的分量：进角标的件 ＞ 别的没做完的件 ＞ 读不到 ＞ 没事。 */
-function weight(r: Reading | undefined): number {
-  if (!r) return 0;
-  if (!r.ok) return 1;
-  const open = r.report.todo.filter((c) => c.state !== "done" && c.state !== "declined").length;
-  return r.report.chores * 100 + open * 2;
 }
 
 function section(title: string, sub: string): HTMLElement {

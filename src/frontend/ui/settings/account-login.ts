@@ -6,8 +6,9 @@
 import { accountsLoginCmd } from "../account-ops";
 import { NoTerminalWindow, openTerminal } from "../terminal-open";
 import { chosenAccount } from "../launch-account";
-import type { Origin } from "../ipc/origin";
+import { isLocalOrigin, type Origin } from "../ipc/origin";
 import { startNewSession } from "../new-session";
+import { DEFAULT_AGENT } from "../agent-profile";
 
 /** 开登录窗口的结局：开了 · 这台电脑开不了终端窗口（换在 tmux 里登录）。其余失败抛（已说成一句）。 */
 export type LoginWindow = "opened" | "noWindow";
@@ -33,10 +34,10 @@ export async function loginInTmux(
   name: string,
   dir: string,
 ): Promise<void> {
-  await startNewSession({
-    origin,
-    cwd: dir,
+  await startNewSession(origin, {
+    what: { kind: "new", agent: DEFAULT_AGENT, cwd: dir },
+    run: "tmux",
+    local: isLocalOrigin(origin),
     account: chosenAccount(name),
-    place: "tmux",
   });
 }

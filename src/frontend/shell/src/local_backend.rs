@@ -10,7 +10,7 @@
 //!   本模块过 `backend::tests::the_backend_layer_stays_host_agnostic`（禁 `AppHandle` 等把手）。
 //!
 //! 用 `std::process::Command`，**刻意不引入 `tauri-plugin-shell`**：
-//! 摸底实测 monitor 今天的 tauri 插件只有 opener/dialog/notification/single-instance，
+//! 摸底实测 monitor 今天的 tauri 插件只有 opener/dialog/single-instance，
 //! 而 Tauri 的 sidecar API 要 `AppHandle` —— 那会让本模块**当场违反**宿主无关那条机检。
 //! `externalBin` 只是**打包器**的事（把二进制放进安装包并按 triple 命名），与「怎么起它」无关。
 //!
@@ -91,12 +91,7 @@ use std::sync::{Arc, Mutex};
 ///
 /// 「找本机后端」的一致性由 `tests/e2e/ccm-contract-parity.sh` 的 **A′/A′d 组**钉住（print↔exec 的 argv 差分）。
 ///
-/// ⚠ **monitor 这一半还没接**：本 `const` 今天**没有生产调用点**（只有判据读它，
-/// 于是 `dead_code` 警告仍在 —— 那个警告就是「没接上」的诚实标记，刻意不 `#[allow]`）。
-/// 挡在前面的是一条**架构题**，不是工作量：`payload.rs` 编译的 `EnvOp` 由 **TS 前端经 wire
-/// 送来**（`launch_wire.rs`），而后端路径是**后端的知识**（[`resolve_or_extract`]）
-/// ⇒ 让前端携带它正对着 C2 与 C9。裁这道题是 F06b-1d 的第一件事。⇒ resume 路不能把
-/// backend 的答案烤进打印串，得打印一段「执行时去问后端」的配方。
+/// 开终端窗口时由 [`backend_bin_env_for_window`] 带上（值是正在跑的那一份后端）。
 pub(crate) const BACKEND_BIN_ENV: &str = "CCM_BACKEND_BIN";
 
 /// 找二进制的结果。**tagged 而不是 `Result`** —— 定框 §5：「拿不到依赖」是诚实降级。
@@ -152,9 +147,8 @@ pub fn decide(crash_times_ms: &[u64], now_ms: u64, limits: CrashLimits) -> Decis
             reason: copy_text(
                 "rsLocalBackend.decide.crashLoop",
                 &[
-                    ("windowMs", &limits.window_ms.to_string()),
+                    ("dur", &copy_core::format_duration(limits.window_ms)),
                     ("recent", &recent.to_string()),
-                    ("maxCrashes", &limits.max_crashes.to_string()),
                 ],
             ),
         };
@@ -983,9 +977,11 @@ fn sweep_moved_aside(dir: &Path, name: &str) {
 }
 
 /// 〔判定只在后端〕问手上这份字节「放不放」的那一口 —— **宿主注入**（起进程的三条策略是宿主知识，；
-/// 本层平台无关）。入参 = 暂存件的路径 · 帧命令 `place-verdict` 的入参；回 = 它的答，或没问成的那一形。生产 = `ccm_probe::ask_place_verdict`。
-pub type PlaceAsk<'a> =
-    &'a dyn Fn(&Path, &serde_json::Value) -> Result<serde_json::Value, crate::ccm_probe::OnceErr>;
+/// 本层平台无关）。入参 = 暂存件的路径 · 帧命令 `place-verdict` 的入参；回 = 它的答，或没问成的那一形。生产 = `backend_once::ask_place_verdict`。
+pub type PlaceAsk<'a> = &'a dyn Fn(
+    &Path,
+    &serde_json::Value,
+) -> Result<serde_json::Value, crate::backend_once::OnceErr>;
 
 /// 放不下来的两形（下一步不同，互不合并）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1009,14 +1005,14 @@ fn drop_partial(tmp: &Path) {
 }
 
 /// 没问成的那几形 → 一句话（手上那份字节说「不」时那句就是它自己的话，原样）。
-fn unasked(e: crate::ccm_probe::OnceErr) -> Said {
-    use crate::ccm_probe::OnceErr;
+fn unasked(e: crate::backend_once::OnceErr) -> Said {
+    use crate::backend_once::OnceErr;
     let why = match e {
-        OnceErr::Refused { message, .. } => return message.into(),
+        OnceErr::Refused { message, .. } => return Said::written(message),
         OnceErr::Spawn(e) => Said::with_raw(copy_text("rsLocalBackend.place.askSpawn", &[]), &e),
-        OnceErr::TimedOut => copy_text("rsLocalBackend.place.askTimeout", &[]).into(),
+        OnceErr::TimedOut => Said::of("rsLocalBackend.place.askTimeout", &[]),
         OnceErr::Unreadable(said) => {
-            copy_text("rsLocalBackend.place.askUnreadable", &[("said", &said)]).into()
+            Said::of("rsLocalBackend.place.askUnreadable", &[("said", &said)])
         }
     };
     Said::restate(
@@ -1028,7 +1024,7 @@ fn unasked(e: crate::ccm_probe::OnceErr) -> Said {
 /// `place-verdict` 的答 → 放（`true`）/ 不动（`false`）。**严格收**：恰 `{action, why}`、`action` 两个词之一；别的都是没问成（不猜）。
 pub(crate) fn decode_place(v: &serde_json::Value) -> Result<bool, Said> {
     let bad = || {
-        unasked(crate::ccm_probe::OnceErr::Unreadable(
+        unasked(crate::backend_once::OnceErr::Unreadable(
             v.to_string().chars().take(200).collect(),
         ))
     };
@@ -1414,8 +1410,6 @@ pub(crate) fn local_stdio_consumer(
     stdin: std::process::ChildStdin,
     stdout: std::process::ChildStdout,
 ) -> ConsumerReport {
-    use std::io::BufRead;
-
     let stdin =
         match tauri::async_runtime::block_on(
             async move { tokio::process::ChildStdin::from_std(stdin) },
@@ -1522,6 +1516,8 @@ pub(crate) fn local_stdio_consumer(
             .expect("上面刚判过 is_some")
             .into_client(witness);
         crate::inbound_client::register(route.origin.as_wire_str(), client.clone());
+        // stdio 载体没有 attach 行 ⇒ 接上即在它上面报名单（名单台那一处）。
+        crate::stream_watch::desk(&route.origin).up(&client, None);
         registered = Some(client);
         crate::prefs_migration::after_local_ready();
         crate::machine_table::refresh();
@@ -1533,9 +1529,9 @@ pub(crate) fn local_stdio_consumer(
 
     // 流没了 ⇒ 经它开的在飞链路全部带原因结束（不让调用方干等到超时）。
     if let Some(mine) = registered.as_ref() {
-        crate::link_mux::fail_owned_by(mine, &copy_text("rsLocalBackend.stdio.broken", &[]));
+        crate::link_mux::fail_owned_by(mine, &copy_text("reason.local.linkLost", &[]));
         // 经它开的传输也一律收场（后端的票表随那条流一起撤了）。
-        crate::sftp_pool::fail_owned_by(mine, &copy_text("rsLocalBackend.stdio.broken", &[]));
+        crate::sftp_pool::fail_owned_by(mine, &copy_text("reason.local.linkLost", &[]));
     }
     // 告诉本机内容消费者这条流结束了（冲掉残批、下一条流换新的收口）。
     route.out.stream_ended();
@@ -1649,7 +1645,7 @@ pub fn resolve_or_extract(
             Ok(e) => e,
             Err(why) => {
                 break 'resolve Resolved::Missing {
-                    reason: why.into(),
+                    reason: Said::written(why),
                     looked_at: Vec::new(),
                 }
             }

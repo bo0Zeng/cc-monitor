@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const LOCAL_PAGE = "machine:（本机）";
+const LOCAL_PAGE = "machine:<local>";
 const REMOTE_PAGE = "machine:devbox";
 
 const captured = vi.hoisted(() => ({
@@ -21,7 +21,7 @@ vi.mock("../../../../src/frontend/ui/machine-feed", () => ({
 
 vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
   MACHINE_PAGE_PREFIX: "machine:",
-  LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
+  LOCAL_MACHINE_PAGE_ID: "machine:<local>",
   RemoteSection: class {
     headActions = (): HTMLElement[] => [];
     pageIdOfMachine = (origin: string): string | null => (origin === "devbox" ? REMOTE_PAGE : null);
@@ -123,7 +123,6 @@ import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/hos
 import { factsOn } from "../../../test-support/host-facts";
 
 import { copyText } from "../../../../src/frontend/ui/copy-table";
-import { fixLabel } from "../../../../src/frontend/ui/settings/machine-state";
 
 beforeEach(() => {
   __setHostFactsForTests(factsOn("linux"));
@@ -141,20 +140,22 @@ describe("机器单页问题行的修法接到真流程", () => {
     expect(captured.machine, "面板没订机器状态推送").not.toBeNull();
     captured.machine!("devbox", {
       state: "host_key_changed",
-      reason: null,
+      reason: "host_key",
       stage: null,
       version: null,
       versionRelation: null,
       os: null,
-      fixes: ["compare_fingerprint"],
+      word: copyText("machineState.word.hostKey"),
+      said: copyText("machineState.problem.hostKey"),
+      fixes: [{ fix: "compare_fingerprint", label: copyText("machineState.fix.compareFingerprint") }],
       seenHostKey: "SHA256:new",
       detail: null,
+      next: null,
     });
-    const label = fixLabel("compare_fingerprint");
+    const label = copyText("machineState.fix.compareFingerprint");
     const btn = [...document.querySelectorAll<HTMLButtonElement>(".machine-problem button")].find((b) => b.textContent === label);
     expect(btn, `机器页问题行里没有［${label}］`).toBeDefined();
     btn!.click();
     expect(captured.runFix).toEqual([[REMOTE_PAGE, "compare_fingerprint"]]);
-    expect(copyText("machineState.fix.compareFingerprint")).toBe(label);
   });
 });

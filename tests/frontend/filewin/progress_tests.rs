@@ -237,7 +237,7 @@ fn a_tree_delete_row_stops_through_its_ticket() {
         copy_text(
             "rsFilewinBatch.row.title",
             &[
-                ("action", &copy_text("rsFilewinBatch.verb.delete", &[])),
+                ("action", &copy_text("beFiles.batch.verbDelete", &[])),
                 ("n", "1")
             ]
         )
@@ -362,14 +362,14 @@ fn the_time_left_is_said_only_once_there_is_a_rate() {
     assert_eq!(eta(100, 100, 10.0), None);
     assert_eq!(
         eta(50, 100, 10.0),
-        Some(copy_text("rsFilewinProgress.eta.secs", &[("n", "10")]))
+        Some(copy_text("rsFilewinProgress.eta.about", &[("dur", "10s")]))
     );
     assert_eq!(
         eta(10, 100, 10.0),
-        Some(copy_text("rsFilewinProgress.eta.mins", &[("n", "2")]))
+        Some(copy_text("rsFilewinProgress.eta.about", &[("dur", "2m")]))
     );
     assert_eq!(
         eta(1, 1000, 10.0),
-        Some(copy_text("rsFilewinProgress.eta.hours", &[("n", "3")]))
+        Some(copy_text("rsFilewinProgress.eta.about", &[("dur", "3h")]))
     );
 }

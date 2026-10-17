@@ -25,7 +25,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const LOCAL_PAGE = "machine:（本机）";
+const LOCAL_PAGE = "machine:<local>";
 const REMOTE_PAGE = "machine:devbox";
 
 /**
@@ -51,7 +51,7 @@ const captured = vi.hoisted(() => ({
 
 vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
   MACHINE_PAGE_PREFIX: "machine:",
-  LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
+  LOCAL_MACHINE_PAGE_ID: "machine:<local>",
   RemoteSection: class {
     headActions = (): HTMLElement[] => [];
     pageIdOfMachine = (): string | null => null;
@@ -153,7 +153,7 @@ vi.mock("@tauri-apps/api/window", () => ({
 import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
 import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
 import * as machineAliases from "../../../../src/frontend/ui/settings/machine-aliases";
-import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
+import { __resetMachineContextForTests } from "../../../../src/frontend/ui/machine-context";
 import { factsOn } from "../../../test-support/host-facts";
 
 // jsdom 的 UA 含 `linux`；本文件照 Windows 形态跑（第三条那块 `appliesTo: "local"` 的分节今天是「别名」，

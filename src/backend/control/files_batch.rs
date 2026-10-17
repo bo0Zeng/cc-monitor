@@ -121,6 +121,17 @@ pub(crate) fn copy(
         .iter()
         .map(|i| (rel_of(&i.from), rel_of(&i.to)))
         .collect();
+    if req.single == Some(true) {
+        for (from, to) in &items {
+            super::files_write::names_ok(true, to).map_err(CopyRefused::Fail)?;
+            if from == to {
+                return Err(CopyRefused::Fail(WriteFail::from((
+                    super::files_write::BAD_NAME,
+                    copy_text("beFilesWrite.copy.same", &[("path", &to.to_string_lossy())]),
+                ))));
+            }
+        }
+    }
     let total = items.len();
     let decide = req.decide;
     let probe = || -> Result<Vec<Option<Clash>>, CopyRefused> {
@@ -147,9 +158,11 @@ pub(crate) fn copy(
                     name: wire_of(Path::new(dst.file_name().unwrap_or_default())),
                     kind,
                     size,
+                    size_text: size.map(copy_core::size_text),
                     mtime_text: moment_text(mtime, tz),
                     there,
                     there_size,
+                    there_size_text: there_size.map(copy_core::size_text),
                     there_mtime_text: moment_text(there_mtime, tz),
                     dir_into,
                 });
@@ -409,7 +422,7 @@ fn delete_item(
 pub(crate) fn chmod(face: &Face, req: wire::FilesChmodReq) -> Result<BatchReply, WriteFail> {
     let root = root_of(&req.root, "root")?;
     let total = req.items.len();
-    let mode = req.mode;
+    let mode = super::files_write::mode_of_text(&req.mode)?;
     let items = req.items;
     ticketed(
         req.ticket.as_deref(),

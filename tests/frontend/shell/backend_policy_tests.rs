@@ -901,7 +901,7 @@ fn the_death_ledger_is_wired_at_exactly_these_sites() {
     // （读数逐字：「生产调用点是 4 处（登记 3 处）。实得：[("backend_policy.rs", 1), …]」）。
     //
     // ⚠ 修法**不是**把那份文件整个排掉（那会连它里面真有的调用点一起瞎掉），
-    //   而是把「定义」与「调用」分开 —— 口径抄 `creds_store_tests.rs` 那条同族判据：
+    //   而是把「定义」与「调用」分开 —— 口径抄 `creds_store_exits.rs` 那条同族判据：
     //   「『定义』不是一个出口，『调用』才是；两者混在一个数里，那个数就同时装了两件事」。
     //   ⇒ 人群反而**比搬树前更大**：`backend_policy.rs` 的其余代码现在也进了扫描面。
     let call_sites = |prod: &str| -> usize {
@@ -1352,10 +1352,7 @@ fn a_console_ctrl_kill_is_said_in_words_not_as_a_bare_code() {
         crate::copy_table::copy_text(
             "rsBackendPolicy.death.brief",
             &[
-                (
-                    "kind",
-                    copy_core::copy_static!("rsBackendPolicy.death.refused")
-                ),
+                ("kind", copy_core::copy_static!("reason.code.refused")),
                 ("ended", said)
             ]
         )

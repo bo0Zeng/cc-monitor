@@ -15,7 +15,7 @@ use russh::client;
 use russh::keys::{HashAlg, PrivateKeyWithHashAlg, PublicKey};
 
 use crate::env::{self, Credential};
-use crate::{DialRequest, Endpoint, JumpHop, Said, Stage, StageSink};
+use crate::{DialRequest, Endpoint, JumpHop, Said, Stage, StageSink, Why};
 
 /// 长连接的 SSH 层保活：**10 秒没收到对端字节就发一个**（russh 的 `keepalive_interval`：收到任何字节都重新计时）。
 /// 发出去之后又过了 [`KEEPALIVE_MAX`] 轮还是一个字节都没收到 ⇒ russh 判死、断开这条连接（最后收包之后 `KEEPALIVE_MAX + 1` 轮，20 秒）。
@@ -210,36 +210,39 @@ fn key_type_of(a: &russh::keys::Algorithm) -> String {
     }
 }
 
+/// 握手时这一台给的那一把：指纹（报给界面）＋ OpenSSH 那一行的前两段（算法 ＋ base64；写不成那一形 ⇒ 无）。
+#[derive(Clone)]
+pub struct Offered {
+    fingerprint: String,
+    line: Option<String>,
+}
+
+/// 一条连接握手时那一把的格（校验那一刻写，接受与否都写）。
+type Seen = Arc<Mutex<Option<Offered>>>;
+
+fn fingerprint_in(seen: &Seen) -> Option<String> {
+    seen.lock().ok()?.as_ref().map(|o| o.fingerprint.clone())
+}
+
+/// 鉴权过了：这台握手时给的那一把交宿主记（首见只在这里落 ⇒ 鉴权不过的对端写不进信任库）。
+fn remember(host: &str, port: u16, seen: &Seen) {
+    let line = seen.lock().ok().and_then(|g| g.as_ref()?.line.clone());
+    if let Some(line) = line {
+        env::get().host_keys.remember(host, port, &line);
+    }
+}
+
 /// host key 校验：给了期望值就严格比（比之前 `trim`），没给就 TOFU 接受并显眼 `warn`。
-/// **无论接受与否**都把实得指纹写回共享格 —— 界面要拿它做 TOFU 固化与展示。
+/// **无论接受与否**都把实得那一把写回共享格 —— 界面要拿指纹做 TOFU 固化与展示，鉴权过了按它记（[`remember`]）。
 pub struct Checker {
     trust: Trust,
-    observed: Arc<Mutex<Option<String>>>,
+    observed: Seen,
     /// 这一趟共用的「地址 → 指纹」格：校验那一刻就记（接受 / 拒绝都记），之后任务被 abort 也不丢。
     reported: Arc<Mutex<BTreeMap<String, String>>>,
     stages: StageSink,
     endpoint: String,
-    /// 这一趟连的是哪台（主机 ＋ 口，同开终端那一行写的那一对）：认下的钥匙按它交给宿主记（[`env::HostKeys`]）。
-    host: String,
-    port: u16,
     /// 这条连接的收包记账；连接没了在这里记一笔（[`crate::pool::Heard::mark_gone`]）。
     heard: Arc<crate::pool::Heard>,
-}
-
-impl Checker {
-    /// 认下了 ⇒ 交给宿主记（桌面：cc-monitor 那份 known_hosts，开终端那一跳的 `ssh` 认同一把，不再问）。
-    fn accepted(&self, key: &PublicKey) -> Result<bool, russh::Error> {
-        match key.to_openssh() {
-            Ok(line) => {
-                let algo_and_blob: Vec<&str> = line.split_whitespace().take(2).collect();
-                env::get()
-                    .host_keys
-                    .remember(&self.host, self.port, &algo_and_blob.join(" "));
-            }
-            Err(e) => tracing::warn!("known_hosts：钥匙写不成 OpenSSH 形：{e}"),
-        }
-        Ok(true)
-    }
 }
 
 impl client::Handler for Checker {
@@ -261,8 +264,18 @@ impl client::Handler for Checker {
         server_public_key: &PublicKey,
     ) -> Result<bool, Self::Error> {
         let actual = server_public_key.fingerprint(HashAlg::Sha256).to_string();
+        let line = match server_public_key.to_openssh() {
+            Ok(l) => Some(l.split_whitespace().take(2).collect::<Vec<_>>().join(" ")),
+            Err(e) => {
+                tracing::warn!("known_hosts：钥匙写不成 OpenSSH 形：{e}");
+                None
+            }
+        };
         if let Ok(mut slot) = self.observed.lock() {
-            *slot = Some(actual.clone());
+            *slot = Some(Offered {
+                fingerprint: actual.clone(),
+                line,
+            });
         }
         if let Ok(mut all) = self.reported.lock() {
             all.insert(self.endpoint.clone(), actual.clone());
@@ -280,7 +293,7 @@ impl client::Handler for Checker {
             return match self.trust.judge_known(server_public_key) {
                 Ok(()) => {
                     tracing::info!("dial: host key 与记过的那一把相同：{actual}");
-                    self.accepted(server_public_key)
+                    Ok(true)
                 }
                 Err(()) => {
                     tracing::error!(
@@ -295,7 +308,7 @@ impl client::Handler for Checker {
             Some(expected) => {
                 if actual == expected.trim() {
                     tracing::info!("dial: host key 指纹校验通过：{actual}");
-                    self.accepted(server_public_key)
+                    Ok(true)
                 } else {
                     // 失配时附上实际 key 的算法：分得开「合法换 key 类型」与「同类型 key 被换」。
                     let alg = server_public_key.algorithm();
@@ -310,7 +323,7 @@ impl client::Handler for Checker {
                 tracing::warn!(
                     "dial: **未经校验**接受 host key {actual}（TOFU）—— 界面侧应当把它固化回配置，之后转严格校验。"
                 );
-                self.accepted(server_public_key)
+                Ok(true)
             }
         }
     }
@@ -481,7 +494,7 @@ async fn race(
 ) -> Result<
     (
         client::Handle<Checker>,
-        Arc<Mutex<Option<String>>>,
+        Seen,
         Endpoint,
         bool,
         Arc<crate::pool::Heard>,
@@ -497,7 +510,7 @@ async fn race(
         let mut set: JoinSet<Result<_, (&'static str, String)>> = JoinSet::new();
         for ep in order {
             let stages = stages.clone();
-            let observed: Arc<Mutex<Option<String>>> = Arc::default();
+            let observed: Seen = Arc::default();
             let trust = trust.clone();
             let seen = Arc::clone(&seen_for_race);
             let reported = Arc::clone(reported);
@@ -514,8 +527,6 @@ async fn race(
                     reported,
                     stages: stages.clone(),
                     endpoint: ep_label.clone(),
-                    host: ep.host.clone(),
-                    port: ep.port,
                     heard: Arc::clone(&heard),
                 };
                 let r = match tcp_hop(&ep).await {
@@ -533,7 +544,7 @@ async fn race(
                     }
                     Err((stage, e)) => Err((stage, e.to_string())),
                 };
-                if let Some(fp) = observed.lock().ok().and_then(|g| g.clone()) {
+                if let Some(fp) = fingerprint_in(&observed) {
                     if let Ok(mut s) = seen.lock() {
                         *s = Some(fp);
                     }
@@ -614,7 +625,7 @@ pub fn race_reason(worst: Option<&str>) -> String {
     match worst {
         Some("resolve") => copy_text("reason.dial.resolve", &[]),
         Some("tcp") => copy_text("reason.dial.refused", &[]),
-        Some("timeout") => copy_text("reason.dial.timeout", &[]),
+        Some("timeout") => copy_text("reason.link.noAnswer", &[]),
         _ => copy_core::io_reason(std::io::ErrorKind::Other),
     }
 }
@@ -625,8 +636,7 @@ async fn authenticate(
     user: &str,
     key_path: Option<&str>,
     agent_sock: Option<&str>,
-) -> Result<(), (&'static str, Said)> {
-    use crate::why;
+) -> Result<(), (Why, Said)> {
     let Some(key) = key_path.filter(|s| !s.trim().is_empty()) else {
         let best_hash = best_rsa_hash(session).await?;
         // agent 这一支**在当前线程上就地跑完**（`block_in_place` ＋ `block_on`），不留在外层 future 里。
@@ -647,7 +657,7 @@ async fn authenticate(
     let credential = env::get()
         .keys
         .credential(key)
-        .map_err(|e| (why::KEY_UNREADABLE, e))?;
+        .map_err(|e| (Why::KeyUnreadable, e))?;
     let by_password = matches!(credential, Credential::Password(_));
     let authenticated = match credential {
         Credential::Key(key_pair) => {
@@ -660,7 +670,7 @@ async fn authenticate(
                 .await
                 .map_err(|e| {
                     (
-                        why::AUTH,
+                        Why::Auth,
                         Said::with_raw(copy_text("beConnect.auth.keyFailed", &[]), &e),
                     )
                 })?
@@ -678,7 +688,7 @@ async fn authenticate(
             })
             .map_err(|e| {
                 (
-                    why::AUTH,
+                    Why::Auth,
                     Said::with_raw(copy_text("beConnect.auth.keyFailed", &[]), &e.0),
                 )
             })?
@@ -688,7 +698,7 @@ async fn authenticate(
             .await
             .map_err(|e| {
                 (
-                    why::AUTH,
+                    Why::Auth,
                     Said::with_raw(copy_text("beConnect.auth.passwordFailed", &[]), &e),
                 )
             })?,
@@ -705,15 +715,13 @@ async fn authenticate(
 }
 
 /// RSA key 要协商出服务端支持的 hash；非 RSA 时 flatten 成 None。
-async fn best_rsa_hash(
-    session: &client::Handle<Checker>,
-) -> Result<Option<HashAlg>, (&'static str, Said)> {
+async fn best_rsa_hash(session: &client::Handle<Checker>) -> Result<Option<HashAlg>, (Why, Said)> {
     Ok(session
         .best_supported_rsa_hash()
         .await
         .map_err(|e| {
             (
-                crate::why::OTHER,
+                Why::Other,
                 Said::with_raw(copy_text("beConnect.auth.rsaHash", &[]), &e),
             )
         })?
@@ -810,7 +818,7 @@ pub fn ecdsa_der_to_ssh(der: &[u8]) -> Option<Vec<u8>> {
 }
 
 /// 公钥没过的原因码：服务端剩下的方法里没有公钥、只有密码 / 键盘交互 ⇒ 那台只收密码；否则密钥被拒。
-pub fn rejected_why(res: &russh::client::AuthResult) -> &'static str {
+pub fn rejected_why(res: &russh::client::AuthResult) -> Why {
     use russh::MethodKind as M;
     match res {
         russh::client::AuthResult::Failure {
@@ -820,9 +828,9 @@ pub fn rejected_why(res: &russh::client::AuthResult) -> &'static str {
                 .iter()
                 .any(|m| matches!(m, M::Password | M::KeyboardInteractive)) =>
         {
-            crate::why::PASSWORD
+            Why::Password
         }
-        _ => crate::why::AUTH,
+        _ => Why::Auth,
     }
 }
 
@@ -832,31 +840,30 @@ async fn agent_auth(
     user: &str,
     best_hash: Option<HashAlg>,
     agent_sock: Option<&str>,
-) -> Result<(), (&'static str, Said)> {
-    use crate::why;
+) -> Result<(), (Why, Said)> {
     let Some(source) = env::get().agent.as_ref() else {
         return Err((
-            why::AUTH,
+            Why::Auth,
             copy_text("beSshAgent.connect.unsupported", &[]).into(),
         ));
     };
     let mut agent = source.connect(agent_sock).await.map_err(|e| {
         (
-            why::AUTH,
+            Why::Auth,
             // 原话格收 agent 那一层的那一句 ＋ 它的原话。
             Said::with_raw(copy_text("beConnect.agent.unreachable", &[]), e.logged()),
         )
     })?;
     let identities = agent.request_identities().await.map_err(|e| {
         (
-            why::AUTH,
+            Why::Auth,
             Said::with_raw(copy_text("beConnect.agent.listFailed", &[]), &e),
         )
     })?;
     if identities.is_empty() {
-        return Err((why::AUTH, copy_text("beConnect.agent.empty", &[]).into()));
+        return Err((Why::Auth, copy_text("beConnect.agent.empty", &[]).into()));
     }
-    let mut last_err: Option<(&'static str, Said)> = None;
+    let mut last_err: Option<(Why, Said)> = None;
     for id in identities {
         let pubkey = id.public_key().into_owned();
         match session
@@ -872,7 +879,7 @@ async fn agent_auth(
             }
             Err(e) => {
                 last_err = Some((
-                    why::AUTH,
+                    Why::Auth,
                     Said::with_raw(copy_text("beConnect.agent.signFailed", &[]), &e),
                 ))
             }
@@ -880,7 +887,7 @@ async fn agent_auth(
     }
     Err(last_err.unwrap_or_else(|| {
         (
-            why::AUTH,
+            Why::Auth,
             copy_text("beConnect.agent.allFailed", &[]).into(),
         )
     }))
@@ -924,7 +931,7 @@ fn jump_failed(
     e: Said,
     fp: Option<String>,
 ) -> (Said, Option<String>) {
-    stages.note_why(crate::why::JUMP);
+    stages.note_why(Why::Jump);
     (inner(said, e), fp)
 }
 
@@ -956,9 +963,9 @@ async fn through_hops(
         stages.emit(Stage::Dialing {
             endpoint: copy_text("beConnect.jump.label", &[("hop", &name)]),
         });
-        let mut session = match held.last() {
+        let (mut session, seen) = match held.last() {
             None => {
-                let (s, _o, _w, c, _h) = race(
+                let (s, o, _w, c, _h) = race(
                     req.probe,
                     false,
                     Trust::of(hop.host_key_fingerprint.clone(), &hop.known_keys),
@@ -972,13 +979,13 @@ async fn through_hops(
                 .await
                 .map_err(|(e, fp)| jump_failed(stages, hop_dial_failed(&name), e, fp))?;
                 compress = c;
-                s
+                (s, o)
             }
             Some(prev) => {
                 let tunnel = open_tunnel(prev, &hop.host, hop.port, stages)
                     .await
                     .map_err(|e| jump_failed(stages, hop_dial_failed(&name), e, None))?;
-                let observed: Arc<Mutex<Option<String>>> = Arc::default();
+                let observed: Seen = Arc::default();
                 let hop_trust = Trust::of(hop.host_key_fingerprint.clone(), &hop.known_keys);
                 let checker = Checker {
                     trust: hop_trust.clone(),
@@ -986,24 +993,26 @@ async fn through_hops(
                     reported: Arc::clone(jump_reported),
                     stages: stages.clone(),
                     endpoint: copy_text("beConnect.jump.label", &[("hop", &name)]),
-                    host: hop.host.clone(),
-                    port: hop.port,
                     // 跳板那几台：断了 ⇒ 隧道跟着断 ⇒ 目标那条自己报断开；这一份没人等。
                     heard: Arc::new(crate::pool::Heard::new()),
                 };
                 let tunnel =
                     Hearing::new(tunnel, Arc::new(crate::pool::Heard::new())).telling(stages);
-                client::connect_stream(config_for(req.probe, false, &hop_trust), tunnel, checker)
-                    .await
-                    .map_err(|e| {
-                        let fp = observed.lock().ok().and_then(|g| g.clone());
-                        jump_failed(
-                            stages,
-                            hop_dial_failed(&name),
-                            Said::with_raw(copy_text("beConnect.jump.targetFailed", &[]), &e),
-                            fp,
-                        )
-                    })?
+                let s = client::connect_stream(
+                    config_for(req.probe, false, &hop_trust),
+                    tunnel,
+                    checker,
+                )
+                .await
+                .map_err(|e| {
+                    jump_failed(
+                        stages,
+                        hop_dial_failed(&name),
+                        Said::with_raw(copy_text("beConnect.jump.targetFailed", &[]), &e),
+                        fingerprint_in(&observed),
+                    )
+                })?;
+                (s, observed)
             }
         };
         authenticate(
@@ -1021,6 +1030,7 @@ async fn through_hops(
                 None,
             )
         })?;
+        remember(&hop.host, hop.port, &seen);
         stages.step(crate::step::AUTH);
         held.push(session);
     }
@@ -1028,7 +1038,7 @@ async fn through_hops(
     let tunnel = open_tunnel(last, &req.host, req.port, stages)
         .await
         .map_err(|e| {
-            stages.note_why(crate::why::JUMP);
+            stages.note_why(Why::Jump);
             (e, None)
         })?;
     Ok((tunnel, compress, held))
@@ -1088,7 +1098,7 @@ pub async fn establish(
         (s, o, w, Vec::new(), h)
     } else {
         let (tunnel, compress_inner, jumps) = through_hops(req, stages, &jump_reported).await?;
-        let observed: Arc<Mutex<Option<String>>> = Arc::default();
+        let observed: Seen = Arc::default();
         let ep_label = copy_text(
             "beConnect.jump.target",
             &[("host", &req.host), ("port", &req.port.to_string())],
@@ -1102,8 +1112,6 @@ pub async fn establish(
             reported: Arc::clone(&reported),
             stages: stages.clone(),
             endpoint: ep_label,
-            host: req.host.clone(),
-            port: req.port,
             heard: Arc::clone(&heard),
         };
         let session = client::connect_stream(
@@ -1114,10 +1122,9 @@ pub async fn establish(
         .await
         .map_err(|e| {
             stages.note_why(crate::why_of_stage(stage_of_russh(&e)));
-            let fp = observed.lock().ok().and_then(|g| g.clone());
             (
                 Said::with_raw(copy_text("beConnect.jump.targetFailed", &[]), &e),
-                fp,
+                fingerprint_in(&observed),
             )
         })?;
         let winner = Endpoint {
@@ -1126,7 +1133,7 @@ pub async fn establish(
         };
         (session, observed, winner, jumps, heard)
     };
-    let fingerprint = observed.lock().ok().and_then(|g| g.clone());
+    let fingerprint = fingerprint_in(&observed);
     if let Err(e) = authenticate(
         &mut session,
         &req.user,
@@ -1143,6 +1150,7 @@ pub async fn establish(
         });
         return Err((e, fingerprint));
     }
+    remember(&winner.host, winner.port, &observed);
     stages.step(crate::step::AUTH);
     stages.emit(Stage::Auth {
         ok: true,

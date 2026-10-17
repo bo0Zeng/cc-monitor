@@ -2,7 +2,7 @@
 //!
 //! # 🔴 守的要求
 //!
-//! 用户原话「**文件管理器全部都可以改. 不需要任何围栏**」⇒ 下面凡是
+//! 要求「**文件管理器全部都可以改. 不需要任何围栏**」⇒ 下面凡是
 //! 「会话文件 ⇒ `refused`」的格子全部翻面成「会话文件 ⇒ **照做**，盘上逐字节核」；
 //! 仍然会拒的只剩路径解析那几形（上跳 · 绝对路径 · 空段 · 父目录不在 · 解完链接跑出根）——
 //! 那是「改的就是 `root ＋ rel` 那一格」的正确性，不是「不许改什么」。
@@ -16,7 +16,7 @@
 //! - 围栏① 真的会拒：上跳段 · 绝对路径 · 空段 · **写点本身就是一份会话文件**；
 //! - 围栏② 真的会拒：目标根里放一条**真的 symlink** 指向一份会话文件，解完之后被拦；
 //! - 🔴**放宽那一侧同样有判据**：`~/.claude/skills/**` ·
-//!   `settings.json` · 另一个账号的账号库 —— 逐条**必须写得进去**（用户原话
+//!   `settings.json` · 另一个账号的账号库 —— 逐条**必须写得进去**（要求
 //!   「文件管理器该不该能改 `~/.claude` 里的东西. 可以.」）。
 //!   ⚠ 这一侧的判据与上一侧**同等承重**：只验「该拒的拒了」，一个恒 `Err` 的围栏也全绿。
 //! - 两道围栏**真的接在写入口上**：拒绝的那几次，盘上**没有**多出任何文件
@@ -187,7 +187,7 @@ fn temp_root(tag: &str) -> PathBuf {
 /// 只验「该拒的拒了」是空真的一半：一个恒返回 `true` 的实现同样能过。
 /// ⇒ 阴阳两侧同拍验，缺一侧这条就不是判据。
 ///
-/// 🔴 **阴性那一侧这一轮是主角**：用户原话「文件管理器该不该能改 `~/.claude`
+/// 🔴 **阴性那一侧这一轮是主角**：要求「文件管理器该不该能改 `~/.claude`
 /// 里的东西. **可以.**」⇒ 下面阴性表里那几条 `~/.claude/**` **09-23 之前是被拒的**，
 /// 今天必须放行。哪一条回到「拒」，就是有人把那一裁悄悄收回去了。
 #[test]
@@ -649,7 +649,7 @@ fn a_symlink_that_stays_inside_the_target_root_still_writes() {
 ///（写句柄只递给文件管理那一族，`readonly_guard` 钉着），本条刻意不替它作证。
 #[test]
 fn the_write_primitive_is_no_longer_a_zero_consumer_symbol() {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let needle = format!("files_{}::", "write");
     let mut consumers: Vec<String> = Vec::new();
     let mut scanned = 0usize;
@@ -906,10 +906,10 @@ fn chmod_reports_the_mode_it_had_before() {
         .expect("先收成 640");
     let data = answer_wire(
         "files-chmod",
-        &serde_json::json!({"root": root.to_str().expect("utf8"), "rel": "run.sh", "mode": 0o755}),
+        &serde_json::json!({"root": root.to_str().expect("utf8"), "rel": "run.sh", "mode": "755"}),
     )
     .expect("改权限被拒");
-    assert_eq!(data["mode"], serde_json::json!(0o755));
+    assert_eq!(data["mode"], serde_json::json!("755"));
     assert_eq!(
         data["before"],
         serde_json::json!(0o640),
@@ -1052,10 +1052,38 @@ fn chmod_follows_links_so_it_resolves_to_the_end_before_judging() {
         .mode();
     assert_eq!(before, after, "🔴 根外那一份的权限位被改了");
 
-    // 超出低 12 位 ⇒ 拒。
-    let err = change_mode(&Face::issue(), &root, "run.sh", 0o100000).expect_err("高位被收下了");
-    assert_eq!(err.code(), "refused", "{err:?}");
     std::fs::remove_dir_all(&base).ok();
+}
+
+/// 权限位的八进制只在这里解：前后空白剪掉；空 · 不是八进制 · 超出 7777（连文件类型位抄来的）各一句、码 `refused`。
+#[test]
+fn the_mode_text_is_read_and_refused_in_one_place() {
+    for (t, m) in [
+        ("644", 0o644),
+        (" 0755 ", 0o755),
+        ("7777", 0o7777),
+        ("0", 0),
+    ] {
+        assert_eq!(mode_of_text(t).expect(t), m);
+    }
+    for (t, key) in [
+        ("", "empty"),
+        ("  ", "empty"),
+        ("abc", "notOctal"),
+        ("899", "notOctal"),
+        ("0x644", "notOctal"),
+        ("-1", "notOctal"),
+        ("10000", "outOfRange"),
+        ("100644", "outOfRange"),
+    ] {
+        let e = mode_of_text(t).expect_err(t);
+        assert_eq!(e.code, "refused", "{t}");
+        assert!(
+            copy_core::copy_matches(&format!("beFilesWrite.mode.{key}"), &e.said),
+            "「{t}」说的不是 {key}：{}",
+            e.said
+        );
+    }
 }
 
 #[test]
@@ -1125,7 +1153,7 @@ fn the_five_mutating_commands_are_reachable_and_fenced_on_the_command_face() {
     #[cfg(unix)]
     ok(
         "files-chmod",
-        serde_json::json!({"root": r, "rel": "d/b.md", "mode": 384}),
+        serde_json::json!({"root": r, "rel": "d/b.md", "mode": "600"}),
     );
     ok(
         "files-delete",
@@ -1148,7 +1176,7 @@ fn the_five_mutating_commands_are_reachable_and_fenced_on_the_command_face() {
     #[cfg(unix)]
     ok(
         "files-chmod",
-        serde_json::json!({"root": r, "rel": "projects/-x/abc.jsonl", "mode": 384}),
+        serde_json::json!({"root": r, "rel": "projects/-x/abc.jsonl", "mode": "600"}),
     );
     ok(
         "files-rename",
@@ -1179,7 +1207,7 @@ fn the_five_mutating_commands_are_reachable_and_fenced_on_the_command_face() {
         ),
         (
             "files-chmod",
-            serde_json::json!({"root": r, "rel": "../esc", "mode": 0}),
+            serde_json::json!({"root": r, "rel": "../esc", "mode": "0"}),
         ),
         (
             "files-delete",
@@ -1721,14 +1749,14 @@ fn a_non_utf8_name_can_be_renamed_chmodded_and_deleted_through_b16() {
     assert!(
         answer_wire(
             "files-chmod",
-            &serde_json::json!({"root": r, "rel": String::from_utf8_lossy(raw), "mode": 384}),
+            &serde_json::json!({"root": r, "rel": String::from_utf8_lossy(raw), "mode": "600"}),
         )
         .is_err(),
         "有损串竟然寻址到了原文件 —— 那这条判据量不出 b16 的价值"
     );
     answer_wire(
         "files-chmod",
-        &serde_json::json!({"root": r, "rel": b16(raw), "mode": 384}),
+        &serde_json::json!({"root": r, "rel": b16(raw), "mode": "600"}),
     )
     .expect("🔴 b16 的相对段改不了权限");
     // 改名：from 走 b16，to 是正常名字 —— 「改成一个读得出的名字」正是乱码名最常要的那一下。
@@ -1807,7 +1835,7 @@ fn a_recursive_delete_walks_through_non_utf8_children() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// 用户文件的读改写（`files-peek` / `files-put`）＋ 删历史会话
+// 用户文件的读改写（`Door::peek` / `Door::put`）＋ 删历史会话
 // ══════════════════════════════════════════════════════════════════════════
 //
 // 买到的：全在本机临时目录上真跑 —— CAS 真的拒（盘上一个字节不动）· 相同不写 · 备份逐字节 ＋ 权限位 ·
@@ -2410,9 +2438,8 @@ fn w5vis_a_backup_that_cannot_keep_the_original_mode_is_removed_and_refused() {
         0o600
     );
     // 接线。
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/files_write.rs"
-    ));
+    let prod =
+        guard_core::production_code(include_str!("../../../src/backend/control/files_write.rs"));
     assert_eq!(
         prod.matches("set_permissions(&bak, p).ok()").count(),
         0,
@@ -2632,7 +2659,7 @@ fn a_recursive_copy_that_fails_midway_undoes_what_it_built() {
 // ═══════════════════════════════════════════════════════════════════════════════════════
 //
 // 要求：「编辑器存盘带 CAS（`expect`）」＋ 摘要形；
-// 「读的那一刻与写的那一刻之间，盘上那份被别人改了 ⇒ `stale`，一个字节不写」（原写给 `files-put`，同一条理由）。
+// 「读的那一刻与写的那一刻之间，盘上那份被别人改了 ⇒ `stale`，一个字节不写」（原写给 `Door::put`，同一条理由）。
 
 /// 摘要的算法住后端一处；判据拿**另一份实现**（`sha2`，只在测试期链接）对拍 —— 异源，两侧同源恒真那一形排除。
 fn sha2_hex(bytes: &[u8]) -> String {
@@ -2952,7 +2979,7 @@ fn what_the_file_face_creates_inside_the_own_home_is_only_for_the_owner() {
 #[test]
 fn the_two_name_rules_match_the_hand_written_expectations() {
     use crate::platform::paths::{unix_name_problem, windows_name_problem, NameProblem};
-    let path = crate::guard_support::repo_root().join("tests/__fixtures__/file-names.golden.json");
+    let path = guard_core::addr::repo_root().join("tests/__fixtures__/file-names.golden.json");
     let g: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&path).expect("金样")).expect("JSON");
     let word = |p: Option<NameProblem>| match p {

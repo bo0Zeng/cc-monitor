@@ -16,11 +16,6 @@
 //! - `type`：`string` · `number` · `bool` · `enum`（闭集的一个词：Rust 枚举的单元变体）· `object`（原样透传的一团，不再往里分格）。
 //! - 路径写法（声明里点格用同一种写法）：`a.b` 嵌套 · `a[]` 列表的每一项 · `a.*` 以 id 为键的表的每一项 ·
 //!   `a[type=x]` 按判别格挑的那一种（只在成品登记了判别格时出现，见 [`Product::tags`]）。
-//!
-//! # 还缺的格
-//!
-//! [`PENDING`] 登记已经判了要补、还没落地的格（手机端 10-09 缺格清单里的那几条）：落地那一刻它们进了目录，
-//! 判据就要求把这里那一行删掉（目录与缺格表不许同时有同一格）。
 
 use crate::common::cells::{TONE_TYPE, WORDS_TYPE};
 use serde::ser::{self, Serialize};
@@ -582,9 +577,6 @@ fn put(
     }
 }
 
-/// 会话帧上 `switch` 那两格（[`crate::wire::Switch`]）按 `can` 分能换 · 不能换两种。
-const SWITCH_TAGS: &[(&str, &str)] = &[("model", "can"), ("permission", "can")];
-
 /// 一件成品。
 pub(crate) struct Product {
     /// 成品名（声明里 `cells` 的键）。帧是帧的 `kind`。
@@ -647,17 +639,17 @@ pub(crate) const PRODUCTS: &[Product] = &[
     // `lines` 10-12 挪出这一帧（read8a：宣告不等预读，行数改由读完那一帧 `session_primed` 带）：手机从来没读过它，只有桌面壳在读、同一刀跟上。
     Product {
         name: "session_added",
-        tags: SWITCH_TAGS,
+        tags: &[],
         specimens: specimens::session_added,
     },
     Product {
         name: "session_status",
-        tags: SWITCH_TAGS,
+        tags: &[],
         specimens: specimens::session_status,
     },
     Product {
         name: "session_state",
-        tags: SWITCH_TAGS,
+        tags: &[],
         specimens: specimens::session_state,
     },
     Product {
@@ -685,17 +677,18 @@ mod specimens {
     use crate::agents::record::{Block, Body, Record, ReplyError, TitleBy};
     use crate::agents::{
         Answer, ApiReason, AskOption, AskQuestion, ChildRunTag, McpStatus, Pasted, PatchHunk,
-        ResultKind, SessionActivity, Speaker, StepAsk, StepResult, ToolCard, ToolStep, UserText,
+        ResultKind, SessionActivity, Speaker, StepAsk, StepBody, StepResult, TextChange, ToolCard,
+        ToolStep, UserText,
     };
     use crate::agents::{PlanTitleExt as _, SpeakerExt as _};
     use crate::common::cells::Words;
-    use crate::observe::facts_query::{
-        Cost, LastRequest, LastSay, LimitFrom, McpTrouble, Needs, NeedsKind, PendingCall,
-        RetryOutcome, RetryRun, SessionFacts, StepWait, TokenUse, UnclearWhy, UsageFact,
+    use crate::observe::recognize::facts::{
+        Cost, LastSay, LimitFrom, McpTrouble, Needs, NeedsKind, PendingCall, RetryOutcome,
+        RetryRun, SessionFacts, StepWait, TokenUse, UnclearWhy, UsageFact,
     };
-    use crate::observe::history_query::IndexRow;
-    use crate::wire::{ActivityFace, Frame, RemovalCause, SessionContainer, SessionFate};
-    use crate::wire::{ActivityFaceExt as _, FrameMake as _};
+    use crate::observe::recognize::index_row::IndexRow;
+    use crate::wire::{Frame, Life, RemovalCause, SessionContainer, SessionFace, SessionFate};
+    use crate::wire::{FrameMake as _, SessionFaceExt as _};
     use std::collections::BTreeMap;
 
     fn s(v: &str) -> String {
@@ -850,6 +843,8 @@ mod specimens {
                             arg: some("ls"),
                             path: true,
                             note: some("n"),
+                            file: some("/f"),
+                            body: Some(StepBody::Command { line: s("l") }),
                             known: true,
                             text: Some(Words(s("t"))),
                             ask: Some(StepAsk::Questions {
@@ -872,6 +867,13 @@ mod specimens {
                             arg: some("a"),
                             path: true,
                             note: some("n"),
+                            file: some("/f"),
+                            body: Some(StepBody::Changes {
+                                changes: vec![TextChange {
+                                    old: s("o"),
+                                    new: s("n"),
+                                }],
+                            }),
                             known: true,
                             text: Some(Words(s("t"))),
                             ask: Some(StepAsk::Plan {
@@ -938,8 +940,6 @@ mod specimens {
             .into_iter()
             .map(|kind| {
                 let f = SessionFacts {
-                    end: 1,
-                    rev: 1,
                     forked_from: some("src"),
                     touched_files: vec![s("/f")],
                     usage: Some(UsageFact::new(
@@ -949,6 +949,7 @@ mod specimens {
                         (200_000, LimitFrom::Observed),
                     )),
                     model_text: Some(Words(s("m"))),
+                    model_pick: some("m"),
                     project_dir: some("/w"),
                     agent: some("agent"),
                     writers: vec![1],
@@ -1001,25 +1002,22 @@ mod specimens {
                         cache_write1h: 1,
                         requests: 1,
                         text: Words(s("1")),
-                        last: Some(LastRequest {
-                            id: s("q"),
-                            tokens: [1; 5],
-                        }),
+                        last: None,
                     }),
                     cost: Some(Cost {
                         micros: 1,
                         partial: false,
                         text: Words(s("$0.01")),
                     }),
-                    bg_tasks: vec![crate::observe::facts_query::BgTask {
+                    bg_tasks: vec![crate::observe::recognize::facts::BgTask {
                         call: s("c"),
                         task: some("b"),
                         cmd: some("make"),
                         at: some("t"),
                     }],
-                    background: Some(crate::observe::facts_query::Background {
+                    background: Some(crate::observe::recognize::facts::Background {
                         text: Words(s("t")),
-                        clock: Some(crate::observe::facts_query::Clock {
+                        clock: Some(crate::observe::recognize::facts::Clock {
                             text: Words(s("t")),
                             from: 1,
                         }),
@@ -1028,6 +1026,8 @@ mod specimens {
                         tone: crate::common::cells::Tone::Busy,
                     }),
                     answer_off: Some(Words(s("o"))),
+                    auto_answer: Some(1),
+                    auto_answered: Some(Words(s("a"))),
                     mcp: [McpStatus::NeedsLogin, McpStatus::Failed, McpStatus::Pending]
                         .into_iter()
                         .map(|status| McpTrouble {
@@ -1037,10 +1037,13 @@ mod specimens {
                             at: some("t"),
                         })
                         .collect(),
-                    started_by: Some(crate::observe::facts_query::Kin {
+                    started_by: Some(crate::observe::recognize::facts::Kin {
                         sid: s("k"),
                         title: s("t"),
-                        live: true,
+                        face: SessionFace::of(Life::Live {
+                            activity: Some(SessionActivity::Working),
+                            tmux: None,
+                        }),
                         hidden: crate::control::session_hidden::judge(
                             &crate::control::session_hidden::Facts {
                                 pin: Some(crate::history::history_annotations::Hide::On),
@@ -1048,10 +1051,13 @@ mod specimens {
                             },
                         ),
                     }),
-                    children: vec![crate::observe::facts_query::Kin {
+                    children: vec![crate::observe::recognize::facts::Kin {
                         sid: s("k"),
                         title: s("t"),
-                        live: true,
+                        face: SessionFace::of(Life::Live {
+                            activity: Some(SessionActivity::Working),
+                            tmux: None,
+                        }),
                         hidden: crate::control::session_hidden::judge(
                             &crate::control::session_hidden::Facts {
                                 pin: Some(crate::history::history_annotations::Hide::On),
@@ -1059,7 +1065,16 @@ mod specimens {
                             },
                         ),
                     }],
-                    quiet_unread: Some(crate::observe::facts_query::QuietUnread {
+                    line: Some(crate::observe::recognize::facts::FactsLine {
+                        of: SessionActivity::Working,
+                        text: Words(s("t")),
+                        clock: Some(crate::observe::recognize::facts::Clock {
+                            text: Words(s("t {dur}")),
+                            from: 1,
+                        }),
+                        peek: Some(Words(s("p"))),
+                    }),
+                    quiet_unread: Some(crate::observe::recognize::facts::QuietUnread {
                         text: Words(s("q")),
                         count: 1,
                         kinds: vec![s("k")],
@@ -1071,7 +1086,7 @@ mod specimens {
     }
 
     pub(super) fn read_row() -> Vec<Specimen> {
-        vec![node_of(&crate::observe::record_page::ReadRow {
+        vec![node_of(&crate::observe::query::body::ReadRow {
             end: Some(1),
             hash: 1,
             record: Some(serde_json::json!({})),
@@ -1091,6 +1106,11 @@ mod specimens {
     pub(super) fn needs_row() -> Vec<Specimen> {
         vec![node_of(&crate::observe::accounts_query::NeedsRow {
             sid: s("s"),
+            label: crate::common::cells::Words("t".into()),
+            face: crate::wire::SessionFace::of(crate::wire::Life::Live {
+                activity: Some(crate::agents::SessionActivity::NeedsYou),
+                tmux: None,
+            }),
             needs: Needs {
                 kind: NeedsKind::Approve,
                 tool: some("Bash"),
@@ -1153,7 +1173,11 @@ mod specimens {
             project_dir: some("/w"),
             name: some("n"),
             path: some("/p"),
-            face: ActivityFace::of(Some(activity)),
+            face: crate::wire::SessionFace::of(crate::wire::Life::Live {
+                activity: Some(activity),
+                tmux: None,
+            })
+            .under(some("b")),
             name_face: named(),
             waiting_for: some("w"),
             hidden: crate::control::session_hidden::judge(&crate::control::session_hidden::Facts {
@@ -1164,7 +1188,6 @@ mod specimens {
                 terminal: some("tmux-1-1"),
             }),
             pid: 1,
-            account: some("b"),
         })
     }
 
@@ -1185,7 +1208,11 @@ mod specimens {
             .map(|a| {
                 node_of::<Frame>(&Frame::SessionStatus(crate::wire::SessionStatus {
                     sid: s("s"),
-                    face: ActivityFace::of(Some(a)),
+                    face: crate::wire::SessionFace::of(crate::wire::Life::Live {
+                        activity: Some(a),
+                        tmux: None,
+                    })
+                    .under(some("b")),
                     name_face: named(),
                     waiting_for: some("w"),
                     path: some("p"),
@@ -1195,9 +1222,9 @@ mod specimens {
     }
 
     pub(super) fn session_state() -> Vec<Specimen> {
-        [SessionFate::Reconnectable, SessionFate::Ended]
+        [Life::Reconnectable, Life::Ended, Life::Gone]
             .into_iter()
-            .map(|f| node_of(&Frame::session_state(s("s"), f)))
+            .map(|l| node_of(&Frame::session_left(s("s"), l, some("b"))))
             .collect()
     }
 

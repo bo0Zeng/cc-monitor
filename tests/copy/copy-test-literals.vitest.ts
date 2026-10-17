@@ -31,6 +31,7 @@ import { describe, expect, it } from "vitest";
 
 import { REPO_ROOT } from "../test-support/repo-root.ts";
 import { TABLE_PATH } from "./copy-support.ts";
+import { nonEmpty } from "../test-support/non-empty.ts";
 
 const EXEMPT_PATH = resolve(REPO_ROOT, "tests", "copy", "test-literal-exempt.json");
 const OUT_OF_SCOPE = [/^tests\/shots\/scenes\//, /^tests\/shots\/kit-gallery\.ts$/, /^tests\/copy\//, /^tests\/common\/copy-core\//];
@@ -109,7 +110,7 @@ describe("测试按文案键断言（与表值逐字相同的中文字面量）"
   it("★ 测试里零处与表值逐字相同的中文字面量（豁免表里的除外）· 豁免表无死条", () => {
     const exempt = JSON.parse(readFileSync(EXEMPT_PATH, "utf8")).files as Record<string, Exempt[]>;
     const files = testSources();
-    expect(files.length, "一份测试源码都没找到 —— git ls-files 没接上").toBeGreaterThan(100);
+    nonEmpty(files);
     const bad = new Set<string>();
     const used = new Set<string>();
     let population = 0;

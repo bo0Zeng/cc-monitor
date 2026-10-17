@@ -24,17 +24,73 @@ fn a_waiting_session_gets_nothing_sent() {
     assert!(got.said.is_some() && got.model.is_none());
 }
 
+/// 不该走到记下那一支。
+fn no_keep() -> Result<String, crate::wire::spec::Fail> {
+    panic!("记下了")
+}
+
 /// ★ 那一行送到了 ⇒ 接着等读回（`None`）；没送到 · 不知道送没送到 ⇒ 就是结局，不等。
 #[test]
 fn only_a_delivered_line_waits_for_the_readback() {
-    assert!(after_send(sent(SentResult::Delivered)).is_none());
-    let r = after_send(sent(SentResult::Refused)).unwrap();
+    assert!(after_send(sent(SentResult::Delivered), &no_keep)
+        .unwrap()
+        .is_none());
+    let r = after_send(sent(SentResult::Refused), &no_keep)
+        .unwrap()
+        .unwrap();
     assert_eq!(r.result, SwitchResult::Refused);
     assert_eq!(r.why, Some(crate::control::terminals::Refused::NotYours));
     assert_eq!(
-        after_send(sent(SentResult::Unsure)).unwrap().result,
+        after_send(sent(SentResult::Unsure), &no_keep)
+            .unwrap()
+            .unwrap()
+            .result,
         SwitchResult::Unsure
     );
+}
+
+/// ★ 这台已经没有它的终端（名单里没有 · 只剩 shell）⇒ 记在这条会话上、回换成了 ＋ 清单里那一项的字，不等读回、不给那一句；
+/// 注解里那一格就是选的原值、`end` ＝ 此刻记录多长。
+#[test]
+fn a_session_without_its_terminal_keeps_the_model_for_the_next_resume() {
+    use crate::control::terminals::Refused;
+    let d = std::env::temp_dir().join(format!("ccm-model-kept-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    let rec = d.join("s.jsonl");
+    std::fs::write(&rec, "{\"i\":0}\n").unwrap();
+    let own = crate::platform::fs::Own::issue_data_at(&d);
+    let sid = "11111111-2222-3333-4444-555555555555";
+    let (_, claude) = crate::agents::pick_kind(Some("claude")).unwrap();
+    let sonnet = claude.model_choice("sonnet").unwrap();
+    for why in [Refused::Ended, Refused::NotKnown] {
+        let keep = || {
+            crate::history::history_annotations::keep_for_resume(
+                &own,
+                sid,
+                &rec,
+                Some("sonnet"),
+                None,
+            )
+            .map(|()| (sonnet.text)())
+        };
+        let gone = Sent {
+            why: Some(why),
+            ..sent(SentResult::Refused)
+        };
+        let r = after_send(gone, &keep).unwrap().unwrap();
+        assert_eq!(r.result, SwitchResult::Done);
+        assert_eq!(r.model, Some((sonnet.text)()));
+        assert_eq!((r.why, r.said), (None, None));
+    }
+    let got = crate::history::history_annotations::resume_with_at(
+        &d.join(creds_core::store::HISTORY_METADATA_FILE),
+        sid,
+    )
+    .unwrap();
+    assert_eq!(got.model.as_deref(), Some("sonnet"));
+    assert_eq!(got.end, std::fs::metadata(&rec).unwrap().len());
+    let _ = std::fs::remove_dir_all(&d);
 }
 
 /// ★ 读回：换成了 ⇒ done ＋ 显示名 ＋ 思考档 ＋ 那一句（照实说也存成了这个号新会话的默认）；没变 ⇒ done ＋ 「未变」那一句；
@@ -91,9 +147,9 @@ fn the_reply_wire_names_its_cells() {
 #[test]
 fn the_default_item_is_a_model_the_session_takes() {
     let (_, claude) = crate::agents::pick_kind(Some("claude")).unwrap();
-    assert!(offered(&claude, "default"));
-    assert!(offered(&claude, "opus"));
-    assert!(!offered(&claude, "nope"));
+    assert!(claude.model_choice("default").is_some());
+    assert!(claude.model_choice("opus").is_some());
+    assert!(claude.model_choice("nope").is_none());
     let (_, codex) = crate::agents::pick_kind(Some("codex")).unwrap();
-    assert!(!offered(&codex, "default"));
+    assert!(codex.model_choice("default").is_none());
 }

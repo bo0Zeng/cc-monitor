@@ -51,7 +51,7 @@ pub(crate) const FENCE_SHAPES: &[FenceShape] = &[
         install_site: "block.rs::install_to_profile",
         uninstall_site: Some("block.rs::uninstall_from_profile"),
         pairing: "fence.rs::find_pair",
-        differs_in: "与本机那一套同一个装口，只差门的 origin（经那台远端后端 files-put 写）",
+        differs_in: "与本机那一套同一个装口，只差门的 origin（经那台远端后端 Door::put 写）",
     },
     FenceShape {
         id: "local-windows-ps",
@@ -341,7 +341,7 @@ const SHAPE_FILES: &[(&str, &str)] = &[
 /// ＋ 全仓那条符号地址判据（改名 / 删了会红）。
 /// **`None` 那半边一条判据都没有** —— 「今天没有卸口」这句话，盘上真长出一个卸口
 /// 也不会有人回来改它。那正是 `registry.rs::TOOLS` 上 `remote-daemon` 栽的坑
-/// （`sftp.rs::uninstall_remote_backend` 是设置面板上的按钮，而字段写着卸不掉）。
+/// （`deploy.rs::uninstall_remote_backend` 是设置面板上的按钮，而字段写着卸不掉）。
 ///
 /// # 🔴 本条同时是要的那个**射程读数**
 ///
@@ -478,7 +478,7 @@ fn splicing_is_idempotent_and_keeps_every_user_line() {
 /// `verify_and_rollback(`（一个回滚写入器的调用形）⇒ 本条红在第一个断言。
 #[test]
 fn the_write_rule_has_exactly_one_home() {
-    let root = crate::guard_support::repo_root().join("src/backend/assets/aliases");
+    let root = guard_core::addr::repo_root().join("src/backend/assets/aliases");
     let read = |f: &str| {
         let raw = std::fs::read_to_string(root.join(f)).unwrap();
         let prod = guard_core::production_code(&raw);
@@ -505,12 +505,12 @@ fn the_write_rule_has_exactly_one_home() {
     let home = read("fence.rs");
     assert!(
         !guard_core::contains_word(&home, "put(") && !guard_core::contains_word(&home, "door"),
-        "`fence.rs` 生产段里够到了写口 —— 落盘序列长到规划这一层了（它只住 `files-put`）"
+        "`fence.rs` 生产段里够到了写口 —— 落盘序列长到规划这一层了（它只住 `Door::put`）"
     );
     // 正控：序列的那一个住址真的在（后端），而且恰好一处定义。
     let backend = guard_core::production_code(
         &std::fs::read_to_string(
-            crate::guard_support::repo_root().join("src/backend/control/files_write.rs"),
+            guard_core::addr::repo_root().join("src/backend/control/files_write.rs"),
         )
         .unwrap(),
     );

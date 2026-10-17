@@ -7,6 +7,7 @@
  * 列宽 ≤ 900px 不出（CSS 容器查询，`.stream` 是尺寸容器）。不排定时器：宿主转来 scroll。
  */
 import type { TurnRow } from "./generated/TurnRow";
+import type { JumpTarget } from "./views/user-input-panel";
 import { copyText } from "./copy-table";
 import { delegateTooltip } from "./kit/tooltip";
 
@@ -22,7 +23,7 @@ export interface RailHost {
   /** 这个会话此刻在等你（「需手动」）。 */
   waiting(): boolean;
   /** 跳到那一轮开头（没加载的由宿主取到再跳）。 */
-  jump(uuid: string): void;
+  jump(to: JumpTarget): void;
   /** 说话那一方叫什么（那一家的短名）；还不知道是哪一家 ⇒ `null`。 */
   speaker?(): string | null;
   /** 这条刻度此刻在不在眼前（它那个 tab 是不是当前的）；不给 ⇒ 一直在。不在眼前不量（量就是逼浏览器排那棵收起的子树），翻出来时宿主调 `shown`。 */
@@ -58,7 +59,7 @@ export class TurnRail {
     this.el.addEventListener("click", (e) => {
       const tick = (e.target as Element | null)?.closest<HTMLElement>(".turn-tick");
       const turn = tick ? this.host.turns()[Number(tick.dataset.from)] : undefined;
-      if (turn) this.host.jump(turn.uuid);
+      if (turn) this.host.jump(turn);
     });
     delegateTooltip(this.el, ".turn-tick", (t) => this.tip(t), { placement: "left", width: () => TIP_WIDTH });
   }
@@ -130,7 +131,7 @@ export class TurnRail {
     if (turns.length === 0) return;
     const at = this.viewportTurn();
     const next = Math.max(0, Math.min(turns.length - 1, (at < 0 ? (dir > 0 ? -1 : turns.length) : at) + dir));
-    this.host.jump(turns[next].uuid);
+    this.host.jump(turns[next]);
   }
 
   /**

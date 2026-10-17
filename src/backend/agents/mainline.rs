@@ -8,9 +8,23 @@
 //! 不做成每条记录上的标记。没有链的那一家不出事实 ⇒ 清单恒空。
 
 use std::collections::{HashMap, HashSet};
+use std::num::NonZeroU64;
 
-/// 链上一个节点（适配层从一条记录翻过来）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+/// 人那一侧一句话的摘要（去首尾空白后的 64 位 FNV-1a）：排队豁免只比两句是不是同一句，原文不进链。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub(crate) struct Words(NonZeroU64);
+
+impl Words {
+    pub(crate) fn of(text: &str) -> Self {
+        let h = crate::common::digest::Fnv::default()
+            .part(text.trim().as_bytes())
+            .value();
+        Words(NonZeroU64::new(h).unwrap_or(NonZeroU64::MIN))
+    }
+}
+
+/// 链上一个节点的事实（适配层从一条记录翻过来）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 pub(crate) struct Link {
     /// 这条记录的身份（与记录成品的 `id` 同值）。
     pub(crate) id: String,
@@ -24,8 +38,8 @@ pub(crate) struct Link {
     pub(crate) reply: bool,
     /// 整条是一个打断标记（回撤死胡同的信号）。
     pub(crate) interrupt: bool,
-    /// 人那一侧这条的原文（排队豁免按它配）；不是人那一侧 ⇒ 缺。
-    pub(crate) text: Option<String>,
+    /// 人那一侧这条的原文摘要（排队豁免按它配）；不是人那一侧 ⇒ 缺。
+    pub(crate) text: Option<Words>,
     /// 这条进不进界面（出记录成品）：只有进界面的才进清单，链上纯占位的那些不进。
     pub(crate) shown: bool,
 }
@@ -35,26 +49,43 @@ pub(crate) struct Link {
 pub(crate) enum ChainFact {
     /// 链上一个节点。
     Node(Link),
-    /// 一句排进队列的话（原文，已 trim）：它对应的那片裸叶不算回退。
-    Queued(String),
+    /// 一句排进队列的话（摘要）：它对应的那片裸叶不算回退。
+    Queued(Words),
 }
 
-/// 一份会话记录的链索引：每个节点只记几个短串。可以抄一份接着记（扫描图续扫）；骨架落盘那一形见 [`skel`]。
+/// 链索引里一个节点：上一条按下标记（还没见到的那一条记在 `Chain.waiting`），时刻住 `Chain.times`，身份只住 `Chain.index`。
+#[derive(Debug, Clone)]
+struct Node {
+    parent: Option<u32>,
+    /// 这条的时刻在 `times` 里止于哪（起点 ＝ 上一个节点的止点）。
+    at_end: u32,
+    text: Option<Words>,
+    said: bool,
+    reply: bool,
+    interrupt: bool,
+    shown: bool,
+}
+
+/// 一份会话记录的链索引：每个节点只记下标 · 时刻 · 几个标志 · 原文摘要。可以抄一份接着记（扫描图续扫）；骨架落盘那一形见 [`skel`]。
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Chain {
-    nodes: Vec<Link>,
-    at: HashMap<String, usize>,
+    /// 身份 ⇒ 下标；身份只存这一份（清单出身份时按下标反查它）。
+    index: HashMap<Box<str>, u32>,
+    nodes: Vec<Node>,
+    /// 各节点的时刻首尾相接。
+    times: String,
+    /// 说到过、还没见到的上一条 ⇒ 等它的那几个下标（它一到就接上 ⇒ 整份重算）。
+    waiting: HashMap<Box<str>, Vec<u32>>,
+    /// 有没有见到接在它下面的（排队豁免只给裸叶）。
     has_child: Vec<bool>,
-    /// 说到过、但还没见到的上一条（它一到，接在它下面的那几条就不再是根 ⇒ 整份重算）。
-    unseen_parents: HashSet<String>,
-    queued: HashSet<String>,
+    queued: HashSet<Words>,
     /// 上一次算的结果：每个节点在不在主线上 · 是不是排队豁免回来的 · 属于哪个根 · 胜出的根。
     on_main: Vec<bool>,
     /// `on_main` 里有没有 `false`（重算时定；简单延长只追加 `true`，不改它）—— 排队那一条每来一行都问，不逐格数。
     any_off_main: bool,
     exempt: Vec<bool>,
-    root_of: Vec<usize>,
-    winner: Option<usize>,
+    root_of: Vec<u32>,
+    winner: Option<u32>,
     off: Vec<String>,
     /// 自上一次 [`Chain::take_kept`] 起清单变过 ⇒ 那时的清单与此刻的公共前缀至多这么长（`session_branch` 只发变了的那一截）；没变过 ⇒ `None`。
     kept: Option<usize>,
@@ -91,48 +122,61 @@ impl Chain {
 
     /// 记账；回：这条要不要整份重算。已经攒着没算（`dirty`）时上一次的结果不作数 ⇒ 一律记成要重算。
     fn stage(&mut self, fact: ChainFact) -> bool {
-        match fact {
-            ChainFact::Queued(t) => {
-                let fresh = self.queued.insert(t);
-                fresh && (self.dirty || self.any_off_main)
+        let l = match fact {
+            ChainFact::Queued(w) => {
+                let fresh = self.queued.insert(w);
+                return fresh && (self.dirty || self.any_off_main);
             }
-            ChainFact::Node(l) => {
-                if self.at.contains_key(&l.id) {
-                    return false; // 重复投递：保首见
-                }
-                let i = self.nodes.len();
-                let p = l.parent.as_deref().and_then(|p| self.at.get(p).copied());
-                let adopts = self.unseen_parents.remove(&l.id);
-                let simple = !adopts
-                    && !self.dirty
-                    && match p {
-                        Some(p) => {
-                            !self.has_child[p]
-                                && self.on_main[p]
-                                && !self.exempt[p]
-                                && Some(self.root_of[p]) == self.winner
-                        }
-                        None => i == 0,
-                    };
-                match (p, &l.parent) {
-                    (Some(p), _) => self.has_child[p] = true,
-                    (None, Some(q)) => {
-                        self.unseen_parents.insert(q.clone());
-                    }
-                    (None, None) => {}
-                }
-                self.at.insert(l.id.clone(), i);
-                self.nodes.push(l);
-                self.has_child.push(false);
-                self.exempt.push(false);
-                self.on_main.push(true);
-                self.root_of.push(p.map_or(i, |p| self.root_of[p]));
-                if simple && i == 0 {
-                    self.winner = Some(0);
-                }
-                !simple
-            }
+            ChainFact::Node(l) => l,
+        };
+        if self.index.contains_key(l.id.as_str()) {
+            return false; // 重复投递：保首见
         }
+        let i = self.nodes.len() as u32;
+        let adopted = self.waiting.remove(l.id.as_str()).unwrap_or_default();
+        self.index.insert(l.id.into_boxed_str(), i);
+        // 指向自己的那条照样接上（当根算，见 `main_branch`）。
+        let p = l.parent.as_deref().and_then(|q| self.index.get(q).copied());
+        let earlier = p.filter(|&p| p < i).map(|p| p as usize);
+        let simple = adopted.is_empty()
+            && !self.dirty
+            && match (p, earlier) {
+                (_, Some(p)) => {
+                    !self.has_child[p]
+                        && self.on_main[p]
+                        && !self.exempt[p]
+                        && Some(self.root_of[p]) == self.winner
+                }
+                (Some(_), None) => false,
+                (None, _) => i == 0,
+            };
+        if let (None, Some(q)) = (p, l.parent) {
+            self.waiting.entry(q.into_boxed_str()).or_default().push(i);
+        }
+        if let Some(p) = earlier {
+            self.has_child[p] = true;
+        }
+        for &c in &adopted {
+            self.nodes[c as usize].parent = Some(i);
+        }
+        self.times.push_str(&l.at);
+        self.nodes.push(Node {
+            parent: p,
+            at_end: self.times.len() as u32,
+            text: l.text,
+            said: l.said,
+            reply: l.reply,
+            interrupt: l.interrupt,
+            shown: l.shown,
+        });
+        self.has_child.push(!adopted.is_empty() || p == Some(i));
+        self.exempt.push(false);
+        self.on_main.push(true);
+        self.root_of.push(earlier.map_or(i, |p| self.root_of[p]));
+        if simple && i == 0 {
+            self.winner = Some(0);
+        }
+        !simple
     }
 
     /// 主线外的那几条（只含进界面的；文件序）。是上一次算的结果：[`Chain::load`] 之后先 [`Chain::settle`]。
@@ -157,59 +201,119 @@ impl Chain {
         self.walked
     }
 
+    /// 第 `i` 个节点的时刻。
+    fn at(&self, i: usize) -> &str {
+        let start = i
+            .checked_sub(1)
+            .map_or(0, |p| self.nodes[p].at_end as usize);
+        &self.times[start..self.nodes[i].at_end as usize]
+    }
+
+    /// 按下标排好的身份（清单 · 骨架要）。
+    fn ids(&self) -> Vec<&str> {
+        let mut ids = vec![""; self.nodes.len()];
+        for (id, &i) in &self.index {
+            ids[i as usize] = id;
+        }
+        ids
+    }
+
     fn recompute(&mut self) -> bool {
         self.walked += self.nodes.len() as u64;
-        let m = main_branch(&self.nodes);
-        let exempt = exempt_queued(&self.nodes, &m.on, &self.queued);
-        let off: Vec<String> = self
-            .nodes
-            .iter()
-            .enumerate()
-            .filter(|(i, n)| n.shown && !m.on[*i] && !exempt[*i])
-            .map(|(_, n)| n.id.clone())
+        let at: Vec<&str> = (0..self.nodes.len()).map(|i| self.at(i)).collect();
+        let m = main_branch(&self.nodes, &at);
+        let exempt = exempt_queued(&self.nodes, &m.on, &self.has_child, &self.queued);
+        let ids = self.ids();
+        let off: Vec<&str> = (0..self.nodes.len())
+            .filter(|&i| self.nodes[i].shown && !m.on[i] && !exempt[i])
+            .map(|i| ids[i])
             .collect();
+        let changed = (!off.iter().eq(self.off.iter())).then(|| {
+            let k = off
+                .iter()
+                .zip(&self.off)
+                .take_while(|(a, b)| **a == b.as_str())
+                .count();
+            (k, off.into_iter().map(str::to_string).collect())
+        });
         self.any_off_main = m.on.iter().any(|on| !on);
         self.on_main = m.on;
         self.root_of = m.root_of;
         self.winner = m.winner;
         self.exempt = exempt;
-        if off == self.off {
+        let Some((k, off)) = changed else {
             return false;
-        }
-        let k = off
-            .iter()
-            .zip(&self.off)
-            .take_while(|(a, b)| a == b)
-            .count();
+        };
         self.kept = Some(self.kept.map_or(k, |was| was.min(k)));
         self.off = off;
         true
     }
 }
 
-/// 骨架落盘那一形（`observe::skeleton`）：只存记进来的事实（节点 ＋ 排队原文），读回来照原样一条条记、算一次 ——
+/// 骨架落盘那一形（`observe::skeleton`）：只存记进来的事实（节点 ＋ 排队摘要），读回来照原样一条条记、算一次 ——
 /// 算出来的那几样（主线 · 豁免 · 清单）不存，跟整份记一遍的结果相同。
 pub(crate) mod skel {
-    use super::{Chain, ChainFact, Link};
+    use super::{Chain, ChainFact, Link, Words};
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     #[derive(Serialize)]
+    struct Row<'a> {
+        id: &'a str,
+        parent: Option<&'a str>,
+        at: &'a str,
+        said: bool,
+        reply: bool,
+        interrupt: bool,
+        text: Option<Words>,
+        shown: bool,
+    }
+
+    struct Rows<'a>(&'a Chain);
+
+    impl Serialize for Rows<'_> {
+        fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+            let c = self.0;
+            let ids = c.ids();
+            let mut up: Vec<Option<&str>> = c
+                .nodes
+                .iter()
+                .map(|n| n.parent.map(|p| ids[p as usize]))
+                .collect();
+            for (q, kids) in &c.waiting {
+                for &k in kids {
+                    up[k as usize] = Some(q);
+                }
+            }
+            s.collect_seq(c.nodes.iter().enumerate().map(|(i, n)| Row {
+                id: ids[i],
+                parent: up[i],
+                at: c.at(i),
+                said: n.said,
+                reply: n.reply,
+                interrupt: n.interrupt,
+                text: n.text,
+                shown: n.shown,
+            }))
+        }
+    }
+
+    #[derive(Serialize)]
     struct FactsRef<'a> {
-        nodes: &'a [Link],
-        queued: Vec<&'a String>,
+        nodes: Rows<'a>,
+        queued: Vec<Words>,
     }
 
     #[derive(Deserialize)]
     struct Facts {
         nodes: Vec<Link>,
-        queued: Vec<String>,
+        queued: Vec<Words>,
     }
 
     pub(crate) fn serialize<S: Serializer>(c: &Chain, s: S) -> Result<S::Ok, S::Error> {
-        let mut queued: Vec<&String> = c.queued.iter().collect();
-        queued.sort();
+        let mut queued: Vec<Words> = c.queued.iter().copied().collect();
+        queued.sort_unstable_by_key(|w| w.0);
         FactsRef {
-            nodes: &c.nodes,
+            nodes: Rows(c),
             queued,
         }
         .serialize(s)
@@ -231,24 +335,19 @@ pub(crate) mod skel {
 
 struct Main {
     on: Vec<bool>,
-    root_of: Vec<usize>,
-    winner: Option<usize>,
+    root_of: Vec<u32>,
+    winner: Option<u32>,
 }
 
-/// 主线。身份已去重；`parent` 指向集合外 ＝ 根。全迭代：链几乎线性，递归会炸栈。
-fn main_branch(nodes: &[Link]) -> Main {
+/// 主线。身份已去重；没有上一条（或指向自己）＝ 根。全迭代：链几乎线性，递归会炸栈。
+fn main_branch(nodes: &[Node], at: &[&str]) -> Main {
     let n_all = nodes.len();
-    let idx: HashMap<&str, usize> = nodes
-        .iter()
-        .enumerate()
-        .map(|(i, n)| (n.id.as_str(), i))
-        .collect();
     let mut kids: Vec<Vec<usize>> = vec![Vec::new(); n_all];
     let mut parent: Vec<Option<usize>> = vec![None; n_all];
     let mut roots = Vec::new();
     for (i, n) in nodes.iter().enumerate() {
-        match n.parent.as_deref().and_then(|p| idx.get(p)) {
-            Some(&p) if p != i => {
+        match n.parent.map(|p| p as usize) {
+            Some(p) if p != i => {
                 kids[p].push(i);
                 parent[i] = Some(p);
             }
@@ -256,7 +355,7 @@ fn main_branch(nodes: &[Link]) -> Main {
         }
     }
     // 自底向上（Kahn）：子树最新时刻 · 子树里最新那句对话及它是不是打断 · 子树里有没有回复。
-    let mut latest: Vec<&str> = nodes.iter().map(|n| n.at.as_str()).collect();
+    let mut latest: Vec<&str> = at.to_vec();
     let mut conv_at: Vec<&str> = vec![""; n_all];
     let mut conv_int = vec![false; n_all];
     let mut has_reply = vec![false; n_all];
@@ -269,8 +368,8 @@ fn main_branch(nodes: &[Link]) -> Main {
         qh += 1;
         let n = &nodes[i];
         let conv = n.said || n.reply;
-        let mut max = n.at.as_str();
-        let mut cat = if conv { n.at.as_str() } else { "" };
+        let mut max = at[i];
+        let mut cat = if conv { at[i] } else { "" };
         let mut cint = conv && n.interrupt;
         let mut hr = n.reply;
         for &k in &kids[i] {
@@ -299,17 +398,17 @@ fn main_branch(nodes: &[Link]) -> Main {
     for i in (0..n_all).filter(|&i| !done[i]) {
         let n = &nodes[i];
         let conv = n.said || n.reply;
-        conv_at[i] = if conv { n.at.as_str() } else { "" };
+        conv_at[i] = if conv { at[i] } else { "" };
         conv_int[i] = conv && n.interrupt;
         has_reply[i] = n.reply;
     }
-    let mut root_of: Vec<usize> = (0..n_all).collect();
+    let mut root_of: Vec<u32> = (0..n_all as u32).collect();
     for i in 0..n_all {
         let mut r = i;
         let mut hops = 0;
         while let Some(p) = parent[r] {
             if p < i {
-                r = root_of[p];
+                r = root_of[p] as usize;
                 break;
             }
             r = p;
@@ -318,7 +417,7 @@ fn main_branch(nodes: &[Link]) -> Main {
                 break; // 环
             }
         }
-        root_of[i] = r;
+        root_of[i] = r as u32;
     }
     let winner = roots.iter().copied().fold(None::<usize>, |w, r| match w {
         Some(w) if latest[r] <= latest[w] => Some(w),
@@ -345,21 +444,25 @@ fn main_branch(nodes: &[Link]) -> Main {
     Main {
         on,
         root_of,
-        winner,
+        winner: winner.map(|w| w as u32),
     }
 }
 
 /// 排队豁免：不在主线上、没有孩子的人那一侧裸叶，原文在排队集合里 ⇒ 并回主线。回豁免的那几条。
-fn exempt_queued(nodes: &[Link], on: &[bool], queued: &HashSet<String>) -> Vec<bool> {
+fn exempt_queued(
+    nodes: &[Node],
+    on: &[bool],
+    has_child: &[bool],
+    queued: &HashSet<Words>,
+) -> Vec<bool> {
     let mut out = vec![false; nodes.len()];
     if queued.is_empty() {
         return out;
     }
-    let has_child: HashSet<&str> = nodes.iter().filter_map(|n| n.parent.as_deref()).collect();
     for (i, n) in nodes.iter().enumerate() {
         out[i] = n.said
             && !on[i]
-            && !has_child.contains(n.id.as_str())
+            && !has_child[i]
             && n.text.as_ref().is_some_and(|t| queued.contains(t));
     }
     out

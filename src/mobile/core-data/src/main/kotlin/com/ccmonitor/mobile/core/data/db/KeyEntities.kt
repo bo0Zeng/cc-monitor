@@ -141,7 +141,7 @@ enum class AppAction(
         fun fromWire(s: String): AppAction? = entries.firstOrNull { it.wire == s }
 
         /** 要那台有 tmux 才做得了的。 */
-        val NEEDS_TMUX: Set<AppAction> = setOf(TMUX_SESSIONS, CAPTURE, PUSH_KEY)
+        val NEEDS_TMUX: Set<AppAction> = setOf(TMUX_SESSIONS, CAPTURE)
     }
 }
 

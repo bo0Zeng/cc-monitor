@@ -57,27 +57,4 @@ class TerminalsTest {
         assertEquals(true, Kill.of(mapOf("killed" to true, "session" to "demo-cc", "bus" to null)))
         assertNull(Kill.of(mapOf("session" to "demo-cc")))
     }
-
-    @Test
-    fun `进终端那一行：照桌面的 attach 意图问 launch-render-cli，原样拿回那一行`() {
-        assertEquals(
-            mapOf(
-                "agent" to "claude",
-                "action" to mapOf("kind" to "attach", "name" to "demo-cc"),
-                "container" to mapOf("kind" to "tmux", "name" to "demo-cc", "send_into" to false),
-                "account" to mapOf("kind" to "base"),
-            ),
-            AttachLine.args(agent = "claude", name = "demo-cc"),
-        )
-        assertEquals("ccm -- --attach 'demo-cc'", AttachLine.of(mapOf("cmd" to "ccm -- --attach 'demo-cc'", "account" to null)))
-        assertNull(AttachLine.of(mapOf("account" to null)))
-    }
-
-    @Test
-    fun `session-new 起在指名的 tmux 会话里、不带第一句`() {
-        assertEquals(
-            mapOf("agent" to "claude", "cwd" to "~", "place" to "tmux", "local" to false, "ticket" to "t-2", "tmuxName" to "work"),
-            SessionNew.inTmux(agent = "claude", name = "work", ticket = "t-2"),
-        )
-    }
 }

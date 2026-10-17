@@ -23,7 +23,7 @@ fn locate(judge: &str) -> (Vec<std::path::PathBuf>, String) {
         module.pop();
     }
     let rel = module.join("/");
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     (
         vec![
             root.join(format!("{rel}.rs")),
@@ -70,7 +70,7 @@ fn marked_in(text: &str) -> Vec<String> {
 
 /// 每个生产源文件里带标记的函数：`crate::<模块路径>::<函数名>`（模块路径照文件位置写，不带类型）。
 fn marked_everywhere() -> std::collections::BTreeSet<(String, String)> {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let mut out = std::collections::BTreeSet::new();
     for (path, text) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
         let rel = path
@@ -106,7 +106,7 @@ fn every_inherit_row_names_a_judge_and_every_marked_judge_is_a_row() {
             hit.display()
         );
         let rel = hit
-            .strip_prefix(crate::guard_support::src_root())
+            .strip_prefix(guard_core::addr::backend_src_root())
             .expect("在源码树里")
             .to_string_lossy()
             .replace('\\', "/");
@@ -276,25 +276,32 @@ fn the_from_section_is_comment_lines_only() {
     let t = AccountTable::default();
     let plan = build(&o, &env(), &t, None).expect("算得出计划");
     let text = render_from(&from_rows(&o, &origins, &env(), &t, &plan));
-    let lines: Vec<&str> = text.lines().collect();
-    assert!(lines.len() >= 4, "「来自」那一节太短：{text}");
-    assert_eq!(
-        lines[0],
-        format!("# {}", copy_core::copy_text("beCcm.print.from", &[]))
-    );
-    assert!(
-        lines.iter().all(|l| l.starts_with("# ")),
-        "「来自」那一节有一行不是注释（混进那条命令交给 shell 就会被当命令跑）：{text}"
-    );
-    let cwd = copy_core::copy_text(
-        "beCcm.print.row",
-        &[
-            ("item", &copy_core::copy_text("beCcm.item.cwd", &[])),
-            ("value", "/p"),
-            ("from", &copy_core::copy_text("beCcm.from.flag", &[])),
-        ],
-    );
-    assert!(lines.contains(&format!("# {cwd}").as_str()), "{text}");
+    // 每一行都是注释（混进那条命令交给 shell 就会被当命令跑）：标题一行 ＋ 四项各一行（值 · 从哪来）。
+    let c = |k: &str| copy_core::copy_text(k, &[]);
+    let row = |item: String, value: &str, from: &str| {
+        let r = copy_core::copy_text(
+            "beCcm.print.row",
+            &[("item", &item), ("value", value), ("from", &c(from))],
+        );
+        format!("# {r}\n")
+    };
+    let want = [
+        format!("# {}\n", c("beCcm.print.from")),
+        row(c("beCcm.item.cwd"), "/p", "beCcm.from.flag"),
+        row(
+            c("beProfile.slot.account"),
+            &c("beCcm.value.noAccount"),
+            "beCcm.from.default",
+        ),
+        row(c("beProfile.slot.launcher"), "claude", "beCcm.from.default"),
+        row(
+            c("beProfile.slot.tmux"),
+            &c("beCcm.value.here"),
+            "beCcm.from.default",
+        ),
+    ]
+    .concat();
+    assert_eq!(text, want, "「来自」那一节");
     // 接回一个会话不起新会话 ⇒ 一行都不写。
     let attach: Vec<String> = ["--", "--attach", "x"]
         .iter()
@@ -314,7 +321,7 @@ fn the_from_section_is_comment_lines_only() {
 /// 在别的会话里起、点名一个号的那一发照那个号发，不跟着主会话换。
 #[test]
 fn quota_warm_hands_ccm_its_own_environment_plus_its_two_switches() {
-    let path = crate::guard_support::repo_root().join("src/shared/quota-warm/scripts/quota-warm");
+    let path = guard_core::addr::repo_root().join("src/shared/quota-warm/scripts/quota-warm");
     let text = std::fs::read_to_string(&path).expect("预热脚本在");
     let code: String = text
         .lines()

@@ -18,13 +18,14 @@
  * 2. **给载荷打上它从哪台来**（`origin`：本机不带、远端是那台的名字 —— 与实时流那一条同一个口径，这是地址不是解释）。
  * 3. **期限与翻页**：一件事一个期限，翻页只把后端交回的续点（`next` / `nextSeq`）原样交回去。
  *
- * 按偏移取一段 · 按行号取一段交「折起那一行」那份声明（`src/shared/views/folded-record.json`：省掉工具入参 · 结果正文 · 逐段改动；
+ * 按偏移取一段 · 按行号取一段交「折起那一行」那份声明（`src/shared/views/folded-record.json`：省掉工具入参 · 结果正文 · 逐段改动 · 一步展开那一格；
  * 壳的旁路快照交同一份）；按记录 id 取回那一行不交（展开那一下要的就是全文）。
  */
-import { budgetWithin, callTyped, saidFrom } from "./ipc/chan-caller";
+import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import type { JsonlLinePayload } from "./generated/JsonlLinePayload";
 import type { LineRecord } from "./generated/LineRecord";
+import type { RecordAt } from "./cards/index";
 import type { Branch } from "./generated/Branch";
 import type { HistoryLines } from "./generated/HistoryLines";
 import type { HistoryPage } from "./generated/HistoryPage";
@@ -33,6 +34,7 @@ import type { RecordLine } from "./generated/RecordLine";
 import type { DriftFaceReport } from "./generated/DriftFaceReport";
 import { copyText } from "./copy-table";
 import FOLDED from "../../shared/views/folded-record.json";
+import { saidOf } from "./kit/detail";
 
 /** 一页子运行记录（后端 `faces/history_face.rs` 的 `history-run`，类型从后端生成）。 */
 export type RunPage = HistoryRun;
@@ -56,7 +58,7 @@ const PIECE_BUDGET_MS = 120_000;
 /** 漂移账：一问（30 秒，同会话读面那几问）。 */
 const DRIFT_BUDGET_MS = 30_000;
 
-/** 一条记录行（后端 `record_page::RecordLine`）⇒ 载荷；`origin` 由问的那一方打上（这是地址，不是解释）。 */
+/** 一条记录行（后端 `body::RecordLine`）⇒ 载荷；`origin` 由问的那一方打上（这是地址，不是解释）。 */
 function payloadOf(origin: Origin, v: RecordLine): JsonlLinePayload {
   const p: JsonlLinePayload = { session_id: v.session_id, path: v.path, seq: v.seq, cwd: v.cwd, record: v.record };
   if (!isLocalOrigin(origin)) p.origin = origin;
@@ -73,12 +75,12 @@ export function linesOf(origin: Origin, v: HistoryLines): SessionLinesPage {
   return { from: v.from, next: v.next, eof: v.eof, payloads: v.lines.map((l) => payloadOf(origin, l)) };
 }
 
-/** typed 那几条的一问：回包按类型用（形状由握手指纹管）；失败 ⇒ 抛一个给人看的 `Error`（`ipc/chan-caller.ts::saidFrom`）。 */
-async function asked<T>(origin: Origin, reply: Promise<T>): Promise<T> {
+/** typed 那几条的一问：回包按类型用（形状由握手指纹管）；失败 ⇒ 抛一个给人看的 `Error`（那一句 monitor 写好，`kit/detail.ts::saidOf` 取）。 */
+async function asked<T>(reply: Promise<T>): Promise<T> {
   try {
     return await reply;
   } catch (e) {
-    throw new Error(saidFrom(e, origin));
+    throw new Error(saidOf(e));
   }
 }
 
@@ -107,7 +109,7 @@ async function readRangeAs(
   let at = offset;
   let seq = seqBase;
   for (;;) {
-    const page = pageOf(origin, await asked(origin, callTyped(origin, "history-page", { path: jsonlPath, offset: at, until, seq }, budget, view)));
+    const page = pageOf(origin, await asked(callTyped(origin, "history-page", { path: jsonlPath, offset: at, until, seq }, budget, view)));
     // 逐条接，不展开成实参：一页按字节算（1 MiB），短行能有几十万行，超过 V8（WebView2）一次调用的实参上限会抛 RangeError。
     for (const p of page.payloads) out.push(p);
     if (page.eof || page.next <= at) return out;
@@ -116,23 +118,22 @@ async function readRangeAs(
   }
 }
 
-/** 骨架里认得一行在哪的那一半（`live-window.ts::SkeletonLedger` 的这两件）。 */
+/** 骨架里认得一行在哪的那一件（`live-window.ts::SkeletonLedger.factsOf`）。 */
 interface RowPlaces {
-  uuidToSeq: ReadonlyMap<string, number>;
   factsOf(seq: number): { o: number; n: number } | undefined;
 }
 
 /**
- * **按记录 id 取回那一行全文**（出口省掉的正文展开那一下，`RenderContext.fullRecord`）：骨架里那一行的字节边界，
- * 取 `[o, o + n)`、不带声明。骨架还没接上 / 骨架里没有这一行 ⇒ 抛（说清为什么），下次展开再取。主窗口 tab 与查看器同一处。
+ * **取回一条记录的全文**（出口省掉的正文展开那一下，`RenderContext.fullRecord`）：按它的行号找骨架里那一行的字节边界，
+ * 取 `[o, o + n)`、不带声明，认 `id` 那一条。骨架还没接上 / 骨架里没有这一行 / 不知道行号 ⇒ 抛（说清为什么），下次展开再取。
+ * 主窗口 tab 与查看器同一处。
  */
 export async function readRecordById(
   origin: Origin,
   jsonlPath: string,
   places: RowPlaces | null,
-  id: string,
+  { id, seq }: RecordAt,
 ): Promise<LineRecord | null> {
-  const seq = places?.uuidToSeq.get(id);
   const at = seq === undefined ? undefined : places?.factsOf(seq);
   if (seq === undefined || !at) throw new Error(copyText("recordReads.byId.notIndexed"));
   const rows = await readRangeAs(origin, jsonlPath, at.o, at.o + at.n, seq, null);
@@ -149,7 +150,7 @@ export async function readLines(
 ): Promise<SessionLinesPage> {
   const budget = budgetWithin(leftMs);
   const req = until === undefined ? { path: jsonlPath, from } : { path: jsonlPath, from, until };
-  return linesOf(origin, await asked(origin, callTyped(origin, "history-lines", req, budget, FOLDED)));
+  return linesOf(origin, await asked(callTyped(origin, "history-lines", req, budget, FOLDED)));
 }
 
 /** 一个子运行要读哪一个：子运行本身（运行表里那一格）‖ 派出它的那次工具调用（后端在父记录里找派出链接）。 */
@@ -158,7 +159,7 @@ export type RunWhich = { run: string; tool?: string } | { run?: string; tool: st
 /** **一个子运行的记录，一页**（按运行读，通用命令 `history-run`）：父记录 ＋ 哪一个 ＋ 从哪个字节起。 */
 export async function loadRunPage(origin: Origin, parentJsonlPath: string, which: RunWhich, from = 0): Promise<RunPage> {
   const budget = budgetWithin(PIECE_BUDGET_MS);
-  return await asked(origin, callTyped(origin, "history-run", { parent: parentJsonlPath, ...which, from }, budget));
+  return await asked(callTyped(origin, "history-run", { parent: parentJsonlPath, ...which, from }, budget));
 }
 
 /** **一份记录的主线外清单**（冷读一次；之后的变化由实时帧 `branch` 说）：那台按页给，照 `next` 接着问、拼成一份。 */
@@ -167,7 +168,7 @@ export async function readBranch(origin: Origin, jsonlPath: string): Promise<Bra
   let at: number | null = 0;
   let end = 0;
   while (at !== null) {
-    const page: Branch = await asked(origin, callTyped(origin, "history-branch", { path: jsonlPath, from: at }, budgetWithin(PIECE_BUDGET_MS)));
+    const page: Branch = await asked(callTyped(origin, "history-branch", { path: jsonlPath, from: at }, budgetWithin(PIECE_BUDGET_MS)));
     off.push(...page.off);
     end = page.end;
     at = page.next ?? null;
@@ -178,6 +179,6 @@ export async function readBranch(origin: Origin, jsonlPath: string): Promise<Bra
 /** **那台后端的漂移账**（看不懂的记录类型）。 */
 export async function readRecordDrift(origin: Origin): Promise<RecordDriftFace[]> {
   const budget = budgetWithin(DRIFT_BUDGET_MS);
-  const { faces } = await asked(origin, callTyped(origin, "drift-report", {}, budget));
+  const { faces } = await asked(callTyped(origin, "drift-report", {}, budget));
   return faces;
 }

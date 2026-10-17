@@ -13,6 +13,8 @@ import { MessageStream } from "../../../src/frontend/ui/stream";
 import { TurnFold, PROC_LINE_CLASS } from "../../../src/frontend/ui/turn-fold";
 import type { TurnsResult } from "../../../src/frontend/ui/session-reads";
 import type { TurnRow } from "../../../src/frontend/ui/generated/TurnRow";
+import { nonEmpty } from "../../test-support/non-empty";
+import { indexPages } from "../../test-support/pack-index";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(null) }));
 
@@ -57,10 +59,11 @@ function installLayout(scrollEl: HTMLElement, content: HTMLElement, linePx = 0):
   return state;
 }
 
-const facts = (i: number): SkeletonFacts => ({ o: i * 100, n: 100, t: i % PER_TURN === 0 ? "said" : "reply", u: `u${i}`, ch: 120, pl: 2 });
+const facts = (i: number): SkeletonFacts => ({ o: i * 100, n: 100, t: i % PER_TURN === 0 ? "said" : "reply", ch: 120, pl: 2 });
 
 const turn = (k: number): TurnRow => ({
   at: k * PER_TURN * 100,
+  line: k * PER_TURN,
   uuid: `u${k * PER_TURN}`,
   start: "2026-10-06T02:01:00Z",
   end: "2026-10-06T02:04:02Z",
@@ -79,7 +82,7 @@ const turn = (k: number): TurnRow => ({
   reply: "",
   done: true,
   phase: "idle",
-  folds: [{ after: `u${k * PER_TURN}`, until: `u${k * PER_TURN + ENDING_AT}`, parts: [{ text: "p", tone: "plain" }], span: { text: "", from: null, to: null }, phase: "idle" }],
+  folds: [{ after: `u${k * PER_TURN}`, afterLine: k * PER_TURN, until: `u${k * PER_TURN + ENDING_AT}`, untilLine: k * PER_TURN + ENDING_AT, parts: [{ text: "p", tone: "plain" }], span: { text: "", from: null, to: null }, phase: "idle" }],
 });
 
 async function rig() {
@@ -90,7 +93,7 @@ async function rig() {
   const content = stream.contentElement;
   const layout = installLayout(scrollEl, content);
   const total = TURNS * PER_TURN;
-  const ledger = new SkeletonLedger(0, Array.from({ length: total }, (_, i) => facts(i)));
+  const ledger = new SkeletonLedger(0, indexPages(Array.from({ length: total }, (_, i) => facts(i))));
   const view = new SkeletonView(ledger, scrollEl, timeline, {
     materialize(lo: number, hi: number): Array<[number, number]> {
       for (let s = lo; s < hi; s++) {
@@ -102,6 +105,7 @@ async function rig() {
       }
       return [];
     },
+    released() {},
   });
   view.attach(total);
   const read = vi.fn(async (): Promise<TurnsResult> => ({ available: true, from: 0, end: total * 100, turns: Array.from({ length: TURNS }, (_, k) => turn(k)) }));
@@ -150,7 +154,7 @@ describe("大折叠 × 骨架：折没折只有一个来源", () => {
       layout.scrollTop = Math.max(0, layout.scrollTop - VIEW_H);
       await settle();
     }
-    expect(content.querySelectorAll(`.${PROC_LINE_CLASS}`).length).toBeGreaterThan(2);
+    nonEmpty(content.querySelectorAll(`.${PROC_LINE_CLASS}`));
     expect(misfolded(content, view, new Set())).toEqual([]);
     lineOf(content, 1).click();
     await settle();
@@ -209,8 +213,8 @@ describe("冷切停住那一帧：骨架后到", () => {
     const fold = new TurnFold(content, scrollEl, () => ({ origin: "local" as never, jsonlPath: "/p/s.jsonl" }), read, () => view);
     await fold.refresh();
     layout.scrollTop = 1e9; // 贴底（尾巴那一屏）
-    const ledger = new SkeletonLedger(0, Array.from({ length: total }, (_, i) => facts(i)));
-    const mkView = (): SkeletonView => (view = new SkeletonView(ledger, scrollEl, timeline, { materialize: (lo, hi) => { for (let s = lo; s < hi; s++) card(s); return []; } }));
+    const ledger = new SkeletonLedger(0, indexPages(Array.from({ length: total }, (_, i) => facts(i))));
+    const mkView = (): SkeletonView => (view = new SkeletonView(ledger, scrollEl, timeline, { materialize: (lo, hi) => { for (let s = lo; s < hi; s++) card(s); return []; }, released() {} }));
     return { content, scrollEl, fold, ledger, mkView, floor };
   }
 
@@ -236,12 +240,12 @@ describe("冷切停住那一帧：骨架后到", () => {
       HTMLElement.prototype.getBoundingClientRect = orig;
       delete (scrollEl as { clientHeight?: number }).clientHeight;
     }
-    expect(view.ledger.foldedRanges.length, "前置：账本里有折着的过程").toBeGreaterThan(0);
+    nonEmpty(view.ledger.foldedRanges);
     expect(gap.style.height, "占位插进去之后又改了高 ⇒ 插的时候账本还没拿到折叠（这一帧多排一次版、多钉一次视口）").toBe(h0);
     expect(reads, "占位插进去之后的那一趟排版还在读几何（量过程行高 / 钉视口 / 一轮都没展开也量视口高）⇒ 逼浏览器当场再排一次版").toEqual([]);
   });
 
-  it("★ 过程行高量过一次就记着：之后每趟排版不再量（流尺寸变了才重量）", async () => {
+  it("★ 过程行高量过就记着：之后每趟排版不再量（流尺寸变了才重量）", async () => {
     const { content, fold, mkView, floor } = await lateRig();
     mkView().attach(floor);
     await new Promise((r) => setTimeout(r, 0));
@@ -249,31 +253,35 @@ describe("冷切停住那一帧：骨架后到", () => {
     const spy = vi.spyOn(line, "getBoundingClientRect");
     fold.apply();
     fold.apply();
-    expect(spy.mock.calls.length, "每趟排版都去量一次过程行（DOM 刚改过 ⇒ 每一下都是一次强制排版）").toBeLessThanOrEqual(1);
+    expect(spy.mock.calls.length, "量过的过程行高没记着：每趟排版都去量一次（DOM 刚改过 ⇒ 每一下都是一次强制排版）").toBe(0);
   });
 
   it("★ 过程行上的字没变就不重画：再排一次版，行里的节点原样不动（不白白作废样式与排版）", async () => {
     const { content, fold } = await lateRig();
     const before = [...content.querySelectorAll<HTMLElement>(`.${PROC_LINE_CLASS}`)].map((l) => l.firstChild);
-    expect(before.length, "前置：有过程行").toBeGreaterThan(0);
+    nonEmpty(before);
     fold.apply();
     const after = [...content.querySelectorAll<HTMLElement>(`.${PROC_LINE_CLASS}`)].map((l) => l.firstChild);
     expect(after.every((n, i) => n === before[i]), "字一个没变也整行拆了重建 ⇒ 每趟排版都作废这几行的样式与排版").toBe(true);
   });
 });
 
-describe("大折叠 × 骨架：每段管哪几行照后端的 `after` · `until` 取", () => {
+describe("大折叠 × 骨架：每段管哪几行照后端给的两头行号取", () => {
   /** 三轮各 10 行：第 0 轮 · 被回退掉的一轮（主线外，`history-turns` 不出它）· 第 2 轮。每轮只有一段、跟在开头后面、管到下一轮开头为止。 */
-  async function rewoundRig(until0: string | null, second = true) {
+  async function rewoundRig(until0: number | null, second = true) {
     const scrollEl = document.createElement("div");
     document.body.replaceChildren(scrollEl);
     const stream = new MessageStream(scrollEl);
     const timeline = new RecordTimeline(stream);
     installLayout(scrollEl, stream.contentElement);
-    const ledger = new SkeletonLedger(0, Array.from({ length: 30 }, (_, i) => facts(i)));
-    const view = new SkeletonView(ledger, scrollEl, timeline, { materialize: () => [] });
+    const ledger = new SkeletonLedger(0, indexPages(Array.from({ length: 30 }, (_, i) => facts(i))));
+    const view = new SkeletonView(ledger, scrollEl, timeline, { materialize: () => [], released() {} });
     view.attach(30);
-    const one = (k: number, until: string | null): TurnRow => ({ ...turn(k), shown: [], folds: [{ ...turn(k).folds[0], until }] });
+    const one = (k: number, untilLine: number | null): TurnRow => ({
+      ...turn(k),
+      shown: [],
+      folds: [{ ...turn(k).folds[0], until: untilLine === null ? null : `u${untilLine}`, untilLine }],
+    });
     const read = async (): Promise<TurnsResult> => ({ available: true, from: 0, end: 3000, turns: second ? [one(0, until0), one(2, null)] : [one(0, until0)] });
     const fold = new TurnFold(stream.contentElement, scrollEl, () => ({ origin: "local" as never, jsonlPath: "/p/s.jsonl" }), read, () => view);
     await fold.refresh();
@@ -281,15 +289,16 @@ describe("大折叠 × 骨架：每段管哪几行照后端的 `after` · `until
   }
 
   it("★ 回退掉的那一轮不被上一轮的段吞掉：上一轮那一段停在被回退那一句之前（`until`），它露着", async () => {
-    const view = await rewoundRig("u10");
+    const view = await rewoundRig(10);
     expect(view.ledger.foldedRanges).toEqual([
       [1, 10],
       [21, 30],
     ]);
   });
 
-  it("`until` 是 null ⇒ 取到账本尾；`until` 账本里找不到 ⇒ 那一段不折（宁可不折，不折错）", async () => {
+  it("`until` 是 null ⇒ 取到账本尾；`until` 落在账本外 ⇒ 那一段不折（宁可不折，不折错）", async () => {
     expect((await rewoundRig(null, false)).ledger.foldedRanges, "还开着的最后一轮：到账本尾").toEqual([[1, 30]]);
-    expect((await rewoundRig("nowhere")).ledger.foldedRanges).toEqual([[21, 30]]);
+    expect((await rewoundRig(30)).ledger.foldedRanges, "恰在账本尾那一行：不在账本里").toEqual([[21, 30]]);
+    expect((await rewoundRig(999)).ledger.foldedRanges).toEqual([[21, 30]]);
   });
 });

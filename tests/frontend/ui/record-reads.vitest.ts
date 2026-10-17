@@ -7,7 +7,7 @@
  * | 按记录 id 取回那一行不带声明（展开那一下要的就是全文） | 「不带声明」那一条 |
  * | 一页的行数不设上限（一页按字节算 1 MiB，短行能有几十万行）：拼页不把一页展开成实参（V8 的实参上限） | 「一页 20 万行」那一条 |
  *
- * 买不到：后端照声明裁得对不对（后端 `record_page_tests` 用同一份文件量）；monitor 那一跳把它搬进信封（`webview_tests` · `inbound_client_tests`）。
+ * 买不到：后端照声明裁得对不对（后端 `query::body::tests` 用同一份文件量）；monitor 那一跳把它搬进信封（`webview_tests` · `inbound_client_tests`）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
@@ -19,6 +19,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { readLines, readRange, readRecordById } from "../../../src/frontend/ui/record-reads";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, type ChanCallArgs } from "../../test-support/chan-fake";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const FOLDED = JSON.parse(readFileSync(resolve(REPO_ROOT, "src/shared/views/folded-record.json"), "utf8")) as unknown;
@@ -45,7 +46,7 @@ beforeEach(() => {
 const calls = (): ChanCallArgs[] => invokeMock.mock.calls.map((c) => c[1] as ChanCallArgs);
 
 describe("记录读面：折起那一行的声明", () => {
-  it("那份声明就是省掉工具入参 · 结果正文 · 逐段改动那四格", () => {
+  it("那份声明就是省掉工具入参 · 结果正文 · 逐段改动 · 一步展开那一格", () => {
     expect(FOLDED).toEqual({
       omit: {
         record: [
@@ -53,6 +54,7 @@ describe("记录读面：折起那一行的声明", () => {
           "blocks[type=tool_result].content",
           "results.*.patch",
           "results.*.patchTruncated",
+          "steps.*.body",
         ],
       },
     });
@@ -68,11 +70,16 @@ describe("记录读面：折起那一行的声明", () => {
     expect(Object.keys(chanArgsJson(page) as object).sort()).toEqual(["offset", "path", "seq", "until"]);
   });
 
-  it("★ 按记录 id 取回那一行：不带声明（要的就是全文）", async () => {
-    const places = { uuidToSeq: new Map([["r3", 3]]), factsOf: () => ({ o: 40, n: 50 }) };
-    const rec = await readRecordById("<local>", "/p/s.jsonl", places, "r3");
+  it("★ 按行号取回那一行、认 id：不带声明（要的就是全文）；不知道行号 ⇒ 说索引未就绪、不问", async () => {
+    const factsOf = vi.fn((seq: number) => (seq === 3 ? { o: 40, n: 50 } : undefined));
+    const rec = await readRecordById("<local>", "/p/s.jsonl", { factsOf }, { id: "r3", seq: 3 });
     expect(rec).toEqual({ id: "r3" });
-    expect(calls().map((c) => [c.op, c.view])).toEqual([["history-page", null]]);
+    const [page] = calls();
+    expect([page.op, page.view]).toEqual(["history-page", null]);
+    expect(chanArgsJson(page)).toMatchObject({ offset: 40, until: 90, seq: 3 });
+    invokeMock.mockClear();
+    await expect(readRecordById("<local>", "/p/s.jsonl", { factsOf }, { id: "r3", seq: undefined })).rejects.toThrow(copyText("recordReads.byId.notIndexed"));
+    expect(invokeMock).not.toHaveBeenCalled();
   });
 
   it("一页 20 万行（合成的短行）：拼页不抛，行一条不少", async () => {

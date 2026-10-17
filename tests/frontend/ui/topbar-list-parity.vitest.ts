@@ -33,6 +33,7 @@
 import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
+import { nonEmpty } from "../../test-support/non-empty.ts";
 
 function read(rel: string): string {
   return readFileSync(`${REPO_ROOT}/${rel}`, "utf8");
@@ -65,15 +66,8 @@ describe("P13 tier-2 顶栏清单与源码对账", () => {
     const listed = tier2Topbar(read("tests/e2e/tier2/test/shell-smoke.spec.mjs"));
     // 🔴 反空真：两侧都必须非空。地板在这里是对的用法 ——
     //    它挡的是「抽取器坏了」，而「清单对不对」由下面那条**相等**断言管。
-    expect(
-      derived.length,
-      "从 `src/frontend/ui/main.ts` 抽不到任何 `*-trigger` —— 命名约定变了，还是顶栏搬家了？\n" +
-        "改了就把这里的派生器与 `tests/frontend/ui/topbar-icons.vitest.ts` 的那一份**一起**改。",
-    ).toBeGreaterThan(0);
-    expect(
-      listed.length,
-      "从 tier-2 那份 spec 里抽不到 `TOPBAR` 数组 —— 它改名或改形了？",
-    ).toBeGreaterThan(0);
+    nonEmpty(derived);
+    nonEmpty(listed);
   });
 
   it("🔴 tier-2 手写的那张表，恰好等于「派生出来的 trigger ＋ 显式登记的非 trigger 项」", () => {
@@ -103,10 +97,7 @@ describe("P13 tier-2 顶栏清单与源码对账", () => {
     const buttons = listed.filter((x) => !NOT_A_TRIGGER.includes(x)).length;
     // 那两处散文各写一次这个数 ⇒ 它有两个住址，而住址多了就会漂。
     const claimed = [...spec.matchAll(/(\d+) 顶栏钮/g)].map((m) => Number(m[1]));
-    expect(
-      claimed.length,
-      "spec 里找不到「n 顶栏钮」那句话 —— 它改措辞了？那本条从此零命中地绿。",
-    ).toBeGreaterThan(0);
+    nonEmpty(claimed);
     for (const n of claimed) {
       expect(
         n,

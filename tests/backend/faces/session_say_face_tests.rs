@@ -1,7 +1,7 @@
 //! 往会话说一句：在等人 ⇒ 不送；不在等 ⇒ 照 `terminal-input` 那一条送（带回车，身份门同一份）。
 
 use super::*;
-use crate::control::session_batch::Answer;
+use crate::control::session_open::{Landed, Opened};
 use crate::control::terminals::Refused;
 use crate::control::terminals_wire::{Sent, SentResult, TerminalInputReq};
 use std::cell::RefCell;
@@ -18,7 +18,7 @@ fn req(sid: &str, text: &str) -> SessionSayReq {
 const SID: &str = "11111111-2222-3333-4444-555555555555";
 
 /// 不该走到恢复那一支。
-fn no_resume(_: &SessionSayReq) -> Option<Answer> {
+fn no_resume(_: &SessionSayReq) -> Option<Reopened> {
     panic!("恢复了")
 }
 
@@ -32,18 +32,24 @@ fn refused(why: Refused) -> Sent {
     }
 }
 
-fn answer(outcome: &'static str, why: Option<&str>) -> Answer {
-    Answer {
-        sid: SID.into(),
-        outcome,
-        why: why.map(str::to_string),
-        detail: "stderr".into(),
-        session: None,
-        bus: None,
-        cmd: None,
+/// 恢复落在 `landed`（`session` ＝ 落在的那个 tmux 会话）。
+fn at(landed: Landed, session: Option<&str>) -> Reopened {
+    Ok(Opened {
+        landed,
+        session: session.map(str::to_string),
+        line: None,
+        sid: Some(SID.into()),
+        agent: None,
+        cwd: None,
         account: None,
-        unavailable: None,
-    }
+        note: None,
+        prompt: None,
+    })
+}
+
+/// 恢复没成，码 `code`。
+fn not(code: &'static str) -> Reopened {
+    Err((code, "那一句".into(), None, Some("stderr".into())))
 }
 
 /// ★ 那台说在等人（批准 · 回答）⇒ 一个字都不送，回被拒 ＋ `waiting` ＋ 那一句。
@@ -120,7 +126,7 @@ fn a_session_whose_terminal_is_gone_is_resumed_with_the_line() {
         let asked = RefCell::new(Vec::<(String, String)>::new());
         let resume = |r: &SessionSayReq| {
             asked.borrow_mut().push((r.sid.clone(), r.text.clone()));
-            Some(answer("done", None))
+            Some(at(Landed::Started, Some("p-cc")))
         };
         let got = say_with(
             &req(SID, "接着做"),
@@ -158,21 +164,9 @@ fn a_session_whose_terminal_is_gone_is_resumed_with_the_line() {
 #[test]
 fn a_resume_that_does_not_happen_says_why_and_delivers_nothing() {
     let cases = [
-        (
-            Some(answer(
-                "skipped",
-                Some(crate::control::session_batch::ALREADY_LIVE),
-            )),
-            Refused::Elsewhere,
-        ),
-        (
-            Some(answer("skipped", Some("no_tmux"))),
-            Refused::NotResumed,
-        ),
-        (
-            Some(answer("failed", Some("start_failed"))),
-            Refused::NotResumed,
-        ),
+        (Some(not("already_live")), Refused::Elsewhere),
+        (Some(not("place_unavailable")), Refused::NotResumed),
+        (Some(not("start_failed")), Refused::NotResumed),
         (None, Refused::NotKnown),
     ];
     for (a, want) in cases {

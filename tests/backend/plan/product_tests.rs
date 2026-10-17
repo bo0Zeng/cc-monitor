@@ -72,22 +72,13 @@ fn owners_and_signers_are_resolved_to_sessions() {
     assert_eq!(owner["kind"], "subagent");
     assert_eq!(owner["sid"], MAIN);
     assert_eq!(owner["id"], SUB);
-    assert_eq!(owner["alive"], true);
-    assert_eq!(owner["activity"], "needs_you");
+    assert_eq!(owner["face"]["live"]["is"], "yes");
+    assert_eq!(owner["face"]["live"]["activity"], "needs_you");
     assert_eq!(owner["needs"], "approve");
     let signs = &cell(&m.doc, "A1-1")["signs"];
     assert_eq!(signs[1]["by"]["kind"], "unknown");
     assert_eq!(signs[1]["by"]["id"], STRANGER);
     assert_eq!(signs[1]["by"]["sid"], Value::Null);
-    // 排序用的毫秒由核心写（界面「新的在上」只按它排）；读不出时刻 ⇒ null。
-    assert_eq!(signs[0]["atMs"], 1_767_225_600_000i64);
-    assert_eq!(signs[1]["atMs"], 1_767_312_000_000i64);
-    let mut odd = dump("/w");
-    odd["slices"][0]["cells"][1]["signs"][0]["at"] = serde_json::json!("不是时刻");
-    assert_eq!(
-        cell(&make(&odd, &who).doc, "A1-1")["signs"][0]["atMs"],
-        Value::Null
-    );
     // 签它的那一位：pb 还没给 ⇒ `null`；给了照样对到会话。
     assert_eq!(cell(&m.doc, "A1-1")["signer"], Value::Null);
     let mut d = dump("/w");
@@ -257,4 +248,67 @@ fn every_slice_says_whether_it_only_writes_docs() {
     let mut broken = dump_broken("/w");
     broken["slices"][0]["docs_only"] = serde_json::json!(true);
     assert_eq!(make(&broken, &who).doc["slices"][0]["docsOnly"], true);
+}
+
+/// 计划页照画的几样由这里数好、排好、写好：块根格的直接子做完几格 · 行尾那一个原因短词 · 没做完的格数 · 签收新的在上。
+#[test]
+fn counts_order_and_short_words_come_ready_for_the_page() {
+    let m = made();
+    let sl = &m.doc["slices"][0];
+    // 块根格 A1 的直接子：A1-1 做完了 · A1-2 没做完；顶块的根格不在片里 ⇒ null。
+    assert_eq!(sl["blocks"][1]["inside"], json!({"done": 1, "of": 2}));
+    assert_eq!(sl["blocks"][0]["inside"], Value::Null);
+    // 不做了的直接子不算。
+    let mut d = dump("/w");
+    d["slices"][0]["cells"][2]["status"] = json!("不做了");
+    assert_eq!(
+        make(&d, &who).doc["slices"][0]["blocks"][1]["inside"],
+        json!({"done": 1, "of": 1})
+    );
+    assert_eq!(
+        cell(&m.doc, "A1")["whyShort"],
+        json!({"text": copy_core::copy_text("plan.whyShort.inside", &[("done", "1"), ("of", "2")]), "wait": false})
+    );
+    assert_eq!(
+        cell(&m.doc, "A1-2")["whyShort"],
+        json!({"text": copy_core::copy_text("plan.whyShort.nosign", &[]), "wait": false})
+    );
+    assert_eq!(cell(&m.doc, "A1-1")["whyShort"], Value::Null);
+    let mut d = dump("/w");
+    d["slices"][0]["cells"][0]["why"] = json!("等上一级收下");
+    d["slices"][0]["cells"][2]["why"] = json!("pb 新说法");
+    let m2 = make(&d, &who);
+    assert_eq!(
+        cell(&m2.doc, "A1")["whyShort"],
+        json!({"text": copy_core::copy_text("plan.whyShort.upper", &[]), "wait": true})
+    );
+    assert_eq!(
+        cell(&m2.doc, "A1-2")["whyShort"],
+        json!({"text": "pb 新说法", "wait": false}),
+        "认不出 ⇒ 照出 pb 原话"
+    );
+    // 没做完的格：A1 · A1-2（A1-1 做完了 · A2 不做了）。
+    assert_eq!(sl["openCells"], 2);
+    // 签收新的在上：A1-1 签过两次，后签的那条在前。
+    assert_eq!(
+        sl["recentSigns"],
+        json!([{"cell": "A1-1", "i": 1}, {"cell": "A1-1", "i": 0}])
+    );
+    let broken = make(&dump_broken("/w"), &who);
+    assert_eq!(broken.doc["slices"][0]["openCells"], 0);
+    assert_eq!(broken.doc["slices"][0]["recentSigns"], json!([]));
+}
+
+/// 读不出时刻的签收排在最后（同为读不出的照原来的先后）。
+#[test]
+fn signs_without_a_readable_time_go_last() {
+    let mut d = dump("/w");
+    d["slices"][0]["cells"][0]["signs"] = json!([
+        {"at": "不是时刻", "by": null, "reason": "a", "refs": []},
+        {"at": "2025-12-31T00:00:00Z", "by": null, "reason": "b", "refs": []}
+    ]);
+    assert_eq!(
+        make(&d, &who).doc["slices"][0]["recentSigns"],
+        json!([{"cell": "A1-1", "i": 1}, {"cell": "A1-1", "i": 0}, {"cell": "A1", "i": 1}, {"cell": "A1", "i": 0}])
+    );
 }

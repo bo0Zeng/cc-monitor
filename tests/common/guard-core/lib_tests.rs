@@ -19,10 +19,8 @@ use super::*;
 ///
 /// 🔴 **⚠ 别把本条读成「自摘在本仓一处都不生效」**。
 /// 这一段先前逐字就是那么写的，而**那句话是过宽的**：后缀比命不命中只取决于
-/// 扫描根的字符串里有没有和 `file!()` 同一段 `..`。现打：backend 的
-/// `guard_support::tests_root()` 逐字是 `CARGO_MANIFEST_DIR.join("../../tests/backend")`
-/// —— 根自己带着那段 `..` ⇒ 在那棵树上自摘**真的落刀**（`plugin_walk_fixture` 那一趟，
-/// `P4` 当轮已改成明写名单）。**本条钉的是本 crate 这一棵，钉不住那一棵。**
+/// 扫描根的字符串里有没有和 `file!()` 同一段 `..`：哪天有人拼出一个带 `..` 的根，那棵树上自摘就会真的落刀。
+/// **本条钉的是本 crate 这一棵，钉不住别的根。**
 /// 逐侧读数见 [`scan_tree_excluding_self`] 头注那张表。
 ///
 /// · 它是 [`a_path_attribute_caller_file_silently_fails_to_exclude`] 的**加强版** ——
@@ -107,8 +105,8 @@ fn a_named_exclusion_actually_drops_that_file() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let files = scan_tree_excluding(&root, &["rs"], &["common/guard-core/src/lib.rs"]);
     assert!(
-        files.is_empty(),
-        "明写名单没把 `lib.rs` 摘掉，实得 {:?}",
+        !files.iter().any(|(p, _)| p.ends_with("lib.rs")) && !files.is_empty(),
+        "明写名单没把 `lib.rs` 摘掉（或把别的也摘了），实得 {:?}",
         files.iter().map(|(p, _)| p).collect::<Vec<_>>()
     );
     // 对照组：名单为空 ⇒ 它必须回来（否则上面那个「为空」是遍历坏了）。
@@ -151,7 +149,7 @@ fn a_windows_shaped_caller_file_still_excludes_the_caller() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let files = scan_tree_excluding_self(&root, &["rs"], r"common\guard-core\src\lib.rs");
     assert!(
-        files.is_empty(),
+        !files.iter().any(|(p, _)| p.ends_with("lib.rs")) && !files.is_empty(),
         "反斜杠形的 `caller_file` 没摘掉调用者 —— 摘除在 Windows 上是空转的，实得 {:?}",
         files.iter().map(|(p, _)| p).collect::<Vec<_>>()
     );

@@ -41,6 +41,7 @@ import { describe, it, expect } from "vitest";
 import { buildLedger, type Ledger } from "../../evidence/S25-class-ledger.ts";
 import { toPosix } from "../../test-support/posix-path.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
+import { nonEmpty } from "../../test-support/non-empty.ts";
 
 /**
  * ★ **全局样式文件登记表**（M①）。今天 10 份，全是三入口拆分时按「哪几个窗口要它」切出来的。
@@ -162,11 +163,11 @@ describe("〔UC2〕M② 逐文件类型 == 类名集合（逐字）", () => {
   it("每份 .module.css 都有 .module.d.css.ts，全文 == 规范文本；没有孤儿声明", () => {
     const led = ledger();
     const mods = moduleFiles(led);
-    expect(mods.length, "一份 `.module.css` 都没有 —— 本组零命中地绿（件 10 的示范被删了？）").toBeGreaterThan(0);
+    nonEmpty(mods);
     const wrong: string[] = [];
     for (const f of mods) {
       const classes = [...(led.moduleClasses.get(f)?.keys() ?? [])];
-      expect(classes.length, `${f} 里一个类都没抽到 —— 类型会是空对象，下面那条恒等照样成立`).toBeGreaterThan(0);
+      nonEmpty(classes);
       const want = renderModuleDecl(f, classes);
       const p = resolve(REPO_ROOT, declOf(f));
       const got = existsSync(p) ? readFileSync(p, "utf8") : "<不存在>";
@@ -281,7 +282,7 @@ describe("〔UC2〕M⑤ tsc 真吃到逐文件类型（仓里的 tsconfig）", (
 
   it("开着 allowArbitraryExtensions（仓里的真值）：真类零诊断、拼错恰一条 TS2339", () => {
     const res = probe({});
-    expect(res.length, "没有探针 —— 没有 module，本条零命中地绿").toBeGreaterThan(0);
+    nonEmpty(res);
     for (const r of res) {
       expect(r.codes, `${r.file}：${r.texts.join(" | ")}`).toEqual([2339]);
       expect(r.texts[0]).toContain("uc2TypoProbe");

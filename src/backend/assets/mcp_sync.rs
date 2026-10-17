@@ -13,20 +13,20 @@
 //! 可疑项里「对面有没有这个路径 / 这个命令」是**写入那一台机器上的事实**，只有那台机器的后端答得了。
 //! ⇒ 这条命令由**要被写的那一台**的后端跑（推 ⇒ 远端那台；拉 ⇒ 本机那台）；本机远端同一条命令，只差 origin。
 //! monitor 那一侧（`src/frontend/shell/src/mcp_sync.rs`）只编排 I/O：经两台各自的后端读两份原文、把原文交到这里、
-//! 按这里答的「写哪几条」去改对面那份、经那台后端 `files-put` 写（CAS）。
+//! 按这里答的「写哪几条」去改对面那份、经那台后端 `Door::put` 写（CAS）。
 //!
 //! # 交什么（一份判定，三件事）
 //!
-//! 1. **差异**：每个条目名一行，四态闭集 [`STATES`]（`new` · `same` · `differs` · `only-there`）。
+//! 1. **差异**：每个条目名一行，四态闭集（`new` · `same` · `differs` · `only-there`）。
 //!    相等 = JSON 值相等（对象键序无关）。
-//! 2. **可疑项**：只看 stdio 那四个字段（`command` · `args[i]` · `env.<键>` · `cwd`），种类闭集 [`SUSPECT_KINDS`]，
-//!    每条带一格**这台机器上的事实**（[`THERE`]）。规则住 [`candidates`]（纯）与 [`judge`]（纯，事实是参数）。
+//! 2. **可疑项**：只看 stdio 那四个字段（`command` · `args[i]` · `env.<键>` · `cwd`），种类是闭集，
+//!    每条带一格**这台机器上的事实**（`present` · `absent` · `foreign` · `unknown`）。规则住 [`candidates`]（纯）与 [`judge`]（纯，事实是参数）。
 //! 3. **写哪几条**（给了 `take` 才答）：`differs` 的必须在 `overwrite` 里点名，否则**整趟拒**（`needs_consent`）——
 //!    「对面有不同就问盖不盖」这一问不许被界面静默跳过；`only-there` 永远不碰（没有「镜像删除」）。
 //!
 //! # 它**不**做什么
 //!
-//! 不读用户的文件（两份原文由调用方经文件管理那一面 `files-peek` 读来 —— 读的那一份与 CAS 期望的那一份
+//! 不读用户的文件（两份原文由调用方经文件管理那一面 `Door::peek` 读来 —— 读的那一份与 CAS 期望的那一份
 //! 必须是同一个读法）· 不写盘 · 不改写任何一条配置（写的内容由 monitor 从原文里原样取）。
 //! 事实只有两种：`stat` 一条绝对路径 · 在这个后端进程的 `PATH` 上找一个名字。
 
@@ -36,16 +36,6 @@ use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::path::Path;
-
-/// 差异的四态（线上名）。**闭集**：界面文案表按它逐键给字（跨半边两向相等）。
-#[cfg_attr(not(test), allow(dead_code))] // 只被判据读（后端逐态对拍 ＋ 跨半边对界面文案表），同 `inbound::CommandSpec`
-pub(crate) const STATES: &[&str] = &["new", "same", "differs", "only-there"];
-/// 可疑项的三种（线上名）。闭集，同上。
-#[cfg_attr(not(test), allow(dead_code))] // 只被判据读（后端逐态对拍 ＋ 跨半边对界面文案表），同 `inbound::CommandSpec`
-pub(crate) const SUSPECT_KINDS: &[&str] = &["abs-path", "command-missing", "command-relative"];
-/// 可疑项在这台机器上的事实（线上名）。闭集，同上。`command-relative` 那一种不探，这一格是 `null`。
-#[cfg_attr(not(test), allow(dead_code))] // 只被判据读（后端逐态对拍 ＋ 跨半边对界面文案表），同 `inbound::CommandSpec`
-pub(crate) const THERE: &[&str] = &["present", "absent", "foreign", "unknown"];
 
 /// 本族的应答。
 

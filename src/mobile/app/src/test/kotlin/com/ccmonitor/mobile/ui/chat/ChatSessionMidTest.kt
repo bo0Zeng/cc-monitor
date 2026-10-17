@@ -1,13 +1,13 @@
 package com.ccmonitor.mobile.ui.chat
 
-import com.ccmonitor.mobile.core.claude.link.CanSwitch
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.Said
-import com.ccmonitor.mobile.core.claude.link.SessionFate
-import com.ccmonitor.mobile.core.claude.link.Switches
-import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
+import com.ccmonitor.mobile.core.claude.link.wire.AgentPick
+import com.ccmonitor.mobile.core.claude.link.wire.Allow
+import com.ccmonitor.mobile.core.claude.link.wire.CanWord
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.ui.Faces
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
@@ -37,8 +37,8 @@ class ChatSessionMidTest {
         }
     }
 
-    private val opus = NewSessionPick("opus", "Opus")
-    private val plan = NewSessionPick("plan", "规划模式")
+    private val opus = AgentPick("opus", "Opus")
+    private val plan = AgentPick("plan", "规划模式")
 
     @Test
     fun `换模型：转圈期间两颗都在换、读回 done 才换成读回的字；勾上换成的那一项`() =
@@ -67,7 +67,7 @@ class ChatSessionMidTest {
             val replies = ArrayDeque(listOf<Reply>(Reply.Ok(mapOf("result" to "done", "model" to "Sonnet", "said" to null)), Reply.TimedOut, Reply.Ok(mapOf("result" to "unsure", "model" to null, "said" to "结果未知，看一眼终端"))))
             val s = existing(link) { cmd, _ -> if (cmd == "session-model") replies.removeFirst() else null }
             runCurrent()
-            s.switchModel(NewSessionPick("sonnet", "Sonnet"))
+            s.switchModel(AgentPick("sonnet", "Sonnet"))
             runCurrent()
             assertEquals("Sonnet", s.state.value.model.text)
             s.switchModel(opus)
@@ -98,7 +98,7 @@ class ChatSessionMidTest {
             runCurrent()
             assertEquals("规划模式", s.state.value.permission.text)
             assertEquals(listOf(mapOf("sid" to "s1", "mode" to "plan", "client" to "mobile")), link.calls("session-permission"))
-            s.switchPermission(NewSessionPick("default", "逐个确认"))
+            s.switchPermission(AgentPick("default", "逐个确认"))
             runCurrent()
             assertEquals("规划模式", s.state.value.permission.text)
             assertEquals("先答完需手动", s.state.value.note)
@@ -106,35 +106,38 @@ class ChatSessionMidTest {
         }
 
     @Test
-    fun `chip 的字：打开时照 history-facts 那台写好的两个字；换成过就以读回的为准`() =
+    fun `chip 的字：打开时照 history-facts 那台写好的两个字、模型抽屉勾 modelPick；换成过就以读回的为准`() =
         runTest {
             val link = FakeCoreLink()
             val s =
                 existing(link) { cmd, _ ->
                     when (cmd) {
-                        "history-facts" -> Reply.Ok(mapOf("modelText" to "Opus 4.5", "permissionModeText" to "自动接受编辑"))
+                        "history-facts" -> Reply.Ok(mapOf("modelText" to "Opus 4.5", "modelPick" to "opus", "permissionModeText" to "自动接受编辑"))
                         else -> null
                     }
                 }
             runCurrent()
             assertEquals(listOf(mapOf("path" to "/p/s1.jsonl")), link.calls("history-facts"))
             assertEquals("Opus 4.5", s.state.value.model.text)
+            assertEquals("opus", s.state.value.model.value)
             assertEquals("自动接受编辑", s.state.value.permission.text)
         }
 
     @Test
-    fun `能不能换照会话帧的 switch；离开活了照那一帧带的；那台离线 ⇒ 两颗都灰、写离线那一句`() =
+    fun `能不能换照那台给的脸上的 can；离开活了照那一帧的脸；那台离线 ⇒ 两颗都灰、写离线那一句`() =
         runTest {
             val link = FakeCoreLink()
             val s = existing(link) { _, _ -> null }
-            link.report("s1", "/h/proj", switch = Switches(CanSwitch("本轮结束后可换模型"), CanSwitch(null)))
+            val idle = Faces.of("live-idle")
+            link.report("s1", "/h/proj", idle.copy(can = idle.can.copy(model = Allow(CanWord.NO, "本轮结束后可换模型"))))
             runCurrent()
             assertEquals("本轮结束后可换模型", s.state.value.model.blocked)
             assertNull(s.state.value.permission.blocked)
-            link.table.value = link.table.value.copy(sessions = emptyMap(), fates = mapOf("s1" to SessionFate(SessionFate.State.ENDED, "已结束", Switches(CanSwitch("会话已退出"), CanSwitch("会话已退出")))))
+            link.table.value = link.table.value.copy(sessions = emptyMap(), faces = mapOf("s1" to Faces.of("ended")))
             runCurrent()
-            assertEquals("会话已退出", s.state.value.permission.blocked)
-            link.state.value = LinkState.Down(Said("", ""), needsHand = false)
+            assertNull(s.state.value.model.blocked)
+            assertNull(s.state.value.permission.blocked)
+            link.state.value = LinkState.Down(Said("", ""))
             runCurrent()
             val off = copyText("newSession.machine.offline", "machine" to "box")
             assertEquals(off to off, s.state.value.model.blocked to s.state.value.permission.blocked)
@@ -165,6 +168,7 @@ class ChatSessionMidTest {
             val facts =
                 mapOf(
                     "recent" to emptyList<Any>(),
+                    "tmux" to true,
                     "agents" to
                         listOf(
                             mapOf(
@@ -177,14 +181,14 @@ class ChatSessionMidTest {
                             ),
                         ),
                 )
-            val s = existing(link) { cmd, _ -> if (cmd == "session-new-facts") Reply.Ok(facts) else null }
+            val s = existing(link) { cmd, _ -> if (cmd == "session-open-facts") Reply.Ok(facts) else null }
             runCurrent()
             s.loadPicks()
             runCurrent()
-            assertEquals(Picks(listOf(opus), listOf(plan), NewSessionPick("default", "默认"), "换模型也改此号以后新会话的默认"), s.state.value.picks)
+            assertEquals(Picks(listOf(opus), listOf(plan), AgentPick("default", "默认"), "换模型也改此号以后新会话的默认"), s.state.value.picks)
             s.loadPicks()
             runCurrent()
-            assertEquals("问到过就不再问", 1, link.calls("session-new-facts").size)
+            assertEquals("问到过就不再问", 1, link.calls("session-open-facts").size)
         }
 
     @Test

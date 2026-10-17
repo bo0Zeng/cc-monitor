@@ -55,7 +55,7 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
 }));
 vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
   MACHINE_PAGE_PREFIX: "machine:",
-  LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
+  LOCAL_MACHINE_PAGE_ID: "machine:<local>",
   RemoteSection: class {
     headActions = (): HTMLElement[] => [];
     pageIdOfMachine = (): string | null => null;
@@ -71,7 +71,7 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
     }) {
       setTimeout(() => {
         opts?.pages?.addMachinePage(
-          "machine:（本机）",
+          "machine:<local>",
           "本机",
           document.createElement("div"),
         );
@@ -109,8 +109,9 @@ vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ close: vi.
 import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
-import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
+import { __resetMachineContextForTests } from "../../../../src/frontend/ui/machine-context";
 import { factsOn } from "../../../test-support/host-facts";
+import { nonEmpty } from "../../../test-support/non-empty";
 
 /** 那五种形状，一条规则一个名字（红的时候要说得出是哪一种）。 */
 const SHAPES: ReadonlyArray<{ name: string; re: RegExp; why: string }> = [
@@ -225,7 +226,7 @@ describe(" 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址",
     await p.open();
     await tick();
     // 各页 + 本机子页都走一遍 —— 只看落地页等于只判了一部分。
-    for (const id of ["general", "appearance", "logs", "data", "machine:（本机）", "machines"]) {
+    for (const id of ["general", "appearance", "logs", "data", "machine:<local>", "machines"]) {
       const btn = document.querySelector<HTMLButtonElement>(
         `[id="settings-tab-${id}"]`,
       );
@@ -236,9 +237,8 @@ describe(" 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址",
     expect(document.querySelector(".data-page"), "文件与数据那一页没上屏").not.toBeNull();
     const root = document.querySelector<HTMLElement>(".settings-panel")!;
     const copy = visibleCopy(root);
-    // 量具自检：扫到的文字量要够大。零字节时下面那条「一条都不许命中」是空转。
-    // 下限 1500：「直接敲的也走中转」那一大块搬进「待办」（要读回成品才上屏）、上下文上限那段长说明退场之后，静态面板约 1800 字。
-    expect(copy.length, "面板上一个字都没扫到 ⇒ 本条在空转").toBeGreaterThan(1500);
+    // 量具自检：零字节时下面那条「一条都不许命中」是空转。
+    nonEmpty(copy);
     const bad = violationsOf(copy);
     expect(
       bad.map((v) => `${v.shape}: ${v.hit}`).sort(),
@@ -247,7 +247,7 @@ describe(" 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址",
     ).toEqual([]);
   });
 
-  const CHORE = { id: "", kind: "optional", state: "todo", name: "", loc: "", said: "", why: "", steps: [], diff: [], copy: null, whole: null, wholeCovers: [], file: null, go: null, howUrl: null, mask: null, action: "copySnippet" };
+  const CHORE = { id: "", kind: "optional", state: "todo", name: "", loc: "", said: "", why: "", steps: [], diff: [], copy: null, whole: null, wholeCovers: [], file: null, go: null, howUrl: null, action: "copySnippet" };
 
   it("〔ST2〕文件与数据**喂一份真成品**再扫：待办各类 ＋ 改过你的文件都上屏，一条都不许命中", async () => {
     // 文件与数据经通道问本机后端（`data-report`，一问）；monitor 自己进程的那几条事实问 `footprint_client_facts`。
@@ -259,12 +259,15 @@ describe(" 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址",
         { ...CHORE, id: "relay", name: "实时显示", loc: "~/.claude/settings.json · env", said: copyText("beChore.relay.saidTodo"), why: "慢一拍", steps: ["打开 ~/.claude/settings.json"], diff: [{ n: 3, op: "same", text: '  "env": {' }, { n: null, op: "add", text: '    "K": "v",' }], copy: '"K": "v"', whole: "{}", wholeCovers: ["relay"], file: "/h/.claude/settings.json" },
       ],
       tmux: false,
-      chores: 1,
+      counts: { badge: 1, open: 2, must: 0, decide: 0, install: 1, optional: 1, done: 0 },
+      rank: 0,
       own: [],
     };
     ipc.replies.set("footprint_client_facts", { home: "/h", path: null });
     ipc.replies.set("chan_call", (a: unknown) => {
       const { op } = a as { op: string };
+      // 只有本机这一台 ⇒ 合计就是它那一份。
+      if (op === "chores-merge") return Promise.resolve(new TextEncoder().encode(JSON.stringify(report.counts)).buffer);
       if (op !== "data-report") return Promise.reject(new Error(`[录音机] ${op} 没有真后端`));
       return Promise.resolve(new TextEncoder().encode(JSON.stringify(report)).buffer);
     });

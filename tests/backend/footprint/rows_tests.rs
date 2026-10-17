@@ -427,7 +427,7 @@ fn prose_paths_are_rejected() {
     assert!(every_declared_path_resolves().violations.is_empty());
 }
 
-// 原先这里有一条 `locality_is_derivable_from_destination_today`，**删了**（T02 审计重要 1）。
+// 原先这里有一条按落点推本地 / 远端的判据，**删了**（T02 审计重要 1）。
 // 审计实测它是**同义反复**：`PathResolution::Remote` 只由 `RemoteHomeRelative` 臂产生、
 // 且必然产生，所以 `matches!(res, Remote(_)) == remote` 对任意输入恒真——把 `ccm` 的
 // `destination` 翻成 `LocalHomeRelative`（会让两行从"远端未确定"变成去 stat 本机 `~/.bashrc`）
@@ -933,16 +933,8 @@ fn destination_checks_still_run_under_every_host() {
 fn declared_destinations_are_pinned_to_the_real_writers() {
     use guard_core::pin_definition;
 
-    // ① ccm：`sftp.rs` 里那个常量就是真落点
-    let sftp = include_str!("../../../src/frontend/shell/src/sftp.rs");
-    // 落点就是后端本身：`sftp.rs` 的落点常量取自 `relay_route_core`（两半同一份），那一份逐字是 `.cc-monitor/bin/ccm`。
-    pin_definition(
-        sftp,
-        "pub(crate) const LANDING_REL: &str = relay_route_core::BACKEND_LANDING_REL;",
-        "pub(crate) const LANDING_REL",
-        "ccm 远端落点",
-    )
-    .unwrap();
+    // ① ccm：真落点只由那台后端自己写（`Own::place_staged` 换进 · `Own::clear_landing` 删掉，都取 `relay_route_core` 那一个常量），
+    //   那一份逐字是 `.cc-monitor/bin/ccm`。
     pin_definition(
         include_str!("../../../src/common/relay-route-core/src/lib.rs"),
         r#"pub const BACKEND_LANDING_REL: &str = ".cc-monitor/bin/ccm";"#,
@@ -971,7 +963,7 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
     assert_eq!(
         remote_dests,
         vec![&ToolDestination::RemoteHomeRelative(".cc-monitor/bin/ccm")],
-        "注册表声明的 ccm 远端落点与 sftp.rs 的 LANDING_REL 不一致"
+        "注册表声明的 ccm 远端落点与 relay_route_core::BACKEND_LANDING_REL 不一致"
     );
 
     // ② 项目 MCP：写进了那台后端（`assets/mcp_edit.rs`），落点是资产面那一家的项目级 MCP 文件名
@@ -992,10 +984,7 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
     );
 
     // ③ 反向自检：确认上面读到的是真源码，不是空串
-    assert!(
-        sftp.len() > 10_000 && mcp.len() > 3_000,
-        "include_str! 读空了"
-    );
+    assert!(mcp.len() > 3_000, "include_str! 读空了");
 }
 
 /// **用户选的 shell profile 不许冒充常量**：`UserShellProfile` 的每一个载体，申报路径里都有它那种 profile 的占位符
@@ -1136,7 +1125,7 @@ fn the_prompt_tier_really_looks_before_it_speaks() {
             e.tier,
             EnvTier::UserInstallsWePrompt,
             "`{id}` 不在「{}」那一档 —— 先查闭集，别改断言",
-            EnvTier::UserInstallsWePrompt.label()
+            format!("{:?}", EnvTier::UserInstallsWePrompt)
         );
     }
 
@@ -1246,10 +1235,8 @@ fn every_row_carries_its_tier_and_the_owed_one_never_reads_as_not_ours() {
     let seen: BTreeSet<EnvTier> = rows.iter().map(|r| r.tier).collect();
     assert!(
         seen.len() >= 3,
-        "这一页上只出现了 {} 档（{:?}）—— 分母是 {} 档",
+        "这一页上只出现了 {} 档（{seen:?}）",
         seen.len(),
-        seen.iter().map(|t| t.label()).collect::<Vec<_>>(),
-        EnvTier::ALL.len()
     );
 
     // ③ 欠装口那一档：「所有文案…不能把开发过程混进去」⇒ 说现状（这里装不了、要你自己装），

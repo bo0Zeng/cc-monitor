@@ -96,7 +96,7 @@ fn plan_and_question_choices() {
 #[test]
 fn the_first_answer_lands_and_the_rest_are_already_answered() {
     let sid = "t-first";
-    let mut rx = open(AGENT, approve(sid), 9001);
+    let mut rx = open_id(AGENT, approve(sid), 9001).1;
     let a = pending(sid).pop().expect("挂上了");
     assert_eq!(
         answer_of(sid, &a.id, "always-0").unwrap(),
@@ -120,7 +120,7 @@ fn the_first_answer_lands_and_the_rest_are_already_answered() {
 fn when_the_hook_side_goes_away_the_request_is_withdrawn_and_closed_elsewhere() {
     let sid = "t-gone";
     let desk = Desk::new();
-    let _rx = open(AGENT, approve(sid), desk.conn());
+    let _rx = open_id(AGENT, approve(sid), desk.conn()).1;
     let a = pending(sid).pop().unwrap();
     drop(desk); // hook 那条连接断了（终端先答了 · 被打断 · 到点）
     assert!(pending(sid).is_empty());
@@ -137,7 +137,7 @@ fn when_the_hook_side_goes_away_the_request_is_withdrawn_and_closed_elsewhere() 
 #[test]
 fn a_dead_receiver_is_closed_elsewhere_not_answered() {
     let sid = "t-deadrx";
-    drop(open(AGENT, approve(sid), 9002));
+    drop(open_id(AGENT, approve(sid), 9002).1);
     let a = pending(sid).pop().unwrap();
     assert_eq!(
         answer_of(sid, &a.id, "allow").unwrap_err().0,
@@ -152,13 +152,16 @@ fn a_sub_agent_request_lands_in_needs_carries_its_id_and_is_answered() {
     a.agent_id = Some("agent-7".into());
     a.agent_type = Some("general-purpose".into());
     a.blocks_terminal = true;
-    let mut rx = open(AGENT, a, 9003);
+    let mut rx = open_id(AGENT, a, 9003).1;
     // 挡着终端：pidfile 不说在等 ⇒ 照挂着的请求补出一份 needs。
     let needs =
-        crate::observe::facts_query::dress_ask_with(None, pending(sid).into_iter().next(), 0)
+        crate::observe::recognize::facts::dress_ask_with(None, pending(sid).into_iter().next(), 0)
             .expect("有挂着的就有 needs");
     let ask = needs.ask.clone().expect("带 ask");
-    assert_eq!(needs.kind, crate::observe::facts_query::NeedsKind::Approve);
+    assert_eq!(
+        needs.kind,
+        crate::observe::recognize::facts::NeedsKind::Approve
+    );
     assert_eq!(needs.tool.as_deref(), Some("Bash"));
     assert_eq!(ask.run.as_ref().map(|r| r.id.as_str()), Some("agent-7"));
     assert_eq!(
@@ -184,12 +187,12 @@ fn release_hands_back_no_decision() {
     let mut a = approve(sid);
     a.agent_id = Some("a".into());
     a.blocks_terminal = true;
-    let mut rx = open(AGENT, a, 9004);
+    let mut rx = open_id(AGENT, a, 9004).1;
     let id = pending(sid).pop().unwrap().id;
     answer_of(sid, &id, "release").unwrap();
     assert_eq!(rx.try_recv().unwrap(), None, "不给决定 ⇒ 框在终端里出来");
     let id2 = {
-        let _rx2 = open(AGENT, approve(sid), 9004);
+        let _rx2 = open_id(AGENT, approve(sid), 9004).1;
         pending(sid).pop().unwrap().id
     };
     assert_eq!(
@@ -202,7 +205,7 @@ fn release_hands_back_no_decision() {
 #[test]
 fn notes_and_picks_are_checked_before_anything_is_delivered() {
     let sid = "t-check";
-    let mut rx = open(AGENT, approve(sid), 9005);
+    let mut rx = open_id(AGENT, approve(sid), 9005).1;
     let id = pending(sid).pop().unwrap().id;
     assert_eq!(
         answer_of(sid, &id, "deny-note").unwrap_err().0,
@@ -258,7 +261,7 @@ fn notes_and_picks_are_checked_before_anything_is_delivered() {
             ],
         },
     ];
-    let mut rx = open(AGENT, q, 9006);
+    let mut rx = open_id(AGENT, q, 9006).1;
     let id = pending(qsid).pop().unwrap().id;
     let try_picks =
         |p: Value| answer(&json!({"sid": qsid, "ask": id, "choice": "answer", "picks": p}));
@@ -286,21 +289,22 @@ fn notes_and_picks_are_checked_before_anything_is_delivered() {
 
 #[test]
 fn needs_without_a_pending_request_say_only_in_the_terminal() {
-    let n = crate::observe::facts_query::needs_of(
+    let n = crate::observe::recognize::facts::needs_of(
+        crate::agents::record_tree_kind().unwrap_or_default(),
         &[],
-        Some(&crate::observe::facts_query::PidWait {
+        Some(&crate::observe::recognize::facts::PidWait {
             waiting_for: Some(crate::agents::WaitOn::Dialog),
             since_ms: None,
             read_at_ms: 0,
         }),
     );
-    let n = crate::observe::facts_query::dress_ask_with(n, None, 0).unwrap();
+    let n = crate::observe::recognize::facts::dress_ask_with(n, None, 0).unwrap();
     assert!(n.ask.is_none());
     assert_eq!(
         n.manual_text.as_ref().map(|w| w.0.clone()),
         Some(copy_core::copy_text("beAsk.manual.terminal", &[]))
     );
-    assert!(crate::observe::facts_query::dress_ask_with(None, None, 0).is_none());
+    assert!(crate::observe::recognize::facts::dress_ask_with(None, None, 0).is_none());
 }
 
 #[tokio::test]
@@ -308,6 +312,7 @@ async fn an_agent_without_an_answer_door_gets_no_decision_at_once() {
     let v = ask(
         9007,
         crate::wire::typed::take(&json!({"agent": "nobody", "hook": {}})).unwrap(),
+        |_| None,
     )
     .await;
     assert_eq!(serde_json::to_value(v).unwrap(), json!({"decision": null}));
@@ -384,4 +389,179 @@ fn a_hook_that_came_by_the_environment_answers_only_for_the_session_ccm_started(
         EnvRead::Value("1".into())
     ));
     assert!(!hook::admitted(via, ours, false, EnvRead::Unreadable));
+}
+
+// ───────────────────────── 没人答时自动答 ─────────────────────────
+// 假时钟（tokio 停着的钟，`advance` 才走）；hook 那一份照那一家的形状编（不起真的会话）。
+
+/// 那一家（claude）的 hook 交来的那一份：`tool` 是工具名，提问那一种带一道题。
+fn hook_of(sid: &str, tool: &str) -> AskReq {
+    let input = if tool == "AskUserQuestion" {
+        json!({"questions": [{"question": "Which?", "header": "h", "multiSelect": false,
+            "options": [{"label": "A", "description": "d"}]}]})
+    } else {
+        json!({"command": "touch a", "plan": "p"})
+    };
+    crate::wire::typed::take(&json!({"agent": AGENT, "hook": {
+        "hook_event_name": "PermissionRequest", "session_id": sid, "tool_name": tool, "tool_input": input,
+    }}))
+    .unwrap()
+}
+
+fn on(min: u32, say: Option<&str>) -> Option<AutoAnswer> {
+    Some(AutoAnswer {
+        after_min: min,
+        say: say.map(str::to_string),
+    })
+}
+
+/// 挂上（在别的任务里等），等它真挂上了（或已收场）再交回。
+async fn hang(
+    conn: u64,
+    req: AskReq,
+    setting: Option<AutoAnswer>,
+) -> tokio::task::JoinHandle<AskReply> {
+    let sid = req.hook["session_id"].as_str().unwrap().to_string();
+    let h = tokio::spawn(ask(conn, req, move |_| setting));
+    // 挂上了，或已经收场（到点即答的那种：不在这里空转）。
+    while pending(&sid).is_empty() && !h.is_finished() {
+        tokio::task::yield_now().await;
+    }
+    h
+}
+
+async fn pass(min: u64, secs: u64) {
+    tokio::time::advance(std::time::Duration::from_secs(min * 60 + secs)).await;
+    for _ in 0..8 {
+        tokio::task::yield_now().await;
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_question_nobody_answers_gets_the_sentence_when_the_time_is_up() {
+    let sid = "t-auto-due";
+    let h = hang(
+        9101,
+        hook_of(sid, "AskUserQuestion"),
+        on(10, Some("照推荐的来")),
+    )
+    .await;
+    pass(9, 59).await;
+    assert!(!h.is_finished(), "没到点不答");
+    assert_eq!(pending(sid).len(), 1);
+    let id = pending(sid)[0].id.clone();
+    pass(0, 2).await;
+    assert!(h.is_finished(), "到点替人答了");
+    let got = h.await.unwrap().decision.expect("有决定");
+    let d = &got["hookSpecificOutput"]["decision"];
+    assert_eq!(d["behavior"], "allow");
+    assert_eq!(
+        d["updatedInput"]["answers"],
+        json!({"Which?": "照推荐的来"}),
+        "每一题答成「其他」＋ 那一句"
+    );
+    assert!(pending(sid).is_empty());
+    let said = copy_core::copy_text(
+        "beAsk.auto.answered",
+        &[
+            ("dur", &copy_core::format_duration(600_000)),
+            ("say", "照推荐的来"),
+        ],
+    );
+    assert_eq!(answered(sid).map(|w| w.0), Some(said.clone()));
+    assert!(answered_rows()
+        .iter()
+        .any(|r| r.sid == sid && r.said.0 == said));
+    // 之后桌面 · 手机再答：已有人答过，那一句是记录那一句。
+    let e = answer_of(sid, &id, "dismiss").unwrap_err();
+    assert_eq!(e, ("already_answered", said));
+    // 下一次挂上提问 ⇒ 那条记录换掉。
+    let _rx = open_id(AGENT, approve(sid), 9102).1;
+    assert_eq!(answered(sid), None);
+}
+
+#[tokio::test(start_paused = true)]
+async fn without_its_own_sentence_it_says_the_default_one() {
+    let sid = "t-auto-default";
+    let h = hang(9103, hook_of(sid, "AskUserQuestion"), on(1, None)).await;
+    pass(1, 1).await;
+    assert!(h.is_finished(), "到点替人答了");
+    let got = h.await.unwrap().decision.unwrap();
+    assert_eq!(
+        got["hookSpecificOutput"]["decision"]["updatedInput"]["answers"]["Which?"],
+        auto_say()
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_human_who_answers_first_wins_and_nothing_is_said_for_them() {
+    let sid = "t-auto-human";
+    let h = hang(9104, hook_of(sid, "AskUserQuestion"), on(5, None)).await;
+    pass(4, 0).await;
+    let a = pending(sid).pop().unwrap();
+    let q = &a.questions[0];
+    answer(&json!({"sid": sid, "ask": a.id, "choice": "answer",
+        "picks": {q.id.clone(): {"options": [q.options[0].id.clone()]}}}))
+    .unwrap();
+    pass(10, 0).await;
+    let got = h.await.unwrap().decision.unwrap();
+    assert_eq!(
+        got["hookSpecificOutput"]["decision"]["updatedInput"]["answers"]["Which?"], "A",
+        "人的答案"
+    );
+    assert_eq!(answered(sid), None, "人答了 ⇒ 不留自动答的记录");
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_terminal_answering_first_means_no_decision_and_no_record() {
+    let sid = "t-auto-term";
+    let desk = Desk::new();
+    let h = hang(desk.conn(), hook_of(sid, "AskUserQuestion"), on(5, None)).await;
+    drop(desk); // 终端那边先答了：hook 退了、连接断了
+    pass(6, 0).await;
+    assert_eq!(h.await.unwrap().decision, None);
+    assert_eq!(answered(sid), None);
+}
+
+#[tokio::test(start_paused = true)]
+async fn approvals_and_plans_are_never_answered_for_anyone() {
+    for (i, tool) in ["Bash", "ExitPlanMode"].into_iter().enumerate() {
+        let sid = format!("t-auto-gate-{i}");
+        let desk = Desk::new();
+        let h = hang(desk.conn(), hook_of(&sid, tool), on(1, None)).await;
+        pass(AUTO_MAX_MIN.into(), 1).await;
+        assert!(!h.is_finished(), "{tool}：安全闸不自动答");
+        assert_eq!(pending(&sid).len(), 1, "{tool}");
+        assert_eq!(answered(&sid), None, "{tool}");
+        drop(desk);
+        assert_eq!(h.await.unwrap().decision, None);
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn with_the_setting_off_a_question_just_waits() {
+    for (i, setting) in [None, on(0, Some("x"))].into_iter().enumerate() {
+        let sid = format!("t-auto-off-{i}");
+        let desk = Desk::new();
+        let h = hang(desk.conn(), hook_of(&sid, "AskUserQuestion"), setting).await;
+        pass(AUTO_MAX_MIN.into(), 1).await;
+        assert!(!h.is_finished(), "设置关着不答（第 {i} 种）");
+        drop(desk);
+        assert_eq!(h.await.unwrap().decision, None);
+        assert_eq!(answered(&sid), None);
+    }
+}
+
+#[test]
+fn the_setting_is_checked_before_it_is_written() {
+    assert_eq!(auto_checked(on(0, Some("x")).unwrap()), Ok(None), "0 ＝ 关");
+    assert!(auto_checked(on(AUTO_MAX_MIN + 1, None).unwrap()).is_err());
+    assert_eq!(
+        auto_checked(on(3, Some("  往下做  ")).unwrap()),
+        Ok(on(3, Some("往下做")))
+    );
+    assert_eq!(auto_checked(on(3, Some("   ")).unwrap()), Ok(on(3, None)));
+    assert!(auto_checked(on(3, Some(&"字".repeat(501))).unwrap()).is_err());
+    // 到点时 hook 还活着：至多等的那几分钟短于那一家给 hook 的期限。
+    assert!(u64::from(AUTO_MAX_MIN) * 60 < crate::agents::claudecode::asks::HOOK_TIMEOUT_SECS);
 }

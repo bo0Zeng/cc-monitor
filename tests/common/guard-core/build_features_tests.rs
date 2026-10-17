@@ -7,13 +7,10 @@
 //! （`tests/backend/build_features_tests.rs`）：`--frozen` 只认已拉下来的依赖，壳的测试任务里没有后端那批。
 
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 fn repo() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
-        .canonicalize()
-        .expect("guard-core 的上三级 = 仓根")
+    crate::addr::repo_root()
 }
 
 /// `dir` 那个 workspace 在 `extra` 那种构建下解析出的每一份 `serde_json`（`名 版本|特性`）。

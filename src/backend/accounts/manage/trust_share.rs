@@ -51,7 +51,7 @@ pub(crate) fn mark(
         )
     })?;
     if !root.is_object() {
-        return Err(copy_text("beAcctMcpShare.read.notObject", &[]));
+        return Err(copy_text("reason.content.unparsable", &[]));
     }
     let have = trusted(cells, &root);
     let edits: Vec<(Vec<String>, Value)> = dirs

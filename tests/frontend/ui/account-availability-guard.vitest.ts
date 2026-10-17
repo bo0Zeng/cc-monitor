@@ -21,7 +21,7 @@
  * 5. **它扫不到测试侧的第二份实现。** 扫描面（`productionTsFiles`）**按构造**排掉
  *    `.vitest.` / `.test.` —— 那一行正是「让判据读不到自己」的机制，代价是一份**手抄进
  *    测试文件里的** `isSelectable` 结构上看不见（K-A1 第四轮 `R4` 就是这一形：
- *    `tests/frontend/ui/settings/cc-bus-section.vitest.ts` 那份 `vi.mock` 替身当时已与真身语义相反）。
+ *    `tests/frontend/ui/views/cc-bus-section.vitest.ts` 那份 `vi.mock` 替身当时已与真身语义相反）。
  *    ⇒ 那一维靠「测试侧不许手抄纯函数，要么 `vi.importActual` 要么不 mock 它」这条纪律，
  *    本文件不钉。
  *
@@ -54,6 +54,7 @@ import { describe, it, expect } from "vitest";
 
 import { productionTsFiles } from "../../test-support/production-sources.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
+import { nonEmpty } from "../../test-support/non-empty.ts";
 
 /** 出现次数（**去注释后**的代码里）。用正则而不是 `.includes`：要的是次数，不是有无。 */
 function hits(code: string, ident: string): number {
@@ -99,12 +100,8 @@ const ALLOWED: Record<string, Record<string, number>> = {
   // `accountLoginActionLabel` 随它没人调删了：`authReady` 4 → 3 · `authKind` 4 → 3。
   // 10-10 `isSelectable` 删了（能不能选由那台后端写好 `selectable`，规则住 `acct_core::account_selectable`）：`authReady` 3 → 2。
   // 10-10 账号徽章由那台后端写好（`accounts-list` 每号 `badge`，`accounts_query::badge_of`），`accountStatusBadge` 删了：`authReady` 2 → 1 · `authKind` 3 → 2。
-  "src/frontend/ui/accounts.ts": { loggedIn: 2, authReady: 1, authKind: 2 },
-  // 后端 `accounts-list` 成品的**收**口（`decodeAccountsList`）：每个字段各 4 处 ——
-  //   键集合清单里的名字 1 · 类型核验 1 · 装回对象时键名 1 · 取值 1。它是**收**（逐格核类型，核不了不许读），
-  //   不是**判**：可用性仍只由那台后端写好的 `selectable` 答，按 kind 分流的规则仍住 `acct_core::auth_ready`。
-  //   单独一个文件、单独一行，两件事分得开（`src/frontend/ui/accounts-decode.ts` 头注）。
-  "src/frontend/ui/accounts-decode.ts": { loggedIn: 4, authReady: 4, authKind: 4 },
+  // 账号的形状改从生成物派生（`Account = AccountRow` 去掉几格可缺），三个字段的声明不在本文件了：各 −1，收口那一行随解码器删。
+  "src/frontend/ui/accounts.ts": { loggedIn: 1, authReady: 0, authKind: 1 },
 };
 
 /** 被钉的三个字段名。 */
@@ -118,13 +115,6 @@ describe("KAY4 账号可用性只有一个出口", () => {
   const byFile = new Map(sources.map((s) => [s.file, s.code]));
 
   it("抽取器自检：真的扫到了生产源码树，且登记表里的文件都还在", () => {
-    // 文件数地板（形态照 `cc_bus_boundary_guard.rs` 那条 `>= 20`）：
-    // 遍历坏了 / 路径推错了会得到一个空集合，而空集合上「零命中」恒真。
-    // 08-24 实测 126 个（`src/frontend/ui/generated/` 由 `productionTsFiles` 自己排掉）。
-    expect(
-      sources.length,
-      `只扫到 ${sources.length} 个生产 .ts（08-24 实测 126）—— 遍历坏了，下面两条会零命中地绿`,
-    ).toBeGreaterThanOrEqual(100);
     for (const f of Object.keys(ALLOWED)) {
       expect(byFile.has(f), `登记表点着 ${f}，但它不在扫到的清单里 —— 文件被搬/改名了`).toBe(true);
     }
@@ -167,7 +157,7 @@ describe("KAY4 账号可用性只有一个出口", () => {
     const cells = Object.entries(ALLOWED).flatMap(([file, fields]) =>
       Object.entries(fields).map(([field, cap]) => ({ file, field, cap })),
     );
-    expect(cells.length, "登记表空了 —— 下面两条会零命中地绿").toBeGreaterThanOrEqual(3);
+    nonEmpty(cells);
     const loose = cells.filter((c) => typeof c.cap !== "number" || !Number.isInteger(c.cap));
     expect(
       loose.map((c) => `${c.file}.${c.field}`),

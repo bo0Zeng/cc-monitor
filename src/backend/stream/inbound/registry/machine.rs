@@ -1,4 +1,4 @@
-//! 命令表 · 机器：`ssh-*` · `remote-*` · `deploy-*` · `resident-*` · `place-verdict` · `drift-report` · `powershell-*` · `authorized-keys-add` · `pubkey-push` · `backend-log` · `exit-policy-*` · `relay-optin` · `forward-*` · `ccm-*`。
+//! 命令表 · 机器：`ssh-*` · `remote-*` · `deploy-*` · `resident-*` · `place-verdict` · `drift-report` · `powershell-*` · `authorized-keys-add` · `pubkey-push` · `backend-log` · `exit-policy-*` · `forward-*` · `ccm-*`。
 
 use crate::wire::spec::CommandSpec;
 
@@ -7,13 +7,31 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   不是前端拼串」）：与 `ccm --print` 同一个计划函数，环境是「这台机器家目录里的一个新终端」。
     //   只读（不起进程、不写盘），阻塞档（读账号库 manifest ＋ 问会话快照）。
     crate::wire::typed::blocking::<crate::control::ccm::CcmPrint>("一条别名实际会执行什么"),
-    // **这台的 `ccm` 会哪些**：`ccm` 就是这台后端本身，「PATH 上那个是谁」退化成问它自己。
-    //   纯函数（拼 `--ccm-probe` 那几行），不起进程、不碰盘 ⇒ 不进阻塞档（同 `ping` 那一形）。
-    crate::wire::typed::asynchronous::<crate::control::ccm::CcmProbe>("这台的 `ccm` 会哪些"),
-    // **部署计划**：`{dial, carried, machine}` → 换成哪一格 · 落点那一份是谁 · 该不该换 · 旧落点那份删不删。
-    //   真异步（拨号 / 等远端）；一个字节都不写（放字节是 monitor 经 `files` 链路的事）。本体 `control/deploy_plan.rs`。
-    crate::wire::typed::asynchronous::<crate::control::deploy_plan::DeployPlan>(
-        "那台的后端要不要换、换成哪一格",
+    // **这台的 `ccm` 会哪些 ＋ 终端里敲它走到哪**：`ccm` 就是这台后端本身；那一格起一次登录 shell 问 `PATH`
+    //   （在 `spawn_blocking` 里等，异步档 ⇒ 撤得动：撤了不等它，那个 shell 到期限自己收）。
+    crate::wire::typed::asynchronous::<crate::control::ccm::CcmProbe>(
+        "这台的 `ccm` 会哪些、终端里敲它走到哪",
+    ),
+    // **用户级 `PATH` 那一格**（只 Windows）：`{op: read|add|remove}` → 做完现问的状态 ＋ 那一句 ＋ 那段命令（起 PowerShell ⇒ 阻塞档）。
+    crate::wire::typed::blocking::<crate::control::ccm::user_path::CcmUserPath>(
+        "`ccm` 所在目录在不在用户级 `PATH` 上 · 加 · 撤",
+    ),
+    // **给那台装 / 升级后端**：`{dial, slots, machine}` → `{action, said, build, os, ack}`；每走一步记进那台的状态成品（推 `changed {machine}`）。
+    //   本体 `control/deploy_plan.rs`（编排住 `deploy` crate，手机同一份）。
+    crate::wire::typed::asynchronous::<crate::control::deploy_plan::DeployInstall>(
+        "给那台装 / 升级后端",
+    ),
+    // **卸那台的后端**：入参同上 → `{removed, said}`（传一份暂存件、由它删落点那一份；拨号 · 等远端 ⇒ 异步档）。
+    crate::wire::typed::asynchronous::<crate::control::deploy_plan::DeployUninstall>(
+        "卸那台的后端",
+    ),
+    // **那台远端此刻的状态**：壳交接常驻那一轮的结论（`machine-round`，原样的事实）· 机器表里每台的成品（`machine-read`）。
+    //   判定在 `deploy::machine`，表在 `control/machine_state.rs`（进程里的状态 ⇒ 只在流上答）。
+    crate::wire::typed::blocking::<crate::control::machine_state::MachineRoundCmd>(
+        "交那台接常驻这一轮的结论",
+    ),
+    crate::wire::typed::blocking::<crate::control::machine_state::MachineReadCmd>(
+        "机器表里每台此刻的状态",
     ),
     // **本机那一份放不放**：`{dest, machine}` → `{action: place|keep, why}`（只读落点那一个文件 ⇒ 阻塞档）。
     //   monitor 放本机后端之前还没有常驻后端 ⇒ 跑手上那份字节的 CLI 面问它（`--place-verdict`）。本体 `control/deploy_plan.rs::answer_place`。
@@ -51,10 +69,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     crate::wire::typed::blocking::<crate::control::machines::MachinesSetCmd>(
         "改机器表（按键认那一台），写完读回、推 `changed {machines}`",
-    ),
-    // 直接敲的那一家也走中转（可选、用户自己贴）：读这台那份用户级设置文件（同步文件 I/O ⇒ 阻塞档），出状态 ＋ 要贴的那一段。
-    crate::wire::typed::blocking::<crate::faces::relay_optin_face::RelayOptin>(
-        "直接敲的 agent 也走中转",
     ),
     // 这里原是 `relay-status` / `relay-ensure`（这台机器上脱离的 `--relay` 在不在 · 起一个）：
     //   中转只住常驻后端进程里（本机远端同形），那一族随回落一形删了。

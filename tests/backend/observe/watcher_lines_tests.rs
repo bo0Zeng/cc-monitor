@@ -80,15 +80,17 @@ fn frames(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<String> {
     while let Ok(f) = rx.try_recv() {
         match f {
             Frame::Line(crate::wire::Line { seq, .. }) => out.push(format!("{seq}")),
-            Frame::SessionFileReread(_) => out.push("reread".to_string()),
+            Frame::SessionFileReread(crate::wire::SessionFileReread { lines, .. }) => {
+                out.push(format!("reread:{lines}"))
+            }
             _ => {}
         }
     }
     out
 }
 
-/// 「要后端给『seq 跨截断稳定』的保证 …… seq ＝ 当前文件里的行号，截断即换代，
-/// 先发一帧『这份文件重写了』再从 0 重投」。截短 / 原地改写 / 删了又长回来三种从 0 重读 ⇒ 出声在前、行号从 0 数。
+/// 「要后端给『seq 跨截断稳定』的保证 …… seq ＝ 当前文件里的行号，截断即换代」。截短 / 原地改写 / 删了又长回来三种从 0 重读
+/// ⇒ 照读照数、一帧行都不出，只出声一帧带重读完的行数（客户端照宣告那样从尾段取）；之后新长的行号接着数。
 #[test]
 fn a_reread_restarts_the_line_numbers_after_saying_so() {
     let (dir, path, mut state, mut sink, mut rx) = rig("seq-gen");
@@ -98,7 +100,7 @@ fn a_reread_restarts_the_line_numbers_after_saying_so() {
     // 截短
     std::fs::write(&path, b"{\"n\":9}\n").unwrap();
     process_jsonl(&path, &mut state, &mut sink);
-    assert_eq!(frames(&mut rx), vec!["reread", "0"], "截短");
+    assert_eq!(frames(&mut rx), vec!["reread:1"], "截短");
     // 原地改写且变长（末尾指纹对不上）
     std::fs::write(
         &path,
@@ -106,13 +108,13 @@ fn a_reread_restarts_the_line_numbers_after_saying_so() {
     )
     .unwrap();
     process_jsonl(&path, &mut state, &mut sink);
-    assert_eq!(frames(&mut rx), vec!["reread", "0", "1"], "改写");
+    assert_eq!(frames(&mut rx), vec!["reread:2"], "改写");
     // 删了又长回来
     std::fs::remove_file(&path).unwrap();
     process_jsonl(&path, &mut state, &mut sink);
     std::fs::write(&path, b"{\"n\":20}\n").unwrap();
     process_jsonl(&path, &mut state, &mut sink);
-    assert_eq!(frames(&mut rx), vec!["reread", "0"], "删了又长回来");
+    assert_eq!(frames(&mut rx), vec!["reread:1"], "删了又长回来");
     // 阴性：纯追加 ⇒ 不出声、号接着走。
     std::fs::write(&path, b"{\"n\":20}\n{\"n\":21}\n").unwrap();
     process_jsonl(&path, &mut state, &mut sink);
@@ -136,13 +138,10 @@ fn a_reread_from_zero_holds_about_a_block_not_the_file() {
     let held = crate::alloc_probe::peak_since(base);
     let got = frames(&mut rx);
     std::fs::remove_dir_all(&dir).ok();
-    let want: Vec<String> = std::iter::once("reread".to_string())
-        .chain((0..users).map(|i| i.to_string()))
-        .collect();
     assert_eq!(
         (n, got),
-        (users, want),
-        "改写之后从 0 重读：出声在前、行号从 0 数"
+        (0, vec![format!("reread:{users}")]),
+        "改写之后从 0 重读：照读照数、一行都不上流，出声带行数"
     );
     assert!(
         held <= HELD_BOUND,

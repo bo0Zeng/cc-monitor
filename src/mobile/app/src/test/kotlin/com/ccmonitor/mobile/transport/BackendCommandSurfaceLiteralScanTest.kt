@@ -15,15 +15,14 @@ import java.io.File
  * 写错叫法不会报错。后端 `route()` 的充要条件是 `argv[1] == "--"` 且 `argv[2]` 是后端词，没有 fallback 分支：
  * 没有 `--` ⇒ 整行交给 claude；零参数 ⇒ 默默起一个 claude 进程。一条绕过网关的命令会在用户机器上起一个 claude。
  *
- * ### 三个网关是并列的，别把另外两个的串当违规
+ * ### 两个网关是并列的，别把另一个的串当违规
  *
  * | 网关 | 面 | 走 `--` 门？ |
  * |---|---|---|
  * | 嵌的 Rust 核心（`resident-client`） | cc-monitor 后端 | 走；Kotlin 这一侧一处都不许有，本文件守的就是它 |
- * | `app/.../ssh/TmuxCommands` | tmux | 合法地不走（`TmuxSurfaceLiteralScanTest` 守） |
  * | `core-claude/.../command/PipeCommands` | 我们自己的管道 | 合法地不走（`PipeSurfaceLiteralScanTest` 守） |
  *
- * 所以锚点表里一个 tmux / 管道 / claude CLI 的词都没有，全是只属于后端的子命令字面。
+ * tmux 命令手机一条都不拼（`TmuxSurfaceLiteralScanTest` 守）。锚点表里一个 tmux / 管道 / claude CLI 的词都没有，全是只属于后端的子命令字面。
  *
  * 剥注释 + 抠字面走 [KotlinSourceScanner.literalCorpusOf]。必须是这一支：本文件的锚点就是字面内容
  * （后端子命令只可能写在字面里）；接到 `codeOnlyDroppingLiterals` 上会让锚点全零命中然后全绿。

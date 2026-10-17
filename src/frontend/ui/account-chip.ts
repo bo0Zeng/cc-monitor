@@ -66,7 +66,7 @@ export class AccountChip {
   /** 本会话那一形：`[⇄] [头像] 名 窗口 用量 [↻重置]`（无会话时藏着）。 */
   private sessionEl: HTMLElement;
   /** 此刻的当前会话（`null` ＝ 没有 tab ⇒ 按钮退成「默认 work」）。 */
-  private active: { sid: string; origin: Origin } | null = null;
+  private active: { sid: string; origin: Origin; account: string | null } | null = null;
   private chipModel: ChipModel | null = null;
   /** chip 绑的那台机器（`refresh` 之前没意义 —— 那时 `state` 也是 `null`）。 */
   private origin: Origin = LOCAL_ORIGIN;
@@ -114,40 +114,35 @@ export class AccountChip {
     appStore.accounts.subscribe(() => {
       if (this.bound) this.paint();
     });
-    // 本会话那一形：额度账 · 会话轮换格 · 会话归属那份快照任何一样变了 ⇒ 原地换数。
+    // 本会话那一形：额度账 · 会话轮换格任何一样变了 ⇒ 原地换数。
     const repaint = (): void => {
       if (this.active) this.paint();
     };
     appStore.quota.subscribe(repaint);
     appStore.sessionRotation.subscribe(repaint);
-    appStore.sessionAccount.subscribe(repaint);
   }
 
   /** 当前会话换了（`tabs.active`）：有 ⇒ 按钮画本会话那个号；没有 ⇒ 退成「默认 work」。 */
-  setActive(a: { sid: string; origin: Origin } | null): void {
-    if (this.active?.sid === a?.sid && this.active?.origin === a?.origin) return;
+  setActive(a: { sid: string; origin: Origin; account: string | null } | null): void {
+    if (this.active?.sid === a?.sid && this.active?.origin === a?.origin && this.active?.account === a?.account) return;
     this.active = a;
     this.paint();
   }
 
-  /** 会话宣告说的它跑在哪个号下（中转没见过它时只能画这个）。 */
-  private fallbackAccount(sid: string): string | null {
-    return appStore.sessionAccount.get().get(sid) ?? null;
-  }
 
   /** 本会话那一形这一刻的样子（没有当前会话 / 一样都不知道 ⇒ `null`）。 */
   private sessionModel(): ChipModel | null {
     const a = this.active;
     if (!a) return null;
     const entry = appStore.sessionRotation.get().get(a.sid);
-    return sessionChip(entry, this.fallbackAccount(a.sid), appStore.quota.get().get(a.origin) ?? null);
+    return sessionChip(entry, a.account, appStore.quota.get().get(a.origin) ?? null);
   }
 
   private hoverCard(): HTMLElement | null {
     const a = this.active;
     if (!a || !this.chipModel) return null;
     const entry = appStore.sessionRotation.get().get(a.sid);
-    const rows = sessionHoverRows(entry, this.fallbackAccount(a.sid), appStore.quota.get().get(a.origin) ?? null);
+    const rows = sessionHoverRows(entry, a.account, appStore.quota.get().get(a.origin) ?? null);
     if (!rows) return null;
     const tone = this.chipModel.tone;
     const tones: Record<number, "refused" | "warn"> = {};

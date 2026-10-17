@@ -33,6 +33,9 @@ use comms_inward::{backend_route, origin, ssh_link};
 #[path = "../../../../tests/frontend/shell/backend_route_senders_tests.rs"]
 mod backend_route_senders_tests; // 每个走后端的发送端都经那一份分流规则（遍历 monitor 源码树）
 #[cfg(test)]
+#[path = "../../../../tests/frontend/shell/frame_fixtures.rs"]
+mod frame_fixtures; // 判据用的几帧（hello · 去向 · 宣告）
+#[cfg(test)]
 #[path = "../../../../tests/comms/inward/origin_tests.rs"]
 mod origin_tests; // P2s（C8）：每台机一份后端策略（生效值住内存，持久化归前端）
                   // 🔴 〔归属 2026-09-19〕**它搬不进 `backend/`** —— `backend_policy_tests.rs::
@@ -46,7 +49,6 @@ mod ui_error;
 // 通信层面 A 的第一个进程外客户端那条路（末尾「面 A 的第一个外部客户端：通道」）。
 // `pub` 同 `filewin`：它的客户端那一半给另一个二进制（外部前端）经 `monitor_lib::chan` 用。
 mod app_restart; // 设置窗「现在重启」：重起 cc-monitor 自己
-mod cc_bus_deploy; // PS1：把内嵌的 cc-bus 装到 <claude_dir>/skills/（U10b 裁「开」后落地；只读铁律第 7 条例外）
 pub mod chan;
 mod clipboard; // 写系统剪贴板那一条命令（回真成败）：全产品的复制只这一口
 mod config;
@@ -66,7 +68,6 @@ mod history;
 // U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
 // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
 mod backend_control;
-mod cc_bus;
 mod frame_query;
 mod inbound_client;
 mod local_backend;
@@ -94,10 +95,9 @@ mod byte_table; // 全仓唯一的取字节口：一台机器要哪一份可执�
 #[path = "../../../../tests/frontend/shell/contract_crate_guard_tests.rs"]
 mod contract_crate_guard;
 mod copy_table; // 对外文案表的 Rust 读口（与前端 `copyText` 同一份 `src/shared/copy/table.json`）
-mod creds_store; // 第三方 API key 那份文件：monitor 这一侧零读零写零交路径（本机常驻后端按家推、写、答）—— 只剩判据
+/// 这一版的产品版本号（全产品一个源：monitor 那个包的版本，与安装包 · 界面同一个号）。
+pub(crate) const PRODUCT_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub(crate) mod detail; // 壳这一端写的「复制详情」那几行 ＋ 壳命令失败的那一形 `Said`
-#[cfg(test)]
-mod guard_support; // 住址唯一源（仓根/源码树/测试树）——头注写着它为什么存在
 
 // 截图台架那个无头壳只在台架编译时有（发版构建不带）：判据 · 本体。
 #[cfg(test)]
@@ -113,17 +113,12 @@ mod local_backend_host; // P2s（C8）：本机后端的生命周期（起/停/�
 #[path = "../../../../tests/frontend/shell/local_origin_registry.rs"]
 mod local_origin_registry;
 mod logging;
-mod machine_state; // 每台机器的状态成品（连着 · 没连上与原因码 · 版本关系 · 修法），`backend_status` 的 `machine` 一格
 mod platform; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
-mod profile_installer;
-// 分叉的 monitor 这一侧（整个模块）删了：界面经通道直说那台后端 `session-fork`（`src/frontend/ui/session-writes.ts`）。
+              // 分叉的 monitor 这一侧（整个模块）删了：界面经通道直说那台后端 `session-fork`（`src/frontend/ui/session-writes.ts`）。
 mod files_batch_relay; // 后端的 `files_batch` 帧（一组做到哪了）按票转给文件窗口订的 `files-batch/<票>`
 mod live_card;
 mod probe_relay; // 本机后端的 `probe` 帧（测试连接的进度格）原样转给界面订的 `probe-progress/<票>`
 mod remote_resident; // 远端常驻后端：起 · 找（`--resident-ensure`）→ 隧道 → 握手；停（`--resident-stop`）
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/remote_write_registry.rs"]
-mod remote_write_registry; // devbench F10c：远端写面登记（接三张表各自划出去、然后没人接的那道缝）
 mod session_book;
 mod terminal_screen_relay; // 本机 / 远端后端的终端实时预览帧原样转给界面订的 `terminal-screen/<票>` // 后端的 `live_card` 帧（活卡成品）原样转给前端 `session-live-card`
                            // 起子进程的**唯一出口**（三个策略都没有 Default）。
@@ -135,16 +130,17 @@ mod spawn_managed;
 // F03 接上之后删掉那个模块级 `#[allow(dead_code)]`；若 F03 收工时它仍零消费者，
 // 就该删掉整个模块，而不是让它当装饰。
 mod sftp_pool;
-// SS-D 统一 SFTP 写层（issue #29 自动部署 F08；后续 F11/F10 复用）。
-mod sftp;
+// 远端自部署：照本机常驻后端出的计划往那台放字节（issue #29 自动部署 F08 · 手动安装 / 卸载 · `ccm` 入口）。
+mod deploy;
 // SSH-remote Phase 0 (issue #15)：从 setup() 调用 —— 当 config.json 的
 // `remote.enabled = true` 时，stream_source::run 作为**附加**数据源与本机那条流
 // 并行跑（aggregate：本地 + 远端 session 同时显示为 Tab）。本机会话内容也经本模块的
 // `LineIntake` / `consume_local` 走同一个出口（flush_lines → batch_to_payloads → on_line_batch_awaited）；
 // 远端行带 origin=host 标签。
-mod ccm_probe;
+// 问自己放下去的那份后端一次（帧命令的 CLI 面）：本机后端自举那一问。
+mod backend_once;
 mod stream_source;
-// 每条长连接报「在看哪几个会话」（那台后端 `stream-watch`）：主窗口在看的 tab ∪ 查看窗跟着的会话。
+// 每台的「在看」名单（主窗口在看的 tab ∪ 查看窗跟着的会话）交那台的名单台（`resident_client::watch::Desk`）。
 mod stream_watch;
 // 拨号应答的客户端（通信层面 A 的 SSH 链路那一段）。
 // `inproc_dial`（界面进程里最后一份 russh 拨号，只剩 SFTP 一个用户）删了：
@@ -156,17 +152,7 @@ mod link_mux;
 // 本机会话内容的入口通道：本机两条读循环把后端的内容帧送进来，交给与远端同一个 `stream_source::LineIntake`。
 mod local_lines;
 // 三条读帧循环共用的丢帧账（认不出的帧 · 非 UTF-8 行：计数、按 2 的幂次说、流结束出总账）。
-mod frame_tally;
-// T01：结构性扫描的可复用形式（枚举+逐个断言+计数自检+钉死逃生口）。
-// **只在测试期编译**——它的消费者全在 `#[cfg(test)]` 里（`sftp.rs` 的 tmux 目标守卫、
-// `tool_registry.rs` 的字段纪律）。这是测试支撑模块，不是被闲置的生产代码；
-// 加 `cfg(test)` 就是把这件事写进类型系统，顺带消掉 5 条 dead_code 警告。
-/// U1a：`shared/ccm` 的强度契约（仅测试构建）。U9 迁移后由同一份 `measure()` 对拍新构造点。
-///
-/// ⚠ **插在这里、不要插在上面那条注释与 `#[cfg(test)]` 之间。** U1a 初版就插错了位置，
-/// 把属性与 `mod structural_scan;` 的配对拆开 —— `structural_scan` 当场变成无条件编译，
-/// 上面注释里逐字写着的「顺带消掉 5 条 dead_code 警告」被原样撤销，而 CI 的 `cargo build`
-/// 没有 `-D warnings` ⇒ **不会红**。是 Phase D 审计数出「dead_code 正好 +5」才发现的。
+/// `shared/ccm` 的强度契约（仅测试构建）。
 #[cfg(test)]
 mod ccm_cli_contract;
 #[cfg(test)]
@@ -178,12 +164,10 @@ mod doc_claim_registry; // F11：耐久文档里「描述当下」的字段与�
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/fixture_guard.rs"]
 mod fixture_guard; //：`tests/__fixtures__/` 里的夹具不许掉光引用变成孤儿（α3 刀 D 那个没红的读数；整体 cfg(test)）
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/gate_singleton_guard.rs"]
-mod gate_singleton_guard;
+mod frame_tally;
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/judges_live_in_tests.rs"]
-mod judges_live_in_tests; // 壳的生产源码里不放判据（`*_registry` / `*_guard` / `*_ledger` 住 tests/） // F03：§34 Gate 2 的身份判定在 Rust 侧只许有一个家（后端 `control/gate_rules.rs`）
+mod judges_live_in_tests; // 壳的生产源码里不放判据（`*_registry` / `*_guard` / `*_ledger` 住 tests/）
 
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/atomic_replace_registry.rs"]
@@ -266,9 +250,7 @@ mod shared_crate_registry; // U8c-1：新增共享 crate 时 CI 三样都要补 
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/shell_lint_registry.rs"]
 mod shell_lint_registry; // audit-0805 08-08：每个 shell 脚本要么进 shellcheck 要么登记豁免
-#[cfg(test)]
-mod structural_scan;
-// 业务路径零裸吞：每一处 `let _ =` / 语句级 `.ok();` 登记为什么可以丢（整体 #[cfg(test)]）。
+                         // 业务路径零裸吞：每一处 `let _ =` / 语句级 `.ok();` 登记为什么可以丢（整体 #[cfg(test)]）。
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/swallow_registry.rs"]
 mod swallow_registry;
@@ -291,7 +273,6 @@ mod utils;
 mod write_site_registry; // audit-0805 08-07：每个会写用户机器的落点都要申报（关掉 §5 4b 一半） // audit-0805 08-07：每处远端执行都要申报命令来历 // audit-0805 08-08：webview 能力清单 = 三张登记表的共同前提
 
 use crate::copy_table::copy_text;
-use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{Emitter, Listener, Manager};
 
@@ -574,7 +555,6 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_notification::init())
         .setup(move |app| {
             // **重放缓冲与本机内容消费者先于本机后端就位。** 本机会话内容从此是
             // 本机后端的 `line` 帧（`local_lines` 头注）；后端一接上就开始宣告、发行 ⇒ 接住它们的那一头
@@ -585,37 +565,9 @@ pub fn run() {
             local_lines::install(app.handle().clone(), replay.clone());
             stream_watch::spawn(replay.clone());
 
-            // F05a（定框 C7：没有 daemonless）：起并看住**本机后端进程**。
-            // 〔`K-R59` 09-11：`C7` 的第二格今天补上了 —— 远端那个 `daemonless`
-            //  每机开关整格删除（定框 `K35`），从此**没有「没有后端」这回事**。〕
-            //
-            // ⚠ **走哪一支取决于用户手里是哪一份产物**〔订正 2026-09-10，v3.7.0〕。
-            //
-            //
-            // 证伪它的读数：09-10 干净 win11 虚拟机上现打（PM，真安装包 + 真裸 exe 各一趟）——
-            // **装出来那份** `C:\Program Files\cc-monitor\` 下 `cc-monitor-backend.exe`
-            // **2 个进程在跑**；**裸 `monitor.exe`** 那份 **0 个**。
-            // F05b 已经做完并随 v3.7.0 发出去了：`externalBin` 配在
-            // `src/frontend/shell/tauri.sidecar.conf.json`，发版那一步用
-            // `npx tauri build --config src/frontend/shell/tauri.sidecar.conf.json` 注入。
-            // ⚠ 它**刻意不进基础 `tauri.conf.json`** —— 进了会让 `cargo test` 也要求当前
-            // target 的那份二进制存在。⇒ **「基础配置里没有」≠「没配」，别再把这两句写成一句。**
-            //
-            // ⇒ 降级那一支仍然在（裸 exe · 开发树走的就是它），只是**不再是常数**。
-            // 它**不是**「接线没做」：接线在这里，是**这一份产物里没带**，两者的区别就在那个
-            // tagged 返回值上。它**刻意不扫仓库 dev 产物** —— backend 一起来就无条件往
-            // tmux server 装三条全局 hook 且没有开关，扫到 dev 产物就起它 = 去改用户真实
-            // tmux 的状态（F05 摸底 §2.5）。
+            // 起本机后端：字节用这一份产物内嵌的那份，释放到 `~/.cc-monitor/bin`（文件名带 build_id）再起；exe 旁不找、不扫开发产物。
+            // 失败只进日志：被拒（口上有东西、接不上）那一句下一步由 `local_backend_host` 交给本机那一台的状态成品，设置窗照画。
             {
-                use local_backend::Resolved;
-                // P2z（定框 C10）：exe 旁边没有本机后端时，把**已内嵌**的那份释放到本机再起 ——
-                // 「单 exe 也能起后端进程」那句话的落点。
-                //
-                // 两样宿主知识在这里给（backend 层不认识它们）：
-                //   · 落点 `~/.cc-monitor/bin`：与远端自部署同一个目录，但**文件名带 build_id**
-                //     ⇒ 与远端那份结构上不可能撞（理由见 `extract_embedded_to` 头注的 D1 段）。
-                //   · 这台机器的 (OS, arch)：`byte_table::choose` 按它挑内嵌字节；取不到时交进去那句拒绝的话，
-                //     函数把它接在「旁边没有」后面、不伪造理由。
                 use local_backend_host::StartOutcome;
                 match local_backend_host::start_local_backend() {
                     StartOutcome::Started(p) => {
@@ -624,60 +576,11 @@ pub fn run() {
                     StartOutcome::AlreadyRunning => {
                         tracing::info!("本机后端已经在跑（启动路径不重复起）")
                     }
-                    StartOutcome::Failed { reason, looked_at } => {
-                        // ★★ `K-P1-D1` `重-2`：**「对不上就出声并拒绝」那句话，
-                        //    在这条路上不许只进日志。**
-                        //
-                        // 两条起法只有手动那条会让用户看见（`crate::backend_control::backend_start`
-                        // 回 `Err` ⇒ 前端 toast）。而这一条 —— 用户每天真正走的那条 ——
-                        // 回修前是 `tracing::info!`，连 `warn` 都不是。
-                        //
-                        // 触发场景不是理论：口按家目录算死，`hello_verdict` 逐字比
-                        // 「我这一版」（`byte_table::my_backend_id`）⇒ **升级 monitor 之后上一次脱离留下的那个
-                        // backend 还在听同一个口** ⇒ `Stranger` ⇒ `Adopt::Refused`
-                        // ⇒ 本机后端起不来，而界面上什么都不说。
-                        // ⚠ 这是**常驻带来的新场景**：翻面之前 backend 153ms 就死了。
-                        //
-                        // ⚠ 分两档，因为这两件事不是一回事：
-                        //   · **拒绝**（口上有东西、接不上）= 一件用户能动手解决的事 ⇒ 说到眼前；
-                        //   · 别的失败（**这一份产物里没带 local_backend** —— 裸 exe / 开发树，
-                        //     或释放内嵌那一份也失败了）= **诚实降级**，
-                        //     每次启动都弹一次就成了噪音 ⇒ 仍走日志。
-                        //     〔订正 2026-09-10（v3.7.0）—— 原话逐字：「别的失败（安装包里
-                        //      还没有 local_backend…）= 今天的**诚实降级**」。括号里那句今天不成立：
-                        //      09-10 干净 win11 现打（PM）装出来那份跑着 2 个
-                        //      `cc-monitor-backend.exe`、裸 `monitor.exe` 那份 0 个。
-                        //      ⚠ **分档标准本身一格没动**，换掉的只是它举的那个例子 ——
-                        //      「诚实降级」这一档今天仍然有人（裸 exe · 开发树 · 释放失败）。〕
-                        //   分档的依据是 `local_backend_host` 里那条**只在真的被拒绝时才写下**的记录，
-                        //   **不是**去 `reason` 串里认字（那是 `KPY5` 治的那种假信号）。
-                        match local_backend_host::take_start_refusal() {
-                            Some(next_step) => {
-                                tracing::warn!(
-                                    "本机后端未启动: {}（{}）；找过 {looked_at:?}",
-                                    reason.said,
-                                    reason.raw()
-                                );
-                                if let Err(e) = crate::platform::notify::show(
-                                    app.handle(),
-                                    &copy_text("rsLib.run.localBackendDown", &[]),
-                                    &next_step,
-                                ) {
-                                    // 通知发不出去也要留痕，别让「说出口」这件事静默失败。
-                                    tracing::warn!(
-                                        "本机后端拒绝的通知发不出去（{e}）：{next_step}"
-                                    );
-                                }
-                            }
-                            None => {
-                                tracing::info!(
-                                    "本机后端未启动: {}（{}）；找过 {looked_at:?}",
-                                    reason.said,
-                                    reason.raw()
-                                )
-                            }
-                        }
-                    }
+                    StartOutcome::Failed { reason, looked_at } => tracing::warn!(
+                        "本机后端未启动: {}（{}）；找过 {looked_at:?}",
+                        reason.said,
+                        reason.raw()
+                    ),
                 }
             }
 
@@ -742,12 +645,11 @@ pub fn run() {
                     }
                 });
             }
-            // 每台机器的状态成品一变就推一帧（`machine-state`：`{origin, machine}`，与 `backend_status` 那一格同形）。
+            // 本机那一台的状态成品一变就推一帧（`machine-state`：`{origin, machine}`，与 `backend_status` 那一格同形）；远端各台走本机后端的 `changed {machine}`。
             {
                 let handle = app.handle().clone();
-                crate::machine_state::install_out(move |origin| {
-                    let machine = backend_control::machine_now(origin);
-                    let payload = serde_json::json!({ "origin": origin, "machine": machine });
+                crate::local_backend_host::install_machine_out(move |machine| {
+                    let payload = serde_json::json!({ "origin": crate::inbound_client::LOCAL_ORIGIN, "machine": machine });
                     if let Err(e) = handle.emit(ui_contract::events::MACHINE_STATE, payload) {
                         tracing::warn!("emit machine-state failed: {e}");
                     }
@@ -804,7 +706,7 @@ pub fn run() {
                         );
                         // 就绪点：主界面在发 `frontend-ready` 之前已经订好了各台机器的会话流（`chan.subscribe`），
                         //   这里按 credit 交完留存；起停的成品（骨架在行前、终局在行后，`session_book::Book::replay`）在同一条流里原位交，
-                        //   不吃 credit。〔从前这一段在就绪点前后各发一轮 Tauri 事件：重宣告 · 容器 · 可重连 · 对账补发已结束 / 说不清 · 清单。〕
+                        //   没 credit 也照交。〔从前这一段在就绪点前后各发一轮 Tauri 事件：重宣告 · 容器 · 可重连 · 对账补发已结束 / 说不清 · 清单。〕
                         replay.ready_point(priority_sid.as_deref()).await;
                     });
                 });
@@ -846,7 +748,7 @@ pub fn run() {
             app_restart::restart_app,
             clipboard::clipboard_write,
             clipboard::clipboard_read,
-            // `ccm …` 调用行 · 载荷渲染两条退役：那台后端的帧命令 `launch-render-cli` / `launch-render-payload`。
+            // `ccm …` 调用行 · 载荷渲染两条退役：那台后端的帧命令 `session-open`。
             // MCP 读写（`mcp::*` 六条）与推 / 拉两条退役：界面经通道问那台后端
             //   （`mcp-read` · `mcp-sync-source` / `-preview` / `-apply`，`src/frontend/ui/mcp-reads.ts` · `src/frontend/ui/mcp-sync-reads.ts`）。
             //   列远端配置标签那一条是 monitor 自己的配置，挪进 `config.rs`。
@@ -856,6 +758,7 @@ pub fn run() {
             //   `src/frontend/ui/assets-sync-reads.ts` · `src/frontend/ui/skill-install-reads.ts`）。
             forget_session,
             watch_sessions,
+            kept_sessions,
             // issue #10: 独立只读窗口（多窗口 / 双屏）
             open_session_in_new_window,
             // F82a(#56+#47): 设置独立窗口
@@ -866,9 +769,6 @@ pub fn run() {
             // issue #23: 红绿灯快照（启动/F5 初始收敛；增量走 activity 格 事件）
             // v2.4 issue #2: 用户在终端输入时可选拉前 monitor 自身
             bring_monitor_to_front,
-            ccm_user_path_status,
-            ccm_user_path_add,
-            ccm_user_path_remove,
             cc_get_auto_launch,
             cc_set_auto_launch,
             // v2.0.0 (issue #4): 诊断 / log
@@ -886,11 +786,11 @@ pub fn run() {
             // 远端装 / 卸别名块那两条命令并进上面 `aliases_block_install` / `_remove`（带 `origin`），删。
             // F08c：部署 / 卸载远端后端（SFTP 写 ~/.cc-monitor/bin，SS-G 部署写豁免）。
             // 部署那一条同时放 `ccm` 入口 —— 「部署后端」只有一个动作。
-            sftp::deploy_remote_backend,
-            sftp::uninstall_remote_backend,
+            deploy::deploy_remote_backend,
+            deploy::uninstall_remote_backend,
             // 本机 / 远端各两条合成两条带 origin 的。
             // `probe_session_record`（resume 之前问记录还在不在）退役：界面经通道问 `history-record`。
-            // 本机起会话三条（resume · 新起 · 接回那一句）退役：计划与渲染问本机后端 `launch-local`；
+            // 本机起会话三条（resume · 新起 · 接回那一句）退役：计划与渲染问本机后端 `session-open`；
             //   monitor 只剩「开一个终端窗口跑这串」。
             launch::open_local_terminal,
             // A2 那两条账号清单（远端 `list_remote_accounts` · 本机 `list_local_accounts`）与
@@ -908,17 +808,10 @@ pub fn run() {
             //    ⚠ 界面上点得到它的地方是旧 SFTP 面板的表头 —— 那块面板按 `§6.6 C`
             //    要退役，而在这个窗口真能替代它之前删掉旧的等于把功能拿走 ⇒ 这一刀不删。
             filewin::entry::open_file_window,
-            // 远端 `ccm` 探针那条命令退役：渲染进了那台后端，能力问它自己。
-            // 🔴 `K-R69` / `KR69D2`：本机 `ccm` 这一格（我们那一份 · PATH 上那一份 · 判词）。
-            ccm_probe::local_ccm_entry_status,
             // skill 接入面三条（收件箱的列 / 读 / 写）退役：界面经通道直问那台后端
             //   （`skill-host-list` / `-read` / `-write`，声明与围栏住后端 `agents/claudecode/skill_host.rs`）。
-            // cc-bus 装 / 三态进了本机后端（`cc-bus-install` / `-state`）；留下装前那道本机 `ccm` 预检。
-            cc_bus_deploy::cc_bus_ccm_precheck,
             // **主界面说 `call` 的那一跳**：webview ⇒ 通道 ⇒ 注入的后端句柄。
             chan::webview::chan_call,
-            // 〔「撤单不许回退」〕撤单过 webview 那一跳（带编号撤那一问）。
-            chan::webview::chan_cancel,
             // 会话内容经通道的 `subscribe`（本地撤单 · credit）。
             chan::webview::chan_offer,
             chan::webview::chan_subscribe,
@@ -1035,7 +928,7 @@ pub(crate) fn wire_replay_outlets(replay: &Arc<event_replay::EventReplay>) {
         });
     }
     // 会话成品的**唯一**出口线程（本机远端同一个）：monitor 自己那几样副作用（拉前绑定）＋
-    //   原样交会话流（`EventReplay::on_lifecycle`：`subscribe(origin, "session-lines")` 里的格，不吃 credit、不丢）。
+    //   原样交会话流（`EventReplay::on_lifecycle`：`subscribe(origin, "session-lines")` 里的格，没 credit 也照交、不丢）。
     //   不裁决（可重连 / 已结束由那台后端裁）；原先这里是本机 / 远端两个 emitter，各自裁、发 9 个 Tauri 事件。
     {
         let replay = replay.clone();
@@ -1043,7 +936,7 @@ pub(crate) fn wire_replay_outlets(replay: &Arc<event_replay::EventReplay>) {
             .name("session-book-emitter".into())
             .spawn(move || {
                 while let Ok(out) = book_rx.recv() {
-                    replay.on_lifecycle(out.origin(), out.frames());
+                    replay.on_lifecycle(out.origin(), vec![out.frame()]);
                 }
             });
         if let Err(e) = spawned {
@@ -1095,12 +988,7 @@ pub(crate) fn reconcile_remote_streams() -> backend_control::Reconciled {
             respawn: remote_respawn(cfg, replay.clone(), app.clone()),
         })
         .collect();
-    let out = backend_control::reconcile_remotes(wanted);
-    // 停下的那几台（删了 / 停用了）状态成品作废；还在表里的由读点按「连接这台」说停用。
-    for origin in &out.stopped {
-        machine_state::forget(origin);
-    }
-    out
+    backend_control::reconcile_remotes(wanted)
 }
 
 /// 机器表里**要连的**那几台（某台 `"connect": false` ⇒ 不在里面）。
@@ -1329,10 +1217,10 @@ fn forget_session(
 }
 
 /// 主窗口此刻在看的会话（整份换；切 tab 时界面报）：与查看窗跟着的会话合成每台的「在看」名单，
-/// 由 `stream_watch` 报给那台那条长连接（没在看的会话，它的行不上流）。
+/// 由 `stream_watch` 交那台的名单台（没在看的会话，它的行不上流）。
 #[tauri::command]
 fn watch_sessions(
-    sessions: Vec<ui_contract::WatchedSession>,
+    sessions: Vec<ui_contract::TabSession>,
     replay: tauri::State<'_, Arc<event_replay::EventReplay>>,
 ) -> Result<(), Said> {
     let r: Result<(), Said> = (move || -> Result<(), Said> {
@@ -1344,6 +1232,23 @@ fn watch_sessions(
         Ok(())
     })();
     r.map_err(|s| s.named("watch_sessions"))
+}
+
+/// 主窗口手上的 tab（整份换；多一个 · 少一个时界面报）：随名单交各台的名单台，那台不在说的它答已结束。
+#[tauri::command]
+fn kept_sessions(
+    sessions: Vec<ui_contract::TabSession>,
+    replay: tauri::State<'_, Arc<event_replay::EventReplay>>,
+) -> Result<(), Said> {
+    let r: Result<(), Said> = (move || -> Result<(), Said> {
+        replay.set_main_kept(
+            sessions
+                .into_iter()
+                .map(|w| (w.origin.as_wire_str().to_string(), w.session_id)),
+        );
+        Ok(())
+    })();
+    r.map_err(|s| s.named("kept_sessions"))
 }
 
 /// issue #10：把某 session 在一个独立 WebviewWindow（`viewer-<sid>`）里打开，
@@ -1378,7 +1283,9 @@ async fn open_session_in_new_window(
         use tauri::Manager;
         // 独立窗口自己订 `session-lines/<sid>`（`subscribe(origin, kind)`：origin 是唯一寻址键）
         //   ⇒ 窗口要知道这个会话在哪台机器上；随 URL 交过去（百分号编码：本机那个 `<local>` 有尖括号）。
-        origin.route("open_session_in_new_window")?;
+        origin
+            .route("open_session_in_new_window")
+            .map_err(Said::written)?;
         let origin_q = pct_encode(origin.as_wire_str());
         let run = run.filter(|r| !r.is_empty());
         let label = match &run {
@@ -1615,7 +1522,7 @@ fn cc_get_auto_launch() -> Result<auto_launch::AutoLaunchConfig, Said> {
     let r: Result<auto_launch::AutoLaunchConfig, Said> =
         (move || -> Result<auto_launch::AutoLaunchConfig, Said> {
             let dir = auto_launch::data_dir()
-                .ok_or_else(|| copy_text("rsShellCmd.autoLaunch.readNoDir", &[]))?;
+                .ok_or_else(|| Said::of("rsShellCmd.autoLaunch.readNoDir", &[]))?;
             Ok(auto_launch::get_config(&dir))
         })();
     r.map_err(|s| s.named("cc_get_auto_launch"))
@@ -1626,68 +1533,10 @@ fn cc_get_auto_launch() -> Result<auto_launch::AutoLaunchConfig, Said> {
 fn cc_set_auto_launch(enabled: bool) -> Result<(), Said> {
     let r: Result<(), Said> = (move || -> Result<(), Said> {
         let dir = auto_launch::data_dir()
-            .ok_or_else(|| copy_text("rsShellCmd.autoLaunch.writeNoDir", &[]))?;
+            .ok_or_else(|| Said::of("rsShellCmd.autoLaunch.writeNoDir", &[]))?;
         Ok(auto_launch::set_enabled(&dir, enabled)?)
     })();
     r.map_err(|s| s.named("cc_set_auto_launch"))
-}
-
-// ===== 🔴 `K-R135`（`R85` / `R87` / `R88`）：用户级 PATH 那一格 =====
-//
-// 用户 `R85` 逐字：「**应该让用户手动点击加，也能管理删除。就像是 log 数据管理一样。**」
-// ⇒ 三样：**现在状态（现算不缓存）· 一个按钮加 · 一个按钮撤**，形状照
-// `src/frontend/ui/settings/diagnostics-section.ts`（用户点名的那个范式，它现打也全走 `commands.*`）。
-//
-// 实现一律住 `profile_installer` 那一族（`R87` 裁定：同一族动作不许另起一条路）；
-// 这三条只是**包装层**，一行业务逻辑都不许写在这里。
-// 三条都走 `spawn_blocking`：它们底下要起一趟 `powershell.exe`（`R88`），不许占住 async 执行器。
-
-/// `KR135D1` ①：**现在状态** —— `~/.cc-monitor\bin` 在不在**用户级** PATH 上。
-///
-/// **现算，不缓存**：每调一次真跑一趟探针。界面只在「打开那一格 / 点刷新」时调它
-/// （起一趟 PowerShell 几百 ms ⇒ 不许轮询）。
-/// 🔴 探不动时回的是 `error` 非空、`on_user_path = false` —— 前端**必须**把 `error` 显示出来，
-/// 不许把「问不出来」静默成「没装」。
-#[tauri::command]
-async fn ccm_user_path_status() -> Result<profile_installer::UserPathStatus, Said> {
-    let r: Result<profile_installer::UserPathStatus, Said> = async move {
-        Ok(
-            tokio::task::spawn_blocking(profile_installer::user_path_status)
-                .await
-                .map_err(Said::crashed)?,
-        )
-    }
-    .await;
-    r.map_err(|s| s.named("ccm_user_path_status"))
-}
-
-/// `KR135D1` ②：**一个按钮加**。跑的就是界面上显示给用户看的那段字节
-/// （`render_user_path_setup_command`）—— 点按钮与自己复制去跑**逐字同一份**。
-#[tauri::command]
-async fn ccm_user_path_add() -> Result<(), Said> {
-    let r: Result<(), Said> = async move {
-        Ok(
-            tokio::task::spawn_blocking(profile_installer::user_path_add)
-                .await
-                .map_err(Said::crashed)??,
-        )
-    }
-    .await;
-    r.map_err(|s| s.named("ccm_user_path_add"))
-}
-
-/// `KR135D1` ③：**一个按钮撤**。**只摘自己那一格**（整格比，不碰用户 PATH 里别的东西）。
-#[tauri::command]
-async fn ccm_user_path_remove() -> Result<(), Said> {
-    let r: Result<(), Said> = async move {
-        Ok(
-            tokio::task::spawn_blocking(profile_installer::user_path_remove)
-                .await
-                .map_err(Said::crashed)??,
-        )
-    }
-    .await;
-    r.map_err(|s| s.named("ccm_user_path_remove"))
 }
 
 // ===== v2.0.0 (issue #4): 诊断 / log IPC =====
@@ -1732,7 +1581,7 @@ async fn open_log_file(state: tauri::State<'_, Arc<logging::LoggingState>>) -> R
     let r: Result<(), Said> = async move {
         let path = state
             .current_log_file()
-            .ok_or_else(|| copy_text("rsLib.log.none", &[]))?;
+            .ok_or_else(|| Said::of("rsLib.log.none", &[]))?;
         let path_str = path.to_string_lossy().into_owned();
         Ok(tokio::task::spawn_blocking(move || open_with_os(&path_str))
             .await
@@ -1770,17 +1619,18 @@ async fn open_log_dir(state: tauri::State<'_, Arc<logging::LoggingState>>) -> Re
 
 /// 跨平台调系统默认 opener。Windows 用 `cmd /C start ""` 兜 path 中的空格。
 /// 复用 tauri-plugin-opener 也行（前端就是走它），但这里在 Rust 端直接调更直接。
-fn open_with_os(path_or_dir: &str) -> Result<(), String> {
-    use crate::spawn_managed::{spawn_managed, ConsolePolicy, Lifetime, StderrSink};
-    // 「用哪个程序打开」是平台差异（住壳的平台层）；「怎么起它」三条策略走唯一出口。
-    //
-    // ★ 这一处走的是 `spawn_managed(bin, args, …)` 那个**五参数形态**（
-    //   逐字写的那个签名），而不是它的内层 `spawn_managed_cmd` —— 因为这一跳**真的
-    //   只有「一个二进制 ＋ 一串 argv」**：不设 env、不设 cwd、三根 stdio 一根都不碰。
-    //   ⚠ 别把这读成「别处偷懒了」：别处要 env / cwd / stdin / stdout，那些不属于
-    //   那三条策略，硬塞进这个签名只会长出第七、第八个参数。
+fn open_with_os(path_or_dir: &str) -> Result<(), Said> {
     // 「用哪个程序打开」按平台选（`cmd /C start ""` · `open` · `xdg-open`）住 `platform/proc.rs::os_opener`。
     let (bin, args) = crate::platform::proc::os_opener(path_or_dir);
+    open_with(bin, &args)
+}
+
+/// [`open_with_os`] 挑完程序之后那一下（程序是入参：判据喂一个不存在的程序，量失败那一句）。起不来 ⇒ 原因词进句子，原话进详情。
+fn open_with(bin: &str, args: &[String]) -> Result<(), Said> {
+    use crate::spawn_managed::{spawn_managed, ConsolePolicy, Lifetime, StderrSink};
+    // 「怎么起它」三条策略走唯一出口。走的是 `spawn_managed(bin, args, …)` 那个**五参数形态**，而不是它的内层
+    //   `spawn_managed_cmd` —— 这一跳**真的只有「一个二进制 ＋ 一串 argv」**：不设 env、不设 cwd、三根 stdio 一根都不碰。
+    //   ⚠ 别把这读成「别处偷懒了」：别处要 env / cwd / stdin / stdout，那些不属于那三条策略。
     // 三条策略：
     // · `Hidden` —— 这一跳只是转交给系统默认 opener，**先前那个 `CREATE_NO_WINDOW`
     //   就是这一条**（它是「仓里有、却用在最不需要的那处」的那一份）；
@@ -1791,19 +1641,22 @@ fn open_with_os(path_or_dir: &str) -> Result<(), String> {
     //   而这一跳失败时用户当场就看得见（东西没打开）。
     spawn_managed(
         std::path::Path::new(bin),
-        &args,
+        args,
         ConsolePolicy::Hidden,
         Lifetime::Detached,
         StderrSink::Inherit,
     )
     .map(|_| ())
-    .map_err(|e| format!("{bin} failed: {e}"))
+    .map_err(|e| {
+        Said::with_raw(
+            copy_text(
+                "rsShellCmd.open.failed",
+                &[("why", &copy_core::spawn_reason(e.kind()))],
+            ),
+            format!("{bin}: {e}"),
+        )
+    })
 }
-
-// 搜索口径那道守卫原挂在 `search.rs` 下；那份文件删了，挂到这里。今天只剩「monitor 这一侧零处」（「恰一份」那两道随家进了后端）。
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/search_kou_jing_guard.rs"]
-mod search_kou_jing_guard;
 
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/lib_env_scrub_tests.rs"]

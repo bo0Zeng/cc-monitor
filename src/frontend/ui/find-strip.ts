@@ -22,7 +22,7 @@ import { dispatcher, KeybindingDispatcher, type OverlayHandle } from "./keybindi
 import { imeComposing } from "./keybindings/ime";
 import { copyText } from "./copy-table";
 import type { FindHit, FindResult } from "./session-reads";
-import type { JumpResult } from "./views/user-input-panel";
+import type { JumpResult, JumpTarget } from "./views/user-input-panel";
 import s from "./find-strip.module.css";
 
 /**
@@ -56,7 +56,7 @@ export interface FindStripHost {
    * 跳到那一条（返回真正落到的那张卡；可以是 Promise —— 要先取回那一段；取失败 ⇒ reject 带原因）。
    * `tool` ＝ 核心说它落在哪次工具调用的卡里（命中的 `tool`）；缺 ⇒ 落在它自己那张卡上。
    */
-  jumpTo(uuid: string, tool?: string): JumpResult;
+  jumpTo(to: JumpTarget, tool?: string): JumpResult;
   /** 落空（找不到那张卡）时那一行下面写的一句。 */
   readonly unjumpableHint: string;
 }
@@ -125,7 +125,7 @@ export class FindStrip {
     this.input.addEventListener("input", () => this.armAuto());
     this.box.appendChild(this.input);
 
-    this.tools = checkbox(opts.panel ? copyText("sessionFind.box.tools") : copyText("findStrip.box.tools"), false, (on) => {
+    this.tools = checkbox(copyText("findStrip.box.tools"), false, (on) => {
       this.withTools = on;
       if (this.input.value.trim()) void this.run();
     });
@@ -444,7 +444,7 @@ export class FindStrip {
   }
 
   private jump(row: Row): void {
-    const landed = this.host.jumpTo(row.hit.uuid, row.hit.tool);
+    const landed = this.host.jumpTo(row.hit, row.hit.tool);
     const settle = (el: HTMLElement | null): void => {
       if (el) {
         delete row.el.dataset.unjumpable;

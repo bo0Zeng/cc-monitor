@@ -311,7 +311,7 @@ fn without_the_env_the_child_installs_nothing_and_writes_no_file() {
 /// [`stderr_writer`]（流模式那一臂；一次性模式那一臂是 [`oneshot_writer`]）、恰好一处；装它的 [`install_from_env`] 也恰好一处。任一处被换回 `std::io::stderr`，生产上就**永远不滚**（上限失守）。
 #[test]
 fn main_hands_tracing_the_rolling_writer_and_installs_it_once() {
-    let main = crate::guard_support::production_code(include_str!("../../src/backend/main.rs"));
+    let main = guard_core::production_code(include_str!("../../src/backend/main.rs"));
     for needle in [
         // 流模式那一臂交的写者（一次性模式那一臂交 `oneshot_writer`，两臂合成一个 `.with_writer(writer)`）。
         "BoxMakeWriter::new(stderr_log::stderr_writer)",

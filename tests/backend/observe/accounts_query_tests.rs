@@ -1233,8 +1233,8 @@ fn production_text() -> String {
         "include_str! 没读到源码，本条在空转（实得 {} 字节）",
         me.len()
     );
-    let prod = crate::guard_support::production_code(me);
-    crate::guard_support::assert_no_test_code("accounts_query.rs", &prod);
+    let prod = guard_core::production_code(me);
+    guard_core::assert_no_test_code("accounts_query.rs", &prod);
     assert!(
         prod.contains("fn session_accounts(agent_home: &Path")
             && prod.contains("struct SessionRow {")
@@ -1403,6 +1403,7 @@ fn the_list_product_carries_exactly_what_the_scan_reads() {
             o.remove("unselectable").is_some(),
             "帧面每个号带选不了的那一句"
         );
+        assert!(o.remove("login").is_some(), "帧面每个号带给不给［登录…］");
     }
     assert_eq!(
         product["meta"], cli_meta,
@@ -1627,9 +1628,8 @@ fn the_list_product_carries_each_api_accounts_masked_key_and_address() {
     let _ = fs::remove_dir_all(&root);
 }
 
-/// ★★ **跨语言金样**：两条成品对同一份夹具 == `tests/__fixtures__/accounts.golden.json`（夹具根替换成 `<root>`）。
-/// 那份金样的另一个读者是 TS 解码器（`tests/frontend/ui/accounts-decode.vitest.ts`）⇒ 两侧异源：后端改一个键名本条红，
-/// TS 解码器改一个键名那边红。金样手写落盘（本条红时印出现打的成品，人读过再改）。
+/// ★★ **金样**：两条成品对同一份夹具 == `tests/__fixtures__/accounts.golden.json`（夹具根替换成 `<root>`）。
+/// 界面那一侧按生成类型收（形状由握手指纹管），不再另读这份。金样手写落盘（本条红时印出现打的成品，人读过再改）。
 #[test]
 fn the_account_products_match_the_cross_language_golden() {
     let (root, accts) = c4c_fixture("c4c-golden", true);
@@ -1811,7 +1811,7 @@ fn the_accounts_library_lives_under_the_contract_directory_name() {
         (".cc-monitor/accounts", "accounts.json"),
         "账号库位置变了 —— 改了它后端就去别处找账号库，界面上只表现为「一个账号都没有」"
     );
-    let prod = crate::guard_support::production_code(include_str!(
+    let prod = guard_core::production_code(include_str!(
         "../../../src/backend/observe/accounts_query.rs"
     ));
     let at = guard_core::find_pinned(&prod, "fn resolve_accts_dir() -> PathBuf {")
@@ -1830,7 +1830,7 @@ fn the_accounts_library_lives_under_the_contract_directory_name() {
 /// 脚本那一族的人群里真有门禁与 ccm 那套 e2e；合成串里两个针都认得出。
 #[test]
 fn nothing_in_the_product_still_points_at_the_old_account_library() {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     // 针运行时拼：本文件自己不进人群也不含针。
     let old_dir = format!(".claude-{}", "accts");
     let old_env = format!("CCM_ACCTS_{}", "MANIFEST");
@@ -1983,7 +1983,7 @@ fn the_mcp_word_of_a_live_record_is_read_from_where_the_last_look_stopped() {
             serde_json::json!({"type": "attachment", "timestamp": "2026-10-09T10:00:00.000Z", "attachment": {"type": "deferred_tools_delta", "failedMcpServers": [{"name": name, "error": "e"}]}})
         )
     };
-    let names = |v: &[crate::observe::facts_query::McpTrouble]| -> Vec<String> {
+    let names = |v: &[crate::observe::recognize::facts::McpTrouble]| -> Vec<String> {
         v.iter().map(|m| m.name.clone()).collect()
     };
     let dir = tmpdir("mcp-tail");
@@ -2150,7 +2150,7 @@ fn app_exit_interrupts_follow_this_backends_own_exit_choice() {
 #[test]
 fn live_doing_reads_activity_and_what_it_waits_for() {
     use crate::agents::SessionActivity as A;
-    use crate::observe::facts_query::NeedsKind as K;
+    use crate::observe::recognize::facts::NeedsKind as K;
     let home = tmpdir("doing");
     let dir = home.join("projects").join("-n");
     fs::create_dir_all(&dir).unwrap();
@@ -2589,5 +2589,90 @@ fn a_row_says_why_it_cannot_be_picked_and_its_plate() {
     assert_eq!(
         ["work", "w", "工作", "", "0"].map(plate_text),
         ["wo", "w", "工", "?", "0"].map(str::to_string)
+    );
+}
+
+/// KS11 上屏：两份自家秘密文件同一套判法、各一句。钥匙文件 0644 · 凭据文件 0600 ⇒ 恰好一句，点名钥匙文件；
+/// 两份都只给本人 · 都不在 ⇒ 不说。
+#[cfg(unix)]
+#[test]
+fn a_too_wide_relay_key_file_has_its_own_sentence_like_the_credentials_file() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tmpdir("secret-notices");
+    let creds = dir.join("apikey-credentials.json");
+    let key = dir.join("relay-key");
+    assert!(
+        secret_file_notices(Some(&creds), Some(&key)).is_empty(),
+        "都不在 ⇒ 不说"
+    );
+    fs::write(&creds, "{}").unwrap();
+    fs::write(&key, "k").unwrap();
+    let mode = |p: &Path, m| fs::set_permissions(p, fs::Permissions::from_mode(m)).unwrap();
+    mode(&creds, 0o600);
+    mode(&key, 0o600);
+    assert!(
+        secret_file_notices(Some(&creds), Some(&key)).is_empty(),
+        "只给本人 ⇒ 不说"
+    );
+    mode(&key, 0o644);
+    let got = secret_file_notices(Some(&creds), Some(&key));
+    assert_eq!(got.len(), 1, "{got:?}");
+    assert!(
+        got[0].contains(&key.display().to_string())
+            && got[0].contains(&copy_text("credsPerm.notice.relayKey", &[]))
+            && got[0].contains("0644"),
+        "{got:?}"
+    );
+    mode(&creds, 0o640);
+    let got = secret_file_notices(Some(&creds), Some(&key));
+    assert_eq!(got.len(), 2, "{got:?}");
+    assert!(
+        got[0].contains(&copy_text("credsPerm.notice.apikey", &[])),
+        "{got:?}"
+    );
+    fs::remove_dir_all(&dir).ok();
+}
+
+/// ★ 每个号给不给［登录…］：只差登录、这一家能在 app 里登录 ⇒ 给；按量号没配 key · 号目录不在 · 不隔离 · 已就绪 ⇒ 不给；
+/// 只差登录却登不了 ⇒ 不给、那一句说「需登录 · 不支持在 app 里登录」。
+#[test]
+fn only_an_account_that_only_needs_signing_in_gets_the_login_button() {
+    use test_support::row_with;
+    let list = |sign_in: bool| {
+        let mut l = test_support::list(vec![
+            row_with("ready", |_| {}),
+            row_with("need", |a| a.auth_ready = false),
+            row_with("api", |a| {
+                a.auth_kind = acct_core::AUTH_KIND_API_KEY.to_string();
+                a.auth_ready = false;
+            }),
+            row_with("gone", |a| {
+                a.exists = false;
+                a.auth_ready = false;
+            }),
+            row_with("here", |a| {
+                a.mode = "in-place".to_string();
+                a.auth_ready = false;
+            }),
+        ]);
+        with_sign_in(&mut l, sign_in);
+        l.accounts
+            .iter()
+            .map(|r| (r.scanned.name.clone(), r.login))
+            .collect::<Vec<_>>()
+    };
+    let named = |v: Vec<(String, bool)>| {
+        v.into_iter()
+            .filter(|(_, b)| *b)
+            .map(|(n, _)| n)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(named(list(true)), vec!["need".to_string()]);
+    assert!(named(list(false)).is_empty());
+    let mut l = test_support::list(vec![row_with("need", |a| a.auth_ready = false)]);
+    with_sign_in(&mut l, false);
+    assert_eq!(
+        l.accounts[0].unselectable.as_ref().map(|w| w.0.clone()),
+        Some(copy_core::copy_text("accounts.row.loginElsewhere", &[]))
     );
 }

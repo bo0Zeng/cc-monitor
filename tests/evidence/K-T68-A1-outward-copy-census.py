@@ -117,7 +117,7 @@ EXCLUDED_DIRS = (
 )
 EXCLUDED_FILE_RE = re.compile(
     r"(\.vitest\.ts|\.test\.ts|\.spec\.ts|\.d\.ts)$"
-    r"|-golden\.ts$"            # 住在 src/ 里的入库夹具（launch-cli-golden.ts …）
+    r"|-golden\.ts$"            # 住在 src/ 里的入库夹具
     r"|/build\.rs$"             # 构建脚本：println!/panic! 只进构建日志
     r"|/guard_support\.rs$"     # 判据支撑，不是生产面
     r"|/stream/inbound/cli_only\.rs$"  # 协议参考的料（CLI 独有子命令的说明），同上那条目录
@@ -128,7 +128,6 @@ EXCLUDED_FILE_RE = re.compile(
 CC_BUS_INJECT_FILES = (
     "src/shared/cc-bus",
     "src/frontend/shell/src/cc_bus.rs",
-    "src/frontend/shell/src/cc_bus_deploy.rs",
 )
 
 # 🔴 修 bug（CP1 2026-09-24）：Rust 里 `'` 不一定开一个字符字面量 —— 生命周期 `'a`、
@@ -160,11 +159,11 @@ def is_copy_text(text: str) -> bool:
 
 
 # **普查读表**（「全量抽表那一波要同拍把左边改成『普查主集 ＋ 表条数』」）：
-# 出口里的 `copyText("key"…)`（TS）/ `copy_text("key"…)`（monitor Rust）也是一条对外文案 ——
+# 出口里的 `copyText("key"…)`（TS）/ `copy_text("key"…)` · `Said::of("key"…)`（monitor Rust）也是一条对外文案 ——
 # 记成主集条目，`via="table"`，文本与 kind 取表里那一条。字面量那些记 `via="literal"`。
 # ⇒ 抽表不会把全集抽空：各桶的反空真地板照旧有意义。
 TABLE_PATH = REPO / "src" / "shared" / "copy" / "table.json"
-COPY_REF = re.compile(r"(?<![\w.])copy(?:Text|_text)\s*\(\s*\"([A-Za-z0-9.]+)\"")
+COPY_REF = re.compile(r"(?<![\w.])(?:copy(?:Text|_text)|Said::of)\s*\(\s*\"([A-Za-z0-9.]+)\"")
 
 
 def load_copy_table() -> dict:

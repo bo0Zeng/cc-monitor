@@ -137,6 +137,7 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     models: None,
     model_default: None,
     model_text: None,
+    model_pick: None,
     model_switch: None,
 };
 
@@ -369,6 +370,8 @@ fn records_face(
         project_dir: None,
         mcp_said: None,
         quiet_unread: None,
+        beats: None,
+        fork: None,
     }
 }
 
@@ -377,7 +380,7 @@ fn records_face(
 pub(crate) fn chain_fact(
     line: &crate::agents::Line<'_>,
 ) -> Option<crate::agents::mainline::ChainFact> {
-    use crate::agents::mainline::{ChainFact, Link};
+    use crate::agents::mainline::{ChainFact, Link, Words};
     let v = line.value()?;
     let s = |k: &str| {
         v.get(k)
@@ -385,7 +388,7 @@ pub(crate) fn chain_fact(
             .map(str::to_string)
     };
     if let Some(q) = s("queued") {
-        return Some(ChainFact::Queued(q));
+        return Some(ChainFact::Queued(Words::of(&q)));
     }
     let role = s("role")?;
     Some(ChainFact::Node(Link {
@@ -395,7 +398,7 @@ pub(crate) fn chain_fact(
         said: role == "human",
         reply: role == "bot",
         interrupt: v.get("cut").and_then(serde_json::Value::as_bool) == Some(true),
-        text: (role == "human").then(|| s("words").unwrap_or_default()),
+        text: (role == "human").then(|| Words::of(&s("words").unwrap_or_default())),
         shown: role != "note",
     }))
 }

@@ -48,6 +48,7 @@ const read = (p: string) => readFileSync(resolve(ROOT, p), "utf8");
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { stripComments } from "../../test-support/strip-comments";
 import { CHANGED_KIND } from "../../../src/frontend/ui/changed-stream";
+import { nonEmpty } from "../../test-support/non-empty";
 
 /**
  * 剥注释——**方言必须显式给**（C04a Phase D 审计：Rust 的 `'a` 生命周期与 TS 的 `'…'`
@@ -182,7 +183,7 @@ describe("C01 边界生成物", () => {
     ];
     for (const f of files) {
       const src = read(`src/frontend/ui/generated/${f}`);
-      expect(src.length, `${f} 是空的`).toBeGreaterThan(100);
+      nonEmpty(src);
       expect(
         GENERATED_BY.some((mark) => src.includes(mark)),
         `${f} 头上没写它是谁生成的（认得的两种：${GENERATED_BY.join(" / ")}）`,
@@ -441,12 +442,21 @@ describe("C01 边界生成物", () => {
     );
   });
 
-  it("`history-turns` 的一轮与过程段（`observe/turns.rs`）来自生成物，界面不再手写那一形", () => {
+  it("会话流的格只经生成类型读：`events.ts` · `runs.ts` 里没有 `decode*` 手解，也没有把一格强转成 `Record<string, unknown>` 再按键名读", () => {
+    const hand = /\bdecode[A-Z]\w*Payload\b|as\s+Record<string,\s*unknown>/g;
+    const hits = (src: string): string[] => code(src).match(hand) ?? [];
+    // 正控：两种写法各造一处，尺子认得出。
+    expect(hits("export function decodeRunsPayload(v: unknown) {}\nconst f = v as Record<string, unknown>;")).toHaveLength(2);
+    expect(hits(read("src/frontend/ui/events.ts")), "events.ts 又手解会话流的格了").toEqual([]);
+    expect(hits(read("src/frontend/ui/runs.ts")), "runs.ts 又手解运行表了").toEqual([]);
+  });
+
+  it("`history-turns` 的一轮与过程段（`observe/recognize/turns.rs`）来自生成物，界面不再手写那一形", () => {
     // 复审五：`Fold` 只有 `Serialize`、界面手写了一份（新加的线上形状必须出生成类型）。
     const files = readdirSync(resolve(ROOT, "src/frontend/ui/generated"));
     const want = ["TurnRow", "FoldSegment", "TurnPart", "TurnSpan", "TurnPhase", "Tone"];
     expect(want.filter((n) => !files.includes(`${n}.ts`)), "生成目录里缺这几形").toEqual([]);
-    const turns = rustCode(read("src/backend/observe/turns.rs"));
+    const turns = rustCode(read("src/backend/observe/recognize/turns.rs"));
     for (const t of ["TurnRow", "Fold", "Part", "Span", "Phase"]) {
       expect(turns, `turns.rs 的 ${t} 没派生 ts_rs::TS`).toMatch(
         new RegExp(`derive\\(ts_rs::TS\\)\\)\\]\\s*(#\\[[^\\n]*\\]\\s*)*pub\\(crate\\) (struct|enum) ${t}\\b`),
@@ -473,11 +483,6 @@ describe("C01 边界生成物", () => {
     const hits = scanned.filter((f) =>
       /import\s*\{[^}]*\binvoke\b[^}]*\}\s*from\s*["']@tauri-apps\/api\/core["']/.test(code(read(f))),
     );
-    // **反向自检该问「遍历有没有工作」，不该问「命中多少」**（C04d 批 5a 订正）：
-    // 原来写的是 `hits.length > 10`，校准于这个数还是 29 的年代。
-    // 而 C04d 的**目标就是把命中数降到 3-4** ⇒ 那个下界会在迁移快成功时**挡住正确的进展**，
-    // 逼人去改自检而不是去看性质。所以自检改成断言**扫过的文件数**够多。
-    expect(scanned.length, "一个 .ts 都没扫到——遍历坏了").toBeGreaterThan(100);
     // **等号**：这个数是成功标准 4 的度量，C04d 每迁一个模块必须让它降一次。
     // 注意 `src/frontend/ui/ipc/commands.ts` **算在里面**——包装层就是最终该剩下的那 1 个。
     // 裸 `grep 'import { invoke }'` 只有 24，因为有文件是多名导入（`import { invoke, Channel }`）

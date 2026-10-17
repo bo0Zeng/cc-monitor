@@ -256,6 +256,9 @@ fn what_cannot_travel_as_text_cannot_be_taken() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
+/// skill 可疑项的种类（线上名）：界面文案表按它逐键给字。
+const SUSPECT_KINDS: &[&str] = &["abs-path", "binary", "command-missing", "executable"];
+
 #[test]
 fn suspects_follow_the_written_rules_and_the_closed_set_both_ways() {
     let facts = FakeFacts {
@@ -587,7 +590,7 @@ fn what_the_install_plan_says_to_record_is_what_the_uninstall_plan_recognizes() 
         &json!({"name": "demo", "source": source, "take": ["old.md", "new.md"], "overwrite": ["old.md"]}),
     )
     .unwrap();
-    // 替身「写」：照 write 把来源原文落盘（monitor 那一侧经 files-put 做的事）
+    // 替身「写」：照 write 把来源原文落盘（monitor 那一侧经 Door::put 做的事）
     write(&d, "skills/demo/old.md", b"from the source\n");
     write(&d, "skills/demo/new.md", b"brand new\n");
     let file = d.join(relay_route_core::SKILL_LEDGER_REL);

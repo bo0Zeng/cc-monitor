@@ -11,16 +11,23 @@ import com.ccmonitor.mobile.core.terminal.Mod
 import com.ccmonitor.mobile.core.terminal.applyKeyModifiers
 import java.io.ByteArrayOutputStream
 
-/** 键条上点了做不成的：那台没有 tmux · 要切去的组已经删了。 */
-enum class KeyActionFail { NO_TMUX, GROUP_GONE }
+/** 键条上点了做不成的：那台做不了（[Unavailable.why] 那一句）· 要切去的组已经删了。 */
+sealed interface KeyActionFail {
+    data class Unavailable(
+        val why: String,
+    ) : KeyActionFail
+
+    data object GroupGone : KeyActionFail
+}
 
 /**
  * App 动作束：键条上绑了 App 动作的触发经 [invoke] 触达终端屏已有的回调。
- * 要 tmux 的那几个（[AppAction.NEEDS_TMUX]）在没有 tmux 的服务器上不做、回 [KeyActionFail.NO_TMUX]；
+ * 要 tmux 的那几个（[AppAction.NEEDS_TMUX]）在 [noTmux] 时不做、推公钥在 [noBackend] 时不做，回 [KeyActionFail.Unavailable]；
  * [onGotoGroup] 回 false ＝ 那组已经不在。
  */
 class KeyActions(
-    val supportsTmux: Boolean,
+    val noTmux: String?,
+    val noBackend: String?,
     val onShowTabs: () -> Unit,
     val onCommandPalette: () -> Unit,
     val onTmuxSessions: () -> Unit,
@@ -33,10 +40,11 @@ class KeyActions(
     val onGotoGroup: (String) -> Boolean,
 ) {
     fun invoke(b: KeyBinding.App): KeyActionFail? {
-        if (b.action in AppAction.NEEDS_TMUX && !supportsTmux) return KeyActionFail.NO_TMUX
+        val why = if (b.action in AppAction.NEEDS_TMUX) noTmux else noBackend.takeIf { b.action == AppAction.PUSH_KEY }
+        if (why != null) return KeyActionFail.Unavailable(why)
         when (b.action) {
             AppAction.NEXT_GROUP -> onNextGroup()
-            AppAction.GOTO_GROUP -> if (b.groupId?.let(onGotoGroup) != true) return KeyActionFail.GROUP_GONE
+            AppAction.GOTO_GROUP -> if (b.groupId?.let(onGotoGroup) != true) return KeyActionFail.GroupGone
             AppAction.EDIT_KEYS -> onEditKeys()
             AppAction.PASTE -> onPaste()
             AppAction.SHOW_TABS -> onShowTabs()

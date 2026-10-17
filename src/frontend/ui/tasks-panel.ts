@@ -3,7 +3,7 @@
  *
  * 数据源：那台机器的后端 `tasks-list`（本机与远端同一条路，按 `origin` 问）。
  * Tab 创建时**经通道按类型问**（`callTyped(origin, "tasks-list")`），后端出成品 `{tasks}`（字段语义只住后端 `observe/tasks_query.rs::task_entry`）；
- * 帧里推来的那一份由 {@link decodeTasks} 严格收。
+ * 帧里推来的那一份同 `tasks-list` 的回包，按同一个类型用。
  * **变更推送本机远端同形**：那台后端自己盯任务目录，变了发 `changed {tasks, key: sid}` 帧；
  * monitor 交进通道 `subscribe(origin, "changed/tasks")`（`changed-stream.ts`），界面收到那个 sid 就重问一次
  * （`changed-stream.ts::changedItems` 读那一批格）。monitor 自己那条 notify 与 `task-update` 事件删了。
@@ -32,7 +32,7 @@ import { copyText } from "./copy-table";
 
 /**
  * `tasks-list` 成品里的一个任务：形状从后端类型生成（`observe/tasks_query.rs::Task`）。
- * 帧里推来的那一份（同 `tasks-list` 的回包）由 {@link decodeTasks} 严格收；问回来的那一份按类型用（形状由握手指纹管）。
+ * 问回来的与帧里推来的同一个类型（形状由握手指纹管）。
  */
 export type TaskEntry = Task;
 
@@ -225,40 +225,6 @@ export class TasksPanel {
 
 /** 这一问的期限：与它上一个住址（monitor `frame_query::LINES_BUDGET`）同值 —— 读一个小目录 ＋ 回程。 */
 const TASKS_BUDGET_MS = 30_000;
-
-/** 成品里一个任务**恰好**能有的键（可选的两格可缺）。 */
-const TASK_REQUIRED_KEYS = ["blockedBy", "blocks", "id", "status", "subject"];
-const TASK_OPTIONAL_KEYS = ["activeForm", "description"];
-
-/**
- * `tasks-list` 的成品 → `TaskEntry[]`。**按形状严格收，不解释**：多一格 / 缺一格 / 类型不对 ⇒ 抛
- * （两端契约对不上，不猜、不跳过）。字段语义（哪几格必填、`null` 怎么算）只住后端 `task_entry`；
- * 线上形状由 `tests/__fixtures__/tasks-list.golden.json` 钉住（后端产出 == 金样 · 本解码器读同一份）。
- */
-export function decodeTasks(v: unknown): TaskEntry[] {
-  const bad = (what: string): never => {
-    throw new Error(`tasks-list reply shape mismatch: ${what}`);
-  };
-  if (v === null || typeof v !== "object" || Array.isArray(v)) return bad("not an object");
-  const o = v as Record<string, unknown>;
-  if (Object.keys(o).join(",") !== "tasks" || !Array.isArray(o.tasks)) return bad("top level is not exactly one `tasks` array");
-  const strs = (x: unknown): x is string[] => Array.isArray(x) && x.every((s) => typeof s === "string");
-  return o.tasks.map((raw, i): TaskEntry => {
-    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return bad(`item ${i} is not an object`);
-    const t = raw as Record<string, unknown>;
-    const keys = Object.keys(t);
-    const known = [...TASK_REQUIRED_KEYS, ...TASK_OPTIONAL_KEYS];
-    if (!TASK_REQUIRED_KEYS.every((k) => keys.includes(k)) || !keys.every((k) => known.includes(k))) {
-      return bad(`item ${i} has keys ${keys.sort().join(",")}`);
-    }
-    const optOk = TASK_OPTIONAL_KEYS.every((k) => !(k in t) || typeof t[k] === "string");
-    if (typeof t.id !== "string" || typeof t.subject !== "string" || typeof t.status !== "string"
-      || !strs(t.blocks) || !strs(t.blockedBy) || !optOk) {
-      return bad(`item ${i} has a field of the wrong type`);
-    }
-    return t as unknown as TaskEntry;
-  });
-}
 
 /** sid → 它住哪台机器。{@link fetchSessionTasks} 每次调用都记一笔（Tab 创建时那一次必带）。 */
 const originBySid = new Map<string, Origin>();

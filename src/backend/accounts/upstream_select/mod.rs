@@ -769,11 +769,7 @@ fn dispatch_auth(row: &Row, tag: &str, body: Option<&[u8]>, act: &mut dyn FnMut(
         (Some(k), Some((name, prefix))) => {
             // ★★ **这是整个后端生产段里唯一一处把明文取出来的地方**（`KS2`）。
             //    它就在「拼这一行要写的那个鉴权头值」这一句上。
-            //    ⚠⚠ 它**从中转搬到了这里**，而搬的是**住址不是处数**：
-            //      `creds_guard::the_plaintext_leaves_the_type_at_exactly_one_place_in_this_crate`
-            //      那条「恰好 1 处」的相等断言**一个字节都没动**（它扫整个 crate，不写死文件名），
-            //      `creds_store_tests::PLAINTEXT_EXIT_SITES` 那一行只改了住址栏。
-            //      加第二处仍然是**放宽**，不许在实现里顺手把那条断言改大。
+            //    处数由 `creds_store_exits::PLAINTEXT_EXIT_SITES` 钉着（三棵树恰好 1 处）；加第二处是**放宽**。
             //    ⚠ 为什么搬：中转的类型面上不许再出现 `creds-core` 的类型（`C2`）
             //      ⇒ 「把 `AuthStyle` 翻成 HTTP」与「把 key 拼成头值」**同属上游选择的判断**，
             //      中转只拿到一个 `(头名, 完整头值)` 照写。

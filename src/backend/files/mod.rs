@@ -36,6 +36,8 @@ use cmd_wire::files::{self as wire, FileKind, WirePath};
 use std::path::{Path, PathBuf};
 
 pub mod browse_watch;
+// 一项是哪一种 · 读得起来的那几道门（`files.ls` · `files.find` 每行带上）。
+pub mod class;
 pub mod grep;
 pub mod index;
 // Everything 式搜索词：解析 ＋ 逐条匹配（`files.find` 的 `query` 只在这里被读懂）。
@@ -92,7 +94,7 @@ pub const CAPABILITIES: &[Capability] = &[
         name: "files.ls",
         purpose: "列一个目录的直接子项（名字走原始字节）",
         effect: Effect::ReadsOnly,
-        impl_files: &["mod.rs", "raw.rs"],
+        impl_files: &["class.rs", "mod.rs", "raw.rs"],
         targets: TARGETS,
     },
     Capability {
@@ -106,7 +108,7 @@ pub const CAPABILITIES: &[Capability] = &[
         name: "files.find",
         purpose: "🔴 **在常驻索引里查** —— SFTP 给不了的那一条，整族的存在理由（Everything 式搜索词 · 分页 · 同一个搜索框的旧号丢掉）",
         effect: Effect::ReadsOnly,
-        impl_files: &["browse_watch.rs", "index.rs", "mod.rs", "query.rs", "raw.rs"],
+        impl_files: &["browse_watch.rs", "class.rs", "index.rs", "mod.rs", "query.rs", "raw.rs"],
         targets: TARGETS,
     },
     Capability {
@@ -396,16 +398,18 @@ fn ls(req: wire::LsReq, tz: &crate::common::time::Tz) -> Answer<wire::LsReply> {
             .map(|t| kind_of(t.is_dir(), t.is_file(), t.is_symlink()))
             .unwrap_or(FileKind::Other);
         // 链接要跟一次才知道指向的是不是目录（只列文件夹 · 目录在前都看它）；按大小 · 时间排要每一项的元数据。
-        let md = (kind == FileKind::Symlink || sort.by != wire::LsSortBy::Name)
-            .then(|| Ro::metadata(e.path()).ok())
-            .flatten();
+        let md = (kind == FileKind::Symlink
+            || matches!(sort.by, wire::LsSortBy::Size | wire::LsSortBy::Mtime))
+        .then(|| Ro::metadata(e.path()).ok())
+        .flatten();
         let dir_like = kind == FileKind::Dir || md.as_ref().is_some_and(|m| m.is_dir());
         if dirs_only && !dir_like {
             continue;
         }
         let num = md.map_or(0, |m| match sort.by {
             wire::LsSortBy::Size => m.len(),
-            _ => epoch_secs(m.modified()).unwrap_or(0),
+            wire::LsSortBy::Mtime => epoch_secs(m.modified()).unwrap_or(0),
+            wire::LsSortBy::Name | wire::LsSortBy::Type => 0,
         });
         picked.push(Picked {
             path: e.path(),
@@ -431,7 +435,7 @@ fn ls(req: wire::LsReq, tz: &crate::common::time::Tz) -> Answer<wire::LsReply> {
     })
 }
 
-/// 列出来、还没排的一项（`num` ＝ 按大小 / 时间排时那一格，按名称排时不读、恒 0）。
+/// 列出来、还没排的一项（`num` ＝ 按大小 / 时间排时那一格，按名称 / 类型排时不读、恒 0）。
 struct Picked {
     path: PathBuf,
     kind: FileKind,
@@ -444,6 +448,7 @@ struct Picked {
 enum Col {
     Text(Vec<u8>),
     Num(u64),
+    Type(wire::FileClass, Option<String>),
 }
 
 /// 那一列正着还是反着（一次排序里每项同一形）。
@@ -453,7 +458,7 @@ enum Dir {
     Desc(std::cmp::Reverse<Col>),
 }
 
-/// 一项的排序键：目录（含指向目录的链接）在前 · 那一列（第一下：名称 A 在前，大小 · 时间大的在前；`reverse` 只反这一格）·
+/// 一项的排序键：目录（含指向目录的链接）在前 · 那一列（第一下：名称 · 类型 A 在前，大小 · 时间大的在前；`reverse` 只反这一格）·
 /// 名称小写 · 原字节。
 fn ls_order(p: &Picked, sort: wire::LsSort) -> (bool, Dir, Vec<u8>, Vec<u8>) {
     let name = p.path.file_name().map(raw_name).unwrap_or_default();
@@ -462,11 +467,16 @@ fn ls_order(p: &Picked, sort: wire::LsSort) -> (bool, Dir, Vec<u8>, Vec<u8>) {
         Ok(s) => s.to_lowercase().into_bytes(),
         Err(_) => name.to_ascii_lowercase(),
     };
-    let (col, first_down) = match sort.by {
-        wire::LsSortBy::Name => (Col::Text(lower.clone()), false),
-        wire::LsSortBy::Size | wire::LsSortBy::Mtime => (Col::Num(p.num), true),
+    let col = match sort.by {
+        wire::LsSortBy::Name => Col::Text(lower.clone()),
+        wire::LsSortBy::Size | wire::LsSortBy::Mtime => Col::Num(p.num),
+        wire::LsSortBy::Type => {
+            let (c, e) =
+                class::type_key(&name, p.kind == FileKind::Dir, p.kind == FileKind::Symlink);
+            Col::Type(c, e)
+        }
     };
-    let col = if first_down != sort.reverse {
+    let col = if sort.descending() {
         Dir::Desc(std::cmp::Reverse(col))
     } else {
         Dir::Asc(col)
@@ -478,11 +488,19 @@ fn ls_order(p: &Picked, sort: wire::LsSort) -> (bool, Dir, Vec<u8>, Vec<u8>) {
 fn ls_row(p: Picked, tz: &crate::common::time::Tz) -> wire::LsEntry {
     let kind = p.kind;
     let md = Ro::metadata(&p.path).ok();
+    let name = p.path.file_name().map(raw_name).unwrap_or_default();
+    let link = kind == FileKind::Symlink;
+    let link_dir = link && md.as_ref().is_some_and(|m| m.is_dir());
+    let is_dir = kind == FileKind::Dir;
     let mut row = wire::LsEntry {
         path: wire_path(raw::path_bytes(&p.path)),
-        name: WirePath(p.path.file_name().map(raw_name).unwrap_or_default()),
+        class: class::class_of_entry(&name, is_dir, link, link_dir),
+        type_text: class::type_text(&name, is_dir, link, link_dir, link && md.is_none()),
+        gates: (!p.dir_like).then(|| class::gates_of(&name, md.as_ref().map_or(0, |m| m.len()))),
+        name: WirePath(name),
         kind,
         size: None,
+        size_text: None,
         mtime_secs: None,
         mtime_text: None,
         mtime_full: None,
@@ -491,6 +509,8 @@ fn ls_row(p: Picked, tz: &crate::common::time::Tz) -> wire::LsEntry {
     };
     if let Some(md) = md {
         row.size = Some(md.len());
+        // 目录（含指向目录的链接）的大小是文件系统记账的数，不上屏：不写字。
+        row.size_text = (!is_dir && !link_dir).then(|| copy_core::size_text(md.len()));
         if let Some(t) = epoch_secs(md.modified()) {
             let (short, full) = crate::common::time::mtime_texts_now(t, tz);
             row.mtime_secs = Some(t);
@@ -575,7 +595,6 @@ fn stat(req: wire::StatReq, tz: &crate::common::time::Tz) -> Answer<wire::StatRe
     let texts = mtime.map(|ms| crate::common::time::mtime_texts_now(ms, tz));
     Ok(wire::StatReply {
         path: wire_path(raw::path_bytes(&path)),
-        name: WirePath(path.file_name().map(raw_name).unwrap_or_default()),
         up: path.parent().map(|u| wire_path(raw::path_bytes(u))),
         kind: kind_of(t.is_dir(), t.is_file(), t.is_symlink()),
         size: md.len(),
@@ -648,20 +667,29 @@ fn find(req: wire::FindReq, tz: &crate::common::time::Tz) -> Answer<wire::FindRe
         hits: r
             .hits
             .iter()
-            .map(|h| wire::FilesFindHit {
-                path: wire_path(&h.path),
-                kind: KINDS_BY_CODE
+            .map(|h| {
+                let kind = KINDS_BY_CODE
                     .get(h.kind as usize)
                     .copied()
-                    .unwrap_or(FileKind::Other),
-                location: wire_path(index::location_of(&h.path, start.as_deref())),
-                size: h.meta.size,
-                mtime_secs: h.meta.mtime_secs,
-                mtime_text: h
-                    .meta
-                    .mtime_secs
-                    .map(|t| crate::common::time::mtime_texts_now(t, tz).0),
-                marks: pairs(&matcher.marks(&h.path)),
+                    .unwrap_or(FileKind::Other);
+                wire::FilesFindHit {
+                    path: wire_path(&h.path),
+                    class: class::type_key(
+                        index::name_bytes(&h.path),
+                        kind == FileKind::Dir,
+                        kind == FileKind::Symlink,
+                    )
+                    .0,
+                    kind,
+                    location: wire_path(index::location_of(&h.path, start.as_deref())),
+                    size: h.meta.size,
+                    mtime_secs: h.meta.mtime_secs,
+                    mtime_text: h
+                        .meta
+                        .mtime_secs
+                        .map(|t| crate::common::time::mtime_texts_now(t, tz).0),
+                    marks: pairs(&matcher.marks(&h.path)),
+                }
             })
             .collect(),
         start: start.as_deref().map(wire_path),
@@ -815,18 +843,9 @@ fn browse(req: wire::BrowseReq) -> Answer<wire::BrowseReply> {
         watch_error: w.error,
     })
 }
-/// `files.read.text` 一趟**最多**肯交多少字节 —— 后端自己的天花板，**不是**编辑上限。
-///
-/// # 🔴 两个数，两个住址，两件事（别把它读成「编辑上限的第二份」）
-///
-/// - **编辑上限**是**调用方**的：它答的是「这个文本控件打字卡不卡」，那是窗口那一侧的
-///   语境（「那个上限该是多少、超了怎么办，要在**原生窗口的文本控件**
-///   这个语境里答」）⇒ 它住窗口，每趟经 `max_bytes` 送过来。「机制在后端 · 偏好归调用方」
-///   （同本族 `files.index.rebuild` 那条的形）。
-/// - **本常量**是后端的：它答的是「一帧应答整个进内存、整个过线，最大能多大」。
-///   推算：JSON 转义最坏把一个字节写成 6 个（`\u00XX`），8 MiB × 6 = 48 MiB，
-///   仍在应答那一帧的上限（monitor 侧读后端一行 64 MiB、通道一帧 64 MiB）之内。
-///   ⇒ 调用方要的 `max_bytes` 超过它 ⇒ `bad_args`（说清天花板是多少），**不偷偷夹小**。
+/// `files.read.text` 一趟最多肯交多少字节：一帧应答整个进内存、整个过线的天花板（JSON 转义最坏 ×6 = 48 MiB，
+/// 仍在 monitor 读后端一行 · 通道一帧 64 MiB 之内）。编辑上限就是它（[`class::gates_of`]）；
+/// 调用方要的 `max_bytes` 超过它 ⇒ `bad_args`，不偷偷夹小。
 pub const READ_TEXT_MAX_BYTES: usize = 8 * 1024 * 1024;
 
 /// `files-read-chunk` 一块最多多少原始字节（b16 翻倍后一帧应答仍远小于 monitor 读一行的上限）。
@@ -889,7 +908,7 @@ fn read_chunk(req: wire::ReadChunkReq) -> Answer<wire::ReadChunkReply> {
     if !md.is_file() {
         return Err(Refused::from((
             "not_text",
-            copy_core::copy_text("beFilesRead.text.notRegular", &[]),
+            copy_core::copy_text("reason.fs.notRegular", &[]),
         )));
     }
     let broke = |e: std::io::Error| {
@@ -958,7 +977,7 @@ fn read_text(req: wire::ReadTextReq) -> Answer<wire::ReadTextReply> {
     if !md.is_file() {
         return Err(Refused::from((
             "not_text",
-            copy_core::copy_text("beFilesRead.text.notRegular", &[]),
+            copy_core::copy_text("reason.fs.notRegular", &[]),
         )));
     }
     if md.len() > max {

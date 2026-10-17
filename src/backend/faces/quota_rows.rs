@@ -5,6 +5,7 @@
 //! 一个语义位那一格的字与语气是显示态那一处写的（`accounts/quota/show.rs::slot_words`），这里照抄。
 //! 「采样那一格」只写几点（数旧带「旧」）：哪台采的是出口自己的事（它知道问的是哪台、那台叫什么）。
 
+use crate::accounts::quota::show::{reset_text, window_label};
 use crate::common::cells::{Tone, Words};
 use cmd_wire::quota::{
     AccountHead, Kind, LoginState, QuotaShow, QuotaState, ResetsAt, SlotShow, UnseenHead,
@@ -56,14 +57,36 @@ fn reset_cells(at: Option<u64>, text: Option<&Words>, rel: Option<&Words>) -> Ve
     if at.is_none() {
         return Vec::new();
     }
-    let at = text_of(text);
-    match rel {
-        Some(rel) => vec![
-            c(copy_text("acct.reset.at", &[("at", at)])),
-            c(rel.0.clone()),
-        ],
-        None => vec![c(copy_text("acct.reset.past", &[("at", at)]))],
-    }
+    let at = Words(text_of(text).to_string());
+    let mut row = vec![c(reset_text(&at, rel.is_none()).0)];
+    row.extend(rel.map(|r| c(r.0.clone())));
+    row
+}
+
+/// 更细的窗口（窗口键带 `:` 的，如 `7d:opus`）各一行：名字 · 值（重置已过 ⇒ `—`，用满 ⇒ `✕`）· ↻ · 距今。
+fn tier_rows(show: &QuotaShow) -> impl Iterator<Item = Vec<Cell>> + '_ {
+    show.windows
+        .iter()
+        .filter(|w| w.key.as_deref().is_some_and(|k| k.contains(':')))
+        .map(|w| {
+            let value = if w.reset_since_seen {
+                copy_text("acct.val.none", &[])
+            } else if w.tone == Tone::Fail {
+                copy_text("acct.val.full", &[])
+            } else {
+                w.pct.map_or_else(
+                    || copy_text("acct.val.none", &[]),
+                    |p| copy_text("acct.val.pct", &[("pct", &p.to_string())]),
+                )
+            };
+            let mut row = vec![c(window_label(w.key.as_deref())), toned(value, w.tone)];
+            row.extend(reset_cells(
+                w.resets_at,
+                w.resets_at_text.as_ref(),
+                w.resets_at_rel_text.as_ref(),
+            ));
+            row
+        })
 }
 
 fn slot_of<'a>(show: &'a QuotaShow, slot: &str) -> Option<&'a SlotShow> {
@@ -85,7 +108,7 @@ fn slot_row(show: &QuotaShow, slot: &str) -> Vec<Cell> {
 
 fn state_row(show: &QuotaShow, reading: &ResetsAt) -> Option<Vec<Cell>> {
     let value = match show.state {
-        QuotaState::Refused => toned(copy_text("acct.val.refusedOnly", &[]), Tone::Fail),
+        QuotaState::Refused => toned(copy_text("reason.code.refused", &[]), Tone::Fail),
         QuotaState::ResetSinceSeen => c(copy_text("acct.val.none", &[])),
         _ => return None,
     };
@@ -128,6 +151,7 @@ pub(crate) fn seen_block(a: &AccountHead) -> Rows {
     } else {
         rows.push(slot_row(show, "5h"));
         rows.push(slot_row(show, "7d"));
+        rows.extend(tier_rows(show));
         if !windowed {
             rows.extend(state_row(show, reading));
         }

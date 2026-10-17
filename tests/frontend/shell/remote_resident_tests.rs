@@ -46,8 +46,7 @@ fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back
         ),
         "devbox",
     ) {
-        Err(AttachErr::Unsupported(s, code)) => {
-            assert_eq!(code, crate::machine_state::NOT_UNIX);
+        Err(AttachErr::Unsupported(s)) => {
             assert_eq!(
                 s.said,
                 copy_text("rsRemoteResident.ensure.unsupported", &[])
@@ -94,24 +93,30 @@ fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back
             &exec("", r#"{"code":"spawn_failed","message":"x"}"#, Some(2)),
             "devbox"
         ),
-        Err(AttachErr::Failed("x".into()))
+        Err(AttachErr::Failed(Said::written("x".into())))
     );
     assert_eq!(
         parse_answer(&exec(&hello("p1a-old"), "", None), "devbox"),
-        Err(AttachErr::Failed(copy_core::backend_old("devbox").into()))
+        Err(AttachErr::Failed(Said::written(copy_core::backend_old(
+            "devbox"
+        ))))
     );
 }
 
-/// 远端那条流的 attach 行：「我要流」＋ 时区；没有旗标、没有钥匙、没有出口声明（会话帧远端本机同一形）。
+/// 远端那条流的 attach 行：「我要流」＋ 时区 ＋ 名单；没有旗标、没有钥匙、没有出口声明（会话帧远端本机同一形）。
 /// 本机远端同一处拼（`local_backend_host::attach_line`）。
 #[test]
 fn the_attach_line_asks_for_the_stream_and_nothing_else() {
-    let l = crate::local_backend_host::attach_line(Some("Asia/Shanghai"), None);
+    let watch = cmd_wire::watch::WatchAsk {
+        sids: vec!["s1".into()],
+        ..Default::default()
+    };
+    let l = crate::local_backend_host::attach_line(Some("Asia/Shanghai"), None, Some(watch));
     assert!(l.ends_with('\n'));
     let v: serde_json::Value = serde_json::from_str(l.trim()).unwrap();
     assert_eq!(
         v,
-        serde_json::json!({"attach": true, "tz": "Asia/Shanghai"})
+        serde_json::json!({"attach": true, "tz": "Asia/Shanghai", "watch": {"sids": ["s1"], "branch": []}})
     );
     let src =
         guard_core::production_code(include_str!("../../../src/comms/resident-client/feed.rs"));

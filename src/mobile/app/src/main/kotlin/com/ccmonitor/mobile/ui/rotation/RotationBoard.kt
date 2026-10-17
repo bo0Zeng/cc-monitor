@@ -1,13 +1,13 @@
 package com.ccmonitor.mobile.ui.rotation
 
-import com.ccmonitor.mobile.core.claude.link.AccountsList
 import com.ccmonitor.mobile.core.claude.link.Changed
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.claude.link.RotEdit
 import com.ccmonitor.mobile.core.claude.link.RotWhere
 import com.ccmonitor.mobile.core.claude.link.Rotation
 import com.ccmonitor.mobile.core.claude.link.RotationStrategies
-import com.ccmonitor.mobile.core.claude.link.wire.RotSeg
+import com.ccmonitor.mobile.core.claude.link.wire.RotPlate
 import com.ccmonitor.mobile.core.claude.link.wire.RotationStrategiesReply
 import com.ccmonitor.mobile.core.claude.link.wire.RotationViewReply
 import com.ccmonitor.mobile.core.copy.copyText
@@ -24,12 +24,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** 提示的颜色（轮换屏）：出错红 · 需手动与停发琥珀 · 别处被改了蓝 · 只告知灰（同桌面那张表）。 */
+/** 提示的颜色（轮换屏）：出错红 · 需手动与停发琥珀 · 只告知蓝。 */
 enum class NoteTone {
     ERROR,
     WARN,
     INFO,
-    PLAIN,
 }
 
 /** 一格改动没收下：哪一格（[RotCellId]）· 那一句（`rot.fail.settings` ＋ 那台的话）。 */
@@ -77,11 +76,12 @@ data class RotationUi(
     /** 旧格式那几份的抽屉开着。 */
     val oldOpen: Boolean = false,
     val ask: RotAsk? = null,
-    /** 号牌上的号色与名字（那台账号库的事实，`accounts-list`）。 */
-    val accounts: Map<String, AccountsList.Account> = emptyMap(),
     /** 一件写没成那一句（底部提示一次）。 */
     val failure: Problem? = null,
 ) {
+    /** 视图里这个号身上那一枚号牌（号色 · 号名 · 号牌字，那台写好的）；视图里没有 ⇒ `null`。 */
+    fun plate(account: String): RotPlate? = view?.accounts?.firstOrNull { it.account == account }?.plate
+
     companion object {
         const val HOURS_12 = 12
         const val HOURS_24 = 24
@@ -113,10 +113,7 @@ class RotationBoard(
     val inSession: Boolean get() = sid != null
 
     init {
-        scope.launch {
-            loadAccounts()
-            refresh()
-        }
+        scope.launch { refresh() }
         changes?.let { flow ->
             scope.launch {
                 flow.collect { c ->
@@ -151,12 +148,6 @@ class RotationBoard(
     /** 看哪一处：会话 ⇒ 它；设置页 ⇒ 新会话用的那份（没有 ⇒ `null`，只画第一行）。 */
     private fun where(list: RotationStrategiesReply): RotWhere? = sid?.let { RotWhere.Session(it) } ?: list.forNew.takeIf { it.isNotEmpty() }?.let { RotWhere.Strategy(it) }
 
-    private suspend fun loadAccounts() {
-        val r = link.call(AccountsList.COMMAND, AccountsList.args(""), READ_MS)
-        val got = (r as? Reply.Ok)?.let { AccountsList.of(it.data) } ?: return
-        _state.update { it.copy(accounts = got.accounts.associateBy { a -> a.name }) }
-    }
-
     /** 显示的这份设置照哪个版本（那台给的）：写的时候当 `ifRev`。 */
     private fun rev(): String =
         _state.value.view
@@ -172,9 +163,11 @@ class RotationBoard(
         command: String,
         args: Map<String, Any?>,
         onFail: (Problem) -> Unit = { p -> fail(what, p) },
+        onOk: (Any?) -> Unit = {},
     ): Boolean {
         val r = link.call(command, args, WRITE_MS)
         if (r is Reply.Ok) {
+            onOk(r.data)
             refresh()
             return true
         }
@@ -273,43 +266,34 @@ class RotationBoard(
     // ── 设置
 
     /**
-     * 改了一格（[cell] ＝ 哪一格，没收下时那一行底下写那一句）· 拖了号牌 · 移出 · 加号：整份新设置。
-     * 会话 ⇒ `rotation-settings`（`ifRev` ＝ 那台给的 `baseRev`）；设置页 ⇒ 草稿留在手上、随读交给那台。
+     * 改了一格（[cell] ＝ 哪一格，没收下时那一行底下写那一句）· 刷了一段 · 拖了号牌 · 移出 · 加号：一个意图（[RotEdit]），那台照声明改。
+     * 会话 ⇒ 草稿在那台（`ifRev` ＝ 那台给的 `baseRev`）；设置页 ⇒ 那台照手上的草稿改、回改完的那份，原样存着随读交回。
      */
-    fun settings(
-        next: Map<String, Any?>,
+    fun edit(
+        edit: Any,
         cell: String = "",
     ) {
-        if (sid == null) {
-            if (draft == null) {
-                draftRev =
-                    _state.value.view
-                        ?.strategy
-                        ?.rev
+        val args =
+            if (sid != null) {
+                Rotation.settings(RotWhere.Session(sid), edit, ifRev = rev())
+            } else {
+                val view = _state.value.view
+                val id = view?.strategy?.id ?: return
+                Rotation.settings(RotWhere.Strategy(id), edit, draft = draft)
             }
-            draft = next
-            _state.update { it.copy(cellFailed = null) }
-            scope.launch { refresh() }
-            return
+        val failed = { p: Problem ->
+            _state.update { it.copy(cellFailed = CellFailure(cell, listOf(copyText("rot.fail.settings"), p.text).filter(String::isNotEmpty).joinToString(copyText("kit.text.sep")))) }
+        }
+        val took = { data: Any? ->
+            if (sid == null) {
+                val view = _state.value.view
+                if (draft == null) draftRev = view?.strategy?.rev
+                draft = Rotation.ofSettings(data)?.settings
+            }
         }
         scope.launch {
-            val ok =
-                write(copyText("rot.fail.settings"), Rotation.SETTINGS, Rotation.settings(RotWhere.Session(sid), next, rev())) { p ->
-                    _state.update { it.copy(cellFailed = CellFailure(cell, listOf(copyText("rot.fail.settings"), p.text).filter(String::isNotEmpty).joinToString(copyText("kit.text.sep")))) }
-                }
-            if (ok) _state.update { it.copy(cellFailed = null) }
+            if (write(copyText("rot.fail.settings"), Rotation.SETTINGS, args, failed, took)) _state.update { it.copy(cellFailed = null) }
         }
-    }
-
-    /** 24 小时条刷一段 ⇒ 那台刷完的那一组（`null` ＝ 没成，那一句已报）。 */
-    suspend fun dayPaint(
-        segs: List<RotSeg>,
-        from: Long,
-        to: Long,
-        v: Double?,
-    ): List<RotSeg>? {
-        val r = link.call(Rotation.DAY_PAINT, Rotation.dayPaint(segs, from, to, v), WRITE_MS)
-        return (r as? Reply.Ok)?.let { Rotation.ofDayPaint(it.data) } ?: null.also { fail(copyText("rot.fail.settings"), problemOf(r, Rotation.DAY_PAINT)) }
     }
 
     fun save() {
@@ -405,7 +389,7 @@ class RotationBoard(
                 ?.strategy
                 ?.rev ?: return
         if (sid != null) {
-            launchWrite(copyText("rot.fail.settings"), Rotation.SETTINGS, Rotation.settings(RotWhere.Session(sid), _state.value.view?.settings, now))
+            launchWrite(copyText("rot.fail.settings"), Rotation.SETTINGS, Rotation.settings(RotWhere.Session(sid), RotEdit.KEEP, ifRev = now))
         } else {
             draftRev = now
             scope.launch { refresh() }
@@ -415,7 +399,7 @@ class RotationBoard(
     fun toggleOld() = _state.update { it.copy(oldOpen = !it.oldOpen) }
 
     /** 号在人眼里叫什么（那台账号库写的 `label`；没有 ⇒ 号名）。 */
-    fun label(account: String): String = _state.value.accounts[account]?.label ?: account
+    fun label(account: String): String = _state.value.plate(account)?.label ?: account
 
     private fun problemOf(
         r: Reply,

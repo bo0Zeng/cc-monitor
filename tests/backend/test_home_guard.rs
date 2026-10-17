@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 
 fn repo_root() -> PathBuf {
-    crate::guard_support::src_root().join("../..")
+    guard_core::addr::backend_src_root().join("../..")
 }
 
 /// 一个 crate 的根文件（`[lib] path` 写了就照它，没写 ⇒ `src/lib.rs`）。
@@ -204,13 +204,10 @@ fn the_scrub_list_takes_session_state_and_keeps_test_inputs() {
     for k in LEAKS {
         assert!(test_home::leaked(k), "{k} 该摘");
     }
-    for k in KEPT.iter().chain(&[
-        "CCM_REGEN_PROTOCOL_DOC",
-        "CCM_BLESS",
-        "CCM_FILEWIN_PROC_CHILD",
-        "HOME",
-        "PATH",
-    ]) {
+    for k in KEPT
+        .iter()
+        .chain(&["CCM_FILEWIN_PROC_CHILD", "HOME", "PATH"])
+    {
         assert!(!test_home::leaked(k), "{k} 不该摘");
     }
 }

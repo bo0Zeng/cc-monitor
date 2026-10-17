@@ -6,6 +6,9 @@
 //! | 第 1 跳超时 ⇒ `Hop{1 wait, Unknown, Overrun}` ＋ 句柄的撤单手柄被拨下 | [`a_backend_that_never_answers_is_bounded_by_left`] |
 //! | 句柄的错误原样过线（不在这一跳改层） | [`backend_errors_pass_through_unchanged`] |
 //! | 交回 webview 的失败形状 == 金标准（TS 那侧解的是同一份文件） | [`the_fail_shape_equals_the_golden_file_the_ts_side_decodes`] |
+//! | 交回 webview 的失败带通道那一句（`chan::said`） | [`the_fail_carries_the_channel_sentence`] |
+//! | 期限已过 ⇒ 不碰句柄，答 `Hop{0 write, NotSent, Overrun}` | [`an_expired_budget_never_reaches_the_backend`] |
+//! | 能力事实里每个做不到的操作都带置灰那一句（称呼那台） | [`every_unavailable_op_carries_its_sentence`] |
 //! | 「能不能回落」的收拢 == 金标准（TS 那侧 `provablyNotSent` 判的是同一份文件） | [`the_fallback_rule_equals_the_golden_file_the_ts_side_judges`] |
 //!
 //! 买不到：真 Tauri IPC 那一跳（`#[tauri::command]` 的实参反序列化、`Response` 的字节交付）——
@@ -16,7 +19,7 @@ use super::super::wire::{
     Body, CallError, CancelToken, Cursor, HopFault, HopId, Item, Kind, Op, Origin, OursFault,
     PeerFault, Reach,
 };
-use super::{call_via, cancel_inflight, fail, Fail};
+use super::{call_via, fail, offer_view, Fail};
 use futures::future::BoxFuture;
 use futures::stream::BoxStream;
 use std::sync::Mutex;
@@ -96,7 +99,6 @@ async fn payload_origin_and_op_reach_the_backend_verbatim() {
         payload.clone(),
         Some(serde_json::json!({"omit": {"record": ["results.*.patch"]}})),
         Duration::from_secs(5),
-        None,
     )
     .await
     .expect("回声句柄不该失败");
@@ -124,7 +126,6 @@ async fn a_backend_that_never_answers_is_bounded_by_left() {
         Vec::new(),
         None,
         Duration::from_millis(80),
-        None,
     )
     .await
     .expect_err("永不回答的句柄必须在 left 内被截断");
@@ -149,6 +150,35 @@ async fn a_backend_that_never_answers_is_bounded_by_left() {
     );
 }
 
+/// 主界面那一侧期限早已过（`left = 0`）⇒ 句柄一下都不碰（一个字节都不发）、回 `Hop{0 write, NotSent, Overrun}`；
+/// 那一句照「已超时 · 未执行」由壳写（与别的失败同一条路）。
+#[tokio::test]
+async fn an_expired_budget_never_reaches_the_backend() {
+    let fake = Fake::default();
+    let err = call_via(
+        &fake,
+        Origin("devbox".into()),
+        "echo".into(),
+        b"{}".to_vec(),
+        None,
+        Duration::ZERO,
+    )
+    .await
+    .expect_err("期限已过还回了成功");
+    assert_eq!(
+        err,
+        CallError::Hop {
+            at: HopId {
+                idx: 0,
+                tag: "write"
+            },
+            reach: Reach::NotSent,
+            why: HopFault::Overrun,
+        }
+    );
+    assert!(fake.seen.lock().unwrap().is_empty(), "期限已过还交给了句柄");
+}
+
 #[tokio::test]
 async fn backend_errors_pass_through_unchanged() {
     let fake = Fake::default();
@@ -159,7 +189,6 @@ async fn backend_errors_pass_through_unchanged() {
         Vec::new(),
         None,
         Duration::from_secs(5),
-        None,
     )
     .await
     .expect_err("说「不行」的句柄");
@@ -179,7 +208,6 @@ async fn backend_errors_pass_through_unchanged() {
         Vec::new(),
         None,
         Duration::from_secs(5),
-        None,
     )
     .await
     .expect_err("没有通道");
@@ -424,86 +452,14 @@ fn the_fallback_rule_equals_the_golden_file_the_ts_side_judges() {
     );
 }
 
-/// 🔴〔「撤单不许回退」〕**撤单过得了 webview 这一跳**：带编号的一问在飞时 `chan_cancel(编号)`
-/// ⇒ 那一问当场以 `Ours{Cancelled}` 收场，**交给句柄的撤单手柄也被拨下**（生产句柄据此丢掉调用 ⇒ 补发 `cancel` 给后端）；
-/// 有了结局之后再撤 ⇒ 回「不在飞」（在飞表摘干净了）；撤单先于那一问到 ⇒ 那一问一个字节都不发。
-#[tokio::test]
-async fn a_cancel_by_id_reaches_the_backend_handle_across_the_webview_hop() {
-    let fake = Fake::default();
-    let id = "mig3b-cancel-probe".to_string();
-    let call = call_via(
-        &fake,
-        Origin("devbox".into()),
-        "hang".to_string(),
-        Vec::new(),
-        None,
-        Duration::from_secs(30),
-        Some(id.clone()),
-    );
-    let cancel = async {
-        // 等句柄真的收到了那一问（登记在它之前），再撤。
-        while fake.seen.lock().unwrap().is_empty() {
-            tokio::task::yield_now().await;
-        }
-        assert!(cancel_inflight(&id), "在飞的那一问撤不到 —— 在飞表没登记它");
-    };
-    let (got, ()) = tokio::time::timeout(guard_core::wall::CEILING, async {
-        tokio::join!(call, cancel)
-    })
-    .await
-    .expect("撤了 5 秒还没收场 —— 撤单没过这一跳");
-    assert!(
-        matches!(
-            got,
-            Err(CallError::Ours {
-                why: OursFault::Cancelled,
-                ..
-            })
-        ),
-        "{got:?}"
-    );
-    assert!(
-        fake.seen.lock().unwrap()[0].4.is_cancelled(),
-        "交给句柄的撤单手柄没拨下 —— 后端那一侧不会知道"
-    );
-    assert!(!cancel_inflight(&id), "有了结局之后在飞表里还挂着它");
-
-    // 撤单先到、那一问后到（两条 IPC 不保序）⇒ 那一问登记时当场撤，一个字节都不交给句柄。
-    let early = "mig3b-cancel-early".to_string();
-    assert!(!cancel_inflight(&early), "还没发的那一问不在飞");
-    let fake = Fake::default();
-    let got = call_via(
-        &fake,
-        Origin("devbox".into()),
-        "hang".to_string(),
-        Vec::new(),
-        None,
-        Duration::from_secs(30),
-        Some(early),
-    )
-    .await;
-    assert!(
-        matches!(
-            got,
-            Err(CallError::Ours {
-                why: OursFault::Cancelled,
-                ..
-            })
-        ),
-        "{got:?}"
-    );
-    assert!(
-        fake.seen.lock().unwrap().is_empty(),
-        "先到的撤单没拦住那一问"
-    );
-}
-
-/// 交回 webview 的失败去掉「复制详情」那一格（带时刻，金样不收）；那一格每一层都必须非空（有详情才出按钮，通道这一跳的失败都该有）。
+/// 交回 webview 的失败去掉「那一句」与「复制详情」两格（详情带时刻；那一句随文案表变，[`the_fail_carries_the_channel_sentence`] 另判），金样只收线上形状。
+/// 详情每一层都必须非空（有详情才出按钮，通道这一跳的失败都该有）。
 fn wire_of(f: Fail) -> serde_json::Value {
     let mut v = serde_json::to_value(f).expect("可序列化");
-    let detail = v
-        .as_object_mut()
-        .and_then(|o| o.remove("detail"))
+    let o = v.as_object_mut().expect("失败是一个对象");
+    o.remove("said").expect("失败交回 webview 必须带 said");
+    let detail = o
+        .remove("detail")
         .and_then(|d| d.as_str().map(str::to_string))
         .expect("失败交回 webview 必须带 detail");
     assert!(
@@ -511,4 +467,68 @@ fn wire_of(f: Fail) -> serde_json::Value {
         "detail 是空的：{v}"
     );
     v
+}
+
+/// 交回主界面的失败带着通道那一句（`chan::said`，全产品一份），称呼的是问的那台。
+#[test]
+fn the_fail_carries_the_channel_sentence() {
+    let cases: Vec<CallError> = vec![
+        CallError::Hop {
+            at: HopId {
+                idx: 1,
+                tag: "wait",
+            },
+            reach: Reach::Unknown,
+            why: HopFault::Overrun,
+        },
+        CallError::Peer {
+            why: PeerFault::Refused {
+                body: Body(r#"{"code":"no","message":"不行"}"#.as_bytes().to_vec()),
+            },
+        },
+        OursFault::Broken.into(),
+    ];
+    for origin in [Origin("devbox".into()), Origin::local()] {
+        for e in &cases {
+            let want = super::super::said::said(e, &origin);
+            let got = serde_json::to_value(fail(&origin, "op", e.clone())).expect("可序列化");
+            assert!(!want.trim().is_empty(), "{e:?}");
+            assert_eq!(got["said"], want, "{e:?} @ {}", origin.0);
+        }
+    }
+}
+
+#[test]
+fn every_unavailable_op_carries_its_sentence() {
+    let codes = ["no_tmux", "no_unix_mode", "odd_new_code"];
+    let offer = super::super::wire::Offer::new(
+        ["a", "b", "c", "free"].map(String::from).to_vec(),
+        ["a", "b", "c"]
+            .iter()
+            .zip(codes)
+            .map(|(op, c)| (op.to_string(), c.to_string()))
+            .collect(),
+    );
+    for (origin, name) in [
+        (Origin("devbox".into()), "devbox".to_string()),
+        (
+            Origin::local(),
+            copy_core::copy_text("control.machine.local", &[]),
+        ),
+    ] {
+        let v = offer_view(&offer, &origin);
+        let got: Vec<(&str, &str)> = v
+            .unavailable
+            .iter()
+            .map(|(op, c, _)| (op.as_str(), c.as_str()))
+            .collect();
+        assert_eq!(got, [("a", codes[0]), ("b", codes[1]), ("c", codes[2])]);
+        for (op, code, said) in &v.unavailable {
+            assert!(
+                !said.trim().is_empty() && said.contains(&name) && !said.contains(code.as_str()),
+                "{op} {code} @ {}：{said}",
+                origin.0
+            );
+        }
+    }
 }

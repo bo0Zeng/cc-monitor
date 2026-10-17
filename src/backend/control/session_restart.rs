@@ -5,7 +5,7 @@
 //!   开跑之后撤单也照样做完（只停不起会把会话丢在半路）。
 //! - 停失败 ⇒ `stop_failed`，**一定不起新的**（新旧两个进程会抢同一条会话）。起失败（旧的已停）⇒ `start_failed`，`data` 带终端名。
 //! - 停成了之后的失败，`data` 都带 `stopped: true`（旧会话已经不在了）。
-//! - 另有活进程在写这条会话 ⇒ `session_already_live`（`data` 带那几个 pid），不起新的：开动前写它的不止一个 ⇒ 什么都不动；
+//! - 另有活进程在写这条会话 ⇒ `already_live`（`data` 带那几个 pid），不起新的：开动前写它的不止一个 ⇒ 什么都不动；
 //!   停完旧的再核一次，除了停掉的那个还有 ⇒ 旧的已停、新的不起。
 //! - 压缩：问适配层「请求压缩那一句」；不支持 ⇒ `unsupported` 照常往下；到期限没见摘要 ⇒ `timed_out` 照常往下。
 //!
@@ -13,7 +13,8 @@
 
 use super::launch::LAUNCH_CAP;
 use super::launch_account::{self as la, AccountAsk, Settled};
-use super::session_batch::{self as batch, Batch, Deps, Item, Standing, SESSIONS_WHERE_CAP};
+use super::session_batch::{self as batch, Deps, Standing, SESSIONS_WHERE_CAP};
+use super::session_open::{self as open, Item};
 use crate::platform::child::{Budget, Deadline, Until};
 use serde_json::Value;
 use std::future::Future;
@@ -68,7 +69,7 @@ pub(crate) struct Req {
     compact_within_ms: u64,
     arrive_within_ms: u64,
     local: bool,
-    /// 哪一家（整批那几样由它 ＋ 这台的偏好现拼：[`Batch::of`]）。
+    /// 哪一家（启动命令 · 模型表由它 ＋ 这台的偏好现拼）。
     agent: String,
     /// 发起方的截止时刻（分派那一层给；CLI 面没有）。
     until: Option<Until>,
@@ -107,9 +108,9 @@ pub(crate) struct RestartReq {
     /// 等新进程报出的期限（≤ 3 600 000）。
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) arrive_within_ms: u64,
-    /// 这台是不是界面所在那台（同 `sessions-start`）。
+    /// 这台是不是界面所在那台（同 `session-open`）。
     pub(crate) local: bool,
-    /// 哪一家（线上的 kind；同 `sessions-start` 的整批那一格）。启动命令 · 模型表这台自己读。
+    /// 哪一家（线上的 kind）。启动命令 · 模型表这台自己读。
     pub(crate) agent: String,
     /// 自报的前端，同 `kill`。
     #[serde(default)]
@@ -132,8 +133,6 @@ pub(crate) fn parse(r: &RestartReq) -> Result<Req, Failed> {
             account: AccountAsk::Named {
                 name: r.account.clone(),
             },
-            fresh: false,
-            fork_of: None,
             say: None,
             model: None,
             permission_mode: None,
@@ -162,7 +161,7 @@ pub(crate) fn parse(r: &RestartReq) -> Result<Req, Failed> {
 pub(crate) enum Refused {
     /// `ambiguous`：在跑的那几个终端名。
     Ambiguous { names: Vec<String> },
-    /// `session_already_live`：另有活进程在写的那几个 pid；停完旧的之后才发现的 ⇒ 带 `stopped: true`。
+    /// `already_live`：另有活进程在写的那几个 pid；停完旧的之后才发现的 ⇒ 带 `stopped: true`。
     Live {
         pids: Vec<u32>,
         #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -184,26 +183,22 @@ impl Refused {
     }
 }
 
+/// 原因码：这条会话已有活进程在写，没起（再起一个就是两个进程同写一份记录）。
+pub(crate) const ALREADY_LIVE: &str = "already_live";
+
 /// 这条会话另有活进程在写（`pids`）⇒ 不起新的（`data`：`{pids}`；停完旧的之后 ⇒ 多 `stopped: true`）。
 fn already_live(said: String, pids: Vec<u32>, stopped: bool) -> Failed {
-    (
-        batch::ALREADY_LIVE,
-        said,
-        Refused::Live { pids, stopped }.data(),
-    )
+    (ALREADY_LIVE, said, Refused::Live { pids, stopped }.data())
 }
 
 /// 开动之前那一步：点名的号选得了 ＋ 这条会话恰好在一个终端里跑着 ＋ 写它的活进程至多一个（就是那个终端里的）
 /// ⇒ `(号, 终端名, 此刻写它的那几个 pid)`。
 fn prepare(req: &Req, deps: &Deps) -> Result<(Settled, String, Vec<u32>), Failed> {
     let _total = Budget::capped(SESSIONS_WHERE_CAP, req.until);
-    // 模型偏好只用在远端那一行上（本机那一行不带模型，同批量起）。
-    let none = Default::default();
-    let models = if req.local { &none } else { &deps.prefs.models };
     let account = la::settle(
         &req.item.account,
         Some(&req.item.sid),
-        models,
+        &deps.prefs.models,
         deps.accounts,
     )
     .map_err(|u| {
@@ -272,27 +267,23 @@ fn swap(req: &Req, account: &Settled, name: &str, mine: &[u32], deps: &Deps) -> 
         );
         return Err(already_live(said, others, true));
     }
-    let a = batch::start_named(
-        &req.item,
-        &Batch::of(&req.agent, deps.prefs),
-        account,
-        name.to_string(),
-        req.local,
-        deps,
-    );
-    if a.outcome == "done" {
-        return Ok(());
-    }
-    Err((
-        "start_failed",
-        a.detail,
-        Refused::StartFailed {
-            terminal: name.to_string(),
-            why: a.why,
-            stopped: true,
-        }
-        .data(),
-    ))
+    open::relaunch_in(&req.item, &req.agent, account, name, req.local, deps).map_err(
+        |(code, said, _, raw)| {
+            if let Some(raw) = raw {
+                tracing::warn!("[session-restart] relaunch into {name} failed: {code} {raw}");
+            }
+            (
+                "start_failed",
+                said,
+                Refused::StartFailed {
+                    terminal: name.to_string(),
+                    why: Some(code.to_string()),
+                    stopped: true,
+                }
+                .data(),
+            )
+        },
+    )
 }
 
 /// 先压缩那一步的结局（不论哪种都照常往下）。
@@ -419,7 +410,7 @@ pub(crate) const RESTART_CODES: &[&str] = &[
     "account_unavailable",
     "not_in_terminal",
     "ambiguous",
-    "session_already_live",
+    "already_live",
     "stop_failed",
     "start_failed",
     "child_timed_out",
@@ -448,7 +439,7 @@ impl crate::wire::typed::Codes for RestartErr {
     const DATA: &'static [&'static str] = &[
         "account_unavailable",
         "ambiguous",
-        "session_already_live",
+        "already_live",
         "stop_failed",
         "start_failed",
     ];

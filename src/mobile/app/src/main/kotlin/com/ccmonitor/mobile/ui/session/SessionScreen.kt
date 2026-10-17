@@ -26,7 +26,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -45,16 +44,14 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
+import com.ccmonitor.mobile.core.claude.link.wire.AgentPick
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.db.KeyBinding
 import com.ccmonitor.mobile.core.data.db.KeyDao
 import com.ccmonitor.mobile.core.data.db.KeyGroup
 import com.ccmonitor.mobile.core.data.db.appActionName
-import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.SettingsRepository
-import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
 import com.ccmonitor.mobile.core.ssh.SessionStatus
 import com.ccmonitor.mobile.core.ssh.SshConnectEvent
 import com.ccmonitor.mobile.core.terminal.CcMonitorTerminal
@@ -70,7 +67,6 @@ import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.service.AppForeground
 import com.ccmonitor.mobile.service.SshKeepAliveService
-import com.ccmonitor.mobile.ssh.appendAuthorizedKeyCommand
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import com.ccmonitor.mobile.ui.copyPlainText
 import com.ccmonitor.mobile.ui.pastePlainText
@@ -92,21 +88,19 @@ fun SessionScreen(
     hostId: String,
     cd: String? = null,
     tmuxSession: String? = null, // 进终端 tab 首连即接回的会话名；普通 tab 为 null
+    resume: String? = null, // 终端没了的那条会话：首连先让那台恢复再接回；普通 tab 为 null
     onAttachInNewTab: (name: String) -> Unit = {}, // tmux「附着」：开新终端 tab
     onShowTabs: () -> Unit = {}, // 唤出 tab 面板
     onEditKeys: () -> Unit, // 进编辑按键页（⋯「编辑按键」· 绑了「编辑按键」的触发 · 空组那一行）
 ) {
-    val hostRepo = koinInject<HostRepository>()
-    val hostLabel by produceState(hostId, hostId) { value = hostRepo.get(hostId)?.label ?: hostId }
-    CompositionLocalProvider(LocalKeysEnv provides KeysEnv(onEditKeys, hostLabel)) {
-        SessionContent(hostId, cd, tmuxSession, onAttachInNewTab, onShowTabs)
+    CompositionLocalProvider(LocalKeysEnv provides KeysEnv(onEditKeys)) {
+        SessionContent(hostId, cd, tmuxSession, resume, onAttachInNewTab, onShowTabs)
     }
 }
 
-/** 终端屏深处的键条要用、又不该一层层往下传的两样：进编辑按键页 · 这台叫什么（「抓屏不可用 · devbox 无 tmux」）。 */
+/** 终端屏深处的键条要用、又不该一层层往下传的：进编辑按键页。 */
 private data class KeysEnv(
     val onEditKeys: () -> Unit,
-    val hostLabel: String,
 )
 
 private val LocalKeysEnv = staticCompositionLocalOf<KeysEnv> { error("LocalKeysEnv not provided") }
@@ -116,13 +110,14 @@ private fun SessionContent(
     hostId: String,
     cd: String?,
     tmuxSession: String?,
+    resume: String?,
     onAttachInNewTab: (name: String) -> Unit,
     onShowTabs: () -> Unit,
 ) {
     // Koin 参数不能传 null，可空参数一律用空串表示 null。
     val vm =
         koinViewModel<SessionViewModel> {
-            parametersOf(hostId, cd ?: "", tmuxSession ?: "")
+            parametersOf(hostId, cd ?: "", tmuxSession ?: "", resume ?: "")
         }
     val state by vm.uiState.collectAsState()
     val context = LocalContext.current
@@ -221,14 +216,13 @@ private fun NeedIdentityContent(
 }
 
 /**
- * 服务器身份变更的恢复页。
+ * 主机指纹变更的恢复页：与桌面那张比对框同一套字（标题 · 提醒 · 记下的 / 当前两枚 · 信任新的指纹）。
  *
  * 做成一整屏而不是一行红字：这是唯一一个「连接被拒但能做点什么」的失败态，触发它的又常是合法操作
- * （重装系统、重建 VPS、轮换密钥）；删掉服务器重加也没用（`KnownHost` 与 `Host` 没有外键级联）。
+ * （重装系统、重建 VPS、轮换密钥）；删掉机器重加也没用（`KnownHost` 与 `Host` 没有外键级联）。
+ * 这一页本身就是那一次确认：按「信任新的指纹」直接改记并重连，不再弹第二个框。
  *
  * 首次连接故意静默接受：对不会核对指纹的人，首次弹窗只会训练他闭眼点通过。唯一一次打断留给真正异常的时刻。
- *
- * 正文说「身份」，不说「主机密钥 / 指纹」；详情里给出指纹原文，放在正文之下，供会核对的人用。
  */
 @Composable
 private fun HostKeyChangedContent(
@@ -236,51 +230,29 @@ private fun HostKeyChangedContent(
     onShowTabs: () -> Unit,
     onTrustNew: () -> Unit,
 ) {
-    var confirming by remember { mutableStateOf(false) }
-
+    val none = copyText("hostKey.compare.none")
     Column(
         Modifier.fillMaxSize().statusBarsPadding().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         SessionStateTabButton(onShowTabs)
-        Text(copyText("mobHostKey.page.title"), style = MaterialTheme.typography.titleMedium, color = LocalAppTokens.current.errorText)
         Text(
-            copyText("hostIdentity.changed.body"),
-            style = MaterialTheme.typography.bodyMedium,
+            copyText("hostKey.compare.title", "machine" to LocalKeysEnv.current.hostLabel),
+            style = MaterialTheme.typography.titleMedium,
+            color = LocalAppTokens.current.errorText,
         )
-        Text(
-            copyText("mobHostKey.page.cases"),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        // 详情给会核对的人，放在正文之下、小字
-        if (state.expectedFingerprint.isNotBlank() || state.offeredFingerprint.isNotBlank()) {
-            Text(
-                copyText(
-                    "mobHostKey.page.fingerprints",
-                    "old" to state.expectedFingerprint.ifBlank { copyText("mobHostKey.page.unknown") },
-                    "new" to state.offeredFingerprint.ifBlank { copyText("mobHostKey.page.unknown") },
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        Text(copyText("hostKey.compare.caution"), style = MaterialTheme.typography.bodyMedium)
+        // 两枚指纹给会核对的人，放在提醒之下、小字
+        listOf(
+            copyText("hostKey.compare.pinned") to state.expectedFingerprint.ifBlank { none },
+            copyText("hostKey.compare.seen") to state.offeredFingerprint.ifBlank { none },
+        ).forEach { (label, value) ->
+            Column {
+                Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(value, style = MaterialTheme.typography.bodySmall)
+            }
         }
-        SecondaryButton(onClick = { confirming = true }) { Text(copyText("mobHostKey.page.confirm")) }
-    }
-
-    if (confirming) {
-        AlertDialog(
-            onDismissRequest = { confirming = false },
-            title = { Text(copyText("mobHostKey.trust.title")) },
-            // 二次确认的文案说清后果，而不是只问「确定吗」。
-            text = { Text(copyText("hostIdentity.trust.consequence")) },
-            confirmButton = {
-                SecondaryButton(onClick = {
-                    confirming = false
-                    onTrustNew()
-                }) { Text(copyText("mobHostKey.trust.ok")) }
-            },
-            dismissButton = { SecondaryButton(onClick = { confirming = false }) { Text(copyText("kit.dialog.cancel")) } },
-        )
+        SecondaryButton(onClick = onTrustNew) { Text(copyText("hostKey.compare.trust")) }
     }
 }
 
@@ -411,7 +383,7 @@ private fun DroppedBanner(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ErrorLine(
-            if (status == SessionStatus.RECONNECTING) copyText("mobSession.bar.reconnecting") else copyText("mobSession.bar.dropped"),
+            if (status == SessionStatus.RECONNECTING) copyText("mobSession.bar.reconnecting") else copyText("mobSession.bar.dropped", "machine" to LocalKeysEnv.current.hostLabel),
             modifier = Modifier.weight(1f).padding(vertical = 12.dp),
         )
         SecondaryButton(onClick = onReconnect) { Text(copyText("mobSession.connect.retry")) }
@@ -428,13 +400,13 @@ private fun ConnectedTerminal(
     onCaptured: (String) -> Unit,
     onShowTabs: () -> Unit,
 ) {
-    // tmux、切模型依赖 tmux，按远端方言的能力位（supportsTmux）开关。
-    val dialect = s.dialect
+    // tmux 会话 · 切模型 · 抓屏要那台有 tmux，推公钥要那台后端连着：都照那台说的（[Reach]）。
+    val reach by vm.reach.collectAsState()
     // 本 tab 当前所在的 tmux 会话名（切模型 · 抓屏按它找那台名单里的终端）。动作 lambda 在点击时经 getter 读最新值。
     val currentTmux by vm.tmuxSession.collectAsState()
     val onSwitchModel = rememberModelSwitchAction(vm.terminals) { currentTmux }
     // 面板「模型」组：那个终端里跑着的那一家能换的模型（那台给的）；没跑会话 ⇒ 空、这一组不出。
-    val models by androidx.compose.runtime.produceState(emptyList<NewSessionPick>(), currentTmux) {
+    val models by androidx.compose.runtime.produceState(emptyList<AgentPick>(), currentTmux) {
         value = currentTmux?.let { vm.terminals.modelsIn(it) }.orEmpty()
     }
     val onCapture = rememberCaptureAction(vm.terminals, { currentTmux }, onCaptured)
@@ -446,7 +418,7 @@ private fun ConnectedTerminal(
         onCapture = onCapture,
         onPushKey = onPushKey,
         onShowTabs = onShowTabs,
-        supportsTmux = dialect.supportsTmux,
+        reach = reach,
     )
 }
 
@@ -511,11 +483,8 @@ private fun ConnectedDialogs(
     showKeyPush: Boolean,
     onDismissKeyPush: () -> Unit,
 ) {
-    // tmux 管理用该连接的 exec 通道（同一条连接多路复用，不影响终端 shell 通道）。
-    val channel = vm.channel
     if (showTmux) {
         TmuxManagerDialog(
-            channel = channel,
             terminals = vm.terminals,
             onAttach = { name ->
                 // 附着是新开终端 tab，由它的新 shell 敲那台渲出的那一行；不往当前前台 pty 注入
@@ -528,7 +497,7 @@ private fun ConnectedDialogs(
     }
     CaptureControl(captureText, onDismissCapture)
     val identities by vm.identities.collectAsState()
-    PushKeyControl(showKeyPush, identities, channel, onDismissKeyPush)
+    PushKeyControl(showKeyPush, identities, vm.terminals, onDismissKeyPush)
 }
 
 /** 抓屏结果弹窗的宿主，自己持有 context / clipboard / scope 做复制与 Toast。 */
@@ -552,20 +521,12 @@ private fun CaptureControl(
     )
 }
 
-/** 把推送命令的输出映射为可读的反馈。 */
-private fun pushKeyResultMessage(out: String): String =
-    when {
-        out.contains("CCM_KEY_ADDED") -> copyText("mobKeyPush.result.added")
-        out.contains("CCM_KEY_ALREADY") -> copyText("mobKeyPush.result.already")
-        else -> copyText("mobKeyPush.result.unsure") // 没有标记：命令链在写入前就失败了（权限 / 磁盘等），不假报成功
-    }
-
-/** 公钥推送对话框的宿主：选身份，在活连接上 exec，给反馈。 */
+/** 公钥推送对话框的宿主：选身份，请那台并进它的 `authorized_keys`，照那台的结局说一句。 */
 @Composable
 private fun PushKeyControl(
     show: Boolean,
     identities: List<Identity>,
-    channel: RemoteCommandChannel,
+    terminals: TerminalOps,
     onDismiss: () -> Unit,
 ) {
     if (!show) return
@@ -580,10 +541,10 @@ private fun PushKeyControl(
             if (id.publicKeyOpenSsh.isBlank()) {
                 Toast.makeText(context, copyText("mobKeyPush.result.noPublic"), Toast.LENGTH_LONG).show()
             } else {
-                // 在已认证的连接上 exec，不必重新认证。输出里带 CCM_KEY_ADDED / ALREADY 标记。
                 scope.launch {
-                    runCatching { runOnce(channel, appendAuthorizedKeyCommand(id.publicKeyOpenSsh)) }
-                        .onSuccess { Toast.makeText(context, pushKeyResultMessage(it), Toast.LENGTH_SHORT).show() }
+                    terminals
+                        .pushKey(id.publicKeyOpenSsh)
+                        .onSuccess { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
                         .onFailure { snackbar.show(Notice(copyText("mobKeyPush.result.failed"), it.message)) }
                 }
             }
@@ -591,7 +552,7 @@ private fun PushKeyControl(
     )
 }
 
-/** 选一个身份，把它的 OpenSSH 公钥推到这台主机的 ~/.ssh/authorized_keys（在已连接的会话上执行）。 */
+/** 选一个身份，把它的 OpenSSH 公钥推到这台主机的 `authorized_keys`（那台后端写）。 */
 @Composable
 private fun PushKeyDialog(
     identities: List<Identity>,
@@ -645,12 +606,12 @@ private fun CaptureDialog(
 private fun TerminalTab(
     session: TerminalSession,
     onShowTmux: () -> Unit,
-    models: List<NewSessionPick>,
+    models: List<AgentPick>,
     onModel: (String) -> Unit,
     onCapture: () -> Unit,
     onPushKey: () -> Unit,
     onShowTabs: () -> Unit,
-    supportsTmux: Boolean = true, // 远端是否支持 tmux，决定 tmux 会话 / 切模型 / 抓屏 / 公钥这些项
+    reach: Reach,
 ) {
     // 终端字号（sp），双指捏合缩放，termlib 经 onFontSizeChanged 回报（已 clamp 到 7..28）。
     // 存整数 sp 当作量化死区：微小误触（如 13.026）四舍五入回 13，不落库也不抖。旋转与进程恢复不丢。
@@ -684,7 +645,7 @@ private fun TerminalTab(
         )
         TerminalBottomControls(
             session = session,
-            supportsTmux = supportsTmux,
+            reach = reach,
             showKeyboard = showKeyboard,
             onShowTabs = onShowTabs,
             onShowTmux = onShowTmux,
@@ -700,11 +661,11 @@ private fun TerminalTab(
 @Composable
 private fun TerminalBottomControls(
     session: TerminalSession,
-    supportsTmux: Boolean,
+    reach: Reach,
     showKeyboard: () -> Unit,
     onShowTabs: () -> Unit,
     onShowTmux: () -> Unit,
-    models: List<NewSessionPick>,
+    models: List<AgentPick>,
     onModel: (String) -> Unit,
     onCapture: () -> Unit,
     onPushKey: () -> Unit,
@@ -729,7 +690,8 @@ private fun TerminalBottomControls(
     val switchTo: (String) -> Unit = { id -> scope.launch { settings.setCurrentKeyGroup(id) } }
     val actions =
         KeyActions(
-            supportsTmux = supportsTmux,
+            noTmux = reach.noTmux,
+            noBackend = reach.noBackend,
             onShowTabs = onShowTabs,
             onCommandPalette = { showPalette = true },
             onTmuxSessions = onShowTmux,
@@ -742,7 +704,7 @@ private fun TerminalBottomControls(
             onGotoGroup = { id -> groups.any { it.id == id }.also { if (it) switchTo(id) } },
         )
     TerminalToolbar(
-        supportsTmux = supportsTmux,
+        supportsTmux = reach.noTmux == null,
         onShowTabs = onShowTabs,
         onCommandPalette = { showPalette = true },
         onTmuxSessions = onShowTmux,
@@ -761,14 +723,14 @@ private fun TerminalBottomControls(
     }
     // 命令面板：模型、抓屏、tmux 会话、推公钥整合成可搜索的动作。
     if (showPalette) {
-        val paletteActions = terminalPaletteActions(supportsTmux, models, onModel, onCapture, onShowTmux, onPushKey)
+        val paletteActions = terminalPaletteActions(reach, models, onModel, onCapture, onShowTmux, onPushKey)
         CommandPalette(actions = paletteActions, onDismiss = { showPalette = false })
     }
 }
 
 /**
  * 键条那一块要的：组（照先后）· 当前组 · 切组 · 做不成时那一句。做不成的出不自己走的 toast（点了才关）：
- * 切到的组已删 ⇒ 带「编辑」；要 tmux 的在没 tmux 的那台上 ⇒ 写哪个动作、哪台。
+ * 切到的组已删 ⇒ 带「编辑」；那台做不了 ⇒ 写哪个动作、为什么。
  */
 private class KeyBarNav(
     val groups: List<KeyGroup>,
@@ -781,10 +743,10 @@ private class KeyBarNav(
         f: KeyActionFail,
         b: KeyBinding,
     ) = when (f) {
-        KeyActionFail.GROUP_GONE -> snackbar.showSticky(copyText("mobKeys.err.groupGone"), copyText("mobKeys.err.edit"), env.onEditKeys)
-        KeyActionFail.NO_TMUX -> {
+        KeyActionFail.GroupGone -> snackbar.showSticky(copyText("mobKeys.err.groupGone"), copyText("mobKeys.err.edit"), env.onEditKeys)
+        is KeyActionFail.Unavailable -> {
             val action = (b as? KeyBinding.App)?.action?.let(::appActionName).orEmpty()
-            snackbar.showSticky(copyText("mobKeys.err.actionNoTmux", "action" to action, "host" to env.hostLabel))
+            snackbar.showSticky(copyText("mobKeys.err.actionUnavailable", "action" to action, "why" to f.why))
         }
     }
 }
@@ -812,26 +774,24 @@ private fun KeyBar(
 }
 
 /**
- * 命令面板的动作集。依赖 tmux 的项（切模型 / 抓屏 / tmux 会话 / 公钥推送）按 `supportsTmux` 开关。
+ * 命令面板的动作集：要 tmux 的（切模型 / 抓屏 / tmux 会话）那台没有 tmux 就不出；推公钥要那台后端，没连上 ⇒ 灰着、写原因。
  */
 internal fun terminalPaletteActions(
-    supportsTmux: Boolean,
-    models: List<NewSessionPick>,
+    reach: Reach,
+    models: List<AgentPick>,
     onModel: (String) -> Unit,
     onCapture: () -> Unit,
     onShowTmux: () -> Unit,
     onPushKey: () -> Unit,
 ): List<PaletteAction> =
     buildList {
-        if (supportsTmux) {
+        if (reach.noTmux == null) {
             // 那台给的可选模型（名字照那台写好的字，副标题是原值）。
             models.forEach { m -> add(PaletteAction(copyText("mobPalette.group.model"), m.text, m.value) { onModel(m.value) }) }
             add(PaletteAction(copyText("mobPalette.group.capture"), copyText("mobPalette.item.capture")) { onCapture() })
             add(PaletteAction(copyText("mobPalette.group.tmux"), copyText("mobPalette.item.tmux")) { onShowTmux() })
-            // 公钥推送用的是 POSIX shell（mkdir / chmod / grep >> authorized_keys），严格说要的是 POSIX 能力而非 tmux；
-            // 按操作系统定方言时两者总是同值，所以挂在 supportsTmux 上。
-            add(PaletteAction(copyText("mobPalette.group.key"), copyText("mobPalette.item.key")) { onPushKey() })
         }
+        add(PaletteAction(copyText("mobPalette.group.key"), copyText("mobPalette.item.key"), reach.noBackend, onPushKey.takeIf { reach.noBackend == null }))
     }
 
 /** 当前组没有按键：键条位置一行灰字「「git」无按键」＋ 一颗文字按钮「编辑按键」（C16 至多一颗）。 */

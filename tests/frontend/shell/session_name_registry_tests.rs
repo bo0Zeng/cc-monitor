@@ -8,13 +8,13 @@ use std::path::{Path, PathBuf};
 const REGISTERED: &[(&str, &str, &str)] = &[
     // 前端那两格出表：`src/remote-launch.ts`（`deriveTmuxName`，原 `producer-target`）整份删、
     //   `src/frontend/ui/fork-launch.ts`（`forkTmuxName` 的 `-fork-cc`，原 `producer-duplicate` 退役归 U11）随派生 ＋ 避让一起搬进后端。
-    //   ⇒ 前端零产名点（界面要名字就问那台后端的 `terminal-name-mint`）；后端那一份从「副本」翻成**唯一本体**。
+    //   ⇒ 前端零产名点（起会话时那台自己铸）；后端那一份从「副本」翻成**唯一本体**。
     (
         // 🔴 住址从 `shared/ccm` 换到这里：〔用@09-11 `K33`〕那个 bash 脚本删了，`derive_tmux_name` 搬进了后端本体。
         "src/backend/control/ccm/plan.rs",
         "producer-target",
         "本体：`derive_tmux_name`（cwd 派生 `<项目名>-cc`，空 ⇒ `session-cc`）＋ `fork_tmux_base`（分叉 `<源名>-fork-cc`）。\
-全仓唯一一份：`ccm` 起会话与帧命令 `terminal-name-mint`（界面问的那一口）都走它，\
+全仓唯一一份：`ccm` 起会话与 `session-open` 铸名都走它，\
              撞名避让走同文件的 `next_free_name`（`mint_tmux_name`，只收会话快照那张 `TakenNames`）。\
              ★★ `K-R96`（09-12）退役了 sid 派生那一族（`pickFreshTmuxName`，用户 `R55`「要是可读的名字 / 不要id」）；\
              sid 骑在 `@ccm_sid` 上。",
@@ -39,8 +39,8 @@ const REGISTERED: &[(&str, &str, &str)] = &[
 ];
 
 fn repo_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::repo_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::repo_root()
 }
 
 /// 生产段：`.rs` 用 `guard_core`（连测试段一起剥）；`.ts` / shell 只剥整行注释。
@@ -86,7 +86,7 @@ fn scan_files() -> Vec<PathBuf> {
     collect_ts(&root.join("src"), &mut files);
     files.sort();
     // 壳那棵换成它的全部人群根（壳 `src/` ＋ manifest 明写的兄弟包，窗口包也在内）；有几个住 `src/common/`，去重。
-    for r in crate::guard_support::crate_population_roots() {
+    for r in guard_core::addr::shell_population_roots() {
         collect_rs(&r, &mut files);
     }
     collect_rs(&root.join("src/common"), &mut files);

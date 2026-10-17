@@ -46,7 +46,8 @@ npx tauri dev                                # 在仓根跑：起 vite、编 mon
 
 ```bash
 # 壳的 workspace（monitor ＋ 共享 crate）：在 src/frontend/shell 里
-cargo test --workspace --no-fail-fast          # 与 CI 的 rust job 逐字相同（一个测试二进制红了也跑完其余的）
+cargo test --workspace --exclude guard-core --no-fail-fast   # 与 CI 的 rust job 逐字相同（一个测试二进制红了也跑完其余的；规则那一份不在 Windows 上跑）
+cargo test -p guard-core --lib                 # 扫源码守规矩的规则（`-- --nocapture` 印每条规则的耗时）
 cargo test -p monitor --lib <过滤串>            # 只跑名字里带这个串的
 cargo test -p monitor --lib <过滤串> -- --nocapture
 cargo fmt --all --check
@@ -176,7 +177,7 @@ Claude Code 给它 shell 里起的子进程注入 `CLAUDECODE=1` / `CLAUDE_CODE_
 
 ### 会话内容在底部整段重复
 
-记录文件被截短重写时，后端先发 `session_file_reread`、行号从 0 重数，前端收到后那个 tab 整份重来（`TabManager.onRecordFileReread`），入口只按 seq 去重。复现：对一个正在被盯的 jsonl 手动截短再追加回去，后端日志出 `jsonl truncated … full re-read`，tab 内容不应翻倍。行投递是至少一次（INVARIANTS §25）。
+记录文件被截短重写时，后端从 0 重数、不逐行重发，读完发 `session_file_reread` 带行数；壳照宣告那样重排一份旁路快照，前端那个 tab 整份重来（`TabManager.onRecordFileReread`），入口只按 seq 去重。复现：对一个正在被盯的 jsonl 手动截短再追加回去，后端日志出 `jsonl truncated … full re-read`，tab 内容不应翻倍。行投递是至少一次（INVARIANTS §25）。
 
 ### 大段消息被误折成「已被 ESC 回退」
 

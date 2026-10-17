@@ -7,6 +7,7 @@
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { owned } from "../../test-support/owned-tab-manager.ts";
+import { announced } from "../../test-support/session-faces";
 
 vi.mock("@tauri-apps/api/core", async () => {
   const rig = await import("../../test-support/session-viewer-rig");
@@ -24,13 +25,6 @@ vi.mock("../../../src/frontend/ui/tasks-panel", () => ({ fetchSessionTasks: vi.f
 vi.mock("../../../src/frontend/ui/behavior", () => ({
   getBehavior: vi.fn().mockResolvedValue({ resumeCommand: "cct" }),
 }));
-vi.mock("../../../src/frontend/ui/remote-launch-run", () => ({
-  runRemoteResume: vi.fn().mockResolvedValue(undefined),
-  runRemoteResumeTmux: vi.fn().mockResolvedValue(undefined),
-  runLocalResumeIntoExistingTmux: vi.fn().mockResolvedValue(true),
-  runRemoteResumeIntoExistingTmux: vi.fn().mockResolvedValue(true),
-  runRemoteAttach: vi.fn().mockResolvedValue(undefined),
-}));
 vi.mock("../../../src/frontend/ui/fork-flow", () => ({ runForkFlow: vi.fn().mockResolvedValue(undefined) }));
 
 import { LiveBoard, renderCardText } from "../../../src/frontend/ui/live-card";
@@ -40,6 +34,7 @@ import { TabManager } from "../../../src/frontend/ui/tabs";
 import { livePainter } from "../../../src/frontend/ui/live-card-view";
 import type { LiveCard } from "../../../src/frontend/ui/generated/LiveCard";
 import type { SessionLiveCardPayload } from "../../../src/frontend/ui/generated/SessionLiveCardPayload";
+import { nonEmpty } from "../../test-support/non-empty.ts";
 
 // ─── 手写的帧（期望只从这里来） ─────────────────────────────────────────
 
@@ -151,7 +146,7 @@ describe("T8 活卡断 / 丢不碰 jsonl 那条对的路（抄流可以有缺口
     const barEl = document.createElement("div");
     const streamRootEl = document.createElement("div");
     document.body.append(barEl, streamRootEl);
-    const tm = owned(new TabManager(barEl, streamRootEl));
+    const tm = owned(announced(new TabManager(barEl, streamRootEl)));
     tm.setLivePainter(livePainter);
     tm.onLine(jsonl[0] as never);
     for (const f of seq) tm.onLiveCard(pay(f));
@@ -171,7 +166,7 @@ describe("T8 活卡断 / 丢不碰 jsonl 那条对的路（抄流可以有缺口
     const gapped = run(data.filter((f) => f.n !== 1), false);
     const closed = run([...data.slice(0, 3), close("s1", 0, 3)], false);
 
-    expect(none.content.length, "jsonl 那条路一张卡都没建 —— 本组空转").toBeGreaterThan(0);
+    nonEmpty(none.content);
     expect(whole.content).toBe(none.content);
     expect(gapped.content).toBe(none.content);
     expect(closed.content).toBe(none.content);
@@ -190,7 +185,7 @@ describe("T8 活卡断 / 丢不碰 jsonl 那条对的路（抄流可以有缺口
     const barEl = document.createElement("div");
     const streamRootEl = document.createElement("div");
     document.body.append(barEl, streamRootEl);
-    const tm = owned(new TabManager(barEl, streamRootEl));
+    const tm = owned(announced(new TabManager(barEl, streamRootEl)));
     tm.setLivePainter(livePainter);
     const trailer = (): string =>
       [...streamRootEl.querySelectorAll(".stream")].map((s) => [...s.children].slice(1).map((c) => c.textContent).join("|")).join("#");

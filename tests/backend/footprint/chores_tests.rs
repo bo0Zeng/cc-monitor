@@ -13,7 +13,7 @@ fn chores(f: &Facts) -> Vec<Value> {
 
 /// 角标数（按那几件本身数，同成品那一格）。
 fn badge_of(f: &Facts) -> usize {
-    super::badge(&super::chores(f))
+    super::counts(&super::chores(f)).badge
 }
 
 fn base() -> Facts {
@@ -40,7 +40,6 @@ fn relay_of(
     path: &str,
     text: Option<&str>,
     url: Option<&str>,
-    secret: Option<&str>,
 ) -> Relay {
     Relay {
         agent: agent.into(),
@@ -51,17 +50,10 @@ fn relay_of(
         path: path.into(),
         text: text.map(Into::into),
         url: url.map(Into::into),
-        secret: secret.map(Into::into),
     }
 }
 
-fn claude_relay(
-    state: &str,
-    path: &str,
-    text: Option<&str>,
-    url: Option<&str>,
-    secret: Option<&str>,
-) -> Relay {
+fn claude_relay(state: &str, path: &str, text: Option<&str>, url: Option<&str>) -> Relay {
     relay_of(
         crate::agents::claudecode::paths::SETTINGS_ENV,
         "claude-code",
@@ -70,7 +62,6 @@ fn claude_relay(
         path,
         text,
         url,
-        secret,
     )
 }
 
@@ -157,14 +148,13 @@ fn 失效行_可选_不进角标_看在哪给位置() {
 }
 
 #[test]
-fn 实时显示_没贴可选_贴过过期升成要做_贴好已做_钥匙遮住() {
+fn 实时显示_没贴可选_贴过过期升成要做_贴好已做() {
     let mut f = base();
     f.relay = vec![claude_relay(
         "absent",
         "/h/.claude/settings.json",
         Some("{\n  \"env\": {}\n}\n"),
         Some("http://127.0.0.1:1/k/SECRET/claude"),
-        Some("SECRET"),
     )];
     let c = chores(&f);
     assert_eq!(c[0]["id"], json!("relay:claude-code"));
@@ -172,9 +162,8 @@ fn 实时显示_没贴可选_贴过过期升成要做_贴好已做_钥匙遮住(
     assert_eq!(c[0]["state"], json!("todo"));
     assert!(
         c[0]["whole"].as_str().unwrap().contains("SECRET"),
-        "复制的是真内容"
+        "整份里是要贴的那条地址"
     );
-    assert_eq!(c[0]["mask"], json!("SECRET"));
     assert!(c[0]["diff"]
         .as_array()
         .unwrap()
@@ -213,13 +202,7 @@ fn cc_bus_收信_没装_cc_bus_先决_windows_不出() {
 fn 同一份文件两件_整份含两件_各自的_diff_按现在的文件算() {
     let mut f = base();
     let text = "{\n  \"model\": \"opus\"\n}\n".to_string();
-    f.relay = vec![claude_relay(
-        "absent",
-        "/h/s.json",
-        Some(&text),
-        Some("u"),
-        None,
-    )];
+    f.relay = vec![claude_relay("absent", "/h/s.json", Some(&text), Some("u"))];
     f.hooks = Some(Hooks {
         ccbus: true,
         installed: false,
@@ -315,7 +298,6 @@ fn 每件的线上形状_键集恰好() {
             "id",
             "kind",
             "loc",
-            "mask",
             "name",
             "said",
             "state",
@@ -337,7 +319,6 @@ fn 实时显示_两家各一件_各按各的格式() {
             "/h/.claude/settings.json",
             Some("{}\n"),
             Some("http://127.0.0.1:1/K1/t/claude-code/_"),
-            Some("K1"),
         ),
         relay_of(
             crate::agents::codex::relay::SETTINGS_ENV,
@@ -347,7 +328,6 @@ fn 实时显示_两家各一件_各按各的格式() {
             "/h/.codex/config.toml",
             Some("model = \"m\"\n"),
             Some("http://127.0.0.1:1/K2/t/codex/_"),
-            Some("K2"),
         ),
     ];
     let c = chores(&f);
@@ -362,7 +342,6 @@ fn 实时显示_两家各一件_各按各的格式() {
         c[1]["whole"],
         json!("openai_base_url = \"http://127.0.0.1:1/K2/t/codex/_\"\nmodel = \"m\"\n")
     );
-    assert_eq!(c[1]["mask"], json!("K2"));
     assert_eq!(
         c[1]["steps"][1],
         json!(copy_core::copy_text(
@@ -372,18 +351,6 @@ fn 实时显示_两家各一件_各按各的格式() {
     );
     assert!(c[1]["loc"].as_str().unwrap().contains("openai_base_url"));
     assert_eq!(c[1]["wholeCovers"], json!(["relay:codex"]));
-}
-
-/// 遮住的那一截就是地址里的钥匙段（不是那一形 ⇒ 不遮，也不猜）。
-#[test]
-fn 钥匙段_从插好钥匙的地址里取() {
-    let key = "a".repeat(64);
-    let url = format!("http://127.0.0.1:8788/{key}/t/codex/_");
-    assert_eq!(super::gather::key_segment(&url), Some(key));
-    assert_eq!(
-        super::gather::key_segment("http://127.0.0.1:8788/t/codex/_"),
-        None
-    );
 }
 
 /// 用户自己配的 MCP 要登录 ⇒ 一个服务器一件，可选、不进角标；号名进位置那一格；复制的是 `/mcp`。点过「不用了」⇒ 已不用。

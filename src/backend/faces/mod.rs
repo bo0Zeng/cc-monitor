@@ -13,7 +13,7 @@ pub(crate) mod footprint_report_face; // 「足迹」那两条成品（typed）�
 pub mod fork_face;
 pub(crate) mod history_face; // 读一份会话记录的那几条（typed）：history-read · -page · -lines · -run · -tail · -branch · -record · sessions-needs
 pub(crate) mod hub_inner_face; // 枢纽问各台的那 8 条内层命令（typed）：名字 · 入参 · 回包取 `assets::hub_wire` 那三样
-pub mod launch_face; // 帧面 `launch-local` / `launch-render-cli` 的宿主壳：交起会话挑号要的事实（账号库 · 上次的号） // 帧面 `session-fork` 的宿主壳：找家目录、交 `control/fork_write`（本体与 CLI `--fork-session` 同一份）
+pub(crate) mod launch_account_face; // 起会话挑号要的事实（账号库 · 上次的号）与起之前预标信任：`session-open` · 换号重启 · 会话里切号同一份
 pub mod login_face; // 在 app 里登录一个号（`login-*`）· 会话外的需手动清单（`manual-list`）
 pub mod plan_face; // 帧面 `plan-list` · `plan-read` · `plan-cell-view`：计划读面要的这台事实（pb 装在哪 · 会话在哪些目录 · id 是哪个会话）
 pub mod plan_return_face; // 帧面 `plan-return`：计划退回（拼那一行 · 判能不能送 · 走 `terminal-input` 的本体 · 记已退回）
@@ -24,7 +24,6 @@ pub mod quota_probe_face; // 帧面 `quota-probe`：用某个号查一次额度�
 pub(crate) mod quota_read; // `quota-read` 的成品（有类型：每号 ＝ 原数 ＋ 显示态 ＋ 写好的几行 · 5h 那一格 · 开窗那一判；顶上 ＋ 号名表）
 pub(crate) mod quota_rows; // `quota-read` 每号的 `rows`（额度每号几行，唯一的行模型）与开窗那一判 `warm`
 pub mod read_face; // 只读查询的帧面宿主（8 条：history-* / accounts-*）—— 薄壳，本体在 observe/，住顶层的理由同 files/
-pub mod relay_optin_face; // 帧面 `relay-optin` 的宿主壳：入参 · 码表 · 怎么跑；判定与成品住 accounts/upstream_select/endpoint.rs
 pub(crate) mod remote_reach_face; // 帧面 `remote-reach`（typed）：可达表登记（dial）＋ 登记完交一次待交的偏好（control）—— 两边只在这里接上
 pub(crate) mod rotation_edit_face; // 帧面：轮换的写（typed）：设置 · 存 · 换一份 · 拖出来的顺序 · 现在用 · 策略文件 · 24 小时条的算术
 pub mod rotation_face; // 换号那一族的帧面宿主：账号库读成上游选择换号要的那几格（两边只在这里接上）
@@ -35,7 +34,7 @@ pub(crate) mod search_face; // 全文搜索那两条（typed）：`history-searc
 pub mod session_batch_face;
 pub(crate) mod session_commands_face; // 帧面 `session-commands`（typed）：一条会话能用的斜杠命令与 Skill
 pub(crate) mod session_mode_face;
-pub(crate) mod session_model_face; // 帧面 `session-model`（typed）：会话开着时换模型（送那一行、从记录读回） // 帧面 `session-permission`（typed）：会话开着时切权限档（按循环键、等重画、读回到了为止）
-pub mod session_new_face; // 帧面 `session-new` · `session-new-facts` · `session-new-dir`：起新会话框要的这台事实 ＋ 起
+pub(crate) mod session_model_face; // 帧面 `session-model`（typed）：换模型（送那一行、从记录读回；终端没了记下等恢复） // 帧面 `session-permission`（typed）：切权限档（按循环键、等重画、读回到了为止；终端没了记下等恢复）
+pub(crate) mod session_open_face; // 帧面 `session-open` · `-facts` · `-dir`：起新的 · 恢复 · 接回一个请求，起新会话框要的这台事实与目录那一问
 pub mod session_restart_face;
-pub(crate) mod session_say_face; // 帧面 `session-say`（typed）：往一条会话说一句，在等人 ⇒ 不送，不在等 ⇒ 照 `terminal-input` 送 // 帧面 `session-restart` 的宿主壳：每一步一份批量那份事实、停旧 ＋ 起新拿退出排空的票、两种等待住观测层 // 帧面 `sessions-stop` / `sessions-start` 的宿主壳：把 tmux 名单 · 记录在不在 · 杀 · 建会话那几样交给 control/session_batch
+pub(crate) mod session_say_face; // 帧面 `session-say`（typed）：往一条会话说一句，在等人 ⇒ 不送，不在等 ⇒ 照 `terminal-input` 送 // 帧面 `session-restart` 的宿主壳：每一步一份批量那份事实、停旧 ＋ 起新拿退出排空的票、两种等待住观测层 // 帧面 `sessions-where` / `sessions-stop` 的宿主壳：把 tmux 名单 · 记录在不在 · 杀 · 建会话那几样交给 control/session_batch

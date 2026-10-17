@@ -1,50 +1,32 @@
 /**
- * 因对方版本说不成的两个码：版本旧 / 回的认不出各一句，按码取（`chan-caller.ts::saidFrom`）。
- * 钉三件事：两个码各落一句、认不出那一句不提版本、其余失败不落进这两个码。
+ * 因对方版本说不成：那一句 monitor 写（在 `ChanError.message`），界面只判形（`isOldBackend`）；
+ * 回的认不出那一句是界面自己知道的事，界面说（`ReplyUnreadable`），不提版本。
  */
 import { describe, expect, it } from "vitest";
 import { ChanError } from "../../../../src/comms/inward/chan";
-import * as chanCaller from "../../../../src/frontend/ui/ipc/chan-caller";
-import { ReplyUnreadable, peerVersionCodeOf, saidFrom } from "../../../../src/frontend/ui/ipc/chan-caller";
+import { ReplyUnreadable, isOldBackend } from "../../../../src/frontend/ui/ipc/chan-caller";
 import TABLE from "../../../../src/shared/copy/table.json";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 const zh = (k: string): string => (TABLE.entries as Record<string, { zh: string }>)[k].zh;
 
-describe("两个码", () => {
-  it("对端不认这条命令 ⇒ 版本旧那一句（带机器名）", () => {
-    const e = new ChanError({ layer: "peer", why: "unsupported" });
-    expect(peerVersionCodeOf(e)).toBe("backend_old");
-    expect(saidFrom(e, "devbox")).toBe(zh("peerVersion.said.old").replace("{machine}", "devbox"));
+describe("界面只说认不出、只判版本旧那一形", () => {
+  it("回的形状不对 ⇒ 认不出那一句（带机器名，本机说「本机」），不提版本、细目不上屏", () => {
+    const e = new ReplyUnreadable("devbox", "x reply shape");
+    expect(e.message).toBe(zh("peerVersion.said.unreadable").replace("{machine}", "devbox"));
+    expect(e.message).not.toMatch(/版本|更新/);
+    expect(e.message).not.toContain("x reply shape");
+    expect(e.detail).toBe("");
+    expect(new ReplyUnreadable("<local>", "y").message).toBe(
+      copyText("peerVersion.said.unreadable", { machine: copyText("control.machine.local") }),
+    );
   });
 
-  it("回的形状不对 / 不是 JSON ⇒ 认不出那一句，不提版本", () => {
-    for (const e of [new ReplyUnreadable("x reply shape"), new SyntaxError("Unexpected token")]) {
-      expect(peerVersionCodeOf(e)).toBe("reply_unreadable");
-      const said = saidFrom(e, "devbox");
-      expect(said).toBe(zh("peerVersion.said.unreadable").replace("{machine}", "devbox"));
-      expect(said).not.toMatch(/版本|更新/);
-      expect(said).not.toContain("x reply shape");
-    }
-  });
-
-  it("本机说「本机」", () => {
-    expect(saidFrom(new ChanError({ layer: "peer", why: "unsupported" }), "<local>")).toBe(copyText("peerVersion.said.old", { machine: copyText("control.machine.local") }));
-  });
-
-  it("够不着 / 对端说不行 / 别的错 ⇒ 不落进这两个码", () => {
+  it("只有对端事前说不认这条命令才算版本旧；够不着 · 被拒 · 别的错都不算", () => {
+    expect(isOldBackend(new ChanError({ layer: "peer", why: "unsupported" }))).toBe(true);
     const hop = new ChanError({ layer: "hop", at: { idx: 0, tag: "open" }, reach: "NotSent", why: "Unreachable" });
     const refused = new ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode('{"code":"x","message":"那台说的话"}') });
-    expect(peerVersionCodeOf(hop)).toBeNull();
-    expect(peerVersionCodeOf(refused)).toBeNull();
-    expect(peerVersionCodeOf(new Error("plain"))).toBeNull();
-    expect(saidFrom(refused, "devbox")).toBe("那台说的话");
-  });
-});
-
-describe("调用方不再自拼「版本旧」那一句", () => {
-  it("chan-caller 不再导出带一句旧话的 saidOf（各处一律 saidFrom 按码取）", () => {
-    expect(Object.keys(chanCaller)).not.toContain("saidOf");
+    for (const e of [hop, refused, new ReplyUnreadable("devbox", "z"), new Error("plain")]) expect(isOldBackend(e)).toBe(false);
   });
 });
 
@@ -64,5 +46,4 @@ describe("文案表里这一族只剩两句", () => {
 /** 状态词：那台处在「要更新」状态时的标签（账号徽标 · 远端健康），不是命令被拒；机器状态成品那一刀统一。 */
 const EXPECTED_REMAINING: string[] = [
   "accountChip.label.backendOld",
-  "remoteHealth.head.backendOld",
 ];

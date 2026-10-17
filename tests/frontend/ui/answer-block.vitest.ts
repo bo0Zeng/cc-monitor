@@ -17,21 +17,23 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AnswerBlock, type AnswerHost, type AnswerOutcome } from "../../../src/frontend/ui/answer-block";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 import type { Ask, Needs } from "../../../src/frontend/ui/session-reads";
-import { LIVE, LIVE_ATTACHABLE } from "../../../src/frontend/ui/tab-session-state";
+import { liveFace } from "../../test-support/session-faces";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { waitedNow } from "../../../src/frontend/ui/duration-format";
+import { nonEmpty } from "../../test-support/non-empty";
 
 const ASKS = JSON.parse(readFileSync(resolve(__dirname, "../../__fixtures__/needs-ask.golden.json"), "utf8")) as Record<"approve" | "subAgent" | "plan" | "question", Ask>;
 const NOW = Date.parse("2026-10-11T12:00:00Z");
-const waiting = { doing: "needs_you" as const, waitingFor: "permission prompt", text: copyText("beSession.activity.needsYou"), tone: "need", order: 1 };
+/** 在等人：脸 ＋ 同一刻的会话事实那一句（需手动那一份只在两份同一刻时作数）。 */
+const waiting = { face: liveFace("needs_you"), line: { for: "needs_you" as const, text: "", clock: null, peek: null } };
 
 function needs(ask: Ask | null, over: Partial<Needs> = {}): Needs {
   return { kind: "approve", tool: "Bash", call: "toolu_1", what: "w", sinceMs: NOW - 12_000, text: "核心·等批准", head: "核心·等批准 · Bash", headCode: null, tone: "need", rank: 1, waitedMs: 12_000, waitedText: "核心·12s", ask, manualText: ask ? null : "核心·只能在终端里答", receivedAt: NOW, ...over };
 }
 
 function tab(n: Needs | null, sid = "s1"): Tab {
-  return { sessionId: sid, origin: LOCAL_ORIGIN, state: LIVE, activity: n ? waiting : null, needs: n } as unknown as Tab;
+  return { sessionId: sid, origin: LOCAL_ORIGIN, ...(n ? waiting : { face: liveFace("working"), line: null }), needs: n } as unknown as Tab;
 }
 
 function rig(t: Tab | null, outcome: AnswerOutcome = { kind: "answered" }) {
@@ -72,7 +74,17 @@ describe("甲1 批准一步", () => {
     const c = ASKS.approve.choices.map((x) => x.text);
     expect(rows(b)).toEqual([
       ["main", [c[0], c[1], c[2]]],
-      ["deny", [c[3], copyText("askBlock.choice.more", { label: c[4] }), c[5]]],
+      ["hold", [c[3], copyText("askBlock.choice.more", { label: c[4] }), c[5]]],
+    ]);
+  });
+
+  it("★ 哪一项进哪一段照核心给的 `row`，不按选项 id 认", () => {
+    const moved = { ...ASKS.approve, choices: ASKS.approve.choices.map((x) => (x.id === "always-1" ? { ...x, row: "hold" as const } : x)) };
+    const { b } = rig(tab(needs(moved)));
+    const c = moved.choices.map((x) => x.text);
+    expect(rows(b)).toEqual([
+      ["main", [c[0], c[1]]],
+      ["hold", [c[2], c[3], copyText("askBlock.choice.more", { label: c[4] }), c[5]]],
     ]);
   });
 
@@ -267,6 +279,25 @@ describe("甲6 只能在终端里答 · 甲7 别处先答了", () => {
     expect([r.b.el.hidden, r.b.el.childElementCount], "切到别的会话 ⇒ 不留").toEqual([true, 0]);
   });
 
+  it("★ 没人答、那台替人答了 ⇒ 留的那一行是核心那一句（不是「已在别处答过」）；切走再回来还在；下一条请求来了才换掉", () => {
+    const said = "核心·10 分钟没人答，已自动答：继续";
+    const auto = (n: Needs | null, sid = "s1"): Tab => ({ ...tab(n, sid), autoAnswered: n ? null : said }) as Tab;
+    const r = rig(auto(needs(ASKS.question, { kind: "answer" })));
+    r.set(auto(null));
+    r.b.render(NOW);
+    expect([r.b.el.hidden, r.b.el.querySelectorAll("button").length]).toEqual([false, 0]);
+    expect(r.b.el.querySelector("[data-part=gone]")!.textContent).toBe(said);
+    r.set(tab(null, "s2"));
+    r.b.render(NOW);
+    expect(r.b.el.hidden).toBe(true);
+    r.set(auto(null));
+    r.b.render(NOW);
+    expect(r.b.el.querySelector("[data-part=gone]")!.textContent, "切回来照会话事实那一格画").toBe(said);
+    r.set(auto(needs(ASKS.plan, { kind: "plan" })));
+    r.b.render(NOW);
+    expect(r.b.el.querySelector("[data-part=gone]")).toBeNull();
+  });
+
   it("★ 自己答出去的那一条被收了 ⇒ 块收起、不留那一行", async () => {
     const r = rig(tab(needs(ASKS.approve)));
     btn(r.b, ASKS.approve.choices[0].text).click();
@@ -311,7 +342,7 @@ describe("每一种需手动都有地方出（钉条删了以后）", () => {
     const src = readFileSync(resolve(__dirname, "../../../src/common/cmd-wire/src/needs.rs"), "utf8");
     const body = src.slice(src.indexOf("pub enum NeedsKind {"));
     const variants = [...body.slice(0, body.indexOf("}")).matchAll(/^\s*([A-Z][A-Za-z]*),/gm)].map((m) => m[1][0].toLowerCase() + m[1].slice(1));
-    expect(variants.length).toBeGreaterThanOrEqual(8);
+    nonEmpty(variants);
     for (const kind of variants) {
       document.body.innerHTML = "";
       const { b } = rig(tab(needs(null, { kind: kind as Needs["kind"], head: `核心·${kind}`, manualText: `核心·${kind}·那一句` })));
@@ -322,15 +353,14 @@ describe("每一种需手动都有地方出（钉条删了以后）", () => {
     }
   });
 
-  it("★ 会话事实还没到（只有活动信号说在等）⇒ 也出：头一行是活动信号那一句", () => {
-    const t = { sessionId: "s1", origin: LOCAL_ORIGIN, state: LIVE, activity: waiting, needs: null } as unknown as Tab;
+  it("★ 会话事实还没到（只有脸说在等）⇒ 不出：种类判不出，不猜", () => {
+    const t = { sessionId: "s1", origin: LOCAL_ORIGIN, face: liveFace("needs_you"), line: null, needs: null } as unknown as Tab;
     const { b } = rig(t);
-    expect(b.el.hidden).toBe(false);
-    expect(b.el.querySelector("[data-part=head]")!.textContent).toContain(waiting.text);
+    expect(b.el.hidden).toBe(true);
   });
 
   it("★ 能不能去终端都一样：远端在 tmux 里 · Windows 有 ↗ · 都不行 ⇒ 块里都不放终端那几颗主按钮", () => {
-    const remote = { ...tab(needs(null)), origin: "devbox", state: LIVE_ATTACHABLE } as unknown as Tab;
+    const remote = { ...tab(needs(null)), origin: "devbox", face: liveFace("working", true) } as unknown as Tab;
     expect(rig(remote).b.el.querySelectorAll("button").length).toBe(0);
     document.body.innerHTML = "";
     vi.mocked(terminalFrontAvailable).mockReturnValue(true);

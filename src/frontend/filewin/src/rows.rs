@@ -119,7 +119,8 @@ pub struct HitRow {
     pub mtime_text: Option<String>,
     pub size: Option<u64>,
     pub dir: bool,
-    pub link: bool,
+    /// 画哪种图标（后端判的）。
+    pub class: cmd_wire::files::FileClass,
 }
 
 /// 结果表的尾巴。
@@ -313,8 +314,8 @@ fn paint_hit(ui: &Ui, rect: egui::Rect, h: &HitRow) {
     let m = metrics(ui.ctx());
     let [name_c, loc_c, mtime_c, size_c] = hit_rects(rect);
     let painter = ui.painter().clone();
-    let k = kind::kind_of_name(&h.name, h.dir, h.link);
-    let icon_color = if k == kind::Kind::Folder {
+    let k = h.class;
+    let icon_color = if k == cmd_wire::files::FileClass::Folder {
         p.accent
     } else {
         p.text2
@@ -510,7 +511,12 @@ impl Columns {
 
 /// 列名。
 pub fn column_label(by: SortBy) -> String {
-    by.label()
+    match by {
+        SortBy::Name => copy_text("rsFilewinSource.sort.name", &[]),
+        SortBy::Mtime => copy_text("rsFilewinSource.sort.mtime", &[]),
+        SortBy::Size => copy_text("rsFilewinSource.sort.size", &[]),
+        SortBy::Type => copy_text("rsFilewinSource.sort.type", &[]),
+    }
 }
 
 /// 🔴 **表头**：点一列按它排（再点反向），拖两列之间那条线改列宽。回这一帧点了哪一列。
@@ -895,11 +901,11 @@ fn paint_one_row(
     };
     let (rest, plan_c) = cols.split_cell(rect);
     let [name_c, mtime_c, kind_c, size_c] = cols.rects(rest);
-    let k = kind::icon_kind(r);
+    let k = r.class;
     // 名称列：图标 ＋ 名字（＋ 名字读不出来时那个记号）。断了的链接图标淡一级。
     let icon_color = match k {
         _ if faded || r.link_broken => p.faint,
-        kind::Kind::Folder => p.accent,
+        cmd_wire::files::FileClass::Folder => p.accent,
         _ => p.text2,
     };
     let painter = ui.painter().clone();
@@ -999,18 +1005,14 @@ fn paint_one_row(
         full: r.mtime_full.clone().unwrap_or_else(|| short.clone()),
         short,
     });
-    let size_text = if r.is_dir {
-        String::new()
-    } else {
-        copy_core::size_text(r.size)
-    };
+    let size_text = r.size_text.clone().unwrap_or_default();
     let mut tips: Vec<(egui::Rect, String)> = Vec::new();
     let folded: Vec<String> = [
         (
             mtime_c,
             when.as_ref().map(|w| w.full.clone()).unwrap_or_default(),
         ),
-        (kind_c, kind::type_text(r)),
+        (kind_c, r.type_text.clone()),
         (size_c, size_text.clone()),
     ]
     .into_iter()
@@ -1064,7 +1066,7 @@ fn paint_one_row(
         when.as_ref().map(|w| w.short.clone()).unwrap_or_default(),
         false,
     );
-    cell(kind_c, kind::type_text(r), false);
+    cell(kind_c, r.type_text.clone(), false);
     cell(size_c, size_text, true);
     // 「格」那一列：那一格的状态图标 ＋ 标题；被两格声明 ⇒ 后面一个红 ⚠（悬停写另一格）；那一片读不成 ⇒「—」。文件夹空着。
     if let (Some(c), Some(d)) = (plan_c, plan) {

@@ -1,10 +1,11 @@
-//! 格目录的判据：目录 ＝ 成品真序列化出来的格（两向）· 缺格表与目录不重。
+//! 格目录的判据：目录 ＝ 成品真序列化出来的格（两向）。
 //!
-//! 格目录的测试档那一半也住这里：整份目录（[`catalog`]）· 冻结格（[`FROZEN`]）· 缺格表（[`PENDING`]）。
+//! 格目录的测试档那一半也住这里：整份目录（[`catalog`]）· 冻结格（[`FROZEN`]）。
 //! 判据 · 金样 `cells-catalog.golden.json` · `build_id_guard` 的冻结格指纹读它；生产里只有 `view` 投影读成品名与路径（[`PRODUCTS`]）。
 //! 原先的帧命令 `cells-catalog` 没有调用方，第 8 批删了。
 
 use super::*;
+use crate::wire::SessionFaceExt as _;
 use serde_json::Value;
 use std::collections::BTreeSet;
 
@@ -29,29 +30,7 @@ impl Frozen {
     }
 }
 
-/// 已经判了要补、还没落地的一格。
-#[derive(Debug, Clone, Copy, serde::Serialize)]
-pub(crate) struct Pending {
-    pub(crate) product: &'static str,
-    pub(crate) path: &'static str,
-    pub(crate) kind: &'static str,
-}
-
-/// 还缺的格（手机端 10-09 缺格清单）。落地那一刻删掉这里那一行（判据两向钉）。今天一条都不缺；机制留着，下一张缺格清单进这里。
-///
-/// 已落地 / 不补的（这里不再登记）：
-/// - G1 会话灯「后台任务运行中」那一档 ⇒ `activity` 的闭集多了 `backgroundWork`（不是新格），字与语气在 `activity_text` · `activity_tone`。
-/// - G2 会话状态的字与语气 ⇒ `session_*.activity_text` · `activity_tone` · `session_state.state_text` …
-/// - G3 「在等什么」的字与先答哪个 ⇒ `facts.needs.text` · `facts.needs.rank`。那台 pidfile 的 `waitingFor` 六个原值由适配层翻成
-///   [`WaitOn`](crate::agents::WaitOn)，再与记录里没结果的那一步一起在 `facts_query::needs_of` 判成八种 `needs.kind`（映射只在这两处）；
-///   字与序跟着种类走，不另挂在 `session_status` 上。
-/// - G4 上下文的字 ⇒ `facts.usage.contextText`（判得出上限写百分比、判不出只写用了多少）· `limitText` · `promptTokensText` ·
-///   `percent` · `contextTone` · `limitFromText`；上限只有核心一套判定（`facts_query::context_limit`），出口不再按型号猜。
-/// - G5 骨架行的时刻：**不补**（10-09 定走法甲）。时刻在骨架上唯一的用处是算「最新的那一支」，手机改吃 `history-branch.off`
-///   拿主线之后这一用处没了；要画时刻的地方读正文时记录本身带 `at` · `timeText`。
-pub(crate) const PENDING: &[Pending] = &[];
-
-/// 整份目录（纯计算，不读盘）：`{products: [{name, cells: [{path, kind, type, frozen}]}], pending: [{product, path, kind}]}`。
+/// 整份目录（纯计算，不读盘）：`{products: [{name, cells: [{path, kind, type, frozen}]}]}`。
 pub(crate) fn catalog() -> serde_json::Value {
     let products: Vec<serde_json::Value> = PRODUCTS
         .iter()
@@ -66,7 +45,7 @@ pub(crate) fn catalog() -> serde_json::Value {
             serde_json::json!({"name": p.name, "cells": cells})
         })
         .collect();
-    serde_json::json!({"products": products, "pending": PENDING})
+    serde_json::json!({"products": products})
 }
 
 /// 每件成品哪几格冻结（[`PRODUCTS`] 每件恰好一行，判据钉）：两个前端（桌面界面 · 手机）都照它读的那几格 —— 删 / 改名 / 换类型 ⇒ 判据红
@@ -87,9 +66,15 @@ pub(crate) const FROZEN: &[(&str, Frozen)] = &[
             "waiting_for",
             "agent_kind",
             "attachable",
-            "activity",
-            "activity_text",
-            "activity_tone",
+            "face.dot",
+            "face.live.activity",
+            "face.settled",
+            "face.name",
+            "face.tone",
+            "face.can.model.can",
+            "face.can.model.why",
+            "face.can.permission.can",
+            "face.can.permission.why",
             "background",
         ]),
     ),
@@ -98,12 +83,31 @@ pub(crate) const FROZEN: &[(&str, Frozen)] = &[
         Frozen::Cells(&[
             "sid",
             "waiting_for",
-            "activity",
-            "activity_text",
-            "activity_tone",
+            "face.dot",
+            "face.live.activity",
+            "face.settled",
+            "face.name",
+            "face.tone",
+            "face.can.model.can",
+            "face.can.model.why",
+            "face.can.permission.can",
+            "face.can.permission.why",
         ]),
     ),
-    ("session_state", Frozen::No),
+    (
+        "session_state",
+        Frozen::Cells(&[
+            "sid",
+            "face.dot",
+            "face.settled",
+            "face.name",
+            "face.tone",
+            "face.can.model.can",
+            "face.can.model.why",
+            "face.can.permission.can",
+            "face.can.permission.why",
+        ]),
+    ),
     ("session_removed", Frozen::Cells(&["sid", "cause"])),
     (
         "quota_read",
@@ -141,6 +145,15 @@ pub(crate) const FROZEN: &[(&str, Frozen)] = &[
             "rows[].jsonlPath",
             "rows[].agent",
             "rows[].agentTag",
+            "rows[].face.dot",
+            "rows[].face.live.activity",
+            "rows[].face.settled",
+            "rows[].face.name",
+            "rows[].face.tone",
+            "rows[].face.can.model.can",
+            "rows[].face.can.model.why",
+            "rows[].face.can.permission.can",
+            "rows[].face.can.permission.why",
             "rows[].starred",
             "rows[].customTitle",
             "rows[].hidden.by",
@@ -268,7 +281,7 @@ fn golden(file: &str) -> String {
 /// 各件成品的真样子：跨语言金样里由真代码写出来的那几份（＋ 金样里恰好缺的那一格，用真代码现造）。
 /// 挂着的待答请求那一格用真路子现造：Claude 适配层读一份提问的 hook 输入（子 agent 发的、带说明的选项）⇒ 通用层写成品、配进 needs；
 /// 另配一份没有挂着请求的（`manualText` 那一格）。
-fn dressed_needs(base: Option<crate::observe::facts_query::Needs>) -> Vec<Value> {
+fn dressed_needs(base: Option<crate::observe::recognize::facts::Needs>) -> Vec<Value> {
     let hook = serde_json::json!({
         "session_id": "s", "hook_event_name": "PermissionRequest", "agent_id": "a", "agent_type": "t",
         "tool_name": "AskUserQuestion",
@@ -278,8 +291,8 @@ fn dressed_needs(base: Option<crate::observe::facts_query::Needs>) -> Vec<Value>
     let asked = crate::agents::claudecode::asks::read(&hook).unwrap();
     let ask = crate::agents::asks::product_of("ask-1", &asked, 1);
     [
-        crate::observe::facts_query::dress_ask_with(base.clone(), Some(ask), 2),
-        crate::observe::facts_query::dress_ask_with(base, None, 2),
+        crate::observe::recognize::facts::dress_ask_with(base.clone(), Some(ask), 2),
+        crate::observe::recognize::facts::dress_ask_with(base, None, 2),
     ]
     .into_iter()
     .map(|n| serde_json::to_value(n).unwrap())
@@ -298,33 +311,34 @@ fn corpus(name: &str) -> Vec<Value> {
             let g: Value = serde_json::from_str(&golden("session-reads.golden.json")).unwrap();
             let mut f = g["history-facts"].clone();
             // 金样那份会话不在等人（`needs` 是 null）⇒ 这一格用真判定现造一份。
-            let pending = vec![crate::observe::facts_query::PendingCall {
+            let pending = vec![crate::observe::recognize::facts::PendingCall {
                 id: "c".into(),
                 name: "Bash".into(),
                 what: Some("ls".into()),
                 at: None,
                 at_ms: None,
-                state: crate::observe::facts_query::StepWait::Running,
+                state: crate::observe::recognize::facts::StepWait::Running,
                 why: None,
                 text: None,
                 why_text: None,
             }];
-            let wait = crate::observe::facts_query::PidWait {
+            let wait = crate::observe::recognize::facts::PidWait {
                 waiting_for: Some(crate::agents::WaitOn::Permission),
                 since_ms: Some(1),
                 read_at_ms: 0,
             };
-            f["needs"] =
-                serde_json::to_value(crate::observe::facts_query::needs_of(&pending, Some(&wait)))
-                    .unwrap();
-            // 金样那份会话不在后台任务运行中那一态（`background` 是 null）⇒ 同上，用真判定现造一份（金样里那几条没收场的后台命令）。
-            let tasks: Vec<crate::observe::facts_query::BgTask> =
-                serde_json::from_value(f["bgTasks"].clone()).unwrap();
-            f["background"] = serde_json::to_value(crate::observe::facts_query::background_of(
-                &tasks,
-                None,
-                u64::MAX / 2,
+            f["needs"] = serde_json::to_value(crate::observe::recognize::facts::needs_of(
+                crate::agents::record_tree_kind().unwrap_or_default(),
+                &pending,
+                Some(&wait),
             ))
+            .unwrap();
+            // 金样那份会话不在后台任务运行中那一态（`background` 是 null）⇒ 同上，用真判定现造一份（金样里那几条没收场的后台命令）。
+            let tasks: Vec<crate::observe::recognize::facts::BgTask> =
+                serde_json::from_value(f["bgTasks"].clone()).unwrap();
+            f["background"] = serde_json::to_value(
+                crate::observe::recognize::facts::background_of(&tasks, None, u64::MAX / 2),
+            )
             .unwrap();
             // 金样那份会话没有血缘（`parent` 是 null、`children` 空）⇒ 同上，用真判定现造一份：
             // 主会话起它时写了 `--tab hide`、它起的子会话照偏好隐藏（两格都带隐藏那一格）。
@@ -353,12 +367,40 @@ fn corpus(name: &str) -> Vec<Value> {
             );
             f["startedBy"] = serde_json::to_value(parent).unwrap();
             f["children"] = serde_json::to_value(children).unwrap();
-            let base: Option<crate::observe::facts_query::Needs> =
+            // 夹具里血缘那两条都不活 ⇒ 脸照活着在跑的那一形现造（活着那几格才露得出来）。
+            let live =
+                serde_json::to_value(crate::wire::SessionFace::of(crate::wire::Life::Live {
+                    activity: Some(crate::agents::SessionActivity::Working),
+                    tmux: None,
+                }))
+                .unwrap();
+            f["startedBy"]["face"] = live.clone();
+            f["children"][0]["face"] = live;
+            // 金样那份会话不活（`line` 是 null）⇒ 用真判定现造一份（在跑、那一步没收场）。
+            let mut facts: crate::observe::recognize::facts::SessionFacts = Default::default();
+            facts.pending = pending.clone();
+            facts.pending[0].at_ms = Some(1);
+            f["line"] = serde_json::to_value(crate::observe::recognize::facts::line_of(
+                Some(crate::agents::SessionActivity::Working),
+                &facts,
+                60_000,
+            ))
+            .unwrap();
+            let base: Option<crate::observe::recognize::facts::Needs> =
                 serde_json::from_value(f["needs"].clone()).unwrap();
             let mut out = vec![f.clone()];
             // 答题口没接上那一格：真跑要一个带那个变量的活进程，这里照它写好的那一句配一份。
             let mut off = f.clone();
             off["answerOff"] = serde_json::json!(copy_core::copy_text("beAsk.manual.noHook", &[]));
+            // 没人答时自动答那两格：注解里设了 · 上一条替人答过（真跑要一条挂过的提问），照写好的那一句配一份。
+            off["autoAnswer"] = serde_json::json!(10);
+            off["autoAnswered"] = serde_json::json!(copy_core::copy_text(
+                "beAsk.auto.answered",
+                &[
+                    ("dur", &copy_core::format_duration(600_000)),
+                    ("say", &crate::control::asks::auto_say())
+                ]
+            ));
             out.push(off);
             for n in dressed_needs(base) {
                 let mut g = f.clone();
@@ -369,26 +411,36 @@ fn corpus(name: &str) -> Vec<Value> {
         }
         // 清单那一行用真判定现造（金样生成那一处不起进程，答不出非空的清单）。
         "needs_row" => {
-            let pending = vec![crate::observe::facts_query::PendingCall {
+            let pending = vec![crate::observe::recognize::facts::PendingCall {
                 id: "c".into(),
                 name: "Bash".into(),
                 what: Some("ls".into()),
                 at: None,
                 at_ms: None,
-                state: crate::observe::facts_query::StepWait::Running,
+                state: crate::observe::recognize::facts::StepWait::Running,
                 why: None,
                 text: None,
                 why_text: None,
             }];
-            let wait = crate::observe::facts_query::PidWait {
+            let wait = crate::observe::recognize::facts::PidWait {
                 waiting_for: Some(crate::agents::WaitOn::Permission),
                 since_ms: Some(1),
                 read_at_ms: 2,
             };
-            let needs = crate::observe::facts_query::needs_of(&pending, Some(&wait)).unwrap();
+            let needs = crate::observe::recognize::facts::needs_of(
+                crate::agents::record_tree_kind().unwrap_or_default(),
+                &pending,
+                Some(&wait),
+            )
+            .unwrap();
             let mut rows = vec![
                 serde_json::to_value(crate::observe::accounts_query::NeedsRow {
                     sid: "s".into(),
+                    label: crate::common::cells::Words("t".into()),
+                    face: crate::wire::SessionFace::of(crate::wire::Life::Live {
+                        activity: Some(crate::agents::SessionActivity::NeedsYou),
+                        tmux: None,
+                    }),
                     needs: needs.clone(),
                     // 隐藏的会话照样在需手动清单里、带着那一格（真判定现造）。
                     hidden: crate::control::session_hidden::judge(
@@ -410,7 +462,7 @@ fn corpus(name: &str) -> Vec<Value> {
             rows
         }
         "index_row" => {
-            // 逐行那一形只在 CLI 那一臂（帧面按列排，`history_face.rs::pack_index`）⇒ 用真函数逐行现算：
+            // 逐行那一形只在 CLI 那一臂（帧面按列排，`index.rs::pack_index`）⇒ 用真函数逐行现算：
             // 用户说的话（摘要 · 时刻）· 带工具调用的回复 · 系统注入 · 子运行里带代码块与全宽字的一行。
             let mut rows: Vec<Value> = [
                 r#"{"type":"user","uuid":"in-1","timestamp":"t1","message":{"role":"user","content":"alpha zqx beta"}}"#,
@@ -419,12 +471,12 @@ fn corpus(name: &str) -> Vec<Value> {
             ]
             .iter()
             .map(|l| {
-                serde_json::to_value(crate::observe::history_query::index_row(crate::agents::record_tree_kind().unwrap_or_default(), l.as_bytes(), 0, l.len() as u64)).unwrap()
+                serde_json::to_value(crate::observe::recognize::index_row::tests::index_row(crate::agents::record_tree_kind().unwrap_or_default(), l.as_bytes(), 0, l.len() as u64)).unwrap()
             })
             .collect();
             let line = r#"{"type":"assistant","uuid":"a-1","isSidechain":true,"agentId":"ag","message":{"content":[{"type":"text","text":"\u4e2d\n```\nx\n```"}]}}"#.as_bytes();
             rows.push(
-                serde_json::to_value(crate::observe::history_query::index_row(
+                serde_json::to_value(crate::observe::recognize::index_row::tests::index_row(
                     crate::agents::record_tree_kind().unwrap_or_default(),
                     line,
                     0,
@@ -443,8 +495,8 @@ fn corpus(name: &str) -> Vec<Value> {
             );
             let face = crate::agents::claudecode::RECORDS;
             let mut reader =
-                crate::observe::record_page::Reader::new(&face, 0, &[], Default::default());
-            crate::observe::record_page::rows_of(&mut reader, 0, page.as_bytes())
+                crate::observe::query::body::Reader::new(&face, 0, &[], Default::default());
+            crate::observe::query::body::rows_of(&mut reader, 0, page.as_bytes())
                 .into_iter()
                 .map(|r| serde_json::to_value(r).unwrap())
                 .collect()
@@ -462,7 +514,40 @@ fn corpus(name: &str) -> Vec<Value> {
             out.push(serde_json::to_value(real_quota_read()).unwrap());
             out
         }
-        "history_list" => vec![serde_json::from_str(&golden("history-list.golden.json")).unwrap()],
+        "history_list" => {
+            let mut g: Value = serde_json::from_str(&golden("history-list.golden.json")).unwrap();
+            // 金样里没有「记录已不在」那一行（离开「活」两样都能换）⇒ 补一行，灰的那两格（`can.*.why`）才露得出来。
+            let gone = serde_json::to_value(
+                <crate::wire::SessionFace as crate::wire::SessionFaceExt>::of(
+                    crate::wire::Life::Gone,
+                ),
+            )
+            .unwrap();
+            let rows = g["rows"].as_array_mut().unwrap();
+            let mut r = rows[0].clone();
+            r["face"] = gone;
+            rows.push(r);
+            vec![g]
+        }
+        // 会话流金样里没有「记录已不在」那一帧（离开「活」两样都能换）⇒ 补一帧，灰的那两格才露得出来。
+        "session_state" => {
+            let mut v: Vec<Value> = golden("session-stream.golden.jsonl")
+                .lines()
+                .map(|l| serde_json::from_str::<Value>(l).unwrap())
+                .filter(|v| v["kind"] == "session_state")
+                .collect();
+            v.push(
+                serde_json::to_value(
+                    <crate::wire::Frame as crate::wire::FrameMake>::session_left(
+                        "s".into(),
+                        crate::wire::Life::Gone,
+                        None,
+                    ),
+                )
+                .unwrap(),
+            );
+            v
+        }
         frame => golden("session-stream.golden.jsonl")
             .lines()
             .map(|l| serde_json::from_str::<Value>(l).unwrap())
@@ -537,12 +622,28 @@ fn real_quota_read() -> crate::faces::quota_read::QuotaRead {
     )
 }
 
-/// ★ 样本把每一格都露出来了：没有 `None`、没有空列表（不然那一格在目录里就漏了）。
+/// 类型里有、这件成品从不写的格：整份脸里的号只有会话那几帧带（宣告时判的），冷读出来的脸判不出。样本照实留空。
+const NEVER_WRITTEN: &[(&str, &str)] = &[
+    ("facts", "startedBy.face.account"),
+    ("facts", "children[].face.account"),
+    ("needs_row", "face.account"),
+    ("history_list", "rows[].face.account"),
+];
+
+/// ★ 样本把每一格都露出来了：没有 `None`、没有空列表（不然那一格在目录里就漏了）；空着的只许是 [`NEVER_WRITTEN`] 登记的，登记的也确实空着。
 #[test]
 fn every_specimen_fills_every_cell() {
     for p in PRODUCTS {
         let (cells, holes) = cells_of(p);
-        assert!(holes.is_empty(), "成品 {} 的样本没写全：{holes:#?}", p.name);
+        let waived: BTreeSet<String> = NEVER_WRITTEN
+            .iter()
+            .filter(|(n, _)| *n == p.name)
+            .map(|(_, c)| format!("{c}: absent"))
+            .collect();
+        let left: BTreeSet<String> = holes.iter().filter(|h| !waived.contains(*h)).cloned().collect();
+        assert!(left.is_empty(), "成品 {} 的样本没写全：{left:#?}", p.name);
+        let stale: Vec<&String> = waived.iter().filter(|w| !holes.contains(*w)).collect();
+        assert!(stale.is_empty(), "成品 {} 登记了从不写、样本里却写了：{stale:#?}", p.name);
         assert!(!cells.is_empty(), "成品 {} 一格都没有", p.name);
     }
 }
@@ -621,32 +722,10 @@ fn a_cell_is_text_only_when_its_type_says_so() {
     assert_eq!(catalog_of("facts")["usage.limitFrom"].ty, "enum");
 }
 
-/// 缺格表：每一行的成品在目录里、那一格还不在（落地了就删那一行）。表空着也是真话（今天一格都不缺）。
-#[test]
-fn pending_cells_are_not_in_the_catalog_yet() {
-    for c in PENDING {
-        assert!(
-            PRODUCTS.iter().any(|p| p.name == c.product),
-            "缺格表里的成品 {} 不在目录里",
-            c.product
-        );
-        assert!(
-            !catalog_of(c.product).contains_key(c.path),
-            "{}.{} 已经落地 —— 从 PENDING 里删掉那一行",
-            c.product,
-            c.path
-        );
-    }
-}
-
-/// 金样重写开关（人读过「现打」再落盘）。
-const REGEN: &str = "CCM_REGEN_CELLS_CATALOG";
-
-/// ★ 格目录的金样 ＝ [`catalog`] 真写出来的那一份（出口不起后端也能读）。改了成品就重写：
-/// `CCM_REGEN_CELLS_CATALOG=1 cargo test --lib -- cells_catalog`。
+/// ★ 格目录的金样 ＝ [`catalog`] 真写出来的那一份（出口不起后端也能读）。改了成品就重打。
 ///
 /// 冻结的格（[`Product::frozen`]，目录里每格的 `frozen`）不许删、改名、换类别或类型：金样里标了冻结的每一格，
-/// 目录里还得在、还冻结 —— 先于重写判，所以重写金样也不放行（要解冻得先手改金样，那是一次有意的协议变化）。
+/// 目录里还得在、还冻结 —— 先于比对判，红在落现打那份之前，所以重打金样也不放行（要解冻得先手改金样，那是一次有意的协议变化）。
 #[test]
 fn the_golden_is_what_the_command_writes() {
     let now = catalog();
@@ -683,11 +762,11 @@ fn the_golden_is_what_the_command_writes() {
         kept_any >= 20,
         "落盘的金样里冻结的格只有 {kept_any} 个 —— 本条在空转"
     );
-    if std::env::var_os(REGEN).is_some() {
-        std::fs::write(&path, &got).unwrap();
-    }
-    let want = std::fs::read_to_string(&path).unwrap_or_default();
-    assert!(got == want, "格目录与金样不一致（{REGEN}=1 重写）");
+    crate::golden::assert_golden(
+        "tests/__fixtures__/cells-catalog.golden.json",
+        &got,
+        "格目录与金样不一致",
+    );
 }
 
 /// 只冻结几格的成品：点名的每一格都得是目录里真有的格（写错路径 ＝ 以为冻住了、其实什么也没冻）。

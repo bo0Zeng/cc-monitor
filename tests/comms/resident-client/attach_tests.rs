@@ -38,6 +38,7 @@ async fn a_good_handshake_keeps_the_frame_that_follows_the_reply() {
         s,
         Some("Asia/Shanghai"),
         Some("p10f-y"),
+        None,
         Duration::from_secs(5),
     )
     .await
@@ -57,12 +58,14 @@ async fn a_good_handshake_keeps_the_frame_that_follows_the_reply() {
 async fn a_relay_refusal_and_a_stranger_are_told_apart() {
     let s = peer(&[r#"{"attach":"refused","reason":"absent"}"#]).await;
     assert_eq!(
-        handshake(s, None, None, Duration::from_secs(5)).await.err(),
+        handshake(s, None, None, None, Duration::from_secs(5))
+            .await
+            .err(),
         Some(AttachFail::Refused("absent".into()))
     );
     let s = peer(&["SSH-2.0 whatever"]).await;
     assert!(matches!(
-        handshake(s, None, None, Duration::from_secs(5)).await.err(),
+        handshake(s, None, None, None, Duration::from_secs(5)).await.err(),
         Some(AttachFail::NotOurs(l)) if l == "SSH-2.0 whatever"
     ));
 }
@@ -72,14 +75,16 @@ async fn a_relay_refusal_and_a_stranger_are_told_apart() {
 async fn a_backend_that_refuses_the_attach_line_is_old() {
     let s = peer(&[HELLO, r#"{"attach":"refused","reason":"malformed-attach"}"#]).await;
     assert_eq!(
-        handshake(s, None, Some("p10f-y"), Duration::from_secs(5))
+        handshake(s, None, Some("p10f-y"), None, Duration::from_secs(5))
             .await
             .err(),
         Some(AttachFail::Old)
     );
     let s = peer(&[HELLO, r#"{"kind":"sessions_replayed"}"#]).await;
     assert!(matches!(
-        handshake(s, None, None, Duration::from_secs(5)).await.err(),
+        handshake(s, None, None, None, Duration::from_secs(5))
+            .await
+            .err(),
         Some(AttachFail::Reply(_))
     ));
 }
@@ -88,7 +93,7 @@ async fn a_backend_that_refuses_the_attach_line_is_old() {
 async fn a_silent_peer_is_cut_at_the_handshake_deadline() {
     let s = peer(&[]).await;
     assert!(matches!(
-        handshake(s, None, None, Duration::from_secs(20))
+        handshake(s, None, None, None, Duration::from_secs(20))
             .await
             .err(),
         Some(AttachFail::Cut { hello: true, .. })

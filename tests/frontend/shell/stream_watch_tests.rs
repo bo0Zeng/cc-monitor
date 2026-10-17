@@ -1,24 +1,53 @@
+//! 桌面每台一张名单台：同一台拿到的是同一张、名单从空开始 · 本机两条载体（常驻套接字 · stdio）与远端都经它接上。
 use super::*;
 
-/// 应答 `{from: [{sid, path, seq}]}` 原样翻成会话流那一格的体；形状不对的那一格不收，别的照收；没有 `from` ⇒ 空。
 #[test]
-fn the_watch_reply_turns_into_stream_cells_and_a_bad_row_is_left_out() {
-    let data = serde_json::json!({ "from": [
-        { "sid": "a", "path": "/p/a.jsonl", "seq": 7 },
-        { "sid": "b", "path": "/p/b.jsonl" },
-        { "sid": "c", "path": "/p/c.jsonl", "seq": 0 },
-    ]});
-    let got: Vec<(String, String, u64)> = from_of(Some(&data))
-        .into_iter()
-        .map(|w| (w.session_id, w.path, w.seq))
-        .collect();
-    assert_eq!(
-        got,
-        vec![
-            ("a".to_string(), "/p/a.jsonl".to_string(), 7),
-            ("c".to_string(), "/p/c.jsonl".to_string(), 0),
-        ]
+fn one_desk_per_machine_and_it_starts_empty() {
+    let o = |s: &str| crate::origin::Origin(s.into());
+    let a = desk(&o("o-watch-test"));
+    let b = desk(&o("o-watch-test"));
+    assert!(Arc::ptr_eq(&a, &b), "同一台两张名单台");
+    assert!(a.sids().is_empty(), "冷起名单从空开始（不是全看）");
+    assert!(
+        !Arc::ptr_eq(&a, &desk(&o("o-watch-test-2"))),
+        "两台共用了一张"
     );
-    assert!(from_of(None).is_empty());
-    assert!(from_of(Some(&serde_json::json!({}))).is_empty());
+}
+
+/// 三处连接都经名单台：本机常驻（attach 行带它的名单 · 接上交它）· 本机 stdio（没有 attach 行 ⇒ 接上交它、它当场报）· 远端（交给 `Feed`）。
+/// 哪一处改回自己报（或漏接），这一条红；报名单本身只在通信层那一处（`resident-client` 的 `watch.rs`）。
+#[test]
+fn every_carrier_goes_through_the_desk() {
+    let read = |src: &str| guard_core::production_code(src);
+    let host = read(include_str!(
+        "../../../src/frontend/shell/src/local_backend_host.rs"
+    ));
+    for pin in [
+        "crate::stream_watch::desk(&crate::origin::Origin::local()).ask_for_attach();",
+        "crate::stream_watch::desk(&crate::origin::Origin::local()).up(&client, Some(carried));",
+    ] {
+        guard_core::find_pinned(&host, pin).unwrap_or_else(|e| panic!("本机常驻：{e}"));
+    }
+    let stdio = read(include_str!(
+        "../../../src/frontend/shell/src/local_backend.rs"
+    ));
+    guard_core::find_pinned(
+        &stdio,
+        "crate::stream_watch::desk(&route.origin).up(&client, None);",
+    )
+    .unwrap_or_else(|e| panic!("本机 stdio：{e}"));
+    let remote = read(include_str!(
+        "../../../src/frontend/shell/src/stream_source/run.rs"
+    ));
+    guard_core::find_pinned(
+        &remote,
+        "crate::stream_watch::desk(&crate::origin::Origin(origin.clone())),",
+    )
+    .unwrap_or_else(|e| panic!("远端：{e}"));
+    let me = read(include_str!(
+        "../../../src/frontend/shell/src/stream_watch.rs"
+    ));
+    for own in [".call(", "link_changes", "stream-watch\""] {
+        assert!(!me.contains(own), "壳又自己报名单（`{own}`）");
+    }
 }

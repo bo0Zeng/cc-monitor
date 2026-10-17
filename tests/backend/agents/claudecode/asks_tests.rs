@@ -316,3 +316,36 @@ fn the_installed_version_reads_from_the_install_layout() {
     );
     assert!(PLUGIN_MIN_VERSION > [2, 1, 279] && PLUGIN_MIN_VERSION <= [2, 1, 280]);
 }
+
+/// 钉条那一段与消息流那一行认同一张「工具 → 主参数」表；表外的工具才按那串常见键猜。
+#[test]
+fn the_pin_names_the_main_argument_of_every_tool_the_step_line_knows() {
+    for (tool, input, want) in [
+        ("WebSearch", json!({"query": "rust 2024"}), "rust 2024"),
+        ("Task", json!({"description": "查一下"}), "查一下"),
+        ("Skill", json!({"skill": "pdf"}), "pdf"),
+        ("KillShell", json!({"shell_id": "s-1"}), "s-1"),
+        ("SomeNewTool", json!({"path": "/w/x"}), "/w/x"),
+    ] {
+        let mut req = bash_req();
+        req["tool_name"] = json!(tool);
+        req["tool_input"] = input;
+        assert_eq!(read(&req).unwrap().what.as_deref(), Some(want), "{tool}");
+    }
+}
+
+/// 提问 / 计划的工具名只由 `asks` 一处定义，`cards.rs` 与 `steps.rs` 不再出现这两个串字面量。
+#[test]
+fn ask_and_plan_tool_literals_live_only_in_asks() {
+    let cards = include_str!("../../../../src/backend/agents/claudecode/cards.rs");
+    let steps = include_str!("../../../../src/backend/agents/claudecode/steps.rs");
+    let asks = include_str!("../../../../src/backend/agents/claudecode/asks.rs");
+
+    // 量的是串字面量（带引号那一形）：头注里点名工具说明形状不算。
+    for tool in [ASK_TOOL, PLAN_TOOL] {
+        let lit = format!("\"{tool}\"");
+        assert!(asks.contains(&lit), "正控：asks 必含 {lit}");
+        assert!(!cards.contains(&lit), "cards.rs 不应出现 {lit} 字面量");
+        assert!(!steps.contains(&lit), "steps.rs 不应出现 {lit} 字面量");
+    }
+}

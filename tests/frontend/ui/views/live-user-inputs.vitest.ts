@@ -20,6 +20,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { owned } from "../../../test-support/owned-tab-manager.ts";
+import { announced, goldenFace } from "../../../test-support/session-faces";
 import { readFileSync } from "node:fs";
 
 /**
@@ -50,17 +51,10 @@ vi.mock("../../../../src/frontend/ui/tasks-panel", () => ({ fetchSessionTasks: v
 vi.mock("../../../../src/frontend/ui/behavior", () => ({
   getBehavior: vi.fn().mockResolvedValue({ resumeCommand: "cct" }),
 }));
-vi.mock("../../../../src/frontend/ui/remote-launch-run", () => ({
-  runRemoteResume: vi.fn().mockResolvedValue(undefined),
-  runRemoteResumeTmux: vi.fn().mockResolvedValue(undefined),
-  runLocalResumeIntoExistingTmux: vi.fn().mockResolvedValue(true),
-  runRemoteResumeIntoExistingTmux: vi.fn().mockResolvedValue(true),
-  runRemoteAttach: vi.fn().mockResolvedValue(undefined),
-}));
 vi.mock("../../../../src/frontend/ui/fork-flow", () => ({ runForkFlow: vi.fn().mockResolvedValue(undefined) }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { sessionReadCalls } from "../../../test-support/chan-fake";
+import { sessionReadCalls, UNSUPPORTED } from "../../../test-support/chan-fake";
 import {
   installViewerRig,
   assistantLine,
@@ -77,6 +71,7 @@ import { TabManager, type Tab } from "../../../../src/frontend/ui/tabs";
 import { MAX_TRANSIENT_FAILURES } from "../../../../src/frontend/ui/views/outline-source";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { UNTIL_CEILING } from "../../../test-support/wall-ceiling";
+import { nonEmpty } from "../../../test-support/non-empty.ts";
 
 /** 这一趟里发了哪些 `list_user_inputs`（只看参数）。 */
 const outlineCalls = (): unknown[] =>
@@ -115,7 +110,7 @@ beforeEach(() => {
   const barEl = document.createElement("div");
   streamRootEl = document.createElement("div");
   document.body.append(barEl, streamRootEl);
-  tm = owned(new TabManager(barEl, streamRootEl));
+  tm = owned(announced(new TabManager(barEl, streamRootEl)));
 });
 
 afterEach(() => {
@@ -223,7 +218,7 @@ describe("SE1 清单问后端要：顺序是后端给的，前端不攒", () => 
     await settleOutline();
     expect(rowsOf().length).toBe(0);
     expect(toggleOf().disabled).toBe(true);
-    expect(toggleOf().title).toContain(copyText("peerVersion.said.old", { machine: copyText("control.machine.local") }));
+    expect(toggleOf().title, "原因是 monitor 写的那一句").toContain(UNSUPPORTED.said);
     expect(outlineCalls().length, "结构性失败只该要一次").toBe(1);
     vi.mocked(invoke).mockClear();
     feed(userLine(101, "u101", "又说一句"));
@@ -279,7 +274,7 @@ describe("SE1 清单问后端要：顺序是后端给的，前端不攒", () => 
     }
     feed(userLine(150, "ok", "这次通了")); // 成功 ⇒ 清零
     await settleOutline();
-    expect(rowsOf().length).toBeGreaterThan(0);
+    expect(rowsOf().length).toBe(2);
     outlineBackend.failNext = MAX_TRANSIENT_FAILURES - 1;
     for (let i = 0; i < MAX_TRANSIENT_FAILURES - 1; i++) {
       feed(userLine(160 + i, `y${i}`, "又一句"));
@@ -289,7 +284,7 @@ describe("SE1 清单问后端要：顺序是后端给的，前端不攒", () => 
     outlineBackend.entries.push(outlineEntry("z"));
     feed(userLine(170, "z", "还在要吗"));
     await settleOutline();
-    expect(outlineCalls().length, "累计而非连续地数 ⇒ 这里已经停了").toBeGreaterThan(0);
+    expect(outlineCalls().length, "累计而非连续地数 ⇒ 这里已经停了").toBe(1);
   });
 
   it(`🔴 连续瞬时失败到上限（${MAX_TRANSIENT_FAILURES} 次）⇒ 按结构性处理：此后不再要`, async () => {
@@ -313,7 +308,7 @@ describe("SE1 清单问后端要：顺序是后端给的，前端不攒", () => 
   it("后端说一条都没有 ⇒ 开关禁用（不给一个点了没反应的入口）", async () => {
     feed(assistantLine(1, "a1", "只有回复"));
     await settleOutline();
-    expect(outlineCalls().length).toBeGreaterThan(0); // 真的问过了，不是没问
+    expect(outlineCalls().length).toBe(1); // 真的问过了，不是没问
     expect(rowsOf().length).toBe(0);
     expect(toggleOf().disabled).toBe(true);
     expect(toggleOf().textContent).toBe(copyText("userInputPanel.outline.label"));
@@ -482,7 +477,7 @@ describe("KR45D2 清单跟着 tab 走", () => {
     feed(userLine(1, "u1", "第一句"));
     const overlay = overlayOf("s1");
     expect(streamRootEl.contains(overlay)).toBe(true);
-    tm.archiveTab("s1"); // 只有 archived 的 tab 关得掉
+    tm.onFace("s1", goldenFace("ended")); // 只有 archived 的 tab 关得掉
     tm.closeTab("s1"); // 此刻 list_user_inputs 还在途
     await settleOutline();
     expect(streamRootEl.querySelectorAll(".session-find").length).toBe(0);
@@ -503,7 +498,7 @@ describe("KR45D2 · SE2 实时那块查找面板（大纲在里面）在 styles.
       .split("\n")
       .map((l) => l.trim());
     // 抽取器自检：先确认这把尺子够得着那个文件（不然下面几条是空真）。
-    expect(cssLines.length, "读到的 styles.css 只有几行 —— 尺子坏了").toBeGreaterThan(1000);
+    nonEmpty(cssLines);
     expect(cssLines, "读到的不是 styles.css —— 连基准那条规则都没有").toContain(".stream {");
 
     expect(cssLines, "面板没有 CSS 宿主 ⇒ 每个 tab 的面板一起挂在屏幕上").toContain(".session-find {");

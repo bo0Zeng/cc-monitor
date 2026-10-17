@@ -11,13 +11,7 @@ delete-expect	{"outcomes":[{"key":"0","path":"<ROOT>/moved.txt","removed":1,"sta
 delete-tree	{"outcomes":[{"key":"0","path":"<ROOT>/tree2","removed":4,"state":"done"}],"said":"已删除 1 项"}
 extract	{"bytes":3,"dirs":1,"files":2,"links":0,"path":"<ROOT>/a"}
 extract-fresh	{"bytes":3,"dirs":1,"files":2,"links":0,"path":"<ROOT>/a (2)"}
-link	{"path":"<ROOT>/ln"}
 mkdir	{"path":"<ROOT>/dir1"}
-peek	{"exists":true,"path":"<ROOT>/moved.txt","text":"abcd"}
-peek-missing	{"exists":false,"path":"<ROOT>/nope.txt","text":null}
-put-backup	{"backup":"<BACKUP>","bytes":2,"changed":true,"created":false,"path":"<ROOT>/put.txt"}
-put-new	{"backup":null,"bytes":2,"changed":true,"created":true,"path":"<ROOT>/put.txt"}
-put-same	{"backup":null,"bytes":2,"changed":false,"created":false,"path":"<ROOT>/put.txt"}
 rename	{"path":"<ROOT>/moved.txt"}
 stage-chunk	{"bytes":5}
 stage-chunk-2	{"bytes":2}

@@ -3,7 +3,7 @@
  *
  * 分叉血缘 · 改动文件集 · 最新 usage · 项目目录 · 在写它的进程：本文件从前是「从一条 JSONL 记录里抽事实」的几个抽取器，
  * 挂在 `onLine` 旁路上一条一条攒（表里标「读 json」的那四行）。今天判定与累加都在后端
- * （`observe/facts_query.rs`，帧命令 `history-facts`），本文件只剩**投影**：成品里的数组落成 tab 上的
+ * （`observe/recognize/facts.rs`，帧命令 `history-facts`），本文件只剩**投影**：成品里的数组落成 tab 上的
  * `Map` / `Set`、`usage` 拆成两格，并回「这次哪几样变了」—— 变了之后刷哪块界面是调用方（`TabManager`）的事。
  *
  * 子 agent 的列表与状态不在这里：那是运行表（后端 `session_runs`，`runs.ts`），界面不自己判。
@@ -23,7 +23,7 @@ export interface FactsChange {
   writers: boolean;
   /** 需手动那一格变了。 */
   needs: boolean;
-  /** 悬停卡的那两样（没结果的调用 · 最后一句）变了。 */
+  /** 悬停卡与状态一句那几样（没结果的调用 · 最后一句 · 状态一句）变了。 */
   peek: boolean;
   /** 血缘（由谁启动 · 子会话）变了。 */
   lineage: boolean;
@@ -52,9 +52,12 @@ export function applyFacts(tab: Tab, f: SessionFacts): FactsChange {
   const writers = tab.writers.length !== f.writers.length || tab.writers.some((p, i) => p !== f.writers[i]);
   tab.writers = [...f.writers];
 
-  const needs = JSON.stringify(tab.needs) !== JSON.stringify(f.needs);
+  const needs = JSON.stringify(tab.needs) !== JSON.stringify(f.needs) || tab.autoAnswer !== f.autoAnswer || tab.autoAnswered !== f.autoAnswered;
   tab.needs = f.needs;
-  const peek = JSON.stringify([tab.pending, tab.lastSay, tab.backgroundWork]) !== JSON.stringify([f.pending, f.lastSay, f.background]);
+  tab.autoAnswer = f.autoAnswer;
+  tab.autoAnswered = f.autoAnswered;
+  const peek = JSON.stringify([tab.pending, tab.lastSay, tab.backgroundWork, tab.line]) !== JSON.stringify([f.pending, f.lastSay, f.background, f.line ?? null]);
+  tab.line = f.line ?? null;
   tab.backgroundWork = f.background;
   tab.pending = f.pending;
   tab.lastSay = f.lastSay;
@@ -64,8 +67,10 @@ export function applyFacts(tab: Tab, f: SessionFacts): FactsChange {
   const lineage = tab.lineage === undefined || !sameLineage(tab.lineage, lin);
   tab.lineage = lin;
 
-  const switchable = tab.modelText !== f.modelText || tab.permissionMode !== f.permissionMode || tab.permissionModeText !== f.permissionModeText;
+  const switchable =
+    tab.modelText !== f.modelText || tab.modelPick !== f.modelPick || tab.permissionMode !== f.permissionMode || tab.permissionModeText !== f.permissionModeText;
   tab.modelText = f.modelText;
+  tab.modelPick = f.modelPick;
   tab.permissionMode = f.permissionMode;
   tab.permissionModeText = f.permissionModeText;
 

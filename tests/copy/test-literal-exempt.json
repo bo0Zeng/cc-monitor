@@ -15,6 +15,10 @@
     "tests/backend/control/ccm/plan_tests.rs": [
       { "text": "项目", "use": "输入" }
     ],
+    "tests/backend/control/machine_state_tests.rs": [
+      { "text": "要更新", "use": "用例名" },
+      { "text": "无应答", "use": "用例名" }
+    ],
     "tests/backend/control/deploy_plan_tests.rs": [
       { "text": "本机", "use": "输入" }
     ],
@@ -99,19 +103,8 @@
     "tests/frontend/shell/diagnostics_report_tests.rs": [
       { "text": "本机", "use": "输入" }
     ],
-    "tests/frontend/shell/machine_state_tests.rs": [
-      { "text": "要更新", "use": "用例名" },
-      { "text": "无应答", "use": "用例名" }
-    ],
-    "tests/frontend/shell/remote_write_registry_tests.rs": [
-      { "text": "路径", "use": "非文案" },
-      { "text": "命令", "use": "非文案" }
-    ],
     "tests/frontend/shell/scanning_guard_registry_tests.rs": [
       { "text": "自己", "use": "非文案" }
-    ],
-    "tests/frontend/shell/sftp_family_registry_tests.rs": [
-      { "text": "命令", "use": "非文案" }
     ],
     "tests/frontend/ui/accounts.vitest.ts": [
       { "text": "后端", "use": "词义" }
@@ -128,7 +121,8 @@
       { "text": "快捷键", "use": "用例名" }
     ],
     "tests/frontend/ui/design-tokens.vitest.ts": [
-      { "text": "颜色", "use": "非文案" }
+      { "text": "颜色", "use": "非文案" },
+      { "text": "字号", "use": "非文案" }
     ],
     "tests/frontend/ui/front-result.vitest.ts": [
       { "text": "本机", "use": "输入" }
@@ -210,8 +204,7 @@
       { "text": "本机", "use": "输入" }
     ],
     "tests/frontend/ui/settings/machine-state.vitest.ts": [
-      { "text": "要更新", "use": "用例名" },
-      { "text": "无应答", "use": "用例名" }
+      { "text": "要更新", "use": "用例名" }
     ],
     "tests/frontend/ui/settings/panel-block-isolation.vitest.ts": [
       { "text": "本机", "use": "输入" }
@@ -236,9 +229,6 @@
       { "text": "按目录", "use": "回显" },
       { "text": "在哪起", "use": "回显" }
     ],
-    "tests/frontend/ui/settings/remote-section.vitest.ts": [
-      { "text": "本机", "use": "词义" }
-    ],
     "tests/frontend/ui/settings/router.vitest.ts": [
       { "text": "机器", "use": "输入" },
       { "text": "未命名机器", "use": "输入" },
@@ -254,8 +244,12 @@
     "tests/frontend/ui/tab-bar-state.vitest.ts": [
       { "text": "昨天", "use": "输入" }
     ],
+    "tests/frontend/ui/kit/detail-in-view.vitest.ts": [
+      { "text": "读取画面失败", "use": "输入" }
+    ],
     "tests/frontend/ui/tabs.vitest.ts": [
-      { "text": "任务", "use": "输入" }
+      { "text": "任务", "use": "输入" },
+      { "text": "画面", "use": "词义" }
     ],
     "tests/frontend/ui/tmux-control.vitest.ts": [
       { "text": "预览", "use": "输入" }

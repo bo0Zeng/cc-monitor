@@ -6,24 +6,25 @@
  */
 import { describe, it, expect } from "vitest";
 import { componentSources, stripLineComments } from "./component-sources";
+import { nonEmpty } from "./non-empty";
 
 describe("componentSources", () => {
   it("★ 一个前缀能收到**多个**文件（这就是「扩到组件级」的全部意义）", () => {
     // `machine` 前缀今天真实覆盖好几个组件文件。写死单文件名的老守卫只看得见其中一个。
-    const files = componentSources("machine").map((f) => f.file);
+    const files = componentSources("settings", "machine").map((f) => f.file);
     expect(files.length).toBeGreaterThan(1);
     expect(files).toContain("machine-card.ts");
     expect(files).toContain("machine-aliases.ts");
   });
 
   it("排除测试文件（否则守卫会扫到自己的断言字符串，恒红或恒绿都可能）", () => {
-    for (const f of componentSources("cc-bus")) {
+    for (const f of componentSources("views", "cc-bus")) {
       expect(f.file).not.toMatch(/\.vitest\.|\.test\./);
     }
   });
 
   it("前缀没匹配到任何文件时返回空数组（调用方须自检，见各守卫）", () => {
-    expect(componentSources("根本没有这个组件")).toEqual([]);
+    expect(componentSources("settings", "根本没有这个组件")).toEqual([]);
   });
 
   it("剥掉整行注释——守卫扫的是代码，文件头注里写了禁用模式不该打红自己", () => {
@@ -36,8 +37,8 @@ describe("componentSources", () => {
   });
 
   it("返回的 code 已剥注释（守卫不必再剥一遍）", () => {
-    const hooks = componentSources("cc-bus-section");
-    expect(hooks.length).toBeGreaterThan(0);
+    const hooks = componentSources("views", "cc-bus-section");
+    nonEmpty(hooks);
     // 文件头注是 `//` 开头的整行，剥完不该还在
     expect(hooks[0]!.code.split("\n").some((l) => l.trimStart().startsWith("//"))).toBe(
       false,

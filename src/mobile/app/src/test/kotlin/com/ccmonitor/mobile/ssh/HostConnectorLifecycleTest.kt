@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.ssh
 
-import com.ccmonitor.mobile.core.data.crypto.NoopCryptoBox
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.HostDao
 import com.ccmonitor.mobile.core.data.db.Identity
@@ -13,6 +12,7 @@ import com.ccmonitor.mobile.core.ssh.ShellChannel
 import com.ccmonitor.mobile.core.ssh.SshConnectEvent
 import com.ccmonitor.mobile.core.ssh.SshConnectionManager
 import com.ccmonitor.mobile.core.ssh.SshTransport
+import com.ccmonitor.mobile.testing.PlainCryptoBox
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
@@ -69,8 +69,8 @@ class HostConnectorLifecycleTest {
         val connector =
             HostConnector(
                 manager,
-                HostRepository(LifecycleFakeHostDao(ids.associateWith { host(it) }), NoopCryptoBox()),
-                IdentityRepository(LifecycleFakeIdentityDao(mapOf("idk" to identity())), NoopCryptoBox()),
+                HostRepository(LifecycleFakeHostDao(ids.associateWith { host(it) }), PlainCryptoBox),
+                IdentityRepository(LifecycleFakeIdentityDao(mapOf("idk" to identity())), PlainCryptoBox),
             )
         return manager to connector
     }
@@ -268,8 +268,6 @@ private class LifecycleFakeTransport : SshTransport {
         cols: Int,
         rows: Int,
     ): ShellChannel = nope()
-
-    override fun execStream(command: String): Flow<ByteArray> = nope()
 
     override suspend fun execCapture(command: String): ExecResult = nope()
 }

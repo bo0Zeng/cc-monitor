@@ -9,12 +9,10 @@
  */
 
 import { commands, type StopAnswer } from "../ipc/commands";
-import { budgetWithin, callTyped, peerVersionSaid, saidFrom } from "../ipc/chan-caller";
+import { budgetWithin, callTyped, unreadableSaid } from "../ipc/chan-caller";
 import type { ExitPolicy } from "../generated/ExitPolicy";
 import type { LogTail } from "../generated/LogTail";
 import { isLocalOrigin, type Origin } from "../ipc/origin";
-import { hostFacts } from "./host-os";
-import { askLocalCcm } from "./machine-aliases";
 
 /** 起/停之后轮询状态的次数与间隔 —— 命令是「发出去就返回」的，不轮询看到的是操作前的状态。 */
 const SETTLE_TRIES = 30;
@@ -36,7 +34,7 @@ import { readRecordDrift } from "../record-reads";
 import { ccRow } from "./cc-row";
 import { decodeMachineState, type MachineState } from "./machine-state";
 import { exactKeys, isObj } from "../ipc/decode";
-import { sayFailure, sayWithDetail } from "../kit/detail";
+import { sayFailure, sayWithDetail, saidOf } from "../kit/detail";
 
 /** 「停」的结局说一句（三个词各一句，穷举 —— 多一个词 tsc 就红）；机器页那一行照它说。 */
 export function stopSaid(a: StopAnswer): string {
@@ -68,12 +66,12 @@ function exitAnswerOf(v: ExitPolicy): ExitAnswer {
 /** 「退出行为」那两问的期限：10 秒。 */
 const EXIT_POLICY_BUDGET_MS = 10_000;
 
-/** 问那台机器（本机也一样）「退出行为」的值（`exit-policy-read`，经通道）。失败就抛（说法住 `chan-caller.ts::saidFrom`）。 */
+/** 问那台机器（本机也一样）「退出行为」的值（`exit-policy-read`，经通道）。失败就抛（那一句 monitor 写好）。 */
 async function askExitPolicy(origin: Origin): Promise<ExitAnswer> {
   try {
     return exitAnswerOf(await callTyped(origin, "exit-policy-read", {}, budgetWithin(EXIT_POLICY_BUDGET_MS)));
   } catch (e) {
-    throw new Error(saidFrom(e, origin));
+    throw new Error(saidOf(e));
   }
 }
 
@@ -82,7 +80,7 @@ async function putExitPolicy(origin: Origin, kill: boolean): Promise<ExitAnswer>
   try {
     return exitAnswerOf(await callTyped(origin, "exit-policy-set", { killOnExit: kill }, budgetWithin(EXIT_POLICY_BUDGET_MS)));
   } catch (e) {
-    throw new Error(saidFrom(e, origin));
+    throw new Error(saidOf(e));
   }
 }
 
@@ -94,7 +92,7 @@ async function askBackendLog(origin: Origin): Promise<BackendLog> {
   try {
     return await callTyped(origin, "backend-log", {}, budgetWithin(EXIT_POLICY_BUDGET_MS));
   } catch (e) {
-    throw new Error(saidFrom(e, origin));
+    throw new Error(saidOf(e));
   }
 }
 
@@ -176,6 +174,7 @@ export class BackendSection {
   private readonly hosted: boolean;
   private readonly onChannel: ((origin: string, connected: boolean | null) => void) | undefined;
   private readonly onMachine: ((origin: string, machine: MachineState | null) => void) | undefined;
+  private readonly machineOf: ((origin: string) => MachineState | null) | undefined;
   /** 后端清单（`backend_machines`）。`null` = 还没问到 —— 那时寄居的四格先不画。 */
   private registered: Set<string> | null = null;
 
@@ -191,12 +190,15 @@ export class BackendSection {
       interrupts?: (origin: Origin) => Promise<Interrupts | null>;
       /** 每次问完那台的连接（`null` ＝ 没问到）。 */
       onChannel?: (origin: string, connected: boolean | null) => void;
-      /** 每次问完那台的状态成品（收不下 / 没问到 ⇒ `null`）。 */
+      /** 每次问完那台的状态成品（本机那一行；收不下 / 没问到 ⇒ `null`）。 */
       onMachine?: (origin: string, machine: MachineState | null) => void;
+      /** 那台手上最新那一份成品（远端各台由本机后端推，`backend_status` 不带）。 */
+      machineOf?: (origin: string) => MachineState | null;
     } = {},
   ) {
     this.onChannel = opts.onChannel;
     this.onMachine = opts.onMachine;
+    this.machineOf = opts.machineOf;
     this.hosted = opts.hosted ?? false;
     this.confirm = opts.confirm ?? confirmDialog;
     this.interrupts = opts.interrupts ?? askInterrupts;
@@ -357,10 +359,6 @@ export class BackendSection {
     btn.disabled = true;
     try {
       const r = await resync(origin);
-      // 手动兜底：本机那一行对齐 ⇒ 顺手作废「PATH 上的 ccm」那份 5 分钟缓存（这台有没有那份缓存由壳说）。
-      if (isLocalOrigin(origin) && hostFacts().ccmPathCache) {
-        askLocalCcm(true).catch((e: unknown) => console.warn("[resync] 本机 ccm 那一格没重问：", e));
-      }
       toast(copyText("backend.resync.doneTitle"), resyncSaid(r), { level: "info" });
       void emit(RESYNC_DONE_EVENT, { origin }); // ㉟①：主窗口标出这台上记录没了的固定条
     } catch (e) {
@@ -485,7 +483,7 @@ export class BackendSection {
     for (const extra of col.querySelectorAll("[data-health-extra]")) extra.remove();
     const face = decodeHealthFace(raw);
     if (face === null) {
-      el.textContent = peerVersionSaid("reply_unreadable", origin);
+      el.textContent = unreadableSaid(origin);
       delete el.dataset.health;
       console.warn(`[PB1] ${origin} 的健康读数形状不对：${JSON.stringify(raw)}`);
       return;
@@ -625,13 +623,13 @@ export class BackendSection {
       const on = st.channel === true;
       const word = on ? copyText("backend.status.connected") : copyText("backend.status.notConnected");
       const machine = decodeMachineState(st.machine);
-      const ver = machine?.version ?? null;
+      const ver = (machine ?? this.machineOf?.(origin) ?? null)?.version ?? null;
       state.textContent = ver ? `${ver}${copyText("kit.text.sep")}${word}` : word;
       state.dataset.on = String(on);
       for (const b of cells.querySelectorAll<HTMLElement>("[data-op]")) b.style.display = (b.dataset.op === "start") === on ? "none" : "";
       if (on) void this.paintDrift(origin);
       this.onChannel?.(origin, on);
-      this.onMachine?.(origin, machine);
+      if (machine !== null) this.onMachine?.(origin, machine);
       // 那个值问那台机器的后端要（**每次现问**，不用上一次的）；问不到就是 `null`。
       let answer: ExitAnswer | null;
       try {

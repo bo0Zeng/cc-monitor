@@ -16,8 +16,4 @@ wholeCovers: Array<string>, file: string | null,
 /**
  * 去哪一处做（设置窗的页 · 栏 · 锚点）。
  */
-go: UndoAt | null, howUrl: string | null, 
-/**
- * 显示时要遮住的那把钥匙。
- */
-mask: string | null, action: ChoreAction, };
+go: UndoAt | null, howUrl: string | null, action: ChoreAction, };

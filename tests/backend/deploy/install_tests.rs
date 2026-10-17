@@ -109,6 +109,57 @@ impl Facing for Rig {
                     exit_status: Some(1),
                 },
             }
+        } else if let Some(name) = command
+            .strip_prefix(&relay_route_core::home_shell(&format!(
+                "{}/",
+                ssh_dial::sftp::STAGING_ROOT
+            )))
+            .and_then(|c| c.strip_suffix(" -- --place-self"))
+        {
+            // 替身那一份 `--place-self`：暂存件 `rename(2)` 盖掉落点（不经 SFTP ⇒ 不进改动表，同那台上那个进程自己改名）。
+            let mut g = self.fs.lock().unwrap();
+            let staged = format!("{}/{name}", ssh_dial::sftp::STAGING_ROOT);
+            match g.files.remove(&staged) {
+                Some(e) => {
+                    g.dirs.insert(crate::landing_dir().to_string());
+                    g.files.insert(LANDING.to_string(), e);
+                    Captured {
+                        stdout: "{\"placed\":true,\"build_id\":\"x\"}\n".into(),
+                        stderr: String::new(),
+                        exit_status: Some(0),
+                    }
+                }
+                None => Captured {
+                    stdout: String::new(),
+                    stderr: "{\"code\":\"place_failed\",\"message\":\"不在\"}\n".into(),
+                    exit_status: Some(2),
+                },
+            }
+        } else if let Some(name) = command
+            .strip_prefix(&relay_route_core::home_shell(&format!(
+                "{}/",
+                ssh_dial::sftp::STAGING_ROOT
+            )))
+            .and_then(|c| c.strip_suffix(" -- --unplace-self"))
+        {
+            // 替身那一份 `--unplace-self`：删落点那一份、再删自己（不经 SFTP ⇒ 不进改动表，同那台上那个进程自己删）。
+            let mut g = self.fs.lock().unwrap();
+            let staged = format!("{}/{name}", ssh_dial::sftp::STAGING_ROOT);
+            match g.files.remove(&staged) {
+                Some(_) => {
+                    let removed = g.files.remove(LANDING).is_some();
+                    Captured {
+                        stdout: format!("{{\"removed\":{removed}}}\n"),
+                        stderr: String::new(),
+                        exit_status: Some(0),
+                    }
+                }
+                None => Captured {
+                    stdout: String::new(),
+                    stderr: "{\"code\":\"place_failed\",\"message\":\"不在\"}\n".into(),
+                    exit_status: Some(2),
+                },
+            }
         } else {
             return Box::pin(async move { Err(format!("替身没登记这条命令：{command}")) });
         };
@@ -184,8 +235,40 @@ async fn a_machine_without_a_backend_gets_this_one() {
     assert_eq!(r.landing(), Some(bytes));
     assert_eq!(steps, vec![Step::Plan, Step::Place { updating: false }]);
     assert_eq!(
-        r.fs.lock().unwrap().dir_modes.get(".cc-monitor/bin"),
+        r.fs.lock()
+            .unwrap()
+            .dir_modes
+            .get(ssh_dial::sftp::STAGING_ROOT),
         Some(&0o700)
+    );
+}
+
+/// 要求：换装中途落点不缺。SFTP 只写暂存区（改动表里一条落点都没有），落点那一下只有那台上新传上去的那一份自己 `rename(2)`；
+/// 台架的改名不覆盖 ⇒ 谁要是经 SFTP 先挪走旧的再放新的，改动表里就会有落点。
+#[tokio::test]
+async fn the_landing_is_never_touched_over_sftp() {
+    let d = scratch("landing");
+    let mine = backend("p9b-mine");
+    let r = Rig::linux(Some(&backend("p9a-old"))).await;
+    let (got, _) = run(&r, &[slot(&d, "p9b-mine", &mine)]).await;
+    assert!(matches!(got.unwrap().action, DeployAction::Deploy(_)));
+    assert_eq!(r.landing(), Some(mine));
+    let g = r.fs.lock().unwrap();
+    let outside: Vec<&(String, String)> = g
+        .mutated
+        .iter()
+        .filter(|(_, p)| {
+            p != ssh_dial::sftp::STAGING_ROOT
+                && !p.starts_with(&format!("{}/", ssh_dial::sftp::STAGING_ROOT))
+        })
+        .collect();
+    assert!(outside.is_empty(), "SFTP 写到了暂存区外：{outside:?}");
+    assert!(
+        !g.files
+            .keys()
+            .any(|k| k.starts_with(ssh_dial::sftp::STAGING_ROOT)),
+        "暂存区里还留着：{:?}",
+        g.files.keys().collect::<Vec<_>>()
     );
 }
 
@@ -297,4 +380,52 @@ async fn a_trip_cut_midway_leaves_a_leftover_that_the_next_trip_sweeps() {
     assert_eq!(plan.leftovers, left);
     assert_eq!(r.landing(), Some(mine));
     assert!(r.fs.lock().unwrap().bytes(&left[0]).is_none(), "残件没删");
+}
+
+/// 卸载也只经暂存区：传一份暂存件、由它删落点那一份（再删自己）。SFTP 的改动全在暂存区里；落点那一份不认身份（外来的 · 无戳的一样删：
+/// 卸载就是明确授权）；本来就不在 ⇒ 说「本来就不在」。
+#[tokio::test]
+async fn uninstall_removes_the_landing_through_a_staged_copy() {
+    let d = scratch("uninstall");
+    let mine = backend("p9b-mine");
+    let r = Rig::linux(Some(b"not ours, no stamp")).await;
+    let load = |p: &std::path::Path| std::fs::read(p);
+    let got = crate::uninstall(&r, &[slot(&d, "p9b-mine", &mine)], &load, "box")
+        .await
+        .expect("该删掉");
+    assert!(got.removed);
+    assert!(
+        copy_core::copy_matches("rsSftp.uninstall.done", &got.said),
+        "{}",
+        got.said
+    );
+    assert_eq!(r.landing(), None);
+    {
+        let g = r.fs.lock().unwrap();
+        let outside: Vec<&(String, String)> = g
+            .mutated
+            .iter()
+            .filter(|(_, p)| {
+                p != ssh_dial::sftp::STAGING_ROOT
+                    && !p.starts_with(&format!("{}/", ssh_dial::sftp::STAGING_ROOT))
+            })
+            .collect();
+        assert!(outside.is_empty(), "SFTP 写到了暂存区外：{outside:?}");
+        assert!(
+            !g.files
+                .keys()
+                .any(|k| k.starts_with(ssh_dial::sftp::STAGING_ROOT)),
+            "暂存区里还留着：{:?}",
+            g.files.keys().collect::<Vec<_>>()
+        );
+    }
+    let again = crate::uninstall(&r, &[slot(&d, "p9b-mine", &mine)], &load, "box")
+        .await
+        .expect("不在也不算错");
+    assert!(!again.removed);
+    assert!(
+        copy_core::copy_matches("rsSftp.uninstall.absent", &again.said),
+        "{}",
+        again.said
+    );
 }

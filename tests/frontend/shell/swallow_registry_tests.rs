@@ -58,6 +58,9 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/accounts/upstream_select/creds.rs", "let _ = writeln!(out, \"[apikey] credentials: this account cannot be used: {:?} - {}\", r.id, r.why);", Why::Diag, "`announce` 往它的诊断出口（stderr）印上游选择的状态行"),
     ("src/backend/accounts/upstream_select/creds.rs", "let _ = writeln!(out, \"[apikey] credentials: this account is not on the default path: {:?} - {}\", note.id, note.what);", Why::Diag, "`announce` 往它的诊断出口（stderr）印上游选择的状态行"),
     ("src/backend/accounts/upstream_select/creds.rs", "let _ = writeln!(out, \"[apikey] how to fix: {fix}\");", Why::Diag, "`announce` 往它的诊断出口（stderr）印上游选择的状态行"),
+    ("src/backend/relay/listen.rs", "let _ = writeln!(out, \"[relay] how to fix: {fix}\");", Why::Diag, "`announce_key_perm` 往它的诊断出口（stderr）印钥匙文件权限那几行"),
+    ("src/backend/relay/listen.rs", "let _ = writeln!(out, \"[relay] key file permissions too wide: {how}\");", Why::Diag, "`announce_key_perm` 往它的诊断出口（stderr）印钥匙文件权限那几行"),
+    ("src/backend/relay/listen.rs", "let _ = writeln!(out, \"[relay] key file permissions unknown: {why}\");", Why::Diag, "`announce_key_perm` 往它的诊断出口（stderr）印钥匙文件权限那几行"),
     ("src/backend/platform/local_tz.rs", "#[cfg(unix)] let link = crate::platform::fs::Ro::read_link(\"/etc/localtime\").ok();", Why::NotAnError, "这台的 /etc/localtime 不是链（没有 · 是一份拷贝）是常态：说不出时区 ⇒ 调用方写「时区不明」"),
     ("src/backend/platform/watch_file.rs", "let _ = events.send(Some(p));", Why::PeerGone, "盯盘那一口把文件事件转给收的线程（轮换 · 计划 · 一次性等待 · 各号同步 · 浏览保鲜共用）：线程不在了就没人要这一下"),
     ("src/backend/platform/watch_file.rs", "let _ = self.tx.send(None);", Why::PeerGone, "踢收的线程一下（各号 MCP 同步做完加号 / 建库之后）：线程不在了就没人要这一下"),
@@ -74,6 +77,9 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/control/asks/hook.rs", "let _ = stdout.flush().await;", Why::DeadLink, "hook 的 stdout 是那一家读决定的管子：写不进去 ＝ 那一家已经不读了（框已关 / 进程走了），没有第二个地方可以说"),
     ("src/backend/control/asks/hook.rs", "let _ = stdout.write_all(out.to_string().as_bytes()).await;", Why::DeadLink, "同上：决定写不进那一家读的管子 ＝ 它已经不要了（晚到的答案那一家本来也丢）"),
     ("src/backend/accounts/oauth/writeback.rs", "let _ = tx.send(());", Why::PeerGone, "等写锁放开那一声：等的线程已经到期走了（照实报了写回失败）⇒ 没人收"),
+    ("src/backend/control/machine_state.rs", "let _ = changes().send((machine.to_string(), p.clone()));", Why::NotAnError, "进程内「某台的状态成品变了」的广播：此刻没有流连接订它 ⇒ 发不出是正常的，表在进程里，客户端重问 `machine-read` 就有"),
+    ("src/backend/control/machine_state.rs", "let _ = changes().send(p);", Why::NotAnError, "同上（机器表改了之后每台现推的那一份）"),
+    ("src/backend/control/place_self.rs", "let _ = own.delete_file(&p);", Why::CleanupAfterFailure, "自报不是这一版的暂存件当场删：主失败已经在回（`not_self`），删不掉只剩一份残件，下一趟部署按陈旧残件清"),
     ("src/backend/control/asks/hook.rs", "let _ = tx.send(());", Why::PeerGone, "「终端那边答了」那一声：等它的那一头已经拿到答案走了 ⇒ 没人收"),
     ("src/backend/control/asks/mod.rs", "let _ = changes().send(sid.to_string());", Why::PeerGone, "广播「这条会话挂着的请求变了」：此刻没有流连接在订 ⇒ 没人收（下一个连上来的照常重问）"),
     ("src/backend/control/cli_args.rs", "let _ = std::io::BufRead::fill_buf(&mut br);", Why::Signal, "读入参的静默窗只等「第一个字节（或 EOF）到了」这件事；读错不在这里报 —— 紧接着那一趟 `read_input` 读同一个读端会再拿到它、按 `stdin_read_failed` 报"),
@@ -92,7 +98,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/control/tmux_hook.rs", "let _ = crate::platform::signal::send_sigusr1(pid);", Why::PeerGone, "信号送不到 = 那个进程已不在；发之前有进程身份复核（做得好的对照组）"),
     ("src/backend/control/transfer_copy.rs", "let _ = crate::dial::sftp::remove(&self.to, &staging_part(&key)).await;", Why::CleanupAfterFailure, "一份文件没传成 ⇒ 删落点那台暂存区里的半截；删不掉只是暂存区里多一份，孤儿扫会收"),
     ("src/backend/control/transfer_copy.rs", "let _ = self.face.delete_file(&at);", Why::CleanupAfterFailure, "本机中转那一份不论成败都删；删不掉只是暂存区里多一份，孤儿扫会收"),
-    ("src/backend/control/transfer_copy.rs", "let _ = face.make_dir_private(&at);", Why::CleanupAfterFailure, "建本机暂存区：建不成时下一步落暂存件那一下照实报错，不在这里先报"),
+    ("src/backend/control/transfer_copy.rs", "let _ = face.own_dir(&at);", Why::CleanupAfterFailure, "建本机暂存区：建不成时下一步落暂存件那一下照实报错，不在这里先报"),
     ("src/backend/control/transfer.rs", "let _ = forward.await;", Why::Reap, "等进度转发任务收尾（它自己只往已结束的票上报数）"),
     ("src/backend/control/transfer.rs", "let _ = rf.shutdown().await;", Why::DeadLink, "关远端文件句柄；传输的结局已经定了"),
     ("src/backend/control/transfer.rs", "let _ = sftp::remove(s, &part).await;", Why::CleanupAfterFailure, "撤了 ⇒ 删暂存区里的半截（用户说了不要）；删不掉只是暂存区里多一份，孤儿扫会收"),
@@ -123,10 +129,10 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/stream/inbound/mod.rs", "let _ = replies.try_send(Frame::Cancelled(crate::wire::Cancelled { id: target }));", Why::Backpressure, ""),
     ("src/backend/stream/inbound/mod.rs", "let _ = replies.try_send(Frame::err(&req.id, \"not_cancellable\", &copy_text(\"beInbound.dispatch.cannotCancel\", &[])));", Why::Backpressure, ""),
     ("src/backend/stream/inbound/mod.rs", "let _ = replies.try_send(Frame::ok(&req.id));", Why::Backpressure, ""),
-    ("src/backend/stream/inbound/mod.rs", "let _ = replies_sup.send(Frame::err(&id_sup, \"handler_panicked\", &copy_text(\"beInbound.spawnHandler.crashed\", &[]))).awa", Why::PeerGone, ""),
+    ("src/backend/stream/inbound/mod.rs", "let _ = replies_sup.send(Frame::err(&id_sup, \"handler_panicked\", &copy_text(\"reason.code.bug\", &[]))).await;", Why::PeerGone, ""),
     // 多客户：流结束那一格带上连接号（原 `done.send(())`）；认证通过的连接交主循环 —— 主循环不在了 = 进程在收尾。
     ("src/backend/main.rs", "let _ = done.send(id).await;", Why::Signal, ""),
-    ("src/backend/main.rs", "let _ = attached.send(Attached { reader: r, writer: w, hello_flushed, tz, }).await;", Why::PeerGone, ""),
+    ("src/backend/main.rs", "let _ = attached.send(Attached { reader: r, writer: w, hello_flushed, tz, watch, }).await;", Why::PeerGone, ""),
     ("src/backend/main.rs", "let _ = listen::write_line(&mut w, &listen::refusal_line(reason)).await;", Why::DeadLink, ""),
     ("src/backend/observe/one_wait.rs", "let _ = t.send(got);", Why::PeerGone, "一次性等待到了：等的那一侧可能已经撤了（撤单 / 期限到），没人要这一声"),
     ("src/backend/observe/watcher.rs", "let _ = debouncer.watcher().unwatch(dir);", Why::Reap, "撤旧 inode 上的 watch：目录被删 / 换过 inode 时 unwatch 本来就会失败"),
@@ -139,7 +145,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/observe/watcher.rs", "let _ = self.tx.send(WatchEvent::Watch { sub: self.id, ask, done, });", Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = done.send(watch_sessions(sub, ask, &mut state, &mut sink));", Why::PeerGone, ""),
     // read8a：连接接上 / 走了交给这台那份 watcher（它正在退出 ⇒ 没人收；走了那一声没人收也就没有要摘的）。
-    ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Join(Sub::new(id, tx, tz.clone())));", Why::PeerGone, "watcher 已停：这条连接的出方向通道随即读到关闭，按「流结束」收场"),
+    ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Join(Sub::new(id, tx, tz.clone()), watch));", Why::PeerGone, "watcher 已停：这条连接的出方向通道随即读到关闭，按「流结束」收场"),
     ("src/backend/observe/watcher.rs", "let _ = self.0.tx.send(WatchEvent::Leave(self.0.id));", Why::PeerGone, "watcher 已停：连接本来就不在它的名单上了"),
     // read8a：预读交回 watcher（它在退出 ⇒ 结果没人要）；任务交线程池（池子的线程都退了 ⇒ 进程在收尾）。
     ("src/backend/observe/watcher.rs", "let _ = events.send(WatchEvent::Primed(done));", Why::PeerGone, "watcher 已停：这一趟预读的结果没人要"),
@@ -149,6 +155,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/observe/watcher.rs", "let _ = done.send(got);", Why::PeerGone, ""),
     // +1：SIGUSR1 戳名单上的每一份（`PokeSlot` 并进来；那一份可能正在退出）。
     ("src/backend/observe/watcher.rs", "let _ = w.send(WatchEvent::Poke);", Why::PeerGone, ""),
+    ("src/backend/observe/watcher.rs", "let _ = w.send(WatchEvent::RecordSeen { sid: sid.to_string(), present, });", Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = w.send(WatchEvent::Resync { only: only.map(str::to_string), done: tx.clone(), });", Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = tx.send(WatchEvent::TmuxProbeDue);", Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = tx.send(target.death_event(pid));", Why::PeerGone, ""),
@@ -225,11 +232,11 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/frontend/shell/src/platform/hwnd.rs", "let _ = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut owner_pid)) };", Why::NotAnError, "要的是出参里的属主 pid，返回值（线程 id）用不上"),
     ("src/frontend/shell/src/platform/hwnd.rs", "let _ = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut owner)) };", Why::NotAnError, "按属主筛的那一遍：同上，要的是出参里的属主 pid"),
     ("src/frontend/shell/src/platform/hwnd.rs", "let _ = EnumWindows(Some(cb), LPARAM(pid as isize));", Why::NotAnError, "回调里自己收结果、从不提前停；枚举失败 ⇒ 收到的是空表，调用方照「没有窗口」说"),
-    ("src/frontend/shell/src/ccm_probe.rs", "let _ = child.kill();", Why::Reap, ""),
-    ("src/frontend/shell/src/ccm_probe.rs", "let _ = child.wait();", Why::Reap, ""),
+    ("src/frontend/shell/src/backend_once.rs", "let _ = child.kill();", Why::Reap, ""),
+    ("src/frontend/shell/src/backend_once.rs", "let _ = child.wait();", Why::Reap, ""),
     // `capture_full` 交入参那条写线程：对面不读 stdin 就退了 ⇒ 写端断，结局由它的退出码与 stderr 说；等那条线程收尾同理。
-    ("src/frontend/shell/src/ccm_probe.rs", "let _ = w.write_all(&bytes);", Why::DeadLink, ""),
-    ("src/frontend/shell/src/ccm_probe.rs", "let _ = w.join();", Why::Signal, ""),
+    ("src/frontend/shell/src/backend_once.rs", "let _ = w.write_all(&bytes);", Why::DeadLink, ""),
+    ("src/frontend/shell/src/backend_once.rs", "let _ = w.join();", Why::Signal, ""),
     ("src/comms/inward/chan/client.rs", "tx.send(Err(hop(0, \"read\", Reach::Unknown, HopFault::Dropped))).ok();", Why::PeerGone, ""),
     ("src/comms/inward/chan/client.rs", "tx.send(Job { head, body: Vec::new(), written: None, }).await.ok();", Why::PeerGone, ""),
     ("src/comms/inward/chan/client.rs", "tx.send(r).ok();", Why::PeerGone, ""),
@@ -274,7 +281,6 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/control/resident.rs", "let _ = tokio::io::AsyncWriteExt::flush(&mut stdout).await;", Why::DeadLink, "小中继收尾 flush：ssh 通道已经关了就写不出去，退出就是交代"),
     ("src/backend/control/resident.rs", "let _ = own.delete_file(&rec_own);", Why::Reap, "升级那一跳停完旧版之后收掉它的旧记录：结局已经写进日志；删不掉只剩一份陈记录，下一个新版起来会再核一次身份（ESRCH / exe 对不上照样答对）"),
     ("src/backend/control/resident.rs", "let _ = own.delete_file(&token);", Why::Reap, "升级那一跳顺手收掉旧版的钥匙文件：新版不读它，删不掉只是留一个没人用的文件"),
-    ("src/backend/control/resident.rs", "let _ = own.delete_file(&pid_file);", Why::Reap, "停完之后收掉还指着它的那份 pid 记录：结局（graceful / killed）已经定了；删不掉只剩一份陈记录，下次认身份时 ESRCH / exe 对不上照样答对；一次性子命令，stderr 只许一行 JSON 信封"),
 ];
 
 /// 键的长度上限（字符）。长语句（带一整句报错的 `write_stages_then_ack(…)`）截到这里就认得出。
@@ -575,7 +581,7 @@ fn test_only_modules(files: &[(PathBuf, String)]) -> BTreeSet<PathBuf> {
 
 /// 盘上的人群：`(仓根相对路径, 归一化语句) → 处数`。
 fn population() -> BTreeMap<(String, String), usize> {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let mut files = Vec::new();
     for sub in ROOTS {
         files.extend(guard_core::scan_tree_excluding(
@@ -683,7 +689,7 @@ fn w5vis_the_swallow_detector_sees_exactly_the_bare_forms() {
 /// ③ 测试专用模块确实被排除：派生出来的那一组里有两份已知的、生产段里带 `let _ =` 的测试专用文件（正控）。
 #[test]
 fn w5vis_test_only_modules_are_derived_and_excluded() {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let mut files = Vec::new();
     for sub in ROOTS {
         files.extend(guard_core::scan_tree_excluding(

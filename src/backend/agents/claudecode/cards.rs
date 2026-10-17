@@ -6,9 +6,7 @@ use crate::agents::ToolCard;
 
 /// 「展开 ＝ 子会话」的工具名：`Task`（旧名）与 `Agent`（新版改名），两个都认。
 const AGENT_TOOLS: &[&str] = &["Agent", "Task"];
-/// 交互工具（agent 在等用户决定）。
-const INTERACTIVE_TOOLS: &[&str] = &["AskUserQuestion", "ExitPlanMode"];
-/// 写类工具（参数按行级 diff 画）。NotebookEdit **不在内**（会话事实的「改动文件」那张另算它，`observe/facts_query.rs`）。
+/// 写类工具（参数按行级 diff 画）。NotebookEdit **不在内**（会话事实的「改动文件」那张另算它，`observe/recognize/facts.rs`）。
 const DIFF_TOOLS: &[&str] = &["Edit", "Write", "MultiEdit"];
 /// 结果默认按 Markdown 画的工具。
 const MD_TOOLS: &[&str] = &["Read", "Grep", "WebFetch", "NotebookRead", "TodoWrite"];
@@ -27,7 +25,7 @@ pub(crate) fn agent_tool_names() -> &'static [&'static str] {
 pub(crate) fn tool_card(name: &str) -> Option<ToolCard> {
     [
         (AGENT_TOOLS, ToolCard::Agent),
-        (INTERACTIVE_TOOLS, ToolCard::Interactive),
+        (super::asks::INTERACTIVE_TOOLS, ToolCard::Interactive),
         (DIFF_TOOLS, ToolCard::Diff),
         (MD_TOOLS, ToolCard::Md),
         (COMMAND_TOOLS, ToolCard::Command),

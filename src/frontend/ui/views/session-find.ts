@@ -8,7 +8,7 @@
  * - 大纲：你说的每一句一行（`UserInputPanel` 那份清单原样挂进来），点了跳；与轮次刻度同一份数据。
  * - `Ctrl+F` ⇒ 打开到「搜索」、焦点进框；同一个入口再按一次 ⇒ 收起。Esc ⇒ 收起，焦点回到打开前的地方，跳过去的高亮一并去掉。
  */
-import { UserInputPanel, OUTLINE_LABEL, type JumpResult } from "./user-input-panel";
+import { UserInputPanel, OUTLINE_LABEL, type JumpResult, type JumpTarget } from "./user-input-panel";
 import { FindStrip, type FindScope } from "../find-strip";
 import type { FindHit, FindResult } from "../session-reads";
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
@@ -25,7 +25,7 @@ export interface SessionFindHost {
   /** 在这一份会话里找（问后端；宿主决定问哪台机器上的哪份文件）；`skip` ＝ 跳过前几条（续下一页）。 */
   search(query: string, includeTools: boolean, skip: number, scope?: "user"): Promise<FindResult>;
   /** 同 `UserInputPanelHost.jumpTo`：返回真正落到的那张卡（可以是 Promise —— 要先按偏移取回正文）。`tool` 同 `FindStripHost.jumpTo`。 */
-  jumpTo(uuid: string, tool?: string): JumpResult;
+  jumpTo(to: JumpTarget, tool?: string): JumpResult;
   /** 跳空时那一行下面写的一句。 */
   readonly unjumpableHint: string;
 }
@@ -71,12 +71,12 @@ export class SessionFindPanel {
     this.el.className = "session-find";
 
     this.outline = new UserInputPanel({
-      jumpTo: (uuid) => host.jumpTo(uuid),
+      jumpTo: (to) => host.jumpTo(to),
       unjumpableHint: host.unjumpableHint,
       openOutline: () => this.toggle("outline"),
     });
     this.find = new FindStrip(
-      { search: (q, tools, skip, scope) => (scope ? host.search(q, tools, skip, scope) : host.search(q, tools, skip)), jumpTo: (uuid, tool) => host.jumpTo(uuid, tool), unjumpableHint: host.unjumpableHint },
+      { search: (q, tools, skip, scope) => (scope ? host.search(q, tools, skip, scope) : host.search(q, tools, skip)), jumpTo: (to, tool) => host.jumpTo(to, tool), unjumpableHint: host.unjumpableHint },
       { autoMs: 300, panel: true, meta: (h, scope) => hitMeta(h, scope) },
     );
 

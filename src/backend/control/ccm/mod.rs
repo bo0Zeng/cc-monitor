@@ -33,7 +33,9 @@
 //!   后端在起之前把工作目录标进要用的那个号（`accounts::manage::trust_share_exec::pretrust`），不在这里。
 //! - **`--help` 的正文**：旧实现是 `sed` 自己的注释块；这里是 [`USAGE`] 常量，**文本不同**。
 
+pub(crate) mod on_path;
 pub(crate) mod plan;
+pub(crate) mod user_path;
 
 use crate::ccm_line::{argv, is_backend_word, is_own_name, PROFILE_SIGIL, SUBCOMMAND_WORD};
 use crate::platform::child::Child;
@@ -41,8 +43,7 @@ use argv::{Die, Early, Parsed};
 use copy_core::copy_text;
 use plan::{AccountTable, Env, Plan};
 
-/// 这套 CLI 的版本号。**行为变了就要动它** —— 消费者（`ccm_probe.rs`）靠
-/// `version=` 这一行分辨对面是哪一版。
+/// 这套 CLI 的版本号（`--ccm-probe` 的 `version=` · 帧 `ccm-probe` 的 `version`）。**行为变了就要动它**。
 ///
 /// `4` 是最后一版 bash 实现；`5` 起是**后端的原生命令**（本模块）；`6` 起是 claude 的壳（
 /// 位置动作取消、不认的词原样交 agent、诊断口改 `--ccm-*`）；`7` 起认 `@<名>` 与按被叫成的名字取配置文件里那一段。
@@ -408,17 +409,7 @@ struct Planned {
 const PRINT_MAX_WORDS: usize = 64;
 const PRINT_MAX_WORD_BYTES: usize = 4096;
 
-/// 帧命令 `ccm-probe`：**这台的 `ccm` 会哪些** —— 与 `ccm --ccm-probe` 同一张名片（同一组常量）。
-/// 为什么问后端而不是进交互 shell 查 `PATH`：`ccm` 就是这台后端本身、恒在 `~/.cc-monitor/bin/ccm`，
-/// 「它会哪些」这一问退化成问它自己。
-/// 应答是**成品** `{version, capabilities, agents, build}`（此前是那几行原文、由 monitor 解析）：
-/// 界面经通道直问、按形状收（`src/ccm-probe.ts`，金样 `tests/__fixtures__/ccm-probe.golden.json`），monitor 那一跳删了。
-/// 纯函数：不起进程、不碰盘。
-pub(crate) fn answer_probe() -> CcmCard {
-    answer_probe_for(crate::platform::tmux::TMUX_PLATFORM)
-}
-
-/// `ccm-probe` 的应答：这台的 `ccm` 会哪些（与名片 `ccm --ccm-probe` 同一组常量）。
+/// `ccm-probe` 的应答：这台的 `ccm` 会哪些（与名片 `ccm --ccm-probe` 同一组常量）＋ 终端里敲 `ccm` 走到哪。
 #[derive(Debug, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -431,15 +422,23 @@ pub(crate) struct CcmCard {
     pub(crate) agents: Vec<&'static str>,
     /// 这一份的 `BUILD_ID`。
     pub(crate) build: &'static str,
+    /// 终端里敲 `ccm` 走到的是不是这一份，与那一句。
+    #[serde(rename = "onPath")]
+    pub(crate) on_path: on_path::OnPath,
 }
 
-/// [`answer_probe`] 的内核（平台档是入参，与 [`probe_output_for`] 同一组来源）。
-pub(crate) fn answer_probe_for(platform: crate::platform::tmux::TmuxPlatform) -> CcmCard {
+/// 帧命令 `ccm-probe` 的成品：与 `ccm --ccm-probe` 同一张名片（同一组常量，[`probe_output_for`]）＋ 终端里敲 `ccm` 走到哪那一格
+/// （[`on_path::here`]）。`ccm` 就是这台后端本身，「它会哪些」退化成问它自己。平台档与那一格是入参。
+pub(crate) fn answer_probe_for(
+    platform: crate::platform::tmux::TmuxPlatform,
+    on_path: on_path::OnPath,
+) -> CcmCard {
     CcmCard {
         version: CCM_VERSION,
         capabilities: crate::ccm_launcher_with(platform),
         agents: agents(),
         build: crate::BUILD_ID,
+        on_path,
     }
 }
 
@@ -448,7 +447,7 @@ crate::wire::typed::codes! {
     pub(crate) enum ProbeErr {}
 }
 
-/// `ccm-probe`：这台的 `ccm` 会哪些。纯函数（不起进程、不碰盘）⇒ 不进阻塞档。
+/// `ccm-probe`：这台的 `ccm` 会哪些 ＋ 终端里敲它走到哪（起一次登录 shell 问 `PATH`，在 `spawn_blocking` 里等）。
 pub(crate) struct CcmProbe;
 
 impl crate::wire::typed::Command for CcmProbe {
@@ -465,7 +464,12 @@ impl crate::wire::typed::Handle for CcmProbe {
         _req: crate::wire::typed::NoArgs,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<CcmCard, ProbeErr>> + Send + 'static {
-        std::future::ready(Ok(answer_probe()))
+        async move {
+            let here = tokio::task::spawn_blocking(on_path::here)
+                .await
+                .unwrap_or_else(|_| on_path::on_path(&on_path::Reach::Unknown, ""));
+            Ok(answer_probe_for(crate::platform::tmux::TMUX_PLATFORM, here))
+        }
     }
 }
 
@@ -589,92 +593,15 @@ pub(crate) fn preview_resolved(
     ))
 }
 
-/// 帧命令 `terminal-name-mint`：**起会话要一个终端名 —— 问这台**（这一版宿主只有 tmux，铸的是 tmux 会话名）。
-///
-/// 入：`{"cwd": "<目录>"}`（起新会话 / 全新 resume：基名 `<项目名>-cc`）或 `{"forkOf": "<源会话的 tmux 名，或它的 cwd>"}`
-/// （分叉：基名 `<…>-fork-cc`），二者恰给一个。出：`{"name": "<最终名>"}`。
-/// 避让问的是**这台**那张唯一的会话快照（[`crate::common::session_snapshot`]，问一次更新一次），与 `ccm` 起会话、
-/// `--ccm-print` 同一份 [`plan::mint_tmux_name`] ⇒ 界面铸出来的名字与终端里敲 `ccm` 在同一目录铸的**同一个**。
+/// **起会话要一个终端名 —— 这台铸**（这一版宿主只有 tmux，铸的是 tmux 会话名）：工作目录 ⇒ `<项目名>-cc`，
+/// 分叉 ⇒ `<…>-fork-cc`。避让问的是**这台**那张唯一的会话快照（[`crate::common::session_snapshot`]，问一次更新一次），
+/// 与 `ccm` 起会话、`--ccm-print` 同一份 [`plan::mint_tmux_name`] ⇒ `session-open` 铸出来的名字与终端里敲 `ccm` 在同一目录铸的**同一个**。
 /// 这台没装 tmux ⇒ 一个名字都没占 ⇒ 交基名（起不起得来归起会话那一步说）。
-///
-/// 码：`bad_args`（两格都没给 / 都给了 / 不是字符串）。前端问不到（链路断 · 那台后端比这一问老）⇒ 不铸名、不起、说清
-/// （`src/frontend/ui/terminal-name-mint.ts`：空集铸名就是「不避让」，issue #76 的形状）。
-/// `terminal-name-mint` 的入参：工作目录 · 分叉的源，恰好给一个。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct TerminalNameMintReq {
-    /// 工作目录 ⇒ `<项目名>-cc`。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) cwd: Option<String>,
-    /// 分叉出来的那一条：源会话的终端名或工作目录 ⇒ `<…>-fork-cc`。
-    #[serde(default, rename = "forkOf")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) fork_of: Option<String>,
-}
-
-/// `terminal-name-mint` 的应答：铸出来的那个名字。
-#[derive(Debug, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Minted {
-    /// 铸出来的终端名（这台避让过）。
-    pub(crate) name: String,
-}
-
-crate::wire::typed::codes! {
-    /// `terminal-name-mint` 自己的码。
-    pub(crate) enum TerminalNameMintErr {
-        /// 问会话快照那一次 `tmux` 过了期限。
-        ChildTimedOut = "child_timed_out",
-    }
-}
-
-/// `terminal-name-mint`：起会话要的终端名（这台派生基名、按它的会话快照避让）。阻塞档：快照问一次就起一次 `tmux`。
-pub(crate) struct TerminalNameMint;
-
-impl crate::wire::typed::Command for TerminalNameMint {
-    const NAME: &'static str = "terminal-name-mint";
-    type Req = TerminalNameMintReq;
-    type Reply = Minted;
-    type Err = TerminalNameMintErr;
-}
-
-impl crate::wire::typed::Handle for TerminalNameMint {
-    type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
-        req: TerminalNameMintReq,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<Minted, TerminalNameMintErr>> + Send + 'static
-    {
-        async move {
-            let base = match (req.cwd.as_deref(), req.fork_of.as_deref()) {
-                (Some(cwd), None) => crate::control::session_batch::NameBase::Cwd(cwd),
-                (None, Some(source)) => crate::control::session_batch::NameBase::ForkOf(source),
-                _ => {
-                    return Err(TerminalNameMintErr::BadArgs(
-                        crate::common::contract::malformed("give exactly one of `cwd` / `forkOf`"),
-                    ))
-                }
-            };
-            // 快照那一层只回 `no_tmux`（下面那层接住了，不算失败）与 `child_timed_out` 两个码 ⇒ 到这里的只有后者。
-            terminal_name_mint_with(base, crate::common::session_snapshot::global()).map_err(
-                |(code, said)| {
-                    debug_assert_eq!(code, crate::platform::child::TIMED_OUT);
-                    TerminalNameMintErr::ChildTimedOut(said)
-                },
-            )
-        }
-    }
-}
-
 /// 铸名的内核（快照是入参：测试拿脚本化探测器造一份）。快照那一层的失败原样交回（码只有 `child_timed_out`；没 tmux 不算失败）。
 pub(crate) fn terminal_name_mint_with(
     base: crate::control::session_batch::NameBase<'_>,
     snap: &crate::common::session_snapshot::SessionSnapshot,
-) -> Result<Minted, (&'static str, String)> {
+) -> Result<String, (&'static str, String)> {
     let base = match base {
         crate::control::session_batch::NameBase::Cwd(cwd) => plan::derive_tmux_name(cwd),
         crate::control::session_batch::NameBase::ForkOf(source) => plan::fork_tmux_base(source),
@@ -685,7 +612,7 @@ pub(crate) fn terminal_name_mint_with(
         Err(("no_tmux", _)) => base,
         Err(e) => return Err(e),
     };
-    Ok(Minted { name })
+    Ok(name)
 }
 
 /// `--base` 与「已继承 `CLAUDE_CONFIG_DIR`」这两条路**不需要账号表** ——
@@ -704,8 +631,7 @@ fn needs_account_table(o: &argv::Opts, env: &Env) -> bool {
     env.inherited_config_dir.is_none()
 }
 
-/// `--ccm-probe` 那几行。**首行逐字 `name=ccm`** —— `ccm_probe.rs::parse_probe_output`
-/// 拿它当判活依据，改它等于把「装没装」这件事判瞎。
+/// `--ccm-probe` 那几行。**首行逐字 `name=ccm`**（认得出这是 ccm 的名片；`cc-spawn` 的能力协商读 `capabilities=` 那一行）。
 ///
 /// # 🔴 `K-R70`：`build=` 那一行答的是「**你是哪一份**」，与 `version=` 不是同一个问题
 ///
@@ -789,13 +715,16 @@ fn execute(plan: Plan, own: &crate::platform::fs::Own) -> i32 {
                     );
                     return 3;
                 }
-                Err(f) => {
+                Err(mut f) => {
                     // 命令行：那一句 ＋ tmux 原话一起上 stderr（终端里没有复制详情）。
                     let msg = crate::common::said::Said::from(f.fail.clone()).logged();
-                    let after = after_launch_fail(&f, c.detach);
+                    let shape = f.untyped.as_ref().map(|(d, m)| (*d, m.is_some()));
+                    let after = after_launch_fail(shape, c.detach);
                     // 明确没送进 ⇒ 先收掉本趟建的那个只剩 shell 的会话，再报（不留空会话）。
-                    let reaped = (after == AfterFail::ReapThenReport)
-                        .then(|| crate::control::launch::reap(&c.name));
+                    let made = f.untyped.take().and_then(|(_, m)| m);
+                    let reaped = made
+                        .filter(|_| after == AfterFail::ReapThenReport)
+                        .map(crate::control::launch::reap);
                     eprintln!(
                         "{}",
                         copy_text(
@@ -839,7 +768,7 @@ fn execute(plan: Plan, own: &crate::platform::fs::Own) -> i32 {
             }
         }
         Plan::Direct(d) => {
-            // 不轮换：起之前在轮换账本里给它记好（同 `session-new` 选了「不轮换」那一形）；记不成就不起 ——
+            // 不轮换：起之前在轮换账本里给它记好（同 `session-open` 选了「不轮换」那一形）；记不成就不起 ——
             // 起了就可能被「新会话用」那一份换号，正是这一发要避开的。
             if let Some(nr) = &d.no_rotation {
                 let route = match crate::agents::pick_route(Some(&crate::agents::AgentKind::new(
@@ -881,9 +810,12 @@ enum AfterFail {
     ReapThenReport,
 }
 
-fn after_launch_fail(f: &crate::control::launch::LaunchFail, detach: bool) -> AfterFail {
+fn after_launch_fail(
+    untyped: Option<(crate::control::launch::Delivery, bool)>,
+    detach: bool,
+) -> AfterFail {
     use crate::control::launch::Delivery;
-    match f.untyped {
+    match untyped {
         Some((Delivery::Unknown, true)) if !detach => AfterFail::JoinAnyway,
         Some((Delivery::NotDelivered, true)) => AfterFail::ReapThenReport,
         _ => AfterFail::Report,

@@ -321,7 +321,7 @@ fn nothing_in_the_production_path_runs_code_between_fork_and_exec() {
              ⇒ 本条会被**它自己要守的那句话**喂饱（那段头注里逐字写着这些词），于是恒红或恒瞎。"
     );
 
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     // 🔴 **最该被扫的就是 `local_backend.rs`** ⇒ 单独喂一遍。它走普通遍历本来就在人群里
     //    （自摘在这一处不生效，理由见本条头注），这一份是冗余但刻意保留的第二个来源。
     let self_rel = "src/frontend/shell/src/local_backend.rs";
@@ -605,7 +605,7 @@ fn the_read_loop_really_calls_the_dispatch() {
 async fn a_local_reply_reaches_the_caller_through_the_dispatch() {
     use tokio::io::AsyncBufReadExt;
     let (mine, theirs) = tokio::io::duplex(4096);
-    let hello = crate::guard_support::our_hello(&["ping"]);
+    let hello = crate::frame_fixtures::our_hello(&["ping"]);
     let witness = crate::inbound_client::witness_of(&hello).unwrap();
     let client = crate::inbound_client::park(mine).into_client(witness);
     let c2 = std::sync::Arc::clone(&client);
@@ -970,13 +970,16 @@ fn tmpdir_e2(tag: &str) -> PathBuf {
 
 /// 替身问话口：答预设的那一句，并记下每一次问的暂存件在不在、装的是不是手上那份字节、入参是什么。
 struct FakeAsk {
-    answer: Result<serde_json::Value, crate::ccm_probe::OnceErr>,
+    answer: Result<serde_json::Value, crate::backend_once::OnceErr>,
     asked: std::cell::RefCell<Vec<(std::path::PathBuf, bool, serde_json::Value)>>,
     bytes: Vec<u8>,
 }
 
 impl FakeAsk {
-    fn new(answer: Result<serde_json::Value, crate::ccm_probe::OnceErr>, bytes: &[u8]) -> FakeAsk {
+    fn new(
+        answer: Result<serde_json::Value, crate::backend_once::OnceErr>,
+        bytes: &[u8],
+    ) -> FakeAsk {
         FakeAsk {
             answer,
             asked: Default::default(),
@@ -987,7 +990,7 @@ impl FakeAsk {
         &self,
         staged: &Path,
         args: &serde_json::Value,
-    ) -> Result<serde_json::Value, crate::ccm_probe::OnceErr> {
+    ) -> Result<serde_json::Value, crate::backend_once::OnceErr> {
         let holds = std::fs::read(staged).is_ok_and(|b| b == self.bytes);
         self.asked
             .borrow_mut()
@@ -996,7 +999,7 @@ impl FakeAsk {
     }
 }
 
-fn place() -> Result<serde_json::Value, crate::ccm_probe::OnceErr> {
+fn place() -> Result<serde_json::Value, crate::backend_once::OnceErr> {
     Ok(serde_json::json!({ "action": "place", "why": "那台上是 p4z-old，这一版是 p5a-mine" }))
 }
 
@@ -1010,8 +1013,9 @@ fn place() -> Result<serde_json::Value, crate::ccm_probe::OnceErr> {
 fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
     let d = tmpdir_e2("place");
     let mark = |_: &Path| Ok(());
-    let dirs =
-        |p: &Path| std::fs::create_dir_all(p).map_err(|e| crate::detail::Said::from(e.to_string()));
+    let dirs = |p: &Path| {
+        std::fs::create_dir_all(p).map_err(|e| crate::detail::Said::written(e.to_string()))
+    };
     let dest = d.join(local_ccm_entry_name());
     let disk = || std::fs::read(&dest).unwrap_or_default();
     let partial = d.join(format!(
@@ -1039,7 +1043,7 @@ fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
     );
     assert!(no_partials());
     // 逐字节相同 ⇒ 不问
-    let fake = FakeAsk::new(Err(crate::ccm_probe::OnceErr::TimedOut), &mine);
+    let fake = FakeAsk::new(Err(crate::backend_once::OnceErr::TimedOut), &mine);
     assert_eq!(put(&fake).expect("相同 ⇒ 直接用"), dest);
     assert!(fake.asked.borrow().is_empty(), "逐字节相同还去问了");
     // 字节不同 · 答不动 ⇒ 用盘上那份
@@ -1054,7 +1058,7 @@ fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
     assert!(no_partials());
     // 它说「不」⇒ 那句话原样，不动
     let fake = FakeAsk::new(
-        Err(crate::ccm_probe::OnceErr::Refused {
+        Err(crate::backend_once::OnceErr::Refused {
             code: "undecidable".into(),
             message: "不说自己是谁（夹具句）".into(),
         }),
@@ -1076,9 +1080,13 @@ fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
     assert!(no_partials());
     // 问不成 · 答话不成形 ⇒ 说清是问不成，不动、不猜
     for answer in [
-        Err(crate::ccm_probe::OnceErr::Spawn("exec format error".into())),
-        Err(crate::ccm_probe::OnceErr::TimedOut),
-        Err(crate::ccm_probe::OnceErr::Unreadable("exit=Some(1)".into())),
+        Err(crate::backend_once::OnceErr::Spawn(
+            "exec format error".into(),
+        )),
+        Err(crate::backend_once::OnceErr::TimedOut),
+        Err(crate::backend_once::OnceErr::Unreadable(
+            "exit=Some(1)".into(),
+        )),
         Ok(serde_json::json!({ "action": "maybe", "why": "" })),
         Ok(serde_json::json!({ "action": "place" })),
     ] {
@@ -1249,7 +1257,7 @@ fn the_extraction_refusal_is_a_different_sentence_from_having_no_backend_at_all(
         arch: "x86_64".into(),
     }
     .say(&copy_text("rsLocalBackendHost.local.machine", &[]));
-    let absent = crate::detail::Said::from(absent);
+    let absent = crate::detail::Said::written(absent);
     assert!(
         refused.said.contains(EXTRACTION_REFUSED_MARKER.as_str()),
         "「放不下来」那一句丢了它的标记 ⇒ 调用方与判据都再也分不出它和「没带后端」。\n逐字：{refused}"
@@ -1530,14 +1538,14 @@ fn hitting_the_cap_gives_up_and_says_why() {
     let Decision::GiveUp { reason } = decide(&[1_000, 2_000, 3_000], 3_000, l) else {
         panic!("第 3 次崩溃就该放弃 —— 差一位的错本仓出现过");
     };
-    // 带实际次数与上限，并说清影响面（远端连接全经本机这一份，本机起不来远端一样断开）。
+    // 带窗口时长与实际次数，并说清影响面（远端连接全经本机这一份，本机起不来远端一样离线）。
     assert_eq!(
         reason,
         copy_core::copy_text(
             "rsLocalBackend.decide.crashLoop",
-            &[("windowMs", "10000"), ("recent", "3"), ("maxCrashes", "3")]
+            &[("dur", "10 秒"), ("recent", "3")]
         ),
-        "诊断要带实际次数与上限：{reason}"
+        "诊断要带窗口时长与实际次数：{reason}"
     );
 }
 
@@ -1666,7 +1674,7 @@ fn the_backend_bin_env_name_has_exactly_one_home() {
 /// （旧安装包可能在旁边留着一份旧版本，认它就会把旧后端放到落点上）。
 #[test]
 fn no_bundle_job_puts_a_second_local_backend_beside_the_exe() {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let src = std::fs::read_to_string(root.join(".github/workflows/release.yml"))
         .expect("读不到 release.yml");
     // 反空真：打包那几处还在（Windows 的 nsis+msi 与 Linux 的 deb）。

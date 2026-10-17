@@ -10,7 +10,6 @@
 import { appStore, putIn } from "./app-store";
 import type { Origin } from "./ipc/origin";
 import { readQuota, tookQuota } from "./quota-reads";
-import type { QuotaRead } from "./acct-words";
 import { readSessionView } from "./rotation-view-reads";
 import { pushedProducts, type Changed } from "./changed-stream";
 
@@ -60,13 +59,13 @@ export function syncSessions(tabs: readonly { sessionId: string; origin: Origin 
 
 /**
  * 那台推来额度 / 会话轮换 / 策略目录变了（`events.ts` 的 `onChanged`，主题 `quota` · `rotation` · `rotation_strategies`）。
- * 额度帧里带了成品 ⇒ 同一处收下（同一条命令的回包，形状由指纹核过）、直接放进 store；轮换那两种不带成品 ⇒ 重问。`all`（期间可能漏了）⇒ 那台全部重问。
+ * 额度帧里带了成品（同一条命令的回包，形状由指纹核过）⇒ 直接放进 store；轮换那两种不带成品 ⇒ 重问。`all`（期间可能漏了）⇒ 那台全部重问。
  */
 export function onQuotaChanged(origin: Origin, topic: "quota" | "rotation" | "rotation_strategies", change: Changed): void {
   if (topic === "quota") {
-    const p = pushedProducts(change, (v) => tookQuota(v as QuotaRead));
+    const p = pushedProducts(change, "quota");
     const q = p.got.get(null);
-    if (q !== undefined) putIn(appStore.quota, origin, q);
+    if (q !== undefined) putIn(appStore.quota, origin, tookQuota(q));
     if (p.all || (q === undefined && p.ask.length > 0)) void refreshQuota(origin);
     return;
   }

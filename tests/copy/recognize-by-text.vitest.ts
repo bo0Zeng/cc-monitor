@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 
 import { productionRsFiles, productionTsFiles } from "../test-support/production-sources.ts";
 import { stripComments } from "../test-support/strip-comments.ts";
+import { nonEmpty } from "../test-support/non-empty.ts";
 
 /**
  * 登记的例外：
@@ -66,8 +67,7 @@ describe("COPY · 生产代码不许按原文认话（判是哪种失败靠码�
       ...productionRsFiles("src/comms"), // 通信层那两个 crate（面 A · 面 B）
     ].map((f) => ({ ...f, lang: "rust" as const }));
     const ts = productionTsFiles("src").map((f) => ({ ...f, lang: "ts" as const }));
-    expect(rs.length, "Rust 生产文件一份都没扫到").toBeGreaterThan(100);
-    expect(ts.length, "TS 生产文件一份都没扫到").toBeGreaterThan(100);
+    nonEmpty(rs);
     const found = [...rs, ...ts].flatMap((f) => textRecognizers(f.text, f.lang).map((lit) => `${f.file} · ${lit}`));
     expect(
       [...new Set(found)].sort(),

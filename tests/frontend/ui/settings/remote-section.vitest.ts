@@ -37,7 +37,6 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
           const req: unknown = a0.payload ? JSON.parse(new TextDecoder().decode(new Uint8Array(a0.payload))) : null;
           chanSent.push({ origin: a0.origin, op, req });
         }
-        // 铸名那一问（`terminal-name-mint`）按帧命令名回：名字 ⇒ 那台后端的成品 `{name}`；别的 ⇒ 原样 reject（通道那一层的错）。
         // 「会打断什么」按帧命令名回：一个函数 (那台, 请求) ⇒ 那台后端的成品；没摆 ⇒ 原样 reject（问不到）。
         if (op === "machine-interrupts") {
           const answer = ipcReplies.get(op) as ((o: string, req: Record<string, unknown>) => unknown) | undefined;
@@ -45,12 +44,6 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
           const a0 = args[0] as { origin: string; payload: number[] };
           const req = JSON.parse(new TextDecoder().decode(new Uint8Array(a0.payload))) as Record<string, unknown>;
           const u = new TextEncoder().encode(JSON.stringify(answer(a0.origin, req)));
-          return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
-        }
-        if (op === "terminal-name-mint") {
-          const minted = ipcReplies.get(op);
-          if (typeof minted !== "string") return Promise.reject(minted);
-          const u = new TextEncoder().encode(JSON.stringify({ name: minted }));
           return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
         }
         // 机器表那三条（本机后端）：照假盘那一份现算（替身在 `config-patch-fake.ts`）。
@@ -62,8 +55,10 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
           const refused = (e: unknown) => {
             const code = e instanceof Error && "kind" in e ? String((e as { kind: unknown }).kind) : "bad_machine";
             const said: Record<string, string> = { element_gone: copyText("rsConfig.write.elementGone"), element_exists: copyText("rsConfig.write.elementExists") };
-            const body = new TextEncoder().encode(JSON.stringify({ code, message: said[code] ?? (e instanceof Error ? e.message : String(e)) }));
-            return Promise.reject({ err: "Refused", body: [...body] });
+            const message = said[code] ?? (e instanceof Error ? e.message : String(e));
+            const body = new TextEncoder().encode(JSON.stringify({ code, message }));
+            // monitor 照对端那一句原样交（`said`）。
+            return Promise.reject({ err: "Refused", body: [...body], said: message, detail: "" });
           };
           return fakeMachinesCall(op, req).then((r) => {
             const u = new TextEncoder().encode(JSON.stringify(r));
@@ -222,7 +217,7 @@ describe("F46 describeStage", () => {
     expect(describeStage({ kind: "dialing", endpoint: "h:22" }).text).toContain(copyText("machineCard.stage.dial", { endpoint: "h:22" }));
     expect(describeStage({ kind: "won", endpoint: "h:22" }), "只给一句话，图标不归它（C-W1）").toEqual({ text: copyText("machineCard.stage.won", { endpoint: "h:22" }) });
     expect(describeStage({ kind: "failed", endpoint: "h:22", reason: "x" }).text).toBe(copyText("machineCard.stage.failed", { endpoint: "h:22", reason: "x" }));
-    expect(describeStage({ kind: "auth", ok: false, detail: copyText("acct.val.refusedOnly") }).text).toContain(copyText("acct.val.refusedOnly"));
+    expect(describeStage({ kind: "auth", ok: false, detail: copyText("reason.code.refused") }).text).toContain(copyText("reason.code.refused"));
     expect(describeStage({ kind: "auth", ok: true, detail: null }).text).toContain(copyText("machineCard.stage.authOk"));
     expect(describeStage({ kind: "established" }).text).toContain(copyText("machineCard.seg.ready"));
     expect(describeStage({ kind: "hostKey", endpoint: "h:22", fingerprint: "SHA256:x" }).text).toContain("SHA256:x");
@@ -684,7 +679,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(got, "远端机器页必须带 parts").toBeTruthy();
     const inConn = got!.connection.textContent ?? "";
     const inComp = got!.components.textContent ?? "";
-    expect(inConn).toContain(copyText("machineCard.field.host"));
+    expect(inConn).toContain(copyText("machineForm.field.host"));
     expect(inConn + inComp).not.toContain(copyText("machineCard.field.resumeCmd"));
   });
 
@@ -741,7 +736,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     opens[1]!.click(); // [0] 是本机
     expect(p.navigated).toEqual(["machine:a"]);
     opens[0]!.click(); // 本机也点得进去
-    expect(p.navigated[1]).toContain("本机");
+    expect(p.navigated[1]).toBe(LOCAL_MACHINE_PAGE_ID);
   });
 
   it("★ 删掉一台 → 它那一页也被收掉（否则导航里留个指向已删机器的死项）", async () => {
@@ -816,7 +811,6 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(dlg, "起新会话框没开出来 —— 下面的断言会零命中地绿").toBeTruthy();
     expect(dlg!.textContent).toContain(copyText("newSession.title.onMachine", { machine: "a" }));
     expect(dlg!.querySelector<HTMLButtonElement>(`button[aria-label="${copyText("newSession.label.machine")}"]`)!.disabled).toBe(true);
-    expect(chanOps).not.toContain("terminal-name-mint");
     expect(chanOps.some((op) => /^launch-render-/.test(op))).toBe(false);
     document.body.innerHTML = "";
   });
@@ -824,14 +818,15 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   // 认形状 ＋ 机器页「测试连接」那一格不露 `v=… caps=[…]` 日志行；做不到的那几类点开看。
   it("★〔FIX5 续〕测试连接那一格是人话：不含「=」「[」；这台做不到的那几类在一个点开看的格里", async () => {
     localStorage.clear();
-    const noTmux = copyText("machineCard.test.gapRow", { reason: copyText("control.unavailable.noTmux", { machine: "a" }), n: "3" });
+    // 每类那一句后端写好（`probe.rs` 取置灰那一句同一个家），界面原样放进那一行。
+    const noTmux = copyText("machineCard.test.gapRow", { reason: "后端·a 无 tmux", n: "3" });
     ipcReplies.set("remote-probe", {
       sshOk: true,
       backendOk: true,
       fingerprint: null,
       endpoint: null,
-      backendHello: copyText("beProbe.hello.okGaps", { build: "p5o", gaps: "3", ms: "12" }),
-      backendGaps: [{ code: "no_tmux", count: 3 }],
+      backendHello: copyText("beProbe.hello.okGaps", { build: "p5o", gaps: "3", dur: "12 ms" }),
+      backendGaps: [{ code: "no_tmux", count: 3, said: "后端·a 无 tmux" }],
     });
     const sec = await mount([mkH("a", "1.1.1.1")]);
     [...sec.element.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.includes(copyText("machineCard.build.test")))!.click();

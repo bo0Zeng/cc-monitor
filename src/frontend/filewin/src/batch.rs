@@ -67,10 +67,10 @@ impl Verb {
 
     pub fn text(self) -> String {
         match self {
-            Verb::Copy => copy_text("rsFilewinBatch.verb.copy", &[]),
-            Verb::Delete => copy_text("rsFilewinBatch.verb.delete", &[]),
-            Verb::Chmod => copy_text("rsFilewinBatch.verb.chmod", &[]),
-            Verb::Download => copy_text("rsFilewinBatch.verb.download", &[]),
+            Verb::Copy => copy_text("beFiles.batch.verbCopy", &[]),
+            Verb::Delete => copy_text("beFiles.batch.verbDelete", &[]),
+            Verb::Chmod => copy_text("beFiles.batch.verbChmod", &[]),
+            Verb::Download => copy_text("beFiles.batch.verbDownload", &[]),
             Verb::Upload => copy_text("rsFilewinBatch.verb.upload", &[]),
         }
     }
@@ -510,7 +510,7 @@ where
                     Ok(r) => Phase::Ended(r),
                     Err(e) => Phase::Failed(super::source::Failed {
                         code: None,
-                        said: copy_text("rsFilewinSource.said.badReply", &[]),
+                        said: copy_text("reason.content.unparsable", &[]),
                         detail: e.to_string(),
                     }),
                 };
@@ -746,10 +746,10 @@ pub const DEFAULT_ANSWER: usize = 1;
 pub fn conflict_row(c: &Conflict) -> super::kit::ListRow {
     use cmd_wire::files::FileKind;
     // 时刻照抄后端写好的字（按看的那一台的钟），不换算。
-    let side = |size: Option<u64>, mtime: &Option<String>| {
+    let side = |size: &Option<String>, mtime: &Option<String>| {
         let mut parts = Vec::new();
         if let Some(s) = size {
-            parts.push(copy_core::size_text(s));
+            parts.push(s.clone());
         }
         if let Some(m) = mtime {
             parts.push(m.clone());
@@ -762,8 +762,8 @@ pub fn conflict_row(c: &Conflict) -> super::kit::ListRow {
         copy_text(
             "rsFilewinBatch.meta.vs",
             &[
-                ("mine", &side(c.size, &c.mtime_text)),
-                ("there", &side(c.there_size, &c.there_mtime_text)),
+                ("mine", &side(&c.size_text, &c.mtime_text)),
+                ("there", &side(&c.there_size_text, &c.there_mtime_text)),
             ],
         )
     };

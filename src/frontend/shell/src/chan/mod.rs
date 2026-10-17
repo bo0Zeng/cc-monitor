@@ -6,6 +6,7 @@
 //! | `wire.rs` | 两端共用 | ✅ | 全部类型 ＋ 拆帧 |
 //! | `router.rs` | monitor 进程 | ✅ | 按 `origin` 转给注入的句柄 ＋ 撤单 ＋ credit |
 //! | `client.rs` | 外部前端进程 | ✅ | `Comms` 的实现：`call` / `subscribe` |
+//! | `said.rs` | 两端共用 | ✅ | 这一跳没成时给人看的那一句（全产品一份） |
 //! | `host.rs` | monitor 进程 | ❌ 刻意不是 | 起窗口进程、接上它那对父子管道 · 生产句柄（`C4`/`C5` 不许成员做的那几件） |
 //! | `webview.rs` | monitor 进程 | ❌ 刻意不是 | 主界面（webview）说 `call` 的那一跳：Tauri 命令 `chan_call` ＋ 注入生产句柄 |
 //!
@@ -18,7 +19,7 @@
 
 // 线上词汇 · 客户端 · 路由器住通信层 crate `comms-inward`（`src/comms/inward/chan/`，文件窗口进程链同一份）；
 //   壳里只留 monitor 自己的宿主那两份（host 的接管子 · 生产句柄 · webview 那一跳），其余经再导出、模块路径不变。
-pub use comms_inward::chan::{client, router, wire};
+pub use comms_inward::chan::{client, router, said, wire};
 pub mod host;
 pub mod webview;
 

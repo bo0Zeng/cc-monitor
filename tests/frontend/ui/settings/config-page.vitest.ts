@@ -44,7 +44,7 @@ const EXT = {
 
 const calls: Array<[string, string, unknown]> = [];
 let mcp: Record<string, unknown> = VIEW;
-const chore = (id: string, kind: string, state = "todo") => ({ id, kind, state, name: id, loc: "", said: "", why: "", steps: [], diff: [], copy: null, whole: null, wholeCovers: [], file: null, go: null, howUrl: null, mask: null, action: "copySnippet" });
+const chore = (id: string, kind: string, state = "todo") => ({ id, kind, state, name: id, loc: "", said: "", why: "", steps: [], diff: [], copy: null, whole: null, wholeCovers: [], file: null, go: null, howUrl: null, action: "copySnippet" });
 let data: Record<string, unknown> | null = null;
 
 beforeEach(() => {
@@ -95,7 +95,7 @@ describe("别名与配置文件 · 账号与扩展", () => {
   });
 
   it("★ 页首指路条与页尾一句读那台 data-report：N 件待办 · 另 M 件可选［去「文件与数据」］· 改过你的 K 个文件［去看］；点了带上那台去那一栏", async () => {
-    data = { home: "/h", changedFiles: [{ path: "~/.bashrc", what: "w", undo: null }, { path: "~/.x", what: "w", undo: null }], todo: [chore("a", "must"), chore("b", "decide"), chore("c", "optional"), chore("d", "optional", "done")], tmux: true, chores: 2, own: [] };
+    data = { home: "/h", changedFiles: [{ path: "~/.bashrc", what: "w", undo: null }, { path: "~/.x", what: "w", undo: null }], todo: [chore("a", "must"), chore("b", "decide"), chore("c", "optional"), chore("d", "optional", "done")], tmux: true, counts: { badge: 2, open: 6, must: 1, decide: 1, install: 0, optional: 4, done: 1 }, rank: 0, own: [] };
     const el = page();
     const went: unknown[] = [];
     el.addEventListener(SETTINGS_GO_EVENT, (e) => went.push((e as CustomEvent).detail));
@@ -103,12 +103,13 @@ describe("别名与配置文件 · 账号与扩展", () => {
     await settle();
     const head = el.querySelector<HTMLElement>('[data-role="chores-pointer"]')!;
     expect(head.hidden).toBe(false);
-    expect(head.textContent).toContain(copyText("cfgPage.pointer.chores", { machine: "devbox", n: 2, m: 1 }));
+    // 件数照那台后端数好的 `counts`（与 todo 故意不一致：界面不自己数）。
+    expect(head.textContent).toContain(copyText("cfgPage.pointer.chores", { machine: "devbox", n: 2, m: 4 }));
     // 那几枚分类数小标签，与「文件与数据」同一套（已做的不出）。
     expect([...head.querySelectorAll<HTMLElement>(".cfg-pointer-tags [data-kind]")].map((t) => [t.dataset.kind, t.textContent])).toEqual([
       ["must", copyText("dataPage.chores.countMust", { n: 1 })],
       ["decide", copyText("dataPage.chores.countDecide", { n: 1 })],
-      ["optional", copyText("dataPage.chores.countOptional", { n: 1 })],
+      ["optional", copyText("dataPage.chores.countOptional", { n: 4 })],
     ]);
     byText(head, copyText("cfgPage.pointer.go"))!.click();
     const foot = el.querySelector<HTMLElement>('[data-role="changed-pointer"]')!;

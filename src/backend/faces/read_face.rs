@@ -228,6 +228,10 @@ impl crate::wire::typed::Handle for AccountsListCmd {
                 &cx.tz,
             );
             with_quota(&mut v, &quota, kind);
+            crate::observe::accounts_query::with_sign_in(
+                &mut v,
+                crate::agents::accounts_face(kind).is_some_and(|f| f.sign_in.is_some()),
+            );
             let size = serde_json::to_string(&v).map_or(0, |t| t.len());
             if size > LINES_CAP_BYTES {
                 return Err(AccountsListErr::TooLarge(too_large(size).1));
@@ -384,7 +388,7 @@ pub(crate) fn record_face(
     path: &str,
 ) -> Result<(std::path::PathBuf, crate::agents::RecordFace), (&'static str, String)> {
     let target =
-        crate::observe::history_query::session_path_at(home, path).map_err(|e| ("refused", e))?;
+        crate::observe::query::locate::session_path_at(home, path).map_err(|e| ("refused", e))?;
     let face = crate::agents::record_face_of(&target).ok_or_else(|| {
         (
             "failed",
@@ -394,15 +398,15 @@ pub(crate) fn record_face(
     Ok((target, face))
 }
 
-/// 从 `offset` 起读那一份记录的读法：起点之前那一段一起喂进去配排队消息的打字时刻（`record_page::lead_of`）。
+/// 从 `offset` 起读那一份记录的读法：起点之前那一段一起喂进去配排队消息的打字时刻（`body::lead_of`）。
 pub(crate) fn reader<'a>(
     face: &'a crate::agents::RecordFace,
     target: &std::path::Path,
     offset: u64,
     tz: &crate::Tz,
-) -> crate::observe::record_page::Reader<'a> {
-    let (lead_at, lead) = crate::observe::record_page::lead_of(target, offset);
-    crate::observe::record_page::Reader::new(face, lead_at, &lead, tz.clone())
+) -> crate::observe::query::body::Reader<'a> {
+    let (lead_at, lead) = crate::observe::query::body::lead_of(target, offset);
+    crate::observe::query::body::Reader::new(face, lead_at, &lead, tz.clone())
 }
 
 pub(crate) fn too_large(size: usize) -> (&'static str, String) {
@@ -424,18 +428,18 @@ pub(crate) fn too_large_at(size: usize, cap: usize) -> (&'static str, String) {
 #[path = "../../../tests/backend/faces/read_face_tests.rs"]
 pub(crate) mod tests;
 
-/// 会话的 `needs` 配上常驻进程里挂着的待答请求（`control::asks` 那一份登记表；配法住 `facts_query::dress_ask_with`）；
+/// 会话的 `needs` 配上常驻进程里挂着的待答请求（`control::asks` 那一份登记表；配法住 `recognize::facts::dress_ask_with`）；
 /// 没有挂着的、而答题口没接上（`off`，[`answer_off_of`]）⇒「只能在终端里答」那一句换成它为什么。
 /// 会话事实 · 过程那一轮 · 需手动清单三处都经这里（同一条会话三处说的是同一句）。
 pub(crate) fn dress_ask(
-    needs: Option<crate::observe::facts_query::Needs>,
+    needs: Option<crate::observe::recognize::facts::Needs>,
     sid: &str,
     off: Option<&crate::common::cells::Words>,
-) -> Option<crate::observe::facts_query::Needs> {
+) -> Option<crate::observe::recognize::facts::Needs> {
     let now = crate::common::time::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
-    let mut needs = crate::observe::facts_query::dress_ask_with(
+    let mut needs = crate::observe::recognize::facts::dress_ask_with(
         needs,
         crate::control::asks::pending(sid).into_iter().next(),
         now,

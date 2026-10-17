@@ -132,10 +132,27 @@ const pushed = (state: string, extra: Record<string, unknown> = {}): Record<stri
   version: null,
   versionRelation: null,
   os: "Linux",
+  word: "",
+  said: "",
   fixes: [],
   seenHostKey: null,
   detail: null,
+  next: null,
   ...extra,
+});
+
+/** 起本机后端被拒（口上是上一版留下的后端）那一刻本机那一台的成品；下一步那句照壳的文案拼。 */
+const localRefused = pushed("needs_update", {
+  reason: "local",
+  version: null,
+  versionRelation: "older",
+  os: null,
+  fixes: ["retry"],
+  next: copyText("rsLocalBackendHost.start.refusedNext", {
+    why: copyText("rsLocalBackendHost.hello.buildMismatch", { theirs: "p7a-4.1.0", ours: "p8c-4.1.1" }),
+    pid: "4242",
+    sock: "/home/user/.cc-monitor/run/backend.sock",
+  }),
 });
 
 export const SETTINGS_SCENES: Scene[] = [
@@ -175,13 +192,29 @@ export const SETTINGS_SCENES: Scene[] = [
   settings("settings-machines-installing", "设置 · 机器 · 正在装", "gpu-01 正在装 cc-monitor：虚线点 ＋「安装中」＋ 进度条", async () => {
     await go("machines");
   }, installingWorld),
-  settings("settings-machines-pushed", "设置 · 机器 · 状态推送", "页面开着时壳推来两帧：devbox 正在连（启动 cc-monitor）、gpu-01 正在更新 —— 那两行原位换", async () => {
+  settings("settings-machines-pushed", "设置 · 机器 · 状态推送", "页面开着时本机后端推来两帧：devbox 正在连（启动 cc-monitor）、gpu-01 正在更新 —— 那两行原位换", async (ctx) => {
     await go("machines");
-    await emit("machine-state", { origin: "devbox", machine: pushed("connecting", { stage: "attach" }) });
-    await emit("machine-state", { origin: "gpu-01", machine: pushed("updating") });
+    ctx.backend.pushChanged(LOCAL, "machine", {
+      key: "devbox",
+      body: pushed("connecting", { stage: "attach", word: copyText("machineState.word.connecting"), said: "连接 devbox · 启动 cc-monitor" }),
+    });
+    ctx.backend.pushChanged(LOCAL, "machine", {
+      key: "gpu-01",
+      body: pushed("updating", { word: copyText("machineState.word.updating"), said: "更新 gpu-01 · cc-monitor" }),
+    });
     await sleep(800);
   }),
 
+  settings("settings-machines-local-refused", "设置 · 机器 · 本机后端被拒", "升级后旧的本机后端还占着口：本机那一行「要更新」＋［重试］，问题行下面是壳写好的下一步（结束哪个进程 · 进程号记在哪）", async () => {
+    await go("machines");
+    await emit("machine-state", { origin: "<local>", machine: localRefused });
+    await sleep(800);
+  }),
+  settings("settings-machine-local-refused", "设置 · 本机 · 本机后端被拒", "同上，本机那一页卡头：问题行 ＋ 下一步", async () => {
+    await go("machine:（本机）");
+    await emit("machine-state", { origin: "<local>", machine: localRefused });
+    await sleep(800);
+  }),
   settings("settings-landing", "设置 · 打开时", "设置窗打开时落在的那一页", async () => {
     await waitFor(".settings-nav");
     await sleep(1500);
@@ -190,7 +223,7 @@ export const SETTINGS_SCENES: Scene[] = [
   page("settings-appearance", "设置 · 外观", "外观：字 · 颜色 · 快捷键", "appearance"),
   page("settings-logs", "设置 · 日志", "日志：开关、级别、日志文件", "logs"),
   page("settings-data", "设置 · 文件与数据 · 待办", "文件与数据第一栏：顶上各类数 · 每台一段（急的在前）· 每件 点 · 名字 · 类 · 位置 · 现状 · 主按钮 · 已做的折起 · 断开的那台离线未检查", "data"),
-  settings("settings-data-chore-open", "设置 · 待办 · 实时显示点开", "点开一件：为什么 · 怎么做 · diff（钥匙遮住）· 复制这几行 / 复制改好的整份文件（含 2 件）· 不用了 · 存盘后自己认出", async () => {
+  settings("settings-data-chore-open", "设置 · 待办 · 实时显示点开", "点开一件：为什么 · 怎么做 · diff · 复制这几行 / 复制改好的整份文件（含 2 件）· 不用了 · 存盘后自己认出", async () => {
     await go("data");
     await sleep(500);
     const row = document.querySelector<HTMLElement>('.settings-page:not([hidden]) [data-machine="devbox"] [data-chore="relay:claude-code"]');
@@ -199,7 +232,7 @@ export const SETTINGS_SCENES: Scene[] = [
     document.querySelector<HTMLElement>('.settings-page:not([hidden]) [data-machine="devbox"] [data-chore="relay:claude-code"]')?.scrollIntoView({ block: "start" });
     await sleep(400);
   }),
-  settings("settings-data-chore-codex", "设置 · 待办 · Codex 实时显示点开", "Codex 那一件：位置 config.toml · openai_base_url · 在最前面加一行 · diff（钥匙遮住）· 复制这一行 / 复制改好的整份文件", async () => {
+  settings("settings-data-chore-codex", "设置 · 待办 · Codex 实时显示点开", "Codex 那一件：位置 config.toml · openai_base_url · 在最前面加一行 · diff · 复制这一行 / 复制改好的整份文件", async () => {
     await go("data");
     await sleep(500);
     const sel = '.settings-page:not([hidden]) [data-machine="devbox"] [data-chore="relay:codex"]';
@@ -295,7 +328,7 @@ export const SETTINGS_SCENES: Scene[] = [
     },
   ),
   page("settings-machines", "设置 · 机器", "机器列表：本机 ＋ 三台远端，每台的连接 / 后端 / ccm / 账号四格", "machines"),
-  page("settings-machine-local", "设置 · 本机", "本机那一页", "machine:（本机）"),
+  page("settings-machine-local", "设置 · 本机", "本机那一页", "machine:<local>"),
   page("settings-machine-remote", "设置 · 远端机器", "devbox 那一页（落在第一个子页）", "machine:devbox"),
   settings("settings-machine-conn", "设置 · 远端 · 连接设置", "devbox 卡头里展开「连接设置」", async () => {
     await go("machine:devbox");
@@ -308,12 +341,12 @@ export const SETTINGS_SCENES: Scene[] = [
     await sleep(800);
   }),
   settings("settings-machine-local-cc", "设置 · 本机 · 这台上的 cc-monitor", "本机卡头里展开「这台上的 cc-monitor」：状态 · 随退出停止 · 恢复会话的启动程序 · 恢复到 tmux 里 · 子会话 / 分身会话", async () => {
-    await go("machine:（本机）");
+    await go("machine:<local>");
     await click(await byText(".settings-page:not([hidden]) button", copyText("machinePage.cc.title")));
     await sleep(800);
   }),
   settings("settings-machine-local-cc-launcher-open", "设置 · 本机 · 启动程序下拉", "本机「这台上的 cc-monitor」里启动程序点开：默认那一家的启动器（灰字默认）· 用过的 · 自定义…", async () => {
-    await go("machine:（本机）");
+    await go("machine:<local>");
     await click(await byText(".settings-page:not([hidden]) button", copyText("machinePage.cc.title")));
     await sleep(800);
     document.querySelector<HTMLButtonElement>('.settings-page:not([hidden]) [data-role="resume-select"]')?.click();
@@ -324,7 +357,7 @@ export const SETTINGS_SCENES: Scene[] = [
     "设置 · 本机 · 退出策略读不出",
     "本机「这台上的 cc-monitor」：随退出停止那一行下，后端写好的那一句（读的哪份 · 原因词 · 按默认）＋［复制详情］",
     async () => {
-      await go("machine:（本机）");
+      await go("machine:<local>");
       await click(await byText(".settings-page:not([hidden]) button", copyText("machinePage.cc.title")));
       await sleep(800);
     },
@@ -408,7 +441,7 @@ export const SETTINGS_SCENES: Scene[] = [
     await sleep(900);
   }),
   settings("settings-machine-local-context-limits", "设置 · 本机 · 上下文上限", "本机「这台上的 cc-monitor」里展开「上下文上限」", async () => {
-    await go("machine:（本机）");
+    await go("machine:<local>");
     await click(await byText(".settings-page:not([hidden]) button", copyText("machinePage.cc.title")));
     await sleep(500);
     const head = await waitFor('.settings-page:not([hidden]) [data-anchor="context-limits"] [aria-expanded]');
@@ -417,7 +450,7 @@ export const SETTINGS_SCENES: Scene[] = [
     await sleep(700);
   }),
   settings("settings-machine-local-pb-dir", "设置 · 本机 · pb 路径", "本机「这台上的 cc-monitor」里「pb 路径」那一行：设过的那个插件根目录（留空 ⇒ 用已装的插件）", async () => {
-    await go("machine:（本机）");
+    await go("machine:<local>");
     await click(await byText(".settings-page:not([hidden]) button", copyText("machinePage.cc.title")));
     await sleep(500);
     (await waitFor('.settings-page:not([hidden]) [data-anchor="pb-dir"]')).scrollIntoView({ block: "center" });
@@ -428,7 +461,7 @@ export const SETTINGS_SCENES: Scene[] = [
     return w;
   }),
   settings("settings-machine-local-pb-dir-bad", "设置 · 本机 · pb 路径不能用", "「pb 路径」填一个底下没有 pb 的目录：那台说不能用、不存，行下是那台那一句", async () => {
-    await go("machine:（本机）");
+    await go("machine:<local>");
     await click(await byText(".settings-page:not([hidden]) button", copyText("machinePage.cc.title")));
     await sleep(500);
     const row = await waitFor('.settings-page:not([hidden]) [data-anchor="pb-dir"]');

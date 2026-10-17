@@ -54,12 +54,12 @@ typed::codes! {
     pub(crate) enum StreamWatchErr {}
 }
 
-/// `stream-watch`：这条流此刻在看哪几个会话（整份换；从没报过 ＝ 全看）。入参 [`super::WatchAsk`] · 回包 [`super::WatchReply`]。
+/// `stream-watch`：这条流此刻在看哪几个会话（整份换；从没报过 ＝ 全看）。入参 [`crate::wire::WatchAsk`] · 回包 [`crate::wire::WatchReply`]。
 pub(crate) struct StreamWatch;
 
 impl Command for StreamWatch {
     const NAME: &'static str = "stream-watch";
-    type Req = super::WatchAsk;
-    type Reply = super::WatchReply;
+    type Req = crate::wire::WatchAsk;
+    type Reply = crate::wire::WatchReply;
     type Err = StreamWatchErr;
 }

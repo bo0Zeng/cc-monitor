@@ -11,4 +11,8 @@ export type FilesCommitUploadReq = { root: WirePath, rel: WirePath, key: string,
  * 落点已有同名：同成组复制那一条（缺 ⇒ `ask`：码 `exists`、`data` 是同名清单，一个字节不动、块留着，改个答原样再交）。
  * 只有一件 ⇒ `skip` 不收（不放就别提交）。
  */
-on_exists?: OnExists, expect: Sha256Expect, chunks?: number, bytes?: number, };
+on_exists?: OnExists, expect: Sha256Expect, chunks?: number, bytes?: number, 
+/**
+ * `true` ⇒ `rel` 只许是一段名字（界面上传一份文件：名字是本机那份的名字，或别的 App 交来的显示名）。不论给没给，每一段都过这台的名字规则。
+ */
+single?: boolean, };

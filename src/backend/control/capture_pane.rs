@@ -149,7 +149,7 @@ pub(crate) struct RawCapture {
 /// 判据只能打这一处：钉的是「这一档存在、且与另外两档不同码不同话」，不是在没装 tmux 的机器上实测过。超时那一档另说（`child_timed_out`）。
 pub(crate) fn tmux_unavailable(e: ChildFail) -> CmdErr {
     CmdErr::from(e.into_cmd_said("no_tmux", |why| {
-        copy_text("beCapturePane.run.noTmux", &[("why", why)])
+        copy_text("reason.tmux.startFailed", &[("why", why)])
     }))
 }
 

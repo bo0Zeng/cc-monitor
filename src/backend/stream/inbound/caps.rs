@@ -1,7 +1,7 @@
 //! 阻塞档命令的总期限：后端只登记上限，发起方在请求信封里带它这一发愿意等多久（`within_ms`），
 //! 分派那一层按它减余量收紧、装在执行这条命令的线程上。两个入口（帧面 · CLI 面）都经这里装。
 
-use crate::control::{cc_bus, kill, launch, session_batch, terminals};
+use crate::control::{cc_bus, kill, launch, session_batch, session_open, terminals};
 use crate::platform::child::{Budget, Deadline, Until};
 use crate::wire::Request;
 
@@ -17,7 +17,7 @@ pub(crate) const CAPS: &[(&str, Deadline)] = &[
     ("terminal-input", terminals::TERMINAL_PREVIEW_CAP),
     ("sessions-where", session_batch::SESSIONS_WHERE_CAP),
     ("sessions-stop", session_batch::BATCH_CAP),
-    ("sessions-start", session_batch::BATCH_CAP),
+    ("session-open", session_open::OPEN_CAP),
     ("ssh-config-import", crate::dial::ssh_config::SSH_IMPORT_CAP),
     ("quota-probe", crate::faces::quota_probe_face::PROBE_CAP),
     ("bus-list", cc_bus::BUS_LIST_CAP),

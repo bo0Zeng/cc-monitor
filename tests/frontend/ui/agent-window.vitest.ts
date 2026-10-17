@@ -1,10 +1,11 @@
 /**
- * 要求：点 agent 面板的一行开它自己的窗口看它的完整内容 —— 用户原话「点进一个列表就开一个窗口或者什么」。
+ * 要求：点 agent 面板的一行开它自己的窗口看它的完整内容 —— 要求「点进一个列表就开一个窗口或者什么」。
  * 窗口里：标题 · 五态与一句说明（状态只读后端运行表）· 它派出的 agent（孙 agent 各开各的窗口）· 完整消息流（派活那段话不画成用户气泡）·
  * 在跑时跟着长 · 往上翻不拽人 · 结束后的结束线 · 系统标题随状态改。
  *
  * 真 `AgentWindow` ＋ 真卡；替身只在边上：会话那一行（`fetchList`）· 按运行读（`loadRunPage`）· 会话流（`followSession` 交来的运行表）· 窗口与事件。
  */
+import { liveFace } from "../../test-support/session-faces";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { FollowEvent } from "../../../src/frontend/ui/events";
 import type { RunInfo } from "../../../src/frontend/ui/generated/RunInfo";
@@ -46,7 +47,7 @@ vi.mock("../../../src/frontend/ui/ipc/commands", () => ({
 vi.mock("../../../src/frontend/ui/history-list-reads", () => ({
   fetchList: () =>
     Promise.resolve({
-      rows: [{ sessionId: "s1", status: "live", jsonlPath: "/p/s1.jsonl", label: "主会话", untitled: false, agent: "claude", projectName: "proj" }],
+      rows: [{ sessionId: "s1", face: liveFace("working"), jsonlPath: "/p/s1.jsonl", label: "主会话", untitled: false, agent: "claude", projectName: "proj" }],
     }),
 }));
 vi.mock("../../../src/frontend/ui/record-reads", () => ({
@@ -78,7 +79,7 @@ function say(uuid: string, text: string): unknown {
 }
 
 function frame(runs: RunInfo[]): void {
-  h.sink?.({ t: "runs", payload: { session_id: "s1", runs, ended: [] } } satisfies FollowEvent);
+  h.sink?.({ t: "runs", payload: { sid: "s1", runs, ended: [] } } satisfies FollowEvent);
 }
 
 async function settle(): Promise<void> {

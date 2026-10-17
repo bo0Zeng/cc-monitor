@@ -1,11 +1,10 @@
 //! **起会话那一行 `ccm …` 的渲染器** —— 全仓唯一一份，也是 monitor 每一条起会话路径交给终端的唯一形状。
 //!
 //! 环境、中转地址、身份标记都由那台机器上的 `ccm` 自己做；这里只把「起什么」说成 `ccm` 的参数
-//! （`ccm [交给 agent 的…] -- [ccm 自己的…]`）。外层容器只剩「往已有 tmux 会话里就地 resume」那一格要包一层，
-//! 包的也只是这一行。
+//! （`ccm [交给 agent 的…] -- [ccm 自己的…]`）。键进已有 tmux 会话的也只是这一行（那台后端自己键）。
 //!
 //! 渲不出来带理由（[`Refusal`]）：某个维度说不成 ccm 参数 ⇒ 整条放弃，不渲一条丢了修饰的命令。
-//! 独立说法：本文件的自测（判据自带清单）与入库夹具 `fixtures/cli-golden.json`（手写 `out`）。
+//! 独立说法：本文件的自测（判据自带清单）与那一行的字节表（`ccm_invocation_tests.rs::cells`，手写期望）。
 
 use copy_core::copy_text;
 use std::collections::BTreeSet;
@@ -60,12 +59,12 @@ pub enum IdentifierSlot {
 pub enum FreeTextSlot {
     Cwd,
     AgentArg,
-    /// 一个**已有**会话的名字（`--attach <名>` · 就地 resume 的目标；`gate_rules::existing_tmux_name_issue`）。
+    /// 一个**已有**会话的名字（`--attach <名>` 的目标；`gate_rules::existing_tmux_name_issue`）。
     AttachTarget,
 }
 
 impl Refusal {
-    /// 降级理由。入库夹具 `cli-golden.json` 的 refusal 用例逐字节比它（夹具那一侧是手写期望）。
+    /// 降级理由。那一行的字节表里拒的那几格逐字节比它（表里是手写期望）。
     pub fn reason(&self) -> String {
         match self {
             Refusal::MissingCap(c) => copy_text(
@@ -140,11 +139,11 @@ pub enum Action<'a> {
     Attach { name: &'a str },
 }
 
-/// 容器。`send_into` = 往一个**已有**的空 tmux 会话里就地 resume（键入直路那一行，再接进去）。
+/// 容器：直路 · 建进一个新的 tmux 会话（接回那一形是接进去的那个）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Container<'a> {
     None,
-    Tmux { name: &'a str, send_into: bool },
+    Tmux { name: &'a str },
 }
 
 /// 账号维度的三态。
@@ -279,14 +278,15 @@ const DIMENSION_ORDER: &[Dim] = &[
 
 /// `spec → ccm 调用行`。`caps` = 这台 ccm 会哪些（渲染就在那台后端里，问的是它自己）。
 pub fn render_ccm_invocation(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<String, Refusal> {
-    match render_parts(spec, caps)? {
-        Parts::Argv(tokens) => Ok(tokens.iter().map(|t| argv(t)).collect::<Vec<_>>().join(" ")),
-        Parts::Shell(line) => Ok(line),
-    }
+    Ok(ccm_argv(spec, caps)?
+        .iter()
+        .map(|t| argv(t))
+        .collect::<Vec<_>>()
+        .join(" "))
 }
 
 /// 同一行给 PowerShell（Windows 本机终端）：`argv[0]` 是入口的绝对路径 ⇒ `& '<路径>' …`
-/// （PowerShell 里带引号的命令名要 `&` 才叫得起来）。就地 resume 那一形是一串 POSIX shell ⇒ 拒。
+/// （PowerShell 里带引号的命令名要 `&` 才叫得起来）。
 pub fn render_ccm_invocation_ps(
     spec: &CliSpec,
     caps: &BTreeSet<String>,
@@ -303,27 +303,12 @@ pub fn render_ccm_invocation_ps(
 }
 
 /// 同一行的 argv 形（不过 shell，`argv[0]` 是 `ccm_path`）：后端自己起这一趟时用它（[`render_ccm_invocation`] 就是把它逐个引号化连起来）。
-/// 就地 resume 那一形本来就是一串 shell（`tmux send-keys …`），没有 argv 形 ⇒ 拒。
 pub fn ccm_argv(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Vec<String>, Refusal> {
-    match render_parts(spec, caps)? {
-        Parts::Argv(tokens) => Ok(tokens),
-        Parts::Shell(_) => Err(Refusal::AttachNeedsTmux),
-    }
-}
-
-/// 渲染的两种成品：一条 ccm 的 argv · 一串 shell（就地 resume 那一形）。
-enum Parts {
-    Argv(Vec<String>),
-    Shell(String),
-}
-
-fn render_parts(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Parts, Refusal> {
     for c in CLI_REQUIRED_CAPS {
         if !caps.contains(*c) {
             return Err(Refusal::MissingCap((*c).to_string()));
         }
     }
-    let face = launch_face(spec.agent)?;
     let need = |c: &str| -> Result<(), Refusal> {
         if caps.contains(c) {
             Ok(())
@@ -336,7 +321,7 @@ fn render_parts(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Parts, Refusa
     let mut tokens: Vec<String> = vec![spec.ccm_path.to_string()];
     let mut ours: Vec<String> = Vec::new();
 
-    // attach 不起 agent：`ccm -- --attach <名>` 不接受任何修饰 flag。
+    // attach 不起 agent：`ccm -- --attach <名>` 不接受任何修饰 flag，也不问是哪一家。
     if let Action::Attach { .. } = spec.action {
         let Container::Tmux { name, .. } = spec.container else {
             return Err(Refusal::AttachNeedsTmux);
@@ -345,32 +330,9 @@ fn render_parts(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Parts, Refusa
         existing_name_ok(name)?;
         ours.push("--attach".into());
         ours.push(name.to_string());
-        return Ok(Parts::Argv(join_halves(tokens, ours)));
+        return Ok(join_halves(tokens, ours));
     }
-
-    // 就地 resume：键进那个 pane 的是**直路**那一行（pane 里已经有 shell，不再建容器），外层只包这一行。
-    if let Container::Tmux {
-        name,
-        send_into: true,
-    } = spec.container
-    {
-        need("tmux")?;
-        existing_name_ok(name)?;
-        let inner = render_ccm_invocation(
-            &CliSpec {
-                container: Container::None,
-                ..spec.clone()
-            },
-            caps,
-        )?;
-        // 接进去那一段与 `ccm --attach` 同一个函数（在 tmux 里切过去、不在就 attach，都是 UTF-8 客户端）。
-        let t = shell_quote_core::posix_quote(&format!("={name}:"));
-        return Ok(Parts::Shell(format!(
-            "tmux -u send-keys -t {t} {} Enter; {}",
-            shell_quote_core::posix_quote(&inner),
-            crate::common::tmux_utf8::join_session(name)
-        )));
-    }
+    let face = launch_face(spec.agent)?;
 
     match spec.action {
         Action::Resume { sid } => {
@@ -440,7 +402,7 @@ fn render_parts(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Parts, Refusa
         });
     }
     tokens.extend(spec.args.iter().map(|a| (*a).to_string()));
-    Ok(Parts::Argv(join_halves(tokens, ours)))
+    Ok(join_halves(tokens, ours))
 }
 
 /// 起哪一家：空 / 带空白 / 注册表里没有 ⇒ 拒（不落默认那一家：起错家比起不来更坏）。
@@ -502,4 +464,4 @@ fn join_halves(mut agent: Vec<String>, ours: Vec<String>) -> Vec<String> {
 
 #[cfg(test)]
 #[path = "../../../../tests/backend/control/launch_render/ccm_invocation_tests.rs"]
-mod tests;
+pub(crate) mod tests;

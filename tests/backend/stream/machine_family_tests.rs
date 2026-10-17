@@ -196,7 +196,7 @@ fn the_machine_family_refuses_what_its_request_types_do_not_have() {
     assert_eq!(got.err().map(|f| f.code), Some("bad_jump".to_string()));
 }
 
-/// 壳读的部署那几条（`deploy-plan` · `place-verdict` · `exit-policy-read` · `ccm-probe`）：回包字节照旧（换形前用旧代码钉的字面量）。
+/// 壳读的部署那几条（`deploy-install` · `place-verdict` · `exit-policy-read` · `ccm-probe`）：回包字节照钉的字面量。
 #[test]
 fn the_deploy_replies_the_shell_reads_keep_their_wire_bytes() {
     use crate::control::deploy_plan as dp;
@@ -204,19 +204,17 @@ fn the_deploy_replies_the_shell_reads_keep_their_wire_bytes() {
         key: deploy_contract::key_of("Linux", "x86_64").unwrap(),
         expected: "p9a-mine".into(),
         action,
-        leftovers: vec![".cc-monitor/bin/ccm.1-2-3.tmp".into()],
+        leftovers: vec![],
         ack: json!({ "ok": true, "fingerprints": { "192.0.2.2:22": "SHA256:t" }, "jump_fingerprints": {}, "strict": false, "jump_strict": false }),
     };
     assert_eq!(
-        wire_of(&dp::plan_json(&plan(deploy_contract::DeployAction::Keep {
-            theirs: "p9b".into(),
-            why: "w".into()
-        }))),
-        r#"{"ack":{"fingerprints":{"192.0.2.2:22":"SHA256:t"},"jump_fingerprints":{},"jump_strict":false,"ok":true,"strict":false},"action":"keep","arch":"x86_64","expected":"p9a-mine","label":"Linux / x86_64","leftovers":[".cc-monitor/bin/ccm.1-2-3.tmp"],"os":"Linux","theirs":"p9b","why":"w"}"#
-    );
-    assert_eq!(
-        wire_of(&dp::plan_json(&plan(deploy_contract::DeployAction::Skip))),
-        r#"{"ack":{"fingerprints":{"192.0.2.2:22":"SHA256:t"},"jump_fingerprints":{},"jump_strict":false,"ok":true,"strict":false},"action":"skip","arch":"x86_64","expected":"p9a-mine","label":"Linux / x86_64","leftovers":[".cc-monitor/bin/ccm.1-2-3.tmp"],"os":"Linux","theirs":null,"why":""}"#
+        wire_of(&dp::installed_of(&plan(
+            deploy_contract::DeployAction::Keep {
+                theirs: "p9b".into(),
+                why: "w".into()
+            }
+        ))),
+        r#"{"ack":{"fingerprints":{"192.0.2.2:22":"SHA256:t"},"jump_fingerprints":{},"jump_strict":false,"ok":true,"strict":false},"action":"keep","build":"p9b","os":"Linux","said":"w"}"#
     );
     // 本机那一份放不放：落点不在 ⇒ 放。
     let got = run_any(
@@ -233,10 +231,20 @@ fn the_deploy_replies_the_shell_reads_keep_their_wire_bytes() {
         .to_string();
     assert_eq!(
         wire_of(&got).replace(&path, "<PATH>"),
-        r#"{"detail":null,"killOnExit":false,"path":"<PATH>","reason":null,"said":"关 = 不主动停止 · 掉线后自行退出","state":"absent"}"#
+        r#"{"detail":null,"killOnExit":false,"path":"<PATH>","reason":null,"said":"关 = 不主动停止 · 连接断开后自行退出","state":"absent"}"#
     );
-    // 这台的 `ccm` 会哪些。
-    let got = run_any("ccm-probe", json!({})).unwrap();
+    // 这台的 `ccm` 会哪些（终端里敲它走到哪那一格随这台的 shell 变，只核形状）。
+    let mut got = run_any("ccm-probe", json!({})).unwrap().expect("回包");
+    let here = got
+        .as_object_mut()
+        .unwrap()
+        .remove("onPath")
+        .expect("onPath");
+    assert_eq!(
+        here.as_object()
+            .map(|o| o.keys().cloned().collect::<Vec<_>>()),
+        Some(vec!["said".to_string(), "verdict".to_string()])
+    );
     assert_eq!(
         wire_of(&got).replace(crate::BUILD_ID, "<BUILD>"),
         r#"{"agents":["claude","codex"],"build":"<BUILD>","capabilities":["new","resume","attach","tmux","account","model","cwd","agent","launcher","ccm-sid","print","detach","tmux-size","tmux-base","bus-register","backend-discover","account-via-backend","base-url-across-tmux"],"version":"7"}"#

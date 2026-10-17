@@ -27,7 +27,7 @@ fn synth_cfg() -> RemoteConfig {
 fn the_window_process_words_reach_the_webview_verbatim() {
     let said = "那台说：没有这个目录 /srv/不在";
     assert_eq!(unopened_said(Unopened::Said(said.into())).said, said);
-    let why = copy_text("rsFilewinProc.open.exited", &[]);
+    let why = copy_text("reason.code.bug", &[]);
     let wrapped = unopened_said(Unopened::Process(ProcFail::from(why.clone())));
     assert_eq!(
         wrapped.said,
@@ -40,7 +40,7 @@ fn the_window_process_words_reach_the_webview_verbatim() {
 #[test]
 fn a_process_failure_puts_its_exit_status_and_stderr_in_the_detail() {
     let f = ProcFail {
-        said: copy_text("rsFilewinProc.open.exited", &[]),
+        said: copy_text("reason.code.bug", &[]),
         code: Some("exit status: 1".into()),
         raw: Some("line a\nline b".into()),
     };
@@ -133,7 +133,7 @@ fn this_command_is_wired_all_the_way_to_the_frontend_wrapper() {
 /// `tests/sftp/panel.vitest.ts`（真点一下那颗按钮、看它带着什么参数调下去）。
 #[test]
 fn some_ui_file_other_than_the_wrapper_actually_calls_it() {
-    let root = crate::guard_support::repo_src_root();
+    let root = guard_core::addr::repo_src_root();
     let mut sites: Vec<String> = Vec::new();
     let mut scanned = 0usize;
     for f in guard_core::files_by_extension(&root, "ts") {
@@ -297,8 +297,7 @@ fn a_reveal_request_we_cannot_split_is_an_error_not_a_silent_home() {
     assert!(plan_target("", Some("/a/b.txt")).is_ok());
 }
 
-/// 开窗种子里那台的名字 ＝ `RemoteConfig::origin_label`（`label` 为空时回退到 `host`）——
-/// 原住 `shell_tests::every_source_has_a_non_empty_label` 的后一半：窗口只拿名字之后，「名字怎么从配置来」是开窗入口这一侧的事。
+/// 开窗种子里那台的名字 ＝ `RemoteConfig::origin_label`（`label` 为空时回退到 `host`）：窗口只拿名字，「名字怎么从配置来」是开窗入口这一侧的事。
 #[test]
 fn the_seed_names_the_machine_by_its_origin_label() {
     assert_eq!(synth_cfg().origin_label(), "synthetic-origin");

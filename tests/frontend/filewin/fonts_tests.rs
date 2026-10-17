@@ -114,7 +114,7 @@ fn string_literals(src: &str) -> Vec<String> {
 /// 让它进人群等于**恒等两侧同源**：`PROBE` 里随手多一个字，扫描也照样「找到」它。
 /// 这条排除的正当性由 [`fonts_rs_draws_nothing_at_all`] 买。
 fn drawn_files() -> Vec<(String, String)> {
-    let dir = crate::guard_support::crate_src_root();
+    let dir = guard_core::addr::filewin_src_root();
     // 🔴 走 `guard_core` 而不是裸 `read_dir` —— `scanning_guard_registry` 那条判据
     //    钉着「扫描型判据不许自己遍历」，理由是一个不摘掉自己的扫描判据会
     //    **在自己的语料里找到自己 ⇒ 恒绿**。
@@ -153,10 +153,11 @@ fn drawn_files() -> Vec<(String, String)> {
     //   而那正是本条今天刻意不判的东西。
     // 窗口独立成包：「`filewin/` 那棵树」今天是两棵 —— 本包 ＋ monitor 那一侧 `src/frontend/shell/src/filewin/`
     //   （`entry.rs` 在那边，人群与搬家前逐份相同）。`mod.rs` 的躯体成了本包的 `lib.rs`（两份都摘）；两侧各有一份 `proc.rs`（都摘）；
-    //   `guard_support.rs` 是本包的判据住址（`#![cfg(test)]`，一个字都不画），同 `proc.rs` 那条理由摘掉。
     //   `frame_log.rs`（帧日志）同理：它写的是一份日志文件，一个字都不画在 egui 上。
     //   `render.rs`（挑哪块显卡）同理：它的话只上 stderr（挑中的那一行 · 挑不出时那一句），一个字都不画在 egui 上。
-    let monitor_side = crate::guard_support::repo_root().join("src/frontend/shell/src/filewin");
+    //   通信层的 `chan/said.rs` 进人群：通道没成时窗口上画的那一句从它取（全产品一份，不住本包）。
+    let monitor_side = guard_core::addr::repo_root().join("src/frontend/shell/src/filewin");
+    let said = guard_core::addr::repo_root().join("src/comms/inward/chan/said.rs");
     let mut out: Vec<(String, String)> = guard_core::scan_tree_excluding(
         &dir,
         &["rs"],
@@ -164,7 +165,6 @@ fn drawn_files() -> Vec<(String, String)> {
             "fonts.rs",
             "lib.rs",
             "proc.rs",
-            "guard_support.rs",
             "frame_log.rs",
             "render.rs",
             "main.rs",
@@ -176,6 +176,10 @@ fn drawn_files() -> Vec<(String, String)> {
         &["rs"],
         &["mod.rs", "proc.rs"],
     ))
+    .chain(std::iter::once((
+        said.clone(),
+        std::fs::read_to_string(&said).expect("读不到 chan/said.rs"),
+    )))
     .map(|(path, src)| {
         let name = path
             .file_name()
@@ -197,7 +201,7 @@ fn label_chars() -> std::collections::BTreeSet<char> {
     //   只数字面量的话，抽完表之后这条会对着一个缩水的人群相等（它真画出去的字没被数到）。
     let table: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(
-            crate::guard_support::crate_src_root().join("../../../shared/copy/table.json"),
+            guard_core::addr::filewin_src_root().join("../../../shared/copy/table.json"),
         )
         .expect("读不到文案表"),
     )
@@ -212,6 +216,29 @@ fn label_chars() -> std::collections::BTreeSet<char> {
                 .as_str()
                 .unwrap_or_else(|| panic!("文案表里没有 {key}"));
             set.extend(zh.chars().filter(|c| !c.is_ascii()));
+        }
+    }
+    // 判法住共用那一份（`pick-core`：选中几项 ⇒ 菜单那张表 · 灰着的为什么）、窗口照画的那几句。
+    let picks = std::fs::read_to_string(
+        guard_core::addr::repo_root().join("src/common/pick-core/src/lib.rs"),
+    )
+    .expect("读不到 pick-core");
+    for key in copy_text_keys(&picks) {
+        let zh = entries[&key]["zh"]
+            .as_str()
+            .unwrap_or_else(|| panic!("文案表里没有 {key}"));
+        set.extend(zh.chars().filter(|c| !c.is_ascii()));
+    }
+    // 后端写好、窗口照画的那几句（种类 · 「类型」那一列 · 预览 / 看图 / 编辑那几道门不许时那一句）。
+    for (key, e) in entries {
+        if key.starts_with("beFilesKind.") || key.starts_with("beFilesOpen.") {
+            set.extend(
+                e["zh"]
+                    .as_str()
+                    .unwrap_or("")
+                    .chars()
+                    .filter(|c| !c.is_ascii()),
+            );
         }
     }
     set
@@ -279,7 +306,7 @@ fn f() {
 fn fonts_rs_draws_nothing_at_all() {
     // 变量名不叫 `src`：包根下的路径变短、rustfmt 把读盘并成一行之后，`needle_anchor_registry` 那条按**变量名**认语料的棘轮
     //   会把同文件 `copy_text_keys(src)` 里的 `rest` 误认成它的派生（两个 `src` 不是同一个东西）。
-    let fonts_rs = std::fs::read_to_string(crate::guard_support::crate_src_root().join("fonts.rs"))
+    let fonts_rs = std::fs::read_to_string(guard_core::addr::filewin_src_root().join("fonts.rs"))
         .expect("fonts.rs 读不动");
     // 只看代码，不看注释 —— 注释里当然会提到这些名字
     let code: String = {
@@ -367,7 +394,8 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
         // 34 → 36，多的是 `imgview.rs`（图片查看页：头条 · 画面 · 状态栏那几句）· `picture.rs`（读图解图没成的那几句）。
         //   字形一个没多：两份的字全经文案表取，源码里不留非 ASCII 字面量。
         // 36 → 37，多的是 `batch.rs`（一组一条命令那一层：冲突框 · 逐项选 · 进度那一行 · 断开那一句）。
-        37,
+        // 37 → 38，多的是通信层的 `chan/said.rs`（通道没成时窗口上那一句，全产品一份）。
+        38,
         "人群应当是 10 份（2026-09-21 现打：copy · corpus · entry · **find** · rows · scale · \
          shell · source · transfer · **writeops**；`fonts.rs` 与 `mod.rs` 摘掉了。\
          ⚠ `corpus.rs` 的非 ASCII 字面量是 0，按字符数统计时看不见它 —— \
@@ -415,7 +443,9 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
         // 350 → 349，−`缺`、零 ＋（开单两条换 typed：回包缺字段那一句收成 `ask_typed` 那一句，逐笔来路住 `fonts.rs` 的 `PROBE` 上方）。
         // 349 → 351：一组一条命令那一层（冲突框 · 逐项选 · 进度那一行 · 断开那一句）多两个字，逐笔来路住 `fonts.rs` 的 `PROBE` 上方。
         // 351 → 350，＋2 −3（＋`继 续` −`勾 照 着`：上传那张自带勾选的同名表删了，结局行多一颗「继续」；逐笔来路住 `fonts.rs` 的 `PROBE` 上方）。
-        350,
+        // 350 → 346，−`三 例 围 范`、零 ＋（名字与权限位交那台判，那几句随之删了；逐笔来路住 `fonts.rs` 的 `PROBE` 上方）。
+        // 346 → 342，＋1 −5（通道那一句并成通信层一份、`chan/said.rs` 进人群；逐笔来路住 `fonts.rs` 的 `PROBE` 上方）。
+        342,
         "现扫出 {} 个不同的非 ASCII 字符（2026-09-21 现打 249；第五刀之前是 205、\
          〔书签旧键退役：341 → 337，−4 零 ＋（`entry.rs` 搬家那两句删了，逐笔来路住 `fonts.rs` 的 `PROBE` 上方）〕\
          〔334 → 338，恰好 ＋4、零 −（`仍 然 摘 盘`，编辑器存盘 CAS 那几句，逐笔来路住 `fonts.rs` 的 `PROBE` 上方）〕\
@@ -527,7 +557,9 @@ fn without_a_cjk_font_the_probe_is_almost_entirely_unrenderable() {
         // 344 → 343（开单两条换类型：掉出探针的 `缺` 本来画不出，现打）。
         // 343 → 345：探针 349 → 351（＋`余 核 逐` −`询`），全是汉字。
         // 345 → 344：探针 351 → 350（＋`继 续` −`勾 照 着`，上传那张同名表删了），全是汉字，现打。
-        344,
+        // 344 → 340：探针 350 → 346（−`三 例 围 范`，名字与权限位交那台判），全是汉字，现打。
+        // 340 → 336：探针 346 → 342（＋`运` −`之 方 求 词 请`，通道那一句并成通信层一份），全是汉字，现打。
+        336,
         "比例字体下画不出的字数变了（2026-09-21 现打 238 / 探针 {} 字；\
          〔CP2b filewin 第二份 09-25：344 → **329**（现打），探针 358 → 343 —— 差额 −15 ＝ ＋9 −24 全是汉字，不装字体全画不出〕\
          〔CP2b 全量抽表 09-25：338 → **344**（现打），探针 352 → 358 字 —— 差额 ＋6 ＝ 新进的 9 个汉字不装字体全画不出、\
@@ -598,7 +630,9 @@ fn without_a_cjk_font_the_probe_is_almost_entirely_unrenderable() {
         // 343 → 342（开单两条换类型：同比例那一格 −1（`缺`），现打）。
         // 342 → 344：同比例那一格（探针 ＋`余 核 逐` −`询`）。
         // 344 → 343：同比例那一格（探针 ＋`继 续` −`勾 照 着`），现打。
-        343,
+        // 343 → 339：同比例那一格（探针 −`三 例 围 范`）。
+        // 339 → 335：同比例那一格（探针 ＋`运` −`之 方 求 词 请`），现打。
+        335,
         "等宽字体下画不出的字数变了（2026-09-22 现打 300 —— 那时比比例少**两**个\
          〔CP2b filewin 第二份 09-25：342 → **327**（现打），与比例那一格同一个 −15；329 − 327 = 2 那条关系没动〕\
          〔CP2b 全量抽表 09-25：336 → **342**（现打），与比例那一格同一个 ＋6；344 − 342 = 2 那条关系没动〕\

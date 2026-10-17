@@ -1,41 +1,33 @@
-//! **会话清单那一族**（原住 `observe/history_query.rs`，10-13 挪来）：项目清单 · 平铺会话清单（连那份「没变不重扫、变长只扫尾巴」的缓存）·
-//! 后台热缓存 · 叫一条会话什么（[`label_facts_of`] · [`session_title_of`]）· 「这一行能做什么」（[`can_of`]）· 分叉来源（[`fork_origin`]）·
+//! **会话清单那一族**：项目清单 · 平铺会话清单（连那份「没变不重扫、变长只扫尾巴」的缓存）·
+//! 后台热缓存 · 叫一条会话什么（[`label_facts_of`] · [`session_title_of`]）· 「这一行能做什么」（[`can_of`]）·
 //! 藏起来的那个工作目录（[`hidden_cwd`]）· `<agent_home>/projects/` 那道围栏（[`fence_under_projects`]）· 这台的 agent 家（[`agent_home`]）。
 //!
 //! 历史清单（`history_list`）· 资产目录（`assets::asset_catalog`）· 观测侧（记录级的读 · 全文搜索 · watcher）都来这里拿；
 //! 这一族不引 observe（`layering_guard::ONE_WAY`）。
 //!
 //! 安全：按名字给的项目目录不许含路径分隔符；路径一律经 [`crate::common::fence::Fence`] 放行（`canonicalize` 后前缀校验，防 `../` 穿越）。
-//! 只读：本模块只 read_dir / read。
+//! 读记录只 read_dir / read；写只有清单缓存落盘那一份（经启动时装的 [`Own`]）。
 
 use super::listing_scan::SessionScan;
 use crate::common::append_read::{Blocks, Step, Tailed};
 use crate::common::fence::Fence;
-use crate::platform::fs::Ro;
-pub(crate) use cmd_wire::listing::{Can, CanDelete, CanResume};
+use crate::platform::fs::{Own, OwnPath, Ro};
+pub(crate) use cmd_wire::listing::{Can, CanDelete, CanResume, RowLife};
 use copy_core::copy_text;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::UNIX_EPOCH;
-
-/// 一条会话的状态：`live` 在跑 · `reconnectable` 不在跑、tmux 里还挂着它（会话账本说的）· `ended` 已结束 ·
-/// `unknown` 这条路上答不了（合成历史没有 pidfile）。历史清单的行与全文搜索的命中同一个函数。
-pub(crate) fn status_of(is_live: Option<bool>, reconnectable: bool) -> &'static str {
-    match is_live {
-        Some(true) => "live",
-        Some(false) if reconnectable => "reconnectable",
-        Some(false) => "ended",
-        None => "unknown",
-    }
-}
 
 /// **这条会话能做什么**（`can`）——界面按它画，不另判：
 /// - `resume`：`yes` 能恢复 · `switch` 在跑（切过去，不再起第二份）· `bg` 分身会话（要接着聊得恢复主会话）；
 /// - `accounts`：恢复时能不能选号（那一家有没有账号这一维）· `fork`：能不能从某一轮分叉；
-/// - `delete`：`yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑（确认框里多说一句）。
-pub(crate) fn can_of(kind: &str, status: &str, bg: bool) -> Can {
+/// - `delete`：`yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑（`life` 判不了 ⇒ 确认框里多说一句）。
+/// 历史清单的行与全文搜索的命中同一个函数。
+pub(crate) fn can_of(kind: &str, life: Option<RowLife>, bg: bool) -> Can {
+    let live = matches!(life, Some(RowLife::Live { .. }));
     Can {
-        resume: if status == "live" {
+        resume: if live {
             CanResume::Switch
         } else if bg {
             CanResume::Bg
@@ -44,10 +36,10 @@ pub(crate) fn can_of(kind: &str, status: &str, bg: bool) -> Can {
         },
         accounts: crate::agents::account_env_of(kind).is_some(),
         fork: crate::agents::record_face(kind).is_some_and(|r| r.branch.is_some()) && !bg,
-        delete: match status {
-            "live" => CanDelete::Live,
-            "unknown" => CanDelete::Unsure,
-            _ => CanDelete::Yes,
+        delete: match life {
+            Some(RowLife::Live { .. }) => CanDelete::Live,
+            None => CanDelete::Unsure,
+            Some(_) => CanDelete::Yes,
         },
     }
 }
@@ -98,7 +90,7 @@ pub(crate) fn group_by_cwd(items: &[(Option<String>, i64)]) -> Vec<String> {
 
 /// 会话记录目录读不了 ⇒ 给人看的那一句（按错误的**种类**说；系统原话只进日志 —— 不露实现词）。
 pub(crate) fn unreadable_dir(dir: &Path, e: &std::io::Error) -> String {
-    tracing::warn!("history_query: 读不了 {}：{e}", dir.display());
+    tracing::warn!("history listing: 读不了 {}：{e}", dir.display());
     let path = dir.display().to_string();
     if e.kind() == std::io::ErrorKind::PermissionDenied {
         copy_text("beHistory.dir.denied", &[("path", &path)])
@@ -244,6 +236,9 @@ pub(crate) fn sessions_by_dir_for(
     .flatten()
     .collect();
     out.sort_by(|a, b| a.0.cmp(&b.0));
+    if only.is_none() {
+        save();
+    }
     Ok(Some(out))
 }
 
@@ -287,6 +282,144 @@ static SESSION_META: std::sync::Mutex<std::collections::BTreeMap<PathBuf, Listin
 
 /// [`SESSION_META`] 的上限（条）：超了整张清掉重来（不做淘汰次序 —— 一台上会话数到这个量级之前它都不会触发）。
 const SESSION_META_CAP: usize = 50_000;
+
+/// 清单缓存落盘的家（启动入口装：[`install`]）：数据目录底下一份 [`relay_route_core::LISTING_CACHE_REL`]。
+/// 没装（判据 · 一次性进程）⇒ 只在内存。
+static STORE: std::sync::OnceLock<Own> = std::sync::OnceLock::new();
+
+/// 盘上那一份装回过没有（头一次碰清单缓存时装，谁先碰谁装）。
+static LOADED: std::sync::Once = std::sync::Once::new();
+
+/// 内存那一份自上次落盘之后变过没有（没变不重写）。
+static DIRTY: AtomicBool = AtomicBool::new(false);
+
+/// 盘上那一份的格式：形状变了就加一（对不上 ⇒ 当没有，照记录重扫、覆盖）。
+const STORE_VERSION: u32 = 1;
+
+/// 读盘上那一份的上限。
+const STORE_MAX_READ: u64 = 256 << 20;
+
+/// 启动时装一次（拿启动时造的写句柄）：之后重启照盘上那一份接着认 —— 没变的记录不读、变长的只读追加的那一截。
+pub fn install(own: &Own) {
+    if STORE.set(own.clone()).is_err() {
+        tracing::debug!("listing cache home already installed; keeping the first one");
+    }
+}
+
+/// 盘上一份：版本 ＋ 每份记录读到哪了、累计的那几格、成品行。
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Saved {
+    v: u32,
+    rows: Vec<SavedRow>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SavedRow {
+    path: PathBuf,
+    read: Tailed,
+    done: SessionScan,
+    tail: SessionScan,
+    row: serde_json::Value,
+}
+
+/// 清单缓存那张表（头一次碰时先把盘上那一份装回）。
+fn table() -> std::sync::MutexGuard<'static, std::collections::BTreeMap<PathBuf, ListingEntry>> {
+    LOADED.call_once(|| {
+        if let Some(own) = STORE.get() {
+            load_from(own);
+        }
+    });
+    SESSION_META.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// 落盘那一份的（目录, 文件）。
+fn store_at(own: &Own) -> Option<(OwnPath, OwnPath)> {
+    let rel = relay_route_core::LISTING_CACHE_REL.strip_prefix(".cc-monitor/")?;
+    let (dir, name) = rel.rsplit_once('/')?;
+    let dir = own.path(dir).ok()?;
+    let file = dir.join(name).ok()?;
+    Some((dir, file))
+}
+
+/// 把盘上那一份装进内存（内存里已有的那几份不动）。没有 · 读不出 · 版本对不上 ⇒ 什么都不装。
+pub(crate) fn load_from(own: &Own) {
+    let Some((_, file)) = store_at(own) else {
+        return;
+    };
+    let Ok(meta) = Ro::metadata(file.as_path()) else {
+        return;
+    };
+    if !meta.is_file() || meta.len() > STORE_MAX_READ {
+        tracing::warn!("listing cache skipped: not a file or over the cap");
+        return;
+    }
+    let saved: Saved = match Ro::open(file.as_path())
+        .map_err(|e| e.to_string())
+        .and_then(|f| {
+            serde_json::from_reader(std::io::BufReader::new(f)).map_err(|e| e.to_string())
+        }) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::debug!("listing cache unreadable: {e}");
+            return;
+        }
+    };
+    if saved.v != STORE_VERSION {
+        return;
+    }
+    let mut t = SESSION_META.lock().unwrap_or_else(|e| e.into_inner());
+    for r in saved.rows {
+        t.entry(r.path).or_insert_with(|| ListingEntry {
+            read: r.read,
+            done: r.done,
+            tail: r.tail,
+            row: r.row,
+            last_bytes: 0,
+        });
+    }
+}
+
+/// 内存那一份变过 ⇒ 整份落盘（已经不在的记录不落）。没装家 ⇒ 不落。
+fn save() {
+    if let Some(own) = STORE.get() {
+        save_to(own);
+    }
+}
+
+/// [`save`] 的本体（家是参数）。写不成只记一笔调试日志：缓存，下一次照记录重扫。
+pub(crate) fn save_to(own: &Own) {
+    if !DIRTY.swap(false, Ordering::Relaxed) {
+        return;
+    }
+    let rows: Vec<SavedRow> = table()
+        .iter()
+        .filter(|(p, _)| p.to_str().is_some())
+        .map(|(p, e)| SavedRow {
+            path: p.clone(),
+            read: e.read.clone(),
+            done: e.done.clone(),
+            tail: e.tail.clone(),
+            row: e.row.clone(),
+        })
+        .collect();
+    let rows: Vec<SavedRow> = rows.into_iter().filter(|r| r.path.is_file()).collect();
+    let saved = Saved {
+        v: STORE_VERSION,
+        rows,
+    };
+    let written = (|| -> Result<(), String> {
+        let (dir, file) = store_at(own).ok_or("no data dir")?;
+        let root = own.root().ok_or("no data dir")?;
+        own.ensure_dir(&root).map_err(|e| e.to_string())?;
+        own.ensure_dir(&dir).map_err(|e| e.to_string())?;
+        let held = own.lock(&dir).map_err(|e| format!("{e:?}"))?;
+        let body = serde_json::to_vec(&saved).map_err(|e| e.to_string())?;
+        own.write(&file, &held, &body).map_err(|e| e.to_string())
+    })();
+    if let Err(e) = written {
+        tracing::debug!("listing cache not stored: {e}");
+    }
+}
 
 /// 清单缓存里的一份：读到哪了（与全文搜索索引共用的 [`Tailed`]）· 完整行累计的那几格 · 末尾半行的那几格 · 成品行。
 struct ListingEntry {
@@ -383,7 +516,7 @@ pub(crate) fn warm_listing(agent_home: &Path) -> usize {
     if let Err(e) = sessions_by_dir(agent_home) {
         tracing::warn!("历史清单缓存：后台热缓存读不了记录树（{e}）");
     }
-    SESSION_META.lock().unwrap_or_else(|e| e.into_inner()).len()
+    table().len()
 }
 
 /// 一份会话记录里叫它什么的那几样（标题 · 第一句 · 项目目录；注解那一格由调用方并），走清单缓存（没变不重扫、变长只扫尾巴）。
@@ -425,8 +558,7 @@ pub(crate) fn session_title_of(p: &Path) -> String {
 
 /// [`analyze_session`] 过一层 [`SESSION_META`]：没变 ⇒ 上次那一行；变长且前面没被改写 ⇒ 只扫新增的；其余整份重扫。
 fn analyze_session_cached(p: &Path) -> serde_json::Value {
-    let lock = || SESSION_META.lock().unwrap_or_else(|e| e.into_inner());
-    let prev = lock().remove(p);
+    let prev = table().remove(p);
     // 读到过读不动的一行（之后的都不算）⇒ 不追加读：那一行之后的内容要整份重扫才对得上。
     let may_append = prev.as_ref().is_some_and(|e| !e.done.stopped);
     let mut bytes = 0u64;
@@ -434,6 +566,7 @@ fn analyze_session_cached(p: &Path) -> serde_json::Value {
     else {
         return analyze_session(p);
     };
+    let changed = !matches!((&step, &prev), (Step::Same, Some(_)));
     let entry = match (step, prev) {
         (Step::Same, Some(mut e)) => {
             e.last_bytes = 0;
@@ -452,11 +585,14 @@ fn analyze_session_cached(p: &Path) -> serde_json::Value {
     let row = entry.row.clone();
     // 拿不到修改时刻 ⇒ 不留（下次认不出它变没变）。
     if seen.0.is_some() {
-        let mut t = lock();
+        let mut t = table();
         if t.len() >= SESSION_META_CAP {
             t.clear();
         }
         t.insert(p.to_path_buf(), entry);
+        if changed {
+            DIRTY.store(true, Ordering::Relaxed);
+        }
     }
     row
 }
@@ -519,32 +655,6 @@ pub(crate) fn analyze_session(p: &Path) -> serde_json::Value {
     // 一次列表就是把 2.4 GB 读进内存再逐行解析。扫描是必须的（要数行、要判 bg），**但不必先整份进内存**。
     let mtime = Ro::metadata(p).and_then(|m| m.modified()).ok();
     ListingEntry::scan(p, mtime).row
-}
-
-/// **「这条记录说明本会话是从哪个会话分叉来的」的唯一住址**：
-/// `user` / `assistant` 记录上的 `forkedFrom`（两个键都得是串）⇒ (源会话 id, 分叉处的消息 uuid)。
-///
-/// 两个读者调同一个函数：历史会话行（[`analyze_session`] 的 `forkedFromSessionId`）与活 tab 的会话事实
-/// （`facts_query.rs` 的 `forkedFrom`）—— 搬之前活 tab 那一份住前端、口径更松（任何记录、只看 `sessionId`），
-/// 同一个会话会在历史树与 tab 栏上一个认是分叉、一个不认。
-pub(crate) fn fork_origin(v: &serde_json::Value) -> Option<(String, String)> {
-    match v.get("type").and_then(|t| t.as_str()) {
-        Some("user") | Some("assistant") => forked_from(v),
-        _ => None,
-    }
-}
-
-/// 一条记录的 `forkedFrom`（`/branch` 分叉出来的会话，每条复制过来的记录都带着）→ (源会话 id, 分叉处的消息 uuid)。
-fn forked_from(v: &serde_json::Value) -> Option<(String, String)> {
-    forked_pair(v.get("forkedFrom")?)
-}
-
-/// `forkedFrom` 那一格本身 → (源会话 id, 分叉处的消息 uuid)（两格都得是串）。
-pub(crate) fn forked_pair(f: &serde_json::Value) -> Option<(String, String)> {
-    Some((
-        f.get("sessionId")?.as_str()?.to_string(),
-        f.get("messageUuid")?.as_str()?.to_string(),
-    ))
 }
 
 #[cfg(test)]

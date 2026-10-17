@@ -4,7 +4,7 @@
 use super::{cc_bus_wire, kill, terminal_follow, terminals_wire};
 
 fn golden(file: &str) -> serde_json::Value {
-    let p = crate::guard_support::repo_root()
+    let p = guard_core::addr::repo_root()
         .join("tests/__fixtures__")
         .join(file);
     serde_json::from_str(

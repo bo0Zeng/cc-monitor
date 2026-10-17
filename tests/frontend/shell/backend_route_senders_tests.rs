@@ -27,7 +27,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     // **`cc_bus.rs` 那一行退役了**：P4f 起它把 cc-bus 写面（发消息 · 收掉 · 派生 · 查在线）经后端的
     //   `bus-*` 原语转一手、走分流器；现在界面经通道直接说（`src/frontend/ui/cc-bus-control.ts`，广播的挑人也搬进了后端 `bus-broadcast`），
     //   monitor 的 `cc_bus.rs` 只剩读名单 / 读收件箱两条 shell 读，不再是走后端的发送端 —— 从登记表删，不留过渡格。
-    //   「monitor 里写面一条路都不剩」由 `cc_bus_tests.rs::the_monitor_has_no_cc_bus_write_path_any_more` 两向判。
+    //   「monitor 里写面一条路都不剩」由 `cc_bus_one_home.rs::the_monitor_has_no_cc_bus_write_path_any_more` 两向判。
     // ★ `K-R112` 09-13：**第七个发送端** —— 抓屏（monitor 里那个发送端，已删）
     //   改走帧面 `capture-pane`。它**没有第二条路可回落**（那条一次性 SSH 已删净），
     //   但**照样走分流器**，理由与 `cc_bus.rs` 那条逐字相同：
@@ -52,7 +52,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   「拿到了那一份 data」与「三态里的另外两态」在类型上分得开。
     // **上面那一行（`find.rs`）退役了**：文件窗口成了独立进程，只经通道说 `call`，
     //   搜索不再直连进程级登记表（`inbound_client`），分层判定在通道宿主那一侧（`host.rs`，
-    //   走分流器的分层出口）。窗口一侧只把分好层的结果翻成一句人话（`filewin/source.rs::said`）。
+    //   走分流器的分层出口）。窗口一侧只照抄通道那一句（`comms_inward::chan::said`）。
     //   ⇒ 两份新发现的 `.call(` 都**不做回落决策、也碰不到 inbound**，牙与纯路由器那一档同一套：
     // · `source.rs` —— 窗口进程里说 `Comms::call` 的唯一一处（`filewin/source.rs::ask`）。
     ("source.rs", Verdict::PureRouterNoFallbackDecision),
@@ -99,21 +99,29 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   （`transfer-*` 四条，传输台住那里）。没有第二条路可回落（`D11`：不进程内开 SFTP），
     //   后端说的码原样带回窗口；**照样走分流器**，理由与 `link_mux.rs` 那一行逐字相同。
     ("sftp_pool.rs", Verdict::UsesRouter),
-    // ★ 部署计划：把「怎么够到那台 ＋ 这一版带着哪几格」交给**本机**后端 `deploy-plan`，
-    //   经 `sftp.rs::ask_plan_for` 这一口；判定住后端，没有第二条路可回落（判定不回到 monitor）。形状与 `asset_sync.rs` 那一行同。
-    ("sftp.rs", Verdict::UsesRouter),
+    // ★ 装后端：把「怎么够到那台 ＋ 这一版带着的那几格落在哪」交给**本机**后端 `deploy-install`，
+    //   经 `deploy.rs::install_for` 这一口；那一趟住后端，没有第二条路可回落。形状与 `asset_sync.rs` 那一行同。
+    ("deploy.rs", Verdict::UsesRouter),
     // 终端画面流撤掉时壳替界面向那台退订（`terminal_screen_relay.rs::unfollow`）：发出去就不管，没成只记一行日志 ——
     //   连接走时那台整张票表本来就收；没有第二条路，也不把成败交给任何人。
     (
         "terminal_screen_relay.rs",
         Verdict::ProbeOnlyNoFallbackDecision,
     ),
-    // 每条长连接报「在看哪几个会话」（`stream_watch.rs`，那台后端 `stream-watch`）：没报上只记一行日志、那条连接照旧全看 ——
+    // 每台的名单台报「在看哪几个会话」（`resident-client/watch.rs`，那台后端 `stream-watch`）：没报上只记一行日志 ——
     //   没有第二条路，成败也不交给任何人（下一次名单变 / 换连接再报）。
-    ("stream_watch.rs", Verdict::ProbeOnlyNoFallbackDecision),
-    // 手机那一侧一台的常驻流（`resident-client/feed.rs`）：报在看名单 · 问那台新旧只记一行日志、没有第二条路；
+    ("watch.rs", Verdict::ProbeOnlyNoFallbackDecision),
+    // 一台的常驻流（`resident-client/feed.rs`）：问活只记一行日志、没有第二条路；
     //   替宿主转发的一问一答把 `CallError` 原样交回宿主（手机核心按它说那一句），这里不做回落判断。
     ("feed.rs", Verdict::ProbeOnlyNoFallbackDecision),
+    // 每条远端循环那一轮的结论交本机后端（`stream_source/run.rs::send_round`，`machine-round`）：没交上只记一行日志 ——
+    //   本机通道接上那一刻会整份重交，没有第二条路，成败也不交给任何人。
+    ("run.rs", Verdict::ProbeOnlyNoFallbackDecision),
+    // 诊断信息问远端各台的状态（`diagnostics_report.rs::remote_machines`，`machine-read`）：问不到只记一行日志、那几台照「说不出」写。
+    (
+        "diagnostics_report.rs",
+        Verdict::ProbeOnlyNoFallbackDecision,
+    ),
 ];
 
 /// 分流器的**两个出口**：分层结果（`05` 形状）与从它收拢出来的旧三态。

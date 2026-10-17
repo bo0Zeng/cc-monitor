@@ -111,7 +111,7 @@ impl Applied {
 /// 该问的（删除）**照问一次**，答「做」就**原样交到 `apply`**；不问的（改权限 · 改名：撤得回来，做完给回执）直接交。
 ///
 /// 反空真：`asked` 必须恰是那两件要问的删除（不是 0 —— 0 就是有东西在问答之前把它们拦了）。
-/// 用户原话「文件管理器全部都可以改. 不需要任何围栏」。
+/// 要求「文件管理器全部都可以改. 不需要任何围栏」。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_session_file_path_is_asked_and_done_like_any_other() {
     let asked = AtomicUsize::new(0);
@@ -124,12 +124,12 @@ async fn a_session_file_path_is_asked_and_done_like_any_other() {
         },
         WriteOp::Chmod {
             path: "/home/u/.claude/sessions/4321.json".to_string(),
-            mode: 0o600,
+            mode: "600".into(),
             raw: None,
         },
         WriteOp::Rename {
             from: "/home/u/.claude/projects/dash-proj/abc-123/subagents/agent-1.jsonl".to_string(),
-            to: "/home/u/.claude/projects/dash-proj/abc-123/subagents/agent-2.jsonl".to_string(),
+            name: "agent-2.jsonl".to_string(),
             raw: None,
         },
         WriteOp::Delete {
@@ -183,7 +183,8 @@ async fn a_refusal_from_the_backend_fence_comes_back_as_a_sentence() {
         &wired.line,
         &origin,
         &WriteOp::Mkdir {
-            path: "/srv/refuse/newdir".into(),
+            dir: "/srv/refuse".into(),
+            name: "newdir".into(),
         },
     )
     .await
@@ -197,7 +198,8 @@ async fn a_refusal_from_the_backend_fence_comes_back_as_a_sentence() {
         &wired.line,
         &origin,
         &WriteOp::Mkdir {
-            path: "/srv/data/newdir".into(),
+            dir: "/srv/data".into(),
+            name: "newdir".into(),
         },
     )
     .await
@@ -208,7 +210,7 @@ async fn a_refusal_from_the_backend_fence_comes_back_as_a_sentence() {
         &origin,
         &WriteOp::Chmod {
             path: "/srv/data/x".into(),
-            mode: 0o644,
+            mode: "644".into(),
             raw: None,
         },
     )
@@ -245,15 +247,16 @@ async fn the_question_is_asked_exactly_once_for_the_whole_batch() {
     let mut ops = dels.clone();
     ops.push(WriteOp::Chmod {
         path: "/srv/data/c".into(),
-        mode: 0o755,
+        mode: "755".into(),
         raw: None,
     });
     ops.push(WriteOp::Mkdir {
-        path: "/srv/data/m".into(),
+        dir: "/srv/data".into(),
+        name: "m".into(),
     });
     ops.push(WriteOp::Rename {
         from: "/srv/data/a".into(),
-        to: "/srv/data/b".into(),
+        name: "b".into(),
         raw: None,
     });
 
@@ -306,7 +309,8 @@ async fn the_question_is_asked_exactly_once_for_the_whole_batch() {
 async fn nothing_is_touched_when_the_answer_is_no() {
     let applied = Applied::default();
     let mkdir = WriteOp::Mkdir {
-        path: "/srv/data/m".into(),
+        dir: "/srv/data".into(),
+        name: "m".into(),
     };
     let del = WriteOp::Delete {
         path: "/srv/data/d".into(),
@@ -343,11 +347,12 @@ async fn a_batch_with_nothing_dangerous_asks_nobody() {
     let out = run_writes(
         vec![
             WriteOp::Mkdir {
-                path: "/srv/data/m".into(),
+                dir: "/srv/data".into(),
+                name: "m".into(),
             },
             WriteOp::Rename {
                 from: "/srv/data/a".into(),
-                to: "/srv/data/b".into(),
+                name: "b".into(),
                 raw: None,
             },
         ],
@@ -409,7 +414,8 @@ async fn the_answer_cannot_smuggle_in_an_operation_nobody_fenced() {
 async fn a_failure_comes_back_with_the_message_the_pool_gave() {
     let out = run_writes(
         vec![WriteOp::Mkdir {
-            path: "/srv/data/m".into(),
+            dir: "/srv/data".into(),
+            name: "m".into(),
         }],
         |a| async move { a },
         each(|_| async move { Err("新建目录失败: permission denied".into()) }),
@@ -453,10 +459,13 @@ async fn an_empty_batch_does_nothing_at_all() {
 #[test]
 fn exactly_delete_asks_first() {
     let all = vec![
-        WriteOp::Mkdir { path: "/a".into() },
+        WriteOp::Mkdir {
+            dir: "/".into(),
+            name: "a".into(),
+        },
         WriteOp::Rename {
             from: "/a".into(),
-            to: "/b".into(),
+            name: "b".into(),
             raw: None,
         },
         WriteOp::Delete {
@@ -471,7 +480,7 @@ fn exactly_delete_asks_first() {
         },
         WriteOp::Chmod {
             path: "/a".into(),
-            mode: 0o644,
+            mode: "644".into(),
             raw: None,
         },
     ];
@@ -495,7 +504,8 @@ fn exactly_delete_asks_first() {
 fn every_op_can_say_what_it_is() {
     assert_eq!(
         WriteOp::Mkdir {
-            path: "/srv/d".into()
+            dir: "/srv".into(),
+            name: "d".into(),
         }
         .label(),
         copy_core::copy_text("rsFilewinWriteops.op.mkdir", &[("path", "/srv/d")])
@@ -503,7 +513,7 @@ fn every_op_can_say_what_it_is() {
     assert_eq!(
         WriteOp::Rename {
             from: "/srv/a".into(),
-            to: "/srv/b".into(),
+            name: "b".into(),
             raw: None,
         }
         .label(),
@@ -516,7 +526,7 @@ fn every_op_can_say_what_it_is() {
     assert_eq!(
         WriteOp::Chmod {
             path: "/srv/a".into(),
-            mode: 0o644,
+            mode: "644".into(),
             raw: None,
         }
         .label(),
@@ -540,7 +550,8 @@ fn the_box_turns_what_you_typed_into_an_op_in_this_very_directory() {
     assert_eq!(
         p.to_op().unwrap(),
         WriteOp::Mkdir {
-            path: "/srv/data/sub".into()
+            dir: "/srv/data".into(),
+            name: "sub".into(),
         }
     );
 
@@ -554,7 +565,7 @@ fn the_box_turns_what_you_typed_into_an_op_in_this_very_directory() {
         p.to_op().unwrap(),
         WriteOp::Rename {
             from: "/srv/data/a.bin".into(),
-            to: "/srv/data/b.bin".into(),
+            name: "b.bin".into(),
             raw: None,
         }
     );
@@ -570,17 +581,16 @@ fn the_box_turns_what_you_typed_into_an_op_in_this_very_directory() {
         p.to_op().unwrap(),
         WriteOp::Chmod {
             path: "/srv/data/a.bin".into(),
-            mode: 0o755,
+            mode: "755".into(),
             raw: None,
         }
     );
 }
 
-/// 🔴 **名字合不合法不在窗口判**：框里敲什么（去掉两头空白）就交什么，那台按它的平台判（`single`，不合 ⇒ `bad_name`）。
-/// 权限位与「改名成原名」这两档仍在这里拒：一个是这一格的写法，一个是没有要做的事。
-/// 逐档的理由住 `super::parse_mode`：权限超范围 = 把文件类型位也一起改（服务端行为未定义）。
+/// 🔴 **名字与权限位都不在窗口判**：框里敲什么（去掉两头空白）就交什么，那台判（名字带 `single`，不合 ⇒ `bad_name`；
+/// 权限位的八进制那台解，不合 ⇒ `refused`）。只有「改名成原名」在这里拒：没有要做的事。
 #[test]
-fn an_impossible_input_is_refused_with_a_reason_instead_of_a_guess() {
+fn typed_names_and_modes_go_to_the_far_side_as_typed() {
     let r = row("a.bin", false, false);
     for typed in ["", "sub/x", ".", "..", "CON"] {
         let mut p = WritePrompt::for_mkdir("/srv/data");
@@ -588,7 +598,8 @@ fn an_impossible_input_is_refused_with_a_reason_instead_of_a_guess() {
         assert_eq!(
             p.to_op().expect("名字交给那台判，窗口不拒"),
             WriteOp::Mkdir {
-                path: format!("/srv/data/{typed}")
+                dir: "/srv/data".into(),
+                name: typed.into(),
             }
         );
     }
@@ -597,16 +608,17 @@ fn an_impossible_input_is_refused_with_a_reason_instead_of_a_guess() {
     p.text = " a.bin ".into();
     assert!(p.to_op().is_err(), "改名成原名竟然过了");
 
-    for bad in ["", "  ", "abc", "899", "10000", "-1", "0x644"] {
+    for typed in ["", "abc", "899", "10000", "0x644", "0755"] {
         let mut p = WritePrompt::for_chmod("/srv/data", &r);
-        p.text = bad.into();
-        assert!(p.to_op().is_err(), "权限位接受了「{bad}」");
-    }
-    // 反空真：合法的那几个真的过。
-    for good in ["644", "0755", "7777", "0"] {
-        let mut p = WritePrompt::for_chmod("/srv/data", &r);
-        p.text = good.into();
-        assert!(p.to_op().is_ok(), "权限位拒了合法的「{good}」");
+        p.text = format!(" {typed} ");
+        assert_eq!(
+            p.to_op().expect("权限位交给那台判，窗口不拒"),
+            WriteOp::Chmod {
+                path: "/srv/data/a.bin".into(),
+                mode: typed.into(),
+                raw: None,
+            }
+        );
     }
 }
 
@@ -627,13 +639,9 @@ fn every_box_says_what_it_is_asking() {
 // 哪几行能写
 // ════════════════════════════════════════════════════════════════════════
 
-/// 🔴 **目录能写、不能复制** —— 两个判准刻意不是同一个函数。
-///
-/// 合成一个的后果是具体的：要么目录上长出一颗点了必失败的「复制」
-/// （`copy-data` 吃文件句柄），要么目录上少了「删除」和「改名」——
-/// 而那正是这一刀要补的东西。
+/// 🔴 目录能写；有损名只有带着原始字节才能写（复制 · 下载两道门在 `pick-core`）。
 #[test]
-fn a_directory_can_be_written_and_copied_but_a_lossy_name_with_bytes_only_written() {
+fn a_directory_can_be_written_and_a_lossy_name_only_with_its_bytes() {
     let dir = row("adir", true, false);
     let file = row("a.bin", false, false);
     let lossy = row("\u{FFFD}odd", false, true);
@@ -647,18 +655,6 @@ fn a_directory_can_be_written_and_copied_but_a_lossy_name_with_bytes_only_writte
     assert!(
         !is_writable(&lossy),
         "有损名能写 —— 那个名字寻址不到真字节，删中的是另一个文件"
-    );
-
-    // 目录能复制了（后端 `recursive: true`）。
-    assert!(crate::copy::is_copyable(&dir), "目录复制不了？");
-    assert!(crate::copy::is_copyable(&file));
-    // 两个判准**真的不等价**（否则上面那几条在一个函数上也全绿）：带字节的有损名能写（写面收 b16），复制照旧不收。
-    assert!(is_writable(&lossy_raw));
-    assert_ne!(
-        is_writable(&lossy_raw),
-        crate::copy::is_copyable(&lossy_raw),
-        "两个判准在带字节的有损名这一档上给了同一个答案 —— 那它们就该合成一个，\
-         或者其中一个错了"
     );
 }
 
@@ -678,7 +674,7 @@ async fn the_board_answers_once_and_only_once() {
         },
         WriteOp::Chmod {
             path: "/b".into(),
-            mode: 0o600,
+            mode: "600".into(),
             raw: None,
         },
     ];
@@ -753,7 +749,8 @@ async fn the_real_adapter_speaks_the_backend_write_face_with_root_and_rel() {
     let origin = comms_inward::origin::Origin(wired.origin.clone());
     let ops = [
         WriteOp::Mkdir {
-            path: "/srv/data/新目录".into(),
+            dir: "/srv/data".into(),
+            name: "新目录".into(),
         },
         WriteOp::Delete {
             path: "/srv/data/x.bin".into(),
@@ -762,12 +759,12 @@ async fn the_real_adapter_speaks_the_backend_write_face_with_root_and_rel() {
         },
         WriteOp::Rename {
             from: "/srv/data/x.bin".into(),
-            to: "/srv/data/y.bin".into(),
+            name: "y.bin".into(),
             raw: None,
         },
         WriteOp::Chmod {
             path: "/srv/data/y.bin".into(),
-            mode: 0o640,
+            mode: "640".into(),
             raw: None,
         },
     ];
@@ -778,26 +775,12 @@ async fn the_real_adapter_speaks_the_backend_write_face_with_root_and_rel() {
     }
     let got: Vec<serde_json::Value> = wired.log.lock().unwrap().clone();
     let want = vec![
-        serde_json::json!({ "cmd": "files-mkdir", "args": { "root": "/srv/data", "rel": "新目录" } }),
+        serde_json::json!({ "cmd": "files-mkdir", "args": { "root": "/srv/data", "rel": "新目录", "single": true } }),
         serde_json::json!({ "cmd": "files-delete", "args": { "root": "/srv/data", "items": [{ "rel": "x.bin" }] } }),
-        serde_json::json!({ "cmd": "files-rename", "args": { "root": "/srv/data", "from": "x.bin", "to": "y.bin" } }),
-        serde_json::json!({ "cmd": "files-chmod", "args": { "root": "/srv/data", "items": [{ "rel": "y.bin" }], "mode": 0o640 } }),
+        serde_json::json!({ "cmd": "files-rename", "args": { "root": "/srv/data", "from": "x.bin", "to": "y.bin", "single": true } }),
+        serde_json::json!({ "cmd": "files-chmod", "args": { "root": "/srv/data", "items": [{ "rel": "y.bin" }], "mode": "640" } }),
     ];
     assert_eq!(got, want, "线上那四行与期望不等");
-    // 改名跨目录 ⇒ 当场拒，一个字节不发（写面只有一个 `root`）。
-    let e = super::apply_remote(
-        &wired.line,
-        &origin,
-        &WriteOp::Rename {
-            from: "/srv/data/a".into(),
-            to: "/srv/other/a".into(),
-            raw: None,
-        },
-    )
-    .await
-    .expect_err("跨目录改名竟然发出去了");
-    assert!(!e.is_empty());
-    assert_eq!(wired.log.lock().unwrap().len(), 4, "跨目录那一件上了线");
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -834,12 +817,12 @@ async fn a_directory_delete_recurses_and_a_lossy_name_is_addressed_by_its_bytes(
         },
         WriteOp::Rename {
             from: "/srv/data/caf\u{FFFD}.txt".into(),
-            to: "/srv/data/cafe.txt".into(),
+            name: "cafe.txt".into(),
             raw: Some(raw.clone()),
         },
         WriteOp::Chmod {
             path: "/srv/data/caf\u{FFFD}.txt".into(),
-            mode: 0o600,
+            mode: "600".into(),
             raw: Some(raw.clone()),
         },
     ];
@@ -853,8 +836,8 @@ async fn a_directory_delete_recurses_and_a_lossy_name_is_addressed_by_its_bytes(
     let want = vec![
         serde_json::json!({ "cmd": "files-delete", "args": { "root": "/srv/data", "items": [{ "rel": "build", "recursive": true }] } }),
         serde_json::json!({ "cmd": "files-delete", "args": { "root": "/srv/data", "items": [{ "rel": b16 }] } }),
-        serde_json::json!({ "cmd": "files-rename", "args": { "root": "/srv/data", "from": b16, "to": "cafe.txt" } }),
-        serde_json::json!({ "cmd": "files-chmod", "args": { "root": "/srv/data", "items": [{ "rel": b16 }], "mode": 0o600 } }),
+        serde_json::json!({ "cmd": "files-rename", "args": { "root": "/srv/data", "from": b16, "to": "cafe.txt", "single": true } }),
+        serde_json::json!({ "cmd": "files-chmod", "args": { "root": "/srv/data", "items": [{ "rel": b16 }], "mode": "600" } }),
     ];
     assert_eq!(got, want, "线上那几行与期望不等");
     // 往返上限：删目录那一件放宽，其余照旧。
@@ -913,17 +896,17 @@ fn one_chmod_box_for_many_rows_yields_one_op_per_row() {
         vec![
             WriteOp::Chmod {
                 path: "/srv/data/a.bin".into(),
-                mode: 0o750,
+                mode: "750".into(),
                 raw: None,
             },
             WriteOp::Chmod {
                 path: "/srv/data/sub".into(),
-                mode: 0o750,
+                mode: "750".into(),
                 raw: None,
             },
             WriteOp::Chmod {
                 path: "/srv/data/\u{FFFD}".into(),
-                mode: 0o750,
+                mode: "750".into(),
                 raw: Some(b"\xff".to_vec()),
             },
         ]
@@ -1015,7 +998,7 @@ fn gp1_the_chmod_box_says_the_current_mode_and_prefills_only_what_it_really_read
 #[test]
 fn gp1_the_mode_is_read_from_the_stat_reply_or_not_at_all() {
     let st = |mode: Option<u32>| {
-        let mut v = serde_json::json!({"path": "/a", "name": "a", "up": "/", "kind": "file", "size": 1, "readonly": false});
+        let mut v = serde_json::json!({"path": "/a", "up": "/", "kind": "file", "size": 1, "readonly": false});
         if let Some(m) = mode {
             v["mode"] = serde_json::json!(m);
         }
@@ -1053,7 +1036,7 @@ fn gp1_the_current_mode_is_prefilled_at_most_once_and_never_over_what_you_typed(
         p.to_op().expect("合法"),
         WriteOp::Chmod {
             path: "/srv/data/a.bin".into(),
-            mode: 0o640,
+            mode: "640".into(),
             raw: None,
         }
     );
@@ -1160,7 +1143,7 @@ fn the_chmod_grid_and_the_octal_field_follow_each_other() {
     // 只勾上其他人读（第 6 格）⇒ 「—」那一位逐项留原值：640 → 644、600 → 604。
     m.toggle_bit(6);
     assert_eq!(m.text, "", "还有「—」却写出了一个整数");
-    let modes: Vec<u32> = m
+    let modes: Vec<String> = m
         .to_ops()
         .expect("定了几位、其余读得到 ⇒ 算得出")
         .into_iter()
@@ -1169,7 +1152,7 @@ fn the_chmod_grid_and_the_octal_field_follow_each_other() {
             _ => unreachable!(),
         })
         .collect();
-    assert_eq!(modes, vec![0o644, 0o604]);
+    assert_eq!(modes, vec!["644", "604"]);
     // 读不到其中一项 ⇒ 「—」那几位算不出 ⇒ 拒（不猜）；整份填数字就照数字。
     let mut u = WritePrompt::for_chmod_many("/srv", &[&a, &b]);
     apply_prefill(&mut u, &mode_readout(&[Some(0o640), None]));
@@ -1200,18 +1183,13 @@ fn the_inline_cell_selects_the_stem_and_a_same_name_rename_is_no_op() {
     assert_eq!(
         n.to_inline(),
         Ok(Some(InlineGo::Op(WriteOp::Mkdir {
-            path: format!(
-                "/srv/data/{}",
-                copy_core::copy_static!("rsFilewinWriteops.inline.newDir")
-            )
+            dir: "/srv/data".into(),
+            name: copy_core::copy_static!("rsFilewinWriteops.inline.newDir").into(),
         })))
     );
     assert_eq!(
         WritePrompt::for_new("/srv/data", true).to_inline(),
-        Ok(Some(InlineGo::Create(format!(
-            "/srv/data/{}",
-            copy_core::copy_static!("rsFilewinWriteops.inline.newFile")
-        ))))
+        Ok(Some(InlineGo::Create))
     );
 }
 
@@ -1220,7 +1198,7 @@ fn the_inline_cell_selects_the_stem_and_a_same_name_rename_is_no_op() {
 fn receipts_say_what_was_done_and_carry_an_undo_only_when_it_is_whole() {
     let ch = |p: &str, m: u32| WriteOp::Chmod {
         path: p.into(),
-        mode: m,
+        mode: format!("{m:o}"),
         raw: None,
     };
     let ok = WriteOutcome {
@@ -1305,30 +1283,16 @@ fn a_chmod_undo_comes_from_the_backends_before_or_not_at_all() {
     };
     let op = WriteOp::Chmod {
         path: "/s/run.sh".into(),
-        mode: 0o755,
+        mode: "755".into(),
         raw: None,
     };
     assert_eq!(
         chmod_undo(&op, &chmod_reply(Some(420))),
         Some(WriteOp::Chmod {
             path: "/s/run.sh".into(),
-            mode: 0o644,
+            mode: "644".into(),
             raw: None
         })
     );
     assert_eq!(chmod_undo(&op, &chmod_reply(None)), None);
-}
-
-/// 就地新建 / 改名：用户敲的名字原样作 `rel` / `to` 交出去（名字里的 `/` 不当分隔符），根是当前目录。
-#[test]
-fn a_typed_name_goes_out_whole_against_the_current_directory() {
-    assert_eq!(
-        super::root_rel("/srv/data/sub/x", Some("sub/x")),
-        ("/srv/data".to_string(), "sub/x")
-    );
-    assert_eq!(super::root_rel("/x", Some("x")), ("/".to_string(), "x"));
-    assert_eq!(
-        super::root_rel("/srv/data/sub/x", None),
-        ("/srv/data/sub".to_string(), "x")
-    );
 }

@@ -8,9 +8,8 @@
 //!
 //! | 登记 | 它钉着什么 |
 //! |---|---|
-//! | `tests/frontend/shell/creds_store_tests.rs::PLAINTEXT_EXIT_SITES` | **今天已不钉本文件**：`expose_for_auth_header(` 恰好 1 处、住 `src/backend/accounts/upstream_select/mod.rs`（上游选择算好头材料交下来，本层碰不到明文）|
+//! | `tests/common/guard-core/rules/creds_store_exits.rs::PLAINTEXT_EXIT_SITES` | **今天已不钉本文件**：`expose_for_auth_header(` 恰好 1 处、住 `src/backend/accounts/upstream_select/mod.rs`（上游选择算好头材料交下来，本层碰不到明文）|
 //! | `tests/frontend/shell/byte_cap_registry_tests.rs` | `HEAD_CAP` / `BODY_CAP` / `TEE_DECODE_CAP` 三条的住址栏都是这个路径 |
-//! | `tests/frontend/shell/structural_scan_tests.rs` | `("src/comms/outward/server.rs", "handle_alloc_error", 1)` |
 //!
 //! 那几处都在 `tests/frontend/shell/` 下，**这里没改它们**（改动范围逐字是
 //! `src/backend/relay/` 及它下面新建的目录 ＋ `tests/backend/relay/`）。
@@ -30,7 +29,6 @@ use super::upstream::{self, Base, Conn};
 use super::{Ask, AuthSwap, Destination, Destinations, Heard, StreamId};
 use std::io::{BufReader, Read, Write};
 use std::net::TcpStream;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 // ⚠ 上游的环境旋钮与默认值住上游选择（「常量跟着职责走」），是
@@ -47,7 +45,7 @@ const HEAD_CAP: usize = 64 * 1024;
 ///
 /// ⚠ `HEAD_CAP` **管不到这个量** —— 它只管头**字节数**。先前这一格没有任何上限，
 /// 一条 `Content-Length: 1000000000000` 就能把**整个中转进程** abort 掉
-/// （`handle_alloc_error` ⇒ SIGABRT，不走 unwind），而这里是「一个进程服务 N 个会话」
+/// （`std::alloc::handle_alloc_error` ⇒ SIGABRT，不走 unwind），而这里是「一个进程服务 N 个会话」
 /// ⇒ 打掉的是当时**所有会话**的在途流。
 ///
 /// 值怎么定的：claude 搬的是 `POST /v1/messages` 的载荷 —— 一次会话的全部上下文 + 附件。
@@ -205,18 +203,6 @@ pub struct Relay {
     downstream_deadline: std::time::Duration,
     /// 上游那条 socket 的读写期限。同上，由后端交下来。
     upstream_deadline: std::time::Duration,
-    /// 本进程服务过的请求数 —— `DoD-1㈢`「两个键由同一个中转进程服务」量的就是它。
-    served: AtomicU64,
-    /// 每条连接透传收尾时落一笔 —— `DoD-2` acceptor ㈡「下游读到的块数 ≈ 上游发出的块数」量的就是它。
-    ///
-    /// `Some(n)` = 干净 EOF 收尾，`n` 是**写给下游并 flush 成功的次数**；
-    /// `None` = `pump` 以错误收尾（上游 RST 那一路）。
-    ///
-    /// ★ 这一格是回修轮补的。先前 `pump` 把块数**算出来了**（`Ok(writes)`），
-    /// 而调用点写的是 `pump(...)?;` —— 返回值**整个丢掉，没有任何消费者**
-    /// ⇒ 「块数对账」量得到、没人量。审计 `K4` 那一刀（只透第 1 块、其余攒到流末、
-    /// 一个字节不丢）因此 384 条判据全绿，而它正是「TUI 出一个 token 然后卡住」那个形状。
-    pumps: std::sync::Mutex<Vec<Option<u64>>>,
 }
 
 impl Relay {
@@ -243,29 +229,7 @@ impl Relay {
             tee,
             downstream_deadline,
             upstream_deadline,
-            served: AtomicU64::new(0),
-            pumps: std::sync::Mutex::new(Vec::new()),
         }
-    }
-
-    /// 消费 `pump` 的返回值。**生产段唯一的落点** —— 没有它，返回值就又成了死值。
-    fn note_pump(&self, outcome: &std::io::Result<u64>) {
-        if let Ok(mut g) = self.pumps.lock() {
-            g.push(outcome.as_ref().ok().copied());
-        }
-    }
-
-    /// 透传收尾账。**只给判据用** —— 生产路径不读它。
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn pumps(&self) -> Vec<Option<u64>> {
-        self.pumps.lock().expect("lock").clone()
-    }
-
-    /// `DoD-1㈢` 的量点：本进程服务过几个请求。**只给判据用** ——
-    /// 生产路径不读它（读了就成了「为了让守卫闭嘴而加的功能」）。
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn served(&self) -> u64 {
-        self.served.load(Ordering::SeqCst)
     }
 }
 
@@ -472,11 +436,11 @@ impl FailedAt {
                 copy_core::copy_static!("beServer.words.hopSend"),
             ),
             FailedAt::ClosedBeforeAnswer => (
-                copy_core::copy_static!("beServer.words.closedBeforeAnswer"),
+                copy_core::copy_static!("reason.link.lost"),
                 copy_core::copy_static!("beServer.words.hopWait"),
             ),
             FailedAt::NoAnswer => (
-                copy_core::copy_static!("beServer.words.noAnswer"),
+                copy_core::copy_static!("reason.link.noAnswer"),
                 copy_core::copy_static!("beServer.words.hopWait"),
             ),
             FailedAt::NotHttp => (
@@ -669,8 +633,6 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
         }
     };
 
-    relay.served.fetch_add(1, Ordering::SeqCst);
-
     // ★★★ **层间那一问就在这里**：中转问一句，上游选择答一句，
     //      **中转不做任何判断，照答案做**。
     //
@@ -816,8 +778,6 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
         .mark(id.stream, &request_marks(&head, &relay.marks));
     // `open` 发一个这一响应自己的游标（位置号 `n` 从 0 起），`event` / `note_dropped_bytes` / `close` 都拿它。
     let mut at = relay.tee.open();
-    // ★ 返回值**必须落地**：它是 `DoD-2㈡`「块数对账」的唯一量点。
-    // 写成 `pump(...)?;` 就等于把它丢掉 —— 那正是审计 `K4` 能全绿的原因。
     let outcome = pump(&mut up, &mut down_w, &mut |raw| {
         let decoded = view.feed(raw, TEE_DECODE_CAP);
         for payload in splitter.feed(&decoded, TEE_DECODE_CAP) {
@@ -828,7 +788,6 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
             .tee
             .note_dropped_bytes(&mut at, view.take_dropped() + splitter.take_dropped());
     });
-    relay.note_pump(&outcome);
     // 收尾交一件：转发以错误收尾（claude 按了 Esc / 上游 RST / 下游写不动）⇒ `broken`。
     relay.tee.close(id, at, outcome.is_err());
     outcome?;
@@ -953,19 +912,12 @@ fn stream_label<'h>(head: &'h RequestHead, names: &[&str]) -> &'h str {
 /// **最终内容一模一样**，只有时序能分开两者 —— 所以它的 acceptor 量的是时序，不是内容。
 /// 〔这句头注在 08-25 兑现了：审计切出的 `K4` 正是这一形，而当时 384 条判据全绿。
 ///  接住它的两条判据见 `every_chunk_reaches_the_client_before_upstream_sends_the_next_one`。〕
-///
-/// # 返回值的口径（别改这一条）
-///
-/// 返回的是**写给下游并 `flush` 成功的次数**，**不是**从上游读的次数。两者今天恒等
-/// （读一块写一块），而**恰恰是它们分家的那一天**这个数才有用：先攒后写的实现
-/// 读 N 次、只写 1 次 ⇒ 拿「读的次数」当返回值，对账那条判据就又瞎了。
 fn pump<R: Read, W: Write>(
     up: &mut R,
     down: &mut W,
     on_chunk: &mut dyn FnMut(&[u8]),
-) -> std::io::Result<u64> {
+) -> std::io::Result<()> {
     let mut buf = vec![0u8; READ_CHUNK];
-    let mut writes = 0u64;
     loop {
         let n = match up.read(&mut buf) {
             Ok(0) => break,
@@ -975,10 +927,9 @@ fn pump<R: Read, W: Write>(
         };
         down.write_all(&buf[..n])?;
         down.flush()?;
-        writes += 1;
         on_chunk(&buf[..n]);
     }
-    Ok(writes)
+    Ok(())
 }
 
 /// 渲染给上游的请求行 + 头。
@@ -1006,7 +957,7 @@ fn pump<R: Read, W: Write>(
 /// 1. **配了 key ⇒ 换头**：下游那份 `Authorization` 被**丢掉**，换上**上游选择交下来的那一格头**
 ///    （上游选择按这一行的 key 算好的；本层手里没有 key）。取明文的那一行今天住
 ///    `accounts::upstream_select`（先前住本文件），它是 `expose_for_auth_header` 在**整个后端生产段里唯一**的调用点
-///    （`KS2`，由 `creds_guard::the_plaintext_leaves_the_type_at_exactly_one_place_in_this_crate` 相等断言钉住）。
+///    （`KS2`，由 `creds_store_exits::the_plaintext_exits_are_called_from_exactly_one_place_each_across_all_three_trees` 相等断言钉住）。
 /// 2. **这一行没配 key ⇒ 原样转发**（`K-H1` 甲半那个形状，一个字节不动）。
 ///
 ///    ⚠⚠ **订正：这一条先前的理由今天是假的，已收口。**
@@ -1112,10 +1063,8 @@ pub fn render_upstream_request(
     }
     // ★★ **中转只照写。** 头名与**完整**头值都是上游选择算好的（`AuthSwap::write`）——
     //    中转不知道那个串里有没有前缀、是不是一把 key，它只看见一个串。
-    //    ⚠⚠ 把明文取出来的那一句**搬去上游选择了**（`accounts::upstream_select::dispatch_auth`）。
-    //      搬的是住址不是处数：`creds_guard` 那条「恰好 1 处」的相等断言一个字节没动
-    //      （它扫整个 crate，不写死文件名），`PLAINTEXT_EXIT_SITES` 只改了住址栏。
-    //      ⇒ 中转从此**碰不到明文**，这是 `C2` 买到的一格实质东西，不只是类型好看。
+    //    把明文取出来的那一句住上游选择（`accounts::upstream_select::header_value`，`PLAINTEXT_EXIT_SITES` 钉着恰好 1 处）
+    //      ⇒ 中转**碰不到明文**。
     if let Some((name, value)) = auth.and_then(|a| a.write) {
         out.push_str(&format!("{name}: {value}\r\n"));
     }

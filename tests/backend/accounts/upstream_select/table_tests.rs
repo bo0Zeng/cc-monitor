@@ -565,7 +565,7 @@ fn the_per_agent_upstream_table_has_no_duplicate_agent_or_knob_and_holds_the_cre
 /// 上游选择装出来的「登记了默认上游的家」== 适配层注册表里 `upstream` 那一格填了的家（按路由名）；
 /// 适配层里那一格没填的每一家（按注册表逐家问）在上游选择里都查不到。
 ///
-/// 守的要求：用户原话「**写死, 跟着适配层**」—— 每家 agent 的默认上游住 `agents::Adapter` 上那一格，上游选择只查它。
+/// 守的要求：「**写死, 跟着适配层**」—— 每家 agent 的默认上游住 `agents::Adapter` 上那一格，上游选择只查它。
 /// 异源：左边是上游选择**运行期装出来的表**，右边是适配层注册表（不经 `default_upstreams` 那个入口，直接逐家读 `REGISTRY`）。
 /// 另一半（「上游选择里没有第二个默认上游的来源」—— URL 字面量与旧表名的处数）住 `relay::table_guard`。
 #[test]

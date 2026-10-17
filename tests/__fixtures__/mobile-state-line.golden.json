@@ -1,0 +1,226 @@
+{
+  "cases": [
+    {
+      "line": {
+        "machine": {
+          "detail": null,
+          "fixes": [],
+          "next": null,
+          "os": null,
+          "reason": null,
+          "said": "连接 box · 启动 cc-monitor",
+          "seenHostKey": null,
+          "stage": "attach",
+          "state": "connecting",
+          "version": null,
+          "versionRelation": null,
+          "word": "连接中"
+        },
+        "state": "connecting"
+      },
+      "name": "正在连"
+    },
+    {
+      "line": {
+        "epoch": 1,
+        "machine": {
+          "detail": null,
+          "fixes": [],
+          "next": null,
+          "os": null,
+          "reason": null,
+          "said": "",
+          "seenHostKey": null,
+          "stage": null,
+          "state": "up",
+          "version": null,
+          "versionRelation": "same",
+          "word": ""
+        },
+        "state": "up"
+      },
+      "name": "连着"
+    },
+    {
+      "line": {
+        "epoch": 2,
+        "machine": {
+          "detail": null,
+          "fixes": [
+            {
+              "fix": "update",
+              "label": "更新"
+            }
+          ],
+          "next": null,
+          "os": null,
+          "reason": null,
+          "said": "box 要更新",
+          "seenHostKey": null,
+          "stage": null,
+          "state": "needs_update",
+          "version": null,
+          "versionRelation": "older",
+          "word": "要更新"
+        },
+        "state": "up"
+      },
+      "name": "那台旧"
+    },
+    {
+      "line": {
+        "epoch": 3,
+        "machine": {
+          "detail": null,
+          "fixes": [],
+          "next": null,
+          "os": null,
+          "reason": null,
+          "said": "box 版本较新 · 部分功能不可用",
+          "seenHostKey": null,
+          "stage": null,
+          "state": "newer",
+          "version": null,
+          "versionRelation": "newer",
+          "word": "版本较新"
+        },
+        "state": "up"
+      },
+      "name": "那台新"
+    },
+    {
+      "line": {
+        "machine": {
+          "detail": "exit: 127",
+          "fixes": [
+            {
+              "fix": "install",
+              "label": "安装"
+            }
+          ],
+          "next": null,
+          "os": null,
+          "reason": "other",
+          "said": "远端没有后端",
+          "seenHostKey": null,
+          "stage": null,
+          "state": "down",
+          "version": null,
+          "versionRelation": null,
+          "word": "离线"
+        },
+        "state": "down"
+      },
+      "name": "没有后端"
+    },
+    {
+      "line": {
+        "machine": {
+          "detail": "refused: x",
+          "fixes": [
+            {
+              "fix": "update",
+              "label": "更新"
+            }
+          ],
+          "next": null,
+          "os": null,
+          "reason": null,
+          "said": "box 要更新",
+          "seenHostKey": null,
+          "stage": null,
+          "state": "needs_update",
+          "version": null,
+          "versionRelation": null,
+          "word": "要更新"
+        },
+        "state": "down"
+      },
+      "name": "后端旧了"
+    },
+    {
+      "line": {
+        "machine": {
+          "detail": "命令：dial\n对象：box\n断在：连接失败 · 密钥被拒\n码：auth\n原话：denied",
+          "fixes": [
+            {
+              "fix": "push_key",
+              "label": "推送公钥…"
+            },
+            {
+              "fix": "conn_settings",
+              "label": "连接设置"
+            }
+          ],
+          "next": null,
+          "os": null,
+          "reason": "auth",
+          "said": "连接失败 · 密钥被拒",
+          "seenHostKey": null,
+          "stage": null,
+          "state": "down",
+          "version": null,
+          "versionRelation": null,
+          "word": "离线"
+        },
+        "state": "down"
+      },
+      "name": "密钥被拒"
+    },
+    {
+      "line": {
+        "machine": {
+          "detail": "对象：box\n断在：box 离线\n码：other",
+          "fixes": [
+            {
+              "fix": "retry",
+              "label": "重试"
+            },
+            {
+              "fix": "conn_settings",
+              "label": "连接设置"
+            }
+          ],
+          "next": null,
+          "os": null,
+          "reason": "other",
+          "said": "box 离线",
+          "seenHostKey": null,
+          "stage": null,
+          "state": "down",
+          "version": null,
+          "versionRelation": null,
+          "word": "离线"
+        },
+        "state": "down"
+      },
+      "name": "离线"
+    },
+    {
+      "line": {
+        "machine": {
+          "detail": "setsid",
+          "fixes": [],
+          "next": null,
+          "os": null,
+          "reason": null,
+          "said": "box · 仅支持 Unix",
+          "seenHostKey": null,
+          "stage": null,
+          "state": "unsupported",
+          "version": null,
+          "versionRelation": null,
+          "word": "不支持"
+        },
+        "state": "down"
+      },
+      "name": "不是 Unix"
+    }
+  ],
+  "说明": [
+    "手机核心交 Kotlin 的 `state` 那一行（通没通 ＋ 那台的状态成品）的跨语言金样。",
+    "Rust：src/mobile/core-rs/rust/resident.rs 按 name 走生产函数现产，逐字相等。",
+    "Kotlin：core-claude 的 ResidentFeedTest 读同一份逐行解成 LinkState。",
+    "机器名 · 那一句 · 详情是结构夹具，不取自任何真机。"
+  ]
+}

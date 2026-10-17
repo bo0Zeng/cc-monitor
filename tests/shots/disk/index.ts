@@ -29,6 +29,10 @@ export interface LiveSession {
   statusUpdatedAt?: number;
   /** 替身进程环境里的配置目录指向账号库里哪个号（后端读它，宣告里说会话跑在哪个号下）。缺 ⇒ 不设（账号 0）。 */
   account?: string;
+  /** 它那个窗格里此刻那一屏（原样的终端输出，`./screen`）：替身起来先印进自己的窗格，真后端抓屏 · 实时画面读的就是它。缺 ⇒ 空屏。 */
+  screen?: string;
+  /** 连着它那个 tmux 会话的终端窗口数（台架在同一台私有 tmux 里起几个嵌套的客户端 attach 上去）。缺 ⇒ 0（在后台）。 */
+  windows?: number;
 }
 
 export interface MachineDisk {
@@ -49,6 +53,13 @@ export interface MachineDisk {
    * 与后端预读没完成时压着的那几种恰好一样，壳与界面照真的那一套收宣告那一帧。
    */
   primeHeld?: string[];
+  /** 不住 claude 的 tmux 会话（起了、启动器报错退回 shell 的那一种）：会话名 ＋ 窗格里那一屏。 */
+  bareTmux?: { name: string; screen: string }[];
+  /**
+   * 那台的 tmux 在边界上的替身（后端照常敲 `tmux`，先碰到它）：报的版本（演「只能快照」）· 哪几个子命令照「没有 server」失败
+   * （演「画面读不出」）。缺 ⇒ 真 tmux 原样。
+   */
+  tmuxShim?: { version?: string; noServer?: string[] };
 }
 
 export const blankDisk = (): MachineDisk => ({ files: {}, live: [] });

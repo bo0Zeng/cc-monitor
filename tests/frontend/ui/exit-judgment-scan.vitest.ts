@@ -25,9 +25,10 @@ import { productionKtFiles, productionRsFiles, productionTsFiles } from "../../t
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
 import { KT_RULES, RS_RULES, TS_RULES, type ExitRule } from "./exit-rules.ts";
+import { nonEmpty } from "../../test-support/non-empty.ts";
 
 /** 上一批收完时的合计（`ceiling` 只许往下改；改小了这里一起改小）。 */
-const CEILING_AT_MOST = 177;
+const CEILING_AT_MOST = 132;
 
 type Lang = "ts" | "rs" | "kt";
 
@@ -113,7 +114,7 @@ describe("出口零判定零格式化：扫描 ＋ 只减不增的欠账名单",
   it("阳性 / 阴性对照：每条规则对自己的样例各恰好命中一次 / 零次", () => {
     const bad: string[] = [];
     for (const r of [...TS_RULES, ...RS_RULES, ...KT_RULES]) {
-      expect(r.hits.length, `${r.id} 没有阳性样例`).toBeGreaterThan(0);
+      nonEmpty(r.hits);
       for (const h of r.hits) if ((h.match(r.re)?.length ?? 0) !== 1) bad.push(`${r.id} 阳性「${h}」没恰好命中一次`);
       for (const m of r.misses) if ((m.match(r.re)?.length ?? 0) !== 0) bad.push(`${r.id} 阴性「${m}」命中了`);
     }

@@ -208,7 +208,7 @@ fn the_table_judges_every_cell_place_and_target() {
         .iter()
         .map(|r| (r.name.clone(), r.new, r.cells.iter().map(brief).collect()))
         .collect();
-    let off = format!("note:{}", n("beExt.note.offline"));
+    let off = format!("note:{}", n("kit.offline.later"));
     let no_proj = format!("note:{}", n("beExt.note.noProject"));
     let want: Vec<(String, bool, Vec<String>)> = vec![
         (
@@ -1137,7 +1137,6 @@ fn no_production_code_writes_the_agent_settings_file() {
         "OpenOptions",
         "write_all",
         "door::put",
-        "files-put",
         "fs::rename",
         "door::rename",
     ];
@@ -1363,7 +1362,7 @@ async fn the_wire_matches_the_cross_language_golden() {
             .replace(&*base.display().to_string(), "<BASE>"),
     )
     .unwrap();
-    let path = crate::guard_support::repo_root().join("tests/__fixtures__/ext-flow.golden.json");
+    let path = guard_core::addr::repo_root().join("tests/__fixtures__/ext-flow.golden.json");
     let want: Value = serde_json::from_str(
         &std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读不到金样 {path:?}：{e}")),
     )

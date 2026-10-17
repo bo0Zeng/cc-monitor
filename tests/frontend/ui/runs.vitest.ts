@@ -1,5 +1,5 @@
 /**
- * 要求：子运行不进主 tab 的消息流，在跑的只在 agent 面板里列（有上界），状态只读后端给的那一份 —— 用户原话
+ * 要求：子运行不进主 tab 的消息流，在跑的只在 agent 面板里列（有上界），状态只读后端给的那一份 —— 要求
  * 「全是agent的 / 我们不是有agent部分吗, 为什么全部放主界面」；派出它的那张工具卡标状态。界面只收通用形
  * （运行表 ＋ 归一事件），不认任何一家的目录、字段、事件名。
  *
@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import { owned } from "../../test-support/owned-tab-manager.ts";
+import { announced } from "../../test-support/session-faces";
 import { invoke } from "@tauri-apps/api/core";
 
 vi.mock("@tauri-apps/api/core", async () => {
@@ -168,7 +169,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     const streamRootEl = document.createElement("div");
     const panel = new AgentsPanel();
     document.body.replaceChildren(barEl, streamRootEl, panel.summaryElement, panel.pageElement);
-    const tm = owned(new TabManager(barEl, streamRootEl, undefined, undefined, panel));
+    const tm = owned(announced(new TabManager(barEl, streamRootEl, undefined, undefined, panel)));
     tm.setLivePainter(livePainter);
     return { tm, streamRootEl, panel };
   }
@@ -196,7 +197,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     const { tm, streamRootEl, panel } = rig();
     tm.onLine(dispatch(0, "t1", "扫目录"));
     tm.switchTo(SID);
-    tm.onSessionRuns({ session_id: SID, runs: SIX, ended: [] });
+    tm.onSessionRuns({ sid: SID, runs: SIX, ended: [] });
 
     // 主 tab：只在运行表里出现的那几个标签，消息流里一个字都没有；也没有任何按运行标的行。
     const mainText = streamRootEl.textContent ?? "";
@@ -233,7 +234,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     const { tm, streamRootEl } = rig();
     tm.onLine(dispatch(0, "t1", "扫目录"));
     tm.switchTo(SID);
-    tm.onSessionRuns({ session_id: SID, runs: [run("w6", "done", "扫目录", "t1")], ended: [] });
+    tm.onSessionRuns({ sid: SID, runs: [run("w6", "done", "扫目录", "t1")], ended: [] });
     const handback = (seq: number, from: string) =>
       userLine(seq, `u${seq}`, "<agent-message>…</agent-message>", {
         who: { speaker: { kind: "agentMessage", from, name: "worker-7", handback: true, body: "报告正文" }, text: "报告正文" },
@@ -258,7 +259,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     expect(notices().join("|")).toContain("扫目录");
     // 句子里的状态写字（完成 / 失败），不拿字符当图标（C-W1）。
     expect(notices()).toContain(copyText("speaker.notice.row", { what: "扫目录", state: copyText("runs.state.done"), time: notices()[0].split(" · ").at(-1) ?? "" }));
-    const facts = { agent: "claude", end: 1, forkedFrom: null, touchedFiles: [], usage: null, projectDir: null, writers: [], pending: [], lastSay: null, needs: null, handedBack: ["w6"], retries: [], permissionMode: null, tokens: null, cost: null, mcp: [], startedBy: null, children: [] };
+    const facts = { agent: "claude", forkedFrom: null, touchedFiles: [], usage: null, projectDir: null, writers: [], pending: [], lastSay: null, needs: null, handedBack: ["w6"], retries: [], permissionMode: null, tokens: null, cost: null, mcp: [], startedBy: null, children: [] };
     (tm as unknown as { onSessionFacts(sid: string, f: unknown): void }).onSessionFacts(SID, facts);
     expect(notices().join("|")).not.toContain("扫目录");
     expect(notices().join("|"), "别的子运行的通知照常").toContain("别的");
@@ -270,9 +271,9 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     tm.onLine(dispatch(0, "t1", "扫目录"));
     tm.onLine(launched(1, "t1"));
     tm.switchTo(SID);
-    tm.onSessionRuns({ session_id: SID, runs: [run("w6", "running", "扫目录", "t1")], ended: [] });
+    tm.onSessionRuns({ sid: SID, runs: [run("w6", "running", "扫目录", "t1")], ended: [] });
     expect(rowsIn(panel)).toEqual([{ run: "w6", ...st("running") }]);
-    tm.onSessionRuns({ session_id: SID, runs: [run("w6", "stopped", "扫目录", "t1")], ended: [] });
+    tm.onSessionRuns({ sid: SID, runs: [run("w6", "stopped", "扫目录", "t1")], ended: [] });
     expect(rowsIn(panel)).toEqual([{ run: "w6", ...st("stopped") }]);
     expect(MARK.stopped).not.toBe(MARK.done);
   });
@@ -282,7 +283,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     tm.onLine(dispatch(0, "t1", "扫目录"));
     tm.onLine(launched(1, "t1"));
     tm.switchTo(SID);
-    tm.onSessionRuns({ session_id: SID, runs: [run("w6", "running", "扫目录", "t1")], ended: [] });
+    tm.onSessionRuns({ sid: SID, runs: [run("w6", "running", "扫目录", "t1")], ended: [] });
     const card = streamRootEl.querySelector<HTMLElement>('[data-role="run-card"]')!;
     expect(card.querySelector('[data-role="run-result"]'), "回执不是交回").toBeNull();
     expect(card.dataset.runState).toBe("running");
@@ -296,7 +297,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     tm.onLine(dispatch(0, "t1", "扫目录"));
     tm.switchTo(SID);
     const card = streamRootEl.querySelector<HTMLElement>('[data-role="run-card"]')!;
-    tm.onSessionRuns({ session_id: SID, runs: [], ended: [{ run: "w6", tool: "t1", state: "done" }] });
+    tm.onSessionRuns({ sid: SID, runs: [], ended: [{ run: "w6", tool: "t1", state: "done" }] });
     expect([card.dataset.runState, card.querySelector('[data-role="run-state"]')?.textContent]).toEqual(["done", copyText("runs.state.done")]);
     expect(panel.pageElement.querySelector('.agent-row[data-run="w6"]')).toBeNull();
   });
@@ -307,10 +308,10 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     tm.switchTo(SID);
     const card = streamRootEl.querySelector<HTMLElement>('[data-role="run-card"]')!;
     const stateOf = () => card.querySelector('[data-role="run-state"]')?.textContent;
-    tm.onSessionRuns({ session_id: SID, runs: [run("w6", "running", "扫目录", "t1")], ended: [] });
+    tm.onSessionRuns({ sid: SID, runs: [run("w6", "running", "扫目录", "t1")], ended: [] });
     expect([card.dataset.runState, stateOf()]).toEqual(["running", copyText("runs.state.running")]);
     const T = Date.parse("2026-10-01T10:00:00Z");
-    tm.onSessionRuns({ session_id: SID, runs: [{ ...run("w6", "failed", "扫目录", "t1"), started_ms: T, ended_ms: T + 120_000 }], ended: [] });
+    tm.onSessionRuns({ sid: SID, runs: [{ ...run("w6", "failed", "扫目录", "t1"), started_ms: T, ended_ms: T + 120_000 }], ended: [] });
     expect([card.dataset.runState, stateOf()]).toEqual([
       "failed",
       [copyText("runs.state.failed"), copyText("agentWindow.facts.took", { dur: "2m" })].join(copyText("kit.text.sep")),
@@ -338,7 +339,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     tm.onLine(dispatch(0, "t1", "扫目录"));
     tm.switchTo(SID);
     tm.setRunWindow(SID, "w6", true);
-    tm.onSessionRuns({ session_id: SID, runs: [run("w6", "running", "扫目录", "t1")], ended: [] });
+    tm.onSessionRuns({ sid: SID, runs: [run("w6", "running", "扫目录", "t1")], ended: [] });
     const card = streamRootEl.querySelector<HTMLElement>('[data-role="run-card"]')!;
     expect(card.querySelector('[data-role="window-open"]')).not.toBeNull();
   });

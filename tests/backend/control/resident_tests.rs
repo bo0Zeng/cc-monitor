@@ -319,11 +319,11 @@ fn upgrading_retires_the_old_resident_so_the_relay_port_frees_up() {
     let pid = old.id();
     let exe = crate::platform::proc::exe_of(pid).expect("exe");
     std::fs::write(
-        relay_route_core::legacy_listen_pid_for(&dh),
+        dh.join(format!("listen-{port}.pid")),
         format!("{pid}\n{exe}\n"),
     )
     .unwrap();
-    std::fs::write(dh.join(relay_route_core::LEGACY_LISTEN_TOKEN_NAME), "old").unwrap();
+    std::fs::write(dh.join(LEGACY_LISTEN_TOKEN_NAME), "old").unwrap();
     assert!(
         std::net::TcpListener::bind(("127.0.0.1", port)).is_err(),
         "前提：旧版占着那个口"
@@ -336,10 +336,10 @@ fn upgrading_retires_the_old_resident_so_the_relay_port_frees_up() {
         std::net::TcpListener::bind(("127.0.0.1", port)).is_ok(),
         "旧版停了，口却没空出来 —— 新版接不上中转"
     );
-    assert!(!relay_route_core::legacy_listen_pid_for(&dh).exists());
-    assert!(!dh.join(relay_route_core::LEGACY_LISTEN_TOKEN_NAME).exists());
+    assert!(legacy_listen_pid_in(&dh).is_none());
+    assert!(!dh.join(LEGACY_LISTEN_TOKEN_NAME).exists());
     // 顺序：同一条线程里先 `retire_legacy`，后 `host_relay`。
-    let main = crate::guard_support::production_code(include_str!("../../../src/backend/main.rs"));
+    let main = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
     let at = main
         .find("control::resident::retire_legacy")
         .expect("main.rs 里没有升级那一跳");
@@ -351,4 +351,106 @@ fn upgrading_retires_the_old_resident_so_the_relay_port_frees_up() {
         "停旧版与接中转不在同一条线程里 —— 顺序就钉不住了"
     );
     let _ = std::fs::remove_dir_all(&dh);
+}
+
+/// 扮一个在听的常驻后端：另一个进程绑 `<家>/run/backend.sock`，每条连接先给一行 hello（带 `build`）再关；收 SIGTERM 就退。
+#[cfg(target_os = "linux")]
+fn fake_resident(dh: &Path, build: &str) -> Reap {
+    use std::io::BufRead as _;
+    let run = relay_route_core::listen_dir_for(dh);
+    std::fs::create_dir_all(&run).unwrap();
+    std::fs::set_permissions(&run, std::os::unix::fs::PermissionsExt::from_mode(0o700)).unwrap();
+    let mut c = std::process::Command::new("python3")
+        .args([
+            "-c",
+            "import socket,sys,signal,json\n\
+             signal.signal(signal.SIGTERM, lambda *a: sys.exit(0))\n\
+             s=socket.socket(socket.AF_UNIX); s.bind(sys.argv[1]); s.listen()\n\
+             print('ready', flush=True)\n\
+             while True:\n    c,_=s.accept(); c.sendall((json.dumps({'type':'hello','build_id':sys.argv[2]})+'\\n').encode()); c.close()\n",
+        ])
+        .arg(relay_route_core::listen_socket_for(dh))
+        .arg(build)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("起扮常驻的那个进程");
+    let mut line = String::new();
+    std::io::BufReader::new(c.stdout.take().unwrap())
+        .read_line(&mut line)
+        .unwrap();
+    assert_eq!(line.trim(), "ready");
+    Reap(c)
+}
+
+/// 停按套接字认人：停的是**此刻真在听**的那一位（内核报的对端 pid），不是盘上记录指着的那个 ——
+/// 陈旧的「谁在听」记录指着一个 pid 被复用、程序路径也对得上的进程，它照样活着。
+#[test]
+#[cfg(target_os = "linux")]
+fn stopping_asks_the_socket_not_a_recorded_pid() {
+    let dh = scratch("peerstop");
+    let mut listening = fake_resident(&dh, "p9a-old");
+    let decoy = Reap(sh_child(
+        "trap 'exit 0' TERM; echo ready; while :; do sleep 0.05; done",
+    ));
+    let dpid = decoy.0.id();
+    let exe = crate::platform::proc::exe_of(dpid).expect("exe");
+    std::fs::write(
+        relay_route_core::listen_dir_for(&dh).join("backend.pid"),
+        format!("{dpid}\n{exe}\n"),
+    )
+    .unwrap();
+    let own = crate::platform::fs::Own::issue_data_at(&dh);
+    let lpid = listening.0.id();
+    assert_eq!(stop_owner(&own, 5_000), Ok(Stopped::Graceful(lpid)));
+    let mut decoy = decoy;
+    assert!(
+        matches!(decoy.0.try_wait(), Ok(None)),
+        "停到了记录指着的那个进程"
+    );
+    let _ = listening.0.wait();
+    // 没人在听 ⇒ 没东西要停。
+    assert_eq!(stop_owner(&own, 200), Ok(Stopped::NotRunning));
+    let _ = std::fs::remove_dir_all(&dh);
+}
+
+/// 「只升不降」在执行换的那一处判：在听的那一位不比这一版旧（同版 · 更新）⇒ 不停它、照实说没换；比这一版旧 ⇒ 停掉。
+#[test]
+#[cfg(target_os = "linux")]
+fn replacing_never_downgrades_the_one_that_listens() {
+    let mine = "p9b-mine";
+    for (theirs, kept) in [
+        ("p9c-newer", true),
+        ("p9b-mine", true),
+        ("p9a-older", false),
+    ] {
+        let dh = scratch("swap");
+        let mut listening = fake_resident(&dh, theirs);
+        let own = crate::platform::fs::Own::issue_data_at(&dh);
+        let got = swap_out(&own, mine, 5_000).expect("换");
+        let lpid = listening.0.id();
+        if kept {
+            assert_eq!(got, Swap::Kept(lpid), "{theirs}：不该停");
+            assert!(
+                matches!(listening.0.try_wait(), Ok(None)),
+                "{theirs}：被停了"
+            );
+        } else {
+            assert_eq!(got, Swap::Cleared(Stopped::Graceful(lpid)), "{theirs}");
+            let _ = listening.0.wait();
+        }
+        drop(listening);
+        let _ = std::fs::remove_dir_all(&dh);
+    }
+}
+
+/// 旧版常驻后端的进程记录照名字的形状找：`listen-<口>.pid` 才算，别的同前缀文件（钥匙 · 不是口号的）不算。
+#[test]
+fn legacy_listen_record_is_found_by_its_name_shape() {
+    let dh = scratch("legacy-shape");
+    std::fs::write(dh.join(LEGACY_LISTEN_TOKEN_NAME), "old").unwrap();
+    std::fs::write(dh.join("listen-x.pid"), "").unwrap();
+    assert_eq!(legacy_listen_pid_in(&dh), None);
+    std::fs::write(dh.join("listen-56233.pid"), "").unwrap();
+    assert_eq!(legacy_listen_pid_in(&dh), Some(dh.join("listen-56233.pid")));
 }

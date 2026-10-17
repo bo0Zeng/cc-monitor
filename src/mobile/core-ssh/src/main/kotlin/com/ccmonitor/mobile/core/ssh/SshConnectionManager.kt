@@ -92,7 +92,7 @@ class SshConnectionManager(
         // 同 id 并发连接单飞：先到者建，后到者进锁复查见活连接即复用，不会各建一条互相顶掉。
         return connectLockFor(id).withLock {
             states[id]?.connection?.takeIf { it.isConnected }?.let {
-                emit(copyText("mobSsh.log.reusedConcurrent"))
+                emit(copyText("mobSsh.log.reused"))
                 return@withLock it
             }
             doConnect(id, hostId, label, addressConfigs, onEvent, expectedGen)
@@ -144,9 +144,10 @@ class SshConnectionManager(
     }
 
     /**
-     * 没连成的收尾：关掉（防半开链路泄漏），未被新的 disconnect 取代时标 ERROR（否则会复活已被移除的会话条目）。
-     * 没够着那一台（[reached] 为假，网不通）：拨号请求照样交给共用那条（它自己再拨，够着了报、这一层跟着接上）；
-     * 这一条留作同一份身份的底（关掉的、本地标志是死的），跟着换时照它 again()。那台拒了的（认证 · 钥匙变了）不交。
+     * 没连成的收尾：未被新的 disconnect 取代时标 ERROR（否则会复活已被移除的会话条目）。
+     * 没够着那一台（[reached] 为假，网不通）：拨号请求照样交给共用那条（它自己再拨，够着了报、这一层跟着接上），
+     * 这一条换下原先装着的那条（已死，关掉）、留作同一份身份的底：不关 —— 它握着那份身份的钥匙，跟着换时照它 again()。
+     * 其余（那台拒了：认证 · 钥匙变了；期间被断开）关掉（防半开链路泄漏，钥匙随之放掉）。
      */
     @Suppress("LongParameterList")
     private fun failed(
@@ -158,17 +159,20 @@ class SshConnectionManager(
         e: Exception,
         reached: Boolean,
     ) {
-        closeInBackground(listOf(conn))
+        var doomed = listOf(conn)
         synchronized(lockFor(id)) {
             val st = stateFor(id)
-            if (st.generation != myGen) return
-            put(SessionState(id, hostId, label, SessionStatus.ERROR, e.message ?: e.toString()))
-            val req = conn.dialRequest
-            if (!reached && req != null) {
-                if (st.connection == null) st.connection = conn
-                dials.update { it + (id to req) }
+            if (st.generation == myGen) {
+                put(SessionState(id, hostId, label, SessionStatus.ERROR, e.message ?: e.toString()))
+                val req = conn.dialRequest
+                if (!reached && req != null) {
+                    doomed = listOfNotNull(st.connection?.takeIf { it !== conn })
+                    st.connection = conn
+                    dials.update { it + (id to req) }
+                }
             }
         }
+        closeInBackground(doomed)
     }
 
     /**

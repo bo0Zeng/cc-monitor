@@ -358,6 +358,15 @@ body.settings-window-mode .settings-panel {
   color: var(--warn);
 }
 
+/* 下一步那一句（壳写好的，可能两行）：占满一行，排在那句与修法下面。 */
+.machine-problem-next {
+  flex-basis: 100%;
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
 /* 装 / 更新那一段：一条走动的进度条（字节一趟推过去，没有分段进度可报）。 */
 .machine-problem-bar {
   position: relative;
@@ -586,6 +595,9 @@ body.settings-window-mode .settings-panel {
   min-height: 52px;
   padding: var(--space-4) 0;
   border-bottom: 1px solid var(--border);
+}
+.machine-cc-row[hidden] {
+  display: none;
 }
 
 .machine-cc-row > label {

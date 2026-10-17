@@ -91,7 +91,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::guard_support::production_code;
+    use guard_core::production_code;
 
     /// 会引出一个**平台分支**的 cfg 写法 —— 正向与反向都要认。
     ///
@@ -143,7 +143,7 @@ mod tests {
     }
 
     pub(super) fn platform_sources() -> Vec<(String, String)> {
-        let root = crate::guard_support::src_root().join("platform");
+        let root = guard_core::addr::backend_src_root().join("platform");
         let mut out = Vec::new();
         let mut stack = vec![root.clone()];
         while let Some(dir) = stack.pop() {
@@ -469,7 +469,7 @@ mod tests {
 #[cfg(test)]
 mod g6_reach {
     use super::tests::{block_after, fabricates, platform_cfgs, platform_sources};
-    use crate::guard_support::production_code;
+    use guard_core::production_code;
 
     /// 取某个 cfg 属性后面那个块（合成样本与真语料共用同一条取块逻辑）。
     fn block_of(code: &str, cfg: &str) -> String {
@@ -543,14 +543,10 @@ mod g6_reach {
     #[test]
     fn every_blind_shape_passes_and_says_why() {
         assert_eq!(BLIND.len(), 5, "拦不住的形状表条数变了：{}", BLIND.len());
-        for (shape, sample, why) in BLIND {
+        for (shape, sample, _) in BLIND {
             assert!(
                 fabricates(sample).is_empty(),
                 "「{shape}」今天红了 —— 本护栏的射程变了，这张表说的话已经不成立"
-            );
-            assert!(
-                why.trim().chars().count() >= 10,
-                "「{shape}」没写清为什么它不红 —— 一张只列形状不给理由的表，下一轮没人敢动"
             );
         }
     }

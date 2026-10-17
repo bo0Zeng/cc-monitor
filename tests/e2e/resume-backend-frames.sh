@@ -9,7 +9,7 @@
 #   gen-idle-tmux(fake-claude 活 + @ccm_sid)        → SessionAdded(sid)      = live
 #   (kill fake-claude,tmux 会话留活)                → SessionRemoved(sid)    = 灰(claude 死、tmux 在)
 #   SessionState(sid, reconnectable)                  = 灰后端条件(后端会话账本裁,原看 tmux 快照帧)
-#   (跑**生产渲染链**〔`resume-cmd-driver.ts into-existing` → 生产 Rust render_ccm_launch〕就地 resume,复用原名)
+#   (取 `session-open` 本体交出去的那一行〔`open-line-emit.sh` 空 tmux 那一形〕键进原会话就地 resume,复用原名)
 #     → fake-claude 复活(新 pidfile,同 sessionId)   → SessionAdded(sid) 再现 = **复活清灰**(后端边沿)
 #   全程 tmux 只有一个 cc-<sid8>(复用,无 -N 孤儿,治 #76)
 # 红线:backend 零改动(只跑它)/ CLAUDE_CONFIG_DIR 隔离绝不碰真 ~/.claude / 不改 TMUX_LS_FMT。
@@ -45,13 +45,12 @@ E2E_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$E2E_DIR/../.." && pwd)"
 BACKEND="${CCM_E2E_BACKEND:-$REPO/.build/backend/debug/cc-monitor-backend}"
 FAKE="$E2E_DIR/fake-claude"
-DRIVER="$E2E_DIR/resume-cmd-driver.ts"
 WORK="$(mktemp -d /tmp/e2e-resume-frames.XXXXXX)"
 # 后端盯的账号目录默认落本趟私有的 $WORK 下（原先是固定的 /tmp/e2e-resume-frames：两趟同时跑时后起的那一趟开头
 #   `rm -rf` 会把先起那一趟的夹具整个删掉）。假 claude 只许写 /tmp 下 ⇒ $WORK 本来就在。
 CLAUDE_DIR="${CCM_E2E_CLAUDE_DIR:-$WORK/claude}"
 # 〔纪律 25〕启动器路径要过 §47 的字符闸（只许 ASCII 那一族）；仓可能住在非 ASCII 的目录里⇒ 同 `restart-suite.sh`，
-#   把 fake-claude 拷进 ASCII 的 $WORK 再当启动器（主树路径下跑，就地 resume 那一步原先 DRIVER_THROW REFUSE）。
+#   把 fake-claude 拷进 ASCII 的 $WORK 再当启动器（主树路径下跑，否则就地 resume 那一步被拒）。
 cp "$FAKE" "$WORK/fake-claude" && chmod +x "$WORK/fake-claude" && FAKE="$WORK/fake-claude"
 FRAMES="$WORK/frames.jsonl"
 BACKEND_ERR="$WORK/backend.stderr"
@@ -146,19 +145,20 @@ if [ "$GRAY_ALIVE" = 1 ] && printf '%s' "$SS_GRAY" | grep -q '"state":"reconnect
 else bad "claude 死后会话没了($GRAY_ALIVE) 或没裁成可重连(不该):$SS_GRAY"; fi
 
 # ── 3. REVIVE:跑真源就地 resume 命令(复用原名)→ fake-claude 复活 → SessionAdded 再现 = 清灰 ──
-echo "-- 就地 resume(生产渲染链 resume-cmd-driver into-existing → render_ccm_launch,复用 $SESSION,账号目录 = 后端所看目录)--"
+echo "-- 就地 resume(session-open 空 tmux 那一形交出去的那一行,复用 $SESSION,账号目录 = 后端所看目录)--"
 # configDir = backend 监视目录 → 复活的 fake-claude pidfile 落这里,backend 判活得到 = 后端复活。
 # 后端监视的那个目录登记成沙箱账号清单里的一个号，按名字点它。
 cat > "$CCM_SHIM_ACCOUNTS/accounts.json" <<JSON
 { "version": 1, "accounts": [ { "name": "e2e", "configDir": "$CLAUDE_DIR", "isDefault": false } ] }
 JSON
-CMD="$(npx tsx "$DRIVER" into-existing "$SID" "$SESSION" "$FAKE" e2e)"
+CMD="$(bash "$E2E_DIR/open-line-emit.sh" shape=into-existing sid="$SID" name="$SESSION" launcher="$FAKE" account=e2e)"
 echo "   cmd: $CMD"
-echo "$CMD" | grep -qF "send-keys -t '=$SESSION:' '$CCM_ENTRY --resume $SID " && ! echo "$CMD" | grep -q "new-session\|--ccm-tmux" \
+echo "$CMD" | grep -qF "$CCM_ENTRY --resume $SID " && ! echo "$CMD" | grep -q "new-session\|--ccm-tmux" \
   && ok "resume 命令就地复用 $SESSION、无 new-session(#76)" \
   || bad "resume 命令未就地复用"
 MARK_REVIVE="$(wc -l <"$FRAMES")"
-timeout "$WALL_CEILING_S" bash -c "$CMD" >/dev/null 2>&1 || true
+# 那台后端把这一行键进那个会话的窗格（`launch send-into`），这里照做。
+tmux -u send-keys -t "=$SESSION:" "$CMD" Enter >/dev/null 2>&1 || true
 SA2="$(wait_line "$MARK_REVIVE" "\"kind\":\"session_added\".*$SID")" \
   && ok "复活清灰:kill 后再 resume → SessionAdded($SID) 再现(后端灰→live 边沿):$SA2" \
   || bad "上限内未见复活 SessionAdded($SID)(清灰失败)"

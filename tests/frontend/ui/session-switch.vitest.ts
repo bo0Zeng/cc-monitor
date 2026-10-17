@@ -28,16 +28,25 @@ import { SwitchChips, afterSwitch, chipFace, type SwitchHost, type SwitchLocal, 
 import { switchModel, switchPermission } from "../../../src/frontend/ui/session-writes";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
-import type { NewFacts } from "../../../src/frontend/ui/generated/NewFacts";
-import type { SwitchCells } from "../../../src/frontend/ui/generated/SwitchCells";
+import type { OpenFacts } from "../../../src/frontend/ui/generated/OpenFacts";
+import type { Allow } from "../../../src/frontend/ui/generated/Allow";
+import type { SessionFace } from "../../../src/frontend/ui/generated/SessionFace";
+import { liveFace } from "../../test-support/session-faces";
 
-const YES: SwitchCells = { model: { can: "yes" }, permission: { can: "yes" } };
+const YES = { model: { can: "yes" }, permission: { can: "yes" } } as const;
+/** 活着那一张脸，换模型 · 切权限档那两格照给的。 */
+const switchFace = (sw: { model: Allow; permission: Allow }): SessionFace => {
+  const f = liveFace("idle");
+  f.can.model = sw.model;
+  f.can.permission = sw.permission;
+  return f;
+};
 
 function tab(over: Partial<Tab> = {}): Tab {
-  return { sessionId: "s1", title: "orders", origin: "devbox", agent: "claude", modelText: "核心·Opus 4.5", permissionMode: "acceptEdits", permissionModeText: "核心·自动接受编辑", switch: YES, ...over } as unknown as Tab;
+  return { sessionId: "s1", title: "orders", origin: "devbox", agent: "claude", modelText: "核心·Opus 4.5", modelPick: null, permissionMode: "acceptEdits", permissionModeText: "核心·自动接受编辑", face: switchFace(YES), ...over } as unknown as Tab;
 }
 
-const FACTS: NewFacts = {
+const FACTS: OpenFacts = {
   recent: [],
   tmux: true,
   fork: null,
@@ -58,14 +67,14 @@ const FACTS: NewFacts = {
       ],
     },
   ],
-} as unknown as NewFacts;
+} as unknown as OpenFacts;
 
 const local = (over: Partial<SwitchLocal> = {}): SwitchLocal => ({ pending: null, over: {}, ...over });
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
 };
 
-function rig(t: Tab, opts: { facts?: Promise<NewFacts>; unavailable?: string | null } = {}) {
+function rig(t: Tab, opts: { facts?: Promise<OpenFacts>; unavailable?: string | null } = {}) {
   let release: (r: Switched) => void = () => {};
   const host = {
     active: () => t,
@@ -100,12 +109,12 @@ describe("字：照会话事实那两格", () => {
   });
 });
 
-describe("灰不灰：照会话帧 switch · 那台握手说做不到的那一句", () => {
+describe("灰不灰：照脸上的 can.model · can.permission · 那台握手说做不到的那一句", () => {
   it("★ 一样说不能 ⇒ 那一颗灰、悬停写那台那一句；另一颗照常", () => {
-    const f = chipFace(tab({ switch: { model: { can: "no", why: "核心·本轮结束后可换模型" }, permission: { can: "yes" } } }), "model", local(), null, 2);
+    const f = chipFace(tab({ face: switchFace({ model: { can: "no", why: "核心·本轮结束后可换模型" }, permission: { can: "yes" } }) }), "model", local(), null, 2);
     expect(f).toEqual({ text: "核心·Opus 4.5", enabled: false, why: "核心·本轮结束后可换模型", spinning: false });
-    expect(chipFace(tab({ switch: { model: { can: "no", why: "x" }, permission: { can: "yes" } } }), "permission", local(), null, 3).enabled).toBe(true);
-    const { chip } = rig(tab({ switch: { model: { can: "no", why: "核心·本轮结束后可换模型" }, permission: { can: "yes" } } }));
+    expect(chipFace(tab({ face: switchFace({ model: { can: "no", why: "x" }, permission: { can: "yes" } }) }), "permission", local(), null, 3).enabled).toBe(true);
+    const { chip } = rig(tab({ face: switchFace({ model: { can: "no", why: "核心·本轮结束后可换模型" }, permission: { can: "yes" } }) }));
     expect(chip("model").getAttribute("aria-disabled")).toBe("true");
     expect(chip("permission").hasAttribute("aria-disabled")).toBe(false);
   });
@@ -114,13 +123,13 @@ describe("灰不灰：照会话帧 switch · 那台握手说做不到的那一�
     expect(chipFace(tab(), "permission", local(), "核心·没有 tmux", 3)).toEqual({ text: "核心·自动接受编辑", enabled: false, why: "核心·没有 tmux", spinning: false });
   });
 
-  it("这次没收到过那一帧（switch 为 null）⇒ 不判，能点；那一家清单是空的 ⇒ 只显示字", () => {
-    expect(chipFace(tab({ switch: null }), "model", local(), null, null).enabled).toBe(true);
+  it("那台看不见 / 没收到过脸 ⇒ 灰、写说不清那一句；那一家清单是空的 ⇒ 只显示字", () => {
+    expect(chipFace(tab({ face: null }), "model", local(), null, null)).toMatchObject({ enabled: false, why: copyText("sessionState.unseen.tooltip") });
     expect(chipFace(tab(), "model", local(), null, 0)).toEqual({ text: "核心·Opus 4.5", enabled: false, why: null, spinning: false });
   });
 
   it("灰着的那一颗点了不开菜单", async () => {
-    const { chip, host } = rig(tab({ switch: { model: { can: "no", why: "w" }, permission: { can: "no", why: "w" } } }));
+    const { chip, host } = rig(tab({ face: switchFace({ model: { can: "no", why: "w" }, permission: { can: "no", why: "w" } }) }));
     chip("model").click();
     await flush();
     expect(document.querySelector('[role="menu"]')).toBeNull();
@@ -137,6 +146,14 @@ describe("清单与交的那条命令", () => {
     expect(menuItems()).toEqual([copyText("session.model.title"), "核心·默认", "核心·Sonnet", "核心·Opus", "核心·换模型也改此号以后新会话的默认"]);
     choose("核心·Sonnet");
     expect(host.send).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "s1" }), "model", "sonnet");
+  });
+
+  it("★ 模型：没在这里换过 ⇒ 勾会话事实说的那一项（modelPick）；认不出 ⇒ 一项都不勾", async () => {
+    const { chip } = rig(tab({ modelPick: "opus" }));
+    await flush();
+    chip("model").click();
+    await flush();
+    expect(menuItems()).toEqual([copyText("session.model.title"), "核心·默认", "核心·Sonnet", "✓核心·Opus", "核心·换模型也改此号以后新会话的默认"]);
   });
 
   it("★ 权限档：勾此刻那一档（原值相等）；选了交 session-permission", async () => {
@@ -206,9 +223,9 @@ describe("正在换 · 换成了 · 没换成", () => {
   });
 
   it("结局读法：被拒 ⇒ 那台那一句；发出去了没等到回话 ⇒ 不说（结果未知）；回包照 result · 读回的字 · said", async () => {
-    answer = () => new ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify({ code: "no_tmux", message: "核心·没有 tmux" })) }, "");
+    answer = () => new ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify({ code: "no_tmux", message: "核心·没有 tmux" })) }, "核心·没有 tmux");
     expect(await switchModel("devbox", "s1", "opus")).toEqual({ done: false, text: null, said: "核心·没有 tmux" });
-    answer = () => new ChanError({ layer: "hop", at: { idx: 0, tag: "wait" }, reach: "Sent", why: "Overrun" }, "");
+    answer = () => new ChanError({ layer: "hop", at: { idx: 0, tag: "wait" }, reach: "Sent", why: "Overrun" }, "壳·无应答");
     expect(await switchPermission("devbox", "s1", "plan")).toEqual({ done: false, text: null, said: null });
     answer = () => ({ result: "unsure", model: null, said: "核心·换模型结果未知" });
     expect(await switchModel("devbox", "s1", "opus")).toEqual({ done: false, text: null, said: "核心·换模型结果未知" });

@@ -37,7 +37,7 @@ pub(crate) fn read_bytes(path: &Path, cap: u64) -> Read<Vec<u8>> {
         Ok(b) => Read::Present(b),
         Err(e) => Read::Unreadable(Said {
             said: copy_text(
-                "beOwnState.read.failed",
+                "reason.fs.readFailed",
                 &[("path", &path.display().to_string()), ("why", &e.said)],
             ),
             raw: e.raw,

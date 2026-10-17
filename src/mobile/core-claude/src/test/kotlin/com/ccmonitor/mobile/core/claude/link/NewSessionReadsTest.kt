@@ -4,34 +4,34 @@ import com.ccmonitor.mobile.core.claude.link.wire.PasteKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** 新建会话那几屏问那台的几条：入参照协议的格，回包照 `IPC-COMMANDS.md` 那一形解，缺必填格 ⇒ 解不出。 */
 class NewSessionReadsTest {
-    private val base = mapOf("agent" to "claude", "cwd" to "~/proj", "place" to "tmux", "local" to false, "ticket" to "t-1", "prompt" to "你好")
+    private val what = mapOf("kind" to "new", "agent" to "claude", "cwd" to "~/proj", "prompt" to "你好")
+    private val base = mapOf("what" to what, "run" to "tmux", "local" to false, "ticket" to "t-1", "client" to "mobile")
 
     @Test
-    fun `session-new：账号 · 轮换只在改过时交；改了交那一形（named · strategy，不轮换 ＝ null）`() {
-        assertEquals(base, SessionNew.args(cwd = "~/proj", ticket = "t-1", agent = "claude", prompt = "你好", account = null, rotation = null))
+    fun `session-open 新起：账号 · 轮换只在改过时交；改了交那一形（named · strategy，不轮换 ＝ null）`() {
+        assertEquals(base, SessionOpen.newIn(cwd = "~/proj", ticket = "t-1", agent = "claude", prompt = "你好", account = null, rotation = null))
         assertEquals(
             base + ("account" to mapOf("kind" to "named", "name" to "work")),
-            SessionNew.args(cwd = "~/proj", ticket = "t-1", agent = "claude", prompt = "你好", account = "work"),
+            SessionOpen.newIn(cwd = "~/proj", ticket = "t-1", agent = "claude", prompt = "你好", account = "work"),
         )
         assertEquals(
-            base + ("rotation" to mapOf("strategy" to null)),
-            SessionNew.args(cwd = "~/proj", ticket = "t-1", agent = "claude", prompt = "你好", rotation = SessionNew.Rotation(null)),
+            base + ("what" to what + ("rotation" to mapOf("strategy" to null))),
+            SessionOpen.newIn(cwd = "~/proj", ticket = "t-1", agent = "claude", prompt = "你好", rotation = SessionOpen.Rotation(null)),
         )
         assertEquals(
-            base + ("rotation" to mapOf("strategy" to "night")),
-            SessionNew.args(cwd = "~/proj", ticket = "t-1", agent = "claude", prompt = "你好", rotation = SessionNew.Rotation("night")),
+            base + ("what" to what + ("rotation" to mapOf("strategy" to "night"))),
+            SessionOpen.newIn(cwd = "~/proj", ticket = "t-1", agent = "claude", prompt = "你好", rotation = SessionOpen.Rotation("night")),
         )
     }
 
     @Test
-    fun `session-new-facts：最近的目录照那台给的序，带写好的时刻字`() {
+    fun `session-open-facts：最近的目录照那台给的序，带写好的时刻字`() {
         val facts =
-            SessionNewFacts.of(
+            SessionOpenFacts.of(
                 mapOf(
                     "recent" to listOf(mapOf("cwd" to "/h/a", "lastMs" to 2.0, "lastText" to "19:02"), mapOf("cwd" to "/h/b", "lastMs" to 1.0, "lastText" to "昨天")),
                     "tmux" to true,
@@ -40,41 +40,50 @@ class NewSessionReadsTest {
                 ),
             )!!
         assertEquals(listOf("/h/a" to "19:02", "/h/b" to "昨天"), facts.recent.map { it.cwd to it.lastText })
-        assertNull("最近一格缺 lastText ⇒ 解不出", SessionNewFacts.of(mapOf("recent" to listOf(mapOf("cwd" to "/h/a", "lastMs" to 1.0)), "agents" to emptyList<Any>())))
+        assertNull("最近一格缺 lastText ⇒ 解不出", SessionOpenFacts.of(mapOf("recent" to listOf(mapOf("cwd" to "/h/a", "lastMs" to 1.0)), "agents" to emptyList<Any>())))
     }
 
     @Test
-    fun `session-new-dir：只交目录；在不在照回包`() {
-        assertEquals(mapOf("cwd" to "~/x"), SessionNewDir.args("~/x"))
-        assertEquals(false, SessionNewDir.of(mapOf("exists" to false, "tmuxName" to null)))
-        assertEquals(true, SessionNewDir.of(mapOf("exists" to true, "tmuxName" to "x-cc")))
-        assertNull(SessionNewDir.of(mapOf("tmuxName" to null)))
+    fun `session-open-dir：只交目录；在不在照回包`() {
+        assertEquals(mapOf("cwd" to "~/x"), SessionOpenDir.args("~/x"))
+        assertEquals(false, SessionOpenDir.of(mapOf("exists" to false, "tmuxName" to null)))
+        assertEquals(true, SessionOpenDir.of(mapOf("exists" to true, "tmuxName" to "x-cc")))
+        assertNull(SessionOpenDir.of(mapOf("tmuxName" to null)))
     }
 
     @Test
-    fun `accounts-list：每号名 · 号色 · 能不能选；这台的默认 · 家目录照 meta；缺名 ⇒ 解不出`() {
+    fun `accounts-list：照类型解，号牌字 · 5h 那一格 · 选不了的那一句照那台写的；这台的默认 · 家目录照 meta；缺格 ⇒ 解不出`() {
+        val row = { name: String, dir: String?, mode: String, ok: Boolean, color: Int ->
+            mapOf(
+                "name" to name,
+                "label" to name.uppercase(),
+                "configDir" to dir,
+                "mode" to mode,
+                "selectable" to ok,
+                "color" to color,
+                "plate" to "夹" + name,
+                "quota" to if (ok) "5h 41%" else null,
+                "unselectable" to if (ok) null else "需登录",
+                "authKind" to "subscription",
+                "badge" to mapOf("text" to if (ok) "已登录" else "需登录", "warn" to !ok, "title" to ""),
+                "login" to !ok,
+            )
+        }
         val data =
             mapOf(
-                "accounts" to
-                    listOf(
-                        mapOf("name" to "0", "configDir" to null, "mode" to "base", "selectable" to true, "loggedIn" to true, "color" to null),
-                        mapOf("name" to "work", "label" to "工作号", "configDir" to "/a/work", "mode" to "isolated", "selectable" to true, "loggedIn" to true, "color" to 0.0),
-                        mapOf("name" to "team", "configDir" to "/a/team", "mode" to "isolated", "selectable" to false, "loggedIn" to false, "color" to 1.0),
-                    ),
-                "meta" to mapOf("enabled" to true, "effectiveDefault" to "work", "home" to "/h"),
-                "notice" to null,
+                "accounts" to listOf(row("0", null, "in-place", true, 0), row("work", "/a/work", "isolated", true, 3), row("team", "/a/team", "isolated", false, 1)),
+                "meta" to mapOf("effectiveDefault" to "work", "home" to "/h"),
             )
         val a = AccountsList.of(data)!!
-        assertEquals("work", a.effectiveDefault)
-        assertEquals("/h", a.home)
-        assertEquals(listOf("work", "team"), a.accounts.map { it.name })
-        assertEquals("账号 0（不是隔离的号）不列（同桌面新建会话框）", null, a.accounts.firstOrNull { it.name == "0" })
-        assertEquals(listOf(0, 1), a.accounts.map { it.color })
-        assertEquals("号名上屏照那台写的 label；没有 ⇒ 号名", listOf("工作号", "team"), a.accounts.map { it.label })
-        assertEquals(listOf(true, false), a.accounts.map { it.selectable })
+        assertEquals("work", a.meta.effectiveDefault)
+        assertEquals("/h", a.meta.home)
+        assertEquals("账号 0（不是隔离的号）不列（同桌面新建会话框）", listOf("work", "team"), a.accounts.map { it.name })
+        assertEquals(listOf(3, 1), a.accounts.map { it.color })
+        assertEquals(listOf("夹work", "夹team"), a.accounts.map { it.plate })
+        assertEquals(listOf("5h 41%", null), a.accounts.map { it.quota })
+        assertEquals(listOf(null, "需登录"), a.accounts.map { it.unselectable })
         assertEquals(mapOf("agent" to "claude"), AccountsList.args("claude"))
-        assertNull(AccountsList.of(data + ("accounts" to listOf(mapOf("configDir" to "/a/x", "mode" to "isolated")))))
-        assertTrue("没开多账号 ⇒ 一个号都不列", AccountsList.of(mapOf("accounts" to emptyList<Any>(), "meta" to mapOf("enabled" to false)))!!.accounts.isEmpty())
+        assertNull("缺号牌字 ⇒ 契约对不上", AccountsList.of(data + ("accounts" to listOf(row("x", "/a/x", "isolated", true, 0) - "plate"))))
     }
 
     @Test
@@ -89,8 +98,8 @@ class NewSessionReadsTest {
                 mapOf(
                     "strategies" to
                         listOf(
-                            mapOf("id" to "night", "description" to "夜里只用 personal\n第二行", "rev" to "r", "inUse" to emptyList<Any>(), "forNew" to false, "wordsBad" to false, "tzUnknown" to false),
-                            mapOf("id" to "spread", "description" to "", "rev" to "r", "inUse" to emptyList<Any>(), "forNew" to true, "wordsBad" to false, "tzUnknown" to false),
+                            mapOf("id" to "night", "description" to "夜里只用 personal\n第二行", "summary" to "夜里只用 personal", "rev" to "r", "inUse" to emptyList<Any>(), "forNew" to false, "wordsBad" to false, "tzUnknown" to false),
+                            mapOf("id" to "spread", "description" to "", "summary" to "", "rev" to "r", "inUse" to emptyList<Any>(), "forNew" to true, "wordsBad" to false, "tzUnknown" to false),
                         ),
                     "forNew" to "spread",
                     "oldScripts" to 0.0,
@@ -98,7 +107,7 @@ class NewSessionReadsTest {
             )!!
         assertEquals("spread", r.forNew)
         assertEquals(listOf("night", "spread"), r.strategies.map { it.id })
-        assertEquals("夜里只用 personal", RotationStrategies.firstLine(r.strategies[0].description))
+        assertEquals("夜里只用 personal", r.strategies[0].summary)
         assertNull(RotationStrategies.of(mapOf("strategies" to emptyList<Any>())))
     }
 

@@ -16,6 +16,8 @@
 //! - `auto_launch_enabled`：UI 上的 toggle 控制；cc function 检查此 flag 决定是否
 //!   `Start-Process` 启动 monitor
 
+use crate::copy_table::copy_text;
+use crate::detail::Said;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -82,12 +84,19 @@ pub fn get_config(monitor_data_dir: &Path) -> AutoLaunchConfig {
 }
 
 /// UI toggle 改变时调
-pub fn set_enabled(monitor_data_dir: &Path, enabled: bool) -> Result<(), String> {
+pub fn set_enabled(monitor_data_dir: &Path, enabled: bool) -> Result<(), Said> {
     let file = monitor_data_dir.join("auto-launch.json");
     let mut cfg = load(&file);
     cfg.auto_launch_enabled = enabled;
-    save(&file, &cfg).map_err(|e| format!("save auto-launch.json failed: {e}"))?;
-    Ok(())
+    save(&file, &cfg).map_err(|e| {
+        Said::with_raw(
+            copy_text(
+                "rsShellCmd.autoLaunch.saveFailed",
+                &[("why", &copy_core::reason::io_reason(e.kind()))],
+            ),
+            format!("{}\n{e}", file.display()),
+        )
+    })
 }
 
 /// 返回 monitor_data_dir 的 PathBuf 便利方法（IPC 命令用）

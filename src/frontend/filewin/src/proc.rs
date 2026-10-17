@@ -44,7 +44,7 @@ pub const FIRST_SCREEN_BUDGET: std::time::Duration = std::time::Duration::from_s
 ///
 /// # Errors
 ///
-/// home 问不到 / 解不出起点 · 目录列不出来 —— 带那一跳的原话（[`super::source::said`] 翻过的）。
+/// home 问不到 / 解不出起点 · 目录列不出来 —— 带那一跳的原话（[`comms_inward::chan::said::said`] 翻过的）。
 pub async fn first_screen(
     line: &super::source::Line,
     source: &Source,
@@ -55,7 +55,7 @@ pub async fn first_screen(
         None => super::source::home_of(line, &source.origin(), FIRST_SCREEN_BUDGET).await?,
     };
     let (rows, _truncated) =
-        super::source::list_dir(line, source, &cwd, super::source::SortBy::default()).await?;
+        super::source::list_dir(line, source, &cwd, super::source::Sort::default()).await?;
     Ok((cwd, rows))
 }
 

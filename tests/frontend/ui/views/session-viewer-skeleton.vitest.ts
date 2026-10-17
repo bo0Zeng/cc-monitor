@@ -23,6 +23,7 @@ import {
   expectLoaded,
   userLine,
   viewerRig,
+  lineOf,
   type RigPayload,
 } from "../../../test-support/session-viewer-rig";
 import { SessionViewer } from "../../../../src/frontend/ui/views/session-viewer";
@@ -65,7 +66,7 @@ async function mount(scrollToUuid?: string): Promise<SessionViewer> {
     displayTitle: "T",
     origin: LOCAL_ORIGIN,
     suppressBranch: true,
-    ...(scrollToUuid === undefined ? {} : { scrollToUuid }),
+    ...(scrollToUuid === undefined ? {} : { scrollTo: { uuid: scrollToUuid, line: lineOf(scrollToUuid) } }),
   });
   expectLoaded(v.element);
   await settle();
@@ -145,22 +146,18 @@ describe("查看器：骨架 ＋ 按视口取（不整份读）", () => {
     viewerRig.index = index();
     const v = await mount();
     vi.mocked(invoke).mockClear();
-    const el = await (v as unknown as { scrollToMessage(u: string): Promise<HTMLElement | null> | HTMLElement | null }).scrollToMessage("u150"); // seq 300
+    const el = await (v as unknown as { scrollToMessage(to: { uuid: string; line: number }): Promise<HTMLElement | null> | HTMLElement | null }).scrollToMessage({ uuid: "u150", line: lineOf("u150") }); // seq 300
     expect(el?.dataset.id).toBe("u150");
     expect(ranges().length).toBe(1);
     const g = gaps(v.element);
-    expect(g.length).toBe(2);
-    expect(g[0][0]).toBe(0);
-    expect(g[0][1]).toBeLessThanOrEqual(300);
-    expect(g[1][0]).toBeGreaterThan(300);
-    expect(g[1][1]).toBe(700);
+    expect(g, "取回的那一段（seq 200–400）两边各剩一块占位").toEqual([[0, 200], [401, 700]]);
   });
 
   it("那一段取不到 ⇒ 跳说清没取到、占位放回去（下次滚到再取），不留一段空", async () => {
     viewerRig.index = index();
     const v = await mount();
     viewerRig.failPage = true;
-    const got = (v as unknown as { scrollToMessage(u: string): Promise<HTMLElement | null> | HTMLElement | null }).scrollToMessage("u150");
+    const got = (v as unknown as { scrollToMessage(to: { uuid: string; line: number }): Promise<HTMLElement | null> | HTMLElement | null }).scrollToMessage({ uuid: "u150", line: lineOf("u150") });
     await expect(Promise.resolve(got)).rejects.toThrow("devbox 断开");
     expect(gaps(v.element)).toEqual([[0, 700]]);
   });

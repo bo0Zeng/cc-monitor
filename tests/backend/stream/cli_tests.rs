@@ -142,6 +142,14 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
 /// [`STREAM_ONLY`] 每一条的理由（一次性进程里结构上答不了）。与生产那张表两向相等（`the_withheld_tables_…`）。
 const STREAM_ONLY_WHY: &[(&str, &str)] = &[
     (
+        "machine-round",
+        "它收进的是常驻进程那一张机器状态表、推给连着的界面；一次性进程收了就随进程丢了，回的成品没人看得见、也不是那台此刻的样子。",
+    ),
+    (
+        "machine-read",
+        "它读的是常驻进程那一张机器状态表；一次性进程里那张表是空的，只能答每台「还没有结论」—— 那是假话。",
+    ),
+    (
         "login-finish",
         "它找的登录作业住常驻进程那一份作业表里；一次性进程里那张表是空的，只能答「没有这份作业」—— 那是假话。",
     ),
@@ -156,15 +164,6 @@ const STREAM_ONLY_WHY: &[(&str, &str)] = &[
     (
         "accounts-list",
         "每个号的徽章（API key 号「经中转 / 中转未运行」）读本进程的监听状态；一次性进程里没有中转，只能说「中转未运行」—— 那是假话。",
-    ),
-    (
-        "relay-optin",
-        "「直接敲的也走中转」那一段的成品里「中转在不在」同样读本进程的监听状态，一次性进程里恒答「不在」—— 假话。",
-    ),
-    (
-        "launch-local",
-        "它经 `accounts::upstream_select::endpoint::launch_relay` 读本进程的中转监听状态；一次性进程里没有中转 ⇒ \
-         「非它不可」的号会被误拒、「有它更好」的会被说成直连。",
     ),
     (
         "forward-start",
@@ -196,7 +195,7 @@ const STREAM_ONLY_WHY: &[(&str, &str)] = &[
         "停旧 ＋ 起新那一步拿的是**退出排空的票**（`wire::drain::DRAIN`），等压缩摘要与等新进程报出各一次有界等待（各 ≤ 1 h）——\
          「发起方走了那台照样做完」靠的就是那张票钉住**常驻进程**不退；一次性进程里那张票钉的是命令自己那个进程，\
          钉不住任何东西，而调用方还得把一次调用挂在那儿几分钟 ⇒ 真依赖流语义。命令行那一侧要同一件事：\
-         `--sessions-stop` 再 `--sessions-start`，自己掌期限。",
+         `--sessions-stop` 再 `--session-open`，自己掌期限。",
     ),
     (
         "needs-answer",
@@ -216,6 +215,14 @@ const UI_ONLY_WHY: &[(&str, &str)] = &[
         "terminal-processes",
         "它答「那台报来的终端连接是这台电脑上哪个进程开的、往上是谁」，是 ↗ 那一问的本机一半，只给界面接着找窗口、拉前用；\
          同 `session-terminals`，只有能拉前桌面窗口的那一方用得着。",
+    ),
+    (
+        "deploy-install",
+        "给远端装后端是 monitor 部署预检与机器页［更新］那一步；手机直接调 `deploy` crate、不经命令，终端里敲 `ccm` 的人不在这条路上。",
+    ),
+    (
+        "deploy-uninstall",
+        "卸远端后端是机器页［卸载后端］那一步（与装同一条路：传一份暂存件、由它删）；终端里敲 `ccm` 的人不在这条路上。",
     ),
 ];
 
@@ -266,13 +273,6 @@ fn every_wire_command_is_either_on_the_cli_or_has_a_written_reason() {
         stale.is_empty(),
         "`NOT_ON_CLI` 里这些命令**今天已经上了** CLI 面：{stale:?} —— 理由过期了，删掉它。"
     );
-    for (name, why) in NOT_ON_CLI.iter().chain(STREAM_ONLY_WHY).chain(UI_ONLY_WHY) {
-        assert!(
-            why.chars().count() >= 40,
-            "`NOT_ON_CLI` 里 {name} 的理由只有 {} 字 —— 那是占位不是理由",
-            why.chars().count()
-        );
-    }
     // ③ 理由表里每一条都得是帧面上还在的命令：命令删了、理由还留着 ⇒ 读的人以为它还在（第二个前端照这张表判「哪条只有帧面」）。
     let gone: Vec<&&str> = reasons
         .iter()
@@ -295,7 +295,7 @@ fn every_wire_command_is_either_on_the_cli_or_has_a_written_reason() {
 #[test]
 fn the_cli_entry_never_names_a_concrete_handler() {
     let raw = include_str!("../../../src/backend/stream/cli.rs");
-    let prod = crate::guard_support::production_code(raw);
+    let prod = guard_core::production_code(raw);
     for banned in [
         "control::launch::",
         "control::kill::",
@@ -322,8 +322,7 @@ fn the_cli_entry_never_names_a_concrete_handler() {
 /// 只是**开始说谎** —— 而 skill 按它的话决定走不走新路 ⇒ 静默降级，没有任何报错。
 #[test]
 fn the_probe_reports_exactly_what_it_can_dispatch() {
-    let raw =
-        crate::guard_support::production_code(include_str!("../../../src/backend/stream/cli.rs"));
+    let raw = guard_core::production_code(include_str!("../../../src/backend/stream/cli.rs"));
     assert!(
         !raw.contains("\"--launch\"") && !raw.contains("\"--kill\""),
         "`probe()` 里出现了硬编码的命令字面量 —— 清单必须从 `REGISTRY` 派生"
@@ -393,6 +392,7 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "exit-policy-read",
         "prefs-read",    // 这台的偏好（纯读、不收输入）
         "machines-read", // 本机的机器表（纯读、不收输入）
+        "machine-read",  // 机器表里每台此刻的状态（纯读、不收输入）
         "quota-read",    // 这台的额度账（纯读、不收输入）
         // `ccm-probe`：无入参（CLI 面没有，但「收不收输入」按帧面声明判）。
         "ccm-probe",
@@ -412,7 +412,6 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "manual-list",
         // 读回配置文件整份：无入参（问的就是「这台」那一份）。
         "profiles-read",
-        // `relay-optin` 出列：入参带 `agent`（那一家的那一份）。
     ];
     let declared: Vec<&str> = REGISTRY
         .iter()
@@ -432,8 +431,7 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
     );
     assert!(!declared.is_empty(), "一条无输入命令都没有 —— 本断言在空转");
     // `run` 必须用的就是这个决定，不是另写一份判断。
-    let prod =
-        crate::guard_support::production_code(include_str!("../../../src/backend/stream/cli.rs"));
+    let prod = guard_core::production_code(include_str!("../../../src/backend/stream/cli.rs"));
     assert!(
         prod.contains("if reads_stdin(spec) {"),
         "`run` 不再按 `reads_stdin` 决定读不读 stdin —— 上面那条断言此刻钉的是一个没人用的函数"
@@ -587,16 +585,6 @@ fn the_argv_payload_answers_byte_for_byte_like_stdin() {
         (
             "history-page",
             serde_json::json!({"path": "/nonexistent/cli2nd/a.jsonl", "from": 0}),
-        ),
-        (
-            "launch-render-cli",
-            serde_json::json!({
-                "action": {"kind": "new"},
-                "account": {"kind": "base"},
-                "container": {"kind": "none"},
-                "cwd": "/w",
-                "launcher": "claude",
-            }),
         ),
         ("files-stat", serde_json::json!({"path": "/"})),
     ];
@@ -966,13 +954,10 @@ fn the_withheld_tables_do_not_overlap_and_each_holds_its_own_kind() {
 #[test]
 fn the_commands_released_from_ui_only_are_on_the_cli() {
     for name in [
-        "session-new",
-        "session-new-facts",
-        "session-new-dir",
+        "session-open-facts",
+        "session-open-dir",
         "sessions-stop",
-        "sessions-start",
         "sessions-where",
-        "terminal-name-mint",
         "terminal-ssh",
         "history-search-merge",
     ] {

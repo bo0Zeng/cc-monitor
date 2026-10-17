@@ -9,7 +9,7 @@ mod listen; // 绑口 · accept · 在途上界 · 两个期限值 · 起监听�
 /// 中转的入口（常驻后端进程内起）。**上游选择那只手由调用方递进来**（`accounts::upstream_select::host_relay`）。
 pub(crate) use listen::{host, our_relay_listening, ENV_PORT};
 
-/// 「把这台的钥匙插进这条地址」—— 上游选择出「直接敲的也走中转」那一段（`relay-optin`）时用。只交插好的地址，不交钥匙本身。
+/// 「把这台的钥匙插进这条地址」—— 上游选择出「直接敲的也走中转」那一段与 `ccm` exec 时用。只交插好的地址，不交钥匙本身。
 pub(crate) use key::{keyed_with_key_on_disk, pass_key_on_disk, KeyKind};
 
 /// 中转与上游选择之间的契约件 · tee 的第二个落点 · 一问一答的传输原语（都住 `comms_outward`）。
@@ -21,11 +21,8 @@ pub(crate) use comms_outward::{
 // ── 判据：读的是中转 crate 与上游选择的源码（路径不变），挂在后端这一侧 ──
 // 「中转层里没有账号」：四条两向集合相等（残留表已清空 ⇒ 零命中形态）
 #[cfg(test)]
-#[path = "../../../tests/backend/relay/bind_guard.rs"]
-mod bind_guard; // `DoD-4㈠`：零命中守卫单住一个文件（理由见它的头注）
-#[cfg(test)]
 #[path = "../../../tests/backend/relay/creds_guard.rs"]
-mod creds_guard; // `K-H2a` `KS2`/`KS4`：明文出口恰好一处 · 记日志走白名单（整体 #[cfg(test)]）
+mod creds_guard; // `K-H2a` `KS4`：记日志走白名单 · 写半边只从一处声明开 · 换头前先丢的头名（整体 #[cfg(test)]）
 #[cfg(test)]
 #[path = "../../../tests/backend/relay/table_guard.rs"]
 mod table_guard; // `K-H2` `KH1`：决定点那几条腿（焊接点 · 开上游连接点 · 中转无默认上游）

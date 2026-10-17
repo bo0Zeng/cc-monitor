@@ -136,7 +136,7 @@ class WireTypesTest {
         assertEquals(TerminalItem("t1", "demo", "claude", TermSession("s1", null), listOf(Attached(3))), list?.terminals?.single())
         assertEquals(SentResult.REFUSED, Wire.bind<Sent>(mapOf("result" to "refused", "said" to "x"))?.result)
         assertNull(Wire.bind<Sent>(mapOf("result" to "maybe")))
-        assertNull("不可空的 cmd 缺了", Wire.bind<Rendered>(mapOf("account" to null)))
+        assertNull("不可空的 outcome 缺了", Wire.bind<KeyAdded>(mapOf("note" to null)))
         assertNull("基本型那一格缺了", Wire.bind<Held>(mapOf("path" to "/p", "next" to 1.0, "mark" to "m")))
         assertNotNull(Wire.bind<Held>(mapOf("path" to "/p", "next" to 1.0, "next_byte" to 2.0, "mark" to "m")))
     }
@@ -282,7 +282,7 @@ class WireTypesTest {
                         .filterNot { it.startsWith("//") || it.startsWith("import ") }
                         .joinToString(" ")
                 val rhs =
-                    Regex("export type \\w+ = (.*);")
+                    Regex("export type \\w+(?:<[^>]*>)? = (.*);")
                         .find(body)
                         ?.groupValues
                         ?.get(1)

@@ -14,7 +14,7 @@
 #[test]
 fn poll_hard_error_must_not_report_dead() {
     let src = include_str!("../../../../src/backend/platform/pidwatch/linux.rs");
-    let prod = crate::guard_support::production_code(src);
+    let prod = guard_core::production_code(src);
     let i = prod
         .find("ErrorKind::Interrupted")
         .expect("找不到 EINTR 分支 —— 本钉子的锚点没了，先确认 poll 循环还在");

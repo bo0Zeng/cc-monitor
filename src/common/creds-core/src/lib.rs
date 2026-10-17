@@ -38,8 +38,7 @@
 //!
 //! # 分工（别把两件事混成一件）
 //!
-//! - **写**这份文件：每台机器上恰好一个程序写者。monitor 所在那台是 monitor（`creds_store`）；
-//! 其余每台是那台的后端 —— 只有账号域那一份 `accounts/upstream_select/file_face.rs`，
+//! - **写**这份文件：每台机器上恰好一个程序写者。每台都是那台的后端 —— 只有账号域那一份 `accounts/upstream_select/file_face.rs`，
 //!   只从帧面 `apikey-key-set` 进来（`readonly_guard` 第四层登记）。两侧都开本 crate 的 `harden`。
 //! - **读**这份文件：两侧都读。`K-H2a` 裁四原话「backend 只许读」**收窄**成上面那一格：
 //!   后端里除了那一份，照旧一个写都没有 —— 先前由「feature 不开」这件事让编译器兜着，
@@ -100,7 +99,7 @@ use std::fmt;
 ///      挡它的只有 [`SEALED_FNS`] 那张登记表（判据，不是编译器）；
 ///   ② **出口之后**：`expose_for_auth_header` / `expose_for_persisting` 一旦交出 `&str`，
 ///      那个 `&str` 去哪儿、被谁 `clone()`、被谁 `{:?}` 印出来，**本模块管不着** ——
-///      挡它的是 `creds_store` 的三棵树调用面判据、`relay::creds_guard` 的日志白名单、
+///      挡它的是 `creds_store_exits` 的三棵树调用面判据、`relay::creds_guard` 的日志白名单、
 ///      以及 `KS3` 那条走真子进程的金丝雀。
 /// ⇒ **别把「编译器保证」读成「明文不可能泄漏」。**它保证的是**一段**，不是全程。
 mod sealed {
@@ -177,58 +176,16 @@ mod sealed {
             format!("{cover}{tail}")
         }
 
-        /// ★★ **`KS2`：取明文的唯一出口。**
+        /// ★★ **`KS2`：本 crate 之外唯一的明文出口 —— 往上游请求写鉴权头。**
         ///
-        /// 名字里写死了它唯一的用途（**往上游请求写鉴权头**），因为
-        /// 「这个函数是干什么的」正是将来有人多加一处调用时唯一能被读出来的约束。
-        ///
-        /// ⚠ **加一处调用是收紧、动那条相等断言是放宽**：
-        /// 将来真要多一处，**必须在件计划里单独说清那一处是什么**，
-        /// 不许在实现里顺手把 `EXPECTED_EXPOSE_SITES` 改大。
+        /// 跨 crate 的调用处数编译器管不着 ⇒ 由 `creds_store_exits` 那条三棵树判据数（恰好 1 处，后端上游选择拼头值那一行）。
         pub fn expose_for_auth_header(&self) -> &str {
             &self.0
         }
 
-        /// ⚠⚠ **明文的第二个出口：把它写回那份文件。**
-        ///
-        /// # 这一处是**新开的**，不是我顺手加的 —— 经过写在这里
-        ///
-        /// `KS2` 的字面是「取明文的地方**恰好一处**：只有『往上游请求写鉴权头』那一行」。
-        /// 实现时撞上一件绕不过去的事：**落盘也必须碰明文**（`store::merge_key` 要把它写进 JSON）。
-        /// 「一处」在字面上做不到，而把落盘伪装成别的东西（让 `store.rs` 直接摸私有字段）
-        /// 只是**把第二个出口藏起来**，不是消掉它 —— 那正是本工作区在治的病。
-        ///
-        /// ⇒ 处置：**两个出口各自具名、各自钉死次数、各自只在一个 crate 里出现**，
-        /// 再加一条「明文出口总数恰好 2」的全断。`KS2` 那句「不许在实现里顺手把断言改大」
-        /// 我照做了：**没有改任何既有断言**，而是把这一处**逐字写进件计划 `§0f`**交 PM 裁。
-        ///
-        /// # 两个出口各自只许住在哪儿（**这一段是判据的转述，不是承诺** —— 住址逐条给）
-        ///
-        /// - [`SecretKey::expose_for_auth_header`]：**调用点恰好 1 处**，在
-        ///   `src/backend/accounts/upstream_select/mod.rs`（上游选择算鉴权头的值那一行；中转只拿算好的头材料）。
-        /// - `expose_for_persisting`（本方法）：**调用点恰好 1 处**，在
-        ///   `src/common/creds-core/src/store.rs`（`merge_key`）。
-        ///
-        /// ⚠⚠ **订正〔D1 阻-1，08-27〕：这一段先前写的是一句盘上没有的承诺。**
-        /// 它原文写着「它在 `src/frontend/shell` 生产段里应当是 0 次」「在后端生产段里应当是 0 次」，
-        /// 并声称「三条断言各自守一格」—— 而实际盘上**那两格根本不存在**：
-        /// `creds-core` 这条判据只扫 `include_str!("lib.rs")`（**它自己这一个文件**），
-        /// backend 那条只扫 backend crate，**`src/frontend/shell` 整个不在任何人的人群里**。
-        /// 审计一刀坐实：在 monitor 生产段取一次明文 `eprintln!` 出去 ⇒ 8 包合计 **1284 passed，一条没红**。
-        /// **留着一句盘上没有的承诺，比没有这句话更坏。**
-        ///
-        /// ⇒ 今天它由**三格**真判据钉着，缺一都不成立：
-        /// 1. **定义面**：`every_string_returning_exit_is_registered_by_name`（本文件）——
-        ///    `impl SecretKey` 里能把字符串带出去的 `pub fn` **按名字登记**，多一个就红
-        ///    （**按返回类型画人群，不按某一种拼法** —— 上一版数 `&self.0` 的字面，
-        ///    换成 `self.0.as_str()` / `self.0.clone()` 就绕过去了）；
-        /// 2. **定义面的后门**：`the_type_has_no_second_impl_block_that_hands_the_inner_string_out`（本文件）——
-        ///    `Deref` / `AsRef<str>` 这一类一句话就能开的后门；
-        /// 3. **调用面 + 人群**：`creds_store::the_two_plaintext_exits_are_called_from_exactly_one_place_each_across_all_three_trees`
-        ///    （`src/frontend/shell/src/creds_store.rs`）—— 扫 **`src/frontend/shell/src` · `src/common` ·
-        ///    `src/backend` 三棵树**的生产段，两个出口各自的调用点数与住址都钉死。
-        /// 另有后端那个 crate 内部的一格单断：`relay::creds_guard::the_plaintext_leaves_the_type_at_exactly_one_place_in_this_crate`。
-        pub fn expose_for_persisting(&self) -> &str {
+        /// **明文的第二个出口：把它写回那份文件**（`store::merge_key` 一处）。
+        /// 落盘必须碰明文，所以单独具名；只对本 crate 可见 ⇒ 本 crate 之外调不到，编译器挡。
+        pub(crate) fn expose_for_persisting(&self) -> &str {
             &self.0
         }
 
@@ -236,8 +193,8 @@ mod sealed {
         ///
         /// 订阅号的访问令牌会过期，续它要把**刷新令牌**原样发给令牌端点（放在请求体里，不是鉴权头）——
         /// 它既不是「写鉴权头」也不是「落盘」，硬塞进那两个出口任一个都是把第三个出口藏起来。
-        /// ⇒ 第三个具名出口，**调用点恰好 1 处**：`src/common/creds-core/src/token.rs`（`refresh_body`，拼那一发的请求体）。
-        pub fn expose_for_token_request(&self) -> &str {
+        /// ⇒ 第三个具名出口，只在 `token.rs::refresh_body`（拼那一发的请求体）；只对本 crate 可见，同上。
+        pub(crate) fn expose_for_token_request(&self) -> &str {
             &self.0
         }
     }
@@ -260,6 +217,14 @@ const MASK_CHAR: &str = "•";
 impl fmt::Debug for SecretKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("SecretKey(<已遮蔽>)")
+    }
+}
+
+/// 从入参解出来那一刻就是 `SecretKey`（先解成串、再经 [`SecretKey::new`]）：写在 `sealed` 之外，够不到字段。
+/// 只有解没有写：`Serialize` 照旧没有。
+impl<'de> serde::Deserialize<'de> for SecretKey {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        String::deserialize(d).map(SecretKey::new)
     }
 }
 

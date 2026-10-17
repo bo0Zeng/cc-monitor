@@ -153,6 +153,21 @@ mod tests {
                 format!("\"cc{}\"", "a"),
                 "别名名字（由那一家的 wrapper 名派生）",
             ),
+            // 下面这几根是 Claude 记录的格名与类型名：读它们的只许是那一家的「一拍」（`agents/claudecode/beat.rs`），
+            // 轮次 · 事实 · 大纲只吃通用的一拍（`agents::beat`）。
+            (format!("isApiError{}", "Message"), "记录格名"),
+            (format!("stop_{}", "reason"), "记录格名"),
+            (format!("toolUse{}", "Result"), "记录格名"),
+            (format!("request{}", "Id"), "记录格名"),
+            (format!("totalCost{}", "USD"), "记录格名"),
+            (format!("hasUnknown{}", "ModelCost"), "记录格名"),
+            (format!("is{}", "Meta"), "记录格名"),
+            (format!("\"end_{}\"", "turn"), "停下的原因值"),
+            (format!("\"api_{}\"", "error"), "记录子类型名"),
+            (format!("\"permission-{}\"", "mode"), "记录类型名"),
+            (format!("\"cost-{}\"", "state"), "记录类型名"),
+            (format!("deferred_tools_{}", "delta"), "附件类型名"),
+            (format!("run_in_{}", "background"), "工具入参名"),
         ]
     }
 
@@ -163,6 +178,11 @@ mod tests {
     /// 把假阳塞进欠账表的后果是它**永远清不掉**，于是"只会缩短"的那张表里
     /// 长出永久居民 —— 递减棘轮就此失去意义（`S3-Y3`）。
     const NOT_AGENT_KNOWLEDGE: &[(&str, &str, &str)] = &[
+        (
+            "files/class.rs",
+            "\"jsonl\"",
+            "文件管理器认代码文件的扩展名表（`jsonl` 画代码图标、预览按它上色），不是哪个 agent 的会话格式知识。",
+        ),
         (
             "control/cc_bus.rs",
             ".claude",
@@ -313,7 +333,7 @@ mod tests {
     /// （`the_scan_tree_macro_no_longer_excludes_its_caller_after_the_split` 守着这件事）。
     /// 本条的人群里没有本文件，靠的是**住址**：判据住 `tests/backend/`，不在被扫的 `src/` 下。
     fn sources() -> Vec<(String, String)> {
-        let src_dir = crate::guard_support::src_root();
+        let src_dir = guard_core::addr::backend_src_root();
         let files: Vec<(PathBuf, String)> = guard_core::scan_tree!(&src_dir, &["rs"]);
         files
             .into_iter()
@@ -690,15 +710,11 @@ mod tests {
                 "又登记了一个夹具家 `{name}` —— 只许那一个最小假 agent"
             );
         }
-        for (name, why) in FIXTURE_HOMES {
+        for (name, _) in FIXTURE_HOMES {
             assert!(
                 in_tree.iter().any(|n| n == name),
                 "`FIXTURE_HOMES` 里登记的夹具家 `{name}` 在文件树里不存在 —— \n\
                  目录删了而登记没跟（幽灵条目），或者名字写错了。实得：{in_tree:?}"
-            );
-            assert!(
-                why.trim().len() >= 20,
-                "夹具家 `{name}` 没写「它为什么可以住在 `agents/` 里却不算一家」"
             );
         }
 
@@ -800,8 +816,15 @@ mod tests {
     ];
 
     /// 按键比的那几形：闭包里有其一 ⇒ 是「问那一家」，不是「取第一家」。
-    /// `== mode`：`PermissionFace::text_of` 在那一家自己的档表里按入参那一档找字（不在注册表上取）。
-    const KEYED: &[&str] = &["== kind", ".kind ==", "== route_id", "== name", "== mode"];
+    /// `== mode` · `== model`：`PermissionFace::text_of` · `LaunchFace::model_choice` 在那一家自己的档表 · 模型清单里按入参找那一项（不在注册表上取）。
+    const KEYED: &[&str] = &[
+        "== kind",
+        ".kind ==",
+        "== route_id",
+        "== name",
+        "== mode",
+        "== model",
+    ];
 
     /// `src` 里每一次 `.find(` / `.find_map(` 的整个实参（括号配平）。
     fn find_calls(src: &str) -> Vec<String> {

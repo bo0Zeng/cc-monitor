@@ -1,7 +1,7 @@
 package com.ccmonitor.mobile.ui.chat.newsession
 
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.SessionNew
+import com.ccmonitor.mobile.core.claude.link.SessionOpen
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -16,7 +16,7 @@ import org.junit.Test
 
 /**
  * 新建会话的选项：打开就是填好的，四样默认值都读那台；点 chip 只为改，改了才交那一格。
- * 判据：默认值从哪来 · 哪颗 chip 不画 · 目录不在灰掉 · 换 agent 账号重问 · 设为默认走那台 · 交给 session-new 的只有改过的。
+ * 判据：默认值从哪来 · 哪颗 chip 不画 · 目录不在灰掉 · 换 agent 账号重问 · 设为默认走那台 · 交给 session-open 的只有改过的。
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class NewSessionPickerTest {
@@ -41,7 +41,20 @@ class NewSessionPickerTest {
         name: String,
         selectable: Boolean = true,
         color: Int = 0,
-    ) = mapOf("name" to name, "configDir" to "/a/$name", "mode" to "isolated", "selectable" to selectable, "loggedIn" to selectable, "color" to color.toDouble())
+    ) = mapOf(
+        "name" to name,
+        "label" to name,
+        "configDir" to "/a/$name",
+        "mode" to "isolated",
+        "selectable" to selectable,
+        "color" to color.toDouble(),
+        "plate" to name.take(2),
+        "quota" to if (selectable) "5h ${name.length}%" else null,
+        "unselectable" to if (selectable) null else "需登录",
+        "authKind" to "subscription",
+        "badge" to mapOf("text" to if (selectable) "已登录" else "需登录", "warn" to !selectable),
+        "login" to !selectable,
+    )
 
     private fun accounts(
         names: List<Map<String, Any?>> = listOf(acct("work"), acct("personal", color = 2), acct("team", selectable = false, color = 1)),
@@ -52,18 +65,11 @@ class NewSessionPickerTest {
         mapOf(
             "strategies" to
                 listOf(
-                    mapOf("id" to "night", "description" to "夜里只用 personal", "rev" to "r", "inUse" to emptyList<Any>(), "forNew" to false, "wordsBad" to false, "tzUnknown" to false),
-                    mapOf("id" to "spread", "description" to "work → personal", "rev" to "r", "inUse" to emptyList<Any>(), "forNew" to true, "wordsBad" to false, "tzUnknown" to false),
+                    mapOf("id" to "night", "description" to "夜里只用 personal", "summary" to "夜里只用 personal", "rev" to "r", "inUse" to emptyList<Any>(), "forNew" to false, "wordsBad" to false, "tzUnknown" to false),
+                    mapOf("id" to "spread", "description" to "work → personal", "summary" to "work → personal", "rev" to "r", "inUse" to emptyList<Any>(), "forNew" to true, "wordsBad" to false, "tzUnknown" to false),
                 ),
             "forNew" to "spread",
             "oldScripts" to 0.0,
-        )
-
-    private val quota =
-        mapOf(
-            "state" to "present",
-            "accounts" to listOf(mapOf("account" to "work", "rows" to emptyList<Any>(), "fiveHour" to "5h 63%"), mapOf("account" to "personal", "rows" to emptyList<Any>(), "fiveHour" to "5h 12%")),
-            "unseen" to emptyList<Any>(),
         )
 
     private fun link(
@@ -72,12 +78,11 @@ class NewSessionPickerTest {
     ) = FakeCoreLink().also { l ->
         l.answer = { cmd, args ->
             when (cmd) {
-                "session-new-facts" -> ok(f)
+                "session-open-facts" -> ok(f)
                 "files-home" -> ok(mapOf("path" to "/h/me"))
                 "accounts-list" -> ok(a(args))
-                "quota-read" -> ok(quota)
                 "rotation-strategies" -> ok(strategies)
-                "session-new-dir" -> ok(mapOf("exists" to (args?.get("cwd") != "/h/gone"), "tmuxName" to null))
+                "session-open-dir" -> ok(mapOf("exists" to (args?.get("cwd") != "/h/gone"), "tmuxName" to null))
                 "accounts-set-default" -> ok(mapOf("applied" to true))
                 else -> Reply.LinkDown
             }
@@ -122,7 +127,7 @@ class NewSessionPickerTest {
         }
 
     @Test
-    fun `什么都没改 ⇒ 交给 session-new 的只有目录与 agent，账号 · 轮换不交（那台按它的默认）`() =
+    fun `什么都没改 ⇒ 交给 session-open 的只有目录与 agent，账号 · 轮换不交（那台按它的默认）`() =
         runTest {
             val p = picker(link())
             p.openAccounts()
@@ -139,9 +144,9 @@ class NewSessionPickerTest {
             runCurrent()
             p.pickAccount("personal")
             p.pickRotation(null)
-            assertEquals(Chosen("/h/work/orders", "claude", "personal", SessionNew.Rotation(null)), p.chosen())
+            assertEquals(Chosen("/h/work/orders", "claude", "personal", SessionOpen.Rotation(null)), p.chosen())
             p.pickRotation("night")
-            assertEquals(SessionNew.Rotation("night"), p.chosen().rotation)
+            assertEquals(SessionOpen.Rotation("night"), p.chosen().rotation)
             p.pickRotation("spread")
             assertNull("又选回新会话用的那份 ⇒ 不交", p.chosen().rotation)
         }
@@ -155,7 +160,7 @@ class NewSessionPickerTest {
         }
 
     @Test
-    fun `账号抽屉：打开那一刻问一次账号 · 额度 · 轮换；额度字照那个号的 5h 那一格；新会话用的那份是默认`() =
+    fun `账号抽屉：打开那一刻问一次账号 · 轮换（5h 那一格就在号行上，不另问额度）；新会话用的那份是默认`() =
         runTest {
             val l = link()
             val p = picker(l)
@@ -163,9 +168,9 @@ class NewSessionPickerTest {
             p.openAccounts()
             runCurrent()
             assertEquals(before + 1, l.calls("accounts-list").size)
-            assertEquals(1, l.calls("quota-read").size)
+            assertEquals(0, l.calls("quota-read").size)
             val s = p.state.value
-            assertEquals(mapOf("work" to "5h 63%", "personal" to "5h 12%"), s.quota)
+            assertEquals(listOf("5h 4%", "5h 8%", null), s.accounts.map { it.quota })
             assertEquals(listOf("night", "spread"), s.strategies?.map { it.id })
             assertEquals("spread", s.rotation)
             assertEquals("spread", s.forNew)

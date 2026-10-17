@@ -133,16 +133,10 @@ const LEDGER: &[(&str, &str, Side)] = &[
     ("open_terminal_window", "terminal.window", Side::Both),
     // 设置页「终端」那一行的事实（开窗用哪个终端）：开窗本机远端同一条 ⇒ 同一能力，`Both`。
     ("terminal_choices", "terminal.window", Side::Both),
-    ("local_ccm_entry_status", "ccm.status", Side::Local),
     // 别名块那三格能力 id 按改名改归（别名块是「② 别名」，不是装后端）：
     //   `ccm.install` → `alias.block-install` · `ccm.uninstall` → `alias.block-remove` · `ccm.install-ui` → `alias.block-preview`
     //   （「ccm 助手」年代的遗名）。`K-R117` 的归档表同拍从 ① 挪到 ②。
     // 远端装 / 卸别名块那两条 `Remote` 命令并进 `aliases_block_install` / `_remove`（`Both`），两行删。
-    // 🔴 `K-R135`（`R85`/`R87`）：用户级 PATH 那一格。只有本机一侧，理由见
-    //    `ASYMMETRY_REASONS` 里 `ccm.user-path` 那一条。
-    ("ccm_user_path_status", "ccm.user-path", Side::Local),
-    ("ccm_user_path_add", "ccm.user-path", Side::Local),
-    ("ccm_user_path_remove", "ccm.user-path", Side::Local),
     // 改了：`alias.block-*`，归档表同拍挪到 ②。〕
     // 三条 `Local` → `Both`（带 `origin`）；远端卡接上块预览（一并做）。
     // G6：远端分叉落地 ⇒ `history.branch` 从 ParityDebt 变成两侧都有（该行的
@@ -163,9 +157,6 @@ const LEDGER: &[(&str, &str, Side)] = &[
     // P8a：插件面只读枚举。按 origin 问那台机器的后端 `plugins-marketplaces` ⇒ 两侧都服务。
     // 那条 Tauri 命令退役：界面经通道直接说帧命令 `plugins-marketplaces`（后端出成品）⇒
     //   能力 `plugins.marketplaces` 从此不再有 Tauri 命令（它今天是一条通道操作，本机与远端同一条路）。
-    // PS1：把内嵌 cc-bus 装到本机 `<claude_dir>/skills/`。远端那侧**早就有**
-    // （`acct-iso.deploy` 那条路的同族）——但 cc-bus 的远端部署今天没做，如实记欠。
-    ("cc_bus_ccm_precheck", "cc-bus.deploy", Side::Local),
     // U8c-2c-2：`ccm 调用行`的渲染入口。**这一行说的是「有没有一条上线命令」，
     // 不是「有没有这个能力」** —— 两者 P3t 起分了家，别再合着读。
     //
@@ -176,7 +167,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     // 接上去拿到的是 `--tmux`，也就是本机旧路结构上产不出来的**会话容器**。
     //
     // 本行仍是 `Side::Remote`，但理由换了：**POSIX 本机不需要一条 IPC 命令** ——
-    // 它的渲染器就住在 Rust 里（本机后端 `control/launch_render/local.rs::plan`），前端不必绕一圈问自己。
+    // 它的渲染器就住在 Rust 里（本机后端 `control/launch_render/mod.rs::line_of`），前端不必绕一圈问自己。
     // ★★ **P3b 结清（08-12）：这一行从 `Remote` 变 `Both`，不再是不对称。**
     //
     // 它原来的注释写「Remote-only 且未裁定 —— 本机该不该也有一个后端进程来收这件事，
@@ -225,13 +216,13 @@ const LEDGER: &[(&str, &str, Side)] = &[
     ("chan_call", "comm.face-a.call", Side::Both),
     // 主界面要那台的能力事实（`Offer`）：本机 `<local>` 与远端同一条路 ⇒ `Both`，归 `comm.face-a.call`（`call` 之前的那一问）。
     ("chan_offer", "comm.face-a.call", Side::Both),
-    // 〔「撤单不许回退」〕撤掉 webview 那一跳上带编号的一问：只认编号，本机远端同一张在飞表 ⇒ `Both`。
-    ("chan_cancel", "comm.face-a.call", Side::Both),
     // 主界面说 `subscribe`（会话内容流）：本机 `<local>` 与远端同一条路（句柄按 origin 挑行）⇒ `Both`；
     //   新能力 `comm.face-a.subscribe`（与 `call` 是面 A 上两个动作）。`want` / `stop` 只认订阅编号。
     ("chan_subscribe", "comm.face-a.subscribe", Side::Both),
     // 主窗口在看的会话（与 `session-lines/<sid>` 订阅合成每台的「在看」名单，`stream_watch.rs` 报给那台）：本机远端同一张表、同一条命令。
     ("watch_sessions", "comm.face-a.subscribe", Side::Both),
+    // 主窗口手上的 tab（随名单报给那台，那台不在说的它答已结束）：同上，本机远端同一张表。
+    ("kept_sessions", "comm.face-a.subscribe", Side::Both),
     ("chan_want", "comm.face-a.subscribe", Side::Both),
     ("chan_stop", "comm.face-a.subscribe", Side::Both),
     // 能力 `accounts.trust` 那一行（`check_account_trust`，A3 起 `Both`）退役：信任预检上了帧面
@@ -247,16 +238,12 @@ const LEDGER: &[(&str, &str, Side)] = &[
 
 /// **不对称能力的理由**。键集合必须**恰好等于**从 `LEDGER` 算出来的不对称集合。
 const ASYMMETRY_REASONS: &[(&str, Asym, &str)] = &[
-    // 远端 `ccm` 探针那条（Remote）退役之后 `ccm.status` 只剩本机那一条。
-    ("ccm.status", Asym::NaturallyAsymmetric, "本机那一条（`local_ccm_entry_status`）问的是「本机 PATH 上那个 `ccm` 是不是我们那一份」—— 那是本机后端引导那一格的事。远端那一侧不再有对应命令：远端的 `ccm` 就是那台后端本身，它会哪些由那台后端在渲染时自己答（`launch-render-cli`），界面不再先探一遍。"),
-    ("ccm.user-path", Asym::NaturallyAsymmetric, "🔴 `K-R135`：「把我们那个 bin 目录放上**用户级** PATH」。**天然只有本机一侧，而且这一条的『天然』是可证的，不是图省事**：① **远端那一侧同一件事已经有答案，只是载体不同** —— 远端 `ccm` 落 `~/.local/bin`，而把它放上 PATH 的是写进远端 rc 的那个围栏块（`install_remote_alias_block` ＋ `src/shared/ccm-aliases.sh` 里那一行 —— 那一行正是 `K-R135` 修的：它此前只加 `~/.local/bin`，对本机那一边是错的）。⇒ 欠的不是「远端没有这项能力」，是**两边的机制本来就不同**。② **「用户级 PATH」这一档是 Windows 独有的**（注册表 `HKCU` 下那个 `Environment` 键），而远端按 `K32` 是 Linux ⇒ 那台机器上根本没有这一档可改，补一条对侧命令只能是个空壳。⚠ **诚实边界**：哪天真出现「远端是 Windows」这一形，本条要回来重裁 —— 那时它就不再是 `NaturallyAsymmetric`，而是 `ParityDebt`。今天不给它发明一条够不着的对侧。"),
     // `acct-iso.deploy` 那一行摘了：那条 Remote 命令退役，这项能力不再有 Tauri 命令可记账。
     // `tmux.local-census` · `tmux.manage` 两行随那两条命令出表删：tmux 这一族（列 · 抓屏 · 杀 · 送键）今天全是帧命令、本机远端同一条路，
     //   不再有 Tauri 命令可记账（`tmux.manage` 那一行三次订正的来历，看 git 历史）。
     // 这里原来是 `skill.inbox` 那一行（`Undecided`：「远端项目的收件箱要不要能在这里编辑，没人裁定过」）。
     //   **要**：远端与本机同一条路（经那台机器后端的文件管理那一面读写）⇒ 三条命令 `Both`，这一行摘掉。
     // `cc-bus.install-state` 那一行摘了：三态进了本机后端（`cc-bus-install-state`，界面经通道问），没有 Tauri 命令了。
-    ("cc-bus.deploy", Asym::ParityDebt, "`PS1`〔`U10b` 用@08-13 裁「开」后落地〕：把内嵌的 cc-bus 装到 **本机** `<claude_dir>/skills/cc-bus/`。⚠ 欠的是什么要写准：**不是**「远端不需要」——远端同样有 `~/.claude/skills/`，而且本仓**已经有**一条同族的远端部署路（`acct-iso.deploy` 走 SFTP 推 vendored 脚本）。欠的是**把这条本机路复制到远端**：SFTP 推 17 个文件 + 远端侧的围栏（`canonicalize` 在远端不成立，要换成后端侧校验）。⇒ 如实记欠，**不假装两侧都有**。★ 顺带记一条口径：本条的落点是**用户数据目录**，与 `acct-iso.deploy` 那条「只写 cc-monitor 自己的 bin 目录」**性质不同** —— 后者不需要豁免，本条需要（`INVARIANTS` 第 7 条）。"),
     // `audit.config-surface` 那一行（`ParityDebt`：「本地能答、远端答不出，本页明写不连 SSH」）**结清、删掉**：
     //   远端那一栏由那台机器的后端答路径事实（`footprint-probe`）：补后端读口，远端也有真栏。
     // `cc-bus.cockpit` 那一行（`ParityDebt`，三次订正过的「写面欠本机那一侧」）**结清、删掉**：
@@ -607,11 +594,7 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     // - U-CC1 的漂移账那一条 **+1**，`Both`；〔10-10 随 hello 的能力 token 删了 −1〕
     // - P2s 的四条 `Both`（策略那一条今天换成了 `backend_exit_policy` / `set_backend_exit_policy` 两条）
     //   ＋ `backend_status` / `backend_start` / `backend_stop` —— per-host backend 策略与状态，本机 origin 是 `<local>`（C1）；
-    // - 🔴 `K-R135`（`R85`/`R87`）的 `ccm_user_path_status` / `ccm_user_path_add` /
-    //   `ccm_user_path_remove` **+3**，都是 `Local` —— 用户级 PATH 那一格
-    //   （现在状态 · 加 · 撤）。**只有本机一侧是天然的**，理由住 `ASYMMETRY_REASONS`
-    //   里 `ccm.user-path` 那一条（远端那一侧同一件事由写进远端 rc 的围栏块办，
-    //   而「用户级 PATH」这一档是 Windows 独有的，远端按 `K32` 是 Linux）；
+    // - 用户级 PATH 那三条（`ccm_user_path_*`，`Local`）进了后端帧命令 `ccm-user-path`，**−3**；
     // - K-H2a **+2**（`read_apikey_credentials_status` / `write_apikey_credentials_key`，都 `Local`）；
     // - K-H2b **+1**（`apikey_routing_for`，`Local`）—— 界面问「这几个**本机**账号走不走 apikey 端点改写」。
     //   只答本机不是欠账，是**机制决定的**：中转是每台机器自己的进程、注入的是回环地址，
@@ -623,7 +606,7 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     //   是同一条命令的两侧收成了一条路（远端那半改走 `bus-send`，不再拼 shell 串）。
     //   ⇒ 命令总数与能力总数都不动，只有这个数 +1；`cc-bus.cockpit` 仍不对称
     //   （spawn / 广播 / 收掉三条还是 `Remote`），所以不对称条数也不动。
-    // - K-R109 **+1**（`render_local_attach`，`Local`）—— 本机后端产 attach 那一句。
+    // - K-R109 **+1**（本机接回那一条，`Local`）—— 本机后端产 attach 那一句。
     //   归**已有**能力 `session.launch`（理由逐条写在 `LEDGER` 那一行旁边）⇒
     //   命令总数 +1、能力总数不动、不对称数不动，**只有这个数跟着 +1**。
     //   ⚠ 派工单点名的是「`commands.vitest.ts` 两个 147 ＋ `LEDGER` 一行」三处，
@@ -635,10 +618,13 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     // - **+1**（`find_in_session`，`Both`，归已有能力 `history.read-session`）。
     // - **+1**（`probe_session_record`，`Both`，归已有能力 `history.read-session`）。
     // - **−2**（`read_apikey_credentials_status` / `apikey_routing_for`，都 `Both`：界面经通道问那台后端）。
-    // - **−2**（`remote_reconcile` / `machine_table_try`，都 `Both`：机器表搬进本机后端，壳照 `changed {machines}` 自己对齐、试算改问 `machines-try`）。
+    // - **−2**（`remote_reconcile` / 机器表试算，都 `Both`：机器表搬进本机后端，壳照 `changed {machines}` 自己对齐、试算改问 `machines-try`）。
     // - **+1**（`clipboard_read`，`Both`，归已有能力 `app.window.self`：登录抽屉［粘贴］读面前这台的剪贴板）。
     // - **−1**（`notify_desktop`，`Both`：界面不再发系统通知）。
-    const EXPECTED_LOCAL_OR_BOTH: usize = 40;
+    // - **−2**（本机 ccm 那一格 · 装 cc-bus 前那道本机 ccm 预检，都 `Local`：前一条进了那台后端 `ccm-probe`，后一条删了）。
+    // - **+1**（`kept_sessions`，`Both`，归已有能力 `comm.face-a.subscribe`：主窗口手上的 tab 随名单报给那台）。
+    // - **−1**（`chan_cancel`，`Both`：主界面没有撤单，这条命令删）。
+    const EXPECTED_LOCAL_OR_BOTH: usize = 35;
     assert_eq!(
         checked, EXPECTED_LOCAL_OR_BOTH,
         "检到 {checked} 条 Local/Both 命令（Local {n_local} + Both {n_both}），\
@@ -1018,7 +1004,8 @@ fn the_remote_side_column_is_signed_off() {
         // 81 → 76：载荷 / 调用行渲染 · 中转地址 · 本机新起 / resume / 接回 · 远端 ccm 探测七条删了、开窗 · 中转开关两条新增。
         // 基数 81 ＋ MIG-3a −11 ＋ MIG-2 −5 ⇒ 65。
         // 81 − MIG-1 3（`~/.ssh/config` 导入那三条 `#[tauri::command]` 删了）⇒ 78。
-        derived.len() >= 42,
+        // 44 → 41：用户级 PATH 那三条进了后端帧命令 `ccm-user-path`。
+        derived.len() >= 39,
         "派生器只认出 {} 条命令的派发跳（`LEDGER` 现打 {} 行）—— **扫描面塌了**，\n\
              不是「命令变少了」。先修 `command_dispatch_class`，别信下面任何一条绿。",
         derived.len(),

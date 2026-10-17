@@ -422,6 +422,8 @@ pub struct AccountRow {
     /// 选不了（`selectable: false`）的那一句：需登录 · 没配 key · 不隔离 · 号目录不在；选得了 ⇒ `null`。
     /// 账号 0 不经选号（起它走「不指定号」那一条）⇒ 恒 `null`。
     pub unselectable: Option<crate::cells::Words>,
+    /// 给不给［登录…］：需登录、而这一家能在 app 里登录 ⇒ `true`（需登录却登不了的，`unselectable` 那一句说为什么）。
+    pub login: bool,
 }
 
 /// 一个号那一枚徽章（账号菜单每一项右边那一格）：写好的字 · 要不要标警示 · 悬停那一句（没有 ⇒ 空串）。

@@ -2,83 +2,23 @@
 // 只装「一个账号长什么样、能不能选、该显示成什么」：形状（`Account` · `AccountsState`）· 降级判定（`deriveUi`）·
 // 可用性照后端写好的 `selectable`（`selectableAccounts`）· 徽章文案。起会话用哪个号由会话所在那台的后端判。
 // 别处：经通道读 → `account-reads.ts`；每号模型偏好 → `account-prefs.ts`；起会话「要哪个号」→ `launch-account.ts`。
-import { machineName, peerVersionSaid } from "./ipc/chan-caller";
+import { machineName } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
-// 先前这个类型住本文件、是 `ipc/commands.ts` 的返回类型 ⇒ 通信层在类型上依赖账号域，七模块类型环靠这一条边闭合。
 import { copyText } from "./copy-table";
+import type { AccountRow } from "./generated/AccountRow";
+import type { ListMeta } from "./generated/ListMeta";
 import type { AuthKind } from "./generated/judgment-rules";
 
-// ---- 账号的形状（手写；由后端成品 ＋ 跨语言金样定）----
-//
-// 产：后端 `observe/accounts_query.rs::list_product`；钉：跨语言金样 `tests/__fixtures__/accounts.golden.json`（Rust 与 TS 同读）
-// ＋ 解码器 `accounts-decode.ts::decodeAccountsList` 逐键核（多一格 / 缺一格 / 类型不对都抛）。
-// `AuthKind` 从生成物派生（`acct_core::AUTH_KINDS` 生成进 `generated/judgment-rules.ts`）：后端改了它，金样那条判据红。
-/** 一个账号的鉴权方式（`acct-core` 的契约字面量）。 */
-export type { AuthKind };
+// ---- 账号的形状：后端 `accounts-list` 的成品（生成类型，`observe/accounts_query.rs::list_product` 出）----
+// 号色 · 号牌字 · 那几句写好的字线上恒有，本地造的夹具可以不写（不写 ⇒ 号色画中性、号牌画「—」）。
 
-/** manifest 里的一个账号（后端已剔除 configDir 不安全的条目；逐键同后端成品）。 */
-export interface Account {
-  name: string;
-  /** 号在人眼里叫什么（那台后端写好：账号 0 叫「~/.claude」那一句，其余照原名）。线上恒有这一格，本地造的夹具可以不写。 */
-  label?: string;
-  email: string;
-  /** `null` = 账号 0（不设 `CLAUDE_CONFIG_DIR`）。 */
-  configDir: string | null;
-  isDefault: boolean;
-  /** `isolated`（正常）/ `in-place`（逃生口，前端应拒绝使用）/ `bare`（账号 0）。 */
-  mode: string;
-  exists: boolean;
-  /** 只是 stat 了 `.credentials.json` 在不在，**不代表凭据有效**；可用性走 `authReady`。前端零处读它（收成品那一格除外）。 */
-  loggedIn: boolean;
-  /** 后端按 `acct_core::auth_kind_from_manifest` ＋ apikey 表并出的结论（缺省落订阅那一格也在那里判）。 */
-  authKind: AuthKind;
-  /**
-   * 能不能起会话（鉴权那一维）：规则住 `acct_core::auth_ready`，后端算好，前端只读。
-   * 订阅那一支只看 `.credentials.json` 在不在（凭据过期 / 被吊销看不出来）；api-key 那一支恒真，也不等于真能连上（徽章文案说出来）。
-   */
-  authReady: boolean;
-  /** 能拿来起会话 / 选为默认：规则住 `acct_core::account_selectable`，那台后端写好，界面只读。 */
-  selectable: boolean;
-  /** API 号在那台 apikey 表里那一行的 key 掩码（只留末四位，那台后端遮好的）；订阅号 / 没配 ⇒ `null`。线上恒有这一格，本地造的夹具可以不写。 */
-  keyMasked?: string | null;
-  /** API 号那一行的端点（没写 ⇒ `null` ＝ 官方地址）。线上恒有这一格，本地造的夹具可以不写。 */
-  baseUrl?: string | null;
-  /**
-   * 账号菜单每一项右边那一枚徽章（那台后端写好：原地模式 · API key 号经不经中转 · 订阅号登录了没有，`observe/accounts_query.rs::badge_of`）。
-   * 只出自这一件成品，界面不按号的类型去挑来源。
-   */
-  badge: { text: string; warn: boolean; title: string };
-  /**
-   * 号色（`--acct-c0..c7` 第几格）：那台账号库里的事实（加号时分第一个空格、存在清单里，`accounts/manage/model.rs::Manifest::with_colors`），
-   * 头像只照它画（`account-color.ts`）。线上恒有这一格，本地造的夹具可以不写（不写 ⇒ 画中性）。
-   */
-  color?: number;
-  /** 号牌上那一两个字（那台后端写好）。线上恒有这一格，本地造的夹具可以不写（不写 ⇒ 画「—」）。 */
-  plate?: string;
-  /** 这个号「5h 那一格」写好的字（同 `quota-read` 那一格）；没出过数 · 按量号 ⇒ `null`。线上恒有，夹具可以不写。 */
-  quota?: string | null;
-  /** 选不了的那一句（需登录 · 需 key · 不隔离 · 号目录不在）；选得了 · 账号 0 ⇒ `null`。线上恒有，夹具可以不写。 */
-  unselectable?: string | null;
-}
+type FixtureOptional = "label" | "keyMasked" | "baseUrl" | "color" | "plate" | "quota" | "unselectable" | "login";
+/** manifest 里的一个账号（后端已剔除 configDir 不安全的条目）。 */
+export type Account = Omit<AccountRow, FixtureOptional> & Partial<Pick<AccountRow, FixtureOptional>>;
 
-/** 那台机器的账号库（manifest）的概况 —— 后端 `accounts-list` 成品的 `meta` 那一格，逐键照收。 */
-export interface AccountsMeta {
-  enabled: boolean;
-  acctsDir: string;
-  manifestPath: string;
-  updatedAt: string | null;
-  sharedStore: string | null;
-  count: number;
-  error: string | null;
-  /** 这台做不了多账号时后端说的那一句（做得了 ⇒ `null`；线上恒有这一格，本地造的夹具可以不写）。 */
-  unsupported?: string | null;
-  /** 删掉默认号之后新会话默认谁（那台后端按删号同一条规则答；没有 ⇒ `null`）。线上恒有这一格，本地造的夹具可以不写。 */
-  nextDefault?: string | null;
-  /** 那台的默认号（标了的第一个，没标 ⇒ 第一个；规则住 `acct_core::effective_default`）；清单空 ⇒ `null`。 */
-  effectiveDefault: string | null;
-  /** 那台的家目录（界面把路径里的它缩成 `~`；推不出 ⇒ `null`）。线上恒有这一格，本地造的夹具可以不写。 */
-  home?: string | null;
-}
+type MetaOptional = "unsupported" | "nextDefault" | "home";
+/** 那台机器的账号库（manifest）的概况 —— `accounts-list` 成品的 `meta` 那一格。 */
+export type AccountsMeta = Omit<ListMeta, MetaOptional> & Partial<Pick<ListMeta, MetaOptional>>;
 
 /** 账号功能在某台远端的整体状态（UI 直接消费）。 */
 export interface AccountsState {
@@ -86,7 +26,7 @@ export interface AccountsState {
   origin: Origin;
   available: boolean;
   error: string | null;
-  /** `available:false` 的那一次是不是「那台后端比这条查询老」（`chan-caller.ts::isOldBackend` 判的）；其余失败 ⇒ `false`。 */
+  /** `available:false` 的那一次是不是「那台后端比这条查询老」（`chan-caller.ts::isOldBackend` 判的；那一句 monitor 写好、在 `error`）；其余失败 ⇒ `false`。 */
   oldBackend: boolean;
   meta: AccountsMeta | null;
   accounts: Account[];
@@ -113,7 +53,7 @@ export function deriveUi(state: AccountsState): AccountsUi {
   if (!state.available) {
     const e = state.error ?? "";
     // 按失败的种类分（不按原因串猜：远端没部署上 / 拒转发不是「需更新」）。
-    if (state.oldBackend) return { kind: "needs-update", reason: peerVersionSaid("backend_old", state.origin) };
+    if (state.oldBackend) return { kind: "needs-update", reason: e };
     return { kind: "query-failed", reason: e || copyText("accounts.deriveUi.unavailable") };
   }
   if (!state.meta?.enabled || state.accounts.length === 0) {
@@ -139,8 +79,11 @@ export function defaultAccount(state: AccountsState): Account | null {
 /** 账号表那一行第二行要的那一档（设置窗账号页）：API key 号 · 订阅号已登录 · 订阅号还没登录（「已登录」只代表凭据文件在）。 */
 export type AccountRowKind = "apikey" | "subscription" | "notLoggedIn";
 
+/** API key 号那一种（取值集从 `acct_core::AUTH_KINDS` 现生成：那边改了名，这里编不过）。 */
+const API_KEY: AuthKind = "api-key";
+
 export function accountRowKind(a: Account): AccountRowKind {
-  if (a.authKind === "api-key") return "apikey";
+  if (a.authKind === API_KEY) return "apikey";
   return a.loggedIn ? "subscription" : "notLoggedIn";
 }
 

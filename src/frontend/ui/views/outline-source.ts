@@ -1,5 +1,5 @@
 /**
- * 大纲的数据源：问后端要，不在前端攒。「什么算一条用户输入」只住后端（`observe/user_inputs.rs`），
+ * 大纲的数据源：问后端要，不在前端攒。「什么算一条用户输入」只住后端（`observe/recognize/user_inputs.rs`），
  * 实时 tab 与历史查看器都经同一处要（`session-reads.ts::listUserInputs`，帧命令 `history-user-inputs`，`IPC-PROTOCOL.md §10.4`）。
  *
  * # 形状
@@ -23,6 +23,7 @@
  * （渲染那边已有的 `onRealUserInput` 事件 —— 「刚刚发生了什么」留在流上）。
  * 查看器：加载完要一次。
  */
+import type { HistoryIndex } from "../generated/HistoryIndex";
 import type { Origin } from "../generated/Origin";
 import {
   listUserInputs,
@@ -35,14 +36,6 @@ import { copyText } from "../copy-table";
 
 /** 这份清单问的是哪台机器上的哪份会话。拿不到（tab 还没收到路径）⇒ `null`，这一趟不要。 */
 export type OutlineWhere = () => { origin: Origin; jsonlPath: string } | null;
-
-/** 骨架索引一行里大纲要的那几个键（后端 `IndexRow` 的 `u` / `x` / `ts`，`IPC-PROTOCOL.md §10.3`）。 */
-export interface OutlineIndexRow {
-  u?: string;
-  /** 这一行是一条用户输入 ⇒ 摘要；不是 ⇒ 缺。 */
-  x?: string;
-  ts?: string;
-}
 
 /** 从骨架索引里带回来的一份清单（`[0, end)` 的全量）。 */
 export interface OutlineSeed {
@@ -61,13 +54,26 @@ export interface OutlineSeed {
 export function outlineSeedFromIndex(res: {
   available: boolean;
   end: number;
-  rows: ReadonlyArray<OutlineIndexRow>;
+  pages: readonly HistoryIndex[];
 } | null | undefined): OutlineSeed | null {
-  if (!res?.available || !Array.isArray(res.rows)) return null;
+  if (!res?.available) return null;
   const entries: UserInputEntry[] = [];
-  for (const r of res.rows) {
-    if (r.x === undefined || !r.u) continue;
-    entries.push({ at: r.o, uuid: r.u, excerpt: r.x, timestamp: r.ts ?? "" });
+  let line = 0;
+  for (const v of res.pages) {
+    // 稀疏表的 `at` 是行号差；那一行的起点字节按 `o`（与上一行末尾的差）· `n` 一路加到它。
+    let row = 0;
+    let byte = v.from;
+    let i = -1;
+    v.inputs.at.forEach((g, j) => {
+      i += g + 1;
+      for (; row <= i; row++) {
+        byte += v.o[row];
+        if (row < i) byte += v.n[row];
+      }
+      entries.push({ at: byte, line: line + i, uuid: v.inputs.u[j], excerpt: v.inputs.x[j], timestamp: v.inputs.ts[j] });
+      byte += v.n[i];
+    });
+    line += v.count;
   }
   return entries.length > 0 ? { entries, end: res.end } : null;
 }

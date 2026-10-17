@@ -24,6 +24,7 @@ use crate::common::append_read::{Blocks, Step, Tailed};
 use crate::common::fence::Fence;
 use crate::history::search_rules::{self, SnippetBudget, SnippetVerdict, MAIN_CAP, TOOL_CAP};
 use crate::platform::fs::Ro;
+use crate::wire::SessionFaceExt as _;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -78,10 +79,18 @@ pub(crate) struct SessionHits {
     pub(crate) hits_truncated: bool,
     /// 后台分身会话。
     pub(crate) is_bg: bool,
-    /// 那台判的：在跑 · 已结束（全文搜索只扫记录树，判得了活）。
-    pub(crate) status: Liveness,
     /// 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
     pub(crate) can: crate::history::listing::Can,
+    /// 分叉来的：父会话的显示标题（同历史清单那一格）；不是分叉来的 · 父会话这一趟没走到 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) forked_from: Option<cmd_wire::listing::ForkedFrom>,
+    /// 父会话的会话 id（只给这一层填上面那一格，不上线）。
+    #[serde(skip)]
+    #[cfg_attr(test, ts(skip))]
+    pub(crate) parent: Option<String>,
+    /// 那台此刻对这个会话的说法（同历史清单那一行的 `face`）。
+    pub(crate) face: crate::wire::SessionFace,
 }
 
 /// 一条命中。
@@ -103,31 +112,12 @@ pub(crate) struct SearchHit {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub(crate) tool: Option<String>,
-}
-
-/// 全文搜索那一行的活不活：只扫记录树、看得到这台的 pidfile ⇒ 只有两态。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum Liveness {
-    Live,
-    Ended,
-}
-
-impl Liveness {
-    fn of(live: bool) -> Liveness {
-        if live {
-            Liveness::Live
-        } else {
-            Liveness::Ended
-        }
-    }
-
-    /// 同历史清单那一格的词（`history::listing::status_of`，`can_of` 按它判）。
-    fn word(self) -> &'static str {
-        crate::history::listing::status_of(Some(self == Liveness::Live), false)
-    }
+    /// 这条记录那一行在记录文件里的起点（字节；交给 `history-read` 的 `offset` 就从它读起）。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) offset: u64,
+    /// 这条记录的行号（与实时行的 `seq` 同一个空间；打开查看器后按它物化、按 `uuid` 找卡）。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) line: u64,
 }
 
 /// 帧面那条（`history-search`）的入口：每命中会话一行交给 `push`。回「读不动、没搜到」的会话数（帧面那条把它交给界面说出来）。
@@ -171,7 +161,7 @@ pub(crate) fn search_counting(
     let fence = Fence::at(&root)?;
     let mut resident = resident();
     let index = resident.entry(fence.root().to_path_buf()).or_default();
-    let live = crate::history::live::live_session_ids(agent_home);
+    let live = crate::history::live::live_activity(agent_home);
     let unreadable = index.search(&fence, &q, opts, &live, push)?;
     let r = index.last;
     // 〔perfC2〕这一问整份重读过一大批（含工具时常驻装不下的那几份）⇒ 读完放掉的那些空洞还给系统，常驻不停在这一问的高水位。
@@ -211,8 +201,7 @@ pub(crate) fn find_indexed(
     index.find(&path, &q, include_tools, scope, page, on_hit)
 }
 
-/// 进程级常驻索引：规范化的 projects 根 → 那一棵的索引。后端一起来就由 [`warm_in_background`] 后台建；
-/// 第一问赶在它前面到了也不白等：谁先拿到锁谁读那一份，另一方见它没变就不再读。
+/// 进程级常驻索引：规范化的 projects 根 → 那一棵的索引。第一问来时建、建好留着；没人问的那台不占这份内存、不为它读盘。
 static RESIDENT: std::sync::Mutex<BTreeMap<PathBuf, SearchIndex>> =
     std::sync::Mutex::new(BTreeMap::new());
 
@@ -233,57 +222,7 @@ fn resident() -> std::sync::MutexGuard<'static, BTreeMap<PathBuf, SearchIndex>> 
     })
 }
 
-/// 〔第一问〕后端一起来就后台建索引（一条一次性线程，不是定时器；建完就退）。
-/// 只在内存（不落盘：搜索结果随进程走，重开就重算）；远端流后端与本机常驻后端同一个调用点（`main.rs`）。
-pub fn warm_in_background(agent_home: PathBuf) {
-    let spawned = std::thread::Builder::new()
-        .name("search-warm".into())
-        .spawn(move || {
-            // 低优先级：不跟前台的帧命令抢 CPU（建索引只是让第一问快，不该让别的问慢）。
-            crate::platform::proc::lower_this_thread();
-            let (files, kept) = warm(&agent_home);
-            tracing::info!(
-                "全文搜索索引：后台建好 {files} 份，常驻 {kept} 字节（上界 {RESIDENT_MAX_BYTES}）"
-            );
-        });
-    if let Err(e) = spawned {
-        tracing::warn!("全文搜索索引：后台建索引的线程起不来（{e}），第一问会现读");
-    }
-}
-
-/// [`warm_in_background`] 的本体（判据直接调它）：按最近优先把每份会话读进常驻表，留到上界为止就停（再读也留不下）。
-/// 每一份单独拿一次锁 ⇒ 半路来的一问不必等整棵建完。回 `(这一趟读进来的份数, 常驻字节)`。
-pub(crate) fn warm(agent_home: &Path) -> (usize, usize) {
-    let Some(Ok(fence)) = crate::agents::records_root(agent_home).map(|r| Fence::at(&r)) else {
-        return (0, 0);
-    };
-    let mut read = 0usize;
-    for (path, _) in session_files(&fence) {
-        if fence.admit(&path).is_err() {
-            continue;
-        }
-        let mut guard = resident();
-        let index = guard.entry(fence.root().to_path_buf()).or_default();
-        let prev = index.files.remove(&path);
-        let was_there = prev.is_some();
-        let Ok(mut entry) = bring_up(&path, prev, false, &mut index.last) else {
-            continue; // 读不动的留给那一问去说（它会逐份出声、计数）
-        };
-        let others = index.kept();
-        if others + entry.weight > index.budget {
-            entry.drop_tools(); // 先到的那一问抽过工具文本：先放工具层
-        }
-        if others + entry.weight > index.budget {
-            break;
-        }
-        read += usize::from(!was_there);
-        index.files.insert(path, entry);
-    }
-    let kept = resident().get(fence.root()).map_or(0, SearchIndex::kept);
-    (read, kept)
-}
-
-/// 一棵 projects 下的会话文件，按最近优先排（搜索与预热同一个 walk、同一个排序）。
+/// 一棵 projects 下的会话文件，按最近优先排。
 fn session_files(fence: &Fence) -> Vec<(PathBuf, i64)> {
     let mut files: Vec<(PathBuf, i64)> = WalkDir::new(fence.root())
         .max_depth(2)
@@ -355,7 +294,11 @@ struct Facts {
     bg: bool,
     title: Option<String>,
     excerpt: String,
+    /// 分叉来的：父会话 id（第一条带 `forkedFrom` 的记录，同历史清单那一格）。
+    forked: Option<String>,
     records: Vec<Rec>,
+    /// 这一段里算一行的行数（[`super::lines::counts`]；后一段的行号从前一段的这个数接着数）。
+    lines: u64,
 }
 
 /// 一条 user / assistant 记录。工具文本**按需**抽：第一次有 `include_tools` 的那一问才整份重读补上（它要把整块工具输入 / 输出串起来，贵）。
@@ -363,6 +306,10 @@ struct Rec {
     rt: RecordText,
     ts_ms: i64,
     uuid: String,
+    /// 这一行在记录文件里的起点（字节）。
+    offset: u64,
+    /// 这一行的行号。
+    line: u64,
     /// 这一条是你说的一句（一轮的开头；口径同大纲 `user_inputs::user_input_of`）。
     opens_turn: bool,
 }
@@ -375,16 +322,21 @@ impl Rec {
 }
 
 impl Facts {
-    /// 逐行吸收一段文本（与旧现扫逐行那段同一套分支，只是不看查询）。
-    fn absorb(&mut self, text: &str, tools: bool) {
-        for line in text.lines() {
-            let trimmed = line.trim_start_matches('\u{feff}').trim();
-            if trimmed.is_empty() {
-                continue;
+    /// 逐行吸收一段文本（与旧现扫逐行那段同一套分支，只是不看查询）。`base` ＝ 这段文本在记录文件里的起点（字节），
+    /// `first` ＝ 它第一行的行号。
+    fn absorb(&mut self, text: &str, tools: bool, base: u64, first: u64) {
+        let mut at = base;
+        for raw in text.split_inclusive('\n') {
+            let start = at;
+            at += raw.len() as u64;
+            let line = first + self.lines;
+            if super::lines::counts(raw.as_bytes()) {
+                self.lines += 1;
             }
-            let v: Value = match serde_json::from_str(trimmed) {
-                Ok(v) => v,
-                Err(_) => continue,
+            let text = raw.strip_suffix('\n').unwrap_or(raw);
+            let text = text.strip_suffix('\r').unwrap_or(text);
+            let Some(v) = super::lines::parse(text.as_bytes()) else {
+                continue;
             };
             if v.get("sessionKind").and_then(Value::as_str) == Some("bg") {
                 self.bg = true;
@@ -408,7 +360,18 @@ impl Facts {
                     }
                 }
                 "user" | "assistant" => {
-                    let opens_turn = super::user_inputs::user_input_of(&v).is_some();
+                    if self.forked.is_none() {
+                        self.forked = crate::agents::fork_origin_of(
+                            crate::agents::record_tree_kind().unwrap_or_default(),
+                            &v,
+                        )
+                        .map(|(p, _)| p);
+                    }
+                    let opens_turn = super::recognize::user_inputs::user_input_of(
+                        crate::agents::record_tree_kind().unwrap_or_default(),
+                        &v,
+                    )
+                    .is_some();
                     let Some(rt) = record_text(&v, tools).or_else(|| {
                         opens_turn.then(|| RecordText {
                             is_assistant: false,
@@ -446,6 +409,8 @@ impl Facts {
                         rt,
                         ts_ms,
                         uuid,
+                        offset: start,
+                        line,
                         opens_turn,
                     });
                 }
@@ -488,14 +453,18 @@ impl Facts {
                 },
                 ts_ms: r.ts_ms,
                 uuid: r.uuid.clone(),
+                offset: r.offset,
+                line: r.line,
                 opens_turn: r.opens_turn,
             })
             .collect();
         *self = Facts {
+            lines: self.lines,
             cwd: self.cwd.clone(),
             bg: self.bg,
             title: self.title.clone(),
             excerpt: self.excerpt.clone(),
+            forked: self.forked.clone(),
             records,
         };
     }
@@ -512,7 +481,11 @@ impl Facts {
         if self.excerpt.is_empty() {
             self.excerpt = later.excerpt;
         }
+        if self.forked.is_none() {
+            self.forked = later.forked;
+        }
         self.records.extend(later.records);
+        self.lines += later.lines;
     }
 }
 
@@ -546,7 +519,7 @@ impl FileEntry {
                 match std::str::from_utf8(&whole) {
                     Ok(s) => {
                         let mut seg = Facts::default();
-                        seg.absorb(s, self.tools);
+                        seg.absorb(s, self.tools, self.read.consumed(), self.done.lines);
                         self.done.extend(seg);
                         self.read.took(&whole);
                     }
@@ -562,7 +535,9 @@ impl FileEntry {
         self.read.saw((mtime, base + blocks.read()));
         if self.bad.is_none() {
             match std::str::from_utf8(&rest) {
-                Ok(s) => self.tail.absorb(s, self.tools),
+                Ok(s) => self
+                    .tail
+                    .absorb(s, self.tools, self.read.consumed(), self.done.lines),
                 Err(e) => self.bad = Some((BadAt::Tail, e.to_string())),
             }
         }
@@ -669,7 +644,15 @@ impl SearchIndex {
                 continue;
             };
             if pager.take() && result.is_ok() {
-                result = on_hit(&find_hit(&rec.rt, &rec.uuid, kind, hit, q, turn, rec.ts_ms));
+                result = on_hit(&find_hit(
+                    &rec.rt,
+                    (&rec.uuid, rec.line),
+                    kind,
+                    hit,
+                    q,
+                    turn,
+                    rec.ts_ms,
+                ));
             }
         }
         let (count, total) = pager.finish();
@@ -683,7 +666,7 @@ impl SearchIndex {
         fence: &Fence,
         q: &str,
         opts: &SearchOpts,
-        live: &std::collections::BTreeSet<String>,
+        live: &std::collections::BTreeMap<String, Option<crate::agents::SessionActivity>>,
         push: &mut dyn FnMut(SessionHits) -> Result<(), String>,
     ) -> Result<usize, String> {
         let files = session_files(fence);
@@ -700,6 +683,9 @@ impl SearchIndex {
             .into_iter()
             .filter(|(path, _)| fence.admit(path).is_ok())
             .collect();
+        // 分叉来的那几行要父会话的显示标题：这一趟走到的每一份都记下（父会话没命中也认得出），走完再填、再交出去。
+        let mut labels: BTreeMap<String, String> = BTreeMap::new();
+        let mut found: Vec<SessionHits> = Vec::new();
         // 〔perfC2〕一批批带到这一问：每批在几条线程上同时读（常驻装不下的那几份每问整份重读重解，这是大头），再按最近优先逐份搜。
         for batch in files.chunks(SEARCH_BATCH) {
             let work: Vec<(PathBuf, Option<FileEntry>)> = batch
@@ -730,6 +716,9 @@ impl SearchIndex {
                     _ => None,
                 };
                 let bg = entry.as_ref().is_some_and(|e| e.done.bg || e.tail.bg);
+                if let (Some(e), Some(sid)) = (&entry, path.file_stem().and_then(|s| s.to_str())) {
+                    labels.insert(sid.to_string(), label_of(e));
+                }
                 if let Some(e) = entry {
                     self.retain(&mut kept, path.clone(), e);
                 }
@@ -740,13 +729,24 @@ impl SearchIndex {
                 }
                 if let Some(mut session) = session {
                     // 能不能恢复由这台判（活不活看这台的 pidfile），与历史清单的行同一个函数。
-                    session.status = Liveness::of(live.contains(&session.session_id));
+                    let life = crate::history::live::life_of(&live, &session.session_id);
+                    session.face =
+                        crate::wire::SessionFace::of(crate::wire::Life::of_row(Some(life)));
                     session.is_bg = bg;
-                    session.can =
-                        crate::history::listing::can_of(&session.agent, session.status.word(), bg);
-                    push(session)?;
+                    session.can = crate::history::listing::can_of(&session.agent, Some(life), bg);
+                    found.push(session);
                 }
             }
+        }
+        for mut session in found {
+            session.forked_from = session
+                .parent
+                .as_deref()
+                .and_then(|p| labels.get(p))
+                .map(|l| cmd_wire::listing::ForkedFrom {
+                    label: crate::common::cells::Words(l.clone()),
+                });
+            push(session)?;
         }
         Ok(unreadable)
     }
@@ -880,6 +880,8 @@ fn session_hits_in(
                     after,
                     // 落点同会话内查找（[`find_hit`]）：收在某次工具调用那一块里 ⇒ 带那次调用的 id。
                     tool: rec.rt.lands_in.clone(),
+                    offset: rec.offset,
+                    line: rec.line,
                 });
             }
             SnippetVerdict::BudgetExhausted => session_starved = true,
@@ -941,26 +943,19 @@ fn session_row(
         .and_then(|s| s.to_str())
         .map(str::to_string)
         .unwrap_or_else(|| project_path.clone());
-    let ai_title = entry.tail.title.as_ref().or(entry.done.title.as_ref());
-    let first_user_excerpt = if entry.done.excerpt.is_empty() {
-        &entry.tail.excerpt
-    } else {
-        &entry.done.excerpt
-    };
-    // 全文搜索只扫记录 ⇒ 没有注解那一档（改过的名在界面并清单时盖上）。
-    let (title, _) = search_rules::session_label(&search_rules::LabelFacts {
-        custom: None,
-        title: ai_title.cloned(),
-        first: first_user_excerpt.clone(),
-        project_dir: None,
-    });
+    let title = label_of(entry);
     // 全文搜索只扫记录树（`projects/`）⇒ 命中的会话都是记录树那一家的。
     let agent = crate::agents::record_tree_kind()
         .unwrap_or_default()
         .to_string();
     SessionHits {
         // 活不活 · 分身 · 能做什么由扫的那一层按这台的 pidfile 补（[`SearchIndex::search`]）；这里先按「已结束、不是分身」占位。
-        can: crate::history::listing::can_of(&agent, Liveness::Ended.word(), false),
+        can: crate::history::listing::can_of(
+            &agent,
+            Some(crate::history::listing::RowLife::Ended),
+            false,
+        ),
+        face: crate::wire::SessionFace::of(crate::wire::Life::Ended),
         agent,
         session_id,
         project_path,
@@ -972,8 +967,30 @@ fn session_row(
         hits,
         hits_truncated: session_starved,
         is_bg: false,
-        status: Liveness::Ended,
+        forked_from: None,
+        parent: entry
+            .done
+            .forked
+            .clone()
+            .or_else(|| entry.tail.forked.clone()),
     }
+}
+
+/// 一个会话的显示标题（标题 / 首条 user 摘要 / sid 前 8 位之一）。全文搜索只扫记录 ⇒ 没有注解那一档（改过的名在界面并清单时盖上）。
+fn label_of(entry: &FileEntry) -> String {
+    let ai_title = entry.tail.title.as_ref().or(entry.done.title.as_ref());
+    let first_user_excerpt = if entry.done.excerpt.is_empty() {
+        &entry.tail.excerpt
+    } else {
+        &entry.done.excerpt
+    };
+    search_rules::session_label(&search_rules::LabelFacts {
+        custom: None,
+        title: ai_title.cloned(),
+        first: first_user_excerpt.clone(),
+        project_dir: None,
+    })
+    .0
 }
 
 /// 一条 user / assistant 记录拿去搜的两段文本（从 `session_hits_in` 里拆出来）。
@@ -1145,7 +1162,7 @@ impl FindPager {
 /// 收在某次工具调用那一块里的（[`RecordText::lands_in`]）再带 `tool`（调用 id）：界面按它落到那一块上。
 fn find_hit(
     rt: &RecordText,
-    uuid: &str,
+    (uuid, line): (&str, u64),
     kind: &str,
     hit: &str,
     q: &str,
@@ -1155,6 +1172,7 @@ fn find_hit(
     let (before, matched, after) = search_rules::make_snippet(hit, q);
     FindHit {
         uuid: uuid.to_string(),
+        line,
         kind: kind.to_string(),
         before,
         matched,
@@ -1172,8 +1190,11 @@ fn find_hit(
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct FindHit {
-    /// 命中的那条记录的 uuid（界面按骨架索引 `uuid → seq` 跳过去）。
+    /// 命中的那条记录的 uuid（界面按它找卡）。
     pub(crate) uuid: String,
+    /// 它的行号（与实时行的 `seq` 同一个空间；界面按它物化那一段）。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) line: u64,
     /// `user` · `assistant` · `report`（agent 回报）· `tool`。
     pub(crate) kind: String,
     /// 片段三段（同全局搜索的 `Hit`）。
@@ -1207,7 +1228,7 @@ pub(crate) fn with_hit_text(hit: &FindHit, tz: &crate::common::time::Tz) -> Find
 /// 第几轮：每遇到你说的一句（口径同大纲 `user_inputs::user_input_of`）加一，与常驻索引那一臂同一个数法。
 /// `on_hit` 回错 ⇒ 扫描当场停、错原样上抛（帧面那一臂靠它在整份超上限时停下）。
 pub(crate) fn scan_session_find<R: std::io::BufRead>(
-    mut r: R,
+    r: R,
     query: &str,
     include_tools: bool,
     scope: Option<&str>,
@@ -1218,22 +1239,27 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
     let q = query.trim().to_lowercase();
     let mut pager = FindPager::new(page);
     let mut turn: u64 = 0;
-    let mut buf: Vec<u8> = Vec::new();
+    let mut lines = super::lines::Lines::new(r, 0);
+    let mut counted: u64 = 0;
     while !q.is_empty() {
-        buf.clear();
-        let read = r.read_until(b'\n', &mut buf)?;
-        if read == 0 || buf.last() != Some(&b'\n') {
+        let Some(row) = lines.next()? else {
             break;
+        };
+        let line = counted;
+        if super::lines::counts(row.body()) {
+            counted += 1;
         }
-        let text = String::from_utf8_lossy(&buf[..buf.len() - 1]);
-        let Ok(v) = serde_json::from_str::<Value>(text.trim_start_matches('\u{feff}').trim())
-        else {
+        let Some(v) = super::lines::parse(row.body()) else {
             continue;
         };
         if matches!(
             v.get("type").and_then(Value::as_str),
             Some("user" | "assistant")
-        ) && super::user_inputs::user_input_of(&v).is_some()
+        ) && super::recognize::user_inputs::user_input_of(
+            crate::agents::record_tree_kind().unwrap_or_default(),
+            &v,
+        )
+        .is_some()
         {
             turn += 1;
         }
@@ -1259,7 +1285,7 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
                 .and_then(Value::as_str)
                 .and_then(crate::common::time::parse_iso8601_ms)
                 .unwrap_or(0);
-            on_hit(&find_hit(&rt, uuid, kind, hit, &q, turn, ts_ms))?;
+            on_hit(&find_hit(&rt, (uuid, line), kind, hit, &q, turn, ts_ms))?;
         }
     }
     Ok(pager.finish())

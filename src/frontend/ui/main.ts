@@ -28,7 +28,6 @@ import { mountTabBarResizer } from "./tab-bar-width";
 import { terminalFrontCommand } from "./terminal-front-command";
 import { loadTheme } from "./theme";
 import { SETTINGS_APPLIED_EVENT } from "./settings";
-import { forgetResumeDefaults } from "./resume-defaults";
 import { RESYNC_DONE_EVENT } from "./settings/events";
 import {
   AGENT_WINDOW_EVENT,
@@ -60,8 +59,9 @@ import { unavailableSaid } from "./control-said";
 import { KeysOverview } from "./views/keys-overview";
 import { StatusMessages } from "./status-messages";
 import { StatusChores } from "./status-chores";
-import { choresOf } from "./settings/data-reads";
-import { readReadiness } from "./settings/readiness-reads";
+import { choresOf, mergeChores } from "./settings/data-reads";
+import { readReadiness, type Readiness } from "./settings/readiness-reads";
+import { MainEmpty } from "./main-empty";
 import { StatusStart } from "./status-start";
 import { restoreZoom, stepZoom } from "./zoom";
 import { mountTabBarFold, tabBarManuallyFolded, toggleTabBarFold } from "./tab-bar-fold";
@@ -72,14 +72,14 @@ import { bindRemoteHealthToast } from "./remote-health";
 import { openSftpFromTopbar, toggleSftpFromTopbar } from "./sftp-host-picker";
 import { readRemoteConfig } from "./remote-config";
 import { createUnknownKeysBar } from "./settings/unknown-keys-notice";
-import { openSettingsWindow } from "./settings/open-settings"; // 点「设置」有反馈（不 import 设置面板）
+import { openSettingsWindow } from "./open-settings"; // 点「设置」有反馈（不 import 设置面板）
 import * as dest from "./settings-dest";
 import { createAccountFacts } from "./account-facts";
 import { lastAccounts } from "./history-reads";
-import { decodeTasks, TasksPanel } from "./tasks-panel";
+import { TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
 import { MainDrawer } from "./main-drawer";
-import { TerminalPage } from "./terminal-page";
+import { TerminalPage, type Watched } from "./terminal-page";
 import { onMachineState } from "./machine-feed";
 import type { Tab } from "./tab-model";
 import { REVEAL_RUN_EVENT } from "./cards/speaker-bar";
@@ -99,7 +99,7 @@ import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";
 import { currentAccountForBadge } from "./accounts";
 import { fetchAccounts } from "./account-reads";
 import { bindLaunchArrivals, noteLive, setArrivalSlots } from "./launch-arrival";
-import { FOCUS_SESSION_EVENT, openNewSession, setNewSessionPlaceholder } from "./new-session";
+import { FOCUS_SESSION_EVENT, openNewSession } from "./new-session";
 import { copyText } from "./copy-table";
 import { appStore } from "./app-store";
 import { OverlayRouter } from "./overlay-router";
@@ -173,19 +173,28 @@ window.addEventListener("DOMContentLoaded", async () => {
   status.innerHTML = "";
   // 最左「消息」：本次运行里最近 20 条提示（toast 收进来的那几条也在这里找得回）。
   status.appendChild(new StatusMessages().el);
-  // 「待办 N」（有才出）：各台「文件与数据」进角标的件数相加，与设置窗左栏同一个数。
+  // 「待办 N」（有才出）：各台「文件与数据」的件数交本机后端合计，与设置窗左栏同一个数。
   const chores = new StatusChores({
     machines: async () => {
       const got: unknown = await commands.backend_machines();
       return Array.isArray(got) ? got.filter((o): o is string => typeof o === "string") : [LOCAL_ORIGIN];
     },
     chores: choresOf,
+    merge: mergeChores,
     open: () => void openSettingsWindow(undefined, dest.CHORES),
   });
   status.appendChild(chores.el);
   void chores.refreshAll();
   // 「开始用 · 剩 N 步」（有才出，紧跟「待办」）：本机后端 `first-run` 的 `left`，与设置窗机器页「开始用」同一个数。
-  const start = new StatusStart({ read: readReadiness, open: () => void openSettingsWindow(undefined, dest.START) });
+  // 一个会话都没有时正文区中央那一块；同一份「开始用」也告诉它本机终端接上没有。
+  const empty = new MainEmpty(() => void openSettingsWindow(undefined, dest.connectTerminalOf(LOCAL_ORIGIN)));
+  streamRoot.appendChild(empty.el);
+  const readStart = async (): Promise<Readiness | null> => {
+    const r = await readReadiness();
+    empty.readiness(r);
+    return r;
+  };
+  const start = new StatusStart({ read: readStart, open: () => void openSettingsWindow(undefined, dest.START) });
   status.appendChild(start.el);
   void start.refresh();
   void getCurrentWindow()
@@ -208,10 +217,11 @@ window.addEventListener("DOMContentLoaded", async () => {
   status.appendChild(tasksPanel.summaryElement);
   const agentsPanel = new AgentsPanel();
   status.appendChild(agentsPanel.summaryElement);
-  // 终端页跟着当前标签页走；`tabs` 在下面才建 ⇒ 先经一个口子取当前标签页，建好了再接上。
+  // 终端页跟着当前标签页走（占位标签页显着时看它的那个终端）；`tabs` 在下面才建 ⇒ 先经两个口子取，建好了再接上。
   let activeTab: () => Tab | null = () => null;
+  let watched: () => Watched | null = () => null;
   const terminalPage = new TerminalPage({
-    active: () => activeTab(),
+    active: () => watched(),
     front: (sid) => tabs.frontFor(sid),
     focusStream: () => {
       const el = activeTab()?.streamEl;
@@ -240,10 +250,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   const usageHud = new UsageHud();
   status.appendChild(usageHud.summaryElement);
 
-  const empty = document.createElement("div");
-  empty.className = "empty-state";
-  empty.innerHTML = copyText("main.empty.noSessions");
-  streamRoot.appendChild(empty);
 
   // 启动时记住的那一格（上次所在的 tab）：只在那个会话出现时恢复、就绪前不许被覆盖、没等到就明说（`startup-active.ts`）。
   let startup: StartupActive | null = null;
@@ -315,8 +321,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     ({ total }) => {
       // tab 集合变了 ⇒ 新出现的会话问一次它那台的轮换格（构造途中也会叫到这里 ⇒ 排到下一拍，`tabs` 已赋值）。
       queueMicrotask(() => syncSessions(tabs.snapshotSessions()));
-      empty.style.display = total > 0 ? "none" : "";
-      // 会话头 · 「需手动」钉条 · 窗口标题与系统通知：跟着标签页栏一起刷（构造途中也会叫到 ⇒ 排到下一拍）。
+      empty.el.style.display = total > 0 ? "none" : "";
+      // 会话头 · 「需手动」钉条 · 窗口标题：跟着标签页栏一起刷（构造途中也会叫到 ⇒ 排到下一拍）。
       queueMicrotask(() => {
         sessionHead.render();
         terminalPage.sessionChanged();
@@ -371,20 +377,23 @@ window.addEventListener("DOMContentLoaded", async () => {
     mainDrawer.open("terminal");
   };
   // 起新会话：在主窗口里起的先长出占位标签页、报到了换成真的；在设置 / 查看窗里起的点了［切过去］再切，先把主窗口拉到前面。
-  setNewSessionPlaceholder((spec) => tabs.addLaunchSlot(spec));
   // 别的起会话路（恢复 · cc-bus 派生 · 开窗 resume）在主窗口里发起的也走同一件占位标签页。
   setArrivalSlots((spec) => tabs.addLaunchSlot(spec));
   // 占位标签页那一页显着：会话头与真标签页的选中样子让开。
   tabs.onSlotShown = (on) => {
     sessionHead.el.toggleAttribute("data-slot-over", on);
     tabBar.toggleAttribute("data-slot-over", on);
+    terminalPage.sessionChanged();
   };
   void listen<{ origin: string; sid: string }>(FOCUS_SESSION_EVENT, (e) => {
     const w = getCurrentWindow();
     void w.unminimize().then(() => w.setFocus()).catch(() => {});
     tabs.switchTo(e.payload.sid);
   });
-  tabs.onViewTerminal = () => mainDrawer.dock.show("terminal");
+  tabs.onViewTerminal = () => {
+    terminalPage.sessionChanged();
+    mainDrawer.dock.show("terminal");
+  };
   const activeOrigin = (): Origin | null => {
     const sid = tabs.activeSessionId();
     return sid === null ? null : tabs.originOf(sid);
@@ -419,6 +428,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   };
   // 当前 tab 那一格变了 → 刷新 HUD context% chip（会话事实到了 / 切会话 / 要不到 ⇒ chip 说原因）。订阅 store。
   activeTab = () => tabs.activeTab();
+  watched = () => tabs.watched();
   // 报错卡上去它的终端那两颗：当前会话的消息流根上标「能不能」（与会话头同一道），点了交 `tabs`。
   function paintTerminalActs(): void {
     const t = tabs.activeTab();
@@ -444,7 +454,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     usageHud.setUnavailable(a.unavailable);
     // 状态栏账号按钮 = 本会话（排在竖线前那一组）；没有会话 ⇒ `默认 work`，排到竖线后。面板开着就跟着换成那个会话（不关）。
     const origin = a.sid === null ? null : tabs.originOf(a.sid);
-    const cur = a.sid !== null && origin !== null ? { sid: a.sid, origin } : null;
+    const cur = a.sid !== null && origin !== null ? { sid: a.sid, origin, account: a.account } : null;
     accountChip.setActive(cur);
     if (cur !== null) statusDivider.before(accountChip.element);
     else statusDivider.after(accountChip.element);
@@ -492,7 +502,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   void listen(SETTINGS_APPLIED_EVENT, () => {
     void loadTheme(); // 主题：loadTheme 内部 applyTheme
     void getBehavior().then((b) => tabs.applyBehavior(b)); // 行为
-    forgetResumeDefaults(); // 恢复默认的「运行于」：各台那一格可能改了，下次重问
     void getKeybindings().then((kb) => {
       dispatcher.applyOverrides(kb); // 键位：热应用主窗口 dispatcher
       refreshCmdkChord(); // 键位变 → 同步刷新命令 chip 的 kbd（兑现「改键即变」）
@@ -542,12 +551,12 @@ window.addEventListener("DOMContentLoaded", async () => {
   planView.switchTo = (sid) => tabs.switchTo(sid);
   planView.reconnect = (origin) => tabs.reconnect(origin);
   planView.resume = (anchor, sid) => tabs.openResumeFor(anchor, sid);
-  // 计划那一侧的「需手动」：数进标签栏「需手动 N」与窗口标题，Ctrl J 会话在前、计划项在后（不发系统通知）。
+  // 计划那一侧的「需手动」：数进标签栏「需手动 N」与窗口标题，Ctrl J 会话在前、计划项在后。
   planView.book = planNeeds;
   // 文件窗口「在计划里看」：壳已把主窗口拉到前面；开计划页、选中那一格（片按机器区分）。
   void listen<PlanOpenSaid>(PLAN_OPEN_EVENT, (e) => void planView.openAt(e.payload.origin, e.payload.workspace, e.payload.slice, e.payload.id));
   tabs.attachPlanNeeds({ count: () => planNeeds.total(), at: () => planView.needAt(), open: (i) => void planView.openNeedItem(i), slices: () => planSlices(planNeeds.items()) });
-  // 会话外的「需手动」（`manual-list`）：数进「需手动 N」与窗口标题；点那一行开登录抽屉（入参 ＝ 那一项的 `fix.args`）。不发系统通知。
+  // 会话外的「需手动」（`manual-list`）：数进「需手动 N」与窗口标题；点那一行开登录抽屉（入参 ＝ 那一项的 `fix.args`）。
   tabs.attachManual(manualBook, (origin, item) => {
     if (item.fix) openLoginDrawer({ origin, target: item.fix.args, onDone: () => void manualBook.refresh(origin) });
   });
@@ -817,15 +826,15 @@ window.addEventListener("DOMContentLoaded", async () => {
       tabs.onLine(e);
       recordFile.afterLine(e.session_id); // 又来了一行 ⇒ 「记录文件不见了」那一句收掉
     },
-    onSessionEnded: (sessionId, sw, order) => {
-      const origin = tabs.tabsInOrder().find((t) => t.sessionId === sessionId)?.origin ?? null;
-      tabs.archiveTab(sessionId, sw ?? null, order ?? null);
-      if (origin !== null) void planNeeds.refresh(origin); // 接手的会话停了 ⇒ 那台的「需手动」可能多一条
+    // 那台说的整份脸（宣告 · 活动 · 去向三帧都带）。
+    onSessionFace: (sessionId, face) => {
+      const tab = tabs.tabsInOrder().find((t) => t.sessionId === sessionId);
+      const ended = face.dot === "ended" && tab?.face?.dot !== "ended";
+      tabs.onFace(sessionId, face);
+      if (ended && tab) void planNeeds.refresh(tab.origin); // 接手的会话停了 ⇒ 那台的「需手动」可能多一条
     },
-    // 远端 claude 退了但 tmux 会话仍在 → 灰灯（idle-tmux，不归档）。
-    onSessionIdle: (sessionId, sw, order) => tabs.markTmuxIdle(sessionId, sw ?? null, order ?? null),
-    // 活会话的容器 · 某台机器的活会话清单报完了（说不清 → 已结束）。
-    onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container),
+    onSessionName: (sessionId, label, labelProject) => tabs.updateName(sessionId, label, labelProject),
+    // 某台机器的活会话清单报完了。
     onOriginSessionsListed: (origin, all) => {
       tabs.markOriginSeen(origin);
       if (!all) return;
@@ -847,13 +856,10 @@ window.addEventListener("DOMContentLoaded", async () => {
     onOriginUnseen: (origin) => tabs.markOriginUnseen(origin),
     // 一台机器一直看不见 ⇒ 提示里「打开设置」（那台连不连得上在机器页里看得到）。
     openMachineSettings: (origin) => void openSettingsWindow(undefined, dest.machineOf(origin)),
-    // 会话复活（resume）：后端 liveness 门控后才发，复活已归档的本地 Tab，免 F5。
-    // 没有 Tab（运行中途新出现的本地会话）→ 建骨架：bg 会话的 kind / name 只从这里来（首行建的 tab 不带 kind）。
+    // 本机会话宣告：没有 Tab（运行中途新出现的本地会话）→ 建骨架：bg 会话的 kind / name 只从这里来（首行建的 tab 不带 kind）。
     onSessionStarted: (sessionId, meta) => {
-      const had = tabs.hasTab(sessionId);
-      // 没有就建骨架；已有（固定的 / 归档的）就对齐后端给的项目目录，再复活。
-      tabs.createSkeletonTab(sessionId, meta.projectDir || null, LOCAL_ORIGIN, meta.background, meta.name, null, meta.hidden, meta.account);
-      if (had) tabs.reviveTab(sessionId);
+      // 没有就建骨架；已有（固定的 / 已结束的）就对齐后端给的项目目录（又活了那张脸随宣告当场到）。
+      tabs.createSkeletonTab(sessionId, meta.projectDir || null, LOCAL_ORIGIN, meta.background, meta.name, null, meta.hidden);
       // 本机骨架也在就绪点才到（与远端同一条路）⇒ 上次所在 tab 是本机会话时同样在这里补切。
       startup?.onAppeared(sessionId);
       noteLive(LOCAL_ORIGIN, sessionId, { cwd: meta.cwd }); // 起会话的真成功正信号
@@ -877,9 +883,9 @@ window.addEventListener("DOMContentLoaded", async () => {
           onAccountsChanged(origin);
           break;
         case "tasks": {
-          // 帧里带了那个会话的清单（同 `tasks-list` 的应答）⇒ 同一个解码器收、直接落账；没带 / 解不开 / 可能漏了 ⇒ 重问。
-          const p = pushedProducts(change, decodeTasks);
-          for (const [sid, list] of p.got) if (sid !== null) tabs.updateTasks(sid, list);
+          // 帧里带了那个会话的清单（同 `tasks-list` 的应答）⇒ 直接落账；没带 / 可能漏了 ⇒ 重问。
+          const p = pushedProducts(change, "tasks");
+          for (const [sid, list] of p.got) if (sid !== null) tabs.updateTasks(sid, list.tasks);
           const ask = p.ask.filter((s): s is string => s !== null);
           if (p.all || ask.length > 0 || p.ask.includes(null)) tabs.refreshTasks(origin, ask, p.all || p.ask.includes(null));
           break;
@@ -897,7 +903,7 @@ window.addEventListener("DOMContentLoaded", async () => {
           break;
         }
         case "needs": {
-          // 那个会话挂着的待答请求变了（挂上 · 撤掉 · 有人答掉）⇒ 重问它的会话事实（答题块跟着换）；可能漏了 ⇒ 这台的都问一次。
+          // 那个会话挂着的待答请求变了（挂上 · 撤掉 · 有人答掉 · 「没人答时自动答」那一格改了）⇒ 重问它的会话事实（答题块跟着换）；可能漏了 ⇒ 这台的都问一次。
           if (change.all) tabs.rereadFactsOn(origin);
           for (const c of change.cells) if (c.key !== null) tabs.rereadFacts(c.key);
           break;
@@ -914,11 +920,6 @@ window.addEventListener("DOMContentLoaded", async () => {
           break;
       }
     },
-    // 会话红绿灯（后端翻好的活动态）
-    onSessionActivity: (e) => {
-      tabs.updateName(e.session_id, e.label, e.label_project);
-      tabs.updateActivity(e.session_id, e.activity, e.waiting_for, e.activity_text, e.activity_tone, e.activity_order, e.switch);
-    },
     // 远端会话宣告 → 骨架 Tab，附项目目录 / kind / name：骨架标题当场完整（bg → ⚙ ＋ 任务名）；没给项目目录 ⇒ 标题退到 aiTitle / sid。
     onRemoteSessionAdded: (sessionId, origin, meta) => {
       noteLive(origin, sessionId, { cwd: meta.cwd }); // 起会话的真成功正信号
@@ -930,7 +931,6 @@ window.addEventListener("DOMContentLoaded", async () => {
         meta.name,
         meta.attachable,
         meta.hidden,
-        meta.account,
       );
       // 上次所在 tab 是远端会话时在此补切（应用一次即清）。
       startup?.onAppeared(sessionId);

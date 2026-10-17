@@ -13,13 +13,13 @@ use crate::needs::{Answered, NeedsList};
 use crate::quota::QuotaRead;
 use crate::record::{HistoryLines, HistoryRead, OrUnread};
 use crate::rotation::{
-    RotDone, RotStrategyId, RotStrategyRev, RotationDayPaintReply, RotationFactsReply,
-    RotationSaveReply, RotationSettingsReply, RotationStrategiesReply, RotationTempReply,
-    RotationTryReply, RotationViewReply,
+    RotDone, RotStrategyId, RotStrategyRev, RotationFactsReply, RotationSaveReply,
+    RotationSettingsReply, RotationStrategiesReply, RotationTempReply, RotationTryReply,
+    RotationViewReply,
 };
 use crate::session::{
-    HistoryTail, Killed, ModeSwitched, ModelSwitched, NewFacts, Preview, Rendered, Sent,
-    SessionCommands, SessionNew, TerminalsList,
+    HistoryTail, Killed, ModeSwitched, ModelSwitched, OpenFacts, Opened, Preview, Sent,
+    SessionCommands, TerminalsList,
 };
 use serde::Serialize;
 
@@ -77,10 +77,8 @@ replies! {
     "history-read" => HistoryRead<OrUnread>,
     "history-tail" => HistoryTail<OrUnread>,
     "kill" => Killed,
-    "launch-render-cli" => Rendered,
     "needs-answer" => Answered,
     "quota-read" => QuotaRead,
-    "rotation-day-paint" => RotationDayPaintReply,
     "rotation-facts" => RotationFactsReply,
     "rotation-for-new" => RotDone,
     "rotation-revert" => RotDone,
@@ -99,8 +97,8 @@ replies! {
     "rotation-view" => RotationViewReply,
     "session-commands" => SessionCommands,
     "session-model" => ModelSwitched,
-    "session-new" => SessionNew,
-    "session-new-facts" => NewFacts,
+    "session-open-facts" => OpenFacts,
+    "session-open" => Opened,
     "session-permission" => ModeSwitched,
     "session-say" => Sent,
     "sessions-needs" => NeedsList,

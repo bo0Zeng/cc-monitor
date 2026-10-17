@@ -6,11 +6,11 @@
 //! | R2 | 同一份没变 ⇒ 第二次拿到的就是第一次那张（同一个 `Arc`）；追加一行 / 改了修改时刻 ⇒ 重扫、读到新内容 | 真文件 |
 //! | R3 | 条数上限：超了先淘汰最久没用的；单张比字节上限还大 ⇒ 不留（每次现扫） | 真文件 |
 //! | R4 | 几个线程同时冷开同一份 ⇒ 只扫一遍（都拿到同一张） | 真文件、8 线程 |
+//! | R10 | 图被挤掉 / 太大不留 ⇒ 留下事实尾巴；再问事实只读追加的那一截，答案同从 0 扫 | 真文件 |
 
 use super::*;
 use std::io::Write as _;
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 impl ScanMap {
@@ -20,20 +20,15 @@ impl ScanMap {
         r: R,
         len: u64,
         kind: &str,
-        chain: ChainOf,
+        face: Option<crate::agents::RecordFace>,
     ) -> std::io::Result<ScanMap> {
         let mut s = Scan::default();
-        s.feed(r, len, kind, chain)?;
+        s.feed(r, len, kind, face)?;
         Ok(s.done(len))
     }
 }
 
 impl RecordScans {
-    /// 到此刻为扫描图读了多少字节（判据读它）。
-    pub(crate) fn bytes_read(&self) -> u64 {
-        self.read.load(Ordering::Relaxed)
-    }
-
     /// 等旁线程上的骨架都落完（判据「重启后」那一步之前用；进程里别处不等它）。
     pub(crate) fn flush(&self) {
         let pending = std::mem::take(&mut *self.writes.lock().unwrap_or_else(|e| e.into_inner()));
@@ -77,20 +72,47 @@ fn fixture(turns: usize) -> String {
     s
 }
 
-fn index_direct(bytes: &[u8]) -> (Vec<String>, u64) {
-    let mut rows = Vec::new();
-    let (_, end) = crate::observe::history_query::scan_session_index(
-        crate::agents::record_tree_kind().unwrap_or_default(),
-        bytes,
-        0,
-        None,
-        |r| {
-            rows.push(serde_json::to_string(r).unwrap());
-            Ok(())
-        },
-    )
-    .unwrap();
-    (rows, end)
+/// 逐行各问各的（每一样只调它自己那一处口径，不经扫描图）：骨架索引行 · 用户输入 · 轮次，外加 end。
+fn each_on_its_own(bytes: &[u8]) -> (Vec<String>, Vec<String>, Vec<String>, u64) {
+    let kind = crate::agents::record_tree_kind().unwrap_or_default();
+    let (mut index, mut inputs, mut turns) = (Vec::new(), Vec::new(), Vec::new());
+    let mut scan = crate::observe::recognize::turns::TurnScan::default();
+    let mut lines = crate::observe::lines::Lines::new(bytes, 0);
+    let mut line = 0u64;
+    while let Some(row) = lines.next().unwrap() {
+        let body = row.body();
+        let at_line = line;
+        if crate::observe::lines::counts(body) {
+            line += 1;
+            let r = crate::observe::recognize::index_row::tests::index_row(
+                kind,
+                body,
+                row.at,
+                row.whole.len() as u64,
+            );
+            index.push(serde_json::to_string(&r).unwrap());
+        }
+        let Some(v) = crate::observe::lines::parse(body) else {
+            continue;
+        };
+        if let Some(mut r) = crate::observe::recognize::user_inputs::user_input_of(
+            crate::agents::record_tree_kind().unwrap_or_default(),
+            &v,
+        ) {
+            r.at = row.at;
+            r.line = at_line;
+            inputs.push(serde_json::to_string(&r).unwrap());
+        }
+        let kind = crate::agents::record_tree_kind().unwrap_or_default();
+        let Some(beat) = crate::agents::beat_of(kind, &v) else {
+            continue;
+        };
+        if let Some(t) = scan.line(row.at, at_line, kind, &v, &beat) {
+            turns.push(serde_json::to_string(&t).unwrap());
+        }
+    }
+    turns.extend(scan.finish().map(|t| serde_json::to_string(&t).unwrap()));
+    (index, inputs, turns, lines.end())
 }
 
 #[test]
@@ -105,7 +127,7 @@ fn r1_one_pass_equals_each_scan_on_its_own() {
     )
     .expect("scan");
 
-    let (want_index, want_end) = index_direct(bytes);
+    let (want_index, want_inputs, want_turns, want_end) = each_on_its_own(bytes);
     let got_index: Vec<String> = map
         .index
         .iter()
@@ -114,12 +136,6 @@ fn r1_one_pass_equals_each_scan_on_its_own() {
     assert_eq!(got_index, want_index, "骨架索引");
     assert_eq!(map.end, want_end, "end");
 
-    let mut want_inputs = Vec::new();
-    crate::observe::user_inputs::scan_user_inputs(bytes, 0, |r| {
-        want_inputs.push(serde_json::to_string(r).unwrap());
-        Ok(())
-    })
-    .unwrap();
     let got_inputs: Vec<String> = map
         .inputs
         .iter()
@@ -128,12 +144,6 @@ fn r1_one_pass_equals_each_scan_on_its_own() {
     assert_eq!(got_inputs, want_inputs, "用户输入");
     assert!(got_inputs.len() >= 3, "夹具里该有几句用户输入");
 
-    let mut want_turns = Vec::new();
-    crate::observe::turns::scan_turns(bytes, 0, |r| {
-        want_turns.push(serde_json::to_string(r).unwrap());
-        Ok(())
-    })
-    .unwrap();
     let got_turns: Vec<String> = map
         .turns
         .iter()
@@ -141,22 +151,23 @@ fn r1_one_pass_equals_each_scan_on_its_own() {
         .collect();
     assert_eq!(got_turns, want_turns, "轮次");
 
-    let limits = crate::observe::facts_query::ContextLimits::default();
-    let want_facts = crate::observe::facts_query::scan_facts(
-        bytes,
-        crate::observe::facts_query::SessionFacts::default(),
-        &limits,
-        None,
-    )
-    .unwrap();
-    assert_eq!(map.facts(&limits, None), want_facts, "事实");
+    let mut want_facts = crate::observe::recognize::facts::SessionFacts::default();
+    let mut lines = crate::observe::lines::Lines::new(bytes, 0);
+    while let Some(row) = lines.next().unwrap() {
+        crate::observe::recognize::facts::note_line(
+            &mut want_facts,
+            crate::agents::record_tree_kind().unwrap_or_default(),
+            row.body(),
+        );
+    }
+    assert_eq!(map.facts, want_facts, "事实");
     assert!(
         want_facts.forked_from.is_some() && want_facts.usage.is_some(),
         "夹具该带分叉与用量"
     );
 
     for n in [0usize, 1, 2, 5, 1000] {
-        let want = crate::observe::history_query::tail_plan_of(bytes, n).unwrap();
+        let want = crate::observe::query::tail::tail_plan_of(bytes, n).unwrap();
         assert_eq!(map.tail(n), want, "尾段 n={n}");
     }
 }
@@ -267,7 +278,7 @@ fn r5_retracted_lines_are_listed_and_left_out_of_inputs_and_turns() {
     ];
     let text = rows.join("\n") + "\n";
     let bytes = text.as_bytes();
-    let chain = crate::agents::claudecode::RECORDS.chain;
+    let chain = Some(crate::agents::claudecode::RECORDS);
     let map = ScanMap::scan_with(
         bytes,
         bytes.len() as u64,
@@ -284,7 +295,6 @@ fn r5_retracted_lines_are_listed_and_left_out_of_inputs_and_turns() {
 
 /// 一张图的全部样子（线上那几样 ＋ 线上不带、续扫要用的那几格），比「接着扫的」与「整份扫的」用。
 fn whole(map: &ScanMap) -> String {
-    let limits = crate::observe::facts_query::ContextLimits::default();
     let rows = |v: &[TurnRow]| -> Vec<String> {
         v.iter()
             .map(|r| {
@@ -306,12 +316,12 @@ fn whole(map: &ScanMap) -> String {
         serde_json::to_string(&map.inputs).unwrap(),
         rows(&map.turns),
         map.off,
-        map.facts(&limits, None),
+        map.facts,
         map.tail(3),
     )
 }
 
-/// 带分叉、带一轮没收尾的合成记录（结构性的假行）。
+/// 带分叉、带一轮没收尾的合成记录（结构性的假行）；同一次请求写出的两条回复隔着一条工具结果（同一请求替掉前一条要的那一格，线上不带、骨架落它）。
 fn branched(turns: usize) -> String {
     let mut s = fixture(turns);
     s.truncate(s.rfind('\n').unwrap() + 1); // 去掉残尾
@@ -319,11 +329,11 @@ fn branched(turns: usize) -> String {
     s.push('\n');
     s.push_str(r#"{"type":"user","uuid":"b2","parentUuid":"e0","timestamp":"2026-10-01T01:00:05.000Z","message":{"role":"user","content":"回退后这句"}}"#);
     s.push('\n');
-    s.push_str(r#"{"type":"assistant","uuid":"b25","parentUuid":"b2","timestamp":"2026-10-01T01:00:05.500Z","message":{"model":"m-x","content":[{"type":"thinking","thinking":"想"},{"type":"tool_use","id":"tq","name":"Bash","input":{"command":"pwd"}}]}}"#);
+    s.push_str(r#"{"type":"assistant","uuid":"b25","parentUuid":"b2","requestId":"rq","timestamp":"2026-10-01T01:00:05.500Z","message":{"model":"m-x","content":[{"type":"thinking","thinking":"想"},{"type":"tool_use","id":"tq","name":"Bash","input":{"command":"pwd"}}],"usage":{"input_tokens":7,"output_tokens":1}}}"#);
     s.push('\n');
     s.push_str(r#"{"type":"user","uuid":"b26","parentUuid":"b25","timestamp":"2026-10-01T01:00:05.700Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tq","content":"/w"}]}}"#);
     s.push('\n');
-    s.push_str(r#"{"type":"assistant","uuid":"b3","parentUuid":"b26","timestamp":"2026-10-01T01:00:06.000Z","message":{"model":"m-x","content":[{"type":"text","text":"还在跑"},{"type":"tool_use","id":"tb","name":"Bash","input":{"command":"ls"}}]}}"#);
+    s.push_str(r#"{"type":"assistant","uuid":"b3","parentUuid":"b26","requestId":"rq","timestamp":"2026-10-01T01:00:06.000Z","message":{"model":"m-x","content":[{"type":"text","text":"还在跑"},{"type":"tool_use","id":"tb","name":"Bash","input":{"command":"ls"}}],"usage":{"input_tokens":7,"output_tokens":3}}}"#);
     s.push('\n');
     s.push_str(r#"{"type":"user","uuid":"b4","parentUuid":"b3","timestamp":"2026-10-01T01:01:00.000Z","message":{"role":"user","content":"下一句"}}"#);
     s.push('\n');
@@ -339,7 +349,7 @@ fn r6_resuming_from_any_line_through_the_skeleton_equals_one_pass() {
     let text = branched(3);
     let bytes = text.as_bytes();
     let kind = crate::agents::record_tree_kind().unwrap_or_default();
-    let chain = crate::agents::claudecode::RECORDS.chain;
+    let chain = Some(crate::agents::claudecode::RECORDS);
     let full = ScanMap::scan_with(bytes, bytes.len() as u64, kind, chain).unwrap();
     assert!(!full.off.is_empty(), "夹具该有主线外的");
     assert!(
@@ -424,7 +434,7 @@ fn r7_cold_scan_reads_nothing_unchanged_and_only_the_appended_bytes() {
         &all[..],
         all.len() as u64,
         crate::agents::record_tree_kind().unwrap_or_default(),
-        crate::agents::claudecode::RECORDS.chain,
+        Some(crate::agents::claudecode::RECORDS),
     )
     .unwrap();
     assert_eq!(whole(&c), whole(&fresh), "接着骨架扫的跟整份扫的不一样");
@@ -483,9 +493,7 @@ fn r8_the_scan_skeleton_is_rewritten_only_past_the_threshold() {
     let home = || Skeletons::at(own.clone(), 0);
     // 盘上那一份照到哪了（读它的 `mark.cursor`）。
     let skel = || {
-        home()
-            .load::<serde_json::Value>(&p, "scan")
-            .expect("落过骨架")["mark"]["cursor"]
+        home().load::<serde_json::Value>(&p).expect("落过骨架")["mark"]["cursor"]
             .as_u64()
             .unwrap()
     };
@@ -517,20 +525,18 @@ fn r8_the_scan_skeleton_is_rewritten_only_past_the_threshold() {
 }
 
 /// R9（read8b，瓶颈 #5，数字节）：续取（轮次 / 大纲 / 索引从上次的末端续）遇到留着的图而记录又长了 ⇒ 接着扫追加的那一截
-/// （读 k ＋ 见证），出的轮次与整份扫的一样；没留着 ⇒ `None`、一个字节都不读（不为一次续取冷开整份）。
+/// （读 k ＋ 见证），出的轮次与整份扫的一样。
 #[test]
 fn r9_a_continuation_extends_the_held_map_by_the_appended_bytes_only() {
     let d = sandbox("r9");
     let p = d.join("s.jsonl");
     std::fs::write(&p, branched(4)).unwrap();
     let scans = RecordScans::new(4, 64 << 20);
-    assert!(scans.held(&p).is_none(), "没留着却给了一张");
-    assert_eq!(scans.bytes_read(), 0, "没留着也读了记录");
     scans.get(&p).unwrap();
     let before = scans.bytes_read();
     let more = "{\"type\":\"user\",\"uuid\":\"late\",\"parentUuid\":\"b3\",\"timestamp\":\"2026-10-01T02:00:00.000Z\",\"message\":{\"role\":\"user\",\"content\":\"后来的一句\"}}\n";
     append(&p, more);
-    let m = scans.held(&p).expect("留着的图记录又长了，续取却拿不到");
+    let m = scans.get(&p).expect("留着的图记录又长了，续取却拿不到");
     assert_eq!(
         scans.bytes_read() - before,
         more.len() as u64 + crate::observe::skeleton::WITNESS,
@@ -541,9 +547,143 @@ fn r9_a_continuation_extends_the_held_map_by_the_appended_bytes_only() {
         &all[..],
         all.len() as u64,
         crate::agents::record_tree_kind().unwrap_or_default(),
-        crate::agents::claudecode::RECORDS.chain,
+        Some(crate::agents::claudecode::RECORDS),
     )
     .unwrap();
     assert_eq!(whole(&m), whole(&fresh), "接着扫的跟整份扫的不一样");
     std::fs::remove_dir_all(&d).ok();
+}
+
+/// R10（事实尾巴）：扫描图被挤掉（条数上限）· 单张比字节上限还大不留 ⇒ 按路径留下事实尾巴；之后记录追加了一截，
+/// 再问事实只读追加的那一截 ＋ 见证，答案与此刻从 0 扫的那一份逐格相同（同一请求替掉前一条那一格也接得上）。
+/// 尾巴对不上（截断重写）⇒ 整份重扫，答的是新内容。
+#[test]
+fn r10_an_evicted_map_leaves_a_facts_tail_that_reads_only_the_appended_bytes() {
+    let d = sandbox("r10");
+    let probe = crate::observe::skeleton::WITNESS;
+    let limits = crate::observe::recognize::facts::ContextLimits::default();
+    let cold = |p: &std::path::Path| {
+        let all = std::fs::read(p).unwrap();
+        let mut f = ScanMap::scan_with(
+            &all[..],
+            all.len() as u64,
+            crate::agents::record_tree_kind().unwrap_or_default(),
+            None,
+        )
+        .unwrap()
+        .facts;
+        crate::observe::recognize::facts::settle_limit(&mut f, &limits, None);
+        f
+    };
+    let half = |t: &str| {
+        t[..t
+            .find("\"uuid\":\"b3\"")
+            .and_then(|i| t[..i].rfind('\n'))
+            .unwrap()
+            + 1]
+            .to_string()
+    };
+    let rest = |t: &str| t[half(t).len()..].to_string();
+    let text = branched(3);
+    let (a, b) = (d.join("a.jsonl"), d.join("b.jsonl"));
+    std::fs::write(&a, half(&text)).unwrap();
+    std::fs::write(&b, fixture(1)).unwrap();
+
+    // 条数上限 1：问 b 挤掉 a 的图。
+    let scans = RecordScans::new(1, 64 << 20);
+    scans.get(&a).unwrap();
+    scans.get(&b).unwrap();
+    append(&a, &rest(&text));
+    let before = scans.bytes_read();
+    let got = scans.facts(&a, &limits, None).unwrap();
+    assert_eq!(
+        scans.bytes_read() - before,
+        rest(&text).len() as u64 + probe,
+        "图被挤掉后再问事实，没有只读追加的那一截"
+    );
+    assert_eq!(got, cold(&a), "接着尾巴算的跟从 0 扫的不一样");
+    assert_eq!(
+        got.tokens.as_ref().map(|t| t.requests),
+        Some(4),
+        "同一请求的两条算成了两次"
+    );
+
+    // 单张比字节上限还大 ⇒ 不留图、留尾巴。
+    let tiny = RecordScans::new(4, 1);
+    std::fs::write(&b, branched(2)).unwrap();
+    tiny.facts(&b, &limits, None).unwrap();
+    let more = "{\"type\":\"user\",\"uuid\":\"z\",\"message\":{\"role\":\"user\",\"content\":\"再一句\"}}\n";
+    append(&b, more);
+    let before = tiny.bytes_read();
+    assert_eq!(tiny.facts(&b, &limits, None).unwrap(), cold(&b));
+    assert_eq!(tiny.bytes_read() - before, more.len() as u64 + probe);
+
+    // 截断重写（比尾巴的游标还短）⇒ 整份重扫。
+    std::fs::write(&b, more).unwrap();
+    assert_eq!(tiny.facts(&b, &limits, None).unwrap(), cold(&b));
+    std::fs::remove_dir_all(&d).ok();
+}
+
+/// R10：轮次（你那句 · 每段过程的两头）与用户输入带的行号，就是那一条在骨架索引里的下标（行号只在扫的这一处数）；
+/// 夹具里有空行与坏行（不算一行），行号与「第几个物理行」不同。
+#[test]
+fn r10_turns_folds_and_inputs_carry_the_index_row_of_their_uuid() {
+    let text = branched(3);
+    let bytes = text.as_bytes();
+    let map = ScanMap::scan_with(
+        bytes,
+        bytes.len() as u64,
+        crate::agents::record_tree_kind().unwrap_or_default(),
+        Some(crate::agents::claudecode::RECORDS),
+    )
+    .unwrap();
+    let mut claimed: Vec<(String, u64)> = Vec::new();
+    for t in &map.turns {
+        claimed.push((t.uuid.clone(), t.line));
+        for f in &t.folds {
+            claimed.push((f.after.clone(), f.after_line));
+            if let (Some(u), Some(l)) = (&f.until, f.until_line) {
+                claimed.push((u.clone(), l));
+            }
+            assert_eq!(
+                f.until.is_some(),
+                f.until_line.is_some(),
+                "until 与它的行号同有同无"
+            );
+        }
+    }
+    for r in &map.inputs {
+        claimed.push((r.uuid.clone(), r.line));
+    }
+    let row_of = |u: &str| {
+        map.index
+            .iter()
+            .position(|r| r.u.as_deref() == Some(u))
+            .map(|i| i as u64)
+    };
+    let want: Vec<(String, u64)> = claimed
+        .iter()
+        .map(|(u, _)| (u.clone(), row_of(u).expect("那一条不在索引里")))
+        .collect();
+    assert_eq!(claimed, want, "带的行号与骨架索引里的下标不一样");
+    let folds_until = map
+        .turns
+        .iter()
+        .flat_map(|t| &t.folds)
+        .filter(|f| f.until.is_some())
+        .count();
+    assert!(
+        map.turns.len() >= 2 && folds_until >= 1,
+        "夹具要有几轮、带 until 的过程：{} 轮、{folds_until} 段带 until",
+        map.turns.len()
+    );
+    let physical = |u: &str| {
+        text.split('\n')
+            .position(|l| l.contains(&format!("\"uuid\":\"{u}\"")))
+            .unwrap() as u64
+    };
+    assert!(
+        want.iter().any(|(u, l)| physical(u) != *l),
+        "正控：夹具里要有行号与物理行号不同的"
+    );
 }

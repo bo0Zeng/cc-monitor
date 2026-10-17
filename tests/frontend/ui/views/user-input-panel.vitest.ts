@@ -16,7 +16,7 @@
  *
  * PM 给的可达性理由是「查看器分批渲染，T 时刻没渲染、T+1 渲染出来」。
  * 实现方现打核过**这句话对查看器不成立**（读数与推理在件 `§5.5`）：
- * `scrollToMessage` 在跳之前会**先把目标那一段渲出来**（`uuidToIdx` + `unrendered.contains`），
+ * `scrollToMessage` 在跳之前会**先把目标那一段渲出来**（按行号经骨架物化），
  * 所以查看器里一行会被标上 `unjumpable`，当且仅当那条记录**渲染出来就是空的**
  * （`stripInternalNoise` 剥空 ⇒ 不建卡）—— 而那是**永久**的，重渲一次还是空。
  *
@@ -33,7 +33,7 @@
  * 宿主本来就是注入的接缝。两条真路各自的接线由各自的套件盯着。
  */
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
-import { UserInputPanel } from "../../../../src/frontend/ui/views/user-input-panel";
+import { UserInputPanel, type JumpTarget } from "../../../../src/frontend/ui/views/user-input-panel";
 import type { UserInputEntry } from "../../../../src/frontend/ui/session-reads";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
@@ -41,6 +41,7 @@ const HINT = "这一条还没加载出来 —— 上翻到更早的消息之后�
 
 const entry = (uuid: string, excerpt: string): UserInputEntry => ({
   at: 0,
+  line: 7,
   uuid,
   excerpt,
   timestamp: "2026-09-10T00:00:00.000Z",
@@ -48,12 +49,12 @@ const entry = (uuid: string, excerpt: string): UserInputEntry => ({
 
 interface Fixture {
   panel: UserInputPanel;
-  jumpTo: Mock<(uuid: string) => HTMLElement | null>;
+  jumpTo: Mock<(to: JumpTarget) => HTMLElement | null>;
   rows(): HTMLButtonElement[];
 }
 
 function fixture(): Fixture {
-  const jumpTo = vi.fn<(uuid: string) => HTMLElement | null>(() => null);
+  const jumpTo = vi.fn<(to: JumpTarget) => HTMLElement | null>(() => null);
   const panel = new UserInputPanel({ jumpTo, unjumpableHint: HINT });
   document.body.replaceChildren(panel.toggle, panel.panel);
   return {
@@ -74,7 +75,7 @@ describe("K-R45 清单面板：跳空了标出来", () => {
     const row = f.rows()[0];
     expect(row.dataset.unjumpable).toBeUndefined(); // 没点之前不许预先灰着
     row.click();
-    expect(f.jumpTo).toHaveBeenCalledWith("u1");
+    expect(f.jumpTo).toHaveBeenCalledWith(expect.objectContaining({ uuid: "u1", line: 7 }));
     expect(row.dataset.unjumpable).toBe("1");
     expect(row.title).toBe(HINT); // 那句话由宿主给：两条路落空的成因不是同一件事
   });

@@ -1,17 +1,16 @@
 /**
  * 会话状态账。
  *
- * tab 集合 · 顺序（连同盘上那份顺序意图）· 当前 tab · 是否在重放批里 · 早于 tab 到达的信号暂存
- * （已结束 / 可重连 / 红绿灯）· 不可 attach 的 sid · 账号快照 · 任务快照 —— **收进一处**；
+ * tab 集合 · 顺序（连同盘上那份顺序意图）· 当前 tab · 是否在重放批里 · 早于 tab 到达的脸与名字暂存 · 不可 attach 的 sid · 账号快照 · 任务快照 —— **收进一处**；
  * 「tab 集合变了」这件事**只有一份订阅**（`subscribe` / `notify`），宿主（状态栏、空态）挂在这上面。
  *
  * 零 DOM、零 IPC：它只存东西、只做「新 tab 落在哪一格」这类纯顺序运算。谁什么时候改它、
  * 改完要刷哪块界面，是 `TabManager`（组装根）与各视图的事。
  */
 import type { TaskEntry } from "./tasks-panel";
-import type { SwitchCells } from "./generated/SwitchCells";
+import type { SessionFace } from "./generated/SessionFace";
 import type { Tab, TabsSummary } from "./tab-model";
-import { isLive, isResumeOnly, type ContainerEvent } from "./tab-session-state";
+import { faceOf, hasTerminal, isLive } from "./face-can";
 import { Slice } from "./app-store";
 import { dotOf, needsOf } from "./session-face";
 import { barRows } from "./tab-drop";
@@ -28,15 +27,18 @@ export interface ActiveView {
   projectDir: string | null;
   /** 当前会话的模型写给人看的字（`Tab.modelText`，后端那一格；HUD 浮层里那一句照抄）。 */
   modelText: string | null;
+  /** 当前会话跑在哪个号下（那台在脸上说的；没说 ⇒ `null`）：状态栏账号按钮读它。 */
+  account: string | null;
 }
 
-const NO_ACTIVE: ActiveView = { sid: null, usage: null, unavailable: null, projectDir: null, modelText: null };
+const NO_ACTIVE: ActiveView = { sid: null, usage: null, unavailable: null, projectDir: null, modelText: null, account: null };
 const sameActive = (a: ActiveView, b: ActiveView): boolean =>
   a.sid === b.sid &&
   JSON.stringify(a.usage) === JSON.stringify(b.usage) &&
   a.unavailable === b.unavailable &&
   a.projectDir === b.projectDir &&
-  a.modelText === b.modelText;
+  a.modelText === b.modelText &&
+  a.account === b.account;
 const sameSummary = (a: TabsSummary, b: TabsSummary): boolean =>
   a.total === b.total && a.live === b.live && a.dead === b.dead && a.faces === b.faces;
 
@@ -71,38 +73,12 @@ export class TabStore {
   activeId: string | null = null;
   /** 是否在批模式（启动重放期间）：惰性高亮、旧记录收纳不建卡。 */
   inBatch = false;
-  /**
-   * 此刻喂进 `onLine` 的是**取回来的历史**（按偏移 / 按行号，`TabStreamView.feedHistoryRows`），
-   * 不是实时行。远端 tab「见行就从死翻回活」（`tabs.ts::ensureTab` 的 `remote-line` 那一格）只认实时行：
-   * 在一个已结束的远端 tab 上往上翻、取回几条旧行，不许把它翻活。
-   */
-  historyFeed = false;
   /** 每个 sid 当前的任务列表（ensureTab 拉初次快照，之后按通道的任务变更重问）。切 Tab 时把那个 sid 的快照喂给 TasksPanel。 */
   readonly tasksBySid = new Map<string, TaskEntry[]>();
-  /**
-   * 归档信号（ended 格）早于这个 sid 的 Tab 建出来时记在这里，ensureTab 建 Tab 时落实。
-   * ended 与行同一条队列，正常路径下不会先到；这一层兜「ended 先于该 sid 任何行」的异常序（§ 17a）。
-   */
-  readonly pendingArchive = new Map<string, number | null>();
-  /**
-   * 灰灯（idle-tmux）信号早于 Tab 建出时暂存（同 pendingArchive）：F5 后重发的 idle 可能早于骨架建 Tab，不暂存灰灯就丢了。
-   * ensureTab 建 Tab 时落实（同时有 pendingArchive ⇒ 归档优先）。两张表的值都是那一帧带的监控板序。
-   */
-  readonly pendingTmuxIdle = new Map<string, number | null>();
-  /** 红绿灯信号早于 Tab 建出来时暂存（activity 格当场派，而建 Tab 的行走异步队列）。ensureTab 时落实。 */
-  /**
-   * 容器事实（`container` 格）早于 Tab 建出时暂存。ensureTab 建 Tab 时落实
-   * （建出来就是活的；早到的死亡信号优先 —— 那时容器一格由死的那一刻的裁决说了算）。
-   */
-  readonly pendingContainer = new Map<string, ContainerEvent>();
-  /**
-   * 已经把活会话清单报完了的机器（会话流的 `listed` 格）。
-   * 固定复活时据它分：报完了 ⇒ 已结束（它不在清单里，不然 tab 早就被建成活的了）；没报完 ⇒ 说不清。
-   */
+  /** 脸早于建 Tab 到（宣告那一格当场派，建 Tab 的行走异步队列）⇒ 暂存，建 Tab 时落实；同一 sid 后到的覆盖先到的。 */
+  readonly pendingFace = new Map<string, SessionFace>();
+  /** 已经把活会话清单报完了的机器（会话流的 `listed` 格）：「没回来的组员」等每台都报完了才认。 */
   readonly seenOrigins = new Set<string>();
-  readonly pendingActivity = new Map<string, NonNullable<Tab["activity"]>>();
-  /** 「此刻能不能换」早于建 Tab 到达（随活动那几格 · 去向那一帧）⇒ 暂存，建 Tab 时落实。 */
-  readonly pendingSwitch = new Map<string, SwitchCells>();
   /** Tab 还没建时先到的名字（`updateName`），建 Tab 时落实。 */
   readonly pendingName = new Map<string, { label: string; labelProject: string | null }>();
 
@@ -117,20 +93,17 @@ export class TabStore {
     return this.tabsSlice.subscribe(listener);
   }
 
-  /**
-   * 此刻的数量摘要（总数 · 活 · 死）。按**活性**一轴分：可重连的会话 claude 已经没了 ⇒ 算死
-   * （改两轴之前它借着 `status: live` 被算进「活跃」，状态栏的「活跃 N」多数了它）。
-   */
+  /** 此刻的数量摘要（总数 · 活 · 死）。按进程在不在分：Claude 已退出、tmux 会话还在的算死。 */
   summary(): TabsSummary {
     let live = 0;
     const faces: string[] = [];
     for (const t of this.tabs.values()) {
-      if (isLive(t.state)) live += 1;
+      if (isLive(faceOf(t))) live += 1;
       // 需手动那一份：种类 ＋ 挂着的请求（答题块按它换）＋ 只能在终端里答那一句 —— 种类不变、请求挂上 / 答掉也要通知。
       const n = needsOf(t);
       // 隐藏那一格 · 血缘：会话头的「已隐藏」「由 X 启动」「子会话 N」跟着换。
-      const lin = t.lineage ? `${t.lineage.startedBy?.sid ?? ""}\u0002${t.lineage.children.map((c) => `${c.sid}:${c.live ? 1 : 0}:${c.hidden?.by ?? ""}`).join(",")}` : "";
-      faces.push(`${t.sessionId}\u0001${dotOf(t)}\u0001${n?.kind ?? ""}\u0001${n?.ask?.id ?? ""}\u0001${n?.manualText ?? ""}\u0001${t.pending[0]?.name ?? ""}\u0001${t.hidden?.said ?? ""}\u0001${lin}`);
+      const lin = t.lineage ? `${t.lineage.startedBy?.sid ?? ""}\u0002${t.lineage.children.map((c) => `${c.sid}:${c.face.dot}:${c.hidden?.by ?? ""}`).join(",")}` : "";
+      faces.push(`${t.sessionId}\u0001${dotOf(t)}\u0001${faceOf(t).line}\u0001${n?.kind ?? ""}\u0001${n?.ask?.id ?? ""}\u0001${n?.manualText ?? ""}\u0001${t.pending[0]?.name ?? ""}\u0001${t.hidden?.said ?? ""}\u0001${lin}`);
     }
     return { total: this.tabs.size, live, dead: this.tabs.size - live, faces: faces.join("\u0000") };
   }
@@ -166,7 +139,7 @@ export class TabStore {
   hiddenRow(): string[] {
     return this.orderedIds.filter((sid) => {
       const t = this.tabs.get(sid);
-      return t !== undefined && t.hidden != null && (!isResumeOnly(t.state) || sid === this.activeId);
+      return t !== undefined && t.hidden != null && (hasTerminal(faceOf(t)) || sid === this.activeId);
     });
   }
 

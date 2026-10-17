@@ -115,12 +115,18 @@ fn the_model_command_is_slash_model_and_the_value() {
     assert_eq!(super::model_command("sonnet[1m]"), "/model sonnet[1m]");
 }
 
-/// ★ 每一档都有字：记录里会写的那几档（`facts_query_tests` 那七个值：六个真值 ＋ 别名 `manual`）· 屏底认得出的那几档，
-/// 经同一处（[`crate::agents::permission_mode_text`]）都给字，字取自文案表；可选的那三档的字就是起会话框里那一句。认不出的档不猜字。
+/// ★ 每一档都有字：起会话可选的 ∪ 只会显示的那几档 == 记录里会写的那七个值（`recognize::facts::tests` 那七个：六个真值 ＋ 别名 `manual`），
+/// 两向；每一档经同一处（[`crate::agents::permission_mode_text`]）给字、字取自文案表；屏底认得出的档都在里面。认不出的档不猜字。
 #[test]
 fn every_mode_the_session_can_be_in_has_its_words() {
+    use std::collections::BTreeSet;
     let text = |m: &str| crate::agents::permission_mode_text("claude", m);
-    for m in [
+    let known: BTreeSet<&str> = super::PERMISSION_MODES
+        .iter()
+        .chain(super::SHOWN_MODES)
+        .map(|c| c.value)
+        .collect();
+    let in_records = BTreeSet::from([
         "default",
         "plan",
         "acceptEdits",
@@ -128,7 +134,9 @@ fn every_mode_the_session_can_be_in_has_its_words() {
         "dontAsk",
         "auto",
         "manual",
-    ] {
+    ]);
+    assert_eq!(known, in_records, "有字的档与记录里会写的档不是同一组");
+    for m in &known {
         let t = text(m).unwrap_or_else(|| panic!("`{m}` 没有字"));
         assert!(
             !t.is_empty() && !t.contains(m),
@@ -136,15 +144,7 @@ fn every_mode_the_session_can_be_in_has_its_words() {
         );
     }
     for (_, m) in super::MODE_MARKS {
-        assert!(text(m).is_some(), "屏底认得出的 `{m}` 没有字");
-    }
-    for c in super::PERMISSION_MODES {
-        assert_eq!(
-            text(c.value),
-            Some((c.text)()),
-            "`{}` 的字与可选的那一句不同",
-            c.value
-        );
+        assert!(known.contains(m), "屏底认得出的 `{m}` 没有字");
     }
     assert_eq!(
         text("manual"),
@@ -195,4 +195,16 @@ fn the_model_written_in_the_record_reads_as_its_name() {
         None,
         "没考据过模型名的那一家不给字"
     );
+}
+
+/// ★ 记录里的模型原值认成换模型清单里唯一对得上的那一项：`claude-opus-…` ⇒ `opus`；`claude-sonnet-…` 在清单里有 `sonnet` 与
+/// `sonnet[1m]` 两项、记录里分不出 ⇒ 不认；不是这一家的值 ⇒ 不认；Codex 没考据过 ⇒ 不认。
+#[test]
+fn the_record_model_is_picked_only_when_one_item_matches() {
+    let pick = |m: &str| crate::agents::model_pick("claude", m);
+    assert_eq!(pick("claude-opus-4-1-20250805"), Some("opus"));
+    assert_eq!(pick("claude-haiku-4-5-20251001"), Some("haiku"));
+    assert_eq!(pick("claude-sonnet-4-5"), None);
+    assert_eq!(pick("gpt-5"), None);
+    assert_eq!(crate::agents::model_pick("codex", "claude-opus-4-5"), None);
 }

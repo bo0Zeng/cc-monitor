@@ -1,4 +1,4 @@
-//! 帧面 `session-permission` 的宿主壳：会话开着时切权限档。那一家只有「按一下换到下一档」的循环（适配层 `PermissionFace.switch`），
+//! 帧面 `session-permission` 的宿主壳：切权限档。这台已经没有它的终端 ⇒ 记在这条会话上、下次恢复照它起（同 `session-model`）。开着时那一家只有「按一下换到下一档」的循环（适配层 `PermissionFace.switch`），
 //! 所以：读此刻的档 · 不是 ⇒ 按一下 · 等它重画 · 再读，到了为止，最多按一圈。在等人不按；认不出 · 不在循环里 · 按了没变都照实说「结果未知」。
 
 use crate::agents::ModeSwitch;
@@ -19,7 +19,7 @@ const REDRAWS_PER_PRESS: usize = 4;
 pub(crate) struct SessionPermissionReq {
     /// 会话 id。
     pub(crate) sid: String,
-    /// 要切到的档（原值；必须是 `session-new-facts` 那一家 `permissionModes` 里的一个）。
+    /// 要切到的档（原值；必须是 `session-open-facts` 那一家 `permissionModes` 里的一个）。
     pub(crate) mode: String,
     /// 自报的前端（过「哪个前端的会话」那一维，同 `terminal-input`）。
     #[serde(default)]
@@ -61,8 +61,8 @@ typed::codes! {
 
 /// 切档那三样副作用（判据拿合成的屏喂）。
 pub(crate) trait ModeIo {
-    /// 起看屏的那一份（只在真要按的时候起）。
-    fn open(&mut self) -> Result<(), CmdErr>;
+    /// 起看屏的那一份（只在真要按的时候起）；终端不收（没了 · 只剩 shell · 不归我们）⇒ 原因。
+    fn open(&mut self) -> Result<Option<Refused>, CmdErr>;
     /// 此刻的档（认不出 ⇒ `None`）。
     fn read(&mut self) -> Result<Option<&'static str>, CmdErr>;
     /// 按一下换档键。
@@ -90,8 +90,26 @@ fn unsure(mode: Option<&'static str>, said: String) -> ModeSwitched {
     reply(SwitchResult::Unsure, mode, None, Some(said))
 }
 
-/// 本体：`target` 已核过是那一家给的档。
+/// 本体：`target` 已核过是那一家给的档。这台已经没有它的终端 ⇒ `keep` 记下、等恢复照它起，回切到了。
 pub(crate) fn switch_with(
+    target: &str,
+    sw: &ModeSwitch,
+    waiting: bool,
+    io: &mut dyn ModeIo,
+    keep: &dyn Fn() -> Result<(), CmdErr>,
+) -> Result<ModeSwitched, CmdErr> {
+    let got = walk(target, sw, waiting, io)?;
+    if !terminals::terminal_gone(got.why) {
+        return Ok(got);
+    }
+    keep()?;
+    Ok(ModeSwitched {
+        mode: Some(target.to_string()),
+        ..reply(SwitchResult::Done, None, None, None)
+    })
+}
+
+fn walk(
     target: &str,
     sw: &ModeSwitch,
     waiting: bool,
@@ -105,7 +123,14 @@ pub(crate) fn switch_with(
             Some(no_said(Refused::Waiting)),
         ));
     }
-    io.open()?;
+    if let Some(why) = io.open()? {
+        return Ok(reply(
+            SwitchResult::Refused,
+            None,
+            Some(why),
+            Some(no_said(why)),
+        ));
+    }
     let mut seen: Vec<&'static str> = Vec::new();
     let mut now = io.read()?;
     loop {
@@ -153,7 +178,7 @@ pub(crate) fn switch_with(
     }
 }
 
-/// 生产那一份：抓屏走 `terminal-preview` 那一条（不带色），按键走 `terminal-input` 那一条（身份门同一份），等重画用实时预览那个只读客户端。
+/// 生产那一份：抓屏走 `terminal-preview` 那一条（不带色），按键与看屏前那一道门同 `session-say`（只剩 shell 的窗格不收），等重画用实时预览那个只读客户端。
 struct Live<'a> {
     sid: &'a str,
     client: Option<String>,
@@ -162,10 +187,13 @@ struct Live<'a> {
 }
 
 impl ModeIo for Live<'_> {
-    fn open(&mut self) -> Result<(), CmdErr> {
-        let t = terminals::follow_target_on(On::default(), None, Some(&self.sid))?;
+    fn open(&mut self) -> Result<Option<Refused>, CmdErr> {
+        let t = match terminals::say_target_on(On::default(), self.sid, self.client.as_deref())? {
+            Ok(t) => t,
+            Err(why) => return Ok(Some(why)),
+        };
         self.watch = Some(crate::control::terminal_follow::Watch::open(None, &t)?);
-        Ok(())
+        Ok(None)
     }
     fn read(&mut self) -> Result<Option<&'static str>, CmdErr> {
         let shot = terminals::preview_on(
@@ -184,7 +212,7 @@ impl ModeIo for Live<'_> {
         if let Some(w) = self.watch.as_mut() {
             w.forget();
         }
-        crate::control::terminals_wire::input(&TerminalInputReq {
+        crate::control::terminals_wire::say(&TerminalInputReq {
             sid: Some(self.sid.to_string()),
             key: Some(self.sw.key.to_string()),
             client: self.client.clone(),
@@ -196,7 +224,7 @@ impl ModeIo for Live<'_> {
     }
 }
 
-/// `session-permission`：会话开着时切权限档。阻塞档（读 pidfile · 起 tmux 几发 · 等重画）。
+/// `session-permission`：切权限档（终端没了 ⇒ 记下、恢复照它起）。阻塞档（读 pidfile · 起 tmux 几发 · 等重画）。
 pub(crate) struct SessionPermission;
 
 impl Command for SessionPermission {
@@ -207,17 +235,20 @@ impl Command for SessionPermission {
 }
 
 impl crate::wire::typed::Handle for SessionPermission {
-    type Needs = crate::wire::typed::needs::Nothing;
+    type Needs = crate::wire::typed::needs::Own;
     fn run(
         req: SessionPermissionReq,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
+        cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<ModeSwitched, SessionPermissionErr>> + Send + 'static
     {
-        async move { answer(&req).map_err(|f| typed::of_fail(f, SessionPermissionErr::Unobservable)) }
+        let (_cx, own) = cx.split();
+        async move {
+            answer(&req, &own).map_err(|f| typed::of_fail(f, SessionPermissionErr::Unobservable))
+        }
     }
 }
 
-fn answer(req: &SessionPermissionReq) -> Result<ModeSwitched, CmdErr> {
+fn answer(req: &SessionPermissionReq, own: &crate::platform::Own) -> Result<ModeSwitched, CmdErr> {
     if !shell_quote_core::session_id_ok(&req.sid) {
         return Err(CmdErr::new(
             "bad_args",
@@ -225,9 +256,8 @@ fn answer(req: &SessionPermissionReq) -> Result<ModeSwitched, CmdErr> {
         ));
     }
     let home = crate::history::listing::agent_home();
-    let kind = crate::observe::history_query::session_record(&home, &req.sid)
-        .ok()
-        .and_then(|p| crate::agents::record_kind_of(&p));
+    let record = crate::observe::query::locate::session_record(&home, &req.sid).ok();
+    let kind = record.as_deref().and_then(crate::agents::record_kind_of);
     let face = crate::agents::pick_kind(kind)
         .ok()
         .and_then(|(_, f)| f.permission);
@@ -251,7 +281,20 @@ fn answer(req: &SessionPermissionReq) -> Result<ModeSwitched, CmdErr> {
         sw,
         watch: None,
     };
-    let mut got = switch_with(&req.mode, &sw, waiting, &mut io)?;
+    let keep = || match &record {
+        Some(r) => crate::history::history_annotations::keep_for_resume(
+            own,
+            &req.sid,
+            r,
+            None,
+            Some(&req.mode),
+        ),
+        None => Err(CmdErr::new(
+            "no_such_session",
+            copy_core::copy_text("beSessionCommands.session.noRecord", &[]),
+        )),
+    };
+    let mut got = switch_with(&req.mode, &sw, waiting, &mut io, &keep)?;
     got.mode_text = got.mode.as_deref().and_then(|m| perm.text_of(m));
     Ok(got)
 }

@@ -51,7 +51,7 @@ fn the_local_ssh_read_surface_is_exactly_one_site() {
     // 而本文件另一条判据里有一句刻意演示旧近似的 `me.split("\n#[cfg(test)]")`（见 2890 行附近）。
     // 叫 `me` 会让那处旧 split 被算成「语料变量上的裸匹配」，棘轮当场红 —— 08-08 实测过。
     // 名字影响判据结果，这件事本身值得写下来。
-    let self_src = crate::guard_support::stream_source_raw();
+    let self_src = guard_core::addr::stream_source_raw();
     let mut corpus: Vec<(String, String)> = files
         .iter()
         .map(|(p, s)| {

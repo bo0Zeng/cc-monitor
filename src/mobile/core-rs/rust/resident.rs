@@ -1,14 +1,18 @@
 //! **一台的常驻流**在手机这一侧的宿主：循环本身是 `resident-client` 那一份（[`Feed`]，桌面同一条循环），
 //! 这里只接两根线 —— 下面那条 SSH（[`PhoneLink`]：拨号核心在这台手机上开的链路，拨号请求由 Kotlin 交那一份）· 往 Kotlin 交的事（一个回调，走消息）。
 //!
-//! 往 Kotlin 交的事一律 `(编号, 种类, 一段文本)`：`state`（这台通不通，JSON；SSH 那层跟着它换连接）· `frame`（流上的一帧，原样一行；`line` 帧里解不开的那条记录换成认不出那一条）·
-//! `watch_from`（JSON 数组）· `ssh`（SSH 够没够着那一台：`true` / `false`，与流通不通分开；SSH 那层跟它走）· `reply`（一问一答的结局，JSON，带 `call` 编号）。
+//! 往 Kotlin 交的事一律 `(编号, 种类, 一段文本)`：`state`（这台通不通 ＋ 那台的状态成品，JSON：[`state_line`]；SSH 那层跟着它换连接）· `frame`（流上的一帧，原样一行；`line` 帧里解不开的那条记录换成认不出那一条）·
+//! `watch_from`（JSON 数组）· `ssh`（SSH 够没够着那一台：`true` / `false`，与流通不通分开；SSH 那层跟它走）· `reply`（一问一答的结局，JSON，带 `call` 编号）·
+//! `moved`（分块传走到哪，`transfer.rs`）。
 
+use cmd_wire::record::OrUnread;
+use deploy::machine::{fold, product, Entry, Fact};
 use resident_client::client::CallError;
 use resident_client::feed::{
     sink, Boxed, Config, Event, Exec, Feed, Problem, Progress, State, Transport,
 };
-use std::collections::HashMap;
+use resident_client::watch::Desk;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
@@ -50,10 +54,7 @@ impl PhoneLink {
             r.insert("progress".into(), true.into());
         }
         let req: ssh_dial::DialRequest = serde_json::from_value(req).map_err(|e| {
-            Problem::new(
-                copy_core::copy_text("mobSsh.conn.unavailable", &[]),
-                e.to_string(),
-            )
+            Problem::new(copy_core::copy_text("reason.link.lost", &[]), e.to_string())
         })?;
         let (up_w, up_r) = tokio::io::duplex(256 * 1024);
         let (mut down_w, mut down_r) = tokio::io::duplex(256 * 1024);
@@ -132,9 +133,9 @@ impl Transport for PhoneLink {
                     &Progress::default(),
                 )
                 .await?;
-            let line = read_line(&mut down).await.ok_or_else(|| {
-                Problem::new(copy_core::copy_text("mobSsh.conn.unavailable", &[]), "")
-            })?;
+            let line = read_line(&mut down)
+                .await
+                .ok_or_else(|| Problem::new(copy_core::copy_text("reason.link.lost", &[]), ""))?;
             Ok(exec_of(&line))
         })
     }
@@ -146,9 +147,9 @@ async fn read_ack(
     progress: &Progress,
 ) -> Result<serde_json::Value, Problem> {
     loop {
-        let line = read_line(down).await.ok_or_else(|| {
-            Problem::new(copy_core::copy_text("mobSsh.conn.unavailable", &[]), "")
-        })?;
+        let line = read_line(down)
+            .await
+            .ok_or_else(|| Problem::new(copy_core::copy_text("reason.link.lost", &[]), ""))?;
         let v: serde_json::Value = serde_json::from_str(&line).unwrap_or_default();
         if v.get("progress").is_some() {
             progress.step();
@@ -175,7 +176,7 @@ pub fn ack_ok(ack: &serde_json::Value) -> bool {
     ack.get("ok").and_then(serde_json::Value::as_bool) == Some(true)
 }
 
-/// 没拨成的 ack ⇒ 那一句（拨号核心写好）＋ 复制详情。
+/// 没拨成的 ack ⇒ 那一句（拨号核心写好）＋ 复制详情 ＋ 原因码与那台出示的指纹。
 pub fn ack_problem(ack: &serde_json::Value) -> Problem {
     let s = |k: &str| {
         ack.get(k)
@@ -186,11 +187,17 @@ pub fn ack_problem(ack: &serde_json::Value) -> Problem {
     let text = s("error");
     Problem::new(
         if text.is_empty() {
-            copy_core::copy_text("mobSsh.conn.unavailable", &[])
+            copy_core::copy_text("reason.link.lost", &[])
         } else {
             text
         },
         s("detail"),
+    )
+    .because(
+        serde_json::from_value(ack["reason"].clone()).ok(),
+        ack.get("fingerprint")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string),
     )
 }
 
@@ -243,53 +250,89 @@ pub(crate) fn feed(h: i64) -> Option<Arc<Feed<PhoneLink>>> {
         .cloned()
 }
 
-/// 一件事 ⇒ `(种类, 文本)`（帧原样，只有 `line` 帧里解不开的那条记录换成认不出那一条：`cmd_wire::record::mend_line_frame`）；Kotlin 用不着的（接上那一刻的 hello 与客户端：问答经 [`call`] 走 · 超长丢行的缺口）⇒ `None`。
+/// 一件事 ⇒ `(种类, 文本)`。帧按 `cmd-wire` 那一份类型解过、再按类型写一行（`line` 帧里解不开的那条记录成认不出那一条：[`OrUnread`]）；
+/// 解不开 ⇒ `unread` 原样那一行；状态那一件经 [`state_line`]（要这台手上的事实）。Kotlin 用不着的（接上那一刻的 hello 与客户端：问答经 [`call`] 走 · 超长丢行的缺口）⇒ `None`。
 pub fn event_of(e: &Event) -> Option<(&'static str, String)> {
     Some(match e {
-        Event::State(s) => ("state", state_json(s)),
-        Event::Frame(line) => (
-            "frame",
-            cmd_wire::record::mend_line_frame(line).unwrap_or_else(|| line.clone()),
-        ),
-        Event::WatchFrom(rows) => (
-            "watch_from",
-            serde_json::to_string(rows).unwrap_or_else(|_| "[]".into()),
-        ),
+        Event::Frame(line) => match cmd_wire::frame::decode::<OrUnread>(line)
+            .and_then(|f| serde_json::to_string(&f))
+        {
+            Ok(typed) => ("frame", typed),
+            Err(_) => ("unread", line.clone()),
+        },
         Event::Ssh(reached) => ("ssh", reached.to_string()),
-        Event::Attached { .. } | Event::Gap => return None,
+        Event::State(_) | Event::Attached { .. } | Event::Gap => return None,
     })
 }
 
-/// 状态那一行（要不要「更新后端」由循环定好在 `fix` 里：通着 · 断着同一格）。
-pub fn state_json(s: &State) -> String {
-    serde_json::to_string(s).unwrap_or_else(|_| r#"{"state":"connecting"}"#.to_string())
+/// 状态那一行：`state` 通没通（`connecting` · `up` 带第几条流 `epoch` · `down`）＋ `machine` 那台的状态成品
+/// （收进这台手上的事实 `e`，由 `deploy::machine` 定，同桌面那一份；这一端不自己装后端 ⇒ 没有后端那一轮给［安装］）。
+pub fn state_line(e: &mut Entry, s: &State, machine: &str) -> String {
+    fold(
+        e,
+        Fact::Round {
+            round: s.round(),
+            version: None,
+        },
+    );
+    let mut line = match s {
+        State::Connecting => serde_json::json!({ "state": "connecting" }),
+        State::Up { epoch, .. } => serde_json::json!({ "state": "up", "epoch": epoch }),
+        State::Down { .. } => serde_json::json!({ "state": "down" }),
+    };
+    line["machine"] = serde_json::to_value(product(e, machine, true, false)).unwrap_or_default();
+    line.to_string()
 }
 
 /// 看一台（在当前运行时上起它的循环）。`mine` = 手上这一版的身份（版本门的对照物）。回编号。
 pub fn open(machine: String, mine: Option<String>, tz: Option<String>, on_event: OnEvent) -> i64 {
     static NEXT: AtomicI64 = AtomicI64::new(1);
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
+    let name = machine.clone();
     let cfg = Config {
         machine,
         mine,
         tz,
         handshake: HANDSHAKE,
     };
+    // 名单从空开始：一条会话都还没人看 ⇒ 那台一条都不发（屏上开了哪条再经 [`watch`] 报）。手机不读主线外清单 ⇒ 一份都不要。
+    let rows_to = Arc::clone(&on_event);
+    let desk = Desk::new(
+        |_| Vec::new(),
+        move |rows| {
+            rows_to(
+                id,
+                "watch_from",
+                serde_json::to_string(&rows).unwrap_or_else(|_| "[]".into()),
+            );
+        },
+    );
+    let facts = Mutex::new(Entry::default());
     let feed = Feed::start(
         cfg,
         None,
+        Arc::clone(&desk),
         sink(move |e: Event| {
-            if let Some((kind, body)) = event_of(&e) {
+            let got = match &e {
+                Event::State(s) => {
+                    let mut facts = facts.lock().unwrap_or_else(|e| e.into_inner());
+                    Some(("state", state_line(&mut facts, s, &name)))
+                }
+                _ => event_of(&e),
+            };
+            if let Some((kind, body)) = got {
                 on_event(id, kind, body);
             }
         }),
     );
-    // 一条会话都还没人看 ⇒ 那台一条都不发（屏上开了哪条再经 [`watch`] 报）。
-    feed.watch_none();
     feeds()
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .insert(id, feed);
+    watching()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(id, (desk, Watched::default()));
     id
 }
 
@@ -316,11 +359,16 @@ pub fn ssh(h: i64, base: Option<&str>) -> bool {
     }
 }
 
+/// 下一个问答编号（一问一答与分块传同一族：结局都经 `reply` 回、Kotlin 按它认）。
+pub(crate) fn next_call() -> i64 {
+    static NEXT: AtomicI64 = AtomicI64::new(1);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
 /// 一问一答：回问答编号；结局经 `reply` 那一种交回（`{call, …}`，[`reply_json`]）。这台不在 ⇒ 0。
 pub fn call(h: i64, cmd: String, args: &str, within_ms: u64, on_event: OnEvent) -> i64 {
-    static NEXT: AtomicI64 = AtomicI64::new(1);
     let Some(f) = feed(h) else { return 0 };
-    let id = NEXT.fetch_add(1, Ordering::Relaxed);
+    let id = next_call();
     let args: serde_json::Value = serde_json::from_str(args).unwrap_or(serde_json::Value::Null);
     let machine = f.machine().to_string();
     tokio::spawn(async move {
@@ -334,10 +382,55 @@ pub fn call(h: i64, cmd: String, args: &str, within_ms: u64, on_event: OnEvent) 
     id
 }
 
-/// 多一处 / 少一处在看这条会话。
+/// 多一处 / 少一处在看这条会话。名单变了 ⇒ 交那台的名单台（整份）。
 pub fn watch(h: i64, sid: &str, holding: bool) {
-    if let Some(f) = feed(h) {
-        f.watch(sid, holding);
+    let mut t = watching().lock().unwrap_or_else(|e| e.into_inner());
+    let Some((desk, w)) = t.get_mut(&h) else {
+        return;
+    };
+    let moved = if holding { w.hold(sid) } else { w.release(sid) };
+    if moved {
+        desk.set(w.sids(), Default::default());
+    }
+}
+
+/// 每台的名单台与「几处在看」的计数（[`open`] 起、[`close`] 摘）。
+fn watching() -> &'static Mutex<HashMap<i64, (Arc<Desk>, Watched)>> {
+    static W: OnceLock<Mutex<HashMap<i64, (Arc<Desk>, Watched)>>> = OnceLock::new();
+    W.get_or_init(Default::default)
+}
+
+/// 此刻有人在看的那几条（每条记有几处在看：一处放手不影响别处）。名单 = 计数大于零的那几条。
+#[derive(Debug, Default, Clone)]
+pub struct Watched {
+    held: BTreeMap<String, u32>,
+}
+
+impl Watched {
+    /// 多一处在看。回名单变没变。
+    pub fn hold(&mut self, sid: &str) -> bool {
+        let n = self.held.entry(sid.to_string()).or_insert(0);
+        *n += 1;
+        *n == 1
+    }
+
+    /// 少一处在看。回名单变没变（本来就没在看 ⇒ 不变）。
+    pub fn release(&mut self, sid: &str) -> bool {
+        match self.held.get_mut(sid) {
+            Some(n) if *n > 1 => {
+                *n -= 1;
+                false
+            }
+            Some(_) => {
+                self.held.remove(sid);
+                true
+            }
+            None => false,
+        }
+    }
+
+    pub fn sids(&self) -> BTreeSet<String> {
+        self.held.keys().cloned().collect()
     }
 }
 
@@ -354,6 +447,10 @@ pub fn kick(h: i64, retry: bool) {
 
 pub fn close(h: i64) {
     bases().lock().unwrap_or_else(|e| e.into_inner()).remove(&h);
+    watching()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&h);
     if let Some(f) = feeds().lock().unwrap_or_else(|e| e.into_inner()).remove(&h) {
         f.close();
     }
@@ -576,7 +673,7 @@ mod tests {
         );
         assert!(!rec["id"].as_str().unwrap().is_empty());
 
-        // 流上的 `line` 帧：同一个解法（那一条成卡、帧照交）；别的帧原样。
+        // 流上的 `line` 帧：同一个解法（那一条成卡、帧照交）。
         let frame = serde_json::json!({"kind": "line", "session_id": "s", "path": "/p", "seq": 7, "byte_offset": 70, "record": short});
         let (k, b) = event_of(&Event::Frame(frame.to_string())).unwrap();
         assert_eq!(k, "frame");
@@ -586,49 +683,37 @@ mod tests {
             (v["seq"].as_u64(), v["byte_offset"].as_u64()),
             (Some(7), Some(70))
         );
-        let fine = serde_json::json!({"kind": "line", "session_id": "s", "path": "/p", "seq": 8, "record": good});
+        let fine = serde_json::json!({"kind": "line", "session_id": "s", "path": "/p", "seq": 8, "byte_offset": 80, "record": good});
         let v: serde_json::Value =
             serde_json::from_str(&event_of(&Event::Frame(fine.to_string())).unwrap().1).unwrap();
         assert_eq!(v, fine);
     }
 
-    /// 交 Kotlin 的几种事：状态是带 `state` 标签的 JSON · 帧原样。
+    /// 帧按 `cmd-wire` 那一份类型解过、再按类型写一行交 Kotlin（线上同名的格；类型里没有的格不交）；解不开 ⇒ 照实交认不出的那一行。
     #[test]
-    fn events_are_tagged_and_frames_go_through_untouched() {
-        let (k, b) = event_of(&Event::State(State::Up {
-            epoch: 3,
-            relation: cmd_wire::attach::Relation::Newer,
-            differs: vec![],
-            notice: Some(Problem::new("box 后端较新 · 不会换回", "")),
-            fix: None,
-        }))
-        .unwrap();
-        assert_eq!(k, "state");
-        let v: serde_json::Value = serde_json::from_str(&b).unwrap();
-        assert_eq!(v["state"], "up");
-        assert_eq!(v["epoch"], 3);
-        assert_eq!(v["relation"], "newer");
-        assert!(v.get("fix").is_none(), "那台新 ⇒ 不点名「更新」：{v}");
-        let (k, b) = event_of(&Event::State(State::Down {
-            problem: Problem::new("box 离线", ""),
-            needs_hand: true,
-            unsupported: false,
-            fix: None,
-        }))
-        .unwrap();
-        assert_eq!(k, "state");
+    fn frames_are_rewritten_by_type_and_an_unreadable_one_says_so() {
+        let removed = r#"{"kind":"session_removed","sid":"s","cause":"gone","later":1}"#;
+        let (k, b) = event_of(&Event::Frame(removed.into())).unwrap();
+        assert_eq!(k, "frame");
         let v: serde_json::Value = serde_json::from_str(&b).unwrap();
         assert_eq!(
-            (
-                v["state"].as_str(),
-                v["needs_hand"].as_bool(),
-                v["problem"]["text"].as_str()
-            ),
-            (Some("down"), Some(true), Some("box 离线"))
+            (v["kind"].as_str(), v["sid"].as_str()),
+            (Some("session_removed"), Some("s"))
         );
+        assert!(v.get("later").is_none(), "类型里没有的格不交：{v}");
         assert_eq!(
             event_of(&Event::Frame("{\"kind\":\"x\"}".into())),
-            Some(("frame", "{\"kind\":\"x\"}".to_string()))
+            Some(("unread", "{\"kind\":\"x\"}".to_string()))
+        );
+    }
+
+    /// 交 Kotlin 的几种事：状态那一件走 [`state_line`]（要这台手上的事实）· 帧原样。
+    #[test]
+    fn events_are_tagged_and_frames_go_through_untouched() {
+        assert_eq!(
+            event_of(&Event::State(State::Connecting)),
+            None,
+            "状态那一件经 state_line"
         );
         assert_eq!(event_of(&Event::Gap), None, "缺口 Kotlin 用不着");
         assert_eq!(
@@ -637,12 +722,111 @@ mod tests {
         );
     }
 
+    /// 几处在看同一条：计数到零才出名单；两处 hold、放一处 ⇒ 名单不变。
+    #[test]
+    fn a_session_leaves_the_list_only_when_the_last_holder_lets_go() {
+        let mut w = Watched::default();
+        assert!(w.sids().is_empty(), "从空开始");
+        assert!(w.hold("a"), "第一处在看 ⇒ 名单变了");
+        assert!(!w.hold("a"), "第二处在看 ⇒ 名单没变");
+        assert!(!w.release("a"));
+        assert_eq!(w.sids().len(), 1);
+        assert!(w.release("a"), "最后一处放手 ⇒ 名单变了");
+        assert!(w.sids().is_empty());
+        assert!(!w.release("a"), "本来就没在看 ⇒ 不变");
+    }
+
+    /// 状态那一行的金样：一串事实由生产函数现产，与 `tests/__fixtures__/mobile-state-line.golden.json` 逐字相等；
+    /// 手机那一侧（`ResidentFeedTest`）读同一份逐行解。只有通没通与成品，画法那几格（修法 · 版本那一句）不另带。
+    #[test]
+    fn the_state_line_matches_the_cross_language_golden() {
+        use cmd_wire::attach::Relation;
+        use cmd_wire::machine::{Blocker, Why};
+        let up = |epoch, relation| State::Up {
+            epoch,
+            relation,
+            differs: vec![],
+        };
+        let down = |problem: Problem, blocker: Option<Blocker>| State::Down {
+            problem,
+            needs_hand: blocker.is_some(),
+            blocker,
+        };
+        let refused = Problem::new("连接失败 · 密钥被拒", "命令：dial\n原话：denied")
+            .because(Some(Why::Auth), None);
+        let cases: Vec<(&str, State)> = vec![
+            ("正在连", State::Connecting),
+            ("连着", up(1, Relation::Same)),
+            ("那台旧", up(2, Relation::Older)),
+            ("那台新", up(3, Relation::Newer)),
+            (
+                "没有后端",
+                down(
+                    Problem::new("远端没有后端", "exit: 127"),
+                    Some(Blocker::NoBackend),
+                ),
+            ),
+            (
+                "后端旧了",
+                down(
+                    Problem::new("后端要更新", "refused: x"),
+                    Some(Blocker::OldBackend),
+                ),
+            ),
+            ("密钥被拒", down(refused, None)),
+            ("离线", down(Problem::new("box 离线", ""), None)),
+            (
+                "不是 Unix",
+                down(
+                    Problem::new("仅支持 Unix", "setsid"),
+                    Some(Blocker::NotUnix),
+                ),
+            ),
+        ];
+        let out: Vec<serde_json::Value> = cases
+            .iter()
+            .map(|(name, s)| {
+                let line: serde_json::Value =
+                    serde_json::from_str(&state_line(&mut Entry::default(), s, "box")).unwrap();
+                serde_json::json!({ "name": name, "line": line })
+            })
+            .collect();
+        let golden = serde_json::json!({
+            "说明": [
+                "手机核心交 Kotlin 的 `state` 那一行（通没通 ＋ 那台的状态成品）的跨语言金样。",
+                "Rust：src/mobile/core-rs/rust/resident.rs 按 name 走生产函数现产，逐字相等。",
+                "Kotlin：core-claude 的 ResidentFeedTest 读同一份逐行解成 LinkState。",
+                "机器名 · 那一句 · 详情是结构夹具，不取自任何真机。"
+            ],
+            "cases": out,
+        });
+        let text = serde_json::to_string_pretty(&golden).unwrap() + "\n";
+        let rel = "tests/__fixtures__/mobile-state-line.golden.json";
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
+        let want = std::fs::read_to_string(root.join(rel)).unwrap_or_default();
+        let fresh = root.join(".build/golden").join(rel);
+        if text != want {
+            let _ = std::fs::create_dir_all(fresh.parent().unwrap());
+            let _ = std::fs::write(&fresh, &text);
+            panic!("{rel} 与现打的不一致：现打的在 .build/golden/{rel}；对过后跑 bash tests/scripts/bless-golden.sh 拷回（手机 ResidentFeedTest 读它）");
+        }
+        let _ = std::fs::remove_file(&fresh);
+    }
+
     /// ack 与 capture 那一行的读法。
     #[test]
     fn the_ack_and_the_capture_line_are_read_as_the_dial_core_writes_them() {
         assert!(ack_ok(&serde_json::json!({"ok": true})));
         let p = ack_problem(&serde_json::json!({"ok": false, "error": "拨号失败", "detail": "d"}));
         assert_eq!((p.text.as_str(), p.detail.as_str()), ("拨号失败", "d"));
+        assert_eq!((p.why, p.seen_key), (None, None));
+        let p = ack_problem(&serde_json::json!({
+            "ok": false, "error": "指纹变了", "reason": "host_key", "fingerprint": "SHA256:seen"
+        }));
+        assert_eq!(
+            (p.why, p.seen_key.as_deref()),
+            (Some(cmd_wire::machine::Why::HostKey), Some("SHA256:seen"))
+        );
         assert_eq!(
             exec_of(r#"{"exit_status":127,"stdout":"","stderr":"nope"}"#),
             Exec {

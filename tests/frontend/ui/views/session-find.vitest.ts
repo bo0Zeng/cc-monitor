@@ -19,6 +19,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { owned } from "../../../test-support/owned-tab-manager.ts";
+import { announced } from "../../../test-support/session-faces";
 
 const stub = vi.hoisted(() => ({
   /** `find_in_session` 回什么（按调用顺序一份一份给；给的是 Promise 就原样回）。 */
@@ -55,13 +56,6 @@ vi.mock("../../../../src/frontend/ui/tasks-panel", () => ({ fetchSessionTasks: v
 vi.mock("../../../../src/frontend/ui/behavior", () => ({
   getBehavior: vi.fn().mockResolvedValue({ resumeCommand: "cct" }),
 }));
-vi.mock("../../../../src/frontend/ui/remote-launch-run", () => ({
-  runRemoteResume: vi.fn().mockResolvedValue(undefined),
-  runRemoteResumeTmux: vi.fn().mockResolvedValue(undefined),
-  runLocalResumeIntoExistingTmux: vi.fn().mockResolvedValue(true),
-  runRemoteResumeIntoExistingTmux: vi.fn().mockResolvedValue(true),
-  runRemoteAttach: vi.fn().mockResolvedValue(undefined),
-}));
 vi.mock("../../../../src/frontend/ui/fork-flow", () => ({ runForkFlow: vi.fn().mockResolvedValue(undefined) }));
 
 import { invoke } from "@tauri-apps/api/core";
@@ -80,9 +74,12 @@ import { dispatcher } from "../../../../src/frontend/ui/keybindings/registry";
 import { findInSession, type FindResult } from "../../../../src/frontend/ui/session-reads";
 import { FindStrip, __resetFindScopeForTests } from "../../../../src/frontend/ui/find-strip";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
+import type { JumpTarget } from "../../../../src/frontend/ui/views/user-input-panel";
 
 const hit = (uuid: string, matched = "needle", before = "a ", after = " b", turn = 0, tsMs = 0, tsText = "") => ({
   uuid,
+  // 后端给的行号：夹具里 `u{行号}` 照它，别的随便给一个（只核它被原样带去跳）。
+  line: /^u\d+$/.test(uuid) ? Number(uuid.slice(1)) : 100 + uuid.length,
   kind: "assistant",
   before,
   matched,
@@ -291,7 +288,7 @@ describe("会话内查找 · 搜索", () => {
   });
 
   it("🔴 结果是框里这个词的 ⇒ 回车 / F3 下一条、Shift+F3 上一条、↓ 也走，选中即跳（到头绕回）", async () => {
-    const jumpTo = vi.fn((_uuid: string) => document.createElement("div"));
+    const jumpTo = vi.fn((_to: JumpTarget) => document.createElement("div"));
     const { p } = panelWith({ search: vi.fn(async () => found([hit("a"), hit("b"), hit("c")])), jumpTo } as Partial<SessionFindHost>);
     enter(p, "x");
     await settleOutline();
@@ -300,7 +297,8 @@ describe("会话内查找 · 搜索", () => {
     press(p, { key: "ArrowDown" });
     press(p, { key: "ArrowDown" });
     press(p, { key: "F3", shiftKey: true });
-    expect(jumpTo.mock.calls.map((c) => c[0])).toEqual(["a", "b", "c", "a", "c"]);
+    expect(jumpTo.mock.calls.map((c) => c[0].uuid)).toEqual(["a", "b", "c", "a", "c"]);
+    expect(jumpTo.mock.calls[0][0], "跳的是命中带来的那一条（uuid ＋ 行号）").toMatchObject({ uuid: "a", line: 101 });
     expect(hitRows(p.el).map((r) => r.getAttribute("aria-selected"))).toEqual(["false", "false", "true"]);
   });
 
@@ -344,7 +342,7 @@ function liveSetup(): void {
   const barEl = document.createElement("div");
   streamRootEl = document.createElement("div");
   document.body.append(barEl, streamRootEl);
-  tm = owned(new TabManager(barEl, streamRootEl));
+  tm = owned(announced(new TabManager(barEl, streamRootEl)));
 }
 
 describe("SE2 · 实时 tab 上的查找面板", () => {
@@ -429,7 +427,7 @@ describe("SE2 · 实时 tab 上的查找面板", () => {
     await settleOutline();
     const { recordReadCalls } = await import("../../../test-support/chan-fake");
     const ranges = recordReadCalls(vi.mocked(invoke).mock.calls, "read_session_range");
-    expect(ranges.length, "正文真的是按偏移要回来的").toBeGreaterThan(0);
+    expect(ranges, "正文是按偏移要回来的").toEqual([{ origin: "<local>", jsonlPath: "/p/s1.jsonl", offset: 2700, until: 3310, seqBase: 270 }]);
     expect(el.querySelector('[data-id="u300"]'), "取回之后卡建出来了").not.toBeNull();
     expect(row.dataset.unjumpable, "等到了卡却标成跳不过去 ⇒ 同步那一下就去找了").toBeUndefined();
   });
@@ -454,7 +452,6 @@ describe("ui3 · 查找范围「全部 | 用户」", () => {
       ["user", copyText("sessionFind.scope.user"), "false"],
     ]);
     expect(toolsBox(p.el).closest("label")!.textContent).toBe(copyText("findStrip.box.tools"));
-    expect(copyText("sessionFind.box.tools")).toBe(copyText("findStrip.box.tools"));
     const query = q(p, "[data-role=find-input]").closest("div")!;
     expect(query.contains(scopeSeg(p.el)), "分段不挤在框那一行").toBe(false);
   });

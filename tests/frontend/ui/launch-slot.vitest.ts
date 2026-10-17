@@ -19,6 +19,7 @@ let root: HTMLElement;
 let tabs: Set<string>;
 let switched: string[];
 let shownLog: boolean[];
+let viewed: number;
 let screen: SlotScreen | Error;
 let acts: { [K in keyof SlotActs]: ReturnType<typeof vi.fn> };
 
@@ -30,12 +31,13 @@ function make(): LaunchSlots {
       hasTab: (sid) => tabs.has(sid),
       switchTo: (sid) => switched.push(sid),
       shown: (on) => shownLog.push(on),
+      viewTerminal: () => viewed++,
     },
     acts as unknown as SlotActs,
   );
 }
 
-const SPEC: SlotSpec = { origin: "devbox", cwd: "/home/u/srv/billing", tmuxName: "billing-2", agent: "claude", match: { cwd: "/home/u/srv/billing" } };
+const SPEC: SlotSpec = { origin: "devbox", cwd: "/home/u/srv/billing", tmuxName: "billing-2", match: { cwd: "/home/u/srv/billing" } };
 
 const rows = (): HTMLElement[] => [...tail.querySelectorAll<HTMLElement>("[data-slot]")];
 const panelText = (): string => (root.firstElementChild as HTMLElement).textContent ?? "";
@@ -56,13 +58,13 @@ beforeEach(() => {
   tabs = new Set();
   switched = [];
   shownLog = [];
+  viewed = 0;
   screen = { kind: "there", terminal: "%7", words: "claude: error: unknown option '--modle'\n(Did you mean --model?)\n$" };
   acts = {
     screen: vi.fn(async () => {
       if (screen instanceof Error) throw screen;
       return screen;
     }),
-    preview: vi.fn(),
     attach: vi.fn(),
     kill: vi.fn(async () => {}),
     confirm: vi.fn(async () => true),
@@ -152,7 +154,7 @@ describe("20 s 没报到", () => {
     expect(rows()[0].textContent).toBe(`devboxbilling${copyText("launch.slot.missedTitle")}`);
     expect(panelText()).toBe(
       `${copyText("launch.slot.missedTitle")}devbox · /home/u/srv/billing${copyText("launch.slot.missedTitle")} · 20s` +
-        copyText("launch.slot.missedCard", { secs: 20 }) + copyText("launch.slot.tmuxThere", { machine: "devbox", name: "billing-2" }) +
+        copyText("launch.slot.missedCard", { dur: "20s" }) + copyText("launch.slot.tmuxThere", { machine: "devbox", name: "billing-2" }) +
         "claude: error: unknown option '--modle'\n(Did you mean --model?)\n$" +
         `${copyText("launch.slot.screen")}${copyText("sessionHead.act.openTerm")}${copyText("sessionState.killIdle.action")}${copyText("launch.slot.close")}`,
     );
@@ -202,7 +204,7 @@ describe("20 s 没报到", () => {
     make().add({ ...SPEC, tmuxName: null });
     await missNow();
     expect(acts.screen).not.toHaveBeenCalled();
-    expect(panelText()).toBe(`${copyText("launch.slot.missedTitle")}devbox · /home/u/srv/billing${copyText("launch.slot.missedState", { secs: 20 })}${copyText("launch.slot.missedCard", { secs: 20 })}${copyText("launch.slot.close")}`);
+    expect(panelText()).toBe(`${copyText("launch.slot.missedTitle")}devbox · /home/u/srv/billing${copyText("launch.slot.missedState", { dur: "20s" })}${copyText("launch.slot.missedCard", { dur: "20s" })}${copyText("launch.slot.close")}`);
     expect(actsOnCard()).toEqual([`close:${copyText("launch.slot.close")}`]);
   });
 });
@@ -210,13 +212,18 @@ describe("20 s 没报到", () => {
 describe("报错卡上的几颗", () => {
   const click = (act: string): void => root.querySelector<HTMLElement>(`[data-act="${act}"]`)!.click();
 
-  it("［终端画面］看那一屏 ·［在终端里打开］按那一家接上那个 tmux 会话", async () => {
-    make().add(SPEC);
+  it("★［终端画面］开抽屉的终端页、看的就是这个占位的那个终端 ·［在终端里打开］接回那个 tmux 会话", async () => {
+    const slots = make();
+    slots.add(SPEC);
+    expect(slots.watched(), "没报到之前不知道那个终端").toBeNull();
     await missNow();
+    expect(slots.watched()).toEqual({ origin: "devbox", terminal: "%7", name: "billing-2", title: "billing" });
     click("screen");
-    expect(acts.preview).toHaveBeenCalledWith("devbox", "billing-2", "%7");
+    expect(viewed).toBe(1);
     click("attach");
-    expect(acts.attach).toHaveBeenCalledWith("devbox", "claude", "billing-2");
+    expect(acts.attach).toHaveBeenCalledWith("devbox", "billing-2");
+    slots.hide();
+    expect(slots.watched(), "收起了 ⇒ 抽屉回到当前标签页").toBeNull();
   });
 
   it("★［结束 tmux 会话］先问会打断什么，结束了 ⇒ 这一行关掉、不再等", async () => {

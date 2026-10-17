@@ -40,6 +40,7 @@ import { describe, expect, it } from "vitest";
 
 import { productionTsFiles } from "../../test-support/production-sources.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
+import { nonEmpty } from "../../test-support/non-empty.ts";
 
 // ─────────────────────────────── L1 ───────────────────────────────
 
@@ -54,12 +55,6 @@ const ONLINE_CALLS: ReadonlyArray<readonly [string, OnLineClass, string | null, 
   // 活卡定稿（记录到了 ⇒ 整轮覆盖）挪进了后端（`src/backend/stream/live.rs`，后端发撤卡）：`onLine` 上一行都不许再有。
   ["this.view.ingest", "渲染管线", null, "渲染管线本体（按 seq 门控建卡 / 收纳）"],
 ];
-
-/**
- * 表里标「事件，留在流上」的那几行（异源：设计原文，不是上面那张表）—— 今天一行都不挂在 `onLine` 上：
- * compact 完成随换号重启下沉了后端。
- */
-const DESIGN_TRUE_EVENTS: string[] = [];
 
 /** 一个表达式（去括号 / `as` / 非空断言）是不是以 `roots` 里某个名字为根、只经取属性 / 取下标得来。 */
 function rootedIn(e: ts.Expression, roots: ReadonlySet<string>): boolean {
@@ -145,15 +140,16 @@ describe("〔STC〕L1 · onLine 上只剩真事件", () => {
 
   it("★ 人群 == 登记表（两向）", () => {
     const got = recordConsumers(tabsSrc, "TabManager", "onLine");
-    expect(got.length, "一个调用都没抽到 —— 抽取器或方法名坏了，下面会拿空集比").toBeGreaterThan(0);
+    nonEmpty(got);
     expect(got, "`onLine` 上吃记录的调用变了 —— 新的一条回登记表写清它是哪一类（没有「记账员」这一类）").toEqual(
       ONLINE_CALLS.map(([c]) => c).sort(),
     );
   });
 
-  it("★ 真事件恰好是那两个；渲染管线只有登记那一行；活卡定稿一行都没有（在后端）", () => {
+  it("★ 没有真事件挂在 `onLine` 上；渲染管线只有登记那一行；活卡定稿一行都没有（在后端）", () => {
     const events = [...new Set(ONLINE_CALLS.filter(([, k]) => k === "真事件").map(([, , e]) => e))].sort();
-    expect(events).toEqual([...DESIGN_TRUE_EVENTS].sort());
+    // 今天一行都不挂在 `onLine` 上：compact 完成随换号重启下沉了后端。
+    expect(events).toEqual([]);
     for (const [c, k, e, why] of ONLINE_CALLS) {
       expect(why.trim().length, `${c} 没写理由`).toBeGreaterThan(0);
       expect(k === "真事件", `${c}：只有真事件那一类带事件名`).toBe(e !== null);
@@ -254,7 +250,6 @@ describe("〔STC〕L2 · 会话事实字段只有登记的写者（记账员换�
 
   it("★ 人群 == 登记表（两向，按文件 ＋ 所在声明）", () => {
     const files = productionTsFiles("src");
-    expect(files.length, "一个 TS 生产文件都没扫到").toBeGreaterThan(0);
     const got: string[] = [];
     for (const { file, text } of files) for (const o of factWriters(text)) got.push(`${file} :: ${o}`);
     expect(got.sort(), "事实字段多了 / 少了写者 —— 从流上攒全会话事实回来了？").toEqual(

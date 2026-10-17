@@ -80,6 +80,11 @@ fn every_name_gets_exactly_one_of_the_four_states() {
     );
 }
 
+/// 差异的四态 · 可疑项的三种 · 可疑项在这台机器上的事实（线上名）：界面文案表按它们逐键给字。
+const STATES: &[&str] = &["new", "same", "differs", "only-there"];
+const SUSPECT_KINDS: &[&str] = &["abs-path", "command-missing", "command-relative"];
+const THERE: &[&str] = &["present", "absent", "foreign", "unknown"];
+
 #[test]
 fn the_wire_names_are_exactly_the_declared_closed_sets() {
     // 穷尽 match：加一个态 / 一种事实而忘了进闭集 ⇒ 这里编不过或两向不等。
@@ -326,7 +331,7 @@ fn differing_entries_are_written_only_when_the_user_said_overwrite() {
     );
 }
 
-/// 🔴 头注「不读用户的文件（两份原文由调用方经 `files-peek` 读来）」：读的那一份与 CAS 期望的那一份
+/// 🔴 头注「不读用户的文件（两份原文由调用方经 `Door::peek` 读来）」：读的那一份与 CAS 期望的那一份
 /// 必须是同一个读法 —— 本模块自己再读一遍就是第二个读法。生产段读文件内容的原语零命中；正控：同一把尺子
 /// 在一份塞了读原语的副本上数得到。
 #[test]
@@ -339,7 +344,7 @@ fn this_module_reads_no_file_content() {
         "read_dir",
     ];
     let count = |src: &str| {
-        let prod = crate::guard_support::production_code(src);
+        let prod = guard_core::production_code(src);
         needles
             .iter()
             .map(|n| prod.matches(n).count())

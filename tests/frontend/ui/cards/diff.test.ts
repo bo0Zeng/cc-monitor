@@ -11,14 +11,7 @@
  * tsx 进程以非零码退出，作为门禁信号。`console`/`Date` 来自 DOM/ES2020 lib，无需 node types。
  */
 
-import {
-  diffLines,
-  normalizeEditInput,
-  normalizeWriteInput,
-  normalizeMultiEditInput,
-  diffSegments,
-  type DiffResult,
-} from "../../../../src/frontend/ui/cards/diff.ts";
+import { diffLines, type DiffResult } from "../../../../src/frontend/ui/cards/diff.ts";
 
 let passed = 0;
 let failed = 0;
@@ -70,22 +63,15 @@ test("identical: all ctx, zero add/del", () => {
   eq(r.delCount, 0, "delCount");
 });
 
-// (c) Write 形态：normalizeWriteInput → {old:'',new:content} → 全 add
+// (c) 新写整份（改前为空）→ 全 add
 test("Write shape: all-add", () => {
-  const nw = normalizeWriteInput({ content: "l1\nl2", file_path: "x" });
-  eq(nw, { old: "", new: "l1\nl2" });
-  const r = diffLines(nw!.old, nw!.new);
+  const r = diffLines("", "l1\nl2");
   eq(sig(r), [
     ["add", "l1", null, 1],
     ["add", "l2", null, 2],
   ]);
   eq(r.addCount, 2, "addCount");
   eq(r.delCount, 0, "delCount");
-});
-
-// (d) 真实异常 Edit（只有 file_path/replace_all）→ normalizeEditInput 返 null，不抛
-test("Edit anomaly {file_path,replace_all} → null", () => {
-  eq(normalizeEditInput({ file_path: "x", replace_all: true }), null);
 });
 
 // (e) 空 old → 全 add；空 new → 全 del
@@ -119,33 +105,6 @@ test("trailing-newline-only difference → zero spurious rows", () => {
   eq(r2.delCount, 0, "r2.delCount");
 });
 
-// (h) MultiEdit 各种畸形 → null
-test("MultiEdit malformed → null", () => {
-  eq(normalizeMultiEditInput({}), null, "no edits");
-  eq(normalizeMultiEditInput({ edits: "nope" }), null, "edits not array");
-  eq(normalizeMultiEditInput({ edits: [] }), null, "edits empty");
-  eq(
-    normalizeMultiEditInput({ edits: [{ old_string: "a", new_string: "b" }, { old_string: "c" }] }),
-    null,
-    "one edit missing new_string",
-  );
-});
-
-// (i) MultiEdit 合规 → N 个 {old,new}
-test("MultiEdit well-formed → N pairs", () => {
-  const r = normalizeMultiEditInput({
-    file_path: "x",
-    edits: [
-      { old_string: "a", new_string: "b" },
-      { old_string: "c", new_string: "d", replace_all: true },
-    ],
-  });
-  eq(r, [
-    { old: "a", new: "b" },
-    { old: "c", new: "d" },
-  ]);
-});
-
 // (j) 超大输入：cell-budget 守卫退化路径，不挂不抛。
 // 不看墙钟（10-11 起：从前比 `dt < 3000`，忙机上会误红）：走没走退化那一支看形状 ——
 // 两边隔行相同：走了 O(mn) 矩阵会认出同行（ctx）、增删各 2500；退化那一支整删整增、一行同行都没有、增删各 5000。
@@ -169,16 +128,6 @@ test("600x600 full rewrite: real LCS path, iterative", () => {
   eq(r.delCount, 600, "delCount");
 });
 
-// (k) 非字符串 / undefined → 各 normalizer 返 null，不抛
-test("non-string / undefined inputs → null, no throw", () => {
-  eq(normalizeEditInput(undefined), null, "edit undefined");
-  eq(normalizeEditInput("str"), null, "edit string");
-  eq(normalizeEditInput({ old_string: 1, new_string: "x" }), null, "edit non-string field");
-  eq(normalizeWriteInput({ content: 123 }), null, "write non-string content");
-  eq(normalizeWriteInput(null), null, "write null");
-  eq(normalizeMultiEditInput(undefined), null, "multiedit undefined");
-});
-
 // 截断：rows 封顶 maxLines，但 addCount 仍全量
 test("truncation caps rows but counts stay full", () => {
   const neu = Array.from({ length: 500 }, (_, i) => `L${i}`).join("\n");
@@ -195,21 +144,6 @@ test("per-line char cap adds ellipsis", () => {
   eq(r.rows[0].text.length, 101, "capped length");
   ok(r.rows[0].text.endsWith("…"), "ellipsis");
 });
-
-// diffSegments 派发 + 未知工具/异常 → null（DOM 层的纯子集，node 可测）
-test("diffSegments dispatch + NotebookEdit/unknown/anomaly → null", () => {
-  eq(diffSegments("Edit", { old_string: "a", new_string: "b" }), [{ old: "a", new: "b" }]);
-  eq(diffSegments("Write", { content: "x" }), [{ old: "", new: "x" }]);
-  eq(diffSegments("MultiEdit", { edits: [{ old_string: "a", new_string: "b" }] }), [
-    { old: "a", new: "b" },
-  ]);
-  eq(diffSegments("NotebookEdit", { new_source: "x" }), null, "NotebookEdit not a diff tool");
-  eq(diffSegments("Bash", { command: "ls" }), null, "Bash not a diff tool");
-  eq(diffSegments("Edit", { file_path: "x" }), null, "Edit anomaly");
-});
-
-// 「哪些工具走 diff 渲染」那一条（Edit / Write / MultiEdit，NotebookEdit 不在内）随判定进了后端适配层：
-//   `tests/backend/agents/claudecode/cards_tests.rs::each_tool_name_maps_to_exactly_its_card`。
 
 // "显示完整 diff" 契约：maxLines 控制截断；解除上限后全量、不截断
 test("maxLines controls truncation (show-full contract)", () => {

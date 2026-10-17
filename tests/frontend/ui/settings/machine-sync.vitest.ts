@@ -18,12 +18,12 @@ vi.mock("../../../../src/frontend/ui/accounts", () => ({
 }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { CcBusSection } from "../../../../src/frontend/ui/settings/cc-bus-section";
+import { CcBusSection } from "../../../../src/frontend/ui/views/cc-bus-section";
 import {
   getCurrentMachine,
   setCurrentMachine,
   __resetMachineContextForTests,
-} from "../../../../src/frontend/ui/settings/machine-context";
+} from "../../../../src/frontend/ui/machine-context";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 
 const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;

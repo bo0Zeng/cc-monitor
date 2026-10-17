@@ -1,5 +1,5 @@
 //! 「需手动」那一族的线上形（`sessions-needs` 的回包 · `history-facts.needs` 那一份成品 · 挂着的待答请求 `needs.ask`）——
-//! 两侧同一份：后端按这里的类型写（判定与写字在后端 `observe::facts_query` · `agents::asks`），手机嵌的 Rust 核心按这里的类型解。
+//! 两侧同一份：后端按这里的类型写（判定与写字在后端 `observe::recognize::facts` · `agents::asks`），手机嵌的 Rust 核心按这里的类型解。
 
 use crate::cells::{Tone, Words};
 use serde::{Deserialize, Serialize};
@@ -9,8 +9,33 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct NeedsList {
-    /// 此刻活着、那台说在等人的会话（`needs.rank` 先答的在前，同一档等得久的在前）；一个都没有 ⇒ 空。
+    /// 此刻活着、那台说在等人的会话（`needs.rank` 小的在前）；一个都没有 ⇒ 空。
     pub waiting: Vec<NeedsRow>,
+    /// 提问没人答、已替人答过的会话（各留最近一次，那条会话下一次挂上提问才换掉），按会话 id 排。
+    pub answered: Vec<AnsweredRow>,
+}
+
+/// 替人答过的那一条：会话 id ＋ 写好的那一句（「10 分钟没人答，已自动答：…」）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct AnsweredRow {
+    pub sid: String,
+    pub said: Words,
+}
+
+/// 一条会话「没人答时自动答」那一格（注解条目里那一份，也是 `history-annotate` 的 `patch.autoAnswer`）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct AutoAnswer {
+    /// 挂上的提问等满几分钟还没人答就替人答；补丁里给 0 ＝ 关（摘掉这一格）。
+    pub after_min: u32,
+    /// 替人答的那一句；缺 ⇒ 后端那一句缺省的。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub say: Option<String>,
 }
 
 /// 这台上需手动的会话清单（`sessions-needs` 的一行）：会话 id ＋ 它在等什么（同 `history-facts.needs` 那一份成品）。
@@ -19,6 +44,10 @@ pub struct NeedsList {
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct NeedsRow {
     pub sid: String,
+    /// 叫这条会话什么（同清单那一行的标题）。
+    pub label: crate::cells::Words,
+    /// 此刻这条会话的整份脸。
+    pub face: crate::frame::SessionFace,
     pub needs: Needs,
     /// 隐藏那一格（照常列在这里：隐藏不影响需手动）；不隐藏 ⇒ `null`（格恒在）。
     pub hidden: Option<crate::session::Hidden>,
@@ -71,8 +100,10 @@ pub struct Needs {
     pub head_code: Option<String>,
     /// 语气（恒 `need`）。
     pub tone: Tone,
-    /// 先答哪个的序（0 最先）：顶上那个框先答（`kind` 已按它判），再按危险度（[`NEEDS_BY_DANGER`]）。
-    pub rank: u8,
+    /// 先答序（小的先答，出口只按它排）：危险度那一档在高位（顶上那个框先答，再按危险度），同一档里等得越久越小，
+    /// 不知道等了多久的排这一档最后。算进的是这一份答出那一刻已等多久 ⇒ 会走的钟那一侧从收到起又等了多久照减（`waitedMs` 为 `null` 的不减）。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub rank: u64,
     /// 到这一份答出的那一刻已经等了多久（毫秒）：`sinceMs` 与读那份 pidfile 的时刻**同在那台的钟上**相减，不跨机器减；
     /// 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：手机与 CLI 按节拍重问；桌面从收到那一刻起接着加（时长读口对同一份金样）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
@@ -156,6 +187,26 @@ pub struct Choice {
     pub tone: Tone,
     /// 要不要附一句话：none · optional · required。
     pub note: NoteNeed,
+    /// 排在哪一段（出口照它分段，不按 id 认）。
+    pub row: ChoiceRow,
+}
+
+/// 选项排在哪一段：照做那一族 · 不照做那一族（拒绝 · 继续规划）· 放开这一条（改到终端里答 · 有题时的不回答）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(
+        export,
+        rename = "NeedsChoiceRow",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
+    )
+)]
+pub enum ChoiceRow {
+    Main,
+    Hold,
+    Release,
 }
 
 /// 选项要不要附一句话。

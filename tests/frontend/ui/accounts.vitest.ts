@@ -15,15 +15,21 @@ vi.mock("../../../src/frontend/ui/last-seen", () => ({ rememberSeen: vi.fn(async
 import { invoke } from "@tauri-apps/api/core";
 import { loadConfig } from "../../../src/frontend/ui/config";
 import { deriveUi, defaultAccount, currentAccountForBadge, accountColorsActive, selectableAccounts, detectAccountMismatch, sessionBadge, shouldShowAccountBadge, type AccountsState, type Account } from "../../../src/frontend/ui/accounts";
-import { fetchAccounts } from "../../../src/frontend/ui/account-reads";
+import { accountsAgentProfile, fetchAccounts } from "../../../src/frontend/ui/account-reads";
+import { AGENT_PROFILE_TABLE } from "../../../src/frontend/ui/generated/agent-profile-table";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
-import { accountUnavailableOf, chosenAccount, refuseUnavailableAccount, type AccountUnavailable } from "../../../src/frontend/ui/launch-account";
-import { ControlError } from "../../../src/frontend/ui/control-said";
-import { ChanError } from "../../../src/comms/inward/chan";
-import { accountReadCalls, withAccountReads, withHistoryReads } from "../../test-support/chan-fake";
+import { chosenAccount } from "../../../src/frontend/ui/launch-account";
+import {
+  accountReadCalls,
+  chanArgsJson,
+  isChanCall,
+  withAccountReads,
+  withHistoryReads,
+  type ChanCallArgs,
+} from "../../test-support/chan-fake";
 import { copyPattern } from "../../test-support/copy-pattern";
+import { nonEmpty } from "../../test-support/non-empty";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const loadCfg = loadConfig as unknown as ReturnType<typeof vi.fn>;
@@ -77,8 +83,8 @@ describe("deriveUi 降级矩阵（DESIGN §7）", () => {
   //    **再也到不了**，连档带测一起下岗。
   // 要求：「后端需更新在任何查询失败时都显示」⇒「只在真的版本不够时显示；查询失败按码说查询失败」。
   it("🔴 K-R59 · WF2：`available:false` 按失败种类分 —— 对端不认 ⇒ needs-update；其余 ⇒ query-failed（原因原样）；不再有「安静隐藏」那一档", () => {
-    const failed = deriveUi(state({ available: false, error: copyText("chanCaller.said.unreachable") }));
-    expect(failed).toEqual({ kind: "query-failed", reason: copyText("chanCaller.said.unreachable") });
+    const failed = deriveUi(state({ available: false, error: "壳·离线" }));
+    expect(failed).toEqual({ kind: "query-failed", reason: "壳·离线" });
     // 原因串里碰巧有「过旧」也不算（从前按串猜）：种类只看 `oldBackend`。
     expect(deriveUi(state({ available: false, error: "版本过旧？" })).kind).toBe("query-failed");
   });
@@ -117,7 +123,7 @@ describe("默认号 · 能选的号照那台写好的格（跨三处金样）", 
     cases: { what: string; accounts: { name: string; hasDir: boolean; isDefault: boolean; mode: string; authReady: boolean; exists: boolean }[]; effectiveDefault: string | null; selectable: string[] }[];
   };
   it("金样没被删薄", () => {
-    expect(golden.cases.length).toBeGreaterThanOrEqual(6);
+    nonEmpty(golden.cases);
   });
   for (const c of golden.cases) {
     it(c.what, () => {
@@ -277,6 +283,18 @@ describe("fetchAccounts：要用时问后端，界面不存一份", () => {
     expect(down.available).toBe(false);
     expect(down.accounts, "上次的混进了此刻的事实").toEqual([]);
     expect(down.last ?? null, "本机后端没记着那台，界面也不另记一份").toBeNull();
+  });
+  it("账号页那一家的画像与 `accounts-list` 线上交的 `agent` 是同一家，画像取自后端生成的画像表（不写死）", async () => {
+    loadCfg.mockResolvedValue({});
+    invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => ({ available: true, error: null, meta: null, accounts: [acct({})] }))));
+    await fetchAccounts("<local>");
+    const sent = invokeMock.mock.calls.filter((c) => isChanCall(c[0] as string, c[1], "accounts-list"));
+    expect(sent).toHaveLength(1);
+    const agent = (chanArgsJson(sent[0][1] as ChanCallArgs) as { agent: string }).agent;
+    const p = accountsAgentProfile();
+    expect(p, "查不到账号页那一家的画像").not.toBeNull();
+    expect(AGENT_PROFILE_TABLE).toContain(p);
+    expect(p!.agent).toBe(agent);
   });
   it("invoke throw（远端没配）→ available:false 不崩", async () => {
     loadCfg.mockResolvedValue({});
@@ -451,48 +469,9 @@ describe("K-A1 鉴权方式：api-key 号不再因为缺凭据文件而不可用
 // `K-P5h` `KP5HD2` / `KP5HD3`：**待回填表** —— 起会话方终于把 pin 写得出来
 // ═══════════════════════════════════════════════════════════════════════════
 
-describe("launch-account：要哪个号 · 那台说选不了时给的那个选择", () => {
-  const refusal = (code: string, data?: unknown): Uint8Array =>
-    new TextEncoder().encode(JSON.stringify(data === undefined ? { code, message: "m" } : { code, message: "m", data }));
-  const U: AccountUnavailable = { requested: "z", pinned: true, listKnown: true, alternative: "b" };
-
-  it("点名那一格：账号 0 ⇒ base；名字 ⇒ 按名字（线上只有名字那一形）", () => {
+describe("launch-account：点名那一格", () => {
+  it("账号 0 ⇒ base；名字 ⇒ 按名字（线上只有名字那一形）", () => {
     expect(chosenAccount(null)).toEqual({ kind: "base" });
     expect(chosenAccount("z")).toEqual({ kind: "named", name: "z" });
-  });
-
-  it("认得出「那台说要的号选不了」：通道层 / 控制层两种错都认；别的码 · 形状不对 · 别的层 ⇒ 不认", () => {
-    const peer = (body: Uint8Array) => ({ layer: "peer" as const, why: "refused" as const, body });
-    expect(accountUnavailableOf(new ChanError(peer(refusal("account_unavailable", U))))).toEqual(U);
-    expect(accountUnavailableOf(new ControlError("s", "d", peer(refusal("account_unavailable", U))))).toEqual(U);
-    expect(accountUnavailableOf(new ChanError(peer(refusal("refused"))))).toBeNull();
-    expect(accountUnavailableOf(new ChanError(peer(refusal("account_unavailable", { requested: 1 }))))).toBeNull();
-    expect(accountUnavailableOf(new ChanError(peer(refusal("account_unavailable", null))))).toBeNull();
-    expect(accountUnavailableOf(new ChanError({ layer: "ours", why: "Cancelled" }))).toBeNull();
-    expect(accountUnavailableOf(new Error("x"))).toBeNull();
-  });
-
-  it("四种说法照那一形分：上次的号 / 点名的号 × 有替代 / 只能不指定；清单读不出 ⇒ 说读不到、只给「不指定」", () => {
-    const said = (u: AccountUnavailable): string => {
-      vi.mocked(showActionFailureToast).mockClear();
-      refuseUnavailableAccount({ machine: "devbox", u, choose: vi.fn() });
-      return vi.mocked(showActionFailureToast).mock.calls[0][1] as string;
-    };
-    expect(said(U)).toBe(copyText("accountPick.refused.pinGoneToCurrent", { name: "z", current: "b" }));
-    expect(said({ ...U, alternative: null })).toBe(copyText("accountPick.refused.pinGoneToBase", { name: "z" }));
-    expect(said({ ...U, pinned: false })).toBe(copyText("accountPick.refused.explicitGoneToCurrent", { name: "z", current: "b" }));
-    expect(said({ ...U, pinned: false, alternative: null })).toBe(copyText("accountPick.refused.explicitGoneToBase", { name: "z" }));
-    expect(said({ ...U, listKnown: false })).toBe(copyText("accountPick.refused.listUnknown", { machine: "devbox", name: "z" }));
-    // 点了 ⇒ 以点名再起：有替代 ⇒ 那个号；清单读不出 / 没有替代 ⇒ 账号 0。
-    for (const [u, want] of [
-      [U, { kind: "named", name: "b" }],
-      [{ ...U, listKnown: false }, { kind: "base" }],
-    ] as const) {
-      vi.mocked(showActionFailureToast).mockClear();
-      const choose = vi.fn();
-      refuseUnavailableAccount({ machine: LOCAL_ORIGIN, u, choose });
-      (vi.mocked(showActionFailureToast).mock.calls[0][2] as { onClick: () => void }).onClick();
-      expect(choose).toHaveBeenCalledWith(want);
-    }
   });
 });

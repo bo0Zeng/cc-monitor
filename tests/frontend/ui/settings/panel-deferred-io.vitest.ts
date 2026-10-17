@@ -53,7 +53,7 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
 // —— 与本条无关的重块 stub 掉（理由见头注〔射程〕②）——
 vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
   MACHINE_PAGE_PREFIX: "machine:",
-  LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
+  LOCAL_MACHINE_PAGE_ID: "machine:<local>",
   RemoteSection: class {
     headActions = (): HTMLElement[] => [];
     pageIdOfMachine = (): string | null => null;
@@ -69,7 +69,7 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
     }) {
       setTimeout(() => {
         opts?.pages?.addMachinePage(
-          "machine:（本机）",
+          "machine:<local>",
           "本机",
           document.createElement("div"),
         );
@@ -113,8 +113,9 @@ void stubEl;
 
 import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
 import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
-import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
+import { __resetMachineContextForTests } from "../../../../src/frontend/ui/machine-context";
 import { factsOn } from "../../../test-support/host-facts";
+import { nonEmpty } from "../../../test-support/non-empty";
 
 /**
  * 登记表 ①：**落地页（机器）**这一趟该打的命令。
@@ -128,7 +129,7 @@ const LANDING_IPC = ["load_config", "backend_machines", "backend_status"] as con
  * 就是点名的那三块（日志 2 · 数据位置 1）。
  * 的 `dryRun` 预览）—— 那是「按账号生成命令」那一块的；它搬去了机器页「本机 → 工具 → 别名」，
  * 而且在那里**连「本机页可见」都不够**：它是个 `<details>`，第一次展开才发 I/O
- * （那三发 —— `local_ccm_entry_status` · `aliases_read` · `aliases_render` —— 由 `machine-aliases.vitest.ts` 钉）。
+ * （那几发由 `machine-aliases.vitest.ts` 钉）。
  * 下面「点进本机页 ⇒ 恰好 `MACHINE_PAGE_IPC`」那一条因此也在替它作证：本机页上多挂一块别名，一发都没多。
  */
 /** 通用页本身那一发：「终端」那一行的事实（第一次可见时问）。 */
@@ -154,16 +155,9 @@ const APP_PAGE_IPC_ON_REOPEN = [
   "get_data_paths",
 ] as const;
 
-/**
- * 登记表 ③：「未识别的数据」那一发（原顶层「改动足迹」页的漂移记账）。
- * 顶层页删了，那一块住**每台机器子页的「足迹」栏**，只有本机那一栏读 ⇒ 并进登记表 ④。
- */
-// 「未识别的数据」那一块退场（并进日志页的诊断信息）⇒ 这一张今天是空的。
-const FOOTPRINT_IPC = [] as const;
-
 /** 登记表 ④：点进某台机器的子页才该出现的那一发（步 14a 之后「足迹」住那儿）。 */
 // 文件与数据本机那一栏第一拍问 monitor 自己那几行的环境（`footprint_client_facts`；成品经通道问本机后端 `data-report`）。
-const MACHINE_PAGE_IPC = ["footprint_client_facts", ...FOOTPRINT_IPC] as const;
+const MACHINE_PAGE_IPC = ["footprint_client_facts"] as const;
 
 /** 「应用」下两个子页各自的那几发（原来合在「应用」一页里）。 */
 // 日志页：日志设置 · 文件 · 诊断信息那一份（「未识别数据」那一行与复制读同一份）；诊断信息的原料：
@@ -198,7 +192,7 @@ describe(" 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () => {
     new SettingsPanel({ windowMode: true });
     await tick();
     expect(uniq(ipc.calls)).toEqual(uniq([...LANDING_IPC]));
-    expect(ipc.calls.length, "一条都没录到 ⇒ 本文件全部断言都是空转").toBeGreaterThan(0);
+    nonEmpty(ipc.calls);
   });
 
   it("构造面板只发落地页那几条 —— 「应用」「改动足迹」「机器子页」的一条都不许有", async () => {
@@ -207,7 +201,7 @@ describe(" 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () => {
     const got = uniq(ipc.calls);
     // 相等，不是「不包含」——「不包含」对「多打了一条别的」是瞎的。
     expect(got).toEqual(uniq([...LANDING_IPC]));
-    for (const name of [...APP_PAGE_IPC, ...FOOTPRINT_IPC, ...MACHINE_PAGE_IPC]) {
+    for (const name of [...APP_PAGE_IPC, ...MACHINE_PAGE_IPC]) {
       expect(got, `${name} 不该在用户点进那一页之前就打出去`).not.toContain(name);
     }
   });
@@ -260,7 +254,7 @@ describe(" 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () => {
     expect(document.querySelector("#settings-tab-footprint")).toBeNull();
     let mark = ipc.calls.length;
     document
-      .querySelector<HTMLButtonElement>('#settings-tab-machine\\:（本机）')!
+      .querySelector<HTMLButtonElement>('[id="settings-tab-machine:<local>"]')!
       .click();
     await tick();
     for (const name of MACHINE_PAGE_IPC) expect(since(mark), `进机器页不该发 ${name}`).not.toContain(name);
@@ -279,7 +273,7 @@ describe(" 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () => {
     await p.open();
     await tick();
     const got = uniq(ipc.calls);
-    for (const name of [...APP_PAGE_IPC, ...FOOTPRINT_IPC, ...MACHINE_PAGE_IPC]) {
+    for (const name of [...APP_PAGE_IPC, ...MACHINE_PAGE_IPC]) {
       expect(got, `打开设置不该碰 ${name}`).not.toContain(name);
     }
     // 反向锚：`open()` 真的做事了（它至少要重读一次 config）—— 否则上面那一串

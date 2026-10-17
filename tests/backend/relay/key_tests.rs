@@ -53,7 +53,10 @@ fn the_pass_key_is_derived_from_the_root_and_never_stored() {
         Some(format!("http://127.0.0.1:8788/{}/t/codex/_", p1.expose()).as_str())
     );
     assert_eq!(pass_key_on_disk(&home).as_deref(), Some(p1.expose()));
-    assert!(home.join(KEY_FILE_REL).is_file(), "根钥匙不在盘上");
+    assert!(
+        home.join(relay_route_core::KEY_FILE_REL).is_file(),
+        "根钥匙不在盘上"
+    );
     assert!(
         !home.join(".cc-monitor").join("relay-pass-key").exists(),
         "只许直通那一把落了盘"
@@ -64,7 +67,7 @@ fn the_pass_key_is_derived_from_the_root_and_never_stored() {
 /// 判据用：在一个**夹具家目录**里预先放好 [`TEST_KEY`]（`0600`，走生产段那一份落盘），回这个家目录。
 /// 起真中转的判据都要它 —— 不给的话中转会去**用户真实的家目录**里铸钥匙。
 pub(crate) fn seed_test_home(home: &Path) -> PathBuf {
-    let path = home.join(KEY_FILE_REL);
+    let path = home.join(relay_route_core::KEY_FILE_REL);
     // 夹具直接落盘（只给本人）；那一层目录这里自己建。
     std::fs::create_dir_all(path.parent().expect("钥匙路径有父目录")).expect("建夹具目录");
     std::fs::write(&path, test_key().expose()).expect("写夹具钥匙");
@@ -94,7 +97,12 @@ fn the_key_file_is_minted_once_private_and_read_back_across_restarts() {
     let p = home.join(".cc-monitor").join("relay-key");
     assert!(!p.exists(), "夹具家目录一开始不该有钥匙");
 
-    let first = ensure_key(&own).expect("第一次铸");
+    let (first, verdict) = ensure_key(&own).expect("第一次铸");
+    assert_eq!(
+        verdict,
+        creds_core::perm::Verdict::OwnerOnly,
+        "铸出来的那一份只给本人"
+    );
     let on_disk = std::fs::read_to_string(&p).expect("读回");
     assert_eq!(on_disk, first.expose(), "盘上就是那一把");
     assert!(
@@ -108,7 +116,7 @@ fn the_key_file_is_minted_once_private_and_read_back_across_restarts() {
         let mode = std::fs::metadata(&p).expect("stat").permissions().mode() & 0o777;
         assert_eq!(mode, 0o600, "钥匙文件必须只给本人");
     }
-    let again = ensure_key(&own).expect("第二次");
+    let (again, _) = ensure_key(&own).expect("第二次");
     assert_eq!(
         again.expose(),
         first.expose(),
@@ -122,7 +130,7 @@ fn the_key_file_is_minted_once_private_and_read_back_across_restarts() {
         &first.expose().to_ascii_uppercase(),
     ] {
         std::fs::write(&p, junk).expect("写坏文件");
-        let fresh = ensure_key(&own).expect("坏文件 ⇒ 换一把");
+        let (fresh, _) = ensure_key(&own).expect("坏文件 ⇒ 换一把");
         assert!(
             relay_route_core::key_shape_ok(fresh.expose()),
             "换出来的形状要对"
@@ -132,9 +140,9 @@ fn the_key_file_is_minted_once_private_and_read_back_across_restarts() {
     }
     // 两次铸出来的不是同一把（随机数真在转）。
     std::fs::write(&p, "").expect("清空");
-    let a = ensure_key(&own).expect("a");
+    let (a, _) = ensure_key(&own).expect("a");
     std::fs::write(&p, "").expect("清空");
-    let b = ensure_key(&own).expect("b");
+    let (b, _) = ensure_key(&own).expect("b");
     assert_ne!(a.expose(), b.expose(), "两次铸出同一把 —— 随机源是死的");
     // 临时文件都挪走了（本进程那一个临时名不在盘上）。
     let tmp = p
@@ -142,6 +150,43 @@ fn the_key_file_is_minted_once_private_and_read_back_across_restarts() {
         .expect("父")
         .join(format!("relay-key.{}.tmp", std::process::id()));
     assert!(!tmp.exists(), "临时文件留在盘上了：{}", tmp.display());
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// §15：钥匙文件与凭据文件同一套判法 —— 宽了照实说（随钥匙交回 ＋ 中转起来时印的那几行），不拒、不自己改权限。
+#[cfg(unix)]
+#[test]
+fn a_too_wide_key_file_is_reported_not_refused_nor_fixed() {
+    use std::os::unix::fs::PermissionsExt;
+    let home = std::env::temp_dir().join(format!("ccm-rk-perm-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    std::fs::create_dir_all(&home).expect("建夹具家目录");
+    let own = crate::platform::fs::Own::issue_at(&home);
+    let (first, _) = ensure_key(&own).expect("铸");
+    let p = home.join(".cc-monitor").join("relay-key");
+    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o644)).expect("放宽");
+    let (again, verdict) = ensure_key(&own).expect("宽了也照样交钥匙");
+    assert_eq!(again.expose(), first.expose(), "宽了不换钥匙");
+    let mode = std::fs::metadata(&p).expect("stat").permissions().mode() & 0o777;
+    assert_eq!(mode, 0o644, "不自己改权限");
+    let creds_core::perm::Verdict::TooWide { how, fix } = &verdict else {
+        panic!("0644 该判过宽：{verdict:?}")
+    };
+    let mut out = Vec::new();
+    assert_eq!(
+        crate::relay::listen::announce_key_perm(&verdict, &mut out),
+        2
+    );
+    assert_eq!(
+        String::from_utf8(out).unwrap(),
+        format!("[relay] key file permissions too wide: {how}\n[relay] how to fix: {fix}\n")
+    );
+    let mut out = Vec::new();
+    assert_eq!(
+        crate::relay::listen::announce_key_perm(&creds_core::perm::Verdict::OwnerOnly, &mut out),
+        0
+    );
+    assert!(out.is_empty());
     let _ = std::fs::remove_dir_all(&home);
 }
 
@@ -159,13 +204,9 @@ fn no_home_means_no_key() {
     let _ = std::fs::remove_dir_all(&data);
 }
 
-/// ⑦ 钥匙文件的相对路径与钥匙形状**只住共享 crate**（`relay_route_core::KEY_FILE_REL` · `key_shape_ok`）：
-/// 本模块那两个名字是它的别名（先前两半各写一份字面量、本条现抠 monitor `payload.rs` 那一行对拍 —— 那条跨半边边随之出列；
-/// 「两半零字面量」由 monitor 侧 `payload_tests::us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar` 两棵树一起扫）。
-/// 这里钉本模块铸的长度与共享 crate 认的形状对得上（异源：铸法是 `KEY_BYTES` 算出来的，形状闸是 crate 里写死的 64）。
+/// ⑦ 本模块铸的长度与共享 crate 认的钥匙形状对得上（异源：铸法是 `KEY_BYTES` 算出来的，形状闸是 crate 里写死的 64）。
 #[test]
-fn the_key_file_and_the_key_shape_come_from_the_shared_crate() {
-    assert_eq!(KEY_FILE_REL, relay_route_core::KEY_FILE_REL);
+fn the_minted_key_length_matches_the_shared_key_shape() {
     assert_eq!(2 * KEY_BYTES, 64, "铸的长度与共享 crate 的形状闸不一致");
     assert!(
         relay_route_core::key_shape_ok(TEST_KEY),
@@ -199,10 +240,10 @@ fn the_key_files_disk_half_is_called_only_by_the_host() {
         }
         out
     };
-    let repo = crate::guard_support::repo_root();
+    let repo = guard_core::addr::repo_root();
     let mut got = BTreeMap::new();
     for (p, src) in
-        guard_core::scan_tree_excluding(&crate::guard_support::relay_host_root(), &["rs"], &[])
+        guard_core::scan_tree_excluding(&guard_core::addr::relay_host_root(), &["rs"], &[])
     {
         let mut norm = PathBuf::new();
         for c in p.components() {
@@ -222,7 +263,7 @@ fn the_key_files_disk_half_is_called_only_by_the_host() {
         if rel == "src/backend/relay/key.rs" {
             continue;
         }
-        for (w, n) in words_in(&crate::guard_support::production_side_of(&p, &src)) {
+        for (w, n) in words_in(&guard_core::addr::production_side_of(&p, &src)) {
             got.insert((rel.clone(), w), n);
         }
     }
@@ -231,7 +272,7 @@ fn the_key_files_disk_half_is_called_only_by_the_host() {
         got, want,
         "钥匙读盘那一半（读 · 铸）只许宿主 `listen.rs` 绑上口之后调；中转只收宿主交进来的 `Key`"
     );
-    let mod_rs = std::fs::read_to_string(crate::guard_support::relay_host_root().join("mod.rs"))
+    let mod_rs = std::fs::read_to_string(guard_core::addr::relay_host_root().join("mod.rs"))
         .expect("读 relay/mod.rs");
     guard_core::pin_line(&guard_core::production_code(&mod_rs), "mod key;")
         .unwrap_or_else(|e| panic!("`key` 不再是 relay 的私有子模块 ⇒ 本条的人群前提不成立：{e}"));

@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-/// attach 行：「我要流」＋ 看的这一台的时区 ＋ 手上这一版的身份。认不得的格 ⇒ 那台回 `refused`（认不得这一形的就是比这一形早的）。
+/// attach 行：「我要流」＋ 看的这一台的时区 ＋ 手上这一版的身份 ＋ 在看名单。认不得的格 ⇒ 那台回 `refused`（认不得这一形的就是比这一形早的）。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AttachLine {
@@ -14,6 +14,9 @@ pub struct AttachLine {
     /// 手上这一版的身份（`BUILD_ID`）；手上没带后端字节 ⇒ 不带，那台就不回新旧。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mine: Option<String>,
+    /// 在看名单（同 `stream-watch` 的入参）：那台从这条流的第一帧起照它发。不带 ＝ 从没报过 ＝ 全发（不报名单的载体）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub watch: Option<crate::watch::WatchAsk>,
 }
 
 impl AttachLine {

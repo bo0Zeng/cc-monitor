@@ -14,7 +14,7 @@ import { waitedNow } from "./duration-format";
 import type { SessionFacts } from "./session-reads";
 import type { FactsChange } from "./tab-session-facts";
 import { MessageStream } from "./stream";
-import { reconcilePendingToolResults, type RenderContext } from "./cards";
+import { forgetDetached, reconcilePendingToolResults, type RenderContext } from "./cards";
 import { BranchFolder } from "./branch-fold";
 import { attachBranchButton } from "./branch-button"; // 实时会话的分叉入口
 import type { JsonlLinePayload } from "./events";
@@ -26,7 +26,7 @@ import { SkeletonView, ledgerFromIndex, rowRuns } from "./skeleton-view";
 import { eagerBodyChars, setInjectedShown, skeletonKind } from "./height-estimate";
 // 「大纲」与历史查看器共用同一份界面与跳转；清单问后端要（`OutlineSource`）。
 // 大纲在会话内查找面板里（`SessionFindPanel`：搜索 / 大纲两个模式，跳只有一个住址）。
-import type { JumpResult } from "./views/user-input-panel";
+import type { JumpResult, JumpTarget } from "./views/user-input-panel";
 import { OutlineSource, outlineSeedFromIndex } from "./views/outline-source";
 import { SessionFindPanel } from "./views/session-find";
 import { TurnFold, injectedShownDefault, processExpandedDefault, setInjectedShownDefault, setProcessExpandedDefault } from "./turn-fold";
@@ -46,7 +46,7 @@ import { budgetWithin } from "./ipc/chan-caller";
 import { findInSession, readSessionIndex } from "./session-reads";
 import { readLines, readRange } from "./record-reads";
 import type { Tab } from "./tab-model";
-import { isResumeOnly } from "./tab-session-state";
+import { faceOf, hasTerminal } from "./face-can";
 import type { TabStore } from "./tab-store";
 import { ColdReads, IdleSlot } from "./tab-cold-reads";
 import { copyText } from "./copy-table";
@@ -228,9 +228,7 @@ export class TabStreamView {
 
   private settleStep(): void {
     this.settleScheduled = false;
-    const sk = this.settling[0];
-    if (!sk) return;
-    if (!sk.settleLayout(TabStreamView.SETTLE_ROWS)) this.settling.shift();
+    if (!this.settling[0]!.settleLayout(TabStreamView.SETTLE_ROWS)) this.settling.shift();
     if (this.settling.length > 0) {
       this.settleScheduled = true;
       this.settleSlot.schedule(() => this.settleStep(), 16);
@@ -260,8 +258,7 @@ export class TabStreamView {
     for (const p of known) seqs.delete(p.seq);
     const runs: Array<[number, number]> = [];
     for (const s of [...seqs].sort((a, b) => a - b)) {
-      const f = sk.ledger.factsOf(s);
-      if (!f || skeletonKind(f) !== "card") continue;
+      if (skeletonKind(sk.ledger.factsOf(s)!) !== "card") continue;
       const last = runs[runs.length - 1];
       if (last && last[1] === s) last[1] = s + 1;
       else runs.push([s, s + 1]);
@@ -317,7 +314,7 @@ export class TabStreamView {
         }
         return findInSession(t.origin, t.parentPath, query, includeTools, skip, scope);
       },
-      jumpTo: (uuid, tool) => this.jumpInTab(sessionId, streamEl, uuid, tool),
+      jumpTo: (to, tool) => this.jumpInTab(sessionId, streamEl, to, tool),
       unjumpableHint: copyText("tabStreamView.search.notLoaded"),
     });
     this.finds.set(sessionId, find);
@@ -347,7 +344,7 @@ export class TabStreamView {
       speaker: () => speakerNameOf(this.store.tabs.get(sessionId)?.agent ?? null),
       // 刻度跳不过去（那一段还取不回来：骨架没接上、`jumpInTab` 已经踢了一次要骨架）⇒ 这一下就算了，再点多半已接上。
       // 不能让它成一条没人接的 rejection：全局兜底会把整条状态栏换成一行「REJ: …」。
-      jump: (uuid) => void Promise.resolve(this.jumpInTab(sessionId, streamEl, uuid)).catch(() => undefined),
+      jump: (to) => void Promise.resolve(this.jumpInTab(sessionId, streamEl, to)).catch(() => undefined),
       inFront: () => this.store.activeId === sessionId,
     });
     turnFold.onTurns = () => turnRail.render();
@@ -385,7 +382,8 @@ export class TabStreamView {
       // 〔骨架〕接上了 ⇒ 占位可能在任何位置（拖滚动条到中部），**每次滚动**都看一眼
       // 视口里有没有占位 —— 不能沿用「离顶 800px 内才补」那道门（那是尾部窗口单洞后缀的假设）
       if (t?.skeleton) {
-        t.skeleton.fillVisible();
+        // 建了新卡才交回远处的（建卡这一下本来就要排版；没建的滚动不量卡）
+        if (t.skeleton.fillVisible() > 0) t.skeleton.release();
         this.refineNearby(t); // 第二级：视口附近的占位行交 Worker 精算
         return;
       }
@@ -492,6 +490,8 @@ export class TabStreamView {
   /** 切 tab：只让这一条流（连同它的查找面板）可见（原是 `switchTo` 开头那一段）。 */
   showOnly(sessionId: string): void {
     for (const [sid, t] of this.store.tabs) {
+      // 收起的那一个只留视口那一截（收起之后几何不作数 ⇒ 在翻走之前交）
+      if (sid !== sessionId && t.streamEl.classList.contains("active")) t.skeleton?.release(0);
       t.streamEl.classList.toggle("active", sid === sessionId);
       t.stream.park(sid !== sessionId); // 收起期间几何不作数（`MessageStream.park`）
       // 面板与它那条流同进同出：漏掉的话所有 tab 的面板一起挂在屏幕上，点下去找的是别人的流。
@@ -524,12 +524,11 @@ export class TabStreamView {
    * - 都不是（骨架还没到）⇒ 踢一次要骨架、reject「索引未就绪」（重试时多半已经接上）。
    * 等的期间 tab 被关掉 ⇒ 落空（`null`）。
    */
-  private jumpInTab(sessionId: string, streamEl: HTMLElement, uuid: string, tool?: string): JumpResult {
+  private jumpInTab(sessionId: string, streamEl: HTMLElement, { uuid, line: seq }: JumpTarget, tool?: string): JumpResult {
     const tab = this.store.tabs.get(sessionId);
     if (!tab) return null;
     const sk = tab.skeleton;
-    const seq = sk?.ledger.uuidToSeq.get(uuid);
-    if (sk && seq !== undefined && sk.isPending(seq)) {
+    if (sk && sk.isPending(seq)) {
       sk.ensure(seq);
       const inflight = this.rangeFetches.get(tab);
       if (!inflight || inflight.size === 0) return revealCard(streamEl, uuid, tool);
@@ -562,36 +561,34 @@ export class TabStreamView {
   /** 切进来的 tab：物化 / 哨兵 / 骨架索引 / 大纲 / 不可滚时踢一次补批（原是 `switchTo` 中段，逐字）。 */
   activate(next: Tab): void {
     // 上次按行号往下问失败了的，切进来时允许再问一次（失败不自动重问，见 `BelowState` 头注）。
-    if (next) next.window.retryBelow();
+    next.window.retryBelow();
     // 命中 virgin tab（启动重放全收纳、还没建过卡）→ 同步物化尾段，免得切过去一片空白（有界循环补到一屏）。
     // 非 virgin tab 可能有滚动位置要保，走下面那一脚带补偿的 `fillAbove`。
-    const virginFill = !!next && next.window.floorSeq === null && next.window.pendingCount > 0;
+    const virginFill = next.window.floorSeq === null && next.window.pendingCount > 0;
     if (virginFill) this.materializeUntilFilled(next);
     // 切入即刷新哨兵（非 virgin 但账本非空的 tab 也要见到「还有 N 条」）
-    if (next) this.updateSentinel(next);
+    this.updateSentinel(next);
     // 〔骨架〕要索引 / 接上次停着的那一份 / 刷大纲：都是给「停下来看」的人准备的（索引那一问是后端整份读那个会话的记录文件，
     // 接骨架要插占位、量几何）—— 在眼前停住了（`STAY_MS`）才做；按住「下一个 tab」路过的一概不发、不接。
-    if (next) {
-      // 调度：一次性 —— 停留判定：到点时还是它在眼前（没被下一下切走）才要索引 / 接骨架 / 刷大纲
-      setTimeout(() => {
-        if (!this.inFront(next)) return;
-        const parked = this.parkedSkeletons.get(next);
-        if (parked) {
-          this.parkedSkeletons.delete(next);
-          this.attachSkeleton(next, parked);
-        }
-        this.requestSkeleton(next); // 上面刚物化过尾段 ⇒ floor 已钉；要过的不重要
-        this.cold.toFront(next); // 第一趟会话事实与轮次：停住的这一个插到最前（后台排着的等它落地）
-        if (next.outline.needsFetch) this.refreshOutline(next); // 大纲：有新行才要
-      }, TabStreamView.STAY_MS);
-    }
+    // 调度：一次性 —— 停留判定：到点时还是它在眼前（没被下一下切走）才要索引 / 接骨架 / 刷大纲
+    setTimeout(() => {
+      if (!this.inFront(next)) return;
+      const parked = this.parkedSkeletons.get(next);
+      if (parked) {
+        this.parkedSkeletons.delete(next);
+        this.attachSkeleton(next, parked);
+      }
+      this.requestSkeleton(next); // 上面刚物化过尾段 ⇒ floor 已钉；要过的不重要
+      this.cold.toFront(next); // 第一趟会话事实与轮次：停住的这一个插到最前（后台排着的等它落地）
+      if (next.outline.needsFetch) this.refreshOutline(next); // 大纲：有新行才要
+    }, TabStreamView.STAY_MS);
     // 账本有余却没满一屏的 tab 没有补批入口（不可滚的元素不产生 scroll 事件）⇒ 切入时踢一次，rAF 自链接管到满或账尽。
     // 账本空了但下面可能还有（`wantsBelow`）同样踢。「满没满」问真实布局（`contentReachesBottom`），不只看 `scrollHeight`（掺着估值）。
     // 刚为 virgin tab 跑过 `materializeUntilFilled`、账本还有余的不再踢：它补不满时自己排了下一帧的接续（一次同步调用要有界）。
     // 「满没满」要读几何 ⇒ 挪到下一帧再问：同步段里一读，浏览器就得当场把刚翻出来的整个 tab 样式与布局算完（点击处理被拖长、这一帧更晚画出来）；
     // 下一帧的回调里读，排的就是那一帧本来要排的那一份。期间又切走（`activeId` 守卫）⇒ 不补。
     const continuing = virginFill && next.window.pendingCount > 0;
-    if (next && !continuing && (next.window.pendingCount > 0 || next.window.wantsBelow)) {
+    if (!continuing && (next.window.pendingCount > 0 || next.window.wantsBelow)) {
       // 调度：一次性 —— 切进来的下一帧问一次满没满，没满踢一脚补批（之后由补批自己的 rAF 自链接管）
       requestAnimationFrame(() => {
         if (!this.inFront(next)) return;
@@ -631,7 +628,7 @@ export class TabStreamView {
       .filter(
         ([sid, t]) =>
           sid !== this.store.activeId &&
-          !isResumeOnly(t.state) &&
+          hasTerminal(faceOf(t)) &&
           t.window.pendingCount > 0 &&
           (t.window.floorSeq === null || !this.contentReachesBottom(t)),
       )
@@ -1032,15 +1029,18 @@ export class TabStreamView {
           console.info(`[tabs] 骨架未接（${tab.sessionId.slice(0, 8)}）：${got.reason}`);
           return;
         }
-        // 索引拉回来之前 tab 可能又长了：floor 之下还有索引没覆盖到的行 ⇒ **续传**（从上次的 end 接着要）
-        const floor = tab.window.floorSeq ?? 0;
+        // 索引拉回来之前 tab 可能又长了：floor 之下还有索引没覆盖到的行 ⇒ **续传**（从上次的 end 接着要）；
+        // 续不上 ⇒ 不接（盖不到尾段的账本接上去，占位里那一截没有行），同瞬时失败
+        const floor = tab.window.floorSeq!; // 进来时判过不是 null，之后只会往下钉
         let end = got.end;
         if (floor > got.ledger.endSeq) {
           const more = await readSessionIndex(origin, jsonlPath, got.end);
-          if (more.available) {
-            got.ledger.append(more.rows);
-            end = more.end;
+          if (!more.available) {
+            failed(more.failure !== "oldBackend");
+            return;
           }
+          got.ledger.append(more.pages);
+          end = more.end;
         }
         this.indexEnds.set(tab, end);
         if (this.store.tabs.get(tab.sessionId) !== tab) return;
@@ -1061,7 +1061,7 @@ export class TabStreamView {
    * 续不上（要不到）⇒ 这一份不用了，下一次触发点从 0 要（同瞬时失败）。
    */
   private continueSkeleton(tab: Tab, ledger: SkeletonLedger, end: number): void {
-    const floor = tab.window.floorSeq ?? 0;
+    const floor = tab.window.floorSeq!; // 进来时判过不是 null，之后只会往下钉
     const want = floor - ledger.endSeq;
     const more = want > 0 ? readSessionIndex(tab.origin, tab.parentPath!, end, want) : Promise.resolve(null);
     void more
@@ -1071,7 +1071,7 @@ export class TabStreamView {
           tab.skeletonFetch = "again";
           return;
         }
-        if (res) ledger.append(res.rows);
+        if (res) ledger.append(res.pages);
         this.indexEnds.set(tab, res ? res.end : end);
         tab.skeletonFetch = "done";
         if (this.store.activeId !== tab.sessionId) {
@@ -1088,18 +1088,17 @@ export class TabStreamView {
 
   /**
    * 接骨架：`[0, floor)` 画成占位。**接之前先对拍 seq 空间** —— 抽几条还在 pending 的记录，
-   * 它们的 uuid 在索引里必须落在同一个 seq 上；对不上（本地截断重读换过 seq，INVARIANTS §25）
+   * 索引里同一个 seq 那一行的记录类必须与它一样（两边都是后端给的类）；对不上（本地截断重读换过 seq，INVARIANTS §25）
    * 就**不接**，退回尾部窗口（不许硬对）。
    */
   private attachSkeleton(tab: Tab, ledger: SkeletonLedger): void {
     const floor = tab.window.floorSeq;
     if (floor === null || tab.skeleton) return;
     for (const p of tab.window.peek(8)) {
-      const u = p.record.id;
-      const at = ledger.uuidToSeq.get(u);
-      if (at !== p.seq) {
+      const at = ledger.factsOf(p.seq)?.t;
+      if (at !== p.record.t) {
         console.warn(
-          `[tabs] 骨架未接（${tab.sessionId.slice(0, 8)}）：seq ${p.seq} 在索引里是 ${String(at)} —— seq 空间对不上`,
+          `[tabs] 骨架未接（${tab.sessionId.slice(0, 8)}）：seq ${p.seq} 是 ${p.record.t}，在索引里是 ${String(at)} —— seq 空间对不上`,
         );
         return;
       }
@@ -1109,6 +1108,11 @@ export class TabStreamView {
         const taken = tab.window.takeRange(lo, hi);
         this.renderPayloadsBatch(tab, taken);
         return this.fetchMissingRows(tab, view, lo, hi, new Set(taken.map((p) => p.seq)));
+      },
+      // 交回的行早到过（`seenSeqs`）⇒ 滚回来按偏移取回、只建卡（`fetchMissingRows` 的「见过的」那一支）
+      released: (_ranges, cards) => {
+        forgetDetached(tab, tab.streamEl, cards);
+        tab.branchFolder.rebuildNow();
       },
     });
     // 折叠先交给账本：占位插进去就是折后的高、补可见区不建折着的过程行（不先交 ⇒ 插完排版时再改高、再钉视口，这一帧多排两次版）
@@ -1210,12 +1214,9 @@ export class TabStreamView {
     if (payloads.length === 0) return;
     const wasBatch = this.store.inBatch;
     this.store.inBatch = true;
-    // 取回来的是历史：远端 tab「见行就翻活」那一格不认它（`TabStore.historyFeed` 头注）。
-    this.store.historyFeed = true;
     try {
       for (const p of payloads) this.host.onLine(p);
     } finally {
-      this.store.historyFeed = false;
       this.store.inBatch = wasBatch;
       if (!wasBatch) {
         this.flushMidBatchBuffer(tab);

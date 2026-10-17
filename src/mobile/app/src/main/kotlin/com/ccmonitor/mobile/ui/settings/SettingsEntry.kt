@@ -1,36 +1,38 @@
 package com.ccmonitor.mobile.ui.settings
 
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.ui.nav.Screen
 
+/** 行尾那个数从哪数（手机自己的机器表 · 保险箱）。 */
+enum class EntryCount {
+    MACHINES,
+    KEYS,
+}
+
 /**
- * 设置面上一条可点的去处：属于哪一节、显示什么字、点了去哪条路由。
+ * 「机器与账号」那一节里一条可点的去处。
  *
- * @property section 节标题（上屏的字）。
- * @property title 行标题（上屏的字）。
  * @property route 目的地路由，必须是 [Screen] 里真有的那一条。
+ * @property readsMachine 那一屏读当前那台：那台离线 · 要更新时这一行灰着、点不了。
  */
 data class SettingsEntry(
-    val section: String,
+    val icon: Ph,
     val title: String,
     val route: String,
+    val readsMachine: Boolean,
+    val count: EntryCount? = null,
 )
 
 /**
- * 设置面上那些入口的唯一住址，别把任何一条写回 composable 里。
- *
- * 入口做成数据，测试才守得住「入口还在」：只看路由还在不在导航图里，把入口删了也照样绿；
- * 而 Compose 里的表达式没有单元测试够得着。注意：这份数据守不住那一行真的画出来、也不管几跳可达。
- *
- * 「打开终端」不在这里：终端从抽屉「终端」进，每个功能只有一处入口。
+ * 「机器与账号」那几条的唯一住址，设置屏只渲染这份数据。
+ * 终端从抽屉进、身份从密钥进：每个功能只有一处入口。
  */
 fun settingsEntries(): List<SettingsEntry> =
     listOf(
-        // 身份从服务器列表里进；这里给的是到服务器列表那一跳。
-        SettingsEntry(SECTION_TERMINAL, copyText("mobSettings.entry.hosts"), Screen.Hosts.route),
-        // 轮换看的是当前服务器（上次那台）新会话用的那份。
-        SettingsEntry(copyText("mobSettings.section.machine"), copyText("mobSettings.entry.rotation"), Screen.RotationHere.route),
+        SettingsEntry(Ph.HardDrives, copyText("mobSettings.entry.machines"), Screen.Hosts.route, readsMachine = false, count = EntryCount.MACHINES),
+        SettingsEntry(Ph.UserCircle, copyText("mobSettings.entry.accounts"), Screen.Accounts.route, readsMachine = true),
+        // 轮换看的是当前那台新会话用的那份。
+        SettingsEntry(Ph.ArrowCounterClockwise, copyText("mobSettings.entry.rotation"), Screen.RotationHere.route, readsMachine = true),
+        SettingsEntry(Ph.Key, copyText("mobSettings.entry.keys"), Screen.Identities.route, readsMachine = false, count = EntryCount.KEYS),
     )
-
-/** 节标题就叫「终端」，不叫「高级」「更多」：找终端的人应该直接看见这两个字。 */
-val SECTION_TERMINAL: String get() = copyText("mobSettings.section.terminal")

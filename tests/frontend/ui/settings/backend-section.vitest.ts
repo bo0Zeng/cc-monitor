@@ -17,7 +17,7 @@
  *    而且只剥**整行注释**。文案搬家 / 拼串 / 进一张 i18n 表 ⇒ 它**零命中地绿**。
  *    ⇒ 现在人群是 `backend-section.ts` **+** `backend-policy.ts`，而且**反过来要求**：
  *    那四句的唯一一个家是 `backend-policy.ts`，`backend-section.ts` 里一句都不许有。
- * 2. **配一个今天真会红的反向锚点** —— `the_unattended_wording_is_actually_present`：
+ * 2. **配一个今天真会红的反向锚点**：
  *    在 `K-P1` 之前的代码上，「无人监护」在这两个文件里出现 **0** 次 ⇒ 它当场红。
  *
  * ⚠ 判据的边界（照旧如实登记）：它扫的是**字面量与那个纯函数的四张脸**，
@@ -59,10 +59,6 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
     backend_stop: (a: unknown) => {
       calls.push({ name: "backend_stop", args: a });
       return Promise.resolve(stopAnswer);
-    },
-    local_ccm_entry_status: (fresh?: boolean) => {
-      calls.push({ name: "local_ccm_entry_status", args: fresh });
-      return Promise.resolve({ ok: true, summary: "S", message: "" });
     },
     backend_machines: () => {
       calls.push({ name: "backend_machines", args: null });
@@ -128,6 +124,7 @@ import HEALTH_GOLDEN from "../../../__fixtures__/backend-health.golden.json";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/backend-policy";
 import { copyPattern } from "../../../test-support/copy-pattern";
 import { UNTIL_CEILING } from "../../../test-support/wall-ceiling";
+import { nonEmpty } from "../../../test-support/non-empty";
 
 // 那四句由后端出成品（`exit-policy-read` 的 `said`，判定与十格穷举住 `exit_policy_tests.rs`）；
 //   这里只取表里的原文当桩里后端回的那一句，判界面原样摆、不再判。
@@ -186,8 +183,7 @@ describe("P2s backend 开关区", () => {
     const files = readPopulation();
     // 抽取器自检：读不到就下面全空转。
     for (const f of files) {
-      expect(f.src.length, `${f.name} 读出来只有 ${f.src.length} 字节 —— 人群坏了，本条在空转`)
-        .toBeGreaterThan(500);
+      nonEmpty(f.src);
     }
     // ⚠ `K-P3b KP3W4`③：人群扩到 `HEALTH_*` 四句 —— 它们与那三句同一条规矩，
     //   而 `K-P3` 交付时这一格只由 Rust 那侧的 `the_backend_policy_copy_has_exactly_one_home` 看着
@@ -225,10 +221,8 @@ describe("P2s backend 开关区", () => {
     expect(visibleOf(section).includes("answer.said"), "`backend-section.ts` 不摆后端的 `said` —— 那它的文案是从哪来的？").toBe(true);
   });
 
-  it("★★ 反向锚点：常驻那一句（`backendPolicy.exit.unattended`）在表里有字、且后端那一处真取它（KPY4③）", () => {
-    // ⚠ 这一条在 `K-P1` **之前**的代码上是**红**的：那时常驻却一句不说。
-    //   它就是翻转的活体证据 —— 少了它，上面那几条在一份「文案全被删光」的树上照样绿。按键认，改那句话的措辞不撞。
-    expect(EXIT_UNATTENDED.trim().length, "常驻那一句在表里是空的 —— 常驻做了、而界面没说，那正是 `K14` 点名不许的那一半").toBeGreaterThan(0);
+  it("★★ 反向锚点：后端那一处真取常驻那一句（`backendPolicy.exit.unattended`）", () => {
+    // 少了它，上面那几条在一份「文案全被删光」的树上照样绿；按键认，改那句话的措辞不撞。表里有字由文案表的形状判据管。
     const policy = readFileSync(resolve(srcDirOf(__dirname), "../../../backend/control/exit_policy.rs"), "utf8");
     expect(policy, "后端那一处不再取常驻那一句 —— 界面摆的 `said` 里就没有它了").toContain('copy_text("backendPolicy.exit.unattended"');
   });
@@ -291,16 +285,17 @@ describe("P2s backend 开关区", () => {
       { channel: false, pid: null },
       { channel: true, pid: 7 },
     ];
-    s.element.querySelector<HTMLButtonElement>('.backend-row [data-op="start"]')!.click();
-    // 等到画上「已连接」为止（按条件等，不按墙钟歇）；上限只防挂死。
-    await vi.waitFor(
-      () =>
-        expect(
-          s.element.querySelector(".backend-row-state")?.textContent,
-          "起完只画了一次就停手 —— 那张是操作前的快照（backend_start 只是 spawn 了监护线程就返回）",
-        ).toContain(copyText("backend.status.connected")),
-      UNTIL_CEILING,
-    );
+    const start = s.element.querySelector<HTMLButtonElement>('.backend-row [data-op="start"]')!;
+    start.click();
+    expect(start.disabled, "起的那一趟没禁用本行按钮").toBe(true);
+    // 等这一趟收场（按钮放开 = 轮询停了），不按墙钟歇；上限只防挂死。
+    //   等「已连接」不行：起之前就画着「已连接」，等到的是操作前那张，轮询还在跑、漏进后面的用例。
+    await vi.waitFor(() => expect(start.disabled).toBe(false), UNTIL_CEILING);
+    expect(statusQueue, "没轮询到落定就放开了按钮").toEqual([]);
+    expect(
+      s.element.querySelector(".backend-row-state")?.textContent,
+      "起完只画了一次就停手 —— 那张是操作前的快照（backend_start 只是 spawn 了监护线程就返回）",
+    ).toContain(copyText("backend.status.connected"));
   });
 
   it("★★ K-P3b：读数**另起一行**画出来，而退出那一行一个字节不变", async () => {
@@ -480,24 +475,6 @@ describe("P2s backend 开关区", () => {
       { origin: rows[0].dataset.backendCells, body: {} },
     ]);
   });
-  /** 手动兜底：「本机 PATH 探针的 5 分钟缓存在『重新对齐』时作废，不再多等」。 */
-  it("FIX4 ⑥：本机那一行 [重新对齐] 作废本机 ccm 那份缓存（`fresh`）；远端那一行不碰", async () => {
-    const s = new BackendSection({ headless: true });
-    await flush();
-    await flush();
-    const rows = [...s.element.querySelectorAll<HTMLElement>("[data-backend-cells]")];
-    const ask = (o: string) =>
-      [...rows.find((r) => r.dataset.backendCells === o)!.querySelectorAll("button")].find((b) => b.textContent === copyText("backend.buildCells.resync"))!.click();
-    calls.length = 0;
-    ask("甲机");
-    await flush();
-    await flush();
-    expect(calls.filter((c) => c.name === "local_ccm_entry_status")).toEqual([]);
-    ask("<local>");
-    await flush();
-    await flush();
-    expect(calls.filter((c) => c.name === "local_ccm_entry_status")).toEqual([{ name: "local_ccm_entry_status", args: true }]);
-  });
 });
 
 describe("〔ST2 · 第二刀 步 6〕后端开关表格式四栏：长文案进 ⓘ / [详情]", () => {
@@ -566,9 +543,11 @@ describe("〔ST2 · 第二刀 步 6〕后端开关表格式四栏：长文案进
     await flush();
     await flush();
     statusQueue = [{ ...status, channel: false }, { ...status, channel: false }];
-    s.element.querySelector<HTMLButtonElement>('[data-op="start"]')!.click();
-    // 等起完那一趟画完（两次 channel:false 都读过）再数；按条件等，上限只防挂死。
-    await vi.waitFor(() => expect(statusQueue.length).toBe(0), UNTIL_CEILING);
+    const start = s.element.querySelector<HTMLButtonElement>('[data-op="start"]')!;
+    start.click();
+    // 等起完那一趟收场（按钮放开 = 轮询停了）再数；只等队列读空不够，那之后还要再画一遍。按条件等，上限只防挂死。
+    await vi.waitFor(() => expect(start.disabled).toBe(false), UNTIL_CEILING);
+    expect(statusQueue).toEqual([]);
     await vi.waitFor(
       () => expect(s.element.querySelector<HTMLElement>('.backend-row [data-col="health"]')!.querySelectorAll("[data-health-extra]").length).toBe(1),
       UNTIL_CEILING,

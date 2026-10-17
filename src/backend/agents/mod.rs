@@ -59,12 +59,14 @@ pub(crate) use cmd_wire::needs::AskKind;
 // 通用记录里那几样的形状住 `cmd-wire`（手机按同一份解）；后端在它们上面写字的那几处是下面的 `*Ext`。
 pub(crate) use cmd_wire::record::{
     Answer, ApiReason, AskOption, AskQuestion, ChildRunTag, Pasted, PatchHunk, PlanTitle,
-    ResultKind, Speaker, StepAsk, StepResult, ToolCard, ToolStep, UserText,
+    ResultKind, Speaker, StepAsk, StepBody, StepResult, TextChange, ToolCard, ToolStep, UserText,
 };
 use std::path::{Path, PathBuf};
 
 // 待答请求的成品（`needs.ask`）与选项写字（通用）。
 pub(crate) mod asks;
+// 一条记录的「一拍」：轮次 · 会话事实 · 大纲要问一条记录的那几句（通用形，各家答）。
+pub(crate) mod beat;
 pub mod claudecode;
 // 上游协议的流面（按协议分，不按 agent 分）。
 pub(crate) mod codex;
@@ -331,8 +333,22 @@ pub(crate) struct LaunchFace {
     pub(crate) model_default: Option<Choice>,
     /// 记录里写的模型原值 ⇒ 写给人看的名字（会话事实 `modelText`）；认不出 ⇒ `None`。这一家没考据过 ⇒ `None`。
     pub(crate) model_text: Option<fn(&str) -> Option<String>>,
+    /// 记录里写的模型原值 ⇒ 换模型清单里**唯一**对得上的那一项的原值（会话事实 `modelPick`，抽屉勾它）；对不上 · 不止一项 ⇒ `None`。没考据过 ⇒ `None`。
+    pub(crate) model_pick: Option<fn(&str) -> Option<&'static str>>,
     /// 会话开着时怎么换模型；这一家换不了 ⇒ `None`。
     pub(crate) model_switch: Option<ModelSwitch>,
+}
+
+impl LaunchFace {
+    /// 换模型清单里 `model` 那一项（可选的模型 ＋「默认」那一项）；不在清单里 ⇒ `None`。
+    pub(crate) fn model_choice(&self, model: &str) -> Option<Choice> {
+        self.models
+            .into_iter()
+            .flatten()
+            .chain(self.model_default.as_ref())
+            .find(|c| c.value == model)
+            .copied()
+    }
 }
 
 /// 会话开着时换模型的说法（[`LaunchFace::model_switch`]）：往会话里送一行，再从记录里此后长出的那一条读回换成了什么。
@@ -409,6 +425,18 @@ pub(crate) fn permission_mode_text(kind: &str, mode: &str) -> Option<String> {
 /// `kind` 那一家记录里的模型原值 `raw` 写给人看的名字（[`LaunchFace::model_text`]）。认不出这一家 · 这一家没有这一格 · 认不出这个值 ⇒ `None`。
 pub(crate) fn model_text(kind: &str, raw: &str) -> Option<String> {
     launch_face_among(REGISTRY, kind)?.model_text?(raw)
+}
+
+/// `kind` 那一家记录里的模型原值 `raw` 是换模型清单里哪一项（[`LaunchFace::model_pick`]）。认不出 ⇒ `None`。
+pub(crate) fn model_pick(kind: &str, raw: &str) -> Option<&'static str> {
+    launch_face_among(REGISTRY, kind)?.model_pick?(raw)
+}
+
+/// `kind` 那一家换模型清单里 `value` 那一项的字（[`LaunchFace::model_choice`]）。认不出这一家 · 不在清单里 ⇒ `None`。
+pub(crate) fn model_choice_text(kind: &str, value: &str) -> Option<String> {
+    launch_face_among(REGISTRY, kind)?
+        .model_choice(value)
+        .map(|c| (c.text)())
 }
 
 /// 某一家（wire 上的 kind）在给定注册表里的起会话事实。认不出 ⇒ `None`。
@@ -639,6 +667,52 @@ pub(crate) struct RecordFace {
     /// 一条已解析的记录 ⇒ 它是不是「认不出、又不成卡」的那种行（这一家的簿记行）⇒ 它的类型名；不是 ⇒ `None`。
     /// 不成卡是这一家的翻译表判的（`parse` 那一格给它不出记录），这一格只让会话事实照实记几行、哪几种。`None` 这一格 ＝ 这一家没有这种行。
     pub(crate) quiet_unread: Option<fn(&serde_json::Value) -> Option<String>>,
+    /// 一条已解析的记录 ⇒ 它的一拍（[`beat::BeatFace`]：轮次 · 会话事实 · 大纲只吃它）。`None` ＝ 这一家不出轮次 · 事实 · 大纲。
+    pub(crate) beats: Option<beat::BeatFace>,
+    /// 这份会话是从哪个会话分叉来的（[`ForkFace`]）。`None` ＝ 这一家不分叉。
+    pub(crate) fork: Option<ForkFace>,
+}
+
+/// 一家怎么说分叉来源：一条记录 ⇒ (源 sid, 分叉处的记录 id) · 只拿到那一格本身时 ⇒ 同一对（列表那一路只解了几格）。
+#[derive(Clone, Copy)]
+pub(crate) struct ForkFace {
+    pub(crate) of_record: fn(&serde_json::Value) -> Option<(String, String)>,
+    pub(crate) of_field: fn(&serde_json::Value) -> Option<(String, String)>,
+}
+
+/// `kind` 那一家：这条记录的一拍。那一家不出 ⇒ `None`。
+pub(crate) fn beat_of<'a>(kind: &str, v: &'a serde_json::Value) -> Option<beat::Beat<'a>> {
+    record_face(kind)
+        .and_then(|r| r.beats)
+        .and_then(|b| (b.beat)(v))
+}
+
+/// `kind` 那一家：这一行有没有可能改动会话事实（快路）。那一家不出一拍 ⇒ 不会。
+pub(crate) fn beat_hint(kind: &str, line: &[u8], watch: &beat::Watch) -> bool {
+    record_face(kind)
+        .and_then(|r| r.beats)
+        .is_some_and(|b| (b.hint)(line, watch))
+}
+
+/// `kind` 那一家：这个工具在「需手动」里是哪一种。那一家不说 ⇒ 别的。
+pub(crate) fn call_ask(kind: &str, tool: &str) -> beat::CallAsk {
+    record_face(kind)
+        .and_then(|r| r.beats)
+        .map_or(beat::CallAsk::Plain, |b| (b.ask)(tool))
+}
+
+/// `kind` 那一家：这条记录说的分叉来源。
+pub(crate) fn fork_origin_of(kind: &str, v: &serde_json::Value) -> Option<(String, String)> {
+    record_face(kind)
+        .and_then(|r| r.fork)
+        .and_then(|f| (f.of_record)(v))
+}
+
+/// `kind` 那一家：分叉来源那一格本身 ⇒ 那一对。
+pub(crate) fn fork_pair_of(kind: &str, field: &serde_json::Value) -> Option<(String, String)> {
+    record_face(kind)
+        .and_then(|r| r.fork)
+        .and_then(|f| (f.of_field)(field))
 }
 
 /// 一家的记录树：会话按项目目录分，住在家目录下的一棵树里。
@@ -673,7 +747,7 @@ pub(crate) struct LocalFace {
 pub use cmd_wire::frame::SessionActivity;
 
 /// 一条会话在等人时，**等的是什么框**（与哪一家无关；适配层从那一家的词翻过来，翻不出 ⇒ 不给）。
-/// 「要人做哪种事」由它配上记录里没结果的那一步判（`observe::facts_query::needs_of`），不在这里判。
+/// 「要人做哪种事」由它配上记录里没结果的那一步判（`observe::recognize::facts::needs_of`），不在这里判。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum WaitOn {
     /// 批准框（工具调用 · 提问 · 计划都弹在这一类里，分哪种看那一步是什么工具）。
@@ -733,7 +807,7 @@ pub(crate) struct ChildLink {
 
 /// 后台命令的一笔账（适配层从那一家的记录翻过来，与哪一家无关）：
 /// 起了一条（工具调用 id · 那条命令原样）· 它当场拿到了任务号 · 它收场了（完成 / 失败 / 被叫停都算，只认是哪一条）。
-/// 哪几条此刻还在跑、句子怎么写在核心（`observe::facts_query`）。
+/// 哪几条此刻还在跑、句子怎么写在核心（`observe::recognize::facts`）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum BgMark {
     Started {
@@ -750,10 +824,9 @@ pub(crate) enum BgMark {
     },
 }
 
-/// 一条已解析的记录里说到后台命令的那几笔（[`RecordFace::background`]，按记录树那一家问；那一家没有 ⇒ 空）。
-pub(crate) fn background_marks(v: &serde_json::Value) -> Vec<BgMark> {
-    record_tree_kind()
-        .and_then(record_face)
+/// `kind` 那一家：一条已解析的记录里说到后台命令的那几笔（[`RecordFace::background`]；那一家没有 ⇒ 空）。
+pub(crate) fn background_marks(kind: &str, v: &serde_json::Value) -> Vec<BgMark> {
+    record_face(kind)
         .and_then(|r| r.background)
         .map(|f| f(v))
         .unwrap_or_default()
@@ -1050,8 +1123,6 @@ pub(crate) struct TextFace {
     pub(crate) user: fn(&serde_json::Value) -> Option<UserText>,
     /// 一条已解析的记录是不是进界面的一句排队插话（人打的）⇒ 它的原文（已 trim）；不是 ⇒ `None`。
     pub(crate) queued: fn(&serde_json::Value) -> Option<String>,
-    /// 一个工具结果块（＋ 记录级的结构化结果）⇒ 结果一句（[`StepResult`]：失败 · 被拒 · 数 · 提问与计划答了什么）。
-    pub(crate) result: fn(&serde_json::Value, Option<&serde_json::Value>) -> StepResult,
     /// 一条已解析的记录在消息流里落在哪张卡上（[`Lands`]）：查找 · 搜索的单位就是流里画的那几张卡。
     pub(crate) lands: fn(&serde_json::Value) -> Lands,
 }
@@ -1090,24 +1161,6 @@ pub(crate) fn user_text_of(kind: &str, v: &serde_json::Value) -> Option<UserText
 /// `kind` 那一家判这条记录是不是一句排队插话（进界面的那种）⇒ 原文。那一家答不了 ⇒ `None`。
 pub(crate) fn queued_text_of(kind: &str, v: &serde_json::Value) -> Option<String> {
     text_face(kind).and_then(|t| (t.queued)(v))
-}
-
-/// `kind` 那一家怎么读一个工具结果块（一轮的摘要数失败用：被拒的不算失败）。那一家答不了 ⇒ 只看 `is_error`。
-pub(crate) fn step_result_of(
-    kind: &str,
-    block: &serde_json::Value,
-    tur: Option<&serde_json::Value>,
-) -> StepResult {
-    text_face(kind).map_or_else(
-        || {
-            StepResult {
-                ok: block.get("is_error").and_then(serde_json::Value::as_bool) != Some(true),
-                ..StepResult::default()
-            }
-            .written(false)
-        },
-        |t| (t.result)(block, tur),
-    )
 }
 
 /// `kind` 那一家说这条记录在流里落在哪。那一家答不了 ⇒ 自己那张卡。
@@ -1222,6 +1275,12 @@ impl<'a> Line<'a> {
                 serde_json::from_str(self.text).ok()
             })
             .as_ref()
+    }
+
+    /// 整行拿走（解过就是那一份，没解过当场解）；连 JSON 都不是 ⇒ `None`。
+    pub(crate) fn into_value(self) -> Option<serde_json::Value> {
+        self.value();
+        self.value.into_inner().flatten()
     }
 
     /// 只要几格：整行解过就从那一份里取（树上走，不再解文本），没解过就从文本直接解那几格。
@@ -2136,13 +2195,11 @@ pub(crate) struct QuotaReading {
     pub(crate) overage: Option<QuotaOverage>,
 }
 
-/// 一家的用户级设置文件里「上游地址」那一格：住哪 · 怎么读出来 · 要贴的那一段长什么样（格式知识与那一次只读都在这一家）。
+/// 一家的用户级设置文件里「上游地址」那一格：住哪 · 怎么读出来 · 怎么合进去（格式知识与那一次只读都在这一家）。
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct SettingsEnvFace {
     /// 家目录（`$HOME`）→ 那份文件（各号共用的那一份）＋ 里面写的上游地址（**只读**）。
     pub(crate) read: fn(&Path) -> (PathBuf, SettingsBaseUrl),
-    /// 地址 → 要合并进那份文件的那一段。
-    pub(crate) snippet: fn(&str) -> String,
     /// （那份文件现在的内容, 地址）→ 合好的整份（只算不写；「待办」按它算 diff）。现在的内容读不懂 ⇒ `None`。
     pub(crate) merge: fn(&str, &str) -> Option<String>,
     /// 地址住那份文件里哪一格（「待办」那一件的位置行）。
@@ -2202,15 +2259,6 @@ pub(crate) fn settings_env_families() -> Vec<(&'static str, &'static str, Settin
             Some((u.route_id, name, u.settings_env?))
         })
         .collect()
-}
-
-/// 路由名那一家「直接敲的也走中转」那一格。没登记 / 没有这一形 ⇒ `None`。
-pub(crate) fn settings_env_face(route_id: &str) -> Option<SettingsEnvFace> {
-    REGISTRY
-        .iter()
-        .filter_map(|a| a.upstream.as_ref())
-        .find(|u| u.route_id == route_id)
-        .and_then(|u| u.settings_env)
 }
 
 /// 各家登记的会话标识头（注册序、去重）：中转经上游选择拿到这份名单，按它从请求里认会话 —— 会话 id 归 agent 自己。
@@ -2320,7 +2368,7 @@ pub(crate) fn content_search_skips() -> Vec<&'static str> {
 }
 
 /// 注册表里每一家合成历史面给的记录根（注册序；说不出的跳过）。按路径读会话的围栏在 Claude 的
-/// `projects/` 之外还认这几个（`observe/history_query.rs::validate_session_path`）。
+/// `projects/` 之外还认这几个（`observe/query/locate.rs::validate_session_path`）。
 pub(crate) fn history_roots() -> Vec<PathBuf> {
     history_faces()
         .into_iter()

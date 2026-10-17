@@ -88,7 +88,7 @@ fn live_cards_are_handed_over_in_one_place_with_the_stream_origin() {
         .unwrap_or_else(|e| panic!("活卡那一臂不是恰好一处、或 origin 不是这条流的：{e}"));
     let mut n = 0;
     for (_, raw) in guard_core::scan_tree!(
-        &crate::guard_support::repo_root().join("src/frontend/shell/src"),
+        &guard_core::addr::repo_root().join("src/frontend/shell/src"),
         &["rs"]
     ) {
         n += guard_core::production_code(&raw)

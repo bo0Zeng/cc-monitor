@@ -83,6 +83,7 @@ import {
   type Ledger,
 } from "../../evidence/S25-class-ledger.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
+import { nonEmpty } from "../../test-support/non-empty.ts";
 
 /** `z-index` 唯一准写的形状。与 `.stylelintrc.json` 里那条 allowed-list 是同一个意思。 */
 const Z_OK = /^var\(--z-[a-z0-9-]+\)$/;
@@ -111,7 +112,7 @@ const Z_OK = /^var\(--z-[a-z0-9-]+\)$/;
  *   `cc-bus-hooks-ok`、`history-chip`…）在别处有**直接字面量**住址，`literal` 那一档先接住了。
  *
  * ⇒ 真正需要靠前缀才解释得通的，现打就是下面这 **10** 条（比那份 11 个清单还少一条：
- * `paste-block` 不在这里，当时的理由见 `KNOWN_DEAD` —— 那条死规则已删）。**每条都带住址与理由，缺一条本表就不该有它。**
+ * `paste-block` 那条死规则已删）。**每条都带住址与理由，缺一条本表就不该有它。**
  * 〔10 → 7〕`conf-` · `kind-` · `remote-gap-` 三族摘了：它们是**有限枚举状态拼成的类名族**，
  *   按约定改走 `data-conf` / `data-kind`（`css-conventions` ⑧「同一个状态名不许同现于两种载体」逮到的，
  *   `remote-gap-` 那一族同一个值还同时写进了 `data-kind`）⇒ 拼接点与 CSS 类都没了，前缀随之是死条目。
@@ -136,26 +137,13 @@ const ALLOWED_PREFIXES: readonly { prefix: string; why: string }[] = [
   },
   {
     prefix: "pf-dot-",
-    why: "`src/frontend/ui/views/port-forward.ts:142` 按端口转发的健康状态拼（ok/err）。",
+    why: "`src/frontend/ui/settings/port-forward.ts:142` 按端口转发的健康状态拼（ok/err）。",
   },
   {
     prefix: "status-",
     why: "`src/frontend/ui/tasks-panel.ts:177` 把任务态拼成类名（running/aborted/completed/in_progress/deleted）。态值直接来自会话记录，是**协议里的字符串**，前端不重新枚举。",
   },
 ];
-
-/**
- * ★ **已登记的死规则** —— CSS 里写着、今天确实没有任何人挂它。
- *
- * 登记在这儿不是赦免，是**把它变成一条会红的欠账**：修掉（删那几行 CSS）之后
- * 这张表里的条目会变成死条目，下面那条自检会红并叫人来删登记。
- *
- * ⚠ 〔当时〕**不能自己修** —— `src/frontend/ui/styles.css` 在明令禁碰之列（另有一路正在改它）。
- */
-// 〔D §D8〕唯一那条 `.paste-block-warning` 删了（规则在 `src/frontend/ui/styles/settings.css`，
-//   它的 `warning` 槽早先已移回消费者那儿，`src/frontend/ui/paste-block.ts` 头注写着）⇒ 规则与登记同拍删，本表空。
-//   空的是人群不是判据：② 那一格仍是**恒等**（未解释的类名 == 本表），再冒出一条死规则当场红。
-const KNOWN_DEAD: readonly { name: string; why: string }[] = [];
 
 /**
  * ★ **`npx stylelint "src/**\/*.css"` 的报错（除 `no-descending-specificity`）== 本表**（两向，多重集）。
@@ -355,17 +343,10 @@ describe("S25 ⓪ 量具自检（这些不过，下面四格全是空转）", ()
 
   it("三条识别路径各自真的有货（任何一条空了，② 的正控就会靠别的机制蒙混过关）", () => {
     const led = ledger();
-    expect(
-      led.constConcat.size,
-      "常量拼接一条都没识别出来 —— `const X = \"…\"` 那步坏了",
-    ).toBeGreaterThan(0);
-    expect(
-      led.vendorClasses.size,
-      `第三方类名只收到 ${led.vendorClasses.size} 个（来源：${led.vendorSpecs.join(", ") || "<一个都没找到>"}）` +
-        " —— `import \"<包>/….css\"` 那步坏了，或者 node_modules 没装，`.katex-*` 会被判死",
-    ).toBeGreaterThan(0);
+    nonEmpty(led.constConcat);
+    nonEmpty(led.vendorClasses);
     expect(led.vendorClasses.has("katex"), "第三方类名里没有 `katex` —— katex 的 CSS 没收进来").toBe(true);
-    expect(led.prefixCandidates.size, "模板前缀候选一个都没派生出来 —— 词法器的洞识别坏了").toBeGreaterThan(0);
+    nonEmpty(led.prefixCandidates);
     denom(
       "⓪",
       led.constConcat.size + led.vendorClasses.size + led.prefixCandidates.size,
@@ -410,10 +391,7 @@ describe("S25 ① z-index 只许写 var(--z-*)（件 4）", () => {
     const led = ledger();
     const decls = led.zIndexDecls;
     // 反空真：扫到 0 条 ⇒ 失败，不是静默绿。
-    expect(
-      decls.length,
-      `只扫到 ${decls.length} 条 \`z-index\` 声明—— 抽取器坏了，本条会零命中地绿`,
-    ).toBeGreaterThan(0);
+    nonEmpty(decls);
 
     const bare = decls.filter((d) => !Z_OK.test(d.value)).map((d) => `${d.file}:${d.line}  z-index: ${d.value}`);
     expect(
@@ -434,7 +412,7 @@ describe("S25 ① z-index 只许写 var(--z-*)（件 4）", () => {
     const allow = rules["declaration-property-value-allowed-list"] as Record<string, string[]> | undefined;
     expect(allow, "`.stylelintrc.json` 里没有 `declaration-property-value-allowed-list` —— 那 `npm run lint:css` 就看不见这一格了").toBeTruthy();
     const pats = allow?.["z-index"] ?? [];
-    expect(pats.length, "那条规则里没有 `z-index` 这一项").toBeGreaterThan(0);
+    nonEmpty(pats);
     // 规则里写的正则与本文件的 `Z_OK` 必须是同一个意思：拿两个真实值对拍，一正一反。
     const asRe = new RegExp(pats[0].replace(/^\/|\/$/g, ""));
     expect(asRe.test("var(--z-modal)"), "stylelint 那条正则连合法值都不认").toBe(true);
@@ -478,7 +456,7 @@ describe("S25 ② CSS 里的类名有人用", () => {
   it("每个 CSS 类名都说得出谁在用它（未解释的 == 登记的已知死规则）", () => {
     const led = ledger();
     const prefixes = ALLOWED_PREFIXES.map((p) => p.prefix);
-    expect(led.cssClasses.size, "一个 CSS 类名都没扫到 —— 本条会零命中地绿").toBeGreaterThan(0);
+    nonEmpty(led.cssClasses);
 
     const tally = { literal: 0, "const-concat": 0, vendor: 0, prefix: 0 };
     const unexplained: string[] = [];
@@ -487,25 +465,24 @@ describe("S25 ② CSS 里的类名有人用", () => {
       if (v.kind === "unexplained") unexplained.push(`.${name}  ←  ${sites[0]}`);
       else tally[v.kind]++;
     }
-    const registered = KNOWN_DEAD.map((d) => `.${d.name}  ←  ${led.cssClasses.get(d.name)?.[0] ?? "<不在 CSS 里>"}`);
     expect(
       unexplained.sort(),
-      "这些 CSS 类名今天没有任何人挂它，而且不在 `KNOWN_DEAD` 里：\n  " +
+      "这些 CSS 类名今天没有任何人挂它：\n  " +
         unexplained.join("\n  ") +
         "\n★ 删之前**先确认它不是假阳性**（上一轮 13 个里有 3 个是活的，`S21` 步 3）：\n" +
         "  ① 是不是 `` `${某个常量}-后缀` `` 拼出来的？② 是不是第三方库自产的？\n" +
         "  ③ 是不是模板拼接？是的话把前缀连**理由**一起加进 `ALLOWED_PREFIXES`。\n" +
-        "  ④ 确实是死的 ⇒ 删掉那几行 CSS；删不了（不归这里改）⇒ 加进 `KNOWN_DEAD` 并写清凭什么。",
-    ).toEqual(registered.sort());
+        "  ④ 确实是死的 ⇒ 删掉那几行 CSS。",
+    ).toEqual([]);
 
     denom(
       "②",
       led.cssClasses.size,
-      `个 CSS 类名（直接字面量 ${tally.literal} · 常量拼接 ${tally["const-concat"]} · 第三方 ${tally.vendor} · 模板前缀 ${tally.prefix} · 已登记死规则 ${KNOWN_DEAD.length}）`,
+      `个 CSS 类名（直接字面量 ${tally.literal} · 常量拼接 ${tally["const-concat"]} · 第三方 ${tally.vendor} · 模板前缀 ${tally.prefix}）`,
     );
   });
 
-  it("登记表不许有死条目（前缀要还派生得出来、还真解释着东西；已知死规则要还在 CSS 里）", () => {
+  it("登记表不许有死条目（前缀要还派生得出来、还真解释着东西）", () => {
     const led = ledger();
     const prefixes = ALLOWED_PREFIXES.map((p) => p.prefix);
 
@@ -529,12 +506,6 @@ describe("S25 ② CSS 里的类名有人用", () => {
         "⇒ 要么对应的样式被删了（那就把登记也删了），要么它本来就不必登记。",
     ).toEqual([]);
 
-    const gone = KNOWN_DEAD.filter((d) => !led.cssClasses.has(d.name)).map((d) => d.name);
-    expect(
-      gone,
-      `这些已知死规则已经不在 CSS 里了：${gone.join(", ")}\n⇒ 有人把它删了（好事），把 \`KNOWN_DEAD\` 里那一条也删掉。`,
-    ).toEqual([]);
-
     // 🔴 前缀是开区间 —— 掩掉的是谁必须钉住，理由全文见 `PREFIX_MASKED`。
     const maskedAll = [...covered.values()].flat().sort();
     expect(
@@ -548,7 +519,7 @@ describe("S25 ② CSS 里的类名有人用", () => {
     const lines = [...covered].sort().map(([p, ns]) => `${p}→${ns.length}`);
     denom(
       "②",
-      ALLOWED_PREFIXES.length + KNOWN_DEAD.length,
+      ALLOWED_PREFIXES.length,
       `条登记（前缀共掩 ${maskedAll.length} 个类 == 登记：${lines.join(" ")}）`,
     );
   });
@@ -572,7 +543,7 @@ describe("S25 ② CSS 里的类名有人用", () => {
 describe("S25 ③ 代码挂的类名，CSS 里有没有规则（两向等于登记）", () => {
   it("悬空的类名引用 == 登记", () => {
     const led = ledger();
-    expect(led.usedClasses.size, "方向 ② 一个调用点都没扫到 —— 本条会零命中地绿").toBeGreaterThan(0);
+    nonEmpty(led.usedClasses);
     const dangling = [...led.usedClasses].filter(([name]) => !led.cssClasses.has(name) && !led.vendorClasses.has(name));
     const where = new Map(dangling.map(([name, sites]) => [name, sites.slice(0, 2).join(" ")]));
     const got = dangling.map(([name]) => name).sort();
@@ -599,10 +570,7 @@ describe("S25 ④ stylelint 报错 == 登记", () => {
     const linted = res.results.filter((r) => !r.source?.includes("node_modules"));
 
     // 反空真①：真的 lint 到了文件。「扫了 0 份」与「全都干净」在 stylelint 的退出码上一模一样。
-    expect(
-      linted.length,
-      `stylelint 只 lint 到 ${linted.length} 份 CSS —— glob 坏了或文件搬家了，本条会零命中地绿`,
-    ).toBeGreaterThan(0);
+    nonEmpty(linted);
 
     // 反空真②：**两处人群必须是同一批**。`package.json` 的 `lint:css` 与本账各走各的 glob，
     // 一边悄悄缩水时，另一边照样绿 —— 这正是本仓反复吃亏的那一形。
@@ -826,7 +794,7 @@ describe("S25 ⑤ 层真包进去（件 2）", () => {
   it("⑤c reset 层里有表单控件的最小重置（四种控件继承字体与颜色；button 抹底抹边）", () => {
     const css = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/styles/reset.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, " ");
     const body = /@layer\s+reset\s*\{([\s\S]*)\}\s*$/.exec(css.trim())?.[1] ?? "";
-    expect(body.length, "reset.css 里切不出 `@layer reset { … }` —— 下面几条对着空串").toBeGreaterThan(100);
+    nonEmpty(body);
     const rules = [...body.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({
       sels: m[1].split(",").map((x) => x.trim()),
       decls: m[2].replace(/\s+/g, " "),
@@ -885,7 +853,7 @@ describe("S25 ⑥ 容器查询取代写死宽度（件 5）", () => {
     const rules = [...css.matchAll(/(?<=^|[{};])\s*([^{};@]+)\{([^{}]*)\}/g)]
       .map((m) => ({ sel: m[1], body: m[2] }))
       .filter((m) => m.sel.split(",").map((x) => x.trim()).includes(".stream"));
-    expect(rules.length, "styles.css 里找不到 `.stream { … }` —— 下面那条对着空气").toBeGreaterThan(0);
+    nonEmpty(rules);
     const decl = rules.map((m) => /(?:^|;)\s*container\s*:\s*([^;]+)/.exec(m.body)?.[1].trim()).find(Boolean);
     expect(decl, "`.stream` 没有声明 `container` —— 列宽没有容器可查").toBe("stream / inline-size");
     denom("⑥", rules.length, "条 `.stream` 规则（其中一条声明了 container: stream / inline-size）");
@@ -893,7 +861,7 @@ describe("S25 ⑥ 容器查询取代写死宽度（件 5）", () => {
 
   it("⑥b `COL_W` 是在那个容器里量出来的，不是写死的", () => {
     const init = colWInit(est);
-    expect(init.length, "height-estimate.ts 里切不出 `const COL_W …` 那一段").toBeGreaterThan(100);
+    nonEmpty(init);
     expect(/const COL_W\s*(?::\s*number)?\s*=\s*\d+\s*;/.test(est), "`COL_W` 又写成了一个裸数字").toBe(false);
     for (const [what, re] of [
       ["挂进 #message-stream", /getElementById\("message-stream"\)/],

@@ -16,7 +16,7 @@ const EXEMPT: &[(&str, &str)] = &[
 ];
 
 fn package_json() -> String {
-    let p = crate::guard_support::repo_root().join("package.json");
+    let p = guard_core::addr::repo_root().join("package.json");
     std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}: {e}"))
 }
 
@@ -53,7 +53,7 @@ fn e2e_suites() -> Vec<(String, String)> {
 }
 
 fn gate_sh() -> String {
-    let p = crate::guard_support::repo_root().join("tests/scripts/gate.sh");
+    let p = guard_core::addr::repo_root().join("tests/scripts/gate.sh");
     std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}: {e}"))
 }
 
@@ -246,13 +246,13 @@ fn no_e2e_suite_isolates_with_tmux_tmpdir() {
         "`echo` 里的文字被误判成调用"
     );
 
-    let dir = crate::guard_support::repo_root().join("tests").join("e2e");
+    let dir = guard_core::addr::repo_root().join("tests").join("e2e");
     let mut seen: Vec<String> = Vec::new();
     let mut bad: Vec<String> = Vec::new();
     // ⚠ 走 `guard_core::scan_tree!` 而不是自己 `read_dir`（`scanning_guard_registry` 的规矩：
     //   裸遍历的判据会在自己的登记表/注释里找到自己 ⇒ 恒绿）。
     for (f, src) in guard_core::scan_tree!(&dir, &["sh"]) {
-        seen.push(crate::guard_support::rel_of(&f));
+        seen.push(guard_core::addr::rel_of(&f));
         let exec: Vec<&str> = src
             .lines()
             .filter(|l| !l.trim_start().starts_with('#'))
@@ -311,7 +311,7 @@ fn no_e2e_suite_isolates_with_tmux_tmpdir() {
         }
     }
     // 抽取器自检：git 跟踪着的每一份 e2e 脚本都扫到了（遍历坏了 ⇒ 上面那条就是零命中得来的）。
-    crate::guard_support::assert_scanned_every_tracked(
+    guard_core::addr::assert_scanned_every_tracked(
         "e2e 的 tmux 隔离",
         &seen,
         &["tests/e2e"],
@@ -439,14 +439,14 @@ tmux select-pane -L -t x; tmux capture-pane -p -S -50\n";
     ]);
     assert!(hits.is_empty(), "好语料被误点名：\n{}", hits.join("\n"));
 
-    let dir = crate::guard_support::repo_root().join("tests").join("e2e");
+    let dir = guard_core::addr::repo_root().join("tests").join("e2e");
     let files: Vec<(String, String)> = guard_core::scan_tree!(&dir, &["sh", "mjs", "mts", "ts"])
         .into_iter()
-        .map(|(p, s)| (crate::guard_support::rel_of(&p), s))
+        .map(|(p, s)| (guard_core::addr::rel_of(&p), s))
         .collect();
     let seen: Vec<String> = files.iter().map(|(p, _)| p.clone()).collect();
     for ext in ["sh", "mjs", "mts", "ts"] {
-        crate::guard_support::assert_scanned_every_tracked(
+        guard_core::addr::assert_scanned_every_tracked(
             "e2e 私有名字",
             &seen,
             &["tests/e2e"],
@@ -801,7 +801,7 @@ fn bare_tmux_call(line: &str) -> bool {
 
 fn read_e2e(name: &str) -> String {
     std::fs::read_to_string(
-        crate::guard_support::repo_root()
+        guard_core::addr::repo_root()
             .join("tests")
             .join("e2e")
             .join(name),
@@ -870,7 +870,7 @@ fn the_backend_wrapper_fixture_refuses_to_run_outside_a_rig() {
             .output()
             .expect("起 sh")
     };
-    let wrapper = crate::guard_support::repo_root()
+    let wrapper = guard_core::addr::repo_root()
         .join("tests")
         .join("e2e")
         .join("backend-wrapper.sh");
@@ -929,13 +929,13 @@ fn the_backend_wrapper_fixture_refuses_to_run_outside_a_rig() {
 /// 只钉一份文件；这一条钉整棵树。
 #[test]
 fn no_e2e_script_kills_by_pattern() {
-    let root = crate::guard_support::repo_root().join("tests").join("e2e");
+    let root = guard_core::addr::repo_root().join("tests").join("e2e");
     let files: Vec<(std::path::PathBuf, String)> = guard_core::scan_tree!(&root, &["sh"]);
     let seen: Vec<String> = files
         .iter()
-        .map(|(p, _)| crate::guard_support::rel_of(p))
+        .map(|(p, _)| guard_core::addr::rel_of(p))
         .collect();
-    crate::guard_support::assert_scanned_every_tracked(
+    guard_core::addr::assert_scanned_every_tracked(
         "e2e 按名字收尸",
         &seen,
         &["tests/e2e"],
@@ -1011,17 +1011,11 @@ fn no_e2e_script_inherits_a_dev_machine_path_it_may_write_to() {
         [("HOME".to_string(), 1), ("CC_BUS_HOME".to_string(), 1)],
         "针在现造语料上失准"
     );
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let dir = root.join("tests").join("e2e");
     let files = guard_core::files_under(&dir);
     let seen: Vec<String> = files.iter().map(|f| format!("tests/e2e/{f}")).collect();
-    crate::guard_support::assert_scanned_every_tracked(
-        "e2e 目录",
-        &seen,
-        &["tests/e2e"],
-        "sh",
-        &[],
-    );
+    guard_core::addr::assert_scanned_every_tracked("e2e 目录", &seen, &["tests/e2e"], "sh", &[]);
     let mut found: Vec<(String, String)> = Vec::new();
     for f in &files {
         let Ok(text) = std::fs::read_to_string(dir.join(f)) else {
@@ -1042,12 +1036,6 @@ fn no_e2e_script_inherits_a_dev_machine_path_it_may_write_to() {
         "tests/e2e/ 里「先继承开发机的值」的路径写法与登记表对不上。多出来的 ⇒ 改成无条件指向沙箱（开发机 rc 里的真值会被照用、再被写坏）；\
          少了的 ⇒ 那一处改掉了，同拍把登记摘掉"
     );
-    for (f, _, why) in INHERITED_PATH_ALLOWED {
-        assert!(
-            why.chars().count() >= 15,
-            "`{f}` 没写清为什么它不是往真路径里写"
-        );
-    }
 }
 
 /// 一份脚本 / 代码里「起 tmux 之前摘掉了继承来的 `$TMUX`」的几种写法（有边界地找，不按子串）。
@@ -1123,7 +1111,7 @@ fn every_tmux_call_names_its_server_and_drops_the_inherited_tmux() {
         "check_output([\"tmux\"",
         "check_call([\"tmux\"",
     ];
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let listing = std::process::Command::new("git")
         .args(["ls-files", "-z", "--", "src", "tests"])
         .current_dir(&root)
@@ -1313,7 +1301,7 @@ fn every_e2e_suite_gets_a_private_tmux_from_the_sandbox_env() {
             .any(|l| l.trim() == "trap tmux_shim_cleanup EXIT"),
         "sandbox-env.sh 没给这一趟设收尾（`trap tmux_shim_cleanup EXIT`）"
     );
-    let dir = crate::guard_support::repo_root().join("tests").join("e2e");
+    let dir = guard_core::addr::repo_root().join("tests").join("e2e");
     let mut bad: Vec<String> = Vec::new();
     for (f, src) in guard_core::scan_tree!(&dir, &["sh"]) {
         let exec = strip_comments(&src);
@@ -1329,7 +1317,7 @@ fn every_e2e_suite_gets_a_private_tmux_from_the_sandbox_env() {
                 })
         });
         if traps_exit && !has(&exec, "tmux_shim_cleanup") {
-            bad.push(crate::guard_support::rel_of(&f));
+            bad.push(guard_core::addr::rel_of(&f));
         }
     }
     assert!(

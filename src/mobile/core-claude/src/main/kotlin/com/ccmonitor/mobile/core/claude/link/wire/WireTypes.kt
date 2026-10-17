@@ -39,35 +39,58 @@ data class FirstSay(
     val said: String?,
 )
 
-@WireOf("SessionNew")
+/** `session-open` 的成品：落在哪 · 哪个 tmux 会话 · 要在终端里敲的那一行（那台渲好的）· 第一句的结局。 */
+@WireOf("Opened")
 @JsonClass(generateAdapter = true)
-data class SessionNewReply(
-    val outcome: SessionNewOutcome,
+data class Opened(
+    val landed: Landed,
     val session: String?,
+    val line: String?,
     val sid: String?,
-    val cwd: String,
+    val cwd: String?,
+    val note: String?,
     val prompt: FirstSay?,
 )
 
 @JsonClass(generateAdapter = false)
-enum class SessionNewOutcome {
+enum class Landed {
     @Json(name = "started")
     STARTED,
 
-    @Json(name = "open")
-    OPEN,
+    @Json(name = "in_place")
+    IN_PLACE,
+
+    @Json(name = "running")
+    RUNNING,
+
+    @Json(name = "idle")
+    IDLE,
+
+    @Json(name = "window")
+    WINDOW,
 }
 
-@WireOf("Rendered")
+/** `authorized-keys-add`：那一行公钥并进去了，还是本来就在。 */
+@WireOf("KeyAdded")
 @JsonClass(generateAdapter = true)
-data class Rendered(
-    val cmd: String,
+data class KeyAdded(
+    val outcome: PushOutcome,
 )
 
-@WireOf("NewFacts")
+@JsonClass(generateAdapter = false)
+enum class PushOutcome {
+    @Json(name = "added")
+    ADDED,
+
+    @Json(name = "already")
+    ALREADY,
+}
+
+@WireOf("OpenFacts")
 @JsonClass(generateAdapter = true)
-data class NewFacts(
+data class OpenFacts(
     val recent: List<RecentDir>,
+    val tmux: Boolean,
     val agents: List<AgentFacts>,
 )
 
@@ -76,15 +99,15 @@ data class NewFacts(
 data class AgentFacts(
     val kind: String,
     val text: String,
-    val models: List<NewSessionPick>,
-    val modelDefault: NewSessionPick?,
+    val models: List<AgentPick>,
+    val modelDefault: AgentPick?,
     val modelNote: String?,
-    val permissionModes: List<NewSessionPick>,
+    val permissionModes: List<AgentPick>,
 )
 
-@WireOf("NewSessionPick")
+@WireOf("AgentPick")
 @JsonClass(generateAdapter = true)
-data class NewSessionPick(
+data class AgentPick(
     val value: String,
     val text: String,
 )
@@ -218,12 +241,22 @@ enum class Tone {
 @JsonClass(generateAdapter = true)
 data class NeedsList(
     val waiting: List<NeedsRow>,
+    val answered: List<AnsweredRow>,
+)
+
+@WireOf("AnsweredRow")
+@JsonClass(generateAdapter = true)
+data class AnsweredRow(
+    val sid: String,
+    val said: String,
 )
 
 @WireOf("NeedsRow")
 @JsonClass(generateAdapter = true)
 data class NeedsRow(
     val sid: String,
+    val label: String,
+    val face: SessionFace,
     val needs: Needs,
 )
 
@@ -286,7 +319,20 @@ data class NeedsChoice(
     val text: String,
     val tone: Tone,
     val note: NeedsNote,
+    val row: NeedsChoiceRow,
 )
+
+@JsonClass(generateAdapter = false)
+enum class NeedsChoiceRow {
+    @Json(name = "main")
+    MAIN,
+
+    @Json(name = "hold")
+    HOLD,
+
+    @Json(name = "release")
+    RELEASE,
+}
 
 @JsonClass(generateAdapter = false)
 enum class NeedsNote {
@@ -351,8 +397,23 @@ enum class AnswerResult {
 @JsonClass(generateAdapter = true)
 data class HistoryListPage(
     val rows: List<HistoryRow>,
+    val groups: List<HistoryGroup>,
     val notice: String?,
     val truncated: Boolean,
+)
+
+/** 按目录看时的一组：几台的组按 `order` 并成一列；时刻照那台写好的 `atText`（读不了的那一组 ⇒ `null`）。 */
+@WireOf("HistoryGroup")
+@JsonClass(generateAdapter = true)
+data class HistoryGroup(
+    val key: String,
+    val projectName: String,
+    val projectPath: String,
+    val count: Long,
+    val hasLive: Boolean?,
+    val order: Long,
+    val atText: String?,
+    val failed: String?,
 )
 
 @WireOf("HistoryRow")
@@ -366,8 +427,46 @@ data class HistoryRow(
     val jsonlPath: String,
     val agent: String,
     val agentTag: String?,
-    val status: String,
+    val face: SessionFace,
     val hidden: Hidden?,
+    val forkedFromSessionId: String?,
+    val forkedFrom: ForkedFrom?,
+)
+
+/** 分叉来的那一行的父会话（显示标题）；父会话不在那台的清单里 ⇒ 行上没有这一格，写「分叉自其他会话」。 */
+@WireOf("ForkedFrom")
+@JsonClass(generateAdapter = true)
+data class ForkedFrom(
+    val label: String,
+)
+
+/** `history-search`：每个命中会话一行。 */
+@WireOf("HistorySearchReply")
+@JsonClass(generateAdapter = true)
+data class HistorySearchReply(
+    val sessions: List<SessionHits>,
+    val unreadable: Long,
+)
+
+@WireOf("SessionHits")
+@JsonClass(generateAdapter = true)
+data class SessionHits(
+    val sessionId: String,
+    val title: String,
+    val hitCount: Long,
+    val hits: List<SearchHit>,
+    val forkedFrom: ForkedFrom?,
+)
+
+/** 一条命中：`offset` 交给 `history-read` 就从那一条读起。 */
+@WireOf("SearchHit")
+@JsonClass(generateAdapter = true)
+data class SearchHit(
+    val uuid: String,
+    val before: String,
+    val matched: String,
+    val after: String,
+    val offset: Long,
 )
 
 /** 隐藏那一格（判定只住后端）：手机只读后端写好的那一句（长按菜单里说为什么隐藏）。不隐藏 ⇒ 行上是 `null`。 */
@@ -443,10 +542,30 @@ data class LineRecord(
     val blocks: List<RecordBlock>?,
     val results: Map<String, StepResult>?,
     val autoReply: Boolean?,
+    val cards: Map<String, ToolCard>?,
     val steps: Map<String, ToolStep>?,
     val text: String?,
     val excerpt: String?,
 )
+
+/** 一个工具调用画成哪一种卡（核心判的；普通工具卡不列）。 */
+@JsonClass(generateAdapter = false)
+enum class ToolCard {
+    @Json(name = "agent")
+    AGENT,
+
+    @Json(name = "interactive")
+    INTERACTIVE,
+
+    @Json(name = "diff")
+    DIFF,
+
+    @Json(name = "md")
+    MD,
+
+    @Json(name = "command")
+    COMMAND,
+}
 
 @JsonClass(generateAdapter = false)
 enum class RecordKind {
@@ -594,6 +713,7 @@ data class ToolStep(
 @JsonClass(generateAdapter = true)
 data class SessionFacts(
     val modelText: String?,
+    val modelPick: String?,
     val permissionModeText: String?,
 )
 
@@ -686,6 +806,7 @@ data class RotationStrategiesReply(
 data class RotStrategyItem(
     val id: String,
     val description: String,
+    val summary: String,
     val rev: String,
     val error: RotStrategyError?,
     val inUse: List<String>,
@@ -739,8 +860,37 @@ data class LsEntry(
     val name: Any,
     val kind: FileKind,
     val size: Long?,
+    @Json(name = "size_text") val sizeText: String?,
     @Json(name = "mtime_text") val mtimeText: String?,
     @Json(name = "link_dir") val linkDir: Boolean?,
+    val gates: Gates?,
+)
+
+@WireOf("Gates")
+@JsonClass(generateAdapter = true)
+data class Gates(
+    val preview: PreviewGate,
+    val edit: Gate,
+)
+
+@WireOf("PreviewGate")
+@JsonClass(generateAdapter = true)
+data class PreviewGate(
+    val text: TextPreview?,
+    val no: String?,
+)
+
+@WireOf("TextPreview")
+@JsonClass(generateAdapter = true)
+data class TextPreview(
+    val cap: Long,
+)
+
+@WireOf("Gate")
+@JsonClass(generateAdapter = true)
+data class Gate(
+    val cap: Long?,
+    val no: String?,
 )
 
 @WireOf("LsReply")
@@ -763,7 +913,6 @@ data class Crumb(
 @WireOf("StatReply")
 @JsonClass(generateAdapter = true)
 data class StatReply(
-    val name: Any,
     val up: Any?,
     val kind: FileKind,
     val mode: Long?,
@@ -776,18 +925,23 @@ data class ReadTextReply(
     val sha256: String,
 )
 
-@WireOf("HexBytes")
+// ── 上传提交撞了同名（码 `exists` 的 `data`）：要放过去的 → 已有的。 ──
+
+@WireOf("Conflicts")
 @JsonClass(generateAdapter = true)
-data class HexBytes(
-    val b16: String,
+data class Conflicts(
+    val conflicts: List<Conflict>,
 )
 
-@WireOf("ReadChunkReply")
+@WireOf("Conflict")
 @JsonClass(generateAdapter = true)
-data class ReadChunkReply(
-    val size: Long,
-    val eof: Boolean,
-    val content: HexBytes,
+data class Conflict(
+    val name: Any,
+    @Json(name = "size_text") val sizeText: String?,
+    @Json(name = "mtime_text") val mtimeText: String?,
+    @Json(name = "there_size_text") val thereSizeText: String?,
+    @Json(name = "there_mtime_text") val thereMtimeText: String?,
+    @Json(name = "dir_into") val dirInto: Boolean,
 )
 
 // ── 一组的回包（`files-delete` · `files-chmod`：手机一次只交一项）：逐项结局 ＋ 后端拼好的那一句。 ──
@@ -825,7 +979,7 @@ enum class BatchItemState {
     CANCELLED,
 }
 
-// ── 轮换屏（mobrot）：`rotation-view` 那一份 ＋ 写那几条的回包。策略写的字（`StrategyText` ＝ 一句或分语言）声明成 `Any`，取字在 `Rotation.text`。 ──
+// ── 轮换屏（mobrot）：`rotation-view` 那一份 ＋ 写那几条的回包。设置那几格（`board`）的值 · 从哪来 · 字都是那台解好的。 ──
 
 @WireOf("RotationViewReply")
 @JsonClass(generateAdapter = true)
@@ -834,12 +988,12 @@ data class RotationViewReply(
     val nowText: String,
     val title: String?,
     val strategy: RotStrategyItem?,
-    val form: List<RotFormCell>,
     val settings: Any?,
+    val board: RotBoard,
     val dirty: Boolean,
     val start: String,
     val current: String,
-    val accounts: List<Fact>,
+    val accounts: List<RotAccount>,
     val listed: Int,
     val decision: RotTryDecision?,
     val timeline: RotTryTimeline?,
@@ -848,22 +1002,64 @@ data class RotationViewReply(
     val hints: List<RotNote>,
 )
 
-@WireOf("RotFormCell")
+@WireOf("RotBoard")
 @JsonClass(generateAdapter = true)
-data class RotFormCell(
+data class RotBoard(
+    val all: List<RotCell>,
+    val rows: List<RotRow>,
+)
+
+@WireOf("RotRow")
+@JsonClass(generateAdapter = true)
+data class RotRow(
+    val account: String,
+    val line: String,
+    val hover: String,
+    val cells: List<RotCell>,
+)
+
+@WireOf("RotCell")
+@JsonClass(generateAdapter = true)
+data class RotCell(
     val key: String,
     val kind: RotFormKind,
-    val scope: RotFormScope,
-    val inherit: Boolean?,
-    val label: Any,
-    val help: Any?,
-    val windows: List<String>?,
-    val min: Double?,
-    val max: Double?,
-    val unit: String?,
-    val default: Any?,
-    val choices: List<RotFormChoice>?,
-    val nullable: Any?,
+    val window: String?,
+    val label: String,
+    val help: String?,
+    val v: Any?,
+    val num: Double?,
+    val from: RotFrom,
+    val nullable: String?,
+    val choices: List<RotChoice>?,
+    val segs: List<RotDaySeg>?,
+)
+
+@JsonClass(generateAdapter = false)
+enum class RotFrom {
+    @Json(name = "own")
+    OWN,
+
+    @Json(name = "all")
+    ALL,
+
+    @Json(name = "default")
+    DEFAULT,
+}
+
+@WireOf("RotChoice")
+@JsonClass(generateAdapter = true)
+data class RotChoice(
+    val v: String,
+    val label: String,
+)
+
+@WireOf("RotDaySeg")
+@JsonClass(generateAdapter = true)
+data class RotDaySeg(
+    val from: Long,
+    val to: Long,
+    val v: Double,
+    val text: String,
 )
 
 @JsonClass(generateAdapter = false)
@@ -884,29 +1080,22 @@ enum class RotFormKind {
     DAY_SEGMENTS,
 }
 
-@JsonClass(generateAdapter = false)
-enum class RotFormScope {
-    @Json(name = "all")
-    ALL,
-
-    @Json(name = "each")
-    EACH,
-}
-
-@WireOf("RotFormChoice")
+@WireOf("RotAccount")
 @JsonClass(generateAdapter = true)
-data class RotFormChoice(
-    val v: String,
-    val label: Any,
-)
-
-@WireOf("Fact")
-@JsonClass(generateAdapter = true)
-data class Fact(
+data class RotAccount(
     val account: String,
     val w5h: WinFact,
     val w7d: WinFact,
     val blocked: FactBlocked?,
+    val plate: RotPlate,
+)
+
+@WireOf("RotPlate")
+@JsonClass(generateAdapter = true)
+data class RotPlate(
+    val color: Int,
+    val label: String,
+    val text: String,
 )
 
 @WireOf("WinFact")
@@ -970,8 +1159,7 @@ data class RotTryLaneSeg(
     val to: Long,
     val sendable: Boolean,
     val reset: Boolean,
-    val fromText: String,
-    val left: Double,
+    val text: String,
 )
 
 @WireOf("RotTryTick")
@@ -1011,13 +1199,14 @@ data class RotPastSeg(
     val to: Long,
     val sendable: Boolean,
     val reset: Boolean,
-    val fromText: String,
+    val text: String,
 )
 
 @WireOf("RotNote")
 @JsonClass(generateAdapter = true)
 data class RotNote(
     val hint: RotHint,
+    val tone: Tone,
     val text: String,
     val detail: String?,
 )
@@ -1065,18 +1254,10 @@ data class RotOldFile(
     val path: String,
 )
 
-@WireOf("RotSeg")
+@WireOf("RotationSettingsReply")
 @JsonClass(generateAdapter = true)
-data class RotSeg(
-    val from: Long,
-    val to: Long,
-    val v: Double,
-)
-
-@WireOf("RotationDayPaintReply")
-@JsonClass(generateAdapter = true)
-data class RotationDayPaintReply(
-    val segs: List<RotSeg>,
+data class RotationSettingsReply(
+    val settings: Any?,
 )
 
 @WireOf("RotationSaveReply")
@@ -1107,3 +1288,390 @@ data class ProfilesWriteDone(
     val wrote: Boolean,
     val reload: String?,
 )
+
+/** `accounts-list`：这台账号库里的号（号牌字 · 5h 那一格 · 选不了的那一句都是那台写好的）。 */
+@WireOf("AccountsList")
+@JsonClass(generateAdapter = true)
+data class AccountsList(
+    val meta: ListMeta,
+    val accounts: List<AccountRow>,
+)
+
+@WireOf("ListMeta")
+@JsonClass(generateAdapter = true)
+data class ListMeta(
+    val effectiveDefault: String?,
+    val home: String?,
+)
+
+@WireOf("AccountRow")
+@JsonClass(generateAdapter = true)
+data class AccountRow(
+    val name: String,
+    val label: String,
+    val color: Int,
+    val plate: String,
+    val quota: String?,
+    val unselectable: String?,
+    val selectable: Boolean,
+    val login: Boolean,
+    val configDir: String?,
+    val mode: String,
+    val authKind: String,
+    val badge: Badge,
+)
+
+/** 号行右边那一枚（[warn] ⇒ 要人动手的那一种，界面只画这一种）。 */
+@WireOf("Badge")
+@JsonClass(generateAdapter = true)
+data class Badge(
+    val text: String,
+    val warn: Boolean,
+)
+
+/** `quota-read`：每号用量那一格（出过数的在 [accounts]，没出过数的在 [unseen]）。 */
+@WireOf("QuotaRead")
+@JsonClass(generateAdapter = true)
+data class QuotaReadReply(
+    val accounts: List<QuotaAccount>,
+    val unseen: List<QuotaUnseen>,
+)
+
+@WireOf("QuotaAccount")
+@JsonClass(generateAdapter = true)
+data class QuotaAccount(
+    val account: String,
+    val usage: Usage,
+)
+
+@WireOf("QuotaUnseen")
+@JsonClass(generateAdapter = true)
+data class QuotaUnseen(
+    val account: String,
+    val usage: QuotaUnseenUsage,
+)
+
+/** 用量那一格：连成的一句 ＋ 语气（状态栏按钮 · 切号下拉同一份）。 */
+@WireOf("Usage")
+@JsonClass(generateAdapter = true)
+data class Usage(
+    val text: String,
+    val tone: UsageTone,
+)
+
+@WireOf("QuotaUnseenUsage")
+@JsonClass(generateAdapter = true)
+data class QuotaUnseenUsage(
+    val text: String,
+    val tone: UsageTone,
+)
+
+@JsonClass(generateAdapter = false)
+enum class UsageTone {
+    @Json(name = "plain")
+    PLAIN,
+
+    @Json(name = "fail")
+    FAIL,
+
+    @Json(name = "warn")
+    WARN,
+}
+
+/** `prefs-read` · `prefs-set`（写完读回）：这台的偏好；读不懂（[state] 为 unreadable）也照答那一份。 */
+@WireOf("PrefsReply")
+@JsonClass(generateAdapter = true)
+data class PrefsReply(
+    val state: PrefsState,
+    val reason: String?,
+    val detail: String?,
+    val prefs: Prefs,
+)
+
+@JsonClass(generateAdapter = false)
+enum class PrefsState {
+    @Json(name = "absent")
+    ABSENT,
+
+    @Json(name = "ok")
+    OK,
+
+    @Json(name = "unreadable")
+    UNREADABLE,
+}
+
+@WireOf("Prefs")
+@JsonClass(generateAdapter = true)
+data class Prefs(
+    val models: Map<String, String>,
+    val childTab: TabPref,
+    val bgTab: TabPref,
+)
+
+/** 一种会话进不进标签栏（也管手机的「最近」列不列它）。 */
+@JsonClass(generateAdapter = false)
+enum class TabPref {
+    @Json(name = "show")
+    SHOW,
+
+    @Json(name = "hide")
+    HIDE,
+}
+
+/** 登录失败的 `data`：还能怎么办（那台照码定）。 */
+@WireOf("LoginAgain")
+@JsonClass(generateAdapter = true)
+data class LoginAgain(
+    val again: LoginAgainHow,
+)
+
+@JsonClass(generateAdapter = false)
+enum class LoginAgainHow {
+    @Json(name = "paste")
+    PASTE,
+
+    @Json(name = "restart")
+    RESTART,
+
+    @Json(name = "none")
+    NONE,
+}
+
+// 流上的会话帧（核心按 `cmd-wire` 那一份类型重写过的一行）。
+
+@WireOf("SessionAdded")
+@JsonClass(generateAdapter = true)
+data class SessionAddedFrame(
+    val sid: String,
+    val path: String?,
+    val cwd: String?,
+    val name: String?,
+    @Json(name = "agent_kind") val agentKind: String,
+    val attachable: Boolean?,
+    val face: SessionFace,
+)
+
+@WireOf("SessionStatus")
+@JsonClass(generateAdapter = true)
+data class SessionStatusFrame(
+    val sid: String,
+    val path: String?,
+    val face: SessionFace,
+)
+
+@WireOf("SessionState")
+@JsonClass(generateAdapter = true)
+data class SessionStateFrame(
+    val sid: String,
+    val face: SessionFace,
+)
+
+@WireOf("SessionRemoved")
+@JsonClass(generateAdapter = true)
+data class SessionRemovedFrame(
+    val sid: String,
+    val by: String?,
+)
+
+@WireOf("SessionFileReread")
+@JsonClass(generateAdapter = true)
+data class SessionFileRereadFrame(
+    @Json(name = "session_id") val sid: String,
+)
+
+/** 一条会话此刻的整份脸（那台一处判好）：点 · 短名 · 语气 · 能做什么；那台看不见时 [settled] 为真的照旧作数。 */
+@WireOf("SessionFace")
+@JsonClass(generateAdapter = true)
+data class SessionFace(
+    val dot: SessionDot,
+    val live: FaceLive,
+    val settled: Boolean,
+    val name: String,
+    val tone: Tone,
+    val can: SessionCan,
+)
+
+/** 进程在不在：在、且那台判得出在干什么才带 [activity]。 */
+@WireOf("FaceLive")
+@JsonClass(generateAdapter = true)
+data class FaceLive(
+    val activity: SessionActivityWord?,
+)
+
+/** 会话那颗点（线上名与桌面状态点同一套）。 */
+@JsonClass(generateAdapter = false)
+enum class SessionDot {
+    @Json(name = "running")
+    RUNNING,
+
+    @Json(name = "needs-you")
+    NEEDS_YOU,
+
+    @Json(name = "background")
+    BACKGROUND,
+
+    @Json(name = "idle")
+    IDLE,
+
+    @Json(name = "exited")
+    EXITED,
+
+    @Json(name = "ended")
+    ENDED,
+
+    @Json(name = "gone")
+    GONE,
+
+    @Json(name = "unknown")
+    UNKNOWN,
+}
+
+@JsonClass(generateAdapter = false)
+enum class SessionActivityWord {
+    @Json(name = "working")
+    WORKING,
+
+    @Json(name = "needs_you")
+    NEEDS_YOU,
+
+    @Json(name = "idle")
+    IDLE,
+
+    @Json(name = "background_work")
+    BACKGROUND_WORK,
+}
+
+/** 这条会话此刻能做的（手机只读换模型 · 切权限档那两样）。 */
+@WireOf("SessionCan")
+@JsonClass(generateAdapter = true)
+data class SessionCan(
+    val model: Allow,
+    val permission: Allow,
+)
+
+/** 一样此刻能不能做：不能 ⇒ [why] 是那台写好的那一句。 */
+@WireOf("Allow")
+@JsonClass(generateAdapter = true)
+data class Allow(
+    val can: CanWord,
+    val why: String?,
+)
+
+@JsonClass(generateAdapter = false)
+enum class CanWord {
+    @Json(name = "yes")
+    YES,
+
+    @Json(name = "no")
+    NO,
+}
+
+@WireOf("Line")
+@JsonClass(generateAdapter = true)
+data class LineFrame(
+    @Json(name = "session_id") val sid: String,
+    val path: String,
+    val seq: Long,
+    @Json(name = "byte_offset") val byteOffset: Long,
+)
+
+@WireOf("Changed")
+@JsonClass(generateAdapter = true)
+data class ChangedFrame(
+    val topic: String,
+    val key: String?,
+)
+
+@WireOf("LiveCard")
+@JsonClass(generateAdapter = true)
+data class LiveCardFrame(
+    val sid: String,
+    val run: String?,
+    val card: Long,
+    val n: Long,
+    val op: LiveOpWord,
+    val rid: String?,
+    val phase: LivePhaseWord?,
+    val clipped: Boolean?,
+    val blocks: List<LiveBlockCell>?,
+    val i: Long?,
+    val block: String?,
+    val tool: String?,
+    val s: String?,
+)
+
+@WireOf("LiveBlock")
+@JsonClass(generateAdapter = true)
+data class LiveBlockCell(
+    val kind: String,
+    val text: String?,
+    val tool: String?,
+)
+
+@JsonClass(generateAdapter = false)
+enum class LiveOpWord {
+    @Json(name = "open")
+    OPEN,
+
+    @Json(name = "block")
+    BLOCK,
+
+    @Json(name = "text")
+    TEXT,
+
+    @Json(name = "awaiting")
+    AWAITING,
+
+    @Json(name = "close")
+    CLOSE,
+}
+
+@JsonClass(generateAdapter = false)
+enum class LivePhaseWord {
+    @Json(name = "streaming")
+    STREAMING,
+
+    @Json(name = "awaiting")
+    AWAITING,
+}
+
+/** 一台的状态成品（判定只住后端 `deploy::machine`，手机嵌的核心跑同一份）：手机只读问题行那一句 · 复制详情 · 修法。 */
+@WireOf("MachineState")
+@JsonClass(generateAdapter = true)
+data class MachineState(
+    val said: String,
+    val detail: String?,
+    val fixes: List<MachineFixButton>,
+)
+
+/** 一颗修法按钮：做什么 ＋ 按钮上的字（后端写好）。 */
+@WireOf("MachineFixButton")
+@JsonClass(generateAdapter = true)
+data class MachineFixButton(
+    val fix: MachineFix,
+    val label: String,
+)
+
+@JsonClass(generateAdapter = false)
+enum class MachineFix {
+    @Json(name = "retry")
+    RETRY,
+
+    @Json(name = "conn_settings")
+    CONN_SETTINGS,
+
+    @Json(name = "push_key")
+    PUSH_KEY,
+
+    @Json(name = "compare_fingerprint")
+    COMPARE_FINGERPRINT,
+
+    @Json(name = "update")
+    UPDATE,
+
+    @Json(name = "connect")
+    CONNECT,
+
+    @Json(name = "install")
+    INSTALL,
+}

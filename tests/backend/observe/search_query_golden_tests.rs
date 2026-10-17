@@ -210,12 +210,12 @@ pub(super) fn cases() -> Vec<(&'static str, &'static str, Vec<String>)> {
     ]
 }
 
-/// 一行命中去掉那台判的三格（`status` · `isBg` · `can`）：现扫金样冻结的是搜到什么，不含它们；
-/// 三格每行都在（缺一格 ⇒ panic），值由 `search_query_tests` 那条与它的金样钉。
+/// 一行命中去掉那台判的两格（`isBg` · `can`）：现扫金样冻结的是搜到什么，不含它们；
+/// 两格每行都在（缺一格 ⇒ panic），值由 `search_query_tests` 那条与它的金样钉。
 fn without_can(line: &str) -> String {
     let mut v: Value = serde_json::from_str(line).expect("命中行是 JSON");
     let o = v.as_object_mut().expect("命中行是对象");
-    for k in ["status", "isBg", "can"] {
+    for k in ["isBg", "can"] {
         assert!(o.remove(k).is_some(), "命中行缺 `{k}`：{line}");
     }
     v.to_string()

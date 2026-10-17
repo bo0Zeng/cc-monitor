@@ -229,35 +229,55 @@ fn bad_inputs_are_refused_and_say_which_cell() {
     );
 }
 
+/// ★ 用户名 / 地址 / 跳板用户 / 跳板地址打头是 `-` ⇒ 拒（`ssh` 会把它当成一个选项读）；中间带 `-` 照常（正控）。
+#[test]
+fn a_leading_dash_in_any_bare_word_is_refused() {
+    assert!(run(machine("my-host", "my-user", 22, None), "x").is_ok());
+    assert_eq!(
+        run(machine("h", "-oProxyCommand", 22, None), "x")
+            .unwrap_err()
+            .0,
+        "refused",
+        "用户名打头是 -"
+    );
+    assert_eq!(
+        run(machine("-oProxyCommand", "u", 22, None), "x")
+            .unwrap_err()
+            .0,
+        "refused",
+        "地址打头是 -"
+    );
+    let m = json!({ "host": "t", "user": "u", "port": 22, "label": "target", "jump": "bastion" });
+    let hop = |host: &str, user: &str| json!({ "host": host, "user": user, "port": 22, "label": "bastion" });
+    assert!(
+        answer(&json!({ "machine": m, "jump": hop("jump-1", "pi-x"), "command": "x" })).is_ok()
+    );
+    for (j, why) in [
+        (hop("jump.local", "-x"), "跳板用户打头是 -"),
+        (hop("-x", "pi"), "跳板地址打头是 -"),
+    ] {
+        assert_eq!(
+            answer(&json!({ "machine": m, "jump": j, "command": "x" }))
+                .unwrap_err()
+                .0,
+            "refused",
+            "{why}"
+        );
+    }
+}
+
 /// 流进 `terminal-ssh` 的远端命令的全部来路（起会话只有那一行 `ccm …`，就地 resume 那一格外层包一层 tmux）×
-/// 入库夹具的每条请求 × 典型工作目录 ⇒ `(哪条, 渲出来的命令)`。渲不出来的（拒）不在里面。
+/// 那一行的字节表的每一格 × 典型工作目录 ⇒ `(哪条, 渲出来的命令)`。渲不出来的（拒）不在里面。
 fn every_rendered_remote_command(cwds: &[&str]) -> Vec<(String, String)> {
-    use crate::control::launch_render::wire;
-    let fixture = |s: &str| -> Vec<Value> {
-        serde_json::from_str::<Value>(s).unwrap()["cases"]
-            .as_array()
-            .unwrap()
-            .clone()
-    };
+    use crate::control::launch_render::ccm_invocation::tests as table;
     let mut out = Vec::new();
-    for c in fixture(include_str!(
-        "../../src/backend/control/launch_render/fixtures/cli-golden.json"
-    )) {
-        let caps: std::collections::BTreeSet<String> = c["caps"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .map(|v| v.as_str().unwrap().to_string())
-            .collect();
-        for cwd in std::iter::once(c["req"]["cwd"].clone()).chain(cwds.iter().map(|d| json!(d))) {
-            let mut req = c["req"].clone();
-            req["cwd"] = cwd.clone();
-            let r: wire::CliRenderRequest = serde_json::from_value::<wire::CliRenderRequest>(req)
-                .unwrap()
-                .with_prefs(&serde_json::from_value(c["prefs"].clone()).unwrap_or_default());
-            let account = crate::control::launch_account::settled_as_asked(&r.account, &r.models);
-            if let Ok(cmd) = wire::render_ccm_launch_with(&r, &account, &caps, "ccm") {
-                out.push((format!("cli {} · cwd {cwd}", c["name"]), cmd));
+    for c in table::cells() {
+        for cwd in std::iter::once(c.1.cwd.clone()).chain(cwds.iter().map(|d| Some(d.to_string())))
+        {
+            let mut cell = c.clone();
+            cell.1.cwd = cwd.clone();
+            if let Ok(cmd) = table::render_cell(&cell) {
+                out.push((format!("cli {} · cwd {cwd:?}", c.0), cmd));
             }
         }
     }
@@ -291,8 +311,8 @@ fn every_remote_command_the_backend_renders_passes_the_terminal_guard() {
         refused.join("\n")
     );
     assert!(
-        all.iter().any(|(_, c)| c.starts_with("tmux -u send-keys")),
-        "就地 resume 那一格（外层包一层 tmux）一条都没渲出来 —— 人群塌了"
+        all.iter().any(|(_, c)| c.contains("--ccm-tmux=")),
+        "建 tmux 会话的那几格一条都没渲出来 —— 人群塌了"
     );
     let dq = every_rendered_remote_command(&["/home/u/a\"b"]);
     let with_dq: Vec<&String> = dq

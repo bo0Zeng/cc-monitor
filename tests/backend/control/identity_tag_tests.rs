@@ -127,21 +127,26 @@ fn only_percent_digits_is_a_pane_id() {
     }
 }
 
-/// 一个不存在的 pid 拿不到 `TMUX_PANE` ⇒ **不会**去猜一个会话。
-///
-/// ⚠ 本条**不起 tmux**：`pane_of` 在 `gate::probe` 之前就给出结局。
-///
-/// 结局从 `NotInTmux` 改成 `PaneUnknown`：PID 0 的环境是**读不到**，不是「读到了、
-/// 没设 `TMUX_PANE`」。前者说「不知道」，后者说「不在 tmux 里」—— 容器那一格（`session_added.container`）
-/// 不许把前者报成 `"none"`。打标行为不变（两支都不打）。
+/// 一个读不到环境的 pid ⇒ 结局是 `PaneUnknown`，一次 tmux 都不起（`pane_of` 在 `gate::probe` 之前就给出结局；录下的调用为零）。
+/// 读不到 ≠ 不在 tmux 里：容器那一格（`session_added.container`）不许把它报成 `"none"`。
 #[test]
 fn a_pid_without_tmux_pane_never_reaches_tmux() {
-    let _iso = door::isolate();
+    let dir = std::env::temp_dir().join(format!("ccm-resync-none-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let log = dir.join("argv");
+    let script = dir.join("tmux");
+    std::fs::write(
+        &script,
+        format!("#!/bin/sh\necho \"$*\" >> '{}'\nexit 1\n", log.display()),
+    )
+    .unwrap();
+    let _iso = door::isolate_with(&script);
     // PID 0 在 Linux 上不是一个可读的 `/proc` 目录 ⇒ 读不到环境。
-    assert_eq!(
-        tag(0, "9d66c46d-bf88-4f99-877e-455555555555"),
-        Outcome::PaneUnknown
-    );
+    let got = tag(0, "9d66c46d-bf88-4f99-877e-455555555555");
+    let said = std::fs::read_to_string(&log).ok();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(got, Outcome::PaneUnknown);
+    assert_eq!(said, None, "读不到环境却还起了 tmux");
 }
 
 /// **「不在 tmux 里」那一格真能出来**：本测试进程自己的环境读得到；把 `TMUX_PANE` 摘掉的子进程
@@ -171,9 +176,8 @@ fn a_bad_sid_short_circuits_before_any_io() {
 /// 键名不许成为一维参数。多一处 `proc_env_var(pid, …)` ⇒ 红，来回答新那个键是什么。
 #[test]
 fn the_env_key_this_file_reads_is_one_named_constant() {
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/identity_tag.rs"
-    ));
+    let prod =
+        guard_core::production_code(include_str!("../../../src/backend/control/identity_tag.rs"));
     // 反空真地板：抽取塌了 ⇒ 下面几条都会零命中地绿。
     assert!(
         prod.len() > 2_000,
@@ -369,12 +373,10 @@ fn w5vis_s2_the_only_caller_says_the_failure_and_the_outcome_is_must_use() {
         }
         Ok(())
     }
-    let watcher = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/observe/watcher.rs"
-    ));
-    let tag_src = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/identity_tag.rs"
-    ));
+    let watcher =
+        guard_core::production_code(include_str!("../../../src/backend/observe/watcher.rs"));
+    let tag_src =
+        guard_core::production_code(include_str!("../../../src/backend/control/identity_tag.rs"));
     caller_says_it(&watcher).unwrap_or_else(|e| panic!("{e}"));
     must_use_on_outcome(&tag_src).unwrap_or_else(|e| panic!("{e}"));
     // 正控：S2 之前的原形必须被认出（量具没瞎）。

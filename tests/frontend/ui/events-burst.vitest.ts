@@ -35,6 +35,8 @@ import { bindEvents } from "../../../src/frontend/ui/events";
 import { streamFake } from "../../test-support/chan-stream-fake.ts";
 
 const STREAMS = { streams: [{ origin: "<local>", kind: "session-lines" }] };
+/** 本机一条 · 远端一条（哪台由订阅说）。 */
+const TWO = { streams: [{ origin: "<local>", kind: "session-lines" }, { origin: "pi", kind: "session-lines" }] };
 
 function line(seq: number): unknown {
   return {
@@ -84,7 +86,7 @@ describe("events.ts 的突发哨兵（audit-0805 F17：这 135 条语句此前 0
     const onLine = vi.fn();
     await bindEvents({
       onLine,
-      onSessionEnded: vi.fn(),
+      onSessionFace: vi.fn(),
       onBatchStart,
       onBatchEnd: vi.fn(),
     } as never, STREAMS);
@@ -98,11 +100,8 @@ describe("events.ts 的突发哨兵（audit-0805 F17：这 135 条语句此前 0
     await vi.advanceTimersByTimeAsync(50);
     expect(
       onBatchStart.mock.calls.length,
-      "★ 积压 60 条（阈值 50）却没有进 batch 模式。\n" +
-        "报告 I5′ 写「live 路没拿到等价合批」——复核发现**那句话不成立**，正是因为这里\n" +
-        "有一层深度阈值的突发兜底。这条判据钉的就是它：它没了，那句话才真的成立，\n" +
-        "而中低速率下逐行 O(N) 的分析也要跟着改。",
-    ).toBeGreaterThan(0);
+      "★ 积压 60 条（阈值 50）该恰好进一次 batch 模式（深度阈值的突发兜底）",
+    ).toBe(1);
   });
 
   // K-W1C 09-04：把那条 flaky 的**那一形**变成一条点得出名字的判据。
@@ -118,7 +117,7 @@ describe("events.ts 的突发哨兵（audit-0805 F17：这 135 条语句此前 0
   it("300ms grace 定时器在桩还装着的时候跑完 —— 遥测那一跳只许出声，不许炸", async () => {
     await bindEvents({
       onLine: vi.fn(),
-      onSessionEnded: vi.fn(),
+      onSessionFace: vi.fn(),
       onBatchStart: vi.fn(),
       onBatchEnd: vi.fn(),
     } as never, STREAMS);
@@ -160,7 +159,7 @@ describe("〔GP1〕unseen 格进 queue、交给 onOriginUnseen", () => {
     const order: string[] = [];
     await bindEvents({
       onLine: (e: { seq: number }) => order.push(`line-${e.seq}`),
-      onSessionEnded: vi.fn(),
+      onSessionFace: vi.fn(),
       onOriginUnseen: (origin: string) => order.push(`unseen-${origin}`),
       onBatchStart: vi.fn(),
       onBatchEnd: vi.fn(),
@@ -176,7 +175,7 @@ describe("〔GP1〕unseen 格进 queue、交给 onOriginUnseen", () => {
     const got: [string, boolean][] = [];
     await bindEvents({
       onLine: vi.fn(),
-      onSessionEnded: vi.fn(),
+      onSessionFace: vi.fn(),
       onOriginSessionsListed: (origin: string, all: boolean) => got.push([origin, all]),
       onBatchStart: vi.fn(),
       onBatchEnd: vi.fn(),
@@ -208,16 +207,15 @@ describe("live 格的项目目录交到处理器", () => {
     const added = vi.fn();
     await bindEvents({
       onLine: vi.fn(),
-      onSessionEnded: vi.fn(),
+      onSessionFace: vi.fn(),
       onSessionStarted: started,
       onRemoteSessionAdded: added,
       onBatchStart: vi.fn(),
       onBatchEnd: vi.fn(),
-    } as never, STREAMS);
-    const live = (origin: string, projectDir: string | null) => ({
-      live: { session_id: `s-${origin}`, origin, background: false, attachable: null, cwd: "/launched", project_dir: projectDir, name: null, hidden: null },
-    });
-    streamFake.lifecycle([live("<local>", "/a/proj"), live("pi", null)]);
+    } as never, TWO);
+    const cell = (sid: string, projectDir?: string) => ({ added: { sid, agent_kind: "claude", pid: 1, cwd: "/launched", project_dir: projectDir } });
+    streamFake.lifecycle([cell("s-<local>", "/a/proj")], 0);
+    streamFake.lifecycle([cell("s-pi")], 1);
     await vi.runAllTimersAsync();
     expect(started).toHaveBeenCalledWith("s-<local>", expect.objectContaining({ projectDir: "/a/proj", cwd: "/launched" }));
     expect(added).toHaveBeenCalledWith("s-pi", "pi", expect.objectContaining({ projectDir: null, cwd: "/launched" }));
@@ -226,11 +224,10 @@ describe("live 格的项目目录交到处理器", () => {
   it("★ 隐藏那一格（后端判好、壳原样转的 `{by, said} | null`）原样交给处理器：哪一档都认（含命令行当场写的 `launch`）", async () => {
     const started = vi.fn();
     const added = vi.fn();
-    await bindEvents({ onLine: vi.fn(), onSessionEnded: vi.fn(), onSessionStarted: started, onRemoteSessionAdded: added, onBatchStart: vi.fn(), onBatchEnd: vi.fn() } as never, STREAMS);
-    const live = (sid: string, origin: string, hidden: unknown) => ({
-      live: { session_id: sid, origin, background: true, attachable: null, cwd: null, project_dir: null, name: null, hidden },
-    });
-    streamFake.lifecycle([live("a", "<local>", { by: "bg", said: "占位·分身" }), live("b", "pi", { by: "child", said: "占位·子" }), live("c", "<local>", null), live("d", "pi", { by: "launch", said: "占位·命令行" })]);
+    await bindEvents({ onLine: vi.fn(), onSessionFace: vi.fn(), onSessionStarted: started, onRemoteSessionAdded: added, onBatchStart: vi.fn(), onBatchEnd: vi.fn() } as never, TWO);
+    const live = (sid: string, hidden?: unknown) => ({ added: { sid, agent_kind: "claude", pid: 1, background: true, hidden } });
+    streamFake.lifecycle([live("a", { by: "bg", said: "占位·分身" }), live("c")], 0);
+    streamFake.lifecycle([live("b", { by: "child", said: "占位·子" }), live("d", { by: "launch", said: "占位·命令行" })], 1);
     await vi.runAllTimersAsync();
     expect(started.mock.calls.map((c) => [c[0], c[1].hidden])).toEqual([["a", { by: "bg", said: "占位·分身" }], ["c", null]]);
     expect(added.mock.calls.map((c) => [c[0], c[2].hidden])).toEqual([["b", { by: "child", said: "占位·子" }], ["d", { by: "launch", said: "占位·命令行" }]]);

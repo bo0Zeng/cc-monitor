@@ -13,6 +13,7 @@
  *
  * 答出去之后等那台推 `changed {needs}` 重读（下一条挂着的换上来；没有了块收起）。别处先答了 ⇒ 块淡出收起、留一行（稳定态，
  * 下一条请求来了 / 切走才没）：点了才知道的（already_answered · closed_elsewhere）那一行照核心那一句；没点、重读里那条请求没了的写「已在别处答过」。
+ * 没人答、那台替人答了（会话事实 `autoAnswered`）⇒ 同一行写核心那一句，切走再回来也在，那条会话下一次挂上提问才换掉。
  */
 import type { Tab } from "./tab-model";
 import type { Ask, AskChoice, AskQuestionItem, Needs } from "./session-reads";
@@ -38,13 +39,6 @@ export interface AnswerHost {
   toast(title: string, detail?: string): void;
   /** 块高了 / 收了：消息流底部给它让出多高（像素；收起 ⇒ 0）。 */
   room?(px: number): void;
-}
-
-/** 选项进哪一行（按协议里的选项 id；字只照抄）。 */
-function rowOf(c: AskChoice): "main" | "deny" | "release" {
-  if (c.id === "release") return "release";
-  if (c.id === "deny" || c.id === "deny-note" || c.id === "deny-stop") return "deny";
-  return "main";
 }
 
 /** 一道题此刻答成什么样。 */
@@ -92,7 +86,7 @@ export class AnswerBlock {
     const shown = this.shown;
     if (shown && (shown.sid !== sid || n?.ask?.id !== shown.id)) {
       this.shown = null;
-      if (shown.sid === sid && !shown.ours && !this.goneLine) this.goneLine = { sid: shown.sid, ask: shown.id, said: copyText("askBlock.gone.elsewhere") };
+      if (shown.sid === sid && !shown.ours && !this.goneLine) this.goneLine = { sid: shown.sid, ask: shown.id, said: tab?.autoAnswered ?? copyText("askBlock.gone.elsewhere") };
     }
     if (this.goneLine) {
       // 点了才知道的那一种：请求还在（等重读）⇒ 淡出的块 ＋ 那一行照旧。
@@ -102,6 +96,11 @@ export class AnswerBlock {
         return;
       }
       this.goneLine = null;
+    }
+    // 上一条提问没人答、那台替人答过：同一行（核心那一句），下一条请求来了才换掉。
+    if (tab && !n && tab.autoAnswered) {
+      this.drawGone(tab.autoAnswered);
+      return;
     }
     if (!tab || !n) {
       if (this.drawn !== "") {
@@ -218,16 +217,19 @@ export class AnswerBlock {
   private drawChoices(tab: Tab, ask: Ask): void {
     const parts: HTMLElement[] = ask.questions.map((q) => this.question(q));
     const rows = new Map<string, HTMLElement>();
+    // 段照核心给的 `row`；批计划那几项并成一行，有题时「不回答」与「提交答案」同一行。
+    const oneRow = ask.kind === "plan" || ask.questions.length > 0;
     let key = 0;
     let first = true;
     for (const c of ask.choices) {
-      const where = rowOf(c);
-      let row = rows.get(where);
+      const where = c.row;
+      const line = oneRow ? "main" : where;
+      let row = rows.get(line);
       if (!row) {
         row = document.createElement("div");
         row.className = s.abRow;
-        row.dataset.row = where;
-        rows.set(where, row);
+        row.dataset.row = line;
+        rows.set(line, row);
       }
       const kind = where === "release" ? "ghost" : c.id === "deny-stop" ? "danger-text" : first ? "primary" : "secondary";
       first = false;

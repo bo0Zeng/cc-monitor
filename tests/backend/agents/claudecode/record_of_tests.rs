@@ -3,9 +3,6 @@
 use super::*;
 use crate::agents::record::{BodyExt as _, RecordExt as _};
 
-/// 金样重写开关（人读过「现打」再落盘）。
-const REGEN: &str = "CCM_REGEN_RECORD_GOLDEN";
-
 fn one(raw: &str) -> Option<Record> {
     let rec = crate::agents::claudecode::parse::parse_line(&crate::agents::Line::new(raw, 0))
         .unwrap()
@@ -191,17 +188,10 @@ fn every_kind_matches_the_golden_full_and_minimal() {
             )
         })
         .collect();
-    let path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tests/__fixtures__/record.golden.jsonl"
-    );
-    if std::env::var_os(REGEN).is_some() {
-        std::fs::write(path, &got).unwrap();
-    }
-    let want = std::fs::read_to_string(path).unwrap_or_default();
-    assert_eq!(
-        got, want,
-        "通用记录与金样不一致（{REGEN}=1 重写）。现打：\n{got}"
+    crate::golden::assert_golden(
+        "tests/__fixtures__/record.golden.jsonl",
+        &got,
+        "通用记录与金样不一致",
     );
 }
 
@@ -209,7 +199,7 @@ fn every_kind_matches_the_golden_full_and_minimal() {
 /// （必填格缺了盘上形状就认不出、不出记录）· 秤的原文语料（`scale2-height-records.jsonl`）每一行。
 #[test]
 fn the_cheap_class_agrees_with_the_record() {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let scale =
         std::fs::read_to_string(root.join("tests/__fixtures__/scale2-height-records.jsonl"))
             .unwrap();
@@ -397,7 +387,7 @@ fn an_unread_line_comes_out_as_unread() {
 
 /// **没有链上身份的未知顶层类型不成卡**（10-14 起的规矩）：对话内容每行都带 `uuid` / `parentUuid`，没身份的只可能是那一家的簿记行 ——
 /// 下一版再加几种也不刷屏。同一份记录里：没身份的新类型 ⇒ 不出记录；带身份的新类型 ⇒ 照旧 `unread`；
-/// 认识的类型形状变了（没身份也算）⇒ 照旧 `unread`。不悄悄丢的那一半（会话事实里记几行、哪几种）在 `facts_query_tests`。
+/// 认识的类型形状变了（没身份也算）⇒ 照旧 `unread`。不悄悄丢的那一半（会话事实里记几行、哪几种）在 `recognize::facts::tests`。
 #[test]
 fn a_bookkeeping_line_without_identity_is_no_card() {
     let lines = [
@@ -457,7 +447,6 @@ fn a_bookkeeping_line_without_identity_is_no_card() {
 /// 界面那边的秤量的是后端真会给的东西，不是手改的形状。钟面随时区变 ⇒ 都不带 `timeText`。
 /// 秤 1 的「膨胀」那一份也在这里出：膨胀的是**原文**（每个 ≥ [`INFLATE_MIN_LEN`] 字的串尾接换行 ＋ 填充），
 /// 再过翻译表 ⇒ 后端从原文算出的那几格（过程一行的主参数 · 结果几行）照真的变，界面那边不再自己挑哪格不膨胀。
-const REGEN_SCALE: &str = "CCM_REGEN_SCALE_RECORDS";
 /// 膨胀：多长的串才接填充（短串 —— id · 时刻 · 类型 · 型号 —— 不动）。
 const INFLATE_MIN_LEN: usize = 64;
 /// 膨胀：每个够长的串尾部接多少个填充字。
@@ -477,7 +466,7 @@ fn inflate(v: &mut serde_json::Value) {
 
 /// 原文语料（可先膨胀）⇒ 逐行成品，一行一条。
 fn scale_records(inflated: bool) -> String {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let raw = std::fs::read_to_string(root.join("tests/__fixtures__/scale2-height-records.jsonl"))
         .unwrap();
     let mut got = String::new();
@@ -509,20 +498,21 @@ fn scale_records(inflated: bool) -> String {
 
 #[test]
 fn the_scale_corpora_are_what_this_translator_gives() {
-    let root = crate::guard_support::repo_root();
-    for (name, inflated) in [
+    let wrong: Vec<String> = [
         ("scale2-height-line-records.jsonl", false),
         ("scale1-inflated-line-records.jsonl", true),
-    ] {
-        let got = scale_records(inflated);
-        let path = root.join("tests/__fixtures__").join(name);
-        if std::env::var_os(REGEN_SCALE).is_some() {
-            std::fs::write(&path, &got).unwrap();
-        }
-        let want = std::fs::read_to_string(&path).unwrap_or_default();
-        assert!(
-            got == want,
-            "{name} 与翻译表现打的不一致（{REGEN_SCALE}=1 重写，再回界面那几杆秤改登记）"
-        );
-    }
+    ]
+    .into_iter()
+    .filter_map(|(name, inflated)| {
+        crate::golden::mismatch(
+            &format!("tests/__fixtures__/{name}"),
+            &scale_records(inflated),
+        )
+    })
+    .collect();
+    assert!(
+        wrong.is_empty(),
+        "秤的语料与翻译表现打的不一致（重打后回界面那几杆秤改登记）：\n{}",
+        wrong.join("\n")
+    );
 }

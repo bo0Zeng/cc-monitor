@@ -7,63 +7,46 @@ import org.junit.Test
 import java.io.File
 
 /**
- * tmux 那半的每一个 shell 片段，只许住在网关里；网关里只剩用户在 ssh 里也会敲的那两条（进 / 建一个会话）。
- * 找会话、附着到 cc-monitor 认得的会话、结束、抓屏、送字都走那台核心，四个子命令锚点在生产代码里一次都不许出现。
+ * 手机一条 tmux 命令都不拼：进哪儿 · 建会话 · 找会话 · 附着 · 结束 · 抓屏 · 送字都是那台核心的命令，手机只交意图、原样敲回来的那一行。
+ * 所以八个锚点在生产代码的字符串字面量里零命中，不开例外。
  *
- * 每个协议面一个网关类：别处只拿结构化结果，不拼字符串；网关之外的文件里不许出现 `"tmux "` 这类拼串。
- * 本文件是 tmux 这一面的机检落点。
- *
- * 白名单里只有网关 `ssh/TmuxCommands.kt`（按钮显示名 · 菜单文案里的「tmux」都在文案表里，不是源码字面量）。
- * 白名单给它逐文件钉了次数：哪天别的文件里冒出一处 `tmux …`，这条照样红一次
- * （重新过一遍眼：那到底是用户的字，还是有人在 UI 层拼了条命令）。
- *
- * 扫的是字符串字面量里面，不是整份源码：拼给远端的东西一定在字面量里，
- * 标识符与注释不在。全仓源码扫描类判据一律住 `app`，理由见 `NamespaceLiteralScanTest` 头注。
+ * 扫的是字符串字面量里面，不是整份源码：拼给远端的东西一定在字面量里，标识符与注释不在（按钮显示名 · 菜单文案里的「tmux」在文案表里）。
+ * 全仓源码扫描类判据一律住 `app`，理由见 `NamespaceLiteralScanTest` 头注。
  *
  * ### 判别力边界
  *
  * | 绕过形态 | 本文件 |
  * |---|---|
- * | 在网关之外新写一条 `"tmux send-keys …"` | 红（点名文件 + 计数） |
- * | 把网关里某一支的片段删掉/挪走 | 红（次数少了也不等） |
- * | 用变量装动词再拼（`"${'$'}TMUX send-keys …"`） | `tmux ` 那个锚点抓不到，但 [SEND_KEYS] / [CAPTURE_PANE] / [DISPLAY_MESSAGE] / [KILL_SESSION] 四个子命令锚点仍会红：这正是它们与 `tmux ` 并列的理由 |
+ * | 在任何生产文件里写一条 `"tmux …"` / `"… send-keys …"` 之类 | 红（点名文件 + 计数） |
+ * | 用变量装动词再拼（`"${'$'}TMUX send-keys …"`） | `tmux ` 那个锚点抓不到，子命令锚点仍会红 |
  * | `"tm" + "ux "` · `String(charArrayOf(…))` · 反射拼串 | 抓不到：防手滑不防拼接 |
- * | 别的 tmux 子命令（`list-panes` / `respawn-pane` / `run-shell`） | 不在锚点表里：锚点是真在用的那几个 |
- * | 命令串内容对不对 | 本文件不答，那是 `TmuxGatewayGoldenTest` 的逐字节对拍 |
- * | 谁在调网关、有没有人绕开 | 本文件不答，`TmuxGatewayCallSiteTest` 答 |
+ * | 别的 tmux 子命令（`list-panes` / `respawn-pane` / `run-shell`） | 不在锚点表里 |
  * | `androidTest` / `src/debug` 源集 | 不在扫描面内 |
  */
 class TmuxSurfaceLiteralScanTest {
-    /**
-     * 八个锚点各自的 file → 次数逐字钉死。
-     *
-     * 钉的是次数不只是文件集 ⇒ 同一个文件里再长出一处也红。
-     */
+    /** 八个锚点在生产代码字符串字面量里一次都没有；正控：同一条尺子往语料里种一处 `"tmux attach -t x"`，要数得出来。 */
     @Test
-    fun everyTmuxShellFragmentLivesOnlyInTheGatewayOrUserContent() {
+    fun noTmuxShellFragmentLivesInProductionCode() {
         val root = repoRoot()
         val sources = productionSources(root)
         assertTrue("前提：得真扫到源文件，否则这条是空跑（实得 ${sources.size} 个）", sources.size > 100)
+        val corpus = sources.associate { it.relativeTo(root).invariantSeparatorsPath to it.readText() }
+        assertEquals("手机生产代码里拼了 tmux 命令：改成问那台核心（`session-open` · `terminals-list` · `kill` …）", ANCHORS.associateWith { emptyMap<String, Int>() }, census(corpus))
+        val planted = census(corpus + (PLANTED to "val c = \"tmux attach -t x\""))
+        assertEquals("正控：种的那一处要数得出来，否则这条恒绿", mapOf(PLANTED to 1), planted.getValue(TMUX_VERB))
+        assertEquals("正控：种的那一处要数得出来，否则这条恒绿", mapOf(PLANTED to 1), planted.getValue(ATTACH_T))
+    }
 
-        val literalsOf = sources.associateWith { stringLiteralsOf(it.readText()) }
-        val census = linkedMapOf<String, Map<String, Int>>()
-        for (mark in PINNED_FRAGMENT_COUNTS.keys) {
-            val counts = sortedMapOf<String, Int>()
-            for ((f, lits) in literalsOf) {
-                val n = countOccurrences(lits, mark)
-                if (n > 0) counts[f.relativeTo(root).invariantSeparatorsPath] = n
-            }
-            census[mark] = counts.toMap()
+    /** 每个锚点 ⇒ 命中它的文件 → 次数（不命中的文件不列）。 */
+    private fun census(files: Map<String, String>): Map<String, Map<String, Int>> {
+        val literalsOf = files.mapValues { (_, text) -> stringLiteralsOf(text) }
+        return ANCHORS.associateWith { mark ->
+            literalsOf
+                .mapValues { (_, lits) -> countOccurrences(lits, mark) }
+                .filterValues { it > 0 }
+                .toSortedMap()
+                .toMap()
         }
-        // 子命令锚点期望零命中，扫描器瞎没瞎由 `tmux ` 那一格（期望非零）与下面的自检接住。
-        assertTrue("前提：`$TMUX_VERB` 整份语料一次都没命中 ⇒ 扫描器瞎了、这条判据恒绿", census.getValue(TMUX_VERB).values.sum() > 0)
-        assertEquals(
-            "tmux 面的 shell 片段只许由网关 `TmuxCommands` 产出。" +
-                "多出来的请改成调网关；确属用户内容（按钮显示名 / 默认命令 / 菜单文案）的，" +
-                "连同理由加进 PINNED_FRAGMENT_COUNTS。",
-            PINNED_FRAGMENT_COUNTS.toMap(),
-            census.toMap(),
-        )
     }
 
     /**
@@ -169,36 +152,13 @@ class TmuxSurfaceLiteralScanTest {
         private const val DISPLAY_MESSAGE = "display-message "
         private const val KILL_SESSION = "kill-session "
 
-        // 找会话 · 附着那几形（手机不拼：列会话问 `terminals-list`，进终端敲 `launch-render-cli` 渲出的那一行）。
+        // 找会话 · 附着那几形（手机不拼：列会话问 `terminals-list`，进终端敲 `session-open` 渲出的那一行）。
         private const val ATTACH_T = "attach -t"
         private const val SWITCH_CLIENT = "switch-client"
         private const val LIST_SESSIONS = "ls -F"
 
-        private const val GATEWAY = "app/src/main/kotlin/com/ccmonitor/mobile/ssh/TmuxCommands.kt"
+        private const val PLANTED = "planted/Seed.kt"
 
-        /**
-         * 定值钉：八个锚点在生产代码字符串字面量里的 file → 次数。
-         *
-         * | 文件 | 次 | 那是什么 |
-         * |---|---|---|
-         * | `TmuxCommands.kt` | 2/0/0/0/0 | 网关本身：只剩 `new-session -A`（有则接无则建）与 `new-session -d`（后台建） |
-         *
-         * 四个子命令锚点在生产代码里一次都没有（送字 · 抓屏 · 探前台 · 结束都是那台核心的命令）。
-         * 按钮显示名 · 弹窗标题 · 面板项里的「tmux 会话」收进了文案表（`src/shared/copy/table.json`），不再是源码字面量。
-         */
-        private val PINNED_FRAGMENT_COUNTS =
-            linkedMapOf(
-                TMUX_VERB to
-                    mapOf(
-                        GATEWAY to 2,
-                    ),
-                SEND_KEYS to emptyMap(),
-                CAPTURE_PANE to emptyMap(),
-                DISPLAY_MESSAGE to emptyMap(),
-                KILL_SESSION to emptyMap(),
-                ATTACH_T to emptyMap(),
-                SWITCH_CLIENT to emptyMap(),
-                LIST_SESSIONS to emptyMap(),
-            )
+        private val ANCHORS = listOf(TMUX_VERB, SEND_KEYS, CAPTURE_PANE, DISPLAY_MESSAGE, KILL_SESSION, ATTACH_T, SWITCH_CLIENT, LIST_SESSIONS)
     }
 }

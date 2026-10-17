@@ -6,8 +6,14 @@ fn answer_print(args: &serde_json::Value) -> Result<serde_json::Value, (&'static
     super::answer_print(&req).map(|r| serde_json::to_value(r).unwrap())
 }
 
+// 那一格（终端里敲 `ccm` 走到哪）要起登录 shell，判它的在 `on_path_tests`；这里只比名片那几格。
 fn answer_probe() -> serde_json::Value {
-    serde_json::to_value(super::answer_probe()).unwrap()
+    let here = on_path::on_path(&on_path::Reach::Ours, "");
+    serde_json::to_value(super::answer_probe_for(
+        crate::platform::tmux::TMUX_PLATFORM,
+        here,
+    ))
+    .unwrap()
 }
 
 /// ★★ **`KR96D2` 死值验第一刀：铸名避让只许问那一张快照，且算完就定死。**
@@ -23,10 +29,8 @@ fn answer_probe() -> serde_json::Value {
 /// **`--print` 与真跑吐的名字可以不一样**，而 `--print` 的全部意义就是当平价预言机。
 #[test]
 fn the_name_avoidance_has_exactly_one_source_and_the_plan_settles_it() {
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/ccm/mod.rs"
-    ));
-    crate::guard_support::assert_no_test_code("control/ccm/mod.rs", &prod);
+    let prod = guard_core::production_code(include_str!("../../../src/backend/control/ccm/mod.rs"));
+    guard_core::assert_no_test_code("control/ccm/mod.rs", &prod);
 
     let builds = prod.matches("plan::build(").count();
     assert_eq!(
@@ -51,10 +55,8 @@ fn the_name_avoidance_has_exactly_one_source_and_the_plan_settles_it() {
     );
     // 反向自检：这几针不是靠「本文件恰好不含那些词」空转的。
     assert!(
-        crate::guard_support::production_code(include_str!(
-            "../../../src/backend/control/ccm/plan.rs"
-        ))
-        .contains("fn next_free_name"),
+        guard_core::production_code(include_str!("../../../src/backend/control/ccm/plan.rs"))
+            .contains("fn next_free_name"),
         "`plan.rs` 里找不到 `next_free_name` —— 退让规则搬家/改名了，本条在空转"
     );
 }
@@ -189,8 +191,7 @@ fn a_bare_call_without_any_terminal_does_not_start_an_agent() {
 
 /// 〔搬自 `ccm-contract-parity` 的 `--ccm-probe` 那 5 条〕
 ///
-/// 这份输出是**外部契约**：`ccm_probe.rs::parse_probe_output` 按行解析
-/// `version=` / `capabilities=`。
+/// 这份输出是**外部契约**：`cc-spawn` 按行读 `capabilities=`。
 #[test]
 fn the_probe_output_is_the_shape_its_parser_expects() {
     let out = probe_output("/usr/local/bin/ccm");
@@ -233,9 +234,7 @@ fn the_version_moved_because_the_implementation_did() {
 /// （那边保证「旗标字面量只住 argv.rs」，这边保证「住在那里的都说得出来」）。
 #[test]
 fn every_flag_we_accept_has_a_usage_line() {
-    let src = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/ccm_line/argv.rs"
-    ));
+    let src = guard_core::production_code(include_str!("../../../src/backend/ccm_line/argv.rs"));
     let mut flags: Vec<String> = Vec::new();
     let mut from = 0usize;
     while let Some(rel) = src[from..].find("\"--") {
@@ -589,10 +588,8 @@ fn only_two_things_still_need_a_posix_shell_and_the_codex_recipe_is_not_one_of_t
 /// 声明一处 ＋ 取用一处 = 2。多了 ⇒ 同一句归因有第二处住址；少了 ⇒ 留了条用不上的话。
 #[test]
 fn every_reason_for_needing_a_shell_is_declared_once_and_used_once() {
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/ccm/mod.rs"
-    ));
-    crate::guard_support::assert_no_test_code("control/ccm/mod.rs", &prod);
+    let prod = guard_core::production_code(include_str!("../../../src/backend/control/ccm/mod.rs"));
+    guard_core::assert_no_test_code("control/ccm/mod.rs", &prod);
 
     let reasons: &[(&str, &str)] = &[
         ("WHY_SHELL_CCM_ENV", WHY_SHELL_CCM_ENV.as_str()),
@@ -652,9 +649,7 @@ fn every_reason_for_needing_a_shell_is_declared_once_and_used_once() {
 /// 直接走 `argv::parse` → `plan::build` → `plan::render` 的产物（直路 · 容器路 · 显式不带账号三形）。
 #[test]
 fn the_alias_preview_is_the_same_plan_as_ccm_print() {
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/ccm/mod.rs"
-    ));
+    let prod = guard_core::production_code(include_str!("../../../src/backend/control/ccm/mod.rs"));
     for pin in [
         "plan_of(&o, env, true)",
         "plan_of(&o, Env::for_preview(), false)",
@@ -849,9 +844,7 @@ fn on_windows_the_probe_does_not_claim_what_only_tmux_can_carry() {
 /// 生产那一口真的把**本二进制的**平台档交进去（不是回到整张表，也不是写死某一档）。
 #[test]
 fn the_real_probe_asks_this_binarys_own_platform() {
-    let me = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/ccm/mod.rs"
-    ));
+    let me = guard_core::production_code(include_str!("../../../src/backend/control/ccm/mod.rs"));
     let body = me
         .split("pub(crate) fn probe_output(self_path: &str) -> String {")
         .nth(1)
@@ -1036,12 +1029,10 @@ fn the_probe_frame_answers_the_same_card_as_the_cli_flag() {
     );
 }
 
-/// 要求：「tmux 名派生 ＋ 撞名避让只留后端，前端要名字就问后端」。
-/// 帧命令 `terminal-name-mint` 两形各一格 == 手写期望；避让问的是**交进来那张快照**（被占 ⇒ 往后排）；没装 tmux ⇒ 基名；入参不恰一格 ⇒ `bad_args`。
+/// 要求：「tmux 名派生 ＋ 撞名避让只留后端」。起会话铸名两形各一格 == 手写期望；避让问的是**交进来那张快照**（被占 ⇒ 往后排）；没装 tmux ⇒ 基名。
 #[test]
-fn the_mint_frame_derives_here_and_steps_aside_on_this_machines_snapshot() {
+fn minting_derives_here_and_steps_aside_on_this_machines_snapshot() {
     use crate::common::session_snapshot::{SessionRow, SessionSnapshot};
-    use serde_json::json;
     let snap = SessionSnapshot::with_prober(|| {
         Ok(["proj-cc", "proj-fork-cc", "proj-fork-cc-2"]
             .iter()
@@ -1052,7 +1043,7 @@ fn the_mint_frame_derives_here_and_steps_aside_on_this_machines_snapshot() {
             .collect())
     });
     use crate::control::session_batch::NameBase;
-    let mint = |b: NameBase| terminal_name_mint_with(b, &snap).map(|m| m.name);
+    let mint = |b: NameBase| terminal_name_mint_with(b, &snap);
     assert_eq!(mint(NameBase::Cwd("/home/u/proj")).unwrap(), "proj-cc-2");
     assert_eq!(mint(NameBase::Cwd("/home/u/other")).unwrap(), "other-cc");
     assert_eq!(mint(NameBase::ForkOf("proj-cc")).unwrap(), "proj-fork-cc-3");
@@ -1062,31 +1053,12 @@ fn the_mint_frame_derives_here_and_steps_aside_on_this_machines_snapshot() {
     );
     let no_tmux = SessionSnapshot::with_prober(|| Err(("no_tmux", "tmux: not found".to_string())));
     assert_eq!(
-        terminal_name_mint_with(NameBase::Cwd("/home/u/proj"), &no_tmux)
-            .unwrap()
-            .name,
+        terminal_name_mint_with(NameBase::Cwd("/home/u/proj"), &no_tmux).unwrap(),
         "proj-cc"
     );
-    // 入参组合不对（两个都没给 · 两个都给）⇒ `bad_args`，不去问快照；形状不对（类型错 · 多一个键）在解入参那一步就拒了。
-    use crate::wire::typed::{Codes as _, Handle as _};
-    for (cwd, fork_of) in [(None, None), (Some("/a"), Some("b"))] {
-        let req = TerminalNameMintReq {
-            cwd: cwd.map(str::to_string),
-            fork_of: fork_of.map(str::to_string),
-        };
-        let cx = crate::wire::typed::Cx {
-            tz: Default::default(),
-            until: None,
-            needs: (),
-        };
-        let got = crate::wire::spec::finish(TerminalNameMint::run(req, cx))
-            .unwrap_err()
-            .into_fail();
-        assert_eq!(got.code, "bad_args");
-    }
 }
 
-// ── 起会话只有 ccm 一处（用户原话「所有的起会话都是一处ccm」）──────────────────────────────
+// ── 起会话只有 ccm 一处（要求：「所有的起会话都是一处ccm」）──────────────────────────────
 
 /// 一段生产代码里「直接起 agent 的命令」的痕迹（名字从注册表取，不写死）：
 /// ① 串字面量以某一家的默认启动器打头（`"claude"` · `"claude …"`）；② 串字面量里带「启动器 ＋ 这一家的 resume 词」
@@ -1203,13 +1175,13 @@ fn nothing_but_ccm_renders_a_command_that_starts_an_agent() {
         "针在现造语料上失准"
     );
 
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let mut outside: Vec<String> = Vec::new();
     let mut registry_hits = 0;
     for (path, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
         let under = path.strip_prefix(&root).unwrap_or(&path);
         let rel = under.to_string_lossy().replace('\\', "/");
-        let code = guard_core::strip_comment_lines(&crate::guard_support::production_code(&src));
+        let code = guard_core::strip_comment_lines(&guard_core::production_code(&src));
         let hits = direct_agent_launch_hits(&code, &launchers, &tokens);
         // 按路径分量认住址（逐段相等，不是拿串的前缀比）：注册表那一侧 = `agents/` 整棵；`ccm` 自己 = `control/ccm/` 整棵。
         let seg: Vec<String> = under
@@ -1386,11 +1358,7 @@ fn the_final_launch_starts_what_the_footprint_found() {
 /// busy2：容器路送启动命令没确认 ⇒ 送达未知且不带 `--detach` 照样接进去；明确没送进且会话是本趟建的 ⇒ 收掉再报；别的照报。
 #[test]
 fn busy2_after_an_unconfirmed_start_command_join_or_reap() {
-    use crate::control::launch::{Delivery, LaunchFail};
-    let fail = |untyped| LaunchFail {
-        fail: crate::wire::spec::Fail::new("typed_unconfirmed", "x".into()),
-        untyped,
-    };
+    use crate::control::launch::Delivery;
     let cases = [
         (
             Some((Delivery::Unknown, true)),
@@ -1418,7 +1386,7 @@ fn busy2_after_an_unconfirmed_start_command_join_or_reap() {
     ];
     for (untyped, detach, want) in cases {
         assert_eq!(
-            after_launch_fail(&fail(untyped), detach),
+            after_launch_fail(untyped, detach),
             want,
             "{untyped:?} detach={detach}"
         );

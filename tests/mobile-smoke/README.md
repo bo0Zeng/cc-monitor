@@ -3,10 +3,20 @@
 手机端在 Android 模拟器上接沙箱后端，把主路从头走一遍。**不进门禁默认格**，要看手机端整条路通不通时按需跑：
 
 ```sh
-bash tests/mobile-smoke/smoke.sh
+CCM_SMOKE_ADB_PORT=… CCM_SMOKE_EMU_PORT=… CCM_SMOKE_PORT=… CCM_SMOKE_RELAY_PORT=… bash tests/mobile-smoke/smoke.sh
 ```
 
-跑两趟（`CCM_SMOKE_VARIANTS` 可挑）：`debug`（调试包）· `minified`（混淆过的包：R8 照正式包那一套、调试签名，不碰正式 keystore）。门禁只编正式包不跑它，靠运行时按名字认的地方在混淆后坏了，只有第二趟露得出来。每趟末尾印一张表（每步过没过 · 用时 · 截图），截图与 `results.json` 在 `.build/mobile-smoke/shots/<趟>/`（`CCM_SMOKE_OUT` 可改）。
+四个口（adb server · 模拟器 · 台架 sshd · 中转）都由跑的人给，缺一个就拒（落到默认口上会撞上同时在跑的别的台架）。
+
+跑两趟（`CCM_SMOKE_VARIANTS` 可挑）：`debug`（调试包）· `minified`（混淆过的包：R8 照正式包那一套、调试签名，不碰正式 keystore）。门禁只编正式包不跑它，靠运行时按名字认的地方在混淆后坏了，只有第二趟露得出来。每趟末尾印一张表（每步过没过 · 用时 · 期限放宽了几倍 · 截图），截图与 `results.json` 在 `.build/mobile-smoke/shots/<趟>/`（`CCM_SMOKE_OUT` 可改）；红的那一步另存一份控件树（`<步>.xml`，末尾带当时前台是谁）。
+
+机器忙时不乱红：
+
+- 都按条件等（控件出现 · 点的那个停稳了才点 · 敲进框里的字读回得到），不按秒数睡；期限按本机一分钟负载 / 核数放宽，夹在 1–3 倍。
+- 回聊天屏不盲按返回：App 不在前台就拉起来，冷启动还没画出字（截屏全黑）时不按。
+- 一步红了：网放回来、App 停掉重开，从那一步要的那条对话接着走（后面那几步不跟着连红；真靠前一步做出来的东西才跟着红，并说是前面那步没起来）。上一步过了却停在别的屏上，也先点回那一条。
+- 一条 adb 一分钟（按忙闲放宽）不回就当没回；模拟器没了或不答话，照实停在那一步、印表。
+- 碰上「应用无响应」框：记一条（时刻 · 框上的字，系统那份记录存成 `anr.txt`）、点「等待」接着走；有一条这一趟就不算绿。
 
 ## 要什么
 
@@ -17,11 +27,11 @@ bash tests/mobile-smoke/smoke.sh
 
 | 东西 | 怎么隔 |
 |---|---|
-| sshd | 只听 `127.0.0.1:22422`（`CCM_SMOKE_PORT`），私有 host key 与登录钥匙，只认台架那把钥匙；模拟器经它的网关（即宿主机）够到它 |
+| sshd | 只听 `127.0.0.1` 上 `CCM_SMOKE_PORT` 那个口，私有 host key 与登录钥匙，只认台架那把钥匙；模拟器经它的网关（即宿主机）够到它 |
 | 后端 | ssh 进来的每条命令由台架的登录壳（`rig.sh up` 写进台架目录）换上台架的 `HOME` · `TMUX_TMPDIR` · `PATH` · `CCM_SANDBOX=1` · 私有中转口；后端文件放在台架家里的 `~/.cc-monitor/bin/ccm`（本树编的那份） |
 | tmux | 台架自己的 server（`TMUX_TMPDIR` 在台架目录下）；从桌面那一侧打字用 `rig.sh tmux …`（显式 `-S`） |
 | agent | 不起真 claude / codex：`fake-agent.py` 装成这两个名字放在台架 `PATH` 最前，按那一家的原始记录格式写盘（pidfile · jsonl · Codex rollout），带初始提示词起、读终端里敲进来的行 |
-| 模拟器 | 无头，AVD 在台架目录旁（磁盘上），adb 私有端口 5137 · 模拟器口 5590（`smoke.sh` 定的；`emu.sh` 自己不落默认口，没给 `CCM_SMOKE_ADB_PORT` · `CCM_SMOKE_EMU_PORT` 就拒）；单独一个 `systemd-run --user --scope`（MemoryHigh 6G / MemoryMax 8G） |
+| 模拟器 | 无头，AVD 在台架目录旁（磁盘上），adb 私有端口 `CCM_SMOKE_ADB_PORT` · 模拟器口 `CCM_SMOKE_EMU_PORT`（没给就拒）；单独一个 `systemd-run --user --scope`（MemoryMax 8G，不设 MemoryHigh） |
 
 ## 几样零件
 
@@ -30,10 +40,10 @@ bash tests/mobile-smoke/smoke.sh
 - `frames.py <命令> '<JSON 入参>' [期限毫秒]`：经台架开一条常驻流问一句（和手机同一条路）；`frames.py watch <秒>` 只看流上的帧。
 - `ui.py dump|tap|has|wait|text|key|shot`：按字找控件点、截屏。
 - `fake-agent.py`：替身。句里带 `long` ⇒ 一大段回答；带 `ask` ⇒ 停在批准框上（需手动）、带 `quiz` ⇒ 停在提问框、带 `plan` ⇒ 停在批计划：起会话时垫了答题 hook ⇒ 同真的那样把请求交给它、照它给的决定往下走（决定原样落进那一步的结果），终端里先敲一行也算答（谁先算谁的）；敲进来 `/model <值>` ⇒ 只落那一家换模型的读回（第 9 步换模型用）。`CCM_SMOKE_STEP`（每条记录间隔）· `CCM_SMOKE_BOOT`（起到能收第一句之前停多久）。
-- `smoke.py`：十二步（加机器连上（那台先没有后端；后跟三小步：1b 装后端（问题条［安装］⇒ 手机把包里那一格放上去、换常驻、接上）· 1c 升级后端（落点换成一份身份早一格的旧版 ⇒ 说要更新 ⇒［更新］⇒ 换常驻、不再说要更新）· 1d 主机设置里核对版本（同版不换常驻））· 对话列表 · 新建会话（目录 chip → 浏览… → 选这个目录）· 聊天屏（后跟两小步：输入框下的模型 chip · ［+］面板的命令 / 清空先确认 / 压缩；再在聊天里答四样：钉条［答］升抽屉答批准 · 答提问（一题一屏）· 批计划 · 抽屉开着时终端先答了 ⇒ 别处先答了）· 断网再连 · 换网 · 杀进程再开 · 断着网重开（列表与那一条的最后一屏照本地缓存画，网回来跟上新的） · 终端屏（「用哪个启动」那一排点台架那台配的别名起会话 · 接进去两侧打字 · 命令面板换模型）· Codex（新建会话的 agent chip 选它）· 文件页（列目录 · 进一层 · 预览 · 新建 · 改名 · 删除 · 下载 · 上传，结果在台架盘上核）· 轮换屏（台架里种三个号与两份策略、起一条带轮换的会话；聊天屏「⋯」进 → 换策略 → 长按号名拖到最上那条成临时条目 → 改一格 → 存，再从设置 → 机器与账号 → 轮换进一次）），每步只看屏上和台架记录里看得到的。 `CCM_SMOKE_ONLY=files` 只走加机器 ＋ 文件页；`CCM_SMOKE_ONLY=deploy` 只走加机器 ＋ 装后端那几步（印放字节那一段用了几秒）。
+- `smoke.py`：十二步（加机器连上（那台先没有后端；后跟三小步：1b 装后端（问题条［安装］⇒ 手机把包里那一格放上去、换常驻、接上）· 1c 升级后端（落点换成一份身份早一格的旧版 ⇒ 说要更新 ⇒［更新］⇒ 换常驻、不再说要更新）· 1d 主机设置里核对版本（同版不换常驻））· 对话列表 · 新建会话（目录 chip → 浏览… → 选这个目录）· 聊天屏（后跟两小步：输入框下的模型 chip · ［+］面板的命令 / 清空先确认 / 压缩；再在聊天里答四样：钉条［答］升抽屉答批准 · 答提问（一题一屏）· 批计划 · 抽屉开着时终端先答了 ⇒ 别处先答了）· 断网再连 · 换网 · 杀进程再开 · 断着网重开（列表与那一条的最后一屏照本地缓存画，网回来跟上新的） · 终端屏（「用哪个启动」那一排点台架那台配的别名起会话 · 接进去两侧打字 · 命令面板换模型）· Codex（新建会话的 agent chip 选它）· 文件页（列目录 · 进一层 · 预览 · 新建 · 改名 · 删除 · 下载 · 上传 · 同名再传一次 ⇒ 冲突抽屉［保留两份］，结果在台架盘上核；后跟 11b 大文本编辑：接近 8 MB 的一份开编辑页，只记首帧 · 滚动 · 敲字的帧与内存，写进 `bigtext.txt`，不判红绿）· 轮换屏（台架里种三个号与两份策略、起一条带轮换的会话；聊天屏「⋯」进 → 换策略 → 长按号名拖到最上那条成临时条目 → 改一格 → 存，再从设置 → 机器与账号 → 轮换进一次）），每步只看屏上和台架记录里看得到的。 `CCM_SMOKE_ONLY=files` 只走加机器 ＋ 文件页（含 11b）；`CCM_SMOKE_ONLY=deploy` 只走加机器 ＋ 装后端那几步（印放字节那一段用了几秒）。
 - 装后端要包里带着字节：开发树先 `bash tests/scripts/re-embed.sh`（铺 `src/frontend/shell/embedded-backends/`，桌面同一个目录），没铺 `smoke.sh` 当场停、说一声。
 
-收：`CCM_SMOKE_ADB_PORT=5137 CCM_SMOKE_EMU_PORT=5590 bash tests/mobile-smoke/emu.sh down; bash tests/mobile-smoke/rig.sh down`（台架目录留着，删掉 `.build/mobile-smoke/` 即全清）。
+收：带着起的时候那四个口 `bash tests/mobile-smoke/emu.sh down; bash tests/mobile-smoke/rig.sh down`（台架目录留着，删掉 `.build/mobile-smoke/` 即全清）。
 
 ## 真机代测（`device.sh`）
 
@@ -53,6 +63,6 @@ CCM_DEVICE_BREAK=reconnect bash tests/mobile-smoke/device.sh  # 看台架会红�
 
 每项末尾那一屏亮暗各一张（`<项>-亮.png` · `<项>-暗.png`）、量的数与每项结果在 `.build/mobile-device/shots/device-results.json`（`CCM_SMOKE_OUT` 可改）。
 
-端口与冒烟、别的几路错开：sshd `22452` · 中转 `28818` · adb `5167` · 模拟器 `5670`（`CCM_SMOKE_PORT` · `CCM_SMOKE_RELAY_PORT` · `CCM_SMOKE_ADB_PORT` · `CCM_SMOKE_EMU_PORT` 可改），台架目录 `.build/mobile-device/`（AVD 也在它下面，和冒烟那台互不相干）。收：先 `eval` 同样那几格再 `emu.sh down; rig.sh down`。
+端口同冒烟由跑的人给，另加跳板 sshd 的 `CCM_SMOKE_HOP_PORT`，台架目录 `.build/mobile-device/`（AVD 也在它下面，和冒烟那台互不相干）。收：先 `eval` 同样那几格再 `emu.sh down; rig.sh down`。
 
 只有用户那台手机核得了的（这里不代）：厂商 ROM 自己的杀后台 · 真 Wi-Fi ↔ 蜂窝切换 · 用户的输入法 · 用户那把签名覆盖装。

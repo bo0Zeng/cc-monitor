@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.core.claude.link
 
+import com.ccmonitor.mobile.core.claude.link.wire.AnsweredRow
 import com.ccmonitor.mobile.core.claude.link.wire.AskKind
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsAsk
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsNote
@@ -61,10 +62,13 @@ class AsksTest {
     fun `sessions-needs 一条带 ask · head · headCode；ask 为空时带 manualText`() {
         val data =
             mapOf(
+                "answered" to listOf(mapOf("sid" to "s9", "said" to "10 分钟没人答，已自动答：继续")),
                 "waiting" to
                     listOf(
                         mapOf(
                             "sid" to "s1",
+                            "label" to "标题 s1",
+                            "face" to Fixtures.face("live-needs-you-tmux"),
                             "needs" to
                                 mapOf(
                                     "kind" to "approve",
@@ -81,6 +85,8 @@ class AsksTest {
                         ),
                         mapOf(
                             "sid" to "s2",
+                            "label" to "标题 s2",
+                            "face" to Fixtures.face("live-needs-you-tmux"),
                             "needs" to
                                 mapOf(
                                     "kind" to "unknown",
@@ -96,6 +102,7 @@ class AsksTest {
                     ),
             )
         val rows = SessionsNeeds.of(data)!!
+        assertEquals(listOf(AnsweredRow("s9", "10 分钟没人答，已自动答：继续")), SessionsNeeds.list(data)!!.answered)
         assertEquals("等批准 · Bash", rows[0].needs.head)
         assertEquals("touch a.txt", rows[0].needs.headCode)
         assertEquals("ask-1", rows[0].needs.ask?.id)

@@ -498,7 +498,7 @@ async fn plan_open(origin: Origin, payload: Body) -> Result<Body, CallError> {
             copy_text("rsChanHost.plan.noMain", &[]),
         ));
     }
-    // 拉到前面走主窗口那一处（第二次启动 · 点通知同一条：还原 · 显示 · 聚焦，失败各留一行日志）。
+    // 拉到前面走主窗口那一处（与第二次启动同一条：还原 · 显示 · 聚焦，失败各留一行日志）。
     crate::platform::window::raise_main(&app, None, true);
     let said = serde_json::json!({
         "origin": origin.as_wire_str(),

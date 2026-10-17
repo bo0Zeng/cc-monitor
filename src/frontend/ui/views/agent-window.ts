@@ -183,7 +183,7 @@ export class AgentWindow {
       this.say(copyText("viewerWindow.record.gone"));
       return;
     }
-    this.live = row.status === "live";
+    this.live = row.face.live.is === "yes";
     this.ctx.parentPath = row.jsonlPath;
     this.ctx.speaker = speakerNameOf(row.agent);
     const foot = this.parts.foot.querySelector<HTMLElement>('[data-role="session"]');

@@ -101,7 +101,7 @@ fn the_remote_binary_sets_mimalloc_as_global_allocator_only_on_musl() {
 
 #[test]
 fn the_library_face_sets_no_global_allocator() {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let files = guard_core::scan_tree_excluding(
         &root,
         &["rs"],

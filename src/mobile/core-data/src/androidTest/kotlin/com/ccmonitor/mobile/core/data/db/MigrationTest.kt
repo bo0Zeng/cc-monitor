@@ -598,11 +598,49 @@ class MigrationTest {
         }
     }
 
-    /** 全链路 1→19 schema 校验（validateDroppedTables=true 严格比对导出 schema）；一路种过的旧默认键到头成了三组。 */
+    /** 19→20：hosts 去掉「远端系统」那一格，其余各格原样；身份 · 设置一字不动。 */
     @Test
-    fun migrateAll1To19Validates() {
+    fun migrate19To20DropsTheOsColumnAndKeepsTheRest() {
+        helper.createDatabase(dbName, 19).apply {
+            execSQL(
+                "INSERT INTO hosts (id,label,host,port,username,authRef,extraAddresses,groupId,sortOrder,lastConnected," +
+                    "defaultWorkingDir,sessionManager,autoReconnect,proxyJumpHostId,passwordEnc,os,agentKind) " +
+                    "VALUES ('h1','pi','example.com',2222,'pi','k1','backup.example:22','g',3,99,'~/w','tmux',0,'h0','ENC','windows','claude')",
+            )
+            execSQL(
+                "INSERT INTO identities (id,label,keyType,privateKeyEnc,publicKeyOpenSsh,fingerprintSha256,createdAt) " +
+                    "VALUES ('k1','key','ed25519',X'0102','ssh-ed25519 AAAA','SHA256:x',1)",
+            )
+            execSQL("INSERT INTO settings (`key`,`value`) VALUES ('last_host','h1')")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(dbName, 20, true, MIGRATION_19_20)
+        val hostCols =
+            "label,host,port,username,authRef,extraAddresses,groupId,sortOrder,lastConnected,defaultWorkingDir,sessionManager," +
+                "autoReconnect,proxyJumpHostId,passwordEnc,agentKind"
+        db.query("SELECT $hostCols FROM hosts WHERE id='h1'").use { c ->
+            assertTrue("机器表应原样还在", c.moveToFirst())
+            val got = (0 until c.columnCount).map { if (c.isNull(it)) null else c.getString(it) }
+            assertEquals(listOf("pi", "example.com", "2222", "pi", "k1", "backup.example:22", "g", "3", "99", "~/w", "tmux", "0", "h0", "ENC", "claude"), got)
+        }
+        db.query("PRAGMA table_info(hosts)").use { c ->
+            val names = generateSequence { if (c.moveToNext()) c.getString(c.getColumnIndexOrThrow("name")) else null }.toList()
+            assertTrue("「远端系统」那一格应已删掉：$names", "os" !in names)
+        }
+        db.query("SELECT label FROM identities WHERE id='k1'").use { c ->
+            assertTrue("身份（钥匙）应原样还在", c.moveToFirst())
+        }
+        db.query("SELECT `value` FROM settings WHERE `key`='last_host'").use { c ->
+            assertTrue(c.moveToFirst())
+            assertEquals("h1", c.getString(0))
+        }
+    }
+
+    /** 全链路 1→20 schema 校验（validateDroppedTables=true 严格比对导出 schema）；一路种过的旧默认键到头成了三组。 */
+    @Test
+    fun migrateAll1To20Validates() {
         helper.createDatabase(dbName, 1).close()
-        val db = helper.runMigrationsAndValidate(dbName, 19, true, *ALL_MIGRATIONS)
+        val db = helper.runMigrationsAndValidate(dbName, 20, true, *ALL_MIGRATIONS)
         db.query("SELECT name FROM key_groups ORDER BY sortOrder").use { c ->
             val names = generateSequence { if (c.moveToNext()) c.getString(0) else null }.toList()
             assertEquals(listOf("常用", "shell", "vim"), names)

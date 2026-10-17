@@ -33,7 +33,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -49,10 +48,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.Deploying
-import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.SessionDot
-import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
+import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
+import com.ccmonitor.mobile.core.claude.link.deployFix
 import com.ccmonitor.mobile.core.claude.link.wire.AgentFacts
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Endpoint
@@ -60,6 +58,7 @@ import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.parseAddressLine
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
+import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
 import com.ccmonitor.mobile.core.ui.feedback.clearOfNotice
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
@@ -73,9 +72,10 @@ import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import com.ccmonitor.mobile.ui.common.DeployStepLine
 import com.ccmonitor.mobile.ui.common.HostLink
+import com.ccmonitor.mobile.ui.common.MachineDot
 import com.ccmonitor.mobile.ui.common.StatusDot
 import com.ccmonitor.mobile.ui.common.deployLabel
-import com.ccmonitor.mobile.ui.common.rememberHostLink
+import com.ccmonitor.mobile.ui.common.rememberDeployPress
 import com.ccmonitor.mobile.ui.nav.settingsGroupScreenInsets
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
@@ -114,6 +114,7 @@ fun HostListScreen(
     val hosts by vm.hosts.collectAsState()
     val linkDots by vm.linkDots.collectAsState()
     val tokens = LocalAppTokens.current
+    val snackbar = LocalAppSnackbar.current
 
     // 按 groupId 分组：命名组按名排序在前，未分组的放最后。
     val groups = remember(hosts) { groupHosts(hosts) }
@@ -149,7 +150,10 @@ fun HostListScreen(
                                 onClick = { onConnect(host.id) },
                                 onFiles = { onFiles(host.id) },
                                 onEdit = { onEdit(host.id) },
-                                onDelete = { vm.deleteHost(host) },
+                                onDelete = {
+                                    vm.deleteHost(host)
+                                    snackbar.showUndo(copyText("machineList.remove.done", "machine" to host.label)) { vm.restoreHost(host) }
+                                },
                             )
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         }
@@ -280,17 +284,13 @@ private fun HostListActions(
 }
 
 /** 行首那颗点的读屏名：已连接 ⇒ 在线，连接失败 ⇒ 离线（与桌面机器页同一句）。 */
-private fun hostDotLabel(dot: SessionDot): String = if (dot == SessionDot.FAILED) copyText("machinePage.state.down") else copyText("machinePage.state.up")
-
-/** 主机删除确认文案：点明不可撤销，且不动远端数据。 */
-internal fun hostDeleteWarning(label: String): String =
-    copyText("mobHosts.delete.body", "label" to label)
+private fun hostDotLabel(dot: MachineDot): String = if (dot == MachineDot.FAILED) copyText("machinePage.state.down") else copyText("machinePage.state.up")
 
 @OptIn(ExperimentalFoundationApi::class) // combinedClickable：点行连接，长按 ＝ ⋯（手机的右键菜单）
 @Composable
 private fun HostRow(
     host: Host,
-    dot: SessionDot?,
+    dot: MachineDot?,
     onClick: () -> Unit,
     onFiles: () -> Unit,
     onEdit: () -> Unit,
@@ -326,7 +326,7 @@ private fun HostRow(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false),
                     )
-                    if (dot == SessionDot.FAILED) {
+                    if (dot == MachineDot.FAILED) {
                         Text(" · " + hostDotLabel(dot), style = MaterialTheme.typography.bodySmall, color = LocalAppTokens.current.errorText)
                     }
                 }
@@ -336,7 +336,7 @@ private fun HostRow(
     }
 }
 
-/** 一台的 ⋯：行尾「编辑 · 文件」收进这里，删除也在这里（撤不回 ⇒ 再弹确认框）。 */
+/** 一台的 ⋯：行尾「编辑 · 文件」收进这里，删除也在这里（只删本机这条配置、撤得回 ⇒ 不弹框，删后给撤销）。 */
 @Composable
 private fun HostRowMenu(
     host: Host,
@@ -345,32 +345,19 @@ private fun HostRowMenu(
     onDelete: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var confirming by remember { mutableStateOf(false) }
-    if (!confirming) {
-        ActionSheet(
-            title = host.label,
-            actions =
-                listOf(
-                    SheetAction(Ph.PencilSimple, copyText("mobHosts.row.edit"), onClick = onEdit),
-                    SheetAction(Ph.FolderSimple, copyText("mobHosts.row.files"), onClick = onFiles),
-                    SheetAction(Ph.Trash, copyText("mobHosts.delete.title"), danger = true, onClick = { confirming = true }),
-                ),
-            onDismiss = { if (!confirming) onDismiss() },
-        )
-    } else {
-        AlertDialog(
-            onDismissRequest = onDismiss,
-            title = { Text(copyText("mobHosts.delete.title")) },
-            text = { Text(hostDeleteWarning(host.label)) },
-            confirmButton = {
-                SecondaryButton(danger = true, onClick = {
+    ActionSheet(
+        title = host.label,
+        actions =
+            listOf(
+                SheetAction(Ph.PencilSimple, copyText("mobHosts.row.edit"), onClick = onEdit),
+                SheetAction(Ph.FolderSimple, copyText("mobHosts.row.files"), onClick = onFiles),
+                SheetAction(Ph.Trash, copyText("mobHosts.delete.title"), danger = true, onClick = {
                     onDismiss()
                     onDelete()
-                }) { Text(copyText("mobHosts.delete.ok")) }
-            },
-            dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
-        )
-    }
+                }),
+            ),
+        onDismiss = onDismiss,
+    )
 }
 
 private enum class HostEditLoad { Loading, Loaded, NotFound }
@@ -397,14 +384,13 @@ fun HostEditorScreen(
     var user by remember { mutableStateOf("") }
     var authRef by remember { mutableStateOf<String?>(null) }
     var authIsPassword by remember { mutableStateOf(false) } // 认证方式：钥匙 / 密码
-    var isWindows by remember { mutableStateOf(false) } // 远端 OS；Windows 走 PowerShell 方言，没有 tmux/Claude
     var password by remember { mutableStateOf("") } // 明文密码，保存时加密
     var extraAddresses by remember { mutableStateOf("") }
     var workingDir by remember { mutableStateOf("") }
     var useTmux by remember { mutableStateOf(false) }
     var autoReconnect by remember { mutableStateOf(true) }
     var group by remember { mutableStateOf("") }
-    // 这台起会话用哪一家：存线上 kind 原值（那台 `session-new-facts` 给的）；没选 ⇒ null。
+    // 这台起会话用哪一家：存线上 kind 原值（那台 `session-open-facts` 给的）；没选 ⇒ null。
     var agentKind by remember { mutableStateOf<String?>(null) }
     var proxyJumpHostId by remember { mutableStateOf<String?>(null) } // 经跳板机（另一台 Host 的 id）
     // 新建直接 Loaded；编辑先 Loading，载入后转 Loaded 或 NotFound（防首帧空表，也防查无时静默新建）。
@@ -424,7 +410,6 @@ fun HostEditorScreen(
                 user = h.username
                 authRef = h.authRef
                 authIsPassword = h.passwordEnc != null
-                isWindows = h.os.equals("windows", ignoreCase = true)
                 if (h.passwordEnc != null) password = vm.hostPassword(h) ?: "" // 回显解密后的密码
                 extraAddresses = h.extraAddresses ?: ""
                 workingDir = h.defaultWorkingDir ?: ""
@@ -469,16 +454,16 @@ fun HostEditorScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(if (hostId == null) copyText("mobHostEdit.page.newTitle") else copyText("mobHostEdit.page.editTitle"), style = MaterialTheme.typography.titleLarge)
-        OutlinedTextField(label, { label = it }, label = { Text(copyText("mobHostEdit.field.name")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(host, { host = it }, label = { Text(copyText("mobHostEdit.field.host")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(port, { v -> port = v.filter { it.isDigit() } }, label = { Text(copyText("mobHostEdit.field.port")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(user, { user = it }, label = { Text(copyText("mobHostEdit.field.user")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(label, { label = it }, label = { Text(copyText("machineForm.field.name")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(host, { host = it }, label = { Text(copyText("machineForm.field.host")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(port, { v -> port = v.filter { it.isDigit() } }, label = { Text(copyText("machineForm.field.port")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(user, { user = it }, label = { Text(copyText("machineForm.field.user")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
 
         // 多地址：每行一个 host / host:port / [IPv6]:port，连接时与主地址并发竞速，先连通者胜。
         OutlinedTextField(
             extraAddresses,
             { extraAddresses = it },
-            label = { Text(copyText("mobHostEdit.field.extra")) },
+            label = { Text(copyText("machineForm.field.addresses")) },
             placeholder = { Text("192.0.2.20\nwan.example.com:2222") },
             minLines = 2,
             modifier = Modifier.fillMaxWidth(),
@@ -500,32 +485,18 @@ fun HostEditorScreen(
             modifier = Modifier.fillMaxWidth(),
         )
         OutlinedTextField(group, { group = it }, label = { Text(copyText("mobHostEdit.field.group")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        // 起会话用哪一家：列那台能起的几家（`session-new-facts`，名字是那台写好的）；那台没连上 ⇒ 列不出，这一行不画。
+        // 起会话用哪一家：列那台能起的几家（`session-open-facts`，名字是那台写好的）；那台没连上 ⇒ 列不出，这一行不画。
         val agents = rememberAgentsOf(hostId)
         if (agents.isNotEmpty()) {
             Text(copyText("mobHostEdit.agent.title"), style = MaterialTheme.typography.labelMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                val picked = SessionNewFacts.pick(agents, agentKind)?.kind
+                val picked = SessionOpenFacts.pick(agents, agentKind)?.kind
                 agents.forEach { a -> ChoiceRow(a.text, a.kind == picked) { agentKind = a.kind } }
             }
         }
         // 开关即 useTmux；文案不说「连接」「tmux」。
         SwitchRow(copyText("mobHostEdit.switch.workspace"), useTmux) { useTmux = it }
         SwitchRow(copyText("mobHostEdit.switch.reconnect"), autoReconnect) { autoReconnect = it }
-
-        // 远端系统：POSIX（Linux/macOS，默认）或 Windows（PowerShell，没有 tmux）。
-        Text(copyText("mobHostEdit.os.title"), style = MaterialTheme.typography.labelMedium)
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            ChoiceRow("Linux/macOS", !isWindows) { isWindows = false }
-            ChoiceRow("Windows", isWindows) { isWindows = true }
-        }
-        if (isWindows) {
-            Text(
-                copyText("mobHostEdit.os.windowsHint"),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
 
         // 认证方式：钥匙或密码，二选一。
         Text(copyText("mobHostEdit.auth.title"), style = MaterialTheme.typography.labelMedium)
@@ -580,7 +551,6 @@ fun HostEditorScreen(
                             autoReconnect = autoReconnect,
                             groupId = group.trim().ifBlank { null },
                             proxyJumpHostId = proxyJumpHostId,
-                            os = if (isWindows) "windows" else null,
                             agentKind = agentKind,
                         )
                     // 密码模式加密进 passwordEnc；钥匙模式清空 passwordEnc（encryptPassword(_, null) 统一处理）。
@@ -602,7 +572,7 @@ private fun ProxyJumpPicker(
     selected: String?,
     onSelect: (String?) -> Unit,
 ) {
-    Text(copyText("mobHostEdit.jump.title"), style = MaterialTheme.typography.labelMedium)
+    Text(copyText("machineForm.field.jump"), style = MaterialTheme.typography.labelMedium)
     ChoiceRow(copyText("mobHostEdit.jump.none"), selected == null, Modifier.fillMaxWidth()) { onSelect(null) }
     candidates.forEach { j ->
         ChoiceRow("${j.label} (${j.host})", selected == j.id, Modifier.fillMaxWidth()) { onSelect(j.id) }
@@ -648,29 +618,20 @@ object HostEditTags {
     const val DEPLOY = "host-edit-deploy"
 }
 
-/**
- * 主机设置里那一行：标题 ＋ 一颗按钮（核心点名的那一种：安装 / 更新；没点名 ⇒ 核对版本）＋ 过程与结局（核心写好的话）。
- * 按下去才连那台（这一屏在就持有那条连接），连上就叫核心装；判定 · 做法 · 话都在核心，同对话屏问题条那几句。
- */
+/** 主机设置里那一行：标题 ＋ 一颗按钮（成品给的那一颗：安装 / 更新；没给 ⇒ 核对版本）＋ 过程与结局（核心写好的话）。 */
 @Composable
 private fun BackendRow(hostId: String) {
     val backends = koinInject<HostBackends>()
     val feed = remember(hostId) { backends.of(hostId) }
     val link by feed.state.collectAsState()
     val deploying by feed.deploying.collectAsState()
-    // 按过几下：按过一次起，这一屏在就持有那条连接（装到一半屏还在，连接不许随按钮放手）。
-    var presses by remember { mutableIntStateOf(0) }
-    var conn: HostLink? = null
-    if (presses > 0) {
-        val held by rememberHostLink(hostId, "deploy-$hostId")
-        conn = held
-        LaunchedEffect(held, presses) { if (held == HostLink.Ready) backends.deploy(hostId) }
-    }
-    val fix = (link as? LinkState.Down)?.fix ?: (link as? LinkState.Up)?.fix
+    val deploy = rememberDeployPress(hostId)
+    val conn = deploy.held
+    val fix = link.deployFix()
     val step = deploying as? Deploying.Step
     Text(copyText("mobHostEdit.backend.title"), style = MaterialTheme.typography.labelMedium)
     SecondaryButton(
-        onClick = { presses++ },
+        onClick = deploy.press,
         enabled = step == null && conn != HostLink.Connecting,
         modifier = Modifier.testTag(HostEditTags.DEPLOY),
     ) { Text(deployLabel(fix)) }
@@ -687,14 +648,14 @@ private fun BackendRow(hostId: String) {
     }
 }
 
-/** 那台能起的几家（`session-new-facts`）；还没存的新主机 · 那台没连上 · 问不到 ⇒ 空。 */
+/** 那台能起的几家（`session-open-facts`）；还没存的新主机 · 那台没连上 · 问不到 ⇒ 空。 */
 @Composable
 private fun rememberAgentsOf(hostId: String?): List<AgentFacts> {
     val backends = koinInject<HostBackends>()
     val got by androidx.compose.runtime.produceState(emptyList<AgentFacts>(), hostId) {
         if (hostId == null) return@produceState
-        val r = backends.of(hostId).call(SessionNewFacts.COMMAND, emptyMap(), AGENTS_MS)
-        value = (r as? Reply.Ok)?.let { SessionNewFacts.of(it.data)?.agents }.orEmpty()
+        val r = backends.of(hostId).call(SessionOpenFacts.COMMAND, emptyMap(), AGENTS_MS)
+        value = (r as? Reply.Ok)?.let { SessionOpenFacts.of(it.data)?.agents }.orEmpty()
     }
     return got
 }

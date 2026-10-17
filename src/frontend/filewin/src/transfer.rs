@@ -104,6 +104,7 @@ impl Pending {
             },
             chunks: chunked.map(|c| c.0),
             bytes: chunked.map(|c| c.1),
+            single: Some(true),
         }
     }
 
@@ -111,10 +112,7 @@ impl Pending {
     pub fn path_wire(&self) -> cmd_wire::files::WirePath {
         match &self.remote_dir_raw {
             Some(b) => {
-                let mut v = b.clone();
-                v.push(b'/');
-                v.extend_from_slice(self.name.as_bytes());
-                cmd_wire::files::WirePath(v)
+                cmd_wire::files::WirePath(super::source::child_bytes(b, self.name.as_bytes()))
             }
             None => cmd_wire::files::WirePath::from(self.remote_path.as_str()),
         }
@@ -125,10 +123,8 @@ impl Pending {
         let mut p = self;
         if let Some(n) = &it.new_name {
             let name = String::from_utf8_lossy(n.bytes()).into_owned();
-            p.remote_path = format!(
-                "{}/{name}",
-                super::source::parent_dir(&p.remote_path).trim_end_matches('/')
-            );
+            p.remote_path =
+                super::source::child_of(&super::source::parent_dir(&p.remote_path), &name);
             p.name = name;
         }
         p.overwrite = it.overwrite;
@@ -137,17 +133,15 @@ impl Pending {
 
     /// 「把本机这个文件放到远端这个目录里」。
     ///
-    /// ⚠ 远端路径**恒用 `/`** 拼（同 [`super::source::parent_dir`] 那条理由）。
     /// 拿不到 basename（比如 `/` 或空串）⇒ `None`，**不编一个名字出来**。
     pub fn into_remote_dir(local_path: &str, remote_dir: &str) -> Option<Self> {
         let name = std::path::Path::new(local_path)
             .file_name()
             .map(|s| s.to_string_lossy().to_string())
             .filter(|s| !s.is_empty())?;
-        let base = remote_dir.trim_end_matches('/');
         Some(Self {
             local_path: local_path.to_string(),
-            remote_path: format!("{base}/{name}"),
+            remote_path: super::source::child_of(remote_dir, &name),
             name,
             overwrite: false,
             remote_dir_raw: None,
@@ -269,7 +263,7 @@ pub async fn open_group(
             Ok(o) => Opened::Items(o.items),
             Err(e) => Opened::Failed(super::source::Failed {
                 code: None,
-                said: copy_text("rsFilewinSource.said.badReply", &[]),
+                said: copy_text("reason.content.unparsable", &[]),
                 detail: e.to_string(),
             }),
         },
@@ -307,7 +301,7 @@ where
 /// 「取消了 3 件」与「传完了 3 件」分不开（`ok` 与 `skipped` 都装不下它），
 /// 而那正是这一格要买的读数。
 pub static CANCELLED: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinTransfer.cancelled.message", &[]));
+    std::sync::LazyLock::new(|| copy_text("reason.op.cancelled", &[]));
 
 /// 界面上那颗取消按钮的字面。**唯一住址**（判据按同一个常量去找它画出来的字）。
 ///
@@ -537,7 +531,7 @@ async fn reopen(
     match super::source::opened_one(opened)? {
         (id, Some(key)) => Ok((id, key)),
         (_, None) => Err(super::source::Failed::local(copy_text(
-            "rsFilewinSource.said.badReply",
+            "reason.content.unparsable",
             &[],
         ))),
     }

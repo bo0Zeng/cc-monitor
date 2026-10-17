@@ -1,7 +1,7 @@
 //! **中转看见的请求标记**：每个会话（中转的流标签 ＝ 会话 id）的请求里，名单上那几项（如扩展上下文那一项）带没带过。
 //!
 //! 写的一侧是中转的 tap 口（`stream::tap::TapHub::note_marks`，每发请求一次）；读的一侧是会话事实定上下文上限
-//! （`facts_query::context_limit` 的 `relay` 那一档）。只在本进程内存里，随进程生灭；中转没看见过的会话 ⇒ 说不出（`None`）。
+//! （`recognize::facts::context_limit` 的 `relay` 那一档）。只在本进程内存里，随进程生灭；中转没看见过的会话 ⇒ 说不出（`None`）。
 //! 只记布尔，不记头的值。
 
 use std::collections::{HashMap, VecDeque};

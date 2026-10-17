@@ -90,6 +90,17 @@ export class RecordTimeline {
     if (idx >= 0) this.entries.splice(idx, 1);
   }
 
+  /** seq ∈ `[lo, hi)` 的条目（升序）。 */
+  between(lo: number, hi: number): readonly TimelineEntry[] {
+    return this.entries.slice(this.binarySearchInsertIdx(lo), this.binarySearchInsertIdx(hi));
+  }
+
+  /** seq ∈ `[lo, hi)` 的条目出账、交回（元素由调用方摘）。 */
+  removeBetween(lo: number, hi: number): TimelineEntry[] {
+    const i = this.binarySearchInsertIdx(lo);
+    return this.entries.splice(i, this.binarySearchInsertIdx(hi) - i);
+  }
+
   /** Tab 关闭 / SessionViewer dispose 时调，断 GC 引用 */
   dispose(): void {
     this.entries = [];

@@ -5,7 +5,7 @@
 //! - 谁写：只有本模块的 [`answer_set`]，它只从 `stream/inbound/` 那一条登记进来（帧面 `exit-policy-set` ＋ 派生的 CLI 面）；
 //!   前端从不碰这个文件 ⇒ 单写者，「读—改—写整份」拿陈旧副本盖掉别人那一形在构造上不存在。
 //! - 什么时候读：决定那一刻现读（[`read_now`]），不缓存。本模块生产段一个 `static` / `OnceLock` / `Mutex` 都没有
-//!   （`tests::the_decision_path_has_exactly_the_registered_cache_points` 按相等钉那个 0）。
+//!   （`tests::the_decision_path_has_no_cache_point` 钉那个 0，带正控）。
 //! - 读不出来：按缺省（[`DEFAULT_KILL_ON_EXIT`] = 不结束）办，并且说出口 —— [`Read::Unreadable`] 与 [`Read::Absent`]（没人选过）
 //!   是两个状态，线上也分开报（`state` 一格）。
 //! - 没有「归零后再等一会儿」：那是一个会自己醒来的构件，后端零定时器（`no_timer_guard`）不放行；归零即现读即决定。
@@ -147,9 +147,9 @@ fn write_at(own: &Own, kill: bool) -> Result<(), crate::common::said::Said> {
     own.ensure_dir(&dir).map_err(|e| {
         crate::common::said::Said::with_raw(
             copy_text(
-                "beExitPolicy.writeAt.mkdirFailed",
+                "reason.fs.writeFailed",
                 &[
-                    ("dir", &(dir.as_path().display()).to_string()),
+                    ("path", &(dir.as_path().display()).to_string()),
                     ("why", &copy_core::io_reason(e.kind())),
                 ],
             ),

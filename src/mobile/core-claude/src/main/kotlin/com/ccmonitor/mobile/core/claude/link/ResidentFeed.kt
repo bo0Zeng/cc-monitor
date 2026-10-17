@@ -1,5 +1,7 @@
 package com.ccmonitor.mobile.core.claude.link
 
+import com.ccmonitor.mobile.core.claude.link.wire.MachineState
+import com.ccmonitor.mobile.core.claude.link.wire.Wire
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.BufferOverflow
@@ -20,7 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 嵌的 Rust 核心里那一台常驻流的几个口（`Core.resident*`，手写 JNI、走消息）。生产上直通 JNI；JVM 单测给假的。
- * 交回来的事经 [open] 时给的 `events` 回（`state` · `frame` · `watch_from` · `ssh` · `reply` · `deploy`）。
+ * 交回来的事经 [open] 时给的 `events` 回（`state` · `frame` · `unread` · `watch_from` · `ssh` · `reply` · `moved` · `deploy`）。
  */
 interface ResidentCore {
     fun open(
@@ -53,6 +55,23 @@ interface ResidentCore {
         retry: Boolean,
     )
 
+    /** 分块传那一半（文件描述符交给核心）：回问答编号，走到哪经 `moved`、结局经 `reply`；这台不在 ⇒ 0。 */
+    fun stage(
+        handle: Long,
+        fd: Int,
+        name: String,
+        withinMs: Long,
+    ): Long
+
+    /** 下载那一半（[args] 是 `{path}`）：同 [stage]。 */
+    fun pull(
+        handle: Long,
+        fd: Int,
+        args: String,
+        shown: String,
+        withinMs: Long,
+    ): Long
+
     /** 给那台装 / 更新后端（[slots] = 包里那几格解到的文件，JSON）；事经 `deploy` 那一种交回。那台不在 · 正在装 ⇒ `false`。 */
     fun deploy(
         handle: Long,
@@ -66,7 +85,6 @@ interface ResidentCore {
  *
  * - [ssh] 是这台的拨号请求（JSON，不带用法；`null` ＝ 没连上过 · 已断开）：按值比，变了才交给核心（它照新的重拨）。
  *   这条流就是手机上唯一那条重连循环：池里那条死了它在核心里自己拨一条新的，SSH 那层跟着它的 [state] 换连接。
- * - 丢了会话帧（[SessionTable.needsResync]）⇒ 叫核心整份重来。
  * - 退避的数（2 → 30 s，活过 30 s 才清零）只在核心里，这里一个都不写。
  */
 class ResidentFeed(
@@ -129,6 +147,9 @@ class ResidentFeed(
     private val opened = CompletableDeferred<Long>()
     private val replies = ConcurrentHashMap<Long, CompletableDeferred<Reply>>()
 
+    /** 在走的分块传：问答编号 ⇒ 报走到哪的那一口。 */
+    private val moving = ConcurrentHashMap<Long, (Long, Long) -> Unit>()
+
     /** 核心交回来的事按到达顺序在这里排队、在 [scope] 里一件一件落（核心的工作线程上不等任何人）。 */
     private val inbox = Channel<Pair<String, String>>(Channel.UNLIMITED)
 
@@ -185,6 +206,31 @@ class ResidentFeed(
         return (withTimeoutOrNull(withinMs + REPLY_GRACE_MS) { slot.await() } ?: Reply.LinkDown).also { replies.remove(id) }
     }
 
+    /** 结局由核心交：每一块都有期限，最后必回一句 ⇒ 这里不另设整趟的期限（大文件要多久就多久）。 */
+    override suspend fun transfer(
+        how: Transfer,
+        fd: () -> Int,
+        withinMs: Long,
+        moved: (Long, Long) -> Unit,
+    ): Reply {
+        ensure()
+        val h = withTimeoutOrNull(withinMs) { opened.await() } ?: return Reply.LinkDown
+        val id =
+            when (how) {
+                is Transfer.Stage -> core.stage(h, fd(), how.name, withinMs)
+                is Transfer.Pull -> core.pull(h, fd(), Json.args(mapOf("path" to how.path.wire)), how.shown, withinMs)
+            }
+        if (id == 0L) return Reply.LinkDown
+        moving[id] = moved
+        val slot = replies.computeIfAbsent(id) { CompletableDeferred() }
+        return try {
+            slot.await()
+        } finally {
+            replies -= id
+            moving -= id
+        }
+    }
+
     override fun hold(sid: String): AutoCloseable {
         ensure()
         scope.launch { core.watch(opened.await(), sid, true) }
@@ -207,16 +253,21 @@ class ResidentFeed(
         when (kind) {
             "state" -> Json.obj(body)?.let(::onState) ?: broke(kind, body)
             "frame" -> Json.obj(body)?.let { onFrame(it) } ?: broke(kind, body)
-            "watch_from" -> watchFromOf(body)?.forEach { fromFlow.tryEmit(it) } ?: broke(kind, body)
+            // 核心按 `cmd-wire` 那一份类型解不开的一帧（两端版本对不上），原样那一行。
+            "unread" -> broke("frame", body)
+            "watch_from" -> onWatchFrom(body)
             "ssh" -> sshFlow.value = body == "true"
             "reply" -> onReply(body)
+            "moved" -> onMoved(body)
             "deploy" -> onDeployLine(body)
             else -> broke(kind, body)
         }
     }
 
+    /** `state` 那一行：通没通（`state` · `epoch`）＋ 那台的状态成品（`machine`，按线上类型装）。 */
     private fun onState(m: Map<String, Any?>) {
-        val said = { key: String -> m.obj(key)?.let { Said(it.str("text").orEmpty(), it.str("detail").orEmpty()) } }
+        val machine = Wire.bind<MachineState>(m["machine"]) ?: return broke("state", m.toString())
+        val said = Said(machine.said, machine.detail.orEmpty())
         when (m.str("state")) {
             "connecting" -> {
                 tableFlow.value = SessionTable()
@@ -225,9 +276,9 @@ class ResidentFeed(
             "up" -> {
                 val e = m.num("epoch") ?: 0L
                 if (e != epochFlow.value) epochFlow.value = e
-                stateFlow.value = LinkState.Up(said("notice"), Fix.of(m.str("fix")))
+                stateFlow.value = LinkState.Up(said.takeIf { it.text.isNotEmpty() }, machine.fixes)
             }
-            "down" -> stateFlow.value = LinkState.Down(said("problem") ?: Said("", ""), m.bool("needs_hand") == true, Fix.of(m.str("fix")))
+            "down" -> stateFlow.value = LinkState.Down(said, machine.fixes)
             else -> broke("state", m.toString())
         }
         // 「装好了」那一句只留到下一次出事（断了 · 又说要更新）；没装上那一句留着，等下一趟。
@@ -243,7 +294,6 @@ class ResidentFeed(
         if (frame.str("kind") == LiveFrame.KIND) LiveFrame.of(frame)?.let(liveFlow::tryEmit) ?: broke("frame", frame.toString())
         // 满了就在这里等（停收），不丢行。
         RecordLine.of(frame)?.let { lineFlow.emit(it) }
-        if (next.needsResync) reconnect()
     }
 
     /** `deploy` 那一行落进 [deploying]；认不出 ⇒ 报一次契约对不上、不动。 */
@@ -260,6 +310,17 @@ class ResidentFeed(
             m.str("failed") != null -> Deploying.Failed(Said(text, m.str("detail").orEmpty()))
             else -> null
         }
+    }
+
+    /** `moved {call, done, total}`：交给在等那一趟的那一口（总数不知道 ⇒ `-1`）。 */
+    private fun onWatchFrom(body: String) {
+        watchFromOf(body)?.forEach { fromFlow.tryEmit(it) } ?: broke("watch_from", body)
+    }
+
+    private fun onMoved(body: String) {
+        val m = Json.obj(body) ?: return broke("moved", body)
+        val id = m.num("call") ?: return broke("moved", body)
+        moving[id]?.invoke(m.num("done") ?: 0L, m.num("total") ?: -1L)
     }
 
     private fun onReply(body: String) {

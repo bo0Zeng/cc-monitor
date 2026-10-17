@@ -50,7 +50,6 @@ pub(crate) fn settings_may_set_base_url(
 /// 各号的设置文件都链回这一份 ⇒ 写进去对这台所有号同时生效；它**压过**进程环境（见 [`settings_may_set_base_url`]）。
 pub(crate) const SETTINGS_ENV: super::super::SettingsEnvFace = super::super::SettingsEnvFace {
     read: read_settings_base_url,
-    snippet: settings_env_snippet,
     merge: settings_env_merge,
     slot: "env",
 };
@@ -101,12 +100,6 @@ fn settings_base_url(raw: &str) -> super::super::SettingsBaseUrl {
         },
         Some(_) => bad(),
     }
-}
-
-/// 要合并进那份文件的那一段：`{"env": {"ANTHROPIC_BASE_URL": "<地址>"}}`（两格缩进）。
-fn settings_env_snippet(url: &str) -> String {
-    let v = serde_json::json!({ "env": { BASE_URL_ENV: url } });
-    serde_json::to_string_pretty(&v).unwrap_or_default()
 }
 
 /// 那份设置文件现在的内容 ＋ 地址 ⇒ 合好的整份：`env.ANTHROPIC_BASE_URL` 就地设上，别的原样（JSON 就地改法住 `common::json_patch`，与足迹「待办」同一份）。

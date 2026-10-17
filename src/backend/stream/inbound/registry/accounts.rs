@@ -36,10 +36,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationStrategyRename>("给策略改名"),
     crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationStrategyDelete>("删一份策略"),
     crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationStrategyTz>("给策略设时区"),
-    // 算术 —— 24 小时条上拖出一段（分段的算术，不是换号的想法）。
-    crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationDayPaint>(
-        "在 24 小时条上刷一段",
-    ),
     // **上游选择**那份凭据文件在**这台机器上**的读写口 —— 上游选择自己的状态，
     //   不是用户文件（判清全文）⇒ 写经 `Own`（启动时造、经分派递进来），
     //   **只从这里一扇门进来**。远端账号页配的 key 从此落在会话跑的那台机器上。

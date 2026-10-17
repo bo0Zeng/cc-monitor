@@ -11,67 +11,32 @@ fn row(name: &str, is_dir: bool, lossy: bool) -> Row {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 名字：**只在同一个目录里改名**
+// 「复制为」：根 ＝ 当前目录，源 ＝ 那一行的名字，目标 ＝ 框里的名字原样（那台判）
 // ════════════════════════════════════════════════════════════════════════
 
+/// 线上那一条逐字（期望手写）：名字去两头空白、别的一个字不改（带 `/` 的也原样交出去），带 `single: true`。
 #[test]
-fn a_copy_job_is_a_rename_inside_the_same_directory() {
-    let got = CopyJob::beside("/srv/data/big.bin", "/srv/data", "big.bin.copy").unwrap();
-    assert_eq!(got.to, "/srv/data/big.bin.copy");
-    assert_eq!(got.name, "big.bin.copy");
-    assert_eq!(got.from, "/srv/data/big.bin");
-    // 目录结尾已经有斜杠也不许拼出 `//`。
-    assert_eq!(
-        CopyJob::beside("/srv/data/big.bin", "/srv/data/", "x")
-            .unwrap()
-            .to,
-        "/srv/data/x"
-    );
-    // 根目录。
-    assert_eq!(CopyJob::beside("/big.bin", "/", "x").unwrap().to, "/x");
-    // 前后空白剪掉（框里很容易多敲一个空格）。
-    assert_eq!(
-        CopyJob::beside("/srv/a", "/srv", "  b  ").unwrap().name,
-        "b"
-    );
-
-    // 三档 `None`，**一个都不许兜底**：
-    assert!(
-        CopyJob::beside("/srv/a", "/srv", "   ").is_none(),
-        "空名字过了"
-    );
-    assert!(
-        CopyJob::beside("/srv/a", "/srv", "../../etc/x").is_none(),
-        "名字里带 `/` 过了 —— 那会把文件放到他没在看的目录里"
-    );
-    assert!(
-        CopyJob::beside("/srv/a", "/srv", "a").is_none(),
-        "复制成自己过了 —— 覆盖那一形是拿一份复制品顶掉目标，这里就是顶掉源自己"
-    );
-}
-
-/// 缺省名与旧面板同一套（`panel.ts::copyFile` 的 `${e.name}.copy`）。
-#[test]
-fn the_suggested_name_matches_the_old_panel() {
+fn the_copy_box_sends_the_typed_name_as_is_with_single() {
     assert_eq!(CopyPrompt::suggest("big.bin"), "big.bin.copy");
-    let p = CopyPrompt::for_row("/srv/data", &row("big.bin", false, false));
+    let mut p = CopyPrompt::for_row("/srv/data", &row("big.bin", false, false));
     assert_eq!(p.from, "/srv/data/big.bin");
-    assert_eq!(p.dir, "/srv/data");
     assert_eq!(p.new_name, "big.bin.copy");
-    assert_eq!(p.to_job().unwrap().to, "/srv/data/big.bin.copy");
-}
-
-/// 能复制的是「名字寻址得到」的那一档 —— 文件与**目录**都行（目录经后端 `recursive: true` 复制整棵，
-/// 要求：「复制目录」· `§7 #6`）。**相等断言，逐档。**
-#[test]
-fn files_and_directories_with_addressable_names_can_be_copied() {
-    assert!(is_copyable(&row("big.bin", false, false)));
-    assert!(
-        is_copyable(&row("adir", true, false)),
-        "目录复制不了 —— 后端 `files-copy` 已经收 `recursive: true`"
+    let wire = |p: &CopyPrompt| serde_json::to_value(p.to_req()).unwrap();
+    assert_eq!(
+        wire(&p),
+        serde_json::json!({ "root": "/srv/data", "items": [{ "from": "big.bin", "to": "big.bin.copy" }], "single": true })
     );
-    assert!(
-        !is_copyable(&row("\u{FFFD}odd", false, true)),
-        "有损名能复制 —— 那个名字寻址不到真字节，写操作一律灰置"
+    p.new_name = "  ../x  ".into();
+    assert_eq!(
+        wire(&p),
+        serde_json::json!({ "root": "/srv/data", "items": [{ "from": "big.bin", "to": "../x" }], "single": true })
+    );
+    // 有损名：根与源按字节发。
+    p.dir_raw = Some(b"/srv/d\xe9".to_vec());
+    p.from_raw = Some(b"/srv/d\xe9/b\xe9".to_vec());
+    p.new_name = "c".into();
+    assert_eq!(
+        wire(&p),
+        serde_json::json!({ "root": { "b16": "2f7372762f64e9" }, "items": [{ "from": { "b16": "62e9" }, "to": "c" }], "single": true })
     );
 }

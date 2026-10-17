@@ -21,7 +21,7 @@ pub(crate) fn local_line() -> String {
     let build = crate::byte_table::my_backend_id().unwrap_or("-");
     format!(
         "cc-monitor {} ({build}) · {} {}",
-        crate::machine_state::PRODUCT_VERSION,
+        crate::PRODUCT_VERSION,
         os_word(host_core::OS),
         host_core::ARCH
     )
@@ -122,6 +122,21 @@ impl Said {
 }
 
 impl Said {
+    /// 文案表里的那一句（没有下层原话；有的走 [`Said::with_raw`]）。壳的句子只经这里与几个带原话的构造出来，没有从任意 `String` 来的那一口。
+    pub(crate) fn of(key: &str, args: &[(&str, &str)]) -> Said {
+        Said::written(copy_text(key, args))
+    }
+
+    /// 别处已经写好的那一句（共享 crate 从同一张表取的 · 后端答复里的 `message`）原样交出去；壳自己出句走 [`Said::of`]。
+    pub(crate) fn written(said: String) -> Said {
+        Said::of_parts(
+            said,
+            Detail::new()
+                .item(Label::At, now())
+                .item(Label::Local, local_line()),
+        )
+    }
+
     /// 一句话 ＋ 命令名 ＋ 下层原话（可缺）。
     pub fn new(said: impl Into<String>, command: &str, raw: Option<&str>) -> Said {
         Said::coded(said, command, None, raw)
@@ -258,38 +273,12 @@ impl Said {
         }
         Said::of_parts(self.said, self.parts.insert(label, value))
     }
-
-    /// 详情里补「对象」那一项（只收标识，[`copy_core::detail::Target`]）。已有 · 那份里有读不出项名的一块 ⇒ 原样。
-    pub(crate) fn with_target(self, t: copy_core::detail::Target<'_>) -> Said {
-        if self.parts.has_block() || self.parts.has(Label::Target) {
-            return self;
-        }
-        Said::of_parts(self.said, self.parts.target(t))
-    }
 }
 
 impl std::fmt::Display for Said {
     /// 只出那一句（详情不跟着进任何拼出来的句子 · 日志里要原话的另取 [`Said::raw`]）。
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.said)
-    }
-}
-
-/// 壳命令里那句话（`?` 与 `.into()` 经这里）：详情带时刻与本机。
-impl From<String> for Said {
-    fn from(said: String) -> Said {
-        Said::of_parts(
-            said,
-            Detail::new()
-                .item(Label::At, now())
-                .item(Label::Local, local_line()),
-        )
-    }
-}
-
-impl From<&str> for Said {
-    fn from(said: &str) -> Said {
-        Said::from(said.to_string())
     }
 }
 

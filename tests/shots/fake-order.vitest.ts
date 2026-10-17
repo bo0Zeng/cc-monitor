@@ -47,6 +47,7 @@ describe("假适配层交给无头壳的订阅：无头壳收下了才算成", (
   for (const [cmd, args, url] of [
     ["chan_subscribe", { id: 7, origin: "<local>", kind: "session-lines", want: 10 }, "/__ccm/sub"],
     ["watch_sessions", { sessions: [] }, "/__ccm/watch"],
+    ["kept_sessions", { sessions: [] }, "/__ccm/kept"],
   ] as const) {
     it(`${cmd}：那一问答了之前不回`, async () => {
       const { asked, backend } = rig();

@@ -2,7 +2,7 @@
 //!
 //! monitor（宿主那一侧）与文件窗口进程（外部前端）链同一份：
 //! - [`origin`]：「这一趟问的是哪台机器」的唯一类型；
-//! - [`chan`]：通道的线上词汇与帧（`wire`）· 客户端（`client`）· 路由器（`router`）；
+//! - [`chan`]：通道的线上词汇与帧（`wire`）· 客户端（`client`）· 路由器（`router`）· 没成时那一句（`said`）；
 //! - [`backend_route`]：问后端失败了怎么分流（`CallError` 那一套词）；
 //! - [`ssh_link`]：拨号应答的读法（SSH 链路那一段）。
 //!
@@ -17,6 +17,7 @@ pub mod ssh_link;
 pub mod chan {
     pub mod client;
     pub mod router;
+    pub mod said;
     pub mod wire;
 }
 

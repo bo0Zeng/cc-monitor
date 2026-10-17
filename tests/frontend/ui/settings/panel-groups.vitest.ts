@@ -7,7 +7,7 @@
 // 那四个组名随之消失 —— 所以这里是**跟着功能改**，不是把碍事的断言删掉。
 // 新断言比旧的更强：旧的只点名 4 个组 + 抽查几个子分节；新的是**逐页的完整清单**
 // ——少一块、多一块、搬错页，三种都红。
-import { getCurrentMachine } from "../../../../src/frontend/ui/settings/machine-context";
+import { getCurrentMachine } from "../../../../src/frontend/ui/machine-context";
 import { describe, it, expect, vi } from "vitest";
 
 // refresh spy 守 F82b 段移动没丢 this.remoteSection/this.dataSection 字段（丢了 open() 的
@@ -32,7 +32,7 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
   // `pages.addMachinePage` 注册本机页，panel 靠那一刻把 per-machine 分节安顿下来。
   // stub 不调的话，那几块就永远游离在文档之外，测试会以为它们「消失了」。
   MACHINE_PAGE_PREFIX: "machine:",
-  LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
+  LOCAL_MACHINE_PAGE_ID: "machine:<local>",
   RemoteSection: class {
     headActions = (): HTMLElement[] => [];
     menuFor = (): unknown[] => [];
@@ -59,7 +59,7 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
       // 「应用/机器/…」前面成为第一页，落地页与导航顺序就都错了。
       setTimeout(() => {
         const page = document.createElement("div");
-        opts?.pages?.addMachinePage("machine:（本机）", "本机", page);
+        opts?.pages?.addMachinePage("machine:<local>", "本机", page);
         // 再注册一台**远端**机器页，带 parts —— 只有带 parts 的页才会被拆成四栏。
         const conn = document.createElement("div");
         conn.textContent = "CONN";
@@ -164,6 +164,7 @@ import { SETTINGS_GO_EVENT } from "../../../../src/frontend/ui/settings/events";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { beforeEach, afterEach } from "vitest";
 import { factsOn } from "../../../test-support/host-facts";
+import { nonEmpty } from "../../../test-support/non-empty";
 
 // S9：jsdom 的 UA 含 `linux` ⇒ 不置覆盖值，本文件整套跑的就是「非 Windows」那条分支，
 // 而下面这些断言本来是照 Windows 形态写的。
@@ -238,7 +239,7 @@ describe("S2 设置面板分页结构", () => {
     // 顶层「改动足迹」删掉之后，漂移记账那一块并进**每台机器子页的「足迹」栏**（见下面本机页那张表）。
     expect(pageTitles("machines")).toEqual([]);
     // 它们跟着「当前在看哪台机器」走；初始落在本机页上（与 machine-context 的初始值对齐）。
-    expect(pageTitles("machine:（本机）")).toEqual([
+    expect(pageTitles("machine:<local>")).toEqual([
       copyText("machinePage.tab.accounts"),
       // 策略文件按机器存：「轮换」栏那一块（第五版）。
       copyText("machinePage.tab.rot"),
@@ -292,9 +293,9 @@ describe("S2 设置面板分页结构", () => {
     expect(app, "「通用」页不在 —— 这条断言量错了地方").toBeTruthy();
     expect(app!.querySelector(".ccm-acct-alias, .ccm-alias-gen, .machine-aliases")).toBeNull();
     const local = document.querySelector<HTMLElement>(
-      '.settings-page[data-route-id="machine:（本机）"]',
+      '.settings-page[data-route-id="machine:<local>"]',
     );
-    document.getElementById("settings-tab-machine:（本机）#config")!.click();
+    document.getElementById("settings-tab-machine:<local>#config")!.click();
     const block = local!.querySelector<HTMLElement>(".machine-aliases");
     expect(block, "本机页上找不到「别名」那一块").toBeTruthy();
     // ⚠ 「在 DOM 里」不等于「看得见」：per-machine 那几块是**单例 ＋ 按页 hidden**，
@@ -309,7 +310,7 @@ describe("S2 设置面板分页结构", () => {
     new SettingsPanel({ windowMode: true });
     await tick();
     const page = document.querySelector<HTMLElement>(
-      '.settings-page[data-route-id="machine:（本机）"]',
+      '.settings-page[data-route-id="machine:<local>"]',
     );
     expect(page!.querySelector(".accounts-section-stub")).toBeTruthy();
     // F82b 那个「留空占位」组已随 S2 一并消失（它的说明文案也删了，见 panel.ts 注释）。
@@ -367,7 +368,7 @@ describe("S2 设置面板分页结构", () => {
     new SettingsPanel({ windowMode: true });
     await tick();
     const local = document.querySelector<HTMLElement>(
-      '.settings-page[data-route-id="machine:（本机）"]',
+      '.settings-page[data-route-id="machine:<local>"]',
     )!;
     const visibleTitles = [...local.querySelectorAll<HTMLElement>(".settings-group")]
       .filter((g) => !g.hidden)
@@ -443,9 +444,9 @@ describe("S2 设置面板分页结构", () => {
     await tick();
     const tabsOf = (id: string) =>
       [...document.querySelectorAll(`.settings-page[data-route-id="${id}"] .settings-shell-h > .settings-nav .settings-nav-item`)].map((b) => b.textContent);
-    expect(tabsOf("machine:（本机）")).toEqual([copyText("machinePage.tab.accounts"), copyText("machinePage.tab.rot"), copyText("machinePage.tab.config")]);
+    expect(tabsOf("machine:<local>")).toEqual([copyText("machinePage.tab.accounts"), copyText("machinePage.tab.rot"), copyText("machinePage.tab.config")]);
     expect(tabsOf("machine:devbox")).toEqual([copyText("machinePage.tab.accounts"), copyText("machinePage.tab.rot"), copyText("machinePage.tab.config")]);
-    const local = document.querySelector<HTMLElement>('.settings-page[data-route-id="machine:（本机）"]')!;
+    const local = document.querySelector<HTMLElement>('.settings-page[data-route-id="machine:<local>"]')!;
     const remote = document.querySelector<HTMLElement>('.settings-page[data-route-id="machine:devbox"]')!;
     expect(local.querySelector(".machine-conn"), "本机没有连接设置").toBeNull();
     const conn = remote.querySelector<HTMLElement>(".machine-conn")!;
@@ -505,12 +506,12 @@ describe("S2 设置面板分页结构", () => {
     expect(term.querySelector("details.relay-optin")).toBeNull();
     expect(tabPage("acct").querySelector("details.relay-optin")).toBeNull();
     // 本机那一格：「终端」里也有「别名」—— 两边同一个位置。
-    document.querySelector<HTMLButtonElement>("#settings-tab-machine\\:（本机）")!.click();
+    document.querySelector<HTMLButtonElement>('[id="settings-tab-machine:<local>"]')!.click();
     const localTitles = [
-      ...document.querySelectorAll('.settings-page[data-route-id="machine:（本机）"] .settings-group-title'),
+      ...document.querySelectorAll('.settings-page[data-route-id="machine:<local>"] .settings-group-title'),
     ].map((e) => e.textContent);
     expect(localTitles).toContain(copyText("settingsPanel.group.aliases"));
-    expect(document.querySelector('.settings-page[data-route-id="machine:（本机）"] details.relay-optin')).toBeNull();
+    expect(document.querySelector('.settings-page[data-route-id="machine:<local>"] details.relay-optin')).toBeNull();
   });
 
   it("★ S7：没有待生效改动时，重启条不出现（恒显示的警告 = 背景噪音）", async () => {
@@ -547,7 +548,7 @@ describe("S9 本机 OS 门（〔AL1c〕别名那一块的平台）", () => {
   /** 本机页「别名」那一块（`buildAliasManager` 的根）。 */
   function aliasBlock(): HTMLElement {
     const page = document.querySelector<HTMLElement>(
-      '.settings-page[data-route-id="machine:（本机）"]',
+      '.settings-page[data-route-id="machine:<local>"]',
     );
     if (!page) throw new Error("本机页不在");
     const b = page.querySelector<HTMLElement>(".machine-aliases");
@@ -558,7 +559,7 @@ describe("S9 本机 OS 门（〔AL1c〕别名那一块的平台）", () => {
   /** 本机页上任何一块叫「终端集成」的（并进去之后一块都不该有）。 */
   function terminalBlocks(): number {
     const page = document.querySelector<HTMLElement>(
-      '.settings-page[data-route-id="machine:（本机）"]',
+      '.settings-page[data-route-id="machine:<local>"]',
     )!;
     return [...page.querySelectorAll(".settings-group-title")].filter(
       (t) => t.textContent === "终端集成",
@@ -688,7 +689,7 @@ describe("外观页每项后面那颗「恢复默认」是纯图标按钮", () =
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
     const btns = [...document.querySelectorAll<HTMLButtonElement>(".settings-field-reset")];
-    expect(btns.length, "一颗都没找到 —— 下面是空真").toBeGreaterThan(0);
+    nonEmpty(btns);
     for (const b of btns) {
       const label = b.closest(".settings-row")?.querySelector(".settings-label")?.textContent ?? "";
       expect(b.textContent).toBe("");

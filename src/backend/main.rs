@@ -98,7 +98,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 async fn main() {
     // 帧里的小成品（`changed.body`）照主题表现算：装进发端调的那一层（理由住 `stream/topic_body.rs` 头注）。
     topic_hook::install(topic_body::body_now);
-    // 拨号核心（`ssh-dial`，手机同一份）装上本后端那一套：钥匙文件 · known_hosts · 本机 agent · 详情事实 · 部署那两处写根。
+    // 拨号核心（`ssh-dial`，手机同一份）装上本后端那一套：钥匙文件 · known_hosts · 本机 agent · 详情事实 · 部署那一处写根。
     dial::host();
     // ★★ `K-R48`（09-11）：**当 `ccm` 用的那一趟，在这里就整条分出去。**
     //
@@ -120,8 +120,10 @@ async fn main() {
     let own = cc_monitor_backend::platform::Own::issue();
     // 握手认下的主机钥匙记进 cc-monitor 那份 known_hosts：哪条拨号路上都可能发生 ⇒ 这里装一次那只只会记钥匙的手。
     dial::install_known_hosts(&own);
-    // 冷开扫描图（全进程一份）的骨架落在数据目录底下：这里装一次那个家（预读那一路由 watcher 自己带着同一个写句柄）。
+    // 冷开扫描图（全进程一份）的骨架落在数据目录底下：这里装一次那个家（实时跟读起步也照它）。
     observe::skeleton::install(&own);
+    // 历史清单缓存落在数据目录底下：这里装一次那个家（重启照它接着认，不整台重扫）。
+    history::listing::install(&own);
     let backend_args: Vec<String> = {
         let rest: Vec<String> = process_argv.iter().skip(1).cloned().collect();
         match control::ccm::route(process_argv.first().map_or("", String::as_str), &rest) {
@@ -165,6 +167,10 @@ async fn main() {
             // 会话级答题 hook 的客户端：经本机常驻后端问人、把答案交回那一家（`control/asks/hook.rs`）；没答案就空手退 0。
             Some("--answer-hook") => control::asks::hook::run(&args).await,
             Some("--resident-stop") => control::resident::run_stop(&args[1..], &own),
+            // 部署那一趟：暂存区里新传上去的那一份自己核字节、换进落点（`control/place_self.rs`）。
+            Some("--place-self") => control::place_self::run(&own),
+            // 卸载那一趟：暂存区里传上去的那一份删掉落点那一份、再删自己。
+            Some("--unplace-self") => control::place_self::run_unplace(&own),
             // `--dial` 那条拨号代理臂**删了**：拨号挪进本机那一个常驻后端，经流上的链路
             // （`link-*` 四条，`dial/link.rs`）做 —— 不再每条链路起一个进程。
             // 历史读面 · 搜索 · 账号读面 · 分叉 · `--resolve` 那几条手写臂（第 7 批第二题）删了：帧面早有同义的帧命令、
@@ -221,7 +227,7 @@ async fn main() {
     let legacy = listening
         .as_ref()
         .and_then(|_| control::resident::here())
-        .filter(|dh| relay_route_core::legacy_listen_pid_for(dh).exists());
+        .filter(|dh| control::resident::legacy_listen_pid_in(dh).is_some());
     let off_thread = legacy.is_some();
     let relay_own = own.clone();
     let legacy_own = own.clone();
@@ -252,9 +258,7 @@ async fn main() {
     } else {
         start_relay();
     }
-    // 全文搜索的常驻索引起来就后台建（两条载体都要；一次性线程，建完就退）。
-    observe::search_query::warm_in_background(agent_home.clone());
-    // 历史清单的缓存同样起来就后台热（低优先级的一次性线程）：第一次打开历史页 / 按 sid 开查看窗不再现扫整台。
+    // 历史清单的缓存起来就后台热（低优先级的一次性线程）：第一次打开历史页 / 按 sid 开查看窗不再现扫整台。
     history::listing::warm_listing_in_background(agent_home.clone());
     // 别名清单换了存法（配置文件 `profiles.toml`）：这台的配置文件还不在、旧形状的别名文件在 ⇒ 起来时一次性转过去（迁完就不再看旧文件）。
     stream::inbound::migrate_aliases();
@@ -403,9 +407,10 @@ async fn run_over_stdio(
     let (poke, book) = observe::watcher::spawn(agent_home, own.clone(), WATCH_REACTIONS);
     tap::adopt(&book);
     let (tz, view) = (wants.tz.clone(), wants.view.clone());
-    let (rx, attached) = poke.attach(&wants.tz);
+    // stdio 载体没有 attach 行 ⇒ 名单等 `stream-watch` 报上来（之前全发）。
+    let (rx, attached) = poke.attach(&wants.tz, None);
     // 这条流连接最低优先那一路（活卡的发件箱 ＋ 几种推送）；名单与 watcher 那份同拍交给它。
-    let tap_rx = tap::attach(tz.clone());
+    let tap_rx = tap::attach(tz.clone(), None);
     let mut inbound_task = inbound::spawn(
         tokio::io::stdin(),
         reply_tx.clone(),
@@ -549,6 +554,8 @@ struct Attached {
     hello_flushed: wire::HelloFlushed,
     /// 看的这一台的时区（attach 行里的 `tz`）。
     tz: cc_monitor_backend::Tz,
+    /// attach 行带的在看名单（没带 ⇒ 全发，等 `stream-watch`）。
+    watch: Option<crate::wire::WatchAsk>,
 }
 
 /// 一条连接的**握手**：先写 hello，再读一行 attach 请求，然后分档。
@@ -600,7 +607,7 @@ async fn handshake_one(
             let _ = listen::write_line(&mut w, &listen::refusal_line(reason)).await;
             tracing::warn!("拒绝一条 attach 请求：{reason}");
         }
-        listen::Admit::Stream { tz, reply } => {
+        listen::Admit::Stream { tz, reply, watch } => {
             if listen::write_line(&mut w, &reply.line()).await.is_err() {
                 return;
             }
@@ -614,6 +621,7 @@ async fn handshake_one(
                     writer: w,
                     hello_flushed,
                     tz,
+                    watch,
                 })
                 .await;
         }
@@ -733,8 +741,6 @@ async fn serve_listening(
 ) {
     tracing::info!("常驻后端已在听这台家里的套接字（多条流 + 不限次「只读 hello 就走」）");
 
-    // 「谁在听」由常驻后端自己记（本机远端同一个写者；起它的那一方不写）：抢到锁、开门之前那一刻记的（`control::resident::claim`）。
-
     let _poke_task = spawn_sigusr1_task();
 
     // 这台一份 watcher（read8a：整台一份读者）：从起来到退一直这一份 —— 没人连着时它照样看 `sessions/`、打标；
@@ -771,13 +777,14 @@ async fn serve_listening(
             // ② 有人认证通过 ⇒ 接上这台那份 watcher（先收一份此刻的样子），起流。
             Some(att) = attached_rx.recv() => {
                 let id = clients.join();
-                let Attached { reader, writer, hello_flushed, tz } = att;
-                let (rx, poke) = watcher.attach(&tz);
+                let Attached { reader, writer, hello_flushed, tz, watch } = att;
+                // 名单在接上那一刻就定（watcher 那份与活卡同拍）：这条流从第一帧起只发名单里的。
+                let (rx, poke) = watcher.attach(&tz, watch.clone());
                 // 应答走**独立通道**：出方向丢一条内容帧可恢复，丢一条应答会让客户端永远等下去。
                 let (reply_tx, reply_rx) =
                     tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
                 // 这条流连接最低优先那一路（活卡的发件箱：整台一份活卡、每条连接按名单一个发件箱）。
-                let tap_rx = tap::attach(tz.clone());
+                let tap_rx = tap::attach(tz.clone(), watch.as_ref().map(|w| &w.sids[..]));
                 let mut inbound_task =
                     inbound::spawn(reader, reply_tx.clone(), watch_desk(&poke, &tap_rx), own.clone(), hello_flushed);
                 let done = done_tx.clone();

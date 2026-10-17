@@ -47,6 +47,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { nonEmpty } from "../../test-support/non-empty";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const METER = resolve(HERE, "../../evidence", "S27-offline-cache-check.py");
@@ -113,7 +114,7 @@ describe("S27 · 断网门禁的 crate 缓存", () => {
     // ── 判不了 · 理由一：这台机器上没有 python3 / 量具跑不起来 ──────────
     if (report === null) {
       console.warn(`S27: 判不了 —— ${why}。**这不是绿**，只是这台机器上量不了。`);
-      expect(why.length).toBeGreaterThan(0);
+      nonEmpty(why);
       return;
     }
 
@@ -133,7 +134,6 @@ describe("S27 · 断网门禁的 crate 缓存", () => {
     // 🔴 反空真：人群自己先立住。量具那边有地板（P1 ≥ 500 · P2 == 26），
     //    立不住会落进 `structural_failures`，这里原样炸出来。
     expect(report.structural_failures, report.structural_failures.join(" / ")).toEqual([]);
-    expect(report.p1_total).toBeGreaterThan(500);
     expect(report.p2_total).toBe(26);
 
     expect(

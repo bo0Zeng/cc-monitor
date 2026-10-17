@@ -140,8 +140,14 @@ fn the_clock_words_follow_the_viewing_machine() {
         assert_eq!(t.text, face(t.at), "{:?}", got.timeline.ticks);
     }
     for l in &got.timeline.lanes {
-        for g in &l.segs {
-            assert_eq!(g.from_text, face(g.from));
+        for (k, g) in l.segs.iter().enumerate() {
+            let want = match (g.sendable, g.reset, k) {
+                (false, ..) => String::new(),
+                (true, true, _) => format!("↻{}", face(g.from)),
+                (true, false, 0) => format!("剩 {}%", g.left.round()),
+                _ => String::new(),
+            };
+            assert_eq!(g.text, want, "{g:?}");
         }
     }
 }

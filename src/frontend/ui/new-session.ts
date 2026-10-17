@@ -2,11 +2,11 @@
  * **起新会话：全产品一个框、一个请求。** 命令面板「新建会话…」· 历史 / 标签页「在此目录新建会话」· 消息流「从这里分叉」·
  * 设置 › 机器卡 ⋯「新建会话…」都开这一个框（[`openNewSession`]）；设置 › 账号页［在 tmux 里登录］不开框、直接走同一个请求（[`startNewSession`]）。
  *
- * 判定都在那台后端（`new-session-reads.ts` 那三问）：目录在不在 · 用哪个号（选不了 ⇒ 不起、带替代号）· 终端名 · 能起哪几家 ·
- * 分叉只在点［新建］那一步写分支记录。这里只排版：那台说哪一格不行，错误句就落在那一格下；整体不行落在框顶。
+ * 判定都在那台后端（`new-session-reads.ts` 那两问 ＋ 起的那一问 `session-open`）：目录在不在 · 用哪个号（选不了 ⇒ 不起、带替代号）· 终端名 ·
+ * 能起哪几家 · 分叉只在点［新建］那一步写分支记录。这里只排版：那台说哪一格不行，那一句就落在那一格下；整体不行落在框顶。
  *
- * 起了之后：框立刻关；在主窗口里起的 ⇒ 先长出占位标签页、报到了换成真的（`launch-slot.ts`）；
- * 在别的窗口（设置 · 查看）起的 ⇒ 报到了说一句「已启动」＋［切过去］，没报到那一句由主窗口说（`launch-arrival.ts`）。
+ * 起了之后框立刻关，开窗 · 等报到交 `session-open.ts`：主窗口里起的先长出占位标签页、报到了换成真的；
+ * 在别的窗口（设置 · 查看）起的 ⇒ 报到了说一句「已启动」＋［切过去］，没报到那一句由主窗口说。
  */
 import { emit } from "@tauri-apps/api/event";
 import { formDialog } from "./kit/dialog";
@@ -30,13 +30,14 @@ import { accountAvatarEl } from "./account-color";
 import { accountLabel } from "./acct-words";
 import { readPrefs } from "./machine-prefs";
 import { chosenAccount, type AccountAsk } from "./launch-account";
-import { openWindow } from "./tab-batch-run";
-import { awaitArrival, liveSince, type ArrivalMatch } from "./launch-arrival";
-import type { SlotSpec } from "./launch-slot";
+import { liveSince } from "./launch-arrival";
+import { askOpen, landOpened, openSession, type OpenEnd, type OpenHow, type Opened, type SessionOpenReq } from "./session-open";
 import { accountsOf } from "./settings-dest";
-import { askDir, askFacts, askNew, type NewFacts, type NewRequest, type NewResult } from "./new-session-reads";
+import { askDir, askFacts, type OpenFacts } from "./new-session-reads";
+import type { AccountUnavailable } from "./generated/AccountUnavailable";
+import type { NewOpen } from "./generated/NewOpen";
 import type { ForkSlot } from "./generated/ForkSlot";
-import { firstLine, readStrategies } from "./rot-reads";
+import { readStrategies } from "./rot-reads";
 import type { RotationStrategiesReply } from "./generated/RotationStrategiesReply";
 import s from "./new-session.module.css";
 
@@ -54,14 +55,6 @@ export interface NewSessionSpec {
   agent?: string;
   /** 分叉：源会话 · 从哪条消息处 · 源会话的标题（框顶那一句）。 */
   fork?: { sid: string; uuid: string; title: string };
-}
-
-/** 主窗口：起好了 ⇒ 长出占位标签页（`main.ts` 装一次；别的窗口没有它 ⇒ 等报到、说一句「已启动」）。 */
-/** 「轮换」那一行跟随默认那一项的值。 */
-
-let placeholder: ((spec: SlotSpec) => void) | null = null;
-export function setNewSessionPlaceholder(fn: ((spec: SlotSpec) => void) | null): void {
-  placeholder = fn;
 }
 
 /** 一台机器那一项：连没连上。 */
@@ -91,11 +84,13 @@ async function listMachines(): Promise<MachineOpt[]> {
   );
 }
 
-/** 账号那一格的一项。`ready: false` ⇒ 需登录。 */
+/** 账号那一格的一项。`ready: false` ⇒ 选不了（`why` 是那台写好的那一句，`login` ⇒ 给［登录…］）。 */
 interface AccountOpt {
   name: string;
   isDefault: boolean;
   ready: boolean;
+  why: string | null;
+  login: boolean;
   quota: string | null;
   /** 号在哪一台（头像照那台账号库的号色画）。 */
   origin: Origin;
@@ -119,6 +114,8 @@ async function listAccounts(origin: Origin, agent: string): Promise<AccountOpt[]
     name: a.name,
     isDefault: a.name === def,
     ready: a.selectable,
+    why: a.unselectable ?? null,
+    login: a.login ?? false,
     quota: a.quota ?? null,
     origin,
   }));
@@ -130,7 +127,7 @@ function accountOption(a: AccountOpt): SelectOption {
   const note: string[] = [];
   if (a.isDefault) note.push(copyText("newSession.account.default"));
   if (a.quota) note.push(a.quota);
-  if (!a.ready) note.push(copyText("newSession.account.needLogin"));
+  if (!a.ready && a.why) note.push(a.why);
   return { value: a.name, label: accountLabel(a.name), note: note.join(copyText("kit.text.sep")), lead: () => accountAvatarEl(a.name, { size: 16, origin: a.origin }) };
 }
 
@@ -327,7 +324,7 @@ const dialogTitle = (spec: NewSessionSpec, origin: Origin): string => {
 export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   const fork = spec.fork ?? null;
   let origin: Origin = spec.origin ?? LOCAL_ORIGIN;
-  let facts: NewFacts | null = null;
+  let facts: OpenFacts | null = null;
   let factsFailed: string | null = null;
   let agent = spec.agent ?? DEFAULT_AGENT;
   let accounts: AccountOpt[] | null = null;
@@ -424,7 +421,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     rotSel.setOptions(
       [
         { value: "", label: copyText("rot.none.label"), detail: copyText("rot.none.desc"), note: list.forNew === "" ? copyText("rot.tag.forNew") : undefined },
-        ...list.strategies.map((st) => ({ value: st.id, label: st.id, note: st.forNew ? copyText("rot.tag.forNew") : undefined, detail: firstLine(st.description) })),
+        ...list.strategies.map((st) => ({ value: st.id, label: st.id, note: st.forNew ? copyText("rot.tag.forNew") : undefined, detail: st.summary })),
       ],
       list.forNew,
     );
@@ -443,7 +440,9 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   const { tmuxInput, tmuxRow, cmdInput, cmdRow, moreRow } = moreFields(fork !== null);
   form.appendChild(moreRow);
 
-  const place = (): "tmux" | "window" => (tmuxRadio.input.checked && !tmuxRadio.label.hidden ? "tmux" : "window");
+  /** 勾的哪一张；那台的默认还没到、也没人勾 ⇒ `null`（请求不带 `run`，那台照自己的默认）。 */
+  const place = (): "tmux" | "window" | null =>
+    tmuxRadio.input.checked && !tmuxRadio.label.hidden ? "tmux" : windowRadio.input.checked ? "window" : null;
   const up = (): boolean => machines.find((m) => m.origin === origin)?.up ?? false;
   const chosenAccountOpt = (): AccountOpt | null =>
     accounts?.find((a) => a.name === accountSel.value()) ?? null;
@@ -476,7 +475,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   const paintAccountNote = (): void => {
     const a = chosenAccountOpt();
     if (a && !a.ready) {
-      accountRow.setNote(copyText("launch.account.notLoggedIn", { name: a.name }), "error", [loginBtn()]);
+      accountRow.setNote(a.why ?? "", "error", a.login ? [loginBtn()] : []);
     } else {
       accountRow.setNote("");
     }
@@ -486,8 +485,6 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     const hasTmux = facts?.tmux ?? true;
     tmuxRadio.label.hidden = !hasTmux;
     windowRadio.note.textContent = windowNote(origin, hasTmux);
-    if (!hasTmux) windowRadio.input.checked = true;
-    else if (!tmuxRadio.input.checked && !windowRadio.input.checked) tmuxRadio.input.checked = true;
     tmuxRow.root.hidden = place() !== "tmux";
   };
 
@@ -531,18 +528,16 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   };
 
   /** 分叉照源会话预填：那一家 · 轮次 · 目录 · 终端（那台说得出的才填）。 */
-  const applyForkFacts = (title: string, ff: NonNullable<NewFacts["fork"]>): void => {
+  const applyForkFacts = (title: string, ff: NonNullable<OpenFacts["fork"]>): void => {
     agent = ff.agent || agent;
     if (forkLine && ff.turn !== null) {
       forkLine.textContent = copyText("newSession.fork.from", { title, n: ff.turn, time: ff.startText ?? "" });
     }
     if (cwdInput.value === "" && ff.launch.cwd.kind === "known") cwdInput.value = ff.launch.cwd.value;
-    const t = ff.launch.terminal;
-    if (t.kind === "known") (t.value.host === "none" ? windowRadio : tmuxRadio).input.checked = true;
   };
 
   /** 那台答了能起什么：分叉照源会话预填；否则默认那一家起不了 ⇒ 换成那台能起的第一家。目录空着 ⇒ 最近用过的第一个。 */
-  const applyFacts = (f: NewFacts): void => {
+  const applyFacts = (f: OpenFacts): void => {
     if (fork && f.fork) {
       applyForkFacts(fork.title, f.fork);
     } else {
@@ -550,6 +545,8 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       if (!kinds.includes(agent) && kinds.length > 0 && !kinds.includes(DEFAULT_AGENT)) agent = kinds[0];
     }
     if (cwdInput.value === "" && f.recent.length > 0) cwdInput.value = f.recent[0].cwd;
+    // 默认「运行于」那台定（有 tmux 就 tmux，分叉照源会话那一种）。
+    (f.run === "tmux" ? tmuxRadio : windowRadio).input.checked = true;
   };
 
   const loadMachine = async (): Promise<void> => {
@@ -576,25 +573,26 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     handle.refresh();
   };
 
-  /** 点［新建］交的那一份：目录 · 放在哪 · 点名的号（跟随 ⇒ 不带）· 改过的终端名与命令 · 分叉的两个 id。 */
-  const buildRequest = async (): Promise<NewRequest> => {
+  /** 点［新建］交的那一份：哪一家 · 目录 · 放在哪 · 点名的号（跟随 ⇒ 不带）· 改过的终端名与命令 · 分叉的两个 id。 */
+  const buildRequest = (): SessionOpenReq => {
     const accountValue = accountRow.root.hidden ? null : accountSel.value();
     const account: AccountAsk | undefined =
       accountValue === null || accountValue === ACCOUNT_FOLLOW ? undefined : chosenAccount(accountValue);
-    const req: NewRequest = {
-      agent,
-      cwd: cwdInput.value.trim(),
-      place: place(),
+    const what: NewOpen = { agent, cwd: cwdInput.value.trim() };
+    if (!fork && place() === "tmux" && tmuxInput.value.trim() !== "") what.tmuxName = tmuxInput.value.trim();
+    if (cmdInput.value.trim() !== "") what.command = cmdInput.value.trim();
+    if (fork) what.fork = { sid: fork.sid, uuid: fork.uuid };
+    // 新会话用的那份不写（新会话本来就用它）；挑了别的（含「不轮换」）⇒ 起之前写成那一份。
+    const rot = rotRow.root.hidden ? forNew : rotSel.value();
+    if (rot !== forNew) what.rotation = { strategy: rot === "" ? null : rot };
+    const p = place();
+    const req: SessionOpenReq = {
+      what: { kind: "new", ...what },
+      ...(p === null ? {} : { run: p === "tmux" ? "tmux" : "direct" }),
       local: isLocalOrigin(origin),
       ticket,
     };
     if (account) req.account = account;
-    if (!fork && place() === "tmux" && tmuxInput.value.trim() !== "") req.tmuxName = tmuxInput.value.trim();
-    if (cmdInput.value.trim() !== "") req.command = cmdInput.value.trim();
-    if (fork) req.forkFrom = { sid: fork.sid, uuid: fork.uuid };
-    // 新会话用的那份不写（新会话本来就用它）；挑了别的（含「不轮换」）⇒ 起之前写成那一份。
-    const rot = rotRow.root.hidden ? forNew : rotSel.value();
-    if (rot !== forNew) req.rotation = { strategy: rot === "" ? null : rot };
     return req;
   };
 
@@ -602,7 +600,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     pendingTop = null;
     paintTop();
     for (const r of [cwdRow, accountRow, tmuxRow, cmdRow, agentRow, placeRow]) r.setNote("");
-    const req = await buildRequest();
+    const req = buildRequest();
     const asked = JSON.stringify({ ...req, ticket: null });
     if (lastAsked !== null && asked !== lastAsked) {
       ticket = crypto.randomUUID();
@@ -612,22 +610,22 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     lastAsked = asked;
     // 这张票头一次发出去那一刻这台已经报过的会话：回话晚到时，那之后先报到的那个才认得出是它。
     since ??= liveSince(origin);
-    let res = await askNew(origin, req);
+    let res = await askOpen(origin, req);
     if (res.kind === "timeout") {
       // 结果未知：同一张票自己再核一次（那台认得出是不是同一趟 —— 起好了回原样那一份，落过去；不起第二个）。
       // 还没出错（正在再核）⇒ 中性那一档，不用错误色。
       sayTop(copyText("newSession.timeout.checking", { machine: machineName(origin) }), [spinner()], res.detail, "info");
-      res = await askNew(origin, req);
+      res = await askOpen(origin, req);
     }
-    if (res.kind === "ok") {
-      void afterStart(origin, res, since ?? undefined);
+    if (res.kind === "opened") {
+      void landOpened(origin, req, res.opened, { ...landing(origin), ...(since ? { before: since } : {}) });
       return null;
     }
     return showFailure(res);
   };
 
-  /** 号选不了：那一格下说为什么 ＋［改用 {替代}］（有替代才给）＋［登录…］。 */
-  const showAccountUnavailable = (u: NonNullable<Extract<NewResult, { kind: "refused" }>["unavailable"]>): void => {
+  /** 号选不了：那一格下是那台那一句 ＋［改用 {替代}］（有替代才给）＋［登录…］。 */
+  const showAccountUnavailable = (u: AccountUnavailable, said: string): void => {
     const acts: HTMLElement[] = [];
     if (u.alternative) {
       const alt = u.alternative;
@@ -640,11 +638,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       acts.push(use);
     }
     acts.push(loginBtn());
-    accountRow.setNote(
-      u.pinned ? copyText("newSession.account.pinned") : copyText("launch.account.unavailable", { name: u.requested }),
-      "error",
-      acts,
-    );
+    accountRow.setNote(said, "error", acts);
   };
 
   /** ［再核一次］：同一张票再交一次（起好了 ⇒ 那台回原样那一份；那一趟根本没到 ⇒ 这次起）。 */
@@ -655,7 +649,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   };
 
   /** 没起成的那几形落在哪：无应答 / 还在起 ⇒ 框顶 ＋［再核一次］（不给重试，免得起第二个）；某一格 ⇒ 那一格下；整体 ⇒ 按钮行上方一行红字 ＋［复制详情］。 */
-  const showFailure = (res: Exclude<NewResult, { kind: "ok" }>): { said: string; detail: string } | false => {
+  const showFailure = (res: Exclude<OpenEnd, { kind: "opened" }>): { said: string; detail: string } | false => {
     const machine = machineName(origin);
     if (res.kind === "timeout") {
       sayTop(copyText("newSession.timeout.unknown", { machine }), [recheckBtn()], res.detail);
@@ -667,7 +661,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     }
     if (res.kind === "unreachable") return { said: res.said, detail: res.detail };
     if (res.field === "account" && res.unavailable) {
-      showAccountUnavailable(res.unavailable);
+      showAccountUnavailable(res.unavailable, res.said);
       return false;
     }
     const slot = fieldRow(res.field, { cwd: cwdRow, tmuxName: tmuxRow, command: cmdRow, agent: agentRow, place: placeRow, account: accountRow });
@@ -686,9 +680,9 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     focusAction: true,
     blocked: () => {
       if (!up()) return copyText("newSession.machine.offline", { machine: machineName(origin) });
-      if (facts === null) return copyText("newSession.facts.loading");
+      if (facts === null) return copyText("kit.state.reading");
       const a = chosenAccountOpt();
-      if (a && !a.ready && !accountRow.root.hidden) return copyText("launch.account.notLoggedIn", { name: a.name });
+      if (a && !a.ready && !accountRow.root.hidden) return a.why ?? "";
       if (cwdInput.value.trim() === "") return copyText("newSession.cwd.empty");
       return null;
     },
@@ -763,59 +757,27 @@ async function configuredCommand(origin: Origin, agent: string): Promise<string>
 
 /** ［登录…］：开设置的账号页那一台（登录在那里做）。 */
 async function openLogin(origin: Origin): Promise<void> {
-  const { openSettingsWindow } = await import("./settings/open-settings");
+  const { openSettingsWindow } = await import("./open-settings");
   await openSettingsWindow(undefined, accountsOf(origin));
 }
 
-/** 起了之后：开窗那一形先开窗；等那台报出这个会话 ⇒ 主窗口里切过去，别的窗口（设置 · 查看）说一句「已启动」＋［切过去］。 */
-/** `before`：这张票头一次发出去那一刻这台已经报过的会话（主窗口里那一形交占位标签页；别的窗口没有这份）。 */
-async function afterStart(origin: Origin, res: Extract<NewResult, { kind: "ok" }>, before?: ReadonlySet<string>): Promise<void> {
-  const r = res.reply;
-  if (r.outcome === "open" && r.cmd !== null) {
-    const failed = await openWindow(origin, r.cmd, r.cwd);
-    if (failed !== null) {
-      toast(copyText("newSession.window.failed"), failed);
-      return;
-    }
-  }
-  const match: ArrivalMatch = r.sid !== null ? { sid: r.sid } : { cwd: r.cwd };
-  if (placeholder) {
-    placeholder({ origin, cwd: r.cwd, tmuxName: r.session, agent: r.agent, match, ...(before ? { before } : {}) });
-    return;
-  }
-  const sid = await awaitArrival({ origin, match, tmuxName: r.session, arrived: null });
-  if (sid === null) return;
-  const name = r.session ?? r.cwd.split("/").filter(Boolean).pop() ?? r.cwd;
-  toast(copyText("launch.fromSettings.done", { name, machine: machineName(origin) }), "", {
-    level: "info",
-    action: {
-      label: copyText("newSession.switch.action"),
-      run: () => void emit(FOCUS_SESSION_EVENT, { origin, sid }).catch(() => {}),
+/** 不在主窗口里起的：报到了说一句「已启动」＋［切过去］（主窗口里起的由占位标签页接着）。 */
+function landing(origin: Origin): OpenHow {
+  return {
+    onArrived: (sid: string, o: Opened) => {
+      const name = o.session ?? o.cwd?.split("/").filter(Boolean).pop() ?? o.cwd ?? "";
+      toast(copyText("launch.fromSettings.done", { name, machine: machineName(origin) }), "", {
+        level: "info",
+        action: {
+          label: copyText("newSession.switch.action"),
+          run: () => void emit(FOCUS_SESSION_EVENT, { origin, sid }).catch(() => {}),
+        },
+      });
     },
-  });
+  };
 }
 
-/** 不开框、直接起一个（设置 › 账号页［在 tmux 里登录］）：同一个请求；结局与报错这里说。回「起了没有」。 */
-export async function startNewSession(r: { origin: Origin; cwd: string; account: AccountAsk; place: "tmux" | "window"; agent?: string }): Promise<boolean> {
-  const res = await askNew(r.origin, {
-    agent: r.agent ?? DEFAULT_AGENT,
-    cwd: r.cwd,
-    account: r.account,
-    place: r.place,
-    local: isLocalOrigin(r.origin),
-  });
-  if (res.kind === "ok") {
-    void afterStart(r.origin, res);
-    return true;
-  }
-  const machine = machineName(r.origin);
-  const said =
-    res.kind === "timeout"
-      ? copyText("launch.timeout.noAnswer", { machine })
-      : res.kind === "unreachable" || res.kind === "pending"
-        ? res.said
-        : fieldSaid(res.code, res.said, machine);
-  toast(copyText("newSession.start.failed"), said, { detail: res.detail });
-  return false;
+/** 不开框、直接起一个（设置 › 账号页［在 tmux 里登录］）：同一个请求；结局与报错由 `session-open.ts` 说。回「起了没有」。 */
+export function startNewSession(origin: Origin, req: SessionOpenReq): Promise<boolean> {
+  return openSession(origin, req, landing(origin));
 }
-

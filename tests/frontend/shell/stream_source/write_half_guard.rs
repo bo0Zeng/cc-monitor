@@ -15,7 +15,7 @@
 //! `the_shared_stripper_keeps_the_part_this_guard_must_scan` 判的不是产品性质，
 //! 是「剥法没把我要扫的那一段剥掉」。那一形值得推广到每条源码扫描型守卫。
 
-use crate::structural_scan::ScanReport;
+use guard_core::ScanReport;
 
 /// 生产段。**用共享的 `guard_core::production_code`，不自己写便宜近似。**
 ///
@@ -24,7 +24,7 @@ use crate::structural_scan::ScanReport;
 /// monitor 侧此前流行的那个近似（`split("\n#[cfg(test)]").next()`）会把扫描面
 /// 砍掉三分之二 —— 下面第一条测试把这个差距**实测**出来，免得它变成一句口号。
 fn prod() -> String {
-    let p = crate::guard_support::stream_source_production();
+    let p = guard_core::addr::stream_source_production();
     guard_core::assert_no_test_code("stream_source/", &p);
     p
 }
@@ -32,7 +32,7 @@ fn prod() -> String {
 /// ★ 扫描面自检：共享剥法留住了要扫的部分，而便宜近似留不住。
 #[test]
 fn the_shared_stripper_keeps_the_part_this_guard_must_scan() {
-    let me = crate::guard_support::stream_source_raw();
+    let me = guard_core::addr::stream_source_raw();
     let cheap = me.split("\n#[cfg(test)]").next().unwrap_or(&me);
     let good = prod();
     for anchor in ["fn route(", "async fn consume_remote"] {
@@ -177,7 +177,7 @@ fn stream_source_never_writes_to_a_stream_itself() {
     // 却实实在在把字节写进了流。08-07 实测：加这么一处，全仓 **976 条判据一条不红**。
     //
     // ⚠ 这次为什么可以枚举：`copy` 家族是 **tokio 的一个封闭上游 API 集合**
-    // （`copy` / `copy_buf` / `copy_bidirectional` / `copy_bidirectional_with_sizes`），
+    // （`copy` / `copy_buf` / `copy_bidirectional` / `tokio::io::copy_bidirectional_with_sizes`），
     // 版本升级才会变，而且变了会**编译期**报出来。
     // 这与「枚举写法拼写」不是一回事 —— 后者的空间是无限的，这个是有边界的。
     let copy_family: Vec<String> = ["copy", "copy_buf", "copy_bidirectional"]

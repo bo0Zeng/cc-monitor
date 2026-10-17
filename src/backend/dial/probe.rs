@@ -53,8 +53,7 @@ fn failed_detail(raw: Option<&str>) -> Option<String> {
 }
 
 /// 测试连接那一行给人看的几格要的事实：后端版本（BUILD_ID）· 这台说做不到几项；
-/// 做不到的按码分类、每类几项交出去（那句人话归 monitor：`control-said.ts::unavailableReason`，与置灰那一句同一个家 ——
-/// `wire::Unavailable` 头注「那句人话今天归 monitor」）。键值对那一形（`wire::hello_summary`）只进日志。
+/// 做不到的按码分类、每类几项 ＋ 那一句（与置灰那一句同一个家 `copy_core::unavailable`）。键值对那一形（`wire::hello_summary`）只进日志。
 struct HelloFacts {
     build: String,
     gaps: usize,
@@ -68,14 +67,16 @@ struct Gap {
     code: String,
 }
 
-/// `backendGaps` 的一项：这台说做不到的一类（码）· 这一类几项。
+/// `backendGaps` 的一项：这台说做不到的一类（码）· 这一类几项 · 那一句。
 #[derive(serde::Serialize)]
 struct GapCount {
     code: String,
     count: usize,
+    said: String,
 }
 
-fn hello_facts(hello: &Value) -> HelloFacts {
+/// `machine`：那一句里怎么称呼那台（表单里的名字）。
+fn hello_facts(hello: &Value, machine: &str) -> HelloFacts {
     use std::collections::{BTreeMap, BTreeSet};
     // 逐项收，坏项丢掉、不连累整张。
     let mut by_code: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
@@ -100,6 +101,7 @@ fn hello_facts(hello: &Value) -> HelloFacts {
         by_code: by_code
             .iter()
             .map(|(code, cmds)| GapCount {
+                said: copy_core::unavailable(code, machine),
                 code: code.clone(),
                 count: cmds.len(),
             })
@@ -325,7 +327,7 @@ where
     };
     // 键值对那一形只进日志（`wire::hello_summary`）；界面那一行由下面三格拼（文案表）。
     tracing::info!("测试连接：{}", crate::wire::hello_summary(&hello));
-    let facts = hello_facts(&hello);
+    let facts = hello_facts(&hello, machine.name());
     let (build, gaps) = (facts.build.clone(), facts.gaps.to_string());
     cells.push(json!({ "reached": "hello" })).await?;
 
@@ -387,13 +389,16 @@ where
         }
         match answered {
             Ok(()) => {
-                let ms = t0.elapsed().map(|d| d.as_millis()).unwrap_or(0).to_string();
+                let dur = t0
+                    .elapsed()
+                    .map(copy_core::format_elapsed)
+                    .unwrap_or_else(|_| copy_core::format_duration(0));
                 let line = if facts.gaps == 0 {
-                    copy_text("beProbe.hello.ok", &[("build", &build), ("ms", &ms)])
+                    copy_text("beProbe.hello.ok", &[("build", &build), ("dur", &dur)])
                 } else {
                     copy_text(
                         "beProbe.hello.okGaps",
-                        &[("build", &build), ("gaps", &gaps), ("ms", &ms)],
+                        &[("build", &build), ("gaps", &gaps), ("dur", &dur)],
                     )
                 };
                 (line, copy_text("beProbe.test.ok", &[]), None)

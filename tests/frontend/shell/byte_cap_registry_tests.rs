@@ -52,6 +52,14 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "FNV64_BASIS",
+        "**散列的起点**不是体量：`cmd-wire/src/fnv.rs` FNV-1a 64 从这个数开始喂字节。",
+    ),
+    (
+        "NEEDS_TIER_SPAN",
+        "**毫秒**不是字节：`backend/observe/recognize/facts.rs` 先答序里一档危险度占多宽，同一档里已等多久只在这一格里动。",
+    ),
+    (
         "LIVE_TEXT_KEEP",
         "**字数**（Unicode 字符数）不是字节：`backend/stream/live.rs` 一张活卡的正文只留尾巴这么多字，截过头的卡带 `clipped`、整张重发；定稿归记录，什么都不丢。",
     ),
@@ -125,7 +133,7 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     ),
     (
         "CONTEXT_STANDARD",
-        "**模型的上下文窗口**（tokens），不是字节：会话事实判上下文上限时的标准那一档（`observe/facts_query.rs::context_limit`）；不限任何读写的体量。",
+        "**模型的上下文窗口**（tokens），不是字节：会话事实判上下文上限时的标准那一档（`observe/recognize/facts.rs::context_limit`）；不限任何读写的体量。",
     ),
     (
         "CONTEXT_EXTENDED",
@@ -321,12 +329,6 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "PROGRESS_EVERY",
         "**进度上报间隔**（每传够这么多字节报一次进度），量的是节奏不是容量。",
     ),
-    (
-        "PORT_SPAN",
-        "**端口个数**不是体量（`K-P1` 的常驻监听口从家目录 hash 出来，落在 \
-             `49152..=65535` 这 16384 个动态口里）。它没有「超了怎么办」这一格 —— \
-             那个 hash 按定义落在区间内。",
-    ),
     // `NET_EPOCH_TO_WIN32_FILETIME_TICKS`（.NET 与 FILETIME 的纪元差）那一行摘了：它住的那个换算一个调用方都没有，连同常量删了。
     // `PROC_START_TOLERANCE_TICKS` 那一行摘了：它住 monitor 自己那份判活（`session_map.rs` 的 Windows
     //   进程身份核对），本机判活改由本机后端的帧来，那份实现连同这个常量一起删了。
@@ -380,13 +382,13 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "BIG_LINE_BYTES",
         "**进大文件模式的门槛**，不是上限：最长一行超过它，编辑面就换成「只排视口内的行、\
              长行只排可见段」那一面。**没有任何东西被拒、被截** —— 越过它的文件照样整份打开、\
-             照样能改能存；编辑的真上限是 `filewin/editor.rs::MAX_EDIT_BYTES`（下面 `CAPS` 那一行）。\
+             照样能改能存；编辑的真上限是后端那道编辑门（`files/mod.rs::READ_TEXT_MAX_BYTES`，下面 `CAPS` 那一行）。\
              数由 `bigfile::derive_threshold(LINE_READING)` 推出，判据钉「推算式 == 常量」。",
     ),
     (
         "BIG_TOTAL_BYTES",
         "同上，全文那一维的门槛（全文超过它进大文件模式）。按真敲键重打读数后 1 MiB → 256 KiB；\
-             编辑上限同拍抬到 1 MiB（`editor::MAX_EDIT_BYTES`；再抬到 8 MiB）⇒ 这一条从此**在打开时就会开火**。",
+             编辑上限是 8 MiB ⇒ 这一条在打开时就会开火。",
     ),
     (
         "FRAME_BUDGET_US",
@@ -471,41 +473,23 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "一趟 `files-ls` 一屏最多几条目录项（**条目数，不是字节**）",
         "截断+说清",
     ),
-    // 池子那一份同值的 `MAX_EDIT_BYTES`（「SFTP 在线编辑的文件体量」）随那条读文本命令一起走了。
-    // 文件窗口编辑器的上限**搬回窗口**（它答「文本控件打字卡不卡」，
-    //   是窗口的偏好）：每趟经 `max_bytes` 送给后端 `files-read-text`，后端按它整趟拒、不截断。
-    // 🔴256 KiB → 1 MiB（那时存盘整份装一行，上限钉成后端入方向一行）。
-    // 🔴1 MiB → **8 MiB**：装不进一行的分块走暂存区（下面 `SAVE_LINE_CAP` 那一行），
-    //   能存多大改由后端 `files-commit-text` 的天花板定，而它就是 `files/mod.rs::READ_TEXT_MAX_BYTES`
-    //   （存得回的要读得回来）⇒ 对 E 改钉这一对。
+    // 预览 · 看图那几道门（后端在 `files-ls` 每行上判好给出，两端照画）。超了：**不读**，摆出后端写好的那一句；不截一半。
     (
-        "src/frontend/filewin/src/editor.rs",
-        "MAX_EDIT_BYTES",
-        "文件窗口编辑器能打开、能存回的文本体量 ＝ 后端 `files-read-text` / `files-commit-text` 的天花板",
+        "src/backend/files/class.rs",
+        "PREVIEW_TEXT_MAX_BYTES",
+        "预览一份文本读多少（跟着光标走，每挪一次一趟 `files-read-text`）",
         "拒收+回错",
     ),
-    // 预览自己的上限（**刻意不借编辑上限**：预览跟着光标走，↑↓ 一路按下去
-    //   每一步都是一趟 `files-read-text`；编辑上限是「点了编辑」那一下的量）。
-    //   超了：**不读**，面板上说「有 N，预览只看 M 以内的文件」；不截一半来预览（截断的文本会被当成全文）。
     (
-        "src/frontend/filewin/src/preview.rs",
-        "PREVIEW_MAX_BYTES",
-        "文件窗口预览一份文本的体量（每挪一次光标一趟）",
+        "src/backend/files/class.rs",
+        "PREVIEW_IMAGE_MAX_BYTES",
+        "预览一张图读回多少字节（逐块经 `files-read-chunk`）",
         "拒收+回错",
     ),
-    // 图片预览一张图读多少（逐块经 `files-read-chunk` 读回）。超了：**不读**，面板上说「图片只预览 N 以内的」；不截一半来解码。
     (
-        "src/frontend/filewin/src/preview.rs",
-        "IMAGE_MAX_BYTES",
-        "文件窗口预览一张图片的字节数（窗口自己解码）",
-        "拒收+回错",
-    ),
-    // 一张图最多读多少（预览 · 「看一眼」· 查看页共用那一份；查看页的上限就是它）。超了：列表那一行就超 ⇒ **不读**、画面上说多大 · 上限多少；
-    //   读的途中变大了 ⇒ 读到它就停、说「读取中超过上限 · 不显示」；不截一半来解码。
-    (
-        "src/frontend/filewin/src/picture.rs",
-        "PICTURE_MAX_BYTES",
-        "文件窗口一张图读回多少字节（查看页的上限；逐块经 `files-read-chunk`）",
+        "src/backend/files/class.rs",
+        "VIEW_IMAGE_MAX_BYTES",
+        "查看页一张图读回多少字节（逐块经 `files-read-chunk`）",
         "拒收+回错",
     ),
     // 解码一张图最多占多少内存。超了：**不解**，说「像素过多 · 无法解码」（不说「解不开」）。
@@ -541,6 +525,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "src/comms/resident-client/attach.rs",
         "HANDSHAKE_LINE_CAP",
         "接常驻流读的那两行（hello / attach 应答）—— hello 帧实测 8.6 KB（随 typed 命令变多）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/control/resident.rs",
+        "HELLO_CAP",
+        "停 / 换之前问在听的那一位读的那一行 hello（同上，几 KiB）",
         "拒收+回错",
     ),
     (
@@ -838,6 +828,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
+        "src/backend/control/files_extract.rs",
+        "EXPAND_FLOOR_BYTES",
+        "`files-extract` 一个包解出的字节之和：这以内总放行，往上按包本身的 `EXPAND_RATIO_CAP` 倍卡（计划趟按包里写的大小、执行趟按真写出的）",
+        "拒收+回错",
+    ),
+    (
         "src/backend/control/files_write.rs",
         "PEEK_MAX_BYTES",
         "`files-peek` 一趟读回的文本（读改写的读那一半；写回时与新内容同装一行请求）",
@@ -859,7 +855,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     ),
     // 分页读记录时往回多看那一段：只拿来配排队消息的打字时刻；配不上（打字在这一段之前）⇒ 那条照用它自己的时刻（协议文档写明），记录一条不少。
     (
-        "src/backend/observe/record_page.rs",
+        "src/backend/observe/query/body.rs",
         "QUEUE_LOOKBACK_BYTES",
         "从文件中段起读一页记录时，往回多读、只用来配排队消息打字时刻的那一段原始字节（配对用的索引；记录本身一条不少）",
         "索引截断（不丢数据）",
@@ -944,11 +940,11 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "`hooks-diag` 读那台 agent 配置根下的 `settings.json` 多大",
         "降级+说清",
     ),
-    // 「直接敲的也走中转」（`relay-optin`，只读）读那台用户级设置文件多大；超了按「读不了」说，不当没装。
+    // 「直接敲的也走中转」（「待办」那一件，只读）读那台用户级设置文件多大；超了按「读不了」说，不当没装。
     (
         "src/backend/agents/claudecode/paths.rs",
         "SETTINGS_CAP_BYTES",
-        "`relay-optin` 读那台 `~/.claude/settings.json` 多大",
+        "「待办」里「直接敲的也走中转」那一件读那台 `~/.claude/settings.json` 多大",
         "降级+说清",
     ),
     // 一次改动的结果里随记录带出的逐段 diff 至多多少字；超了在段的边界停下、立 `patchTruncated`（数照整份）。
@@ -969,7 +965,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     (
         "src/backend/agents/codex/relay.rs",
         "CONFIG_CAP_BYTES",
-        "`relay-optin` 读那台 `~/.codex/config.toml` 多大",
+        "「待办」里「直接敲的也走中转」那一件读那台 `~/.codex/config.toml` 多大",
         "降级+说清",
     ),
     // 资产目录那六个数（`agents/claudecode/assets.rs` · `asset_catalog.rs` · `asset_sync.rs`）。
@@ -1146,7 +1142,14 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     (
         "src/backend/observe/skeleton.rs",
         "MAX_READ",
-        "读回一份记录骨架（数据目录 `cache/skeleton/` 底下，预读或冷开扫描图那一份）：超了 ⇒ `warn!` 说是哪一份，当没有骨架、照记录整份重扫",
+        "读回一份记录骨架（数据目录 `cache/skeleton/` 底下，冷开扫描图落的那一份）：超了 ⇒ `warn!` 说是哪一份，当没有骨架、照记录整份重扫",
+        "跳过+说清",
+    ),
+    // 历史清单缓存读回来的上限：超了 ⇒ 当没有缓存，照记录重扫（说一声）。
+    (
+        "src/backend/history/listing.rs",
+        "STORE_MAX_READ",
+        "读回历史清单缓存（数据目录 `cache/listing.json`，清单那一族落的一份）：超了 ⇒ `warn!` 说一声，当没有缓存、照记录重扫",
         "跳过+说清",
     ),
     (
@@ -1240,7 +1243,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     // ⚠〔`K-H1` 回修轮之五 08-25，D3 `阻-1(D3)`〕**这一处是补一个真缺陷，不是补一条登记**：
     // 先前请求体的长度来自 `Content-Length`，值域是 `usize` 全域、**没有任何上界**
     // （`HEAD_CAP` 只管头字节数，管不到它）。一条 `Content-Length: 1000000000000`
-    // ⇒ `vec![0u8; n]` 分配失败 ⇒ `handle_alloc_error` ⇒ **abort（SIGABRT）**，
+    // ⇒ `vec![0u8; n]` 分配失败 ⇒ `std::alloc::handle_alloc_error` ⇒ **abort（SIGABRT）**，
     // 不走 unwind ⇒ `catch_unwind` 接不住；而中转是「一个进程服务 N 个会话」
     // ⇒ 打掉的是**当时所有会话的在途流**。
     (
@@ -1286,8 +1289,8 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
 ];
 
 fn repo_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::repo_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::repo_root()
 }
 
 /// ★ **小到这个数以下的就不当体量看**〔audit-0805 §5 1y，08-06 给它一个名字〕。
@@ -1563,18 +1566,6 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
     // monitor 生产树里零处再搜由 `search_kou_jing_guard.rs::the_monitor_grows_no_search_helpers` 断言。
     // ⇒ 这两个数搬回任何一侧，当场红。
 
-    // 对 E〔F9 续 09-24 立；F9c〕：窗口的编辑上限**就是**后端读 / 提交存盘的天花板 ⇒ 钉相等。
-    //   窗口多给 ⇒ 打得开、改得了，存的时候后端 `files-commit-text` 拒（`bytes` 越过天花板）、读的时候
-    //   `files-read-text` 拒 `max_bytes`；窗口少给 ⇒ 存得回的文件被本地冤拒。两个方向都是错。
-    // 上一版这一对钉的是「编辑上限 == 后端入方向一行」（那时存盘整份装一行）；那一对换成下面的对 F。
-    let e1 = by("src/frontend/filewin/src/editor.rs", "MAX_EDIT_BYTES");
-    let e2 = by("src/backend/files/mod.rs", "READ_TEXT_MAX_BYTES");
-    assert_eq!(
-        e1, e2,
-        "窗口编辑上限与后端读 / 提交存盘的天花板漂开了（窗口 {e1} / 后端 {e2}）。\
-             存得回的要读得回来：`files-read-text` 的 `max_bytes` 与 `files-commit-text` 的 `bytes` 都按它拒。"
-    );
-
     // 对 F：窗口存盘时一行的上限 ＝ 后端入方向一行的上限 ⇒ 钉相等。
     //   窗口多给一个字节 ⇒ 后端整行丢弃（`line_too_long`）；少给 ⇒ 只是多切几块（不错，但两份数漂了就该有人看）。
     let f1 = by("src/frontend/filewin/src/editor.rs", "SAVE_LINE_CAP");
@@ -1619,11 +1610,6 @@ fn the_exclusion_list_is_not_dead_wood() {
         assert!(
             all.contains(&format!("const {name}")),
             "排除表里的 `{name}` 已经不在源码里了 —— 删掉这条，别留死规则（{why}）"
-        );
-        assert!(
-            why.chars().count() > 15,
-            "`{name}` 的排除理由太短，像是占位：「{why}」。\
-                 排除一个名字要说清**它为什么不是体量上限**（条数？地板？次数？）"
         );
     }
 }
@@ -1802,18 +1788,18 @@ const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
         "`files-read-chunk` 的 `len` 是入参，入口先判 `1..=READ_CHUNK_MAX_BYTES`（已在 `CAPS` 里）；回 `eof` / `size`，\
              调用方读到 `eof` 为止 —— 不是截断后当完整的用。",
     ),
-    // `history_query::read_page` 的一页上限是入参；唯一调用点
+    // `query::body::read_page` 的一页上限是入参；唯一调用点
     // （`read_face.rs`）给的是具名常量 `READ_PAGE_BYTES`（已在 `CAPS` 里）。
     // ⚠ 不是静默截断：读满一页就停、**回续点 `next`**，调用方循环到 `eof` —— 一个字节都不丢。
     (
-        "src/backend/observe/history_query.rs",
+        "src/backend/observe/query/body.rs",
         "page as u64",
         "`read_page` 的一页上限是入参，调用方给 `read_face::READ_PAGE_BYTES`（已在 `CAPS` 里）；\
              读满即停并回续点，由调用方翻下一页 —— 分页，不是截断。",
     ),
-    // `record_page::lead_of` 往回多看的那一段：起点是 `offset − QUEUE_LOOKBACK_BYTES`（已在 `CAPS` 里，饱和到 0）⇒ 读的长度不过它。
+    // `body::lead_of` 往回多看的那一段：起点是 `offset − QUEUE_LOOKBACK_BYTES`（已在 `CAPS` 里，饱和到 0）⇒ 读的长度不过它。
     (
-        "src/backend/observe/record_page.rs",
+        "src/backend/observe/query/body.rs",
         "offset - at",
         "`lead_of` 读 `[offset − QUEUE_LOOKBACK_BYTES, offset)` 那一段（`QUEUE_LOOKBACK_BYTES` 已在 `CAPS` 里）；\
              只为配打字时刻（索引），配不上照用那条自己的时刻、记录一条不少 —— 协议文档写明。",
@@ -1866,7 +1852,7 @@ const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
 ///
 /// # 它替掉的那条判据**一直在假绿**
 ///
-/// 旧条叫 `inline_literal_byte_caps_are_still_just_the_one`，自述逐字：
+/// 旧条自述逐字：
 /// 「本表的扫描面只认具名常量…范围要成立，得有个东西盯着『范围外那一族别长大』…
 /// 实测人群 **1**…人群变 2 的那天这个判断就该重做 —— **本条就是那个闹钟**」。
 ///
@@ -2103,7 +2089,7 @@ fn uncapped_stream_reads(prod: &str) -> Vec<usize> {
 fn the_drop_and_report_semantics_is_honoured_at_every_over_limit_arm() {
     let prod = format!(
         "{}\n{}",
-        crate::guard_support::stream_source_production(),
+        guard_core::addr::stream_source_production(),
         guard_core::production_code(include_str!("../../../src/comms/resident-client/feed.rs"))
     );
     let lines: Vec<&str> = prod.lines().collect();

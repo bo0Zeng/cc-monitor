@@ -421,7 +421,14 @@ fn dispatch(
         "needs-ask" => Disposition::SpawnData(
             req,
             crate::wire::typed::answer_async::<crate::control::asks::NeedsAsk, _, _>(
-                move |r, _cx| async move { Ok(crate::control::asks::ask(asks, r).await) },
+                move |r, _cx| async move {
+                    Ok(crate::control::asks::ask(
+                        asks,
+                        r,
+                        crate::history::history_annotations::auto_answer_of,
+                    )
+                    .await)
+                },
             ),
         ),
         // 换名单要在读循环里当场生效（同一条流后面的帧照新名单走）⇒ 入参就地收、就地交给 watcher，只把等它答那一半交出去。
@@ -811,7 +818,7 @@ async fn spawn_handler<F, Fut>(
                 .send(Frame::err(
                     &id_sup,
                     "handler_panicked",
-                    &copy_text("beInbound.spawnHandler.crashed", &[]),
+                    &copy_text("reason.code.bug", &[]),
                 ))
                 .await;
         }

@@ -55,9 +55,9 @@ fn each_standard_sftp_status_becomes_a_word_in_the_closed_set_and_the_rest_is_un
         (2, "reason.io.notFound"),
         (3, "reason.io.denied"),
         (4, "reason.io.unknown"),
-        (5, "reason.sftp.badMessage"),
-        (6, "reason.sftp.connectionLost"),
-        (7, "reason.sftp.connectionLost"),
+        (5, "reason.code.bug"),
+        (6, "reason.link.lost"),
+        (7, "reason.link.lost"),
         (8, "reason.sftp.unsupported"),
         (99, "reason.io.unknown"),
     ];

@@ -7,20 +7,21 @@
 #       一条路径一行都没命中 ⇒ 不认识 ⇒ 整趟退回全量（不带 GATE_ONLY，等于 gate-clean.sh）。
 #       组名 `-` = 只跑恒跑的那组（这条路径有人读，但读它的判据全在恒跑格里）。组名 `FULL` = 整趟全量。
 #       gate.sh 里新加了格、这里两段都没提到它 ⇒ 当成恒跑（宁可多跑，不许新格悄悄不跑）。
-# 另有四条现算的规则住在挑格那一半 plan.py 里（不是这张表能写死的东西）：
+# 另有五条现算的规则住在挑格那一半 plan.py 里（不是这张表能写死的东西）：
 #   ① Rust 的 include_str! / include_bytes! / #[path] 引到的文件 ⇒ 引它的那棵 workspace 的编译组（shellrs / backendrs）；
 #   ② tests/e2e/ 下脚本里字面写到的 src/… tests/… 路径，以及 e2e 的 .ts/.mts 驱动顺 import 摸到的文件 ⇒ e2e；
 #   ③ gate.sh 里 GATE_SHELLCHECK_GLOBS 命中的、或任何 *.sh ⇒ shellcheck；
-#   ④ 任何 Cargo.toml / Cargo.lock ⇒ 它所在那棵 workspace 的编译组（锁文件变了依赖就变了）。
+#   ④ 任何 Cargo.toml / Cargo.lock ⇒ 它所在那棵 workspace 的编译组（锁文件变了依赖就变了）；
+#   ⑤ 手机嵌的 Rust 核心（src/mobile 下的 crate）顺 path 依赖摸到的 crate 目录（含 workspace 根 [patch] 指的）⇒ mobile。
 
 # ── 组 ───────────────────────────────────────────────────────────────────────────
 # 恒跑（两种模式都跑）：静态那几格（全是读盘上文本，合计十几秒）· 两棵树的排版 · tsc · npm audit。
 @cheap worktree-clean hooks copy2 e2e-smoke release-gate platform installface ccbus-twophase fmt fmt-backend audit tsc tmux-default
-# 默认模式也恒跑、--trust-ci 模式交给 CI 的：两棵树的全部单测（cargo · backend）与 vitest（npm）及跟着它们的三格。
-#   为什么默认恒跑：两棵 Rust 树里有一百多份判据在测试时去读仓里别处的文本（TS · CSS · 文案表 · README · workflow），
-#   vitest 那边也读 Rust 源；谁读了谁只有跑起来才知道 ⇒ 按路径挑这几格会绿着说假话。
+# 默认模式与 quick-check 恒跑、--trust-ci 模式交给 CI 的：两棵树的全部单测（cargo · backend）与 vitest（npm）及跟着它们的三格。
+#   为什么恒跑：三套里都有扫全仓的判据（strace 实测：后端那套读到被跟踪的 3698 份里的 3686 份、vitest 3674 份；壳那套的私人形状 ·
+#   出仓引用按 `git ls-files` 扫全仓）⇒ 按路径挑会绿着说假话。要挑它们，先得把扫全仓的那几族挪出这三套。
 #   出仓引用（no_outside_refs）在 cargo 里，文案机检（copy-rules · copy-table）在 npm 里；--trust-ci 时 gate-affected 在门禁外单跑这几条。
-@suites cargo comm-boundary test-tiers generated backend npm
+@suites cargo creds-harden comm-boundary test-tiers generated backend npm
 # 壳那棵 workspace（monitor · 文件窗口 · 共享 crate）只编不跑的那几格：lint · 死码 · Linux 真链 · 截图台架的无头壳 · Windows 交叉检查与真链。
 @shellrs clippy deadcode appbuild shotsshell winchk winlink
 # 后端那棵（src/backend 及它链的共享 crate）只编不跑的那几格：lint · 死码 · Windows 交叉检查 · 两个 musl 静态包 · 拨号核心的两个 android target。
@@ -93,7 +94,7 @@ tests/frontend/ui/**            coverage  vitest 本体：改它就改了覆盖�
 tests/copy/**                   coverage  文案表的 vitest 与夹具
 tests/naming/**                 coverage  命名判据（vitest）
 tests/shots/**                  coverage,shots  截图场景（TS，tsc 恒跑；vitest 有几份读它）；无头壳的例子源（real/shell_main.rs）与台架编它的那一条也在这
-tests/test-support/**           coverage,e2e  vitest 与 e2e 驱动共用的辅助（launch-cli-golden 等）
+tests/test-support/**           coverage  vitest 共用的辅助
 
 # ── 壳那棵 workspace ─────────────────────────────────────────────────────────────────
 src/frontend/shell/**           shellrs,e2e-local  monitor 包：源码 · build.rs · tauri.conf.json · capabilities · 图标都是编译输入；e2e 读的那几份由规则 ② 另加
@@ -110,10 +111,11 @@ src/comms/outward/**            shellrs,backendrs,e2e  中转那层：后端链�
 
 # ── 后端那棵 ─────────────────────────────────────────────────────────────────────────
 src/backend/**                  backendrs,e2e  后端 crate：e2e 全部套件的被测对象就是它编出来的二进制
-src/backend/ssh-dial/**         mobile  拨号核心：手机嵌的 Rust 核心（src/mobile/core-rs）链它，手机那一格编那份 .so
-src/backend/deploy/**           mobile  装 / 升级后端的判定与编排：手机嵌的 Rust 核心（src/mobile/core-rs）链它，手机那一格编那份 .so
 src/backend/Cargo.toml          mobile  后端那一棵 workspace 的根清单（成员 · 手机那两份 profile · 打补丁版 russh）：手机那份 .so 也照它编
 src/backend/Cargo.lock          mobile  同一份 lock：手机那份 .so 的依赖版本也锁在这里
+src/backend/lib.rs              mobile  手机构建读 BUILD_ID 与子命令表
+src/frontend/shell/embedded-backends/**  mobile  手机打包时带上的远端后端字节
+src/frontend/ui/generated/**    mobile  线上类型的 TS 生成物：手机单测拿它对拍 Kotlin 那一份
 src/vendor/**                   backendrs,e2e  后端链的 vendored russh
 tests/backend/**                backendrs  后端的测试（#[path] 引进 lib 的 test 档）；被壳那边 include 的由规则 ① 另加
 src/backend/accounts/quota/rules/**  rotation500  轮换的判与推演：一致性大样本比的就是它
@@ -123,6 +125,7 @@ tests/benches/**                backendrs  后端 Cargo.toml 里登记的 bench 
 
 # ── 部署到远端 / 共用的那几份 ───────────────────────────────────────────────────────────
 src/shared/cc-bus/**            e2e    cc-bus 脚本：cc-spawn-uplift · backend-cc-bus · cc-bus-queue-drain 真跑它；ccbus-twophase 恒跑；shellcheck 由规则 ③ 另加
+src/shared/copy/**              mobile  文案表：编进手机那份核心（copy-core 内嵌），手机的 JVM 单测经宿主版那份 .so 读它
 src/shared/theme/**             mobile,android-device,shots  令牌正本：手机 core-ui 构建时从它生成 ThemeTokens；网页三窗链它（截图格看像素）；文件窗口判据的主题从它解（在恒跑的 cargo 里）
 src/shared/**                   e2e,coverage  文案表 JSON（TS 与 Rust 都读、e2e 也读）· ccm 别名 · quota-warm；被 Rust include_str! 的由规则 ① 另加
 src/doc/**                      -      协议 / IPC 文档：读它的判据在 cargo / backend（恒跑）；被 include_str! 的由规则 ① 另加
@@ -135,7 +138,7 @@ src/mobile/**                   mobile,android-device  手机端 app：Gradle �
 tests/mobile-smoke/**           android-device  设备测那一格经它起停模拟器（emu.sh）；冒烟台架的其余部分手跑；*.sh 由规则 ③ 另加 shellcheck
 tests/e2e/weak-net/**           weaknet  弱网台架自己的镜像与脚本
 tests/e2e/**                    e2e    e2e 套件本体（e2e-smoke 那几步恒跑）
-tests/__fixtures__/**           e2e,coverage  黄金夹具：e2e（gate2-golden）与 vitest 都读；被 Rust include_str! 的由规则 ① 另加
+tests/__fixtures__/**           e2e,coverage,mobile  黄金夹具：e2e（gate2-golden）· vitest · 手机单测都读；被 Rust include_str! 的由规则 ① 另加
 tests/evidence/**               -      python 判据：被恒跑的静态格调用；*.sh 由规则 ③ 另加 shellcheck；*.rs 由规则 ① 归到 include 它的那棵
 tests/evidence/**/*.ts          coverage  evidence 下的 TS 判据（vitest 读）
 tests/hooks/**                  shellcheck  hooks 那格恒跑；shellcheck 的人群里有它

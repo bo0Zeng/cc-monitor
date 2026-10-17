@@ -34,7 +34,7 @@ impl Drop for Rig {
 pub(crate) fn rig(commands: &[&str]) -> Rig {
     let (mon_w, be_r) = tokio::io::duplex(1 << 20);
     let (be_w, mon_r) = tokio::io::duplex(1 << 20);
-    let hello = crate::guard_support::our_hello(commands);
+    let hello = crate::frame_fixtures::our_hello(commands);
     let witness = crate::inbound_client::witness_of(&hello).expect("是 hello");
     let client = park(mon_w).into_client(witness);
     register(LOCAL_ORIGIN, Arc::clone(&client));

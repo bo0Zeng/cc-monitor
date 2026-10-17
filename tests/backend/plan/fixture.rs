@@ -80,7 +80,7 @@ pub(crate) fn who(id: &str) -> crate::plan::Whose {
     use crate::plan::{Live, Whose};
     let live = Some(Live {
         activity: Some(crate::agents::SessionActivity::NeedsYou),
-        needs: Some(crate::observe::facts_query::NeedsKind::Approve),
+        needs: Some(crate::observe::recognize::facts::NeedsKind::Approve),
     });
     match id {
         MAIN => Whose::Session {

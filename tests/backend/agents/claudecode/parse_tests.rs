@@ -98,7 +98,7 @@ fn malformed_json_returns_err() {
 // === F63 (issue #49)：看不懂的记录 —— 留原文 + 留链上的身份 ===
 
 /// ★ 护栏：`Unknown` **绝不出 parse_line**。走到这里说明后处理漏了。
-/// （F63 前这条测试的名字是 `unknown_type_falls_through_to_unknown_variant`，
+/// （F63 前这条测试的旧名
 ///  断言的正是"Unknown 不应 emit"——那就是静默丢弃 8,774 条的那扇门。）
 #[test]
 fn unknown_type_is_salvaged_never_leaves_as_unknown() {

@@ -5,7 +5,6 @@
  *
  * 那几条读口 / 写口整块换成假的（`vi.mock`）：这里只量「拿到这些事实，画成什么样、交出去什么」。
  */
-import { noteMachineTmux } from "../../../../src/frontend/ui/resume-defaults";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -44,6 +43,14 @@ vi.mock("../../../../src/frontend/ui/remote-config", () => ({
   findHostByOrigin: (hosts: { label: string }[], o: string) => hosts.find((h) => h.label === o) ?? null,
 }));
 vi.mock("../../../../src/frontend/ui/events", () => ({ bindEvents: () => Promise.resolve() }));
+/** 那台有没有 tmux（`session-open-facts` 的 `tmux`）。 */
+const facts = vi.hoisted(() => ({ tmux: true, asked: 0 }));
+vi.mock("../../../../src/frontend/ui/new-session-reads", () => ({
+  askFacts: async () => {
+    facts.asked++;
+    return { tmux: facts.tmux };
+  },
+}));
 vi.mock("../../../../src/frontend/ui/settings/account-login", () => ({
   openLoginWindow: (...a: unknown[]) => openLoginWindow(...a),
   loginInTmux: (...a: unknown[]) => loginInTmux(...a),
@@ -55,11 +62,11 @@ vi.mock("../../../../src/frontend/ui/machine-prefs", () => ({
     // 判据按号给（`getModelForAccount` 的答法与号名无关）⇒ 每个号读到的都是那一个值。
     const v = (await getModelForAccount(origin)) as string | undefined;
     const models = new Proxy({}, { get: () => v });
-    return { state: "ok", prefs: { launchers: {}, resumeInTmux: false, contextLimits: {}, models } };
+    return { state: "ok", prefs: { launchers: {}, resumeInTmux: false, contextLimits: {}, models, permissionModes: {} } };
   },
   setPrefs: async (origin: string, patch: { models?: Record<string, string | null> }) => {
     for (const [name, m] of Object.entries(patch.models ?? {})) await setModelForAccount(origin, name, m);
-    return { state: "ok", prefs: { launchers: {}, resumeInTmux: false, contextLimits: {}, models: {} } };
+    return { state: "ok", prefs: { launchers: {}, resumeInTmux: false, contextLimits: {}, models: {}, permissionModes: {} } };
   },
 }));
 vi.mock("../../../../src/frontend/ui/account-ops", async (orig) => ({
@@ -76,11 +83,12 @@ vi.mock("../../../../src/frontend/ui/apikey-reads", () => ({ writeApikeyKey: (..
 
 import { AccountsSection } from "../../../../src/frontend/ui/settings/accounts-section";
 import { SETTINGS_GO_EVENT } from "../../../../src/frontend/ui/settings/events";
-import { __resetMachineContextForTests, setCurrentMachine } from "../../../../src/frontend/ui/settings/machine-context";
+import { __resetMachineContextForTests, setCurrentMachine } from "../../../../src/frontend/ui/machine-context";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import type { ConfirmSpec } from "../../../../src/frontend/ui/kit/dialog";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { toast } from "../../../../src/frontend/ui/kit/toast";
+import { nonEmpty } from "../../../test-support/non-empty";
 
 function acct(p: Partial<Account>): Account {
   return { name: "z", email: "z@x", configDir: "/h/.cc-monitor/accounts/z", isDefault: false, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true, selectable: true, badge: { text: copyText("accounts.badge.signedIn"), warn: false, title: "" }, ...p };
@@ -112,8 +120,8 @@ function quota(refusedAt?: number): QuotaRead {
     slots: [
       // `full` 是那台后端的显示态（用满才有）；被拒没用满不带它。
       // 那一格的字是核心写好的（用满 ✕ · 被拒没用满「{pct}% · 被拒」· 否则「{pct}%」），界面照抄。
-      { slot: "5h", pct: pct5, resetsAt: NOW + 3600, resetsAtText: "13:00", text: pct5 >= 100 ? "✕" : st === "refused" ? copyText("acct.val.refusedPct", { pct: pct5 }) : `${pct5}%`, tone: "plain", ...(pct5 >= 100 ? { full: true } : {}) },
-      { slot: "7d", pct: pct7, resetsAt: NOW + 86400, resetsAtText: "01-16 12:00", text: pct7 >= 100 ? "✕" : `${pct7}%`, tone: "plain", ...(pct7 >= 100 ? { full: true } : {}) },
+      { slot: "5h", pct: pct5, resetsAt: NOW + 3600, resetsAtText: "13:00", resetText: copyText("acct.reset.at", { at: "13:00" }), text: pct5 >= 100 ? "✕" : st === "refused" ? copyText("acct.val.refusedPct", { pct: pct5 }) : `${pct5}%`, tone: "plain", ...(pct5 >= 100 ? { full: true } : {}) },
+      { slot: "7d", pct: pct7, resetsAt: NOW + 86400, resetsAtText: "01-16 12:00", resetText: copyText("acct.reset.at", { at: "01-16 12:00" }), text: pct7 >= 100 ? "✕" : `${pct7}%`, tone: "plain", ...(pct7 >= 100 ? { full: true } : {}) },
     ],
     login: "ok",
     usage: { slot: "5h", window: "5h", value: `${pct5}%`, text: `5h ${pct5}%`, tone: "plain" },
@@ -424,8 +432,9 @@ describe("登录与指路", () => {
     expect(loginInTmux).toHaveBeenCalledWith("devbox", "team", "/h/.cc-monitor/accounts/z");
   });
 
-  it("那台说了没有 tmux ⇒ 开不了终端窗口时只说那一句，不出［在 tmux 里登录］", async () => {
-    noteMachineTmux("devbox", false);
+  it("那台说了没有 tmux ⇒ 开不了终端窗口时只说那一句，不出［在 tmux 里登录］（开不了窗那一刻问那台一次）", async () => {
+    facts.tmux = false;
+    facts.asked = 0;
     fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "team", loggedIn: false, authReady: false, selectable: false })] }));
     openLoginWindow.mockResolvedValue("noWindow");
     const el = await mount();
@@ -434,7 +443,8 @@ describe("登录与指路", () => {
     await settle();
     expect(rowOf(el, "team").textContent).toContain(copyText("acctPage.login.noWindow"));
     expect([...rowOf(el, "team").querySelectorAll("button")].some((b) => b.textContent === copyText("acctPage.login.inTmux"))).toBe(false);
-    noteMachineTmux("devbox", true);
+    expect(facts.asked).toBe(1);
+    facts.tmux = true;
   });
 
   it("开了登录窗口 ⇒ 那一行「等待终端登录…」＋［重新打开登录窗口］；后端推来已登录 ⇒ 行变回正常", async () => {
@@ -549,7 +559,7 @@ describe("key 的纪律（源码扫描：账号栏 ＋ 新建表单）", () => {
 
   it("KS6：输入框的 `.value` 只许被赋成空串（从不预填 key）", () => {
     const assigns = [...code.matchAll(/(?:input|In)\.value\s*=\s*([^;]+);/g)].map((m) => m[1].trim());
-    expect(assigns.length, "一处赋值都没扫到 —— 抽取器坏了").toBeGreaterThan(3);
+    nonEmpty(assigns);
     for (const rhs of assigns) expect(rhs, `输入框被赋了不是空串的值：${rhs}`).toBe('""');
   });
 

@@ -1,6 +1,6 @@
 //! monitor 侧 `asset_sync.rs` 的判据：交出去的是什么、答回来的认不认得、判定没长第二个家。
 //!
-//! 守的要求：用户原话「本机后端在本机看见一个skill并记录下来, 就会和远端后端同步」·
+//! 守的要求：「本机后端在本机看见一个skill并记录下来, 就会和远端后端同步」·
 //! （一切判定都在后端）· 观测方沿它本来就拥有的那条连接去拉（拉的是本机常驻后端，不是 monitor）。
 //!
 //! 买到：握手那一刻交的是「拨号请求（`capture`）＋ origin」；发的字段 == 后端那一条的入参类型（跨半边，读生成的类型声明）；monitor 这一侧零合并规则。
@@ -77,7 +77,7 @@ async fn the_handshake_hands_over_how_to_reach_that_machine() {
 #[test]
 fn what_monitor_sends_and_reads_is_what_the_backend_registers() {
     let gen = |f: &str| {
-        std::fs::read_to_string(crate::guard_support::repo_root().join(f)).expect("生成的类型声明")
+        std::fs::read_to_string(guard_core::addr::repo_root().join(f)).expect("生成的类型声明")
     };
     assert!(
         gen("src/frontend/ui/generated/TypedCommands.ts")
@@ -90,7 +90,6 @@ fn what_monitor_sends_and_reads_is_what_the_backend_registers() {
     let req = decl_keys(&gen("src/frontend/ui/generated/AssetsSyncReq.ts"));
     let reply = decl_keys(&gen("src/frontend/ui/generated/AssetsSynced.ts"));
     let sent: std::collections::BTreeSet<String> = args_for(&cfg())
-        .unwrap()
         .as_object()
         .unwrap()
         .keys()
@@ -118,7 +117,7 @@ fn what_monitor_sends_and_reads_is_what_the_backend_registers() {
 /// 判定没长第二个家：monitor 这一侧零合并 / 推送规则的字样（人群从后端两份源码现抠：它们的公开函数名）。
 #[test]
 fn this_module_holds_no_sync_rule() {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let mine = guard_core::production_code(
         &std::fs::read_to_string(root.join("src/frontend/shell/src/asset_sync.rs")).unwrap(),
     );
@@ -207,7 +206,7 @@ fn decl_keys(decl: &str) -> std::collections::BTreeSet<String> {
 #[test]
 fn the_reach_registration_sends_what_the_backend_registers() {
     let gen = |f: &str| {
-        std::fs::read_to_string(crate::guard_support::repo_root().join(f)).expect("生成的类型声明")
+        std::fs::read_to_string(guard_core::addr::repo_root().join(f)).expect("生成的类型声明")
     };
     // 命令表那一行点的是这两个类型（`generated/TypedCommands.ts`；改了名这里跟着改，下面那条断言会先红）。
     assert!(
@@ -219,7 +218,7 @@ fn the_reach_registration_sends_what_the_backend_registers() {
     );
     let req = decl_keys(&gen("src/frontend/ui/generated/ReachReq.ts"));
     let reply = decl_keys(&gen("src/frontend/ui/generated/Reached.ts"));
-    let args = args_for(&cfg()).unwrap();
+    let args = args_for(&cfg());
     let sent: std::collections::BTreeSet<String> =
         args.as_object().unwrap().keys().cloned().collect();
     assert_eq!(

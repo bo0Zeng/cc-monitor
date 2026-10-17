@@ -1,13 +1,13 @@
-//! 把凭据文件收窄到只给本人，以及读之前查一次它是不是被放宽了。
+//! 把自家秘密文件（API key 凭据文件 · 中转钥匙文件）收窄到只给本人，以及读之前查一次它是不是被放宽了。
 //!
-//! 两个平台同一个签名，Windows 那半不是「无操作」：「谁能读这个文件」在 Windows 上有对应物（DACL），写成无操作等于两个平台的保证不一样而代码里看不出来
+//! 两个平台同一个签名，Windows 那半不是「无操作」：「谁能读这个文件」在 Windows 上有对应物（属主 ＋ DACL），写成无操作等于两个平台的保证不一样而代码里看不出来
 //! （[`tests::the_windows_half_is_not_a_no_op`] 钉住）。建文件时带着 DACL 建（`CreateFileW` ＋ `SECURITY_ATTRIBUTES`，SDDL 里 `D:P` = 断继承）：
 //! `%LOCALAPPDATA%` 的默认 ACL 只靠继承，目录被搬过、从宽松的父目录继承、或者用户改过，ACL 就变了而没人知道。
 //! 设 DACL 与「能手编」不冲突：ACL 限的是谁能读写，不是用什么程序读写。
 //!
-//! - [`create_private`] 只在 `harden` feature 打开时存在（后端也开了它：远端那台的 key 只能由那台的后端写；
-//!   「后端里只有账号域那一份碰得到写半边」由 `readonly_guard::g6_dependency_signoff` 那条判据兜）。
-//! - [`probe`] / [`judge`] 两侧都在。
+//! - [`judge`] 两侧都在（纯函数，两个平台的量法都在 Linux 上测得到）。
+//! - [`open_checked`] / [`notice`] / [`create_private`] 只在 `harden` feature 打开时存在（只有后端开：后端读、写这几份文件；monitor 都不碰）。
+//!   量与读同一个句柄：先按路径量、再按路径读，中间被换掉时量的就不是读的那一份。
 //!
 //! 没有判据钉「平台原语只许住这里」：后端那几条只扫 `backend/` / `platform/`，扫不到 `src/common/` ⇒ 别处再写一个平台 cfg 不会红，今天靠约定。
 
@@ -16,11 +16,14 @@ use copy_core::copy_text;
 /// 我们在盘上**量到**的保护状态。**平台中立** —— 判断住 [`judge`]，一处。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Protection {
-    /// POSIX 的 mode 位（已 `& 0o777`）。
-    Unix { mode: u32 },
-    /// Windows：DACL 里出现的**宽泛主体**（`Everyone` / `Users` 一类）的 SDDL 简称。
-    /// 空 = 一个宽泛主体都没有。
-    Windows { wide_principals: Vec<String> },
+    /// POSIX：mode 位（已 `& 0o7777`）· 文件属主 · 本进程的有效用户。
+    Unix { mode: u32, owner: u32, me: u32 },
+    /// Windows：属主与本进程用户（SID 串）· DACL 逐条（`None` ＝ 没有 DACL，人人全权）。
+    Windows {
+        owner: String,
+        me: String,
+        dacl: Option<Vec<Ace>>,
+    },
     /// **量不出来。** ⚠ 这一档**不许**被当成「没问题」——
     /// backend 那个 `platform/fallback_guard.rs` 整篇讲的就是这一条：
     /// 「为了让代码在别的平台上也能跑一下，给一个答不上来的问题编一个看起来无害的答案」，
@@ -29,10 +32,32 @@ pub enum Protection {
     Undetermined { why: String, raw: Option<String> },
 }
 
+/// DACL 里作用在文件本身的一条（只继承给子项的那种不算）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ace {
+    /// 允许类（`false` ＝ 拒绝类：拒绝不会放宽，判宽时不看）。
+    pub allow: bool,
+    /// 主体的 SID 串。
+    pub who: String,
+    /// 访问掩码。
+    pub mask: u32,
+}
+
+/// 除本人之外许它碰这份文件的主体：SYSTEM 与 Administrators（管理员本来就能夺属主，算不上放宽）。
+pub const TRUSTED_SIDS: &[&str] = &["S-1-5-18", "S-1-5-32-544"];
+
+/// 一条访问掩码够不够碰到内容或改权限：读数据 · 写数据 · 追加 · 改 DACL · 改属主 · 三个通用位
+/// （写得进去的能改上游地址把 key 引走，改得了 DACL / 属主的能给自己补读权）。
+pub fn mask_reaches(mask: u32) -> bool {
+    // 读数据 0x1 · 写数据 0x2 · 追加 0x4 · WRITE_DAC 0x4_0000 · WRITE_OWNER 0x8_0000 ·
+    // GENERIC_ALL 0x1000_0000 · GENERIC_WRITE 0x4000_0000 · GENERIC_READ 0x8000_0000。
+    mask & 0xd00c_0007 != 0
+}
+
 /// 判完的结论。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Verdict {
-    /// 只给本人（外加 Windows 上的 SYSTEM）。
+    /// 只给本人（外加 Windows 上的 SYSTEM · Administrators）。
     OwnerOnly,
     /// 过宽。`how` 说清宽在哪，`fix` 说清怎么修 —— **两样都要有**。
     TooWide { how: String, fix: String },
@@ -51,41 +76,66 @@ impl Verdict {
     }
 }
 
-/// Windows 上算「宽泛」的主体（SDDL 简称）：`WD` = Everyone · `BU` = BUILTIN\Users · `AU` = Authenticated Users · `IU` = Interactive · `WR` = Restricted Code。
-/// 它认的就是这 5 个简称；有人用完整 SID 写同一个主体（`S-1-1-0` 就是 Everyone），本表看不见（DACL 里合法出现的主体集合不是能枚举的东西，没有白名单可用）。
-pub const WIDE_PRINCIPALS: &[&str] = &["WD", "BU", "AU", "IU", "WR"];
-
 /// **判断只有这一处。** 两个平台、三种量到的东西，都在这里变成同一种结论。
+/// 白名单：属主得是本人（Windows 上另认 [`TRUSTED_SIDS`]），本人之外许碰内容的只有 [`TRUSTED_SIDS`]。
 pub fn judge(p: &Protection) -> Verdict {
+    let wide = |how: String, fix: String| Verdict::TooWide { how, fix };
     match p {
-        Protection::Unix { mode } => {
+        Protection::Unix { owner, me, .. } if owner != me => wide(
+            copy_text("credsPerm.judge.notOwner", &[("owner", &owner.to_string())]),
+            copy_text("credsPerm.judge.fixOwner", &[]),
+        ),
+        Protection::Unix { mode, .. } => {
             let extra = mode & 0o077;
             if extra == 0 {
                 Verdict::OwnerOnly
             } else {
-                Verdict::TooWide {
-                    how: copy_text(
+                wide(
+                    copy_text(
                         "credsPerm.judge.tooWideUnix",
                         &[
                             ("mode", &format!("{:04o}", mode & 0o7777)),
                             ("extra", &format!("{:03o}", extra)),
                         ],
                     ),
-                    fix: copy_text("credsPerm.judge.fixUnix", &[]),
-                }
+                    copy_text("credsPerm.judge.fixUnix", &[]),
+                )
             }
         }
-        Protection::Windows { wide_principals } => {
-            if wide_principals.is_empty() {
+        Protection::Windows { owner, me, dacl } => {
+            let trusted = |sid: &str| sid == me || TRUSTED_SIDS.contains(&sid);
+            if !trusted(owner) {
+                return wide(
+                    copy_text("credsPerm.judge.notOwner", &[("owner", owner)]),
+                    copy_text("credsPerm.judge.fixOwner", &[]),
+                );
+            }
+            let Some(aces) = dacl else {
+                return wide(
+                    copy_text("credsPerm.judge.noDacl", &[]),
+                    copy_text("credsPerm.judge.fixWindows", &[]),
+                );
+            };
+            let mut who: Vec<&str> = Vec::new();
+            for a in aces {
+                if a.allow
+                    && mask_reaches(a.mask)
+                    && !trusted(&a.who)
+                    && !who.contains(&a.who.as_str())
+                {
+                    who.push(&a.who);
+                }
+            }
+            if who.is_empty() {
                 Verdict::OwnerOnly
             } else {
-                Verdict::TooWide {
-                    how: copy_text(
+                wide(
+                    copy_text(
                         "credsPerm.judge.tooWideWindows",
-                        &[("who", &(wide_principals.join(" / ")).to_string())],
+                        &[("who", &who.join(" / "))],
                     ),
-                    fix: copy_text("credsPerm.judge.fixWindows", &[]),
-                }
+                    copy_text("credsPerm.judge.fixWindows", &[]),
+                )
             }
         }
         Protection::Undetermined { why, raw } => Verdict::Undetermined {
@@ -95,45 +145,76 @@ pub fn judge(p: &Protection) -> Verdict {
     }
 }
 
-// ─────────────────────────── 读那一半（两侧都有） ───────────────────────────
+// ─────────────────────── 读那一半（只有 `harden` 才有） ───────────────────────
 
-/// 量一次盘上的保护状态。**只读。**
-pub fn probe(path: &std::path::Path) -> Protection {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        return match std::fs::metadata(path) {
-            Ok(m) => Protection::Unix {
-                mode: m.permissions().mode() & 0o7777,
-            },
-            Err(e) => Protection::Undetermined {
-                why: copy_text(
-                    "credsPerm.probe.noMetadata",
-                    &[("why", &copy_core::io_reason(e.kind()))],
-                ),
-                raw: Some(e.to_string()),
-            },
-        };
+/// 开一次、按这个句柄量、交回句柄：调用方从同一个句柄读内容（量的就是读的那一份）。**只读。**
+/// 打不开 ⇒ 系统那个错原样（不在 ＝ `NotFound`，调用方各自决定那算什么）。
+#[cfg(feature = "harden")]
+pub fn open_checked(path: &std::path::Path) -> std::io::Result<(std::fs::File, Verdict)> {
+    let f = std::fs::File::open(path)?;
+    let v = judge(&measure(&f));
+    Ok((f, v))
+}
+
+/// 打得开却量不了 / 打不开（不是「不在」）时的结论：查不出来，不是绿灯。
+pub fn open_failed(e: &std::io::Error) -> Verdict {
+    judge(&Protection::Undetermined {
+        why: copy_text(
+            "credsPerm.measure.noMetadata",
+            &[("why", &copy_core::io_reason(e.kind()))],
+        ),
+        raw: Some(e.to_string()),
+    })
+}
+
+/// 一份自家秘密文件该说的那一句（`what` 是它叫什么）：不在 · 只给本人 ⇒ `None`；宽了 ⇒ 路径 ＋ 宽在哪 ＋ 怎么修；查不出 ⇒ 路径 ＋ 为什么。
+#[cfg(feature = "harden")]
+pub fn notice(path: &std::path::Path, what: &str) -> Option<String> {
+    let verdict = match open_checked(path) {
+        Ok((_, v)) => v,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(e) => open_failed(&e),
+    };
+    let p = path.display().to_string();
+    match verdict {
+        Verdict::OwnerOnly => None,
+        Verdict::TooWide { how, fix } => Some(copy_text(
+            "credsPerm.notice.tooWide",
+            &[("what", what), ("path", &p), ("how", &how), ("fix", &fix)],
+        )),
+        Verdict::Undetermined { why, .. } => Some(copy_text(
+            "credsPerm.notice.unknown",
+            &[("what", what), ("path", &p), ("why", &why)],
+        )),
     }
-    #[cfg(all(windows, feature = "harden"))]
-    {
-        return windows_probe(path);
+}
+
+/// 按句柄量一次。
+#[cfg(all(unix, feature = "harden"))]
+fn measure(f: &std::fs::File) -> Protection {
+    use std::os::unix::fs::MetadataExt;
+    match f.metadata() {
+        Ok(m) => Protection::Unix {
+            mode: m.mode() & 0o7777,
+            owner: m.uid(),
+            // SAFETY: geteuid 不读写任何内存、恒成功。
+            me: unsafe { libc::geteuid() },
+        },
+        Err(e) => Protection::Undetermined {
+            why: copy_text(
+                "credsPerm.measure.noMetadata",
+                &[("why", &copy_core::io_reason(e.kind()))],
+            ),
+            raw: Some(e.to_string()),
+        },
     }
-    #[cfg(all(windows, not(feature = "harden")))]
-    {
-        let _ = path;
-        return Protection::Undetermined {
-            why: copy_text("credsPerm.probe.notHardened", &[]),
-            raw: None,
-        };
-    }
-    #[cfg(not(any(unix, windows)))]
-    {
-        let _ = path;
-        return Protection::Undetermined {
-            why: copy_text("credsPerm.probe.unsupported", &[]),
-            raw: None,
-        };
+}
+
+#[cfg(all(not(any(unix, windows)), feature = "harden"))]
+fn measure(_: &std::fs::File) -> Protection {
+    Protection::Undetermined {
+        why: copy_text("credsPerm.measure.unsupported", &[]),
+        raw: None,
     }
 }
 
@@ -232,9 +313,7 @@ fn owner_only_sddl(user_sid: &str) -> String {
 #[cfg(all(windows, feature = "harden"))]
 /// 当前进程那个用户的 SID 串。失败 ⇒ 系统那个错原样（带 OS 码，调用方按种类出原因词；不在这里拼句子）。
 fn current_user_sid() -> std::io::Result<String> {
-    use windows::core::PWSTR;
-    use windows::Win32::Foundation::{CloseHandle, LocalFree, HANDLE, HLOCAL};
-    use windows::Win32::Security::Authorization::ConvertSidToStringSidW;
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
     use windows::Win32::Security::{GetTokenInformation, TokenUser, TOKEN_QUERY, TOKEN_USER};
     use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
@@ -255,100 +334,127 @@ fn current_user_sid() -> std::io::Result<String> {
         let _ = CloseHandle(token);
         got.map_err(std::io::Error::from)?;
         let tu = &*(buf.as_ptr() as *const TOKEN_USER);
-        let mut s = PWSTR::null();
-        ConvertSidToStringSidW(tu.User.Sid, &mut s).map_err(std::io::Error::from)?;
-        let out = s
-            .to_string()
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        let _ = LocalFree(HLOCAL(s.0 as *mut core::ffi::c_void));
-        Ok(out)
+        sid_text(tu.User.Sid)
     }
 }
 
+/// 按句柄取属主与 DACL，逐条读 ACE（不转 SDDL 文本：文本按位置切会取错带条件的那几形）。
 #[cfg(all(windows, feature = "harden"))]
-fn windows_probe(p: &std::path::Path) -> Protection {
-    use windows::core::{PCWSTR, PWSTR};
-    use windows::Win32::Foundation::{LocalFree, HLOCAL};
-    use windows::Win32::Security::Authorization::{
-        ConvertSecurityDescriptorToStringSecurityDescriptorW, GetNamedSecurityInfoW,
-        SDDL_REVISION_1, SE_FILE_OBJECT,
+fn measure(f: &std::fs::File) -> Protection {
+    use std::os::windows::io::AsRawHandle;
+    use windows::Win32::Foundation::{LocalFree, HANDLE, HLOCAL, PSID};
+    use windows::Win32::Security::Authorization::{GetSecurityInfo, SE_FILE_OBJECT};
+    use windows::Win32::Security::{
+        GetAce, ACCESS_ALLOWED_ACE, ACE_HEADER, ACL, DACL_SECURITY_INFORMATION, INHERIT_ONLY_ACE,
+        OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR,
     };
-    use windows::Win32::Security::{DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR};
-
-    let path_w = match win_path_core::win32_path(p) {
-        Ok(w) => w,
+    let unreadable = |e: std::io::Error, raw: String| Protection::Undetermined {
+        why: copy_text(
+            "credsPerm.measure.noSecurity",
+            &[("why", &copy_core::io_reason(e.kind()))],
+        ),
+        raw: Some(raw),
+    };
+    let me = match current_user_sid() {
+        Ok(s) => s,
         Err(e) => {
-            // 上屏的只是原因词（系统给的错误类别）；码进原话。
-            return Protection::Undetermined {
-                why: copy_text(
-                    "credsPerm.windowsProbe.unreadable",
-                    &[("why", &copy_core::io_reason(e.kind()))],
-                ),
-                raw: Some(e.to_string()),
-            };
+            let raw = e.to_string();
+            return unreadable(e, raw);
         }
     };
     unsafe {
+        let mut owner = PSID::default();
+        let mut dacl: *mut ACL = std::ptr::null_mut();
         let mut psd = PSECURITY_DESCRIPTOR::default();
-        let rc = GetNamedSecurityInfoW(
-            PCWSTR(path_w.as_ptr()),
+        let rc = GetSecurityInfo(
+            HANDLE(f.as_raw_handle() as isize),
             SE_FILE_OBJECT,
-            DACL_SECURITY_INFORMATION,
+            OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+            Some(&mut owner),
             None,
+            Some(&mut dacl),
             None,
-            None,
-            None,
-            &mut psd,
+            Some(&mut psd),
         );
         if rc.is_err() {
             let e = std::io::Error::from_raw_os_error(rc.0 as i32);
-            return Protection::Undetermined {
-                why: copy_text(
-                    "credsPerm.windowsProbe.unreadable",
-                    &[("why", &copy_core::io_reason(e.kind()))],
-                ),
-                raw: Some(format!("GetNamedSecurityInfoW {}: {e}", rc.0)),
-            };
+            return unreadable(e, format!("GetSecurityInfo {}", rc.0));
         }
-        let mut s = PWSTR::null();
-        let ok = ConvertSecurityDescriptorToStringSecurityDescriptorW(
-            psd,
-            SDDL_REVISION_1,
-            DACL_SECURITY_INFORMATION,
-            &mut s,
-            None,
-        );
-        if ok.is_err() {
-            let _ = LocalFree(HLOCAL(psd.0));
-            return Protection::Undetermined {
-                why: copy_text("credsPerm.windowsProbe.toText", &[]),
-                raw: None,
-            };
-        }
-        let sddl = s.to_string().unwrap_or_default();
-        let _ = LocalFree(HLOCAL(s.0 as *mut core::ffi::c_void));
+        let read = (|| -> Result<Protection, Protection> {
+            let owner = sid_text(owner).map_err(|e| {
+                let raw = e.to_string();
+                unreadable(e, raw)
+            })?;
+            if dacl.is_null() {
+                return Ok(Protection::Windows {
+                    owner,
+                    me: me.clone(),
+                    dacl: None,
+                });
+            }
+            let mut aces = Vec::new();
+            for i in 0..u32::from((*dacl).AceCount) {
+                let mut p: *mut core::ffi::c_void = std::ptr::null_mut();
+                if let Err(e) = GetAce(dacl, i, &mut p) {
+                    let e = std::io::Error::from(e);
+                    let raw = e.to_string();
+                    return Err(unreadable(e, raw));
+                }
+                let h = &*(p as *const ACE_HEADER);
+                if u32::from(h.AceFlags) & INHERIT_ONLY_ACE.0 != 0 {
+                    continue;
+                }
+                // 0 允许 · 9 允许（带回调）· 1 拒绝 · 10 拒绝（带回调）：四种头之后都是 掩码 ＋ SID。别的（对象类）文件上不该有，认不出就说认不出。
+                let allow = match h.AceType {
+                    0 | 9 => true,
+                    1 | 10 => false,
+                    other => {
+                        return Err(Protection::Undetermined {
+                            why: copy_text(
+                                "credsPerm.measure.unknownAce",
+                                &[("kind", &other.to_string())],
+                            ),
+                            raw: None,
+                        })
+                    }
+                };
+                let a = &*(p as *const ACCESS_ALLOWED_ACE);
+                let sid = PSID(&a.SidStart as *const u32 as *mut core::ffi::c_void);
+                let who = sid_text(sid).map_err(|e| {
+                    let raw = e.to_string();
+                    unreadable(e, raw)
+                })?;
+                aces.push(Ace {
+                    allow,
+                    who,
+                    mask: a.Mask,
+                });
+            }
+            Ok(Protection::Windows {
+                owner,
+                me: me.clone(),
+                dacl: Some(aces),
+            })
+        })();
         let _ = LocalFree(HLOCAL(psd.0));
-        Protection::Windows {
-            wide_principals: wide_principals_in_sddl(&sddl),
+        match read {
+            Ok(p) | Err(p) => p,
         }
     }
 }
 
-/// 从一串 SDDL 里挑出宽泛主体。**纯函数，两个平台都编得到** ——
-/// 抽出来是为了让它在 Linux 上也测得到（Windows 那条真调用测不了，但这条判断测得到）。
-pub fn wide_principals_in_sddl(sddl: &str) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    // ACE 的形状是 `(A;;FA;;;WD)` —— 主体是最后一段，以 `)` 收尾。
-    for ace in sddl.split('(').skip(1) {
-        let Some(end) = ace.find(')') else { continue };
-        let Some(who) = ace[..end].rsplit(';').next() else {
-            continue;
-        };
-        let who = who.trim();
-        if WIDE_PRINCIPALS.contains(&who) && !out.iter().any(|x| x == who) {
-            out.push(who.to_string());
-        }
-    }
+/// 一个 SID ⇒ 它的串（`S-1-5-…`）。
+#[cfg(all(windows, feature = "harden"))]
+unsafe fn sid_text(sid: windows::Win32::Foundation::PSID) -> std::io::Result<String> {
+    use windows::core::PWSTR;
+    use windows::Win32::Foundation::{LocalFree, HLOCAL};
+    use windows::Win32::Security::Authorization::ConvertSidToStringSidW;
+    let mut s = PWSTR::null();
+    ConvertSidToStringSidW(sid, &mut s).map_err(std::io::Error::from)?;
+    let out = s
+        .to_string()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e));
+    let _ = LocalFree(HLOCAL(s.0 as *mut core::ffi::c_void));
     out
 }
 

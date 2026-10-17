@@ -18,6 +18,10 @@ resumeInTmux: boolean,
  */
 models: { [key in string]: string }, 
 /**
+ * 从这台起新会话默认用哪个权限档（哪一家 → 那一家声明的档的原值）；恢复不读它。
+ */
+permissionModes: { [key in string]: string }, 
+/**
  * 上下文上限表：模型名子串（大小写不敏感，最长匹配胜）→ 上限 tokens。
  */
 contextLimits: { [key in string]: number }, 

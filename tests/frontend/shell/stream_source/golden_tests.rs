@@ -21,14 +21,14 @@ fn kind_of(f: &Frame) -> String {
 /// 握手那一刻帧表与本侧一致的那条连接（帧门全放行）。
 fn our_gate() -> std::sync::Arc<crate::inbound_client::InboundClient> {
     let (mine, _theirs) = tokio::io::duplex(1024);
-    let hello = crate::inbound_client::witness_of(&crate::guard_support::our_hello(&[])).unwrap();
+    let hello = crate::inbound_client::witness_of(&crate::frame_fixtures::our_hello(&[])).unwrap();
     crate::inbound_client::park(mine).into_client(hello)
 }
 
 /// 同一条连接，只是那台那一版的 `kind` 那一种形状不同。
 fn gate_differing(kind: &str) -> std::sync::Arc<crate::inbound_client::InboundClient> {
     let (mine, _theirs) = tokio::io::duplex(1024);
-    let mut h = crate::guard_support::our_hello(&[]);
+    let mut h = crate::frame_fixtures::our_hello(&[]);
     if let cmd_wire::frame::Frame::Hello(h) = &mut h {
         h.frames.insert(kind.to_string(), "00000000".to_string());
     }
@@ -166,7 +166,10 @@ async fn an_unread_frame_is_said_once_per_kind_per_connection() {
         ],
         "健康信息不是每种恰好一句：{said:?}"
     );
-    assert_eq!(said[0].message, copy_core::backend_frames_differ("台架"));
+    assert_eq!(
+        said[0].message,
+        copy_core::copy_text("peerVersion.said.framesDiffer", &[("machine", "台架")])
+    );
     assert!(
         said[1].message.contains("台架") && said[1].message.contains("line"),
         "解不开那一句没点名那台与那一种：{}",

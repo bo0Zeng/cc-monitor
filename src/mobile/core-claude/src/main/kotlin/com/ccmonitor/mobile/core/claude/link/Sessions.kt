@@ -6,32 +6,38 @@ import com.ccmonitor.mobile.core.claude.link.wire.Held
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryLinesPage
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryReadPage
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryTailReply
+import com.ccmonitor.mobile.core.claude.link.wire.Landed
+import com.ccmonitor.mobile.core.claude.link.wire.LineFrame
 import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
 import com.ccmonitor.mobile.core.claude.link.wire.ModeSwitched
 import com.ccmonitor.mobile.core.claude.link.wire.ModelSwitched
-import com.ccmonitor.mobile.core.claude.link.wire.NewFacts
+import com.ccmonitor.mobile.core.claude.link.wire.OpenFacts
+import com.ccmonitor.mobile.core.claude.link.wire.Opened
 import com.ccmonitor.mobile.core.claude.link.wire.ReadRow
 import com.ccmonitor.mobile.core.claude.link.wire.SentResult
 import com.ccmonitor.mobile.core.claude.link.wire.SessionCommands
 import com.ccmonitor.mobile.core.claude.link.wire.SessionFacts
-import com.ccmonitor.mobile.core.claude.link.wire.SessionNewOutcome
-import com.ccmonitor.mobile.core.claude.link.wire.SessionNewReply
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
 import com.ccmonitor.mobile.core.claude.link.wire.Sent as SentWire
 
-/**
+/*
  * 起会话 · 往会话里送字 · 读一条会话的正文：都是那台核心的帧命令，手机只拼入参、解成品（`IPC-COMMANDS.md` 各节）。
- * 会话起在那台 tmux 里（`place: tmux`），桌面那一侧看得到、接得上；正文是核心的通用记录（`IPC-PROTOCOL.md`「通用记录」）。
+ * 正文是核心的通用记录（`IPC-PROTOCOL.md`「通用记录」）。
  */
-object SessionNew {
-    const val COMMAND: String = "session-new"
+
+/**
+ * `session-open`：新起 · 恢复 · 接回 · 开一个 shell，都是这一问（那台定落在哪、渲好要在终端里敲的那一行）。
+ * 手机的终端只是 ssh 那一屏：永远 `local: false`；新起 · 恢复永远起在那台 tmux 里，桌面那一侧看得到、接得上。
+ */
+object SessionOpen {
+    const val COMMAND: String = "session-open"
 
     /**
-     * 新起一条会话（[agent] 是哪一家的线上名，照那台 `session-new-facts` 的 `agents[].kind`）。账号 · 模型 · 权限都不带 ⇒ 跟随那台的默认。
+     * 新起一条会话（[agent] 是哪一家的线上名，照那台 `session-open-facts` 的 `agents[].kind`）。账号 · 模型 · 权限都不带 ⇒ 跟随那台的默认。
      * [ticket] 一个草稿一张：期限到了同一张再问，那台认出是同一趟、不起第二个。
      * [prompt] 第一句：随起交（那台作为启动参数交给 agent，结局在回包的 `prompt`）。
      */
-    fun args(
+    fun newIn(
         cwd: String,
         ticket: String,
         agent: String,
@@ -41,42 +47,86 @@ object SessionNew {
         /** 改过轮换 ⇒ 那一份（不轮换 ＝ `strategy: null`）；没改 ⇒ `null`、不交（那台按「新会话用」那份）。 */
         rotation: Rotation? = null,
     ): Map<String, Any?> =
-        buildMap {
-            putAll(mapOf("agent" to agent, "cwd" to cwd, "place" to "tmux", "local" to false, "ticket" to ticket, "prompt" to prompt))
-            account?.let { put("account", mapOf("kind" to "named", "name" to it)) }
-            rotation?.let { put("rotation", mapOf("strategy" to it.strategy)) }
-        }
+        ask(
+            buildMap {
+                putAll(mapOf("kind" to "new", "agent" to agent, "cwd" to cwd, "prompt" to prompt))
+                rotation?.let { put("rotation", mapOf("strategy" to it.strategy)) }
+            },
+            run = true,
+            ticket = ticket,
+            account = account,
+        )
 
-    /** 这一条新会话用哪份轮换策略（`session-new.rotation`）：[strategy] 为 `null` ＝ 不轮换。 */
+    /** 这一条新会话用哪份轮换策略（`what.rotation`）：[strategy] 为 `null` ＝ 不轮换。 */
     data class Rotation(
         val strategy: String?,
     )
 
-    /** 在家目录起 [agent]、起在名叫 [name] 的会话里，不带第一句（终端屏「后台起」那一格）。 */
-    fun inTmux(
+    /** 在家目录起 [agent]、起在名叫 [name] 的会话里，不带第一句（tmux 管理窗「后台起」那一格）。 */
+    fun newInTmux(
         agent: String,
         name: String,
         ticket: String,
-    ): Map<String, Any?> = mapOf("agent" to agent, "cwd" to "~", "place" to "tmux", "local" to false, "ticket" to ticket, "tmuxName" to name)
+    ): Map<String, Any?> = ask(mapOf("kind" to "new", "agent" to agent, "cwd" to "~", "tmuxName" to name), run = true, ticket = ticket)
+
+    /** 恢复 [sid] 那条（终端没了 ⇒ 那台照记录起回来；已在跑 ⇒ 回它所在的那个）。 */
+    fun resume(sid: String): Map<String, Any?> = ask(mapOf("kind" to "resume", "sid" to sid), run = true)
+
+    /** 接回名叫 [session] 的那个 tmux 会话（不在 ⇒ 那台拒，不建）。 */
+    fun look(session: String): Map<String, Any?> = ask(mapOf("kind" to "look", "session" to session))
+
+    /**
+     * 开一个 shell：给了 [session] ⇒ 那台 tmux 里那个会话（不在就在 [cwd] 里建一个空的）；只给 [cwd] ⇒ 进那个目录那一行（那台的 shell 方言）。
+     * [cwd] 只在建的那一刻生效。
+     */
+    fun shell(
+        session: String?,
+        cwd: String?,
+    ): Map<String, Any?> =
+        ask(
+            buildMap {
+                put("kind", "shell")
+                session?.let { put("session", it) }
+                cwd?.let { put("cwd", it) }
+            },
+        )
+
+    private fun ask(
+        what: Map<String, Any?>,
+        run: Boolean = false,
+        ticket: String? = null,
+        account: String? = null,
+    ): Map<String, Any?> =
+        buildMap {
+            put("what", what)
+            account?.let { put("account", mapOf("kind" to "named", "name" to it)) }
+            if (run) put("run", "tmux")
+            put("local", false)
+            ticket?.let { put("ticket", it) }
+            put("client", CLIENT)
+        }
 
     data class Answer(
-        /** `started`（tmux 里起好了）· `open`（要开终端窗口：手机不走这一形）。 */
-        val outcome: SessionNewOutcome,
-        /** tmux 会话名。 */
+        val landed: Landed,
+        /** 落在哪个 tmux 会话（手机这几形都有）。 */
         val session: String?,
-        /** 那台先定好的 sid；新起的 ⇒ `null`（报到之前说不出）。 */
+        /** 要在终端里敲的那一行（那台渲好的）。 */
+        val line: String?,
+        /** 那台先定好的 sid；那一家不认先定 ⇒ `null`（报到之前说不出）。 */
         val sid: String?,
-        /** 展开之后的目录：认报到的会话按它。 */
-        val cwd: String,
-        /** 第一句交进去的结局（同 `terminal-input` 的回话）；那台没交 ⇒ `null`。 */
+        /** 展开之后的目录：认报到的会话按它；接回 ⇒ `null`。 */
+        val cwd: String?,
+        /** 那台要附带说的一句；没有 ⇒ `null`。 */
+        val note: String?,
+        /** 第一句交进去的结局（同 `terminal-input` 的回话）；没给第一句 ⇒ `null`。 */
         val prompt: TerminalInput.Result?,
     )
 
     /** 核心按 `cmd-wire` 那一份解过的回包 ⇒ 这一份（第一句的结局折成 [TerminalInput.Result]）。 */
     fun of(data: Any?): Answer? {
-        val r = Wire.bind<SessionNewReply>(data) ?: return null
+        val r = Wire.bind<Opened>(data) ?: return null
         val prompt = r.prompt?.let { TerminalInput.of(it) ?: return null }
-        return Answer(r.outcome, r.session, r.sid, r.cwd, prompt)
+        return Answer(r.landed, r.session, r.line, r.sid, r.cwd, r.note, prompt)
     }
 
     /** 起好之后报到的那一条：会话表里目录是 [cwd]、起之前（[before]）还没有的。和桌面认法一样（`awaitArrival` 的 `{cwd}`）。 */
@@ -88,13 +138,13 @@ object SessionNew {
 }
 
 /**
- * `session-new-facts`：这台能起哪几家（注册表序；各带写给人看的名字与可选的模型）。哪几家 · 叫什么 · 有哪些模型都问那台，手机一家都不认识。
+ * `session-open-facts`：这台能起哪几家（注册表序；各带写给人看的名字与可选的模型）。哪几家 · 叫什么 · 有哪些模型都问那台，手机一家都不认识。
  */
-object SessionNewFacts {
-    const val COMMAND: String = "session-new-facts"
+object SessionOpenFacts {
+    const val COMMAND: String = "session-open-facts"
 
-    /** 整份：几家（[NewFacts.agents]）＋ 最近的目录。 */
-    fun of(data: Any?): NewFacts? = Wire.bind<NewFacts>(data)
+    /** 整份：几家（[OpenFacts.agents]）＋ 最近的目录。 */
+    fun of(data: Any?): OpenFacts? = Wire.bind<OpenFacts>(data)
 
     /** 这台存的那一家（线上 kind）；没存 · 那台不认 ⇒ 那台列的第一家；一家都没有 ⇒ `null`。 */
     fun pick(
@@ -129,7 +179,7 @@ object SessionModel {
 object SessionPermission {
     const val COMMAND: String = "session-permission"
 
-    /** [mode] 是那台 `session-new-facts` 那一家 `permissionModes` 里的原值。 */
+    /** [mode] 是那台 `session-open-facts` 那一家 `permissionModes` 里的原值。 */
     fun args(
         sid: String,
         mode: String,
@@ -319,10 +369,9 @@ data class RecordLine(
     companion object {
         fun of(frame: Map<String, Any?>): RecordLine? {
             if (frame.str("kind") != "line") return null
+            val f = Wire.bind<LineFrame>(frame) ?: return null
             val record = frame["record"]?.let { Wire.bind<LineRecord>(it) }
-            return decoding {
-                RecordLine(frame.str("session_id").need(), frame.str("path").need(), frame.num("seq").need(), frame.num("byte_offset"), record, frame["record"])
-            }
+            return RecordLine(f.sid, f.path, f.seq, f.byteOffset, record, frame["record"])
         }
     }
 }

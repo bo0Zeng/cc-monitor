@@ -29,11 +29,10 @@ mod duration;
 mod peer;
 mod size;
 pub use civil::civil_from_days;
-pub use count::count_text;
+pub use count::{count_short, count_text};
 pub use duration::{format_duration, format_elapsed, rel_duration, short_duration};
 pub use peer::{
-    backend_differs, backend_frames_differ, backend_incomparable, backend_newer, backend_old,
-    local_machine, peer_machine, reply_unreadable,
+    backend_differs, backend_old, local_machine, peer_machine, reply_unreadable, unavailable,
 };
 pub use reason::{code_reason, io_reason, sftp_status_reason, spawn_reason};
 pub use size::size_text;

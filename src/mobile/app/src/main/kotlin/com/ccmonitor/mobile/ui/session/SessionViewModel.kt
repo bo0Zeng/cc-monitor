@@ -11,8 +11,6 @@ import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
 import com.ccmonitor.mobile.core.data.repo.MovedLaunch
 import com.ccmonitor.mobile.core.data.repo.MovedLaunchRepository
-import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
-import com.ccmonitor.mobile.core.remote.RemoteExecutor
 import com.ccmonitor.mobile.core.ssh.HostKeyChangedException
 import com.ccmonitor.mobile.core.ssh.KnownHostStore
 import com.ccmonitor.mobile.core.ssh.SessionStatus
@@ -20,22 +18,16 @@ import com.ccmonitor.mobile.core.ssh.ShellChannel
 import com.ccmonitor.mobile.core.ssh.SshConnectEvent
 import com.ccmonitor.mobile.core.ssh.SshConnectionManager
 import com.ccmonitor.mobile.core.ssh.SshTransport
-import com.ccmonitor.mobile.core.ssh.commandChannel
-import com.ccmonitor.mobile.core.ssh.commandExecutor
 import com.ccmonitor.mobile.core.terminal.TerminalSession
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ssh.HostConnector
-import com.ccmonitor.mobile.ssh.PosixDialect
-import com.ccmonitor.mobile.ssh.ShellDialect
-import com.ccmonitor.mobile.ssh.dialectFor
-import com.ccmonitor.mobile.ssh.initialCommands
-import com.ccmonitor.mobile.ssh.resolveTmuxSession
 import com.ccmonitor.mobile.ui.theme.AppTerminalPalette
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
@@ -85,14 +77,20 @@ sealed interface SessionUiState {
 
     data class Connected(
         val session: TerminalSession,
-        val cwd: String?,
-        // 远端 shell 方言，界面按它的能力位开关 tmux 与阅读面。随连接态一起到位，界面不必再读一次 host。
-        val dialect: ShellDialect = PosixDialect,
     ) : SessionUiState
 }
 
 /**
- * 终端屏的连接编排：连接（竞速）→ openShell → [TerminalSession] → 首发命令或 resume。
+ * 那台此刻能做的（连上时问一次那台的 `session-open-facts`）：[noBackend] ＝ 问不到时那一句（后端没连上 ⇒ 推公钥灰着）；
+ * [noTmux] ＝ 用不了 tmux 时那一句（那台说没有 · 问不到都算）。还没问到 ⇒ 都是 `null`。
+ */
+data class Reach(
+    val noBackend: String? = null,
+    val noTmux: String? = null,
+)
+
+/**
+ * 终端屏的连接编排：连接（竞速）→ openShell → [TerminalSession] → 问那台进哪儿（一问 `session-open`）、敲回来的那一行。
  * 暴露 [uiState] / [status] / [channel] / [notices]；[retry] 重连；[onCleared] 关会话并
  * `hostConnector.release`（引用计数，归零才真断）。前台保活服务要 Context，由 Composable 在 Connected 时起。
  *
@@ -102,12 +100,13 @@ class SessionViewModel(
     private val hostId: String,
     cdArg: String?,
     tmuxArg: String?, // 进终端 tab 首连即接回的会话名（敲那台渲出的那一行）；普通 tab 为 null
+    resumeArg: String?, // 终端没了的那条会话（sid）：首连先让那台恢复、再接回它落在的那个会话；普通 tab 为 null
     private val manager: SshConnectionManager,
     private val hostRepo: HostRepository,
     private val identityRepo: IdentityRepository,
     private val movedRepo: MovedLaunchRepository, // 迁移说明那一格：手机原来存的启动配置，这一台的列一次
     private val hostConnector: HostConnector, // 建连编排，retain / release / connection 也经它
-    backends: HostBackends, // 这台的常驻流：列会话 · 进终端那一行 · 送字 · 抓屏 · 结束都问那台核心
+    backends: HostBackends, // 这台的常驻流：列会话 · 进终端那一行 · 送字 · 抓屏 · 结束 · 推公钥都问那台核心
     private val knownHostStore: KnownHostStore, // 主机钥匙变更的恢复：确认后 forget 再重连
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
@@ -132,20 +131,6 @@ class SessionViewModel(
 
     /** 本次连接选定但还没持久化的身份。认证成功才写 host.authRef，失败可重选，不会卡在错的身份上。 */
     private var pendingIdentityId: String? = null
-
-    /**
-     * 该连接的流式命令通道，每次 exec 重新解析连接，所以跟随重连。供 tmux 管理与阅读面用。
-     * 无活连接时抛 ConnectionDeadException，绝不给空流；契约见 [commandChannel]。
-     */
-    val channel: RemoteCommandChannel = manager.commandChannel(hostId)
-
-    /**
-     * 同一条连接的一次性执行（带退出码与 stderr），与 [channel] 并列。
-     *
-     * 流式通道拿不到退出码，「stdout 空」分不清是成功还是命令根本没跑。要判成败的地方（探测文件大小、
-     * 写操作）走这条；`tail -F` 那种长跑仍走 [channel]。
-     */
-    val executor: RemoteExecutor = manager.commandExecutor(hostId)
 
     /**
      * 只取本主机的会话状态（distinctUntilChanged，别的会话或文件屏变动不触发整屏重组）。
@@ -193,13 +178,19 @@ class SessionViewModel(
     /** 进终端 tab 要接回的会话名（首连与重连都敲那台渲出的那一行）；普通 tab 为 null。 */
     private val attachTo: String? = tmuxArg?.ifBlank { null }
 
+    /** 先恢复再接回的那条会话（sid）。重连时照样先问那台：已经在跑 ⇒ 那台回它所在的那个，不另起。 */
+    private val resumeSid: String? = resumeArg?.ifBlank { null }
+
     // 当前所在的 tmux 会话名，每个 tab 各记各的（同主机多 tab 不互相覆盖），跨重连保留。
     // 切模型 · 抓屏按它找那台名单里的终端。进终端 tab 以 [attachTo] 初始化。
     private val _tmuxSession = MutableStateFlow(attachTo)
     val tmuxSession: StateFlow<String?> = _tmuxSession.asStateFlow()
 
-    /** 要那台核心做的终端那几件（tmux 管理窗 · 切模型 · 抓屏 · 进终端那一行）。 */
+    /** 要那台核心做的终端那几件（tmux 管理窗 · 切模型 · 抓屏 · 进终端那一行 · 推公钥）。 */
     val terminals = TerminalOps(backends.of(hostId), { hostRepo.get(hostId)?.label ?: hostId }, { hostRepo.get(hostId)?.agentKind })
+
+    private val _reach = MutableStateFlow(Reach())
+    val reach: StateFlow<Reach> = _reach.asStateFlow()
 
     /** 可推送公钥的身份列表（命令面板「推送公钥」用）。 */
     val identities: StateFlow<List<Identity>> =
@@ -227,7 +218,7 @@ class SessionViewModel(
     val moved: StateFlow<List<MovedLaunch>> = _moved.asStateFlow()
 
     private fun loadAliases() {
-        if (attachTo != null || _aliasPicked.value) return
+        if (attachTo != null || resumeSid != null || _aliasPicked.value) return
         viewModelScope.launch { terminals.aliases().onSuccess { _aliases.value = it } }
     }
 
@@ -294,7 +285,14 @@ class SessionViewModel(
                 _uiState.value = SessionUiState.Connecting
                 _connectLog.value = emptyList()
                 if (!ensureIdentityBound()) return@launch // 无身份的主机先解决身份（自动绑 / 引导 / 快选）
-                _uiState.value = withContext(io) { establishConnectedState(epoch) }
+                val st = withContext(io) { establishConnectedState(epoch) }
+                _uiState.value = st
+                if (st !is SessionUiState.Connected) return@launch
+                // 进哪儿与那台能做什么同时问；后端没连上而这一趟没问进哪儿 ⇒ 说一句（问了的没成那一问自己说）。
+                val asked = async { enter(st.session) }
+                val r = terminals.reach()
+                _reach.value = r
+                if (!asked.await()) r.noBackend?.let { _notices.trySend(it) }
             }
     }
 
@@ -324,8 +322,7 @@ class SessionViewModel(
             shellOpenedOn = conn // 断因判定的基准
             reattachDetector.notifyNewShellOpened() // 清掉上一个 shell 的断因
             persistPickedIdentity(host) // 认证成功后才持久化选定身份（密码认证跳过）
-            sendStartupCommands(host, ts)
-            SessionUiState.Connected(ts, host.defaultWorkingDir, dialectFor(host.os))
+            SessionUiState.Connected(ts)
         } catch (ce: CancellationException) {
             runCatching { created?.close() } // 关掉本次（可能已建）的孤儿会话
             throw ce // 离屏或重连取消属正常，不标 Error
@@ -364,26 +361,22 @@ class SessionViewModel(
     }
 
     /**
-     * 连接成功后的首发命令。进终端 tab：敲那台渲出的那一行（与桌面「命令已复制」同一条；找哪个窗格、怎么附着都在那台），
-     * 要不到 ⇒ 留在普通 shell、说一声。其余只开一个 shell：主机设置的工作目录 · tmux 会话（照「用户在 ssh 里自己敲」）。
+     * 连上之后进哪儿，一问那台（接回 · 恢复 · 进主机设置的那个会话或上次所在的 · 进默认目录），敲回来的那一行；没成 ⇒ 留在普通 shell、说那一句。
+     * 回 `true` ＝ 问了。
      */
-    private suspend fun sendStartupCommands(
-        host: Host,
-        ts: TerminalSession,
-    ) {
-        attachTo?.let { name ->
-            terminals
-                .attachLine(name)
-                .onSuccess { ts.send("$it\n".toByteArray()) }
-                .onFailure { _notices.trySend(it.message.orEmpty()) }
-            return
-        }
-        // 只开一个 shell（带 cd）：起会话走「用哪个启动」那一排（那台的别名）。重连时回到本 tab 上次所在的 tmux 会话。
-        val lastTmux = _tmuxSession.value
-        host.initialCommands(workingDir = cd, tmuxSession = lastTmux).forEach { ts.send("$it\n".toByteArray()) }
-        // 记下实际的 tmux 会话名（上次所在 > 自动 tmux > 无），与 initialCommands 同源。
-        host.resolveTmuxSession(lastTmux)?.let { _tmuxSession.value = it }
+    private suspend fun enter(ts: TerminalSession): Boolean {
+        val host = hostRepo.get(hostId)
+        val tmux = _tmuxSession.value ?: CONNECT_SESSION.takeIf { host?.sessionManager == "tmux" }
+        val cwd = (cd ?: host?.defaultWorkingDir)?.trim()?.ifEmpty { null }
+        val r = terminals.enter(attachTo, resumeSid, tmux, cwd)
+        r
+            ?.onSuccess { a ->
+                a.session?.let { _tmuxSession.value = it }
+                a.line?.let { ts.send("$it\n".toByteArray()) }
+                a.note?.let { _notices.trySend(it) }
+            }?.onFailure { _notices.trySend(it.message.orEmpty()) }
         loadAliases()
+        return r != null
     }
 
     /**
@@ -458,5 +451,8 @@ class SessionViewModel(
 
     private companion object {
         const val TAG = "Session"
+
+        /** 主机设置里开了「连上就进 tmux」⇒ 进（没有就建）这个会话。 */
+        const val CONNECT_SESSION = "main"
     }
 }

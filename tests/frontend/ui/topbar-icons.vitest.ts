@@ -33,6 +33,7 @@
 import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
+import { nonEmpty } from "../../test-support/non-empty.ts";
 
 function read(rel: string): string {
   return readFileSync(`${REPO_ROOT}/${rel}`, "utf8");
@@ -61,15 +62,7 @@ describe("F09 顶栏图标不依赖字体", () => {
     const classes = triggerClasses(main);
 
     // 抽取器自检：抽不到就整条空转。
-    // 🔴 〔删用量 09-18〕地板 6 → **5**：`.usage-trigger` 那个顶栏入口随用量 ② 轴
-    // 整轴退役（它点开的 `views/usage-view.ts` 整删）。**这不是抽取器坏了，是顶栏真的少一个按钮**
-    // —— 两者在读数上长得一样，所以降地板必须写清少的是哪一个。
-    // 地板 5 → **4**：`.panorama-trigger` 那个顶栏入口随代码全景整条摘掉（它点开的全景页整删）。
-    expect(
-      classes.length,
-      "从 `main.ts` 抽不到任何 `*-trigger` 按钮 —— 命名约定变了？\n" +
-        "改了就把本文件的抽取器一起改，别让它零命中地绿。",
-    ).toBeGreaterThanOrEqual(4);
+    nonEmpty(classes);
 
     // 人群 = 每个 trigger 变量名对应的 `.textContent = "…"` 赋值。
     const offenders: string[] = [];

@@ -164,7 +164,7 @@ impl Screen {
             display: format!(":{num}"),
             _displayfd: fd,
         };
-        // 最多等 5 秒（30 × 167ms）—— 就绪由「答得出几何」说了算。
+        // 就绪由「答得出几何」说了算，等到兜底上限为止。
         for _ in guard_core::wall::rounds() {
             if screen
                 .xdotool(&["getdisplaygeometry"])
@@ -437,7 +437,8 @@ pub fn close_like_a_wm(display: &str, id: &str) -> Result<(), String> {
     }
 }
 
-/// 等一个标题含 `needle` 的窗口出现。回**所有**命中的窗口 id。
+/// 等一个标题含 `needle` 的窗口出现。回**所有**命中的窗口 id；等到兜底上限 [`guard_core::wall::CEILING`] 还没有才回空表
+/// （等的是条件，不拿圈数凑期限：负载高时窗口摆上来要的时长没有上界可估）。
 ///
 /// ⚠ 回的是**全部**而不是第一个：数得出「恰好一个」才谈得上相等断言，
 /// 而「找到了一个」在多出一个窗口时照样成立。
@@ -445,10 +446,8 @@ pub fn close_like_a_wm(display: &str, id: &str) -> Result<(), String> {
 /// 🔴 带 `--onlyvisible`：只认**真的映射到屏幕上**的那一档。
 /// 不带的话一个建了却没 map 的窗口照样数得到 ——
 /// 而「建了」与「摆到屏幕上了」正是这一格要分开的两件事。
-pub fn wait_for_windows(display: &str, needle: &str, budget_ms: u64) -> Vec<String> {
-    let step = 100;
-    let mut waited = 0;
-    loop {
+pub fn wait_for_windows(display: &str, needle: &str) -> Vec<String> {
+    for () in guard_core::wall::rounds() {
         if let Ok(out) = xdotool_on(display, &["search", "--onlyvisible", "--name", needle]) {
             let ids: Vec<String> = out
                 .lines()
@@ -460,12 +459,9 @@ pub fn wait_for_windows(display: &str, needle: &str, budget_ms: u64) -> Vec<Stri
                 return ids;
             }
         }
-        if waited >= budget_ms {
-            return Vec::new();
-        }
-        std::thread::sleep(std::time::Duration::from_millis(step));
-        waited += step;
+        std::thread::sleep(std::time::Duration::from_millis(100));
     }
+    Vec::new()
 }
 
 /// 一个窗口在**根坐标**里的位置与尺寸（都是物理像素）。

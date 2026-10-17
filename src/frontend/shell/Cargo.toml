@@ -14,6 +14,8 @@ members = [
     "../../common/cmd-wire",
     # 分块传的循环（上传进暂存区 ＋ 整份摘要 · 下载逐块读回）：文件窗口与手机嵌的核心同一份。
     "../../common/chunk-core",
+    # 选中这几项 ⇒ 能做什么（种类 · 每个出口那张表 · 做不了的为什么）：文件窗口与手机嵌的核心同一份。
+    "../../common/pick-core",
     "../../common/creds-core",
     "../../common/guard-core",
     "../../common/relay-route-core",
@@ -73,6 +75,7 @@ population = [
     "../../common/filewin-contract",
     "../../common/win-manifest",
     "../../common/chunk-core",
+    "../../common/pick-core",
     "../filewin",
 ]
 
@@ -118,8 +121,6 @@ win-manifest = { path = "../../common/win-manifest" }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
-# 系统通知（`platform/notify.rs`：Linux 以外经这个插件）
-tauri-plugin-notification = "2"
 # 单实例：第二次启动把第一个的主窗拉到前台、自己退出。Windows 用 user 级互斥量，Linux 用会话总线上的名字（zbus）。
 tauri-plugin-single-instance = "2"
 # 写系统剪贴板（`clipboard.rs`）：回真成败。锁里本就有（egui-winit 带进来的）；Linux 多开 Wayland data-control 那一档。
@@ -163,8 +164,6 @@ comms-inward = { path = "../../comms/inward" }
 resident-client = { path = "../../comms/resident-client" }
 # 前端宿主原语（原子写 `atomic_write_json` · `WorkArea` / `fit_into_work_area`）：monitor 与文件窗口共用那一份（`src/common/host-core`）。
 host-core = { path = "../../common/host-core" }
-# 交给 Win32 的路径（长路径前缀）只从它来：配置换名那一处用（`platform/fs.rs`）；仓内 crate、零依赖。
-win-path-core = { path = "../../common/win-path-core" }
 # monitor 与文件窗口进程两边对上的形状（种子 · 就绪行 · 开终端那一问）。
 filewin-contract = { path = "../../common/filewin-contract" }
 # `gate-core` 删了：monitor 侧的 Gate 1 前检与转调壳（只剩跨轨对拍锚点在用）删掉之后它只剩后端用，收成后端模块 `control/gate_rules.rs`。
@@ -232,11 +231,10 @@ resident-client = { path = "../../comms/resident-client", features = ["test-supp
 # 只在 dev 侧开 —— resolver 2 下 dev 依赖的特性不并进产品构建，发布二进制里的 tokio 照旧是上面那份 `full`。
 tokio = { version = "1", features = ["test-util"] }
 
-# 系统通知（`platform/notify.rs`）：Linux 上经会话总线直说通知协议，全进程一条长连接（插件那一份每条新开、发完就丢，GNOME 会当场收走）。
-# 已在依赖图里（notification 插件底下的 notify-rust 就用它），这里只是在 Linux 上直接用。
 [target.'cfg(target_os = "linux")'.dependencies]
+# 单实例（`platform/single_instance.rs`）：占会话总线上的名字、转交激活令牌。
 zbus = "5"
-# 点了通知把主窗口拉前那一下要带激活令牌（`set_startup_id` ＋ `present`）：tauri 在 Linux 上本来就链着它，这里直接用。
+# 第二次启动把主窗口拉前那一下要带激活令牌（`set_startup_id` ＋ `present`）：tauri 在 Linux 上本来就链着它，这里直接用。
 gtk = "0.18"
 # ↗ 在 X11 上找 / 拉前终端窗口（EWMH，`platform/ewmh.rs`）：文件窗口那边（arboard · winit）早已链着它，这里直接用。
 x11rb = "0.13"
@@ -249,7 +247,6 @@ arboard = { version = "3.6", default-features = false, features = ["wayland-data
 # ProcessStatus 仍不需要（v1.6 拉前算法时也没真用）。
 windows = { version = "0.56", features = [
     "Win32_Foundation",
-    "Win32_Storage_FileSystem",
     "Win32_System_Threading",
     "Win32_System_Diagnostics_ToolHelp",
     # ccbus-win 09-10 第七拍：`cc_bus::reap_whole_tree_on_drop` 要 Job Object
@@ -285,6 +282,31 @@ windows = { version = "0.56", features = [
 # ——与上面项目自用的 windows 0.56 **类型不互通**，故 package rename 引入；
 # 版本收敛到 lock 里已有的 0.61.3，不新增依赖树条目。
 windows-wv2 = { package = "windows", version = "0.61", features = ["Win32_Foundation"] }
+
+# 测试档（dev 与继承它的 test）里给 egui 那一族开优化：文件窗口的 hover 扫读与滚动区那几条测试跑在它上面，
+#   依赖不开优化时文件窗口测试二进制的墙钟就是它们（10-15 量过：40–42 s → 28–31 s；冷编多不到一成）。只给这几样，
+#   工作区自己的 crate 照旧不开。判据：后端 `build_features_tests.rs` 的
+#   `the_test_build_optimizes_the_dependencies_the_slowest_tests_run_on`（与表两向相等、每项都在 Cargo.lock 里）。
+[profile.dev.package.egui]
+opt-level = 3
+
+[profile.dev.package.epaint]
+opt-level = 3
+
+[profile.dev.package.emath]
+opt-level = 3
+
+[profile.dev.package.ecolor]
+opt-level = 3
+
+[profile.dev.package.ab_glyph]
+opt-level = 3
+
+[profile.dev.package.ab_glyph_rasterizer]
+opt-level = 3
+
+[profile.dev.package.egui_extras]
+opt-level = 3
 
 [profile.release]
 opt-level = "z"

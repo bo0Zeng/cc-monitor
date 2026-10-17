@@ -36,9 +36,9 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.Deploying
-import com.ccmonitor.mobile.core.claude.link.Fix
-import com.ccmonitor.mobile.core.claude.link.SessionDot
 import com.ccmonitor.mobile.core.claude.link.Toned
+import com.ccmonitor.mobile.core.claude.link.wire.MachineFixButton
+import com.ccmonitor.mobile.core.claude.link.wire.SessionDot
 import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
@@ -191,7 +191,7 @@ private fun LazyListScope.needsSection(
     items(needs, key = { "needs-${it.sessionId}" }) { n ->
         DotRow(n.dot, n.text, onClick = { onOpen(n.sessionId) }) {
             Column(Modifier.weight(1f)) {
-                n.label?.let { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis, style = rowTitle()) }
+                Text(n.label, maxLines = 1, overflow = TextOverflow.Ellipsis, style = rowTitle())
                 Text(n.text, color = toneColor(Tone.NEED), style = MaterialTheme.typography.bodySmall)
                 WaitedLine(n)
             }
@@ -206,10 +206,10 @@ private fun LazyListScope.historySection(
 ) {
     s.title?.let { t -> item { SectionHeader(t) } }
     items(s.rows, key = { it.sessionId }) { r ->
-        DotRow(r.dot, r.status?.text, onClick = { onOpen(r.sessionId) }, onLongClick = { onMenu(r) }) {
+        DotRow(r.dot, r.status.text, onClick = { onOpen(r.sessionId) }, onLongClick = { onMenu(r) }) {
             Column(Modifier.weight(1f)) {
                 Text(r.label, maxLines = 1, overflow = TextOverflow.Ellipsis, style = rowTitle())
-                r.status?.let { StatusText(it) }
+                StatusText(r.status)
             }
             // 隐藏的行（开着「显示已隐藏」才在）：同桌面历史行的那颗小标。
             r.hidden?.let { Text(copyText("history.row.hidden"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag(OverviewTags.HIDDEN)) }
@@ -238,13 +238,13 @@ private fun rowTitle() = MaterialTheme.typography.titleSmall
 
 /**
  * 一行：行首一颗状态点（固定一列宽）＋ 内容。双行（标题 ＋ 状态字），行高照适配层 [Touch.rowDouble]。
- * [label] 是点的读屏名（那一行的状态字）；没有 ⇒ 点不念。
+ * [label] 是点的读屏名（那一行的状态字）。
  */
 @OptIn(ExperimentalFoundationApi::class) // combinedClickable：点行打开，长按 ＝ 菜单
 @Composable
 private fun DotRow(
-    dot: SessionDot?,
-    label: String?,
+    dot: SessionDot,
+    label: String,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
     content: @Composable RowScope.() -> Unit,
@@ -277,15 +277,15 @@ private fun toneColor(t: Tone?): Color {
     }
 }
 
-/** 问题条上的修法：核心点名的那一种（[fix]）· 装到哪一步了（[deploying]）· 按下去做什么。 */
+/** 问题条上的修法：成品给的那一颗（[fix]）· 装到哪一步了（[deploying]）· 按下去做什么。 */
 private class Fixing(
-    val fix: Fix?,
+    val fix: MachineFixButton?,
     val deploying: Deploying?,
     val onDeploy: () -> Unit,
 )
 
 /**
- * 问题条：核心那一句 ＋［重试］［复制详情］；核心点名装一次会好 ⇒ 最前一颗［安装］/［更新］。
+ * 问题条：核心那一句 ＋［重试］［复制详情］；成品给了装一次会好的那一颗 ⇒ 最前一颗［安装］/［更新］。
  * 装的时候同一处换成那一步的话（＋ 进度条），按钮变灰不挪位；没装上 ⇒ 换成失败那一句，按钮可再按。
  */
 @Composable

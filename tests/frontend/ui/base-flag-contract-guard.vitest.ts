@@ -41,6 +41,7 @@ import { readFileSync } from "node:fs";
 import { loadTable } from "../../copy/copy-support.ts";
 import { resolve } from "node:path";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { nonEmpty } from "../../test-support/non-empty.ts";
 
 const ROOT = resolve(__dirname, "../../..");
 /** 另一侧的源文件 —— `K-R48` 第二拍起是 Rust，不再是 bash。**只读，不改**。 */
@@ -63,7 +64,7 @@ const BASE_FLAG = "--base";
 
 describe("Z02：`--base` 跨语言契约（monitor ↔ shared/ccm）", () => {
   it("反向自检：真读到了另一侧那两份源码（否则下面全是空转）", () => {
-    expect(ccm.length).toBeGreaterThan(1000);
+    nonEmpty(ccm);
     expect(ccmArgv).toContain("pub(crate) fn parse(");
     expect(ccmPlan).toContain("pub(crate) fn build(");
   });

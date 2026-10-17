@@ -2,7 +2,7 @@
 //!
 //! **多客户已做，10-12 read8a 换了形**：从前是**每条连接各一份** watcher（每接一条就起一份、整份重新预读一遍）；
 //! 今天是**整台一份** watcher（会话账本 · 读者 · 运行簿整台一份），每条连接经 `watcher::WatcherPoke::attach` 拿一份
-//! **投影**：它自己的有界出方向通道 ＋ 名单 ＋ 欠的丢帧账（`Overflow.lost` 按连接记 —— 这一刀就是本模块原先说的
+//! **投影**：它自己的有界出方向通道 ＋ 名单 ＋ 欠的丢帧账（丢帧账按连接记 —— 这一刀就是本模块原先说的
 //! 「fan-out 那天的语义变更」，丢帧账从「这台那一条通道」重定义成「这条连接那一条通道」，见 `watcher::Sub`）。
 //! 下面几根针的数一处没变（观测通道仍只有一个诞生点，只是挪进了 `attach`、按连接实例化）；今天它们钉的是
 //! 「源码里恰好一份，按连接实例化」。
@@ -25,8 +25,8 @@
 //!    那一格由 `wire::tests::the_hello_witness_has_exactly_one_way_to_exist` 钉着，
 //!    本模块**不重复钉它**，只在这里指住它的住址。
 //! 2. **观测帧每条连接一个消费者** —— `observe::watcher::WatcherPoke::attach` 里那条通道**只有这一个诞生点**（每接一条连接走一次）。
-//!    N 个连接的 fan-out 在 watcher 里（10-12 read8a 落地），`Overflow.lost` 的丢帧账因此**按连接**记
-//!    （`wire/mod.rs` 的 `LostFrame` 头注逐字：状态增量帧「是一次差分的结果，**别处不存在**」——
+//!    N 个连接的 fan-out 在 watcher 里（10-12 read8a 落地），丢帧账因此**按连接**记
+//!    （状态增量帧「是一次差分的结果，**别处不存在**」——
 //!    一条连接丢了，别的连接收到了也不算它收到）。★ **那是语义变更，不是搬运**：账重定义成「这条连接那一条通道」。
 //!    ⚠ 这一格的针 08-28 挪过位置（`K-G5`）——怎么挪的、买到什么、买不到什么，见下一节。
 //! 3. **`writer_task` 的让位预算是「两条通道对一个 writer」** —— `REPLY_BURST = 8`，
@@ -130,17 +130,17 @@
 //!      （`depth` 不收口 / 停在字符串里）它**一个字都不剥**，那份文件上的块注释洞当场重开。
 //!      ⇒ 那件事由 [`tests::no_backend_file_falls_back_to_leaving_block_comments_in`] 看着
 //!      （现打：73 份 `.rs`，走兜底 0 份）。**别把这条读成「注释都剥干净了」。**
-//!   7. 它只管「观测帧那条通道有没有第二个消费端」；`Overflow.lost` 那本账**该怎么**重新
+//!   7. 它只管「观测帧那条通道有没有第二个消费端」；丢帧那本账**该怎么**重新
 //!      定义，判据一个字都不管 —— 那要立件。
 //!
 //! # 它**挡不住**什么（说清楚，别让人以为它是证明）
 //!
 //! 它认的是下面那张表里的**字面锚点与次数**。有人把 fan-out 写成一个新模块、
 //! 而这几处字面一个都不动 ⇒ 本条照样绿。⇒ 它买的是「**动到这三处时有人会被拦一下**」，
-//! 不是「fan-out 不可能被实现」。这一句是照 `relay/bind_guard.rs` 头注那条订正写的：
-//! 那条守卫**只认 4 个拼写，别的一律看不见**，而它先前把自己写得比这更强。
+//! 不是「fan-out 不可能被实现」。这一句是照 `tests/common/guard-core/rules/bind_guard.rs` 头注那条订正写的：
+//! 那条规则**只认 4 个拼写，别的一律看不见**，而它先前把自己写得比这更强。
 //!
-//! ⚠ **本模块刻意与被扫的代码不同住一个文件**（`relay/bind_guard.rs` 头注逐字给的理由：
+//! ⚠ **本模块刻意与被扫的代码不同住一个文件**（理由：
 //! 判据在自己的登记表 / 注释 / 常量里找到自己 ⇒ 恒绿）。
 //!
 //! 注：本模块整体在 `#[cfg(test)]` 内，非测试构建为空。
@@ -149,7 +149,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::guard_support::production_code;
+    use guard_core::production_code;
 
     /// `(锚点住的那个文件, 锚点, **那个文件里**恰好几处, **全 crate** 恰好几处, 它一变就意味着什么)`。
     /// **次数钉死**（`KP4` 第四轮买牙的两个价钱之一）。
@@ -180,7 +180,7 @@ mod tests {
             2,
             "出方向的写者**一条载体一个**：stdio 那条 + 常驻那条。\
              第三处意味着同一个进程里同时有两条流在写 —— 那正是 fan-out 的入口，\
-             而两条流各自记各自的 `Overflow.lost` 之后，那本账就不再是「这台机丢了几帧」。\
+             而两条流各自记各自的丢帧账 之后，那本账就不再是「这台机丢了几帧」。\
              ⇒ 全 crate 也是 2：`main.rs` 之外一处都没有，**换个文件写第三条也会红**。",
         ),
         (
@@ -201,7 +201,7 @@ mod tests {
             "观测帧**每条连接一个消费者**，钉在那条通道的**诞生点**上：`watcher::WatcherPoke::attach` 里\
              `mpsc::channel::<Frame>(CHANNEL_CAPACITY)` 那一句，**全 crate 只此一处造观测通道**（每接一条连接走一次）。\
              `tokio` 的 `Receiver` 不可 clone ⇒ 一条通道**至多**一个消费端 ⇒ 一条连接至多一个消费端；\
-             扇出在 watcher 里（`FrameSink::fan`：整台那一层过一次，再逐条连接投），`Overflow.lost` 按连接记（`watcher::Sub`）。\
+             扇出在 watcher 里（`FrameSink::fan`：整台那一层过一次，再逐条连接投），丢帧账按连接记（`watcher::Sub`）。\
              再造第二处 `Frame` 通道 = 有一条绕开整台那一层（会话账本 · 预读拦帧）的路 ⇒ 回来重判。\
              ⇒ 全 crate 3 = 观测 1 + `main.rs` 的应答通道 2（stdio 那条 + 常驻那条，\
              与 `writer_task(` 那条针的 2 同源）。第 4 处出现时回来重判它是哪一种。\
@@ -285,7 +285,7 @@ mod tests {
     /// 递归这件事由 `scan_tree!` 自己保证；`no_timer_guard::backend_sources` 头注记着
     /// 不递归的实测后果：**目录没有扩展名于是被整个跳过**，护栏一行业务代码都没扫还全绿。
     fn crate_sources() -> Vec<(String, String)> {
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         guard_core::scan_tree!(&root, &["rs"])
             .into_iter()
             .map(|(path, src)| {
@@ -295,14 +295,14 @@ mod tests {
                     .to_string_lossy()
                     .replace('\\', "/");
                 // 🔴 同 `no_timer_guard`：按住哪棵树分流，
-                // 理由在 `guard_support::production_side_of` 的头注里。
-                (rel, crate::guard_support::production_side_of(&path, &src))
+                // 理由在 `guard_core::addr::production_side_of` 的头注里。
+                (rel, guard_core::addr::production_side_of(&path, &src))
             })
             .collect()
     }
 
     fn source_of(rel: &str) -> String {
-        let p = crate::guard_support::src_root().join(rel);
+        let p = guard_core::addr::backend_src_root().join(rel);
         production_code(
             &std::fs::read_to_string(&p)
                 .unwrap_or_else(|e| panic!("读不到 {} —— 文件搬家了就来改本表：{e}", p.display())),
@@ -416,7 +416,7 @@ mod tests {
         // backend 这半边今天也住两处：生产段 `src/backend`、测试段 `<repo>/tests/backend`。
         // 本条第二个单位（`#[test]` 块）**整个住在测试段** ⇒ 只喂 `src/` 那一棵的话，
         // `min_blocks` 会在一个已经掉空的分母上通过。两条地板（62 / 500）逐字照旧。
-        let roots = crate::guard_support::code_roots();
+        let roots = guard_core::addr::backend_code_roots();
         guard_core::assert_block_comment_model_holds(&[&roots[0], &roots[1]], 62, 500);
     }
 
@@ -437,7 +437,7 @@ mod tests {
                 "\n`{file}` 里 `{needle}` 有 {got} 处，登记的是 {want} 处。\n\
                  登记说法：{why}\n\
                  ★ **这多半不是 bug，是提醒**：明确不做「多客户端的流」——\n\
-                 fan-out 与 `Overflow.lost` 丢帧账的重新定义留给**第二个要「流」的客户端**出现那天。\n\
+                 fan-out 与 丢帧账的重新定义留给**第二个要「流」的客户端**出现那天。\n\
                  真到了那天：先立件，把那本账重新定义清楚，再回来改这张表；\n\
                  只是重构动到了这几处：把新的数与理由一起写进来。"
             );
@@ -578,7 +578,7 @@ mod tests {
              **零语义变更**的改动，而且它让 `PINS` 里那条观测针看得见你造的是不是 `Frame` 通道。\n\
              ⚠ **别把本条的数从 0 调上去**：那等于把「诞生点自报类型」这条约束放掉，\n\
              而明确不做「多客户端的流」，靠的正是「`Frame` 通道只有一条」这句话数得准。\n\
-             ⇒ 真要造第二条 `Frame` 通道：先立件把 `Overflow.lost` 那本账重新定义清楚。"
+             ⇒ 真要造第二条 `Frame` 通道：先立件把 丢帧那本账重新定义清楚。"
         );
     }
 

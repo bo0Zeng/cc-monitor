@@ -10,6 +10,7 @@ import { machineCommands, machineOps } from "./machine";
 import { ACCOUNTS } from "./ops";
 import { blankDisk, putAccounts, putMcp, type LiveSession, type MachineDisk } from "../disk";
 import { putProfiles } from "../disk/profiles";
+import { CLAUDE_SCREEN } from "../disk/screen";
 
 export const LOCAL = "<local>";
 export const REMOTES = ["devbox", "gpu-01", "win-laptop"];
@@ -221,7 +222,7 @@ export function defaultWorld(): World {
 /** claude 在 pidfile 里写的原词（`agents/claudecode/pidfile.rs` 认的那一套）。 */
 const PIDFILE_STATUS = { working: "busy", needs_you: "waiting", idle: "idle", background_work: "shell" } as const;
 
-/** 一个会话的替身怎么配（`real/pool.mjs`）：活着的写 pidfile；已结束的开页之后收场；可重连的只留挂着标签的那个 tmux 窗格。 */
+/** 一个会话的替身怎么配（`real/pool.mjs`）：活着的写 pidfile；已结束的开页之后收场；可重连的只留挂着标签的那个 tmux 窗格；住在 tmux 里的窗格印着 Claude Code 那一屏。 */
 export function liveOf(s: SessionSpec): LiveSession {
   // 进程起在它记录的第一条之前（pidfile 的 `startedAt`）：缺省是开页那一刻，记录里更早起的后台命令就被后端当成上一个进程留下的、不算。
   const first = s.convo?.firstAt;
@@ -231,7 +232,7 @@ export function liveOf(s: SessionSpec): LiveSession {
     ...(first !== undefined ? { startedAt: first - 5_000 } : {}),
     kind: s.background ? "bg" : "interactive",
     ...(s.name ? { name: s.name } : {}),
-    ...(s.outsideTmux ? { tmux: false as const } : {}),
+    ...(s.outsideTmux ? { tmux: false as const } : { screen: CLAUDE_SCREEN }),
     ...(s.activity ? { status: PIDFILE_STATUS[s.activity] } : {}),
     ...(s.waitingFor ? { waitingFor: s.waitingFor } : {}),
     ...(s.waitingSinceMs ? { statusUpdatedAt: s.waitingSinceMs } : {}),
@@ -257,14 +258,39 @@ export function diskOf(w: World): Record<string, MachineDisk> {
         Object.assign(files, s.convo.files());
         Object.assign(mtimes, s.convo.mtimes());
       }
-      // 活会话轮着跑在前两个号下（账号徽章有东西画）。
+      // 活会话轮着跑在前两个号下（账号徽章有东西画）；每台头一个住在 tmux 里的会话连着一个终端窗口，别的在后台。
       const live = mine.map((s, i) => ({ ...liveOf(s), account: ACCOUNTS[i % 2].name }));
+      const shown = live.find((l) => l.tmux !== false && l.fate !== "ended");
+      if (shown) shown.windows = 1;
       return [m, { ...d, files, mtimes, live: [...d.live, ...live] }];
     }),
   );
 }
 
 /** 每台一样的账号库（`ops.ts::ACCOUNTS`）。额度账 · 轮换账本缺省没有（中转还没见过回包）。 */
+/** 各台远端在机器表里的地址（`~/.ssh/config` 里 devbox 那一条与它同址）。 */
+function hostOf(label: string): string {
+  return `10.0.0.${11 + REMOTES.indexOf(label)}`;
+}
+
+const SSH_CONFIG = [
+  "Host devbox",
+  `  HostName ${hostOf("devbox")}`,
+  "  User user",
+  "Host devbox-wan",
+  "  HostName devbox.example.com",
+  "  User user",
+  "Host build-02",
+  "  HostName 192.0.2.31",
+  "  Port 2222",
+  "  User ci",
+  "  ProxyJump bastion",
+  "Host bastion",
+  "  HostName bastion.example.com",
+  "  User user",
+  "",
+].join("\n");
+
 export function defaultDisk(machines: string[]): Record<string, MachineDisk> {
   return Object.fromEntries(
     machines.map((m) => {
@@ -272,6 +298,8 @@ export function defaultDisk(machines: string[]): Record<string, MachineDisk> {
       putAccounts(d, ACCOUNTS.map((a) => ({ name: a.name, kind: a.authKind === "api-key" ? "api" : "sub", email: a.email || undefined, isDefault: a.isDefault, baseUrl: a.baseUrl })));
       // 设置窗「别名与配置文件」那一页（devbox）：一台典型机器的配置文件。
       if (m === "devbox") putProfiles(d, "normal");
+      // 本机的 ~/.ssh/config（「从 ~/.ssh/config 选」那一页：真后端逐个 `ssh -G`）：devbox 两个别名并成一组、与机器表里那台同址（已在列表）· build-02 经 bastion 跳。用户名都写明（不落到跑截图那台的登录名）。
+      if (m === LOCAL) d.files[".ssh/config"] = SSH_CONFIG;
       // 扩展页 MCP 那几张：本机与 devbox 用户级配了 github；本机两个号 8 分钟前连它碰到要登录（devbox 那边的断开是活会话 4 说的）。
       if (m === LOCAL || m === "devbox") {
         const at = Date.now() - 8 * 60_000;
@@ -287,7 +315,7 @@ export function defaultConfig(): Record<string, unknown> {
     remote: {
       hosts: REMOTES.map((label, i) => ({
         label,
-        host: `10.0.0.${11 + i}`,
+        host: hostOf(label),
         port: 22,
         user: "user",
         keyPath: "~/.ssh/id_ed25519",

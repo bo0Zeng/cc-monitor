@@ -1,9 +1,8 @@
 /**
  * 计划页的排版模型（纯函数，零 DOM）：把 `plan-read` 的一片排成大纲的行、概览的几张表。
  *
- * 只排版：状态、原因、接手是谁都是后端给的成品；这里只做「按排期先后摆」「按过滤藏」「按标题找」「按时间排签收」。
+ * 只排版：状态、原因、接手是谁、几格做完、签收先后都是后端给的成品；这里只做「按排期先后摆」「按过滤藏」「按标题找」。
  */
-import { copyText } from "../copy-table";
 import type { PlanBlock, PlanCell, PlanSign, PlanSlice } from "../plan-reads";
 
 /** 三种状态画哪一种（图标 · 颜色）：照后端给的码；认不出的状态当没做完画（字照出）。 */
@@ -27,15 +26,6 @@ export interface OutlineRow {
   block: PlanBlock | null;
   /** 有 agent 站在这一格（某一块的 `at` 是它）。 */
   standing: boolean;
-}
-
-/** 行尾那一个原因短词：没签 · d/m · 等收下（等收下用正文色）。后端没拆好 ⇒ 照出 pb 的原话。 */
-export function whyShort(c: PlanCell): { text: string; wait: boolean } | null {
-  const w = c.whyCode;
-  if (w?.kind === "nosign") return { text: copyText("plan.whyShort.nosign"), wait: false };
-  if (w?.kind === "upper") return { text: copyText("plan.whyShort.upper"), wait: true };
-  if (w?.kind === "inside") return { text: copyText("plan.whyShort.inside", { done: w.done, of: w.of }), wait: false };
-  return c.why ? { text: c.why, wait: false } : null;
 }
 
 /** 一片里按编号找格。 */
@@ -135,33 +125,21 @@ export function ancestry(slice: PlanSlice, id: string): PlanCell[] {
   return out;
 }
 
-/** 直接子里做完了几格 / 一共几格（不做了的不算）。 */
-export function kidsDone(slice: PlanSlice, cell: PlanCell): { done: number; of: number } {
-  const byId = cellIndex(slice);
-  let done = 0;
-  let of = 0;
-  for (const k of cell.children) {
-    const c = byId.get(k);
-    if (!c) continue;
-    const look = statusLook(c);
-    if (look === "dropped") continue;
-    of++;
-    if (look === "done") done++;
-  }
-  return { done, of };
-}
-
 export interface SignItem {
   cell: PlanCell;
   sign: PlanSign;
 }
 
-/** 全片的签收，新的在上（按核心给的 `atMs`；读不出时刻的排后）。给了 `query` ⇒ 只留那一格标题（或编号）对得上的。 */
-export function signsNewestFirst(slice: PlanSlice, query = ""): SignItem[] {
-  const all: SignItem[] = [];
-  for (const c of slice.cells) if (matches(c, query)) for (const g of c.signs) all.push({ cell: c, sign: g });
-  const t = (x: SignItem): number => x.sign.atMs ?? 0;
-  return all.sort((a, b) => t(b) - t(a));
+/** 全片的签收，照核心排好的先后（新的在上）。给了 `query` ⇒ 只留那一格标题（或编号）对得上的。 */
+export function recentSigns(slice: PlanSlice, query = ""): SignItem[] {
+  const byId = cellIndex(slice);
+  const out: SignItem[] = [];
+  for (const at of slice.recentSigns) {
+    const cell = byId.get(at.cell);
+    const sign = cell?.signs[at.i];
+    if (cell && sign && matches(cell, query)) out.push({ cell, sign });
+  }
+  return out;
 }
 
 /** 一格最后一条签收（作数的那条）。 */

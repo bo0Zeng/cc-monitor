@@ -113,7 +113,7 @@ class NavRoutesTest {
         assertTrue("缺省必须是保守的一侧（已有对话）：$existing", existing.contains("${Screen.Chat.ARG_NEW}=false"))
     }
 
-    /** 新建会话那张草稿的票：每张不同（同一张票再问 `session-new`，那台认出是同一趟、不起第二个）。 */
+    /** 新建会话那张草稿的票：每张不同（同一张票再问 `session-open`，那台认出是同一趟、不起第二个）。 */
     @Test
     fun everyDraftGetsItsOwnTicket() {
         val ids = List(20) { newConversationId() }

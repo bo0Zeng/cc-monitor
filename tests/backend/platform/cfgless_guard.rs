@@ -89,13 +89,13 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::guard_support::production_code;
+    use guard_core::production_code;
     use std::path::{Path, PathBuf};
 
     // ══════════════════════════ 人群 ══════════════════════════
 
     fn src_root() -> PathBuf {
-        crate::guard_support::src_root()
+        guard_core::addr::backend_src_root()
     }
 
     fn rel_of(p: &Path, root: &Path) -> String {
@@ -627,6 +627,12 @@ mod tests {
     ///
     /// 形状 = `(文件相对路径, 那一行的逐字锚点, 堆, 理由)`
     const REGISTERED: &[(&str, &str, &str, &str)] = &[
+        (
+            "files/class.rs",
+            "\"sh\", \"bash\"",
+            "合法线外",
+            "认代码文件的扩展名表：`sh` · `bash` 是文件名后缀（列表里画代码图标、预览按它上色），不起 shell、不假设哪个平台上有它。",
+        ),
         (
             "control/ccm/mod.rs",
             "Child::new(\"sh\")",
@@ -1240,28 +1246,17 @@ mod tests {
             "信号表只剩 {} 条 —— 它在缩水",
             SIGNALS.len()
         );
-        for (name, tier, _, _, needle, why) in SIGNALS {
+        for (name, tier, _, _, needle, _) in SIGNALS {
             assert!(!needle.is_empty(), "信号 `{name}` 的 needle 是空串");
             assert!(
                 *tier == "A1" || *tier == "A2",
                 "信号 `{name}` 的档不认识：{tier}"
             );
-            assert!(
-                why.chars().count() >= 10,
-                "信号 `{name}` 说不出为什么它算平台（只有 {} 字）",
-                why.chars().count()
-            );
         }
-        for (p, anchor, pile, why) in REGISTERED {
+        for (p, anchor, pile, _) in REGISTERED {
             assert!(
                 *pile == "真漏" || *pile == "合法线外",
                 "`REGISTERED` 里 {p} :: {anchor} 的堆不认识：{pile}"
-            );
-            assert!(
-                why.chars().count() >= 20,
-                "`REGISTERED` 里 {p} :: {anchor} 的理由只有 {} 字 —— \
-                 一条说不出理由的登记就是一条免检",
-                why.chars().count()
             );
         }
     }

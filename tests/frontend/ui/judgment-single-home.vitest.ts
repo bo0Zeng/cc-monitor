@@ -51,6 +51,8 @@
  *   本判据只核它们在表里，**不核** TS 里真没有同义实现（语义判不动）。
  * - 指纹只抓「登记过的那几种写法」：换个名字、换种写法重写一遍，这里看不见。
  * - Rust 侧一条判定有几个家只判**登记过的并家**（⑦ `rustGone` / `rustNeedles`）；没登记的多家看不见。
+ * - 人群只取共享 crate 的项：**后端模块里的判定在 TS 里长出孪生，这里看不见**。按「两侧都读的金样」认也认不出 ——
+ *   两侧都读的金样多半是线上形状（后端写、界面解），按文件名分不出哪一份是规则对拍。
  * - `guard-core` 的 dev-only 现核只看下面 [`CARGO_TOMLS`] 列的那几份；仓里新长一份 `Cargo.toml` 不会自动进来。
  */
 import { existsSync, readFileSync } from "node:fs";
@@ -61,11 +63,12 @@ import { describe, expect, it } from "vitest";
 import { productionRsFiles, productionTsFiles } from "../../test-support/production-sources.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
+import { nonEmpty } from "../../test-support/non-empty.ts";
 
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36" | "J37" | "J38";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -171,8 +174,8 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     rustNeedles: [
       { file: LAUNCH_RS, text: "';' | '|' | '&'", count: 0 },
       { file: "src/frontend/shell/src/history.rs", text: "'-' | '_' | '.' | ' '", count: 0 },
-      // 本机起会话的计划与渲染搬进本机后端 ⇒ 私有那份最可能长回来的地方跟着挪。
-      { file: "src/backend/control/launch_render/local.rs", text: "'-' | '_' | '.' | ' '", count: 0 },
+      // 起会话的渲染住后端 `launch_render/mod.rs` ⇒ 私有那份最可能长回来的地方跟着挪。
+      { file: "src/backend/control/launch_render/mod.rs", text: "'-' | '_' | '.' | ' '", count: 0 },
       { file: "src/backend/control/ccm/plan.rs", text: "free_text_ok(&o.launcher)", count: 0 },
     ],
   },
@@ -215,7 +218,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     //   monitor 那一份改调 gate-core。
     defs: ["isValidTmuxName", "isValidNewTmuxName", "rejectEmptyTarget"],
     needles: [
-      { text: "/^[A-Za-z0-9_][A-Za-z0-9_-]*$/", count: 0, file: "src/frontend/ui/launch-requests.ts" },
+      { text: "/^[A-Za-z0-9_][A-Za-z0-9_-]*$/", count: 0 },
       { text: "[*?=]", count: 0 },
       { text: 'target === ""', count: 0, file: "src/frontend/ui/tmux-control.ts" },
       { text: '.trim() === ""', count: 0, file: "src/frontend/ui/tmux-control.ts" },
@@ -225,14 +228,14 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       { file: "src/backend/control/gate_rules.rs", text: '"*?.:="', count: 1 },
       { file: "src/backend/control/ccm/plan.rs", text: '"*?.:="', count: 0 },
       // monitor `tmux.rs` 那一格（Gate 1 调 gate-core 恰一处 · 私有谓词不许长回来）随整份文件删了：
-      //   monitor 生产段零处够门，由 `tests/frontend/shell/gate_singleton_guard_tests.rs::the_monitor_holds_no_gate_of_its_own` 钉。
+      //   monitor 不依赖后端 crate，够不到门；送键与杀只收后端门发的令牌（`control/gate.rs`）。
     ],
   },
   J7: {
     what: "tmux 名派生 ＋ 撞名避让",
     // 翻 `zero`：派生（`name_segment` → `<段>-cc` / `<段>-fork-cc`）＋ 避让只在后端，
-    //   帧命令 `terminal-name-mint`（`control/ccm/mod.rs::TerminalNameMint`，按那台的会话快照避让）；
-    //   界面要名字就问它（`src/frontend/ui/terminal-name-mint.ts`）。TS 那份（`remote-launch.ts` 整份 · `shell-quote.ts::tmuxNameSegment` ·
+    //   起会话时那台自己铸（`control/ccm/mod.rs::terminal_name_mint_with`，按那台的会话快照避让）；
+    //   界面不要名字（`session-open` 回落在哪个会话）。TS 那份（`remote-launch.ts` 整份 · `shell-quote.ts::tmuxNameSegment` ·
     //   `fork-launch.ts::forkTmuxName`）删。
     homes: [
       "src/backend/control/ccm/plan.rs::derive_tmux_name",
@@ -308,18 +311,16 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J12: {
     what: "cc-bus agent id 形状",
     // 唯一一份进共享 crate（`shell_quote_core::bus_id_ok`，规则逐字不变）：
-    //   monitor 读收件箱（`cc_bus.rs::is_valid_bus_id` 是它的再导出）· 后端 `bus-send` / `bus-kill` / `bus-spawn` 入口
+    //   后端 `bus-send` / `bus-kill` / `bus-spawn` 入口
     //   在交给 `cc-send` / `cc-kill` / `cc-spawn` 之前判（拒码 `bad_id`）。界面那一份（发 / 收 / 查在线 / 派生账号名）删了；
     //   `INVARIANTS §47` 那两格改写成「后端交给 cc-bus 之前」（报用户，用户可推翻）。
     homes: ["shell-quote-core::bus_id_ok"],
     status: "zero",
     defs: ["isValidBusId", "refuseBadId"],
     needles: [{ text: "/^[A-Za-z0-9_][A-Za-z0-9_-]*$/", count: 0, file: "src/frontend/ui/cc-bus-control.ts" }],
-    // 两半各自接的是共享那一个（后端入口 · monitor 再导出），谁也没有自己再写一份字符集。
+    // 后端入口接的是共享那一个，没有自己再写一份字符集。
     rustNeedles: [
       { file: "src/backend/control/cc_bus.rs", text: "shell_quote_core::bus_id_ok(v)", count: 1 },
-      { file: "src/frontend/shell/src/cc_bus.rs", text: "pub use shell_quote_core::bus_id_ok as is_valid_bus_id;", count: 1 },
-      { file: "src/frontend/shell/src/cc_bus.rs", text: "c.is_ascii_alphanumeric() || c == '_' || c == '-'", count: 0 },
     ],
   },
   J13: {
@@ -385,7 +386,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J19: {
     what: "工具词表：哪些工具名算「展开 = 子会话」（agent 工具）· 哪个工具名画成哪一种卡 · tmux 前台命令哪几个算 agent 的会话",
-    // 两个 Rust 住址（后端 `observe/facts_query.rs` 喂会话事实 · monitor `adapter.rs` 喂渲染 agent 卡）
+    // 两个 Rust 住址（后端 `observe/recognize/facts.rs` 喂会话事实 · monitor `adapter.rs` 喂渲染 agent 卡）
     //   收成一份进新立的共享 crate `agent-tools-core`（两半编译期不许互咬 ——
     //   共享 crate 是唯一合法的形；现有 core 没有一个的身份是「工具词表」）。
     //   两边都成它的别名，异源对拍（后端常量 == 生成物里 claude 那一行）随之退役。
@@ -400,9 +401,9 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       { text: "agentTools", count: 0 },
       { text: "livenessProcessNames", count: 0 },
     ],
-    rustGone: ["src/backend/observe/facts_query.rs::is_agent_tool"],
+    rustGone: ["src/backend/observe/recognize/facts.rs::is_agent_tool"],
     rustNeedles: [
-      { file: "src/backend/observe/facts_query.rs", text: '&["Agent", "Task"]', count: 0 },
+      { file: "src/backend/observe/recognize/facts.rs", text: '&["Agent", "Task"]', count: 0 },
       // monitor `adapter.rs` 那一行摘了：那份文件随 monitor 的适配表整删（起会话事实只住后端适配层）。
       { file: "src/backend/agents/claudecode/cards.rs", text: '&["Agent", "Task"]', count: 1 },
     ],
@@ -410,7 +411,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J16: {
     what: "账号种类的取值集",
     homes: ["acct-core::AUTH_KINDS"],
-    // 解码白名单与 `AuthKind` 类型都读生成物（`acct_core::AUTH_KINDS` 现生成）；手写字面量两形钉零。
+    // `AuthKind` 类型读生成物（`acct_core::AUTH_KINDS` 现生成）；手写字面量两形钉零。
     status: "generated",
     defs: [],
     gone: ["AUTH_KINDS"],
@@ -421,11 +422,11 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     gen: {
       file: "src/frontend/ui/generated/judgment-rules.ts",
       exports: ["AUTH_KINDS", "AuthKind"],
-      importers: ["src/frontend/ui/accounts-decode.ts", "src/frontend/ui/accounts.ts"],
+      importers: ["src/frontend/ui/accounts.ts"],
     },
     parity: {
       via: "tests/__fixtures__/accounts.golden.json",
-      tests: ["tests/backend/observe/accounts_query_tests.rs", "tests/frontend/ui/accounts-decode.vitest.ts"],
+      tests: ["tests/backend/observe/accounts_query_tests.rs"],
     },
   },
   J20: {
@@ -455,11 +456,12 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J22: {
     what: "因对方版本说不成的两个码（版本旧 / 回的认不出）各取哪一句、本机怎么称呼",
-    // 两侧各一个取句口，取的是表里同两条键（`peerVersion.said.*`）与同一个本机称呼（`control.machine.local`）；
-    // 说话那一层不知道名字时的称呼（`control.machine.peer`）只有 Rust 那一侧用（通信层兜底 · 后端自己答不认）。
+    // 版本旧那一句只有 Rust 写（monitor 交在 `ChanError.message`）；回的认不出是界面自己知道的事，两侧各一个取句口，
+    // 取的是表里同一条键（`peerVersion.said.unreadable`）与同一个本机称呼（`control.machine.local`）。
     homes: ["copy-core::backend_old", "copy-core::reply_unreadable", "copy-core::local_machine", "copy-core::peer_machine"],
     status: "mirror",
-    defs: ["peerVersionSaid"],
+    defs: ["unreadableSaid"],
+    gone: ["peerVersionSaid"],
     needles: [],
     parity: {
       via: "src/shared/copy/table.json",
@@ -533,7 +535,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     what: "短时长（N5：45s · 6m · 1h50m · 3d）与距今（+12m）⇒ 会走的钟那一截 · 已等多久 · 到重置还有多久",
     homes: ["copy-core::short_duration", "copy-core::rel_duration"],
     // 认可的双读口（与 J24 同理）：核心写静态的那一刻填一次（`…Text` · `…RelText`），桌面会走的钟只留这一个读口（`duration-format.ts`），
-    //   手机端 `DurationFormat.kt` 同一份金样；界面别处自己拼时长由出口扫描判据（`exit-judgment-scan.vitest.ts` 的 `durUnit`）钉着。
+    //   手机经 JNI 调核心那一份；界面别处自己拼时长由出口扫描判据（`exit-judgment-scan.vitest.ts` 的 `durUnit`）钉着。
     status: "mirror",
     defs: ["fmtDur"],
     needles: [],
@@ -648,6 +650,26 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     },
     why: "INVARIANTS §40「本地 ＝ 不走 ssh 的远端」：两侧都要在读进来之后分本机与远端；线上同一个串，判法各在本侧唯一一处",
   },
+  J37: {
+    what: "每台机器此刻是什么样 · 名字旁那个词 · 问题行那一句 · 给哪几颗修法",
+    // 远端各台在后端（本机后端跑它、手机 mobcore 跑同一份）；本机那一行在壳（本机后端没起时没人替它说），照同一个类型、同一批文案键。
+    //   界面只按那一态挑样子，字照成品的 `word` · `said` · `fixes[].label`。壳里造成品只许本机那一处（`local_backend_host_tests.rs` 钉）。
+    homes: ["src/backend/deploy/machine.rs::product", "src/frontend/shell/src/local_backend_host.rs::local_product"],
+    status: "zero",
+    defs: ["downSaid", "fixLabel"],
+    needles: [
+      { text: 'copyText("machineState.down.', count: 0 },
+      { text: 'copyText("machineState.problem.', count: 0 },
+    ],
+  },
+  J38: {
+    what: "那台握手时说做不到的一个码 ⇒ 说成哪一句（置灰 · 测试连接那一格的「做不到的那几类」）",
+    // 置灰那一句由壳随能力事实交来，测试连接那几类由后端答复带来 ⇒ 界面那一份删了。
+    homes: ["copy-core::unavailable"],
+    status: "zero",
+    defs: ["unavailableReason"],
+    needles: [],
+  },
   J29: {
     what: "这个号能不能选 · 这台的默认号是谁（标了的第一个，没标 ⇒ 第一个）",
     homes: ["acct-core::account_selectable", "acct-core::effective_default"],
@@ -711,8 +733,29 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     sent: NONE,
     finish: NONE,
   },
+  // 选中几项 ⇒ 菜单那张表：文件窗口与手机嵌的核心照它画；界面（TS）不列文件，没有孪生。
+  "pick-core": {
+    PLAN_GROUP: NONE,
+    table: NONE,
+    picked_kind: NONE,
+    menu_groups: NONE,
+    why_not_editable: NONE,
+    blocked: NONE,
+    actions_for: NONE,
+    phone_menu: NONE,
+    opens_as_dir: NONE,
+    copyable: NONE,
+    downloadable: NONE,
+    viewable: NONE,
+    pick: NONE,
+  },
   "cmd-wire": {
     LOCAL: "J36",
+    // FNV-1a 的唯一一份（只求稳定的摘要；号色兜底的家是后端 `color_fallback`，见 J35）：界面不算摘要，TS 侧没有孪生。
+    FNV64_BASIS: NONE,
+    fnv1a64_from: NONE,
+    fnv1a64: NONE,
+    fnv1a32: NONE,
     // 一组一条的一项结局只填键与结局、别的格缺席（后端拼结局 · 壳的判据造样本用）：TS 侧只读回包，没有孪生。
     bare: NONE,
     is_local: "J36",
@@ -741,13 +784,12 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     //   界面直接读记录上的 `kind`，不另判，TS 侧没有孪生。
     kind: NONE,
     of: NONE,
-    // 认不出的那一条（`record`）：那一句 · 原文摘录的截法 · 那一形（后端适配层认不出的那一行与手机核心解不开的那一条同这一份），
-    //   流上 `line` 帧里解不开的那条换成它（手机核心）。界面照记录上写好的 `text` · `excerpt` 画，TS 侧没有孪生。
+    // 认不出的那一条（`record`）：那一句 · 原文摘录的截法 · 那一形（后端适配层认不出的那一行与手机核心解不开的那一条同这一份）。
+    //   界面照记录上写好的 `text` · `excerpt` 画，TS 侧没有孪生。
     EXCERPT_BYTES: NONE,
     excerpt_of: NONE,
     unread_text: NONE,
     unread: NONE,
-    mend_line_frame: NONE,
     // 帧的线上形（`frame`）：一行解一帧 · 宿主那个词（`terminals-list` 的 `host` 与容器那一格同一套）。
     //   解帧的是 Rust 那几端（壳 · 通信层 · 手机核心）；界面读壳转过的载荷，TS 侧没有孪生。
     decode: NONE,
@@ -766,15 +808,12 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 线上一家 agent 的名字（`AgentKind`）：收下 · 取串。不是判定（kind ⇄ 路由名那一换住后端 `agents`）；界面拿生成的类型当串用，没有孪生。
     new: NONE,
     as_str: NONE,
+    // `files-ls` 那一列是不是从大到小（后端排序 · 文件窗口表头的箭头）。界面不列目录，TS 侧没有孪生。
+    descending: NONE,
   },
   "copy-core": {
     backend_old: "J22",
     backend_differs: NONE,
-    // 帧种形状对不上那一句（`copy-core::backend_frames_differ`）只在通信层：它在握手那一刻比帧表、写好带机器名的那一句。
-    backend_frames_differ: NONE,
-    // 接上时那台较新 · 新旧比不出那两句同上：通信层按那台在 attach 回话里给的新旧写好，界面只照抄。
-    backend_newer: NONE,
-    backend_incomparable: NONE,
     // 测试按文案键断言用（占位处任意值）；TS 那一侧的同形在测试支架 `tests/test-support/copy-pattern.ts`，不是生产判定。
     copy_matches: NONE,
     // 同上，只钉给了值的那几格（TS 那一侧是 `copyPattern(键, 已知值)`）。
@@ -786,9 +825,12 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     rel_duration: "J28",
     size_text: "J31",
     count_text: "J32",
+    // 短写的计数（`2.1M`）：只后端写进成品（额度「1% ≈ 多少」那一格），界面照抄，TS 侧没有孪生。
+    count_short: NONE,
     local_machine: "J22",
     peer_machine: "J22",
     reply_unreadable: "J22",
+    unavailable: "J38",
     TABLE_JSON: NONE,
     // 天数 ⇒ 公历（后端 · monitor · 文件窗口写日期与「复制详情」的时刻都经它）；界面那一份 TS 删了（J23 zero）。
     civil_from_days: "J23",
@@ -849,9 +891,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     credentials_path: NONE,
     DEFAULT: NONE,
     expose_for_auth_header: NONE,
-    expose_for_persisting: NONE,
-    // 登录令牌（订阅号续期）：第三个明文出口 ＋ 读 / 写回 / 请求体三个纯函数；TS 侧零处碰凭据。
-    expose_for_token_request: NONE,
+    // 登录令牌（订阅号续期）：读 / 写回 / 请求体三个纯函数；TS 侧零处碰凭据。
     merge_secret: NONE,
     merge_tokens: NONE,
     refresh_body: NONE,
@@ -875,7 +915,13 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     new: NONE,
     ordered_keys: NONE,
     parse: NONE,
-    probe: NONE,
+    // 自家秘密文件的权限：开一次、按句柄量（后端读凭据文件与中转钥匙都经它）· 量不动时的结论 · 上屏那一句；TS 侧零处判权限。
+    open_checked: NONE,
+    open_failed: NONE,
+    notice: NONE,
+    // Windows 判宽的白名单与「这条掩码碰不碰得到内容」（纯）；TS 侧没有孪生。
+    TRUSTED_SIDS: NONE,
+    mask_reaches: NONE,
     read_accounts: NONE,
     // 删号 · 回滚那两步的纯变换（后端账号库那一族调它；TS 侧没有孪生）。
     remove_account: NONE,
@@ -886,8 +932,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     said: NONE,
     template: NONE,
     to_pretty_json: NONE,
-    WIDE_PRINCIPALS: NONE,
-    wide_principals_in_sddl: NONE,
   },
   // `gate-core` 那一格删了：它收成后端模块（`control/gate_rules.rs`），不再是共享 crate，不在本表人群里。
   // monitor ↔ 文件窗口进程的契约：开窗种子 · 就绪行 · 开终端那一问 · 远端路径的两个切法（窗口与开窗入口共用；TS 侧不切远端路径 ⇒ 无孪生）。
@@ -962,7 +1006,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     set_read_timeout: NONE,
     set_write_timeout: NONE,
     into_async: NONE,
-    someone_listening: NONE,
+    peer: NONE,
   },
   // 测试档的家一开始就是沙箱（各 crate 只在 dev 侧引它）；TS 侧没有孪生。
   "test-home": {
@@ -987,16 +1031,13 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     PREFS_HANDOFF_REL: NONE,
     MACHINES_REL: NONE,
     file_name_of: NONE,
+    // 家目录底下一条相对路径的远端 POSIX 写法（部署叫暂存那一份用）；TS 侧没有孪生。
+    home_shell: NONE,
     // 常驻后端的门牌（`<家>/run/` 目录 · 套接字 · 进程记录；宿主与后端同一个函数）；TS 侧没有孪生。
     LISTEN_DIR_REL: NONE,
     LISTEN_SOCKET_NAME: NONE,
-    LISTEN_PID_NAME: NONE,
     listen_dir_for: NONE,
     listen_socket_for: NONE,
-    listen_pid_for: NONE,
-    // 升级那一跳找旧版常驻后端用（跨过 4.1.x 之后删）；TS 侧没有孪生。
-    legacy_listen_pid_for: NONE,
-    LEGACY_LISTEN_TOKEN_NAME: NONE,
     // 「这是一次沙箱跑」的标记（测试 / 台架起后端时带上）；TS 侧没有孪生。
     SANDBOX_ENV: NONE,
     POSIX_ALIASES_REL: NONE,
@@ -1027,13 +1068,17 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     ANSWER_PLUGIN_DIR_REL: NONE,
     // 主机钥匙（后端拨号侧写；开终端那一行交给 ssh；数据位置页按它列）。
     KNOWN_HOSTS_REL: NONE,
-    // 记录骨架目录（后端预读与冷开扫描图落的缓存；数据位置页按它列）。
+    // 记录骨架目录（后端冷开扫描图落的缓存；数据位置页按它列）。
     SKELETON_DIR_REL: NONE,
+    // 历史清单缓存（后端清单那一族落的缓存；数据位置页按它列）。
+    LISTING_CACHE_REL: NONE,
     // 后端落点（`~/.cc-monitor/bin/ccm`，两半同一份）；TS 侧没有孪生（界面那句话里的路径在文案表里）。
     BACKEND_LANDING_REL: NONE,
     BACKEND_LANDING_SHELL: NONE,
     base_url: NONE,
     base_url_shape_ok: NONE,
+    // 一行里插好钥匙的地址把钥匙段换成 `…`（「待办」摘出的原文行）；界面照画，TS 侧没有孪生。
+    hide_key: NONE,
     KEY_FILE_REL: "J14",
     key_shape_ok: NONE,
     // 把钥匙插进中转地址（`split_keyed_base_url` 的逆，给用户自己贴的那一段用）；TS 侧没有孪生。
@@ -1070,7 +1115,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 规则的一部分（放行的标点），现生成进 `judgment-rules.ts`（生成物不是孪生）⇒ NONE。
     ACCOUNT_NAME_EXTRA: NONE,
     account_name_ok: "J18",
-    // cc-bus agent id（从 monitor `cc_bus.rs` 搬来，两半共用）。
+    // cc-bus agent id（共享 crate 一份）。
     bus_id_ok: "J12",
     // 握手目录名（bash / zsh 接入块写终端记录、monitor `bind.rs` 读的契约）：TS 侧零处写握手文件 ⇒ NONE。
     AWAIT_SUBDIR: NONE,
@@ -1230,7 +1275,7 @@ describe("DUP1 判定只有一个家", () => {
   it("① 人群两向：盘上 `src/common/` 各 crate 的 pub 项 == 登记表（逐 crate）", () => {
     // 人群是 `src/common/` 下的全部 crate（D5：从文件系统全集来）—— 从前按 `*-core` 后缀筛，`deploy-contract` 会静默出列。
     const diskCrates = [...byCrate.keys()].sort();
-    expect(diskCrates.length, "一个共享 crate 都没扫到 —— 路径断了，下面会零命中地绿").toBeGreaterThan(0);
+    nonEmpty(diskCrates);
     expect(diskCrates, "盘上 `src/common/` 的 crate 集合 ≠ 登记表 crate 集合 ∪ {guard-core}").toEqual(
       [...Object.keys(CORE_ITEMS), TEST_INFRA_CRATE].sort(),
     );
@@ -1270,7 +1315,7 @@ describe("DUP1 判定只有一个家", () => {
       }
     }
     for (const [id, j] of Object.entries(JUDGMENTS)) {
-      expect(j.homes.length, `${id} 没有住址`).toBeGreaterThan(0);
+      nonEmpty(j.homes);
       for (const h of j.homes) {
         const [where, name] = [h.slice(0, h.lastIndexOf("::")), h.slice(h.lastIndexOf("::") + 2)];
         if (where.endsWith(".rs")) {
@@ -1285,7 +1330,6 @@ describe("DUP1 判定只有一个家", () => {
   });
 
   it("③ TS 侧对登记名：zero 行零实现，open 行恰如登记（自退役）", () => {
-    expect(ts.length, "一个 TS 生产文件都没扫到 —— 下面零命中地绿").toBeGreaterThan(0);
     const bad: string[] = [];
     for (const [id, j] of Object.entries(JUDGMENTS)) {
       if (j.status === "open" && !(j.owner && j.why)) bad.push(`${id} 是 open，但没写 owner / why`);
@@ -1355,7 +1399,7 @@ describe("DUP1 判定只有一个家", () => {
       if (!j.parity) continue;
       seen++;
       if (!existsSync(resolve(REPO_ROOT, j.parity.via))) bad.push(`${id}：对拍的对象 ${j.parity.via} 不在盘上`);
-      expect(j.parity.tests.length, `${id} 的 parity 没有测试`).toBeGreaterThan(0);
+      nonEmpty(j.parity.tests);
       for (const t of j.parity.tests) {
         const p = resolve(REPO_ROOT, t);
         if (!existsSync(p)) bad.push(`${id}：对拍测试 ${t} 不在盘上`);

@@ -599,7 +599,7 @@ async fn the_production_handle_says_unreachable_and_no_such_stream_out_loud() {
 /// 通道分住两处：壳里 `chan/`（monitor 自己的宿主那几份）＋ 通信层 crate `comms-inward` 的 `chan/`（线上词汇 · 客户端 · 路由器）。
 #[test]
 fn nothing_in_the_channel_listens() {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let mut files = Vec::new();
     for (dir, who) in [
         (root.join("src/frontend/shell/src/chan"), "壳"),
@@ -617,6 +617,7 @@ fn nothing_in_the_channel_listens() {
         vec![
             "comms-inward:client.rs",
             "comms-inward:router.rs",
+            "comms-inward:said.rs",
             "comms-inward:wire.rs",
             "壳:host.rs",
             "壳:mod.rs",

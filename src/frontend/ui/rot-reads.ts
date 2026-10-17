@@ -1,9 +1,8 @@
 /**
  * 轮换（第五版）界面那几块的读与写：都是 typed 命令（入参 · 回包从 Rust 类型生成），问会话或策略所在的那一台。
- * 判定全在后端：这里只把手势翻成命令、把回包交给画的那一处；收不下 ⇒ 抛 `ChanError`（调用方照 `saidFrom` 说一句）。
+ * 判定全在后端：这里只把手势翻成命令、把回包交给画的那一处；收不下 ⇒ 抛 `ChanError`（那一句 monitor 写好）。
  */
-import { ChanError } from "../../comms/inward/chan";
-import { budgetWithin, callTyped, refusalOf } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, refusalIn } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import type { RotationStrategiesReply } from "./generated/RotationStrategiesReply";
 import type { RotationViewReply } from "./generated/RotationViewReply";
@@ -37,13 +36,7 @@ export function readView(
 export function refusedCode(
   e: unknown,
 ): { code: string; data?: unknown } | null {
-  const err = e instanceof ChanError ? e.error : undefined;
-  if (!err || err.layer !== "peer" || err.why !== "refused") return null;
-  const r = refusalOf(err.body);
+  const r = refusalIn(e);
   return r ? { code: r.code, data: r.data } : null;
 }
 
-/** 说明的第一行（下拉里那行灰字）。 */
-export function firstLine(description: string): string {
-  return description.split("\n").find((l) => l.trim() !== "") ?? "";
-}

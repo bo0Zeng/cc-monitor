@@ -17,8 +17,4 @@ terminalFront: boolean,
 /**
  * 本机 shell 说哪种方言（别名块按它写）：`posix` · `powershell`。
  */
-shellDialect: string, 
-/**
- * 本机 PATH 上 `ccm` 那份短缓存作不作数（「重新对齐」时顺手作废它）。
- */
-ccmPathCache: boolean, };
+shellDialect: string, };

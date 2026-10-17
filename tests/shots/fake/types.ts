@@ -2,7 +2,7 @@
  * 截图工具的合成世界：几台机器、几个会话、各个面板要的成品。全是结构占位，不含任何真会话正文。
  * 形状挂在产品生成物类型上 ⇒ 后端改了线上形状，这里当场编不过。
  */
-import type { SessionActivity } from "../../../src/frontend/ui/generated/SessionActivity";
+import type { WireSessionActivity } from "../../../src/frontend/ui/generated/WireSessionActivity";
 import type { Convo } from "./records";
 
 export interface TaskSpec {
@@ -24,7 +24,7 @@ export interface SessionSpec {
   /** 后台会话（pidfile 的 `kind: "bg"`）。 */
   background: boolean;
   /** 此刻在干什么（写进 pidfile 的 `status`，后端照它翻）；`null` = 没写（说不清）。 */
-  activity: SessionActivity | null;
+  activity: WireSessionActivity | null;
   /** 在等什么框（pidfile 的 `waitingFor`）。 */
   waitingFor: string | null;
   /** 在等你时从何时起等（epoch ms；pidfile 的 `statusUpdatedAt`）。缺 ⇒ 不知道。 */
@@ -79,8 +79,6 @@ export interface World {
   sessions: SessionSpec[];
   /** 帧命令的答法，按 op 名；场景可以整条覆盖。 */
   ops: Record<string, OpHandler>;
-  /** 终端实时画面那一路怎么演（不给 ⇒ `live`：订上、推一屏）：推一屏之后画面中断 · 推一屏之后那台断开。只能快照的那一种由场景把 `terminal-follow` 换成拒。 */
-  terminalLive?: "live" | "lost" | "offline";
   /** 场景故意不答的那几条（演「后端比界面老」）：答不上照样按「不认」拒，只是不报。 */
   quiet?: string[];
   /** 帧命令晚多少毫秒才答（按 op 名；不给 ⇒ 当场答）。性能台架用它演「后端读大文件 / 远端那一跳要时间」：快速连切时，切走之后才回来的那几问还干不干活。 */

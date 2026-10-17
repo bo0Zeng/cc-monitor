@@ -16,7 +16,7 @@
  * `tests/__fixtures__/scale2-height-line-records.jsonl`（**与秤 2 同一份，不另造**）。
  * 🔴 **结构采自真机、正文一个字都不是真的** —— 数据源纪律
  * 2026-09-18 已改判成「结构照真的，内容一律合成」（用户逐字「这是测试啊 / 不应该进」）。
- * 产出它的是 `tests/evidence/U-scale2-sample-records.ts`（逐字符同形替换 ＋ 两道自检）。
+ * 产出它的是 `tests/evidence/U-scale2-sample-records.ts`（逐字符同形替换 ＋ 三道自检）。
  * 桶边界与秤 2（`tests/frontend/ui/scale2-height-corpus.ts` 的 `BUCKETS`）**逐字同一套**。
  *
  * # 🔴 反空真：绿必须来自相等断言
@@ -120,9 +120,9 @@ const EXPECTED_RECORDS = 69;
 /** 每跑一遍语料，各桶应得的样本条数 */
 const EXPECTED_PER_PASS: Readonly<Record<string, number>> = {
   "<2K": 35,
-  "2-8K": 17,
-  "8-32K": 14,
-  "32-128K": 3,
+  "2-8K": 16,
+  "8-32K": 12,
+  "32-128K": 6,
   // 空不是漏采 —— 真语料里就没有 >128K 的记录（头注射程边界第 3 条）
   ">128K": 0,
 };
@@ -139,9 +139,9 @@ const PASSES = 8;
  */
 const EXPECTED_SAMPLES_PER_BUCKET: Readonly<Record<string, number>> = {
   "<2K": 280,
-  "2-8K": 136,
-  "8-32K": 112,
-  "32-128K": 24,
+  "2-8K": 128,
+  "8-32K": 96,
+  "32-128K": 48,
   ">128K": 0,
 };
 /** 样本总数的绝对登记（同上，独立写死） */

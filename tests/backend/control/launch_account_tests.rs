@@ -366,3 +366,38 @@ fn concurrent_records_all_land() {
     );
     let _ = std::fs::remove_dir_all(&h);
 }
+
+// ───────── 选不了号那一句 ─────────
+
+/// 选不了号那一句由这里写全：跟随 / 点名 × 有替代 / 没替代 × 清单读不出，五种各一句、互不相同；
+/// 都带要的号；有替代 ⇒ 带替代的名字；清单读不出 ⇒ 不提替代（那台说不出谁能用）。
+#[test]
+fn each_unavailable_shape_has_its_own_sentence() {
+    let u = |pinned: bool, list_known: bool, alt: Option<&str>| AccountUnavailable {
+        requested: "acct-gone".into(),
+        pinned,
+        list_known,
+        alternative: alt.map(Into::into),
+    };
+    let shapes = [
+        u(true, true, Some("acct-alt")),
+        u(true, true, None),
+        u(false, true, Some("acct-alt")),
+        u(false, true, None),
+        u(false, false, None),
+    ];
+    let said: Vec<String> = shapes.iter().map(unavailable_said).collect();
+    let distinct: std::collections::BTreeSet<&String> = said.iter().collect();
+    assert_eq!(distinct.len(), shapes.len(), "五种说成了同一句：{said:#?}");
+    for (s, line) in shapes.iter().zip(&said) {
+        assert!(line.contains("acct-gone"), "没说要的是哪个号：{line}");
+        let alt_named = line.contains("acct-alt");
+        assert_eq!(
+            alt_named,
+            s.list_known && s.alternative.is_some(),
+            "替代那一半说得不对（{s:?}）：{line}"
+        );
+    }
+    // 清单读不出时有替代也不提（那台的默认号未必还能用）。
+    assert!(!unavailable_said(&u(true, false, Some("acct-alt"))).contains("acct-alt"));
+}

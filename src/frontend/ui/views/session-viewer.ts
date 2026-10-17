@@ -9,6 +9,7 @@ import { MessageStream } from "../stream";
 import {
   type LineRecord,
   type RenderContext,
+  forgetDetached,
   reconcilePendingToolResults,
 } from "../cards";
 import { BranchFolder } from "../branch-fold";
@@ -27,7 +28,7 @@ import { openNewSession } from "../new-session";
 // 大纲的清单问后端要（判定只住后端），实时 tab 用的是同一个类
 import { OutlineSource } from "./outline-source";
 // 「你说过的话」清单界面与实时 tab 同一个类（`UserInputPanel`），这里只换开法：工具行一颗按钮 ＋ kit 浮层。
-import { UserInputPanel, type JumpResult } from "./user-input-panel";
+import { UserInputPanel, type JumpResult, type JumpTarget } from "./user-input-panel";
 // 按轮折叠与主窗口同一个（`turn-fold.ts`）。
 import { TurnFold, revealProcessOf } from "../turn-fold";
 import { button } from "../kit/button";
@@ -130,8 +131,8 @@ export interface ViewerOptions {
   /** 顶栏标题（后端给的显示标题）。 */
   displayTitle: string;
   head?: ViewerHead;
-  /** 从全文搜索跳进来时命中的那条 uuid：读完定位到它（展开所在折叠段）、居中并闪一下，不贴底。 */
-  scrollToUuid?: string;
+  /** 从全文搜索跳进来时命中的那一条：读完定位到它（展开所在折叠段）、居中并闪一下，不贴底。 */
+  scrollTo?: JumpTarget;
   /** 那条命中落在哪次工具调用的卡里（后端给的命中 `tool`）；缺 ⇒ 落在它自己那张卡上。 */
   scrollToTool?: string;
   /** 哪台机器的会话（本机 ＝ `LOCAL_ORIGIN`）。必填：「没说」不许当成本机。 */
@@ -168,23 +169,24 @@ function pageStatus(s: ViewerStatus): string {
 const TAIL_INITIAL = 150; // 首屏取回、渲染的末尾条数（建卡的那几类）
 const ISLAND_RADIUS = 100; // 深链岛：命中那一条上下各取几条
 
+/** 这一行建不建卡（注入细条不算）。 */
+function buildsCard(ledger: SkeletonLedger, q: number): boolean {
+  const f = ledger.factsOf(q);
+  const k = f && skeletonKind(f);
+  return k === "card" || k === "tool";
+}
+
 /** 从 `from`（不含）往前数 `k` 条建卡的行，回最早那一条的 seq（不够 ⇒ 账本第一行）。 */
 function cardsBack(ledger: SkeletonLedger, from: number, k: number): number {
   let n = 0;
-  for (let q = from - 1; q >= ledger.base; q--) {
-    const f = ledger.factsOf(q);
-    if (f && skeletonKind(f) !== "none" && ++n === k) return q;
-  }
+  for (let q = from - 1; q >= ledger.base; q--) if (buildsCard(ledger, q) && ++n === k) return q;
   return ledger.base;
 }
 
 /** 从 `at`（含）往后数 `k` 条建卡的行，回最后那一条的下一行（不够 ⇒ 账本末尾）。 */
 function cardsAhead(ledger: SkeletonLedger, at: number, k: number): number {
   let n = 0;
-  for (let q = at; q < ledger.endSeq; q++) {
-    const f = ledger.factsOf(q);
-    if (f && skeletonKind(f) !== "none" && ++n === k) return q + 1;
-  }
+  for (let q = at; q < ledger.endSeq; q++) if (buildsCard(ledger, q) && ++n === k) return q + 1;
   return ledger.endSeq;
 }
 
@@ -241,7 +243,7 @@ export class SessionViewer {
   /** 读取世代号：异步间隙（rAF / 通道）之后核对，换了会话的残余操作直接丢掉。 */
   private loadGeneration = 0;
   private onScrollFill = (): void => {
-    void this.maybeFillAbove();
+    if (this.maybeFillAbove()) this.skeleton?.release(); // 建了新卡才交回远处的（同主窗口）
   };
   private titleEl!: HTMLElement;
   private leadEl!: HTMLElement;
@@ -399,7 +401,7 @@ export class SessionViewer {
       // 远端会话展开子 agent 要带上 origin
       origin: opts.origin,
       // 出口省掉的正文展开那一下：按骨架里那一行的偏移取回全文
-      fullRecord: (id) => readRecordById(opts.origin, opts.jsonlPath, this.skeleton?.ledger ?? null, id),
+      fullRecord: (from) => readRecordById(opts.origin, opts.jsonlPath, this.skeleton?.ledger ?? null, from),
       lazy: true,
     };
     const timeline = new RecordTimeline(this.stream);
@@ -436,6 +438,13 @@ export class SessionViewer {
       this.folder = new BranchFolder(this.stream.contentElement);
       const view: SkeletonView = new SkeletonView(ledger, this.streamEl, sink.timeline, {
         materialize: (lo, hi) => this.fetchRows(gen, view, lo, hi),
+        // 交回的行算没画过 ⇒ 滚回来照常取
+        released: (ranges, cards) => {
+          for (const [a, b] of ranges) for (let q = a; q < b; q++) this.drawn.delete(q);
+          forgetDetached(ctx, this.streamEl, cards);
+          this.rebuildFold();
+          this.updateStatus();
+        },
       });
       this.skeleton = view;
       // 折叠先交给账本：占位插进去就是折后的高（同主窗口 `TabStreamView.attachSkeleton`）
@@ -443,7 +452,7 @@ export class SessionViewer {
       view.attachGaps([[ledger.base, ledger.endSeq]]);
       // 首屏：尾巴（＋ 深链岛）
       view.ensureRange(cardsBack(ledger, ledger.endSeq, TAIL_INITIAL), ledger.endSeq);
-      const target = opts.scrollToUuid !== undefined ? ledger.uuidToSeq.get(opts.scrollToUuid) : undefined;
+      const target = opts.scrollTo?.line;
       if (target !== undefined && view.isPending(target)) {
         view.ensureRange(cardsBack(ledger, target, ISLAND_RADIUS), cardsAhead(ledger, target, ISLAND_RADIUS));
       }
@@ -460,8 +469,8 @@ export class SessionViewer {
       this.rebuildUserInputs();
       void this.turnFold?.refresh();
       // 从搜索结果跳进来 ⇒ 定位到命中消息；否则贴底。
-      if (opts.scrollToUuid) {
-        void Promise.resolve(this.scrollToMessage(opts.scrollToUuid, opts.scrollToTool)).catch((e: unknown) => console.warn("[session-viewer] 定位没取到：", e));
+      if (opts.scrollTo) {
+        void Promise.resolve(this.scrollToMessage(opts.scrollTo, opts.scrollToTool)).catch((e: unknown) => console.warn("[session-viewer] 定位没取到：", e));
       } else {
         this.stream?.scrollToBottom();
       }
@@ -679,18 +688,19 @@ export class SessionViewer {
   }
 
   /** 滚动 / 首屏之后：只物化与视口相交的那段占位（取回由 `fetchRows` 做，不自链）。 */
-  private maybeFillAbove(): void {
-    if (this.skeleton && this.skeleton.fillVisible() > 0) this.updateStatus();
+  private maybeFillAbove(): boolean {
+    if (!this.skeleton || this.skeleton.fillVisible() === 0) return false;
+    this.updateStatus();
+    return true;
   }
 
   /**
-   * 滚到指定 uuid 的卡并闪一下（`revealCard`），返回落到的那张卡 / `null`（同主窗口 `TabStreamView.jumpInTab`）：
+   * 滚到那一条的卡并闪一下（`revealCard`），返回落到的那张卡 / `null`（同主窗口 `TabStreamView.jumpInTab`）：
    * 还在占位里 ⇒ 经骨架物化它附近那一段、**等在途的段落完**再找卡（取不到 ⇒ reject 带原因）；找不到就退到贴底。
    */
-  private scrollToMessage(uuid: string, tool?: string): JumpResult {
+  private scrollToMessage({ uuid, line: seq }: JumpTarget, tool?: string): JumpResult {
     const sk = this.skeleton;
-    const seq = sk?.ledger.uuidToSeq.get(uuid);
-    if (sk && seq !== undefined && sk.isPending(seq)) {
+    if (sk && sk.isPending(seq)) {
       sk.ensure(seq, ISLAND_RADIUS);
       this.updateStatus();
       if (this.inflight.size > 0) {
@@ -889,9 +899,9 @@ export class SessionViewer {
     tools.className = sv.svTools;
     this.toolsEl = tools;
     this.said = new UserInputPanel({
-      jumpTo: (uuid) => {
+      jumpTo: (to) => {
         closePopover();
-        return this.scrollToMessage(uuid);
+        return this.scrollToMessage(to);
       },
       unjumpableHint: copyText("sessionViewer.build.unjumpable"),
       // 开合归本查看器（工具行那颗按钮 ＋ kit 浮层）；面板自带的开关不挂。
@@ -925,7 +935,7 @@ export class SessionViewer {
         if (!where) return { available: false, reason: "", hits: [], total: 0 };
         return findInSession(where.origin, where.jsonlPath, query, includeTools, skip, scope);
       },
-      jumpTo: (uuid, tool) => this.scrollToMessage(uuid, tool),
+      jumpTo: (to, tool) => this.scrollToMessage(to, tool),
       unjumpableHint: copyText("sessionViewer.build.unjumpable"),
     }, { meta: (h, scope) => hitMeta(h, scope) }); // 命中头一行同主窗口面板（同一个控件）
     tools.append(this.saidBtn, this.find.box);

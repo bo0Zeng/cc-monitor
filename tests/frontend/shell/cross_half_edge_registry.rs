@@ -73,7 +73,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "backend→monitor",
         "tests/backend/footprint/registry_tests.rs",
-        "src/frontend/shell/src/sftp.rs",
+        "src/frontend/shell/src/deploy.rs",
         "申报表 `backend` / `ccm` 那几行的装 / 卸口在 monitor 放字节那一侧（部署远端后端 · 卸载）：申报的「可装 / 可卸」\
          必须与那两个真有的口逐字签名一致（`KR63D1`，搬家前是 monitor→backend 读 `assets/*` 的那一族，方向跟着申报表翻过来）",
     ),
@@ -83,12 +83,6 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "src/frontend/shell/src/local_backend.rs",
         "申报的本机 `ccm` 落点末段要盖得住 monitor 真放下去的那个名字（`CCM_ENTRY_WORD` ＋ 可执行后缀），\
          词住 monitor（本机那份由它释放）⇒ 读它的源码现抠（本侧抄一份就成了两侧同源的恒等）",
-    ),
-    (
-        "backend→monitor",
-        "tests/backend/footprint/rows_tests.rs",
-        "src/frontend/shell/src/sftp.rs",
-        "足迹里远端落点那几行必须钉在 monitor 真写的那一处（`declared_destinations_are_pinned_to_the_real_writers`），随判据从 monitor 搬来",
     ),
     // `tests/backend/footprint/rows_tests.rs` → `relay-route-core` 那一条删了：共享 crate 搬出 monitor 包、住 `src/common/`，
     //   不再是「两半之间」的边（共享 crate 两侧都依赖，本表只登记半边对半边）。
@@ -106,9 +100,9 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
-        "tests/frontend/shell/sftp_tests.rs",
+        "tests/frontend/shell/deploy_tests.rs",
         "src/backend/assets/aliases/block.rs",
-        "「别名块的真相不住 `sftp.rs`」的正控：同一把尺子量真相今天的住处（那台后端的别名块模块），量不出 ⇒ 尺子瞎了",
+        "「别名块的真相不住 `deploy.rs`」的正控：同一把尺子量真相今天的住处（那台后端的别名块模块），量不出 ⇒ 尺子瞎了",
     ),
     (
         "monitor→backend",
@@ -118,7 +112,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     // `tests/frontend/shell/remote_relay_tests.rs → src/backend/stream/inbound/mod.rs` 那一条退役：远端「用到才起」的脱离中转一族删了（中转只住常驻后端里）。
     // `tests/frontend/shell/apikey_remote_tests.rs → src/backend/stream/inbound/mod.rs` 那一条退役：命令名常量随写臂删了、那条对拍判据随之退役
-    //   （monitor 里零处叫得出那条帧命令，由 `creds_store_tests::hx2_the_monitor_names_no_plaintext_key_on_the_way_to_the_backend` 钉零命中）。
+    //   （monitor 里零处叫得出那条帧命令，由 `creds_store_exits::hx2_the_monitor_names_no_plaintext_key_on_the_way_to_the_backend` 钉零命中）。
     (
         "monitor→backend",
         "tests/frontend/shell/config_tests.rs",
@@ -127,29 +121,8 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          是两个 crate 各一份的**同一种锁**（两个 crate 没有能放平台原语的共享落点）——「同一种」只能同时读两份源码对拍：\
          unix 都锁目录、Windows 互斥量名字的拼法逐字相同；只读一侧就成了自己跟自己比",
     ),
-    (
-        "monitor→backend",
-        "tests/frontend/shell/creds_store_tests.rs",
-        "src/backend/faces/accounts_face.rs",
-        "写 key 改走通道之后，「monitor 生产段零处叫得出明文 key 的写口」那条零命中判据的**正控**要落在真命令上 —— \
-         同一根针（帧命令名 `apikey-key-set`）在后端那条命令的宿主（`const NAME`）里数得到，才说明零命中不是针瞎了",
-    ),
-    (
-        "monitor→backend",
-        "tests/frontend/shell/creds_store_tests.rs",
-        "src/backend/accounts/upstream_select/file_face.rs",
-        "本机凭据文件的写者换成本机常驻后端之后，「monitor 生产段零处够写半边」那条零命中判据的**正控** \
-         要落在真写者身上 —— 同一把针在后端那一份写口里数得到，才说明零命中不是针瞎了（合成样本证不了针对准了真写口）",
-    ),
-    (
-        "monitor→backend",
-        "tests/frontend/shell/creds_store_tests.rs",
-        "src/backend/platform/fs/own.rs",
-        "本机凭据文件的写者换成本机常驻后端之后，「monitor 生产段零处够写半边」那条零命中判据的**正控** \
-         要落在真写者身上 —— 后端那份写口经自有状态原子写那一处（`platform/fs/own.rs`）出生即只给本人，同一把针在这里数得到，才说明零命中不是针瞎了",
-    ),
     // `tests/frontend/shell/inbound_client_tests.rs → src/backend/stream/inbound/mod.rs` 那一条摘了：手抄的命令名单删了、
-    //   命令名只住命令表各族，那条对拍改成运行时逐族读（`guard_support::backend_registry_sources`），不再是编译期边。
+    //   命令名只住命令表各族，那条对拍改成运行时逐族读（`guard_core::addr::backend_registry_sources`），不再是编译期边。
     (
         "monitor→backend",
         // 住址跟着判据搬：
@@ -167,7 +140,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     //    照样绿着」⇒ 下次再有「app 自带某个二进制」这类申报，右边仍要去钉真源码。
     // 载荷内核搬进后端：原先 `tests/frontend/shell/payload_tests.rs → identity_tag.rs`（令牌变量名双写点）
     //   与 `tests/frontend/shell/history_tests.rs → ccm/argv.rs · ccm/plan.rs`（本机接回那一句真读得懂）三条边成了后端 crate 内部的读，摘了；
-    //   接回那一句的牙换成 `launch_render/launch_cli_parity_tests.rs::every_rendered_ccm_line_is_accepted_by_the_ccm_argv`。
+    //   接回那一句的牙换成 `launch_render/ccm_invocation_tests.rs::every_rendered_ccm_line_is_accepted_by_the_ccm_argv`。
     // 「谁给 agent 进程定 env」那张两半人群闭表（后端测试读 monitor `platform/terminal.rs`）这条边摘了：
     //   起会话只交一行 `ccm …` 之后，给 agent 进程定 env 的只剩 `ccm`（`control/ccm/`，同一个 crate 里有判据），
     //   开窗那一跳的 `.env(k, v)` 由 monitor 自己的 `launch_tests.rs::every_terminal_window_backend_opens_carries_the_backend_path` 钉着。
@@ -287,7 +260,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          `shell_tests.rs::the_exists_code_is_the_backends_one`。两侧各写一份 `exists`；\
          失效方向：两份漂开 ⇒ 就地改名 / 新建撞名时那一格下面说的是系统那句长话，不是「x 已存在」。",
     ),
-    // `tests/frontend/shell/history_title_coverage.rs` → 后端 `history_query.rs` 那一条边出列：人群（带 `*title` 字段的 `JsonlRecord`
+    // `tests/frontend/shell/history_title_coverage.rs` → 后端 `query/locate.rs` 那一条边出列：人群（带 `*title` 字段的 `JsonlRecord`
     //   变体）随记录解释进了后端（`agents/claudecode/schema.rs`），两侧同在后端一棵树里 ⇒ 判据挪去
     //   `tests/backend/agents/claudecode/schema_title_coverage.rs`，不再是跨半边的边。
     // ── backend → monitor（3 → 4 · 4 → 2：两条对拍随「只剩一份」出列 · −1：vendored cc-acct-iso 挪去 `src/shared/` · 2 → 0）：backend 的判据去读 monitor ──

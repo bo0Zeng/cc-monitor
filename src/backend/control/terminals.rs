@@ -19,7 +19,7 @@ use super::terminals_wire::{
     TerminalsListReq,
 };
 use crate::common::tmux_utf8::UTF8_CLIENT_FLAG;
-use crate::control::gate::{self, Who};
+use crate::control::gate::{self, Barred, Who};
 use crate::platform::child::{Child, ChildFail, Deadline};
 use copy_core::copy_text;
 
@@ -124,16 +124,6 @@ impl TermRow {
     /// 对它下手用的 tmux 句柄：挂着 sid 的窗格，或那个会话（看它当前的窗格）。
     fn target(&self) -> &str {
         self.pane.as_deref().unwrap_or(&self.id)
-    }
-
-    /// 喂身份门的那四格（与 `gate::probe` 探到的同形）。
-    fn probed(&self) -> gate::Probed {
-        gate::Probed {
-            session_id: self.id.clone(),
-            ccm_sid: self.sid.clone(),
-            windows: self.windows,
-            client: self.client.clone(),
-        }
     }
 }
 
@@ -293,6 +283,11 @@ pub(crate) fn parse_clients(text: &str) -> Vec<(String, u64, u64)> {
 /// 送不了 / 结束不了的原因：线上形住 `cmd-wire::session`（手机端也吃这两格）。
 pub(crate) use cmd_wire::session::Refused;
 
+/// 这台已经没有它的终端（名单里没有 · 送的那一刻没了 · 窗格里只剩 shell）：`session-say` 恢复再送，换模型 / 权限档记下等恢复，同这一判。
+pub(crate) fn terminal_gone(why: Option<Refused>) -> bool {
+    matches!(why, Some(Refused::NotKnown | Refused::Ended))
+}
+
 /// 原因 ⇒ 给人看的那一句。
 pub(crate) fn no_said(why: Refused) -> String {
     match why {
@@ -314,7 +309,7 @@ pub(crate) fn terminal_json(
     clients: &[(String, u64, u64)],
     requester: Option<&str>,
 ) -> TerminalItem {
-    let who = gate::identity(&row.name, &row.probed(), requester);
+    let who = gate::identity(&row.name, &row.client, &row.sid, requester);
     let input = match who {
         Who::Pass => Ability::Yes,
         Who::OtherClient => super::terminals_wire::refused(Refused::NotYours),
@@ -500,16 +495,11 @@ fn view_on(on: On<'_>, id: &str, color: bool, back: u32) -> Result<View, CmdErr>
 /// 预览给出它；送字送键时带回来比，画面变了就不送。
 pub(crate) fn fingerprint(plain_lines: &[String], rows: u32) -> String {
     let skip = plain_lines.len().saturating_sub(rows as usize);
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for (i, l) in plain_lines[skip..].iter().enumerate() {
-        if i > 0 {
-            h = (h ^ u64::from(b'\n')).wrapping_mul(0x0100_0000_01b3);
-        }
-        for b in l.trim_end().bytes() {
-            h = (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3);
-        }
-    }
-    format!("{h:016x}")
+    let shown: Vec<&str> = plain_lines[skip..].iter().map(|l| l.trim_end()).collect();
+    format!(
+        "{:016x}",
+        cmd_wire::fnv::fnv1a64(shown.join("\n").as_bytes())
+    )
 }
 
 /// 抓回来的原文按行切（去掉最后那个换行带出来的空行）。
@@ -905,6 +895,52 @@ fn shell_only(row: &TermRow) -> bool {
     SHELLS.contains(&row.program.as_str())
 }
 
+/// 名单里对上 · 过身份门 · `takes` 收 ⇒ 那一行 ＋ 对它下手的句柄；不收 ⇒ 原因（[`send_on`] 送之前、[`say_target_on`] 看屏之前同一道）。
+fn admit_on(
+    on: On<'_>,
+    target: &Target,
+    client: Option<&str>,
+    takes: impl Fn(&TermRow) -> bool,
+) -> Result<Result<(TermRow, gate::Admitted), Refused>, CmdErr> {
+    let requester = gate::requester(client)?;
+    let (rows, _, _) = rows_on(on)?;
+    let row = match find(&rows, target) {
+        Found::One(r) => r,
+        Found::NotKnown => return Ok(Err(Refused::NotKnown)),
+        Found::Ambiguous => return Ok(Err(Refused::Ambiguous)),
+    };
+    // 身份门照 `send-into` 那一道：此刻再探一次（名单那一刻之后可能换了人），挂着 sid 的窗格由门按 sid 找、身份按它判。
+    // 送到哪：那个窗格（窗格 ID 同样是句柄、不复用），没挂 sid 的会话 ⇒ 探回来的会话句柄。令牌只有门发得出。
+    let sid = row.pane.as_ref().map(|_| row.sid.as_str());
+    let at = match gate::admit_with(&|| on.cmd(), &row.name, &row.id, sid, requester.as_deref())? {
+        Ok(at) => at,
+        Err(Barred::Gone) => return Ok(Err(Refused::Ended)),
+        Err(Barred::OtherSid) => return Ok(Err(Refused::NotKnown)),
+        Err(Barred::Not(Who::OtherClient)) => return Ok(Err(Refused::NotYours)),
+        Err(Barred::Not(_)) => return Ok(Err(Refused::NotManaged)),
+    };
+    if !takes(row) {
+        return Ok(Err(Refused::Ended));
+    }
+    Ok(Ok((row.clone(), at)))
+}
+
+/// 切权限档看屏 · 等重画那一份（同 [`follow_target_on`] 的形）：过 [`say_on`] 那同一道门 —— 只剩 shell 的窗格不看（读不出档，也不该往里按键）。
+pub(crate) fn say_target_on(
+    on: On<'_>,
+    sid: &str,
+    client: Option<&str>,
+) -> Result<Result<FollowTarget, Refused>, CmdErr> {
+    let t = target(None, Some(sid))?;
+    Ok(
+        admit_on(on, &t, client, |row| !shell_only(row))?.map(|(row, _)| FollowTarget {
+            target: row.target().to_string(),
+            session: row.id.clone(),
+            pane: row.pane.clone(),
+        }),
+    )
+}
+
 /// [`input_on`] · [`say_on`] 的本体：`takes` 答名单里那一行（过了身份门之后）此刻收不收。
 fn send_on(
     on: On<'_>,
@@ -913,34 +949,13 @@ fn send_on(
 ) -> Result<Sent, CmdErr> {
     let target = target(req.terminal.as_deref(), req.sid.as_deref())?;
     let input = input_of(req)?;
-    let requester = gate::requester(req.client.as_deref())?;
     let seen = req.seen_screen.clone();
-    let (rows, _, _) = rows_on(on)?;
-    let row = match find(&rows, &target) {
-        Found::One(r) => r,
-        Found::NotKnown => return Ok(refused(Refused::NotKnown)),
-        Found::Ambiguous => return Ok(refused(Refused::Ambiguous)),
+    let at = match admit_on(on, &target, req.client.as_deref(), takes)? {
+        Ok((_, at)) => at,
+        Err(why) => return Ok(refused(why)),
     };
-    // 身份门照 `send-into` 那一道：此刻再探一次（名单那一刻之后可能换了人）。探的是挂着 sid 的那个窗格 ⇒ 按它判。
-    let Some(p) = gate::probe_with(on.cmd(), row.target())? else {
-        return Ok(refused(Refused::Ended));
-    };
-    if row.pane.is_some() && p.ccm_sid != row.sid {
-        // 那个窗格此刻挂的已经不是名单里那个 sid 了。
-        return Ok(refused(Refused::NotKnown));
-    }
-    match gate::identity(&row.name, &p, requester.as_deref()) {
-        Who::Pass => {}
-        Who::OtherClient => return Ok(refused(Refused::NotYours)),
-        Who::NotOurs => return Ok(refused(Refused::NotManaged)),
-    }
-    if !takes(row) {
-        return Ok(refused(Refused::Ended));
-    }
-    // 送到哪：挂着 sid 的那个窗格（窗格 ID 同样是句柄、不复用），没挂 sid 的会话 ⇒ 探回来的会话句柄。
-    let at = row.pane.clone().unwrap_or(p.session_id);
     if let Some(seen) = seen {
-        let now = screen_now(on, &at)?;
+        let now = screen_now(on, at.handle())?;
         if now != seen {
             return Ok(input_reply(
                 SentResult::Refused,
@@ -958,7 +973,7 @@ fn send_on(
         return Ok(input_reply(SentResult::Delivered, None, None));
     }
     // tmux 回了非零：会话还在 ⇒ 不知道送没送到（不重发）；不在了 ⇒ 已经没了。
-    match gate::probe_with(on.cmd(), &at)? {
+    match gate::probe_with(on.cmd(), at.handle())? {
         Some(_) => Ok(input_reply(SentResult::Unsure, None, None)),
         None => Ok(refused(Refused::Ended)),
     }

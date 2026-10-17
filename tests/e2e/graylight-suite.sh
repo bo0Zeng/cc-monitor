@@ -8,12 +8,10 @@
 # 序列(跨进程整链,单测碰不到):
 #   建 fixture(fake-claude 活 + @ccm_sid) → app 经 backend SessionAdded 建 live 远端 tab
 #   → kill fake-claude(留 tmux shell) → backend SessionRemoved + SessionState(reconnectable)（后端会话账本裁）
-#     → 会话流 `idle` 格 → tabs.markTmuxIdle → `[e2e] tab-state … liveness=dead recoverability=attachable`(可重连)
+#     → 去向那一帧(脸 exited)→ tabs.onFace → `[e2e] tab-state … dot=exited`(Claude 已退出)
 #   → tmux kill-session(另留一个无关 cc-* 防空 backend 卡灰,§24bis) → @ccm_sid 消失
-#     → 收割/对账 retire → SESSION_ENDED → tabs.archiveTab → `[e2e] tab-state … liveness=dead recoverability=resumable`(已结束)
-# 探针行的两个键就是两个轴(原先是 `status=live tmuxIdle=1` / `status=archived`)。「进可重连之前是活的」
-#   不再靠同一行里的 `status=live` 证明:markTmuxIdle 只在活着时才转移、才打这一行(`tab-session-state.ts::nextState`),
-#   打出来本身就是证明。两条 grep 模式与探针真吐的行由 `tests/frontend/ui/tab-session-state.vitest.ts` 对拍。
+#     → 收割/对账 retire → 去向那一帧(脸 ended)→ tabs.onFace → `[e2e] tab-state … dot=ended`(已结束)
+# 探针行在那颗点变了的那一刻打一行(`tabs.ts::onFace`)。两条 grep 模式与探针真吐的行由 `tests/frontend/ui/tabs.vitest.ts` 对拍。
 set -euo pipefail
 
 # ── G-C（解 BACKLOG E41）：把整套件钉在**自己的 tmux server** 上 ──────────────────
@@ -310,20 +308,20 @@ TMUX_SETTLE="${E2E_TMUX_SETTLE:-14}"
 echo "-- 等 ${TMUX_SETTLE}s 让后端会话账本见过含 @ccm_sid 的 tmux 快照 --"
 sleep "$TMUX_SETTLE"
 
-# ── GRAY:kill fake-claude(留 tmux)→ 可重连 tab-state(liveness=dead recoverability=attachable)────
+# ── GRAY:kill fake-claude(留 tmux)→ 可重连 tab-state(dot=exited)────
 echo "-- kill fake-claude pid=${FAKE_PID:-?}(claude 退,tmux shell 留)--"
 [ -n "${FAKE_PID:-}" ] && kill "$FAKE_PID" 2>/dev/null || true
 FAKE_PID=""
-GRAY="$(wait_log "$MARK" "\[e2e\] tab-state sid=$SID8 liveness=dead recoverability=attachable" "$GRAY_WAIT")" \
+GRAY="$(wait_log "$MARK" "\[e2e\] tab-state sid=$SID8 dot=exited" "$GRAY_WAIT")" \
   && ok "可重连(活→可重连):$GRAY" \
-  || bad "${GRAY_WAIT}s 内未见可重连 tab-state(sid=$SID8 liveness=dead recoverability=attachable)"
+  || bad "${GRAY_WAIT}s 内未见可重连 tab-state(sid=$SID8 dot=exited)"
 
 # ── ARCHIVE:tmux kill-session → 已结束 tab-state ───────────────────────────
 echo "-- tmux kill-session $SESSION(@ccm_sid 消失 → 归档)--"
 tmux kill-session -t "=$SESSION:" 2>/dev/null || true
-ARCH="$(wait_log "$MARK" "\[e2e\] tab-state sid=$SID8 liveness=dead recoverability=resumable" "$ARCH_WAIT")" \
+ARCH="$(wait_log "$MARK" "\[e2e\] tab-state sid=$SID8 dot=ended" "$ARCH_WAIT")" \
   && ok "已结束(可重连→已结束):$ARCH" \
-  || bad "${ARCH_WAIT}s 内未见已结束 tab-state(sid=$SID8 liveness=dead recoverability=resumable)"
+  || bad "${ARCH_WAIT}s 内未见已结束 tab-state(sid=$SID8 dot=ended)"
 
 echo "== 结果:$pass 过 / $fail 败 =="
 # G-C：与另外 8 套逐字一致的收尾格式，好让 `tests/e2e/assert-pass-floor.sh` 用同一条正则抓。

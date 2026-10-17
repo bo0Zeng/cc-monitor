@@ -12,8 +12,8 @@
  * 判定全在后端。几问都是 typed（`callTyped`：入参 · 回包的类型从后端生成，回包形状由握手指纹核过；线上形状由金样
  * `tests/__fixtures__/ext-flow.golden.json` · `mcp-read.golden.json` 钉），不比较、不推断。
  */
-import { ChanError, type Budget } from "../../comms/inward/chan";
-import { budgetWithin, callTyped, refusalOf, saidFrom } from "./ipc/chan-caller";
+import type { Budget } from "../../comms/inward/chan";
+import { budgetWithin, callTyped, refusalIn } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import type { ExtBring } from "./generated/ExtBring";
 import type { ExtBuiltin } from "./generated/ExtBuiltin";
@@ -35,6 +35,7 @@ import type { McpReadEntry } from "./generated/McpReadEntry";
 import type { McpReadReply } from "./generated/McpReadReply";
 import type { ExtTarget } from "./generated/ExtTarget";
 import type { ExtUninstallCard } from "./generated/ExtUninstallCard";
+import { saidOf } from "./kit/detail";
 
 export type { ExtBring, ExtBuiltin, ExtCard, ExtCell, ExtDone, ExtKind, ExtList, ExtLoc, ExtMachine, ExtPlace, ExtRow, ExtScope, ExtSlot, ExtTarget, ExtUninstallCard };
 
@@ -49,9 +50,8 @@ export class ExtRefused extends Error {
 }
 
 function refused(e: unknown): ExtRefused {
-  const err = e instanceof ChanError ? e.error : null;
-  const code = err && err.layer === "peer" && err.why === "refused" ? (refusalOf(err.body)?.code ?? null) : null;
-  return new ExtRefused(saidFrom(e, LOCAL_ORIGIN), code);
+  const code = refusalIn(e)?.code ?? null;
+  return new ExtRefused(saidOf(e), code);
 }
 
 /** 读一趟：表在本机后端，远端慢时同步那一趟另走（`assets-sync-reads.ts`）。 */

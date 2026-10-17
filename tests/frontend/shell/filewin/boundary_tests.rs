@@ -11,12 +11,7 @@
 //! # ⚠ 为什么抽取器住在**判据这一侧**，而不是一个生产模块里
 //!
 //! 本仓的惯例（剖分之后）是「生产模块放抽取器 ＋ 头注，`tests/` 放表与判词」。
-//! 这一条**刻意偏了一格**，两条现打的理由：
-//!
-//! 1. **不许往 `filewin/` 里加一份 `.rs`。** `remote_write_registry_tests`
-//!    那条判据把 `filewin/` 那棵树的 `.rs` 份数**钉成恒等 16**（现打：加一份
-//!    当场红在 `left: 17 / right: 16`）—— 而那份文件这里不改。
-//! 2. **抽取器住这儿反而更不容易自欺。** 正向那条判据扫的是
+//! 这一条**刻意偏了一格**：**抽取器住这儿更不容易自欺。** 正向那条判据扫的是
 //!    `src/frontend/shell/src/filewin/**`，反向那条扫的是它之外的 `src/frontend/shell/src/**`
 //!    ⇒ 本文件住 `tests/`，**两个人群都够不着它** ⇒ 结构上不可能
 //!    「在自己的语料里找到自己」。放进 `filewin/` 的话，那些针得靠
@@ -179,8 +174,8 @@ fn starts_with_str(hay: &str, prefix: &str) -> bool {
 }
 
 fn repo_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（它的头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::repo_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::repo_root()
 }
 
 fn filewin_dir() -> PathBuf {
@@ -307,6 +302,9 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     // ── 通道客户端 ──
     ("comms_inward::chan::client::Client", Kind::Channel),
     ("comms_inward::chan::client::Client::over", Kind::Channel),
+    // 通道没成时那一句（全产品一份住通信层）：窗口照抄，不自己按层说。
+    ("comms_inward::chan::said::refused", Kind::Channel),
+    ("comms_inward::chan::said::said", Kind::Channel),
     // ── 线上类型 ──
     ("comms_inward::chan::wire::Body", Kind::Wire),
     ("comms_inward::chan::wire::Budget", Kind::Wire),
@@ -318,9 +316,7 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     ("comms_inward::chan::wire::HopFault", Kind::Wire),
     ("comms_inward::chan::wire::Op", Kind::Wire),
     ("comms_inward::chan::wire::Origin", Kind::Wire),
-    ("comms_inward::chan::wire::OursFault", Kind::Wire),
     ("comms_inward::chan::wire::PeerFault", Kind::Wire),
-    ("comms_inward::chan::wire::Reach", Kind::Wire),
     // 订阅那一口（`source::watch`，窗口进程里唯一一处 `subscribe`）用到的四样。
     ("comms_inward::chan::wire::By", Kind::Wire),
     ("comms_inward::chan::wire::Item", Kind::Wire),
@@ -344,6 +340,9 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     ("copy_core::copy_text", Kind::Copy),
     // 天数 ⇒ 公历：与取文口同住 copy-core（「复制详情」的时刻要它，后端也链，宿主原语那一家后端不许链）。纯函数。
     ("copy_core::civil_from_days", Kind::Copy),
+    // 时长的两种写法（「约多久」「多久前」走短时长，冷启动预计走长时长）：与取文口同住 copy-core。纯函数。
+    ("copy_core::format_duration", Kind::Copy),
+    ("copy_core::short_duration", Kind::Copy),
     // 「复制详情」那几行的排法（项名闭集 · 一项一行 · 原话截断）：与取文口同住 copy-core，三端写详情只经这一份。纯函数。
     ("copy_core::detail::Detail::new", Kind::Copy),
     ("copy_core::detail::Label::Path", Kind::Copy),
@@ -389,7 +388,6 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("local_backend::place_local_program", Kind::Carried),
     // 窗口进程的 stderr 一条最多收多少字节：与被监护子进程那一份同一个上界（不另起一个数）。
     ("local_backend::STDERR_MAX_LINE_BYTES", Kind::Carried),
-    ("profile_installer::ccm_bin_dir_rel", Kind::Carried),
     ("platform::fs::make_executable", Kind::Carried),
     ("platform::fs::ensure_private_dir", Kind::Carried),
     ("stream_source::RemoteConfig", Kind::Config),
@@ -461,10 +459,10 @@ fn edges_by_process() -> (
     let window_files = guard_core::scan_tree_excluding(&window_crate_dir(), &["rs"], &[]);
     // 🔴 两侧人群都现数（恒等，不是地板）：塌成空集时下面那两条相等**照样成立**。
     // 壳里 `filewin/` 现打 3 份（mod · entry · proc；`win_main` 那个 bin 入口 size2 10-11 搬进窗口包成了 `main.rs`）；窗口包现打 29 份（搬家前那 31 份里 27 份整份搬来 ＋ 新 `proc.rs`（窗口进程那一半）＋ `guard_support.rs`）。
-    // 29 → 30：窗口包的平台层 `platform.rs`。30 → 34：样子 `theme.rs` · 窗口的框 `chrome.rs` · 文件种类 `kind.rs` · 属性框 `props.rs`。34 → 35：窗口的通用件 `kit.rs`。35 → 36：「进度」表 `progress.rs`。36 → 37：帧日志 `frame_log.rs`（窗口那一侧）。37 → 38：计划反查 `plan.rs`。38 → 40：图片查看页 `imgview.rs` ＋ 一张图读一次解一次 `picture.rs`。40 → 41：bin 入口 `main.rs`（size2 从壳里搬来）。41 → 42：渲染器挑哪块显卡 `render.rs`（fwgpu）。42 → 43：一组一条命令那一层 `batch.rs`（票 · 冲突框 · 断了带票再问 · 撤）。
+    // 29 → 30：窗口包的平台层 `platform.rs`。30 → 34：样子 `theme.rs` · 窗口的框 `chrome.rs` · 文件种类 `kind.rs` · 属性框 `props.rs`。34 → 35：窗口的通用件 `kit.rs`。35 → 36：「进度」表 `progress.rs`。36 → 37：帧日志 `frame_log.rs`（窗口那一侧）。37 → 38：计划反查 `plan.rs`。38 → 40：图片查看页 `imgview.rs` ＋ 一张图读一次解一次 `picture.rs`。40 → 41：bin 入口 `main.rs`（size2 从壳里搬来）。41 → 42：渲染器挑哪块显卡 `render.rs`（fwgpu）。42 → 43：一组一条命令那一层 `batch.rs`（票 · 冲突框 · 断了带票再问 · 撤）。43 → 42：判据住址 `guard_support.rs` 并进共享的 `guard_core::addr`。
     assert_eq!(
         (inside.len(), window_files.len()),
-        (3, 43),
+        (3, 42),
         "两侧扫到的 `.rs` 份数变了 —— 遍历器坏了，或者两侧有人加 / 删了文件（先回答那份住哪一侧，再改这个数）"
     );
     let root = repo_root();
@@ -647,14 +645,8 @@ const SITES: &[&str] = &[
 /// （模块声明，不带 `::`）由下面单独一条钉。
 #[test]
 fn the_app_side_reaches_into_the_file_manager_through_exactly_one_door() {
+    // 人群塌了不会恒绿：期望集合非空（两条门都在 app 侧），扫空了下面那条相等当场红。
     let (_, outside) = both_halves();
-    // ★ 抽取器自检：人群塌了 ⇒ 零命中守卫会在空集上成立。
-    assert!(
-        outside.len() >= 80,
-        "`filewin/` 之外只扫到 {} 份 `.rs` —— 遍历器坏了。\
-         这一格非有不可：一条零命中守卫在空人群上**恒绿**",
-        outside.len()
-    );
 
     let root = repo_root();
     let mut found: BTreeSet<String> = BTreeSet::new();

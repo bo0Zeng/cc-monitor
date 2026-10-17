@@ -10,10 +10,11 @@
  * 转发账与开链路同一个家（后端 `dial/forwards.rs`）；monitor 零转发账。本机后端不在 ⇒ 通道那一层报（D11，不回落）。
  * 入参 · 回包都是后端类型生成的（`generated/`）；回包形状由握手时的形状指纹管，这里不逐格判。
  */
-import { budgetWithin, callTyped, saidFrom } from "./ipc/chan-caller";
+import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./backend-policy";
 import type { RemoteHostConfig } from "./remote-config";
 import type { ForwardRow } from "./generated/ForwardRow";
+import { saidOf } from "./kit/detail";
 
 /** 一条转发的状态（列表展示）。 */
 export type ForwardStatus = ForwardRow;
@@ -42,7 +43,7 @@ const FORWARD_START_BUDGET_MS = 30_000;
 const FORWARD_LEDGER_BUDGET_MS = 10_000;
 
 function said(e: unknown): Error {
-  return new Error(saidFrom(e, LOCAL_ORIGIN));
+  return new Error(saidOf(e));
 }
 
 /** 起一条转发，回它的号。口绑不上 / 断开 ⇒ 抛那句原话。 */

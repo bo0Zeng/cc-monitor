@@ -3,12 +3,12 @@
  *
  * 本机远端同一条 `chan.call(origin, …)`：`files-delete-session {sid} → {path}`（只收 sid，落点由后端按 sid 在它自己的记录树里找、必须恰是 `<sid>.jsonl`）。
  * 入参 · 回包的类型从后端生成（`generated/TypedCommands.ts`），两端形状由握手时的形状指纹核过。
- * 分叉本身随起新会话那一个请求写（`session-new` 带 `forkFrom`）；分叉源会话那三格是生成类型 `ForkLaunch`（`session-new-facts` 回包里带着）。
+ * 分叉本身随起新会话那一个请求写（`session-open {what: new}` 带 `fork`）；分叉源会话那三格是生成类型 `ForkLaunch`（`session-open-facts` 回包里带着）。
  */
 import { ChanError } from "../../comms/inward/chan";
-import { budgetWithin, callTyped, refusalOf } from "./ipc/chan-caller";
+import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
-import { saidOfTransport } from "./control-said";
+import { saidOf } from "./kit/detail";
 import type { Switched } from "./session-switch";
 
 /** 删一份文件 ＋ 回程。 */
@@ -28,7 +28,7 @@ export async function switchModel(origin: Origin, sid: string, model: string): P
     const r = await callTyped(origin, "session-model", { sid, model }, budgetWithin(SWITCH_BUDGET_MS));
     return { done: r.result === "done", text: r.model, said: r.said ?? null };
   } catch (e) {
-    return { done: false, text: null, said: failedSaid(origin, e) };
+    return { done: false, text: null, said: failedSaid(e) };
   }
 }
 
@@ -38,15 +38,12 @@ export async function switchPermission(origin: Origin, sid: string, mode: string
     const r = await callTyped(origin, "session-permission", { sid, mode }, budgetWithin(SWITCH_BUDGET_MS));
     return { done: r.result === "done", text: r.modeText, said: r.said ?? null };
   } catch (e) {
-    return { done: false, text: null, said: failedSaid(origin, e) };
+    return { done: false, text: null, said: failedSaid(e) };
   }
 }
 
-/** 没回来的那一句：被拒 ⇒ 那台写的；发出去了没等到回话 ⇒ `null`（结果未知）；别的通道那几层 ⇒ 共用的那一句。 */
-function failedSaid(origin: Origin, e: unknown): string | null {
-  if (!(e instanceof ChanError)) return e instanceof Error ? e.message : String(e);
-  const err = e.error;
-  if (err.layer === "peer" && err.why === "refused") return refusalOf(err.body)?.message ?? null;
-  if (err.layer === "hop" && err.reach !== "NotSent") return null;
-  return saidOfTransport(origin, err);
+/** 没回来的那一句（monitor 写好）；发出去了没等到回话 ⇒ `null`（结果未知）。 */
+function failedSaid(e: unknown): string | null {
+  if (e instanceof ChanError && e.error.layer === "hop" && e.error.reach !== "NotSent") return null;
+  return saidOf(e);
 }

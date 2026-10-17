@@ -140,7 +140,7 @@ fn no_gap_rationale_picks_the_windows_mechanism() {
     let want: BTreeSet<(&str, &str)> = WAITING_ROWS.iter().copied().collect();
     assert_eq!(
         cites, want,
-        "写「Windows 后台机制」的理由串那几行 ≠ 点名的那 19 行（`ccm-launcher × Windows` 8 ＋ 命令面 11）"
+        "写「Windows 后台机制」的理由串那几行 ≠ 点名的那 21 行（`ccm-launcher × Windows` 8 ＋ 命令面 13）"
     );
     let picks: Vec<String> = TARGET_GAPS
         .iter()
@@ -186,9 +186,9 @@ fn both_tiers_have_real_members_and_their_sizes_are_pinned() {
 /// 否则「零命中」可能只是剥法把它剥没了。
 #[test]
 fn the_derivation_never_reads_the_gap_table() {
-    let path = crate::guard_support::src_root().join("lib.rs");
+    let path = guard_core::addr::backend_src_root().join("lib.rs");
     let raw = std::fs::read_to_string(&path).expect("读 lib.rs");
-    let prod = crate::guard_support::production_code(&raw);
+    let prod = guard_core::production_code(&raw);
     let needle = "TARGET_GAPS";
     assert!(
         prod.matches(needle).count() >= 1,
@@ -369,7 +369,7 @@ fn every_parity_face_is_populated_on_every_target() {
             f.family
         );
         assert!(
-            crate::guard_support::src_root()
+            guard_core::addr::backend_src_root()
                 .join(f.declared_in)
                 .is_file(),
             "命令面 `{}` 说它住 `{}`，盘上没有这份文件",
@@ -527,7 +527,7 @@ type Tree = std::collections::BTreeMap<String, String>;
 /// 后端 crate 的库那棵树（`main.rs` 是二进制根，不在库的模块树里 ⇒ 不收）。
 fn backend_tree() -> Tree {
     // 走仓里唯一的遍历口径（`scanning_guard_registry` 那条纪律）；本文件住 `tests/backend/`，不在被扫的树里。
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     guard_core::scan_tree!(&root, &["rs"])
         .into_iter()
         .map(|(p, raw)| {
@@ -910,24 +910,20 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
         "足迹：与 `data-report` 同住 `footprint/mod.rs` 与帧面 `faces/footprint_report_face.rs`（引用图按文件取），它自己不问 tmux（tmux 那一行只 stat PATH）",
     ),
     (
-        "session-new",
-        "起新会话：tmux 那一形没 tmux ⇒ `place` 那一格不行（`place_unavailable`），开终端那一形本来用不着 tmux（Windows 本机照做）",
+        "session-open",
+        "起会话 · 恢复 · 接回：要 tmux 而这台没有 ⇒ `place_unavailable`（不改道），直路本来用不着 tmux（Windows 本机照做）",
     ),
     (
-        "session-new-facts",
+        "session-open-facts",
         "起新会话框的这台事实：没 tmux ⇒ `tmux: false`、只剩开终端那一形，别的几格照答",
     ),
     (
-        "session-new-dir",
+        "session-open-dir",
         "目录那一问：没 tmux ⇒ `tmuxName: null`（没有名字可铸），目录在不在照答",
     ),
     (
         "terminals-list",
         "终端名单：没 tmux ⇒ 这台没有 tmux 终端、答空名单（不是错）；托管终端做出来后名单里还有它们",
-    ),
-    (
-        "sessions-start",
-        "批量起：tmux 那一形没 tmux ⇒ 逐个答「这台没 tmux」跳过、命令照答；开终端那一形本来用不着 tmux（Windows 本机照做）",
     ),
     (
         "sessions-where",
@@ -975,7 +971,6 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
     ("bus-inbox", "同 `bus-list` 那个文件（`control/cc_bus.rs` 经 gate 挂 `live`）；读收件箱本身转调 `cc-log`，不用 tmux"),
     ("resync", "打标经 `identity_tag::tag`：不在 tmux / tmux 起不来 ⇒ 那个会话不打（结局说进日志），对齐照做、照回差异；它的能力是对表，不是 tmux"),
     ("hooks-diag", "同 `mcp-read`：只因与 `session-terminals` 同住 `feature_face.rs` 被连带；读 settings ＋ stat 本身不碰 tmux"),
-    ("terminal-name-mint", "铸名只拿会话快照避让：这台没装 tmux ⇒ 一个名字都没占 ⇒ 交基名，命令照答，不回 `no_tmux`（起不起得来归起会话那一步说）"),
     ("mcp-read", "与 `session-terminals` 同住 `feature_face.rs`（引用图按文件算，因此连带）；读 MCP 本身不碰 tmux"),
     ("tasks-list", "同 `mcp-read`：只因与 `session-terminals` 同住 `feature_face.rs` 被连带；本身不碰 tmux"),
     (
@@ -1192,7 +1187,7 @@ fn every_ccm_capability_that_rides_tmux_is_declared_tmux_carried() {
     };
     // 账号那一格要一个**真在盘上**的目录（`resolve_account` 会看它在不在）：借后端源码根（一定在，不建不删 ——
     // 建临时目录会让本文件在测试层分区里从「源码扫描」升成「集成」，`test_tiers` 那张表跟着要挪）。
-    let acct_dir = crate::guard_support::src_root();
+    let acct_dir = guard_core::addr::backend_src_root();
     // 账号 0 排第一个：没标默认号 ⇒ 默认号是它（不指定号），基线不落到 `acct-x` 上（否则 `--account acct-x` 与基线同形）。
     let table = AccountTable::from_accounts(vec![
         Account {

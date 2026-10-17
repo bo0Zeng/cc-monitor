@@ -1,7 +1,6 @@
 //! 换号重启：停失败一定不起 · 压缩等摘要（真记录文件、真 inotify）· 等压缩时撤单不停不起 · 回复与各码（替身记下被调了什么；tmux 一个都不起）。
 
 use super::*;
-use crate::control::launch_render::local;
 use crate::control::session_batch::TmuxEntry;
 use serde_json::json;
 use std::collections::BTreeSet;
@@ -135,7 +134,7 @@ impl Rig {
             run_ccm: &run_ccm,
             mint: &mint,
             caps: &caps,
-            local_facts: local::Facts {
+            host: crate::control::launch_render::Host {
                 windows: false,
                 is_dir: |_| true,
                 entry: crate::platform::paths::installed_ccm_entry,
@@ -143,6 +142,7 @@ impl Rig {
             accounts: &facts,
             writers: &writers,
             pretrust: &pretrust,
+            open_shell: &|_, _| unreachable!("不开空 shell"),
             // 这台的偏好：号 work 默认用 opus（远端那一行带上它）。
             prefs: &crate::control::machine_prefs::Prefs {
                 models: [("work".to_string(), "opus".to_string())]
@@ -386,14 +386,14 @@ fn session_restart_is_cancellable() {
     assert!(!cmd_wire::shapes::UNCANCELLABLE.contains(&"session-restart"));
 }
 
-/// 写这条会话的活进程不止一个（终端里那个之外另有一个）⇒ `session_already_live`（`data.pids`），不停、不起。
+/// 写这条会话的活进程不止一个（终端里那个之外另有一个）⇒ `already_live`（`data.pids`），不停、不起。
 #[test]
 fn two_live_writers_refuse_the_restart_before_anything_moves() {
     let mut rig = Rig::new("two-writers");
     rig.live_before = vec![11, 12];
     let (out, rig) = go(rig, args(true, 1000));
     let (code, _, data) = out.unwrap_err();
-    assert_eq!(code, "session_already_live");
+    assert_eq!(code, "already_live");
     assert_eq!(data, Some(json!({ "pids": [11, 12] })));
     assert_eq!(
         rig.did("kill") + rig.did("ccm") + rig.did("send"),
@@ -404,7 +404,7 @@ fn two_live_writers_refuse_the_restart_before_anything_moves() {
 }
 
 /// 停完旧的再核：自己停掉的那个（开动前就在写的）还没退干净不算 ⇒ 照常起；
-/// 停的这段时间里另有一个进程接上了这条会话 ⇒ `session_already_live`、旧的已停、新的不起。
+/// 停的这段时间里另有一个进程接上了这条会话 ⇒ `already_live`、旧的已停、新的不起。
 #[test]
 fn after_the_stop_only_someone_else_still_writing_holds_the_start() {
     let mut rig = Rig::new("own-writer");
@@ -419,7 +419,7 @@ fn after_the_stop_only_someone_else_still_writing_holds_the_start() {
     rig.live_after = vec![11, 13];
     let (out, rig) = go(rig, args(false, 0));
     let (code, _, data) = out.unwrap_err();
-    assert_eq!(code, "session_already_live");
+    assert_eq!(code, "already_live");
     assert_eq!(data, Some(json!({ "pids": [13], "stopped": true })));
     assert_eq!(rig.did("kill"), 1);
     assert_eq!(

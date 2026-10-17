@@ -162,9 +162,9 @@ fn body_of(path: &Path, hosts: &[Host]) -> Result<Vec<u8>, Said> {
 fn mkdir_said(dir: &Path, e: std::io::Error) -> Said {
     Said::with_raw(
         copy_text(
-            "beExitPolicy.writeAt.mkdirFailed",
+            "reason.fs.writeFailed",
             &[
-                ("dir", &dir.display().to_string()),
+                ("path", &dir.display().to_string()),
                 ("why", &copy_core::io_reason(e.kind())),
             ],
         ),
@@ -588,6 +588,7 @@ pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<()> {
 
 fn ring() {
     let _ = changes().send(());
+    crate::control::machine_state::table_moved();
 }
 
 // ───────────────────────────── 三条命令 ─────────────────────────────

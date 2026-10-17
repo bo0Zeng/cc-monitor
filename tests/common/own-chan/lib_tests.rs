@@ -36,9 +36,9 @@ async fn a_peer_with_my_uid_is_ours_and_nobody_means_nobody() {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let d = scratch("bind");
     let path = d.join("s.sock");
-    assert!(!someone_listening(&path), "还没绑就说有人在听");
+    assert!(!connect_blocking(&path).is_ok(), "还没绑就说有人在听");
     let l = bind(&path).expect("绑");
-    assert!(someone_listening(&path));
+    assert!(connect_blocking(&path).is_ok());
     let client = tokio::spawn({
         let path = path.clone();
         async move {
@@ -49,7 +49,7 @@ async fn a_peer_with_my_uid_is_ours_and_nobody_means_nobody() {
             back
         }
     });
-    // `someone_listening` 那一下也连过一次：先把它收掉（它连上就走了）。
+    // `connect_blocking` 那一下也连过一次：先把它收掉（它连上就走了）。
     let mut got_ours = None;
     for _ in 0..2 {
         match l.accept().await.expect("收") {
@@ -93,5 +93,35 @@ async fn a_blocking_connection_hands_over_to_the_runtime() {
         .expect("异步写");
     server.read_exact(&mut one).await.expect("读");
     assert_eq!(&one, b"y");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 对端是谁由内核报：连另一个进程在听的套接字，`peer` 报的就是那个进程的 pid 与本人 uid（不是本进程、不读盘）。
+#[cfg(target_os = "linux")]
+#[test]
+fn the_peer_is_the_process_that_listens() {
+    use std::io::BufRead as _;
+    let d = scratch("peer");
+    let path = d.join("s.sock");
+    let mut other = std::process::Command::new("python3")
+        .args([
+            "-c",
+            "import socket,sys,signal; s=socket.socket(socket.AF_UNIX); s.bind(sys.argv[1]); s.listen(); \
+             print('ready', flush=True); signal.pause()",
+        ])
+        .arg(&path)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("起在听的那个进程");
+    let mut line = String::new();
+    std::io::BufReader::new(other.stdout.take().unwrap())
+        .read_line(&mut line)
+        .unwrap();
+    assert_eq!(line.trim(), "ready");
+    let got = connect_blocking(&path).expect("连").peer();
+    let _ = other.kill();
+    let _ = other.wait();
+    assert_eq!(got.expect("对端"), (my_uid(), other.id()));
     let _ = std::fs::remove_dir_all(&d);
 }

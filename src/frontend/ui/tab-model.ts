@@ -16,16 +16,13 @@ import type { OutlineSource } from "./views/outline-source";
 import type { TurnFold } from "./turn-fold";
 import type { TurnRail } from "./turn-rail";
 import type { FactsSource } from "./views/facts-source";
-import type { ToolResultBlock, ToolUseSeen } from "./cards/index";
+import type { RecordAt, ToolResultBlock, ToolUseSeen } from "./cards/index";
 import type { Origin } from "./ipc/origin";
-import type { SessionActivity } from "./generated/SessionActivity";
-import type { SwitchCells } from "./generated/SwitchCells";
+import type { SessionFace } from "./generated/SessionFace";
+import type { FactsLine } from "./generated/FactsLine";
 import type { LineRecord } from "./generated/LineRecord";
-import type { SessionState } from "./tab-session-state";
 import type { BackgroundWork, Needs, PendingCall, RetryOutcome, UsageFact } from "./session-reads";
 import type { SessionHidden, SessionLineage } from "./session-hidden";
-
-// 会话状态住 `tab-session-state.ts` 的 `SessionState`（活性 × 可恢复性），字段是 `Tab.state`。
 
 export interface Tab {
   sessionId: string;
@@ -47,7 +44,7 @@ export interface Tab {
    */
   agent: string | null;
   /**
-   * 叫这条会话什么（那台核心写的 `label`，经会话流的 `activity` 格来，改名 · 来了标题 / 第一句随 `session_status` 更新；与历史清单 · 通知同一个函数）。
+   * 叫这条会话什么（那台核心写的 `label`，经会话帧来，改名 · 来了标题 / 第一句随 `session_status` 更新；与历史清单 · 通知同一个函数）。
    * `null` ＝ 核心还没报过（没宣告过的会话，如从历史里打开的已结束会话）。
    */
   label: string | null;
@@ -66,15 +63,15 @@ export interface Tab {
    */
   origin: Origin;
   /**
-   * **活性 × 可恢复性**两个轴（形状、转移与谓词都住 `tab-session-state.ts`）。
-   * 只经那一份的 `nextState` 改、经它的谓词读 —— 别处不各判一遍。
+   * 此刻的整份脸（那台后端判好的点 · 字 · 序 · 能做什么，会话三帧带来；同一 sid 后到的覆盖先到的）。
+   * `null` ＝ 还没收到 · 那台看不见了 ⇒ 画 `face-can.ts::unseenFace`（经 `faceOf` 读）。
    */
-  state: SessionState;
+  face: SessionFace | null;
   /**
    * **固定** —— 「关了 app 再打开它还在」。
    *
    * 与会话状态正交的一维（不是第三态）：主用例就是固定住一个已经跑完的会话。三个维度各管一件事：
-   * `state`（进程活没活、死了怎么回去，用户改不了）· `pinned`（要不要它一直在，只由用户改）· 集合归属（怎么分类）。
+   * `face`（进程活没活、能做什么，用户改不了）· `pinned`（要不要它一直在，只由用户改）· 集合归属（怎么分类）。
    * 只影响「重启后还在不在」，不影响位置（固定的 tab 留在原位，多一个 📌 角标）。
    * 活着的 tab 也能固定（「跑完之后别丢」），效果在它变灰之后才显现 —— 活着的重启后由后端自动宣告回来。
    */
@@ -85,7 +82,7 @@ export interface Tab {
    * 组员关系是 tab 自己的属性（tab × 掉就没了，不用再「移出分组」）：组表（`tab-collections.ts`）只存 `{id, name}`，
    * 「组里有谁」= `group` 等于那个 id 的 tab，现算。内存里组员关系只住这里；落盘是 `tabBar.groupOf.<sid>`（`tab-bar-state.ts`）。
    * 只经 `tab-bar-prefs.ts` 的那几个分组动作改（它们同时写盘）；tab 被 × 掉，这一格随 tab 一起没。
-   * 单值 ⇒ 「一个 tab 只属一个集合」结构上成立。与 `state` / `pinned` 正交（不变量 3）。
+   * 单值 ⇒ 「一个 tab 只属一个集合」结构上成立。与 `face` / `pinned` 正交（不变量 3）。
    */
   group: string | null;
   /**
@@ -95,13 +92,6 @@ export interface Tab {
   hidden: SessionHidden | null;
   /** 血缘（会话事实的 `startedBy` · `children`）：会话头「由 X 启动」「子会话 N」照它画。 */
   lineage: SessionLineage;
-  /**
-   * 红绿灯（与 `state` 正交）：此刻在干什么（后端翻好的；`doing` 为 null ＝ 那一家没说）＋ 在等什么 ＋ 核心写好的字与语气（说不清也有）。null ＝ 还没收到。
-   */
-  activity: { doing: SessionActivity | null; waitingFor: string | null; text: string; tone: string; order: number } | null;
-  /** 监控板组内的序（核心写的那一格：活着随 activity、离开活随去向帧带的；说不清 · 壳补的已结束 · 还没收到 ⇒ null）。 */
-  order: number | null;
-  // 「claude 已退但 tmux 会话还在」是 `state` 的 `RECONNECTABLE`（死 ＋ 容器还在）。
   /** 本会话写类工具（Edit / Write / MultiEdit / NotebookEdit）碰过的文件路径（原样、去重、近因序）。
    * 后端出成品（`history-facts` 的 `touchedFiles`），供监控板 peek 列最近改过的文件。纯内存、不落盘（守 §28）。 */
   touchedFiles: Set<string>;
@@ -109,16 +99,19 @@ export interface Tab {
   usage: UsageFact | null;
   /** 模型写给人看的字（后端 `history-facts` 的 `modelText`，会话头 · HUD · 监控板照抄）；没有 ⇒ `null`。 */
   modelText: string | null;
+  /** 此刻是换模型清单里哪一项（后端 `history-facts` 的 `modelPick`，抽屉里勾它）；认不出 ⇒ `null`。 */
+  modelPick: string | null;
   /** 此刻的权限档：原值（`permissionMode`，抽屉里勾哪一档）与写给人看的字（`permissionModeText`）；没有 ⇒ `null`。 */
   permissionMode: string | null;
   permissionModeText: string | null;
-  /**
-   * 此刻能不能换模型 · 权限档（那台核心判的会话帧 `switch`：随活动那几格来，离开「活」时随去向那一帧来）。
-   * 这次没收到过 ⇒ `null`（界面不判，交命令照实回）。
-   */
-  switch: SwitchCells | null;
-  /** 需手动（后端 `history-facts` 的 `needs`：种类 · 那一句 · 何时起等）；不在等 ⇒ `null`。与 `activity` 对不上时以后者为准（见 `tab-needs.ts`）。 */
+  /** 需手动（后端 `history-facts` 的 `needs`：种类 · 那一句 · 何时起等）；不在等 ⇒ `null`。与 `face` 上那一态对不上时不认（`session-face.ts::needsOf`）。 */
   needs: Needs | null;
+  /** 没人答的提问等几分钟替人答（后端 `history-facts` 的 `autoAnswer`，会话注解里那一格）；关 ⇒ `null`。 */
+  autoAnswer: number | null;
+  /** 上一条提问没人答、已替人答过 ⇒ 后端写好的那一句（`history-facts` 的 `autoAnswered`）；没有 ⇒ `null`。 */
+  autoAnswered: string | null;
+  /** 状态一句（后端 `history-facts` 的 `line`）：只在它的 `for` 与 `face` 上那一态相同时用；没有 ⇒ `null`。 */
+  line: FactsLine | null;
   /** 后台任务运行中那一句（后端 `history-facts` 的 `background`：写好的字 · 会走的那一句 · 命令那一格 · 几条）；不是这一态 ⇒ `null`。 */
   backgroundWork: BackgroundWork | null;
   /** 还没有结果的工具调用（后端 `pending`，文件序）：悬停卡「在做什么」。 */
@@ -164,8 +157,8 @@ export interface Tab {
     string,
     { block: ToolResultBlock; element: HTMLElement }
   >;
-  /** 出口省掉的正文展开那一下按记录 id 取回那一行全文（`RenderContext.fullRecord`；按这个 tab 的骨架取）。 */
-  fullRecord: (id: string) => Promise<LineRecord | null>;
+  /** 出口省掉的正文展开那一下取回那一行全文（`RenderContext.fullRecord`；按这个 tab 的骨架取）。 */
+  fullRecord: (from: RecordAt) => Promise<LineRecord | null>;
   /**
    * 按 seq 去重集合。一个 Tab == 一个 jsonl == 一个 seq 空间（seq ＝ 当前文件里的行号）：重连后后端从 0 重发 → 命中即丢，Tab 内容不翻倍。
    * 这是入口唯一一道去重：文件从头重读时后端先出声、行号从 0 重数，这个 tab 整份重来（`TabStreamView.restartContent`，新的一代配新的集合；INVARIANTS § 25）。
@@ -208,7 +201,7 @@ export interface Tab {
 }
 
 /**
- * Tab 摘要，发给宿主用于状态栏 / empty-state / 会话头 / 终端页 / 需手动那几处。按活性轴分：活 / 死（死里含可重连）；
+ * Tab 摘要，发给宿主用于状态栏 / empty-state / 会话头 / 终端页 / 需手动那几处。按进程在不在分：活 / 死（死里含 Claude 已退出）；
  * `faces` 是每个 tab 此刻的点 · 在等什么 · 在跑哪一步（只拿来比「变没变」：运行中 → 空闲数量不变，会话头也得重画）。
  */
 export interface TabsSummary {

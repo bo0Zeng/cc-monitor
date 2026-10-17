@@ -2,11 +2,11 @@
 //! 那台说这条会话在等人（批准 · 回答）⇒ 不送（框开着时打的字会落进框里）；不在等 ⇒ 照 `terminal-input` 那一条送、补回车。
 //! 挂着它的那个窗格前台只剩 shell（agent 退了）⇒ 不送进去，当作终端没了（`terminals::say_on`）。
 //! 送的时候这台已经没有它的终端（名单里没有 · 送的那一刻没了 · 只剩 shell）⇒ 按记下的号恢复这条会话，那一句当第一句交出去
-//! （模型 · 权限档取会话记录里最后那一条，同 `history-facts` 那一处扫描；起法同批量起的 tmux 那一形，`session_batch::resume_saying`）。
+//! （模型 · 权限档取会话记录里最后那一条，同 `history-facts` 那一处扫描；起法同 `session-open` 恢复进 tmux 那一支，`session_open::resume_saying`）。
 
 use crate::common::contract::malformed;
 use crate::control::launch_account::AccountAsk;
-use crate::control::session_batch::{self as batch, Answer, Item};
+use crate::control::session_open::{self as open, Item, Landed};
 use crate::control::terminals::{input_reply, no_said, CmdErr, Refused};
 use crate::control::terminals_wire::{Sent, SentResult, TerminalInputReq};
 use crate::wire::typed::{self, Command, Files};
@@ -71,7 +71,8 @@ impl crate::wire::typed::Handle for SessionSay {
             let asked = crate::control::asks::sids();
             let waiting =
                 |sid: &str| crate::observe::accounts_query::waiting_now(&home, sid, &asked);
-            let resume = |r: &SessionSayReq| resume_here(r, files);
+            let resume =
+                |r: &SessionSayReq| resume_here(&r.sid, r.client.as_deref(), Some(&r.text), files);
             say_with(
                 &req,
                 &waiting,
@@ -83,41 +84,41 @@ impl crate::wire::typed::Handle for SessionSay {
     }
 }
 
-/// 恢复再送的生产那一份：记录在这台记录树里找；哪一家 · 工作目录 · 模型 · 权限档从会话事实那一处扫描读（上限表用不着，不读）。
-/// 号跟随（这条会话上次用的号）；启动命令 · 模型表读这台 `prefs.json`（[`batch`] 那一份 `Deps`）。任一找不到 ⇒ `None`（不恢复）。
-pub(crate) fn resume_here(req: &SessionSayReq, files: Files) -> Option<Answer> {
-    use crate::observe::history_query as hq;
-    let home = crate::history::listing::agent_home();
-    let path = hq::session_record(&home, &req.sid).ok()?;
-    let path = path.to_str()?;
-    let agent = hq::facts_agent(&home, path)?;
-    let cwd = hq::facts_project_dir(&home, path)?;
-    let facts = hq::cold_scan(&home, path).ok()?.facts(&Vec::new(), None);
+/// 恢复的生产那一份（恢复再送 · 恢复再附着同一份）：记录在这台记录树里找；哪一家 · 工作目录 · 模型 · 权限档从会话事实那一处扫描读（上限表用不着，不读）。
+/// 号跟随（这条会话上次用的号）；启动命令 · 模型表读这台 `prefs.json`（[`batch`] 那一份 `Deps`）。`say` ＝ 随起交的第一句。任一找不到 ⇒ `None`（不恢复）。
+pub(crate) fn resume_here(
+    sid: &str,
+    client: Option<&str>,
+    say: Option<&str>,
+    files: Files,
+) -> Option<Reopened> {
+    let r = super::session_open_face::resume_of(sid)?;
     let item = Item {
-        sid: req.sid.clone(),
-        cwd,
+        sid: sid.to_string(),
+        cwd: r.cwd,
         account: AccountAsk::Follow,
-        fresh: false,
-        fork_of: None,
-        say: Some(req.text.clone()),
-        model: facts.usage.and_then(|u| u.model),
-        permission_mode: facts.permission_mode,
+        say: say.map(str::to_string),
+        model: r.model,
+        permission_mode: r.permission_mode,
     };
-    let client = crate::control::gate::requester(req.client.as_deref()).ok()?;
+    let client = crate::control::gate::requester(client).ok()?;
     Some(crate::faces::session_batch_face::with_deps_as(
         client.as_deref(),
-        &agent,
+        &r.agent,
         Some(files),
-        |d| batch::resume_saying(&item, &agent, d),
+        |d| open::resume_saying(&item, &r.agent, d),
     ))
 }
+
+/// 恢复那一下的结局（同 `session-open` 恢复那一支）。
+pub(crate) type Reopened = Result<open::Opened, open::Failed>;
 
 /// `session-say` 的本体：`waiting` 答这条会话此刻在不在等人，`send` 照 `terminal-input` 送。
 pub(crate) fn say_with(
     req: &SessionSayReq,
     waiting: &dyn Fn(&str) -> bool,
     send: &dyn Fn(&TerminalInputReq) -> Result<Sent, CmdErr>,
-    resume: &dyn Fn(&SessionSayReq) -> Option<Answer>,
+    resume: &dyn Fn(&SessionSayReq) -> Option<Reopened>,
 ) -> Result<Sent, CmdErr> {
     if !shell_quote_core::session_id_ok(&req.sid) {
         return Err(CmdErr::new(
@@ -143,29 +144,39 @@ pub(crate) fn say_with(
         ..TerminalInputReq::default()
     })?;
     // 这台已经没有它的终端（名单里没有 · 送的那一刻没了）⇒ 恢复再送；别的被拒原样回。带了看见的那一屏 ⇒ 不恢复。
-    if req.seen_screen.is_some() || !matches!(sent.why, Some(Refused::NotKnown | Refused::Ended)) {
+    if req.seen_screen.is_some() || !crate::control::terminals::terminal_gone(sent.why) {
         return Ok(sent);
     }
     let Some(a) = resume(req) else {
         return Ok(sent);
     };
-    if a.outcome == "done" {
-        return Ok(Sent {
-            resumed: true,
-            ..input_reply(SentResult::Delivered, None, None)
-        });
-    }
-    let why = match a.why.as_deref() {
-        Some(batch::ALREADY_LIVE) => Refused::Elsewhere,
-        _ => Refused::NotResumed,
+    let why = match &a {
+        Ok(o) if matches!(o.landed, Landed::Started | Landed::InPlace) => {
+            return Ok(Sent {
+                resumed: true,
+                ..input_reply(SentResult::Delivered, None, None)
+            })
+        }
+        Ok(o) => {
+            tracing::warn!(
+                "[session-say] {} 终端没了、恢复时已在跑（{:?}），那一句没送",
+                req.sid,
+                o.session
+            );
+            Refused::NotResumed
+        }
+        Err((code, said, _, raw)) => {
+            tracing::warn!(
+                "[session-say] {} 终端没了、恢复没成：{code} {said} {raw:?}",
+                req.sid
+            );
+            if *code == "already_live" {
+                Refused::Elsewhere
+            } else {
+                Refused::NotResumed
+            }
+        }
     };
-    tracing::warn!(
-        "[session-say] {} 终端没了、恢复没成：{} {:?} {}",
-        req.sid,
-        a.outcome,
-        a.why,
-        a.detail
-    );
     Ok(input_reply(SentResult::Refused, Some(why), None))
 }
 

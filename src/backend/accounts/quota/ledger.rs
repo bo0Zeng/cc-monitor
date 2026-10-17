@@ -522,7 +522,7 @@ fn write_merged(
     own.ensure_dir(&dir).map_err(|e| {
         Said::with_raw(
             copy_text(
-                "beQuotaLedger.write.failed",
+                "reason.fs.writeFailed",
                 &[
                     ("path", &path.display().to_string()),
                     ("why", &copy_core::io_reason(e.kind())),

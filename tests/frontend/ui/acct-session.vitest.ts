@@ -13,13 +13,12 @@ const read = (over: Partial<RotationViewReply> = {}): RotationViewReply => ({
   now: NOW,
   nowText: "14:30", title: null,
   strategy: null,
-  form: [],
   settings: {},
+  board: { all: [], rows: [] },
   dirty: false,
   start: "work",
   current: "team",
   accounts: [],
-  plates: {},
   listed: 0,
   decision: null,
   timeline: null,
@@ -57,7 +56,7 @@ describe("换号条", () => {
 });
 
 describe("停发提示", () => {
-  const hold = read({ hints: [{ hint: { k: "hold", until: NOW + 3600, untilText: "15:30", account: "lab" }, text: "停发 · 15:30 lab · {dur}" }] });
+  const hold = read({ hints: [{ hint: { k: "hold", until: NOW + 3600, untilText: "15:30", account: "lab" }, tone: "warn", text: "停发 · 15:30 lab · {dur}" }] });
 
   it("★ 停发 ⇒ 流最前一条（字照后端那一句，{dur} 填上）；不停了 ⇒ 摘掉", () => {
     onSessionEntry("s1", entry(hold), host);

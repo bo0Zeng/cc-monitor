@@ -2,18 +2,18 @@
 {"kind":"hello","build_id":"b1","host_arch":"x86_64"}
 {"kind":"line","session_id":"s1","path":"/p/s1.jsonl","seq":3,"record":{"agent":"claude","id":"u1","at":"2026-10-09T01:30:00.000Z","timeText":"09:30","atMs":1791509400000,"t":"said","who":{"speaker":{"kind":"human"},"text":"q"},"blocks":[{"type":"text","text":"q"}]},"cwd":"/w","byte_offset":120,"rid":"r1"}
 {"kind":"line","session_id":"s1","path":"/p/s1.jsonl","seq":3,"byte_offset":120}
-{"kind":"session_added","sid":"s1","agent_kind":"claude","background":true,"attachable":true,"cwd":"/w","project_dir":"/w","name":"n","path":"/p/s1.jsonl","activity":"needs_you","activity_text":"需手动","activity_tone":"need","activity_order":0,"switch":{"model":{"can":"no","why":"先答完需手动"},"permission":{"can":"no","why":"先答完需手动"}},"label":"t","label_project":"w","waiting_for":"permission prompt","hidden":{"by":"bg","said":"分身会话默认隐藏"},"container":{"host":"tmux","terminal":"tmux-3-7"},"pid":42,"account":"b"}
-{"kind":"session_added","sid":"s1","agent_kind":"claude","activity_text":"状态不明","activity_tone":"plain","activity_order":3,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"没有说过话的会话","pid":0}
+{"kind":"session_added","sid":"s1","agent_kind":"claude","background":true,"attachable":true,"cwd":"/w","project_dir":"/w","name":"n","path":"/p/s1.jsonl","face":{"dot":"needs-you","live":{"is":"yes","activity":"needs_you"},"settled":false,"name":"需手动","tip":"需手动","line":"需手动","tone":"need","order":0,"can":{"close":{"can":"no","why":"运行中"},"resume":{"can":"no","why":"运行中"},"term":{"can":"yes","tmux":false},"reattach":{"can":"no","why":"运行中"},"model":{"can":"no","why":"先答完需手动"},"permission":{"can":"no","why":"先答完需手动"}},"account":"b"},"label":"t","label_project":"w","waiting_for":"permission prompt","hidden":{"by":"bg","said":"分身会话默认隐藏"},"container":{"host":"tmux","terminal":"tmux-3-7"},"pid":42}
+{"kind":"session_added","sid":"s1","agent_kind":"claude","face":{"dot":"idle","live":{"is":"yes"},"settled":false,"name":"状态不明","tip":"状态不明","line":"状态不明","tone":"plain","order":3,"can":{"close":{"can":"no","why":"运行中"},"resume":{"can":"no","why":"运行中"},"term":{"can":"yes","tmux":false},"reattach":{"can":"no","why":"运行中"},"model":{"can":"yes"},"permission":{"can":"yes"}}},"label":"没有说过话的会话","pid":0}
 {"kind":"session_primed","sid":"s1","path":"/p/s1.jsonl","lines":9}
 {"kind":"session_primed","sid":"s1"}
-{"kind":"session_status","sid":"s1","activity":"needs_you","activity_text":"需手动","activity_tone":"need","activity_order":0,"switch":{"model":{"can":"no","why":"先答完需手动"},"permission":{"can":"no","why":"先答完需手动"}},"label":"t","label_project":"w","waiting_for":"permission prompt","path":"/r/s1.jsonl"}
-{"kind":"session_status","sid":"s1","activity_text":"状态不明","activity_tone":"plain","activity_order":3,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"没有说过话的会话"}
-{"kind":"session_state","sid":"s1","state":"reconnectable","state_text":"Claude 已退出","state_hint":"Claude 已退出 · tmux 会话在","state_tone":"plain","state_order":4,"switch":{"model":{"can":"no","why":"会话已退出"},"permission":{"can":"no","why":"会话已退出"}}}
-{"kind":"session_state","sid":"s1","state":"reconnectable","state_text":"Claude 已退出","state_hint":"Claude 已退出 · tmux 会话在","state_tone":"plain","state_order":4,"switch":{"model":{"can":"no","why":"会话已退出"},"permission":{"can":"no","why":"会话已退出"}}}
+{"kind":"session_status","sid":"s1","face":{"dot":"needs-you","live":{"is":"yes","activity":"needs_you"},"settled":false,"name":"需手动","tip":"需手动","line":"需手动","tone":"need","order":0,"can":{"close":{"can":"no","why":"运行中"},"resume":{"can":"no","why":"运行中"},"term":{"can":"yes","tmux":false},"reattach":{"can":"no","why":"运行中"},"model":{"can":"no","why":"先答完需手动"},"permission":{"can":"no","why":"先答完需手动"}},"account":"b"},"label":"t","label_project":"w","waiting_for":"permission prompt","path":"/r/s1.jsonl"}
+{"kind":"session_status","sid":"s1","face":{"dot":"idle","live":{"is":"yes"},"settled":false,"name":"状态不明","tip":"状态不明","line":"状态不明","tone":"plain","order":3,"can":{"close":{"can":"no","why":"运行中"},"resume":{"can":"no","why":"运行中"},"term":{"can":"yes","tmux":false},"reattach":{"can":"no","why":"运行中"},"model":{"can":"yes"},"permission":{"can":"yes"}}},"label":"没有说过话的会话"}
+{"kind":"session_state","sid":"s1","state":"reconnectable","face":{"dot":"exited","live":{"is":"no"},"settled":false,"name":"Claude 已退出","tip":"Claude 已退出 · tmux 会话在","line":"Claude 已退出 · tmux 会话在","tone":"plain","order":4,"can":{"close":{"can":"no","why":"运行中"},"resume":{"can":"no","why":"运行中"},"term":{"can":"yes","tmux":true},"reattach":{"can":"yes"},"model":{"can":"yes"},"permission":{"can":"yes"}},"account":"b"}}
+{"kind":"session_state","sid":"s1","state":"ended","face":{"dot":"ended","live":{"is":"no"},"settled":true,"name":"已结束","tip":"已结束 · 可恢复","line":"已结束 · 可恢复","tone":"plain","order":5,"can":{"close":{"can":"quiet"},"resume":{"can":"yes"},"term":{"can":"no","why":"会话已结束"},"reattach":{"can":"no","why":"会话已结束"},"model":{"can":"yes"},"permission":{"can":"yes"}}}}
 {"kind":"session_removed","sid":"s1","cause":"superseded","by":"s2"}
 {"kind":"session_removed","sid":"s1"}
-{"kind":"overflow","dropped":7,"lost":[{"kind":"session_added","subject":"s1"}],"lost_truncated":true}
-{"kind":"overflow","dropped":7}
+{"kind":"overflow","said":"连接拥塞 · 会话状态已重新对齐"}
+{"kind":"overflow","said":"连接拥塞 · 约 7 条实时消息未送达\n重开该会话可看完整历史"}
 {"kind":"reply","id":"q1","ok":false,"code":"bad_args","message":"m","detail":"码：bad_args","data":{"k":1}}
 {"kind":"reply","id":"q1","ok":true}
 {"kind":"cancelled","id":"q1"}
@@ -24,8 +24,8 @@
 {"kind":"sessions_replayed"}
 {"kind":"session_file_gone","session_id":"s1","path":"/p/s1.jsonl"}
 {"kind":"session_file_gone","session_id":"s1","path":"/p/s1.jsonl"}
-{"kind":"session_file_reread","session_id":"s1","path":"/p/s1.jsonl","why":"truncated"}
-{"kind":"session_file_reread","session_id":"s1","path":"/p/s1.jsonl","why":"truncated"}
+{"kind":"session_file_reread","session_id":"s1","path":"/p/s1.jsonl","why":"truncated","lines":7}
+{"kind":"session_file_reread","session_id":"s1","path":"/p/s1.jsonl","why":"truncated","lines":7}
 {"kind":"link_data","link":"L1","data":"aGkK"}
 {"kind":"link_data","link":"L1","data":"aGkK"}
 {"kind":"link_end","link":"L1","error":"e"}
@@ -42,7 +42,7 @@
 {"kind":"session_runs","sid":"s1","runs":[{"run":"a1","state":"running"}],"ended":[]}
 {"kind":"session_branch","sid":"s1","path":"/p/s1.jsonl","at":0,"off":["u2","a2"],"sum":"5144bd170a47aa27"}
 {"kind":"session_branch","sid":"s1","path":"/p/s1.jsonl","at":2,"off":[],"sum":"5144bd170a47aa27"}
-{"kind":"terminal_screen","ticket":"t1","seq":2,"view":{"capped":false,"captured_at":1,"captured_at_text":"00:00:01","cols":80,"cursor":{"visible":true,"x":0,"y":0},"lines":[{"spans":[{"fg":"green","from":0,"to":2}],"text":"ok"}],"rows":1,"screen":"00000000000000a1","scrollback_lines":0}}
-{"kind":"terminal_screen","ticket":"t1","seq":1,"view":{}}
+{"kind":"terminal_screen","ticket":"t1","seq":2,"view":{"screen":"00000000000000a1","cols":80,"rows":1,"cursor":{"x":0,"y":0,"visible":true},"lines":[{"text":"ok","spans":[{"from":0,"to":2,"fg":"green"}]}],"scrollback_lines":0,"capped":false,"captured_at":1,"captured_at_text":"00:00:01"}}
+{"kind":"terminal_screen","ticket":"t1","seq":1,"view":{"screen":"0000000000000000","cols":1,"rows":0,"cursor":{"x":0,"y":0,"visible":false},"lines":[],"scrollback_lines":0,"capped":false,"captured_at":0,"captured_at_text":"00:00:00"}}
 {"kind":"terminal_follow_end","ticket":"t1","why":"too_big","said":"that-sentence-1"}
 {"kind":"terminal_follow_end","ticket":"t1","why":"gone","said":"that-sentence-2"}

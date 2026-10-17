@@ -96,6 +96,8 @@ pub struct Hit {
     pub dir: bool,
     /// 后端说它是链接（`kind == "symlink"`）。
     pub link: bool,
+    /// 画哪种图标（后端判的 `class`）。
+    pub class: cmd_wire::files::FileClass,
     /// 所在目录相对搜索起点那一段（后端算的；直接在起点里 ⇒ 空）。
     pub location: Vec<u8>,
     pub size: Option<u64>,
@@ -137,7 +139,7 @@ impl Hit {
             mtime_text: self.mtime_text.clone(),
             size: self.size,
             dir: self.dir,
-            link: self.link,
+            class: self.class,
         }
     }
 
@@ -227,6 +229,7 @@ pub fn decode_find(d: cmd_wire::files::FindReply) -> FindOutcome {
                 path: h.path.0,
                 dir: h.kind == FileKind::Dir,
                 link: h.kind == FileKind::Symlink,
+                class: h.class,
                 location: h.location.0,
                 size: h.size,
                 mtime_text: h.mtime_text,
@@ -386,20 +389,9 @@ pub fn browse_args_at(dirs: &[super::source::RemotePath]) -> cmd_wire::files::Br
 // 状态行的字（纯函数；数都是后端报的，这里只摆字）
 // ═══════════════════════════════════════════════════════════════════
 
-/// 秒数 → 「3m」这一形（文件清单多久前的）。
+/// 秒数 → 「3m」这一形（文件清单多久前的）：短时长。
 pub fn age_text(secs: u64) -> String {
-    match secs {
-        0..60 => copy_text("rsFilewinFind.age.secs", &[("n", &secs.to_string())]),
-        60..3600 => copy_text("rsFilewinFind.age.mins", &[("n", &(secs / 60).to_string())]),
-        3600..86_400 => copy_text(
-            "rsFilewinFind.age.hours",
-            &[("n", &(secs / 3600).to_string())],
-        ),
-        _ => copy_text(
-            "rsFilewinFind.age.days",
-            &[("n", &(secs / 86_400).to_string())],
-        ),
-    }
+    copy_core::short_duration(secs.saturating_mul(1000))
 }
 
 /// 起点那一段的名字（最后一级；根 ⇒ 原样）。
@@ -556,7 +548,10 @@ pub fn first_build_line(machine: &str, cold_first_build_secs: u64) -> String {
         "rsFilewinFind.firstBuild.line",
         &[
             ("machine", &machine.to_string()),
-            ("secs", &cold_first_build_secs.to_string()),
+            (
+                "dur",
+                &copy_core::format_duration(cold_first_build_secs.saturating_mul(1000)),
+            ),
         ],
     )
 }
@@ -919,30 +914,6 @@ impl Round {
 // ═══════════════════════════════════════════════════════════════════
 // 往返
 // ═══════════════════════════════════════════════════════════════════
-
-/// 后端拒绝时那句话。**逐档对着 `src/doc/IPC-PROTOCOL.md §10` 的错误码写。**
-/// 对外那句只说哪一步没成 ＋ 那台的原话；命令名与错误码不上屏，只进日志（排查用）。
-pub(super) fn refusal(cmd: &str, code: &str, message: &str) -> String {
-    tracing::warn!("filewin: {cmd} refused ({code}): {message}");
-    let hint = match code {
-        "bad_args" => &copy_text("rsFilewinFind.refusal.badArgs", &[]),
-        "bad_path" => &copy_text("rsFilewinFind.refusal.badPath", &[]),
-        "bad_query" => &copy_text("rsFilewinFind.refusal.badQuery", &[]),
-        "unreadable" => &copy_text("rsFilewinFind.refusal.cannotOpen", &[]),
-        _ => &copy_text("rsFilewinFind.refusal.other", &[]),
-    };
-    if message.trim().is_empty() {
-        return hint.to_string();
-    }
-    copy_text(
-        "rsFilewinFind.refusal.line",
-        &[
-            ("hint", &hint.to_string()),
-            // 对端应答里那一句（原话在应答的 detail 里，不在这一格）。
-            ("said", &message.to_string()),
-        ],
-    )
-}
 
 /// 问一趟 `files-find`（按 `FindReq` 发、按 `FindReply` 解）。`Ok(None)` = 后端说这一趟已被同一个搜索框更新的一趟顶掉（不出声）。
 ///

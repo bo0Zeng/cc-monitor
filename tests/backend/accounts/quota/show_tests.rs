@@ -135,22 +135,28 @@ fn slots_are_rounded_and_named_by_their_semantic_position() {
             SlotShow {
                 resets_at_text: None,
                 resets_at_rel_text: None,
+                reset_text: None,
                 slot: "5h".into(),
                 pct: Some(63),
                 resets_at: Some(LATER),
                 full: false,
                 text: copy_core::copy_text("acct.val.pct", &[("pct", "63")]).into(),
                 tone: crate::common::cells::Tone::Plain,
+                per_pct_text: None,
+                window: "five_hour".into(),
             },
             SlotShow {
                 resets_at_text: None,
                 resets_at_rel_text: None,
+                reset_text: None,
                 slot: "7d".into(),
                 pct: Some(41),
                 resets_at: Some(NOW + 5 * 86_400),
                 full: false,
                 text: copy_core::copy_text("acct.val.pct", &[("pct", "41")]).into(),
                 tone: crate::common::cells::Tone::Plain,
+                per_pct_text: None,
+                window: "seven_day".into(),
             },
         ]
     );
@@ -227,7 +233,7 @@ fn a_slot_cell_is_written_once_by_state() {
     );
     assert_eq!(
         w(QuotaState::Refused, true, None, false),
-        (c("acct.val.refusedOnly", &[]), Tone::Fail)
+        (c("reason.code.refused", &[]), Tone::Fail)
     );
     assert_eq!(
         w(QuotaState::Refused, false, Some(10), false),
@@ -322,10 +328,194 @@ fn the_usage_cell_is_written_by_the_core() {
     let u = shown(Some(&api), Kind::Api);
     assert_eq!(
         (u.value.0.as_str(), u.tone),
-        (t("acct.val.refusedOnly").as_str(), Tone::Fail)
+        (t("reason.code.refused").as_str(), Tone::Fail)
     );
     assert_eq!(
         u.text.0,
         copy_core::copy_text("acct.usage.wv", &[("w", &u.value.0), ("v", &reset)])
+    );
+}
+
+/// 一份账：5h 用 30%、7d 两个窗口（`seven_day` 40% · `seven_day_opus` 85%），5h 与 opus 量过「1% ≈ 多少」。
+fn observed() -> crate::accounts::quota::ledger::Observed {
+    use crate::accounts::quota::ledger::{Observed, PerPct};
+    let mut r = sub(0.3, LATER);
+    r.windows = vec![
+        win("five_hour", 0.3, LATER),
+        win("seven_day", 0.4, LATER + 86_400),
+        win("seven_day_opus", 0.85, LATER + 86_400),
+    ];
+    Observed {
+        agent: "claude".into(),
+        account: "a".into(),
+        seen_at: NOW,
+        reading: r,
+        windows_seen: Default::default(),
+        trend: Default::default(),
+        per_pct: [
+            (
+                "five_hour".to_string(),
+                PerPct {
+                    tokens: 2_100_000,
+                    at: NOW,
+                },
+            ),
+            (
+                "seven_day_opus".to_string(),
+                PerPct {
+                    tokens: 25_000,
+                    at: NOW,
+                },
+            ),
+        ]
+        .into(),
+    }
+}
+
+/// ★ 「1% ≈ 多少」写好的字：每个量过的窗口一格（短写的数）；语义位那一格照它取的那个窗口（7d 取用得多的 opus），没量过 ⇒ 缺。
+#[test]
+fn per_pct_is_written_for_windows_and_the_slot_that_took_them() {
+    let o = observed();
+    let key = |w: &str| crate::agents::claudecode::quota::key_of(w);
+    let mut sh = show(Some((&o.reading, o.seen_at)), facts(Kind::Sub), NOW, &slot);
+    sh.windows = windows_of(&o, &key, NOW);
+    per_pct_of_slots(&mut sh);
+    let pp = |n: &str| Some(Words(copy_core::copy_text("acct.val.perPct", &[("n", n)])));
+    let win_pp: Vec<_> = sh
+        .windows
+        .iter()
+        .map(|w| (w.name.as_str(), w.per_pct_text.clone()))
+        .collect();
+    assert_eq!(
+        win_pp,
+        vec![
+            ("five_hour", pp("2.1M")),
+            ("seven_day", None),
+            ("seven_day_opus", pp("25K"))
+        ]
+    );
+    let slot_pp: Vec<_> = sh
+        .slots
+        .iter()
+        .map(|s| (s.slot.as_str(), s.per_pct_text.clone()))
+        .collect();
+    assert_eq!(slot_pp, vec![("5h", pp("2.1M")), ("7d", pp("25K"))]);
+}
+
+/// ★ 更细的窗口（窗口键带 `:`）在 7d 与超额之间各出一行（`rows`）：名字照窗口键（`7d:opus` ⇒「7d opus」，原名不上屏）·
+/// 值带语气（快满 warn · 用满 fail）· ↻ · 距今；重置已过 ⇒ 值「—」、↻.. 已过。5h · 7d · 不算用量的窗口不另出行。
+#[test]
+fn finer_windows_each_get_a_row_between_7d_and_overage() {
+    use cmd_wire::quota::Cell;
+    let mut o = observed();
+    o.reading.windows.push(win("overage", 1.0, LATER));
+    o.reading
+        .windows
+        .push(win("seven_day_sonnet", 0.5, EARLIER));
+    let key = |w: &str| crate::agents::claudecode::quota::key_of(w);
+    let clock = crate::common::time::TextClock::new(NOW, &crate::Tz::default());
+    let mut sh = show(Some((&o.reading, o.seen_at)), facts(Kind::Sub), NOW, &slot);
+    sh.windows = windows_of(&o, &key, NOW);
+    let a = crate::faces::quota_read::account_of(
+        crate::faces::quota_read::Seen {
+            agent: o.agent.clone(),
+            account: o.account.clone(),
+            seen_at: o.seen_at,
+            reading: o.reading.clone(),
+            windows_seen: Default::default(),
+            show: sh,
+        },
+        &clock,
+    );
+    let cell = |t: String, tone| Cell {
+        text: Words(t),
+        tone,
+    };
+    let plain = |t: String| cell(t, Tone::Plain);
+    let tier = |t: &str| copy_core::copy_text("acct.window.tier", &[("slot", "7d"), ("tier", t)]);
+    let at = LATER + 86_400;
+    let rows: Vec<&Vec<Cell>> = a
+        .rows
+        .iter()
+        .filter(|r| r[0].text.0.starts_with("7d "))
+        .collect();
+    assert_eq!(
+        rows,
+        vec![
+            &vec![
+                plain(tier("opus")),
+                cell(
+                    copy_core::copy_text("acct.val.pct", &[("pct", "85")]),
+                    Tone::Warn
+                ),
+                plain(copy_core::copy_text(
+                    "acct.reset.at",
+                    &[("at", &clock.text(at).0)]
+                )),
+                plain(clock.rel(at).unwrap().0),
+            ],
+            &vec![
+                plain(tier("sonnet")),
+                plain(copy_core::copy_text("acct.val.none", &[])),
+                plain(copy_core::copy_text(
+                    "acct.reset.past",
+                    &[("at", &clock.text(EARLIER).0)]
+                )),
+            ],
+        ]
+    );
+    let labels: Vec<&str> = a.rows.iter().map(|r| r[0].text.0.as_str()).collect();
+    let i7 = labels.iter().position(|l| *l == "7d").expect("7d 那一行");
+    let over = copy_core::copy_text("acct.row.over", &[]);
+    assert_eq!(
+        labels[i7 + 1..=i7 + 3],
+        [
+            tier("opus").as_str(),
+            tier("sonnet").as_str(),
+            over.as_str()
+        ],
+        "更细的窗口紧跟 7d、在超额之前，各一行：{labels:?}"
+    );
+    assert!(
+        a.rows
+            .iter()
+            .flatten()
+            .all(|c| !c.text.0.contains("seven_day") && !c.text.0.contains("7d:")),
+        "原名或窗口键上了屏：{labels:?}"
+    );
+}
+
+/// ★ 语义位那一格的重置字（`resetText`）与 `rows` 里那一格同一个写法：还没到 ⇒ ↻时刻；已过 ⇒ ↻时刻 已过。
+#[test]
+fn slot_reset_text_is_the_rows_reset_cell() {
+    let o = observed();
+    let clock = crate::common::time::TextClock::new(NOW, &crate::Tz::default());
+    let mut r = o.reading.clone();
+    r.windows[2].resets_at = Some(EARLIER);
+    let mut sh = show(Some((&r, o.seen_at)), facts(Kind::Sub), NOW, &slot);
+    sh.stamp(&clock);
+    let got: Vec<_> = sh
+        .slots
+        .iter()
+        .map(|s| (s.slot.as_str(), s.reset_text.clone().map(|w| w.0)))
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            (
+                "5h",
+                Some(copy_core::copy_text(
+                    "acct.reset.at",
+                    &[("at", &clock.text(LATER).0)]
+                ))
+            ),
+            (
+                "7d",
+                Some(copy_core::copy_text(
+                    "acct.reset.past",
+                    &[("at", &clock.text(EARLIER).0)]
+                ))
+            ),
+        ]
     );
 }

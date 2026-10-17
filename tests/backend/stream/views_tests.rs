@@ -1,7 +1,7 @@
 //! 请求信封的 `view`：登记的成品住处对得上注册表与格目录 · 点了这条命令不出的成品就拒 · 帧面那一跳真的拒、真的裁。
 
 use super::*;
-use crate::wire::ActivityFaceExt as _;
+use crate::wire::SessionFaceExt as _;
 use serde_json::json;
 use tokio::sync::mpsc;
 
@@ -181,13 +181,15 @@ fn the_stream_view_trims_pushed_frames_and_leaves_the_rest_alone() {
         project_dir: None,
         name: None,
         path: None,
-        face: crate::wire::ActivityFace::of(None),
+        face: crate::wire::SessionFace::of(crate::wire::Life::Live {
+            activity: None,
+            tmux: None,
+        }),
         name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
         hidden: None,
         container: None,
         pid: 42,
-        account: None,
     });
     let full: serde_json::Value = serde_json::from_str(to_line(&added).unwrap().trim()).unwrap();
     assert_eq!(full["pid"], 42, "没声明的时候该有 pid");

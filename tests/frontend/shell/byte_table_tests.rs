@@ -228,11 +228,11 @@ fn every_refusal_names_the_machine_and_what_it_is() {
             arch: "arm64".into(),
         },
         Refusal::OsUnknown(copy_core::said::Said::with_raw(
-            copy_core::copy_static!("rsByteTable.key.noAnswer").into(),
+            copy_core::copy_static!("reason.link.noAnswer").into(),
             "uname: not found",
         )),
         Refusal::ArchUnknown(copy_core::said::Said::with_raw(
-            copy_core::copy_static!("rsByteTable.key.noAnswer").into(),
+            copy_core::copy_static!("reason.link.noAnswer").into(),
             "Linux",
         )),
         Refusal::NotPromisedHere {
@@ -426,7 +426,6 @@ fn every_slot_hangs_on_exactly_one_key_and_one_key_has_one_slot_but_the_one_list
 }
 
 /// B1：`src/frontend/shell/src` 生产段里 `include_bytes!` 住哪几个文件 == {`byte_table.rs`（可执行字节）}，两向。
-/// `cc_bus_deploy.rs`（cc-bus skill 的文件）出列：装 cc-bus 进了本机后端，字节随它住 `src/backend/assets/cc_bus_install.rs`。
 /// **别的文件长出一槽可执行字节 ⇒ 红**：它就是第二个取字节口（「两条内嵌路径各按一个错的轴选」的复发形）。
 #[test]
 fn byte_table_is_the_only_home_of_embedded_executables() {
@@ -666,8 +665,6 @@ fn my_version_is_read_only_through_my_backend_id() {
         "stream_source/run.rs",
         // 本机常驻 hello 比对
         "local_backend_host.rs",
-        // Windows 预检
-        "cc_bus_deploy.rs",
         // 本机那一台的状态成品（版本 · 不可比）
         "backend_control.rs",
         // 日志页「复制诊断信息」那一段里写出这一版的构建标识（只读出来写进文本，不判）

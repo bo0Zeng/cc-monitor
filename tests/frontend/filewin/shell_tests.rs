@@ -55,12 +55,9 @@ fn a_remote_window_without_a_runtime_says_so_instead_of_showing_an_empty_dir() {
     assert!(e.is_some(), "没有运行时却没报错 —— 那是静默的空列表");
 }
 
-/// `Source::label()` 是窗口标题的来源，别让它回空串。
-///
-/// ⚠ 从前这条还判一格「本机那一格逐字是『本机』两个中文字」——
-/// 没有本机侧，那一格也就没有（`source.rs` 头注「只有远端一侧」那一节）。
+/// `Source::label()` 是窗口标题的来源：远端那一侧就是它配置里的名字。
 #[test]
-fn every_source_has_a_non_empty_label() {
+fn a_remote_source_is_titled_by_its_label() {
     assert_eq!(Source::remote(synth_cfg("tagged")).label(), "tagged");
     // 「`label` 为空时回退到 `host`」那一半是 `RemoteConfig::origin_label` 的契约，随名字在 monitor 那一侧算搬去了
     //   `entry_tests::the_seed_names_the_machine_by_its_origin_label`。
@@ -322,8 +319,16 @@ fn finishing_a_drop_round_triggers_exactly_one_reload() {
 
 /// 造一个「看着某个远端目录、列表里有几行」的窗口。**不起连接**
 /// （`host` 是 `.invalid`，而且这几条一次 `reload` 都不触发远端那一支）。
+/// 手上那一屏补上合成后端给的种类与门（照真列表那样）。
+fn gate_all(w: &FileWindow) {
+    for r in w.listing.rows.lock().unwrap().iter_mut() {
+        *r = crate::find::testing::gated(r.clone());
+    }
+}
+
 fn remote_window_with_rows(cwd: &str, rows: Vec<Row>) -> FileWindow {
     let mut w = FileWindow::seeded(Source::remote(synth_cfg("r")), cwd.to_string(), None, rows);
+    gate_all(&w);
     *w.listing.error.lock().unwrap() = None;
     w.tally = crate::rows::RenderTally::default();
     w
@@ -439,45 +444,26 @@ fn directories_lossy_names_and_out_of_range_rows_put_up_nothing() {
     // 目录**摆得出**「复制为」框了（后端 `recursive: true`），框里记着「源是目录」
     //   ⇒ 那一趟线上与文件同形，后端按源判、整棵复制（`workspace_tests::copy_across_takes_the_whole_selection_and_a_directory_goes_recursive`）。
     assert!(w.begin_copy(0), "目录摆不出「复制为」框");
-    let job = w
-        .copy_prompt()
-        .and_then(|p| p.to_job())
-        .expect("框里的名字该能用");
-    assert!(job.is_dir, "目录那一件没标成目录 —— 线上不会带 recursive");
+    assert!(
+        w.copy_prompt().is_some_and(|p| p.is_dir),
+        "目录那一件没标成目录"
+    );
 }
 
-/// 🔴 名字不合法 ⇒ **框留着 ＋ 出声**，不静默收掉。
-///
-/// 收掉的话用户点了「复制」什么都没发生，与「已经开始复制了」长得一模一样。
+/// 「复制为」框里敲的名字窗口不判（空 · 带 `/` · 与源同名都由那台判，`single`）：每一个都走到「起一组」那一步
+/// （这个窗口没有运行时 ⇒ 停在那一支、说那一句、框留着）。
 #[test]
-fn an_impossible_new_name_keeps_the_box_up_and_says_why() {
+fn the_copy_box_hands_any_typed_name_to_the_far_side() {
     let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
     pick_row(&mut w, 0);
     assert!(w.perform(crate::select::Action::Copy, None));
-
-    for bad in ["", "   ", "sub/a.bin", "a.bin"] {
-        *w.listing.error.lock().unwrap() = None;
-        w.copy_prompt.as_mut().unwrap().new_name = bad.to_string();
-        assert!(!w.confirm_copy(None), "「{bad}」这个名字竟然起得来");
-        assert!(
-            w.copy_prompt().is_some(),
-            "「{bad}」被拒了，框却收掉了 —— 用户会以为复制开始了"
-        );
-        assert!(
-            w.prompt_error().is_some() && w.listing.error.lock().unwrap().is_none(),
-            "「{bad}」被拒了，原因没说在框里"
-        );
+    for typed in ["", "   ", "sub/a.bin", "a.bin", "a.bin.copy"] {
+        w.copy_prompt.as_mut().unwrap().new_name = typed.to_string();
+        assert!(!w.confirm_copy(None), "没有运行时却说起得来");
+        let e = w.prompt_error().expect("没出声");
+        assert!(no_runtime(&e), "「{typed}」在窗口这一侧就被挡了：{e}");
+        assert!(w.copy_prompt().is_some(), "没起来，框却收掉了");
     }
-    // 反空真：换一个能用的名字，它就不再卡在「名字不合法」这一支上
-    //（这个窗口没有运行时 ⇒ 它会卡在下一支，而那一支说的是另一件事）。
-    w.copy_prompt.as_mut().unwrap().new_name = "a.bin.copy".to_string();
-    assert!(!w.confirm_copy(None), "没有运行时却说起得来");
-    let e = w.prompt_error().unwrap();
-    assert!(
-        no_runtime(&e),
-        "合法名字被当成不合法挡了：{e} —— 那上面那几条买的就不是「名字」这一维"
-    );
-    // 取消把框收掉。
     w.cancel_copy();
     assert!(w.copy_prompt().is_none());
 }
@@ -525,13 +511,12 @@ const WINDOW_NEEDLE: &str = XVFB_ORIGIN;
 #[cfg(not(windows))]
 fn join_verdict(
     h: std::thread::JoinHandle<Result<(), copy_core::said::Said>>,
-    budget_ms: u64,
 ) -> (&'static str, String) {
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let _ = tx.send(h.join());
     });
-    match rx.recv_timeout(std::time::Duration::from_millis(budget_ms)) {
+    match rx.recv_timeout(guard_core::wall::CEILING) {
         Ok(Ok(Ok(()))) => ("ok", String::new()),
         Ok(Ok(Err(e))) => ("err", e.logged()),
         Ok(Err(p)) => {
@@ -585,7 +570,7 @@ fn xvfb_worker_opens_a_real_window() {
         Some(crate::theme::testing::default_theme()),
     );
 
-    let ids = xvfb::wait_for_windows(&display, WINDOW_NEEDLE, 20_000);
+    let ids = xvfb::wait_for_windows(&display, WINDOW_NEEDLE);
     xvfb::emit("a.window_count", ids.len());
     if let Some(id) = ids.first() {
         xvfb::emit(
@@ -632,7 +617,7 @@ fn xvfb_worker_opens_a_real_window() {
     }
     xvfb::emit("a.open_requested_delta", open_requested() - req0);
     xvfb::emit("a.windows_opened_delta", windows_opened() - opened0);
-    let (verdict, why) = join_verdict(h, 30_000);
+    let (verdict, why) = join_verdict(h);
     xvfb::emit("a.run_native", verdict);
     xvfb::emit("a.reason_len", why.chars().count());
     xvfb::emit("a.reason", why.replace('\n', " "));
@@ -681,7 +666,7 @@ fn xvfb_worker_opens_with_no_x_server_at_all() {
         None,
         None,
     );
-    let (verdict, why) = join_verdict(h, 30_000);
+    let (verdict, why) = join_verdict(h);
     xvfb::emit("n.run_native", verdict);
     xvfb::emit("n.reason_len", why.chars().count());
     xvfb::emit("n.reason", why.replace('\n', " "));
@@ -1054,8 +1039,8 @@ fn the_window_process_owns_its_dpi_because_no_tauri_lives_there() {
     // ② 前提：谁在生产段里提到这条链上的每一个符号。
     // 窗口独立成包：人群是 monitor 那棵 ＋ 本包这棵（入口 `main.rs` 住这里；键带包名前缀，
     //    免得与 monitor 那一侧同名的 `filewin/proc.rs` 撞）；链多了一跳 `cc_monitor_filewin::run`（本包 `lib.rs`）。
-    let monitor_src = crate::guard_support::repo_root().join("src/frontend/shell/src");
-    let own_src = crate::guard_support::crate_src_root();
+    let monitor_src = guard_core::addr::repo_root().join("src/frontend/shell/src");
+    let own_src = guard_core::addr::filewin_src_root();
     let files: Vec<(String, String)> = guard_core::scan_tree_excluding(&monitor_src, &["rs"], &[])
         .into_iter()
         .map(|(p, raw)| {
@@ -1404,14 +1389,14 @@ fn the_window_starts_a_batch_through_the_shared_three_step_function() {
          多了就是长出了第二条确认流，少了就是这一条被绕过了"
     );
     // 落点（根可以是当前目录的字节，有损名全寻址；交回应答与码）各恰好一处：`run_writes` 的 `apply` 里走
-    //   `apply_all`（删除 · 改权限一组一条命令）；就地那一格走 `apply_typed`（新建 · 改名：敲的名字原样交那台判）。
+    //   `apply_all`（删除 · 改权限一组一条命令）；就地那一格走 `apply_remote_coded`（新建 · 改名：敲的名字原样交那台判）。
     assert_eq!(
         prod.matches("writeops::apply_all(").count(),
         1,
         "批量那一条的落点不是恰好一处"
     );
     assert_eq!(
-        prod.matches("writeops::apply_typed(").count(),
+        prod.matches("writeops::apply_remote_coded(").count(),
         1,
         "就地那一格的落点不是恰好一处"
     );
@@ -1657,6 +1642,7 @@ async fn a_real_click_on_edit_fires_the_read() {
             lossy_name: false,
         }],
     );
+    gate_all(&w);
     let wired = crate::find::testing::wire_up(
         "edit-e2e",
         crate::find::testing::FakeBackend::new(
@@ -1701,7 +1687,7 @@ async fn a_real_click_on_edit_fires_the_read() {
             "cmd": crate::editor::CMD_READ_TEXT,
             "args": {
                 "path": "/srv/data/app.conf",
-                "max_bytes": crate::editor::MAX_EDIT_BYTES,
+                "max_bytes": 8 * 1024 * 1024,
             },
         })],
         "线上那一行不是「那一行的路径 ＋ 窗口的编辑上限」"
@@ -1714,7 +1700,7 @@ async fn a_real_click_on_edit_fires_the_read() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_oversized_row_never_asks_the_remote_and_still_says_why() {
     use crate::editor::EDIT_LABEL;
-    let big = crate::editor::MAX_EDIT_BYTES as u64 + 1;
+    let big = 8 * 1024 * 1024 + 1;
     let mut w = FileWindow::seeded(
         Source::remote(synth_cfg("edit-big")),
         "/srv/data".to_string(),
@@ -1727,6 +1713,7 @@ async fn an_oversized_row_never_asks_the_remote_and_still_says_why() {
             lossy_name: false,
         }],
     );
+    gate_all(&w);
     let ctx = egui::Context::default();
     let _ = crate::find::testing::frame_text(&ctx, &mut w, Vec::new());
     let painted = crate::copy::testing::painted_text(
@@ -1761,7 +1748,7 @@ async fn an_oversized_row_never_asks_the_remote_and_still_says_why() {
         .expect("拒了却一个字都没说 —— 那与「点了没反应」同形")
         .said;
     assert!(
-        copy_core::copy_matches_with("rsFilewinEditor.notEditable.tooBig", &[("over", "1")], &e),
+        copy_core::copy_matches_with("beFilesOpen.edit.tooBig", &[("over", "1")], &e),
         "那句话没说超出多少：{e}"
     );
     assert!(e.contains("huge.log"), "没说是哪一行：{e}");
@@ -1782,6 +1769,7 @@ async fn closing_a_dirty_pane_asks_before_throwing_the_typing_away() {
         name: "app.conf".into(),
         text: "a=1\n".into(),
         sha256: crate::find::testing::fake_sha256(""),
+        cap: 8 * 1024 * 1024,
     });
     assert!(w.settle_opened_edits(), "到货了却没立起编辑面");
     assert!(w.editing().is_some());
@@ -1798,6 +1786,7 @@ async fn closing_a_dirty_pane_asks_before_throwing_the_typing_away() {
         name: "app.conf".into(),
         text: "a=1\n".into(),
         sha256: crate::find::testing::fake_sha256(""),
+        cap: 8 * 1024 * 1024,
     });
     assert!(w.settle_opened_edits());
     *w.editing_text_mut().expect("编辑面不见了") = "a=2\n".into();
@@ -1835,6 +1824,7 @@ fn editing_window(name: &str, text: String) -> FileWindow {
         name: name.into(),
         text,
         sha256: crate::find::testing::fake_sha256(""),
+        cap: 8 * 1024 * 1024,
     });
     assert!(w.settle_opened_edits(), "到货了却没立起编辑面");
     w
@@ -1993,6 +1983,7 @@ async fn a_second_open_while_one_is_still_reading_is_not_sent() {
         name: "a.txt".into(),
         text: "a\n".into(),
         sha256: crate::find::testing::fake_sha256(""),
+        cap: 8 * 1024 * 1024,
     });
     assert!(
         !w.begin_edit(1, None),
@@ -2197,6 +2188,7 @@ async fn a_refused_save_shows_the_reason_and_keeps_the_text() {
         name: "s.jsonl".into(),
         text: "{}\n".into(),
         sha256: crate::find::testing::fake_sha256(""),
+        cap: 8 * 1024 * 1024,
     });
     assert!(w.settle_opened_edits());
     *w.editing_text_mut().unwrap() = "改坏它\n".into();
@@ -2443,25 +2435,22 @@ fn sized_row(name: &str, size: u64) -> Row {
     }
 }
 
-/// 🔴 **换档当场重排手上那一摞**（不是「记下来等下次列目录」）；同一档再点一次什么都不做。
+/// 换档当场重列一趟（先后由后端排；号 +1，路上那一趟作废）；同一档再点一次什么都不做。
 #[test]
-fn picking_a_sort_reorders_the_rows_already_on_screen() {
-    let mut w = remote_window_with_rows(
-        "/srv/data",
-        vec![sized_row("a", 1), sized_row("b", 300), sized_row("c", 20)],
-    );
-    assert_eq!(names(&w), ["a", "b", "c"]);
+fn picking_a_sort_relists_right_away() {
+    let mut w = remote_window_with_rows("/srv/data", vec![sized_row("a", 1), sized_row("b", 300)]);
+    let by_size = crate::source::Sort {
+        by: crate::source::SortBy::Size,
+        reverse: false,
+    };
+    let before = w.listing.epoch.load(std::sync::atomic::Ordering::SeqCst);
+    assert!(w.set_sort(by_size), "换到另一档该回 true");
     assert!(
-        w.set_sort(crate::source::SortBy::Size),
-        "换到另一档该回 true"
+        w.listing.epoch.load(std::sync::atomic::Ordering::SeqCst) > before,
+        "换了档却没重列"
     );
-    assert_eq!(names(&w), ["b", "c", "a"], "换档之后屏幕上那一摞没重排");
-    assert!(
-        !w.set_sort(crate::source::SortBy::Size),
-        "同一档再点一次不该算「换了」"
-    );
-    assert!(w.set_sort(crate::source::SortBy::Name));
-    assert_eq!(names(&w), ["a", "b", "c"]);
+    assert_eq!(w.sort, by_size);
+    assert!(!w.set_sort(by_size), "同一档再点一次不该算「换了」");
 }
 
 /// 窗口的框上真画出了那几样：「终端」· 面包屑每一段 · 表头带当前那一列的箭头。
@@ -2476,7 +2465,7 @@ fn the_chrome_really_paints_breadcrumbs_the_terminal_button_and_the_sorted_heade
         .into_iter()
         .map(|(t, _)| t)
         .collect();
-    let name = crate::source::SortBy::Name.label();
+    let name = crate::rows::column_label(crate::source::SortBy::Name);
     let up = format!("{name} {}", egui_phosphor::regular::CARET_UP);
     for want in [
         copy_core::copy_static!("rsFilewinShell.frame.terminal"),
@@ -2491,14 +2480,14 @@ fn the_chrome_really_paints_breadcrumbs_the_terminal_button_and_the_sorted_heade
         );
     }
     // 换一列之后箭头跟着走（它读的是同一个状态，不是一个写死的串）。
-    w.set_sort(crate::source::SortBy::Type);
+    w.click_header(crate::source::SortBy::Type);
     let painted: Vec<String> = crate::chrome::testing::frame(&ctx, &mut w, Vec::new())
         .into_iter()
         .map(|(t, _)| t)
         .collect();
     let ty = format!(
         "{} {}",
-        crate::source::SortBy::Type.label(),
+        crate::rows::column_label(crate::source::SortBy::Type),
         egui_phosphor::regular::CARET_UP
     );
     assert!(painted.iter().any(|t| *t == ty));
@@ -2587,6 +2576,7 @@ async fn a_save_over_a_file_someone_else_changed_asks_instead_of_overwriting() {
             lossy_name: false,
         }],
     );
+    gate_all(&w);
     let be = crate::find::testing::FakeBackend::new(
         &["files-read-text", "files-write-text"],
         crate::find::testing::Declared::default(),
@@ -2821,7 +2811,7 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
             lossy_name: true,
         })
     };
-    *w.listing.rows.lock().unwrap() = vec![file];
+    *w.listing.rows.lock().unwrap() = vec![crate::find::testing::gated(file)];
     w.apply_intent(Intent::SelectAll, 0.0, None);
     // 算大小（菜单上算大小只给目录与多选；这里看的是寻址按字节，直接走那一口）。
     assert!(w.start_sizes(&[0], None), "{:?}", w.key_notice());
@@ -2852,7 +2842,7 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
     copy.as_object_mut().unwrap().remove("ticket");
     assert_eq!(
         copy,
-        serde_json::json!({ "root": b16(b"/srv/d\xff"), "items": [{ "from": b16(b"f\xfe"), "to": "g" }] })
+        serde_json::json!({ "root": b16(b"/srv/d\xff"), "items": [{ "from": b16(b"f\xfe"), "to": "g" }], "single": true })
     );
     assert_eq!(
         wired.count("files-stat"),
@@ -3163,35 +3153,22 @@ fn a_download_in_flight_can_be_stopped_from_its_row_in_the_progress_table() {
     assert!(!next.cancels().is_cancelled(), "上一趟的取消拦下了下一趟");
 }
 
-/// 列表还在路上时换了排序：落地那一屏按**现在**那一档排（表头指着「大小」，行就按大小）。
+/// 列表还在路上时换了排序：换档重列了一趟，出发时那一档的那一屏落地时作废（表头不许指着一列、行却是另一种序）。
 #[test]
-fn a_listing_that_lands_after_the_sort_changed_comes_back_in_the_new_order() {
+fn a_listing_that_lands_after_the_sort_changed_is_dropped() {
     let mut w = remote_window_with_rows("/srv/data", Vec::new());
     let mine = w.listing.start();
-    let by_size = w.sort.after_click(crate::source::SortBy::Size);
-    assert!(w.set_sort(by_size));
-    let sized = |n: &str, size: u64| {
-        Listed::plain(Row {
-            size,
-            ..file_row(n)
-        })
-    };
-    // 出发时按名称排好的那一屏。
-    let landed = vec![sized("a", 30), sized("b", 10), sized("c", 20)];
-    assert!(store_listed_if_current(
-        &w.listing,
-        mine,
-        Ok((landed, crate::source::Cut::default())),
-        Sort::default(),
-    ));
-    let mut want = vec![sized("a", 30), sized("b", 10), sized("c", 20)];
-    crate::source::sort_rows(&mut want, by_size);
-    assert_ne!(
-        names_of(&want),
-        vec!["a", "b", "c"],
-        "夹具按大小排和按名字排一样，判不出来"
+    assert!(w.click_header(crate::source::SortBy::Size));
+    let landed = vec![Listed::plain(file_row("a")), Listed::plain(file_row("b"))];
+    assert!(
+        !store_listed_if_current(
+            &w.listing,
+            mine,
+            Ok((landed, crate::source::Cut::default()))
+        ),
+        "出发时那一档的那一屏落了地"
     );
-    assert_eq!(names(&w), names_of(&want), "落地那一屏还是出发时那一档的序");
+    assert!(names(&w).is_empty());
 }
 
 fn names_of(rows: &[Listed]) -> Vec<String> {
@@ -3385,7 +3362,6 @@ fn entries_that_could_not_be_read_are_said() {
                 total: 4,
             },
         )),
-        Sort::default(),
     ));
     let painted = crate::copy::testing::painted_text(
         &ctx,
@@ -3423,6 +3399,7 @@ async fn an_inline_rename_says_exists_under_the_cell_or_lands_with_an_undo() {
         tokio::runtime::Handle::try_current().ok(),
         vec![file_row("a.txt")],
     );
+    gate_all(&w);
     let wired = crate::find::testing::wire_up(
         "inline-rename",
         crate::find::testing::FakeBackend::new(
@@ -3461,7 +3438,7 @@ async fn an_inline_rename_says_exists_under_the_cell_or_lands_with_an_undo() {
         undo,
         vec![WriteOp::Rename {
             from: "/srv/data/b.txt".into(),
-            to: "/srv/data/a.txt".into(),
+            name: "a.txt".into(),
             raw: None
         }]
     );
@@ -3486,7 +3463,9 @@ async fn an_inline_rename_says_exists_under_the_cell_or_lands_with_an_undo() {
     }
     assert_eq!(
         renames(&wired).last(),
-        Some(&serde_json::json!({ "root": "/srv/data", "from": "b.txt", "to": "a.txt" })),
+        Some(
+            &serde_json::json!({ "root": "/srv/data", "from": "b.txt", "to": "a.txt", "single": true })
+        ),
         "撤销那一件不是改回原名"
     );
     w.settle_finished_writes();
@@ -3537,7 +3516,7 @@ async fn a_chmod_is_done_without_asking_and_offers_the_backends_before_as_undo()
         undo,
         vec![WriteOp::Chmod {
             path: "/srv/data/deploy.sh".into(),
-            mode: 0o644,
+            mode: "644".into(),
             raw: None
         }]
     );

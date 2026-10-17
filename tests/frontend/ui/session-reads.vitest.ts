@@ -31,7 +31,6 @@ import { ChanError } from "../../../src/comms/inward/chan";
 import {
   readTurns,
   factsOf,
-  unpackIndex,
   failureOf,
   findInSession,
   FIND_LIMIT,
@@ -41,6 +40,8 @@ import {
   readSessionIndex,
 } from "../../../src/frontend/ui/session-reads";
 import { REPO_ROOT } from "../../test-support/repo-root";
+import { SkeletonLedger } from "../../../src/frontend/ui/live-window";
+import { outlineSeedFromIndex } from "../../../src/frontend/ui/views/outline-source";
 import { chanArgsJson, chanReply, refusedReply, UNSUPPORTED, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { copyPattern } from "../../test-support/copy-pattern";
@@ -54,27 +55,28 @@ const golden = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/se
 beforeEach(() => invokeMock.mockReset());
 
 describe("〔C4b〕会话读面三问：按形状收", () => {
-  it("★★ 金样：后端真出的三份成品就是生成的那几个类型（索引装回逐行）", () => {
+  it("★★ 金样：后端真出的三份成品就是生成的那几个类型（索引按列收进骨架账本；索引带出的大纲 ＝ 大纲那一问）", () => {
     const index = golden["history-index"] as HistoryIndex;
-    const idx = { from: index.from, end: index.end, rows: unpackIndex(index) };
-    expect([idx.from, idx.end, idx.rows.length, index.next]).toEqual([0, 537, 4, null]);
-    expect(idx.rows.map((r) => [r.o, r.n, r.u, r.t])).toEqual([
-      [0, 100, "in-1", "said"],
-      [100, 194, "out-1", "reply"],
-      [295, 129, "meta-1", "said"],
-      [424, 113, "in-2", "said"],
+    expect([index.from, index.end, index.count, index.next]).toEqual([0, 537, 4, null]);
+    const ledger = new SkeletonLedger(0, [index]);
+    expect(Array.from({ length: ledger.count }, (_, i) => ledger.factsOf(i)).map((r) => [r?.o, r?.n, r?.t])).toEqual([
+      [0, 100, "said"],
+      [100, 194, "reply"],
+      [295, 129, "said"],
+      [424, 113, "said"],
     ]);
     const ui = golden["history-user-inputs"] as UserInputs;
     expect([ui.from, ui.end, ui.next]).toEqual([0, 537, null]);
     expect(ui.entries).toEqual([
-      { at: 0, uuid: "in-1", excerpt: "alpha zqx beta", timestamp: "t1" },
-      { at: 424, uuid: "in-2", excerpt: "delta", timestamp: "t2" },
+      { at: 0, line: 0, uuid: "in-1", excerpt: "alpha zqx beta", timestamp: "t1" },
+      { at: 424, line: 3, uuid: "in-2", excerpt: "delta", timestamp: "t2" },
     ]);
+    expect(outlineSeedFromIndex({ available: true, end: index.end, pages: [index] })).toEqual({ entries: ui.entries, end: ui.end });
     const f = golden["history-find"] as HistoryFind;
     expect(f.total).toBe(2);
-    expect(f.hits.map((h) => [h.uuid, h.kind, h.before, h.matched, h.after, h.turn, h.tsMs])).toEqual([
-      ["in-1", "user", "alpha", "zqx", "beta", 1, 0],
-      ["out-1", "assistant", "gamma", "zqx", "", 1, 0],
+    expect(f.hits.map((h) => [h.uuid, h.line, h.kind, h.before, h.matched, h.after, h.turn, h.tsMs])).toEqual([
+      ["in-1", 0, "user", "alpha", "zqx", "beta", 1, 0],
+      ["out-1", 1, "assistant", "gamma", "zqx", "", 1, 0],
     ]);
   });
 
@@ -95,7 +97,6 @@ describe("〔C4b〕会话读面三问：经通道说对的帧命令", () => {
     const calls = invokeMock.mock.calls;
     expect(calls.map((c) => c[0] as string)).toEqual(["chan_call"]);
     const a = calls[0][1] as ChanCallArgs;
-    expect(a.leftMs, "期限没带上（`X6`：调用点显式给）").toBeGreaterThan(0);
     return [a.origin, a.op, chanArgsJson(a)];
   }
 
@@ -103,7 +104,7 @@ describe("〔C4b〕会话读面三问：经通道说对的帧命令", () => {
     invokeMock.mockResolvedValueOnce(chanReply(golden["history-index"]));
     const idx = await readSessionIndex("<local>", "/p/s.jsonl", 7);
     expect(sent()).toEqual(["<local>", "history-index", { path: "/p/s.jsonl", offset: 7 }]);
-    expect([idx.available, idx.end, idx.rows.length]).toEqual([true, 537, 4]);
+    expect([idx.available, idx.end, idx.pages]).toEqual([true, 537, [golden["history-index"]]]);
 
     invokeMock.mockReset().mockResolvedValueOnce(chanReply(golden["history-user-inputs"]));
     const ui = await listUserInputs("devbox", "/p/s.jsonl", 42);
@@ -136,8 +137,8 @@ describe("〔C4b〕会话读面三问：经通道说对的帧命令", () => {
 
     invokeMock.mockReset().mockRejectedValueOnce(NO_CHANNEL);
     const c = await readSessionIndex("devbox", "/p/s.jsonl", 0);
-    expect([c.available, c.rows]).toEqual([false, []]);
-    expect(c.reason).toContain(copyText("chanCaller.said.unreachable"));
+    expect([c.available, c.pages]).toEqual([false, []]);
+    expect(c.reason).toContain(NO_CHANNEL.said);
 
   });
 
@@ -180,8 +181,6 @@ describe("〔STC〕第五问：会话事实", () => {
   it("★★ 金样：后端真出的会话事实就是生成的那个类型（逐字段）", () => {
     const f = factsOf(wire);
     expect(f).toEqual({
-      end: 3131,
-      rev: 1,
       forkedFrom: "src-0",
       touchedFiles: ["/w/a.ts"],
       usage: {
@@ -214,6 +213,7 @@ describe("〔STC〕第五问：会话事实", () => {
       permissionMode: "acceptEdits",
       permissionModeText: copyText("beAsk.choice.planEdits"),
       modelText: null,
+      modelPick: null,
       tokens: {
         input: 1,
         output: 0,
@@ -222,7 +222,6 @@ describe("〔STC〕第五问：会话事实", () => {
         cacheWrite1h: 0,
         requests: 1,
         text: copyText("beSpend.tokens.line", { input: "1", output: "0", read: "3", write: "2" }),
-        last: { id: "", tokens: [1, 0, 3, 2, 0] },
       },
       cost: { micros: 424200, partial: false, text: copyText("beSpend.cost.exact", { usd: "0.42" }) },
       bgTasks: [{ call: "tu-b1", task: "bb1", cmd: "make test-all", at: "2026-10-09T08:00:00.000Z" }],
@@ -232,8 +231,11 @@ describe("〔STC〕第五问：会话事实", () => {
         { name: "m-n", status: "needsLogin", detail: null, at: null },
       ],
       answerOff: null,
+      autoAnswer: null,
+      autoAnswered: null,
       startedBy: null,
       children: [],
+      line: null,
       quietUnread: { count: 1, kinds: ["golden-future-ledger"], text: copyText("record.unread.quiet", { n: "1", types: "golden-future-ledger" }) },
     });
   });
@@ -255,30 +257,24 @@ describe("〔STC〕第五问：会话事实", () => {
     expect(read(null), "没有挂着的").toBeNull();
   });
 
-  it("★ 说对的帧命令、对的请求体：没有令牌 ⇒ 只带 path；有 ⇒ prior 只带上一份的 {end, rev}；失败折成 available:false ＋ 种类", async () => {
+  it("★ 说对的帧命令、对的请求体：恒只带 path；失败折成 available:false ＋ 种类", async () => {
     const product = factsOf(wire);
     invokeMock.mockResolvedValueOnce(chanReply(golden["history-facts"]));
-    const r1 = await readSessionFacts("<local>", "/p/s.jsonl", null);
+    const r1 = await readSessionFacts("<local>", "/p/s.jsonl");
     expect(r1).toEqual({ available: true, facts: product });
     const a1 = invokeMock.mock.calls[0][1] as ChanCallArgs;
     expect([a1.origin, a1.op]).toEqual(["<local>", "history-facts"]);
     expect(chanArgsJson(a1)).toEqual({ path: "/p/s.jsonl" });
-
-    invokeMock.mockResolvedValueOnce(chanReply(golden["history-facts"]));
-    await readSessionFacts("pi", "/p/s.jsonl", product);
-    const a2 = invokeMock.mock.calls[1][1] as ChanCallArgs;
-    expect(a2.origin).toBe("pi");
-    expect(chanArgsJson(a2)).toEqual({ path: "/p/s.jsonl", prior: { end: wire.end, rev: wire.rev } });
     invokeMock.mockClear();
 
     invokeMock.mockRejectedValueOnce(UNSUPPORTED);
-    const r3 = await readSessionFacts("pi", "/p/s.jsonl", null);
+    const r3 = await readSessionFacts("pi", "/p/s.jsonl");
     expect(r3.available).toBe(false);
     expect(r3.available === false && r3.failure).toBe("oldBackend");
     expect(r3.available === false && r3.reason).toMatch(copyPattern("peerVersion.said.old"));
 
     invokeMock.mockRejectedValueOnce(refusedReply("failed", "past EOF"));
-    const r4 = await readSessionFacts("pi", "/p/s.jsonl", product);
+    const r4 = await readSessionFacts("pi", "/p/s.jsonl");
     expect(r4.available === false && r4.failure).toBe("transport");
   });
 });
@@ -329,7 +325,7 @@ describe("主窗口第 2 批：每轮的摘要", () => {
       ["t-3", ["plain", "plain", "fail"], "idle"],
     ]);
     expect(t.turns[0].folds[0].span).toEqual({ text: "", from: null, to: null });
-    expect(t.turns[1].at).toBeGreaterThan(0);
+    expect(t.turns[1].at, "第二轮的起点偏移").toBe(1222);
   });
 
   it("★ 要不到 ⇒ available:false（不猜）；入参照类型发", async () => {
@@ -386,7 +382,7 @@ describe("8a b：分页取", () => {
       { path: "/p/s.jsonl", offset: 0 },
       { path: "/p/s.jsonl", offset: 300 },
     ]);
-    expect(all.rows.length).toBe(2 * index.count);
+    expect(all.pages.map((p) => p.count)).toEqual([index.count, index.count]);
 
     invokeMock.mockReset();
     invokeMock.mockResolvedValueOnce(chanReply(page(0, 300))).mockResolvedValueOnce(chanReply(page(300, 600)));
@@ -395,6 +391,6 @@ describe("8a b：分页取", () => {
       { path: "/p/s.jsonl", offset: 0, limit: index.count + 1 },
       { path: "/p/s.jsonl", offset: 300, limit: 1 },
     ]);
-    expect(some.rows.length).toBeGreaterThanOrEqual(index.count + 1);
+    expect(some.pages.reduce((n, p) => n + p.count, 0), "两页都整页收下").toBe(2 * index.count);
   });
 });

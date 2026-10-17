@@ -1,4 +1,4 @@
-//! 仓里不留私人标识（用户原话：「发版不要把我的账号发出去 / 配置也不要发出去」）。
+//! 仓里不留私人标识（要求：「发版不要把我的账号发出去 / 配置也不要发出去」）。
 //! 产品仓是公开的，每个发版还附整仓源码包 ⇒ 仓里的就是发出去的。
 //!
 //! 本条只认**形状**，不点名：
@@ -34,10 +34,7 @@ const SKIP_FILES: &[&str] = &["THIRD-PARTY-NOTICES.txt"];
 const SKIP_DIRS: &[&str] = &["src/vendor/", "src/mobile/libs/LICENSES/"];
 
 fn repo() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
-        .canonicalize()
-        .expect("guard-core 的上三级 = 仓根")
+    crate::addr::repo_root()
 }
 
 fn tracked_texts(root: &Path) -> Vec<(String, String)> {

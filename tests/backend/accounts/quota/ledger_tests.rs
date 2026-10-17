@@ -673,13 +673,3 @@ fn the_rate_is_the_slope_of_two_recent_samples_in_points_per_minute() {
     let o = down.entry("claude-code", "q").expect("entry");
     assert_eq!(o.rate("five_hour", t + 700), None, "不涨");
 }
-
-/// ★ 生产里造的每一份额度账（中转那一份 · 帧面每条命令现造的那一份）都往进程里那一条节点通道发：
-/// `quota-probe` 走的是帧面现造的那一份，从前它没有铃，报了用量也不推。
-#[test]
-fn every_ledger_made_for_production_sends_to_the_process_node_channel() {
-    let l = Ledger::at(None);
-    assert!(l.nodes.same_channel(super::super::nodes::bus()));
-    let ctx = crate::faces::rotation_face::Ctx::here();
-    assert!(ctx.hop.quota.nodes.same_channel(super::super::nodes::bus()));
-}

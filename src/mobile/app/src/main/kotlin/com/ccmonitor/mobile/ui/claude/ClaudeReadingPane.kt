@@ -443,8 +443,8 @@ private fun ToolCallCard(
     badge: String?,
 ) {
     val tokens = LocalAppTokens.current
-    // 交互工具（AskUserQuestion / ExitPlanMode）默认展开：在等人决定，折叠会被误以为模型还在跑。
-    var expanded by rememberExpandable(matched, initial = isInteractiveTool(unit.name))
+    // 交互卡（核心判的卡型）默认展开：在等人决定，折叠会被误以为模型还在跑。
+    var expanded by rememberExpandable(matched, initial = unit.interactive)
     val statusColor =
         when {
             unit.pending -> tokens.warn
@@ -529,11 +529,6 @@ private fun ToolCallCard(
 }
 
 private const val MAX_RESULT_CHARS = 4000
-
-/** 交互工具（AskUserQuestion / ExitPlanMode）在等人决定：默认展开，否则折起来看着像模型还在跑。 */
-private val INTERACTIVE_TOOLS = setOf("AskUserQuestion", "ExitPlanMode")
-
-private fun isInteractiveTool(name: String): Boolean = name in INTERACTIVE_TOOLS
 
 /** 工具卡上「等批准」那一枚（冒烟按它认）。 */
 const val READING_STEP_BADGE = "reading-step-badge"

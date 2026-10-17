@@ -774,7 +774,7 @@ async fn the_status_line_shows_the_numbers_the_backend_reports() {
     let mut lines: Vec<(Vec<String>, Vec<String>)> = Vec::new();
     for (tag, age, said, unreadable, mounts, hint) in [
         ("b1-fresh-a", 1234u64, "20m", 41u64, 3u64, 'a'),
-        ("b1-fresh-b", 7300u64, "2h", 13u64, 29u64, 'b'),
+        ("b1-fresh-b", 7300u64, "2h1m", 13u64, 29u64, 'b'),
     ] {
         let tree = testing::plant(&format!("fresh-{hint}"), 30, TREE_SEED).expect("造不出那棵树");
         let root = tree.remote_root();
@@ -982,7 +982,7 @@ async fn the_cold_first_build_line_is_on_the_frame_while_it_runs_and_gone_after(
             "rsFilewinFind.firstBuild.line",
             &[
                 ("machine", machine.as_str()),
-                ("secs", secs.to_string().as_str()),
+                ("dur", copy_core::format_duration(secs * 1000).as_str()),
             ],
         );
         assert!(
@@ -1126,11 +1126,11 @@ fn no_rewalk_period_literal_lives_on_this_side() {
 
     // 运行时拼，免得命中本行自己。
     let needle = format!("{}{}", 30, 0);
-    let repo = crate::guard_support::repo_root();
+    let repo = guard_core::addr::repo_root();
     let frontend = repo.join("src/frontend");
     // 🔴 走 `guard_core` 而不是裸 `read_dir`（`scanning_guard_registry` 那条纪律）。
     let files: Vec<(String, String)> = [
-        crate::guard_support::crate_src_root(),
+        guard_core::addr::filewin_src_root(),
         repo.join("src/frontend/shell/src/filewin"),
     ]
     .iter()
@@ -1337,7 +1337,7 @@ fn a_non_utf8_hit_keeps_its_bytes_and_says_it_is_lossy() {
         v
     };
     let data = with_hits(serde_json::json!([{
-        "path": { "b16": hex }, "kind": "file", "location": "", "size": null,
+        "path": { "b16": hex }, "kind": "file", "class": "other", "location": "", "size": null,
         "mtime_secs": null, "mtime_text": null, "marks": [],
     }]));
     let o = decode_find(&data).expect("该解析得动");
@@ -1353,7 +1353,7 @@ fn a_non_utf8_hit_keeps_its_bytes_and_says_it_is_lossy() {
     );
     // 而有效 UTF-8 那一形不许被当成有损。
     let plain = with_hits(serde_json::json!([{
-        "path": "/tmp/a", "kind": "dir", "location": "", "size": null,
+        "path": "/tmp/a", "kind": "dir", "class": "folder", "location": "", "size": null,
         "mtime_secs": null, "mtime_text": null, "marks": [],
     }]));
     let p = decode_find(&plain).expect("该解析得动");
@@ -1430,7 +1430,7 @@ fn the_arg_builders_use_the_documented_keys() {
 /// （它的射程逐字只钉 backend crate）。
 #[test]
 fn this_module_never_touches_the_disk() {
-    let src = std::fs::read_to_string(crate::guard_support::crate_src_root().join("find.rs"))
+    let src = std::fs::read_to_string(guard_core::addr::filewin_src_root().join("find.rs"))
         .expect("find.rs 读不动");
     let prod = guard_core::production_code(&src);
     // 运行时拼，免得命中本行自己。

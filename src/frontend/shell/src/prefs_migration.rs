@@ -58,7 +58,7 @@ pub(crate) fn finish_at(path: &Path, keys: &[&str]) -> Result<Finished, Said> {
         Err(e) => {
             return Err(Said::with_raw(
                 copy_text(
-                    "rsConfig.write.readFailed",
+                    "reason.fs.readFailed",
                     &[
                         ("path", &path.display().to_string()),
                         ("why", &copy_core::io_reason(e.kind())),
@@ -71,10 +71,10 @@ pub(crate) fn finish_at(path: &Path, keys: &[&str]) -> Result<Finished, Said> {
     let root = match serde_json::from_str::<Value>(&text) {
         Ok(Value::Object(m)) => m,
         _ => {
-            return Err(Said::from(copy_text(
+            return Err(Said::of(
                 "rsConfig.write.unreadable",
                 &[("path", &path.display().to_string())],
-            )))
+            ))
         }
     };
     let present: Vec<&str> = keys
@@ -97,7 +97,7 @@ pub(crate) fn finish_at(path: &Path, keys: &[&str]) -> Result<Finished, Said> {
             .map_err(|e| {
                 Said::with_raw(
                     copy_text(
-                        "rsConfig.write.readFailed",
+                        "reason.fs.readFailed",
                         &[
                             ("path", &backup.display().to_string()),
                             ("why", &copy_core::io_reason(e.kind())),

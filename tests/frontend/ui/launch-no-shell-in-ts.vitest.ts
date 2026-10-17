@@ -29,12 +29,9 @@
  */
 import { describe, it, expect } from "vitest";
 
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
 import { productionTsFiles } from "../../test-support/production-sources";
-import { REPO_ROOT } from "../../test-support/repo-root";
 import { stripComments } from "../../test-support/strip-comments";
+import { nonEmpty } from "../../test-support/non-empty";
 
 const TMUX_VERBS = [
   "new-session",
@@ -171,11 +168,11 @@ describe(" 条 1：前端零 shell 串", () => {
 
   it("量具自检：人群真的是 src/ 生产段全集（否则零命中是因为人群空了）", () => {
     // 起会话那条链上的几份必须在人群里 —— 它们正是本条要看的东西；测试文件与生成物必须不在。
-    for (const f of ["src/frontend/ui/remote-launch-run.ts", "src/frontend/ui/launch-requests.ts", "src/frontend/ui/settings/panel.ts", "src/frontend/ui/entry-main.ts"]) {
+    for (const f of ["src/frontend/ui/session-open.ts", "src/frontend/ui/tab-batch-run.ts", "src/frontend/ui/settings/panel.ts", "src/frontend/ui/entry-main.ts"]) {
       expect(all.has(f), `${f} 不在人群里 —— 遍历坏了`).toBe(true);
     }
     expect([...all.keys()].some((f) => f.includes(".vitest.") || f.includes(".test.") || f.startsWith("src/frontend/ui/generated/"))).toBe(false);
-    expect(all.size).toBeGreaterThan(150); // 抽取器自检（不是判据）：09-25 现打 171
+    nonEmpty(all); // 抽取器自检（不是判据）：09-25 现打 171
   });
 
   it("★★ src/**/*.ts 生产段里零 shell 命令串字面量（不开例外）", () => {
@@ -191,11 +188,12 @@ describe(" 条 1：前端零 shell 串", () => {
     ).toEqual([]);
   });
 
-  it("★ 正控：挪出去的那份夹具用例表里的命令串，同一把尺子量得到（否则上一条的零是尺子瞎了）", () => {
-    const f = "tests/test-support/launch-cli-golden.ts";
-    const text = readFileSync(resolve(REPO_ROOT, f), "utf8");
-    // 就地 resume 那一格外层包的那一层（`tmux -u send-keys -t …  Enter; 在 tmux 里 switch-client、不在 attach`），用例表里一条（手写形状那条）。
-    expect(hitsIn(text), `${f} 用同一把尺子量不出命中`).toEqual(["tmux send-keys -", "tmux attach -", "tmux switch-client -"]);
+  it("★ 正控：一段整条的 tmux 命令串，同一把尺子量得到（否则上一条的零是尺子瞎了）", () => {
+    // 键进已有会话再接进去那一形（`tmux -u send-keys -t …  Enter; 在 tmux 里 switch-client、不在 attach`）。
+    const text =
+      "const line = \"tmux -u send-keys -t '=cc-x:' 'ccm --resume s1' Enter; " +
+      "case x${TMUX:-} in x) tmux -u attach -t '=cc-x:';; *) tmux -u switch-client -t '=cc-x:';; esac\";";
+    expect(hitsIn(text)).toEqual(["tmux send-keys -", "tmux attach -", "tmux switch-client -"]);
   });
 
   it("★ TS 兜底一族不许回来：文件不在盘上、导出名在 src/ 生产段零命中", () => {

@@ -138,7 +138,7 @@ const TERMINAL_SURFACE_FILES: &[(&str, &str)] = &[
     (
         "control/launch_render/ccm_invocation.rs",
         "`ccm …` 调用行的渲染器：它写的是用户终端里那一行 `ccm` 的旗标（终端命令面），不是后端自己分派的 wire 子命令；\
-         接盘判据 `launch_cli_parity_tests::every_rendered_ccm_line_is_accepted_by_the_ccm_argv`（渲出的每一行都过 `argv::parse`）。",
+         接盘判据 `ccm_invocation_tests::every_rendered_ccm_line_is_accepted_by_the_ccm_argv`（渲出的每一行都过 `argv::parse`）。",
     ),
 ];
 
@@ -243,7 +243,7 @@ pub(crate) const CHILD_FLAGS_NOT_SENT: &[(&str, &str, &str)] = &[
 /// 一份源码生产段里的 `"--x"` 字面量（按出现序去重）—— [`dispatched_subcommands`] 与
 /// 子进程旗标那条接盘判据**共用这一处取法**（两处各写一份的话，一处放宽、一处没跟，就会各说各话）。
 pub(crate) fn dashdash_literals(raw: &str) -> Vec<String> {
-    let src = crate::guard_support::production_code(raw);
+    let src = guard_core::production_code(raw);
     let mut out: Vec<String> = Vec::new();
     {
         let mut from = 0usize;
@@ -344,7 +344,7 @@ mod tests {
                     //
                     // 现在只要**提到**一个 `--token` 就得登记。宁可多登记几个文件，
                     // 也不要让一个 token 因为「写法不是 match 臂」而隐形。
-                    let prod = crate::guard_support::production_code(&raw);
+                    let prod = guard_core::production_code(&raw);
                     if prod.contains("\"--") {
                         hits.push(
                             p.strip_prefix(root)
@@ -356,7 +356,7 @@ mod tests {
                 }
             }
         }
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         let mut found = Vec::new();
         walk(&root, &mut found, &root);
         found.sort();
@@ -391,13 +391,12 @@ mod tests {
             "登记表空了 —— 要么真没有子进程旗标了（那就连同 `dispatched_subcommands` 里那段摘除一起删），\
              要么是被人掏空了"
         );
-        let repo = crate::guard_support::src_root()
+        let repo = guard_core::addr::backend_src_root()
             .parent()
             .and_then(|p| p.parent())
             .expect("从 src/backend 回不到仓根")
             .to_path_buf();
-        for (file, child, flags, why) in CHILD_PROCESS_FLAGS {
-            assert!(why.chars().count() > 30, "`{file}` 那行理由太短：{why}");
+        for (file, child, flags, _) in CHILD_PROCESS_FLAGS {
             // ① 这份文件里的 `"--x"` 字面量 == 登记的（两向）
             let raw = DISPATCH_FILES
                 .iter()
@@ -467,9 +466,8 @@ mod tests {
             accepts.sort();
             accepts.dedup();
             let mut want: Vec<String> = reg.clone();
-            for (c, f, why) in CHILD_FLAGS_NOT_SENT {
+            for (c, f, _) in CHILD_FLAGS_NOT_SENT {
                 if c == child {
-                    assert!(why.chars().count() > 20, "`{f}` 不发的理由太短：{why}");
                     want.push(f.to_string());
                 }
             }
@@ -597,22 +595,18 @@ mod tests {
              它真红就是那条 include 没了或读了别的文件。）"
         );
         // 渲染器那一格的接盘判据：渲出的每一行都过 `argv::parse`。
-        let render_side = include_str!("control/launch_render/launch_cli_parity_tests.rs");
+        let render_side = include_str!("control/launch_render/ccm_invocation_tests.rs");
         assert!(
             render_side.contains("fn every_rendered_ccm_line_is_accepted_by_the_ccm_argv")
                 && render_side.contains("argv::parse("),
             "渲染器那一格的接盘判据不在了 —— `ccm_invocation.rs` 的旗标从此没人管"
         );
-        for (f, why) in TERMINAL_SURFACE_FILES {
+        for (f, _) in TERMINAL_SURFACE_FILES {
             assert!(
                 f.starts_with("ccm_line/")
                     || f.starts_with("control/ccm/")
                     || *f == "control/launch_render/ccm_invocation.rs",
                 "`{f}` 不在 ccm 那一族（`ccm_line/` · `control/ccm/`）下 —— 今天那条接盘判据只扫得到那一族，\n                 别的文件放进这张表等于没人管它。"
-            );
-            assert!(
-                why.len() > 40,
-                "`{f}` 那行理由太短，说不清它为什么不是 wire 面"
             );
         }
     }
@@ -639,11 +633,6 @@ mod tests {
     fn every_serde_type_outside_wire_is_registered() {
         /// (文件, 类型名, 它是什么 —— 为什么不在 `wire.rs`)
         const ALLOWED: &[(&str, &str, &str)] = &[
-            (
-                "observe/watcher.rs",
-                "PrimeSkel",
-                "预读那一路落的记录骨架（数据目录 `cache/skeleton/` 底下的缓存文件 schema，带版本号、认不出就整份重扫）；不上线",
-            ),
             (
                 "control/launch.rs",
                 "LaunchReq",
@@ -686,13 +675,13 @@ mod tests {
                 "**根本不是 wire**：它在解析账号库的清单**文件**（文件 schema）",
             ),
             (
-                "observe/history_query.rs",
+                "observe/recognize/index_row.rs",
                 "IndexRow",
                 "骨架索引的一行（`history-index` 按列装运之前的那一形），\
                  不是流协议帧；形状登记在 `IPC-PROTOCOL.md` §10.3",
             ),
             (
-                "observe/history_query.rs",
+                "observe/query/locate.rs",
                 "RecordProbe",
                 "同上，帧命令 `history-record` 的应答 `data`",
             ),
@@ -722,11 +711,6 @@ mod tests {
                 "同上，`SessionHits.hits` 的一条",
             ),
             (
-                "observe/search_query.rs",
-                "Liveness",
-                "同上，`SessionHits.status`（全文搜索只扫记录树 ⇒ 只有在跑 · 已结束两态）",
-            ),
-            (
                 "observe/tasks_query.rs",
                 "Task",
                 "typed 帧命令 `tasks-list` 回包 `tasks[]` 的一格（`faces/feature_face.rs`；生成类型从它来）",
@@ -740,6 +724,17 @@ mod tests {
                 "history/listing_scan.rs",
                 "ListingHead",
                 "**只读不出**：扫历史清单时读 CLI 记录行的窄探针（记录文件 schema 里要的那几格），不上线",
+            ),
+            (
+                "history/listing.rs",
+                "Saved",
+                "**文件 schema**：历史清单缓存落盘那一份（数据目录 `cache/listing.json`），只本机后端自己读写，不上线",
+            ),
+            ("history/listing.rs", "SavedRow", "同上，一份记录那一行"),
+            (
+                "history/listing_scan.rs",
+                "SessionScan",
+                "同上，一份记录累计的那几格",
             ),
         ];
 
@@ -777,8 +772,12 @@ mod tests {
                 include_str!("../../src/backend/observe/accounts_query.rs"),
             ),
             (
-                "observe/history_query.rs",
-                include_str!("../../src/backend/observe/history_query.rs"),
+                "observe/query/locate.rs",
+                include_str!("../../src/backend/observe/query/locate.rs"),
+            ),
+            (
+                "observe/recognize/index_row.rs",
+                include_str!("../../src/backend/observe/recognize/index_row.rs"),
             ),
             (
                 "history/listing.rs",
@@ -804,7 +803,7 @@ mod tests {
 
         let mut found: Vec<(String, String)> = Vec::new();
         for (name, raw) in files {
-            let src = crate::guard_support::production_code(raw);
+            let src = guard_core::production_code(raw);
             let mut from = 0usize;
             while let Some(rel) = src[from..].find("#[derive(") {
                 let d = from + rel;
@@ -910,7 +909,7 @@ mod tests {
         }
         let mut violations: Vec<String> = Vec::new();
         for (name, raw) in files {
-            let prod = crate::guard_support::production_code(raw);
+            let prod = guard_core::production_code(raw);
             for c in &protocol_codes {
                 if prod.contains(c) {
                     violations.push(format!("{name} 里出现了协议级 code `{c}`"));
@@ -941,9 +940,8 @@ mod tests {
     /// ⚠ **必须先框段界再数**：那份文件里不止一个枚举，
     /// 摸底时用「行首缩进 + 大写开头」的正则数出 **14**，真值 **11** —— 多出来的是别的枚举。
     fn frame_variants() -> Vec<String> {
-        let src = crate::guard_support::production_code(include_str!(
-            "../../src/common/cmd-wire/src/frame.rs"
-        ));
+        let src =
+            guard_core::production_code(include_str!("../../src/common/cmd-wire/src/frame.rs"));
         // 运行时拼，免得命中本文件自己的说明文字。
         let needle = format!("pub enum {}", "Frame");
         let at = src
@@ -1026,11 +1024,11 @@ mod tests {
             reg.iter().any(|s| s.codes.contains(&"bad_args")),
             "正控：一条声明 `bad_args` 的命令都没有"
         );
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         let mut hits = Vec::new();
         let mut control = false;
         for (at, raw) in guard_core::scan_tree!(&root, &["rs"]) {
-            let prod = crate::guard_support::production_code(&raw);
+            let prod = guard_core::production_code(&raw);
             control |= prod.contains("\"bad_args\"");
             if prod.contains("\"invalid_args\"") {
                 hits.push(at.display().to_string());

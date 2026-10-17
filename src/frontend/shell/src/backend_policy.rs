@@ -73,14 +73,12 @@ async fn exit_policy_call(
         return Err(said(no_channel(origin)));
     };
     if !client.accepts(cmd) {
-        return Err(copy_core::backend_old(&crate::cc_bus::machine_label(
-            origin,
-        )));
+        return Err(copy_core::backend_old(&machine_label(origin)));
     }
     let data = client.call(cmd, args, budget).await.map_err(|e| {
         said(route_call_error(
             &e,
-            &crate::cc_bus::machine_label(origin),
+            &machine_label(origin),
             |_code, message| {
                 copy_text(
                     "rsBackendPolicy.call.failed",
@@ -93,7 +91,7 @@ async fn exit_policy_call(
             },
         ))
     })?;
-    data.ok_or_else(|| copy_core::reply_unreadable(&crate::cc_bus::machine_label(origin)))
+    data.ok_or_else(|| copy_core::reply_unreadable(&machine_label(origin)))
 }
 
 /// 三态里给人看的那句话（同 `frame_query::said`）。`Done` 在本族走不到。
@@ -325,7 +323,7 @@ pub fn verdict(ev: &DeathEvidence) -> Option<Death> {
 pub fn death_kind(d: &Death) -> String {
     match d {
         Death::NeverStarted { .. } => copy_text("rsBackendPolicy.death.neverStarted", &[]),
-        Death::Refused { .. } => copy_text("rsBackendPolicy.death.refused", &[]),
+        Death::Refused { .. } => copy_text("reason.code.refused", &[]),
         Death::Crashed { .. } => copy_text("rsBackendPolicy.death.crashed", &[]),
         Death::Misread { .. } => copy_text("rsBackendPolicy.death.misread", &[]),
     }
@@ -634,6 +632,15 @@ pub fn health_face(h: &Health) -> HealthFace {
         ),
         why: None,
         detail,
+    }
+}
+
+/// 一句话里怎么称呼这台机器：本机与远端的每一句都由同一个 `format!` 渲染，唯一不同的就是这里回的称呼。
+fn machine_label(origin: &str) -> String {
+    if origin == inbound_client::LOCAL_ORIGIN {
+        copy_text("rsCcBus.machine.local", &[])
+    } else {
+        origin.to_string()
     }
 }
 

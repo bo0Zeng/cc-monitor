@@ -1,16 +1,17 @@
 /**
  * **会话头上的两颗：换模型 · 切权限档**（会话头那一排、状态一句之后）。
  *
- * 全照那台后端给的：字（会话事实 `modelText` · `permissionModeText`；没有 ⇒ 写这颗是什么）· 清单（`session-new-facts` 那一家的
+ * 全照那台后端给的：字（会话事实 `modelText` · `permissionModeText`；没有 ⇒ 写这颗是什么）· 清单（`session-open-facts` 那一家的
  * `modelDefault` ＋ `models` ＋ `modelNote` · `permissionModes`）· 此刻能不能换（会话帧 `switch`；那台握手说做不到这条命令 ⇒ 那一句）·
  * 换的结局（`session-model` · `session-permission` 回包的 `result` · 读回的字 · `said`）。界面只管「正在换」这一态（发起的这一端才知道）：
  * 两颗都不可点、换的那颗写选的那一项、原位转圈；读回 `done` 才换字，没成 ⇒ 回原字 ＋ toast 写那台那一句。
  * 读回的字只盖到下一份会话事实里那一格变了为止（之后照后端那一格）。
  */
 import type { Tab } from "./tab-model";
+import { faceOf } from "./face-can";
 import type { AgentFacts } from "./generated/AgentFacts";
-import type { NewSessionPick } from "./generated/NewSessionPick";
-import type { NewFacts } from "./generated/NewFacts";
+import type { AgentPick } from "./generated/AgentPick";
+import type { OpenFacts } from "./generated/OpenFacts";
 import { copyText } from "./copy-table";
 import { icon } from "./kit/icon";
 import { spinner } from "./kit/progress";
@@ -29,7 +30,7 @@ export interface Switched {
 
 /** 换的这一端自己记的（每条会话一份）。 */
 export interface SwitchLocal {
-  pending: { kind: SwitchKind; pick: NewSessionPick } | null;
+  pending: { kind: SwitchKind; pick: AgentPick } | null;
   /** 读回的字盖在后端那一格上：`was` ＝ 盖上那一刻后端那一格的字；那一格变了 ⇒ 不再盖。 */
   over: Partial<Record<SwitchKind, { text: string; value: string; was: string | null }>>;
 }
@@ -85,27 +86,27 @@ export function chipFace(tab: Tab, kind: SwitchKind, local: SwitchLocal, unavail
   if (unavailable !== null) return { text, enabled: false, why: unavailable, spinning: false };
   // 那一家没有可换的（清单问到了、是空的）⇒ 只显示字。
   if (picks === 0) return { text, enabled: false, why: null, spinning: false };
-  const can = tab.switch?.[kind];
-  if (can?.can === "no") return { text, enabled: false, why: can.why, spinning: false };
+  const can = faceOf(tab).can[kind];
+  if (can.can === "no") return { text, enabled: false, why: can.why, spinning: false };
   return { text, enabled: true, why: null, spinning: false };
 }
 
 /** 这条会话是那台列的哪一家（按会话事实的 `agent` 认；认不出 ⇒ 那台列的第一家）。 */
-export function agentOf(facts: NewFacts, kind: string | null): AgentFacts | null {
+export function agentOf(facts: OpenFacts, kind: string | null): AgentFacts | null {
   return facts.agents.find((a) => a.kind === kind) ?? facts.agents[0] ?? null;
 }
 
 /** 菜单里列的（模型：「默认」在前 ＋ 那一家的模型，底下那一行；权限档：那一家的档）。 */
-export function picksOf(agent: AgentFacts, kind: SwitchKind): { picks: NewSessionPick[]; note: string | null } {
+export function picksOf(agent: AgentFacts, kind: SwitchKind): { picks: AgentPick[]; note: string | null } {
   if (kind === "permission") return { picks: agent.permissionModes, note: null };
   return { picks: agent.modelDefault ? [agent.modelDefault, ...agent.models] : agent.models, note: agent.modelNote };
 }
 
-/** 勾哪一项（原值）：权限档 ＝ 此刻那一档；模型 ＝ 上次在这里换成了的那一项（会话事实只给原值，对不上清单）。 */
+/** 勾哪一项（原值）：上次在这里换成了的那一项 ＞ 会话事实说的此刻那一项（权限档 `permissionMode` · 模型 `modelPick`）。 */
 export function checkedValue(tab: Tab, kind: SwitchKind, local: SwitchLocal): string | null {
   const o = overOf(tab, kind, local);
   if (o) return o.value;
-  return kind === "permission" ? tab.permissionMode : null;
+  return kind === "permission" ? tab.permissionMode : tab.modelPick;
 }
 
 /** 换完之后：chip 换成哪个字（`null` ＝ 不换）· 要不要 toast（标题是那台那一句；没成又没那一句 ⇒「结果未知」）。 */
@@ -116,8 +117,8 @@ export function afterSwitch(kind: SwitchKind, r: Switched): { text: string | nul
 }
 
 export interface SwitchHost {
-  /** 那台起会话能选的（`session-new-facts`）。 */
-  facts(origin: string): Promise<NewFacts>;
+  /** 那台起会话能选的（`session-open-facts`）。 */
+  facts(origin: string): Promise<OpenFacts>;
   /** 交那条命令，结局读成 [`Switched`]（不抛）。 */
   send(tab: Tab, kind: SwitchKind, value: string): Promise<Switched>;
   /** 那台握手时说做不到 `op` ⇒ 那一句；做得到 / 没把握 ⇒ `null`。 */
@@ -134,8 +135,8 @@ export class SwitchChips {
   readonly el: HTMLSpanElement;
   private readonly local = new Map<string, SwitchLocal>();
   /** 各台起会话能选的（问到了的那一份；问不到 ⇒ 删掉，下次点开再问）。 */
-  private readonly facts = new Map<string, Promise<NewFacts>>();
-  private readonly known = new Map<string, NewFacts>();
+  private readonly facts = new Map<string, Promise<OpenFacts>>();
+  private readonly known = new Map<string, OpenFacts>();
   /** 问过没问到的那几台：重画时不再自己去问（点开时再问）。 */
   private readonly failed = new Set<string>();
   private readonly btn: Record<SwitchKind, HTMLButtonElement>;
@@ -219,7 +220,7 @@ export class SwitchChips {
   }
 
   /** 选了一项：两颗都不可点、原位转圈；结局回来照 [`afterSwitch`] 换字或出 toast。 */
-  private async pick(tab: Tab, kind: SwitchKind, p: NewSessionPick): Promise<void> {
+  private async pick(tab: Tab, kind: SwitchKind, p: AgentPick): Promise<void> {
     const l = this.localOf(tab.sessionId);
     if (l.pending) return;
     l.pending = { kind, pick: p };
@@ -236,7 +237,7 @@ export class SwitchChips {
   }
 
   /** 那台的清单：问过 ⇒ 那一份；问不到 ⇒ 不留，下次再问。到了 ⇒ 重画（几颗能不能点跟着定）。 */
-  private factsOf(origin: string): Promise<NewFacts> {
+  private factsOf(origin: string): Promise<OpenFacts> {
     this.failed.delete(origin);
     let p = this.facts.get(origin);
     if (!p) {

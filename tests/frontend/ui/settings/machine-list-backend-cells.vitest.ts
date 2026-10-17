@@ -87,7 +87,7 @@ const pages = {
   addMachinePage: (id: string) => {
     const page = document.createElement("div");
     page.dataset.pageId = id;
-    const origin = id === "machine:（本机）" ? LOCAL_ORIGIN : cur.sec!.originOfPage(id);
+    const origin = id === "machine:<local>" ? LOCAL_ORIGIN : cur.sec!.originOfPage(id);
     try {
       if (cur.cellsThrow) throw new Error("四格炸了");
       if (origin) page.appendChild(cur.backend!.cellsFor(origin));

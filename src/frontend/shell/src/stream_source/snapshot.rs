@@ -106,7 +106,7 @@ impl SnapshotQueue {
             || self.pending.lock().unwrap().cancelled.contains(sid)
     }
 
-    fn close(&self) {
+    pub(super) fn close(&self) {
         self.closed.store(true, std::sync::atomic::Ordering::SeqCst);
         self.notify.notify_waiters();
     }
@@ -117,7 +117,7 @@ impl SnapshotQueue {
     /// 丢失唤醒防护（审计 D-I1）：`notify_waiters` 不给未注册者存 permit——
     /// 必须**先注册**（`enable`）再检查状态，close/push 发生在注册后必被捕获、
     /// 发生在注册前则状态检查看得到。
-    async fn pop(&self, priority: Option<String>) -> Option<SnapshotItem> {
+    pub(super) async fn pop(&self, priority: Option<String>) -> Option<SnapshotItem> {
         loop {
             let notified = self.notify.notified();
             tokio::pin!(notified);
@@ -141,14 +141,6 @@ impl SnapshotQueue {
     }
 }
 
-/// 排到的这一份快照拉不拉：那台报过名单（`Some`）⇒ 只拉在看的；没报过（`None` ＝ 全看，与后端同一个口径）⇒ 都拉。**纯函数**。
-pub(super) fn wants_snapshot(
-    watched: Option<&std::collections::BTreeSet<String>>,
-    sid: &str,
-) -> bool {
-    watched.is_none_or(|w| w.contains(sid))
-}
-
 /// 分发器：每连接一个 task。并发 ≤SNAPSHOT_CONCURRENCY 地把队列里的会话交给
 /// [`fetch_snapshot`]；每项失败重试 1 次（间隔 1s），仍败 → remote-health toast
 /// （该 tab 只有实时行，历史浏览器兜底可看全量）。取消（会话 removed/断连）
@@ -169,7 +161,7 @@ pub(super) async fn snapshot_dispatcher(
         };
         // 没在看的会话不拉（它的行也不上流）：进名单那一刻由 `stream-watch` 的 `from[]` 叫界面自己补。
         let origin = crate::origin::Origin(host_label.clone());
-        if !wants_snapshot(replay.watched(&origin).as_ref(), &item.sid) {
+        if !replay.watched(&origin).contains(&item.sid) {
             tracing::debug!("snapshot [{host_label}] {}: 没在看，不拉", item.sid);
             drop(permit);
             continue;
@@ -254,7 +246,7 @@ fn snapshot_inflight_change(replay: &EventReplay, delta: isize) {
     } else {
         n.saturating_sub(1)
     };
-    // 持锁交：保证到达序 == 计数变化序（会话流里的一格，不吃 credit、不丢）。
+    // 持锁交：保证到达序 == 计数变化序（会话流里的一格，没 credit 也照交、不丢）。
     replay.on_snapshot_inflight(*n as u32);
     drop(n);
 }
@@ -269,16 +261,14 @@ enum FetchOutcome {
     Cancelled,
 }
 
-// 快照只含可计行：口径只住后端 `history_query::line_counts`。
+// 快照只含可计行：口径只住后端 `observe::lines::counts`。
 
 /// 拉取单个会话的尾段快照（手上有那台上一次给的 `held` 就交回去、只续读断线期间新到的那一截）并灌进既有管线。
 ///
 /// 走已有长连接：一问 `history-tail`（交 `held`）拿回那张图 · 怎么接（后端判：续传 · 尾段 · 变短 / 被改写之后的尾段 · 缺得多不读）·
 /// 第一页正文；一页装不下的照 `next` 用 `history-read` 分页接着拉到 `end`。头段 `[0, split_at)` 不读，界面往上翻时按行号 / 按偏移取回。
 ///
-/// 每个 chunk 边界查取消（会话 removed / 连接断）——中止并**补偿 emit 一次
-/// ended 格**：若某个已 flush 的 chunk 恰把归档 tab"见行复活"，这里把它
-/// 压回 archived（审计 D-B1 僵尸复活的封口；archiveTab 幂等，重复无害）。
+/// 每个 chunk 边界查取消（会话 removed / 连接断）——中止、丢弃未 flush 的那一块（已 flush 的行不改那条会话的状态）。
 ///
 /// 完整性校验（审计 D-I2）：到达的可计行数必须**恰好等于** `total - from`。
 async fn fetch_snapshot(
@@ -337,8 +327,8 @@ async fn fetch_snapshot(
             );
             replay.on_watch_from(
                 &origin,
-                vec![crate::ui_contract::SessionWatchPayload {
-                    session_id: sid.to_string(),
+                vec![cmd_wire::watch::WatchFrom {
+                    sid: sid.to_string(),
                     path: path.to_string(),
                     seq: tail.from,
                 }],
@@ -392,16 +382,6 @@ async fn fetch_snapshot(
         }
     }
     if cancelled || q.is_cancelled(sid) {
-        // 补偿（见 doc comment）；丢弃未 flush 的 chunk。只对远端补（[`compensates_on_cancel`]）。
-        // 补的是那条会话**此刻**的终局（成品缓存里后端说过的 · 连接断了 ⇒ 说不清），不再由 monitor 恒判「已结束」。
-        if compensates_on_cancel(&origin) {
-            let again = crate::session_book::book()
-                .read()
-                .settle_again(origin.as_wire_str(), sid);
-            for out in again {
-                replay.on_lifecycle(out.origin(), out.frames());
-            }
-        }
         return Ok(FetchOutcome::Cancelled);
     }
     if !chunk.is_empty() {
@@ -439,15 +419,6 @@ async fn fetch_snapshot(
 /// 快照读到它以后的是宣告之后才写进来的（实时那条流也交它，谁先到算谁）⇒ 不是。行数不知道 ⇒ 快照里的都算补历史。
 pub(crate) fn catch_up_at(announced: Option<u64>, seq: u64) -> bool {
     announced.is_none_or(|l| seq < l)
-}
-
-/// 快照中途被撤时要不要补一个 `ended` 格：**远端补、本机不补。**
-///
-/// 补偿治的是「已 flush 的那一块把刚归档的 tab 见行复活」—— 而**只有远端的行会复活 tab**
-/// （前端 `tabs.ts` 只有 `remote-line` 那一格；本机 tab 的活与死只由 PID 探活那一路翻）。
-/// 本机再补一个 `ended` 格，没有要治的病，反倒会把本机那边刚判成「可重连」的会话压成「已结束」。
-pub(crate) fn compensates_on_cancel(origin: &crate::origin::Origin) -> bool {
-    !origin.is_local()
 }
 
 #[cfg(test)]

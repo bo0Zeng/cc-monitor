@@ -56,20 +56,12 @@ src/frontend/filewin/src/fonts.rs:277	×书加找移签	保留	[不对外] 字�
 src/frontend/filewin/src/fonts.rs:326	处	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（搬家那一跳两句的字；那两句随书签旧键退役删了，只剩别处还用的 `处`）
 src/frontend/filewin/src/fonts.rs:291	显示预	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（预览那几个字）
 src/frontend/shell/src/lib.rs:1578	认不出：没有 hosts 数组（旧的单台写法不再认），远端一台都不连；在设置里重新添加这台机器	保留	[不对外] REMOTE_HOSTS_UNRECOGNIZED 只进 monitor 日志（load_remote_configs 的 error! 那一行，前面带配置文件路径）；界面那一侧读同一份 config 的是 TS remote-config.ts，不经这句
-src/backend/footprint/registry.rs:1225	**它在 cc-monitor 里零实现，是一个扩展**（一个 skill ＋ 一个 MCP server）—— 它确实「装到别处」，\n         但装它走扩展页已有的资产机制（skill 照 skill 装、MCP 那一项只往目标机写一个 server 条目，\n         程序本身由用户放到那台机器上），是**用法**不是新工具；monitor 与后端都不带它的任何字节。\n\n         ⚠ `K-R65` 当初补的那句道理**仍然成立**：一个名字可以同时是好几样东西，写「表上没有它」的同一拍要把那张表改对（纪律 ⑲）。	保留	[不对外] NOT_MANAGED：只被判据读的「刻意不收」登记表理由（生产代码无读者） 〔改写 —— 代码全景整条摘掉，code-picture 只作为扩展（skill ＋ MCP）；裁词不变〕
-src/backend/footprint/registry.rs:1324	**不由 cc-monitor 安装** —— 它是用户自己装在 `<agent 家>/skills/planned-build/` 的 \n         skill，cc-monitor 只**读它的产物**（计划文件）。\n\n         ⇒ 它**不在**本表里（受管工具）。	保留	[不对外] NOT_MANAGED 登记表理由
 src/frontend/ui/events.ts:585	[perf] === 启动管线 timeline (前端 performance.now ms · window={…}) ===	保留	[不对外] 启动管线 perf timeline 行，经 console.info / frontend_perf_log 进开发者日志
 src/frontend/ui/events.ts:589	[perf]   first jsonl-batch in   T+{…} (+{…}) ← 后端 replay 完成	保留	[不对外] perf timeline 开发者日志行
 src/frontend/ui/events.ts:591	[perf]   batch payloads drained T+{…} (+{…}) ← drain 全部 {…} 条	保留	[不对外] perf timeline 开发者日志行
 src/frontend/ui/events.ts:592	[perf]   onBatchEnd fired       T+{…} (+{…}) ← 300ms grace 后真正切 live	保留	[不对外] perf timeline 开发者日志行
 src/frontend/ui/events.ts:595	[perf]   建卡 rendered={…} · 收纳 deferred={…} · drained={…}(累计)	保留	[不对外] perf timeline 开发者日志行
 src/frontend/ui/events.ts:596	[perf]   ── 总耗时（DOM → 加载完成）：{…}ms ──	保留	[不对外] perf timeline 开发者日志行
-src/comms/inward/chan.ts:66	通道：{…}	保留	[不对外] `ChanError.message`：通道失败只进 console.warn（调用方按层说自己的话，界面那句不从这里取）
-src/comms/inward/chan.ts:75	第 {…} 跳卡在 {…}：{…}（发出去了没有：{…}）	保留	[不对外] `describeCallError` 给日志看的那一句，与 `chan/wire.rs` 的 `CallError` 的 Display 同形
-src/comms/inward/chan.ts:77	对端不认这个操作	保留	[不对外] 同上（`peer/unsupported` 那一档的日志句）
-src/comms/inward/chan.ts:77	对端答「不行」	保留	[不对外] 同上（`peer/refused` 那一档的日志句）
-src/comms/inward/chan.ts:79	本侧：{…}	保留	[不对外] 同上（`ours` 那一档的日志句）
-src/frontend/ui/settings/remote-section.ts:163	（本机）	保留	[不对外] LOCAL_MACHINE_KEY 是本机那一页的路由键（头注：刻意取一个用户填不出的名字防撞车），显示时换成「本机」
 src/comms/inward/chan/router.rs:171	读出错：{e}	保留	[不对外] 只进日志（host.rs 的 tracing::warn），连接结束原因
 src/comms/inward/chan/router.rs:182	编号 {id} 还在飞，又来了一次	保留	[不对外] 只进日志（host.rs 的 tracing::warn），客户端违约
 src/comms/inward/chan/router.rs:203	编号 {id} 还在飞，又来了一次	保留	[不对外] 只进日志（host.rs 的 tracing::warn），客户端违约
@@ -88,10 +80,10 @@ src/backend/stderr_log.rs:51	[stderr-log] 上一份挪成 {}（每份上限 {CAP
 src/backend/stderr_log.rs:163	[stderr] 没被交日志路径 ⇒ stderr 原样	保留	[不对外] 后端流模式起来时的一行 tracing 日志（没被交路径 ⇒ stderr 不动）
 src/backend/stderr_log.rs:165	[stderr] 本进程的输出落在 {}（每份上限 {} 字节，留一份旧的）	保留	[不对外] 后端流模式起来时的一行 tracing 日志：诊断落在哪份文件
 src/backend/stderr_log.rs:169	[stderr] 被交了日志路径但接不上：{why}	保留	[不对外] 后端流模式起来时的一行 tracing 日志：接不上的原因
-src/frontend/filewin/src/fonts.rs:305	启格求码	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表时 ＋9 −3 之后的现文）
-src/frontend/filewin/src/fonts.rs:328	·…→、「」一上下不与丢两个中为主了交亮代以件份会传位作侧保做先全关内再写出列刚删别到制刷前动化原去发取口只可台合同名后含命器回围在坏型复外多	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕〔窗口换骨架：探针 −⬆📁📄🔗（图标换成图标字）〕〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
+src/frontend/filewin/src/fonts.rs:305	启格码	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表时 ＋9 −3 之后的现文）〔通道那一句并成一份：探针 −`之 方 求 词 请`〕
+src/frontend/filewin/src/fonts.rs:328	·…→、「」一上下不与丢两个中为主了交亮代以件份会传位作侧保做先全关内再写出列刚删别到制刷前动化原去发取口只可台合同名后含命器回在坏型复外多	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕〔窗口换骨架：探针 −⬆📁📄🔗（图标换成图标字）〕〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
 src/frontend/filewin/src/fonts.rs:329	大失字存它完容对小就屏已帧并序建开当录往径成或截打扫把拒拖按换据排接搜撤操改数整文断新时是更最有本机权条样根框次此段比没法消点物	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
-src/frontend/filewin/src/fonts.rs:330	用的盖目相看确称程空窗端符第答类索约级组终经结继续绝编者能节范行表被要覆览认请读败起超路跳载辑输过这进远连那部里重销错闭限除非须首高（），：	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
+src/frontend/filewin/src/fonts.rs:330	用的盖目相看确称程空窗端符第答类索约级组终经结继续绝编者能节行表被要覆览认读败起超路跳载辑输过这进远连那部里重销错闭限除非须首高（），：	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕〔通道那一句并成一份：探针 −`之 方 求 词 请`〕
 src/frontend/filewin/src/fonts.rs:339	值择置间需	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
 src/backend/lib.rs:1372	Windows 上没有 tmux（也不打算装）。「会话活在前端之外」在 Windows 上用哪种机制，\n              Windows 后台机制未定 ⇒ **暂时不做**；\n              将来选定机制时一并给出等价物。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1381	「接回一个还活着的会话」今天的实现是 `tmux attach`。Windows 上那条路不存在 \n              ⇒ 等 Windows 后台机制选定（未定）时一并给出等价物，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
@@ -137,19 +129,19 @@ src/frontend/shell/src/backend_policy.rs:392	它一个字节都没说就退出�
 src/frontend/shell/src/backend_policy.rs:393	说过话之后异常终止	保留	[不对外] death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
 src/frontend/shell/src/backend_policy.rs:394	monitor 这一侧读出错：{detail}	保留	[不对外] death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
 src/frontend/filewin/src/fonts.rs:335	解压	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（解压到这里那几句的字）
-src/frontend/filewin/src/fonts.rs:339	之执批果校验所	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（filewin 那几句去行话之后新进的字）〔开单两条换类型：探针 −`缺`〕
+src/frontend/filewin/src/fonts.rs:339	执批果校验所	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（filewin 那几句去行话之后新进的字）〔开单两条换类型：探针 −`缺`〕〔通道那一句并成一份：探针 −`之 方 求 词 请`〕
 src/frontend/filewin/src/fonts.rs:346	从修图地址始子展属左性指片藏试退配隐他其包夹缩	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案〔窗口换骨架那一批新字〕〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
-src/frontend/filewin/src/fonts.rs:343	得词	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（文件名搜索那几句新进的字）
+src/frontend/filewin/src/fonts.rs:343	得	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（文件名搜索那几句新进的字）〔通道那一句并成一份：探针 −`之 方 求 词 请`〕
 src/frontend/filewin/src/fonts.rs:349	仅匹单度无未清	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（搜索结果状态行与表那几句新进的字）
 src/frontend/filewin/src/fonts.rs:352	停击情详车达	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（窗口换样子那一批新进的字）
 src/frontend/filewin/src/fonts.rs:354	恢	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（删除那一问「不可恢复」）
 src/frontend/filewin/src/fonts.rs:356	止计	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（「进度」表「开始后不可停止」「计算大小」）
 src/frontend/filewin/src/fonts.rs:358	离线采	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（断线条「离线 · 采样」「离线 · 只读」）
 src/frontend/filewin/src/fonts.rs:361	弃放留	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（编辑页「放弃改动并重开」「改动保留」）
-src/frontend/filewin/src/fonts.rs:364	三人填致	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（就地操作那一批：改权限「三位数」「其他人」「需填」· 同名那张表「照传」·「当前权限不一致」）
-src/frontend/filewin/src/fonts.rs:366	例待等	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（改权限「例 644」·「进度」表断线「等待重连」）
+src/frontend/filewin/src/fonts.rs:364	人填致	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（就地操作那一批：改权限「三位数」「其他人」「需填」· 同名那张表「照传」·「当前权限不一致」）
+src/frontend/filewin/src/fonts.rs:366	待等	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（改权限「例 644」·「进度」表断线「等待重连」）
 src/frontend/filewin/src/fonts.rs:368	松	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（拖进来那一层「松开上传」）
-src/frontend/filewin/src/fonts.rs:371	应方析知	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（文案第三段 C 类：一族一句换新写法进来的字）
+src/frontend/filewin/src/fonts.rs:371	应析知	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（文案第三段 C 类：一族一句换新写法进来的字）〔通道那一句并成一份：探针 −`之 方 求 词 请`〕
 src/frontend/filewin/src/fonts.rs:374	于入及均定持支识该身适途	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（文案第四段 D 类：壳 / 文件窗口那一面压缩新进的字）
 src/frontend/filewin/src/fonts.rs:392	见	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（文案第五段：壳 / 文件窗口改调用点那段压缩新进的字）（`询` 随复制到另一台那五步一起没了）
 src/frontend/filewin/src/fonts.rs:394	余核逐	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（一组一条命令那一层：逐项选 · 其余待核）
@@ -164,8 +156,6 @@ src/backend/control/files_write.rs:2688	删一组（`control/files_batch.rs`）�
 src/backend/control/files_write.rs:2695	一组改成同一个 unix 权限位（低 12 位，`control/files_batch.rs`）；**跟链接**，所以落点解到底再判一次；\n没有 unix 权限位的平台上那一项回 `no_unix_mode`；每项带改之前的那一份（撤销用）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
 src/backend/control/files_write.rs:2701	同根内复制一组（`control/files_batch.rs`）：先探整组落点，同名而没答 ⇒ 一项不做、回 `exists` 与同名清单；\n               答法 `overwrite` · `skip` · `keep_both`（另起 `名 (2).ext`，撞上往后试）；目录整棵复制、同名不合并；\n               **三条路径各过一遍路径解析**；不覆盖的那几项 `O_EXCL`，探完之后冒出来的同名不盖（那一项 `exists`）；\n               覆盖经暂存旁名原子顶掉；权限位从源抄；树里的链接复制**链接本身**	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
 src/backend/control/files_write.rs:2439	覆盖写一份**已经在**的普通文件；**跟链接**，所以落点解到底再判一次；\n`expect: {sha256}` **必给**：盘上那份的摘要对得上才写（否则 `stale`，一个字节不动），应答交新摘要	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_write.rs:1996	读改写的**读那一半**：与写同一道路径解析；不在 ⇒ `exists: false`（与「读不出来」分得开）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_write.rs:2003	整份替换一份文本文件：**CAS（`expect` 必给）→ 相同不写 → 备份 → 暂存旁名换名上位 → \n               回读比对 → 不符回滚** —— 用户文件的写规则只有这一份	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
 src/backend/control/files_write.rs:2011	删一份历史会话 —— **只收 sid**，落点由后端按 sid 在记录树里找（历史浏览器的删会话，不是文件管理器）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
 src/backend/files/mod.rs:213	列一个目录的直接子项（名字走原始字节）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
 src/backend/files/mod.rs:229	一个路径的元数据	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
@@ -214,3 +204,4 @@ src/backend/plan/needs.rs:22	看全局	保留	[不对外] pb dump 的阶段标�
 src/backend/plan/command.rs:24	写了 	保留	[不对外] pb view 成了时那一句的开头（协议值，不是界面文案）：只拿来拆出页面路径
 src/frontend/filewin/src/fonts.rs:390	—也切划因块声明	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（文件窗口反查 plan.rs 那几句新进的字）
 src/frontend/filewin/src/fonts.rs:393	像寸尺张素	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（图片查看页那几句新进的字）
+src/frontend/filewin/src/fonts.rs:410	运	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（通道那一句「本机后端未运行 · 未执行」进来的字）

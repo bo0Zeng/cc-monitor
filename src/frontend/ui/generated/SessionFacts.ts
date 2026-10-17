@@ -2,6 +2,7 @@
 import type { BgTask } from "./BgTask";
 import type { FactsBackground } from "./FactsBackground";
 import type { FactsCost } from "./FactsCost";
+import type { FactsLine } from "./FactsLine";
 import type { Kin } from "./Kin";
 import type { LastSay } from "./LastSay";
 import type { McpTrouble } from "./McpTrouble";
@@ -18,15 +19,6 @@ import type { Words } from "./Words";
  */
 export type SessionFacts = { 
 /**
- * 最后一个完整行的末字节 ＝ 下一次的续点（续传令牌 `{end, rev}` 的一半）。
- */
-end: number, 
-/**
- * 这一份在那台常驻后端续算表里的号（续传令牌的另一半，[`super::facts_cache`]）：下一问交回 `{end, rev}` 就从这一份接着扫。
- * 扫描本身不读它；只在出成品那一刻由续算表铸。
- */
-rev: number, 
-/**
  * 源会话 sid；不是分叉来的 ⇒ `null`。
  */
 forkedFrom: string | null, 
@@ -40,9 +32,14 @@ touchedFiles: Array<string>,
 usage: UsageFact | null, 
 /**
  * `usage.model` 写给人看的名字（那一家的模型那一处给：`agents::model_text`）；没有 usage · 认不出是哪一家 · 这一家认不出这个值 ⇒ `null`
- * （界面照抄，不自己拼）。每次现给，不进续算表。
+ * （界面照抄，不自己拼）。每次现给，不累加。
  */
 modelText: Words | null, 
+/**
+ * 此刻是换模型清单里哪一项（原值，抽屉勾它）：终端没了时记下的那一项；否则那一家把 `usage.model` 认成清单里唯一对得上的那一项
+ * （`agents::model_pick`）；认不出 · 对上不止一项 ⇒ `null`。每次现给，不进续算表。
+ */
+modelPick: string | null, 
 /**
  * 会话的项目目录（会话起在哪个目录）：适配层读记录开头给（`agents::project_dir_of`），读到即锁定；
  * 开头里还没有 ⇒ `null`，下一次再读。与会话宣告那一帧的 `project_dir` 同一个函数。
@@ -53,7 +50,7 @@ projectDir: string | null,
  */
 agent: string | null, 
 /**
- * 此刻持着这条会话的活进程 pid（`accounts_query::session_holders`：照那一家声明的判活方式查），升序；不累加，每次现查（`prior` 里那一份不用）。
+ * 此刻持着这条会话的活进程 pid（`accounts_query::session_holders`：照那一家声明的判活方式查），升序；不累加，每次现查。
  * 不止一个 ⇒ 同一条会话有几个进程在同时写。判不了 ⇒ 空。
  */
 writers: Array<number>, 
@@ -66,7 +63,7 @@ pending: Array<PendingCall>,
  */
 lastSay: LastSay | null, 
 /**
- * **需手动**：那台说在等、等的是什么（不累加，每次现查；`prior` 里那一份不用）。不在等 ⇒ `null`。
+ * **需手动**：那台说在等、等的是什么（不累加，每次现查）。不在等 ⇒ `null`。
  */
 needs: Needs | null, 
 /**
@@ -83,7 +80,7 @@ retries: Array<RetryRun>,
 permissionMode: string | null, 
 /**
  * 同一档写给人看的那一句（那一家的权限档那一处给：`agents::permission_mode_text`，切档回包的 `modeText` 同一处）；
- * 没有档 · 认不出是哪一家 · 这一家认不出这一档 ⇒ `null`（界面照抄，不自己拼）。每次现给，不进续算表。
+ * 没有档 · 认不出是哪一家 · 这一家认不出这一档 ⇒ `null`（界面照抄，不自己拼）。每次现给，不累加。
  */
 permissionModeText: Words | null, 
 /**
@@ -95,11 +92,11 @@ tokens: TokenUse | null,
  */
 cost: FactsCost | null, 
 /**
- * 还没收场的后台命令（文件序）：累加的那一份账，续传时原样带回来。
+ * 还没收场的后台命令（文件序）：累加的那一份账。
  */
 bgTasks: Array<BgTask>, 
 /**
- * **后台任务运行中**：那台说一轮停了、后台命令还在跑 ⇒ 状态一句（不累加，每次现查；`prior` 里那一份不用）。不是这一态 ⇒ `null`。
+ * **后台任务运行中**：那台说一轮停了、后台命令还在跑 ⇒ 状态一句（不累加，每次现查）。不是这一态 ⇒ `null`。
  */
 background: FactsBackground | null, 
 /**
@@ -108,17 +105,30 @@ background: FactsBackground | null,
  */
 answerOff: Words | null, 
 /**
+ * **没人答时自动答**：会话注解里那一格设的几分钟（`control::asks` 判只管提问）；关 ⇒ `null`。不累加，每次现读。
+ */
+autoAnswer: number | null, 
+/**
+ * 上一条提问没人答、已替人答过 ⇒ 写好的那一句（「10 分钟没人答，已自动答：…」，这条会话下一次挂上提问才换掉）；没有 ⇒ `null`。不累加，每次现查。
+ */
+autoAnswered: Words | null, 
+/**
  * 这个会话里那一家说有毛病的 MCP 服务器（要登录 · 断开 · 还在连），按名字排；没列的不等于连上了。
  */
 mcp: Array<McpTrouble>, 
 /**
- * 由谁启动（会话血缘里它的主会话）；不是谁起的 ⇒ `null`。不累加，每次现查（`prior` 里那一份不用）。
+ * 由谁启动（会话血缘里它的主会话）；不是谁起的 ⇒ `null`。不累加，每次现查。
  */
 startedBy: Kin | null, 
 /**
  * 它起的子会话（按起的先后）；不累加，每次现查。
  */
 children: Array<Kin>, 
+/**
+ * **状态一句里会走的那一截**：pidfile 此刻说的那一态 ＋ 记录里的事实（在跑的那一步 · 等的种类与起点 · 最后一句的时刻），[`line_of`] 写。
+ * 不活 ⇒ `null`。不累加，每次现查。
+ */
+line: FactsLine | null, 
 /**
  * 认不出、又不成卡的行（那一家的簿记行：没见过的类型、没有链上身份）：不在消息流里画，在这里照实说几行、哪几种。一行都没有 ⇒ `null`。
  */

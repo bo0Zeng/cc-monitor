@@ -15,6 +15,17 @@ use super::product::{DONE, DROPPED};
 use copy_core::copy_text;
 use serde_json::{json, Value};
 
+/// 一个 id 对到的会话（`PlanWho`）此刻活不活：活着 ⇒ `Some(在干什么)`；不活 · 认不出 ⇒ `None`。只读那一格的整份脸。
+pub(crate) fn live_of(who: &Value) -> Option<Option<crate::agents::SessionActivity>> {
+    match serde_json::from_value::<crate::wire::SessionFace>(who.get("face")?.clone())
+        .ok()?
+        .live
+    {
+        crate::wire::FaceLive::Yes { activity } => Some(activity),
+        crate::wire::FaceLive::No => None,
+    }
+}
+
 /// 顶块的 id（pb 的规矩：顶那一块叫 project）。
 pub(crate) const TOP_BLOCK: &str = "project";
 
@@ -150,8 +161,8 @@ pub(crate) fn of_slice(sl: &Value, entered: Option<&str>) -> Vec<Value> {
             // 认不出 ⇒ 说不清停没停、问没问。
             continue;
         }
-        let alive = o.get("alive").and_then(Value::as_bool).unwrap_or(false);
-        if !alive {
+        let live = live_of(o);
+        if live.is_none() {
             if !block_finished(sl, b) {
                 out.push(need(
                     "ended",
@@ -161,7 +172,7 @@ pub(crate) fn of_slice(sl: &Value, entered: Option<&str>) -> Vec<Value> {
                     sid.clone(),
                 ));
             }
-        } else if o.get("activity").and_then(Value::as_str) == Some("needs_you") {
+        } else if live == Some(Some(crate::agents::SessionActivity::NeedsYou)) {
             let at = b
                 .get("at")
                 .filter(|a| a.is_string())

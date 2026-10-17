@@ -16,10 +16,10 @@ fn it_embeds_the_one_table_on_disk() {
     assert!(!entries().is_empty(), "表解析出 0 条");
     assert_eq!(
         copy_text(
-            "panePreview.head.title",
-            &[("origin", "devbox"), ("target", "%1")]
+            "sessionOpen.attached.body",
+            &[("machine", "devbox"), ("name", "%1")]
         ),
-        "预览 · devbox · tmux 会话 %1"
+        "devbox · tmux 会话「%1」"
     );
 }
 
@@ -28,8 +28,8 @@ fn it_embeds_the_one_table_on_disk() {
 fn a_missing_key_says_its_name_instead_of_panicking() {
     assert_eq!(copy_text("no.such.key", &[]), "〔no.such.key〕");
     assert_eq!(
-        copy_text("panePreview.head.title", &[("origin", "devbox")]),
-        "预览 · devbox · tmux 会话 {target}"
+        copy_text("sessionOpen.attached.body", &[("machine", "devbox")]),
+        "devbox · tmux 会话「{name}」"
     );
 }
 
@@ -37,9 +37,9 @@ fn a_missing_key_says_its_name_instead_of_panicking() {
 #[test]
 fn the_static_form_is_the_same_text_and_lives_forever() {
     fn once() -> &'static str {
-        crate::copy_static!("panePreview.head.refresh")
+        crate::copy_static!("accountChip.menu.refresh")
     }
-    assert_eq!(once(), copy_text("panePreview.head.refresh", &[]));
+    assert_eq!(once(), copy_text("accountChip.menu.refresh", &[]));
     assert!(
         std::ptr::eq(once(), once()),
         "同一个调用点取两次不是同一块内存"
@@ -92,34 +92,34 @@ fn the_interpolation_is_one_pass_and_never_rescans_a_value() {
     // 值里带另一个参数的占位符：原样留着（先前逐个 replace ⇒ `[%1] tmux: %1`）。
     assert_eq!(
         copy_text(
-            "panePreview.head.title",
-            &[("origin", "{target}"), ("target", "%1")]
+            "sessionOpen.attached.body",
+            &[("machine", "{name}"), ("name", "%1")]
         ),
-        "预览 · {target} · tmux 会话 %1"
+        "{name} · tmux 会话「%1」"
     );
     // 参数给的顺序反过来也一样（先前的写法只在一个方向上重扫 —— 顺序不该是语义的一部分）。
     assert_eq!(
         copy_text(
-            "panePreview.head.title",
-            &[("target", "{origin}"), ("origin", "devbox")]
+            "sessionOpen.attached.body",
+            &[("name", "{machine}"), ("machine", "devbox")]
         ),
-        "预览 · devbox · tmux 会话 {origin}"
+        "devbox · tmux 会话「{machine}」"
     );
     // 值里带它自己的占位符、带花括号残片：都原样。
     assert_eq!(
         copy_text(
-            "panePreview.head.title",
-            &[("origin", "{origin}"), ("target", "{a{b}")]
+            "sessionOpen.attached.body",
+            &[("machine", "{machine}"), ("name", "{a{b}")]
         ),
-        "预览 · {origin} · tmux 会话 {a{b}"
+        "{machine} · tmux 会话「{a{b}」"
     );
     // 正控：两个占位符都真换了（不是「一个都不换」）。
     assert_eq!(
         copy_text(
-            "panePreview.head.title",
-            &[("origin", "devbox"), ("target", "%1")]
+            "sessionOpen.attached.body",
+            &[("machine", "devbox"), ("name", "%1")]
         ),
-        "预览 · devbox · tmux 会话 %1"
+        "devbox · tmux 会话「%1」"
     );
 }
 
@@ -288,4 +288,25 @@ fn the_shared_count_golden_agrees_with_this_reader() {
         })
         .collect();
     assert!(wrong.is_empty(), "计数与金样不符：{wrong:?}");
+}
+
+/// 短写的计数（`1% ≈ 2.1M` 那一格）：不满一千写整数；往上按千进位到 K · M · B，不满 10 带一位小数、否则取整（都四舍五入），
+/// 舍到 1000 的进一档。
+#[test]
+fn short_counts_round_into_k_m_b() {
+    for (n, want) in [
+        (0, "0"),
+        (999, "999"),
+        (1_000, "1.0K"),
+        (9_949, "9.9K"),
+        (9_950, "10K"),
+        (25_000, "25K"),
+        (999_499, "999K"),
+        (999_500, "1.0M"),
+        (2_100_000, "2.1M"),
+        (1_500_000_000, "1.5B"),
+        (u64::MAX, "18446744074B"),
+    ] {
+        assert_eq!(crate::count_short(n), want, "{n}");
+    }
 }

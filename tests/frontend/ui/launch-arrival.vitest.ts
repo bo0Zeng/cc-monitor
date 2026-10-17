@@ -89,7 +89,7 @@ describe("等它", () => {
     expect(capture).toHaveBeenCalledWith("devbox", "cc-s1");
     expect(toast.mock.calls[0][0]).toBe(copyText("launchArrival.missed.title"));
     expect(toast.mock.calls[0][1]).toBe(
-      copyText("launchArrival.missed.words", { secs: "45", machine: "devbox", name: "cc-s1", words: "$ claude --resume s1\nbash: claude: command not found\n$" }),
+      copyText("launchArrival.missed.words", { dur: "45s", machine: "devbox", name: "cc-s1", words: "$ claude --resume s1\nbash: claude: command not found\n$" }),
     );
   });
 
@@ -100,8 +100,8 @@ describe("等它", () => {
     await vi.advanceTimersByTimeAsync(ARRIVAL_BUDGET_MS + 1);
     const bodies = toast.mock.calls.map((c) => String(c[1])).sort();
     expect(bodies).toEqual([
-      copyText("launchArrival.missed.noScreen", { secs: "45", machine: "devbox", name: "cc-x", why: "Error: 没有这个会话" }),
-      copyText("launchArrival.missed.inWindow", { secs: "45", machine: copyText("control.machine.local") }),
+      copyText("launchArrival.missed.noScreen", { dur: "45s", machine: "devbox", name: "cc-x", why: "Error: 没有这个会话" }),
+      copyText("launchArrival.missed.inWindow", { dur: "45s", machine: copyText("control.machine.local") }),
     ]);
   });
 });
@@ -164,7 +164,7 @@ describe("发起方在别的窗口 ⇒ 那一句也交回那扇窗", () => {
       {
         to: "settings",
         title: copyText("launchArrival.missed.title"),
-        body: copyText("launchArrival.missed.words", { secs: "45", machine: "devbox", name: "nope-cc", words: "ccm: 无法进入目录: /home/u/nope" }),
+        body: copyText("launchArrival.missed.words", { dur: "45s", machine: "devbox", name: "nope-cc", words: "ccm: 无法进入目录: /home/u/nope" }),
         level: "error",
       },
     ]);
@@ -197,25 +197,25 @@ describe("主窗口里发起的（恢复 · cc-bus 派生 · 开窗 resume）⇒
   it("★ 带着占位要的两样（目录 · 哪一家）、发起方是主窗口 ⇒ 交占位标签页（同起新会话那一件）、自己不计时；别的窗口发起的照旧", async () => {
     const slot = vi.fn((_spec: unknown) => true);
     setArrivalSlots(slot);
-    watchArrival(spec({ match: { sid: "s1" }, tmuxName: "orders-cc", slot: { cwd: "/w/orders", agent: "claude" } }));
-    watchArrival(spec({ match: { cwd: "/w/x" }, from: "main", slot: { cwd: "/w/x", agent: "codex" } }));
+    watchArrival(spec({ match: { sid: "s1" }, tmuxName: "orders-cc", slot: { cwd: "/w/orders" } }));
+    watchArrival(spec({ match: { cwd: "/w/x" }, from: "main", slot: { cwd: "/w/x" } }));
     expect(slot.mock.calls.map((c) => c[0])).toEqual([
-      { origin: "devbox", cwd: "/w/orders", tmuxName: "orders-cc", agent: "claude", match: { sid: "s1" } },
-      { origin: "devbox", cwd: "/w/x", tmuxName: null, agent: "codex", match: { cwd: "/w/x" } },
+      { origin: "devbox", cwd: "/w/orders", tmuxName: "orders-cc", match: { sid: "s1" } },
+      { origin: "devbox", cwd: "/w/x", tmuxName: null, match: { cwd: "/w/x" } },
     ]);
     await vi.advanceTimersByTimeAsync(ARRIVAL_BUDGET_MS + 1);
     expect(toast, "交给占位标签页了，到点不再说「没看到」").not.toHaveBeenCalled();
-    watchArrival(spec({ match: { sid: "s9" }, from: "settings", slot: { cwd: "/w/s", agent: "claude" } }));
+    watchArrival(spec({ match: { sid: "s9" }, from: "settings", slot: { cwd: "/w/s" } }));
     expect(slot, "设置窗里发起的照旧（主窗口没被看着）").toHaveBeenCalledTimes(2);
     setArrivalSlots(null);
-    watchArrival(spec({ match: { sid: "s8" }, slot: { cwd: "/w/s", agent: "claude" } }));
+    watchArrival(spec({ match: { sid: "s8" }, slot: { cwd: "/w/s" } }));
     expect(slot, "没有占位标签页（不是主窗口）⇒ 照旧").toHaveBeenCalledTimes(2);
   });
 
   it("★ 占位那一件不接（已有那个会话的标签页，切过去了）⇒ 照旧计时：到点没报到说「没看到」", async () => {
     const slot = vi.fn(() => false);
     setArrivalSlots(slot);
-    watchArrival(spec({ match: { sid: "s1" }, tmuxName: null, slot: { cwd: "/w/orders", agent: "claude" } }));
+    watchArrival(spec({ match: { sid: "s1" }, tmuxName: null, slot: { cwd: "/w/orders" } }));
     expect(slot).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(ARRIVAL_BUDGET_MS + 1);
     expect(toast, "没接 ⇒ 到点照常说").toHaveBeenCalledTimes(1);

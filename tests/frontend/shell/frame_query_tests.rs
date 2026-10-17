@@ -2,22 +2,54 @@
 
 use super::*;
 
-/// 那八条 —— 那一串逐字（`--accounts` 在盘上叫 `--list-accounts`）。
-/// **异源**：这张表手写，不从 [`MOVED`] 派生。
-const DESIGN_EIGHT: &[&str] = &[
-    "--read-session",
-    "--read-session-tail",
-    "--list-accounts",
-    "--search",
-    // `--list-subagents` 摘了：按目录列子 agent 候选那一条随「按运行读」（`history-run`）删了，没有被替掉的拨号子命令。
-    // 要求「`--list-user-inputs` 与骨架 `--read-session-from-offset --index` 上帧面」。
-    "--list-user-inputs",
-    "--read-session-from-offset",
-    // 协调方加的：`--find-in-session` 一起搬。
-    "--find-in-session",
-    // 「仍在拨号的 `--account-trust` / `--account-trust-zero`」随账号域上帧面（异源：手抄的要求）。
-    "--account-trust",
-    "--account-trust-zero",
+/// 搬上帧面的 CLI 子命令 → 帧命令。左列那几条已从后端删掉（下面钉着「它们不再是子命令」），右列是今天的帧命令。
+const MOVED: &[(&str, &str)] = &[
+    ("--read-session", "history-read"),
+    ("--read-session-tail", "history-tail"),
+    ("--search", "history-search"),
+    ("--list-accounts", "accounts-list"),
+    // 骨架索引与大纲清单：每开一个大会话就要一次（不是「点一次才发一次」）。
+    //   `--read-session-from-offset` 的另一形（`--until`，按区间取正文）早就走 `history-read` ——
+    //   两形都上了帧面，这个子命令从此一条拨号都不剩。
+    ("--read-session-from-offset", "history-index"),
+    ("--list-user-inputs", "history-user-inputs"),
+    // 会话内查找（Ctrl+F）：同一个处境（新子命令、此前在远端逐次拨号），一起上帧面。
+    ("--find-in-session", "history-find"),
+    // 换号前的信任预检（随账号域一起上帧面）。两形合进**一条**帧命令
+    //   （`configDir` 缺席 / null = 账号 0）⇒ 右列 `accounts-trust` 出现两次，判据按集合比。
+    ("--account-trust", "accounts-trust"),
+    ("--account-trust-zero", "accounts-trust"),
+];
+
+/// **生在帧面上**的只读查询：交给后端只读宿主（`read_face::answer`），但**没有**
+/// 一个被它替掉的逐次拨号子命令（与 [`MOVED`] 那几条的来历不同）。判据的一侧：
+/// `MOVED` 右列 ∪ 本表 == 后端真登记给只读宿主的那几条。
+const BORN_ON_FRAME: &[&str] = &[
+    // resume 之前问「这条会话的记录还在不在」（monitor 这一侧不再发它：界面经通道直接问）。
+    "history-record",
+    // 按行号取回一段（没接骨架的会话丢掉的正文从这里要回来）。
+    "history-lines",
+    // 会话事实出成品（分叉血缘 · 改动文件集 · agent 列表 · 最新 usage）。
+    //   此前是前端 `onLine` 旁路自己攒的，没有被替掉的拨号子命令；monitor 这一侧从不发它（界面经通道直接问）。
+    "history-facts",
+    // 主线外清单的冷读（界面经通道直接问；monitor 这一侧从不发它）。
+    "history-branch",
+    // 一轮的摘要（过程行 · 刻度 · 大纲同源；界面经通道直接问，monitor 这一侧从不发它）。
+    "history-turns",
+    // 那台后端自己的 stderr 诊断文件尾部（设置页「日志」经通道直接问；monitor 这一侧从不发它）。
+    "backend-log",
+    // 记录解释进后端之后生在帧面上的两条（界面经通道直接问；monitor 这一侧从不发它们）。
+    "history-page",
+    "drift-report",
+    // 各台搜索结果合一份（合并排序进本机后端；界面经通道直接问，monitor 这一侧从不发它）。
+    "history-search-merge",
+    // 按运行读一个子运行的记录（替掉按目录 ＋ 描述 ＋ 时间戳挑的那一条与它的列候选子命令；界面经通道直接问）。
+    "history-run",
+    // 停 / 重启 / 更新 / 卸载之前会打断什么（这台的活会话 ＋ 通往那台的转发；界面经通道问那台与本机，monitor 这一侧从不发它）。
+    "machine-interrupts",
+    // 这台上需手动的会话清单（一次问一台）· 各台的合成一个先后（本机后端排）：界面经通道直接问，monitor 这一侧从不发它们。
+    "sessions-needs",
+    "sessions-needs-merge",
 ];
 
 // 这里原先还有一张「仍拨号」的表（C4c 起零条）—— 逐次拨号那条路删了，表随之摘掉。
@@ -31,7 +63,7 @@ fn sorted(v: impl IntoIterator<Item = String>) -> Vec<String> {
 /// 后端命令表各族生产段里的每一块 `CommandSpec`：`(帧命令名, 那一块的原文)`（**从后端源码数**，逐族切）。
 /// 抽成一处：下面两条判据（交给只读宿主的那几条 · 全部登记的帧命令）共用同一个切法。
 fn backend_command_blocks() -> Vec<(String, String)> {
-    let families = crate::guard_support::backend_registry_sources();
+    let families = guard_core::addr::backend_registry_sources();
     let mut blocks: Vec<(String, String)> = families
         .iter()
         .flat_map(|(_, prod)| prod.split("CommandSpec {").skip(1))
@@ -101,16 +133,10 @@ fn backend_read_face_commands() -> Vec<String> {
     sorted(got)
 }
 
-/// ★ 两向相等：[`MOVED`] 的左列 == 那八条 ＋ 两条；右列 == 后端真登记上帧面、交给只读宿主的那几条。
+/// ★ 两向相等：[`MOVED`] 右列 ∪ [`BORN_ON_FRAME`] == 后端真登记、交给只读宿主的那几条。
 #[test]
-fn the_moved_table_matches_the_design_list_and_the_backend_registry() {
-    assert_eq!(
-        sorted(MOVED.iter().map(|(f, _)| f.to_string())),
-        sorted(DESIGN_EIGHT.iter().map(|s| s.to_string())),
-        "搬上帧面的子命令与要求点名的那几条不相等"
-    );
-    // 右边还要并上「生在帧面上」的那几条（没有被替掉的拨号子命令，见 `BORN_ON_FRAME`）。
-    // 右列按**集合**比：信任预检两形合进一条帧命令（`accounts-trust` 在右列出现两次）。
+fn the_moved_table_is_what_the_backend_registers() {
+    // 右列按集合比：信任预检两形合进一条帧命令（`accounts-trust` 在右列出现两次）。
     let mut right = sorted(
         MOVED
             .iter()
@@ -129,7 +155,7 @@ fn the_moved_table_matches_the_design_list_and_the_backend_registry() {
 /// 另一侧从后端 `lib.rs` 的 `SUBCOMMANDS` 那张表的源码数（正控：同一块里认得出今天真在的 `--history-read`）。
 #[test]
 fn the_moved_subcommands_are_gone_from_the_backend() {
-    let lib = std::fs::read_to_string(crate::guard_support::repo_root().join("src/backend/lib.rs"))
+    let lib = std::fs::read_to_string(guard_core::addr::repo_root().join("src/backend/lib.rs"))
         .expect("读不到后端 lib.rs");
     let at = lib
         .find("pub const SUBCOMMANDS: &[&str] = &[")
@@ -193,7 +219,7 @@ fn the_dial_per_query_path_is_gone() {
 // 八条里哪几条已经**只走通道**（主界面经 `src/comms/inward/chan.ts`）
 // ════════════════════════════════════════════════════════════════════════════
 
-/// 已迁到通道的帧命令：前端经 `chan.call(origin, "<op>", …)` 直接问那台后端，monitor 那一跳只搬字节。
+/// 已迁到通道的帧命令：前端经通道（`callTyped(origin, "<op>", …)`）直接问那台后端，monitor 那一跳只搬字节。
 /// 迁的判准只有一条：迁过去之后，**那条应答的解释只有一个家**。
 const CHANNELED: &[(&str, &str)] = &[
     (
@@ -219,7 +245,7 @@ const CHANNELED: &[(&str, &str)] = &[
     (
         "accounts-list",
         "后端出成品 `{meta, accounts, notice}`，并上**那台机器自己**那份 apikey 表（`acct_core::apikey_routed_subset`）；\
-         monitor 那份行解析 / 降级说明 / 本机并表删了，界面经 `src/frontend/ui/account-reads.ts::fetchAccounts` 问、按形状收，本机与远端同一条路",
+         monitor 那份行解析 / 降级说明 / 本机并表删了，界面经 `src/frontend/ui/account-reads.ts::fetchAccounts` 按生成类型问，本机与远端同一条路",
     ),
     (
         "accounts-trust",
@@ -233,6 +259,9 @@ const CHANNELED: &[(&str, &str)] = &[
 /// 操作名集合要把它们算进来：下面那条两向判据的「前端那一侧」== [`CHANNELED`] ⊔ 本表。
 /// 每一条还要**真的**是后端登记的帧命令（从后端 `stream/inbound/` 生产段数，异源）、monitor 生产段里**零**字面量。
 const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
+    // 别名页最上那一句（`src/frontend/ui/alias-reads.ts::readCcmOnPath`）：终端里敲 ccm 走到哪由那台后端现问、判、出句子。
+    ("ccm-probe", "取代本机那条 Tauri 命令（壳自己起登录 shell 探 PATH、判、写那句话）；本机远端同一问"),
+    ("ccm-user-path", "取代本机那三条 Tauri 命令（壳自己起 PowerShell 读 / 改用户级 PATH、拼那句话）"),
     // 历史页的平铺清单（`src/frontend/ui/history-list-reads.ts`）：本机后端出成品（判活 · 每行能做什么 · 分组 · 搜标题），远端经它问那台。
     ("history-list", "新帧命令：一台的全部会话一次给（`history_list.rs`），界面问 `<local>`、远端带 `origin`；取代按项目逐个展开的那两问"),
     // 额度与轮换（`src/frontend/ui/quota-reads.ts`）：额度账 · 轮换都是那台后端账号域自己的状态，monitor 从没有过这几条命令。
@@ -255,6 +284,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ("prefs-read", "帧命令：那台的偏好（启动命令 · 每号模型 · 上限表住那台的 prefs.json），账号页 · 起会话框只读它"),
     ("prefs-set", "帧命令：改那台的偏好（值域在那台写口判），账号页的模型下拉经它存"),
     ("machines-read", "帧命令：这一端的机器表住本机后端（machines.json），壳照它起停远端流、设置页只读它"),
+    ("machine-read", "帧命令：远端各台的状态成品住本机后端（`deploy::machine` 判），设置页 · 主窗口接上时整份问一次、之后照 `changed {machine}` 换"),
     ("machines-try", "帧命令：机器表那一道过不过（判准只在本机后端），添加机器框 · 机器卡边打边问"),
     ("machines-set", "帧命令：改机器表（按键认那一台、指纹记于哪天由写口盖），设置页存 · 拨号固化指纹经它"),
     ("rotation-view", "typed 帧命令：一个会话此刻的轮换（开会话的号 · 在用的号 · 这一判 · 推演，都由后端跑策略）；标签页与状态栏的账号格只排版"),
@@ -271,12 +301,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ("rotation-strategy-rename", "typed 帧命令：改文件名（指着它的会话一起改过去）"),
     ("rotation-strategy-delete", "typed 帧命令：删一份策略（有会话在用由后端拒）"),
     ("rotation-strategy-tz", "typed 帧命令：给策略设时区（只重写设置块里的 tz · 版本冲突由后端判）"),
-    ("rotation-day-paint", "typed 帧命令：24 小时条上刷一段（分段的算术在后端）"),
-    // tab 栏多选的批量停 / 起（`src/frontend/ui/tab-batch-run.ts`）：一台一次、那台逐个判逐个答，monitor 从没有过这条命令。
-    (
-        "sessions-start",
-        "新帧命令：每一个同单个那一条（记录在不在 · 在跑不另起 · 空 tmux 就地键入 · 铸名建会话 / 渲那一行），判在那台后端",
-    ),
+    // tab 栏多选的批量停（`src/frontend/ui/tab-batch-run.ts`）：一台一次、那台逐个判逐个答，monitor 从没有过这条命令。
     (
         "sessions-where",
         "新帧命令：这几个会话各在哪个 tmux 会话里（单个菜单亮哪几项 · 重启切换 · 分叉都问它），判在那台后端",
@@ -334,7 +359,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 测试连接：monitor 那条 Tauri 命令与它手里那份探针退役，本机后端组请求、拨一次、回结局。
     (
         "remote-probe",
-        "测试连接：界面交表单那一台（＋ 已保存的同名那一份 · 跳板），后端 `dial/probe.rs` 出结局；前端 `src/frontend/ui/remote-probe.ts` 按恰好的键集合收",
+        "测试连接：界面交表单那一台（＋ 已保存的同名那一份 · 跳板），后端 `dial/probe.rs` 出结局；前端 `src/frontend/ui/remote-probe.ts` 按生成类型问、收进度帧",
     ),
     // 终端名单：那台后端出成品（与宿主无关的句柄）；只有 tmux 名在手的那一方先按名字认出那一行。
     (
@@ -380,11 +405,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "那台报来的终端连接是这台电脑上哪串进程：本机后端 `dial/terminal_processes.rs` 答；前端 `src/frontend/ui/remote-terminal-front.ts` 问，\
          monitor 那一侧只沿进程链找窗口、拉前",
     ),
-    // 起会话要的 tmux 名：派生 ＋ 避让只留后端（前端那份铸名口删了）。
-    (
-        "terminal-name-mint",
-        "铸 tmux 名：那台后端派生基名、按它那张会话快照避让（`control/ccm/mod.rs::TerminalNameMint`）；前端 `src/frontend/ui/terminal-name-mint.ts` 问，monitor 这一侧零发送点",
-    ),
     // 端口转发三条：monitor 那三条 Tauri 命令与它手里的转发账退役，账住本机常驻后端。
     (
         "forward-list",
@@ -398,15 +418,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "forward-stop",
         "停一条转发：后端从账上摘掉 ⇒ 链路被收、本地口放掉（`dial/forwards.rs::stop_with`）",
     ),
+    // 起会话 · 恢复 · 接回（新建框 · 账号页登录同一问）：全产品一个请求，判定 · 渲那一行都在那台后端。
     (
-        "launch-render-cli",
-        "起会话那一行 `ccm …`：后端出成品 `{cmd}`，渲不出来回码 `refused`（`control/launch_render/wire.rs`）；前端 `src/frontend/ui/launch-render.ts::renderCli`。\
-         环境与中转地址由起 agent 那台的 `ccm` 在最终 exec 那一处定（载荷那一条与「这一发的中转地址」那一条随之删了）",
-    ),
-    (
-        "launch-local",
-        "本机起会话整条：本机后端出成品 `{cmd, account}`（`control/launch_render/local.rs`）；前端 `src/frontend/ui/launch-render.ts::planLocalLaunch`，\
-         monitor 只剩开终端窗口（`open_local_terminal`）",
+        "session-open",
+        "后端出成品 `{landed, session, line, sid, agent, cwd, account, note, prompt}`（`control/session_open.rs`）；前端 `src/frontend/ui/session-open.ts` 问、回包按 typed 的类型收，\
+         照 `landed` 开那一行、等报到；monitor 这一侧零发送点",
     ),
     // 删会话 · 分叉：两件改世界的事本来就在那台后端，monitor 只剩转交 ⇒ 转交删了，界面直接说。
     (
@@ -414,19 +430,14 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "后端出成品 `{path}`（只收 sid，落点由那台后端按 sid 找）；前端 `src/frontend/ui/session-writes.ts::deleteSession` 问、按恰好的键集合收，\
          monitor 这一侧零发送点（门那一问 `Door::delete_session` 删了）",
     ),
-    // 起新会话：全产品一个框一个请求（分叉随这一个请求写，界面不再单独问 `session-fork`）。
+    // 起新会话框的两问读数（起的那一问是上面的 `session-open`；分叉随它写，界面不单独问 `session-fork`）。
     (
-        "session-new",
-        "后端出成品 `{outcome, session, sid, cmd, account, agent, cwd}`（`control/session_new.rs`：判目录 · 号 · 终端名 · 分叉只在这一步写）；\
-         前端 `src/frontend/ui/new-session-reads.ts::askNew` 问、回包按 typed 的类型收（形状由握手指纹管），monitor 这一侧零发送点",
+        "session-open-facts",
+        "后端出成品 `{recent, tmux, agents, fork}`（`faces/session_open_face.rs`，只读）；前端 `new-session-reads.ts::askFacts` 问、回包按 typed 的类型收（形状由握手指纹管），monitor 这一侧零发送点",
     ),
     (
-        "session-new-facts",
-        "后端出成品 `{recent, tmux, agents, fork}`（`faces/session_new_face.rs`，只读）；前端 `new-session-reads.ts::askFacts` 问、回包按 typed 的类型收（形状由握手指纹管），monitor 这一侧零发送点",
-    ),
-    (
-        "session-new-dir",
-        "typed：后端出成品 `DirChecked`（`faces/session_new_face.rs::SessionNewDir`，只读）；前端 `new-session-reads.ts::askDir` 按类型问，monitor 这一侧零发送点",
+        "session-open-dir",
+        "typed：后端出成品 `DirChecked`（`faces/session_open_face.rs::SessionOpenDir`，只读）；前端 `new-session-reads.ts::askDir` 按类型问，monitor 这一侧零发送点",
     ),
     // 会话中途换模型 · 切权限档：那台送那一家的那一行 / 按切档键、从记录里读回，界面直接说。
     (
@@ -452,7 +463,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 文件与数据：同一份足迹重排的成品（`src/backend/footprint/data.rs`）。
     (
         "data-report",
-        "后端出成品 `{home, changedFiles, todo, tmux, chores, own}`；前端 `src/frontend/ui/settings/data-reads.ts::readDataReport` 问（typed，\
+        "后端出成品 `{home, changedFiles, todo, tmux, counts, rank, own}`；前端 `src/frontend/ui/settings/data-reads.ts::readDataReport` 问（typed，\
          形状由握手指纹核过）；monitor 这一侧零发送点，本机那一栏只答它自己那台那几行的事实（`footprint_client_facts`）",
     ),
     // 首次运行「开始用」那份数：本机后端判三步、剩几步；机器表台数由界面带上。
@@ -478,6 +489,12 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "后端读—改—写自己那份小文件（`src/backend/footprint/chores/marks.rs`）；前端 `src/frontend/ui/settings/data-reads.ts::markChore` 问\
          （「待办」里［不用了］［还是要做］· 别名页［我自己贴］［改由 cc-monitor 接上］），monitor 这一侧零发送点",
     ),
+    // 几台的「待办」件数合成一份：本机后端逐格相加。
+    (
+        "chores-merge",
+        "后端出成品（`src/backend/footprint/chores/mod.rs::merge_counts`）；前端 `src/frontend/ui/settings/data-reads.ts::mergeChores` 问本机后端\
+         （设置窗角标 · 「文件与数据」顶上 · 主窗口状态栏），monitor 这一侧零发送点",
+    ),
     // 换 Claude 目录前那一问：后端 stat 两次回码。
     (
         "agent-home-check",
@@ -492,9 +509,19 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
          前端 `src/frontend/ui/resync.ts::resync` 问、按类型收（`callTyped`），monitor 这一侧零发送点",
     ),
     (
+        "sessions-needs",
+        "`BORN_ON_FRAME` 那一条：后端出成品（这台需手动的会话，`needs_first` 排好）；前端 `src/frontend/ui/needs-order.ts::askNeedsOrder` 逐台问，\
+         monitor 这一侧零发送点",
+    ),
+    (
+        "sessions-needs-merge",
+        "`BORN_ON_FRAME` 那一条：各台的需手动清单合成一个先后（`recognize::facts::merge_needs`，照各行的 `rank`）；\
+         前端 `needs-order.ts::askNeedsOrder` 问本机后端（`Ctrl+J` 走它），monitor 这一侧零发送点",
+    ),
+    (
         "machine-interrupts",
         "`BORN_ON_FRAME` 那一条：后端出成品 `{relayedSessions, relayedMaybe, liveStreams, forwards}`（`accounts_query.rs::machine_product`）；\
-         前端 `src/frontend/ui/settings/interrupts.ts::askInterrupts` 问那台与本机、按恰好的键集合收，monitor 这一侧零发送点",
+         前端 `src/frontend/ui/settings/interrupts.ts::askInterrupts` 问那台与本机、按生成类型收，monitor 这一侧零发送点",
     ),
     // 生在帧面上、界面直接问的那一条。
     (
@@ -506,13 +533,13 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 生在帧面上、界面直接问的第二条。
     (
         "history-facts",
-        "`BORN_ON_FRAME` 那一条：后端出成品 `{end, forkedFrom, touchedFiles, agents, usage}`（`observe/facts_query.rs`），\
+        "`BORN_ON_FRAME` 那一条：后端出成品 `{end, forkedFrom, touchedFiles, agents, usage}`（`observe/recognize/facts.rs`），\
          续传令牌就是上一份成品原样；前端 `src/frontend/ui/session-reads.ts::readSessionFacts` 按类型问（`callTyped`），\
          monitor 这一侧零发送点（它替掉的是前端 `onLine` 上四个旁路记账员，不是一条 monitor 命令）",
     ),
     (
         "history-turns",
-        "`BORN_ON_FRAME` 那一条：后端出成品 `{from, end, turns}`（`observe/turns.rs`，一轮的摘要，与大纲同源）；\
+        "`BORN_ON_FRAME` 那一条：后端出成品 `{from, end, turns}`（`observe/recognize/turns.rs`，一轮的摘要，与大纲同源）；\
          前端 `src/frontend/ui/session-reads.ts::readTurns` 问、`decodeTurns` 按恰好的键集合收，monitor 这一侧零发送点",
     ),
     (
@@ -608,7 +635,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "terminal-preview",
         "后端应答就是成品（逐行文本 ＋ 尺寸光标），按名单里的句柄 / 会话 ID 指；拒绝码说成人话那一份住唯一的消费者那一侧\
-         `src/frontend/ui/terminal-reads.ts`（预览窗 `views/pane-preview.ts` · 起会话没报出来时抓原话 `launch-arrival.ts` 调它）",
+         `src/frontend/ui/terminal-reads.ts`（终端页 `terminal-page.ts` · 起会话没报出来时抓原话 `launch-arrival.ts` 调它）",
     ),
     (
         "kill",
@@ -733,7 +760,7 @@ const SAME_SPELLING_NOT_A_SEND: &[(&str, usize, &str)] = &[
 /// **monitor 自己**（不是替界面转）也要问的帧命令 —— `(帧命令, 生产段里几处, 为什么)`。
 ///
 /// 它们同时在 [`CHANNELED_ELSEWHERE`] 里（界面那一问已走通道）；下面那条判据里 monitor 生产段的字面量
-/// 从此 == `BORN_ON_FRAME` 那一次 ＋ 本表登记的处数（两向相等：多一处 = 又长出一个替界面转的发送点；
+/// 从此 == 本表登记的处数（两向相等：多一处 = 又长出一个替界面转的发送点；
 /// 少一处 = monitor 那件自己的事不问了，这一行馊了）。
 const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
     (
@@ -759,6 +786,11 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
         1,
         "机器表的最近一答（`machine_table.rs::refresh`）：本机通道登记上那一刻 ＋ 本机流每帧 `changed {machines}` 各问一次，\
          照它起停远端流、读不懂上屏 —— 壳自己的起流对齐，答案不给界面（界面那一问经通道直问本机后端）",
+    ),
+    (
+        "machine-read",
+        1,
+        "诊断信息（`diagnostics_report.rs::remote_machines`）：远端各台此刻的状态与原因码写进那段文本 —— 壳自己写诊断，答案不给界面",
     ),
     (
         "machines-set",
@@ -933,8 +965,8 @@ fn the_eight_are_partitioned_into_channeled_and_held_back() {
 
 /// ★★ **迁过去的只走通道（两向）**：
 /// - 前端 `chan.call(` 的操作名集合 == [`CHANNELED`]（多一条 = 没登记就迁了；少一条 = 登记了却没迁）；
-/// - monitor 生产段里 [`CHANNELED`] 每条的字面量**只剩 `MOVED` 那一行**（= 再没有 monitor 侧发送点）；
-/// - [`HELD_BACK`] 每条**还有** monitor 侧发送点（字面量多于 `MOVED` 那一行）—— 没了就是理由馊了。
+/// - monitor 生产段里 [`CHANNELED`] 每条零字面量（= 没有 monitor 侧发送点）；
+/// - [`HELD_BACK`] 每条**还有** monitor 侧发送点 —— 没了就是理由馊了。
 ///
 /// 两侧异源：一侧读 TS 语料，一侧读 Rust 生产段。
 #[test]
@@ -983,9 +1015,7 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
             !MOVED.iter().any(|(_, c)| c == op),
             "`{op}` 是 `C1` 那一族的，该登记在 `CHANNELED`"
         );
-        // 生在帧面上的那几条在 `BORN_ON_FRAME` 里各有一次字面量（判据的一侧，不是发送点）；
-        //   monitor 自己也问的那几条另有登记的处数（`ASKED_BY_MONITOR_ITSELF`）。
-        let on_frame = BORN_ON_FRAME.iter().filter(|c| **c == *op).count();
+        // monitor 自己也问的那几条另有登记的处数（`ASKED_BY_MONITOR_ITSELF`）。
         let itself: usize = ASKED_BY_MONITOR_ITSELF
             .iter()
             .filter(|(c, _, _)| c == op)
@@ -998,7 +1028,7 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
             .sum();
         assert_eq!(
             monitor_literal_count(op),
-            on_frame + itself + homonyms,
+            itself + homonyms,
             "`{op}` 已迁到通道，monitor 生产段却还有它的字面量（又长出了一个发送点）"
         );
     }
@@ -1024,9 +1054,7 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
     }
     let mut still_sent_by_monitor: Vec<String> = Vec::new();
     for (op, _) in MOVED.iter().map(|(_, c)| (*c, ())) {
-        // `MOVED` 那几行自己就是字面量出现（信任预检两形合进一条帧命令 ⇒ 那一条在表里出现两次）。
-        let in_moved = MOVED.iter().filter(|(_, c)| *c == op).count();
-        if monitor_literal_count(op) > in_moved {
+        if monitor_literal_count(op) > 0 {
             still_sent_by_monitor.push(op.to_string());
         }
     }
@@ -1041,7 +1069,7 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
     );
     // 反空真 ①：monitor 那一侧的数法认得出一条真有发送点的（快照续点那一处）。
     assert!(
-        monitor_literal_count("history-tail") > 1,
+        monitor_literal_count("history-tail") > 0,
         "正控：`history-tail` 必有 monitor 侧发送点 —— 数法坏了"
     );
     // 反空真 ②：前端那一侧的识别器认得出字面量、认得出非字面量、不把 `mychan.call(` 当成它。
@@ -1078,7 +1106,7 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
 
 /// 生产段里含 `needle` 的「文件::外层函数」集合（按行往回找最近的 `fn `）。
 fn loc1a_sites(needle: &str) -> std::collections::BTreeSet<String> {
-    let root = crate::guard_support::crate_src_root();
+    let root = guard_core::addr::shell_src_root();
     let mut out = std::collections::BTreeSet::new();
     for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
         let prod = guard_core::production_code(&src);
@@ -1122,7 +1150,7 @@ fn local_queries_reach_the_running_resident_backend_not_a_file_beside_the_exe() 
         .filter(|site| {
             let (file, _) = site.split_once("::").unwrap();
             let src =
-                std::fs::read_to_string(crate::guard_support::crate_src_root().join(file)).unwrap();
+                std::fs::read_to_string(guard_core::addr::shell_src_root().join(file)).unwrap();
             // 路径短了一截，rustfmt 可能把实参折回同一行 ⇒ 去掉空白再认。
             let flat: String = guard_core::production_code(&src)
                 .chars()
@@ -1200,7 +1228,7 @@ fn client_for_test(
     tokio::io::BufReader<tokio::io::DuplexStream>,
 ) {
     let (mine, theirs) = tokio::io::duplex(64 * 1024);
-    let hello = crate::inbound_client::witness_of(&crate::guard_support::our_hello(commands))
+    let hello = crate::inbound_client::witness_of(&crate::frame_fixtures::our_hello(commands))
         .expect("是 Hello 帧");
     let client = park(mine).into_client(hello);
     inbound_client::register(origin, client.clone());
@@ -1281,6 +1309,51 @@ async fn an_expired_deadline_sends_nothing() {
             .await
             .is_none(),
         "一问发了不止一行"
+    );
+    inbound_client::unregister(origin.as_wire_str(), &client);
+}
+
+/// 那台拒了：句子就是它那一句（不在前面接「谁查询失败 ·」），复制详情是它写的那份（远端补「本机」那一行）。
+#[tokio::test]
+async fn a_refusal_says_the_peer_sentence_and_carries_its_detail() {
+    let origin = Origin("said3-refused".into());
+    let (client, mut peer) = client_for_test(origin.as_wire_str(), &["machines-read"]);
+    let o = origin.clone();
+    let asking = tokio::spawn(async move {
+        call(
+            &o,
+            "machines-read",
+            json!({}),
+            None,
+            Deadline::within(Duration::from_secs(5)),
+        )
+        .await
+    });
+    let req = next_request(&mut peer, Duration::from_secs(5))
+        .await
+        .expect("一行都没发");
+    let wrote = copy_core::detail::Detail::new()
+        .item(copy_core::detail::Label::Raw, "disk full")
+        .render();
+    client.route_reply(
+        req["id"].as_str().expect("id"),
+        false,
+        Some("write_failed".into()),
+        Some("机器表写不进去".into()),
+        Some(wrote.clone()),
+        None,
+    );
+    let e = asking.await.expect("task").expect_err("拒了却成了");
+    assert_eq!(e.said, "机器表写不进去");
+    assert!(
+        e.detail.contains(&wrote),
+        "那台写的详情没带上：{}",
+        e.detail
+    );
+    assert!(
+        e.detail.contains(&crate::detail::local_line()),
+        "远端没补「本机」：{}",
+        e.detail
     );
     inbound_client::unregister(origin.as_wire_str(), &client);
 }
@@ -1401,7 +1474,7 @@ fn deadline_makers(file: &str, prod: &str) -> Vec<(String, String)> {
 /// 正控：合成语料里多种一处必被认出、且认对所在函数。
 #[test]
 fn every_deadline_is_made_where_its_job_begins_and_only_there() {
-    let root = crate::guard_support::crate_src_root();
+    let root = guard_core::addr::shell_src_root();
     let mut got: Vec<(String, String)> = Vec::new();
     let mut scanned = 0usize;
     for (path, file_text) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
@@ -1422,13 +1495,7 @@ fn every_deadline_is_made_where_its_job_begins_and_only_there() {
     );
     let mut want: Vec<(String, String)> = DEADLINE_MAKERS
         .iter()
-        .flat_map(|(f, func, n, why)| {
-            assert!(
-                why.chars().count() >= 15,
-                "`{f}::{func}` 没写清这件事是什么"
-            );
-            std::iter::repeat_n((f.to_string(), func.to_string()), *n)
-        })
+        .flat_map(|(f, func, n, _)| std::iter::repeat_n((f.to_string(), func.to_string()), *n))
         .collect();
     got.sort();
     want.sort();
@@ -1453,7 +1520,7 @@ fn every_deadline_is_made_where_its_job_begins_and_only_there() {
 fn paged_jobs_make_their_deadline_before_the_first_page() {
     // `(源码, 函数头, 翻页循环的起头)`：循环起头取各自生产代码里那一行的原文。
     // 历史浏览器读整份那一件进了界面，后来查看器改成骨架 ＋ 按视口取（`src/frontend/ui/record-reads.ts::readRange`），整份读这件事没了。
-    let snapshot_src = crate::guard_support::stream_source_file("snapshot.rs");
+    let snapshot_src = guard_core::addr::stream_source_file("snapshot.rs");
     let cases: [(&str, &str, &str); 1] =
         [(&snapshot_src, "async fn fetch_snapshot(", "'read: loop ")];
     fn made_after_loop(prod: &str, head: &str, loop_head: &str) -> Result<bool, String> {

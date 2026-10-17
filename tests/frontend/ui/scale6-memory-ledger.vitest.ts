@@ -39,6 +39,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { owned } from "../../test-support/owned-tab-manager.ts";
+import { announced } from "../../test-support/session-faces";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -66,13 +67,6 @@ vi.mock("../../../src/frontend/ui/behavior", () => ({
   getBehavior: vi
     .fn()
     .mockResolvedValue({ resumeCommand: "cct" }),
-}));
-vi.mock("../../../src/frontend/ui/remote-launch-run", () => ({
-  runRemoteResume: vi.fn().mockResolvedValue(undefined),
-  runRemoteResumeTmux: vi.fn().mockResolvedValue(undefined),
-  runLocalResumeIntoExistingTmux: vi.fn().mockResolvedValue(true),
-  runRemoteResumeIntoExistingTmux: vi.fn().mockResolvedValue(true),
-  runRemoteAttach: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../../../src/frontend/ui/fork-flow", () => ({
   runForkFlow: vi.fn().mockResolvedValue(undefined),
@@ -419,7 +413,7 @@ describe("秤 6 丙：三个账本的大小进 `debugSnapshot`", () => {
 
   const feed = (p: RigPayload): void => tm.onLine(p as never);
   /** 后端给的主线外清单（会话流里的 `branch` 格，整份）。 */
-  const branch = (off: string[]): void => tm.onSessionBranch({ session_id: "s1", off } satisfies SessionBranchPayload);
+  const branch = (off: string[]): void => tm.onSessionBranch({ sid: "s1", off } satisfies SessionBranchPayload);
   const peek = (sid: string): Tab =>
     (tm as unknown as { store: { tabs: Map<string, Tab> } }).store.tabs.get(sid)!;
   const snap = (): Record<string, unknown> =>
@@ -430,7 +424,7 @@ describe("秤 6 丙：三个账本的大小进 `debugSnapshot`", () => {
     const barEl = document.createElement("div");
     const streamRootEl = document.createElement("div");
     document.body.append(barEl, streamRootEl);
-    tm = owned(new TabManager(barEl, streamRootEl));
+    tm = owned(announced(new TabManager(barEl, streamRootEl)));
   });
   afterEach(() => vi.unstubAllGlobals());
 
@@ -496,7 +490,7 @@ describe("秤 6 丙：三个账本的大小进 `debugSnapshot`", () => {
 
   it("别的会话的清单不动这个会话的数", async () => {
     await threeLedgersNonEmpty();
-    tm.onSessionBranch({ session_id: "s-other", off: ["x", "y", "z", "w", "v"] });
+    tm.onSessionBranch({ sid: "s-other", off: ["x", "y", "z", "w", "v"] });
     expect(snap().branchOff).toBe(4);
   });
 

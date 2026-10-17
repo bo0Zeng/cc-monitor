@@ -98,6 +98,7 @@ vi.mock("../../../src/comms/inward/chan", async () => (await import("../../test-
 
 import { bindEvents } from "../../../src/frontend/ui/events";
 import { streamFake } from "../../test-support/chan-stream-fake.ts";
+import { nonEmpty } from "../../test-support/non-empty.ts";
 
 // ───────────────────────── 镜像常量（下面第 3 条判据机检它们没漂）─────────────────────────
 
@@ -228,7 +229,7 @@ async function runReplay(total: number, ticksPerGap: number): Promise<ReplayResu
   const onBatchEnd = vi.fn();
   await bindEvents({
     onLine,
-    onSessionEnded: vi.fn(),
+    onSessionFace: vi.fn(),
     onBatchStart,
     onBatchEnd,
   } as never, { streams: [{ origin: "<local>", kind: "session-lines" }] });
@@ -575,8 +576,8 @@ describe("秤 5 · C：本文件镜像的那 3 个常量没有漂（读，不改
     const events = read("../../../src/frontend/ui/events.ts");
     const replay = read("../../../src/frontend/shell/src/event_replay.rs");
     // 抽取器自检：文件必须真的读到了东西。
-    expect(events.length, "src/frontend/ui/events.ts 读出来是空的 —— 本条会零命中地绿").toBeGreaterThan(1000);
-    expect(replay.length, "event_replay.rs 读出来是空的 —— 本条会零命中地绿").toBeGreaterThan(1000);
+    nonEmpty(events);
+    nonEmpty(replay);
 
     // ⚠ 用**正则**而不是逐字 `includes`：`src/frontend/ui/events.ts` 正被另一路 agent 改，
     // 空格/分号这种排版抖动不该让本条红。红只应该由**数值真的变了**引起。
@@ -646,7 +647,7 @@ describe("秤 5 · D：生产两处出队不用 shift()", () => {
   it("src/frontend/ui/events.ts 生产段零 `.shift(`", () => {
     for (const rel of ["../../../src/frontend/ui/events.ts"]) {
       const src = read(rel);
-      expect(src.length, `${rel} 读出来是空的 —— 本条会零命中地绿`).toBeGreaterThan(1000);
+      nonEmpty(src);
       expect(shiftCalls(src), `${rel} 里又出现了 \`.shift(\` —— \`\` 要头指针出队`).toBe(0);
     }
   });

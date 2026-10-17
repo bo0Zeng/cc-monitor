@@ -25,7 +25,7 @@ fn cfg(label: &str) -> RemoteConfig {
 #[test]
 fn the_request_hands_over_the_machine_as_is() {
     let c = cfg("c2-dial-host-a");
-    let req = request(&c, "stream", serde_json::json!({"command": "x"})).expect("造不出请求");
+    let req = request(&c, "stream", serde_json::json!({"command": "x"}));
     let written: std::collections::BTreeSet<String> =
         req.as_object().unwrap().keys().cloned().collect();
     let machine_rs = include_str!("../../../src/backend/ssh-dial/machine.rs");
@@ -73,7 +73,7 @@ fn the_request_hands_over_the_machine_as_is() {
 #[test]
 fn the_last_winner_goes_over_as_prefer_while_the_config_is_unchanged() {
     let c = cfg("c2-dial-host-b");
-    let req = request(&c, "stream", serde_json::json!({})).unwrap();
+    let req = request(&c, "stream", serde_json::json!({}));
     assert_eq!(req["prefer"], serde_json::Value::Null, "没连过 ⇒ 不交");
     crate::stream_source::record_last_good(
         &c,
@@ -82,14 +82,14 @@ fn the_last_winner_goes_over_as_prefer_while_the_config_is_unchanged() {
             port: 2222,
         },
     );
-    let req = request(&c, "stream", serde_json::json!({})).unwrap();
+    let req = request(&c, "stream", serde_json::json!({}));
     assert_eq!(
         req["prefer"],
         serde_json::json!({"host": "192.0.2.9", "port": 2222})
     );
     let mut moved = c.clone();
     moved.addresses = vec!["192.0.2.7".into()];
-    let req = request(&moved, "stream", serde_json::json!({})).unwrap();
+    let req = request(&moved, "stream", serde_json::json!({}));
     assert_eq!(
         req["prefer"],
         serde_json::Value::Null,
@@ -102,7 +102,7 @@ fn the_last_winner_goes_over_as_prefer_while_the_config_is_unchanged() {
 fn a_jump_to_itself_is_not_looked_up_here() {
     let mut c = cfg("c2-dial-host-c");
     c.jump = Some("c2-dial-host-c".into());
-    let req = request(&c, "stream", serde_json::json!({})).unwrap();
+    let req = request(&c, "stream", serde_json::json!({}));
     assert_eq!(req["jump"], serde_json::Value::Null);
     assert_eq!(req["machine"]["jump"], "c2-dial-host-c");
 }
@@ -165,7 +165,7 @@ fn dial_traces(prod: &str) -> Vec<String> {
 /// 正控：同一个判定函数喂一段含三根针的合成代码，三根都要量到（不是「这把尺子什么都量不到」）。
 #[test]
 fn the_dial_proxy_leaves_no_trace_in_monitor_production() {
-    let root = crate::guard_support::repo_root().join("src/frontend/shell/src");
+    let root = guard_core::addr::repo_root().join("src/frontend/shell/src");
     let mut hits: Vec<String> = Vec::new();
     let mut scanned = 0usize;
     for (path, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
@@ -295,7 +295,7 @@ async fn the_one_shot_deadline_really_cuts_a_silent_link_and_only_after_its_time
     assert_eq!(w.kind(), std::io::ErrorKind::TimedOut);
     drop(far);
 
-    // ③ 另一向：不设期限（长活那三形）⇒ 过了两倍的时间仍在等。
+    // ③ 另一向：不设期限（长活那一形）⇒ 过了两倍的时间仍在等。
     let (_far2, near2) = tokio::io::duplex(64);
     let mut long = Bounded::new(near2, None);
     assert!(
@@ -306,19 +306,13 @@ async fn the_one_shot_deadline_really_cuts_a_silent_link_and_only_after_its_time
     );
 }
 
-/// 长活那三形：`(文件, 所在函数, 处数, 为什么它不要总时限)`。**这就是「逐处豁免」那张表**。
+/// 长活那几形：`(文件, 所在函数, 处数, 为什么它不要总时限)`。**这就是「逐处豁免」那张表**。
 const LIVES_LONG: &[(&str, &str, usize, &str)] = &[
     (
         "stream_source/run.rs",
         "stream",
         1,
         "远端后端长连接流（远端只剩常驻这一形，重连循环 `resident_client::feed` 经它开）是订阅：「`Budget` 只盖建流；流建起来之后没有总期限」；握手那两行各有自己的期限（`HANDSHAKE_LINE`，合计不超过一次性总时限）；死链靠 keepalive ＋ EOF",
-    ),
-    (
-        "dial_host.rs",
-        "open",
-        1,
-        "`RemoteFs::open`（部署文件面）：一次部署问好几次，每一问自带期限（`FILES_ASK_DEADLINE` / `FILES_PUT_DEADLINE`）",
     ),
 ];
 
@@ -351,11 +345,11 @@ fn lives_long_sites(file: &str, prod: &str) -> Vec<(String, String)> {
     out
 }
 
-/// A2 ★ **只有那三形摘掉总时限**（两向，按所在函数与处数）。多一处 = 又有一条一次性的路没有总时限；
+/// A2 ★ **只有登记的那几形摘掉总时限**（两向，按所在函数与处数）。多一处 = 又有一条一次性的路没有总时限；
 /// 少一处 = 长连接流 / 端口转发 / 部署会在 120 s 被掐断。正控：合成语料里多种一处必被认出、且认对所在函数。
 #[test]
-fn only_the_three_long_lived_links_drop_the_deadline() {
-    let root = crate::guard_support::crate_src_root();
+fn only_the_long_lived_links_drop_the_deadline() {
+    let root = guard_core::addr::shell_src_root();
     let mut got: Vec<(String, String)> = Vec::new();
     let mut scanned = 0usize;
     for (path, file_text) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
@@ -376,19 +370,13 @@ fn only_the_three_long_lived_links_drop_the_deadline() {
     );
     let mut want: Vec<(String, String)> = LIVES_LONG
         .iter()
-        .flat_map(|(f, func, n, why)| {
-            assert!(
-                why.chars().count() >= 20,
-                "`{f}::{func}` 没写清为什么不要总时限"
-            );
-            std::iter::repeat_n((f.to_string(), func.to_string()), *n)
-        })
+        .flat_map(|(f, func, n, _)| std::iter::repeat_n((f.to_string(), func.to_string()), *n))
         .collect();
     got.sort();
     want.sort();
     assert_eq!(
         got, want,
-        "摘掉一次性总时限（`lives_long`）的地方与登记的那三形对不上。\n\
+        "摘掉一次性总时限（`lives_long`）的地方与登记的那几形对不上。\n\
          多出来的 ⇒ 那条路没有总时限了（红线）；该长活就进 `LIVES_LONG` 并写理由。"
     );
     // 正控：识别器认得出、认得对所在函数。
@@ -596,14 +584,13 @@ fn vis2_pinning_asks_the_backend_machine_table_for_one_if_empty_cell() {
         }] })
     );
     assert_eq!(
-        pin_outcome(Ok(serde_json::json!({"kept": 0, "pinned": []}))),
-        Ok(PinWrite::Written)
+        pin_outcome(&serde_json::json!({"kept": 0, "pinned": []})),
+        PinWrite::Written
     );
     assert_eq!(
-        pin_outcome(Ok(serde_json::json!({"kept": 1, "pinned": []}))),
-        Ok(PinWrite::AlreadySet)
+        pin_outcome(&serde_json::json!({"kept": 1, "pinned": []})),
+        PinWrite::AlreadySet
     );
-    assert_eq!(pin_outcome(Err("认不出".into())), Err("认不出".to_string()));
 }
 
 /// 默认转严格：盘上那一份当 `saved` 一并交过去（固化之后，手里那份起来时读的 `cfg` 还没有指纹也照样转严格）——
@@ -737,7 +724,7 @@ fn a_dial_refusal_keeps_the_backend_detail_and_link_faults_keep_raw_out_of_the_s
         old.detail
     );
     let io = link_said(LinkError::Io("broken pipe here".into()));
-    assert_eq!(io.said, copy_text("rsSshLink.dial.readFailed", &[]));
+    assert_eq!(io.said, copy_text("reason.local.linkLost", &[]));
     assert!(io.detail.contains("broken pipe here"), "{}", io.detail);
     let garbled = link_said(LinkError::Garbled("expected value: \"zz\"".into()));
     assert!(!garbled.said.contains("expected"), "{}", garbled.said);

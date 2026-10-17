@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
 fn repo_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::repo_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::repo_root()
 }
 
 /// 本闸的扫描面 —— `K-R116` 改过的那 9 份散文。**闭集，按住址点名。**
@@ -36,7 +36,7 @@ const EXEMPT: &[(&str, &str, &str)] = &[
     //      · `tests/e2e/README.md` 与 `src/frontend/shell/README.md` 的两处占位符 `<daemon>` —— 换成 `<backend>`；
     //      · `src/frontend/shell/README.md` 里「安装 / 卸载 daemon」两句 —— 界面按钮文案住 `src/frontend/ui/settings/machine-card.ts`，同拍改成「安装 / 卸载后端」。
     //    ⇒ **账不许挂空号**：这六条今天在盘上都命中 0 次，留着就是六条空转的放行。
-    // 〔文档清理 10-10〕INVARIANTS 收成现状之后，那两句引文（用户原话 · §41.6 的原措辞）随沿革删了，两条例外跟着删。
+    // 〔文档清理 10-10〕INVARIANTS 收成现状之后，那两句引文（要求 · §41.6 的原措辞）随沿革删了，两条例外跟着删。
 ];
 
 /// ASCII 标识符字符 —— **汉字不算**，这一条就是「两个数」的分水岭。

@@ -9,12 +9,12 @@ import com.ccmonitor.mobile.core.claude.link.RecordLine
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
-import com.ccmonitor.mobile.core.claude.link.Switches
-import com.ccmonitor.mobile.core.claude.link.Toned
+import com.ccmonitor.mobile.core.claude.link.Transfer
 import com.ccmonitor.mobile.core.claude.link.WatchFrom
 import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
-import com.ccmonitor.mobile.core.claude.link.wire.Tone
+import com.ccmonitor.mobile.core.claude.link.wire.SessionFace
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
+import com.ccmonitor.mobile.ui.Faces
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -50,6 +50,24 @@ internal class FakeCoreLink :
 
     fun calls(cmd: String) = calls.filter { it.first == cmd }.map { it.second }
 
+    /** 分块传每一趟：哪一半 ＋ 交出来的描述符。 */
+    val transfers = mutableListOf<Pair<Transfer, Int>>()
+
+    /** 分块传怎么答：先报几下走到哪（[moved]），再回结局。 */
+    var moves: List<Pair<Long, Long>> = emptyList()
+    var transferred: (Transfer) -> Reply = { Reply.LinkDown }
+
+    override suspend fun transfer(
+        how: Transfer,
+        fd: () -> Int,
+        withinMs: Long,
+        moved: (Long, Long) -> Unit,
+    ): Reply {
+        transfers += how to fd()
+        moves.forEach { (d, t) -> moved(d, t) }
+        return transferred(how)
+    }
+
     suspend fun line(
         sid: String,
         seq: Long,
@@ -82,14 +100,13 @@ internal class FakeCoreLink :
     fun report(
         sid: String,
         cwd: String,
-        tone: Tone = Tone.PLAIN,
+        face: SessionFace = Faces.of("live-idle"),
         path: String? = "/p/$sid.jsonl",
-        running: Boolean = tone == Tone.NOW,
-        switch: Switches? = null,
     ) {
         table.value =
             table.value.copy(
-                sessions = table.value.sessions + (sid to LiveSession(sid, path = path, cwd = cwd, activity = Toned("空闲", tone), running = running, switch = switch)),
+                sessions = table.value.sessions + (sid to LiveSession(sid, path = path, cwd = cwd)),
+                faces = table.value.faces + (sid to face),
             )
     }
 

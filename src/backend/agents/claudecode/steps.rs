@@ -1,4 +1,4 @@
-//! Claude 的**过程一步一行**：一次工具调用的主参数与说明（[`step_of`]）·
+//! Claude 的**过程一步一行**：一次工具调用的主参数与说明、展开要画的改动 / 命令 / 文件（[`step_of`]）·
 //! 它的结果一句（[`result_of`]，读了几行 / `+N −M` / 命中几个文件 / 被拒 / 提问与计划答了什么）·
 //! 报错与重试的原因种类（[`api_reason`]）。
 //!
@@ -6,10 +6,12 @@
 //! 解析时填进记录成品（`schema.rs`：assistant 的 `toolSteps` · user 的 `toolResults` · 报错的 `apiReason`），界面只排版。
 //! 读不出的格就缺，不猜。
 
+use super::asks::{ASK_TOOL, INTERACTIVE_TOOLS, PLAN_TOOL};
 use crate::agents::PlanTitleExt as _;
 use crate::agents::StepResultExt as _;
 use crate::agents::{
-    Answer, ApiReason, AskOption, AskQuestion, PatchHunk, StepAsk, StepResult, ToolStep,
+    Answer, ApiReason, AskOption, AskQuestion, PatchHunk, StepAsk, StepBody, StepResult,
+    TextChange, ToolStep,
 };
 
 /// 一次改动的 diff 至多带多少字（各段行正文的字数之和）：超了就只给前几段、立 `patchTruncated`，**整段不劈**；
@@ -62,42 +64,82 @@ fn patch_of(hunks: &[Value]) -> (Vec<PatchHunk>, bool) {
 }
 use serde_json::Value;
 
-/// 主参数是路径的工具（入参 `file_path` / `notebook_path`）。
-const PATH_TOOLS: &[(&str, &str)] = &[
-    ("Read", "file_path"),
-    ("Edit", "file_path"),
-    ("MultiEdit", "file_path"),
-    ("Write", "file_path"),
-    ("NotebookEdit", "notebook_path"),
-    ("NotebookRead", "notebook_path"),
+/// 工具 ⇒ 主参数取哪个入参 · 它是不是路径。**「工具 → 主参数」只此一张**：消息流那一行（[`step_of`]）·
+/// 没结果的调用那一行（`beat::what_of`）· 待答请求的钉条（`asks`）都查它，各按自己的长度截。
+const MAIN_ARGS: &[(&str, &str, bool)] = &[
+    ("Read", "file_path", true),
+    ("Edit", "file_path", true),
+    ("MultiEdit", "file_path", true),
+    ("Write", "file_path", true),
+    ("NotebookEdit", "notebook_path", true),
+    ("NotebookRead", "notebook_path", true),
+    ("Bash", "command", false),
+    ("Grep", "pattern", false),
+    ("Glob", "pattern", false),
+    ("WebFetch", "url", false),
+    ("WebSearch", "query", false),
+    ("Agent", "description", false),
+    ("Task", "description", false),
+    ("Skill", "skill", false),
+    ("BashOutput", "bash_id", false),
+    ("KillShell", "shell_id", false),
+    ("SlashCommand", "command", false),
 ];
-/// 主参数是别的一格的工具（工具名 ⇒ 入参字段）。
-const ARG_TOOLS: &[(&str, &str)] = &[
-    ("Bash", "command"),
-    ("Grep", "pattern"),
-    ("Glob", "pattern"),
-    ("WebFetch", "url"),
-    ("WebSearch", "query"),
-    ("Agent", "description"),
-    ("Task", "description"),
-    ("Skill", "skill"),
-    ("BashOutput", "bash_id"),
-    ("KillShell", "shell_id"),
-    ("SlashCommand", "command"),
-];
-/// 认得、但没有主参数的工具（只写工具名）。
-const BARE_TOOLS: &[&str] = &["TodoWrite", "ExitPlanMode", "AskUserQuestion", "LS"];
+
+/// 这个工具的主参数取哪个入参 · 是不是路径（[`MAIN_ARGS`]）；没登记 ⇒ `None`。
+pub(crate) fn main_arg(name: &str) -> Option<(&'static str, bool)> {
+    MAIN_ARGS
+        .iter()
+        .find(|(t, _, _)| *t == name)
+        .map(|&(_, k, path)| (k, path))
+}
+/// 认得、但没有主参数的工具（只写工具名；提问 / 计划查 [`INTERACTIVE_TOOLS`]）。
+const BARE_TOOLS: &[&str] = &["TodoWrite", "LS"];
 /// 说明那一格（Bash 的 `description`）。
 const NOTE_FIELD: &str = "description";
 /// 主参数至多留多少字（一行；协议上的定长，两个前端都不再截）。
 const ARG_MAX: usize = 200;
 
-/// 一次工具调用 ⇒ 它的一行人话（工具名 · 主参数 · 说明 · 认不认得）。
+/// 一次工具调用 ⇒ 它的一行人话（工具名 · 主参数 · 说明 · 认不认得）与展开要画的东西（[`body_of`]）。
 pub(crate) fn step_of(name: &str, input: &Value) -> ToolStep {
     let mut s = named(name, input);
     s.text = (!s.known)
         .then(|| crate::common::cells::Words(copy_core::copy_text("stream.step.unknown", &[])));
+    s.body = body_of(name, input);
     s
+}
+
+/// 展开那一格：写类工具的改前改后（`Edit` 的 `old_string` / `new_string` · `Write` 的 `content` · `MultiEdit` 的 `edits[]`）·
+/// 命令的整行（`command`）。形状不对（缺格 · 非字符串 · 改几处那张表空或有一项不对）⇒ `None`。
+fn body_of(name: &str, input: &Value) -> Option<StepBody> {
+    let text = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
+    let change = |v: &Value| {
+        Some(TextChange {
+            old: text(v, "old_string")?,
+            new: text(v, "new_string")?,
+        })
+    };
+    let changes = match name {
+        "Edit" => vec![change(input)?],
+        "Write" => vec![TextChange {
+            old: String::new(),
+            new: text(input, "content")?,
+        }],
+        "MultiEdit" => input
+            .get("edits")?
+            .as_array()
+            .filter(|e| !e.is_empty())?
+            .iter()
+            .map(change)
+            .collect::<Option<Vec<_>>>()?,
+        "Bash" => {
+            return text(input, "command")
+                .filter(|c| !c.is_empty())
+                .map(|line| StepBody::Command { line })
+        }
+        _ => return None,
+    };
+    Some(StepBody::Changes { changes })
 }
 
 /// [`step_of`] 的认法那一半（认不出的工具那一句由 [`step_of`] 添）。
@@ -109,25 +151,24 @@ fn named(name: &str, input: &Value) -> ToolStep {
             .map(one_line)
             .filter(|s| !s.is_empty())
     };
-    if let Some((_, k)) = PATH_TOOLS.iter().find(|(t, _)| *t == name) {
+    if let Some((k, path)) = main_arg(name) {
+        // 路径类没有说明格；Agent / Task 的主参数就是它的说明 ⇒ 说明格不再重复。
+        let note = (!path && k != NOTE_FIELD)
+            .then(|| field(NOTE_FIELD))
+            .flatten();
+        // 文件窗口按远端的 POSIX 路径定位：只给绝对路径（相对的会落到错的目录）。
+        let file = input
+            .get(k)
+            .and_then(Value::as_str)
+            .filter(|p| path && p.starts_with('/'))
+            .map(str::to_string);
         return ToolStep {
             tool: name.to_string(),
             arg: field(k),
-            path: true,
-            note: None,
-            known: true,
-            text: None,
-            ask: None,
-        };
-    }
-    if let Some((_, k)) = ARG_TOOLS.iter().find(|(t, _)| *t == name) {
-        // Agent / Task 的主参数就是它的说明 ⇒ 说明格不再重复。
-        let note = (*k != NOTE_FIELD).then(|| field(NOTE_FIELD)).flatten();
-        return ToolStep {
-            tool: name.to_string(),
-            arg: field(k),
-            path: false,
+            path,
             note,
+            file,
+            body: None,
             known: true,
             text: None,
             ask: None,
@@ -138,7 +179,9 @@ fn named(name: &str, input: &Value) -> ToolStep {
         arg: None,
         path: false,
         note: None,
-        known: BARE_TOOLS.contains(&name),
+        file: None,
+        body: None,
+        known: BARE_TOOLS.contains(&name) || INTERACTIVE_TOOLS.contains(&name),
         text: None,
         ask: ask_of(name, input),
     }
@@ -149,7 +192,7 @@ fn named(name: &str, input: &Value) -> ToolStep {
 pub(crate) fn ask_of(name: &str, input: &Value) -> Option<StepAsk> {
     let text = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
     match name {
-        "AskUserQuestion" => {
+        ASK_TOOL => {
             let qs = input
                 .get("questions")?
                 .as_array()
@@ -178,7 +221,7 @@ pub(crate) fn ask_of(name: &str, input: &Value) -> Option<StepAsk> {
                 .collect::<Option<Vec<_>>>()?;
             Some(StepAsk::Questions { questions })
         }
-        "ExitPlanMode" => text(input, "plan")
+        PLAN_TOOL => text(input, "plan")
             .filter(|p| !p.trim().is_empty())
             .map(|text| StepAsk::Plan {
                 text,

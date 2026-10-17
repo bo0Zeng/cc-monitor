@@ -2,8 +2,7 @@
  * 机器与设置那一族的合成答法：后端状态、ccm 入口、ssh 配置、tmux、足迹、数据位置、日志 …
  * 后端说的那几句话一律取文案表（与真后端出的成品同一份字），形状照各跨语言金样。
  */
-import { hms } from "./clock";
-import { copyText } from "../../../src/frontend/ui/copy-table";
+import { copyText, type CopyKey } from "../../../src/frontend/ui/copy-table";
 import EXT_GOLDEN from "../../__fixtures__/ext-flow.golden.json";
 import type { CommandHandler } from "./commands";
 import type { OpHandler, World } from "./types";
@@ -118,14 +117,6 @@ export function machineOps(): Record<string, OpHandler> {
         { id: "fwd-2", origin: "gpu-01", localPort: 16006, remoteHost: "localhost", remotePort: 6006, state: "running", connCount: 0 },
       ],
     }),
-    "ssh-config-import": () => ({
-      groups: [
-        { label: "devbox", host: "192.0.2.11", port: 22, user: "user", keyPath: null, addresses: ["devbox.example.com:22"], jump: null, members: [{ alias: "devbox", host: "192.0.2.11", port: 22, proxyJump: null }, { alias: "devbox-wan", host: "devbox.example.com", port: 22, proxyJump: null }], inList: true },
-        { label: "build-02", host: "192.0.2.31", port: 2222, user: "ci", keyPath: null, addresses: [], jump: "bastion", members: [{ alias: "build-02", host: "192.0.2.31", port: 2222, proxyJump: "bastion" }], inList: false },
-        { label: "bastion", host: "bastion.example.com", port: 22, user: "user", keyPath: null, addresses: [], jump: null, members: [{ alias: "bastion", host: "bastion.example.com", port: 22, proxyJump: null }], inList: false },
-      ],
-      partial: false,
-    }),
     // 接入那一格：~/.bashrc 已接上（第 40 行），你在第 125 / 129 行自己写了 cc · cct（链接那一条恒是你写的生效）。
     "aliases-read": () => ({
       home: HOME,
@@ -148,69 +139,12 @@ export function machineOps(): Record<string, OpHandler> {
         },
       ],
     }),
-    "aliases-block-render": () => ({
-      text: '# === cc-monitor remote ccm BEGIN v2 ===\nexport PATH="$HOME/.cc-monitor/bin:$PATH"\nif [ -r "$HOME/.cc-monitor/aliases.sh" ]; then . "$HOME/.cc-monitor/aliases.sh"; fi\n# === cc-monitor remote ccm END ===',
-    }),
     "ccm-print": () => ({ line: "cd ~ && exec claude" }),
     "assets-sync": (_o, _r, w) => ({
       self: null,
       synced: w.machines.slice(1).map((origin) => ({ origin, peer: null, changed: false, pushed: 0, error: null })),
       reach: w.machines.slice(1).map((origin) => ({ origin, machine: null })),
     }),
-    // 画面带颜色段（列按字符计，同后端）：边框与说明暗、工具名粗、路径蓝、「Building…」那一行橙（真彩，同 Claude Code 自己的色）、「accept edits」品红。
-    "terminal-preview": () => ({
-      lines: (
-        [
-          ["● Bash(pytest -q)", [{ from: 0, to: 1, fg: "green" }, { from: 2, to: 6, bold: true }]],
-          ["  ⎿  213 passed in 9.41s", [{ from: 2, to: 24, fg: "bright-black" }]],
-          ["", []],
-          ["● Bash(npm run build)", [{ from: 0, to: 1, fg: "green" }, { from: 2, to: 6, bold: true }]],
-          ["  ⎿  Running…", [{ from: 2, to: 13, fg: "bright-black" }]],
-          ["     vite v6.2.0 building for production...", [{ from: 5, to: 43, fg: "bright-black" }]],
-          ["     transforming (812) src/orders/client.ts", [{ from: 5, to: 24, fg: "bright-black" }, { from: 24, to: 44, fg: "blue" }]],
-          ["     ✓ 812 modules transformed.", [{ from: 5, to: 6, fg: "green" }]],
-          ["", []],
-          ["✶ Building… (14s · ↑ 1.2k tokens · esc to interrupt)", [{ from: 0, to: 11, fg: "#d97757" }, { from: 12, to: 52, fg: "bright-black" }]],
-          ["", []],
-          ["╭──────────────────────────────────────────────╮", [{ from: 0, to: 48, fg: "bright-black" }]],
-          ["│ >                                            │", [{ from: 0, to: 1, fg: "bright-black" }, { from: 47, to: 48, fg: "bright-black" }]],
-          ["╰──────────────────────────────────────────────╯", [{ from: 0, to: 48, fg: "bright-black" }]],
-          ["  ⏵⏵ accept edits on (shift+tab to cycle)", [{ from: 2, to: 20, fg: "magenta" }, { from: 21, to: 41, fg: "bright-black" }]],
-        ] as [string, object[]][]
-      ).map(([text, spans]) => ({ text, spans })),
-      screen: "00000000000000a1",
-      captured_at: Math.floor(Date.parse("2026-10-06T10:42:05") / 1000),
-      captured_at_text: hms(Date.parse("2026-10-06T10:42:05")),
-    }),
-    // 终端名单：每个没结束的会话一个 tmux 终端；第一个会话有一个终端窗口连着，别的在后台。
-    "terminals-list": (o, _r, w) => ({
-      complete: true,
-      terminals: w.sessions
-        .filter((x) => !x.ended && !x.outsideTmux && x.origin === o)
-        .map((x, i) => {
-          const name = `cc-${x.cwd.split(/[/\\]/).pop()}`;
-          return {
-            terminal: `tmux-${name}`,
-            host: "tmux",
-            tmux_name: name,
-            title: name,
-            program: "claude",
-            cwd: x.cwd,
-            session: { sid: x.sid, agent: "claude" },
-            started_by: { client: "ccm", mine: true },
-            clients: i === 0 ? [{ kind: "terminal-window", since: 1_700_000_000, last_activity: 1_700_000_100 }] : [],
-            input: "shared",
-            state: "running",
-            last_activity: 1_700_000_100,
-            can: { input: true, end: true },
-          };
-        }),
-    }),
-    "terminal-input": () => ({ result: "delivered" }),
-    // 终端实时画面：订上 · 回执 · 退订都答好（画面那一格由假后端的订阅推，`backend.ts`）。
-    "terminal-follow": () => ({}),
-    "terminal-follow-ack": () => ({}),
-    "terminal-unfollow": () => ({}),
     // 文件与数据：devbox 那六件（旧 ccm · 两条重名 · 失效行 · 实时显示 · 收信）；本机缺一个可选的开终端工具、实时显示已做；改过 ~/.bashrc 与扩展装的 skill。
     // 离线那台的上次值（本机后端记着的）：gpu-01 两天前读成的那一份「文件与数据」；记下一律答好。
     // 「开始用」那份数：只有本机的那个世界（刚装好）三步都没做；有远端的世界第三步勾上、终端已接上。
@@ -235,7 +169,8 @@ export function machineOps(): Record<string, OpHandler> {
                 changedFiles: [BASHRC_CHANGED],
                 todo: [],
                 tmux: true,
-                chores: 0,
+                counts: choreCounts([]),
+                rank: 2,
                 own: [
                   { id: "bin", what: "台架编的一句 · bin", path: "~/.cc-monitor/bin", dir: true, class: "cache", exists: true, size: null },
                   { id: "profiles", what: "台架编的一句 · profiles", path: "~/.cc-monitor/profiles.toml", dir: false, class: "truth", exists: true, size: 920 },
@@ -245,6 +180,8 @@ export function machineOps(): Record<string, OpHandler> {
             }
           : null,
     }),
+    // 远端各台的状态成品（本机后端那张表）：照场景的世界答。
+    "machine-read": (_o, _r, w) => ({ machines: Object.fromEntries(w.machines.slice(1).map((m) => [m, machineOf(m, w)])) }),
     // 机器表住本机后端（`machines.json`）：照场景那份 `config.remote.hosts` 答。
     "machines-read": (o, _r, w) => {
       if (o !== "<local>") throw new Error("机器表只问本机后端");
@@ -272,7 +209,8 @@ export function machineOps(): Record<string, OpHandler> {
         ],
         todo,
         tmux: o !== "win-laptop",
-        chores: todo.filter((c) => ["must", "install", "decide"].includes(c.kind) && (c.state === "todo" || c.state === "expired")).length,
+        counts: choreCounts(todo),
+        rank: ((n) => (n.badge > 0 ? 0 : n.open > 0 ? 1 : 2))(choreCounts(todo)),
         own: [
           { id: "bin", what: "台架编的一句 · bin", path: "~/.cc-monitor/bin", dir: true, class: "cache", exists: true, size: null },
           { id: "relayKey", what: "台架编的一句 · relayKey", path: "~/.cc-monitor/relay-key", dir: false, class: "truth", exists: true, size: 64 },
@@ -286,35 +224,66 @@ export function machineOps(): Record<string, OpHandler> {
         ],
       };
     },
-    "sessions-where": (_o, req, w) => ({
-      results: (req.sids as string[]).map((sid) => {
-        const s = w.sessions.find((x) => x.sid === sid);
-        if (!s || s.ended) return { sid, standing: "none", names: [], terminals: [] };
-        const name = `cc-${s.cwd.split(/[/\\]/).pop()}`;
-        return { sid, standing: s.idle ? "idle" : "running", names: [name], terminals: [{ host: "tmux", terminal: `tmux-${name}` }] };
-      }),
-    }),
   };
+}
+
+/** 一台各类的件数（照 `footprint/chores::counts` 的分法；`data-report` 还是合成的那几条之一）。 */
+function choreCounts(todo: readonly { kind: string; state: string }[]): Record<string, number> {
+  const n = { badge: 0, open: 0, must: 0, decide: 0, install: 0, optional: 0, done: 0 };
+  for (const c of todo) {
+    if (c.state === "done") n.done++;
+    if (c.state === "done" || c.state === "declined") continue;
+    n.open++;
+    const k = c.kind === "installOptional" ? "optional" : (c.kind as "must" | "decide" | "install" | "optional");
+    n[k]++;
+    if (c.state !== "blocked" && k !== "optional") n.badge++;
+  }
+  return n;
 }
 
 /** 「改过你的文件」里那一行 ~/.bashrc（data-report 与离线那台的上次值共用）。 */
 const BASHRC_CHANGED = { path: "~/.bashrc", what: copyText("rsToolRegistry.tools.ccmName"), undo: { page: "machine", tab: "config", anchor: "connect-terminal" } };
 
+/** 一颗修法按钮（字照后端那一批键）。 */
+const fixOf = (fix: string, key: CopyKey) => ({ fix, label: copyText(key) });
+
 /** 那台的状态成品（形状同 `tests/__fixtures__/machine-state.golden.json`）：看不见的那台 ＝ 密钥被拒。 */
 function machineOf(origin: string, w: World): Record<string, unknown> {
-  const base = { stage: null, os: origin === "win-laptop" ? "Windows" : "Linux", version: "4.1.1" as string | null, versionRelation: "same" as string | null, seenHostKey: null as string | null, detail: null as string | null };
-  if (w.installingMachines?.includes(origin)) return { ...base, state: "installing", reason: null, version: null, versionRelation: null, fixes: [] };
+  const base = { reason: null, stage: null, os: origin === "win-laptop" ? "Windows" : "Linux", version: "4.1.1" as string | null, versionRelation: "same" as string | null, word: "", said: "", fixes: [] as unknown[], seenHostKey: null as string | null, detail: null as string | null, next: null as string | null };
+  if (w.installingMachines?.includes(origin))
+    return { ...base, state: "installing", word: copyText("machineState.word.installing"), said: `安装 cc-monitor → ${origin}`, version: null, versionRelation: null };
   if (w.hostKeyChanged?.includes(origin))
-    return { ...base, state: "host_key_changed", reason: "host_key", version: null, versionRelation: null, fixes: ["compare_fingerprint"], seenHostKey: "SHA256:Zq81nVb0cR2yT6wXe4uLm9kPp3sHd7fJg5aQiO1tYw8" };
-  if (w.staleMachines.includes(origin)) return { ...base, state: "needs_update", reason: null, version: null, versionRelation: "older", fixes: ["update"] };
-  if (!w.unseenMachines.includes(origin)) return { ...base, state: "up", reason: null, fixes: [] };
+    return {
+      ...base,
+      state: "host_key_changed",
+      reason: "host_key",
+      word: copyText("machineState.word.hostKey"),
+      said: copyText("machineState.problem.hostKey"),
+      version: null,
+      versionRelation: null,
+      fixes: [fixOf("compare_fingerprint", "machineState.fix.compareFingerprint")],
+      seenHostKey: "SHA256:Zq81nVb0cR2yT6wXe4uLm9kPp3sHd7fJg5aQiO1tYw8",
+    };
+  if (w.staleMachines.includes(origin))
+    return {
+      ...base,
+      state: "needs_update",
+      word: copyText("machineState.word.needsUpdate"),
+      said: copyText("machineState.problem.needsUpdate", { machine: origin }),
+      version: null,
+      versionRelation: "older",
+      fixes: [fixOf("update", "machineState.fix.update")],
+    };
+  if (!w.unseenMachines.includes(origin)) return { ...base, state: "up" };
   return {
     ...base,
     state: "down",
     reason: "auth",
+    word: copyText("machinePage.state.down"),
+    said: copyText("machineState.down.auth"),
     version: null,
     versionRelation: null,
-    fixes: ["push_key", "conn_settings"],
+    fixes: [fixOf("push_key", "machineCard.build.pushKey"), fixOf("conn_settings", "machinePage.conn.toggle")],
     detail: `时刻：2026-10-08 21:04:11 +08:00\n机器：Linux x86_64 · 后端 p9z-fixture\n命令：dial\n对象：${origin}\n断在：私钥登录失败\n码：auth\n原话：Authentication failed (publickey)`,
   };
 }
@@ -325,22 +294,14 @@ export function machineCommands(): Record<string, CommandHandler> {
     backend_status: (a, w) => ({
       channel: !w.unseenMachines.includes(String(a.origin)),
       pid: pidOf(String(a.origin), w),
-      machine: machineOf(String(a.origin), w),
+      // 本机那一行壳出；远端各台走本机后端的 `machine-read` · `changed {machine}`。
+      machine: a.origin === "<local>" ? machineOf(String(a.origin), w) : null,
       health: {
         state: "clean",
         summary: copyText("rsBackendPolicy.health.clean"),
         why: null,
         detail: null,
       },
-    }),
-    local_ccm_entry_status: () => ({
-      entry: "$HOME/.cc-monitor/bin/ccm",
-      ours: { installed: true, version: "4.0.6", capabilities: ["tmux", "launcher"], build: "shots" },
-      on_path: { installed: true, version: "4.0.6", capabilities: ["tmux", "launcher"], build: "shots" },
-      verdict: "ours",
-      message: "",
-      ok: true,
-      summary: "",
     }),
     get_data_paths: () => ({
       monitorDataDir: `${HOME}/.cc-monitor`,
@@ -363,7 +324,6 @@ export function machineCommands(): Record<string, CommandHandler> {
       backend_stderr: [],
     }),
     cc_get_auto_launch: () => ({ auto_launch_enabled: false, monitor_exe_path: "/opt/cc-monitor/cc-monitor" }),
-    ccm_user_path_status: () => ({ supported: false, dir: null, onUserPath: false, addCommand: null, removeCommand: null, error: null }),
     diagnostics_report: (a) => {
       const keys = (a.configUnknown as string[] | undefined) ?? [];
       return {
@@ -409,7 +369,7 @@ function tryMachineTable(edits: Record<string, unknown>[], w: World): Record<str
 
 /** 「待办」一件（假后端照 `footprint/chores` 的成品形状）。 */
 function chore(over: Record<string, unknown>): Record<string, unknown> & { kind: string; state: string } {
-  return { id: "", kind: "optional", state: "todo", name: "", loc: "", said: "", why: "", steps: [], diff: [], copy: null, whole: null, wholeCovers: [], file: null, go: null, howUrl: null, mask: null, action: "copySnippet", ...over } as Record<string, unknown> & { kind: string; state: string };
+  return { id: "", kind: "optional", state: "todo", name: "", loc: "", said: "", why: "", steps: [], diff: [], copy: null, whole: null, wholeCovers: [], file: null, go: null, howUrl: null, action: "copySnippet", ...over } as Record<string, unknown> & { kind: string; state: string };
 }
 
 const SETTINGS = `${HOME}/.claude/settings.json`;
@@ -435,7 +395,6 @@ const DEVBOX_CHORES = [
     whole: WHOLE,
     wholeCovers: ["relay:claude-code", "cc-bus-hooks"],
     file: SETTINGS,
-    mask: "9f3c2a71",
   }),
   chore({
     id: "relay:codex",
@@ -452,7 +411,6 @@ const DEVBOX_CHORES = [
     whole: 'openai_base_url = "http://127.0.0.1:8788/9f3c2a71/t/codex/_"\nmodel = "gpt-5"\n',
     wholeCovers: ["relay:codex"],
     file: `${HOME}/.codex/config.toml`,
-    mask: "9f3c2a71",
   }),
   chore({ id: "cc-bus-hooks", name: copyText("beChore.hooks.name"), loc: "~/.claude/settings.json · hooks", said: copyText("beChore.hooks.said"), why: copyText("beChore.hooks.why"), steps: ["打开 ~/.claude/settings.json", "在第 5 行后面加下面 12 行", copyText("beChore.step.save")], copy: '"hooks": {}', whole: WHOLE, wholeCovers: ["relay:claude-code", "cc-bus-hooks"], file: SETTINGS }),
 ];

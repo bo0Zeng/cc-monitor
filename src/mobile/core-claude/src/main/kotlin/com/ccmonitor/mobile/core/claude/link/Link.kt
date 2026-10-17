@@ -1,5 +1,7 @@
 package com.ccmonitor.mobile.core.claude.link
 
+import com.ccmonitor.mobile.core.claude.link.wire.MachineFix
+import com.ccmonitor.mobile.core.claude.link.wire.MachineFixButton
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -9,35 +11,32 @@ data class Said(
     val detail: String,
 )
 
-/** 一台的常驻流此刻通不通（核心判，手机照画）。 */
+/** 一台的常驻流此刻通不通（核心判，手机照画）；那一句与修法取那台的状态成品（后端 `deploy::machine` 定）。 */
 sealed interface LinkState {
     data object Connecting : LinkState
 
-    /** 通着。[notice] ＝ 通着但要人动手的那一句（那台后端旧了：照用对得上的那几条命令）；[fix] ＝ 核心点名的修法（旧了 ⇒ 更新）。 */
+    /** 通着。[notice] ＝ 通着但要人动手的那一句（那台旧了 · 较新）；[fixes] ＝ 成品给的修法。 */
     data class Up(
         val notice: Said? = null,
-        val fix: Fix? = null,
+        val fixes: List<MachineFixButton> = emptyList(),
     ) : LinkState
 
-    /** 断着：那一句；[needsHand] ⇒ 不会自己好（没装 · 起不了常驻 · 不是我们的后端），等［重试］；[fix] ⇒ 装一次会好、是哪一种。 */
+    /** 断着：那一句 ＋ 成品给的修法。 */
     data class Down(
         val said: Said,
-        val needsHand: Boolean,
-        val fix: Fix? = null,
+        val fixes: List<MachineFixButton> = emptyList(),
     ) : LinkState
 }
 
-/** 装一次会好的那一种（核心点名，手机只照它挑按钮字）：那台没有我们的后端 · 有、但旧了。 */
-enum class Fix(
-    val wire: String,
-) {
-    INSTALL("install"),
-    UPDATE("update"),
-    ;
-
-    companion object {
-        fun of(wire: String?): Fix? = entries.firstOrNull { it.wire == wire }
-    }
+/** 装一次会好的那一颗（［安装］/［更新］：手机这一侧做得了的只有这两种）；成品没给 ⇒ `null`。 */
+fun LinkState.deployFix(): MachineFixButton? {
+    val fixes =
+        when (this) {
+            is LinkState.Up -> fixes
+            is LinkState.Down -> fixes
+            LinkState.Connecting -> emptyList()
+        }
+    return fixes.firstOrNull { it.fix == MachineFix.INSTALL || it.fix == MachineFix.UPDATE }
 }
 
 /** 给一台装 / 更新后端这一趟走到哪了（话都是核心写好的）。 */
@@ -84,6 +83,32 @@ interface CoreLink {
         args: Map<String, Any?>? = null,
         withinMs: Long = DEFAULT_CALL_MS,
     ): Reply
+
+    /**
+     * 分块传（循环在核心里，桌面同一份）：[fd] 现开本机那一份、交出描述符（核心用完就关；开不了就抛 [java.io.IOException]）。
+     * 每一块等至多 [withinMs]，走到哪经 [moved]（已过字节 · 总数，不知道 ⇒ `-1`）；结局同 [call]。
+     * [Transfer.Stage]：送进那台的暂存区，成了 ⇒ `{key, chunks, bytes, sha256}`；[Transfer.Pull]：读回写进本机那一份，成了 ⇒ `{bytes}`。
+     */
+    suspend fun transfer(
+        how: Transfer,
+        fd: () -> Int,
+        withinMs: Long,
+        moved: (Long, Long) -> Unit,
+    ): Reply
+}
+
+/** 分块传哪一半（[CoreLink.transfer]）。 */
+sealed interface Transfer {
+    /** 上传那一半；[name] 是本机那一份在句子里的名字。 */
+    data class Stage(
+        val name: String,
+    ) : Transfer
+
+    /** 下载：那台上的 [path] 读回；[shown] 是本机落点在句子里的名字。 */
+    data class Pull(
+        val path: RemotePath,
+        val shown: String,
+    ) : Transfer
 }
 
 /** 一问一答默认等多久。 */

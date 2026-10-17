@@ -1,29 +1,19 @@
 /**
- * 「会打断什么」：`machine-interrupts` 金样每一形严格收得下、排得出「中断 · 保留」两行；多一格 / 少一格 / 负数收不下。
+ * 「会打断什么」：`machine-interrupts` 金样那几形排得出「中断 · 保留」两行（回包按生成类型用，形状由握手指纹管）。
  * Rust 那一侧（`tests/backend/observe/accounts_query_tests.rs`）由生产函数现产、与同一份金样逐格比。
  */
 import { describe, expect, it } from "vitest";
 import golden from "../../../__fixtures__/machine-interrupts.golden.json";
-import { decodeInterrupts, interruptRows } from "../../../../src/frontend/ui/settings/interrupts";
+import { interruptRows } from "../../../../src/frontend/ui/settings/interrupts";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
+import type { Interrupts } from "../../../../src/frontend/ui/generated/Interrupts";
 
-type Case = { name: string; reply: Record<string, unknown> };
+type Case = { name: string; reply: Interrupts };
 const cases = golden.cases as Case[];
 
 describe("会打断什么", () => {
-  it("★ 金样每一形都收得下、原样交出；形状不对的收不下", () => {
-    expect(cases.length, "金样缩水了").toBe(3);
-    for (const c of cases) expect(decodeInterrupts(c.reply), c.name).toEqual(c.reply);
-    const ok = cases[1]!.reply;
-    expect(decodeInterrupts({ ...ok, extra: 1 })).toBeNull();
-    expect(decodeInterrupts({ ...ok, forwards: -1 })).toBeNull();
-    expect(decodeInterrupts({ ...ok, liveStreams: "2" })).toBeNull();
-    const { forwards: _drop, ...short } = ok;
-    expect(decodeInterrupts(short)).toBeNull();
-  });
-
   it("★ 两份并排：那台的会话三格 ＋ 本机的转发；什么都不断 ⇒ 不弹", () => {
-    const r = (name: string) => decodeInterrupts(cases.find((c) => c.name === name)!.reply)!;
+    const r = (name: string): Interrupts => cases.find((c) => c.name === name)!.reply;
     expect(interruptRows({ ...r("什么都不断") }, "devbox", "stop")).toEqual([]);
     const busy = r("两个经中转 · 一个说不清 · 一个不经 · 一个已结束 · 一行坏的");
     const rows = interruptRows({ ...busy, forwards: r("只有通往那台的转发").forwards }, "devbox", "update");

@@ -33,8 +33,8 @@ pub const AUTH_KIND_SUBSCRIPTION: &str = "subscription";
 pub const AUTH_KIND_API_KEY: &str = "api-key";
 
 /// 鉴权方式的闭集。不是 `bool`：这一维看得见第三档（`apiKeyHelper` / bedrock / vertex 各是一种鉴权方式）。
-/// 本数组只是「今天认识哪些字面量」。加第三档：这里加一个常量 + `auth_ready` 里给它一条规则 + TS 侧 `src/frontend/ui/accounts.ts` 的 `AuthKind` 联合加一支
-/// （后端成品与跨语言金样 `tests/__fixtures__/accounts.golden.json` 跟着变，TS 解码器不认就红）。
+/// 本数组只是「今天认识哪些字面量」。加第三档：这里加一个常量 + `auth_ready` 里给它一条规则（界面那份 `AuthKind` 从这里现生成，
+/// 后端成品与金样 `tests/__fixtures__/accounts.golden.json` 跟着变）。
 pub const AUTH_KINDS: [&str; 2] = [AUTH_KIND_SUBSCRIPTION, AUTH_KIND_API_KEY];
 
 /// manifest 的 `authKind` 键 → 鉴权方式。这是这条分类规则的唯一住址。

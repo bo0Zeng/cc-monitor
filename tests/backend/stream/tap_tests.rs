@@ -79,7 +79,7 @@ fn a_plan_change_becomes_one_changed_frame() {
 }
 
 /// ★ 订阅节点：事实那几种 ⇒ 推一帧 `changed {quota}`；带会话的 ⇒ 再推一帧 `changed {rotation, key: sid}`；
-/// 策略那一种 ⇒ `changed {rotation_strategies}`。没订那条通道的连接永远不推。
+/// 策略那一种 ⇒ `changed {rotation_strategies}`；续令牌没成 ⇒ 再推一帧 `changed {manual}`。没订那条通道的连接永远不推。
 #[test]
 fn each_kind_of_node_becomes_the_changed_frames_it_stands_for() {
     use crate::accounts::quota::nodes::{emit, Source};
@@ -96,7 +96,7 @@ fn each_kind_of_node_becomes_the_changed_frames_it_stands_for() {
             (Source::Reading, None, 1),
             (Source::QuotaFile, None, 1),
             (Source::Logins, None, 1),
-            (Source::Login, None, 1),
+            (Source::Login, None, 2),
             (Source::Refused, Some("s9"), 2),
             (Source::Book, Some("s1"), 1),
             (Source::Strategies, None, 1),
@@ -119,6 +119,7 @@ fn each_kind_of_node_becomes_the_changed_frames_it_stands_for() {
                 q(Source::QuotaFile),
                 q(Source::Logins),
                 q(Source::Login),
+                (Source::Login, Topic::Manual, None),
                 q(Source::Refused),
                 (Source::Refused, Topic::Rotation, Some("s9".to_string())),
                 (Source::Book, Topic::Rotation, Some("s1".to_string())),

@@ -329,8 +329,40 @@ fn hx2_the_config_writer_takes_the_cross_process_lock_before_it_reads() {
     );
 }
 
+/// 🔴 临时件先落盘再换名：`sync_all` 恰好一处、排在换名之前（反过来 ⇒ 断电后换上去的可能是一份空文件，用户配置全丢）。
+#[test]
+fn the_config_writer_syncs_the_temp_file_before_it_renames() {
+    let prod =
+        guard_core::production_code(include_str!("../../../src/frontend/shell/src/config.rs"));
+    let at = guard_core::find_pinned(&prod, "pub(crate) fn patch_config_at(").expect("写口不在了");
+    let body = &prod[at..];
+    let body = &body[..body.find("\nfn ").unwrap_or(body.len())];
+    let sync = guard_core::find_pinned(body, ".sync_all()").expect("写口里落盘不是恰好一处");
+    let swap = guard_core::find_pinned(body, "std::fs::rename(&tmp, path)")
+        .expect("写口里换名不是恰好一处");
+    assert!(
+        sync < swap,
+        "落盘排在换名之后 —— 换上去的那一份可能还没写到盘上"
+    );
+}
+
+/// 路径超过 260 字符照样写得上（Windows 上换名要带长路径前缀；标准库自己补）。
+#[test]
+fn a_config_path_longer_than_260_characters_is_written() {
+    let base = tmpdir("long");
+    let mut dir = base.clone();
+    while dir.as_os_str().len() < 300 {
+        dir.push("abcdefghijklmnopqrstuvwxyz0123456789");
+    }
+    let file = dir.join("config.json");
+    patch_config_at(&file, &[set(&["a"], json!(1))]).unwrap();
+    patch_config_at(&file, &[set(&["a"], json!(2))]).unwrap();
+    assert_eq!(read(&file), json!({"a": 2}));
+    let _ = std::fs::remove_dir_all(&base);
+}
+
 /// 🔴 C-L3：monitor 那一份锁与后端第四层那一份是**同一种锁**（两份各一，读后端源码对拍，异源）：
-/// unix 都锁**目录**（monitor：std `File::lock`；后端：`libc::flock(LOCK_EX)`）；Windows 互斥量名字的格式串与 FNV 两个常数逐字相等。
+/// unix 都锁**目录**（monitor：std `File::lock`；后端：`libc::flock(LOCK_EX)`）；Windows 互斥量名字的格式串逐字相等、摘要调同一个函数。
 #[test]
 fn hx2_the_monitor_and_backend_dir_locks_are_the_same_kind_of_lock() {
     let mine = guard_core::production_code(include_str!(
@@ -339,8 +371,7 @@ fn hx2_the_monitor_and_backend_dir_locks_are_the_same_kind_of_lock() {
     let theirs = guard_core::production_code(include_str!("../../../src/backend/platform/lock.rs"));
     for needle in [
         "format!(\"{namespace}\\\\ccm-own-state-{h:016x}\")",
-        "let mut h: u64 = 0xcbf2_9ce4_8422_2325;",
-        "h = h.wrapping_mul(0x1000_0000_01b3);",
+        "cmd_wire::fnv::fnv1a64(",
         "for ns in [\"Global\", \"Local\"] {",
     ] {
         assert_eq!(
@@ -401,4 +432,23 @@ fn a_disk_failure_says_the_reason_word_and_keeps_the_os_text_in_the_detail() {
         s.detail
     );
     let _ = std::fs::remove_dir_all(&base);
+}
+
+/// 凭据文件不是前端整份读写的那份配置（同一个目录可以），`config.rs` 生产段也不认那个字段名。
+#[test]
+fn the_key_never_lands_in_the_config_file_the_frontend_rewrites_wholesale() {
+    use creds_core::store;
+    let cfg = super::resolve_config_path().expect("config path");
+    let creds = store::credentials_path(&super::resolve_monitor_data_dir().expect("data dir"));
+    assert_ne!(cfg, creds, "凭据落在了前端『读—改—写』整份的那个文件上");
+    assert_eq!(cfg.parent(), creds.parent());
+    let cfg_src =
+        guard_core::production_code(include_str!("../../../src/frontend/shell/src/config.rs"));
+    assert!(
+        !cfg_src.contains(store::KEY_FIELD),
+        "`config.rs` 的生产段里出现了 `{}` —— key 进了前端整份读写的那份配置",
+        store::KEY_FIELD
+    );
+    // 正控：这个字段名在凭据模板里认得出。
+    assert!(store::template().contains(store::KEY_FIELD));
 }

@@ -70,7 +70,7 @@ path = "main.rs"
 # **不为了好看去联网。**
 #
 # 🔴 **为什么源码不住 `src/backend/benches/`** —— 现打，不是偏好：
-# 本 crate 有 **17 个扫描型守卫**按 `guard_support::src_root()`（= 本 manifest 所在目录）
+# 本 crate 有 **17 个扫描型守卫**按 `guard_core::addr::backend_src_root()`（= 本 manifest 所在目录）
 # **递归走全树收 `.rs`**。比如 `readonly_guard::every_fs_call_in_backend_production_is_read_only` 那张只读白名单。
 # ⇒ 源码放 `tests/benches/`（它**不在** `code_roots()` 的两棵树里 —— 那两棵是
 #   `src/backend/` 与 `tests/backend/`），住址由本节的 `path` 指过去。
@@ -120,7 +120,7 @@ cmd-wire = { path = "../common/cmd-wire" }
 # ⚠ 买掉的那一格如实记：「backend 写不了这份文件」先前是**编译器**兜的，今天换成判据兜 ——
 #   写半边（`perm::create_private`）在本 crate 生产段的引用处 == 第四层登记的那一份
 #   （`readonly_guard::g6_dependency_signoff` 那条边界判据 ＋ `relay::creds_guard` 那条 feature 判据）。
-# 顺带：开了之后 Windows 上 `perm::probe` 也读得了 DACL（先前那条「查不出来」的代价没了）。
+# 顺带：开了之后读凭据文件与中转钥匙时按句柄量权限（`perm::open_checked`，Windows 上读属主与 DACL）。
 creds-core = { path = "../common/creds-core", features = ["harden"] }
 # 交给 Win32 的路径（长路径前缀）只从它来：不覆盖改名那一处用；仓内 crate、零依赖。
 win-path-core = { path = "../common/win-path-core" }
@@ -340,6 +340,8 @@ sha2 = "0.11"
 # `src/frontend/ui/generated/`（`npm run gen:types` 早就跑后端这一半）。**只在 dev 侧**：codegen 工具，不进发布二进制；
 # 版本就是 monitor 那份 lock 里早已解析的 12.0.1（离线可用、本机缓存里有）。
 ts-rs = "12.0.1"
+# 假时钟（停着的钟，`advance` 才走）：测「挂着的提问自己带的期限」不按墙钟等。只在测试档开。
+tokio = { version = "1", features = ["test-util"] }
 
 # ── **打补丁版 russh** ─────────────
 #
@@ -349,7 +351,7 @@ ts-rs = "12.0.1"
 # 一包最多交出 ≈ 2 × 包长，真 sshd 上一开压缩第一条通道就卡死 ——）。
 # 来历、改了哪几行、上游修好之后怎么撤：`../vendor/russh/VENDOR.md`。
 # 判据：`dial_compress_tests`（闸 == russh 一来一回对不对 · 副本只改了登记的那一份 · 补丁真接上了）。
-# ⚠ 住 `src/vendor/` 而不住本目录：本 crate 的扫描型守卫按 `guard_support::src_root()` 递归收 `.rs`，
+# ⚠ 住 `src/vendor/` 而不住本目录：本 crate 的扫描型守卫按 `guard_core::addr::backend_src_root()` 递归收 `.rs`，
 #   第三方八十多份源码放进来会淹掉那一族人群（与上面 `benches` 那段同一条理由）。
 [patch.crates-io]
 russh = { path = "../vendor/russh" }
@@ -370,6 +372,19 @@ strip = true
 [workspace]
 members = [".", "ssh-dial", "deploy", "../mobile/core-rs/rust"]
 default-members = ["."]
+
+# ── 测试档（dev 与继承它的 test）里给沙箱的策略引擎开优化：轮换一致性的推演（s22 · s26 · s36）跑在 Rhai 上，
+#    依赖不开优化时后端那个测试二进制的墙钟就是它们（10-15 量过：89–93 s → 30–36 s；冷编多一成）。只给这几样，
+#    工作区自己的 crate 照旧不开（内循环的增量编译不受影响）。判据：`build_features_tests.rs` 的
+#    `the_test_build_optimizes_the_dependencies_the_slowest_tests_run_on`（与表两向相等、每项都在 Cargo.lock 里）。──
+[profile.dev.package.rhai]
+opt-level = 3
+
+[profile.dev.package.smartstring]
+opt-level = 3
+
+[profile.dev.package.ahash]
+opt-level = 3
 
 # ── 手机那份 `.so` 的两份 profile（Gradle 的 `:core-rs` 按构建类型挑一份；后端自己的 `release` 一格不动）──
 # release 那一份：体积优先（opt-level z · 胖 LTO · 一个编译单元 · 去符号）；`panic = "unwind"` 是承重的 ——

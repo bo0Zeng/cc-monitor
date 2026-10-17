@@ -57,6 +57,7 @@ import {
   __resetUnknownConfigKeysForTests,
 } from "../../../src/frontend/ui/config";
 import { getBehavior, setBehavior } from "../../../src/frontend/ui/behavior";
+import { nonEmpty } from "../../test-support/non-empty";
 
 /** 退役的那个旧名字。**逐字**写在这里 —— 本条判据的全部意义就是它出现时会红。 */
 const RETIRED_KEY = "forceLegacyLaunchRenderer";
@@ -247,7 +248,7 @@ describe("P12 ③ 登记表自己得是真的（否则上面每一条都在拿�
     const registered = sorted(
       KNOWN_CONFIG_KEYS.filter((k) => CONFIG_KEY_OWNERS[k] === "src/frontend/ui/behavior.ts"),
     );
-    expect(declared.length, "一个 `const KEY_… =` 都没抽出来 —— 抽取器坏了，下面那条会空绿").toBeGreaterThan(0);
+    nonEmpty(declared);
     expect(
       declared,
       "`behavior.ts` 声明的落盘键与 `config.ts` 登记的那一族对不上。\n" +

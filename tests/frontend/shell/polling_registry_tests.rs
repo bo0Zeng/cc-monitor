@@ -168,13 +168,13 @@ fn the_hook_coverage_that_these_reasons_rest_on_has_not_changed() {
 
 /// **明令不许有周期唤醒**的文件（把两处散文纪律变成机检）。
 const NO_PERIODIC_WAKE: &[(&str, &str)] = &[(
-    "src/frontend/ui/settings/cc-bus-section.ts",
+    "src/frontend/ui/views/cc-bus-section.ts",
     "头注写着「本文件里不得出现 setInterval / setTimeout 轮询 / 后台定时任务」",
 )];
 
 fn repo_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::repo_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::repo_root()
 }
 
 /// 剥掉整行注释（`//` / `*` / `/*`）。
@@ -291,19 +291,13 @@ fn the_scan_actually_reads_the_frontend_and_ccm() {
     let mut ts = Vec::new();
     collect_ts(&root.join("src"), &mut ts);
     // 采集面与 git 跟踪着的前端 `.ts` 对拍（测试与声明文件不在人群里）。
-    let seen: Vec<String> = ts.iter().map(|p| crate::guard_support::rel_of(p)).collect();
-    let skip: Vec<String> = crate::guard_support::tracked_under("src", "ts")
+    let seen: Vec<String> = ts.iter().map(|p| guard_core::addr::rel_of(p)).collect();
+    let skip: Vec<String> = guard_core::addr::tracked_under("src", "ts")
         .into_iter()
         .filter(|r| r.contains(".vitest.") || r.contains(".test.") || r.ends_with(".d.ts"))
         .collect();
     let skip: Vec<&str> = skip.iter().map(String::as_str).collect();
-    crate::guard_support::assert_scanned_every_tracked(
-        "前端周期唤醒",
-        &seen,
-        &["src"],
-        "ts",
-        &skip,
-    );
+    guard_core::addr::assert_scanned_every_tracked("前端周期唤醒", &seen, &["src"], "ts", &skip);
     // 剥注释不能把整份文件剥空。
     //
     // ★上一版是 `strip_comment_lines(&ccm).len() * 2 > ccm.len()`。
@@ -569,13 +563,13 @@ fn every_scheduling_call_site_carries_a_classification_mark() {
 ///
 /// # 这条判据取代了谁
 ///
-/// 它的**上一版**叫 `the_per_second_identity_poller_spawns_nothing_per_tick`，
+/// 它的**上一版**
 /// 钉的是「那条每秒循环每次醒来不许起外部进程」（audit-0805 F14 第六刀：管道形态
 /// 每 tick 7 次 clone/execve，纯 builtin 0 次）。那一版的头注**自己写着**：
 /// 「本条钉的是**每次醒来的代价**，不是醒不醒；『别每秒醒』要 inotify，
 /// 得动 ccm 的进程模型 —— 如实登记为未做」。
 ///
-/// 用户原话「**可以动ccm. 不要轮询**」＋「**ccm做到必须走backend**」
+/// 要求「**可以动ccm. 不要轮询**」＋「**ccm做到必须走backend**」
 /// ⇒ 那件「未做」被做掉了，做法不是给 ccm 上 inotify（破「纯 POSIX shell、零第三方」，
 /// 而 ccm 要经 `include_str!` 部署到任意远端），而是**把通道 B 整条搬去 backend**
 ///（`src/backend/control/identity_tag.rs`，由它已有的 pidfile inotify 驱动）。
@@ -629,7 +623,7 @@ fn the_identity_poller_is_gone_for_good() {
             !prod.contains(shape),
             "`control/ccm/` 渲出去的 shell 里又出现了 `{shape}` —— 那是一条**与会话同寿**的循环。\n\
                  `U-NP④` 把身份通道 B 整条搬去了后端（`control/identity_tag.rs`），\n\
-                 用户原话：「不要轮询」「ccm 做到必须走后端」。\n\
+                 要求：「不要轮询」「ccm 做到必须走后端」。\n\
                  ⚠ 别把它当成「加个 sleep 兜一下更稳」——那正是这里要根除的东西：\n\
                  每会话一条、跑在**远端**机器上、与会话同寿。\n\
                  真需要一个新的等待，先回答「它的内核事件源是什么、为什么后端接不了」。"

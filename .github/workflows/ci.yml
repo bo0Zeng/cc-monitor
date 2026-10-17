@@ -112,8 +112,9 @@ jobs:
       - name: cargo clippy（整个 workspace）
         run: cargo clippy --workspace --all-targets
 
-      - name: cargo test（整个 workspace）
-        run: cargo test --workspace --no-fail-fast
+      # 扫源码守规矩的规则（guard-core）只读仓里的文本，换平台不多判一条：Linux 那一趟（门禁 `cargo` 格）照跑，这里不跑。
+      - name: cargo test（整个 workspace，规则除外）
+        run: cargo test --workspace --exclude guard-core --no-fail-fast
 
       # 生成物必须最新：上一步的 `cargo test --workspace` 跑了 ts-rs 导出、把各 `generated/` 重写过一遍，
       # 与已提交的不同或多出没跟踪的 ⇒ 红（判据本体 `generated-drift.sh`，quick-check 与门禁 `generated` 格同一份）。
@@ -172,7 +173,7 @@ jobs:
 
       - name: 门禁 · monitor 那棵树的测试
         env:
-          GATE_ONLY: cargo comm-boundary test-tiers generated deadcode
+          GATE_ONLY: cargo creds-harden comm-boundary test-tiers generated deadcode
         run: bash tests/scripts/gate.sh
 
 
@@ -224,7 +225,7 @@ jobs:
         run: npm run lint:css || true
 
       # 全部前端单测：① 纯函数 node 测试（branching 主线折叠 #8/#22/#25/#26、diff 渲染 #14、
-      # API 报错卡 #21、remote-health 节流、remote-launch 命令构造）；② tabs 生命周期 DOM 测试
+      # API 报错卡 #21、remote-health 节流）；② tabs 生命周期 DOM 测试
       # （vitest+jsdom，守护 resume 复活 / 归档-only 关闭 / origin 门控等 bug 高发区）。
       - name: unit tests (node pure-fn + vitest DOM)
         run: npm test

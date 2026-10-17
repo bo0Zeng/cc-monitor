@@ -149,7 +149,7 @@ fn host_header_omits_the_default_port_only() {
 ///
 /// # 名字只承诺它证得了的那一半（回修轮 08-25 改名，D1 `重要-2`）
 ///
-/// 旧名 `tls_client_config_builds_and_carries_roots` 里的 **carries roots** 是**空真**：
+/// 旧名里的 **carries roots** 是**空真**：
 /// 它断的是 crate 常量 `webpki_roots::TLS_SERVER_ROOTS` 非空，**不是** `tls_config()`
 /// 真把根装了进去 ⇒ 把装配点的根证书集换成空 `Vec::new()`，它照样全绿（审计 `CS`）。
 ///

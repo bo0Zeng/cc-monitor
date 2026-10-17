@@ -1,12 +1,12 @@
 //! 「这一段拼到根上之后还在不在根底下」的两道路径解析：词法（纯路径算术，不碰盘）＋ 父目录解链接后再判一次。
 //! 文件管理那一块的写面（`control/files_write.rs` 等）与原生那一块的传输台（`control/transfer.rs`，下载的本机落点）
 //! 每一处改动的路径都先过它；两块之间零互相依赖（`files/module_boundary_guard.rs`），共用的只许住 `common/`。
-//! 它只答落点在不在根底下，**不问落点是谁的数据**（用户原话「文件管理器全部都可以改. 不需要任何围栏」）。
+//! 它只答落点在不在根底下，**不问落点是谁的数据**（要求：「文件管理器全部都可以改. 不需要任何围栏」）。
 //! 判据住 `tests/backend/control/files_write_tests.rs`（经写面的再导出跑）。
 
 use crate::platform::fs::{Resolved, Ro};
 use copy_core::{copy_text, io_reason};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 /// 路径解析①（词法）：**纯路径算术，不碰盘**。过了就返回「打算写到哪」。
 ///
@@ -18,55 +18,28 @@ use std::path::{Component, Path, PathBuf};
 ///   但留着它就等于承认「这里做路径规范化」，而规范化与安全判定混在一起正是
 ///   本仓反复踩的那种坑 ⇒ **一律拒，让调用方送干净的段进来。**
 ///
-/// 🔴 这里原来还有一关「写点自己是不是一份会话文件」（再早是「目标根在不在
-/// `~/.claude*` 那几棵树里」）。用户原话「**文件管理器全部都可以改. 不需要任何围栏**」⇒ 那一关删了：
-/// 本函数只答「这一段拼到根上之后还在不在根底下」，**不问落点是谁的数据**。
-///
-/// 入参从 `&str` 换成了 `impl AsRef<Path>`：段判定走的是 `Path::components`，
-/// 它本来就**不看编码** ⇒ 非 UTF-8 的名字（乱码文件名）照样逐段判；递归删的子项名字
-/// 也不一定是 UTF-8，逐条目过路径解析要的正是这一格。判定一个字没变。
+/// 段判定按字节（与远端写围栏 · 解压条目同一道 `ssh_dial::plain_path`；本机 Windows 上 `\` 也是分隔符）⇒
+/// 非 UTF-8 的名字照样逐段判。
 pub fn lexical_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, String> {
+    use ssh_dial::plain_path::{plain_segments, Dots, Fault};
     let rel = rel.as_ref();
     if rel.to_string_lossy().trim().is_empty() {
         return Err(copy_text("beFilesWrite.path.empty", &[]));
     }
-    let shown = rel.display();
-    for c in rel.components() {
-        match c {
-            Component::Normal(_) => {}
-            Component::ParentDir => {
-                return Err(copy_text(
-                    "beFilesWrite.path.parentStep",
-                    &[("path", &shown.to_string())],
-                ));
-            }
-            Component::CurDir => {
-                return Err(copy_text(
-                    "beFilesWrite.path.dotStep",
-                    &[("path", &shown.to_string())],
-                ));
-            }
-            Component::RootDir | Component::Prefix(_) => {
-                return Err(copy_text(
-                    "beFilesWrite.path.absolute",
-                    &[("path", &shown.to_string())],
-                ));
-            }
-        }
+    let path = rel.display().to_string();
+    match plain_segments(
+        rel.as_os_str().as_encoded_bytes(),
+        cfg!(windows),
+        Dots::Reject,
+    ) {
+        Ok(_) => Ok(root.join(rel)),
+        Err(Fault::Parent) => Err(copy_text(
+            "beFilesWrite.path.parentStep",
+            &[("path", &path)],
+        )),
+        Err(Fault::Dot) => Err(copy_text("beFilesWrite.path.dotStep", &[("path", &path)])),
+        Err(Fault::Absolute) => Err(copy_text("beFilesWrite.path.absolute", &[("path", &path)])),
     }
-    let target = root.join(rel);
-    // 上面已经把非 Normal 的段全拒了 ⇒ 这一条恒真。**留着它是自证**：
-    // 哪天有人往上面那个 match 里加一档放行，这里会当场把后果说出来。
-    if !target.starts_with(root) {
-        return Err(copy_text(
-            "beFilesWrite.path.outsideRoot",
-            &[
-                ("path", &target.display().to_string()),
-                ("root", &root.display().to_string()),
-            ],
-        ));
-    }
-    Ok(target)
 }
 
 /// 路径解析②（现打）：把**父目录**解析成真路径（解 symlink）之后再判一次落点。

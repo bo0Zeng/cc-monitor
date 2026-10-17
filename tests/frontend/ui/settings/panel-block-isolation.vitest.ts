@@ -25,7 +25,7 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
   // `pages.addMachinePage` 注册本机页，panel 靠那一刻把 per-machine 分节安顿下来。
   // stub 不调的话，那几块就永远游离在文档之外，测试会以为它们「消失了」。
   MACHINE_PAGE_PREFIX: "machine:",
-  LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
+  LOCAL_MACHINE_PAGE_ID: "machine:<local>",
   RemoteSection: class {
     headActions = (): HTMLElement[] => [];
     pageIdOfMachine = (): string | null => null;
@@ -52,7 +52,7 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
       // 「应用/机器/…」前面成为第一页，落地页与导航顺序就都错了。
       setTimeout(() => {
         const page = document.createElement("div");
-        opts?.pages?.addMachinePage("machine:（本机）", "本机", page);
+        opts?.pages?.addMachinePage("machine:<local>", "本机", page);
       }, 0);
     }
   },
@@ -148,6 +148,7 @@ import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { beforeEach, afterEach } from "vitest";
 import { copyPattern } from "../../../test-support/copy-pattern";
 import { factsOn } from "../../../test-support/host-facts";
+import { nonEmpty } from "../../../test-support/non-empty";
 
 // S9：jsdom 的 UA 含 `linux`。从前非 Windows 上「终端集成」那块**根本不构造**，钉成 windows 为的是守完整那组；
 // 那块并进了「别名」、两个平台都构造 ⇒ 这一钉只是沿用本文件一直以来的 Windows 形态。
@@ -278,7 +279,7 @@ describe("通用页不再有恢复命令那一格（启动程序 · 恢复到 tm
     await p.open();
     const general = [...document.querySelectorAll<HTMLElement>(".settings-switch-row label")].map((l) => l.querySelector("span")?.firstChild?.textContent);
     expect(general).not.toContain(copyText("settingsPanel.behavior.resumeInTmux"));
-    expect(general.length, "别的开关还在（空真自检）").toBeGreaterThan(0);
+    nonEmpty(general);
     expect(document.querySelector(".settings-group [data-role=resume-select]")).toBeNull();
   });
 });

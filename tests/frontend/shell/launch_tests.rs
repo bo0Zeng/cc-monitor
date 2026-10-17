@@ -91,7 +91,7 @@ fn every_terminal_window_backend_opens_carries_the_backend_path() {
 #[test]
 fn no_prose_claims_the_session_container_is_always_tmux() {
     let needle = format!("会话容器{}是 tmux", "本来就");
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     // 〔08-06 扩面〕原来只扫三份。实测：把**原句**写进 `src/doc/DEVELOPMENT.md`
     // （不在那三份里）**不会红** —— 扫描面本身就是个洞。⇒ 改成「全 `doc/` + 两份 README + 本文件」。
     //
@@ -281,13 +281,11 @@ fn the_no_window_outcome_is_a_code_not_a_phrase_the_frontend_greps_for() {
         serde_json::to_value(TerminalOpen::SetMissing).unwrap(),
         serde_json::json!("setMissing")
     );
-    const RUNNER: &str = include_str!("../../../src/frontend/ui/remote-launch-run.ts");
-    const LOCAL: &str = include_str!("../../../src/frontend/ui/local-resume.ts");
+    const SESSION_OPEN: &str = include_str!("../../../src/frontend/ui/session-open.ts");
     const LOGIN: &str = include_str!("../../../src/frontend/ui/settings/account-login.ts");
     const OPEN: &str = include_str!("../../../src/frontend/ui/terminal-open.ts");
     for (name, src) in [
-        ("remote-launch-run.ts", RUNNER),
-        ("local-resume.ts", LOCAL),
+        ("session-open.ts", SESSION_OPEN),
         ("account-login.ts", LOGIN),
     ] {
         assert!(
@@ -692,6 +690,27 @@ fn local_posix_spawn_actually_runs_the_command() {
 
 /// 造一份只属于这一条判据的临时目录（名字取中性名，**不进任何断言**）。
 #[cfg(not(windows))]
+/// 终端程序起不来：句子是「启动本机命令失败 · 原因词」，系统原话进复制详情（不只进日志）。
+#[cfg(not(windows))]
+#[test]
+fn a_terminal_that_cannot_start_says_the_reason_and_keeps_the_raw_words() {
+    let term = vec!["/nonexistent-ccm-term/xterm".to_string()];
+    let e = crate::platform::terminal::open_window_via("true", None, Some(&term))
+        .expect_err("不存在的终端起不来");
+    assert_eq!(
+        e.said,
+        copy_text(
+            "rsLaunch.local.spawnFailed",
+            &[(
+                "why",
+                &copy_core::spawn_reason(std::io::ErrorKind::NotFound)
+            )]
+        )
+    );
+    let raw = copy_text("detail.label.raw", &[]);
+    assert!(e.detail.contains(&format!("{raw}：")), "{}", e.detail);
+}
+
 fn scratch_dir(tag: &str) -> std::path::PathBuf {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1104,7 +1123,7 @@ fn the_thin_wrapper_hands_the_command_straight_through_to_the_via_form() {
     let prod = guard_core::production_code(LAUNCH_SRC);
     // 锚点必须**唯一**：Windows 那一份的形参带下划线前缀（`_cmd` / `_cwd`）⇒ 签名不同。
     let head =
-        "pub fn launch_local_posix(cmd: &str, cwd: Option<&str>) -> Result<TerminalOpen, String> {";
+        "pub fn launch_local_posix(cmd: &str, cwd: Option<&str>) -> Result<TerminalOpen, Said> {";
     let at = guard_core::find_pinned(&prod, head)
         .unwrap_or_else(|e| panic!("`launch_local_posix` 的签名不是恰好一处 —— 先修锚点：{e}"));
     // 花括号配平切体（本文件唯一一处切块，刻意不另造第二种切法）。
@@ -1191,22 +1210,4 @@ fn without_a_terminal_exit_the_window_open_says_so_instead_of_running_headless()
         "找不到终端时该回「找不到终端」那个结局"
     );
     assert!(!ran_headless, "找不到终端时那一行被无窗口直起了");
-}
-
-/// Linux 上的系统通知：全进程一条会话总线长连接（`platform/notify.rs::linux::POOL`），不按条新开 ——
-/// GNOME 见发信人的总线名没了、又认得出是哪个有窗口的程序，就当场把通知收掉（L2 · 10-08 真窗口现打）；
-/// 「发 N 条只连一次」的行为由 `platform/notify_tests.rs` 拿假总线钉。发通知只有一个家，壳里别处不许再经插件发。
-#[test]
-fn linux_notifications_share_one_long_lived_bus_connection() {
-    const NOTIFY: &str = include_str!("../../../src/frontend/shell/src/platform/notify.rs");
-    let prod = guard_core::production_code(NOTIFY);
-    assert!(
-        guard_core::find_pinned(&prod, "linux::POOL.send(app, title, body)").is_ok(),
-        "Linux 那一臂不再经全进程那一条连接发"
-    );
-    const LIB: &str = include_str!("../../../src/frontend/shell/src/lib.rs");
-    assert!(
-        !guard_core::contains_word(&guard_core::production_code(LIB), "NotificationExt"),
-        "lib.rs 还在直接经插件发通知"
-    );
 }

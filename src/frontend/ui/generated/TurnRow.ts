@@ -11,7 +11,11 @@ export type TurnRow = {
  */
 at: number, 
 /**
- * 你那句的 uuid（跳过去用）。
+ * 你那句的行号（与实时行的 `seq` 同一个空间；跳过去时按它物化）。
+ */
+line: number, 
+/**
+ * 你那句的 uuid（跳过去时按它找卡）。
  */
 uuid: string, 
 /**

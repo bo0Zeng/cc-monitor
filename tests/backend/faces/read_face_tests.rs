@@ -3,6 +3,7 @@
 //! 夹具只造**结构**（目录名、行数、字节边界），行内容是占位的最小 JSON —— 不采任何真会话正文。
 
 use super::*;
+use crate::wire::SessionFaceExt as _;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
@@ -156,7 +157,7 @@ fn session(home: &Path, proj: &str, sid: &str, n: usize, torn: bool) -> PathBuf 
 /// 左边从命令表各族的**生产段源码**切 `CommandSpec {` 块数出来（异源：不读本文件的任何常量）。
 #[test]
 fn the_registry_hands_exactly_the_eight_to_this_host() {
-    let families = crate::guard_support::registry_sources();
+    let families = guard_core::addr::backend_registry_sources();
     let mut got: Vec<String> = families
         .iter()
         .flat_map(|(_, prod)| prod.split("CommandSpec {").skip(1))
@@ -187,8 +188,8 @@ fn the_registry_hands_exactly_the_eight_to_this_host() {
                     continue;
                 }
                 let ty = &rest[..rest.find('>').expect("typed 那一行没收尾")];
-                // 这两条住同一份宿主、不读会话也不读账号（诊断那一族），不在本族里。
-                if ["BackendLog", "DriftReportCmd"].contains(&ty) {
+                // 这几条与本族同住一个模块、不读会话也不读账号（诊断那两条 · 各台需手动清单的纯计算合并），不在本族里。
+                if ["BackendLog", "DriftReportCmd", "NeedsMergeCmd"].contains(&ty) {
                     continue;
                 }
                 let imp = [
@@ -266,7 +267,7 @@ fn paged_read_reassembles_the_file_byte_for_byte() {
     let mut off = 0u64;
     let mut pages = 0;
     loop {
-        let pg = crate::observe::history_query::read_page(&home, &path, off, None, 37, 1 << 20)
+        let pg = crate::observe::query::body::read_page(&home, &path, off, None, 37, 1 << 20)
             .expect("读页");
         assert_eq!(
             pg.next,
@@ -288,8 +289,8 @@ fn paged_read_reassembles_the_file_byte_for_byte() {
     assert_eq!(got, want);
     // `until` 收口：[a, b) 恰好是那一段。
     let (a, b) = (8u64, 60u64);
-    let pg = crate::observe::history_query::read_page(&home, &path, a, Some(b), 1 << 20, 1 << 20)
-        .unwrap();
+    let pg =
+        crate::observe::query::body::read_page(&home, &path, a, Some(b), 1 << 20, 1 << 20).unwrap();
     assert!(pg.eof);
     assert_eq!(pg.bytes, want[a as usize..b as usize].to_vec());
     let _ = std::fs::remove_dir_all(&home);
@@ -305,14 +306,14 @@ fn an_oversized_line_is_refused_not_cut() {
     let long = format!("{{\"x\":\"{}\"}}\n{{\"i\":1}}\n", "a".repeat(5000));
     std::fs::write(&p, &long).unwrap();
     let path = p.to_string_lossy().into_owned();
-    let ok = crate::observe::history_query::read_page(&home, &path, 0, None, 100, 1 << 20).unwrap();
+    let ok = crate::observe::query::body::read_page(&home, &path, 0, None, 100, 1 << 20).unwrap();
     assert_eq!(ok.bytes.last(), Some(&b'\n'));
     assert_eq!(
         ok.bytes.len(),
         long.find('\n').unwrap() + 1,
         "应恰好是那一整行"
     );
-    match crate::observe::history_query::read_page(&home, &path, 0, None, 100, 1000) {
+    match crate::observe::query::body::read_page(&home, &path, 0, None, 100, 1000) {
         Err((c, _)) => assert_eq!(c, "oversized_line"),
         Ok(pg) => panic!("超长行被交出去了（{} 字节）", pg.bytes.len()),
     }
@@ -397,10 +398,7 @@ fn index_and_user_input_answers_carry_the_rows_the_fixture_predicts() {
     .unwrap();
     assert_eq!(
         keys(&v),
-        [
-            "body", "classes", "count", "end", "fd", "from", "inputs", "n", "next", "o", "sp", "t",
-            "u"
-        ],
+        ["body", "classes", "count", "end", "fd", "from", "inputs", "n", "next", "o", "sp", "t"],
         "骨架索引的成品形状变了"
     );
     let mut o = 0u64;
@@ -621,16 +619,13 @@ fn golden_turns_session(home: &Path) -> String {
 fn the_three_products_match_the_cross_language_golden() {
     let home = scratch("c4b-golden");
     let path = golden_session(&home);
-    // `history-facts` 的 `rev` 是续算表现铸的号（从进程起来那一刻的钟往上数）：比较前换成金样里的 1，只核它在、是数。
-    let mut facts = answer_at(
+    let facts = answer_at(
         &home,
         "history-facts",
         &serde_json::json!({"path": golden_facts_session(&home)}),
         &Default::default(),
     )
     .unwrap();
-    assert!(facts["rev"].as_u64().is_some_and(|r| r > 1), "{facts}");
-    facts["rev"] = serde_json::json!(1);
     let got = serde_json::json!({
         "history-index": answer_at(&home, "history-index", &serde_json::json!({"path": path, "offset": 0}), &Default::default()).unwrap(),
         "history-user-inputs": answer_at(&home, "history-user-inputs", &serde_json::json!({"path": path, "from": 0}), &Default::default()).unwrap(),
@@ -735,17 +730,12 @@ fn facts_say_what_the_session_is_waiting_for() {
     let pids = crate::observe::watcher::pidfile_dir(&home);
     std::fs::create_dir_all(&pids).unwrap();
     // 「没挂答题口」那一句照持着它的进程的环境与命令行现判：环境不从本进程继承那两格（本进程的环境是全局的），
-    // 并且等它真 exec 完再问 —— exec 窗口里 /proc/<pid>/environ 读回 0 字节，判成「取不到」、那一句就没了
-    // （机器忙时整套里偶发红的就是这一形：manualText 成了「只能在终端里答」）。
-    //   它活到这里亲手停它为止（`cat` 等着读标准输入）：不按墙钟给它定寿命（`sleep 30` 在机器忙时会先走，僵尸读不出环境）。
-    let mut c = std::process::Command::new("cat")
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::null())
-        .env_remove(crate::agents::asks::ANSWER_HOOK_OFF_ENV)
-        .env_remove(crate::agents::claudecode::asks::PLUGIN_ENV)
-        .spawn()
-        .unwrap();
-    exec_done(c.id(), b"cat\0");
+    // 等它真 exec 完再问（见 `held`）。
+    let mut c = held(
+        std::process::Command::new("cat")
+            .env_remove(crate::agents::asks::ANSWER_HOOK_OFF_ENV)
+            .env_remove(crate::agents::claudecode::asks::PLUGIN_ENV),
+    );
     let ticks = crate::platform::proc::proc_starttime(c.id()).expect("读得到起始时刻");
     let pidfile = |status: &str| {
         let body = format!(
@@ -776,7 +766,7 @@ fn facts_say_what_the_session_is_waiting_for() {
     let (waited, rest) = split_waited(&waiting);
     assert_eq!(
         rest,
-        serde_json::json!({"kind": "approve", "tool": "Bash", "call": "b1", "what": "rm -rf build/", "sinceMs": 1_700_000_000_000u64, "text": copy_core::copy_text("beSession.needs.approve", &[]), "head": copy_core::copy_text("needs.bar.approve", &[("tool", "Bash")]), "headCode": "rm -rf build/", "tone": "need", "rank": 1, "ask": null, "manualText": copy_core::copy_text("beAsk.manual.offElsewhere", &[])})
+        serde_json::json!({"kind": "approve", "tool": "Bash", "call": "b1", "what": "rm -rf build/", "sinceMs": 1_700_000_000_000u64, "text": copy_core::copy_text("beSession.needs.approve", &[]), "head": copy_core::copy_text("needs.bar.approve", &[("tool", "Bash")]), "headCode": "rm -rf build/", "tone": "need", "ask": null, "manualText": copy_core::copy_text("beAsk.manual.offElsewhere", &[])})
     );
     // 已等多久在这台算（这台读 pidfile 那一刻减那份 pidfile 里的起点），字由时长那一处写。
     let ms = waited.expect("有起点就有已等多久");
@@ -873,29 +863,22 @@ fn history_facts_takes_the_context_window_from_what_the_relay_saw() {
     );
 }
 
-/// ★`history-facts` 经帧面续传：令牌只是应答里的 `{end, rev}` 两格（与线上同形：过一遍 JSON 文本），
-/// 文件长了一截之后接着问 == 对长了之后的整份从 0 问（除了新铸的 `rev`）。令牌对不上表里那一份（`rev` 认不得 ·
-/// `end` 不是那一份的 · 已经续过一次被换掉了）⇒ `stale_prior`；续点的两道校验：截断 ⇒ `failed`；改写到续点不在行边界上 ⇒ `failed`；
-/// 令牌形状不对（缺 `rev` · 多一格 · 旧的整份成品）/ 缺 `path` ⇒ `bad_args`。
+/// ★`history-facts` 只收 `path`：带 `prior`（旧的续传令牌）⇒ `bad_args`；回包没有 `end` · `rev` · `tokens.last`（续算住后端，
+/// 判据在 `record_scan_tests`）。文件长了一截 · 被截断重写之后再问，答的都是那一刻的整份。
 #[test]
-fn history_facts_resumes_from_its_end_rev_token_and_refuses_a_stale_one() {
+fn history_facts_takes_only_a_path_and_answers_the_file_as_it_is_now() {
     let home = scratch("facts");
     let path = golden_facts_session(&home);
     let ask =
         |args: serde_json::Value| answer_at(&home, "history-facts", &args, &Default::default());
-    let token = |v: &serde_json::Value| serde_json::json!({ "end": v["end"], "rev": v["rev"] });
-    let no_rev = |v: &serde_json::Value| {
-        let mut v = v.clone();
-        v.as_object_mut().unwrap().remove("rev");
-        v
-    };
     let first = ask(serde_json::json!({ "path": path })).unwrap();
-    let wire: serde_json::Value =
-        serde_json::from_str(&first.to_string()).expect("应答过一遍 JSON 文本");
-    assert!(wire["rev"].as_u64().is_some(), "成品里没有 rev：{wire}");
-    // 旧的整份成品当令牌 ⇒ 认不得（不留旧兼容）。
+    for gone in ["end", "rev"] {
+        assert!(first.get(gone).is_none(), "回包里还有 `{gone}`：{first}");
+    }
+    assert!(first["tokens"].is_object(), "夹具该带用量：{first}");
+    assert!(first["tokens"].get("last").is_none(), "{first}");
     assert_eq!(
-        ask(serde_json::json!({ "path": path, "prior": wire }))
+        ask(serde_json::json!({ "path": path, "prior": { "end": 1, "rev": 1 } }))
             .unwrap_err()
             .0,
         "bad_args"
@@ -907,79 +890,16 @@ fn history_facts_resumes_from_its_end_rev_token_and_refuses_a_stale_one() {
         .unwrap();
     std::io::Write::write_all(&mut f, format!("{more}\n").as_bytes()).unwrap();
     drop(f);
-    // `end` 不是那一份的 · `rev` 认不得 ⇒ stale_prior（调用方从 0 重要）。
-    let mut off = token(&wire);
-    off["end"] = serde_json::json!(wire["end"].as_u64().unwrap() - 1);
+    let grown = ask(serde_json::json!({ "path": path })).unwrap();
     assert_eq!(
-        ask(serde_json::json!({ "path": path, "prior": off }))
-            .unwrap_err()
-            .0,
-        "stale_prior"
-    );
-    let mut unknown = token(&wire);
-    unknown["rev"] = serde_json::json!(wire["rev"].as_u64().unwrap() + 1_000_000);
-    assert_eq!(
-        ask(serde_json::json!({ "path": path, "prior": unknown }))
-            .unwrap_err()
-            .0,
-        "stale_prior"
-    );
-    let resumed = ask(serde_json::json!({ "path": path, "prior": token(&wire) })).unwrap();
-    let whole = ask(serde_json::json!({ "path": path })).unwrap();
-    assert_eq!(no_rev(&resumed), no_rev(&whole), "接着问与从 0 问不相等");
-    assert_ne!(resumed["rev"], wire["rev"], "续上之后该铸新的 rev");
-    assert_ne!(
-        no_rev(&resumed),
-        no_rev(&first),
-        "长了的那一截没进成品（夹具那条写类调用没进改动文件）"
-    );
-    assert_eq!(
-        whole["touchedFiles"],
+        grown["touchedFiles"],
         serde_json::json!(["/w/a.ts", "/w/b.ts"])
     );
-    // 续过一次的旧令牌被换掉了 ⇒ stale_prior。
-    assert_eq!(
-        ask(serde_json::json!({ "path": path, "prior": token(&wire) }))
-            .unwrap_err()
-            .0,
-        "stale_prior"
-    );
-
-    // 截断：续点越过文件尾。
-    let wire = whole;
-    std::fs::write(&path, "{}\n").unwrap();
-    assert_eq!(
-        ask(serde_json::json!({ "path": path, "prior": token(&wire) }))
-            .unwrap_err()
-            .0,
-        "failed"
-    );
-    // 改写：长度够，但续点前一个字节不是换行。
-    let end = wire["end"].as_u64().unwrap() as usize;
-    std::fs::write(&path, "x".repeat(end + 10)).unwrap();
-    let e = ask(serde_json::json!({ "path": path, "prior": token(&wire) })).unwrap_err();
-    assert!(e.0 == "failed" && e.1.contains("line boundary"), "{e:?}");
-    // 正控：同一个长度、续点恰在行边界上 ⇒ 接着读（证明上一条红的是「不在行边界」而不是别的；读不成那两次表里那一份留着）。
-    std::fs::write(&path, format!("{}\n{}\n", "x".repeat(end - 1), "{}")).unwrap();
-    assert!(ask(serde_json::json!({ "path": path, "prior": token(&wire) })).is_ok());
-    // 形状不对 / 缺 path。
-    for bad in [
-        serde_json::json!({ "end": wire["end"] }),
-        serde_json::json!({ "end": wire["end"], "rev": wire["rev"], "usage": null }),
-    ] {
-        assert_eq!(
-            ask(serde_json::json!({ "path": path, "prior": bad }))
-                .unwrap_err()
-                .0,
-            "bad_args"
-        );
-    }
-    assert_eq!(
-        ask(serde_json::json!({ "prior": token(&wire) }))
-            .unwrap_err()
-            .0,
-        "bad_args"
-    );
+    // 截断重写：答的是新内容（不是接着旧的那一份算）。
+    std::fs::write(&path, format!("{more}\n")).unwrap();
+    let rewritten = ask(serde_json::json!({ "path": path })).unwrap();
+    assert_eq!(rewritten["touchedFiles"], serde_json::json!(["/w/b.ts"]));
+    assert_eq!(ask(serde_json::json!({})).unwrap_err().0, "bad_args");
     // 围栏同族：`projects` 之外的文件不读。
     let outside = home.join("outside.jsonl");
     std::fs::write(&outside, "{}\n").unwrap();
@@ -1113,7 +1033,7 @@ fn lines_by_number_match_the_hand_written_countable_rows() {
     let n = want.len() as u64;
     for from in 0..=n + 1 {
         for until in (from..=n + 2).map(Some).chain([None]) {
-            let got = crate::observe::history_query::read_lines_from(
+            let got = crate::observe::query::body::read_lines_from(
                 std::io::Cursor::new(body.as_bytes()),
                 from,
                 until,
@@ -1148,7 +1068,7 @@ fn lines_by_number_page_on_row_boundaries_and_reassemble() {
         let mut from = 0u64;
         let mut rounds = 0;
         loop {
-            let pg = crate::observe::history_query::read_lines_from(
+            let pg = crate::observe::query::body::read_lines_from(
                 std::io::Cursor::new(body.as_bytes()),
                 from,
                 None,
@@ -1177,7 +1097,7 @@ fn lines_by_number_page_on_row_boundaries_and_reassemble() {
 fn lines_by_number_refuse_an_oversized_row_but_can_count_past_it() {
     let (body, want) = lines_fixture();
     let cap = 100; // 夹具那一行 > 200 字节
-    match crate::observe::history_query::read_lines_from(
+    match crate::observe::query::body::read_lines_from(
         std::io::Cursor::new(body.as_bytes()),
         3,
         Some(5),
@@ -1187,7 +1107,7 @@ fn lines_by_number_refuse_an_oversized_row_but_can_count_past_it() {
         Err(("oversized_line", _)) => {}
         other => panic!("超长行被交出去了：{other:?}"),
     }
-    let after = crate::observe::history_query::read_lines_from(
+    let after = crate::observe::query::body::read_lines_from(
         std::io::Cursor::new(body.as_bytes()),
         5,
         None,
@@ -1200,7 +1120,7 @@ fn lines_by_number_refuse_an_oversized_row_but_can_count_past_it() {
 
 /// ★ L1：同一份夹具的三个出口数的是**同一个**行号空间 —— `history-tail` 的 `total` ·
 /// `history-index` 的行数 · `history-lines` 从 0 取到底的条数，两两相等（三个扫描各写各的循环，只共用
-/// `line_counts` 那一个判定）；帧面那一臂的键集合恒等；围栏照旧。
+/// `lines::counts` 那一个判定）；帧面那一臂的键集合恒等；围栏照旧。
 #[test]
 fn lines_by_number_share_the_seq_space_with_tail_and_index() {
     let home = scratch("cf2-lines");
@@ -1289,7 +1209,7 @@ fn lines_by_number_match_the_shared_seq_space_golden() {
         !want.is_empty(),
         "金标准一行都没抽到 —— 下面的相等在空集上绿"
     );
-    let pg = crate::observe::history_query::read_lines_from(
+    let pg = crate::observe::query::body::read_lines_from(
         std::io::Cursor::new(data),
         0,
         None,
@@ -1669,7 +1589,11 @@ fn sessions_needs_lists_the_waiting_sessions_each_with_its_history_facts_needs()
     for r in rows {
         let mut keys: Vec<&str> = r.as_object().unwrap().keys().map(String::as_str).collect();
         keys.sort();
-        assert_eq!(keys, vec!["hidden", "needs", "sid"], "一行只有这三格：{r}");
+        assert_eq!(
+            keys,
+            vec!["face", "hidden", "label", "needs", "sid"],
+            "一行只有这五格：{r}"
+        );
     }
 }
 
@@ -1731,86 +1655,68 @@ fn a_hidden_background_session_still_lists_its_needs() {
 }
 
 /// 一份 `needs` 拆成「已等多久（毫秒）」与其余各格（已等的那两格随问的时刻变，单拿出来判）。
+/// 先答序跟着已等多久走 ⇒ 一起摘掉，先核它就是那一处算出来的（同一种类、同一个已等多久）。
 fn split_waited(n: &serde_json::Value) -> (Option<u64>, serde_json::Value) {
     let mut rest = n.clone();
     let o = rest.as_object_mut().expect("needs 是对象");
     let ms = o.remove("waitedMs").and_then(|v| v.as_u64());
     o.remove("waitedText");
+    let kind: crate::observe::recognize::facts::NeedsKind =
+        serde_json::from_value(o["kind"].clone()).expect("needs.kind");
+    assert_eq!(
+        o.remove("rank").and_then(|v| v.as_u64()),
+        Some(crate::observe::recognize::facts::needs_rank(kind, ms)),
+        "needs.rank 不是先答序那一处算的"
+    );
     (ms, rest)
 }
 
-/// ★ **续算令牌不被投影弄残**：带声明去掉 `touchedFiles`（连同点名去掉 `end` · `rev`）之后，令牌那两格照样在
-/// （`views::TOKENS`：投影不去它们），应答里不再另塞一整份；拿它续算出来的与不带声明那一路**逐字相同**（除了各自的 `rev`）。
+/// ★ 事实回包照声明投影、没有例外：去掉 `touchedFiles` ⇒ 其余与不带声明那一份逐字相同；点名回包里没有的 `end` · `rev` ⇒ `bad_args`。
 #[test]
-fn a_projected_facts_reply_still_continues_exactly_like_the_whole_one() {
-    let home = scratch("facts-token");
+fn a_projected_facts_reply_is_the_whole_one_minus_what_it_omits() {
+    let home = scratch("facts-view");
     let dir = home.join("projects").join("-p");
     std::fs::create_dir_all(&dir).unwrap();
     let p = dir.join("s.jsonl");
-    let edit = |uuid: &str, file: &str| {
-        format!(
-            r#"{{"type":"assistant","uuid":"{uuid}","timestamp":"2026-01-02T03:04:06.000Z","message":{{"role":"assistant","model":"m","content":[{{"type":"tool_use","id":"t-{uuid}","name":"Edit","input":{{"file_path":"{file}","old_string":"a","new_string":"b"}}}}],"usage":{{"input_tokens":3,"output_tokens":4}}}}}}"#
-        ) + "\n"
+    std::fs::write(
+        &p,
+        r#"{"type":"assistant","uuid":"a1","timestamp":"2026-01-02T03:04:06.000Z","message":{"role":"assistant","model":"m","content":[{"type":"tool_use","id":"t-a1","name":"Edit","input":{"file_path":"/w/one.txt","old_string":"a","new_string":"b"}}],"usage":{"input_tokens":3,"output_tokens":4}}}"#.to_string() + "\n",
+    )
+    .unwrap();
+    let ask = || {
+        answer_at(
+            &home,
+            "history-facts",
+            &serde_json::json!({ "path": p.to_string_lossy() }),
+            &Default::default(),
+        )
+        .unwrap()
     };
-    std::fs::write(&p, edit("a1", "/w/one.txt")).unwrap();
-    let path = p.to_string_lossy().to_string();
-    let view = serde_json::json!({"omit": {"facts": ["touchedFiles", "end", "rev"]}});
-    let plan = crate::stream::inbound::views::plan_for("history-facts", &view).unwrap();
-    let ask = |prior: Option<&serde_json::Value>| {
-        let mut args = serde_json::json!({ "path": path });
-        if let Some(p) = prior {
-            args["prior"] = p.clone();
-        }
-        answer_at(&home, "history-facts", &args, &Default::default()).unwrap()
-    };
-
-    let token = |v: &serde_json::Value| serde_json::json!({ "end": v["end"], "rev": v["rev"] });
-    let whole1 = ask(None);
-    let seen1 = plan.apply(Some(ask(None))).unwrap();
-    assert!(seen1.get("touchedFiles").is_none(), "{seen1}");
-    assert!(
-        seen1.get("prior").is_none(),
-        "应答里不该再塞一整份：{seen1}"
-    );
+    let whole = ask();
     assert_eq!(
-        seen1["end"], whole1["end"],
-        "令牌那两格被投影去掉了：{seen1}"
-    );
-    assert!(seen1["rev"].as_u64().is_some(), "{seen1}");
-    assert_ne!(seen1["rev"], whole1["rev"], "两问各铸各的 rev");
-    assert_eq!(
-        whole1["touchedFiles"],
+        whole["touchedFiles"],
         serde_json::json!(["/w/one.txt"]),
         "夹具没打到（下面那一半会恒绿）"
     );
-
-    // 记录又长了一行，两路各自续算。
-    use std::io::Write as _;
-    std::fs::OpenOptions::new()
-        .append(true)
-        .open(&p)
-        .unwrap()
-        .write_all(edit("a2", "/w/two.txt").as_bytes())
-        .unwrap();
-    let mut whole2 = ask(Some(&token(&whole1)));
-    let mut seen2 = plan.apply(Some(ask(Some(&token(&seen1))))).unwrap();
-    whole2.as_object_mut().unwrap().remove("rev");
-    seen2.as_object_mut().unwrap().remove("rev");
-    let mut want = whole2.clone();
+    let view = serde_json::json!({"omit": {"facts": ["touchedFiles"]}});
+    let plan = crate::stream::inbound::views::plan_for("history-facts", &view).unwrap();
+    let mut want = whole.clone();
     want.as_object_mut().unwrap().remove("touchedFiles");
-    assert_eq!(seen2, want, "带声明那一路续算出来的与不带的不一样");
-    assert_eq!(
-        whole2["touchedFiles"],
-        serde_json::json!(["/w/one.txt", "/w/two.txt"])
-    );
+    assert_eq!(plan.apply(Some(ask())).unwrap(), want);
+    for gone in ["end", "rev"] {
+        let view = serde_json::json!({"omit": {"facts": [gone]}});
+        let e = crate::stream::inbound::views::plan_for("history-facts", &view).unwrap_err();
+        assert_eq!(e.code, "bad_args", "{gone}");
+    }
     let _ = std::fs::remove_dir_all(&home);
 }
 
 /// 帧面骨架索引按列装回的逐行（判据用：与夹具逐行比）。
-/// 读法同界面 `session-reads.ts::decodeIndex`（那一侧的读者由跨语言金样钉）；`sc` 不上帧面（占位不用它）。
+/// 读法同界面骨架账本收列那一处（`live-window.ts::SkeletonLedger.append`，那一侧的读者由跨语言金样钉）；`sc` 不上帧面（占位不用它），
+/// uuid 只有用户输入那几行带（在 `inputs` 那张小表里）。
 pub(crate) fn rows_of_index(v: &serde_json::Value) -> Vec<serde_json::Value> {
     let col = |k: &str| v[k].as_array().cloned().unwrap_or_default();
-    let (o, n, t, fd, u) = (col("o"), col("n"), col("t"), col("fd"), col("u"));
+    let (o, n, t, fd) = (col("o"), col("n"), col("t"), col("fd"));
     let classes = col("classes");
     let mut at = v["from"].as_u64().unwrap();
     let mut rows: Vec<serde_json::Map<String, serde_json::Value>> = (0
@@ -1824,9 +1730,6 @@ pub(crate) fn rows_of_index(v: &serde_json::Value) -> Vec<serde_json::Value> {
             let k = t[i].as_u64().unwrap() as usize;
             if k > 0 {
                 r.insert("t".into(), classes[k - 1].clone());
-            }
-            if !u[i].is_null() {
-                r.insert("u".into(), u[i].clone());
             }
             if fd[i].as_u64() != Some(0) {
                 r.insert("fd".into(), fd[i].clone());
@@ -1852,7 +1755,7 @@ pub(crate) fn rows_of_index(v: &serde_json::Value) -> Vec<serde_json::Value> {
         x.as_u64() == Some(0)
     });
     sparse("sp", &["v"], &|_, _| false);
-    sparse("inputs", &["x", "ts"], &|k, x| {
+    sparse("inputs", &["u", "x", "ts"], &|k, x| {
         k == "ts" && x.as_str() == Some("")
     });
     rows.into_iter()
@@ -1866,11 +1769,12 @@ pub(crate) fn rows_of_index(v: &serde_json::Value) -> Vec<serde_json::Value> {
 }
 
 /// ★ 骨架索引在帧面上**按列排**：每格一列（偏移是与上一行末尾的差，`t` 是本份 `classes` 里的号，0 ＝ 不进界面）；
-/// 稀疏的几格（正文那五个数 · 来源 · 用户输入的摘要与时刻）各一张小表，`at` 是与上一项的行号差（连着 ＝ 0）。`sc` 不上帧面。
+/// 稀疏的几格（正文那五个数 · 来源 · 用户输入的 uuid · 摘要与时刻）各一张小表，`at` 是与上一项的行号差（连着 ＝ 0）。
+/// `sc` 不上帧面；每行的 uuid 不上帧面（行号就是下标），只有用户输入那几行在小表里带着。
 #[test]
 fn the_index_is_packed_by_column_with_offsets_as_differences() {
     use crate::agents::record::RecordClass;
-    use crate::observe::history_query::IndexRow;
+    use crate::observe::recognize::index_row::IndexRow;
     let rows = vec![
         IndexRow {
             o: 0,
@@ -1906,17 +1810,16 @@ fn the_index_is_packed_by_column_with_offsets_as_differences() {
             ..Default::default()
         },
     ];
-    let v = serde_json::to_value(crate::faces::history_face::pack_index(0, 315, &rows)).unwrap();
+    let v = serde_json::to_value(crate::observe::query::index::pack_index(0, 315, &rows)).unwrap();
     assert_eq!(
         v,
         serde_json::json!({
             "from": 0, "end": 315, "next": null, "count": 4,
             "classes": ["said", "reply"],
             "o": [0, 0, 6, 0], "n": [100, 194, 10, 5], "t": [1, 2, 0, 1], "fd": [0, 2, 0, 0],
-            "u": ["in-1", "out-1", "m", null],
             "body": {"at": [0], "ch": [14], "cj": [0], "pl": [1], "cb": [0], "cl": [0]},
             "sp": {"at": [3], "v": ["system"]},
-            "inputs": {"at": [0], "x": ["alpha"], "ts": ["t1"]},
+            "inputs": {"at": [0], "u": ["in-1"], "x": ["alpha"], "ts": ["t1"]},
         })
     );
     let mut back: Vec<serde_json::Value> = rows
@@ -1924,24 +1827,30 @@ fn the_index_is_packed_by_column_with_offsets_as_differences() {
         .map(|r| serde_json::to_value(r).unwrap())
         .collect();
     back[3].as_object_mut().unwrap().remove("sc");
+    for r in &mut back[1..3] {
+        r.as_object_mut().unwrap().remove("u");
+    }
     assert_eq!(rows_of_index(&v), back, "按列装回来与原来的逐行不一样");
 }
 
-/// 等刚起的那个子进程**真 exec 完**：命令行换成了它自己的（`head` 打头）**并且**环境读得出来。
-/// fork 之后、exec 之前 /proc/<pid>/environ 还是父进程那一份；exec 当中内核先写命令行、再写环境，
-/// 两样之间读环境回 0 字节（判成「取不到」，那一句就没了）⇒ 两样都等到。上限是兜底的那一个数，不按快慢判。
+/// 起一个持着会话的进程，等它**真 exec 完**再交回：写一行进去、读回同一行 —— 回声只能出自 exec 之后的那个程序，
+/// 那时它的命令行与环境都已就位（exec 当中读 /proc/<pid>/environ 回 0 字节，会判成「取不到」）。
+/// 它回声后接着等标准输入，活到调用方亲手停它为止，不按墙钟定寿命。
 #[cfg(target_os = "linux")]
-fn exec_done(pid: u32, head: &[u8]) {
-    let cmdline = std::path::PathBuf::from(format!("/proc/{pid}/cmdline"));
-    let environ = std::path::PathBuf::from(format!("/proc/{pid}/environ"));
-    for () in guard_core::wall::rounds() {
-        if std::fs::read(&cmdline).is_ok_and(|b| b.starts_with(head))
-            && std::fs::read(&environ).is_ok_and(|b| !b.is_empty())
-        {
-            return;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(5));
-    }
+fn held(cmd: &mut std::process::Command) -> std::process::Child {
+    use std::io::{BufRead, Write};
+    let mut c = cmd
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    writeln!(c.stdin.as_mut().unwrap(), "up").unwrap();
+    let mut line = String::new();
+    std::io::BufReader::new(c.stdout.as_mut().unwrap())
+        .read_line(&mut line)
+        .unwrap();
+    assert_eq!(line, "up\n", "持着会话的进程没回声");
+    c
 }
 
 /// ccm 起会话时答题 hook 挂不上（起的进程环境里带那个变量）⇒ 会话事实 `answerOff` 写明只能在终端里答批准，
@@ -1965,15 +1874,12 @@ fn a_session_whose_answer_hook_could_not_be_hung_says_so() {
         // 持着会话的那个进程活到这里亲手停它为止（`cat` 等着读它的标准输入，那一头在这里攥着）：
         //   不按墙钟给它定寿命 —— 从前是 `sleep 30`，机器忙到这一问拖过 30 秒时它先走了，留下的僵尸读不出环境，那一格成了 `null`。
         let mut cmd = std::process::Command::new("cat");
-        cmd.stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::null());
         if let Some(v) = off {
             cmd.env(crate::agents::asks::ANSWER_HOOK_OFF_ENV, v);
         } else {
             cmd.env_remove(crate::agents::asks::ANSWER_HOOK_OFF_ENV);
         }
-        let mut c = cmd.spawn().unwrap();
-        exec_done(c.id(), b"cat\0");
+        let mut c = held(&mut cmd);
         let ticks = crate::platform::proc::proc_starttime(c.id()).expect("读得到起始时刻");
         let body = format!(
             r#"{{"pid":{},"sessionId":"{sid}","kind":"interactive","procStart":"{ticks}","status":"waiting","waitingFor":"permission prompt","statusUpdatedAt":1700000000000}}"#,
@@ -2061,13 +1967,11 @@ fn a_session_started_elsewhere_says_why_it_cannot_be_answered_here() {
     let facts_with = |extra: &[&str], noted: bool| {
         // 同上一条：`sh` 等着读标准输入，活到这里亲手停它为止（不按墙钟给它定寿命）。
         let mut cmd = std::process::Command::new("sh");
-        cmd.args(["-c", "read _; :", "sh"])
-            .args(extra)
-            .stdin(std::process::Stdio::piped());
+        cmd.args(["-c", "read l; echo \"$l\"; read _", "sh"])
+            .args(extra);
         cmd.env_remove(crate::agents::asks::ANSWER_HOOK_OFF_ENV);
         cmd.env_remove(var);
-        let mut c = cmd.spawn().unwrap();
-        exec_done(c.id(), b"sh\0-c\0");
+        let mut c = held(&mut cmd);
         if noted {
             let now = crate::common::time::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -2174,14 +2078,20 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
         tail,
         r#"{"end":273,"eof":true,"from":1,"held":{"mark":"152-273-b4aa604defe0685c","next":3,"next_byte":273,"path":"<home>/projects/-golden/r.jsonl"},"how":"tail","next":273,"rows":[{"cwd":"/w","end":152,"hash":12521928789128290262,"record":{"agent":"claude","at":"t1","blocks":[{"text":"q","type":"text"}],"cwd":"/w","id":"r-1","t":"said","who":{"speaker":{"kind":"human"},"text":"q"}}},{"end":273,"hash":11353788305326452798,"record":{"agent":"claude","at":"t2","autoReply":false,"blocks":[{"text":"a","type":"text"}],"id":"r-2","t":"reply"}}],"split_at":55,"tail_from":1,"total":3}"#
     );
-    assert_eq!(needs, r#"{"waiting":[]}"#);
+    assert_eq!(needs, r#"{"answered":[],"waiting":[]}"#);
     // 清单里有一行的那一形（`needs` 那一份成品与 `history-facts` 同一个类型）。
     let row = {
-        use crate::observe::facts_query::{needs_of, PidWait};
+        use crate::observe::recognize::facts::{needs_of, PidWait};
         crate::faces::history_face::NeedsList {
             waiting: vec![crate::observe::accounts_query::NeedsRow {
                 sid: "s-1".into(),
+                label: crate::common::cells::Words("t".into()),
+                face: crate::wire::SessionFace::of(crate::wire::Life::Live {
+                    activity: Some(crate::agents::SessionActivity::NeedsYou),
+                    tmux: None,
+                }),
                 needs: needs_of(
+                    crate::agents::record_tree_kind().unwrap_or_default(),
                     &[],
                     Some(&PidWait {
                         waiting_for: Some(crate::agents::WaitOn::Worker),
@@ -2191,6 +2101,10 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
                 )
                 .expect("在等就有需手动"),
                 hidden: None,
+            }],
+            answered: vec![crate::faces::history_face::AnsweredRow {
+                sid: "s-2".into(),
+                said: crate::common::cells::Words("w".into()),
             }],
         }
     };
@@ -2209,7 +2123,7 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
     }
     assert_eq!(
         row_bytes,
-        r#"{"waiting":[{"hidden":null,"needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":null,"rank":2,"sinceMs":1,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"waitedText":"<1s","what":null},"sid":"s-1"}]}"#
+        r#"{"answered":[{"said":"w","sid":"s-2"}],"waiting":[{"face":{"can":{"close":{"can":"no","why":"运行中"},"model":{"can":"no","why":"先答完需手动"},"permission":{"can":"no","why":"先答完需手动"},"reattach":{"can":"no","why":"运行中"},"resume":{"can":"no","why":"运行中"},"term":{"can":"yes","tmux":false}},"dot":"needs-you","line":"需手动","live":{"activity":"needs_you","is":"yes"},"name":"需手动","order":0,"settled":false,"tip":"需手动","tone":"need"},"hidden":null,"label":"t","needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":null,"rank":3298534883325,"sinceMs":1,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"waitedText":"<1s","what":null},"sid":"s-1"}]}"#
     );
 }
 
@@ -2324,15 +2238,12 @@ fn a_session_whose_launcher_dropped_the_environment_says_so() {
     let facts_with = |dirs: Option<String>| {
         // 活到这里亲手停它为止（`cat` 等着读标准输入），不按墙钟给它定寿命。
         let mut cmd = std::process::Command::new("cat");
-        cmd.stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::null());
         cmd.env_remove(crate::agents::asks::ANSWER_HOOK_OFF_ENV);
         match &dirs {
             Some(v) => cmd.env(var, v),
             None => cmd.env_remove(var),
         };
-        let mut c = cmd.spawn().unwrap();
-        exec_done(c.id(), b"cat\0");
+        let mut c = held(&mut cmd);
         let now = crate::common::time::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -2378,7 +2289,7 @@ fn history_facts_refuses_what_its_request_type_does_not_have() {
     for args in [
         serde_json::json!({ "path": "/x.jsonl", "extra": 1 }),
         serde_json::json!({ "path": 1 }),
-        serde_json::json!({ "path": "/x.jsonl", "prior": 1 }),
+        serde_json::json!({ "path": "/x.jsonl", "prior": { "end": 1, "rev": 1 } }),
         serde_json::json!({}),
     ] {
         let got = answer_at(&home, "history-facts", &args, &Default::default());
@@ -2424,8 +2335,10 @@ fn facts_name_the_model_of_the_last_reply() {
         serde_json::json!(crate::agents::model_text("claude", "claude-opus-4-5-20251101").unwrap()),
         "{named}"
     );
+    assert_eq!(named["modelPick"], "opus", "{named}");
     let odd = facts_of("b", "m-odd");
     assert_eq!(odd["modelText"], serde_json::Value::Null, "{odd}");
+    assert_eq!(odd["modelPick"], serde_json::Value::Null, "{odd}");
     let _ = std::fs::remove_dir_all(&home);
 }
 
@@ -2436,7 +2349,7 @@ fn each_listed_account_carries_its_five_hour_cell_from_the_quota_read() {
     let row = |name: &str| {
         serde_json::json!({"name": name, "label": name, "email": "", "configDir": "/d", "isDefault": false, "mode": "isolated",
             "exists": true, "loggedIn": true, "authKind": "subscription", "authReady": true, "selectable": true, "color": 0,
-            "keyMasked": null, "baseUrl": null, "badge": {"text": "", "warn": false, "title": ""}, "plate": "x", "quota": null, "unselectable": null})
+            "keyMasked": null, "baseUrl": null, "badge": {"text": "", "warn": false, "title": ""}, "plate": "x", "quota": null, "unselectable": null, "login": false})
     };
     let mut list: crate::observe::accounts_query::AccountsList = serde_json::from_value(serde_json::json!({
         "meta": {"enabled": true, "acctsDir": "", "manifestPath": "", "updatedAt": null, "sharedStore": null, "count": 2,
@@ -2466,4 +2379,59 @@ fn each_listed_account_carries_its_five_hour_cell_from_the_quota_read() {
         [Some("5h 读不到".into()), Some("5h 读不到".into())],
         "账读不出 ⇒ 顶上那一格"
     );
+}
+
+/// ★ 终端没了时换的那一项还算数 ⇒ 会话事实的模型 · 权限档写它（字取清单里那一项）；只记了一样 ⇒ 另一样照记录；没记 ⇒ 不动。
+#[test]
+fn facts_follow_the_pick_kept_for_the_next_resume() {
+    use crate::faces::history_face::dress_kept;
+    use cmd_wire::listing::ResumeWith;
+    let base = || crate::observe::recognize::facts::SessionFacts {
+        agent: Some("claude".into()),
+        model_pick: Some("opus".into()),
+        permission_mode: Some("acceptEdits".into()),
+        permission_mode_text: Some(crate::common::cells::Words("记录里那一档".into())),
+        model_text: Some(crate::common::cells::Words("记录里那个".into())),
+        ..Default::default()
+    };
+    let mut f = base();
+    dress_kept(
+        &mut f,
+        Some(ResumeWith {
+            model: Some("sonnet".into()),
+            permission_mode: Some("plan".into()),
+            end: 1,
+        }),
+    );
+    assert_eq!(
+        f.model_text.map(|w| w.0),
+        crate::agents::model_choice_text("claude", "sonnet")
+    );
+    assert_eq!(f.permission_mode.as_deref(), Some("plan"));
+    assert_eq!(f.model_pick.as_deref(), Some("sonnet"), "记下的优先于记录");
+    assert_eq!(
+        f.permission_mode_text.map(|w| w.0),
+        crate::agents::permission_mode_text("claude", "plan")
+    );
+    let mut f = base();
+    dress_kept(
+        &mut f,
+        Some(ResumeWith {
+            model: Some("default".into()),
+            permission_mode: None,
+            end: 1,
+        }),
+    );
+    assert_eq!(
+        f.model_text.map(|w| w.0),
+        crate::agents::model_choice_text("claude", "default")
+    );
+    assert_eq!(f.permission_mode.as_deref(), Some("acceptEdits"));
+    assert_eq!(
+        f.permission_mode_text.map(|w| w.0).as_deref(),
+        Some("记录里那一档")
+    );
+    let mut f = base();
+    dress_kept(&mut f, None);
+    assert_eq!(f, base());
 }

@@ -569,7 +569,7 @@ pub(crate) async fn upload_to_staging(
         on_progress(done, total);
         loop {
             if cancel.is_set() {
-                return Err(copy_text("beTransfer.run.cancelled", &[]).into());
+                return Err(copy_text("reason.op.cancelled", &[]).into());
             }
             let n = lf.read(&mut buf).await.map_err(|e| {
                 Said::with_raw(
@@ -698,7 +698,7 @@ pub(crate) async fn download_to_local(
         on_progress(done, total);
         loop {
             if cancel.is_set() {
-                return Err(copy_text("beTransfer.run.cancelled", &[]).into());
+                return Err(copy_text("reason.op.cancelled", &[]).into());
             }
             let n = rf.read(&mut buf).await.map_err(|e| {
                 Said::with_raw(
@@ -903,9 +903,12 @@ impl Desk {
                             ),
                             kind: cwf::FileKind::File,
                             size: None,
+                            size_text: None,
                             mtime_text: None,
                             there,
                             there_size: m.is_file().then(|| m.len()),
+                            there_size_text: (m.is_file().then(|| m.len()))
+                                .map(copy_core::size_text),
                             there_mtime_text: crate::common::batch_book::moment_text(
                                 crate::common::batch_book::mtime_secs(m.modified()),
                                 tz,
@@ -1161,9 +1164,11 @@ async fn upload_fates(
                 name: cwf::WirePath(name.clone()),
                 kind: cwf::FileKind::File,
                 size: local.as_ref().map(|m| m.len()),
+                size_text: (local.as_ref().map(|m| m.len())).map(copy_core::size_text),
                 mtime_text: moment_text(local.as_ref().and_then(|m| mtime_secs(m.modified())), tz),
                 there: there.kind,
                 there_size: there.size,
+                there_size_text: there.size.map(copy_core::size_text),
                 there_mtime_text: moment_text(there.mtime, tz),
                 dir_into,
             });
@@ -1398,7 +1403,7 @@ async fn run(
 ) -> Result<(u64, Option<String>), (Said, Option<&'static str>)> {
     let session = tokio::select! {
         s = sftp::open_for_transfer(dial) => s.map_err(|e| (e, None))?,
-        _ = cancel.wait() => return Err((Said::from(copy_text("beTransfer.run.cancelled", &[])), None)),
+        _ = cancel.wait() => return Err((Said::from(copy_text("reason.op.cancelled", &[])), None)),
     };
     match job {
         Job::Upload { local, key, home } => {

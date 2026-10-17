@@ -15,7 +15,7 @@
 //!
 //! # 线上形状（与后端 `dial/mod.rs` 头注同一份，住那边，这里不抄第二份）
 //!
-//! ack 之前零到多行 `{"stage":{…}}` · `{"progress":…}`（后者只在请求带 `progress` 时有，[`handshake`] 交 `on_step`）→ 恰好一行 ack → 之后按用法（`files` 是一问一答，读应答那一行用 [`reply_line`]）。
+//! ack 之前零到多行 `{"stage":{…}}` · `{"progress":…}`（后者只在请求带 `progress` 时有，[`handshake`] 交 `on_step`）→ 恰好一行 ack → 之后按用法。
 //! 🔴 **老代理出声**：ack 的 `uses` 不含所请求的用法 ⇒ [`LinkError::TooOld`]，不去解后面那些字节。
 
 use copy_core::copy_text;
@@ -88,9 +88,9 @@ pub struct Ack {
     /// 同上，跳板那一台。
     #[serde(default)]
     pub jump_strict: bool,
-    /// 没拨成时后端给的原因码（闭集：`resolve` · `unreachable` · `timeout` · `host_key` · `auth` · `password` · `key_unreadable` · `jump` · `other`）；老后端 / 拨成了 ⇒ `None`。
+    /// 没拨成时后端给的原因码；拨成了 ⇒ `None`。
     #[serde(default)]
-    pub reason: Option<String>,
+    pub reason: Option<cmd_wire::machine::Why>,
     #[serde(default)]
     pub v: u32,
     #[serde(default)]
@@ -116,7 +116,7 @@ pub enum LinkError {
         why: String,
         fingerprint: Option<String>,
         /// 没拨成的原因码（[`Ack::reason`] 原样）。
-        reason: Option<String>,
+        reason: Option<cmd_wire::machine::Why>,
         /// 后端写好的复制详情（[`Ack::detail`] 原样；老后端 ⇒ `None`）。
         detail: Option<String>,
     },
@@ -142,12 +142,12 @@ impl std::fmt::Display for LinkError {
             LinkError::TooOld { .. } => {
                 write!(f, "{}", copy_core::backend_old(&copy_core::local_machine()))
             }
-            LinkError::Garbled(_) => write!(f, "{}", copy_text("rsSshLink.dial.badShape", &[])),
+            LinkError::Garbled(_) => write!(f, "{}", copy_text("reason.dial.unparsable", &[])),
             LinkError::LineTooLong(_) => {
-                write!(f, "{}", copy_text("rsSshLink.dial.tooLong", &[]))
+                write!(f, "{}", copy_text("reason.dial.unparsable", &[]))
             }
             // 管子读错的原话不上这一句（调用方把它交给复制详情）。
-            LinkError::Io(_) => write!(f, "{}", copy_text("rsSshLink.dial.readFailed", &[])),
+            LinkError::Io(_) => write!(f, "{}", copy_text("reason.local.linkLost", &[])),
         }
     }
 }
@@ -208,7 +208,7 @@ pub async fn handshake<R: AsyncBufRead + Unpin>(
             return Err(LinkError::Refused {
                 why: ack
                     .error
-                    .unwrap_or_else(|| copy_text("rsSshLink.dial.noReason", &[])),
+                    .unwrap_or_else(|| copy_text("reason.io.unknown", &[])),
                 fingerprint: ack.fingerprint,
                 reason: ack.reason,
                 detail: ack.detail,
@@ -226,17 +226,6 @@ pub async fn handshake<R: AsyncBufRead + Unpin>(
 
 /// `capture` 用法：ack 之后那一行。
 pub async fn captured<R: AsyncBufRead + Unpin>(r: &mut R, cap: u64) -> Result<Captured, LinkError> {
-    let Some(line) = read_line_capped(r, cap).await? else {
-        return Err(LinkError::Silent);
-    };
-    serde_json::from_str(&line).map_err(|e| LinkError::Garbled(format!("{e}: {line:?}")))
-}
-
-/// `files` 用法：ack 之后一问一答，这里读**一行应答**（JSON 对象）。管子关了 ⇒ [`LinkError::Silent`]。
-pub async fn reply_line<R: AsyncBufRead + Unpin>(
-    r: &mut R,
-    cap: u64,
-) -> Result<serde_json::Value, LinkError> {
     let Some(line) = read_line_capped(r, cap).await? else {
         return Err(LinkError::Silent);
     };

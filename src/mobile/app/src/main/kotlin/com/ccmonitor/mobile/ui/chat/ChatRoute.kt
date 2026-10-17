@@ -36,7 +36,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ccmonitor.mobile.cache.ChatCache
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
+import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.claude.link.TerminalsList
 import com.ccmonitor.mobile.core.copy.copyText
@@ -56,6 +56,7 @@ import com.ccmonitor.mobile.ui.common.rememberHostLink
 import com.ccmonitor.mobile.ui.drawer.ChatDrawer
 import com.ccmonitor.mobile.ui.drawer.DRAWER_OPEN_DESCRIPTION
 import com.ccmonitor.mobile.ui.drawer.DrawerAction
+import com.ccmonitor.mobile.ui.session.SessionTabManager
 import com.ccmonitor.mobile.ui.session.TerminalOps
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -83,8 +84,8 @@ fun ChatRoute(
     draftCwd: String? = null,
     /** 顶栏「⋯」→ 轮换：这条会话（sid）的轮换屏。 */
     onOpenRotation: (String) -> Unit = {},
-    /** 顶栏「⋯」→ 在终端里打开：终端屏开一个标签，附着这个 tmux 会话（名字是那台名单上的）。 */
-    onOpenTerminal: (String) -> Unit = {},
+    /** 顶栏「⋯」→ 在终端里打开：终端屏开一个标签，附着它所在的 tmux 会话（名字是那台名单上的），终端已经不在 ⇒ 先让那台恢复再附着。 */
+    onOpenTerminal: (SessionTabManager.TabTarget.Terminal) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // 先把连接建起来；持有挂在对话上，由 `ChatController.sessionFor(hostId = …)` 负责。
@@ -127,8 +128,7 @@ fun ChatRoute(
                         terminals
                             .list()
                             .getOrNull()
-                            ?.let { TerminalsList.holding(it, s) }
-                            ?.name
+                            ?.let { rows -> TerminalsList.holding(rows, s)?.let { TermEntry.Attach(it.name) } ?: TermEntry.Resume }
                     },
                     onTerminal = onOpenTerminal,
                     onRotation = onOpenRotation,
@@ -224,7 +224,7 @@ private fun rememberChatHost(hostId: String): ChatHost? {
     return got
 }
 
-/** 顶栏的名字：这台那一家写给人看的名字（那台 `session-new-facts` 给的）；还没问到 ⇒ 空。 */
+/** 顶栏的名字：这台那一家写给人看的名字（那台 `session-open-facts` 给的）；还没问到 ⇒ 空。 */
 @Composable
 private fun rememberProductName(
     hostId: String,
@@ -232,15 +232,16 @@ private fun rememberProductName(
 ): String {
     val backends = koinInject<HostBackends>()
     val got by produceState("", hostId, stored) {
-        val r = backends.of(hostId).call(SessionNewFacts.COMMAND, emptyMap())
-        value = (r as? Reply.Ok)?.let { SessionNewFacts.of(it.data) }?.let { SessionNewFacts.pick(it.agents, stored)?.text }.orEmpty()
+        val r = backends.of(hostId).call(SessionOpenFacts.COMMAND, emptyMap())
+        value = (r as? Reply.Ok)?.let { SessionOpenFacts.of(it.data) }?.let { SessionOpenFacts.pick(it.agents, stored)?.text }.orEmpty()
     }
     return got
 }
 
 /**
- * 聊天屏的顶栏：左上 ☰ 拉出抽屉；右上 ⋯ 只放对这条会话本身做的事：在终端里打开（那台名单上有它所在的终端才有，第二行是那个 tmux 会话名；
- * 答不了的需手动从这里进终端）· 轮换。还没起好的新建会话（[sid] 为 `null`）不画 ⋯。
+ * 聊天屏的顶栏：左上 ☰ 拉出抽屉；右上 ⋯ 只放对这条会话本身做的事：在终端里打开（第二行是它所在的 tmux 会话名；终端已经不在 ⇒
+ * 「恢复后在新终端中显示」，点了终端屏先让那台恢复再附着；名单问不到 ⇒ 不画；答不了的需手动从这里进终端）· 轮换。
+ * 还没起好的新建会话（[sid] 为 `null`）不画 ⋯。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -249,13 +250,13 @@ private fun ChatTopBar(
     title: String,
     onOpenDrawer: () -> Unit,
     sid: String?,
-    /** 那条会话所在的 tmux 会话名（问那台的终端名单）；不在任何终端里 · 问不到 ⇒ `null`。 */
-    findTerminal: suspend (String) -> String?,
-    onTerminal: (String) -> Unit,
+    /** 那条会话在终端里的样子（问那台的终端名单）；问不到 ⇒ `null`。 */
+    findTerminal: suspend (String) -> TermEntry?,
+    onTerminal: (SessionTabManager.TabTarget.Terminal) -> Unit,
     onRotation: (String) -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
-    var terminal by remember(sid) { mutableStateOf<String?>(null) }
+    var terminal by remember(sid) { mutableStateOf<TermEntry?>(null) }
     val scope = rememberCoroutineScope()
     TopAppBar(
         navigationIcon = {
@@ -279,18 +280,18 @@ private fun ChatTopBar(
                     modifier = Modifier.semantics { contentDescription = copyText("history.row.more") }.testTag(ChatTestTags.MORE),
                 ) { Text(MORE_GLYPH, style = MaterialTheme.typography.titleLarge) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    terminal?.let { name ->
+                    terminal?.let { t ->
                         DropdownMenuItem(
                             text = {
                                 Column {
                                     Text(copyText("sessionHead.act.openTerm"))
-                                    Text(name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(t.second, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             },
                             modifier = Modifier.testTag(ChatTestTags.MORE_TERMINAL),
                             onClick = {
                                 menu = false
-                                onTerminal(name)
+                                onTerminal(t.target(sid))
                             },
                         )
                     }
@@ -336,7 +337,28 @@ fun chatKey(
 ): String = "$hostId/$sessionId"
 
 /**
- * 新建会话那张草稿的票：界面上的 [chatKey] 用它，起会话也带它（`session-new.ticket`：期限到了同一张再问，那台不起第二个）。
+ * 新建会话那张草稿的票：界面上的 [chatKey] 用它，起会话也带它（`session-open` 的 `ticket`：期限到了同一张再问，那台不起第二个）。
  * 会话起好之后的 sid 是那台报到时说的，不是它。
  */
 fun newConversationId(): String = UUID.randomUUID().toString()
+
+/** ⋯「在终端里打开」那一项：它所在的终端还在 ⇒ 附着那个；已经不在 ⇒ 先让那台恢复再附着。 */
+internal sealed interface TermEntry {
+    val second: String
+
+    fun target(sid: String): SessionTabManager.TabTarget.Terminal
+
+    data class Attach(
+        val name: String,
+    ) : TermEntry {
+        override val second: String get() = name
+
+        override fun target(sid: String) = SessionTabManager.TabTarget.Terminal(tmuxSession = name)
+    }
+
+    data object Resume : TermEntry {
+        override val second: String get() = copyText("terminal.empty.endedHint")
+
+        override fun target(sid: String) = SessionTabManager.TabTarget.Terminal(resume = sid)
+    }
+}

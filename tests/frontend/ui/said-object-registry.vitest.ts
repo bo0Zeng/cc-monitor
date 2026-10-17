@@ -6,6 +6,7 @@
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
+import { nonEmpty } from "../../test-support/non-empty";
 
 const ROOT = resolve(__dirname, "../../..");
 const CALLS = ["previewText", "previewShot", "previewByTmuxName", "sendToTerminal", "agentOnline", "readState", "readInbox", "spawnAgent", "broadcast"];
@@ -18,12 +19,11 @@ const WHERE: Record<string, string> = {
   "src/frontend/ui/terminal-page.ts::previewShot": "终端页：错误条就在页头下面，页头写着会话 · 目录 · 机器",
   "src/frontend/ui/terminal-page.ts::sendToTerminal": "终端页：送字那一行写着「送往 {会话} · {机器}」",
   "src/frontend/ui/launch-slot.ts::previewText": "起会话之后的占位页：launch.slot.noScreen 带 {machine} · {name}",
-  "src/frontend/ui/views/pane-preview.ts::previewShot": "窗格预览：那一句作 toast 标题，窗格名放灰字",
-  "src/frontend/ui/settings/cc-bus-section.ts::readState": "设置 → cc-bus：说的是这台的名册（区块头选着这台），没有单个对象",
-  "src/frontend/ui/settings/cc-bus-section.ts::agentOnline": "设置 → cc-bus：结果写在那个 agent 那一行里（行首是它的 id）",
-  "src/frontend/ui/settings/cc-bus-section.ts::readInbox": "设置 → cc-bus：结果写在那个 agent 那一行展开的收件箱里",
-  "src/frontend/ui/settings/cc-bus-section.ts::broadcast": "设置 → cc-bus：广播没有单个对象（发给这台在线的全部）",
-  "src/frontend/ui/settings/cc-bus-section.ts::spawnAgent": "设置 → cc-bus：新开那一块（目录 · 账号就在上面几格）",
+  "src/frontend/ui/views/cc-bus-section.ts::readState": "设置 → cc-bus：说的是这台的名册（区块头选着这台），没有单个对象",
+  "src/frontend/ui/views/cc-bus-section.ts::agentOnline": "设置 → cc-bus：结果写在那个 agent 那一行里（行首是它的 id）",
+  "src/frontend/ui/views/cc-bus-section.ts::readInbox": "设置 → cc-bus：结果写在那个 agent 那一行展开的收件箱里",
+  "src/frontend/ui/views/cc-bus-section.ts::broadcast": "设置 → cc-bus：广播没有单个对象（发给这台在线的全部）",
+  "src/frontend/ui/views/cc-bus-section.ts::spawnAgent": "设置 → cc-bus：新开那一块（目录 · 账号就在上面几格）",
 };
 
 function walk(dir: string, out: string[] = []): string[] {
@@ -48,7 +48,7 @@ describe("不带对象的那几句：每个出处对象都看得见（登记两�
       const code = readFileSync(f, "utf8").replace(/^import [^;]*;$/gms, "");
       for (const c of CALLS) if (new RegExp(`(?<![A-Za-z0-9_$.])${c}\\b`).test(code)) got.add(`${rel}::${c}`);
     }
-    expect(got.size, "一处调用都没扫到 —— 判据在空转").toBeGreaterThan(0);
+    nonEmpty(got);
     expect([...got].sort(), "多出来的：先写清那一句旁边对象在哪再登记；少了的：调用没了就删那一行").toEqual(Object.keys(WHERE).sort());
   });
 });
