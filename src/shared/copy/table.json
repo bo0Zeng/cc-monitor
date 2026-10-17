@@ -10020,6 +10020,13 @@
       "zh": "已取消 {left}",
       "args": ["left"]
     },
+    "beFiles.batch.cut": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "{machine} 连接已断开 · {action} {n} 项 · 完成 {ok} · 中断 {left}",
+      "args": ["machine", "action", "n", "ok", "left"],
+      "limited": ["连接"]
+    },
     "beFiles.batch.verbDownload": {
       "kind": "body",
       "role": "片段",
@@ -17694,48 +17701,11 @@
       "zh": "无法列出目录 · {path} · {why}",
       "args": ["path", "why"]
     },
-    "beSftp.realpath.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未找到路径 · {path} · {why}",
-      "args": ["path", "why"]
-    },
-    "beSftp.rename.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未改名 · {from} → {to} · {why}",
-      "args": ["from", "to", "why"]
-    },
     "beSftp.open.isLink": {
       "kind": "error",
       "role": "报错",
       "zh": "~/{path} 是链接 · 写入会写到别处 · 未写",
       "args": ["path"]
-    },
-    "beSftp.request.readFailed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "读取失败 · 与本机的连接 · {why}",
-      "args": ["why"],
-      "limited": ["连接"]
-    },
-    "beSftp.read.tooBig": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{path} 超出上限 · {size} / {max} · 未读取",
-      "args": ["path", "size", "max"]
-    },
-    "beSftp.put.receiveFailed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "接收上传内容失败 · {why}",
-      "args": ["why"]
-    },
-    "beSftp.put.short": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "上传不完整 · 收到 {got} / 应有 {size} 字节",
-      "args": ["size", "got"]
     },
     "beConnect.race.taskFailed": {
       "kind": "error",
@@ -30125,6 +30095,24 @@
       "zh": "全选",
       "args": []
     },
+    "mobFiles.pick.count": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "已选 {n}",
+      "args": ["n"]
+    },
+    "mobFiles.pick.copyHere": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "复制到此处",
+      "args": []
+    },
+    "mobFiles.batch.failedShow": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "看失败的",
+      "args": []
+    },
     "mobFiles.bookmark.deleted": {
       "kind": "body",
       "role": "toast",
@@ -30166,12 +30154,6 @@
       "role": "确认框",
       "zh": "返回编辑",
       "args": []
-    },
-    "mobFiles.download.done": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已下载到 {path}",
-      "args": ["path"]
     },
     "mobFiles.upload.done": {
       "kind": "body",

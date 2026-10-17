@@ -35,6 +35,26 @@ const EXEMPT: &[(&str, &str, &str)] = &[
         "手机那一侧一问一答取连接的口：读者是手机嵌的 Rust 核心（`src/mobile/core-rs`，不在 monitor 的扫描面里）与本 crate 的判据",
     ),
     (
+        "src/common/batch-core/src/lib.rs",
+        "CMD_STOP",
+        "手机那一侧停一组发的命令名：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/batch.rs`，后端那棵 workspace，不在扫描面里）",
+    ),
+    (
+        "src/common/batch-core/src/lib.rs",
+        "undo_plan",
+        "手机那一侧改权限一组的撤销（桌面经同一个 `undo_groups`）：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/batch.rs`，不在扫描面里）与本 crate 的判据",
+    ),
+    (
+        "src/common/batch-core/src/lib.rs",
+        "cut_left_line",
+        "手机下载一组断开那一行（逐项拉只在手机那一圈）：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/batch.rs`，不在扫描面里）与本 crate 的判据",
+    ),
+    (
+        "src/common/batch-core/src/lib.rs",
+        "copy_plan",
+        "手机「复制到…」那一组的入参（桌面经同一个 `copy_req` 算公共根）：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/batch.rs`，不在扫描面里）与本 crate 的判据",
+    ),
+    (
         "src/backend/files/mod.rs",
         "FRESHNESS",
         "保鲜机制逐 target 的声明（刻意不判相等）：读者是 `capability_guard` 的反向判据，各格的说明文字进文案普查台账",

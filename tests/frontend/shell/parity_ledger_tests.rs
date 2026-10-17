@@ -954,7 +954,7 @@ fn command_dispatch_class() -> BTreeMap<String, Derived> {
 const REMOTE_SIDE_SIGNOFF: &[(Derived, usize)] = &[
     (Derived::RemoteOnly, 3),
     (Derived::FramePlane, 0),
-    (Derived::Mixed, 1), // `deploy_remote_backend`：判定问本机后端 · 放字节经远端 `files` 链路；两支都走，不是失败退回
+    (Derived::Mixed, 1), // `deploy_remote_backend`：两支都走，不是失败退回
     (Derived::Unclassified, 2),
 ];
 

@@ -1271,28 +1271,37 @@ fn receipts_say_what_was_done_and_carry_an_undo_only_when_it_is_whole() {
     );
 }
 
-/// 改权限的撤销据后端回的 `before`：回了 ⇒ 改回那个数；没回（老后端）⇒ 不给撤销（不猜）。
+/// 改权限的撤销据后端回的 `before`：回了 ⇒ 改回那个数；有一件没回 ⇒ 整摞不给撤销（撤不全不撤，不猜）。
 #[test]
 fn a_chmod_undo_comes_from_the_backends_before_or_not_at_all() {
     let chmod_reply = |before: Option<u32>| {
         crate::writeops::Applied::Chmod(cmd_wire::batch::BatchOutcome {
-            path: Some(cmd_wire::files::WirePath::from("/s/run.sh")),
             before,
             ..cmd_wire::batch::BatchOutcome::bare("0", cmd_wire::batch::ItemState::Done)
         })
     };
-    let op = WriteOp::Chmod {
-        path: "/s/run.sh".into(),
+    let op = |p: &str| WriteOp::Chmod {
+        path: p.into(),
         mode: "755".into(),
         raw: None,
     };
+    let back = |p: &str, m: &str| WriteOp::Chmod {
+        path: p.into(),
+        mode: m.into(),
+        raw: None,
+    };
     assert_eq!(
-        chmod_undo(&op, &chmod_reply(Some(420))),
-        Some(WriteOp::Chmod {
-            path: "/s/run.sh".into(),
-            mode: "644".into(),
-            raw: None
-        })
+        chmod_undo(&[
+            (op("/s/a"), chmod_reply(Some(0o644))),
+            (op("/s/b"), chmod_reply(Some(0o600))),
+        ]),
+        vec![back("/s/b", "600"), back("/s/a", "644")]
     );
-    assert_eq!(chmod_undo(&op, &chmod_reply(None)), None);
+    assert_eq!(
+        chmod_undo(&[
+            (op("/s/a"), chmod_reply(Some(0o644))),
+            (op("/s/b"), chmod_reply(None)),
+        ]),
+        Vec::new()
+    );
 }

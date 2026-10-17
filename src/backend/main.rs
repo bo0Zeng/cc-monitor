@@ -843,8 +843,8 @@ async fn serve_listening(
 /// SSH pipe is slow; that back-pressure never reaches the inotify reader.
 /// 排空两条通道写 stdout。
 ///
-/// **`biased` + 应答在前**：出方向的实时行可以有洪峰（`CHANNEL_CAPACITY` 是 10_000），
-/// 公平轮询会让应答排在一万行后面，客户端那头看起来就是「命令没反应」。
+/// **`biased` + 应答在前**：出方向的实时行可以有洪峰（通道按字节封顶 `CHANNEL_MAX_BYTES`），
+/// 公平轮询会让应答排在成千上万行后面，客户端那头看起来就是「命令没反应」。
 /// 应答量极小（一条命令一两帧），优先它不会饿死行。
 ///
 /// `reply_rx` 永远不会返回 `None`（`main` 自己留着一个 sender 到进程结束），
@@ -853,7 +853,7 @@ async fn serve_listening(
 /// `tz` ＝ 这条流看的那一台的时区（起流的 `--tz` / attach 行的 `tz`）：出方向的每一帧写出去之前按它写钟面（[`Frame::stamp`]）。
 async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
     mut out: W,
-    mut rx: tokio::sync::mpsc::Receiver<Frame>,
+    mut rx: observe::watcher::FrameRx,
     mut reply_rx: tokio::sync::mpsc::Receiver<Frame>,
     mut tap_rx: impl tap::TapSource,
     tz: cc_monitor_backend::Tz,
@@ -866,7 +866,7 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
     // `{"id":"n","cmd":"n"}`）：500ms 内应答 70 789 条、出方向实时行 **4 条**，队列里一直排着。
     //
     // 机理是闭环的：读循环在应答通道满时阻塞（`send` 是 `.await`），于是通道**恒满**；
-    // `biased` 每次都命中 `reply_rx`，`rx` 永远轮不到。生产里出方向是 10 000 容量，
+    // `biased` 每次都命中 `reply_rx`，`rx` 永远轮不到。生产里出方向按字节封顶，
     // 会先堆满再 `Overflow` 丢实时行 —— 一行命令就能让远端会话看起来「卡住」。
     //
     // 现在：连发 `REPLY_BURST` 条应答之后**强制让位一次**给出方向。

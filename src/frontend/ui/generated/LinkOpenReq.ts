@@ -9,7 +9,7 @@ export type LinkOpenReq = {
  */
 link: string, 
 /**
- * 拨号请求（`host` · `port` · `user` · `key_path` · `use` …，蛇形键；形状由拨号那一层解）；`use:"files"` 开 sftp 一问一答。
+ * 拨号请求（`host` · `port` · `user` · `key_path` · `use` …，蛇形键；形状由拨号那一层解）。
  */
 dial: Record<string, unknown>, 
 /**

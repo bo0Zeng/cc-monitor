@@ -1,93 +1,21 @@
 //! **一组一条命令**在窗口里的那一层：复制到另一栏 · 复制到另一台 · 删除 · 改权限；下载 · 上传那两组的开单也经这里问同名
 //! （开了单之后各项怎么传见 [`super::download`] · [`super::transfer`]）。
 //!
-//! 「先探 → 问一次 → 做 → 逐项结局」住后端（一组一条命令），窗口只剩：
-//!
-//! ```text
-//! 发一条（带票）→ 回 `exists` ⇒ 照 `data.conflicts` 画一次冲突框 → 带 `decide`、同一张票再发
-//!              → 通道那一跳断了 ⇒ 等那台连回来、同一张票再问（那台照常做完，回的是同一份结局，不重做）
-//!              → 回包 ⇒ 结局那一行直接画后端拼好的 `said`，没成的那几项照 `outcomes` 列
-//! 进度：订 `files-batch/<票>`（那一组在哪台做，哪台推；按字节的那一种画字节）
-//! 撤：  `files-batch-stop {ticket}`（做完手上那一项就停，剩下的回 `cancelled`）
-//! ```
-//!
-//! 票是窗口铸的（一组一张 UUID）：后端按票记的那几种（同台三条 · 两台之间复制）每一组都带，删一整棵树也撤得了；
-//! 下载 · 上传开单不按票记（开了单的每一项各是传输台里的一单），不带。
+//! 一组的全过程（带票发 · 同名问一次 · 断了等连回同票再问 · 结局）与它的字住共用的 `batch_core`；窗口只剩：
+//! 看板（[`BatchBoard`]，egui 那条线程画、tokio 那条写）· 冲突框（[`ask_ui`]）· 起跑（[`go`]：订 `files-batch/<票>` 的进度、
+//! 装撤的那一手、问法走通道）。票是窗口铸的（一组一张 UUID）。
 
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::sync::{Arc, Mutex};
 
-use cmd_wire::batch::{BatchOutcome, BatchReply, Conflict, Conflicts, Decide, ItemState};
+use batch_core::{Phase, Plan, Tick};
+use cmd_wire::batch::{Conflict, Decide};
 use copy_core::copy_text;
-
-/// 一组那一问等多久（到点 ⇒ 当它断了：同一张票再问，那台还在做就等它做完）。
-pub const BATCH_BUDGET: std::time::Duration = std::time::Duration::from_secs(600);
 
 /// 下载一组那一条（monitor 补拨号请求、转给本机后端的传输台）。
 pub const CMD_DOWNLOAD: &str =
     <cmd_wire::transfer::TransferDownloadAsk as cmd_wire::files::Call>::NAME;
-
-/// 撤一组那一条（后端 `files-batch-stop`）。
-pub const CMD_STOP: &str = <cmd_wire::batch::FilesBatchStopReq as cmd_wire::files::Call>::NAME;
-
-/// 后端「有同名、还没答」那个码（`data` 是同名清单）。
-pub const EXISTS: &str = "exists";
-
-/// 一组那一问没成的样子（[`super::source::ask_batch`] 交回）。
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct Rebuff {
-    pub failed: super::source::Failed,
-    /// 对端拒时带的 `data`（`exists` ⇒ 同名清单）。
-    pub data: Option<serde_json::Value>,
-    /// 通道那一跳没走通（断了 · 到点）：那台可能已经在做 ⇒ 同一张票再问。
-    pub cut: bool,
-}
-
-/// 哪一种动作（标题的动词 · 冲突框的标题）。
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Verb {
-    Copy,
-    Delete,
-    Chmod,
-    Download,
-    Upload,
-}
-
-impl Verb {
-    /// 后端按票记这一种吗（下载 · 上传开单不记：开了单的每一项各是传输台里的一单）。
-    pub fn ticketed(self) -> bool {
-        !matches!(self, Verb::Download | Verb::Upload)
-    }
-
-    /// 回包是开了哪几单（下载 · 上传），不是一组的结局。
-    pub fn opens(self) -> bool {
-        matches!(self, Verb::Download | Verb::Upload)
-    }
-
-    pub fn text(self) -> String {
-        match self {
-            Verb::Copy => copy_text("beFiles.batch.verbCopy", &[]),
-            Verb::Delete => copy_text("beFiles.batch.verbDelete", &[]),
-            Verb::Chmod => copy_text("beFiles.batch.verbChmod", &[]),
-            Verb::Download => copy_text("beFiles.batch.verbDownload", &[]),
-            Verb::Upload => copy_text("rsFilewinBatch.verb.upload", &[]),
-        }
-    }
-}
-
-/// 一组要发的那一条：命令 · 入参（不含票与 `decide`）· 各项给人看的名字（按序号，同后端的键）。
-#[derive(Clone, Debug, PartialEq)]
-pub struct Plan {
-    pub verb: Verb,
-    pub cmd: &'static str,
-    pub args: serde_json::Value,
-    pub names: Vec<String>,
-    /// 落到哪（复制那一种；结局与冲突框的标题写它）。
-    pub into: Option<String>,
-    /// 在哪台做（断开那一行写它）。
-    pub machine: String,
-}
 
 /// 冲突框里摆着的那一问。
 pub struct Asking {
@@ -97,53 +25,6 @@ pub struct Asking {
     /// 逐项选的答（缺 ⇒ 跳过）。
     pub picks: BTreeMap<String, Decide>,
     answer: Option<tokio::sync::oneshot::Sender<Option<BTreeMap<String, Decide>>>>,
-}
-
-/// 这一组此刻在哪一步。
-#[derive(Clone, Debug, PartialEq)]
-pub enum Phase {
-    Running,
-    /// 冲突框摆着（进度表里那一行先不画）。
-    Asking,
-    /// 断开了，等那台连回来再带票问。
-    Cut(String),
-    /// 后端回了结局。
-    Ended(BatchReply),
-    /// 没成：那一句 ＋ 复制详情。
-    Failed(super::source::Failed),
-    /// 冲突框上答了「取消」：一项都没做。
-    Dropped,
-    /// 回包不是一组的结局（下载 · 上传一组回的是开了哪几单）：交给调用方接着看。
-    Opened,
-}
-
-/// 一组的进度（`files_batch` 帧那一格）。
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Tick {
-    pub done: u64,
-    pub total: u64,
-    pub bytes: Option<(u64, u64)>,
-}
-
-impl Tick {
-    /// 帧那一格的文本 ⇒ 一格（缺 `done` / `total` ⇒ 不认）。
-    pub fn of_cell(v: &serde_json::Value) -> Option<Tick> {
-        let n = |k: &str| v.get(k).and_then(serde_json::Value::as_u64);
-        Some(Tick {
-            done: n("done")?,
-            total: n("total")?,
-            bytes: n("bytes_done").zip(n("bytes_total")),
-        })
-    }
-
-    /// 走到几成：报了字节就照字节，不然照项数。
-    pub fn frac(&self) -> Option<f32> {
-        match self.bytes {
-            Some((d, t)) if t > 0 => Some(d as f32 / t as f32),
-            _ if self.total > 0 => Some(self.done as f32 / self.total as f32),
-            _ => None,
-        }
-    }
 }
 
 struct Desk {
@@ -214,10 +95,10 @@ impl BatchBoard {
     }
 
     pub fn is_asking(&self) -> bool {
-        self.lock().phase == Phase::Asking
+        self.lock().asking.is_some()
     }
 
-    /// 落一步（[`run`] 走它；截图台架也用它摆出那几态）。
+    /// 落一步（`batch_core::run` 走它；截图台架也用它摆出那几态）。
     pub(crate) fn set(&self, phase: Phase) {
         self.lock().phase = phase;
         self.poke();
@@ -243,7 +124,6 @@ impl BatchBoard {
                 picks: BTreeMap::new(),
                 answer: Some(tx),
             });
-            d.phase = Phase::Asking;
         }
         self.poke();
         rx
@@ -265,20 +145,11 @@ impl BatchBoard {
             let Some(mut a) = d.asking.take() else {
                 return false;
             };
-            let map = if each {
-                Some(
-                    a.conflicts
-                        .iter()
-                        .map(|c| {
-                            let pick = a.picks.get(&c.key).copied().unwrap_or(Decide::Skip);
-                            (c.key.clone(), pick)
-                        })
-                        .collect(),
-                )
-            } else {
-                all.map(|d| a.conflicts.iter().map(|c| (c.key.clone(), d)).collect())
-            };
-            d.phase = Phase::Running;
+            let map = batch_core::answer_of(
+                a.conflicts.iter().map(|c| c.key.as_str()),
+                all,
+                each.then_some(&a.picks),
+            );
             (a.answer.take(), map)
         };
         self.poke();
@@ -340,8 +211,7 @@ impl BatchBoard {
 
     /// 一行的标题：`复制 5 项`（落在一个目录 ⇒ `复制 5 项到 ~/proj/b`）。
     pub fn title(&self) -> String {
-        let p = self.plan();
-        title_of(&p)
+        batch_core::title_of(&self.plan())
     }
 
     /// 结局那一行底下逐项列的那几行（没成的那几项：名字 · 失败 · 原因）。
@@ -353,215 +223,35 @@ impl BatchBoard {
         let Phase::Ended(r) = phase else {
             return Vec::new();
         };
-        failed_lines(&plan, &r)
+        batch_core::failed_lines(&plan, &r)
     }
 }
 
-/// 一组的标题（冲突框 · 进度那一行）。
-pub fn title_of(p: &Plan) -> String {
-    let (action, n) = (p.verb.text(), p.names.len().to_string());
-    match &p.into {
-        Some(dir) => copy_text(
-            "rsFilewinBatch.ask.title",
-            &[("action", &action), ("n", &n), ("dir", dir)],
-        ),
-        None => copy_text(
-            "rsFilewinBatch.row.title",
-            &[("action", &action), ("n", &n)],
-        ),
+impl batch_core::Board for BatchBoard {
+    fn plan(&self) -> Plan {
+        BatchBoard::plan(self)
+    }
+
+    fn ticket(&self) -> String {
+        BatchBoard::ticket(self)
+    }
+
+    fn tick(&self) -> Tick {
+        BatchBoard::tick(self)
+    }
+
+    fn set(&self, phase: Phase) {
+        BatchBoard::set(self, phase)
+    }
+
+    fn ask(
+        &self,
+        conflicts: Vec<Conflict>,
+    ) -> impl Future<Output = Option<BTreeMap<String, Decide>>> {
+        let rx = BatchBoard::ask(self, conflicts);
+        async move { rx.await.ok().flatten() }
     }
 }
-
-/// 一项的键 ⇒ 给人看的名字（目录里那几格是 `序号/相对段`）。
-pub fn name_of(p: &Plan, key: &str) -> String {
-    let (head, rest) = match key.split_once('/') {
-        Some((h, r)) => (h, Some(r)),
-        None => (key, None),
-    };
-    let top = head
-        .parse::<usize>()
-        .ok()
-        .and_then(|i| p.names.get(i))
-        .cloned()
-        .unwrap_or_else(|| head.to_string());
-    match rest {
-        Some(r) => format!("{top}/{r}"),
-        None => top,
-    }
-}
-
-/// 没成的那几项（失败 · 探完之后才冒出来的同名）⇒ 一项一行：`notes.md  失败 · 无权限`。
-pub fn failed_lines(p: &Plan, r: &BatchReply) -> Vec<String> {
-    r.outcomes
-        .iter()
-        .filter(|o| matches!(o.state, ItemState::Failed | ItemState::Exists))
-        .map(|o| {
-            copy_text(
-                "rsFilewinProgress.detail.failedOne",
-                &[("name", &name_of(p, &o.key)), ("why", &why_of(o))],
-            )
-        })
-        .collect()
-}
-
-fn why_of(o: &BatchOutcome) -> String {
-    match (&o.reason, o.state) {
-        (Some(r), _) => r.clone(),
-        (None, ItemState::Exists) => copy_text("rsFilewinBatch.why.exists", &[]),
-        _ => o.code.clone().unwrap_or_default(),
-    }
-}
-
-/// 复制详情：标题 ＋ 后端那一行 ＋ 没成的那几项各带它的详情（都成了 ⇒ `None`）。
-pub fn copy_details(p: &Plan, r: &BatchReply) -> Option<String> {
-    let segs: Vec<String> = r
-        .outcomes
-        .iter()
-        .filter(|o| matches!(o.state, ItemState::Failed | ItemState::Exists))
-        .map(|o| {
-            let head = copy_text(
-                "rsFilewinProgress.detail.failedOne",
-                &[("name", &name_of(p, &o.key)), ("why", &why_of(o))],
-            );
-            match &o.detail {
-                Some(d) if !d.trim().is_empty() => format!("{head}\n{d}"),
-                _ => head,
-            }
-        })
-        .collect();
-    (!segs.is_empty()).then(|| format!("{}\n{}\n\n{}", title_of(p), r.said, segs.join("\n\n")))
-}
-
-/// 「重试失败的」那一组：只含没成的那几项（失败 · 探完之后才冒出来的同名；目录里的那一格算它顶上那一项），
-/// 别的入参照原样（根 · 落点 · 权限位）；票在另起那一组时新铸。一项都没失败 ⇒ `None`。
-pub fn retry_plan(p: &Plan, r: &BatchReply) -> Option<Plan> {
-    let mut keep: Vec<usize> = r
-        .outcomes
-        .iter()
-        .filter(|o| matches!(o.state, ItemState::Failed | ItemState::Exists))
-        .filter_map(|o| {
-            o.key
-                .split_once('/')
-                .map_or(o.key.as_str(), |(head, _)| head)
-                .parse::<usize>()
-                .ok()
-        })
-        .collect();
-    keep.sort_unstable();
-    keep.dedup();
-    let items = p.args.get("items")?.as_array()?;
-    let picked: Vec<serde_json::Value> =
-        keep.iter().filter_map(|&i| items.get(i).cloned()).collect();
-    if picked.is_empty() {
-        return None;
-    }
-    let mut args = p.args.clone();
-    args["items"] = serde_json::Value::Array(picked);
-    Some(Plan {
-        args,
-        names: keep
-            .iter()
-            .filter_map(|&i| p.names.get(i).cloned())
-            .collect(),
-        ..p.clone()
-    })
-}
-
-/// 断开那一行：`devbox 断开 · 复制 5 项 · 完成 2 · 其余待核`。
-pub fn cut_line(p: &Plan, t: &Tick) -> String {
-    copy_text(
-        "rsFilewinBatch.row.cut",
-        &[
-            ("machine", &p.machine),
-            ("action", &p.verb.text()),
-            ("n", &p.names.len().to_string()),
-            ("ok", &t.done.to_string()),
-        ],
-    )
-}
-
-/// 🔴 **一组的全过程**：发（带票）→ 同名就问一次、带 `decide` 再发 → 断了就等连回来、同一张票再问 → 结局。
-///
-/// - `ask`：发一次（入参里已有票，答过冲突框之后多 `decide`）；
-/// - `wait_up`：等那台连回来（断开那一支）。
-///
-/// 结局落在看板上（[`Phase::Ended`] · [`Phase::Failed`] · [`Phase::Dropped`] · [`Phase::Opened`]）；
-/// 回包不是一组的结局（下载开单）⇒ 原样交回给调用方。
-pub async fn run<C, CF, U, UF>(board: &BatchBoard, ask: C, wait_up: U) -> Option<serde_json::Value>
-where
-    C: Fn(serde_json::Value) -> CF,
-    CF: Future<Output = Result<serde_json::Value, Rebuff>>,
-    U: Fn() -> UF,
-    UF: Future<Output = ()>,
-{
-    let mut args = board.plan().args;
-    if board.plan().verb.ticketed() {
-        args["ticket"] = serde_json::Value::String(board.ticket());
-    }
-    let mut cuts = 0usize;
-    loop {
-        match ask(args.clone()).await {
-            Ok(v) => {
-                if board.plan().verb.opens() {
-                    board.set(Phase::Opened);
-                    return Some(v);
-                }
-                let phase = match serde_json::from_value::<BatchReply>(v) {
-                    Ok(r) => Phase::Ended(r),
-                    Err(e) => Phase::Failed(super::source::Failed {
-                        code: None,
-                        said: copy_text("reason.content.unparsable", &[]),
-                        detail: e.to_string(),
-                    }),
-                };
-                board.set(phase);
-                return None;
-            }
-            Err(r) if r.failed.code.as_deref() == Some(EXISTS) && r.data.is_some() => {
-                let conflicts = r
-                    .data
-                    .and_then(|d| serde_json::from_value::<Conflicts>(d).ok())
-                    .map(|c| c.conflicts)
-                    .unwrap_or_default();
-                if conflicts.is_empty() {
-                    board.set(Phase::Failed(r.failed));
-                    return None;
-                }
-                match board.ask(conflicts).await.ok().flatten() {
-                    Some(map) => {
-                        let mut d = args
-                            .get("decide")
-                            .and_then(|v| v.as_object().cloned())
-                            .unwrap_or_default();
-                        for (k, v) in map {
-                            d.insert(k, serde_json::to_value(v).unwrap_or_default());
-                        }
-                        args["decide"] = serde_json::Value::Object(d);
-                    }
-                    None => {
-                        board.set(Phase::Dropped);
-                        return None;
-                    }
-                }
-            }
-            // 连着断（连回来又断）到 [`CUTS_MAX`] 次 ⇒ 照实说没走通（不在这里空转）。
-            Err(r) if r.cut && cuts < CUTS_MAX => {
-                cuts += 1;
-                let t = board.tick();
-                board.set(Phase::Cut(cut_line(&board.plan(), &t)));
-                wait_up().await;
-                board.set(Phase::Running);
-            }
-            Err(r) => {
-                board.set(Phase::Failed(r.failed));
-                return None;
-            }
-        }
-    }
-}
-
-/// 断了再问最多几次（每次都先等那台连回来）。
-pub const CUTS_MAX: usize = 8;
 
 /// 起一组（UI 线程调，[`go`] 扔给 tokio）。
 pub fn spawn(
@@ -615,11 +305,13 @@ pub async fn go(
         })
     };
     let cmd = board.plan().cmd;
-    run(
+    batch_core::run(
         &board,
         |args| {
             let (line, at) = (line.clone(), at.clone());
-            async move { super::source::ask_batch(&line, &at, cmd, &args, BATCH_BUDGET).await }
+            async move {
+                super::source::ask_batch(&line, &at, cmd, &args, batch_core::BATCH_BUDGET).await
+            }
         },
         || {
             let (line, home) = (line.clone(), home.clone());
@@ -641,7 +333,7 @@ pub fn ask_ui(ui: &mut egui::Ui, board: &BatchBoard) {
         let Some(a) = d.asking.as_ref() else { return };
         (d.plan.clone(), a.conflicts.clone(), a.each, a.picks.clone())
     };
-    let title = title_of(&plan);
+    let title = batch_core::title_of(&plan);
     let count = copy_text(
         "rsFilewinBatch.ask.count",
         &[("n", &conflicts.len().to_string())],
@@ -759,28 +451,6 @@ pub const DEFAULT_ANSWER: usize = 1;
 /// 冲突框清单的一行：名字 ｜ `2.1 MB · 10-12 14:02 → 已有 1.8 MB · 10-01 09:10`；目录同名 ⇒ `目录不合并 · 跳过或保留两份`。
 pub fn conflict_row(c: &Conflict) -> super::kit::ListRow {
     use cmd_wire::files::FileKind;
-    // 时刻照抄后端写好的字（按看的那一台的钟），不换算。
-    let side = |size: &Option<String>, mtime: &Option<String>| {
-        let mut parts = Vec::new();
-        if let Some(s) = size {
-            parts.push(s.clone());
-        }
-        if let Some(m) = mtime {
-            parts.push(m.clone());
-        }
-        parts.join(&copy_text("rsFilewinCopy.batch.listSep", &[]))
-    };
-    let meta = if !c.answers.contains(&Decide::Overwrite) {
-        copy_text("rsFilewinBatch.ask.dirNoMerge", &[])
-    } else {
-        copy_text(
-            "rsFilewinBatch.meta.vs",
-            &[
-                ("mine", &side(&c.size_text, &c.mtime_text)),
-                ("there", &side(&c.there_size_text, &c.there_mtime_text)),
-            ],
-        )
-    };
     super::kit::ListRow {
         icon: if c.kind == FileKind::Dir {
             egui_phosphor::regular::FOLDER
@@ -788,7 +458,7 @@ pub fn conflict_row(c: &Conflict) -> super::kit::ListRow {
             egui_phosphor::regular::FILE
         },
         name: String::from_utf8_lossy(c.name.bytes()).into_owned(),
-        meta,
+        meta: batch_core::conflict_meta(c),
     }
 }
 

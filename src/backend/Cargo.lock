@@ -126,6 +126,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
+name = "batch-core"
+version = "0.1.0"
+dependencies = [
+ "cmd-wire",
+ "copy-core",
+ "serde_json",
+]
+
+[[package]]
 name = "bcrypt-pbkdf"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -249,6 +258,7 @@ name = "cc-monitor-backend"
 version = "0.0.0"
 dependencies = [
  "acct-core",
+ "batch-core",
  "cmd-wire",
  "comms-outward",
  "copy-core",
@@ -1544,6 +1554,7 @@ dependencies = [
 name = "mobcore"
 version = "0.0.0"
 dependencies = [
+ "batch-core",
  "chunk-core",
  "cmd-wire",
  "comms-inward",

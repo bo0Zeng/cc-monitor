@@ -19,9 +19,10 @@ use cmd_wire::files as cwf;
 use cmd_wire::transfer::TransferCopyReq;
 use copy_core::copy_text;
 
-use crate::common::batch_book::{choice_of, key_of, minted, said_of, ticketed, Run};
+use crate::common::batch_book::{choice_of, key_of, minted, ticketed, Run};
 use crate::common::said::Said;
 use crate::wire::typed::{self, codes};
+use batch_core::said_of;
 
 /// 一个要等的结果。
 pub(crate) type Fut<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;

@@ -1,0 +1,14 @@
+[package]
+name = "batch-core"
+version = "0.1.0"
+edition = "2021"
+workspace = "../../frontend/shell"
+description = "一组一条命令的全过程（带票发 · 同名问一次 · 断了等连回同票再问 · 结局）与它的字（标题 · 结局句 · 没成的那几行 · 断开那一行）：后端 · 桌面文件窗口 · 手机嵌的核心同一份。"
+
+[dependencies]
+cmd-wire = { path = "../cmd-wire" }
+copy-core = { path = "../copy-core" }
+serde_json = "1"
+
+[dev-dependencies]
+test-home = { path = "../test-home" }

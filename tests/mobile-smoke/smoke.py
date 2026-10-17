@@ -563,13 +563,12 @@ def files_page():
     time.sleep(3)
     if "ren" + T in sh(f"ls ~/work/{d}"):
         raise Step.Fail("删除没落到那台")
-    # 下载：点文件 ⇒ 存进 App 自己的外部文件目录。
-    tap("a.txt")
-    if not wait(t("mobFiles.download.done", path="")[:3], 20):
-        raise Step.Fail("下载没说做成")
-    got = adb("shell", "cat", f"/sdcard/Android/data/{PKG}/files/a.txt")
-    if f"hello {T}" not in got:
-        raise Step.Fail(f"下载下来的不是那一份：{got[:80]!r}")
+    # 下载：选中 a.txt ⇒［下载］⇒ 系统选文件夹那一屏点 Download ⇒［使用此文件夹］⇒ 盘上 /sdcard/Download/a.txt 是那一份。
+    adb("shell", "rm", "-f", "/sdcard/Download/a.txt", "/sdcard/Download/b.txt")
+    long_press("a.txt")
+    tap(t("rsFilewinDownload.label.download"))
+    pick_folder("Download")
+    landed("/sdcard/Download/a.txt", f"hello {T}")
     # 上传：系统选文件那一屏里点台架推进去的那一份。
     up = f"up{T}.txt"
     open(os.path.join(OUT, up), "w").write(f"up {T}\n")
@@ -616,6 +615,59 @@ def files_page():
         time.sleep(1)
     if time.time() >= end:
         raise Step.Fail(f"答了保留两份，那台上没有 {both}")
+
+
+def pick_folder(name):
+    """系统「选文件夹」那一屏：上次选过 ⇒ 直接在那一棵里；否则先点进 [name]。按钮的字按系统认（英文 · 中文），认不到 ⇒ 这台判不了。"""
+    use = ["USE THIS FOLDER", "Use this folder", "使用此文件夹"]
+    if not wait_any(use, 15):
+        raise Step.Fail("系统选文件夹那一屏没出来（或认不出它的按钮字 —— 这台判不了）")
+    # 第一次在存储根上（点进 [name]）；上次选过 ⇒ 已在那一棵里，[name] 是顶上那一格，点了不动。
+    if tap(name, must=False):
+        time.sleep(2)
+    for u in use:
+        if tap(u, must=False):
+            break
+    if wait_any(["ALLOW", "Allow", "允许"], 8):
+        for a in ["ALLOW", "Allow", "允许"]:
+            if tap(a, must=False):
+                break
+    time.sleep(1)
+
+
+def landed(path, text, secs=30):
+    """手机盘上那一份落下、内容是那一份（不看提示的字，看盘）。"""
+    end = time.time() + secs
+    got = ""
+    while time.time() < end:
+        got = adb("shell", "cat", path)
+        if text in got:
+            return
+        time.sleep(1)
+    raise Step.Fail(f"{path} 不是那一份：{got[:80]!r}")
+
+
+def files_download_two():
+    """下载两份：a.txt（上一步已下到 Download、本机同名 ⇒ 抽屉问 ⇒［覆盖］）＋ b.txt；系统那一屏从上次那一棵开。"""
+    d = f"files{T}"
+    sh(f"printf 'bee {T}\\n' > ~/work/{d}/b.txt && printf 'hello again {T}\\n' > ~/work/{d}/a.txt")
+    tap("work")
+    if not wait(d, 15):
+        raise Step.Fail("回不到 work")
+    tap(d)
+    if not wait("b.txt", 15):
+        raise Step.Fail("重列之后没有 b.txt")
+    long_press("a.txt")
+    tap("b.txt")
+    tap(t("rsFilewinDownload.label.download"))
+    pick_folder("Download")
+    if not wait(t("rsFilewinBatch.btn.overwrite"), 20):
+        raise Step.Fail("本机已有 a.txt，没出同名抽屉")
+    shot("11e-本机同名")
+    tap(t("rsFilewinBatch.btn.overwrite"))
+    landed("/sdcard/Download/a.txt", f"hello again {T}")
+    landed("/sdcard/Download/b.txt", f"bee {T}")
+    shot("11e-下载两份")
 
 
 def big_text():
@@ -931,6 +983,8 @@ def walk():
             drawer(t("mobDrawer.item.sessions"))
         with Step("11-文件页"):
             files_page()
+        with Step("11e-下载两份"):
+            files_download_two()
         with Step("11b-大文本编辑"):
             big_text()
         return report()
@@ -1449,6 +1503,9 @@ def walk():
     with Step("11-文件页"):
         launch()
         files_page()
+
+    with Step("11e-下载两份"):
+        files_download_two()
 
     with Step("11b-大文本编辑"):
         big_text()

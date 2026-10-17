@@ -29,6 +29,8 @@ cmd-wire = { path = "../../../common/cmd-wire" }
 chunk-core = { path = "../../../common/chunk-core" }
 # 文件页选中这几项 ⇒ 顶栏与 ⋯ 那几项（桌面文件窗口同一张判法）。
 pick-core = { path = "../../../common/pick-core" }
+# 一组一条命令的全过程（带票发 · 同名问一次 · 断了同票再问 · 结局）与它的字：桌面文件窗口同一份。
+batch-core = { path = "../../../common/batch-core" }
 # 事前就拒的那几种问答怎么说（`route_call_error`）：通信层面 A 那一份。
 comms-inward = { path = "../../../comms/inward" }
 # 同后端那一行（版本 · feature 集）：解 PEM 私钥、拼 Keystore 那把公钥要它的 `keys`。

@@ -22,7 +22,6 @@ class SentRequestsTest {
         mapOf(
             AccountsList.COMMAND to listOf(AccountsList.args("claude"), AccountsList.args("")),
             AccountsSetDefault.COMMAND to listOf(AccountsSetDefault.args("a")),
-            FilesChmod.COMMAND to listOf(FilesChmod.args(dir, bin, "644")),
             FilesCommitUpload.COMMAND to
                 listOf(
                     FilesCommitUpload.args(dir, "up.bin", FilesCommitUpload.Staged("k", 3L, 9L, SHA)),
@@ -30,7 +29,6 @@ class SentRequestsTest {
                     FilesCommitUpload.args(dir, "up.bin", FilesCommitUpload.Staged("k", 3L, 9L, SHA), "keep_both"),
                 ),
             FilesCreate.COMMAND to listOf(FilesCreate.args(dir, "a.txt")),
-            FilesDelete.COMMAND to listOf(FilesDelete.args(dir, bin, recursive = true), FilesDelete.args(dir, bin, recursive = false)),
             FilesDeleteSession.COMMAND to listOf(FilesDeleteSession.args("s")),
             FilesHome.COMMAND to listOf(emptyMap()),
             FilesLs.COMMAND to listOf(FilesLs.args(bin), FilesLs.dirs("/w")),

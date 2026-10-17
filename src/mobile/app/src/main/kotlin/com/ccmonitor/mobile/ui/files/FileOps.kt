@@ -1,11 +1,9 @@
 package com.ccmonitor.mobile.ui.files
 
-import com.ccmonitor.mobile.core.claude.link.Batch
+import com.ccmonitor.mobile.core.claude.link.BatchEvent
 import com.ccmonitor.mobile.core.claude.link.CoreLink
-import com.ccmonitor.mobile.core.claude.link.FilesChmod
 import com.ccmonitor.mobile.core.claude.link.FilesCommitUpload
 import com.ccmonitor.mobile.core.claude.link.FilesCreate
-import com.ccmonitor.mobile.core.claude.link.FilesDelete
 import com.ccmonitor.mobile.core.claude.link.FilesHome
 import com.ccmonitor.mobile.core.claude.link.FilesLs
 import com.ccmonitor.mobile.core.claude.link.FilesMkdir
@@ -16,7 +14,6 @@ import com.ccmonitor.mobile.core.claude.link.FilesWriteText
 import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.Transfer
-import com.ccmonitor.mobile.core.claude.link.wire.Conflict
 import com.ccmonitor.mobile.core.claude.link.wire.FileKind
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.link.Problem
@@ -33,9 +30,10 @@ class FileOps(
     private val feed: CoreLink,
     private val machine: suspend () -> String,
 ) {
-    /** 没做成：那台写好的那一句（或走不通时那一句）＋ 复制详情。 */
+    /** 没做成：那台写好的那一句（或走不通时那一句）＋ 复制详情；[cut] ＝ 通道那一跳没走通（断了 · 到点），不是那台拒的。 */
     class Failed(
         val problem: Problem,
+        val cut: Boolean = false,
     ) : Exception(problem.text)
 
     /** 那台这个用户的家（起点）。 */
@@ -77,12 +75,11 @@ class FileOps(
         typed: String,
     ): Result<Unit> = done(FilesRename.COMMAND, FilesRename.args(dir, from, typed))
 
-    /** 删一项；目录连同里面全部。 */
+    /** 删当前目录里这几项（目录连同里面全部）：一组，全过程在核心里。回编号（这台不在 ⇒ 0），走到哪经 [CoreLink.batches]。 */
     suspend fun delete(
         dir: RemotePath,
-        name: RemotePath,
-        isDir: Boolean,
-    ): Result<Unit> = batch(FilesDelete.COMMAND, FilesDelete.args(dir, name, isDir), TREE_MS)
+        entries: List<FilesLs.Entry>,
+    ): Long = feed.batch(mapOf("delete" to mapOf("root" to dir.wire, "items" to entries.map { mapOf("rel" to it.rel.wire, "name" to it.name, "dir" to it.isDir) })))
 
     /** 打开别处点名的一个路径：那台说是目录 ⇒ 进去；别的 ⇒ 进那台说的它所在的目录、开它。 */
     suspend fun open(text: String): Result<Opening> {
@@ -111,11 +108,25 @@ class FileOps(
             else -> Result.failure(Failed(r.problem(machine(), FilesStat.COMMAND) ?: Problem("", "")))
         }
 
+    /** 改当前目录里这几项的权限位（八进制串）：同 [delete]。 */
     suspend fun chmod(
         dir: RemotePath,
-        name: RemotePath,
+        entries: List<FilesLs.Entry>,
         mode: String,
-    ): Result<Unit> = batch(FilesChmod.COMMAND, FilesChmod.args(dir, name, mode))
+    ): Long = feed.batch(mapOf("chmod" to mapOf("root" to dir.wire, "items" to entries.map { mapOf("rel" to it.rel.wire, "name" to it.name) }, "mode" to mode)))
+
+    /** 把当前目录里这几项复制到 [to]（同一台；公共根 · 入参由核心拼，同名那台问）：同 [delete]。 */
+    suspend fun copy(
+        dir: RemotePath,
+        entries: List<FilesLs.Entry>,
+        to: RemotePath,
+    ): Long = feed.batch(mapOf("copy" to mapOf("from" to dir.wire, "names" to entries.map { it.rel.wire }, "to" to to.wire)))
+
+    /** 那一组没成的那几项再做一次（[undo] ⇒ 撤销那一组改的权限）：核心照它记着的那一组另起。 */
+    suspend fun again(
+        id: Long,
+        undo: Boolean,
+    ): Long = feed.batch(mapOf((if (undo) "undo" else "retry") to id))
 
     /** 上传那一件提交的结局：放好了 · 撞了同名（[Clash.staged] 原样留着：答了再交一次，块不重送）。 */
     sealed interface Upload {
@@ -126,7 +137,8 @@ class FileOps(
             val staged: FilesCommitUpload.Staged,
             /** 那台写的那一句（「同名 1 项」）。 */
             val said: String,
-            val conflicts: List<Conflict>,
+            /** 抽屉那几行（核心写好的）。 */
+            val rows: List<BatchEvent.Clash>,
         ) : Upload
     }
 
@@ -156,8 +168,8 @@ class FileOps(
     ): Result<Upload> {
         val r = feed.call(FilesCommitUpload.COMMAND, FilesCommitUpload.args(dir, name, staged, onExists), CHUNK_MS)
         val clash = (r as? Reply.Failed)?.failure?.takeIf { it.code == EXISTS }
-        val conflicts = clash?.let { FilesCommitUpload.conflictsOf(it.data) }
-        if (clash != null && conflicts != null) return Result.success(Upload.Clash(name, staged, clash.message, conflicts))
+        val rows = clash?.let { feed.clashes(it.data) }.orEmpty()
+        if (clash != null && rows.isNotEmpty()) return Result.success(Upload.Clash(name, staged, clash.message, rows))
         return when (r) {
             is Reply.Ok -> Result.success(Upload.Done)
             else -> Result.failure(Failed(r.problem(machine(), FilesCommitUpload.COMMAND) ?: Problem("", "")))
@@ -192,22 +204,6 @@ class FileOps(
         return reply(r, if (how is Transfer.Stage) STAGE else PULL, decode)
     }
 
-    /** 一组只交一项的那几问：那一项没成 ⇒ 照后端写的那一句报。 */
-    private suspend fun batch(
-        command: String,
-        args: Map<String, Any?>,
-        withinMs: Long = WRITE_MS,
-    ): Result<Unit> =
-        ask(command, args, Batch::fateOf, withinMs).fold(
-            onSuccess = {
-                when (it) {
-                    Batch.Done -> Result.success(Unit)
-                    is Batch.Refused -> Result.failure(Failed(Problem(it.said, it.detail)))
-                }
-            },
-            onFailure = { Result.failure(it) },
-        )
-
     private suspend fun done(
         command: String,
         args: Map<String, Any?>,
@@ -229,7 +225,7 @@ class FileOps(
         val m = machine()
         return when (r) {
             is Reply.Ok -> decode(r.data)?.let { Result.success(it) } ?: Result.failure(Failed(unreadableReply(m, command, r.data.toString())))
-            else -> Result.failure(Failed(r.problem(m, command) ?: Problem("", "")))
+            else -> Result.failure(Failed(r.problem(m, command) ?: Problem("", ""), cut = r is Reply.LinkDown || r is Reply.TimedOut || r is Reply.Cancelled))
         }
     }
 
@@ -246,8 +242,5 @@ class FileOps(
         /** 分块传两半出错时详情里点名的命令。 */
         private const val STAGE = "files-stage-chunk"
         private const val PULL = "files-read-chunk"
-
-        /** 删一整棵树的一段等多久（同桌面）。 */
-        const val TREE_MS: Long = 120_000L
     }
 }
