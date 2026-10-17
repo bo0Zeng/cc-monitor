@@ -1,5 +1,6 @@
 use super::test_support::{lines_into, opts_from_words};
 use super::*;
+use crate::wire::SessionFaceExt as _;
 
 /// 一个会话的命中那一行，按 JSON 看（判据按格名比）。
 fn hits_v(
@@ -386,6 +387,7 @@ fn row(sid: &str, updated: i64, hits: u32, cut: bool) -> SessionHits {
         is_bg: false,
         status: Liveness::Ended,
         can: crate::history::listing::can_of("a", "ended", false),
+        face: crate::wire::SessionFace::of(crate::wire::Life::Ended),
     }
 }
 

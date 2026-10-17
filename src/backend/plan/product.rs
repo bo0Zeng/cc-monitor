@@ -9,6 +9,7 @@
 //! 键名一律换成线上惯例（小驼峰）；pb 那边多出来的键不带过来（形状版本没变就不该多，多了说明该升形状版本了）。
 
 use super::{Live, WhoPort, Whose};
+use crate::wire::SessionFaceExt as _;
 use serde_json::{json, Map, Value};
 use std::collections::BTreeMap;
 
@@ -99,10 +100,26 @@ pub(crate) fn who_json(id: Option<&str>, who: WhoPort) -> Value {
         ),
         None => (false, Value::Null, Value::Null),
     };
-    let (kind, sid, live) = match who(id) {
-        Whose::Session { sid, live } => ("session", Some(sid), live_json(&live)),
-        Whose::Subagent { parent, live } => ("subagent", Some(parent), live_json(&live)),
-        Whose::Unknown => ("unknown", None, (false, Value::Null, Value::Null)),
+    let face_of = |l: &Option<Live>| {
+        crate::wire::SessionFace::of(match l {
+            Some(l) => crate::wire::Life::Live {
+                activity: l.activity,
+                tmux: None,
+            },
+            None => crate::wire::Life::Ended,
+        })
+    };
+    let (kind, sid, live, face) = match who(id) {
+        Whose::Session { sid, live } => ("session", Some(sid), live_json(&live), face_of(&live)),
+        Whose::Subagent { parent, live } => {
+            ("subagent", Some(parent), live_json(&live), face_of(&live))
+        }
+        Whose::Unknown => (
+            "unknown",
+            None,
+            (false, Value::Null, Value::Null),
+            crate::wire::SessionFace::of(crate::wire::Life::Unclear),
+        ),
     };
     json!({
         "id": id,
@@ -111,6 +128,7 @@ pub(crate) fn who_json(id: Option<&str>, who: WhoPort) -> Value {
         "alive": live.0,
         "activity": live.1,
         "needs": live.2,
+        "face": face,
     })
 }
 

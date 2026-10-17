@@ -76,6 +76,8 @@ pub struct HistoryRow {
         ts(type = "\"live\" | \"reconnectable\" | \"ended\" | \"unknown\"")
     )]
     pub status: String,
+    /// 那台此刻对这一行的说法（活着的照它的进程状态文件判在干什么；判不了活 ⇒ 状态不明）。
+    pub face: crate::frame::SessionFace,
     pub can: Can,
     /// 行上那一家的小牌（对用户的叫法）；默认那一家 ⇒ `null`。
     pub agent_tag: Option<Words>,
@@ -200,6 +202,10 @@ pub struct RawRow {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
     pub reconnectable: bool,
+    /// 在跑时那一家说它在干什么（判不出 · 不在跑 ⇒ 缺）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub activity: Option<crate::frame::SessionActivity>,
     pub message_count_approx: u32,
     pub is_bg: bool,
     pub starred: bool,

@@ -262,7 +262,9 @@ pub struct SessionAdded {
     pub path: Option<String>,
     /// 宣告时此刻在干什么（[`ActivityFace`]，平铺在帧上）。
     #[serde(flatten)]
-    pub face: ActivityFace,
+    pub doing: ActivityFace,
+    /// 宣告时这条会话的整份脸。
+    pub face: SessionFace,
     /// 叫这条会话什么（[`NameFace`]，平铺在帧上）。
     #[serde(flatten)]
     pub name_face: NameFace,
@@ -310,7 +312,9 @@ pub struct SessionStatus {
     pub sid: String,
     /// 此刻在干什么（同 `session_added` 那几格，[`ActivityFace`]）。
     #[serde(flatten)]
-    pub face: ActivityFace,
+    pub doing: ActivityFace,
+    /// 此刻这条会话的整份脸。
+    pub face: SessionFace,
     /// 叫这条会话什么（同 `session_added` 那两格；改了名、来了标题 / 第一句也发这一帧）。
     #[serde(flatten)]
     pub name_face: NameFace,
@@ -343,6 +347,8 @@ pub struct SessionState {
     pub state_order: u8,
     /// 此刻能不能换模型 · 权限档（离开「活」那一形）。
     pub switch: Switch,
+    /// 离开「活」之后这条会话的整份脸（可重连 · 已结束 · 记录已不在）。
+    pub face: SessionFace,
 }
 
 /// A session file went away.
@@ -669,6 +675,99 @@ pub enum CanSwitch {
     /// 能换。
     Yes,
     /// 此刻不能（chip 灰着，上方写这一句）。
+    No { why: Words },
+}
+
+/// **一条会话此刻的整份脸**（会话三帧 · 清单行 · 需手动行 · 计划 · 血缘都带它，嵌一格 `face`）：点 · 短名 · 悬停句 · 状态一句 · 序 · 能做什么。
+/// 只由后端那一处造（`SessionFace::of`，判据 `the_written_faces_are_built_in_one_place_only` 守）；两端只取同一 sid 最新那一份来画。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct SessionFace {
+    pub dot: SessionDot,
+    /// 活着、判得出在干什么才有。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub activity: Option<SessionActivity>,
+    /// 进程在。
+    pub live: bool,
+    /// 那台看不见时照旧作数（已结束 · 记录已不在）。
+    pub settled: bool,
+    /// 短名（运行中 · 需手动 · 已结束 …）。
+    pub name: Words,
+    /// 悬停那一句。
+    pub tip: Words,
+    /// 没有会话事实时的状态一句。
+    pub line: Words,
+    pub tone: Tone,
+    /// 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
+    pub order: u8,
+    pub can: SessionCan,
+}
+
+/// 会话那颗点（线上名与界面状态点同一套）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(rename_all = "kebab-case")]
+pub enum SessionDot {
+    Running,
+    NeedsYou,
+    Background,
+    Idle,
+    Exited,
+    Ended,
+    Gone,
+    Unknown,
+}
+
+/// 这条会话此刻能做什么（界面照 `can` 灰不灰、照 `why` 写跳过的理由，不自己判）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct SessionCan {
+    /// 关掉它的标签页。
+    pub close: CanClose,
+    /// 恢复（起一个新进程接着那份记录）。
+    pub resume: Allow,
+    /// 还有终端可去（拉前 · 停 · 杀 · 终端页）。
+    pub term: CanTerm,
+    /// 程序退了、tmux 会话还在 ⇒ 接回。
+    pub reattach: Allow,
+    /// 换模型（`session-model`）。
+    pub model: Allow,
+    /// 切权限档（`session-permission`）。
+    pub permission: Allow,
+}
+
+/// 一样此刻能不能做：`{can: "yes"}` · `{can: "no", why: 写好的那一句}`。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(tag = "can", rename_all = "snake_case")]
+pub enum Allow {
+    Yes,
+    No { why: Words },
+}
+
+/// 关不关得掉：`quiet` × · 中键 · W · 批量都关得掉 · `menu` 只在右键菜单里关（那台看不见时界面自己给的那一形）· `no`。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(tag = "can", rename_all = "snake_case")]
+pub enum CanClose {
+    Quiet,
+    Menu,
+    No { why: Words },
+}
+
+/// 还有没有终端可去：`yes` 带它在不在 tmux 里（终端窗口关了也能「在终端里打开」）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(tag = "can", rename_all = "snake_case")]
+pub enum CanTerm {
+    Yes { tmux: bool },
     No { why: Words },
 }
 

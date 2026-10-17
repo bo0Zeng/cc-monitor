@@ -1555,7 +1555,7 @@ fn status_diff_emits_session_status_frame() {
     match rx.try_recv() {
         Ok(Frame::SessionAdded(crate::wire::SessionAdded {
             sid,
-            face,
+            doing: face,
             background,
             ..
         })) => {
@@ -1582,7 +1582,7 @@ fn status_diff_emits_session_status_frame() {
     match rx.try_recv() {
         Ok(Frame::SessionStatus(crate::wire::SessionStatus {
             sid,
-            face,
+            doing: face,
             waiting_for,
             ..
         })) => {
@@ -1601,7 +1601,7 @@ fn status_diff_emits_session_status_frame() {
     assert!(matches!(
         rx.try_recv(),
         Ok(Frame::SessionStatus(crate::wire::SessionStatus {
-            face,
+            doing: face,
             waiting_for: None,
             ..
         })) if face == crate::wire::ActivityFace::of(Some(SessionActivity::Idle))
@@ -1657,7 +1657,9 @@ fn a_custom_title_in_the_annotations_renames_a_live_session() {
     state.reload_annotations(note(Some("乙")), &mut sink);
     match rx.try_recv() {
         Ok(Frame::SessionStatus(crate::wire::SessionStatus {
-            name_face, face, ..
+            name_face,
+            doing: face,
+            ..
         })) => {
             assert_eq!(name_face.label.0, "乙");
             assert_eq!(

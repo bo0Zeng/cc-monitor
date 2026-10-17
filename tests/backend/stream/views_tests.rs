@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::wire::ActivityFaceExt as _;
+use crate::wire::SessionFaceExt as _;
 use serde_json::json;
 use tokio::sync::mpsc;
 
@@ -181,7 +182,11 @@ fn the_stream_view_trims_pushed_frames_and_leaves_the_rest_alone() {
         project_dir: None,
         name: None,
         path: None,
-        face: crate::wire::ActivityFace::of(None),
+        doing: crate::wire::ActivityFace::of(None),
+        face: crate::wire::SessionFace::of(crate::wire::Life::Live {
+            activity: None,
+            tmux: None,
+        }),
         name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
         hidden: None,

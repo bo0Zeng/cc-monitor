@@ -1,6 +1,7 @@
 //! 全文搜索那两条 typed 帧命令的判据。夹具只造结构（目录名 · 一两行占位 JSON），不采真会话正文。
 
 use super::*;
+use crate::wire::SessionFaceExt as _;
 use cmd_wire::Machine;
 
 /// 全文搜索的应答把「读不动几份」与「内容搜索不覆盖的那几家」一起交回（此前只进日志，界面只能说「共 N 条」像是全的）；
@@ -65,6 +66,7 @@ fn merge_takes_rows_per_machine_and_names_only_the_remote_ones() {
         is_bg: false,
         status: crate::observe::search_query::Liveness::Ended,
         can: crate::history::listing::can_of("claude-code", "ended", false),
+        face: crate::wire::SessionFace::of(crate::wire::Life::Ended),
     };
     let got = crate::observe::search_query::merge_at(
         vec![

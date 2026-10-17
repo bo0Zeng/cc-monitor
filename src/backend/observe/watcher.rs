@@ -62,7 +62,9 @@
 
 use crate::agents::UserTextExt as _;
 use crate::platform::fs::{Ro, RoFile};
-use crate::wire::{ActivityFaceExt as _, FrameMake as _, FrameRules as _, TopicExt as _};
+use crate::wire::{
+    ActivityFaceExt as _, FrameMake as _, FrameRules as _, SessionFaceExt as _, TopicExt as _,
+};
 use crate::wire::{Frame, RemovalCause, RereadWhy, SeqCounter, Topic};
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
@@ -110,6 +112,8 @@ use walkdir::WalkDir;
 
 /// P2：`watch_loop` 消费的统一事件。
 enum WatchEvent {
+    /// 这台问过一条会话的记录在不在（[`record_seen`]）。
+    RecordSeen { sid: String, present: bool },
     /// 文件系统事件（`notify-debouncer-mini` 经 [`DebouncerSink`] 转投进来）。
     Notify(DebounceEventResult),
     /// **P3：tmux server 的 pidfd 醒了** —— 那个 server 进程实例已退出 ⇒ 等价于零会话。
@@ -905,6 +909,7 @@ pub fn spawn(
     own: crate::platform::fs::Own,
     reactions: Reactions,
 ) -> (WatcherPoke, std::sync::Arc<crate::observe::runs::RunBook>) {
+    crate::observe::record_hook::install(record_seen);
     let book = std::sync::Arc::new(crate::observe::runs::RunBook::default());
     // P4：事件 channel 从 `watch_loop` 内部**上提到这里**造 —— 因为 poke 句柄必须在线程
     // 起来之前就能交给 `main`。**仍然只有这一条 channel**（账本第 1 行不许再开第二条）：
@@ -949,6 +954,16 @@ fn live_leave(id: u64) {
 pub fn poke_all() {
     for (_, w) in LIVE.lock().unwrap_or_else(|e| e.into_inner()).iter() {
         let _ = w.send(WatchEvent::Poke);
+    }
+}
+
+/// 这台刚问过一条会话的记录在不在（`history-record` · `sessions-start` 答完）：交每一份在跑的 watcher 的会话账本。
+pub(crate) fn record_seen(sid: &str, present: bool) {
+    for (_, w) in LIVE.lock().unwrap_or_else(|e| e.into_inner()).iter() {
+        let _ = w.send(WatchEvent::RecordSeen {
+            sid: sid.to_string(),
+            present,
+        });
     }
 }
 
@@ -1478,6 +1493,7 @@ fn watch_loop(
             }
             WatchEvent::Join(sub, watch) => join(sub, watch, &mut state, &mut sink),
             WatchEvent::Leave(id) => sink.leave(id),
+            WatchEvent::RecordSeen { sid, present } => sink.record_seen(&sid, present),
             WatchEvent::Primed(done) => primed(done, &mut state, &mut sink),
             WatchEvent::Resync { only, done } => {
                 if only.is_none() {
@@ -1606,6 +1622,22 @@ impl ReaderState {
     }
 
     /// 此刻叫这条会话什么（[`crate::wire::NameFace`]）；没记着它（没宣告过）⇒ 只凭 sid。
+    /// 活会话此刻那一态的两份脸（平铺那几格 · 整份）：容器照宣告那一帧（判不了 ⇒ 不知道在不在 tmux 里）。
+    fn live_faces(
+        &self,
+        sid: &str,
+        activity: Option<crate::agents::SessionActivity>,
+    ) -> (crate::wire::ActivityFace, crate::wire::SessionFace) {
+        let container = match self.added.get(sid) {
+            Some(Frame::SessionAdded(a)) => a.container.as_ref(),
+            _ => None,
+        };
+        (
+            crate::wire::ActivityFace::of(activity),
+            crate::wire::SessionFace::of(crate::wire::Life::live(activity, container)),
+        )
+    }
+
     fn name_face(&self, sid: &str) -> crate::wire::NameFace {
         let facts = self
             .sessions
@@ -1635,9 +1667,11 @@ impl ReaderState {
         };
         let name_face = self.name_face(sid);
         if name_face != before {
+            let (doing, face) = self.live_faces(sid, activity);
             sink.send(Frame::SessionStatus(crate::wire::SessionStatus {
                 sid: sid.to_string(),
-                face: crate::wire::ActivityFace::of(activity),
+                doing,
+                face,
                 name_face,
                 waiting_for,
                 path: None,
@@ -2547,20 +2581,19 @@ fn report_to(id: u64, state: &mut ReaderState, sink: &mut FrameSink) {
         let entry = state.sessions.values().find(|e| e.sid == sid);
         if let (
             Frame::SessionAdded(crate::wire::SessionAdded {
+                doing,
                 face,
                 name_face,
                 waiting_for,
                 path,
+                container,
                 ..
             }),
             Some(e),
         ) = (&mut added, entry)
         {
-            *face = if state.reading.contains(&sid) {
-                crate::wire::ActivityFace::reading()
-            } else {
-                crate::wire::ActivityFace::of(e.activity)
-            };
+            (*doing, *face) =
+                announced_faces(state.reading.contains(&sid), e.activity, container.as_ref());
             *name_face = crate::history::search_rules::name_face(&e.facts);
             waiting_for.clone_from(&e.waiting_for);
             if e.path.is_some() {
@@ -2686,9 +2719,11 @@ fn note_path(session_id: &str, path_str: &str, state: &mut ReaderState, sink: &m
     let Some((activity, waiting_for)) = status else {
         return;
     };
+    let (doing, face) = state.live_faces(session_id, activity);
     sink.send(Frame::SessionStatus(crate::wire::SessionStatus {
         sid: session_id.to_string(),
-        face: crate::wire::ActivityFace::of(activity),
+        doing,
+        face,
         name_face: state.name_face(session_id),
         waiting_for,
         path: Some(path_str.to_string()),
@@ -2786,9 +2821,11 @@ fn note_activity(
     let Some((waiting_for, path)) = changed else {
         return;
     };
+    let (doing, face) = state.live_faces(sid, Some(a));
     sink.send(Frame::SessionStatus(crate::wire::SessionStatus {
         sid: sid.to_string(),
-        face: crate::wire::ActivityFace::of(Some(a)),
+        doing,
+        face,
         name_face: state.name_face(sid),
         waiting_for,
         path,
@@ -3022,9 +3059,11 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
             let activity = meta.as_ref().and_then(crate::agents::pidfile_activity);
             entry.activity = activity;
             let name_face = crate::history::search_rules::name_face(&entry.facts);
+            let (doing, face) = state.live_faces(&sid, activity);
             sink.send(Frame::SessionStatus(crate::wire::SessionStatus {
                 sid: sid.clone(),
-                face: crate::wire::ActivityFace::of(activity),
+                doing,
+                face,
                 name_face,
                 waiting_for: new_waiting,
                 path: None,
@@ -3196,6 +3235,7 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
     if reading {
         state.reading.insert(sid.clone());
     }
+    let (doing, face) = announced_faces(reading, a.activity, container.as_ref());
     let added = Frame::SessionAdded(crate::wire::SessionAdded {
         sid: sid.clone(),
         agent_kind: a.kind.to_string(),
@@ -3205,11 +3245,8 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
         project_dir,
         name: a.name,
         path: jsonls.first().map(|p| p.to_string_lossy().into_owned()),
-        face: if reading {
-            crate::wire::ActivityFace::reading()
-        } else {
-            crate::wire::ActivityFace::of(a.activity)
-        },
+        doing,
+        face,
         name_face,
         waiting_for: a.waiting_for,
         hidden,
@@ -3222,6 +3259,26 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
     sink.send(added);
     start_prime(&sid, &jsonls, fresh_name, state, sink);
     wrote
+}
+
+/// 宣告那一帧的两份脸：记录还没读完、此刻在干什么只有记录说 ⇒「读记录中」；否则照那一家说的那一态。
+fn announced_faces(
+    reading: bool,
+    activity: Option<crate::agents::SessionActivity>,
+    container: Option<&crate::wire::SessionContainer>,
+) -> (crate::wire::ActivityFace, crate::wire::SessionFace) {
+    use crate::wire::Life;
+    if reading {
+        (
+            crate::wire::ActivityFace::reading(),
+            crate::wire::SessionFace::of(Life::reading(container)),
+        )
+    } else {
+        (
+            crate::wire::ActivityFace::of(activity),
+            crate::wire::SessionFace::of(Life::live(activity, container)),
+        )
+    }
 }
 
 /// 给一条刚宣告的会话起一趟预读：记下代号、这条会话的内容帧从此刻拦下（[`FrameSink::send`]），交线程池（夹具没有池 ⇒ 就地跑、就地装回）。
@@ -4231,9 +4288,11 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
             let e = state.sessions.values().find(|e| e.sid == sid);
             let (waiting_for, path) =
                 e.map_or((None, None), |e| (e.waiting_for.clone(), e.path.clone()));
+            let (doing, face) = state.live_faces(&sid, None);
             sink.send(Frame::SessionStatus(crate::wire::SessionStatus {
                 sid: sid.clone(),
-                face: crate::wire::ActivityFace::of(None),
+                doing,
+                face,
                 name_face: state.name_face(&sid),
                 waiting_for,
                 path,
@@ -4636,7 +4695,7 @@ impl FrameSink {
     /// 这条连接手上留着、还没答过的会话：那台清单已报完、账上没有它（不活 · 不可重连 · 不在等裁）⇒ 只给它一帧已结束
     /// （与别处发的已结束同一句）。活的 · 可重连的接上那一份里已说过；等裁的裁了照常扇给每条连接。清单没报完 ⇒ 等放出那一刻再答。
     fn settle_kept(&mut self, id: u64) {
-        let Some(l) = self.ledger.as_ref().filter(|l| l.listed()) else {
+        let Some(l) = self.ledger.as_mut().filter(|l| l.listed()) else {
             return;
         };
         let Some(s) = self.subs.iter_mut().find(|s| s.id == id) else {
@@ -4650,7 +4709,19 @@ impl FrameSink {
             .collect();
         for sid in due {
             s.kept_answered.insert(sid.clone());
+            l.said_ended(&sid);
             s.push(Frame::session_state(sid, crate::wire::SessionFate::Ended));
+        }
+    }
+
+    /// 问过一条的记录在不在：交会话账本，它翻了的那一帧给每条连接。
+    fn record_seen(&mut self, sid: &str, present: bool) {
+        let out = match self.ledger.as_mut() {
+            Some(l) => l.on_record(sid, present),
+            None => Vec::new(),
+        };
+        for f in out {
+            self.fan(f);
         }
     }
 

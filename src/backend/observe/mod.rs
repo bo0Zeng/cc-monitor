@@ -22,6 +22,7 @@ pub(crate) mod relay_marks;
 pub(crate) mod one_wait;
 pub mod search_query;
 // 会话账本：可重连 / 已结束由这台后端裁、发成品帧（挂在 watcher 发帧的出口上）。
+pub(crate) mod record_hook; // 问过记录在不在之后交给会话账本的那一口（不经 watcher）
 pub(crate) mod session_ledger;
 pub(crate) mod session_terminals; // `session-terminals`：此刻是哪个终端在显示这个会话（点 ↗ 时问一次）
                                   // 会话的任务列表（`tasks-list` 帧命令的本体；帧面宿主在顶层 `feature_face`）。

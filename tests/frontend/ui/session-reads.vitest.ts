@@ -234,6 +234,7 @@ describe("〔STC〕第五问：会话事实", () => {
       answerOff: null,
       startedBy: null,
       children: [],
+      line: null,
       quietUnread: { count: 1, kinds: ["golden-future-ledger"], text: copyText("record.unread.quiet", { n: "1", types: "golden-future-ledger" }) },
     });
   });

@@ -215,6 +215,7 @@ fn the_hello_witness_has_exactly_one_way_to_exist() {
     );
 }
 use super::*;
+use crate::wire::SessionFaceExt as _;
 use serde_json::Value;
 
 /// Helper: assert a line is a single JSON object ending in exactly one
@@ -310,7 +311,8 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 project_dir: Some(s("/w")),
                 name: Some(s("n")),
                 path: Some(s("/p/s1.jsonl")),
-                face: crate::wire::ActivityFace::of(Some(crate::agents::SessionActivity::NeedsYou)),
+                doing: crate::wire::ActivityFace::of(Some(crate::agents::SessionActivity::NeedsYou)),
+                face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: Some(crate::agents::SessionActivity::NeedsYou), tmux: None }),
                 name_face: crate::history::search_rules::name_face(
                     &crate::history::search_rules::LabelFacts {
                         title: Some(s("t")),
@@ -343,7 +345,8 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 project_dir: None,
                 name: None,
                 path: None,
-                face: crate::wire::ActivityFace::of(None),
+                doing: crate::wire::ActivityFace::of(None),
+                face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: None, tmux: None }),
                 name_face: crate::history::search_rules::name_face(&Default::default()),
                 waiting_for: None,
                 hidden: None,
@@ -366,7 +369,8 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
         [
             Frame::SessionStatus(crate::wire::SessionStatus {
                 sid: s("s1"),
-                face: crate::wire::ActivityFace::of(Some(crate::agents::SessionActivity::NeedsYou)),
+                doing: crate::wire::ActivityFace::of(Some(crate::agents::SessionActivity::NeedsYou)),
+                face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: Some(crate::agents::SessionActivity::NeedsYou), tmux: None }),
                 name_face: crate::history::search_rules::name_face(
                     &crate::history::search_rules::LabelFacts {
                         title: Some(s("t")),
@@ -379,13 +383,22 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             }),
             Frame::SessionStatus(crate::wire::SessionStatus {
                 sid: s("s1"),
-                face: crate::wire::ActivityFace::of(None),
+                doing: crate::wire::ActivityFace::of(None),
+                face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: None, tmux: None }),
                 name_face: crate::history::search_rules::name_face(&Default::default()),
                 waiting_for: None,
                 path: None,
             }),
         ],
-        both(Frame::session_state(s("s1"), SessionFate::Reconnectable)),
+        {
+            // 全格：可重连、脸上那一格 `activity` 也露出来（离开活的那几段本不带它）；最少格：已结束（不能那几样带为什么）。
+            let min = Frame::session_state(s("s1"), SessionFate::Ended);
+            let mut full = Frame::session_state(s("s1"), SessionFate::Reconnectable);
+            if let Frame::SessionState(st) = &mut full {
+                st.face.activity = Some(crate::agents::SessionActivity::Idle);
+            }
+            [full, min]
+        },
         [
             Frame::SessionRemoved(crate::wire::SessionRemoved {
                 sid: s("s1"),
@@ -1151,7 +1164,11 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
             project_dir: None,
             name: None,
             path: None,
-            face: crate::wire::ActivityFace::of(None),
+            doing: crate::wire::ActivityFace::of(None),
+            face: crate::wire::SessionFace::of(crate::wire::Life::Live {
+                activity: None,
+                tmux: None,
+            }),
             name_face: crate::history::search_rules::name_face(&Default::default()),
             waiting_for: None,
             hidden: None,
@@ -1163,18 +1180,18 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
     let hosted = |t: Option<&str>| SessionContainer::Tmux {
         terminal: t.map(str::to_string),
     };
-    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"label\":\"没有说过话的会话\",\"pid\":0}\n");
+    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"face\":{\"dot\":\"idle\",\"live\":true,\"settled\":false,\"name\":\"状态不明\",\"tip\":\"状态不明\",\"line\":\"状态不明\",\"tone\":\"plain\",\"order\":3,\"can\":{\"close\":{\"can\":\"no\",\"why\":\"运行中\"},\"resume\":{\"can\":\"no\",\"why\":\"运行中\"},\"term\":{\"can\":\"yes\",\"tmux\":false},\"reattach\":{\"can\":\"no\",\"why\":\"运行中\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}}},\"label\":\"没有说过话的会话\",\"pid\":0}\n");
     assert_eq!(
         frame(Some(hosted(Some("tmux-3-7")))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"},\"pid\":0}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"face\":{\"dot\":\"idle\",\"live\":true,\"settled\":false,\"name\":\"状态不明\",\"tip\":\"状态不明\",\"line\":\"状态不明\",\"tone\":\"plain\",\"order\":3,\"can\":{\"close\":{\"can\":\"no\",\"why\":\"运行中\"},\"resume\":{\"can\":\"no\",\"why\":\"运行中\"},\"term\":{\"can\":\"yes\",\"tmux\":false},\"reattach\":{\"can\":\"no\",\"why\":\"运行中\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}}},\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"},\"pid\":0}\n"
     );
     assert_eq!(
         frame(Some(hosted(None))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"tmux\"},\"pid\":0}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"face\":{\"dot\":\"idle\",\"live\":true,\"settled\":false,\"name\":\"状态不明\",\"tip\":\"状态不明\",\"line\":\"状态不明\",\"tone\":\"plain\",\"order\":3,\"can\":{\"close\":{\"can\":\"no\",\"why\":\"运行中\"},\"resume\":{\"can\":\"no\",\"why\":\"运行中\"},\"term\":{\"can\":\"yes\",\"tmux\":false},\"reattach\":{\"can\":\"no\",\"why\":\"运行中\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}}},\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"tmux\"},\"pid\":0}\n"
     );
     assert_eq!(
         frame(Some(SessionContainer::None)),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"none\"},\"pid\":0}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"face\":{\"dot\":\"idle\",\"live\":true,\"settled\":false,\"name\":\"状态不明\",\"tip\":\"状态不明\",\"line\":\"状态不明\",\"tone\":\"plain\",\"order\":3,\"can\":{\"close\":{\"can\":\"no\",\"why\":\"运行中\"},\"resume\":{\"can\":\"no\",\"why\":\"运行中\"},\"term\":{\"can\":\"yes\",\"tmux\":false},\"reattach\":{\"can\":\"no\",\"why\":\"运行中\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}}},\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"none\"},\"pid\":0}\n"
     );
 }
 
@@ -1204,9 +1221,16 @@ fn mig1_session_state_has_exactly_these_bytes() {
             copy_core::copy_text(hint, &[]),
         );
         let ended = copy_core::copy_text("beSessionSwitch.why.ended", &[]);
+        let face = serde_json::to_string(
+            &<crate::wire::SessionFace as crate::wire::SessionFaceExt>::of(match state {
+                SessionFate::Reconnectable => crate::wire::Life::Reconnectable,
+                SessionFate::Ended => crate::wire::Life::Ended,
+            }),
+        )
+        .unwrap();
         assert_eq!(
             to_line(&Frame::session_state("abc".into(), state)).unwrap(),
-            format!("{{\"kind\":\"session_state\",\"sid\":\"abc\",\"state\":\"{word}\",\"state_text\":\"{name}\",\"state_hint\":\"{hint}\",\"state_tone\":\"plain\",\"state_order\":{order},\"switch\":{{\"model\":{{\"can\":\"no\",\"why\":\"{ended}\"}},\"permission\":{{\"can\":\"no\",\"why\":\"{ended}\"}}}}}}\n")
+            format!("{{\"kind\":\"session_state\",\"sid\":\"abc\",\"state\":\"{word}\",\"state_text\":\"{name}\",\"state_hint\":\"{hint}\",\"state_tone\":\"plain\",\"state_order\":{order},\"switch\":{{\"model\":{{\"can\":\"no\",\"why\":\"{ended}\"}},\"permission\":{{\"can\":\"no\",\"why\":\"{ended}\"}}}},\"face\":{face}}}\n")
         );
     }
 }
@@ -1233,7 +1257,11 @@ fn loc1b_session_added_carries_the_pid() {
         project_dir: None,
         name: None,
         path: None,
-        face: crate::wire::ActivityFace::of(None),
+        doing: crate::wire::ActivityFace::of(None),
+        face: crate::wire::SessionFace::of(crate::wire::Life::Live {
+            activity: None,
+            tmux: None,
+        }),
         name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
         hidden: None,
@@ -1243,7 +1271,7 @@ fn loc1b_session_added_carries_the_pid() {
     .unwrap();
     assert_eq!(
         line,
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"label\":\"没有说过话的会话\",\"pid\":4242}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"face\":{\"dot\":\"idle\",\"live\":true,\"settled\":false,\"name\":\"状态不明\",\"tip\":\"状态不明\",\"line\":\"状态不明\",\"tone\":\"plain\",\"order\":3,\"can\":{\"close\":{\"can\":\"no\",\"why\":\"运行中\"},\"resume\":{\"can\":\"no\",\"why\":\"运行中\"},\"term\":{\"can\":\"yes\",\"tmux\":false},\"reattach\":{\"can\":\"no\",\"why\":\"运行中\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}}},\"label\":\"没有说过话的会话\",\"pid\":4242}\n"
     );
 }
 
@@ -1549,7 +1577,11 @@ fn session_frames_carry_the_state_written_and_toned() {
         serde_json::to_value(Frame::<crate::agents::record::Record>::SessionStatus(
             crate::wire::SessionStatus {
                 sid: "s".into(),
-                face: ActivityFace::of(a),
+                doing: ActivityFace::of(a),
+                face: crate::wire::SessionFace::of(crate::wire::Life::Live {
+                    activity: a,
+                    tmux: None,
+                }),
                 name_face: crate::history::search_rules::name_face(&Default::default()),
                 waiting_for: None,
                 path: None,
@@ -1749,8 +1781,81 @@ fn session_frames_say_whether_model_and_permission_can_switch_now() {
     }
 }
 
+/// 会话整份脸的金样住址（仓根相对）：桌面与手机读同一份，各自对它画点。
+const SESSION_FACE_GOLDEN: &str = "tests/__fixtures__/session-face.golden.json";
+
+/// 每一段一份整脸（点 · 字 · 序 · 能做什么）＝ 金样。形状或字是有意改的 ⇒ `REGOLD_SESSION_FACE=1` 重打，连两端一起对。
+#[test]
+fn every_life_has_one_whole_face_and_it_matches_the_golden() {
+    use crate::agents::SessionActivity as A;
+    use crate::wire::{Life, SessionFace};
+    let lives: Vec<(&str, Life)> = vec![
+        (
+            "live-needs-you-tmux",
+            Life::Live {
+                activity: Some(A::NeedsYou),
+                tmux: Some(true),
+            },
+        ),
+        (
+            "live-working-plain",
+            Life::Live {
+                activity: Some(A::Working),
+                tmux: Some(false),
+            },
+        ),
+        (
+            "live-background",
+            Life::Live {
+                activity: Some(A::BackgroundWork),
+                tmux: None,
+            },
+        ),
+        (
+            "live-idle",
+            Life::Live {
+                activity: Some(A::Idle),
+                tmux: None,
+            },
+        ),
+        (
+            "live-unclear",
+            Life::Live {
+                activity: None,
+                tmux: None,
+            },
+        ),
+        ("reading", Life::Reading { tmux: Some(true) }),
+        ("reconnectable", Life::Reconnectable),
+        ("ended", Life::Ended),
+        ("gone", Life::Gone),
+        ("unclear", Life::Unclear),
+    ];
+    let produced: serde_json::Map<String, Value> = lives
+        .into_iter()
+        .map(|(k, l)| {
+            (
+                k.to_string(),
+                serde_json::to_value(SessionFace::of(l)).unwrap(),
+            )
+        })
+        .collect();
+    let produced = serde_json::to_string_pretty(&produced).unwrap() + "\n";
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(SESSION_FACE_GOLDEN);
+    if std::env::var_os("REGOLD_SESSION_FACE").is_some() {
+        std::fs::write(&path, &produced).expect("写金样");
+    }
+    let on_disk = std::fs::read_to_string(&path).unwrap_or_default();
+    assert!(
+        on_disk == produced,
+        "会话整份脸与金样不一致（有意改的 ⇒ `REGOLD_SESSION_FACE=1` 重打）：\n{produced}"
+    );
+}
+
 /// 会话帧上那几格写好的字（此刻在干什么 · 能不能换 · 叫什么）的格是公开的（客户端要解），
-/// 「只经那几个函数造」由这条守：全仓（源码 ＋ 判据）写 `ActivityFace {` · `Switch {` · `NameFace {` · `CanSwitch::No {` 结构字面量的地方
+/// 「只经那几个函数造」由这条守：全仓（源码 ＋ 判据）写 `SessionFace {` · `ActivityFace {` · `Switch {` · `NameFace {` · `CanSwitch::No {` 结构字面量的地方
 /// ＝ 后端 `wire` 那几个构造口（集合相等）。删除条件：哪天 Rust 能按 crate 限定构造。
 #[test]
 fn the_written_faces_are_built_in_one_place_only() {
@@ -1768,7 +1873,13 @@ fn the_written_faces_are_built_in_one_place_only() {
                 .to_string_lossy()
                 .replace('\\', "/");
             // 运行时拼，免得命中本条自己。
-            for name in ["ActivityFace", "Switch", "NameFace", "CanSwitch::No"] {
+            for name in [
+                "SessionFace",
+                "ActivityFace",
+                "Switch",
+                "NameFace",
+                "CanSwitch::No",
+            ] {
                 let needle = format!("{name} {{");
                 for (at, _) in code.match_indices(&needle) {
                     let before = &code[..at];
@@ -1802,12 +1913,11 @@ fn the_written_faces_are_built_in_one_place_only() {
         }
     }
     let want: std::collections::BTreeSet<String> = [
-        "of · ActivityFace",
-        "reading · ActivityFace",
-        "live · Switch",
-        "live · CanSwitch::No",
-        "gone · Switch",
-        "gone · CanSwitch::No",
+        "of · SessionFace",
+        "live_face · SessionFace",
+        "from_face · ActivityFace",
+        "switch_of · Switch",
+        "switch_of · CanSwitch::No",
         "of_parts · NameFace",
     ]
     .iter()
@@ -1815,7 +1925,7 @@ fn the_written_faces_are_built_in_one_place_only() {
     .collect();
     assert_eq!(
         seen, want,
-        "会话帧那几格写好的字只许经后端 `wire` 的构造口造（`ActivityFace::of` · `Switch::live` / `gone` · `NameFace::of_parts`）"
+        "会话那几格写好的字只许经后端 `wire` 的构造口造（`SessionFace::of` · `NameFace::of_parts`；平铺的旧格从整份脸取）"
     );
 }
 

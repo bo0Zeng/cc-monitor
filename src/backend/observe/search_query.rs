@@ -24,6 +24,7 @@ use crate::common::append_read::{Blocks, Step, Tailed};
 use crate::common::fence::Fence;
 use crate::history::search_rules::{self, SnippetBudget, SnippetVerdict, MAIN_CAP, TOOL_CAP};
 use crate::platform::fs::Ro;
+use crate::wire::SessionFaceExt as _;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -82,6 +83,8 @@ pub(crate) struct SessionHits {
     pub(crate) status: Liveness,
     /// 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
     pub(crate) can: crate::history::listing::Can,
+    /// 那台此刻对这个会话的说法（同历史清单那一行的 `face`）。
+    pub(crate) face: crate::wire::SessionFace,
 }
 
 /// 一条命中。
@@ -171,7 +174,7 @@ pub(crate) fn search_counting(
     let fence = Fence::at(&root)?;
     let mut resident = resident();
     let index = resident.entry(fence.root().to_path_buf()).or_default();
-    let live = crate::history::live::live_session_ids(agent_home);
+    let live = crate::history::live::live_activity(agent_home);
     let unreadable = index.search(&fence, &q, opts, &live, push)?;
     let r = index.last;
     // 〔perfC2〕这一问整份重读过一大批（含工具时常驻装不下的那几份）⇒ 读完放掉的那些空洞还给系统，常驻不停在这一问的高水位。
@@ -683,7 +686,7 @@ impl SearchIndex {
         fence: &Fence,
         q: &str,
         opts: &SearchOpts,
-        live: &std::collections::BTreeSet<String>,
+        live: &std::collections::BTreeMap<String, Option<crate::agents::SessionActivity>>,
         push: &mut dyn FnMut(SessionHits) -> Result<(), String>,
     ) -> Result<usize, String> {
         let files = session_files(fence);
@@ -740,7 +743,18 @@ impl SearchIndex {
                 }
                 if let Some(mut session) = session {
                     // 能不能恢复由这台判（活不活看这台的 pidfile），与历史清单的行同一个函数。
-                    session.status = Liveness::of(live.contains(&session.session_id));
+                    session.status = Liveness::of(live.contains_key(&session.session_id));
+                    session.face =
+                        crate::wire::SessionFace::of(match live.get(&session.session_id) {
+                            Some(activity) => crate::wire::Life::Live {
+                                activity: *activity,
+                                tmux: None,
+                            },
+                            None if crate::history::live::reconnectable(&session.session_id) => {
+                                crate::wire::Life::Reconnectable
+                            }
+                            None => crate::wire::Life::Ended,
+                        });
                     session.is_bg = bg;
                     session.can =
                         crate::history::listing::can_of(&session.agent, session.status.word(), bg);
@@ -961,6 +975,7 @@ fn session_row(
     SessionHits {
         // 活不活 · 分身 · 能做什么由扫的那一层按这台的 pidfile 补（[`SearchIndex::search`]）；这里先按「已结束、不是分身」占位。
         can: crate::history::listing::can_of(&agent, Liveness::Ended.word(), false),
+        face: crate::wire::SessionFace::of(crate::wire::Life::Ended),
         agent,
         session_id,
         project_path,

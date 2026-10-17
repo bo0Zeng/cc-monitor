@@ -9,6 +9,8 @@
  *
  * 夹具只造结构（sid · 路径 · 后端那一句的占位），不采会话正文。
  */
+import faces from "../../__fixtures__/session-face.golden.json";
+import type { SessionFace } from "../../../src/frontend/ui/generated/SessionFace";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -43,6 +45,9 @@ import { openBatchMenu, type TabBatchHost } from "../../../src/frontend/ui/tab-b
 import { TabMenu, type TabMenuHost } from "../../../src/frontend/ui/tab-menu";
 import type { TabSessionActions } from "../../../src/frontend/ui/tab-session-actions";
 import TABLE from "../../../src/shared/copy/table.json";
+
+const LIVE_FACE = faces["live-idle"] as SessionFace;
+const ENDED_FACE = faces.ended as SessionFace;
 
 /** 会话头那两颗（换模型 · 切权限档）这里不看：什么都不做的那一份。 */
 const NO_SWITCHING = { active: () => null, facts: () => new Promise<never>(() => {}), send: vi.fn(), unavailable: () => null, reread: vi.fn(), toast: vi.fn() };
@@ -360,7 +365,7 @@ describe("会话头：「由 X 启动」「子会话 N」读会话事实那两�
 
   it("★ 会话事实带的 `startedBy` · `children` 落到 tab 上；没带 ⇒ 没有；变了才报变", () => {
     const t = tab("a");
-    const kin = { startedBy: { sid: "p", title: "主·名", live: true, hidden: null }, children: [{ sid: "k1", title: "子·一", live: true, hidden: { by: "child" as const, said: "s" } }, { sid: "k2", title: "子·二", live: false, hidden: null }] };
+    const kin = { startedBy: { sid: "p", title: "主·名", live: true, face: LIVE_FACE, hidden: null }, children: [{ sid: "k1", title: "子·一", live: true, hidden: { by: "child" as const, said: "s" } }, { sid: "k2", title: "子·二", live: false, hidden: null }] };
     const ch = applyFacts(t, facts(kin));
     expect(ch.lineage).toBe(true);
     expect(t.lineage).toEqual(kin);
@@ -373,7 +378,7 @@ describe("会话头：「由 X 启动」「子会话 N」读会话事实那两�
   it("★ 会话头：已隐藏标（悬停是那一句）· 由 X 启动（点了切回主会话）· 子会话 N（点开列子会话、点一行切过去）", () => {
     const parent = tab("p");
     const kid = tab("k1");
-    const t = tab("a", { hidden: SELF, lineage: { startedBy: { sid: "p", title: "主·名", live: true, hidden: null }, children: [{ sid: "k1", title: "子·一", live: true, hidden: BG }, { sid: "gone", title: "子·二", live: false, hidden: null }] } });
+    const t = tab("a", { hidden: SELF, lineage: { startedBy: { sid: "p", title: "主·名", live: true, face: LIVE_FACE, hidden: null }, children: [{ sid: "k1", title: "子·一", live: true, face: LIVE_FACE, hidden: BG }, { sid: "gone", title: "子·二", live: false, face: ENDED_FACE, hidden: null }] } });
     const host = { active: () => t, viewTerminal: vi.fn(), openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), reconnect: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: (sid: string) => (sid === "p" ? parent : sid === "k1" ? kid : null), switchTo: vi.fn(), switching: NO_SWITCHING };
     const h = new SessionHead(host);
     document.body.appendChild(h.el);

@@ -23,6 +23,8 @@ pub(crate) struct PlanWho {
     pub activity: Option<String>,
     /// 在等你时等的是哪一类（批准 · 回答 · 计划 · 说不清）。
     pub needs: Option<String>,
+    /// 此刻那条会话的整份脸（认不出 ⇒ 状态不明）。
+    pub face: crate::wire::SessionFace,
 }
 
 /// 一格管的一份文件（对账）。

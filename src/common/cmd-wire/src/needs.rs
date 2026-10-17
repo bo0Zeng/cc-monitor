@@ -19,6 +19,10 @@ pub struct NeedsList {
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct NeedsRow {
     pub sid: String,
+    /// 叫这条会话什么（同清单那一行的标题）。
+    pub label: crate::cells::Words,
+    /// 此刻这条会话的整份脸。
+    pub face: crate::frame::SessionFace,
     pub needs: Needs,
     /// 隐藏那一格（照常列在这里：隐藏不影响需手动）；不隐藏 ⇒ `null`（格恒在）。
     pub hidden: Option<crate::session::Hidden>,

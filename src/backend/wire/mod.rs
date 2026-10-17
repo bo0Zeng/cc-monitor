@@ -28,6 +28,7 @@ pub use topic::TopicExt;
 /// （扩展特征：孤儿规则不许在那边的类型上加固有方法）。
 pub use cmd_wire::frame::{decode, Frame, Hello, Line, SessionAdded, SessionPrimed, SessionStatus};
 pub use cmd_wire::frame::{ActivityFace, CanSwitch, NameFace, SessionActivity, Switch};
+pub use cmd_wire::frame::{Allow, CanClose, CanTerm, SessionCan, SessionDot, SessionFace};
 pub use cmd_wire::frame::{Cancelled, Changed, Overflow, Reply, SessionRemoved, SessionState};
 pub use cmd_wire::frame::{FilesBatch, LinkData, LinkEnd, Probe, SessionsReplayed, Transfer};
 pub use cmd_wire::frame::{FollowEnd, RereadWhy, SessionContainer, TerminalHost, TransferEnd};
@@ -36,31 +37,244 @@ pub use cmd_wire::frame::{RunDid, RunEnded, RunInfo, RunState, RunWhy};
 pub use cmd_wire::frame::{SessionBranch, SessionRuns, TerminalFollowEnd, TerminalScreen};
 pub use cmd_wire::frame::{SessionFileGone, SessionFileReread};
 
+/// 一条会话此刻处在哪一段（[`SessionFaceExt::of`] 的入参）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Life {
+    /// 进程在：那一家说在干什么（说不清 ⇒ `None`）· 在不在 tmux 里（判不了 ⇒ `None`）。
+    Live {
+        activity: Option<SessionActivity>,
+        tmux: Option<bool>,
+    },
+    /// 进程在、此刻在干什么只有记录说、记录还没读完。
+    Reading { tmux: Option<bool> },
+    /// 程序退了、tmux 会话还在。
+    Reconnectable,
+    /// 进程没了、容器也没了。
+    Ended,
+    /// 已结束、记录也不在了。
+    Gone,
+    /// 这条路上判不了活不活。
+    Unclear,
+}
+
+impl Life {
+    /// 活会话的那一段：容器那一格（宣告时判的；判不了 ⇒ 不知道在不在 tmux 里）。
+    pub(crate) fn live(activity: Option<SessionActivity>, c: Option<&SessionContainer>) -> Self {
+        Life::Live {
+            activity,
+            tmux: in_tmux(c),
+        }
+    }
+
+    /// 记录还没读完的那一段（容器同上）。
+    pub(crate) fn reading(c: Option<&SessionContainer>) -> Self {
+        Life::Reading { tmux: in_tmux(c) }
+    }
+}
+
+fn in_tmux(c: Option<&SessionContainer>) -> Option<bool> {
+    c.map(|c| matches!(c, SessionContainer::Tmux { .. }))
+}
+
+/// **一条会话整份脸的唯一构造口**（[`SessionFace`]）：点 · 字 · 语气 · 序 · 能做什么都只在这里判。
+pub(crate) trait SessionFaceExt: Sized {
+    fn of(life: Life) -> Self;
+}
+
+fn said(key: &str) -> Words {
+    Words(copy_core::copy_text(key, &[]))
+}
+
+fn no(why: Words) -> Allow {
+    Allow::No { why }
+}
+
+impl SessionFaceExt for SessionFace {
+    fn of(life: Life) -> Self {
+        let running = || said("tabBatch.why.live");
+        let ended_why = |name: &Words| {
+            Words(copy_core::copy_text(
+                "tabBatch.why.ended",
+                &[("ended", &name.0)],
+            ))
+        };
+        match life {
+            Life::Live { activity, tmux } => live_face(activity, tmux, false),
+            Life::Reading { tmux } => live_face(None, tmux, true),
+            Life::Reconnectable => {
+                let tip = said("sessionState.reconnectable.tooltip");
+                SessionFace {
+                    dot: SessionDot::Exited,
+                    activity: None,
+                    live: false,
+                    settled: false,
+                    name: said("sessionState.reconnectable.name"),
+                    line: tip.clone(),
+                    tip,
+                    tone: Tone::Plain,
+                    order: 4,
+                    can: SessionCan {
+                        close: CanClose::No { why: running() },
+                        resume: no(running()),
+                        term: CanTerm::Yes { tmux: true },
+                        reattach: Allow::Yes,
+                        model: no(said("beSessionSwitch.why.ended")),
+                        permission: no(said("beSessionSwitch.why.ended")),
+                    },
+                }
+            }
+            Life::Ended | Life::Gone => {
+                let gone = life == Life::Gone;
+                let (dot, name, tip) = if gone {
+                    (
+                        SessionDot::Gone,
+                        said("sessionState.gone.name"),
+                        said("sessionState.gone.tooltip"),
+                    )
+                } else {
+                    (
+                        SessionDot::Ended,
+                        said("sessionState.ended.name"),
+                        said("sessionState.ended.tooltip"),
+                    )
+                };
+                let why = ended_why(&name);
+                SessionFace {
+                    dot,
+                    activity: None,
+                    live: false,
+                    settled: true,
+                    line: tip.clone(),
+                    can: SessionCan {
+                        close: CanClose::Quiet,
+                        resume: if gone { no(tip.clone()) } else { Allow::Yes },
+                        term: CanTerm::No { why: why.clone() },
+                        reattach: no(why),
+                        model: no(said("beSessionSwitch.why.ended")),
+                        permission: no(said("beSessionSwitch.why.ended")),
+                    },
+                    name,
+                    tip,
+                    tone: Tone::Plain,
+                    order: 5,
+                }
+            }
+            Life::Unclear => {
+                let name = said("beSession.activity.unclear");
+                SessionFace {
+                    dot: SessionDot::Unknown,
+                    activity: None,
+                    live: false,
+                    settled: false,
+                    tip: name.clone(),
+                    line: name.clone(),
+                    tone: Tone::Plain,
+                    order: 3,
+                    can: SessionCan {
+                        close: CanClose::No { why: name.clone() },
+                        resume: no(said("sessionState.unseen.noResume")),
+                        term: CanTerm::No { why: name.clone() },
+                        reattach: no(name.clone()),
+                        model: no(name.clone()),
+                        permission: no(name.clone()),
+                    },
+                    name,
+                }
+            }
+        }
+    }
+}
+
+/// 进程在的那几段（`reading` ＝ 记录还没读完、此刻在干什么只有记录说）。
+fn live_face(activity: Option<SessionActivity>, tmux: Option<bool>, reading: bool) -> SessionFace {
+    let running = || said("tabBatch.why.live");
+    let (dot, key, tone, order) = match activity {
+        Some(SessionActivity::NeedsYou) => (
+            SessionDot::NeedsYou,
+            "beSession.activity.needsYou",
+            Tone::Need,
+            0,
+        ),
+        Some(SessionActivity::Working) => (
+            SessionDot::Running,
+            "beSession.activity.working",
+            Tone::Now,
+            1,
+        ),
+        Some(SessionActivity::BackgroundWork) => (
+            SessionDot::Background,
+            "beSession.activity.backgroundWork",
+            Tone::Busy,
+            2,
+        ),
+        Some(SessionActivity::Idle) => {
+            (SessionDot::Idle, "beSession.activity.idle", Tone::Plain, 3)
+        }
+        // 判不出就照实说「状态不明」，不说一句没判出来的「运行中」；序与闲着同一档。
+        None if reading => (
+            SessionDot::Idle,
+            "beSession.activity.reading",
+            Tone::Plain,
+            3,
+        ),
+        None => (
+            SessionDot::Idle,
+            "beSession.activity.unclear",
+            Tone::Plain,
+            3,
+        ),
+    };
+    let name = said(key);
+    let tip = match tmux {
+        Some(true) => said("sessionState.liveAttachable.tooltip"),
+        Some(false) => said("sessionState.liveResumable.tooltip"),
+        None => name.clone(),
+    };
+    // 在等人 ⇒ 都不能换（按键 · 送的那一行会落进那个框里）；一轮在跑 ⇒ 模型不能（排成下一条消息）、权限档能；其余都能。
+    let (model, permission) = match activity {
+        Some(SessionActivity::NeedsYou) => (
+            no(said("beSessionSwitch.why.waiting")),
+            no(said("beSessionSwitch.why.waiting")),
+        ),
+        Some(SessionActivity::Working) => (no(said("beSessionSwitch.why.running")), Allow::Yes),
+        _ => (Allow::Yes, Allow::Yes),
+    };
+    SessionFace {
+        dot,
+        activity,
+        live: true,
+        settled: false,
+        line: name.clone(),
+        name,
+        tip,
+        tone,
+        order,
+        can: SessionCan {
+            close: CanClose::No { why: running() },
+            resume: no(running()),
+            term: CanTerm::Yes {
+                tmux: tmux == Some(true),
+            },
+            reattach: no(running()),
+            model,
+            permission,
+        },
+    }
+}
+
 /// 写好的字与语气（短名 · 悬停那一句 · 语气）与监控板的序：`session_state` 帧上带着，出口照抄。
 pub(crate) trait SessionFateExt {
     fn cells(self) -> (Words, Words, Tone, u8);
 }
 
 impl SessionFateExt for SessionFate {
-    /// 写好的字与语气 ＋ 序：接在活会话（[`ActivityFaceExt::of`] 的 0–3）之后，可重连 4 · 已结束 5。
+    /// 同 [`SessionFace::of`] 那一段的短名 · 悬停 · 语气 · 序。
     fn cells(self) -> (Words, Words, Tone, u8) {
-        match self {
-            SessionFate::Reconnectable => (
-                Words(copy_core::copy_text("sessionState.reconnectable.name", &[])),
-                Words(copy_core::copy_text(
-                    "sessionState.reconnectable.tooltip",
-                    &[],
-                )),
-                Tone::Plain,
-                4,
-            ),
-            SessionFate::Ended => (
-                Words(copy_core::copy_text("sessionState.ended.name", &[])),
-                Words(copy_core::copy_text("sessionState.ended.tooltip", &[])),
-                Tone::Plain,
-                5,
-            ),
-        }
+        let f = SessionFace::of(match self {
+            SessionFate::Reconnectable => Life::Reconnectable,
+            SessionFate::Ended => Life::Ended,
+        });
+        (f.name, f.tip, f.tone, f.order)
     }
 }
 
@@ -76,99 +290,48 @@ pub(crate) trait ActivityFaceExt: Sized {
 }
 
 impl ActivityFaceExt for ActivityFace {
-    /// 那一态 ⇒ 这几格。
+    /// 那一态 ⇒ 这几格（同 [`SessionFace::of`] 那一段）。
     fn of(a: Option<SessionActivity>) -> Self {
-        let (text, tone, order) = match a {
-            Some(SessionActivity::NeedsYou) => (
-                copy_core::copy_text("beSession.activity.needsYou", &[]),
-                Tone::Need,
-                0,
-            ),
-            Some(SessionActivity::Working) => (
-                copy_core::copy_text("beSession.activity.working", &[]),
-                Tone::Now,
-                1,
-            ),
-            Some(SessionActivity::BackgroundWork) => (
-                copy_core::copy_text("beSession.activity.backgroundWork", &[]),
-                Tone::Busy,
-                2,
-            ),
-            Some(SessionActivity::Idle) => (
-                copy_core::copy_text("beSession.activity.idle", &[]),
-                Tone::Plain,
-                3,
-            ),
-            // 判不出就照实说「状态不明」：不说一句没判出来的「运行中」。语气 plain、序跟着语气走（与闲着同一档）。
-            None => (
-                copy_core::copy_text("beSession.activity.unclear", &[]),
-                Tone::Plain,
-                3,
-            ),
-        };
+        Self::from_face(
+            a,
+            SessionFace::of(Life::Live {
+                activity: a,
+                tmux: None,
+            }),
+        )
+    }
+
+    /// 宣告时判不出、要等记录读完才判得出的那一刻：字照实说「读记录中」。
+    fn reading() -> Self {
+        Self::from_face(None, SessionFace::of(Life::Reading { tmux: None }))
+    }
+}
+
+trait FromFace {
+    fn from_face(a: Option<SessionActivity>, f: SessionFace) -> Self;
+}
+
+impl FromFace for ActivityFace {
+    fn from_face(a: Option<SessionActivity>, f: SessionFace) -> Self {
         ActivityFace {
             activity: a,
-            activity_text: Words(text),
-            activity_tone: tone,
-            activity_order: order,
-            switch: Switch::live(a),
-        }
-    }
-
-    /// 宣告时判不出、要等记录读完才判得出的那一刻（这一家没有进程状态文件、此刻在干什么只有记录说）：
-    /// 与「说不清」同一格（`activity` 缺席、语气与序同那一格，界面照它画），字照实说「读记录中」—— 不先说一句读完才会知道真假的。
-    fn reading() -> Self {
-        ActivityFace {
-            activity_text: Words(copy_core::copy_text("beSession.activity.reading", &[])),
-            ..Self::of(None)
+            activity_text: f.name,
+            activity_tone: f.tone,
+            activity_order: f.order,
+            switch: switch_of(&f.can),
         }
     }
 }
 
-/// **此刻能不能换模型 · 权限档的唯一判定处**（[`Switch`]）。界面只照 `can` 灰不灰、照 `why` 写 chip 上方那一行，不自己判。
-/// 正在换（转圈）是发起的那一端自己知道的，不在这里。
-pub(crate) trait SwitchExt: Sized {
-    fn live(a: Option<SessionActivity>) -> Self;
-    fn gone() -> Self;
-}
-
-impl SwitchExt for Switch {
-    /// 活会话此刻那一态 ⇒ 能不能换：
-    /// 在等人 ⇒ 都不能（按键 · 送的那一行会落进那个框里）；一轮在跑 ⇒ 模型不能（送的那一行排成下一条消息、不立刻生效）、权限档能（跑着也收切档键）；
-    /// 闲着 · 后台命令在跑 · 说不清 ⇒ 都能（说不清时由那两条命令自己判、照实回）。
-    fn live(a: Option<SessionActivity>) -> Self {
-        match a {
-            Some(SessionActivity::NeedsYou) => {
-                let waiting = || CanSwitch::No {
-                    why: Words(copy_core::copy_text("beSessionSwitch.why.waiting", &[])),
-                };
-                Switch {
-                    model: waiting(),
-                    permission: waiting(),
-                }
-            }
-            Some(SessionActivity::Working) => Switch {
-                model: CanSwitch::No {
-                    why: Words(copy_core::copy_text("beSessionSwitch.why.running", &[])),
-                },
-                permission: CanSwitch::Yes,
-            },
-            Some(SessionActivity::Idle | SessionActivity::BackgroundWork) | None => Switch {
-                model: CanSwitch::Yes,
-                permission: CanSwitch::Yes,
-            },
-        }
-    }
-
-    /// 离开「活」（进程退了：可重连 · 已结束）⇒ 都不能：两条命令都要往那一家的进程里送。
-    fn gone() -> Self {
-        let ended = || CanSwitch::No {
-            why: Words(copy_core::copy_text("beSessionSwitch.why.ended", &[])),
-        };
-        Switch {
-            model: ended(),
-            permission: ended(),
-        }
+/// 今天的 `switch` 那一格（同 `face.can` 的模型 · 权限档两样）。
+pub(crate) fn switch_of(c: &SessionCan) -> Switch {
+    let one = |a: &Allow| match a {
+        Allow::Yes => CanSwitch::Yes,
+        Allow::No { why } => CanSwitch::No { why: why.clone() },
+    };
+    Switch {
+        model: one(&c.model),
+        permission: one(&c.permission),
     }
 }
 
@@ -256,6 +419,8 @@ pub(crate) trait FrameMake {
 
     /// `session_state` 帧：去向 ＋ 它写好的字与语气（只此一处造这一帧）。
     fn session_state(sid: String, state: SessionFate) -> Frame;
+    /// 离开「活」的那一帧（[`Life::Reconnectable`] · [`Life::Ended`] · [`Life::Gone`]）。
+    fn session_left(sid: String, life: Life) -> Frame;
 
     /// `overflow` 帧：这条连接拥塞丢了约 `lines` 行 · 会话状态要不要（已）重新对齐，写成那一句。
     fn overflow(lines: u64, realigned: bool) -> Frame;
@@ -309,15 +474,30 @@ impl FrameMake for Frame {
     }
 
     fn session_state(sid: String, state: SessionFate) -> Frame {
-        let (state_text, state_hint, state_tone, state_order) = state.cells();
+        Frame::session_left(
+            sid,
+            match state {
+                SessionFate::Reconnectable => Life::Reconnectable,
+                SessionFate::Ended => Life::Ended,
+            },
+        )
+    }
+
+    fn session_left(sid: String, life: Life) -> Frame {
+        let state = match life {
+            Life::Reconnectable => SessionFate::Reconnectable,
+            _ => SessionFate::Ended,
+        };
+        let face = SessionFace::of(life);
         Frame::SessionState(SessionState {
             sid,
             state,
-            state_text,
-            state_hint,
-            state_tone,
-            state_order,
-            switch: Switch::gone(),
+            state_text: face.name.clone(),
+            state_hint: face.tip.clone(),
+            state_tone: face.tone,
+            state_order: face.order,
+            switch: switch_of(&face.can),
+            face,
         })
     }
 

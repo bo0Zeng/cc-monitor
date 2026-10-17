@@ -2,6 +2,7 @@
 import type { Can } from "./Can";
 import type { Liveness } from "./Liveness";
 import type { SearchHit } from "./SearchHit";
+import type { SessionFace } from "./SessionFace";
 
 /**
  * 一个命中会话的那一行（`history-search` 回包 `sessions[]` 的一项）。
@@ -38,4 +39,8 @@ status: Liveness,
 /**
  * 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
  */
-can: Can, };
+can: Can, 
+/**
+ * 那台此刻对这个会话的说法（同历史清单那一行的 `face`）。
+ */
+face: SessionFace, };

@@ -32,6 +32,7 @@ use serde_json::Value;
 use crate::common::cells::Words;
 use crate::history::history_annotations::{Loaded, Table};
 use crate::history::listing::{can_of, status_of};
+use crate::wire::SessionFaceExt as _;
 
 /// 默认最多回多少行（按时间看时超过它只列最近这些、底部「更早的用搜索找」）。
 const DEFAULT_LIMIT: usize = 2000;
@@ -44,7 +45,7 @@ static REMOTE_CACHE: std::sync::Mutex<BTreeMap<String, Listing>> =
 // ───────────────────────── 这台自己的清单（`raw`）─────────────────────────
 
 /// 这台此刻活着的会话（pidfile 源头）。
-pub(crate) struct LiveSet(pub(crate) BTreeSet<String>);
+pub(crate) struct LiveSet(pub(crate) BTreeMap<String, Option<crate::agents::SessionActivity>>);
 
 /// 注解这一维：读到了 ⇒ 那张表；读不到 ⇒ 为什么（给 `notice`）。
 pub(crate) fn annotations(loaded: &Loaded) -> Result<&Table, String> {
@@ -109,8 +110,9 @@ fn session_row(v: &Value, project_dir: &str, live: &LiveSet) -> Option<RawRow> {
         started_at: v["startedAtMs"].as_i64().unwrap_or(0),
         updated_at: v["updatedAtMs"].as_i64().unwrap_or(0),
         jsonl_path: v["jsonlPath"].as_str().unwrap_or_default().to_string(),
-        is_live: Some(live.0.contains(sid)),
-        reconnectable: !live.0.contains(sid) && crate::history::live::reconnectable(sid),
+        is_live: Some(live.0.contains_key(sid)),
+        reconnectable: !live.0.contains_key(sid) && crate::history::live::reconnectable(sid),
+        activity: live.0.get(sid).copied().flatten(),
         message_count_approx: v["messageCountApprox"].as_u64().unwrap_or(0) as u32,
         is_bg: v["isBg"].as_bool().unwrap_or(false),
         starred: false,
@@ -141,6 +143,7 @@ fn synth_row(kind: &str, s: &crate::agents::SynthSession, excerpt: String) -> Ra
         jsonl_path: s.path.to_string_lossy().into_owned(),
         is_live: None,
         reconnectable: false,
+        activity: None,
         message_count_approx: 0,
         is_bg: false,
         starred: false,
@@ -187,7 +190,7 @@ pub(crate) fn machine_listing() -> Result<Listing, (&'static str, String)> {
 /// [`answer_from`] 按 sid 滤掉）⇒ 答案与整台扫逐字相同，不必把整台每份会话从头扫一遍。
 fn machine_listing_for(only: Option<&str>) -> Result<Listing, (&'static str, String)> {
     let home = crate::history::listing::agent_home();
-    let live = LiveSet(crate::history::live::live_session_ids(&home));
+    let live = LiveSet(crate::history::live::live_activity(&home));
     let tree =
         crate::history::listing::sessions_by_dir_for(&home, only).map_err(|e| ("failed", e))?;
     let synth: Vec<(
@@ -434,6 +437,7 @@ struct Finished {
     label: String,
     untitled: bool,
     status: &'static str,
+    face: crate::wire::SessionFace,
     /// 单个那一格（注解）：隐藏的判定在所有行都叫得出名字之后（[`answer_from`]），主会话的名字从同一份清单里取。
     pin: Option<crate::history::history_annotations::Hide>,
     hidden: Option<cmd_wire::session::Hidden>,
@@ -459,11 +463,21 @@ fn finish_row(mut raw: RawRow, ann: Option<&Table>) -> Finished {
         &raw.session_id,
     );
     let status = status_of(raw.is_live, raw.reconnectable);
+    let face = crate::wire::SessionFace::of(match raw.is_live {
+        Some(true) => crate::wire::Life::Live {
+            activity: raw.activity,
+            tmux: None,
+        },
+        Some(false) if raw.reconnectable => crate::wire::Life::Reconnectable,
+        Some(false) => crate::wire::Life::Ended,
+        None => crate::wire::Life::Unclear,
+    });
     Finished {
         raw,
         label,
         untitled,
         status,
+        face,
         pin: meta.hide,
         hidden: None,
     }
@@ -487,6 +501,7 @@ fn row_of(f: Finished, at: i64, context: bool, now_ms: i64, tz: &crate::Tz) -> H
         label: Words(f.label),
         untitled: f.untitled,
         status: f.status.to_string(),
+        face: f.face,
         context: context.then_some(true),
         at,
         at_text,
@@ -696,7 +711,7 @@ fn groups_of(rows: &[HistoryRow], listing: &Listing) -> Vec<HistoryGroup> {
 pub(crate) fn specimen() -> HistoryList {
     let s = |v: &str| v.to_string();
     let w = |v: &str| Words(v.to_string());
-    HistoryList {
+    let mut l = HistoryList {
         rows: vec![HistoryRow {
             agent: s("agent"),
             session_id: s("s"),
@@ -724,6 +739,10 @@ pub(crate) fn specimen() -> HistoryList {
             label: w("c"),
             untitled: false,
             status: "ended".to_string(),
+            face: crate::wire::SessionFace::of(crate::wire::Life::Live {
+                activity: Some(crate::agents::SessionActivity::Working),
+                tmux: None,
+            }),
             can: can_of("agent", "ended", false),
             agent_tag: Some(w("g")),
             context: Some(true),
@@ -750,7 +769,13 @@ pub(crate) fn specimen() -> HistoryList {
         total: 1,
         truncated: false,
         notice: Some(s("n")),
-    }
+    };
+    // 离开活的那一形也露一行（能做什么那几格的「不能」与为什么）。
+    let mut ended = l.rows[0].clone();
+    ended.face = crate::wire::SessionFace::of(crate::wire::Life::Ended);
+    ended.face.activity = Some(crate::agents::SessionActivity::Idle);
+    l.rows.push(ended);
+    l
 }
 
 // ───────────────────────── 帧面 ─────────────────────────

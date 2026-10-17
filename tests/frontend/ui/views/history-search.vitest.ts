@@ -18,6 +18,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { searchArgs, searchAllMachines, type FullTextQuery } from "../../../../src/frontend/ui/views/history-search";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import type { SessionHits } from "../../../../src/frontend/ui/generated/SessionHits";
+import type { SessionFace } from "../../../../src/frontend/ui/generated/SessionFace";
+import faces from "../../../__fixtures__/session-face.golden.json";
 import type { MachineHits } from "../../../../src/frontend/ui/generated/MachineHits";
 import { chanArgsJson, chanReply, isChanCall, NO_CHANNEL, type ChanCallArgs } from "../../../test-support/chan-fake";
 
@@ -38,6 +40,7 @@ function row(sid: string, updatedAt: number, hitCount: number): SessionHits {
     hitsTruncated: false,
     isBg: false,
     status: "ended",
+    face: faces.ended as SessionFace,
     can: { resume: "yes", accounts: true, fork: true, delete: "yes" },
   };
 }

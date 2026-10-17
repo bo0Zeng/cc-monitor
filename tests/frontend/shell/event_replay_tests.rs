@@ -1508,10 +1508,10 @@ fn the_codex_sample_frames_decode() {
         match crate::stream_source::decode(l).unwrap_or_else(|_| panic!("壳解不开这一帧：{l}"))
         {
             Frame::SessionAdded(a) => {
-                announced_text = Some(a.face.activity_text.clone());
+                announced_text = Some(a.doing.activity_text.clone());
                 // 判不出 ⇒ 语气 plain（不是「在跑」那一种）：壳原样转交，不自己补。
                 assert_eq!(
-                    a.face.activity_tone,
+                    a.doing.activity_tone,
                     cmd_wire::cells::Tone::Plain,
                     "宣告那一帧判不出却用了在跑的语气"
                 );
@@ -1521,7 +1521,7 @@ fn the_codex_sample_frames_decode() {
             Frame::SessionStatus(st)
                 if st.face.activity == Some(cmd_wire::frame::SessionActivity::Working) =>
             {
-                working_text.get_or_insert(st.face.activity_text.clone());
+                working_text.get_or_insert(st.doing.activity_text.clone());
             }
             Frame::Line(_) => lines += 1,
             _ => {}

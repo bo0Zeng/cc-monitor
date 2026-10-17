@@ -37,6 +37,7 @@
 use crate::common::cells::Words;
 use crate::history::live::{parse_procstart_ticks, pidfiles};
 use crate::platform::fs::Ro;
+use crate::wire::SessionFaceExt as _;
 use acct_core::{
     auth_kind_from_manifest, auth_kind_with_apikey_table, auth_ready, CREDENTIALS_NAME,
     SUPPORTED_SCHEMA,
@@ -818,7 +819,7 @@ pub(crate) struct Doing {
 /// 这台此刻活着的每个会话在干什么（判活同 [`live_session_ids`]）。同一会话几个进程持着 ⇒ 在等人 ＞ 在跑 ＞ 后台命令在跑 ＞ 空闲 ＞ 说不清。
 /// 在等你 ⇒ 等的是什么同 [`waiting_needs`]（只留种类）。
 pub(crate) fn live_doing(agent_home: &Path) -> std::collections::BTreeMap<String, Doing> {
-    live_activity(agent_home)
+    crate::history::live::live_activity(agent_home)
         .into_iter()
         .map(|(sid, activity)| {
             let needs = (activity == Some(crate::agents::SessionActivity::NeedsYou))
@@ -839,7 +840,7 @@ pub(crate) fn live_needs(
     dress: &dyn Fn(Option<super::facts_query::Needs>, &str) -> Option<super::facts_query::Needs>,
     hidden: &dyn Fn(&str, bool) -> Option<cmd_wire::session::Hidden>,
 ) -> Vec<NeedsRow> {
-    let live = live_activity(agent_home);
+    let live = crate::history::live::live_activity(agent_home);
     let bg = live_background(agent_home);
     // 那台说在等的 ∪ 有请求挂着的（挡着终端的那种 pidfile 不说在等，照样是要人答的）；后者只收此刻活着的会话。
     let mut sids: Vec<String> = live
@@ -852,11 +853,24 @@ pub(crate) fn live_needs(
             sids.push(sid.clone());
         }
     }
+    let annotations = match crate::history::history_annotations::load() {
+        crate::history::history_annotations::Loaded::Read(t) => t,
+        _ => Default::default(),
+    };
     let mut rows = sids
         .into_iter()
         .filter_map(|sid| {
-            let waiting = live.get(&sid) == Some(&Some(crate::agents::SessionActivity::NeedsYou));
+            let activity = live.get(&sid).copied().flatten();
+            let waiting = activity == Some(crate::agents::SessionActivity::NeedsYou);
             Some(NeedsRow {
+                label: crate::common::cells::Words(crate::history::session_hidden::title_here(
+                    &sid,
+                    &annotations,
+                )),
+                face: crate::wire::SessionFace::of(crate::wire::Life::Live {
+                    activity,
+                    tmux: None,
+                }),
                 needs: dress(
                     waiting.then(|| waiting_needs(agent_home, &sid)).flatten(),
                     &sid,
@@ -875,7 +889,7 @@ pub(crate) fn live_needs(
 
 /// 这条会话此刻在不在等人：那台说在等（同 [`live_needs`] 那一判）或有挂着的待答请求（`asked`，只算此刻活着的）。
 pub(crate) fn waiting_now(agent_home: &Path, sid: &str, asked: &[String]) -> bool {
-    match live_activity(agent_home).get(sid) {
+    match crate::history::live::live_activity(agent_home).get(sid) {
         Some(Some(crate::agents::SessionActivity::NeedsYou)) => true,
         Some(_) => asked.iter().any(|a| a == sid),
         None => false,
@@ -897,39 +911,6 @@ pub(crate) fn live_background(agent_home: &Path) -> std::collections::BTreeSet<S
                 .map(str::to_string)
         })
         .collect()
-}
-
-/// 这台此刻活着的每个会话的活动态（同一会话几个进程持着 ⇒ 取最要紧的那一个，序见 [`live_doing`]）。
-fn live_activity(
-    agent_home: &Path,
-) -> std::collections::BTreeMap<String, Option<crate::agents::SessionActivity>> {
-    use crate::agents::SessionActivity as A;
-    let rank = |a: Option<A>| match a {
-        Some(A::NeedsYou) => 4,
-        Some(A::Working) => 3,
-        Some(A::BackgroundWork) => 2,
-        Some(A::Idle) => 1,
-        None => 0,
-    };
-    let mut out: std::collections::BTreeMap<String, Option<A>> = std::collections::BTreeMap::new();
-    for (pid, v) in pidfiles(agent_home) {
-        if !crate::platform::proc::session_alive(pid, parse_procstart_ticks(&v)) {
-            continue;
-        }
-        let Some(sid) = v
-            .get("sessionId")
-            .and_then(|x| x.as_str())
-            .filter(|s| !s.is_empty())
-        else {
-            continue;
-        };
-        let activity = crate::agents::pidfile_activity(&v);
-        let cell = out.entry(sid.to_string()).or_default();
-        if rank(activity) > rank(*cell) {
-            *cell = activity;
-        }
-    }
-    out
 }
 
 /// 一条在等人的会话此刻要人做什么：读它的记录（扫描图缓存）配上没结果的调用，经 [`super::facts_query::needs_of`] 判（同 `history-facts.needs`）；

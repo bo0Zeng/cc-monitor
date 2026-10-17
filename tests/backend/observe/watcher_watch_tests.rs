@@ -329,7 +329,11 @@ fn added_frame(sid: &str) -> Frame {
         project_dir: None,
         name: None,
         path: None,
-        face: crate::wire::ActivityFace::of(None),
+        doing: crate::wire::ActivityFace::of(None),
+        face: crate::wire::SessionFace::of(crate::wire::Life::Live {
+            activity: None,
+            tmux: None,
+        }),
         name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
         hidden: None,

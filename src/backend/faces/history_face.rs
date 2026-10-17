@@ -8,6 +8,7 @@
 use crate::observe::history_query::{self, RecordProbe, TailPlan};
 use crate::observe::record_page::{RecordLine, RunRow};
 use crate::wire::typed::{codes, of_pair, Command, NoArgs};
+use crate::wire::SessionFaceExt as _;
 pub(crate) use cmd_wire::needs::NeedsList;
 /// 这两条的回包住 `cmd-wire`（手机按同一份解，记录那一格按完整记录）；后端写的那一份记录是原样的一团（缺省 `Value`）。
 pub(crate) use cmd_wire::record::{HistoryLines, HistoryRead};
@@ -1768,6 +1769,17 @@ pub(crate) fn facts_at(
     });
     // 每一步还没结果时的样子：在等你 · 在跑 · 状态不明（界面只读这一格）。判不了活 ⇒ 状态不明说的是判不了。
     facts_query::settle_pending(&mut facts, holders.is_some());
+    // 状态一句会走的那一截：照 pidfile 此刻那一态 ＋ 上面这几格写（不活 ⇒ 不带）。
+    facts.line = facts_query::line_of(
+        crate::history::live::live_activity(home)
+            .get(sid)
+            .copied()
+            .flatten(),
+        &facts,
+        crate::common::time::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX)),
+    );
     // 会话血缘：由谁启动 · 起了哪几个（不累加，每次现查；子会话隐不隐藏照同一处判）。
     let (parent, children) = kin_of(home, sid, &crate::control::session_hidden::Here::read_now());
     facts.started_by = parent;
@@ -1793,12 +1805,20 @@ pub(crate) fn kin_of(
         crate::history::history_annotations::Loaded::Read(t) => t,
         _ => Default::default(),
     };
-    let live = crate::history::live::live_session_ids(home);
+    let live = crate::history::live::live_activity(home);
     let bg = crate::observe::accounts_query::live_background(home);
     let kin = |k: &str| Kin {
         sid: k.to_string(),
         title: title_here(k, &annotations),
-        live: live.contains(k),
+        live: live.contains_key(k),
+        face: crate::wire::SessionFace::of(match live.get(k) {
+            Some(activity) => crate::wire::Life::Live {
+                activity: *activity,
+                tmux: None,
+            },
+            None if crate::history::live::reconnectable(k) => crate::wire::Life::Reconnectable,
+            None => crate::wire::Life::Ended,
+        }),
         hidden: crate::history::session_hidden::hidden_here(
             here,
             &annotations,

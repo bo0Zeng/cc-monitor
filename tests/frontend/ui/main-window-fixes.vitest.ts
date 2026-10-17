@@ -519,6 +519,7 @@ describe("上下文那一格：状态栏与监控板照抄同一份核心成品"
     agent: "claude",
     startedBy: null,
     children: [],
+    line: null,
     end: 1,
     rev: 7,
     forkedFrom: null,

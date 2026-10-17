@@ -85,6 +85,39 @@ pub(crate) fn live_session_ids(agent_home: &Path) -> std::collections::BTreeSet<
         .collect()
 }
 
+/// 这台此刻活着的每个会话的活动态（同一会话几个进程持着 ⇒ 取最要紧的那一个：等人 ＞ 在跑 ＞ 后台 ＞ 闲着 ＞ 说不清）；判活同 [`live_session_ids`]。
+pub(crate) fn live_activity(
+    agent_home: &Path,
+) -> std::collections::BTreeMap<String, Option<crate::agents::SessionActivity>> {
+    use crate::agents::SessionActivity as A;
+    let rank = |a: Option<A>| match a {
+        Some(A::NeedsYou) => 4,
+        Some(A::Working) => 3,
+        Some(A::BackgroundWork) => 2,
+        Some(A::Idle) => 1,
+        None => 0,
+    };
+    let mut out: std::collections::BTreeMap<String, Option<A>> = std::collections::BTreeMap::new();
+    for (pid, v) in pidfiles(agent_home) {
+        if !crate::platform::proc::session_alive(pid, parse_procstart_ticks(&v)) {
+            continue;
+        }
+        let Some(sid) = v
+            .get("sessionId")
+            .and_then(|x| x.as_str())
+            .filter(|s| !s.is_empty())
+        else {
+            continue;
+        };
+        let activity = crate::agents::pidfile_activity(&v);
+        let cell = out.entry(sid.to_string()).or_default();
+        if rank(activity) > rank(*cell) {
+            *cell = activity;
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 #[path = "../../../tests/backend/history/live_tests.rs"]
 mod tests;

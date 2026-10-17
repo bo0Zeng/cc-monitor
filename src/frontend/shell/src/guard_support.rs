@@ -258,6 +258,15 @@ pub(crate) fn our_hello(commands: &[&str]) -> crate::stream_source::Frame {
     })
 }
 
+/// 判据用的一份整脸（只有点不同，别的格取最少那一形）。
+fn face(dot: &str) -> serde_json::Value {
+    let yes = serde_json::json!({"can": "yes"});
+    serde_json::json!({
+        "dot": dot, "live": false, "settled": false, "name": "N", "tip": "T", "line": "L", "tone": "plain", "order": 5,
+        "can": {"close": {"can": "quiet"}, "resume": yes, "term": {"can": "yes", "tmux": false}, "reattach": yes, "model": yes, "permission": yes},
+    })
+}
+
 /// 判据用的一帧去向（`state` 取线上那一形：`reconnectable` / `ended`），`text` 是那台写的短名。
 pub(crate) fn session_state(sid: &str, state: &str, text: &str) -> cmd_wire::frame::SessionState {
     serde_json::from_value(serde_json::json!({
@@ -268,6 +277,7 @@ pub(crate) fn session_state(sid: &str, state: &str, text: &str) -> cmd_wire::fra
         "state_tone": "plain",
         "state_order": 5,
         "switch": {"model": {"can": "yes"}, "permission": {"can": "yes"}},
+        "face": face("ended"),
     }))
     .expect("判据造的去向解不开")
 }
@@ -282,6 +292,7 @@ pub(crate) fn session_added(sid: &str, extra: serde_json::Value) -> cmd_wire::fr
         "activity_order": 1,
         "switch": {"model": {"can": "yes"}, "permission": {"can": "yes"}},
         "label": "L",
+        "face": face("running"),
         "pid": 1,
     });
     if let (Some(o), serde_json::Value::Object(e)) = (v.as_object_mut(), extra) {

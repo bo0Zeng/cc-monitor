@@ -2,6 +2,7 @@
 import type { Can } from "./Can";
 import type { Liveness } from "./Liveness";
 import type { SearchHit } from "./SearchHit";
+import type { SessionFace } from "./SessionFace";
 
 /**
  * 合好的一行：那台答的会话行 ＋ 哪台（本机缺）＋ 写好的两格时刻字。
@@ -50,4 +51,8 @@ status: Liveness,
 /**
  * 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
  */
-can: Can, };
+can: Can, 
+/**
+ * 那台此刻对这个会话的说法（同历史清单那一行的 `face`）。
+ */
+face: SessionFace, };

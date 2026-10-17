@@ -3,6 +3,7 @@
 //! 夹具只造**结构**（目录名、行数、字节边界），行内容是占位的最小 JSON —— 不采任何真会话正文。
 
 use super::*;
+use crate::wire::SessionFaceExt as _;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
@@ -1671,7 +1672,11 @@ fn sessions_needs_lists_the_waiting_sessions_each_with_its_history_facts_needs()
     for r in rows {
         let mut keys: Vec<&str> = r.as_object().unwrap().keys().map(String::as_str).collect();
         keys.sort();
-        assert_eq!(keys, vec!["hidden", "needs", "sid"], "一行只有这三格：{r}");
+        assert_eq!(
+            keys,
+            vec!["face", "hidden", "label", "needs", "sid"],
+            "一行只有这五格：{r}"
+        );
     }
 }
 
@@ -2183,6 +2188,11 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
         crate::faces::history_face::NeedsList {
             waiting: vec![crate::observe::accounts_query::NeedsRow {
                 sid: "s-1".into(),
+                label: crate::common::cells::Words("t".into()),
+                face: crate::wire::SessionFace::of(crate::wire::Life::Live {
+                    activity: Some(crate::agents::SessionActivity::NeedsYou),
+                    tmux: None,
+                }),
                 needs: needs_of(
                     &[],
                     Some(&PidWait {
@@ -2211,7 +2221,7 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
     }
     assert_eq!(
         row_bytes,
-        r#"{"waiting":[{"hidden":null,"needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":null,"rank":2,"sinceMs":1,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"waitedText":"<1s","what":null},"sid":"s-1"}]}"#
+        r#"{"waiting":[{"face":{"activity":"needs_you","can":{"close":{"can":"no","why":"运行中"},"model":{"can":"no","why":"先答完需手动"},"permission":{"can":"no","why":"先答完需手动"},"reattach":{"can":"no","why":"运行中"},"resume":{"can":"no","why":"运行中"},"term":{"can":"yes","tmux":false}},"dot":"needs-you","line":"需手动","live":true,"name":"需手动","order":0,"settled":false,"tip":"需手动","tone":"need"},"hidden":null,"label":"t","needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":null,"rank":2,"sinceMs":1,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"waitedText":"<1s","what":null},"sid":"s-1"}]}"#
     );
 }
 

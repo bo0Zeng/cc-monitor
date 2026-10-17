@@ -4,6 +4,7 @@
  * 判定全在后端（`src/backend/plan/`）：状态、原因、接手对到哪个会话、边与文件倒过来的索引都是成品。
  * 这里只做两件事：按形状收（缺格 / 类型不对 ⇒ 抛；后端多给的格不挡）、把拒绝的码翻成界面要的那几种。
  */
+import type { SessionFace } from "./generated/SessionFace";
 import { chan, ChanError } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, refusalOf } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
@@ -213,6 +214,7 @@ export function decodeWho(v: unknown, what: string): PlanWho | null {
     alive: bool(o.alive, `${what}.alive`),
     activity: activity as PlanWho["activity"],
     needs: strOrNull(o.needs, `${what}.needs`),
+    face: obj(o.face, `${what}.face`) as unknown as SessionFace,
   };
 }
 
