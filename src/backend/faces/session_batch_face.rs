@@ -1,4 +1,4 @@
-//! 帧面 `sessions-where` / `sessions-stop` / `sessions-start` 的宿主壳：把本体（`control/session_batch.rs`）要的那几样拼成生产那一份交进去。
+//! 帧面 `sessions-where` / `sessions-stop` 的宿主壳（`session-open` · 换号重启起会话要的那几样也由它拼）：把本体（`control/session_batch.rs`）要的那几样拼成生产那一份交进去。
 //!
 //! 本体住 `control/`，而 tmux 名单与记录在不在住观测层（`control → observe` 是反向边）⇒ 由这层顶层壳补上，与 `fork_face` 同形。
 //! tmux 名单 = 终端名单那一趟（挂着 sid 的窗格各一行）· 记录在不在 = `history-record` 那一问 · 杀 = `kill`（按 sid 认窗格）·
@@ -6,7 +6,7 @@
 //! 谁在写 = 这台 pidfile 里持着那个 sid 的活进程（`observe::accounts_query::session_writers`）。
 
 use crate::control::session_batch::{self as batch, Deps, TmuxEntry};
-use crate::faces::launch_face::{pretrust_with, Files};
+use crate::faces::launch_account_face::{pretrust_with, Files};
 
 use crate::wire::typed::{self, Command};
 
@@ -52,7 +52,7 @@ pub(crate) fn with_deps_as<T>(
             .map(|_| ())
             .map_err(|e| e.fail)
     };
-    let run_ccm = |argv: &[String]| crate::control::session_batch::run_self_as_ccm(argv);
+    let run_ccm = |argv: &[String]| crate::control::session_open::run_self_as_ccm(argv);
     let mint = |base: batch::NameBase| {
         crate::control::ccm::terminal_name_mint_with(
             base,
@@ -72,7 +72,7 @@ pub(crate) fn with_deps_as<T>(
         .collect();
     // 这台的偏好（启动命令 · 模型表）：这一趟现读一次。
     let prefs = crate::control::machine_prefs::read_now().prefs();
-    crate::faces::launch_face::with_facts(agent, |accounts| {
+    crate::faces::launch_account_face::with_facts(agent, |accounts| {
         f(&Deps {
             list: &list,
             record: &record,
@@ -81,7 +81,7 @@ pub(crate) fn with_deps_as<T>(
             run_ccm: &run_ccm,
             mint: &mint,
             caps: &caps,
-            local_facts: crate::control::launch_render::local::Facts::PRODUCTION,
+            host: crate::control::launch_render::Host::PRODUCTION,
             accounts,
             writers: &writers,
             pretrust: &pretrust,
@@ -115,7 +115,7 @@ pub(crate) fn tmux_rows() -> Result<Option<Vec<TmuxEntry>>, (&'static str, Strin
 }
 
 typed::codes! {
-    /// `sessions-where` · `sessions-stop` · `sessions-start` 的码（三条同一份：都先列一次这台的 tmux 名单）。
+    /// `sessions-where` · `sessions-stop` 的码（两条同一份：都先列一次这台的 tmux 名单）。
     pub(crate) enum BatchErr {
         /// 列不出这台的 tmux 名单。
         Unobservable = "unobservable",
@@ -176,32 +176,5 @@ impl crate::wire::typed::Handle for SessionsStop {
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<batch::Batched, BatchErr>> + Send + 'static {
         async move { with_deps(req.client.as_deref(), "", None, |d| batch::stop(&req, d)) }
-    }
-}
-
-/// `sessions-start`：起 / 接回一批会话（逐个答）。
-pub(crate) struct SessionsStart;
-
-impl Command for SessionsStart {
-    const NAME: &'static str = "sessions-start";
-    type Req = batch::SessionsStartReq;
-    type Reply = batch::Batched;
-    type Err = BatchErr;
-}
-
-impl crate::wire::typed::Handle for SessionsStart {
-    type Needs = crate::wire::typed::needs::Files;
-    fn run(
-        req: batch::SessionsStartReq,
-        cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<batch::Batched, BatchErr>> + Send + 'static {
-        let (_cx, needs) = cx.split();
-        async move {
-            let files = needs;
-
-            with_deps(req.client.as_deref(), &req.agent, Some(files), |d| {
-                batch::start(&req, d)
-            })
-        }
     }
 }

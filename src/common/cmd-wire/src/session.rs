@@ -1,4 +1,4 @@
-//! 会话族那几条帧命令的**回包**线上形（`terminal-input` · `session-new` · `launch-render-cli` · `session-new-facts` · `session-model` ·
+//! 会话族那几条帧命令的**回包**线上形（`terminal-input` · `session-new` · `session-new-facts` · `session-model` ·
 //! `session-permission` · `session-commands` · `session-say` · `terminals-list` · `terminal-preview` · `kill` · `history-tail`）—— 两侧同一份：后端按这里的类型回，
 //! 手机嵌的 Rust 核心按这里的类型解（[`decode_reply`]），界面用从这里导出的类型（`src/frontend/ui/generated/`）。
 //! 入参与码还住后端（`control/terminals_wire.rs` 等）：手机交的入参不经这里。
@@ -491,20 +491,6 @@ pub enum HiddenBy {
 pub struct Hidden {
     pub by: HiddenBy,
     pub said: String,
-}
-
-/// `launch-render-cli` · `launch-local` 的应答：那一行 `ccm …` ＋ 实际用的号（账号 0 / 不指定 ⇒ `null`）。
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
-)]
-pub struct Rendered {
-    /// 那一行 `ccm …`。
-    pub cmd: String,
-    /// 实际用的号（账号库里的那一形；别的 ⇒ `null`）。
-    pub account: Option<LaunchedAccount>,
 }
 
 /// 第一句交进会话的结局（同 `terminal-input` 的应答那几格）。第一句作为启动参数交给那一家 ⇒ 起好了就是 `delivered`（起不成整条失败、走不到这里）。

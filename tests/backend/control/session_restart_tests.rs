@@ -1,7 +1,6 @@
 //! 换号重启：停失败一定不起 · 压缩等摘要（真记录文件、真 inotify）· 等压缩时撤单不停不起 · 回复与各码（替身记下被调了什么；tmux 一个都不起）。
 
 use super::*;
-use crate::control::launch_render::local;
 use crate::control::session_batch::TmuxEntry;
 use serde_json::json;
 use std::collections::BTreeSet;
@@ -135,7 +134,7 @@ impl Rig {
             run_ccm: &run_ccm,
             mint: &mint,
             caps: &caps,
-            local_facts: local::Facts {
+            host: crate::control::launch_render::Host {
                 windows: false,
                 is_dir: |_| true,
                 entry: crate::platform::paths::installed_ccm_entry,

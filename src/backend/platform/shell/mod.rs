@@ -286,7 +286,7 @@ pub(crate) fn speaks_powershell() -> bool {
 }
 
 /// 这台机器上「开一个终端窗口跑一串命令」那一串是哪种语言：Windows 是 PowerShell，别处是 POSIX shell
-/// （本机起会话的渲染按它挑写法，`control/launch_render/local.rs`）。
+/// （本机起会话的渲染按它挑写法，`control/launch_render/mod.rs` 的 `Host`）。
 pub(crate) const LOCAL_TERMINAL_IS_POWERSHELL: bool = cfg!(windows);
 
 #[cfg(test)]

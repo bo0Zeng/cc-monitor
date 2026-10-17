@@ -360,7 +360,7 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 
 界面那份 IR 与两个渲染器都已删，理由是起会话只剩一处。今天：monitor 的每一条起会话路径（新起 · resume · 换号重启 · 分叉 · 远端开新会话 · 本机拉起 · cc-bus 派生 · 就地 resume）问那台后端要的都只是一行 `ccm [交给 agent 的…] -- [ccm 自己的…]`；环境、中转地址、身份标记由那台的 `ccm` 在最终 exec 那一处定，外层容器只包这一行。**表达不了就放弃**照旧：渲不出 ⇒ 回码 `refused` 带那一句，调用方不回落、不拼第二条。
 
-**谁在守**：`ccm_invocation_tests.rs::every_rendered_ccm_line_is_accepted_by_the_ccm_argv` · `local_tests.rs::every_local_launch_shape_is_one_ccm_line` · `ccm_tests.rs::nothing_but_ccm_renders_a_command_that_starts_an_agent`（后端生产段除 `ccm` 自己的最终 exec 外零处渲出直接起 agent 的命令；唯一登记的例外是给手机端冻结的 `resolve_query.rs`）。
+**谁在守**：`ccm_invocation_tests.rs::every_rendered_ccm_line_is_accepted_by_the_ccm_argv` · `ccm_tests.rs::nothing_but_ccm_renders_a_command_that_starts_an_agent`（后端生产段除 `ccm` 自己的最终 exec 外零处渲出直接起 agent 的命令；唯一登记的例外是给手机端冻结的 `resolve_query.rs`）。
 
 ## 33a. `ccm --print` 是平价预言机——它对**环境变量**说的必须逐条等于真跑做的（U9a / unified-backend）
 
@@ -370,7 +370,7 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 
 ## 33b. 起会话那一行只由后端渲
 
-起会话交给终端的只有一行 `ccm …`，由那台后端渲（`control/launch_render/`：远端 `launch-render-cli` · 本机 `launch-local`）。界面没有渲染器、不留回落：后端答不出就明说失败。建得出来、主路杀不掉的名字不许被铸出来（`backend_kill_tests`）。
+起会话交给终端的只有一行 `ccm …`，由那台后端渲（`control/launch_render/`，经 `session-open` 回包里的 `line`，本机远端同一条）。界面没有渲染器、不留回落：后端答不出就明说失败。建得出来、主路杀不掉的名字不许被铸出来（`backend_kill_tests`）。
 
 ## 34. tmux 破坏性/半破坏性命令三道门 + 原子 verify+act（F04 / unify-launch / R10）
 
@@ -390,9 +390,9 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 
 ## 36. 本地（Windows）路径不经 IR 产出命令——嵌套 env 污染保护已在进程启动期做完，别在本地渲染器里重复实现（F06 / unify-launch；R07 收紧）
 
-本机那几形由本机后端 `control/launch_render/local.rs::plan` 出成品；Windows 那一格也只是一行 `ccm --resume <sid> -- …`（没有 tmux ⇒ 直路；接回说不出 ⇒ 拒）。**本地渲染器不渲任何清变量的代码**：清 Claude 自己的嵌套会话标记归 `ccm` 在最终 exec 那一处（进程内摘环境，不是一段 PowerShell 语法），本机远端、两个平台同一处。这一形要 `ccm` 在用户的 `PATH` 上。
+本机那几形由本机后端出成品（`session-open`，渲在 `control/launch_render/mod.rs::line_of`）；Windows 那一格也只是一行 `ccm --resume <sid> -- …`（没有 tmux ⇒ 直路；接回说不出 ⇒ 拒）。**本地渲染器不渲任何清变量的代码**：清 Claude 自己的嵌套会话标记归 `ccm` 在最终 exec 那一处（进程内摘环境，不是一段 PowerShell 语法），本机远端、两个平台同一处。这一形要 `ccm` 在用户的 `PATH` 上。
 
-**谁在守**：`local_tests.rs::windows_launches_go_the_direct_way_and_attach_is_refused`。
+**谁在守**：`ccm_invocation_tests.rs::windows_launches_go_the_direct_way_and_attach_is_refused`。
 
 ## 37. 新维度的 `applies` 该不该恒真，看这个维度的"沉默"是否等价于用户期望——不是看它是不是账号相关（F07 / unify-launch）
 

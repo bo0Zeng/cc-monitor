@@ -98,8 +98,6 @@ pub(crate) fn resume_here(
         sid: sid.to_string(),
         cwd: r.cwd,
         account: AccountAsk::Follow,
-        fresh: false,
-        fork_of: None,
         say: say.map(str::to_string),
         model: r.model,
         permission_mode: r.permission_mode,

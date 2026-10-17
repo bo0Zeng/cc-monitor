@@ -9252,129 +9252,6 @@ class: string, };
 
 ### 4.8 终端与会话
 
-#### `launch-local`
-
-本机起会话那一行 `ccm …`。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
-
-入参 `LocalLaunchRequest` · 回包 `Rendered`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type AccountAsk = { "kind": "follow" } | { "kind": "base" } | { "kind": "named", name: string, };
-type AccountUnavailable = { 
-/**
- * 要的那个号。
- */
-requested: string, 
-/**
- * 它是这条会话上次用的号（跟随），不是这一次点名的。
- */
-pinned: boolean, 
-/**
- * 这台的账号清单读得出来。
- */
-listKnown: boolean, 
-/**
- * 给的显式替代（这台的默认号）；`null` ⇒ 只能「不指定号」。
- */
-alternative: string | null, };
-type LaunchedAccount = { name: string, configDir: string, 
-/**
- * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
- */
-model: string | null, };
-type LocalAction = { "kind": "new" } | { "kind": "resume", sid: string, } | { "kind": "attach" };
-type LocalLaunchRequest = { 
-/**
- * 这个会话是哪一家（线上的 kind）。必填：没说就不知道该怎么起，不落默认那一家。
- */
-agent: string, action: LocalAction, 
-/**
- * 只用来核「新起」那一格的目录在不在；终端的工作目录由 monitor 开窗口时给。
- */
-cwd?: string | null, 
-/**
- * 缺席 = 不表态（继承环境；接回那一形）· 跟随 · 账号 0 · 用户点名（[`AccountAsk`]）。
- */
-account?: AccountAsk | null, 
-/**
- * 要建进 tmux 时的会话名（界面铸名口铸的；这里不铸 —— 撞名避让只有一个家）。
- */
-tmuxName?: string | null, };
-type Rendered = { 
-/**
- * 那一行 `ccm …`。
- */
-cmd: string, 
-/**
- * 实际用的号（账号库里的那一形；别的 ⇒ `null`）。
- */
-account: LaunchedAccount | null, };
-```
-
-码：`bad_args` · `refused` · `account_unavailable`
-
-失败带 `data` 的码：`account_unavailable` ⇒ `AccountUnavailable`
-
-#### `launch-render-cli`
-
-远端起会话那一行 `ccm …`。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --launch-render-cli`
-
-入参 `CliRenderRequest` · 回包 `Rendered`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type AccountAsk = { "kind": "follow" } | { "kind": "base" } | { "kind": "named", name: string, };
-type AccountUnavailable = { 
-/**
- * 要的那个号。
- */
-requested: string, 
-/**
- * 它是这条会话上次用的号（跟随），不是这一次点名的。
- */
-pinned: boolean, 
-/**
- * 这台的账号清单读得出来。
- */
-listKnown: boolean, 
-/**
- * 给的显式替代（这台的默认号）；`null` ⇒ 只能「不指定号」。
- */
-alternative: string | null, };
-type CliRenderRequest = { 
-/**
- * 这个会话是哪一家（线上的 kind）。必填：没说就不知道该怎么起，不落默认那一家。
- */
-agent: string, action: WireAction, container: WireContainer, cwd: string | null, account: AccountAsk, ccmSid: string | null, 
-/**
- * 显式指定的模型（压过下面那张表）。
- */
-model: string | null, };
-type LaunchedAccount = { name: string, configDir: string, 
-/**
- * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
- */
-model: string | null, };
-type Rendered = { 
-/**
- * 那一行 `ccm …`。
- */
-cmd: string, 
-/**
- * 实际用的号（账号库里的那一形；别的 ⇒ `null`）。
- */
-account: LaunchedAccount | null, };
-type WireAction = { "kind": "new" } | { "kind": "resume", sid: string, } | { "kind": "attach", name: string, };
-type WireContainer = { "kind": "none" } | { "kind": "tmux", name: string, send_into: boolean, };
-```
-
-码：`bad_args` · `refused` · `account_unavailable`
-
-失败带 `data` 的码：`account_unavailable` ⇒ `AccountUnavailable`
-
 #### `terminal-ssh`
 
 给一台远端开终端要跑的那一串。
@@ -10338,23 +10215,6 @@ bus: BusNote, };
 入参 `SidsReq` · 回包 `Batched`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type AccountUnavailable = { 
-/**
- * 要的那个号。
- */
-requested: string, 
-/**
- * 它是这条会话上次用的号（跟随），不是这一次点名的。
- */
-pinned: boolean, 
-/**
- * 这台的账号清单读得出来。
- */
-listKnown: boolean, 
-/**
- * 给的显式替代（这台的默认号）；`null` ⇒ 只能「不指定号」。
- */
-alternative: string | null, };
 type Batched = { results: Array<Outcome>, };
 type BusFailed = { 
 /**
@@ -10386,11 +10246,6 @@ said: string | null,
  * 复制详情（没有 ⇒ 空串）。
  */
 detail: string, };
-type LaunchedAccount = { name: string, configDir: string, 
-/**
- * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
- */
-model: string | null, };
 type Outcome = { 
 /**
  * 会话 id（与入参同序）。
@@ -10423,19 +10278,7 @@ session: string | null,
 /**
  * 停做成了那一个：同 `kill` 应答的 `bus`。
  */
-bus: BusNote | null, 
-/**
- * 开终端那一形要跑的那一行。
- */
-cmd: string | null, 
-/**
- * 起的那一条实际用的号（停 / 没起 ⇒ `null`）。
- */
-account: LaunchedAccount | null, 
-/**
- * 选不了号的那一项：带要的号与替代（别的 ⇒ `null`）。
- */
-unavailable: AccountUnavailable | null, };
+bus: BusNote | null, };
 type SidsReq = { 
 /**
  * 那几个会话（1–64 个，不重复）。
@@ -10500,161 +10343,6 @@ type Whereabouts = { results: Array<Whereabout>,
  * 这台恢复默认放在哪（这台的偏好「恢复时进 tmux」× 有没有 tmux）。
  */
 run: Run, };
-```
-
-码：`bad_args` · `unobservable` · `child_timed_out`
-
-#### `sessions-start`
-
-起 / 接回一批会话（逐个答）。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 392 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --sessions-start`
-
-入参 `SessionsStartReq` · 回包 `Batched`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type AccountAsk = { "kind": "follow" } | { "kind": "base" } | { "kind": "named", name: string, };
-type AccountUnavailable = { 
-/**
- * 要的那个号。
- */
-requested: string, 
-/**
- * 它是这条会话上次用的号（跟随），不是这一次点名的。
- */
-pinned: boolean, 
-/**
- * 这台的账号清单读得出来。
- */
-listKnown: boolean, 
-/**
- * 给的显式替代（这台的默认号）；`null` ⇒ 只能「不指定号」。
- */
-alternative: string | null, };
-type Batched = { results: Array<Outcome>, };
-type BusFailed = { 
-/**
- * 那个 id。
- */
-id: string, 
-/**
- * 原话。
- */
-why: string, };
-type BusNote = { 
-/**
- * 注销掉了的 id。
- */
-removed: Array<string>, 
-/**
- * 没注销成的那几个（`why` 是原话）。
- */
-failed: Array<BusFailed>, 
-/**
- * 名册读不到（原话）⇒ 登记在上面的一个都没注销；读得到 ⇒ `null`。
- */
-unread: string | null, 
-/**
- * 给人看的那几行（没有 ⇒ `null`）。
- */
-said: string | null, 
-/**
- * 复制详情（没有 ⇒ 空串）。
- */
-detail: string, };
-type LaunchedAccount = { name: string, configDir: string, 
-/**
- * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
- */
-model: string | null, };
-type Outcome = { 
-/**
- * 会话 id（与入参同序）。
- */
-sid: string, 
-/**
- * `done` 做成了 · `skipped` 这一个不用做 / 做不了 · `failed` 做了没成。
- */
-outcome: "done" | "skipped" | "failed", 
-/**
- * 跳过 / 失败的原因码（做成了 ⇒ `null`）。
- */
-why: string | null, 
-/**
- * 那一个的原话。
- */
-detail: string, 
-/**
- * 停失败那一个的那一句（与 `kill` 被拒同一张表）；别的 ⇒ `null`。
- */
-said: string | null, 
-/**
- * 失败那一个的复制详情（码 ＋ 原话；别的 ⇒ 空串）。
- */
-copyDetail: string, 
-/**
- * 落在哪个 tmux 会话上。
- */
-session: string | null, 
-/**
- * 停做成了那一个：同 `kill` 应答的 `bus`。
- */
-bus: BusNote | null, 
-/**
- * 开终端那一形要跑的那一行。
- */
-cmd: string | null, 
-/**
- * 起的那一条实际用的号（停 / 没起 ⇒ `null`）。
- */
-account: LaunchedAccount | null, 
-/**
- * 选不了号的那一项：带要的号与替代（别的 ⇒ `null`）。
- */
-unavailable: AccountUnavailable | null, };
-type SessionsStartReq = { 
-/**
- * `tmux`（在 tmux 里后台起）· `window`（只渲那一行交回，窗口由界面开）。
- */
-mode: StartMode, 
-/**
- * 这台是不是界面所在那台（开终端那一形按它选本机 / 远端那一行）。
- */
-local: boolean, 
-/**
- * 整批一家（线上的 kind）。启动命令 · 模型表这台自己读（`prefs.json`），不随请求交。
- */
-agent: string, 
-/**
- * 要起的会话（1–64 项，sid 不重复）。
- */
-items: Array<StartItemReq>, 
-/**
- * 自报的前端，同 `kill`。
- */
-client?: string, };
-type StartItemReq = { 
-/**
- * 会话 id。
- */
-sid: string, 
-/**
- * 那一项的工作目录。
- */
-cwd: string, 
-/**
- * 用哪个号：缺 ＝ 跟随。
- */
-account?: AccountAsk, 
-/**
- * 分叉出来的那一条 ⇒ 必铸新终端名。
- */
-fresh_terminal?: boolean, 
-/**
- * 源会话 sid（只许与 `fresh_terminal: true` 一起）：新名从源会话此刻所在终端的名字铸。
- */
-fork_of?: string, };
-type StartMode = "tmux" | "window";
 ```
 
 码：`bad_args` · `unobservable` · `child_timed_out`
@@ -10822,7 +10510,7 @@ unavailable: AccountUnavailable | null, };
 
 起会话 · 恢复 · 接回（一个请求：落在哪 ＋ 要开终端就跑的那一行）。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-open`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 23 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --session-open`
 
 入参 `SessionOpenReq` · 回包 `Opened`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
@@ -11202,11 +10890,11 @@ compact_within_ms: number,
  */
 arrive_within_ms: number, 
 /**
- * 这台是不是界面所在那台（同 `sessions-start`）。
+ * 这台是不是界面所在那台（同 `session-open`）。
  */
 local: boolean, 
 /**
- * 哪一家（线上的 kind；同 `sessions-start` 的整批那一格）。启动命令 · 模型表这台自己读。
+ * 哪一家（线上的 kind）。启动命令 · 模型表这台自己读。
  */
 agent: string, 
 /**
@@ -13072,7 +12760,6 @@ needs: string | null, };
 | `--last-seen-read` | ＝ 帧命令 `last-seen-read`：读离线那台的上次值 |
 | `--last-seen-write` | ＝ 帧命令 `last-seen-write`：记下一台这一次读成的那一份（或清掉那台） |
 | `--launch` | ＝ 帧命令 `launch`：建 tmux 会话并键入载荷，或键入一个已在的会话（远端执行面） |
-| `--launch-render-cli` | ＝ 帧命令 `launch-render-cli`：远端起会话那一行 `ccm …` |
 | `--machine-interrupts` | ＝ 帧命令 `machine-interrupts`：停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前，会打断什么 |
 | `--machines-read` | ＝ 帧命令 `machines-read`：读这一端的机器表 |
 | `--machines-set` | ＝ 帧命令 `machines-set`：改机器表（按键认那一台），写完读回、推 `changed {machines}` |
@@ -13139,7 +12826,6 @@ needs: string | null, };
 | `--session-resume` | ＝ 帧命令 `session-resume`：终端没了的会话先在这台恢复（同说一句里恢复那一支，不带那一句），回它落在哪个 tmux 会话 |
 | `--session-say` | ＝ 帧命令 `session-say`：往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车；终端没了 ⇒ 按记下的号恢复、那一句当第一句交） |
 | `--sessions-needs` | ＝ 帧命令 `sessions-needs`：这台上需手动的会话清单 |
-| `--sessions-start` | ＝ 帧命令 `sessions-start`：起 / 接回一批会话（逐个答） |
 | `--sessions-stop` | ＝ 帧命令 `sessions-stop`：停一批会话（逐个答，一个不成不挡下一个） |
 | `--sessions-where` | ＝ 帧命令 `sessions-where`：一批会话各在这台哪个终端里 |
 | `--skill-install-apply` | ＝ 帧命令 `skill-install-apply`：在要被写的那一台把勾的那几个 skill 文件写进去 |

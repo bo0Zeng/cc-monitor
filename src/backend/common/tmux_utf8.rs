@@ -67,8 +67,7 @@
 /// 用法与位置纪律见模块头注：**必须排在子命令之前**。
 pub(crate) const UTF8_CLIENT_FLAG: &str = "-u";
 
-/// **渲给客户端的「接进一个 tmux 会话」—— 全仓唯一一处**：`ccm --attach` · resume 接上在跑的 · 建完容器接进去（`control/ccm/plan.rs`）
-/// 与 `launch-render-cli` 就地 resume 键完那一行之后（`control/launch_render/ccm_invocation.rs`）都调它。
+/// **渲给客户端的「接进一个 tmux 会话」—— 全仓唯一一处**：`ccm --attach` · resume 接上在跑的 · 建完容器接进去（`control/ccm/plan.rs`）调它。
 ///
 /// - 已经在 tmux 里 ⇒ 当前客户端切过去（`attach` 在 tmux 里是拒的）；不在 ⇒ `attach`。在不在 tmux 里不进 `--ccm-print`
 ///   （`INVARIANTS §33a` 铁律 2）⇒ 值不知道就打印配方，真跑也跑这一行。

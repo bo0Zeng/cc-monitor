@@ -3,7 +3,6 @@
 
 use super::*;
 use crate::control::launch_account as la;
-use crate::control::launch_render::local;
 use serde_json::json;
 use std::cell::RefCell;
 use std::collections::BTreeSet;
@@ -190,7 +189,7 @@ impl Rig {
             run_ccm: &run_ccm,
             mint: &mint,
             caps: &caps,
-            local_facts: local::Facts {
+            host: crate::control::launch_render::Host {
                 windows: false,
                 is_dir,
                 entry,
@@ -577,8 +576,6 @@ fn saying(model: Option<&str>, mode: Option<&str>) -> Item {
         sid: A.into(),
         cwd: "/p".into(),
         account: AccountAsk::Follow,
-        fresh: false,
-        fork_of: None,
         say: Some("-接着做\n第二行".into()),
         model: model.map(str::to_string),
         permission_mode: mode.map(str::to_string),
@@ -852,4 +849,32 @@ fn emit_open_line_for_e2e() {
         }
         Err(e) => println!("OPEN_LINE_ERR<<<{}>>>", e.replace('\n', " ")),
     }
+}
+
+/// ★ 每一种起法起之前都把工作目录标成要用的那个号信任过、恰好一次：恢复进新建的 tmux · 键进空 tmux · 直路 · 新起。
+#[test]
+fn every_start_marks_the_cwd_trusted_in_its_account_once() {
+    for (rows, mut req) in [
+        (Some(vec![]), resume(Some("tmux"))),
+        (Some(vec![row("idle", Some(A), false)]), resume(Some("tmux"))),
+        (Some(vec![]), resume(Some("direct"))),
+        (Some(vec![]), new(json!({}))),
+    ] {
+        req["account"] = json!({ "kind": "named", "name": "work" });
+        let rig = Rig::new(rows);
+        rig.open(req.clone())
+            .unwrap_or_else(|e| panic!("{req} 没起：{e:?}"));
+        assert_eq!(*rig.marks.borrow(), 1, "{req}");
+    }
+}
+
+/// 一个 tmux 会话里两个窗格：别的会话在跑的那个不碰，空着、挂着这一条的那个就地键入（按挂着它的那个窗格认，不按会话名）。
+#[test]
+fn an_idle_pane_in_a_shared_session_is_typed_into_in_place() {
+    let other = "bbbbbbbb-1111-2222-3333-444444444444";
+    let rig = Rig::new(Some(vec![row("two-cc", Some(other), true), row("two-cc", Some(A), false)]));
+    let got = rig.open(resume(Some("tmux"))).unwrap();
+    assert_eq!((got.landed, got.session.as_deref()), (Landed::InPlace, Some("two-cc")));
+    assert_eq!(rig.sent.borrow().len(), 1);
+    assert!(rig.ccm.borrow().is_empty(), "不该另建一个会话");
 }

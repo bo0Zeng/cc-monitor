@@ -1,7 +1,6 @@
 //! 起新会话一个请求：每一格不行时说是哪一格、什么都不起不写；都过了才写分支记录、才起（替身记下被调了什么；tmux 一个都不起）。
 
 use super::*;
-use crate::control::launch_render::local;
 use crate::control::session_batch::TmuxEntry;
 use serde_json::json;
 use serde_json::Value;
@@ -124,7 +123,7 @@ impl Rig {
             run_ccm: &run_ccm,
             mint: &mint,
             caps: &caps,
-            local_facts: local::Facts {
+            host: crate::control::launch_render::Host {
                 windows: false,
                 is_dir: |p| p != "/gone" && p != "/h/gone",
                 entry: || Some(ENTRY.to_string()),
@@ -440,7 +439,7 @@ fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint(
                 run_ccm: &|_| unreachable!(),
                 mint: &mint,
                 caps: &caps,
-                local_facts: local::Facts {
+                host: crate::control::launch_render::Host {
                     windows: false,
                     is_dir: |p| p == "/h/srv",
                     entry: || None,

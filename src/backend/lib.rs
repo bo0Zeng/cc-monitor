@@ -1221,9 +1221,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     // ⚠ 入参（含 key）**从 stdin 读**（`takes_input: true`），不收 argv —— argv 在同机任何用户的 `ps` 里都看得见。
     "--apikey-key-set",
     // `--relay-ensure` / `--relay-status` 随帧面那两条删了。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
-    // 起会话那一行 `ccm …` 的渲染（`inbound::REGISTRY` 的 `launch-render-cli`，纯函数）自动派生的 CLI 面，入参从 stdin 读。
-    //   `launch-local` 不上 CLI 面（`STREAM_ONLY`）。`--launch-render-payload` 随载荷那条删了 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
-    "--launch-render-cli",
     // 「足迹」出成品（`inbound::REGISTRY` 的 `footprint-report`，替掉 `--footprint-probe`）派生的 CLI 面。只读。
     "--footprint-report",
     // 「文件与数据」那一份成品（`data-report`，同一份足迹重排）派生的 CLI 面。只读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
@@ -1427,7 +1424,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--session-permission",
     "--session-resume",
     "--session-say",
-    "--sessions-start",
     "--sessions-stop",
     "--sessions-where",
     // `ssh-config-import` 帧命令自动派生的 CLI 面（理由同 `--tasks-list`）。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。

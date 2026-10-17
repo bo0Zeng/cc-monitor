@@ -70,7 +70,6 @@ pub(crate) const STREAM_ONLY: &[&str] = &[
     "resync",
     "accounts-list",
     "relay-optin",
-    "launch-local",
     "forward-start",
     "forward-stop",
     "forward-list",

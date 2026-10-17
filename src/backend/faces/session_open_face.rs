@@ -33,7 +33,7 @@ impl crate::wire::typed::Handle for SessionOpen {
 
 fn answer(
     req: open::SessionOpenReq,
-    files: super::launch_face::Files,
+    files: super::launch_account_face::Files,
     own: &crate::platform::fs::Own,
     nf: &crate::platform::fs::NewFile,
 ) -> Result<open::Opened, open::Failed> {

@@ -249,7 +249,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
 /// **不对称能力的理由**。键集合必须**恰好等于**从 `LEDGER` 算出来的不对称集合。
 const ASYMMETRY_REASONS: &[(&str, Asym, &str)] = &[
     // 远端 `ccm` 探针那条（Remote）退役之后 `ccm.status` 只剩本机那一条。
-    ("ccm.status", Asym::NaturallyAsymmetric, "本机那一条（`local_ccm_entry_status`）问的是「本机 PATH 上那个 `ccm` 是不是我们那一份」—— 那是本机后端引导那一格的事。远端那一侧不再有对应命令：远端的 `ccm` 就是那台后端本身，它会哪些由那台后端在渲染时自己答（`launch-render-cli`），界面不再先探一遍。"),
+    ("ccm.status", Asym::NaturallyAsymmetric, "本机那一条（`local_ccm_entry_status`）问的是「本机 PATH 上那个 `ccm` 是不是我们那一份」—— 那是本机后端引导那一格的事。远端那一侧不再有对应命令：远端的 `ccm` 就是那台后端本身，它会哪些由那台后端在渲染时自己答（`session-open`），界面不再先探一遍。"),
     ("ccm.user-path", Asym::NaturallyAsymmetric, "🔴 `K-R135`：「把我们那个 bin 目录放上**用户级** PATH」。**天然只有本机一侧，而且这一条的『天然』是可证的，不是图省事**：① **远端那一侧同一件事已经有答案，只是载体不同** —— 远端 `ccm` 落 `~/.local/bin`，而把它放上 PATH 的是写进远端 rc 的那个围栏块（`install_remote_alias_block` ＋ `src/shared/ccm-aliases.sh` 里那一行 —— 那一行正是 `K-R135` 修的：它此前只加 `~/.local/bin`，对本机那一边是错的）。⇒ 欠的不是「远端没有这项能力」，是**两边的机制本来就不同**。② **「用户级 PATH」这一档是 Windows 独有的**（注册表 `HKCU` 下那个 `Environment` 键），而远端按 `K32` 是 Linux ⇒ 那台机器上根本没有这一档可改，补一条对侧命令只能是个空壳。⚠ **诚实边界**：哪天真出现「远端是 Windows」这一形，本条要回来重裁 —— 那时它就不再是 `NaturallyAsymmetric`，而是 `ParityDebt`。今天不给它发明一条够不着的对侧。"),
     // `acct-iso.deploy` 那一行摘了：那条 Remote 命令退役，这项能力不再有 Tauri 命令可记账。
     // `tmux.local-census` · `tmux.manage` 两行随那两条命令出表删：tmux 这一族（列 · 抓屏 · 杀 · 送键）今天全是帧命令、本机远端同一条路，

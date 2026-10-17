@@ -323,14 +323,14 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 起一个会话拆成三个平面，最后那次 exec 必须发生在用户自己的终端进程里——pid 要等于 pidfile 名，tty 与 Ctrl-C 要落在 agent 上，`tmux attach` 要占住调用者的终端：
 
-1. **计划面「跑什么命令」** → 那台后端出成品，**永远只是一行 `ccm …`**（`control/launch_render/`：本机帧命令 `launch-local`，远端 `launch-render-cli`）。环境、中转地址、身份标记由那台的 `ccm` 在最终 exec 那一处定（`control/ccm/`）。
-2. **执行面「在那台真的建 tmux」** → 后端 `control/launch.rs`，argv 直传、不过 shell。后台起（`session-new` 的 `place: tmux`）整个在这一面做完，不开窗。
+1. **计划面「跑什么命令」** → 那台后端出成品，**永远只是一行 `ccm …`**（`control/launch_render/`：帧命令 `session-open` 回包里的 `line`，本机远端同一条）。环境、中转地址、身份标记由那台的 `ccm` 在最终 exec 那一处定（`control/ccm/`）。
+2. **执行面「在那台真的建 tmux」** → 后端 `control/launch.rs`，argv 直传、不过 shell。后台起（`session-open` 的 `run: tmux`）整个在这一面做完，不开窗。
 3. **开窗面** → 只能是用户面前那台的前端：后端在远端，开不了用户面前的窗。
 
 **在终端里打开**（桌面）：
 
-- 远端：那台后端 `launch-render-cli` 渲出那一行（接回一个 tmux 会话就是 `ccm -- --attach <名>`）→ 本机后端 `terminal-ssh` 把它包成这台终端方言的一行 `ssh -t … -- 'bash -lic …'`（本体 `dial/terminal.rs`；Windows 上是 PowerShell 那一形，ssh 客户端用全路径）→ monitor `open_terminal_window` 开窗跑它。
-- 本机：本机后端 `launch-local` 渲出那一行 → monitor 开窗。
+- 远端：那台后端 `session-open` 回那一行（接回一个 tmux 会话就是 `ccm -- --attach <名>`）→ 本机后端 `terminal-ssh` 把它包成这台终端方言的一行 `ssh -t … -- 'bash -lic …'`（本体 `dial/terminal.rs`；Windows 上是 PowerShell 那一形，ssh 客户端用全路径）→ monitor `open_terminal_window` 开窗跑它。
+- 本机：本机后端 `session-open` 回那一行 → monitor 开窗。
 - 界面只经 `src/frontend/ui/terminal-open.ts` 走这条，monitor 只开窗、不拼命令。开窗挑终端：设置里指定的 → 系统出口（`xdg-terminal-exec` · `x-terminal-emulator`）→ 常见终端逐个探；都没有就不开窗、说清楚去设置里指定（`launch_tests.rs::the_terminal_is_picked_by_setting_then_system_exits_then_common_ones` 钉着）。
 
 **在终端里打开**（手机）：手机开自己的终端（`core-terminal` ＋ 自己那条 SSH），在里面附着会话。进哪儿一问那台后端 `session-open`（恢复 · 接回 · 进 / 建一个空会话 · 只进一个目录四形，回那台渲好的那一行），手机原样敲进自己的终端（`src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/Sessions.kt` 的 `SessionOpen`）；列会话 · 结束 · 抓屏 · 送字 · 推公钥也都问那台核心（`terminals-list` · `kill` · `terminal-preview` · `terminal-input` · `authorized-keys-add`）。手机一条 shell 命令都不拼，有没有 tmux 也照那台 `session-new-facts` 说的。

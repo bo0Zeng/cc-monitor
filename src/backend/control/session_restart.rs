@@ -108,9 +108,9 @@ pub(crate) struct RestartReq {
     /// 等新进程报出的期限（≤ 3 600 000）。
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) arrive_within_ms: u64,
-    /// 这台是不是界面所在那台（同 `sessions-start`）。
+    /// 这台是不是界面所在那台（同 `session-open`）。
     pub(crate) local: bool,
-    /// 哪一家（线上的 kind；同 `sessions-start` 的整批那一格）。启动命令 · 模型表这台自己读。
+    /// 哪一家（线上的 kind）。启动命令 · 模型表这台自己读。
     pub(crate) agent: String,
     /// 自报的前端，同 `kill`。
     #[serde(default)]
@@ -133,8 +133,6 @@ pub(crate) fn parse(r: &RestartReq) -> Result<Req, Failed> {
             account: AccountAsk::Named {
                 name: r.account.clone(),
             },
-            fresh: false,
-            fork_of: None,
             say: None,
             model: None,
             permission_mode: None,
@@ -185,10 +183,13 @@ impl Refused {
     }
 }
 
+/// 原因码：这条会话已有活进程在写，没起（再起一个就是两个进程同写一份记录）。
+pub(crate) const ALREADY_LIVE: &str = "session_already_live";
+
 /// 这条会话另有活进程在写（`pids`）⇒ 不起新的（`data`：`{pids}`；停完旧的之后 ⇒ 多 `stopped: true`）。
 fn already_live(said: String, pids: Vec<u32>, stopped: bool) -> Failed {
     (
-        batch::ALREADY_LIVE,
+        ALREADY_LIVE,
         said,
         Refused::Live { pids, stopped }.data(),
     )

@@ -843,7 +843,7 @@ pub fn run() {
             app_restart::restart_app,
             clipboard::clipboard_write,
             clipboard::clipboard_read,
-            // `ccm …` 调用行 · 载荷渲染两条退役：那台后端的帧命令 `launch-render-cli` / `launch-render-payload`。
+            // `ccm …` 调用行 · 载荷渲染两条退役：那台后端的帧命令 `session-open`。
             // MCP 读写（`mcp::*` 六条）与推 / 拉两条退役：界面经通道问那台后端
             //   （`mcp-read` · `mcp-sync-source` / `-preview` / `-apply`，`src/frontend/ui/mcp-reads.ts` · `src/frontend/ui/mcp-sync-reads.ts`）。
             //   列远端配置标签那一条是 monitor 自己的配置，挪进 `config.rs`。
@@ -887,7 +887,7 @@ pub fn run() {
             sftp::uninstall_remote_backend,
             // 本机 / 远端各两条合成两条带 origin 的。
             // `probe_session_record`（resume 之前问记录还在不在）退役：界面经通道问 `history-record`。
-            // 本机起会话三条（resume · 新起 · 接回那一句）退役：计划与渲染问本机后端 `launch-local`；
+            // 本机起会话三条（resume · 新起 · 接回那一句）退役：计划与渲染问本机后端 `session-open`；
             //   monitor 只剩「开一个终端窗口跑这串」。
             launch::open_local_terminal,
             // A2 那两条账号清单（远端 `list_remote_accounts` · 本机 `list_local_accounts`）与

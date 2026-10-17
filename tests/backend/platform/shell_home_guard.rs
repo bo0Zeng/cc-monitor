@@ -267,7 +267,7 @@ fn the_literal_census_sees_planted_syntax_and_ignores_comments() {
     let planted = base.replace("String::new()", "format!(\"export X={}; \", 1)");
     assert_ne!(planted, base, "正控的锚没落在靶上");
     assert_eq!(census_of(&planted), BTreeMap::from([("export ", 1)]));
-    let real = include_str!("../../../src/backend/control/launch_render/local.rs");
+    let real = include_str!("../../../src/backend/control/launch_render/mod.rs");
     let planted_real =
         format!("{real}\nfn planted() -> String {{ String::from(\"Get-Alias x; [char]9\") }}\n");
     assert_eq!(

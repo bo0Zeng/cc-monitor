@@ -42,7 +42,7 @@ impl crate::wire::typed::Handle for SessionNew {
 /// `session-new` 的生产那一份事实。
 fn answer(
     req: session_new::NewRequest,
-    files: super::launch_face::Files,
+    files: super::launch_account_face::Files,
     own: &crate::platform::fs::Own,
     nf: &crate::platform::fs::NewFile,
 ) -> Result<session_new::SessionNew, session_new::Failed> {

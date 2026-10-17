@@ -1,7 +1,7 @@
 //! **经 `ccm` 用某个号起一次 ⇒ 那个号记到那条会话名下**（端到端，正反两向）。
 //!
 //! 隔离的家目录里一份账号库清单（号 `x`）、`PATH` 上只有一个假 `claude`（把自己的 pid 写进一个文件就退）。
-//! 子进程走生产那一条：`launch-local` 的入参 → 本机那一行 `ccm …`（`local::plan_argv`）→ `ccm` 自己（exec 掉子进程）→ 假启动器。
+//! 子进程走生产那一条：判号（这台的账号库 · 这台家里的记录）→ 本机直路恢复那一行 `ccm …`（`launch_render::argv_of`）→ `ccm` 自己（exec 掉子进程）→ 假启动器。
 //! 父进程拿假启动器报的 pid 当 pidfile 里的 pid，照观测侧那样认便条（`launch_account::adopt`）⇒ 读回那条会话的号。
 //! 买不到：真 claude 写 pidfile 那一下（这里由父进程代为「看见」）· Windows 那一臂（起好子进程再写便条）。
 
@@ -43,7 +43,7 @@ fn sandbox(tag: &str) -> PathBuf {
     root
 }
 
-/// 子进程里起一次（`account` 是 `launch-local` 那一格的 JSON），回假启动器报的 pid 与它收到的账号目录。
+/// 子进程里起一次（`account` 是 `session-open` 那一格的 JSON），回假启动器报的 pid 与它收到的账号目录。
 fn launch_in_child(root: &Path, account: &str) -> (u32, String) {
     let out = root.join("pid");
     let exe = std::env::current_exe().expect("测试二进制自己的路径");
@@ -140,28 +140,27 @@ fn launch_note_child_entry_point() {
     let Ok(account) = std::env::var(CHILD_MARK) else {
         return;
     };
-    let req: crate::control::launch_render::local::LocalLaunchRequest = serde_json::from_value::<
-        crate::control::launch_render::local::LocalLaunchRequest,
-    >(serde_json::json!({
-        "agent": "claude",
-        "action": { "kind": "resume", "sid": SID },
-        "cwd": null,
-        "account": serde_json::from_str::<serde_json::Value>(&account).unwrap(),
-        "tmuxName": null,
-    }))
-    .expect("入参照线上形状收得下")
-    .with_prefs(&Default::default());
-    let facts = crate::control::launch_render::local::Facts {
-        windows: false,
-        is_dir: |_| true,
-        entry: || Some("ccm".into()),
-    };
+    use crate::control::launch_render::{self as lr, Act, Here, Launch};
+    let ask: crate::control::launch_account::AccountAsk =
+        serde_json::from_str(&account).expect("入参照线上形状收得下");
     // 判号走生产那一份事实（这台的账号库 · 这台家里的记录）。
-    let account = crate::faces::launch_face::with_facts("claude", |f| {
-        crate::control::launch_render::local::settle(&req, f)
+    let account = crate::faces::launch_account_face::with_facts("claude", |f| {
+        crate::control::launch_account::settle(&ask, Some(SID), &Default::default(), f)
     })
     .expect("号判得出来");
-    let argv = crate::control::launch_render::local::plan_argv(&req, &account, &facts, false)
+    let (launcher, default_launcher) = Launch::launchers("claude", &Default::default());
+    let l = Launch {
+        agent: "claude".into(),
+        act: Act::Resume(SID.into()),
+        tmux: None,
+        cwd: None,
+        ccm_sid: None,
+        model: None,
+        launcher,
+        default_launcher,
+        preset_args: Vec::new(),
+    };
+    let argv = lr::argv_of(&l, &account, Here::Local { windows: false }, false, &lr::own_caps(), "ccm")
         .expect("渲得出那一行");
     let code = crate::control::ccm::run(
         &argv[1..],

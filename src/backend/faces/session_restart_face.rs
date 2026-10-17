@@ -11,7 +11,7 @@ use std::future::Future;
 struct Prod {
     client: Option<String>,
     agent: String,
-    files: crate::faces::launch_face::Files,
+    files: crate::faces::launch_account_face::Files,
 }
 
 impl Wait for Armed {
@@ -115,7 +115,7 @@ impl crate::wire::typed::Handle for SessionRestart {
 pub(crate) async fn answer(
     req: restart::RestartReq,
     until: Option<crate::platform::child::Until>,
-    files: crate::faces::launch_face::Files,
+    files: crate::faces::launch_account_face::Files,
 ) -> Result<restart::Restarted, restart::Fault> {
     let client = crate::control::gate::requester(req.client.as_deref())
         .map_err(|(c, m)| (c.to_string(), m, None))?;

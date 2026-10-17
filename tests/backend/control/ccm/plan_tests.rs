@@ -2517,7 +2517,7 @@ fn tmux_words_without_utf8_flag(line: &str) -> (usize, Vec<String>) {
 
 /// ★ **渲给客户端的每一条 tmux 子命令都是 UTF-8 客户端（`tmux -u <子命令>`）** —— 没有 UTF-8 locale 的终端（ssh 进来的手机终端）里，
 /// 非 UTF-8 客户端把 tab 与中文画成 `_`（mobsmoke 10-11 查到）。三面一起量，各带不许空转的那一格：
-/// ① 渲出来的成品：`launch-render-cli` 入库金样里每条渲成了的 `out` ＋ `ccm` 每一形计划（`--ccm-print` 那一份与短形）；
+/// ① 渲出来的成品：`ccm` 每一形计划（`--ccm-print` 那一份与短形）；
 /// ② 渲那几行的源码（`control/ccm/` · `control/launch_render/` ＋ `common/tmux_utf8.rs` 的生产段）：同一把尺子，不等样本渲到。
 #[test]
 fn every_tmux_subcommand_rendered_for_a_client_is_a_utf8_client() {
@@ -2545,21 +2545,6 @@ fn every_tmux_subcommand_rendered_for_a_client_is_a_utf8_client() {
         );
         bad.extend(b.into_iter().map(|h| format!("{what}: {h}")));
     };
-
-    // ① 那一行的字节表：渲成了的那几条里凡是有 tmux 的。
-    use crate::control::launch_render::ccm_invocation::tests as table;
-    let mut table_with_tmux = 0;
-    for c in table::cells() {
-        let Ok(out) = table::render_cell(&c) else { continue };
-        if tmux_words_without_utf8_flag(&out).0 > 0 {
-            table_with_tmux += 1;
-            check(&format!("那一行的表「{}」", c.0), &out);
-        }
-    }
-    assert!(
-        table_with_tmux > 0,
-        "那一行的表里一条带 tmux 的都没有 —— 就地 resume 那一条该在"
-    );
 
     // ① ccm 每一形：接回 · resume 接上在跑的 · 建容器接进去 / 不接 · 带 cc-bus 登记 · codex 的总线身份配方。
     let t = AccountTable::default();
@@ -2625,7 +2610,7 @@ fn every_tmux_subcommand_rendered_for_a_client_is_a_utf8_client() {
         );
     }
     assert!(
-        files >= 6,
+        files >= 5,
         "源码那一面只扫到 {files} 份 —— 目录挪了，本条会空转着绿"
     );
     assert!(

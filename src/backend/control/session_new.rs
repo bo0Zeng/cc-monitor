@@ -306,7 +306,7 @@ pub(crate) fn dir_answer(
         }
     };
     let cwd = expand_home(req.cwd.trim(), home);
-    let exists = !cwd.is_empty() && (deps.local_facts.is_dir)(&cwd);
+    let exists = !cwd.is_empty() && (deps.host.is_dir)(&cwd);
     let tmux_name = match (deps.list)() {
         Ok(Some(rows)) => {
             let base = match fork_of {

@@ -67,7 +67,6 @@ fn unconditional_caps_are_always_required_and_conditional_ones_only_when_used() 
     let mut tmux = direct.clone();
     tmux.container = Container::Tmux {
         name: "cc-s1",
-        send_into: false,
     };
     assert_eq!(
         render_ccm_invocation(&tmux, &no_tmux),
@@ -77,7 +76,6 @@ fn unconditional_caps_are_always_required_and_conditional_ones_only_when_used() 
     attach.action = Action::Attach { name: "cc-s1" };
     attach.container = Container::Tmux {
         name: "cc-s1",
-        send_into: false,
     };
     assert_eq!(
         render_ccm_invocation(&attach, &caps_without("attach")),
@@ -208,7 +206,6 @@ fn a_fully_loaded_invocation_emits_every_part_in_registry_order() {
         action: Action::Resume { sid: "s1" },
         container: Container::Tmux {
             name: "cc-s1",
-            send_into: false,
         },
         cwd: Some("/w d"),
         account: CliAccount::Named { name: "z" },
@@ -227,26 +224,6 @@ fn a_fully_loaded_invocation_emits_every_part_in_registry_order() {
              --cwd '/w d' --launcher 'ccr code'"
         )
     );
-}
-
-/// 就地 resume：外层只包那一行直路 `ccm …`（键进已有的 pane，再接进去：接进去那一段同 `ccm --attach`，在 tmux 里切过去、不在就 attach）。
-#[test]
-fn send_into_wraps_exactly_the_direct_line() {
-    let mut s = base_spec();
-    s.action = Action::Resume { sid: "s1" };
-    let direct = render(&s).unwrap();
-    s.container = Container::Tmux {
-        name: "cc x",
-        send_into: true,
-    };
-    assert_eq!(
-        render(&s).unwrap(),
-        format!(
-            "tmux -u send-keys -t '=cc x:' '{direct}' Enter; \
-             case x${{TMUX:-}} in x) tmux -u attach -t '=cc x:';; *) tmux -u switch-client -t '=cc x:';; esac"
-        )
-    );
-    assert!(direct.starts_with("ccm --resume s1 -- "), "{direct}");
 }
 
 /// 拼进命令之前每一格各过各的那一条：sid · 身份标记 · 模型 · 账号名 · 账号目录 · 身份 token · 会话名 · cwd · 透传参数 · 接回目标。
@@ -285,7 +262,6 @@ fn every_value_is_judged_before_it_becomes_a_ccm_argument() {
             CliSpec {
                 container: Container::Tmux {
                     name: "-x",
-                    send_into: false,
                 },
                 ..base_spec()
             },
@@ -308,10 +284,8 @@ fn every_value_is_judged_before_it_becomes_a_ccm_argument() {
         ),
         (
             CliSpec {
-                container: Container::Tmux {
-                    name: "a\u{7}b",
-                    send_into: true,
-                },
+                action: Action::Attach { name: "a\u{7}b" },
+                container: Container::Tmux { name: "a\u{7}b" },
                 ..base_spec()
             },
             "FreeTextRefused { slot: AttachTarget",
@@ -360,7 +334,6 @@ fn resume_is_written_the_way_that_agent_resumes_and_the_agent_is_always_said() {
     n.action = Action::Attach { name: "cc-x" };
     n.container = Container::Tmux {
         name: "cc-x",
-        send_into: false,
     };
     assert_eq!(render(&n).unwrap(), "ccm -- --attach cc-x");
     // 说不出是哪一家（空 · 带空白 · 注册表里没有）⇒ 拒，那一句列出认得的几家；不落默认那一家。
@@ -424,7 +397,6 @@ fn launch(agent: &str, act: super::super::Act) -> super::super::Launch {
         agent: agent.into(),
         act,
         tmux: None,
-        send_into: false,
         cwd: None,
         ccm_sid: None,
         model: None,
@@ -467,8 +439,6 @@ pub(crate) fn cells() -> Vec<Cell> {
     };
     let attach = |name: &str| tmux(launch("claude", Act::Attach(name.into())), name);
     let claude = |act| launch("claude", act);
-    let mut into = tmux(claude(resume("s1")), "cc-x");
-    into.send_into = true;
     let mut ident = claude(Act::New);
     ident.ccm_sid = Some("sid-1".into());
     let mut own_launcher = claude(Act::New);
@@ -497,13 +467,6 @@ pub(crate) fn cells() -> Vec<Cell> {
             named("z", Some("opus")),
             None,
             Ok("ccm --resume s1 --model opus -- --ccm-agent claude --account z --cwd /w"),
-        ),
-        (
-            "就地 resume：外层只包那一行直路",
-            into,
-            Settled::Base,
-            None,
-            Ok("tmux -u send-keys -t '=cc-x:' 'ccm --resume s1 -- --ccm-agent claude --base' Enter; case x${TMUX:-} in x) tmux -u attach -t '=cc-x:';; *) tmux -u switch-client -t '=cc-x:';; esac"),
         ),
         ("身份标记", ident, Settled::Base, None, Ok("ccm -- new --ccm-sid=sid-1 --ccm-agent claude --base")),
         ("自定义启动命令", own_launcher, Settled::Base, None, Ok("ccm -- new --ccm-agent claude --base --launcher mycc")),
@@ -608,7 +571,7 @@ fn every_launch_renders_byte_for_byte() {
 }
 
 /// 按 POSIX 单引号规则切一行（渲染器只用 `posix_quote` 的单引号形，`'\''` 那一形也认）。
-fn shell_words(line: &str) -> Vec<String> {
+pub(crate) fn shell_words(line: &str) -> Vec<String> {
     let (mut out, mut cur, mut quoted, mut any) = (Vec::new(), String::new(), false, false);
     for c in line.chars() {
         match c {
@@ -633,18 +596,14 @@ fn shell_words(line: &str) -> Vec<String> {
 }
 
 /// ★★ 起会话只有 ccm 一处，且与 `ccm` 那套 argv 的**唯一解析口**对得上（异源：渲染一侧 vs 解析一侧）：
-/// 表里渲得出来的每一行都是一行 `ccm …`、都被 `ccm_line::argv::parse` 收下（外层包了 tmux 的那一形取里面那一行）。
+/// 表里渲得出来的每一行都是一行 `ccm …`、都被 `ccm_line::argv::parse` 收下。
 /// 它是 `protocol_doc_guard::TERMINAL_SURFACE_FILES` 里 `ccm_invocation.rs` 那一格的接盘判据。
 #[test]
 fn every_rendered_ccm_line_is_accepted_by_the_ccm_argv() {
     let mut checked = 0;
     for c in cells() {
         let Ok(line) = render_cell(&c) else { continue };
-        let mut words = shell_words(&line);
-        if words.first().map(String::as_str) == Some("tmux") {
-            assert_eq!(words.get(2).map(String::as_str), Some("send-keys"), "「{}」外层不止一层 tmux：{line}", c.0);
-            words = shell_words(&words[5]);
-        }
+        let words = shell_words(&line);
         assert_eq!(words.first().map(String::as_str), Some("ccm"), "「{}」不是一行 ccm：{line}", c.0);
         let parsed = crate::ccm_line::argv::parse(&words[1..]);
         assert!(parsed.is_ok(), "渲染器吐的「{}」那一行 `ccm` 自己不认：{line}（{:?}）", c.0, parsed.err());
@@ -656,4 +615,22 @@ fn every_rendered_ccm_line_is_accepted_by_the_ccm_argv() {
         ["ccm", "--", "new", "--cwd", "/home/用户/带 空格"],
         "切词器自己坏了"
     );
+}
+
+/// Windows 本机：没有 tmux ⇒ 说了建进 tmux 也走直路（不带会话名、不打身份标记），那一行是 PowerShell 那一形；接回说不出 ⇒ 拒。
+#[test]
+fn windows_launches_go_the_direct_way_and_attach_is_refused() {
+    use super::super::{line_of, Act, Here};
+    use crate::control::launch_account::Settled;
+    let win = Here::Local { windows: true };
+    let caps = caps_without_one(None);
+    let mut l = launch("claude", Act::Resume("s1".into()));
+    l.tmux = Some("cc-x".into());
+    l.ccm_sid = Some("s1".into());
+    let line = line_of(&l, &Settled::Base, win, &caps, "C:/cc/ccm.exe").unwrap();
+    assert!(line.starts_with("& 'C:/cc/ccm.exe' --resume s1 -- "), "{line}");
+    assert!(!line.contains("--ccm-tmux") && !line.contains("--ccm-sid"), "{line}");
+    let mut attach = launch("claude", Act::Attach("cc-x".into()));
+    attach.tmux = Some("cc-x".into());
+    assert!(line_of(&attach, &Settled::Base, win, &caps, "C:/cc/ccm.exe").is_err());
 }

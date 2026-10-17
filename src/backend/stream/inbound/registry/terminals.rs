@@ -3,10 +3,6 @@
 use crate::wire::spec::CommandSpec;
 
 pub(super) const SPECS: &[CommandSpec] = &[
-    // 起会话那一行 `ccm …`（`control/launch_render/`）：交给终端的只有这一行，环境与中转地址归那台的 `ccm`。
-    //   `launch-local`：本机那几形（阻塞档：核一次「新起」的目录在不在）；`launch-render-cli`：远端那几形（纯函数）。
-    crate::wire::typed::blocking::<crate::faces::launch_face::LaunchLocal>("本机起会话那一行 `ccm …`"),
-    crate::wire::typed::blocking::<crate::faces::launch_face::LaunchRenderCli>("远端起会话那一行 `ccm …`"),
     // 〔「待迁」最后一行〕**开终端那一串**：`{machine, saved?, jump?, prefer?, command}` ⇒ `{command}`（按本机终端方言的一行：
     //   Windows `& '<ssh 全路径>' -t[ -J …] -p … [-i …] user@host -- '<bash -lic …>'`，别处同一组参数的 POSIX shell 一行）。组请求走 `ssh-dial/machine.rs::resolve`，本体 `dial/terminal.rs`。
     //   查几个文件找 ssh 客户端（`platform/ssh_client.rs`）⇒ 阻塞档；不拨号、不起进程。
@@ -66,7 +62,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // F04a：**第一条破坏性命令。** 三道门在 `control/gate::admit_destructive`，
     // 对句柄下手不对名字。⚠ monitor 侧改走这条路是 **F04b**（定框 C6 的顺序）。
     crate::wire::typed::blocking::<crate::control::kill::Kill>("杀一个 tmux 会话"),
-    // 一批会话的停 / 起：每一个同单个那一条（`kill` · `launch` · `launch-render-cli` · `launch-local`），逐个答结局。
+    // 一批会话的停：每一个同单个那一条（`kill`），逐个答结局。
     //   阻塞档（逐个起 tmux）；要动 tmux / 读记录的几样由帧面那层壳交进去（`faces/session_batch_face.rs`）。
     crate::wire::typed::blocking::<crate::faces::session_batch_face::SessionsStop>(
         "停一批会话（逐个答，一个不成不挡下一个）",
@@ -74,7 +70,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::faces::session_batch_face::SessionsWhere>(
         "一批会话各在这台哪个终端里",
     ),
-    crate::wire::typed::blocking::<crate::faces::session_batch_face::SessionsStart>("起 / 接回一批会话（逐个答）"),
     // **起新会话 —— 全产品一个请求**（`control/session_new.rs`，宿主 `faces/session_new_face.rs`）：这台判目录 · 号（选不了带替代号）·
     //   终端名 · 分叉（只在这一步写分支记录）· 起；回「起好了 / 要开窗跑那一行」，某一格不行 ⇒ 失败信封 `data.field` 说是哪一格。
     crate::wire::typed::blocking::<crate::faces::session_new_face::SessionNew>("起一个新会话（全产品一个框、一个请求）"),

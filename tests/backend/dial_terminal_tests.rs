@@ -273,8 +273,8 @@ fn every_remote_command_the_backend_renders_passes_the_terminal_guard() {
         refused.join("\n")
     );
     assert!(
-        all.iter().any(|(_, c)| c.starts_with("tmux -u send-keys")),
-        "就地 resume 那一格（外层包一层 tmux）一条都没渲出来 —— 人群塌了"
+        all.iter().any(|(_, c)| c.contains("--ccm-tmux=")),
+        "建 tmux 会话的那几格一条都没渲出来 —— 人群塌了"
     );
     let dq = every_rendered_remote_command(&["/home/u/a\"b"]);
     let with_dq: Vec<&String> = dq
