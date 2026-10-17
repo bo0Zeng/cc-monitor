@@ -652,9 +652,16 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J37: {
     what: "每台机器此刻是什么样 · 名字旁那个词 · 问题行那一句 · 给哪几颗修法",
-    // 远端各台在后端（本机后端跑它、手机 mobcore 跑同一份）；本机那一行在壳（本机后端没起时没人替它说），照同一个类型、同一批文案键。
-    //   界面只按那一态挑样子，字照成品的 `word` · `said` · `fixes[].label`。壳里造成品只许本机那一处（`local_backend_host_tests.rs` 钉）。
-    homes: ["src/backend/deploy/machine.rs::product", "src/frontend/shell/src/local_backend_host.rs::local_product"],
+    // 远端各台在后端收事实（本机后端跑它、手机 mobcore 跑同一份）；本机那一行壳只交事实（本机后端没起时没人替它说）。
+    //   「态 ⇒ 字」与本机那一行都在契约 crate 一处。界面只按那一态挑样子，字照成品的 `word` · `said` · `fixes[].label`。
+    //   壳里不造成品（`local_backend_host_tests.rs` 钉）。
+    homes: [
+      "src/backend/deploy/machine.rs::product",
+      "deploy-contract::word",
+      "deploy-contract::said",
+      "deploy-contract::fixes",
+      "deploy-contract::local",
+    ],
     status: "zero",
     defs: ["downSaid", "fixLabel"],
     needles: [
@@ -1183,15 +1190,19 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     STAMP_CLOSE: NONE,
     build_order: NONE,
     build_relation: NONE,
+    fixes: "J37",
     identity_of_bytes: NONE,
     interpret_stamp_scan: NONE,
     key_from_uname: NONE,
     key_of: NONE,
     label: NONE,
+    local: "J37",
     raw: NONE, // 拒绝里那台答的原话（进复制详情；TS 不判拒绝）
+    said: "J37",
     say: NONE,
     stamp_scan_cmd: NONE,
     this_machine: NONE,
+    word: "J37",
   },
 };
 

@@ -1627,10 +1627,9 @@ pub fn stop_local_backend() -> Result<crate::remote_resident::StopAnswer, Said> 
 //   里那个 `PIN`，它在盘上找不着就当场红。
 // ─── 本机那一台的状态成品 ───────────────────────────────────────────────────────
 // 远端各台的成品由本机后端定（`deploy::machine`）；本机后端没起来时没人能替它说话（起没起 · 口上占着谁是宿主的事实），
-// 本机那一行由这里照同一个类型、同一批文案键出。
+// 本机那一行由这里交事实、照同一张表出（`deploy_contract::machine::local`）。
 
-use cmd_wire::attach::Relation;
-use cmd_wire::machine::{FixButton, MachineFix, MachineState, MachineStateKind, Stage};
+use cmd_wire::machine::MachineState;
 
 /// 本机那个口上占着的、构建与这一版不同的后端（终端里先敲 `ccm` 起的旧 / 新那一份）：它的构建标识。
 /// 起本机后端那一趟探口时记（[`probe_listen_socket`]）；是我们这一版 / 没人 ⇒ 清掉。
@@ -1684,88 +1683,21 @@ pub(crate) fn local_machine_now() -> MachineState {
     local_product(channel, crate::byte_table::my_backend_id())
 }
 
-/// 本机那一台的成品：版本就是手上这一版（本机后端换装只认同一版，[`hello_verdict`]；没带后端字节 ⇒ 开发构建、不可比）；
-/// 通道在 ⇒ 连着；不在而口上占着别的构建 ⇒ 按两边构建的序说「要更新」/「较新」（解不出序 ⇒ 照没连上说）；
-/// 那一趟正在起 ⇒ 连接中（到「启动」那一步、不给修法）；别的不在 ⇒ 没连上。没连上的修法只给［重试］；起的时候被拒 ⇒ 带上那一句下一步。
+/// 本机那一台的成品：交手上的事实（通道 · 口上那一份别的构建 · 起没起 · 被拒那一句），态与字由 [`deploy_contract::machine::local`] 定。
+/// 版本就是手上这一版（本机后端换装只认同一版，[`hello_verdict`]；没带后端字节 ⇒ 开发构建、不可比）。
 pub(crate) fn local_product(channel: bool, mine: Option<&str>) -> MachineState {
-    let foreign = LOCAL_FOREIGN
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone();
-    let relation = match (channel, mine, foreign.as_deref()) {
-        (true, Some(_), _) => Relation::Same,
-        (false, Some(m), Some(theirs)) => deploy_contract::build_relation(theirs, m),
-        (false, Some(_), None) => Relation::Same,
-        (_, None, _) => Relation::Incomparable,
+    let lock = |m: &'static std::sync::Mutex<Option<String>>| {
+        m.lock().unwrap_or_else(|e| e.into_inner()).clone()
     };
-    let starting = LOCAL_STARTING.load(std::sync::atomic::Ordering::SeqCst);
-    let state = match (channel, relation) {
-        (true, _) => MachineStateKind::Up,
-        (false, _) if starting => MachineStateKind::Connecting,
-        (false, Relation::Older) => MachineStateKind::NeedsUpdate,
-        (false, Relation::Newer) => MachineStateKind::Newer,
-        (false, _) => MachineStateKind::Down,
-    };
-    let name = copy_text("remote.cards.local", &[]);
-    let (word, said) = match state {
-        MachineStateKind::Up if relation == Relation::Incomparable => (
-            copy_text("machineState.word.incomparable", &[]),
-            String::new(),
-        ),
-        MachineStateKind::NeedsUpdate => (
-            copy_text("machineState.word.needsUpdate", &[]),
-            copy_text("machineState.problem.needsUpdate", &[("machine", &name)]),
-        ),
-        MachineStateKind::Newer => (
-            copy_text("machineState.word.newer", &[]),
-            copy_text("machineState.problem.newer", &[("machine", &name)]),
-        ),
-        MachineStateKind::Connecting => (
-            copy_text("machineState.word.connecting", &[]),
-            copy_text(
-                "machineState.busy.connecting",
-                &[
-                    ("machine", &name),
-                    ("stage", &copy_text("machineState.stage.attach", &[])),
-                ],
-            ),
-        ),
-        MachineStateKind::Down => (
-            copy_text("machinePage.state.down", &[]),
-            copy_text("machineState.down.local", &[]),
-        ),
-        _ => (String::new(), String::new()),
-    };
-    let fixes = if channel || starting {
-        Vec::new()
-    } else {
-        vec![FixButton {
-            fix: MachineFix::Retry,
-            label: copy_text("machineState.fix.retry", &[]),
-        }]
-    };
-    MachineState {
-        state,
-        reason: None,
-        stage: (state == MachineStateKind::Connecting).then_some(Stage::Attach),
-        version: (relation == Relation::Same).then(|| crate::PRODUCT_VERSION.to_string()),
-        version_relation: Some(relation),
-        os: None,
-        word,
-        said,
-        fixes,
-        seen_host_key: None,
-        expected_host_key: None,
-        detail: None,
-        next: if channel {
-            None
-        } else {
-            LOCAL_REFUSED
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .clone()
-        },
-    }
+    let foreign = lock(&LOCAL_FOREIGN);
+    deploy_contract::machine::local(deploy_contract::machine::Local {
+        channel,
+        starting: LOCAL_STARTING.load(std::sync::atomic::Ordering::SeqCst),
+        mine,
+        foreign: foreign.as_deref(),
+        version: crate::PRODUCT_VERSION,
+        refused: lock(&LOCAL_REFUSED),
+    })
 }
 
 #[cfg(test)]

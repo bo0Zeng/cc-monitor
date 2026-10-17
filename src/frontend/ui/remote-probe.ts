@@ -8,35 +8,17 @@
  * 期限归发起方（DL1）：这一问的预算 15 s 由本文件给；到点没等到结局 ⇒ 抛 {@link ProbeStalled}，带「停在哪一段」（最后收到的那一格）。
  *
  * 交过去的是设置页表单里那台（**可能还没保存**）的配置 ＋ 已保存的那一份（表单空着指纹时，同一个 host 才继承）＋ 跳板那一台；
- * 拨号请求在后端组（`src/backend/ssh-dial/machine.rs`）。按形状严格收；本机后端不在 ⇒ 通道那一层报（D11，不回落）。
+ * 拨号请求在后端组（`src/backend/ssh-dial/machine.rs`）。本机后端不在 ⇒ 通道那一层报（D11，不回落）。
  */
 import { chan, ChanError, type Item } from "../../comms/inward/chan";
 import { budgetWithin, callTyped, ReplyUnreadable } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./backend-policy";
 import type { ConnectStage } from "../../comms/ui/generated/ConnectStage";
+import type { ConnTestResult } from "./generated/ConnTestResult";
 import { hostKey, type RemoteHostConfig } from "./remote-config";
-import { exactKeys, isObj } from "./ipc/decode";
 import { saidOf } from "./kit/detail";
 
-/** 测试连接的结局。 */
-export interface ConnTestResult {
-  /** SSH 连接 + 鉴权是否成功。 */
-  sshOk: boolean;
-  /** 握手时观察到的 server host key 指纹（`SHA256:...`）。失败时恒 `null`（免得把失配的 key 固化）。 */
-  fingerprint: string | null;
-  /** 竞速胜出的地址（`host:port`）。 */
-  endpoint: string | null;
-  /** 那台后端回了 hello 没有。 */
-  backendOk: boolean;
-  /** 那台后端的三格（版本 · 能用几项 / 做不到几项 · 往返毫秒），后端按文案表拼好的一句（不再是 `v=.. build=..` 日志行）。 */
-  backendHello: string | null;
-  /** 这台说做不到的那几类：码 ＋ 这一类几项 ＋ 那一句（后端按 hello 的 `unavailable` 分好、写好；空 = 没有 / 没回 hello）。 */
-  backendGaps: { code: string; count: number; said: string }[];
-  /** 人读的总体状态 / 失败原因（一句，不接下层原话）。 */
-  message: string;
-  /** 没过时那台写的复制详情（时刻 · 机器 · 命令 · 原话）；都过了 ⇒ `null`。 */
-  detail: string | null;
-}
+export type { ConnTestResult };
 
 /** 那条进度流（与 Rust `event_replay.rs::PROBE_PROGRESS_KIND` 同一个串；后面跟 `/<ticket>`）。流名刻意不叫命令名（命令是 `remote-probe`）。 */
 export const PROBE_PROGRESS_KIND = "probe-progress";
@@ -62,62 +44,12 @@ export class ProbeStalled extends Error {
   }
 }
 
-const nullableStr = (v: unknown): v is string | null => v === null || typeof v === "string";
-
 function bad(): never {
   throw new ReplyUnreadable(LOCAL_ORIGIN, "remoteProbe reply shape");
 }
 
-/** 结局那一格的体。严格收。 */
-export function decodeProbe(v: unknown): ConnTestResult {
-  if (
-    !isObj(v) ||
-    !exactKeys(v, ["sshOk", "fingerprint", "endpoint", "backendOk", "backendHello", "backendGaps", "message", "detail"]) ||
-    typeof v.sshOk !== "boolean" ||
-    !nullableStr(v.fingerprint) ||
-    !nullableStr(v.endpoint) ||
-    typeof v.backendOk !== "boolean" ||
-    !nullableStr(v.backendHello) ||
-    !Array.isArray(v.backendGaps) ||
-    !v.backendGaps.every(
-      (g) => isObj(g) && exactKeys(g, ["code", "count", "said"]) && typeof g.code === "string" && Number.isInteger(g.count) && typeof g.said === "string",
-    ) ||
-    typeof v.message !== "string" ||
-    !nullableStr(v.detail)
-  ) {
-    bad();
-  }
-  return {
-    sshOk: v.sshOk,
-    fingerprint: v.fingerprint,
-    endpoint: v.endpoint,
-    backendOk: v.backendOk,
-    backendHello: v.backendHello,
-    backendGaps: v.backendGaps as ConnTestResult["backendGaps"],
-    message: v.message,
-    detail: v.detail,
-  };
-}
-
-/** 进度流的一格。 */
-export type ProbeCell = { stage: ConnectStage } | { reached: ProbeReached } | { end: ConnTestResult };
-
-/** 严格收一格：恰好一个键；阶段行只查是对象、带 `kind`（各形的字段由画它的那一处读）。 */
-export function decodeCell(v: unknown): ProbeCell {
-  if (!isObj(v) || Object.keys(v).length !== 1) bad();
-  if ("stage" in v) {
-    const st = v.stage;
-    if (!isObj(st) || typeof st.kind !== "string") bad();
-    return { stage: st as unknown as ConnectStage };
-  }
-  if ("reached" in v) {
-    const r = v.reached;
-    if (r !== "ssh" && r !== "hello" && r !== "control") bad();
-    return { reached: r };
-  }
-  if ("end" in v) return { end: decodeProbe(v.end) };
-  bad();
-}
+/** 进度流的一格（本机后端与界面同一个构建，照这个形状用、不再逐格核）。 */
+type ProbeCell = { stage: ConnectStage } | { reached: ProbeReached } | { end: ConnTestResult };
 
 /**
  * 期限（值归发起方）：原来 monitor 那两段等待（hello 8 s ＋ ping 5 s）的量级 ⇒ 15 s；后端零定时器，到点由宿主那侧撤单。
@@ -155,7 +87,7 @@ export async function probeMachine(
       if (it.t === "frame") {
         let cell: ProbeCell;
         try {
-          cell = decodeCell(JSON.parse(it.body));
+          cell = JSON.parse(it.body) as ProbeCell;
         } catch (e) {
           broken = new ReplyUnreadable(LOCAL_ORIGIN, e instanceof Error ? e.message : String(e));
           arrived();

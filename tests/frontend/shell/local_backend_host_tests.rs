@@ -4607,9 +4607,21 @@ fn a_refused_local_start_carries_the_next_step() {
     assert_eq!(local_product(false, Some("p8c-mine")).next, None);
 }
 
-/// 壳里造机器状态成品只许本机那一处（远端各台的成品在后端定）：壳生产段里写 `MachineState {` 字面构造的文件恰好是这一份。
+/// 壳里不造机器状态成品：本机那一行也是交事实、照 `deploy_contract::machine::local` 出（远端各台的成品在后端定）。
+/// 正控：同一个认法在那张表的家里认得出那一处构造。
 #[test]
-fn only_the_local_row_is_built_in_the_shell() {
+fn the_shell_builds_no_machine_state_of_its_own() {
+    let builds = |src: &str| {
+        guard_core::production_code(src).lines().any(|l| {
+            let l = l.trim();
+            l.contains("MachineState {") && !l.contains("-> MachineState {")
+        })
+    };
+    let home = guard_core::addr::repo_root().join("src/common/deploy-contract/src/machine.rs");
+    assert!(
+        builds(&std::fs::read_to_string(&home).expect("读那张表的家")),
+        "认法在那张表的家里认不出构造 —— 认法坏了"
+    );
     let files: Vec<(std::path::PathBuf, String)> = guard_core::addr::shell_population_roots()
         .iter()
         .flat_map(|root| guard_core::scan_tree!(root, &["rs"]))
@@ -4619,23 +4631,12 @@ fn only_the_local_row_is_built_in_the_shell() {
         "壳的人群只扫到 {} 份 —— 走法坏了",
         files.len()
     );
-    let builds: std::collections::BTreeSet<String> = files
+    let shell: Vec<String> = files
         .iter()
-        .filter(|(_, src)| {
-            guard_core::production_code(src).lines().any(|l| {
-                let l = l.trim();
-                l.contains("MachineState {") && !l.contains("-> MachineState {")
-            })
-        })
+        .filter(|(_, src)| builds(src))
         .map(|(p, _)| guard_core::addr::rel_of(p))
         .collect();
-    assert_eq!(
-        builds,
-        ["src/frontend/shell/src/local_backend_host.rs".to_string()]
-            .into_iter()
-            .collect(),
-        "壳里另有一处在造机器状态成品"
-    );
+    assert_eq!(shell, Vec::<String>::new(), "壳里另有一处在造机器状态成品");
 }
 
 /// 起来时起本机后端不挡调用方：替身那一趟卡着（等放行），调用方已经回来了；放行之后结局照样交到 `then`。

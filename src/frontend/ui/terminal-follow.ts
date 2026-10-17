@@ -13,7 +13,6 @@
 import { chan, ChanError, type Item } from "../../comms/inward/chan";
 import { budgetWithin, callTyped, isOldBackend, machineName, refusalIn } from "./ipc/chan-caller";
 import { copyText } from "./copy-table";
-import { isObj } from "./ipc/decode";
 import type { Origin } from "./ipc/origin";
 import { shotOf, type TerminalShot } from "./terminal-reads";
 import type { TerminalFollowEnd } from "./generated/TerminalFollowEnd";
@@ -69,8 +68,7 @@ const lost = (): FollowStop => ({ kind: "stopped", said: copyText("terminal.live
 function stopOfStart(e: unknown): FollowStop {
   if (!(e instanceof ChanError) || e.message.trim() === "") return lost();
   if (e.error.layer === "hop") return { kind: "stopped", said: e.message, offline: true };
-  const r = refusalIn(e);
-  const snapshotOnly = isOldBackend(e) || (r !== null && isObj(r.data) && r.data.live === "snapshot_only");
+  const snapshotOnly = isOldBackend(e) || refusalIn(e, "terminal-follow")?.data?.live === "snapshot_only";
   return snapshotOnly ? { kind: "snapshotOnly", said: e.message } : { kind: "stopped", said: e.message, offline: false };
 }
 

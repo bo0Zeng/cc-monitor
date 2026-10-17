@@ -13,7 +13,7 @@
 import { chan, ChanError, type Budget } from "../../../comms/inward/chan";
 import { copyText } from "../copy-table";
 import { isLocalOrigin, type Origin } from "./origin";
-import type { TypedCommands } from "../generated/TypedCommands";
+import type { RefusalData, TypedCommands } from "../generated/TypedCommands";
 
 /**
  * 问一条 **typed** 帧命令：入参 · 回包的类型都从 Rust 生成（`generated/TypedCommands.ts`）。
@@ -55,7 +55,7 @@ export function readJson(body: Uint8Array): unknown {
 
 /**
  * 对端「不行」的那份体（后端的拒绝信封 `{code, message, data?}`）⇒ `(code, message, data)`；解不出 ⇒ `null`。
- * `data` 只有协议里按码定了形的那几个码带（今天只有 `account_unavailable`），按码收的那一侧自己核形状。
+ * `data` 只有协议里按码定了形的那几个码带；它的类型按命令读（[`refusalIn`] 带上 `cmd`）。
  */
 export function refusalOf(body: Uint8Array): { code: string; message: string; data?: unknown } | null {
   try {
@@ -93,9 +93,19 @@ export class ReplyUnreadable extends Error {
   }
 }
 
-/** 这一次失败是对端拒了 ⇒ 拒绝体（码 · 那一句 · `data`，[`refusalOf`]）；别的失败 · 体解不出 ⇒ `null`。按码分支的调用方只经这里读。 */
-export function refusalIn(e: unknown): { code: string; message: string; data?: unknown } | null {
-  return e instanceof ChanError && e.error.layer === "peer" && e.error.why === "refused" ? refusalOf(e.error.body) : null;
+/** `cmd` 那条命令拒绝时可能带的 `data`（生成表 [`RefusalData`]；不带 `data` 的命令 ⇒ `never`）。 */
+type DataOf<K> = K extends keyof RefusalData ? RefusalData[K][keyof RefusalData[K]] : never;
+
+/**
+ * 这一次失败是对端拒了 ⇒ 拒绝体（码 · 那一句 · `data`，[`refusalOf`]）；别的失败 · 体解不出 ⇒ `null`。按码分支的调用方只经这里读。
+ * 要读 `data` 就说是哪条命令（`cmd`）：`data` 照那条命令的生成类型用、不再逐格核（形状随它的形状指纹核过）。
+ */
+export function refusalIn<K extends keyof RefusalData = never>(
+  e: unknown,
+  _cmd?: K,
+): { code: string; message: string; data?: DataOf<K> } | null {
+  if (!(e instanceof ChanError && e.error.layer === "peer" && e.error.why === "refused")) return null;
+  return refusalOf(e.error.body) as { code: string; message: string; data?: DataOf<K> } | null;
 }
 
 /**

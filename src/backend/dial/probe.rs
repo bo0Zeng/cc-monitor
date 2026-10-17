@@ -25,7 +25,30 @@ const PING_ID: &str = "probe-ping";
 /// 票的上限与字符集（界面给的是一个 UUID；本后端只当不透明的串回填，但它会进帧 ⇒ 有界、可打印）。
 const TICKET_MAX: usize = 64;
 
-/// 结局（界面 `ConnTestResult` 的形状）。
+/// 测试连接的结局（进度流最后那一格 `{end}`）。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ConnTestResult {
+    /// SSH 连接 ＋ 鉴权成没成。
+    ssh_ok: bool,
+    /// 握手时看到的那台的 host key 指纹（`SHA256:...`）；没过 ⇒ `null`（免得把失配的那把固化）。
+    fingerprint: Option<String>,
+    /// 竞速胜出的地址（`host:port`）。
+    endpoint: Option<String>,
+    /// 那台后端回了 hello 没有。
+    backend_ok: bool,
+    /// 那台后端的三格（版本 · 能用几项 / 做不到几项 · 往返毫秒），按文案表拼好的一句。
+    backend_hello: Option<String>,
+    /// 这台说做不到的那几类（空 = 没有 / 没回 hello）。
+    backend_gaps: Vec<GapCount>,
+    /// 总体那一句（不接下层原话）。
+    message: String,
+    /// 没过时的复制详情；都过了 ⇒ `null`。
+    detail: Option<String>,
+}
+
 fn outcome(
     ssh_ok: bool,
     fingerprint: Option<String>,
@@ -34,17 +57,17 @@ fn outcome(
     gaps: Vec<GapCount>,
     message: String,
     detail: Option<String>,
-) -> Value {
-    json!({
-        "sshOk": ssh_ok,
-        "fingerprint": fingerprint,
-        "endpoint": endpoint,
-        "backendOk": hello.is_some(),
-        "backendHello": hello,
-        "backendGaps": gaps,
-        "message": message,
-        "detail": detail,
-    })
+) -> ConnTestResult {
+    ConnTestResult {
+        ssh_ok,
+        fingerprint,
+        endpoint,
+        backend_ok: hello.is_some(),
+        backend_hello: hello,
+        backend_gaps: gaps,
+        message,
+        detail,
+    }
 }
 
 /// 没过的那几形的复制详情：时刻 · 机器 · 命令 · 下层原话（那一句里不接原话，原话在这里）。
@@ -68,7 +91,9 @@ struct Gap {
 }
 
 /// `backendGaps` 的一项：这台说做不到的一类（码）· 这一类几项 · 那一句。
-#[derive(serde::Serialize)]
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 struct GapCount {
     code: String,
     count: usize,
@@ -205,7 +230,7 @@ async fn run<F, Fut>(
     pick: &super::pick::Pick<'_>,
     serve: F,
     cells: &Cells<'_>,
-) -> Result<Value, (&'static str, String)>
+) -> Result<ConnTestResult, (&'static str, String)>
 where
     F: FnOnce(crate::dial::DialRequest, tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
     Fut: std::future::Future<Output = ()> + Send + 'static,

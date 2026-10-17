@@ -61,17 +61,12 @@ export class LoginFailed extends Error {
   }
 }
 
-/** 通道上的失败 ⇒ [`LoginFailed`]，那一句 monitor 写好。对端说不行 ⇒ 照它的 `data.again`；别的层（够不着 · 答没答）⇒ 作业在不在不知道 ⇒ 重新开始。 */
-function failedOf(e: unknown): LoginFailed {
+/** 通道上的失败 ⇒ [`LoginFailed`]，那一句 monitor 写好。对端说不行 ⇒ 照它的 `data.again`（没带 ⇒ 入参形状不对，不给重来）；
+ * 别的层（够不着 · 答没答）⇒ 作业在不在不知道 ⇒ 重新开始。 */
+function failedOf(e: unknown, cmd: "login-start" | "login-finish"): LoginFailed {
   if (e instanceof LoginFailed) return e;
-  const r = refusalIn(e);
-  return new LoginFailed(saidOf(e), detailOf(e), r ? againOf(r.data) : "restart");
-}
-
-/** 拒绝体里的 `data.again`；没带（只有 `bad_args`：入参形状不对，不是一条能走的路）⇒ 不给重来。 */
-function againOf(data: unknown): LoginAgainHow {
-  const a = data !== null && typeof data === "object" ? (data as { again?: unknown }).again : undefined;
-  return a === "paste" || a === "restart" ? a : "none";
+  const r = refusalIn(e, cmd);
+  return new LoginFailed(saidOf(e), detailOf(e), r ? (r.data?.again ?? "none") : "restart");
 }
 
 /**
@@ -82,7 +77,7 @@ export async function loginStart(origin: Origin, target: LoginStartReq): Promise
   try {
     return await callTyped(origin, "login-start", { ...target, browserHere: isLocalOrigin(origin) }, budgetWithin(START_BUDGET_MS));
   } catch (e) {
-    throw failedOf(e);
+    throw failedOf(e, "login-start");
   }
 }
 
@@ -91,7 +86,7 @@ export async function loginFinish(origin: Origin, job: string, pasted: string): 
   try {
     await callTyped(origin, "login-finish", { job, pasted }, budgetWithin(FINISH_BUDGET_MS));
   } catch (e) {
-    throw failedOf(e);
+    throw failedOf(e, "login-finish");
   }
 }
 

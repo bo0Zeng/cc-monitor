@@ -228,6 +228,7 @@ fn the_ui_command_map_is_what_the_types_say() {
     let rows = typed();
     let mut imports = std::collections::BTreeSet::new();
     let mut body = String::new();
+    let mut data = String::new();
     for (name, shape) in &rows {
         for t in [&shape.req, &shape.reply] {
             // 具名类型才 import（`null` · 内联的不用）。
@@ -245,6 +246,19 @@ fn the_ui_command_map_is_what_the_types_say() {
             "  \"{name}\": {{ req: {}; reply: {}; code: {codes} }};\n",
             shape.req, shape.reply
         ));
+        if !shape.data.is_empty() {
+            let per: Vec<String> = shape
+                .data
+                .iter()
+                .map(|(code, ty)| {
+                    if shape.decls.iter().any(|(n, _)| n == ty) {
+                        imports.insert(ty.clone());
+                    }
+                    format!("\"{code}\": {ty}")
+                })
+                .collect();
+            data.push_str(&format!("  \"{name}\": {{ {} }};\n", per.join("; ")));
+        }
     }
     // 帧里现算小成品的主题：那一份就是重问那条命令的回包（同一个处理器跑出来的），类型照那条命令的。
     let mut pushed = String::new();
@@ -274,6 +288,9 @@ fn the_ui_command_map_is_what_the_types_say() {
 {imports}\n\
 /** typed 帧命令：命令名 ⇒ 入参 · 回包 · 它自己会回的码（`bad_args` 恒在：入参解不出来）。 */\n\
 export interface TypedCommands {{\n{body}}}\n\
+\n\
+/** 拒绝信封里带 `data` 的码 ⇒ 那一份 `data` 的类型（随那条命令的形状指纹核过）；表里没有的码不带 `data`。 */\n\
+export interface RefusalData {{\n{data}}}\n\
 \n\
 /** `changed` 帧里现算小成品的主题 ⇒ 那一份的类型（＝ 重问那条命令的回包，形状随那条命令的指纹核过）。 */\n\
 export interface TopicProducts {{\n{pushed}}}\n"
