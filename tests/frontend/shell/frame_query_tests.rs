@@ -817,6 +817,14 @@ fn backend_registered_commands() -> std::collections::BTreeSet<String> {
         .collect()
 }
 
+/// 前端与 monitor 都不再发、改由本机后端问各台的那几条（跨台合并去信差之后）—— `(帧命令, 谁在问)`。
+/// 前端那一侧的通道操作名里没有它们（[`the_channeled_ops_are_sent_only_through_the_channel`] 两向管）。
+const ASKED_BY_BACKEND: &[(&str, &str)] = &[(
+    "history-search",
+    "本机后端 `history-search-merge` 经 `--resident-call` 问各台的常驻（`src/backend/faces/search_face.rs::merge_with`）；\
+     手机逐台直连问、交它的 Rust 核心合",
+)];
+
 /// 还留在 monitor 侧发送的那几条 —— `(帧命令, 为什么今天不迁)`。**不是豁免清单**：
 /// 下面那条判据要求它们**真的**还有 monitor 侧发送点（没了 ⇒ 这一行的理由已经馊了）。
 ///
@@ -926,7 +934,7 @@ fn chan_ops_in(
     }
 }
 
-/// ★★ 帧面只读查询的分区：[`MOVED`] 右列 == [`CHANNELED`] ⊔ [`HELD_BACK`]（不相交、每行都写了理由）。
+/// ★★ 帧面只读查询的分区：[`MOVED`] 右列 == [`CHANNELED`] ⊔ [`HELD_BACK`] ⊔ [`ASKED_BY_BACKEND`]（不相交、每行都写了理由）。
 /// （C4a 立它时是 C1 那八条；SR1a 同波又搬上来三条 ⇒ 今天十一条。）
 #[test]
 fn the_eight_are_partitioned_into_channeled_and_held_back() {
@@ -935,6 +943,7 @@ fn the_eight_are_partitioned_into_channeled_and_held_back() {
     let mut both: Vec<String> = CHANNELED
         .iter()
         .chain(HELD_BACK)
+        .chain(ASKED_BY_BACKEND)
         .map(|(c, _)| c.to_string())
         .collect();
     let n = both.len();
@@ -945,8 +954,11 @@ fn the_eight_are_partitioned_into_channeled_and_held_back() {
         n,
         "同一条帧命令同时在「已迁」与「未迁」两张表里"
     );
-    assert_eq!(both, moved, "已迁 ⊔ 未迁 != C1 的八条（`MOVED` 右列）");
-    for (c, why) in CHANNELED.iter().chain(HELD_BACK) {
+    assert_eq!(
+        both, moved,
+        "已迁 ⊔ 未迁 ⊔ 后端在问 != C1 的八条（`MOVED` 右列）"
+    );
+    for (c, why) in CHANNELED.iter().chain(HELD_BACK).chain(ASKED_BY_BACKEND) {
         assert!(!why.trim().is_empty(), "`{c}` 没写理由");
     }
 }

@@ -190,7 +190,7 @@ fn reply_text(rows: &[(&str, i64)]) -> String {
             r["spanText"] = json!("09:05–09:05");
             r["label"] = json!(format!("名-{sid}"));
             r["starred"] = json!(true);
-            r["hidden"] = json!({"by": "self", "said": "已隐藏"});
+            r["hidden"] = json!({"by": "self", "said": "占位隐藏句"});
             r
         })
         .collect();
