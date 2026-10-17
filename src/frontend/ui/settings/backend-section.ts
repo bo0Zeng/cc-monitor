@@ -32,7 +32,7 @@ import { button } from "../kit/button";
 import { toggleSwitch } from "../kit/switch";
 import { readRecordDrift } from "../record-reads";
 import { ccRow } from "./cc-row";
-import { decodeMachineState, type MachineState } from "./machine-state";
+import type { MachineState } from "./machine-state";
 import { exactKeys, isObj } from "../ipc/decode";
 import { sayFailure, sayWithDetail, saidOf } from "../kit/detail";
 
@@ -173,7 +173,7 @@ export class BackendSection {
   /** 寄居模式：四格挂在机器列表那一行上（`cellsFor`），本块自己的 `element` 只装后端清单里有、机器列表里没有的那几台。 */
   private readonly hosted: boolean;
   private readonly onChannel: ((origin: string, connected: boolean | null) => void) | undefined;
-  private readonly onMachine: ((origin: string, machine: MachineState | null) => void) | undefined;
+  private readonly onMachine: ((origin: string, machine: MachineState) => void) | undefined;
   private readonly machineOf: ((origin: string) => MachineState | null) | undefined;
   /** 后端清单（`backend_machines`）。`null` = 还没问到 —— 那时寄居的四格先不画。 */
   private registered: Set<string> | null = null;
@@ -190,8 +190,8 @@ export class BackendSection {
       interrupts?: (origin: Origin) => Promise<Interrupts | null>;
       /** 每次问完那台的连接（`null` ＝ 没问到）。 */
       onChannel?: (origin: string, connected: boolean | null) => void;
-      /** 每次问完那台的状态成品（本机那一行；收不下 / 没问到 ⇒ `null`）。 */
-      onMachine?: (origin: string, machine: MachineState | null) => void;
+      /** 每次问完那台的状态成品（只本机那一行带）。 */
+      onMachine?: (origin: string, machine: MachineState) => void;
       /** 那台手上最新那一份成品（远端各台由本机后端推，`backend_status` 不带）。 */
       machineOf?: (origin: string) => MachineState | null;
     } = {},
@@ -620,9 +620,9 @@ export class BackendSection {
     if (!state) return null;
     try {
       const st = await commands.backend_status({ origin });
-      const on = st.channel === true;
+      const on = st.channel;
       const word = on ? copyText("backend.status.connected") : copyText("backend.status.notConnected");
-      const machine = decodeMachineState(st.machine);
+      const machine = st.machine;
       const ver = (machine ?? this.machineOf?.(origin) ?? null)?.version ?? null;
       state.textContent = ver ? `${ver}${copyText("kit.text.sep")}${word}` : word;
       state.dataset.on = String(on);

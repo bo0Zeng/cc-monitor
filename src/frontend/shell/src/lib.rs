@@ -649,7 +649,10 @@ pub fn run() {
             {
                 let handle = app.handle().clone();
                 crate::local_backend_host::install_machine_out(move |machine| {
-                    let payload = serde_json::json!({ "origin": crate::inbound_client::LOCAL_ORIGIN, "machine": machine });
+                    let payload = ui_contract::MachineStatePayload {
+                        origin: crate::inbound_client::LOCAL_ORIGIN.to_string(),
+                        machine,
+                    };
                     if let Err(e) = handle.emit(ui_contract::events::MACHINE_STATE, payload) {
                         tracing::warn!("emit machine-state failed: {e}");
                     }

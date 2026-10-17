@@ -1,14 +1,16 @@
 /**
- * 每台机器状态成品的推送：本机那一行是壳的 `machine-state` 事件（`{origin, machine}`，与 `backend_status` 那一格同形）；
- * 远端各台是本机后端的 `changed {machine, key: 那台, body: 成品}`（接上 · 漏了几格 ⇒ 整份重问 `machine-read`）。
- * 那台一变就来一帧，界面不轮询；设置窗与主窗口都从这里订。
+ * 每台机器状态成品的推送：本机那一行是壳的 `machine-state` 事件（{@link MachineStatePayload}，与 `backend_status` 的 `machine` 同一份类型）；
+ * 远端各台是本机后端的 `changed {machine, key: 那台, body: 成品}`（接上 · 漏了几格 · 帧里没带成品 ⇒ 整份重问 `machine-read`）。
+ * 那台一变就来一帧，界面不轮询；设置窗与主窗口都从这里订。哪一态、那一句、修法都是后端定的（`deploy::machine`）。
  */
 import { listen } from "@tauri-apps/api/event";
 import { chan, type Sub } from "../../comms/inward/chan";
 import { CHANGED_WINDOW, changedItems, changedStream } from "./changed-stream";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./ipc/origin";
-import { decodeMachineState, type MachineState } from "./machine-state-decode";
+import type { MachineRead } from "./generated/MachineRead";
+import type { MachineState } from "./generated/MachineState";
+import type { MachineStatePayload } from "./generated/MachineStatePayload";
 
 /** 壳那一侧的事件名（`ui_contract::events::MACHINE_STATE`）。 */
 export const MACHINE_STATE_EVENT = "machine-state";
@@ -16,17 +18,13 @@ export const MACHINE_STATE_EVENT = "machine-state";
 /** `machine-read` 等多久。 */
 const READ_BUDGET_MS = 5_000;
 
-/** 订一份：每来一台的一帧回调一次（收不下 ⇒ `machine` 为 `null`）。回退订函数。 */
-export function onMachineState(cb: (origin: string, machine: MachineState | null) => void): () => void {
+/** 订一份：每来一台的一帧回调一次。回退订函数。 */
+export function onMachineState(cb: (origin: string, machine: MachineState) => void): () => void {
   let off: (() => void) | null = null;
   let sub: Sub | null = null;
   let dropped = false;
   try {
-    listen<{ origin?: unknown; machine?: unknown }>(MACHINE_STATE_EVENT, (e) => {
-      const origin = e.payload?.origin;
-      if (typeof origin !== "string" || origin === "") return;
-      cb(origin, decodeMachineState(e.payload.machine));
-    }).then(
+    listen<MachineStatePayload>(MACHINE_STATE_EVENT, (e) => cb(e.payload.origin, e.payload.machine)).then(
       (u) => {
         if (dropped) u();
         else off = u;
@@ -40,7 +38,7 @@ export function onMachineState(cb: (origin: string, machine: MachineState | null
   const readAll = async (): Promise<void> => {
     try {
       const r = await callTyped(LOCAL_ORIGIN, "machine-read", {}, budgetWithin(READ_BUDGET_MS));
-      for (const [origin, m] of Object.entries(r?.machines ?? {})) if (!dropped) cb(origin, decodeMachineState(m));
+      for (const [origin, m] of Object.entries(r.machines)) if (!dropped) cb(origin, m);
     } catch (e) {
       console.warn("[machine-state] 问不到远端各台：", e);
     }
@@ -49,8 +47,10 @@ export function onMachineState(cb: (origin: string, machine: MachineState | null
     .subscribe(LOCAL_ORIGIN, changedStream("machine"), null, CHANGED_WINDOW, (items) => {
       const { cells, all, frames } = changedItems(items);
       if (frames > 0) sub?.want(frames);
-      if (all) void readAll();
-      for (const c of cells) if (c.key !== null && c.key !== "") cb(c.key, decodeMachineState(c.body));
+      const keyed = cells.flatMap((c) => (c.key !== null && c.key !== "" ? [{ key: c.key, body: c.body }] : []));
+      if (all || keyed.some((c) => c.body === undefined)) void readAll();
+      // 帧里那一份就是 `machine-read` 回包里那一台。
+      for (const c of keyed) if (c.body !== undefined) cb(c.key, c.body as MachineRead["machines"][string]);
     })
     .then(
       (s) => {

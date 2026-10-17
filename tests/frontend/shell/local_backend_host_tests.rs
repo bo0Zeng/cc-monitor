@@ -503,8 +503,7 @@ fn the_local_backend_host_can_be_stopped_and_started_again() {
             crate::inbound_client::LOCAL_ORIGIN.into(),
         ))
         .expect("查状态")
-        .get("pid")
-        .and_then(|v| v.as_u64())
+        .pid
     };
     let pid1 = guard_core::wall::rounds()
         .find_map(|_| {
@@ -513,7 +512,7 @@ fn the_local_backend_host_can_be_stopped_and_started_again() {
                 None
             })
         })
-        .expect("到兜底上限状态里一直没有 pid —— backend 起来了却没报 pid") as u32;
+        .expect("到兜底上限状态里一直没有 pid —— backend 起来了却没报 pid");
     assert!(alive(pid1), "状态给了 pid={pid1}，但 /proc 里没有这个进程");
     // ★ `K-R7`：本条改成 `#[ignore]` 之后由 `tests/e2e/local-backend-supervise.sh` 驱动，
     //   而那个脚本的收尾自检是「**标记数 < 跑成的测试数 ⇒ 有测试提前退出**」
@@ -554,9 +553,8 @@ fn the_local_backend_host_can_be_stopped_and_started_again() {
         crate::inbound_client::LOCAL_ORIGIN.into(),
     ))
     .expect("查状态")
-    .get("pid")
-    .and_then(|v| v.as_u64())
-    .expect("再起之后没有 pid") as u32;
+    .pid
+    .expect("再起之后没有 pid");
     assert!(alive(pid2), "再起给了 pid={pid2}，但 /proc 里没有");
     assert_ne!(
         pid1, pid2,
@@ -1123,7 +1121,7 @@ fn detached_reads_the_path_that_was_taken_not_a_guess() {
     ))
     .expect("查状态");
     assert_eq!(
-        st.get("detached").and_then(|v| v.as_bool()),
+        st.detached,
         Some(false),
         "没走过脱离那条路，`detached` 却不是 false —— 那一格在猜"
     );
@@ -1131,7 +1129,7 @@ fn detached_reads_the_path_that_was_taken_not_a_guess() {
         tauri::async_runtime::block_on(crate::backend_control::backend_status("某台远端".into()))
             .expect("查远端状态");
     assert!(
-        remote.get("detached").is_some_and(|v| v.is_null()),
+        remote.detached.is_none(),
         "远端的 `detached` 不是 null —— 那是在替一台看不见的机器编读数"
     );
 }

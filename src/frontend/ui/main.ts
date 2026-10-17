@@ -232,7 +232,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
   // 那台重连回来（壳推「已连上」）⇒ 终端页停在「那台断开」的实时自己重新订上。
   onMachineState((origin, m) => {
-    if (m?.state === "up") terminalPage.machineUp(origin);
+    if (m.state === "up") terminalPage.machineUp(origin);
   });
   const mainDrawer = new MainDrawer(tasksPanel, agentsPanel, terminalPage, () => (document.getElementById("app")?.clientHeight ?? window.innerHeight) - status.getBoundingClientRect().height);
   mainDrawer.dock.el.id = "bottom-drawer";
