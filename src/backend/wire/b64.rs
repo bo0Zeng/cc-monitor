@@ -1,5 +1,5 @@
 //! base64（RFC 4648 §4，标准字母表、带 `=` 补位）：链路字节进 JSON 串的那一种编码。
-//! 后端的帧面经 `wire/mod.rs` 转一手用它。
+//! 帧面与 CLI 经本模块用它。
 
 /// base64 的字母表（RFC 4648 §4，标准字母表、带 `=` 补位）。
 const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -49,7 +49,7 @@ pub fn b64_encode(bytes: &[u8]) -> String {
 pub fn b64_decode(text: &str) -> Result<Vec<u8>, String> {
     let s = text.as_bytes();
     if !s.len().is_multiple_of(4) {
-        return Err(crate::malformed(&format!(
+        return Err(crate::common::contract::malformed(&format!(
             "base64 length {s_count} is not a multiple of 4",
             s_count = s.len()
         )));
@@ -62,12 +62,14 @@ pub fn b64_decode(text: &str) -> Result<Vec<u8>, String> {
     for (qi, q) in s.chunks(4).enumerate() {
         let pad = q.iter().rev().take_while(|&&c| c == b'=').count();
         if pad > 2 || (pad > 0 && qi + 1 != quads) {
-            return Err(crate::malformed("base64 padding is not at the end"));
+            return Err(crate::common::contract::malformed(
+                "base64 padding is not at the end",
+            ));
         }
         let mut n: u32 = 0;
         for &c in &q[..4 - pad] {
             let v = val(c).ok_or_else(|| {
-                crate::malformed(&format!(
+                crate::common::contract::malformed(&format!(
                     "base64 has a character outside the alphabet: {char:?}",
                     char = char::from(c)
                 ))
