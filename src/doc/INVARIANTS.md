@@ -348,7 +348,7 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 
 裸 `-t <名>` 按「精确 → 名字开头 → glob」解析：只有 `sib-2` 在时 `kill-session -t sib` 杀掉 `sib-2` 且 rc=0。`=` 只在 target-session 路径上被认，`send-keys` / `capture-pane` / `set-option` 走 pane 解析 ⇒ 必须带尾冒号 `=<名>:`，它是所有动词上都既通用又精确的唯一形式。`new-session -s <名>` 收的是名字，不加 `=` / `:`。e2e 的 shell 探针同样用 `=<名>:`。
 
-今天的构造点：后端 `control/launch.rs::exact_target`（argv 直传）与调用行渲染器（`ccm_invocation.rs` 就地 resume 那一形，由 `cli-golden.json` 逐字节钉）· `control/ccm/plan.rs`。新建的名字走 `gate_rules::new_tmux_name_issue`（禁 glob 与目标语法字符、前导 `-`、控制符、视觉欺骗字符、超长），attach 已有会话走 `gate_rules::existing_tmux_name_issue`（只拒空 · 控制符 · 视觉欺骗字符）。
+今天的构造点：后端 `control/launch.rs::exact_target`（argv 直传）与调用行渲染器（`ccm_invocation.rs` 就地 resume 那一形，由 `ccm_invocation_tests.rs` 那张表逐字节钉）· `control/ccm/plan.rs`。新建的名字走 `gate_rules::new_tmux_name_issue`（禁 glob 与目标语法字符、前导 `-`、控制符、视觉欺骗字符、超长），attach 已有会话走 `gate_rules::existing_tmux_name_issue`（只拒空 · 控制符 · 视觉欺骗字符）。
 
 **谁在守**：`exact_target_is_the_exact_match_shape` · `tmux_backend_gate_guard_tests.rs::every_target_placeholder_comes_from_exact_target`（monitor 生产段零处 `-t {…}`）。
 
@@ -360,7 +360,7 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 
 界面那份 IR 与两个渲染器都已删，理由是起会话只剩一处。今天：monitor 的每一条起会话路径（新起 · resume · 换号重启 · 分叉 · 远端开新会话 · 本机拉起 · cc-bus 派生 · 就地 resume）问那台后端要的都只是一行 `ccm [交给 agent 的…] -- [ccm 自己的…]`；环境、中转地址、身份标记由那台的 `ccm` 在最终 exec 那一处定，外层容器只包这一行。**表达不了就放弃**照旧：渲不出 ⇒ 回码 `refused` 带那一句，调用方不回落、不拼第二条。
 
-**谁在守**：`launch_cli_parity_tests.rs::every_monitor_launch_path_hands_over_one_ccm_line` · `local_tests.rs::every_local_launch_shape_is_one_ccm_line` · `ccm_tests.rs::nothing_but_ccm_renders_a_command_that_starts_an_agent`（后端生产段除 `ccm` 自己的最终 exec 外零处渲出直接起 agent 的命令；唯一登记的例外是给手机端冻结的 `resolve_query.rs`）。
+**谁在守**：`ccm_invocation_tests.rs::every_rendered_ccm_line_is_accepted_by_the_ccm_argv` · `local_tests.rs::every_local_launch_shape_is_one_ccm_line` · `ccm_tests.rs::nothing_but_ccm_renders_a_command_that_starts_an_agent`（后端生产段除 `ccm` 自己的最终 exec 外零处渲出直接起 agent 的命令；唯一登记的例外是给手机端冻结的 `resolve_query.rs`）。
 
 ## 33a. `ccm --print` 是平价预言机——它对**环境变量**说的必须逐条等于真跑做的（U9a / unified-backend）
 

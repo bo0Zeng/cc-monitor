@@ -10,8 +10,6 @@ pub mod ccm_invocation;
 pub(crate) mod local;
 pub mod wire;
 
-#[cfg(test)]
-mod cli_parity;
 
 use crate::control::launch_account::{self as la, Settled};
 

@@ -2546,25 +2546,19 @@ fn every_tmux_subcommand_rendered_for_a_client_is_a_utf8_client() {
         bad.extend(b.into_iter().map(|h| format!("{what}: {h}")));
     };
 
-    // ① 金样：渲成了的那几条里凡是有 tmux 的。
-    let golden: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../src/backend/control/launch_render/fixtures/cli-golden.json"
-    ))
-    .expect("金样不是 JSON");
-    let mut golden_with_tmux = 0;
-    for c in golden["cases"].as_array().expect("金样没有 cases") {
-        let out = c["out"].as_str().unwrap_or_default();
-        if c["ok"] == serde_json::Value::Bool(true) && tmux_words_without_utf8_flag(out).0 > 0 {
-            golden_with_tmux += 1;
-            check(
-                &format!("金样「{}」", c["name"].as_str().unwrap_or_default()),
-                out,
-            );
+    // ① 那一行的字节表：渲成了的那几条里凡是有 tmux 的。
+    use crate::control::launch_render::ccm_invocation::tests as table;
+    let mut table_with_tmux = 0;
+    for c in table::cells() {
+        let Ok(out) = table::render_cell(&c) else { continue };
+        if tmux_words_without_utf8_flag(&out).0 > 0 {
+            table_with_tmux += 1;
+            check(&format!("那一行的表「{}」", c.0), &out);
         }
     }
     assert!(
-        golden_with_tmux > 0,
-        "金样里一条带 tmux 的都没有 —— 就地 resume 那一条该在"
+        table_with_tmux > 0,
+        "那一行的表里一条带 tmux 的都没有 —— 就地 resume 那一条该在"
     );
 
     // ① ccm 每一形：接回 · resume 接上在跑的 · 建容器接进去 / 不接 · 带 cc-bus 登记 · codex 的总线身份配方。

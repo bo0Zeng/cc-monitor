@@ -78,7 +78,6 @@ const NODE_SUITES: readonly (readonly [string, string])[] = [
   // **39 → 38**（被测对象没了）：`sanitizeRemoteLauncher` 一条 · `isValidConfigDir` 一条随函数删；
   //    加一条「launcher 空白 ⇒ 默认、注入字符原样上线」（前端只剩缺省那一格）；「非法 configDir 拒」那条改测「前端不判、原样上线」（条数不变）。
   // **38 → 37**：`isValidSessionId` 那条随函数删；三条「非法 sid ⇒ throw」改测「前端不判、resumeSid 单报」（条数不变）。
-  ["test:remote-launch", "tests/frontend/ui/remote-launch.test.ts"],
   ["test:format", "tests/frontend/ui/format.test.ts"],
   // 🔴 〔删用量 09-18〕原先这里有 `["test:usage-pivot", "tests/frontend/ui/views/usage-pivot.test.ts", 14]`。
   // 用量 ② 轴整轴退役 ⇒ 套件文件整删（**被测对象没了**，不是把测试删光了）。
@@ -96,8 +95,7 @@ const NODE_SUITES: readonly (readonly [string, string])[] = [
   // （界面自己剥模型名的后缀）换成照抄后端的 `modelText` ⇒ 模块与套件整删（**被测对象没了**）。
   // 🔴 原先这里有 `["test:session-backend", "tests/session-backend.test.ts", 10]`。TS 座
   // `session-backend.ts` 零生产调用、删了 ⇒ 套件整删（**被测对象没了**，8 条测座本身）；外层 tmux 三格的字节由
-  // 入库夹具 `tmux-outer-golden.json` ＋ Rust `payload_tests.rs` 接着（对照见）；
-  // 与座无关的 2 条（shim 漂移守卫 · 铸名口数据流）搬进了 `remote-launch.test.ts`。
+  // 入库夹具 `tmux-outer-golden.json` ＋ Rust `payload_tests.rs` 接着（对照见）。
   // 🔴 原先这里有 `["test:panorama-session-files", "tests/frontend/ui/panorama/session-files.test.ts", 7]`。
   // 写类工具那张表与它的口径搬进了后端（会话事实由后端出成品）⇒ 被测对象 `collectEditedFiles` 删了、套件整删
   // （**被测对象没了**，不是把测试删光了）；七条逐条搬进 `tests/backend/observe/facts_query_tests.rs::edit_tools_rules_moved_from_the_frontend_suite`。
@@ -105,7 +103,7 @@ const NODE_SUITES: readonly (readonly [string, string])[] = [
   // 维度表只为载荷渲染那条存在，起会话只剩那一行 `ccm …` ⇒ 维度表与套件整删（**被测对象没了**）。
   // 🔴 原先这里有 `["test:launch-render-cli", "tests/launch-render-cli.test.ts", 30]`。
   // TS 那份 `ccm …` 调用行渲染器删了 ⇒ 套件整删（**被测对象没了**）；它测的行为逐条由
-  // Rust `ccm_invocation_tests.rs` 与入库夹具 `cli-golden.json` 接着（对照见）。
+  // Rust `ccm_invocation_tests.rs` 接着（对照见）。
 ];
 
 
@@ -361,7 +359,7 @@ describe("覆盖率地板表的自洽", () => {
 //
 // 08-08 沿「扫描面之外还有谁」量到最后一格。**先核先纠正了我自己上一轮记的话**：
 // `.mts` 其实**在 tsc 范围内**（`tsconfig.json` 的 `include` 是 `["src", "e2e"]`，
-// 实测往 `tests/e2e/tmux-target-emit.mts` 塞一个类型错，`tsc --noEmit` 当场报 TS2322）。
+// 实测往 `tests/e2e/` 下的 `.mts` 塞一个类型错，`tsc --noEmit` 当场报 TS2322）。
 //
 // 而 `.mjs` **不在**：`allowJs` 没开 ⇒ tsc 整类不看。实测把
 // `tests/scripts/assert-coverage-floors.mjs` 结尾塞一个不闭合的对象字面量，
@@ -434,9 +432,7 @@ describe("`.mjs` 与 `.mts` 的最小闸门", () => {
     expect(include, "`tsconfig.json` 里找不到 `include` —— 读法坏了").not.toBeNull();
     expect(
       include![1],
-      "`tsconfig.json` 的 include 不再收 `tests` —— `.mts` 那一批（08-08 实测 3 个，\n" +
-        "今天住 `tests/e2e/`：\n" +
-        "`tmux-target-emit` / `ccm-print-parity-emit` / `launch-payload-golden-emit`）\n" +
+      "`tsconfig.json` 的 include 不再收 `tests` —— `tests/e2e/` 下那一批 `.mts`\n" +
         "会**悄悄**退出类型检查，变成和 `.mjs` 一样的盲区。要么把它们并进别的 include，\n" +
         "要么把它们也纳入上面那条 `node --check`（但那只挡语法，挡不住类型）。",
     ).toContain("tests");

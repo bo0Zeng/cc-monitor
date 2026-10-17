@@ -749,7 +749,7 @@ export function launchRenderShim(
     switch (a.op) {
       case "launch-render-cli": {
         // 那一行由那台后端渲（Rust，`wire::render_ccm_launch`）；桩答的是一个认得出的中性替身（`ccm <rendered:请求>`），
-        //   判据判的是「前端把后端交的那一行原样交出去」与「请求里带了什么」，不是渲得对不对（那是 `cli-golden.json` 的活）。
+        //   判据判的是「前端把后端交的那一行原样交出去」与「请求里带了什么」，不是渲得对不对（那是 `ccm_invocation_tests.rs` 那张表的活）。
         let out: unknown;
         try {
           out = await inner("render_ccm_launch", { req: body() });

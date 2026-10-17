@@ -5,7 +5,7 @@
 //! 包的也只是这一行。
 //!
 //! 渲不出来带理由（[`Refusal`]）：某个维度说不成 ccm 参数 ⇒ 整条放弃，不渲一条丢了修饰的命令。
-//! 独立说法：本文件的自测（判据自带清单）与入库夹具 `fixtures/cli-golden.json`（手写 `out`）。
+//! 独立说法：本文件的自测（判据自带清单）与那一行的字节表（`ccm_invocation_tests.rs::cells`，手写期望）。
 
 use copy_core::copy_text;
 use std::collections::BTreeSet;
@@ -65,7 +65,7 @@ pub enum FreeTextSlot {
 }
 
 impl Refusal {
-    /// 降级理由。入库夹具 `cli-golden.json` 的 refusal 用例逐字节比它（夹具那一侧是手写期望）。
+    /// 降级理由。那一行的字节表里拒的那几格逐字节比它（表里是手写期望）。
     pub fn reason(&self) -> String {
         match self {
             Refusal::MissingCap(c) => copy_text(
@@ -502,4 +502,4 @@ fn join_halves(mut agent: Vec<String>, ours: Vec<String>) -> Vec<String> {
 
 #[cfg(test)]
 #[path = "../../../../tests/backend/control/launch_render/ccm_invocation_tests.rs"]
-mod tests;
+pub(crate) mod tests;

@@ -230,34 +230,16 @@ fn bad_inputs_are_refused_and_say_which_cell() {
 }
 
 /// 流进 `terminal-ssh` 的远端命令的全部来路（起会话只有那一行 `ccm …`，就地 resume 那一格外层包一层 tmux）×
-/// 入库夹具的每条请求 × 典型工作目录 ⇒ `(哪条, 渲出来的命令)`。渲不出来的（拒）不在里面。
+/// 那一行的字节表的每一格 × 典型工作目录 ⇒ `(哪条, 渲出来的命令)`。渲不出来的（拒）不在里面。
 fn every_rendered_remote_command(cwds: &[&str]) -> Vec<(String, String)> {
-    use crate::control::launch_render::wire;
-    let fixture = |s: &str| -> Vec<Value> {
-        serde_json::from_str::<Value>(s).unwrap()["cases"]
-            .as_array()
-            .unwrap()
-            .clone()
-    };
+    use crate::control::launch_render::ccm_invocation::tests as table;
     let mut out = Vec::new();
-    for c in fixture(include_str!(
-        "../../src/backend/control/launch_render/fixtures/cli-golden.json"
-    )) {
-        let caps: std::collections::BTreeSet<String> = c["caps"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .map(|v| v.as_str().unwrap().to_string())
-            .collect();
-        for cwd in std::iter::once(c["req"]["cwd"].clone()).chain(cwds.iter().map(|d| json!(d))) {
-            let mut req = c["req"].clone();
-            req["cwd"] = cwd.clone();
-            let r: wire::CliRenderRequest = serde_json::from_value::<wire::CliRenderRequest>(req)
-                .unwrap()
-                .with_prefs(&serde_json::from_value(c["prefs"].clone()).unwrap_or_default());
-            let account = crate::control::launch_account::settled_as_asked(&r.account, &r.models);
-            if let Ok(cmd) = wire::render_ccm_launch_with(&r, &account, &caps, "ccm") {
-                out.push((format!("cli {} · cwd {cwd}", c["name"]), cmd));
+    for c in table::cells() {
+        for cwd in std::iter::once(c.1.cwd.clone()).chain(cwds.iter().map(|d| Some(d.to_string()))) {
+            let mut cell = c.clone();
+            cell.1.cwd = cwd.clone();
+            if let Ok(cmd) = table::render_cell(&cell) {
+                out.push((format!("cli {} · cwd {cwd:?}", c.0), cmd));
             }
         }
     }
