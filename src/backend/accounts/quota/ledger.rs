@@ -142,6 +142,18 @@ impl Observed {
         Some((u1 - p.used) * 100.0 / ((t.since - p.since) as f64 / 60.0))
     }
 
+    /// ★ 号的总用速（点 / 分，别的会话那一份从它扣）：量得到 ⇒ [`Self::rate`]；最近 [`EST_FRESH`] 里还看到过这个窗口、
+    /// 读数却已经超过 [`EST_FRESH`] 没动 ⇒ 0（量到没人在用）；其余（只有一次采样 · 好久没看到）⇒ `None`。
+    pub(crate) fn load(&self, name: &str, now: u64) -> Option<f64> {
+        if let Some(r) = self.rate(name, now) {
+            return Some(r);
+        }
+        let t = self.trend.get(name)?;
+        let seen = self.window_seen(name).at;
+        (now.saturating_sub(seen) <= EST_FRESH && now.saturating_sub(t.since) > EST_FRESH)
+            .then_some(0.0)
+    }
+
     /// ★ 这个窗口「1% ≈ 多少用量」（折合输入 token）：量到过、还没过 [`PER_PCT_KEPT`] ⇒ 那个数；否则 `None`（不猜）。
     pub(crate) fn tokens_per_pct(&self, name: &str, now: u64) -> Option<u64> {
         self.per_pct
@@ -330,6 +342,11 @@ impl Ledger {
     /// 发节点的那一条（判的缓存订它）。
     pub(crate) fn nodes(&self) -> &super::nodes::Nodes {
         &self.nodes
+    }
+
+    /// 每发用量那一本（判要本会话量出来的 · 别的会话压在各号上的）。
+    pub(crate) fn spend(&self) -> &std::sync::Arc<super::spend::Spend> {
+        &self.spend
     }
 
     /// 发一件事实的节点（被拒 · 续期失败由换号那一路调；显示变了由记账这里自己调）。

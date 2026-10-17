@@ -201,7 +201,14 @@ pub(crate) fn use_now_with(
     }
     let plan = crate::accounts::quota::rules::Adopted::of(s.uses.as_ref());
     let row = ctx.row(&s.agent);
-    let facts = ctx.hop.accts(&s, &plan.settings, &row, now);
+    let facts = ctx.hop.accts(
+        &req.sid,
+        &s,
+        &ctx.hop.store.now(),
+        &plan.settings,
+        &row,
+        now,
+    );
     let sigma = match decide::use_now(&turn::sigma_of(&s), &facts, now, &req.account) {
         Ok(x) => x,
         Err(_) if s.off.contains(&req.account) => {

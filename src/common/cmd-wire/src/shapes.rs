@@ -157,7 +157,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("remote-reach", "afc15ebc"),
     ("resolve", "a25c2648"),
     ("resync", "2f5a0ba2"),
-    ("rotation-facts", "15255f28"),
+    ("rotation-facts", "6b381193"),
     ("rotation-for-new", "9e572841"),
     ("rotation-reload", "d02ffe19"),
     ("rotation-settings", "c41239db"),

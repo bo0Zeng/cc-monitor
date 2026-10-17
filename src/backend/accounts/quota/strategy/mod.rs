@@ -27,12 +27,13 @@ fn bare() -> Engine {
     e.register_global_module(StandardPackage::new().as_shared_module());
     // 运算符照普通函数调：快路不给错填位置（`1 / 0` 报不出第几行），慢路填。
     e.set_fast_operators(false);
+    // 字符串 · 数组 · 表的上限 Rhai 按一个值里所有层加起来算（ctx 整个是一个值）：定在号到一两百个时 ctx 与策略照号摊平的表都放得下。
     e.set_max_operations(MAX_OPERATIONS)
         .set_max_call_levels(16)
         .set_max_expr_depths(64, 32)
-        .set_max_string_size(4096)
-        .set_max_array_size(1024)
-        .set_max_map_size(256);
+        .set_max_string_size(65_536)
+        .set_max_array_size(8_192)
+        .set_max_map_size(8_192);
     e.on_print(|_| {});
     e.on_debug(|_, _, _| {});
     e.on_progress(|n| {

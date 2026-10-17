@@ -1,7 +1,9 @@
 //! 策略文件与沙箱：头的读写不碰代码 · 沙箱掐得住 · 回值照形状收 · 判据夹具都读得懂、后端不认任何一份策略的名字。
 
 use super::*;
-use crate::accounts::quota::rules::decide::{turn, Ctx, CtxAcct, Pick, Sigma, Strategy};
+use crate::accounts::quota::rules::decide::{
+    turn, Ctx, CtxAcct, Me, Pick, PromptCache, Sigma, Strategy,
+};
 use crate::accounts::quota::rules::Acct;
 use crate::accounts::quota::strategy::FailKind;
 
@@ -22,6 +24,15 @@ fn with_code(code: &str) -> String {
 }
 
 static SETTINGS: std::sync::OnceLock<serde_json::Value> = std::sync::OnceLock::new();
+static ME: Me = Me {
+    pace: None,
+    spread: None,
+    context: None,
+    write_extra: None,
+    ttl: None,
+    grow: None,
+    cached: Vec::new(),
+};
 
 fn ctx_of(now: u64) -> Ctx<'static> {
     Ctx {
@@ -41,7 +52,13 @@ fn ctx_of(now: u64) -> Ctx<'static> {
             refused_until: None,
             rate: [Some(0.5), None],
             per_pct: [None, None],
+            weekly: false,
+            off: false,
+            others: None,
         }],
+        me: &ME,
+        pinned: false,
+        temp: &[],
     }
 }
 
@@ -69,6 +86,118 @@ fn a_strategy_reads_the_size_of_one_percent_and_nothing_where_unmeasured() {
     c.accounts[0].per_pct = [Some(25_000), None];
     let v = f.code.decide(&c).expect("跑得通");
     assert_eq!(v.why, [("a".to_string(), "25000|()".to_string())]);
+}
+
+/// ★ 策略读得到智能切换要的事实：每号有没有周上限 · 本会话先不用 · 别的会话压在上面的用速；本会话的用速 · 起伏 · 上下文 ·
+/// 写缓存倍数 · 缓存留多久 · 上下文每分钟长多少 · 各号上的缓存；在用的号是不是手动选的 · 手动排的先后。量不到的格是 `()`。
+#[test]
+fn a_strategy_reads_the_facts_smart_switching_needs_and_nothing_where_unmeasured() {
+    let f = parse(&with_code(
+        r#"fn decide(ctx) {
+  let a = ctx.accounts[0];
+  let s = ctx.session;
+  let c = if s.cached.b != () { `${s.cached.b["until"]}/${s.cached.b.tokens}` } else { "-" };
+  let o = if a.others != () { `${a.others.w5h}` } else { type_of(a.others) };
+  #{ order: ["a"], why: #{ a: `${a.weekly}|${a.off}|${o}|${s.pace}|${s.spread}|${s.context}|${s.writeExtra}|${s.ttl}|${s.grow}|${c}|${ctx.pinned}|${ctx.temp}` } }
+}"#,
+    ))
+    .expect("编得过");
+    let bare = f.code.decide(&ctx_of(1)).expect("跑得通");
+    assert_eq!(
+        bare.why,
+        [(
+            "a".to_string(),
+            "false|false|()|||||||-|false|[]".to_string()
+        )],
+        "量不到的都是 ()"
+    );
+    let me = Me {
+        pace: Some(1500.0),
+        spread: Some(0.5),
+        context: Some(120_000),
+        write_extra: Some(1.9),
+        ttl: Some(3600),
+        grow: Some(800.0),
+        cached: vec![PromptCache {
+            account: "b".into(),
+            until: 5000,
+            tokens: 90_000,
+        }],
+    };
+    let temp = ["a".to_string(), "b".to_string()];
+    let mut c = ctx_of(1);
+    c.accounts[0].weekly = true;
+    c.accounts[0].off = true;
+    c.accounts[0].others = Some(0.25);
+    c.me = &me;
+    c.pinned = true;
+    c.temp = &temp;
+    let v = f.code.decide(&c).expect("跑得通");
+    assert_eq!(
+        v.why,
+        [(
+            "a".to_string(),
+            "true|true|0.25|1500.0|0.5|120000|1.9|3600|800.0|5000/90000|true|[\"a\", \"b\"]"
+                .to_string()
+        )]
+    );
+}
+
+/// ★ 号到 100 个时 ctx 照样放得进沙箱：改 ctx 里一格（整个 ctx 按嵌套合计查一遍）· 照号摊平的几张表 · 每号一行的表都放得下。
+#[test]
+fn the_sandbox_holds_a_hundred_accounts() {
+    let f = parse(&with_code(
+        r#"fn decide(ctx) {
+  let all = ctx;
+  let amt = #{}; let exp = #{}; let wk = #{}; let has = #{}; let tpp = #{}; let oth = #{}; let tier = #{}; let open = #{}; let cache = #{};
+  let col = []; let ids = []; let rows = [];
+  for a in all.accounts {
+    amt[a.id] = 100.0 - a.used.w5h; exp[a.id] = a.resets.w5h; wk[a.id] = a.weekly; has[a.id] = a.sendable;
+    tpp[a.id] = a.tokensPerPct.w5h; oth[a.id] = a.others.w5h; tier[a.id] = "default"; open[a.id] = true;
+    cache[a.id] = all.session.cached[a.id]["until"];
+    col.push(a.pos); col.push(a.pos); col.push(a.pos); col.push(a.pos); col.push(a.pos); col.push(a.pos);
+    ids.push(a.id);
+    rows.push(#{ id: a.id, amt: amt[a.id], exp: exp[a.id], wk: wk[a.id], has: has[a.id], tpp: tpp[a.id], oth: oth[a.id], cache: cache[a.id] });
+  }
+  all.accounts[0].sendable = false;
+  #{ order: [rows[0].id] }
+}"#,
+    ))
+    .expect("编得过");
+    let ids: Vec<String> = (0..100).map(|i| format!("account-{i:03}")).collect();
+    let me = Me {
+        pace: Some(1000.0),
+        context: Some(100_000),
+        cached: ids
+            .iter()
+            .map(|id| PromptCache {
+                account: id.clone(),
+                until: 5000,
+                tokens: 100_000,
+            })
+            .collect(),
+        ..Me::default()
+    };
+    let mut c = ctx_of(1);
+    let one = c.accounts[0].clone();
+    c.accounts = ids
+        .iter()
+        .enumerate()
+        .map(|(pos, id)| CtxAcct {
+            id: id.clone(),
+            pos,
+            per_pct: [Some(150_000), Some(1_000_000)],
+            others: Some(0.1),
+            weekly: true,
+            ..one.clone()
+        })
+        .collect();
+    c.me = &me;
+    let v = f
+        .code
+        .decide(&c)
+        .unwrap_or_else(|e| panic!("100 个号放不下：{e:?}"));
+    assert_eq!(v.order, ["account-000"]);
 }
 
 /// ★ 存设置只重写头：代码一个字节都不动；再读回来头就是新的那份。
@@ -260,6 +389,8 @@ fn the_backend_knows_no_strategy_and_no_rule() {
             barred: None,
             rate: [Some(0.5), None],
             per_pct: [None, None],
+            weekly: false,
+            others: None,
         },
         Acct {
             id: "b".into(),
@@ -270,6 +401,8 @@ fn the_backend_knows_no_strategy_and_no_rule() {
             barred: None,
             rate: [None, None],
             per_pct: [None, None],
+            weekly: false,
+            others: None,
         },
         Acct {
             id: "c".into(),
@@ -280,6 +413,8 @@ fn the_backend_knows_no_strategy_and_no_rule() {
             barred: None,
             rate: [None, None],
             per_pct: [None, None],
+            weekly: false,
+            others: None,
         },
     ];
     assert_eq!(fixtures().len(), 3, "材料没读到");

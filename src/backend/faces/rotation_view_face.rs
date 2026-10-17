@@ -522,13 +522,21 @@ pub(crate) fn view_with(
         });
     }
     let row = ctx.row(&agent);
-    let facts = ctx.hop.accts(&session, &plan.settings, &row, now);
-    let d = ctx.hop.judge_session(&session, &plan, &facts, now, &[]);
+    let sid = match &req.target {
+        RotTarget::Session { sid } => sid.as_str(),
+        RotTarget::Strategy { .. } => "",
+    };
+    let facts = ctx
+        .hop
+        .accts(sid, &session, &base, &plan.settings, &row, now);
+    let d = ctx
+        .hop
+        .judge_session(sid, &session, &plan, &facts, now, &[]);
     let hours = u64::from(req.hours.unwrap_or(12).clamp(1, 48));
     let budget = crate::accounts::quota::rules::code::Budgeted::new(&plan);
     let stz = plan.tz.clone();
     let tl = simulate::simulate(
-        &turn::sigma_of(&session),
+        &ctx.hop.sigma(sid, &session, now),
         &facts,
         &plan.settings,
         &budget,

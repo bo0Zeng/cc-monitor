@@ -384,6 +384,8 @@ fn u9_our_three_sessions_keep_every_setting() {
         barred: None,
         rate: [None, None],
         per_pct: [None, None],
+        weekly: false,
+        others: None,
     };
     let sig = |c: &str| Sigma {
         start: "p1".into(),
