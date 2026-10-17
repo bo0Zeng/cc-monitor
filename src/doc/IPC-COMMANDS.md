@@ -10383,7 +10383,7 @@ prompt?: string,
  */
 model?: string, 
 /**
- * 起在哪一个权限档（那一家声明的档之一）；缺 ＝ 跟随那一家自己的默认。
+ * 起在哪一个权限档（那一家声明的档之一）；缺 ＝ 这台偏好里那一家的那一档，没设 ⇒ 那一家自己的默认。
  */
 permissionMode?: string, 
 /**
@@ -10486,7 +10486,7 @@ client?: string, };
 ```ts
 type AgentFacts = { 
 /**
- * 线上的 kind（交回 `session-new.agent` 的那一格）。
+ * 线上的 kind（交回 `session-open {what: new}` 的 `agent` 那一格）。
  */
 kind: string, 
 /**
@@ -10509,7 +10509,11 @@ modelNote: string | null,
 /**
  * 起会话可选的权限档（不给越过批准那一档）；这一家没有 ⇒ 空。
  */
-permissionModes: Array<AgentPick>, };
+permissionModes: Array<AgentPick>, 
+/**
+ * 从这台起新会话默认的那一档（这台偏好里设了、且还在上面那张清单里）；没设 ⇒ `null`（跟随那一家自己的默认）。
+ */
+permissionDefault: AgentPick | null, };
 type AgentPick = { 
 /**
  * 原值（`session-new` 的 `model` / `permissionMode` 收的就是它）。
@@ -11186,6 +11190,10 @@ resumeInTmux: boolean,
  */
 models: { [key in string]: string }, 
 /**
+ * 从这台起新会话默认用哪个权限档（哪一家 → 那一家声明的档的原值）；恢复不读它。
+ */
+permissionModes: { [key in string]: string }, 
+/**
  * 上下文上限表：模型名子串（大小写不敏感，最长匹配胜）→ 上限 tokens。
  */
 contextLimits: { [key in string]: number }, 
@@ -11255,6 +11263,10 @@ resumeInTmux: boolean,
  */
 models: { [key in string]: string }, 
 /**
+ * 从这台起新会话默认用哪个权限档（哪一家 → 那一家声明的档的原值）；恢复不读它。
+ */
+permissionModes: { [key in string]: string }, 
+/**
  * 上下文上限表：模型名子串（大小写不敏感，最长匹配胜）→ 上限 tokens。
  */
 contextLimits: { [key in string]: number }, 
@@ -11305,6 +11317,10 @@ launchers?: { [key in string]: string }, resumeInTmux?: boolean,
  * 某几个号的模型：`{号: 模型 | null}`，`null` ⇒ 删掉那一条。只动点到的那几个号。
  */
 models?: { [key in string]: string | null }, 
+/**
+ * 某几家新会话的权限档：`{kind: 档 | null}`，`null` ⇒ 删掉那一条。写的时候核在那一家的清单里。
+ */
+permissionModes?: { [key in string]: string | null }, 
 /**
  * 整张上限表（整张换掉）。
  */

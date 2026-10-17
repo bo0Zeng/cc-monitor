@@ -38,6 +38,8 @@ pub(crate) struct Prefs {
     pub(crate) resume_in_tmux: bool,
     /// 这台每个号默认用哪个模型（号 → 模型，原值）。
     pub(crate) models: BTreeMap<String, String>,
+    /// 从这台起新会话默认用哪个权限档（哪一家 → 那一家声明的档的原值）；恢复不读它。
+    pub(crate) permission_modes: BTreeMap<String, String>,
     /// 上下文上限表：模型名子串（大小写不敏感，最长匹配胜）→ 上限 tokens。
     #[cfg_attr(test, ts(as = "BTreeMap<String, u32>"))]
     pub(crate) context_limits: BTreeMap<String, u64>,
@@ -59,6 +61,7 @@ impl Default for Prefs {
             launchers: BTreeMap::new(),
             resume_in_tmux: false,
             models: BTreeMap::new(),
+            permission_modes: BTreeMap::new(),
             context_limits: BTreeMap::new(),
             agent_homes: BTreeMap::new(),
             pb_dir: None,
@@ -177,6 +180,7 @@ fn check(p: &Prefs) -> Result<(), String> {
     for (what, n) in [
         ("launchers", p.launchers.len()),
         ("models", p.models.len()),
+        ("permissionModes", p.permission_modes.len()),
         ("contextLimits", p.context_limits.len()),
         ("agentHomes", p.agent_homes.len()),
     ] {
@@ -322,6 +326,38 @@ fn reply(l: &Loaded, path: Option<&Path>) -> PrefsReply {
     }
 }
 
+/// 这一趟要写的权限档都在那一家的清单里（读的时候不核：适配层改过清单的那一档起会话时当没设，[`permission_mode_for`]）。
+fn offered_modes(req: &PrefsSet) -> Result<(), String> {
+    for (kind, m) in req.permission_modes.iter().flatten() {
+        if let Some(m) = m.as_deref().map(str::trim).filter(|m| !m.is_empty()) {
+            if offered(kind, m).is_none() {
+                return Err(format!("`permissionModes.{kind}` is not a mode that agent offers: {m:?}"));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// `kind` 那一家的清单里那一档（不在 / 那一家没有权限档 ⇒ `None`）。
+pub(crate) fn offered(kind: &str, mode: &str) -> Option<crate::agents::Choice> {
+    crate::agents::launch_face_among(crate::agents::REGISTRY, kind)?
+        .permission?
+        .modes
+        .iter()
+        .find(|c| c.value == mode)
+        .copied()
+}
+
+/// 从这台起 `kind` 那一家的新会话默认的权限档：设了且还在那一家清单里 ⇒ 那一档；清单里没了 ⇒ 不带、记一行。
+pub(crate) fn permission_mode_for(p: &Prefs, kind: &str) -> Option<String> {
+    let m = p.permission_modes.get(kind)?;
+    if offered(kind, m).is_none() {
+        tracing::warn!("这台偏好里 {kind} 的新会话权限档 {m:?} 那一家已不认 ⇒ 不带");
+        return None;
+    }
+    Some(m.clone())
+}
+
 /// `prefs-read` 的本体（家目录是参数）。
 pub(crate) fn answer_read_in(home: Option<&Path>) -> PrefsReply {
     let path = home.map(path_in);
@@ -346,6 +382,10 @@ pub(crate) struct PrefsSet {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) models: Option<BTreeMap<String, Option<String>>>,
+    /// 某几家新会话的权限档：`{kind: 档 | null}`，`null` ⇒ 删掉那一条。写的时候核在那一家的清单里。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) permission_modes: Option<BTreeMap<String, Option<String>>>,
     /// 整张上限表（整张换掉）。
     #[serde(default)]
     #[cfg_attr(test, ts(optional, as = "Option<BTreeMap<String, u32>>"))]
@@ -383,6 +423,12 @@ pub(crate) fn patched(mut p: Prefs, s: &PrefsSet) -> Prefs {
         match v.as_deref().map(str::trim).filter(|m| !m.is_empty()) {
             None => p.models.remove(k),
             Some(m) => p.models.insert(k.clone(), m.to_string()),
+        };
+    }
+    for (k, v) in s.permission_modes.iter().flatten() {
+        match v.as_deref().map(str::trim).filter(|m| !m.is_empty()) {
+            None => p.permission_modes.remove(k),
+            Some(m) => p.permission_modes.insert(k.clone(), m.to_string()),
         };
     }
     if let Some(l) = &s.context_limits {
@@ -441,7 +487,9 @@ pub(crate) fn answer_set_in(
         l => l.prefs(),
     };
     let next = patched(base, req);
-    check(&next).map_err(|e| PrefsSetErr::BadArgs(crate::common::contract::malformed(&e)))?;
+    check(&next)
+        .and_then(|()| offered_modes(req))
+        .map_err(|e| PrefsSetErr::BadArgs(crate::common::contract::malformed(&e)))?;
     write(own, &next).map_err(|e| PrefsSetErr::IoFailed(joined(e)))?;
     Ok(reply(&read_at(&path), Some(&path)))
 }

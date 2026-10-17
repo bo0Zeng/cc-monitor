@@ -37,6 +37,7 @@ fn prefs_start_absent_and_a_patch_touches_only_what_it_names() {
             "launchers": {"claude": "cc", "codex": "cx"},
             "resumeInTmux": true,
             "models": {"b": "sonnet"},
+            "permissionModes": {},
             "contextLimits": {"opus": 1000000},
             "childTab": "hide",
             "bgTab": "show",
@@ -152,5 +153,27 @@ fn the_pb_dir_is_set_trimmed_kept_and_cleared_by_an_empty_string() {
     assert_eq!(r.prefs.pb_dir.as_deref(), Some("/opt/pb"));
     let r = set(&home, serde_json::json!({"pbDir": ""})).unwrap();
     assert_eq!(r.prefs.pb_dir, None);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// ★ **P2** 新会话的权限档按「哪一家」存：收那一家清单里的档（`null` 删那一条）；不在清单里的 ⇒ `bad_args`、盘上那份逐字节不变。
+#[test]
+fn a_permission_mode_default_is_kept_per_agent_and_only_one_that_agent_offers() {
+    let home = scratch("perm");
+    let got = set(&home, serde_json::json!({"permissionModes": {"claude": "plan"}})).unwrap();
+    assert_eq!(got.prefs.permission_modes.get("claude").map(String::as_str), Some("plan"));
+    let file = path_in(&home);
+    let before = std::fs::read(&file).unwrap();
+    for bad in [
+        serde_json::json!({"permissionModes": {"claude": "yolo"}}),
+        serde_json::json!({"permissionModes": {"codex": "plan"}}),
+        serde_json::json!({"permissionModes": {"nobody": "plan"}}),
+    ] {
+        let e = set(&home, bad.clone()).unwrap_err();
+        assert!(matches!(e, PrefsSetErr::BadArgs(_)), "{bad} ⇒ {e:?}");
+        assert_eq!(std::fs::read(&file).unwrap(), before, "{bad} 拒了还动了盘");
+    }
+    let got = set(&home, serde_json::json!({"permissionModes": {"claude": null}})).unwrap();
+    assert!(got.prefs.permission_modes.is_empty());
     let _ = std::fs::remove_dir_all(&home);
 }

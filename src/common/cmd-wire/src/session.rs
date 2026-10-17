@@ -619,7 +619,7 @@ pub struct RecentDir {
 )]
 #[serde(rename_all = "camelCase")]
 pub struct AgentFacts {
-    /// 线上的 kind（交回 `session-new.agent` 的那一格）。
+    /// 线上的 kind（交回 `session-open {what: new}` 的 `agent` 那一格）。
     pub kind: String,
     /// 这一家写给人看的名字。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
@@ -633,6 +633,8 @@ pub struct AgentFacts {
     pub model_note: Option<String>,
     /// 起会话可选的权限档（不给越过批准那一档）；这一家没有 ⇒ 空。
     pub permission_modes: Vec<AgentPick>,
+    /// 从这台起新会话默认的那一档（这台偏好里设了、且还在上面那张清单里）；没设 ⇒ `null`（跟随那一家自己的默认）。
+    pub permission_default: Option<AgentPick>,
 }
 
 /// 一个可选值：交回去的原值 ＋ 写给人看的字。

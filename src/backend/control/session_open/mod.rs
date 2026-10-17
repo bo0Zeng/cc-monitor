@@ -122,7 +122,7 @@ pub(crate) struct NewOpen {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) model: Option<String>,
-    /// 起在哪一个权限档（那一家声明的档之一）；缺 ＝ 跟随那一家自己的默认。
+    /// 起在哪一个权限档（那一家声明的档之一）；缺 ＝ 这台偏好里那一家的那一档，没设 ⇒ 那一家自己的默认。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) permission_mode: Option<String>,
@@ -915,7 +915,12 @@ fn start_new(
     {
         return Err(malformed("`model` is not a model name"));
     }
-    let permission_args: Vec<String> = match req.permission_mode.as_deref() {
+    // 没给 ⇒ 这台偏好里那一家的那一档（那一家已不认 ⇒ 不带）。
+    let asked_mode = req
+        .permission_mode
+        .clone()
+        .or_else(|| crate::control::machine_prefs::permission_mode_for(deps.prefs, kind));
+    let permission_args: Vec<String> = match asked_mode.as_deref() {
         None => Vec::new(),
         Some(m) => match face.permission {
             Some(p) if p.modes.iter().any(|c| c.value == m) => {

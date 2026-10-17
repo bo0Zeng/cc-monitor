@@ -905,3 +905,38 @@ fn the_facts_run_is_where_a_new_session_without_run_lands() {
         }
     }
 }
+
+/// ★ **P1** 新会话的权限档：请求给了照给的；没给 ⇒ 这台偏好里那一家的那一档；偏好里那一档那一家已不认 ⇒ 不带。
+/// 恢复不读偏好（正控：设了偏好也不带，照记录里最后那一档）。
+#[test]
+fn a_new_session_takes_this_machines_permission_mode_unless_asked_and_resume_never_does() {
+    let flag_of = |argv: &[String]| -> Option<String> {
+        argv.windows(2).find(|w| w[0] == "--permission-mode").map(|w| w[1].clone())
+    };
+    for (pref, asked, resume, want) in [
+        (None, None, false, None),
+        (Some("plan"), None, false, Some("plan")),
+        (Some("plan"), Some("acceptEdits"), false, Some("acceptEdits")),
+        (None, Some("acceptEdits"), false, Some("acceptEdits")),
+        (Some("yolo"), None, false, None),
+        (Some("plan"), None, true, None),
+    ] {
+        let mut rig = Rig::new(Some(vec![]));
+        if let Some(m) = pref {
+            rig.prefs.permission_modes.insert("claude".into(), m.into());
+        }
+        let mut req = if resume {
+            resume_req_tmux()
+        } else {
+            new(asked.map_or(json!({}), |m| json!({ "permissionMode": m })))
+        };
+        req["run"] = json!("tmux");
+        rig.open(req.clone()).unwrap_or_else(|e| panic!("{req} 没起：{e:?}"));
+        let argv = rig.ccm.borrow()[0].clone();
+        assert_eq!(flag_of(&argv).as_deref(), want, "偏好 {pref:?} · 请求 {asked:?} · 恢复 {resume}：{argv:?}");
+    }
+}
+
+fn resume_req_tmux() -> Value {
+    resume(Some("tmux"))
+}

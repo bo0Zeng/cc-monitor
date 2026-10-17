@@ -7793,6 +7793,18 @@
       "zh": "Claude 在后台起的主会话副本 · 默认进不进标签栏",
       "args": []
     },
+    "settings.machine.permissionMode": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "新会话的权限档",
+      "args": []
+    },
+    "settings.machine.permissionModeHelp": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "从这台起新会话时用；会话里仍可切换。",
+      "args": []
+    },
     "settings.machine.tabShow": {
       "kind": "action",
       "role": "按钮",
