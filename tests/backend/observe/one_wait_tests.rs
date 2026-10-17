@@ -130,61 +130,14 @@ fn a_rewritten_record_is_reread_from_the_start() {
     assert!(got, "换过的那份里有摘要，没认出来");
 }
 
-/// 会话由一个新进程报出：此刻已在跑的那个不算；新起的那个（活的、pidfile 认得是它）写下 pidfile ⇒ 等到。
-#[cfg(target_os = "linux")]
-#[test]
-fn a_session_reported_by_a_new_process_is_seen_and_the_old_one_is_not() {
-    let home = scratch("arrive");
-    let dir = crate::observe::watcher::pidfile_dir(&home);
-    std::fs::create_dir_all(&dir).unwrap();
-    let sid = "aaaaaaaa-1111-2222-3333-444444444444";
-    let pidfile = |child: &std::process::Child| {
-        let pid = child.id();
-        let ticks = crate::platform::proc::proc_starttime(pid).expect("读得到起始时刻");
-        let body = format!(
-            r#"{{"pid":{pid},"sessionId":"{sid}","kind":"interactive","procStart":"{ticks}"}}"#
-        );
-        std::fs::write(dir.join(format!("{pid}.json")), body).unwrap();
-    };
-    let mut old = std::process::Command::new("sleep")
-        .arg("30")
-        .spawn()
-        .unwrap();
-    pidfile(&old);
-    // 只有旧的那个 ⇒ 没等到。
-    let armed = session_arrival(&home, sid).expect("装");
-    assert!(!rt().block_on(armed.within(300)), "旧进程被当成了新报出的");
-    // 新起一个、写下它的 pidfile ⇒ 等到。
-    let armed = session_arrival(&home, sid).expect("装");
-    let mut new = std::process::Command::new("sleep")
-        .arg("30")
-        .spawn()
-        .unwrap();
-    pidfile(&new);
-    // 期限放到兜底上限的两倍：等到了却没当场回，就要等满它、撞下面那道（兜底的数）。
-    let got = rt().block_on(armed.within(2_000 * guard_core::wall::CEILING_SECS));
-    for c in [&mut old, &mut new] {
-        let _ = c.kill();
-        let _ = c.wait();
-    }
-    let _ = std::fs::remove_dir_all(&home);
-    assert!(got, "新进程报出了却没等到");
-}
-
-/// 一次性等待的期限只由发起方给：后端里每一处等（`.within(`）登记在这里，交的都是请求里那一格（换号重启：`compact_within_ms` / `arrive_within_ms`）。
+/// 一次性等待的期限只由发起方给：后端里每一处等（`.within(`）登记在这里，交的都是请求里那一格（换号重启：`compact_within_ms`）。
 /// 多一处 · 交了别的（自定的常量）⇒ 红。
 #[test]
 fn every_one_shot_wait_takes_the_deadline_its_caller_gave() {
-    const WAITS: &[(&str, &str)] = &[
-        (
-            "control/session_restart.rs",
-            ".within(req.compact_within_ms)",
-        ),
-        (
-            "control/session_restart.rs",
-            ".within(req.arrive_within_ms)",
-        ),
-    ];
+    const WAITS: &[(&str, &str)] = &[(
+        "control/session_restart.rs",
+        ".within(req.compact_within_ms)",
+    )];
     let root = guard_core::addr::backend_src_root();
     let mut seen = Vec::new();
     for (p, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {

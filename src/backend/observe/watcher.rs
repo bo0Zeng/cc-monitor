@@ -3225,6 +3225,14 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
     // P2：给这个进程实例挂 pidfd 看守（取代原先每 2s 一遍的判活扫描）。
     arm_pid_watcher(&key_for_watch, pid, start, state);
     if announced {
+        // 接上它的是一个新进程（换号重启时旧的可能还没走）⇒ 报到那一本记一次；同一个进程的另一份文件不算。
+        let holders = state
+            .sessions
+            .values()
+            .filter(|e| e.sid == sid && e.pid == pid);
+        if holders.count() == 1 {
+            sink.arrivals.again(&sid);
+        }
         return wrote;
     }
     // **先宣告、后读**（read8a）：认出来就报，不等记录。记录交后台预读（推进游标 / 行号到此刻的完整行数 L，零行帧），

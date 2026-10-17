@@ -1,5 +1,6 @@
 //! **起好的会话报到没有**：整台一本「此刻活着的会话 ⇒ 报到序号 · 工作目录」，挂在 watcher 发帧的出口上（`watcher::FrameSink`），
-//! 与界面看到的 `session_added` 是同一帧。等的一方交「认它的那一格 ＋ 只认哪个序号之后报到的」，见到了当场交回 sid。不起线程、不定时。
+//! 与界面看到的 `session_added` 是同一帧；活着的 sid 由一个新进程接上（换号重启：旧的还没走、那一帧不重发）由 watcher 另报一声（[`Arrivals::again`]）。
+//! 等的一方交「认它的那一格 ＋ 只认哪个序号之后报到的」，见到了当场交回 sid。不起线程、不定时。
 
 use cmd_wire::session::ArriveBy;
 use std::collections::HashMap;
@@ -61,25 +62,35 @@ impl Arrivals {
     pub(crate) fn on_frame(&mut self, f: &Frame) {
         match f {
             Frame::SessionAdded(crate::wire::SessionAdded { sid, cwd, .. }) => {
-                if self.live.contains_key(sid) {
-                    return;
+                if !self.live.contains_key(sid) {
+                    self.arrive(sid, cwd.clone());
                 }
-                let n = crate::common::arrival_seq::next();
-                self.live.insert(sid.clone(), (n, cwd.clone()));
-                self.waiting.retain(|(by, since, t)| {
-                    if hit(by, *since, sid, n, cwd.as_deref()) {
-                        tell(t, sid);
-                        false
-                    } else {
-                        awaited(t)
-                    }
-                });
             }
             Frame::SessionRemoved(crate::wire::SessionRemoved { sid, .. }) => {
                 self.live.remove(sid);
             }
             _ => {}
         }
+    }
+
+    /// 活着的 `sid` 由一个新进程接上了（同一个会话不再宣告第二次）⇒ 记一次新报到。
+    pub(crate) fn again(&mut self, sid: &str) {
+        let cwd = self.live.get(sid).and_then(|(_, c)| c.clone());
+        self.arrive(sid, cwd);
+    }
+
+    /// 记下一次报到（新的序号），交给在等它的。
+    fn arrive(&mut self, sid: &str, cwd: Option<String>) {
+        let n = crate::common::arrival_seq::next();
+        self.waiting.retain(|(by, since, t)| {
+            if hit(by, *since, sid, n, cwd.as_deref()) {
+                tell(t, sid);
+                false
+            } else {
+                awaited(t)
+            }
+        });
+        self.live.insert(sid.to_string(), (n, cwd));
     }
 
     /// 交一件「等它」：已经报到过的当场交，否则等着。

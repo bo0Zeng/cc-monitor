@@ -1,5 +1,5 @@
-//! 这台的报到序号：每当一条会话从「不活」变成「活」加一。起会话之前记下此刻的序号（`session-open` · `bus-spawn` 回包的 `arrival.since`），
-//! 之后报到的那一条才算它（`observe::arrivals` 见到 `session_added` 时记）。
+//! 这台的报到序号：每当一条会话从「不活」变成「活」、或活着的会话由一个新进程接上，加一（`observe::arrivals` 记）。
+//! 起会话之前（`session-open` · `bus-spawn` 回包的 `arrival.since`）· 换号重启停旧之前记下此刻的序号，之后报到的那一条才算它。
 
 use std::sync::atomic::{AtomicU64, Ordering};
 

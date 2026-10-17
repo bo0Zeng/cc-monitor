@@ -1,11 +1,11 @@
 //! **一次性等待**：盯一个目录的文件事件，每来一批问一次「到了没有」；到了立刻回，到期限回「没等到」。
 //!
-//! 两种用法（换号重启那条命令用）：等某条会话的记录里长出满足判定的一条（压缩摘要）· 等某条会话由一个新进程报出（pidfile）。
-//! 那一次有界等待（[`bounded`]）`session-arrive` 也用。
+//! 用法：等某条会话的记录里长出满足判定的一条（换号重启等压缩摘要 · 换模型等那一句）。
+//! 那一次有界等待（[`bounded`]）等报到（`session-arrive` · 换号重启）也用。
 //! 事件由内核推（经盯盘原语 [`crate::platform::watch_file`]，不传时间窗），检查跑在它收的那条线程上；等的那一侧只有**一次**有界等待，期限由发起方给。
 //! 先装耳朵、再看一眼：装好之前已经到了的也认得出。
 
-use crate::observe::watcher::{running_sessions, Follow};
+use crate::observe::watcher::Follow;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -117,27 +117,6 @@ pub(crate) fn compact_summary(agent_home: &Path, sid: &str) -> Result<Armed, Str
     let record = crate::observe::query::locate::session_record(agent_home, sid)?;
     let kind = crate::agents::record_kind_of(&record).unwrap_or_default();
     record_line(&record, move |v| crate::agents::is_compact_summary(kind, v))
-}
-
-/// 等 `sid` 由一个**此刻还没在跑**的进程报出（pidfile 目录里一份活的、认得是它的 pidfile）。
-pub(crate) fn session_arrival(agent_home: &Path, sid: &str) -> Result<Armed, String> {
-    let dir = crate::observe::watcher::pidfile_dir(agent_home);
-    let home = agent_home.to_path_buf();
-    let sid = sid.to_string();
-    let now = |home: &Path, sid: &str| -> Vec<u32> {
-        running_sessions(home)
-            .into_iter()
-            .filter(|(s, _)| s == sid)
-            .map(|(_, p)| p)
-            .collect()
-    };
-    let before = now(&home, &sid);
-    arm(&dir, move || {
-        now(&home, &sid)
-            .iter()
-            .any(|p| !before.contains(p))
-            .then_some(())
-    })
 }
 
 #[cfg(test)]

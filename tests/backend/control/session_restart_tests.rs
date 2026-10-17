@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::control::session_batch::TmuxEntry;
+use crate::wire::SessionFaceExt as _;
 use serde_json::json;
 use std::collections::BTreeSet;
 use std::io::Write as _;
@@ -23,7 +24,47 @@ fn row(name: &str, sid: &str, agent: bool) -> TmuxEntry {
     }
 }
 
+/// 报到那一本收的那两帧（只有 sid 要紧）。
+fn added(sid: &str) -> crate::wire::Frame {
+    crate::wire::Frame::SessionAdded(crate::wire::SessionAdded {
+        sid: sid.into(),
+        agent_kind: "claude".to_string(),
+        background: false,
+        attachable: None,
+        cwd: Some("/p".to_string()),
+        project_dir: None,
+        name: None,
+        path: None,
+        face: crate::wire::SessionFace::of(crate::wire::Life::Live {
+            activity: None,
+            tmux: None,
+        }),
+        name_face: crate::history::search_rules::name_face(&Default::default()),
+        waiting_for: None,
+        hidden: None,
+        container: None,
+        pid: 0,
+    })
+}
+
+fn removed(sid: &str) -> crate::wire::Frame {
+    crate::wire::Frame::SessionRemoved(crate::wire::SessionRemoved {
+        sid: sid.into(),
+        cause: crate::wire::RemovalCause::Gone,
+        by: None,
+    })
+}
+
+/// 新进程怎么报出：旧的先走、新的再报到 · 旧的还没走、新的已接上 · 没报出。
+#[derive(Clone, Copy)]
+enum Shows {
+    AfterOld,
+    OverOld,
+    Never,
+}
+
 /// 替身：名单给定；送字 / 杀 / 起只记下来。`summarize` ⇒ 收到压缩那一句时往记录里写一条摘要（像那一家压完了）。
+/// 报到那一本是真的（`observe::arrivals`）：起之前旧进程已报到过，杀 · 起按 `shows` 喂它。
 struct Rig {
     rows: Vec<TmuxEntry>,
     record: PathBuf,
@@ -33,6 +74,8 @@ struct Rig {
     /// 持着这条会话的活进程：停旧之前 · 停旧之后（替身的 pidfile）。
     live_before: Vec<u32>,
     live_after: Vec<u32>,
+    shows: Shows,
+    book: Mutex<crate::observe::arrivals::Arrivals>,
     calls: Mutex<Vec<String>>,
 }
 
@@ -58,6 +101,12 @@ impl Rig {
             ccm_exit: 0,
             live_before: vec![],
             live_after: vec![],
+            shows: Shows::AfterOld,
+            book: Mutex::new({
+                let mut b = crate::observe::arrivals::Arrivals::default();
+                b.on_frame(&added(SID));
+                b
+            }),
             calls: Mutex::new(vec![]),
         }
     }
@@ -83,6 +132,9 @@ impl Rig {
                     sid: &str|
          -> Result<crate::control::cc_bus::BusNote, crate::wire::spec::Fail> {
             note(format!("kill {name} {sid}"));
+            if self.kill_err.is_none() && !matches!(self.shows, Shows::OverOld) {
+                self.book.lock().unwrap().on_frame(&removed(sid));
+            }
             match self.kill_err {
                 Some(c) => Err(crate::wire::spec::Fail::new(c, "said".to_string())),
                 None => Ok(crate::control::cc_bus::BusCleanup::default().note()),
@@ -102,6 +154,14 @@ impl Rig {
             };
         let run_ccm = |argv: &[String]| -> Result<(i32, String, String), batch::CmdErr> {
             note(format!("ccm {}", argv.join(" ")));
+            if self.ccm_exit == 0 {
+                let mut b = self.book.lock().unwrap();
+                match self.shows {
+                    Shows::AfterOld => b.on_frame(&added(SID)),
+                    Shows::OverOld => b.again(SID),
+                    Shows::Never => {}
+                }
+            }
             Ok((self.ccm_exit, String::new(), "boom".to_string()))
         };
         let mint =
@@ -154,25 +214,11 @@ impl Rig {
     }
 }
 
-/// 一次装好的假等待：「报出」那一格由替身直接答。
-struct Said(bool);
-impl Wait for Said {
-    async fn within(self, _ms: u64) -> bool {
-        self.0
-    }
-}
-
-/// 两种等待在替身里的样子：压缩摘要那一种是真的（盯真记录文件），报出那一种恒「到了」。
-enum Ears {
-    Real(crate::observe::one_wait::Armed),
-    Fake(Said),
-}
+/// 压缩摘要那一种等待是真的（盯真记录文件）。
+struct Ears(crate::observe::one_wait::Armed);
 impl Wait for Ears {
     async fn within(self, ms: u64) -> bool {
-        match self {
-            Ears::Real(a) => a.within(ms).await,
-            Ears::Fake(s) => s.within(ms).await,
-        }
+        self.0.within(ms).await
     }
 }
 
@@ -197,10 +243,16 @@ impl Host for Host_ {
         crate::observe::one_wait::record_line(&self.0.record, |v| {
             crate::agents::is_compact_summary(crate::agents::record_tree_kind().unwrap(), v)
         })
-        .map(Ears::Real)
+        .map(Ears)
     }
-    async fn watch_arrival(&self, _sid: &str) -> Result<Ears, String> {
-        Ok(Ears::Fake(Said(true)))
+    async fn arrival(&self, sid: &str, since: u64, _ms: u64) -> bool {
+        let (tx, mut rx) = tokio::sync::oneshot::channel();
+        self.0.book.lock().unwrap().expect(
+            cmd_wire::session::ArriveBy::Sid { sid: sid.into() },
+            since,
+            Arc::new(Mutex::new(Some(tx))),
+        );
+        rx.try_recv().is_ok()
     }
 }
 
@@ -268,6 +320,21 @@ fn a_restart_stops_and_starts_under_the_same_terminal_name() {
         "{calls:?}"
     );
     assert_eq!(rig.did("send"), 0, "没要求压缩却送了那一句");
+}
+
+/// 报出认的是停旧之后这个 sid 的报到：旧的先走新的再报到 · 旧的还没走新的已接上 ⇒ `arrived`；只有旧进程那一次 ⇒ `missed`。
+#[test]
+fn only_an_arrival_after_the_stop_counts_as_started() {
+    for (tag, shows, want) in [
+        ("after-old", Shows::AfterOld, "arrived"),
+        ("over-old", Shows::OverOld, "arrived"),
+        ("never", Shows::Never, "missed"),
+    ] {
+        let mut rig = Rig::new(tag);
+        rig.shows = shows;
+        let (out, _) = go(rig, args(false, 0));
+        assert_eq!(out.expect("应成功")["started"], want, "{tag}");
+    }
 }
 
 /// 起失败（旧的已停）⇒ `start_failed`，`data` 带终端名。
