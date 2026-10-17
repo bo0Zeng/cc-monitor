@@ -117,7 +117,7 @@ pub(crate) fn with_launch_ctx<T>(
     f(&fork, &pre, user_home.as_deref())
 }
 
-/// 恢复那一条要从记录里读的：记录在这台记录树里找；哪一家 · 工作目录 · 模型 · 权限档从会话事实那一处扫描读（上限表用不着，不读）。
+/// 恢复那一条要从记录里读的：记录按 sid 在这台各家自己的记录根里找；哪一家 · 工作目录 · 模型 · 权限档从会话事实那一处扫描读（上限表用不着，不读）。
 /// 任一找不到 ⇒ `None`（不恢复）。`session-say` 恢复那一支同一份。
 pub(crate) fn resume_of(sid: &str) -> Option<ResumeOf> {
     use crate::observe::history_query as hq;
@@ -138,8 +138,7 @@ pub(crate) fn resume_of(sid: &str) -> Option<ResumeOf> {
 /// 分叉的源会话此刻在不在 tmux 里（同 `session-open-facts` 那一格 `fork.launch.terminal`）；说不出 ⇒ `None`。
 fn fork_in_tmux(sid: &str) -> Option<bool> {
     let home = crate::history::listing::agent_home();
-    let root = crate::agents::records_root(&home)?;
-    let source = crate::agents::find_session_file(&root, sid).ok()?;
+    let source = crate::agents::find_session(&home, sid).ok()?.file;
     hosted(&super::fork_face::launch_of(&home, &source, sid))
 }
 
@@ -397,12 +396,9 @@ pub(crate) fn facts(
     let fork = match fork_of {
         None => None,
         Some(sid) => {
-            let root = crate::agents::records_root(&home).ok_or((
-                "fork_failed",
-                copy_core::copy_text("beSessionNew.fork.noTree", &[]),
-            ))?;
-            let source =
-                crate::agents::find_session_file(&root, sid).map_err(|m| ("fork_failed", m))?;
+            let source = crate::agents::find_session(&home, sid)
+                .map_err(|m| ("fork_failed", m))?
+                .file;
             let turn = at.and_then(|uuid| {
                 let f = Ro::open(&source).ok()?;
                 crate::observe::turns::turn_at(std::io::BufReader::new(f), uuid)

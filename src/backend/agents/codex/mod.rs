@@ -38,8 +38,8 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
     // 骨架那一问：照整条翻译的类（这一家的会话不大，不另写一份便宜判法 ⇒ 与翻译恒一致）。
     class: Some(record::class_of),
     chain: None,
-    // Codex 的会话不在按项目分的记录树里、今天也不分叉 ⇒ 这两格没有。
-    find_session: None,
+    find_session: history::find_session,
+    // 今天不分叉。
     branch: None,
     drift: None,
     // Codex 的记录不进全局搜索 / 摘录那几条通用路（它们只走记录树那一家）⇒ 不给文本面。

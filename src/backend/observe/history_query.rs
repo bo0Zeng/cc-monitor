@@ -836,12 +836,12 @@ pub(crate) struct LinesPage {
 /// 最后一条逐字：「对方那份记录也没了 ⇒ 重开必失败，要诚实报错，不许静默变成『起了个新会话』」。
 /// 前端 resume 一跳（`tab-session-actions.ts`）在开终端之前问一次；答「不在」就不开。
 ///
-/// - **只收 sid、不收路径**（`INVARIANTS §41.6` 收窄第 3 条）：找文件那一步是两侧共用的
-///   `agents::find_session_file`（经注册表那一格，本体住 `agents/claudecode/branch.rs`；与分叉 / 删会话同一份；符号链接不算命中）。
+/// - **只收 sid、不收路径**（`INVARIANTS §41.6` 收窄第 3 条）：找文件那一步是 `agents::find_session`
+///   （逐家在自己的记录根下找，与分叉同一份；符号链接不算命中）。
 /// - sid 形状不合法 ⇒ `Err`，**先于任何 IO**；找不到 ⇒ `Ok(present = false)` —— 这是一个答案，不是错误。
-/// - 回 `root`（查的是哪棵记录树）：报错时要说清查了什么。
+/// - 回 `root`：找到 ⇒ 那份所在的记录根；找不到 ⇒ 记录树的根（报错时要说清查了什么）。
 ///
-/// ⚠ **射程如实写**：它查的是**这台后端**的记录树（`agent_home()/projects`）。会话若起在另一个
+/// ⚠ **射程如实写**：记录树那一家查的是**这台后端**的记录树（`agent_home()/projects`）。会话若起在另一个
 /// 账号的配置根下（`CLAUDE_CONFIG_DIR` 指向别处），这里答「不在」而那边其实有 —— 调用方拿到「不在」
 /// 时报的话要说清是「这棵树里没有」，不是「世上没有」。
 pub(crate) fn record_in(agent_home: &Path, sid: &str) -> Result<RecordProbe, String> {
@@ -850,19 +850,19 @@ pub(crate) fn record_in(agent_home: &Path, sid: &str) -> Result<RecordProbe, Str
             "bad session id shape (letters, digits, hyphen; 1..=64): {sid:?}"
         )));
     }
-    let Some(root) = records_root(agent_home) else {
-        return Err(NO_TREE.to_string());
+    let (present, root) = match crate::agents::find_session(agent_home, sid) {
+        Ok(at) => (true, at.root),
+        Err(_) => (false, records_root(agent_home).ok_or(NO_TREE)?),
     };
-    let present = crate::agents::find_session_file(&root, sid).is_ok();
     Ok(RecordProbe {
         present,
         root: root.to_string_lossy().into_owned(),
     })
 }
 
-/// 这台记录树里那条会话的记录文件（同 [`record_in`] 那一找）。
+/// 这台那条会话的记录文件（同 [`record_in`] 那一找，哪一家的都算）。
 pub(crate) fn session_record(agent_home: &Path, sid: &str) -> Result<std::path::PathBuf, String> {
-    crate::agents::find_session_file(&records_root(agent_home).ok_or(NO_TREE)?, sid)
+    crate::agents::find_session(agent_home, sid).map(|at| at.file)
 }
 
 /// [`record_in`] 按**这次 resume 要用的那个账号配置目录**查（`history-record` 的 `configDir`）。
@@ -897,9 +897,9 @@ pub(crate) fn record_for(
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct RecordProbe {
-    /// `<sid>.jsonl` 在记录树里（根那一层或项目目录那一层）找得到。
+    /// 那条会话的记录在这台找得到（哪一家的都算）。
     pub present: bool,
-    /// 查的那棵记录树的根。
+    /// 找到 ⇒ 那份所在的记录根；找不到 ⇒ 查的那棵记录树的根。
     pub root: String,
 }
 

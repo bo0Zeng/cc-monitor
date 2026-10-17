@@ -4,8 +4,8 @@
 //! （`claude` · `codex`：把自己叫什么、收到什么参数、账号变量在不在写进一个文件就退）。子进程里走生产那一整条：
 //! 历史清单（`history_list::machine_listing`，那一行的 sid）→ 界面那一问（`session-open {what: resume}`，直路 · 本机；哪一家由这台从记录读）→
 //! 回包里那一行 `ccm …` → `ccm` 自己（`control::ccm::run`，exec 掉子进程）→ 假启动器。
-//! Claude 那一行 ⇒ `claude --resume <sid>`、不带账号变量；同一个家里的 Codex 记录不串进来。
-//! Codex 那一条今天恢复不了：这台只在 Claude 的记录树里找记录（`session-open` 回 `record_gone`）。
+//! Codex 那一行 ⇒ `codex --no-daemon resume <sid>`（记录在它自己的日期树里，经适配层那一格按 sid 找到）；
+//! Claude 那一行 ⇒ `claude --resume <sid>`。两行都不带账号变量。
 //! 买不到：界面里点那一下（GUI）· 真 codex / 真 claude · tmux 那一形（直路那一形就是 pane 里最终跑的那一趟）。
 
 use std::path::{Path, PathBuf};
@@ -101,6 +101,10 @@ fn resume_in_child(root: &Path, sid: &str) -> String {
 #[test]
 fn resuming_from_history_starts_the_agent_the_session_belongs_to() {
     let root = sandbox("both");
+    assert_eq!(
+        resume_in_child(&root, SID_CODEX),
+        format!("codex --no-daemon resume {SID_CODEX} | CLAUDE_CONFIG_DIR=<unset>\n")
+    );
     assert_eq!(
         resume_in_child(&root, SID_CLAUDE),
         // 我们起的 Claude 会话恒带会话级答题 hook（`--settings` 那两个词，叫这台的 ccm 入口）。

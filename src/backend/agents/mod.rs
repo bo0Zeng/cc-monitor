@@ -556,28 +556,46 @@ pub(crate) fn launchable_kinds() -> Vec<&'static str> {
 pub(crate) type BranchFn =
     fn(&[serde_json::Value], &str, &str, &str) -> Result<Vec<serde_json::Value>, String>;
 
-/// 按 sid 找会话文件 —— 通用层（分叉 · 「记录还在不在」）按 sid 找文件的唯一入口：逐家问，谁认得算谁。
-/// 没有哪一家答得了 ⇒ 照实拒（都答不出 ⇒ 第一家说的那一句）。
-pub(crate) fn find_session_file(records_root: &Path, sid: &str) -> Result<PathBuf, String> {
-    find_session_file_among(REGISTRY, records_root, sid)
+/// 按 sid 找到的那份会话记录：在哪一家的记录根下 · 文件本身。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SessionAt {
+    pub(crate) root: PathBuf,
+    pub(crate) file: PathBuf,
 }
 
-/// [`find_session_file`] 的可喂夹具那一半。
-pub(crate) fn find_session_file_among(
+/// 按 sid 找会话文件 —— 通用层按 sid 找记录的唯一入口：逐家在**它自己的**记录根下问（[`records_root_of`]），谁认得算谁。
+/// `tree_home` 是记录树那一家的家目录（账号根）。没有哪一家答得了 ⇒ 照实拒（都答不出 ⇒ 第一家说的那一句）。
+pub(crate) fn find_session(tree_home: &Path, sid: &str) -> Result<SessionAt, String> {
+    find_session_among(REGISTRY, tree_home, sid)
+}
+
+/// [`find_session`] 的可喂夹具那一半。
+pub(crate) fn find_session_among(
     registry: &[Adapter],
-    records_root: &Path,
+    tree_home: &Path,
     sid: &str,
-) -> Result<PathBuf, String> {
+) -> Result<SessionAt, String> {
     let mut first_err = None;
-    for find in registry.iter().filter_map(|a| a.records?.find_session) {
-        match find(records_root, sid) {
-            Ok(p) => return Ok(p),
+    for a in registry {
+        let (Some(r), Some(root)) = (a.records, records_root_of(a, tree_home)) else {
+            continue;
+        };
+        match (r.find_session)(&root, sid) {
+            Ok(file) => return Ok(SessionAt { root, file }),
             Err(e) => {
                 first_err.get_or_insert(e);
             }
         }
     }
     Err(first_err.unwrap_or_else(|| format!("no agent adapter can locate session {sid:?}")))
+}
+
+/// 一家的会话记录住哪个根：记录树那一家 ⇒ `tree_home` 下那棵树；合成历史那一家 ⇒ 它自己报的根。说不出 ⇒ `None`。
+fn records_root_of(a: &Adapter, tree_home: &Path) -> Option<PathBuf> {
+    match a.records?.tree {
+        Some(t) => Some((t.root)(tree_home)),
+        None => (a.history?.root)(),
+    }
 }
 
 /// `kind` 那一家的分叉记录变换 —— 通用层（`control/fork_write.rs`）分叉的唯一入口。那一家答不了 ⇒ 照实拒。
@@ -622,8 +640,8 @@ pub(crate) struct RecordFace {
     pub(crate) class: Option<fn(&serde_json::Value) -> Option<record::RecordClass>>,
     /// 一行原文 ⇒ 它在记录链上的事实（主线外清单由通用层 [`mainline`] 按它算）。`None` ＝ 这一家的记录没有链（清单恒空）。
     pub(crate) chain: Option<fn(&Line<'_>) -> Option<mainline::ChainFact>>,
-    /// 在这一家的记录树（`records_root`）下按 sid 找那份会话文件（原共享 crate `branch-core`）。`None` ＝ 这一家不按 sid 找。
-    pub(crate) find_session: Option<fn(&Path, &str) -> Result<PathBuf, String>>,
+    /// 在这一家自己的记录根（[`records_root_of`]）下按 sid 找那份会话文件。每一家都得答：恢复 · 「记录还在不在」· 按 sid 读会话都经它。
+    pub(crate) find_session: fn(&Path, &str) -> Result<PathBuf, String>,
     /// 分叉的记录变换：`(记录, 分叉点 uuid, 源 sid, 新 sid)` ⇒ 新会话的记录（原共享 crate `branch-core`）。`None` ＝ 这一家不分叉。
     pub(crate) branch: Option<BranchFn>,
     /// 这一家的漂移账（看不懂的记录类型记在哪）⇒ 各面的快照（通用形 [`drift::DriftFaceReport`]）；`None` ＝ 这一家不记。
@@ -1489,11 +1507,12 @@ pub(crate) fn followed_among(registry: &[Adapter], tree_home: &Path) -> Vec<Foll
         .iter()
         .filter_map(|a| {
             let face = a.records?;
-            let root = match a.live {
-                LiveBy::Pidfiles if Some(a.kind) == tree_kind => (face.tree?.root)(tree_home),
-                LiveBy::HeldOpen => (a.history?.root)()?,
-                _ => return None,
+            let follows = match a.live {
+                LiveBy::Pidfiles => Some(a.kind) == tree_kind,
+                LiveBy::HeldOpen => true,
+                LiveBy::Unknown => false,
             };
+            let root = records_root_of(a, tree_home).filter(|_| follows)?;
             Some(Followed {
                 kind: a.kind,
                 root,

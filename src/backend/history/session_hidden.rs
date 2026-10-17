@@ -35,11 +35,8 @@ pub(crate) fn title_here(sid: &str, annotations: &Table) -> String {
     {
         return t.to_string();
     }
-    let home = super::listing::agent_home();
-    match super::listing::records_root(&home)
-        .and_then(|root| crate::agents::find_session_file(&root, sid).ok())
-    {
-        Some(p) => super::listing::session_title_of(&p),
-        None => sid.chars().take(8).collect(),
+    match crate::agents::find_session(&super::listing::agent_home(), sid) {
+        Ok(at) => super::listing::session_title_of(&at.file),
+        Err(_) => sid.chars().take(8).collect(),
     }
 }

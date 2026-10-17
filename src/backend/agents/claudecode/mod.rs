@@ -251,7 +251,7 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
     activity: None,
     class: Some(record_of::class_of),
     chain: Some(chain::chain_fact),
-    find_session: Some(branch::find_session_file),
+    find_session: branch::find_session_file,
     branch: Some(branch::build_branch_records),
     drift: Some(drift::snapshot),
     text: Some(super::TextFace {

@@ -1,5 +1,4 @@
 use super::*;
-use crate::agents::claudecode::paths::projects_root;
 use crate::platform::fs::NewFile;
 use std::path::PathBuf;
 
@@ -103,7 +102,7 @@ fn write_new_file_refuses_existing_target() {
 
 /// 找那一份走的是注册表那一格（本体住适配层 `agents/claudecode/branch.rs`）—— 这里钉的是**这条路真的经过它**。
 fn find_here(root: &Path, sid: &str) -> Result<PathBuf, String> {
-    crate::agents::find_session_file(&projects_root(root), sid)
+    crate::agents::find_session(root, sid).map(|at| at.file)
 }
 
 #[test]

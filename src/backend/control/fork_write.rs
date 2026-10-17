@@ -23,7 +23,7 @@
 //!
 //! 定位源文件那一步先前本模块自己有一份，monitor 侧另有一份、而且**收的入参形状都不一样**
 //! （那边收路径、这边收 sid）。`K-R88` 把它收成一份，入参形状统一成 sid；今天住适配层、经注册表那一格够
-//! （`agents::find_session_file`）。
+//! （`agents::find_session`）。
 //!
 //! ⇒ 本模块今天只剩：**读 → 调变换 → `O_EXCL` 落盘**。
 //! 🔴 **写那一半刻意留在这里**（`K-R88` 的射程逐字：这里收「找」，不搬「写」）——
@@ -196,11 +196,8 @@ fn run_inner(
     source_sid: &str,
     message_uuid: &str,
 ) -> Result<ForkResult, String> {
-    // 🔴 「找文件」**这一句就是全部** —— 本模块只填「记录树的根在哪」这一格
-    //（那是 agent 适配层的知识），找本身两侧同一份（`K-R88`）。
-    let root = crate::agents::records_root(agent_home)
-        .ok_or("refuse fork: no agent here keeps a record tree")?;
-    let source = crate::agents::find_session_file(&root, source_sid)?;
+    // 🔴 「找文件」**这一句就是全部** —— 本模块只交家目录，每一家在自己的记录根下找（适配层的知识，`K-R88`）。
+    let source = crate::agents::find_session(agent_home, source_sid)?.file;
     let lines = read_jsonl(&source)?;
     let new_sid = new_session_id(source_sid);
     // 分叉变换问这份记录归的那一家。

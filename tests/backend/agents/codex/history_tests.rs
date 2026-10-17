@@ -177,3 +177,35 @@ fn the_core_name_of_a_codex_session_is_its_first_human_line() {
     assert_eq!(name, "修一下夹具里的那条测试");
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// 按 sid 找那份 rollout（注册表 `RecordFace.find_session` 那一格）：日期树里那一份 · 形状不合法先于 IO 就拒 ·
+/// 文件名末尾不是这个 sid 的不算 · 符号链接不算命中 · 找不到照实拒。
+#[test]
+fn a_session_is_found_by_sid_under_the_dated_tree() {
+    let home = tmp("find");
+    let root = parse::sessions_root(&home);
+    let day = root.join("2026/10/02");
+    std::fs::create_dir_all(&day).unwrap();
+    let want = day.join(format!("rollout-2026-10-02T10-00-00-{SID_A}.jsonl"));
+    std::fs::write(&want, format!("{}\n", meta("/w"))).unwrap();
+    // 名字里带着这个 sid、却不是末尾那一段 ⇒ 不是它。
+    std::fs::write(
+        day.join(format!("rollout-{SID_A}-{SID_B}.jsonl")),
+        format!("{}\n", meta("/w")),
+    )
+    .unwrap();
+    assert_eq!(find_session(&root, SID_A), Ok(want.clone()));
+    assert!(find_session(&root, "0199aaaa-0000-7000-8000-00000000000f").is_err());
+    assert!(find_session(&root, "../x").is_err());
+    assert!(find_session(&home.join("nowhere"), SID_A).is_err());
+    // 指过去的链接不算：同一个 sid 只剩链接那一份 ⇒ 找不到。
+    #[cfg(unix)]
+    {
+        std::fs::remove_file(&want).unwrap();
+        let elsewhere = home.join(format!("rollout-2026-10-02T10-00-00-{SID_A}.jsonl"));
+        std::fs::write(&elsewhere, format!("{}\n", meta("/w"))).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, &want).unwrap();
+        assert!(find_session(&root, SID_A).is_err());
+    }
+    let _ = std::fs::remove_dir_all(&home);
+}

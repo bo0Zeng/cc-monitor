@@ -134,8 +134,8 @@ fn r88_backend_production(rel: &str) -> String {
 /// 判据不可能替代它 —— 那一刀要真的改一次再看两边红不红。
 #[test]
 fn finding_a_session_file_by_sid_now_lives_in_exactly_one_place() {
-    // 共享 crate `branch-core` 收进后端适配层 `agents/claudecode/branch.rs`；通用层经注册表那一格（`agents::find_session_file`）够它。
-    const CALL: &str = "agents::find_session_file(";
+    // 共享 crate `branch-core` 收进后端适配层 `agents/claudecode/branch.rs`；通用层经注册表那一格（`agents::find_session`）够它。
+    const CALL: &str = "agents::find_session(";
 
     // ① 唯一那份：声明只有一处，住在适配层（运行期读：它在后端那一半，不长编译期的跨半边边）。
     let core = r88_backend_production("src/backend/agents/claudecode/branch.rs");
