@@ -23,12 +23,13 @@ vi.mock("../../../src/frontend/ui/ipc/chan-caller", () => ({
 }));
 
 import { onMachineState } from "../../../src/frontend/ui/machine-feed";
+import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
 
 describe("机器状态推送", () => {
   it("订上就问一次各台此刻的成品（不等 seen）", async () => {
     const got: [string, string | undefined][] = [];
     const off = onMachineState((origin, m) => got.push([origin, m?.state]));
-    await vi.waitFor(() => expect(got).toEqual([["devbox", "up"]]));
+    await vi.waitFor(() => expect(got).toEqual([["devbox", "up"]]), UNTIL_CEILING);
     expect(calls).toEqual(["machine-read"]);
     off();
   });
