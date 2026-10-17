@@ -404,100 +404,6 @@ fn w5vis_an_unreadable_session_is_counted_and_said_not_silently_dropped() {
     std::fs::remove_dir_all(&tmp).ok();
 }
 
-/// 一行合并用的会话行（只有排序与计数要的那几格是要紧的）。
-fn row(sid: &str, updated: i64, more: u32, cut: bool) -> SessionHits {
-    SessionHits {
-        agent: "a".into(),
-        session_id: sid.into(),
-        project_path: String::new(),
-        project_name: String::new(),
-        jsonl_path: String::new(),
-        title: sid.into(),
-        updated_at: updated,
-        hits: vec![],
-        more_hits: more,
-        hits_truncated: cut,
-        is_bg: false,
-        can: crate::history::listing::can_of(
-            "a",
-            Some(crate::history::listing::RowLife::Ended),
-            false,
-        ),
-        face: crate::wire::SessionFace::of(crate::wire::Life::Ended),
-        forked_from: None,
-        parent: None,
-    }
-}
-
-/// 要求：「多机合并排序收进 `search-core::sort_by_recency`，前端 `mergeSearchResults` 删」：
-/// 界面照旧逐台扇出、合并排序问本机后端 `history-search-merge`（按台交：`{origin, sessions}`）。
-#[test]
-fn the_merge_frame_sorts_newest_first_stably_and_sums_what_each_machine_said() {
-    let on = |name: &str, rows: Vec<SessionHits>| MachineHits {
-        origin: cmd_wire::Machine(name.into()),
-        sessions: rows,
-    };
-    let local = cmd_wire::LOCAL;
-    // 命中数 = 摆出来的 ＋ `moreHits`：local-old 摆 1 处、还有 2 处。
-    let mut old = row("local-old", 100, 2, false);
-    old.hits.push(SearchHit {
-        uuid: "u".into(),
-        ts_ms: 0,
-        kind: "user".into(),
-        before: String::new(),
-        matched: "q".into(),
-        after: String::new(),
-        tool: None,
-        offset: 0,
-        line: 0,
-    });
-    let merged = merge_at(
-        vec![
-            on(local, vec![old]),
-            on("pi", vec![row("rem-new", 300, 2, false)]),
-            on("wsl", vec![row("rem-mid", 200, 1, false)]),
-            on("pi", vec![row("tie-a", 150, 0, false)]),
-            on(local, vec![row("tie-b", 150, 0, false)]),
-        ],
-        0,
-        &Default::default(),
-    );
-    let order: Vec<&str> = merged
-        .sessions
-        .iter()
-        .map(|s| s.row.session_id.as_str())
-        .collect();
-    // 倒序；同一时刻保持交进来的先后（稳定）。
-    assert_eq!(order, ["rem-new", "rem-mid", "tie-a", "tie-b", "local-old"]);
-    assert_eq!(
-        (merged.total_hits, merged.session_count, merged.truncated),
-        (6, 5, false)
-    );
-    // 远端的行带那台的名字；本机的不带。
-    assert_eq!(
-        merged.sessions[0].origin.as_ref().map(|m| m.0.as_str()),
-        Some("pi")
-    );
-    assert!(merged.sessions[4].origin.is_none());
-    // 任一台的任一会话被砍过 ⇒ 整体 truncated（`K-R100`）。
-    for (a, b) in [(false, true), (true, false)] {
-        let m = merge_at(
-            vec![
-                on(local, vec![row("loc", 100, 1, a)]),
-                on("pi", vec![row("rem", 200, 12, b)]),
-            ],
-            0,
-            &Default::default(),
-        );
-        assert!(m.truncated);
-    }
-    let empty = merge_at(vec![], 0, &Default::default());
-    assert_eq!(
-        (empty.total_hits, empty.session_count, empty.truncated),
-        (0, 0, false)
-    );
-}
-
 /// 命中带这台判的整份脸（点）· `isBg` · `can`（与历史清单的行同一张规则，`history::listing::can_of`）：
 /// 在跑的（这台有它的 pidfile、进程活着）⇒ 切过去；后台分身 ⇒ 要恢复主会话、不能分叉；其余 ⇒ 能恢复。
 /// 跨语言金样 `tests/__fixtures__/history-search-row.golden.json`（TS 严格解码器读同一份）。
@@ -542,28 +448,5 @@ fn a_hit_carries_this_machines_face_and_can() {
         "tests/__fixtures__/history-search-row.golden.json",
         &format!("{}\n", serde_json::to_string_pretty(&got).unwrap()),
         "命中行形状变了：TS 解码器读的是同一份金样，两边一起改",
-    );
-}
-
-/// 合好的每一行带 `atText`（行尾那一格）与 `spanText`（打开它时内容头那一段）：按 `updatedAt`、这台本地钟写好（界面照抄）。
-#[test]
-fn merged_sessions_carry_row_and_span_texts() {
-    let day = crate::common::time::days_from_civil(2026, 10, 7) * 86_400;
-    let (u, now) = (
-        (day + 9 * 3_600 + 5 * 60) * 1_000,
-        (day + 15 * 3_600) * 1_000,
-    );
-    let merged = merge_at(
-        vec![MachineHits {
-            origin: cmd_wire::Machine::local(),
-            sessions: vec![row("s1", u, 1, false)],
-        }],
-        now,
-        &Default::default(),
-    );
-    let s = &merged.sessions[0];
-    assert_eq!(
-        (s.at_text.as_str(), s.span_text.as_str()),
-        ("09:05", "09:05–09:05")
     );
 }

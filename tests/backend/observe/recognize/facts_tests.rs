@@ -1549,25 +1549,25 @@ fn needs_merge_orders_across_machines_by_the_one_rule() {
         ),
     ];
     for (name, rows, want) in cases {
-        let mut machines: Vec<NeedsMachine> = Vec::new();
+        let mut machines: Vec<(cmd_wire::Machine, cmd_wire::needs::NeedsList)> = Vec::new();
         for (m, sid, tier, waited) in *rows {
             let item = cmd_wire::needs::NeedsItem::Session {
                 rank: ranked(*tier, *waited).rank,
                 session: waiting_row(sid, *tier, *waited),
             };
-            match machines.iter_mut().find(|x| x.origin.0 == *m) {
-                Some(x) => x.list.items.push(item),
-                None => machines.push(NeedsMachine {
-                    origin: cmd_wire::Machine(m.to_string()),
-                    list: cmd_wire::needs::NeedsList {
+            match machines.iter_mut().find(|x| x.0 .0 == *m) {
+                Some(x) => x.1.items.push(item),
+                None => machines.push((
+                    cmd_wire::Machine(m.to_string()),
+                    cmd_wire::needs::NeedsList {
                         items: vec![item],
                         answered: vec![],
                         manual_unreadable: None,
                     },
-                }),
+                )),
             }
         }
-        let got = merge_needs(machines);
+        let got = merge_needs(machines, vec![]);
         let sids: Vec<String> = got.items.iter().map(|x| item_name(&x.item)).collect();
         assert_eq!(&sids, want, "{name}");
         assert_eq!(got.total as usize, rows.len(), "{name}");
@@ -1594,16 +1594,17 @@ fn needs_merge_orders_across_machines_by_the_one_rule() {
         Ok(vec![account_item("home")]),
         vec![],
     );
-    let got = merge_needs(vec![
-        NeedsMachine {
-            origin: cmd_wire::Machine("devbox".into()),
-            list: remote,
-        },
-        NeedsMachine {
-            origin: cmd_wire::Machine::local(),
-            list: local,
-        },
-    ]);
+    let down = vec![NeedsDown {
+        origin: cmd_wire::Machine("pi".into()),
+        said: "那台没在跑".into(),
+    }];
+    let got = merge_needs(
+        vec![
+            (cmd_wire::Machine("devbox".into()), remote),
+            (cmd_wire::Machine::local(), local),
+        ],
+        down,
+    );
     let names: Vec<String> = got.items.iter().map(|x| item_name(&x.item)).collect();
     assert_eq!(names, ["r", "y#0", "x#0", "@home"]);
     assert_eq!(got.total, 4);
@@ -1611,6 +1612,11 @@ fn needs_merge_orders_across_machines_by_the_one_rule() {
     assert_eq!(
         v["unreadable"],
         json!([{"origin": "devbox", "said": "读不懂"}])
+    );
+    assert_eq!(
+        v["down"],
+        json!([{"origin": "pi", "said": "那台没在跑"}]),
+        "没问到的那几台原样带上"
     );
 }
 

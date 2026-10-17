@@ -39,10 +39,11 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::asynchronous::<crate::history::remote_listing::HistoryListingCmd>(
         "这台的清单（按记号只给变了的）",
     ),
-    // 全文搜索那两条：入参 · 回包 · 错误码都是类型（`faces/search_face.rs`）。搜索扫全库 ⇒ 阻塞档；合并是纯计算 ⇒ 异步档（同 `ping`）。
+    // 全文搜索那两条：入参 · 回包 · 错误码都是类型（`faces/search_face.rs`）。搜索扫全库 ⇒ 阻塞档；
+    //   几台合一份由这台自己扇出（本机同进程、别的台经 `--resident-call` 问它的常驻，扫盘在阻塞池里）⇒ 异步档。
     crate::wire::typed::blocking::<crate::faces::search_face::HistorySearch>("全文搜索"),
     crate::wire::typed::asynchronous::<crate::faces::search_face::HistorySearchMerge>(
-        "把各台的搜索结果合成一份",
+        "问到各台搜一遍、合成一份",
     ),
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryRunCmd>("一个子运行的记录"),
     // resume 之前问「这条会话的记录还在不在」。同族同档（一次目录枚举 ⇒ 阻塞档）、
@@ -67,9 +68,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::faces::history_face::SessionsNeedsCmd>(
         "这台上需手动的会话清单",
     ),
-    // 各台需手动的清单合成一个先后（纯计算 ⇒ 异步档，同 `history-search-merge`）：界面逐台问 `sessions-needs`，本机后端排。
+    // 各台需手动的清单合成一个先后：这台自己问到各台的 `sessions-needs`（别的台经 `--resident-call`），排好再答 ⇒ 异步档（同 `history-search-merge`）。
     crate::wire::typed::asynchronous::<crate::faces::history_face::NeedsMergeCmd>(
-        "把各台的需手动清单合成一个先后",
+        "问到各台的需手动、合成一个先后",
     ),
     // 答批准 / 提问 / 批计划（`control/asks/`）：会话级答题 hook 经 `needs-ask` 挂一条、阻塞等；任一出口经 `needs-answer` 答，第一个答案落下。
     //   挂着的请求住常驻进程里 ⇒ 两条都只在帧面（`needs-ask` 要本连接的号 ⇒ 硬臂；`needs-answer` 在 `stream::cli::STREAM_ONLY`）。

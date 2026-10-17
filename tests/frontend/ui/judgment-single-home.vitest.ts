@@ -341,11 +341,12 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J15: {
     what: "全文搜索条数上限 ＋ 多机合并排序",
-    // 翻 `zero`：界面照旧逐台扇出（各台常驻索引保热），合并排序问本机后端
-    //   `history-search-merge`（`observe/search_query.rs::merge_at` → `search_rules::sort_by_recency`）；前端 `mergeSearchResults` 删。
+    // 翻 `zero`：界面只问本机后端 `history-search-merge`，它自己问到各台（各台常驻索引保热）、合并排序再答
+    //   （`cmd_wire::search::merge` → `sort_by_recency`，手机核心合几台也调这一份）；前端 `mergeSearchResults` 删。
     //   条数上限：界面不交 `limit` ⇒ 每台用 `search_rules::DEFAULT_LIMIT`（`history.ts` 那份 300 的副本删了）。
-    // `search-core` 拆进后端：通用口径住 `history/search_rules.rs`（`DEFAULT_LIMIT` 与收 limit 的 `clamp_limit` 同一份文件；住址格只认 `fn`）。
-    homes: ["src/backend/history/search_rules.rs::sort_by_recency", "src/backend/history/search_rules.rs::clamp_limit"],
+    // `search-core` 拆进后端：通用口径住 `history/search_rules.rs`（`DEFAULT_LIMIT` 与收 limit 的 `clamp_limit` 同一份文件；住址格只认 `fn`）；
+    //   排序那一个与合并同住线上形那一份（`cmd-wire/src/search.rs`），口径的家只转出它。
+    homes: ["cmd-wire::sort_by_recency", "cmd-wire::merge", "src/backend/history/search_rules.rs::clamp_limit"],
     status: "zero",
     defs: ["mergeSearchResults"],
     needles: [
@@ -805,6 +806,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     bare: NONE,
     is_local: "J36",
     is_remote: "J36",
+    // 几台的搜索结果合一份 · 最近优先那一个排序（本机后端扇出完 · 手机核心逐台问完都调它）：界面只照抄合好的那一份，TS 侧没有孪生。
+    merge: "J15",
+    sort_by_recency: "J15",
     // 本机那一个 · 远端名 · 线上那个串 · 分过本机之后的两态：界面没有孪生（它直接拿串比，判法只在 `ipc/origin.ts`）。
     local: NONE,
     host_name: NONE,

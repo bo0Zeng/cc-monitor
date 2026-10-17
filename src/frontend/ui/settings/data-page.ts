@@ -7,7 +7,8 @@
  * - cc-monitor 放了什么：机器 chip 切换；本机先「Claude 目录」（宿主交进来那一块），再「改过你的文件」（每处 改了什么 · 撤回在哪 ［前往］），
  *   再「cc-monitor 的文件」：那台后端家里那几样照那台 `data-report` 的 `own` 排（本机远端同一套行，`own-block.ts`）；
  *   本机后面再接宿主交进来的界面自己那几份（monitor 数据目录 · 网页引擎 · 本地存储）。
- * - 左栏角标与顶上那一行 ＝ 各台 `counts` 交本机后端合的那一份（问不到的那台不交）；主窗口状态栏读同一个数（`data-reads.ts::mergeChores`）。
+ * - 一趟只问本机后端一次（`data-reads.ts::readChores`）：它问到各台的 `data-report`、件数合成一份；左栏角标与顶上那一行 ＝ 那一份合计
+ *   （没问到的那台不计）；主窗口状态栏读同一个数。
  * 构造零 I/O：宿主在这一页第一次可见时调 [`loadNow`]；之后［全部重查］显式补一刀（切页不重读，不轮询）。
  */
 import { tabs } from "../kit/tabs";
@@ -19,7 +20,7 @@ import { copyText } from "../copy-table";
 import { writeClipboard } from "../clipboard";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { hostKey, readRemoteConfig } from "../remote-config";
-import { markChore, mergeChores, readDataReport, recallDataReport, type Chore, type ChoreCounts, type ChoreState, type DataReport } from "./data-reads";
+import { markChore, readChores, recallDataReport, type Chore, type ChoreCounts, type ChoreState, type DataReport } from "./data-reads";
 import { ownBlock, remoteOpen } from "./own-block";
 import { localOpenButtons } from "./data-section";
 import { spanNow } from "../duration-format";
@@ -190,23 +191,25 @@ export class DataPage {
     } catch {
       // 读不到机器表 ⇒ 只问本机（远端那几台这一趟不列，不猜）。
     }
+    let got: Awaited<ReturnType<typeof readChores>> | null = null;
+    let why = "";
+    try {
+      got = await readChores(this.machines.map((m) => m.origin));
+    } catch (e) {
+      why = e instanceof Error ? e.message : String(e);
+    }
+    if (gen !== this.generation) return;
     await Promise.all(
       this.machines.map(async (m) => {
-        let r: Reading;
-        try {
-          r = { ok: true, report: await readDataReport(m.origin) };
-        } catch (e) {
-          r = { ok: false, why: e instanceof Error ? e.message : String(e), last: await recallDataReport(m.origin) };
-        }
+        const at = got?.machines.find((x) => x.origin === m.origin);
+        const r: Reading = at?.report ? { ok: true, report: at.report } : { ok: false, why: at?.said ?? why, last: await recallDataReport(m.origin) };
         if (gen !== this.generation) return;
         this.readings.set(m.origin, r);
         this.noteRecognized(m.origin, r);
       }),
     );
     if (gen !== this.generation) return;
-    const counts = [...this.readings.values()].flatMap((r) => (r.ok ? [r.report.counts] : []));
-    const total = await mergeChores(counts).catch(() => null);
-    if (gen !== this.generation) return;
+    const total = got?.total ?? null;
     this.total = total;
     this.host.setBadge(total?.badge ?? 0);
     this.paintTabs(total?.badge ?? 0);

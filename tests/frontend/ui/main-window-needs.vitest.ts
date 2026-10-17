@@ -28,7 +28,6 @@ import type { WireSessionActivity } from "../../../src/frontend/ui/generated/Wir
 import { goldenFace, liveFace } from "../../test-support/session-faces";
 import { abbrOf, dotOf, fullTitle, groupSummary, needsOf, nextNeedsStep, peekLine, stateLine, stateWord, titleParts } from "../../../src/frontend/ui/session-face";
 import { NeedsBook } from "../../../src/frontend/ui/needs-book";
-import { ChanError } from "../../../src/comms/inward/chan";
 import { fakeNeedsBook, listOf, sessionItem } from "../../test-support/needs-fake";
 import { NeedsTitle } from "../../../src/frontend/ui/needs-bar";
 import { SessionHead, terminalActsOf } from "../../../src/frontend/ui/session-head";
@@ -141,28 +140,26 @@ describe("一个会话读成什么（session-face）：点 · 字照抄那台的
     expect([nextNeedsStep(order, "c", null, 2), nextNeedsStep(order, null, 0, 2), nextNeedsStep(order, null, 1, 2)]).toEqual([{ plan: 0 }, { plan: 1 }, { sid: "e" }]);
   });
 
-  it("★ 问后端：各台问 `sessions-needs`、原样按台交本机 `sessions-needs-merge`；断开的那台不交、记成断开；数 ＝ 合好的 `total`，界面不自己加", async () => {
+  it("★ 问后端：只问本机后端一次 `sessions-needs-merge {machines}`（它自己问到各台），界面不逐台问、不当信差；没问到的那台照后端说的记下；数 ＝ 合好的 `total`；推送连着来合成一问", async () => {
+    vi.useFakeTimers();
     const asked: { origin: string; op: string; args: unknown }[] = [];
-    const devbox = { items: [sessionItem("d1", approve())], answered: [] };
-    const local = { items: [sessionItem("l1", approve()), sessionItem("l2", approve())], answered: [] };
     const call = vi.fn(async (origin: string, op: string, args: unknown) => {
       asked.push({ origin, op, args });
-      if (op === "sessions-needs") {
-        if (origin === "gpu-01") throw new ChanError({ layer: "hop" } as never, "够不着");
-        return origin === "devbox" ? devbox : local;
-      }
-      return { items: [], total: 5, unreadable: [] };
+      return { items: [], total: 5, unreadable: [], down: [{ origin: "gpu-01", said: "gpu-01 后端未在运行" }] };
     });
     typed.fake = call as never;
     const book = new NeedsBook();
     await book.refreshAll(["<local>", "devbox", "gpu-01"]);
-    expect(asked.filter((x) => x.op === "sessions-needs").map((x) => x.origin).sort()).toEqual(["<local>", "devbox", "gpu-01"]);
-    const merge = asked.filter((x) => x.op === "sessions-needs-merge");
-    expect(merge.every((x) => x.origin === "<local>")).toBe(true);
-    expect(merge.at(-1)!.args).toEqual({ machines: [{ origin: "<local>", list: local }, { origin: "devbox", list: devbox }] });
+    expect(asked, "只问本机后端那一条").toEqual([{ origin: "<local>", op: "sessions-needs-merge", args: { machines: ["<local>", "devbox", "gpu-01"] } }]);
     expect(book.total(), "照后端合好的总数").toBe(5);
-    expect(book.offline()).toEqual(["gpu-01"]);
+    expect(book.offline()).toEqual([{ origin: "gpu-01", said: "gpu-01 后端未在运行" }]);
+    asked.length = 0;
+    book.poke("devbox");
+    book.poke("<local>");
+    await vi.advanceTimersByTimeAsync(400);
+    expect(asked.map((x) => x.op), "连着来的两下合成一问").toEqual(["sessions-needs-merge"]);
     typed.fake = null;
+    vi.useRealTimers();
   });
 
   it("窄窗两个字母取项目目录名里的字母；标题拆成项目那一格 ＋ 名字（都是核心给的；核心还没报 ⇒ sid 前 8 位）", () => {
@@ -266,7 +263,7 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
     const el = document.createElement("div");
     document.body.appendChild(el);
     const view = new TabBarView(store, { collections: [] } as unknown as TabBarPrefs, el, (await bar([])).host);
-    const needs = fakeNeedsBook({ [LOCAL_ORIGIN]: listOf([sessionItem("a", approve())]) }, (m) => ({ items: m.flatMap((x) => x.list.items.map((item) => ({ origin: x.origin, item }))), total: 5, unreadable: [] }));
+    const needs = fakeNeedsBook({ [LOCAL_ORIGIN]: listOf([sessionItem("a", approve())]) }, (m) => ({ items: m.flatMap((x) => x.list.items.map((item) => ({ origin: x.origin, item }))), total: 5, unreadable: [], down: [] }));
     view.needs = { book: needs.book, login: vi.fn() };
     needs.book.subscribe(() => view.planNeedsChanged());
     await needs.book.refresh(LOCAL_ORIGIN);

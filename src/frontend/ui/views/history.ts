@@ -522,7 +522,7 @@ export class HistoryView {
     const strips: HTMLElement[] = [];
     const c = this.content;
     if (c?.state === "done") {
-      for (const h of c.r.failedHosts) strips.push(strip("warn", copyText("history.search.machineDown", { machine: h }), { label: copyText("history.list.reconnect"), run: () => void this.runContentSearch() }));
+      for (const d of c.r.down) strips.push(strip("warn", copyText("history.search.machineDown", { machine: d.origin }), { label: copyText("history.list.reconnect"), run: () => void this.runContentSearch() }));
       for (const a of c.r.skipped) strips.push(strip("info", copyText("history.search.skipped", { agent: a })));
       if (c.r.unreadable > 0) strips.push(strip("info", copyText("history.search.unreadable", { n: c.r.unreadable })));
     } else if (c?.state === "failed") {

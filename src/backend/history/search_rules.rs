@@ -75,15 +75,13 @@ impl SnippetBudget {
 
 // ── 预算顺序 ─────────────────────────────────────────────────────────────
 
-/// snippet 预算按「最近优先」花 —— 两侧唯一的排序处。`key` 取会话的 `updatedAt`（epoch ms，= jsonl 的 mtime），原地降序。
+/// snippet 预算按「最近优先」花 —— 与几台合一份的展示顺序是同一个函数（住 `cmd_wire::search`，手机核心合几台时也调它）。
+/// `key` 取会话的 `updatedAt`（epoch ms，= jsonl 的 mtime），原地降序。
 ///
-/// 展示顺序已经定死了：合并那一步（前端 `history-search.ts` 的 `mergeSearchResults`）按 `updatedAt` 倒序，前端照这个顺序渲染
-/// ⇒ 预算顺序 ≠ 展示顺序时，缺 snippet 的正好是列表最上面那几张卡。按走序花，展示序最上面 10 张里没有 snippet 的张数明显更多。
+/// 预算顺序 ≠ 展示顺序时，缺 snippet 的正好是列表最上面那几张卡。按走序花，展示序最上面 10 张里没有 snippet 的张数明显更多。
 /// 买到的不是「少几张空卡」（最近的会话往往命中最多、一口气吃掉大半预算，空卡总数不一定少），是「空卡不在你眼前」。
 /// 走序也不是一个可复现的顺序：`WalkDir` 走的是 `readdir` 返回序（ext4 上是目录哈希序），跨机器不同；最近序由内容决定。
-pub(crate) fn sort_by_recency<T>(items: &mut [T], key: impl Fn(&T) -> i64) {
-    items.sort_by(|a, b| key(b).cmp(&key(a)));
-}
+pub(crate) use cmd_wire::search::sort_by_recency;
 
 // ── snippet ──────────────────────────────────────────────────────────────
 

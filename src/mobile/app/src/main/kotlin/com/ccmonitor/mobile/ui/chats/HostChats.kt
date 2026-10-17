@@ -18,7 +18,6 @@ import com.ccmonitor.mobile.core.claude.link.wire.CanDelete
 import com.ccmonitor.mobile.core.claude.link.wire.ForkedFrom
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryGroup
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryRow
-import com.ccmonitor.mobile.core.claude.link.wire.HistorySearchReply
 import com.ccmonitor.mobile.core.claude.link.wire.MachineFixButton
 import com.ccmonitor.mobile.core.claude.link.wire.SessionDot
 import com.ccmonitor.mobile.core.claude.link.wire.SyncHand
@@ -140,7 +139,7 @@ class HostChats(
         when (val reply = link.call(HistorySearch.COMMAND, HistorySearch.args(q))) {
             Reply.TimedOut, Reply.LinkDown, Reply.Cancelled -> Searched.Down
             else ->
-                when (val got = fetched(reply, HistorySearch.COMMAND) { d -> HistorySearch.of(d)?.let { r -> HistorySearch.rawSessions(d)?.let { Searched.Got(r, it) } } }) {
+                when (val got = fetched(reply, HistorySearch.COMMAND) { d -> (d as? Map<*, *>)?.let { Searched.Got(d) } }) {
                     is Fetched.Got -> got.value
                     is Fetched.Failed -> Searched.Failed(got.problem)
                     Fetched.Loading -> Searched.Down
@@ -175,11 +174,10 @@ class HostChats(
     }
 }
 
-/** 一台搜内容的结局：答了（回包 ＋ `sessions` 原样）· 没答（断着 · 无应答）· 答了读不出。 */
+/** 一台搜内容的结局：答了（回包原样，交核心合）· 没答（断着 · 无应答）· 答了读不出。 */
 sealed interface Searched {
     data class Got(
-        val reply: HistorySearchReply,
-        val raw: List<Any?>,
+        val raw: Any?,
     ) : Searched
 
     data object Down : Searched

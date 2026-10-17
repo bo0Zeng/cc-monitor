@@ -250,7 +250,7 @@ describe(" 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址",
   const CHORE = { id: "", kind: "optional", state: "todo", name: "", loc: "", said: "", why: "", steps: [], diff: [], copy: null, whole: null, wholeCovers: [], file: null, go: null, howUrl: null, action: "copySnippet" };
 
   it("〔ST2〕文件与数据**喂一份真成品**再扫：待办各类 ＋ 改过你的文件都上屏，一条都不许命中", async () => {
-    // 文件与数据经通道问本机后端（`data-report`，一问）；monitor 自己进程的那几条事实问 `footprint_client_facts`。
+    // 文件与数据经通道问本机后端一次（`chores-merge`：它问到各台的 `data-report`）；monitor 自己进程的那几条事实问 `footprint_client_facts`。
     const report = {
       home: "/h",
       changedFiles: [{ path: "~/.bashrc", what: copyText("rsToolRegistry.tools.ccmName"), undo: { page: "machine", tab: "config", anchor: "connect-terminal" } }],
@@ -267,9 +267,8 @@ describe(" 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址",
     ipc.replies.set("chan_call", (a: unknown) => {
       const { op } = a as { op: string };
       // 只有本机这一台 ⇒ 合计就是它那一份。
-      if (op === "chores-merge") return Promise.resolve(new TextEncoder().encode(JSON.stringify(report.counts)).buffer);
-      if (op !== "data-report") return Promise.reject(new Error(`[录音机] ${op} 没有真后端`));
-      return Promise.resolve(new TextEncoder().encode(JSON.stringify(report)).buffer);
+      if (op !== "chores-merge") return Promise.reject(new Error(`[录音机] ${op} 没有真后端`));
+      return Promise.resolve(new TextEncoder().encode(JSON.stringify({ total: report.counts, machines: [{ origin: "<local>", report }] })).buffer);
     });
     try {
       const p = new SettingsPanel({ windowMode: true });

@@ -17,6 +17,7 @@
 //! - [`shapes`]：每条 typed 命令（入参 · 回包 · 错误码都从 Rust 类型来的那几条）的形状指纹。
 //!   后端在 hello 里交出它自己那一份，客户端拿自己编进来的这一份比：对得上就直接按类型用，对不上就说「那台后端版本不同」。
 //!   表由后端的判据从类型现算、写进 `src/shapes.rs`（过期即红），这里只是那份表本身。
+//! - [`search`]：全文搜索那一族（一台的回包 · 几台合好的那一份）与几台合一份那一步（[`search::merge`]，本机后端与手机核心调同一份）；
 //! - [`sync`]：带键集合的同步形（记号 · 一次答 · 客户端照答换的那一步）；
 //! - [`fnv`]：FNV-1a（只求稳定、不防篡改）的唯一一份：形状指纹 · 记录摘要 · 骨架文件名 · 目录锁名等都调它。
 
@@ -39,6 +40,7 @@ pub mod quota;
 pub mod record;
 pub mod replies;
 pub mod rotation;
+pub mod search;
 pub mod session;
 pub mod shapes;
 pub mod sync;

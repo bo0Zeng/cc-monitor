@@ -7,7 +7,6 @@ import com.ccmonitor.mobile.core.claude.link.wire.Hide
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryGroup
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryHead
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryRow
-import com.ccmonitor.mobile.core.claude.link.wire.HistorySearchReply
 import com.ccmonitor.mobile.core.claude.link.wire.Merged
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsList
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsRow
@@ -210,27 +209,21 @@ object HistoryAnnotate {
     fun of(data: Any?): Annotated? = Wire.bind<Annotated>(data)
 }
 
-/** `history-search`：这台的会话内容里搜一个词（不分大小写，子串）。回包里的 `sessions` 原样交 [HistorySearchMerge]。 */
+/** `history-search`：这台的会话内容里搜一个词（不分大小写，子串）。回包原样交 [SearchMerge]（手机不解各台那一份）。 */
 object HistorySearch {
     const val COMMAND: String = "history-search"
 
     fun args(query: String): Map<String, Any?> = mapOf("query" to query)
-
-    fun of(data: Any?): HistorySearchReply? = Wire.bind<HistorySearchReply>(data)
-
-    /** 回包里的 `sessions[]` 原样（交合并那一问，不经这里的类重新序列化：这里只写手机读的几格，重写会丢格）。 */
-    fun rawSessions(data: Any?): List<Any?>? = ((data as? Map<*, *>)?.get("sessions") as? List<*>)?.toList()
 }
 
-/** `history-search-merge`：几台的搜索结果交一台合成一份（排序 · 时刻字都在那台）。 */
-object HistorySearchMerge {
-    const val COMMAND: String = "history-search-merge"
+/**
+ * 几台搜内容的结果合成一份：手机逐台直连问完，交嵌的 Rust 核心合（`cmd_wire::search::merge`，本机后端扇出完调的同一份），
+ * 不交哪一台当信差。每台原样交它的回包（核心按类型解，整数照整数写）。
+ */
+object SearchMerge {
+    /** [answered]：每台 `(hostId, 它 history-search 回包原样)` ⇒ 交核心的那一行。 */
+    fun input(answered: List<Pair<String, Any?>>): String = Json.line(answered.map { (origin, reply) -> mapOf("origin" to origin, "reply" to reply) })
 
-    /** 合并的那一台自己 ⇒ 这个名字（线上逐字）。 */
-    const val LOCAL: String = "<local>"
-
-    /** [machines]：每台 `(名字, 它答回来的 sessions 原样)`。 */
-    fun args(machines: List<Pair<String, List<Any?>>>): Map<String, Any?> = mapOf("machines" to machines.map { (origin, sessions) -> mapOf("origin" to origin, "sessions" to sessions) })
-
-    fun of(data: Any?): Merged? = Wire.bind<Merged>(data)
+    /** 核心合好的那一行；读不动 ⇒ `null`。 */
+    fun of(text: String): Merged? = Json.value(text)?.let { Wire.bind<Merged>(it) }
 }

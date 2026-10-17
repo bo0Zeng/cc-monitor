@@ -41,13 +41,13 @@ const BORN_ON_FRAME: &[&str] = &[
     // 记录解释进后端之后生在帧面上的两条（界面经通道直接问；monitor 这一侧从不发它们）。
     "history-page",
     "drift-report",
-    // 各台搜索结果合一份（合并排序进本机后端；界面经通道直接问，monitor 这一侧从不发它）。
+    // 问到各台搜一遍、合一份（本机后端自己扇出 · 合并排序；界面经通道直接问，monitor 这一侧从不发它）。
     "history-search-merge",
     // 按运行读一个子运行的记录（替掉按目录 ＋ 描述 ＋ 时间戳挑的那一条与它的列候选子命令；界面经通道直接问）。
     "history-run",
     // 停 / 重启 / 更新 / 卸载之前会打断什么（这台的活会话 ＋ 通往那台的转发；界面经通道问那台与本机，monitor 这一侧从不发它）。
     "machine-interrupts",
-    // 这台上需手动的会话清单（一次问一台）· 各台的合成一个先后（本机后端排）：界面经通道直接问，monitor 这一侧从不发它们。
+    // 这台上需手动的会话清单（一次问一台）· 各台的合成一个先后（本机后端自己问到各台再排）：界面 / 别的后端经通道直接问，monitor 这一侧从不发它们。
     "sessions-needs",
     "sessions-needs-merge",
 ];
@@ -382,10 +382,10 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "第几帧画完了（两次至少隔 100 ms）：后端收到才推下一帧；前端 `terminal-follow.ts` 发",
     ),
     // `terminal-unfollow` 不在这里：界面不发它（撤流即可），由 monitor 替界面发 —— 见 [`SENT_BY_MONITOR_ONLY`]。
-    // 各台搜索结果合成一份：合并排序进本机后端（`search_rules::sort_by_recency`），界面逐台扇出。
+    // 问到各台搜一遍、合一份：本机后端自己扇出（别的台经 `--resident-call` 问它的常驻 `history-search`）、合并排序（`cmd_wire::search::merge`）。
     (
         "history-search-merge",
-        "各台 `history-search` 的会话行合一份：本机后端 `observe/search_query.rs::merge_at`（`search_rules::sort_by_recency`）；\
+        "本机后端问到各台的 `history-search`、合一份：`src/backend/faces/search_face.rs::merge_with`（`cmd_wire::search::merge`）；\
          前端 `src/frontend/ui/views/history-search.ts` 问，monitor 这一侧零发送点",
     ),
     // 开终端那一行：ssh 外壳由本机后端渲（monitor 只开窗）。
@@ -493,11 +493,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "后端读—改—写自己那份小文件（`src/backend/footprint/chores/marks.rs`）；前端 `src/frontend/ui/settings/data-reads.ts::markChore` 问\
          （「待办」里［不用了］［还是要做］· 别名页［我自己贴］［改由 cc-monitor 接上］），monitor 这一侧零发送点",
     ),
-    // 几台的「待办」件数合成一份：本机后端逐格相加。
+    // 几台的「文件与数据」与件数合成一份：本机后端自己问到各台的 `data-report`、逐格相加。
     (
         "chores-merge",
-        "后端出成品（`src/backend/footprint/chores/mod.rs::merge_counts`）；前端 `src/frontend/ui/settings/data-reads.ts::mergeChores` 问本机后端\
-         （设置窗角标 · 「文件与数据」顶上 · 主窗口状态栏），monitor 这一侧零发送点",
+        "后端出成品（`src/backend/faces/footprint_report_face.rs::chores_merge_with` → `src/backend/footprint/chores/mod.rs::merge_counts`）；\
+         前端 `src/frontend/ui/settings/data-reads.ts::readChores` 问本机后端（「文件与数据」· 设置窗角标 · 主窗口状态栏），monitor 这一侧零发送点",
     ),
     // 换 Claude 目录前那一问：后端 stat 两次回码。
     (
@@ -515,11 +515,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "sessions-needs",
         "`BORN_ON_FRAME` 那一条：后端出成品（这台需手动的整份：在等的会话 · 计划格 · 会话外的，`recognize::facts::needs_list` 排好）；\
-         前端 `src/frontend/ui/needs-book.ts` 逐台问，monitor 这一侧零发送点",
+         本机后端合各台时经 `--resident-call` 问它（`sessions-needs-merge`），monitor 这一侧零发送点",
     ),
     (
         "sessions-needs-merge",
-        "`BORN_ON_FRAME` 那一条：各台的需手动整份合成一份 ＋ 总数（`recognize::facts::merge_needs`，照各项的 `rank`）；\
+        "`BORN_ON_FRAME` 那一条：本机后端问到各台的需手动整份、合成一份 ＋ 总数（`recognize::facts::merge_needs`，照各项的 `rank`）；\
          前端 `needs-book.ts` 问本机后端（入口 · 浮层 · `Ctrl+J` · 窗口标题走它），monitor 这一侧零发送点",
     ),
     (

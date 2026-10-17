@@ -35,7 +35,7 @@ pub(crate) const MAX_HOOK_FILE_BYTES: u64 = 1 << 20;
 pub(crate) type FootprintFail = (&'static str, String);
 
 /// `footprint-report` / `data-report` 的入参：远端那一栏 `{}`；本机那一栏带 `client`（monitor 自己进程的那几条，原样）。
-#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
@@ -46,7 +46,7 @@ pub(crate) struct FootprintReq {
 }
 
 /// monitor 交来的它自己那台独有的事实：家目录（绝对路径）· `PATH`（取不到 ⇒ `null`）。
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]

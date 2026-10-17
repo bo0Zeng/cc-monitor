@@ -347,6 +347,87 @@ where
     reply_of(machine, C::NAME, v)
 }
 
+/// 一台的结局：答回来的那一份 · 那台的码与那一句。
+pub(crate) type Asked<R> = (cmd_wire::Machine, Result<R, Said>);
+
+/// **一问问几台**（跨台合并那几条：本机后端自己扇出、并好再答，界面不当信差）：`machines` 里本机那一台照 `local` 答（同进程，不经 SSH），
+/// 别的每台经 [`ask_resident`] 问它的常驻（几台同时问）。结局照 `machines` 的先后、一台一格（重名的只问一次）：
+/// 那台够不着 · 常驻不在 · 答了失败 ⇒ 那一格是那台的码与那一句，别台照常。
+/// 等多久只归发起方：`until` ＝ 发起方给的截止时刻，每台都只等到那一刻；问到别的台而它缺 ⇒ `Err`（`bad_args` 那一句），这里不自己定一个。
+pub(crate) async fn ask_each<'a, C, F>(
+    machines: &[cmd_wire::Machine],
+    req: &'a C::Req,
+    local: F,
+    tz: &'a crate::Tz,
+    until: Option<crate::platform::child::Until>,
+    table: &'a Table,
+    remote: &'a dyn Remote,
+) -> Result<Vec<Asked<C::Reply>>, String>
+where
+    C: crate::wire::typed::Command,
+    C::Req: serde::Serialize + Sync,
+    C::Reply: serde::de::DeserializeOwned + Send + 'a,
+    F: Future<Output = Result<C::Reply, Said>> + Send + 'a,
+{
+    let mut seen: Vec<&cmd_wire::Machine> = Vec::new();
+    for m in machines {
+        if !seen.contains(&m) {
+            seen.push(m);
+        }
+    }
+    let remote_named = seen.iter().any(|m| !m.is_local());
+    let total = match until {
+        Some(u) => crate::platform::child::Deadline::millis(u.left_ms()),
+        None if remote_named => {
+            return Err(crate::common::contract::malformed(
+                "`within_ms` is required when asking another machine: how long to wait belongs to the asker",
+            ))
+        }
+        None => crate::platform::child::Deadline::millis(0),
+    };
+    let mut local = Some(local);
+    let mut asks: Vec<Pin<Box<dyn Future<Output = Result<C::Reply, Said>> + Send + 'a>>> =
+        Vec::new();
+    for m in &seen {
+        if m.is_local() {
+            match local.take() {
+                Some(f) => asks.push(Box::pin(f)),
+                None => unreachable!("本机那一台只列一次（上面去过重）"),
+            }
+        } else {
+            let name = m.as_wire_str().to_string();
+            asks.push(Box::pin(async move {
+                ask_resident::<C>(&name, req, tz, total, table, remote).await
+            }));
+        }
+    }
+    let got = all(asks).await;
+    Ok(seen.into_iter().cloned().zip(got).collect())
+}
+
+/// 几个问法同时等、都回来才交（照交进来的先后）。
+async fn all<'a, T>(mut asks: Vec<Pin<Box<dyn Future<Output = T> + Send + 'a>>>) -> Vec<T> {
+    let mut out: Vec<Option<T>> = asks.iter().map(|_| None).collect();
+    std::future::poll_fn(|cx| {
+        let mut waiting = false;
+        for (f, slot) in asks.iter_mut().zip(out.iter_mut()) {
+            if slot.is_none() {
+                match f.as_mut().poll(cx) {
+                    std::task::Poll::Ready(v) => *slot = Some(v),
+                    std::task::Poll::Pending => waiting = true,
+                }
+            }
+        }
+        if waiting {
+            std::task::Poll::Pending
+        } else {
+            std::task::Poll::Ready(())
+        }
+    })
+    .await;
+    out.into_iter().flatten().collect()
+}
+
 /// 跑那一条命令、读它 stdout 那一行 JSON（那台不认这条子命令 ⇒ 说那台太旧）。
 async fn exchange(
     dial: &Value,
@@ -605,3 +686,8 @@ fn settle_pulled(got: &Value) -> Result<String, Said> {
 #[cfg(test)]
 #[path = "../../../tests/backend/stream/remote_ask_tests.rs"]
 mod tests;
+
+// 判据用的「那几台」（替身）：跨台合并那几条的判据共用。
+#[cfg(test)]
+#[path = "../../../tests/backend/stream/remote_ask_peers.rs"]
+pub(crate) mod test_peers;

@@ -2,6 +2,7 @@
 import type { HistoryGroup } from "./HistoryGroup";
 
 /**
+ * `history-list` 的回包按带键集合那一形答（`crate::sync::Patch<HistoryHead, HistoryRow>`，键 ＝ 会话 ID：不带记号 ⇒ 整份；带着上次的记号 ⇒ 没变 / 只给变了的那几行）。
  * `history-list` 成品的头（行之外的那几格；总数在 `cmd_wire::sync::Head`）：按项目看时的分组 · 注解没并上的那一句。
  */
 export type HistoryHead = { groups: Array<HistoryGroup>, 

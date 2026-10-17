@@ -5,7 +5,7 @@ import type { SearchHit } from "./SearchHit";
 import type { SessionFace } from "./SessionFace";
 
 /**
- * 合好的一行：那台答的会话行 ＋ 哪台（本机缺）＋ 写好的两格时刻字。
+ * 合好的一行：那台答的那一行 ＋ 哪台（本机缺）。
  */
 export type MergedRow = { 
 /**

@@ -757,21 +757,22 @@ pub(crate) fn needs_with(
 
 // ───────────────────────── sessions-needs-merge ─────────────────────────
 
-/// `sessions-needs-merge` 的入参：各台答回来的需手动清单，按台。
+/// `sessions-needs-merge` 的入参：问哪几台（本机逐字 `"<local>"`）。
 #[derive(Debug, Clone, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct NeedsMergeReq {
-    pub(crate) machines: Vec<crate::observe::recognize::facts::NeedsMachine>,
+    pub(crate) machines: Vec<cmd_wire::Machine>,
 }
 
 codes! {
-    /// `sessions-needs-merge` 自己没有码（只有入参形状不对的 `bad_args`）。
+    /// `sessions-needs-merge` 自己没有别的码（哪台没问到只进回包的 `down`）。
     pub(crate) enum NeedsMergeErr {}
 }
 
-/// `sessions-needs-merge`：把各台的需手动整份合成一份 ＋ 总数（桌面入口 · 浮层 · `Ctrl+J` · 窗口标题走它；纯计算，不读盘 ⇒ 不进阻塞档）。
+/// `sessions-needs-merge`：本机后端自己问到各台的需手动整份（本机同进程答、别的台经 `--resident-call` 问它的常驻 `sessions-needs`），
+/// 合成一份 ＋ 总数再答（桌面入口 · 浮层 · `Ctrl+J` · 窗口标题走它）。没问到的那几台照实进 `down`、不计，别台照常。
 pub(crate) struct NeedsMergeCmd;
 
 impl Command for NeedsMergeCmd {
@@ -785,15 +786,74 @@ impl crate::wire::typed::Handle for NeedsMergeCmd {
     type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: NeedsMergeReq,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
+        cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<
         Output = Result<crate::observe::recognize::facts::NeedsMerged, NeedsMergeErr>,
     > + Send
            + 'static {
-        std::future::ready(Ok(crate::observe::recognize::facts::merge_needs(
-            req.machines,
-        )))
+        async move {
+            let tz = cx.tz.clone();
+            let local = async move {
+                tokio::task::spawn_blocking(move || {
+                    needs_at(
+                        &home(),
+                        &crate::faces::plan_face::need_slices(&tz),
+                        crate::faces::login_face::manual_here(),
+                    )
+                })
+                .await
+                .map_err(|e| crate::dial::remote_ask::Said {
+                    code: None,
+                    message: e.to_string(),
+                })
+            };
+            needs_merge_with(
+                &req.machines,
+                local,
+                &cx.tz,
+                cx.until,
+                &crate::dial::remote_ask::REACH,
+                &crate::dial::remote_ask::DialRemote,
+            )
+            .await
+        }
     }
+}
+
+/// [`NeedsMergeCmd`] 的本体（本机那一台怎么答 · 可达表 · 对面由调用方给）。
+pub(crate) async fn needs_merge_with(
+    machines: &[cmd_wire::Machine],
+    local: impl std::future::Future<Output = Result<NeedsList, crate::dial::remote_ask::Said>> + Send,
+    tz: &crate::common::time::Tz,
+    until: Option<crate::platform::child::Until>,
+    table: &crate::dial::remote_ask::Table,
+    remote: &dyn crate::dial::remote_ask::Remote,
+) -> Result<crate::observe::recognize::facts::NeedsMerged, NeedsMergeErr> {
+    let got = crate::dial::remote_ask::ask_each::<SessionsNeedsCmd, _>(
+        machines,
+        &NoArgs::default(),
+        local,
+        tz,
+        until,
+        table,
+        remote,
+    )
+    .await
+    .map_err(NeedsMergeErr::BadArgs)?;
+    let mut answered = Vec::new();
+    let mut down = Vec::new();
+    for (origin, r) in got {
+        match r {
+            Ok(list) => answered.push((origin, list)),
+            Err(s) => down.push(crate::observe::recognize::facts::NeedsDown {
+                origin,
+                said: s.message,
+            }),
+        }
+    }
+    Ok(crate::observe::recognize::facts::merge_needs(
+        answered, down,
+    ))
 }
 
 // ───────────────────────── 出成品那几条的收集器 ─────────────────────────
@@ -1327,6 +1387,10 @@ pub(crate) fn kin_of(
 #[cfg(test)]
 #[path = "../../../tests/backend/faces/history_paging_tests.rs"]
 mod paging_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/faces/needs_merge_tests.rs"]
+mod needs_merge_tests;
 
 #[cfg(test)]
 #[path = "../../../tests/backend/faces/history_bytes_tests.rs"]

@@ -1065,12 +1065,8 @@ async fn the_frame_arm_takes_the_mark() {
     // 问这台（远端那份怎么来归 `remote_listing_tests`）：判据环境里这台的记录树不动 ⇒ 第二问没变。
     let first = answer_wire(json!({})).await.unwrap();
     assert_eq!(first["whole"], true);
-    let again = answer_wire(json!({"held": first["held"]}))
-        .await
-        .unwrap();
+    let again = answer_wire(json!({"held": first["held"]})).await.unwrap();
     assert_eq!(again["same"], true, "{again}");
-    let e = answer_wire(json!({"held": 7}))
-        .await
-        .unwrap_err();
+    let e = answer_wire(json!({"held": 7})).await.unwrap_err();
     assert_eq!(e.0, "bad_args");
 }

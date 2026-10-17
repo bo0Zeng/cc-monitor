@@ -126,7 +126,9 @@ const list = (rows: Record<string, unknown>[], groups: unknown[] = []) => ({
 });
 
 /** 每台的回答（`origin` 缺 = 本机）；`fail` 里的那几台答不上。 */
-let world: { local: Record<string, unknown>[]; dev: Record<string, unknown>[]; fail: Set<string>; search: "ok" | "fail" };
+/** 一台搜内容答什么（替身）：那一份回包 · 没答上。 */
+type Searched = { sessions: Record<string, unknown>[]; unreadable: number; skipped: string[] } | "down";
+let world: { local: Record<string, unknown>[]; dev: Record<string, unknown>[]; fail: Set<string>; search: "ok" | "fail"; searchAt: (origin: string) => Searched };
 
 /** 交本机后端的那几问（界面只问本机后端：远端那台由它自己去问）。 */
 function calls(op: string): Record<string, unknown>[] {
@@ -167,7 +169,20 @@ beforeEach(() => {
   vi.mocked(resumeAccounts).mockClear();
   viewerStub.last = null;
   viewerStub.banner = null;
-  world = { local: [], dev: [], fail: new Set(), search: "ok" };
+  world = {
+    local: [],
+    dev: [],
+    fail: new Set(),
+    search: "ok",
+    searchAt: (o) =>
+      o === LOCAL_ORIGIN
+        ? {
+            sessions: [{ agent: "claude", sessionId: "a", projectPath: "/w/p", projectName: "p", jsonlPath: "/x/a.jsonl", title: "标题 a", updatedAt: NOW, hits: [{ uuid: "u1", tsMs: NOW, kind: "user", before: "**前", matched: "词", after: "`后`" }], moreHits: 0, hitsTruncated: false, isBg: false, face: goldenFace("ended"), can: { resume: "yes", accounts: true, fork: true, delete: "yes" } }],
+            unreadable: 0,
+            skipped: [],
+          }
+        : { sessions: [], unreadable: 0, skipped: [] },
+  };
   invokeMock.mockReset();
   invokeMock.mockImplementation(async (cmd: string, a: unknown) => {
     if (cmd === "list_remote_mcp_origins") return ["dev"];
@@ -183,19 +198,21 @@ beforeEach(() => {
       const mine = (o ? world.dev : world.local).filter((r) => !q || String(r.label).includes(q));
       return chanReply(list(mine.map((r) => (o ? { ...r, origin: o } : r))));
     }
-    if (c.op === "history-search") {
-      if (world.search === "fail") return Promise.reject(new Error("搜不动"));
-      return chanReply({
-        sessions: [{ agent: "claude", sessionId: "a", projectPath: "/w/p", projectName: "p", jsonlPath: "/x/a.jsonl", title: "标题 a", updatedAt: NOW, hits: [{ uuid: "u1", tsMs: NOW, kind: "user", before: "**前", matched: "词", after: "`后`" }], moreHits: 0, hitsTruncated: false, isBg: false, face: goldenFace("ended"), can: { resume: "yes", accounts: true, fork: true, delete: "yes" } }],
-        unreadable: 0,
-        skipped: [],
-      });
-    }
     if (c.op === "history-search-merge") {
-      const ms = args.machines as { origin: string; sessions: { hits: unknown[]; moreHits: number }[] }[];
-      // 合并那一臂替真后端添上那台的名字（本机不添）与行尾 · 时间段两格。
-      const ss = ms.flatMap((m) => m.sessions.map((s) => ({ ...s, ...(m.origin === LOCAL_ORIGIN ? {} : { origin: m.origin }), atText: "12:00", spanText: "12:00–12:00" })));
-      return chanReply({ totalHits: ss.reduce((n, s) => n + s.hits.length + s.moreHits, 0), sessionCount: ss.length, truncated: false, sessions: ss });
+      // 替真后端：它自己问到各台（`world.searchAt`）、合一份（远端的行添那台的名字、本机不添；行尾 · 时间段两格那台写好）。本机没答上 ⇒ 整次失败。
+      if (world.search === "fail") return Promise.reject(new Error("搜不动"));
+      const per = (args.machines as string[]).map((o) => [o, world.searchAt(o)] as const);
+      const got = per.filter((p): p is readonly [string, Exclude<Searched, "down">] => p[1] !== "down");
+      const ss: Record<string, unknown>[] = got.flatMap(([o, r]) => r.sessions.map((x) => ({ ...x, ...(o === LOCAL_ORIGIN ? {} : { origin: o }), atText: "12:00", spanText: "12:00–12:00" })));
+      return chanReply({
+        totalHits: ss.reduce((n, x) => n + (x.hits as unknown[]).length + (x.moreHits as number), 0),
+        sessionCount: ss.length,
+        truncated: false,
+        sessions: ss,
+        unreadable: got.reduce((n, [, r]) => n + r.unreadable, 0),
+        skipped: [...new Set(got.flatMap(([, r]) => r.skipped))],
+        down: per.filter((p) => p[1] === "down").map(([o]) => ({ origin: o, said: `${o} 问不到` })),
+      });
     }
     // 这台恢复默认放在哪（那台答的；勾画在它上面）。
     if (c.op === "sessions-where") return chanReply({ results: (args.sids as string[]).map((sid) => ({ sid, standing: "none", names: [], terminals: [] })), run: "direct" });
@@ -774,7 +791,7 @@ describe("内容搜索的其余几态", () => {
     const held: (() => void)[] = [];
     const base = invokeMock.getMockImplementation() as (cmd: string, a: unknown) => Promise<unknown>;
     invokeMock.mockImplementation(async (cmd: string, a: unknown) => {
-      if (cmd === "chan_call" && (a as ChanCallArgs).op === "history-search") await new Promise<void>((r) => held.push(r));
+      if (cmd === "chan_call" && (a as ChanCallArgs).op === "history-search-merge") await new Promise<void>((r) => held.push(r));
       return base(cmd, a);
     });
     const v = await opened();
@@ -786,7 +803,7 @@ describe("内容搜索的其余几态", () => {
     for (const r of held) r();
     await flush();
     await flush();
-    expect(held.length).toBe(2);
+    expect(held.length, "只问本机后端一次").toBe(1);
     expect(document.querySelector("mark"), "停了之后结果又画上来").toBeNull();
     expect(titles()).toEqual(["标题 a"]);
     v.close();
@@ -794,14 +811,7 @@ describe("内容搜索的其余几态", () => {
 
   it("没搜到 ⇒ 说没有、没含工具输出时给［含工具输出与思考］（点了带上它再搜）；那台没答 / 跳过的那一家 / 读不了的份数各一条", async () => {
     world.local = [row({ sessionId: "a" })];
-    const base = invokeMock.getMockImplementation() as (cmd: string, a: unknown) => Promise<unknown>;
-    invokeMock.mockImplementation(async (cmd: string, a: unknown) => {
-      if (cmd === "chan_call" && (a as ChanCallArgs).op === "history-search") {
-        if ((a as ChanCallArgs).origin === "dev") return Promise.reject(refusedReply("unreachable", "dev 问不到"));
-        return chanReply({ sessions: [], unreadable: 2, skipped: ["codex"] });
-      }
-      return base(cmd, a);
-    });
+    world.searchAt = (o) => (o === "dev" ? "down" : { sessions: [], unreadable: 2, skipped: ["codex"] });
     const v = await opened();
     enter("无");
     await flush();
@@ -814,7 +824,7 @@ describe("内容搜索的其余几态", () => {
     const tools = [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("history.filter.tools"))!;
     tools.click();
     await flush();
-    expect(calls("history-search").map((a) => a.includeTools ?? a.include_tools)).toContain(true);
+    expect(calls("history-search-merge").map((a) => (a.search as Record<string, unknown>).include_tools)).toContain(true);
     expect([...document.querySelectorAll<HTMLButtonElement>("button")].some((b) => b.textContent === copyText("history.filter.tools")), "已含工具输出还给那颗").toBe(false);
     v.close();
   });
@@ -840,7 +850,7 @@ describe("筛选浮层的其余几格 · 按项目收起与新建", () => {
     invokeMock.mock.calls.length = 0;
     box(copyText("history.filter.scopeYou")).click();
     await flush();
-    expect(calls("history-search"), "没在搜内容就去搜了").toEqual([]);
+    expect(calls("history-search-merge"), "没在搜内容就去搜了").toEqual([]);
     const input = document.querySelector<HTMLInputElement>(".history-search")!;
     input.value = "词";
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
@@ -851,11 +861,14 @@ describe("筛选浮层的其余几格 · 按项目收起与新建", () => {
     invokeMock.mock.calls.length = 0;
     box(copyText("history.filter.scopeAgent")).click();
     await flush();
-    expect(calls("history-search").map((a) => a.scope)).toContain("assistant");
+    expect(calls("history-search-merge").map((a) => (a.search as Record<string, unknown>).scope)).toContain("assistant");
     invokeMock.mock.calls.length = 0;
     box(copyText("history.filter.tools")).click();
     await flush();
-    expect(calls("history-search").map((a) => a.include_tools), "勾上工具 ⇒ 两台各再搜一次、带上工具").toEqual([true, true]);
+    expect(
+      calls("history-search-merge").map((a) => [a.machines, (a.search as Record<string, unknown>).include_tools]),
+      "勾上工具 ⇒ 再问本机后端一次（两台都在里头）、带上工具",
+    ).toEqual([[[LOCAL_ORIGIN, "dev"], true]]);
     expect(byText("button", copyText("history.page.filter"))!.textContent).toContain("2");
     v.close();
   });

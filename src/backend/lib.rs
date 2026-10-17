@@ -193,7 +193,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--machine-interrupts",
     // 帧命令 `sessions-needs`（这台上需手动的会话清单）自动派生出来的 CLI 面。⚠ 逼出一次 `BUILD_ID` bump（打版本号时统一做）。
     "--sessions-needs",
-    // 各台需手动清单合成一个先后（`sessions-needs-merge`，纯计算）派生的 CLI 面。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    // 问到各台的需手动、合成一个先后（`sessions-needs-merge`）派生的 CLI 面（一次性进程里可达表是空的 ⇒ 只答得出本机，别的台照实进 `down`）。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
     "--sessions-needs-merge",
     // 帧命令 `accounts-trust` 自动派生出来的 CLI 面。⚠ 逼出一次 `BUILD_ID` bump（打版本号时统一做）。
     "--accounts-trust",
@@ -281,7 +281,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--agent-home-check",
     // 「待办」记下一个选择（`chores-mark`，写后端自己的 `~/.cc-monitor/chores.json`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--chores-mark",
-    // 几台的「待办」件数合成一份（`chores-merge`，纯计算）派生的 CLI 面。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    // 问到各台的「文件与数据」、件数合成一份（`chores-merge`）派生的 CLI 面（一次性进程里只答得出本机）。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
     "--chores-merge",
     // 用户级 PATH 那一格（`ccm-user-path`，typed）派生的 CLI 面；入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--ccm-user-path",
@@ -442,7 +442,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 按运行读一个子运行的记录（替掉按目录与描述挑的那一条）。**子命令换了** ⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
     "--history-run",
     "--history-search",
-    // 各台搜索结果合成一份（`history-search-merge`，纯计算）派生的 CLI 面：原先「只有界面逐台问完才有得合」，第二个前端同样逐台问 ⇒ 放出。
+    // 问到各台搜一遍、合成一份（`history-search-merge`）派生的 CLI 面（一次性进程里只答得出本机）。
     // ⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
     "--history-search-merge",
     "--history-tail",
