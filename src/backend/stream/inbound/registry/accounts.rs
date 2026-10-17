@@ -23,14 +23,13 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::faces::rotation_view_face::RotationView>(
         "一个会话或一份策略此刻的轮换",
     ),
-    // 写 —— 设置 · 存 · 还原 · 换一份 · 新会话用哪份 · 拖出来的顺序 · 现在用 · 策略文件加 / 复制 / 改名 / 删。
-    crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationSettings>("改一份设置"),
-    crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationSave>("存设置"),
-    crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationRevert>("丢掉会话里没存的设置"),
-    crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationUse>("会话换一份策略"),
+    // 写 —— 设置 · 载入一份 · 都载入新版 · 新会话用哪份 · 会话侧的临时动作 · 现在用 · 策略文件加 / 复制 / 改名 / 删。
+    crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationSettings>("改一份策略的设置"),
+    crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationUse>("会话载入一份策略"),
+    crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationReload>("在用旧版的会话都载入新版"),
     crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationForNew>("新会话用哪份策略"),
-    crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationTemp>("排接下来先用谁"),
-    crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationUseNow>("现在用这个号"),
+    crate::wire::typed::blocking::<crate::faces::rotation_act_face::RotationTemp>("会话侧的临时动作"),
+    crate::wire::typed::blocking::<crate::faces::rotation_act_face::RotationUseNow>("现在用这个号"),
     crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationStrategyAdd>("加一份策略"),
     crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationStrategyCopy>("复制一份策略"),
     crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationStrategyRename>("给策略改名"),

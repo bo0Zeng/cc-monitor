@@ -292,24 +292,24 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 **账号**：一个账号 ＝ 一个配置目录（`CLAUDE_CONFIG_DIR`），账号库由 `accounts/manage/` 建立和维护；订阅号的登录令牌由 `accounts/oauth/` 读与续；API 号的 key 只在它所在那台的凭据表里（§5「账号：隔离又同步」）。
 
-**额度与轮换（今天的实现）**：
+**额度与轮换（今天的实现）**：轮换的后端分两块 —— **基础功能层**（`accounts/quota/` 除 `setup/` 外 · `accounts/upstream_select/` · `faces/rotation_facts_face.rs` · `faces/rotation_act_face.rs`）只给信息、只执行动作；**配置编辑层**（`accounts/quota/setup/` · `faces/rotation_view_face.rs` · `rotation_edit_face.rs` · `rotation_try_face.rs`）管界面与手写的配置，可以问基础层，基础层不认它（只认它交的 `rules::Adopted`，判据 `accounts/quota/layer_guard`）。两块只在 `faces/rotation_face.rs` 接上。
 
 | 块 | 住址 | 做什么 |
 |---|---|---|
 | 额度账 | `accounts/quota/ledger.rs`（`~/.cc-monitor/quota.json`） | 每号每窗口的用量、重置时刻、被拒 · 超额。两个来源：中转经手的回包头（读法在适配层 `agents::quota_read_of`）· `quota-probe` 起官方客户端报的用量（`agents::usage_of`）。另记每窗口「1% ≈ 多少用量」：中转从应答流里数到的每发用量（`accounts/quota/spend.rs`，读法在流面 `spent`）÷ 读数涨的点数，量不到就空着 |
-| 轮换存储 | `accounts/quota/rotation.rs`（`~/.cc-monitor/rotation.json` 第三版）· `accounts/quota/rules/shelf.rs`（`~/.cc-monitor/strategies/`） | 每个会话按会话 id 存：用哪份策略（空 ⇒ 不轮换）· 改过的设置 · 拖出来的顺序 · 策略约的叫醒 · 换号记录；新会话用哪份（`forNew`，默认空）。策略文件都是用户自己的，没有随包策略 |
+| 轮换存储 | 存取一处 `accounts/quota/rotation.rs`；基础层那份 `~/.cc-monitor/rotation.json` 第三版（`rules/book.rs`）· 配置层那份 `~/.cc-monitor/rotation-uses.json`（`setup/uses.rs`）· 策略目录 `~/.cc-monitor/strategies/`（`setup/shelf.rs`） | `rotation.json` 按会话 id 存在用的号 · 它载入的那份策略副本（代码 · 设置 · 版本；缺 ⇒ 不轮换，文件再改不跟，「载入新版」才换）· 会话侧的临时动作（拖出来的顺序 · 先不用的号）· 策略交的 memo 与叫醒 · 换号记录；`rotation-uses.json` 只存新会话用哪份（`forNew`，默认空）。策略文件都是用户自己的，没有随包策略 |
 | 事实 | `accounts/quota/facts.rs`（拼装在 `upstream_select/rotate.rs` 的 `Hop::facts`） | 每个号的用量 · 重置 · 用速 · 1% ≈ 多少用量 · 被拒 · 超额 · 登录；只读额度账 ＋ 账号库 ＋ 登录，换一份策略不变 |
 | 节点 | `accounts/quota/nodes.rs` | 事实或设置变了的那一刻（读数 · 被拒 · 续期失败 · `quota.json` · 账号库 · 策略目录 · 会话那一条）；全进程一条通道，判的缓存与推送只订它。重置这类已知时刻不走它，判的那一侧记成下一个节点时刻 |
 | 判 | `accounts/quota/rules/decide.rs`（`turn`，纯函数）· `rules/standing.rs` · 策略文件里的 `decide(ctx)` · 积木库 `src/shared/rotation/lib.rhai` | 「换不换、换谁」全在策略里；后端只照策略交的先后取第一个事实上发得出去的号（`standing`）、停发、兜底 |
 | 推演 | `accounts/quota/rules/simulate.rs` | 离散事件推演，每个事件点调的是同一个 `turn`；每号照自己量出来的用速涨，量不到不编数 |
-| 策略文件 | `accounts/quota/rules/shelf.rs`（目录）· `rules/script.rs`（JSON 头 ＋ Rhai 代码）· 沙箱 `accounts/quota/strategy/` | 一份策略一个 `.rhai`，文件名即 id；没有随包策略；第三版的旧脚本升级时挪进 `strategies/v3/`、不加载 |
+| 策略文件 | `accounts/quota/setup/shelf.rs`（目录）· `setup/script.rs`（JSON 头 ＋ Rhai 代码）· 代码在沙箱里的调用 `rules/code.rs` · 沙箱 `accounts/quota/strategy/` | 一份策略一个 `.rhai`，文件名即 id；没有随包策略；第三版的旧脚本升级时挪进 `strategies/v3/`、不加载 |
 | 换 | `accounts/upstream_select/turn.rs` · `rotate.rs` | 中转那一发里只在节点上判（结论缓存到下一个节点）、备料（订阅号：鉴权头换成那个号的令牌，请求体里的身份格一起换；按量号：照它在 key 表里那一行）、记一条。不重启进程；要重启换就走 `session-restart` |
 | 血缘 | `src/backend/lineage.rs`（`~/.cc-monitor/lineage.json`） | 谁起的谁，只在中转那一路认 |
-| 帧面 | `faces/rotation_face.rs` · `faces/rotation_view_face.rs` · `faces/rotation_edit_face.rs` · `faces/rotation_try_face.rs` · `faces/quota_rows.rs` | `quota-read` · `rotation-*`（策略目录 · 一个会话或一份策略的四块 `rotation-view` · 设置 · 拖出来的顺序 · 现在用 · 试跑）；quota-warm 读的「该不该发一句」也在 `quota_rows.rs` 判 |
+| 帧面 | 基础层 `faces/rotation_facts_face.rs` · `rotation_act_face.rs`（拖出来的顺序 · 现在用）；配置层 `faces/rotation_view_face.rs` · `rotation_edit_face.rs` · `rotation_try_face.rs`；接线与 `quota-read` 在 `faces/rotation_face.rs` · `faces/quota_rows.rs` | `quota-read` · `rotation-*`（策略目录 · 一个会话或一份策略的四块 `rotation-view` · 设置 · 拖出来的顺序 · 现在用 · 试跑）；quota-warm 读的「该不该发一句」也在 `quota_rows.rs` 判 |
 
 谁调谁：agent → 中转 → 上游选择（问轮换、拿令牌）→ 上游；回包头 → 额度账；界面 / 手机 / skill 经 `quota-read` · `rotation-*` 读写，不自己判。
 
-**去向**：后端已是第五版的分层（上表：事实 · 节点 · 判 · 推演 · 策略文件 · `rotation.json` 第三版，第一版 / 第二版读到时一次升到第三版写回、原文留 `.v1` / `.v2`）。还没进主线的是界面那一刀：设置页与会话面板照第五版的 `rotation-*` 命令读写。
+**去向**：后端已是第五版的分层（上表：事实 · 节点 · 判 · 推演 · 策略文件 · 两份账本，第一版 / 第二版由接上中转的那个进程一次升级写回两份、原文留 `.v1` / `.v2`，写回之前读的一侧当没有）。还没进主线的是界面那一刀：设置页与会话面板照第五版的 `rotation-*` 命令读写。
 
 ### 3.4 文件
 

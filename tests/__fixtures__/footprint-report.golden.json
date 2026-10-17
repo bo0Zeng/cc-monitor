@@ -173,13 +173,30 @@
       "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
       "host_label": "本机或远端",
       "installable": true,
-      "note": "账号轮换 · 默认顺序 · 换号时机 · 各会话账号与换号记录",
+      "note": "账号轮换 · 各会话在用的号 · 拖出来的先后 · 换号记录",
       "path_declared": "~/.cc-monitor/rotation.json",
       "path_resolved": "/nonexistent-footprint-golden/.cc-monitor/rotation.json",
       "source_label": "由 cc-monitor 现场生成的文本",
       "state": {
         "kind": "undetermined",
         "why": "本机未找到 /nonexistent-footprint-golden/.cc-monitor/rotation.json；它装在运行 Claude Code 的机器上 · 可能在远端\n本页不连 SSH · 远端状态到对应页面查"
+      },
+      "tier": "AppInstalls",
+      "tool_id": "accounts",
+      "tool_name": "多账号账号库",
+      "uninstallable": false
+    },
+    {
+      "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
+      "host_label": "本机或远端",
+      "installable": true,
+      "note": "轮换策略 · 各会话用哪份与改过的设置 · 新会话默认用哪份",
+      "path_declared": "~/.cc-monitor/rotation-uses.json",
+      "path_resolved": "/nonexistent-footprint-golden/.cc-monitor/rotation-uses.json",
+      "source_label": "由 cc-monitor 现场生成的文本",
+      "state": {
+        "kind": "undetermined",
+        "why": "本机未找到 /nonexistent-footprint-golden/.cc-monitor/rotation-uses.json；它装在运行 Claude Code 的机器上 · 可能在远端\n本页不连 SSH · 远端状态到对应页面查"
       },
       "tier": "AppInstalls",
       "tool_id": "accounts",

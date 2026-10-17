@@ -439,6 +439,7 @@ private fun RotationRoute(
         machine = name,
         onBack = { nav.popBackStack() },
         onOpenFile = { path -> nav.navigate(Screen.Session.of(tabManager.open(hostId, SessionTabManager.TabTarget.Files), path)) },
+        onEditStrategy = { nav.navigate(Screen.Rotation.of(hostId)) },
     )
 }
 

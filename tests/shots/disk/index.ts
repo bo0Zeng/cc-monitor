@@ -180,7 +180,7 @@ export function putBrokenQuota(d: MachineDisk): void {
   d.files[".cc-monitor/quota.json"] = "";
 }
 
-// ── 轮换账本（`<家>/.cc-monitor/rotation.json` 第三版：每个会话那一条；策略文件不写 ⇒ 会话不轮换）──
+// ── 轮换账本（`<家>/.cc-monitor/rotation.json` 第三版：每个会话各一条，带它载入的那份策略副本 ＋ `rotation-uses.json` 的 forNew）──
 
 export interface RotationSessionSpec {
   agent?: string;
@@ -188,37 +188,99 @@ export interface RotationSessionSpec {
   current: string;
   since: number;
   seen?: number;
-  /** 用哪份策略（策略目录里的文件 id）；不给 ⇒ 不轮换。 */
+  /** 载入哪份策略（策略目录里的文件 id，副本照 `putRotation` 交来的原文现拼）；不给 ⇒ 不轮换。 */
   strategy?: string;
   /** 拖出来的「接下来先用谁」。 */
   temp?: string[];
+  /** 这个会话先不用的号。 */
+  off?: string[];
   /** 换号记录。 */
   log?: { at: number; from: string; to: string; cause: { k: string; until?: number }; why?: string }[];
-  /** 会话里没存的改动（整份设置）· 它照哪个版本改出来的（跟文件此刻的不同 ⇒「这份策略在别处被改了」）。 */
-  draft?: unknown;
-  rev?: string;
+  /** 副本是旧版：载入那一刻的设置（整份）· 版本（跟文件此刻的不同 ⇒「策略改过了 · 载入新版」）。 */
+  stale?: { settings: unknown; rev: string };
 }
 
-export function putRotation(d: MachineDisk, book: { forNew?: string; sessions?: Record<string, RotationSessionSpec> }): void {
+/** SHA-256（十六进制）：副本的版本照后端的写法（`h:` ＋ 原文摘要前 12 位）。 */
+function sha256(text: string): string {
+  const k = [] as number[];
+  const h = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+  for (let n = 2, c = 0; c < 64; n++) {
+    if ([...Array(n).keys()].slice(2).every((d) => n % d !== 0)) k[c++] = (Math.cbrt(n) % 1) * 2 ** 32 | 0;
+  }
+  const bytes = [...new TextEncoder().encode(text)];
+  const len = bytes.length * 8;
+  bytes.push(0x80);
+  while (bytes.length % 64 !== 56) bytes.push(0);
+  for (let i = 7; i >= 0; i--) bytes.push(Math.floor(len / 2 ** (i * 8)) & 0xff);
+  const r = (x: number, n: number): number => (x >>> n) | (x << (32 - n));
+  for (let o = 0; o < bytes.length; o += 64) {
+    const w: number[] = [];
+    for (let i = 0; i < 64; i++) {
+      if (i < 16) w[i] = (bytes[o + 4 * i] << 24) | (bytes[o + 4 * i + 1] << 16) | (bytes[o + 4 * i + 2] << 8) | bytes[o + 4 * i + 3];
+      else {
+        const s0 = r(w[i - 15], 7) ^ r(w[i - 15], 18) ^ (w[i - 15] >>> 3);
+        const s1 = r(w[i - 2], 17) ^ r(w[i - 2], 19) ^ (w[i - 2] >>> 10);
+        w[i] = (w[i - 16] + s0 + w[i - 7] + s1) | 0;
+      }
+    }
+    let [a, b, c, d, e, f, g, hh] = h;
+    for (let i = 0; i < 64; i++) {
+      const t1 = (hh + (r(e, 6) ^ r(e, 11) ^ r(e, 25)) + ((e & f) ^ (~e & g)) + k[i] + w[i]) | 0;
+      const t2 = ((r(a, 2) ^ r(a, 13) ^ r(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0;
+      [hh, g, f, e, d, c, b, a] = [g, f, e, (d + t1) | 0, c, b, a, (t1 + t2) | 0];
+    }
+    [a, b, c, d, e, f, g, hh].forEach((x, i) => (h[i] = (h[i] + x) | 0));
+  }
+  return h.map((x) => (x >>> 0).toString(16).padStart(8, "0")).join("");
+}
+
+/** 一份策略文件原文的副本（会话载入的样子：头里的设置 · 时区 · 声明，代码那一段前面垫好空行）。 */
+function copyOf(id: string, source: string, stale?: { settings: unknown; rev: string }): unknown {
+  const open = source.indexOf("/*--- rotation\n");
+  const close = source.indexOf("\n---*/", open);
+  const head = JSON.parse(source.slice(open + "/*--- rotation\n".length, close)) as Record<string, unknown>;
+  const lead = close + "\n---*/".length;
+  const code = "\n".repeat(source.slice(0, lead).split("\n").length - 1) + source.slice(lead);
+  return {
+    id,
+    rev: stale?.rev ?? `h:${sha256(source).slice(0, 12)}`,
+    code,
+    settings: stale?.settings ?? head.settings,
+    ...(head.tz ? { tz: head.tz } : {}),
+    ...(head.timeVarying ? { timeVarying: true } : {}),
+    ...(Array.isArray(head.form) && head.form.length > 0 ? { form: head.form } : {}),
+  };
+}
+
+/** `strategies`：策略目录里那几份的原文（会话的副本照它拼）。 */
+export function putRotation(
+  d: MachineDisk,
+  book: { forNew?: string; sessions?: Record<string, RotationSessionSpec>; strategies?: Record<string, string> },
+): void {
+  const sessions = Object.entries(book.sessions ?? {});
   d.files[".cc-monitor/rotation.json"] = json({
     version: 3,
-    forNew: book.forNew ?? "",
     sessions: Object.fromEntries(
-      Object.entries(book.sessions ?? {}).map(([sid, s]) => [
-        sid,
-        {
-          agent: s.agent ?? "claude-code",
-          start: s.start,
-          current: s.current,
-          since: Math.round(s.since),
-          seen: Math.round(s.seen ?? s.since),
-          strategy: { id: s.strategy ?? "", ...(s.rev ? { rev: s.rev } : {}), ...(s.draft !== undefined ? { draft: s.draft } : {}) },
-          ...(s.temp ? { temp: s.temp } : {}),
-          ...(s.log ? { log: s.log.map((l) => ({ ...l, at: Math.round(l.at) })) } : {}),
-        },
-      ]),
+      sessions.map(([sid, s]) => {
+        const src = s.strategy !== undefined ? book.strategies?.[s.strategy] : undefined;
+        return [
+          sid,
+          {
+            agent: s.agent ?? "claude-code",
+            start: s.start,
+            current: s.current,
+            since: Math.round(s.since),
+            seen: Math.round(s.seen ?? s.since),
+            ...(s.strategy !== undefined && src !== undefined ? { uses: copyOf(s.strategy, src, s.stale) } : {}),
+            ...(s.temp ? { temp: s.temp } : {}),
+            ...(s.off ? { off: s.off } : {}),
+            ...(s.log ? { log: s.log.map((l) => ({ ...l, at: Math.round(l.at) })) } : {}),
+          },
+        ];
+      }),
     ),
   });
+  d.files[".cc-monitor/rotation-uses.json"] = json({ version: 1, forNew: book.forNew ?? "" });
 }
 
 // ── 策略文件（`<家>/.cc-monitor/strategies/<文件名>.rhai`：标题 ＝ 文件名）──

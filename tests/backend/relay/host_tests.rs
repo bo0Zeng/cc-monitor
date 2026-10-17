@@ -3,7 +3,7 @@
 //! 判据（记录住 –H4）：
 //! - H1 交了端口 ⇒ 真在听、真转发一段 SSE（假上游是本文件自己的 socket —— 异源）；
 //! - H2 没交端口 ⇒ `NotAsked`、零监听；交了但起不来（端口被占 / 端口认不出 / 上游配置认不出）⇒ `Failed`，不退出；
-//! - H3 生产接线（`accounts::upstream_select::host_relay`，`main.rs` 调的就是它）在**真子进程**里：
+//! - H3 生产接线（`faces::rotation_face::host_relay` → `accounts::upstream_select::host_relay`，`main.rs` 调的就是前者）在**真子进程**里：
 //!   转发一整段 SSE 之后，子进程 stdout 上**一行 tee 都没有**（stdio 载体上 stdout 就是 wire）；
 //! - `main.rs` 那一处：流模式里恰好一处、排在一次性分派之后、起载体之前。
 //!
@@ -126,6 +126,7 @@ fn rotating(creds: &std::path::Path) -> crate::accounts::upstream_select::Rotati
     crate::accounts::upstream_select::Rotating(
         std::sync::Arc::new(|_| Default::default()),
         own_of(creds),
+        crate::faces::rotation_face::adoptions_at(),
     )
 }
 
@@ -320,7 +321,7 @@ const CHILD_MARK: &str = "CCM_RL1_HOSTED_CHILD";
 const CHILD_TEST_NAME: &str = "relay::listen::host_tests::hosted_relay_child_entry_point";
 
 /// 子进程入口（不是判据 ⇒ `#[ignore]`）：走 `main.rs` 流模式**真调的那一个**
-/// （`accounts::upstream_select::host_relay`），然后停在这里当一个「活着的宿主」，等父进程收掉它。
+/// （`faces::rotation_face::host_relay`），然后停在这里当一个「活着的宿主」，等父进程收掉它。
 #[test]
 #[ignore = "子进程入口：只在被父判据用 CCM_RL1_HOSTED_CHILD 拉起时才跑"]
 fn hosted_relay_child_entry_point() {
@@ -328,8 +329,7 @@ fn hosted_relay_child_entry_point() {
         return;
     }
     // 写句柄同 `main.rs` 那一份：根取这个子进程的环境（父进程已把家与数据目录指到夹具）。
-    let said = crate::accounts::upstream_select::host_relay(
-        std::sync::Arc::new(|_| Default::default()),
+    let said = crate::faces::rotation_face::host_relay(
         crate::stream::tap::port(),
         crate::platform::fs::Own::issue(),
     );
@@ -438,7 +438,7 @@ fn the_production_wiring_hosts_the_relay_and_never_writes_tee_lines_to_stdout() 
     );
 }
 
-/// `main.rs` 那一处：生产段里 `accounts::upstream_select::host_relay(` **恰好一处**，
+/// `main.rs` 那一处：生产段里 `faces::rotation_face::host_relay(`（上游选择的装配口 ＋ 账号库 · 配置编辑层）**恰好一处**，
 /// 排在一次性分派（`is_query_mode`）之后、起载体（`run_over_stdio` / `serve_listening` 那一处分派）之前 ——
 /// 前者保证一次性子命令不会多开一个中转，后者保证两条载体都有它。
 #[test]
@@ -446,7 +446,7 @@ fn main_hosts_the_relay_exactly_once_between_the_one_shot_dispatch_and_the_carri
     let raw = std::fs::read_to_string(guard_core::addr::backend_src_root().join("main.rs"))
         .expect("读 main.rs");
     let prod = guard_core::production_code(&raw);
-    let call = guard_core::find_pinned(&prod, "accounts::upstream_select::host_relay(")
+    let call = guard_core::find_pinned(&prod, "faces::rotation_face::host_relay(")
         .unwrap_or_else(|e| panic!("main.rs 生产段里那一处接线：{e}"));
     let dispatch = guard_core::find_pinned(
         &prod,

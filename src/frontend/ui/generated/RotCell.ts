@@ -27,4 +27,16 @@ num?: number, from: RotFrom,
 /**
  * 能是空（`null`）：空的那一项怎么叫。
  */
-nullable?: string, choices?: Array<RotChoice>, min?: number, max?: number, segs?: Array<RotDaySeg>, };
+nullable?: string, choices?: Array<RotChoice>, min?: number, max?: number, segs?: Array<RotDaySeg>, 
+/**
+ * 数格前面那半句。
+ */
+lead?: string, 
+/**
+ * 这一格只在那一格取某值时出：挂在它下面（那一格的 `key`）。
+ */
+under?: string, 
+/**
+ * 分段后面那几窗：能「同第一窗」，那颗按钮的字（「同 5h」）。
+ */
+same?: string, };

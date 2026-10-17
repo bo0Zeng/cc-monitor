@@ -74,6 +74,10 @@ pub struct Fact {
     pub kind: Kind,
     pub w5h: WinFact,
     pub w7d: WinFact,
+    /// 有周上限：读数里有周用量那一格（没有 · 没出过数 ⇒ 缺）。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
+    pub weekly: bool,
     pub login: LoginState,
     /// 额度账上最后一次看到它（没出过数 ⇒ 缺）。
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -126,6 +130,27 @@ pub enum FormScope {
 pub struct FormChoice {
     pub v: String,
     pub label: StrategyText,
+    /// 号取这一项时号名旁的记号。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mark: Option<FormMark>,
+}
+
+/// 号名旁的记号：一个字形，或号牌画虚线框。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FormMark {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub glyph: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub dashed: bool,
+}
+
+/// 一格只在另一格取某个值时出。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FormShowIf {
+    pub key: String,
+    pub v: Value,
 }
 
 /// 一格。
@@ -157,6 +182,15 @@ pub struct FormCell {
     /// 能是空（`null`）：空的那一项怎么叫（例如「不回切」）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nullable: Option<StrategyText>,
+    /// 数格前面那半句。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lead: Option<StrategyText>,
+    /// 只在另一格取某个值时出。
+    #[serde(default, rename = "showIf", skip_serializing_if = "Option::is_none")]
+    pub show_if: Option<FormShowIf>,
+    /// 只对 `daySegments`：排在后面的窗没另设 ⇒ 同第一窗。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub follow: bool,
 }
 
 /// 头里能写成一句、也能分语言写的字。
@@ -408,6 +442,8 @@ pub struct RotStrategyItem {
     pub words_bad: bool,
     /// 文件头里没写时区（分时段按 UTC 算）。
     pub tz_unknown: bool,
+    /// 不是照编辑器那一份存出来的（代码或声明跟它此刻的不一样）。
+    pub hand: bool,
 }
 
 /// `rotation-strategies` 的应答。
@@ -423,7 +459,7 @@ pub struct RotationStrategiesReply {
     pub old_scripts: usize,
 }
 
-/// 提示（第一行下面那几条）：停发 · 策略出错 · 时区不明 · 旧格式没加载 · 说明写法不合规。字由第 4 刀照文案表写。
+/// 提示（第一行下面那几条）：停发 · 策略出错 · 时区不明 · 旧格式没加载 · 说明写法不合规 · 策略改过了。字照文案表写。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "k", rename_all = "camelCase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -454,8 +490,10 @@ pub enum RotHint {
     TzUnknown { zone: String },
     /// `strategies/v3/` 里有没加载的第三版脚本：几份 · 哪几份（「看是哪几份」列它们）。
     OldScripts { n: usize, files: Vec<RotOldFile> },
-    /// 这边有没存的改动，而策略文件在别处被改了（「载入新的」·「留着这边的」）。没改动时不出：直接照新的走。
+    /// 会话那一形：策略文件在它载入之后改过了，这个会话还在用它载入的那一版（「载入新版」）。
     Newer,
+    /// 设置页那一形：还在用这份旧版的活会话有几个（「都载入新版」）。
+    Older { n: usize },
     /// 这份策略的设置说明写法不合文案规矩。
     WordsBad,
     /// `rotation.json` 读不懂（照上一份读懂的接着用，盘上那份不动）：那一句。
@@ -560,16 +598,15 @@ pub struct RotationViewReply {
     pub title: Option<String>,
     /// 用的那份策略；会话不轮换（没选策略）⇒ `null`，这时 `decision` · `timeline` 也是 `null`、只用开会话的号。
     pub strategy: Option<RotStrategyItem>,
-    /// 生效的设置（会话有草稿 ⇒ 草稿）：设置页把它当草稿原样存着、随读带回，界面不拆。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "unknown"))]
-    pub settings: Value,
-    /// 设置那几格照声明解好（此刻的值 · 从哪来 · 字）。
+    /// 设置那几格照声明解好（此刻的值 · 从哪来 · 字）：会话 ⇒ 它那份副本里的；设置页 ⇒ 文件此刻的。
     pub board: RotBoard,
-    /// 跟文件里的不同（会话 ⇒ 有草稿；设置页 ⇒ 交来的跟文件里的不同）。
-    pub dirty: bool,
     /// 开会话用的号 · 此刻在用的号。
     pub start: String,
     pub current: String,
+    /// 会话那一形的顺序（设置页 ⇒ 空）：第一格 ＝ 在用的号，往下是接下来先用谁（拖出来的 · 策略交的先后），此刻用不了的与先不用的沉底。
+    pub lineup: Vec<String>,
+    /// 这个会话先不用的号。
+    pub off: Vec<String>,
     /// 每个号的事实 ＋ 号牌，照号列表的先后（列表里没有的接在后面）。
     pub accounts: Vec<RotAccount>,
     /// 号列表里有几个（`accounts` 前这么多个是列表里的）。
@@ -578,14 +615,12 @@ pub struct RotationViewReply {
     pub timeline: Option<RotTryTimeline>,
     /// 时间轴过去那一截（会话才有；设置页没有会话 ⇒ `null`）。
     pub past: Option<RotPast>,
-    /// 显示的这份设置照哪个版本（会话有草稿 ⇒ 草稿基于的；否则 ＝ 文件此刻的）：写的时候当 `ifRev`。
-    pub base_rev: String,
     /// 换号记录（会话才有）。
     pub log: Vec<RotLogRow>,
     pub hints: Vec<RotNote>,
 }
 
-/// 收不下的那几格（`rotation-view` · `rotation-settings` · `rotation-save` 同用）。
+/// 收不下的那几格（`rotation-settings`）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -619,35 +654,13 @@ pub struct RotConflict {
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct RotDone {}
 
-/// `rotation-settings` 的应答。
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct RotationSettingsReply {
-    /// 跟文件里的不同（会话 ⇒ 存成了草稿；相同 ⇒ 草稿丢掉）。
-    pub dirty: bool,
-    /// 改完的整份（设置页当新的草稿存着；会话那边已存成草稿）。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "unknown"))]
-    pub settings: Value,
-}
-
-/// `rotation-save` 的应答：写成的那一份。
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct RotationSaveReply {
-    pub id: String,
-    pub rev: String,
-}
-
 /// `rotation-temp` 的应答：改完的那一排。
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct RotationTempReply {
     pub temp: Vec<String>,
+    pub off: Vec<String>,
 }
 
 /// 「现在用」碰上那个号事实上发不出去：为什么 · 几点恢复（说不出 ⇒ 缺）。
@@ -682,7 +695,7 @@ pub struct RotBadStrategy {
     pub line: Option<usize>,
 }
 
-/// `rotation-strategy-tz` 的应答：写成以后的版本。
+/// `rotation-settings` · `rotation-strategy-tz` 的应答：写成以后的版本。
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
@@ -732,7 +745,7 @@ pub struct RotPlate {
     pub text: Words,
 }
 
-/// 一格此刻的值从哪来：自己设的 · 跟总体（号那一行没设、声明说跟总体）· 声明里的默认。
+/// 一格此刻的值从哪来：自己设的 · 跟总体（号那一行没设、声明说跟总体）· 声明里的默认 · 同第一窗（分段后面几窗没另设）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -741,6 +754,7 @@ pub enum RotFrom {
     Own,
     All,
     Default,
+    Same,
 }
 
 /// 24 小时条上的一段：一天里的分钟 `[from, to)` · 值 · 段上写的字 · 悬停那一句。
@@ -807,9 +821,33 @@ pub struct RotCell {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<RotDaySeg>>"))]
     pub segs: Vec<RotDaySeg>,
+    /// 数格前面那半句。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub lead: Option<String>,
+    /// 这一格只在那一格取某值时出：挂在它下面（那一格的 `key`）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub under: Option<String>,
+    /// 分段后面那几窗：能「同第一窗」，那颗按钮的字（「同 5h」）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub same: Option<String>,
 }
 
-/// 号列表的一行：号 · 展开头一行（两窗用量 · 重置）· 号牌悬停那一句 · `scope: each` 那几格。
+/// 号名旁的一个记号（照声明里那一项）：字形或虚线框 · 悬停那一句（「切入 · 强制切入」）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct RotMark {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub glyph: Option<String>,
+    pub dashed: bool,
+    pub tip: String,
+}
+
+/// 号列表的一行：号 · 展开头一行（两窗用量 · 重置）· 号牌悬停那一句 · `scope: each` 那几格（只回此刻该出的）· 那几格写成的句子（会话里只看的规则摘要，一格一句）· 号名旁的记号。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
@@ -818,6 +856,8 @@ pub struct RotRow {
     pub line: String,
     pub hover: String,
     pub cells: Vec<RotCell>,
+    pub rules: Vec<String>,
+    pub marks: Vec<RotMark>,
 }
 
 /// 设置那几块：总体设置（`scope: all`）· 号列表每一行（照 `settings.accounts` 的先后，与 `accounts` 前 `listed` 个一一对应）。

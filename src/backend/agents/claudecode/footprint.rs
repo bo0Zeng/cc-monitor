@@ -177,11 +177,20 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
                     note: Some(Text(|| copy_text("rsToolRegistry.tools.quotaNote", &[]))),
                     effect: TouchEffect::OwnedFile,
                 },
-                // 账号轮换：默认池与换号时机 · 每个会话的覆盖与此刻钉在哪个号 · 换号记录。
+                // 账号轮换：每个会话在用的号 · 拖出来的先后 · 换号记录。
                 TouchedFile {
                     path: "~/.cc-monitor/rotation.json",
                     host: HostScope::Either,
                     note: Some(Text(|| copy_text("rsToolRegistry.tools.rotationNote", &[]))),
+                    effect: TouchEffect::OwnedFile,
+                },
+                // 账号轮换用哪份策略：每个会话用哪份与改过的设置 · 新会话默认用哪份。
+                TouchedFile {
+                    path: "~/.cc-monitor/rotation-uses.json",
+                    host: HostScope::Either,
+                    note: Some(Text(|| {
+                        copy_text("rsToolRegistry.tools.rotationUsesNote", &[])
+                    })),
                     effect: TouchEffect::OwnedFile,
                 },
                 // 起会话用的号：每条会话上次用哪个号起的（观测侧记）＋ ccm 起会话时留的便条（认完、进程不在了即清）。

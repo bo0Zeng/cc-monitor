@@ -239,6 +239,7 @@ fn own_what(id: &str) -> String {
         "assetCatalog" => copy_text("rsDataPaths.backend.assetCatalog", &[]),
         "quota" => copy_text("rsDataPaths.backend.quota", &[]),
         "rotation" => copy_text("rsDataPaths.backend.rotation", &[]),
+        "rotationUses" => copy_text("rsDataPaths.backend.rotationUses", &[]),
         "lineage" => copy_text("rsDataPaths.backend.lineage", &[]),
         "launchAccounts" => copy_text("rsDataPaths.backend.launchAccounts", &[]),
         "launchNotes" => copy_text("rsDataPaths.backend.launchNotes", &[]),

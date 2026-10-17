@@ -58,13 +58,14 @@ import com.ccmonitor.mobile.ui.common.CopyDetailButton
 
 // ─────────────────────────────── 第一行
 
-/** 策略下拉（满宽 48 dp）＋「⋯」＋ 下面的说明（默认两行，点 ⌄ 展开）。会话里选中的 ＝ 它用的；设置页选中的 ＝ 新会话用的。 */
+/** 策略下拉（满宽 48 dp）＋「⋯」＋ 会话里的［编辑策略］＋ 下面的说明（默认两行，点 ⌄ 展开）。会话里选中的 ＝ 它载入的；设置页选中的 ＝ 新会话用的。 */
 @Composable
 internal fun FirstRow(
     ui: RotationUi,
     board: RotationBoard,
     sid: String?,
     titles: Map<String, String>,
+    onEditStrategy: () -> Unit,
 ) {
     var picking by remember { mutableStateOf(false) }
     var more by remember { mutableStateOf(false) }
@@ -97,6 +98,11 @@ internal fun FirstRow(
         }
         Surface(onClick = { more = true }, shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.size(48.dp).testTag(RotTags.MORE)) {
             Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) { Text(MORE_GLYPH, style = MaterialTheme.typography.titleMedium) }
+        }
+    }
+    if (sid != null && ui.view?.strategy != null) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            SecondaryButton(onClick = onEditStrategy, modifier = Modifier.testTag(RotTags.EDIT)) { Text(copyText("rot.top.edit")) }
         }
     }
     About(ui.view, board, sid != null)
@@ -301,10 +307,8 @@ private fun Hint(
                     CopyDetailButton(text, n.detail)
                 }
                 RotHintKind.TZ_UNKNOWN -> n.hint.zone?.let { z -> OutlinedButton(onClick = { board.setTz(z) }) { Text(copyText("rot.hint.setTzTip", "zone" to z)) } }
-                RotHintKind.NEWER -> {
-                    SecondaryButton(onClick = board::keepMine) { Text(copyText("rot.hint.keepMine")) }
-                    OutlinedButton(onClick = board::loadNew) { Text(copyText("rot.hint.loadNew")) }
-                }
+                RotHintKind.NEWER -> OutlinedButton(onClick = board::loadNew) { Text(copyText("rot.hint.loadNew")) }
+                RotHintKind.OLDER -> OutlinedButton(onClick = board::loadNew) { Text(copyText("rot.hint.loadAll")) }
                 RotHintKind.OLD_SCRIPTS -> OutlinedButton(onClick = board::toggleOld) { Text(copyText("rot.hint.which")) }
                 else -> Unit
             }
@@ -334,7 +338,7 @@ private fun NeedsTag() {
 
 // ─────────────────────────────── 确认 · 名字
 
-/** 等人点头的那一件：换策略丢掉没存的改动（默认焦点［取消］）· 删除策略（撤不回）· 问名字。 */
+/** 等人点头的那一件：删除策略（撤不回，默认焦点［取消］）· 问名字。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun RotAsks(
@@ -343,7 +347,6 @@ internal fun RotAsks(
 ) {
     when (val ask = ui.ask) {
         null -> Unit
-        is RotAsk.Discard -> Confirm(copyText("rot.ask.discardTitle"), copyText("rot.ask.discardBody"), copyText("rot.ask.discardGo"), board)
         is RotAsk.Delete -> Confirm(copyText("rot.ask.deleteTitle", "name" to ask.id), copyText("rot.ask.deleteBody"), copyText("rot.ask.deleteGo"), board)
         is RotAsk.Name -> AskName(ask, board)
     }

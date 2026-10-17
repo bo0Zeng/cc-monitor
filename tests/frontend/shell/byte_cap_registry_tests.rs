@@ -81,7 +81,7 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     ),
     (
         "DAY_MIN",
-        "**分钟数**不是体量：`accounts/quota/rules/form.rs` 一天里的分钟数（24 小时条分段的上界；升级那一处照它切分段）。",
+        "**分钟数**不是体量：`accounts/quota/setup/form.rs` 一天里的分钟数（24 小时条分段的上界；升级那一处照它切分段）。",
     ),
     (
         "HOOK_TIMEOUT_SECS",
@@ -1005,7 +1005,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
-        "src/backend/accounts/quota/rules/shelf.rs",
+        "src/backend/accounts/quota/setup/shelf.rs",
         "MAX_SOURCE_BYTES",
         "一份轮换策略文件 `~/.cc-monitor/strategies/<id>.rhai`（超了不加载，列表里照实写读不懂）",
         "拒收+回错",

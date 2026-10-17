@@ -28,11 +28,10 @@ export const REAL_OPS = new Set([
   "quota-read",
   "rotation-view",
   "rotation-strategies",
-  // 轮换那几条写（改设置的意图 · 存 · 换策略 · 拖出来的顺序）：真后端写台架盘上那几份文件，场景照它回的重画。
+  // 轮换那几条写（改设置的意图 · 载入一份 · 都载入新版 · 会话侧的临时动作）：真后端写台架盘上那几份文件，场景照它回的重画。
   "rotation-settings",
-  "rotation-save",
-  "rotation-revert",
   "rotation-use",
+  "rotation-reload",
   "rotation-for-new",
   "rotation-temp",
   "history-page",

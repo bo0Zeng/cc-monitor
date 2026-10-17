@@ -1,7 +1,7 @@
 //! 第二版 → 第三版：合成的第二版样本逐字段对期望。
 
 use super::*;
-use crate::accounts::quota::rules::script;
+use crate::accounts::quota::setup::script;
 use serde_json::{json, Value};
 
 /// 升级材料（第二版的编号 1 · 2 · 3）。
@@ -107,11 +107,17 @@ fn u1_every_config_becomes_a_users_own_file_and_new_sessions_do_not_rotate() {
     for id in ["默认配置 1", "夜里省着用", "自己写的"] {
         file(&u, id);
     }
-    assert_eq!(
-        u.book.sessions["plain"].strategy.id, "默认配置 1",
-        "文件名照配置名（＝ 标题）"
-    );
-    assert_eq!(u.book.for_new, "", "升级出来的不进任何默认");
+    assert_eq!(used(&u, "plain"), "默认配置 1", "文件名照配置名（＝ 标题）");
+}
+
+/// 那个会话载入的那份（id）。
+fn used(u: &Upgraded, sid: &str) -> String {
+    u.book.sessions[sid]
+        .uses
+        .as_ref()
+        .expect("会话带着副本")
+        .id
+        .clone()
 }
 
 /// ★ 设置一格不丢：线 · 时段 ⇒ 分段上限；都到上限就停 ⇒ 硬上限；优先 ⇒ 号列表最前、备用 ⇒ 耗尽后启用（不出排）；
@@ -194,10 +200,10 @@ fn u3_waits_become_start_delays_of_fallbacks() {
 #[test]
 fn u4_live_copies_become_named_files_and_ended_ones_are_dropped() {
     let u = run(Some("Asia/Shanghai"));
-    let live = &u.book.sessions["live1"].strategy.id;
-    assert_eq!(live.as_str(), "夜里省着用 · 修登录");
+    assert_eq!(used(&u, "live1"), "夜里省着用 · 修登录");
     assert_eq!(
-        u.book.sessions["dead1"].strategy.id, "夜里省着用",
+        used(&u, "dead1"),
+        "夜里省着用",
         "结束了的会话的副本丢掉，改指它那份配置"
     );
 }
@@ -347,7 +353,7 @@ fn u9_our_three_sessions_keep_every_setting() {
     });
     let mut ids = Vec::new();
     for sid in ["o1", "o2", "o3"] {
-        let id = u.book.sessions[sid].strategy.id.clone();
+        let id = used(&u, sid);
         let src = file(&u, &id);
         let h = head(src);
         assert_eq!(h.settings, want, "{sid} 的设置没照搬");
@@ -364,9 +370,10 @@ fn u9_our_three_sessions_keep_every_setting() {
         "两个副本各写一份，文件名照「配置名 · 会话标题」"
     );
 
-    use super::super::decide::{turn, Pick, Sigma};
-    use super::super::Acct;
+    use crate::accounts::quota::rules::decide::{turn, Pick, Sigma};
+    use crate::accounts::quota::rules::Acct;
     let f = script::parse(file(&u, &ids[0])).expect("读得懂");
+    let fp = super::super::adopted_of_file("", "", &f, None);
     let t: u64 = 1_800_000_000 / 86_400 * 86_400 + 12 * 3600;
     let a = |id: &str, used: f64, resets_in: Option<u64>| Acct {
         id: id.into(),
@@ -377,6 +384,8 @@ fn u9_our_three_sessions_keep_every_setting() {
         barred: None,
         rate: [None, None],
         per_pct: [None, None],
+        weekly: false,
+        others: None,
     };
     let sig = |c: &str| Sigma {
         start: "p1".into(),
@@ -384,7 +393,7 @@ fn u9_our_three_sessions_keep_every_setting() {
         ..Sigma::default()
     };
     let pick =
-        |facts: &[Acct], c: &str| turn(&sig(c), facts, &h_settings(&f), &f, 720, t, &[]).pick;
+        |facts: &[Acct], c: &str| turn(&sig(c), facts, &h_settings(&f), &fp, 720, t, &[]).pick;
     fn h_settings(f: &script::File) -> Value {
         f.head.settings.clone()
     }

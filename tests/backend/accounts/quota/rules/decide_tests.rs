@@ -1,10 +1,11 @@
-//! 后端的一判与推演。「策」＝ 拿三份升级材料（`rules::upgrade::material`：照号列表 · 离重置近的权重高 · 余量多的权重高，同一段换号的写法）＋ 积木库跑后端的 `turn`；
+//! 后端的一判与推演。「策」＝ 拿三份升级材料（`setup::upgrade::material`：照号列表 · 离重置近的权重高 · 余量多的权重高，同一段换号的写法）＋ 积木库跑后端的 `turn`；
 //! 「后」＝ 只测后端积木，策略是判据里的假策略。
 
 use super::*;
-use crate::accounts::quota::rules::script::{self, File};
+use crate::accounts::quota::rules::code;
 use crate::accounts::quota::rules::simulate::{simulate, Timeline};
 use crate::accounts::quota::rules::WINDOW_SECS;
+use crate::accounts::quota::setup::script::{self, File};
 use crate::accounts::quota::strategy::{Fail, FailKind};
 use serde_json::{json, Value};
 use std::sync::OnceLock;
@@ -19,7 +20,7 @@ fn clock(t: u64) -> u16 {
 }
 
 fn material(n: usize) -> Material {
-    Material(script::parse(crate::accounts::quota::rules::upgrade::material(n)).expect("读得懂"))
+    Material(script::parse(crate::accounts::quota::setup::upgrade::material(n)).expect("读得懂"))
 }
 
 /// 一份升级材料，判在判据这一层的沙箱里（[`test_engine`]）。
@@ -27,10 +28,10 @@ struct Material(File);
 
 impl Strategy for Material {
     fn decide(&self, ctx: &Ctx<'_>) -> Result<Verdict, Fail> {
-        self.0.decide_in(test_engine(), ctx)
+        self.0.code.decide_in(test_engine(), ctx)
     }
     fn time_varying(&self) -> bool {
-        self.0.time_varying()
+        self.0.head.time_varying
     }
 }
 
@@ -43,7 +44,7 @@ fn test_engine() -> &'static rhai::Engine {
     E.get_or_init(|| {
         let mut e = crate::accounts::quota::strategy::fresh_engine();
         e.on_progress(|_| None);
-        script::with_lib(e).expect("积木库编得过")
+        code::with_lib(e).expect("积木库编得过")
     })
 }
 
@@ -75,6 +76,8 @@ fn acct(id: &str, used5h: f64) -> Acct {
         barred: None,
         rate: [None, None],
         per_pct: [None, None],
+        weekly: false,
+        others: None,
     }
 }
 
@@ -915,6 +918,8 @@ fn group(seed: u64) -> (Value, Vec<Acct>, Sigma) {
                 Some(0.01 + g.upto(10) as f64 / 100.0),
             ],
             per_pct: [None, None],
+            weekly: false,
+            others: None,
         })
         .collect();
     let temp: Vec<String> = ids.iter().filter(|_| g.upto(4) == 0).cloned().collect();

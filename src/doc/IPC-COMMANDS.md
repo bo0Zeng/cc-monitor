@@ -2351,7 +2351,11 @@ type Fact = {
 /**
  * 路由第 2 段。
  */
-account: string, kind: QuotaKind, w5h: WinFact, w7d: WinFact, login: LoginState, 
+account: string, kind: QuotaKind, w5h: WinFact, w7d: WinFact, 
+/**
+ * 有周上限：读数里有周用量那一格（没有 · 没出过数 ⇒ 缺）。
+ */
+weekly?: boolean, login: LoginState, 
 /**
  * 额度账上最后一次看到它（没出过数 ⇒ 缺）。
  */
@@ -2545,7 +2549,11 @@ wordsBad: boolean,
 /**
  * 文件头里没写时区（分时段按 UTC 算）。
  */
-tzUnknown: boolean, };
+tzUnknown: boolean, 
+/**
+ * 不是照编辑器那一份存出来的（代码或声明跟它此刻的不一样）。
+ */
+hand: boolean, };
 type RotationStrategiesReply = { 
 /**
  * 照 id 排。
@@ -2577,7 +2585,11 @@ type RotAccount = { plate: RotPlate,
 /**
  * 路由第 2 段。
  */
-account: string, kind: QuotaKind, w5h: WinFact, w7d: WinFact, login: LoginState, 
+account: string, kind: QuotaKind, w5h: WinFact, w7d: WinFact, 
+/**
+ * 有周上限：读数里有周用量那一格（没有 · 没出过数 ⇒ 缺）。
+ */
+weekly?: boolean, login: LoginState, 
 /**
  * 额度账上最后一次看到它（没出过数 ⇒ 缺）。
  */
@@ -2586,7 +2598,6 @@ seenAt?: number,
  * 事实上用不了 ⇒ 有；能用 ⇒ 缺。
  */
 blocked?: FactBlocked, };
-type RotBadCell = { cell: string, code: string, };
 type RotBoard = { all: Array<RotCell>, rows: Array<RotRow>, };
 type RotCell = { key: string, kind: RotFormKind, 
 /**
@@ -2608,18 +2619,31 @@ num?: number, from: RotFrom,
 /**
  * 能是空（`null`）：空的那一项怎么叫。
  */
-nullable?: string, choices?: Array<RotChoice>, min?: number, max?: number, segs?: Array<RotDaySeg>, };
+nullable?: string, choices?: Array<RotChoice>, min?: number, max?: number, segs?: Array<RotDaySeg>, 
+/**
+ * 数格前面那半句。
+ */
+lead?: string, 
+/**
+ * 这一格只在那一格取某值时出：挂在它下面（那一格的 `key`）。
+ */
+under?: string, 
+/**
+ * 分段后面那几窗：能「同第一窗」，那颗按钮的字（「同 5h」）。
+ */
+same?: string, };
 type RotChoice = { v: string, label: string, };
 type RotDaySeg = { from: number, to: number, v: number, text: string, tip: string, };
 type RotFormKind = "percent" | "minutes" | "toggle" | "choice" | "daySegments";
-type RotFrom = "own" | "all" | "default";
+type RotFrom = "own" | "all" | "default" | "same";
 type RotHint = { "k": "hold", until?: number, account?: string, 
 /**
  * `until` 的钟面（`HH:MM`，看的那一台的时区；不在今天带日期）。
  */
-untilText?: string, } | { "k": "strategyError", error: RotStrategyError, path?: string, } | { "k": "tzUnknown", zone: string, } | { "k": "oldScripts", n: number, files: Array<RotOldFile>, } | { "k": "newer" } | { "k": "wordsBad" } | { "k": "bookUnreadable", text: string, };
+untilText?: string, } | { "k": "strategyError", error: RotStrategyError, path?: string, } | { "k": "tzUnknown", zone: string, } | { "k": "oldScripts", n: number, files: Array<RotOldFile>, } | { "k": "newer" } | { "k": "older", n: number, } | { "k": "wordsBad" } | { "k": "bookUnreadable", text: string, };
 type RotLogCause = { "k": "order" } | { "k": "unusable" } | { "k": "temp" } | { "k": "useNow" } | { "k": "hold", until?: number, } | { "k": "error" };
 type RotLogRow = { because: string, at: number, from: string, to: string, cause: RotLogCause, why?: string, };
+type RotMark = { glyph?: string, dashed: boolean, tip: string, };
 type RotNote = { hint: RotHint, tone: Tone, text: string, 
 /**
  * 复制详情（出错那一条带原话；别的没有）。
@@ -2631,8 +2655,7 @@ type RotPastLane = { account: string, segs: Array<RotPastSeg>, };
 type RotPastSeg = { from: number, to: number, sendable: boolean, reset: boolean, text: string, };
 type RotPastUse = { from: number, to: number, account?: string, };
 type RotPlate = { color: number, label: Words, text: Words, };
-type RotRefused = { cells: Array<RotBadCell>, };
-type RotRow = { account: string, line: string, hover: string, cells: Array<RotCell>, };
+type RotRow = { account: string, line: string, hover: string, cells: Array<RotCell>, rules: Array<string>, marks: Array<RotMark>, };
 type RotStrategyError = { line?: number, msg: string, };
 type RotStrategyItem = { id: string, 
 /**
@@ -2654,12 +2677,12 @@ wordsBad: boolean,
 /**
  * 文件头里没写时区（分时段按 UTC 算）。
  */
-tzUnknown: boolean, };
-type RotTarget = { sid: string, } | { strategy: string, settings?: unknown, 
+tzUnknown: boolean, 
 /**
- * `settings` 是照哪个版本改出来的（缺 ⇒ 不比）：跟文件此刻的不同 ⇒ 提示「别处被改了」。
+ * 不是照编辑器那一份存出来的（代码或声明跟它此刻的不一样）。
  */
-rev?: string, };
+hand: boolean, };
+type RotTarget = { sid: string, } | { strategy: string, };
 type RotTryDecision = { 
 /**
  * 用哪个号（停发 ⇒ 缺）。
@@ -2738,21 +2761,21 @@ title: string | null,
  */
 strategy: RotStrategyItem | null, 
 /**
- * 生效的设置（会话有草稿 ⇒ 草稿）：设置页把它当草稿原样存着、随读带回，界面不拆。
- */
-settings: unknown, 
-/**
- * 设置那几格照声明解好（此刻的值 · 从哪来 · 字）。
+ * 设置那几格照声明解好（此刻的值 · 从哪来 · 字）：会话 ⇒ 它那份副本里的；设置页 ⇒ 文件此刻的。
  */
 board: RotBoard, 
-/**
- * 跟文件里的不同（会话 ⇒ 有草稿；设置页 ⇒ 交来的跟文件里的不同）。
- */
-dirty: boolean, 
 /**
  * 开会话用的号 · 此刻在用的号。
  */
 start: string, current: string, 
+/**
+ * 会话那一形的顺序（设置页 ⇒ 空）：第一格 ＝ 在用的号，往下是接下来先用谁（拖出来的 · 策略交的先后），此刻用不了的与先不用的沉底。
+ */
+lineup: Array<string>, 
+/**
+ * 这个会话先不用的号。
+ */
+off: Array<string>, 
 /**
  * 每个号的事实 ＋ 号牌，照号列表的先后（列表里没有的接在后面）。
  */
@@ -2765,10 +2788,6 @@ listed: number, decision: RotTryDecision | null, timeline: RotTryTimeline | null
  * 时间轴过去那一截（会话才有；设置页没有会话 ⇒ `null`）。
  */
 past: RotPast | null, 
-/**
- * 显示的这份设置照哪个版本（会话有草稿 ⇒ 草稿基于的；否则 ＝ 文件此刻的）：写的时候当 `ifRev`。
- */
-baseRev: string, 
 /**
  * 换号记录（会话才有）。
  */
@@ -2791,100 +2810,33 @@ tokensPerPct?: number, };
 type Words = string;
 ```
 
-码：`bad_args` · `no_session` · `no_strategy` · `refused`
-
-失败带 `data` 的码：`refused` ⇒ `RotRefused`
+码：`bad_args` · `no_session` · `no_strategy`
 
 #### `rotation-settings`
 
-改一份设置。
+改一份策略的设置。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-settings`
 
-入参 `RotationSettingsReq` · 回包 `RotationSettingsReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `RotationSettingsReq` · 回包 `RotStrategyRev`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
 type RotBadCell = { cell: string, code: string, };
 type RotConflict = { rev: string, };
-type RotEdit = { "set": { key: string, row?: number, v: unknown, } } | { "day": { key: string, row?: number, window: string, from: number, to: number, v: number | null, } } | { "move": { from: number, to: number, } } | { "add": { account: string, } } | { "remove": { row: number, } } | "keep";
+type RotEdit = { "set": { key: string, row?: number, v: unknown, } } | { "day": { key: string, row?: number, window: string, from: number, to: number, v: number | null, } } | { "seg": { key: string, row?: number, window: string, at?: number, seg?: RotSeg, } } | { "same": { key: string, row?: number, window: string, same: boolean, } } | { "move": { from: number, to: number, } } | { "add": { account: string, } } | { "remove": { row: number, } };
 type RotRefused = { cells: Array<RotBadCell>, };
-type RotWhere = { sid: string, } | { strategy: string, };
-type RotationSettingsReply = { 
-/**
- * 跟文件里的不同（会话 ⇒ 存成了草稿；相同 ⇒ 草稿丢掉）。
- */
-dirty: boolean, 
-/**
- * 改完的整份（设置页当新的草稿存着；会话那边已存成草稿）。
- */
-settings: unknown, };
-type RotationSettingsReq = { target: RotWhere, 
-/**
- * 设置页：界面手上那份草稿（上一次回包的 `settings` 原样带回；缺 ⇒ 文件里的）。会话 ⇒ 不带（草稿在这台）。
- */
-settings?: unknown, edit: RotEdit, 
-/**
- * 改之前读到的那份策略文件的版本；对不上 ⇒ `conflict`。
- */
-ifRev?: string, };
+type RotSeg = { from: number, to: number, v: number, };
+type RotStrategyRev = { rev: string, };
+type RotationSettingsReq = { strategy: string, edit: RotEdit, ifRev: string, };
 ```
 
-码：`bad_args` · `no_session` · `no_strategy` · `refused` · `conflict` · `io_failed`
+码：`bad_args` · `no_strategy` · `refused` · `conflict` · `io_failed`
 
 失败带 `data` 的码：`refused` ⇒ `RotRefused` · `conflict` ⇒ `RotConflict`
-
-#### `rotation-save`
-
-存设置。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-save`
-
-入参 `RotationSaveReq` · 回包 `RotationSaveReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type RotBadCell = { cell: string, code: string, };
-type RotConflict = { rev: string, };
-type RotRefused = { cells: Array<RotBadCell>, };
-type RotSaveAs = { name: string, };
-type RotWhere = { sid: string, } | { strategy: string, };
-type RotationSaveReply = { id: string, rev: string, };
-type RotationSaveReq = { target: RotWhere, 
-/**
- * 要存的设置（会话缺 ⇒ 存它的草稿；策略缺 ⇒ `bad_args`）。
- */
-settings?: unknown, 
-/**
- * 改之前读到的那份策略文件的版本。
- */
-ifRev: string, 
-/**
- * 另存成一份新的（会话改用它）；缺 ⇒ 写回原来那份。
- */
-as?: RotSaveAs, };
-```
-
-码：`bad_args` · `no_session` · `no_strategy` · `refused` · `conflict` · `io_failed`
-
-失败带 `data` 的码：`refused` ⇒ `RotRefused` · `conflict` ⇒ `RotConflict`
-
-#### `rotation-revert`
-
-丢掉会话里没存的设置。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-revert`
-
-入参 `RotationRevertReq` · 回包 `RotDone`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type RotDone = Record<symbol, never>;
-type RotationRevertReq = { sid: string, };
-```
-
-码：`bad_args` · `no_session` · `io_failed`
 
 #### `rotation-use`
 
-会话换一份策略。
+会话载入一份策略。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-use`
 
@@ -2896,14 +2848,25 @@ type RotationUseReq = { sid: string,
 /**
  * `null` ⇒ 这个会话不再轮换（只用开会话的号）。
  */
-strategy: string | null, 
-/**
- * 有没存的设置也换（丢掉它）。
- */
-discard: boolean, };
+strategy: string | null, };
 ```
 
-码：`bad_args` · `no_session` · `no_strategy` · `dirty` · `io_failed`
+码：`bad_args` · `no_session` · `no_strategy` · `io_failed`
+
+#### `rotation-reload`
+
+在用旧版的会话都载入新版。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-reload`
+
+入参 `RotationReloadReq` · 回包 `RotDone`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type RotDone = Record<symbol, never>;
+type RotationReloadReq = { strategy: string, };
+```
+
+码：`bad_args` · `no_strategy` · `io_failed`
 
 #### `rotation-for-new`
 
@@ -2926,15 +2889,15 @@ strategy: string | null, };
 
 #### `rotation-temp`
 
-排接下来先用谁。
+会话侧的临时动作。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-temp`
 
 入参 `RotationTempReq` · 回包 `RotationTempReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type RotTempOp = { "place": { account: string, at: number, } } | "clear";
-type RotationTempReply = { temp: Array<string>, };
+type RotTempOp = { "place": { account: string, at: number, } } | { "set": Array<string> } | "clear" | { "off": { account: string, off: boolean, } };
+type RotationTempReply = { temp: Array<string>, off: Array<string>, };
 type RotationTempReq = { sid: string, op: RotTempOp, };
 ```
 
@@ -2972,9 +2935,9 @@ type RotBadStrategy = { line?: number, };
 type RotStrategyId = { id: string, };
 type RotationStrategyAddReq = { 
 /**
- * 一份策略文件的原文（说明 ＋ 头 ＋ 代码）。
+ * 一份策略文件的原文（说明 ＋ 头 ＋ 代码）：从文件添加；缺 ⇒ 新建（照编辑器那一份，号列表 ＝ 账号库全部号，时区 ＝ 这台的）。
  */
-source: string, 
+source?: string, 
 /**
  * 存成的文件名（＝ 标题）。
  */
@@ -14154,18 +14117,17 @@ type Words = string;
 | `--resolve` | ＝ 帧命令 `resolve`：按 `ResumeSpec` 推出恢复命令 `CommandPlan` |
 | `--rotation-facts` | ＝ 帧命令 `rotation-facts`：每个号此刻的事实 |
 | `--rotation-for-new` | ＝ 帧命令 `rotation-for-new`：新会话用哪份策略 |
-| `--rotation-revert` | ＝ 帧命令 `rotation-revert`：丢掉会话里没存的设置 |
-| `--rotation-save` | ＝ 帧命令 `rotation-save`：存设置 |
-| `--rotation-settings` | ＝ 帧命令 `rotation-settings`：改一份设置 |
+| `--rotation-reload` | ＝ 帧命令 `rotation-reload`：在用旧版的会话都载入新版 |
+| `--rotation-settings` | ＝ 帧命令 `rotation-settings`：改一份策略的设置 |
 | `--rotation-strategies` | ＝ 帧命令 `rotation-strategies`：策略目录 |
 | `--rotation-strategy-add` | ＝ 帧命令 `rotation-strategy-add`：加一份策略 |
 | `--rotation-strategy-copy` | ＝ 帧命令 `rotation-strategy-copy`：复制一份策略 |
 | `--rotation-strategy-delete` | ＝ 帧命令 `rotation-strategy-delete`：删一份策略 |
 | `--rotation-strategy-rename` | ＝ 帧命令 `rotation-strategy-rename`：给策略改名 |
 | `--rotation-strategy-tz` | ＝ 帧命令 `rotation-strategy-tz`：给策略设时区 |
-| `--rotation-temp` | ＝ 帧命令 `rotation-temp`：排接下来先用谁 |
+| `--rotation-temp` | ＝ 帧命令 `rotation-temp`：会话侧的临时动作 |
 | `--rotation-try` | ＝ 帧命令 `rotation-try`：试跑一份策略 |
-| `--rotation-use` | ＝ 帧命令 `rotation-use`：会话换一份策略 |
+| `--rotation-use` | ＝ 帧命令 `rotation-use`：会话载入一份策略 |
 | `--rotation-use-now` | ＝ 帧命令 `rotation-use-now`：现在用这个号 |
 | `--rotation-view` | ＝ 帧命令 `rotation-view`：一个会话或一份策略此刻的轮换 |
 | `--session-commands` | ＝ 帧命令 `session-commands`：一条会话能用的斜杠命令与 Skill（内置 ＋ 本项目 ＋ 它用的号的配置目录） |

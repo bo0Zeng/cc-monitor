@@ -220,3 +220,48 @@ pub(crate) fn old_files(dir: Option<&Path>) -> Vec<PathBuf> {
 pub(crate) fn path_of(dir: &Path, id: &str) -> PathBuf {
     dir.join(format!("{id}.rhai"))
 }
+
+/// 帧面那一路写一份策略文件：`<家>/strategies/<id>.rhai`（目录只建这一层，整份原子写）。读不读得懂由调用方先判。
+pub(crate) fn write_file(
+    own: &crate::platform::fs::Own,
+    id: &str,
+    source: &str,
+) -> Result<PathBuf, crate::common::said::Said> {
+    use crate::accounts::quota::rotation::io_said;
+    let dir = own.path(DIR_NAME).map_err(|_| {
+        crate::common::said::Said::from(copy_core::copy_text("beRotation.read.noHome", &[]))
+    })?;
+    own.ensure_dir(&dir)
+        .map_err(|e| io_said(dir.as_path(), &e))?;
+    let file = dir.join(&format!("{id}.rhai"))?;
+    let held = own.lock(&dir)?;
+    own.write(&file, &held, source.as_bytes())?;
+    let nodes = crate::accounts::quota::nodes::bus();
+    crate::accounts::quota::nodes::emit(
+        nodes,
+        crate::accounts::quota::nodes::Source::Strategies,
+        None,
+    );
+    Ok(file.as_path().to_path_buf())
+}
+
+/// 帧面那一路删一份策略文件（只删策略目录里的那一份）。
+pub(crate) fn remove_file(
+    own: &crate::platform::fs::Own,
+    id: &str,
+) -> Result<(), crate::common::said::Said> {
+    use crate::accounts::quota::rotation::io_said;
+    let dir = own.path(DIR_NAME).map_err(|_| {
+        crate::common::said::Said::from(copy_core::copy_text("beRotation.read.noHome", &[]))
+    })?;
+    let file = dir.join(&format!("{id}.rhai"))?;
+    own.delete_file(&file)
+        .map_err(|e| io_said(file.as_path(), &e))?;
+    let nodes = crate::accounts::quota::nodes::bus();
+    crate::accounts::quota::nodes::emit(
+        nodes,
+        crate::accounts::quota::nodes::Source::Strategies,
+        None,
+    );
+    Ok(())
+}

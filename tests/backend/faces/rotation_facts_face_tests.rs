@@ -34,8 +34,12 @@ fn home(tag: &str) -> std::path::PathBuf {
 fn ctx(root: &std::path::Path) -> crate::faces::rotation_face::Ctx {
     let accts = root.join("accts");
     crate::faces::rotation_face::Ctx {
+        setup: Arc::new(crate::accounts::quota::setup::uses::Setup::of(Arc::new(
+            RotationStore::at(Some(root.join(rotation::FILE_NAME))),
+        ))),
         hop: Hop::new(
             Arc::new(RotationStore::at(Some(root.join(rotation::FILE_NAME)))),
+            &crate::faces::rotation_face::adoptions_at(),
             Arc::new(Ledger::at(Some(root.join(ledger::FILE_NAME)))),
             Some(root.to_path_buf()),
             Arc::new(move |_| Library {

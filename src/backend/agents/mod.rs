@@ -1010,11 +1010,25 @@ pub(crate) struct StreamFace {
 }
 
 /// 一件流事件里说出的这一发用量：折合输入 token（各类 token 按那一家的价比折成输入 token 计）；
-/// `opens` ＝ 这一件是一发应答的开头（数「几发」用）。
+/// `prompt` 有 ＝ 这一件是一发应答的开头（数「几发」用），带这一发的上下文。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Spent {
     pub(crate) units: f64,
-    pub(crate) opens: bool,
+    pub(crate) prompt: Option<Prompt>,
+}
+
+/// 一发的上下文：`tokens` ＝ 输入 ＋ 写缓存 ＋ 读缓存（原数，不折）；`tier` ＝ 这一发写缓存用的那一档（只读不写 ⇒ 说不出）。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Prompt {
+    pub(crate) tokens: u64,
+    pub(crate) tier: Option<Tier>,
+}
+
+/// 写缓存的一档：缓存留几秒 · 写比读多几倍（折合输入 token 的倍数之差）。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Tier {
+    pub(crate) ttl: u64,
+    pub(crate) extra: f64,
 }
 
 /// 归一流事件（界面只收这个，不收任何一家的原始事件）。

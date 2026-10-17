@@ -5,7 +5,7 @@ use crate::accounts::quota::ledger::{self, Ledger};
 use crate::accounts::quota::nodes::Source;
 use crate::accounts::quota::rotation::{self, RotationStore};
 use crate::accounts::quota::rules::book::{self, Cause};
-use crate::accounts::quota::rules::script;
+use crate::accounts::quota::setup::{script, shelf, uses};
 use crate::accounts::upstream_select::rotate::{Go, Hop, LibAccount, Library, Turn};
 use crate::agents::{QuotaReading, QuotaStatus, QuotaWindow};
 use std::sync::Arc;
@@ -90,6 +90,7 @@ impl Home {
                 Some(self.root.join(rotation::FILE_NAME)),
                 self.tx.clone(),
             )),
+            &crate::faces::rotation_face::adoptions_at(),
             self.ledger(),
             Some(self.root.clone()),
             Arc::new(move |_| Library {
@@ -114,7 +115,7 @@ impl Home {
             Some(n) => serde_json::json!({"5h": [{"from": 0, "to": 1440, "v": n}]}),
             None => serde_json::json!({}),
         };
-        let src = crate::accounts::quota::rules::upgrade::material(0);
+        let src = crate::accounts::quota::setup::upgrade::material(0);
         let mut head = script::parse(&src).expect("读得懂").head;
         head.settings = serde_json::json!({
             "caps": caps,
@@ -122,17 +123,16 @@ impl Home {
             "accounts": [{"start": true}, {"id": "b"}],
         });
         head.tz = Some("UTC".into());
-        rotation::strategy_file_write(
+        shelf::write_file(
             &self.own(),
             "t",
             &script::with_head(&src, &head).expect("头"),
         )
         .expect("写");
-        rotation::face_change(
-            &RotationStore::at(Some(self.root.join(rotation::FILE_NAME))),
-            &self.own(),
-            |b| b.for_new = "t".into(),
-        )
+        uses::Setup::of(Arc::new(RotationStore::at(Some(
+            self.root.join(rotation::FILE_NAME),
+        ))))
+        .change(&self.own(), |b| b.for_new = "t".into())
         .expect("w");
     }
 
@@ -214,7 +214,8 @@ fn without_a_strategy_a_session_keeps_its_start_account() {
         assert_eq!(which(&steer(&hop, &own, t + i)), "a");
     }
     assert_eq!(runs(&hop), 0, "没选策略也叫了策略");
-    assert_eq!(home.session().strategy.id, "", "会话该记下、不带策略");
+    let s = home.session();
+    assert!(s.log.is_empty() && s.uses.is_none(), "会话该记下、不带策略");
 }
 
 /// ★ #28：两个节点之间 100 发，策略一次都不重跑（第一发判一次，之后照缓存），结论没变不写盘；过了下一个已知节点（a 的重置）⇒ 重跑。
@@ -415,9 +416,9 @@ fn two_sends_in_the_same_second_judging_the_same_switch_log_it_once() {
     };
     let stale = hop.entry(&own, &turn).expect("会话记下了");
     assert_eq!(stale.current, "a");
-    let loaded = hop.load(&stale.strategy);
-    let facts = hop.accts(&stale, &loaded.settings, &none, t + 1);
-    let d = hop.judge_session(&stale, &loaded, &facts, t + 1, &[]);
+    let plan = crate::accounts::quota::rules::Adopted::of(stale.uses.as_ref());
+    let facts = hop.accts(SID, &stale, &hop.store.now(), &plan.settings, &none, t + 1);
+    let d = hop.judge_session(SID, &stale, &plan, &facts, t + 1, &[]);
     assert_eq!(
         d.pick,
         crate::accounts::quota::rules::decide::Pick::Use("b".into()),
@@ -614,11 +615,14 @@ fn acct(id: &str, used: f64, rate: Option<f64>, t: u64) -> crate::accounts::quot
         barred: None,
         rate: [rate, None],
         per_pct: [None, None],
+        weekly: false,
+        others: None,
     }
 }
 
-fn fixture_by_list() -> script::File {
-    script::parse(crate::accounts::quota::rules::upgrade::material(0)).expect("读得懂")
+fn fixture_by_list() -> crate::accounts::quota::rules::Adopted {
+    let f = script::parse(crate::accounts::quota::setup::upgrade::material(0)).expect("读得懂");
+    crate::accounts::quota::setup::adopted_of_file("", "", &f, None)
 }
 
 /// ★ 推演：在用的号额度账里量不到用速 ⇒ 推演里不出现估出来的换号时刻（那一段标「用到上限的时刻还不知道」），也不拿别的号的数顶；
@@ -702,5 +706,185 @@ fn an_account_used_by_another_session_grows_at_its_own_rate() {
     assert!(
         b.iter().any(|s| s.from == t + 3600 && !s.sendable),
         "b 照它的用速一小时后用满：{b:?}"
+    );
+}
+
+/// 额度账上 a · b 两个号：5 小时窗开着、读数一小时没动（最近刚看到）⇒ 号的总用速量得到是 0；1% ≈ 1000 折合 token。
+/// `b_weekly` ⇒ b 的读数里另有周用量那一格、5 小时窗没量过「1% ≈ 多少」。
+fn idle_ledger(home: &Home, t: u64, b_weekly: bool) {
+    let window = |name: &str| QuotaWindow {
+        name: name.into(),
+        used: Some(0.2),
+        resets_at: Some(t + 3_600),
+        warned_at: None,
+    };
+    let entry = |acct: &str| ledger::Observed {
+        agent: "claude-code".into(),
+        account: acct.into(),
+        seen_at: t,
+        reading: QuotaReading {
+            status: Some(QuotaStatus::Allowed),
+            refused: false,
+            limiting: Some("five_hour".into()),
+            resets_at: Some(t + 3_600),
+            windows: if b_weekly && acct == "b" {
+                vec![window("five_hour"), window("seven_day")]
+            } else {
+                vec![window("five_hour")]
+            },
+            overage: None,
+        },
+        windows_seen: Default::default(),
+        trend: [(
+            "five_hour".to_string(),
+            ledger::Trend {
+                since: t - 3_600,
+                prev: None,
+            },
+        )]
+        .into_iter()
+        .collect(),
+        per_pct: [(
+            "five_hour".to_string(),
+            ledger::PerPct {
+                tokens: 1_000,
+                at: t,
+            },
+        )]
+        .into_iter()
+        .filter(|_| !(b_weekly && acct == "b"))
+        .collect(),
+    };
+    std::fs::write(
+        home.root.join(ledger::FILE_NAME),
+        serde_json::to_vec(&ledger::Book {
+            accounts: vec![entry("a"), entry("b")],
+        })
+        .expect("json"),
+    )
+    .expect("ledger");
+}
+
+/// 会话 `sid` 最近 30 分钟每分钟在 `acct` 上说一发（折合 1000 token）：用速 1000 / 分 ＝ 那两个号上 1 点 / 分。
+fn busy(hop: &Hop, sid: &str, acct: &str, t: u64) {
+    let s = hop.quota.spend();
+    s.answered(Some(sid), "claude-code", acct);
+    for i in 0..30 {
+        s.heard(
+            sid,
+            r#"{"type":"message_start","message":{"usage":{"input_tokens":1000}}}"#,
+            t - 1_800 + 60 * i,
+        );
+    }
+}
+
+fn steer_as(hop: &Hop, own: &crate::platform::fs::Own, sid: &str, at: u64) -> Go {
+    let b = body();
+    let none = |_: &str| None;
+    hop.steer(
+        &Turn {
+            agent: "claude-code",
+            start: "a",
+            sid,
+            body: &b,
+            row: &none,
+            now: at,
+        },
+        own,
+    )
+}
+
+/// ★ 各会话的判依次来：两个会话都在 a 上、同一刻判，策略挑别的会话压得少的那个号。先判的那个看见另一个压在 a 上 ⇒ 换 b；
+/// 后判的那个照账本看见它刚换到 b（它在 b 上还一发都没说）⇒ 留在 a，不一起挤到 b 上。
+#[test]
+fn two_sessions_judged_at_once_see_where_the_first_one_went() {
+    let home = Home::new("in-turn", [None, None]);
+    let t = now();
+    idle_ledger(&home, t, false);
+    shelf::write_file(
+        &home.own(),
+        "t",
+        r#"/*--- rotation
+{"format": 5, "tz": "UTC", "settings": {"accounts": [{"start": true}, {"id": "b"}]}}
+---*/
+fn decide(ctx) {
+  let best = (); let low = 0.0;
+  for a in ctx.accounts {
+    if !a.sendable { continue; }
+    let o = if a.others != () { a.others.w5h } else { 0.0 };
+    if best == () || o < low - 0.01 { best = a.id; low = o; }
+  }
+  #{ order: [best] }
+}
+"#,
+    )
+    .expect("写");
+    uses::Setup::of(Arc::new(RotationStore::at(Some(
+        home.root.join(rotation::FILE_NAME),
+    ))))
+    .change(&home.own(), |b| b.for_new = "t".into())
+    .expect("w");
+    let hop = home.hop();
+    let own = home.own();
+    busy(&hop, "s-one", "a", t);
+    busy(&hop, "s-two", "a", t);
+    assert_eq!(
+        which(&steer_as(&hop, &own, "s-one", t)),
+        "b",
+        "另一个压在 a 上"
+    );
+    assert_eq!(
+        which(&steer_as(&hop, &own, "s-two", t)),
+        "a",
+        "看得见前一个刚换到 b"
+    );
+}
+
+/// ★ 有没有周上限照读数里有没有周用量那一格；别的会话压在号上的用速：号的总用速里不是这台的那一份（量得到、读数一小时没动 ⇒ 0）
+/// ＋ 这台别的会话；本会话自己那一份不算；量不到「1% ≈ 多少」⇒ 说不出。
+#[test]
+fn weekly_and_others_are_facts_of_the_reading_and_the_sessions() {
+    let home = Home::new("others", [None, None]);
+    let t = now();
+    idle_ledger(&home, t, true);
+    let hop = home.hop();
+    let lib = hop.library();
+    let fact = |acct: &str| {
+        hop.fact_one(
+            "claude-code",
+            &lib,
+            acct,
+            &|_| None,
+            t,
+            &crate::Tz::default(),
+        )
+    };
+    assert!(!fact("a").weekly, "只有 5 小时窗");
+    assert!(fact("b").weekly, "读数里有周用量");
+    busy(&hop, "s-me", "a", t);
+    busy(&hop, "s-other", "a", t);
+    let s = book::Session::fresh("claude-code", "a", t);
+    let others = |sid: &str| -> Vec<(String, Option<f64>)> {
+        hop.accts(
+            sid,
+            &s,
+            &book::Book::default(),
+            &serde_json::json!({}),
+            &|_| None,
+            t,
+        )
+        .into_iter()
+        .map(|x| (x.id, x.others.map(|o| (o * 100.0).round() / 100.0)))
+        .collect()
+    };
+    assert_eq!(
+        others("s-me"),
+        [("a".to_string(), Some(1.0)), ("b".to_string(), None)],
+        "a：没人在用（读数一小时没动）＋ 另一个会话 1 点 / 分；b：量不到「1% ≈ 多少」"
+    );
+    assert_eq!(
+        others("s-nobody"),
+        [("a".to_string(), Some(2.0)), ("b".to_string(), None)],
+        "不是这两个会话 ⇒ 两个都算别人"
     );
 }

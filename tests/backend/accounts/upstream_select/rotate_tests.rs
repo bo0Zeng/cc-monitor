@@ -97,6 +97,7 @@ impl Home {
                 Some(self.root.join(rotation::FILE_NAME)),
                 self.tx.clone(),
             )),
+            &crate::faces::rotation_face::adoptions_at(),
             Arc::new(Ledger::open(
                 Some(self.root.join(ledger::FILE_NAME)),
                 self.tx.clone(),

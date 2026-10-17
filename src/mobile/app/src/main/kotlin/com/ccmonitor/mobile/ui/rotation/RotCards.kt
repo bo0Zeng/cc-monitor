@@ -14,14 +14,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -54,7 +51,6 @@ import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
-import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.ui.chat.newsession.AccountBadge
 import com.ccmonitor.mobile.ui.chat.newsession.PickRow
@@ -86,7 +82,6 @@ internal fun Cards(
                     hover = rows.getOrNull(i)?.hover.orEmpty(),
                     ui = ui,
                     board = board,
-                    inUse = board.inSession && f.account == view.current,
                     lifted = drag?.first == i,
                     landing = target == i && drag?.first != i,
                     modifier =
@@ -141,7 +136,6 @@ private fun Card(
     hover: String,
     ui: RotationUi,
     board: RotationBoard,
-    inUse: Boolean,
     lifted: Boolean,
     landing: Boolean,
     modifier: Modifier,
@@ -173,21 +167,12 @@ private fun Card(
                 Meters(f)
             }
         }
-        if (inUse) {
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(2.dp)
-                    .size(7.dp)
-                    .background(LocalAppTokens.current.success, CircleShape),
-            )
-        }
     }
 }
 
 /** 号牌上的两条小计量（上 5h、下 7d）。 */
 @Composable
-private fun Meters(f: RotAccount) {
+internal fun Meters(f: RotAccount) {
     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Meter(copyText("rot.card.w5h"), f.w5h)
         Meter(copyText("rot.card.w7d"), f.w7d)
@@ -250,7 +235,7 @@ private fun AddSheet(
     }
 }
 
-/** 点开的那个号：名 · 此刻用量与重置 ·［立即用］（会话里，不是在用的那个）·［移出］· 被拦那一句 · `scope: each` 那几格。 */
+/** 设置页点开的那个号：名 · 此刻用量与重置 ·［移出］· `scope: each` 那几格。 */
 @Composable
 private fun AccountPane(
     ui: RotationUi,
@@ -268,14 +253,8 @@ private fun AccountPane(
                 Text(board.label(account), fontWeight = FontWeight.SemiBold)
             }
             Text(row?.line.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (board.inSession && account != view.current) {
-                    OutlinedButton(onClick = { board.useNow(account) }, enabled = f.blocked == null) { Text(copyText("rot.acct.useNow", "account" to board.label(account))) }
-                }
-                SecondaryButton(onClick = { board.edit(RotEdit.remove(i)) }) { Text(copyText("rot.acct.remove")) }
-            }
+            SecondaryButton(onClick = { board.edit(RotEdit.remove(i)) }) { Text(copyText("rot.acct.remove")) }
             f.blocked?.let { b -> NoteBox(NoteTone.WARN) { Text(b.text, style = MaterialTheme.typography.bodySmall) } }
-            ui.refused?.takeIf { it.first == account }?.let { (_, t) -> Text(t, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             row?.cells?.forEach { CellRows(ui, board, it, i) }
         }
     }

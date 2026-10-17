@@ -25,21 +25,21 @@ title: string | null,
  */
 strategy: RotStrategyItem | null, 
 /**
- * 生效的设置（会话有草稿 ⇒ 草稿）：设置页把它当草稿原样存着、随读带回，界面不拆。
- */
-settings: unknown, 
-/**
- * 设置那几格照声明解好（此刻的值 · 从哪来 · 字）。
+ * 设置那几格照声明解好（此刻的值 · 从哪来 · 字）：会话 ⇒ 它那份副本里的；设置页 ⇒ 文件此刻的。
  */
 board: RotBoard, 
-/**
- * 跟文件里的不同（会话 ⇒ 有草稿；设置页 ⇒ 交来的跟文件里的不同）。
- */
-dirty: boolean, 
 /**
  * 开会话用的号 · 此刻在用的号。
  */
 start: string, current: string, 
+/**
+ * 会话那一形的顺序（设置页 ⇒ 空）：第一格 ＝ 在用的号，往下是接下来先用谁（拖出来的 · 策略交的先后），此刻用不了的与先不用的沉底。
+ */
+lineup: Array<string>, 
+/**
+ * 这个会话先不用的号。
+ */
+off: Array<string>, 
 /**
  * 每个号的事实 ＋ 号牌，照号列表的先后（列表里没有的接在后面）。
  */
@@ -52,10 +52,6 @@ listed: number, decision: RotTryDecision | null, timeline: RotTryTimeline | null
  * 时间轴过去那一截（会话才有；设置页没有会话 ⇒ `null`）。
  */
 past: RotPast | null, 
-/**
- * 显示的这份设置照哪个版本（会话有草稿 ⇒ 草稿基于的；否则 ＝ 文件此刻的）：写的时候当 `ifRev`。
- */
-baseRev: string, 
 /**
  * 换号记录（会话才有）。
  */

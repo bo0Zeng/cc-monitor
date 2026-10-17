@@ -193,7 +193,7 @@ pub(crate) const INHERIT: &[Inherit] = &[
         tmux: Pass::Fresh,
         // 不写 ⇒ 照这台设置里「新会话用」那一份；`--no-rotation` ⇒ 这一发不轮换。
         change: Change::Flags(&[flag::NO_ROTATION]),
-        judge: "crate::accounts::quota::rules::book::Book::saw",
+        judge: "crate::accounts::quota::setup::uses::Setup::for_new",
     },
     Inherit {
         item: Item::Relay,

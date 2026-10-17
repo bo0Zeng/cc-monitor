@@ -1,6 +1,6 @@
-//! 换号那一族的帧面宿主：把账号库（`accounts/manage`）读成上游选择换号要的那几格交进去 —— 上游选择与账号库管理互不认识，
-//! 两边只在这里接上。另住 `quota-read`（额度账的显示态）与 `session-open` 起之前那一笔（新会话先定好用哪份策略）。
-//! 第五版的 typed 命令在 `rotation_view_face` · `rotation_edit_face` · `rotation_try_face` · `rotation_facts_face`。
+//! 换号那一族的帧面宿主：把账号库（`accounts/manage`）读成上游选择换号要的那几格交进去、把配置编辑层（`quota/setup/`）交给基础层当
+//! 「会话用哪份策略问谁」—— 上游选择与账号库管理、基础层与配置编辑层互不认识（后者只许配置层问基础层），都只在这里接上。另住 `quota-read`（额度账的显示态）。
+//! typed 命令：基础层 `rotation_facts_face` · `rotation_act_face`；配置编辑层 `rotation_view_face` · `rotation_edit_face` · `rotation_try_face`。
 
 use crate::accounts::upstream_select::rotate::{LibAccount, Library, LibraryRead};
 use crate::platform::fs::Own;
@@ -35,9 +35,39 @@ pub(crate) fn library_at(home: &Path) -> Library {
     }
 }
 
-/// 交给中转装配的那一份读法（`main.rs` 起中转时递进去）。
-pub fn library() -> LibraryRead {
+/// 交给中转装配的那一份读法。
+pub(crate) fn library() -> LibraryRead {
     std::sync::Arc::new(library_at)
+}
+
+/// 交给中转装配的「会话用哪份策略问谁」：跟着那份 `rotation.json` 的配置编辑层。
+pub(crate) fn adoptions_at() -> crate::accounts::quota::rules::AdoptionsAt {
+    std::sync::Arc::new(|store| std::sync::Arc::new(Setup::of(std::sync::Arc::clone(store))))
+}
+
+/// **常驻后端里起中转**（`main.rs` 调）：上游选择的装配口 ＋ 这台的账号库 · 配置编辑层；接上了中转那一刻，
+/// 盘上的轮换若还是旧版，升级写回、播种（全机只这一处写回）。
+pub fn host_relay(tap: std::sync::Arc<dyn crate::relay::TapPort>, own: Own) -> String {
+    let up = own.clone();
+    crate::accounts::upstream_select::host_relay(library(), adoptions_at(), tap, own, move || {
+        let lib = crate::platform::paths::home_dir()
+            .map(|h| library_at(&h))
+            .unwrap_or_default();
+        let rest = crate::accounts::upstream_select::rotate::rest_members(
+            lib.accounts.iter().map(|a| a.id.as_str()),
+            &[],
+            |x| lib.accounts.iter().any(|a| a.id == x && !a.api),
+        );
+        let live = crate::history::live::live_here();
+        uses::migrate_here(
+            &up,
+            &uses::UpgradeEnv {
+                live: &|sid| live.contains(sid),
+                rest,
+                title: &|_| None,
+            },
+        );
+    })
 }
 
 /// 交给登录盯防的那一份：账号库里每个号的配置目录（`accounts::quota::nodes::watch_logins_here` 起时递进去）。
@@ -53,19 +83,20 @@ pub(crate) fn account_dirs() -> crate::accounts::quota::nodes::AccountDirs {
 
 use crate::accounts::quota::ledger::{self, Ledger};
 use crate::accounts::quota::rotation::{self, RotationStore};
-use crate::accounts::quota::rules::{book, shelf};
+use crate::accounts::quota::setup::uses::{self, Setup};
 use crate::accounts::quota::show;
 use crate::accounts::upstream_select::rotate::Hop;
 use crate::common::time::TextClock;
-use copy_core::copy_text;
 use std::sync::Arc;
 
 /// `(agent, 号)` → 这台 key 表里那一行：没有 ⇒ `None`；有 ⇒ 接不接得上。
 type Rows = Box<dyn Fn(&str, &str) -> Option<bool> + Send + Sync>;
 
-/// 一条命令要的几样：轮换的账本 · 额度账 · 账号库（都在 `hop` 里）· 这台 key 表里有哪几行。
+/// 一条命令要的几样：基础层那一份（轮换的账本 · 额度账 · 账号库，都在 `hop` 里）· 配置编辑层那一份（`setup`，`hop` 问的就是它）·
+/// 这台 key 表里有哪几行。
 pub(crate) struct Ctx {
     pub(crate) hop: Hop,
+    pub(crate) setup: Arc<Setup>,
     pub(crate) rows: Rows,
 }
 
@@ -76,9 +107,17 @@ impl Ctx {
         let quota = Arc::new(Ledger::at(ledger::path_from(&get)));
         let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into));
         let rows = crate::accounts::upstream_select::file_face::machine_rows();
+        let store = Arc::new(RotationStore::at(rotation::path_now()));
+        let setup = Arc::new(Setup::of(Arc::clone(&store)));
+        let adoptions: crate::accounts::quota::rules::AdoptionsAt = {
+            let s = Arc::clone(&setup);
+            Arc::new(move |_| Arc::clone(&s) as Arc<dyn crate::accounts::quota::rules::Adoptions>)
+        };
         Self {
+            setup,
             hop: Hop::new(
-                Arc::new(RotationStore::at(rotation::path_now())),
+                store,
+                &adoptions,
                 quota,
                 home,
                 library(),
@@ -222,44 +261,4 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::Tz) -> QuotaRead 
         unseen,
         &TextClock::new(now, tz),
     )
-}
-
-// ── session-open 新起之前那一笔 ──────────────────────────────────────────────────────────
-
-/// `session-open` 带 `rotation: {strategy}`：起之前在这台的账本里给那个定好的 sid 记一条、用那一份（会话一报到就已经是它）。
-/// 策略目录里没有那一份 ⇒ `no_strategy`。`kind` ＝ 线上的那一家（记成它的路由名；认不出 ⇒ `bad_args`）。
-pub(crate) fn preset_with(
-    ctx: &Ctx,
-    own: &Own,
-    sid: &str,
-    kind: &str,
-    strategy: &str,
-    now: u64,
-) -> Result<(), (&'static str, String)> {
-    if ctx.hop.store.path().is_none() {
-        return Err(("io_failed", copy_text("beRotation.read.noHome", &[])));
-    }
-    let all = shelf::all(ctx.hop.store.strategy_dir().as_deref());
-    // 空 ⇒ 起成不轮换的会话（新会话框选了「不轮换」），不去目录里找。
-    if !strategy.is_empty() && shelf::find(&all, strategy).is_none() {
-        return Err((
-            "no_strategy",
-            copy_text("beRotation.strategy.gone", &[("name", strategy)]),
-        ));
-    }
-    let route = crate::agents::pick_route(Some(&crate::agents::AgentKind::new(kind)))
-        .map_err(|say| ("bad_args", say))?;
-    rotation::preset(&ctx.hop.store, own, sid, route, strategy, now)
-        .map_err(|e| ("io_failed", crate::common::said::IntoNote::into_note(e)))
-}
-
-/// 起不成：撤掉 [`preset_with`] 记的那一条（只撤还没换过号的；写不成只出声）。
-pub(crate) fn forget_preset_with(ctx: &Ctx, own: &Own, sid: &str) {
-    if let Err(e) = rotation::face_change(&ctx.hop.store, own, |b| {
-        if b.sessions.get(sid).is_some_and(|s| s.log.is_empty()) {
-            b.sessions.remove(sid);
-        }
-    }) {
-        tracing::warn!("[rotation] 撤不掉起之前记的那一条 {sid}：{}", e.logged());
-    }
 }

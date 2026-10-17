@@ -751,15 +751,17 @@ fn execute(plan: Plan, own: &crate::platform::fs::Own) -> i32 {
                     Ok(r) => r,
                     Err(say) => return die(&say),
                 };
-                let store = crate::accounts::quota::rotation::RotationStore::at(
-                    crate::accounts::quota::rotation::path_now(),
-                );
-                if let Err(e) = crate::accounts::quota::rotation::preset(
-                    &store,
+                let setup = crate::accounts::quota::setup::uses::Setup::of(std::sync::Arc::new(
+                    crate::accounts::quota::rotation::RotationStore::at(
+                        crate::accounts::quota::rotation::path_now(),
+                    ),
+                ));
+                if let Err(e) = crate::accounts::quota::setup::uses::preset(
+                    &setup,
                     own,
                     &nr.sid,
                     route,
-                    "",
+                    None,
                     crate::accounts::quota::now_unix(),
                 ) {
                     return die(&copy_text(

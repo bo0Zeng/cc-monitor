@@ -5,9 +5,9 @@
  */
 export type RotationStrategyAddReq = { 
 /**
- * 一份策略文件的原文（说明 ＋ 头 ＋ 代码）。
+ * 一份策略文件的原文（说明 ＋ 头 ＋ 代码）：从文件添加；缺 ⇒ 新建（照编辑器那一份，号列表 ＝ 账号库全部号，时区 ＝ 这台的）。
  */
-source: string, 
+source?: string, 
 /**
  * 存成的文件名（＝ 标题）。
  */

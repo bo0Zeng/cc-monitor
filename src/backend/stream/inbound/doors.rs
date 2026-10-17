@@ -116,7 +116,7 @@ pub(super) fn hub_here(
 
 /// 流那一路的后端里盯这台的 `rotation.json` · 策略目录 · `quota.json` · 账号库（别的进程写了也发节点、推 `changed`）。
 pub fn watch_rotation(own: &crate::platform::fs::Own) {
-    crate::accounts::quota::rotation::watch_here(own);
+    crate::accounts::quota::setup::uses::watch_here(own);
     crate::accounts::quota::nodes::watch_logins_here(crate::faces::rotation_face::account_dirs());
 }
 

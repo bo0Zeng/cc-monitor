@@ -1,10 +1,9 @@
-//! 轮换的写（第五版）：设置整份交回、照声明校验 · 存只重写头（代码逐字节不变）· 另存 · 冲突 · 换一份 · 新会话用哪份 ·
-//! 拖出来的顺序 · 现在用（只拿事实拦）· 策略文件加 / 复制 / 改名 / 删 · 24 小时条的算术。临时家目录。
+//! 轮换的写（第五版）：改设置照声明校验、当场存成新版（只重写头，代码逐字节不变）· 冲突 · 载入一份 · 新会话用哪份 ·
+//! 策略文件加 / 复制 / 改名 / 删 · 设时区。临时家目录。
 
 use super::*;
-use crate::faces::rotation_view_face::tests::{now, seen, Home, S1, S2};
-use crate::wire::typed::Handle;
-use serde_json::json;
+use crate::faces::rotation_view_face::tests::{Home, S1, S2};
+use serde_json::{json, Value};
 
 fn code_of(src: &str) -> String {
     src.split_once("\n---*/")
@@ -25,40 +24,42 @@ fn mine() -> Value {
            "accounts": [{"start": true}, {"id": "b", "delay": 30}]})
 }
 
-/// ★ 会话里改设置交意图 ⇒ 改完存成草稿（跟文件相同 ⇒ 草稿丢掉）；不合声明 ⇒ `refused` 带那一格、草稿不动；行号越界 ⇒ `bad_args`。
-/// 设置页 ⇒ 照交来的那份草稿改、只回改完的那份。
+/// ★ 改设置交意图 ⇒ 照声明改完、当场存成那份的新版（只重写头、代码逐字节不变；没变 ⇒ 不写、版本照旧）；
+/// 不合声明 ⇒ `refused` 带那一格、文件不动；行号越界 ⇒ `bad_args`；版本对不上 ⇒ `conflict` 带此刻的版本。
 #[test]
-fn session_settings_become_a_draft_and_are_checked() {
-    let home = Home::new("edit-draft");
+fn settings_edits_are_saved_into_the_file_as_a_new_version() {
+    let home = Home::new("edit-save");
     let ctx = home.ctx();
-    home.saw(&ctx, S1);
-    let target = RotWhere::Session { sid: S1.into() };
+    let before = file(&home, "by-list");
     let edit = |edit: RotEdit| {
         settings_with(
             &ctx,
             &home.own(),
             &RotationSettingsReq {
-                target: target.clone(),
-                settings: None,
+                strategy: "by-list".into(),
                 edit,
-                if_rev: None,
+                if_rev: rev(&home, "by-list"),
             },
         )
     };
-    let draft = || ctx.hop.store.now().sessions[S1].strategy.draft.clone();
+    let settings = || {
+        script::parse(&file(&home, "by-list"))
+            .expect("读得懂")
+            .head
+            .settings
+    };
     let got = edit(RotEdit::Add {
         account: "b".into(),
     })
     .expect("ok");
-    assert!(got.dirty);
-    assert_eq!(draft(), Some(got.settings.clone()));
+    assert_eq!(got.rev, rev(&home, "by-list"), "回的是写成以后的版本");
     edit(RotEdit::Set {
         key: "delay".into(),
         row: Some(1),
         v: json!(30),
     })
     .expect("ok");
-    let got = edit(RotEdit::Day {
+    edit(RotEdit::Day {
         key: "caps".into(),
         row: None,
         window: "5h".into(),
@@ -67,8 +68,13 @@ fn session_settings_become_a_draft_and_are_checked() {
         v: Some(80.0),
     })
     .expect("ok");
-    assert_eq!(got.settings, mine(), "一步步改出来的就是那一份");
-    assert_eq!(draft(), Some(mine()));
+    assert_eq!(settings(), mine(), "一步步改出来的就是那一份");
+    assert_eq!(
+        code_of(&file(&home, "by-list")),
+        code_of(&before),
+        "代码动了"
+    );
+    let saved = file(&home, "by-list");
     match edit(RotEdit::Set {
         key: "delay".into(),
         row: Some(1),
@@ -81,172 +87,71 @@ fn session_settings_become_a_draft_and_are_checked() {
         edit(RotEdit::Remove { row: 9 }),
         Err(RotationSettingsErr::BadArgs(_))
     ));
-    assert_eq!(draft(), Some(mine()), "没收下的不动草稿");
-    edit(RotEdit::Day {
-        key: "caps".into(),
-        row: None,
-        window: "5h".into(),
-        from: 0,
-        to: 0,
-        v: None,
-    })
-    .expect("ok");
-    edit(RotEdit::Remove { row: 1 }).expect("ok");
-    assert!(!edit(RotEdit::Keep).expect("ok").dirty);
-    assert_eq!(draft(), None, "跟文件相同没丢草稿");
-
-    let page = settings_with(
-        &ctx,
-        &home.own(),
-        &RotationSettingsReq {
-            target: RotWhere::Strategy {
-                strategy: "by-list".into(),
-            },
-            settings: Some(mine()),
-            edit: RotEdit::Move { from: 1, to: 0 },
-            if_rev: None,
-        },
-    )
-    .expect("ok");
+    assert_eq!(file(&home, "by-list"), saved, "没收下的不动文件");
+    let again = settings();
     assert_eq!(
-        page.settings["accounts"],
-        json!([{"id": "b", "delay": 30}, {"start": true}])
+        edit(RotEdit::Set {
+            key: "delay".into(),
+            row: Some(1),
+            v: again["accounts"][1]["delay"].clone(),
+        })
+        .expect("ok")
+        .rev,
+        shelf::rev_of(&saved)
     );
-    assert!(page.dirty);
-}
-
-/// ★ 存：只重写头、代码逐字节不变，会话的草稿丢掉；版本对不上 ⇒ `conflict` 带此刻的版本；另存 ⇒ 新的一份、会话改用它。
-#[test]
-fn saving_rewrites_only_the_head_and_detects_conflicts() {
-    let home = Home::new("save");
-    let ctx = home.ctx();
-    home.saw(&ctx, S1);
-    let before = file(&home, "by-list");
-    settings_with(
+    assert_eq!(file(&home, "by-list"), saved, "没变不写");
+    match settings_with(
         &ctx,
         &home.own(),
         &RotationSettingsReq {
-            target: RotWhere::Session { sid: S1.into() },
-            settings: None,
-            edit: RotEdit::Add {
-                account: "b".into(),
-            },
-            if_rev: None,
-        },
-    )
-    .expect("草稿");
-    let stale = match save_with(
-        &ctx,
-        &home.own(),
-        &RotationSaveReq {
-            target: RotWhere::Session { sid: S1.into() },
-            settings: None,
+            strategy: "by-list".into(),
+            edit: RotEdit::Move { from: 1, to: 0 },
             if_rev: "h:000000000000".into(),
-            save_as: None,
         },
     ) {
-        Err(RotationSaveErr::Conflict(_, c)) => c.rev,
+        Err(RotationSettingsErr::Conflict(_, c)) => assert_eq!(c.rev, shelf::rev_of(&saved)),
         other => panic!("该冲突：{other:?}"),
-    };
-    assert_eq!(stale, rev(&home, "by-list"));
-    let got = save_with(
-        &ctx,
-        &home.own(),
-        &RotationSaveReq {
-            target: RotWhere::Session { sid: S1.into() },
-            settings: None,
-            if_rev: stale,
-            save_as: None,
-        },
-    )
-    .expect("存");
-    let after = file(&home, "by-list");
-    assert_eq!(code_of(&after), code_of(&before), "代码动了");
-    assert_eq!(got.rev, shelf::rev_of(&after));
-    assert_eq!(
-        script::parse(&after).expect("读得懂").head.settings,
-        json!({"caps": {}, "capKind": "soft", "accounts": [{"start": true}, {"id": "b"}]})
-    );
-    assert_eq!(ctx.hop.store.now().sessions[S1].strategy.draft, None);
-
-    let as_new = save_with(
-        &ctx,
-        &home.own(),
-        &RotationSaveReq {
-            target: RotWhere::Session { sid: S1.into() },
-            settings: Some(json!({"caps": {}, "capKind": "hard", "accounts": [{"start": true}]})),
-            if_rev: String::new(),
-            save_as: Some(RotSaveAs {
-                name: "夜里省着用".into(),
-            }),
-        },
-    )
-    .expect("另存");
-    assert_eq!(as_new.id, "夜里省着用", "标题就是文件名");
-    assert_eq!(ctx.hop.store.now().sessions[S1].strategy.id, as_new.id);
-    assert_eq!(code_of(&file(&home, &as_new.id)), code_of(&before));
-    assert!(
-        matches!(
-            save_with(
-                &ctx,
-                &home.own(),
-                &RotationSaveReq {
-                    target: RotWhere::Strategy {
-                        strategy: "by-list".into()
-                    },
-                    settings: None,
-                    if_rev: String::new(),
-                    save_as: Some(RotSaveAs {
-                        name: "夜里省着用".into()
-                    }),
-                },
-            ),
-            Err(RotationSaveErr::BadArgs(_))
-        ),
-        "同名的已有"
-    );
+    }
 }
 
-/// 还原 · 下拉换一份（有草稿要 `discard`）· 不再轮换（`null`）· 新会话用哪份（那一份要在；`null` ⇒ 新会话不轮换）。
+/// 下拉选一份 ＝ 载入它此刻的版本（memo · 叫醒清掉）· 不再轮换（`null`）· 读不懂的载入不了 · 新会话用哪份（那一份要在；`null` ⇒ 新会话不轮换）。
 #[test]
-fn revert_use_and_for_new() {
+fn use_and_for_new() {
     let home = Home::new("use");
     let ctx = home.ctx();
     home.saw(&ctx, S1);
-    rotation::face_change(&ctx.hop.store, &home.own(), |b| {
-        b.sessions.get_mut(S1).expect("s1").strategy.draft = Some(mine());
+    crate::accounts::quota::rotation::face_change(&ctx.hop.store, &home.own(), |b| {
+        b.sessions.get_mut(S1).expect("s1").memo = Some(json!({"n": 1}));
     })
     .expect("w");
-    let to = |discard: bool| RotationUseReq {
-        sid: S1.into(),
-        strategy: Some("third".into()),
-        discard,
+    let to = |id: Option<&str>, sid: &str| {
+        use_with(
+            &ctx,
+            &home.own(),
+            &RotationUseReq {
+                sid: sid.into(),
+                strategy: id.map(str::to_string),
+            },
+        )
     };
-    assert!(matches!(
-        use_with(&ctx, &home.own(), &to(false)),
-        Err(RotationUseErr::Dirty(_))
-    ));
-    use_with(&ctx, &home.own(), &to(true)).expect("换");
+    to(Some("third"), S1).expect("换");
     let s = ctx.hop.store.now().sessions[S1].clone();
+    let c = s.uses.expect("载入了");
     assert_eq!(
-        (s.strategy.id.as_str(), s.strategy.draft.is_none()),
-        ("third", true)
+        (c.id.as_str(), c.rev.clone()),
+        ("third", rev(&home, "third"))
     );
-    use_with(
-        &ctx,
-        &home.own(),
-        &RotationUseReq {
-            sid: S1.into(),
-            strategy: None,
-            discard: false,
-        },
-    )
-    .expect("不轮换");
-    assert_eq!(ctx.hop.store.now().sessions[S1].strategy.id, "");
-    revert_with(&ctx, &home.own(), &RotationRevertReq { sid: S1.into() }).expect("还原");
+    assert!(s.memo.is_none(), "上一份记的 memo 该清");
+    to(None, S1).expect("不轮换");
+    assert!(ctx.hop.store.now().sessions[S1].uses.is_none());
+    shelf::write_file(&home.own(), "broken", "fn decide(").expect("写");
     assert!(matches!(
-        revert_with(&ctx, &home.own(), &RotationRevertReq { sid: S2.into() }),
-        Err(RotationRevertErr::NoSession(_))
+        to(Some("broken"), S1),
+        Err(RotationUseErr::NoStrategy(_))
+    ));
+    assert!(matches!(
+        to(Some("third"), S2),
+        Err(RotationUseErr::NoSession(_))
     ));
     for_new_with(
         &ctx,
@@ -256,9 +161,9 @@ fn revert_use_and_for_new() {
         },
     )
     .expect("设");
-    assert_eq!(ctx.hop.store.now().for_new, "by-reset");
+    assert_eq!(ctx.setup.uses.now().for_new, "by-reset");
     for_new_with(&ctx, &home.own(), &RotationForNewReq { strategy: None }).expect("设回不轮换");
-    assert_eq!(ctx.hop.store.now().for_new, "");
+    assert_eq!(ctx.setup.uses.now().for_new, "");
     assert!(matches!(
         for_new_with(
             &ctx,
@@ -271,75 +176,35 @@ fn revert_use_and_for_new() {
     ));
 }
 
-/// ★ 拖出来的顺序：放到第几位（越界取末尾、已在就挪）· 清掉；不在这台账号里的号 ⇒ `not_listed`。
+/// ★ 新建（不带原文）⇒ 照编辑器那一份存成一份：号列表 ＝ 账号库全部号，认得是编辑器存出来的；不是手写。
 #[test]
-fn the_dragged_order_is_placed_and_cleared() {
-    let home = Home::new("temp");
+fn a_new_strategy_is_the_editor_one_with_every_account() {
+    let home = Home::new("new");
     let ctx = home.ctx();
-    home.saw(&ctx, S1);
-    let place = |account: &str, at: usize| {
-        temp_with(
-            &ctx,
-            &home.own(),
-            &RotationTempReq {
-                sid: S1.into(),
-                op: RotTempOp::Place {
-                    account: account.into(),
-                    at,
-                },
-            },
-        )
-    };
-    assert_eq!(place("b", 0).expect("ok").temp, ["b"]);
-    assert_eq!(place("c", 9).expect("ok").temp, ["b", "c"]);
-    assert_eq!(place("c", 0).expect("ok").temp, ["c", "b"]);
-    assert!(matches!(place("zz", 0), Err(RotationTempErr::NotListed(_))));
-    let cleared = temp_with(
+    let got = add_with(
         &ctx,
         &home.own(),
-        &RotationTempReq {
-            sid: S1.into(),
-            op: RotTempOp::Clear,
+        &RotationStrategyAddReq {
+            source: None,
+            name: "夜里".into(),
         },
     )
-    .expect("ok");
-    assert!(cleared.temp.is_empty());
-}
-
-/// ★ 「现在用」：事实上发得出去 ⇒ 当场换过去、放进拖出来的顺序最前、记一条；发不出去（被拒）⇒ 不换、说几点恢复。
-/// 策略的上限不拦它（a 用到 85 也照换回 a）。
-#[test]
-fn use_now_is_stopped_only_by_facts() {
-    let home = Home::new("usenow");
-    let ctx = home.ctx();
-    home.saw(&ctx, S1);
-    let back = now() + 600;
-    seen(&ctx, "b", 0.0, Some(back));
-    let go = |account: &str| {
-        use_now_with(
-            &ctx,
-            &home.own(),
-            &RotationUseNowReq {
-                sid: S1.into(),
-                account: account.into(),
-            },
-            now(),
-        )
-    };
-    match go("b") {
-        Err(RotationUseNowErr::Unusable(_, u)) => assert_eq!(u.until, Some(back)),
-        other => panic!("该拒：{other:?}"),
-    }
-    assert_eq!(ctx.hop.store.now().sessions[S1].current, "a");
-    go("api").expect("换");
-    let s = ctx.hop.store.now().sessions[S1].clone();
-    assert_eq!(
-        (s.current.as_str(), s.temp.first().map(String::as_str)),
-        ("api", Some("api"))
-    );
-    assert_eq!(s.log.last().map(|l| &l.cause), Some(&book::Cause::UseNow));
-    seen(&ctx, "a", 0.85, None);
-    go("a").expect("策略的上限不拦");
+    .expect("新建");
+    let f = script::parse(&file(&home, &got.id)).expect("读得懂");
+    assert!(setup::editor::made_by(&f));
+    let ids: Vec<Value> = ctx
+        .hop
+        .library()
+        .accounts
+        .iter()
+        .map(|a| json!({"id": a.id}))
+        .collect();
+    assert!(!ids.is_empty(), "夹具里有账号库");
+    assert_eq!(f.head.settings["accounts"], Value::Array(ids));
+    let list =
+        crate::faces::rotation_view_face::strategies_with(&ctx, &Default::default(), &|_| false);
+    let hand = |id: &str| list.strategies.iter().find(|x| x.id == id).map(|x| x.hand);
+    assert_eq!((hand("夜里"), hand("by-list")), (Some(false), Some(true)));
 }
 
 /// ★ 策略文件：加（读不懂 ⇒ `bad_strategy` 带行；文件名就是给的名字）· 复制（另起一个文件名，内容一字不改）·
@@ -354,7 +219,7 @@ fn strategy_files_are_added_copied_renamed_and_deleted() {
         &ctx,
         &home.own(),
         &RotationStrategyAddReq {
-            source: "fn decide(ctx) {}".into(),
+            source: Some("fn decide(ctx) {}".into()),
             name: "坏的".into(),
         },
     ) {
@@ -365,7 +230,7 @@ fn strategy_files_are_added_copied_renamed_and_deleted() {
         &ctx,
         &home.own(),
         &RotationStrategyAddReq {
-            source: src.clone(),
+            source: Some(src.clone()),
             name: " 我的 ".into(),
         },
     )
@@ -379,7 +244,7 @@ fn strategy_files_are_added_copied_renamed_and_deleted() {
                     &ctx,
                     &home.own(),
                     &RotationStrategyAddReq {
-                        source: src.clone(),
+                        source: Some(src.clone()),
                         name: bad.into()
                     }
                 ),
@@ -414,11 +279,10 @@ fn strategy_files_are_added_copied_renamed_and_deleted() {
         Err(RotationStrategyRenameErr::Conflict(..))
     ));
     home.saw(&ctx, S1);
-    rotation::face_change(&ctx.hop.store, &home.own(), |b| {
-        b.sessions.get_mut(S1).expect("s1").strategy.id = copied.id.clone();
-        b.for_new = copied.id.clone();
-    })
-    .expect("w");
+    home.load(&ctx, S1, Some(&copied.id));
+    ctx.setup
+        .change(&home.own(), |b| b.for_new = copied.id.clone())
+        .expect("w");
     assert!(
         matches!(
             rename_with(
@@ -453,16 +317,17 @@ fn strategy_files_are_added_copied_renamed_and_deleted() {
             .exists(),
         "旧文件名没了"
     );
-    let b = ctx.hop.store.now();
     assert_eq!(
-        (b.sessions[S1].strategy.id.as_str(), b.for_new.as_str()),
-        ("改了", "改了"),
-        "指它的跟着改"
+        (
+            crate::faces::rotation_view_face::tests::used(&ctx, S1).as_deref(),
+            ctx.setup.uses.now().for_new.as_str()
+        ),
+        (Some("改了"), "改了"),
+        "载入它的副本与「新会话用」跟着改"
     );
-    rotation::face_change(&ctx.hop.store, &home.own(), |b| {
-        b.for_new = "by-list".into()
-    })
-    .expect("w");
+    ctx.setup
+        .change(&home.own(), |b| b.for_new = "by-list".into())
+        .expect("w");
     let copied = renamed;
     let del = |id: &str| {
         delete_with(

@@ -19,8 +19,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 轮换屏的接线（桌面 `rot-mount.ts` 同一套）：每一格读的是那台回包的哪一格（手机不算）· 改的那几格交哪条命令、`ifRev` 照回的带 ·
- * 各种情形的那一句来自那台。
+ * 轮换屏的接线（桌面 `rot-mount.ts` 同一套）：每一格读的是那台回包的哪一格（手机不算）· 会话侧的临时动作 · 设置页改一格交哪条命令、
+ * `ifRev` 照那份的版本带 · 各种情形的那一句来自那台。
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class RotationBoardTest {
@@ -67,48 +67,61 @@ class RotationBoardTest {
         }
 
     @Test
-    fun `设置页：看新会话用的那份 {strategy}；改一格交意图、那台回改完的那份当草稿存着、随读交（带它照哪版改的）；存交草稿`() =
+    fun `设置页：看新会话用的那份 {strategy}；改一格交 {strategy, 意图, ifRev ＝ 那份的 rev}，那台当场存成新版、再读`() =
         runTest {
-            val next = mapOf("tol" to 30.0)
             val (link, b) =
                 board(
                     sid = null,
                     strategies = { RotFixture.strategies(forNew = "night") },
-                    view = { RotFixture.view(strategy = "night", baseRev = "h:night") },
-                    more = { cmd, _ -> if (cmd == Rotation.SETTINGS) Reply.Ok(mapOf("dirty" to true, "settings" to next)) else null },
+                    view = { RotFixture.view(strategy = "night") },
                 )
             assertEquals(mapOf("target" to mapOf("strategy" to "night"), "hours" to 12), link.calls(Rotation.VIEW).single())
             b.edit(RotEdit.set("tol", null, 30.0))
-            assertEquals(mapOf("target" to mapOf("strategy" to "night"), "edit" to mapOf("set" to mapOf("key" to "tol", "v" to 30.0))), link.calls(Rotation.SETTINGS).single())
-            b.edit(RotEdit.KEEP)
-            assertEquals("下一笔照上一次回的那份改", next, link.calls(Rotation.SETTINGS).last()!!["settings"])
-            assertEquals(mapOf("target" to mapOf("strategy" to "night", "settings" to next, "rev" to "h:night"), "hours" to 12), link.calls(Rotation.VIEW).last())
-            b.save()
-            assertEquals(mapOf("target" to mapOf("strategy" to "night"), "ifRev" to "h:night", "settings" to next), link.calls(Rotation.SAVE).single())
-            assertEquals("存完草稿清掉：再读不带 settings", mapOf("target" to mapOf("strategy" to "night"), "hours" to 12), link.calls(Rotation.VIEW).last())
+            assertEquals(mapOf("strategy" to "night", "edit" to mapOf("set" to mapOf("key" to "tol", "v" to 30.0)), "ifRev" to "h:night"), link.calls(Rotation.SETTINGS).single())
+            assertEquals("再读不带别的", mapOf("target" to mapOf("strategy" to "night"), "hours" to 12), link.calls(Rotation.VIEW).last())
             b.pick("spread")
             assertEquals(mapOf("strategy" to "spread"), link.calls(Rotation.FOR_NEW).single())
             assertTrue(link.calls(Rotation.USE).isEmpty())
         }
 
     @Test
-    fun `会话里改一格 ⇒ rotation-settings {target sid, 那个意图, ifRev ＝ baseRev}；存 ⇒ rotation-save ifRev 照回的；还原 ⇒ rotation-revert`() =
+    fun `策略改过了：会话［载入新版］⇒ rotation-use 同一份；设置页［都载入新版］⇒ rotation-reload`() =
         runTest {
-            val (link, b) = board(view = { RotFixture.view(dirty = true, baseRev = "h:base7") })
-            b.edit(RotEdit.set("tol", null, 30.0), "tol@all")
-            assertEquals(mapOf("target" to mapOf("sid" to "s1"), "edit" to mapOf("set" to mapOf("key" to "tol", "v" to 30.0)), "ifRev" to "h:base7"), link.calls(Rotation.SETTINGS).single())
-            b.save()
-            assertEquals(mapOf("target" to mapOf("sid" to "s1"), "ifRev" to "h:base7"), link.calls(Rotation.SAVE).single())
-            b.revert()
-            assertEquals(mapOf("sid" to "s1"), link.calls(Rotation.REVERT).single())
-            assertEquals("每次写完照回包再读", 4, link.calls(Rotation.VIEW).size)
+            val (link, b) = board()
+            b.loadNew()
+            assertEquals(mapOf("sid" to "s1", "strategy" to "spread"), link.calls(Rotation.USE).single())
+            val (page, p) = board(sid = null, strategies = { RotFixture.strategies(forNew = "night") }, view = { RotFixture.view(strategy = "night") })
+            p.loadNew()
+            assertEquals(mapOf("strategy" to "night"), page.calls(Rotation.RELOAD).single())
+        }
+
+    @Test
+    fun `会话的顺序照那台排好的 lineup；勾去掉 ⇒ rotation-temp off；下拉选一份 ⇒ rotation-use 载入它`() =
+        runTest {
+            val (link, b) = board(view = { RotFixture.view(off = listOf("api")) })
+            val v = b.state.value.view!!
+            assertEquals(listOf("team", "work", "api", "lab"), v.lineup)
+            assertEquals(listOf("api"), v.off)
+            assertEquals(
+                "夹具·work 的理由",
+                v.decision!!
+                    .why
+                    .single()
+                    .why,
+            )
+            assertEquals(listOf("夹具·work 的规则"), v.board.rows[0].rules)
+            b.off("lab", true)
+            assertEquals(mapOf("sid" to "s1", "op" to mapOf("off" to mapOf("account" to "lab", "off" to true))), link.calls(Rotation.TEMP).single())
+            b.pick("night")
+            assertEquals(mapOf("sid" to "s1", "strategy" to "night"), link.calls(Rotation.USE).single())
+            assertNull(b.state.value.ask)
         }
 
     @Test
     fun `改格没成 ⇒ 那一格底下一句「改动保存失败 · 那台的话」；conflict ⇒ 不报、再读`() =
         runTest {
             var code = "refused"
-            val (link, b) = board(more = { cmd, _ -> if (cmd == Rotation.SETTINGS) RotFixture.failed(code, "启用延迟应在 0–600 分钟之间") else null })
+            val (link, b) = board(sid = null, more = { cmd, _ -> if (cmd == Rotation.SETTINGS) RotFixture.failed(code, "启用延迟应在 0–600 分钟之间") else null })
             b.edit(RotEdit.set("delay", 1, 1), "delay@team")
             val f = b.state.value.cellFailed!!
             assertEquals("delay@team", f.cell)
@@ -118,24 +131,6 @@ class RotationBoardTest {
             b.edit(RotEdit.set("tol", null, 2), "tol@all")
             assertEquals(before + 1, link.calls(Rotation.VIEW).size)
             assertNull(b.state.value.failure)
-        }
-
-    @Test
-    fun `换策略：rotation-use discard false；那台回 dirty ⇒ 先问；点头 ⇒ 再发 discard true；摇头 ⇒ 不发`() =
-        runTest {
-            var dirty = true
-            val (link, b) = board(more = { cmd, args -> if (cmd == Rotation.USE && dirty && args!!["discard"] == false) RotFixture.failed("dirty", "有没存的设置") else null })
-            b.pick("night")
-            assertEquals(mapOf("sid" to "s1", "strategy" to "night", "discard" to false), link.calls(Rotation.USE).single())
-            assertEquals(RotAsk.Discard("night"), b.state.value.ask)
-            b.answer(false)
-            assertEquals(1, link.calls(Rotation.USE).size)
-            b.pick(null)
-            b.answer(true)
-            assertEquals(mapOf("sid" to "s1", "strategy" to null, "discard" to true), link.calls(Rotation.USE).last())
-            dirty = false
-            b.pick("spread")
-            assertNull(b.state.value.ask)
         }
 
     @Test
@@ -166,7 +161,7 @@ class RotationBoardTest {
     @Test
     fun `号牌拖动 · 移出 · 加号 · 刷段：各交一个意图（怎么排 · 照谁刷 · 写成谁的是那台的）`() =
         runTest {
-            val (link, b) = board()
+            val (link, b) = board(sid = null)
             b.edit(RotEdit.move(2, 0))
             b.edit(RotEdit.remove(1))
             b.edit(RotEdit.add("api"))

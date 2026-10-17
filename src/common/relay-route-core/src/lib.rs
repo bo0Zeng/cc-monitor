@@ -134,8 +134,11 @@ pub const ACCOUNTS_MCP_REL: &str = ".cc-monitor/accounts-mcp.json";
 /// 〔「一台机器一个家」〕**额度账**（后端账号域写）：这台各号最近一次从回包头看到的额度快照 ＋ 看到的时刻。
 pub const QUOTA_LEDGER_REL: &str = ".cc-monitor/quota.json";
 
-/// 〔同上〕**账号轮换**（后端账号域写）：默认池与换号时机 · 每个会话的覆盖与此刻钉在哪个号 · 换号记录。
+/// 〔同上〕**账号轮换**（后端账号域写）：每个会话此刻在用哪个号 · 拖出来的先后 · 策略交的 memo 与叫醒 · 换号记录。
 pub const ROTATION_REL: &str = ".cc-monitor/rotation.json";
+
+/// 〔同上〕**轮换用哪份策略**（后端账号域写）：每个会话用哪份策略与改过的设置 · 新会话默认用哪份。
+pub const ROTATION_USES_REL: &str = ".cc-monitor/rotation-uses.json";
 
 /// 〔同上〕**会话血缘**（后端 `lineage.rs` 写，唯一写者是中转那一路）：谁起的谁 ＋ 起会话地址里每个来处绑给了哪个会话。
 pub const LINEAGE_REL: &str = ".cc-monitor/lineage.json";
@@ -452,6 +455,7 @@ pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
     ("assetCatalog", ASSET_CATALOG_REL, false, false),
     ("quota", QUOTA_LEDGER_REL, false, true),
     ("rotation", ROTATION_REL, false, true),
+    ("rotationUses", ROTATION_USES_REL, false, true),
     ("lineage", LINEAGE_REL, false, true),
     ("launchAccounts", LAUNCH_ACCOUNTS_REL, false, true),
     ("launchNotes", LAUNCH_NOTES_DIR_REL, true, false),

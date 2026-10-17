@@ -57,6 +57,39 @@ pub(crate) struct Ctx<'a> {
     pub(crate) settings: &'a Value,
     pub(crate) memo: Option<&'a Value>,
     pub(crate) accounts: Vec<CtxAcct>,
+    /// 本会话量出来的（[`Me`]）。
+    pub(crate) me: &'a Me,
+    /// 在用的号是用户手动选的（「现在用」· 拖到第一格 ⇒ 它排在拖出来的顺序最前）。
+    pub(crate) pinned: bool,
+    /// 用户拖出来的「接下来先用谁」。
+    pub(crate) temp: &'a [String],
+}
+
+/// 本会话此刻量出来的（交给策略的 `session`；量不到的空着）。
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct Me {
+    /// 用速：折合输入 token / 分（最近一段的平均）。
+    pub(crate) pace: Option<f64>,
+    /// 起伏：一段一段比的 σ/μ。
+    pub(crate) spread: Option<f64>,
+    /// 上下文：最近一发的 输入 ＋ 写缓存 ＋ 读缓存（token）。
+    pub(crate) context: Option<u64>,
+    /// 写缓存比读缓存多的倍数（写缓存那一档的）。
+    pub(crate) write_extra: Option<f64>,
+    /// 缓存留多久（秒，同一档）。
+    pub(crate) ttl: Option<u64>,
+    /// 上下文每分钟长多少（token / 分）。
+    pub(crate) grow: Option<f64>,
+    /// 本会话在各号上的缓存（还没过期的；照号名排）。
+    pub(crate) cached: Vec<PromptCache>,
+}
+
+/// 本会话在一个号上的缓存：留到几点 · 当时的上下文多长。
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct PromptCache {
+    pub(crate) account: String,
+    pub(crate) until: u64,
+    pub(crate) tokens: u64,
 }
 
 /// ctx 里的一个号（只有事实）。
@@ -71,9 +104,15 @@ pub(crate) struct CtxAcct {
     pub(crate) refused_until: Option<u64>,
     pub(crate) rate: [Option<f64>; 2],
     pub(crate) per_pct: [Option<u64>; 2],
+    /// 有周上限（读数里有周用量那一格）。
+    pub(crate) weekly: bool,
+    /// 这个会话先不用它（界面上去掉的勾）。
+    pub(crate) off: bool,
+    /// 别的会话压在它 5 小时窗上的用速（点 / 分）；说不出 ⇒ 空。
+    pub(crate) others: Option<f64>,
 }
 
-/// 会话状态 Σ（后端存）。
+/// 会话状态 Σ（后端存 ＋ 本会话量出来的）。
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct Sigma {
     /// 开会话用的号。
@@ -81,9 +120,13 @@ pub(crate) struct Sigma {
     pub(crate) current: String,
     /// 用户拖出来的「接下来先用谁」。
     pub(crate) temp: Vec<String>,
+    /// 这个会话先不用的号（当用不了）。
+    pub(crate) off: Vec<String>,
     /// 上一判策略约的读数（记账那一下比对）。
     pub(crate) wake_when: Vec<WakeWhen>,
     pub(crate) memo: Option<Value>,
+    /// 本会话量出来的（不存，判的时候现量）。
+    pub(crate) me: Me,
 }
 
 /// 结论。
@@ -138,6 +181,9 @@ pub(crate) fn ctx_of<'a>(
         current: &sigma.current,
         settings,
         memo: sigma.memo.as_ref(),
+        me: &sigma.me,
+        pinned: sigma.temp.first() == Some(&sigma.current),
+        temp: &sigma.temp,
         accounts: facts
             .iter()
             .enumerate()
@@ -145,7 +191,10 @@ pub(crate) fn ctx_of<'a>(
                 id: x.id.clone(),
                 pos,
                 api: x.api,
-                sendable: standing::sendable(x, t),
+                off: sigma.off.contains(&x.id),
+                weekly: x.weekly,
+                others: x.others,
+                sendable: !sigma.off.contains(&x.id) && standing::sendable(x, t),
                 used: [standing::used_at(x, 0, t), standing::used_at(x, 1, t)],
                 resets: x.resets.map(|r| r.filter(|r| *r > t)),
                 refused_until: x.refused_until.filter(|u| *u > t),
@@ -178,8 +227,10 @@ fn choose(
         start: sigma.start.clone(),
         current: sigma.current.clone(),
         temp: sigma.temp.clone(),
+        off: sigma.off.clone(),
         wake_when: v.wake_when.clone(),
         memo: v.memo.clone(),
+        me: sigma.me.clone(),
     };
     let mut skipped = Vec::new();
     // 3：该换了（当前号不在候选里）⇒ 先照用户拖出来的顺序：第一个在候选里的被选中，排在它前面的丢掉。
@@ -199,7 +250,7 @@ fn choose(
         None => {
             // 5：候选空 ⇒ 停发。
             let mut best: Option<(u64, &str)> = None;
-            for x in facts {
+            for x in facts.iter().filter(|x| !sigma.off.contains(&x.id)) {
                 if let Some(at) = standing::sendable_again(x, t) {
                     if best.is_none_or(|(b, _)| at < b) {
                         best = Some((at, &x.id));
@@ -238,7 +289,9 @@ pub(crate) fn turn(
 ) -> Decision {
     let ctx = ctx_of(sigma, facts, settings, clock, t);
     let send = |a: &str| {
-        !tried.iter().any(|x| x == a) && fact(facts, a).is_some_and(|x| standing::sendable(x, t))
+        !tried.iter().any(|x| x == a)
+            && !sigma.off.iter().any(|x| x == a)
+            && fact(facts, a).is_some_and(|x| standing::sendable(x, t))
     };
     // 1：叫策略；出错 ⇒ 兜底：此刻的号发得出去就照用，否则照事实的先后取第一个发得出去的。
     let (v, strategy_error) = match p.decide(&ctx) {
@@ -325,7 +378,7 @@ pub(crate) fn turn(
     }
 }
 
-/// 「现在用 a」（用户的手动操作）：事实上发得出去 ⇒ 放到拖出来的顺序最前、换过去；发不出去 ⇒ 不改，回几点恢复。
+/// 「现在用 a」（用户的手动操作）：事实上发得出去 ⇒ 放到拖出来的顺序最前、换过去；发不出去 · 这个会话先不用它 ⇒ 不改，回几点恢复。
 /// 策略的上限不拦它。
 pub(crate) fn use_now(
     sigma: &Sigma,
@@ -334,6 +387,9 @@ pub(crate) fn use_now(
     a: &str,
 ) -> Result<Sigma, Option<u64>> {
     let x = fact(facts, a).ok_or(None)?;
+    if sigma.off.iter().any(|b| b == a) {
+        return Err(None);
+    }
     if !standing::sendable(x, t) {
         return Err(standing::sendable_again(x, t));
     }

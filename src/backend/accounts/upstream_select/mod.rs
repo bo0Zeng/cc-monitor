@@ -188,7 +188,7 @@ impl Upstreams {
     }
 }
 
-/// **常驻后端里的中转装配口**：中转的 `host` ＋ 上游选择那只手。`main.rs` 流模式那一处调它。
+/// **常驻后端里的中转装配口**：中转的 `host` ＋ 上游选择那只手。`main.rs` 流模式那一处经 `faces::rotation_face::host_relay` 调它（那一层递进账号库与配置编辑层）。
 ///
 /// # 它为什么住上游选择（而不是中转）
 ///
@@ -205,34 +205,22 @@ impl Upstreams {
 ///
 /// `library`：这台的账号库怎么读（宿主交进来 —— 上游选择不认识账号库管理）；换号要它找各号的配置目录。
 /// `own`：写自家状态的句柄（启动时造的那一份）；额度账 · 轮换 · 血缘 · 中转钥匙的写都经它。
-pub fn host_relay(
+pub(crate) fn host_relay(
     library: rotate::LibraryRead,
+    adoptions: crate::accounts::quota::rules::AdoptionsAt,
     tap: std::sync::Arc<dyn crate::relay::TapPort>,
     own: crate::platform::fs::Own,
+    on_listening: impl FnOnce(),
 ) -> String {
     let hosted = crate::relay::host(
         &|k| std::env::var(k).ok(),
-        &Rotating(library.clone(), own.clone()),
+        &Rotating(library, own.clone(), adoptions),
         tap,
         &own,
     );
-    // 接上了中转 ⇒ 旧版的中转已经让出了口：盘上的轮换若还是旧版，这一下升级写回、播种（全机只这一处写回）。
+    // 接上了中转 ⇒ 旧版的中转已经让出了口：宿主在这一刻做它的事（盘上的轮换若还是旧版，升级写回）。
     if hosted.listening() {
-        let lib = crate::platform::paths::home_dir()
-            .map(|h| library(&h))
-            .unwrap_or_default();
-        let rest = rotate::rest_members(lib.accounts.iter().map(|a| a.id.as_str()), &[], |x| {
-            lib.accounts.iter().any(|a| a.id == x && !a.api)
-        });
-        let live = crate::history::live::live_here();
-        crate::accounts::quota::rotation::migrate_here(
-            &own,
-            &crate::accounts::quota::rotation::UpgradeEnv {
-                live: &|sid| live.contains(sid),
-                rest,
-                title: &|_| None,
-            },
-        );
+        on_listening();
     }
     hosted.to_string()
 }
@@ -243,10 +231,11 @@ pub fn host_relay(
 /// `Startup` / `Ready` / `Destinations` 三个契约口。钉这一条的判据：`upstream_selection_guard`（㈢ 零命中）。
 /// 上游选择在中转启动路径上交给中转的那一只手（[`Startup`]）：装上换号（额度满了换到轮换里下一个号），
 /// 带着这台的账号库怎么读。判据交一份空账号库 ⇒ 永远只走起会话那个号。
-/// 第二格是写自家状态的句柄（启动时造的那一份）。
+/// 第二格是写自家状态的句柄（启动时造的那一份）；第三格是会话用哪份策略问谁（宿主交进来 —— 上游选择不认识策略文件）。
 pub(crate) struct Rotating(
     pub(crate) rotate::LibraryRead,
     pub(crate) crate::platform::fs::Own,
+    pub(crate) crate::accounts::quota::rules::AdoptionsAt,
 );
 
 impl Startup for Rotating {
@@ -256,6 +245,7 @@ impl Startup for Rotating {
                 upstreams,
                 library: std::sync::Arc::clone(&self.0),
                 own: self.1.clone(),
+                adoptions: std::sync::Arc::clone(&self.2),
             }) as Box<dyn Ready>
         })
     }
@@ -266,6 +256,7 @@ pub(crate) struct Booted {
     upstreams: Upstreams,
     library: rotate::LibraryRead,
     own: crate::platform::fs::Own,
+    adoptions: crate::accounts::quota::rules::AdoptionsAt,
 }
 
 impl Ready for Booted {
@@ -281,6 +272,7 @@ impl Ready for Booted {
             upstreams,
             library,
             own,
+            adoptions,
         } = *self;
         let (table, source) = load_credentials(get, &upstreams, out);
         // `D1 阻-2`：把重载源接上 —— 没有这一行，那张表就是一张**启动快照**，
@@ -293,13 +285,15 @@ impl Ready for Booted {
         ));
         let mut accounts = Accounts::new(table, upstreams, own.clone())
             .recording_to(std::sync::Arc::clone(&quota));
-        let store = crate::accounts::quota::rotation::RotationStore::at(
+        let store = std::sync::Arc::new(crate::accounts::quota::rotation::RotationStore::at(
             crate::accounts::quota::rotation::path_from(get),
-        );
+        ));
+        // 换号的账本与「会话用哪份策略问谁」都跟着这份 `rotation.json`。
         let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into));
         accounts = accounts
             .rotating_with(rotate::Hop::new(
-                std::sync::Arc::new(store),
+                store,
+                &adoptions,
                 quota,
                 home,
                 library,

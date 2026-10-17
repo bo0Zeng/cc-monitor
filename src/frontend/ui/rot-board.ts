@@ -1,6 +1,6 @@
 /**
- * 轮换（第五版）的四块：第一行（选策略 · ⋯ · 没存的改动）＋ 说明 · 提示 · 轮换账号（号牌 ＋ 点开一个号）· 总体设置 · 模拟（时间轴）。
- * 会话面板与设置窗「轮换」栏画的是同一个，只是目标不同（`{sid}` · `{strategy, settings}`）。
+ * 轮换（第五版）：第一行（选策略 · ⋯ · 编辑策略）＋ 说明 · 提示，下面会话面板是顺序（本会话的临时动作）· 模拟；
+ * 设置窗「轮换」栏是轮换账号（号牌 ＋ 点开一个号）· 总体设置 · 模拟。目标不同（`{sid}` · `{strategy}`），第一行与模拟同一处。
  *
  * - 全照 `rotation-view` 与 `rotation-strategies` 的回包画：标题 ＝ 文件名、说明 ＝ 文件开头的注释、格照策略的 `form`
  *   （名字 `label`，悬停 `help`）、先后 · 换号时刻 · 停到几点 · 跳过哪段照 `decision` · `timeline`，时刻的字照回包里写好的 `…Text`。
@@ -41,30 +41,32 @@ export interface BoardState {
   oldOpen?: boolean;
 }
 
-/** 手势 ⇒ 命令（调用方发、发完重读重画）。会话才有的几样（现在用 · 时间轴拖动 · 还原）在设置页缺。 */
+/** 手势 ⇒ 命令（调用方发、发完重读重画）。会话才有的几样（现在用 · 临时动作 · 编辑策略）在设置页缺。 */
 export interface BoardActs {
-  /** 下拉选了一份（`null` ＝ 不轮换）。 */
+  /** 下拉选了一份（`null` ＝ 不轮换）：会话 ⇒ 这个会话用它；设置页 ⇒ 看它（不轮换 ⇒ 新会话不轮换）。 */
   pick(id: string | null): void;
   copy(id: string): void;
   rename(id: string, rev: string): void;
   forNew(id: string): void;
   remove(id: string): void;
+  /** 新建策略（问名字，照编辑器那一份建）。 */
+  create(): void;
+  /** 从文件添加。 */
   add(): void;
   /** 改了一格 / 刷了一段 / 拖了号牌 / 移出 / 加号：一个意图（后端照声明改）。 */
   edit(e: RotEdit): void;
-  save(): void;
-  revert(): void;
   useNow?: (account: string) => void;
   temp?: (op: RotTempOp) => void;
+  /** 开设置窗那台的「轮换」栏、看这个会话用的那份（给了号 ⇒ 开那个号的编辑小窗）。 */
+  editStrategy?: (account?: string) => void;
   hours(h: 12 | 24): void;
   open(account: string | null): void;
   /** 提示里的按钮：照「在文件窗口打开」那一路开一份文件（看代码 · 旧格式那几份）。 */
   showFile(path: string): void;
   /** 设时区（设成提示里后端给的那个）。 */
   setTz(zone: string): void;
-  /** 别处改了：载入新的 · 留着这边的。 */
+  /** 策略改过了：会话 ⇒ 载入新版；设置页 ⇒ 在用旧版的会话都载入新版。 */
   loadNew(): void;
-  keepMine(): void;
   /** 旧格式那几份展开 / 收起。 */
   toggleOld(): void;
 }
@@ -128,10 +130,8 @@ function firstRow(spec: BoardSpec): HTMLElement {
   const { view, list, acts } = spec;
   const row = el("div", (e) => (e.className = s.rotTop));
   const strategies = list?.strategies ?? [];
-  const current =
-    spec.where === "settings"
-      ? (list?.forNew ?? "")
-      : (view?.strategy?.id ?? "");
+  const settings = spec.where === "settings";
+  const current = view?.strategy?.id ?? "";
   const sel = select({
     label: copyText("rot.top.pick"),
     menuWidth: 340,
@@ -139,82 +139,72 @@ function firstRow(spec: BoardSpec): HTMLElement {
       {
         value: "",
         label: copyText("rot.none.label"),
+        note: list && list.forNew === "" ? copyText("rot.tag.forNew") : undefined,
         detail: copyText("rot.none.desc"),
       },
       ...strategies.map((st) => ({
         value: st.id,
         label: st.id,
         note:
-          st.forNew && spec.where === "session"
-            ? copyText("rot.tag.forNew")
-            : undefined,
-        detail: st.error
-          ? copyText("rot.top.unreadable")
-          : st.summary,
+          [st.forNew ? copyText("rot.tag.forNew") : "", st.hand ? copyText("rot.tag.hand") : ""]
+            .filter((x) => x !== "")
+            .join(copyText("kit.text.sep")) || undefined,
+        detail: st.error ? copyText("rot.top.unreadable") : st.summary,
       })),
     ],
     value: current,
+    decorate: settings
+      ? (items) => [...items, { divider: true, label: "" }, { label: copyText("rot.more.create"), onClick: () => acts.create() }]
+      : undefined,
     onChange: (v) => acts.pick(v === "" ? null : v),
   });
   sel.el.classList.add(s.rotPick);
   row.appendChild(sel.el);
   const item = strategies.find((x) => x.id === current);
-  const more = button({
-    label: copyText("rot.more.label"),
-    kind: "icon",
-    size: "compact",
-    icon: "more",
-    hint: copyText("rot.more.label"),
-  });
-  more.addEventListener("click", () => {
-    const items: MenuItem[] = [];
-    if (item) {
+  if (settings) {
+    // 「⋯」：对策略的操作只在设置页。
+    const more = button({
+      label: copyText("rot.more.label"),
+      kind: "icon",
+      size: "compact",
+      icon: "more",
+      hint: copyText("rot.more.label"),
+    });
+    more.addEventListener("click", () => {
+      const items: MenuItem[] = [];
+      if (item) {
+        const busy = item.inUse.length;
+        items.push(
+          { label: copyText("rot.more.copy"), onClick: () => acts.copy(item.id) },
+          { label: copyText("rot.more.rename"), onClick: () => acts.rename(item.id, item.rev) },
+          { label: copyText("rot.more.forNew"), enabled: !item.forNew, onClick: () => acts.forNew(item.id) },
+          {
+            label: copyText("rot.more.delete"),
+            danger: true,
+            enabled: busy === 0,
+            why: busy > 0 ? copyText("rot.more.inUse", { n: busy }) : undefined,
+            title: busy > 0 ? item.inUse.join(copyText("kit.text.sep")) : undefined,
+            onClick: () => acts.remove(item.id),
+          },
+          { divider: true, label: "" },
+        );
+      }
       items.push(
-        { label: copyText("rot.more.copy"), onClick: () => acts.copy(item.id) },
-        {
-          label: copyText("rot.more.rename"),
-          onClick: () => acts.rename(item.id, item.rev),
-        },
+        { label: copyText("rot.more.create"), onClick: () => acts.create() },
+        { label: copyText("rot.more.add"), onClick: () => acts.add() },
       );
-      if (spec.where === "session")
-        items.push({
-          label: copyText("rot.more.forNew"),
-          enabled: !item.forNew,
-          onClick: () => acts.forNew(item.id),
-        });
-      const busy = item.inUse.length;
-      items.push({
-        label: copyText("rot.more.delete"),
-        danger: true,
-        enabled: busy === 0,
-        why: busy > 0 ? copyText("rot.more.inUse", { n: busy }) : undefined,
-        title: busy > 0 ? item.inUse.join(copyText("kit.text.sep")) : undefined,
-        onClick: () => acts.remove(item.id),
-      });
-      items.push({ divider: true, label: "" });
-    }
-    items.push({ label: copyText("rot.more.add"), onClick: () => acts.add() });
-    openMenu({ el: more }, items, { label: copyText("rot.more.label") });
-  });
-  row.appendChild(more);
+      openMenu({ el: more }, items, { label: copyText("rot.more.label") });
+    });
+    row.appendChild(more);
+    if (item?.forNew) row.appendChild(el("span", (e) => (e.className = s.rotBadge), copyText("rot.tag.forNewHere")));
+  }
   row.appendChild(el("span", (e) => (e.className = s.rotSpacer)));
-  if (view?.dirty) {
-    row.append(
-      el("span", (e) => (e.className = s.rotDirty), copyText("rot.top.dirty")),
-      button({
-        label: copyText("rot.top.revert"),
-        kind: "ghost",
-        size: "compact",
-        onClick: () => acts.revert(),
-      }),
-      button({
-        label: copyText("rot.top.save"),
-        kind: "primary",
-        size: "compact",
-        onClick: () => acts.save(),
-      }),
+  if (acts.editStrategy && view?.strategy) {
+    const go = acts.editStrategy;
+    row.appendChild(
+      button({ label: copyText("rot.top.edit"), kind: "secondary", size: "compact", onClick: () => go() }),
     );
-  } else if (spec.where === "settings") {
+  } else if (settings) {
     row.appendChild(
       el(
         "span",
@@ -239,6 +229,10 @@ function description(spec: BoardSpec): HTMLElement {
         " ",
         nameIn(spec.view, v.start),
       );
+    }
+    if (spec.where === "settings") {
+      const go = spec.acts.create;
+      box.append(" ", button({ label: copyText("rot.more.create"), kind: "secondary", size: "compact", onClick: () => go() }));
     }
     return box;
   }
@@ -266,6 +260,8 @@ function hints(spec: BoardSpec): HTMLElement[] {
   return v.hints.flatMap((n) => {
     const t = hintText(n, v);
     const h = n.hint;
+    // 设置页那一形「N 个会话还在用旧版」写在编辑小窗的底行。
+    if (h.k === "older") return [];
     const btns: HTMLElement[] = [];
     let below: HTMLElement | null = null;
     if (h.k === "strategyError" && h.path !== undefined) {
@@ -284,10 +280,7 @@ function hints(spec: BoardSpec): HTMLElement[] {
         }
       }
     } else if (h.k === "newer") {
-      btns.push(
-        hintButton(copyText("rot.hint.loadNew"), () => acts.loadNew(), { act: "loadNew" }),
-        hintButton(copyText("rot.hint.keepMine"), () => acts.keepMine(), { ghost: true, act: "keepMine" }),
-      );
+      btns.push(hintButton(copyText("rot.hint.loadNew"), () => acts.loadNew(), { act: "loadNew" }));
     }
     const b = banner(t.tone, t.text, btns, n.detail ?? "");
     b.dataset.rotHint = h.k;
@@ -324,6 +317,29 @@ function meters(f: Fact, row: RotRow | undefined): HTMLElement {
   return m;
 }
 
+/** 号名旁的记号（后端照声明给：字形 · 虚线框，悬停那一句）；虚线框记在 `holder` 上。 */
+function markEls(row: RotRow | undefined, holder: HTMLElement): HTMLElement[] {
+  const out: HTMLElement[] = [];
+  for (const m of row?.marks ?? []) {
+    if (m.dashed) {
+      holder.dataset.dashed = "true";
+      attachTooltip(holder, m.tip);
+    }
+    if (m.glyph === undefined) continue;
+    const g = el("span", (e) => (e.className = s.rotMark), m.glyph);
+    g.dataset.rotMark = "";
+    attachTooltip(g, m.tip);
+    out.push(g);
+  }
+  return out;
+}
+
+/** 视图里这个号那一行（号列表外 ⇒ `undefined`）。 */
+function rowOf(view: RotationViewReply, account: string): RotRow | undefined {
+  const i = view.accounts.findIndex((f) => f.account === account);
+  return i >= 0 && i < view.listed ? view.board.rows[i] : undefined;
+}
+
 function cards(spec: BoardSpec, view: RotationViewReply): HTMLElement {
   const wrap = el("div", (e) => (e.className = s.rotCards));
   const listed = view.accounts.slice(0, view.listed);
@@ -341,6 +357,7 @@ function cards(spec: BoardSpec, view: RotationViewReply): HTMLElement {
       el("span", (e) => (e.className = s.rotCardIx), String(i + 1)),
       avatar(view, f.account, spec.origin),
       el("span", (e) => (e.className = s.rotCardName), nameIn(view, f.account)),
+      ...markEls(view.board.rows[i], c),
       meters(f, view.board.rows[i]),
     );
     // 按下拖过 4px ⇒ 拖号牌改默认优先级（松在哪张号牌上 ⇒ 排到它前头）；没拖开 ⇒ 点：展开 / 收起这个号。
@@ -405,7 +422,7 @@ function cards(spec: BoardSpec, view: RotationViewReply): HTMLElement {
   return wrap;
 }
 
-/** 点开的那个号：头一行（名 · 此刻用量 · 重置）＋ 现在用 · 移出 ＋ `scope: each` 那几格。 */
+/** 设置页点开一个号出的编辑小窗（贴着号牌、不挤开面板）：头一行 ✕ · `scope: each` 那几格 · 底行（改的是哪份 · 在用旧版的会话 · 移出）。 */
 function accountPane(
   spec: BoardSpec,
   view: RotationViewReply,
@@ -416,50 +433,167 @@ function accountPane(
   const row = view.board.rows[i];
   const pane = el("div", (e) => (e.className = s.rotPane));
   pane.dataset.account = account;
+  pane.dataset.rotEditor = "";
   const top = el("div", (e) => (e.className = s.rotPaneTop));
   top.append(
     avatar(view, account, spec.origin),
     el("b", (e) => (e.className = s.rotPaneName), nameIn(view, account)),
+    el("span", (e) => (e.className = s.rotPaneLine), row?.line ?? ""),
+    el("span", (e) => (e.className = s.rotSpacer)),
+    button({ label: copyText("rot.pane.close"), kind: "icon", size: "compact", icon: "close", hint: copyText("rot.pane.close"), onClick: () => spec.acts.open(null) }),
   );
-  top.appendChild(el("span", (e) => (e.className = s.rotPaneLine), row?.line ?? ""));
-  top.appendChild(el("span", (e) => (e.className = s.rotSpacer)));
+  pane.appendChild(top);
+  const grid = el("div", (e) => (e.className = s.rotCells));
+  for (const cell of row?.cells ?? []) grid.append(...cellRows(spec, cell, i));
+  pane.appendChild(grid);
+  const foot = el("div", (e) => (e.className = s.rotPaneFoot));
+  const older = view.hints.find((n) => n.hint.k === "older");
+  const parts = [copyText("rot.pane.foot", { name: view.strategy?.id ?? "" })];
+  if (older) parts.push(older.text);
+  else if ((view.strategy?.inUse.length ?? 0) === 0) parts.push(copyText("rot.pane.noUse"));
+  foot.appendChild(el("span", (e) => (e.className = s.rotPaneLine), parts.join(copyText("kit.text.sep"))));
+  if (older) {
+    const b = hintButton(copyText("rot.hint.loadAll"), () => spec.acts.loadNew(), { ghost: true, act: "loadAll" });
+    foot.appendChild(b);
+  }
+  foot.append(
+    el("span", (e) => (e.className = s.rotSpacer)),
+    button({ label: copyText("rot.acct.remove"), kind: "ghost", size: "compact", onClick: () => spec.acts.edit({ remove: { row: i } }) }),
+  );
+  pane.appendChild(foot);
+  return pane;
+}
+
+// ─────────────────────────────── 会话的顺序
+
+/** 这个号此刻怎样：策略交的理由；没有 ⇒ 用不了的原因（后端写好的字）。 */
+function nowOf(view: RotationViewReply, account: string): string {
+  const why = view.decision?.why.find((r) => r.account === account)?.why;
+  return why ?? view.accounts.find((f) => f.account === account)?.blocked?.text ?? "";
+}
+
+/** 点一行出的小窗：只看（此刻 · 它在这份策略里的规则）＋ 现在用 · 编辑策略。 */
+function orderPop(spec: BoardSpec, view: RotationViewReply, account: string, anchor: HTMLElement): void {
+  const pop = el("div", (e) => (e.className = s.rotPane));
+  pop.dataset.rotPop = "";
+  const top = el("div", (e) => (e.className = s.rotPaneTop));
+  top.append(avatar(view, account, spec.origin), el("b", (e) => (e.className = s.rotPaneName), nameIn(view, account)));
+  pop.appendChild(top);
+  const now = nowOf(view, account);
+  if (now !== "") pop.appendChild(el("div", (e) => (e.className = s.rotPaneLine), copyText("rot.order.now", { why: now })));
+  const row = rowOf(view, account);
+  if (row) pop.appendChild(el("div", (e) => (e.className = s.rotPaneLine), row.line));
+  for (const r of row?.rules ?? []) pop.appendChild(el("div", (e) => (e.className = s.rotPaneLine), r));
+  const btns = el("div", (e) => (e.className = s.rotPaneTop));
   if (spec.acts.useNow && account !== view.current) {
     const use = spec.acts.useNow;
-    top.appendChild(
+    btns.appendChild(
       button({
         label: copyText("rot.acct.useNow", { account: nameIn(view, account) }),
         kind: "secondary",
         size: "compact",
-        onClick: () => use(account),
+        onClick: () => {
+          closePopover();
+          use(account);
+        },
       }),
     );
   }
-  top.appendChild(
-    button({
-      label: copyText("rot.acct.remove"),
-      kind: "ghost",
-      size: "compact",
-      onClick: () => spec.acts.edit({ remove: { row: i } }),
-    }),
-  );
-  pane.appendChild(top);
-  if (spec.state.refused?.account === account) {
+  if (spec.acts.editStrategy) {
+    const go = spec.acts.editStrategy;
+    btns.appendChild(
+      button({
+        label: copyText("rot.top.edit"),
+        kind: "ghost",
+        size: "compact",
+        onClick: () => {
+          closePopover();
+          go(account);
+        },
+      }),
+    );
+  }
+  pop.appendChild(btns);
+  openPopover(anchor, pop, { label: nameIn(view, account) });
+}
+
+/** 会话的顺序：第一格 ＝ 在用的号（后端排好）；每行一个勾（去掉 ＝ 本会话先不用）；拖一行改本会话先后，拖到第一格 ＝ 现在用；点一行出小窗。 */
+function order(spec: BoardSpec, view: RotationViewReply): HTMLElement {
+  const wrap = el("div", (e) => (e.className = s.rotCards));
+  wrap.dataset.rotOrder = "";
+  const line = view.lineup;
+  if (spec.state.refused) {
     const why = el("div", (e) => (e.className = s.rotRefused), spec.state.refused.text);
     why.setAttribute("role", "status");
-    pane.appendChild(why);
+    wrap.appendChild(why);
   }
-  const grid = el("div", (e) => (e.className = s.rotCells));
-  for (const cell of row?.cells ?? []) grid.append(...cellRows(spec, cell, i));
-  pane.appendChild(grid);
-  return pane;
+  line.forEach((account, i) => {
+    const f = view.accounts.find((x) => x.account === account);
+    const r = el("div", (e) => (e.className = s.rotCard));
+    r.dataset.account = account;
+    r.dataset.rotRow = "";
+    if (i === 0) r.dataset.inUse = "true";
+    if (f?.blocked) r.dataset.blocked = "true";
+    const off = view.off.includes(account);
+    if (off) r.dataset.leftOut = "true";
+    const tick = document.createElement("input");
+    tick.type = "checkbox";
+    tick.checked = !off;
+    tick.setAttribute("aria-label", copyText("rot.order.use", { account: nameIn(view, account) }));
+    tick.addEventListener("pointerdown", (e) => e.stopPropagation());
+    tick.addEventListener("change", () => spec.acts.temp?.({ off: { account, off: !tick.checked } }));
+    r.append(
+      tick,
+      icon("drag", "compact"),
+      el("span", (e) => (e.className = s.rotCardIx), String(i + 1)),
+      avatar(view, account, spec.origin),
+      el("span", (e) => (e.className = s.rotCardName), nameIn(view, account)),
+      ...markEls(rowOf(view, account), r),
+    );
+    if (f) r.appendChild(meters(f, undefined));
+    r.appendChild(el("span", (e) => (e.className = s.rotPaneLine), nowOf(view, account)));
+    // 按下拖过 4px ⇒ 拖这一行（松在第一格 ⇒ 现在用；别的行 ⇒ 本会话先后照拖完的那一串）；没拖开 ⇒ 点：出小窗。
+    r.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      const x0 = e.clientX;
+      const y0 = e.clientY;
+      let moving = false;
+      const move = (m: PointerEvent): void => {
+        if (!moving && Math.hypot(m.clientX - x0, m.clientY - y0) > 4) {
+          moving = true;
+          r.dataset.lifted = "true";
+        }
+      };
+      const up = (u: PointerEvent): void => {
+        document.removeEventListener("pointermove", move);
+        document.removeEventListener("pointerup", up);
+        delete r.dataset.lifted;
+        if (!moving) return orderPop(spec, view, account, r);
+        const hit = [...document.querySelectorAll<HTMLElement>("[data-rot-row]")].find((k) => {
+          const b = k.getBoundingClientRect();
+          return u.clientX >= b.left && u.clientX <= b.right && u.clientY >= b.top && u.clientY <= b.bottom;
+        });
+        const to = hit ? line.indexOf(hit.dataset.account ?? "") : -1;
+        if (to < 0 || to === i) return;
+        if (to === 0) return spec.acts.useNow?.(account);
+        const next = line.filter((a) => a !== account);
+        next.splice(to, 0, account);
+        spec.acts.temp?.({ set: next.slice(1, Math.max(i, to) + 1) });
+      };
+      document.addEventListener("pointermove", move);
+      document.addEventListener("pointerup", up);
+    });
+    wrap.appendChild(r);
+  });
+  return wrap;
 }
 
 // ─────────────────────────────── 格
 
-
 function label(cell: RotCell): HTMLElement {
   const k = el("span", (e) => (e.className = s.rotCellKey), cell.label);
   if (cell.from === "all") k.dataset.inherited = "true";
+  if (cell.under !== undefined) k.dataset.under = cell.under;
   if (cell.help !== undefined) attachTooltip(k, cell.help);
   return k;
 }
@@ -488,13 +622,14 @@ function numberBox(
   return box;
 }
 
-/** 数格（百分数 · 分钟）：可空的带一颗空值说法的按钮；空着时数画虚线。 */
+/** 数格（百分数 · 分钟）：前面那半句（声明给的）· 数 · 可空的再带「或 ［空值说法］」；空着时数画虚线。 */
 function numberCell(cell: RotCell, unit: string, set: (next: unknown) => void): HTMLElement[] {
   const ctl = el("span", (e) => (e.className = s.rotCtl));
   const num = cell.num ?? 0;
-  const inherited = cell.from === "all";
+  const isNull = cell.nullable !== undefined && cell.v === null;
+  if (cell.lead !== undefined) ctl.appendChild(el("span", (e) => (e.className = s.rotLead), cell.lead));
+  ctl.appendChild(numberBox(num, cell, unit, isNull || cell.from === "all", (n) => set(n)));
   if (cell.nullable !== undefined) {
-    const isNull = cell.v === null;
     const nul = button({
       label: cell.nullable,
       kind: "secondary",
@@ -503,14 +638,12 @@ function numberCell(cell: RotCell, unit: string, set: (next: unknown) => void): 
     });
     nul.classList.add(s.rotNull);
     nul.setAttribute("aria-pressed", String(isNull));
-    ctl.append(nul, numberBox(num, cell, unit, isNull || inherited, (n) => set(n)));
-  } else {
-    ctl.append(numberBox(num, cell, unit, inherited, (n) => set(n)));
+    ctl.append(el("span", (e) => (e.className = s.rotNumUnit), copyText("rot.cell.or")), nul);
   }
   return [label(cell), ctl];
 }
 
-/** 一格 ⇒ `[标签, 控件]`（排进格子）；`row` ＝ 号列表第几行（总体那几格 ⇒ `null`）。 */
+/** 一格 ⇒ `[标签, 控件]`（排进格子）；`row` ＝ 号列表第几行（总体那几格 ⇒ `null`，说明写在控件旁边）。 */
 function cellRows(spec: BoardSpec, cell: RotCell, row: number | null): HTMLElement[] {
   const inRow = row === null ? {} : { row };
   const set = (v: unknown): void => spec.acts.edit({ set: { key: cell.key, v, ...inRow } });
@@ -518,7 +651,10 @@ function cellRows(spec: BoardSpec, cell: RotCell, row: number | null): HTMLEleme
     case "toggle": {
       const sw = toggleSwitch({ label: cell.label, on: cell.v === true, onChange: (on) => set(on) });
       sw.root.classList.add(s.rotSwitch);
-      return [label(cell), sw.root];
+      if (row !== null || cell.help === undefined) return [label(cell), sw.root];
+      const ctl = el("span", (e) => (e.className = s.rotCtl));
+      ctl.append(sw.root, el("span", (e) => (e.className = s.rotNumUnit), cell.help));
+      return [el("span", (e) => (e.className = s.rotCellKey), cell.label), ctl];
     }
     case "percent":
       return numberCell(cell, copyText("rot.unit.percent"), set);
@@ -545,31 +681,99 @@ function cellRows(spec: BoardSpec, cell: RotCell, row: number | null): HTMLEleme
       });
       return [label(cell), sel.el];
     }
-    case "daySegments": {
-      const win = cell.window ?? "";
-      return [
-        label(cell),
-        dayBar(cell.segs ?? [], cell.from === "all", (from, to, v) =>
-          spec.acts.edit({ day: { key: cell.key, window: win, from, to, v, ...inRow } }),
-        ),
-      ];
-    }
+    case "daySegments":
+      return [label(cell), segments(spec, cell, inRow)];
   }
 }
 
-// ─────────────────────────────── 24 小时条
+// ─────────────────────────────── 分段
 
 const DAY = 1440;
-/** 拖的时候按半小时吸附。 */
-const SNAP = 30;
 
-/** 24 小时条：段与字照回包画；拖出一截、选个值 ⇒ `paint(from, to, v)`（`v: null` ＝ 删这截）。 */
-function dayBar(
-  segs: readonly RotDaySeg[],
-  inherited: boolean,
-  paint: (from: number, to: number, v: number | null) => void,
-): HTMLElement {
-  const wrap = el("div", (e) => (e.className = s.rotDay));
+/** `HH:MM` ⇒ 一天里的分钟（24:00 ⇒ 1440）；写得不对 ⇒ `null`。 */
+function minutesOf(text: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(text.trim());
+  if (!m) return null;
+  const v = Number(m[1]) * 60 + Number(m[2]);
+  return Number(m[2]) < 60 && v <= DAY ? v : null;
+}
+
+/** 分段一窗：后面那几窗先是［同第一窗 · 另设］；自己设的 ⇒ 上面一条只画的条 ＋ 一段一行（从 · 到 · 上限 · ✕）＋「＋ 加一段」。 */
+function segments(spec: BoardSpec, cell: RotCell, inRow: { row?: number }): HTMLElement {
+  const box = el("div", (e) => (e.className = s.rotSegs));
+  const win = cell.window ?? "";
+  const edit = (at: number | undefined, seg: { from: number; to: number; v: number } | undefined): void =>
+    spec.acts.edit({ seg: { key: cell.key, window: win, ...inRow, ...(at === undefined ? {} : { at }), ...(seg ? { seg } : {}) } });
+  if (cell.same !== undefined) {
+    const same = cell.from === "same";
+    box.appendChild(
+      segmented({
+        label: cell.label,
+        items: [
+          { key: "same", label: cell.same },
+          { key: "own", label: copyText("rot.cell.own") },
+        ],
+        current: same ? "same" : "own",
+        onChange: (k) => spec.acts.edit({ same: { key: cell.key, window: win, ...inRow, same: k === "same" } }),
+      }),
+    );
+    if (same) return box;
+  }
+  const segs = cell.segs ?? [];
+  box.appendChild(dayBar(segs, cell.from === "all"));
+  /** 一行：给了 `g` ⇒ 第 `at` 段（改哪格都交整段）；没给 ⇒ 新加的那一行，三格都填好才交。 */
+  const line = (g: RotDaySeg | null, at: number | undefined): HTMLElement => {
+    const r = el("div", (e) => (e.className = s.rotSegRow));
+    r.dataset.rotSeg = at === undefined ? "new" : String(at);
+    const time = (min: number | null, name: string): HTMLInputElement => {
+      const t = document.createElement("input");
+      t.type = "text";
+      t.inputMode = "numeric";
+      t.className = s.rotSegTime;
+      t.value = min === null ? "" : dayClock(min);
+      t.placeholder = copyText("rot.seg.placeholder");
+      t.setAttribute("aria-label", name);
+      return t;
+    };
+    const from = time(g ? Number(g.from) : null, copyText("rot.seg.from"));
+    const to = time(g ? Number(g.to) : null, copyText("rot.seg.to"));
+    const v = document.createElement("input");
+    v.type = "number";
+    v.className = s.rotNumInput;
+    v.min = String(cell.min ?? 0);
+    v.max = String(cell.max ?? 100);
+    v.value = g ? String(g.v) : "";
+    v.setAttribute("aria-label", copyText("rot.seg.v"));
+    const commit = (): void => {
+      const a = minutesOf(from.value);
+      const b = minutesOf(to.value);
+      const n = v.value.trim() === "" ? NaN : Number(v.value);
+      if (a === null || b === null || !Number.isFinite(n)) return;
+      edit(at, { from: a, to: b, v: n });
+    };
+    for (const x of [from, to, v]) x.addEventListener("change", commit);
+    const num = el("label", (e) => (e.className = s.rotNum));
+    num.append(v, el("span", (e) => (e.className = s.rotNumUnit), copyText("rot.unit.percent")));
+    r.append(from, el("span", (e) => (e.className = s.rotNumUnit), copyText("rot.seg.dash")), to, num);
+    if (at !== undefined)
+      r.appendChild(
+        button({ label: copyText("rot.seg.del"), kind: "icon", size: "compact", icon: "close", hint: copyText("rot.seg.del"), onClick: () => edit(at, undefined) }),
+      );
+    return r;
+  };
+  segs.forEach((g, i) => box.appendChild(line(g, i)));
+  const add = button({ label: copyText("rot.seg.add"), kind: "ghost", size: "compact", icon: "plus" });
+  add.addEventListener("click", () => {
+    const r = line(null, undefined);
+    add.before(r);
+    r.querySelector("input")?.focus();
+  });
+  box.appendChild(add);
+  return box;
+}
+
+/** 分段那一条：只画（段与字照回包）；0% 的段斜纹。 */
+function dayBar(segs: readonly RotDaySeg[], inherited: boolean): HTMLElement {
   const bar = el("div", (e) => (e.className = s.rotDayBar));
   bar.dataset.dayBar = "";
   if (inherited) bar.dataset.inherited = "true";
@@ -582,112 +786,7 @@ function dayBar(
     attachTooltip(seg, g.tip);
     bar.appendChild(seg);
   }
-  const minAt = (x: number): number => {
-    const r = bar.getBoundingClientRect();
-    const f = r.width > 0 ? (x - r.left) / r.width : 0;
-    return Math.max(0, Math.min(DAY, Math.round((f * DAY) / SNAP) * SNAP));
-  };
-  let start: number | null = null;
-  let ghost: HTMLElement | null = null;
-  bar.addEventListener("pointerdown", (e) => {
-    start = minAt(e.clientX);
-    ghost = el("span", (e) => (e.className = s.rotDayGhost));
-    bar.appendChild(ghost);
-    try {
-      bar.setPointerCapture(e.pointerId);
-    } catch {
-      // 不是真指针（派出来的事件）⇒ 没得捕获，照样画。
-    }
-  });
-  bar.addEventListener("pointermove", (e) => {
-    if (start === null || !ghost) return;
-    const m = minAt(e.clientX);
-    at(ghost, Math.min(start, m) / DAY, Math.abs(m - start) / DAY);
-  });
-  bar.addEventListener("pointerup", (e) => {
-    if (start === null) return;
-    const m = minAt(e.clientX);
-    let from = Math.min(start, m);
-    let to = Math.max(start, m);
-    start = null;
-    if (to - from < SNAP) {
-      // 点一下 ⇒ 点中的那一段整段。
-      const hit = segs.find(
-        (g) => Number(g.from) <= from && from < Number(g.to),
-      );
-      from = hit ? Number(hit.from) : 0;
-      to = hit ? Number(hit.to) : DAY;
-    }
-    paintPop(bar, from, to, paint, () => ghost?.remove());
-  });
-  wrap.appendChild(bar);
-  const axis = el("div", (e) => (e.className = s.rotDayAxis));
-  for (const h of [0, 6, 12, 18, 24]) {
-    const t = el("span", (e) => (e.className = s.rotDayTick), dayClock(h * 60).slice(0, 2));
-    at(t, h / 24);
-    axis.appendChild(t);
-  }
-  wrap.appendChild(axis);
-  return wrap;
-}
-
-/** 松手弹出的那一张：`20:00–23:00 · 上限 [0 %]` · 0% · 50% · 100% · 删这段。 */
-function paintPop(
-  anchor: HTMLElement,
-  from: number,
-  to: number,
-  onPaint: (from: number, to: number, v: number | null) => void,
-  done: () => void,
-): void {
-  const pop = el("div", (e) => (e.className = s.rotDayPop));
-  pop.appendChild(
-    el(
-      "span",
-      (e) => (e.className = s.rotDayPopText),
-      copyText("rot.day.pop", { from: dayClock(from), to: dayClock(to) }),
-    ),
-  );
-  const paint = (v: number | null): void => {
-    closePopover();
-    // 一整天（0–24）交「相等」，到 24:00 为止交「到 0 点」（后端的写法：`to ≤ from` 跨午夜）。
-    onPaint(from % DAY, to % DAY, v);
-  };
-  const input = document.createElement("input");
-  input.type = "number";
-  input.min = "0";
-  input.max = "100";
-  input.className = s.rotNumInput;
-  input.setAttribute(
-    "aria-label",
-    copyText("rot.day.pop", { from: dayClock(from), to: dayClock(to) }),
-  );
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.isComposing && input.value.trim() !== "")
-      paint(Number(input.value));
-  });
-  pop.append(input, el("span", (e) => (e.className = s.rotNumUnit), copyText("rot.unit.percent")));
-  for (const v of [0, 50, 100])
-    pop.appendChild(
-      button({
-        label: copyText("rot.day.v", { v }),
-        kind: "secondary",
-        size: "compact",
-        onClick: () => paint(v),
-      }),
-    );
-  pop.appendChild(
-    button({
-      label: copyText("rot.day.del"),
-      kind: "ghost",
-      size: "compact",
-      onClick: () => paint(null),
-    }),
-  );
-  openPopover(anchor, pop, {
-    label: copyText("rot.day.popLabel"),
-    onClose: done,
-  });
-  input.focus();
+  return bar;
 }
 
 // ─────────────────────────────── 模拟（时间轴）
@@ -901,14 +1000,24 @@ export function board(spec: BoardSpec): HTMLElement {
   root.append(...hints(spec));
   const view = spec.view;
   if (!view?.strategy) return root;
+  if (spec.where === "session") {
+    root.appendChild(header(copyText("rot.h.order"), copyText("rot.h.orderHint")));
+    root.appendChild(order(spec, view));
+    if (view.timeline) {
+      root.appendChild(simHeader(spec, view));
+      root.appendChild(simulation(spec, view));
+    }
+    return root;
+  }
   root.appendChild(
     header(copyText("rot.h.cards"), copyText("rot.h.cardsHint")),
   );
-  root.appendChild(cards(spec, view));
-  if (spec.state.open !== null) {
-    const pane = accountPane(spec, view, spec.state.open);
-    if (pane) root.appendChild(pane);
-  }
+  // 编辑小窗浮在号牌下面（不挤开面板）：号牌与它同在一格里，小窗照那一格摆。
+  const deck = el("div", (e) => (e.className = s.rotDeck));
+  deck.appendChild(cards(spec, view));
+  const pane = spec.state.open === null ? null : accountPane(spec, view, spec.state.open);
+  if (pane) deck.appendChild(pane);
+  root.appendChild(deck);
   const all = view.board.all;
   if (all.length > 0) {
     root.appendChild(header(copyText("rot.h.all")));

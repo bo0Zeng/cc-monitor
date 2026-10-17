@@ -77,7 +77,7 @@ internal object RotFixture {
         account: String,
         line: String,
         cells: List<Map<String, Any?>>,
-    ) = mapOf("account" to account, "line" to line, "hover" to "夹具·$account 悬停", "cells" to cells)
+    ) = mapOf("account" to account, "line" to line, "hover" to "夹具·$account 悬停", "cells" to cells, "rules" to listOf("夹具·$account 的规则"))
 
     /** 后端解好的那几格（合成的）：总体两格 ＋ 每号一行；work 跟总体、team 自己设了启用延迟。 */
     val BOARD =
@@ -98,29 +98,22 @@ internal object RotFixture {
 
     fun view(
         strategy: String? = "spread",
-        dirty: Boolean = false,
-        baseRev: String = "h:spread",
         hints: List<Map<String, Any?>> = emptyList(),
         temp: List<String> = emptyList(),
-        settings: Map<String, Any?> =
-            mapOf(
-                "accounts" to listOf(mapOf("id" to "work"), mapOf("id" to "team", "delay" to 30.0), mapOf("id" to "lab")),
-                "tol" to 20.0,
-                "cap" to mapOf("5h" to listOf(mapOf("from" to 0.0, "to" to 1440.0, "v" to 90.0))),
-            ),
+        off: List<String> = emptyList(),
     ): Map<String, Any?> =
         mapOf(
             "now" to NOW.toDouble(),
             "nowText" to "14:30",
             "strategy" to strategy?.let { strategy(it) },
-            "settings" to settings,
             "board" to if (strategy == null) mapOf("all" to emptyList<Any>(), "rows" to emptyList<Any>()) else BOARD,
-            "dirty" to dirty,
             "start" to "work",
             "current" to "team",
+            "lineup" to listOf("team", "work", "api", "lab"),
+            "off" to off,
             "accounts" to listOf(fact("work", 80.4, 10.0, "16:07"), fact("team", 58.0, 30.0, "18:30"), fact("lab", 99.0, 20.0, blocked = "5 小时用量已到上限"), fact("api", 0.0, 0.0)),
             "listed" to 3.0,
-            "decision" to if (strategy == null) null else mapOf("order" to emptyList<String>(), "why" to emptyList<Any>(), "fromTemp" to false, "skipped" to emptyList<String>(), "temp" to temp),
+            "decision" to if (strategy == null) null else mapOf("order" to emptyList<String>(), "why" to listOf(mapOf("account" to "work", "why" to "夹具·work 的理由")), "fromTemp" to false, "skipped" to emptyList<String>(), "temp" to temp),
             "timeline" to
                 if (strategy == null) {
                     null
@@ -149,7 +142,6 @@ internal object RotFixture {
                     )
                 },
             "past" to null,
-            "baseRev" to baseRev,
             "log" to emptyList<Any>(),
             "hints" to hints,
         )

@@ -1,5 +1,5 @@
 //! 升级链的第一节（一次）：第一版 `rotation.json`（没有 `version`：规则表 `rules` ＋ `defaultRule`，会话带 `source`）⇒ 第二版的形（JSON），
-//! 接着由 [`crate::accounts::quota::rules::upgrade::from_v2`] 换成第三版；写回在 [`super::migrate_at`] 一次做（原文留 `rotation.json.v1`）。
+//! 接着由 [`super::upgrade::from_v2`] 换成第三版；写回在 [`super::uses::migrate_at`] 一次做（原文留 `rotation.json.v1`）。
 //! 第二版的类型已经删了：这里直接写出第二版的 JSON，只给下一节读。下一个大版本连这一节一起删。
 //!
 //! | 第一版 | 第二版 |
@@ -470,5 +470,5 @@ pub(crate) fn from_v1(v: &Value, local_tz: Option<&str>) -> Result<Value, String
 }
 
 #[cfg(test)]
-#[path = "../../../../../tests/backend/accounts/quota/rotation/migrate_tests.rs"]
+#[path = "../../../../../tests/backend/accounts/quota/setup/migrate_tests.rs"]
 mod tests;

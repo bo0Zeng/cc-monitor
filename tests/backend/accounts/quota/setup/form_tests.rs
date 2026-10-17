@@ -225,7 +225,11 @@ fn a_cell_resolves_own_then_all_then_default_and_null_counts_as_set() {
         day_of(caps, &s, None, "5h"),
         (vec![(0, 1440, 80.0)], RotFrom::Own)
     );
-    assert_eq!(day_of(caps, &s, None, "7d"), (vec![], RotFrom::Default));
+    assert_eq!(
+        day_of(caps, &s, None, "7d"),
+        (vec![(0, 1440, 100.0)], RotFrom::Default),
+        "没设 ⇒ 声明默认那一整段"
+    );
     assert_eq!(
         day_of(caps, &s, Some(0), "7d"),
         (vec![(0, 600, 30.0)], RotFrom::Own)
@@ -337,7 +341,6 @@ fn an_edit_is_applied_where_the_form_says() {
         ids(ap(RotEdit::Remove { row: 0 }).expect("ok")),
         [json!("a"), json!("b")]
     );
-    assert_eq!(ap(RotEdit::Keep).expect("ok"), s);
     for bad in [
         RotEdit::Remove { row: 3 },
         RotEdit::Move { from: 0, to: 3 },
@@ -365,4 +368,124 @@ fn an_edit_is_applied_where_the_form_says() {
     ] {
         assert!(apply(&f, &s, &bad).is_err(), "{bad:?}");
     }
+}
+
+/// 编辑器那一份的声明（显示条件 · 同第一窗 · 记号都在里面）。
+fn editor_form() -> Vec<Cell> {
+    super::super::script::parse(super::super::editor::SOURCE)
+        .expect("读得懂")
+        .head
+        .form
+}
+
+/// ★ 显示条件：那一格取这个值才出（号那一行照号那一行的值）；指的不是开关 / 几选一、值它收不下、总体那一格指每号那一格 ⇒ 声明不对。
+#[test]
+fn a_cell_shows_only_when_the_other_cell_has_that_value() {
+    let f = editor_form();
+    assert!(check_form(&f).is_ok());
+    let s = json!({"accounts": [{"id": "a", "in": "delay"}, {"id": "b"}]});
+    let wait = cell(&f, "wait");
+    assert!(shown(&f, wait, &s, Some(0)));
+    assert!(!shown(&f, wait, &s, Some(1)), "没设 ⇒ 默认那一项，不出");
+    assert!(shown(&f, cell(&f, "caps"), &s, Some(1)), "没有条件的照出");
+    let bad = |edit: &dyn Fn(&mut Vec<Cell>)| {
+        let mut g = editor_form();
+        edit(&mut g);
+        check_form(&g).is_err()
+    };
+    let at = |g: &mut Vec<Cell>, k: &str| g.iter().position(|c| c.key == k).expect(k);
+    assert!(bad(&|g| {
+        let i = at(g, "wait");
+        g[i].show_if.as_mut().expect("有条件").v = json!("never");
+    }));
+    assert!(bad(&|g| {
+        let i = at(g, "wait");
+        g[i].show_if.as_mut().expect("有条件").key = "caps".into();
+    }));
+    assert!(bad(&|g| {
+        let i = at(g, "smart");
+        g[i].show_if = Some(cmd_wire::rotation::FormShowIf {
+            key: "in".into(),
+            v: json!("delay"),
+        });
+    }));
+    assert!(bad(&|g| {
+        let i = at(g, "in");
+        g[i].follow = true;
+    }));
+}
+
+/// ★ 同第一窗：后面那一窗没另设 ⇒ 同第一窗（第一窗没设 ⇒ 声明默认那一整段）；「另设」把此刻生效的写成自己的，「同」删掉自己的。
+/// 一段一行：改第几段先抹掉旧的再刷新的 · 删一段 · 加一段压过它盖住的。
+#[test]
+fn a_later_window_follows_the_first_and_segments_are_edited_one_by_one() {
+    let f = editor_form();
+    let caps = cell(&f, "caps");
+    let s = json!({"accounts": [{"id": "a", "caps": {"5h": [{"from": 0, "to": 600, "v": 50}, {"from": 600, "to": 1440, "v": 80}]}}, {"id": "b"}]});
+    assert_eq!(
+        day_of(caps, &s, Some(1), "5h"),
+        (vec![(0, 1440, 90.0)], RotFrom::Default)
+    );
+    assert_eq!(
+        day_of(caps, &s, Some(1), "7d"),
+        (vec![(0, 1440, 90.0)], RotFrom::Same)
+    );
+    assert_eq!(day_of(caps, &s, Some(0), "7d").1, RotFrom::Same);
+    let ap = |s: &Value, e: RotEdit| apply(&f, s, &e).expect("ok");
+    let own = ap(
+        &s,
+        RotEdit::Same {
+            key: "caps".into(),
+            row: Some(0),
+            window: "7d".into(),
+            same: false,
+        },
+    );
+    assert_eq!(
+        own["accounts"][0]["caps"]["7d"], s["accounts"][0]["caps"]["5h"],
+        "另设 ⇒ 照此刻的写成自己的"
+    );
+    let back = ap(
+        &own,
+        RotEdit::Same {
+            key: "caps".into(),
+            row: Some(0),
+            window: "7d".into(),
+            same: true,
+        },
+    );
+    assert_eq!(back, s);
+    let seg = |at: Option<usize>, g: Option<(u64, u64, f64)>| RotEdit::Seg {
+        key: "caps".into(),
+        row: Some(0),
+        window: "5h".into(),
+        at,
+        seg: g.map(|(from, to, v)| RotSeg { from, to, v }),
+    };
+    let segs = |v: &Value| v["accounts"][0]["caps"]["5h"].clone();
+    assert_eq!(
+        segs(&ap(&s, seg(Some(0), Some((0, 480, 50.0))))),
+        json!([{"from": 0, "to": 480, "v": 50}, {"from": 600, "to": 1440, "v": 80}]),
+        "第 0 段缩短：抹掉旧的再刷新的（缩出来那截空着）"
+    );
+    assert_eq!(
+        segs(&ap(&s, seg(Some(1), None))),
+        json!([{"from": 0, "to": 600, "v": 50}]),
+        "删第 1 段"
+    );
+    assert_eq!(
+        segs(&ap(&s, seg(None, Some((1200, 1380, 0.0))))),
+        json!([{"from": 0, "to": 600, "v": 50}, {"from": 600, "to": 1200, "v": 80}, {"from": 1200, "to": 1380, "v": 0}, {"from": 1380, "to": 1440, "v": 80}]),
+        "加一段压过它盖住的"
+    );
+    assert_eq!(
+        segs(&ap(
+            &json!({"accounts": [{"id": "a"}]}),
+            seg(None, Some((1200, 1380, 0.0)))
+        )),
+        json!([{"from": 0, "to": 1200, "v": 90}, {"from": 1200, "to": 1380, "v": 0}, {"from": 1380, "to": 1440, "v": 90}]),
+        "没设的照声明默认那一整段刷"
+    );
+    assert!(apply(&f, &s, &seg(Some(5), None)).is_err());
+    assert!(apply(&f, &s, &seg(None, Some((600, 600, 1.0)))).is_err());
 }

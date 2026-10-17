@@ -12,7 +12,11 @@ export type RotAccount = { plate: RotPlate,
 /**
  * 路由第 2 段。
  */
-account: string, kind: QuotaKind, w5h: WinFact, w7d: WinFact, login: LoginState, 
+account: string, kind: QuotaKind, w5h: WinFact, w7d: WinFact, 
+/**
+ * 有周上限：读数里有周用量那一格（没有 · 没出过数 ⇒ 缺）。
+ */
+weekly?: boolean, login: LoginState, 
 /**
  * 额度账上最后一次看到它（没出过数 ⇒ 缺）。
  */

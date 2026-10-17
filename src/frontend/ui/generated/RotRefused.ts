@@ -2,6 +2,6 @@
 import type { RotBadCell } from "./RotBadCell";
 
 /**
- * 收不下的那几格（`rotation-view` · `rotation-settings` · `rotation-save` 同用）。
+ * 收不下的那几格（`rotation-settings`）。
  */
 export type RotRefused = { cells: Array<RotBadCell>, };

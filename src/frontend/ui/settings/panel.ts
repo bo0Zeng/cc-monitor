@@ -67,7 +67,7 @@ import { copyText } from "../copy-table";
 import { parseSettingsTarget, type SettingsTarget } from "../open-settings";
 import { detailOf, failSaid, sayFailure, sayWithDetail, writtenSaid } from "../kit/detail";
 import { ControlError } from "../control-said";
-import { RotationSection } from "./rot-section";
+import { focusRotation, RotationSection } from "./rot-section";
 
 /**
  * 字段控件类型：
@@ -561,6 +561,8 @@ export class SettingsPanel {
     const tabs = this.machinePages.get(pageId)?.tabs;
     const tabId = t.tab ? MACHINE_TAB_OF_TARGET[t.tab] : undefined;
     if (tabs && tabId) tabs.navigate(`${pageId}#${tabId}`);
+    // 轮换栏的锚点带着「看哪份 · 开哪个号」：交给那一栏（还没挂上 ⇒ 挂上时用）。
+    if (focusRotation(t.anchor)) return;
     const page = this.router.pageOf(pageId);
     if (!page) return;
     const spot =

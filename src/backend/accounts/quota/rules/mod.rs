@@ -1,20 +1,19 @@
-//! ★ 轮换第五版后端的积木：事实 · 动作 · 叫醒 · 推演 · 兜底。换号的想法全在策略里。
+//! ★ 轮换的基础功能层：只给信息、只执行动作 —— 事实 · 动作 · 叫醒 · 推演 · 兜底。换号的想法全在策略里；
+//! 策略文件与界面那一侧归配置编辑层（`quota/setup/`），本层不认它：会话照自己存的那份副本判（[`Adopted::of`]）。
 //!
 //! - [`standing`]：事实上发不发得出去；
 //! - [`decide`]：一判 —— 叫策略、照它交的先后做动作（纯函数：不读钟、不写盘）；
 //! - [`past`]：已经发生的那一截（照换号记录与此刻的读数，说不出的空着）；
 //! - [`simulate`]：离散事件推演，节点 ＝ 判的那一串，用的是同一个 [`decide::turn`]；
-//! - [`script`]：策略文件（JSON 头 ＋ Rhai 代码）与沙箱里的 `decide(ctx)`（挂着积木库 `lib`）。
+//! - [`code`]：策略的代码在沙箱里的 `decide(ctx)`（挂着积木库 `lib`）；
+//! - [`book`]：`rotation.json`（会话载入的策略副本 · 临时动作 · memo · 叫醒 · 换号记录）。
 
 pub(crate) mod book;
+pub(crate) mod code;
 pub(crate) mod decide;
-pub(crate) mod form;
 pub(crate) mod past;
-pub(crate) mod script;
-pub(crate) mod shelf;
 pub(crate) mod simulate;
 pub(crate) mod standing;
-pub(crate) mod upgrade;
 
 /// 窗口长度（秒）：下标 0 ＝ 5 小时 · 1 ＝ 7 天。
 pub(crate) const WINDOW_SECS: [u64; 2] = [5 * 3600, 7 * 86_400];
@@ -36,6 +35,10 @@ pub(crate) struct Acct {
     pub(crate) rate: [Option<f64>; 2],
     /// 两窗「1% ≈ 多少用量」（折合输入 token）：这个号自己在额度账里量出来的；量不到 ⇒ 空。只交给策略，判与推演不看它。
     pub(crate) per_pct: [Option<u64>; 2],
+    /// 有周上限（读数里有周用量那一格；没读数 ⇒ 当没有）。
+    pub(crate) weekly: bool,
+    /// 别的会话压在 5 小时窗上的用速（点 / 分）：照会话算（[`crate::accounts::upstream_select::rotate::Hop::accts`]）；说不出 ⇒ 空。
+    pub(crate) others: Option<f64>,
 }
 
 /// 跟窗口无关的「用不了」。
@@ -70,6 +73,8 @@ impl Acct {
             barred,
             rate: [f.w5h.rate, f.w7d.rate],
             per_pct: [f.w5h.tokens_per_pct, f.w7d.tokens_per_pct],
+            weekly: f.weekly,
+            others: None,
         }
     }
 }
@@ -81,9 +86,89 @@ pub(crate) fn clock_at(tz: &crate::Tz, t: u64) -> u16 {
     u16::try_from(local.rem_euclid(86_400) / 60).unwrap_or(0)
 }
 
-/// 策略头里的时区（缺 · 认不出 ⇒ UTC，界面另提示「时区不明」）。
-pub(crate) fn tz_of(head: Option<&script::Head>) -> crate::Tz {
-    head.and_then(|h| h.tz.as_deref())
-        .and_then(crate::Tz::iana)
-        .unwrap_or_default()
+/// 设置里号列表那一格（先后就是号牌顺序；`{start: true}` ＝ 开会话用的号）。
+pub(crate) const ACCOUNTS: &str = "accounts";
+
+/// 设置里号列表照先后列出的号（`{start: true}` 换成 `start`）。
+pub(crate) fn listed_ids<'a>(settings: &'a serde_json::Value, start: &'a str) -> Vec<&'a str> {
+    settings
+        .get(ACCOUNTS)
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|r| {
+            if r.get("start") == Some(&serde_json::Value::Bool(true)) {
+                Some(start)
+            } else {
+                r.get("id").and_then(serde_json::Value::as_str)
+            }
+        })
+        .collect()
 }
+
+/// 会话照它判的那一份（照它载入的副本拼）：`id` 空 ⇒ 不轮换；代码编不过 ⇒ 判的时候走兜底（带原因）。
+#[derive(Clone)]
+pub(crate) struct Adopted {
+    pub(crate) id: String,
+    /// 副本的内容版本。
+    pub(crate) rev: String,
+    pub(crate) code: Result<std::sync::Arc<code::Code>, super::strategy::Fail>,
+    pub(crate) time_varying: bool,
+    pub(crate) settings: serde_json::Value,
+    /// 分时段照它算（副本里没写 · 认不出 ⇒ UTC）。
+    pub(crate) tz: crate::Tz,
+}
+
+impl Adopted {
+    /// 照副本拼（缺 ⇒ 不轮换）；代码按版本缓存（[`code::cached`]）。
+    pub(crate) fn of(copy: Option<&book::Copy>) -> Self {
+        let Some(c) = copy else {
+            return Self {
+                id: String::new(),
+                rev: String::new(),
+                code: Err(super::strategy::Fail::shape("no strategy")),
+                time_varying: false,
+                settings: serde_json::Value::Object(Default::default()),
+                tz: crate::Tz::default(),
+            };
+        };
+        Self {
+            id: c.id.clone(),
+            rev: c.rev.clone(),
+            code: code::cached(&c.rev, &c.code),
+            time_varying: c.time_varying,
+            settings: c.settings.clone(),
+            tz: c
+                .tz
+                .as_deref()
+                .and_then(crate::Tz::iana)
+                .unwrap_or_default(),
+        }
+    }
+}
+
+impl decide::Strategy for Adopted {
+    fn decide(&self, ctx: &decide::Ctx<'_>) -> Result<decide::Verdict, super::strategy::Fail> {
+        match &self.code {
+            Ok(c) => c.decide(ctx),
+            Err(f) => Err(f.clone()),
+        }
+    }
+
+    fn time_varying(&self) -> bool {
+        self.code.is_ok() && self.time_varying
+    }
+}
+
+/// 新会话载入哪份问谁（配置编辑层实现；宿主交进来，本层不认它）。
+pub(crate) trait Adoptions: Send + Sync {
+    /// 「新会话默认」那一份此刻的副本；不轮换 · 那份读不懂 / 没了 ⇒ 缺。
+    fn for_new(&self) -> Option<book::Copy>;
+}
+
+/// 照这台那份 `rotation.json` 给出 [`Adoptions`] 的那一位（宿主交给上游选择：上游选择不认识策略文件）。
+pub(crate) type AdoptionsAt = std::sync::Arc<
+    dyn Fn(&std::sync::Arc<super::rotation::RotationStore>) -> std::sync::Arc<dyn Adoptions>
+        + Send
+        + Sync,
+>;

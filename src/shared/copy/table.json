@@ -20480,7 +20480,13 @@
     "rsDataPaths.backend.rotation": {
       "kind": "body",
       "role": "说明",
-      "zh": "账号轮换 · 默认顺序 · 换号时机 · 各会话账号与换号记录",
+      "zh": "账号轮换 · 各会话在用的号 · 拖出来的先后 · 换号记录",
+      "args": []
+    },
+    "rsDataPaths.backend.rotationUses": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "轮换策略 · 各会话用哪份与改过的设置 · 新会话默认用哪份",
       "args": []
     },
     "rsDataPaths.backend.lineage": {
@@ -20498,7 +20504,13 @@
     "rsToolRegistry.tools.rotationNote": {
       "kind": "body",
       "role": "说明",
-      "zh": "账号轮换 · 默认顺序 · 换号时机 · 各会话账号与换号记录",
+      "zh": "账号轮换 · 各会话在用的号 · 拖出来的先后 · 换号记录",
+      "args": []
+    },
+    "rsToolRegistry.tools.rotationUsesNote": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "轮换策略 · 各会话用哪份与改过的设置 · 新会话默认用哪份",
       "args": []
     },
     "beOauthStore.read.notObject": {
@@ -30225,12 +30237,6 @@
       "zh": "这份策略在别处已改过",
       "args": []
     },
-    "beRotation.edit.dirty": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "会话里有未保存的设置",
-      "args": []
-    },
     "beRotation.edit.forNew": {
       "kind": "error",
       "role": "报错",
@@ -30267,6 +30273,12 @@
       "zh": "{acct} 此刻无法发送",
       "args": ["acct"]
     },
+    "beRotation.edit.offNow": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "本会话先不用 {acct}",
+      "args": ["acct"]
+    },
     "beRotation.write.v1Pending": {
       "kind": "error",
       "role": "报错",
@@ -30285,29 +30297,17 @@
       "zh": "这份策略出错",
       "args": []
     },
-    "rot.top.dirty": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "未保存",
-      "args": []
-    },
-    "rot.top.revert": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "还原",
-      "args": []
-    },
-    "rot.top.save": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "存成这份策略",
-      "args": []
-    },
     "rot.top.here": {
       "kind": "body",
       "role": "片段",
       "zh": "设置 · {machine}",
       "args": ["machine"]
+    },
+    "rot.top.edit": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "编辑策略",
+      "args": []
     },
     "rot.none.label": {
       "kind": "control",
@@ -30394,6 +30394,42 @@
       "zh": "模拟",
       "args": []
     },
+    "rot.h.order": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "顺序",
+      "args": []
+    },
+    "rot.h.orderHint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "拖动改本会话先后 · 拖到第一格即换过去",
+      "args": []
+    },
+    "rot.order.use": {
+      "kind": "aria",
+      "role": "读屏",
+      "zh": "本会话用 {account}",
+      "args": ["account"]
+    },
+    "rot.order.now": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "此刻 · {why}",
+      "args": ["why"]
+    },
+    "rot.order.on": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "开",
+      "args": []
+    },
+    "rot.order.off": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "关",
+      "args": []
+    },
     "rot.card.w5h": {
       "kind": "body",
       "role": "片段",
@@ -30439,7 +30475,7 @@
     "rot.acct.remove": {
       "kind": "action",
       "role": "按钮",
-      "zh": "移出",
+      "zh": "移出这份策略",
       "args": []
     },
     "rot.acct.refused": {
@@ -30586,6 +30622,12 @@
       "zh": "↻{at}",
       "args": ["at"]
     },
+    "rot.sim.off": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "不用",
+      "args": []
+    },
     "beRotation.hint.hold": {
       "kind": "body",
       "role": "说明",
@@ -30691,9 +30733,16 @@
     "beRotation.hint.newer": {
       "kind": "body",
       "role": "说明",
-      "zh": "这份策略在别处被改了",
-      "args": [],
-      "waive": {"C-W17": "用户定的句子（轮换的提示表）"}
+      "zh": "策略「{name}」改过了 · 这个会话还在用旧版",
+      "args": ["name"],
+      "waive": {"C-W5": "用户定的句子（轮换的提示表）", "C-W17": "用户定的句子（轮换的提示表）"}
+    },
+    "beRotation.hint.older": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{n} 个会话还在用旧版",
+      "args": ["n"],
+      "waive": {"C-W5": "用户定的句子（轮换的提示表）", "C-W11": "用户定的句子（轮换的提示表）"}
     },
     "rot.ask.go": {
       "kind": "action",
@@ -30743,24 +30792,6 @@
       "zh": "删除后无法撤销",
       "args": []
     },
-    "rot.ask.discardTitle": {
-      "kind": "title",
-      "role": "确认框",
-      "zh": "换一份策略",
-      "args": []
-    },
-    "rot.ask.discardGo": {
-      "kind": "action",
-      "role": "确认框",
-      "zh": "丢弃未保存的改动并切换",
-      "args": []
-    },
-    "rot.ask.discardBody": {
-      "kind": "body",
-      "role": "确认框",
-      "zh": "会话里未保存的改动随之丢弃",
-      "args": []
-    },
     "rot.read.retry": {
       "kind": "action",
       "role": "按钮",
@@ -30770,14 +30801,16 @@
     "rot.hint.loadNew": {
       "kind": "action",
       "role": "按钮",
-      "zh": "载入新的",
-      "args": []
+      "zh": "载入新版",
+      "args": [],
+      "waive": {"C-W5": "用户定的句子（轮换的提示表）"}
     },
-    "rot.hint.keepMine": {
+    "rot.hint.loadAll": {
       "kind": "action",
       "role": "按钮",
-      "zh": "留着这边的",
-      "args": []
+      "zh": "都载入新版",
+      "args": [],
+      "waive": {"C-W5": "用户定的句子（轮换的提示表）"}
     },
     "rot.hint.code": {
       "kind": "action",
@@ -30845,6 +30878,139 @@
       "zh": "删除策略失败",
       "args": []
     },
+    "rot.tag.hand": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "手写",
+      "args": []
+    },
+    "rot.tag.forNewHere": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "新会话用这份",
+      "args": []
+    },
+    "rot.more.create": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "新建策略…",
+      "args": []
+    },
+    "rot.ask.createTitle": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "新建策略",
+      "args": []
+    },
+    "rot.ask.createName": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "名字",
+      "args": []
+    },
+    "rot.ask.createNote": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "名字就是文件名；每号切入 · 切出都是「默认」，上限 90%；建好后下拉里多一项",
+      "args": []
+    },
+    "rot.ask.createGo": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "新建",
+      "args": []
+    },
+    "rot.fail.create": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "新建失败",
+      "args": []
+    },
+    "rot.pane.close": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "关闭",
+      "args": []
+    },
+    "rot.pane.foot": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "改的是策略「{name}」 · 改一格就存成新版",
+      "args": ["name"],
+      "waive": {"C-W5": "用户定的句子（轮换的提示表）"}
+    },
+    "rot.pane.noUse": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "没有会话在用",
+      "args": []
+    },
+    "rot.cell.or": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "或",
+      "args": []
+    },
+    "rot.cell.own": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "另设",
+      "args": []
+    },
+    "rot.cell.same": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "同 {win}",
+      "args": ["win"]
+    },
+    "rot.mark.tip": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "{label} · {v}",
+      "args": ["label", "v"]
+    },
+    "rot.seg.from": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "从几点",
+      "args": []
+    },
+    "rot.seg.to": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "到几点",
+      "args": []
+    },
+    "rot.seg.v": {
+      "kind": "aria",
+      "role": "读屏",
+      "zh": "段上限",
+      "args": []
+    },
+    "rot.seg.dash": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "–",
+      "args": []
+    },
+    "rot.seg.del": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "删这段",
+      "args": []
+    },
+    "rot.seg.add": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "加一段",
+      "args": []
+    },
+    "rot.seg.placeholder": {
+      "kind": "control",
+      "role": "占位",
+      "zh": "HH:MM",
+      "args": []
+    },
     "rot.fail.add": {
       "kind": "error",
       "role": "报错",
@@ -30857,17 +31023,12 @@
       "zh": "改动保存失败",
       "args": []
     },
-    "rot.fail.save": {
+    "rot.fail.reload": {
       "kind": "error",
       "role": "报错",
-      "zh": "保存失败",
-      "args": []
-    },
-    "rot.fail.revert": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "还原失败",
-      "args": []
+      "zh": "载入新版失败",
+      "args": [],
+      "waive": {"C-W5": "用户定的句子（轮换的提示表）"}
     },
     "rot.fail.useNow": {
       "kind": "error",
