@@ -74,7 +74,7 @@ class ChatController(
      * 此刻有没有对话还在生成；前台保活服务据此决定存活。
      *
      * 惰性连接下没有活动会话是常态，所以不能按会话数判。
-     * 判据是 [ChatUiState.running]（会话帧的语气，那台判的）。
+     * 判据是 [ChatUiState.running]（那台给的脸上在干什么，那台判的）。
      */
     val hasInFlightTurn: StateFlow<Boolean> = _hasInFlightTurn.asStateFlow()
 

@@ -65,6 +65,8 @@ class AsksTest {
                     listOf(
                         mapOf(
                             "sid" to "s1",
+                            "label" to "标题 s1",
+                            "face" to Fixtures.face("live-needs-you-tmux"),
                             "needs" to
                                 mapOf(
                                     "kind" to "approve",
@@ -81,6 +83,8 @@ class AsksTest {
                         ),
                         mapOf(
                             "sid" to "s2",
+                            "label" to "标题 s2",
+                            "face" to Fixtures.face("live-needs-you-tmux"),
                             "needs" to
                                 mapOf(
                                     "kind" to "unknown",

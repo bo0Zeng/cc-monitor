@@ -7,6 +7,7 @@ import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionModel
 import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
 import com.ccmonitor.mobile.core.claude.link.SessionPermission
+import com.ccmonitor.mobile.core.claude.link.blocked
 import com.ccmonitor.mobile.core.claude.link.wire.ModeSwitchResult
 import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
 import com.ccmonitor.mobile.core.copy.copyText
@@ -107,8 +108,8 @@ internal class ChatChips(
     }
 
     /**
-     * 两颗 chip 此刻能不能换：照会话帧的 `switch`（不在会话表里了 ⇒ 离开「活」那一帧带的）；那台离线 ⇒ 两颗都灰、写离线那一句。
-     * 帧上没有这一格 ⇒ 不灰（由两条命令自己照实回）。
+     * 两颗 chip 此刻能不能换：照那台给的这条会话的脸（`can.model` · `can.permission`）；那台离线 ⇒ 两颗都灰、写离线那一句。
+     * 流上还没有它的脸 ⇒ 不灰（由两条命令自己照实回）。
      */
     fun CoroutineScope.watch(s: String) {
         launch {
@@ -117,8 +118,8 @@ internal class ChatChips(
                     if (st is LinkState.Down) {
                         copyText("newSession.machine.offline", "machine" to machine).let { it to it }
                     } else {
-                        val sw = t.sessions[s]?.switch ?: t.fates[s]?.switch
-                        sw?.model?.why to sw?.permission?.why
+                        val can = t.faces[s]?.can
+                        can?.model?.blocked() to can?.permission?.blocked()
                     }
                 val now = state.value
                 if (now.model.blocked != model || now.permission.blocked != permission) {

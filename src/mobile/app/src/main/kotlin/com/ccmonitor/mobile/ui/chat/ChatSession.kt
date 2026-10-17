@@ -59,7 +59,7 @@ import java.util.UUID
 data class ChatUiState(
     /** 记录 ＋ 手机这边还没在记录里出现的那几句。 */
     val units: List<RenderUnit> = emptyList(),
-    /** 这条会话此刻在跑（会话帧的语气 `now`）：右端是 ■。 */
+    /** 这条会话此刻在跑（那台给的脸上在干什么是 `working`）：右端是 ■。 */
     val running: Boolean = false,
     /** 会话那一层的失败（起不来 · 读不出记录）那一句；`null` ＝ 没有。 */
     val failedWhy: String? = null,
@@ -756,7 +756,7 @@ class ChatSession(
         launch {
             link.table.collect { t ->
                 // 只有那台判得出「在跑」才亮停止键；判不出（说不清 · 读记录中）不亮。
-                val running = t.sessions[s]?.running == true
+                val running = t.running(s)
                 if (running != _state.value.running) _state.value = _state.value.copy(running = running)
             }
         }

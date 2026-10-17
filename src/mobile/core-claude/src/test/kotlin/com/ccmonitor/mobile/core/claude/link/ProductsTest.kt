@@ -3,7 +3,10 @@ package com.ccmonitor.mobile.core.claude.link
 import com.ccmonitor.mobile.core.claude.link.wire.Hidden
 import com.ccmonitor.mobile.core.claude.link.wire.Hide
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsRow
+import com.ccmonitor.mobile.core.claude.link.wire.SessionDot
+import com.ccmonitor.mobile.core.claude.link.wire.SessionFace
 import com.ccmonitor.mobile.core.claude.link.wire.Tone
+import com.ccmonitor.mobile.core.claude.link.wire.Wire
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -17,32 +20,45 @@ class ProductsTest {
     private fun golden(kind: String) = frames.filter { it.str("kind") == kind }
 
     @Test
-    fun `会话表：金样里 session_added 全格与最少格都折得进来，字与语气照抄`() {
+    fun `会话表：金样里 session_added 全格与最少格都折得进来，脸照那台给的那一份`() {
         val breaks = mutableListOf<String>()
         val (full, least) = golden("session_added").take(2)
         val t = SessionTable().step(full, breaks::add)
-        assertEquals(Toned("需手动", Tone.NEED), t.sessions.getValue("s1").activity)
+        assertEquals(SessionDot.NEEDS_YOU, t.faces.getValue("s1").dot)
+        assertEquals(Toned("需手动", Tone.NEED), t.faces.getValue("s1").let { Toned(it.name, it.tone) })
         assertEquals("/p/s1.jsonl", t.sessions.getValue("s1").path)
-        assertFalse("需手动不算在跑", t.sessions.getValue("s1").running)
+        assertFalse("需手动不算在跑", t.running("s1"))
         val t2 = SessionTable().step(least, breaks::add)
-        // 最少格：那台判不出在干什么（`activity` 缺席）⇒ 核心照实写「状态不明」、语气 plain；不算在跑（停止键不亮）。
-        assertEquals(Toned("状态不明", Tone.PLAIN), t2.sessions.getValue("s1").activity)
-        assertFalse("判不出不算在跑", t2.sessions.getValue("s1").running)
+        // 最少格：那台判不出在干什么（脸上 `live` 不带 `activity`）⇒ 「状态不明」；不算在跑（停止键不亮）。
+        assertEquals("状态不明", t2.faces.getValue("s1").name)
+        assertNull(
+            t2.faces
+                .getValue("s1")
+                .live.activity,
+        )
+        assertFalse("判不出不算在跑", t2.running("s1"))
         assertTrue(breaks.toString(), breaks.isEmpty())
     }
 
     @Test
-    fun `会话表：status 改字、removed 拿掉、replayed 记下`() {
+    fun `会话表：同一条后到的脸覆盖先到的（宣告 → 状态 → 离开活 → 又宣告），摘掉了 ⇒ 脸一并拿掉`() {
         val breaks = mutableListOf<String>()
         var t = SessionTable().step(golden("session_added")[0], breaks::add)
         t = t.step(golden("session_status")[1], breaks::add)
-        assertEquals(Toned("状态不明", Tone.PLAIN), t.sessions.getValue("s1").activity)
-        assertFalse("判不出不算在跑", t.sessions.getValue("s1").running)
+        assertEquals("状态不明", t.faces.getValue("s1").name)
         assertEquals("/p/s1.jsonl", t.sessions.getValue("s1").path) // 状态帧不抹掉宣告时的格
         t = t.step(golden("sessions_replayed")[0], breaks::add)
         assertTrue(t.replayed)
         t = t.step(golden("session_removed")[1], breaks::add)
         assertTrue(t.sessions.isEmpty())
+        assertNull("摘掉了、去向还没裁 ⇒ 流上没有它的脸", t.faces["s1"])
+        t = t.step(golden("session_state")[0], breaks::add)
+        assertEquals(SessionDot.EXITED, t.faces.getValue("s1").dot)
+        assertFalse("离开活的不进活会话表", "s1" in t.sessions)
+        t = t.step(golden("session_state")[1], breaks::add)
+        assertEquals(SessionDot.ENDED, t.faces.getValue("s1").dot)
+        t = t.step(golden("session_added")[0], breaks::add)
+        assertEquals("又宣告 ⇒ 换回活的那一份", SessionDot.NEEDS_YOU, t.faces.getValue("s1").dot)
         assertTrue(breaks.toString(), breaks.isEmpty())
     }
 
@@ -61,30 +77,58 @@ class ProductsTest {
     }
 
     @Test
-    fun `会话表：能不能换照帧上的 switch 抄（宣告 · 状态 · 离开活），被顶替的记下顶替它的那一条`() {
+    fun `会话表：能不能换照脸上的 can 抄（宣告 · 状态 · 离开活），被顶替的记下顶替它的那一条`() {
         val breaks = mutableListOf<String>()
         var t = SessionTable().step(golden("session_added")[0], breaks::add)
-        assertEquals(Switches(CanSwitch("先答完需手动"), CanSwitch("先答完需手动")), t.sessions.getValue("s1").switch)
-        t = t.step(golden("session_status")[1], breaks::add)
-        assertEquals(Switches(CanSwitch(null), CanSwitch(null)), t.sessions.getValue("s1").switch)
-        assertTrue(
-            t.sessions
+        assertEquals(
+            "先答完需手动",
+            t.faces
                 .getValue("s1")
-                .switch!!
-                .model.can,
+                .can.model
+                .blocked(),
+        )
+        assertEquals(
+            "先答完需手动",
+            t.faces
+                .getValue("s1")
+                .can.permission
+                .blocked(),
+        )
+        t = t.step(golden("session_status")[1], breaks::add)
+        assertNull(
+            "能换 ⇒ 没有那一句",
+            t.faces
+                .getValue("s1")
+                .can.model
+                .blocked(),
         )
         t = t.step(golden("session_state")[0], breaks::add)
         assertEquals(
-            CanSwitch("会话已退出"),
-            t.fates
+            "会话已退出",
+            t.faces
                 .getValue("s1")
-                .switch
-                ?.model,
+                .can.model
+                .blocked(),
         )
         val (superseded, gone) = golden("session_removed")
         assertEquals(mapOf("s1" to "s2"), t.step(superseded, breaks::add).successors)
         assertTrue("不是顶替 ⇒ 不记", t.step(gone, breaks::add).successors.isEmpty())
         assertTrue(breaks.toString(), breaks.isEmpty())
+    }
+
+    @Test
+    fun `整份脸金样每一形都装得进，点 · 短名 · 语气 · 看不见时作不作数照抄`() {
+        val all = Fixtures.json("session-face.golden.json")
+        assertTrue("金样里一形都没有 —— 本条在空转", all.isNotEmpty())
+        for ((key, raw) in all) {
+            val f = Wire.bind<SessionFace>(raw)
+            assertNotNull("$key 装不进", f)
+            @Suppress("UNCHECKED_CAST")
+            val m = raw as Map<String, Any?>
+            assertEquals(key, m["name"], f!!.name)
+            assertEquals(key, m["settled"], f.settled)
+        }
+        assertEquals("线上那八颗点都在金样里", SessionDot.entries.toSet(), all.values.mapNotNull { Wire.bind<SessionFace>(it)?.dot }.toSet())
     }
 
     @Test
@@ -128,7 +172,7 @@ class ProductsTest {
 
     @Test
     fun `history-list：行上隐藏那一格照收（后端写好的那一句）；入参只在「显示已隐藏」开着时带 hidden`() {
-        val rows = listOf(mapOf("sessionId" to "s", "label" to "l", "atText" to "", "sectionText" to "", "projectPath" to "", "jsonlPath" to "", "agent" to "claude", "status" to "ended", "hidden" to mapOf("by" to "child", "said" to "由 a 启动 · 子会话默认隐藏")))
+        val rows = listOf(mapOf("sessionId" to "s", "label" to "l", "atText" to "", "sectionText" to "", "projectPath" to "", "jsonlPath" to "", "agent" to "claude", "face" to Fixtures.face("ended"), "hidden" to mapOf("by" to "child", "said" to "由 a 启动 · 子会话默认隐藏")))
         assertEquals(
             Hidden("由 a 启动 · 子会话默认隐藏"),
             HistoryList
@@ -166,8 +210,8 @@ class ProductsTest {
             mapOf(
                 "waiting" to
                     listOf(
-                        mapOf("sid" to "b", "needs" to mapOf("kind" to "approve", "text" to "等批准 · Bash", "head" to "等批准 · Bash", "tone" to "need", "rank" to 0.0, "waitedMs" to 180000.0, "waitedText" to "3m")),
-                        mapOf("sid" to "a", "needs" to mapOf("kind" to "answer", "text" to "等回答", "head" to "等回答", "tone" to "need", "rank" to 1.0, "waitedMs" to null, "waitedText" to null)),
+                        mapOf("sid" to "b", "label" to "标题 b", "face" to Fixtures.face("live-needs-you-tmux"), "needs" to mapOf("kind" to "approve", "text" to "等批准 · Bash", "head" to "等批准 · Bash", "tone" to "need", "rank" to 0.0, "waitedMs" to 180000.0, "waitedText" to "3m")),
+                        mapOf("sid" to "a", "label" to "标题 a", "face" to Fixtures.face("live-needs-you-tmux"), "needs" to mapOf("kind" to "answer", "text" to "等回答", "head" to "等回答", "tone" to "need", "rank" to 1.0, "waitedMs" to null, "waitedText" to null)),
                     ),
             )
         val rows = SessionsNeeds.of(data)!!
@@ -176,34 +220,21 @@ class ProductsTest {
         assertEquals("已等那一格读毫秒（手机按此刻走表），不抄收到那一刻写好的字", 180_000L, rows[0].needs.waitedMs)
         assertEquals(null, rows[1].needs.waitedMs)
         assertEquals(emptyList<NeedsRow>(), SessionsNeeds.of(mapOf("waiting" to emptyList<Any>())))
-        assertNull("缺 text ⇒ 契约对不上", SessionsNeeds.of(mapOf("waiting" to listOf(mapOf("sid" to "a", "needs" to mapOf("kind" to "x", "head" to "需手动", "tone" to "need", "rank" to 0.0))))))
-        assertNull("缺 head（钉条第一行）⇒ 契约对不上", SessionsNeeds.of(mapOf("waiting" to listOf(mapOf("sid" to "a", "needs" to mapOf("kind" to "x", "text" to "需手动", "tone" to "need", "rank" to 0.0))))))
+        assertNull("缺 text ⇒ 契约对不上", SessionsNeeds.of(mapOf("waiting" to listOf(mapOf("sid" to "a", "label" to "标题 a", "face" to Fixtures.face("live-needs-you-tmux"), "needs" to mapOf("kind" to "x", "head" to "需手动", "tone" to "need", "rank" to 0.0))))))
+        assertNull("缺 head（钉条第一行）⇒ 契约对不上", SessionsNeeds.of(mapOf("waiting" to listOf(mapOf("sid" to "a", "label" to "标题 a", "face" to Fixtures.face("live-needs-you-tmux"), "needs" to mapOf("kind" to "x", "text" to "需手动", "tone" to "need", "rank" to 0.0))))))
     }
 
     @Test
-    fun `quota-read：每号的行、5h 那一格、开窗那一句照抄；出过数的在前`() {
-        val cell = { t: String, tone: String -> mapOf("text" to t, "tone" to tone) }
-        val data =
-            mapOf(
-                "state" to "present",
-                "text" to null,
-                "usableNow" to listOf("personal"),
-                "accounts" to
-                    listOf(
-                        mapOf(
-                            "account" to "personal",
-                            "fiveHour" to "5h 63%",
-                            "rows" to listOf(listOf(cell("personal", "plain"), cell("订阅", "plain")), listOf(cell("5h", "plain"), cell("63%", "warn"))),
-                            "warm" to mapOf("act" to "wait", "text" to "5h 63% ↻18:30"),
-                        ),
-                    ),
-                "unseen" to listOf(mapOf("account" to "work", "fiveHour" to null, "rows" to listOf(listOf(cell("work", "plain"))), "warm" to mapOf("act" to "send", "text" to "未计时"))),
-            )
-        val a = QuotaRead.of(data)!!
-        assertEquals(listOf("personal", "work"), a.accounts.map { it.account })
-        assertEquals(Toned("63%", Tone.WARN), a.accounts[0].rows[1][1])
-        assertEquals("5h 63%", a.accounts[0].fiveHour)
-        assertEquals("未计时", a.accounts[1].warmText)
-        assertNull("行里一格缺 text ⇒ 解不出", QuotaRead.of(data + ("unseen" to listOf(mapOf("account" to "w", "rows" to listOf(listOf(mapOf("tone" to "plain"))))))))
+    fun `quota-read：金样每一份都解得开，每号「5h 那一格」照抄`() {
+        @Suppress("UNCHECKED_CAST")
+        val cases = Fixtures.json("quota-read.golden.json")["cases"] as List<Map<String, Any?>>
+        assertTrue("金样里一份都没有 —— 本条在空转", cases.isNotEmpty())
+        for (c in cases) {
+            @Suppress("UNCHECKED_CAST")
+            val raw = (c["reply"] as Map<String, Any?>)["accounts"] as List<Map<String, Any?>>
+            val got = QuotaRead.of(c["reply"])
+            assertEquals("${c["name"]}", raw.map { it["account"] to it["fiveHour"] }, got?.accounts?.map { it.account to it.fiveHour })
+        }
+        assertNull("号缺名字 ⇒ 解不出", QuotaRead.of(mapOf("accounts" to listOf(mapOf("fiveHour" to "5h 1%")))))
     }
 }

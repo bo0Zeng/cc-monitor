@@ -224,6 +224,8 @@ data class NeedsList(
 @JsonClass(generateAdapter = true)
 data class NeedsRow(
     val sid: String,
+    val label: String,
+    val face: SessionFace,
     val needs: Needs,
 )
 
@@ -366,7 +368,7 @@ data class HistoryRow(
     val jsonlPath: String,
     val agent: String,
     val agentTag: String?,
-    val status: String,
+    val face: SessionFace,
     val hidden: Hidden?,
 )
 
@@ -1108,6 +1110,19 @@ data class ProfilesWriteDone(
     val reload: String?,
 )
 
+@WireOf("QuotaRead")
+@JsonClass(generateAdapter = true)
+data class QuotaReadReply(
+    val accounts: List<QuotaFiveHour>,
+)
+
+@WireOf("QuotaAccount")
+@JsonClass(generateAdapter = true)
+data class QuotaFiveHour(
+    val account: String,
+    val fiveHour: String?,
+)
+
 // 流上的会话帧（核心按 `cmd-wire` 那一份类型重写过的一行）。
 
 @WireOf("SessionAdded")
@@ -1119,10 +1134,7 @@ data class SessionAddedFrame(
     val name: String?,
     @Json(name = "agent_kind") val agentKind: String,
     val attachable: Boolean?,
-    val activity: SessionActivityWord?,
-    @Json(name = "activity_text") val activityText: String,
-    @Json(name = "activity_tone") val activityTone: Tone,
-    val switch: SwitchCell,
+    val face: SessionFace,
 )
 
 @WireOf("SessionStatus")
@@ -1130,19 +1142,14 @@ data class SessionAddedFrame(
 data class SessionStatusFrame(
     val sid: String,
     val path: String?,
-    val activity: SessionActivityWord?,
-    @Json(name = "activity_text") val activityText: String,
-    @Json(name = "activity_tone") val activityTone: Tone,
-    val switch: SwitchCell,
+    val face: SessionFace,
 )
 
 @WireOf("SessionState")
 @JsonClass(generateAdapter = true)
 data class SessionStateFrame(
     val sid: String,
-    val state: SessionFateWord,
-    @Json(name = "state_text") val stateText: String,
-    val switch: SwitchCell,
+    val face: SessionFace,
 )
 
 @WireOf("SessionRemoved")
@@ -1157,6 +1164,53 @@ data class SessionRemovedFrame(
 data class SessionFileRereadFrame(
     @Json(name = "session_id") val sid: String,
 )
+
+/** 一条会话此刻的整份脸（那台一处判好）：点 · 短名 · 语气 · 能做什么；那台看不见时 [settled] 为真的照旧作数。 */
+@WireOf("SessionFace")
+@JsonClass(generateAdapter = true)
+data class SessionFace(
+    val dot: SessionDot,
+    val live: FaceLive,
+    val settled: Boolean,
+    val name: String,
+    val tone: Tone,
+    val can: SessionCan,
+)
+
+/** 进程在不在：在、且那台判得出在干什么才带 [activity]。 */
+@WireOf("FaceLive")
+@JsonClass(generateAdapter = true)
+data class FaceLive(
+    val activity: SessionActivityWord?,
+)
+
+/** 会话那颗点（线上名与桌面状态点同一套）。 */
+@JsonClass(generateAdapter = false)
+enum class SessionDot {
+    @Json(name = "running")
+    RUNNING,
+
+    @Json(name = "needs-you")
+    NEEDS_YOU,
+
+    @Json(name = "background")
+    BACKGROUND,
+
+    @Json(name = "idle")
+    IDLE,
+
+    @Json(name = "exited")
+    EXITED,
+
+    @Json(name = "ended")
+    ENDED,
+
+    @Json(name = "gone")
+    GONE,
+
+    @Json(name = "unknown")
+    UNKNOWN,
+}
 
 @JsonClass(generateAdapter = false)
 enum class SessionActivityWord {
@@ -1173,25 +1227,18 @@ enum class SessionActivityWord {
     BACKGROUND_WORK,
 }
 
-@JsonClass(generateAdapter = false)
-enum class SessionFateWord {
-    @Json(name = "reconnectable")
-    RECONNECTABLE,
-
-    @Json(name = "ended")
-    ENDED,
-}
-
-@WireOf("Switch")
+/** 这条会话此刻能做的（手机只读换模型 · 切权限档那两样）。 */
+@WireOf("SessionCan")
 @JsonClass(generateAdapter = true)
-data class SwitchCell(
-    val model: CanSwitchCell,
-    val permission: CanSwitchCell,
+data class SessionCan(
+    val model: Allow,
+    val permission: Allow,
 )
 
-@WireOf("WireCanSwitch")
+/** 一样此刻能不能做：不能 ⇒ [why] 是那台写好的那一句。 */
+@WireOf("Allow")
 @JsonClass(generateAdapter = true)
-data class CanSwitchCell(
+data class Allow(
     val can: CanWord,
     val why: String?,
 )

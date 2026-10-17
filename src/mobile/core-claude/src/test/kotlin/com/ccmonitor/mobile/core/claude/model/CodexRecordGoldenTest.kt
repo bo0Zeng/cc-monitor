@@ -4,6 +4,7 @@ import com.ccmonitor.mobile.core.claude.link.HistoryRead
 import com.ccmonitor.mobile.core.claude.link.Json
 import com.ccmonitor.mobile.core.claude.link.RecordLine
 import com.ccmonitor.mobile.core.claude.link.SessionTable
+import com.ccmonitor.mobile.core.claude.link.obj
 import com.ccmonitor.mobile.core.claude.link.str
 import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
 import com.ccmonitor.mobile.core.claude.link.wire.Tone
@@ -123,7 +124,7 @@ class CodexRecordGoldenTest {
 
     @Test
     fun `流上那一路：Codex 会话的活动跟着一轮走，一轮完了是空闲（聊天屏的停止键只认判得出的在跑）`() {
-        // 同一份金样：一轮开始 ⇒ 运行中（NOW）；一轮完了 ⇒ 空闲（PLAIN）。手机只照抄帧上的字与语气。
+        // 同一份金样：一轮开始 ⇒ 运行中（NOW）；一轮完了 ⇒ 空闲（PLAIN）。手机只照抄帧上那份脸的字与语气。
         var table = SessionTable()
         val tones = mutableListOf<Tone?>()
         val texts = mutableListOf<String?>()
@@ -135,10 +136,11 @@ class CodexRecordGoldenTest {
             .forEach { f ->
                 table = table.step(f) { error("会话帧解不开：$it") }
                 val only = table.sessions.values.singleOrNull()
-                val tone = only?.activity?.tone
+                val face = only?.let { table.faces[it.sid] }
+                val tone = face?.tone
                 if (tones.lastOrNull() != tone || tones.isEmpty()) tones += tone
-                texts += only?.activity?.text
-                val r = only?.running == true
+                texts += face?.name
+                val r = only != null && table.running(only.sid)
                 if (only != null && running.lastOrNull() != r) running += r
             }
         // 宣告不等记录：这一家没有进程状态文件，宣告那一帧判不出在干什么 ⇒ 核心照实写「读记录中」、语气 plain；读完记录紧跟一帧说空闲。
@@ -150,8 +152,9 @@ class CodexRecordGoldenTest {
             File(repoRoot(), "tests/__fixtures__/codex-session-stream.golden.jsonl")
                 .readLines()
                 .mapNotNull(Json::obj)
-                .first { it.str("activity") == "working" }
-                .str("activity_text")
+                .mapNotNull { it.obj("face") }
+                .first { it.obj("live")?.str("activity") == "working" }
+                .str("name")
         assertNotEquals("宣告那一帧判不出就不许先说运行中", working, texts.first())
     }
 
