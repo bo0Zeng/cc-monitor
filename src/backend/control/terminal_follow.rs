@@ -685,8 +685,8 @@ impl Drop for Watch {
     }
 }
 
-/// 读控制模式客户端的输出：我们那个窗格的 `%output`、或任何别的通知（窗格关了 · 布局变了 · 会话没了…）⇒ 「变了」；
-/// 别的窗格的输出不管。连着几笔「变了」只报一次（订阅线程取走之前不再报）。读到头 ⇒ 「客户端退了」。
+/// 读控制模式客户端的输出：我们那个窗格的 `%output` / `%extended-output` / `%pane-mode-changed`、或布局变了（`%layout-change`）⇒ 「变了」；
+/// 别的窗格的输出或窗口/会话元数据（如自动改名、会话列表变更等）不当成画面变动。连着几笔「变了」只报一次（订阅线程取走之前不再报）。读到头 ⇒ 「客户端退了」。
 fn spawn_reader(
     mut rd: BufReader<std::process::ChildStdout>,
     pane: Option<String>,
@@ -701,14 +701,24 @@ fn spawn_reader(
                 Ok(0) | Err(_) => break,
                 Ok(_) => {}
             }
-            if !line.starts_with(b"%") || line.starts_with(b"%begin") || line.starts_with(b"%end") {
+            let is_change = if let Some(rest) = line
+                .strip_prefix(b"%output ")
+                .or_else(|| line.strip_prefix(b"%extended-output "))
+                .or_else(|| line.strip_prefix(b"%pane-mode-changed "))
+                .or_else(|| line.strip_prefix(b"%pane-exited "))
+            {
+                let who = rest
+                    .split(|&b| b == b' ' || b == b'\n')
+                    .next()
+                    .unwrap_or_default();
+                pane.as_deref().is_none_or(|p| p.as_bytes() == who)
+            } else if line.starts_with(b"%layout-change ") {
+                true
+            } else {
+                false
+            };
+            if !is_change {
                 continue;
-            }
-            if let Some(rest) = line.strip_prefix(b"%output ") {
-                let who = rest.split(|&b| b == b' ').next().unwrap_or_default();
-                if pane.as_deref().is_some_and(|p| p.as_bytes() != who) {
-                    continue;
-                }
             }
             if !pending.swap(true, Ordering::AcqRel) && tx.send(Ev::Changed).is_err() {
                 break;
