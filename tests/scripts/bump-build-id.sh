@@ -3,7 +3,7 @@
 #   （`tests/backend/build_id_guard.rs` 的 `SUBCOMMAND_HISTORY` 只留「上一版 ＋ 当前版」两行 ⇒ 删最老那行、追加新行）。
 # 用法：在仓里任一处 `bash tests/scripts/bump-build-id.sh <新 id>`（新 id 照 `p<代号><一个小写字母>-<名>`，代号可多位数，与部署判新旧的序键 `deploy_contract::build_order` 同一口径）。
 # 新行从哪来：指纹那条红时印一行 `NEW-ROW: ("<新 id>", "<指纹>")`，本脚本按它改表 —— 指纹只有那条测试会算，这里不另算一份。
-# 不做的：`lib.rs` 版本谱系那段说明（人写）· re-embed（下一步，`tests/scripts/re-embed.sh`）。
+# 不做的：re-embed（下一步，`tests/scripts/re-embed.sh`）。
 # 测试在沙箱里跑：HOME 与 TMUX_TMPDIR 指到 `.build/` 下的一次性目录，清掉 TMUX / TMUX_PANE。
 # 判据：`build_id_guard::tests::the_bump_script_walks_both_paths`（假 cargo，没变 / 变了两条路各走一次）。
 # 末行 `BUMP: OK` / `BUMP: 红 —— <为什么>`。
@@ -51,5 +51,5 @@ PY
 fi
 out=$(t build_id_guard hx2_every)
 printf '%s\n' "$out" | grep -q 'test result: ok' || { printf '%s\n' "$out" | grep -E 'panicked|FAILED' | head; echo "BUMP: 红 —— 改完 build_id_guard / hx2 没绿"; exit 1; }
-echo "  build_id_guard ＋ hx2 绿；接着 lib.rs 版本谱系补一段 → re-embed"
+echo "  build_id_guard ＋ hx2 绿；接着 re-embed"
 echo "BUMP: OK"

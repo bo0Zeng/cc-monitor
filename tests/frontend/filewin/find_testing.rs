@@ -779,7 +779,6 @@ impl FakeBackend {
                     }
                     let v = serde_json::to_value(cmd_wire::files::StatReply {
                         path: cmd_wire::files::WirePath::from(p),
-                        name: cmd_wire::files::WirePath::from(""),
                         up: None,
                         kind: cmd_wire::files::FileKind::File,
                         size: 0,

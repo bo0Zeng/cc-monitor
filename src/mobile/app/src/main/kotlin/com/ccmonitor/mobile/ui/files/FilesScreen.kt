@@ -237,13 +237,9 @@ private fun entryActions(
     val scope = rememberCoroutineScope()
     return remember(vm) {
         EntryActions(
-            download = { e ->
-                vm.download(e, context.getExternalFilesDir(null)) { f ->
-                    ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_WRITE_ONLY or ParcelFileDescriptor.MODE_CREATE or ParcelFileDescriptor.MODE_TRUNCATE).detachFd()
-                }
-            },
-            preview = { e -> scope.launch { vm.readText(e, e.preview).onSuccess { onDialog(FilesDialog.Preview(e.name, it.text)) } } },
-            startEdit = { e -> scope.launch { vm.readText(e, e.edit).onSuccess { onDialog(FilesDialog.Edit(e, it.text, it.sha256)) } } },
+            download = { e -> vm.download(e, context.getExternalFilesDir(null)) },
+            preview = { e -> scope.launch { vm.readText(e.path, e.preview).onSuccess { onDialog(FilesDialog.Preview(e.name, it.text)) } } },
+            startEdit = { e -> scope.launch { vm.readText(e.path, e.edit).onSuccess { onDialog(FilesDialog.Edit(e, it.text, it.sha256)) } } },
             startChmod = { es -> scope.launch { onDialog(FilesDialog.Chmod(es, es.singleOrNull()?.let { vm.modeText(it) })) } },
             startCopy = { es ->
                 scope.launch {

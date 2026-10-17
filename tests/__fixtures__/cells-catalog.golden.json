@@ -682,6 +682,18 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "autoAnswer",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "autoAnswered",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "background.clock.from",
           "type": "number"
         },

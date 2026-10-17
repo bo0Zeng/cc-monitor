@@ -38,6 +38,8 @@ import kotlinx.coroutines.launch
 data class NeedsUi(
     val bar: NeedsBar? = null,
     val sheet: AskSheet? = null,
+    /** 没在等、上一条提问没人答已替人答过 ⇒ 那台写好的那一句（钉条那一格画成一行灰字）。 */
+    val answered: String? = null,
     /** 流里在等的那一步（工具卡上标它）；那台判不出是哪一步 · 不在等 ⇒ `null`。 */
     val awaiting: AwaitingStep? = null,
 )
@@ -157,7 +159,8 @@ private const val ANSWER = "answer"
  * 换了一条流 ⇒ 去抖后重问。答走 `needs-answer`（同桌面那一条，不送键）：
  * - 答上了 ⇒ 抽屉收起，那一份不再给［答］，钉条等重问里没了才消失；
  * - `already_answered` · `closed_elsewhere` ⇒ 抽屉里按钮全灰、那台那一句、只留［关闭］，随后重问；
- * - 抽屉开着、重问里那条请求没了（终端 / 桌面先答了）⇒ 同一态，那一句同桌面；
+ * - 抽屉开着、重问里那条请求没了（终端 / 桌面先答了 · 没人答、那台替人答了）⇒ 同一态，那一句同桌面（替人答的那一种照那台那一句）；
+ * - 没在等、那台说上一条提问已替人答过 ⇒ 那一句（[NeedsUi.answered]），下一次挂上提问那台才换掉；
  * - 别的失败 ⇒ 那一句 ＋ 详情，照旧可点。
  * 字 · 选项 · 次序 · 附话要求全照那台（[NeedsAsk]）；这里只记这边答到哪了。
  */
@@ -179,6 +182,9 @@ class NeedsDesk(
     /** 此刻对着的那条会话（新建会话起好之前没有）。 */
     @Volatile private var current: String? = null
     private var needs: Needs? = null
+
+    /** 那台说这条会话的上一条提问已替人答过 ⇒ 那一句（`sessions-needs.answered`）。 */
+    private var answered: String? = null
     private var receivedAt = 0L
 
     /** 这边答过 / 别处先答了的那一份：重问里还在也不再给［答］。 */
@@ -308,8 +314,9 @@ class NeedsDesk(
         val s = current ?: return
         val r = link.call(SessionsNeeds.COMMAND, null, READ_MS)
         // 读不出 ⇒ 照常画已读到的（不清钉条，下一次变化再问）。
-        val rows = (r as? Reply.Ok)?.let { SessionsNeeds.of(it.data) } ?: return
-        needs = rows.firstOrNull { it.sid == s }?.needs
+        val list = (r as? Reply.Ok)?.let { SessionsNeeds.list(it.data) } ?: return
+        needs = list.waiting.firstOrNull { it.sid == s }?.needs
+        answered = list.answered.firstOrNull { it.sid == s }?.said
         receivedAt = now()
         val ask = needs?.ask
         // 答过的那一份不在了 ⇒ 忘掉它（下一份照常给［答］）。
@@ -317,7 +324,7 @@ class NeedsDesk(
         update { ui ->
             val sheet = ui.sheet
             // 抽屉开着、那一份不在了、不是这里答掉的 ⇒ 别处先答了。
-            sheet?.takeIf { it.lostTo(ask) }?.let { ui.copy(sheet = it.copy(gone = copyText("askBlock.gone.elsewhere"), noteFor = null, failed = null)) } ?: ui
+            sheet?.takeIf { it.lostTo(ask) }?.let { ui.copy(sheet = it.copy(gone = answered ?: copyText("askBlock.gone.elsewhere"), noteFor = null, failed = null)) } ?: ui
         }
         publish()
     }
@@ -338,6 +345,7 @@ class NeedsDesk(
                         )
                     },
                 awaiting = n?.call?.let { AwaitingStep(it, n.text) },
+                answered = if (n == null) answered else null,
             )
         }
 

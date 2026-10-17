@@ -109,7 +109,7 @@ fn images_preview_and_view_each_up_to_their_own_cap() {
         at(PREVIEW_IMAGE_MAX_BYTES).preview,
         PreviewGate::Image(PREVIEW_IMAGE_MAX_BYTES)
     );
-    // 预览放不下、查看页放得下 ⇒ 那一句指向「查看」；连查看页也放不下 ⇒ 与查看页同一句。
+    // 预览放不下、查看页放得下 ⇒ 那一句指向「查看」。
     assert_eq!(
         at(PREVIEW_IMAGE_MAX_BYTES + 1).preview,
         PreviewGate::No(copy_text(
@@ -121,28 +121,24 @@ fn images_preview_and_view_each_up_to_their_own_cap() {
         ))
     );
     assert_eq!(
-        at(VIEW_IMAGE_MAX_BYTES + 1).preview,
-        PreviewGate::No(copy_text(
-            "beFilesOpen.view.tooBig",
-            &[
-                ("size", &size_text(VIEW_IMAGE_MAX_BYTES + 1)),
-                ("limit", &size_text(VIEW_IMAGE_MAX_BYTES))
-            ]
-        ))
-    );
-    assert_eq!(
         at(VIEW_IMAGE_MAX_BYTES).view,
         Some(Gate::Cap(VIEW_IMAGE_MAX_BYTES))
     );
+    // 连查看页也放不下 ⇒ 预览与查看页同一句。
+    let too_big = copy_text(
+        "beFilesOpen.view.tooBig",
+        &[
+            ("size", &size_text(VIEW_IMAGE_MAX_BYTES + 1)),
+            ("limit", &size_text(VIEW_IMAGE_MAX_BYTES)),
+        ],
+    );
     assert_eq!(
         at(VIEW_IMAGE_MAX_BYTES + 1).view,
-        Some(Gate::No(copy_text(
-            "beFilesOpen.view.tooBig",
-            &[
-                ("size", &size_text(VIEW_IMAGE_MAX_BYTES + 1)),
-                ("limit", &size_text(VIEW_IMAGE_MAX_BYTES))
-            ]
-        )))
+        Some(Gate::No(too_big.clone()))
+    );
+    assert_eq!(
+        at(VIEW_IMAGE_MAX_BYTES + 1).preview,
+        PreviewGate::No(too_big)
     );
     // 解不开的图：不预览、没有查看页；svg 当文本。
     assert_eq!(

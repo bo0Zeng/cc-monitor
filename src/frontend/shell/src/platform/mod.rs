@@ -18,8 +18,6 @@ pub mod fs;
 pub mod host_facts;
 pub mod hwnd;
 pub mod login_shell;
-// 系统通知（Linux 直调 notify-rust、连接留到通知关掉；别处经插件）。
-pub mod notify;
 pub mod pid;
 pub mod proc;
 // 只开一个 cc-monitor（Linux 自己占会话总线上的名字、转交激活令牌；别处经插件）。

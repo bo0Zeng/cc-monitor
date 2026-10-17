@@ -2184,7 +2184,7 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
         tail,
         r#"{"end":273,"file":"dfb90402727f63bf","split_at":55,"tail_from":1,"total":3}"#
     );
-    assert_eq!(needs, r#"{"waiting":[]}"#);
+    assert_eq!(needs, r#"{"answered":[],"waiting":[]}"#);
     // 清单里有一行的那一形（`needs` 那一份成品与 `history-facts` 同一个类型）。
     let row = {
         use crate::observe::facts_query::{needs_of, PidWait};
@@ -2201,6 +2201,10 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
                 )
                 .expect("在等就有需手动"),
                 hidden: None,
+            }],
+            answered: vec![crate::faces::history_face::AnsweredRow {
+                sid: "s-2".into(),
+                said: crate::common::cells::Words("w".into()),
             }],
         }
     };
@@ -2219,7 +2223,7 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
     }
     assert_eq!(
         row_bytes,
-        r#"{"waiting":[{"hidden":null,"needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":null,"rank":3298534883325,"sinceMs":1,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"waitedText":"<1s","what":null},"sid":"s-1"}]}"#
+        r#"{"answered":[{"said":"w","sid":"s-2"}],"waiting":[{"hidden":null,"needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":null,"rank":3298534883325,"sinceMs":1,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"waitedText":"<1s","what":null},"sid":"s-1"}]}"#
     );
 }
 

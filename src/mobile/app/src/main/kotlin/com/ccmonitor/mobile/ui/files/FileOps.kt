@@ -80,10 +80,12 @@ class FileOps(
         entries: List<FilesLs.Entry>,
     ): Long = feed.batch(mapOf("delete" to mapOf("root" to dir.wire, "items" to entries.map { mapOf("rel" to it.rel.wire, "name" to it.name, "dir" to it.isDir) })))
 
-    /** 打开别处点名的一个路径：那台说是目录 ⇒ 进去；别的 ⇒ 进它所在的目录、开它。 */
+    /** 打开别处点名的一个路径：那台说是目录 ⇒ 进去；别的 ⇒ 进那台说的它所在的目录、开它。 */
     suspend fun open(text: String): Result<Opening> {
         val path = RemotePath.of(text)
-        return ask(FilesStat.COMMAND, FilesStat.args(path), FilesStat::placeOf).map { if (it.kind == FileKind.DIR) Opening.Dir(path) else Opening.File(it.up ?: path, path, it.name) }
+        return ask(FilesStat.COMMAND, FilesStat.args(path), { d ->
+            FilesStat.placeOf(d)?.let { p -> if (p.kind == FileKind.DIR) Opening.Dir(path) else p.up?.let { Opening.File(it, path) } }
+        })
     }
 
     /** 打开一个路径落在哪。 */
@@ -95,8 +97,6 @@ class FileOps(
         data class File(
             val dir: RemotePath,
             val file: RemotePath,
-            /** 末段名（那台切好的，标题用）。 */
-            val name: RemotePath,
         ) : Opening
     }
 

@@ -4,7 +4,7 @@
  * 页里的帧命令与订阅经 vite 的这几个口原样交给无头壳。成品（额度行 · 时刻字 · 状态字 · 拒答的复制详情 …）一律是真后端与壳算的，台架不写。
  *
  *   POST /__ccm/world  {key, machines: {<origin>: {files: {<相对家目录的路径>: <内容>}}}}  ⇒ 造好家目录、起无头壳与各台后端、全部握上手再答
- *   POST /__ccm/call   {key, origin, op, args, view?}         ⇒ 壳 `chan_call` 那一跳的结局：`{ok:true, body}` / `{ok:false, fail:{err, body, detail}}`
+ *   POST /__ccm/call   {key, origin, op, args, view?, leftMs?} ⇒ 壳 `chan_call` 那一跳的结局：`{ok:true, body}` / `{ok:false, fail:{err, body, detail}}`
  *   POST /__ccm/sub    {key, id, origin, kind, want} · /__ccm/want {key, id, more} · /__ccm/stop {key, id} · /__ccm/ready {key, priority_sid}
  *   POST /__ccm/watch  {key, sessions: [{origin, sessionId}]}  ⇒ 主窗口在看哪几个（同 Tauri 命令 `watch_sessions`）
  *   POST /__ccm/write  {key, origin, rel, text, append?}    ⇒ 场景在开页之后改那台盘上的一份文件（相对家目录；`append` ⇒ 接在末尾写）
@@ -84,8 +84,15 @@ export function procStartSh(stat) {
 export const PANE_COLS = 120;
 export const PANE_ROWS = 32;
 
-/** 真 tmux 在哪（沙箱里 `/` 只读挂着，同一个路径）：台架自己敲的那几下不经边界上的替身。 */
-const TMUX_BIN = spawnSync("sh", ["-c", "command -v tmux"], { encoding: "utf8", env: { PATH: "/usr/bin:/bin" } }).stdout.trim() || "/usr/bin/tmux";
+/**
+ * 真 tmux 在哪（沙箱里 `/` 只读挂着，同一个路径）：台架自己敲的那几下不经边界上的替身。
+ * 用到时才找、找一次：导入池子不起进程（判据的 Windows 那一格也导入它，那里没有 sh）；找不到退回 `/usr/bin/tmux`。
+ */
+let tmuxBinFound;
+function tmuxBin() {
+  tmuxBinFound ??= spawnSync("sh", ["-c", "command -v tmux"], { encoding: "utf8", env: { PATH: "/usr/bin:/bin" } }).stdout?.trim() || "/usr/bin/tmux";
+  return tmuxBinFound;
+}
 
 /**
  * 各活会话那个 tmux 会话的名字：照起会话那一处铸名的样子（`<目录名>-cc`，重名往后加 `-2` · `-3`），先让开不住 claude 的那几个（`bareTmux`）。
@@ -116,7 +123,7 @@ export function tmuxShim(shim, sock) {
     if (!/^[a-z-]+$/.test(sub)) throw new Error(`tmuxShim.noServer 里的子命令形状不对：${sub}`);
     lines.push(`for a in "$@"; do [ "$a" = ${sub} ] && { echo "no server running on ${sock}" >&2; exit 1; }; done`);
   }
-  lines.push(`exec ${TMUX_BIN} "$@"`);
+  lines.push(`exec ${tmuxBin()} "$@"`);
   return lines.join("\n") + "\n";
 }
 
@@ -195,7 +202,7 @@ export function backendPool({ repo, sandbox }) {
     const q = (v) => `'${String(v).replace(/'/g, `'\\''`)}'`;
     const sock = `${H}/.shots-tmux/tmux-${process.getuid()}/default`;
     // 台架自己敲的 tmux 一律是真的那一个（边界上的替身只挡后端那几问，见下面 `tmuxShim`）。
-    const sh = ["set -e", `T() { env -u TMUX -u TMUX_PANE ${TMUX_BIN} -S ${sock} -f /dev/null "$@"; }`];
+    const sh = ["set -e", `T() { env -u TMUX -u TMUX_PANE ${tmuxBin()} -S ${sock} -f /dev/null "$@"; }`];
     sh.push(`ln -s "$(readlink -f /bin/sh)" ${H}/.shots-setup/claude`);
     /**
      * 开页之后才收场的那几个（台架见到那台的清单之后收）：已结束 ⇒ 关掉它那个 tmux 会话（替身跟着没了）；
@@ -247,7 +254,7 @@ export function backendPool({ repo, sandbox }) {
       sh.push(`${newSession(b.name, `cat ${H}/.shots-setup/bare${k}.screen; exec sh`)}`);
     });
     // 终端窗口：同一台私有 tmux 里另起一个会话，窗格里跑一个嵌套的客户端 attach 到它那个会话上（后端 `list-clients` 照真的那样数到它）。
-    viewers.forEach((name, j) => sh.push(newSession(`window-${j}`, `exec env -u TMUX -u TMUX_PANE ${TMUX_BIN} -S ${sock} -f /dev/null attach -t ${q(`=${name}`)}`)));
+    viewers.forEach((name, j) => sh.push(newSession(`window-${j}`, `exec env -u TMUX -u TMUX_PANE ${tmuxBin()} -S ${sock} -f /dev/null attach -t ${q(`=${name}`)}`)));
     if (m.warm) {
       mkdirSync(path.join(home, ".cc-monitor"), { recursive: true });
       writeFileSync(path.join(setup, "warm.json"), JSON.stringify({ pid: "__PID__", next: m.warm }).replace('"__PID__"', "__PID__"));
@@ -365,7 +372,8 @@ export function backendPool({ repo, sandbox }) {
         replies.set(id, resolve);
         send({ ...cmd, n: id });
       });
-    const call = (origin, op, args, view) => ask({ t: "call", origin, op, payload: JSON.stringify(args ?? {}), view: view ?? null, left_ms: 30_000 });
+    /** `leftMs` ＝ 这一跳的期限（缺 ⇒ 30 秒；挂着等人答的那种由场景给长一些）。 */
+    const call = (origin, op, args, view, leftMs = 30_000) => ask({ t: "call", origin, op, payload: JSON.stringify(args ?? {}), view: view ?? null, left_ms: leftMs });
     /** 各台都握上手（壳那一侧的入方向通道登记了）：隔一会儿问一次，30 秒上限。 */
     const up = async (origins) => {
       const until = Date.now() + 30_000;
@@ -479,7 +487,7 @@ export function backendPool({ repo, sandbox }) {
   async function call(body) {
     const w = worlds.get(body.key);
     if (!w) return { ok: false, fail: { err: { Ours: "Misuse" }, body: [], detail: `没有这个世界：${body.key}` } };
-    return w.sh.call(body.origin, body.op, body.args, body.view);
+    return w.sh.call(body.origin, body.op, body.args, body.view, body.leftMs);
   }
 
   /** 页里的订阅那几样原样交给无头壳（窗口只有一扇）。 */

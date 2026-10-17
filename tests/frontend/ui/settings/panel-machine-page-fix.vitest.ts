@@ -149,6 +149,7 @@ describe("机器单页问题行的修法接到真流程", () => {
       fixes: ["compare_fingerprint"],
       seenHostKey: "SHA256:new",
       detail: null,
+      next: null,
     });
     const label = fixLabel("compare_fingerprint");
     const btn = [...document.querySelectorAll<HTMLButtonElement>(".machine-problem button")].find((b) => b.textContent === label);

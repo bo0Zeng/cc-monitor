@@ -125,26 +125,25 @@ pub fn type_text(name: &[u8], is_dir: bool, link: bool, link_dir: bool, broken: 
     }
 }
 
-fn view_too_big(size: u64) -> String {
-    copy_text(
-        "beFilesOpen.view.tooBig",
-        &[
-            ("size", &size_text(size)),
-            ("limit", &size_text(VIEW_IMAGE_MAX_BYTES)),
-        ],
-    )
-}
-
 /// 一份文件（不是目录、不是指向目录的链接）读得起来的那几道门。`size` 读不到 ⇒ 按 0 判（读的那一趟后端再判一次）。
 pub fn gates_of(name: &[u8], size: u64) -> Gates {
     let class = class_of_name(name, false);
     let ext = ext_of(name);
     let decodable =
         class == FileClass::Image && ext.as_deref().is_some_and(|e| DECODABLE.contains(&e));
+    let view_too_big = || {
+        copy_text(
+            "beFilesOpen.view.tooBig",
+            &[
+                ("size", &size_text(size)),
+                ("limit", &size_text(VIEW_IMAGE_MAX_BYTES)),
+            ],
+        )
+    };
+    // 预览放不下：查看页放得下 ⇒ 那一句指向「查看」；连查看页也放不下 ⇒ 与查看页同一句。
     let preview = if decodable {
-        // 预览放不下：查看页放得下 ⇒ 指向「查看」；连查看页也放不下 ⇒ 与查看页同一句。
         if size > VIEW_IMAGE_MAX_BYTES {
-            PreviewGate::No(view_too_big(size))
+            PreviewGate::No(view_too_big())
         } else if size > PREVIEW_IMAGE_MAX_BYTES {
             PreviewGate::No(copy_text(
                 "beFilesOpen.preview.imageTooBig",
@@ -177,7 +176,7 @@ pub fn gates_of(name: &[u8], size: u64) -> Gates {
     };
     let view = decodable.then(|| {
         if size > VIEW_IMAGE_MAX_BYTES {
-            Gate::No(view_too_big(size))
+            Gate::No(view_too_big())
         } else {
             Gate::Cap(VIEW_IMAGE_MAX_BYTES)
         }

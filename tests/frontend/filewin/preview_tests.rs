@@ -392,7 +392,7 @@ fn same_size_new_text_with_more_lines_does_not_reuse_the_old_wrap() {
 }
 
 /// 🔴 **图片超预览上限照实说为什么不显示**：超 [`IMAGE_MAX_BYTES`] 的图不读（线上零条 `files-read-chunk`），
-/// 面板上那一句点名文件、它多大、上限多少、指向头上的「查看」（查看页放得下）；头上「查看」「下载」都在。正控：恰好在上限上的那张照读。
+/// 面板上那一句说它多大、上限多少、指向头上的「查看」（查看页放得下）；头上「查看」「下载」都在。正控：恰好在上限上的那张照读。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_image_over_the_cap_says_why_it_is_not_shown() {
     let (wired, mut w) = rig(
@@ -487,10 +487,10 @@ async fn an_image_over_the_cap_says_why_it_is_not_shown() {
     drop(wired);
 }
 
-/// 连查看页也放不下（超查看上限 32 MB）⇒ 预览那一句照后端那道门（与查看页同一句）；不读。
+/// 连查看页也放不下（门上查看那一道是「不」）⇒ 预览那一句照门上给的写：与查看页同一句（超过查看上限 · 可下载到本机再打开）；不读。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_image_over_the_viewer_cap_points_to_download() {
-    let cap: u64 = 32 * 1024 * 1024;
+    let cap = 32 * 1024 * 1024;
     let (_wired, mut w) = rig("fw-pv-hugeimg", vec![row("pano.png", cap + 1, false)]).await;
     let mut p = Preview::default();
     w.apply_intent(

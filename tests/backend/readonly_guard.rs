@@ -2946,6 +2946,13 @@ mod g6_dependency_signoff {
              与 monitor 那一侧同一个用法（C01），版本是 monitor 那份 lock 早已解析的 `12.0.1`",
         ),
         (
+            "tokio",
+            DEV_DEPS,
+            UNMEASURED,
+            "测试档多开 `test-util`（停着的钟，`advance` 才走）：判「挂着的提问自己带的期限」不按墙钟等。\
+             同一个包（`[dependencies]` 里那一条），**只在测试期多一个特性**，不进发布二进制",
+        ),
+        (
             "shell-quote-core",
             DEPS,
             MEASURED_CLEAN,

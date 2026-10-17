@@ -8,7 +8,7 @@
 //!
 //! # 形状
 //!
-//! `{"version": 1, "entries": {sid: {"starred", "customTitle", "hide"?, "updatedAt"}}}`；两个键认蛇形别名（`custom_title` / `updated_at`），缺格取缺省。
+//! `{"version": 1, "entries": {sid: {"starred", "customTitle", "hide"?, "autoAnswer"?, "updatedAt"}}}`；两个键认蛇形别名（`custom_title` / `updated_at`），缺格取缺省。
 //! `hide` 是单个那一格（`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则，判定住 `control/session_hidden.rs`）。
 //!
 //! # 升级链（一节，下一个大版本删）
@@ -105,6 +105,19 @@ pub enum Loaded {
     Read(Table),
     /// 读不懂 / 读不动 —— 带一句为什么。
     Unreadable(String),
+}
+
+/// 这条会话「没人答时自动答」那一格（现读这台那一份；读不到 ⇒ 关）。
+pub(crate) fn auto_answer_of(sid: &str) -> Option<cmd_wire::needs::AutoAnswer> {
+    path().and_then(|p| auto_answer_at(&p, sid))
+}
+
+/// [`auto_answer_of`]，文件是参数。
+pub(crate) fn auto_answer_at(path: &Path, sid: &str) -> Option<cmd_wire::needs::AutoAnswer> {
+    match load_at(path) {
+        Loaded::Read(t) => t.get(sid).and_then(|e| e.auto_answer.clone()),
+        _ => None,
+    }
 }
 
 /// 那份文件的路径：这台的家根上那一份；推不出家 ⇒ `None`。
@@ -206,6 +219,10 @@ pub(crate) struct Patch {
     #[serde(default)]
     #[cfg_attr(test, ts(optional = nullable))]
     hide: Option<HideAsk>,
+    /// 没人答时自动答：`{afterMin, say?}`，`afterMin: 0` 摘掉（关）；没给 `say` ⇒ 留着原来那一句、空白 ⇒ 回到缺省；值怎么算数由 `control::asks::auto_checked` 判。
+    #[serde(default, rename = "autoAnswer")]
+    #[cfg_attr(test, ts(optional = nullable))]
+    auto_answer: Option<cmd_wire::needs::AutoAnswer>,
 }
 
 /// 被改那一条身上要摘掉的蛇形别名（写回时一律驼峰）。
@@ -315,8 +332,9 @@ fn put_entry(raw: &mut Value, sid: &str, entry: Option<&Entry>) {
             for a in ALIASES {
                 obj.remove(a);
             }
-            // 单个那一格摘掉（回到规则）时序列化里没有它 ⇒ 原文里那一格也摘。
+            // 可缺的那两格摘掉（回到规则 · 关）时序列化里没有它 ⇒ 原文里那一格也摘。
             obj.remove("hide");
+            obj.remove("autoAnswer");
             if let Value::Object(norm) = serde_json::to_value(e).expect("Entry 总能序列化") {
                 for (k, v) in norm {
                     obj.insert(k, v);
@@ -493,10 +511,23 @@ pub(crate) fn annotate_at(
         Some(HideAsk::Off) => entry.hide = Some(Hide::Off),
         Some(HideAsk::Rule) => entry.hide = None,
     }
+    let auto_changed = patch.auto_answer.is_some();
+    if let Some(mut a) = patch.auto_answer {
+        // 没给那一句 ⇒ 留着原来那一句（只换分钟）；给了空白 ⇒ 回到缺省。
+        if a.say.is_none() {
+            a.say = entry.auto_answer.as_ref().and_then(|p| p.say.clone());
+        }
+        entry.auto_answer =
+            crate::control::asks::auto_checked(a).map_err(AnnotationErr::BadArgs)?;
+    }
     entry.updated_at = now;
     put_entry(&mut raw, sid, Some(&entry));
     write_at(own, &file, &held, &raw)
         .map_err(|e| err(crate::wire::spec::Fail::from(("io_failed", e))))?;
+    // 会话事实里那一格（`autoAnswer`）跟着变：出口照推帧重读，不自己去问。
+    if auto_changed {
+        crate::control::asks::moved(sid);
+    }
     Ok(Annotated { entry, prev })
 }
 

@@ -492,9 +492,7 @@ pub struct SizeReq {
 #[serde(deny_unknown_fields)]
 pub struct StatReply {
     pub path: WirePath,
-    /// 末段名（那台按自己的分隔符切好；到顶 ⇒ 空）。
-    pub name: WirePath,
-    /// 上一级；到顶 ⇒ `null`。
+    /// 上一级（那台按自己的路径规则切）；到顶 ⇒ `null`。
     pub up: Option<WirePath>,
     pub kind: FileKind,
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]

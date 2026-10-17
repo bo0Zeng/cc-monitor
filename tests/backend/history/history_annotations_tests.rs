@@ -273,6 +273,93 @@ fn patch_semantics_match_what_the_monitor_did() {
     let _ = std::fs::remove_dir_all(p.parent().unwrap());
 }
 
+/// 「没人答时自动答」那一格：写上 · 只换分钟留着那一句 · 空白那一句回到缺省 · 0 摘掉（盘上那一格也没了）· 超了上限拒、文件不动。
+#[test]
+fn the_auto_answer_cell_is_written_kept_and_removed() {
+    let p = temp_copy("auto");
+    let at = |patch: Value, now: i64| {
+        answer_annotate_at(&own_of(&p), &json!({"sid": "fresh", "patch": patch}), now)
+    };
+    let e = at(
+        json!({"autoAnswer": {"afterMin": 10, "say": " 往下做 "}}),
+        1,
+    )
+    .unwrap();
+    assert_eq!(
+        e["entry"]["autoAnswer"],
+        json!({"afterMin": 10, "say": "往下做"})
+    );
+    let e = at(json!({"autoAnswer": {"afterMin": 5}}), 2).unwrap();
+    assert_eq!(
+        e["entry"]["autoAnswer"],
+        json!({"afterMin": 5, "say": "往下做"}),
+        "只换分钟"
+    );
+    let e = at(json!({"starred": true}), 3).unwrap();
+    assert_eq!(
+        e["entry"]["autoAnswer"],
+        json!({"afterMin": 5, "say": "往下做"}),
+        "没给的格不动"
+    );
+    let e = at(json!({"autoAnswer": {"afterMin": 5, "say": "  "}}), 4).unwrap();
+    assert_eq!(
+        e["entry"]["autoAnswer"],
+        json!({"afterMin": 5}),
+        "空白 ⇒ 缺省那一句"
+    );
+    assert_eq!(
+        auto_answer_at(&p, "fresh"),
+        Some(cmd_wire::needs::AutoAnswer {
+            after_min: 5,
+            say: None
+        })
+    );
+    let before = std::fs::read(&p).unwrap();
+    assert_eq!(
+        at(
+            json!({"autoAnswer": {"afterMin": crate::control::asks::AUTO_MAX_MIN + 1}}),
+            5
+        )
+        .unwrap_err()
+        .code,
+        "bad_args"
+    );
+    assert_eq!(std::fs::read(&p).unwrap(), before, "拒了也写了");
+    let e = at(json!({"autoAnswer": {"afterMin": 0}}), 6).unwrap();
+    assert!(e["entry"].get("autoAnswer").is_none(), "{e}");
+    let disk: Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
+    assert!(
+        disk["entries"]["fresh"].get("autoAnswer").is_none(),
+        "{disk}"
+    );
+    assert_eq!(auto_answer_at(&p, "fresh"), None);
+    let _ = std::fs::remove_dir_all(p.parent().unwrap());
+}
+
+/// 改了「没人答时自动答」那一格 ⇒ 推 `changed {needs, key: sid}`（出口照它重读会话事实）；只改别的格不推。
+#[test]
+fn changing_the_auto_answer_cell_pushes_needs_for_that_session() {
+    let p = temp_copy("auto-push");
+    let mut rx = crate::control::asks::changes().subscribe();
+    let pushed = |rx: &mut tokio::sync::broadcast::Receiver<String>, sid: &str| {
+        let mut hit = false;
+        while let Ok(s) = rx.try_recv() {
+            hit |= s == sid;
+        }
+        hit
+    };
+    let at = |sid: &str, patch: Value| {
+        answer_annotate_at(&own_of(&p), &json!({"sid": sid, "patch": patch}), 1).unwrap()
+    };
+    at("auto-push-a", json!({"starred": true}));
+    assert!(!pushed(&mut rx, "auto-push-a"), "只改星标不推");
+    at("auto-push-a", json!({"autoAnswer": {"afterMin": 5}}));
+    assert!(pushed(&mut rx, "auto-push-a"));
+    at("auto-push-a", json!({"autoAnswer": {"afterMin": 0}}));
+    assert!(pushed(&mut rx, "auto-push-a"), "关掉也推");
+    let _ = std::fs::remove_dir_all(p.parent().unwrap());
+}
+
 /// 忘掉一条（删会话时连带）：只那一条没了，其余逐格不动；不在就不写。
 #[test]
 fn forgetting_removes_exactly_that_entry() {

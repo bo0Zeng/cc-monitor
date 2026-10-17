@@ -24,7 +24,8 @@ function statLine(comm: string, start: number): string {
   return `7 (${comm}) ${after.join(" ")}\n`;
 }
 
-describe("替身 pidfile 的起始时刻", () => {
+// 那一句是沙箱开场 sh 里读 `/proc` 的：截图台架只在 Linux 上跑，Windows 那一格让开。
+describe.skipIf(process.platform === "win32")("替身 pidfile 的起始时刻", () => {
   for (const comm of ["sleep", "tmux: server", "a) b (c"]) {
     it(`进程名「${comm}」也取对第 22 格`, () => {
       const dir = mkdtempSync(path.join(os.tmpdir(), "shots-stat-"));

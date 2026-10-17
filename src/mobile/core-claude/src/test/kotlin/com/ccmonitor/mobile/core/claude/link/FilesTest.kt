@@ -59,11 +59,9 @@ class FilesTest {
         val from = RemotePath(byteArrayOf('x'.code.toByte(), 0xff.toByte()))
         assertEquals(mapOf("root" to "/w", "from" to mapOf("b16" to "78ff"), "to" to "ok", "single" to true), FilesRename.args(dir, from, "ok"))
         assertEquals(mapOf("path" to "/w/f"), FilesStat.args(RemotePath.of("/w/f")))
-        assertEquals(420L, FilesStat.modeOf(mapOf("path" to "/w/f", "name" to "f", "up" to "/w", "kind" to "file", "size" to 0.0, "readonly" to false, "mode" to 420.0, "owner" to null, "link_target" to null)))
-        assertEquals(
-            FilesStat.Place(FileKind.DIR, RemotePath.of("/w"), RemotePath.of("d")),
-            FilesStat.placeOf(mapOf("path" to "/w/d", "name" to "d", "up" to "/w", "kind" to "dir", "size" to 0.0, "readonly" to false, "owner" to null, "link_target" to null)),
-        )
+        assertEquals(420L, FilesStat.modeOf(mapOf("path" to "/w/f", "kind" to "file", "size" to 0.0, "readonly" to false, "mode" to 420.0, "owner" to null, "link_target" to null)))
+        assertEquals(FilesStat.Place(FileKind.DIR, RemotePath.of("/w")), FilesStat.placeOf(mapOf("path" to "/w/d", "up" to "/w", "kind" to "dir", "size" to 0.0, "readonly" to false, "owner" to null, "link_target" to null)))
+        assertEquals(FilesStat.Place(FileKind.DIR, null), FilesStat.placeOf(mapOf("path" to "/", "up" to null, "kind" to "dir", "size" to 0.0, "readonly" to false, "owner" to null, "link_target" to null)))
     }
 
     @Test

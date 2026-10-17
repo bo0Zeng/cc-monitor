@@ -202,7 +202,7 @@ object FilesLs {
     }
 }
 
-/** `files-stat`：一个路径的元数据（改权限那一框要它此刻的权限位 · 打开一个路径要它是不是目录）。 */
+/** `files-stat`：一个路径的元数据（改权限那一框要它此刻的权限位 · 打开一个路径要它是不是目录、在哪个目录里）。 */
 object FilesStat {
     const val COMMAND: String = "files-stat"
 
@@ -211,15 +211,15 @@ object FilesStat {
     /** unix 权限位；那台没有这一说 ⇒ `null`；解不出 ⇒ `null`。 */
     fun modeOf(data: Any?): Long? = Wire.bind<StatReply>(data)?.mode
 
-    /** 是什么（跟链接，那台判的）· 在哪一级 · 末段名（那台切好的）；解不出 ⇒ `null`。 */
-    fun placeOf(data: Any?): Place? =
-        Wire.bind<StatReply>(data)?.let { r -> RemotePath.of(r.name)?.let { Place(r.kind, RemotePath.of(r.up), it) } }
+    /** 是什么（跟链接）· 上一级（到顶 ⇒ `null`），都是那台判的；解不出 ⇒ `null`。 */
+    fun placeOf(data: Any?): Place? {
+        val r = Wire.bind<StatReply>(data) ?: return null
+        return Place(r.kind, r.up?.let { RemotePath.of(it) ?: return null })
+    }
 
-    /** 一个路径是什么、在哪：[up] 到顶 ⇒ `null`。 */
     data class Place(
         val kind: FileKind,
         val up: RemotePath?,
-        val name: RemotePath,
     )
 }
 
