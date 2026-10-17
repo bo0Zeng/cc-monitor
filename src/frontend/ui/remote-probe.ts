@@ -4,7 +4,7 @@
  *
  * 〔「进度不许倒退」〕**边拨边推**：调用之前先订 `subscribe(<local>, "probe-progress/<ticket>")`，
  * 后端每走一步推一格（{@link ProbeCell}：写好的那一句 ＋ 语气 ＋ 四段），最后一格带结局。界面边收边画（`onCell`）。
- * 停在哪一步、等多久算没结果由后端判（到点它自己收，结局那一格说）；这里的期限只兜本机后端卡住。
+ * 期限的值归本文件（{@link PROBE_BUDGET_MS}，随请求信封交过去）；执行在通信层与后端，到点后端收掉那一趟、结局那一格说等了多久停在哪一步。
  *
  * 交过去的是设置页表单里那台（**可能还没保存**）的配置 ＋ 已保存的那一份（表单空着指纹时，同一个 host 才继承）＋ 跳板那一台；
  * 拨号请求在后端组（`src/backend/ssh-dial/machine.rs`）。本机后端不在 ⇒ 通道那一层报（D11，不回落）。
@@ -25,8 +25,8 @@ function bad(): never {
   throw new ReplyUnreadable(LOCAL_ORIGIN, "remoteProbe reply shape");
 }
 
-/** 期限：比后端那一趟自己的期限（15 s，到点结局那一格说停在哪）多留几秒，只兜本机后端卡住。 */
-const PROBE_BUDGET_MS = 20_000;
+/** 这一问的期限（握手 ＋ hello ＋ 一次往返，秒级）。 */
+const PROBE_BUDGET_MS = 15_000;
 /** 进度流一开始给的 credit：握手那几行（每个地址至多三行 ＋ 鉴权 ＋ 开通道）＋ 两段 ＋ 结局，远不到这个数。 */
 const PROBE_WINDOW = 256;
 

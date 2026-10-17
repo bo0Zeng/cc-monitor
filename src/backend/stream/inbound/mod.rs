@@ -468,10 +468,12 @@ fn dispatch(
             Disposition::SpawnData(
                 req,
                 crate::wire::typed::answer_async::<crate::dial::probe::RemoteProbe, _, _>(
-                    move |r, _cx| async move {
-                        crate::dial::probe::answer_probe(&r, &tx).await.map_err(
-                            crate::wire::typed::of_pair(crate::dial::probe::ProbeErr::Failed),
-                        )
+                    move |r, cx| async move {
+                        crate::dial::probe::answer_probe(&r, cx.until, &tx)
+                            .await
+                            .map_err(crate::wire::typed::of_pair(
+                                crate::dial::probe::ProbeErr::Failed,
+                            ))
                     },
                 ),
             )

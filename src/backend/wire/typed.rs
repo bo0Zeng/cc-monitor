@@ -149,7 +149,6 @@ pub(crate) trait Handle: Command {
 /// 信封里除了 `args` 那几样：看的那一台的时区 · 分派那一层换算好的截止时刻。
 pub(crate) struct Cx<N: Needs = needs::Nothing> {
     pub(crate) tz: crate::common::time::Tz,
-    #[allow(dead_code)] // 第一批 typed 命令里还没有装总期限的；起进程那几族换过来时用。
     pub(crate) until: Option<crate::platform::child::Until>,
     /// 分派那一层按 [`Handle::Needs`] 交进来的那几样。
     pub(crate) needs: N::Given,

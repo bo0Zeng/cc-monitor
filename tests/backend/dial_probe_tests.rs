@@ -2,20 +2,30 @@
 //! `dial/probe.rs` 的三步各自的结局（链路那一侧用替身）：握手不成 · 通了没 hello · 通了有 hello、控制通道往返 · 到点没等到。
 //! 〔「进度不许倒退」〕进度边拨边推：每条判据同时钉**推了哪几格、什么顺序、每格那一句与四段**（结局是最后一格）。
 use super::*;
+use crate::platform::child::{Deadline, Until};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
 fn args() -> Value {
     json!({"ticket": "t-1", "machine": {"host": "192.0.2.2", "label": "devbox", "user": "u"}})
 }
 
-/// 跑一趟探针，收下它推的每一格（票都得是交来的那张）；回 `(结局那一格, 结局之前那几格)`。
+/// 跑一趟探针（发起方没带期限），收下它推的每一格（票都得是交来的那张）；回 `(结局那一格, 结局之前那几格)`。
 async fn cells_of<F, Fut>(args: &Value, serve: F) -> (Value, Vec<Value>)
 where
     F: FnOnce(crate::dial::DialRequest, tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
     Fut: std::future::Future<Output = ()> + Send + 'static,
 {
+    cells_until(args, None, serve).await
+}
+
+/// 同 [`cells_of`]，带分派那一层交来的截止时刻。
+async fn cells_until<F, Fut>(args: &Value, until: Option<Until>, serve: F) -> (Value, Vec<Value>)
+where
+    F: FnOnce(crate::dial::DialRequest, tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
+    Fut: std::future::Future<Output = ()> + Send + 'static,
+{
     let (tx, mut rx) = tokio::sync::mpsc::channel(64);
-    probe_with(&crate::wire::typed::take(args).unwrap(), serve, &tx)
+    probe_with(&crate::wire::typed::take(args).unwrap(), until, serve, &tx)
         .await
         .unwrap();
     drop(tx);
@@ -178,6 +188,35 @@ async fn a_passed_login_lights_three_segments() {
     );
 }
 
+/// 没带期限 ⇒ 按登记的上限说。
+fn cap_said() -> String {
+    copy_core::format_duration(PROBE_CAP.shown_secs() * 1000)
+}
+
+/// 发起方带了期限 ⇒ 按它执行，到点那一格说的是带来的那个数。
+#[tokio::test(start_paused = true)]
+async fn a_stall_within_the_callers_deadline_says_that_deadline() {
+    let until = Until::after(Deadline::millis(4_000));
+    let (r, _) = cells_until(&args(), until, |_req, up, down| async move {
+        let _held = (up, down);
+        std::future::pending::<()>().await
+    })
+    .await;
+    let last = copy_text("beProbe.stage.notStarted", &[]);
+    assert_eq!(
+        r["said"],
+        copy_text(
+            "beProbe.test.stalled",
+            &[("dur", &copy_core::format_duration(4_000)), ("last", &last)]
+        )
+    );
+    assert_ne!(
+        cap_said(),
+        copy_core::format_duration(4_000),
+        "两个数一样就分不出照的是哪个"
+    );
+}
+
 /// 到点没等到结局：后端自己收掉那一趟，结局那一格说等了多久、最后一步是哪一句；没亮的第一段打 ✗。
 #[tokio::test(start_paused = true)]
 async fn a_stalled_probe_says_where_it_stopped() {
@@ -190,7 +229,7 @@ async fn a_stalled_probe_says_where_it_stopped() {
     })
     .await;
     assert_eq!(cells, vec![step(&last, "now", ["wait"; 4])]);
-    let dur = copy_core::format_elapsed(PROBE_BUDGET);
+    let dur = cap_said();
     assert_eq!(
         r["said"],
         copy_text("beProbe.test.stalled", &[("dur", &dur), ("last", &last)])
@@ -213,7 +252,7 @@ async fn a_probe_with_no_progress_at_all_says_it_never_started() {
     })
     .await;
     assert_eq!(cells, Vec::<Value>::new());
-    let dur = copy_core::format_elapsed(PROBE_BUDGET);
+    let dur = cap_said();
     let last = copy_text("beProbe.stage.notStarted", &[]);
     assert_eq!(
         r["said"],
@@ -231,7 +270,7 @@ async fn a_probe_stalled_after_ssh_says_it_waits_for_the_backend() {
     })
     .await;
     assert_eq!(cells, vec![reached_ssh()]);
-    let dur = copy_core::format_elapsed(PROBE_BUDGET);
+    let dur = cap_said();
     let last = copy_text("beProbe.reached.ssh", &[]);
     assert_eq!(
         r["said"],
@@ -364,6 +403,7 @@ async fn a_probe_without_a_valid_ticket_is_refused_before_dialling() {
             Err(f) => Err(f.code),
             Ok(req) => probe_with(
                 &req,
+                None,
                 |_req, _up, _down| async move { panic!("票不对就不该拨") },
                 &tx,
             )

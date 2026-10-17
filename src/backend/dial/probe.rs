@@ -7,7 +7,8 @@
 //!
 //! 边拨边推：每走一步往本连接的应答通道推一帧 `probe {ticket, cell}`，每格是写好的那一句 ＋ 语气 ＋ 四段（[`ProbeCell`]），
 //! 最后一格带结局；monitor 把它们交进界面订的 `probe-progress/<ticket>`，界面照画、不按码取字。
-//! 一趟的期限在这里（[`PROBE_BUDGET`]）：到点没等到结局 ⇒ 收掉链路，结局那一格说等了多久、最后一步是哪一句。
+//! 本文件零定时器：期限的值归发起方（请求信封 `within_ms`；没带 ⇒ 登记的上限 [`PROBE_CAP`]），执行在期限原语那一处（`platform::child::bounded`）：
+//! 到点那一趟丢掉、链路随之收，结局那一格照分派的那个数说等了多久、最后一步是哪一句。往返毫秒数照旧报：量一次墙钟差不是定时器。
 
 use copy_core::copy_text;
 use serde_json::{json, Value};
@@ -15,6 +16,7 @@ use tokio::io::{AsyncWriteExt, BufReader};
 
 use crate::common::cells::{Tone, Words};
 use crate::dial::remote_ask::{self, AbortOnDrop};
+use crate::platform::child::{bounded, Deadline, Until};
 use crate::wire::Frame;
 
 /// 链路上一行的上限（阶段行 · ack · hello · 应答；hello 行是后端出方向单行，同一个量级）。
@@ -25,12 +27,8 @@ const PING_ID: &str = "probe-ping";
 /// 票的上限与字符集（界面给的是一个 UUID；本后端只当不透明的串回填，但它会进帧 ⇒ 有界、可打印）。
 const TICKET_MAX: usize = 64;
 
-/// 一趟测试连接最多等多久（握手 ＋ hello ＋ 一次往返，秒级；给足余量）。
-#[allow(
-    clippy::disallowed_methods,
-    reason = "测试连接一趟的期限（`probe::PROBE_BUDGET`）：只交给 `probe_with` 那一次有界等待，到点收掉链路、结局说停在哪一步；不驱动循环"
-)]
-pub(crate) const PROBE_BUDGET: std::time::Duration = std::time::Duration::from_millis(15_000);
+/// 测试连接的总期限上限（握手 ＋ hello ＋ 一次往返，秒级）：发起方没带期限时按它；带了更早的截止时刻 ⇒ 照那个。
+pub(crate) const PROBE_CAP: Deadline = Deadline::secs(15);
 
 /// 测试连接那一行的一段到哪了：还没到 · 过了 · 没过。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize)]
@@ -331,9 +329,10 @@ fn ticket_ok(t: &str) -> Result<String, (&'static str, String)> {
 }
 
 /// `remote-probe` 的本体：`serve` 是链路那一侧（生产 = `dial::uses::run`；判据用替身，拿改好的请求 · 上行读端 · 下行写端）；
-/// `out` 是进度格的出口（生产 = 本连接的应答通道）。结局推成最后一格（`end`），应答本身不带体。
+/// `out` 是进度格的出口（生产 = 本连接的应答通道）；`until` 是分派那一层交来的截止时刻。结局推成最后一格（`end`），应答本身不带体。
 pub(crate) async fn probe_with<F, Fut>(
     req: &ProbeReq,
+    until: Option<Until>,
     serve: F,
     out: &tokio::sync::mpsc::Sender<Frame>,
 ) -> Result<(), (&'static str, String)>
@@ -351,14 +350,15 @@ where
         jump: req.jump.as_ref(),
         prefer: None,
     };
-    #[allow(
-        clippy::disallowed_methods,
-        reason = "测试连接一趟的有界等待（`PROBE_BUDGET`）：到点丢掉那一趟（链路随之收），结局说停在哪一步"
-    )]
-    let end = match tokio::time::timeout(PROBE_BUDGET, run(&pick, serve, &cells)).await {
+    let end = match bounded(
+        Deadline::within(PROBE_CAP, until),
+        run(&pick, serve, &cells),
+    )
+    .await
+    {
         Ok(end) => end?,
-        Err(_) => {
-            let dur = copy_core::format_elapsed(PROBE_BUDGET);
+        Err(total) => {
+            let dur = copy_core::format_duration(total.shown_secs().saturating_mul(1000));
             let said = copy_text(
                 "beProbe.test.stalled",
                 &[("dur", &dur), ("last", &cells.last().0)],
@@ -583,10 +583,12 @@ where
 /// 生产的 `remote-probe`：真拨号；进度格进本连接的应答通道。
 pub(crate) async fn answer_probe(
     req: &ProbeReq,
+    until: Option<Until>,
     replies: &tokio::sync::mpsc::Sender<Frame>,
 ) -> Result<(), (&'static str, String)> {
     probe_with(
         req,
+        until,
         |req, up_r, mut down_w| async move {
             let stages = crate::dial::StageSink::new(true);
             crate::dial::uses::run(&req, &stages, up_r, &mut down_w).await;
