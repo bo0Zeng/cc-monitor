@@ -35,7 +35,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ccmonitor.mobile.core.claude.link.Busy
 import com.ccmonitor.mobile.core.claude.link.Deploying
+import com.ccmonitor.mobile.core.claude.link.Said
 import com.ccmonitor.mobile.core.claude.link.Toned
 import com.ccmonitor.mobile.core.claude.link.wire.MachineFixButton
 import com.ccmonitor.mobile.core.claude.link.wire.SessionDot
@@ -50,8 +52,8 @@ import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.link.Problem
+import com.ccmonitor.mobile.ui.common.BusyLine
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
-import com.ccmonitor.mobile.ui.common.DeployStepLine
 import com.ccmonitor.mobile.ui.common.StatusDot
 import com.ccmonitor.mobile.ui.common.deployLabel
 import kotlinx.coroutines.delay
@@ -136,14 +138,11 @@ fun ConversationsScreen(
     menuFor?.let { RowMenu(it, onHide, onDismiss = { menuFor = null }) }
     Column(modifier.fillMaxSize()) {
         val whole = state.linkProblem ?: state.listProblem
-        val fixing = Fixing(state.fix, state.deploying, onDeploy)
+        val fixing = Fixing(state.fix, state.busy, (state.deploying as? Deploying.Failed)?.said, onDeploy)
         // 手上有上次那一份（本地缓存）⇒ 照画；离线 · 没问成的那一句排在最前。
         val cachedOnly = state.sections.isNotEmpty()
         when {
             whole != null && !cachedOnly -> ProblemBar(whole, onRetry, fixing.takeIf { state.linkProblem != null })
-            // 装完换常驻、重接的那一会儿：照旧说装到哪一步了，不换回「读取中」。
-            !cachedOnly && state.connecting && state.deploying is Deploying.Step ->
-                Column(Modifier.padding(16.dp).testTag(OverviewTags.PROBLEM)) { DeployStepLine(state.deploying) }
             !cachedOnly && (state.connecting || state.listLoading) ->
                 Text(copyText("history.list.reading", "machines" to machine), style = monoSmall, modifier = Modifier.padding(16.dp))
             else -> ConversationsList(state, whole, fixing, onOpen, onRetry, onMenu = { menuFor = it })
@@ -277,16 +276,17 @@ private fun toneColor(t: Tone?): Color {
     }
 }
 
-/** 问题条上的修法：成品给的那一颗（[fix]）· 装到哪一步了（[deploying]）· 按下去做什么。 */
+/** 问题条上的修法：成品给的那一颗（[fix]）· 正在装 / 更新（[busy]）· 上一趟没装上（[failed]）· 按下去做什么。 */
 private class Fixing(
     val fix: MachineFixButton?,
-    val deploying: Deploying?,
+    val busy: Busy?,
+    val failed: Said?,
     val onDeploy: () -> Unit,
 )
 
 /**
  * 问题条：核心那一句 ＋［重试］［复制详情］；成品给了装一次会好的那一颗 ⇒ 最前一颗［安装］/［更新］。
- * 装的时候同一处换成那一步的话（＋ 进度条），按钮变灰不挪位；没装上 ⇒ 换成失败那一句，按钮可再按。
+ * 正在装 / 更新 ⇒ 整条只是成品那一句（＋ 进度条）；没装上 ⇒ 换成失败那一句，按钮可再按。
  */
 @Composable
 private fun ProblemBar(
@@ -294,19 +294,16 @@ private fun ProblemBar(
     onRetry: () -> Unit,
     fixing: Fixing? = null,
 ) {
-    val step = fixing?.deploying as? Deploying.Step
-    val failed = (fixing?.deploying as? Deploying.Failed)?.said
+    val failed = fixing?.failed
+    val busy = fixing?.busy
     Column(Modifier.fillMaxWidth().padding(16.dp).testTag(OverviewTags.PROBLEM)) {
-        when {
-            step != null -> DeployStepLine(step)
-            failed != null -> ErrorLine(failed.text)
-            else -> ErrorLine(p.text)
-        }
+        if (busy != null) return@Column BusyLine(busy)
+        ErrorLine(failed?.text ?: p.text)
         Row(verticalAlignment = Alignment.CenterVertically) {
             fixing?.fix?.let { fix ->
-                Button(onClick = fixing.onDeploy, enabled = step == null, modifier = Modifier.testTag(OverviewTags.DEPLOY)) { Text(deployLabel(fix)) }
+                Button(onClick = fixing.onDeploy, modifier = Modifier.testTag(OverviewTags.DEPLOY)) { Text(deployLabel(fix)) }
             }
-            if (step == null) SecondaryButton(onClick = onRetry) { Text(copyText("front.act.retry")) }
+            SecondaryButton(onClick = onRetry) { Text(copyText("front.act.retry")) }
             CopyDetailButton(failed?.text ?: p.text, failed?.detail ?: p.detail)
         }
     }

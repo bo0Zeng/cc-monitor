@@ -1,7 +1,7 @@
 //! **一台的常驻流**在手机这一侧的宿主：循环本身是 `resident-client` 那一份（[`Feed`]，桌面同一条循环），
 //! 这里只接两根线 —— 下面那条 SSH（[`PhoneLink`]：拨号核心在这台手机上开的链路，拨号请求由 Kotlin 交那一份）· 往 Kotlin 交的事（一个回调，走消息）。
 //!
-//! 往 Kotlin 交的事一律 `(编号, 种类, 一段文本)`：`state`（这台通不通 ＋ 那台的状态成品，JSON：[`state_line`]；SSH 那层跟着它换连接）· `frame`（流上的一帧，原样一行；`line` 帧里解不开的那条记录换成认不出那一条）·
+//! 往 Kotlin 交的事一律 `(编号, 种类, 一段文本)`：`state`（这台通不通 ＋ 那台的状态成品，JSON：[`Facts`]；SSH 那层跟着它换连接）· `frame`（流上的一帧，原样一行；`line` 帧里解不开的那条记录换成认不出那一条）·
 //! `watch_from`（JSON 数组）· `ssh`（SSH 够没够着那一台：`true` / `false`，与流通不通分开；SSH 那层跟它走）· `reply`（一问一答的结局，JSON，带 `call` 编号）·
 //! `moved`（分块传走到哪，`transfer.rs`）。
 
@@ -251,7 +251,7 @@ pub(crate) fn feed(h: i64) -> Option<Arc<Feed<PhoneLink>>> {
 }
 
 /// 一件事 ⇒ `(种类, 文本)`。帧按 `cmd-wire` 那一份类型解过、再按类型写一行（`line` 帧里解不开的那条记录成认不出那一条：[`OrUnread`]）；
-/// 解不开 ⇒ `unread` 原样那一行；状态那一件经 [`state_line`]（要这台手上的事实）。Kotlin 用不着的（接上那一刻的 hello 与客户端：问答经 [`call`] 走 · 超长丢行的缺口）⇒ `None`。
+/// 解不开 ⇒ `unread` 原样那一行；状态那一件经 [`Facts::round`]（要这台手上的事实）。Kotlin 用不着的（接上那一刻的 hello 与客户端：问答经 [`call`] 走 · 超长丢行的缺口）⇒ `None`。
 pub fn event_of(e: &Event) -> Option<(&'static str, String)> {
     Some(match e {
         Event::Frame(line) => match cmd_wire::frame::decode::<OrUnread>(line)
@@ -265,23 +265,73 @@ pub fn event_of(e: &Event) -> Option<(&'static str, String)> {
     })
 }
 
-/// 状态那一行：`state` 通没通（`connecting` · `up` 带第几条流 `epoch` · `down`）＋ `machine` 那台的状态成品
-/// （收进这台手上的事实 `e`，由 `deploy::machine` 定，同桌面那一份；这一端不自己装后端 ⇒ 没有后端那一轮给［安装］）。
-pub fn state_line(e: &mut Entry, s: &State, machine: &str) -> String {
-    fold(
-        e,
-        Fact::Round {
-            round: s.round(),
-            version: None,
-        },
-    );
-    let mut line = match s {
-        State::Connecting => serde_json::json!({ "state": "connecting" }),
-        State::Up { epoch, .. } => serde_json::json!({ "state": "up", "epoch": epoch }),
-        State::Down { .. } => serde_json::json!({ "state": "down" }),
-    };
-    line["machine"] = serde_json::to_value(product(e, machine, true, false)).unwrap_or_default();
-    line.to_string()
+/// 一台手上的事实：成品收的那一份（[`Entry`]）＋ 那条流最新那一轮（部署每走一步重交 `state` 那一行时，通没通照它说）。
+#[derive(Default)]
+pub struct Facts {
+    entry: Entry,
+    last: Option<State>,
+}
+
+impl Facts {
+    /// 那条流交来一轮 ⇒ `state` 那一行。
+    pub fn round(&mut self, s: State, machine: &str) -> String {
+        self.fold_round(&s);
+        self.last = Some(s);
+        self.line(machine)
+    }
+
+    /// 部署走到一步 ⇒ `state` 那一行（成品照那一步说：正在装 / 更新那一句与进度都在成品里）。
+    pub fn step(&mut self, s: deploy::Step, machine: &str) -> String {
+        fold(&mut self.entry, Fact::Step(s));
+        self.line(machine)
+    }
+
+    /// 部署收了（成没成都算）⇒ 成品回到那条流最新那一轮；换了常驻的，接下来那几轮照常交。
+    pub fn settle(&mut self, machine: &str) -> String {
+        let last = self.last.clone().unwrap_or(State::Connecting);
+        self.fold_round(&last);
+        self.line(machine)
+    }
+
+    fn fold_round(&mut self, s: &State) {
+        fold(
+            &mut self.entry,
+            Fact::Round {
+                round: s.round(),
+                version: None,
+            },
+        );
+    }
+
+    /// `state` 那一行：`state` 通没通（`connecting` · `up` 带第几条流 `epoch` · `down`）＋ `machine` 那台的状态成品
+    /// （由 `deploy::machine` 定，同桌面那一份；这一端不自己装后端 ⇒ 没有后端那一轮给［安装］）。
+    fn line(&self, machine: &str) -> String {
+        let mut line = match &self.last {
+            None | Some(State::Connecting) => serde_json::json!({ "state": "connecting" }),
+            Some(State::Up { epoch, .. }) => serde_json::json!({ "state": "up", "epoch": epoch }),
+            Some(State::Down { .. }) => serde_json::json!({ "state": "down" }),
+        };
+        line["machine"] =
+            serde_json::to_value(product(&self.entry, machine, true, false)).unwrap_or_default();
+        line.to_string()
+    }
+}
+
+/// 每台手上的事实（那条流的每一轮 · 部署的每一步都收进同一份）。
+fn facts() -> &'static Mutex<HashMap<i64, Arc<Mutex<Facts>>>> {
+    static F: OnceLock<Mutex<HashMap<i64, Arc<Mutex<Facts>>>>> = OnceLock::new();
+    F.get_or_init(Default::default)
+}
+
+/// 在编号 `h` 那台手上的事实里收一件、出那一行（那台不在 ⇒ `None`）。
+pub(crate) fn note(h: i64, f: impl FnOnce(&mut Facts) -> String) -> Option<String> {
+    let got = facts()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(&h)
+        .cloned()?;
+    let mut got = got.lock().unwrap_or_else(|e| e.into_inner());
+    Some(f(&mut got))
 }
 
 /// 看一台（在当前运行时上起它的循环）。`mine` = 手上这一版的身份（版本门的对照物）。回编号。
@@ -307,7 +357,11 @@ pub fn open(machine: String, mine: Option<String>, tz: Option<String>, on_event:
             );
         },
     );
-    let facts = Mutex::new(Entry::default());
+    let mine = Arc::new(Mutex::new(Facts::default()));
+    facts()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(id, Arc::clone(&mine));
     let feed = Feed::start(
         cfg,
         None,
@@ -315,8 +369,8 @@ pub fn open(machine: String, mine: Option<String>, tz: Option<String>, on_event:
         sink(move |e: Event| {
             let got = match &e {
                 Event::State(s) => {
-                    let mut facts = facts.lock().unwrap_or_else(|e| e.into_inner());
-                    Some(("state", state_line(&mut facts, s, &name)))
+                    let mut facts = mine.lock().unwrap_or_else(|e| e.into_inner());
+                    Some(("state", facts.round(s.clone(), &name)))
                 }
                 _ => event_of(&e),
             };
@@ -447,6 +501,7 @@ pub fn kick(h: i64, retry: bool) {
 
 pub fn close(h: i64) {
     bases().lock().unwrap_or_else(|e| e.into_inner()).remove(&h);
+    facts().lock().unwrap_or_else(|e| e.into_inner()).remove(&h);
     watching()
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -707,13 +762,13 @@ mod tests {
         );
     }
 
-    /// 交 Kotlin 的几种事：状态那一件走 [`state_line`]（要这台手上的事实）· 帧原样。
+    /// 交 Kotlin 的几种事：状态那一件走 [`Facts::round`]（要这台手上的事实）· 帧原样。
     #[test]
     fn events_are_tagged_and_frames_go_through_untouched() {
         assert_eq!(
             event_of(&Event::State(State::Connecting)),
             None,
-            "状态那一件经 state_line"
+            "状态那一件经 Facts::round"
         );
         assert_eq!(event_of(&Event::Gap), None, "缺口 Kotlin 用不着");
         assert_eq!(
@@ -736,8 +791,33 @@ mod tests {
         assert!(!w.release("a"), "本来就没在看 ⇒ 不变");
     }
 
+    /// 部署收了（成没成都算）：成品回到那条流最新那一轮，不停在「正在装」；那条流一轮都没交过 ⇒ 照「正在连」说。
+    #[test]
+    fn a_finished_deploy_hands_the_product_back_to_the_last_round() {
+        let v = |t: String| serde_json::from_str::<serde_json::Value>(&t).unwrap();
+        let mut f = Facts::default();
+        let before = v(f.round(
+            State::Down {
+                problem: Problem::new("远端没有后端", "exit: 127"),
+                needs_hand: true,
+                blocker: Some(cmd_wire::machine::Blocker::NoBackend),
+            },
+            "box",
+        ));
+        let busy = v(f.step(deploy::Step::Place { updating: false }, "box"));
+        assert_eq!(
+            (busy["state"].as_str(), busy["machine"]["state"].as_str()),
+            (Some("down"), Some("installing"))
+        );
+        assert_eq!(v(f.settle("box")), before);
+        let mut fresh = Facts::default();
+        let line = v(fresh.step(deploy::Step::Plan, "box"));
+        assert_eq!(line["state"], "connecting");
+        assert_eq!(v(fresh.settle("box"))["machine"]["state"], "connecting");
+    }
+
     /// 状态那一行的金样：一串事实由生产函数现产，与 `tests/__fixtures__/mobile-state-line.golden.json` 逐字相等；
-    /// 手机那一侧（`ResidentFeedTest`）读同一份逐行解。只有通没通与成品，画法那几格（修法 · 版本那一句）不另带。
+    /// 手机那一侧（`ResidentFeedTest`）读同一份逐行解。只有通没通与成品，画法那几格（修法 · 版本那一句）不另带；部署那一趟的几步同在这一份里。
     #[test]
     fn the_state_line_matches_the_cross_language_golden() {
         use cmd_wire::attach::Relation;
@@ -783,14 +863,40 @@ mod tests {
                 ),
             ),
         ];
-        let out: Vec<serde_json::Value> = cases
-            .iter()
+        let no_backend = || {
+            down(
+                Problem::new("远端没有后端", "exit: 127"),
+                Some(Blocker::NoBackend),
+            )
+        };
+        // 部署那一趟：那条流先交一轮，再走到一步（通没通照那一轮说，成品照那一步说）。
+        let deploying: Vec<(&str, State, deploy::Step)> = vec![
+            ("部署在问那台", no_backend(), deploy::Step::Plan),
+            (
+                "正在装",
+                no_backend(),
+                deploy::Step::Place { updating: false },
+            ),
+            (
+                "正在更新",
+                up(2, Relation::Older),
+                deploy::Step::Place { updating: true },
+            ),
+        ];
+        let line = |text: String| serde_json::from_str::<serde_json::Value>(&text).unwrap();
+        let mut out: Vec<serde_json::Value> = cases
+            .into_iter()
             .map(|(name, s)| {
-                let line: serde_json::Value =
-                    serde_json::from_str(&state_line(&mut Entry::default(), s, "box")).unwrap();
+                let line = line(Facts::default().round(s, "box"));
                 serde_json::json!({ "name": name, "line": line })
             })
             .collect();
+        out.extend(deploying.into_iter().map(|(name, s, step)| {
+            let mut f = Facts::default();
+            f.round(s, "box");
+            let line = line(f.step(step, "box"));
+            serde_json::json!({ "name": name, "line": line })
+        }));
         let golden = serde_json::json!({
             "说明": [
                 "手机核心交 Kotlin 的 `state` 那一行（通没通 ＋ 那台的状态成品）的跨语言金样。",

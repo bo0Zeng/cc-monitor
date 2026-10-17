@@ -215,6 +215,67 @@
         "state": "down"
       },
       "name": "不是 Unix"
+    },
+    {
+      "line": {
+        "machine": {
+          "detail": null,
+          "fixes": [],
+          "next": null,
+          "os": null,
+          "reason": null,
+          "said": "连接 box · 核对版本",
+          "seenHostKey": null,
+          "stage": "deploy",
+          "state": "connecting",
+          "version": null,
+          "versionRelation": null,
+          "word": "连接中"
+        },
+        "state": "down"
+      },
+      "name": "部署在问那台"
+    },
+    {
+      "line": {
+        "machine": {
+          "detail": null,
+          "fixes": [],
+          "next": null,
+          "os": null,
+          "reason": null,
+          "said": "安装 cc-monitor → box",
+          "seenHostKey": null,
+          "stage": null,
+          "state": "installing",
+          "version": null,
+          "versionRelation": null,
+          "word": "安装中"
+        },
+        "state": "down"
+      },
+      "name": "正在装"
+    },
+    {
+      "line": {
+        "epoch": 2,
+        "machine": {
+          "detail": null,
+          "fixes": [],
+          "next": null,
+          "os": null,
+          "reason": null,
+          "said": "更新 box · cc-monitor",
+          "seenHostKey": null,
+          "stage": null,
+          "state": "updating",
+          "version": null,
+          "versionRelation": "older",
+          "word": "更新中"
+        },
+        "state": "up"
+      },
+      "name": "正在更新"
     }
   ],
   "说明": [

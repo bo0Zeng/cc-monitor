@@ -1,6 +1,6 @@
 package com.ccmonitor.mobile.ui.overview
 
-import com.ccmonitor.mobile.core.claude.link.Deploying
+import com.ccmonitor.mobile.core.claude.link.Busy
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.LiveSession
 import com.ccmonitor.mobile.core.claude.link.Said
@@ -58,20 +58,22 @@ class ConversationsViewTest {
         )
 
     @Test
-    fun `装一次会好的那一颗照成品带上（断着 · 通着旧了），别的修法不挑；装到哪一步原样带上，连着的那一会儿也不丢`() {
-        val step = Deploying.Step("安装 cc-monitor → box", bar = true)
+    fun `装一次会好的那一颗照成品带上（断着 · 通着旧了），别的修法不挑；正在装或更新照成品那一句带上，问题条不另说`() {
         val install = MachineFixButton(MachineFix.INSTALL, copyText("machineState.fix.install"))
         val update = MachineFixButton(MachineFix.UPDATE, copyText("machineState.fix.update"))
-        val down = view("m", LinkState.Down(Said("远端 cc-monitor 未装", ""), listOf(install)), SessionTable(), list, Fetched.Loading, deploying = step)
+        val down = view("m", LinkState.Down(Said("远端 cc-monitor 未装", ""), listOf(install)), SessionTable(), list, Fetched.Loading)
         assertEquals(install, down.fix)
-        assertEquals(step, down.deploying)
+        assertNull(down.busy)
         val retry = listOf(MachineFixButton(MachineFix.RETRY, copyText("machineState.fix.retry")), MachineFixButton(MachineFix.CONN_SETTINGS, copyText("machinePage.conn.toggle")))
         assertNull(view("m", LinkState.Down(Said("m 离线", ""), retry), SessionTable(), list, Fetched.Loading).fix)
         val old = view("m", LinkState.Up(Said("box 后端要更新", ""), listOf(update)), SessionTable(), list, Fetched.Got(emptyList()))
         assertEquals(update, old.fix)
         assertEquals(Problem("box 后端要更新", ""), old.linkNotice)
-        assertEquals(step, view("m", LinkState.Connecting, SessionTable(), list, Fetched.Loading, deploying = step).deploying)
         assertNull(view("m", LinkState.Up(), SessionTable(), list, Fetched.Got(emptyList())).fix)
+        val installing = Busy("安装 cc-monitor → m", bar = true)
+        assertEquals(installing, view("m", LinkState.Down(Said(installing.text, ""), busy = installing), SessionTable(), list, Fetched.Loading).busy)
+        val updating = Busy("更新 m · cc-monitor", bar = true)
+        assertEquals(updating, view("m", LinkState.Up(Said(updating.text, ""), busy = updating), SessionTable(), list, Fetched.Got(emptyList())).busy)
     }
 
     @Test

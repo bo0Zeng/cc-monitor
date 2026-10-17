@@ -3,6 +3,7 @@ package com.ccmonitor.mobile.ui.overview
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ccmonitor.mobile.cache.ListCache
+import com.ccmonitor.mobile.core.claude.link.Busy
 import com.ccmonitor.mobile.core.claude.link.Deploying
 import com.ccmonitor.mobile.core.claude.link.HistoryAnnotate
 import com.ccmonitor.mobile.core.claude.link.HistoryList
@@ -195,7 +196,9 @@ data class ConversationsUiState(
     val linkNotice: Problem? = null,
     /** 成品给的「装一次会好」那一颗（问题条上给［安装］/［更新］）；没给 ⇒ `null`。 */
     val fix: MachineFixButton? = null,
-    /** 装 / 更新后端这一趟走到哪了（核心写好的话）；没装过 ⇒ `null`。 */
+    /** 正在装 / 更新那一句（成品写好的；问题条就画它）；没在装 ⇒ `null`。 */
+    val busy: Busy? = null,
+    /** 装 / 更新后端这一趟的结局（核心写好的话）；没装过 ⇒ `null`。 */
     val deploying: Deploying? = null,
     val connecting: Boolean = true,
     val needs: List<NeedsItem> = emptyList(),
@@ -273,6 +276,7 @@ internal fun view(
         return ConversationsUiState(
             linkProblem = link.problem(),
             fix = link.deployFix(),
+            busy = link.busy,
             deploying = deploying,
             connecting = false,
             listLoading = false,
@@ -287,6 +291,7 @@ internal fun view(
         connecting = false,
         linkNotice = (link as? LinkState.Up)?.notice(),
         fix = link.deployFix(),
+        busy = link.busy,
         deploying = deploying,
         needs = (needs as? Fetched.Got)?.value.orEmpty().map { NeedsItem(it.sid, it.label, it.needs.text, it.needs.waitedMs, needsAt, it.face.dot) },
         needsProblem = (needs as? Fetched.Failed)?.problem,

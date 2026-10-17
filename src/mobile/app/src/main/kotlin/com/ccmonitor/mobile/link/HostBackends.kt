@@ -40,7 +40,7 @@ class HostBackends(
     // computeIfAbsent：原子，一台只起一条（多起一条的那份也会往 SSH 那层报「没够着」）。
     fun of(hostId: String): ResidentFeed = byHost.computeIfAbsent(hostId) { feed(it) }
 
-    /** 给这台装 / 更新后端（判定与做法在核心；走到哪 · 结局经 [ResidentFeed.deploying]）。 */
+    /** 给这台装 / 更新后端（判定与做法在核心；走到哪在那台的状态成品里，结局经 [ResidentFeed.deploying]）。 */
     fun deploy(hostId: String) = of(hostId).deploy { withContext(Dispatchers.IO) { backendSlots() } }
 
     /** App 回到前台 · 网络回来了 / 变了：每台交给核心（[ResidentFeed.wake]：连着的当场问活，断着的当场再接）。 */

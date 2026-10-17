@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.claude.link.wire.MachineState
+import com.ccmonitor.mobile.core.claude.link.wire.MachineStateKind
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -72,7 +73,7 @@ interface ResidentCore {
         withinMs: Long,
     ): Long
 
-    /** 给那台装 / 更新后端（[slots] = 包里那几格解到的文件，JSON）；事经 `deploy` 那一种交回。那台不在 · 正在装 ⇒ `false`。 */
+    /** 给那台装 / 更新后端（[slots] = 包里那几格解到的文件，JSON）；结局经 `deploy` 那一种交回，走到哪一步在 `state` 那一行的成品里。那台不在 · 正在装 ⇒ `false`。 */
     fun deploy(
         handle: Long,
         slots: String,
@@ -264,10 +265,17 @@ class ResidentFeed(
         }
     }
 
-    /** `state` 那一行：通没通（`state` · `epoch`）＋ 那台的状态成品（`machine`，按线上类型装）。 */
+    /** `state` 那一行：通没通（`state` · `epoch`）＋ 那台的状态成品（`machine`，按线上类型装；部署走到哪一步也在它里面）。 */
     private fun onState(m: Map<String, Any?>) {
         val machine = Wire.bind<MachineState>(m["machine"]) ?: return broke("state", m.toString())
         val said = Said(machine.said, machine.detail.orEmpty())
+        val busy =
+            when (machine.state) {
+                MachineStateKind.INSTALLING, MachineStateKind.UPDATING -> Busy(machine.said, bar = true)
+                // 流还通着 / 断着、成品已在连 ⇒ 部署那一趟在问那台 · 在换常驻（流自己在接时不另说）。
+                MachineStateKind.CONNECTING -> Busy(machine.said, bar = false)
+                else -> null
+            }
         when (m.str("state")) {
             "connecting" -> {
                 tableFlow.value = SessionTable()
@@ -276,9 +284,9 @@ class ResidentFeed(
             "up" -> {
                 val e = m.num("epoch") ?: 0L
                 if (e != epochFlow.value) epochFlow.value = e
-                stateFlow.value = LinkState.Up(said.takeIf { it.text.isNotEmpty() }, machine.fixes)
+                stateFlow.value = LinkState.Up(said.takeIf { it.text.isNotEmpty() }, machine.fixes, busy)
             }
-            "down" -> stateFlow.value = LinkState.Down(said, machine.fixes)
+            "down" -> stateFlow.value = LinkState.Down(said, machine.fixes, busy)
             else -> broke("state", m.toString())
         }
         // 「装好了」那一句只留到下一次出事（断了 · 又说要更新）；没装上那一句留着，等下一趟。
@@ -301,11 +309,10 @@ class ResidentFeed(
         Json.obj(body)?.let(::deployOf)?.let { deployFlow.value = it } ?: broke("deploy", body)
     }
 
-    /** `deploy` 那一行 ⇒ 一步 · 结局 · 失败；认不出 ⇒ `null`。 */
+    /** `deploy` 那一行 ⇒ 结局 · 失败；认不出 ⇒ `null`。 */
     private fun deployOf(m: Map<String, Any?>): Deploying? {
         val text = m.str("text") ?: return null
         return when {
-            m.str("step") != null -> Deploying.Step(text, m.bool("bar") == true)
             m.str("done") != null -> Deploying.Done(text)
             m.str("failed") != null -> Deploying.Failed(Said(text, m.str("detail").orEmpty()))
             else -> null
