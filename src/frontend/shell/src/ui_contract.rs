@@ -300,6 +300,15 @@ pub struct FrontendReadyPayload {
     pub priority_sid: Option<String>,
 }
 
+/// [`events::MACHINE_STATE`] 那一帧：本机那一台 ＋ 它的状态成品（与 `backend_status` 的 `machine` 同一份类型）。
+#[derive(Debug, Serialize, Clone)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+pub struct MachineStatePayload {
+    pub origin: String,
+    pub machine: cmd_wire::machine::MachineState,
+}
+
 /// 远端健康事件 payload（SS-F，issue #32 起）。`origin` = 出问题的远端机器 label
 /// （从 `Option<String>` 改成 `String`：五个发射点全在 `stream_source/`、全都带着那台的 label，
 /// 「没有 origin」从来不是一个会发生的值 —— 类型里就不给它留格子，TS 那侧随之不再装得下 `null`）；

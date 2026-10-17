@@ -11,10 +11,8 @@ import { button } from "../kit/button";
 import { icon } from "../kit/icon";
 import { spinner } from "../kit/progress";
 import { copyDetailButton } from "../kit/detail";
-import { decodeMachineState } from "../machine-state-decode";
 
 export type { MachineState, MachineFix };
-export { decodeMachineState };
 
 /** 一台怎么画。`problem` 为空 ＝ 不出问题行。 */
 export interface MachineFace {

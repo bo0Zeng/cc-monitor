@@ -41,11 +41,10 @@ describe("严格收的小件只有一个家", () => {
 /**
  * 走通道的回包 · 帧 · 拒绝的 `data` 都随形状指纹核过；壳命令 · 壳事件 · 本机后端与界面是同一个构建 ⇒ 一律照生成类型用、不手核。
  * 这几样小件只许下面这几份用（各写明收的是什么）。新添一份先答：它收的东西真的既不经指纹、也不是同一个构建吗？
- * 两份「待删」随那两样回包上生成类型删掉；只剩对表那一份时本条连同那一份一起收。
+ * 「待删」那一份随那样回包上生成类型删掉；只剩对表那一份时本条连同那一份一起收。
  */
 const USERS: Record<string, string> = {
   "src/frontend/ui/copy-table.ts": "调用方交的插值参数名对表（不是回包）",
-  "src/frontend/ui/machine-state-decode.ts": "待删：机器状态推送上生成类型之后整份删",
   "src/frontend/ui/settings/backend-section.ts": "待删：`backend_status` 回包上生成类型之后 `decodeHealthFace` 删",
 };
 

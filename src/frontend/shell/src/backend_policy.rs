@@ -561,6 +561,8 @@ pub fn health(origin: &str) -> Health {
 
 /// 「健康」那一格的三档。线上就是这三个词（`data-health`），界面原样挂、不枚举。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 #[serde(rename_all = "lowercase")]
 pub enum HealthState {
     /// 账上一条都没有 —— 答不出来（**不是**「没崩过」）。
@@ -576,6 +578,8 @@ pub enum HealthState {
 /// 线上就是这四个键（`backend_status` 的 `health`；形状由金样 `tests/__fixtures__/backend-health.golden.json`
 /// 两侧同读钉住）。四个计数与账行**不上线**：界面拿不到原料，也就没法再判一遍（「前端不做判定」）。
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct HealthFace {
     /// 哪一档。「区分保留，用界面状态表达，不用散文表达」—— 界面挂到 DOM 状态上。
     pub state: HealthState,

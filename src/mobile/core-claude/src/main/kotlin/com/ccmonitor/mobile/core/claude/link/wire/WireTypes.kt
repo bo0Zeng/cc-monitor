@@ -1703,14 +1703,51 @@ enum class LivePhaseWord {
     AWAITING,
 }
 
-/** 一台的状态成品（判定只住后端 `deploy::machine`，手机嵌的核心跑同一份）：手机只读问题行那一句 · 复制详情 · 修法。 */
+/** 一台的状态成品（判定只住后端 `deploy::machine`，手机嵌的核心跑同一份）：手机只读哪一态 · 问题行那一句 · 复制详情 · 修法。 */
 @WireOf("MachineState")
 @JsonClass(generateAdapter = true)
 data class MachineState(
+    val state: MachineStateKind,
     val said: String,
     val detail: String?,
     val fixes: List<MachineFixButton>,
 )
+
+@JsonClass(generateAdapter = false)
+enum class MachineStateKind {
+    @Json(name = "up")
+    UP,
+
+    @Json(name = "connecting")
+    CONNECTING,
+
+    @Json(name = "installing")
+    INSTALLING,
+
+    @Json(name = "updating")
+    UPDATING,
+
+    @Json(name = "down")
+    DOWN,
+
+    @Json(name = "host_key_changed")
+    HOST_KEY_CHANGED,
+
+    @Json(name = "needs_update")
+    NEEDS_UPDATE,
+
+    @Json(name = "newer")
+    NEWER,
+
+    @Json(name = "disabled")
+    DISABLED,
+
+    @Json(name = "unsupported")
+    UNSUPPORTED,
+
+    @Json(name = "unknown")
+    UNKNOWN,
+}
 
 /** 一颗修法按钮：做什么 ＋ 按钮上的字（后端写好）。 */
 @WireOf("MachineFixButton")

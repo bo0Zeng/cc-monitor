@@ -3,6 +3,7 @@ package com.ccmonitor.mobile.ui.chats
 import com.ccmonitor.mobile.cache.ListCache
 import com.ccmonitor.mobile.cache.LocalCache
 import com.ccmonitor.mobile.core.claude.link.CoreLink
+import com.ccmonitor.mobile.core.claude.link.Busy
 import com.ccmonitor.mobile.core.claude.link.Deploying
 import com.ccmonitor.mobile.core.claude.link.HistoryList
 import com.ccmonitor.mobile.core.claude.link.HistorySearch
@@ -220,7 +221,7 @@ data class HostPart(
     val notice: String?,
     val truncated: Boolean,
     val loading: Boolean,
-    /** 装 / 更新后端这一趟走到哪了（条上没画它时单独一行）。 */
+    /** 装 / 更新后端这一趟的结局（条上没画它时单独一行；走到哪一步在成品里，见 [HostBar.busy]）。 */
     val deploying: Deploying? = null,
 )
 
@@ -235,6 +236,8 @@ data class HostBar(
     val fix: MachineFixButton? = null,
     val deploying: Deploying? = null,
     val edit: String? = null,
+    /** 正在装 / 更新那一句（成品写好的；条上只画它）；没在装 ⇒ `null`。 */
+    val busy: Busy? = null,
 )
 
 /**
@@ -253,9 +256,9 @@ internal fun hostPart(
         when {
             ssh is HostLink.Failed -> HostBar(s.hostId, Problem(ssh.why, ""), offline = true, edit = ssh.edit)
             down != null && !plain -> HostBar(s.hostId, Problem(downLine(s.machine, s.ask), ""), offline = true)
-            down != null -> HostBar(s.hostId, down.problem(), offline = down.deployFix() == null, down.deployFix(), s.deploying)
+            down != null -> HostBar(s.hostId, down.problem(), offline = down.deployFix() == null, down.deployFix(), s.deploying, busy = down.busy)
             s.list is Fetched.Failed -> HostBar(s.hostId, s.list.problem, offline = false)
-            s.link is LinkState.Up -> s.link.notice()?.let { HostBar(s.hostId, it, offline = false, s.link.deployFix(), s.deploying) }
+            s.link is LinkState.Up -> s.link.notice()?.let { HostBar(s.hostId, it, offline = false, s.link.deployFix(), s.deploying, busy = s.link.busy) }
             else -> null
         }
     val table = s.table.takeIf { down == null }

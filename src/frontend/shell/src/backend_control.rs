@@ -127,12 +127,29 @@ pub fn backend_machines() -> Result<Vec<String>, Said> {
     r.map_err(|s| s.named("backend_machines"))
 }
 
+/// [`backend_status`] 的回包。
+#[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+pub struct BackendStatus {
+    /// 本机那一台的状态成品；远端 ⇒ `null`（远端各台的成品在本机后端）。
+    pub machine: Option<cmd_wire::machine::MachineState>,
+    pub origin: String,
+    /// 那台的通道登记着没有。
+    pub channel: bool,
+    pub pid: Option<u32>,
+    pub attempts: Option<u32>,
+    /// 走没走过脱离那条路；远端 ⇒ `null`。
+    pub detached: Option<bool>,
+    pub health: crate::backend_policy::HealthFace,
+}
+
 /// 这台机的后端现在什么状态。「通道在不在」两侧共用一张表：`inbound_client` 的登记表按 origin 存活着的通道，本机与远端都在 hello 之后登记。
 /// `pid` / `attempts` 只有本机有（远端的进程在别人机器上）—— 天然不对称，所以它们是 `null`。
 /// `async`（`INVARIANTS §10`）：本机那一支要拿句柄表的锁，进 `spawn_blocking` —— 读锁这一下不许落在 IPC 派发线程上。
 #[tauri::command]
-pub async fn backend_status(origin: String) -> Result<serde_json::Value, Said> {
-    let r: Result<serde_json::Value, Said> = async move {
+pub async fn backend_status(origin: String) -> Result<BackendStatus, Said> {
+    let r: Result<BackendStatus, Said> = async move {
         Ok(
             tauri::async_runtime::spawn_blocking(move || backend_status_now(origin))
                 .await
@@ -144,7 +161,7 @@ pub async fn backend_status(origin: String) -> Result<serde_json::Value, Said> {
 }
 
 /// [`backend_status`] 的本体。
-fn backend_status_now(origin: String) -> Result<serde_json::Value, Said> {
+fn backend_status_now(origin: String) -> Result<BackendStatus, Said> {
     check_origin(&origin)?;
     let channel = crate::inbound_client::client_for(&origin).is_some();
     // `detached` 的源头只能是「起它的时候走没走那条路」：`is_detached()` 读的是一条只在真的走过脱离那条路时才写下的记录（`local_backend_host::DETACHED`）。
@@ -156,29 +173,29 @@ fn backend_status_now(origin: String) -> Result<serde_json::Value, Said> {
         (
             p,
             a,
-            serde_json::json!(crate::local_backend_host::is_detached()),
+            Some(crate::local_backend_host::is_detached()),
             Some(crate::local_backend_host::local_product(
                 channel,
                 crate::byte_table::my_backend_id(),
             )),
         )
     } else {
-        (None, None, serde_json::Value::Null, None)
+        (None, None, None, None)
     };
     // 死亡账的读数也从这一口出去。它不走 `is_local` 分派：那张账按 origin 存（`backend_policy::health(origin)`），远端那一格恒是「四个 0」——
     // 远端退出状态在别人机器上拿不到，「没人在记」正是实情，那一格说「答不出来」（判定在 `backend_policy::health_face`）。
     // 不填 `null`：那与 `pid` / `attempts` 不是一件事。再开一个 `is_local(&origin)` 分派会撞那条「逐口恰好一处」的判据。
     let h = crate::backend_policy::health(&origin);
-    Ok(serde_json::json!({
-        "machine": machine,
-        "origin": origin,
-        "channel": channel,
-        "pid": pid,
-        "attempts": attempts,
-        "detached": detached,
+    Ok(BackendStatus {
+        machine,
+        origin,
+        channel,
+        pid,
+        attempts,
+        detached,
         // 「退出行为」那个值住后端那台机器上（后端 `exit-policy-read`），这里不留副本。「健康」那一格是成品（状态 ＋ 一句 ＋ ⓘ ＋ `[详情]`），判定只在 `health_face`。
-        "health": crate::backend_policy::health_face(&h),
-    }))
+        health: crate::backend_policy::health_face(&h),
+    })
 }
 
 /// 起这台机的 backend。已经在跑就是 no-op（每台机只许一个）。

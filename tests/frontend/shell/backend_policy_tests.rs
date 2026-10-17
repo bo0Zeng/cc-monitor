@@ -1291,7 +1291,7 @@ fn the_status_command_hands_the_panel_the_finished_face() {
     let _ = record_death(origin, &ev, &mut sink).expect("要记一笔");
     let st = tauri::async_runtime::block_on(crate::backend_control::backend_status(origin.into()))
         .expect("查状态");
-    let got = st.get("health").expect("状态里没有 health 那一格").clone();
+    let got = serde_json::to_value(&st.health).expect("成品序列化不了");
     let want = serde_json::to_value(health_face(&health(origin))).expect("成品序列化不了");
     assert_eq!(
         got, want,
@@ -1317,7 +1317,7 @@ fn the_status_command_hands_the_panel_the_finished_face() {
         "pb1-没记过的一台".into(),
     ))
     .expect("查状态");
-    assert_eq!(quiet["health"]["state"], "unknown");
+    assert_eq!(quiet.health.state, HealthState::Unknown);
 }
 
 // ── 死亡账说人话：`0xC000013A` ─────────────────────────

@@ -116,14 +116,11 @@ private fun MachineBody(
     val link by feed.state.collectAsState()
     val deploying by feed.deploying.collectAsState()
     AccountCard(here, board, link, deploying, onReconnect = feed::reconnect, onOpen = onUsage)
-    Body(here, board, readable(link, deploying), onNavigate)
+    Body(here, board, readable(link), onNavigate)
 }
 
 /** 读那台的几行此刻能不能读：离线 · 要装 / 要更新 · 正在装 ⇒ 不能（灰着、不画旧值）。 */
-private fun readable(
-    link: LinkState,
-    deploying: Deploying?,
-): Boolean = link !is LinkState.Down && link.deployFix() == null && deploying !is Deploying.Step
+private fun readable(link: LinkState): Boolean = link !is LinkState.Down && link.deployFix() == null && link.busy == null
 
 @Composable
 private fun Body(
@@ -180,8 +177,8 @@ private fun AccountCard(
     val tokens = LocalAppTokens.current
     val ui by board.state.collectAsState()
     val fix = link.deployFix()
-    val step = deploying as? Deploying.Step
-    val offline = link is LinkState.Down && fix == null
+    val busy = link.busy
+    val offline = link is LinkState.Down && fix == null && busy == null
     val shape = RoundedCornerShape(tokens.radius.m)
     val border = tokens.borderFaint
     val frame =
@@ -206,7 +203,7 @@ private fun AccountCard(
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             CardDot(
                 when {
-                    step != null || offline -> null
+                    busy != null || offline -> null
                     fix != null -> tokens.warn
                     link is LinkState.Up -> tokens.success
                     else -> null
@@ -215,9 +212,9 @@ private fun AccountCard(
             Text(here.machine, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         }
         when {
-            step != null ->
+            busy != null ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(step.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    Text(busy.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                     CircularProgressIndicator(Modifier.size(SPIN.dp), strokeWidth = 2.dp)
                 }
             fix != null -> NeedsFix(here, fix, (link as? LinkState.Down)?.said?.text ?: (link as? LinkState.Up)?.notice?.text, deploying)

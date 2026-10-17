@@ -1,8 +1,8 @@
 //! **手机给一台装 / 升级后端**的宿主：判定与 ①–④ 是 `deploy` crate 那一份（桌面后端答 `deploy-install` 用的同一份），
 //! ⑤ 换常驻是 `resident-client` 那一条（`Feed::replace`：`--resident-ensure --replace`，换不换那台自己判，换了就整份重接）。这里只接线、写话。
 //!
-//! 一个入口（`Core.deploy(handle, slots)`），事经那台常驻流同一个口交 Kotlin（种类 `deploy`，一行 JSON）：
-//! - `{"step": "plan" | "place" | "restart", "text", "bar"}`：走到哪一步（话是 `deploy` crate 写的；`bar` ⇒ 放字节那一步，屏上走一条进度条）；
+//! 一个入口（`Core.deploy(handle, slots)`）。走到哪一步收进那台的状态成品（`deploy::machine`，同桌面那一份），经 `state` 那一行交 Kotlin
+//! （正在装 / 更新那一句与进度条照成品画）；结局经常驻流同一个口交（种类 `deploy`，一行 JSON）：
 //! - `{"done": "skip" | "deploy" | "keep", "text"}`：做完了（已是这一版 · 装上了这一版 · 那台不比这一版旧、没动它）；
 //! - `{"failed": <码>, "text", "detail"}`：没做成（那一句 ＋ 复制详情）。
 //!
@@ -22,16 +22,6 @@ pub const KIND: &str = "deploy";
 fn busy() -> &'static Mutex<std::collections::HashSet<i64>> {
     static B: OnceLock<Mutex<std::collections::HashSet<i64>>> = OnceLock::new();
     B.get_or_init(Default::default)
-}
-
-/// 一步 ⇒ 交 Kotlin 的那一行（那一句是 `deploy` crate 写的，桌面同一句；`bar` ⇒ 放字节那一步，屏上走一条进度条）。
-pub fn step_json(s: deploy::Step, machine: &str) -> String {
-    let (step, bar) = match s {
-        deploy::Step::Plan => ("plan", false),
-        deploy::Step::Place { .. } => ("place", true),
-        deploy::Step::Restart => ("restart", false),
-    };
-    serde_json::json!({ "step": step, "text": s.said(machine), "bar": bar }).to_string()
 }
 
 /// 做完了 ⇒ 那一行（那一句是 `deploy` crate 写的）。
@@ -131,19 +121,30 @@ async fn run(
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let step = |s: deploy::Step| emit(step_json(s, machine));
-    let load = |p: &std::path::Path| std::fs::read(p);
-    let plan = match deploy::install(&facing, &slots, &load, machine, now, &step).await {
-        Ok(p) => p,
-        Err(f) => return emit(failed_json(f.code, &f.said, f.raw.as_deref())),
+    let step = |s: deploy::Step| {
+        if let Some(line) = resident::note(h, |f| f.step(s, machine)) {
+            on(h, "state", line);
+        }
     };
-    // 换不换常驻由那台判（`--resident-ensure --replace`：在听的比落点旧才换）。
-    emit(step_json(deploy::Step::Restart, machine));
-    if let Err(p) = feed.replace().await {
-        let raw = (!p.detail.is_empty()).then_some(p.detail.as_str());
-        return emit(failed_json("restart_failed", &p.text, raw));
+    let load = |p: &std::path::Path| std::fs::read(p);
+    let ended = match deploy::install(&facing, &slots, &load, machine, now, &step).await {
+        Err(f) => failed_json(f.code, &f.said, f.raw.as_deref()),
+        Ok(plan) => {
+            // 换不换常驻由那台判（`--resident-ensure --replace`：在听的比落点旧才换）。
+            step(deploy::Step::Restart);
+            match feed.replace().await {
+                Ok(_) => done_json(&plan),
+                Err(p) => {
+                    let raw = (!p.detail.is_empty()).then_some(p.detail.as_str());
+                    failed_json("restart_failed", &p.text, raw)
+                }
+            }
+        }
+    };
+    if let Some(line) = resident::note(h, |f| f.settle(machine)) {
+        on(h, "state", line);
     }
-    emit(done_json(&plan));
+    emit(ended);
 }
 
 #[cfg(test)]
@@ -161,33 +162,6 @@ mod tests {
 
     fn v(s: &str) -> serde_json::Value {
         serde_json::from_str(s).expect("JSON")
-    }
-
-    /// 每一步交的话同桌面机器页那几句；只有放字节那一步走进度条。
-    #[test]
-    fn each_step_says_the_desktop_line_and_only_placing_runs_a_bar() {
-        let plan = v(&step_json(deploy::Step::Plan, "box"));
-        assert_eq!(plan["step"], "plan");
-        assert_eq!(plan["bar"], false);
-        assert!(copy_core::copy_matches(
-            "machineState.busy.connecting",
-            plan["text"].as_str().unwrap()
-        ));
-        let install = v(&step_json(deploy::Step::Place { updating: false }, "box"));
-        assert_eq!(
-            install["text"],
-            copy_text("machineState.busy.installing", &[("machine", "box")])
-        );
-        assert_eq!(install["bar"], true);
-        let update = v(&step_json(deploy::Step::Place { updating: true }, "box"));
-        assert_eq!(
-            update["text"],
-            copy_text("machineState.busy.updating", &[("machine", "box")])
-        );
-        assert_eq!(
-            v(&step_json(deploy::Step::Restart, "box"))["step"],
-            "restart"
-        );
     }
 
     /// 结局三种各一句：装上了（带这一版与原因）· 已是这一版 · 那台更新（计划里那一句，不叫人去别处卸载）。

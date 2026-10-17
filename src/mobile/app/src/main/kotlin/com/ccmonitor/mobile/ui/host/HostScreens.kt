@@ -69,8 +69,8 @@ import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.link.HostBackends
+import com.ccmonitor.mobile.ui.common.BusyLine
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
-import com.ccmonitor.mobile.ui.common.DeployStepLine
 import com.ccmonitor.mobile.ui.common.HostLink
 import com.ccmonitor.mobile.ui.common.MachineDot
 import com.ccmonitor.mobile.ui.common.StatusDot
@@ -628,16 +628,16 @@ private fun BackendRow(hostId: String) {
     val deploy = rememberDeployPress(hostId)
     val conn = deploy.held
     val fix = link.deployFix()
-    val step = deploying as? Deploying.Step
+    val busy = link.busy
     Text(copyText("mobHostEdit.backend.title"), style = MaterialTheme.typography.labelMedium)
     SecondaryButton(
         onClick = deploy.press,
-        enabled = step == null && conn != HostLink.Connecting,
+        enabled = busy == null && conn != HostLink.Connecting,
         modifier = Modifier.testTag(HostEditTags.DEPLOY),
     ) { Text(deployLabel(fix)) }
     (conn as? HostLink.Failed)?.let { Text(it.why, color = MaterialTheme.colorScheme.error) }
+    busy?.let { return BusyLine(it) }
     when (val d = deploying) {
-        is Deploying.Step -> DeployStepLine(d)
         is Deploying.Done -> Text(d.text, style = monoSmall, color = LocalAppTokens.current.textFaint)
         is Deploying.Failed ->
             Column {

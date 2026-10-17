@@ -480,8 +480,7 @@ export class SettingsPanel {
    * 照后端的状态成品画那台（导航点 · 列表那一行 · 卡头 · 第二行的系统与版本）。
    * 收不下 / 没问到 ⇒ 不动（「连上没有」那一路照旧画）。
    */
-  private paintMachine(origin: string, m: MachineState | null): void {
-    if (m === null) return;
+  private paintMachine(origin: string, m: MachineState): void {
     this.machineOf.set(origin, m);
     const local = isLocalOrigin(origin);
     const pageId = local ? LOCAL_MACHINE_PAGE_ID : this.remoteSection?.pageIdOfMachine(origin);

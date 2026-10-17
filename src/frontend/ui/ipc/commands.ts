@@ -63,6 +63,7 @@ import type { FrontOutcome } from "../generated/FrontOutcome";
 import type { TabSession } from "../generated/TabSession";
 import type { TerminalChoices } from "../generated/TerminalChoices";
 import type { ConfigEdit } from "../generated/ConfigEdit";
+import type { BackendStatus } from "../generated/BackendStatus";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { DiagnosticsReport } from "../generated/DiagnosticsReport";
@@ -185,12 +186,9 @@ export const commands = {
    */
   load_config: () => invoke<Record<string, unknown>>("load_config"),
 
-  /**
-   * 这台机的后端现在什么状态。Rust 那边是不透明 JSON（同 `load_config` 那处的
-   * 结构性缺口）⇒ **桶②**：不为没人消费的字段造生成物。
-   */
+  /** 这台机的后端现在什么状态（本机那一台的状态成品 · 通道在不在 · 健康那一格）。 */
   backend_status: (args: { origin: string }) =>
-    invoke<Record<string, unknown>>("backend_status", args),
+    invoke<BackendStatus>("backend_status", args),
 
   /**
    * **开关面该列哪几台机** —— 由后端的注册表说了算，前端不自己算。

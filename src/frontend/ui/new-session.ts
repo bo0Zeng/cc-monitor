@@ -76,7 +76,7 @@ async function listMachines(): Promise<MachineOpt[]> {
     origins.map(async (origin) => {
       try {
         const st = await commands.backend_status({ origin });
-        return { origin, up: st.channel === true };
+        return { origin, up: st.channel };
       } catch {
         return { origin, up: false };
       }

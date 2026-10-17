@@ -1,23 +1,19 @@
 /**
- * 机器状态成品：金样每一形严格收得下；画法只按那一态挑样子（点 · 语气 · 进度条），字照成品的 `word` · `said` · `fixes[].label`；
- * 多一格 / 少一格 / 认不出的码收不下。Rust 那一侧（`tests/backend/control/machine_state_tests.rs`）由生产函数现产、与同一份金样逐字比。
+ * 机器状态成品：画法只按那一态挑样子（点 · 语气 · 进度条），字照成品的 `word` · `said` · `fixes[].label`。
+ * 形状是生成的类型；Rust 那一侧（`tests/backend/control/machine_state_tests.rs`）由生产函数现产、与同一份金样逐字比。
  */
 import { describe, expect, it } from "vitest";
 import golden from "../../../__fixtures__/machine-state.golden.json";
-import { decodeMachineState, machineFace, paintProblem } from "../../../../src/frontend/ui/settings/machine-state";
+import { machineFace, paintProblem, type MachineState } from "../../../../src/frontend/ui/settings/machine-state";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
-type Case = { name: string; machine: Record<string, unknown> };
-const cases = golden.cases as Case[];
-const decoded = (name: string) => decodeMachineState(cases.find((c) => c.name === name)!.machine)!;
+type Case = { name: string; machine: MachineState };
+const cases = golden.cases as unknown as Case[];
+const decoded = (name: string) => cases.find((c) => c.name === name)!.machine;
 
 describe("机器状态成品", () => {
-  it("★ 金样每一形都收得下、原样交出", () => {
-    expect(cases.length, "金样缩水了 —— 下面的逐形比在空人群上恒绿").toBe(15);
-    for (const c of cases) expect(decodeMachineState(c.machine), c.name).toEqual(c.machine);
-  });
-
   it("★ 每一形画出来：字照成品，样子按那一态", () => {
+    expect(cases.length, "金样缩水了 —— 下面的逐形比在空人群上恒绿").toBe(15);
     for (const c of cases) {
       const m = decoded(c.name);
       const f = machineFace(m);
@@ -37,7 +33,6 @@ describe("机器状态成品", () => {
   });
 
   it("★ 壳写了下一步那一句 ⇒ 问题行下面照原样画；别的形不出那一行", () => {
-    const decoded = (name: string) => decodeMachineState(cases.find((c) => c.name === name)!.machine)!;
     for (const c of cases) {
       const el = document.createElement("div");
       paintProblem(el, machineFace(decoded(c.name)), () => {});
@@ -45,7 +40,6 @@ describe("机器状态成品", () => {
       if (c.name === "本机被拒") expect(next?.textContent, c.name).toBe("结束口上那个进程再重开（结构夹具）");
       else expect(next, c.name).toBeNull();
     }
-    expect(decodeMachineState({ ...cases[0]!.machine, next: "" }), "下一步是空串").toBeNull();
   });
 
   it("★ 修法按钮：字照成品、点了交那一颗的码；更新那一颗是主按钮", () => {
@@ -56,28 +50,6 @@ describe("机器状态成品", () => {
     expect(fixes.map((b) => b.textContent)).toEqual(decoded("密钥被拒").fixes.map((f) => f.label));
     for (const b of fixes) b.click();
     expect(hit).toEqual(decoded("密钥被拒").fixes.map((f) => f.fix));
-  });
-
-  it("★ 收不下就是收不下：多一格 · 少一格 · 认不出的态 / 关系 / 修法 / 原因码 · 空串", () => {
-    const up = cases[0]!.machine;
-    const { fixes: _drop, ...missing } = up;
-    void _drop;
-    for (const [what, bad] of [
-      ["多一格", { ...up, extra: 1 }],
-      ["少一格", missing],
-      ["认不出的态", { ...up, state: "sleepy" }],
-      ["认不出的关系", { ...up, versionRelation: "older-ish" }],
-      ["认不出的修法", { ...up, fixes: [{ fix: "reboot", label: "x" }] }],
-      ["修法没有字", { ...up, fixes: [{ fix: "retry", label: "" }] }],
-      ["修法是裸码", { ...up, fixes: ["retry"] }],
-      ["认不出的原因码", { ...up, reason: "sleepy" }],
-      ["认不出的一步", { ...up, stage: "boot" }],
-      ["版本是空串", { ...up, version: "" }],
-      ["那一句不是串", { ...up, said: null }],
-      ["不是对象", [up]],
-    ] as const) {
-      expect(decodeMachineState(bad), what).toBeNull();
-    }
   });
 
   it("★ 没连上那一行：带了详情 ⇒ 问题行那句后面跟［复制详情］；没详情 / 正在连 ⇒ 不出", () => {
@@ -95,7 +67,6 @@ describe("机器状态成品", () => {
     const bare = document.createElement("div");
     paintProblem(bare, machineFace({ ...down, detail: null }), () => {});
     expect(hasCopy(bare)).toBe(false);
-    expect(decodeMachineState({ ...cases[0]!.machine, detail: "" }), "详情是空串").toBeNull();
   });
 
   it("★ 指纹变了那一形带着那台出示的那一枚（比对框用），别的形没有", () => {

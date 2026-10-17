@@ -57,9 +57,9 @@ import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
+import com.ccmonitor.mobile.ui.common.BusyLine
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import com.ccmonitor.mobile.ui.common.DashedBar
-import com.ccmonitor.mobile.ui.common.DeployStepLine
 import com.ccmonitor.mobile.ui.common.EditHostButton
 import com.ccmonitor.mobile.ui.common.STRING_SET_SAVER
 import com.ccmonitor.mobile.ui.common.StatusDot
@@ -115,7 +115,6 @@ fun ChatsScreen(
         items(ui.bars, key = { "bar-${it.hostId}" }) { HostBarView(it, act) }
         items(ui.deploying, key = { "deploying-${it.hostId}" }) { p ->
             when (val d = p.deploying) {
-                is Deploying.Step -> Column(Modifier.padding(16.dp)) { DeployStepLine(d) }
                 is Deploying.Done -> Text(d.text, style = monoSmall, modifier = Modifier.padding(16.dp).testTag(ChatsTags.DEPLOYED))
                 else -> Unit
             }
@@ -405,30 +404,30 @@ internal fun MachineTag(name: String) {
     )
 }
 
-/** 一台顶上那一条：断着 ⇒ 虚线条 ＋［重新连接］（核心点名能装 ⇒ 红条 ＋［安装］）；读不出 ⇒ 红条 ＋［重试］［复制详情］。 */
+/** 一台顶上那一条：正在装 / 更新 ⇒ 成品那一句 ＋ 进度条；断着 ⇒ 虚线条 ＋［重新连接］（核心点名能装 ⇒ 红条 ＋［安装］）；读不出 ⇒ 红条 ＋［重试］［复制详情］。 */
 @Composable
 private fun HostBarView(
     b: HostBar,
     act: ChatsActions,
 ) {
+    // 正在装 / 更新 ⇒ 整条只是成品那一句（＋ 进度条）。
+    b.busy?.let { busy ->
+        Column(Modifier.fillMaxWidth().padding(16.dp).testTag(ChatsTags.PROBLEM)) { BusyLine(busy) }
+        return
+    }
     if (b.offline && b.fix == null) {
         DashedBar(b.problem.text, copyText("newSession.machine.reconnect"), { act.retry(b) }, Modifier.padding(horizontal = 16.dp, vertical = 4.dp).testTag(ChatsTags.DOWN))
         Box(Modifier.padding(horizontal = 16.dp)) { EditHostButton(b.edit, act.editHost) }
         return
     }
-    val step = b.deploying as? Deploying.Step
     val failed = (b.deploying as? Deploying.Failed)?.said
     Column(Modifier.fillMaxWidth().padding(16.dp).testTag(ChatsTags.PROBLEM)) {
-        when {
-            step != null -> DeployStepLine(step)
-            failed != null -> ErrorLine(failed.text)
-            else -> ErrorLine(b.problem.text)
-        }
+        ErrorLine(failed?.text ?: b.problem.text)
         Row(verticalAlignment = Alignment.CenterVertically) {
             b.fix?.let { fix ->
-                Button(onClick = { act.deploy(b.hostId) }, enabled = step == null, modifier = Modifier.testTag(ChatsTags.DEPLOY)) { Text(deployLabel(fix)) }
+                Button(onClick = { act.deploy(b.hostId) }, modifier = Modifier.testTag(ChatsTags.DEPLOY)) { Text(deployLabel(fix)) }
             }
-            if (step == null) SecondaryButton(onClick = { act.retry(b) }) { Text(copyText("front.act.retry")) }
+            SecondaryButton(onClick = { act.retry(b) }) { Text(copyText("front.act.retry")) }
             CopyDetailButton(failed?.text ?: b.problem.text, failed?.detail ?: b.problem.detail)
         }
     }

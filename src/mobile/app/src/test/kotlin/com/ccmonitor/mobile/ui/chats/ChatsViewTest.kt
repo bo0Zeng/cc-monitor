@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.ui.chats
 
+import com.ccmonitor.mobile.core.claude.link.Busy
 import com.ccmonitor.mobile.core.claude.link.Deploying
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.ListAsk
@@ -71,21 +72,25 @@ class ChatsViewTest {
     ) = chatsView(parts.toList(), current, parts.map { HostName(it.hostId, it.machine) }, filters, query)
 
     @Test
-    fun `装一次会好的那一颗照成品带上（断着 · 通着旧了），别的修法不挑；装到哪一步原样带上，连着的那一会儿也不丢`() {
-        val step = Deploying.Step("安装 cc-monitor → box", bar = true)
+    fun `装一次会好的那一颗照成品带上（断着 · 通着旧了），别的修法不挑；正在装或更新照成品那一句带上，结局在条上没画时单独一行`() {
         val install = MachineFixButton(MachineFix.INSTALL, copyText("machineState.fix.install"))
         val update = MachineFixButton(MachineFix.UPDATE, copyText("machineState.fix.update"))
-        val down = hostPart(snap(LinkState.Down(Said("远端 cc-monitor 未装", ""), listOf(install)), deploying = step))
+        val down = hostPart(snap(LinkState.Down(Said("远端 cc-monitor 未装", ""), listOf(install))))
         assertEquals(install, down.bar?.fix)
         assertEquals("装一次会好 ⇒ 红条（不是断线那一条）", false, down.bar?.offline)
-        assertEquals(step, down.bar?.deploying)
+        assertNull(down.bar?.busy)
         val retry = listOf(MachineFixButton(MachineFix.RETRY, copyText("machineState.fix.retry")))
         assertNull(hostPart(snap(LinkState.Down(Said("m 离线", ""), retry))).bar?.fix)
         val old = hostPart(snap(LinkState.Up(Said("box 后端要更新", ""), listOf(update))))
         assertEquals(update, old.bar?.fix)
         assertEquals(Problem("box 后端要更新", ""), old.bar?.problem)
-        val connecting = view(hostPart(snap(LinkState.Connecting, deploying = step)))
-        assertEquals("连着的那一会儿条上没东西 ⇒ 单独一行说装到哪了", step, connecting.deploying.single().deploying)
+        val installing = Busy("安装 cc-monitor → m", bar = true)
+        assertEquals(installing, hostPart(snap(LinkState.Down(Said(installing.text, ""), busy = installing))).bar?.busy)
+        val updating = Busy("更新 m · cc-monitor", bar = true)
+        assertEquals(updating, hostPart(snap(LinkState.Up(Said(updating.text, ""), busy = updating))).bar?.busy)
+        val done = Deploying.Done("已装上")
+        val connecting = view(hostPart(snap(LinkState.Connecting, deploying = done)))
+        assertEquals("连着的那一会儿条上没东西 ⇒ 结局单独一行", done, connecting.deploying.single().deploying)
         assertNull(hostPart(snap()).bar)
     }
 

@@ -218,7 +218,7 @@ class ResidentFeedTest {
 
     /**
      * `state` 那一行读的是核心现产的那一份（跨语言金样 `mobile-state-line.golden.json`，Rust 那一侧逐字比）：每一行落成 [LinkState]，
-     * 那一句 · 详情 · 修法都取成品（[MachineState]），这里只按通没通分三形，不另判。
+     * 那一句 · 详情 · 修法都取成品（[MachineState]），这里只按通没通分三形，不另判；部署那一趟的几步（成品说正在问 / 装 / 更新）落成 [Busy]。
      */
     @Test
     fun `核心交的每一行状态照成品落：那一句 · 详情 · 修法原样，通没通照标签，epoch 跟着变`() =
@@ -226,6 +226,12 @@ class ResidentFeedTest {
             val core = FakeCore()
             val f = feed(core)
             val cases = Fixtures.json(GOLDEN).objs("cases").need()
+            val busy =
+                mapOf(
+                    "部署在问那台" to Busy("连接 box · 核对版本", bar = false),
+                    "正在装" to Busy("安装 cc-monitor → box", bar = true),
+                    "正在更新" to Busy("更新 box · cc-monitor", bar = true),
+                )
             for (c in cases) {
                 val name = c.str("name").need()
                 val line = c.obj("line").need()
@@ -236,13 +242,14 @@ class ResidentFeedTest {
                 val want =
                     when (line.str("state")) {
                         "connecting" -> LinkState.Connecting
-                        "up" -> LinkState.Up(said.takeIf { it.text.isNotEmpty() }, fixes)
-                        else -> LinkState.Down(said, fixes)
+                        "up" -> LinkState.Up(said.takeIf { it.text.isNotEmpty() }, fixes, busy[name])
+                        else -> LinkState.Down(said, fixes, busy[name])
                     }
                 assertEquals(name, want, f.state.value)
                 line.num("epoch")?.let { assertEquals(name, it, f.epoch.value) }
             }
-            assertEquals(9, cases.size)
+            assertEquals(12, cases.size)
+            assertEquals(busy.keys, cases.map { it.str("name").need() }.filter { it in busy }.toSet())
         }
 
     /** 装一次会好的那一颗只照成品挑：没有后端 ⇒［安装］· 后端旧了 · 那台旧 ⇒［更新］；离线 · 密钥被拒 · 那台新 ⇒ 没有。 */
@@ -282,14 +289,12 @@ class ResidentFeedTest {
         }
 
     @Test
-    fun `装后端：包里那几格交给核心；核心交回的每一步 · 结局 · 失败原样落（话是核心写好的）`() =
+    fun `装后端：包里那几格交给核心；核心交回的结局 · 失败原样落（话是核心写好的；走到哪一步在成品里）`() =
         runTest(UnconfinedTestDispatcher()) {
             val core = FakeCore()
             val f = feed(core)
             f.deploy { """[{"os":"Linux","arch":"x86_64","id":"p10g-mine","path":"/d/x"}]""" }
             assertEquals(listOf("""[{"os":"Linux","arch":"x86_64","id":"p10g-mine","path":"/d/x"}]"""), core.deploys)
-            core.emit("deploy", """{"step":"place","text":"安装 cc-monitor → box","bar":true}""")
-            assertEquals(Deploying.Step("安装 cc-monitor → box", bar = true), f.deploying.value)
             core.emit("deploy", """{"done":"deploy","text":"已安装后端 p10g-mine"}""")
             assertEquals(Deploying.Done("已安装后端 p10g-mine"), f.deploying.value)
             core.emit("state", line("连着"))
