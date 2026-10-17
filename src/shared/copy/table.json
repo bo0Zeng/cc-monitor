@@ -1616,12 +1616,6 @@
       "zh": "未新建 · 路径不存在 · {cwd}",
       "args": ["cwd"]
     },
-    "beSessionNew.fork.noTree": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "此机器无会话记录树 · 未找到要分叉的会话",
-      "args": []
-    },
     "beSessionOpen.record.gone": {
       "kind": "error",
       "role": "报错",

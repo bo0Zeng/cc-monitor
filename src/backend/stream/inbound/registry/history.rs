@@ -42,7 +42,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryRunCmd>("一个子运行的记录"),
     // resume 之前问「这条会话的记录还在不在」。同族同档（一次目录枚举 ⇒ 阻塞档）、
-    // 同一个只读宿主。**只收 sid**（找文件那一步与分叉 / 删会话同一份 `agents::find_session_file`）。
+    // 同一个只读宿主。**只收 sid**（找文件那一步与分叉 / 删会话同一份 `agents::find_session`）。
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryRecordCmd>(
         "这条会话的记录还在不在",
     ),

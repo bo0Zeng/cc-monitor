@@ -593,12 +593,19 @@ fn beta_mcp(_: Option<&Path>, _: &McpLook) -> McpRead {
         ..McpRead::default()
     }
 }
-fn alpha_find(_: &Path, sid: &str) -> Result<PathBuf, String> {
+/// 两家各在自己的根下找：根不是自己那一棵 ⇒ 照实说找错了地方（判据看得出通用层交的是谁的根）。
+fn alpha_find(root: &Path, sid: &str) -> Result<PathBuf, String> {
+    if root != Path::new("/h/alpha-tree") {
+        return Err(format!("alpha: asked under {root:?}"));
+    }
     (sid == "alpha-sid")
         .then(|| PathBuf::from("/alpha/rec"))
         .ok_or_else(|| "alpha: not mine".to_string())
 }
-fn beta_find(_: &Path, sid: &str) -> Result<PathBuf, String> {
+fn beta_find(root: &Path, sid: &str) -> Result<PathBuf, String> {
+    if root != Path::new("/beta-dated") {
+        return Err(format!("beta: asked under {root:?}"));
+    }
     (sid == "beta-sid")
         .then(|| PathBuf::from("/beta/rec"))
         .ok_or_else(|| "beta: not mine".to_string())
@@ -625,7 +632,7 @@ const fn records(find: fn(&Path, &str) -> Result<PathBuf, String>) -> RecordFace
         activity: None,
         class: None,
         chain: None,
-        find_session: Some(find),
+        find_session: find,
         branch: None,
         drift: None,
         text: None,
@@ -761,22 +768,35 @@ fn each_question_lands_on_the_family_it_names_not_the_first_one() {
     assert!(accounts_face_among(&reg, "gamma").is_none());
 }
 
+/// 按 sid 找：每一家在**它自己的**记录根下找（记录树那一家 ⇒ 家目录下那棵树；合成历史那一家 ⇒ 它自己报的根），谁认得算谁。
 #[test]
-fn finding_a_session_asks_every_family_and_whoever_knows_it_answers() {
-    let reg = two_families();
-    let root = Path::new("/records");
+fn finding_a_session_asks_every_family_under_its_own_root() {
+    let mut reg = two_families();
+    if let Some(r) = reg[0].records.as_mut() {
+        r.tree = Some(crate::agents::RecordTree {
+            root: |h| h.join("alpha-tree"),
+            file_name: |sid| format!("{sid}.a"),
+        });
+    }
+    reg[1].history = Some(crate::agents::HistoryFace {
+        sessions: Vec::new,
+        excerpt: |_| String::new(),
+        root: || Some(PathBuf::from("/beta-dated")),
+    });
+    let home = Path::new("/h");
+    let at = |reg: &[Adapter], sid| find_session_among(reg, home, sid).map(|s| (s.root, s.file));
     assert_eq!(
-        find_session_file_among(&reg, root, "beta-sid"),
-        Ok(PathBuf::from("/beta/rec"))
+        at(&reg, "beta-sid"),
+        Ok((PathBuf::from("/beta-dated"), PathBuf::from("/beta/rec")))
     );
     assert_eq!(
-        find_session_file_among(&reg, root, "alpha-sid"),
-        Ok(PathBuf::from("/alpha/rec"))
+        at(&reg, "alpha-sid"),
+        Ok((PathBuf::from("/h/alpha-tree"), PathBuf::from("/alpha/rec")))
     );
-    assert_eq!(
-        find_session_file_among(&reg, root, "nobody"),
-        Err("alpha: not mine".to_string())
-    );
+    assert_eq!(at(&reg, "nobody"), Err("alpha: not mine".to_string()));
+    // 说不出根的那一家不问（这里 beta 没有根 ⇒ 只剩 alpha 那一句）。
+    reg[1].history = None;
+    assert_eq!(at(&reg, "beta-sid"), Err("alpha: not mine".to_string()));
 }
 
 /// 请求里没说是哪一家时那几处取「唯一声明了那一格的那一家」：两家都声明 ⇒ 说不出（`None`，照实拒），不按注册序挑。

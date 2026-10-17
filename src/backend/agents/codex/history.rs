@@ -43,12 +43,35 @@ pub(crate) fn records_root() -> Option<std::path::PathBuf> {
     super::home().map(|h| parse::sessions_root(&h))
 }
 
-/// [`sessions`] 的本体，Codex home 是参数（判据喂临时目录）。
+/// 在会话根（[`records_root`]）下按 sid 找那份 rollout（注册表 `RecordFace.find_session` 那一格）。
+/// sid 形状不合法 ⇒ 先于任何 IO 就拒；只认文件名末尾那个 UUID 是它的；符号链接不算命中（不跟随）；按名字次序走，同一棵树两次答同一份。
+pub(crate) fn find_session(root: &Path, sid: &str) -> Result<std::path::PathBuf, String> {
+    if !shell_quote_core::session_id_ok(sid) {
+        return Err(format!("invalid session id {sid:?}"));
+    }
+    walkdir::WalkDir::new(root)
+        .max_depth(DATED_DEPTH)
+        .sort_by_file_name()
+        .into_iter()
+        .filter_map(Result::ok)
+        .find(|e| {
+            e.file_type().is_file()
+                && is_session_file(e.path())
+                && parse::codex_sid_from_path(e.path()).as_deref() == Some(sid)
+        })
+        .map(walkdir::DirEntry::into_path)
+        .ok_or_else(|| format!("session {sid} not found under {}", root.display()))
+}
+
+/// 会话根往下几层到 rollout：年 / 月 / 日 / 文件。
+const DATED_DEPTH: usize = 4;
+
 /// 一份 Codex 会话记录的文件形态：后缀 `.jsonl`（sid 另由文件名判，见 `parse::codex_sid_from_path`）。
 pub(crate) fn is_session_file(p: &Path) -> bool {
     p.extension().and_then(|e| e.to_str()) == Some("jsonl")
 }
 
+/// [`sessions`] 的本体，Codex home 是参数（判据喂临时目录）。
 pub(crate) fn sessions_under(codex_home: &Path) -> Vec<crate::agents::SynthSession> {
     let root = parse::sessions_root(codex_home);
     if !root.is_dir() {

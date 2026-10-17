@@ -53,7 +53,7 @@ fn entry() -> Result<PathBuf, Fail> {
         .map_err(|m| Fail::new("no_pb", m.said()))
 }
 
-/// 生产的「这个 id 是谁」：活会话表（判活与在干什么同主窗口标签页）· 记录树里有它的记录 ⇒ 会话；
+/// 生产的「这个 id 是谁」：活会话表（判活与在干什么同主窗口标签页）· 有它的记录（哪一家都算）⇒ 会话；
 /// 记录树里有它的子 agent 记录 ⇒ 挂在父会话底下（活不活看父会话）；都不中 ⇒ 认不出。
 fn who_port() -> impl Fn(&str) -> Whose {
     let home = crate::history::listing::agent_home();
@@ -75,18 +75,17 @@ fn who_port() -> impl Fn(&str) -> Whose {
                 sid: id.to_string(),
                 live: Some(l),
             }
-        } else if let Some(r) = root.as_deref() {
-            if crate::agents::find_session_file(r, id).is_ok() {
-                Whose::Session {
-                    sid: id.to_string(),
-                    live: None,
-                }
-            } else if let Some(parent) = crate::agents::child_parent_sid(r, id) {
-                let l = live(&parent);
-                Whose::Subagent { parent, live: l }
-            } else {
-                Whose::Unknown
+        } else if crate::agents::find_session(&home, id).is_ok() {
+            Whose::Session {
+                sid: id.to_string(),
+                live: None,
             }
+        } else if let Some(parent) = root
+            .as_deref()
+            .and_then(|r| crate::agents::child_parent_sid(r, id))
+        {
+            let l = live(&parent);
+            Whose::Subagent { parent, live: l }
         } else {
             Whose::Unknown
         };

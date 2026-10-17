@@ -68,6 +68,25 @@ pub(crate) fn session_file_name(sid: &str) -> String {
     format!("sess-{sid}.ndjson")
 }
 
+/// 按 sid 找记录：`<记录根>/<项目>/sess-<sid>.ndjson`（项目目录按名字次序问）。
+fn find_session(root: &Path, sid: &str) -> Result<PathBuf, String> {
+    if !shell_quote_core::session_id_ok(sid) {
+        return Err(format!("fake: invalid session id {sid:?}"));
+    }
+    let name = session_file_name(sid);
+    let mut projects: Vec<PathBuf> = Ro::read_dir(root)
+        .map_err(|e| e.to_string())?
+        .flatten()
+        .map(|e| e.path())
+        .collect();
+    projects.sort();
+    projects
+        .into_iter()
+        .map(|p| p.join(&name))
+        .find(|f| f.is_file())
+        .ok_or_else(|| format!("fake: no {name}"))
+}
+
 /// 能力 4：pidfile 目录。**`live` 不是 `sessions`**。
 pub(crate) fn pidfile_root(home: &Path) -> PathBuf {
     home.join("live")
@@ -357,7 +376,7 @@ fn records_face(
         activity: None,
         class: None,
         chain: Some(chain_fact),
-        find_session: None,
+        find_session,
         branch: None,
         drift: None,
         text: None,
