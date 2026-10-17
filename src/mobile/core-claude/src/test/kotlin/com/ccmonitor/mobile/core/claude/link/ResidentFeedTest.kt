@@ -97,6 +97,16 @@ class ResidentFeedTest {
 
         override fun downloadEvent(want: String): String = """{"id":-1,"phase":"cut","title":"t","line":"l","resume":true}"""
 
+        override fun answerOf(
+            keys: String,
+            answer: String?,
+        ): String {
+            answered += keys to answer
+            return """{"0":"skip","1":"overwrite"}"""
+        }
+
+        val answered = mutableListOf<Pair<String, String?>>()
+
         override fun pickMenu(
             handle: Long,
             rows: String,
@@ -272,6 +282,17 @@ class ResidentFeedTest {
             assertEquals(listOf<Any>("pull", 18, """{"path":"/w/f"}""", "/sd/f", 9_000L), core.transfers.last())
             core.emit("reply", """{"call":42,"down":true}""")
             assertEquals(Reply.LinkDown, down.await())
+        }
+
+    @Test
+    fun `同名那一答交核心认：那几行的键与交核心那一形进去，每个键一格出来`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val core = FakeCore()
+            val f = feed(core)
+            assertEquals(mapOf("0" to "skip", "1" to "overwrite"), f.decided(listOf("0", "1"), BatchAnswer.Each(mapOf("1" to "overwrite"))))
+            assertEquals(listOf("""["0","1"]""" to """{"each":{"1":"overwrite"}}"""), core.answered)
+            f.decided(listOf("0"), null)
+            assertEquals("""["0"]""" to null, core.answered.last())
         }
 
     @Test

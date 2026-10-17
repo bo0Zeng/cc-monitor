@@ -145,7 +145,11 @@ impl BatchBoard {
             let Some(mut a) = d.asking.take() else {
                 return false;
             };
-            let map = batch_core::answer_of(&a.conflicts, all, each.then_some(&a.picks));
+            let map = batch_core::answer_of(
+                a.conflicts.iter().map(|c| c.key.as_str()),
+                all,
+                each.then_some(&a.picks),
+            );
             (a.answer.take(), map)
         };
         self.poke();

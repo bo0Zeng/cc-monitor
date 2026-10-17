@@ -96,6 +96,12 @@ interface ResidentCore {
     /** 下载一组那几格（JSON）⇒ `batch` 那一形的一行（[BatchEvent.of]）；读不动 ⇒ 空串。 */
     fun downloadEvent(want: String): String
 
+    /** 手机这一侧问的同名那一答（JSON；`null` ＝ 取消）⇒ [keys]（JSON 数组）每个键一格（JSON）。 */
+    fun answerOf(
+        keys: String,
+        answer: String?,
+    ): String
+
     /** 给那台装 / 更新后端（[slots] = 包里那几格解到的文件，JSON）；事经 `deploy` 那一种交回。那台不在 · 正在装 ⇒ `false`。 */
     fun deploy(
         handle: Long,
@@ -284,6 +290,12 @@ class ResidentFeed(
             @Suppress("UNCHECKED_CAST")
             (m as? Map<String, Any?>)?.let(BatchEvent.Clash::of)
         }
+
+    @Suppress("UNCHECKED_CAST")
+    override fun decided(
+        keys: List<String>,
+        answer: BatchAnswer?,
+    ): Map<String, String>? = Json.value(core.answerOf(Json.line(keys), BatchAnswer.wire(answer)?.let(Json::args))) as? Map<String, String>
 
     override fun downloadEvent(want: Map<String, Any?>): BatchEvent? {
         @Suppress("UNCHECKED_CAST")

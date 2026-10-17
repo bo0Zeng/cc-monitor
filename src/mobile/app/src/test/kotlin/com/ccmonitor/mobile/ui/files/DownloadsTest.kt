@@ -109,9 +109,12 @@ class DownloadsTest {
             assertEquals(listOf("a", "c"), rig.link.downloads.first()["here"])
             assertEquals(BatchEvent.ASKING, rig.last.phase)
             assertEquals(emptyList<Any>(), rig.link.transfers)
-            assertTrue(rig.downloads.answer(rig.last.id, BatchAnswer.Each(mapOf("2" to "overwrite"))))
+            rig.link.decide = { _, _ -> mapOf("0" to "skip", "2" to "overwrite") }
+            val each = BatchAnswer.Each(mapOf("2" to "overwrite"))
+            assertTrue(rig.downloads.answer(rig.last.id, each))
             advanceUntilIdle()
-            assertEquals("没点的那一项跳过、盖的那一项开盘上那一份", listOf("b" to null, "c" to "c"), folder.made)
+            assertEquals("答交核心认（同名那几行的键）", listOf(listOf("0", "2") to each), rig.link.decisions)
+            assertEquals("核心认的跳过那一项不拉、盖的那一项开盘上那一份", listOf("b" to null, "c" to "c"), folder.made)
             assertEquals("ended:skipped,done,done", rig.last.said)
 
             val drop = Rig(this)
@@ -120,6 +123,7 @@ class DownloadsTest {
             assertTrue(drop.downloads.answer(drop.last.id, null))
             advanceUntilIdle()
             assertEquals("取消 ⇒ 卡收起、一项不拉", BatchEvent.DROPPED, drop.last.phase)
+            assertEquals(listOf(listOf("0") to null), drop.link.decisions)
             assertEquals(emptyList<Any>(), drop.link.transfers)
         }
 }

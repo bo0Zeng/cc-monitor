@@ -107,6 +107,18 @@ internal class FakeCoreLink :
             BatchEvent.Clash(m["key"] as String, m["name"] as String, m["there_size_text"] as String, (m["answers"] as List<*>).map { it as String })
         }
 
+    /** 交核心认的同名那几答（键 · 答）；回 [decide] 给的（核心那一份的替身，规矩在核心里判）。 */
+    val decisions = mutableListOf<Pair<List<String>, BatchAnswer?>>()
+    var decide: (List<String>, BatchAnswer?) -> Map<String, String>? = { _, _ -> null }
+
+    override fun decided(
+        keys: List<String>,
+        answer: BatchAnswer?,
+    ): Map<String, String>? {
+        decisions += keys to answer
+        return decide(keys, answer)
+    }
+
     /** 下载一组那几问（每一问一份）。 */
     val downloads = mutableListOf<Map<String, Any?>>()
 

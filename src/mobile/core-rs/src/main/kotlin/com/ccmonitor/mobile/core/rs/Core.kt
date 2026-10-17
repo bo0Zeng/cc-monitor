@@ -96,6 +96,12 @@ object Core {
     /** 下载一组那几格（`{id, machine, names, phase, …}` JSON）⇒ `batch` 那一形的一行；读不动 ⇒ 空串。 */
     external fun downloadEvent(want: String): String
 
+    /** 手机这一侧问的同名（下载 · 上传）那一答（`{all}` · `{each}`；`null` ⇒ 取消）⇒ [keys] 那几行每个键一格（JSON）；取消 ⇒ `null`。 */
+    external fun answerOf(
+        keys: String,
+        answer: String?,
+    ): String
+
     /** 开一条链路，回编号；请求读不动 ⇒ 0。 */
     external fun open(request: String): Long
 

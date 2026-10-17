@@ -91,6 +91,14 @@ object CoreResident : ResidentCore {
         return Core.downloadEvent(want)
     }
 
+    override fun answerOf(
+        keys: String,
+        answer: String?,
+    ): String {
+        ensureRustCore()
+        return Core.answerOf(keys, answer)
+    }
+
     override fun deploy(
         handle: Long,
         slots: String,

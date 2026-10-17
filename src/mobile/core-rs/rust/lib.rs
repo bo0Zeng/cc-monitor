@@ -665,6 +665,23 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_clashRows<'l>(
     })
 }
 
+/// `Core.answerOf(keys, answer)`：手机那一侧问的同名（下载 · 上传）那一答 ⇒ 每个键一格（[`batch::decided_json`]）。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_answerOf<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    keys: JString<'l>,
+    answer: JString<'l>,
+) -> jstring {
+    guarded(std::ptr::null_mut(), || {
+        let keys = string(&mut env, &keys).unwrap_or_default();
+        let answer = string(&mut env, &answer);
+        env.new_string(batch::decided_json(&keys, answer.as_deref()))
+            .map(|s| s.into_raw())
+            .unwrap_or(std::ptr::null_mut())
+    })
+}
+
 /// `Core.downloadEvent(want)`：下载一组那几格（[`download_event_json`]）。
 #[no_mangle]
 pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_downloadEvent<'l>(

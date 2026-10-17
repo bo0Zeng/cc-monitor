@@ -206,24 +206,21 @@ pub trait Board {
 }
 
 /// 同名那一问的答 ⇒ 每个键一格：`all` ＝ 整组一个答（`None` ＝ 取消）；逐项选（`picks`）⇒ 用逐项的答，没点的那几项跳过。
-pub fn answer_of(
-    conflicts: &[Conflict],
+pub fn answer_of<'a>(
+    keys: impl IntoIterator<Item = &'a str>,
     all: Option<Decide>,
     picks: Option<&BTreeMap<String, Decide>>,
 ) -> Option<BTreeMap<String, Decide>> {
+    let keys = keys.into_iter().map(str::to_string);
     match picks {
         Some(p) => Some(
-            conflicts
-                .iter()
-                .map(|c| {
-                    (
-                        c.key.clone(),
-                        p.get(&c.key).copied().unwrap_or(Decide::Skip),
-                    )
-                })
-                .collect(),
+            keys.map(|k| {
+                let d = p.get(&k).copied().unwrap_or(Decide::Skip);
+                (k, d)
+            })
+            .collect(),
         ),
-        None => all.map(|d| conflicts.iter().map(|c| (c.key.clone(), d)).collect()),
+        None => all.map(|d| keys.map(|k| (k, d)).collect()),
     }
 }
 

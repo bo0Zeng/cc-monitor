@@ -122,6 +122,12 @@ interface CoreLink {
     /** 一问一答撞了同名（码 `exists` 的 `data`）⇒ 抽屉那几行（说明由核心写，一组那一问同一份）；认不出 ⇒ 空。 */
     fun clashes(data: Any?): List<BatchEvent.Clash>
 
+    /** 手机这一侧问的同名（下载 · 上传）那一答 ⇒ [keys] 那几行每个键怎么做（`overwrite` · `skip` · `keep_both`，核心认：逐项没点的照跳过）；取消 ⇒ `null`。 */
+    fun decided(
+        keys: List<String>,
+        answer: BatchAnswer?,
+    ): Map<String, String>?
+
     /**
      * 下载一组那几格（逐项拉在手机这一圈里走，字在核心）：`{id, machine, names, phase, …}` ⇒ 一格（[BatchEvent]）；读不动 ⇒ `null`。
      * `phase`：`asking`（`here` 本机文件夹里已有的名字）· `running`（`done` · `part` · `current`）· `cut` · `ended`（`outcomes` 逐项结局）。

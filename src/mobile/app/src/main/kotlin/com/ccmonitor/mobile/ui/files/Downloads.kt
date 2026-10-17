@@ -104,11 +104,12 @@ class Downloads(
                 show(ask)
                 val a = asked.await()
                 asks.remove(id)
-                if (a == null) {
+                val d = feed.decided(ask.conflicts.map { it.key }, a)
+                if (d == null) {
                     show(BatchEvent(id, BatchEvent.DROPPED, ask.title))
                     return@launch
                 }
-                items = decided(items, ask.conflicts, a)
+                items = decided(items, ask.conflicts, d)
             }
             run(keep(Group(id, folder, items, m)))
         }
@@ -226,16 +227,16 @@ class Downloads(
         /** 收场了还留着几组。 */
         const val KEPT = 16
 
-        /** 同名那一问的答 ⇒ 每项怎么下：整组一个答；逐项选 ⇒ 没点的那几项跳过（同核心那一份）。 */
+        /** 核心认过的答（每个键一格）⇒ 每项怎么下：跳过 · 盖本机撞的那一份 · 另起名。 */
         fun decided(
             items: List<Pull>,
             rows: List<BatchEvent.Clash>,
-            a: BatchAnswer,
+            d: Map<String, String>,
         ): List<Pull> {
             val by = rows.associateBy { it.key }
             return items.mapIndexed { i, p ->
                 val c = by["$i"] ?: return@mapIndexed p
-                when (if (a is BatchAnswer.All) a.decide else (a as BatchAnswer.Each).picks[c.key] ?: "skip") {
+                when (d[c.key]) {
                     "skip" -> p.copy(skip = true)
                     "overwrite" -> p.copy(over = c.there)
                     else -> p

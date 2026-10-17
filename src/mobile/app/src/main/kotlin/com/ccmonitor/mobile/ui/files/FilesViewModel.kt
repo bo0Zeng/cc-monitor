@@ -383,11 +383,12 @@ class FilesViewModel(
         fd: () -> Int,
     ) = landed(name) { dir -> withContext(io) { ops.upload(dir, name, fd, ::track) }.also { _progress.value = null } }
 
-    /** 同名那一问的答：取消 ⇒ 不传了（暂存件交那台的孤儿扫）；否则同一份暂存件带这个答再交一次（只一项：整组那一个答）。 */
+    /** 同名那一问的答（核心认）：取消 · 跳过 ⇒ 不传了（暂存件交那台的孤儿扫）；否则同一份暂存件带这一项的答再交一次。 */
     fun answer(a: BatchAnswer?) {
         val (dir, c) = _clash.value ?: return
         _clash.value = null
-        val onExists = (a as? BatchAnswer.All)?.decide ?: return
+        val key = c.rows.firstOrNull()?.key ?: return
+        val onExists = feed.decided(listOf(key), a)?.get(key)?.takeIf { it != SKIP } ?: return
         landed(c.name, dir) { ops.commit(it, c.name, c.staged, onExists) }
     }
 
@@ -466,5 +467,8 @@ class FilesViewModel(
 
         /** 编号还没回来时先收着几组的那一格。 */
         const val EARLY_KEPT = 16
+
+        /** 那一项答了跳过（提交不收这个答）。 */
+        const val SKIP = "skip"
     }
 }

@@ -214,13 +214,18 @@ fn an_answer_has_one_cell_per_key_and_unpicked_rows_skip() {
         {"key": "1", "name": "b", "kind": "file", "there": "file", "answers": ["overwrite", "skip", "keep_both"]},
     ]))
     .unwrap();
-    let all = answer_of(&c, Some(Decide::KeepBoth), None).unwrap();
+    let all = answer_of(
+        c.iter().map(|c| c.key.as_str()),
+        Some(Decide::KeepBoth),
+        None,
+    )
+    .unwrap();
     assert_eq!(
         all.values().copied().collect::<Vec<_>>(),
         vec![Decide::KeepBoth; 2]
     );
     let picks = BTreeMap::from([("1".to_string(), Decide::Overwrite)]);
-    let each = answer_of(&c, None, Some(&picks)).unwrap();
+    let each = answer_of(c.iter().map(|c| c.key.as_str()), None, Some(&picks)).unwrap();
     assert_eq!(
         each,
         BTreeMap::from([
@@ -228,5 +233,8 @@ fn an_answer_has_one_cell_per_key_and_unpicked_rows_skip() {
             ("1".to_string(), Decide::Overwrite)
         ])
     );
-    assert_eq!(answer_of(&c, None, None), None);
+    assert_eq!(
+        answer_of(c.iter().map(|c| c.key.as_str()), None, None),
+        None
+    );
 }

@@ -55,10 +55,10 @@ impl PhoneBoard {
         self.emit(&Phase::Running);
     }
 
-    /// 同名那一问答了：`all` 整组一个答（`None` 且没有逐项 ⇒ 取消）；`each` 逐项那几格。回值 ＝ 真有人在等这一答。
-    pub fn answer(&self, all: Option<Decide>, each: Option<BTreeMap<String, Decide>>) -> bool {
+    /// 同名那一问答了（[`decided`] 那一形）。回值 ＝ 真有人在等这一答。
+    pub fn answer(&self, text: Option<&str>) -> bool {
         let conflicts = std::mem::take(&mut *lock(&self.asking));
-        let map = batch_core::answer_of(&conflicts, all, each.as_ref());
+        let map = decided(conflicts.iter().map(|c| c.key.as_str()), text);
         lock(&self.answer)
             .take()
             .is_some_and(|tx| tx.send(map).is_ok())
@@ -437,9 +437,11 @@ pub fn start(h: i64, want: &str, on_event: OnEvent) -> i64 {
     first
 }
 
-/// 同名那一问的答：`{all: "skip"|"keep_both"|"overwrite"}` · `{each: {键: 答}}` · 别的（`null`）⇒ 取消。
-pub fn answer(id: i64, text: Option<&str>) -> bool {
-    let Some(b) = board(id) else { return false };
+/// 同名那一问的答 ⇒ 每个键一格（`batch_core::answer_of`）：`{all: "skip"|"keep_both"|"overwrite"}` · `{each: {键: 答}}` · 别的（`null`）⇒ 取消。
+pub fn decided<'a>(
+    keys: impl IntoIterator<Item = &'a str>,
+    text: Option<&str>,
+) -> Option<BTreeMap<String, Decide>> {
     let v: serde_json::Value = text
         .and_then(|t| serde_json::from_str(t).ok())
         .unwrap_or_default();
@@ -449,7 +451,18 @@ pub fn answer(id: i64, text: Option<&str>) -> bool {
     let each = v
         .get("each")
         .and_then(|e| serde_json::from_value::<BTreeMap<String, Decide>>(e.clone()).ok());
-    b.answer(all, each)
+    batch_core::answer_of(keys, all, each.as_ref())
+}
+
+/// 核心跑的那几组的答（[`decided`] 那一形）；那一组不在 ⇒ `false`。
+pub fn answer(id: i64, text: Option<&str>) -> bool {
+    board(id).is_some_and(|b| b.answer(text))
+}
+
+/// 手机那一侧问的同名（下载 · 上传）：`keys` 是那几行的键（JSON 数组）⇒ 每个键一格（JSON）；取消 · 读不动 ⇒ `null`。
+pub fn decided_json(keys: &str, text: Option<&str>) -> String {
+    let keys: Vec<String> = serde_json::from_str(keys).unwrap_or_default();
+    serde_json::to_string(&decided(keys.iter().map(String::as_str), text)).unwrap_or_default()
 }
 
 /// 撤这一组（「停」）：同一张票发 `files-batch-stop`；那台做完手上那一项就停，剩下的回 `cancelled`。
@@ -562,7 +575,7 @@ mod tests {
         let answering = tokio::spawn(async move {
             for _ in 0..2000 {
                 if lock(&b2.answer).is_some() {
-                    assert!(b2.answer(Some(Decide::KeepBoth), None));
+                    assert!(b2.answer(Some(r#"{"all":"keep_both"}"#)));
                     return;
                 }
                 tokio::task::yield_now().await;
@@ -690,6 +703,90 @@ mod tests {
         let all = pull("ended", serde_json::json!({"outcomes": [{"key": "0", "state": "done"}, {"key": "1", "state": "done"}, {"key": "2", "state": "skipped"}]}));
         assert_eq!(all["failed"], serde_json::json!([]));
         assert!(download_event(&serde_json::json!({"phase": "ended"})).is_none(), "读不动 ⇒ 不给");
+    }
+
+    /// 🔴 同名那一问的答只在核心里认（整组一个答 · 逐项选、没点的照跳过 · 别的当取消）：下载 · 上传问的那一口（[`decided_json`]）
+    /// 与核心跑的那几组（[`answer`]，复制到… 走它）同一组答出同一个结果。
+    #[tokio::test]
+    async fn one_clash_answer_decides_the_same_on_every_path() {
+        let conflict = |k: &str| -> Conflict {
+            serde_json::from_value(serde_json::json!({"key": k, "name": "a", "kind": "file", "there": "file", "answers": ["overwrite", "skip", "keep_both"]}))
+                .unwrap()
+        };
+        let d = |v: &[(&str, Decide)]| {
+            v.iter()
+                .map(|(k, d)| (k.to_string(), *d))
+                .collect::<BTreeMap<_, _>>()
+        };
+        let cases = [
+            (
+                Some(r#"{"all":"keep_both"}"#),
+                Some(d(&[("0", Decide::KeepBoth), ("1", Decide::KeepBoth)])),
+            ),
+            (
+                Some(r#"{"each":{"1":"overwrite"}}"#),
+                Some(d(&[("0", Decide::Skip), ("1", Decide::Overwrite)])),
+            ),
+            (
+                Some(r#"{"each":{}}"#),
+                Some(d(&[("0", Decide::Skip), ("1", Decide::Skip)])),
+            ),
+            (None, None),
+            (Some("{}"), None),
+        ];
+        for (n, (text, want)) in cases.into_iter().enumerate() {
+            let id = 9100 + n as i64;
+            let (on, _) = events();
+            let b = Arc::new(PhoneBoard::new(id, 1, del("devbox"), "t".into(), on));
+            lock(boards()).insert(id, b.clone());
+            let asked = b.ask(vec![conflict("0"), conflict("1")]);
+            assert!(answer(id, text), "{text:?}：有人在等这一答");
+            lock(boards()).remove(&id);
+            let port: Option<BTreeMap<String, Decide>> =
+                serde_json::from_str(&decided_json(r#"["0","1"]"#, text)).unwrap();
+            assert_eq!(asked.await, want, "{text:?}：一组那一份");
+            assert_eq!(port, want, "{text:?}：下载 · 上传那一口");
+        }
+    }
+
+    /// 🔴 同名那一问的答只在核心里拆：手机 Kotlin 生产源里拆开一个答（`is` / `as` 到 `All` · `Each`）的只有交核心那一形（`BatchAnswer.wire`）。
+    #[test]
+    fn kotlin_takes_a_clash_answer_apart_only_to_hand_it_over() {
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let marks = [
+            "is All",
+            "is Each",
+            "is BatchAnswer.",
+            "as BatchAnswer.",
+            "as? BatchAnswer.",
+        ];
+        let mut hits = std::collections::BTreeSet::new();
+        let mut stack = vec![src];
+        while let Some(d) = stack.pop() {
+            for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    if !matches!(
+                        p.file_name().and_then(|n| n.to_str()),
+                        Some("build" | ".gradle")
+                    ) {
+                        stack.push(p);
+                    }
+                } else if p.extension().is_some_and(|x| x == "kt")
+                    && p.to_string_lossy().contains("/src/main/")
+                {
+                    let text = std::fs::read_to_string(&p).unwrap_or_default();
+                    if marks.iter().any(|m| text.contains(m)) {
+                        hits.insert(p.file_name().unwrap().to_string_lossy().into_owned());
+                    }
+                }
+            }
+        }
+        assert_eq!(
+            hits,
+            std::collections::BTreeSet::from(["BatchEvent.kt".to_string()]),
+            "只许交核心那一形拆（它也得在：正控）"
+        );
     }
 
     /// 🔴 `files_batch` 帧按票进那一组的进度（`running` 带手上那一项 · 几成），不交 Kotlin 的帧流；别的帧照交。
