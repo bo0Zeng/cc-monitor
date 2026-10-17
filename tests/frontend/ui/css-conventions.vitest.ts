@@ -300,7 +300,7 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   "src/frontend/ui/settings/resume-select.ts::this.custom":
     "恢复命令下拉旁「自定义…」那一格 —— 类名 `settings-input settings-input-mono` 在构造器里挂，那两类不写 display",
   "src/frontend/ui/settings/machine-launch-rows.ts::permRow":
-    "「新会话的权限档」那一行 —— `ccRow` 在别的文件里挂 `.machine-cc-row`；`settings.css` 里它的 `display` 只写在 `:not([hidden])` 上，人工核过",
+    "「新会话的权限档」那一行 —— `ccRow` 在别的文件里挂 `.machine-cc-row`；`settings.css` 里 `.machine-cc-row[hidden] { display: none }` 人工核过",
   "src/frontend/ui/settings/machine-state.ts::el":
     "`el` 是调用方交进来的问题行（列表那一行与卡头各一个 `.machine-problem`，跨文件）；`settings.css` 里 `.machine-problem[hidden] { display: none }` 人工核过",
   "src/frontend/ui/settings/panel.ts::b.el":

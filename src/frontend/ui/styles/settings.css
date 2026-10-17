@@ -579,15 +579,16 @@ body.settings-window-mode .settings-panel {
   flex-direction: column;
 }
 
-.machine-cc-row:not([hidden]) {
-  display: flex;
-}
 .machine-cc-row {
+  display: flex;
   align-items: center;
   gap: var(--space-5);
   min-height: 52px;
   padding: var(--space-4) 0;
   border-bottom: 1px solid var(--border);
+}
+.machine-cc-row[hidden] {
+  display: none;
 }
 
 .machine-cc-row > label {
