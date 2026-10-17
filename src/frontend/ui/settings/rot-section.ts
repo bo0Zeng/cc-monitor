@@ -9,8 +9,21 @@ import { bindEvents } from "../events";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { copyText } from "../copy-table";
 import { readRemoteConfig } from "../remote-config";
-import { mountRotation, type RotMount } from "../rot-mount";
+import { mountRotation, parseRotAnchor, type RotMount } from "../rot-mount";
 import { getCurrentMachine, subscribeMachine } from "../machine-context";
+
+/** 设置窗目的地带来的「看哪份 · 开哪个号」：栏还没读（或读的不是那台）⇒ 留着，下一次挂上时用。 */
+let pending: { strategy: string; account: string | null } | null = null;
+let current: RotationSection | null = null;
+
+/** 目的地的锚点是轮换那一格（[`parseRotAnchor`]）⇒ 交给「轮换」栏，回 `true`。 */
+export function focusRotation(anchor: string | undefined): boolean {
+  const f = parseRotAnchor(anchor);
+  if (!f) return false;
+  pending = f;
+  current?.takePending();
+  return true;
+}
 
 export class RotationSection {
   readonly element: HTMLElement;
@@ -22,6 +35,7 @@ export class RotationSection {
   constructor() {
     this.element = document.createElement("div");
     this.element.dataset.rotSection = "true";
+    current = this;
     subscribeMachine((origin) => {
       if (!this.loaded || origin === this.origin) return;
       this.origin = origin;
@@ -43,7 +57,15 @@ export class RotationSection {
       : machineName(this.origin);
     this.mount = mountRotation({ origin: this.origin, sid: null, machine });
     this.element.replaceChildren(this.mount.root);
-    void this.mount.refresh();
+    if (!this.takePending()) void this.mount.refresh();
+  }
+
+  /** 有留着的「看哪份 · 开哪个号」就照它看（栏已挂上才用）。 */
+  takePending(): boolean {
+    if (!pending || !this.mount) return false;
+    this.mount.focus(pending.strategy, pending.account);
+    pending = null;
+    return true;
   }
 
   private async subscribe(): Promise<void> {

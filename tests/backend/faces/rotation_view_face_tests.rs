@@ -1023,7 +1023,7 @@ fn the_board_carries_each_cell_resolved_once() {
     assert!(!kind0.choices.is_empty() && kind0.choices.iter().all(|c| !c.label.is_empty()));
     let caps = pick(r0, "caps", Some("5h"));
     assert_eq!(caps.from, form::RotFrom::All);
-    assert_eq!(caps.label, "用量上限 · 5h");
+    assert_eq!(caps.label, "用量上限 · 5 小时");
     let zero = copy_core::copy_text("rot.day.zero", &[]);
     assert_eq!(
         caps.segs
@@ -1035,7 +1035,11 @@ fn the_board_carries_each_cell_resolved_once() {
             (600, 1440, "80%", "10:00–24:00 · 上限 80%")
         ]
     );
-    assert_eq!(pick(r0, "caps", Some("7d")).segs, []);
+    assert_eq!(
+        pick(r0, "caps", Some("7d")).segs.len(),
+        1,
+        "没设 ⇒ 声明默认那一整段"
+    );
     // 会话里只看的规则摘要：一格一句，名字 · 此刻的值（选项名 · 每段那一句 · 可空的说法）都是这里写好的。
     let sep = copy_core::copy_text("kit.text.sep", &[]);
     let rules = &v.board.rows[0].rules;
@@ -1047,7 +1051,7 @@ fn the_board_carries_each_cell_resolved_once() {
     );
     assert!(
         rules.contains(&format!(
-            "用量上限 · 5h{sep}00:00–10:00 · 上限 0%{sep}10:00–24:00 · 上限 80%"
+            "用量上限 · 5 小时{sep}00:00–10:00 · 上限 0%{sep}10:00–24:00 · 上限 80%"
         )),
         "{rules:?}"
     );
@@ -1060,4 +1064,119 @@ fn the_board_carries_each_cell_resolved_once() {
         )),
         "{rules:?}"
     );
+}
+
+/// ★ 编辑器那一份画出来：只回此刻该出的格（延迟 · 切出条件跟着切入 · 切出），挂着的格带它挂在哪；7 天没另设 ⇒ 同 5 小时、带那颗按钮的字；
+/// 号名旁的记号照每号取的那一项（强制切入 ↺ · 延迟切入虚线框 · 强制切出 ⇥），悬停「切入 · 强制切入」；前面那半句照声明。
+#[test]
+fn the_editor_board_shows_cells_by_their_conditions_and_marks_by_the_choice() {
+    let home = Home::new("editor-board");
+    let ctx = home.ctx();
+    shelf::write_file(
+        &home.own(),
+        "ed",
+        &setup::editor::fresh(&["a".into(), "b".into(), "c".into()], Some("UTC".into())),
+    )
+    .expect("写");
+    home.settings_of(
+        "ed",
+        json!({"smart": true, "accounts": [{"id": "a", "in": "force"}, {"id": "b", "in": "delay", "out": "force", "outTotal": null}, {"id": "c"}]}),
+    );
+    let v = view_with(
+        &ctx,
+        &RotationViewReq {
+            target: RotTarget::Strategy {
+                strategy: "ed".into(),
+            },
+            hours: None,
+        },
+        now(),
+        &crate::Tz::default(),
+        &home.alive(),
+    )
+    .expect("ok");
+    let keys = |i: usize| -> Vec<(String, Option<String>)> {
+        v.board.rows[i]
+            .cells
+            .iter()
+            .map(|c| (c.key.clone(), c.window.clone()))
+            .collect()
+    };
+    let k = |key: &str, w: Option<&str>| (key.to_string(), w.map(str::to_string));
+    assert_eq!(
+        keys(0),
+        [
+            k("caps", Some("5h")),
+            k("caps", Some("7d")),
+            k("in", None),
+            k("out", None)
+        ]
+    );
+    assert_eq!(
+        keys(1),
+        [
+            k("caps", Some("5h")),
+            k("caps", Some("7d")),
+            k("in", None),
+            k("wait", None),
+            k("out", None),
+            k("outTotal", None)
+        ]
+    );
+    let row1 = &v.board.rows[1].cells;
+    let wait = row1.iter().find(|c| c.key == "wait").expect("延迟");
+    assert_eq!(wait.under.as_deref(), Some("in"));
+    let total = row1.iter().find(|c| c.key == "outTotal").expect("切出条件");
+    assert_eq!(
+        (total.lead.as_deref(), total.nullable.as_deref(), &total.v),
+        (Some("其余号余量合计达到"), Some("一有额度"), &Value::Null)
+    );
+    let w7 = &row1[1];
+    assert_eq!(
+        (w7.from, w7.same.as_deref()),
+        (form::RotFrom::Same, Some("同 5 小时"))
+    );
+    assert_eq!(row1[0].same, None, "第一窗没有那颗按钮");
+    assert_eq!(
+        row1[0]
+            .segs
+            .iter()
+            .map(|g| (g.from, g.to, g.v))
+            .collect::<Vec<_>>(),
+        [(0, 1440, 90.0)],
+        "没设 ⇒ 声明默认那一整段"
+    );
+    let marks = |i: usize| -> Vec<(Option<String>, bool, String)> {
+        v.board.rows[i]
+            .marks
+            .iter()
+            .map(|m| (m.glyph.clone(), m.dashed, m.tip.clone()))
+            .collect()
+    };
+    assert_eq!(
+        marks(0),
+        [(Some("↺".into()), false, "切入 · 强制切入".into())]
+    );
+    assert_eq!(
+        marks(1),
+        [
+            (None, true, "切入 · 延迟切入".into()),
+            (Some("⇥".into()), false, "切出 · 强制切出".into())
+        ]
+    );
+    assert_eq!(marks(2), []);
+    assert_eq!(
+        v.board.rows[1].rules.len(),
+        row1.len(),
+        "摘要只写出来的那几格"
+    );
+    assert_eq!(
+        v.board
+            .all
+            .iter()
+            .map(|c| c.key.as_str())
+            .collect::<Vec<_>>(),
+        ["smart"]
+    );
+    assert!(!v.strategy.as_ref().expect("那一份").hand);
 }

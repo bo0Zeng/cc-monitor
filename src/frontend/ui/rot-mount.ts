@@ -27,8 +27,8 @@ export interface RotMountSpec {
   machine?: string;
   /** 问一句（测试注入）。 */
   confirm?: ConfirmFn;
-  /** 问名字（测试注入）。 */
-  ask?: (title: string, initial: string) => Promise<string | null>;
+  /** 问名字（测试注入）；`note` ＝ 框下面那一句。 */
+  ask?: (title: string, initial: string, note?: string) => Promise<string | null>;
   /** 挑一份文件读成文本（测试注入）。 */
   pickFile?: () => Promise<{ name: string; text: string } | null>;
 }
@@ -37,6 +37,8 @@ export interface RotMount {
   root: HTMLElement;
   /** 重读重画（推送来了 · 面板打开那一刻）。 */
   refresh(): Promise<void>;
+  /** 设置窗：看这一份、开这个号的编辑小窗（会话面板［编辑策略］跳过来）。 */
+  focus(strategy: string, account: string | null): void;
 }
 
 /** 浏览器里挑一份 `.rhai` 读成文本。 */
@@ -57,6 +59,17 @@ function pickRhai(): Promise<{ name: string; text: string } | null> {
   });
 }
 
+/** 设置窗目的地里「看哪份 · 开哪个号」那一格（`rot:<策略>/<号>`；策略名 · 号名里都没有 `/`）。 */
+export function rotAnchor(strategy: string, account: string | null): string {
+  return `rot:${strategy}/${account ?? ""}`;
+}
+
+/** 认 [`rotAnchor`] 写的那一格；不是 ⇒ `null`。 */
+export function parseRotAnchor(anchor: string | undefined): { strategy: string; account: string | null } | null {
+  const m = anchor === undefined ? null : /^rot:([^/]+)\/(.*)$/.exec(anchor);
+  return m ? { strategy: m[1], account: m[2] === "" ? null : m[2] } : null;
+}
+
 export function mountRotation(spec: RotMountSpec): RotMount {
   const root = document.createElement("div");
   const { origin, sid } = spec;
@@ -65,15 +78,18 @@ export function mountRotation(spec: RotMountSpec): RotMount {
   let list: RotationStrategiesReply | null = null;
   let readErr: string | null = null;
   let seq = 0;
+  /** 设置窗在看哪一份（缺 ⇒ 新会话用的那份）。 */
+  let shown: string | undefined;
   const confirmFn = spec.confirm ?? confirmDialog;
   const ask =
     spec.ask ??
-    (async (title: string, initial: string): Promise<string | null> =>
+    (async (title: string, initial: string, note?: string): Promise<string | null> =>
       await askText({
         title,
-        action: copyText("rot.ask.go"),
-        label: copyText("rot.ask.name"),
+        action: note === undefined ? copyText("rot.ask.go") : copyText("rot.ask.createGo"),
+        label: note === undefined ? copyText("rot.ask.name") : copyText("rot.ask.createName"),
         initial,
+        note,
       }));
   const pickFile = spec.pickFile ?? pickRhai;
 
@@ -110,7 +126,10 @@ export function mountRotation(spec: RotMountSpec): RotMount {
       const l = await readStrategies(origin);
       let v: RotationViewReply | null = null;
       if (sid !== null) v = await readView(origin, { sid }, state.hours);
-      else if (l.forNew !== "") v = await readView(origin, { strategy: l.forNew }, state.hours);
+      else {
+        const id = shown !== undefined && l.strategies.some((x) => x.id === shown) ? shown : l.forNew;
+        if (id !== "") v = await readView(origin, { strategy: id }, state.hours);
+      }
       if (my !== seq) return;
       list = l;
       view = v;
@@ -141,15 +160,22 @@ export function mountRotation(spec: RotMountSpec): RotMount {
     return true;
   };
 
+  /** 设置窗换去看 `id` 那一份（缺 ⇒ 新会话用的）。 */
+  const show = (id: string | undefined, account: string | null = null): void => {
+    shown = id;
+    state.open = account;
+    void refresh();
+  };
+
   const acts: BoardActs = {
-    pick: (id) =>
-      void (sid === null
-        ? write(copyText("rot.fail.forNew"), () =>
-            callTyped(origin, "rotation-for-new", { strategy: id }, rotBudget()),
-          )
-        : write(copyText("rot.fail.use"), () =>
-            callTyped(origin, "rotation-use", { sid, strategy: id }, rotBudget()),
-          )),
+    // 会话：这个会话用它。设置窗：看它；「不轮换」⇒ 新会话不轮换。
+    pick: (id) => {
+      if (sid !== null)
+        return void write(copyText("rot.fail.use"), () => callTyped(origin, "rotation-use", { sid, strategy: id }, rotBudget()));
+      if (id !== null) return show(id);
+      shown = undefined;
+      void write(copyText("rot.fail.forNew"), () => callTyped(origin, "rotation-for-new", { strategy: null }, rotBudget()));
+    },
     copy: (id) =>
       void (async () => {
         const name = await ask(copyText("rot.ask.copyTitle", { name: id }), "");
@@ -185,6 +211,18 @@ export function mountRotation(spec: RotMountSpec): RotMount {
           await write(copyText("rot.fail.delete"), () =>
             callTyped(origin, "rotation-strategy-delete", { id }, rotBudget()),
           );
+      })(),
+    create: () =>
+      void (async () => {
+        const name = await ask(copyText("rot.ask.createTitle"), "", copyText("rot.ask.createNote"));
+        if (!name) return;
+        try {
+          const r = await callTyped(origin, "rotation-strategy-add", { name }, rotBudget());
+          if (sid === null) shown = r.id;
+        } catch (e) {
+          return void failToast(copyText("rot.fail.create"), e);
+        }
+        await refresh();
       })(),
     add: () =>
       void (async () => {
@@ -264,9 +302,12 @@ export function mountRotation(spec: RotMountSpec): RotMount {
       void write(copyText("rot.fail.temp"), () =>
         callTyped(origin, "rotation-temp", { sid, op }, rotBudget()),
       );
-    // 编辑策略：开设置窗那台的「轮换」栏（策略只在那里改）。
-    acts.editStrategy = () => void openSettingsWindow(null, { machine: origin, tab: "rot" });
+    // 编辑策略：开设置窗那台的「轮换」栏、看这个会话用的那份（给了号 ⇒ 开它的编辑小窗；策略只在那里改）。
+    acts.editStrategy = (account) => {
+      const id = view?.strategy?.id;
+      void openSettingsWindow(null, { machine: origin, tab: "rot", ...(id === undefined ? {} : { anchor: rotAnchor(id, account ?? null) }) });
+    };
   }
   paint();
-  return { root, refresh };
+  return { root, refresh, focus: (strategy, account) => show(strategy, account) };
 }

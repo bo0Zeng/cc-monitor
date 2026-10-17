@@ -126,6 +126,27 @@ pub enum FormScope {
 pub struct FormChoice {
     pub v: String,
     pub label: StrategyText,
+    /// 号取这一项时号名旁的记号。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mark: Option<FormMark>,
+}
+
+/// 号名旁的记号：一个字形，或号牌画虚线框。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FormMark {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub glyph: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub dashed: bool,
+}
+
+/// 一格只在另一格取某个值时出。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FormShowIf {
+    pub key: String,
+    pub v: Value,
 }
 
 /// 一格。
@@ -157,6 +178,15 @@ pub struct FormCell {
     /// 能是空（`null`）：空的那一项怎么叫（例如「不回切」）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nullable: Option<StrategyText>,
+    /// 数格前面那半句。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lead: Option<StrategyText>,
+    /// 只在另一格取某个值时出。
+    #[serde(default, rename = "showIf", skip_serializing_if = "Option::is_none")]
+    pub show_if: Option<FormShowIf>,
+    /// 只对 `daySegments`：排在后面的窗没另设 ⇒ 同第一窗。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub follow: bool,
 }
 
 /// 头里能写成一句、也能分语言写的字。
@@ -408,6 +438,8 @@ pub struct RotStrategyItem {
     pub words_bad: bool,
     /// 文件头里没写时区（分时段按 UTC 算）。
     pub tz_unknown: bool,
+    /// 不是照编辑器那一份存出来的（代码或声明跟它此刻的不一样）。
+    pub hand: bool,
 }
 
 /// `rotation-strategies` 的应答。
@@ -709,7 +741,7 @@ pub struct RotPlate {
     pub text: Words,
 }
 
-/// 一格此刻的值从哪来：自己设的 · 跟总体（号那一行没设、声明说跟总体）· 声明里的默认。
+/// 一格此刻的值从哪来：自己设的 · 跟总体（号那一行没设、声明说跟总体）· 声明里的默认 · 同第一窗（分段后面几窗没另设）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -718,6 +750,7 @@ pub enum RotFrom {
     Own,
     All,
     Default,
+    Same,
 }
 
 /// 24 小时条上的一段：一天里的分钟 `[from, to)` · 值 · 段上写的字 · 悬停那一句。
@@ -784,9 +817,33 @@ pub struct RotCell {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<RotDaySeg>>"))]
     pub segs: Vec<RotDaySeg>,
+    /// 数格前面那半句。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub lead: Option<String>,
+    /// 这一格只在那一格取某值时出：挂在它下面（那一格的 `key`）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub under: Option<String>,
+    /// 分段后面那几窗：能「同第一窗」，那颗按钮的字（「同 5 小时」）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub same: Option<String>,
 }
 
-/// 号列表的一行：号 · 展开头一行（两窗用量 · 重置）· 号牌悬停那一句 · `scope: each` 那几格 · 那几格写成的句子（会话里只看的规则摘要，一格一句）。
+/// 号名旁的一个记号（照声明里那一项）：字形或虚线框 · 悬停那一句（「切入 · 强制切入」）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct RotMark {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub glyph: Option<String>,
+    pub dashed: bool,
+    pub tip: String,
+}
+
+/// 号列表的一行：号 · 展开头一行（两窗用量 · 重置）· 号牌悬停那一句 · `scope: each` 那几格（只回此刻该出的）· 那几格写成的句子（会话里只看的规则摘要，一格一句）· 号名旁的记号。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
@@ -796,6 +853,7 @@ pub struct RotRow {
     pub hover: String,
     pub cells: Vec<RotCell>,
     pub rules: Vec<String>,
+    pub marks: Vec<RotMark>,
 }
 
 /// 设置那几块：总体设置（`scope: all`）· 号列表每一行（照 `settings.accounts` 的先后，与 `accounts` 前 `listed` 个一一对应）。

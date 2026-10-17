@@ -14,9 +14,9 @@ use crate::faces::rotation_try_face::{decision_of, timeline_of};
 use crate::wire::typed::Command;
 use cmd_wire::cells::Tone;
 pub(crate) use cmd_wire::rotation::{
-    RotAccount, RotBadCell, RotBoard, RotCell, RotChoice, RotDaySeg, RotHint, RotLogRow, RotNote,
-    RotOldFile, RotPast, RotPastLane, RotPastSeg, RotPastUse, RotPlate, RotRefused, RotRow,
-    RotStrategyError, RotStrategyItem, RotationStrategiesReply, RotationViewReply,
+    RotAccount, RotBadCell, RotBoard, RotCell, RotChoice, RotDaySeg, RotHint, RotLogRow, RotMark,
+    RotNote, RotOldFile, RotPast, RotPastLane, RotPastSeg, RotPastUse, RotPlate, RotRefused,
+    RotRow, RotStrategyError, RotStrategyItem, RotationStrategiesReply, RotationViewReply,
 };
 use copy_core::copy_text;
 use serde::Deserialize;
@@ -85,6 +85,7 @@ pub(crate) fn item_of(
         for_new: for_new == s.id,
         words_bad: head.is_some_and(|h| form::words_bad(&h.form)),
         tz_unknown: head.is_some_and(|h| h.tz.is_none() || h.tz_unknown),
+        hand: s.file.as_ref().is_ok_and(|f| !setup::editor::made_by(f)),
     }
 }
 
@@ -547,6 +548,7 @@ pub(crate) fn view_with(
             for_new: for_new == plan.id,
             words_bad: false,
             tz_unknown: false,
+            hand: false,
         },
     };
     let mut hints = Vec::new();
@@ -749,23 +751,30 @@ fn cells_of(c: &form::Cell, settings: &Value, row: Option<usize>) -> Vec<RotCell
         min: c.min,
         max: c.max,
         segs: Vec::new(),
+        lead: c.lead.as_ref().map(text_of),
+        under: c.show_if.as_ref().map(|w| w.key.clone()),
+        same: None,
     };
     if c.kind == form::Kind::DaySegments {
+        let win = |w: &str| match w {
+            "5h" => copy_text("rot.win.fiveHour", &[]),
+            "7d" => copy_text("rot.win.sevenDay", &[]),
+            _ => copy_text("rot.win.other", &[("w", w)]),
+        };
+        let first = c.windows.first().map(|w| win(w)).unwrap_or_default();
         return c
             .windows
             .iter()
-            .map(|w| {
+            .enumerate()
+            .map(|(i, w)| {
                 let (segs, from) = form::day_of(c, settings, row, w);
-                let win = match w.as_str() {
-                    "5h" => copy_text("rot.win.fiveHour", &[]),
-                    "7d" => copy_text("rot.win.sevenDay", &[]),
-                    _ => copy_text("rot.win.other", &[("w", w)]),
-                };
                 RotCell {
                     window: Some(w.clone()),
-                    label: copy_text("rot.cell.win", &[("label", &label), ("win", &win)]),
+                    label: copy_text("rot.cell.win", &[("label", &label), ("win", &win(w))]),
                     from,
                     segs: segs.into_iter().map(day_seg).collect(),
+                    same: (c.follow && i > 0)
+                        .then(|| copy_text("rot.cell.same", &[("win", &first)])),
                     ..base.clone()
                 }
             })
@@ -798,6 +807,9 @@ fn rule_of(c: &RotCell) -> String {
             .find(|x| Value::String(x.v.clone()) == c.v)
             .map(|x| x.label.clone())
             .unwrap_or_default(),
+        form::Kind::DaySegments if c.from == form::RotFrom::Same => {
+            c.same.clone().unwrap_or_default()
+        }
         form::Kind::DaySegments => c
             .segs
             .iter()
@@ -827,8 +839,27 @@ fn rule_of(c: &RotCell) -> String {
 fn board_of(form: &[form::Cell], settings: &Value, listed: &[RotAccount]) -> RotBoard {
     let of = |scope: form::Scope, row: Option<usize>| -> Vec<RotCell> {
         form.iter()
-            .filter(|c| c.scope == scope)
+            .filter(|c| c.scope == scope && form::shown(form, c, settings, row))
             .flat_map(|c| cells_of(c, settings, row))
+            .collect()
+    };
+    // 号名旁的记号：那一行每个几选一此刻取的那一项带的记号。
+    let marks = |row: usize| -> Vec<RotMark> {
+        form.iter()
+            .filter(|c| c.scope == form::Scope::Each && c.kind == form::Kind::OneOf)
+            .filter_map(|c| {
+                let v = form::value_of(c, settings, Some(row)).0;
+                let o = c.choices.iter().find(|o| v == o.v.as_str())?;
+                let m = o.mark.as_ref()?;
+                Some(RotMark {
+                    glyph: m.glyph.clone(),
+                    dashed: m.dashed,
+                    tip: copy_text(
+                        "rot.mark.tip",
+                        &[("label", &text_of(&c.label)), ("v", &text_of(&o.label))],
+                    ),
+                })
+            })
             .collect()
     };
     let pct = |w: &crate::accounts::quota::facts::WinFact| format!("{}", w.used.round());
@@ -851,6 +882,7 @@ fn board_of(form: &[form::Cell], settings: &Value, listed: &[RotAccount]) -> Rot
                     hover: copy_text("rot.card.hover", &[("u5", &u5), ("u7", &u7)]),
                     rules: cells.iter().map(rule_of).collect(),
                     cells,
+                    marks: marks(i),
                 }
             })
             .collect(),

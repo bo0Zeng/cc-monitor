@@ -2,6 +2,7 @@
 declare const classes: {
   readonly rotAbout: string;
   readonly rotAboutPara: string;
+  readonly rotBadge: string;
   readonly rotBoard: string;
   readonly rotCard: string;
   readonly rotCardAdd: string;
@@ -11,17 +12,14 @@ declare const classes: {
   readonly rotCellKey: string;
   readonly rotCells: string;
   readonly rotCtl: string;
-  readonly rotDay: string;
-  readonly rotDayAxis: string;
   readonly rotDayBar: string;
-  readonly rotDayGhost: string;
-  readonly rotDayPop: string;
-  readonly rotDayPopText: string;
   readonly rotDaySeg: string;
-  readonly rotDayTick: string;
+  readonly rotDeck: string;
   readonly rotHdr: string;
   readonly rotHdrNote: string;
   readonly rotHdrText: string;
+  readonly rotLead: string;
+  readonly rotMark: string;
   readonly rotMeter: string;
   readonly rotMeterFill: string;
   readonly rotMeterRow: string;
@@ -33,11 +31,15 @@ declare const classes: {
   readonly rotNumUnit: string;
   readonly rotOldList: string;
   readonly rotPane: string;
+  readonly rotPaneFoot: string;
   readonly rotPaneLine: string;
   readonly rotPaneName: string;
   readonly rotPaneTop: string;
   readonly rotPick: string;
   readonly rotRefused: string;
+  readonly rotSegRow: string;
+  readonly rotSegTime: string;
+  readonly rotSegs: string;
   readonly rotSim: string;
   readonly rotSimAxis: string;
   readonly rotSimHead: string;

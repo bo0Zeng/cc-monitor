@@ -357,8 +357,10 @@ pub(crate) fn for_new_with(
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct RotationStrategyAddReq {
-    /// 一份策略文件的原文（说明 ＋ 头 ＋ 代码）。
-    pub(crate) source: String,
+    /// 一份策略文件的原文（说明 ＋ 头 ＋ 代码）：从文件添加；缺 ⇒ 新建（照编辑器那一份，号列表 ＝ 账号库全部号，时区 ＝ 这台的）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) source: Option<String>,
     /// 存成的文件名（＝ 标题）。
     pub(crate) name: String,
 }
@@ -372,7 +374,7 @@ crate::wire::typed::codes! {
     }
 }
 
-/// `rotation-strategy-add`：从文件添加。
+/// `rotation-strategy-add`：新建 · 从文件添加。
 pub(crate) struct RotationStrategyAdd;
 
 impl Command for RotationStrategyAdd {
@@ -409,10 +411,22 @@ pub(crate) fn add_with(
             RotBadStrategy { line: f.line },
         )
     };
-    script::parse(&req.source).map_err(bad)?;
+    let source = match &req.source {
+        Some(s) => s.clone(),
+        None => {
+            let ids: Vec<String> = ctx
+                .hop
+                .library()
+                .accounts
+                .into_iter()
+                .map(|a| a.id)
+                .collect();
+            setup::editor::fresh(&ids, crate::platform::local_tz::iana_name())
+        }
+    };
+    script::parse(&source).map_err(bad)?;
     let id = fresh_name(ctx, &req.name).map_err(RotationStrategyAddErr::BadArgs)?;
-    shelf::write_file(own, &id, &req.source)
-        .map_err(|e| RotationStrategyAddErr::IoFailed(note(e)))?;
+    shelf::write_file(own, &id, &source).map_err(|e| RotationStrategyAddErr::IoFailed(note(e)))?;
     Ok(RotStrategyId { id })
 }
 

@@ -176,6 +176,37 @@ fn use_and_for_new() {
     ));
 }
 
+/// ★ 新建（不带原文）⇒ 照编辑器那一份存成一份：号列表 ＝ 账号库全部号，认得是编辑器存出来的；不是手写。
+#[test]
+fn a_new_strategy_is_the_editor_one_with_every_account() {
+    let home = Home::new("new");
+    let ctx = home.ctx();
+    let got = add_with(
+        &ctx,
+        &home.own(),
+        &RotationStrategyAddReq {
+            source: None,
+            name: "夜里".into(),
+        },
+    )
+    .expect("新建");
+    let f = script::parse(&file(&home, &got.id)).expect("读得懂");
+    assert!(setup::editor::made_by(&f));
+    let ids: Vec<Value> = ctx
+        .hop
+        .library()
+        .accounts
+        .iter()
+        .map(|a| json!({"id": a.id}))
+        .collect();
+    assert!(!ids.is_empty(), "夹具里有账号库");
+    assert_eq!(f.head.settings["accounts"], Value::Array(ids));
+    let list =
+        crate::faces::rotation_view_face::strategies_with(&ctx, &Default::default(), &|_| false);
+    let hand = |id: &str| list.strategies.iter().find(|x| x.id == id).map(|x| x.hand);
+    assert_eq!((hand("夜里"), hand("by-list")), (Some(false), Some(true)));
+}
+
 /// ★ 策略文件：加（读不懂 ⇒ `bad_strategy` 带行；文件名就是给的名字）· 复制（另起一个文件名，内容一字不改）·
 /// 改名（换文件名，指它的会话与「新会话用」跟着改；版本对不上 ⇒ `conflict`；名字占了或写法不对 ⇒ `bad_args`）·
 /// 删（活会话在用 · 新会话用的 ⇒ `in_use`）。
@@ -188,7 +219,7 @@ fn strategy_files_are_added_copied_renamed_and_deleted() {
         &ctx,
         &home.own(),
         &RotationStrategyAddReq {
-            source: "fn decide(ctx) {}".into(),
+            source: Some("fn decide(ctx) {}".into()),
             name: "坏的".into(),
         },
     ) {
@@ -199,7 +230,7 @@ fn strategy_files_are_added_copied_renamed_and_deleted() {
         &ctx,
         &home.own(),
         &RotationStrategyAddReq {
-            source: src.clone(),
+            source: Some(src.clone()),
             name: " 我的 ".into(),
         },
     )
@@ -213,7 +244,7 @@ fn strategy_files_are_added_copied_renamed_and_deleted() {
                     &ctx,
                     &home.own(),
                     &RotationStrategyAddReq {
-                        source: src.clone(),
+                        source: Some(src.clone()),
                         name: bad.into()
                     }
                 ),

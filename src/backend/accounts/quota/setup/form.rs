@@ -23,7 +23,8 @@ pub(crate) struct Bad {
     pub(crate) code: &'static str,
 }
 
-/// 声明本身对不对（读策略文件那一下）：键不重、不空、不占号列表那一格；`choice` 有选项；`inherit` 只在 `each`。
+/// 声明本身对不对（读策略文件那一下）：键不重、不空、不占号列表那一格；`choice` 有选项；`inherit` 只在 `each`；
+/// `follow` 只在不止一窗的 `daySegments`；`showIf` 指一格开关或几选一（总体那一格只能看总体的），值是它收得下的。
 pub(crate) fn check_form(form: &[Cell]) -> Result<(), String> {
     let mut seen: Vec<&str> = Vec::new();
     for c in form {
@@ -40,8 +41,38 @@ pub(crate) fn check_form(form: &[Cell]) -> Result<(), String> {
         if c.inherit && c.scope != Scope::Each {
             return Err(format!("form: `{}` inherits but is not per account", c.key));
         }
+        if c.follow && (c.kind != Kind::DaySegments || c.windows.len() < 2) {
+            return Err(format!("form: `{}` follows but has no later window", c.key));
+        }
+        if let Some(w) = &c.show_if {
+            let fits = form.iter().find(|x| x.key == w.key).is_some_and(|x| {
+                x.key != c.key
+                    && (x.scope == Scope::All || c.scope == Scope::Each)
+                    && match x.kind {
+                        Kind::Toggle => w.v.is_boolean(),
+                        Kind::OneOf => x.choices.iter().any(|o| w.v == o.v.as_str()),
+                        _ => false,
+                    }
+            });
+            if !fits {
+                return Err(format!(
+                    "form: `{}` shows on `{}`, which is not a toggle or choice it can see, or not that value",
+                    c.key, w.key
+                ));
+            }
+        }
     }
     Ok(())
+}
+
+/// ★ 这一格此刻出不出（`showIf` 指的那一格此刻是不是那个值；`row` 同 [`value_of`]）。
+pub(crate) fn shown(form: &[Cell], c: &Cell, settings: &Value, row: Option<usize>) -> bool {
+    let Some(w) = &c.show_if else {
+        return true;
+    };
+    form.iter().find(|x| x.key == w.key).is_some_and(|x| {
+        value_of(x, settings, if x.scope == Scope::All { None } else { row }).0 == w.v
+    })
 }
 
 fn num_in(v: &Value, lo: f64, hi: f64, int: bool) -> Result<(), &'static str> {
@@ -256,6 +287,7 @@ pub(crate) fn words_bad(form: &[Cell]) -> bool {
         text_bad(&c.label)
             || c.help.as_ref().is_some_and(text_bad)
             || c.nullable.as_ref().is_some_and(text_bad)
+            || c.lead.as_ref().is_some_and(text_bad)
             || c.choices.iter().any(|x| text_bad(&x.label))
     })
 }
@@ -298,7 +330,8 @@ fn segs_in(v: Option<&Value>, window: &str) -> Option<Vec<(u64, u64, f64)>> {
     )
 }
 
-/// ★ 24 小时条某一窗此刻生效的那一组段与它从哪来（同 [`value_of`]，按窗：那一窗是段组才算设了）。
+/// ★ 分段某一窗此刻生效的那一组段与它从哪来（同 [`value_of`]，按窗：那一窗是段组才算设了）。没设：`follow` 的后面几窗 ⇒ 同第一窗；
+/// 否则声明默认（是数 ⇒ 一整天一段）。
 pub(crate) fn day_of(
     c: &Cell,
     settings: &Value,
@@ -306,21 +339,39 @@ pub(crate) fn day_of(
     window: &str,
 ) -> (Vec<(u64, u64, f64)>, RotFrom) {
     let total = settings.get(&c.key);
-    let Some(i) = row else {
-        return segs_in(total, window)
-            .map_or((Vec::new(), RotFrom::Default), |s| (s, RotFrom::Own));
+    let own = match row {
+        None => segs_in(total, window),
+        Some(i) => segs_in(row_of(settings, i).and_then(|r| r.get(&c.key)), window),
     };
-    if let Some(s) = segs_in(row_of(settings, i).and_then(|r| r.get(&c.key)), window) {
+    if let Some(s) = own {
         return (s, RotFrom::Own);
     }
-    if c.inherit {
-        (segs_in(total, window).unwrap_or_default(), RotFrom::All)
-    } else {
-        (Vec::new(), RotFrom::Default)
+    if let Some(first) = c.windows.first().filter(|w| c.follow && *w != window) {
+        return (day_of(c, settings, row, first).0, RotFrom::Same);
     }
+    if row.is_some() && c.inherit {
+        if let Some(s) = segs_in(total, window) {
+            return (s, RotFrom::All);
+        }
+    }
+    let whole = c.default.as_f64().map(|v| vec![(0, DAY_MIN, v)]);
+    (whole.unwrap_or_default(), RotFrom::Default)
 }
 
-/// 改设置的一个意图（`rotation-settings` 的 `edit`）：设一格 · 24 小时条上刷一段 · 拖号牌 · 加号 · 移出 · 只把基于的版本跟上。
+/// 分段里的一段（[`RotEdit::Seg`]）：一天里的分钟 `[from, to)` · 上限。
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct RotSeg {
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) from: u64,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) to: u64,
+    pub(crate) v: f64,
+}
+
+/// 改设置的一个意图（`rotation-settings` 的 `edit`）：设一格 · 分段里改 / 加 / 删一段 · 同第一窗与否 · 24 小时条上刷一段 · 拖号牌 · 加号 · 移出。
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -349,6 +400,29 @@ pub(crate) enum RotEdit {
         #[cfg_attr(test, ts(type = "number | null"))]
         v: Option<f64>,
     },
+    /// 分段那一窗此刻生效的段里：`at` ＋ `seg` ⇒ 第 `at` 段换成 `seg`；只 `at` ⇒ 删第 `at` 段；只 `seg` ⇒ 加一段（压过它盖住的）。写成那一行自己的。
+    Seg {
+        key: String,
+        #[serde(default)]
+        #[cfg_attr(test, ts(optional))]
+        row: Option<usize>,
+        window: String,
+        #[serde(default)]
+        #[cfg_attr(test, ts(optional))]
+        at: Option<usize>,
+        #[serde(default)]
+        #[cfg_attr(test, ts(optional))]
+        seg: Option<RotSeg>,
+    },
+    /// 分段后面那一窗：`same` ⇒ 删掉自己的、同第一窗；否则把此刻生效的写成自己的（「另设」）。
+    Same {
+        key: String,
+        #[serde(default)]
+        #[cfg_attr(test, ts(optional))]
+        row: Option<usize>,
+        window: String,
+        same: bool,
+    },
     /// 拖号牌：第 `from` 行松在第 `to` 行上 ⇒ 排到它前头。
     Move { from: usize, to: usize },
     /// 加一个号（排在最后）。
@@ -364,6 +438,51 @@ fn num(x: f64) -> Value {
     } else {
         Value::from(x)
     }
+}
+
+fn segments_cell<'a>(form: &'a [Cell], key: &str) -> Result<&'a Cell, String> {
+    form.iter()
+        .find(|c| c.key == key && c.kind == Kind::DaySegments)
+        .ok_or_else(|| format!("`{key}` is not a daySegments cell"))
+}
+
+/// 分段那一格的一窗写成 `segs`（空 ⇒ 删掉那一窗；号那一行整格空了 ⇒ 删掉那一格）。
+fn put_window(
+    top: &mut serde_json::Map<String, Value>,
+    key: &str,
+    row: Option<usize>,
+    window: &str,
+    segs: &[(u64, u64, f64)],
+) -> Result<(), String> {
+    let place = match row {
+        None => top,
+        Some(i) => top
+            .get_mut(ACCOUNTS)
+            .and_then(Value::as_array_mut)
+            .and_then(|a| a.get_mut(i))
+            .and_then(Value::as_object_mut)
+            .ok_or_else(|| format!("no row {i} in `accounts`"))?,
+    };
+    let mut cell = place
+        .get(key)
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    if segs.is_empty() {
+        cell.remove(window);
+    } else {
+        let list = segs
+            .iter()
+            .map(|&(a, b, x)| serde_json::json!({"from": a, "to": b, "v": num(x)}))
+            .collect();
+        cell.insert(window.to_string(), Value::Array(list));
+    }
+    if row.is_some() && cell.is_empty() {
+        place.remove(key);
+    } else {
+        place.insert(key.to_string(), Value::Object(cell));
+    }
+    Ok(())
 }
 
 /// 照意图改出整份新设置（形状照声明的校验另做：[`check`]）。行号越界 · 那一格不是 24 小时条 · 分钟越界 ⇒ 那一句（入参不对）。
@@ -412,37 +531,47 @@ pub(crate) fn apply(form: &[Cell], settings: &Value, edit: &RotEdit) -> Result<V
             to,
             v,
         } => {
-            let c = form
-                .iter()
-                .find(|c| c.key == *key && c.kind == Kind::DaySegments)
-                .ok_or_else(|| format!("`{key}` is not a daySegments cell"))?;
+            let c = segments_cell(form, key)?;
             if *from > DAY_MIN || *to > DAY_MIN {
                 return Err("`from` and `to` must be minutes of a day (0–1440)".into());
             }
             let (now, _) = day_of(c, settings, *row, window);
-            let segs: Vec<Value> = day_paint(&now, *from, *to, *v)
-                .into_iter()
-                .map(|(a, b, x)| serde_json::json!({"from": a, "to": b, "v": num(x)}))
-                .collect();
-            let place = match row {
-                None => &mut *top,
-                Some(i) => row_mut(top, *i)?,
+            put_window(top, key, *row, window, &day_paint(&now, *from, *to, *v))?;
+        }
+        RotEdit::Seg {
+            key,
+            row,
+            window,
+            at,
+            seg,
+        } => {
+            let c = segments_cell(form, key)?;
+            let (mut now, _) = day_of(c, settings, *row, window);
+            if let Some(i) = at {
+                let &(a, b, _) = now.get(*i).ok_or_else(|| format!("no segment {i}"))?;
+                now = day_paint(&now, a, b, None);
+            }
+            if let Some(g) = seg {
+                if g.from >= g.to || g.to > DAY_MIN {
+                    return Err("a segment needs 0 ≤ from < to ≤ 1440".into());
+                }
+                now = day_paint(&now, g.from, g.to, Some(g.v));
+            }
+            put_window(top, key, *row, window, &now)?;
+        }
+        RotEdit::Same {
+            key,
+            row,
+            window,
+            same,
+        } => {
+            let c = segments_cell(form, key)?;
+            let now = if *same {
+                Vec::new()
+            } else {
+                day_of(c, settings, *row, window).0
             };
-            let mut cell = place
-                .get(key)
-                .and_then(Value::as_object)
-                .cloned()
-                .unwrap_or_default();
-            if segs.is_empty() {
-                cell.remove(window);
-            } else {
-                cell.insert(window.clone(), Value::Array(segs));
-            }
-            if row.is_some() && cell.is_empty() {
-                place.remove(key);
-            } else {
-                place.insert(key.clone(), Value::Object(cell));
-            }
+            put_window(top, key, *row, window, &now)?;
         }
         RotEdit::Move { from, to } => {
             let mut r = rows();

@@ -2,6 +2,7 @@
 //! 设置声明的校验（[`form`]）· 会话载入哪份（副本存在基础层，载入只在本层）与新会话默认用哪份（[`uses`]）· 旧版账本的升级（[`migrate`] · [`upgrade`]）。
 //! 本层可以问基础功能层（`quota/rules/` 等：一判 · 推演 · 事实），基础层不认本层：它只认会话里存的副本（新会话那一份经 [`uses::Setup`] 实现的 `Adoptions` 给）。
 
+pub(crate) mod editor;
 pub(crate) mod form;
 pub(crate) mod migrate;
 pub(crate) mod script;

@@ -95,6 +95,25 @@
     transform: translate(4px, -4px) rotate(-1.5deg);
   }
 
+  .rotCard[data-dashed="true"] {
+    border-style: dashed;
+    border-color: var(--border-medium);
+  }
+
+  .rotMark {
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .rotBadge {
+    padding: 0 var(--space-2);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-s);
+    color: var(--accent);
+    font-size: var(--font-size-xs);
+    white-space: nowrap;
+  }
+
   .rotCard[data-blocked="true"],
   .rotCard[data-left-out="true"] {
     opacity: var(--state-disabled-opacity);
@@ -173,7 +192,35 @@
     background: var(--error);
   }
 
-  /* —— 点开一个号 —— */
+  /* —— 点开一个号：设置页那张浮在号牌下面 —— */
+  .rotDeck {
+    position: relative;
+  }
+
+  .rotDeck > .rotPane {
+    position: absolute;
+    top: calc(100% + var(--space-3));
+    left: 0;
+    z-index: var(--z-popover);
+    width: min(620px, 100%);
+    border: 1px solid var(--border-soft);
+    background: var(--card);
+    box-shadow: var(--shadow-float);
+  }
+
+  .rotPaneFoot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-4);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--border-soft);
+  }
+
+  .rotPaneFoot > .rotPaneLine {
+    white-space: normal;
+  }
+
   .rotPane {
     display: flex;
     flex-direction: column;
@@ -228,6 +275,11 @@
     white-space: nowrap;
   }
 
+  .rotCellKey[data-under] {
+    padding-left: var(--space-5);
+    color: var(--text-2);
+  }
+
   .rotCellKey[data-inherited="true"] {
     color: var(--text-2);
   }
@@ -236,6 +288,10 @@
     display: inline-flex;
     align-items: center;
     gap: var(--space-4);
+  }
+
+  .rotLead {
+    color: var(--text);
   }
 
   .rotNull[aria-pressed="true"] {
@@ -294,18 +350,38 @@
     color: var(--text-2);
   }
 
-  /* —— 24 小时条 —— */
-  .rotDay {
+  /* —— 分段：只画的那一条 ＋ 一段一行 —— */
+  .rotSegs {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
     min-width: 0;
   }
+
+  .rotSegRow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .rotSegTime {
+    width: 6ch;
+    height: var(--control-h-compact);
+    padding: 0 var(--space-2);
+    border: 1px solid var(--field-border);
+    border-radius: var(--radius-s);
+    background: var(--field-bg);
+    color: inherit;
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+  }
+
 
   .rotDayBar {
     position: relative;
     height: 22px;
     border-radius: var(--radius-s);
     background: color-mix(in srgb, var(--text-2) 18%, transparent);
-    cursor: crosshair;
-    touch-action: none;
   }
 
   .rotDayBar[data-inherited="true"] {
@@ -341,42 +417,6 @@
     border-color: var(--text-faint);
     background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--text-2) 40%, transparent) 0 1.5px, transparent 1.5px 5px);
     color: var(--text-2);
-  }
-
-  .rotDayGhost {
-    left: calc(var(--rot-x, 0) * 100%);
-    width: calc(var(--rot-w, 0) * 100%);
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    outline: 2px solid var(--accent);
-    border-radius: var(--radius-s);
-    pointer-events: none;
-  }
-
-  .rotDayAxis {
-    position: relative;
-    height: 14px;
-    margin-top: var(--space-1);
-    color: var(--text-2);
-    font-size: var(--font-size-xs);
-  }
-
-  .rotDayTick {
-    left: calc(var(--rot-x, 0) * 100%);
-    position: absolute;
-    transform: translateX(-50%);
-  }
-
-  .rotDayPop {
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
-    white-space: nowrap;
-  }
-
-  .rotDayPopText {
-    color: var(--text);
   }
 
   /* —— 模拟 —— */

@@ -60,6 +60,8 @@ export interface TextSpec {
   action: string;
   label?: string;
   initial?: string;
+  /** 框下面那一句（这一下会做成什么样）。 */
+  note?: string;
   /** 确认前校验：回一句错误 ⇒ 写在框里、不关。 */
   validate?: (value: string) => string | null;
 }
@@ -245,6 +247,19 @@ export function askText(spec: TextSpec): Promise<string | null> {
   err.className = s.dialogError;
   err.hidden = true;
   wrap.append(input, err);
+  // 带那一句的框（新建一类）：标签也露出来写在框上面。
+  if (spec.label && spec.note !== undefined) {
+    const k = document.createElement("label");
+    k.className = s.dialogText;
+    k.textContent = spec.label;
+    wrap.prepend(k);
+  }
+  if (spec.note !== undefined) {
+    const p = document.createElement("p");
+    p.className = s.dialogText;
+    p.textContent = spec.note;
+    wrap.appendChild(p);
+  }
   b.body.appendChild(wrap);
   const submit = (): string | undefined => {
     const why = spec.validate?.(input.value) ?? null;

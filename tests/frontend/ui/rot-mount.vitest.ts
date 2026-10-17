@@ -36,21 +36,21 @@ vi.mock("../../../src/frontend/ui/ipc/chan-caller", async (orig) => ({
       refuse.delete(name);
       throw Object.assign(new Error(code), { code });
     }
-    return name === "rotation-settings" ? { rev: "h:9" } : {};
+    return name === "rotation-settings" ? { rev: "h:9" } : name === "rotation-strategy-add" ? { id: "新的" } : {};
   }),
 }));
 
-import { mountRotation } from "../../../src/frontend/ui/rot-mount";
+import { mountRotation, parseRotAnchor, rotAnchor } from "../../../src/frontend/ui/rot-mount";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { RotationStrategiesReply } from "../../../src/frontend/ui/generated/RotationStrategiesReply";
 import type { RotationViewReply } from "../../../src/frontend/ui/generated/RotationViewReply";
 
-const LIST: RotationStrategiesReply = { strategies: [{ id: "按权重轮换", description: "说明", summary: "说明", rev: "h:1", inUse: [], forNew: true, wordsBad: false, tzUnknown: false }], forNew: "按权重轮换", oldScripts: 0 };
+const LIST: RotationStrategiesReply = { strategies: [{ id: "按权重轮换", description: "说明", summary: "说明", rev: "h:1", inUse: [], forNew: true, wordsBad: false, tzUnknown: false, hand: false }, { id: "夜里", description: "", summary: "", rev: "h:3", inUse: [], forNew: false, wordsBad: false, tzUnknown: false, hand: true }], forNew: "按权重轮换", oldScripts: 0 };
 const VIEW: RotationViewReply = {
   now: 1,
   nowText: "00:00", title: null,
   strategy: LIST.strategies[0],
-  board: { all: [{ key: "close", kind: "percent", label: "夹具·容差", v: 25, num: 25, from: "own", min: 0, max: 100 }], rows: [{ account: "work", line: "", hover: "", cells: [], rules: [] }] },
+  board: { all: [{ key: "close", kind: "percent", label: "夹具·容差", v: 25, num: 25, from: "own", min: 0, max: 100 }], rows: [{ account: "work", line: "", hover: "", cells: [], rules: [], marks: [] }] },
   start: "work",
   current: "team",
   lineup: ["team", "work"],
@@ -94,7 +94,9 @@ describe("会话面板（目标 {sid}）", () => {
     await settle();
     expect(calls.filter((c) => c.name === "rotation-use").map((c) => c.req)).toEqual([{ sid: "s1", strategy: null }]);
     btn(m.root, copyText("rot.top.edit")).click();
-    expect(settingsAt).toEqual([{ machine: "<local>", tab: "rot" }]);
+    expect(settingsAt).toEqual([{ machine: "<local>", tab: "rot", anchor: rotAnchor("按权重轮换", null) }]);
+    expect(parseRotAnchor(rotAnchor("按权重轮换", "work"))).toEqual({ strategy: "按权重轮换", account: "work" });
+    expect(parseRotAnchor("keybindings")).toBeNull();
   });
 
   it("★ 勾 · 拖 ⇒ rotation-temp（这个会话的临时动作）；拖到第一格碰上用不了（unusable）⇒ 不换，顺序上方写那一句（为什么照后端写的）", async () => {
@@ -129,6 +131,43 @@ describe("设置窗（目标 {strategy}）", () => {
   });
 });
 
+describe("设置窗：看哪份 · 新建", () => {
+  const pick = (root: HTMLElement, label: string): void => {
+    root.querySelector<HTMLButtonElement>(`button[aria-label="${copyText("rot.top.pick")}"]`)!.click();
+    [...document.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find((e) => e.textContent?.startsWith(label))!.click();
+  };
+
+  it("★ 下拉选一份 ⇒ 只换着看（不改新会话用哪份）；选「不轮换」⇒ rotation-for-new null", async () => {
+    const m = mountRotation({ origin: "<local>", sid: null, machine: "夹具机" });
+    document.body.replaceChildren(m.root);
+    await m.refresh();
+    pick(m.root, "夜里");
+    await settle();
+    expect(calls.at(-1)).toEqual({ name: "rotation-view", req: { strategy: "夜里" } });
+    expect(calls.some((c) => c.name === "rotation-for-new")).toBe(false);
+    pick(m.root, copyText("rot.none.label"));
+    await settle();
+    expect(calls.find((c) => c.name === "rotation-for-new")?.req).toEqual({ strategy: null });
+  });
+
+  it("★ 新建策略 ⇒ 问名字 ⇒ rotation-strategy-add 只带名字（照编辑器那一份建是后端的）⇒ 看新建的那份；跳过来的 focus ⇒ 看那份、开那个号", async () => {
+    const asked: (string | undefined)[] = [];
+    const m = mountRotation({ origin: "<local>", sid: null, machine: "夹具机", ask: async (_t, _i, note) => (asked.push(note), "新的") });
+    document.body.replaceChildren(m.root);
+    await m.refresh();
+    m.root.querySelector<HTMLButtonElement>(`button[aria-label="${copyText("rot.more.label")}"]`)!.click();
+    [...document.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find((e) => e.textContent === copyText("rot.more.create"))!.click();
+    await settle();
+    await settle();
+    expect(asked).toEqual([copyText("rot.ask.createNote")]);
+    expect(calls.find((c) => c.name === "rotation-strategy-add")?.req).toEqual({ name: "新的" });
+    m.focus("夜里", "work");
+    await settle();
+    expect(calls.at(-1)).toEqual({ name: "rotation-view", req: { strategy: "夜里" } });
+    expect(m.root.querySelector("[data-rot-editor]")?.getAttribute("data-account")).toBe("work");
+  });
+});
+
 describe("提示里的按钮", () => {
   const withHints = (over: Partial<RotationViewReply> = {}): RotationViewReply => ({
     ...VIEW,
@@ -150,7 +189,8 @@ describe("提示里的按钮", () => {
     await settle();
     expect(calls.find((c) => c.name === "rotation-use")?.req).toEqual({ sid: "s1", strategy: "按权重轮换" });
     const page = mountRotation({ origin: "<local>", sid: null, machine: "夹具机" });
-    await page.refresh();
+    page.focus("按权重轮换", "work");
+    await settle();
     btn(page.root, copyText("rot.hint.loadAll")).click();
     await settle();
     expect(calls.find((c) => c.name === "rotation-reload")?.req).toEqual({ strategy: "按权重轮换" });

@@ -24,4 +24,8 @@ wordsBad: boolean,
 /**
  * 文件头里没写时区（分时段按 UTC 算）。
  */
-tzUnknown: boolean, };
+tzUnknown: boolean, 
+/**
+ * 不是照编辑器那一份存出来的（代码或声明跟它此刻的不一样）。
+ */
+hand: boolean, };

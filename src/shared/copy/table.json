@@ -30532,7 +30532,7 @@
     "rot.acct.remove": {
       "kind": "action",
       "role": "按钮",
-      "zh": "移出",
+      "zh": "移出这份策略",
       "args": []
     },
     "rot.acct.refused": {
@@ -30550,13 +30550,13 @@
     "rot.win.fiveHour": {
       "kind": "body",
       "role": "片段",
-      "zh": "5h",
+      "zh": "5 小时",
       "args": []
     },
     "rot.win.sevenDay": {
       "kind": "body",
       "role": "片段",
-      "zh": "7d",
+      "zh": "7 天",
       "args": []
     },
     "rot.win.other": {
@@ -30933,6 +30933,138 @@
       "kind": "error",
       "role": "报错",
       "zh": "删除策略失败",
+      "args": []
+    },
+    "rot.tag.hand": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "手写",
+      "args": []
+    },
+    "rot.tag.forNewHere": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "新会话用这份",
+      "args": []
+    },
+    "rot.more.create": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "新建策略…",
+      "args": []
+    },
+    "rot.ask.createTitle": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "新建策略",
+      "args": []
+    },
+    "rot.ask.createName": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "名字（就是文件名）",
+      "args": []
+    },
+    "rot.ask.createNote": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "每号切入 · 切出都是「默认」，上限 90%；建好后下拉里多一项。",
+      "args": []
+    },
+    "rot.ask.createGo": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "新建",
+      "args": []
+    },
+    "rot.fail.create": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "新建失败",
+      "args": []
+    },
+    "rot.pane.close": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "关闭",
+      "args": []
+    },
+    "rot.pane.foot": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "改的是策略「{name}」· 改了就存成新版",
+      "args": ["name"]
+    },
+    "rot.pane.noUse": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "没有会话在用",
+      "args": []
+    },
+    "rot.cell.or": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "或",
+      "args": []
+    },
+    "rot.cell.own": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "另设",
+      "args": []
+    },
+    "rot.cell.same": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "同 {win}",
+      "args": ["win"]
+    },
+    "rot.mark.tip": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "{label} · {v}",
+      "args": ["label", "v"]
+    },
+    "rot.seg.from": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "从几点",
+      "args": []
+    },
+    "rot.seg.to": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "到几点",
+      "args": []
+    },
+    "rot.seg.v": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "上限",
+      "args": []
+    },
+    "rot.seg.dash": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "–",
+      "args": []
+    },
+    "rot.seg.del": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "删这一段",
+      "args": []
+    },
+    "rot.seg.add": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "加一段",
+      "args": []
+    },
+    "rot.seg.placeholder": {
+      "kind": "control",
+      "role": "占位",
+      "zh": "HH:MM",
       "args": []
     },
     "rot.fail.add": {

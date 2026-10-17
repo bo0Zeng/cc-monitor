@@ -30,7 +30,7 @@ const each = (fallback: boolean, from: RotCell["from"]): RotCell[] => [
   { key: "fallback", kind: "toggle", label: "夹具·开关", v: fallback, from },
   { key: "delay", kind: "minutes", label: "夹具·延迟", v: 0, num: 0, from: "default", min: 0, max: 1440 },
 ];
-const row = (account: string, cells: RotCell[]): RotRow => ({ account, line: `夹具·${account} 那一行`, hover: `夹具·${account} 悬停`, cells, rules: [`夹具·${account} 的规则`] });
+const row = (account: string, cells: RotCell[], marks: RotRow["marks"] = []): RotRow => ({ account, line: `夹具·${account} 那一行`, hover: `夹具·${account} 悬停`, cells, rules: [`夹具·${account} 的规则`], marks });
 const BOARD = {
   all: [
     { key: "close", kind: "percent", label: "夹具·容差", v: 25, num: 25, from: "own", min: 0, max: 100 },
@@ -43,7 +43,7 @@ function view(over: Partial<RotationViewReply> = {}): RotationViewReply {
   return {
     now: NOW,
     nowText: "14:30", title: null,
-    strategy: { id: "按权重轮换", description: "第一句说明\n第二句说明\n\n第二段", summary: "第一句说明", rev: "h:1", inUse: [], forNew: true, wordsBad: false, tzUnknown: false },
+    strategy: { id: "按权重轮换", description: "第一句说明\n第二句说明\n\n第二段", summary: "第一句说明", rev: "h:1", inUse: [], forNew: true, wordsBad: false, tzUnknown: false, hand: false },
     board: BOARD,
     start: "work",
     current: "team",
@@ -75,8 +75,8 @@ function view(over: Partial<RotationViewReply> = {}): RotationViewReply {
 
 const LIST: RotationStrategiesReply = {
   strategies: [
-    { id: "按权重轮换", description: "第一句说明\n第二句说明", summary: "第一句说明", rev: "h:1", inUse: ["s1", "s2"], forNew: true, wordsBad: false, tzUnknown: false },
-    { id: "夜里省着用", description: "夜里那一句", summary: "夜里那一句", rev: "h:2", inUse: [], forNew: false, wordsBad: false, tzUnknown: false },
+    { id: "按权重轮换", description: "第一句说明\n第二句说明", summary: "第一句说明", rev: "h:1", inUse: ["s1", "s2"], forNew: true, wordsBad: false, tzUnknown: false, hand: false },
+    { id: "夜里省着用", description: "夜里那一句", summary: "夜里那一句", rev: "h:2", inUse: [], forNew: false, wordsBad: false, tzUnknown: false, hand: true },
   ],
   forNew: "按权重轮换",
   oldScripts: 0,
@@ -89,6 +89,7 @@ function acts() {
     rename: vi.fn(),
     forNew: vi.fn(),
     remove: vi.fn(),
+    create: vi.fn(),
     add: vi.fn(),
     edit: vi.fn(),
     useNow: vi.fn(),
@@ -150,6 +151,44 @@ describe("第一行与说明", () => {
     expect(said[0]).toContain("18:30 team");
     expect(said[0]).not.toContain("{dur}");
     expect(said[1]).toContain("说明写法不合规那一句");
+  });
+});
+
+describe("第一行：下拉与「⋯」", () => {
+  const items = (): HTMLButtonElement[] => [...document.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]')];
+  const menu = (): string[] => items().map((e) => e.textContent ?? "");
+  it("★ 「⋯」只在设置页：复制 · 改名 · 设为新会话用这份（已是 ⇒ 灰）· 删除（有会话在用 ⇒ 灰）· 新建策略 · 从文件添加；选中的是新会话用的 ⇒ 小标", () => {
+    const sess = draw(view(), state(), acts());
+    expect(sess.querySelector(`button[aria-label="${copyText("rot.more.label")}"]`), "会话面板没有「⋯」").toBeNull();
+    const a = acts();
+    const root = draw(view(), state(), a, "settings");
+    expect(root.textContent).toContain(copyText("rot.tag.forNewHere"));
+    root.querySelector<HTMLButtonElement>(`button[aria-label="${copyText("rot.more.label")}"]`)!.click();
+    const said = menu();
+    for (const k of ["rot.more.copy", "rot.more.rename", "rot.more.forNew", "rot.more.delete", "rot.more.create", "rot.more.add"] as const)
+      expect(said.some((t) => t.startsWith(copyText(k))), k).toBe(true);
+    const item = (k: Parameters<typeof copyText>[0]) => items().find((e) => e.textContent?.startsWith(copyText(k)))!;
+    expect(item("rot.more.forNew").disabled).toBe(true);
+    expect(item("rot.more.delete").disabled).toBe(true);
+    item("rot.more.create").click();
+    expect(a.create).toHaveBeenCalledOnce();
+  });
+
+  it("★ 下拉：每份带「新会话用」「手写」小标（后端给的）；设置页末尾「新建策略…」", () => {
+    const a = acts();
+    const root = draw(view(), state(), a, "settings");
+    root.querySelector<HTMLButtonElement>(`button[aria-label="${copyText("rot.top.pick")}"]`)!.click();
+    const said = menu();
+    expect(said.find((t) => t.startsWith("夜里省着用"))).toContain(copyText("rot.tag.hand"));
+    expect(said.find((t) => t.startsWith("按权重轮换"))).not.toContain(copyText("rot.tag.hand"));
+    items().find((e) => e.textContent === copyText("rot.more.create"))!.click();
+    expect(a.create).toHaveBeenCalledOnce();
+  });
+
+  it("★ 总体的开关：说明写在旁边", () => {
+    const smart: RotCell = { key: "smart", kind: "toggle", label: "夹具·智能", help: "夹具·值得才换", v: true, from: "own" };
+    const root = draw(view({ board: { ...BOARD, all: [smart] } }), state(), acts(), "settings");
+    expect(root.textContent).toContain("夹具·值得才换");
   });
 });
 
@@ -218,13 +257,18 @@ describe("提示里的按钮", () => {
     expect(a.showFile).toHaveBeenCalledWith("/夹具/v3/旧的两份.rhai");
   });
 
-  it("★ 策略改过了 ⇒ 会话［载入新版］；设置页「N 个会话还在用旧版」［都载入新版］，都翻成 loadNew", () => {
+  it("★ 策略改过了 ⇒ 会话［载入新版］；设置页「N 个会话还在用旧版」写在编辑小窗的底行［都载入新版］，都翻成 loadNew", () => {
     const a = acts();
     const root = draw(view({ hints: [{ hint: { k: "newer" }, tone: "plain", text: "夹具·改过了那一句" }] }), state(), a);
     expect(root.querySelector("[data-rot-hint=\"newer\"]")?.textContent).toContain("夹具·改过了那一句");
     button(root, copyText("rot.hint.loadNew"))!.click();
-    const set = draw(view({ hints: [{ hint: { k: "older", n: 2 }, tone: "plain", text: "夹具·2 个会话那一句" }] }), state(), a, "settings");
-    button(set, copyText("rot.hint.loadAll"))!.click();
+    const older = view({ hints: [{ hint: { k: "older", n: 2 }, tone: "plain", text: "夹具·2 个会话那一句" }] });
+    const set = draw(older, state(), a, "settings");
+    expect(set.querySelector("[data-rot-hint]"), "不在顶上出条").toBeNull();
+    const pane = draw(older, state({ open: "lab" }), a, "settings").querySelector<HTMLElement>("[data-rot-editor]")!;
+    expect(pane.textContent).toContain(copyText("rot.pane.foot", { name: "按权重轮换" }));
+    expect(pane.textContent).toContain("夹具·2 个会话那一句");
+    button(pane, copyText("rot.hint.loadAll"))!.click();
     expect(a.loadNew).toHaveBeenCalledTimes(2);
   });
 });
@@ -280,6 +324,10 @@ describe("会话的顺序", () => {
     expect(pop.querySelector("input"), "只看不改").toBeNull();
     button(pop, copyText("rot.acct.useNow", { account: "lab" }))!.click();
     expect(a.useNow).toHaveBeenCalledWith("lab");
+    rows(draw(view(), state(), a))[1].dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 10, clientY: 10 }));
+    document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 10, clientY: 10 }));
+    button(document.querySelector<HTMLElement>("[data-rot-pop]")!, copyText("rot.top.edit"))!.click();
+    expect(a.editStrategy, "小窗里的［编辑策略］开这个号的编辑小窗").toHaveBeenCalledWith("lab");
   });
 });
 
@@ -318,19 +366,73 @@ describe("设置页的号牌与点开一个号", () => {
     expect(a.edit.mock.calls).toEqual([[{ set: { key: "fallback", v: false, row: 2 } }]]);
   });
 
-  it("★ 24 小时条：段与悬停照回包的字；拖出 20:00–23:00 选 0% ⇒ 交「lab 那一行 caps 那一窗刷成 0」（照谁刷、写成谁的是后端的）", () => {
+  it("★ 分段一段一行：改一格 ⇒ 交「改第几段」整段；✕ ⇒ 删那一段；＋ 加一段 ⇒ 三格填好才交；上面那条只画（照回包的字）", () => {
     const a = acts();
     const root = draw(view(), state({ open: "lab" }), a, "settings");
-    const pane = root.querySelector<HTMLElement>('[data-account="lab"]:not(button)')!;
-    const bar = pane.querySelector<HTMLElement>("[data-day-bar]")!;
-    expect(bar.textContent).toBe("夹具·90");
-    bar.getBoundingClientRect = () => ({ left: 0, right: 1440, top: 0, bottom: 20, width: 1440, height: 20, x: 0, y: 0, toJSON: () => ({}) });
-    bar.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 1200, clientY: 10 }));
-    bar.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 1380, clientY: 10 }));
-    button(document.body, copyText("rot.day.v", { v: 0 }))!.click();
-    expect(a.edit.mock.calls).toEqual([[{ day: { key: "caps", window: "5h", from: 1200, to: 1380, v: 0, row: 2 } }]]);
+    const pane = root.querySelector<HTMLElement>("[data-rot-editor]")!;
+    expect(pane.querySelector("[data-day-bar]")!.textContent).toBe("夹具·90");
+    const line = pane.querySelector<HTMLElement>('[data-rot-seg="0"]')!;
+    const [from, to, v] = [...line.querySelectorAll<HTMLInputElement>("input")];
+    expect([from.value, to.value, v.value]).toEqual(["00:00", copyText("rot.day.end"), "90"]);
+    v.value = "70";
+    v.dispatchEvent(new Event("change"));
+    to.value = "20:00";
+    to.dispatchEvent(new Event("change"));
+    line.querySelector<HTMLButtonElement>(`button[aria-label="${copyText("rot.seg.del")}"]`)!.click();
+    const add = button(pane, copyText("rot.seg.add"))!;
+    add.click();
+    const fresh = pane.querySelector<HTMLElement>('[data-rot-seg="new"]')!;
+    const [nf, nt, nv] = [...fresh.querySelectorAll<HTMLInputElement>("input")];
+    nf.value = "20:00";
+    nf.dispatchEvent(new Event("change"));
+    nt.value = "23:00";
+    nv.value = "0";
+    nv.dispatchEvent(new Event("change"));
+    expect(a.edit.mock.calls).toEqual([
+      [{ seg: { key: "caps", window: "5h", row: 2, at: 0, seg: { from: 0, to: 1440, v: 70 } } }],
+      [{ seg: { key: "caps", window: "5h", row: 2, at: 0, seg: { from: 0, to: 1200, v: 70 } } }],
+      [{ seg: { key: "caps", window: "5h", row: 2, at: 0 } }],
+      [{ seg: { key: "caps", window: "5h", row: 2, seg: { from: 1200, to: 1380, v: 0 } } }],
+    ]);
   });
 
+  it("★ 后面那一窗：［同 5 小时 · 另设］照回包（字是后端给的），同着时不出段；挂在别格下的缩进；前面那半句 · 「或 ［一有额度］」照声明", () => {
+    const a = acts();
+    const w7: RotCell = { ...caps("7d", "same"), same: "夹具·同第一窗" };
+    const total: RotCell = { key: "outTotal", kind: "percent", label: "夹具·切出条件", v: null, num: 400, from: "own", nullable: "夹具·一有额度", lead: "夹具·前半句", under: "out", min: 0, max: 1000 };
+    const rows = [row("work", each(false, "default")), row("team", each(false, "default")), row("lab", [caps("5h", "own"), w7, total])];
+    const root = draw(view({ board: { ...BOARD, rows } }), state({ open: "lab" }), a, "settings");
+    const pane = root.querySelector<HTMLElement>("[data-rot-editor]")!;
+    expect(pane.querySelectorAll("[data-rot-seg]").length, "同着的那一窗不出段").toBe(1);
+    expect(button(pane, "夹具·同第一窗")!.getAttribute("aria-checked")).toBe("true");
+    button(pane, copyText("rot.cell.own"))!.click();
+    const key = [...pane.querySelectorAll<HTMLElement>("[data-under]")].map((e) => [e.dataset.under, e.textContent]);
+    expect(key).toEqual([["out", "夹具·切出条件"]]);
+    expect(pane.textContent).toContain("夹具·前半句");
+    button(pane, "夹具·一有额度")!.click();
+    expect(a.edit.mock.calls).toEqual([[{ same: { key: "caps", window: "7d", row: 2, same: false } }], [{ set: { key: "outTotal", v: 400, row: 2 } }]]);
+  });
+
+  it("★ 号名旁的记号照后端给的（字形 · 悬停；虚线框那一种画在号牌 / 那一行上），设置页号牌与会话顺序都画", () => {
+    const marks: RotRow["marks"] = [{ glyph: "↺", dashed: false, tip: "夹具·切入 · 强制切入" }, { dashed: true, tip: "夹具·延迟切入" }];
+    const rows = [row("work", each(false, "default")), row("team", each(false, "default")), row("lab", each(true, "own"), marks)];
+    for (const where of ["settings", "session"] as const) {
+      const root = draw(view({ board: { ...BOARD, rows } }), state(), acts(), where);
+      const lab = root.querySelector<HTMLElement>('[data-account="lab"]')!;
+      expect(texts(lab, "[data-rot-mark]"), where).toEqual(["↺"]);
+      expect(lab.dataset.dashed, where).toBe("true");
+      expect(root.querySelector<HTMLElement>('[data-account="team"]')!.dataset.dashed, where).toBeUndefined();
+    }
+  });
+
+  it("★ 小窗的 ✕ ⇒ 收起；［移出这份策略］⇒ 交「移出那一行」", () => {
+    const a = acts();
+    const pane = draw(view(), state({ open: "lab" }), a, "settings").querySelector<HTMLElement>("[data-rot-editor]")!;
+    button(pane, copyText("rot.acct.remove"))!.click();
+    pane.querySelector<HTMLButtonElement>(`button[aria-label="${copyText("rot.pane.close")}"]`)!.click();
+    expect(a.edit.mock.calls).toEqual([[{ remove: { row: 2 } }]]);
+    expect(a.open).toHaveBeenCalledWith(null);
+  });
 });
 
 describe("总体设置", () => {
