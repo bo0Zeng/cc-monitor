@@ -71,7 +71,6 @@ pub(crate) struct SessionHits {
     /// 记录文件最后改动的毫秒。
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) updated_at: i64,
-    /// 前几处命中（每个会话至多 `search_rules::PER_SESSION_CAP` 处，预算花完的更少）。
     pub(crate) hits: Vec<SearchHit>,
     /// `hits` 之外这个会话还有几处命中。
     pub(crate) more_hits: u32,
@@ -895,7 +894,7 @@ fn session_hits_in(
     let session_id = path.file_stem()?.to_str()?.to_string();
 
     let mut hits: Vec<SearchHit> = Vec::new();
-    let mut more_hits: u32 = 0;
+    let mut hit_count: u32 = 0;
     // 本会话有命中因**全局预算用完**而拿不到 snippet（≠ 单会话超 PER_SESSION_CAP）。
     let mut session_starved = false;
     for rec in entry.done.records.iter().chain(entry.tail.records.iter()) {
@@ -912,6 +911,7 @@ fn session_hits_in(
         let Some((hkind, text)) = record_hit(&rec.rt, q_lc, opts.include_tools) else {
             continue;
         };
+        hit_count += 1;
         match budget.take(hits.len()) {
             SnippetVerdict::Give => {
                 let (before, matched, after) = search_rules::make_snippet(text, q_lc);
@@ -927,15 +927,12 @@ fn session_hits_in(
                     offset: rec.offset,
                 });
             }
-            SnippetVerdict::BudgetExhausted => {
-                session_starved = true;
-                more_hits += 1;
-            }
-            SnippetVerdict::SessionCapped => more_hits += 1,
+            SnippetVerdict::BudgetExhausted => session_starved = true,
+            SnippetVerdict::SessionCapped => {}
         }
     }
 
-    if hits.is_empty() && more_hits == 0 {
+    if hit_count == 0 {
         return None;
     }
     Some(session_row(
@@ -943,8 +940,8 @@ fn session_hits_in(
         entry,
         session_id,
         updated_at,
+        hit_count - hits.len() as u32,
         hits,
-        more_hits,
         session_starved,
     ))
 }
@@ -965,7 +962,7 @@ fn session_title_row(
     };
     let found = title.is_some_and(|t| t.to_lowercase().contains(q_lc))
         || excerpt.to_lowercase().contains(q_lc);
-    found.then(|| session_row(path, entry, session_id, updated_at, Vec::new(), 0, false))
+    found.then(|| session_row(path, entry, session_id, updated_at, 0, Vec::new(), false))
 }
 
 /// 一个会话的那一行（命中那几格由调用方给）。
@@ -974,8 +971,8 @@ fn session_row(
     entry: &FileEntry,
     session_id: String,
     updated_at: i64,
-    hits: Vec<SearchHit>,
     more_hits: u32,
+    hits: Vec<SearchHit>,
     session_starved: bool,
 ) -> SessionHits {
     let project_path = entry

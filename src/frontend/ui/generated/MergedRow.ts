@@ -31,11 +31,7 @@ title: string,
 /**
  * 记录文件最后改动的毫秒。
  */
-updatedAt: number, 
-/**
- * 前几处命中（每个会话至多 `search_rules::PER_SESSION_CAP` 处，预算花完的更少）。
- */
-hits: Array<SearchHit>, 
+updatedAt: number, hits: Array<SearchHit>, 
 /**
  * `hits` 之外这个会话还有几处命中。
  */
