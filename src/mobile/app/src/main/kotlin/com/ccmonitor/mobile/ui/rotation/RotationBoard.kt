@@ -318,7 +318,8 @@ class RotationBoard(
 
     /** 策略改过了：会话 ⇒ 载入它那份此刻的版本；设置页 ⇒ 在用旧版的会话都载入新版。 */
     fun loadNew() {
-        val id = _state.value.view?.strategy?.id ?: return
+        val st = _state.value.view?.strategy ?: return
+        val id = st.id
         if (sid != null) {
             launchWrite(copyText("rot.fail.reload"), Rotation.USE, Rotation.use(sid, id))
         } else {

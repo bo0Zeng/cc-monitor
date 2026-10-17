@@ -38,11 +38,11 @@ import com.ccmonitor.mobile.ui.chat.newsession.AccountBadge
 private fun nowOf(
     view: RotationViewReply,
     account: String,
-): String =
-    view.decision
-        ?.why
-        ?.firstOrNull { it.account == account }
-        ?.why ?: view.accounts.firstOrNull { it.account == account }?.blocked?.text.orEmpty()
+): String {
+    val why = view.decision?.why?.firstOrNull { it.account == account }
+    val blocked = view.accounts.firstOrNull { it.account == account }?.blocked
+    return why?.why ?: blocked?.text.orEmpty()
+}
 
 /** 顺序这一块：小标题 ＋ 被拦下那一句 ＋ 一号一行 ＋ 点开的那个号（底下拉出）。 */
 @Composable

@@ -1064,7 +1064,6 @@ data class RotRow(
     val line: String,
     val hover: String,
     val cells: List<RotCell>,
-    /** 那几格写成的句子（会话里只看的规则摘要，一格一句）。 */
     val rules: List<String>,
 )
 
@@ -1166,7 +1165,6 @@ data class FactBlocked(
 @JsonClass(generateAdapter = true)
 data class RotTryDecision(
     val temp: List<String>,
-    /** 策略交的每号一句（顺序那一行「此刻怎样」）。 */
     val why: List<RotTryRow>,
 )
 
