@@ -115,7 +115,15 @@ function row(over: Record<string, unknown>): Record<string, unknown> {
   };
 }
 
-const list = (rows: Record<string, unknown>[]) => ({ rows, groups: [], total: rows.length, truncated: false, notice: null });
+/** 一台整份那一答（不带记号问 ⇒ `whole`；行照 `order` 从 `up` 取）。 */
+const list = (rows: Record<string, unknown>[], groups: unknown[] = []) => ({
+  held: "h",
+  whole: true,
+  same: false,
+  order: rows.map((r) => String(r.sessionId)),
+  up: Object.fromEntries(rows.map((r) => [String(r.sessionId), r])),
+  head: { total: rows.length, info: { groups, notice: null } },
+});
 
 /** 每台的回答（`origin` 缺 = 本机）；`fail` 里的那几台答不上。 */
 let world: { local: Record<string, unknown>[]; dev: Record<string, unknown>[]; fail: Set<string>; search: "ok" | "fail" };
@@ -358,8 +366,8 @@ describe("按项目", () => {
     invokeMock.mockImplementation(async (cmd: string, a: unknown) => {
       const r = await base(cmd, a);
       if (cmd === "chan_call" && (a as ChanCallArgs).op === "history-list" && !(chanArgsJson(a as ChanCallArgs) as { origin?: string }).origin) {
-        const v = JSON.parse(new TextDecoder().decode(new Uint8Array(r as ArrayBuffer))) as Record<string, unknown>;
-        return chanReply({ ...v, groups });
+        const v = JSON.parse(new TextDecoder().decode(new Uint8Array(r as ArrayBuffer))) as ReturnType<typeof list>;
+        return chanReply({ ...v, head: { ...v.head, info: { ...v.head.info, groups } } });
       }
       return r;
     });
@@ -712,8 +720,10 @@ describe("列表顶上的提示条 · 空着时说什么", () => {
     invokeMock.mockImplementation(async (cmd: string, a: unknown) => {
       const r = await base(cmd, a);
       if (cmd === "chan_call" && (a as ChanCallArgs).op === "history-list" && (chanArgsJson(a as ChanCallArgs) as { origin?: string }).origin === "dev") {
-        const v = JSON.parse(new TextDecoder().decode(new Uint8Array(r as ArrayBuffer))) as Record<string, unknown>;
-        return chanReply({ ...v, notice: "partial", truncated: true });
+        const v = JSON.parse(new TextDecoder().decode(new Uint8Array(r as ArrayBuffer))) as ReturnType<typeof list>;
+        // 那台常驻答的 `raw` 清单原样过；本机后端并好的那一份：注解没并全 · 整份比这一窗多（窗外还有）。
+        if (!("held" in v)) return r;
+        return chanReply({ ...v, head: { total: v.head.total + 5, info: { ...v.head.info, notice: "partial" } } });
       }
       return r;
     });
@@ -861,8 +871,8 @@ describe("筛选浮层的其余几格 · 按项目收起与新建", () => {
     invokeMock.mockImplementation(async (cmd: string, a: unknown) => {
       const r = await base(cmd, a);
       if (cmd === "chan_call" && (a as ChanCallArgs).op === "history-list" && !(chanArgsJson(a as ChanCallArgs) as { origin?: string }).origin) {
-        const v = JSON.parse(new TextDecoder().decode(new Uint8Array(r as ArrayBuffer))) as Record<string, unknown>;
-        return chanReply({ ...v, groups });
+        const v = JSON.parse(new TextDecoder().decode(new Uint8Array(r as ArrayBuffer))) as ReturnType<typeof list>;
+        return chanReply({ ...v, head: { ...v.head, info: { ...v.head.info, groups } } });
       }
       return r;
     });

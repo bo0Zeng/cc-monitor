@@ -15,13 +15,14 @@ import androidx.room.TypeConverters
         Bookmark::class,
         Settings::class,
         CachedSession::class,
+        ListHold::class,
         RecordPage::class,
         SyncAnchor::class,
         PendingSend::class,
         Draft::class,
         PendingBatch::class,
     ],
-    version = 22,
+    version = 23,
     exportSchema = true,
 )
 @TypeConverters(KeyConverters::class)

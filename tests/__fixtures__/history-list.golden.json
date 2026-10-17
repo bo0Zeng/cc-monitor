@@ -1,156 +1,98 @@
 {
-  "groups": [
-    {
-      "agent": "claude",
-      "atText": "00:00",
-      "count": 1,
-      "failed": null,
-      "hasLive": true,
-      "key": "claude:/w/alpha",
-      "lastActivity": 900,
-      "order": 210000000000900,
-      "origin": "dev",
-      "projectDir": "-w-alpha",
-      "projectName": "alpha",
-      "projectPath": "/w/alpha",
-      "starred": true
+  "head": {
+    "info": {
+      "groups": [
+        {
+          "agent": "claude",
+          "atText": "00:00",
+          "count": 1,
+          "failed": null,
+          "hasLive": true,
+          "key": "claude:/w/alpha",
+          "lastActivity": 900,
+          "order": 210000000000900,
+          "origin": "dev",
+          "projectDir": "-w-alpha",
+          "projectName": "alpha",
+          "projectPath": "/w/alpha",
+          "starred": true
+        },
+        {
+          "agent": "codex",
+          "atText": "00:00",
+          "count": 1,
+          "failed": null,
+          "hasLive": null,
+          "key": "codex:/w/delta",
+          "lastActivity": 650,
+          "order": 100000000000650,
+          "origin": "dev",
+          "projectDir": "codex:/w/delta",
+          "projectName": "delta",
+          "projectPath": "/w/delta",
+          "starred": false
+        },
+        {
+          "agent": "claude",
+          "atText": "00:00",
+          "count": 1,
+          "failed": null,
+          "hasLive": false,
+          "key": "claude:/w/beta",
+          "lastActivity": 1000,
+          "order": 1000,
+          "origin": "dev",
+          "projectDir": "-w-beta",
+          "projectName": "beta",
+          "projectPath": "/w/beta",
+          "starred": false
+        },
+        {
+          "agent": "claude",
+          "atText": "00:00",
+          "count": 1,
+          "failed": null,
+          "hasLive": false,
+          "key": "claude:/w/alpha-二",
+          "lastActivity": 700,
+          "order": 700,
+          "origin": "dev",
+          "projectDir": "-w-alpha",
+          "projectName": "alpha-二",
+          "projectPath": "/w/alpha-二",
+          "starred": false
+        },
+        {
+          "agent": "claude",
+          "atText": null,
+          "count": 0,
+          "failed": "读不了 /h/.claude/projects/-w-gamma",
+          "hasLive": null,
+          "key": "dir:-w-gamma",
+          "lastActivity": 0,
+          "order": 0,
+          "origin": "dev",
+          "projectDir": "-w-gamma",
+          "projectName": "-w-gamma",
+          "projectPath": "",
+          "starred": false
+        }
+      ],
+      "notice": null
     },
-    {
-      "agent": "codex",
-      "atText": "00:00",
-      "count": 1,
-      "failed": null,
-      "hasLive": null,
-      "key": "codex:/w/delta",
-      "lastActivity": 650,
-      "order": 100000000000650,
-      "origin": "dev",
-      "projectDir": "codex:/w/delta",
-      "projectName": "delta",
-      "projectPath": "/w/delta",
-      "starred": false
-    },
-    {
-      "agent": "claude",
-      "atText": "00:00",
-      "count": 1,
-      "failed": null,
-      "hasLive": false,
-      "key": "claude:/w/beta",
-      "lastActivity": 1000,
-      "order": 1000,
-      "origin": "dev",
-      "projectDir": "-w-beta",
-      "projectName": "beta",
-      "projectPath": "/w/beta",
-      "starred": false
-    },
-    {
-      "agent": "claude",
-      "atText": "00:00",
-      "count": 1,
-      "failed": null,
-      "hasLive": false,
-      "key": "claude:/w/alpha-二",
-      "lastActivity": 700,
-      "order": 700,
-      "origin": "dev",
-      "projectDir": "-w-alpha",
-      "projectName": "alpha-二",
-      "projectPath": "/w/alpha-二",
-      "starred": false
-    },
-    {
-      "agent": "claude",
-      "atText": null,
-      "count": 0,
-      "failed": "读不了 /h/.claude/projects/-w-gamma",
-      "hasLive": null,
-      "key": "dir:-w-gamma",
-      "lastActivity": 0,
-      "order": 0,
-      "origin": "dev",
-      "projectDir": "-w-gamma",
-      "projectName": "-w-gamma",
-      "projectPath": "",
-      "starred": false
-    }
+    "total": 5
+  },
+  "held": "h1",
+  "order": [
+    "0000aaaa-0000-4000-8000-000000000005",
+    "0000aaaa-0000-4000-8000-000000000001",
+    "0000aaaa-0000-4000-8000-000000000003",
+    "019a0000-0000-7000-8000-00000000c0de",
+    "0000aaaa-0000-4000-8000-000000000004"
   ],
-  "notice": null,
-  "rows": [
-    {
-      "agent": "claude",
-      "agentTag": null,
-      "aiTitle": "从父会话分出来的",
-      "at": 1000,
-      "atText": "00:00",
-      "can": {
-        "accounts": true,
-        "delete": "yes",
-        "fork": false,
-        "resume": "bg"
-      },
-      "customTitle": null,
-      "face": {
-        "can": {
-          "close": {
-            "can": "quiet"
-          },
-          "model": {
-            "can": "yes"
-          },
-          "permission": {
-            "can": "yes"
-          },
-          "reattach": {
-            "can": "no",
-            "why": "会话已结束"
-          },
-          "resume": {
-            "can": "yes"
-          },
-          "term": {
-            "can": "no",
-            "why": "会话已结束"
-          }
-        },
-        "dot": "ended",
-        "line": "已结束 · 可恢复",
-        "live": {
-          "is": "no"
-        },
-        "name": "已结束",
-        "order": 5,
-        "settled": true,
-        "tip": "已结束 · 可恢复",
-        "tone": "plain"
-      },
-      "firstUserExcerpt": "子",
-      "forkedFrom": {
-        "label": "分叉的父会话"
-      },
-      "forkedFromMessageUuid": "m-1",
-      "forkedFromSessionId": "0000aaaa-0000-4000-8000-000000000004",
-      "group": "claude:/w/beta",
-      "hidden": null,
-      "isBg": true,
-      "jsonlPath": "/h/.claude/projects/-w/0000aaaa-0000-4000-8000-000000000005.jsonl",
-      "label": "从父会话分出来的",
-      "messageCountApprox": 3,
-      "origin": "dev",
-      "projectDir": "-w-beta",
-      "projectName": "beta",
-      "projectPath": "/w/beta",
-      "sectionText": "今天",
-      "sessionId": "0000aaaa-0000-4000-8000-000000000005",
-      "spanText": "00:00–00:00",
-      "starred": false,
-      "startedAt": 500,
-      "title": "从父会话分出来的",
-      "untitled": false,
-      "updatedAt": 1000
-    },
-    {
+  "same": false,
+  "up": {
+    "0000aaaa-0000-4000-8000-000000000001": {
       "agent": "claude",
       "agentTag": null,
       "aiTitle": "支付回调验签",
@@ -222,7 +164,7 @@
       "untitled": false,
       "updatedAt": 900
     },
-    {
+    "0000aaaa-0000-4000-8000-000000000003": {
       "agent": "claude",
       "agentTag": null,
       "aiTitle": null,
@@ -290,78 +232,7 @@
       "untitled": true,
       "updatedAt": 700
     },
-    {
-      "agent": "codex",
-      "agentTag": "Codex",
-      "aiTitle": null,
-      "at": 650,
-      "atText": "00:00",
-      "can": {
-        "accounts": false,
-        "delete": "unsure",
-        "fork": false,
-        "resume": "yes"
-      },
-      "customTitle": null,
-      "face": {
-        "can": {
-          "close": {
-            "can": "no",
-            "why": "状态不明"
-          },
-          "model": {
-            "can": "no",
-            "why": "状态不明"
-          },
-          "permission": {
-            "can": "no",
-            "why": "状态不明"
-          },
-          "reattach": {
-            "can": "no",
-            "why": "状态不明"
-          },
-          "resume": {
-            "can": "no",
-            "why": "暂不恢复"
-          },
-          "term": {
-            "can": "no",
-            "why": "状态不明"
-          }
-        },
-        "dot": "unknown",
-        "line": "状态不明",
-        "live": {
-          "is": "no"
-        },
-        "name": "状态不明",
-        "order": 3,
-        "settled": false,
-        "tip": "状态不明",
-        "tone": "plain"
-      },
-      "firstUserExcerpt": "列出 Codex 的会话",
-      "group": "codex:/w/delta",
-      "hidden": null,
-      "isBg": false,
-      "jsonlPath": "/h/.codex/sessions/2026/09/25/rollout-x.jsonl",
-      "label": "列出 Codex 的会话",
-      "messageCountApprox": 0,
-      "origin": "dev",
-      "projectDir": "codex:/w/delta",
-      "projectName": "delta",
-      "projectPath": "/w/delta",
-      "sectionText": "今天",
-      "sessionId": "019a0000-0000-7000-8000-00000000c0de",
-      "spanText": "00:00–00:00",
-      "starred": false,
-      "startedAt": 650,
-      "title": "列出 Codex 的会话",
-      "untitled": false,
-      "updatedAt": 650
-    },
-    {
+    "0000aaaa-0000-4000-8000-000000000004": {
       "agent": "claude",
       "agentTag": null,
       "aiTitle": "分叉的父会话",
@@ -431,8 +302,150 @@
       "title": "分叉的父会话",
       "untitled": false,
       "updatedAt": 600
+    },
+    "0000aaaa-0000-4000-8000-000000000005": {
+      "agent": "claude",
+      "agentTag": null,
+      "aiTitle": "从父会话分出来的",
+      "at": 1000,
+      "atText": "00:00",
+      "can": {
+        "accounts": true,
+        "delete": "yes",
+        "fork": false,
+        "resume": "bg"
+      },
+      "customTitle": null,
+      "face": {
+        "can": {
+          "close": {
+            "can": "quiet"
+          },
+          "model": {
+            "can": "yes"
+          },
+          "permission": {
+            "can": "yes"
+          },
+          "reattach": {
+            "can": "no",
+            "why": "会话已结束"
+          },
+          "resume": {
+            "can": "yes"
+          },
+          "term": {
+            "can": "no",
+            "why": "会话已结束"
+          }
+        },
+        "dot": "ended",
+        "line": "已结束 · 可恢复",
+        "live": {
+          "is": "no"
+        },
+        "name": "已结束",
+        "order": 5,
+        "settled": true,
+        "tip": "已结束 · 可恢复",
+        "tone": "plain"
+      },
+      "firstUserExcerpt": "子",
+      "forkedFrom": {
+        "label": "分叉的父会话"
+      },
+      "forkedFromMessageUuid": "m-1",
+      "forkedFromSessionId": "0000aaaa-0000-4000-8000-000000000004",
+      "group": "claude:/w/beta",
+      "hidden": null,
+      "isBg": true,
+      "jsonlPath": "/h/.claude/projects/-w/0000aaaa-0000-4000-8000-000000000005.jsonl",
+      "label": "从父会话分出来的",
+      "messageCountApprox": 3,
+      "origin": "dev",
+      "projectDir": "-w-beta",
+      "projectName": "beta",
+      "projectPath": "/w/beta",
+      "sectionText": "今天",
+      "sessionId": "0000aaaa-0000-4000-8000-000000000005",
+      "spanText": "00:00–00:00",
+      "starred": false,
+      "startedAt": 500,
+      "title": "从父会话分出来的",
+      "untitled": false,
+      "updatedAt": 1000
+    },
+    "019a0000-0000-7000-8000-00000000c0de": {
+      "agent": "codex",
+      "agentTag": "Codex",
+      "aiTitle": null,
+      "at": 650,
+      "atText": "00:00",
+      "can": {
+        "accounts": false,
+        "delete": "unsure",
+        "fork": false,
+        "resume": "yes"
+      },
+      "customTitle": null,
+      "face": {
+        "can": {
+          "close": {
+            "can": "no",
+            "why": "状态不明"
+          },
+          "model": {
+            "can": "no",
+            "why": "状态不明"
+          },
+          "permission": {
+            "can": "no",
+            "why": "状态不明"
+          },
+          "reattach": {
+            "can": "no",
+            "why": "状态不明"
+          },
+          "resume": {
+            "can": "no",
+            "why": "暂不恢复"
+          },
+          "term": {
+            "can": "no",
+            "why": "状态不明"
+          }
+        },
+        "dot": "unknown",
+        "line": "状态不明",
+        "live": {
+          "is": "no"
+        },
+        "name": "状态不明",
+        "order": 3,
+        "settled": false,
+        "tip": "状态不明",
+        "tone": "plain"
+      },
+      "firstUserExcerpt": "列出 Codex 的会话",
+      "group": "codex:/w/delta",
+      "hidden": null,
+      "isBg": false,
+      "jsonlPath": "/h/.codex/sessions/2026/09/25/rollout-x.jsonl",
+      "label": "列出 Codex 的会话",
+      "messageCountApprox": 0,
+      "origin": "dev",
+      "projectDir": "codex:/w/delta",
+      "projectName": "delta",
+      "projectPath": "/w/delta",
+      "sectionText": "今天",
+      "sessionId": "019a0000-0000-7000-8000-00000000c0de",
+      "spanText": "00:00–00:00",
+      "starred": false,
+      "startedAt": 650,
+      "title": "列出 Codex 的会话",
+      "untitled": false,
+      "updatedAt": 650
     }
-  ],
-  "total": 4,
-  "truncated": false
+  },
+  "whole": true
 }

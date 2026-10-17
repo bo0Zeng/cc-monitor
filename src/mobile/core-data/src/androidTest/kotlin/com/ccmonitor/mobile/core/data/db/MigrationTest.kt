@@ -729,11 +729,33 @@ class MigrationTest {
         }
     }
 
-    /** 全链路 1→22 schema 校验（validateDroppedTables=true 严格比对导出 schema）；一路种过的旧默认键到头成了三组。 */
+    /** 22→23：加「会话列表那一问上次的答」那张表（记号 ＋ 头）、能写能读；会话行一字不动。 */
     @Test
-    fun migrateAll1To22Validates() {
+    fun migrate22To23AddsTheListHoldsAndKeepsTheSessions() {
+        helper.createDatabase(dbName, 22).apply {
+            execSQL("INSERT INTO sessions (hostId,sid,listRow,ord,viewedAt) VALUES ('h1','s1','{\"sessionId\":\"s1\"}',0,7)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(dbName, 23, true, MIGRATION_22_23)
+        db.execSQL("INSERT INTO list_holds (hostId,held,head) VALUES ('h1','e.1.2',NULL)")
+        db.query("SELECT held, head FROM list_holds WHERE hostId='h1'").use { c ->
+            assertTrue(c.moveToFirst())
+            assertEquals("e.1.2", c.getString(0))
+            assertTrue(c.isNull(1))
+        }
+        db.query("SELECT listRow, ord, viewedAt FROM sessions WHERE hostId='h1' AND sid='s1'").use { c ->
+            assertTrue("会话行应原样还在", c.moveToFirst())
+            assertEquals("{\"sessionId\":\"s1\"}", c.getString(0))
+            assertEquals(0, c.getInt(1))
+            assertEquals(7, c.getLong(2))
+        }
+    }
+
+    /** 全链路 1→23 schema 校验（validateDroppedTables=true 严格比对导出 schema）；一路种过的旧默认键到头成了三组。 */
+    @Test
+    fun migrateAll1To23Validates() {
         helper.createDatabase(dbName, 1).close()
-        val db = helper.runMigrationsAndValidate(dbName, 22, true, *allMigrations(crypto))
+        val db = helper.runMigrationsAndValidate(dbName, 23, true, *allMigrations(crypto))
         db.query("SELECT name FROM key_groups ORDER BY sortOrder").use { c ->
             val names = generateSequence { if (c.moveToNext()) c.getString(0) else null }.toList()
             assertEquals(listOf("常用", "shell", "vim"), names)

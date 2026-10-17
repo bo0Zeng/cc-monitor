@@ -7,10 +7,10 @@
  * 判定都在后端：显示标题 · 搜什么 · 怎么排（`at`）· 每行能做什么（`can`）· 分组。这里只做三件事：
  * 问谁（含远端那一份的装运）、按类型收（入参 · 回包从后端类型生成，形状由握手指纹核；跨语言金样 `tests/__fixtures__/history-list.golden.json`）、
  * 把各台各自排好的行按 `at` 并成一列。
+ * 回包是带键集合那一形（`common/views.rs`）：这里不带记号问，答的就是那一窗的整份（`whole`），照 `order` 从 `up` 取行；不写合并。
  */
 import { budgetWithin, callTyped, refusalIn, ReplyUnreadable } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./ipc/origin";
-import type { HistoryList } from "./generated/HistoryList";
 import type { HistoryRow } from "./generated/HistoryRow";
 import type { HistoryGroup } from "./generated/HistoryGroup";
 import type { HistoryListing } from "./generated/HistoryListing";
@@ -18,8 +18,17 @@ import type { HistoryListReply } from "./generated/HistoryListReply";
 import type { HistoryListReq } from "./generated/HistoryListReq";
 import { saidOf } from "./kit/detail";
 
-/** 一行会话 · 按项目看时的一组 · 一台的成品（类型从后端生成）。 */
-export type { HistoryList, HistoryRow, HistoryGroup };
+/** 一行会话 · 按项目看时的一组（类型从后端生成）。 */
+export type { HistoryRow, HistoryGroup };
+
+/** 一台的成品：那一窗的行（照那台的先后）· 组 · 注解没并上那一句 · 整份几行 · 窗外还有没有。 */
+export interface HistoryList {
+  rows: HistoryRow[];
+  groups: HistoryGroup[];
+  notice: string | null;
+  total: number;
+  truncated: boolean;
+}
 
 /** 问的那几格（缺 = 后端缺省）。 */
 export interface HistoryListAsk {
@@ -36,15 +45,18 @@ export interface HistoryListAsk {
 /** 一问 30 秒（远端那台常驻热着那份清单；盖住一整份经长连接回来、本机后端并一遍）。 */
 const LIST_BUDGET_MS = 30_000;
 
-/** 回包两形里平时那一形（成品带 `groups`）；问的不是 `raw` 却回了清单 ⇒ 抛（细目只进日志）。 */
+/** 回包两形里平时那一形（带键集合，不带记号问 ⇒ 整份）摊成一台的成品；问的不是 `raw` 却回了清单 · 不是整份 ⇒ 抛（细目只进日志）。 */
 function listOf(r: HistoryListReply): HistoryList {
-  if ("groups" in r) return r;
-  throw new ReplyUnreadable(LOCAL_ORIGIN, "history-list answered a raw listing to a non-raw ask");
+  if (!("held" in r)) throw new ReplyUnreadable(LOCAL_ORIGIN, "history-list answered a raw listing to a non-raw ask");
+  if (!r.whole || r.order === null || r.head === null) throw new ReplyUnreadable(LOCAL_ORIGIN, "history-list answered a patch to an ask without a mark");
+  const rows = r.order.map((k) => r.up[k]);
+  if (rows.some((x) => x === undefined)) throw new ReplyUnreadable(LOCAL_ORIGIN, "history-list order names a row it did not send");
+  return { rows, groups: r.head.info.groups, notice: r.head.info.notice, total: r.head.total, truncated: r.head.total > rows.length };
 }
 
 /** 回包两形里 `raw` 那一形（这台自己的清单）；回了成品 ⇒ 抛。 */
 function listingOf(r: HistoryListReply): HistoryListing {
-  if (!("groups" in r)) return r;
+  if (!("held" in r)) return r;
   throw new ReplyUnreadable(LOCAL_ORIGIN, "history-list answered a product to a raw ask");
 }
 

@@ -4215,12 +4215,12 @@ failed: string | null,
  * 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
  */
 origin?: string, };
-type HistoryList = { rows: Array<HistoryRow>, groups: Array<HistoryGroup>, total: number, truncated: boolean, 
+type HistoryHead = { groups: Array<HistoryGroup>, 
 /**
  * 注解没并上的那一句；并上了 ⇒ `null`。
  */
 notice: string | null, };
-type HistoryListReply = HistoryListing | HistoryList;
+type HistoryListReply = HistoryListing | SyncPatch<HistoryHead, HistoryRow>;
 type HistoryListReq = { 
 /**
  * `true` ⇒ 只回**这台自己**的清单 `{rows, failed, annotations | annotationsNotice}`（不筛不排、不看别的入参）——
@@ -4257,9 +4257,13 @@ within_days?: number,
  */
 hidden?: boolean, 
 /**
- * 最多回几行（缺省 2000，1–20000）；多出的不回、`truncated`。
+ * 上次这一问答的记号（原样交回）：对得上 ⇒ 没变 · 只给变了的那几行；缺 · 对不上（那台重启过 · 换了问法）⇒ 整份。
  */
-limit?: number, };
+held?: SyncHeld, 
+/**
+ * 只要排好的那一窗（`limit` 1–20000）；缺 ⇒ 头 2000 行。总数在回包的头里。
+ */
+range?: SyncRange, };
 type HistoryListing = { rows: Array<HistoryRawRow>, failed: Array<HistoryFailedDir>, 
 /**
  * 那台自己那份注解（sid ⇒ 注解）；读不到 ⇒ 缺，`annotationsNotice` 说为什么。
@@ -4392,6 +4396,10 @@ order: number, can: SessionCan,
  * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
+type SyncHead<H> = { total: number, info: H, };
+type SyncHeld = string;
+type SyncPatch<H, T> = { held: SyncHeld, whole: boolean, same: boolean, order: Array<string> | null, up: { [key in string]: T }, head: SyncHead<H> | null, };
+type SyncRange = { from: number, limit: number, };
 type Tab = "show" | "hide";
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";

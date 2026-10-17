@@ -2,14 +2,19 @@ package com.ccmonitor.mobile.cache
 
 import com.ccmonitor.mobile.core.claude.link.KeptBatches
 import com.ccmonitor.mobile.core.claude.link.RawJson
+import com.ccmonitor.mobile.core.claude.link.wire.SyncHand
+import com.ccmonitor.mobile.core.claude.link.wire.SyncHead
+import com.ccmonitor.mobile.core.claude.link.wire.Wire
 import com.ccmonitor.mobile.core.data.db.CacheDao
+import com.ccmonitor.mobile.core.data.db.CachedSession
 import com.ccmonitor.mobile.core.data.db.Draft
+import com.ccmonitor.mobile.core.data.db.ListHold
 import com.ccmonitor.mobile.core.data.db.PendingBatch
 import com.ccmonitor.mobile.core.data.db.PendingSend
 import com.ccmonitor.mobile.core.data.db.RecordPage
 import com.ccmonitor.mobile.core.data.db.SyncAnchor
 
-/** 缓存落在 Room 那六张表里（`CacheDao`）：一台一份，成品原样写成 JSON 文本存、读回来原样交还。 */
+/** 缓存落在 Room 那七张表里（`CacheDao`）：一台一份，成品原样写成 JSON 文本存、读回来原样交还。 */
 class LocalCache(
     private val dao: CacheDao,
     private val now: () -> Long = System::currentTimeMillis,
@@ -39,9 +44,37 @@ private class RoomListCache(
     private val dao: CacheDao,
     private val hostId: String,
 ) : ListCache {
-    override suspend fun rows(): List<Any?> = dao.listed(hostId).mapNotNull { it.listRow?.let(RawJson::read) }
+    override suspend fun hand(): SyncHand = dao.heldList(hostId).let { (hold, rows) -> handOf(hold, rows) }
 
-    override suspend fun save(rows: List<Pair<String, Any?>>) = dao.replaceList(hostId, rows.map { (sid, row) -> sid to RawJson.write(row) })
+    override suspend fun keep(hand: SyncHand) {
+        val (rows, hold) = storedOf(hostId, hand) ?: return
+        dao.keepList(hostId, rows, hold)
+    }
+}
+
+/** 库里那一份 ⇒ 手上那一份：行照 `ord` 的先后、原样读回；记号与头在 [ListHold]（没答过 ⇒ 没有记号，下次那台答整份）。 */
+internal fun handOf(
+    hold: ListHold?,
+    rows: List<CachedSession>,
+): SyncHand {
+    val items = rows.mapNotNull { r -> r.listRow?.let(RawJson::read)?.let { r.sid to it } }
+    return SyncHand(
+        held = hold?.held,
+        order = items.map { it.first },
+        items = items.toMap(),
+        head = hold?.head?.let(RawJson::read)?.let { Wire.bind<SyncHead>(it) },
+    )
+}
+
+/** 手上那一份 ⇒ 库里那几行（sid ＋ 原样，照先后）与记号 · 头；还没有记号（没答过）⇒ 不存。 */
+internal fun storedOf(
+    hostId: String,
+    hand: SyncHand,
+): Pair<List<Pair<String, String>>, ListHold>? {
+    val held = hand.held ?: return null
+    val rows = hand.order.mapNotNull { k -> hand.items[k]?.let { k to RawJson.write(it) } }
+    val head = hand.head?.let { RawJson.write(mapOf("total" to it.total, "info" to it.info)) }
+    return rows to ListHold(hostId, held, head)
 }
 
 private class RoomChatCache(

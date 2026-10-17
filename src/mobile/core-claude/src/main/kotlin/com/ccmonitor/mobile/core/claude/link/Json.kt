@@ -52,7 +52,7 @@ internal object Json {
 }
 
 /**
- * 本地缓存那一侧用：核心交来的成品原样写成一行 JSON、读回来再交给同一个解码器（[HistoryRead.decodeRows] · [HistoryList.of]）。
+ * 本地缓存那一侧用：核心交来的成品原样写成一行 JSON、读回来再交给同一个解码器（[HistoryRead.decodeRows] · [HistoryList.page]）。
  * 只搬不认：不挑格、不改格，手机不在缓存上另算一份。
  */
 object RawJson {

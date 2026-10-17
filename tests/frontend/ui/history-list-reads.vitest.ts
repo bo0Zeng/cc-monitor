@@ -6,7 +6,8 @@
  * 判据：
  * 1. **跨语言金样**：后端 `history_list_tests.rs::the_product_matches_the_cross_language_golden` 产出的成品
  *    （`tests/__fixtures__/history-list.golden.json`）逐行逐格收下（异源）。
- * 2. **两形**：回包按类型收（形状由握手指纹核）；平时那一问回了 raw 清单、raw 那一问回了成品 ⇒ 抛。
+ * 2. **两形**：回包按类型收（形状由握手指纹核）；平时那一问回了 raw 清单、raw 那一问回了成品 ⇒ 抛；
+ *    不带记号问回来的不是整份（`whole`）· `order` 里有 `up` 没给的行 ⇒ 抛；整份照 `order` 摊成行，窗外还有 ⇒ `truncated`。
  * 3. **问的是谁、带了什么**：本机问 `<local>`；远端开页（`fresh`）先经长连接问那台常驻 `raw`、再带着那份（`listing`）交 `<local>` 并 · 筛 · 排；
  *    敲字只问 `<local>`（它记着那份）；`<local>` 说 `no_listing` ⇒ 问那台、带着再问；只带给了的那几格，键名是后端的蛇形。
  * 4. **并列**：各台各自排好的行按 `at` 并成一列，同 `at` 保持台的先后。
@@ -25,14 +26,28 @@ import { chanArgsJson, chanReply, refusedReply, type ChanCallArgs } from "../../
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const golden = JSON.parse(
   readFileSync(join(__dirname, "../../__fixtures__", "history-list.golden.json"), "utf8"),
-) as { rows: Record<string, unknown>[]; groups: Record<string, unknown>[] } & Record<string, unknown>;
+) as { order: string[] } & Record<string, unknown>;
+
+/** 一台整份那一答（不带记号问的回包）。 */
+const whole = (rows: { sessionId: string }[], total = rows.length) => ({
+  held: "h",
+  whole: true,
+  same: false,
+  order: rows.map((r) => r.sessionId),
+  up: Object.fromEntries(rows.map((r) => [r.sessionId, r])),
+  head: { total, info: { groups: [], notice: null } },
+});
+const empty = whole([]);
+const flatEmpty = { rows: [], groups: [], notice: null, total: 0, truncated: false };
 
 beforeEach(() => invokeMock.mockReset());
 
 describe("跨语言金样（后端出、这里读）", () => {
-  it("一台的成品就是生成的那个类型：带 context 的父会话 · 说不清在不在跑的 · 读不了的那一组 · 那台的名字", () => {
-    const v = golden as unknown as HistoryList;
-    expect(v.rows.length).toBe(golden.rows.length);
+  it("一台的成品就是生成的那个类型：带 context 的父会话 · 说不清在不在跑的 · 读不了的那一组 · 那台的名字", async () => {
+    invokeMock.mockImplementation(() => Promise.resolve(chanReply(golden)));
+    const v: HistoryList = await fetchList(undefined, {});
+    expect(v.rows.map((r) => r.sessionId)).toEqual(golden.order);
+    expect(v.truncated).toBe(false);
     expect(v.rows.some((r) => r.context === true)).toBe(true);
     expect(v.rows.some((r) => r.face.dot === "unknown" && r.can.delete === "unsure")).toBe(true);
     expect(v.groups.some((g) => g.failed !== null)).toBe(true);
@@ -41,7 +56,6 @@ describe("跨语言金样（后端出、这里读）", () => {
 });
 
 describe("回包两形", () => {
-  const empty = { rows: [], groups: [], total: 0, truncated: false, notice: null };
   const raw = { rows: [], failed: [] };
   it("平时那一问回了 raw 清单 ⇒ 抛；raw 那一问回了成品 ⇒ 抛", async () => {
     invokeMock.mockImplementation(() => Promise.resolve(chanReply(raw)));
@@ -49,10 +63,17 @@ describe("回包两形", () => {
     invokeMock.mockImplementation(() => Promise.resolve(chanReply(empty)));
     await expect(fetchList("dev", { fresh: true })).rejects.toThrow(ReplyUnreadable);
   });
+  it("不带记号问却回了「没变」· 先后里有没给的行 ⇒ 抛；窗外还有 ⇒ truncated", async () => {
+    invokeMock.mockImplementation(() => Promise.resolve(chanReply({ ...empty, whole: false, same: true, order: null, head: null })));
+    await expect(fetchList(undefined, {})).rejects.toThrow(ReplyUnreadable);
+    invokeMock.mockImplementation(() => Promise.resolve(chanReply({ ...empty, order: ["s-x"] })));
+    await expect(fetchList(undefined, {})).rejects.toThrow(ReplyUnreadable);
+    invokeMock.mockImplementation(() => Promise.resolve(chanReply(whole([{ sessionId: "a" }], 9))));
+    await expect(fetchList(undefined, {})).resolves.toMatchObject({ total: 9, truncated: true });
+  });
 });
 
 describe("问的是谁、带了什么", () => {
-  const empty = { rows: [], groups: [], total: 0, truncated: false, notice: null };
   const raw = { rows: [{ sessionId: "r-1" }], failed: [] };
   const calls = () =>
     invokeMock.mock.calls
@@ -90,7 +111,7 @@ describe("问的是谁、带了什么", () => {
       }
       return Promise.resolve(chanReply(empty));
     });
-    await expect(fetchList("dev", { query: "回" })).resolves.toEqual(empty);
+    await expect(fetchList("dev", { query: "回" })).resolves.toEqual(flatEmpty);
     expect(calls()).toEqual([
       ["<local>", "history-list", { origin: "dev", query: "回" }, "number"],
       ["dev", "history-list", { raw: true }, "number"],

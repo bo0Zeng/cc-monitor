@@ -137,29 +137,33 @@ pub(crate) const FROZEN: &[(&str, Frozen)] = &[
     (
         "history_list",
         Frozen::Cells(&[
-            "rows[].sessionId",
-            "rows[].label",
-            "rows[].atText",
-            "rows[].sectionText",
-            "rows[].projectPath",
-            "rows[].jsonlPath",
-            "rows[].agent",
-            "rows[].agentTag",
-            "rows[].face.dot",
-            "rows[].face.live.activity",
-            "rows[].face.settled",
-            "rows[].face.name",
-            "rows[].face.tone",
-            "rows[].face.can.model.can",
-            "rows[].face.can.model.why",
-            "rows[].face.can.permission.can",
-            "rows[].face.can.permission.why",
-            "rows[].starred",
-            "rows[].customTitle",
-            "rows[].hidden.by",
-            "rows[].hidden.said",
-            "notice",
-            "truncated",
+            "up.*.sessionId",
+            "up.*.label",
+            "up.*.atText",
+            "up.*.sectionText",
+            "up.*.projectPath",
+            "up.*.jsonlPath",
+            "up.*.agent",
+            "up.*.agentTag",
+            "up.*.face.dot",
+            "up.*.face.live.activity",
+            "up.*.face.settled",
+            "up.*.face.name",
+            "up.*.face.tone",
+            "up.*.face.can.model.can",
+            "up.*.face.can.model.why",
+            "up.*.face.can.permission.can",
+            "up.*.face.can.permission.why",
+            "up.*.starred",
+            "up.*.customTitle",
+            "up.*.hidden.by",
+            "up.*.hidden.said",
+            "held",
+            "whole",
+            "same",
+            "order[]",
+            "head.total",
+            "head.info.notice",
         ]),
     ),
 ];
@@ -523,10 +527,12 @@ fn corpus(name: &str) -> Vec<Value> {
                 ),
             )
             .unwrap();
-            let rows = g["rows"].as_array_mut().unwrap();
-            let mut r = rows[0].clone();
+            let up = g["up"].as_object_mut().unwrap();
+            let mut r = up.values().next().unwrap().clone();
             r["face"] = gone;
-            rows.push(r);
+            r["sessionId"] = Value::from("gone");
+            up.insert("gone".into(), r);
+            g["order"].as_array_mut().unwrap().push(Value::from("gone"));
             vec![g]
         }
         // 会话流金样里没有「记录已不在」那一帧（离开「活」两样都能换）⇒ 补一帧，灰的那两格才露得出来。
@@ -627,7 +633,7 @@ const NEVER_WRITTEN: &[(&str, &str)] = &[
     ("facts", "startedBy.face.account"),
     ("facts", "children[].face.account"),
     ("needs_row", "face.account"),
-    ("history_list", "rows[].face.account"),
+    ("history_list", "up.*.face.account"),
 ];
 
 /// ★ 样本把每一格都露出来了：没有 `None`、没有空列表（不然那一格在目录里就漏了）；空着的只许是 [`NEVER_WRITTEN`] 登记的，登记的也确实空着。

@@ -50,7 +50,7 @@ class SentRequestsTest {
                     HistoryAnnotate.rename("s", "t"),
                     HistoryAnnotate.rename("s", "  "),
                 ),
-            HistoryList.COMMAND to listOf(HistoryList.args(ListAsk()), HistoryList.args(ListAsk("q", 7, ListSort.CREATED, true)), HistoryList.args(ListAsk(sort = ListSort.ACTIVITY))),
+            HistoryList.COMMAND to listOf(HistoryList.args(ListAsk()), HistoryList.args(ListAsk("q", 7, ListSort.CREATED, true)), HistoryList.args(ListAsk(sort = ListSort.ACTIVITY)), HistoryList.args(ListAsk(), "e.1.2")),
             HistorySearch.COMMAND to listOf(HistorySearch.args("q")),
             HistorySearchMerge.COMMAND to listOf(HistorySearchMerge.args(listOf(HistorySearchMerge.LOCAL to listOf(SEARCH_ROW), "h2" to emptyList()))),
             HistoryRead.COMMAND to listOf(HistoryRead.args("/p/s.jsonl", 0L, 10L)),

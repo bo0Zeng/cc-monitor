@@ -4,7 +4,9 @@ import com.ccmonitor.mobile.core.claude.link.wire.Allow
 import com.ccmonitor.mobile.core.claude.link.wire.Annotated
 import com.ccmonitor.mobile.core.claude.link.wire.CanWord
 import com.ccmonitor.mobile.core.claude.link.wire.Hide
-import com.ccmonitor.mobile.core.claude.link.wire.HistoryListPage
+import com.ccmonitor.mobile.core.claude.link.wire.HistoryGroup
+import com.ccmonitor.mobile.core.claude.link.wire.HistoryHead
+import com.ccmonitor.mobile.core.claude.link.wire.HistoryRow
 import com.ccmonitor.mobile.core.claude.link.wire.HistorySearchReply
 import com.ccmonitor.mobile.core.claude.link.wire.Merged
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsList
@@ -16,6 +18,8 @@ import com.ccmonitor.mobile.core.claude.link.wire.SessionFileRereadFrame
 import com.ccmonitor.mobile.core.claude.link.wire.SessionRemovedFrame
 import com.ccmonitor.mobile.core.claude.link.wire.SessionStateFrame
 import com.ccmonitor.mobile.core.claude.link.wire.SessionStatusFrame
+import com.ccmonitor.mobile.core.claude.link.wire.SyncHand
+import com.ccmonitor.mobile.core.claude.link.wire.SyncPatch
 import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
 
@@ -111,29 +115,45 @@ object SessionsNeeds {
 /**
  * `history-list` 的一行与整份。手机只连一台、直接问那台的常驻：不带 `origin` 也不带 `listing` ⇒
  * 那台自己的清单、并上那台的注解、筛、排（`history/history_list.rs` 头注「origin 缺席 ⇒ 这台」）。
+ * 回包是带键集合那一形（[SyncPatch]）：带着上次的记号问 ⇒ 没变 / 只给变了的那几行，手上那一份照它换（[SyncHand.apply]）。
  */
 object HistoryList {
     const val COMMAND: String = "history-list"
 
-    /** 核心按 `cmd-wire` 那一份解过的成品（平时那一形；`raw` 那一形手机不问）。 */
-    fun of(data: Any?): HistoryListPage? = Wire.bind<HistoryListPage>(data)
+    /** 回包（核心按 `cmd-wire` 那一份解过）；不是那一形（`raw` 那一形手机不问）⇒ `null`。 */
+    fun patch(data: Any?): SyncPatch? = Wire.bind<SyncPatch>(data)
 
-    /** 回包里的 `rows[]` 原样（缓存一行存一格）；不是那一形 ⇒ `null`。 */
-    fun rawRows(data: Any?): List<Any?>? = ((data as? Map<*, *>)?.get("rows") as? List<*>)?.toList()
+    /** 不带记号那一问的回包（整份）⇒ 一份清单；不是整份 · 解不开 ⇒ `null`。 */
+    fun of(data: Any?): HistoryListPage? = patch(data)?.takeIf { it.whole }?.let { page(SyncHand().apply(it)) }
 
-    /** 缓存里那几行（原样）拼回一份清单，交给同一个解码器（[of]）；注解与截断那两格缓存不存。 */
-    fun ofRows(rows: List<Any?>): HistoryListPage? =
-        of(mapOf("rows" to rows, "groups" to emptyList<Any?>(), "notice" to null, "truncated" to false))
+    /** 手上那一份 ⇒ 要画的清单：行照先后、每行与头交给同一个解码器；窗外还有 ⇒ [HistoryListPage.truncated]。有一格解不开 ⇒ `null`。 */
+    fun page(hand: SyncHand): HistoryListPage? {
+        val rows = hand.order.map { k -> hand.items[k]?.let { Wire.bind<HistoryRow>(it) } ?: return null }
+        val info = hand.head?.let { Wire.bind<HistoryHead>(it.info) ?: return null }
+        return HistoryListPage(rows, info?.groups.orEmpty(), info?.notice, (hand.head?.total ?: 0) > rows.size)
+    }
 
-    /** 入参：设了的筛选各带一格（与桌面历史同几个参数），没设的不带（那台照缺省）；全没设 ⇒ `null`。 */
-    fun args(ask: ListAsk): Map<String, Any?>? =
+    /** 入参：设了的筛选各带一格（与桌面历史同几个参数），没设的不带（那台照缺省）；带着上次的记号 [held] ⇒ 交回；全没有 ⇒ `null`。 */
+    fun args(
+        ask: ListAsk,
+        held: String? = null,
+    ): Map<String, Any?>? =
         buildMap {
             ask.query?.let { put("query", it) }
             ask.withinDays?.let { put("within_days", it) }
             ask.sort?.let { put("sort", it.wire) }
             if (ask.hidden) put("hidden", true)
+            held?.let { put("held", it) }
         }.ifEmpty { null }
 }
+
+/** 一台的清单：那一窗的行（照那台的先后）· 组 · 注解没并上那一句 · 窗外还有没有。 */
+data class HistoryListPage(
+    val rows: List<HistoryRow>,
+    val groups: List<HistoryGroup>,
+    val notice: String?,
+    val truncated: Boolean,
+)
 
 /** 问 `history-list` 带的筛选：标题里的字 · 最近几天 · 排序 · 隐藏的也出。 */
 data class ListAsk(

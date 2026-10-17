@@ -55,7 +55,18 @@ class ChatsBoardTest {
         init {
             link.answer = { cmd, _ ->
                 when (cmd) {
-                    "history-list" -> Reply.Ok(mapOf("rows" to rows, "groups" to emptyList<Any>(), "notice" to null, "truncated" to false))
+                    // 那台每次答整份（带不带记号都一样：判据只看屏上换没换）。
+                    "history-list" ->
+                        Reply.Ok(
+                            mapOf(
+                                "held" to "h${rows.size}",
+                                "whole" to true,
+                                "same" to false,
+                                "order" to rows.map { it["sessionId"] },
+                                "up" to rows.associateBy { it["sessionId"] },
+                                "head" to mapOf("total" to rows.size, "info" to mapOf("groups" to emptyList<Any>(), "notice" to null)),
+                            ),
+                        )
                     "history-search" -> search
                     "history-search-merge" -> merged
                     else -> Reply.LinkDown

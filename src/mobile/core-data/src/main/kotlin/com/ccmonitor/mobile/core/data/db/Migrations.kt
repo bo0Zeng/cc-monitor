@@ -421,6 +421,16 @@ internal fun resealPassword(
     return reseal(crypto, blob, HOSTS_TABLE, hostId)?.let { Base64.getEncoder().encodeToString(it) }
 }
 
+// 会话列表带记号对齐：加「那一问上次的答」那张表（记号 ＋ 头）；会话行一字不动（第一次带不出记号 ⇒ 那台答整份）。
+val MIGRATION_22_23 =
+    object : Migration(22, 23) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `list_holds` (`hostId` TEXT NOT NULL, `held` TEXT NOT NULL, `head` TEXT, PRIMARY KEY(`hostId`))",
+            )
+        }
+    }
+
 /** 整条迁移链。21→22 要那把主钥重加密文 ⇒ 链从依赖注入拿 [CryptoBox]（与仓库读写同一个）。 */
 fun allMigrations(crypto: CryptoBox): Array<Migration> =
     arrayOf(
@@ -445,4 +455,5 @@ fun allMigrations(crypto: CryptoBox): Array<Migration> =
         MIGRATION_19_20,
         MIGRATION_20_21,
         Migration21To22(crypto),
+        MIGRATION_22_23,
     )

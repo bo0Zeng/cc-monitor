@@ -22,6 +22,17 @@ data class CachedSession(
     val viewedAt: Long?,
 )
 
+/**
+ * 会话列表那一问上次的答：那台给的记号 [held]（下次带着问，原样交回）＋ 头 [head]（`history-list` 回包的 `head` 原样 JSON：组 · 注解那一句 · 总数）。
+ * 一台一行；行在 [CachedSession]（`listRow` · `ord`），与这一行同一个事务写。
+ */
+@Entity(tableName = "list_holds")
+data class ListHold(
+    @PrimaryKey val hostId: String,
+    val held: String,
+    val head: String?,
+)
+
 /** 一页记录：`history-read` / `history-tail` 读到的 `rows[]` 原样，[start] 是页锚（这一页从哪个字节起）。 */
 @Entity(tableName = "record_pages", primaryKeys = ["hostId", "sid", "start"])
 data class RecordPage(
