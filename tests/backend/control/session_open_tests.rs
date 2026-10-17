@@ -792,7 +792,11 @@ fn emit_open_line_for_e2e() {
         .expect("缺 CCM_E2E_OPEN —— 本出口只给 tests/e2e/open-line-emit.sh 用");
     let e: E2eOpen =
         serde_json::from_str(&raw).unwrap_or_else(|err| panic!("意图解析不了（{err}）：{raw}"));
-    let named = e.account.as_ref().and_then(|a| a["name"].as_str()).map(str::to_string);
+    let named = e
+        .account
+        .as_ref()
+        .and_then(|a| a["name"].as_str())
+        .map(str::to_string);
     let name = e.name.clone().unwrap_or_default();
     let sid = e.sid.clone().unwrap_or_default();
     let mut rig = Rig::new(Some(vec![]));
@@ -801,7 +805,9 @@ fn emit_open_line_for_e2e() {
     rig.cwd = e.cwd.clone().unwrap_or_default();
     rig.model = e.model.clone();
     rig.minted = e.name.clone();
-    rig.prefs.launchers.insert("claude".into(), e.launcher.clone());
+    rig.prefs
+        .launchers
+        .insert("claude".into(), e.launcher.clone());
     let (what, run) = match e.shape.as_str() {
         "resume-tmux" => (json!({ "kind": "resume", "sid": sid }), Some("tmux")),
         "direct" => (json!({ "kind": "resume", "sid": sid }), Some("direct")),
@@ -814,7 +820,8 @@ fn emit_open_line_for_e2e() {
             (json!({ "kind": "look", "session": name }), None)
         }
         "new-tmux" => {
-            let mut w = json!({ "kind": "new", "agent": "claude", "cwd": rig.cwd, "tmuxName": name });
+            let mut w =
+                json!({ "kind": "new", "agent": "claude", "cwd": rig.cwd, "tmuxName": name });
             if let Some(m) = &e.model {
                 w["model"] = json!(m);
             }
@@ -847,7 +854,10 @@ fn emit_open_line_for_e2e() {
     };
     match said {
         Ok(line) => {
-            assert!(!line.contains('\n'), "那一行带换行，标记行会被截断：{line:?}");
+            assert!(
+                !line.contains('\n'),
+                "那一行带换行，标记行会被截断：{line:?}"
+            );
             println!("OPEN_LINE<<<{line}>>>");
         }
         Err(e) => println!("OPEN_LINE_ERR<<<{}>>>", e.replace('\n', " ")),
@@ -859,7 +869,10 @@ fn emit_open_line_for_e2e() {
 fn every_start_marks_the_cwd_trusted_in_its_account_once() {
     for (rows, mut req) in [
         (Some(vec![]), resume(Some("tmux"))),
-        (Some(vec![row("idle", Some(A), false)]), resume(Some("tmux"))),
+        (
+            Some(vec![row("idle", Some(A), false)]),
+            resume(Some("tmux")),
+        ),
         (Some(vec![]), resume(Some("direct"))),
         (Some(vec![]), new(json!({}))),
     ] {
@@ -875,9 +888,15 @@ fn every_start_marks_the_cwd_trusted_in_its_account_once() {
 #[test]
 fn an_idle_pane_in_a_shared_session_is_typed_into_in_place() {
     let other = "bbbbbbbb-1111-2222-3333-444444444444";
-    let rig = Rig::new(Some(vec![row("two-cc", Some(other), true), row("two-cc", Some(A), false)]));
+    let rig = Rig::new(Some(vec![
+        row("two-cc", Some(other), true),
+        row("two-cc", Some(A), false),
+    ]));
     let got = rig.open(resume(Some("tmux"))).unwrap();
-    assert_eq!((got.landed, got.session.as_deref()), (Landed::InPlace, Some("two-cc")));
+    assert_eq!(
+        (got.landed, got.session.as_deref()),
+        (Landed::InPlace, Some("two-cc"))
+    );
     assert_eq!(rig.sent.borrow().len(), 1);
     assert!(rig.ccm.borrow().is_empty(), "不该另建一个会话");
 }
@@ -894,13 +913,22 @@ fn the_facts_run_is_where_a_new_session_without_run_lands() {
                 }
                 let mut rig = Rig::new(tmux.then(Vec::new));
                 rig.fork_tmux = fork_tmux;
-                let extra = if forked { json!({ "fork": { "sid": A, "uuid": U } }) } else { json!({}) };
-                let got = rig.open(new(extra)).unwrap_or_else(|e| panic!("没起：{e:?}"));
+                let extra = if forked {
+                    json!({ "fork": { "sid": A, "uuid": U } })
+                } else {
+                    json!({})
+                };
+                let got = rig
+                    .open(new(extra))
+                    .unwrap_or_else(|e| panic!("没起：{e:?}"));
                 let landed = match crate::faces::session_open_face::facts_run(fork_tmux, tmux) {
                     Run::Tmux => Landed::Started,
                     Run::Direct => Landed::Window,
                 };
-                assert_eq!(got.landed, landed, "tmux {tmux} · 分叉 {forked} · 源在 tmux {fork_tmux:?}");
+                assert_eq!(
+                    got.landed, landed,
+                    "tmux {tmux} · 分叉 {forked} · 源在 tmux {fork_tmux:?}"
+                );
             }
         }
     }
@@ -911,12 +939,19 @@ fn the_facts_run_is_where_a_new_session_without_run_lands() {
 #[test]
 fn a_new_session_takes_this_machines_permission_mode_unless_asked_and_resume_never_does() {
     let flag_of = |argv: &[String]| -> Option<String> {
-        argv.windows(2).find(|w| w[0] == "--permission-mode").map(|w| w[1].clone())
+        argv.windows(2)
+            .find(|w| w[0] == "--permission-mode")
+            .map(|w| w[1].clone())
     };
     for (pref, asked, resume, want) in [
         (None, None, false, None),
         (Some("plan"), None, false, Some("plan")),
-        (Some("plan"), Some("acceptEdits"), false, Some("acceptEdits")),
+        (
+            Some("plan"),
+            Some("acceptEdits"),
+            false,
+            Some("acceptEdits"),
+        ),
         (None, Some("acceptEdits"), false, Some("acceptEdits")),
         (Some("yolo"), None, false, None),
         (Some("plan"), None, true, None),
@@ -931,9 +966,14 @@ fn a_new_session_takes_this_machines_permission_mode_unless_asked_and_resume_nev
             new(asked.map_or(json!({}), |m| json!({ "permissionMode": m })))
         };
         req["run"] = json!("tmux");
-        rig.open(req.clone()).unwrap_or_else(|e| panic!("{req} 没起：{e:?}"));
+        rig.open(req.clone())
+            .unwrap_or_else(|e| panic!("{req} 没起：{e:?}"));
         let argv = rig.ccm.borrow()[0].clone();
-        assert_eq!(flag_of(&argv).as_deref(), want, "偏好 {pref:?} · 请求 {asked:?} · 恢复 {resume}：{argv:?}");
+        assert_eq!(
+            flag_of(&argv).as_deref(),
+            want,
+            "偏好 {pref:?} · 请求 {asked:?} · 恢复 {resume}：{argv:?}"
+        );
     }
 }
 

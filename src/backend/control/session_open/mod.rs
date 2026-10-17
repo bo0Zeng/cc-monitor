@@ -13,13 +13,14 @@ use super::session_batch::{
     carriers, listed, pids_said, pretrust, CmdErr, Deps, NameBase, Standing, TmuxEntry,
 };
 pub(crate) mod new;
-pub(crate) use new::{dir_answer, DirChecked, ForkFrom, ForkWrite, PreRotation, OpenDirErr, OpenDirReq};
-use new::{
-    expand_home, first_prompt_refused, RotationPick, OpenField as Field,
-    OpenRefusal as Refusal,
-};
-pub use cmd_wire::session::{FirstSay, Landed, Opened, Run};
 use crate::platform::child::{Child, Deadline};
+pub use cmd_wire::session::{FirstSay, Landed, Opened, Run};
+pub(crate) use new::{
+    dir_answer, DirChecked, ForkFrom, ForkWrite, OpenDirErr, OpenDirReq, PreRotation,
+};
+use new::{
+    expand_home, first_prompt_refused, OpenField as Field, OpenRefusal as Refusal, RotationPick,
+};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -597,8 +598,7 @@ fn resume_launch(it: &Item, b: &Batch, tmux: Option<&str>) -> Launch {
 
 /// 这台 `ccm` 的入口（那几行直接叫它，不靠 `PATH`）。
 fn own_entry(deps: &Deps) -> Result<String, String> {
-    (deps.host.entry)()
-        .ok_or_else(|| copy_core::copy_text("beLaunchRender.entry.noHome", &[]))
+    (deps.host.entry)().ok_or_else(|| copy_core::copy_text("beLaunchRender.entry.noHome", &[]))
 }
 
 /// 应答里的 `account`：实际用的号（账号库里的那一形；别的 ⇒ `None`）。

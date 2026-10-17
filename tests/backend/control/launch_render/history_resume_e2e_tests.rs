@@ -134,16 +134,26 @@ fn history_resume_child_entry_point() {
         .unwrap_or_else(|| panic!("历史里没有 {sid}：{listing}"));
     assert!(row["agent"].is_string(), "历史那一行说不出是哪一家：{row}");
     // 界面那一问：恢复这一条、直路、本机；哪一家 · 目录由这台从记录读，号跟随（没有上次的号 ⇒ 不表态）。
-    let req: crate::control::session_open::SessionOpenReq = serde_json::from_value(serde_json::json!({
-        "what": { "kind": "resume", "sid": sid },
-        "run": "direct",
-        "local": true,
-    }))
-    .expect("入参照线上形状收得下");
+    let req: crate::control::session_open::SessionOpenReq =
+        serde_json::from_value(serde_json::json!({
+            "what": { "kind": "resume", "sid": sid },
+            "run": "direct",
+            "local": true,
+        }))
+        .expect("入参照线上形状收得下");
     let resume = crate::faces::session_open_face::resume_of(&sid);
-    let agent = resume.as_ref().map(|r| r.agent.clone()).expect("这台读得出那条记录");
-    let facts = crate::control::session_open::Facts { resume, fork_tmux: None };
-    let (own, nf) = (crate::platform::fs::Own::issue(), crate::platform::fs::NewFile::issue());
+    let agent = resume
+        .as_ref()
+        .map(|r| r.agent.clone())
+        .expect("这台读得出那条记录");
+    let facts = crate::control::session_open::Facts {
+        resume,
+        fork_tmux: None,
+    };
+    let (own, nf) = (
+        crate::platform::fs::Own::issue(),
+        crate::platform::fs::NewFile::issue(),
+    );
     let opened = crate::faces::session_open_face::with_launch_ctx(&own, &nf, |fork, pre, home| {
         crate::faces::session_batch_face::with_deps_as(None, &agent, None, |d| {
             crate::control::session_open::answer(req, facts, d, fork, pre, home)

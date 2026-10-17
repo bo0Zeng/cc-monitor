@@ -2,12 +2,12 @@
 //! `session-open`：恢复那一条的记录（哪一家 · 目录 · 模型 · 权限档）· 分叉源会话此刻在不在 tmux 里 · 写分支记录 ·
 //! 起之前定 sid 写轮换那几下都住观测层与这台的家，由这层读好交给 `control/session_open`；起会话要的那几样同批量那一份（`session_batch_face`）。
 
+use crate::control::session_open::{self as open, Facts, ResumeOf};
 use crate::control::session_open::{ForkWrite, PreRotation};
 use crate::platform::fs::Ro;
+use cmd_wire::session::{ForkSlot, ForkTerminal};
 use serde_json::Value;
 use std::collections::BTreeMap;
-use crate::control::session_open::{self as open, Facts, ResumeOf};
-use cmd_wire::session::{ForkSlot, ForkTerminal};
 
 /// `session-open`：起新的 · 恢复某条 · 接回，一个请求。阻塞档；写自家状态（起之前写好打开哪一份轮换配置）⇒ 写句柄由分派那一层递。
 pub(crate) struct SessionOpen;
@@ -175,7 +175,10 @@ impl crate::wire::typed::Handle for SessionOpenDir {
         req: crate::control::session_open::new::OpenDirReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<
-        Output = Result<crate::control::session_open::new::DirChecked, crate::control::session_open::new::OpenDirErr>,
+        Output = Result<
+            crate::control::session_open::new::DirChecked,
+            crate::control::session_open::new::OpenDirErr,
+        >,
     > + Send
            + 'static {
         async move {
@@ -216,7 +219,10 @@ pub(crate) fn launchable_here(found: &dyn Fn(&str) -> bool) -> Vec<&'static str>
 pub(crate) use cmd_wire::session::{AgentFacts, AgentPick, ForkFacts, OpenFacts, RecentDir};
 
 /// 一家的起会话事实（名字 · 可选的模型与权限档）；`kind` 认不出 ⇒ 名字照 kind、两张表空。
-pub(crate) fn agent_facts(kind: &'static str, prefs: &crate::control::machine_prefs::Prefs) -> AgentFacts {
+pub(crate) fn agent_facts(
+    kind: &'static str,
+    prefs: &crate::control::machine_prefs::Prefs,
+) -> AgentFacts {
     let face = crate::agents::pick_kind(Some(kind)).ok().map(|(_, f)| f);
     let picks = |cs: &[crate::agents::Choice]| {
         cs.iter()
@@ -361,7 +367,10 @@ impl crate::wire::typed::Handle for SessionOpenFacts {
 
 /// `session-open-facts` 的本体：`{forkOf?, at?}` ⇒ `{recent, tmux, agents, fork}`。
 /// `tz` ＝ 看的那一台的时区：分叉那一轮的起点钟面按它写。
-pub(crate) fn facts(req: &OpenFactsReq, tz: &crate::Tz) -> Result<OpenFacts, (&'static str, String)> {
+pub(crate) fn facts(
+    req: &OpenFactsReq,
+    tz: &crate::Tz,
+) -> Result<OpenFacts, (&'static str, String)> {
     let fork_of = match req.fork_of.as_deref() {
         None => None,
         Some(s) if shell_quote_core::session_id_ok(s) => Some(s),

@@ -7802,7 +7802,7 @@
     "settings.machine.permissionModeHelp": {
       "kind": "body",
       "role": "说明",
-      "zh": "从这台起新会话时用；会话里仍可切换。",
+      "zh": "起新会话时用 · 会话里仍可切换",
       "args": []
     },
     "settings.machine.tabShow": {
@@ -14384,12 +14384,6 @@
       "zh": "Windows 上不支持接回已有会话",
       "args": []
     },
-    "rsHistory.newSession.noDir": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "路径不存在 · {cwd} · 未新建会话",
-      "args": ["cwd"]
-    },
     "rsHistory.relay.downRefused": {
       "kind": "error",
       "role": "报错",
@@ -14407,12 +14401,6 @@
       "role": "说明",
       "zh": "各机器在跑的会话里无 {sid} · 停在当前标签页",
       "args": ["sid"]
-    },
-    "rsHistory.launch.noSessionName": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "缺会话名 · 无法启动",
-      "args": []
     },
     "rsHistory.launcher.badChars": {
       "kind": "error",

@@ -210,7 +210,17 @@ fn the_permission_default_follows_the_preference_while_the_agent_still_offers_it
     };
     let got = agent_facts("claude", &prefs("claude", "plan")).permission_default;
     assert_eq!(got.map(|p| p.value), Some("plan".to_string()));
-    assert_eq!(agent_facts("claude", &Default::default()).permission_default, None);
-    assert_eq!(agent_facts("claude", &prefs("claude", "yolo")).permission_default, None, "清单里没了 ⇒ 当没设");
-    assert_eq!(agent_facts("codex", &prefs("codex", "plan")).permission_default, None);
+    assert_eq!(
+        agent_facts("claude", &Default::default()).permission_default,
+        None
+    );
+    assert_eq!(
+        agent_facts("claude", &prefs("claude", "yolo")).permission_default,
+        None,
+        "清单里没了 ⇒ 当没设"
+    );
+    assert_eq!(
+        agent_facts("codex", &prefs("codex", "plan")).permission_default,
+        None
+    );
 }

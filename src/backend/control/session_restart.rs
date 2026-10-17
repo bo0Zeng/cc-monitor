@@ -188,11 +188,7 @@ pub(crate) const ALREADY_LIVE: &str = "already_live";
 
 /// 这条会话另有活进程在写（`pids`）⇒ 不起新的（`data`：`{pids}`；停完旧的之后 ⇒ 多 `stopped: true`）。
 fn already_live(said: String, pids: Vec<u32>, stopped: bool) -> Failed {
-    (
-        ALREADY_LIVE,
-        said,
-        Refused::Live { pids, stopped }.data(),
-    )
+    (ALREADY_LIVE, said, Refused::Live { pids, stopped }.data())
 }
 
 /// 开动之前那一步：点名的号选得了 ＋ 这条会话恰好在一个终端里跑着 ＋ 写它的活进程至多一个（就是那个终端里的）

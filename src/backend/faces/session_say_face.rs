@@ -113,7 +113,6 @@ pub(crate) fn resume_here(
 /// 恢复那一下的结局（同 `session-open` 恢复那一支）。
 pub(crate) type Reopened = Result<open::Opened, open::Failed>;
 
-
 /// `session-say` 的本体：`waiting` 答这条会话此刻在不在等人，`send` 照 `terminal-input` 送。
 pub(crate) fn say_with(
     req: &SessionSayReq,

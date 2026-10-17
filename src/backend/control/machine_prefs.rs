@@ -331,7 +331,9 @@ fn offered_modes(req: &PrefsSet) -> Result<(), String> {
     for (kind, m) in req.permission_modes.iter().flatten() {
         if let Some(m) = m.as_deref().map(str::trim).filter(|m| !m.is_empty()) {
             if offered(kind, m).is_none() {
-                return Err(format!("`permissionModes.{kind}` is not a mode that agent offers: {m:?}"));
+                return Err(format!(
+                    "`permissionModes.{kind}` is not a mode that agent offers: {m:?}"
+                ));
             }
         }
     }

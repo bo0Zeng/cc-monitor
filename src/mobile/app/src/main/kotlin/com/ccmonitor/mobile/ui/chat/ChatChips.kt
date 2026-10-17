@@ -7,8 +7,8 @@ import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionModel
 import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
 import com.ccmonitor.mobile.core.claude.link.SessionPermission
-import com.ccmonitor.mobile.core.claude.link.wire.ModeSwitchResult
 import com.ccmonitor.mobile.core.claude.link.wire.AgentPick
+import com.ccmonitor.mobile.core.claude.link.wire.ModeSwitchResult
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply

@@ -5,7 +5,7 @@
  */
 export type AgentPick = { 
 /**
- * 原值（`session-new` 的 `model` / `permissionMode` 收的就是它）。
+ * 原值（`session-open` 的 `model` / `permissionMode` 收的就是它）。
  */
 value: string, 
 /**

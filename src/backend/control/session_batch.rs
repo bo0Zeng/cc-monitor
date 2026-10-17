@@ -235,7 +235,9 @@ impl Answer {
             _ => None,
         };
         let copy_detail = match (&self.why, failed) {
-            (Some(why), true) => crate::wire::detail::of(Some("sessions-stop"), why, Some(&self.detail)),
+            (Some(why), true) => {
+                crate::wire::detail::of(Some("sessions-stop"), why, Some(&self.detail))
+            }
             _ => String::new(),
         };
         Outcome {

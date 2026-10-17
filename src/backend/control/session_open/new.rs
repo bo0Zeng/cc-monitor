@@ -120,9 +120,9 @@ pub(crate) fn dir_answer(
         None => None,
         Some(s) if shell_quote_core::session_id_ok(s) => Some(s),
         Some(_) => {
-            return Err(OpenDirErr::BadArgs(
-                crate::common::contract::malformed("`forkOf` must be a session id"),
-            ))
+            return Err(OpenDirErr::BadArgs(crate::common::contract::malformed(
+                "`forkOf` must be a session id",
+            )))
         }
     };
     let cwd = expand_home(req.cwd.trim(), home);
@@ -143,4 +143,3 @@ pub(crate) fn dir_answer(
     };
     Ok(DirChecked { exists, tmux_name })
 }
-

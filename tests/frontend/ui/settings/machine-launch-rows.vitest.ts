@@ -99,8 +99,8 @@ beforeEach(() => {
   disk.failSet = null;
   modes.clear();
   modes.set("devbox", [
-    { value: "acceptEdits", text: "自动接受编辑" },
-    { value: "plan", text: "计划模式" },
+    { value: "acceptEdits", text: "acceptEdits·text" },
+    { value: "plan", text: "plan·text" },
   ]);
 });
 
@@ -203,8 +203,8 @@ describe("每台那一格「新会话的权限档」：问那台", () => {
     const r = row.querySelector<HTMLElement>("[data-role=permission-mode]")!;
     expect(r.hidden).toBe(false);
     const b = r.querySelector<HTMLButtonElement>("button")!;
-    expect(optionLabels(b)).toEqual([copyText("resumeSelect.option.defaultBare"), "自动接受编辑", "计划模式"]);
-    choose(b, "计划模式");
+    expect(optionLabels(b)).toEqual([copyText("resumeSelect.option.defaultBare"), "acceptEdits·text", "plan·text"]);
+    choose(b, "plan·text");
     await settle();
     expect(sets).toEqual([["devbox", { permissionModes: { [DEFAULT_AGENT]: "plan" } }]]);
     choose(b, copyText("resumeSelect.option.defaultBare"));

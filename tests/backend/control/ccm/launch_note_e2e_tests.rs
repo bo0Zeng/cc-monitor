@@ -160,8 +160,15 @@ fn launch_note_child_entry_point() {
         default_launcher,
         preset_args: Vec::new(),
     };
-    let argv = lr::argv_of(&l, &account, Here::Local { windows: false }, false, &lr::own_caps(), "ccm")
-        .expect("渲得出那一行");
+    let argv = lr::argv_of(
+        &l,
+        &account,
+        Here::Local { windows: false },
+        false,
+        &lr::own_caps(),
+        "ccm",
+    )
+    .expect("渲得出那一行");
     let code = crate::control::ccm::run(
         &argv[1..],
         &argv[..1],

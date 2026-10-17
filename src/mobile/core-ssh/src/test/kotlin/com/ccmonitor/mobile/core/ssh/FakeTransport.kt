@@ -87,7 +87,6 @@ class FakeTransport(
         rows: Int,
     ): ShellChannel = nope()
 
-
     override suspend fun execCapture(command: String): ExecResult = nope()
 
     private companion object {

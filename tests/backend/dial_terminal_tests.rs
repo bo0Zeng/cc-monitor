@@ -235,7 +235,8 @@ fn every_rendered_remote_command(cwds: &[&str]) -> Vec<(String, String)> {
     use crate::control::launch_render::ccm_invocation::tests as table;
     let mut out = Vec::new();
     for c in table::cells() {
-        for cwd in std::iter::once(c.1.cwd.clone()).chain(cwds.iter().map(|d| Some(d.to_string()))) {
+        for cwd in std::iter::once(c.1.cwd.clone()).chain(cwds.iter().map(|d| Some(d.to_string())))
+        {
             let mut cell = c.clone();
             cell.1.cwd = cwd.clone();
             if let Ok(cmd) = table::render_cell(&cell) {

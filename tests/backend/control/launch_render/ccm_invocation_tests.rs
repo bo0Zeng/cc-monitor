@@ -65,18 +65,14 @@ fn unconditional_caps_are_always_required_and_conditional_ones_only_when_used() 
         "没有 tmux 的那台连直路都起不了"
     );
     let mut tmux = direct.clone();
-    tmux.container = Container::Tmux {
-        name: "cc-s1",
-    };
+    tmux.container = Container::Tmux { name: "cc-s1" };
     assert_eq!(
         render_ccm_invocation(&tmux, &no_tmux),
         Err(Refusal::MissingCap("tmux".into()))
     );
     let mut attach = base_spec();
     attach.action = Action::Attach { name: "cc-s1" };
-    attach.container = Container::Tmux {
-        name: "cc-s1",
-    };
+    attach.container = Container::Tmux { name: "cc-s1" };
     assert_eq!(
         render_ccm_invocation(&attach, &caps_without("attach")),
         Err(Refusal::MissingCap("attach".into()))
@@ -204,9 +200,7 @@ fn a_fully_loaded_invocation_emits_every_part_in_registry_order() {
     let spec = CliSpec {
         agent: "claude",
         action: Action::Resume { sid: "s1" },
-        container: Container::Tmux {
-            name: "cc-s1",
-        },
+        container: Container::Tmux { name: "cc-s1" },
         cwd: Some("/w d"),
         account: CliAccount::Named { name: "z" },
         ccm_sid: Some("s1"),
@@ -260,9 +254,7 @@ fn every_value_is_judged_before_it_becomes_a_ccm_argument() {
         ),
         (
             CliSpec {
-                container: Container::Tmux {
-                    name: "-x",
-                },
+                container: Container::Tmux { name: "-x" },
                 ..base_spec()
             },
             "IdentifierRefused { slot: TmuxName",
@@ -332,9 +324,7 @@ fn resume_is_written_the_way_that_agent_resumes_and_the_agent_is_always_said() {
     n.agent = "codex";
     assert_eq!(render(&n).unwrap(), "ccm -- new --ccm-agent codex --base");
     n.action = Action::Attach { name: "cc-x" };
-    n.container = Container::Tmux {
-        name: "cc-x",
-    };
+    n.container = Container::Tmux { name: "cc-x" };
     assert_eq!(render(&n).unwrap(), "ccm -- --attach cc-x");
     // 说不出是哪一家（空 · 带空白 · 注册表里没有）⇒ 拒，那一句列出认得的几家；不落默认那一家。
     for bad in ["", " codex", "gemini"] {
@@ -385,8 +375,19 @@ fn an_agent_without_accounts_refuses_a_named_account_and_says_so() {
 
 /// 那台 ccm 会的那几样（整份；拒的那几格各缺一样）。
 const ALL_CAPS: &[&str] = &[
-    "new", "resume", "attach", "tmux", "account", "model", "cwd", "agent", "launcher", "ccm-sid",
-    "print", "detach", "tmux-size",
+    "new",
+    "resume",
+    "attach",
+    "tmux",
+    "account",
+    "model",
+    "cwd",
+    "agent",
+    "launcher",
+    "ccm-sid",
+    "print",
+    "detach",
+    "tmux-size",
 ];
 
 /// 起什么（那一家的启动命令照缺省的偏好）；各格只改要改的那几样。
@@ -408,11 +409,13 @@ fn launch(agent: &str, act: super::super::Act) -> super::super::Launch {
 
 /// 那台判好的号：具名那一形带这台模型偏好里那个号的那一条。
 fn named(name: &str, model: Option<&str>) -> crate::control::launch_account::Settled {
-    crate::control::launch_account::Settled::Account(crate::control::launch_account::LaunchedAccount {
-        name: name.into(),
-        config_dir: format!("/h/.cc/{name}"),
-        model: model.map(str::to_string),
-    })
+    crate::control::launch_account::Settled::Account(
+        crate::control::launch_account::LaunchedAccount {
+            name: name.into(),
+            config_dir: format!("/h/.cc/{name}"),
+            model: model.map(str::to_string),
+        },
+    )
 }
 
 /// 一格：哪一形 · 起什么 · 那台判好的号 · 那台 ccm 缺哪一样（`None` ＝ 整份）· 那一行或拒的那一句。
@@ -554,7 +557,13 @@ pub(crate) fn caps_without_one(missing: Option<&str>) -> BTreeSet<String> {
 
 /// 那一格渲出来的那一行（远端那一形）。
 pub(crate) fn render_cell(c: &Cell) -> Result<String, String> {
-    super::super::line_of(&c.1, &c.2, super::super::Here::Remote, &caps_without_one(c.3), "ccm")
+    super::super::line_of(
+        &c.1,
+        &c.2,
+        super::super::Here::Remote,
+        &caps_without_one(c.3),
+        "ccm",
+    )
 }
 
 /// ★ 起什么 × 那台判好的号 × 那台 ccm 会的那几样 ⇒ 那一行，或拒的那一句，逐字节。
@@ -604,9 +613,19 @@ fn every_rendered_ccm_line_is_accepted_by_the_ccm_argv() {
     for c in cells() {
         let Ok(line) = render_cell(&c) else { continue };
         let words = shell_words(&line);
-        assert_eq!(words.first().map(String::as_str), Some("ccm"), "「{}」不是一行 ccm：{line}", c.0);
+        assert_eq!(
+            words.first().map(String::as_str),
+            Some("ccm"),
+            "「{}」不是一行 ccm：{line}",
+            c.0
+        );
         let parsed = crate::ccm_line::argv::parse(&words[1..]);
-        assert!(parsed.is_ok(), "渲染器吐的「{}」那一行 `ccm` 自己不认：{line}（{:?}）", c.0, parsed.err());
+        assert!(
+            parsed.is_ok(),
+            "渲染器吐的「{}」那一行 `ccm` 自己不认：{line}（{:?}）",
+            c.0,
+            parsed.err()
+        );
         checked += 1;
     }
     assert!(checked > 0, "表里一行都没渲出来 —— 上面那条空转着绿");
@@ -628,8 +647,14 @@ fn windows_launches_go_the_direct_way_and_attach_is_refused() {
     l.tmux = Some("cc-x".into());
     l.ccm_sid = Some("s1".into());
     let line = line_of(&l, &Settled::Base, win, &caps, "C:/cc/ccm.exe").unwrap();
-    assert!(line.starts_with("& 'C:/cc/ccm.exe' --resume s1 -- "), "{line}");
-    assert!(!line.contains("--ccm-tmux") && !line.contains("--ccm-sid"), "{line}");
+    assert!(
+        line.starts_with("& 'C:/cc/ccm.exe' --resume s1 -- "),
+        "{line}"
+    );
+    assert!(
+        !line.contains("--ccm-tmux") && !line.contains("--ccm-sid"),
+        "{line}"
+    );
     let mut attach = launch("claude", Act::Attach("cc-x".into()));
     attach.tmux = Some("cc-x".into());
     assert!(line_of(&attach, &Settled::Base, win, &caps, "C:/cc/ccm.exe").is_err());

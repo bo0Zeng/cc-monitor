@@ -160,8 +160,15 @@ fn the_pb_dir_is_set_trimmed_kept_and_cleared_by_an_empty_string() {
 #[test]
 fn a_permission_mode_default_is_kept_per_agent_and_only_one_that_agent_offers() {
     let home = scratch("perm");
-    let got = set(&home, serde_json::json!({"permissionModes": {"claude": "plan"}})).unwrap();
-    assert_eq!(got.prefs.permission_modes.get("claude").map(String::as_str), Some("plan"));
+    let got = set(
+        &home,
+        serde_json::json!({"permissionModes": {"claude": "plan"}}),
+    )
+    .unwrap();
+    assert_eq!(
+        got.prefs.permission_modes.get("claude").map(String::as_str),
+        Some("plan")
+    );
     let file = path_in(&home);
     let before = std::fs::read(&file).unwrap();
     for bad in [
@@ -173,7 +180,11 @@ fn a_permission_mode_default_is_kept_per_agent_and_only_one_that_agent_offers() 
         assert!(matches!(e, PrefsSetErr::BadArgs(_)), "{bad} ⇒ {e:?}");
         assert_eq!(std::fs::read(&file).unwrap(), before, "{bad} 拒了还动了盘");
     }
-    let got = set(&home, serde_json::json!({"permissionModes": {"claude": null}})).unwrap();
+    let got = set(
+        &home,
+        serde_json::json!({"permissionModes": {"claude": null}}),
+    )
+    .unwrap();
     assert!(got.prefs.permission_modes.is_empty());
     let _ = std::fs::remove_dir_all(&home);
 }

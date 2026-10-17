@@ -269,7 +269,6 @@ private class LifecycleFakeTransport : SshTransport {
         rows: Int,
     ): ShellChannel = nope()
 
-
     override suspend fun execCapture(command: String): ExecResult = nope()
 }
 
