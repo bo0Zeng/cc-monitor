@@ -330,8 +330,6 @@ comms-outward = { path = "../comms/outward", features = ["test-support"] }
 # U8a-2a：源码扫描型守卫的「只留生产段」剥法，与 monitor 共用同一份（守卫全在 cfg(test)，
 # 故是 dev-dependency —— 不进发布二进制）。
 guard-core = { path = "../common/guard-core" }
-# 保活那几条判据走虚拟钟（`start_paused`）：200 ms 一轮的保活，墙钟上忙机里回话一晚就误判死。
-tokio = { version = "1", features = ["test-util"] }
 # `acct-core` 的跨生产者对拍夹具只在测试构建里（`accounts_query_tests.rs` 用）：同一个依赖，测试构建多开 `fixtures`。
 acct-core = { path = "../common/acct-core", features = ["fixtures"] }
 # vendored russh 副本的指纹对拍（`dial_compress_tests::the_vendored_russh_differs_from_the_crate_only_where_registered`）：
@@ -342,7 +340,7 @@ sha2 = "0.11"
 # `src/frontend/ui/generated/`（`npm run gen:types` 早就跑后端这一半）。**只在 dev 侧**：codegen 工具，不进发布二进制；
 # 版本就是 monitor 那份 lock 里早已解析的 12.0.1（离线可用、本机缓存里有）。
 ts-rs = "12.0.1"
-# 假时钟（停着的钟，`advance` 才走）：测「挂着的提问自己带的期限」不按墙钟等。只在测试档开。
+# 假时钟（停着的钟，`advance` 才走）：测「挂着的提问自己带的期限」· 保活几轮判死不按墙钟等。只在测试档开。
 tokio = { version = "1", features = ["test-util"] }
 
 # ── **打补丁版 russh** ─────────────

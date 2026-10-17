@@ -2949,7 +2949,7 @@ mod g6_dependency_signoff {
             "tokio",
             DEV_DEPS,
             UNMEASURED,
-            "测试档多开 `test-util`（停着的钟，`advance` 才走）：判「挂着的提问自己带的期限」不按墙钟等。\
+            "测试档多开 `test-util`（停着的钟，`advance` 才走）：判「挂着的提问自己带的期限」· 保活几轮判死不按墙钟等。\
              同一个包（`[dependencies]` 里那一条），**只在测试期多一个特性**，不进发布二进制",
         ),
         (
@@ -2978,13 +2978,6 @@ mod g6_dependency_signoff {
             "运行时 + io。⚠ **本表唯一「写面在我们自己手上」的一条**：`fs` feature 开着 ⇒ \
              它**提供**写 API，而调用点全在本 crate 里 —— 那一面由命名空间那一条与那几种写句柄\
              那两条判据数，不由本表。本表管的是「它自己会不会写」",
-        ),
-        (
-            "tokio",
-            DEV_DEPS,
-            UNMEASURED,
-            "同上一行那一棵，测试档多开 `test-util`：保活那几条判据走虚拟钟（`start_paused`）。\
-             **只在测试期开**，不进发布二进制；只多出拨钟的 API，不多写面",
         ),
         (
             "tracing",
