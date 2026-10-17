@@ -7,6 +7,7 @@
 //! | W3 | 原子写要那个目录的锁：写完读回逐字同、0600；拿的是别的目录的锁 ⇒ 拒、一个字节不落 | 真文件 |
 //! | W4 | 删文件 · 改名都只在根底下 | 真文件 |
 //! | W5 | 家目录那一根只给 `.cc-monitor` 底下：别的打头 · 家目录本身 · 往上跳都拒 | 纯函数 |
+//! | D1 | 自家目录（`own_dir`）：新建 0700；已在且是本人的 0700 真目录 ⇒ 过；链接 · 不是目录 · 组 / 他人有权 ⇒ 拒、出声、一个字节不改 | 真目录 |
 
 use super::*;
 use std::path::{Path, PathBuf};
@@ -373,6 +374,48 @@ fn o1_born_private_existing_left_alone_missing_parent_refused() {
     assert_eq!(mode(&old), 0o755, "已在的那一层被改了权限");
     assert!(
         create_dir_private(&base.join("no/such")).is_err(),
+        "父目录不在也建出来了（只建一层）"
+    );
+    std::fs::remove_dir_all(&base).ok();
+}
+
+#[test]
+#[cfg(unix)]
+fn d1_an_own_dir_is_a_private_real_dir_of_mine_or_it_is_refused() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let mode = |p: &Path| std::fs::metadata(p).expect("meta").permissions().mode() & 0o777;
+    let base = sandbox("d1");
+    let fresh = base.join("fresh");
+    own_dir(&fresh).expect("建");
+    assert_eq!(mode(&fresh), PRIVATE_DIR_MODE);
+    own_dir(&fresh).expect("已在、本人、0700 ⇒ 过");
+    // 不合的三形：各拒、各说清是哪一形，盘上一个字节不改。
+    let real = base.join("real");
+    std::fs::create_dir(&real).unwrap();
+    std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let link = base.join("link");
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+    let file = base.join("file");
+    std::fs::write(&file, b"x").unwrap();
+    let wide = base.join("wide");
+    std::fs::create_dir(&wide).unwrap();
+    std::fs::set_permissions(&wide, std::fs::Permissions::from_mode(0o755)).unwrap();
+    for (p, key) in [
+        (&link, "beOwnState.dir.link"),
+        (&file, "beOwnState.dir.notDir"),
+        (&wide, "beOwnState.dir.tooWide"),
+    ] {
+        let e = own_dir(p).expect_err(&format!("{} 该拒", p.display()));
+        assert!(
+            copy_core::copy_matches(key, &e.said),
+            "{}：{e:?}",
+            p.display()
+        );
+    }
+    assert!(std::fs::symlink_metadata(&link).unwrap().is_symlink());
+    assert_eq!(mode(&wide), 0o755, "不合的那一层被改了权限");
+    assert!(
+        own_dir(&base.join("no/such")).is_err(),
         "父目录不在也建出来了（只建一层）"
     );
     std::fs::remove_dir_all(&base).ok();

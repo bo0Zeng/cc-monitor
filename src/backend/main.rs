@@ -98,7 +98,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 async fn main() {
     // 帧里的小成品（`changed.body`）照主题表现算：装进发端调的那一层（理由住 `stream/topic_body.rs` 头注）。
     topic_hook::install(topic_body::body_now);
-    // 拨号核心（`ssh-dial`，手机同一份）装上本后端那一套：钥匙文件 · known_hosts · 本机 agent · 详情事实 · 部署那两处写根。
+    // 拨号核心（`ssh-dial`，手机同一份）装上本后端那一套：钥匙文件 · known_hosts · 本机 agent · 详情事实 · 部署那一处写根。
     dial::host();
     // ★★ `K-R48`（09-11）：**当 `ccm` 用的那一趟，在这里就整条分出去。**
     //
@@ -167,6 +167,8 @@ async fn main() {
             Some("--resident-stop") => control::resident::run_stop(&args[1..], &own),
             // 部署那一趟：暂存区里新传上去的那一份自己核字节、换进落点（`control/place_self.rs`）。
             Some("--place-self") => control::place_self::run(&own),
+            // 卸载那一趟：暂存区里传上去的那一份删掉落点那一份、再删自己。
+            Some("--unplace-self") => control::place_self::run_unplace(&own),
             // `--dial` 那条拨号代理臂**删了**：拨号挪进本机那一个常驻后端，经流上的链路
             // （`link-*` 四条，`dial/link.rs`）做 —— 不再每条链路起一个进程。
             // 历史读面 · 搜索 · 账号读面 · 分叉 · `--resolve` 那几条手写臂（第 7 批第二题）删了：帧面早有同义的帧命令、

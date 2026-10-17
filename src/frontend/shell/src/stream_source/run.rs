@@ -174,7 +174,8 @@ pub async fn run(cfg: RemoteConfig, replay: Arc<EventReplay>, health: HealthOut)
 /// 每一轮开拨之前：部署预检（这台自证过就是期望 build 则跳过）。部署失败不阻断（手动部署的后端照样能连），但那句话要到界面上。
 async fn preflight(cfg: &RemoteConfig, health: &HealthOut) {
     let host_label = cfg.origin_label();
-    crate::machine_state::connecting(&host_label, "deploy");
+    // 那一句等本机后端推来的第一帧（问那台那一步）再写。
+    crate::machine_state::connecting(&host_label, "deploy", None);
     // 冷启动最贵的三段（用户点开应用到看见远端会话之间唯一的那条链）埋 `[perf]`：不改任何行为，只让下一次讨论有数可依。
     let t_connect_start = std::time::Instant::now();
     // 连接前确保远端后端已部署到固定落点（`~/.cc-monitor/bin/ccm`）；这一版没带字节 ⇒ `byte_table::choose` 回「这一版没带」→ 优雅 no-op。
@@ -184,11 +185,15 @@ async fn preflight(cfg: &RemoteConfig, health: &HealthOut) {
     let mine = crate::byte_table::my_backend_id();
     let verified = verified_build_of(&host_label);
     let skip_preflight = preflight_can_be_skipped(verified.as_deref(), mine);
+    let mut attaching = None;
     let confirmed_build = if skip_preflight {
         mine.map(str::to_string)
     } else {
         match crate::deploy::ensure_backend_deployed(cfg).await {
-            Ok(c) => Some(c),
+            Ok(got) => {
+                attaching = Some(got.attaching);
+                Some(got.build)
+            }
             Err(said) => {
                 tracing::warn!(
                     "stream_source [{host_label}] 后端没部署上（继续尝试连接已有后端）: {said}: {}",
@@ -214,7 +219,8 @@ async fn preflight(cfg: &RemoteConfig, health: &HealthOut) {
         confirmed_build.as_deref()
     );
     // 接那台的常驻后端（没有就起一个；与本机同形）。起不了常驻（非 unix / 太旧）就是一次失败、说清为什么，不回落到随 SSH 生死的流模式。
-    crate::machine_state::connecting(&host_label, "attach");
+    // 那一句是本机后端随装那一趟的应答交来的；没问它（跳过预检 · 装没成）⇒ 没有那一句。
+    crate::machine_state::connecting(&host_label, "attach", attaching);
 }
 
 /// 一条连接上 monitor 这边的那几样（接上时开、断了就丢）：攒批 ＋ 静默窗 ＋ 旁路快照（[`LineIntake`]，本机那条流用的是同一个）· 认不出的帧记账。

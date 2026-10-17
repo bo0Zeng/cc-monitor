@@ -4,7 +4,7 @@
 //!   别处拿不到这个值，也就写不出来。谁许造它由 `readonly_guard` 的构造判据钉（只许启动入口）。
 //! - [`OwnPath`] 只能由 [`Own`] 从根往下拼（相对名、不许 `..`、不许绝对路径）⇒ 方法收的路径落不到根外。
 //! - 方法只有这几件：建一层目录（0700，已在不动）· 拿目录的跨进程锁 · 原子写（要那个目录的锁）· 删文件 ·
-//!   把暂存区里的一份后端换进落点（[`Own::place_staged`]，部署那一趟由新传上去的那一份自己做）。
+//!   把暂存区里的一份后端换进落点（[`Own::place_staged`]，部署那一趟由新传上去的那一份自己做）· 删落点那一份（[`Own::clear_landing`]，卸载那一趟）。
 //!   原子写：旁名出生即只给本人（`O_EXCL` ＋ 0600）→ 写满 → `sync_all` → 原子挪过去；挪不过去就删掉自己建的旁名。
 //!   旁名带 pid ＋ 线程 ＋ 进程内序号，同一进程几个线程同时写同一份也不撞。
 
@@ -125,6 +125,11 @@ impl Own {
         create_dir_private(dir.as_path())
     }
 
+    /// 后端自家目录那一层（[`own_dir`]：建的那一下 0700；已在 ⇒ 必须是本人的、只给本人的真目录，不合 ⇒ 拒、出声）。
+    pub(crate) fn own_dir(&self, dir: &OwnPath) -> Result<(), Said> {
+        own_dir(dir.as_path())
+    }
+
     /// 拿 `dir` 的跨进程锁（阻塞到拿到为止；`dir` 要先在）。
     pub(crate) fn lock(&self, dir: &OwnPath) -> Result<OwnLock, crate::platform::lock::LockFail> {
         Ok(OwnLock {
@@ -195,6 +200,20 @@ impl Own {
         }
         create_dir_private(bin)?;
         std::fs::rename(&staged.0, &landing.0)
+    }
+}
+
+impl Own {
+    /// 删掉后端落点那一份（`~/.cc-monitor/bin/ccm`；是链接就删链接本身，不跟）：删了 ⇒ `true`，本来不在 ⇒ `false`。卸载那一趟用。
+    pub(crate) fn clear_landing(&self) -> std::io::Result<bool> {
+        let landing = self
+            .at_home(relay_route_core::BACKEND_LANDING_REL)
+            .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))?;
+        match std::fs::remove_file(&landing.0) {
+            Ok(()) => Ok(true),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(e),
+        }
     }
 }
 
@@ -419,8 +438,8 @@ impl std::os::fd::AsFd for DiagFile {
 pub(crate) const PRIVATE_DIR_MODE: u32 = 0o700;
 
 /// 建**一层**目录、建的那一下就是 0700（unix：权限位随创建一起生效，没有「先按 umask 建出来再收窄」的那一段）；已在的不动。
-/// 非 unix：照常建（目录的 ACL 按父目录继承）。[`Own::ensure_dir`] 的本体；文件管理面建暂存区那一处（`Face::make_dir_private`）也是它。
-pub(crate) fn create_dir_private(dir: &Path) -> std::io::Result<()> {
+/// 非 unix：照常建（目录的 ACL 按父目录继承）。[`Own::ensure_dir`] 与 [`own_dir`] 的本体。
+fn create_dir_private(dir: &Path) -> std::io::Result<()> {
     let mut b = std::fs::DirBuilder::new();
     #[cfg(unix)]
     {
@@ -432,6 +451,65 @@ pub(crate) fn create_dir_private(dir: &Path) -> std::io::Result<()> {
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
         Err(e) => Err(e),
     }
+}
+
+/// **后端自家目录**（一处实现）：建一层，建的那一下 0700；已在 ⇒ 核它是本人的真目录：`lstat` 不是链接（定死这一条：
+/// 不认「解开后仍在家下」）· 是目录 · 属主是本人 · 组 / 他人无权。不合 ⇒ 拒、出声（那一句说清是哪一形、怎么修），盘上一个字节不改。
+/// 两种写句柄都经这里：`Own` 发的路径（[`Own::own_dir`]：门牌那一层 · 换装锁）· 文件管理面的暂存区（`Face::own_dir`）——
+/// 收在两者共用的这一层，不收进哪一个句柄。远端那一份（`ssh-dial/sftp.rs::own_root`）是同一条规矩的 SFTP 版（不是链接 · 解开仍在家下）。
+/// 非 unix：只核链接与目录（属主 · 权限位那两问在 Windows 上是 ACL，这里不量）。
+pub(crate) fn own_dir(dir: &Path) -> Result<(), Said> {
+    let shown = dir.display().to_string();
+    let io = |e: std::io::Error| {
+        Said::with_raw(
+            copy_text(
+                "beOwnState.dir.unreadable",
+                &[("dir", &shown), ("why", &copy_core::io_reason(e.kind()))],
+            ),
+            &e,
+        )
+    };
+    create_dir_private(dir).map_err(io)?;
+    let md = std::fs::symlink_metadata(dir).map_err(io)?;
+    if md.file_type().is_symlink() {
+        return Err(copy_text("beOwnState.dir.link", &[("dir", &shown)]).into());
+    }
+    if !md.is_dir() {
+        return Err(copy_text("beOwnState.dir.notDir", &[("dir", &shown)]).into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        // SAFETY：`geteuid` 没有参数、不会失败。
+        if md.uid() != unsafe { libc::geteuid() } {
+            return Err(copy_text("beOwnState.dir.notMine", &[("dir", &shown)]).into());
+        }
+        if md.mode() & 0o077 != 0 {
+            return Err(copy_text(
+                "beOwnState.dir.tooWide",
+                &[
+                    ("dir", &shown),
+                    ("mode", &format!("{:04o}", md.mode() & 0o7777)),
+                ],
+            )
+            .into());
+        }
+    }
+    Ok(())
+}
+
+/// `at` 在不在这台的后端自家目录（`<家>/.cc-monitor`，家解开再比；`at` 由调用方解开）底下、且那个目录是 [`own_dir`] 认的那一形
+/// （本人的真目录，不改它）。答不出家在哪 · 那一层不在 / 不合 ⇒ `false`。文件管理面新建的东西收不收紧按它判。
+pub(crate) fn inside_own_dir(at: &Path) -> bool {
+    let Some(home) = crate::platform::paths::home_dir() else {
+        return false;
+    };
+    let home = std::fs::canonicalize(&home).unwrap_or(home);
+    let dir = home.join(HOME_DIR_NAME);
+    if !at.starts_with(&dir) {
+        return false;
+    }
+    std::fs::symlink_metadata(&dir).is_ok_and(|m| m.is_dir() && !m.file_type().is_symlink())
 }
 
 /// 拿一个目录的跨进程锁（阻塞到拿到为止）：本文件里两种句柄（[`Own::lock`] · [`AccountCreds::lock`]）都经这一处。

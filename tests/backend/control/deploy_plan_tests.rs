@@ -13,7 +13,7 @@ use std::sync::Mutex;
 
 // 回包写成线上那一份、入参经 typed 那一处收（同分派）：判据照线上形比。
 fn installed_json(p: &Plan) -> Value {
-    serde_json::to_value(super::installed_of(p)).unwrap()
+    serde_json::to_value(super::installed_of(p, "box")).unwrap()
 }
 
 fn slots_of(args: &Value) -> Result<Vec<deploy::Slot>, Fail> {
@@ -327,7 +327,7 @@ async fn stale_deploy_leftovers_in_staging_are_handed_over_and_nothing_else() {
 }
 
 /// 键集合 == 金样 `tests/__fixtures__/deploy-install.golden.json` 的键（monitor 的解码器读同一份金样）：应答 · 进度帧各一份。
-/// 应答那一句是 `deploy` crate 写的那一句；`build` 是落点上现在那一份（`keep` ⇒ 那台的）。
+/// 应答那两句（这一趟做了什么 · 接下来接常驻那一步）是 `deploy` crate 写的；`build` 是落点上现在那一份（`keep` ⇒ 那台的）。
 #[test]
 fn the_install_reply_and_the_step_frame_have_exactly_the_golden_keys() {
     let golden: serde_json::Value = serde_json::from_str(include_str!(
@@ -360,6 +360,8 @@ fn the_install_reply_and_the_step_frame_have_exactly_the_golden_keys() {
         (Some("keep"), Some("p9b"), Some("w"))
     );
     assert_eq!(got["ack"], fake_ack(1));
+    // 接常驻那一步那一句也是 `deploy` crate 写的（宿主接那台时照画，自己不拼）。
+    assert_eq!(got["attaching"], deploy::Step::Restart.said("box"));
     let step = step_frame("box", deploy::Step::Place { updating: true }).unwrap();
     let wire =
         serde_json::to_value(crate::wire::Frame::<cmd_wire::record::Record>::Deploy(step)).unwrap();
@@ -370,6 +372,12 @@ fn the_install_reply_and_the_step_frame_have_exactly_the_golden_keys() {
         deploy::Step::Place { updating: true }.said("box")
     );
     assert!(step_frame("box", deploy::Step::Restart).is_none());
+    let un = serde_json::to_value(Uninstalled {
+        removed: true,
+        said: "s".into(),
+    })
+    .unwrap();
+    assert_eq!(keys(&un), keys(&golden["uninstalled"]));
 }
 
 #[test]

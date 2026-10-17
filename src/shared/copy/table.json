@@ -58,6 +58,36 @@
       "zh": "清掉 key 表 {path} 里 {dir} 的行",
       "args": ["dir", "path"]
     },
+    "beOwnState.dir.link": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未使用 · 后端自家目录 {dir} 是一条链接 · 需手动换成本人的目录",
+      "args": ["dir"]
+    },
+    "beOwnState.dir.notDir": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未使用 · {dir} 已存在同名文件",
+      "args": ["dir"]
+    },
+    "beOwnState.dir.notMine": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未使用 · 后端自家目录 {dir} 属主不是本人",
+      "args": ["dir"]
+    },
+    "beOwnState.dir.tooWide": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未使用 · 后端自家目录 {dir} 同机他人可进 · 权限 {mode} · 跑 chmod 700 {dir}",
+      "args": ["dir", "mode"]
+    },
+    "beOwnState.dir.unreadable": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未使用 · 后端自家目录 {dir} · {why}",
+      "args": ["dir", "why"]
+    },
     "beOwnState.path.noHome": {
       "kind": "error",
       "role": "原因格",
@@ -12449,30 +12479,6 @@
       "args": [],
       "limited": ["连接"]
     },
-    "rsDialHost.ask.writeFenced": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{said} · 远端只许写 ~/.cc-monitor/bin/ 与 ~/.cc-monitor/staging/",
-      "args": ["said"]
-    },
-    "rsDialHost.ask.timeout": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "本机后端 {dur} 未回答",
-      "args": ["dur"]
-    },
-    "rsDialHost.ask.sendBytesFailed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "向本机后端送字节失败 · {why}",
-      "args": ["why"]
-    },
-    "rsDialHost.open.noHome": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "本机后端未答出远端起始目录",
-      "args": []
-    },
     "rsDialHost.open.timeout": {
       "kind": "error",
       "role": "报错",
@@ -18573,12 +18579,6 @@
       "zh": "写入失败 · {path} · {why}\n删除失败 · 留下的 0 字节空文件 · {leftWhy}\n非用户数据 · 删后再试",
       "args": ["path", "why", "leftWhy"]
     },
-    "beFilesCommit.staging.notDir": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "写入失败 · {path} · 已存在同名文件",
-      "args": ["path"]
-    },
     "beFilesCommit.chunk.createFailed": {
       "kind": "error",
       "role": "报错",
@@ -18778,11 +18778,11 @@
       "zh": "{path} 含空段、. 或 .. · 只收规整路径 · 未改动",
       "args": ["path"]
     },
-    "beSftp.fence.outsideRoots": {
+    "beSftp.fence.outsideRoot": {
       "kind": "error",
       "role": "报错",
-      "zh": "未改动 · {path} 不在 ~/{a} · ~/{b}",
-      "args": ["a", "b", "path"]
+      "zh": "未改动 · {path} 不在 ~/{root}",
+      "args": ["path", "root"]
     },
     "beSftp.fence.readOnly": {
       "kind": "error",

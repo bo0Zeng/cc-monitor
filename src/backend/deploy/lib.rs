@@ -3,7 +3,8 @@
 //! 照桌面五步走：① 出计划（[`plan`]）· ② 取字节 ＋ 自检 · ③ 放进暂存区 ＋ 读回（`ssh_dial::sftp::put_verified`）→ 那一份自己换进落点（`--place-self`）· ④ 判读回 ＋ 收拾残件 ·
 //! ⑤ 起常驻 / 换旧的（远端 ccm 自己的 `--resident-ensure [--replace]`，[`resident_verdict`] 判换不换）。
 //!
-//! 两端都调 [`install`]（①–④ 一趟，字节是宿主交来的一份文件，每一步那一句是 [`Step::said`]、结局那一句是 [`Plan::said`]）；⑤ 由宿主跑 `--resident-ensure --replace`：
+//! 两端都调 [`install`]（①–④ 一趟，字节是宿主交来的一份文件，每一步那一句是 [`Step::said`]、结局那一句是 [`Plan::said`]）；⑤ 由宿主跑 `--resident-ensure --replace`
+//! （那一步那一句也是 [`Step::said`]）。卸载是 [`uninstall`]：同样只写暂存区，由传上去的那一份删落点那一份。
 //! - 桌面：本机常驻后端答帧命令 `deploy-install`（`control/deploy_plan.rs`，薄薄一层：入参 · 进度帧 · 回包形状 · 码），字节是 monitor 落成的文件；
 //! - 手机：mobcore 直接调，字节是 App 从包里解出来的那一份文件。
 //!
@@ -25,7 +26,7 @@ use serde_json::Value;
 use ssh_dial::{Captured, DialRequest};
 
 mod install;
-pub use install::{install, Load, Place, Slot, Step, STAGED_STEM};
+pub use install::{install, uninstall, Load, Place, Removed, Slot, Step, STAGED_STEM};
 
 /// 身份戳的两个界标（住契约 crate）。
 pub const MARKS: Marks<'static> = Marks {

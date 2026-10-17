@@ -1407,6 +1407,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 远端那台的小中继（连常驻后端的套接字、原样对拷；monitor 经链路 stream 跑）。⚠ 新子命令 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     // 部署那一趟：暂存区里新传上去的那一份自己换进落点（`control/place_self.rs`）。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
     "--place-self",
+    // 卸载那一趟：暂存区里传上去的那一份删掉落点那一份（同一个文件）。
+    "--unplace-self",
     "--resident-attach",
     "--resident-ensure",
     "--resident-stop",

@@ -8,6 +8,10 @@
 //! 每走一步往本连接的应答通道推一帧 `deploy {machine, step, said}`（那一句是 `deploy::Step::said`），结局是应答。
 //! ⑤ 换常驻不在这里：monitor 接那台时 `--resident-ensure --replace`，那台自己判换不换。
 //!
+//! # 帧命令 `deploy-uninstall`（同一家）
+//!
+//! 入参同上；SFTP 只写暂存区 ⇒ 传一份暂存件上去、由它删落点那一份（`deploy::uninstall`），回 `{removed, said}`。
+//!
 //! # 帧命令 `resident-verdict`（同一家）
 //!
 //! 接上的这一台 hello 报的 build 比问的那一端手上这一版旧没有（[`resident_verdict`]）：版本门那一句按 `older` 挑（`resident_client::gate`）。
@@ -123,6 +127,8 @@ pub(crate) struct Installed {
     pub(crate) action: &'static str,
     /// 这一趟做了什么那一句（`deploy::Plan::said`）。
     pub(crate) said: String,
+    /// 接下来接那台常驻后端那一步那一句（`deploy::Step::Restart`）：monitor 接那台时照画，自己不拼。
+    pub(crate) attaching: String,
     /// 落点上现在那一份自报的身份（`keep` ⇒ 那台上那一份的；否则这一版的）。
     pub(crate) build: String,
     /// 那台的 OS（表 A 的词）。
@@ -132,8 +138,8 @@ pub(crate) struct Installed {
     pub(crate) ack: Value,
 }
 
-/// 装完的那份计划 → 应答。
-pub(crate) fn installed_of(p: &Plan) -> Installed {
+/// 装完的那份计划 → 应答（`machine` = 那台的名字）。
+pub(crate) fn installed_of(p: &Plan, machine: &str) -> Installed {
     let (action, build) = match &p.action {
         DeployAction::Skip => ("skip", p.expected.clone()),
         DeployAction::Deploy(_) => ("deploy", p.expected.clone()),
@@ -142,6 +148,7 @@ pub(crate) fn installed_of(p: &Plan) -> Installed {
     Installed {
         action,
         said: p.said(),
+        attaching: deploy::Step::Restart.said(machine),
         build,
         os: p.key.os.label(),
         ack: p.ack.clone(),
@@ -164,12 +171,8 @@ pub(crate) fn step_frame(machine: &str, s: deploy::Step) -> Option<crate::wire::
     })
 }
 
-/// `deploy-install` 的本体（对面由调用方给）：每走一步交 `on` 一帧，结局是应答。
-pub async fn install(
-    req: &DeployInstallReq,
-    host: &dyn deploy::Place,
-    on: &(dyn Fn(crate::wire::Deploy) + Send + Sync),
-) -> Result<Installed, Fail> {
+/// 入参那几行 ⇒ `deploy::Slot`；`machine` 空 ⇒ `bad_args`。
+fn checked(req: &DeployInstallReq) -> Result<Vec<deploy::Slot>, Fail> {
     let slots = slots_of(&req.slots)?;
     if req.machine.trim().is_empty() {
         return Err(Fail::new(
@@ -177,11 +180,25 @@ pub async fn install(
             crate::common::contract::malformed("missing `machine` (string)"),
         ));
     }
+    Ok(slots)
+}
+
+/// 读一格字节（本机文件）。
+fn load(p: &std::path::Path) -> std::io::Result<Vec<u8>> {
+    Ro::read(p)
+}
+
+/// `deploy-install` 的本体（对面由调用方给）：每走一步交 `on` 一帧，结局是应答。
+pub async fn install(
+    req: &DeployInstallReq,
+    host: &dyn deploy::Place,
+    on: &(dyn Fn(crate::wire::Deploy) + Send + Sync),
+) -> Result<Installed, Fail> {
+    let slots = checked(req)?;
     let now = crate::common::time::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let load = |p: &std::path::Path| Ro::read(p);
     let machine = req.machine.as_str();
     let step = |s: deploy::Step| {
         if let Some(f) = step_frame(machine, s) {
@@ -190,7 +207,7 @@ pub async fn install(
     };
     deploy::install(host, &slots, &load, machine, now, &step)
         .await
-        .map(|p| installed_of(&p))
+        .map(|p| installed_of(&p, machine))
         .map_err(fail_of)
 }
 
@@ -218,25 +235,25 @@ impl crate::wire::typed::Command for DeployInstall {
     type Err = DeployInstallErr;
 }
 
+/// 真拨那台的对面（装 · 卸同一个）：拨号核心那一套（钥匙 · known_hosts · 写规矩）先装上；一次性命令走全后端那一处
+/// （`remote_ask::capture_full`，池里那条连接上多开一个 exec）。`dial` 不成形 ⇒ 那一句（`bad_args`）。
+fn facing_of(req: &DeployInstallReq) -> Result<DialFacing, String> {
+    let dial = req.dial.stored().map_err(|(_, said)| said)?;
+    let to = crate::dial::machine::resolve(&dial).map_err(|(_, said)| said)?;
+    crate::dial::host();
+    let exec: deploy::Exec = Box::new(move |command| {
+        let dial = dial.clone();
+        Box::pin(async move { crate::dial::remote_ask::capture_full(&dial, command).await })
+    });
+    Ok(DialFacing::new(to, exec))
+}
+
 /// 生产的 `deploy-install`：真拨号；进度帧进本连接的应答通道（不丢、与应答同序）。
 pub(crate) async fn answer_install(
     req: DeployInstallReq,
     replies: &tokio::sync::mpsc::Sender<crate::wire::Frame>,
 ) -> Result<Installed, DeployInstallErr> {
-    let dial = req
-        .dial
-        .stored()
-        .map_err(|(_, said)| DeployInstallErr::BadArgs(said))?;
-    let to = crate::dial::machine::resolve(&dial)
-        .map_err(|(_, said)| DeployInstallErr::BadArgs(said))?;
-    // 拨号核心那一套（钥匙 · known_hosts · 写规矩）先装上，再开那条连接。
-    crate::dial::host();
-    // 一次性命令走全后端那一处（`remote_ask::capture_full`，池里那条连接上多开一个 exec）。
-    let exec: deploy::Exec = Box::new(move |command| {
-        let dial = dial.clone();
-        Box::pin(async move { crate::dial::remote_ask::capture_full(&dial, command).await })
-    });
-    let facing = DialFacing::new(to, exec);
+    let facing = facing_of(&req).map_err(DeployInstallErr::BadArgs)?;
     // 进度帧先进一条不封顶的队，由一个任务按序送进应答通道（`on` 是同步回调，送不了 `await`）。
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<crate::wire::Deploy>();
     let out = replies.clone();
@@ -254,6 +271,73 @@ pub(crate) async fn answer_install(
     // 进度帧排在应答之前：等那条队送完。
     let _ = pump.await;
     got.map_err(|f| crate::wire::typed::of_fail(f, DeployInstallErr::IoFailed))
+}
+
+// ═══ 卸载（帧命令 `deploy-uninstall`）═══════════════════════════════════════════════════════
+//
+// SFTP 只写暂存区 ⇒ 卸载也传一份暂存件上去，由它删落点那一份（`deploy::uninstall`）。入参同 `deploy-install`。
+
+/// `deploy-uninstall` 的应答：删没删 · 那一句（`deploy` crate 写的）。
+#[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct Uninstalled {
+    /// 删了落点那一份 ⇒ `true`；本来就不在 ⇒ `false`。
+    pub(crate) removed: bool,
+    pub(crate) said: String,
+}
+
+/// `deploy-uninstall` 的本体（对面由调用方给）。
+pub async fn uninstall(
+    req: &DeployInstallReq,
+    host: &dyn deploy::Place,
+) -> Result<Uninstalled, Fail> {
+    let slots = checked(req)?;
+    deploy::uninstall(host, &slots, &load, &req.machine)
+        .await
+        .map(|r| Uninstalled {
+            removed: r.removed,
+            said: r.said,
+        })
+        .map_err(fail_of)
+}
+
+crate::wire::typed::codes! {
+    /// `deploy-uninstall` 的码：读写那台没成 · 那一格这一版不承诺 / 没带 · 够不到那台 · 推不上去（围栏拒）· 那一份没删成。
+    pub(crate) enum DeployUninstallErr {
+        IoFailed = "io_failed",
+        Refused = "refused",
+        Unreachable = "unreachable",
+        NotCarried = "not_carried",
+        Fenced = "fenced",
+        PlaceFailed = "place_failed",
+    }
+}
+
+/// `deploy-uninstall`：删那台的后端（真异步：拨号 / 等远端）。
+pub(crate) struct DeployUninstall;
+
+impl crate::wire::typed::Command for DeployUninstall {
+    const NAME: &'static str = "deploy-uninstall";
+    type Req = DeployInstallReq;
+    type Reply = Uninstalled;
+    type Err = DeployUninstallErr;
+}
+
+impl crate::wire::typed::Handle for DeployUninstall {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: DeployInstallReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<Uninstalled, DeployUninstallErr>> + Send + 'static
+    {
+        async move {
+            let facing = facing_of(&req).map_err(DeployUninstallErr::BadArgs)?;
+            uninstall(&req, &facing)
+                .await
+                .map_err(|f| crate::wire::typed::of_fail(f, DeployUninstallErr::IoFailed))
+        }
+    }
 }
 
 // ═══ 远端常驻后端 hello 的新旧（帧命令 `resident-verdict`）═══════════════════════════

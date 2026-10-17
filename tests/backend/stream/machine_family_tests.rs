@@ -208,13 +208,14 @@ fn the_deploy_replies_the_shell_reads_keep_their_wire_bytes() {
         ack: json!({ "ok": true, "fingerprints": { "192.0.2.2:22": "SHA256:t" }, "jump_fingerprints": {}, "strict": false, "jump_strict": false }),
     };
     assert_eq!(
-        wire_of(&dp::installed_of(&plan(
-            deploy_contract::DeployAction::Keep {
+        wire_of(&dp::installed_of(
+            &plan(deploy_contract::DeployAction::Keep {
                 theirs: "p9b".into(),
                 why: "w".into()
-            }
-        ))),
-        r#"{"ack":{"fingerprints":{"192.0.2.2:22":"SHA256:t"},"jump_fingerprints":{},"jump_strict":false,"ok":true,"strict":false},"action":"keep","build":"p9b","os":"Linux","said":"w"}"#
+            }),
+            "box"
+        )),
+        r#"{"ack":{"fingerprints":{"192.0.2.2:22":"SHA256:t"},"jump_fingerprints":{},"jump_strict":false,"ok":true,"strict":false},"action":"keep","attaching":"连接 box · 启动 cc-monitor","build":"p9b","os":"Linux","said":"w"}"#
     );
     // 本机那一份放不放：落点不在 ⇒ 放。
     let got = run_any(

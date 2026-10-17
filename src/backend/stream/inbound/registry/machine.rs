@@ -19,6 +19,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // **给那台装 / 升级后端**：`{dial, slots, machine}` → `{action, said, build, os, ack}`；每走一步推一帧 `deploy`（进度帧走本连接的应答通道 ⇒ 硬臂）。
     //   本体 `control/deploy_plan.rs`（编排住 `deploy` crate，手机同一份）。
     crate::wire::typed::frame::<crate::control::deploy_plan::DeployInstall>("给那台装 / 升级后端"),
+    // **卸那台的后端**：入参同上 → `{removed, said}`（传一份暂存件、由它删落点那一份；拨号 · 等远端 ⇒ 异步档）。
+    crate::wire::typed::asynchronous::<crate::control::deploy_plan::DeployUninstall>(
+        "卸那台的后端",
+    ),
     // **远端常驻后端 hello 的新旧**：`{mine, theirs, replaced}` → `{action, older}`（纯判定，不碰盘不拨号 ⇒ 不进阻塞档）。
     //   本体 `control/deploy_plan.rs::answer_resident_verdict`（判定只在后端）。
     crate::wire::typed::asynchronous::<crate::control::deploy_plan::ResidentVerdict>(

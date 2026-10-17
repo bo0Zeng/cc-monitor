@@ -22,12 +22,16 @@ fn a_round_walks_connecting_then_up_with_the_version() {
         MachineStateKind::Unknown,
         "还没轮过就有了结论"
     );
-    connecting(&o, "deploy");
-    connecting(&o, "attach");
+    connecting(&o, "deploy", None);
+    connecting(&o, "attach", Some("接常驻那一句".into()));
     let p = product(&o, true);
     assert_eq!(
-        (p.state, p.stage.as_deref()),
-        (MachineStateKind::Connecting, Some("attach"))
+        (p.state, p.stage.as_deref(), p.said.as_deref()),
+        (
+            MachineStateKind::Connecting,
+            Some("attach"),
+            Some("接常驻那一句")
+        )
     );
     up(&o, "p7z", VersionRelation::Same);
     let p = product(&o, true);
@@ -44,7 +48,7 @@ fn a_round_walks_connecting_then_up_with_the_version() {
 #[test]
 fn a_failed_round_takes_the_reason_the_dial_layer_noted() {
     let o = fresh("没连上");
-    connecting(&o, "deploy");
+    connecting(&o, "deploy", None);
     dial_failed(&o, Some("auth"), None, &said("拨号没成"));
     down(&o);
     let p = product(&o, true);
@@ -200,7 +204,11 @@ fn the_product_matches_the_cross_language_golden() {
         let o = fresh(&format!("金样-{name}"));
         match name {
             "连着" => up(&o, "p7z", VersionRelation::Same),
-            "正在连" => connecting(&o, "attach"),
+            "正在连" => connecting(
+                &o,
+                "attach",
+                Some("连接 ms-金样-正在连 · 启动 cc-monitor".into()),
+            ),
             "密钥被拒" => {
                 dial_failed(&o, Some("auth"), None, &said("拨号没成"));
                 down(&o)
@@ -257,7 +265,7 @@ fn the_product_matches_the_cross_language_golden() {
 #[test]
 fn a_failed_round_carries_the_copy_detail() {
     let o = fresh("带详情");
-    connecting(&o, "deploy");
+    connecting(&o, "deploy", None);
     dial_failed(&o, Some("auth"), None, &said("step-said"));
     down(&o);
     let d = product(&o, true).detail.expect("没连上那一轮没有详情");
@@ -267,14 +275,14 @@ fn a_failed_round_carries_the_copy_detail() {
     assert!(d.contains("原话：raw words"), "{d}");
     assert_eq!(product(&o, false).detail, None, "停用那一行带了详情");
     // 接常驻后端那一步记下的优先（它比拨号那一层更完整）。
-    connecting(&o, "deploy");
+    connecting(&o, "deploy", None);
     dial_failed(&o, None, None, &said("拨号那一层"));
     round_failed(&crate::origin::Origin(o.clone()), &said("round-said"));
     down(&o);
     let d = product(&o, true).detail.unwrap();
     assert!(d.contains("断在：round-said"), "{d}");
     // 新一轮起步就清掉；这一轮什么都没记 ⇒ 没有详情（不沿用上一轮的）。
-    connecting(&o, "deploy");
+    connecting(&o, "deploy", None);
     assert_eq!(product(&o, true).detail, None, "新一轮还挂着上一轮的详情");
     down(&o);
     assert_eq!(product(&o, true).detail, None, "沿用了上一轮的详情");
@@ -282,4 +290,32 @@ fn a_failed_round_carries_the_copy_detail() {
     dial_failed(&o, Some("timeout"), None, &said("x"));
     up(&o, "p7z", VersionRelation::Same);
     assert_eq!(product(&o, true).detail, None);
+}
+
+/// 正在连那两步的那一句是后端写的（`deploy` crate：问那台那一步 · 接常驻那一步），本模块只照交来的记：生产段里零处自己拼。带正控。
+#[test]
+fn the_connecting_sentence_is_not_written_here() {
+    let prod = guard_core::production_code(include_str!(
+        "../../../src/frontend/shell/src/machine_state.rs"
+    ));
+    let keys = |code: &str| -> Vec<&'static str> {
+        [
+            "machineState.busy.connecting",
+            "machineState.stage.attach",
+            "machineState.stage.deploy",
+        ]
+        .into_iter()
+        .filter(|k| code.contains(k))
+        .collect()
+    };
+    assert_eq!(
+        keys(&prod),
+        Vec::<&str>::new(),
+        "壳又自己拼起了正在连那一句"
+    );
+    assert_eq!(
+        keys("machineState.busy.connecting machineState.stage.attach machineState.stage.deploy")
+            .len(),
+        3
+    );
 }

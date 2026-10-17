@@ -295,7 +295,7 @@ async fn the_one_shot_deadline_really_cuts_a_silent_link_and_only_after_its_time
     assert_eq!(w.kind(), std::io::ErrorKind::TimedOut);
     drop(far);
 
-    // ③ 另一向：不设期限（长活那三形）⇒ 过了两倍的时间仍在等。
+    // ③ 另一向：不设期限（长活那一形）⇒ 过了两倍的时间仍在等。
     let (_far2, near2) = tokio::io::duplex(64);
     let mut long = Bounded::new(near2, None);
     assert!(
@@ -306,19 +306,13 @@ async fn the_one_shot_deadline_really_cuts_a_silent_link_and_only_after_its_time
     );
 }
 
-/// 长活那三形：`(文件, 所在函数, 处数, 为什么它不要总时限)`。**这就是「逐处豁免」那张表**。
+/// 长活那几形：`(文件, 所在函数, 处数, 为什么它不要总时限)`。**这就是「逐处豁免」那张表**。
 const LIVES_LONG: &[(&str, &str, usize, &str)] = &[
     (
         "stream_source/run.rs",
         "stream",
         1,
         "远端后端长连接流（远端只剩常驻这一形，重连循环 `resident_client::feed` 经它开）是订阅：「`Budget` 只盖建流；流建起来之后没有总期限」；握手那两行各有自己的期限（`HANDSHAKE_LINE`，合计不超过一次性总时限）；死链靠 keepalive ＋ EOF",
-    ),
-    (
-        "dial_host.rs",
-        "open",
-        1,
-        "`RemoteFs::open`（部署文件面）：一次部署问好几次，每一问自带期限（`FILES_ASK_DEADLINE` / `FILES_PUT_DEADLINE`）",
     ),
 ];
 
@@ -351,10 +345,10 @@ fn lives_long_sites(file: &str, prod: &str) -> Vec<(String, String)> {
     out
 }
 
-/// A2 ★ **只有那三形摘掉总时限**（两向，按所在函数与处数）。多一处 = 又有一条一次性的路没有总时限；
+/// A2 ★ **只有登记的那几形摘掉总时限**（两向，按所在函数与处数）。多一处 = 又有一条一次性的路没有总时限；
 /// 少一处 = 长连接流 / 端口转发 / 部署会在 120 s 被掐断。正控：合成语料里多种一处必被认出、且认对所在函数。
 #[test]
-fn only_the_three_long_lived_links_drop_the_deadline() {
+fn only_the_long_lived_links_drop_the_deadline() {
     let root = guard_core::addr::shell_src_root();
     let mut got: Vec<(String, String)> = Vec::new();
     let mut scanned = 0usize;
@@ -388,7 +382,7 @@ fn only_the_three_long_lived_links_drop_the_deadline() {
     want.sort();
     assert_eq!(
         got, want,
-        "摘掉一次性总时限（`lives_long`）的地方与登记的那三形对不上。\n\
+        "摘掉一次性总时限（`lives_long`）的地方与登记的那几形对不上。\n\
          多出来的 ⇒ 那条路没有总时限了（红线）；该长活就进 `LIVES_LONG` 并写理由。"
     );
     // 正控：识别器认得出、认得对所在函数。

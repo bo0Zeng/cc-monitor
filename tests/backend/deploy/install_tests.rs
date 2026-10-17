@@ -135,6 +135,31 @@ impl Facing for Rig {
                     exit_status: Some(2),
                 },
             }
+        } else if let Some(name) = command
+            .strip_prefix(&relay_route_core::home_shell(&format!(
+                "{}/",
+                ssh_dial::sftp::STAGING_ROOT
+            )))
+            .and_then(|c| c.strip_suffix(" -- --unplace-self"))
+        {
+            // 替身那一份 `--unplace-self`：删落点那一份、再删自己（不经 SFTP ⇒ 不进改动表，同那台上那个进程自己删）。
+            let mut g = self.fs.lock().unwrap();
+            let staged = format!("{}/{name}", ssh_dial::sftp::STAGING_ROOT);
+            match g.files.remove(&staged) {
+                Some(_) => {
+                    let removed = g.files.remove(LANDING).is_some();
+                    Captured {
+                        stdout: format!("{{\"removed\":{removed}}}\n"),
+                        stderr: String::new(),
+                        exit_status: Some(0),
+                    }
+                }
+                None => Captured {
+                    stdout: String::new(),
+                    stderr: "{\"code\":\"place_failed\",\"message\":\"不在\"}\n".into(),
+                    exit_status: Some(2),
+                },
+            }
         } else {
             return Box::pin(async move { Err(format!("替身没登记这条命令：{command}")) });
         };
@@ -355,4 +380,52 @@ async fn a_trip_cut_midway_leaves_a_leftover_that_the_next_trip_sweeps() {
     assert_eq!(plan.leftovers, left);
     assert_eq!(r.landing(), Some(mine));
     assert!(r.fs.lock().unwrap().bytes(&left[0]).is_none(), "残件没删");
+}
+
+/// 卸载也只经暂存区：传一份暂存件、由它删落点那一份（再删自己）。SFTP 的改动全在暂存区里；落点那一份不认身份（外来的 · 无戳的一样删：
+/// 卸载就是明确授权）；本来就不在 ⇒ 说「本来就不在」。
+#[tokio::test]
+async fn uninstall_removes_the_landing_through_a_staged_copy() {
+    let d = scratch("uninstall");
+    let mine = backend("p9b-mine");
+    let r = Rig::linux(Some(b"not ours, no stamp")).await;
+    let load = |p: &std::path::Path| std::fs::read(p);
+    let got = crate::uninstall(&r, &[slot(&d, "p9b-mine", &mine)], &load, "box")
+        .await
+        .expect("该删掉");
+    assert!(got.removed);
+    assert!(
+        copy_core::copy_matches("rsSftp.uninstall.done", &got.said),
+        "{}",
+        got.said
+    );
+    assert_eq!(r.landing(), None);
+    {
+        let g = r.fs.lock().unwrap();
+        let outside: Vec<&(String, String)> = g
+            .mutated
+            .iter()
+            .filter(|(_, p)| {
+                p != ssh_dial::sftp::STAGING_ROOT
+                    && !p.starts_with(&format!("{}/", ssh_dial::sftp::STAGING_ROOT))
+            })
+            .collect();
+        assert!(outside.is_empty(), "SFTP 写到了暂存区外：{outside:?}");
+        assert!(
+            !g.files
+                .keys()
+                .any(|k| k.starts_with(ssh_dial::sftp::STAGING_ROOT)),
+            "暂存区里还留着：{:?}",
+            g.files.keys().collect::<Vec<_>>()
+        );
+    }
+    let again = crate::uninstall(&r, &[slot(&d, "p9b-mine", &mine)], &load, "box")
+        .await
+        .expect("不在也不算错");
+    assert!(!again.removed);
+    assert!(
+        copy_core::copy_matches("rsSftp.uninstall.absent", &again.said),
+        "{}",
+        again.said
+    );
 }

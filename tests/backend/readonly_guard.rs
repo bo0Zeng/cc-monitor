@@ -2760,7 +2760,7 @@ mod g6_dependency_signoff {
              （`src/backend` 下全部 `.rs`），与本 crate 自己的代码同一套判准。本机写面现打 0 处：认下的 host key 交回宿主\
              （`dial/known_hosts.rs`，经启动时装的写句柄 `known_hosts::Writer` 记）。**远端**写面就是它的本职（`russh-sftp` 那一格搬到这里）⇒ 就是要它写。\
              谁划边界：只住它的 `sftp.rs` 一份、规矩由宿主装（本后端装部署那两处，`dial/mod.rs::host`）、每处先过 `fenced_remote`。\
-             边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_roots_are_exactly_staging_and_bin`",
+             边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_root_is_exactly_staging`",
         ),
         (
             "ssh-dial",
@@ -2768,7 +2768,7 @@ mod g6_dependency_signoff {
             MEASURED_WRITES_ON_PURPOSE,
             "同上一行那个仓内 crate，测试构建多开 `test-support`（测试档不许出网那句断言 · 拨了必被拒的本机口 · 合成 SFTP 服务端），\
              多出来的 0 处写面；远端写面同上一行。\
-             边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_roots_are_exactly_staging_and_bin`",
+             边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_root_is_exactly_staging`",
         ),
         (
             "deploy",
@@ -2898,7 +2898,7 @@ mod g6_dependency_signoff {
              fs::OpenOptions` 的转换里 —— 造选项、不开文件；它的 `tokio` 没开 `fs` / `net`）；\
              **远端**写面就是它的本职（`SSH_FXP_OPEN` 带写标志 · `REMOVE` · `RENAME` · `MKDIR` …）⇒ 就是要它写。\
              谁划边界：只许 `ssh-dial/sftp.rs` 一份文件持有它的会话、写根 == 暂存区与部署目录、每处先过 `fenced_remote`。\
-             边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_roots_are_exactly_staging_and_bin`",
+             边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_root_is_exactly_staging`",
         ),
         // `search-core` 那一行出列：crate 删了（通用口径收成 `history/search_rules.rs`，记录文本进 `agents/claudecode/text.rs`）。
         (
@@ -3390,7 +3390,7 @@ mod g6_dependency_signoff {
             .map(|(n, ..)| *n)
             .collect();
         // +`russh-sftp`（SFTP 进本机常驻后端）。它的前提不是一个 feature，
-        //   是「只许一份文件持有它的会话、写根 == 两处」—— 那一条由它签字里点名的边界判据钉（远端写那一层），
+        //   是「只许一份文件持有它的会话、写根 == 暂存区一处」—— 那一条由它签字里点名的边界判据钉（远端写那一层），
         //   本条只钉 `creds-core` 那一条的前提（feature 开着）。
         // +`ssh-dial` 两行（拨号核心，远端写那一格随 SFTP 客户端搬进去）：前提同 `russh-sftp`，由同一条边界判据钉。
         assert_eq!(
@@ -3832,7 +3832,7 @@ mod g6_dependency_signoff {
                 sftp_crate.as_str(),
                 DEPS,
                 *allowed,
-                "它的写面被一个没开的 feature 关着 / 边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_roots_are_exactly_staging_and_bin`",
+                "它的写面被一个没开的 feature 关着 / 边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_root_is_exactly_staging`",
             )];
             assert!(
                 capability_supplier_misfits(&fake).is_empty(),
@@ -3902,7 +3902,7 @@ mod remote_write_layer {
     //!
     //! # 它守的性质 · 它扫的人群（两行，各只许有一句 —— 同本文件顶上 `KG62` 那对）
     //!
-    //! - **它守的性质是**：backend **进程自身**不许改动**别人机器上**的用户既有数据 —— 远端写只许住 `ssh-dial/sftp.rs` 一份、只许落在 `~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/`（我们自己的目录）、每一处先过 `fenced_remote`。
+    //! - **它守的性质是**：backend **进程自身**不许改动**别人机器上**的用户既有数据 —— 远端写只许住 `ssh-dial/sftp.rs` 一份、只许落在 `~/.cc-monitor/staging/`（我们自己的目录）、每一处先过 `fenced_remote`。
     //!   （本机那一半由命名空间那一条与那几种写句柄守；本层守的是**远端**那一半。）
     //! - **它扫的人群是**：本 crate `src/` 递归全部 `.rs` 的生产段源码文本里，
     //!   **把一条远端通道变成文件系统的那一步**（[`REMOTE_CAPABILITY_ANCHORS`]）
@@ -4361,7 +4361,7 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
         }
     }
 
-    // ═══ **远端写只住一份文件、只许落两处** ═══════════════
+    // ═══ **远端写只住一份文件、只许落暂存区** ═══════════════
     //
 
     /// ★ **远端写的唯一住址**：`(仓库相对路径, why —— 它写什么、路径由谁定、哪一道围栏拦着)`。
@@ -4369,17 +4369,17 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
         "ssh-dial/sftp.rs",
         "SFTP 住本机常驻后端：暂存区的上传件（`control/transfer.rs` 经它写）· \
          自部署的后端二进制 / `.build_id` / `ccm` 入口（部署链路 `use:\"files\"` 经它写）。\
-         路径由 monitor 给、由本文件的 `fenced_remote` 判：词法（只许两个根）＋ 父目录解链接仍在根下 ＋ \
+         路径由 monitor 给、由本文件的 `fenced_remote` 判：词法（只许暂存区）＋ 父目录解链接仍在根下 ＋ \
          开写前 `lstat` 拒链接",
     );
 
-    /// 🔴 **写根的期望值手写**（「只许往远端 `~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/`（部署）写」），
+    /// 🔴 **写根的期望值手写**（「只许往远端 `~/.cc-monitor/staging/` 写；换进安装位置 · 卸载由传上去的那一份在那台上自己做」），
     /// **不取自被判文件的常量**（两侧同源 = 恒真）。
-    const EXPECTED_WRITE_ROOTS: [&str; 2] = [".cc-monitor/staging", ".cc-monitor/bin"];
+    const EXPECTED_WRITE_ROOTS: [&str; 1] = [".cc-monitor/staging"];
 
     /// 被判文件里写根那一行的锚（运行时拼，免得本文件自己也命中）。
     fn roots_anchor() -> String {
-        format!("const REMOTE_WRITE_{}: [&str; 2] =", "ROOTS")
+        format!("const STAGING_{}: &str =", "ROOT")
     }
 
     /// 围栏调用的针（远端那一道）。
@@ -4459,9 +4459,9 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
         bad
     }
 
-    /// ★★ 正题 ①②：**远端写只住一份文件**（两向相等），**它声明的写根 == 暂存区与部署目录那两处**（相等，异源）。
+    /// ★★ 正题 ①②：**远端写只住一份文件**（两向相等），**它声明的写根 == 暂存区那一处**（相等，异源）。
     #[test]
-    fn the_remote_write_lives_in_exactly_one_file_and_its_roots_are_exactly_staging_and_bin() {
+    fn the_remote_write_lives_in_exactly_one_file_and_its_root_is_exactly_staging() {
         let tree = production_tree();
         assert_tree_is_real(&tree);
         let found: std::collections::BTreeSet<String> = tree
@@ -4477,7 +4477,7 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
             "\n命中远端写能力网 / 动词网的后端文件，与登记的那一份对不上。\n  \
              盘上有、表里没有（🔴 **远端写长到了第二份文件里**）：{:?}\n  \
              表里有、盘上没有（那一份搬走了 / 不写了 ⇒ 同轮改登记）：{:?}\n\n\
-             SFTP 进本机常驻后端、只写暂存区（＋ 自部署目录）。写原语只许住一份文件、\
+             SFTP 进本机常驻后端、只写暂存区。写原语只许住一份文件、\
              每个都先过那一道围栏 —— 第二份文件里的远端写就是一个没人审过的洞。",
             found.difference(&want).collect::<Vec<_>>(),
             want.difference(&found).collect::<Vec<_>>()
@@ -4508,7 +4508,7 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
             EXPECTED_WRITE_ROOTS.iter().map(|r| r.to_string()).collect();
         assert_eq!(
             got, want_roots,
-            "远端写根与「暂存区 ＋ 部署目录」那两处对不上 —— 多一处 = 写能力扩散；少一处 = 暂存区或部署落不下去"
+            "远端写根与「暂存区」那一处对不上 —— 多一处 = 写能力扩散；少了 = 上传 · 部署落不下去"
         );
         println!(
             "SR1b：本趟扫 {} 份生产段源文件，远端写只在 {:?}，写根 {:?}",

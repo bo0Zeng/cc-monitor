@@ -69,7 +69,7 @@ pub struct MachineState {
     pub reason: Option<String>,
     /// 正在连时到哪一步：`deploy`（部署预检 / 装）· `attach`（接那台的常驻后端）。
     pub stage: Option<String>,
-    /// 正在连 / 装 / 更新时那一句（写好的：装那一趟的几步是后端写的，接常驻那一步是这里写的；界面照画）。不在这三种 ⇒ 空。
+    /// 正在连 / 装 / 更新时那一句（后端写好的：装那一趟的几步与接常驻那一步；界面照画）。不在这三种 ⇒ 空。
     pub said: Option<String>,
     /// 那台 cc-monitor 的产品版本号（发版那个号，`CARGO_PKG_VERSION`）：与这一版同一份字节时就是这一版的号；
     /// 不同的那台报不出它的号（握手只带构建标识）⇒ 空；开发构建 ⇒ 空（关系是 `incomparable`）。构建标识只进日志与诊断信息。
@@ -142,27 +142,13 @@ fn with<R>(origin: &str, f: impl FnOnce(&mut Entry) -> R) -> R {
     r
 }
 
-/// 这一轮开始拨 / 到了哪一步（`deploy` 部署预检 · `attach` 接那台的常驻后端）；那一句照这一步写。
-pub(crate) fn connecting(origin: &str, stage: &str) {
-    let said = crate::copy_table::copy_text(
-        "machineState.busy.connecting",
-        &[
-            ("machine", origin),
-            (
-                "stage",
-                &if stage == "attach" {
-                    crate::copy_table::copy_text("machineState.stage.attach", &[])
-                } else {
-                    crate::copy_table::copy_text("machineState.stage.deploy", &[])
-                },
-            ),
-        ],
-    );
+/// 这一轮开始拨 / 到了哪一步（`deploy` 部署预检 · `attach` 接那台的常驻后端）；那一句是后端写好交来的（`deploy` crate），没有 ⇒ 空。
+pub(crate) fn connecting(origin: &str, stage: &str, said: Option<String>) {
     with(origin, |e| {
         e.state = Some(MachineStateKind::Connecting);
         e.reason = None;
         e.stage = Some(stage.to_string());
-        e.said = Some(said);
+        e.said = said;
         e.detail = None;
         if stage == "deploy" {
             // 新一轮从头起：上一轮记下的那几句不跟进来。
