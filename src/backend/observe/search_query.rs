@@ -3,7 +3,7 @@
 //! backend 在会话所在那台的 CPU 上扫 `<claude_dir>/projects/**/*.jsonl`、做服务端搜索（避免拉
 //! 整库回本地），输出**每命中会话一行** camelCase JSON（与 monitor `search::SessionHits`
 //! 形状严格一致，可直接反序列化）：
-//! `{agent,sessionId,projectPath,projectName,jsonlPath,title,updatedAt,hitCount,hits:[{uuid,tsMs,kind,before,matched,after}]}`
+//! `{agent,sessionId,projectPath,projectName,jsonlPath,title,updatedAt,moreHits,hits:[{uuid,tsMs,kind,before,matched,after}]}`
 //!
 //! 🔴 语义与本地 `../../bridge/src/search.rs` **不是「对齐」，是同一份**：
 //! 抽取 / 匹配 / snippet 的 12 个助手、4 个口径常量、snippet 预算与预算顺序只有一个家 ——通用那一半住
@@ -40,9 +40,9 @@ pub(crate) struct SearchOpts {
     /// None=全部；Some("user")/Some("assistant")/Some("report")=只搜该类型。
     pub(crate) scope: Option<&'static str>,
     pub(crate) after_ms: i64,
-    /// 全局返回 snippet 上限（hitCount 仍报全量）。
+    /// 全局返回 snippet 上限（没给的照样记进 `moreHits`）。
     pub(crate) limit: usize,
-    /// 只比会话标题与第一句（不搜内容）：命中的会话照样一行，`hitCount` 为 0、`hits` 空。
+    /// 只比会话标题与第一句（不搜内容）：命中的会话照样一行，`hits` 空、`moreHits` 0。
     pub(crate) titles: bool,
 }
 
@@ -72,9 +72,9 @@ pub(crate) struct SessionHits {
     /// 记录文件最后改动的毫秒。
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) updated_at: i64,
-    /// 本会话命中总数（可能 > `hits` 条数）。
-    pub(crate) hit_count: u32,
     pub(crate) hits: Vec<SearchHit>,
+    /// `hits` 之外这个会话还有几处命中。
+    pub(crate) more_hits: u32,
     /// 本会话有命中被「全局 snippet 预算用完」挡下了。
     pub(crate) hits_truncated: bool,
     /// 后台分身会话。
@@ -836,8 +836,7 @@ const SEARCH_BATCH: usize = 32;
 /// 一个会话（索引里那一格）的命中 JSON（无命中 → None）。`budget` 跨会话累计已构造
 /// snippet 数，达到 `opts.limit` 后只计数不再构造 snippet（贵活封顶）——
 /// 🔴 判定在 `search_rules::SnippetBudget`（只此一份），且它**分得清**
-/// 「全局预算用完」与「单会话满 `PER_SESSION_CAP` 条」（收口前这两件事挤在一个
-/// `if` 里，下游只看得到 `hitCount > hits.len()` 这一个信号）。
+/// 「全局预算用完」（`hitsTruncated`）与「单会话满 `PER_SESSION_CAP` 条」。
 /// `updated_at` 由调用方传入（排序时已 stat 过一次，别再 stat 第二次）。
 fn session_hits_in(
     path: &Path,
@@ -897,13 +896,13 @@ fn session_hits_in(
         entry,
         session_id,
         updated_at,
-        hit_count,
+        hit_count - hits.len() as u32,
         hits,
         session_starved,
     ))
 }
 
-/// 只比标题与第一句（帧面的 `titles`）：标题 ／ 第一句里有这几个字 ⇒ 一行（`hitCount` 0、`hits` 空）。
+/// 只比标题与第一句（帧面的 `titles`）：标题 ／ 第一句里有这几个字 ⇒ 一行（`hits` 空、`moreHits` 0）。
 fn session_title_row(
     path: &Path,
     entry: &FileEntry,
@@ -928,7 +927,7 @@ fn session_row(
     entry: &FileEntry,
     session_id: String,
     updated_at: i64,
-    hit_count: u32,
+    more_hits: u32,
     hits: Vec<SearchHit>,
     session_starved: bool,
 ) -> SessionHits {
@@ -963,8 +962,8 @@ fn session_row(
         jsonl_path: path.to_string_lossy().into_owned(),
         title,
         updated_at,
-        hit_count,
         hits,
+        more_hits,
         hits_truncated: session_starved,
         is_bg: false,
         forked_from: None,
@@ -1304,7 +1303,7 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
 /// 界面照旧逐台经通道问那台常驻后端的 `history-search`（各台内存索引保热），拿回来的会话行按台原样交到这里：
 /// `{machines: [{origin, sessions}]}` ⇒ `{totalHits, sessionCount, truncated, sessions}`。
 /// - 排序：`updatedAt` 倒序、稳定（[`search_rules::sort_by_recency`]，与每台后端花 snippet 预算的顺序同一个函数）；
-/// - `totalHits` = 各会话 `hitCount` 之和；任一会话 `hitsTruncated` ⇒ `truncated`（`K-R100`：每一台都被自己的 `limit` 砍过）；
+/// - `totalHits` = 各会话 `hits` 条数与 `moreHits` 之和；任一会话 `hitsTruncated` ⇒ `truncated`（`K-R100`：每一台都被自己的 `limit` 砍过）；
 /// - 每行添上那台的名字（本机不添）、行尾 `atText` 与内容头 `spanText`（都按 `updatedAt`，按看的那一台的时区；同 [`crate::common::time::history_times`]）。
 ///
 /// 纯计算：不读盘、不起进程。`now_ms` 可喂（判据用）。
@@ -1319,7 +1318,9 @@ pub(crate) fn merge_at(
     for m in machines {
         let origin = (!m.origin.is_local()).then_some(m.origin);
         for row in m.sessions {
-            total_hits = total_hits.saturating_add(u64::from(row.hit_count));
+            total_hits = total_hits
+                .saturating_add(row.hits.len() as u64)
+                .saturating_add(u64::from(row.more_hits));
             truncated |= row.hits_truncated;
             let at = row.updated_at;
             let (at_text, _, span_text) =
@@ -1357,7 +1358,7 @@ pub(crate) struct MachineHits {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Merged {
-    /// `hitCount` 之和。
+    /// 各会话命中数（`hits` 条数 ＋ `moreHits`）之和。
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) total_hits: u64,
     pub(crate) session_count: usize,

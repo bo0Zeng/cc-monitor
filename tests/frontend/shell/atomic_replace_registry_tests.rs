@@ -55,7 +55,7 @@ const SITES: &[(&str, &str, &str, &str, &str)] = &[
     ),
     // 这里原来有 `profile_installer.rs` 的 `ReplaceFileW` 一行（PowerShell profile ·
     //   `.mcp.json` 的本机写）。用户文件改经后端写之后那份原语零调用方、删了 ⇒ 摘行。
-    //   「替换保住 explicit ACE」这条性质住到了后端 `files_write.rs::swap_in` 的 `cfg(windows)` 那一支。
+    //   「替换保住 explicit ACE」这条性质住到了后端 `files_write.rs::replace_contents`（Windows 上就地写）。
     // ── 补上 `rename` 那一半（§4 规则原话里第一个被禁的写法）
     // `profile_installer.rs` 的 `rename` 两处（Windows 首装分支 ＋ POSIX 分支）随那份原语一起走了。
     (

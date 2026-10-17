@@ -500,7 +500,7 @@ fn spawn_detached(
     local_backend::spawn_with_etxtbsy_retry(&mut cmd, &*spawn).map_err(|f| match f {
         // 这一刻恰好撞上了会自己过去的竞态 —— 那句话也是共用的那一份。
         local_backend::SpawnFailure::TransientBusy { tries, last } => {
-            Said::written(local_backend::etxtbsy_gave_up_reason(bin, tries, &last))
+            local_backend::etxtbsy_gave_up(bin, tries, &last)
         }
         // 别的错 ⇒ **今天那句照旧，一个字不改**。
         local_backend::SpawnFailure::Broken(e) => Said::with_raw(
@@ -1366,6 +1366,22 @@ fn note_never_started(out: StartOutcome) -> StartOutcome {
     out
 }
 
+/// 「本机后端那一趟起着」：造出来时记上，丢掉时收掉（哪个出口都收）。
+struct Starting;
+
+impl Starting {
+    fn on() -> Self {
+        note_local_starting(true);
+        Starting
+    }
+}
+
+impl Drop for Starting {
+    fn drop(&mut self) {
+        note_local_starting(false);
+    }
+}
+
 pub fn start_local_backend() -> StartOutcome {
     // ★★ **锁全程持有**〔D 阶段补审 08-11 修，原版是阻塞级缺陷〕。
     //
@@ -1389,6 +1405,8 @@ pub fn start_local_backend() -> StartOutcome {
     let _life = LIFECYCLE.lock().unwrap_or_else(|e| e.into_inner());
     // 上一次被拒的那句下一步作废：这一趟被拒会重新写下。
     note_local_refused(None);
+    // 这一趟起着 ⇒ 本机那台说「连接中」，起完（不论结局）收掉。
+    let _starting = Starting::on();
     let g = LOCAL_BACKEND.lock().unwrap_or_else(|e| e.into_inner());
     if g.is_some() {
         return StartOutcome::AlreadyRunning;
@@ -1475,6 +1493,24 @@ pub fn start_local_backend() -> StartOutcome {
         Resolved::Found(p) => StartOutcome::Started(p),
         Resolved::Missing { reason, looked_at } => StartOutcome::Failed { reason, looked_at },
     })
+}
+
+/// 起来时起本机后端：结局交给 `then`。
+pub fn start_at_launch(then: impl FnOnce(StartOutcome) + Send + 'static) {
+    start_off_thread(start_local_backend, then)
+}
+
+/// 起来时那一趟起本机后端：在自己的线程上起（窗口第一屏不等它听口、握手），调用方当场返回。
+fn start_off_thread(
+    start: impl FnOnce() -> StartOutcome + Send + 'static,
+    then: impl FnOnce(StartOutcome) + Send + 'static,
+) {
+    if let Err(e) = std::thread::Builder::new()
+        .name("local-backend-start".into())
+        .spawn(move || then(start()))
+    {
+        tracing::error!("起本机后端那条线程起不来：{e}");
+    }
 }
 
 /// 本机独有的两个读数（远端没有对应物：那个进程在别人机器上）。
@@ -1594,7 +1630,7 @@ pub fn stop_local_backend() -> Result<crate::remote_resident::StopAnswer, Said> 
 // 本机那一行由这里照同一个类型、同一批文案键出。
 
 use cmd_wire::attach::Relation;
-use cmd_wire::machine::{FixButton, MachineFix, MachineState, MachineStateKind};
+use cmd_wire::machine::{FixButton, MachineFix, MachineState, MachineStateKind, Stage};
 
 /// 本机那个口上占着的、构建与这一版不同的后端（终端里先敲 `ccm` 起的旧 / 新那一份）：它的构建标识。
 /// 起本机后端那一趟探口时记（[`probe_listen_socket`]）；是我们这一版 / 没人 ⇒ 清掉。
@@ -1633,6 +1669,15 @@ pub(crate) fn note_local_refused(next: Option<&str>) {
     machine_changed();
 }
 
+/// 本机后端那一趟起着没有（[`start_local_backend`] 起止各记一次）。
+static LOCAL_STARTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 记下本机后端起着 / 起完了。
+pub(crate) fn note_local_starting(on: bool) {
+    LOCAL_STARTING.store(on, std::sync::atomic::Ordering::SeqCst);
+    machine_changed();
+}
+
 /// 本机那一行此刻的成品（通道在不在现看）。
 pub(crate) fn local_machine_now() -> MachineState {
     let channel = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN).is_some();
@@ -1641,7 +1686,7 @@ pub(crate) fn local_machine_now() -> MachineState {
 
 /// 本机那一台的成品：版本就是手上这一版（本机后端换装只认同一版，[`hello_verdict`]；没带后端字节 ⇒ 开发构建、不可比）；
 /// 通道在 ⇒ 连着；不在而口上占着别的构建 ⇒ 按两边构建的序说「要更新」/「较新」（解不出序 ⇒ 照没连上说）；
-/// 别的不在 ⇒ 没连上。没连上的修法只给［重试］；起的时候被拒 ⇒ 带上那一句下一步。
+/// 那一趟正在起 ⇒ 连接中（到「启动」那一步、不给修法）；别的不在 ⇒ 没连上。没连上的修法只给［重试］；起的时候被拒 ⇒ 带上那一句下一步。
 pub(crate) fn local_product(channel: bool, mine: Option<&str>) -> MachineState {
     let foreign = LOCAL_FOREIGN
         .lock()
@@ -1653,8 +1698,10 @@ pub(crate) fn local_product(channel: bool, mine: Option<&str>) -> MachineState {
         (false, Some(_), None) => Relation::Same,
         (_, None, _) => Relation::Incomparable,
     };
+    let starting = LOCAL_STARTING.load(std::sync::atomic::Ordering::SeqCst);
     let state = match (channel, relation) {
         (true, _) => MachineStateKind::Up,
+        (false, _) if starting => MachineStateKind::Connecting,
         (false, Relation::Older) => MachineStateKind::NeedsUpdate,
         (false, Relation::Newer) => MachineStateKind::Newer,
         (false, _) => MachineStateKind::Down,
@@ -1673,13 +1720,23 @@ pub(crate) fn local_product(channel: bool, mine: Option<&str>) -> MachineState {
             copy_text("machineState.word.newer", &[]),
             copy_text("machineState.problem.newer", &[("machine", &name)]),
         ),
+        MachineStateKind::Connecting => (
+            copy_text("machineState.word.connecting", &[]),
+            copy_text(
+                "machineState.busy.connecting",
+                &[
+                    ("machine", &name),
+                    ("stage", &copy_text("machineState.stage.attach", &[])),
+                ],
+            ),
+        ),
         MachineStateKind::Down => (
             copy_text("machinePage.state.down", &[]),
             copy_text("machineState.down.local", &[]),
         ),
         _ => (String::new(), String::new()),
     };
-    let fixes = if channel {
+    let fixes = if channel || starting {
         Vec::new()
     } else {
         vec![FixButton {
@@ -1690,7 +1747,7 @@ pub(crate) fn local_product(channel: bool, mine: Option<&str>) -> MachineState {
     MachineState {
         state,
         reason: None,
-        stage: None,
+        stage: (state == MachineStateKind::Connecting).then_some(Stage::Attach),
         version: (relation == Relation::Same).then(|| crate::PRODUCT_VERSION.to_string()),
         version_relation: Some(relation),
         os: None,

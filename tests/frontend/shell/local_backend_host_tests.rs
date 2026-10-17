@@ -2747,6 +2747,28 @@ fn the_start_refusal_reaches_the_local_machine_row() {
     );
 }
 
+/// 本机后端那一趟正在起（还没接上）⇒ 连接中、停在「启动 cc-monitor」那一步、没有修法；起完没接上 ⇒ 没连上；接上了 ⇒ 连着。
+#[test]
+fn a_local_backend_being_started_reads_as_connecting() {
+    use cmd_wire::machine::{MachineStateKind, Stage};
+    let _g = crate::inbound_client::local_origin_test_lock();
+    super::note_local_foreign(None);
+    super::note_local_starting(true);
+    let starting = super::local_product(false, Some("p8c-mine"));
+    let attached = super::local_product(true, Some("p8c-mine")).state;
+    super::note_local_starting(false);
+    assert_eq!(
+        (starting.state, starting.stage, starting.reason),
+        (MachineStateKind::Connecting, Some(Stage::Attach), None)
+    );
+    assert_eq!(starting.fixes, vec![], "起着时不给修法");
+    assert_eq!(attached, MachineStateKind::Up);
+    assert_eq!(
+        super::local_product(false, Some("p8c-mine")).state,
+        MachineStateKind::Down
+    );
+}
+
 /// 起本机后端的失败分两档：动得了手的（删文件 / 停进程 / 改权限位）把下一步交给本机那一台的状态成品；
 /// 诚实降级（这一份产物里没带本机后端 · 释放内嵌也失败）只进日志。`Failed` 的构造点数钉死：新增一处就回来分档。
 #[test]
@@ -4613,5 +4635,43 @@ fn only_the_local_row_is_built_in_the_shell() {
             .into_iter()
             .collect(),
         "壳里另有一处在造机器状态成品"
+    );
+}
+
+/// 起来时起本机后端不挡调用方：替身那一趟卡着（等放行），调用方已经回来了；放行之后结局照样交到 `then`。
+/// 同步起 ⇒ 替身跑在调用方的线程上，不等放行当场回来，调用方回来时它已经起完 ⇒ 红（不靠墙钟）。
+#[test]
+fn the_launch_start_returns_before_the_backend_is_up() {
+    let caller = std::thread::current().id();
+    let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<bool>();
+    let finished = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let f = finished.clone();
+    super::start_off_thread(
+        move || {
+            let off_caller = std::thread::current().id() != caller;
+            if off_caller {
+                let _ = release_rx.recv_timeout(guard_core::wall::CEILING);
+            }
+            f.store(true, std::sync::atomic::Ordering::SeqCst);
+            if off_caller {
+                StartOutcome::AlreadyRunning
+            } else {
+                StartOutcome::Started(std::path::PathBuf::from("on-caller"))
+            }
+        },
+        move |out| {
+            let _ = done_tx.send(matches!(out, StartOutcome::AlreadyRunning));
+        },
+    );
+    assert!(
+        !finished.load(std::sync::atomic::Ordering::SeqCst),
+        "起本机后端那一趟还没放行，调用方就等它起完了"
+    );
+    release_tx.send(()).expect("替身那一趟不在了");
+    assert_eq!(
+        done_rx.recv_timeout(guard_core::wall::CEILING),
+        Ok(true),
+        "结局没交到 then"
     );
 }

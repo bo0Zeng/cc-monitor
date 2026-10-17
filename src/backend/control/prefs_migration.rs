@@ -21,11 +21,10 @@
 
 use super::machine_prefs::{self, write as write_prefs, Prefs, PREFS_ROWS_MAX};
 use super::machines;
-use crate::dial::remote_ask::Said;
+use crate::dial::remote_ask::{ask_json, Remote, Table};
 use crate::platform::Own;
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::BTreeMap;
-use std::future::Future;
 use std::sync::OnceLock;
 
 /// monitor 那份设置文件的名字（在数据目录里；monitor `config.rs::resolve_config_path` 同一处）。
@@ -403,31 +402,31 @@ pub(crate) enum HandedOver {
     Kept(String),
 }
 
-/// 交给 `machine` 那一台（`ask` ＝ 问那台后端一条帧命令的 CLI 面，生产是 `remote_ask::ask_json`）。
-pub(crate) async fn hand_over<F, Fut>(own: &Own, machine: &cmd_wire::Machine, ask: F) -> HandedOver
-where
-    F: Fn(&'static str, Value) -> Fut,
-    Fut: Future<Output = Result<Value, Said>>,
-{
+/// 交给 `machine` 那一台（经可达表问它后端：先 `prefs-read`，没设过 ⇒ 整份 `prefs-set`）。
+pub(crate) async fn hand_over(
+    own: &Own,
+    machine: &cmd_wire::Machine,
+    tz: &crate::Tz,
+    table: &Table,
+    remote: &dyn Remote,
+) -> HandedOver {
+    use machine_prefs::{PrefsRead, PrefsSetCmd, PrefsState};
     let origin = machine.as_wire_str();
     let mut pending = read_pending(own);
     let Some(share) = pending.get(origin).cloned() else {
         return HandedOver::Nothing;
     };
-    let state = match ask("prefs-read", json!({})).await {
-        Ok(r) => r.get("state").and_then(Value::as_str).map(str::to_string),
+    let read = ask_json::<PrefsRead>(origin, &Default::default(), tz, table, remote).await;
+    let got = match read.map(|r| r.state) {
         Err(e) => return HandedOver::Kept(e.message),
-    };
-    let got = match state.as_deref() {
-        Some("absent") => {
-            let set = serde_json::to_value(&share).unwrap_or(Value::Null);
-            match ask("prefs-set", set).await {
+        Ok(PrefsState::Absent) => {
+            let set = machine_prefs::PrefsSet::from(&share);
+            match ask_json::<PrefsSetCmd>(origin, &set, tz, table, remote).await {
                 Ok(_) => HandedOver::Given,
                 Err(e) => return HandedOver::Kept(e.message),
             }
         }
-        Some("ok" | "unreadable") => HandedOver::AlreadyThere,
-        other => return HandedOver::Kept(format!("prefs-read state {other:?}")),
+        Ok(PrefsState::Ok | PrefsState::Unreadable) => HandedOver::AlreadyThere,
     };
     pending.remove(origin);
     if let Err(why) = write_pending(own, pending) {
@@ -446,20 +445,14 @@ pub(crate) fn after_reach(machine: &cmd_wire::Machine, tz: crate::Tz) {
     }
     let machine = machine.clone();
     tokio::spawn(async move {
-        let got = hand_over(&own, &machine, |cmd, args| {
-            let (machine, tz) = (machine.clone(), tz.clone());
-            async move {
-                crate::dial::remote_ask::ask_json(
-                    machine.as_wire_str(),
-                    cmd,
-                    &args,
-                    &tz,
-                    &crate::dial::remote_ask::REACH,
-                    &crate::dial::remote_ask::DialRemote,
-                )
-                .await
-            }
-        })
+        let remote = crate::dial::remote_ask::DialRemote;
+        let got = hand_over(
+            &own,
+            &machine,
+            &tz,
+            &crate::dial::remote_ask::REACH,
+            &remote,
+        )
         .await;
         match got {
             HandedOver::Given => {

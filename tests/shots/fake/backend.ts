@@ -75,16 +75,27 @@ export const REAL_OPS = new Set([
   "ssh-config-import",
   // 别名块预览（往一份空文件里装一次会写成什么）：真后端照那份启动文件的方言写。
   "aliases-block-render",
+  // 计划那一族：真后端照常找 pb 插件、起它（台架装的是 pb 替身，吐工作区里那一份 dump，`disk/plan.ts`），数好排好写好；
+  // 认可与退回记在那台盘上，退回经那台私有 tmux 送进接手的替身窗格。
+  "plan-list",
+  "plan-read",
+  "plan-cell-view",
+  "plan-command",
+  "plan-ack",
+  "plan-unack",
+  "plan-return",
+  "plan-files",
+  "plan-pb-check",
 ]);
 
 /**
  * 交给无头壳的订阅（壳的 `event_replay` 交格，那几台后端推）：会话流（`session-lines` 与独立窗口的 `session-lines/<sid>`：
- * 后端读盘上的原始记录 ＋ pidfile ＋ 私有 tmux 出宣告 · 行 · 红绿灯 · 容器 · 子运行 · 已结束 / 可重连，壳的会话账攒批、重放）· 那四种 `changed/<topic>`（含待答请求 `needs`）·
+ * 后端读盘上的原始记录 ＋ pidfile ＋ 私有 tmux 出宣告 · 行 · 红绿灯 · 容器 · 子运行 · 已结束 / 可重连，壳的会话账攒批、重放）· 那几种 `changed/<topic>`（含待答请求 `needs` · 计划 `plan`：那台后端盯着工作区，pb 写了就推）·
  * 终端实时画面（`terminal-screen/<票>`：那台后端挂一个只读客户端看替身窗格、有变化推一屏）。
  * 其余几种还是这里合成：`session-live-card`（活卡帧，台架没有真流量，场景自己推）· 其余几种 `changed/<topic>`（场景演换号那一下自己推，`pushChanged`；
  * 换号那几条帧命令还是合成的）。看不见 / 被关掉的那几台（`unseenMachines` · `closedMachines`）是连接那一跳的事，照旧这里演。
  */
-export const SHELL_KINDS = new Set(["session-lines", "changed/accounts", "changed/profiles", "changed/tasks", "changed/needs", "changed/session_hidden"]);
+export const SHELL_KINDS = new Set(["session-lines", "changed/accounts", "changed/profiles", "changed/tasks", "changed/needs", "changed/session_hidden", "changed/plan"]);
 const shellKind = (kind: string): boolean => SHELL_KINDS.has(kind) || kind.startsWith("session-lines/") || kind.startsWith("terminal-screen/");
 
 /**
@@ -215,6 +226,11 @@ export class FakeBackend {
     const ask = (w.find((r) => r.sid === sid)?.needs.ask as { id?: string } | null)?.id;
     if (!ask) throw new Error(`${sid} 没挂着请求`);
     await this.real(origin, "needs-answer", { sid, ask, choice }, null);
+  }
+
+  /** 场景演「之前退回过一次」：经真后端 `plan-return`（同退回框送出的那一条），回它的回包。 */
+  async planReturn(origin: string, req: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return JSON.parse(dec.decode(await this.real(origin, "plan-return", req, null))) as Record<string, unknown>;
   }
 
   /** 场景演那一家改了自己 pidfile 里的状态（原词：busy · waiting · idle · shell）。 */

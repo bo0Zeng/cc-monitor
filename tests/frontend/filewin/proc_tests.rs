@@ -250,10 +250,6 @@ async fn the_first_screen_asks_home_only_when_told_nothing() {
 //   门禁跑 `--lib`，不构建 bin（同 `shell_tests::scenario_trips` 头注那一条理由）；两者跑的是同一个 `child_main`。
 //   libtest 在跑那一格之前往 stdout 印一行 `running 1 test` —— 父进程逐字节读掉它，之后的字节才是通道。
 
-/// 窗口进程收场的预算：关窗（或说完「列不出来」）之后多久之内要退。
-/// 病形是**无限等**，所以预算取宽（机器满载时 egui 收场也要几秒），不拿它量快慢。
-const EXIT_BUDGET: std::time::Duration = std::time::Duration::from_secs(20);
-
 /// 工作面：真 `child_main`，读的是**这个进程自己的** stdin / stdout。只许父判据点起来。
 #[test]
 #[ignore = "工作面：只由本文件的父判据在子进程里点起来"]
@@ -392,7 +388,8 @@ impl RealChild {
     }
 
     /// 等就绪那一行（解成 [`Ready`]）。
-    fn ready(&self, budget: std::time::Duration) -> Ready {
+    fn ready(&self) -> Ready {
+        let budget = guard_core::wall::CEILING;
         let line = self.ready.recv_timeout(budget).unwrap_or_else(|_| {
             panic!(
                 "子进程 {budget:?} 内没说就绪那一行。stderr：\n{}",
@@ -402,13 +399,10 @@ impl RealChild {
         filewin_contract::decode_ready(&line).expect("就绪那一行解不出来")
     }
 
-    /// 在 `budget` 内退了 ⇒ 退出码；没退 ⇒ 杀掉、回 `Err(已等多久)`。
-    fn exit_within(
-        &mut self,
-        budget: std::time::Duration,
-    ) -> Result<Option<i32>, std::time::Duration> {
+    /// 病形是无限等：兜底的那一个数之内退了 ⇒ 退出码；没退 ⇒ 杀掉、回 `Err(已等多久)`。
+    fn exit_within(&mut self) -> Result<Option<i32>, std::time::Duration> {
         let t0 = std::time::Instant::now();
-        while t0.elapsed() < budget {
+        for () in guard_core::wall::rounds() {
             if let Ok(Some(st)) = self.child.try_wait() {
                 return Ok(st.code());
             }
@@ -433,11 +427,11 @@ impl Drop for RealChild {
 #[test]
 fn a_window_process_that_cannot_list_exits_even_though_stdin_stays_open() {
     let mut c = RealChild::start("台架-退", Some("/srv/不在".into()), Some("files-ls"), None);
-    match c.ready(EXIT_BUDGET) {
+    match c.ready() {
         Ready::Failed(why) => assert!(why.contains("那台说：没有这个目录"), "原话没带上：{why}"),
         r => panic!("列不出来却说了 {r:?}"),
     }
-    match c.exit_within(EXIT_BUDGET) {
+    match c.exit_within() {
         Ok(code) => assert_eq!(code, Some(EXIT_NOT_LISTED), "退了，但退出码不对"),
         Err(waited) => panic!(
             "说完「列不出来」之后 {waited:?} 还没退（父进程没关 stdin —— 生产上 monitor 就是这样）：\
@@ -460,11 +454,7 @@ fn closing_the_window_ends_the_process_even_though_stdin_stays_open() {
     let screen = xvfb::Screen::start()
         .unwrap_or_else(|e| panic!("起不了 Xvfb ⇒ 这一格判不了，不是过了：{e}"));
     let mut c = RealChild::start(ORIGIN, Some("/srv/在".into()), None, Some(screen.display()));
-    assert_eq!(
-        c.ready(EXIT_BUDGET),
-        Ready::Listed(2),
-        "第一屏不是替身答的那两行"
-    );
+    assert_eq!(c.ready(), Ready::Listed(2), "第一屏不是替身答的那两行");
     let ids = xvfb::wait_for_windows(screen.display(), ORIGIN);
     assert_eq!(
         ids.len(),
@@ -474,7 +464,7 @@ fn closing_the_window_ends_the_process_even_though_stdin_stays_open() {
         c.stderr.lock().unwrap()
     );
     xvfb::close_like_a_wm(screen.display(), &ids[0]).expect("关窗那条消息没送到");
-    match c.exit_within(EXIT_BUDGET) {
+    match c.exit_within() {
         Ok(code) => assert_eq!(code, Some(0), "关窗后退了，但退出码不是「开过又关了」"),
         Err(waited) => panic!(
             "关窗之后 {waited:?} 还没退（父进程没关 stdin —— 生产上 monitor 就是这样）：\

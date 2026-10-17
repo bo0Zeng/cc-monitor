@@ -48,7 +48,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.FilesCommitUpload
 import com.ccmonitor.mobile.core.claude.link.FilesLs
 import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.copy.copyText
@@ -66,6 +65,7 @@ import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
+import com.ccmonitor.mobile.ui.common.EditHostButton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
@@ -125,6 +125,7 @@ fun FilesScreen(
     hostId: String,
     onOpenTerminal: (String) -> Unit = {},
     onShowTabs: () -> Unit = {},
+    onEditHost: (hostId: String) -> Unit = {},
     /** 别处点名要打开的那个路径（那台上的全路径）；没有 ⇒ `null`。一个导航项只开一次（回到这一项不再开）。 */
     openPath: String? = null,
 ) {
@@ -165,6 +166,7 @@ fun FilesScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             ErrorLine(s.problem.text)
                             SecondaryButton(onClick = { vm.connect() }) { Text(copyText("front.act.retry")) }
+                            EditHostButton(s.edit, onEditHost)
                             CopyDetailButton(s.problem.text, s.problem.detail)
                         }
                     }
@@ -176,7 +178,7 @@ fun FilesScreen(
     DialogHost(dialog = dialog, vm = vm, actions = actions, onDialog = { dialog = it })
     val clash by vm.clash.collectAsState()
     clash?.let { (dir, c) ->
-        ConflictSheet(copyText("rsFilewinBatch.verb.upload"), dir, c.said, c.conflicts, FilesCommitUpload.ANSWERS, vm::answer)
+        ConflictSheet(copyText("rsFilewinBatch.verb.upload"), dir, c.said, c.conflicts, vm::answer)
     }
 }
 

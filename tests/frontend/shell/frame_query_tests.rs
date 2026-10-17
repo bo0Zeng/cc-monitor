@@ -513,7 +513,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "resync",
         "新帧命令（手动对齐）：后端出成品 `{added, removed, retagged, watchers}`（`resync_face.rs` → `observe/watcher.rs::resync`）；\
-         前端 `src/frontend/ui/resync.ts::resync` 问、按类型收（`callTyped`），monitor 这一侧零发送点",
+         前端 `src/frontend/ui/control-said.ts::resync` 问、按类型收（`callTyped`），monitor 这一侧零发送点",
     ),
     (
         "sessions-needs",

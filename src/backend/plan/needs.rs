@@ -276,13 +276,20 @@ pub(crate) fn body_digest(cell: &Value) -> String {
 
 /// 一次退回此刻落没落地：那一格底下多出了退回时没有的子格（带它的标题）· 或它的正文改了。
 /// 没落地 ⇒ `state` 照送的结局：`returned`（送到了）· `unsure`（送达未知）。`cells` 是那一片此刻的全部格（取新格的标题）。
+/// `to` 是那一格此刻在长它的 / 签它的里头会话对得上记下那个 sid 的那一位（线上同形）；都对不上 ⇒ `null`。
 pub(crate) fn landing(r: &Returned, cell: &Value, cells: &[Value]) -> Value {
     let state = if r.result == "unsure" {
         "unsure"
     } else {
         "returned"
     };
-    let mut out = json!({"at": r.at, "to": r.to, "state": state, "by": null, "child": null});
+    let to = ["owner", "signer"]
+        .iter()
+        .filter_map(|k| cell.get(*k))
+        .find(|w| w.get("sid").and_then(Value::as_str) == Some(r.to.as_str()))
+        .cloned()
+        .unwrap_or(Value::Null);
+    let mut out = json!({"at": r.at, "to": to, "state": state, "by": null, "child": null});
     let now: Vec<&str> = cell
         .get("children")
         .and_then(Value::as_array)

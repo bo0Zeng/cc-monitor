@@ -22,7 +22,7 @@ import com.ccmonitor.mobile.core.ui.theme.monoSmall
 
 /**
  * 同名冲突那一问（底部抽屉，问一次）：标题「{动作} {n} 项到 {dir}」· 那台写的那一句 · 每项「要放过去的 → 已有的」（大小 · 那台写好的时刻）；
- * 有目录 ⇒ 写目录不合并。按钮只给 [answers] 里那几种答（线上的字：`overwrite` · `keep_both`），「覆盖」危险色、碰到目录不给。
+ * 有一项不给覆盖（碰到目录）⇒ 写目录不合并。按钮照每项那台给的答（`answers`）里各项都有的那几种画，「覆盖」危险色。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -31,11 +31,11 @@ fun ConflictSheet(
     dir: RemotePath,
     said: String,
     conflicts: List<Conflict>,
-    answers: List<String>,
     onAnswer: (String?) -> Unit,
 ) {
     val tokens = LocalAppTokens.current
-    val dirInto = conflicts.any { it.dirInto }
+    val answers = conflicts.map { it.answers }.reduceOrNull { a, b -> a.filter { it in b } }.orEmpty()
+    val dirInto = conflicts.any { OVERWRITE !in it.answers }
     ModalBottomSheet(onDismissRequest = { onAnswer(null) }) {
         Column(
             Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.lg).padding(bottom = tokens.spacing.lg),
@@ -64,10 +64,8 @@ fun ConflictSheet(
                 // 按钮字是界面自己的骨架词（同桌面冲突框那几颗）；认不得的答不画。
                 answers.forEach { a ->
                     when (a) {
-                        OVERWRITE ->
-                            if (!dirInto) {
-                                SecondaryButton(onClick = { onAnswer(a) }, danger = true) { Text(copyText("rsFilewinBatch.btn.overwrite")) }
-                            }
+                        OVERWRITE -> SecondaryButton(onClick = { onAnswer(a) }, danger = true) { Text(copyText("rsFilewinBatch.btn.overwrite")) }
+                        SKIP -> SecondaryButton(onClick = { onAnswer(a) }) { Text(copyText("rsFilewinBatch.btn.skip")) }
                         KEEP_BOTH -> SecondaryButton(onClick = { onAnswer(a) }) { Text(copyText("rsFilewinBatch.btn.keepBoth")) }
                     }
                 }
@@ -83,4 +81,5 @@ private fun side(
 ): String = listOfNotNull(size, mtime).joinToString(" · ")
 
 private const val OVERWRITE = "overwrite"
+private const val SKIP = "skip"
 private const val KEEP_BOTH = "keep_both"

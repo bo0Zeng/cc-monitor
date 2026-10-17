@@ -109,11 +109,7 @@ fn a_refused_link_hands_its_reason_and_seen_key_to_the_loop() {
         ("指纹变了", "命令：dial")
     );
     assert_eq!(
-        (
-            p.why,
-            p.seen_key.as_deref(),
-            p.expected_key.as_deref()
-        ),
+        (p.why, p.seen_key.as_deref(), p.expected_key.as_deref()),
         (
             Some(cmd_wire::machine::Why::HostKey),
             Some("SHA256:seen"),

@@ -898,10 +898,9 @@ async fn linked_over_road(
 }
 
 /// ★ 路断成黑洞之后开通道 —— 保活连着没回话就判死，挂在上面还在等的开通道**当场失败**（不等界面的 45 秒期限）。
-/// 时间按比例缩小：保活间隔换成 200 ms，判死门槛（连着几次没回话）照生产。
-/// 判的是**判没判死**与**门槛是哪个数**，不按墙钟数「第几轮判死」（10-11 起：从前比 `took < 3 轮`，
-/// 忙机上调度一慢就误红）：门槛是交给 russh 的计数（`keepalive_max`），在下面逐字核；等多久只兜底（兜底的那一个数）。
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+/// 保活间隔换成 200 ms、判死门槛照生产；门槛是交给 russh 的计数（`keepalive_max`），在下面逐字核。
+/// 保活的钟走虚拟钟（`start_paused`）：手上的活都做完了钟才往前拨，机器多忙「一轮里有没有回话」都一样。
+#[tokio::test(start_paused = true)]
 async fn a_pending_open_on_a_frozen_road_fails_once_keepalives_go_unanswered() {
     let every = std::time::Duration::from_millis(200);
     let (h, frozen, _answered) = linked_over_road(every).await;
@@ -924,7 +923,8 @@ async fn a_pending_open_on_a_frozen_road_fails_once_keepalives_go_unanswered() {
 }
 
 /// ★ 健康的空闲连接不许被判死 —— 空闲十几轮保活之后照样开得出通道（每轮保活都有回话）。
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+/// 虚拟钟同上一条：墙钟上 200 ms 一轮，忙机上回话晚到一轮就被当成没回话。
+#[tokio::test(start_paused = true)]
 async fn a_healthy_idle_connection_survives_many_keepalive_rounds() {
     let every = std::time::Duration::from_millis(200);
     let (h, _frozen, answered) = linked_over_road(every).await;

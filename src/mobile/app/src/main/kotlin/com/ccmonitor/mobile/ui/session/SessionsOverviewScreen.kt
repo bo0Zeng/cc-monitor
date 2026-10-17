@@ -55,7 +55,7 @@ fun SessionsOverviewScreen(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 BackButton(onBack)
-                Text(copyText("mobTabs.overview.title", "n" to sessions.size), style = MaterialTheme.typography.titleMedium)
+                Text(copyText("mobTabs.list.title", "n" to sessions.size), style = MaterialTheme.typography.titleMedium)
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 // 关闭全部：多 tab 保活时的显式收口，断开所有连接，停掉前台服务耗电。
@@ -67,7 +67,7 @@ fun SessionsOverviewScreen(
         }
         if (sessions.isEmpty()) {
             Box(Modifier.fillMaxSize(), Alignment.Center) {
-                Text(copyText("mobTabs.overview.empty"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(copyText("mobTabs.list.empty"), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
             LazyColumn(Modifier.fillMaxSize()) {

@@ -41,8 +41,9 @@ fn ask(phase: &str, round: usize, q: &str) {
     let (mut hits, mut snippets) = (0u64, 0u64);
     for l in &lines {
         let row: Value = serde_json::from_str(l).expect("每行一个 JSON 对象");
-        hits += row["hitCount"].as_u64().unwrap_or(0);
-        snippets += row["hits"].as_array().map_or(0, |a| a.len() as u64);
+        let shown = row["hits"].as_array().map_or(0, |a| a.len() as u64);
+        hits += shown + row["moreHits"].as_u64().unwrap_or(0);
+        snippets += shown;
     }
     let d = ring::digest::digest(&ring::digest::SHA256, lines.join("\n").as_bytes());
     let digest: String = d.as_ref()[..8].iter().map(|b| format!("{b:02x}")).collect();

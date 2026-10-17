@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.ui.common
 
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -9,7 +10,9 @@ import androidx.compose.runtime.remember
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.ssh.SessionStatus
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.ssh.HostConnector
+import com.ccmonitor.mobile.ssh.JumpBroken
 import kotlinx.coroutines.CancellationException
 import org.koin.compose.koinInject
 
@@ -29,10 +32,11 @@ sealed interface HostLink {
     /**
      * 接不上。[why] 是人可读的原因：失败要说出来，不许静默。
      *
-     * 它与「连上了但那台机器上没有对话」是两件事，UI 必须分得出来。
+     * 它与「连上了但那台机器上没有会话」是两件事，UI 必须分得出来。[edit]：改哪一台的设置能修好（跳板坏了）⇒ 给［编辑］。
      */
     data class Failed(
         val why: String,
+        val edit: String? = null,
     ) : HostLink
 }
 
@@ -108,13 +112,22 @@ fun rememberHostLink(
                 @Suppress("TooGenericExceptionCaught") e: Exception,
             ) {
                 // 接不上要说出来，别退化成一片空白、看起来像「没有对话」
-                HostLink.Failed(e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName)
+                HostLink.Failed(e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName, (e as? JumpBroken)?.fixHostId)
             }
     }
     return state
 }
 
-/** 对话列表屏的持有者标识。 */
+/** 接不上的原因是哪一台的设置（[HostLink.Failed.edit] 那几形）⇒［编辑］，进那一台的编辑页；不是 ⇒ 不画。 */
+@Composable
+fun EditHostButton(
+    edit: String?,
+    onEditHost: (hostId: String) -> Unit,
+) {
+    if (edit != null) SecondaryButton(onClick = { onEditHost(edit) }) { Text(copyText("mobHosts.row.edit")) }
+}
+
+/** 会话列表屏的持有者标识。 */
 fun conversationsHolder(hostId: String): String = "conversations-$hostId"
 
 /** 聊天面的持有者标识。前缀 `chat-` 是约定，别改。 */

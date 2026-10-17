@@ -36,7 +36,8 @@ vi.mock("../../../src/frontend/ui/history-reads", () => ({ lastAccounts: async (
 import { invoke } from "@tauri-apps/api/core";
 import { TabSessionActions } from "../../../src/frontend/ui/tab-session-actions";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
-import { offerResyncRetry, resync } from "../../../src/frontend/ui/resync";
+import { offerResyncRetry } from "../../../src/frontend/ui/resync";
+import { resync } from "../../../src/frontend/ui/control-said";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, type ChanCallArgs } from "../../test-support/chan-fake";
 

@@ -279,9 +279,11 @@
       { "text": "没签", "use": "输入" },
       { "text": "对账", "use": "输入" },
       { "text": "执行", "use": "输入" },
-      { "text": "订阅", "use": "输入" },
-      { "text": "未装 planned-build", "use": "回显" },
-      { "text": "无 agent 视角 · 重读计划后再看", "use": "回显" }
+      { "text": "订阅", "use": "输入" }
+    ],
+    "tests/shots/disk/plan.ts": [
+      { "text": "没做完", "use": "输入" },
+      { "text": "不做了", "use": "输入" }
     ],
     "tests/shots/fake/history.ts": [
       { "text": "重试", "use": "输入" }

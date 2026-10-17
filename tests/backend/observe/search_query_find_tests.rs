@@ -197,7 +197,7 @@ fn find_and_global_search_agree_on_the_same_file() {
             )
             .expect("读得动");
         let s = session_hits_in(&p, &entry, &q, &opts, &mut budget, 0).expect("有命中");
-        // 两者刻意的差别只有一处：`--search` 也列没有 uuid 的记录（uuid 记成空串）、本命令不列。
+        // 两者刻意的差别两处：`--search` 也列没有 uuid 的记录（uuid 记成空串）、本命令不列；`--search` 每个会话只给前几处。
         //   agent 回报（种类 `report`）两边都收。
         let searched: Vec<(String, String, String, String)> = s
             .hits
@@ -220,8 +220,8 @@ fn find_and_global_search_agree_on_the_same_file() {
                 (g("uuid"), g("before"), g("matched"), g("after"))
             })
             .collect();
-        assert!(!found.is_empty());
-        assert_eq!(found, searched, "tools={tools}");
+        assert!(!searched.is_empty());
+        assert_eq!(found[..searched.len()], searched[..], "tools={tools}");
     }
     std::fs::remove_dir_all(&tmp).ok();
 }
@@ -555,7 +555,8 @@ fn hits_carry_the_index_row_of_their_record() {
             .position(|r| r.u.as_deref() == Some(u))
             .map(|i| i as u64)
     };
-    let check = |what: &str, got: Vec<(String, u64)>| {
+    // `ctl`：要不要正控（有行号与物理行号不同的那一条）——全局搜索每会话只给前 3 处，夹具前 3 处恰在坏行之前，那一臂只核相等。
+    let check = |what: &str, got: Vec<(String, u64)>, ctl: bool| {
         assert!(got.len() >= 3, "{what}：夹具该有几条命中");
         let want: Vec<(String, u64)> = got
             .iter()
@@ -569,7 +570,7 @@ fn hits_carry_the_index_row_of_their_record() {
                 .unwrap() as u64
         };
         assert!(
-            got.iter().any(|(u, l)| physical(u) != *l),
+            !ctl || got.iter().any(|(u, l)| physical(u) != *l),
             "{what}：正控，要有行号与物理行号不同的"
         );
     };
@@ -591,6 +592,7 @@ fn hits_carry_the_index_row_of_their_record() {
     check(
         "现扫",
         pairs(&serde_json::json!({ "hits": scanned[1..scanned.len() - 1] })),
+        true,
     );
     let wire = find_wire(
         &home,
@@ -599,7 +601,7 @@ fn hits_carry_the_index_row_of_their_record() {
         &Default::default(),
     )
     .unwrap();
-    check("常驻索引", pairs(&wire));
+    check("常驻索引", pairs(&wire), true);
     let opts = SearchOpts {
         include_tools: true,
         scope: None,
@@ -627,6 +629,7 @@ fn hits_carry_the_index_row_of_their_record() {
             .filter(|h| !h.uuid.is_empty())
             .map(|h| (h.uuid.clone(), h.line))
             .collect(),
+        false,
     );
     let _ = std::fs::remove_dir_all(&home);
 }

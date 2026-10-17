@@ -82,7 +82,10 @@ impl Watch for Moves {
 
 /// 普通文件 ⇒ 多大；管道之类 ⇒ 不知道。
 fn size_of(file: &File) -> Option<u64> {
-    file.metadata().ok().filter(|m| m.is_file()).map(|m| m.len())
+    file.metadata()
+        .ok()
+        .filter(|m| m.is_file())
+        .map(|m| m.len())
 }
 
 /// 上传那一半：`src`（总数不知道 ⇒ `None`）逐块送进那台的暂存区（新键）⇒ `{call, ok, data: {key, chunks, bytes, sha256}}` 或没成那一行。
@@ -186,7 +189,14 @@ pub fn stage(h: i64, file: File, name: String, within_ms: u64, on_event: OnEvent
 }
 
 /// 起一趟下载：`args` 是 `{path}`（那台上的路径，线上那一形）。回问答编号；这台不在 · 入参读不动 ⇒ 0。
-pub fn pull(h: i64, file: File, args: &str, shown: String, within_ms: u64, on_event: OnEvent) -> i64 {
+pub fn pull(
+    h: i64,
+    file: File,
+    args: &str,
+    shown: String,
+    within_ms: u64,
+    on_event: OnEvent,
+) -> i64 {
     let path = serde_json::from_str::<serde_json::Value>(args)
         .ok()
         .and_then(|v| serde_json::from_value::<WirePath>(v.get("path")?.clone()).ok());
@@ -211,11 +221,12 @@ pub fn pull(h: i64, file: File, args: &str, shown: String, within_ms: u64, on_ev
     id
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cmd_wire::files::{FilesStageChunkReply, FilesStageChunkReq, HexBytes, ReadChunkReply, ReadChunkReq};
+    use cmd_wire::files::{
+        FilesStageChunkReply, FilesStageChunkReq, HexBytes, ReadChunkReply, ReadChunkReq,
+    };
     use std::sync::Mutex;
 
     /// 替身那台：收下送来的块；读回从 `file` 里切；`refuse` ⇒ 每一问都回那一句失败（码 `refused`）。
@@ -245,7 +256,10 @@ mod tests {
             let reply = if C::NAME == "files-stage-chunk" {
                 let r: FilesStageChunkReq = serde_json::from_value(v).unwrap();
                 let n = r.content.bytes().len() as u64;
-                self.staged.lock().unwrap().push((r.seq, r.content.bytes().to_vec()));
+                self.staged
+                    .lock()
+                    .unwrap()
+                    .push((r.seq, r.content.bytes().to_vec()));
                 serde_json::to_value(FilesStageChunkReply { bytes: n }).unwrap()
             } else {
                 let r: ReadChunkReq = serde_json::from_value(v).unwrap();
@@ -295,7 +309,10 @@ mod tests {
     }
 
     fn run<F: std::future::Future>(f: F) -> F::Output {
-        tokio::runtime::Builder::new_current_thread().build().unwrap().block_on(f)
+        tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap()
+            .block_on(f)
     }
 
     fn json(line: &str) -> serde_json::Value {
@@ -305,14 +322,27 @@ mod tests {
     /// 上传那一半：块号连着进同一个键、每块报一次走到哪，结局是 Kotlin 提交要交的那四样（摘要同 chunk-core 那一份算法）。
     #[test]
     fn a_staged_upload_reports_every_chunk_and_hands_back_what_the_commit_needs() {
-        let body: Vec<u8> = (0..chunk_core::CHUNK * 2 + 5).map(|i| (i % 251) as u8).collect();
+        let body: Vec<u8> = (0..chunk_core::CHUNK * 2 + 5)
+            .map(|i| (i % 251) as u8)
+            .collect();
         let there = Box::default();
         let mut seen = Seen::default();
         let key = "a".repeat(32);
         let total = Some(body.len() as u64);
-        let line = run(stage_with(&there, 3, key.clone(), (&body[..], total), "up.bin", &mut seen));
+        let line = run(stage_with(
+            &there,
+            3,
+            key.clone(),
+            (&body[..], total),
+            "up.bin",
+            &mut seen,
+        ));
         let v = json(&line);
-        assert_eq!((v["call"].as_i64(), v["ok"].as_bool()), (Some(3), Some(true)), "{v}");
+        assert_eq!(
+            (v["call"].as_i64(), v["ok"].as_bool()),
+            (Some(3), Some(true)),
+            "{v}"
+        );
         assert_eq!(v["data"]["key"], key.as_str());
         assert_eq!(v["data"]["chunks"], 3);
         assert_eq!(v["data"]["bytes"], body.len());
@@ -322,8 +352,17 @@ mod tests {
             sha.finish().sha256
         });
         let staged = there.staged.lock().unwrap();
-        assert_eq!(staged.iter().map(|(s, _)| *s).collect::<Vec<_>>(), vec![0, 1, 2]);
-        assert_eq!(staged.iter().flat_map(|(_, b)| b.clone()).collect::<Vec<_>>(), body);
+        assert_eq!(
+            staged.iter().map(|(s, _)| *s).collect::<Vec<_>>(),
+            vec![0, 1, 2]
+        );
+        assert_eq!(
+            staged
+                .iter()
+                .flat_map(|(_, b)| b.clone())
+                .collect::<Vec<_>>(),
+            body
+        );
         assert_eq!(seen.0.last(), Some(&(body.len() as u64, total)));
         assert_eq!(seen.0.len(), 4, "起点一次 ＋ 每块一次");
     }
@@ -335,20 +374,50 @@ mod tests {
             refuse: true,
             ..Box::default()
         };
-        let v = json(&run(stage_with(&no, 4, "k".into(), (&[1u8][..], Some(1)), "up.bin", &mut Seen::default())));
-        assert_eq!((v["ok"].as_bool(), v["code"].as_str(), v["message"].as_str()), (Some(false), Some("refused"), Some("那台拒了")));
+        let v = json(&run(stage_with(
+            &no,
+            4,
+            "k".into(),
+            (&[1u8][..], Some(1)),
+            "up.bin",
+            &mut Seen::default(),
+        )));
+        assert_eq!(
+            (v["ok"].as_bool(), v["code"].as_str(), v["message"].as_str()),
+            (Some(false), Some("refused"), Some("那台拒了"))
+        );
 
-        let v = json(&run(stage_with(&Box::default(), 5, "k".into(), (Broken, None), "up.bin", &mut Seen::default())));
+        let v = json(&run(stage_with(
+            &Box::default(),
+            5,
+            "k".into(),
+            (Broken, None),
+            "up.bin",
+            &mut Seen::default(),
+        )));
         assert_eq!(v["call"], 5);
-        assert_eq!(v["message"], copy_core::copy_text("mobFiles.local.readFailed", &[("name", "up.bin")]));
+        assert_eq!(
+            v["message"],
+            copy_core::copy_text("mobFiles.local.readFailed", &[("name", "up.bin")])
+        );
         assert!(!v["detail"].as_str().unwrap().is_empty());
 
         let there = Box {
             file: vec![1, 2, 3],
             ..Box::default()
         };
-        let v = json(&run(pull_with(&there, 6, WirePath(b"/w/f".to_vec()), Broken, "/sdcard/f", &mut Seen::default())));
-        assert_eq!(v["message"], copy_core::copy_text("mobFiles.local.writeFailed", &[("path", "/sdcard/f")]));
+        let v = json(&run(pull_with(
+            &there,
+            6,
+            WirePath(b"/w/f".to_vec()),
+            Broken,
+            "/sdcard/f",
+            &mut Seen::default(),
+        )));
+        assert_eq!(
+            v["message"],
+            copy_core::copy_text("mobFiles.local.writeFailed", &[("path", "/sdcard/f")])
+        );
     }
 
     /// 下载那一半：逐块读回写进本机那一份，结局带总字节；走到哪按那台给的总数报。
@@ -361,18 +430,42 @@ mod tests {
         };
         let mut out = Vec::new();
         let mut seen = Seen::default();
-        let v = json(&run(pull_with(&there, 8, WirePath(b"/w/f".to_vec()), &mut out, "/sdcard/f", &mut seen)));
-        assert_eq!((v["call"].as_i64(), v["ok"].as_bool(), v["data"]["bytes"].as_u64()), (Some(8), Some(true), Some(file.len() as u64)));
+        let v = json(&run(pull_with(
+            &there,
+            8,
+            WirePath(b"/w/f".to_vec()),
+            &mut out,
+            "/sdcard/f",
+            &mut seen,
+        )));
+        assert_eq!(
+            (
+                v["call"].as_i64(),
+                v["ok"].as_bool(),
+                v["data"]["bytes"].as_u64()
+            ),
+            (Some(8), Some(true), Some(file.len() as u64))
+        );
         assert_eq!(out, file);
-        assert_eq!(seen.0.last(), Some(&(file.len() as u64, Some(file.len() as u64))));
+        assert_eq!(
+            seen.0.last(),
+            Some(&(file.len() as u64, Some(file.len() as u64)))
+        );
     }
 
     /// 形状对不上的回包 ⇒ `unreadable`（不当成功用），详情点名那条命令。
     #[test]
     fn a_reply_of_the_wrong_shape_is_unreadable_not_ok() {
-        let e = typed::<FilesStageChunkReq>(9, "box", Ok(Some(serde_json::json!({"nope": 1})))).unwrap_err();
+        let e = typed::<FilesStageChunkReq>(9, "box", Ok(Some(serde_json::json!({"nope": 1}))))
+            .unwrap_err();
         let v = json(&e);
-        assert_eq!((v["call"].as_i64(), v["unreadable"].as_bool()), (Some(9), Some(true)));
-        assert!(v["detail"].as_str().unwrap().starts_with("files-stage-chunk: "));
+        assert_eq!(
+            (v["call"].as_i64(), v["unreadable"].as_bool()),
+            (Some(9), Some(true))
+        );
+        assert!(v["detail"]
+            .as_str()
+            .unwrap()
+            .starts_with("files-stage-chunk: "));
     }
 }

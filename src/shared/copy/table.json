@@ -384,7 +384,7 @@
     "beAcctPlan.cred.missing": {
       "kind": "error",
       "role": "报错",
-      "zh": "未找到凭据文件 {path} 或不是普通文件",
+      "zh": "凭据文件 {path} 不存在或不是普通文件",
       "args": ["path"]
     },
     "beAcctPlan.dir.exists": {
@@ -1801,7 +1801,7 @@
     "beSessionCommands.builtin.clear": {
       "kind": "body",
       "role": "片段",
-      "zh": "清空会话 · 原对话留在会话列表",
+      "zh": "清空会话 · 原会话留在会话列表",
       "args": []
     },
     "beSessionCommands.builtin.compact": {
@@ -2189,6 +2189,12 @@
       "kind": "body",
       "role": "片段",
       "zh": "该机",
+      "args": []
+    },
+    "control.channel.refresh": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "刷新",
       "args": []
     },
     "control.unavailable.noTmux": {
@@ -9087,12 +9093,6 @@
       "zh": "状态",
       "args": []
     },
-    "bePubkey.add.noOutcome": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "推送公钥到 {machine} 结果未知",
-      "args": ["machine"]
-    },
     "bePubkey.exec.failed": {
       "kind": "error",
       "role": "报错",
@@ -9957,7 +9957,7 @@
     "beFilesWrite.copy.notRegular": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 不是普通文件 · 复制目录要带 recursive",
+      "zh": "{path} 不是普通文件 · 未复制",
       "args": ["path"]
     },
     "beFiles.batch.verbCopy": {
@@ -10271,12 +10271,6 @@
       "role": "原因格",
       "zh": "窗口出错 · 选择框未打开 · 重开此窗口",
       "args": []
-    },
-    "beFilesCommit.exdev.noName": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "目标 {rel} 无文件名",
-      "args": ["rel"]
     },
     "rsFilewinCopy.batch.listSep": {
       "kind": "body",
@@ -10777,8 +10771,8 @@
     "rsLocalBackend.etxtbsy.gaveUp": {
       "kind": "error",
       "role": "报错",
-      "zh": "启动 {bin} 时遇到文件正被占用 ×{tries}\n该状态会自行消失 · 再开一次通常就好 · 最后一次原话 {last}",
-      "args": ["bin", "tries", "last"]
+      "zh": "{bin} 被占用 ×{tries} · 未启动",
+      "args": ["bin", "tries"]
     },
     "rsLocalBackend.decide.crashLoop": {
       "kind": "error",
@@ -16300,7 +16294,7 @@
     "beUploadChunks.chunk.missing": {
       "kind": "error",
       "role": "报错",
-      "zh": "块 {seq} 不存在或不是普通文件 · 共 {chunks} 块 · 目标未写入",
+      "zh": "块 {seq} 不存在或不是普通文件 · 共 {chunks} 块 · 未写入",
       "args": ["seq", "chunks"]
     },
     "beUploadChunks.total.mismatch": {
@@ -16471,7 +16465,7 @@
     "beFilesWrite.delete.notRegular": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 不是普通文件 · 此删除只收普通文件 · 未删除",
+      "zh": "{path} 不是普通文件 · 未删除",
       "args": ["path"]
     },
     "beFilesWrite.delete.changed": {
@@ -16513,7 +16507,7 @@
     "beFilesWrite.overwrite.notRegular": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 不是普通文件 · 只能覆盖普通文件",
+      "zh": "{path} 不是普通文件 · 未覆盖",
       "args": ["path"]
     },
     "beFilesWrite.overwrite.gone": {
@@ -17418,7 +17412,7 @@
     "beFilesCommit.upload.stagedNotRegular": {
       "kind": "error",
       "role": "报错",
-      "zh": "上传的临时文件 {path} 不是普通文件",
+      "zh": "上传的临时文件 {path} 不是普通文件 · 未保存",
       "args": ["path"]
     },
     "beFilesCommit.upload.stagedUnreadable": {
@@ -17433,28 +17427,13 @@
       "zh": "上传内容与本机那份不符 · 目标未动 · 须从头重传 · {tail}",
       "args": ["tail"]
     },
-    "beFilesCommit.upload.exists": {
+    "beFilesWrite.swap.exists": {
       "kind": "error",
       "role": "报错",
       "zh": "{path} 已存在 · 不覆盖 · 先删掉它或换个名字",
       "args": [
         "path"
       ]
-    },
-    "beFilesCommit.upload.cantPlace": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{path} 无法占位 · {why}",
-      "args": [
-        "path",
-        "why"
-      ]
-    },
-    "beFilesCommit.upload.placeholderLeft": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "写入失败 · {path} · {why}\n删除失败 · 留下的 0 字节空文件 · {leftWhy}\n非用户数据 · 删后再试",
-      "args": ["path", "why", "leftWhy"]
     },
     "beFilesCommit.chunk.createFailed": {
       "kind": "error",
@@ -17477,7 +17456,7 @@
     "beFilesCommit.chunk.notRegular": {
       "kind": "error",
       "role": "报错",
-      "zh": "未保存 · {path} · 块 {seq} 不是普通文件",
+      "zh": "{path} · 块 {seq} 不是普通文件 · 未保存",
       "args": ["seq", "path"]
     },
     "beFilesCommit.chunk.overflow": {
@@ -18130,8 +18109,8 @@
     "beAssets.door.editGaveUp": {
       "kind": "error",
       "role": "报错",
-      "zh": "{last}\n读完后盘上文件又变 ×{attempts} · 已停下 · 稍后再点一次",
-      "args": ["last", "attempts"]
+      "zh": "未写入 · 文件持续变动 ×{attempts}",
+      "args": ["attempts"]
     },
     "beAssets.door.outsideHome": {
       "kind": "error",
@@ -22356,18 +22335,6 @@
       "kind": "body",
       "role": "片段",
       "zh": "需手动",
-      "args": []
-    },
-    "needs.bar.sub": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{waited} · 在终端里答",
-      "args": ["waited"]
-    },
-    "needs.bar.subBare": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "在终端里答",
       "args": []
     },
     "needs.windowTitle.base": {
@@ -27029,12 +26996,6 @@
       "zh": "未装",
       "args": []
     },
-    "beFilesCommit.land.badPath": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "路径不合规",
-      "args": []
-    },
     "rsShellCmd.self.crashed": {
       "kind": "error",
       "role": "报错",
@@ -28408,16 +28369,16 @@
       "zh": "未找到机器",
       "args": []
     },
-    "mobDrawer.item.newChat": {
+    "mobDrawer.item.newSession": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "新对话",
+      "zh": "新建会话",
       "args": []
     },
-    "mobDrawer.item.chats": {
+    "mobDrawer.item.sessions": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "对话",
+      "zh": "会话",
       "args": []
     },
     "mobDrawer.item.files": {
@@ -28486,10 +28447,10 @@
       "zh": "上一级",
       "args": []
     },
-    "mobNav.newSession.title": {
+    "mobNav.newTab.title": {
       "kind": "title",
       "role": "标题",
-      "zh": "新建会话 · 选择机器",
+      "zh": "新开标签页 · 选择机器",
       "args": []
     },
     "mobKeepAlive.notify.body": {
@@ -28571,6 +28532,36 @@
       "role": "片段",
       "zh": "cc-monitor {version}",
       "args": ["version"]
+    },
+    "mobUsage.page.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "用量",
+      "args": []
+    },
+    "mobChats.search.open": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "搜索",
+      "args": []
+    },
+    "mobChats.search.placeholder": {
+      "kind": "control",
+      "role": "占位",
+      "zh": "搜标题、项目",
+      "args": []
+    },
+    "mobChats.search.content": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "搜内容「{q}」",
+      "args": ["q"]
+    },
+    "mobChats.fork.from": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "分叉自「{label}」",
+      "args": ["label"]
     },
     "mobAccounts.list.section": {
       "kind": "title",
@@ -28728,12 +28719,6 @@
       "zh": "无匹配命令",
       "args": []
     },
-    "mobTabs.overview.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "会话 {n}",
-      "args": ["n"]
-    },
     "mobTabs.overview.closeAll": {
       "kind": "action",
       "role": "按钮",
@@ -28743,13 +28728,7 @@
     "mobTabs.overview.new": {
       "kind": "action",
       "role": "按钮",
-      "zh": "新建会话",
-      "args": []
-    },
-    "mobTabs.overview.empty": {
-      "kind": "body",
-      "role": "空态",
-      "zh": "无打开的会话",
+      "zh": "新开标签页",
       "args": []
     },
     "mobTabs.row.files": {
@@ -28770,13 +28749,13 @@
       "zh": "标签页",
       "args": []
     },
-    "mobTabs.sheet.title": {
+    "mobTabs.list.title": {
       "kind": "title",
       "role": "标题",
       "zh": "标签页 {n}",
       "args": ["n"]
     },
-    "mobTabs.sheet.empty": {
+    "mobTabs.list.empty": {
       "kind": "body",
       "role": "空态",
       "zh": "无标签页",
@@ -29946,10 +29925,10 @@
       "zh": "未分组",
       "args": []
     },
-    "mobHosts.newSession.hint": {
+    "mobHosts.newTab.hint": {
       "kind": "body",
       "role": "说明",
-      "zh": "选择机器 · 新开标签页 · 不复用已打开的会话",
+      "zh": "选择机器 · 新开标签页 · 不复用已打开的标签页",
       "args": []
     },
     "mobHosts.import.action": {
@@ -29988,10 +29967,10 @@
       "zh": "导入",
       "args": []
     },
-    "mobHosts.list.sessions": {
+    "mobHosts.list.tabs": {
       "kind": "action",
       "role": "按钮",
-      "zh": "会话",
+      "zh": "标签页",
       "args": []
     },
     "mobHosts.fab.aria": {
@@ -31088,7 +31067,7 @@
     "session.clear.body": {
       "kind": "body",
       "role": "确认框",
-      "zh": "从空的上下文重新开始 · 之前的对话留在会话列表里",
+      "zh": "从空的上下文重新开始 · 原会话留在会话列表",
       "args": []
     },
     "session.clear.ok": {

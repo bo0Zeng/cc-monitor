@@ -8,8 +8,10 @@
  * `comm_boundary_registry` 的 `X6` 按调用点核期限 —— 那一下必须留在各调用点、操作名写字面量；
  * 这里的 [`settleTyped`] 只接一个已经发出去的 `Promise`。
  */
+import { copyText } from "./copy-table";
 import { chan, ChanError } from "../../comms/inward/chan";
-import { machineName, ReplyUnreadable } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, machineName, ReplyUnreadable } from "./ipc/chan-caller";
+import { failToast, type ToastAction } from "./kit/toast";
 import type { Origin } from "./ipc/origin";
 
 export { machineName };
@@ -35,7 +37,7 @@ export function unreadable(origin: Origin, op: string, what: string): ReplyUnrea
 
 /**
  * 等一发 **typed** 帧命令的结局（`callTyped`：回包已按类型解好、形状由握手指纹核过），拿成品。
- * 失败 ⇒ 原样抛（通道上的是 `ChanError`，那一句 monitor 写好）；回的不是 JSON ⇒ 说「读不懂」。
+ * 失败 ⇒ 原样抛（通道上的是 `ChanError`，那一句 monitor 写好；结果未知那一形另带［刷新］）；回的不是 JSON ⇒ 说「读不懂」。
  * `refused`：被拒那一句前面要接上界面才知道的主语时（「刷新被拒 · {said}」那一形）给；只换被拒那一形的那一句，详情照带。
  */
 export async function settleTyped<T>(origin: Origin, op: string, sent: Promise<T>, refused?: (said: string) => string): Promise<T> {
@@ -46,8 +48,48 @@ export async function settleTyped<T>(origin: Origin, op: string, sent: Promise<T
     if (refused && e instanceof ChanError && e.error.layer === "peer" && e.error.why === "refused") {
       throw new ChanError(e.error, refused(e.message), e.detail);
     }
+    // 结果未知（那一下可能已经到了那台）⇒ 带上［刷新］，失败 toast 照出（`kit/toast.ts::failToast`）。
+    if (e instanceof ChanError && e.error.layer === "hop" && e.error.reach !== "NotSent") throw Object.assign(e, { action: refreshAction(origin) });
     throw e;
   }
+}
+
+/** 结果未知 ⇒［刷新］：让那台对齐一次，列表照它补齐，看得出那一下做成了没有。 */
+function refreshAction(origin: Origin): ToastAction {
+  return {
+    label: copyText("control.channel.refresh"),
+    run: () => void resync(origin).catch((e: unknown) => failToast(copyText("resync.retry.failed"), e)),
+  };
+}
+
+/** 期限：后端要等每份 watcher 对完表、打完标（起几次 tmux）。 */
+const RESYNC_BUDGET_MS = 20_000;
+
+/** 一次对齐的差异（后端 `resync` 的成品）。 */
+export interface Resynced {
+  added: number;
+  removed: number;
+  retagged: number;
+  /** 在跟的会话这趟从游标补读出几行（补出来的行照常经流到达）。 */
+  caughtUp: number;
+  watchers: number;
+}
+
+/**
+ * **手动对齐**：问那台机器的后端 `resync`（本机与远端同一条）；给了 `sid` 就只对那一个会话。失败 ⇒ 抛（那一句 monitor 写好；被拒前面接「刷新被拒」）。
+ * 住这一层：结果未知那一句的［刷新］就是它（落点与按钮见 `resync.ts`）。
+ */
+export async function resync(origin: Origin, sid?: string): Promise<Resynced> {
+  const budget = budgetWithin(RESYNC_BUDGET_MS);
+  const req = sid === undefined ? {} : { sid };
+  // 回包里那两格能力事实 monitor 在通道那一跳已经收进 `Offer`（唯一住处），界面不读。
+  const { added, removed, retagged, caught_up: caughtUp, watchers } = await settleTyped(
+    origin,
+    "resync",
+    callTyped(origin, "resync", req, budget),
+    (said) => copyText("resync.call.refused", { said }),
+  );
+  return { added, removed, retagged, caughtUp, watchers };
 }
 
 /**

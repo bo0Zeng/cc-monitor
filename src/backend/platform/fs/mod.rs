@@ -1,17 +1,15 @@
 //! 后端碰盘的唯一住址：读盘那一半住 [`ro`]（[`Ro`] · [`RoFile`]，全后端都用）；文件管理面的写住 [`face`]（[`Face`] · [`Resolved`]，
-//! 只有文件管理那一族拿得到）；后端自家状态的写住 [`own`]（[`Own`]，启动时造）。本文件是文件管理写面要的两样平台原语：
-//! **不覆盖改名** · **开文件不跟链接的旗**。
+//! 只有文件管理那一族拿得到）；后端自家状态的写住 [`own`]（[`Own`]，启动时造）。本文件是两样平台原语：
+//! **不覆盖改名在这块盘上有没有**（[`noreplace_unsupported`]）· **开文件不跟链接的旗**（读那一侧用）。
 //!
-//! 只有原语，不判路径（路径解析住 `control/files_write.rs`）。两样都不出本目录：外面只能经 [`Face`] 的方法用到它们。
-//!
-//! | 平台 | 不覆盖改名 | 不跟链接 |
+//! | 平台 | 不覆盖改名（`Face::move_noreplace`） | 不跟链接 |
 //! |---|---|---|
 //! | Linux（gnu · musl） | `renameat2(RENAME_NOREPLACE)`，走 `SYS_renameat2` 裸调用（musl 没包装函数） | `O_NOFOLLOW` |
-//! | macOS | `renamex_np(RENAME_EXCL)`（不承诺的平台，只编得过） | `O_NOFOLLOW` |
+//! | macOS | `renameatx_np(RENAME_EXCL)`（不承诺的平台，只编得过） | `O_NOFOLLOW` |
 //! | Windows | `MoveFileExW(…, 0)`：不带 `MOVEFILE_REPLACE_EXISTING` 就是目标已在即失败 | **没有**：`FILE_FLAG_OPEN_REPARSE_POINT` 开的是链接本身，不是「遇链接就失败」⇒ 不给 |
 //! | 别的 unix | 没有 ⇒ [`noreplace_unsupported`] 那一形 | `O_NOFOLLOW` |
 //!
-//! 那块盘不认不覆盖改名时：普通文件走 [`rename_by_link`]（`link` ＋ `unlink`），目录拒（调用方判）；不退回先看后改。
+//! 那块盘不认不覆盖改名时：普通文件走 `Face::move_by_link`（`link` ＋ `unlink`），目录拒（调用方判）；不退回先看后改。
 
 use std::path::Path;
 
@@ -25,8 +23,8 @@ pub(crate) use own::{
 pub use own::{DiagLog, Own, OwnLock};
 pub(crate) use ro::{Metadata, Perms, Ro, RoFile, Stamp};
 
-/// 把 `from` 改名成 `to`；**`to` 已在（含一条链接）⇒ `AlreadyExists`，一个字节不动**。原子：没有先看后改的窗。
-/// 这个平台 / 这块盘没有这件原语 ⇒ 回一个 [`noreplace_unsupported`] 认得出的错，调用方自己决定退回什么。
+/// 非 unix 的不覆盖改名（按路径；unix 那一臂在 `face.rs` 里相对目录句柄做）。
+#[cfg(not(unix))]
 fn rename_noreplace(from: &Path, to: &Path) -> std::io::Result<()> {
     imp::rename_noreplace(from, to)
 }
@@ -74,76 +72,12 @@ pub(crate) fn noreplace_unsupported(e: &std::io::Error) -> bool {
     imp::unsupported(e)
 }
 
-/// 盘不认不覆盖改名时，**普通文件**（含链接本身）的不覆盖改名：`link(from, to)` ＋ `unlink(from)`。
-/// `link` 在 `to` 已在时原子失败（`EEXIST`，NFS 上也成立）；`unlink` 失败 ⇒ 撤掉刚建的那个名字、回 `unlink` 的错（两个名字不同时留着）。
-/// 目录没有这条路（`link` 不收目录）—— 那一判在调用方。非 unix ⇒ `Unsupported`。
-fn rename_by_link(from: &Path, to: &Path) -> std::io::Result<()> {
-    imp_link::rename_by_link(from, to)
-}
-
-#[cfg(unix)]
-mod imp_link {
-    use std::ffi::CString;
-    use std::os::unix::ffi::OsStrExt as _;
-    use std::path::Path;
-
-    pub(super) fn rename_by_link(from: &Path, to: &Path) -> std::io::Result<()> {
-        let f = CString::new(from.as_os_str().as_bytes())?;
-        let t = CString::new(to.as_os_str().as_bytes())?;
-        // SAFETY：两个以 NUL 结尾的串活过这几次调用；`link` / `unlink` 只读它们。
-        if unsafe { libc::link(f.as_ptr(), t.as_ptr()) } != 0 {
-            return Err(std::io::Error::last_os_error());
-        }
-        if unsafe { libc::unlink(f.as_ptr()) } != 0 {
-            let e = std::io::Error::last_os_error();
-            // SAFETY：同上。撤不掉 ⇒ 两个名字都在，回的仍是 `unlink` 那一下的错。
-            unsafe { libc::unlink(t.as_ptr()) };
-            return Err(e);
-        }
-        Ok(())
-    }
-}
-
-#[cfg(not(unix))]
-mod imp_link {
-    use std::path::Path;
-
-    pub(super) fn rename_by_link(_from: &Path, _to: &Path) -> std::io::Result<()> {
-        Err(std::io::Error::from(std::io::ErrorKind::Unsupported))
-    }
-}
-
 /// 开文件时加上的「最后一段是链接就失败」那个旗（开法的 `custom_flags` 收它）。
 #[cfg(unix)]
 const NO_FOLLOW: i32 = libc::O_NOFOLLOW;
 
 #[cfg(target_os = "linux")]
 mod imp {
-    use std::ffi::CString;
-    use std::os::unix::ffi::OsStrExt as _;
-    use std::path::Path;
-
-    pub(super) fn rename_noreplace(from: &Path, to: &Path) -> std::io::Result<()> {
-        let f = CString::new(from.as_os_str().as_bytes())?;
-        let t = CString::new(to.as_os_str().as_bytes())?;
-        // SAFETY：两个以 NUL 结尾的串活过这一次调用；`renameat2` 只读它们。
-        let rc = unsafe {
-            libc::syscall(
-                libc::SYS_renameat2,
-                libc::AT_FDCWD,
-                f.as_ptr(),
-                libc::AT_FDCWD,
-                t.as_ptr(),
-                libc::RENAME_NOREPLACE,
-            )
-        };
-        if rc == 0 {
-            Ok(())
-        } else {
-            Err(std::io::Error::last_os_error())
-        }
-    }
-
     pub(super) fn unsupported(e: &std::io::Error) -> bool {
         matches!(e.raw_os_error(), Some(libc::EINVAL) | Some(libc::ENOSYS))
     }
@@ -151,22 +85,6 @@ mod imp {
 
 #[cfg(target_vendor = "apple")]
 mod imp {
-    use std::ffi::CString;
-    use std::os::unix::ffi::OsStrExt as _;
-    use std::path::Path;
-
-    pub(super) fn rename_noreplace(from: &Path, to: &Path) -> std::io::Result<()> {
-        let f = CString::new(from.as_os_str().as_bytes())?;
-        let t = CString::new(to.as_os_str().as_bytes())?;
-        // SAFETY：同 Linux 那一臂。
-        let rc = unsafe { libc::renamex_np(f.as_ptr(), t.as_ptr(), libc::RENAME_EXCL) };
-        if rc == 0 {
-            Ok(())
-        } else {
-            Err(std::io::Error::last_os_error())
-        }
-    }
-
     pub(super) fn unsupported(e: &std::io::Error) -> bool {
         matches!(e.raw_os_error(), Some(libc::ENOTSUP) | Some(libc::EINVAL))
     }
@@ -202,9 +120,11 @@ mod imp {
 
 #[cfg(not(any(target_os = "linux", target_vendor = "apple", windows)))]
 mod imp {
-    use std::path::Path;
-
-    pub(super) fn rename_noreplace(_from: &Path, _to: &Path) -> std::io::Result<()> {
+    #[cfg(not(unix))]
+    pub(super) fn rename_noreplace(
+        _from: &std::path::Path,
+        _to: &std::path::Path,
+    ) -> std::io::Result<()> {
         Err(std::io::Error::from(std::io::ErrorKind::Unsupported))
     }
 

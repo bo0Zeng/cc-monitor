@@ -130,7 +130,9 @@ fn annotate_marks_acks_counts_and_return_states_on_the_product() {
     assert_eq!(sl["needCount"], 1);
     assert_eq!(doc["needCount"], 1);
     assert_eq!(sl["cells"][0]["returned"]["state"], "returned");
-    assert_eq!(sl["cells"][0]["returned"]["to"], MAIN);
+    assert_eq!(sl["cells"][0]["returned"]["to"]["sid"], MAIN);
+    // 标过的成品照线上类型收得下（帧面出口那一道）。
+    serde_json::from_value::<crate::plan::wire::PlanRead>(doc.clone()).expect("线上形状");
     assert_eq!(sl["cells"][1]["returned"], Value::Null);
     let _ = json!(null);
 }
@@ -165,6 +167,8 @@ fn a_return_of_the_top_block_lands_when_a_new_top_cell_appears() {
     assert_eq!(got["by"], "child");
     assert_eq!(got["child"]["id"], "A2");
     assert_eq!(got["child"]["title"], "乙功能");
+    assert_eq!(got["to"]["sid"], MAIN);
+    serde_json::from_value::<crate::plan::wire::PlanRead>(doc.clone()).expect("线上形状");
     let mut r = rec(6);
     r.children = vec!["A1".into(), "A2".into()];
     // 顶块没有正文：记下的摘要是空正文那一份（送的那一刻也是这么记的）。

@@ -815,9 +815,9 @@ there_size_text?: string,
  */
 there_mtime_text?: string, 
 /**
- * 两头有一头是目录：目录不合并，只能跳过或保留两份。
+ * 这一项能怎么答（后端定，界面照画、不另判）：两头有一头是目录 ⇒ 没有覆盖（目录不合并）。
  */
-dir_into: boolean, };
+answers: Array<Decide>, };
 type Conflicts = { conflicts: Array<Conflict>, };
 type Decide = "overwrite" | "skip" | "keep_both";
 type FileKind = "dir" | "file" | "symlink" | "other";
@@ -913,9 +913,9 @@ there_size_text?: string,
  */
 there_mtime_text?: string, 
 /**
- * 两头有一头是目录：目录不合并，只能跳过或保留两份。
+ * 这一项能怎么答（后端定，界面照画、不另判）：两头有一头是目录 ⇒ 没有覆盖（目录不合并）。
  */
-dir_into: boolean, };
+answers: Array<Decide>, };
 type Conflicts = { conflicts: Array<Conflict>, };
 type Decide = "overwrite" | "skip" | "keep_both";
 type DownloadItem = { remote_path: string, name?: WirePath, };
@@ -1081,9 +1081,9 @@ there_size_text?: string,
  */
 there_mtime_text?: string, 
 /**
- * 两头有一头是目录：目录不合并，只能跳过或保留两份。
+ * 这一项能怎么答（后端定，界面照画、不另判）：两头有一头是目录 ⇒ 没有覆盖（目录不合并）。
  */
-dir_into: boolean, };
+answers: Array<Decide>, };
 type Conflicts = { conflicts: Array<Conflict>, };
 type CopyFrom = { remote_path: string, };
 type Decide = "overwrite" | "skip" | "keep_both";
@@ -1382,9 +1382,9 @@ there_size_text?: string,
  */
 there_mtime_text?: string, 
 /**
- * 两头有一头是目录：目录不合并，只能跳过或保留两份。
+ * 这一项能怎么答（后端定，界面照画、不另判）：两头有一头是目录 ⇒ 没有覆盖（目录不合并）。
  */
-dir_into: boolean, };
+answers: Array<Decide>, };
 type Conflicts = { conflicts: Array<Conflict>, };
 type CopyItem = { from: WirePath, to: WirePath, };
 type Decide = "overwrite" | "skip" | "keep_both";
@@ -1553,10 +1553,11 @@ there_size_text?: string,
  */
 there_mtime_text?: string, 
 /**
- * 两头有一头是目录：目录不合并，只能跳过或保留两份。
+ * 这一项能怎么答（后端定，界面照画、不另判）：两头有一头是目录 ⇒ 没有覆盖（目录不合并）。
  */
-dir_into: boolean, };
+answers: Array<Decide>, };
 type Conflicts = { conflicts: Array<Conflict>, };
+type Decide = "overwrite" | "skip" | "keep_both";
 type FileKind = "dir" | "file" | "symlink" | "other";
 type FilesCommitUploadReq = { root: WirePath, rel: WirePath, key: string, 
 /**
@@ -4509,7 +4510,7 @@ scope?: SearchScope,
  */
 after_ms?: number, 
 /**
- * 全局片段上限（`hitCount` 仍报全量）。
+ * 全局片段上限（没给的照样记进 `moreHits`）。
  */
 limit?: number, 
 /**
@@ -4601,11 +4602,11 @@ title: string,
 /**
  * 记录文件最后改动的毫秒。
  */
-updatedAt: number, 
+updatedAt: number, hits: Array<SearchHit>, 
 /**
- * 本会话命中总数（可能 > `hits` 条数）。
+ * `hits` 之外这个会话还有几处命中。
  */
-hitCount: number, hits: Array<SearchHit>, 
+moreHits: number, 
 /**
  * 本会话有命中被「全局 snippet 预算用完」挡下了。
  */
@@ -4670,7 +4671,7 @@ type HistorySearchMergeReq = { machines: Array<MachineHits>, };
 type MachineHits = { origin: Origin, sessions: Array<SessionHits>, };
 type Merged = { 
 /**
- * `hitCount` 之和。
+ * 各会话命中数（`hits` 条数 ＋ `moreHits`）之和。
  */
 totalHits: number, sessionCount: number, 
 /**
@@ -4705,11 +4706,11 @@ title: string,
 /**
  * 记录文件最后改动的毫秒。
  */
-updatedAt: number, 
+updatedAt: number, hits: Array<SearchHit>, 
 /**
- * 本会话命中总数（可能 > `hits` 条数）。
+ * `hits` 之外这个会话还有几处命中。
  */
-hitCount: number, hits: Array<SearchHit>, 
+moreHits: number, 
 /**
  * 本会话有命中被「全局 snippet 预算用完」挡下了。
  */
@@ -4815,11 +4816,11 @@ title: string,
 /**
  * 记录文件最后改动的毫秒。
  */
-updatedAt: number, 
+updatedAt: number, hits: Array<SearchHit>, 
 /**
- * 本会话命中总数（可能 > `hits` 条数）。
+ * `hits` 之外这个会话还有几处命中。
  */
-hitCount: number, hits: Array<SearchHit>, 
+moreHits: number, 
 /**
  * 本会话有命中被「全局 snippet 预算用完」挡下了。
  */

@@ -340,7 +340,7 @@ sha2 = "0.11"
 # `src/frontend/ui/generated/`（`npm run gen:types` 早就跑后端这一半）。**只在 dev 侧**：codegen 工具，不进发布二进制；
 # 版本就是 monitor 那份 lock 里早已解析的 12.0.1（离线可用、本机缓存里有）。
 ts-rs = "12.0.1"
-# 假时钟（停着的钟，`advance` 才走）：测「挂着的提问自己带的期限」不按墙钟等。只在测试档开。
+# 假时钟（停着的钟，`advance` 才走）：测「挂着的提问自己带的期限」· 保活几轮判死不按墙钟等。只在测试档开。
 tokio = { version = "1", features = ["test-util"] }
 
 # ── **打补丁版 russh** ─────────────

@@ -172,7 +172,7 @@ def launch(fresh=False):
 
 
 def to_chat(secs=30):
-    """回到带抽屉按钮的那一屏（对话列表 · 终端屏没有顶栏，按返回回去）。App 不在前台（返回按出去了 · 闪退）就拉起来；
+    """回到带抽屉按钮的那一屏（会话列表 · 终端屏没有顶栏，按返回回去）。App 不在前台（返回按出去了 · 闪退）就拉起来；
     只在 App 画出了自己的字、连着两回一样（不在动画途中）又没有抽屉按钮时才按返回。"""
     end = ui.within(secs)
     last = None
@@ -208,7 +208,7 @@ def drawer_open():
 def drawer(item):
     to_chat()
     tap_until(t("mobDrawer.open.aria"), drawer_open, what="抽屉")
-    # 抽屉盖在那一屏上：同一个字底下那一屏也有（对话列表的顶栏标题就叫「对话」）⇒ 点抽屉里那一处（画在最上面、节点排在最后）。
+    # 抽屉盖在那一屏上：同一个字底下那一屏也有（会话列表的顶栏标题就叫「对话」）⇒ 点抽屉里那一处（画在最上面、节点排在最后）。
     if sum(1 for n in ui.nodes() if item == n.get("text")) > 1:
         tap_last(item)
     else:
@@ -243,12 +243,12 @@ class Step:
         return self
 
     def back_to(self, row):
-        """这一步从 [row] 那一条对话起：上一步红了、或此刻不在聊天屏（上一步停在终端屏 · 抽屉里），先从对话列表点进去。"""
+        """这一步从 [row] 那一条对话起：上一步红了、或此刻不在聊天屏（上一步停在终端屏 · 抽屉里），先从会话列表点进去。"""
         if not self.recovered and ui.find(t("chat.input.placeholder")) is not None:
             return
-        drawer(t("mobDrawer.item.chats"))
+        drawer(t("mobDrawer.item.sessions"))
         if not wait(row, 30):
-            raise Step.Fail(f"对话列表里没有「{row}」（这一步接着它走，前面那步没起来）")
+            raise Step.Fail(f"会话列表里没有「{row}」（这一步接着它走，前面那步没起来）")
         tap(row)
         if not wait(t("chat.input.placeholder"), 20):
             raise Step.Fail(f"点了「{row}」没进那一条")
@@ -344,6 +344,21 @@ def tap_in_row(label, button):
                 adb("shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
                 return
     raise Step.Fail(f"「{label}」那一行上没有「{button}」")
+
+
+def row_text(label, texts):
+    """[label]（含这几个字）那一行上（纵向范围重叠）出现的 [texts] 之一；没有 ⇒ None。"""
+    ns = ui.nodes()
+    row = next((n for n in ns if label in (n.get("text") or "")), None)
+    if row is None:
+        return None
+    y1, y2 = ui.bounds(row)[1], ui.bounds(row)[3]
+    for n in ns:
+        if n.get("text") in texts:
+            b = ui.bounds(n)
+            if b[1] - 120 <= y2 and b[3] + 120 >= y1:
+                return n.get("text")
+    return None
 
 
 def open_import():
@@ -813,7 +828,7 @@ def deploy_steps():
             raise Step.Fail("没装的那一台没说「未装」")
         deploy_and_time(t("machineState.fix.install"), "1b")
         if not wait_any([t("history.section.today"), t("history.list.empty")], 60):
-            raise Step.Fail("装完没接上（对话列表没出来）")
+            raise Step.Fail("装完没接上（会话列表没出来）")
     with Step("1c-升级后端"):
         old_bin, old_id = older_backend()
         rig("land", old_bin)
@@ -853,10 +868,10 @@ def deploy_steps():
         if sum(1 for _, c in commands() if c.endswith("--resident-ensure --replace")) != before:
             raise Step.Fail("同版也换了常驻")
         shot("1d-主机设置")
-        # 回那台的对话列表（后面几步从那里接着走）。
+        # 回那台的会话列表（后面几步从那里接着走）。
         adb("shell", "input", "keyevent", "4")
         time.sleep(1.5)
-        drawer(t("mobDrawer.item.chats"))
+        drawer(t("mobDrawer.item.sessions"))
 
 
 def main():
@@ -892,7 +907,7 @@ def walk():
                 raise Step.Fail("整把钥匙没导进来")
             tap(t("mobKit.act.back")); time.sleep(1)
             add_host(MACHINE)
-            drawer(t("mobDrawer.item.chats"))
+            drawer(t("mobDrawer.item.sessions"))
             if not wait(t("machineState.fix.install"), 30):
                 raise Step.Fail("那台没有后端，问题条上没给［安装］")
         deploy_steps()
@@ -913,7 +928,7 @@ def walk():
                 raise Step.Fail("整把钥匙没导进来")
             tap(t("mobKit.act.back")); time.sleep(1)
             add_host("smokebox")
-            drawer(t("mobDrawer.item.chats"))
+            drawer(t("mobDrawer.item.sessions"))
         with Step("11-文件页"):
             files_page()
         with Step("11b-大文本编辑"):
@@ -949,35 +964,31 @@ def walk():
             raise Step.Fail("整把钥匙没导进来")
         tap(t("mobKit.act.back")); time.sleep(1)
         add_host(MACHINE)
-        drawer(t("mobDrawer.item.chats"))
+        drawer(t("mobDrawer.item.sessions"))
         if not wait(t("machineState.fix.install"), 30):
             raise Step.Fail("那台没有后端，问题条上没给［安装］")
 
     deploy_steps()
 
-    with Step("2-对话列表"):
+    with Step("2-会话列表"):
+        # 台架只有一台：几台并成一列、机器小标签没在模拟器上跑过（JVM 单测钉着）。这里看一台的两层行：
+        # 停在批准框上的那一条在列表里，第二层状态字是需手动那一类（那台写的字）。
         sh(f'tmux new -d -s seed{T} -c ~/work claude; sleep 3; tmux send-keys -t seed{T} "{T} seed" Enter; '
            f'tmux new -d -s needs{T} -c ~/work claude; sleep 3; tmux send-keys -t needs{T} "ask {T} needs" Enter')
         if not wait(f"{T} seed", 30):
             raise Step.Fail("历史清单没出新会话")
-        if not wait(t("needs.bar.unknown"), 20):
-            raise Step.Fail("需手动没出来")
-        # 台架跨趟留着旧会话（上一趟中途停下的那条也还在等），它们按分钟走、几秒里不变：
-        # 看的是「有没有一行在走表」，这一趟刚起的那条按秒走，一定在里面。
-        def waits():
-            return [n.get("text") for n in ui.nodes() if t("needs.bar.subBare") in (n.get("text") or "")]
-
-        first = waits()
-        time.sleep(4)
-        later = waits()
-        if not first or first == later:
-            raise Step.Fail(f"已等没走表（{first!r} → {later!r}）")
+        needs = [t("beSession.activity.needsYou")] + [t(f"beSession.needs.{k}") for k in ("approve", "answer", "plan", "network", "worker", "goal", "choose", "unknown")]
+        end = time.time() + 20
+        while time.time() < end and row_text(f"{T} needs", needs) is None:
+            time.sleep(1)
+        if row_text(f"{T} needs", needs) is None:
+            raise Step.Fail("停在批准框上的那一条，第二层不是需手动")
         rig("tmux", "send-keys", "-t", f"needs{T}", "y", "Enter")
 
     with Step("3-新建会话"):
         # 新建会话打开就是填好的（目录 ＝ 那台最近用过的第一个）；点目录 chip → 浏览… → 进一层 → 选这个目录，起在那一层。
         sh(f"mkdir -p ~/work/{T}dir")
-        drawer(t("mobDrawer.item.newChat"))
+        drawer(t("mobDrawer.item.newSession"))
         if not wait("~/work", 20):
             raise Step.Fail("目录 chip 没填上那台最近的目录")
         tap_until("~/work", t("newSession.recent.label"), what="目录抽屉")
@@ -1288,9 +1299,9 @@ def walk():
         rig("tmux", "send-keys", "-t", name or "", f"{T} while dead", "Enter")
         time.sleep(4)
         launch()
-        drawer(t("mobDrawer.item.chats"))
+        drawer(t("mobDrawer.item.sessions"))
         if not wait(f"{T} new session", 30):
-            raise Step.Fail("重开之后对话列表里没有那条会话")
+            raise Step.Fail("重开之后会话列表里没有那条会话")
         tap(f"{T} new session")
         time.sleep(3)
         to_bottom()
@@ -1305,9 +1316,9 @@ def walk():
         time.sleep(3)
         try:
             launch()
-            drawer(t("mobDrawer.item.chats"))
+            drawer(t("mobDrawer.item.sessions"))
             if not wait(f"{T} new session", 30):
-                raise Step.Fail("断网时对话列表是空的（没上本地缓存）")
+                raise Step.Fail("断网时会话列表是空的（没上本地缓存）")
             if not wait(t("newSession.machine.offline", machine=MACHINE), 10):
                 raise Step.Fail("断着那台的会话行没写离线")
             shot("8b-离线列表")
@@ -1324,9 +1335,9 @@ def walk():
         time.sleep(8)
         # 断着网起的进程里 SSH 一次都没通过：网回来没有谁替它重拨（重连那一条循环归 SSH 层），这里退回列表再点进来、由那一屏重新建连；
         # 同一条对话还在（应用级持有），接上以后照缓存里的续点对齐，断着那段来的话补上。
-        drawer(t("mobDrawer.item.chats"))
+        drawer(t("mobDrawer.item.sessions"))
         if not wait(f"{T} new session", 30):
-            raise Step.Fail("网回来之后对话列表里没有那条会话")
+            raise Step.Fail("网回来之后会话列表里没有那条会话")
         tap(f"{T} new session")
         time.sleep(3)
         to_bottom()
@@ -1422,7 +1433,7 @@ def walk():
         names = {a.get("kind"): a.get("text") for a in (facts.get("data") or {}).get("agents") or []}
         if "codex" not in names or "claude" not in names:
             raise Step.Fail(f"那台没给两家：{names!r}")
-        drawer(t("mobDrawer.item.newChat"))
+        drawer(t("mobDrawer.item.newSession"))
         if not wait(names["claude"], 20):
             raise Step.Fail("新建会话没画 agent chip")
         tap_until(names["claude"], names["codex"], what="agent 抽屉里那台能起的几家")
@@ -1456,9 +1467,9 @@ def report():
         if not sid:
             raise Step.Fail(f"台架起不了带轮换的会话：{started!r}"[:300])
         launch()
-        drawer(t("mobDrawer.item.chats"))
+        drawer(t("mobDrawer.item.sessions"))
         if not wait(f"{T} rotation", 40):
-            raise Step.Fail("对话列表里没有那条带轮换的会话")
+            raise Step.Fail("会话列表里没有那条带轮换的会话")
         tap(f"{T} rotation")
         time.sleep(3)
         tap(t("history.row.more"))
@@ -1561,6 +1572,71 @@ def report():
             raise Step.Fail(f"再进设置，子会话那一行亮着的不是「{seg}」")
         # 拨回去，台架那台的偏好留成进来时那样。
         tap_in_row(t("settings.machine.childTab"), t("settings.machine.tabShow" if was == "show" else "settings.machine.tabHide"))
+
+    with Step("14-用量屏"):
+        # 设置 → 点账号卡 ⇒ 用量屏：结论那一行 ＝ 台架那台 quota-read 的 verdict.text（没有结论 ⇒ 那台那一句）；
+        # 点第一张卡 ⇒ 展开那几行的字 ＝ 回包那一号 rows[1..]。
+        q = frames("quota-read", {}).get("data") or {}
+        adb("shell", "input", "keyevent", "4")
+        time.sleep(1)
+        drawer(t("mobDrawer.settings.aria"))
+        if not wait(t("mobSettings.section.machine"), 15):
+            raise Step.Fail("没进设置屏")
+        tap("smokebox")  # 账号卡头那一行是那台的名字
+        if not wait(t("mobUsage.page.title"), 15):
+            raise Step.Fail("点账号卡没进用量屏")
+        head = (q.get("verdict") or {}).get("text") or q.get("text")
+        if head and not wait(head, 15):
+            raise Step.Fail(f"用量屏结论那一行不是回包的「{head}」")
+        shot("14-用量屏")
+        first = (q.get("accounts") or [None])[0]
+        if first:
+            tap(first["rows"][0][0]["text"])
+            time.sleep(1)
+            texts = {n.get("text") for n in ui.nodes()}
+            missing = [c["text"] for r in first["rows"][1:] for c in r if c["text"] not in texts]
+            if missing:
+                raise Step.Fail(f"展开那一块少了回包那几格：{missing}")
+            shot("14-点开")
+
+    with Step("15-长按改标题"):
+        # 会话屏长按一行 ⇒ 改标题 ⇒ 列表那一行换字、台架 history-list 那一行 customTitle 是新字；再改回空（回到那台算的标题）。
+        def custom(sid):
+            rows = (frames("history-list", {}).get("data") or {}).get("rows") or []
+            return next((r.get("customTitle") for r in rows if r.get("sessionId") == sid), "缺")
+
+        def rename(to):
+            tap(t("history.menu.rename"))
+            if not wait(t("history.rename.title"), 10):
+                raise Step.Fail("改标题框没出来")
+            adb("shell", "input", "keycombination", "113", "29")  # 框一出来就有焦点：Ctrl+A 全选、删掉
+            adb("shell", "input", "keyevent", "67")
+            if to:
+                typed(to)
+            hide_keyboard()
+            tap(t("history.rename.action"))
+
+        adb("shell", "input", "keyevent", "4")
+        time.sleep(1)
+        drawer(t("mobDrawer.item.chats"))
+        if not wait(f"{T} seed", 30):
+            raise Step.Fail("会话屏里没有那一行")
+        sid = next((r.get("sessionId") for r in (frames("history-list", {}).get("data") or {}).get("rows") or [] if f"{T} seed" in (r.get("label") or "")), None)
+        if sid is None:
+            raise Step.Fail("台架 history-list 里找不到那一行")
+        long_press(f"{T} seed")
+        shot("15-长按抽屉")
+        rename(f"{T} renamed")
+        if not wait(f"{T} renamed", 20):
+            raise Step.Fail("列表那一行没换成新标题")
+        if custom(sid) != f"{T} renamed":
+            raise Step.Fail(f"台架那一行 customTitle 不是新字：{custom(sid)!r}")
+        long_press(f"{T} renamed")
+        rename("")
+        if not wait(f"{T} seed", 20):
+            raise Step.Fail("改回空，列表那一行没回到原标题")
+        if custom(sid) is not None:
+            raise Step.Fail(f"改回空，台架那一行 customTitle 还在：{custom(sid)!r}")
 
     summary()
 

@@ -7,7 +7,8 @@
 //! - 票 · 进度 · 撤同同一台上那三条（`common/batch_book.rs`）：带票 ⇒ 断开照常做完、同一张票再问回同一份结局。
 //!   进度多报一样字节：整组文件的字节和是总数，一份文件两腿（A → 本机 · 本机 → B）各占它一半，传到一半也动。
 //!
-//! 两头的动作经 [`Ends`] 这一层：生产那一份是 SFTP ＋ 问 B 那台后端（[`Wired`]），判据用本机两个目录上的替身。
+//! 两头的动作经 [`Ends`] 这一层：生产那一份是 SFTP ＋ 问 B 那台后端（[`Wired`]）；判据一族用本机两个目录上的替身，
+//! 一趟用两台合成 SFTP 台架 ＋ 假远端判生产那一份（入参照真的解码器解、提交走真的那一份）。
 
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -186,7 +187,7 @@ pub(crate) fn copy_with(
                         there_size: None,
                         there_size_text: None,
                         there_mtime_text: None,
-                        dir_into: src_dir || there_dir,
+                        answers: crate::common::batch_book::answers_of(src_dir || there_dir, true),
                     });
                 }
                 (choice, src_dir || there_dir)
@@ -382,30 +383,26 @@ pub(crate) struct Wired {
     to: crate::dial::sftp::Session,
     to_dial: serde_json::Value,
     tz: crate::Tz,
+    /// 问落点那台后端经它（生产 [`crate::dial::remote_ask::DialRemote`]）。
+    remote: Box<dyn crate::dial::remote_ask::Remote>,
     /// 本机暂存区（`$HOME/.cc-monitor/staging`）。
     staging: PathBuf,
 }
 
-/// 问落点那台后端一条命令（经那条连接的 CLI 面）。
-async fn ask_to(w: &Wired, cmd: &str, args: serde_json::Value) -> Result<serde_json::Value, Miss> {
-    crate::dial::remote_ask::ask_dialed(
-        &w.to_dial,
-        cmd,
-        &args,
-        &w.tz,
-        &crate::dial::remote_ask::DialRemote,
-    )
-    .await
-    .map_err(|s| {
-        let code = match s.code.as_deref() {
-            Some("exists") => "exists",
-            Some("refused") => "refused",
-            Some("stale") => "stale",
-            Some("bad_name") => "bad_name",
-            _ => "io_failed",
-        };
-        (code, Said::from(s.message))
-    })
+/// 问落点那台后端一条命令（经那条连接的 CLI 面；入参类型选中那条命令）。
+async fn ask_to<C: cwf::Call>(w: &Wired, req: &C) -> Result<C::Reply, Miss> {
+    crate::dial::remote_ask::ask_dialed(&w.to_dial, req, &w.tz, w.remote.as_ref())
+        .await
+        .map_err(|s| {
+            let code = match s.code.as_deref() {
+                Some("exists") => "exists",
+                Some("refused") => "refused",
+                Some("stale") => "stale",
+                Some("bad_name") => "bad_name",
+                _ => "io_failed",
+            };
+            (code, Said::from(s.message))
+        })
 }
 
 impl Wired {
@@ -425,27 +422,44 @@ impl Wired {
         let to_s = open_for_transfer(&td).await.map_err(unreach)?;
         let home = crate::platform::paths::home_dir()
             .ok_or_else(|| CopyErr::Unreachable(copy_text("beTransferCopy.local.noHome", &[])))?;
+        let remote = Box::new(crate::dial::remote_ask::DialRemote);
+        Wired::over(face, from_s, to_s, to.clone(), tz, &home, remote).await
+    }
+
+    /// 两条会话已开：备好本机暂存区（`home` 底下）、问落点那台后端的家目录（与它的 SFTP 起始目录比）。
+    pub(crate) async fn over(
+        face: crate::platform::fs::Face,
+        from: crate::dial::sftp::Session,
+        to: crate::dial::sftp::Session,
+        to_dial: serde_json::Value,
+        tz: crate::Tz,
+        home: &Path,
+        remote: Box<dyn crate::dial::remote_ask::Remote>,
+    ) -> Result<Wired, CopyErr> {
         let staging = home.join(relay_route_core::STAGING_DIR_REL);
         if crate::platform::fs::Ro::symlink_metadata(&staging).is_err() {
-            if let Ok(at) =
-                crate::common::root_path::resolve_in_root(&home, relay_route_core::STAGING_DIR_REL)
-            {
+            if let Ok(at) = crate::common::root_path::walk_in_root(
+                crate::common::root_path::Last::Link,
+                home,
+                relay_route_core::STAGING_DIR_REL,
+            ) {
                 let _ = face.own_dir(&at);
             }
         }
         let w = Wired {
             face,
-            from: from_s,
-            to: to_s,
-            to_dial: to.clone(),
+            from,
+            to,
+            to_dial,
             tz,
+            remote,
             staging,
         };
-        let h = ask_to(&w, "files-home", serde_json::json!({}))
+        let h = ask_to(&w, &cwf::HomeReq {})
             .await
             .map_err(|(_, s)| CopyErr::Unreachable(s.said))?;
-        let bhome = h.get("path").and_then(|p| p.as_str()).unwrap_or_default();
-        if let Some(why) = super::transfer::start_dir_mismatch(w.to.home(), bhome) {
+        let bhome = String::from_utf8_lossy(h.path.bytes());
+        if let Some(why) = super::transfer::start_dir_mismatch(w.to.home(), &bhome) {
             return Err(CopyErr::SftpHomeMismatch(why));
         }
         Ok(w)
@@ -520,13 +534,12 @@ impl Ends for Wired {
 
     fn mkdir<'a>(&'a self, dir: &'a str, name: &'a str) -> Fut<'a, Result<(), Miss>> {
         Box::pin(async move {
-            ask_to(
-                self,
-                "files-mkdir",
-                serde_json::json!({"root": dir, "rel": name}),
-            )
-            .await
-            .map(|_| ())
+            let req = cwf::FilesMkdirReq {
+                root: dir.into(),
+                rel: name.into(),
+                single: None,
+            };
+            ask_to(self, &req).await.map(|_| ())
         })
     }
 
@@ -569,22 +582,28 @@ impl Ends for Wired {
                 let (n, sha) = upload_to_staging(&self.to, &local_s, &key, &cancel, &sink)
                     .await
                     .map_err(io)?;
-                ask_to(
-                    self,
-                    "files-commit-upload",
-                    serde_json::json!({
-                        "root": dir, "rel": name, "key": key, "overwrite": overwrite,
-                        "expect": {"sha256": sha},
-                    }),
-                )
-                .await?;
+                let req = cwf::FilesCommitUploadReq {
+                    root: dir.into(),
+                    rel: name.into(),
+                    key: key.clone(),
+                    on_exists: overwrite.then_some(cmd_wire::batch::OnExists::Overwrite),
+                    expect: cwf::Sha256Expect {
+                        sha256: cwf::Sha256Hex(sha),
+                    },
+                    chunks: None,
+                    bytes: None,
+                    single: Some(true),
+                };
+                ask_to(self, &req).await?;
                 Ok(n)
             }
             .await;
             // 本机那一份不论成败都删；没成 ⇒ 落点那台的暂存件也删。
-            if let Ok(at) =
-                crate::common::root_path::resolve_in_root(&self.staging, format!("{key}.copy"))
-            {
+            if let Ok(at) = crate::common::root_path::walk_in_root(
+                crate::common::root_path::Last::Link,
+                &self.staging,
+                format!("{key}.copy"),
+            ) {
                 let _ = self.face.delete_file(&at);
             }
             if r.is_err() {

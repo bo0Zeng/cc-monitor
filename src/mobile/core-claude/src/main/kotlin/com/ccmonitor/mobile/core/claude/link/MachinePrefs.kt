@@ -3,7 +3,6 @@ package com.ccmonitor.mobile.core.claude.link
 import com.ccmonitor.mobile.core.claude.link.wire.PrefsReply
 import com.ccmonitor.mobile.core.claude.link.wire.QuotaReadReply
 import com.ccmonitor.mobile.core.claude.link.wire.TabPref
-import com.ccmonitor.mobile.core.claude.link.wire.Usage
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
 
 /*
@@ -37,12 +36,9 @@ object MachinePrefs {
     ): Map<String, Any?> = mapOf("models" to mapOf(account to model))
 }
 
-/** `quota-read`：每号用量那一格（号名 ⇒ 那一格；出过数的与没出过数的合一张）。 */
+/** `quota-read`：这台的额度账（设置屏账号卡 · 账号一览 · 用量屏同读这一份）。 */
 object QuotaRead {
     const val COMMAND: String = "quota-read"
 
-    fun usage(data: Any?): Map<String, Usage>? =
-        Wire.bind<QuotaReadReply>(data)?.let { q ->
-            q.unseen.associate { it.account to Usage(it.usage.text, it.usage.tone) } + q.accounts.associate { it.account to it.usage }
-        }
+    fun of(data: Any?): QuotaReadReply? = Wire.bind(data)
 }

@@ -68,10 +68,10 @@ fun SessionTabsSheet(
         }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
-            Text(copyText("mobTabs.sheet.title", "n" to sessions.size), style = MaterialTheme.typography.titleMedium)
+            Text(copyText("mobTabs.list.title", "n" to sessions.size), style = MaterialTheme.typography.titleMedium)
             if (sessions.isEmpty()) {
                 Text(
-                    copyText("mobTabs.sheet.empty"),
+                    copyText("mobTabs.list.empty"),
                     style = monoSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 12.dp),

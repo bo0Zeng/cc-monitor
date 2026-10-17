@@ -12,9 +12,11 @@ import com.ccmonitor.mobile.core.claude.link.TabKind
 import com.ccmonitor.mobile.core.claude.link.wire.AccountRow
 import com.ccmonitor.mobile.core.claude.link.wire.AgentFacts
 import com.ccmonitor.mobile.core.claude.link.wire.PrefsReply
+import com.ccmonitor.mobile.core.claude.link.wire.QuotaReadReply
 import com.ccmonitor.mobile.core.claude.link.wire.TabPref
 import com.ccmonitor.mobile.core.claude.link.wire.Usage
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
@@ -33,8 +35,10 @@ data class MachineSettingsUi(
     /** 这台的新会话默认号（那台判的）。 */
     val defaultAccount: String? = null,
     val accountsFailed: Problem? = null,
-    /** 号名 ⇒ 用量那一格。 */
-    val usage: Map<String, Usage> = emptyMap(),
+    /** 那台的额度账（用量屏整份画；账号卡 · 账号一览按号名取用量那一格）。 */
+    val quota: Fetched<QuotaReadReply> = Fetched.Loading,
+    /** 手上有一份、再读没成的那一句（那份照画，顶上说这一句）；没有 ⇒ `null`。 */
+    val quotaRereadFailed: Problem? = null,
     /** 读回的那一份偏好；还没读到 ⇒ `null`。 */
     val prefs: PrefsReply? = null,
     val prefsFailed: Problem? = null,
@@ -54,6 +58,16 @@ data class MachineSettingsUi(
                 TabKind.CHILD -> it.childTab
                 TabKind.BG -> it.bgTab
             }
+        }
+
+    /** 这个号用量那一格（出过数的与没出过数的同一种）；还没读到 · 读不成 · 账上没有这个号 ⇒ `null`。 */
+    fun usage(account: String): Usage? =
+        (quota as? Fetched.Got)?.value?.let { q ->
+            q.accounts.firstOrNull { it.account == account }?.usage
+                ?: q.unseen
+                    .firstOrNull { it.account == account }
+                    ?.usage
+                    ?.let { Usage(it.text, it.tone) }
         }
 
     /** 这个号的默认模型（那台存的原值）；没设 ⇒ `null`（跟随那一家的默认）。 */
@@ -81,7 +95,7 @@ class MachineSettings(
             changes.collect { c ->
                 when (c.topic) {
                     TOPIC_ACCOUNTS -> loadAccounts()
-                    TOPIC_QUOTA -> loadUsage()
+                    TOPIC_QUOTA -> loadQuota()
                 }
             }
         }
@@ -89,7 +103,7 @@ class MachineSettings(
 
     private fun load() {
         scope.launch { loadAccounts() }
-        scope.launch { loadUsage() }
+        scope.launch { loadQuota() }
         scope.launch { loadPrefs() }
     }
 
@@ -105,9 +119,22 @@ class MachineSettings(
         }
     }
 
-    private suspend fun loadUsage() {
-        val u = (link.call(QuotaRead.COMMAND, null, READ_MS) as? Reply.Ok)?.let { QuotaRead.usage(it.data) } ?: return
-        _state.update { it.copy(usage = u) }
+    /** 读成了 ⇒ 换成新的那份；读不成 ⇒ 手上有一份就照留（顶上说一句），没有才记成读不成。 */
+    private suspend fun loadQuota() {
+        val r = link.call(QuotaRead.COMMAND, null, READ_MS)
+        val q = (r as? Reply.Ok)?.let { QuotaRead.of(it.data) }
+        _state.update {
+            when {
+                q != null -> it.copy(quota = Fetched.Got(q), quotaRereadFailed = null)
+                it.quota is Fetched.Got -> it.copy(quotaRereadFailed = failed(r, QuotaRead.COMMAND))
+                else -> it.copy(quota = Fetched.Failed(failed(r, QuotaRead.COMMAND)))
+            }
+        }
+    }
+
+    /** 用量屏［重试］。 */
+    fun reloadQuota() {
+        scope.launch { loadQuota() }
     }
 
     private suspend fun loadPrefs() {

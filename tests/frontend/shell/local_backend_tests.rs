@@ -408,11 +408,18 @@ fn the_two_verdicts_hand_the_user_two_different_sentences() {
     let Err(SpawnFailure::TransientBusy { tries, last }) = busy else {
         panic!("一直 ETXTBSY 却没读成「这一刻恰好撞上了」：{busy:?}");
     };
-    let transient = etxtbsy_gave_up_reason(bin, tries, &last);
+    let gave_up = etxtbsy_gave_up(bin, tries, &last);
+    assert_eq!(
+        gave_up.raw(),
+        last,
+        "最后一次的原话没进复制详情（句子里也不该有它）"
+    );
+    let transient = gave_up.said;
     assert!(
         copy_core::copy_matches("rsLocalBackend.etxtbsy.gaveUp", &transient),
-        "撞上竞态那句话没告诉用户「再开一次多半就好」，他仍然不知道该不该重开：{transient}"
+        "撞上竞态那句话不是「被占用」那一句：{transient}"
     );
+    assert!(!transient.contains(&last), "原话进了句子：{transient}");
     assert!(
         copy_core::copy_matches_with(
             "rsLocalBackend.etxtbsy.gaveUp",

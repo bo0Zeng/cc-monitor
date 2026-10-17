@@ -77,6 +77,13 @@ export const TS_RULES: ExitRule[] = [
     hits: ["n / 1024", "x/1024"],
     misses: ["n / 10240", "1024"],
   },
+  {
+    id: "hitsCut",
+    what: "自己截搜内容的命中（每个会话摆几处、还有几处由后端给）：`.hits.slice(`",
+    re: /\.hits\.slice\(/g,
+    hits: ["sh.hits.slice(0, N)"],
+    misses: ["for (const hit of sh.hits)", "lines.slice(0, N)"],
+  },
 ];
 
 /** 壳（Rust）那几条：壳自己操作的失败句是宿主本职（不在这里）；描述数据的数字格式化在这里。 */
@@ -164,5 +171,12 @@ export const KT_RULES: ExitRule[] = [
     re: /\/\s*1024(?:\.0|L)?\b/g,
     hits: ["n / 1024", "x / 1024.0"],
     misses: ["n / 10240", "1024"],
+  },
+  {
+    id: "hitsCut",
+    what: "自己截搜内容的命中（每个会话摆几处、还有几处由后端给）：`.hits.take(`",
+    re: /\.hits\.take\(/g,
+    hits: ["r.hits.take(N)"],
+    misses: ["r.hits.forEach { }", "lines.take(N)"],
   },
 ];

@@ -239,13 +239,22 @@ export interface FailToastOptions extends Omit<ToastOptions, "detail"> {
  * - 失败带复制详情（壳 / 后端 / 通道写好了那一句）⇒ 标题就是那一句，灰字只放一格事实，出［复制详情］；
  * - 不带详情但是出错那端写好的一句（控制动作 · 壳命令的 `Error`，详情格空）⇒ 标题仍是那一句，无灰字、无按钮；
  * - JS 自己抛的 ⇒ 标题留界面那句（`title`：哪件事没成），无灰字、无按钮；原文进控制台日志，不上屏。
+ * 失败自己带着修法（`Error` 上的 `action`，出错那一层判的）⇒ 照出那个按钮（调用方给了 `action` 就用调用方的）。
  */
 export function failToast(title: string, e: unknown, opts: FailToastOptions = {}): () => void {
-  const { fact, ...rest } = opts;
+  const { fact, ...base } = opts;
+  const fix = actionOf(e);
+  const rest = fix === undefined || base.action !== undefined ? base : { ...base, action: fix };
   const detail = detailOf(e);
   const said = failSaid(title, e);
   if (detail.trim() === "") return toast(said, "", rest);
   return toast(said, fact ?? "", { ...rest, detail });
+}
+
+/** 出错那一层判出的修法（`Error` 上的 `action`，如结果未知 ⇒［刷新］）；没有 ⇒ `undefined`。 */
+function actionOf(e: unknown): ToastAction | undefined {
+  const a = e instanceof Error ? (e as { action?: unknown }).action : undefined;
+  return typeof a === "object" && a !== null && typeof (a as ToastAction).run === "function" ? (a as ToastAction) : undefined;
 }
 
 export function toast(title: string, detail: string, opts: ToastOptions = {}): () => void {

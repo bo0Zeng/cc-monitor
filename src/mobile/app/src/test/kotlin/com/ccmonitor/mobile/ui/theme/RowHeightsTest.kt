@@ -20,7 +20,7 @@ class RowHeightsTest {
     /** 文件 → 画行的函数 → 那一档。 */
     private val rows =
         mapOf(
-            "overview/ConversationsScreen.kt" to mapOf("DotRow" to "rowDouble"),
+            "chats/ChatsScreen.kt" to mapOf("DotRow" to "rowDouble"),
             "host/HostScreens.kt" to mapOf("HostRow" to "rowDouble"),
             "drawer/AppDrawer.kt" to mapOf("EntryRow" to "rowDrawer", "RecentSection" to "rowDrawer", "ServerRow" to "rowDrawer"),
             "files/FilesScreen.kt" to mapOf("EntryRow" to "rowFile"),

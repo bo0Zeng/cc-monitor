@@ -6,7 +6,9 @@ import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.TabKind
 import com.ccmonitor.mobile.core.claude.link.wire.TabPref
 import com.ccmonitor.mobile.core.claude.link.wire.UsageTone
+import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
+import com.ccmonitor.mobile.ui.usage.QuotaGolden
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.test.TestScope
@@ -52,18 +54,18 @@ class MachineSettingsTest {
         "prefs" to mapOf("models" to models, "childTab" to child, "bgTab" to "show"),
     )
 
-    private val quota =
-        mapOf(
-            "accounts" to listOf(mapOf("account" to "work", "usage" to mapOf("text" to "5h 63%", "tone" to "plain"))),
-            "unseen" to listOf(mapOf("account" to "lab", "usage" to mapOf("text" to "5h —", "tone" to "plain"))),
-        )
+    /** 出过数的 `personal`（5h 63%）＋ 没出过数的那两个（金样两例拼成一份）。 */
+    private val quota = QuotaGolden.reply("订阅 · 正常") + ("unseen" to QuotaGolden.reply("没出过数")["unseen"])
 
-    private fun link(set: (Map<String, Any?>?) -> Reply = { Reply.Ok(prefs(child = "show")) }) =
+    private fun link(
+        quotaReply: () -> Reply = { Reply.Ok(quota) },
+        set: (Map<String, Any?>?) -> Reply = { Reply.Ok(prefs(child = "show")) },
+    ) =
         FakeCoreLink().also { l ->
             l.answer = { cmd, args ->
                 when (cmd) {
                     "accounts-list" -> Reply.Ok(mapOf("accounts" to listOf(acct("work"), acct("lab", selectable = false)), "meta" to mapOf("effectiveDefault" to "work", "home" to "/h")))
-                    "quota-read" -> Reply.Ok(quota)
+                    "quota-read" -> quotaReply()
                     "prefs-read" -> Reply.Ok(prefs())
                     "prefs-set" -> set(args)
                     "accounts-set-default" -> Reply.Ok(null)
@@ -88,8 +90,8 @@ class MachineSettingsTest {
             val s = m.state.value
             assertEquals(listOf("work", "lab"), s.accounts.map { it.name })
             assertEquals("work", s.defaultAccount)
-            assertEquals("5h 63%" to UsageTone.PLAIN, s.usage["work"]?.let { it.text to it.tone })
-            assertEquals("5h —", s.usage["lab"]?.text)
+            assertEquals("5h 63%" to UsageTone.PLAIN, s.usage("personal")?.let { it.text to it.tone })
+            assertEquals(QuotaGolden.reply("没出过数").let { r -> (r["unseen"] as List<*>).map { ((it as Map<*, *>)["usage"] as Map<*, *>)["text"] } }, listOf("team", "api").map { s.usage(it)?.text })
             assertEquals(TabPref.HIDE to TabPref.SHOW, s.shown(TabKind.CHILD) to s.shown(TabKind.BG))
         }
 
@@ -110,6 +112,36 @@ class MachineSettingsTest {
         }
 
     @Test
+    fun `用量读不成也记下：超时 ⇒ 读不成、那一句是「{machine} 无应答」`() =
+        runTest {
+            val (m, _) = open(link(quotaReply = { Reply.TimedOut }))
+            assertEquals("devbox 无应答", (m.state.value.quota as? Fetched.Failed)?.problem?.text)
+            assertNull(m.state.value.usage("personal"))
+        }
+
+    @Test
+    fun `流上 quota 来了重读：新的到之前手上那份照留，再读没成也不清`() =
+        runTest {
+            var answer: () -> Reply = { Reply.Ok(quota) }
+            val (m, changes) = open(link(quotaReply = { answer() }))
+            val held = m.state.value.quota
+            answer = { Reply.TimedOut }
+            changes.emit(Changed("quota", null))
+            runCurrent()
+            assertEquals(held, m.state.value.quota)
+            assertEquals(
+                "devbox 无应答",
+                m.state.value.quotaRereadFailed
+                    ?.text,
+            )
+            answer = { Reply.Ok(QuotaGolden.reply("订阅 · 快满")) }
+            changes.emit(Changed("quota", null))
+            runCurrent()
+            assertEquals(QuotaGolden.reply("订阅 · 快满")["verdict"].let { (it as Map<*, *>)["text"] }, (m.state.value.quota as Fetched.Got).value.verdict?.text)
+            assertNull(m.state.value.quotaRereadFailed)
+        }
+
+    @Test
     fun `拨一行：只交那一格，照回包画`() =
         runTest {
             val l = link()
@@ -124,7 +156,7 @@ class MachineSettingsTest {
     @Test
     fun `没存上：退回读到的值，那一行下面写「子会话未保存 · 那台那一句」`() =
         runTest {
-            val l = link { Reply.Failed(CoreFailure("io_failed", "写入失败 · 磁盘满", "d", null)) }
+            val l = link(set = { Reply.Failed(CoreFailure("io_failed", "写入失败 · 磁盘满", "d", null)) })
             val (m, _) = open(l)
             m.setTab(TabKind.CHILD, TabPref.SHOW)
             runCurrent()
@@ -138,7 +170,7 @@ class MachineSettingsTest {
     @Test
     fun `默认模型：交那个号那一条，跟随 ⇒ null；读回那一份照画`() =
         runTest {
-            val l = link { args -> Reply.Ok(prefs(models = if ((args!!["models"] as Map<*, *>)["work"] == null) emptyMap() else mapOf("work" to "opus"))) }
+            val l = link(set = { args -> Reply.Ok(prefs(models = if ((args!!["models"] as Map<*, *>)["work"] == null) emptyMap() else mapOf("work" to "opus"))) })
             val (m, _) = open(l)
             m.setModel("work", "opus")
             runCurrent()

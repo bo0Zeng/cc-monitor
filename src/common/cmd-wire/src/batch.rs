@@ -187,8 +187,8 @@ pub struct Conflict {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub there_mtime_text: Option<String>,
-    /// 两头有一头是目录：目录不合并，只能跳过或保留两份。
-    pub dir_into: bool,
+    /// 这一项能怎么答（后端定，界面照画、不另判）：两头有一头是目录 ⇒ 没有覆盖（目录不合并）。
+    pub answers: Vec<Decide>,
 }
 
 /// 码 `exists` 的 `data`。

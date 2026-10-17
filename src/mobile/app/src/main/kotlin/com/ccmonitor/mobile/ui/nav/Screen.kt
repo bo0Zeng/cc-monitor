@@ -87,4 +87,7 @@ sealed class Screen(
 
     /** 设置 → 机器与账号 → 账号：当前那台（上次那台）账号库里的号。 */
     data object Accounts : Screen("settings/accounts")
+
+    /** 设置 → 账号卡 · 账号一览号的抽屉 → 用量：当前那台每个号的额度。 */
+    data object Usage : Screen("settings/usage")
 }
