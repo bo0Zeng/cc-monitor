@@ -2,6 +2,6 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
-    <ID>SpreadOperator:DataModule.kt:(*ALL_MIGRATIONS)</ID>
+    <ID>SpreadOperator:DataModule.kt:(*allMigrations(get()))</ID>
   </CurrentIssues>
 </SmellBaseline>

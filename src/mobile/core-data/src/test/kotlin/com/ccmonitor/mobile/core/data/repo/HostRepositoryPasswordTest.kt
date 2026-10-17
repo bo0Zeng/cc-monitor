@@ -55,9 +55,15 @@ class HostRepositoryPasswordTest {
 private object XorCrypto : CryptoBox {
     private fun xor(b: ByteArray) = ByteArray(b.size) { (b[it].toInt() xor 0x42).toByte() }
 
-    override fun encrypt(plain: ByteArray) = xor(plain)
+    override fun encrypt(
+        plain: ByteArray,
+        associatedData: ByteArray,
+    ) = xor(plain)
 
-    override fun decrypt(blob: ByteArray) = xor(blob)
+    override fun decrypt(
+        blob: ByteArray,
+        associatedData: ByteArray,
+    ) = xor(blob)
 }
 
 /** withPassword/password 不碰 DAO——全 no-op。 */

@@ -1,10 +1,13 @@
 package com.ccmonitor.mobile.core.data.repo
 
 import com.ccmonitor.mobile.core.data.crypto.CryptoBox
+import com.ccmonitor.mobile.core.data.crypto.rowBinding
 import com.ccmonitor.mobile.core.data.db.Bookmark
 import com.ccmonitor.mobile.core.data.db.BookmarkDao
+import com.ccmonitor.mobile.core.data.db.HOSTS_TABLE
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.HostDao
+import com.ccmonitor.mobile.core.data.db.IDENTITIES_TABLE
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.db.IdentityDao
 import com.ccmonitor.mobile.core.data.db.Settings
@@ -39,7 +42,7 @@ class HostRepository(
                 plain?.takeIf { it.isNotEmpty() }?.let {
                     java.util.Base64
                         .getEncoder()
-                        .encodeToString(crypto.encrypt(it.toByteArray(Charsets.UTF_8)))
+                        .encodeToString(crypto.encrypt(it.toByteArray(Charsets.UTF_8), rowBinding(HOSTS_TABLE, host.id)))
                 },
         )
 
@@ -51,6 +54,7 @@ class HostRepository(
                     java.util.Base64
                         .getDecoder()
                         .decode(it),
+                    rowBinding(HOSTS_TABLE, host.id),
                 ),
                 Charsets.UTF_8,
             )
@@ -126,12 +130,12 @@ class IdentityRepository(
         identity: Identity,
         plainPrivateKey: ByteArray,
     ) {
-        dao.upsert(identity.copy(privateKeyEnc = crypto.encrypt(plainPrivateKey)))
+        dao.upsert(identity.copy(privateKeyEnc = crypto.encrypt(plainPrivateKey, rowBinding(IDENTITIES_TABLE, identity.id))))
     }
 
     /** 取解密后的私钥字节（经 Keystore，可能触发生物识别）。 */
     suspend fun privateKey(id: String): ByteArray? =
-        dao.get(id)?.let { crypto.decrypt(it.privateKeyEnc) }
+        dao.get(id)?.let { crypto.decrypt(it.privateKeyEnc, rowBinding(IDENTITIES_TABLE, id)) }
 
     /** 存 Keystore 背书身份（私钥不可导出、不落库；privateKeyEnc 空、keystoreAlias 非空）。 */
     suspend fun saveKeystoreBacked(identity: Identity) = dao.upsert(identity)
