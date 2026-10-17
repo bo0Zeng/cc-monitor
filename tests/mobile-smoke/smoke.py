@@ -1332,8 +1332,9 @@ def report():
     with Step("12-轮换屏"):
         # 从会话进轮换屏（聊天屏「⋯」→ 轮换）· 换策略 · 长按号名拖到最上那条成临时条目 · 改一格 · 存；每一样都核那台的记录。
         seed_rotation()
-        started = frames("session-new", {"agent": "claude", "cwd": "~/work", "place": "tmux", "local": False, "ticket": f"{T}rot",
-                                         "prompt": f"{T} rotation", "rotation": {"strategy": "smoke-a"}}, 45000)
+        started = frames("session-open", {"what": {"kind": "new", "agent": "claude", "cwd": "~/work", "prompt": f"{T} rotation",
+                                                   "rotation": {"strategy": "smoke-a"}},
+                                          "run": "tmux", "local": False, "ticket": f"{T}rot"}, 45000)
         sid = (started.get("data") or {}).get("sid")
         if not sid:
             raise Step.Fail(f"台架起不了带轮换的会话：{started!r}"[:300])

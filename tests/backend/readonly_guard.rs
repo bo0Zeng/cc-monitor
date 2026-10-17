@@ -746,14 +746,10 @@ mod tests {
         // 文件管理面的写句柄：只有分派那一层造 —— `spec.rs::with_face`（按档装处理器的 `prepare` 那一档 · 资产域那扇门的进程内分派都经它，句柄只活那一问），
         //   按命令表那一族（typed 的 `Facing` 那一档）递下去；传输台那四条硬臂的票表在帧面那一处造的时候领一份。
         ("Face::issue", &["stream/inbound/mod.rs", "wire/spec.rs"]),
-        // 分叉那只只会新建的手：只有分叉那三条命令造 —— 都是 typed，各在它自己那份实现里。
+        // 分叉那只只会新建的手：只有分叉那两条命令造 —— 都是 typed，各在它自己那份实现里。
         (
             "NewFile::issue",
-            &[
-                "faces/fork_face.rs",
-                "faces/session_new_face.rs",
-                "faces/session_open_face.rs",
-            ],
+            &["faces/fork_face.rs", "faces/session_open_face.rs"],
         ),
         // 「已过路径解析」只有路径解析本身担保得了：根底下那两道（`common/root_path.rs`，文件管理写面与传输台共用）＋ 写面自己那几道。
         (
@@ -1217,7 +1213,7 @@ mod spawn_registry {
         ),
         // `relay/machine.rs` 那一行（远端起一个脱离的 `--relay`）摘了：中转只住常驻后端进程里，那一处起法随之删。
         (
-            "control/session_open.rs",
+            "control/session_open/mod.rs",
             "<非字面量>",
             "在 tmux 里后台起会话：**本后端这个二进制自己**（`current_exe`）当 ccm 跑界面那一行（同一个渲染器、只多 `--detach`），\
              argv 不过 shell、stdin 空、等它退出收话。被起的是 ccm 那一趟，它自己的起法（建 tmux 会话、键入、收尾）由本护栏照样管；\

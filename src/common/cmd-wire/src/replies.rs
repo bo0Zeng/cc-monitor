@@ -19,7 +19,7 @@ use crate::rotation::{
 };
 use crate::session::{
     Killed, ModeSwitched, ModelSwitched, NewFacts, Opened, Preview, Sent,
-    SessionCommands, SessionNew, TailPlan, TerminalsList,
+    SessionCommands, TailPlan, TerminalsList,
 };
 use serde::Serialize;
 
@@ -98,7 +98,6 @@ replies! {
     "rotation-view" => RotationViewReply,
     "session-commands" => SessionCommands,
     "session-model" => ModelSwitched,
-    "session-new" => SessionNew,
     "session-new-facts" => NewFacts,
     "session-open" => Opened,
     "session-permission" => ModeSwitched,

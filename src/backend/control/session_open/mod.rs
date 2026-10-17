@@ -12,9 +12,11 @@ use super::launch_render::{self as lr, Act, Here, Launch};
 use super::session_batch::{
     carriers, listed, pids_said, pretrust, CmdErr, Deps, NameBase, Standing, TmuxEntry,
 };
-use super::session_new::{
-    expand_home, first_prompt_refused, ForkFrom, ForkWrite, PreRotation, RotationPick,
-    SessionNewField as Field, SessionNewRefusal as Refusal,
+pub(crate) mod new;
+pub(crate) use new::{dir_answer, DirChecked, ForkFrom, ForkWrite, PreRotation, SessionNewDirErr, SessionNewDirReq};
+use new::{
+    expand_home, first_prompt_refused, RotationPick, SessionNewField as Field,
+    SessionNewRefusal as Refusal,
 };
 pub use cmd_wire::session::{FirstSay, Landed, Opened};
 use crate::platform::child::{Child, Deadline};
@@ -1116,5 +1118,9 @@ fn new_tmux_name(
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/control/session_open_tests.rs"]
+#[path = "../../../../tests/backend/control/session_open_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../../tests/backend/control/session_open_new_tests.rs"]
+mod new_tests;

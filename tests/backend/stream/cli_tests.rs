@@ -954,7 +954,6 @@ fn the_withheld_tables_do_not_overlap_and_each_holds_its_own_kind() {
 #[test]
 fn the_commands_released_from_ui_only_are_on_the_cli() {
     for name in [
-        "session-new",
         "session-new-facts",
         "session-new-dir",
         "sessions-stop",

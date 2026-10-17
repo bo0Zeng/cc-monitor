@@ -1268,10 +1268,10 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
         wire(&crate::control::launch::reply("demo-cc", true, false)),
         r##"{"created":true,"session":"demo-cc","typed":false}"##
     );
-    // session-new：手机那一份入参（`core-claude/.../link/Sessions.kt`）经登记表跑；目录不在 ⇒ 失败信封的 `data` 照旧（哪一格 ＋ 选不了号那一形）。
+    // session-open 新起那一形：手机那一份入参（`core-claude/.../link/Sessions.kt`）经登记表跑；目录不在 ⇒ 失败信封的 `data`（哪一格 ＋ 选不了号那一形）。
     let e = run_registered(
-        "session-new",
-        serde_json::json!({ "agent": "claude", "cwd": "/definitely/not/here", "place": "tmux", "local": false, "ticket": "t-1", "prompt": "hi" }),
+        "session-open",
+        serde_json::json!({ "what": { "kind": "new", "agent": "claude", "cwd": "/definitely/not/here", "prompt": "hi" }, "run": "tmux", "local": false, "ticket": "t-1" }),
     )
     .unwrap_err();
     assert_eq!(
@@ -1280,24 +1280,6 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
             "no_dir",
             r##"{"field":"cwd","unavailable":null}"##.to_string()
         )
-    );
-    let started = crate::control::session_new::SessionNew {
-        outcome: crate::control::session_new::SessionNewOutcome::Started,
-        session: Some("demo-cc".into()),
-        sid: None,
-        cmd: None,
-        account: None,
-        agent: "claude".into(),
-        cwd: "/srv/p".into(),
-        prompt: Some(crate::control::session_new::FirstSay {
-            result: "delivered".into(),
-            why: None,
-            said: None,
-        }),
-    };
-    assert_eq!(
-        wire(&started),
-        r##"{"account":null,"agent":"claude","cmd":null,"cwd":"/srv/p","outcome":"started","prompt":{"result":"delivered","said":null,"why":null},"session":"demo-cc","sid":null}"##
     );
 }
 
@@ -1420,12 +1402,12 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
             serde_json::json!({ "mode": "send-into", "name": "x", "cwd": 5, "payload": "y" }),
         ),
         (
-            "session-new",
-            serde_json::json!({ "agent": "claude", "cwd": "/x", "place": "tmux", "local": false, "extra": 1 }),
+            "session-open",
+            serde_json::json!({ "what": { "kind": "new", "agent": "claude", "cwd": "/x", "extra": 1 }, "local": false }),
         ),
         (
-            "session-new",
-            serde_json::json!({ "agent": "claude", "cwd": "/x", "place": "tmux", "local": false, "rotation": "c1" }),
+            "session-open",
+            serde_json::json!({ "what": { "kind": "new", "agent": "claude", "cwd": "/x", "rotation": "c1" }, "local": false }),
         ),
         (
             "session-new-facts",

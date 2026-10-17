@@ -15,7 +15,7 @@ const RAW_NAMES: &[&str] = &["e", "err", "stderr", "stdout", "out"];
 /// 今天还在的那几处（文件 → 处数），各带理由。改好一处就减一（两向相等：多了红、少了不减也红）。
 const LEDGER: &[(&str, usize, &str)] = &[
     (
-        "control/session_open.rs",
+        "control/session_open/mod.rs",
         1,
         "当 ccm 起自己那一趟：找不到自身可执行文件",
     ),

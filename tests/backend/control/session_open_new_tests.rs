@@ -1,4 +1,4 @@
-//! 起新会话一个请求：每一格不行时说是哪一格、什么都不起不写；都过了才写分支记录、才起（替身记下被调了什么；tmux 一个都不起）。
+//! `session-open` 新起那一形：每一格不行时说是哪一格、什么都不起不写；都过了才写分支记录、才起（替身记下被调了什么；tmux 一个都不起）。
 
 use super::*;
 use crate::control::session_batch::TmuxEntry;
@@ -152,7 +152,7 @@ impl Rig {
             forget: &forget,
         };
         // 解入参同 typed 分派那一步（多一格 · 类型不对 ⇒ `bad_args`），成品照写上线的那一份 JSON 比。
-        let req: NewRequest = serde_json::from_value(args).map_err(|e| {
+        let req: SessionOpenReq = serde_json::from_value(args).map_err(|e| {
             (
                 "bad_args",
                 crate::common::contract::malformed(&e.to_string()),
@@ -160,15 +160,24 @@ impl Rig {
                 None,
             )
         })?;
-        answer(req, &deps, &fork, &pre, Some(std::path::Path::new("/h")))
+        let facts = Facts {
+            resume: None,
+            fork_tmux: None,
+        };
+        answer(req, facts, &deps, &fork, &pre, Some(std::path::Path::new("/h")))
             .map(|r| serde_json::to_value(r).unwrap())
     }
 }
 
+/// 新起那一形的入参：`run` · `local` · `ticket` · `account` · `client` 在外层，别的几格进 `what`。
 fn req(extra: Value) -> Value {
-    let mut v = json!({ "agent": "claude", "cwd": "/srv/proj", "place": "tmux", "local": false });
+    let mut v = json!({ "what": { "kind": "new", "agent": "claude", "cwd": "/srv/proj" }, "run": "tmux", "local": false });
     for (k, x) in extra.as_object().unwrap() {
-        v[k] = x.clone();
+        if ["run", "local", "ticket", "account", "client"].contains(&k.as_str()) {
+            v[k] = x.clone();
+        } else {
+            v["what"][k] = x.clone();
+        }
     }
     v
 }
@@ -181,7 +190,7 @@ fn field_of(e: &Failed) -> Value {
 fn a_new_session_in_tmux_is_minted_from_the_directory_and_started_detached() {
     let rig = Rig::new(Some(vec![row("proj-cc", None, true)]));
     let out = rig.call(req(json!({}))).unwrap();
-    assert_eq!(out["outcome"], "started");
+    assert_eq!(out["landed"], "started");
     assert_eq!(out["session"], "proj-cc-2");
     assert_eq!(
         out["sid"], PRESET,
@@ -266,13 +275,13 @@ fn every_slot_that_fails_names_itself_and_nothing_is_started_or_written() {
     ];
     for (extra, rows, code, field) in cases {
         let mut extra = extra;
-        extra["forkFrom"] = if extra.get("tmuxName").is_some() {
+        extra["fork"] = if extra.get("tmuxName").is_some() {
             Value::Null
         } else {
             json!({ "sid": SRC, "uuid": MSG })
         };
-        if extra["forkFrom"].is_null() {
-            extra.as_object_mut().unwrap().remove("forkFrom");
+        if extra["fork"].is_null() {
+            extra.as_object_mut().unwrap().remove("fork");
         }
         let rig = Rig::new(rows);
         let e = rig.call(req(extra.clone())).unwrap_err();
@@ -291,7 +300,7 @@ fn an_unavailable_account_carries_the_alternative_and_is_never_swapped_silently(
     let mut rig = Rig::new(Some(vec![]));
     rig.last = Some("gone");
     let e = rig
-        .call(req(json!({ "forkFrom": { "sid": SRC, "uuid": MSG } })))
+        .call(req(json!({ "fork": { "sid": SRC, "uuid": MSG } })))
         .unwrap_err();
     assert_eq!(e.0, "account_unavailable");
     let d = e.2.unwrap();
@@ -306,14 +315,14 @@ fn an_unavailable_account_carries_the_alternative_and_is_never_swapped_silently(
 fn a_fork_writes_its_record_only_after_every_slot_passed_and_resumes_the_new_session() {
     let rig = Rig::new(Some(vec![row("orders-cc", Some(SRC), true)]));
     let out = rig
-        .call(req(json!({ "forkFrom": { "sid": SRC, "uuid": MSG } })))
+        .call(req(json!({ "fork": { "sid": SRC, "uuid": MSG } })))
         .unwrap();
     assert_eq!(
         *rig.forks.borrow(),
         vec![(SRC.to_string(), MSG.to_string())]
     );
     assert_eq!(out["sid"], NEW);
-    assert_eq!(out["outcome"], "started");
+    assert_eq!(out["landed"], "started");
     assert_eq!(
         out["session"], "orders-fork-cc",
         "新名从源会话此刻的终端名铸，绝不复用它"
@@ -333,7 +342,7 @@ fn a_fork_does_not_take_a_tmux_name() {
     let rig = Rig::new(Some(vec![]));
     let e = rig
         .call(req(
-            json!({ "tmuxName": "x", "forkFrom": { "sid": SRC, "uuid": MSG } }),
+            json!({ "tmuxName": "x", "fork": { "sid": SRC, "uuid": MSG } }),
         ))
         .unwrap_err();
     assert_eq!(e.0, "bad_args");
@@ -364,23 +373,23 @@ fn a_taken_name_at_start_time_is_reported_on_the_name_slot() {
 #[test]
 fn a_window_launch_hands_back_the_line_and_starts_nothing() {
     let rig = Rig::new(None);
-    let out = rig.call(req(json!({ "place": "window" }))).unwrap();
-    assert_eq!(out["outcome"], "open");
+    let out = rig.call(req(json!({ "run": "direct" }))).unwrap();
+    assert_eq!(out["landed"], "window");
     assert_eq!(out["session"], Value::Null);
-    let cmd = out["cmd"].as_str().unwrap();
+    let cmd = out["line"].as_str().unwrap();
     assert!(cmd.contains(ENTRY) && cmd.contains("--cwd"), "{cmd}");
     assert!(!cmd.contains("--ccm-tmux"), "开窗那一形不进 tmux：{cmd}");
     assert!(rig.ccm.borrow().is_empty() && rig.mints.borrow().is_empty());
     let out = rig
         .call(req(
-            json!({ "place": "window", "local": true, "command": "claude --verbose", "cwd": "~/srv" }),
+            json!({ "run": "direct", "local": true, "command": "claude --verbose", "cwd": "~/srv" }),
         ))
         .unwrap();
     assert_eq!(
         out["cwd"], "/h/srv",
         "报回来的是展开过的目录（界面按它认报到的会话）"
     );
-    let cmd = out["cmd"].as_str().unwrap();
+    let cmd = out["line"].as_str().unwrap();
     assert!(
         cmd.contains("claude --verbose") && !cmd.contains("--ccm-tmux"),
         "{cmd}"
@@ -491,7 +500,7 @@ fn a_new_session_marks_its_cwd_trusted_in_its_account_before_it_starts() {
     for local in [true, false] {
         let rig = Rig::new(Some(vec![]));
         let mut a = req(named.clone());
-        a["place"] = json!("window");
+        a["run"] = json!("direct");
         a["local"] = json!(local);
         rig.call(a).unwrap();
         assert_eq!(
@@ -574,12 +583,12 @@ fn no_config_at_launch_writes_nothing_and_a_window_launch_carries_the_sid_too() 
     let rig = Rig::new(Some(vec![]));
     let got = rig
         .call(req(
-            json!({"place": "window", "rotation": {"strategy": "c_night"}}),
+            json!({"run": "direct", "rotation": {"strategy": "c_night"}}),
         ))
         .expect("ok");
     assert_eq!(got["sid"], PRESET);
     assert!(
-        got["cmd"]
+        got["line"]
             .as_str()
             .expect("cmd")
             .contains(&format!("--session-id {PRESET}")),
@@ -676,7 +685,7 @@ fn a_family_that_cannot_take_the_first_prompt_at_launch_refuses_it() {
 #[test]
 fn a_first_prompt_that_cannot_be_delivered_is_refused_before_anything_starts() {
     for extra in [
-        json!({"prompt": "你好", "place": "window"}),
+        json!({"prompt": "你好", "run": "direct"}),
         json!({"prompt": "  "}),
         json!({"prompt": 3}),
     ] {
@@ -716,11 +725,11 @@ fn a_launch_carries_the_model_and_the_permission_mode_it_was_asked_for() {
     let rig = Rig::new(Some(vec![]));
     let got = rig
         .call(req(
-            json!({"place": "window", "permissionMode": "acceptEdits"}),
+            json!({"run": "direct", "permissionMode": "acceptEdits"}),
         ))
         .expect("ok");
     assert!(
-        got["cmd"]
+        got["line"]
             .as_str()
             .unwrap()
             .contains("--permission-mode acceptEdits"),

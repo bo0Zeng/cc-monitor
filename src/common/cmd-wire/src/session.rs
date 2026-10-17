@@ -1,4 +1,4 @@
-//! 会话族那几条帧命令的**回包**线上形（`terminal-input` · `session-new` · `session-new-facts` · `session-model` ·
+//! 会话族那几条帧命令的**回包**线上形（`terminal-input` · `session-open` · `session-new-facts` · `session-model` ·
 //! `session-permission` · `session-commands` · `session-say` · `terminals-list` · `terminal-preview` · `kill` · `history-tail`）—— 两侧同一份：后端按这里的类型回，
 //! 手机嵌的 Rust 核心按这里的类型解（[`decode_reply`]），界面用从这里导出的类型（`src/frontend/ui/generated/`）。
 //! 入参与码还住后端（`control/terminals_wire.rs` 等）：手机交的入参不经这里。
@@ -507,46 +507,6 @@ pub struct FirstSay {
     pub why: Option<String>,
     /// `refused` 时给人看的那一句（写好）；别的 ⇒ `null`。
     pub said: Option<String>,
-}
-
-/// 结局。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
-)]
-#[serde(rename_all = "lowercase")]
-pub enum SessionNewOutcome {
-    /// 在这台 tmux 里后台起好了（`session` 是会话名）。
-    Started,
-    /// 要开一个终端窗口跑 `cmd`（窗口由 monitor 开）。
-    Open,
-}
-
-/// `session-new` 的成品。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
-)]
-pub struct SessionNew {
-    pub outcome: SessionNewOutcome,
-    /// tmux 会话名（`started` 那一形；开窗那一形 ⇒ `null`）。
-    pub session: Option<String>,
-    /// 分叉出来的新会话 sid · 新起时这台先定好的 sid（那一家认先定 sid）；那一家不认 ⇒ `null`（报到之前说不出）。
-    pub sid: Option<String>,
-    /// 开窗那一形要跑的那一行（`started` ⇒ `null`）。
-    pub cmd: Option<String>,
-    /// 实际用的号（账号 0 / 不指定 ⇒ `null`）。
-    pub account: Option<LaunchedAccount>,
-    /// 起的是哪一家。
-    pub agent: String,
-    /// 起在哪个目录（`~` 已按这台的家目录展开：认报到的会话按它）。
-    pub cwd: String,
-    /// 第一句交进去的结局；没给第一句 ⇒ `null`。
-    pub prompt: Option<FirstSay>,
 }
 
 /// `session-open` 落在哪。

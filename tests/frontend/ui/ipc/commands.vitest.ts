@@ -393,7 +393,7 @@ describe("本机恢复的主路：人没动过 ⇒ 不带号 · 不带放在哪�
     document.querySelectorAll("[role=menu]").forEach((n) => n.remove());
   });
 
-  // 起新会话不在这里：它走 `session-new` 那一个请求（框里的号是点名的那一个，见 `new-session.vitest.ts`）。
+  // 起新会话不在这里：它走 `session-open {what: new}` 那一个请求（框里的号是点名的那一个，见 `new-session.vitest.ts`）。
   it("★ 历史页恢复 · tab 栏恢复：各恰好一问 `session-open`，不带号、不带放在哪，界面一条 pin 都不写", async () => {
     await clickRowAction(copyText("history.row.resume"));
     await resumeLocalTab("t1");

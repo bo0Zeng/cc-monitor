@@ -1,8 +1,7 @@
-//! 帧面 `session-new` · `session-new-facts` · `session-new-dir` 的宿主壳：起新会话框要的这台事实（最近用过的目录 · 有没有 tmux ·
+//! 帧面 `session-new-facts` · `session-new-dir` 的宿主壳：起新会话框要的这台事实（最近用过的目录 · 有没有 tmux ·
 //! 这台能起哪几家 · 分叉源会话的三格）住观测层，起会话要的那几样（tmux 名单 · 铸名 · 起 ccm · 号）同批量起那一份，
 //! 写分支记录交 `control/fork_write`（本体与 `session-fork` 同一份）。
 
-use crate::control::session_new;
 use crate::platform::fs::Ro;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -10,73 +9,29 @@ use std::collections::BTreeMap;
 /// 「最近用过的目录」最多列几条。
 pub(crate) const RECENT_MAX: usize = 8;
 
-/// `session-new`：起一个新会话（全产品一个框、一个请求）。阻塞档；写自家状态（起之前写好打开哪一份轮换配置）⇒ 写句柄由分派那一层递。
-pub(crate) struct SessionNew;
-
-impl crate::wire::typed::Command for SessionNew {
-    const NAME: &'static str = "session-new";
-    type Req = session_new::NewRequest;
-    type Reply = session_new::SessionNew;
-    type Err = session_new::SessionNewErr;
-}
-
-impl crate::wire::typed::Handle for SessionNew {
-    type Needs = crate::wire::typed::needs::FilesOwn;
-    fn run(
-        req: session_new::NewRequest,
-        cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<session_new::SessionNew, session_new::SessionNewErr>>
-           + Send
-           + 'static {
-        let (_cx, needs) = cx.split();
-        async move {
-            let (files, own) = (needs.0, &needs.1);
-
-            // 带 `forkFrom` 时写分支记录：同 `session-fork`，在这里领一只只会新建的手。
-            answer(req, files, own, &crate::platform::fs::NewFile::issue())
-                .map_err(session_new::SessionNewErr)
-        }
-    }
-}
-
-/// `session-new` 的生产那一份事实。
-fn answer(
-    req: session_new::NewRequest,
-    files: super::launch_account_face::Files,
-    own: &crate::platform::fs::Own,
-    nf: &crate::platform::fs::NewFile,
-) -> Result<session_new::SessionNew, session_new::Failed> {
-    let agent = req.agent.clone();
-    super::session_open_face::with_launch_ctx(own, nf, |fork, pre, home| {
-        super::session_batch_face::with_deps_as(None, &agent, Some(files), |d| {
-            session_new::answer(req, d, fork, pre, home)
-        })
-    })
-}
-
 /// `session-new-dir`：起新会话前核一个目录（在不在 · 这台此刻会给它铸的终端名）。阻塞档：起一次 `tmux` 列会话、铸名。
 pub(crate) struct SessionNewDir;
 
 impl crate::wire::typed::Command for SessionNewDir {
     const NAME: &'static str = "session-new-dir";
-    type Req = session_new::SessionNewDirReq;
-    type Reply = session_new::DirChecked;
-    type Err = session_new::SessionNewDirErr;
+    type Req = crate::control::session_open::new::SessionNewDirReq;
+    type Reply = crate::control::session_open::new::DirChecked;
+    type Err = crate::control::session_open::new::SessionNewDirErr;
 }
 
 impl crate::wire::typed::Handle for SessionNewDir {
     type Needs = crate::wire::typed::needs::Nothing;
     fn run(
-        req: session_new::SessionNewDirReq,
+        req: crate::control::session_open::new::SessionNewDirReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<
-        Output = Result<session_new::DirChecked, session_new::SessionNewDirErr>,
+        Output = Result<crate::control::session_open::new::DirChecked, crate::control::session_open::new::SessionNewDirErr>,
     > + Send
            + 'static {
         async move {
             let user_home = crate::platform::paths::home_dir();
             super::session_batch_face::with_deps_as(None, "", None, |d| {
-                session_new::dir_answer(&req, d, user_home.as_deref())
+                crate::control::session_open::new::dir_answer(&req, d, user_home.as_deref())
             })
         }
     }

@@ -1,7 +1,7 @@
 //! 帧面 `session-open` 的宿主壳：恢复那一条的记录（哪一家 · 目录 · 模型 · 权限档）· 分叉源会话此刻在不在 tmux 里 · 写分支记录 ·
 //! 起之前定 sid 写轮换那几下都住观测层与这台的家，由这层读好交给 `control/session_open`；起会话要的那几样同批量那一份（`session_batch_face`）。
 
-use crate::control::session_new::{ForkWrite, PreRotation};
+use crate::control::session_open::{ForkWrite, PreRotation};
 use crate::control::session_open::{self as open, Facts, ResumeOf};
 use cmd_wire::session::{ForkSlot, ForkTerminal};
 
