@@ -14,7 +14,8 @@
 //! 5. **分叉父会话被筛掉** ⇒ 照样带上、标 `context`（也是一行，算进总数）。
 //! 6. **排与窗口**：`activity` 按最后活动、`created` 按开始，`at` 就是那个键；`range` 只回那一窗、总数是整份的。
 //! 7. **分组**：有在跑的 → 有星标的 → 最近动过的；读不了的目录是一组、带原因。
-//! 8. **远端**：那台的 `raw` 清单由界面问那台常驻、带着交进来（`listing`），这台并 · 筛 · 排并记着；敲字用记着的；没记着 ⇒ `no_listing`；\n//!    这台不再替界面去问那台（生产段里没有 `remote_ask`）。
+//! 8. **远端**：那台的清单由这台问那台的常驻取来记着（`remote_listing.rs`，判据在 `remote_listing_tests`），这台并 · 筛 · 排、行组带 `origin`；
+//!    够不着那台 ⇒ `unreachable`；`fresh` 不带 `origin` ⇒ `bad_args`；旧的 `raw` · `listing` 两格不认（`bad_args`）。
 //! 10. **按会话 ID 要一行**（`sid`：独立查看窗开任意一个会话）：只回那一行（隐藏的、出了时间窗的也回）、不补父会话；
 //!     形状不对 ⇒ `bad_args`（先于 IO）；没有这个会话 ⇒ 空清单。
 //! 11. **带记号再问**（`common/views.rs`）：同一问第二次 ⇒ `same`；一条会话写了一行 ⇒ `up` 只它一行（先后没变不带 `order`）；
@@ -119,7 +120,7 @@ fn parse_ask(args: &Value) -> Result<Ask, (&'static str, String)> {
 async fn answer_wire(args: Value) -> Result<Value, (&'static str, String)> {
     let req: HistoryListReq =
         crate::wire::typed::take(&args).map_err(|f| ("bad_args", f.message))?;
-    super::answer(req, Default::default())
+    super::answer(req, Default::default(), None)
         .await
         .map(|r| serde_json::to_value(r).unwrap())
 }
@@ -545,85 +546,52 @@ fn groups_rank_live_then_starred_then_recent_and_keep_failed_dirs() {
     assert!(order[2] > order[3], "有星标的压过只是更近的");
 }
 
-/// 对面：数被问了几次、问的是什么；答 `raw` 那一份。
-/// ★ 判据 8：远端的清单由界面经已开着的长连接问那台常驻（`raw`，那台热缓存）、带着交进来（`listing`）；
-/// 这台只并注解、筛、排，并记着它 —— 敲字搜索（不带 `listing`）用记着的；没记着 ⇒ `no_listing`（界面再问那台）。
-/// 行与组带 `origin`；`listing` 不带 `origin` / 形状不对 ⇒ `bad_args`。
+/// ★ 判据 8：问那一台 ⇒ 经 `remote_listing` 取那台的清单（这台的可达表里没有它 ⇒ `unreachable`，照实说、不凭空答）；
+/// `fresh` 不带 `origin` ⇒ `bad_args`；界面当信差的那两格（`raw` · `listing`）不认了 ⇒ `bad_args`。
 #[tokio::test]
-async fn a_remote_listing_is_handed_in_and_kept_for_typing() {
-    let ask = answer_flat;
-    // 每个判据用自己的机器名（缓存是进程级的一张表）。
-    let e = ask(json!({"origin": "list-dev"})).await.unwrap_err();
-    assert_eq!(e.0, "no_listing", "没记着那台的清单却答了：{e:?}");
-    let v = ask(json!({"origin": "list-dev", "listing": listing()}))
+async fn a_remote_listing_comes_from_that_machine_or_fails_plainly() {
+    // 等多久只归发起方：问那一台却没带期限 ⇒ `bad_args`（后端不自己定一个）；带了 ⇒ 照它去问（这台够不着那台 ⇒ `unreachable`）。
+    let req: HistoryListReq =
+        crate::wire::typed::take(&json!({"origin": "never-reached"})).unwrap();
+    let e = super::answer(req.clone(), Default::default(), None)
         .await
-        .unwrap();
-    // 出的行全来自交进来的那份（注解按这台的盘：判据环境里没有 ⇒ 一行不藏）。
-    let handed: BTreeSet<String> = sids(&json!({"rows": listing()["rows"]}))
-        .into_iter()
-        .collect();
-    assert!(
-        !sids(&v).is_empty() && sids(&v).iter().all(|s| handed.contains(s)),
-        "{v}"
-    );
-    assert!(v["rows"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .all(|r| r["origin"] == "list-dev"));
-    assert!(
-        v["rows"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|r| ["atText", "sectionText", "spanText"]
-                .iter()
-                .all(|k| r[*k].as_str().is_some_and(|t| !t.is_empty()))),
-        "帧面那一臂每行都带行尾 · 分段 · 时间段三格（这台本地钟写好）：{v}"
-    );
-    assert!(v["groups"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .all(|g| g["origin"] == "list-dev"));
-    // 敲字：不带 `listing` ⇒ 用记着的那份。
-    let typed = ask(json!({"origin": "list-dev", "query": "回调"}))
+        .unwrap_err();
+    assert_eq!(e.0, "bad_args", "没带期限却去问了那台：{e:?}");
+    assert!(e.1.contains("within_ms"), "没说缺的是哪一格：{e:?}");
+    let until = crate::platform::child::Until::after(crate::platform::child::Deadline::secs(5));
+    let e = super::answer(req, Default::default(), until)
         .await
-        .unwrap();
-    let rows = typed["rows"].as_array().unwrap();
-    assert!(!rows.is_empty() && rows.len() < v["rows"].as_array().unwrap().len());
-    assert!(
-        rows.iter()
-            .all(|r| ["label", "firstUserExcerpt", "projectName"]
-                .iter()
-                .any(|k| r[*k].as_str().is_some_and(|t| t.contains("回调")))),
-        "敲字那一问没按记着的那份筛：{typed}"
-    );
+        .unwrap_err();
+    assert_eq!(e.0, "unreachable", "{e:?}");
     for bad in [
-        json!({"listing": listing()}),
-        json!({"origin": "list-dev", "listing": {"rows": 1}}),
-        json!({"origin": "list-dev", "listing": [1]}),
+        json!({"fresh": true}),
+        json!({"raw": true}),
+        json!({"origin": "never-reached", "listing": listing()}),
         json!({"origin": ""}),
     ] {
-        let e = ask(bad.clone()).await.unwrap_err();
+        let e = answer_wire(bad.clone()).await.unwrap_err();
         assert_eq!(e.0, "bad_args", "{bad} 应是 bad_args：{e:?}");
     }
 }
 
-/// ★ 判据 8′：这台不再替界面去问那台（不起一次性进程、不拨号）—— `history_list.rs` 的生产段里没有 `remote_ask`。
-/// 正控：把旧那一支塞回去的合成语料要被认出。
+/// ★ 判据 8′：远端那一份只有一处取（`remote_listing.rs`），问的是那台的常驻（`ask_resident`），不是那台的一次性 CLI 面（`ask_json`）。
+/// 正控：把一次性那一问塞回去的合成语料要被认出。
 #[test]
-fn the_remote_listing_never_spawns_a_oneshot_process() {
-    fn dials(prod: &str) -> bool {
-        prod.contains("remote_ask")
+fn the_remote_listing_asks_the_resident_only() {
+    fn cold(prod: &str) -> bool {
+        prod.contains("ask_json") || !prod.contains("ask_resident")
     }
-    let prod =
+    let here =
         guard_core::production_code(include_str!("../../../src/backend/history/history_list.rs"));
     assert!(
-        !dials(&prod),
-        "history-list 又在这台替界面去问那台了（远端那一支经已开着的长连接问那台常驻）"
+        !here.contains("remote_ask"),
+        "history-list 自己又去问那台了（只经 remote_listing 一处）"
     );
-    assert!(dials(&format!(
+    let prod = guard_core::production_code(include_str!(
+        "../../../src/backend/history/remote_listing.rs"
+    ));
+    assert!(!cold(&prod), "远端清单又去问那台的一次性 CLI 面了");
+    assert!(cold(&format!(
         "{prod}\nfn x() {{ crate::dial::remote_ask::ask_json(); }}"
     )));
 }
@@ -810,7 +778,7 @@ fn a_remote_sessions_annotation_lives_on_that_machine() {
         5,
     )
     .expect("那台写下");
-    // 那台出自己的清单（raw 那一形）：自己并上自己那份注解。
+    // 那台出自己的清单（`history-listing` 答的那一份）：自己并上自己那份注解。
     let mut raw = listing();
     with_own_annotations(
         &mut raw,
@@ -856,8 +824,7 @@ fn a_remote_sessions_annotation_lives_on_that_machine() {
 
 /// ★ 手机读的这一条，线上字节钉住：换成带键集合那一形时重钉过一回（记号换成定值 `h1`）；字节存在 `tests/__fixtures__/history-list.wire-bytes.txt`（每行 `名字<TAB>字节`），
 /// 之后逐字节比（经 `serde_json::Value` 那一跳，同帧面）。没有重写开关：字节变了就是线上形状变了，先问手机那一侧。
-/// A 手机那一问（不带 `origin`）· B 注解读不到 ＋ 搜索词 · C 按开始排 ＋ 一窗 ＋ 隐藏的也出 · R1 R2 `raw` 那一形（带注解 / 带读不到的那一句）·
-/// D 经帧面那一臂交进远端那份（行组带 `origin`）。
+/// A 手机那一问（不带 `origin`）· B 注解读不到 ＋ 搜索词 · C 按开始排 ＋ 一窗 ＋ 隐藏的也出。
 #[test]
 fn the_wire_bytes_the_phone_reads_stay_the_same() {
     use crate::history::history_annotations::Loaded;
@@ -894,35 +861,15 @@ fn the_wire_bytes_the_phone_reads_stay_the_same() {
         Ok(&ann()),
         json!({"range": {"from": 0, "limit": 2}, "sort": "created", "hidden": true}),
     );
-    let mut r1 = listing();
-    with_own_annotations(&mut r1, &Loaded::Read(ann()));
-    let mut r2 = listing();
-    with_own_annotations(&mut r2, &Loaded::NoPath);
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap();
-    let d = pin(rt
-        .block_on(answer_wire(
-            json!({"origin": "pin-wire", "listing": r1.clone(), "within_days": 1}),
-        ))
-        .unwrap());
-    let got: BTreeMap<String, String> = [
-        ("A", a),
-        ("B", b),
-        ("C", c),
-        ("R1", r1),
-        ("R2", r2),
-        ("D", d),
-    ]
-    .into_iter()
-    .map(|(n, v)| (n.to_string(), wire(v)))
-    .collect();
+    let got: BTreeMap<String, String> = [("A", a), ("B", b), ("C", c)]
+        .into_iter()
+        .map(|(n, v)| (n.to_string(), wire(v)))
+        .collect();
     assert_eq!(got.len(), pinned.len(), "钉住的条数对不上");
     for (n, want) in &pinned {
         assert_eq!(got.get(n), Some(want), "`{n}` 那一份的线上字节变了");
     }
-    // 手机嵌的 Rust 核心按 `cmd-wire` 那一份（两形 `HistoryListReply`）解每一份：解得开、按类型重写出来逐字节相同。
+    // 手机嵌的 Rust 核心按 `cmd-wire` 那一份（`HistoryList`）解每一份：解得开、按类型重写出来逐字节相同。
     for (n, b) in &got {
         let v: Value = serde_json::from_str(b).unwrap();
         match cmd_wire::replies::decode_reply("history-list", v) {
@@ -932,7 +879,7 @@ fn the_wire_bytes_the_phone_reads_stay_the_same() {
     }
 }
 
-/// 隐藏的判定照那一台的事实（`raw` 清单带来的 `--tab` · 主会话 · 偏好）：子会话按偏好隐藏、悬停那一句说主会话叫什么（照清单里它那一行）；
+/// 隐藏的判定照那一台的事实（那台清单带来的 `--tab` · 主会话 · 偏好）：子会话按偏好隐藏、悬停那一句说主会话叫什么（照清单里它那一行）；
 /// 单个那一格「取消隐藏」压过规则；不隐藏的那一行不带这一格。
 #[test]
 fn rows_carry_the_hidden_cell_judged_from_that_machines_facts() {
@@ -1115,16 +1062,14 @@ fn asking_again_with_the_mark_answers_only_what_changed() {
 /// ★ 判据 11（帧面那一臂）：带着上次的 `held` 来问 ⇒ 没变就 `same`；入参里的 `held` 形状不对 ⇒ `bad_args`。
 #[tokio::test]
 async fn the_frame_arm_takes_the_mark() {
-    let l = listing();
-    let first = answer_wire(json!({"origin": "mark-arm", "listing": l}))
-        .await
-        .unwrap();
+    // 问这台（远端那份怎么来归 `remote_listing_tests`）：判据环境里这台的记录树不动 ⇒ 第二问没变。
+    let first = answer_wire(json!({})).await.unwrap();
     assert_eq!(first["whole"], true);
-    let again = answer_wire(json!({"origin": "mark-arm", "held": first["held"]}))
+    let again = answer_wire(json!({"held": first["held"]}))
         .await
         .unwrap();
     assert_eq!(again["same"], true, "{again}");
-    let e = answer_wire(json!({"origin": "mark-arm", "held": 7}))
+    let e = answer_wire(json!({"held": 7}))
         .await
         .unwrap_err();
     assert_eq!(e.0, "bad_args");

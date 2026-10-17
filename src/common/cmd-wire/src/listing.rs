@@ -1,24 +1,13 @@
-//! `history-list` 的回包线上形（平时那一形「并好 · 筛好 · 排好的成品」与 `raw` 那一形「一台自己的清单」）连同它引到的几样 ——
-//! 两侧同一份：后端按这里的类型写（扫 · 并 · 筛 · 排在后端 `history/`），手机嵌的 Rust 核心按这里的类型解。
+//! `history-list` 的回包线上形（并好 · 筛好 · 排好的成品）与 `history-listing` 那一形（一台自己的清单，按带键集合同步：`crate::sync`）
+//! 连同它们引到的几样 —— 两侧同一份：后端按这里的类型写（扫 · 并 · 筛 · 排在后端 `history/`），手机嵌的 Rust 核心按这里的类型解。
 
 use crate::cells::Words;
 use crate::session::{Hidden, Hide, LaunchTab, Rules};
-use crate::sync::Patch;
 use crate::Machine;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// `history-list` 的回包：`raw` ⇒ 这台自己那份清单；平时 ⇒ 并好 · 筛好 · 排好的成品，按带键集合那一形答（键 ＝ 会话 ID，
-/// 不带记号 ⇒ 整份；带着上次的记号 ⇒ 没变 / 只给变了的那几行）。线上不带标签（两形的键不重：成品有 `held`）。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-#[serde(untagged)]
-pub enum HistoryListReply {
-    Listing(Listing),
-    List(Patch<HistoryHead, HistoryRow>),
-}
-
+/// `history-list` 的回包按带键集合那一形答（`crate::sync::Patch<HistoryHead, HistoryRow>`，键 ＝ 会话 ID：不带记号 ⇒ 整份；带着上次的记号 ⇒ 没变 / 只给变了的那几行）。
 /// `history-list` 成品的头（行之外的那几格；总数在 `cmd_wire::sync::Head`）：按项目看时的分组 · 注解没并上的那一句。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -136,29 +125,61 @@ pub struct HistoryGroup {
 
 /// 一台自己的清单（`raw` 那一形，也是远端那一支带回来的样子）：行 · 读不了的记录目录 · 那台自己的注解（或读不到它的那一句）。
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(
-        export,
-        rename = "HistoryListing",
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
-    )
-)]
 #[serde(rename_all = "camelCase")]
 pub struct Listing {
     pub rows: Vec<RawRow>,
     pub failed: Vec<FailedDir>,
     /// 那台自己那份注解（sid ⇒ 注解）；读不到 ⇒ 缺，`annotationsNotice` 说为什么。
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub annotations: Option<Table>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub annotations_notice: Option<String>,
     /// 那台偏好里子会话 · 分身会话进不进标签页（隐藏的判定照那一台的）。
     #[serde(default)]
     pub rules: Rules,
+}
+
+/// 一台清单里除了行的那几格（`history-listing` 那一问的「头」）：读不了的目录 · 注解 · 隐藏规则。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(
+        export,
+        rename = "HistoryListingHead",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
+    )
+)]
+#[serde(rename_all = "camelCase")]
+pub struct ListingHead {
+    pub failed: Vec<FailedDir>,
+    pub annotations: Option<Table>,
+    pub annotations_notice: Option<String>,
+    pub rules: Rules,
+}
+
+impl Listing {
+    /// 拆成头与行（行按清单里的先后）。
+    pub fn split(self) -> (ListingHead, Vec<RawRow>) {
+        let head = ListingHead {
+            failed: self.failed,
+            annotations: self.annotations,
+            annotations_notice: self.annotations_notice,
+            rules: self.rules,
+        };
+        (head, self.rows)
+    }
+
+    /// 头与行拼回一份。
+    pub fn join(head: ListingHead, rows: Vec<RawRow>) -> Listing {
+        Listing {
+            rows,
+            failed: head.failed,
+            annotations: head.annotations,
+            annotations_notice: head.annotations_notice,
+            rules: head.rules,
+        }
+    }
 }
 
 /// 读不了的一个记录目录。

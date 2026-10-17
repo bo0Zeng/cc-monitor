@@ -8,10 +8,11 @@ use crate::files::{
     FilesPathBytesReply, FilesPathReply, FilesStageChunkReply, FilesWrittenReply, LsReply,
     ReadChunkReply, ReadTextReply, StatReply,
 };
-use crate::listing::HistoryListReply;
+use crate::listing::{HistoryHead, HistoryRow};
 use crate::needs::{Answered, NeedsList};
 use crate::quota::QuotaRead;
 use crate::record::{HistoryLines, HistoryRead, OrUnread};
+use crate::sync::Patch;
 use crate::rotation::{
     RotDone, RotStrategyId, RotStrategyRev, RotationFactsReply, RotationStrategiesReply,
     RotationTempReply, RotationTryReply, RotationViewReply,
@@ -72,7 +73,7 @@ replies! {
     "files-stat" => StatReply,
     "files-write-text" => FilesWrittenReply,
     "history-lines" => HistoryLines<OrUnread>,
-    "history-list" => HistoryListReply,
+    "history-list" => Patch<HistoryHead, HistoryRow>,
     "history-read" => HistoryRead<OrUnread>,
     "history-tail" => HistoryTail<OrUnread>,
     "kill" => Killed,

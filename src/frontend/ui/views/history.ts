@@ -204,7 +204,7 @@ export class HistoryView {
     return this.machines.filter((m) => !this.prefs.off.includes(m));
   }
 
-  /** 逐台问清单（`fresh` ＝ 远端不用后端记着的那份）。哪台先答先画。 */
+  /** 逐台问清单（`fresh` ＝ 远端那台先由本机后端同步一次副本）。哪台先答先画。 */
   private refresh(fresh: boolean, only?: string): void {
     const seq = ++this.seq;
     const ask = {

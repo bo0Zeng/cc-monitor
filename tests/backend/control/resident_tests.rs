@@ -454,3 +454,196 @@ fn legacy_listen_record_is_found_by_its_name_shape() {
     std::fs::write(dh.join("listen-56233.pid"), "").unwrap();
     assert_eq!(legacy_listen_pid_in(&dh), Some(dh.join("listen-56233.pid")));
 }
+
+/// 扮常驻的那一侧（同进程，绑 `<家>/run/backend.sock`）：收一条连接，先给 hello，读 attach 行、回「接上了」，
+/// 读一条请求交给 `answer`（它交回要写回去的几行）。交回读到的 attach 行与请求。
+#[cfg(unix)]
+async fn one_resident(
+    dh: &Path,
+    answer: impl FnOnce(&serde_json::Value) -> Vec<String> + Send + 'static,
+) -> tokio::task::JoinHandle<(serde_json::Value, serde_json::Value)> {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+    let run = relay_route_core::listen_dir_for(dh);
+    std::fs::create_dir_all(&run).unwrap();
+    std::fs::set_permissions(&run, std::os::unix::fs::PermissionsExt::from_mode(0o700)).unwrap();
+    let l = own_chan::bind(&relay_route_core::listen_socket_for(dh)).expect("绑");
+    tokio::spawn(async move {
+        let own_chan::Accepted::Ours(s) = l.accept().await.expect("收") else {
+            panic!("不是本人")
+        };
+        let (rd, mut wr) = tokio::io::split(s);
+        let mut rd = tokio::io::BufReader::new(rd).lines();
+        wr.write_all(b"{\"kind\":\"hello\",\"build_id\":\"x\"}\n")
+            .await
+            .unwrap();
+        let attach: serde_json::Value =
+            serde_json::from_str(&rd.next_line().await.unwrap().unwrap()).unwrap();
+        wr.write_all(b"{\"attach\":\"ok\"}\n").await.unwrap();
+        let req: serde_json::Value =
+            serde_json::from_str(&rd.next_line().await.unwrap().unwrap()).unwrap();
+        for line in answer(&req) {
+            wr.write_all(format!("{line}\n").as_bytes()).await.unwrap();
+        }
+        // 留着连接不关（期限那一条要「一直不回」）。
+        let _ = rd.next_line().await;
+        (attach, req)
+    })
+}
+
+fn asked(cmd: &str) -> crate::wire::listen::ResidentCall {
+    crate::wire::listen::ResidentCall {
+        cmd: cmd.into(),
+        args: serde_json::json!({"held": "h1"}),
+    }
+}
+
+/// ★ `--resident-call` 问的是这台的常驻：握手时在看名单交空的（只问不看）、请求带着命令 · 入参 · 期限 · 时区，
+/// 别的帧（推送 · 别人的应答）略过，只认自己那一条；答成 ⇒ 回包原样。
+#[tokio::test]
+#[cfg(unix)]
+async fn a_resident_call_asks_the_one_that_listens() {
+    let dh = scratch("call-ok");
+    let peer = one_resident(&dh, |req| {
+        vec![
+            r#"{"kind":"changed","topic":"machines"}"#.into(),
+            r#"{"kind":"reply","id":"someone-else","ok":true,"data":{"no":1}}"#.into(),
+            format!(
+                r#"{{"kind":"reply","id":{},"ok":true,"data":{{"got":1}}}}"#,
+                req["id"]
+            ),
+        ]
+    })
+    .await;
+    let tz = crate::Tz::of(&serde_json::json!("Asia/Shanghai"));
+    let got = call_at(
+        &dh,
+        &asked("history-listing"),
+        Some(9_000),
+        &tz,
+        Deadline::secs(5),
+    )
+    .await
+    .expect("答成");
+    assert_eq!(got, serde_json::json!({"got": 1}));
+    peer.abort();
+    let _ = std::fs::remove_dir_all(&dh);
+}
+
+/// ★ 请求那一行带着发起方的期限与看的那一台的时区（那台按它写「几点」、按它收紧自己的期限）；没有回包的命令 ⇒ `{}`（同 CLI 面）。
+#[tokio::test]
+#[cfg(unix)]
+async fn a_resident_call_carries_the_askers_deadline_and_zone() {
+    let dh = scratch("call-shape");
+    let peer = one_resident(&dh, |req| {
+        vec![format!(
+            r#"{{"kind":"reply","id":{},"ok":true}}"#,
+            req["id"]
+        )]
+    })
+    .await;
+    let tz = crate::Tz::of(&serde_json::json!("Asia/Shanghai"));
+    let got = call_at(
+        &dh,
+        &asked("history-listing"),
+        Some(9_000),
+        &tz,
+        Deadline::secs(5),
+    )
+    .await
+    .expect("答成");
+    assert_eq!(got, serde_json::json!({}));
+    let (_, req) = peer.await.expect("扮常驻的那一侧");
+    assert_eq!(req["within_ms"], 9_000, "{req}");
+    assert_eq!(req["tz"], "Asia/Shanghai", "{req}");
+    let _ = std::fs::remove_dir_all(&dh);
+}
+
+/// ★ 常驻答了失败 ⇒ 码 · 那一句 · 复制详情原样交回（不压成一个码）；没人在听 ⇒ `resident_absent`（不起冷进程顶上）；
+/// 到期限常驻还没回 ⇒ `timed_out`。
+#[tokio::test]
+#[cfg(unix)]
+async fn a_resident_call_says_what_the_resident_said_or_that_nobody_listens() {
+    let tz = crate::Tz::default();
+    let dh = scratch("call-fail");
+    let peer = one_resident(&dh, |req| {
+        assert_eq!(req["cmd"], "history-listing");
+        assert_eq!(req["args"], serde_json::json!({"held": "h1"}));
+        assert_eq!(req["within_ms"], 9_000);
+        vec![format!(
+            r#"{{"kind":"reply","id":{},"ok":false,"code":"bad_args","message":"那一句","detail":"detail-1"}}"#,
+            req["id"]
+        )]
+    })
+    .await;
+    let f = call_at(
+        &dh,
+        &asked("history-listing"),
+        Some(9_000),
+        &tz,
+        Deadline::secs(5),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(
+        (f.code.as_str(), f.message.as_str(), f.detail.as_str()),
+        ("bad_args", "那一句", "detail-1")
+    );
+    let (attach, _) = peer.await.expect("扮常驻的那一侧");
+    assert_eq!(attach["attach"], true);
+    assert_eq!(
+        attach["watch"]["sids"],
+        serde_json::json!([]),
+        "只问不看：在看名单得是空的，不然那台照全发：{attach}"
+    );
+    let _ = std::fs::remove_dir_all(&dh);
+
+    let nobody = scratch("call-absent");
+    let f = call_at(
+        &nobody,
+        &asked("history-listing"),
+        None,
+        &tz,
+        Deadline::secs(5),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(f.code, crate::wire::listen::CALL_ABSENT, "{}", f.message);
+    assert!(
+        !relay_route_core::listen_socket_for(&nobody).exists(),
+        "没人在听却起了一个"
+    );
+    let _ = std::fs::remove_dir_all(&nobody);
+
+    let mute = scratch("call-mute");
+    let peer = one_resident(&mute, |_| Vec::new()).await;
+    let f = call_at(
+        &mute,
+        &asked("history-listing"),
+        None,
+        &tz,
+        Deadline::millis(300),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(f.code, crate::wire::listen::CALL_TIMED_OUT, "{}", f.message);
+    peer.abort();
+    let _ = std::fs::remove_dir_all(&mute);
+}
+
+/// ★ 等多久只归发起方：`--within-ms` 不给 · 给的不是正整数 ⇒ `bad_args`（说缺的是哪一格），后端不自己定一个；给了 ⇒ 照它等、原样往常驻带。
+#[test]
+fn a_resident_call_waits_only_as_long_as_the_asker_said() {
+    let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    for bad in [
+        args(&["--stdin-line"]),
+        args(&["--stdin-line", "--within-ms", "0"]),
+        args(&["--within-ms", "x"]),
+    ] {
+        let e = deadline_of(&bad).unwrap_err();
+        assert_eq!(e.0, "bad_args", "{bad:?}");
+        assert!(e.1.contains("--within-ms"), "没说缺的是哪一格：{e:?}");
+    }
+    let (ms, total) = deadline_of(&args(&["--stdin-line", "--within-ms", "45000"])).unwrap();
+    assert_eq!(ms, 45_000);
+    assert_eq!(total, Deadline::millis(45_000), "没照发起方给的等");
+}

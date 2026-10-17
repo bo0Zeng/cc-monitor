@@ -537,6 +537,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
+        "src/backend/control/resident.rs",
+        "FRAME_LINE_CAP",
+        "`--resident-call` 等那一条应答时读常驻连接上的一行帧（应答里一整份清单也在内；同问远端那一跳收 stdout 的上限）",
+        "拒收+回错",
+    ),
+    (
         "src/frontend/shell/src/local_backend_host.rs",
         "LISTEN_HANDSHAKE_LINE_CAP",
         "宿主读常驻口那一行（hello / attach 应答）—— hello 帧本机实测 8.6 KB（随 typed 命令变多）",

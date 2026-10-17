@@ -5,12 +5,11 @@
 //! # 形状
 //!
 //! ```text
-//! history-list {origin?, listing?, raw?, sid?, query?, sort?, within_days?, hidden?, held?, range?}   （入参 · 回包 · 码都是类型）
-//!   raw: true      这台自己的清单 `{rows, failed}`（不并注解、不筛不排）—— 远端那一份就是那台常驻答的它（热缓存）
-//!   origin 缺席    这台；给了 = 那一台：`listing` 是界面经已开着的长连接问那台 `raw` 拿回来的原样（那台自己判活、自己读上次的号），
-//!                  本进程记着它；不带 `listing` ⇒ 用记着的那份（敲字搜索），没记着 ⇒ `no_listing`（界面先问那台、再带着来）
-//!   ⚠ 这台**不替界面去问那台**（原先经 `remote_ask` 在那台起一次性进程、每次开页冷扫一遍；那台常驻早就热着同一份）
-//!   ⇒ 并上这台的注解（星标 · 改名 · 隐藏）⇒ 筛（隐藏 · 时间 · 搜索词）⇒ 补上被筛掉的分叉父会话（`context`）⇒ 排 ⇒ 截
+//! history-list {origin?, fresh?, sid?, query?, sort?, within_days?, hidden?, held?, range?}   （入参 · 回包 · 码都是类型）
+//!   origin 缺席    这台；给了 = 那一台：那台的清单（那台自己判活、自己读上次的号、并好它自己的注解）由本进程问那台的常驻取、记着副本
+//!                  （`remote_listing.rs`：带记号问 `history-listing`，只拿变了的那几行）；手上没有 · 或 `fresh`（开页 · 刷新）才去问，
+//!                  敲字搜索用手上那份；那台常驻不在 ⇒ `resident_absent`（不在那台起一个冷进程顶上）
+//!   ⇒ 并上那台的注解（星标 · 改名 · 隐藏）⇒ 筛（隐藏 · 时间 · 搜索词）⇒ 补上被筛掉的分叉父会话（`context`）⇒ 排 ⇒ 截
 //!   sid: 只要那一个会话那一行（独立查看窗按会话 ID 开任意一个会话，含已结束的、隐藏的）：别的筛一概不看、不补父会话
 //!   ⇒ 带键集合那一形（`common/views.rs`，键 ＝ 会话 ID）：`range` 那一窗（缺 ⇒ 头 2000 行）；头 ＝ {groups, notice} ＋ 总数；
 //!     带着上次的 `held` ⇒ 没变 `same` · 只给变了的那几行 `up`（先后变了才带 `order`）；不带 · 对不上 ⇒ `whole`
@@ -22,7 +21,7 @@
 //! 注解读不到 / 读不懂 ⇒ 行照出（星标 · 隐藏按没有算），`notice` 说一句为什么。
 
 pub(crate) use cmd_wire::listing::{
-    FailedDir, HistoryGroup, HistoryHead, HistoryListReply, HistoryRow, Listing, RawRow,
+    FailedDir, HistoryGroup, HistoryHead, HistoryRow, Listing, RawRow,
 };
 use cmd_wire::sync::{Head, Held, Patch, Range};
 use std::collections::{BTreeMap, BTreeSet};
@@ -48,12 +47,7 @@ const DEFAULT_WINDOW: Range = Range {
 static BROWSE: std::sync::LazyLock<Views> = std::sync::LazyLock::new(|| Views::new(8));
 static NARROW: std::sync::LazyLock<Views> = std::sync::LazyLock::new(|| Views::new(4));
 
-/// 远端清单的缓存：那台的名字 ⇒ 界面交进来的那台 `raw` 的回答。搜索框每敲一下都问一次，不能每次都再交一整份；
-/// 不按时间过期（这一层不看钟）：界面开页与「刷新」再问那台、带着新的 `listing` 来，那时才换。
-static REMOTE_CACHE: std::sync::Mutex<BTreeMap<String, Listing>> =
-    std::sync::Mutex::new(BTreeMap::new());
-
-// ───────────────────────── 这台自己的清单（`raw`）─────────────────────────
+// ───────────────────────── 这台自己的清单（`history-listing` 答的就是它）─────────────────────────
 
 /// 这台此刻活着的会话（pidfile 源头）。
 pub(crate) struct LiveSet(pub(crate) BTreeMap<String, Option<crate::agents::SessionActivity>>);
@@ -70,7 +64,7 @@ pub(crate) fn annotations(loaded: &Loaded) -> Result<&Table, String> {
     }
 }
 
-/// **这台的注解并进它自己那份清单**（`raw` 那一形也带）：读到了 ⇒ `annotations` ＝ 那张表（sid ⇒ 注解）；读不到 ⇒
+/// **这台的注解并进它自己那份清单**：读到了 ⇒ `annotations` ＝ 那张表（sid ⇒ 注解）；读不到 ⇒
 /// `annotationsNotice` 一句为什么。注解跟着会话住在那台：每台只并自己那份，本机后端代问远端清单时照那台带来的出、不拿本机那份去盖。
 pub(crate) fn with_own_annotations(listing: &mut Listing, loaded: &Loaded) {
     match annotations(loaded) {
@@ -257,7 +251,7 @@ pub(crate) fn tree_for(
     Ok(Some(tree))
 }
 
-/// **这台隐藏要的那几样并进它自己那份清单**（`raw` 那一形也带，同注解）：每行起会话时的 `--tab` · 主会话，整份带这台偏好那两格。
+/// **这台隐藏要的那几样并进它自己那份清单**（同注解）：每行起会话时的 `--tab` · 主会话，整份带这台偏好那两格。
 /// 单个那一格就是注解（[`with_own_annotations`]）；判定在 [`answer_from`]（`control/session_hidden.rs`）。
 pub(crate) fn with_own_rules(listing: &mut Listing, here: &crate::control::session_hidden::Here) {
     for r in &mut listing.rows {
@@ -329,26 +323,20 @@ pub(crate) enum Sort {
     Created,
 }
 
-/// `history-list` 的入参（全可缺）。`raw: true` ⇒ 只回这台自己的清单，别的几格不看。
+/// `history-list` 的入参（全可缺）。
 #[derive(Debug, Clone, Default, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct HistoryListReq {
-    /// `true` ⇒ 只回**这台自己**的清单 `{rows, failed, annotations | annotationsNotice}`（不筛不排、不看别的入参）——
-    /// 远端那一份就是那台常驻答的它；注解跟着会话住在那台，并的是清单带来的那份。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) raw: Option<bool>,
-    /// 那台的名字（`listing` 是它的；行与组都标上它）。缺 ⇒ 这台。
+    /// 那台的名字（行与组都标上它）。缺 ⇒ 这台。问那一台要带期限（请求信封 `within_ms`）：等多久归发起方，没带 ⇒ `bad_args`。
     #[serde(default)]
     #[cfg_attr(test, ts(optional, as = "Option<String>"))]
     pub(crate) origin: Option<cmd_wire::Machine>,
-    /// 那一台（`origin`）自己答的 `raw` 清单原样（界面经长连接问那台常驻拿回来）；本进程记着、换掉旧的。
-    /// 缺 ⇒ 用记着的那份，没记着 ⇒ `no_listing`；不带 `origin` ⇒ `bad_args`。
+    /// `true` ⇒ 先问那一台（`origin`）同步一次本进程记着的副本再答（开页 · 刷新）；缺 ⇒ 手上有就用手上那份（敲字搜索）。不带 `origin` ⇒ `bad_args`。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
-    pub(crate) listing: Option<Listing>,
+    pub(crate) fresh: Option<bool>,
     /// 只要这一个会话那一行（独立查看窗；别的筛一概不看、不补父会话）。形状同 `history-record`（`[A-Za-z0-9-]`，1..=64）。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
@@ -384,8 +372,10 @@ crate::wire::typed::codes! {
     pub(crate) enum HistoryListErr {
         /// 读不了这台的记录树 · 读的那一趟没做完。
         Failed = "failed",
-        /// 问的是那一台、本进程还没记着它的清单（界面先问那台 `raw`、再带着来）。
-        NoListing = "no_listing",
+        /// 问的是那一台、可达表里没有它（还没连上过）· 拨号 / 链路不通。
+        Unreachable = "unreachable",
+        /// 问的是那一台、那台的常驻后端没在跑（不在那台起一个冷进程顶上）。
+        ResidentAbsent = "resident_absent",
     }
 }
 
@@ -395,7 +385,7 @@ pub(crate) struct HistoryListCmd;
 impl crate::wire::typed::Command for HistoryListCmd {
     const NAME: &'static str = "history-list";
     type Req = HistoryListReq;
-    type Reply = HistoryListReply;
+    type Reply = Patch<HistoryHead, HistoryRow>;
     type Err = HistoryListErr;
 }
 
@@ -404,10 +394,10 @@ impl crate::wire::typed::Handle for HistoryListCmd {
     fn run(
         req: HistoryListReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<HistoryListReply, HistoryListErr>> + Send + 'static
+    ) -> impl std::future::Future<Output = Result<Patch<HistoryHead, HistoryRow>, HistoryListErr>> + Send + 'static
     {
         async move {
-            answer(req, cx.tz)
+            answer(req, cx.tz, cx.until)
                 .await
                 .map_err(crate::wire::typed::of_pair(HistoryListErr::Failed))
         }
@@ -584,7 +574,7 @@ fn row_of(
     }
 }
 
-/// 一台的清单（`raw` 那一形）＋ 注解 ＋ 入参 ⇒ 成品：头 ＋ 排好的全部行（窗口在 [`patch_from`] 切）。`origin` ＝ 问的是哪一台（缺 ＝ 这台）。`now_ms` 由调用方给（时间筛的「现在」）；
+/// 一台的清单 ＋ 注解 ＋ 入参 ⇒ 成品：头 ＋ 排好的全部行（窗口在 [`patch_from`] 切）。`origin` ＝ 问的是哪一台（缺 ＝ 这台）。`now_ms` 由调用方给（时间筛的「现在」）；
 /// `tz` ＝ 看的那一台的时区（请求信封带来的）：每行的行尾 · 分段 · 时间段三格按它写好（偏移按各自那一刻）。
 pub(crate) fn answer_from(
     listing: &Listing,
@@ -940,7 +930,7 @@ fn now_ms() -> i64 {
         .map_or(0, |d| d.as_millis() as i64)
 }
 
-async fn blocking<T: Send + 'static>(
+pub(crate) async fn blocking<T: Send + 'static>(
     f: impl FnOnce() -> Result<T, (&'static str, String)> + Send + 'static,
 ) -> Result<T, (&'static str, String)> {
     tokio::task::spawn_blocking(f).await.map_err(|e| {
@@ -954,16 +944,12 @@ async fn blocking<T: Send + 'static>(
     })?
 }
 
-/// 帧面 `history-list` 的本体（`tz` ＝ 看的那一台的时区：行上那几格时刻字按它写）。
+/// 帧面 `history-list` 的本体（`tz` ＝ 看的那一台的时区：行上那几格时刻字按它写；`until` ＝ 发起方给的截止时刻，问那一台时照它等）。
 pub(crate) async fn answer(
     req: HistoryListReq,
     tz: crate::Tz,
-) -> Result<HistoryListReply, (&'static str, String)> {
-    if req.raw == Some(true) {
-        return blocking(machine_listing)
-            .await
-            .map(HistoryListReply::Listing);
-    }
+    until: Option<crate::platform::child::Until>,
+) -> Result<Patch<HistoryHead, HistoryRow>, (&'static str, String)> {
     let ask = parse_ask(&req)?;
     let held = req.held;
     let origin = match req.origin {
@@ -971,18 +957,19 @@ pub(crate) async fn answer(
         Some(cmd_wire::Machine(s)) if !s.is_empty() => Some(s),
         Some(_) => return Err(bad("`origin` must be a non-empty string")),
     };
-    let listing = match (&origin, req.listing) {
-        (None, None) => {
+    let fresh = req.fresh == Some(true);
+    let listing = match &origin {
+        None if fresh => return Err(bad("`fresh` needs the `origin` it syncs from")),
+        None => {
             let only = ask.sid.clone();
             blocking(move || machine_listing_for(only.as_deref())).await?
         }
-        (None, Some(_)) => return Err(bad("`listing` needs the `origin` it came from")),
-        (Some(o), handed) => remote_listing(o, handed)?,
+        Some(o) => super::remote_listing::listing(o, fresh, &tz, until).await?,
     };
     blocking(move || {
         // 并的是清单自己带来的那台的注解（本机的那份只并本机会话；远端那台自己并好了它那份）。
         let ann = listing_annotations(&listing);
-        Ok(HistoryListReply::List(patch_from(
+        Ok(patch_from(
             views_for(&ask),
             &listing,
             origin.as_deref(),
@@ -991,27 +978,9 @@ pub(crate) async fn answer(
             held.as_ref(),
             now_ms(),
             &tz,
-        )))
+        ))
     })
     .await
-}
-
-/// 那一台的 `raw` 清单：交进来了 ⇒ 记下、就用它；没交 ⇒ 记着的那份；都没有 ⇒ `no_listing`。
-fn remote_listing(
-    machine: &str,
-    handed: Option<Listing>,
-) -> Result<Listing, (&'static str, String)> {
-    let mut held = REMOTE_CACHE.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(v) = handed {
-        held.insert(machine.to_string(), v.clone());
-        return Ok(v);
-    }
-    held.get(machine).cloned().ok_or_else(|| {
-        (
-            "no_listing",
-            copy_text("beHistoryList.remote.notHeld", &[("machine", machine)]),
-        )
-    })
 }
 
 #[cfg(test)]

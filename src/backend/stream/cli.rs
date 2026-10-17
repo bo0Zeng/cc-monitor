@@ -40,7 +40,7 @@ use std::time::Duration;
 pub(crate) const PROBE_FLAG: &str = "--backend-probe";
 
 /// 读入参（两个口 · 上限 · 静默窗 · 码）住 [`crate::control::cli_args`]。
-use crate::control::cli_args::{bad_args, read_args, STDIN_QUIET};
+use crate::control::cli_args::{bad_args, read_args, within_of, STDIN_QUIET};
 
 /// 本入口回显给命令的 `id`。**帧面的 `id` 由客户端发号且不透明**，而一次性 exec
 /// 天然 1:1、没有并发的第二条请求可混淆 ⇒ 这里给一个固定值，不假装有号段。
@@ -347,36 +347,6 @@ pub(crate) fn view_of(opts: &[String]) -> Result<serde_json::Value, (&'static st
         String::from_utf8(bytes).map_err(|e| bad_args(&format!("{flag} is not UTF-8: {e}")))?
     };
     serde_json::from_str(&text).map_err(|e| bad_args(&format!("{flag}: not JSON ({e})")))
-}
-
-/// 期限口 [`crate::wire::cli_words::WITHIN_MS_FLAG`]（位置不限）：缺值 · 给两次 ⇒ `bad_args`（同 [`crate::wire::cli_words::ARGS_B64_FLAG`]）；
-/// 值的读法与帧面信封那一格同一处（[`crate::wire::within_ms_of`]：不是正整数 ⇒ 当没带）。
-fn within_of(opts: &[String]) -> Result<Option<u64>, (&'static str, String)> {
-    let mut seen: Option<Option<u64>> = None;
-    let mut i = 0;
-    while i < opts.len() {
-        if opts[i] == crate::wire::cli_words::WITHIN_MS_FLAG {
-            let Some(v) = opts.get(i + 1).filter(|v| !v.starts_with("--")) else {
-                return Err(bad_args(&format!(
-                    "{} needs a value",
-                    crate::wire::cli_words::WITHIN_MS_FLAG
-                )));
-            };
-            let ms = serde_json::from_str::<serde_json::Value>(v)
-                .ok()
-                .and_then(|v| crate::wire::within_ms_of(&v));
-            if seen.replace(ms).is_some() {
-                return Err(bad_args(&format!(
-                    "{} given twice",
-                    crate::wire::cli_words::WITHIN_MS_FLAG
-                )));
-            }
-            i += 2;
-            continue;
-        }
-        i += 1;
-    }
-    Ok(seen.flatten())
 }
 
 use crate::stream::inbound::views::{StreamView, StreamWants};

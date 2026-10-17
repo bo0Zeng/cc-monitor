@@ -1970,6 +1970,24 @@
         "C-W6": "--grace 的取值以秒为单位，说的是命令行参数的单位，不是时长读数"
       }
     },
+    "beResident.call.absent": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} 后端未在运行",
+      "args": ["machine"]
+    },
+    "beResident.call.timedOut": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} 回复超时 · {dur}",
+      "args": ["machine", "dur"]
+    },
+    "beResident.call.dropped": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} 后端未回复即断开",
+      "args": ["machine"]
+    },
     "beResident.stop.stuck": {
       "kind": "error",
       "role": "报错",
@@ -15136,12 +15154,6 @@
       "role": "原因格",
       "zh": "本机查询未完成 · 程序出错",
       "args": []
-    },
-    "beHistoryList.remote.notHeld": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 的会话清单未取回 · 需先向 {machine} 取一次",
-      "args": ["machine"]
     },
     "beHistoryJoin.annotations.unparsable": {
       "kind": "error",

@@ -110,6 +110,39 @@ pub const REFUSE_ABSENT: &str = "absent";
 /// 小中继断开：别的原因（不归本人 · 路径坏了）。再接也一样。
 pub const REFUSE_UNREACHABLE: &str = "unreachable";
 
+/// `--resident-call` 那一行 stdin：问哪条帧命令 ＋ 它的入参。发的一方（`remote_ask::ask_resident`）与收的一方（`control/resident.rs::call`）同一个类型。
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ResidentCall {
+    pub(crate) cmd: String,
+    #[serde(default)]
+    pub(crate) args: serde_json::Value,
+}
+
+/// `--resident-call` 的码：这台没有常驻在听 ⇒ 照实失败（不在这台起一个冷进程顶上）。
+pub(crate) const CALL_ABSENT: &str = "resident_absent";
+/// `--resident-call` 的码：等到期限，常驻还没回。
+pub(crate) const CALL_TIMED_OUT: &str = "timed_out";
+
+/// 那一台（`machine` ＝ 给人看的称呼）的常驻没在跑。
+pub(crate) fn call_absent(machine: &str) -> String {
+    copy_core::copy_text("beResident.call.absent", &[("machine", machine)])
+}
+
+/// 那一台的常驻在期限 `after` 内没回。
+pub(crate) fn call_timed_out(machine: &str, after: crate::platform::child::Deadline) -> String {
+    copy_core::copy_text(
+        "beResident.call.timedOut",
+        &[
+            ("machine", machine),
+            (
+                "dur",
+                &copy_core::format_duration(after.shown_secs().saturating_mul(1000)),
+            ),
+        ],
+    )
+}
+
 /// backend 这次跑成什么形态。由环境决定，不由 argv 决定：换的是同一个流模式的载体，不是新增一条子命令。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Mode {

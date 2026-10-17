@@ -30,10 +30,14 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // ⚠ 全在 `Run::Blocking`：它们都做文件 I/O（`history-search` 扫全库）。代价同 `files-*`：
     //   `cancel` 命中时回 `not_cancellable`（不撒谎）。
     // **历史页的平铺清单**（`history_list.rs`）：跨项目一次出成品 —— 每行的状态与「能做什么」· 按项目的分组 · 搜标题 / 第一句 / 项目名。
-    //   远端那一份由界面经已开着的长连接问那台常驻 `raw`（那台热缓存）、带着交进来（`listing`），本进程记着给敲字用；并注解、筛、排都在这台。
-    //   这台不替界面去问那台（原先经 `remote_ask` 在那台起一次性进程冷扫）。
+    //   远端那一份由本进程问那台的常驻（`--resident-call` ⇒ `history-listing`，带记号只拿变了的）、记着副本（`history/remote_listing.rs`）；
+    //   并注解、筛、排都在这台。
     crate::wire::typed::asynchronous::<crate::history::history_list::HistoryListCmd>(
         "历史页的平铺会话清单",
+    ),
+    // 这台自己的清单按带键集合答（备忘住本进程、只在被问时比）：别的后端经 `--resident-call` 问它，记着副本。扫记录树在阻塞池里 ⇒ 异步档。
+    crate::wire::typed::asynchronous::<crate::history::remote_listing::HistoryListingCmd>(
+        "这台的清单（按记号只给变了的）",
     ),
     // 全文搜索那两条：入参 · 回包 · 错误码都是类型（`faces/search_face.rs`）。搜索扫全库 ⇒ 阻塞档；合并是纯计算 ⇒ 异步档（同 `ping`）。
     crate::wire::typed::blocking::<crate::faces::search_face::HistorySearch>("全文搜索"),
