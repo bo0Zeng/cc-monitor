@@ -41,7 +41,11 @@ pub fn step_json(s: Step, machine: &str) -> String {
         )
     };
     let (step, text, bar) = match s {
-        Step::Plan => ("plan", connecting(copy_text("machineState.stage.deploy", &[])), false),
+        Step::Plan => (
+            "plan",
+            connecting(copy_text("machineState.stage.deploy", &[])),
+            false,
+        ),
         Step::Place { updating: true } => (
             "place",
             copy_text("machineState.busy.updating", &[("machine", machine)]),
@@ -52,7 +56,11 @@ pub fn step_json(s: Step, machine: &str) -> String {
             copy_text("machineState.busy.installing", &[("machine", machine)]),
             true,
         ),
-        Step::Restart => ("restart", connecting(copy_text("machineState.stage.attach", &[])), false),
+        Step::Restart => (
+            "restart",
+            connecting(copy_text("machineState.stage.attach", &[])),
+            false,
+        ),
     };
     serde_json::json!({ "step": step, "text": text, "bar": bar }).to_string()
 }
