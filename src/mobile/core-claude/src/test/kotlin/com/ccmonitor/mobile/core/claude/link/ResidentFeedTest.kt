@@ -107,6 +107,10 @@ class ResidentFeedTest {
 
         val answered = mutableListOf<Pair<String, String?>>()
 
+        override fun transferStop(id: Long) {
+            transfers += listOf("stop", id)
+        }
+
         override fun pickMenu(
             handle: Long,
             rows: String,
@@ -282,6 +286,17 @@ class ResidentFeedTest {
             assertEquals(listOf<Any>("pull", 18, """{"path":"/w/f"}""", "/sd/f", 9_000L), core.transfers.last())
             core.emit("reply", """{"call":42,"down":true}""")
             assertEquals(Reply.LinkDown, down.await())
+        }
+
+    @Test
+    fun `那一趟不等了（停）⇒ 按编号叫核心撤，不另起结局`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val core = FakeCore()
+            val f = feed(core)
+            val down = async { f.transfer(Transfer.Pull(RemotePath.of("/w/f"), "/sd/f"), { 18 }, 9_000) { _, _ -> } }
+            down.cancel()
+            assertEquals(listOf<Any>("stop", 41L), core.transfers.last())
+            assertEquals(2, core.transfers.size)
         }
 
     @Test

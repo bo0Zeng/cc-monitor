@@ -57,6 +57,8 @@ object CoreResident : ResidentCore {
         withinMs: Long,
     ): Long = Core.transferPull(handle, fd, args, shown, withinMs)
 
+    override fun transferStop(id: Long) = Core.transferStop(id)
+
     override fun batchStart(
         handle: Long,
         want: String,

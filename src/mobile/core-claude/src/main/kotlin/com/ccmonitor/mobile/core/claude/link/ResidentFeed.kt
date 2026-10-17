@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.core.claude.link
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -70,6 +71,9 @@ interface ResidentCore {
         shown: String,
         withinMs: Long,
     ): Long
+
+    /** 撤那一趟（[stage] · [pull] 回的编号）：本机那一份当场不再读写。 */
+    fun transferStop(id: Long)
 
     /** 起一组（[want] 是 JSON）：回编号，事经 `batch` 那一种交回；这台不在 ⇒ 0。 */
     fun batchStart(
@@ -256,6 +260,9 @@ class ResidentFeed(
         val slot = replies.computeIfAbsent(id) { CompletableDeferred() }
         return try {
             slot.await()
+        } catch (ce: CancellationException) {
+            core.transferStop(id)
+            throw ce
         } finally {
             replies -= id
             moving -= id

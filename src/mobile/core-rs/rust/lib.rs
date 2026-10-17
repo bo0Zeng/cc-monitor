@@ -945,6 +945,18 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_transferPull<'l>(
     })
 }
 
+/// `Core.transferStop(id)`：撤问答编号 `id` 那一趟（［停］）：在问的那一块当场丢下，本机那一份不再写；之后不回结局那一行。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_transferStop<'l>(
+    _env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    id: jlong,
+) {
+    guarded((), || {
+        transfer::halt(id);
+    });
+}
+
 /// `Core.batchStart(handle, want)`：起一组（`batch.rs::plan_of` 那几种「要做什么」，入参由核心拼）；回编号，
 /// 进度 · 同名那一问 · 结局经 `Sink.resident(…, "batch", …)` 回来。这台不在 · 读不动 ⇒ 0。
 #[no_mangle]
