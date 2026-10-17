@@ -894,6 +894,9 @@ pub enum Topic {
     /// 这台某个活会话隐不隐藏变了（`key` ＝ sid；`body` ＝ `{hidden}`：那一格，不隐藏 ⇒ `null`）：
     /// 注解 · 这台偏好 · 会话血缘动了之后判出来的。不重读整份清单，收到就换（丢了重问 `history-list {sid}` 那一行）。
     SessionHidden,
+    /// 这台某个正被浏览的目录里有了动静（`key` ＝ 那个目录的 `WirePath::key`；名单由 `files-browse` 交）：
+    /// 正开着那个目录的那一屏带着手上的记号重问 `files-ls`，只拿变了的那几行。
+    FilesDir,
 }
 
 /// [`Frame::SessionFileReread`] 的「为什么从头重读」。线上两个字面量。

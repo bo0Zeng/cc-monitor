@@ -71,7 +71,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("files-home", "cba5ef0e"),
     ("files-index-rebuild", "83fe26e0"),
     ("files-index-status", "bc18e12c"),
-    ("files-ls", "362156f2"),
+    ("files-ls", "acf7524c"),
     ("files-mkdir", "97cbc63d"),
     ("files-read-chunk", "ae7b4d59"),
     ("files-read-text", "f59e8c7a"),

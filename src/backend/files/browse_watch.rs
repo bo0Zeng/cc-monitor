@@ -173,7 +173,7 @@ pub fn set_browsing(dirs: &[PathBuf]) -> Applied {
 
 /// 一个被盯着的目录里有动静了 ⇒ **重列那一个**。
 ///
-/// 返回 `true` = 这个目录在名单上、已经重列过。`false` = 不在名单上（事件与我们无关）。
+/// 返回 `true` = 这个目录在名单上、已经重列过（并说一声：[`dir_changes`]）。`false` = 不在名单上（事件与我们无关）。
 pub fn on_change(dir_bytes: &[u8]) -> bool {
     let Ok(mut g) = WATCHED.write() else {
         return false;
@@ -182,7 +182,16 @@ pub fn on_change(dir_bytes: &[u8]) -> bool {
         return false;
     };
     g[i].children = list_dir(&super::raw::to_path_buf(dir_bytes)).unwrap_or_default();
+    drop(g);
+    let _ = dir_changes().send(cmd_wire::files::WirePath(dir_bytes.to_vec()).key());
     true
+}
+
+/// 盯着的某个目录有了动静、重列过 ⇒ 那个目录（[`cmd_wire::files::WirePath::key`]；流的 tap 订它推 `changed {files_dir, key}`）。
+pub(crate) fn dir_changes() -> &'static tokio::sync::broadcast::Sender<String> {
+    static TX: std::sync::OnceLock<tokio::sync::broadcast::Sender<String>> =
+        std::sync::OnceLock::new();
+    TX.get_or_init(|| tokio::sync::broadcast::channel::<String>(64).0)
 }
 
 /// 事件里那个路径属于名单上哪个目录 —— 事件给的可能是**目录本身**，

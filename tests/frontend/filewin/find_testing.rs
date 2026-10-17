@@ -280,6 +280,9 @@ pub struct FakeBackend {
     /// 没给 ⇒ 那条流同别的流一样当场关（开着的流是窗口里一趟常驻的活，等「一趟都不在路上」的判据会等不完）。
     pub plan_push: Option<tokio::sync::broadcast::Sender<String>>,
     pub plan_subs: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    /// 同 `plan_push`，那条流是 `changed/files_dir`（格体 `{key}`）。
+    pub dir_push: Option<tokio::sync::broadcast::Sender<String>>,
+    pub dir_subs: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl FakeBackend {
@@ -302,6 +305,8 @@ impl FakeBackend {
             plan_reply: Default::default(),
             plan_push: None,
             plan_subs: Default::default(),
+            dir_push: None,
+            dir_subs: Default::default(),
         }
     }
 
@@ -732,14 +737,16 @@ impl FakeBackend {
                             None,
                             None,
                             Some(
-                                serde_json::to_value(cmd_wire::files::LsReply {
+                                serde_json::to_value(ls_whole(
                                     entries,
-                                    up: None,
-                                    crumbs: Vec::new(),
-                                    truncated: false,
-                                    total,
-                                    unreadable: 0,
-                                })
+                                    cmd_wire::files::LsHead {
+                                        up: None,
+                                        crumbs: Vec::new(),
+                                        truncated: false,
+                                        total,
+                                        unreadable: 0,
+                                    },
+                                ))
                                 .unwrap(),
                             ),
                         )
@@ -1347,13 +1354,18 @@ impl comms_inward::chan::router::Backends for Hosted {
         kind: comms_inward::chan::wire::Kind,
         _from: Option<comms_inward::chan::wire::Cursor>,
     ) -> futures::stream::BoxStream<'static, comms_inward::chan::wire::Item> {
-        // `changed/plan`：用例经 `plan_push` 推的每一格原样交出去（同 monitor 那一侧的扇出）。
-        let push = self.be.lock().unwrap().plan_push.clone();
-        if let (true, Some(push)) = (kind.0 == crate::plan::PLAN_CHANGED_KIND, push) {
+        // `changed/plan` · `changed/files_dir`：用例经 `plan_push` / `dir_push` 推的每一格原样交出去（同 monitor 那一侧的扇出）。
+        let (push, subs) = {
             let be = self.be.lock().unwrap();
+            match kind.0.as_str() {
+                crate::plan::PLAN_CHANGED_KIND => (be.plan_push.clone(), be.plan_subs.clone()),
+                crate::source::DIR_CHANGED_KIND => (be.dir_push.clone(), be.dir_subs.clone()),
+                _ => (None, be.plan_subs.clone()),
+            }
+        };
+        if let Some(push) = push {
             let rx = push.subscribe();
-            be.plan_subs
-                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            subs.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             return Box::pin(futures::stream::unfold(
                 (rx, 0u64),
                 |(mut rx, seq)| async move {
@@ -1707,4 +1719,71 @@ pub fn gated(mut l: crate::source::Listed) -> crate::source::Listed {
     l.gates = gates;
     l.size_text = Some(copy_core::size_text(l.row.size));
     l
+}
+
+/// 不带记号那一问的回包（整份）：键 ＝ 末段名的 [`cmd_wire::files::WirePath::key`]，先后照给的（合成后端不记备忘：恒答整份）。
+pub fn ls_whole(
+    entries: Vec<cmd_wire::files::LsEntry>,
+    info: cmd_wire::files::LsHead,
+) -> cmd_wire::files::LsReply {
+    let order: Vec<String> = entries.iter().map(|e| e.name.key()).collect();
+    cmd_wire::sync::Patch {
+        held: cmd_wire::sync::Held("h1".to_string()),
+        whole: true,
+        same: false,
+        head: Some(cmd_wire::sync::Head {
+            total: order.len() as u32,
+            info,
+        }),
+        up: order.iter().cloned().zip(entries).collect(),
+        order: Some(order),
+    }
+}
+
+/// 合成的几行 ⇒ 一份整份的回包（头由调用方给：截断 · 一共几项 · 读不出几项）。
+pub fn reply_of_rows(
+    rows: &[crate::source::Row],
+    info: cmd_wire::files::LsHead,
+) -> cmd_wire::files::LsReply {
+    let entries = rows
+        .iter()
+        .map(|r| cmd_wire::files::LsEntry {
+            path: cmd_wire::files::WirePath::from(r.path.as_str()),
+            name: cmd_wire::files::WirePath::from(r.name.as_str()),
+            kind: if r.is_dir {
+                cmd_wire::files::FileKind::Dir
+            } else {
+                cmd_wire::files::FileKind::File
+            },
+            size: Some(r.size),
+            size_text: None,
+            mtime_secs: None,
+            mtime_text: None,
+            mtime_full: None,
+            link_dir: None,
+            link_to: None,
+            class: fake_gates(&r.name, r.is_dir, r.size).0,
+            type_text: fake_gates(&r.name, r.is_dir, r.size).1,
+            gates: fake_gates(&r.name, r.is_dir, r.size).2,
+        })
+        .collect();
+    ls_whole(entries, info)
+}
+
+/// 什么都没截、都读得出的那一个头（`total` ＝ 几行）。
+pub fn plain_head(n: usize) -> cmd_wire::files::LsHead {
+    cmd_wire::files::LsHead {
+        up: None,
+        crumbs: Vec::new(),
+        truncated: false,
+        total: n as u64,
+        unreadable: 0,
+    }
+}
+
+/// 合成的几行 ⇒ 手上那一份（整份、没有真的记号）：开窗种子那几条判据用。
+pub fn shown_of(rows: &[crate::source::Row]) -> crate::source::Shown {
+    let mut h = crate::source::Shown::default();
+    h.apply(reply_of_rows(rows, plain_head(rows.len())));
+    h
 }

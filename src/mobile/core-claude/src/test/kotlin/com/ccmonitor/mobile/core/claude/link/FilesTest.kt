@@ -24,19 +24,20 @@ class FilesTest {
     @Test
     fun `files-ls：先后 · 末段名 · 上一级 · 面包屑都照那台交来的；目录链接算目录；按大小排交 sort`() {
         val reply =
-            mapOf(
-                "entries" to
-                    listOf(
-                        mapOf("path" to "/w/src", "name" to "src", "kind" to "dir"),
-                        mapOf("path" to "/w/ln", "name" to "ln", "kind" to "symlink", "link_dir" to true, "link_to" to "dir"),
-                        mapOf("path" to "/w/a.txt", "name" to "a.txt", "kind" to "file", "size" to 12.0, "mtime_text" to "10-14 09:00"),
-                        mapOf("path" to mapOf("b16" to "2f772fff"), "name" to mapOf("b16" to "ff"), "kind" to "file", "size" to 1.0),
-                    ),
-                "up" to "/",
-                "crumbs" to listOf(mapOf("name" to "/", "path" to "/"), mapOf("name" to "w", "path" to "/w")),
-                "truncated" to false,
-                "total" to 4.0,
-                "unreadable" to 0.0,
+            lsWhole(
+                listOf(
+                    mapOf("path" to "/w/src", "name" to "src", "kind" to "dir"),
+                    mapOf("path" to "/w/ln", "name" to "ln", "kind" to "symlink", "link_dir" to true, "link_to" to "dir"),
+                    mapOf("path" to "/w/a.txt", "name" to "a.txt", "kind" to "file", "size" to 12.0, "mtime_text" to "10-14 09:00"),
+                    mapOf("path" to mapOf("b16" to "2f772fff"), "name" to mapOf("b16" to "ff"), "kind" to "file", "size" to 1.0),
+                ),
+                mapOf(
+                    "up" to "/",
+                    "crumbs" to listOf(mapOf("name" to "/", "path" to "/"), mapOf("name" to "w", "path" to "/w")),
+                    "truncated" to false,
+                    "total" to 4.0,
+                    "unreadable" to 0.0,
+                ),
             )
         val got = FilesLs.of(reply)!!
         assertEquals("照交来的先后，不另排", listOf("src", "ln", "a.txt", "�"), got.entries.map { it.name })
@@ -48,7 +49,8 @@ class FilesTest {
         assertEquals(listOf("/" to "/", "w" to "/w"), got.crumbs.map { (l, p) -> l to p.shown })
         assertEquals(mapOf("path" to "/w", "limit" to FilesLs.LIMIT), FilesLs.args(RemotePath.of("/w")))
         assertEquals(mapOf("by" to "size"), FilesLs.args(RemotePath.of("/w"), bySize = true)["sort"])
-        assertNull("缺 entries ⇒ 解不出", FilesLs.of(mapOf("truncated" to false)))
+        assertNull("不是带键集合那一形 ⇒ 解不出", FilesLs.of(mapOf("truncated" to false)))
+        assertNull("不是整份（手机不存副本、恒问整份）⇒ 不认", FilesLs.of(reply + ("whole" to false)))
     }
 
     @Test
@@ -72,17 +74,14 @@ class FilesTest {
         ) = mapOf("path" to "/w/$name", "name" to name, "kind" to "file", "gates" to gates)
         val got =
             FilesLs.of(
-                mapOf(
-                    "entries" to
-                        listOf(
-                            gated("a.rs", mapOf("preview" to mapOf("text" to mapOf("cap" to 65_536.0, "lang" to "rs")), "edit" to mapOf("cap" to 8_388_608.0))),
-                            gated("big.log", mapOf("preview" to mapOf("no" to "太大"), "edit" to mapOf("no" to "超编辑上限"))),
-                            gated("p.png", mapOf("preview" to mapOf("image" to 4_194_304.0), "view" to mapOf("cap" to 1.0), "edit" to mapOf("cap" to 8_388_608.0))),
-                            mapOf("path" to "/w/d", "name" to "d", "kind" to "dir"),
-                        ),
-                    "truncated" to false,
-                    "total" to 4.0,
-                    "crumbs" to emptyList<Any>(),
+                lsWhole(
+                    listOf(
+                        gated("a.rs", mapOf("preview" to mapOf("text" to mapOf("cap" to 65_536.0, "lang" to "rs")), "edit" to mapOf("cap" to 8_388_608.0))),
+                        gated("big.log", mapOf("preview" to mapOf("no" to "太大"), "edit" to mapOf("no" to "超编辑上限"))),
+                        gated("p.png", mapOf("preview" to mapOf("image" to 4_194_304.0), "view" to mapOf("cap" to 1.0), "edit" to mapOf("cap" to 8_388_608.0))),
+                        mapOf("path" to "/w/d", "name" to "d", "kind" to "dir"),
+                    ),
+                    mapOf("up" to null, "truncated" to false, "total" to 4.0, "crumbs" to emptyList<Any>()),
                 ),
             )!!
         val e = got.entries

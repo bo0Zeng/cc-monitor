@@ -118,6 +118,8 @@ pub struct TapRx {
     machines: Option<tokio::sync::broadcast::Receiver<()>>,
     /// 这一端连的某台远端的状态成品变了的通道（推一帧 `changed {machine, key: 那台, body: 成品}`）；`None` ＝ 不订。
     machine: Option<tokio::sync::broadcast::Receiver<(String, cmd_wire::machine::MachineState)>>,
+    /// 正被浏览的某个目录有了动静的通道（推一帧 `changed {files_dir, key: 那个目录}`）；`None` ＝ 不订。
+    dirs: Option<tokio::sync::broadcast::Receiver<String>>,
     /// 帧里的小成品怎么现算（生产 ＝ [`crate::wire::topic_hook::body`]；判据自己接的那一形不现算）。
     bodies: crate::wire::topic_hook::Bodies,
     /// 这条连接看的那一台的时区（attach 带来的）：小成品里的时刻字按它写。
@@ -239,6 +241,15 @@ impl TapSource for TapRx {
                     // 落后丢了几件：可丢的通道，客户端下一次变化或重问就补上。
                     Some(None) => {}
                     None => self.needs = None,
+                },
+                moved = item_moved(&mut self.dirs) => match moved {
+                    Some(Some(dir)) => {
+                        let f = self.changed(Topic::FilesDir, Some(dir));
+                        self.out.push_back(f);
+                    }
+                    // 落后丢了几件：可丢的通道，下一次动静或重问就补上。
+                    Some(None) => {}
+                    None => self.dirs = None,
                 }
             }
         }
@@ -259,6 +270,7 @@ pub fn attach(tz: crate::Tz, watch: Option<&[String]>) -> TapRx {
     rx.manual = Some(crate::accounts::sign_in::manual_changes().subscribe());
     rx.machines = Some(crate::control::machines::changes().subscribe());
     rx.machine = Some(crate::control::machine_state::changes().subscribe());
+    rx.dirs = Some(crate::stream::inbound::files_face::dir_changes());
     rx.bodies = crate::wire::topic_hook::body;
     rx.tz = tz;
     rx
@@ -341,6 +353,7 @@ pub(crate) fn attach_rx(hub: Arc<TapHub>) -> TapRx {
         manual: None,
         machines: None,
         machine: None,
+        dirs: None,
         bodies: no_bodies,
         tz: crate::Tz::default(),
     }

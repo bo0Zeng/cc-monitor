@@ -53,6 +53,15 @@ impl WirePath {
     pub fn bytes(&self) -> &[u8] {
         &self.0
     }
+
+    /// 当集合键 · 推送的 `key` 用的那一串（无损、一对一）：是 UTF-8 ⇒ 它本身；不是 ⇒ `\0` ＋ 十六进制小写
+    ///（路径与名字里不会有 `\0`，两形撞不上）。
+    pub fn key(&self) -> String {
+        match std::str::from_utf8(&self.0) {
+            Ok(t) => t.to_string(),
+            Err(_) => format!("\0{}", to_hex(&self.0)),
+        }
+    }
 }
 
 impl From<&[u8]> for WirePath {
@@ -233,7 +242,7 @@ pub enum LinkTo {
 #[serde(deny_unknown_fields)]
 pub struct LsReq {
     pub path: WirePath,
-    /// 至多回几条（缺 · 0 ⇒ 后端默认 1000）。
+    /// 这一份至多几条（缺 · 0 ⇒ 后端默认 1000）：排好之后截，截下的那一份才是集合（[`LsHead::truncated`]）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub limit: Option<u64>,
@@ -245,6 +254,14 @@ pub struct LsReq {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub sort: Option<LsSort>,
+    /// 手上那一份的记号（上一次回包的 `held`，原样交回）：缺 ⇒ 整份。同一问法（目录 · 排法 · 只列文件夹 · 上限）才认。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub held: Option<crate::sync::Held>,
+    /// 只要排好的那一份里的一窗；缺 ⇒ 整份（至多 `limit` 条）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub range: Option<crate::sync::Range>,
 }
 
 /// `files-ls` 按哪一列排：`by` 那一列的第一下（名称 A 在前 · 大小大的在前 · 时间新的在前），`reverse` 只反那一列；
@@ -369,7 +386,7 @@ pub enum Gate {
     No(String),
 }
 
-/// 面包屑的一段：这一段叫什么 · 点它去哪（[`LsReply::crumbs`]）。
+/// 面包屑的一段：这一段叫什么 · 点它去哪（[`LsHead::crumbs`]）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -431,7 +448,11 @@ pub struct LsEntry {
     pub gates: Option<Gates>,
 }
 
-/// `files-ls` 的回包。
+/// `files-ls` 的回包：带键集合那一形（[`crate::sync::Patch`]）。键 ＝ 那一行末段名的 [`WirePath::key`]，
+/// 项 ＝ [`LsEntry`]（`order` 是排好的先后，[`LsReq::sort`]），头 ＝ [`LsHead`]（`total` ＝ 这一份有几项，≤ `limit`）。
+pub type LsReply = crate::sync::Patch<LsHead, LsEntry>;
+
+/// `files-ls` 那一问的头。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -439,16 +460,14 @@ pub struct LsEntry {
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
-pub struct LsReply {
-    /// 排好的（[`LsReq::sort`]）。
-    pub entries: Vec<LsEntry>,
+pub struct LsHead {
     /// 上一级；到顶 ⇒ `null`。
     pub up: Option<WirePath>,
     /// 根到这一级的每一段，根在最前（那台按自己的路径规则切：Windows 的盘符那一段是 `C:\`）。
     pub crumbs: Vec<Crumb>,
-    /// 回送的比读到的少（被 `limit` 截了）。
+    /// 读到的比这一份多（被 `limit` 截了）。
     pub truncated: bool,
-    /// 一共读到几项（含没回送的）。
+    /// 目录里一共读到几项（含被 `limit` 截掉的）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub total: u64,
     /// 有几项读不出来（照数，不静默少一项）。

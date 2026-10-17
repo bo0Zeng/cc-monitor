@@ -199,6 +199,9 @@ pub static NO_LINE: std::sync::LazyLock<String> =
 #[derive(Clone)]
 pub struct Listing {
     pub rows: Arc<Mutex<Vec<Listed>>>,
+    /// 手上那一份（上一次回包的记号 ＋ 排好的那几行，线上那一形）：[`Self::rows`] 由它摊开；重问带它的记号，
+    /// 回来只换变了的那几行。🔴 判号与换它在同一把锁里（[`Self::start_held`] 也拿这把）：先发的那一趟晚到，不会盖到后发那一趟的底上。
+    pub hand: Arc<Mutex<super::source::Shown>>,
     /// 列不出来那一句 ＋ 复制详情（[`super::source::Failed`]：后端拒了 ⇒ 那台写的；通道没走通 ⇒ 窗口写的；这一侧的话 ⇒ 空）。
     pub error: Arc<Mutex<Option<super::source::Failed>>>,
     /// 🔴 **换目录的序号。** 每次 [`FileWindow::navigate_to`] +1。
@@ -236,6 +239,7 @@ impl Default for Listing {
     fn default() -> Self {
         Self {
             rows: Arc::new(Mutex::new(Vec::new())),
+            hand: Arc::new(Mutex::new(Default::default())),
             error: Arc::new(Mutex::new(None)),
             epoch: Arc::new(AtomicU64::new(0)),
             inflight: Arc::new(AtomicU64::new(0)),
@@ -251,19 +255,23 @@ impl Default for Listing {
     }
 }
 
-/// 落一趟**经后端**的列目录（比 [`store_if_current`] 多一格：截断）。
-///
-/// 🔴 与它**刻意是两个函数**：没问成的那几形（无运行时 / 无通道）交不出这一格，
-/// 而给它编一个「不知道」的第三态，只会让「没问过」与「问了没被截断」混在一起。
+/// 落一趟**经后端**的列目录：号对得上 ⇒ 照回包换手上那一份（[`Listing::hand`]）、摊成一屏，连同截断那几格一起落。
+/// 问不成 ⇒ 手上那一份作废（下一趟整份要）。号对不上 ⇒ 整趟丢掉、手上那一份不动。
 pub fn store_listed_if_current(
     l: &Listing,
     mine: u64,
-    r: Result<(Vec<Listed>, super::source::Cut), super::source::Failed>,
+    r: Result<cmd_wire::files::LsReply, super::source::Failed>,
 ) -> bool {
+    // 判号与换手上那一份在同一把锁里（[`Listing::start_held`] 拿同一把）。
+    let mut hand = l.hand.lock().unwrap();
+    if l.epoch.load(Ordering::SeqCst) != mine {
+        drop(hand);
+        return store_if_current(l, mine, Ok(Vec::new()));
+    }
     match r {
-        Ok((rows, cut)) => {
-            // ⚠ 落行那一步会判号并可能整份丢掉，而截断那一格描述的是**同一趟**，
-            //   不许一半落一半不落 ⇒ 只在真落了之后写它。
+        Ok(p) => {
+            hand.apply(p);
+            let (rows, cut) = super::source::screen_of(&hand);
             let kept = store_if_current(l, mine, Ok(rows));
             if kept {
                 l.truncated.store(cut.truncated, Ordering::SeqCst);
@@ -273,7 +281,10 @@ pub fn store_listed_if_current(
             }
             kept
         }
-        Err(e) => store_if_current(l, mine, Err(e)),
+        Err(e) => {
+            *hand = Default::default();
+            store_if_current(l, mine, Err(e))
+        }
     }
 }
 
@@ -337,12 +348,32 @@ impl Listing {
         self.epoch.fetch_add(1, Ordering::SeqCst) + 1
     }
 
+    /// 开一趟带记号的列目录：这一趟的号 ＋ 此刻手上那一份的记号（同一把锁里取：落地那一侧判号与换也在这把锁里）。
+    pub fn start_held(&self) -> (u64, Option<cmd_wire::sync::Held>) {
+        let hand = self.hand.lock().unwrap();
+        (self.start(), hand.held.clone())
+    }
+
+    /// 收下一份已经列好的（开窗前那一屏）：手上那一份换成它、摊成一屏。
+    pub fn adopt(&self, first: super::source::Shown) {
+        let mine = self.start();
+        let (rows, cut) = super::source::screen_of(&first);
+        *self.hand.lock().unwrap() = first;
+        store_if_current(self, mine, Ok(rows));
+        self.truncated.store(cut.truncated, Ordering::SeqCst);
+        self.unreadable.store(cut.unreadable, Ordering::SeqCst);
+        self.total.store(cut.total, Ordering::SeqCst);
+    }
+
     /// 换目录：号 +1（在飞的那些从此全部作废）、内容清空。
     ///
     /// ⚠ **清空是刻意的**：留着上一个目录的行、只改路径栏，是最贵的那种假象
     /// —— 用户会对着 B 的路径删 A 的文件。
     pub fn invalidate(&self) {
+        let mut hand = self.hand.lock().unwrap();
         self.epoch.fetch_add(1, Ordering::SeqCst);
+        *hand = Default::default();
+        drop(hand);
         self.rows.lock().unwrap().clear();
         self.hidden.lock().unwrap().clear();
         *self.error.lock().unwrap() = None;
@@ -820,15 +851,16 @@ impl FileWindow {
         }
     }
 
-    /// 重新列一次当前目录。**本机同步做完；远端扔给 tokio，不堵住 UI 线程。**
+    /// 带着手上那一份的记号重问当前目录（那台答没变 / 变了的那几行 / 整份）。**远端扔给 tokio，不堵住 UI 线程。**
     pub fn reload(&self) {
         // 和那台断着、手上摆着上一屏 ⇒ 不去问（问了只会把那一屏换成一句「断开」）：列表进过期态、照常摆着，
-        //   连上之后窗口那一级把每个标签页重列一遍（`Workspace::settle_link`）。
+        //   连上之后窗口那一级让每个标签页带着记号重问一遍（`Workspace::settle_link`）。
         if self.link.offline() && !self.listing.rows.lock().unwrap().is_empty() {
             return;
         }
         let l = self.listing.clone();
-        let mine = l.start();
+        // 带着手上那一份的记号问：那台答「没变 / 变了的那几行 / 整份」（重连那一下、外面动了那一下都走这里）。
+        let (mine, held) = l.start_held();
         // 〔有损名全寻址〕发出去的是线上那一形（有损目录 ⇒ `{"b16": …}`）。
         let cwd = self.cwd_path().path();
         // 🔴**先问后端，问不到才退回旧路** ——
@@ -852,6 +884,7 @@ impl FileWindow {
                         cwd,
                         super::source::LS_LIMIT,
                         by,
+                        held,
                     )
                     .await;
                     // 打不开（后端说是哪一种）⇒ 记下那一种，列表顶上画那一条 ＋ 出路。
@@ -1283,10 +1316,8 @@ impl FileWindow {
         let mine = self.search.start();
         let board = self.search.clone();
         let origin = self.source.origin();
-        // 有损目录里也搜：范围与浏览名单按字节发。
-        let cwd = self.cwd_path();
         h.spawn(async move {
-            find::run_search_at(board, line, origin, cwd, asked, mine, force_rebuild).await;
+            find::run_search_at(board, line, origin, asked, mine, force_rebuild).await;
         });
         true
     }
@@ -5265,7 +5296,7 @@ pub fn open_detached(
         cwd,
         rt,
         None,
-        Vec::new(),
+        super::source::Shown::default(),
         None,
         None,
         None,
@@ -5294,7 +5325,8 @@ pub fn open_detached_seeded(
     rt: Option<tokio::runtime::Handle>,
     // 🔴通道（`None` = 判据那一形：不连后端）。
     line: Option<Line>,
-    rows: Vec<Listed>,
+    // 已经列好的那一屏（手上那一份：记号 ＋ 行；之后的重问带着它的记号）。
+    first: super::source::Shown,
     // 🔴`reveal` = 开窗就高亮这一行（`None` = 不高亮）。
     //    那是老面板 `open(revealPath)` 那一形（会话工具卡 → 文件跳转）。
     reveal: Option<String>,
@@ -5326,7 +5358,8 @@ pub fn open_detached_seeded(
             &title,
             opts,
             Box::new(move |cc| {
-                let mut w = FileWindow::seeded(source, cwd, rt, rows);
+                let mut w = FileWindow::seeded(source, cwd, rt, Vec::<Listed>::new());
+                w.listing.adopt(first);
                 if let Some(line) = line {
                     w.attach_line(line);
                 }

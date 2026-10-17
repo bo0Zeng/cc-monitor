@@ -978,10 +978,10 @@ data class Gate(
     val no: String?,
 )
 
-@WireOf("LsReply")
+/** `files-ls` 那一问的头（回包本身是 [SyncPatch]：行在 `up`、先后在 `order`，这一格在 `head.info`）。 */
+@WireOf("LsHead")
 @JsonClass(generateAdapter = true)
-data class LsReply(
-    val entries: List<LsEntry>,
+data class LsHead(
     val up: Any?,
     val crumbs: List<Crumb>,
     val truncated: Boolean,

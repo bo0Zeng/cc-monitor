@@ -29,6 +29,11 @@ pub(crate) fn in_process<A: crate::files::Ask>(
         .map_err(|f| crate::common::door::said_of(f.code, &f.said))
 }
 
+/// 正被浏览的目录有了动静的通道（流的 tap 订它推 `changed {files_dir}`）：经这一扇门交出去，tap 不伸进文件管理那一块。
+pub(crate) fn dir_changes() -> tokio::sync::broadcast::Receiver<String> {
+    crate::files::dir_changes()
+}
+
 codes! {
     /// `files-ls` 的码。
     pub(crate) enum FilesLsErr {

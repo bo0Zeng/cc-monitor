@@ -430,6 +430,20 @@ fn every_declared_arg_is_really_read_by_the_parser() {
             serde_json::json!({ "path": p(&sub), "dirs_only": false }),
             serde_json::json!({ "path": p(&sub), "dirs_only": true }),
         ),
+        // 记号：带上一次的记号再问 ⇒ 没变（整份 vs `same`）。
+        (
+            "files.ls",
+            "held",
+            serde_json::json!({ "path": p(&sub) }),
+            serde_json::json!({ "path": p(&sub), "held": held_of(&sub) }),
+        ),
+        // 一窗：只要第一项 ⇒ 少了后面那几项。
+        (
+            "files.ls",
+            "range",
+            serde_json::json!({ "path": p(&sub) }),
+            serde_json::json!({ "path": p(&sub), "range": {"from": 0, "limit": 1} }),
+        ),
         // 排序：同一个目录正着排与反着排，那一屏的先后必然不同。
         (
             "files.ls",
@@ -628,8 +642,9 @@ fn every_declared_arg_is_really_read_by_the_parser() {
     // 21 → 24（`files.find` 的 `sort` · `desc` · `scope` 三对）。
     // 24 → 25（`files.ls` 的 `dirs_only` 一对）。
     // 25 → 26（`files.ls` 的 `sort` 一对）。
+    // 26 → 28（`files.ls` 的 `held` · `range` 两对）。
     assert_eq!(
-        checked, 26,
+        checked, 28,
         "行使的探针对数变了 —— 本条的射程跟着变了，先查探针表"
     );
     std::fs::remove_dir_all(&text_dir).ok();
@@ -827,10 +842,7 @@ fn the_kind_names_are_a_closed_set_with_one_home() {
         &Default::default(),
     )
     .expect("ls 不该失败");
-    let rows = v
-        .get("entries")
-        .and_then(|e| e.as_array())
-        .expect("entries 该是数组");
+    let rows = ls_rows(&v);
     assert_eq!(rows.len(), 1, "夹具根下只有一个子目录");
     let kind = rows[0]
         .get("kind")
@@ -1253,9 +1265,7 @@ fn ls_says_which_symlinks_point_at_directories() {
         &Default::default(),
     )
     .expect("ls 不该失败");
-    let mut got: Vec<(String, String, Option<bool>)> = v["entries"]
-        .as_array()
-        .expect("entries 该是数组")
+    let mut got: Vec<(String, String, Option<bool>)> = ls_rows(&v)
         .iter()
         .map(|e| {
             let name = e["path"]
@@ -1309,7 +1319,7 @@ fn a_directory_entry_that_cannot_be_read_is_counted_not_skipped() {
         &Default::default(),
     )
     .unwrap();
-    assert_eq!(v["unreadable"], serde_json::json!(0));
+    assert_eq!(v["head"]["info"]["unreadable"], serde_json::json!(0));
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -1327,7 +1337,7 @@ fn ls_and_stat_carry_mtime_texts_written_by_this_machine() {
         &Default::default(),
     )
     .expect("ls");
-    let e = &ls["entries"][0];
+    let e = &ls_rows(&ls)[0];
     let t = e["mtime_secs"].as_u64().expect("这一项有修改时间");
     let (short, full) = crate::common::time::mtime_texts_now(t, &crate::Tz::default());
     assert_eq!(
@@ -1367,9 +1377,7 @@ fn ls_orders_names_and_crumbs_on_the_backend() {
         answer("files.ls", &args, &Default::default()).expect("ls 不该失败")
     };
     let names = |v: &serde_json::Value| -> Vec<String> {
-        v["entries"]
-            .as_array()
-            .unwrap()
+        ls_rows(v)
             .iter()
             .map(|e| e["name"].as_str().unwrap().to_string())
             .collect()
@@ -1398,18 +1406,23 @@ fn ls_orders_names_and_crumbs_on_the_backend() {
         "截在排好之后"
     );
     assert_eq!(
-        (cut["truncated"].as_bool(), cut["total"].as_u64()),
-        (Some(true), Some(6))
+        (
+            cut["head"]["info"]["truncated"].as_bool(),
+            cut["head"]["info"]["total"].as_u64(),
+            cut["head"]["total"].as_u64()
+        ),
+        (Some(true), Some(6), Some(4)),
+        "目录里读到六项、这一份截成四项"
     );
     // 上一级与各段。
     let here = d.to_string_lossy().into_owned();
     assert_eq!(
-        by_name["up"].as_str(),
+        by_name["head"]["info"]["up"].as_str(),
         d.parent()
             .map(|p| p.to_string_lossy().into_owned())
             .as_deref()
     );
-    let crumbs: Vec<(String, String)> = by_name["crumbs"]
+    let crumbs: Vec<(String, String)> = by_name["head"]["info"]["crumbs"]
         .as_array()
         .unwrap()
         .iter()
@@ -1437,6 +1450,148 @@ fn ls_orders_names_and_crumbs_on_the_backend() {
         &Default::default(),
     )
     .unwrap();
-    assert_eq!(root["up"], serde_json::Value::Null, "到顶没有上一级");
+    assert_eq!(
+        root["head"]["info"]["up"],
+        serde_json::Value::Null,
+        "到顶没有上一级"
+    );
     std::fs::remove_dir_all(&d).ok();
+}
+
+/// 一份不带记号的 `files-ls` 回包（整份）照 `order` 摊开的那几行。
+fn ls_rows(v: &serde_json::Value) -> Vec<serde_json::Value> {
+    assert_eq!(
+        v["whole"],
+        serde_json::json!(true),
+        "不带记号问该回整份：{v}"
+    );
+    v["order"]
+        .as_array()
+        .expect("整份带先后")
+        .iter()
+        .map(|k| v["up"][k.as_str().unwrap()].clone())
+        .collect()
+}
+
+/// 带着上一次的记号再问同一个目录（同一种问法）。
+fn ls_again(
+    d: &std::path::Path,
+    extra: serde_json::Value,
+    held: &serde_json::Value,
+) -> serde_json::Value {
+    let mut args = serde_json::json!({ "path": path_json(d), "held": held });
+    args.as_object_mut()
+        .unwrap()
+        .extend(extra.as_object().unwrap().clone());
+    answer("files.ls", &args, &Default::default()).expect("ls 不该失败")
+}
+
+fn up_keys(v: &serde_json::Value) -> Vec<String> {
+    v["up"].as_object().unwrap().keys().cloned().collect()
+}
+
+/// 目录列表带记号问：同一目录再问 ⇒ `same`；外面新建一个文件 ⇒ `up` 只那一行、带新的先后；
+/// 改一个文件的大小 ⇒ `up` 只那一行、按名称排时先后没变不带 `order`；换排法 ⇒ 整份。键是末段名。
+#[test]
+fn ls_answers_what_changed_since_the_held_one() {
+    let d = f7a_dir("ls-held");
+    std::fs::write(d.join("a.txt"), b"1").unwrap();
+    std::fs::write(d.join("c.txt"), b"1").unwrap();
+    let first = answer(
+        "files.ls",
+        &serde_json::json!({ "path": path_json(&d) }),
+        &Default::default(),
+    )
+    .unwrap();
+    assert_eq!(first["order"], serde_json::json!(["a.txt", "c.txt"]));
+
+    let again = ls_again(&d, serde_json::json!({}), &first["held"]);
+    assert_eq!(
+        (
+            &again["same"],
+            &again["whole"],
+            &again["order"],
+            &again["head"]
+        ),
+        (
+            &serde_json::json!(true),
+            &serde_json::json!(false),
+            &serde_json::Value::Null,
+            &serde_json::Value::Null
+        ),
+        "什么都没动 ⇒ 没变：{again}"
+    );
+    assert!(up_keys(&again).is_empty());
+
+    std::fs::write(d.join("b.txt"), b"1").unwrap();
+    let added = ls_again(&d, serde_json::json!({}), &again["held"]);
+    assert_eq!(up_keys(&added), ["b.txt"], "新建一个 ⇒ 只给那一行：{added}");
+    assert_eq!(
+        added["order"],
+        serde_json::json!(["a.txt", "b.txt", "c.txt"])
+    );
+    assert_eq!(added["whole"], serde_json::json!(false));
+    assert_eq!(
+        added["head"]["total"],
+        serde_json::json!(3),
+        "项数变了 ⇒ 头带上"
+    );
+
+    std::fs::write(d.join("c.txt"), b"longer").unwrap();
+    let grown = ls_again(&d, serde_json::json!({}), &added["held"]);
+    assert_eq!(up_keys(&grown), ["c.txt"], "改了大小 ⇒ 只给那一行：{grown}");
+    assert_eq!(
+        grown["order"],
+        serde_json::Value::Null,
+        "按名称排、先后没变 ⇒ 不带"
+    );
+    assert_eq!(grown["up"]["c.txt"]["size"], serde_json::json!(6));
+
+    let by_size = ls_again(
+        &d,
+        serde_json::json!({"sort": {"by": "size"}}),
+        &grown["held"],
+    );
+    assert_eq!(
+        by_size["whole"],
+        serde_json::json!(true),
+        "换了排法 ⇒ 整份：{by_size}"
+    );
+    assert_eq!(
+        by_size["order"],
+        serde_json::json!(["c.txt", "a.txt", "b.txt"])
+    );
+    std::fs::remove_dir_all(&d).ok();
+}
+
+/// 名字不是 UTF-8 的那一行键是 `\0` ＋ 十六进制（与 UTF-8 的名字撞不上），行里照旧带原字节。
+#[cfg(unix)]
+#[test]
+fn a_non_utf8_name_keys_its_row_losslessly() {
+    use std::os::unix::ffi::OsStrExt;
+    let d = f7a_dir("ls-key");
+    std::fs::write(d.join(std::ffi::OsStr::from_bytes(b"x\xff")), b"").unwrap();
+    let v = answer(
+        "files.ls",
+        &serde_json::json!({ "path": path_json(&d) }),
+        &Default::default(),
+    )
+    .unwrap();
+    assert_eq!(v["order"], serde_json::json!(["\u{0}78ff"]));
+    assert_eq!(
+        v["up"]["\u{0}78ff"]["name"],
+        serde_json::json!({"b16": "78ff"})
+    );
+    std::fs::remove_dir_all(&d).ok();
+}
+
+/// 不带记号问一次那个目录，交回它的记号（探针那一条拿它带着再问）。
+fn held_of(d: &std::path::Path) -> serde_json::Value {
+    answer(
+        "files.ls",
+        &serde_json::json!({ "path": d.to_string_lossy() }),
+        &Default::default(),
+    )
+    .expect("ls")["held"]
+        .clone()
 }

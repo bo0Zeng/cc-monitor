@@ -423,6 +423,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 - `machines` —— 这一端的机器表（`machines.json` 被改写；重问 `machines-read`）
 - `machine` —— 这一端连的某台远端此刻的状态（`key` ＝ 那台的名字；`body` ＝ 那台的成品 `MachineState`；丢了重问 `machine-read`）
 - `session_hidden` —— 这台某个活会话隐不隐藏变了（`key` ＝ sid；`body` ＝ `{hidden}`：那一格，不隐藏 ⇒ `null`）：注解 · 这台偏好 · 会话血缘动了之后判出来的
+- `files_dir` —— 这台某个正被浏览的目录里有了动静（`key` ＝ 那个目录的 `WirePath::key`；名单由 `files-browse` 交）：正开着那个目录的那一屏带着手上的记号重问 `files-ls`，只拿变了的那几行
 
 #### `RereadWhy`
 
@@ -1755,7 +1756,7 @@ type WirePath = string | { b16: string };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-ls`
 
-入参 `LsReq` · 回包 `LsReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `LsReq` · 回包 `SyncPatch<LsHead, LsEntry>`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
 type Crumb = { name: WirePath, path: WirePath, };
@@ -1805,11 +1806,7 @@ type_text: string,
  * 读得起来的那几道门；目录（含指向目录的链接）缺。
  */
 gates?: Gates, };
-type LsReply = { 
-/**
- * 排好的（[`LsReq::sort`]）。
- */
-entries: Array<LsEntry>, 
+type LsHead = { 
 /**
  * 上一级；到顶 ⇒ `null`。
  */
@@ -1819,11 +1816,11 @@ up: WirePath | null,
  */
 crumbs: Array<Crumb>, 
 /**
- * 回送的比读到的少（被 `limit` 截了）。
+ * 读到的比这一份多（被 `limit` 截了）。
  */
 truncated: boolean, 
 /**
- * 一共读到几项（含没回送的）。
+ * 目录里一共读到几项（含被 `limit` 截掉的）。
  */
 total: number, 
 /**
@@ -1832,7 +1829,7 @@ total: number,
 unreadable: number, };
 type LsReq = { path: WirePath, 
 /**
- * 至多回几条（缺 · 0 ⇒ 后端默认 1000）。
+ * 这一份至多几条（缺 · 0 ⇒ 后端默认 1000）：排好之后截，截下的那一份才是集合（[`LsHead::truncated`]）。
  */
 limit?: number, 
 /**
@@ -1842,10 +1839,22 @@ dirs_only?: boolean,
 /**
  * 按哪一列排（缺 ⇒ 名称）。目录（含指向目录的链接）恒在前；截断在排好之后。
  */
-sort?: LsSort, };
+sort?: LsSort, 
+/**
+ * 手上那一份的记号（上一次回包的 `held`，原样交回）：缺 ⇒ 整份。同一问法（目录 · 排法 · 只列文件夹 · 上限）才认。
+ */
+held?: SyncHeld, 
+/**
+ * 只要排好的那一份里的一窗；缺 ⇒ 整份（至多 `limit` 条）。
+ */
+range?: SyncRange, };
 type LsSort = { by: LsSortBy, reverse?: boolean, };
 type LsSortBy = "name" | "size" | "mtime" | "type";
 type PreviewGate = { "text": TextPreview } | { "image": number } | { "no": string };
+type SyncHead<H> = { total: number, info: H, };
+type SyncHeld = string;
+type SyncPatch<H, T> = { held: SyncHeld, whole: boolean, same: boolean, order: Array<string> | null, up: { [key in string]: T }, head: SyncHead<H> | null, };
+type SyncRange = { from: number, limit: number, };
 type TextPreview = { cap: number, lang?: string, };
 type WirePath = string | { b16: string };
 ```

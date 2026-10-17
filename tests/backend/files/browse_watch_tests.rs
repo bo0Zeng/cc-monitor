@@ -339,3 +339,22 @@ fn files_browse_keeps_a_live_watcher_that_follows_the_list() {
     .expect("空名单被拒");
     assert_eq!(v["watching"].as_u64(), Some(0), "空名单之后还挂着：{v}");
 }
+
+/// 名单上的目录有了动静、重列过 ⇒ 说一声那个目录（[`dir_changes`]，推 `changed {files_dir}` 的那一头订它）；
+/// 不在名单上的 ⇒ 不说。
+#[test]
+fn a_change_in_a_watched_directory_is_announced_by_its_key() {
+    let _lock = resident_lock();
+    let fx = make_tree("watchsay", 2, 1, 0);
+    let a = fx.root.join("d0000");
+    let b = fx.root.join("d0001");
+    set_browsing(std::slice::from_ref(&a));
+    let mut rx = dir_changes().subscribe();
+    let bytes = |p: &std::path::Path| super::super::raw::path_bytes(p).to_vec();
+    assert!(!on_change(&bytes(&b)), "不在名单上的目录被当成了在看的");
+    assert!(on_change(&bytes(&a)));
+    let key = cmd_wire::files::WirePath(bytes(&a)).key();
+    assert_eq!(rx.try_recv().ok(), Some(key), "重列过却没说一声");
+    assert!(rx.try_recv().is_err(), "不在名单上的那一下也说了");
+    set_browsing(&[]);
+}

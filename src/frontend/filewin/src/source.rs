@@ -622,7 +622,7 @@ pub const CMD_LS: &str = "files-ls";
 /// | `class` | `class` | 原样（画哪种图标） |
 /// | `type_text` | `type_text` | 原样（「类型」那一列） |
 /// | `gates`（目录缺） | `gates` | 原样（预览 · 看图 · 编辑许不许、许多少） |
-/// | `entries` | 那一屏有几行 | 由 [`rows_from_ls_data`] 摊开（后端排好的先后） |
+/// | `order` · `up` | 那一屏有几行 | 照回包换进手上那一份（[`Shown`]），由 [`screen_of`] 照先后摊开 |
 /// | `truncated` | 界面上那句「只拿到了前 N 条」 | 同上 |
 /// | `unreadable` | 界面上那句「有 n 项读不出来」 | 同上；缺 ⇒ 0 |
 ///
@@ -673,7 +673,21 @@ pub struct Cut {
     pub total: u64,
 }
 
-/// 问**那台机器上的后端**要一个目录。
+/// 一个标签页手上那一份目录：上一次回包的记号 ＋ 排好的那几行（线上那一形，[`cmd_wire::sync::Hand`]）。
+/// 不带记号问 ⇒ 整份；带着它问 ⇒ 没变 / 只给变了的那几行（判在那台后端，这里只照回包机械地换）。
+pub type Shown = cmd_wire::sync::Hand<cmd_wire::files::LsHead, cmd_wire::files::LsEntry>;
+
+/// 手上那一份 → **一屏**（后端排好的先后照摆）＋ 截断那几格（头还没到过 ⇒ 全是 0）。
+pub fn screen_of(h: &Shown) -> (Vec<Listed>, Cut) {
+    let cut = h.head.as_ref().map_or_else(Cut::default, |hd| Cut {
+        truncated: hd.info.truncated,
+        unreadable: hd.info.unreadable,
+        total: hd.info.total,
+    });
+    (h.in_order().map(row_from_ls_entry).collect(), cut)
+}
+
+/// 问**那台机器上的后端**要一个目录（整份：不带记号）。
 ///
 /// 回 `(行, 被截断了吗 · 有几项读不出来)`。⚠ 截断要**画出来** —— 「目录里就这么多」与
 /// 「后端截断了」在屏幕上长得一样，而那正是本仓的头号病形。
@@ -686,33 +700,40 @@ pub async fn list_via_backend(
     limit: usize,
     sort: Sort,
 ) -> Result<(Vec<Listed>, Cut), String> {
-    list_via_backend_at(
+    let mut h = Shown::default();
+    let p = list_via_backend_at(
         line,
         origin,
         cmd_wire::files::WirePath::from(dir),
         limit,
         sort,
+        None,
     )
     .await
-    .map_err(|f| f.said)
+    .map_err(|f| f.said)?;
+    h.apply(p);
+    Ok(screen_of(&h))
 }
 
-/// 〔有损名全寻址〕同 [`list_via_backend`]，目录按字节给（[`RemotePath::path`]）。按 `LsReq` 发、按 `LsReply` 解。
+/// 〔有损名全寻址〕问一个目录，目录按字节给（[`RemotePath::path`]），带着手上那一份的记号（`None` ⇒ 整份）。
+/// 按 `LsReq` 发、按回包类型解；回包交调用方照它换手上那一份（[`Shown::apply`]）。
 pub async fn list_via_backend_at(
     line: &Line,
     origin: &Origin,
     dir: cmd_wire::files::WirePath,
     limit: usize,
     sort: Sort,
-) -> Result<(Vec<Listed>, Cut), Failed> {
+    held: Option<cmd_wire::sync::Held>,
+) -> Result<cmd_wire::files::LsReply, Failed> {
     let req = cmd_wire::files::LsReq {
         path: dir,
         limit: Some(limit as u64),
         dirs_only: None,
         sort: Some(sort),
+        held,
+        range: None,
     };
-    let r = ask_typed(line, origin, &req, std::time::Duration::from_secs(20)).await?;
-    Ok(rows_from_ls_data(r))
+    ask_typed(line, origin, &req, std::time::Duration::from_secs(20)).await
 }
 
 /// 目录打不开的那几种（后端的码；界面按它说一句、给出路）。
@@ -737,19 +758,6 @@ impl OpenFail {
     }
 }
 
-/// 一趟 `files-ls` 的回包 → **一屏**（后端排好的先后照摆）＋ 截断那几格。
-/// 解不出一行 ⇒ 整趟失败（悄悄跳过 ⇒ 目录里少一个文件，屏幕上没有任何提示）：那一步在按回包类型解（[`ask_typed`]）。
-pub fn rows_from_ls_data(d: cmd_wire::files::LsReply) -> (Vec<Listed>, Cut) {
-    (
-        d.entries.iter().map(row_from_ls_entry).collect(),
-        Cut {
-            truncated: d.truncated,
-            unreadable: d.unreadable,
-            total: d.total,
-        },
-    )
-}
-
 /// 一屏最多要多少行。
 ///
 /// ⚠ 后端那侧有自己的默认值（`files/mod.rs::DEFAULT_LIMIT`）；这里**显式给**，
@@ -760,14 +768,26 @@ pub const LS_LIMIT: usize = 50_000;
 
 /// 列一个目录 —— **只问后端**（`D11`：没有退路）。
 ///
-/// 回 `(行, 截断了吗)`。问不到 ⇒ 那句原话（[`comms_inward::chan::said::said`] 翻过的）原样交出去。
+/// 回手上那一份（整份，带着记号：开窗之后头一次重问就只拿变了的那几行）。问不到 ⇒ 那句原话（[`comms_inward::chan::said::said`] 翻过的）原样交出去。
 pub async fn list_dir(
     line: &Line,
     source: &Source,
     dir: &str,
     sort: Sort,
-) -> Result<(Vec<Listed>, Cut), String> {
-    list_via_backend(line, &source.origin(), dir, LS_LIMIT, sort).await
+) -> Result<Shown, String> {
+    let mut h = Shown::default();
+    let p = list_via_backend_at(
+        line,
+        &source.origin(),
+        cmd_wire::files::WirePath::from(dir),
+        LS_LIMIT,
+        sort,
+        None,
+    )
+    .await
+    .map_err(|f| f.said)?;
+    h.apply(p);
+    Ok(h)
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1298,6 +1318,103 @@ pub async fn watch_plan(line: &Line, origin: &Origin, mut on: impl FnMut()) {
             Item::Closed { .. } => return,
         }
         sub.want(1);
+    }
+}
+
+/// 那台正被浏览的目录有了动静那条流：后端的 `changed` 帧、主题 `files_dir`（monitor 按主题原样扇出；格体 `{key}`）。
+pub const DIR_CHANGED_KIND: &str = "changed/files_dir";
+
+/// 那台哪几个目录动过（整扇窗一份；[`DIR_CHANGED_KIND`] 那条流写进来，窗口每帧取走一次）。
+#[derive(Clone, Default)]
+pub struct DirWatch(std::sync::Arc<std::sync::Mutex<DirWatchInner>>);
+
+#[derive(Default)]
+struct DirWatchInner {
+    moved: Moved,
+    /// 已经起了那条订阅。
+    watching: bool,
+}
+
+/// 上次取走之后动过的那几个目录（[`cmd_wire::files::WirePath::key`]）；`all` ＝ 丢过几格、说不清是哪几个。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Moved {
+    pub dirs: std::collections::BTreeSet<String>,
+    pub all: bool,
+}
+
+impl Moved {
+    /// 这个目录要不要重问。
+    pub fn has(&self, dir: &RemotePath) -> bool {
+        self.all || self.dirs.contains(&dir.path().key())
+    }
+}
+
+impl DirWatch {
+    fn lock(&self) -> std::sync::MutexGuard<'_, DirWatchInner> {
+        match self.0.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        }
+    }
+
+    /// 流上来一格：带 `key` ⇒ 记那个目录；不带 · 丢过几格（`None`）⇒ 说不清是哪几个。
+    pub fn note(&self, key: Option<String>) {
+        let mut g = self.lock();
+        match key {
+            Some(k) => {
+                g.moved.dirs.insert(k);
+            }
+            None => g.moved.all = true,
+        }
+    }
+
+    /// 取走攒下的那几个（取完清空）。
+    pub fn take(&self) -> Moved {
+        std::mem::take(&mut self.lock().moved)
+    }
+
+    /// 起那条订阅（整扇窗一次；流关了就停）。
+    pub fn watch(
+        &self,
+        rt: &tokio::runtime::Handle,
+        line: Line,
+        origin: Origin,
+        ctx: Option<egui::Context>,
+    ) {
+        {
+            let mut g = self.lock();
+            if g.watching {
+                return;
+            }
+            g.watching = true;
+        }
+        let me = self.clone();
+        rt.spawn(async move {
+            use comms_inward::chan::wire::{Comms, Item, Kind, Sub};
+            use futures::StreamExt as _;
+            let mut sub = line.subscribe(
+                &origin,
+                &Kind(DIR_CHANGED_KIND.to_string()),
+                None,
+                WATCH_CREDIT,
+            );
+            while let Some(item) = sub.next().await {
+                match item {
+                    Item::Frame { body, .. } => me.note(
+                        serde_json::from_slice::<serde_json::Value>(&body.0)
+                            .ok()
+                            .and_then(|v| v.get("key")?.as_str().map(str::to_string)),
+                    ),
+                    Item::Gap { .. } => me.note(None),
+                    Item::Seen { .. } | Item::Unseen { .. } => {}
+                    Item::Closed { .. } => return,
+                }
+                if let Some(c) = &ctx {
+                    c.request_repaint();
+                }
+                sub.want(1);
+            }
+        });
     }
 }
 

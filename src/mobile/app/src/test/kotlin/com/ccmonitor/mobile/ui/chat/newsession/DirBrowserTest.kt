@@ -13,18 +13,22 @@ import org.junit.Test
 /** 浏览屏：只列文件夹（files-ls dirs_only）；点 ＝ 进去，↑ ＝ 上一级，长按 ＝ 选中它；「选这个目录」选的是选中的那个、没有就是这一层。 */
 @OptIn(ExperimentalCoroutinesApi::class)
 class DirBrowserTest {
-    /** 那台答的一层：`up` 是它给的上一级（替身照路径切，手机不切）。 */
+    /** 那台答的一层（整份，带键集合那一形）：`up` 是它给的上一级（替身照路径切，手机不切）。 */
     private fun dirs(
         up: String?,
         vararg p: String,
-    ) = mapOf(
-        "entries" to p.map { mapOf("path" to it, "name" to it.substringAfterLast('/'), "kind" to "dir") },
-        "up" to up,
-        "crumbs" to emptyList<Any>(),
-        "truncated" to false,
-        "total" to p.size.toDouble(),
-        "unreadable" to 0.0,
-    )
+    ): Map<String, Any?> {
+        val keys = p.map { it.substringAfterLast('/') }
+        val info = mapOf("up" to up, "crumbs" to emptyList<Any>(), "truncated" to false, "total" to p.size.toDouble(), "unreadable" to 0.0)
+        return mapOf(
+            "held" to "h1",
+            "whole" to true,
+            "same" to false,
+            "order" to keys,
+            "up" to keys.zip(p.map { mapOf("path" to it, "name" to it.substringAfterLast('/'), "kind" to "dir") }).toMap(),
+            "head" to mapOf("total" to p.size.toDouble(), "info" to info),
+        )
+    }
 
     private fun link() =
         FakeCoreLink().also { l ->

@@ -67,4 +67,4 @@ pub(crate) mod time;
 pub(crate) mod tmux_utf8;
 /// 带键集合的「没变 / 只给变了的 / 整份」（每种问法一份备忘）。① 会话列表（history）与目录列表（files）都答这一形 · ② 序列化 ＋ 摘要 ·
 /// ③ 只认「排好的一串键 ＋ 成品」，不认那是会话还是文件。
-pub mod views;
+pub(crate) mod views;

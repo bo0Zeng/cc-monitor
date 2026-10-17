@@ -2,6 +2,6 @@
 import type { WirePath } from "./WirePath";
 
 /**
- * 面包屑的一段：这一段叫什么 · 点它去哪（[`LsReply::crumbs`]）。
+ * 面包屑的一段：这一段叫什么 · 点它去哪（[`LsHead::crumbs`]）。
  */
 export type Crumb = { name: WirePath, path: WirePath, };

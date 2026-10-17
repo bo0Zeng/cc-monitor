@@ -561,7 +561,7 @@ fn xvfb_worker_opens_a_real_window() {
         cwd.clone(),
         None,
         None,
-        rows.iter().cloned().map(Into::into).collect(),
+        crate::find::testing::shown_of(&rows),
         None,
         None,
         None,
@@ -665,7 +665,7 @@ fn xvfb_worker_opens_with_no_x_server_at_all() {
         "/srv/xvfb-nodisp".to_string(),
         None,
         None,
-        vec![file_row("f.txt").into()],
+        crate::find::testing::shown_of(&[file_row("f.txt")]),
         None,
         None,
         None,
@@ -2874,15 +2874,11 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
         serde_json::json!({ "root": b16(b"/srv/d\xff"), "items": [{ "rel": b16(b"f\xfe") }] })
     );
     // 有损目录里上传 / 搜索 / 开终端都按字节做（此前 W5-FILES 出声拒）。
-    // 搜索（当前目录以下）：范围、浏览名单与重走的根按字节上线。
+    // 搜索（当前目录以下）：范围与重走的根按字节上线（浏览名单由窗口那一级交，`Workspace::settle_dirs`）。
     w.set_search_whole(false);
     assert!(w.fire_search(None, true), "有损目录里搜索没起来");
     wait_for(&wired, "files-index-rebuild", 1).await;
     assert_eq!(last_args(&wired, "files-find")["under"], b16(b"/srv/d\xff"));
-    assert_eq!(
-        last_args(&wired, "files-browse")["dirs"],
-        serde_json::json!([b16(b"/srv/d\xff")])
-    );
     assert_eq!(
         last_args(&wired, "files-index-rebuild")["path"],
         b16(b"/srv/d\xff")
@@ -3166,12 +3162,15 @@ fn a_listing_that_lands_after_the_sort_changed_is_dropped() {
     let mut w = remote_window_with_rows("/srv/data", Vec::new());
     let mine = w.listing.start();
     assert!(w.click_header(crate::source::SortBy::Size));
-    let landed = vec![Listed::plain(file_row("a")), Listed::plain(file_row("b"))];
+    let landed = [file_row("a"), file_row("b")];
     assert!(
         !store_listed_if_current(
             &w.listing,
             mine,
-            Ok((landed, crate::source::Cut::default()))
+            Ok(crate::find::testing::reply_of_rows(
+                &landed,
+                crate::find::testing::plain_head(2)
+            ))
         ),
         "出发时那一档的那一屏落了地"
     );
@@ -3361,12 +3360,12 @@ fn entries_that_could_not_be_read_are_said() {
     assert!(store_listed_if_current(
         &w.listing,
         mine,
-        Ok((
-            vec![Listed::plain(file_row("a.txt"))],
-            crate::source::Cut {
-                truncated: false,
+        Ok(crate::find::testing::reply_of_rows(
+            &[file_row("a.txt")],
+            cmd_wire::files::LsHead {
                 unreadable: 3,
                 total: 4,
+                ..crate::find::testing::plain_head(1)
             },
         )),
     ));
@@ -3740,4 +3739,58 @@ fn a_group_that_fully_succeeds_says_so_in_a_toast() {
     });
     assert!(w.settle_finished_drops());
     assert_eq!(w.receipt, None, "上传有失败的也出了回执");
+}
+
+/// 带记号的那一趟落地：照回包换手上那一份 —— 只盖变了的那几行、按新的先后摆，没变的那几行留着；
+/// 下一趟带的是这一份的记号；问不成 ⇒ 手上那一份作废（下一趟不带记号、整份要）。
+#[test]
+fn a_held_listing_lands_only_what_changed_and_the_next_ask_carries_its_held() {
+    use crate::find::testing::{plain_head, reply_of_rows};
+    let l = Listing::default();
+    let (mine, held) = l.start_held();
+    assert_eq!(held, None, "还没列过就带了记号");
+    assert!(store_listed_if_current(
+        &l,
+        mine,
+        Ok(reply_of_rows(
+            &[file_row("a"), file_row("c")],
+            plain_head(2)
+        ))
+    ));
+    // 外面新建了 b：那台只给 b 那一行 ＋ 新的先后（头没变不带）。
+    let mut b = reply_of_rows(&[file_row("b")], plain_head(3));
+    b.held = cmd_wire::sync::Held("h2".to_string());
+    b.whole = false;
+    b.order = Some(vec!["a".into(), "b".into(), "c".into()]);
+    b.head = None;
+    let (mine, held) = l.start_held();
+    assert_eq!(
+        held,
+        Some(cmd_wire::sync::Held("h1".to_string())),
+        "重问没带上一趟的记号"
+    );
+    assert!(store_listed_if_current(&l, mine, Ok(b)));
+    assert_eq!(names_of(&l.rows.lock().unwrap()), ["a", "b", "c"]);
+    assert_eq!(l.total.load(Ordering::SeqCst), 2, "头没来，截断那几格照旧");
+    // 没变 ⇒ 只换记号。
+    let same = cmd_wire::sync::Patch {
+        held: cmd_wire::sync::Held("h3".to_string()),
+        whole: false,
+        same: true,
+        order: None,
+        up: Default::default(),
+        head: None,
+    };
+    let (mine, held) = l.start_held();
+    assert_eq!(held, Some(cmd_wire::sync::Held("h2".to_string())));
+    assert!(store_listed_if_current(&l, mine, Ok(same)));
+    assert_eq!(
+        names_of(&l.rows.lock().unwrap()),
+        ["a", "b", "c"],
+        "没变却动了那一屏"
+    );
+    // 问不成 ⇒ 作废。
+    let (mine, _) = l.start_held();
+    assert!(store_listed_if_current(&l, mine, Err("断了".into())));
+    assert_eq!(l.start_held().1, None, "问不成之后还带着旧记号");
 }
