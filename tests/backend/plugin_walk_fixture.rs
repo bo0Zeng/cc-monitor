@@ -1,98 +1,25 @@
-//! `K-W2E`：**最小假插件走通全流程**。
+//! **最小假插件走通通用调用口**：① 找它 · ② 传 argv 起它（拿码摘诊断）· ③ 把码翻成语义，真起一个进程。
 //!
-//! # 先说清本文件是什么、不是什么
+//! 夹具 ＋ 判据，一行生产语义都不加：文件级 `cfg(test)`（内层属性形）⇒ 生产二进制里零字节（[`tests::this_fixture_never_ships`]）。
+//! 那个属性的逐字形状不在注释里出现第二次 —— 那条判据数它出现几次。
 //!
-//! 它是**夹具 + 判据**，一行生产语义都不加。`cfg(test)` 挂在**文件级**（内层属性形，带 `!`）
-//! ⇒ 生产二进制里**零字节**（由 [`tests::this_fixture_never_ships`] 双向钉住）。
-//! ⚠ 那个属性的**逐字形状不在本注释里出现第二次** —— 那条判据数它出现几次，
-//! 散文里复述一份会把它数成 2（本仓「判据在自己的语料里找到自己」那一族）。
+//! 与 `agents/fake/` 是两件东西：那一份是最小假 agent（纯函数、不起进程），本份是最小假插件，必须真起进程。
+//! 落在 `plugin/` 层外：假插件要带自己那张码表，放进层内会被 `plugin::layer_guard` 的码表判据打红（那正是它该挡的）。
 //!
-//! ★ **它与 `agents/fake/` 是两条轴上的两件东西，别混起来读**：那一份是**最小假 agent**
-//! （`backend-split` 的 `S6`，走的 7 段是「发现 / 宣告 / 读会话 / 判活 / 账号 / 用量 / resume」，
-//! 全程纯函数、一个进程都不起）；本份是**最小假插件**（找它 / 问它会什么 / 传 argv 起它 /
-//! 拿码 / 翻语义），而且**必须真起一个进程** —— 那一条与 `S6` 恰好相反，理由见下面「跳⑥」。
-//!
-//! # 为什么落在这里，而不是 `plugin/fake/mod.rs`（甲档）—— 三条，都是现打的
-//!
-//! 1. 🔴 **甲档要动的两张登记表这里不改。** `plugin/mod.rs::layer_guard` 那条
-//!    `the_plugin_layer_collection_is_complete` 的诊断文案**逐字要求**：往那一层加文件要
-//!    「**同轮**加进 `agent_boundary_guard::CORE_FILES` 与它的棘轮表」——
-//!    而 `agent_boundary_guard.rs` 这里不改（改的只有 `plugin/` · `layering_guard.rs` ·
-//!    `evidence/`）。⇒ 甲档要么违纪，要么上报之后停一轮。
-//! 2. 🔴 **甲档会被通用层自己的判据当场打红，而那不是误伤、是它干对了活。**
-//!    假插件必须带**它自己那一份码表**（`E6`：码 → 语义每插件一份），而那张表的形状
-//!    正是 `plugin::layer_guard::the_generic_port_does_not_translate_exit_codes` 认的两根针
-//!    （`Some(<整数字面量>)` / 裸整数 `match` 臂），外加
-//!    `the_only_exit_code_constants_here_are_the_registered_generic_ones` 认的 `i32` 常量登记面。
-//!    ⇒ 把假插件放进 `plugin/`，等于让通用层里长出一张具体插件的码表 ——
-//!    **要证的那件事，会被这里自己破坏掉。**
-//! 3. ✅ **乙档的代价，现打之后发现不存在。** 件文件 `§0b` 给乙档记的代价逐字是
-//!    「`layering_guard` 里进 `plugin` 的边要多登记几条，而那张表**条数钉死**（今天 5）」。
-//!    现打：那条判据（`layering_guard::the_interface_into_plugin_is_exactly_the_registered_set`）
-//!    的**人群只有两层** —— 它逐字 `for layer in ["control", "observe"]`，
-//!    而 `layer_sources` 按 `src/<层名>` 拼路径 ⇒ **顶层文件根本不在它的采集面里**；
-//!    况且它扫的是 `production_code` 的产物，而本文件的每一条 `plugin` 边都在
-//!    `#[cfg(test)]` 里 ⇒ **两道构造性摘除，各自独立地让那张表一条都不用动**。
-//!    ⇒ 乙档对那张表的真实代价是 **0 条**，件文件那一行是**估的，不是量的**（已顶回去）。
-//!    ⚠ 而这正好是一条**射程读数**，归 `KW2E5`：那张表自称「进 `plugin/` 的边逐条登记」，
-//!    真实射程是「**`control/` 与 `observe/` 两层生产段里**的边」。将来 `sidecars/`
-//!    那一层（`K-W2D`）调 `plugin::invoke::run`，这张钉死 5 条的表**一个字都不会说**。
-//!
-//! # 全流程有几跳、本份夹具真走了哪几跳（尺子甲，件文件 `§0b`）
-//!
-//! 九跳的切法照件文件（一跳 = 跨一次边界或一次源头交接，且盘上有一段自己的代码）。
-//! 本份夹具驱动 **6 跳**，逐跳标明「**真过了通用层的机器** / **自问自答**」——
-//! 形状照 `agents/fake/walk` 头注那条纪律（「走全流程的两半，边界写在明处」）：
-//!
-//! | 跳 | 本夹具 | 真过通用层吗 | 凭什么这么说 |
-//! |---|---|---|---|
-//! | ① 宣告接得下 | ❌ 走不到 | — | 要在真 `Hello.commands` 里出现，就得先在 `inbound::REGISTRY` 里有一条命令，而那是 PM 持有的文件（走 `§4` 上报） |
-//! | ② 宣告做不到 | ✅ 一半 | **半个**：判定那一半真的从 `inbound::REGISTRY` 派生；**没进真 `Hello`** | `§0d` 出路**丙**。理由与代价逐条写在 [`tests::the_pre_declaration_reuses_the_word_the_registry_already_owns`] |
-//! | ③ 收命令分派 | ❌ 走不到 | — | 同 ①（要一条真命令） |
-//! | ④ 找它 | ✅ | **真过** | `plugin::discover::find` 真在盘上找一个真的可执行文件（`libexec/` 那一级**故意是空的**，找法必须走过它） |
-//! | ⑤ 问它会什么 | ✅ | **真过** | `plugin::probe::negotiate`，而喂给它的是**一个真进程刚打出来的字节** —— 今天那 8 条判据喂的全是合成文本 |
-//! | ⑥ 传 argv 起它 | ✅ | **真过** | `plugin::invoke::run`，**本 crate 第一次真起一个插件进程**（今天 `invoke.rs` 6 条 + `cc_bus.rs` 7 条，一条都没起过进程） |
-//! | ⑦ 拿码摘诊断 | ✅ | **真过** | 码与两条流来自真进程（今天那两条是手搓 `Done{…}`） |
-//! | ⑧ 把码翻成语义 | ✅ | **自问自答，而这一格的自问自答是对的** | `E6` 逐字要求码表**每插件一份** ⇒ 通用层按定框就不该有它。这一跳「没过通用层」是设计，不是缺口 |
-//! | ⑨ 回帧给客户端 | ❌ 走不到 | — | 要真后端收发帧（派工令：不起真后端） |
-//!
-//! ⇒ **一句话带分母**：九跳里本夹具真走 **6**（②半 · ④⑤⑥⑦⑧），
-//! 其中**真过通用层的是 4 跳半**（④⑤⑥⑦ + ②的判定半）· **自问自答 1 跳**（⑧，按定框应当如此）·
-//! **走不到 3 跳**（①③⑨，归真机 / 归上报，见 `KW2E6`）。
-//!
-//! ★ 而真正买到的那样东西**不是跳数**：件文件 `§0c` 现打过「`plugin/` 25 条 +
-//! `cc_bus.rs` 7 条里**没有任何一条同时驱动 ≥2 跳**」。本文件的
-//! [`tests::one_fake_plugin_walks_six_hops_as_one_path`] 是**第一条把 ②④⑤⑥⑦⑧ 串成一条路**的判据。
-//!
-//! # 这个假插件的每一样都**刻意与仓里那个真插件族不同形**（`S6` 那条地基）
+//! # 这个假插件刻意与仓里那个真插件族不同形（[`tests::this_fake_plugin_is_deliberately_unlike_the_real_one`] 逐维对拍活体）
 //!
 //! | 维 | 那个真插件族 | 本假插件 |
 //! |---|---|---|
-//! | 可执行文件的粒度 | **一个动词一个二进制** | **一个二进制 + 子命令** |
-//! | 探测入口 | 一个**旗标**（`--…-probe`） | 一个**子命令**（无前导 `-`） |
-//! | 候选路径 | 用户装机位（`~/.local/bin` · agent 的技能目录），**兜 `PATH`** | 调用方给的一个根 + `libexec/` 一级，**刻意不兜 `PATH`** |
-//! | 契约走 env 的那一样 | **可选**的身份覆盖 | **必需**的作业域；缺了就用一个自己的码拒 |
+//! | 可执行文件的粒度 | 一个动词一个二进制 | 一个二进制 ＋ 子命令 |
+//! | 候选路径 | 用户装机位，兜 `PATH` | 调用方给的一个根 ＋ `libexec/` 一级，刻意不兜 `PATH` |
+//! | 契约走 env 的那一样 | 可选的身份覆盖 | 必需的作业域；缺了用自己的码拒 |
 //! | 退出码语义 | `2` = 收件人非法 · `3` = 路由层拒绝 | `5` = 台账过期该重试 · `6` = 作业域上锁 · `7` = 不认识这条子命令 |
 //!
-//! ⚠ 「刻意不同形」不是趣味：假的若照抄真的，通用层拿真的的知识去解释它**恰好也能读出东西**
-//! ⇒ 走通证明的是「一份布局被施加到另一个名字上」，那是**一个粉饰的通过**
-//! （`agents/fake/mod.rs` 头注逐字）。本条由
-//! [`tests::this_fake_plugin_is_deliberately_unlike_the_real_one`] 逐维钉住 ——
-//! 而且**对拍的是那个真适配层今天的活体**（`control/cc_bus.rs` 的函数与生产段），
-//! 不是手抄的死 fixture。
+//! 假的若照抄真的，通用层拿真的的知识去解释它恰好也能读出东西 ⇒ 走通证明不了什么。
 //!
-//! # 诚实边界（写在这里，因为它们删了不会红）
+//! # 买不到
 //!
-//! - 跳①③⑨ **本地验不了**，不是「以后再说」：它们要一个真后端收发帧。今天真跑过那条路的
-//!   是 `tests/e2e/backend-cc-bus.sh`（CI 地板 **50**，`.github/workflows/ci.yml:646` 逐字
-//!   `run: bash tests/e2e/assert-pass-floor.sh backend-cc-bus 50`）——⚠ **它不在门禁九格里**
-//!   （`grep -c backend-cc-bus tests/scripts/gate.sh` ⇒ **0**，09-04 现打），而且它测的是
-//!   **那个既有插件**，不是「加一个新插件」。
-//! - 本文件**不证明**「加一个插件，宿主零改动」。它证的是「**这几样知识凑得出一条真跑得动的路**」，
-//!   并给出那句话今天的**差距读数**（`KW2E5`，逐处住址在
-//!   [`tests::adding_a_plugin_still_costs_the_host_something`] 的头注里）。
-//! - 期限那一跳依赖机器上有没有 `timeout(1)`：**两条路各有一格判据**，
-//!   并且**说得出自己走的是哪一条**（[`tests::the_deadline_lands_on_the_child_not_on_the_host`]）。
+//! - 走不到真后端收发帧（宣告 · 分派 · 回帧）；不证明「加一个插件，宿主零改动」，差距读数在 [`tests::adding_a_plugin_still_costs_the_host_something`]。
 
 #![cfg(test)]
 
@@ -112,9 +39,7 @@ mod tests {
         format!("hed{}", "ron")
     }
 
-    /// 探测入口 —— **一个子命令**（那个真插件族用的是旗标）。
-    const PROBE_SUB: &str = "facets";
-    /// 干活的子命令。
+    /// 干活的子命令（成事时另报父进程名与它看到的 `PATH`：只有真进程才产得出）。
     const WORK_SUB: &str = "seal";
     /// 会卡住的子命令（只有期限那一格用它）。
     const NAP_SUB: &str = "nap";
@@ -136,11 +61,6 @@ mod tests {
     const REALM_ENV: &str = "HEDRON_REALM";
     /// 夹具里用的作业域值。
     const REALM_VALUE: &str = "alpha";
-
-    /// 它自己声明的能力 token（探测输出里那一串）。
-    const DECLARED_CAPS: &str = "seal,verify,emit-ledger,dry-run";
-    /// **宿主侧的必需清单** —— 刻意只要其中两个（子集检查，不是全等）。
-    const REQUIRED_CAPS: &[&str] = &["seal", "emit-ledger"];
 
     /// 找不到时那句话的**尾巴** —— 这是假插件自己的话，通用层不该认识它。
     ///
@@ -164,20 +84,12 @@ mod tests {
     /// `guard_core` 的剥法会**在那里收尾** ⇒ 本文件的测试段被剥成两半，
     /// 而剥法自检（`every_backend_file_strips_clean`）与
     /// `assert_no_test_code` 会当场红。⇒ 全文一个大括号都不用（`case`/`if`/`while` 足够）。
-    fn script_text(name: &str) -> String {
+    fn script_text() -> String {
         let lines: Vec<String> = vec![
             "#!/bin/sh".to_string(),
             "# 夹具用的假插件 —— 一个可执行文件 + 子命令。刻意与仓里那个真插件族不同形。"
                 .to_string(),
             "case \"$1\" in".to_string(),
-            format!("  {PROBE_SUB})"),
-            format!("    printf 'name={name}\\n'"),
-            "    printf 'version=0.2.0-fixture\\n'".to_string(),
-            format!("    printf 'capabilities={DECLARED_CAPS}\\n'"),
-            "    printf 'realms=alpha,beta\\n'".to_string(),
-            "    printf 'parent=%s\\n' \"$(cat /proc/$PPID/comm 2>/dev/null)\"".to_string(),
-            "    printf 'inherited-path=%s\\n' \"$PATH\"".to_string(),
-            "    exit 0 ;;".to_string(),
             format!("  {WORK_SUB})"),
             format!("    if [ -z \"${REALM_ENV}\" ]; then"),
             "      printf 'no realm was handed over\\n' >&2".to_string(),
@@ -188,6 +100,8 @@ mod tests {
             format!("      exit {STALE_LEDGER}"),
             "    fi".to_string(),
             format!("    printf 'sealed in %s\\n' \"${REALM_ENV}\""),
+            "    printf 'parent=%s\\n' \"$(cat /proc/$PPID/comm 2>/dev/null)\"".to_string(),
+            "    printf 'inherited-path=%s\\n' \"$PATH\"".to_string(),
             "    exit 0 ;;".to_string(),
             format!("  {NAP_SUB})"),
             "    sleep 3".to_string(),
@@ -205,7 +119,7 @@ mod tests {
         lines.join("\n") + "\n"
     }
 
-    /// 知识 ①（跳④）：候选路径 + 找不到时那句尾巴。
+    /// 知识 ①（找它）：候选路径 + 找不到时那句尾巴。
     ///
     /// **两级，第一级刻意留空** —— 找法必须真的走过一个不存在的候选才到第二级；
     /// 少了这一点，「顺序即优先级」这一格就是空真。
@@ -218,17 +132,12 @@ mod tests {
         )
     }
 
-    /// 知识 ②（跳⑥）：探测调用的 argv。
-    fn probe_argv() -> Vec<&'static str> {
-        vec![PROBE_SUB]
-    }
-
-    /// 知识 ③（跳⑦）：真活调用的 argv 与它**必需**的那一项 env。
+    /// 知识 ②（起它）：真活调用的 argv 与它**必需**的那一项 env。
     fn work_call() -> (Vec<&'static str>, Vec<(&'static str, &'static str)>) {
         (vec![WORK_SUB], vec![(REALM_ENV, REALM_VALUE)])
     }
 
-    /// 知识 ④（跳⑧）：**码 → 语义**。按 `E6` 它只能住这里，不许上收到 `plugin/`。
+    /// 知识 ③（翻码）：**码 → 语义**。按 `E6` 它只能住这里，不许上收到 `plugin/`。
     ///
     /// ⚠ 本表刻意**两种落地形各写一处**：`Some(0)` 是整数字面量形、
     /// `Some(STALE_LEDGER)` 是具名常量形。前者会被
@@ -257,74 +166,22 @@ mod tests {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 二 · 跳② 的判定那一半（`§0d` 出路**丙**）
+    // 二 · 能力表 + 走全流程的 driver（反向夹具**常驻**，不做一次性手工变异）
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// 插件轴的「接得下但做不到」判定 —— 与 `lib.rs::unavailable_from` **同形**：
-    /// **从 `inbound::REGISTRY` 的 `codes` 派生**，不手写第二张「命令→依赖什么」的表。
+    /// 本夹具走的那几跳，**名字进错误信息**，所以是常量不是字面量。
     ///
-    /// 三态与那一份逐字相同（这一格是唯一容易假绿的地方）：
-    /// `Some(false)`（**确证没装**）⇒ 列进表；`Some(true)` ⇒ 不列；
-    /// `None`（**判不出来**）⇒ **不列**（「不知道」不许倒向「做不到」——
-    /// 倒错那一侧会让能用的功能从界面上无声消失）。
-    fn unavailable_from_plugin(
-        installed: Option<bool>,
-        code: &str,
-    ) -> Vec<crate::wire::Unavailable> {
-        let mut out = Vec::new();
-        if installed == Some(false) {
-            for spec in crate::stream::inbound::REGISTRY {
-                if spec.codes.contains(&code) {
-                    out.push(crate::wire::Unavailable {
-                        command: spec.name.to_string(),
-                        code: code.to_string(),
-                    });
-                }
-            }
-        }
-        out
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // 三 · 能力表 + 走全流程的 driver（反向夹具**常驻**，不做一次性手工变异）
-    // ═══════════════════════════════════════════════════════════════════════
-
-    /// 本夹具真走得到的那几跳，**名字进错误信息**，所以是常量不是字面量。
-    ///
-    /// ⚠ 顺序 = [`walk`] 的推进顺序 = [`Caps`] 的字段序 = [`KNOWLEDGE`] 的下标，
-    /// 四处对不上就会让反向夹具点错名（[`Caps::without`] 的自检看着这件事）。
-    const HOPS: &[&str] = &[
-        "跳② 宣告做不到（事前，只到「说得出」）",
-        "跳④ 找它",
-        "跳⑥ 传 argv 起它",
-        "跳⑤ 问它会什么",
-        "跳⑦ 拿码摘诊断",
-        "跳⑧ 把码翻成语义",
-    ];
+    /// ⚠ 顺序 = [`walk`] 的推进顺序 = [`Caps`] 的字段序 = [`KNOWLEDGE`] 的下标。
+    const HOPS: &[&str] = &["① 找它", "② 传 argv 起它、拿码摘诊断", "③ 把码翻成语义"];
 
     /// 每一跳缺了就走不动的**那一样知识**，与 [`HOPS`] 一一对应。
-    const KNOWLEDGE: &[&str] = &[
-        "做不到时那个词",
-        "候选路径与那句尾巴",
-        "探测调用的 argv",
-        "必需能力清单",
-        "真活调用的 argv 与 env",
-        "退出码语义表",
-    ];
+    const KNOWLEDGE: &[&str] = &["候选路径与那句尾巴", "真活调用的 argv 与 env", "退出码语义表"];
 
-    /// 假插件交出来的一整套知识。
-    ///
-    /// ⚠ **每一项都是 `Option`，这是本结构存在的全部理由**（形状照 `agents/fake::FakeCaps`）：
-    /// 反向夹具要把某一样知识**挖掉**，而挖掉之后流程必须在一个**说得出话**的地方停。
-    /// 用 `Option` 而不是真去注释掉一个函数，是为了让那个反向夹具成为**常驻判据**
-    /// 而不是一次性手工变异 —— 手工变异证明的是「那天它会红」，
-    /// 常驻判据证明的是「以后它一直会红」。
+    /// 假插件交出来的一整套知识。每一项都是 `Option`：反向夹具要把某一样**挖掉**，
+    /// 挖掉之后流程必须在一个说得出话的地方停（形状照 `agents/fake::FakeCaps`）。
     #[derive(Clone)]
     struct Caps {
-        unavailable_code: Option<&'static str>,
         discovery: Option<fn(&Path, &str) -> (Vec<PathBuf>, &'static str)>,
-        probe_argv: Option<fn() -> Vec<&'static str>>,
-        required_caps: Option<&'static [&'static str]>,
         work_call: Option<fn() -> (Vec<&'static str>, Vec<(&'static str, &'static str)>)>,
         code_table: Option<fn(Option<i32>) -> &'static str>,
     }
@@ -333,10 +190,7 @@ mod tests {
         /// 还剩几样知识在（[`without`](Self::without) 的自检用）。
         fn present(&self) -> usize {
             [
-                self.unavailable_code.is_some(),
                 self.discovery.is_some(),
-                self.probe_argv.is_some(),
-                self.required_caps.is_some(),
                 self.work_call.is_some(),
                 self.code_table.is_some(),
             ]
@@ -346,26 +200,15 @@ mod tests {
         }
 
         /// 完整的一套（正题用）。
-        ///
-        /// ⚠ `unavailable_code` 取 [`REGISTRY_OWNED_CODE`]：
-        /// 那个词必须是 `inbound::REGISTRY` 里真有人登记的，而不是本表编的
-        /// （由 [`the_pre_declaration_reuses_the_word_the_registry_already_owns`] 钉住）。
         fn full() -> Self {
             Self {
-                unavailable_code: Some(REGISTRY_OWNED_CODE),
                 discovery: Some(discovery_of),
-                probe_argv: Some(probe_argv),
-                required_caps: Some(REQUIRED_CAPS),
                 work_call: Some(work_call),
                 code_table: Some(code_word),
             }
         }
 
-        /// 挖掉**一样**知识（反向夹具用）。
-        ///
-        /// 名字必须是 [`KNOWLEDGE`] 里的一条 —— 写错就 **panic**，不静默返回原样：
-        /// 静默的话反向夹具会**变成正题**再跑一遍，而正题是绿的
-        /// （`agents/fake::FakeCaps::without` 逐字同一条）。
+        /// 挖掉**一样**知识。名字不在 [`KNOWLEDGE`] 里就 panic —— 静默返回原样，反向夹具就成了正题再跑一遍。
         fn without(&self, knowledge: &str) -> Self {
             assert!(
                 KNOWLEDGE.contains(&knowledge),
@@ -374,10 +217,7 @@ mod tests {
             );
             let mut c = self.clone();
             match knowledge {
-                "做不到时那个词" => c.unavailable_code = None,
                 "候选路径与那句尾巴" => c.discovery = None,
-                "探测调用的 argv" => c.probe_argv = None,
-                "必需能力清单" => c.required_caps = None,
                 "真活调用的 argv 与 env" => c.work_call = None,
                 "退出码语义表" => c.code_table = None,
                 other => unreachable!("`{other}` 在 KNOWLEDGE 里却没有对应字段 —— 两处漂开了"),
@@ -386,33 +226,13 @@ mod tests {
         }
     }
 
-    /// 插件轴那个「它没被装上」的命令级 code —— **本文件里它只有这一处住址**。
-    ///
-    /// ⚠ 它**不是我造的词**：`inbound::REGISTRY` 里那几条转调插件的命令自己登记着它，
-    /// 而「它必须有主」这件事由 [`the_pre_declaration_reuses_the_word_the_registry_already_owns`]
-    /// 钉住 —— 那边改了名，这里当场红（派生出来的表会变空，而空表会被那条断言逮住）。
-    ///
-    /// ★ 本文件第一版为它写过**两份**（一份运行时拼、一份字面量）＋一条相等断言看着；
-    /// 自查按「一个事实一个住址」收成一份 —— 相等断言守不住的是「两份一起被改错」，
-    /// 而一处住址**根本不给那种机会**。
-    const REGISTRY_OWNED_CODE: &str = "not_installed";
-
-    /// 流程停下来的原因 —— **必须说得出「哪一跳、为什么」**。
-    ///
-    /// # ★ 为什么是**五种**而不是一种（这一格是自查抓到的，写下来别再合并回去）
-    ///
-    /// 第一版只有 `MissingKnowledge` 一种，于是「**把执行位去掉**」这件事
-    /// 也被报成「缺了一样知识」—— 而真话是「那个文件在，但它不是个能跑的东西」。
-    /// 那**正是**件文件 `KW2E3` 逐字禁掉的坏法（笼统归因），只是换了个词：
-    /// 不是笼统的「调用失败」，而是笼统的「缺知识」。
-    /// ⇒ 五种**刻意分开**，每一种说的是一件不同的事：
+    /// 流程停下来的原因 —— **必须说得出「哪一跳、为什么」**，四种刻意分开（各有各的人去修）。
     ///
     /// | 变体 | 它说的那件事 | 谁该去修 |
     /// |---|---|---|
     /// | `MissingKnowledge` | 假插件**自己少了一样知识**（反向夹具挖的洞） | 写适配层的人 |
     /// | `NotFound` | 盘上**找不到**那个可执行文件；`why` 是通用口拼的「我查过这几处」 | 装插件的人 |
     /// | `CouldNotStart` | 找到了、**起不来**（`invoke::NotRun`：参数太大 / IO 错） | 分两种，`why` 里说清是哪一种 |
-    /// | `Rejected` | 起来了、**协商没过**（`probe::Rejected::message()`） | 换一份新的插件 |
     /// | `Inconsistent` | 跑通了、但那一跳的读数**自相矛盾**（比如只差一项 env 结果却一样） | 写夹具的人（它没在测该测的东西） |
     #[derive(Debug, PartialEq, Eq)]
     enum Stop {
@@ -425,10 +245,6 @@ mod tests {
             why: String,
         },
         CouldNotStart {
-            hop: &'static str,
-            why: String,
-        },
-        Rejected {
             hop: &'static str,
             why: String,
         },
@@ -477,17 +293,11 @@ mod tests {
         r
     }
 
-    /// 走完一遍之后手上的东西 —— 正题那一格要逐跳核它。
-    ///
-    /// `Debug` 是**承重的**：反向那几格红的时候要把「它到底走成了什么样」原样端出来，
-    /// 而「停下来了」与「走完了但内容不对」只有把它印出来才分得开。
+    /// 走完一遍之后手上的东西 —— 正题那一格要逐跳核它（`Debug` 承重：反向那几格红时原样端出来）。
     #[derive(Debug)]
     struct Walk {
         done: Vec<&'static str>,
-        declared: Vec<crate::wire::Unavailable>,
         bin: PathBuf,
-        answered_caps: Vec<String>,
-        extras: Vec<(String, String)>,
         refused_code: Option<i32>,
         refused_diag: String,
         refused_word: &'static str,
@@ -496,114 +306,54 @@ mod tests {
         sealed_stdout: String,
     }
 
-    /// 把假插件推过 **6 跳**。
-    ///
-    /// # ⚠ 边界（本函数最容易被读错的一句，写在这里而不是只写在计划里）
-    ///
-    /// 跳④⑤⑥⑦ **真的调用通用层的机器**（`plugin::discover::find` ·
-    /// `plugin::probe::negotiate` · `plugin::invoke::run` · `Done::code`/`diagnosis()`），
-    /// 这里没动它们一个字节。跳② **只有判定那一半**是真的（从 `inbound::REGISTRY` 派生），
-    /// **没有进真 `Hello`** —— 那需要一条真命令，而那是 PM 持有的文件。
-    /// 跳⑧ 是假插件**拿自己的知识自问自答**，而这一格的自问自答**是对的**：
-    /// `E6` 要求码表每插件一份。
-    ///
-    /// ⇒ 本函数走得通，证明的是「**这四样知识凑得出一条真跑得动的路**」，
-    /// **不证明**「加一个插件宿主零改动」—— 后者今天不成立，差距读数在
-    /// [`adding_a_plugin_still_costs_the_host_something`]。
+    /// 成事那一趟 stdout 里 `键=值` 那一行的值（没有 ⇒ 空串）。
+    fn reported(stdout: &str, key: &str) -> String {
+        stdout
+            .lines()
+            .find_map(|l| l.strip_prefix(key).and_then(|r| r.strip_prefix('=')))
+            .unwrap_or_default()
+            .to_string()
+    }
+
+    /// 把假插件推过三跳：①② **真调用通用层**（`plugin::discover::find` · `plugin::invoke::run` · `Done::code`/`diagnosis()`），
+    /// ③ 是假插件拿自己的码表自问自答 —— 码表每插件一份，按定框就不该在通用层。
     fn walk(caps: &Caps, root: &Path) -> Result<Walk, Stop> {
         let name = plugin_name();
         let mut done: Vec<&'static str> = Vec::new();
 
-        // ── 跳② 宣告做不到（事前）：判定那一半，从 `REGISTRY` 派生 ──────────
-        let code = caps.unavailable_code.ok_or(Stop::MissingKnowledge {
+        // ── ① 找它 ────────────────────────────────────────────────────────
+        let disc = caps.discovery.ok_or(Stop::MissingKnowledge {
             hop: HOPS[0],
             knowledge: KNOWLEDGE[0],
         })?;
-        let declared = unavailable_from_plugin(Some(false), code);
-        if declared.is_empty() {
-            // 知识在、而表是空的 ⇒ 那是**注册表侧**的事实变了（那个词被改名 / 没人登记它），
-            // 不是「缺了一样知识」。两者分开报。
-            return Err(Stop::Inconsistent {
-                hop: HOPS[0],
-                why: format!("`inbound::REGISTRY` 里没有任何一条命令登记 `{code}`"),
-            });
-        }
+        let (fixed, hint) = disc(root, &name);
+        // `why` 原样带上通用口拼的那句「我查过这几处」，不是笼统的「调用失败」。
+        let bin = crate::plugin::discover::find(&name, &fixed, false, hint)
+            .map_err(|why| Stop::NotFound { hop: HOPS[0], why })?;
         done.push(HOPS[0]);
 
-        // ── 跳④ 找它：**真过通用层** ────────────────────────────────────────
-        let disc = caps.discovery.ok_or(Stop::MissingKnowledge {
+        // ── ② 传 argv 起它、拿码摘诊断：真活两趟（一趟被拒、一趟成事）─────────
+        let work = caps.work_call.ok_or(Stop::MissingKnowledge {
             hop: HOPS[1],
             knowledge: KNOWLEDGE[1],
-        })?;
-        let (fixed, hint) = disc(root, &name);
-        // ★ `why` 原样带上通用口拼的那句「我查过这几处」——`§3` 刀 C 要的正是这句话的形状：
-        //   「找不到，我查过这几处」，**不是**笼统的「调用失败」，也不是「缺了一样知识」。
-        let bin = crate::plugin::discover::find(&name, &fixed, false, hint)
-            .map_err(|why| Stop::NotFound { hop: HOPS[1], why })?;
-        done.push(HOPS[1]);
-
-        // ── 跳⑥ 传 argv 起它：**真过通用层，且真起一个进程** ────────────────
-        let argv = caps.probe_argv.ok_or(Stop::MissingKnowledge {
-            hop: HOPS[2],
-            knowledge: KNOWLEDGE[2],
-        })?;
-        let asked = argv();
-        let out =
-            run_past_busy(&bin, &asked, DEADLINE_SECS, &[]).map_err(|e| Stop::CouldNotStart {
-                hop: HOPS[2],
-                why: why_not_run(e),
-            })?;
-        if out.code != Some(0) {
-            return Err(Stop::Inconsistent {
-                hop: HOPS[2],
-                why: format!(
-                    "探测调用退出码是 {:?}（该是 0）：{}",
-                    out.code,
-                    out.diagnosis()
-                ),
-            });
-        }
-        done.push(HOPS[2]);
-
-        // ── 跳⑤ 问它会什么：**真过通用层**，喂的是真进程刚打出来的字节 ──────
-        let required = caps.required_caps.ok_or(Stop::MissingKnowledge {
-            hop: HOPS[3],
-            knowledge: KNOWLEDGE[3],
-        })?;
-        let text = String::from_utf8_lossy(&out.stdout).into_owned();
-        // ★ `why` 原样带上通用口那句话：它会**点名缺的那一个 token**，
-        //   而不是「缺能力」四个字，也不是「调用失败」（`probe` 那 8 条判据守的就是这个）。
-        let answer = crate::plugin::probe::negotiate(&text, &name, required).map_err(|e| {
-            Stop::Rejected {
-                hop: HOPS[3],
-                why: e.message(),
-            }
-        })?;
-        done.push(HOPS[3]);
-
-        // ── 跳⑦ 拿码摘诊断：真活两趟（一趟被拒、一趟成事）─────────────────
-        let work = caps.work_call.ok_or(Stop::MissingKnowledge {
-            hop: HOPS[4],
-            knowledge: KNOWLEDGE[4],
         })?;
         let (work_argv, work_env) = work();
         let refused = run_past_busy(&bin, &work_argv, DEADLINE_SECS, &[]).map_err(|e| {
             Stop::CouldNotStart {
-                hop: HOPS[4],
+                hop: HOPS[1],
                 why: why_not_run(e),
             }
         })?;
         let sealed = run_past_busy(&bin, &work_argv, DEADLINE_SECS, &work_env).map_err(|e| {
             Stop::CouldNotStart {
-                hop: HOPS[4],
+                hop: HOPS[1],
                 why: why_not_run(e),
             }
         })?;
-        // 「同一条 argv、只差那一项 env，结果必须不同」—— 少了这一句，
-        // 一个恒答同一张脸的假插件也能走完全流程。
+        // 同一条 argv、只差那一项 env，结果必须不同 —— 少了这一句，一个恒答同一张脸的假插件也能走完。
         if refused.code == sealed.code || refused.diagnosis().is_empty() {
             return Err(Stop::Inconsistent {
-                hop: HOPS[4],
+                hop: HOPS[1],
                 why: format!(
                     "同一条 argv 只差那一项 env，两趟却给了同一张脸：\
                      被拒 code={:?} diag={:?} · 成事 code={:?}",
@@ -613,18 +363,18 @@ mod tests {
                 ),
             });
         }
-        done.push(HOPS[4]);
+        done.push(HOPS[1]);
 
-        // ── 跳⑧ 把码翻成语义：**每插件一份**（`E6`）⇒ 这一跳按定框就是自问自答 ──
+        // ── ③ 把码翻成语义：每插件一份 ⇒ 自问自答 ─────────────────────────────
         let table = caps.code_table.ok_or(Stop::MissingKnowledge {
-            hop: HOPS[5],
-            knowledge: KNOWLEDGE[5],
+            hop: HOPS[2],
+            knowledge: KNOWLEDGE[2],
         })?;
         let refused_word = table(refused.code);
         let sealed_word = table(sealed.code);
         if refused_word == sealed_word {
             return Err(Stop::Inconsistent {
-                hop: HOPS[5],
+                hop: HOPS[2],
                 why: format!(
                     "两个不同的码（{:?} / {:?}）被翻成了同一个语义词 `{refused_word}` —— \
                      那张码表此刻在恒答一张脸",
@@ -632,14 +382,11 @@ mod tests {
                 ),
             });
         }
-        done.push(HOPS[5]);
+        done.push(HOPS[2]);
 
         Ok(Walk {
             done,
-            declared,
             bin,
-            answered_caps: answer.capabilities.clone(),
-            extras: answer.extras.clone(),
             refused_code: refused.code,
             refused_diag: refused.diagnosis(),
             refused_word,
@@ -650,7 +397,7 @@ mod tests {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 四 · 夹具的搭建（**只写临时目录**，与用户的任何真实数据零交集）
+    // 三 · 夹具的搭建（**只写临时目录**，与用户的任何真实数据零交集）
     // ═══════════════════════════════════════════════════════════════════════
 
     /// 夹具根 —— 按 tag + pid 隔开。
@@ -669,7 +416,7 @@ mod tests {
         std::fs::create_dir_all(&root).expect("建夹具根");
         let name = plugin_name();
         let f = root.join(&name);
-        std::fs::write(&f, script_text(&name)).expect("写假插件");
+        std::fs::write(&f, script_text()).expect("写假插件");
         arm(&f);
         root
     }
@@ -726,11 +473,11 @@ mod tests {
             })
             .collect();
         out.sort();
-        // 采集自检：`plugin/` 今天是 4 个 `.rs`，而本文件不在层内 ⇒ 一个都不该被摘掉。
+        // 采集自检：`plugin/` 今天是 3 个 `.rs`，而本文件不在层内 ⇒ 一个都不该被摘掉。
         assert_eq!(
             out.len(),
-            4,
-            "`plugin/` 采集到 {} 个文件（今天应当是 4 个）—— 采集坏了，\
+            3,
+            "`plugin/` 采集到 {} 个文件（今天应当是 3 个）—— 采集坏了，\
              下面几条负向断言此刻在空转。实得：{:?}",
             out.len(),
             out.iter().map(|(n, _)| n).collect::<Vec<_>>()
@@ -742,16 +489,12 @@ mod tests {
     fn fixture_vocabulary() -> Vec<(String, &'static str)> {
         let mut v: Vec<(String, &'static str)> = vec![
             (plugin_name(), "假插件的名字"),
-            (PROBE_SUB.to_string(), "假插件的探测子命令"),
             (WORK_SUB.to_string(), "假插件干活的子命令"),
             (NAP_SUB.to_string(), "假插件会卡住的子命令"),
             (ROSTER_SUB.to_string(), "假插件报回整份环境键的子命令"),
             (REALM_ENV.to_string(), "假插件的环境变量名"),
             (REALM_VALUE.to_string(), "假插件夹具里的作业域值"),
         ];
-        for t in DECLARED_CAPS.split(',') {
-            v.push((t.to_string(), "假插件声明的能力 token"));
-        }
         for c in [
             Some(0),
             Some(STALE_LEDGER),
@@ -765,7 +508,7 @@ mod tests {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 五 · 判据
+    // 四 · 判据
     // ═══════════════════════════════════════════════════════════════════════
 
     /// `KW2E2`：这个假插件**每一维都刻意与那个真插件族不同形** —— 逐维活体对拍。
@@ -843,15 +586,7 @@ mod tests {
             "本夹具没走成「不兜 PATH」那一侧：{missing}"
         );
 
-        // ── ③ 探测入口：**子命令**（无前导 `-`），不是旗标 ───────────────────
-        let asked = probe_argv();
-        assert_eq!(asked.len(), 1, "探测 argv 的形状变了：{asked:?}");
-        assert!(
-            !asked[0].starts_with('-'),
-            "探测入口长成了旗标 —— 那正是那个真插件族的形状：{asked:?}"
-        );
-
-        // ── ④ 退出码语义：同一个数，两边**不是同一件事** ────────────────────
+        // ── ③ 退出码语义：同一个数，两边**不是同一件事** ────────────────────
         for c in [
             Some(2),
             Some(3),
@@ -876,17 +611,7 @@ mod tests {
         assert_ne!(code_word(Some(REALM_LOCKED)), code_word(Some(UNKNOWN_SUB)));
         assert_ne!(code_word(Some(STALE_LEDGER)), code_word(Some(UNKNOWN_SUB)));
 
-        // ── ⑤ 必需清单是**子集**，不是全等（子集检查才是三个真实消费者的形状）──
-        let declared: Vec<&str> = DECLARED_CAPS.split(',').collect();
-        assert!(
-            REQUIRED_CAPS.len() < declared.len(),
-            "必需清单与声明的能力一样长 —— 那就验不到子集检查这件事"
-        );
-        for r in REQUIRED_CAPS {
-            assert!(declared.contains(r), "必需清单里的 `{r}` 假插件根本没声明");
-        }
-
-        // ── ⑥ 知识表与 `Caps` 的字段**不许漂开** ────────────────────────────
+        // ── ④ 知识表与 `Caps` 的字段**不许漂开** ────────────────────────────
         let full = Caps::full();
         assert_eq!(
             full.present(),
@@ -903,16 +628,9 @@ mod tests {
         }
     }
 
-    /// `KW2E1`/`KW2E3` 正题：**一个假插件把 6 跳串成一条路**，而通用层一行没改。
-    ///
-    /// # 它与单元判据的差别
-    ///
-    /// `plugin/` 与 `control/cc_bus.rs` 的单元判据都是纯函数断言：**没有一条同时驱动 ≥2 跳**，也**没有一条真起过进程**。
-    /// ⇒ 本条把 ②④⑤⑥⑦⑧ 串起来、并且真起进程。
-    ///
-    /// # ⚠ 边界逐跳写在断言旁边，不许含混成「走通了」
+    /// 正题：**一个假插件把三跳串成一条路、真起进程**，而通用层一行没改。
     #[test]
-    fn one_fake_plugin_walks_six_hops_as_one_path() {
+    fn one_fake_plugin_walks_find_run_translate_as_one_path() {
         let root = build_fixture("walk");
         let name = plugin_name();
         // ⚠ 这句话**刻意不预判原因**：停车的原因由 `Stop` 那五种自己说
@@ -920,7 +638,7 @@ mod tests {
         let w = walk(&Caps::full(), &root).unwrap_or_else(|e| {
             panic!(
                 "这条路没走通。原因看下面这一行是哪一种：缺知识 ⇒ 接口面漏了东西；\
-                 没装 / 起不来 ⇒ 夹具没建对；协商没过 ⇒ 假插件的探测输出与必需清单对不上；\
+                 没装 / 起不来 ⇒ 夹具没建对；\
                  读数自相矛盾 ⇒ 这一格没在测该测的东西。\n实得：{e:?}"
             )
         });
@@ -930,18 +648,7 @@ mod tests {
             "走到的跳与登记的对不上 —— driver 与 `HOPS` 漂开了"
         );
 
-        // 跳②（**判定那一半是真的，没进真 `Hello`**）：表非空，且每条都自洽。
-        assert!(!w.declared.is_empty(), "事前那张表是空的");
-        for u in &w.declared {
-            assert!(
-                crate::stream::inbound::command_names().contains(&u.command.as_str()),
-                "声明做不到的 `{}` 根本不在 `commands` 里 —— 本字段说的是「接得下但做不到」",
-                u.command
-            );
-            assert_eq!(u.code, REGISTRY_OWNED_CODE);
-        }
-
-        // 跳④（**真过通用层**）：找到的是**第二级**候选 —— 第一级不存在，找法真走过它。
+        // ①：找到的是**第二级**候选 —— 第一级不存在，找法真走过它。
         assert_eq!(
             w.bin,
             root.join(&name),
@@ -952,28 +659,7 @@ mod tests {
             "第一级候选被建出来了 —— 那样「走过一个不存在的候选」就没验到"
         );
 
-        // 跳⑤（**真过通用层**，喂的是真进程刚打出来的字节）。
-        let declared: Vec<&str> = DECLARED_CAPS.split(',').collect();
-        assert_eq!(
-            w.answered_caps.len(),
-            declared.len(),
-            "协商读回来的能力数与假插件声明的对不上：{:?}",
-            w.answered_caps
-        );
-        for r in REQUIRED_CAPS {
-            assert!(
-                w.answered_caps.iter().any(|c| c == r),
-                "必需的 `{r}` 没在回答里 —— 而协商却放行了"
-            );
-        }
-        // 「其余键原样带回」那一格：本层不解释插件自己的域枚举。
-        assert!(
-            w.extras.iter().any(|(k, _)| k == "realms"),
-            "插件自己的其它键被吞了：{:?}",
-            w.extras.iter().map(|(k, _)| k).collect::<Vec<_>>()
-        );
-
-        // 跳⑥⑦（**真过通用层，且真起了进程**）：同一条 argv，只差那一项 env。
+        // ②：同一条 argv，只差那一项 env。
         assert_eq!(
             w.refused_code,
             Some(REALM_LOCKED),
@@ -991,7 +677,7 @@ mod tests {
             w.sealed_stdout
         );
 
-        // 跳⑧（**自问自答，而这一格按 `E6` 就该如此**）。
+        // ③：自问自答（码表每插件一份）。
         assert_eq!(w.refused_word, "realm_locked");
         assert_eq!(w.sealed_word, "sealed");
 
@@ -1012,30 +698,22 @@ mod tests {
     /// 判据 = 那个真进程报回来**只有真进程才产得出**的两样事实：
     /// ① 它自己的**父进程名**（`/proc/$PPID/comm`）—— 手搓的 `Done` 不知道这个；
     /// ② 它看到的 **`PATH`**，且必须与宿主逐字相同 —— 手搓的更不知道。
-    /// 两样都走**探测输出的 `extras`**（通用层「其余键原样带回」那一格）拿回来。
+    /// 两样都在成事那一趟的 stdout 里。
     ///
-    /// ⚠ **射程**：它证的是「跳⑥ 那一趟真的 fork/exec 了」，
-    /// **不证**跳⑦⑧ 的读数来自真进程（那两跳的牙在上面那条正题的契约断言里）。
+    /// ⚠ **射程**：它证的是「成事那一趟真的 fork/exec 了」。
     #[test]
     fn the_walk_really_started_a_process_not_a_hand_built_done() {
         let root = build_fixture("real");
         let w = walk(&Caps::full(), &root).unwrap_or_else(|e| panic!("走不通：{e:?}"));
-        let get = |k: &str| {
-            w.extras
-                .iter()
-                .find(|(kk, _)| kk == k)
-                .map(|(_, v)| v.clone())
-                .unwrap_or_default()
-        };
-        let parent = get("parent");
+        let parent = reported(&w.sealed_stdout, "parent");
         assert!(
             !parent.is_empty(),
-            "探测输出里没有那个真进程报回的**父进程名** —— 那一趟多半根本没 fork/exec\n\
+            "成事那一趟没报回**父进程名** —— 那一趟多半根本没 fork/exec\n\
              （手搓一个 `Done{{…}}` 也能满足上面那条正题的每一句契约断言，\
-              所以「真起进程」这件事只有本格看得见）。实得 extras：{:?}",
-            w.extras
+              所以「真起进程」这件事只有本格看得见）。实得 stdout：{:?}",
+            w.sealed_stdout
         );
-        let child_path = get("inherited-path");
+        let child_path = reported(&w.sealed_stdout, "inherited-path");
         let host_path = std::env::var("PATH").unwrap_or_default();
         assert!(!host_path.is_empty(), "宿主 `PATH` 是空的 ⇒ 下面那句是空真");
         assert_eq!(
@@ -1085,8 +763,8 @@ mod tests {
                 }
                 Err(other) => panic!(
                     "挖的是**一样知识**（「{k}」），停下来报的却是另一族原因：{other:?}\n\
-                     ⇒ 归因错了。「缺知识」「没装」「起不来」「协商没过」「读数自相矛盾」\
-                     是五件不同的事，各有各的人去修（`Stop` 头注那张表）——\
+                     ⇒ 归因错了。「缺知识」「没装」「起不来」「读数自相矛盾」\
+                     是四件不同的事，各有各的人去修（`Stop` 头注那张表）——\
                      把它们合成一个桶，正是这里在治的那种笼统归因换了个词。"
                 ),
             }
@@ -1119,7 +797,7 @@ mod tests {
     }
 
     /// `KW2E3` 刀 C（**常驻**）：把那个可执行文件拿掉 / 去掉执行位 ⇒
-    /// 跳④ 红的那句话是「**找不到，我查过这几处**」，不是笼统的「调用失败」。
+    /// ① 红的那句话是「**找不到，我查过这几处**」，不是笼统的「调用失败」。
     ///
     /// 「没装 / 找不到」必须是一个**能自证的**回答：用户级目录不在非登录 shell 的 `PATH` 里
     /// 是常态，说不出查过哪儿的话，人只能靠猜（`discover` 那 5 条判据守的就是这句话的形状）。
@@ -1160,7 +838,7 @@ mod tests {
 
         // ── ② 文件在、**没有执行位**：仍然是「找不到」，不是「起不来」 ───────
         let f = root.join(&name);
-        std::fs::write(&f, script_text(&name)).expect("写假插件");
+        std::fs::write(&f, script_text()).expect("写假插件");
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -1186,7 +864,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// `KW2E3` 刀 C 的**常驻形**：把执行位去掉，整条路必须停在**跳④**，
+    /// `KW2E3` 刀 C 的**常驻形**：把执行位去掉，整条路必须停在**①**，
     /// 而且说的是「**找不到，我查过这几处**」——不是「缺了一样知识」、不是「调用失败」。
     ///
     /// # 为什么做成常驻而不是一次性变异
@@ -1196,14 +874,14 @@ mod tests {
     /// 只有一种变体，于是这条路在这里报的是「缺了一样知识」——
     /// 说得出话，但**说错了话**。`Stop` 那五种就是这一格逼出来的。
     #[test]
-    fn an_unarmed_plugin_stops_at_hop_four_saying_where_it_looked() {
+    fn an_unarmed_plugin_stops_at_the_find_hop_saying_where_it_looked() {
         let root = fixture_root("unarmed");
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).expect("建夹具根");
         let name = plugin_name();
         let f = root.join(&name);
         // 文件在、正文对、**就是没有执行位**。
-        std::fs::write(&f, script_text(&name)).expect("写假插件");
+        std::fs::write(&f, script_text()).expect("写假插件");
         let (fixed, _) = discovery_of(&root, &name);
 
         #[cfg(unix)]
@@ -1212,7 +890,7 @@ mod tests {
             std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o644)).expect("chmod");
             match walk(&Caps::full(), &root) {
                 Err(Stop::NotFound { hop, why }) => {
-                    assert_eq!(hop, HOPS[1], "停对了原因，却停在别的跳上");
+                    assert_eq!(hop, HOPS[0], "停对了原因，却停在别的跳上");
                     for c in &fixed {
                         assert!(
                             why.contains(&c.display().to_string()),
@@ -1230,7 +908,7 @@ mod tests {
                     );
                 }
                 other => panic!(
-                    "去掉执行位之后没停在跳④ 的「找不到」上，而是：{other:?}\n\
+                    "去掉执行位之后没停在 ① 的「找不到」上，而是：{other:?}\n\
                      ⇒ 「那个文件不是个能跑的东西」被说成了别的事。\
                      `discover` 那 5 条判据守的就是这句话的形状。"
                 ),
@@ -1244,121 +922,6 @@ mod tests {
             );
         }
         let _ = std::fs::remove_dir_all(&root);
-    }
-
-    /// `KW2E4`（`§0d` 出路**丙**）：事前那句「我做不到」用的词，
-    /// **必须是 `inbound::REGISTRY` 里那条命令自己登记过的**。
-    ///
-    /// # 为什么走丙，不走甲也不走乙（论据，不是偏好）
-    ///
-    /// - **甲**（借一条已有命令说话）：那样它就**不是「一个新插件」**了 ——
-    ///   `EF06` 问的恰恰是「**加一个**插件」，借别人的命令说话正好把靶子打歪。
-    /// - **乙**（`REGISTRY` 8 → 9）：靶子最正，但要动 PM 持有的 `stream/inbound/`
-    ///   + `protocol_doc_guard` 对拍文档 + 那几个钉死计数 ⇒ **走 `§4` 上报，不许自批**。
-    /// - **丙**（只驱动判定那一半）：一个共享文件都不碰，代价是跳② **只买到一半** ——
-    ///   「说得出」有了，「**说出口**」没有。这一半的缺口由本格最后那两句**如实钉住**，
-    ///   不许让它看起来像已经有了。
-    ///
-    /// # 本格真正逮的是什么（不是同义反复）
-    ///
-    /// 那张表从 `REGISTRY.codes` 派生，而 [`REGISTRY_OWNED_CODE`] 那个字面量是**第二份拷贝**。
-    /// 有人把 `REGISTRY` 里的那个词改名（比如收窄成 `plugin_missing`），
-    /// 派生出来的表会**静默变空** —— 所有测试照绿，而插件轴上的第四条面从此永远不说话。
-    /// 本格把那次改名变成一次红。形状照 `main_fourth_face_tests.rs::the_declared_code_is_one_the_registry_already_declares`
-    /// （那一条守的是 tmux 轴的 `no_tmux`，本条守的是插件轴的那个词；两条互不覆盖）。
-    ///
-    /// # 🔴 三条红线，本格一条都没碰（逐条点名，便于复核）
-    ///
-    /// 1. `main.rs` 生产段那一行 `unavailable: Vec::new(),` —— 本文件**没有**改它；
-    /// 2. hello 的线上字节（会话流金样）—— 本文件**没有**构造任何 `Frame::Hello`，一个字节都没碰；
-    /// 3. 宣称的 `code` 必须是那条命令自己登记过的 —— 那正是本格的正题。
-    #[test]
-    fn the_pre_declaration_reuses_the_word_the_registry_already_owns() {
-        // ⚠ 那个词在本文件里**只有一处住址**（[`REGISTRY_OWNED_CODE`]）——
-        //   本文件第一版为它写过两份（一份运行时拼、一份字面量）＋一条相等断言看着，
-        //   自查时按「一个事实一个住址」收成一份：一处住址就不需要那条断言了。
-        //   它真正的对照在下面 ①：那个词**必须是 `inbound::REGISTRY` 里真有人登记的**。
-
-        // ① 那个词**必须有主**：`REGISTRY` 里得真有命令登记它。
-        let owners: Vec<&str> = crate::stream::inbound::REGISTRY
-            .iter()
-            .filter(|s| s.codes.contains(&REGISTRY_OWNED_CODE))
-            .map(|s| s.name)
-            .collect();
-        assert!(
-            !owners.is_empty(),
-            "`REGISTRY` 里没有任何一条命令登记 `{REGISTRY_OWNED_CODE}` —— \
-             要么那个词被改名了、要么转调插件的命令都没了。\n\
-             无论哪种，插件轴上的第四条面此刻**永远为空**，而它自己不会喊疼。"
-        );
-
-        // ② 三态：只在**有把握**时开口，没把握时退回今天的行为。
-        assert!(
-            unavailable_from_plugin(Some(true), REGISTRY_OWNED_CODE).is_empty(),
-            "装着的时候还在说做不到"
-        );
-        assert!(
-            unavailable_from_plugin(None, REGISTRY_OWNED_CODE).is_empty(),
-            "「判不出来」被压成了「做不到」—— 那一侧会让能用的功能从界面上无声消失"
-        );
-        let missing = unavailable_from_plugin(Some(false), REGISTRY_OWNED_CODE);
-        assert_eq!(
-            missing.len(),
-            owners.len(),
-            "确证没装时列出来的，不是 `REGISTRY` 里登记了那个词的那几条：{missing:?}"
-        );
-        for u in &missing {
-            let spec = crate::stream::inbound::REGISTRY
-                .iter()
-                .find(|s| s.name == u.command)
-                .unwrap_or_else(|| panic!("声明了一条 `REGISTRY` 里没有的命令：{}", u.command));
-            assert!(
-                spec.codes.contains(&u.code.as_str()),
-                "给 `{}` 声明的原因 `{}` 不在它自己登记的 codes {:?} 里 —— \
-                 事前说的和事后回的不是同一句话，客户端得为此维护第二张翻译表",
-                u.command,
-                u.code,
-                spec.codes
-            );
-            assert!(
-                crate::stream::inbound::command_names().contains(&u.command.as_str()),
-                "`{}` 不在 `commands` 里 —— 「根本不接」那一格由不在 `commands` 里表达，\
-                 不该出现在这张「接得下但做不到」的表上",
-                u.command
-            );
-        }
-
-        // ③ 事前那个词与**事后真调用**回的那个词是同一个 —— 后者来自一次真的盘上失败。
-        let root = fixture_root("word");
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root).expect("建夹具根");
-        let name = plugin_name();
-        let (fixed, hint) = discovery_of(&root, &name);
-        let after = crate::plugin::discover::find(&name, &fixed, false, hint)
-            .err()
-            .map(|_| REGISTRY_OWNED_CODE.to_string())
-            .expect("没装却说找到了");
-        assert_eq!(
-            after, missing[0].code,
-            "事前说的与事后回的不是同一个词 —— `wire.rs` 那个字段的头注逐字要求\
-             「事前与事后是同一句话，只是来得早」"
-        );
-        let _ = std::fs::remove_dir_all(&root);
-
-        // ④ 🔴 **缺口如实钉住**：这个假插件自己的名字**进不了** `commands`
-        //    ⇒ 它「说得出」，但**说不出口**。走出路乙（`REGISTRY` 8 → 9）才买得到另一半，
-        //    而那要动 PM 持有的文件 ⇒ `§4` 上报。
-        assert!(
-            !crate::stream::inbound::command_names().contains(&plugin_name().as_str()),
-            "假插件的名字混进了 `inbound::command_names()` —— 那是**出货面**，夹具不许进去"
-        );
-        assert!(
-            !crate::stream::inbound::REGISTRY
-                .iter()
-                .any(|s| s.name == plugin_name()),
-            "假插件混进了 `inbound::REGISTRY` —— 真填 `hello.commands` 那天，\
-             backend 会向仓外消费方声明一条**不存在**的命令"
-        );
     }
 
     /// `KW2E7`③：**通用层不许因此认识一个具体插件** —— 本夹具的词汇一个都不许漏进
@@ -1404,7 +967,7 @@ mod tests {
         );
 
         // 阴性对照：这张词表真的会咬人（不然它哪天被改空，正题会**安静地全绿**）。
-        let synthetic = format!("    let out = run(&bin, &[\"{PROBE_SUB}\"], 5, &[])?;");
+        let synthetic = format!("    let out = run(&bin, &[\"{WORK_SUB}\"], 5, &[])?;");
         assert!(
             vocab.iter().any(|(w, _)| synthetic.contains(w.as_str())),
             "合成的违规样本没被认出来 —— 正题那条此刻是空转的：{synthetic}"
@@ -1426,8 +989,7 @@ mod tests {
     ///    一个假插件的知识与一段 shell 脚本，而没有任何东西会说。
     ///    ⚠ 它的逐字形状**只许在本文件出现一次**（就是文件开头那一处）——
     ///    下面那条断言数的正是这个 1，散文里复述一份就会把它数成 2。
-    /// 2. **不进任何真注册表**：那一半在
-    ///    [`the_pre_declaration_reuses_the_word_the_registry_already_owns`] 的第 ④ 段。
+    /// 2. **不进任何真注册表**：假插件的名字不在 `inbound::REGISTRY` 里（真填 `hello.commands` 时会向仓外声明一条不存在的命令）。
     /// 3. **天花板**（形状照 `agent_locality_guard::FIXTURE_HOMES_CEILING = 1`）：
     ///    全 crate 的**测试段**里，经通用调用口真起进程的地方**只许有本文件一处**。
     ///    没有天花板的话，「夹具」就成了往那条唯一起进程口上挂东西的逃生舱 ——
@@ -1454,6 +1016,12 @@ mod tests {
              而本文件的每一条都该在 `#[cfg(test)]` 里"
         );
         guard_core::assert_no_test_code("plugin_walk_fixture.rs", &prod);
+        assert!(
+            !crate::stream::inbound::REGISTRY
+                .iter()
+                .any(|s| s.name == plugin_name()),
+            "假插件混进了 `inbound::REGISTRY`"
+        );
 
         // ② `lib.rs` 里那一行 `mod` 声明在（掉了本文件整个不编译，但它也可能被改成
         //    别的形状；钉住它，顺带把「PM 预批的那一行」写成一条读数）。
@@ -1640,17 +1208,10 @@ mod tests {
         let bin = crate::plugin::discover::find(&name, &fixed, false, hint).expect("该找得到");
         // ⚠ 把 `NotRun` 那两支的原文带上：「参数太大」（自己能修）与「那个程序坏了」
         //（自己修不了）是两件事，合成一句「起不来」就是归错因（`invoke::NotRun` 的头注逐字）。
-        let out = run_past_busy(&bin, &probe_argv(), DEADLINE_SECS, &[])
+        let (argv, env) = work_call();
+        let out = run_past_busy(&bin, &argv, DEADLINE_SECS, &env)
             .unwrap_or_else(|e| panic!("那个假插件没跑起来：{}", why_not_run(e)));
-        let text = String::from_utf8_lossy(&out.stdout).into_owned();
-        let answer = crate::plugin::probe::negotiate(&text, &name, REQUIRED_CAPS)
-            .unwrap_or_else(|e| panic!("协商没过：{}", e.message()));
-        let child_path = answer
-            .extras
-            .iter()
-            .find(|(k, _)| k == "inherited-path")
-            .map(|(_, v)| v.clone())
-            .unwrap_or_default();
+        let child_path = reported(&String::from_utf8_lossy(&out.stdout), "inherited-path");
         let host_path = std::env::var("PATH").unwrap_or_default();
         assert!(
             !host_path.is_empty() && !child_path.is_empty(),
@@ -1684,7 +1245,7 @@ mod tests {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 六 · `K-R26`：那条暗路关掉了吗 —— **行为**读数，不是源码读数
+    // 五 · `K-R26`：那条暗路关掉了吗 —— **行为**读数，不是源码读数
     // ═══════════════════════════════════════════════════════════════════════
 
     /// 内层那条判据的**全名**（外层用 `--exact` 按它把测试二进制自己重新拉起来）。
@@ -1922,7 +1483,7 @@ mod tests {
     ///   变的是「哪几处是真的每次都要动」。
     ///
     /// **假插件自己付了几处**（一个真实数据点）：**1 处** —— `main.rs` 那一行 `mod`（PM 预批）。
-    /// 而这 1 处买到的东西**不含**跳①③⑨：本夹具进不了真 `Hello`、进不了 `dispatch`。
+    /// 而这 1 处买到的东西**不含**宣告 · 分派 · 回帧：本夹具进不了真 `Hello`、进不了 `dispatch`。
     ///
     /// # ⚠ 第 8 行 PM 特别点名：本夹具**要不要**自己带一组专有针
     ///
@@ -1941,7 +1502,7 @@ mod tests {
         );
         let owners: Vec<&crate::wire::spec::CommandSpec> = crate::stream::inbound::REGISTRY
             .iter()
-            .filter(|s| s.codes.contains(&REGISTRY_OWNED_CODE))
+            .filter(|s| s.codes.contains(&"not_installed"))
             .collect();
         assert!(
             !owners.is_empty(),
