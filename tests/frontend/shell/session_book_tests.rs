@@ -172,8 +172,8 @@ fn the_live_cell_is_the_backends_session_added_frame() {
                 "face": {
                     "dot": "running", "live": {"is": "yes", "activity": "working"}, "settled": false,
                     "name": "跑着", "tip": "跑着", "line": "跑着", "tone": "now", "order": 1,
-                    "can": {"close": {"can": "no", "why": "运行中"}, "resume": {"can": "no", "why": "运行中"},
-                            "term": {"can": "yes", "tmux": true}, "reattach": {"can": "no", "why": "运行中"},
+                    "can": {"close": {"can": "no", "why": "W"}, "resume": {"can": "no", "why": "W"},
+                            "term": {"can": "yes", "tmux": true}, "reattach": {"can": "no", "why": "W"},
                             "model": {"can": "yes"}, "permission": {"can": "yes"}},
                 },
             }),
