@@ -436,11 +436,6 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "一组一条那几条共用的：盘上那一格的修改时刻折成 unix 秒（同名清单写时刻之前）",
     ),
     (
-        "common::batch_book::said_of",
-        Kind::Common,
-        "一组一条那几条共用的票 · 进度 · 撤：结局那一行",
-    ),
-    (
         "common::batch_book::ticketed",
         Kind::Common,
         "一组一条那几条共用的票 · 进度 · 撤：带票做一组（断开照常做完、再问回同一份）",

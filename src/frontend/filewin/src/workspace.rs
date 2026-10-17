@@ -1649,52 +1649,13 @@ pub fn common_dir(a: &str, b: &str) -> String {
         .unwrap_or_else(|| "/".to_string())
 }
 
-/// 「复制到另一栏」那一组 → 一条 `files-copy`：根 ＝ 所有源与目标的公共上级（按**字节**按段比），各项 `from` / `to` 是根底下的相对段。
-/// 同名缺省问（后端先探整组，有同名回 `exists` 带同名清单）。某一条不在根底下 ⇒ 那一句（不发）。
+/// 「复制到另一栏」那一组 → 一条 `files-copy`（公共根与相对段由 `batch_core::copy_req` 算）。
 pub fn across_req(jobs: &[CopyJob]) -> Result<cmd_wire::files::FilesCopyReq, String> {
-    let paths: Vec<(super::source::RemotePath, super::source::RemotePath)> =
-        jobs.iter().map(|j| (j.from_path(), j.to_path())).collect();
-    let mut root: Option<Vec<u8>> = None;
-    for (f, t) in &paths {
-        for p in [f, t] {
-            let up = p.parent().bytes();
-            root = Some(match root {
-                None => up,
-                Some(r) => super::source::common_dir_bytes(&r, &up),
-            });
-        }
-    }
-    let root = root.unwrap_or_else(|| b"/".to_vec());
-    let root_path = super::source::RemotePath::from_bytes(&root);
-    let rel = |p: &super::source::RemotePath| -> Result<cmd_wire::files::WirePath, String> {
-        let b = p.bytes();
-        let cut = if root == b"/" { 1 } else { root.len() + 1 };
-        (b.starts_with(&root)
-            && b.len() > cut
-            && (root == b"/" || b.get(root.len()) == Some(&b'/')))
-        .then(|| cmd_wire::files::WirePath(b[cut..].to_vec()))
-        .ok_or_else(|| {
-            copy_text(
-                "rsFilewinWorkspace.acrossArgs.notUnder",
-                &[("path", &p.shown), ("root", &root_path.shown)],
-            )
-        })
-    };
-    let mut items = Vec::with_capacity(paths.len());
-    for (f, t) in &paths {
-        items.push(cmd_wire::files::CopyItem {
-            from: rel(f)?,
-            to: rel(t)?,
-        });
-    }
-    Ok(cmd_wire::files::FilesCopyReq {
-        root: root_path.path(),
-        items,
-        on_exists: None,
-        decide: None,
-        ticket: None,
-        single: None,
-    })
+    let pairs: Vec<(Vec<u8>, Vec<u8>)> = jobs
+        .iter()
+        .map(|j| (j.from_path().bytes(), j.to_path().bytes()))
+        .collect();
+    batch_core::copy_req(&pairs)
 }
 
 impl eframe::App for Workspace {

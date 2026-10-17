@@ -452,13 +452,12 @@ fn a_dropped_link_shows_the_strip_keeps_the_stale_listing_and_blocks_writes() {
     // 写类那几件做不了，说同一句。
     let read_only = copy_text("rsFilewinChrome.link.readOnly", &[]);
     assert_eq!(
-        ws.pane_on(0).offline_refusal(crate::select::Action::Rename),
+        ws.pane_on(0).refused_here(crate::select::Action::Rename),
         Some(read_only.clone())
     );
     // 下载也要那台（读也得连着）⇒ 同样灰着（「要不要那台机器」一处判，`offline_cmd`）。
     assert_eq!(
-        ws.pane_on(0)
-            .offline_refusal(crate::select::Action::Download),
+        ws.pane_on(0).refused_here(crate::select::Action::Download),
         Some(read_only.clone()),
         "下载要那台机器，离线时却没挡"
     );
@@ -478,7 +477,7 @@ fn a_dropped_link_shows_the_strip_keeps_the_stale_listing_and_blocks_writes() {
         "又连上了却没重列那一屏"
     );
     assert_eq!(
-        ws.pane_on(0).offline_refusal(crate::select::Action::Rename),
+        ws.pane_on(0).refused_here(crate::select::Action::Rename),
         None
     );
 }
@@ -547,7 +546,7 @@ async fn settle_copy(w: &FileWindow) -> crate::batch::BatchBoard {
         if let Some(b) = w.batches.iter().find(|b| {
             matches!(
                 b.phase(),
-                crate::batch::Phase::Ended(_) | crate::batch::Phase::Failed(_)
+                batch_core::Phase::Ended(_) | batch_core::Phase::Failed(_)
             )
         }) {
             return b.clone();
@@ -785,7 +784,7 @@ async fn copy_across_takes_the_whole_selection_and_a_directory_goes_recursive() 
         ]})],
         "线上那一条与期望不等（一组一条）"
     );
-    let crate::batch::Phase::Ended(r) = b.phase() else {
+    let batch_core::Phase::Ended(r) = b.phase() else {
         panic!("{:?}", b.phase())
     };
     let verb = copy_core::copy_text("beFiles.batch.verbCopy", &[]);
@@ -1207,8 +1206,8 @@ async fn screenshot_for_the_shots_tool() {
         );
         down.begin("logs-0930.zip");
         down.progress(58_000_000, 480_000_000);
-        let rm = crate::batch::BatchBoard::new(crate::batch::Plan {
-            verb: crate::batch::Verb::Delete,
+        let rm = crate::batch::BatchBoard::new(batch_core::Plan {
+            verb: batch_core::Verb::Delete,
             cmd: "files-delete",
             args: serde_json::json!({}),
             names: vec!["node_modules".into(), "dist".into()],
@@ -1223,7 +1222,7 @@ async fn screenshot_for_the_shots_tool() {
             Some(d.clone()),
             None,
         );
-        rm.progress(crate::batch::Tick {
+        rm.progress(batch_core::Tick {
             done: 1,
             total: 2,
             bytes: None,
@@ -1254,8 +1253,8 @@ async fn screenshot_for_the_shots_tool() {
             ],
             ..Default::default()
         });
-        let cross = crate::batch::BatchBoard::new(crate::batch::Plan {
-            verb: crate::batch::Verb::Copy,
+        let cross = crate::batch::BatchBoard::new(batch_core::Plan {
+            verb: batch_core::Verb::Copy,
             cmd: "transfer-copy",
             args: serde_json::json!({"to": "gpu-01", "to_dir": "/home/user/inbox", "items": [
                 {"remote_path": "report.pdf"}, {"remote_path": "notes.md"}, {"remote_path": "assets"}]}),
@@ -1275,7 +1274,7 @@ async fn screenshot_for_the_shots_tool() {
             None,
             None,
         );
-        cross.set(crate::batch::Phase::Ended(cmd_wire::batch::BatchReply {
+        cross.set(batch_core::Phase::Ended(cmd_wire::batch::BatchReply {
             outcomes: vec![
                 cmd_wire::batch::BatchOutcome::bare("0", cmd_wire::batch::ItemState::Done),
                 cmd_wire::batch::BatchOutcome {
@@ -1287,8 +1286,8 @@ async fn screenshot_for_the_shots_tool() {
             ],
             said: "复制 3 项 · 完成 1 · 跳过 1 · 失败 ×1".into(),
         }));
-        let cut = crate::batch::BatchBoard::new(crate::batch::Plan {
-            verb: crate::batch::Verb::Copy,
+        let cut = crate::batch::BatchBoard::new(batch_core::Plan {
+            verb: batch_core::Verb::Copy,
             cmd: "files-copy",
             args: serde_json::json!({}),
             names: (0..5).map(|i| format!("part-{i}.bin")).collect(),
@@ -1303,13 +1302,13 @@ async fn screenshot_for_the_shots_tool() {
             Some(d.clone()),
             None,
         );
-        let t = crate::batch::Tick {
+        let t = batch_core::Tick {
             done: 2,
             total: 5,
             bytes: None,
         };
         cut.progress(t);
-        cut.set(crate::batch::Phase::Cut(crate::batch::cut_line(
+        cut.set(batch_core::Phase::Cut(batch_core::cut_line(
             &cut.plan(),
             &t,
         )));
@@ -1324,8 +1323,8 @@ async fn screenshot_for_the_shots_tool() {
                 .iter()
                 .filter_map(|n| crate::transfer::Pending::into_remote_dir(&format!("/tmp/{n}"), &d))
                 .collect();
-        let cross = crate::batch::BatchBoard::new(crate::batch::Plan {
-            verb: crate::batch::Verb::Copy,
+        let cross = crate::batch::BatchBoard::new(batch_core::Plan {
+            verb: batch_core::Verb::Copy,
             cmd: "transfer-copy",
             args: serde_json::json!({"to": "gpu-01", "to_dir": "/home/user/inbox", "items": [
                 {"remote_path": "report.pdf"}, {"remote_path": "notes.md"}, {"remote_path": "assets"}]}),
@@ -1345,7 +1344,7 @@ async fn screenshot_for_the_shots_tool() {
             None,
             None,
         );
-        cross.set(crate::batch::Phase::Ended(cmd_wire::batch::BatchReply {
+        cross.set(batch_core::Phase::Ended(cmd_wire::batch::BatchReply {
             outcomes: vec![
                 cmd_wire::batch::BatchOutcome::bare("0", cmd_wire::batch::ItemState::Done),
                 cmd_wire::batch::BatchOutcome {
@@ -1398,8 +1397,8 @@ async fn screenshot_for_the_shots_tool() {
     // 一组复制全成 ⇒ 右下角回执（后端那一行原样）；「进度」表收着（没有失败不自己摊开）。
     if scene == "batch-done" {
         use crate::progress::Trip;
-        let all = crate::batch::BatchBoard::new(crate::batch::Plan {
-            verb: crate::batch::Verb::Copy,
+        let all = crate::batch::BatchBoard::new(batch_core::Plan {
+            verb: batch_core::Verb::Copy,
             cmd: "files-copy",
             args: serde_json::json!({}),
             names: vec!["Cargo.toml".into(), "README.md".into()],
@@ -1414,7 +1413,7 @@ async fn screenshot_for_the_shots_tool() {
             Some(d.clone()),
             None,
         );
-        all.set(crate::batch::Phase::Ended(cmd_wire::batch::BatchReply {
+        all.set(batch_core::Phase::Ended(cmd_wire::batch::BatchReply {
             outcomes: (0..2)
                 .map(|i| {
                     cmd_wire::batch::BatchOutcome::bare(
@@ -1501,7 +1500,7 @@ async fn screenshot_for_the_shots_tool() {
                 crate::transfer::Pending::into_remote_dir(&local.join(n).to_string_lossy(), &d)
             })
             .collect();
-        let b = crate::batch::BatchBoard::new(crate::batch::Plan {
+        let b = crate::batch::BatchBoard::new(batch_core::Plan {
             into: Some(d.clone()),
             ..crate::transfer::tests::upload_ask(&items).plan()
         });
@@ -1546,8 +1545,8 @@ async fn screenshot_for_the_shots_tool() {
     }
     // 冲突框：复制 3 项到另一栏、同名 3 项（两份文件 ＋ 一个目录：目录那一行写不合并）；默认「跳过同名」，「覆盖」危险样式。
     if scene == "batch-ask" || scene == "batch-each" {
-        let b = crate::batch::BatchBoard::new(crate::batch::Plan {
-            verb: crate::batch::Verb::Copy,
+        let b = crate::batch::BatchBoard::new(batch_core::Plan {
+            verb: batch_core::Verb::Copy,
             cmd: "files-copy",
             args: serde_json::json!({}),
             names: vec!["report.pdf".into(), "notes.md".into(), "assets".into()],

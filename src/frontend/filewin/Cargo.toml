@@ -23,6 +23,7 @@ path = "src/main.rs"
 
 [dependencies]
 cmd-wire = { path = "../../common/cmd-wire" }
+batch-core = { path = "../../common/batch-core" }
 chunk-core = { path = "../../common/chunk-core" }
 pick-core = { path = "../../common/pick-core" }
 comms-inward = { path = "../../comms/inward" }

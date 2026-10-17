@@ -391,29 +391,6 @@ pub fn tail_bytes(b: &[u8]) -> &[u8] {
     }
 }
 
-/// 两个目录按**段**比的最长公共前缀（字节版；都只在根下相交 ⇒ `/`）—— `workspace::common_dir` 的字节版。
-pub fn common_dir_bytes(a: &[u8], b: &[u8]) -> Vec<u8> {
-    let segs = |x: &[u8]| -> Vec<Vec<u8>> {
-        x.split(|c| *c == b'/')
-            .filter(|s| !s.is_empty())
-            .map(<[u8]>::to_vec)
-            .collect()
-    };
-    let (sa, sb) = (segs(a), segs(b));
-    let mut out = Vec::new();
-    for (x, y) in sa.iter().zip(sb.iter()) {
-        if x != y {
-            break;
-        }
-        out.push(b'/');
-        out.extend_from_slice(x);
-    }
-    if out.is_empty() {
-        out.push(b'/');
-    }
-    out
-}
-
 /// 一格 `mtime_secs` 画出来是什么：列里那一格（短）与悬停 / 属性里的完整时间。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MtimeText {
@@ -661,40 +638,28 @@ pub const CMD_LS: &str = "files-ls";
 /// （两侧不同源），与表里声明的那一摞**逐格相等**；右栏那句「怎么来的」
 /// 每一行各挂一条**行为**断言。加一格 / 丢一格 / 说法漂了，三种都红。
 pub fn row_from_ls_entry(v: &cmd_wire::files::LsEntry) -> Listed {
-    use cmd_wire::files::{FileKind, LinkTo};
-    // 🔴 有损与否看**字节**，不看转出来的那个串里有没有 U+FFFD。
-    //    后者是一个猜：真叫 `\u{FFFD}` 的文件会被误判成有损。
-    // 只看**名字那一段**（那台按自己的分隔符切好的 `name`）：目录有损而名字干净的那一行
-    //   名字照样能用（整条路径的字节由窗口按当前目录的字节拼，`FileWindow::row_path`）。
-    let raw = &v.name.0;
-    let lossy_name = std::str::from_utf8(raw).is_err();
-    let path = String::from_utf8_lossy(&v.path.0).to_string();
-    let name = String::from_utf8_lossy(raw).to_string();
-    // 有损名留住名字那一段的原始字节。
-    let raw_name = lossy_name.then(|| raw.clone());
-    // 🔴 `kind` 落**两格**，不是一格：压成一个布尔就是「看不出哪个是符号链接」。
-    let is_dir = v.kind == FileKind::Dir;
-    let link = v.kind == FileKind::Symlink;
+    // 链接 · 断链 · 有损名那几格与手机同一处认（`pick-core`）；名字那一段的字节留着寻址（有损名的路径由窗口按当前目录的字节拼）。
+    let f = pick_core::PickIn::of_ls(v);
     Listed {
         row: Row {
-            name,
-            path,
-            is_dir,
+            path: String::from_utf8_lossy(&v.path.0).to_string(),
+            is_dir: f.is_dir,
             size: v.size.unwrap_or(0),
-            lossy_name,
+            lossy_name: f.lossy,
+            name: f.name,
         },
-        link,
-        link_dir: link && v.link_dir == Some(true),
+        link: f.link,
+        link_dir: f.link_dir,
         // 🔴 原样带上来。缺了就是 `None`（＝**后端没送**）—— 不许兜底成 0，
         //    那是 1970-01-01，一个看起来很像真读数的假时间。
         mtime_secs: v.mtime_secs,
         mtime_text: v.mtime_text.clone(),
         mtime_full: v.mtime_full.clone(),
-        raw_name,
-        link_broken: link && v.link_to == Some(LinkTo::Missing),
+        raw_name: f.raw.then(|| v.name.0.clone()),
+        link_broken: f.link_broken,
         class: v.class,
         type_text: v.type_text.clone(),
-        gates: v.gates.clone(),
+        gates: f.gates,
         size_text: v.size_text.clone(),
     }
 }
@@ -836,88 +801,21 @@ pub async fn ask(
         .map_err(|f| f.said)
 }
 
-/// 一趟 [`ask_coded`] 没成：**对端说的码**（只有「对端拒了」那一形有）＋ 那句人话。
-///
-/// 🔴为什么要把码留下来：编辑器读文本那一问，后端的
-/// `too_large` / `not_text` 与「断开」是**两件事**（前者说「这份不是一份能编辑的文本」，
-/// 后者说「这一趟没走通」），而 [`comms_inward::chan::said::said`] 翻完之后只剩一句话 —— 分它们就只能猜字符串前缀。
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Failed {
-    /// 对端拒绝时它给的那个码（`None` = 不是对端拒的：没走通 / 这一侧拼错 / 对端不认这条命令）。
-    pub code: Option<String>,
-    /// 给人看的那句话（[`comms_inward::chan::said::said`] 翻过的，或这一侧自己的那句）。
-    pub said: String,
-    /// 「复制详情」那几行（首行之外）：对端拒了 ⇒ 那台后端写好的那份；通道没走通 / 这一侧的错 ⇒ 窗口进程自己写（[`detail_of`]）。
-    /// 空 ⇒ 不出按钮。
-    pub detail: String,
-}
+pub(crate) use batch_core::Failed;
 
-impl Failed {
-    pub(crate) fn local(said: String) -> Self {
-        Self {
-            code: None,
-            said,
-            detail: String::new(),
-        }
-    }
-
-    /// 这一侧的错（问之前拼不出参数 · 回来的读不懂）：窗口进程写详情（时刻 · 机器 · 本机 · 命令 · 原话）。
-    pub(crate) fn here(said: String, origin: &Origin, cmd: &str, raw: Option<&str>) -> Self {
-        use copy_core::detail::{Detail, Label};
-        Self {
-            code: None,
-            said,
-            detail: Detail::new()
-                .item(Label::At, now_stamp())
-                .item(Label::Machine, &origin.0)
-                .maybe(Label::Local, local_line_for(origin))
-                .item(Label::Command, cmd)
-                .maybe(Label::Raw, raw)
-                .render(),
-        }
-    }
-
-    /// 一行汇总（「上传失败 · n 项」）底下几件各自的失败 ⇒ 复制出去的整段：首行是那一行，每件一段（「名字：那一句」＋ 它的详情），
-    /// 段间空一行；没有一件带详情 ⇒ `None`（不出按钮）。排法住 `copy_core::detail::many`（主界面合流 ×N 同一排法，跨语言金样对拍）。
-    pub fn copy_many(head: &str, items: &[(String, Failed)]) -> Option<String> {
-        let segs: Vec<(String, String)> = items
-            .iter()
-            .map(|(name, f)| {
-                (
-                    copy_text(
-                        "rsFilewinProgress.detail.failedOne",
-                        &[("name", name), ("why", &f.said)],
-                    ),
-                    f.detail.clone(),
-                )
-            })
-            .collect();
-        copy_core::detail::many(head, &segs)
-    }
-
-    /// 屏上那一句 `shown`（可能套了别的字）＋ 详情 ⇒ 复制出去的整段；没详情 ⇒ `None`（不出按钮）。
-    pub fn copy_body(shown: &str, detail: &str) -> Option<String> {
-        (!detail.trim().is_empty()).then(|| format!("{shown}\n{detail}"))
-    }
-}
-
-/// 只有一句话（这一侧说的，没有详情 ⇒ 不出按钮）。
-impl From<String> for Failed {
-    fn from(said: String) -> Self {
-        Failed::local(said)
-    }
-}
-
-impl From<&str> for Failed {
-    fn from(said: &str) -> Self {
-        Failed::local(said.to_string())
-    }
-}
-
-/// 写出来就是给人看的那一句（详情另取）。
-impl std::fmt::Display for Failed {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.said)
+/// 这一侧的错（问之前拼不出参数 · 回来的读不懂）：窗口进程写详情（时刻 · 机器 · 本机 · 命令 · 原话）。
+pub(crate) fn failed_here(said: String, origin: &Origin, cmd: &str, raw: Option<&str>) -> Failed {
+    use copy_core::detail::{Detail, Label};
+    Failed {
+        code: None,
+        said,
+        detail: Detail::new()
+            .item(Label::At, now_stamp())
+            .item(Label::Machine, &origin.0)
+            .maybe(Label::Local, local_line_for(origin))
+            .item(Label::Command, cmd)
+            .maybe(Label::Raw, raw)
+            .render(),
     }
 }
 
@@ -1012,7 +910,7 @@ pub async fn ask_typed<C: cmd_wire::files::Call>(
     t: std::time::Duration,
 ) -> Result<C::Reply, Failed> {
     let args = serde_json::to_value(req).map_err(|e| {
-        Failed::here(
+        failed_here(
             copy_text("reason.code.bug", &[]),
             origin,
             C::NAME,
@@ -1021,7 +919,7 @@ pub async fn ask_typed<C: cmd_wire::files::Call>(
     })?;
     let d = ask_coded(line, origin, C::NAME, &args, t).await?;
     reply_of::<C>(d).map_err(|e| {
-        Failed::here(
+        failed_here(
             copy_text("reason.content.unparsable", &[]),
             origin,
             C::NAME,
@@ -1120,7 +1018,7 @@ pub async fn ask_batch(
     cmd: &str,
     args: &serde_json::Value,
     t: std::time::Duration,
-) -> Result<serde_json::Value, super::batch::Rebuff> {
+) -> Result<serde_json::Value, batch_core::Rebuff> {
     ask_raw(
         line,
         origin,
@@ -1140,9 +1038,9 @@ async fn ask_raw(
     args: &serde_json::Value,
     t: std::time::Duration,
     cancel: comms_inward::chan::wire::CancelToken,
-) -> Result<serde_json::Value, super::batch::Rebuff> {
+) -> Result<serde_json::Value, batch_core::Rebuff> {
     use comms_inward::chan::wire::{Body, Budget, CallError, Comms, Op};
-    let plain = |failed: Failed| super::batch::Rebuff {
+    let plain = |failed: Failed| batch_core::Rebuff {
         failed,
         data: None,
         cut: false,
@@ -1152,7 +1050,7 @@ async fn ask_raw(
         cancel,
     };
     let payload = Body(serde_json::to_vec(args).map_err(|e| {
-        plain(Failed::here(
+        plain(failed_here(
             copy_text("reason.code.bug", &[]),
             origin,
             cmd,
@@ -1163,7 +1061,7 @@ async fn ask_raw(
     let body = line
         .call(origin, &op, payload, budget)
         .await
-        .map_err(|e| super::batch::Rebuff {
+        .map_err(|e| batch_core::Rebuff {
             failed: Failed {
                 code: refused_code(&e),
                 said: comms_inward::chan::said::said(&e, origin),
@@ -1173,7 +1071,7 @@ async fn ask_raw(
             cut: matches!(e, CallError::Hop { .. }),
         })?;
     let v: serde_json::Value = serde_json::from_slice(&body.0).map_err(|e| {
-        plain(Failed::here(
+        plain(failed_here(
             copy_text("rsFilewinSource.ask.unreadable", &[]),
             origin,
             cmd,
@@ -1181,7 +1079,7 @@ async fn ask_raw(
         ))
     })?;
     if v.is_null() {
-        return Err(plain(Failed::here(
+        return Err(plain(failed_here(
             copy_text("reason.content.unparsable", &[]),
             origin,
             cmd,
@@ -1324,7 +1222,7 @@ pub async fn watch_coded(
                         let said = text("why").to_string();
                         let detail = text("detail");
                         let mut f = if detail.trim().is_empty() {
-                            Failed::here(said, origin, kind, None)
+                            failed_here(said, origin, kind, None)
                         } else {
                             Failed {
                                 code: None,

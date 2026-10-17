@@ -4,6 +4,7 @@
       "line": {
         "machine": {
           "detail": null,
+          "expectedHostKey": null,
           "fixes": [],
           "next": null,
           "os": null,
@@ -25,6 +26,7 @@
         "epoch": 1,
         "machine": {
           "detail": null,
+          "expectedHostKey": null,
           "fixes": [],
           "next": null,
           "os": null,
@@ -46,6 +48,7 @@
         "epoch": 2,
         "machine": {
           "detail": null,
+          "expectedHostKey": null,
           "fixes": [
             {
               "fix": "update",
@@ -72,6 +75,7 @@
         "epoch": 3,
         "machine": {
           "detail": null,
+          "expectedHostKey": null,
           "fixes": [],
           "next": null,
           "os": null,
@@ -92,6 +96,7 @@
       "line": {
         "machine": {
           "detail": "exit: 127",
+          "expectedHostKey": null,
           "fixes": [
             {
               "fix": "install",
@@ -117,6 +122,7 @@
       "line": {
         "machine": {
           "detail": "refused: x",
+          "expectedHostKey": null,
           "fixes": [
             {
               "fix": "update",
@@ -142,6 +148,7 @@
       "line": {
         "machine": {
           "detail": "命令：dial\n对象：box\n断在：连接失败 · 密钥被拒\n码：auth\n原话：denied",
+          "expectedHostKey": null,
           "fixes": [
             {
               "fix": "push_key",
@@ -171,6 +178,7 @@
       "line": {
         "machine": {
           "detail": "对象：box\n断在：box 离线\n码：other",
+          "expectedHostKey": null,
           "fixes": [
             {
               "fix": "retry",
@@ -200,6 +208,7 @@
       "line": {
         "machine": {
           "detail": "setsid",
+          "expectedHostKey": null,
           "fixes": [],
           "next": null,
           "os": null,

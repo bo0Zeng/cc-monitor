@@ -10020,6 +10020,13 @@
       "zh": "已取消 {left}",
       "args": ["left"]
     },
+    "beFiles.batch.cut": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "{machine} 连接已断开 · {action} {n} 项 · 完成 {ok} · 中断 {left}",
+      "args": ["machine", "action", "n", "ok", "left"],
+      "limited": ["连接"]
+    },
     "beFiles.batch.verbDownload": {
       "kind": "body",
       "role": "片段",
@@ -30076,6 +30083,24 @@
       "zh": "全选",
       "args": []
     },
+    "mobFiles.pick.count": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "已选 {n}",
+      "args": ["n"]
+    },
+    "mobFiles.pick.copyHere": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "复制到此处",
+      "args": []
+    },
+    "mobFiles.batch.failedShow": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "看失败的",
+      "args": []
+    },
     "mobFiles.bookmark.deleted": {
       "kind": "body",
       "role": "toast",
@@ -30117,12 +30142,6 @@
       "role": "确认框",
       "zh": "返回编辑",
       "args": []
-    },
-    "mobFiles.download.done": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已下载到 {path}",
-      "args": ["path"]
     },
     "mobFiles.upload.done": {
       "kind": "body",

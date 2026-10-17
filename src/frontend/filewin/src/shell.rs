@@ -676,34 +676,32 @@ impl FileWindow {
         self.line = Some(line);
     }
 
-    /// 和那台断着、而这一件要碰那台 ⇒ 「离线 · 只读」（菜单 · 命令栏悬停 · 键盘按了的回话同一句）。
-    pub fn offline_refusal(&self, a: Action) -> Option<String> {
-        self.offline_cmd(super::chrome::Cmd::Act(a))
+    /// 这一件此刻做不到 ⇒ 为什么（这台不支持 · 离线 · 只读；菜单 · 命令栏悬停 · 键盘按了的回话同一句）：判法在 `pick-core`，手机同一份。
+    pub fn refused_here(&self, a: Action) -> Option<String> {
+        let here = pick_core::Here {
+            offline: self.link.offline(),
+            unavailable: self
+                .offer
+                .lock()
+                .unwrap()
+                .as_ref()
+                .map(|o| o.unavailable_ops())
+                .unwrap_or_default(),
+        };
+        pick_core::refused_here(a, &here)
     }
 
-    /// 🔴 **断线时哪几件做不了 —— 唯一一处**：命令栏每一颗 · 菜单每一项 · 键盘都问它。
-    /// 要碰那台机器的（新建 · 上传 · 终端 · 复制到另一栏 · 选中项上的每一件，打开目录除外）⇒ 「离线 · 只读」；
-    /// 只改这一扇窗怎么看的（左栏 · 显示隐藏文件 · 双栏 · 预览）照常。打开目录照常点得动：进去那一下自己会说断开。
+    /// 断线时命令栏那几颗哪颗做不了：要碰那台机器的（新建 · 上传 · 终端 · 复制到另一栏）⇒ 「离线 · 只读」；
+    /// 只改这一扇窗怎么看的（左栏 · 显示隐藏文件 · 双栏 · 预览）照常。选中项上的那几件问 [`Self::refused_here`]。
     pub fn offline_cmd(&self, c: super::chrome::Cmd) -> Option<String> {
         use super::chrome::Cmd;
         let needs_machine = match c {
             Cmd::Sidebar | Cmd::Hidden | Cmd::Split | Cmd::Preview => false,
-            Cmd::Act(Action::Open) => false,
-            Cmd::Mkdir | Cmd::NewFile | Cmd::Upload | Cmd::Term | Cmd::Across | Cmd::Act(_) => true,
+            Cmd::Act(a) => return self.refused_here(a),
+            Cmd::Mkdir | Cmd::NewFile | Cmd::Upload | Cmd::Term | Cmd::Across => true,
         };
         (needs_machine && self.link.offline())
             .then(|| copy_text("rsFilewinChrome.link.readOnly", &[]))
-    }
-
-    /// 这件事在这台机器上做不到 ⇒ 那句为什么（菜单置灰的 hover · 键盘按了的回话）；做得到 / 没把握 ⇒ `None`。
-    pub fn unavailable_here(&self, a: Action) -> Option<String> {
-        let op = match a {
-            Action::Chmod => "files-chmod",
-            _ => return None,
-        };
-        let offer = self.offer.lock().unwrap();
-        offer.as_ref()?.unavailable(op)?; // 码不上屏：只说做不到
-        Some(copy_text("rsFilewinShell.menu.unavailableHere", &[]))
     }
 
     /// 带着**已经列好的那一屏**建窗 —— [`super::entry::open_file_window`] 走这条。
@@ -1479,8 +1477,8 @@ impl FileWindow {
         self.drops_started += 1;
         let dir = super::source::parent_dir(&items[0].remote_path);
         // 开单那一问（同名冲突框挂在这个标签页上，与复制 · 下载同一个框）。
-        let ask = super::batch::BatchBoard::new(super::batch::Plan {
-            verb: super::batch::Verb::Upload,
+        let ask = super::batch::BatchBoard::new(batch_core::Plan {
+            verb: batch_core::Verb::Upload,
             cmd: super::transfer::CMD_UPLOAD,
             args: serde_json::to_value(super::transfer::group_ask(&items, None, None))
                 .unwrap_or_default(),
@@ -1711,8 +1709,8 @@ impl FileWindow {
         names: Vec<String>,
         ctx: Option<egui::Context>,
     ) -> bool {
-        let plan = super::batch::Plan {
-            verb: super::batch::Verb::Copy,
+        let plan = batch_core::Plan {
+            verb: batch_core::Verb::Copy,
             cmd: super::copy::CMD_COPY,
             args: serde_json::to_value(&req).unwrap_or_default(),
             names,
@@ -1727,7 +1725,7 @@ impl FileWindow {
     /// `home` ＝ 那一组在哪台的后端里做（撤与断开都认它）。接不上（没运行时 · 没通道）⇒ 出声。
     pub fn start_batch(
         &mut self,
-        plan: super::batch::Plan,
+        plan: batch_core::Plan,
         home: super::source::Origin,
         icon: &'static str,
         ctx: Option<egui::Context>,
@@ -1758,7 +1756,7 @@ impl FileWindow {
 
     /// 这个标签页起的那几组落地了 ⇒ 重列目录（复制进来的要出现 · 删掉的要消失）、选中清掉。
     pub fn settle_finished_batches(&mut self) -> bool {
-        use super::batch::Phase;
+        use batch_core::Phase;
         let before = self.batches.len();
         let mut landed = false;
         let mut said = None;
@@ -1953,8 +1951,8 @@ impl FileWindow {
             decide: None,
             ticket: None,
         };
-        let plan = super::batch::Plan {
-            verb: super::batch::Verb::Copy,
+        let plan = batch_core::Plan {
+            verb: batch_core::Verb::Copy,
             cmd: super::cross_copy::CMD_CROSS,
             args: serde_json::to_value(&ask).unwrap_or_default(),
             names: p.names.clone(),
@@ -2505,19 +2503,21 @@ impl FileWindow {
                     )
                     .await;
                     let mut k = kept.lock().unwrap();
-                    all.into_iter()
+                    let mut applied = Vec::new();
+                    let out = all
+                        .into_iter()
                         .map(|(op, r)| {
                             let r = r.map(|reply| {
-                                if let Some(u) =
-                                    super::writeops::chmod_undo(&op, &reply).filter(|_| undoable)
-                                {
-                                    k.1.push(u);
-                                }
                                 k.0.push(op.clone());
+                                applied.push((op.clone(), reply));
                             });
                             (op, r)
                         })
-                        .collect()
+                        .collect();
+                    if undoable {
+                        k.1.extend(super::writeops::chmod_undo(&applied));
+                    }
+                    out
                 },
             )
             .await;
@@ -2672,8 +2672,8 @@ impl FileWindow {
             on_exists: None,
             decide: None,
         };
-        let board = super::batch::BatchBoard::new(super::batch::Plan {
-            verb: super::batch::Verb::Download,
+        let board = super::batch::BatchBoard::new(batch_core::Plan {
+            verb: batch_core::Verb::Download,
             cmd: super::batch::CMD_DOWNLOAD,
             args: serde_json::to_value(&ask).unwrap_or_default(),
             names: rows.iter().map(|r| r.name.clone()).collect(),
@@ -4270,11 +4270,7 @@ impl FileWindow {
             self.key_notice = Some(select::refusal(a, idx.len()));
             return false;
         }
-        if let Some(why) = self.unavailable_here(a) {
-            self.key_notice = Some(why);
-            return false;
-        }
-        if let Some(why) = self.offline_refusal(a) {
+        if let Some(why) = self.refused_here(a) {
             self.key_notice = Some(why);
             return false;
         }
@@ -4530,7 +4526,7 @@ impl FileWindow {
             return row_why.clone();
         }
         match it {
-            Item::Act(a) => self.unavailable_here(a).or_else(|| self.offline_refusal(a)),
+            Item::Act(a) => self.refused_here(a),
             Item::InPlan | Item::SelectAll => None,
             Item::Mkdir => self.offline_cmd(Cmd::Mkdir),
             Item::NewFile => self.offline_cmd(Cmd::NewFile),

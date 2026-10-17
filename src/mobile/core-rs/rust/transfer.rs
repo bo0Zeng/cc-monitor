@@ -8,8 +8,12 @@ use crate::resident::{self, OnEvent};
 use chunk_core::{Ask, Sink, Watch};
 use cmd_wire::files::{Call, WirePath};
 use resident_client::client::CallError;
+use std::collections::HashMap;
 use std::fs::File;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
+use tokio::sync::Notify;
 
 /// 经这台的常驻流问那台：每一问一个期限；没成 ⇒ 交 Kotlin 的那一行（同一问一答的结局）。
 struct Over {
@@ -47,6 +51,67 @@ pub fn typed<C: Call>(
         }),
         Err(e) => Err(resident::reply_json(id, machine, C::NAME, Err(e))),
     }
+}
+
+/// 撤一趟（［停］：Kotlin 那一侧不等了）：在问的那一块当场丢下，之后本机那一份一个字节都不再写。
+#[derive(Default)]
+pub struct Halt {
+    hit: AtomicBool,
+    now: Notify,
+}
+
+impl Halt {
+    pub fn set(&self) {
+        self.hit.store(true, Ordering::SeqCst);
+        self.now.notify_waiters();
+    }
+
+    pub fn is(&self) -> bool {
+        self.hit.load(Ordering::SeqCst)
+    }
+}
+
+/// 照撤的一问：撤了 ⇒ 不问、在问的不等、回话到了也不交（那一块不写）。
+pub struct Halting<A> {
+    pub ask: A,
+    pub halt: Arc<Halt>,
+    pub id: i64,
+}
+
+impl<A: Ask<Fail = String>> Ask for Halting<A> {
+    type Fail = String;
+    async fn ask<C: Call + Sync>(&self, req: &C) -> Result<C::Reply, String> {
+        let now = self.halt.now.notified();
+        tokio::pin!(now);
+        now.as_mut().enable();
+        if self.halt.is() {
+            return Err(cancelled(self.id));
+        }
+        let got = tokio::select! {
+            biased;
+            got = self.ask.ask(req) => got,
+            () = now => return Err(cancelled(self.id)),
+        };
+        if self.halt.is() {
+            return Err(cancelled(self.id));
+        }
+        got
+    }
+}
+
+/// 在走的那几趟，按问答编号（［停］照它撤）。
+fn halts() -> &'static Mutex<HashMap<i64, Arc<Halt>>> {
+    static H: OnceLock<Mutex<HashMap<i64, Arc<Halt>>>> = OnceLock::new();
+    H.get_or_init(Default::default)
+}
+
+fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// 撤问答编号 `id` 那一趟；不在走 ⇒ `false`。
+pub fn halt(id: i64) -> bool {
+    lock(halts()).get(&id).map(|h| h.set()).is_some()
 }
 
 /// 不看这台了（流收了）⇒ 下一块不送。
@@ -154,38 +219,59 @@ pub async fn pull_with<A: Ask<Fail = String>>(
     }
 }
 
+/// 起一趟：编号与撤的那一口登记上，`run` 在后台跑；跑完 ⇒ 摘掉，结局那一行没撤才交（撤了 Kotlin 那一侧不在等）。
+fn launch<F: std::future::Future<Output = String> + Send + 'static>(
+    h: i64,
+    within_ms: u64,
+    on_event: OnEvent,
+    run: impl FnOnce(Halting<Over>, Moves) -> F,
+) -> i64 {
+    let id = resident::next_call();
+    let halt = Arc::new(Halt::default());
+    lock(halts()).insert(id, halt.clone());
+    let within = Duration::from_millis(within_ms.max(1));
+    let ask = Halting {
+        ask: Over { h, id, within },
+        halt: halt.clone(),
+        id,
+    };
+    let job = run(
+        ask,
+        Moves {
+            h,
+            id,
+            on_event: on_event.clone(),
+        },
+    );
+    tokio::spawn(async move {
+        let line = job.await;
+        lock(halts()).remove(&id);
+        if !halt.is() {
+            on_event(h, "reply", line);
+        }
+    });
+    id
+}
+
 /// 起一趟上传（暂存那一半）：回问答编号，进度与结局经 `on_event` 交；这台不在 ⇒ 0（`file` 当场关）。
 pub fn stage(h: i64, file: File, name: String, within_ms: u64, on_event: OnEvent) -> i64 {
     if resident::feed(h).is_none() {
         return 0;
     }
-    let id = resident::next_call();
     let mut random = [0u8; 16];
     let _ = ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut random);
-    tokio::spawn(async move {
-        let over = Over {
-            h,
-            id,
-            within: Duration::from_millis(within_ms.max(1)),
-        };
-        let mut moves = Moves {
-            h,
-            id,
-            on_event: on_event.clone(),
-        };
+    launch(h, within_ms, on_event, move |ask, mut moves| async move {
         let total = size_of(&file);
-        let line = stage_with(
-            &over,
-            id,
+        stage_with(
+            &ask,
+            ask.id,
             chunk_core::key_of(random),
             (file, total),
             &name,
             &mut moves,
         )
-        .await;
-        on_event(h, "reply", line);
-    });
-    id
+        .await
+    })
 }
 
 /// 起一趟下载：`args` 是 `{path}`（那台上的路径，线上那一形）。回问答编号；这台不在 · 入参读不动 ⇒ 0。
@@ -203,22 +289,9 @@ pub fn pull(
     let (Some(path), Some(_)) = (path, resident::feed(h)) else {
         return 0;
     };
-    let id = resident::next_call();
-    tokio::spawn(async move {
-        let over = Over {
-            h,
-            id,
-            within: Duration::from_millis(within_ms.max(1)),
-        };
-        let mut moves = Moves {
-            h,
-            id,
-            on_event: on_event.clone(),
-        };
-        let line = pull_with(&over, id, path, file, &shown, &mut moves).await;
-        on_event(h, "reply", line);
-    });
-    id
+    launch(h, within_ms, on_event, move |ask, mut moves| async move {
+        pull_with(&ask, ask.id, path, file, &shown, &mut moves).await
+    })
 }
 
 #[cfg(test)]
@@ -451,6 +524,101 @@ mod tests {
             seen.0.last(),
             Some(&(file.len() as u64, Some(file.len() as u64)))
         );
+    }
+
+    /// 那台读回第二块时：`Hang` ⇒ 一直不回 · `Late` ⇒ 回话前一刻撤了（撤在回话路上）。
+    enum Second {
+        Hang,
+        Late,
+    }
+
+    struct Slow {
+        there: Box,
+        second: Second,
+        halt: Arc<Halt>,
+    }
+
+    impl Ask for Slow {
+        type Fail = String;
+        async fn ask<C: Call + Sync>(&self, req: &C) -> Result<C::Reply, String> {
+            let off = serde_json::to_value(req).unwrap()["offset"]
+                .as_u64()
+                .unwrap();
+            if off > 0 {
+                match self.second {
+                    Second::Hang => std::future::pending::<()>().await,
+                    Second::Late => self.halt.set(),
+                }
+            }
+            self.there.ask(req).await
+        }
+    }
+
+    /// 🔴 ［停］之后本机那一份一个字节都不再写：在问的那一块当场丢下（那台不回也不等）· 回话撤在路上那一块也不写；结局是撤了那一行。
+    #[test]
+    fn after_a_stop_no_byte_lands_in_the_local_file() {
+        for second in [Second::Hang, Second::Late] {
+            let file: Vec<u8> = (0..chunk_core::CHUNK * 3).map(|i| (i % 7) as u8).collect();
+            let halt = Arc::new(Halt::default());
+            let slow = Slow {
+                there: Box {
+                    file: file.clone(),
+                    ..Box::default()
+                },
+                second,
+                halt: halt.clone(),
+            };
+            let ask = Halting {
+                ask: slow,
+                halt: halt.clone(),
+                id: 11,
+            };
+            let mut out = Vec::new();
+            let line = tokio::runtime::Builder::new_current_thread()
+                .enable_time()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    let mut seen = Seen::default();
+                    let pull = pull_with(
+                        &ask,
+                        11,
+                        WirePath(b"/w/f".to_vec()),
+                        &mut out,
+                        "/sdcard/f",
+                        &mut seen,
+                    );
+                    // 撤了之后再让几圈：拉的那一趟该在这几圈里收手（计圈数，不按墙钟）。
+                    let stop = async {
+                        tokio::task::yield_now().await;
+                        halt.set();
+                        for _ in 0..64 {
+                            tokio::task::yield_now().await;
+                        }
+                    };
+                    tokio::select! {
+                        biased;
+                        line = pull => line,
+                        () = stop => panic!("撤了还在等那台"),
+                    }
+                });
+            assert_eq!(
+                json(&line),
+                serde_json::json!({"call": 11, "cancelled": true})
+            );
+            assert_eq!(out.len(), chunk_core::CHUNK, "撤之前写下的只有第一块");
+        }
+    }
+
+    /// 🔴 撤一趟按问答编号认：在走的那一趟 ⇒ 撤了；不认得的编号 ⇒ `false`。
+    #[test]
+    fn a_stop_finds_its_transfer_by_call_id() {
+        let h = Arc::new(Halt::default());
+        lock(halts()).insert(4242, h.clone());
+        assert!(halt(4242));
+        assert!(h.is());
+        lock(halts()).remove(&4242);
+        assert!(!halt(4243));
     }
 
     /// 形状对不上的回包 ⇒ `unreadable`（不当成功用），详情点名那条命令。

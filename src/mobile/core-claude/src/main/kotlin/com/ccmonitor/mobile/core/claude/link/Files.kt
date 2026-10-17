@@ -1,9 +1,5 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.BatchItemState
-import com.ccmonitor.mobile.core.claude.link.wire.BatchReply
-import com.ccmonitor.mobile.core.claude.link.wire.Conflict
-import com.ccmonitor.mobile.core.claude.link.wire.Conflicts
 import com.ccmonitor.mobile.core.claude.link.wire.FileKind
 import com.ccmonitor.mobile.core.claude.link.wire.FilesPathReply
 import com.ccmonitor.mobile.core.claude.link.wire.LsEntry
@@ -126,6 +122,8 @@ object FilesLs {
         val preview: Open? = null,
         /** 编辑那道门（那台判的）；目录 ⇒ `null`。 */
         val edit: Open? = null,
+        /** 那台交来的这一行原样（「能做什么」交核心认：[CoreLink.picks]）。 */
+        val row: Any? = null,
     ) {
         /** 屏上那一串名字。 */
         val name: String get() = rel.shown
@@ -163,7 +161,8 @@ object FilesLs {
     /** 有一格路径读不出 ⇒ 整份不认（`null`）。 */
     fun of(data: Any?): Listing? {
         val r = Wire.bind<LsReply>(data) ?: return null
-        val entries = r.entries.map(::entryOf)
+        val rows = ((data as? Map<*, *>)?.get("entries") as? List<*>).orEmpty()
+        val entries = r.entries.mapIndexed { i, e -> entryOf(e)?.copy(row = rows.getOrNull(i)) }
         val crumbs = r.crumbs.map { c -> RemotePath.of(c.name)?.let { n -> RemotePath.of(c.path)?.let { n.shown to it } } }
         // 上一级缺 ＝ 到顶；给了却读不出 ⇒ 同那几格读不出。
         val up = r.up?.let { RemotePath.of(it) ?: return null }
@@ -286,27 +285,6 @@ object FilesRename {
     ): Map<String, Any?> = mapOf("root" to dir.wire, "from" to from.wire, "to" to typed, "single" to true)
 }
 
-/** `files-delete`：删一项（交成一组里的一项）；目录连同里面全部（`recursive`）。回包是一组的结局（[Batch]）。 */
-object FilesDelete {
-    const val COMMAND: String = "files-delete"
-
-    fun args(
-        dir: RemotePath,
-        name: RemotePath,
-        recursive: Boolean,
-    ): Map<String, Any?> =
-        mapOf(
-            "root" to dir.wire,
-            "items" to
-                listOf(
-                    buildMap {
-                        put("rel", name.wire)
-                        if (recursive) put("recursive", true)
-                    },
-                ),
-        )
-}
-
 /** `files-delete-session`：删一份历史会话（记录文件连同它的附属）；能不能删那台照行上 `can.delete` 判过。 */
 object FilesDeleteSession {
     const val COMMAND: String = "files-delete-session"
@@ -314,38 +292,9 @@ object FilesDeleteSession {
     fun args(sid: String): Map<String, Any?> = mapOf("sid" to sid)
 }
 
-/** `files-chmod`：改 unix 权限位（交成一组里的一项）。[mode] 是框里敲的八进制原样，那台解、那台拒。回包是一组的结局（[Batch]）。 */
-object FilesChmod {
-    const val COMMAND: String = "files-chmod"
-
-    fun args(
-        dir: RemotePath,
-        name: RemotePath,
-        mode: String,
-    ): Map<String, Any?> = mapOf("root" to dir.wire, "items" to listOf(mapOf("rel" to name.wire)), "mode" to mode)
-}
-
-/** 一组的回包（手机只交一项）：那一项做完 ⇒ [Done]；没成 ⇒ [Refused] 带后端写的那一句与那一项的原话；解不出 ⇒ `null`。 */
-object Batch {
-    sealed interface Fate
-
-    data object Done : Fate
-
-    data class Refused(
-        val said: String,
-        val detail: String,
-    ) : Fate
-
-    fun fateOf(data: Any?): Fate? {
-        val r = Wire.bind<BatchReply>(data) ?: return null
-        val one = r.outcomes.singleOrNull() ?: return null
-        return if (one.state == BatchItemState.DONE) Done else Refused(r.said, one.detail.orEmpty())
-    }
-}
-
 /**
- * `files-commit-upload`：暂存区里传完的那一份挪进当前目录（整份摘要那台照核；名字带 single，那台判，那一句那台写）。同名怎么办 [onExists]：
- * 不带 ⇒ 那台问（码 `exists` ＋ 同名清单，块与暂存件都留着）；`overwrite` · `keep_both` ⇒ 同一份暂存件再交一次。
+ * `files-commit-upload`：暂存区里传完的那一份挪进当前目录（整份摘要那台照核；名字带 single，那台判）。同名怎么办 [onExists]：不带 ⇒ 那台问（码 `exists` ＋ 同名清单，
+ * 块与暂存件都留着）；`overwrite` · `keep_both` ⇒ 同一份暂存件再交一次。
  */
 object FilesCommitUpload {
     const val COMMAND: String = "files-commit-upload"
@@ -381,7 +330,4 @@ object FilesCommitUpload {
                 }
         }
     }
-
-    /** 码 `exists` 的 `data` ⇒ 同名清单；解不出 ⇒ `null`。 */
-    fun conflictsOf(data: Any?): List<Conflict>? = Wire.bind<Conflicts>(data)?.conflicts
 }

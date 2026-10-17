@@ -1,72 +1,91 @@
 package com.ccmonitor.mobile.ui.files
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
-import com.ccmonitor.mobile.core.claude.link.RemotePath
-import com.ccmonitor.mobile.core.claude.link.wire.Conflict
+import androidx.compose.ui.unit.dp
+import com.ccmonitor.mobile.core.claude.link.BatchAnswer
+import com.ccmonitor.mobile.core.claude.link.BatchEvent
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 
 /**
- * 同名冲突那一问（底部抽屉，问一次）：标题「{动作} {n} 项到 {dir}」· 那台写的那一句 · 每项「要放过去的 → 已有的」（大小 · 那台写好的时刻）；
- * 有一项不给覆盖（碰到目录）⇒ 写目录不合并。按钮照每项那台给的答（`answers`）里各项都有的那几种画，「覆盖」危险色。
+ * 同名那一问（底部抽屉，问一次；上传 · 复制到 · 下载同一张）：标题 · 那一句（有的话）· 每项名字与那一行的说明（核心写好）。
+ * 整组按钮只画清单里有一项给了的答（取消 · 跳过同名 · 保留两份 · 覆盖危险色）；不止一项 ⇒ ［逐项选］展开，每行照它自己给的答选，
+ * 没点的那几项照跳过，按 [go]（那个动作）交。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConflictSheet(
-    action: String,
-    dir: RemotePath,
-    said: String,
-    conflicts: List<Conflict>,
-    onAnswer: (String?) -> Unit,
+    title: String,
+    said: String?,
+    rows: List<BatchEvent.Clash>,
+    go: String?,
+    onAnswer: (BatchAnswer?) -> Unit,
 ) {
     val tokens = LocalAppTokens.current
-    val answers = conflicts.map { it.answers }.reduceOrNull { a, b -> a.filter { it in b } }.orEmpty()
-    val dirInto = conflicts.any { OVERWRITE !in it.answers }
+    var each by remember(rows) { mutableStateOf(false) }
+    val picks = remember(rows) { mutableStateMapOf<String, String>() }
     ModalBottomSheet(onDismissRequest = { onAnswer(null) }) {
         Column(
             Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.lg).padding(bottom = tokens.spacing.lg),
             verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
         ) {
-            Text(
-                copyText("rsFilewinBatch.ask.title", "action" to action, "n" to conflicts.size, "dir" to dir.shown),
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(said, style = monoSmall, color = tokens.textFaint)
-            conflicts.forEach { c ->
-                Column {
-                    Text(RemotePath.of(c.name)?.shown.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface)
-                    Text(
-                        copyText("rsFilewinBatch.meta.vs", "mine" to side(c.sizeText, c.mtimeText), "there" to side(c.thereSizeText, c.thereMtimeText)),
-                        style = monoSmall,
-                        color = tokens.textFaint,
-                    )
+            Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            said?.let { Text(it, style = monoSmall, color = tokens.textFaint) }
+            Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+                rows.forEach { c ->
+                    Column {
+                        Text(c.name, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface)
+                        if (each) {
+                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
+                                c.answers.forEach { a ->
+                                    FilterChip(
+                                        selected = (picks[c.key] ?: SKIP) == a,
+                                        onClick = { picks[c.key] = a },
+                                        label = { Text(pickText(a)) },
+                                    )
+                                }
+                            }
+                        } else if (c.meta.isNotEmpty()) {
+                            Text(c.meta, style = monoSmall, color = tokens.textFaint)
+                        }
+                    }
                 }
             }
-            if (dirInto) Text(copyText("rsFilewinBatch.ask.dirNoMerge"), style = monoSmall, color = tokens.textFaint)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm, Alignment.End)) {
+            if (rows.size > 1) {
+                FilterChip(selected = each, onClick = { each = !each }, label = { Text(copyText("rsFilewinBatch.btn.each")) })
+            }
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm, Alignment.End)) {
                 SecondaryButton(onClick = { onAnswer(null) }) { Text(copyText("rsFilewinBatch.btn.cancel")) }
-                // 按钮字是界面自己的骨架词（同桌面冲突框那几颗）；认不得的答不画。
-                answers.forEach { a ->
-                    when (a) {
-                        OVERWRITE -> SecondaryButton(onClick = { onAnswer(a) }, danger = true) { Text(copyText("rsFilewinBatch.btn.overwrite")) }
-                        SKIP -> SecondaryButton(onClick = { onAnswer(a) }) { Text(copyText("rsFilewinBatch.btn.skip")) }
-                        KEEP_BOTH -> SecondaryButton(onClick = { onAnswer(a) }) { Text(copyText("rsFilewinBatch.btn.keepBoth")) }
+                if (each) {
+                    SecondaryButton(onClick = { onAnswer(BatchAnswer.Each(picks.toMap())) }) { Text(go.orEmpty()) }
+                } else {
+                    // 按钮字是界面自己的骨架词（同桌面冲突框那几颗）；清单里没有一项给的答不画。
+                    WHOLE.filter { a -> rows.any { a in it.answers } }.forEach { a ->
+                        SecondaryButton(onClick = { onAnswer(BatchAnswer.All(a)) }, danger = a == OVERWRITE) { Text(wholeText(a)) }
                     }
                 }
             }
@@ -74,12 +93,22 @@ fun ConflictSheet(
     }
 }
 
-/** 一头那一项：大小 · 时刻（那台写好的字；缺的那一格不写）。 */
-private fun side(
-    size: String?,
-    mtime: String?,
-): String = listOfNotNull(size, mtime).joinToString(" · ")
-
 private const val OVERWRITE = "overwrite"
 private const val SKIP = "skip"
-private const val KEEP_BOTH = "keep_both"
+
+/** 整组那几颗的先后（跳过在前、覆盖在最后）。 */
+private val WHOLE = listOf(SKIP, "keep_both", OVERWRITE)
+
+private fun wholeText(a: String): String =
+    when (a) {
+        SKIP -> copyText("rsFilewinBatch.btn.skip")
+        OVERWRITE -> copyText("rsFilewinBatch.btn.overwrite")
+        else -> copyText("rsFilewinBatch.btn.keepBoth")
+    }
+
+private fun pickText(a: String): String =
+    when (a) {
+        SKIP -> copyText("rsFilewinBatch.pick.skip")
+        OVERWRITE -> copyText("rsFilewinBatch.pick.overwrite")
+        else -> copyText("rsFilewinBatch.pick.keepBoth")
+    }

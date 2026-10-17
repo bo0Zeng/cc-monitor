@@ -57,6 +57,50 @@ object CoreResident : ResidentCore {
         withinMs: Long,
     ): Long = Core.transferPull(handle, fd, args, shown, withinMs)
 
+    override fun transferStop(id: Long) = Core.transferStop(id)
+
+    override fun batchStart(
+        handle: Long,
+        want: String,
+    ): Long = Core.batchStart(handle, want)
+
+    override fun batchAnswer(
+        id: Long,
+        answer: String?,
+    ) {
+        Core.batchAnswer(id, answer)
+    }
+
+    override fun batchStop(id: Long) {
+        Core.batchStop(id)
+    }
+
+    override fun pickMenu(
+        handle: Long,
+        rows: String,
+    ): String {
+        ensureRustCore()
+        return Core.pickMenu(handle, rows)
+    }
+
+    override fun clashRows(data: String): String {
+        ensureRustCore()
+        return Core.clashRows(data)
+    }
+
+    override fun downloadEvent(want: String): String {
+        ensureRustCore()
+        return Core.downloadEvent(want)
+    }
+
+    override fun answerOf(
+        keys: String,
+        answer: String?,
+    ): String {
+        ensureRustCore()
+        return Core.answerOf(keys, answer)
+    }
+
     override fun deploy(
         handle: Long,
         slots: String,

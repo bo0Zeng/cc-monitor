@@ -424,14 +424,14 @@ pub async fn apply_all(
     };
     let mut out = Vec::with_capacity(ops.len());
     // 一组：(动词, 根, 权限位) ⇒ 那几件。
-    let mut groups: Vec<((super::batch::Verb, String, String), Vec<WriteOp>)> = Vec::new();
+    let mut groups: Vec<((batch_core::Verb, String, String), Vec<WriteOp>)> = Vec::new();
     for op in ops {
         let key = match &op {
             WriteOp::Delete { path, .. } => {
-                (super::batch::Verb::Delete, parent_dir(path), String::new())
+                (batch_core::Verb::Delete, parent_dir(path), String::new())
             }
             WriteOp::Chmod { path, mode, .. } => {
-                (super::batch::Verb::Chmod, parent_dir(path), mode.clone())
+                (batch_core::Verb::Chmod, parent_dir(path), mode.clone())
             }
             _ => {
                 let r = apply_remote_coded(line, origin, &op, root_raw).await;
@@ -461,7 +461,7 @@ pub async fn apply_all(
             _ => w::WirePath(Vec::new()),
         };
         let (cmd, args, tree) = match verb {
-            super::batch::Verb::Delete => {
+            batch_core::Verb::Delete => {
                 let req = w::FilesDeleteReq {
                     root: root(at),
                     items: group
@@ -491,7 +491,7 @@ pub async fn apply_all(
                 ("files-chmod", serde_json::to_value(&req), false)
             }
         };
-        let board = super::batch::BatchBoard::new(super::batch::Plan {
+        let board = super::batch::BatchBoard::new(batch_core::Plan {
             verb,
             cmd,
             args: args.unwrap_or_default(),
@@ -513,10 +513,10 @@ pub async fn apply_all(
         let phase = board.phase();
         for (i, op) in group.into_iter().enumerate() {
             let r = match &phase {
-                super::batch::Phase::Ended(reply) => {
+                batch_core::Phase::Ended(reply) => {
                     match reply.outcomes.iter().find(|o| o.key == i.to_string()) {
                         Some(o) if o.state == cmd_wire::batch::ItemState::Done => Ok(match verb {
-                            super::batch::Verb::Chmod => Applied::Chmod(o.clone()),
+                            batch_core::Verb::Chmod => Applied::Chmod(o.clone()),
                             _ => Applied::Deleted(o.clone()),
                         }),
                         Some(o) => Err(super::source::one_of(only_one(reply, o))
@@ -525,7 +525,7 @@ pub async fn apply_all(
                         None => Err(super::source::Failed::from(reply.said.clone())),
                     }
                 }
-                super::batch::Phase::Failed(f) => Err(f.clone()),
+                batch_core::Phase::Failed(f) => Err(f.clone()),
                 _ => Err(super::source::Failed::from(copy_text(
                     "reason.op.cancelled",
                     &[],
@@ -1171,17 +1171,38 @@ pub fn receipt_of(
     None
 }
 
-/// 改权限那一趟的应答 → 撤销它要做的那一件（后端回了 `before` 才有；没回 ⇒ `None`：撤不了就不给撤销，不猜）。
-pub fn chmod_undo(op: &WriteOp, reply: &Applied) -> Option<WriteOp> {
-    let (WriteOp::Chmod { path, raw, .. }, Applied::Chmod(r)) = (op, reply) else {
-        return None;
+/// 改权限做成的那几件（件 · 应答）→ 撤销它们要做的那几件：按后端回的 `before` 并组（`batch_core::undo_groups`）；
+/// 有一件读不到 `before` ⇒ 一件都不给撤（撤不全就不给撤销，不猜）。不是改权限的那几件不看。
+pub fn chmod_undo(done: &[(WriteOp, Applied)]) -> Vec<WriteOp> {
+    let chmods: Vec<(&WriteOp, Option<u32>)> = done
+        .iter()
+        .filter_map(|(op, r)| match (op, r) {
+            (WriteOp::Chmod { .. }, Applied::Chmod(o)) => Some((op, o.before)),
+            _ => None,
+        })
+        .collect();
+    let idx: Vec<(usize, Option<u32>)> = chmods
+        .iter()
+        .enumerate()
+        .map(|(i, (_, b))| (i, *b))
+        .collect();
+    let Some(groups) = batch_core::undo_groups(&idx) else {
+        return Vec::new();
     };
-    let before = low12(r.before)?;
-    Some(WriteOp::Chmod {
-        path: path.clone(),
-        mode: format!("{before:o}"),
-        raw: raw.clone(),
-    })
+    let chmods = &chmods;
+    groups
+        .into_iter()
+        .flat_map(|(mode, ix)| {
+            ix.into_iter().filter_map(move |i| match chmods[i].0 {
+                WriteOp::Chmod { path, raw, .. } => Some(WriteOp::Chmod {
+                    path: path.clone(),
+                    mode: mode.clone(),
+                    raw: raw.clone(),
+                }),
+                _ => None,
+            })
+        })
+        .collect()
 }
 
 impl WriteBoard {

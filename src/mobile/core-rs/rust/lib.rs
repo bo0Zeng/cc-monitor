@@ -23,6 +23,7 @@ use ssh_dial::Said;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 
+pub mod batch;
 mod copy;
 mod host_keys;
 pub mod install;
@@ -313,13 +314,30 @@ pub fn ssh_config_json(text: &str) -> String {
     serde_json::to_string(&ssh_dial::config_text::parse(text)).unwrap_or_else(|_| "[]".to_string())
 }
 
-/// 文件页选中这几项（`pick-core` 的 [`pick_core::PickIn`] 数组）⇒ 顶栏与 ⋯ 两组（每项 `id · text · enabled · why`）；读不动 ⇒ `[]`。
-pub fn pick_menu_json(text: &str) -> String {
-    let Ok(picks) = serde_json::from_str::<Vec<pick_core::PickIn>>(text) else {
-        return "[]".to_string();
-    };
+/// 文件页选中这几项（`files-ls` 回包 `entries[]` 里的原行）· 此刻那一台（[`resident::here`]）⇒ 顶栏 · ⋯ · 点一下做什么
+/// （`pick_core::PhoneMenu`）；读不动 ⇒ 什么都不给。
+pub fn pick_menu_json(rows: &str, here: &pick_core::Here) -> String {
+    let picks: Vec<pick_core::PickIn> = serde_json::from_str::<Vec<cmd_wire::files::LsEntry>>(rows)
+        .map(|v| v.iter().map(pick_core::PickIn::of_ls).collect())
+        .unwrap_or_default();
     let picks: Vec<pick_core::Pick> = picks.iter().map(pick_core::PickIn::pick).collect();
-    serde_json::to_string(&pick_core::phone_menu(&picks)).unwrap_or_else(|_| "[]".to_string())
+    serde_json::to_string(&pick_core::phone_menu(&picks, here)).unwrap_or_default()
+}
+
+/// 一问一答撞了同名（码 `exists` 的 `data`：同名清单）⇒ 抽屉那几行（[`batch::clash_rows`]，一组那一问同一份）；读不动 ⇒ `[]`。
+pub fn clash_rows_json(data: &str) -> String {
+    serde_json::from_str::<cmd_wire::batch::Conflicts>(data)
+        .map(|c| batch::clash_rows(&c.conflicts).to_string())
+        .unwrap_or_else(|_| "[]".to_string())
+}
+
+/// 下载一组那几格（[`batch::download_event`]）；读不动 ⇒ 空串。
+pub fn download_event_json(want: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(want)
+        .ok()
+        .and_then(|w| batch::download_event(&w))
+        .map(|v| v.to_string())
+        .unwrap_or_default()
 }
 
 // ═══ 链路表 ═════════════════════════════════════════════════════════════════════
@@ -696,16 +714,64 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_parseSshConfig<'l>
     })
 }
 
-/// `Core.pickMenu(picks)`：文件页选中这几项 ⇒ 顶栏与 ⋯ 两组（[`pick_menu_json`]）。
+/// `Core.pickMenu(handle, rows)`：文件页选中这几项（`files-ls` 的原行）⇒ 顶栏 · ⋯ · 点一下做什么（[`pick_menu_json`]）。
 #[no_mangle]
 pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_pickMenu<'l>(
     mut env: JNIEnv<'l>,
     _class: JClass<'l>,
-    picks: JString<'l>,
+    handle: jlong,
+    rows: JString<'l>,
 ) -> jstring {
     guarded(std::ptr::null_mut(), || {
-        let text = string(&mut env, &picks).unwrap_or_default();
-        env.new_string(pick_menu_json(&text))
+        let text = string(&mut env, &rows).unwrap_or_default();
+        env.new_string(pick_menu_json(&text, &resident::here(handle)))
+            .map(|s| s.into_raw())
+            .unwrap_or(std::ptr::null_mut())
+    })
+}
+
+/// `Core.clashRows(data)`：同名清单 ⇒ 抽屉那几行（[`clash_rows_json`]）。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_clashRows<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    data: JString<'l>,
+) -> jstring {
+    guarded(std::ptr::null_mut(), || {
+        let text = string(&mut env, &data).unwrap_or_default();
+        env.new_string(clash_rows_json(&text))
+            .map(|s| s.into_raw())
+            .unwrap_or(std::ptr::null_mut())
+    })
+}
+
+/// `Core.answerOf(keys, answer)`：手机那一侧问的同名（下载 · 上传）那一答 ⇒ 每个键一格（[`batch::decided_json`]）。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_answerOf<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    keys: JString<'l>,
+    answer: JString<'l>,
+) -> jstring {
+    guarded(std::ptr::null_mut(), || {
+        let keys = string(&mut env, &keys).unwrap_or_default();
+        let answer = string(&mut env, &answer);
+        env.new_string(batch::decided_json(&keys, answer.as_deref()))
+            .map(|s| s.into_raw())
+            .unwrap_or(std::ptr::null_mut())
+    })
+}
+
+/// `Core.downloadEvent(want)`：下载一组那几格（[`download_event_json`]）。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_downloadEvent<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    want: JString<'l>,
+) -> jstring {
+    guarded(std::ptr::null_mut(), || {
+        let text = string(&mut env, &want).unwrap_or_default();
+        env.new_string(download_event_json(&text))
             .map(|s| s.into_raw())
             .unwrap_or(std::ptr::null_mut())
     })
@@ -962,6 +1028,69 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_transferPull<'l>(
     })
 }
 
+/// `Core.transferStop(id)`：撤问答编号 `id` 那一趟（［停］）：在问的那一块当场丢下，本机那一份不再写；之后不回结局那一行。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_transferStop<'l>(
+    _env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    id: jlong,
+) {
+    guarded((), || {
+        transfer::halt(id);
+    });
+}
+
+/// `Core.batchStart(handle, want)`：起一组（`batch.rs::plan_of` 那几种「要做什么」，入参由核心拼）；回编号，
+/// 进度 · 同名那一问 · 结局经 `Sink.resident(…, "batch", …)` 回来。这台不在 · 读不动 ⇒ 0。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_batchStart<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    handle: jlong,
+    want: JString<'l>,
+) -> jlong {
+    guarded(0, || {
+        let Some(want) = string(&mut env, &want) else { return 0 };
+        let _rt = runtime().enter();
+        batch::start(handle, &want, on_resident())
+    })
+}
+
+/// `Core.batchAnswer(id, answer)`：同名那一问的答（`{all}` · `{each}`；`null` ⇒ 取消）。没人在等 ⇒ `false`。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_batchAnswer<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    id: jlong,
+    answer: JString<'l>,
+) -> jboolean {
+    guarded(JNI_FALSE, || {
+        let text = string(&mut env, &answer);
+        if batch::answer(id, text.as_deref()) {
+            JNI_TRUE
+        } else {
+            JNI_FALSE
+        }
+    })
+}
+
+/// `Core.batchStop(id)`：撤这一组（同一张票发 `files-batch-stop`）。那一组不在 ⇒ `false`。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_batchStop<'l>(
+    _env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    id: jlong,
+) -> jboolean {
+    guarded(JNI_FALSE, || {
+        let _rt = runtime().enter();
+        if batch::stop(id) {
+            JNI_TRUE
+        } else {
+            JNI_FALSE
+        }
+    })
+}
+
 /// `Core.residentClose(handle)`：不再看这台。
 #[no_mangle]
 pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_residentClose<'l>(
@@ -976,19 +1105,47 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_residentClose<'l>(
 mod tests {
     use resident_client::backoff::DIAL_WITHIN;
 
-    /// 文件页那一问：交进选中的几项（camelCase）⇒ 两组、每项四格；读不动 ⇒ `[]`。
+    /// 文件页那一问：交进 `files-ls` 的原行 ⇒ 顶栏 · ⋯（每项四格）· 点一下做什么；那台断着 ⇒ 灰着说离线；读不动 ⇒ 什么都不给。
     #[test]
-    fn the_pick_menu_answers_two_groups_of_four_cells() {
-        let v: serde_json::Value = serde_json::from_str(&super::pick_menu_json(
-            r#"[{"name":"docs","isDir":true,"class":"folder"}]"#,
-        ))
-        .unwrap();
-        assert_eq!(v[0][0]["id"], "download");
-        assert_eq!(v[0][0]["enabled"], false);
-        assert!(v[0][0]["why"].as_str().is_some_and(|w| w.contains("docs")));
-        assert_eq!(v[1][0].as_object().map(|o| o.len()), Some(4));
-        assert_eq!(super::pick_menu_json("{"), "[]");
+    fn the_pick_menu_reads_the_ls_rows_as_they_came() {
+        let rows = r#"[{"path":"/h/docs","name":"docs","kind":"dir","class":"folder","type_text":"","mtime_secs":12}]"#;
+        let up = pick_core::Here::default();
+        let v: serde_json::Value =
+            serde_json::from_str(&super::pick_menu_json(rows, &up)).unwrap();
+        assert_eq!(v["bar"][0]["id"], "download");
+        assert_eq!(v["bar"][0]["enabled"], false);
+        assert!(v["bar"][0]["why"].as_str().is_some_and(|w| w.contains("docs")));
+        assert_eq!(v["more"][0].as_object().map(|o| o.len()), Some(4));
+        assert_eq!(v["tap"], "open");
+        let off = pick_core::Here {
+            offline: true,
+            unavailable: vec![],
+        };
+        let v: serde_json::Value =
+            serde_json::from_str(&super::pick_menu_json(rows, &off)).unwrap();
+        assert_eq!(
+            v["more"][0]["why"],
+            copy_core::copy_text("rsFilewinChrome.link.readOnly", &[])
+        );
+        let none: serde_json::Value =
+            serde_json::from_str(&super::pick_menu_json("{", &up)).unwrap();
+        assert_eq!((none["bar"].clone(), none["tap"].clone()), (serde_json::json!([]), serde_json::Value::Null));
     }
+
+    /// 一问一答撞了同名：清单 ⇒ 抽屉那几行（说明由核心写、答法照那台给的）；读不动 ⇒ `[]`。
+    #[test]
+    fn a_clash_list_becomes_the_rows_of_the_sheet() {
+        let data = r#"{"conflicts":[{"key":"0","name":"up.bin","kind":"file","size_text":"9 字节","there":"file","there_size_text":"3 字节","answers":["overwrite","keep_both"]}]}"#;
+        let v: serde_json::Value = serde_json::from_str(&super::clash_rows_json(data)).unwrap();
+        let c: cmd_wire::batch::Conflicts = serde_json::from_str(data).unwrap();
+        assert_eq!(
+            v,
+            serde_json::json!([{ "key": "0", "name": "up.bin",
+                "meta": batch_core::conflict_meta(&c.conflicts[0]), "answers": ["overwrite", "keep_both"] }])
+        );
+        assert_eq!(super::clash_rows_json("{"), "[]");
+    }
+
     use std::time::Duration;
     use tokio::io::AsyncWriteExt;
 

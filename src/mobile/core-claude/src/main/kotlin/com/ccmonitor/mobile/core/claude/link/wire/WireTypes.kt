@@ -974,61 +974,7 @@ data class ReadTextReply(
     val sha256: String,
 )
 
-// ── 上传提交撞了同名（码 `exists` 的 `data`）：要放过去的 → 已有的。 ──
-
-@WireOf("Conflicts")
-@JsonClass(generateAdapter = true)
-data class Conflicts(
-    val conflicts: List<Conflict>,
-)
-
-@WireOf("Conflict")
-@JsonClass(generateAdapter = true)
-data class Conflict(
-    val name: Any,
-    @Json(name = "size_text") val sizeText: String?,
-    @Json(name = "mtime_text") val mtimeText: String?,
-    @Json(name = "there_size_text") val thereSizeText: String?,
-    @Json(name = "there_mtime_text") val thereMtimeText: String?,
-    val answers: List<String>,
-)
-
-// ── 一组的回包（`files-delete` · `files-chmod`：手机一次只交一项）：逐项结局 ＋ 后端拼好的那一句。 ──
-
-@WireOf("BatchReply")
-@JsonClass(generateAdapter = true)
-data class BatchReply(
-    val outcomes: List<BatchOutcome>,
-    val said: String,
-)
-
-@WireOf("BatchOutcome")
-@JsonClass(generateAdapter = true)
-data class BatchOutcome(
-    val key: String,
-    val state: BatchItemState,
-    val detail: String?,
-)
-
-@JsonClass(generateAdapter = false)
-enum class BatchItemState {
-    @Json(name = "done")
-    DONE,
-
-    @Json(name = "skipped")
-    SKIPPED,
-
-    @Json(name = "exists")
-    EXISTS,
-
-    @Json(name = "failed")
-    FAILED,
-
-    @Json(name = "cancelled")
-    CANCELLED,
-}
-
-// ── 轮换屏（mobrot）：`rotation-view` 那一份 ＋ 写那几条的回包。设置那几格（`board`）的值 · 从哪来 · 字都是那台解好的。 ──
+// ── 轮换屏（mobrot）：`rotation-view` 那一份 ＋ 写那几条的回包。策略写的字（`StrategyText` ＝ 一句或分语言）声明成 `Any`，取字在 `Rotation.text`。 ──
 
 @WireOf("RotationViewReply")
 @JsonClass(generateAdapter = true)

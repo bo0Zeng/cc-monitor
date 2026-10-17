@@ -732,6 +732,40 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     new: NONE,
     sent: NONE,
     finish: NONE,
+    put: NONE,
+    stage: NONE,
+    pull: NONE,
+  },
+  // 一组一条命令的全过程与它的字：后端 · 文件窗口 · 手机嵌的核心照它；界面（TS）不做文件的一组，没有孪生。
+  "batch-core": {
+    BATCH_BUDGET: NONE,
+    CMD_STOP: NONE,
+    EXISTS: NONE,
+    CUTS_MAX: NONE,
+    local: NONE,
+    copy_many: NONE,
+    copy_body: NONE,
+    ticketed: NONE,
+    opens: NONE,
+    text: NONE,
+    of_cell: NONE,
+    frac: NONE,
+    answer_of: NONE,
+    run: NONE,
+    title_of: NONE,
+    name_of: NONE,
+    failed_lines: NONE,
+    copy_details: NONE,
+    retry_plan: NONE,
+    undo_groups: NONE,
+    undo_plan: NONE,
+    cut_line: NONE,
+    cut_left_line: NONE,
+    conflict_meta: NONE,
+    said_of: NONE,
+    common_dir_bytes: NONE,
+    copy_req: NONE,
+    copy_plan: NONE,
   },
   // 选中几项 ⇒ 菜单那张表：文件窗口与手机嵌的核心照它画；界面（TS）不列文件，没有孪生。
   "pick-core": {
@@ -743,6 +777,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     blocked: NONE,
     actions_for: NONE,
     phone_menu: NONE,
+    // 「此刻那一台做不到」（离线 · 那台没有这条命令）⇒ 那一句：桌面窗口与手机核心都问它；界面不列文件，没有孪生。
+    refused_here: NONE,
+    // `files-ls` 原行 ⇒ 一行的事实：桌面窗口与手机核心同一个认法。
+    of_ls: NONE,
     opens_as_dir: NONE,
     copyable: NONE,
     downloadable: NONE,
@@ -1007,6 +1045,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     set_write_timeout: NONE,
     into_async: NONE,
     peer: NONE,
+    accept: NONE,
+    connect: NONE,
   },
   // 测试档的家一开始就是沙箱（各 crate 只在 dev 侧引它）；TS 侧没有孪生。
   "test-home": {
@@ -1191,7 +1231,7 @@ function rsByCrate(): Map<string, string[]> {
 function pubItems(codes: string[]): string[] {
   const names = new Set<string>();
   for (const code of codes) {
-    for (const m of code.matchAll(/^\s*pub\s+(?:const\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)/gm)) names.add(m[1]);
+    for (const m of code.matchAll(/^\s*pub\s+(?:const\s+|async\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)/gm)) names.add(m[1]);
     for (const m of code.matchAll(/^\s*pub\s+(?:const|static)\s+([A-Za-z_][A-Za-z0-9_]*)\s*:/gm)) names.add(m[1]);
   }
   return [...names].sort();

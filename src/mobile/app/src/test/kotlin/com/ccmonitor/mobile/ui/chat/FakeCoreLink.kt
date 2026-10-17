@@ -1,10 +1,13 @@
 package com.ccmonitor.mobile.ui.chat
 
+import com.ccmonitor.mobile.core.claude.link.BatchAnswer
+import com.ccmonitor.mobile.core.claude.link.BatchEvent
 import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.LiveFrame
 import com.ccmonitor.mobile.core.claude.link.LiveSession
+import com.ccmonitor.mobile.core.claude.link.PickMenu
 import com.ccmonitor.mobile.core.claude.link.RecordLine
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionTable
@@ -67,6 +70,94 @@ internal class FakeCoreLink :
         moves.forEach { (d, t) -> moved(d, t) }
         return transferred(how)
     }
+
+    private val batchFlow = MutableSharedFlow<BatchEvent>(extraBufferCapacity = 64)
+    override val batches: SharedFlow<BatchEvent> = batchFlow.asSharedFlow()
+
+    /** 起过的每一组（要做什么）· 每一答 · 每一停。 */
+    val wants = mutableListOf<Map<String, Any?>>()
+    val answered = mutableListOf<Pair<Long, BatchAnswer?>>()
+    val stopped = mutableListOf<Long>()
+
+    override suspend fun batch(want: Map<String, Any?>): Long {
+        wants += want
+        return wants.size.toLong()
+    }
+
+    override fun batchAnswer(
+        id: Long,
+        answer: BatchAnswer?,
+    ) {
+        answered += id to answer
+    }
+
+    override fun batchStop(id: Long) {
+        stopped += id
+    }
+
+    /** 「能做什么」那一问交进来的原行（每一问一份）；回 [menu]。 */
+    val picked = mutableListOf<List<Any?>>()
+    var menu: (List<Any?>) -> PickMenu = { PickMenu() }
+
+    /** 同名清单 ⇒ 抽屉那几行（核心那一份的替身：名字照抄、说明写成那台给的大小）。 */
+    override fun clashes(data: Any?): List<BatchEvent.Clash> =
+        ((data as? Map<*, *>)?.get("conflicts") as? List<*>).orEmpty().map { c ->
+            val m = c as Map<*, *>
+            BatchEvent.Clash(m["key"] as String, m["name"] as String, m["there_size_text"] as String, (m["answers"] as List<*>).map { it as String })
+        }
+
+    /** 交核心认的同名那几答（键 · 答）；回 [decide] 给的（核心那一份的替身，规矩在核心里判）。 */
+    val decisions = mutableListOf<Pair<List<String>, BatchAnswer?>>()
+    var decide: (List<String>, BatchAnswer?) -> Map<String, String>? = { _, _ -> null }
+
+    override fun decided(
+        keys: List<String>,
+        answer: BatchAnswer?,
+    ): Map<String, String>? {
+        decisions += keys to answer
+        return decide(keys, answer)
+    }
+
+    /** 下载一组那几问（每一问一份）。 */
+    val downloads = mutableListOf<Map<String, Any?>>()
+
+    /**
+     * 下载一组那几格（核心那一份的替身）：同名照名字逐字比（`there` 照抄）；断开 · 结局那一句把逐项结局原样排出来
+     * （`cut:done,cancelled` · `ended:done,failed`），看得出 Kotlin 交的是哪几格；没成的那几行是 `名字：原因`。
+     */
+    override fun downloadEvent(want: Map<String, Any?>): BatchEvent? {
+        downloads += want
+        val names = (want["names"] as List<*>).map { it as String }
+        val head = mapOf("id" to want["id"], "title" to "下载 ${names.size} 项")
+        val outs = (want["outcomes"] as? List<*>).orEmpty().map { it as Map<*, *> }
+        val states = outs.joinToString(",") { it["state"] as String }
+        val m: Map<String, Any?> =
+            when (want["phase"]) {
+                "asking" -> {
+                    val here = (want["here"] as List<*>).toSet()
+                    val rows =
+                        names.withIndex().filter { it.value in here }.map { (i, n) ->
+                            mapOf("key" to "$i", "name" to n, "there" to n, "meta" to "", "answers" to listOf("overwrite", "skip", "keep_both"))
+                        }
+                    if (rows.isEmpty()) head + ("phase" to "running") else head + mapOf("phase" to "asking", "conflicts" to rows, "go" to "下载")
+                }
+                "running" -> head + mapOf("phase" to "running", "current" to want["current"])
+                "cut" -> head + mapOf("phase" to "cut", "line" to "cut:$states", "resume" to true)
+                else -> {
+                    val bad = outs.filter { it["state"] == "failed" }.map { "${names[(it["key"] as String).toInt()]}：${it["reason"]}" }
+                    head + mapOf("phase" to "ended", "said" to "ended:$states", "failed" to bad, "retry" to bad.isNotEmpty())
+                }
+            }
+        return BatchEvent.of(m)
+    }
+
+    override fun picks(rows: List<Any?>): PickMenu {
+        picked.add(rows)
+        return menu(rows)
+    }
+
+    /** 核心交来一格（照核心那一行，经 [BatchEvent.of] 解）。 */
+    suspend fun batchEvent(m: Map<String, Any?>) = batchFlow.emit(BatchEvent.of(m)!!)
 
     suspend fun line(
         sid: String,

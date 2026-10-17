@@ -2,8 +2,10 @@ package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.claude.link.wire.MachineState
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -71,6 +73,40 @@ interface ResidentCore {
         shown: String,
         withinMs: Long,
     ): Long
+
+    /** 撤那一趟（[stage] · [pull] 回的编号）：本机那一份当场不再读写。 */
+    fun transferStop(id: Long)
+
+    /** 起一组（[want] 是 JSON）：回编号，事经 `batch` 那一种交回；这台不在 ⇒ 0。 */
+    fun batchStart(
+        handle: Long,
+        want: String,
+    ): Long
+
+    fun batchAnswer(
+        id: Long,
+        answer: String?,
+    )
+
+    fun batchStop(id: Long)
+
+    /** 文件页那一问（`files-ls` 的原行，JSON 数组）⇒ 核心那一行（[PickMenu.of]）；[handle] 还没开 ⇒ 0（当断着）。 */
+    fun pickMenu(
+        handle: Long,
+        rows: String,
+    ): String
+
+    /** 同名清单（JSON）⇒ 抽屉那几行（JSON 数组）。 */
+    fun clashRows(data: String): String
+
+    /** 下载一组那几格（JSON）⇒ `batch` 那一形的一行（[BatchEvent.of]）；读不动 ⇒ 空串。 */
+    fun downloadEvent(want: String): String
+
+    /** 手机这一侧问的同名那一答（JSON；`null` ＝ 取消）⇒ [keys]（JSON 数组）每个键一格（JSON）。 */
+    fun answerOf(
+        keys: String,
+        answer: String?,
+    ): String
 
     /** 给那台装 / 更新后端（[slots] = 包里那几格解到的文件，JSON）；事经 `deploy` 那一种交回。那台不在 · 正在装 ⇒ `false`。 */
     fun deploy(
@@ -225,10 +261,53 @@ class ResidentFeed(
         val slot = replies.computeIfAbsent(id) { CompletableDeferred() }
         return try {
             slot.await()
+        } catch (ce: CancellationException) {
+            core.transferStop(id)
+            throw ce
         } finally {
             replies -= id
             moving -= id
         }
+    }
+
+    private val batchFlow = MutableSharedFlow<BatchEvent>(extraBufferCapacity = BUFFER)
+    override val batches: SharedFlow<BatchEvent> = batchFlow.asSharedFlow()
+
+    override suspend fun batch(want: Map<String, Any?>): Long {
+        ensure()
+        val h = withTimeoutOrNull(DEFAULT_CALL_MS) { opened.await() } ?: return 0L
+        return core.batchStart(h, Json.args(want))
+    }
+
+    override fun batchAnswer(
+        id: Long,
+        answer: BatchAnswer?,
+    ) = core.batchAnswer(id, BatchAnswer.wire(answer)?.let(Json::args))
+
+    override fun batchStop(id: Long) = core.batchStop(id)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    override fun picks(rows: List<Any?>): PickMenu {
+        ensure()
+        val h = if (opened.isCompleted) opened.getCompleted() else 0L
+        return PickMenu.of(core.pickMenu(h, Json.line(rows)))
+    }
+
+    override fun clashes(data: Any?): List<BatchEvent.Clash> =
+        (Json.value(core.clashRows(Json.line(data))) as? List<*>).orEmpty().mapNotNull { m ->
+            @Suppress("UNCHECKED_CAST")
+            (m as? Map<String, Any?>)?.let(BatchEvent.Clash::of)
+        }
+
+    @Suppress("UNCHECKED_CAST")
+    override fun decided(
+        keys: List<String>,
+        answer: BatchAnswer?,
+    ): Map<String, String>? = Json.value(core.answerOf(Json.line(keys), BatchAnswer.wire(answer)?.let(Json::args))) as? Map<String, String>
+
+    override fun downloadEvent(want: Map<String, Any?>): BatchEvent? {
+        @Suppress("UNCHECKED_CAST")
+        return (Json.value(core.downloadEvent(Json.args(want))) as? Map<String, Any?>)?.let(BatchEvent::of)
     }
 
     override fun hold(sid: String): AutoCloseable {
@@ -252,7 +331,7 @@ class ResidentFeed(
     ) {
         when (kind) {
             "state" -> Json.obj(body)?.let(::onState) ?: broke(kind, body)
-            "frame" -> Json.obj(body)?.let { onFrame(it) } ?: broke(kind, body)
+            "frame" -> onFrameLine(body)
             // 核心按 `cmd-wire` 那一份类型解不开的一帧（两端版本对不上），原样那一行。
             "unread" -> broke("frame", body)
             "watch_from" -> onWatchFrom(body)
@@ -260,6 +339,7 @@ class ResidentFeed(
             "reply" -> onReply(body)
             "moved" -> onMoved(body)
             "deploy" -> onDeployLine(body)
+            "batch" -> onBatchLine(body)
             else -> broke(kind, body)
         }
     }
@@ -286,6 +366,10 @@ class ResidentFeed(
         if (deployFlow.value is Deploying.Done && (now is LinkState.Down || (now as? LinkState.Up)?.notice != null)) deployFlow.value = null
     }
 
+    private suspend fun onFrameLine(body: String) {
+        Json.obj(body)?.let { onFrame(it) } ?: broke("frame", body)
+    }
+
     private suspend fun onFrame(frame: Map<String, Any?>) {
         val next = tableFlow.value.step(frame, onBreak)
         tableFlow.value = next
@@ -294,6 +378,11 @@ class ResidentFeed(
         if (frame.str("kind") == LiveFrame.KIND) LiveFrame.of(frame)?.let(liveFlow::tryEmit) ?: broke("frame", frame.toString())
         // 满了就在这里等（停收），不丢行。
         RecordLine.of(frame)?.let { lineFlow.emit(it) }
+    }
+
+    /** `batch` 那一行落进 [batches]；认不出 ⇒ 报一次契约对不上。 */
+    private suspend fun onBatchLine(body: String) {
+        Json.obj(body)?.let(BatchEvent::of)?.let { batchFlow.emit(it) } ?: broke("batch", body)
     }
 
     /** `deploy` 那一行落进 [deploying]；认不出 ⇒ 报一次契约对不上、不动。 */

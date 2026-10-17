@@ -218,16 +218,19 @@ fn label_chars() -> std::collections::BTreeSet<char> {
             set.extend(zh.chars().filter(|c| !c.is_ascii()));
         }
     }
-    // 判法住共用那一份（`pick-core`：选中几项 ⇒ 菜单那张表 · 灰着的为什么）、窗口照画的那几句。
-    let picks = std::fs::read_to_string(
-        guard_core::addr::repo_root().join("src/common/pick-core/src/lib.rs"),
-    )
-    .expect("读不到 pick-core");
-    for key in copy_text_keys(&picks) {
-        let zh = entries[&key]["zh"]
-            .as_str()
-            .unwrap_or_else(|| panic!("文案表里没有 {key}"));
-        set.extend(zh.chars().filter(|c| !c.is_ascii()));
+    // 字住两端共用的核心、窗口照画的那几句：`pick-core`（选中几项 ⇒ 菜单那张表 · 灰着的为什么）·
+    //   `batch-core`（一组的标题 · 结局句 · 失败那几行 · 断开那一行 · 冲突框那一行）。
+    for core in ["pick-core", "batch-core"] {
+        let lib = std::fs::read_to_string(
+            guard_core::addr::repo_root().join(format!("src/common/{core}/src/lib.rs")),
+        )
+        .unwrap_or_else(|_| panic!("读不到 {core}"));
+        for key in copy_text_keys(&lib) {
+            let zh = entries[&key]["zh"]
+                .as_str()
+                .unwrap_or_else(|| panic!("文案表里没有 {key}"));
+            set.extend(zh.chars().filter(|c| !c.is_ascii()));
+        }
     }
     // 后端写好、窗口照画的那几句（种类 · 「类型」那一列 · 预览 / 看图 / 编辑那几道门不许时那一句）。
     for (key, e) in entries {
