@@ -601,6 +601,22 @@ fn the_per_guard_split_does_not_hand_every_guard_the_whole_file() {
     );
 }
 
+/// 这段测试代码裸遍历目录。经后端只读句柄（`Ro::read_dir`）读的不算：那是测试件照适配层的写法读夹具家
+/// （最小假 agent），不是判据在扫源码树。
+fn walks_raw(code: &str) -> bool {
+    let code = code.replace(&format!("Ro::{}", RAW_WALKS[0]), "");
+    RAW_WALKS.iter().any(|w| code.contains(w))
+}
+
+/// 后端只读句柄那一形不算裸遍历，别的形照算。
+#[test]
+fn reads_through_the_backend_handle_are_not_raw_walks() {
+    let walk = RAW_WALKS[0];
+    assert!(!walks_raw(&format!("let rd = Ro::{walk}&home)?;")));
+    assert!(walks_raw(&format!("let rd = std::fs::{walk}&root)?;")));
+    assert!(walks_raw(&format!("Ro::{walk}&home)?; fs::{walk}&root)?;")));
+}
+
 /// 今天仍在裸遍历的文件（相对仓根）。
 fn raw_walkers() -> Vec<String> {
     let root = repo_root();
@@ -645,7 +661,7 @@ fn raw_walkers() -> Vec<String> {
             // 说明今天没有「既用 `scan_tree!` 又裸遍历」的文件，那半是纯死重。
             // 而 `scan_tree!` 的调用文本里本来就不含 `RAW_WALKS` 的四个字面量，
             // 所以只用 `scan_tree!` 的文件本来也不会被标记 —— 那半从来没起过作用。
-            if RAW_WALKS.iter().any(|w| regs.contains(w)) {
+            if walks_raw(&regs) {
                 out.push(
                     f.strip_prefix(&root)
                         .unwrap_or(&f)

@@ -3,7 +3,7 @@
 //!
 //! 1. 取字节走 [`std::ffi::OsStr::as_encoded_bytes`]：跨平台、无损、不需要平台条件编译（本族不住 `platform/`，写 `std::os::…` 会让 `cfgless_guard` 红）。
 //! 2. 一处有损解码都不许有：把路径转成人话的那几个调用（连 `Path` 的 `Display`）在本族目录下零命中
-//!    （`tests/backend/files/capability_guard.rs` 的 `no_lossy_decode_anywhere_in_the_family`）。
+//!    （`tests/backend/files/answer_tests.rs` 的 `no_lossy_decode_anywhere_in_the_family`）。
 //! 3. 回送时 [`to_json`] 对有效 UTF-8 才交字符串，其余一律交 `{"b16": "<十六进制>"}`；两条路都双向无损（往返恒等判据，含非 UTF-8 夹具）。
 //!
 //! 买不到：Windows 那一侧的字节是 WTF-8，同一个文件名在两个平台上取出来的字节不保证相同 —— 只承诺同一台机器上取出去的字节原样送回来能再指到同一个名字。

@@ -205,7 +205,6 @@ pub fn parent_dir(cwd: &str) -> String {
 }
 
 /// 远端路径的最后一段（basename），与 [`parent_dir`] 是一对（一个给前缀、一个给尾段）。只用 `/`，理由同 [`parent_dir`]。
-/// （`corpus.rs` · `shell.rs` 里另有各自的 `rsplit('/')`，这个概念不只一个住址。）
 pub fn remote_basename(path: &str) -> &str {
     let t = path.trim_end_matches('/');
     match t.rfind('/') {

@@ -2056,7 +2056,7 @@ const SUPPORT_ITEM_CEILINGS: &[(&str, usize)] =
     &[("src/backend", 7), ("src/frontend/shell/src", 15)];
 
 /// 一棵生产树里：真 `#[test]` 属性（整行逐字）· 内联 `#[cfg(test)] mod X {` · 别的 `#[cfg(test)]` 块项。
-/// 分号声明形（`#[cfg(test)] #[path = "…"] mod X;`）不算：那是把测试体挂到 `tests/` 的桩。
+/// 分号声明形（`#[cfg(test)] #[path = "…"] mod X;`）不算：那是把测试体挂到 `tests/` 的桩（桩指没指进 `tests/` 由 [`test_only_files_in`] 判）。
 fn test_bodies_in(text: &str) -> (usize, usize, usize) {
     let (mut attrs, mut mods, mut support) = (0usize, 0usize, 0usize);
     let test_attr = format!("#[{}]", "test");
@@ -2117,4 +2117,81 @@ fn the_production_trees_hold_no_test_bodies() {
         t = "test"
     );
     assert_eq!(test_bodies_in(&sample), (1, 1, 1), "认法坏了");
+}
+
+/// `#[cfg(…)]` 里的条件只在测试档成立：恰好是 `test`，或 `all(…)` 顶层有一项是 `test`。
+fn cfg_only_in_tests(attr: &str) -> bool {
+    let Some(p) = attr
+        .trim()
+        .strip_prefix("#[cfg(")
+        .and_then(|s| s.strip_suffix(")]"))
+    else {
+        return false;
+    };
+    p == "test"
+        || p.strip_prefix("all(")
+            .and_then(|s| s.strip_suffix(')'))
+            .is_some_and(|args| args.split(',').any(|a| a.trim() == "test"))
+}
+
+/// 一份源码里只在测试档编、正文却住在 `tests` 段之外的整份文件（行号从 1 起）：
+/// 无花括号体的 `mod x;` 上面那串属性有只在测试档成立的 `#[cfg(…)]`、却没有指进 `tests` 段的 `#[path]`；或文件头一行 `#![cfg(test)]`。
+/// 注释先剥成空行（属性与 `mod` 之间隔着注释也认）。看不见：测试模块花括号体里不带属性的 `mod x;`。
+fn test_only_files_in(src: &str) -> Vec<usize> {
+    let code = crate::strip_comment_lines(src);
+    let lines: Vec<&str> = code.lines().collect();
+    let mut out = Vec::new();
+    for (i, l) in lines.iter().enumerate() {
+        let t = l.trim();
+        if t == "#![cfg(test)]" {
+            out.push(i + 1);
+            continue;
+        }
+        let body = strip_visibility(t);
+        if !(body.starts_with("mod ") && body.contains(';') && !body.contains('{')) {
+            continue;
+        }
+        let attrs: Vec<&str> = lines[..i]
+            .iter()
+            .rev()
+            .map(|a| a.trim())
+            .take_while(|a| a.starts_with("#[") || a.is_empty())
+            .filter(|a| a.starts_with("#["))
+            .collect();
+        let gated = attrs.iter().any(|a| cfg_only_in_tests(a));
+        let in_tests = attrs.iter().filter_map(|a| path_attr(a)).any(mounts_tests);
+        if gated && !in_tests {
+            out.push(i + 1);
+        }
+    }
+    out
+}
+
+/// `src/` 里没有只在测试档编的整份文件：测试件住 `tests/` 同形位置，挂载处用 `#[path]` 指过去。
+#[test]
+fn src_holds_no_test_only_file() {
+    let found: Vec<String> = repo()
+        .under(&["src"], &["rs"])
+        .into_iter()
+        .filter(|f| !f.rel.starts_with("src/vendor/"))
+        .flat_map(|f| {
+            test_only_files_in(f.text())
+                .into_iter()
+                .map(move |n| format!("{}:{n}", f.rel))
+        })
+        .collect();
+    let attr = format!("#[{}({})]", "cfg", "test");
+    let sample = format!(
+        "{attr}\nmod a;\n{attr}\n// 注释\npub(crate) mod b;\n#[cfg(all(unix, test))]\nmod c;\n\
+         {attr}\n#[path = \"../../tests/x_tests.rs\"]\nmod ok;\n\
+         #[cfg(any(test, feature = \"ts\"))]\nmod ok2;\n{attr}\nmod ok3 {{}}\n"
+    );
+    let inner = format!("#![{}({})]\n", "cfg", "test");
+    let control = test_only_files_in(&sample).len() + test_only_files_in(&inner).len();
+    assert_eq!(control, 4, "正控：合成样本该认出 a · b · c · 内属性那四处");
+    super::none(
+        "只在测试档编的整份文件住在 `src/`（挪进 `tests/` 同形位置，挂载处用 `#[path]`）",
+        found,
+        control,
+    );
 }

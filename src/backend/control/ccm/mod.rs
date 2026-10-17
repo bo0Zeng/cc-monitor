@@ -58,31 +58,13 @@ pub(crate) fn agents() -> Vec<&'static str> {
 /// 能力 token。消费者（`ccm_invocation.rs::CLI_REQUIRED_CAPS` / 前端）据此判断
 /// 「这条命令渲出来对面认不认」。
 ///
-/// # 🔴 加 / 删一个 token 之前：**谁在数它**（`K-R61` 09-11 现打**五处**）
+/// # 加 / 删一个 token 之前：谁在数它
 ///
-/// ⚠ **这张表就是给下一个加 token 的人看的** ⇒ 它漏一行，下一个人就会被那一处打红一次。
-/// 〔`K-R61` 09-11 现打过一次：初版这里只写了四处，漏的正是 `plugin/probe.rs` 那一行 ——
-/// 而那一处**真改过、也报过 PM**，就是没落进表里。PM 的刀 `P` 逮到它。〕
-///
-/// - `tests/frontend/shell/plugin_class_registry.rs` —— 数**个数**（那条断言里逐字写着
-///   「这个数变了要顺手看一眼它们」）。加 token ⇒ **那个数要跟着改**，否则当场红。
-/// - `src/backend/plugin/probe.rs` 的
-///   [`crate::plugin::probe::tests::the_required_list_is_checked_against_what_the_real_plugin_declares`]
-///   —— 它拿 [`probe_output`] **真吐出来的那一行** `capabilities=` 当活体语料，再数**个数**。
-///   加 token ⇒ **那个数要跟着改**（与上一行同形，是本树内的第二处计数）。
-///   〔依据：PM 刀 `P`（09-11）往本常量再加一个 token、别处一字不改，backend 套
-///   `682 → 681 passed / 1 failed`，**只红这一条**；monitor 套同刀 `1381 → 1380 / 1`，
-///   只红上一行那条。⇒ 两处**各自最小面 1 条**，而它们是仅有的两处「数个数」的。〕
+/// - `tests/frontend/shell/plugin_class_registry.rs` —— 数**个数**：加 token ⇒ 那个数跟着改，否则当场红。
 /// - `src/backend/control/launch_render/ccm_invocation.rs` —— `CLI_REQUIRED_CAPS`
 ///   与判据自带的 `STATIC_CAPS_EXPECTED`，两处都是**子集检查** ⇒ 加 token 安全。
 /// - `tests/e2e/ccm-contract-parity.sh` —— 数 `capabilities=` 覆不覆盖 TS 那一份，同样是**⊇**。
-/// - `src/frontend/shell/build.rs` 的 `extract_capabilities` —— ⚠ **它盖不到这里**：
-///   它按 `const CAPABILITIES` 这一行去 `src/backend/main.rs` 里抠，
-///   抠的是 backend **流模式**那个同名常量（`bg` / `tail-only`），与本常量无关。
-///   〔这句话是实测的，不是推的：加了下面那个 token 之后 `BACKEND_CAPABILITIES` 逐字不变。〕
-///
-/// ⇒ 归一句：**「数个数」的两处必须跟着改（前两行）· 「子集检查」的两处加 token 安全，
-/// 删 / 改名才危险 · `build.rs` 那一处与本常量无关。**
+/// - `src/frontend/shell/build.rs` 的 `extract_capabilities` 抠的是 backend 流模式那个同名常量，与本常量无关。
 ///
 /// # `base-url-across-tmux` 是怎么来的
 ///
@@ -119,14 +101,9 @@ pub(crate) const CAPABILITIES: &[&str] = &[
 
 /// 上面那张 [`CAPABILITIES`] 里，**载体是 tmux** 的那几条 —— 一条一条的依据：
 ///
-/// ⚠ 这是一条关于**机制**的声明（「它靠什么活着」），不是差异登记：差异 = 本表 × 平台那一维，
-/// 由汇总层 `lib.rs::capabilities_on` 现推；理由与档住 `lib.rs::TARGET_GAPS`。两张表回答的不是同一个问题。
-///
-/// 它从汇总层（`lib.rs`，PR1 落地时的临时住址）搬回这里 ——
-/// 一条能力一个住址：往 [`CAPABILITIES`] 加一条靠 tmux 活着的能力的人，就在这张表的正上方。
-/// 「每一条都真在 `CAPABILITIES` 里」由 `target_parity_guard.rs` 的
-/// `every_tmux_carried_ccm_capability_really_exists` 钉着（不许有幽灵）；
-/// 反方向（漏登一条）今天没有判据，照旧记在那份文件头注「买不到」第 5 条。
+/// 没有 tmux 的平台上 `--ccm-probe` 自报时摘掉它们（[`crate::ccm_launcher_with`]）。
+/// 与「真靠 tmux 的那几条」两向相等，由 `target_parity_guard.rs` 的
+/// `every_ccm_capability_that_rides_tmux_is_declared_tmux_carried` 用真解析器 ＋ 真计划现推钉着。
 pub(crate) const CCM_TMUX_CARRIED: &[&str] = &[
     "attach",               // 实现就是 `tmux attach`
     "base-url-across-tmux", // 名字就是「跨 tmux 的边界」
@@ -645,11 +622,8 @@ fn needs_account_table(o: &argv::Opts, env: &Env) -> bool {
 ///
 /// # `capabilities=` 答的是「**在这台机器上**做得到哪几条」
 ///
-/// 从前这一行是整张 [`CAPABILITIES`] 原样吐 —— 真 Win11 上 `ccm.exe --ccm-probe` 自报 `tmux` / `attach` /
-/// `detach` / `tmux-size` / `tmux-base` / `bus-register` …，而那几条在 Windows 上
-/// 一条都做不到（`TARGET_GAPS`）。⇒ 改吐本二进制那一档平台上的那一份：
-/// [`crate::ccm_launcher_with`]`(`[`crate::platform::tmux::TMUX_PLATFORM`]`)` —— 与能力账按 target 问的是**同一个函数**
-/// （「能力清单从实现派生」），不在这里另写名单。Linux 上逐字不变。
+/// 吐本二进制那一档平台上的那一份：[`crate::ccm_launcher_with`]`(`[`crate::platform::tmux::TMUX_PLATFORM`]`)`
+/// —— 没有 tmux 的平台上摘掉 [`CCM_TMUX_CARRIED`] 那几条，不在这里另写名单。
 pub(crate) fn probe_output(self_path: &str) -> String {
     probe_output_for(self_path, crate::platform::tmux::TMUX_PLATFORM)
 }

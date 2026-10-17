@@ -125,5 +125,5 @@ pub fn peak_since(base: isize) -> usize {
 }
 
 #[cfg(test)]
-#[path = "../../tests/backend/alloc_probe_tests.rs"]
+#[path = "alloc_probe_tests.rs"]
 mod tests;

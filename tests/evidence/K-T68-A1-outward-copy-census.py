@@ -709,7 +709,7 @@ CFG_TEST_MOD_RE = re.compile(
 
 def cfg_test_module_files(root: Path) -> set:
     """🔴 修 bug（CP1 2026-09-24）：`#[cfg(test)] mod x;` 声明的模块**整个文件**只在测试构建里，
-    但它住在另一个文件里 ⇒ 单文件内的 `drop_cfg_test_items` 看不见（`backend/agents/fake/` 现打 28 条混进人群）。
+    但它住在另一个文件里 ⇒ 单文件内的 `drop_cfg_test_items` 看不见（当时住 `src/` 的假 agent 现打 28 条混进人群）。
     ⇒ 先扫一遍所有 `.rs`，把这种声明解析成文件路径（及其子模块目录），整棵从语料里摘掉。
     → 相对仓根的 posix 路径前缀集合（文件本身，或 `dir/`）。
     """

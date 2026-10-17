@@ -2,11 +2,9 @@
 //!
 //! （逐字）「**处置不是别吞，是吞了要留一行日志**」。
 //!
-//! 三条：① 人群 == 登记表（两向：没登记的新裸吞 · 修掉了还留着的死行）② 量具正控（合成语料：该认的认出、不该认的不认）
-//! ③ 测试专用模块确实被排除（按 `mod` 声明派生出来的那一组里有已知的那几份）。
+//! 三条：① 人群 == 登记表（两向：没登记的新裸吞 · 修掉了还留着的死行）② 量具正控（合成语料：该认的认出、不该认的不认）。
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::PathBuf;
 
 /// 为什么这一处可以丢掉结果。**每一类一句理由**（写在变体上）；行上的第五栏可以再补一句。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -515,69 +513,6 @@ fn swallows(prod: &str) -> Vec<String> {
     out
 }
 
-/// 测试专用模块（`#[cfg(test)]` 紧跟 `mod x;` 引进来的文件）：按 `mod` 声明派生，规范化成真实路径。
-fn test_only_modules(files: &[(PathBuf, String)]) -> BTreeSet<PathBuf> {
-    let mut out = BTreeSet::new();
-    for (path, src) in files {
-        let lines: Vec<&str> = src.lines().collect();
-        for (i, l) in lines.iter().enumerate() {
-            let t = l.trim();
-            let Some(after) = t.strip_prefix("#[cfg(test)]") else {
-                continue;
-            };
-            let mut path_attr: Option<String> = None;
-            let mut cands: Vec<&str> = vec![after.trim()];
-            cands.extend(lines.iter().skip(i + 1).take(5).map(|x| x.trim()));
-            for c in cands {
-                if c.is_empty() || c.starts_with("//") {
-                    continue;
-                }
-                if let Some(p) = c
-                    .strip_prefix("#[path = \"")
-                    .and_then(|r| r.strip_suffix("\"]"))
-                {
-                    path_attr = Some(p.to_string());
-                    continue;
-                }
-                if c.starts_with("#[") {
-                    continue;
-                }
-                let decl = c
-                    .trim_start_matches("pub(crate) ")
-                    .trim_start_matches("pub ")
-                    .strip_prefix("mod ")
-                    .and_then(|r| r.split(';').next())
-                    .filter(|n| !n.is_empty() && n.bytes().all(is_ident))
-                    .filter(|_| c.ends_with(';') || c.contains(';'));
-                if let Some(name) = decl {
-                    let dir = path.parent().expect("文件有父目录");
-                    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-                    let targets: Vec<PathBuf> = match &path_attr {
-                        Some(p) => vec![dir.join(p)],
-                        None if matches!(stem, "lib" | "mod" | "main") => {
-                            vec![
-                                dir.join(format!("{name}.rs")),
-                                dir.join(name).join("mod.rs"),
-                            ]
-                        }
-                        None => vec![
-                            dir.join(stem).join(format!("{name}.rs")),
-                            dir.join(stem).join(name).join("mod.rs"),
-                        ],
-                    };
-                    for t in targets {
-                        if let Ok(real) = std::fs::canonicalize(&t) {
-                            out.insert(real);
-                        }
-                    }
-                }
-                break;
-            }
-        }
-    }
-    out
-}
-
 /// 盘上的人群：`(仓根相对路径, 归一化语句) → 处数`。
 fn population() -> BTreeMap<(String, String), usize> {
     let root = guard_core::addr::repo_root();
@@ -592,12 +527,11 @@ fn population() -> BTreeMap<(String, String), usize> {
     // 壳那棵根的人群声明带进来的兄弟包（`host-core` · `comms-inward` …）也住别的根下（`src/common` · `src/comms`）：同一份只数一次。
     files.sort_by(|a, b| a.0.cmp(&b.0));
     files.dedup_by(|a, b| a.0 == b.0);
-    let test_only = test_only_modules(&files);
     let root = std::fs::canonicalize(&root).unwrap_or(root);
     let mut out: BTreeMap<(String, String), usize> = BTreeMap::new();
     for (path, raw) in &files {
         let real = std::fs::canonicalize(path).unwrap_or_else(|_| path.clone());
-        if test_only.contains(&real) || !real.starts_with(&root) {
+        if !real.starts_with(&root) {
             continue;
         }
         let rel = real
@@ -683,41 +617,4 @@ fn w5vis_the_swallow_detector_sees_exactly_the_bare_forms() {
     .map(String::from)
     .collect();
     assert_eq!(got, want, "量具认出的与手写期望不相等");
-}
-
-/// ③ 测试专用模块确实被排除：派生出来的那一组里有两份已知的、生产段里带 `let _ =` 的测试专用文件（正控）。
-#[test]
-fn w5vis_test_only_modules_are_derived_and_excluded() {
-    let root = guard_core::addr::repo_root();
-    let mut files = Vec::new();
-    for sub in ROOTS {
-        files.extend(guard_core::scan_tree_excluding(
-            &root.join(sub),
-            &["rs"],
-            &[],
-        ));
-    }
-    // 壳那棵根的人群声明带进来的兄弟包（`host-core` · `comms-inward` …）也住别的根下（`src/common` · `src/comms`）：同一份只数一次。
-    files.sort_by(|a, b| a.0.cmp(&b.0));
-    files.dedup_by(|a, b| a.0 == b.0);
-    let derived = test_only_modules(&files);
-    for known in [
-        "src/backend/alloc_probe.rs",
-        "tests/frontend/shell/needle_anchor_registry.rs",
-    ] {
-        let real = std::fs::canonicalize(root.join(known)).expect("已知的那份不在了 —— 改本条");
-        assert!(
-            derived.contains(&real),
-            "`{known}` 是测试专用模块，却没被派生出来 —— 排除坏了"
-        );
-    }
-    let pop = population();
-    assert!(
-        !pop.keys().any(|(f, _)| f == "src/backend/alloc_probe.rs"),
-        "测试专用模块的语句进了人群"
-    );
-    assert!(
-        !pop.is_empty(),
-        "人群是空的 —— 扫描面坏了，① 那条会零命中地绿"
-    );
 }

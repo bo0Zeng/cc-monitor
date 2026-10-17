@@ -15047,30 +15047,6 @@
       "zh": "无 agent 视角 · 重读计划后再看",
       "args": []
     },
-    "beProbe.parse.emptyOutput": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "无输出",
-      "args": []
-    },
-    "beProbe.message.versionUnknown": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "未报",
-      "args": []
-    },
-    "beProbe.message.missingAbility": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{plugin} 版本 {version} 不支持「{token}」 · 更新到支持的版本即可",
-      "args": ["plugin", "token", "version"]
-    },
-    "beProbe.message.wrongProgram": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "找错程序 · 找到的 {want} 报的是 {saw} · PATH 上可能有同名的无关命令",
-      "args": ["want", "saw"]
-    },
     "beChild.run.timedOut": {
       "kind": "error",
       "role": "报错",

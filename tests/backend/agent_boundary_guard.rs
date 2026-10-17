@@ -93,7 +93,6 @@ mod tests {
         "plugin/mod.rs",
         "plugin/discover.rs",
         "plugin/invoke.rs",
-        "plugin/probe.rs",
         // ── 以下由 `K-R12` 下一拍加入（09-04）──────────────────────────────
         // 新建的 `common/tmux_utf8.rs`（「tmux 的打印通道必须是 UTF-8」那个口径的家），
         // 同 `plugin/` 那一批：**新造的东西从第一天就进表**，理由一样 ——
@@ -264,7 +263,6 @@ mod tests {
             "plugin/mod.rs",
             "plugin/discover.rs",
             "plugin/invoke.rs",
-            "plugin/probe.rs",
             // K-R12 下一拍加入（09-04）：新建的 `common/tmux_utf8.rs`，同样从第一天就在表里
             "common/tmux_utf8.rs",
             // 入方向拆成目录（10-03）：拆出来的那几份与命令表各族

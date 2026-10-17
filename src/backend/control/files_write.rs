@@ -74,11 +74,11 @@ pub const BAD_NAME: &str = "bad_name";
 
 /// 命令级码：**这个平台没有 unix 权限位**。只有 `files-chmod` 声明它。
 ///
-/// ⚠ 这是这个字面量在后端的**第二份**（另一份是 `lib.rs::NO_UNIX_MODE`，target 轴现推用），
+/// ⚠ 这是这个字面量在后端的**第二份**（另一份是 `lib.rs::NO_UNIX_MODE`，填 `hello.unavailable` 用），
 /// 但它**不是第二个源头** —— 真相是 `inbound::REGISTRY` 里 `files-chmod` 自己登记的 `codes`。
 /// 刻意不去借 `lib.rs` 那一份：文件管理后端往外够的边是登记过的闭集（`files/module_boundary_guard`，
 /// 「只许依赖 platform / common / 围栏」），为一个码多长一条边不值。
-/// 两份逐字相等由 `target_parity_guard::the_unix_mode_axis_agrees_with_what_this_binary_was_compiled_with` 钉着。
+/// 两份逐字相等由 `target_parity_guard::every_target_has_the_same_commands_except_the_registered_gaps` 钉着。
 pub const NO_UNIX_MODE: &str = "no_unix_mode";
 
 impl WriteRefusal {
@@ -540,18 +540,6 @@ pub fn delete_empty_dir(
     }
 }
 
-/// 改 unix 权限位（只收低 12 位）。**跟链接** ⇒ 走 `Last::Follow`。
-///
-/// ⚠ 非 unix 平台上**如实回失败**，不假装改成了（`Permissions` 在那边只有一个只读位）。
-pub fn change_mode(
-    face: &Face,
-    root: &Path,
-    rel: impl AsRef<Path>,
-    mode: u32,
-) -> Result<PathBuf, WriteRefusal> {
-    change_mode_reporting(face, root, rel, mode).map(|(p, _)| p)
-}
-
 /// 线上那几个字（八进制写法）⇒ 权限位；两个界面都只交原文，解与拒只在这里。
 /// 超出 `0o7777` 拒而不掩：敲了 `100644`（连文件类型位一起抄来的）掩成 `644` 就是改了别的东西。
 pub fn mode_of_text(t: &str) -> Result<u32, WriteFail> {
@@ -568,7 +556,8 @@ pub fn mode_of_text(t: &str) -> Result<u32, WriteFail> {
     Err(WriteFail::from(("refused", said)))
 }
 
-/// 同 [`change_mode`]，另交**改之前**的权限位（低 12 位；读不到 ⇒ `None`）：调用方据它撤销。
+/// 改 unix 权限位（只收低 12 位），另交**改之前**的权限位（低 12 位；读不到 ⇒ `None`）：调用方据它撤销。
+/// **跟链接** ⇒ 走 [`resolve_existing_in_root`]。非 unix 平台上**如实回失败**，不假装改成了（`Permissions` 在那边只有一个只读位）。
 pub fn change_mode_reporting(
     face: &Face,
     root: &Path,
@@ -2437,15 +2426,7 @@ impl From<WriteRefusal> for WriteFail {
     }
 }
 
-/// 文件管理**写**面的一条线上命令。
-///
-/// # ⚠ 它**刻意不叫** `Capability`，也刻意不进 `lib.rs::CAPABILITY_FACES`
-///
-/// 那份汇总清单是**产品面**的登记（`CapabilityKind` 两类、
-/// 逐 target 的对等断言），加一个面要动 `lib.rs::CAPABILITY_FACES` ——
-/// 那处**不在本模块里**，已如实报备。
-/// ⇒ 本表今天只当「线上契约的数据形态」用（判据按它对拍 `inbound::REGISTRY`
-/// 与 `IPC-PROTOCOL.md §10`），**别把它读成「这一面已经进了能力清单」**。
+/// 文件管理**写**面的一条线上命令：只当「线上契约的数据形态」用（判据按它对拍 `inbound::REGISTRY` 与 `IPC-PROTOCOL.md §10`）。
 pub struct ManageCommand {
     /// 线上命令名（连字符那一套，与 `inbound::REGISTRY` 逐字相同）。
     pub name: &'static str,

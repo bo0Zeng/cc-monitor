@@ -66,6 +66,9 @@ const SUPPORT: &[&str] = &[
     "tests/backend/observe/accounts_list_support.rs", // 账号清单成品几份判据共用：照类型造号行与清单
     "tests/backend/common/streamed_read_support.rs", // 整份读按块几份判据共用：合成大记录 · 手里最多多少的上界
     "tests/backend/files/index_testing.rs",
+    "tests/backend/alloc_probe.rs", // 线程级内存量具（只在测试档编，挂在后端库根）
+    "tests/backend/agents/fake/mod.rs", // 最小假 agent：每一种能力都与真 agent 不同形
+    "tests/backend/agents/fake/runs.rs", // 假 agent 的子运行形状
     "tests/backend/plan/fixture.rs", // 计划读面的夹具：合成 dump · 假 pb 插件
     "tests/backend/control/identity_tag_door.rs", // `identity_tag` 起 tmux 那个口的测试构建那一份（假 tmux 注入，§48.3）
     "tests/backend/platform/child_tmux_fence.rs", // 子进程起前那一道的测试构建那一份（裸名 tmux 落到本进程的空 socket 目录）
@@ -83,6 +86,9 @@ const SUPPORT: &[&str] = &[
     "tests/frontend/filewin/rows_testing.rs",
     "tests/frontend/filewin/theme_testing.rs", // 缺省主题：照 tokens.css 解
     "tests/frontend/filewin/chrome_testing.rs", // 一个目录视图连同它的框跑一帧（同 `Workspace::chrome_ui` 那一套面板）
+    "tests/frontend/filewin/corpus.rs",         // 合成路径语料（采结构不采内容）
+    "tests/frontend/filewin/scale.rs",          // 秤：首屏 · 滚动帧 · 内存
+    "tests/frontend/shell/ccm_cli_contract.rs", // `cc-spawn` 使唤 `ccm` 那条边的契约头注 ＋ 挂测试段
     "tests/frontend/shell/shared_crate_registry_ci_yaml.rs",
     "tests/frontend/shell/write_site_registry_writers.rs",
     // 壳的判据模块头（头注 ＋ 挂测试段那一行）：10-10 从 `src/frontend/shell/src/` 搬来，测试在各自的 `*_tests.rs` 里。

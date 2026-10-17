@@ -16,7 +16,7 @@
 //! - watch 绑在 inode 上，不绑路径：浏览的目录被删掉再重建成同名的新 inode，watch 留在旧 inode 上，直到下一次 [`set_browsing`]。
 //! - 事件可能丢（内核队列溢出、`IN_Q_OVERFLOW`）：溢出时不知道自己漏了什么，兜底仍然是重走那一档。
 //! - 平台不对等：Linux `inotify` · Windows `ReadDirectoryChangesW` · macOS `FSEvents` 的语义（合并、延迟、丢事件的条件）不是一件事，
-//!   逐 target 的声明住 `super::FRESHNESS`，不许判成相等。
+//!   Windows · macOS 两格没实测。
 
 use crate::platform::fs::Ro;
 use std::path::{Path, PathBuf};

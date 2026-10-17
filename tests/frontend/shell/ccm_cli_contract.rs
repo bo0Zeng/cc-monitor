@@ -25,11 +25,6 @@
 //! **没有任何东西真的按它部署**。
 //! ⇒ 本文件里所有判据**证明的是仓内那份的性质，不是本机行为**。别读成「机器上就是这样」。
 //! 〔`K-R48` 第一拍 PM 审计逐字复核过这一格：「**工具是，文件不是**」。〕
-//!
-//! 注：本模块整体在 `#[cfg(test)]` 内，非测试构建为空、零运行期开销。
 
-#![cfg(test)]
-
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/ccm_cli_contract_tests.rs"]
+#[path = "ccm_cli_contract_tests.rs"]
 mod tests;

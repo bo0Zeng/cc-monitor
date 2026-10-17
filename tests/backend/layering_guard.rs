@@ -1112,7 +1112,7 @@ mod tests {
         (
             "agents",
             "control",
-            "适配层在功能之下（只在测试档的 `agents/fake` 例外，测试段不受管）",
+            "适配层在功能之下",
         ),
         (
             "assets",

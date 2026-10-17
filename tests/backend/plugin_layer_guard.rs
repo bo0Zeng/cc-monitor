@@ -23,7 +23,7 @@ fn concrete_plugin_words() -> Vec<(String, &'static str)> {
 ///
 /// 「数个数」只挡得住「采集漏了」；列名还挡得住「新加了一个文件、而没人看见它」——
 /// 而本层的全部意义就是「这里面的东西必须是通用的」，多一个文件就该有人看一眼。
-const FILES_IN_THIS_LAYER: &[&str] = &["discover.rs", "invoke.rs", "mod.rs", "probe.rs"];
+const FILES_IN_THIS_LAYER: &[&str] = &["discover.rs", "invoke.rs", "mod.rs"];
 
 /// 收集 `src/plugin/` 下每个 `.rs` 的 `(相对名, 生产段)`。
 ///
@@ -37,7 +37,7 @@ const FILES_IN_THIS_LAYER: &[&str] = &["discover.rs", "invoke.rs", "mod.rs", "pr
 /// **本判据住在 `src/backend/plugin/mod.rs` 里**。
 /// 剖分之后本判据住 `tests/backend/plugin_layer_guard.rs` ⇒ `file!()` 是折返路径 ⇒
 /// 自摘恒不命中 ⇒ `mod.rs` **真的被扫进来了**，而下面那句「补回来再比」于是
-/// 把它变成**重复项**（现打：`["discover.rs", "invoke.rs", "mod.rs", "mod.rs", "probe.rs"]`
+/// 把它变成**重复项**（现打：`["discover.rs", "invoke.rs", "mod.rs", "mod.rs"]`
 /// —— 这与 `§6.2` A 类记的 `payload.rs` 那一形逐字同构）。
 ///
 /// ⇒ 排除**明写成空名单**：本判据已经不在被扫的那棵树里，没有「摘掉我自己」这回事。

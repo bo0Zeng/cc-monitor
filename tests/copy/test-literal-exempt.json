@@ -4,6 +4,9 @@
     "按 文件 · 那句 · 用途 认；用途取自判据里的闭集（输入 · 回显 · 用例名 · 非文案 · 词义）。那份文件里已没有这句（或表值变了）⇒ 死豁免红，删掉这条。"
   ],
   "files": {
+    "tests/backend/agents/fake/mod.rs": [
+      { "text": "账号", "use": "非文案" }
+    ],
     "tests/backend/assets/cc_bus_install_tests.rs": [
       { "text": "失败", "use": "词义" },
       { "text": "拒绝", "use": "词义" }

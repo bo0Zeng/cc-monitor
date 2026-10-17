@@ -294,8 +294,7 @@ pub(crate) struct Caps {
 
 impl Caps {
     /// 一种 shell 的目标机器上有什么。今天只有一个事实：**PowerShell 目标 ⇔ Windows ⇔ 没有 tmux**
-    /// （后端 `lib.rs::TARGET_GAPS` 里 `ccm-launcher` × Windows 那几行，「windows 用 windows
-    /// 自己的后台服务，后面再做」）。POSIX 目标按「有」算：没装 tmux 的 Linux 由 ccm 在运行时报 `no_tmux`（今天就是这样）。
+    /// （Windows 后台机制未定）。POSIX 目标按「有」算：没装 tmux 的 Linux 由 ccm 在运行时报 `no_tmux`（今天就是这样）。
     pub fn of(shell: Shell) -> Caps {
         Caps {
             tmux: shell == Shell::Posix,

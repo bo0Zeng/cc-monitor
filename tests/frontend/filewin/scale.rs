@@ -133,5 +133,5 @@ impl std::fmt::Display for F1 {
 }
 
 #[cfg(test)]
-#[path = "../../../../tests/frontend/filewin/scale_tests.rs"]
+#[path = "scale_tests.rs"]
 mod tests;

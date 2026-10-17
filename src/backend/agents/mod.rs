@@ -79,14 +79,10 @@ pub(crate) mod record;
 pub(crate) mod sse_anthropic;
 pub(crate) mod sse_openai_responses;
 
-/// **夹具家** —— 本区验收件的最小假 agent。
-///
-/// ⚠ **那行 `#[cfg(test)]` 就是它与一个真 agent 的全部差别**（外加它不进 [`REGISTRY`]）：
-/// 生产二进制里一个字节都没有它，真 `hello.homes` 永远不会声明它。
-/// 两件事都由 `fake::tests::the_fixture_agent_never_ships` 双向钉住，
-/// 登记住 `agent_locality_guard::tests::FIXTURE_HOMES`（**带天花板**——
-/// 没有天花板的话「夹具家」就成了往 `agents/` 里塞东西躲判据①的逃生舱）。
+/// 最小假 agent（判据用）：正文住 `tests/`，只在测试档编、不进 [`REGISTRY`]
+/// （`fake::tests::the_fixture_agent_never_ships` 钉住）。
 #[cfg(test)]
+#[path = "../../../tests/backend/agents/fake/mod.rs"]
 pub(crate) mod fake;
 
 /// 一个 agent 适配层在注册表里的样子。

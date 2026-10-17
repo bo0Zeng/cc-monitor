@@ -268,5 +268,5 @@ pub fn within_tolerance(got: f64, want: f64) -> bool {
 }
 
 #[cfg(test)]
-#[path = "../../../../tests/frontend/filewin/corpus_tests.rs"]
+#[path = "corpus_tests.rs"]
 mod tests;
