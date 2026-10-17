@@ -81,12 +81,12 @@ pub(crate) struct Me {
     /// 上下文每分钟长多少（token / 分）。
     pub(crate) grow: Option<f64>,
     /// 本会话在各号上的缓存（还没过期的；照号名排）。
-    pub(crate) cached: Vec<Cached>,
+    pub(crate) cached: Vec<PromptCache>,
 }
 
 /// 本会话在一个号上的缓存：留到几点 · 当时的上下文多长。
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Cached {
+pub(crate) struct PromptCache {
     pub(crate) account: String,
     pub(crate) until: u64,
     pub(crate) tokens: u64,

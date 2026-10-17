@@ -11,7 +11,7 @@
 //! - **按会话记**（[`Spend::me`]）：同一份流按会话再记一本 —— 每件用量（记在哪个号名下）· 每发的上下文 · 写缓存那一档 · 每号最后一发；
 //!   交给判的「本会话的用速与起伏 · 上下文 · 缓存」都从这一本算，「别的会话压在这个号上的」也从它扣（[`Spend::here`] · [`Spend::others`]）。
 
-use super::rules::decide::{Cached, Me};
+use super::rules::decide::{Me, PromptCache};
 use crate::agents::{QuotaWindow, Tier};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
@@ -24,7 +24,7 @@ pub(crate) const MIN_SENDS: u64 = 5;
 const ROUTES_KEPT: usize = 512;
 
 /// 本会话的用速看最近这么多秒（与额度账量号的用速同一段）。
-const PACE_SPAN: u64 = super::ledger::EST_FRESH;
+use super::ledger::EST_FRESH as PACE_SPAN;
 /// 会话在这个进程里至少记了这么多秒才给用速（刚开的会话量不准）。
 const PACE_FIRST: u64 = 10 * 60;
 /// 起伏按这么长一段一段比（σ/μ），看最近 [`SPREAD_BINS`] 段，记满的段不到 [`SPREAD_MIN`] 段不给。
@@ -39,7 +39,7 @@ type Key = (String, String);
 /// 一个会话这一本：哪一家 · 头一次记到 · 每件用量（时刻 · 记在哪个号名下 · 折合输入 token；只留最近一小时）·
 /// 最近的上下文（时刻 · token；变小 ＝ 压缩过，从头记）· 写缓存那一档（最近一次说得出的）· 每号最后一发（时刻 · 上下文 · 档）。
 #[derive(Debug, Clone, Default)]
-struct Run {
+struct Trail {
     agent: String,
     first: u64,
     last: u64,
@@ -49,7 +49,7 @@ struct Run {
     tail: HashMap<String, (u64, u64, Option<Tier>)>,
 }
 
-impl Run {
+impl Trail {
     fn add(&mut self, acct: &str, units: f64, now: u64) {
         match self.spent.back_mut() {
             Some((t, a, u)) if *t == now && a == acct => *u += units,
@@ -130,7 +130,7 @@ struct Inner {
     order: u64,
     tally: HashMap<Key, Tally>,
     base: HashMap<(Key, String), Base>,
-    runs: HashMap<String, Run>,
+    runs: HashMap<String, Trail>,
 }
 
 /// 一本累计（生产是进程里那一本 [`book`]；判据各开各的）。
@@ -195,10 +195,10 @@ impl Spend {
                 g.runs.remove(&old);
             }
         }
-        let r = g.runs.entry(stream.to_string()).or_insert_with(|| Run {
+        let r = g.runs.entry(stream.to_string()).or_insert_with(|| Trail {
             agent: key.0.clone(),
             first: now,
-            ..Run::default()
+            ..Trail::default()
         });
         r.last = now;
         r.add(&key.1, s.units, now);
@@ -221,12 +221,12 @@ impl Spend {
         let Some(r) = g.runs.get(sid) else {
             return Me::default();
         };
-        let mut cached: Vec<Cached> = r
+        let mut cached: Vec<PromptCache> = r
             .tail
             .iter()
             .filter_map(|(a, (at, tokens, tier))| {
                 let until = at + tier.as_ref()?.ttl;
-                (until > now).then(|| Cached {
+                (until > now).then(|| PromptCache {
                     account: a.clone(),
                     until,
                     tokens: *tokens,

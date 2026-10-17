@@ -3,7 +3,6 @@
 //! 流事件照真协议的样子手写（只有用量那几格），不起中转。
 
 use super::*;
-use crate::accounts::quota::rules::decide::{Cached, Me};
 
 const AGENT: &str = "claude-code";
 const SID: &str = "s-spend";
@@ -156,7 +155,7 @@ fn one_send_says_the_context_and_tier_but_no_pace() {
     assert_eq!(me.grow, None, "只有一份上下文");
     assert_eq!(
         me.cached,
-        vec![Cached {
+        vec![PromptCache {
             account: "a".into(),
             until: T0 + 3600,
             tokens: 100_000
@@ -249,12 +248,12 @@ fn each_account_keeps_its_cache_until_the_tier_runs_out() {
     assert_eq!(
         me.cached,
         vec![
-            Cached {
+            PromptCache {
                 account: "a".into(),
                 until: T0 + 3600,
                 tokens: 80_000
             },
-            Cached {
+            PromptCache {
                 account: "b".into(),
                 until: T0 + 900,
                 tokens: 90_000

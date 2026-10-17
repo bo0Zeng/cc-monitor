@@ -9,10 +9,6 @@ use std::cell::Cell;
 
 /// 一判至多几次操作（同样的输入在同一处停）。
 pub(crate) const MAX_OPERATIONS: u64 = 200_000;
-/// 字符串 · 数组 · 表的上限：Rhai 按一个值里所有层加起来算（ctx 整个是一个值），定在号到一两百个时 ctx 与策略照号摊平的表都放得下。
-const MAX_STRING: usize = 65_536;
-const MAX_ARRAY: usize = 8_192;
-const MAX_MAP: usize = 8_192;
 /// 墙钟兜底：一次调用至多跑多久（毫秒）。**主上限是操作数 · 调用深度 · 大小**（同样的输入停在同一处，跟机器忙不忙无关）；
 /// 墙钟只兜那几样都没掐住的极端情形，放宽到秒级，免得机器一忙就判超时、换到兜底那份去挑号。真撞上了照超时办、带 `strategyError` 交出来。
 /// 不是定时器：只在脚本每走一步时（`on_progress`）比一下，不让谁自己醒来。
@@ -31,12 +27,13 @@ fn bare() -> Engine {
     e.register_global_module(StandardPackage::new().as_shared_module());
     // 运算符照普通函数调：快路不给错填位置（`1 / 0` 报不出第几行），慢路填。
     e.set_fast_operators(false);
+    // 字符串 · 数组 · 表的上限 Rhai 按一个值里所有层加起来算（ctx 整个是一个值）：定在号到一两百个时 ctx 与策略照号摊平的表都放得下。
     e.set_max_operations(MAX_OPERATIONS)
         .set_max_call_levels(16)
         .set_max_expr_depths(64, 32)
-        .set_max_string_size(MAX_STRING)
-        .set_max_array_size(MAX_ARRAY)
-        .set_max_map_size(MAX_MAP);
+        .set_max_string_size(65_536)
+        .set_max_array_size(8_192)
+        .set_max_map_size(8_192);
     e.on_print(|_| {});
     e.on_debug(|_, _, _| {});
     e.on_progress(|n| {

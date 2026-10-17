@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::accounts::quota::rules::decide::{
-    turn, Cached, Ctx, CtxAcct, Me, Pick, Sigma, Strategy,
+    turn, Ctx, CtxAcct, Me, Pick, PromptCache, Sigma, Strategy,
 };
 use crate::accounts::quota::rules::Acct;
 use crate::accounts::quota::strategy::FailKind;
@@ -118,7 +118,7 @@ fn a_strategy_reads_the_facts_smart_switching_needs_and_nothing_where_unmeasured
         write_extra: Some(1.9),
         ttl: Some(3600),
         grow: Some(800.0),
-        cached: vec![Cached {
+        cached: vec![PromptCache {
             account: "b".into(),
             until: 5000,
             tokens: 90_000,
@@ -170,7 +170,7 @@ fn the_sandbox_holds_a_hundred_accounts() {
         context: Some(100_000),
         cached: ids
             .iter()
-            .map(|id| Cached {
+            .map(|id| PromptCache {
                 account: id.clone(),
                 until: 5000,
                 tokens: 100_000,
