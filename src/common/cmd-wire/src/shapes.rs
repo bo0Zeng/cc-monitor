@@ -159,7 +159,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("rotation-facts", "6b381193"),
     ("rotation-for-new", "9e572841"),
     ("rotation-reload", "d02ffe19"),
-    ("rotation-settings", "c41239db"),
+    ("rotation-settings", "c1684803"),
     ("rotation-strategies", "7937d175"),
     ("rotation-strategy-add", "b900c35b"),
     ("rotation-strategy-copy", "9e171657"),

@@ -2823,7 +2823,7 @@ type Words = string;
 ```ts
 type RotBadCell = { cell: string, code: string, };
 type RotConflict = { rev: string, };
-type RotEdit = { "set": { key: string, row?: number, v: unknown, } } | { "day": { key: string, row?: number, window: string, from: number, to: number, v: number | null, } } | { "seg": { key: string, row?: number, window: string, at?: number, seg?: RotSeg, } } | { "same": { key: string, row?: number, window: string, same: boolean, } } | { "move": { from: number, to: number, } } | { "add": { account: string, } } | { "remove": { row: number, } };
+type RotEdit = { "set": { key: string, row?: number, v: unknown, } } | { "seg": { key: string, row?: number, window: string, at?: number, seg?: RotSeg, } } | { "same": { key: string, row?: number, window: string, same: boolean, } } | { "move": { from: number, to: number, } } | { "add": { account: string, } } | { "remove": { row: number, } };
 type RotRefused = { cells: Array<RotBadCell>, };
 type RotSeg = { from: number, to: number, v: number, };
 type RotStrategyRev = { rev: string, };

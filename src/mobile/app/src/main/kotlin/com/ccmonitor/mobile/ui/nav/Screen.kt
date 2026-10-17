@@ -72,14 +72,25 @@ sealed class Screen(
     /** 编辑按键（终端屏 ⋯「编辑按键」· 绑了「编辑按键」的触发进来；只有这一页）。 */
     data object Keys : Screen("keys")
 
-    /** 轮换屏：一条会话的（[sid]）· 这台新会话用的那份（[sid] 缺）。 */
-    data object Rotation : Screen("rotation/{hostId}?sid={sid}") {
+    /** 轮换屏：一条会话的（[sid]）· 这台的设置页那一屏（[sid] 缺；会话里［编辑策略］跳过来的带看哪份 [strategy] · 开哪个号 [account]）。 */
+    data object Rotation : Screen("rotation/{hostId}?sid={sid}&strategy={strategy}&account={account}") {
         fun of(
             hostId: String,
             sid: String? = null,
         ): String = "rotation/$hostId" + (sid?.let { "?sid=$it" } ?: "")
 
+        /** 设置页那一屏：看 [strategy] 那一份、开 [account] 的编辑小窗。 */
+        fun edit(
+            hostId: String,
+            strategy: String,
+            account: String?,
+        ): String = "rotation/$hostId?strategy=" + enc(strategy) + (account?.let { "&account=" + enc(it) } ?: "")
+
+        private fun enc(s: String) = URLEncoder.encode(s, "UTF-8").replace("+", "%20")
+
         const val ARG_SID = "sid"
+        const val ARG_STRATEGY = "strategy"
+        const val ARG_ACCOUNT = "account"
     }
 
     /** 设置 → 机器与账号 → 轮换：当前服务器（上次那台）新会话用的那份。 */

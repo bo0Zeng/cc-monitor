@@ -51,7 +51,8 @@ import org.koin.compose.koinInject
 
 /**
  * 轮换屏：竖着排，顺序同桌面——第一行（策略下拉 ·「⋯」· 说明）· 提示，会话里接着顺序 · 模拟，设置页接着轮换账号 · 总体设置 · 模拟。
- * 两处进来是同一屏：聊天屏「⋯」→ 轮换（[sid]，那条会话）· 设置 → 机器与账号 → 轮换（[sid] 为 `null`：新会话用的那份）。
+ * 两处进来是同一屏：聊天屏「⋯」→ 轮换（[sid]，那条会话）· 设置 → 机器与账号 → 轮换（[sid] 为 `null`：新会话用的那份；
+ * 会话里［编辑策略］跳过来的带 [focus]：看那一份、开那个号的编辑小窗）。
  * 画的全是那台的回包（[RotationBoard]）；这里只排版、把手势交给它。
  */
 @Composable
@@ -62,14 +63,15 @@ fun RotationScreen(
     onBack: () -> Unit,
     /** 提示里的［看代码］· 旧格式那几份：用文件屏开（[path] 是那台上的全路径）。 */
     onOpenFile: (String) -> Unit,
-    /** 会话里的［编辑策略］：开这台的设置页那一屏（策略只在那里改）。 */
-    onEditStrategy: () -> Unit,
+    /** 会话里的［编辑策略］：开这台的设置页那一屏、看这个会话用的那份（给了号 ⇒ 开它的编辑小窗；策略只在那里改）。 */
+    onEditStrategy: (strategy: String, account: String?) -> Unit,
+    focus: RotFocus? = null,
 ) {
     rememberHostLink(hostId, "rotation-$hostId")
     val backends = koinInject<HostBackends>()
     val feed = remember(hostId) { backends.of(hostId) }
     val scope = rememberCoroutineScope()
-    val board = remember(hostId, sid) { RotationBoard(feed, sid, machine, scope, feed.changed) }
+    val board = remember(hostId, sid, focus) { RotationBoard(feed, sid, machine, scope, feed.changed, focus) }
     val ui by board.state.collectAsState()
     val linkState by feed.state.collectAsState()
     val table by feed.table.collectAsState()
@@ -100,7 +102,13 @@ fun RotationScreen(
                 !ui.loaded -> Skeleton()
                 else -> {
                     ui.readFailed?.let { ReadFailed(it.text, it.detail) { scope.launch { board.refresh() } } }
-                    BoardBody(ui, board, sid, table.sessions.mapValues { it.value.name.orEmpty() }, onOpenFile, onEditStrategy)
+                    val edit = { account: String? ->
+                        ui.view
+                            ?.strategy
+                            ?.id
+                            ?.let { onEditStrategy(it, account) } ?: Unit
+                    }
+                    BoardBody(ui, board, sid, table.sessions.mapValues { it.value.name.orEmpty() }, onOpenFile, edit)
                 }
             }
         }
@@ -108,7 +116,7 @@ fun RotationScreen(
     RotAsks(ui, board)
 }
 
-/** 读到了才画；不轮换 ⇒ 只剩第一行和一行灰字。会话 ⇒ 顺序；设置页 ⇒ 号牌 · 总体设置。 */
+/** 读到了才画；不轮换 ⇒ 只剩第一行和一行灰字。会话 ⇒ 顺序；设置页 ⇒ 号牌 · 总体设置（说明写在开关旁边）。 */
 @Composable
 private fun BoardBody(
     ui: RotationUi,
@@ -116,7 +124,7 @@ private fun BoardBody(
     sid: String?,
     titles: Map<String, String>,
     onOpenFile: (String) -> Unit,
-    onEditStrategy: () -> Unit,
+    onEditStrategy: (String?) -> Unit,
 ) {
     FirstRow(ui, board, sid, titles, onEditStrategy)
     val view = ui.view ?: return

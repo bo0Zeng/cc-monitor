@@ -4,12 +4,11 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,8 +21,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -35,6 +34,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -43,16 +43,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -66,27 +65,47 @@ import com.ccmonitor.mobile.core.claude.link.wire.RotFormKind
 import com.ccmonitor.mobile.core.claude.link.wire.RotFrom
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
+import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.ui.icon.PhIcon
+import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.ui.chat.newsession.PickRow
 import com.ccmonitor.mobile.ui.chat.newsession.SheetHead
 
-/** 一格 ⇒ 一行（数 · 开关 · 选项：名字在左、控件在右；24 小时条：名字在上、条在下）；值 · 从哪来 · 字都是那台解好的；没收下 ⇒ 下面一行红字。 */
+/**
+ * 一格 ⇒ 一块（同桌面 `cellRows`）：开关 · 不带前半句的数：名字在左、控件在右；选项 · 带前半句或空值说法的数 · 分段：名字在上、控件在下。
+ * 值 · 从哪来 · 字都是那台解好的；挂在别格下的（[indent]）缩进；总体那一格的说明写在名字下面；没收下 ⇒ 下面一行红字。
+ */
 @Composable
 internal fun CellRows(
     ui: RotationUi,
     board: RotationBoard,
     cell: RotCell,
     row: Int?,
+    indent: Boolean = false,
 ) {
     val id = cellId(cell, row)
     val set: (Any?) -> Unit = { next -> board.edit(RotEdit.set(cell.key, row, next), id) }
-    Column(Modifier.fillMaxWidth().testTag("rot-cell-$id")) {
-        when (cell.kind) {
-            RotFormKind.DAY_SEGMENTS -> DayCell(board, cell, row, id)
-            else ->
-                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CellLabel(cell, Modifier.weight(1f))
-                    CellControl(cell, set)
+    val stacked = cell.kind == RotFormKind.CHOICE || cell.kind == RotFormKind.DAY_SEGMENTS || cell.lead != null || cell.nullable != null
+    Column(
+        Modifier.fillMaxWidth().padding(start = if (indent) INDENT else 0.dp).testTag("rot-cell-$id"),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        if (stacked) {
+            CellLabel(cell)
+            when (cell.kind) {
+                RotFormKind.DAY_SEGMENTS -> Segments(board, cell, row, id)
+                RotFormKind.CHOICE -> ChoiceCell(cell, cell.v as? String, set)
+                else -> NumberCell(cell, set)
+            }
+        } else {
+            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.weight(1f)) {
+                    CellLabel(cell)
+                    // 总体那几格的说明写在旁边（同桌面）；号那一行的长按看。
+                    if (row == null) cell.help?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
+                if (cell.kind == RotFormKind.TOGGLE) Switch(checked = cell.v == true, onCheckedChange = { set(it) }) else NumberCell(cell, set)
+            }
         }
         ui.cellFailed?.takeIf { it.cell == id }?.let { Text(it.text, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
     }
@@ -99,30 +118,15 @@ internal fun cellId(
 
 private val RotCell.inherited: Boolean get() = from == RotFrom.ALL
 
-@Composable
-private fun CellControl(
-    cell: RotCell,
-    set: (Any?) -> Unit,
-) {
-    when (cell.kind) {
-        RotFormKind.TOGGLE -> Switch(checked = cell.v == true, onCheckedChange = { set(it) })
-        RotFormKind.PERCENT -> NumberCell(cell, copyText("rot.unit.percent"), set)
-        RotFormKind.MINUTES -> NumberCell(cell, copyText("rot.unit.minutes"), set)
-        RotFormKind.CHOICE -> ChoiceCell(cell, cell.v as? String, set)
-        RotFormKind.DAY_SEGMENTS -> Unit
-    }
-}
+private fun RotCell.unit(): String = if (kind == RotFormKind.MINUTES) copyText("rot.unit.minutes") else copyText("rot.unit.percent")
 
 /** 格名：只写 `label`；长按升起一个小浮层写 `help`（手机没有悬停）。跟总体 ⇒ 淡。 */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun CellLabel(
-    cell: RotCell,
-    modifier: Modifier = Modifier,
-) {
+private fun CellLabel(cell: RotCell) {
     var help by remember { mutableStateOf(false) }
     val helpText = cell.help.orEmpty()
-    Box(modifier) {
+    Box {
         Text(
             cell.label,
             style = MaterialTheme.typography.bodyMedium,
@@ -139,21 +143,24 @@ private fun CellLabel(
     }
 }
 
-/** 数格（百分数 · 分钟）：可空的带一颗空值说法的钮（按下 ＝ 空着，数变淡）；点数原位聚焦、弹数字键盘，收键盘或点别处即写。 */
+/** 数格（百分数 · 分钟）：前面那半句（声明给的）· 数 · 可空的再带「或 ［空值说法］」（按下 ＝ 空着，数画虚线）。 */
 @Composable
 private fun NumberCell(
     cell: RotCell,
-    unit: String,
     set: (Any?) -> Unit,
 ) {
     val num = cell.num ?: 0.0
     val isNull = cell.nullable != null && cell.v == null
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    FlowRow(verticalArrangement = Arrangement.Center, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        cell.lead?.let { Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.align(Alignment.CenterVertically)) }
+        NumberBox(num, cell.unit(), faint = isNull || cell.inherited, 96.dp, cell.label, Modifier.align(Alignment.CenterVertically)) { set(it) }
         cell.nullable?.let { n ->
+            Text(copyText("rot.cell.or"), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.align(Alignment.CenterVertically))
             val ink = if (isNull) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-            OutlinedButton(onClick = { set(if (isNull) num else null) }, contentPadding = SMALL_PAD) { Text(n, color = ink, style = MaterialTheme.typography.bodySmall) }
+            OutlinedButton(onClick = { set(if (isNull) num else null) }, contentPadding = SMALL_PAD, modifier = Modifier.align(Alignment.CenterVertically)) {
+                Text(n, color = ink, style = MaterialTheme.typography.bodySmall)
+            }
         }
-        NumberBox(num, unit, faint = isNull || cell.inherited, 88.dp, cell.label) { set(it) }
     }
 }
 
@@ -165,43 +172,63 @@ internal fun NumberBox(
     faint: Boolean,
     width: Dp,
     label: String,
+    modifier: Modifier = Modifier,
     onSet: (Double) -> Unit,
 ) {
     var text by remember(value) { mutableStateOf(numText(value)) }
-    var focused by remember { mutableStateOf(false) }
-    val focus = LocalFocusManager.current
-    val commit = {
+    InputBox(text, { text = it }, faint, width, label, KeyboardType.Number, unit, modifier) {
         text
             .trim()
             .toDoubleOrNull()
             ?.takeIf { it != value }
             ?.let(onSet) ?: run { text = numText(value) }
     }
+}
+
+/** 一格输入框：失焦 · 完成 ⇒ [commit]。 */
+@Composable
+private fun InputBox(
+    text: String,
+    onText: (String) -> Unit,
+    faint: Boolean,
+    width: Dp,
+    label: String,
+    keyboard: KeyboardType,
+    unit: String?,
+    modifier: Modifier = Modifier,
+    placeholder: String? = null,
+    commit: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val focus = LocalFocusManager.current
     val ink = if (faint) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
     val line = if (focused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
     Row(
-        Modifier
+        modifier
             .width(width)
             .height(40.dp)
             .dashedOr(faint, line)
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        BasicTextField(
-            text,
-            { text = it },
-            singleLine = true,
-            textStyle = TextStyle(color = ink, textAlign = TextAlign.End, fontSize = MaterialTheme.typography.bodyMedium.fontSize),
-            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { focus.clearFocus() }),
-            modifier =
-                Modifier.weight(1f).testTag("rot-num-$label").onFocusChanged {
-                    if (focused && !it.isFocused) commit()
-                    focused = it.isFocused
-                },
-        )
-        Text(" $unit", color = ink, style = MaterialTheme.typography.bodyMedium)
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+            if (text.isEmpty() && placeholder != null) Text(placeholder, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+            BasicTextField(
+                text,
+                onText,
+                singleLine = true,
+                textStyle = TextStyle(color = ink, textAlign = TextAlign.End, fontSize = MaterialTheme.typography.bodyMedium.fontSize),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                keyboardOptions = KeyboardOptions(keyboardType = keyboard, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { focus.clearFocus() }),
+                modifier =
+                    Modifier.fillMaxWidth().testTag("rot-num-$label").semantics { contentDescription = label }.onFocusChanged {
+                        if (focused && !it.isFocused) commit()
+                        focused = it.isFocused
+                    },
+            )
+        }
+        unit?.let { Text(" $it", color = ink, style = MaterialTheme.typography.bodyMedium) }
     }
 }
 
@@ -209,7 +236,7 @@ internal fun NumberBox(
 @Composable
 private fun Modifier.dashedOr(
     dashed: Boolean,
-    line: androidx.compose.ui.graphics.Color,
+    line: Color,
 ): Modifier =
     if (!dashed) {
         border(1.dp, line, RoundedCornerShape(6.dp))
@@ -219,7 +246,7 @@ private fun Modifier.dashedOr(
         }
     }
 
-/** 选项：三项以内分段钮；更多 ⇒ 底部抽屉。 */
+/** 选项：三项以内分段钮（满宽）；更多 ⇒ 底部抽屉。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ChoiceCell(
@@ -229,9 +256,15 @@ private fun ChoiceCell(
 ) {
     val choices = cell.choices.orEmpty()
     if (choices.size <= SEGMENTS) {
-        SingleChoiceSegmentedButtonRow {
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
             choices.forEachIndexed { i, c ->
-                SegmentedButton(selected = c.v == cur, onClick = { set(c.v) }, shape = SegmentedButtonDefaults.itemShape(i, choices.size), icon = {}) { Text(c.label) }
+                SegmentedButton(
+                    selected = c.v == cur,
+                    onClick = { set(c.v) },
+                    shape = SegmentedButtonDefaults.itemShape(i, choices.size),
+                    icon = {},
+                    modifier = Modifier.testTag("rot-choice-${cell.key}-${c.v}"),
+                ) { Text(c.label, maxLines = 1) }
             }
         }
         return
@@ -252,118 +285,104 @@ private fun ChoiceCell(
     }
 }
 
-// ─────────────────────────────── 24 小时条
+// ─────────────────────────────── 分段
 
-/** 一窗一格：名字在上、条在下（32 dp）；长按（先震一下）再横拖刷一段，点已有的一段改那一段 ⇒ 底部抽屉。 */
+/**
+ * 分段一窗（同桌面 `segments`）：后面那窗先是［同第一窗 · 另设］；自己设的 ⇒ 上面一条只画的 24 小时条 ＋ 一段一行（从 · 到 · 上限 · ✕）＋「＋ 加一段」。
+ * 改哪一格都交整段（`seg`，带第几段）；新加的那一行三格都填好才交。
+ */
 @Composable
-private fun DayCell(
+private fun Segments(
     board: RotationBoard,
     cell: RotCell,
     row: Int?,
     id: String,
 ) {
-    val segs = cell.segs.orEmpty()
-    var paint by remember { mutableStateOf<Pair<Long, Long>?>(null) }
-    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        CellLabel(cell)
-        DayBar(segs, cell.inherited, onPick = { paint = it }, tag = "rot-day-$id")
-        DayAxis()
+    val win = cell.window.orEmpty()
+    cell.same?.let { same ->
+        val on = cell.from == RotFrom.SAME
+        SingleChoiceSegmentedButtonRow {
+            listOf(true to same, false to copyText("rot.cell.own")).forEachIndexed { i, (v, label) ->
+                SegmentedButton(selected = on == v, onClick = { if (on != v) board.edit(RotEdit.same(cell.key, row, win, v), id) }, shape = SegmentedButtonDefaults.itemShape(i, 2), icon = {}) {
+                    Text(label)
+                }
+            }
+        }
     }
-    paint?.let { (from, to) ->
-        PaintSheet(from, to, onDismiss = { paint = null }) { v ->
-            paint = null
-            // 一整天（0–24）交「相等」，到 24:00 为止交「到 0 点」（那台的写法：`to ≤ from` 跨午夜）。
-            board.edit(RotEdit.day(cell.key, row, cell.window.orEmpty(), from % DAY_MIN, to % DAY_MIN, v), id)
+    if (!segsShown(cell)) return
+    val segs = cell.segs.orEmpty()
+    DayBar(segs, cell.inherited, "rot-day-$id")
+    var adding by remember(segs) { mutableIntStateOf(0) }
+    segs.forEachIndexed { i, g -> SegLine(cell, g, i, onEdit = { e -> board.edit(e, id) }, onDel = { board.edit(RotEdit.seg(cell.key, row, win, i, null), id) }, row = row) }
+    repeat(adding) { SegLine(cell, null, null, onEdit = { e -> board.edit(e, id) }, onDel = { adding-- }, row = row) }
+    SecondaryButton(onClick = { adding++ }, modifier = Modifier.testTag("rot-seg-add-$id")) {
+        PhIcon(Ph.Plus, contentDescription = null, size = Touch.iconInline)
+        Text(" " + copyText("rot.seg.add"))
+    }
+}
+
+/** 一段一行：从几点 · – · 到几点 · 上限 · ✕。给了 [g] ⇒ 第 [at] 段；没给 ⇒ 新加的那一行。 */
+@Composable
+private fun SegLine(
+    cell: RotCell,
+    g: RotDaySeg?,
+    at: Int?,
+    onEdit: (Map<String, Any?>) -> Unit,
+    onDel: () -> Unit,
+    row: Int?,
+) {
+    var from by remember(g) { mutableStateOf(g?.let { dayClock(it.from) }.orEmpty()) }
+    var to by remember(g) { mutableStateOf(g?.let { dayClock(it.to) }.orEmpty()) }
+    var v by remember(g) { mutableStateOf(g?.let { numText(it.v) }.orEmpty()) }
+    val was = g?.let { segEdit(cell, row, at, dayClock(it.from), dayClock(it.to), numText(it.v)) }
+    // 三格都写对了、又跟读到的那段不一样才交（只是挪了焦点不交）。
+    val commit: () -> Unit = { segEdit(cell, row, at, from, to, v)?.takeIf { it != was }?.let(onEdit) }
+    val hint = copyText("rot.seg.placeholder")
+    Row(Modifier.fillMaxWidth().testTag("rot-seg-${at ?: "new"}"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        InputBox(from, { from = it }, false, 72.dp, copyText("rot.seg.from"), KeyboardType.Number, null, placeholder = hint, commit = commit)
+        Text(copyText("rot.seg.dash"))
+        InputBox(to, { to = it }, false, 72.dp, copyText("rot.seg.to"), KeyboardType.Number, null, placeholder = hint, commit = commit)
+        InputBox(v, { v = it }, false, 80.dp, copyText("rot.seg.v"), KeyboardType.Number, copyText("rot.unit.percent"), commit = commit)
+        Box(Modifier.weight(1f))
+        IconButton(onClick = onDel, modifier = Modifier.semantics { contentDescription = copyText("rot.seg.del") }) {
+            PhIcon(Ph.X, contentDescription = null, size = Touch.iconInline, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
+/** 分段那一条（24 小时）：只画，段与字照回包；0% 的段画成出错底色。 */
 @Composable
 private fun DayBar(
     segs: List<RotDaySeg>,
     follows: Boolean,
-    onPick: (Pair<Long, Long>) -> Unit,
     tag: String,
 ) {
     val segColor = MaterialTheme.colorScheme.surfaceContainerHighest
     val zero = MaterialTheme.colorScheme.errorContainer
-    val accent = MaterialTheme.colorScheme.primary
-    var ghost by remember { mutableStateOf<Pair<Long, Long>?>(null) }
-    val haptic = LocalHapticFeedback.current
-    BoxWithConstraints(
-        Modifier
-            .fillMaxWidth()
-            .height(32.dp)
-            .dashedOr(follows, MaterialTheme.colorScheme.outline)
-            .testTag(tag),
-    ) {
-        val wPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
-        val full = maxWidth
-        segs.forEach { g ->
-            Box(
-                Modifier
-                    .offset(x = full * (g.from.toFloat() / DAY_MIN))
-                    .width(full * ((g.to - g.from).toFloat() / DAY_MIN))
-                    .fillMaxHeight()
-                    .padding(1.dp)
-                    .background(if (g.v == 0.0) zero else segColor, RoundedCornerShape(3.dp)),
-                contentAlignment = Alignment.CenterStart,
-            ) { Text(g.text, style = MaterialTheme.typography.labelSmall, maxLines = 1, modifier = Modifier.padding(horizontal = 4.dp)) }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        BoxWithConstraints(
+            Modifier
+                .fillMaxWidth()
+                .height(28.dp)
+                .dashedOr(follows, MaterialTheme.colorScheme.outline)
+                .testTag(tag),
+        ) {
+            val full = maxWidth
+            segs.forEach { g ->
+                Box(
+                    Modifier
+                        .offset(x = full * (g.from.toFloat() / DAY_MIN))
+                        .width(full * ((g.to - g.from).toFloat() / DAY_MIN))
+                        .fillMaxHeight()
+                        .padding(1.dp)
+                        .background(if (g.v == 0.0) zero else segColor, RoundedCornerShape(3.dp)),
+                    contentAlignment = Alignment.CenterStart,
+                ) { Text(g.text, style = MaterialTheme.typography.labelSmall, maxLines = 1, modifier = Modifier.padding(horizontal = 4.dp)) }
+            }
         }
-        ghost?.let { (a, b) ->
-            Box(
-                Modifier
-                    .offset(x = full * (a.toFloat() / DAY_MIN))
-                    .width(full * ((b - a).toFloat() / DAY_MIN))
-                    .fillMaxHeight()
-                    .border(2.dp, accent, RoundedCornerShape(3.dp)),
-            )
-        }
-        Box(
-            Modifier.fillMaxWidth().fillMaxHeight().dayGestures(wPx, segs, onGhost = { g ->
-                if (ghost == null && g != null) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                ghost = g
-            }, onPick = onPick),
-        )
+        DayAxis()
     }
 }
-
-/** 点 ⇒ 点中的那一段整段（没有 ⇒ 一整天）；长按再横拖 ⇒ 拖出来的那一截（半小时吸附）。只是几何。 */
-private fun Modifier.dayGestures(
-    wPx: Float,
-    segs: List<RotDaySeg>,
-    onGhost: (Pair<Long, Long>?) -> Unit,
-    onPick: (Pair<Long, Long>) -> Unit,
-): Modifier =
-    pointerInput(segs, wPx) {
-        detectTapGestures { p ->
-            val m = minuteAt(p.x / wPx)
-            val hit = segs.firstOrNull { it.from <= m && m < it.to }
-            onPick((hit?.from ?: 0L) to (hit?.to ?: DAY_MIN))
-        }
-    }.pointerInput(segs, wPx) {
-        var start = 0L
-        var end = 0L
-        detectDragGesturesAfterLongPress(
-            onDragStart = { p ->
-                start = minuteAt(p.x / wPx)
-                end = start
-                onGhost(start to start)
-            },
-            onDrag = { ch, _ ->
-                ch.consume()
-                end = minuteAt(ch.position.x / wPx)
-                onGhost(minOf(start, end) to maxOf(start, end))
-            },
-            onDragEnd = {
-                onGhost(null)
-                val a = minOf(start, end)
-                val b = maxOf(start, end)
-                if (b - a >= SNAP_MIN) onPick(a to b)
-            },
-            onDragCancel = { onGhost(null) },
-        )
-    }
 
 @Composable
 private fun DayAxis() {
@@ -380,40 +399,8 @@ private fun DayAxis() {
     }
 }
 
-/** 松手升起的那一张：「{from}–{to} · 上限」：0% · 50% · 100% ＋ 数格 ·［删这段］·［取消］·［存下］。 */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PaintSheet(
-    from: Long,
-    to: Long,
-    onDismiss: () -> Unit,
-    onGo: (Double?) -> Unit,
-) {
-    var v by remember { mutableStateOf(0.0) }
-    ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.testTag("rot-paint")) {
-        Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(copyText("rot.day.pop", "from" to dayClock(from), "to" to dayClock(to)), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                SingleChoiceSegmentedButtonRow(Modifier.weight(1f)) {
-                    PRESETS.forEachIndexed { i, p ->
-                        SegmentedButton(selected = v == p, onClick = { v = p }, shape = SegmentedButtonDefaults.itemShape(i, PRESETS.size), icon = {}) { Text(copyText("rot.day.v", "v" to numText(p))) }
-                    }
-                }
-                NumberBox(v, copyText("rot.unit.percent"), faint = false, 80.dp, copyText("rot.day.popLabel")) { v = it.coerceIn(0.0, 100.0) }
-            }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                SecondaryButton(onClick = { onGo(null) }) { Text(copyText("rot.day.del")) }
-                Box(Modifier.weight(1f))
-                SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) }
-                Button(onClick = { onGo(v) }) { Text(copyText("rot.ask.go")) }
-            }
-        }
-        SheetEnd()
-    }
-}
-
-private val PRESETS = listOf(0.0, 50.0, 100.0)
 private const val SEGMENTS = 3
+private val INDENT = 16.dp
 private val SMALL_PAD =
     androidx.compose.foundation.layout
         .PaddingValues(horizontal = 10.dp, vertical = 4.dp)

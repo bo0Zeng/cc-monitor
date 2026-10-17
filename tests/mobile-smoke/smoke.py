@@ -723,16 +723,19 @@ def big_text():
     time.sleep(2)
 
 
-# 轮换屏那一步用的两份策略（合成的：照号牌顺序用；一格「权重容差」）。写进台架家里的策略目录（不是真家目录）。
+# 轮换屏那一步用的两份策略（合成的：照号牌顺序用；每号一格「切入」，同编辑器那份的声明）。写进台架家里的策略目录（不是真家目录）。
 SMOKE_STRATEGY = """// 照号牌顺序用（冒烟台架）。
 /*--- rotation
 {
   "format": 5,
   "tz": "UTC",
-  "settings": { "accounts": [{ "id": "work" }, { "id": "team" }, { "id": "lab" }], "close": 25 },
+  "settings": { "accounts": [{ "id": "work" }, { "id": "team" }, { "id": "lab" }] },
   "form": [
-    { "key": "close", "kind": "percent", "scope": "all", "min": 0, "max": 100, "default": 25,
-      "label": { "zh": "权重容差" }, "help": { "zh": "冒烟台架的一格" } }
+    { "key": "in", "kind": "choice", "scope": "each", "default": "default",
+      "choices": [
+        { "v": "default", "label": { "zh": "默认" } },
+        { "v": "force", "label": { "zh": "强制切入" }, "mark": { "glyph": "↺" } } ],
+      "label": { "zh": "切入" }, "help": { "zh": "冒烟台架的一格" } }
   ]
 }
 ---*/
@@ -773,6 +776,12 @@ def seed_rotation():
     import base64
     b = base64.b64encode(SMOKE_STRATEGY.encode()).decode()
     sh(f"mkdir -p ~/.cc-monitor/strategies && for n in smoke-a smoke-b; do echo {b} | base64 -d > ~/.cc-monitor/strategies/$n.rhai; done")
+
+
+def plate_of(name):
+    """设置页里 [name] 那一张号牌：认号牌自己的读屏那一句（号名打头、接分隔符，后面是记号与悬停那一句），不认号名文字（模拟里也有同名的号名）。"""
+    head = name + t("kit.text.sep")
+    return next((n for n in ui.nodes() if (n.get("content-desc") or "").startswith(head)), None)
 
 
 def lane_head(text):
@@ -1603,23 +1612,26 @@ def report():
         tap(t("mobSettings.entry.rotation"))
         if not wait(t("rot.top.here", machine="smokebox"), 15):
             raise Step.Fail("设置进的轮换屏顶栏不是「设置 · 那台」")
-        # 设置页改一格：当场存成那份的新版（没有「存成这份策略」那一步）。
+        # 设置页点号牌从底下拉出编辑小窗、改一格：当场存成那份的新版（没有「存成这份策略」那一步）；号牌上出那一项的记号。
         for_new = (frames("rotation-strategies", {}).get("data") or {}).get("forNew") or ""
         if not for_new:
             raise Step.Fail("台架那台没有新会话用的那份策略")
-        box = ui.find("25")
-        if box is None:
-            raise Step.Fail("找不到「权重容差」那一格的数")
-        adb("shell", "input", "tap", *map(str, ui.center(box)))
-        type_in("30")
-        adb("shell", "input", "keyevent", "66")
+        card = plate_of("team")
+        if card is None:
+            raise Step.Fail("设置页找不到 team 的号牌")
+        adb("shell", "input", "tap", *map(str, ui.center(card)))
+        if not wait(t("rot.acct.remove"), 10):
+            raise Step.Fail("点 team 的号牌没拉出编辑小窗")
+        tap("强制切入")
         end = ui.within(20)
-        while time.time() < end and not re.search(r'"close":\s*30(\.0)?\b', sh(f"cat ~/.cc-monitor/strategies/{for_new}.rhai")):
+        while time.time() < end and not re.search(r'"in":\s*"force"', sh(f"cat ~/.cc-monitor/strategies/{for_new}.rhai")):
             time.sleep(1)
         if time.time() >= end:
-            raise Step.Fail(f"设置页改了一格，{for_new} 那份文件里没写进 30")
-        hide_keyboard()
+            raise Step.Fail(f"编辑小窗里改了切入，{for_new} 那份文件里没写进 force")
         shot("12c-设置页改一格")
+        adb("shell", "input", "keyevent", "4")
+        if not wait("↺", 10):
+            raise Step.Fail("改成强制切入后号牌上没有那一项的记号")
 
     with Step("13-设置改一项"):
         # 设置 → 那台上的偏好：子会话拨到另一段，马上存进那台（prefs-read 读回）；退出设置再进，那一段还亮着。

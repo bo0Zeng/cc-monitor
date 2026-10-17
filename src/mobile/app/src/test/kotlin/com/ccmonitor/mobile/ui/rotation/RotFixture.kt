@@ -7,13 +7,16 @@ import com.ccmonitor.mobile.core.claude.link.Reply
 internal object RotFixture {
     const val NOW = 1_000_000L
 
-    fun strategies(forNew: String = "spread"): Map<String, Any?> =
+    fun strategies(
+        forNew: String = "spread",
+        extra: List<String> = emptyList(),
+    ): Map<String, Any?> =
         mapOf(
             "strategies" to
                 listOf(
                     strategy("spread", inUse = listOf("s1", "s2"), forNew = forNew == "spread"),
-                    strategy("night", forNew = forNew == "night"),
-                ),
+                    strategy("night", forNew = forNew == "night", hand = true),
+                ) + extra.map { strategy(it) },
             "forNew" to forNew,
             "oldScripts" to 0.0,
         )
@@ -23,6 +26,7 @@ internal object RotFixture {
         inUse: List<String> = emptyList(),
         forNew: Boolean = false,
         rev: String = "h:$id",
+        hand: Boolean = false,
     ): Map<String, Any?> =
         mapOf(
             "id" to id,
@@ -33,6 +37,7 @@ internal object RotFixture {
             "forNew" to forNew,
             "wordsBad" to false,
             "tzUnknown" to false,
+            "hand" to hand,
         )
 
     private fun win(
@@ -63,36 +68,60 @@ internal object RotFixture {
 
     private fun daySegs(v: Double) = listOf(mapOf("from" to 0.0, "to" to 1440.0, "v" to v, "text" to "夹具·$v", "tip" to "夹具·全天 $v"))
 
-    private fun cap(
-        w: String,
-        from: String,
-    ) = mapOf("key" to "cap", "kind" to "daySegments", "window" to w, "label" to "用量上限 · $w", "v" to null, "from" to from, "segs" to if (w == "5h") daySegs(90.0) else emptyList())
+    /** 分段一窗：5h 自己的一段；7d 同第一窗（带「同 5 小时」那颗钮的字）。 */
+    private fun caps(w: String) =
+        buildMap<String, Any?> {
+            put("key", "caps")
+            put("kind", "daySegments")
+            put("window", w)
+            put("label", "夹具·上限 · $w")
+            put("v", null)
+            put("from", if (w == "5h") "own" else "same")
+            put("min", 0.0)
+            put("max", 100.0)
+            put("segs", daySegs(90.0))
+            if (w == "7d") put("same", "夹具·同 5h")
+        }
 
-    private fun delay(
-        v: Double,
-        from: String,
-    ) = mapOf("key" to "delay", "kind" to "minutes", "label" to "启用延迟", "help" to "到点后再等这么久", "v" to v, "num" to v, "from" to from, "min" to 0.0, "max" to 600.0)
+    private fun choice(
+        key: String,
+        v: String,
+        vararg choices: String,
+    ) = mapOf("key" to key, "kind" to "choice", "label" to "夹具·$key", "help" to "夹具·$key 的说明", "v" to v, "from" to "own", "choices" to choices.map { mapOf("v" to it, "label" to "夹具·$it") })
+
+    private fun wait(v: Double) = mapOf("key" to "wait", "kind" to "minutes", "label" to "夹具·延迟", "v" to v, "num" to v, "from" to "own", "min" to 0.0, "max" to 300.0, "under" to "in")
+
+    private val outTotal = mapOf("key" to "outTotal", "kind" to "percent", "label" to "夹具·切出条件", "lead" to "夹具·合计达到", "v" to null, "num" to 400.0, "from" to "default", "nullable" to "夹具·一有额度", "under" to "out")
 
     private fun row(
         account: String,
         line: String,
         cells: List<Map<String, Any?>>,
-    ) = mapOf("account" to account, "line" to line, "hover" to "夹具·$account 悬停", "cells" to cells, "rules" to listOf("夹具·$account 的规则"))
+        marks: List<Map<String, Any?>> = emptyList(),
+    ) = mapOf("account" to account, "line" to line, "hover" to "夹具·$account 悬停", "cells" to cells, "rules" to listOf("夹具·$account 的规则"), "marks" to marks)
 
-    /** 后端解好的那几格（合成的）：总体两格 ＋ 每号一行；work 跟总体、team 自己设了启用延迟。 */
+    /**
+     * 后端解好的那几格（合成的，格名照编辑器那份声明）：总体一个开关 ＋ 每号一行。只回此刻该出的格：
+     * work 默认切入 · 默认切出（没有挂着的格）；team 延迟切入（带「延迟」）；lab 强制切入 · 强制切出（带「切出条件」）。
+     */
     val BOARD =
         mapOf(
-            "all" to
-                listOf(
-                    cap("5h", "own"),
-                    cap("7d", "default"),
-                    mapOf("key" to "tol", "kind" to "percent", "label" to "权重容差", "v" to 20.0, "num" to 20.0, "from" to "own", "nullable" to "不强制切换"),
-                ),
+            "all" to listOf(mapOf("key" to "smart", "kind" to "toggle", "label" to "夹具·智能切换", "help" to "夹具·智能切换的说明", "v" to true, "from" to "own")),
             "rows" to
                 listOf(
-                    row("work", "夹具·work 那一行", listOf(cap("5h", "all"), cap("7d", "all"), delay(0.0, "all"))),
-                    row("team", "夹具·team 那一行", listOf(cap("5h", "all"), cap("7d", "all"), delay(30.0, "own"))),
-                    row("lab", "夹具·lab 那一行", listOf(cap("5h", "all"), cap("7d", "all"), delay(0.0, "all"))),
+                    row("work", "夹具·work 那一行", listOf(caps("5h"), caps("7d"), choice("in", "default", "default", "force", "delay"), choice("out", "default", "default", "force"))),
+                    row(
+                        "team",
+                        "夹具·team 那一行",
+                        listOf(caps("5h"), caps("7d"), choice("in", "delay", "default", "force", "delay"), wait(30.0), choice("out", "default", "default", "force")),
+                        listOf(mapOf("dashed" to true, "tip" to "夹具·延迟切入")),
+                    ),
+                    row(
+                        "lab",
+                        "夹具·lab 那一行",
+                        listOf(caps("5h"), caps("7d"), choice("in", "force", "default", "force", "delay"), choice("out", "force", "default", "force"), outTotal),
+                        listOf(mapOf("glyph" to "↺", "dashed" to false, "tip" to "夹具·强制切入"), mapOf("glyph" to "⇥", "dashed" to false, "tip" to "夹具·强制切出")),
+                    ),
                 ),
         )
 

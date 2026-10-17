@@ -2,6 +2,7 @@
 //! 策略文件加 / 复制 / 改名 / 删 · 设时区。临时家目录。
 
 use super::*;
+use crate::accounts::quota::setup::form::RotSeg;
 use crate::faces::rotation_view_face::tests::{Home, S1, S2};
 use serde_json::{json, Value};
 
@@ -59,13 +60,16 @@ fn settings_edits_are_saved_into_the_file_as_a_new_version() {
         v: json!(30),
     })
     .expect("ok");
-    edit(RotEdit::Day {
+    edit(RotEdit::Seg {
         key: "caps".into(),
         row: None,
         window: "5h".into(),
-        from: 0,
-        to: 0,
-        v: Some(80.0),
+        at: None,
+        seg: Some(RotSeg {
+            from: 0,
+            to: 1440,
+            v: 80.0,
+        }),
     })
     .expect("ok");
     assert_eq!(settings(), mine(), "一步步改出来的就是那一份");

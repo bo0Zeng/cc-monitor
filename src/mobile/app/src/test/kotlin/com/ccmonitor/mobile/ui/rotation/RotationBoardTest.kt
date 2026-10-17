@@ -24,9 +24,23 @@ import org.junit.Test
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class RotationBoardTest {
+    private fun cellOf(
+        view: Map<String, Any?>,
+        row: Int,
+        key: String,
+        window: String,
+    ) = Rotation
+        .ofView(view)!!
+        .board.rows[row]
+        .cells
+        .first { it.key == key && it.window == window }
+
+    /** 设置页读的是哪一份（`rotation-view` 入参的 `target.strategy`）。 */
+    private fun shownIn(args: Map<String, Any?>?): String = (args?.get("target") as Map<*, *>)["strategy"] as String
+
     private fun TestScope.board(
         sid: String? = "s1",
-        view: () -> Map<String, Any?> = { RotFixture.view() },
+        view: (Map<String, Any?>?) -> Map<String, Any?> = { RotFixture.view() },
         strategies: () -> Map<String, Any?> = { RotFixture.strategies() },
         more: (String, Map<String, Any?>?) -> Reply? = { _, _ -> null },
         changes: MutableSharedFlow<Changed>? = null,
@@ -35,7 +49,7 @@ class RotationBoardTest {
         link.answer = { cmd, args ->
             more(cmd, args) ?: when (cmd) {
                 Rotation.STRATEGIES -> Reply.Ok(strategies())
-                Rotation.VIEW -> Reply.Ok(view())
+                Rotation.VIEW -> Reply.Ok(view(args))
                 else -> Reply.Ok(emptyMap<String, Any?>())
             }
         }
@@ -76,10 +90,10 @@ class RotationBoardTest {
                     view = { RotFixture.view(strategy = "night") },
                 )
             assertEquals(mapOf("target" to mapOf("strategy" to "night"), "hours" to 12), link.calls(Rotation.VIEW).single())
-            b.edit(RotEdit.set("tol", null, 30.0))
-            assertEquals(mapOf("strategy" to "night", "edit" to mapOf("set" to mapOf("key" to "tol", "v" to 30.0)), "ifRev" to "h:night"), link.calls(Rotation.SETTINGS).single())
+            b.edit(RotEdit.set("smart", null, false))
+            assertEquals(mapOf("strategy" to "night", "edit" to mapOf("set" to mapOf("key" to "smart", "v" to false)), "ifRev" to "h:night"), link.calls(Rotation.SETTINGS).single())
             assertEquals("再读不带别的", mapOf("target" to mapOf("strategy" to "night"), "hours" to 12), link.calls(Rotation.VIEW).last())
-            b.pick("spread")
+            b.forNew("spread")
             assertEquals(mapOf("strategy" to "spread"), link.calls(Rotation.FOR_NEW).single())
             assertTrue(link.calls(Rotation.USE).isEmpty())
         }
@@ -121,14 +135,14 @@ class RotationBoardTest {
     fun `改格没成 ⇒ 那一格底下一句「改动保存失败 · 那台的话」；conflict ⇒ 不报、再读`() =
         runTest {
             var code = "refused"
-            val (link, b) = board(sid = null, more = { cmd, _ -> if (cmd == Rotation.SETTINGS) RotFixture.failed(code, "启用延迟应在 0–600 分钟之间") else null })
-            b.edit(RotEdit.set("delay", 1, 1), "delay@team")
+            val (link, b) = board(sid = null, more = { cmd, _ -> if (cmd == Rotation.SETTINGS) RotFixture.failed(code, "延迟应在 0–300 分钟之间") else null })
+            b.edit(RotEdit.set("wait", 1, 1), "wait@1")
             val f = b.state.value.cellFailed!!
-            assertEquals("delay@team", f.cell)
-            assertEquals(copyText("rot.fail.settings") + copyText("kit.text.sep") + "启用延迟应在 0–600 分钟之间", f.text)
+            assertEquals("wait@1", f.cell)
+            assertEquals(copyText("rot.fail.settings") + copyText("kit.text.sep") + "延迟应在 0–300 分钟之间", f.text)
             code = "conflict"
             val before = link.calls(Rotation.VIEW).size
-            b.edit(RotEdit.set("tol", null, 2), "tol@all")
+            b.edit(RotEdit.set("smart", null, true), "smart@all")
             assertEquals(before + 1, link.calls(Rotation.VIEW).size)
             assertNull(b.state.value.failure)
         }
@@ -159,41 +173,163 @@ class RotationBoardTest {
         }
 
     @Test
-    fun `号牌拖动 · 移出 · 加号 · 刷段：各交一个意图（怎么排 · 照谁刷 · 写成谁的是那台的）`() =
+    fun `号牌拖动 · 移出 · 加号 · 改一段：各交一个意图（怎么排 · 照谁改 · 写成谁的是那台的）`() =
         runTest {
             val (link, b) = board(sid = null)
             b.edit(RotEdit.move(2, 0))
             b.edit(RotEdit.remove(1))
             b.edit(RotEdit.add("api"))
-            b.edit(RotEdit.day("cap", 0, "5h", 1200, 1380, 0.0), "cap.5h@0")
+            b.edit(RotEdit.same("caps", 0, "7d", false))
             assertEquals(
                 listOf(
                     mapOf("move" to mapOf("from" to 2, "to" to 0)),
                     mapOf("remove" to mapOf("row" to 1)),
                     mapOf("add" to mapOf("account" to "api")),
-                    mapOf("day" to mapOf("key" to "cap", "window" to "5h", "from" to 1200L, "to" to 1380L, "v" to 0.0, "row" to 0)),
+                    mapOf("same" to mapOf("key" to "caps", "window" to "7d", "same" to false, "row" to 0)),
                 ),
                 link.calls(Rotation.SETTINGS).map { it!!["edit"] },
             )
-            assertEquals(1200L, minuteAt(1200f / 1440f))
         }
 
     @Test
-    fun `格照那台解好的画：每格的值 · 从哪来（跟总体 ⇒ 虚线）· 字；24 小时条每窗一格、段带字`() =
+    fun `一段一行：改第几段就带第几段；新加的那一行不带；钟点或上限写得不对 ⇒ 不交`() {
+        val cap = cellOf(RotFixture.view(), 1, "caps", "5h")
+        assertEquals(
+            mapOf("seg" to mapOf("key" to "caps", "window" to "5h", "at" to 1, "seg" to mapOf("from" to 1200L, "to" to 1380L, "v" to 0.0), "row" to 1)),
+            segEdit(cap, 1, 1, "20:00", "23:00", "0"),
+        )
+        assertEquals(
+            mapOf("seg" to mapOf("key" to "caps", "window" to "5h", "seg" to mapOf("from" to 0L, "to" to 1440L, "v" to 50.0), "row" to 1)),
+            segEdit(cap, 1, null, "0", "24:00", "50"),
+        )
+        assertEquals("删一段只带第几段", mapOf("seg" to mapOf("key" to "caps", "window" to "5h", "at" to 0)), RotEdit.seg("caps", null, "5h", 0, null))
+        assertNull(segEdit(cap, 1, 0, "25:00", "23:00", "0"))
+        assertNull(segEdit(cap, 1, 0, "20:00", "23:61", "0"))
+        assertNull(segEdit(cap, 1, 0, "20:00", "23:00", ""))
+        assertEquals(1230L, minutesOf("2030"))
+        assertEquals(540L, minutesOf("9"))
+        assertEquals(1440L, minutesOf("24:00"))
+        assertNull(minutesOf("24:30"))
+    }
+
+    @Test
+    fun `编辑小窗照那台给的格画：显示条件不满足的格不在（挂着的缩进）· 7 天同第一窗只出那颗钮 · 号名旁的记号`() {
+        val v = Rotation.ofView(RotFixture.view())!!
+        val keys = { i: Int -> paneCells(v.board.rows[i]).map { (c, indent) -> c.key + (if (indent) ">" else "") } }
+        assertEquals("默认切入 · 默认切出：没有挂着的格", listOf("caps", "caps", "in", "out"), keys(0))
+        assertEquals("延迟切入：延迟挂在切入下", listOf("caps", "caps", "in", "wait>", "out"), keys(1))
+        assertEquals("强制切出：切出条件挂在切出下", listOf("caps", "caps", "in", "out", "outTotal>"), keys(2))
+        val w7 = cellOf(RotFixture.view(), 0, "caps", "7d")
+        assertEquals("夹具·同 5h", w7.same)
+        assertTrue("同第一窗 ⇒ 不画段", !segsShown(w7))
+        assertTrue(segsShown(cellOf(RotFixture.view(), 0, "caps", "5h")))
+        assertEquals(
+            "夹具·合计达到",
+            v.board.rows[2]
+                .cells
+                .first { it.key == "outTotal" }
+                .lead,
+        )
+        assertEquals(emptyList<String>(), marksOf(v, "work").map { it.tip })
+        assertEquals(listOf("↺", "⇥"), marksOf(v, "lab").map { it.glyph })
+        assertEquals(listOf(true), marksOf(v, "team").map { it.dashed })
+        assertEquals("号列表外的号没有记号", emptyList<Any>(), marksOf(v, "api"))
+    }
+
+    @Test
+    fun `编辑小窗底行：改的是哪份 · 在用旧版那一句（那台写的）带［都载入新版］；没人在用写「没有会话在用」`() {
+        val older = mapOf("hint" to mapOf("k" to "older", "n" to 2.0), "tone" to "plain", "text" to "夹具·2 个会话还在用旧版")
+        val sep = copyText("kit.text.sep")
+        val v = Rotation.ofView(RotFixture.view(hints = listOf(older)))!!
+        assertEquals(copyText("rot.pane.foot", "name" to "spread") + sep + "夹具·2 个会话还在用旧版" to true, paneFoot(v))
+        val idle = Rotation.ofView(RotFixture.view(strategy = "night"))!!
+        assertEquals(copyText("rot.pane.foot", "name" to "night") + sep + copyText("rot.pane.noUse") to false, paneFoot(idle))
+    }
+
+    @Test
+    fun `顺序里长按拖一行：松在第一格 ⇒ 现在用；别处 ⇒ rotation-temp set 拖完那一串；没挪 ⇒ 不发`() =
+        runTest {
+            val line = listOf("team", "work", "api", "lab")
+            assertEquals(RowDrop.UseNow("api"), dropRow(line, 2, 0))
+            assertEquals(RowDrop.Set(listOf("lab", "work", "api")), dropRow(line, 3, 1))
+            assertEquals(RowDrop.Set(listOf("api", "work")), dropRow(line, 1, 2))
+            assertNull(dropRow(line, 2, 2))
+            val (link, b) = board()
+            b.drop("lab", 3, 1)
+            assertEquals(mapOf("sid" to "s1", "op" to mapOf("set" to listOf("lab", "work", "api"))), link.calls(Rotation.TEMP).single())
+            b.drop("api", 2, 0)
+            assertEquals(mapOf("sid" to "s1", "account" to "api"), link.calls(Rotation.USE_NOW).single())
+        }
+
+    @Test
+    fun `设置页的下拉 ＝ 看哪一份：选一份只换看的那份（不改新会话用哪份）；选「不轮换」⇒ 新会话不轮换`() =
+        runTest {
+            val (link, b) = board(sid = null, view = { args -> RotFixture.view(strategy = shownIn(args)) })
+            b.pick("night")
+            assertEquals(mapOf("target" to mapOf("strategy" to "night"), "hours" to 12), link.calls(Rotation.VIEW).last())
+            assertTrue(link.calls(Rotation.FOR_NEW).isEmpty())
+            b.edit(RotEdit.set("smart", null, false))
+            assertEquals("改的是看的那份", "night", link.calls(Rotation.SETTINGS).single()!!["strategy"])
+            b.pick(null)
+            assertEquals(mapOf("strategy" to null), link.calls(Rotation.FOR_NEW).single())
+        }
+
+    @Test
+    fun `新建策略：只问名字 ⇒ rotation-strategy-add 不带原文；设置页接着看新建的那份`() =
+        runTest {
+            val (link, b) =
+                board(
+                    sid = null,
+                    strategies = { RotFixture.strategies(extra = listOf("夜里")) },
+                    more = { cmd, _ -> if (cmd == Rotation.ADD) Reply.Ok(mapOf("id" to "夜里")) else null },
+                )
+            b.create()
+            val ask = b.state.value.ask as RotAsk.Name
+            assertEquals(copyText("rot.ask.createTitle"), ask.title)
+            assertEquals(copyText("rot.ask.createNote"), ask.note)
+            assertEquals(copyText("rot.ask.createGo"), ask.action)
+            b.named("夜里")
+            assertEquals(mapOf("name" to "夜里"), link.calls(Rotation.ADD).single())
+            assertEquals(mapOf("target" to mapOf("strategy" to "夜里"), "hours" to 12), link.calls(Rotation.VIEW).last())
+        }
+
+    @Test
+    fun `会话里［编辑策略］跳过来：设置页先看那一份、开那个号的编辑小窗`() =
+        runTest {
+            val link = FakeCoreLink()
+            link.answer = { cmd, _ ->
+                when (cmd) {
+                    Rotation.STRATEGIES -> Reply.Ok(RotFixture.strategies())
+                    else -> Reply.Ok(RotFixture.view(strategy = "night"))
+                }
+            }
+            val b = RotationBoard(link, null, "devbox", TestScope(UnconfinedTestDispatcher(testScheduler)), null, RotFocus("night", "lab"))
+            assertEquals(mapOf("target" to mapOf("strategy" to "night"), "hours" to 12), link.calls(Rotation.VIEW).single())
+            assertEquals("lab", b.state.value.open)
+        }
+
+    @Test
+    fun `格照那台解好的画：每格的值 · 从哪来 · 字；分段每窗一格、段带字`() =
         runTest {
             val (_, b) = board()
             val v = b.state.value.view!!
             val rows = v.board.rows
-            val all = v.board.all
             val team = rows[1]
             assertEquals("夹具·team 那一行", team.line)
-            val delay = team.cells.first { it.key == "delay" }
-            assertEquals(RotFrom.OWN to 30.0, delay.from to delay.num)
-            assertEquals(RotFrom.ALL, rows[0].cells.first { it.key == "delay" }.from)
+            val wait = team.cells.first { it.key == "wait" }
+            assertEquals(RotFrom.OWN to 30.0, wait.from to wait.num)
+            assertEquals("in", wait.under)
             val cap = rows[0].cells.first { it.window == "5h" }
-            assertEquals("cap.5h@0", cellId(cap, 0))
+            assertEquals("caps.5h@0", cellId(cap, 0))
             assertEquals(listOf("夹具·90.0"), cap.segs!!.map { it.text })
-            assertEquals("不强制切换", all.first { it.key == "tol" }.nullable)
+            assertEquals(RotFrom.SAME, rows[0].cells.first { it.window == "7d" }.from)
+            assertEquals("夹具·一有额度", rows[2].cells.first { it.key == "outTotal" }.nullable)
+            assertEquals(
+                "夹具·智能切换的说明",
+                v.board.all
+                    .single()
+                    .help,
+            )
         }
 
     @Test
