@@ -9114,7 +9114,7 @@
     "rsPubkey.pushPublicKey.unknownType": {
       "kind": "error",
       "role": "报错",
-      "zh": "认不出这份公钥的类型 · {path}",
+      "zh": "无法识别的公钥类型 · {path}",
       "args": ["path"]
     },
     "rsPubkey.parsePushOutcome.noMarker": {
@@ -9138,7 +9138,7 @@
     "rsPubkey.sanitizePublicKey.unknownType": {
       "kind": "error",
       "role": "报错",
-      "zh": "认不出公钥类型 · 查是否误选私钥",
+      "zh": "无法识别的公钥类型 · 查是否误选私钥",
       "args": []
     },
     "rsPubkey.sanitizePublicKey.controlChars": {

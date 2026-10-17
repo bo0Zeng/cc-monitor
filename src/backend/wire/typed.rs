@@ -304,21 +304,27 @@ fn find_culprit_key<R: serde::de::DeserializeOwned>(v: &serde_json::Value) -> Op
 /// 契约错只回「哪一格 · 期望什么形」，不回调用方给的原值；原值只进本机日志。
 fn sanitize_de_error<R: serde::de::DeserializeOwned>(v: &serde_json::Value, raw: &str) -> String {
     let raw_clean = raw.split(" at line ").next().unwrap_or(raw).trim();
-    let key = find_culprit_key::<R>(v);
-
-    if let Some((_, exp)) = raw_clean.split_once(", expected ") {
-        let exp = exp.trim();
-        if let Some(k) = key {
-            if raw_clean.starts_with("unknown variant ") {
-                format!("`{k}`: unknown variant, expected {exp}")
+    if raw_clean.starts_with("invalid type:")
+        || raw_clean.starts_with("invalid value:")
+        || raw_clean.starts_with("unknown variant ")
+    {
+        let key = find_culprit_key::<R>(v);
+        if let Some((_, exp)) = raw_clean.split_once(", expected ") {
+            let exp = exp.trim();
+            if let Some(k) = key {
+                if raw_clean.starts_with("unknown variant ") {
+                    format!("`{k}`: unknown variant, expected {exp}")
+                } else {
+                    format!("`{k}`: expected {exp}")
+                }
             } else {
-                format!("`{k}`: expected {exp}")
+                format!("expected {exp}")
             }
+        } else if let Some(k) = key {
+            format!("`{k}`: invalid value")
         } else {
-            format!("expected {exp}")
+            "invalid value".to_string()
         }
-    } else if let Some(k) = key {
-        format!("`{k}`: {raw_clean}")
     } else {
         raw_clean.to_string()
     }
@@ -336,10 +342,7 @@ pub(crate) fn take<R: serde::de::DeserializeOwned>(args: &serde_json::Value) -> 
         let raw = e.to_string();
         tracing::warn!("contract: bad_args deserialization failed: {raw}");
         let detail = sanitize_de_error::<R>(&v, &raw);
-        Fail::new(
-            "bad_args",
-            crate::common::contract::malformed(&detail),
-        )
+        Fail::new("bad_args", crate::common::contract::malformed(&detail))
     })
 }
 

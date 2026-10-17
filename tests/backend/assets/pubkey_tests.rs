@@ -404,4 +404,3 @@ async fn push_public_key_unknown_type_omits_sentinel_content_and_reports_file() 
         err.1
     );
 }
-

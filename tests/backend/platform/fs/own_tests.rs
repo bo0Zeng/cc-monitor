@@ -433,13 +433,20 @@ fn diag_log_created_file_is_born_owner_only() {
     let diag = DiagLog::issue(log_path.clone());
     let file = diag.create().expect("create");
     drop(file);
-    assert_eq!(mode(&log_path), 0o600, "新建的诊断日志权限位不是 0600（按 umask 落了）");
+    assert_eq!(
+        mode(&log_path),
+        0o600,
+        "新建的诊断日志权限位不是 0600（按 umask 落了）"
+    );
 
     let append_path = base.join("append.log");
     let diag_append = DiagLog::issue(append_path.clone());
     diag_append.append_line(b"hello\n").expect("append");
-    assert_eq!(mode(&append_path), 0o600, "追加新建的诊断日志权限位不是 0600");
+    assert_eq!(
+        mode(&append_path),
+        0o600,
+        "追加新建的诊断日志权限位不是 0600"
+    );
 
     std::fs::remove_dir_all(&base).ok();
 }
-

@@ -340,10 +340,12 @@ fn take_bad_args_omits_sentinel_value_from_rejection() {
     let sentinel = "SENTINEL_SECRET_VALUE_12345";
     let args = serde_json::json!({ "port": sentinel });
     let fail = super::take::<DummyReq>(&args).expect_err("should fail");
-    let rejection = format!("code={} message={} raw={:?}", fail.code, fail.message, fail.raw);
+    let rejection = format!(
+        "code={} message={} raw={:?}",
+        fail.code, fail.message, fail.raw
+    );
     assert!(
         !rejection.contains(sentinel),
         "拒绝体中泄露了哨兵串：{rejection}"
     );
 }
-
