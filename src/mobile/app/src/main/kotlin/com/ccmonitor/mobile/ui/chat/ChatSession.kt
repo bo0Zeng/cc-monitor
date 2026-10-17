@@ -491,7 +491,11 @@ class ChatSession(
                         ?: return failSession(unreadableReply(machine, SessionOpen.COMMAND, r.data.toString()).text)
                 else -> return failSession(r.problem(machine, SessionOpen.COMMAND)?.text)
             }
-        val arrived = arrivedSid(answer) ?: return
+        val arrived =
+            when (val a = arrivalOf(link, machine, answer, arrivalMs)) {
+                is Arrival.Sid -> a.sid
+                is Arrival.Missed -> return failSession(a.said)
+            }
         answer.prompt?.let { said ->
             first.handed = true
             val (delivery, text) = outcomeOf(said)
@@ -502,29 +506,6 @@ class ChatSession(
         _state.value = _state.value.copy(sid = arrived, cwd = cwd)
         syncHold()
         follow = scope.launch { attach(arrived, fresh = true) }
-    }
-
-    /**
-     * 新起的那一条报到了 ⇒ 它的 sid；没报到 ⇒ `null`（那一句已上屏）。报到没有由那台等、那台说（`session-arrive`，回包里那一问原样交回）；
-     * 那台说不用等 ⇒ 照回包里的 sid。
-     */
-    private suspend fun arrivedSid(answer: SessionOpen.Answer): String? {
-        val ask =
-            answer.arrival ?: return answer.sid.also {
-                if (it == null) failSession(unreadableReply(machine, SessionOpen.COMMAND, answer.toString()).text)
-            }
-        val r = link.call(SessionArrive.COMMAND, SessionArrive.args(ask), arrivalMs)
-        val end = (r as? Reply.Ok)?.let { SessionArrive.of(it.data) }
-        if (end?.sid == null) {
-            failSession(
-                when {
-                    r !is Reply.Ok -> r.problem(machine, SessionArrive.COMMAND)?.text
-                    end == null -> unreadableReply(machine, SessionArrive.COMMAND, r.data.toString()).text
-                    else -> end.said
-                },
-            )
-        }
-        return end?.sid
     }
 
     /** 会话那一层没成：那一句上屏；新建会话还没起成 ⇒ 回到草稿（选项回来，改了再发）。 */
@@ -916,4 +897,40 @@ class ChatSession(
         /** 改得了的拒因（画面变了 · 一时认不出）：给［再发一次］；会话已结束 · 不归这里管的 ⇒ 重试没用。 */
         private val RETRYABLE = setOf("screen_changed", "ambiguous", "not_known")
     }
+}
+
+/** 新起的那一条报到没有：报到了 ⇒ 它的 sid；没报到 ⇒ 上屏那一句。 */
+private sealed interface Arrival {
+    data class Sid(
+        val sid: String,
+    ) : Arrival
+
+    data class Missed(
+        val said: String?,
+    ) : Arrival
+}
+
+/**
+ * 报到没有由那台等、那台说（`session-arrive`，回包里那一问原样交回）；那台说不用等 ⇒ 照回包里的 sid。
+ * [withinMs] 是愿意等多久（`session-arrive` 的期限，那台照它减余量等）。
+ */
+private suspend fun arrivalOf(
+    link: CoreLink,
+    machine: String,
+    answer: SessionOpen.Answer,
+    withinMs: Long,
+): Arrival {
+    val ask =
+        answer.arrival
+            ?: return answer.sid?.let { Arrival.Sid(it) } ?: Arrival.Missed(unreadableReply(machine, SessionOpen.COMMAND, answer.toString()).text)
+    val r = link.call(SessionArrive.COMMAND, SessionArrive.args(ask), withinMs)
+    val end = (r as? Reply.Ok)?.let { SessionArrive.of(it.data) }
+    end?.sid?.let { return Arrival.Sid(it) }
+    return Arrival.Missed(
+        when {
+            r !is Reply.Ok -> r.problem(machine, SessionArrive.COMMAND)?.text
+            end == null -> unreadableReply(machine, SessionArrive.COMMAND, r.data.toString()).text
+            else -> end.said
+        },
+    )
 }
