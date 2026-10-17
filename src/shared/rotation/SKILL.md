@@ -5,7 +5,7 @@ description: cc-monitor 的账号轮换（第五版）怎么用、怎么写策�
 
 # 账号轮换：积木 · 策略
 
-一句话：**后端没有任何换号的想法。** 权重、权重容差、强制切换阈值、用量上限、耗尽后启用、启用延迟、单次用量上限，都是策略文件里的设置，由策略自己的代码解释（积木库 `lib` 只给算上限 · 余量 · 排先后这类小函数）。没有随包策略：策略文件都是用户自己的（自己写的 · 让 AI 照这份 skill 写的 · 升级时从旧配置换出来的）；没选策略的会话不轮换，只用开会话的号。
+一句话：**后端没有任何换号的想法。** 权重、权重容差、强制切换阈值、用量上限、耗尽后启用、启用延迟、单次用量上限，都是策略文件里的设置，由策略自己的代码解释（积木库 `lib` 只给算上限 · 余量 · 排先后 · 推演这类只算不决定的函数）。没有随包策略：策略文件都是用户自己的（自己写的 · 让 AI 照这份 skill 写的 · 升级时从旧配置换出来的）；没选策略的会话不轮换，只用开会话的号。
 
 本 skill 不存策略、不替用户存草稿、不常驻跑任何东西；动 `rotation.json` 与策略目录只经下面的命令。命令都经 `~/.cc-monitor/bin/ccm -- --<命令>`，参数从 stdin 读一段 JSON，stdout 一行 JSON；形状全表见 `src/doc/IPC-COMMANDS.md`。
 
@@ -68,7 +68,16 @@ fn decide(ctx) { … }
 - `cap_of(s, r, w, lift, clock)` · `left_of(s, r, a, lift, clock)` · `has_quota(s, r, a, lift, clock)`：此刻上限、余量（两窗取小）、有没有额度；`lift` ＝ 放开软上限（`capKind: soft` 的号当 100）；
 - `rank(ids, pri, close)`：按权重排先后，`close`% 以内同权、照 `ids` 先后；
 - `delay_start(prev, holds, now)` · `delay_over(start, minutes, now)`：启用延迟的起点（存进 `memo`）、到点没有；
-- `hold_from(s, rows, accts, ids, now, clock, extra)`：一个都没有时停到几点。
+- `hold_from(s, rows, accts, ids, now, clock, extra)`：一个都没有时停到几点；
+- `cap_or(segs, clock, dflt)`：同 `cap_at`，落空取 `dflt`；`used_of(a, w, now)`：一窗此刻的用量（过了重置 ⇒ 0）。
+
+智能切换用的几样（编辑器那一份 `editor.rhai` 照它们编排；单位：额度是百分点，用量与代价是折合输入 token）：
+- `piece(a, c5, c7, now)`：这个号此刻那份额度 `#{amt, exp, wk, open, l7}`（余量 · 几时作废 · 周上限卡着 · 5 小时窗开着 · 周剩的）；作废看卡住它的那一窗；
+- `due_rank(p, others, now)`：「先用最先作废的」先后的键（扣掉别的会话到作废前会用掉的；没开窗的 · 周上限卡着的排后）；
+- `switch_cost(sess, id, now)` · `write_extra(sess)`：换到 `id` 当场要重写的缓存（缓存期内回去只补写新长的）· 写缓存比读缓存多几倍；
+- `usable(free, pace, tpp, minutes)`：本会话在一份额度作废前用得掉多少；`pace_bands(spread)`：用速的几档（量不到起伏只一档，否则 μ、μ ± √3σ）；
+- `refills(r5, left7, wk, exp, segs5, dflt, clock, now, horizon)`：视野里每次 5 小时重置后再来的那几份；
+- `project(amt, st, ex, who, wk, late, oev, o)`：往后推演一种走法，回卡住的 ＋ 用掉的周上限卡着的 ＋ 一路换号重写缓存的（参数见 `lib.rhai` 里的注释）；一遍约 600 × 份数次操作，一判有 20 万次的上限，号多时先算推得起几遍。
 
 ## 4. 怎么装、怎么试
 
