@@ -3,7 +3,7 @@
 //! 界面经通道 `subscribe(<local>, "probe-progress/<票>")` 收（`src/frontend/ui/remote-probe.ts`）。
 //!
 //! 与 [`crate::live_card`] 同形：读循环（分派第一层 `stream_source::route`）手里没有 `AppHandle` ⇒ 出口由 `lib.rs` 的 setup
-//! 装一次（[`install_sink`]）；装之前来的直接丢（界面那时也还没在订）。**零解释**：那一格是什么由界面严格收。
+//! 装一次（[`install_sink`]）；装之前来的直接丢（界面那时也还没在订）。**零解释**：那一格是什么由界面照生成类型读。
 
 use std::sync::OnceLock;
 

@@ -37,6 +37,10 @@ vi.mock("../../../src/comms/inward/chan", () => ({
 
 import { forgetSeen, recallSeen, rememberSeen } from "../../../src/frontend/ui/last-seen";
 import { fetchAccounts } from "../../../src/frontend/ui/account-reads";
+import type { DataReport } from "../../../src/frontend/ui/generated/DataReport";
+
+/** 记下的那一份只当不透明的一团搬（结构夹具，不是真的报告）。 */
+const report = (x: object): DataReport => x as unknown as DataReport;
 
 const settle = async () => {
   for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
@@ -49,13 +53,12 @@ beforeEach(() => {
 });
 
 describe("上次值交本机后端记", () => {
-  it("★ 只交本机后端；读成一次交一次（界面不记交过什么）；本机那台不记；值不是对象不交", async () => {
-    await rememberSeen("devbox", "data", { a: 1 });
-    await rememberSeen("devbox", "data", { a: 1 });
-    await rememberSeen("<local>", "data", { a: 1 });
-    await rememberSeen("devbox", "accounts", [1, 2]);
+  it("★ 只交本机后端；读成一次交一次（界面不记交过什么）；本机那台不记", async () => {
+    await rememberSeen("devbox", "data", report({ a: 1 }));
+    await rememberSeen("devbox", "data", report({ a: 1 }));
+    await rememberSeen("<local>", "data", report({ a: 1 }));
     expect(calls.map((c) => `${c.origin}:${c.op}:${c.args.origin}:${c.args.kind}`)).toEqual(["<local>:last-seen-write:devbox:data", "<local>:last-seen-write:devbox:data"]);
-    await rememberSeen("devbox", "data", { a: 2 });
+    await rememberSeen("devbox", "data", report({ a: 2 }));
     expect(calls).toHaveLength(3);
     expect(await recallSeen("devbox", "data")).toEqual({ atMs: 42, value: { a: 2 } });
     expect(await recallSeen("devbox", "accounts")).toBeNull();
@@ -78,15 +81,15 @@ describe("上次值交本机后端记", () => {
   });
 
   it("★ 删机器：交本机后端清掉那台（只带 origin ＋ forget）；之后问不到它；同名再加回来、同一份照样再交", async () => {
-    await rememberSeen("devbox", "data", { a: 1 });
-    await rememberSeen("gpu-01", "data", { b: 1 });
+    await rememberSeen("devbox", "data", report({ a: 1 }));
+    await rememberSeen("gpu-01", "data", report({ b: 1 }));
     calls.length = 0;
     await forgetSeen("devbox");
     expect(calls.map((c) => [c.origin, c.op, c.args])).toEqual([["<local>", "last-seen-write", { origin: "devbox", forget: true }]]);
     expect(await recallSeen("devbox", "data")).toBeNull();
     expect(await recallSeen("gpu-01", "data")).toEqual({ atMs: 42, value: { b: 1 } });
     calls.length = 0;
-    await rememberSeen("devbox", "data", { a: 1 });
+    await rememberSeen("devbox", "data", report({ a: 1 }));
     expect(calls.map((c) => c.op), "同名那台再加回来：照样交").toEqual(["last-seen-write"]);
     calls.length = 0;
     await forgetSeen("<local>");

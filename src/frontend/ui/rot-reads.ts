@@ -32,11 +32,8 @@ export function readView(
   return callTyped(origin, "rotation-view", { target, hours }, rotBudget());
 }
 
-/** 后端回的拒绝码（不是拒绝 ⇒ `null`）与它带的数据。 */
-export function refusedCode(
-  e: unknown,
-): { code: string; data?: unknown } | null {
-  const r = refusalIn(e);
-  return r ? { code: r.code, data: r.data } : null;
+/** 后端回的拒绝码（不是拒绝 ⇒ `null`）。 */
+export function refusedCode(e: unknown): { code: string } | null {
+  return refusalIn(e);
 }
 

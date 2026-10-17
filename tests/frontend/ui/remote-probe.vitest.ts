@@ -1,6 +1,6 @@
 /**
  * 「测试连接：界面把表单里（未保存的）那台配置交给本机后端，后端组拨号请求、拨一次」——
- * 界面那一侧：交过去的是表单那一台 ＋ 已保存的同名那一份 ＋ 跳板那一台（问 `<local>` 的 `remote-probe`）；结局按形状严格收。
+ * 界面那一侧：交过去的是表单那一台 ＋ 已保存的同名那一份 ＋ 跳板那一台（问 `<local>` 的 `remote-probe`）。
  * 〔「进度不许倒退」〕进度边拨边推：先订 `probe-progress/<票>` 再问；握手那几行边收边交 `onStage`；
  * 结局是进度流的最后一格（可以晚于应答到）；到点没等到结局 ⇒ `ProbeStalled` 说出停在哪一段（最后收到的那一格）。
  */
@@ -35,7 +35,7 @@ vi.mock("../../../src/comms/inward/chan", async (orig) => {
 });
 
 import { ChanError } from "../../../src/comms/inward/chan";
-import { decodeCell, decodeProbe, probeMachine, ProbeStalled, PROBE_PROGRESS_KIND } from "../../../src/frontend/ui/remote-probe";
+import { probeMachine, ProbeStalled, PROBE_PROGRESS_KIND } from "../../../src/frontend/ui/remote-probe";
 import type { RemoteHostConfig } from "../../../src/frontend/ui/remote-config";
 import type { ConnectStage } from "../../../src/frontend/ui/generated/ConnectStage";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/backend-policy";
@@ -148,23 +148,5 @@ describe("请求与进度", () => {
   it("进度流名与 Rust `event_replay.rs::PROBE_PROGRESS_KIND` 同一个串", () => {
     const rs = readFileSync(resolve(__dirname, "../../..", "src/frontend/shell/src/event_replay.rs"), "utf8");
     expect(/pub const PROBE_PROGRESS_KIND: &str = "([^"]+)";/.exec(rs)?.[1]).toBe(PROBE_PROGRESS_KIND);
-  });
-});
-
-describe("严格收", () => {
-  it.each([
-    ["多一格", { ...ok, extra: 1 }],
-    ["还带阶段行（阶段行改走进度流）", { ...ok, stages: [] }],
-    ["sshOk 不是布尔", { ...ok, sshOk: "yes" }],
-  ])("结局 %s ⇒ 抛", (_n, v) => {
-    expect(() => decodeProbe(JSON.parse(JSON.stringify(v)))).toThrow();
-  });
-  it.each([
-    ["两个键", { stage: dialing, reached: "ssh" }],
-    ["阶段行不带 kind", { stage: {} }],
-    ["认不得的段", { reached: "tmux" }],
-    ["认不得的键", { progress: 1 }],
-  ])("进度格 %s ⇒ 抛", (_n, v) => {
-    expect(() => decodeCell(v)).toThrow();
   });
 });

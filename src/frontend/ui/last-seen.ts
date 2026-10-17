@@ -6,7 +6,6 @@
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
-import { isObj } from "./ipc/decode";
 import type { SeenKind } from "./generated/SeenKind";
 import type { LastSeen } from "./generated/LastSeen";
 
@@ -14,9 +13,12 @@ export type { SeenKind };
 
 const BUDGET_MS = 10_000;
 
+/** 每一样记下的那一份（`last-seen-read` 回包里那一格的值）。 */
+type SeenValue = { [K in SeenKind]: Extract<NonNullable<LastSeen[K]>, { state: "kept" }>["value"] };
+
 /** 读成了一份 ⇒ 交本机后端记下（失败只进日志：它只是缓存）。 */
-export async function rememberSeen(origin: Origin, kind: SeenKind, value: unknown): Promise<void> {
-  if (isLocalOrigin(origin) || !isObj(value)) return;
+export async function rememberSeen<K extends SeenKind>(origin: Origin, kind: K, value: SeenValue[K]): Promise<void> {
+  if (isLocalOrigin(origin)) return;
   try {
     await callTyped(LOCAL_ORIGIN, "last-seen-write", { origin, kind, value }, budgetWithin(BUDGET_MS));
   } catch (e) {

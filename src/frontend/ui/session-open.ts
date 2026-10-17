@@ -7,7 +7,6 @@ import { ChanError } from "../../comms/inward/chan";
 import { budgetWithin, callTyped, machineName, refusalIn } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { detailOf, saidOf } from "./kit/detail";
-import { exactKeys, isObj } from "./ipc/decode";
 import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
 import { writeClipboard } from "./clipboard";
@@ -38,28 +37,15 @@ export type OpenEnd =
   | { kind: "timeout"; said: string; detail: string }
   | { kind: "unreachable"; said: string; detail: string };
 
-const FIELDS: ReadonlySet<string> = new Set<OpenField>(["agent", "command", "cwd", "account", "place", "tmuxName"]);
-
-/** 拒绝体的 `data`（`{field, unavailable}`）；读不出 ⇒ 当整体不行。 */
-function refusalData(d: unknown): { field: OpenField | null; unavailable: AccountUnavailable | null } {
-  if (!isObj(d) || !exactKeys(d, ["field", "unavailable"])) return { field: null, unavailable: null };
-  const f = d.field;
-  const u = d.unavailable;
-  return {
-    field: typeof f === "string" && FIELDS.has(f) ? (f as OpenField) : null,
-    unavailable: isObj(u) && typeof u.requested === "string" && typeof u.listKnown === "boolean" ? (u as unknown as AccountUnavailable) : null,
-  };
-}
-
 /** 只问、只分结局，不出声。 */
 export async function askOpen(origin: Origin, req: SessionOpenReq): Promise<OpenEnd> {
   try {
     return { kind: "opened", opened: await callTyped(origin, "session-open", req, budgetWithin(OPEN_BUDGET_MS)) };
   } catch (e) {
     const detail = detailOf(e);
-    const r = refusalIn(e);
+    const r = refusalIn(e, "session-open");
     if (r?.code === "launch_pending") return { kind: "pending", said: saidOf(e), detail };
-    if (r) return { kind: "refused", code: r.code, said: saidOf(e), ...refusalData(r.data), detail };
+    if (r) return { kind: "refused", code: r.code, said: saidOf(e), field: r.data?.field ?? null, unavailable: r.data?.unavailable ?? null, detail };
     // 发出去了、没等到回话 ⇒ 结果未知，不说失败。
     if (e instanceof ChanError && e.error.layer === "hop" && e.error.reach !== "NotSent") return { kind: "timeout", said: saidOf(e), detail };
     return { kind: "unreachable", said: saidOf(e), detail };
