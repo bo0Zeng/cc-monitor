@@ -1809,3 +1809,23 @@ enum class MachineFix {
     @Json(name = "install")
     INSTALL,
 }
+
+/** 带键集合的一次答（`cmd_wire::sync::Patch`）：手上那份照它换见 [SyncHand]。项与头里业务那一格在这里不解，原样（`Map` 形）留着。 */
+@WireOf("SyncPatch")
+@JsonClass(generateAdapter = true)
+data class SyncPatch(
+    val held: String,
+    val whole: Boolean,
+    val same: Boolean,
+    val order: List<String>?,
+    val up: Map<String, Any>,
+    val head: SyncHead?,
+)
+
+/** 这一问的头：整份有几项（不止这一窗）＋ 业务那一格。 */
+@WireOf("SyncHead")
+@JsonClass(generateAdapter = true)
+data class SyncHead(
+    val total: Long,
+    val info: Any?,
+)

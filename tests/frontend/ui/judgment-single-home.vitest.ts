@@ -855,6 +855,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     as_str: NONE,
     // `files-ls` 那一列是不是从大到小（后端排序 · 文件窗口表头的箭头）。界面不列目录，TS 侧没有孪生。
     descending: NONE,
+    // 带键集合手上那份照答换（`sync::Hand::apply`）：Rust 消费方与手机 `SyncHand` 照同一份金样；界面问本机后端拿整份、不换，TS 侧没有孪生。
+    apply: NONE,
   },
   "copy-core": {
     backend_old: "J22",

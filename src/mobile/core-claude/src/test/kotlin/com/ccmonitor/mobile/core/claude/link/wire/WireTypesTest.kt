@@ -181,7 +181,8 @@ class WireTypesTest {
             val lits = Ts.wordsOf(ts) ?: Ts.load(ts)?.literals ?: return "枚举 $kt 对的 `$ts` 不是一列字面量"
             return if (lits.toSet() == words.toSet()) null else "枚举 $kt 的线上字是 $words，$ts 是 $lits"
         }
-        decl.classes.firstOrNull { it.name == kt }?.let { return if (it.wire == ts) null else "$kt 声明的是 ${it.wire}，这里是 `$ts`" }
+        // 带类型参数的（`SyncHead<H>`）：这里不解参数那一格（`Any`），只认名字。
+        decl.classes.firstOrNull { it.name == kt }?.let { return if (it.wire == ts.substringBefore('<')) null else "$kt 声明的是 ${it.wire}，这里是 `$ts`" }
         // 别名（`Words` ＝ `string`）：照它指的那一型核。
         Ts.load(ts)?.alias?.let { return fits(decl, kt, it) }
         val literal = Regex("^\"[^\"]*\"( \\| \"[^\"]*\")*$")
