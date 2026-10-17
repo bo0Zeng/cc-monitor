@@ -20152,6 +20152,12 @@
       "zh": "{machine} 离线 · 未列出",
       "args": ["machine"]
     },
+    "history.list.machineStale": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} 读不到 · 下面是 {at} 读到的",
+      "args": ["machine", "at"]
+    },
     "history.list.reconnect": {
       "kind": "action",
       "role": "按钮",

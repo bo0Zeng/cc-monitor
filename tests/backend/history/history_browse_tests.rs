@@ -9,7 +9,8 @@
 //! 1. **并法与从前界面里的一致**：几台各给一份成品 ⇒ 并出来的一项一项（段头 · 组头 · 行 · 分叉挂父会话 · 孤儿 · 开合）
 //!    与从前历史页在界面里并出来的逐条相同（对拍金样 `tests/__fixtures__/history-browse.golden.json`，由从前那份界面代码跑出来）。
 //! 2. **只回那一窗**：`range` 之外的项不带；总数 · 段头照整列。
-//! 3. **各台那一格**：读到了 ⇒ 几行 ＋ 注解那一句；读不到 ⇒ 为什么、它的行不出；远端没同步过、也没带它的 `fresh` ⇒ 没读过（不去问）。
+//! 3. **各台那一格**：读到了 ⇒ 几行 ＋ 注解那一句；读不到、手上有旧副本 ⇒ 行照副本出、头里标旧（为什么 ＋ 副本落下那一刻）；
+//!    从没读到过 ⇒ 为什么、没有行；远端没同步过、也没带它的 `fresh` ⇒ 没读过（不去问）。
 //! 4. **帧面**：`fresh` 只认 `remotes` 里的、要带期限；同步没成的那台下一问照样说读不到（不拿旧副本充数）；窗口 1–2000。
 //!
 //! # 买不到
@@ -162,12 +163,22 @@ fn each_machine_says_whether_it_was_read() {
             (None, Got::Listing(local)),
             (Some("dev".into()), Got::Failed("dev 后端未在运行".into())),
             (Some("box".into()), Got::Unread),
+            (
+                Some("old".into()),
+                Got::Stale {
+                    listing: stale_listing(),
+                    why: "old 后端未在运行".into(),
+                    at_ms: 500,
+                },
+            ),
         ],
         &ask,
         1_000,
         &Default::default(),
     );
-    assert_eq!(answered.len(), 1, "读不到的那台也出了成品");
+    assert_eq!(answered.len(), 2, "只有读到了的与有旧副本的出成品");
+    assert_eq!(answered[1].origin.as_deref(), Some("old"));
+    assert_eq!(answered[1].rows.len(), 1, "旧副本的行要照出");
     let v = serde_json::to_value(&heads).unwrap();
     assert_eq!(
         v,
@@ -175,8 +186,27 @@ fn each_machine_says_whether_it_was_read() {
             {"total": 0, "read": {"is": "ok", "notice": null}},
             {"origin": "dev", "total": 0, "read": {"is": "failed", "why": "dev 后端未在运行"}},
             {"origin": "box", "total": 0, "read": {"is": "unread"}},
+            {"origin": "old", "total": 1, "read": {"is": "stale", "why": "old 后端未在运行", "at": v[3]["read"]["at"]}},
         ])
     );
+    assert_eq!(
+        v[3]["read"]["at"],
+        json!(crate::common::time::history_at_text(500, 1_000, &Default::default()).0),
+        "旧的那一刻照副本落下那一刻写"
+    );
+}
+
+/// 一台旧副本里的一行。
+fn stale_listing() -> cmd_wire::listing::Listing {
+    let mut l = cmd_wire::listing::Listing::default();
+    l.rows = vec![serde_json::from_value(json!({
+        "agent": "claude", "sessionId": "s-old", "projectPath": "/w/p", "projectName": "p", "aiTitle": null,
+        "firstUserExcerpt": "x", "title": "x", "startedAt": 1, "updatedAt": 2, "jsonlPath": "/x", "life": null,
+        "messageCountApprox": 0, "isBg": false, "starred": false, "customTitle": null, "launchTab": null, "parent": null,
+        "projectDir": "-w-p", "group": "claude:/w/p", "lastAccount": null
+    }))
+    .expect("旧副本那一行")];
+    l
 }
 
 async fn browse(args: Value, until: bool) -> Result<Value, (&'static str, String)> {

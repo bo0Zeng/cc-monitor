@@ -3,7 +3,7 @@
  *
  * - 列表：默认「按时间」平铺（今天 · 昨天 · 本周 · 按月分段），「按项目」是第二种看法；几台在本机后端并成一列
  *   （`history-browse`：判活 · 标题 · 每行能做什么 · 分组 · 怎么并 · 分叉挂哪都在那里定），这里只问看得见的那一窗（虚拟滚动、滚到哪问到哪）、照项画。
- *   开页 · 刷新：一问照手上的马上答，每台远端另一问先同步它（慢的不挡别的）；一台读不到在列表顶说。
+ *   开页 · 刷新：一问照手上的马上答，每台远端另一问先同步它（慢的不挡别的）；一台读不到在列表顶说（有上一次的副本 ⇒ 行照副本出、说是几时读到的）。
  * - 一个搜索框：敲字 ⇒ 后端按标题 / 第一句 / 项目名过滤全部会话；回车 ⇒ 内容搜索（各台 `history-search`），结果按会话分块。
  * - 「筛选」浮层：机器 · 时间 · 排序 · 显示已隐藏 · 搜内容时谁说的 · 含工具输出与思考。选项记在本机（界面偏好）。
  * - 右边：点一行就地看（只读查看器），列表不动。
@@ -543,7 +543,8 @@ export class HistoryView {
       this.restart();
       this.refresh(on && m ? [m] : []);
     });
-    if (this.readOf(m)?.is === "failed") {
+    const read = this.readOf(m)?.is;
+    if (read === "failed" || read === "stale") {
       const w = document.createElement("span");
       w.className = s.hvFilterWarn;
       w.textContent = copyText("history.filter.offline");
@@ -600,6 +601,9 @@ export class HistoryView {
             ? strip("warn", copyText("history.list.machineDown", { machine: m }), { label: copyText("history.list.reconnect"), run: again })
             : strip("error", copyText("history.list.localFailed"), { label: copyText("history.list.retry"), run: again }),
         );
+      } else if (st?.is === "stale") {
+        // 读不到、行照那台上一次的副本出：说清是几时读到的，不冒充读到。
+        strips.push(strip("warn", copyText("history.list.machineStale", { machine: m || copyText("history.filter.local"), at: st.at }), { label: copyText("history.list.reconnect"), run: again }));
       } else if (st?.is === "ok" && st.notice) {
         strips.push(strip("warn", copyText("history.list.notice"), { label: copyText("history.list.retry"), run: again }));
       }

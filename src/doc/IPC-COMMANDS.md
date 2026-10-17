@@ -4427,7 +4427,7 @@ origin?: string,
  * 那台筛好的几行（算上只为挂住分叉才带上的父会话）。
  */
 total: number, read: HistoryMachineRead, };
-type HistoryMachineRead = { "is": "ok", notice: string | null, } | { "is": "failed", why: string, } | { "is": "unread" };
+type HistoryMachineRead = { "is": "ok", notice: string | null, } | { "is": "stale", why: string, at: string, } | { "is": "failed", why: string, } | { "is": "unread" };
 type HistoryRow = { agent: string, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, title: string, startedAt: number, updatedAt: number, jsonlPath: string, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
 /**
  * 隐藏那一格（判定只住后端 `control/session_hidden.rs`）；不隐藏 ⇒ `null`（格恒在）。

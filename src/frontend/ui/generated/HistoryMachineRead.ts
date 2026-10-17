@@ -3,4 +3,4 @@
 /**
  * 一台此刻读没读到。
  */
-export type HistoryMachineRead = { "is": "ok", notice: string | null, } | { "is": "failed", why: string, } | { "is": "unread" };
+export type HistoryMachineRead = { "is": "ok", notice: string | null, } | { "is": "stale", why: string, at: string, } | { "is": "failed", why: string, } | { "is": "unread" };

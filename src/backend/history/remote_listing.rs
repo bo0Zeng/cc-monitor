@@ -118,6 +118,8 @@ pub(crate) struct Copies(Mutex<BTreeMap<String, Slot>>);
 pub(crate) struct Slot {
     hand: Hand<ListingHead, RawRow>,
     failed: Option<String>,
+    /// 手上那份落下的那一刻（毫秒）：同步没成时照它说「下面是那一刻读到的」。
+    at_ms: i64,
 }
 
 impl Copies {
@@ -131,7 +133,13 @@ impl Copies {
 pub(crate) enum Kept {
     /// 拼回来的那份。
     Got(Listing),
-    /// 上一次同步没成：那一句（手上那份不拿出来充数）。
+    /// 上一次同步没成、手上有之前那份：照出、标明是旧的（那一句 ＋ 那份落下的那一刻）。
+    Stale {
+        listing: Listing,
+        why: String,
+        at_ms: i64,
+    },
+    /// 从没问成过、同步又没成：只有那一句。
     Failed(String),
     /// 还没问成过、这一趟也没去问。
     Unread,
@@ -144,12 +152,19 @@ pub(crate) fn kept(machine: &str) -> Kept {
 
 /// [`kept`] 的本体（副本表由调用方给）。
 pub(crate) fn kept_in(copies: &Copies, machine: &str) -> Kept {
-    match copies.lock().get(machine) {
-        Some(Slot {
-            failed: Some(why), ..
-        }) => Kept::Failed(why.clone()),
-        Some(c) if c.hand.held.is_some() => Kept::Got(assembled(&c.hand)),
-        _ => Kept::Unread,
+    let book = copies.lock();
+    let Some(c) = book.get(machine) else {
+        return Kept::Unread;
+    };
+    match (&c.failed, c.hand.held.is_some()) {
+        (Some(why), true) => Kept::Stale {
+            listing: assembled(&c.hand),
+            why: why.clone(),
+            at_ms: c.at_ms,
+        },
+        (Some(why), false) => Kept::Failed(why.clone()),
+        (None, true) => Kept::Got(assembled(&c.hand)),
+        (None, false) => Kept::Unread,
     }
 }
 
@@ -218,6 +233,9 @@ pub(crate) async fn listing_with(
         Ok(patch) => {
             slot.failed = None;
             slot.hand.apply(patch);
+            slot.at_ms = crate::common::time::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_millis() as i64);
             Ok(assembled(&slot.hand))
         }
         Err(e) => {

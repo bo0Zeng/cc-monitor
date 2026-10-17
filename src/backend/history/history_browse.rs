@@ -160,7 +160,13 @@ pub(crate) struct HistoryBrowseReq {
 pub(crate) enum Read {
     /// 读到了；注解没并上 ⇒ 那一句。
     Ok { notice: Option<String> },
-    /// 读不到：那一句（它的行不出）。
+    /// 读不到、手上有上一次的副本：行照副本出，`at` ＝ 那份是几时读到的（写好的字），不冒充读到。
+    Stale {
+        why: String,
+        #[cfg_attr(test, ts(type = "string"))]
+        at: Words,
+    },
+    /// 读不到、从没读到过：那一句（没有行）。
     Failed { why: String },
     /// 远端那台还没同步过、这一问也没带它的 `fresh`。
     Unread,
@@ -281,6 +287,12 @@ fn bad(what: &str) -> (&'static str, String) {
 /// 一台读到的那一份，或读不到 / 没读过。
 pub(crate) enum Got {
     Listing(cmd_wire::listing::Listing),
+    /// 读不到、照上一次的副本出（副本 · 为什么 · 副本落下那一刻）。
+    Stale {
+        listing: cmd_wire::listing::Listing,
+        why: String,
+        at_ms: i64,
+    },
     Failed(String),
     Unread,
 }
@@ -320,18 +332,25 @@ pub(crate) async fn answer(
             let (m, tz) = (m.0.clone(), tz.clone());
             let sync = req.fresh.iter().any(|f| f.0 == m);
             tokio::spawn(async move {
-                // 同步那几台照同步的结局（没成的那一句副本表也记下了，下一问不带它的 `fresh` 照样说）；别的读手上那份。
-                let got = if sync {
-                    match super::remote_listing::listing(&m, true, &tz, until).await {
-                        Ok(l) => Got::Listing(l),
-                        Err((_, why)) => Got::Failed(why),
+                // 同步那几台先同步（没成的那一句副本表记下了）；之后一律照副本表读：成了 ⇒ 新的那份，没成 ⇒ 旧副本标旧 · 或只有那一句。
+                if sync {
+                    if let Ok(l) = super::remote_listing::listing(&m, true, &tz, until).await {
+                        return (m, Got::Listing(l));
                     }
-                } else {
-                    match super::remote_listing::kept(&m) {
-                        Kept::Got(l) => Got::Listing(l),
-                        Kept::Failed(why) => Got::Failed(why),
-                        Kept::Unread => Got::Unread,
-                    }
+                }
+                let got = match super::remote_listing::kept(&m) {
+                    Kept::Got(l) => Got::Listing(l),
+                    Kept::Stale {
+                        listing,
+                        why,
+                        at_ms,
+                    } => Got::Stale {
+                        listing,
+                        why,
+                        at_ms,
+                    },
+                    Kept::Failed(why) => Got::Failed(why),
+                    Kept::Unread => Got::Unread,
                 };
                 (m, got)
             })
@@ -407,20 +426,28 @@ pub(crate) fn per_machine(
         let machine = origin.clone().map(Machine);
         match g {
             Got::Listing(l) => {
-                let ann = listing_annotations(&l);
-                let (head, rows) = answer_from(
-                    &l,
-                    origin.as_deref(),
-                    ann.as_ref().map_err(Clone::clone),
-                    ask,
-                    now_ms,
-                    tz,
-                );
+                let (head, rows) = product(&l, origin.as_deref(), ask, now_ms, tz);
                 heads.push(MachineHead {
                     origin: machine,
                     total: u32::try_from(rows.len()).unwrap_or(u32::MAX),
                     read: Read::Ok {
                         notice: head.notice.clone(),
+                    },
+                });
+                answered.push(Answered { origin, head, rows });
+            }
+            Got::Stale {
+                listing,
+                why,
+                at_ms,
+            } => {
+                let (head, rows) = product(&listing, origin.as_deref(), ask, now_ms, tz);
+                heads.push(MachineHead {
+                    origin: machine,
+                    total: u32::try_from(rows.len()).unwrap_or(u32::MAX),
+                    read: Read::Stale {
+                        why,
+                        at: crate::common::time::history_at_text(at_ms, now_ms, tz),
                     },
                 });
                 answered.push(Answered { origin, head, rows });
@@ -438,6 +465,25 @@ pub(crate) fn per_machine(
         }
     }
     (heads, answered)
+}
+
+/// 一台的清单 ⇒ 它的成品（并它自己带来的注解 · 筛 · 排）。
+fn product(
+    l: &cmd_wire::listing::Listing,
+    origin: Option<&str>,
+    ask: &super::history_list::Ask,
+    now_ms: i64,
+    tz: &crate::Tz,
+) -> (HistoryHead, Vec<HistoryRow>) {
+    let ann = listing_annotations(l);
+    answer_from(
+        l,
+        origin,
+        ann.as_ref().map_err(Clone::clone),
+        ask,
+        now_ms,
+        tz,
+    )
 }
 
 // ───────────────────────── 并成一列 ─────────────────────────

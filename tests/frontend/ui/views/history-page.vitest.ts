@@ -119,7 +119,7 @@ function row(over: Record<string, unknown>): Record<string, unknown> {
 
 type Rec = Record<string, unknown>;
 /** 每台的会话与组（`origin` 缺 = 本机）；`fail` 里的那几台读不到（`""` = 本机）；`notice` ＝ 那台说注解没并上的那一句。 */
-let world: { local: Rec[]; dev: Rec[]; groups: { local: Rec[]; dev: Rec[] }; fail: Set<string>; notice: Record<string, string>; search: "ok" | "fail" };
+let world: { local: Rec[]; dev: Rec[]; groups: { local: Rec[]; dev: Rec[] }; fail: Set<string>; stale: Set<string>; notice: Record<string, string>; search: "ok" | "fail" };
 
 /**
  * 本机后端 `history-browse` 的替身：照入参里的几台把行按 `at` 并成一列（同一刻照台的先后）、分叉挂在展开了的父会话下、
@@ -131,8 +131,9 @@ function browse(args: Rec): Rec {
   if ((args.remotes as string[]).includes("dev")) machines.push(["dev", world.dev.map((r) => ({ ...r, origin: "dev" }))]);
   const q = String(args.query ?? "");
   const head = machines.map(([o, rs]) => {
-    const read = world.fail.has(o) ? { is: "failed", why: `${o || "本机"} 读不出` } : { is: "ok", notice: world.notice[o] ?? null };
-    const n = read.is === "ok" ? rs.filter((r) => !q || String(r.label).includes(q)).length : 0;
+    // `stale` 里的那台：读不到、行照上一次的副本出。
+    const read = world.stale.has(o) ? { is: "stale", why: "w", at: "09:30" } : world.fail.has(o) ? { is: "failed", why: `${o || "本机"} 读不出` } : { is: "ok", notice: world.notice[o] ?? null };
+    const n = read.is !== "failed" ? rs.filter((r) => !q || String(r.label).includes(q)).length : 0;
     return { ...(o ? { origin: o } : {}), total: n, read };
   });
   const ok = machines.filter(([o]) => !world.fail.has(o));
@@ -217,7 +218,7 @@ beforeEach(() => {
   vi.mocked(resumeAccounts).mockClear();
   viewerStub.last = null;
   viewerStub.banner = null;
-  world = { local: [], dev: [], groups: { local: [], dev: [] }, fail: new Set(), notice: {}, search: "ok" };
+  world = { local: [], dev: [], groups: { local: [], dev: [] }, fail: new Set(), stale: new Set(), notice: {}, search: "ok" };
   invokeMock.mockReset();
   invokeMock.mockImplementation(async (cmd: string, a: unknown) => {
     if (cmd === "list_remote_mcp_origins") return ["dev"];
@@ -389,6 +390,26 @@ describe("推送叫回来的重问", () => {
     expect(calls("history-browse")).toEqual([]);
     // 筛掉的那台记在本机界面偏好里，别带进后面几条。
     localStorage.clear();
+  });
+});
+
+describe("一台读不到 · 有上一次的副本", () => {
+  it("行照副本出，列表顶说是几时读到的 ＋［重新连接］（带它的 fresh）；同步再成了标记清掉", async () => {
+    world.local = [row({ sessionId: "a" })];
+    world.dev = [row({ sessionId: "b", at: NOW - 120_000 })];
+    world.stale.add("dev");
+    const v = await opened();
+    expect(titles()).toEqual(["标题 a", "标题 b"]);
+    const said = copyText("history.list.machineStale", { machine: "dev", at: "09:30" });
+    expect(document.body.textContent).toContain(said);
+    expect(document.body.textContent).not.toContain(copyText("history.list.machineDown", { machine: "dev" }));
+    invokeMock.mock.calls.length = 0;
+    world.stale.clear();
+    byText("button", copyText("history.list.reconnect"))!.click();
+    await flush();
+    expect(syncs()).toBe(1);
+    expect(document.body.textContent, "同步再成了还标着旧").not.toContain(said);
+    v.close();
   });
 });
 
