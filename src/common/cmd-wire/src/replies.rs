@@ -12,7 +12,6 @@ use crate::listing::{HistoryHead, HistoryRow};
 use crate::needs::{Answered, NeedsList};
 use crate::quota::QuotaRead;
 use crate::record::{HistoryLines, HistoryRead, OrUnread};
-use crate::sync::Patch;
 use crate::rotation::{
     RotDone, RotStrategyId, RotStrategyRev, RotationFactsReply, RotationStrategiesReply,
     RotationTempReply, RotationTryReply, RotationViewReply,
@@ -21,6 +20,7 @@ use crate::session::{
     HistoryTail, Killed, ModeSwitched, ModelSwitched, OpenFacts, Opened, Preview, Sent,
     SessionCommands, TerminalsList,
 };
+use crate::sync::Patch;
 use serde::Serialize;
 
 fn canon<T: Serialize + serde::de::DeserializeOwned>(

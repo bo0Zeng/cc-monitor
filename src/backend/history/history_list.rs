@@ -394,8 +394,9 @@ impl crate::wire::typed::Handle for HistoryListCmd {
     fn run(
         req: HistoryListReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<Patch<HistoryHead, HistoryRow>, HistoryListErr>> + Send + 'static
-    {
+    ) -> impl std::future::Future<Output = Result<Patch<HistoryHead, HistoryRow>, HistoryListErr>>
+           + Send
+           + 'static {
         async move {
             answer(req, cx.tz, cx.until)
                 .await
