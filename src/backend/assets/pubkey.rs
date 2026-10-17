@@ -55,41 +55,62 @@ fn is_known_key_type(t: &str) -> bool {
         || t.starts_with("sk-ecdsa-")
 }
 
+/// 校验公钥行时的拒绝原因。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SanitizeKeyErr {
+    Empty,
+    Multiline,
+    ControlChars,
+    UnknownType,
+    NoBody,
+    BadBody,
+}
+
+impl SanitizeKeyErr {
+    pub(crate) fn into_said(self) -> String {
+        match self {
+            Self::Empty => copy_text("rsPubkey.sanitizePublicKey.empty", &[]),
+            Self::Multiline => copy_text("rsPubkey.sanitizePublicKey.multiline", &[]),
+            Self::ControlChars => copy_text("rsPubkey.sanitizePublicKey.controlChars", &[]),
+            Self::UnknownType => copy_text("rsPubkey.sanitizePublicKey.unknownType", &[]),
+            Self::NoBody => copy_text("rsPubkey.sanitizePublicKey.noBody", &[]),
+            Self::BadBody => copy_text("rsPubkey.sanitizePublicKey.badBody", &[]),
+        }
+    }
+}
+
 /// 校验 ＋ 规范化公钥行。取**唯一**非空行（多于一行非空 ⇒ `Err`，防第二行注入）；去首尾空白；
 /// 拒空 / 含控制字符；粗校验形态（已知类型前缀 ＋ 至少一个 base64 主体）。回规范化单行 key。**纯函数**。
-pub(crate) fn sanitize_public_key(raw: &str) -> Result<String, String> {
+pub(crate) fn sanitize_public_key(raw: &str) -> Result<String, SanitizeKeyErr> {
     let non_empty: Vec<&str> = raw
         .lines()
         .map(|l| l.trim())
         .filter(|l| !l.is_empty())
         .collect();
     match non_empty.len() {
-        0 => return Err(copy_text("rsPubkey.sanitizePublicKey.empty", &[])),
+        0 => return Err(SanitizeKeyErr::Empty),
         1 => {}
-        _ => return Err(copy_text("rsPubkey.sanitizePublicKey.multiline", &[])),
+        _ => return Err(SanitizeKeyErr::Multiline),
     }
     let key = non_empty[0];
     if key.chars().any(|c| c.is_control()) {
-        return Err(copy_text("rsPubkey.sanitizePublicKey.controlChars", &[]));
+        return Err(SanitizeKeyErr::ControlChars);
     }
     let mut parts = key.split_whitespace();
     let ktype = parts.next().unwrap_or("");
     let blob = parts.next().unwrap_or("");
     if !is_known_key_type(ktype) {
-        return Err(copy_text(
-            "rsPubkey.sanitizePublicKey.unknownType",
-            &[("ktype", ktype)],
-        ));
+        return Err(SanitizeKeyErr::UnknownType);
     }
     if blob.is_empty() {
-        return Err(copy_text("rsPubkey.sanitizePublicKey.noBody", &[]));
+        return Err(SanitizeKeyErr::NoBody);
     }
     // base64 字符集轻校验（粗校验收紧）：挡 `ssh-ed25519 !!!` 这类形态。
     if !blob
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '/' | '='))
     {
-        return Err(copy_text("rsPubkey.sanitizePublicKey.badBody", &[]));
+        return Err(SanitizeKeyErr::BadBody);
     }
     Ok(key.to_string())
 }
@@ -142,7 +163,7 @@ pub(crate) fn answer_add(
     d: &dyn Door,
     req: &KeyAddReq,
 ) -> Result<KeyAdded, (&'static str, String)> {
-    let key = sanitize_public_key(&req.key).map_err(|e| ("refused", e))?;
+    let key = sanitize_public_key(&req.key).map_err(|e| ("refused", e.into_said()))?;
     let home = door::home(d).map_err(|e| ("io_failed", e))?;
     let rel = format!("{SSH_DIR}/{AUTH_FILE}");
     let mut outcome = PushOutcome::Already;
@@ -386,7 +407,16 @@ pub(crate) async fn answer_push(
     let (machine, _jump) = pick.machines()?;
     let path = pub_key_path(req.pub_key_path.as_deref(), machine.key_path.as_deref())
         .map_err(|e| ("refused", e))?;
-    let key = sanitize_public_key(&read_pub(&path)?).map_err(|e| ("refused", e))?;
+    let key = match sanitize_public_key(&read_pub(&path)?) {
+        Ok(k) => k,
+        Err(SanitizeKeyErr::UnknownType) => {
+            return Err((
+                "refused",
+                copy_text("rsPubkey.pushPublicKey.unknownType", &[("path", &path)]),
+            ));
+        }
+        Err(e) => return Err(("refused", e.into_said())),
+    };
     let name = machine.name().to_string();
     let (outcome, via) = if reach.backend_up(&name) {
         let outcome = reach

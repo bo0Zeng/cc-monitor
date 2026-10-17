@@ -9111,6 +9111,12 @@
       "zh": "未指定公钥 · 在配置里填私钥路径（取同名 .pub）或选一个 .pub 文件",
       "args": []
     },
+    "rsPubkey.pushPublicKey.unknownType": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "认不出这份公钥的类型 · {path}",
+      "args": ["path"]
+    },
     "rsPubkey.parsePushOutcome.noMarker": {
       "kind": "error",
       "role": "报错",
@@ -9132,8 +9138,8 @@
     "rsPubkey.sanitizePublicKey.unknownType": {
       "kind": "error",
       "role": "报错",
-      "zh": "无法识别的公钥类型 {ktype} · 查是否误选私钥",
-      "args": ["ktype"]
+      "zh": "认不出公钥类型 · 查是否误选私钥",
+      "args": []
     },
     "rsPubkey.sanitizePublicKey.controlChars": {
       "kind": "error",
