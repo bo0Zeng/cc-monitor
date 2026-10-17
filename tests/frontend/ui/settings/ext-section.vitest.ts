@@ -81,8 +81,6 @@ const manyDone = (a: ManyArgs) => chanReply({ machines: a.to.map((t) => ({ to: t
 
 /** 各台 `mcp-read` 答什么（按 origin；没写 ⇒ 空表；`Error` ⇒ 那一问没成）。 */
 let mcpAnswers: Record<string, unknown> = {};
-/** 各台 `manual-list` 答什么（按 origin；没写 ⇒ 空清单）。 */
-let manualAnswers: Record<string, unknown> = {};
 
 /** 按命令名答（`ext-list` 依次答给定的几份）。 */
 function backend(
@@ -106,8 +104,6 @@ function backend(
         return chanReply({ note: (chanArgsJson(a) as { text: string }).text || null });
       case "hooks-diag":
         return chanReply(hooks(a.origin));
-      case "manual-list":
-        return chanReply(manualAnswers[a.origin] ?? { items: [] });
       case "login-start":
         return chanReply({ job: "job-1", url: "https://login.example/x", paste: "redirectUrl", auto: false });
       case "login-cancel":
@@ -508,7 +504,6 @@ describe("MCP：每台的小标与抽屉那一行", () => {
   beforeEach(() => {
     invokeMock.mockReset();
     mcpAnswers = {};
-    manualAnswers = {};
   });
   const both = cell("same", [place(user, "same")]);
   const mcpList = () => ({ machines, problems: [], rows: [row("skill", "demo", [here, here]), row("mcp", "tracker", [both, both])] });
@@ -555,7 +550,7 @@ describe("MCP：每台的小标与抽屉那一行", () => {
     expect(marks(t, "tracker").map(([m]) => m)).toEqual(["ext-dot-mark is-login", null]);
   });
 
-  it("★ 抽屉：需登录那一句 ＋［登录…］（那一格自己带的解法 `fix`，开登录抽屉、交它的 args；不另问 manual-list）；不复制 /mcp；连不上那一句 ＋ 原话 ＋［复制详情］", async () => {
+  it("★ 抽屉：需登录那一句 ＋［登录…］（那一格自己带的解法 `fix`，开登录抽屉、交它的 args）；不复制 /mcp；连不上那一句 ＋ 原话 ＋［复制详情］", async () => {
     answers();
     const args = fixArgs;
     const s = await page([mcpList()]);
@@ -569,7 +564,6 @@ describe("MCP：每台的小标与抽屉那一行", () => {
     expect(theirs.querySelector(".ext-mcp.is-login")).toBeNull();
     const go = [...mine.querySelectorAll<HTMLButtonElement>('[data-action="mcp-login"]')];
     expect(go.map((b) => b.textContent), "每个要登的号一颗").toEqual([copyText("newSession.account.login")]);
-    expect(ops().filter(([, op]) => op === "manual-list"), "不另问 manual-list").toEqual([]);
     invokeMock.mockClear();
     go[0].click();
     await settle();
