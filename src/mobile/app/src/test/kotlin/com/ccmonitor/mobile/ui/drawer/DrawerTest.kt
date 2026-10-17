@@ -3,10 +3,10 @@ package com.ccmonitor.mobile.ui.drawer
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.testing.KotlinSourceScanner
 import com.ccmonitor.mobile.ui.chat.CHAT_MENU_BANNED_WORDS
+import com.ccmonitor.mobile.ui.chats.ChatRow
 import com.ccmonitor.mobile.ui.nav.Screen
 import com.ccmonitor.mobile.ui.nav.drawerDestination
 import com.ccmonitor.mobile.ui.nav.freshLanding
-import com.ccmonitor.mobile.ui.chats.ChatRow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull

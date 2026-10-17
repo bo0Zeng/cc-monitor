@@ -14,20 +14,20 @@ import com.ccmonitor.mobile.ui.chat.ChatOpen
 import com.ccmonitor.mobile.ui.chat.ChatViewModel
 import com.ccmonitor.mobile.ui.chat.ConnectionHolder
 import com.ccmonitor.mobile.ui.chat.sessionOf
-import com.ccmonitor.mobile.ui.files.FilesViewModel
-import com.ccmonitor.mobile.ui.host.HostViewModel
-import com.ccmonitor.mobile.ui.identity.IdentityViewModel
 import com.ccmonitor.mobile.ui.chats.ChatsBoard
 import com.ccmonitor.mobile.ui.chats.HostName
 import com.ccmonitor.mobile.ui.chats.RecentChats
 import com.ccmonitor.mobile.ui.chats.hostChats
+import com.ccmonitor.mobile.ui.files.FilesViewModel
+import com.ccmonitor.mobile.ui.host.HostViewModel
+import com.ccmonitor.mobile.ui.identity.IdentityViewModel
 import com.ccmonitor.mobile.ui.session.SessionTabManager
 import com.ccmonitor.mobile.ui.session.SessionViewModel
 import com.ccmonitor.mobile.ui.session.keys.KeysEditorViewModel
+import kotlinx.coroutines.flow.map
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.viewmodel.dsl.viewModel
 import org.koin.dsl.module
-import kotlinx.coroutines.flow.map
 
 /** :app 的 Koin 模块（ViewModel + dev seeder）。 */
 val appModule =
