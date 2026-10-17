@@ -88,7 +88,7 @@ fn the_cut_line_says_the_rest_is_unknown() {
 fn the_download_cut_line_counts_what_is_left() {
     assert_eq!(
         cut_left_line(&plan(Verb::Download, 3), 1, 2),
-        "devbox 断开 · 下载 3 项 · 完成 1 · 中断 2"
+        "devbox 连接已断开 · 下载 3 项 · 完成 1 · 中断 2"
     );
 }
 

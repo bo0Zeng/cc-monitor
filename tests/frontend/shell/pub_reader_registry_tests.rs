@@ -56,6 +56,11 @@ const EXEMPT: &[(&str, &str, &str)] = &[
     ),
     (
         "src/common/batch-core/src/lib.rs",
+        "cut_left_line",
+        "手机下载一组断开那一行（逐项拉只在手机那一圈）：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/batch.rs`，不在扫描面里）与本 crate 的判据",
+    ),
+    (
+        "src/common/batch-core/src/lib.rs",
         "copy_plan",
         "手机「复制到…」那一组的入参（桌面经同一个 `copy_req` 算公共根）：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/batch.rs`，不在扫描面里）与本 crate 的判据",
     ),

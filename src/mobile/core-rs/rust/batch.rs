@@ -677,7 +677,7 @@ mod tests {
             "cut",
             serde_json::json!({"outcomes": [{"key": "0", "state": "done"}, {"key": "1", "state": "cancelled"}, {"key": "2", "state": "cancelled"}]}),
         );
-        assert_eq!(cut["line"], "devbox 断开 · 下载 3 项 · 完成 1 · 中断 2");
+        assert_eq!(cut["line"], "devbox 连接已断开 · 下载 3 项 · 完成 1 · 中断 2");
         assert_eq!(cut["resume"], true);
         let end = pull(
             "ended",

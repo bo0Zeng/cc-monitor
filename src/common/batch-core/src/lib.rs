@@ -475,7 +475,7 @@ pub fn cut_line(p: &Plan, t: &Tick) -> String {
     )
 }
 
-/// 下载那一圈（手机逐项拉）断开那一行：`devbox 断开 · 下载 5 项 · 完成 2 · 中断 3`（没下完的连回来整份重下）。
+/// 下载那一圈（手机逐项拉）断开那一行：`devbox 连接已断开 · 下载 5 项 · 完成 2 · 中断 3`（没下完的连回来整份重下）。
 pub fn cut_left_line(p: &Plan, ok: usize, left: usize) -> String {
     copy_text(
         "beFiles.batch.cut",

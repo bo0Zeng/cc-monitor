@@ -740,6 +740,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     undo_groups: NONE,
     undo_plan: NONE,
     cut_line: NONE,
+    cut_left_line: NONE,
     conflict_meta: NONE,
     said_of: NONE,
     common_dir_bytes: NONE,

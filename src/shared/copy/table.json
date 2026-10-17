@@ -10688,8 +10688,9 @@
     "beFiles.batch.cut": {
       "kind": "body",
       "role": "进度",
-      "zh": "{machine} 断开 · {action} {n} 项 · 完成 {ok} · 中断 {left}",
-      "args": ["machine", "action", "n", "ok", "left"]
+      "zh": "{machine} 连接已断开 · {action} {n} 项 · 完成 {ok} · 中断 {left}",
+      "args": ["machine", "action", "n", "ok", "left"],
+      "limited": ["连接"]
     },
     "beFiles.batch.verbDownload": {
       "kind": "body",
