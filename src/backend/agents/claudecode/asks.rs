@@ -185,6 +185,7 @@ pub(crate) fn merge(user: &Value, entry: &str) -> Option<Value> {
 
 pub(crate) const ASK_TOOL: &str = "AskUserQuestion";
 pub(crate) const PLAN_TOOL: &str = "ExitPlanMode";
+pub(crate) const INTERACTIVE_TOOLS: &[&str] = &[ASK_TOOL, PLAN_TOOL];
 
 /// hook 的 stdin ⇒ 通用待答请求。不是 `PermissionRequest` · 缺会话 id / 工具名 ⇒ `None`。
 pub(crate) fn read(v: &Value) -> Option<AskIn> {

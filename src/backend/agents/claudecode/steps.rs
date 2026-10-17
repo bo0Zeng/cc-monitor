@@ -6,6 +6,7 @@
 //! 解析时填进记录成品（`schema.rs`：assistant 的 `toolSteps` · user 的 `toolResults` · 报错的 `apiReason`），界面只排版。
 //! 读不出的格就缺，不猜。
 
+use super::asks::{ASK_TOOL, INTERACTIVE_TOOLS, PLAN_TOOL};
 use crate::agents::PlanTitleExt as _;
 use crate::agents::StepResultExt as _;
 use crate::agents::{
@@ -91,8 +92,8 @@ pub(crate) fn main_arg(name: &str) -> Option<(&'static str, bool)> {
         .find(|(t, _, _)| *t == name)
         .map(|&(_, k, path)| (k, path))
 }
-/// 认得、但没有主参数的工具（只写工具名）。
-const BARE_TOOLS: &[&str] = &["TodoWrite", "ExitPlanMode", "AskUserQuestion", "LS"];
+/// 认得、但没有主参数的工具（只写工具名；提问 / 计划查 [`INTERACTIVE_TOOLS`]）。
+const BARE_TOOLS: &[&str] = &["TodoWrite", "LS"];
 /// 说明那一格（Bash 的 `description`）。
 const NOTE_FIELD: &str = "description";
 /// 主参数至多留多少字（一行；协议上的定长，两个前端都不再截）。
@@ -135,18 +136,17 @@ fn named(name: &str, input: &Value) -> ToolStep {
         arg: None,
         path: false,
         note: None,
-        known: BARE_TOOLS.contains(&name),
+        known: BARE_TOOLS.contains(&name) || INTERACTIVE_TOOLS.contains(&name),
         text: None,
         ask: ask_of(name, input),
     }
 }
 
-/// 提问 / 计划那一格（[`ToolStep::ask`]）：`AskUserQuestion` 的 `questions[]`（`header` · `question` · `multiSelect` · `options[]{label, description}`）·
-/// `ExitPlanMode` 的 `plan`。形状不对（没有题 · 题没有选项表 · 选项没有名 · 计划是空的）⇒ `None`。
+/// 提问 / 计划那一格（[`ToolStep::ask`]）：题目结构或计划全文；形状不对 ⇒ `None`。
 pub(crate) fn ask_of(name: &str, input: &Value) -> Option<StepAsk> {
     let text = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
     match name {
-        "AskUserQuestion" => {
+        ASK_TOOL => {
             let qs = input
                 .get("questions")?
                 .as_array()
@@ -175,7 +175,7 @@ pub(crate) fn ask_of(name: &str, input: &Value) -> Option<StepAsk> {
                 .collect::<Option<Vec<_>>>()?;
             Some(StepAsk::Questions { questions })
         }
-        "ExitPlanMode" => text(input, "plan")
+        PLAN_TOOL => text(input, "plan")
             .filter(|p| !p.trim().is_empty())
             .map(|text| StepAsk::Plan {
                 text,
