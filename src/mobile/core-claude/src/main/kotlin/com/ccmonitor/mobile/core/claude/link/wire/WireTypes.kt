@@ -1618,6 +1618,7 @@ enum class LivePhaseWord {
     @Json(name = "awaiting")
     AWAITING,
 }
+
 /** 一台的状态成品（判定只住后端 `deploy::machine`，手机嵌的核心跑同一份）：手机只读问题行那一句 · 复制详情 · 修法。 */
 @WireOf("MachineState")
 @JsonClass(generateAdapter = true)

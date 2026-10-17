@@ -45,9 +45,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.BuildConfig
 import com.ccmonitor.mobile.core.claude.link.Deploying
-import com.ccmonitor.mobile.core.claude.link.Fix
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.TabKind
+import com.ccmonitor.mobile.core.claude.link.deployFix
+import com.ccmonitor.mobile.core.claude.link.wire.MachineFixButton
 import com.ccmonitor.mobile.core.claude.link.wire.PrefsState
 import com.ccmonitor.mobile.core.claude.link.wire.TabPref
 import com.ccmonitor.mobile.core.claude.link.wire.UsageTone
@@ -120,7 +121,7 @@ private fun MachineBody(
 private fun readable(
     link: LinkState,
     deploying: Deploying?,
-): Boolean = link !is LinkState.Down && (link as? LinkState.Up)?.fix == null && deploying !is Deploying.Step
+): Boolean = link !is LinkState.Down && link.deployFix() == null && deploying !is Deploying.Step
 
 @Composable
 private fun Body(
@@ -175,7 +176,7 @@ private fun AccountCard(
 ) {
     val tokens = LocalAppTokens.current
     val ui by board.state.collectAsState()
-    val fix = (link as? LinkState.Down)?.fix ?: (link as? LinkState.Up)?.fix
+    val fix = link.deployFix()
     val step = deploying as? Deploying.Step
     val offline = link is LinkState.Down && fix == null
     val shape = RoundedCornerShape(tokens.radius.m)
@@ -215,7 +216,7 @@ private fun AccountCard(
                     Text(step.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                     CircularProgressIndicator(Modifier.size(SPIN.dp), strokeWidth = 2.dp)
                 }
-            fix != null -> NeedsFix(here, fix, (link as? LinkState.Down)?.said?.text, deploying)
+            fix != null -> NeedsFix(here, fix, (link as? LinkState.Down)?.said?.text ?: (link as? LinkState.Up)?.notice?.text, deploying)
             offline ->
                 CardLine(copyText("newSession.machine.offline", "machine" to here.machine), MaterialTheme.colorScheme.onSurfaceVariant) {
                     SecondaryButton(onClick = onReconnect) { Text(copyText("newSession.machine.reconnect")) }
@@ -228,13 +229,13 @@ private fun AccountCard(
 @Composable
 private fun NeedsFix(
     here: Here,
-    fix: Fix,
-    /** 断着时核心说的那一句（没装 ⇒ 那台没有 cc-monitor 那一句）。 */
+    fix: MachineFixButton,
+    /** 那台的状态成品写好的那一句（没装 ⇒ 那台没有 cc-monitor · 要更新 ⇒ 那台旧了）。 */
     down: String?,
     deploying: Deploying?,
 ) {
     val deploy = rememberDeployPress(here.hostId)
-    val said = if (fix == Fix.UPDATE) copyText("machineState.problem.needsUpdate", "machine" to here.machine) else down.orEmpty()
+    val said = down.orEmpty()
     CardLine(said, LocalAppTokens.current.warn) {
         Button(onClick = deploy.press, modifier = Modifier.testTag(SettingsTags.DEPLOY)) { Text(deployLabel(fix)) }
     }
