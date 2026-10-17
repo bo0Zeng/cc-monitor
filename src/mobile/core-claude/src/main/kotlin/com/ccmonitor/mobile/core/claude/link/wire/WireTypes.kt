@@ -1039,6 +1039,9 @@ enum class RotFrom {
 
     @Json(name = "default")
     DEFAULT,
+
+    @Json(name = "same")
+    SAME,
 }
 
 @WireOf("RotChoice")

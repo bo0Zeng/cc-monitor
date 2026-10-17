@@ -14,18 +14,19 @@ import { getCurrentMachine, subscribeMachine } from "../machine-context";
 
 /** 设置窗目的地带来的「看哪份 · 开哪个号」：栏还没读（或读的不是那台）⇒ 留着，下一次挂上时用。 */
 let pending: { strategy: string; account: string | null } | null = null;
-let current: RotationSection | null = null;
 
 /** 目的地的锚点是轮换那一格（[`parseRotAnchor`]）⇒ 交给「轮换」栏，回 `true`。 */
 export function focusRotation(anchor: string | undefined): boolean {
   const f = parseRotAnchor(anchor);
   if (!f) return false;
   pending = f;
-  current?.takePending();
+  RotationSection.live?.takePending();
   return true;
 }
 
 export class RotationSection {
+  /** 设置窗里那一栏（一扇设置窗一份）。 */
+  static live: RotationSection | null = null;
   readonly element: HTMLElement;
   private mount: RotMount | null = null;
   private origin: Origin = LOCAL_ORIGIN;
@@ -35,7 +36,7 @@ export class RotationSection {
   constructor() {
     this.element = document.createElement("div");
     this.element.dataset.rotSection = "true";
-    current = this;
+    RotationSection.live = this;
     subscribeMachine((origin) => {
       if (!this.loaded || origin === this.origin) return;
       this.origin = origin;
