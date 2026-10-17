@@ -64,7 +64,7 @@ pub struct Viewer {
 
 /// 能开查看页的那一行：后端给了查看那道门（解得开的图）· 名字是合法 UTF-8。
 pub fn viewable(r: &Listed) -> bool {
-    !r.opens_as_dir() && !r.lossy_name && view_gate(r).is_some()
+    r.pick().viewable()
 }
 
 /// 那一行的查看那道门（后端判的；不是解得开的图 ⇒ `None`）。

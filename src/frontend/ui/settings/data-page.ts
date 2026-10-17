@@ -19,7 +19,6 @@ import { copyText } from "../copy-table";
 import { writeClipboard } from "../clipboard";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { hostKey, readRemoteConfig } from "../remote-config";
-import { noteMachineTmux } from "../resume-defaults";
 import { markChore, mergeChores, readDataReport, recallDataReport, type Chore, type ChoreCounts, type ChoreState, type DataReport } from "./data-reads";
 import { ownBlock, remoteOpen } from "./own-block";
 import { localOpenButtons } from "./data-section";
@@ -202,7 +201,6 @@ export class DataPage {
         if (gen !== this.generation) return;
         this.readings.set(m.origin, r);
         this.noteRecognized(m.origin, r);
-        if (r.ok && r.report.tmux !== null) noteMachineTmux(m.origin, r.report.tmux);
       }),
     );
     if (gen !== this.generation) return;

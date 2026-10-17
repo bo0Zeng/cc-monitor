@@ -251,18 +251,7 @@ pub static REOPEN_LABEL: std::sync::LazyLock<String> =
 /// 这一行**为什么**改不了（`None` = 改得了）：目录 · 名字寻址不到 · 后端那道编辑门不许（那一句是后端写好的）。
 /// 回那句话而不是 `bool`：灰着的按钮与「这个功能坏了」在屏幕上同形。
 pub fn why_not_editable(l: &super::source::Listed) -> Option<String> {
-    if l.is_dir {
-        return Some(copy_text("rsFilewinEditor.notEditable.dir", &[]));
-    }
-    // 名字不是合法 UTF-8、又没带原始字节 ⇒ 寻址不到真字节。
-    if l.lossy_name && l.raw_name.is_none() {
-        return Some(copy_text("rsFilewinEditor.notEditable.badName", &[]));
-    }
-    match l.gates.as_ref().map(|g| &g.edit) {
-        None => Some(copy_text("rsFilewinSource.gates.unlisted", &[])),
-        Some(w::Gate::No(said)) => Some(said.clone()),
-        Some(w::Gate::Cap(_)) => None,
-    }
+    pick_core::why_not_editable(&l.pick())
 }
 
 /// [`why_not_editable`] 的 `is_none()`。

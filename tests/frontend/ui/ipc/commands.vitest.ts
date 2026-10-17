@@ -55,14 +55,6 @@ vi.mock("../../../../src/frontend/ui/keybindings/registry", () => ({
   dispatcher: { pushOverlay: vi.fn(), popOverlay: vi.fn() },
 }));
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
-vi.mock("../../../../src/frontend/ui/remote-launch-run", () => ({
-  runRemoteResume: vi.fn().mockResolvedValue(undefined),
-  runNewSessionRemote: vi.fn().mockResolvedValue(undefined),
-  // ── 下面三条只为 `../tabs` 的导入面（`D5 阻-2` 那一组）——本文件不驱动远端那半。
-  runRemoteResumeTmux: vi.fn().mockResolvedValue(undefined),
-  runRemoteResumeIntoExistingTmux: vi.fn().mockResolvedValue(true),
-  runRemoteAttach: vi.fn().mockResolvedValue(undefined),
-}));
 
 // ── `K-H2b` `D5 阻-2`：文件末尾再加一组行为判据，驱动**真的 `TabManager`**。
 //    `tabs.ts` 的模块图很重（stream / cards / 渲染族），这几条 mock 是**为了让它能在
@@ -121,7 +113,7 @@ import { HistoryView } from "../../../../src/frontend/ui/views/history";
 import { TabManager } from "../../../../src/frontend/ui/tabs";
 import type { TabSessionActions } from "../../../../src/frontend/ui/tab-session-actions";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
-import { historyCalls, launchRenderShim, localLaunchCalls, withAccountReads, withHistoryReads } from "../../../test-support/chan-fake";
+import { chanArgsJson, historyCalls, isChanCall, launchRenderShim, withAccountReads, withHistoryReads } from "../../../test-support/chan-fake";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { nonEmpty } from "../../../test-support/non-empty.ts";
 
@@ -340,136 +332,11 @@ describe("C04a 命令名钉死", () => {
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
-// `K-H2b` `D1 阻-1`：**本机起会话的每一条主路都要把账号说出来**
+// 本机恢复的主路把「要哪个号」「放在哪」都交给本机后端（行为，驱动真的 `HistoryView` / `TabManager`）
 // ═════════════════════════════════════════════════════════════════════════════
 //
-// ★★ 它治的是什么（`D1` 现打，PM 复核属实）：
-// `tabs.ts` 那处 `invoke("resume_history_session", …)` 与 `views/history.ts` 那两处
-// **一个账号都没传**，而 `history.rs` 自己的注释就写着「`fork-flow.ts` 是全仓唯一
-// 给 `resume_history_session` 传 `configDir` 的」。⇒ 主路上账号恒缺席，后果两条：
-// ① 起会话落到 shell rc 里那个默认号上（静默串号）；
-// ② 中转那一格**永远拼不出路由键** —— 一件叫「接上注入点」的东西，主路没接。
-//
-// ⚠ 本条钉的是**人群**，不是「有没有一处传了」：多一条新主路而忘了传账号，当场红。
-//
-// 🔴🔴 **`D4 阻-2` 的订正：本组量的是「那几行字在不在」，不是「那件事发生没发生」。**
-// `D4` 两刀实测（读数逐字在本文件末那一组的头注里）：把值换成 `undefined`、把写入口的
-// 函数体掏空而**调用文本一字不动** —— 本组**两刀都照绿**（`1502 passed`）。
-// ⇒ **本组的射程只到「人群 + 那一行字还在」**，行为那一半由本文件**末尾那一组**买
-// （`K-H2b D4 阻-2：主路的账号与 pin 是**行为**判据`）。两组合起来才是那条性质，
-// **单独任何一组都不够** —— 别再拿本组的绿当「账号真的传到了后端」。
-//
-// ⚠ 它住**本文件**而不是 `accounts.vitest.ts`：那边加一个目录遍历会撞
-// `scanning-guard-registry` 的递减棘轮（「测试里做目录遍历的文件只许变少」，
-// 实测 11 > 上限 10）。本文件本来就在遍历，人群不多一个。
-describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
-  /** 生产段里起本机会话的那几处调用（剥注释、跳过测试文件与包装层）。 */
-  function localLaunchCallSites(): Array<{ file: string; text: string; kind: string }> {
-    const out: Array<{ file: string; text: string; kind: string }> = [];
-    for (const f of walk(resolve(REPO_ROOT, "src"), ".ts")) {
-      if (f.includes(".test.") || f.includes(".vitest.")) continue;
-      if (f.endsWith("/ipc/commands.ts")) continue; // 包装层是签名，不是调用点
-      const raw = readFileSync(f, "utf8");
-      // 剥注释是把注释逐字换成空格、不并字 ⇒ 原文里没有成词的 `launchLocal`，剥完也匹配不上下面以 `\blaunchLocal\s*\(` 起头的正则
-      // （块注释以 `/` 收尾、行注释以换行收尾 ⇒ 剥前剥后词边界不变）⇒ 不剥不扫，人群不变。
-      if (!/\blaunchLocal\b/.test(raw)) continue;
-      // ⚠ **先剥注释**：散文里逐字写着 `invoke("resume_history_session", …)` 这种句子
-      //    （`launch-requests.ts` 的头注、`accounts.ts` 的说明各一处），
-      //    不剥会被数成调用点 —— 实测扫出 6 处而真实是 4。
-      const code = stripComments(raw, "ts");
-      for (const m of code.matchAll(
-        // ⚠ 窗口 1200 字符是**量出来的**：`fork-flow.ts` 那处调用里夹着一整段注释，
-        //    400 的窗口够不到它的收尾 `})`，实测只扫到 3 处（应为 4）—— 那是**假绿**方向。
-        // 两条 Tauri 命令退役：起本机会话 = 以 `new` / `resume` 动作调 `launch-render.ts::launchLocal(请求, 终端目录)`
-        //   （计划与渲染问本机后端 `launch-local`）⇒ 调用点换成它；收尾是「请求体 `}` ＋ 第二个实参 ＋ `)`」。
-        //   终端目录之后还可以有别的实参（本机 resume 那一处还交「开窗之前问一句」）。
-        /\blaunchLocal\s*\(\s*\{\s*action:\s*\{\s*kind:\s*"(resume|new)"[\s\S]{0,1200}?\}\s*,\s*[\w.]+(?:\s*,\s*[\w.]+)*\s*,?\s*\)/g,
-      )) {
-        out.push({ file: f.slice(REPO_ROOT.length + 1), text: m[0], kind: m[1] });
-      }
-    }
-    return out;
-  }
-  // 全 `src` 扫一趟，下面两条共用（原先各扫一遍、都挂在 5 s 默认期限上：负载 60 以上带覆盖率撞过）。
-  let SITES: Array<{ file: string; text: string; kind: string }> = [];
-  beforeAll(() => {
-    SITES = localLaunchCallSites();
-  });
-
-  it("★ 每一处起本机会话的调用都带 `account`（人群 = 现打出来的那几处）", () => {
-    const sites = SITES;
-    // 抽取器自检：一处都没扫到 = 正则坏了，下面整条在空转。
-    nonEmpty(sites);
-    // 只许一处：多一条新主路 ⇒ 红一次，逼人回来看要不要传账号。
-    expect(
-      sites.length,
-      `起本机会话的调用点从 1 变成了 ${sites.length}：\n${sites.map((s) => s.file).join("\n")}`,
-    ).toBe(1); // 起本机会话只许一处（起新会话那一个请求）
-    const missing = sites.filter((s) => !/\baccount\s*:/.test(s.text)).map((s) => s.file);
-    expect(
-      missing,
-      "这些主路没把账号说出来 ⇒ ① 起会话落到 shell rc 那个默认号上（静默串号）；\n" +
-        "② 中转那一格拼不出路由键（没有账号 id ⇒ 不注入）。\n" +
-        "要哪个号由 `launch-account.ts` 那几样说出（跟随 / 账号 0 / 点名），判号在本机后端。",
-    ).toEqual([]);
-  });
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // `K-R46`：**每一条 `resume_history_session` 都要把 tmux 名说出来**
-  //
-  // 病（09-10 现打，分母在下面）：后端**故意**拒绝自己铸名
-  // （`history.rs` 的 `NO_TMUX_NAME`）⇒ 前端不传 = 会话不进具名容器。
-  // 三个 `resume_history_session` 调用点里**只有 `tabs.ts` 那一处传了**，
-  // `views/history.ts`（历史页 + 搜索卡片）与 `fork-flow.ts`（分叉本机起）都没传。
-  //
-  // ⚠ **`new_local_session` 不在这个分母里，而那不是漏掉**：Rust 侧
-  //   `history.rs::new_local_session` 的签名里**根本没有 `tmux_name` 这一格**
-  //   （函数体给 `launch_local` 的第五个实参硬写 `None`）⇒ 前端传了也没人收。
-  //   补它要同一拍改 `src/frontend/shell/`，**`K-R46` 没改**，已上报。
-  //   ⇒ 本条的分母是**带得了这个参数的那几处**，不是「全部起会话的路」。
-  //
-  // 🔴 **本条只买「那一行字在不在 + 人群」**（与上一条同病，`D4` 两刀证过）：
-  //   把值换成恒 `null`、或把铸名口掏空，本条**照绿**。
-  //   值真的被铸出来、且真的避让了，由 `views/history-actions.vitest.ts` 与
-  //   `fork-flow.vitest.ts` 那两组**行为**判据买。两段合起来才是那条性质。
-  it("★ 每一处 `resume_history_session` 都带 `tmuxName`（分母 = 带得了这个参数的那几处）", () => {
-    const sites = SITES;
-    const resumeSites = sites.filter((s) => s.kind === "resume");
-    // 抽取器自检：分成两族之后任一族空掉 = 上面那个正则坏了，下面在空转。
-    expect(
-      resumeSites.length,
-      `\`resume_history_session\` 的调用点从 1 变成了 ${resumeSites.length}：\n` +
-        resumeSites.map((s) => s.file).join("\n"),
-    ).toBe(1); // 本机 resume 的编排只许 `local-resume.ts` 一份
-    expect(
-      sites.length - resumeSites.length,
-      "`new_local_session` 的调用点数变了 —— 它今天没有 `tmux_name` 参数位（Rust 侧签名里就没有），" +
-        "变了要回来看是不是后端也开了那一格",
-    ).toBe(0); // 本机新起都走 `session-new`
-    const missing = resumeSites.filter((s) => !/\btmuxName\b/.test(s.text)).map((s) => s.file);
-    expect(
-      missing,
-      "这些路没把 tmux 会话名传下去 ⇒ 后端 `render_local_ccm` 早退（`NO_TMUX_NAME`）⇒\n" +
-        "如实降级回旧路 ⇒ 起出来的会话**不在具名 tmux 容器里**，于是 `list_local_tmux`\n" +
-        "那一族（右键「杀死会话（kill tmux …）」/「就地 resume（复用空 tmux …）」）对它\n" +
-        "一条都给不出来。名字只许问后端铸（`terminal-name-mint`，派生 ＋ 避让只在后端），\n" +
-        "问的那一口住 `terminal-name-mint.ts`（原 `ipc/local-tmux-name.ts` 并进去了）。",
-    ).toEqual([]);
-  });
-
-  // 这里原来一条「铸名只有一个算法口」（调 `mintSessionTmuxName(` 的生产文件 == {terminal-name-mint.ts}）。
-  //   TS 那份算法删了（派生 ＋ 避让只在后端）⇒ 它要守的「只有一个家」换成「问后端铸名只有一个口」，
-  //   住 `tests/frontend/ui/launch-orchestration-single-home.vitest.ts` K1（发 `terminal-name-mint` 的文件 == {terminal-name-mint.ts}，两向）——
-  //   这里不再留第二把同义的尺子。
-});
-
-// ═════════════════════════════════════════════════════════════════════════════
-// 本机起会话的主路把「要哪个号」交给本机后端（行为，驱动真的 `HistoryView` / `TabManager`）
-// ═════════════════════════════════════════════════════════════════════════════
-//
-// 判号住本机后端（跟随 ＝ 这条会话上次的号 → 这台的默认号）；界面交的就是「跟随」，不自己算、不记 pin。
-// ⚠ 取出那次调用的第 2 个实参直接读 `.account`（`toEqual` 下 `account: undefined` 与「没有这个键」相等）。
-describe("本机起会话的主路：交「跟随」给本机后端、界面一条 pin 都不写（驱动真的 HistoryView / TabManager）", () => {
+// 判号 · 放在哪住本机后端（跟随 ＝ 这条会话上次的号 → 这台的默认号；放在哪照这台的设置）；人没动过菜单 ⇒ 请求里不带那两格，界面不记 pin。
+describe("本机恢复的主路：人没动过 ⇒ 不带号 · 不带放在哪，界面一条 pin 都不写（驱动真的 HistoryView / TabManager）", () => {
   const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
   /** 历史页的一行（`history-list` 成品那一形，本机、已结束、能恢复）。 */
@@ -504,14 +371,13 @@ describe("本机起会话的主路：交「跟随」给本机后端、界面一�
     const t = tm.ensureTab(sid, "/home/u/p", `/p/${sid}.jsonl`, LOCAL_ORIGIN);
     t.agent = "claude"; // 会话事实到了（是哪一家由后端说）
     tm.archiveTab(sid);
-    await (tm as unknown as { actions: TabSessionActions }).actions.resumeTab(sid);
+    await (tm as unknown as { actions: TabSessionActions }).actions.resume(sid);
     await new Promise((r) => setTimeout(r, 0));
   }
 
-  function payloadOf(cmd: string): Record<string, unknown> {
-    const call = localLaunchCalls(invokeMock.mock.calls, cmd)[0];
-    expect(call, `一次 \`${cmd}\` 都没发出去 —— 主路根本没走到，下面的断言在空转`).toBeTruthy();
-    return call!;
+  /** 发出去的每一问 `session-open`（请求体）。 */
+  function opens(): Array<Record<string, unknown>> {
+    return invokeMock.mock.calls.filter(([cmd, args]) => isChanCall(cmd, args, "session-open")).map(([, args]) => chanArgsJson(args) as Record<string, unknown>);
   }
 
   /** 往历史注解里写「上次用的号」的那一发（今天一发都不该有）。 */
@@ -529,13 +395,12 @@ describe("本机起会话的主路：交「跟随」给本机后端、界面一�
   });
 
   // 起新会话不在这里：它走 `session-new` 那一个请求（框里的号是点名的那一个，见 `new-session.vitest.ts`）。
-  it("★ 历史页 resume · tab 栏 resume：交的都是「跟随」，界面一条 pin 都不写", async () => {
+  it("★ 历史页恢复 · tab 栏恢复：各恰好一问 `session-open`，不带号、不带放在哪，界面一条 pin 都不写", async () => {
     await clickRowAction(copyText("history.row.resume"));
-    expect(payloadOf("resume_history_session").account).toEqual({ kind: "follow" });
     await resumeLocalTab("t1");
-    expect(localLaunchCalls(invokeMock.mock.calls, "resume_history_session").map((c) => c.account)).toEqual([
-      { kind: "follow" },
-      { kind: "follow" },
+    expect(opens()).toEqual([
+      { what: { kind: "resume", sid: "s1" }, local: true },
+      { what: { kind: "resume", sid: "t1" }, local: true },
     ]);
     expect(pinWrites(), "界面又在替那台记「上次用的号」—— 那台看见会话起来时自己记").toEqual([]);
   });

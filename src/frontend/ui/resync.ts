@@ -90,7 +90,7 @@ export function resyncMachinesSaid(rs: readonly MachineResynced[]): string {
  * `said` 是调用方已经说好的那句失败。
  */
 export function offerResyncRetry(origin: Origin, sid: string | undefined, headline: string, said: string, again: () => Promise<void>): void {
-  toast(headline, `${said}\n${copyText("resync.retry.hint")}`, {
+  toast(headline, [said, copyText("resync.retry.hint")].filter((l) => l !== "").join("\n"), {
     onClick: () =>
       void (async () => {
         try {

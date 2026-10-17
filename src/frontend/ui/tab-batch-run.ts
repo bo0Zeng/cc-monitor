@@ -1,10 +1,9 @@
 /**
- * **tab 栏停 / 起：交给那几台后端**（`sessions-stop` / `sessions-start`）—— 批量菜单与单个菜单同一条路，单个就是一个 sid 的一批。
+ * **tab 栏停 / 起：交给那几台后端** —— 不同机器并发各发各的，一台失败不挡别台（那一台的几个记成失败、说清为什么）。
  *
- * 一批里同一台机器的那几个**一次**调用发过去，那台逐个答（能不能做、怎么做都是那台判 —— 每一个同单个菜单那一项）；
- * 不同机器并发各发各的，一台失败不挡别台（那一台的几个记成失败、说清为什么）。
- * 本文件只做调用方那一侧：按台分组 · 组请求（每项只交 sid 与目录，用哪个号那台自己判；整批带用户设置的 resume 命令与模型偏好表原值）·
- * 按形状收 · 把每一个的结局说成一句人话 · 开终端那一形逐个开窗。
+ * - 停（`sessions-stop`）：同一台的那几个一次调用，那台逐个答；单个菜单就是一个 sid 的一批。
+ * - 起（`session-open`，与单个恢复同一问）：同一台逐项挨个问，每项只交 sid 与放在哪（号 · 目录 · 哪一家那台从记录里读）；
+ *   每项的结局取那台那一句；落在窗口里的那几项逐个开窗（[`ON_LANDED`] 后台那一列）。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { machineName, saidOfControl, settleTyped, unavailableSaid, type Refusals } from "./control-said";
@@ -12,7 +11,8 @@ import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { killRefusals } from "./tmux-control";
 import type { Tab } from "./tab-model";
-import type { AccountAsk } from "./launch-account";
+import type { Run } from "./generated/Run";
+import { askOpen, ON_LANDED } from "./session-open";
 import type { Outcome } from "./generated/Outcome";
 import { openLocalTerminal, openTerminal } from "./terminal-open";
 import { failSaid } from "./kit/detail";
@@ -43,8 +43,8 @@ function batchRefusals(origin: Origin): Refusals {
   };
 }
 
-/** 后端答的跳过 / 失败原因 ⇒ 人话。停的失败照单个那条的说法（`tmux-control.ts::killRefusals`）。 */
-export function sayReply(origin: Origin, op: "stop" | "start", r: Reply): string {
+/** 停：后端答的跳过 / 失败原因 ⇒ 人话（失败的照单个那条的说法，`tmux-control.ts::killRefusals`）。 */
+export function sayReply(origin: Origin, r: Reply): string {
   const machine = machineName(origin);
   const target = r.session ?? "";
   switch (r.why) {
@@ -56,20 +56,8 @@ export function sayReply(origin: Origin, op: "stop" | "start", r: Reply): string
       return copyText("tabBatch.why.notInTmux", { machine });
     case "ambiguous":
       return copyText("tabBatch.why.ambiguous", { machine, names: r.detail });
-    case "running":
-      return copyText("tabBatch.why.running", { name: target });
-    case "session_already_live":
-      return copyText("tabBatch.why.alreadyLive", { machine, pids: r.detail });
-    case "record_gone":
-      return copyText("tabBatch.why.recordGone", { machine, root: r.detail });
-    case "account_unavailable":
-      return copyText("tabBatch.why.accountGone", { name: r.detail });
-    case "name_taken":
-      return copyText("tabBatch.why.nameTaken", { machine, name: target });
-    case "child_timed_out":
-      return op === "stop" ? (r.said ?? killRefusals(target).noReason()) : copyText("tabBatch.why.childTimedOut", { machine });
     default:
-      return op === "stop" ? (r.said ?? killRefusals(target).noReason()) : copyText("tabBatch.why.startFailed", { machine });
+      return r.said ?? killRefusals(target).noReason();
   }
 }
 
@@ -89,7 +77,7 @@ function offered(origin: Origin, op: string, sids: readonly string[]): BatchOutc
   return why === null ? null : sids.map((sid) => ({ sid, outcome: "skipped", why }));
 }
 
-/** 期限：单个那条 10 秒；一批按个数放宽（那台逐个做），每个多给 3 秒。 */
+/** 停的期限：单个那条 10 秒；一批按个数放宽（那台逐个做），每个多给 6 秒。 */
 const BATCH_BASE_MS = 10_000;
 const BATCH_EACH_MS = 6_000;
 
@@ -97,19 +85,6 @@ const BATCH_EACH_MS = 6_000;
 export async function callStop(origin: Origin, sids: readonly string[]): Promise<Reply[]> {
   const budget = budgetWithin(BATCH_BASE_MS + BATCH_EACH_MS * sids.length);
   const v = await settleTyped(origin, "sessions-stop", callTyped(origin, "sessions-stop", { sids: [...sids] }, budget), batchRefusals(origin));
-  return v.results;
-}
-
-/**
- * 起：问那台一次（`items` 那几个），逐个答。问不到 / 形状不对 ⇒ 抛 `ControlError`。
- * `agent` 缺 ＝ 流跟的那一家（标签页里的会话）；历史页里的会话按那一行自己的一家起。
- */
-export async function callStart(origin: Origin, mode: "tmux" | "window", items: readonly StartItem[], agent: string): Promise<Reply[]> {
-  const sids = items.map((i) => i.sid);
-  const budget = budgetWithin(BATCH_BASE_MS + BATCH_EACH_MS * sids.length);
-  // 启动命令 · 模型偏好表那台自己读（`prefs.json`），整批只交哪一家。
-  const req = { mode, local: isLocalOrigin(origin), agent, items: [...items] };
-  const v = await settleTyped(origin, "sessions-start", callTyped(origin, "sessions-start", req, budget), batchRefusals(origin));
   return v.results;
 }
 
@@ -121,7 +96,7 @@ export async function stopMany(tabs: readonly Tab[]): Promise<BatchOutcome[]> {
       const no = offered(origin, "sessions-stop", sids);
       if (no) return no;
       try {
-        return (await callStop(origin, sids)).map((r) => ({ sid: r.sid, outcome: r.outcome, why: sayReply(origin, "stop", r), ...(r.copyDetail !== "" ? { detail: r.copyDetail } : {}) }));
+        return (await callStop(origin, sids)).map((r) => ({ sid: r.sid, outcome: r.outcome, why: sayReply(origin, r), ...(r.copyDetail !== "" ? { detail: r.copyDetail } : {}) }));
       } catch (e) {
         return machineFailed(sids, e);
       }
@@ -130,18 +105,8 @@ export async function stopMany(tabs: readonly Tab[]): Promise<BatchOutcome[]> {
   return parts.flat();
 }
 
-/**
- * 起会话要交给那台的一个（`sessions-start` 的 `items[i]`）：`account` 缺 ＝ 跟随（那台判）；
- * `fresh_terminal` ＝ 那台必铸新终端名、`fork_of` ＝ 源会话 sid（分叉出来的那一条：新名从源会话此刻的终端名铸）。
- */
-export interface StartItem {
-  sid: string;
-  cwd: string;
-  account?: AccountAsk;
-}
-
-/** 开终端那一形：后端渲好的那一行，monitor 开窗（本机同 `launch-local` 那条的开法，远端同 `openTerminal`）。开不了 ⇒ 那一句。 */
-export async function openWindow(origin: Origin, cmd: string, cwd: string): Promise<string | null> {
+/** 开终端那一形：后端渲好的那一行，monitor 开窗（本机带起始目录，远端经 `openTerminal`）。开不了 ⇒ 那一句。 */
+async function openWindow(origin: Origin, cmd: string, cwd: string | null): Promise<string | null> {
   try {
     if (isLocalOrigin(origin)) await openLocalTerminal(cmd, cwd);
     else await openTerminal(origin, cmd);
@@ -151,38 +116,30 @@ export async function openWindow(origin: Origin, cmd: string, cwd: string): Prom
   }
 }
 
-/** 起：`mode` = `tmux`（在那台 tmux 里后台起，不开窗）· `window`（各开一个终端）。每台一次 `sessions-start`，各台并发。 */
-export async function startMany(tabs: readonly Tab[], mode: "tmux" | "window"): Promise<BatchOutcome[]> {
+/** 起这一项：问那台；落在窗口里的开那一行（批量只开这一种）；本来就在跑的记跳过。 */
+async function startOne(origin: Origin, sid: string, run: Run): Promise<BatchOutcome> {
+  const end = await askOpen(origin, { what: { kind: "resume", sid }, run, local: isLocalOrigin(origin) });
+  if (end.kind !== "opened") {
+    return { sid, outcome: "failed", why: end.said, ...(end.detail !== "" ? { detail: end.detail } : {}) };
+  }
+  const o = end.opened;
+  if (o.landed === "running") return { sid, outcome: "skipped", why: copyText("tabBatch.why.running", { name: o.session ?? "" }) };
+  if (ON_LANDED[o.landed].background && o.line !== null) {
+    const failed = await openWindow(origin, o.line, o.cwd);
+    if (failed !== null) return { sid, outcome: "failed", why: failed };
+  }
+  return { sid, outcome: "done", why: "" };
+}
+
+/** 起：`run` = `tmux`（在那台 tmux 里后台起，不开窗）· `direct`（各开一个终端）。同一台逐项挨个，各台并发。 */
+export async function startMany(tabs: readonly Tab[], run: Run): Promise<BatchOutcome[]> {
   const parts = await Promise.all(
     Array.from(groupByOrigin(tabs), async ([origin, list]): Promise<BatchOutcome[]> => {
-      const all = list.map((t) => t.sessionId);
-      const no = offered(origin, "sessions-start", all);
+      const no = offered(origin, "session-open", list.map((t) => t.sessionId));
       if (no) return no;
-      // 一次 `sessions-start` 起一家：同一台上按会话的那一家分开交；还不知道是哪一家的那几个跳过（不落哪一家）。
-      const out: BatchOutcome[] = list
-        .filter((t) => t.agent === null)
-        .map((t) => ({ sid: t.sessionId, outcome: "skipped" as const, why: copyText("tabBatch.why.agentUnknown") }));
-      const byAgent = new Map<string, Tab[]>();
-      for (const t of list) if (t.agent !== null) byAgent.set(t.agent, [...(byAgent.get(t.agent) ?? []), t]);
-      for (const [agent, same] of byAgent) {
-        const items: StartItem[] = same.map((t) => ({ sid: t.sessionId, cwd: t.projectDir ?? "" }));
-        let replies: Reply[];
-        try {
-          replies = await callStart(origin, mode, items, agent);
-        } catch (e) {
-          out.push(...machineFailed(same.map((t) => t.sessionId), e));
-          continue;
-        }
-        for (const [i, r] of replies.entries()) {
-          let o: BatchOutcome = { sid: r.sid, outcome: r.outcome, why: sayReply(origin, "start", r), ...(r.copyDetail !== "" ? { detail: r.copyDetail } : {}) };
-          if (r.outcome === "done" && mode === "window" && r.cmd !== null) {
-            const failed = await openWindow(origin, r.cmd, items[i].cwd);
-            if (failed !== null) o = { sid: r.sid, outcome: "failed", why: failed };
-          }
-          out.push(o);
-        }
-      }
-      return all.map((sid) => out.find((o) => o.sid === sid)!).filter(Boolean);
+      const out: BatchOutcome[] = [];
+      for (const t of list) out.push(await startOne(origin, t.sessionId, run));
+      return out;
     }),
   );
   return parts.flat();

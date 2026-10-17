@@ -639,13 +639,9 @@ fn every_box_says_what_it_is_asking() {
 // 哪几行能写
 // ════════════════════════════════════════════════════════════════════════
 
-/// 🔴 **目录能写、不能复制** —— 两个判准刻意不是同一个函数。
-///
-/// 合成一个的后果是具体的：要么目录上长出一颗点了必失败的「复制」
-/// （`copy-data` 吃文件句柄），要么目录上少了「删除」和「改名」——
-/// 而那正是这一刀要补的东西。
+/// 🔴 目录能写；有损名只有带着原始字节才能写（复制 · 下载两道门在 `pick-core`）。
 #[test]
-fn a_directory_can_be_written_and_copied_but_a_lossy_name_with_bytes_only_written() {
+fn a_directory_can_be_written_and_a_lossy_name_only_with_its_bytes() {
     let dir = row("adir", true, false);
     let file = row("a.bin", false, false);
     let lossy = row("\u{FFFD}odd", false, true);
@@ -659,18 +655,6 @@ fn a_directory_can_be_written_and_copied_but_a_lossy_name_with_bytes_only_writte
     assert!(
         !is_writable(&lossy),
         "有损名能写 —— 那个名字寻址不到真字节，删中的是另一个文件"
-    );
-
-    // 目录能复制了（后端 `recursive: true`）。
-    assert!(crate::copy::is_copyable(&dir), "目录复制不了？");
-    assert!(crate::copy::is_copyable(&file));
-    // 两个判准**真的不等价**（否则上面那几条在一个函数上也全绿）：带字节的有损名能写（写面收 b16），复制照旧不收。
-    assert!(is_writable(&lossy_raw));
-    assert_ne!(
-        is_writable(&lossy_raw),
-        crate::copy::is_copyable(&lossy_raw),
-        "两个判准在带字节的有损名这一档上给了同一个答案 —— 那它们就该合成一个，\
-         或者其中一个错了"
     );
 }
 

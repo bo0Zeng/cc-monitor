@@ -1,15 +1,11 @@
 /**
- * 帧命令 `launch-render-cli` 的上线形状（TS 侧）：那台机器要跑的那一行 `ccm …`（经 `launch-render.ts` 问那台后端）。
- *
- * 入参 · 回包的类型都从 Rust 生成（`src/backend/control/launch_render/wire.rs` 的 `CliRenderRequest`，带 `deny_unknown_fields`；
- * 回包 `Rendered`），两端形状由握手指纹核过。本文件只留「把意图摊成那一份入参」。
+ * 帧命令 `launch-render-cli` 的入参（界面已不发这一问，起会话一律 `session-open`）：只给 `cli-golden.json` 的期望表与 e2e 驱动现产入参，
+ * 随那条命令一起删。入参类型从 Rust 生成（`src/backend/control/launch_render/wire.rs` 的 `CliRenderRequest`，带 `deny_unknown_fields`）。
  */
-import type { CliRenderRequest } from "./generated/CliRenderRequest";
+import type { CliRenderRequest } from "../../src/frontend/ui/generated/CliRenderRequest";
 import type { LaunchContext } from "./launch-types.ts";
 
 export type { CliRenderRequest };
-/** `launch-render-cli` 的成品：那一行 ＋ 实际用的号（账号 0 / 不指定 ⇒ `null`）。 */
-export type { Rendered as CliRendered } from "./generated/Rendered";
 
 /**
  * 把意图摊成 `launch-render-cli` 的上线形状 —— 「起什么」交给那台后端的唯一住址。

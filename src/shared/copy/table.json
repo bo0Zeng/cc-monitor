@@ -6,8 +6,7 @@
     "role：界面角色（按钮 · 菜单项 · 标题 · 标签 · 占位 · 状态 · 说明 · 悬停 · toast · 报错 · 原因格 · 确认框 · 空态 · 进度 · 命令行 · 读屏 · 片段 · 图标），闭集与每个角色许配的 kind 住 tests/copy/copy-table.vitest.ts 的 ROLE_KINDS（[C-K4]）；按角色限长等规矩据此判。",
     "zh 里的插值点只许具名（{origin}），不许 {} / {0}；args 显式登记，与 zh 里出现的占位符两向相等。",
     "waive：这一条对某条规矩的豁免（规矩号 → 理由）。豁免了却没违反 ⇒ 红（死豁免）。规矩表在 src/shared/copy/rules.json。",
-    "生产代码只经 src/frontend/ui/copy-table.ts 的 copyText(key, {…}) 取文，key 必须是字面量；表里的 key 与代码里的引用两向相等（tests/copy/copy-table.vitest.ts）。",
-    "本波只抽了一个样板区（src/frontend/ui/views/pane-preview.ts）；全量抽表排在最后一波。"
+    "生产代码只经 src/frontend/ui/copy-table.ts 的 copyText(key, {…}) 取文，key 必须是字面量；表里的 key 与代码里的引用两向相等（tests/copy/copy-table.vitest.ts）。"
   ],
   "entries": {
     "accountOps.name.empty": {
@@ -1902,40 +1901,6 @@
       "zh": "此系统不支持停止后端",
       "args": []
     },
-    "panePreview.head.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "预览 · {origin} · tmux 会话 {target}",
-      "args": ["origin", "target"],
-      "limited": ["tmux"]
-    },
-    "panePreview.head.refresh": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "刷新",
-      "args": []
-    },
-    "panePreview.head.close": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "关闭",
-      "args": []
-    },
-    "panePreview.body.loading": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "读取画面中",
-      "args": []
-    },
-    "panePreview.body.empty": {
-      "kind": "body",
-      "role": "空态",
-      "zh": "（画面为空）",
-      "args": [],
-      "waive": {
-        "C-L4": "显示在终端画面框里：括号把它和真画面区分开 —— 真画面里可能恰好就有「画面为空」这四个字。"
-      }
-    },
     "sessionState.ended.name": {
       "kind": "body",
       "role": "片段",
@@ -2040,18 +2005,6 @@
       "role": "说明",
       "zh": "会话记录被改过 · 已从头重显",
       "args": []
-    },
-    "sessionState.recordGone.title": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "恢复失败 · 记录已不在",
-      "args": []
-    },
-    "sessionState.recordGone.body": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{who} 的 {root} 里无会话 {sid} 的记录 · 无法恢复 · 未打开终端",
-      "args": ["who", "root", "sid"]
     },
     "sessionState.pin.pinHint": {
       "kind": "body",
@@ -3123,12 +3076,6 @@
       "zh": "返回",
       "args": []
     },
-    "panePreview.head.closeIcon": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "✕",
-      "args": []
-    },
     "cards.omitted.noSource": {
       "kind": "error",
       "role": "报错",
@@ -4053,80 +4000,6 @@
       "zh": "关闭组里已结束的（{n}）",
       "args": ["n"]
     },
-    "remoteLaunchRun.copyFallback.failedManual": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "终端未打开 · 手动复制下面的命令",
-      "args": []
-    },
-    "remoteLaunchRun.attach.failedCopied": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "终端未打开 · 命令已复制",
-      "args": []
-    },
-    "remoteLaunchRun.attach.startedBody": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "新终端窗口正在连接 {machine} · tmux 会话「{name}」",
-      "args": ["machine", "name"],
-      "limited": ["tmux", "连接"]
-    },
-    "remoteLaunchRun.attach.started": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "已在终端里打开",
-      "args": []
-    },
-    "remoteLaunchRun.attach.buildFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "生成 attach 命令失败",
-      "args": []
-    },
-    "remoteLaunchRun.inPlace.notRun": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "就地恢复未执行",
-      "args": []
-    },
-    "remoteLaunchRun.resume.failedCopied": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "终端未打开 · 命令已复制",
-      "args": []
-    },
-    "remoteLaunchRun.resume.started": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已在远端恢复",
-      "args": []
-    },
-    "remoteLaunchRun.resume.buildFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "生成恢复会话的启动命令失败",
-      "args": []
-    },
-    "remoteLaunchRun.copyFallback.runRemote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "在 {machine} 的 ssh 终端里粘贴运行",
-      "args": ["machine"],
-      "limited": ["SSH"]
-    },
-    "remoteLaunchRun.copyFallback.runLocal": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "在本机 bash 里运行",
-      "args": []
-    },
-    "launchRender.refused.onMachine": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} · {said}",
-      "args": ["machine", "said"]
-    },
     "main.sftp.noMachineHint": {
       "kind": "error",
       "role": "报错",
@@ -4543,37 +4416,6 @@
       "args": ["name"],
       "limited": ["tmux"]
     },
-    "tabBatch.why.alreadyLive": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} · 已有进程在写会话 · pid {pids} · 未新建",
-      "args": ["machine", "pids"]
-    },
-    "tabBatch.why.recordGone": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 的 {root} 里无它的记录 · 无法恢复",
-      "args": ["machine", "root"]
-    },
-    "tabBatch.why.nameTaken": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} tmux 会话名「{name}」被占用 · 未启动",
-      "args": ["machine", "name"],
-      "limited": ["tmux"]
-    },
-    "tabBatch.why.childTimedOut": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 新建会话无应答",
-      "args": ["machine"]
-    },
-    "tabBatch.why.startFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 启动失败",
-      "args": ["machine"]
-    },
     "tabBatch.why.windowFailed": {
       "kind": "error",
       "role": "报错",
@@ -4585,26 +4427,6 @@
       "role": "报错",
       "zh": "{machine} 未执行 · {said}",
       "args": ["machine", "said"]
-    },
-    "tabBatch.why.accountGone": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "上次的账号 {name} 不可用 · 单独恢复时可换账号",
-      "args": ["name"]
-    },
-    "tabMenu.dupes.body": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "会话在 tmux 会话 ×{n} · 已打开「{name}」 · 其余的到终端里清理",
-      "args": ["n", "name"],
-      "limited": ["tmux"]
-    },
-    "tabMenu.dupes.title": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "会话在多个 tmux 会话里",
-      "args": [],
-      "limited": ["tmux"]
     },
     "tabMenu.collection.remove": {
       "kind": "action",
@@ -5051,18 +4873,6 @@
       "zh": "结束失败 · {title}",
       "args": ["title"]
     },
-    "tabSessionActions.who.remote": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{machine}",
-      "args": ["machine"]
-    },
-    "tabSessionActions.recordUnknown.title": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "记录状态未知 · 照常恢复",
-      "args": []
-    },
     "tabSessionActions.who.local": {
       "kind": "body",
       "role": "片段",
@@ -5080,20 +4890,6 @@
       "role": "按钮",
       "zh": "结束会话",
       "args": []
-    },
-    "tabSessionActions.dupes.body": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "会话在 tmux 会话 ×{n} · 已打开「{name}」 · 其余的到终端里清理",
-      "args": ["n", "name"],
-      "limited": ["tmux"]
-    },
-    "tabSessionActions.dupes.title": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "会话在多个 tmux 会话里",
-      "args": [],
-      "limited": ["tmux"]
     },
     "tabSessionActions.openInWindow.failed": {
       "kind": "error",
@@ -10341,17 +10137,41 @@
       "zh": "已{action} {n} 项 → {dir}",
       "args": ["action", "n", "dir"]
     },
-    "beFiles.batch.partial": {
+    "beFiles.batch.head": {
       "kind": "body",
-      "role": "toast",
-      "zh": "{action} {n} 项 · 完成 {ok} · 跳过 {skip} · 失败 ×{bad}",
-      "args": ["action", "n", "ok", "skip", "bad"]
+      "role": "片段",
+      "zh": "{action} {n} 项",
+      "args": ["action", "n"]
     },
-    "beFiles.batch.stopped": {
+    "beFiles.batch.segOk": {
       "kind": "body",
-      "role": "toast",
-      "zh": "{action} {n} 项 · 完成 {ok} · 跳过 {skip} · 失败 ×{bad} · 已取消 {left}",
-      "args": ["action", "n", "ok", "skip", "bad", "left"]
+      "role": "片段",
+      "zh": "完成 {ok}",
+      "args": ["ok"]
+    },
+    "beFiles.batch.segSkip": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "跳过 {skip}",
+      "args": ["skip"]
+    },
+    "beFiles.batch.segBad": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "失败 ×{bad}",
+      "args": ["bad"]
+    },
+    "beFiles.batch.segLeft": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已取消 {left}",
+      "args": ["left"]
+    },
+    "beFiles.batch.verbDownload": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "下载",
+      "args": []
     },
     "beFiles.batch.clash": {
       "kind": "error",
@@ -10748,30 +10568,6 @@
       "role": "悬停",
       "zh": "名字无法识别 · 不能复制到另一台：{names}",
       "args": ["names"]
-    },
-    "rsFilewinBatch.verb.copy": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "复制",
-      "args": []
-    },
-    "rsFilewinBatch.verb.delete": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "删除",
-      "args": []
-    },
-    "rsFilewinBatch.verb.chmod": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "改权限",
-      "args": []
-    },
-    "rsFilewinBatch.verb.download": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "下载",
-      "args": []
     },
     "rsFilewinBatch.verb.upload": {
       "kind": "body",
@@ -12938,6 +12734,24 @@
       "zh": "访问越界",
       "args": []
     },
+    "countFormat.unit.k": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n}K",
+      "args": ["n"]
+    },
+    "countFormat.unit.m": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n}M",
+      "args": ["n"]
+    },
+    "countFormat.unit.b": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n}B",
+      "args": ["n"]
+    },
     "sizeFormat.unit.b": {
       "kind": "body",
       "role": "片段",
@@ -13492,22 +13306,10 @@
       "zh": "默认",
       "args": []
     },
-    "newSession.account.needLogin": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "需登录",
-      "args": []
-    },
     "newSession.account.follow": {
       "kind": "body",
       "role": "片段",
       "zh": "跟随原会话上次的号",
-      "args": []
-    },
-    "newSession.account.pinned": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "原会话账号 · 不自动换",
       "args": []
     },
     "newSession.account.useAlt": {
@@ -13622,6 +13424,12 @@
       "zh": "打开登录页",
       "args": []
     },
+    "accounts.row.loginElsewhere": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "需登录 · 不支持在 app 里登录",
+      "args": []
+    },
     "accounts.row.missing": {
       "kind": "body",
       "role": "说明",
@@ -13706,12 +13514,6 @@
       "zh": "{machine} 启动结果未知",
       "args": ["machine"]
     },
-    "newSession.window.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "终端窗口未打开",
-      "args": []
-    },
     "newSession.switch.action": {
       "kind": "action",
       "role": "按钮",
@@ -13736,24 +13538,6 @@
       "zh": "tmux 会话名已占用",
       "args": [],
       "limited": ["tmux"]
-    },
-    "launch.account.notLoggedIn": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{name} 需登录",
-      "args": ["name"]
-    },
-    "launch.account.unavailable": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{name} 不可用",
-      "args": ["name"]
-    },
-    "launch.timeout.noAnswer": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "启动无应答 · {machine}",
-      "args": ["machine"]
     },
     "launch.fromSettings.done": {
       "kind": "body",
@@ -13831,18 +13615,6 @@
       "zh": "{machine} tmux 会话 {name} 里正在跑的程序",
       "args": ["machine", "name"],
       "limited": ["tmux"]
-    },
-    "tabSessionActions.agent.unknown": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "agent 未知 · 未执行",
-      "args": []
-    },
-    "tabBatch.why.agentUnknown": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "agent 未知",
-      "args": []
     },
     "launchArrival.arrived.body": {
       "kind": "body",
@@ -13935,12 +13707,6 @@
       "kind": "error",
       "role": "报错",
       "zh": "保存失败",
-      "args": []
-    },
-    "localResume.launch.arrived": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已在本机恢复",
       "args": []
     },
     "history.rename.prompt": {
@@ -16375,63 +16141,6 @@
       "role": "报错",
       "zh": "取中转钥匙失败 · {why} · 中转未起（无中转钥匙则谁都能用）",
       "args": ["why"]
-    },
-    "localResume.launch.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "恢复失败",
-      "args": []
-    },
-    "accountPick.machine.local": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "本机",
-      "args": []
-    },
-    "accountPick.refused.title": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "账号不可用 · 未启动会话",
-      "args": []
-    },
-    "accountPick.refused.pinGoneToCurrent": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "上次的账号 {name} 不可用 · 不换号无法续 · 未恢复\n点此提示改用默认账号 {current} 启动",
-      "args": ["name", "current"]
-    },
-    "accountPick.refused.pinGoneToBase": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "上次的账号 {name} 不可用 · 不换号无法续 · 未恢复\n点此提示改用「不指定账号」启动",
-      "args": ["name"],
-      "waive": {
-        "C-W13": "「」里是账号选单里那一项（不指定账号）的名字"
-      }
-    },
-    "accountPick.refused.explicitGoneToCurrent": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{name} 不可用 · 未启动\n点此提示改用默认账号 {current} 启动",
-      "args": ["name", "current"]
-    },
-    "accountPick.refused.explicitGoneToBase": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{name} 不可用 · 未启动\n点此提示改用「不指定账号」启动",
-      "args": ["name"],
-      "waive": {
-        "C-W13": "「」里是账号选单里那一项（不指定账号）的名字"
-      }
-    },
-    "accountPick.refused.listUnknown": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "账号 {name} 是否可用不明 · 未读到 {machine} 的账号清单 · 未启动\n点此提示改用「不指定账号」启动",
-      "args": ["machine", "name"],
-      "waive": {
-        "C-W13": "「」里是账号选单里那一项（不指定账号）的名字"
-      }
     },
     "events.stream.closedTitle": {
       "kind": "error",
@@ -20893,12 +20602,6 @@
       "zh": "停",
       "args": []
     },
-    "history.resume.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "恢复失败 · {machine} · {why}",
-      "args": ["machine", "why"]
-    },
     "history.menu.openWindow": {
       "kind": "action",
       "role": "菜单项",
@@ -21336,10 +21039,7 @@
       "kind": "error",
       "role": "报错",
       "zh": "上次的账号 {name} 不可用 · 不换号无法续 · 未启动\n可改用「不指定账号」",
-      "args": ["name"],
-      "waive": {
-        "C-W13": "「」里是账号选单里那一项（不指定账号）的名字"
-      }
+      "args": ["name"]
     },
     "beLaunchAccount.unavailable.namedToDefault": {
       "kind": "error",
@@ -21351,19 +21051,13 @@
       "kind": "error",
       "role": "报错",
       "zh": "{name} 不可用 · 未启动\n可改用「不指定账号」",
-      "args": ["name"],
-      "waive": {
-        "C-W13": "「」里是账号选单里那一项（不指定账号）的名字"
-      }
+      "args": ["name"]
     },
     "beLaunchAccount.unavailable.listUnknown": {
       "kind": "error",
       "role": "报错",
       "zh": "账号 {name} 是否可用不明 · 未读到账号清单 · 未启动\n可改用「不指定账号」",
-      "args": ["name"],
-      "waive": {
-        "C-W13": "「」里是账号选单里那一项（不指定账号）的名字"
-      }
+      "args": ["name"]
     },
     "rsFilewinFind.status.scope": {
       "kind": "body",
@@ -21472,6 +21166,45 @@
       "role": "标题",
       "zh": "采样",
       "args": []
+    },
+    "acct.val.perPct": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "1% ≈ {n}",
+      "args": ["n"],
+      "waive": {
+        "C-W1": "约等于号夹在两个数之间读得最快；用量卡头那一行窄屏也要放得下，换成「约」更长"
+      }
+    },
+    "acct.window.tier": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{slot} {tier}",
+      "args": ["slot", "tier"]
+    },
+    "acct.verdict.can": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "可发的号 {n}",
+      "args": ["n"]
+    },
+    "acct.verdict.none": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "均不可发",
+      "args": []
+    },
+    "acct.verdict.earliest": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "最早 {account} ↻{at} ({rel})",
+      "args": ["account", "at", "rel"]
+    },
+    "acct.verdict.earliestAt": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "最早 {account} ↻{at}",
+      "args": ["account", "at"]
     },
     "acct.val.pct": {
       "kind": "body",
@@ -23212,6 +22945,12 @@
       "zh": "在 tmux 里",
       "args": [],
       "limited": ["tmux"]
+    },
+    "resumeMenu.run.machine": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "照机器设置",
+      "args": []
     },
     "resumeMenu.run.direct": {
       "kind": "action",
@@ -30677,6 +30416,18 @@
       "zh": "无",
       "args": []
     },
+    "mobFiles.menu.copyTo": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "复制到…",
+      "args": []
+    },
+    "mobFiles.menu.selectAll": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "全选",
+      "args": []
+    },
     "mobFiles.bookmark.deleted": {
       "kind": "body",
       "role": "toast",
@@ -31656,6 +31407,68 @@
       "kind": "action",
       "role": "菜单项",
       "zh": "清空会话",
+      "args": []
+    },
+    "sessionOpen.attached.title": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已接上",
+      "args": []
+    },
+    "sessionOpen.attached.body": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{machine} · tmux 会话「{name}」",
+      "args": ["machine", "name"],
+      "limited": ["tmux"]
+    },
+    "sessionOpen.arrived.title": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已启动",
+      "args": []
+    },
+    "sessionOpen.timeout.title": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} 未在期限内应答 · 结果未知",
+      "args": ["machine"]
+    },
+    "sessionOpen.account.useAlt": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "改用 {alt}",
+      "args": ["alt"]
+    },
+    "sessionOpen.account.useBase": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "不指定账号",
+      "args": []
+    },
+    "sessionOpen.copy.copied": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "终端未打开 · 命令已复制",
+      "args": []
+    },
+    "sessionOpen.copy.manual": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "终端未打开 · 手动复制下面的命令",
+      "args": []
+    },
+    "sessionOpen.copy.runRemote": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "在 {machine} 的 ssh 终端里粘贴运行",
+      "args": ["machine"],
+      "limited": ["SSH"]
+    },
+    "sessionOpen.copy.runLocal": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "在本机 bash 里运行",
       "args": []
     }
   }

@@ -500,6 +500,7 @@ fn ls_row(p: Picked, tz: &crate::common::time::Tz) -> wire::LsEntry {
         name: WirePath(name),
         kind,
         size: None,
+        size_text: None,
         mtime_secs: None,
         mtime_text: None,
         mtime_full: None,
@@ -508,6 +509,8 @@ fn ls_row(p: Picked, tz: &crate::common::time::Tz) -> wire::LsEntry {
     };
     if let Some(md) = md {
         row.size = Some(md.len());
+        // 目录（含指向目录的链接）的大小是文件系统记账的数，不上屏：不写字。
+        row.size_text = (!is_dir && !link_dir).then(|| copy_core::size_text(md.len()));
         if let Some(t) = epoch_secs(md.modified()) {
             let (short, full) = crate::common::time::mtime_texts_now(t, tz);
             row.mtime_secs = Some(t);

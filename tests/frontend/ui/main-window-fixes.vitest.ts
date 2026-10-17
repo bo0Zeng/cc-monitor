@@ -297,13 +297,13 @@ describe("说不清（那台暂时看不见）的 tab 不给恢复", () => {
     expect(resume.length, "恢复那一项还在（置灰、第二行说为什么）").toBe(1);
     expect(resume[0].disabled).toBe(true);
     expect(resume[0].querySelector("[data-part=why]")?.textContent).toBe(copyText("tabMenu.unseen.why", { machine: copyText("sessionFace.machine.local") }));
-    const actions = (tm as unknown as { actions: { resumeTab(sid: string): Promise<void> } }).actions;
-    await actions.resumeTab("u");
+    const actions = (tm as unknown as { actions: { resume(sid: string): Promise<void> } }).actions;
+    await actions.resume("u");
     const said = [...document.querySelectorAll("#kit-toast-stack > *")].some((t) =>
       t.textContent?.includes(copyText("sessionState.unseen.noResume")),
     );
     expect(said, "点了要有回应：说不清 ⇒ 不起、说一句").toBe(true);
-    expect(vi.mocked(invoke).mock.calls.some(([cmd]) => String(cmd).includes("launch")), "不许起本机 claude").toBe(false);
+    expect(vi.mocked(invoke).mock.calls.some(([, args]) => (args as { op?: string } | undefined)?.op === "session-open"), "不许交那台起").toBe(false);
   });
 });
 

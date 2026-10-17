@@ -9,6 +9,10 @@ export type HistoryGroup = { key: string, agent: string, projectName: string, pr
  */
 hasLive: boolean | null, starred: boolean, lastActivity: number, 
 /**
+ * `last_activity` 写好的字（同行尾那一格的写法）；读不了的那一组 ⇒ `null`。
+ */
+atText: string | null, 
+/**
  * 几台的组并成一列时按它（大的在前）。
  */
 order: number, 

@@ -5,7 +5,7 @@
  * 同一份文件（决定 2：一份文件两侧各读，不是两份表加一条对拍）——Rust 读口
  * `src/frontend/shell/src/copy_table.rs::copy_text` 已落地（第一批调用点是部署后端的几句拒绝），全量抽表仍在最后一波。
  *
- * 用法：`copyText("panePreview.head.title", { origin, target })`。
+ * 用法：`copyText("sessionOpen.attached.body", { machine, name })`。
  * - key 必须是**字面量**：`tests/copy/copy-table.vitest.ts` 靠静态读调用点来做「表 ↔ 引用」两向相等，
  *   算出来的 key 它看不见 ⇒ 那条判据会直接报红，不会放过。
  * - 参数只递**命名**参数，与表里 `args` 相等；不在调用方拼接任何文字（决定 3）。

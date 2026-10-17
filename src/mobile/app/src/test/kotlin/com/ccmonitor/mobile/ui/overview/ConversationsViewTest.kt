@@ -29,12 +29,13 @@ class ConversationsViewTest {
         sid: String,
         section: String,
         hidden: Hidden? = null,
-    ) = HistoryRow(sid, "标题 $sid", "09:0$sid", section, "/w", "/w/$sid.jsonl", "claude", null, "live", hidden)
+    ) = HistoryRow(sid, "标题 $sid", "09:0$sid", section, "/w", "/w/$sid.jsonl", "claude", null, "live", hidden, null, null)
 
     private val list =
         Fetched.Got(
             HistoryListPage(
                 rows = listOf(row("1", "今天"), row("2", "今天"), row("3", "昨天"), row("4", "今天")),
+                groups = emptyList(),
                 notice = null,
                 truncated = true,
             ),
@@ -110,13 +111,13 @@ class ConversationsViewTest {
     fun `每行一颗状态点：活的照语气、离开活的照去向、流上没有的照清单那一格；字跟着那一格`() {
         val rows =
             listOf("a" to "live", "b" to "ended", "c" to "ended", "d" to "unknown", "e" to "live", "f" to "别的词")
-                .map { (sid, st) -> HistoryRow(sid, "标题 $sid", "09:00", "今天", "/w", "/w/$sid.jsonl", "claude", null, st, null) }
+                .map { (sid, st) -> HistoryRow(sid, "标题 $sid", "09:00", "今天", "/w", "/w/$sid.jsonl", "claude", null, st, null, null, null) }
         val table =
             SessionTable(
                 sessions = mapOf("a" to LiveSession(sid = "a", activity = Toned("需手动", Tone.NEED))),
                 fates = mapOf("b" to SessionFate(SessionFate.State.RECONNECTABLE, "Claude 已退出")),
             )
-        val v = view("m", LinkState.Up(), table, Fetched.Got(HistoryListPage(rows, null, false)), Fetched.Got(emptyList()))
+        val v = view("m", LinkState.Up(), table, Fetched.Got(HistoryListPage(rows, emptyList(), null, false)), Fetched.Got(emptyList()))
         val by = v.sections.flatMap { it.rows }.associateBy { it.sessionId }
         assertEquals(SessionDot.NEEDS_YOU, by.getValue("a").dot)
         assertEquals(Toned("需手动", Tone.NEED), by.getValue("a").status)
@@ -141,7 +142,7 @@ class ConversationsViewTest {
 
     @Test
     fun `离线（流走不通 · 还在接）：照画本地缓存里上次那一份，离线那一句照说；连上问到了 ⇒ 换成那台这一份`() {
-        val cached = HistoryListPage(listOf(row("1", "昨天"), row("2", "昨天")), null, false)
+        val cached = HistoryListPage(listOf(row("1", "昨天"), row("2", "昨天")), emptyList(), null, false)
         val down = view("m", LinkState.Down(Said("m 离线", "boom"), needsHand = false), SessionTable(), Fetched.Loading, Fetched.Loading, cached = cached)
         assertEquals(Problem("m 离线", "boom"), down.linkProblem)
         assertEquals(listOf("1", "2"), down.recent.map { it.sessionId })
@@ -155,7 +156,7 @@ class ConversationsViewTest {
 
     @Test
     fun `断着：每行的点画说不清、字写那台离线，不照断前那张会话表与缓存里的状态`() {
-        val cached = HistoryListPage(listOf(row("1", "昨天")), null, false)
+        val cached = HistoryListPage(listOf(row("1", "昨天")), emptyList(), null, false)
         val stale = SessionTable(sessions = mapOf("1" to LiveSession(sid = "1", activity = Toned("运行中", Tone.NOW))))
         val down = view("m", LinkState.Down(Said("m 离线", "boom"), needsHand = false), stale, Fetched.Loading, Fetched.Loading, cached = cached)
         val r = down.recent.single()
@@ -167,7 +168,7 @@ class ConversationsViewTest {
 
     @Test
     fun `隐藏只照行上那一格：「显示已隐藏」关着不画带格的行（上次缓存里的也不画）；开着照画、带后端那一句；抽屉「最近」一律不列`() {
-        val page = HistoryListPage(listOf(row("1", "今天"), row("2", "今天", Hidden("已隐藏")), row("3", "昨天")), null, false)
+        val page = HistoryListPage(listOf(row("1", "今天"), row("2", "今天", Hidden("已隐藏")), row("3", "昨天")), emptyList(), null, false)
         val off = view("m", LinkState.Up(), SessionTable(), Fetched.Got(page), Fetched.Got(emptyList()))
         assertEquals(listOf("1", "3"), off.sections.flatMap { it.rows }.map { it.sessionId })
         assertEquals(false, off.showHidden)

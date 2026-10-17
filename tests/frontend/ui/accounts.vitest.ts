@@ -19,10 +19,7 @@ import { accountsAgentProfile, fetchAccounts, fetchSessionAccounts, parseSession
 import { AGENT_PROFILE_TABLE } from "../../../src/frontend/ui/generated/agent-profile-table";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
-import { accountUnavailableOf, chosenAccount, refuseUnavailableAccount, type AccountUnavailable } from "../../../src/frontend/ui/launch-account";
-import { ControlError } from "../../../src/frontend/ui/control-said";
-import { ChanError } from "../../../src/comms/inward/chan";
+import { chosenAccount } from "../../../src/frontend/ui/launch-account";
 import {
   accountReadCalls,
   chanArgsJson,
@@ -598,48 +595,9 @@ describe("K-A1 鉴权方式：api-key 号不再因为缺凭据文件而不可用
 // `K-P5h` `KP5HD2` / `KP5HD3`：**待回填表** —— 起会话方终于把 pin 写得出来
 // ═══════════════════════════════════════════════════════════════════════════
 
-describe("launch-account：要哪个号 · 那台说选不了时给的那个选择", () => {
-  const refusal = (code: string, data?: unknown): Uint8Array =>
-    new TextEncoder().encode(JSON.stringify(data === undefined ? { code, message: "m" } : { code, message: "m", data }));
-  const U: AccountUnavailable = { requested: "z", pinned: true, listKnown: true, alternative: "b" };
-
-  it("点名那一格：账号 0 ⇒ base；名字 ⇒ 按名字（线上只有名字那一形）", () => {
+describe("launch-account：点名那一格", () => {
+  it("账号 0 ⇒ base；名字 ⇒ 按名字（线上只有名字那一形）", () => {
     expect(chosenAccount(null)).toEqual({ kind: "base" });
     expect(chosenAccount("z")).toEqual({ kind: "named", name: "z" });
-  });
-
-  it("认得出「那台说要的号选不了」：通道层 / 控制层两种错都认；别的码 · 形状不对 · 别的层 ⇒ 不认", () => {
-    const peer = (body: Uint8Array) => ({ layer: "peer" as const, why: "refused" as const, body });
-    expect(accountUnavailableOf(new ChanError(peer(refusal("account_unavailable", U))))).toEqual(U);
-    expect(accountUnavailableOf(new ControlError("s", "d", peer(refusal("account_unavailable", U))))).toEqual(U);
-    expect(accountUnavailableOf(new ChanError(peer(refusal("refused"))))).toBeNull();
-    expect(accountUnavailableOf(new ChanError(peer(refusal("account_unavailable", { requested: 1 }))))).toBeNull();
-    expect(accountUnavailableOf(new ChanError(peer(refusal("account_unavailable", null))))).toBeNull();
-    expect(accountUnavailableOf(new ChanError({ layer: "ours", why: "Cancelled" }))).toBeNull();
-    expect(accountUnavailableOf(new Error("x"))).toBeNull();
-  });
-
-  it("四种说法照那一形分：上次的号 / 点名的号 × 有替代 / 只能不指定；清单读不出 ⇒ 说读不到、只给「不指定」", () => {
-    const said = (u: AccountUnavailable): string => {
-      vi.mocked(showActionFailureToast).mockClear();
-      refuseUnavailableAccount({ machine: "devbox", u, choose: vi.fn() });
-      return vi.mocked(showActionFailureToast).mock.calls[0][1] as string;
-    };
-    expect(said(U)).toBe(copyText("accountPick.refused.pinGoneToCurrent", { name: "z", current: "b" }));
-    expect(said({ ...U, alternative: null })).toBe(copyText("accountPick.refused.pinGoneToBase", { name: "z" }));
-    expect(said({ ...U, pinned: false })).toBe(copyText("accountPick.refused.explicitGoneToCurrent", { name: "z", current: "b" }));
-    expect(said({ ...U, pinned: false, alternative: null })).toBe(copyText("accountPick.refused.explicitGoneToBase", { name: "z" }));
-    expect(said({ ...U, listKnown: false })).toBe(copyText("accountPick.refused.listUnknown", { machine: "devbox", name: "z" }));
-    // 点了 ⇒ 以点名再起：有替代 ⇒ 那个号；清单读不出 / 没有替代 ⇒ 账号 0。
-    for (const [u, want] of [
-      [U, { kind: "named", name: "b" }],
-      [{ ...U, listKnown: false }, { kind: "base" }],
-    ] as const) {
-      vi.mocked(showActionFailureToast).mockClear();
-      const choose = vi.fn();
-      refuseUnavailableAccount({ machine: LOCAL_ORIGIN, u, choose });
-      (vi.mocked(showActionFailureToast).mock.calls[0][2] as { onClick: () => void }).onClick();
-      expect(choose).toHaveBeenCalledWith(want);
-    }
   });
 });

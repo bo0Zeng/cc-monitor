@@ -11,8 +11,8 @@
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildCliRenderRequest } from "../../src/frontend/ui/launch-cli-wire.ts";
-import type { LaunchContext } from "../../src/frontend/ui/launch-types.ts";
+import { buildCliRenderRequest } from "../test-support/launch-cli-wire.ts";
+import type { LaunchContext } from "../test-support/launch-types.ts";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 

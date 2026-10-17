@@ -115,7 +115,7 @@ use super::find::{self, SearchBoard};
 use super::fonts::{self, FontState};
 use super::grep::{self, GrepBoard, GrepTally};
 use super::rows::{show_hit_rows, HitTally, RenderTally};
-use super::select::{self, Action, Intent, Item, Selection, TypeAhead};
+use super::select::{self, Action, ActionFace, Intent, Item, ItemFace, Selection, TypeAhead};
 use super::source::{Line, Listed, Sort, Source};
 use super::transfer::{DropBoard, Pending};
 use super::writeops::{is_writable, PromptKind, WriteBoard, WriteOp, WritePrompt};
@@ -1649,7 +1649,7 @@ impl FileWindow {
 
     /// 摆出「把第 `i` 行复制成什么名字」那个框。回值 = 真的摆出来了。
     ///
-    /// ⚠ **这里只剩一道闸了，如实记**：`super::copy::is_copyable` —— 目录与有损名
+    /// ⚠ **这里只剩一道闸了，如实记**：`pick_core::Pick::copyable` —— 名字寻址不到的
     /// 一律不接。列表上那两档压根不画那颗按钮，这里是第二道，防的是
     /// 「按钮没了、调用还在」（那正是死值验刀 2 那一形）。
     ///
@@ -1661,7 +1661,7 @@ impl FileWindow {
         let row = {
             let rows = self.listing.rows.lock().unwrap();
             match rows.get(i) {
-                Some(r) if super::copy::copyable(r) => r.clone(),
+                Some(r) if r.pick().copyable() => r.clone(),
                 _ => return false,
             }
         };
@@ -2641,11 +2641,7 @@ impl FileWindow {
             let all = self.listing.rows.lock().unwrap();
             idx.iter().filter_map(|&i| all.get(i).cloned()).collect()
         };
-        if rows.is_empty()
-            || rows
-                .iter()
-                .any(|r| !super::download::is_downloadable_listed(r))
-        {
+        if rows.is_empty() || rows.iter().any(|r| !r.pick().downloadable()) {
             self.key_notice = Some(select::refusal(Action::Download, rows.len()));
             return false;
         }
@@ -2711,7 +2707,7 @@ impl FileWindow {
     pub fn begin_pull_row(&mut self, row: Listed) -> bool {
         *self.prompt_error.lock().unwrap() = None;
         // 有损名带着字节 / 有损目录里的行也拉得下来（按字节，`lossy_pull.rs`）。
-        if !super::download::is_downloadable_listed(&row) {
+        if !row.pick().downloadable() {
             return false;
         }
         let full = self.row_path(&row);
@@ -4338,7 +4334,7 @@ impl FileWindow {
         let meta = if row.is_dir {
             copy_text("rsFilewinWriteops.delete.rowDir", &[])
         } else {
-            copy_core::size_text(row.size)
+            row.size_text.clone().unwrap_or_default()
         };
         self.write_board
             .describe(&row.path, super::kind::icon(row.class), meta);
@@ -4535,7 +4531,7 @@ impl FileWindow {
         }
         match it {
             Item::Act(a) => self.unavailable_here(a).or_else(|| self.offline_refusal(a)),
-            Item::InPlan => None,
+            Item::InPlan | Item::SelectAll => None,
             Item::Mkdir => self.offline_cmd(Cmd::Mkdir),
             Item::NewFile => self.offline_cmd(Cmd::NewFile),
             Item::Upload => self.offline_cmd(Cmd::Upload),
@@ -4586,6 +4582,10 @@ impl FileWindow {
             Some(Item::NewFile) => self.run_command(super::chrome::Cmd::NewFile, Some(ctx)),
             Some(Item::Upload) => self.run_command(super::chrome::Cmd::Upload, Some(ctx)),
             Some(Item::Term) => self.run_command(super::chrome::Cmd::Term, Some(ctx)),
+            Some(Item::SelectAll) => {
+                let rows = self.listing.rows.lock().unwrap();
+                self.selection.select_all(&rows);
+            }
             None => {}
         }
     }

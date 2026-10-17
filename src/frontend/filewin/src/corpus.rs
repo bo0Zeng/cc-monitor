@@ -185,6 +185,11 @@ pub fn synth_rows(n: usize, seed: u64) -> Vec<super::source::Listed> {
             let h = p
                 .bytes()
                 .fold(0u64, |a, b| a.wrapping_mul(31).wrapping_add(u64::from(b)));
+            let size = if is_dir {
+                0
+            } else {
+                rng.next_u64() % (1 << 26)
+            };
             super::source::Listed {
                 link: h % 17 == 0,
                 link_dir: false,
@@ -196,15 +201,12 @@ pub fn synth_rows(n: usize, seed: u64) -> Vec<super::source::Listed> {
                 class: Default::default(),
                 type_text: String::new(),
                 gates: None,
+                size_text: (!is_dir).then(|| copy_core::size_text(size)),
                 row: Row {
                     name,
                     path: p,
                     is_dir,
-                    size: if is_dir {
-                        0
-                    } else {
-                        rng.next_u64() % (1 << 26)
-                    },
+                    size,
                     lossy_name: false,
                 },
             }

@@ -1511,9 +1511,11 @@ async fn screenshot_for_the_shots_tool() {
                 name: cmd_wire::files::WirePath::from(name),
                 kind: cmd_wire::files::FileKind::File,
                 size: Some(size),
+                size_text: Some(copy_core::size_text(size)),
                 mtime_text: Some(at.into()),
                 there: cmd_wire::files::FileKind::File,
                 there_size: Some(there),
+                there_size_text: Some(copy_core::size_text(there)),
                 there_mtime_text: Some(there_at.into()),
                 dir_into: false,
             }
@@ -1559,9 +1561,11 @@ async fn screenshot_for_the_shots_tool() {
                 name: cmd_wire::files::WirePath::from(name),
                 kind,
                 size,
+                size_text: size.map(copy_core::size_text),
                 mtime_text: size.map(|_| "14:02".to_string()),
                 there: kind,
                 there_size: there,
+                there_size_text: there.map(copy_core::size_text),
                 there_mtime_text: there.map(|_| "10-01 09:10".to_string()),
                 dir_into: dir,
             }
@@ -1947,7 +1951,19 @@ async fn screenshot_for_the_shots_tool() {
 /// 左栏的行照样画在它外面（没被盖住、没被挤走）。
 #[test]
 fn an_editor_on_the_right_side_stays_in_the_right_side() {
-    let mut ws = two_sides(pane("/l", &["left-only.txt"]), pane("/r", &["right.txt"]));
+    let left = pane("/l", &["left-only.txt"]);
+    // 照真列表那样带着后端写好的大小那一格。
+    let gated: Vec<_> = left
+        .listing
+        .rows
+        .lock()
+        .unwrap()
+        .iter()
+        .cloned()
+        .map(crate::find::testing::gated)
+        .collect();
+    *left.listing.rows.lock().unwrap() = gated;
+    let mut ws = two_sides(left, pane("/r", &["right.txt"]));
     let long: String = (0..3000).map(|i| format!("line {i}\n")).collect();
     let right = ws.pane_on_mut(1);
     right.edits.deliver(crate::editor::Arrived::Text {

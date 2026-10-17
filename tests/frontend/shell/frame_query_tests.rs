@@ -306,11 +306,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ("rotation-strategy-rename", "typed 帧命令：改文件名（指着它的会话一起改过去）"),
     ("rotation-strategy-delete", "typed 帧命令：删一份策略（有会话在用由后端拒）"),
     ("rotation-strategy-tz", "typed 帧命令：给策略设时区（只重写设置块里的 tz · 版本冲突由后端判）"),
-    // tab 栏多选的批量停 / 起（`src/frontend/ui/tab-batch-run.ts`）：一台一次、那台逐个判逐个答，monitor 从没有过这条命令。
-    (
-        "sessions-start",
-        "新帧命令：每一个同单个那一条（记录在不在 · 在跑不另起 · 空 tmux 就地键入 · 铸名建会话 / 渲那一行），判在那台后端",
-    ),
+    // tab 栏多选的批量停（`src/frontend/ui/tab-batch-run.ts`）：一台一次、那台逐个判逐个答，monitor 从没有过这条命令。
     (
         "sessions-where",
         "新帧命令：这几个会话各在哪个 tmux 会话里（单个菜单亮哪几项 · 重启切换 · 分叉都问它），判在那台后端",
@@ -414,11 +410,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "那台报来的终端连接是这台电脑上哪串进程：本机后端 `dial/terminal_processes.rs` 答；前端 `src/frontend/ui/remote-terminal-front.ts` 问，\
          monitor 那一侧只沿进程链找窗口、拉前",
     ),
-    // 起会话要的 tmux 名：派生 ＋ 避让只留后端（前端那份铸名口删了）。
-    (
-        "terminal-name-mint",
-        "铸 tmux 名：那台后端派生基名、按它那张会话快照避让（`control/ccm/mod.rs::TerminalNameMint`）；前端 `src/frontend/ui/terminal-name-mint.ts` 问，monitor 这一侧零发送点",
-    ),
     // 端口转发三条：monitor 那三条 Tauri 命令与它手里的转发账退役，账住本机常驻后端。
     (
         "forward-list",
@@ -432,15 +423,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "forward-stop",
         "停一条转发：后端从账上摘掉 ⇒ 链路被收、本地口放掉（`dial/forwards.rs::stop_with`）",
     ),
+    // 起会话 · 恢复 · 接回（新建框 · 账号页登录同一问）：全产品一个请求，判定 · 渲那一行都在那台后端。
     (
-        "launch-render-cli",
-        "起会话那一行 `ccm …`：后端出成品 `{cmd}`，渲不出来回码 `refused`（`control/launch_render/wire.rs`）；前端 `src/frontend/ui/launch-render.ts::renderCli`。\
-         环境与中转地址由起 agent 那台的 `ccm` 在最终 exec 那一处定（载荷那一条与「这一发的中转地址」那一条随之删了）",
-    ),
-    (
-        "launch-local",
-        "本机起会话整条：本机后端出成品 `{cmd, account}`（`control/launch_render/local.rs`）；前端 `src/frontend/ui/launch-render.ts::planLocalLaunch`，\
-         monitor 只剩开终端窗口（`open_local_terminal`）",
+        "session-open",
+        "后端出成品 `{landed, session, line, sid, agent, cwd, account, note, prompt}`（`control/session_open.rs`）；前端 `src/frontend/ui/session-open.ts` 问、回包按 typed 的类型收，\
+         照 `landed` 开那一行、等报到；monitor 这一侧零发送点",
     ),
     // 删会话 · 分叉：两件改世界的事本来就在那台后端，monitor 只剩转交 ⇒ 转交删了，界面直接说。
     (
@@ -448,12 +435,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "后端出成品 `{path}`（只收 sid，落点由那台后端按 sid 找）；前端 `src/frontend/ui/session-writes.ts::deleteSession` 问、按恰好的键集合收，\
          monitor 这一侧零发送点（门那一问 `Door::delete_session` 删了）",
     ),
-    // 起新会话：全产品一个框一个请求（分叉随这一个请求写，界面不再单独问 `session-fork`）。
-    (
-        "session-new",
-        "后端出成品 `{outcome, session, sid, cmd, account, agent, cwd}`（`control/session_new.rs`：判目录 · 号 · 终端名 · 分叉只在这一步写）；\
-         前端 `src/frontend/ui/new-session-reads.ts::askNew` 问、回包按 typed 的类型收（形状由握手指纹管），monitor 这一侧零发送点",
-    ),
+    // 起新会话框的两问读数（起的那一问是上面的 `session-open`；分叉随它写，界面不单独问 `session-fork`）。
     (
         "session-new-facts",
         "后端出成品 `{recent, tmux, agents, fork}`（`faces/session_new_face.rs`，只读）；前端 `new-session-reads.ts::askFacts` 问、回包按 typed 的类型收（形状由握手指纹管），monitor 这一侧零发送点",
@@ -658,7 +640,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "terminal-preview",
         "后端应答就是成品（逐行文本 ＋ 尺寸光标），按名单里的句柄 / 会话 ID 指；拒绝码说成人话那一份住唯一的消费者那一侧\
-         `src/frontend/ui/terminal-reads.ts`（预览窗 `views/pane-preview.ts` · 起会话没报出来时抓原话 `launch-arrival.ts` 调它）",
+         `src/frontend/ui/terminal-reads.ts`（终端页 `terminal-page.ts` · 起会话没报出来时抓原话 `launch-arrival.ts` 调它）",
     ),
     (
         "kill",

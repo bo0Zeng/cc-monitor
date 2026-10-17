@@ -951,6 +951,7 @@ fn linked_rows() -> Vec<Listed> {
         // 后端写好的两格（故意与 `mtime_secs` 对不上：窗口若还在自己换算就红）。
         mtime_text: t.map(|(_, x)| x.to_string()),
         mtime_full: t.map(|(_, x)| format!("2026-{x} 00:00:00")),
+        size_text: Some(copy_core::size_text(3)),
         raw_name: None,
         // 后端判的那一种（链接画它指向的那一种）。
         class: if is_dir {

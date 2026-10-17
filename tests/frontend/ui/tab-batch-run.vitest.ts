@@ -1,6 +1,6 @@
 /**
- * tab 栏批量停 / 起交给那几台后端：同一台的那几个一次调用、各台各发一次（一台失败不挡别台）· 每项只交 sid 与目录（用哪个号那台判）·
- * 每一个的结局说成单个那条会说的那句 · 开终端那一形逐个开窗。后端答什么由替身给（`chan_call` 那一跳），tmux / 会话一个都不起。
+ * tab 栏批量停 / 起交给那几台后端：停 ⇒ 同一台的那几个一次调用、各台各发一次（一台失败不挡别台）；起 ⇒ 逐项问那台（同一台挨个、各台并发），
+ * 每项只交 sid 与放在哪，结局取那台那一句；落在窗口里的逐个开窗。后端答什么由替身给（`chan_call` 那一跳），tmux / 会话一个都不起。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -150,138 +150,70 @@ describe("批量停：每台一次、逐个答", () => {
   });
 });
 
-describe("批量起：每项只交 sid 与目录，整批带用户设置的原值；用哪个号那台判", () => {
-  it("在 tmux 里起：请求逐键（每项 {sid, cwd}，整批 哪一家 · resume 命令 · 模型偏好表）；那台说选不了号的那一项照它说", async () => {
-    backend((_o, _op, args) => ({
-      results: (args.items as { sid: string }[]).map((i) =>
-        i.sid === "e"
-          ? res("e", "skipped", "account_unavailable", {
-              detail: "gone",
-              unavailable: {
-                requested: "gone",
-                pinned: true,
-                listKnown: true,
-                alternative: "work",
-              },
-            })
-          : res(i.sid, "done", null, {
-              session: `${i.sid}-cc`,
-              account: {
-                name: "work",
-                configDir: "/h/.cc/work",
-                model: "opus",
-              },
-            }),
-      ),
-    }));
-    const out = await startMany(
-      [tab("c", "r1"), tab("e", "r1"), tab("f", "r1")],
-      "tmux",
+describe("批量起：逐项问那台（`session-open`），同一台挨个、各台并发；每项的结局取那台那一句", () => {
+  const opened = (sid: string, landed: string, line: string | null = null) => ({
+    landed, session: landed === "window" ? null : `${sid}-cc`, line, sid, agent: "claude", cwd: `/w/${sid}`, account: null, note: null, prompt: null,
+  });
+
+  it("★ 两台各三项 ⇒ 六问、每问只交那一条 ＋ 放在哪；同一台任一时刻至多一问在飞，两台同时在飞", async () => {
+    const flying = new Map<string, number>();
+    let most = 0;
+    const mostPer = new Map<string, number>();
+    invokeMock.mockImplementation(async (cmd: string, a: unknown) => {
+      if (cmd !== "chan_call") return undefined;
+      const c = a as ChanCallArgs;
+      calls.push([c.origin, c.op, chanArgsJson(c) as Record<string, unknown>]);
+      flying.set(c.origin, (flying.get(c.origin) ?? 0) + 1);
+      mostPer.set(c.origin, Math.max(mostPer.get(c.origin) ?? 0, flying.get(c.origin)!));
+      most = Math.max(most, [...flying.values()].reduce((x, y) => x + y, 0));
+      await new Promise((r) => setTimeout(r, 0));
+      flying.set(c.origin, flying.get(c.origin)! - 1);
+      const sid = (chanArgsJson(c) as { what: { sid: string } }).what.sid;
+      return chanReply(opened(sid, "started"));
+    });
+    const out = await startMany([tab("a1", "r1"), tab("a2", "r1"), tab("a3", "r1"), tab("b1", "r2"), tab("b2", "r2"), tab("b3", "r2")], "tmux");
+    expect(calls.map(([o, op, body]) => [o, op, body])).toEqual(
+      expect.arrayContaining(["a1", "a2", "a3"].map((sid) => ["r1", "session-open", { what: { kind: "resume", sid }, run: "tmux", local: false }])),
     );
-    expect(calls).toEqual([
-      [
-        "r1",
-        "sessions-start",
-        {
-          mode: "tmux",
-          local: false,
-          agent: "claude",
-          items: [
-            { sid: "c", cwd: "/w/c" },
-            { sid: "e", cwd: "/w/e" },
-            { sid: "f", cwd: "/w/f" },
-          ],
-        },
-      ],
-    ]);
-    expect(out.find((o) => o.sid === "e")).toEqual({
-      sid: "e",
-      outcome: "skipped",
-      why: copyText("tabBatch.why.accountGone", { name: "gone" }),
+    expect(calls).toHaveLength(6);
+    expect(calls.filter(([o]) => o === "r1").map(([, , b]) => (b.what as { sid: string }).sid), "同一台按条上的顺序挨个").toEqual(["a1", "a2", "a3"]);
+    expect([...mostPer.values()], "同一台至多一问在飞").toEqual([1, 1]);
+    expect(most, "两台同时在飞").toBe(2);
+    expect(out.map((o) => [o.sid, o.outcome])).toEqual(["a1", "a2", "a3", "b1", "b2", "b3"].map((sid) => [sid, "done"]));
+  });
+
+  it("★ 在 tmux 里后台起 ⇒ 一个窗口都不开；本来就在跑的记跳过；那台不起的那一项照它那一句说、带复制详情", async () => {
+    backend((_o, _op, args) => {
+      const sid = (args.what as { sid: string }).sid;
+      if (sid === "e") return { err: "Refused", body: Array.from(new TextEncoder().encode(JSON.stringify({ code: "record_gone", message: "那台写的那一句", data: { field: null, unavailable: null } }))), detail: "detail-x" };
+      return opened(sid, sid === "r" ? "running" : "started", `ccm --attach ${sid}-cc`);
     });
-    expect(out.filter((o) => o.outcome === "done").map((o) => o.sid)).toEqual([
-      "c",
-      "f",
+    const out = await startMany([tab("c", "r1"), tab("e", "r1"), tab("r", "r1")], "tmux");
+    expect(openTerminal).not.toHaveBeenCalled();
+    expect(out).toEqual([
+      { sid: "c", outcome: "done", why: "" },
+      { sid: "e", outcome: "failed", why: "那台写的那一句", detail: "detail-x" },
+      { sid: "r", outcome: "skipped", why: copyText("tabBatch.why.running", { name: "r-cc" }) },
     ]);
   });
 
-  it("那台说已有进程在写那一项 ⇒ 说出那几个 pid，不当成起不来", async () => {
-    backend((_o, _op, args) => ({
-      results: (args.items as { sid: string }[]).map((i) =>
-        res(i.sid, "skipped", "session_already_live", { detail: "4242, 5252" }),
-      ),
-    }));
-    const [o] = await startMany([tab("c", "r1")], "tmux");
-    expect(o).toEqual({
-      sid: "c",
-      outcome: "skipped",
-      why: copyText("tabBatch.why.alreadyLive", {
-        machine: "r1",
-        pids: "4242, 5252",
-      }),
+  it("★ 各开一个终端 ⇒ 落在窗口里的每项各开一次那一行；窗口开不出来的记失败", async () => {
+    backend((_o, _op, args) => {
+      const sid = (args.what as { sid: string }).sid;
+      return opened(sid, "window", `ccm --resume ${sid}`);
     });
-  });
-
-  it("开终端：后端渲好的那一行逐个开窗；窗口开不出来的记失败", async () => {
-    backend((_o, _op, args) => ({
-      results: (args.items as { sid: string }[]).map((i) =>
-        res(i.sid, "done", null, { cmd: `ccm --resume ${i.sid}` }),
-      ),
-    }));
     vi.mocked(openTerminal).mockImplementation(async (_o, cmd) => {
       if (cmd.endsWith("y")) throw new Error("开不了");
     });
-    const out = await startMany([tab("x", "r1"), tab("y", "r1")], "window");
+    const out = await startMany([tab("x", "r1"), tab("y", "r1")], "direct");
+    expect(calls.map(([, , b]) => b.run)).toEqual(["direct", "direct"]);
     expect(vi.mocked(openTerminal).mock.calls).toEqual([
       ["r1", "ccm --resume x"],
       ["r1", "ccm --resume y"],
     ]);
     expect(out).toEqual([
       { sid: "x", outcome: "done", why: "" },
-      {
-        sid: "y",
-        outcome: "failed",
-        why: copyText("tabBatch.why.windowFailed"),
-      },
+      { sid: "y", outcome: "failed", why: copyText("tabBatch.why.windowFailed") },
     ]);
-  });
-});
-
-// 「在 tmux 里恢复一个、起好了接进去」不依赖标签页对象（`tmux-resume.ts`）：历史页按那一行自己的一家交（E1），
-//   设置里配的 resume 命令只给默认那一家（别的那一家用它自己的默认启动器）。
-describe("单个在 tmux 里恢复（不依赖标签页对象）", () => {
-  it("交那台一个 sid 的一批、带那一行的那一家；配的 resume 命令不套到别的那一家上；起好了接进那台答的那个会话", async () => {
-    backend((_o, op, args) =>
-      op === "sessions-start"
-        ? {
-            results: (args.items as { sid: string }[]).map((i) =>
-              res(i.sid, "done", null, { session: "cx-1" }),
-            ),
-          }
-        : undefined,
-    );
-    const { startInTmuxThenAttach } =
-      await import("../../../src/frontend/ui/tmux-resume");
-    const remote = await import("../../../src/frontend/ui/remote-launch-run");
-    const attach = vi
-      .spyOn(remote, "runRemoteAttach")
-      .mockResolvedValue(undefined);
-    const onRecord = vi.fn();
-    await startInTmuxThenAttach(
-      { origin: "r1", agent: "codex", sid: "cx", cwd: "/w/cx" },
-      { kind: "follow" },
-      { again: vi.fn(), onRecord },
-    );
-    const [, op, body] = calls[0];
-    expect(op).toBe("sessions-start");
-    expect(body).toMatchObject({
-      mode: "tmux",
-      local: false,
-      agent: "codex",
-      items: [{ sid: "cx", cwd: "/w/cx", account: { kind: "follow" } }],
-    });
-    expect(Object.keys(body).filter((k) => ["launcher", "defaultLauncher", "models"].includes(k)), "启动命令 · 模型表那台自己读").toEqual([]);
-    expect(onRecord).toHaveBeenCalledWith(true);
-    expect(attach).toHaveBeenCalledWith("r1", "codex", "cx-1");
   });
 });

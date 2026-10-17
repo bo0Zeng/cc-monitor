@@ -79,8 +79,6 @@ vi.mock("../../../../src/frontend/ui/file-window", () => ({ openOnMachine: (host
 
 import { DataPage } from "../../../../src/frontend/ui/settings/data-page";
 import { recallDataReport } from "../../../../src/frontend/ui/settings/data-reads";
-import { defaultPick } from "../../../../src/frontend/ui/resume-menu";
-import { forgetResumeDefaults, resumeInTmuxAt } from "../../../../src/frontend/ui/resume-defaults";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 
@@ -157,7 +155,6 @@ beforeEach(() => {
   merges.reply = null;
   clipFake = fakeClipboard();
   disk.cfg = { remote: { hosts: [{ label: "devbox", host: "d.lan", user: "u", port: 22 }, { label: "gpu", host: "g.lan", user: "u", port: 22 }] } };
-  forgetResumeDefaults();
 });
 
 describe("上次值", () => {
@@ -269,18 +266,6 @@ describe("待办", () => {
     page.element.querySelector<HTMLElement>('[data-chore="clash:cc"] button')!.click();
     page.element.querySelector<HTMLElement>('[data-chore="cc-bus-hooks"] button')!.click();
     expect(went).toEqual([{ machine: LOCAL_ORIGIN, tab: "config", anchor: "clash" }, { page: "ext", anchor: undefined }]);
-  });
-
-  it("★ 那台说了没有 tmux ⇒ 恢复默认的「运行于」那台回落不用 tmux", async () => {
-    answers.set(LOCAL_ORIGIN, report({ tmux: true }));
-    answers.set("devbox", report({ tmux: false }));
-    const { page } = mount();
-    page.loadNow();
-    await settle();
-    await resumeInTmuxAt("devbox");
-    await resumeInTmuxAt(LOCAL_ORIGIN);
-    expect(defaultPick("devbox").tmux).toBe(false);
-    expect(defaultPick(LOCAL_ORIGIN).tmux).toBe(true);
   });
 });
 

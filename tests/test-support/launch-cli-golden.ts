@@ -9,9 +9,9 @@
  * 住 `tests/test-support/`：期望里有整条命令（就地 resume 那一格外层的 `tmux -u send-keys`），而 `src/` 生产段零 shell 串。
  */
 import { DEFAULT_AGENT, defaultLauncherOf } from "../../src/frontend/ui/agent-profile.ts";
-import type { LaunchContext } from "../../src/frontend/ui/launch-types.ts";
-import { buildCliRenderRequest } from "../../src/frontend/ui/launch-cli-wire.ts";
-import { planAttach, planResumeDirect } from "../../src/frontend/ui/launch-requests.ts";
+import type { LaunchContext } from "./launch-types.ts";
+import { buildCliRenderRequest } from "./launch-cli-wire.ts";
+import { planAttach, planResumeDirect } from "./launch-requests.ts";
 
 /** 能力齐全的那一份（`ccm --ccm-probe` 在有 tmux 的机器上吐的那一串）。 */
 const ALL_CAPS = [

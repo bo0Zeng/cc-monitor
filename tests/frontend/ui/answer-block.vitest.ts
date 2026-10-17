@@ -73,7 +73,17 @@ describe("甲1 批准一步", () => {
     const c = ASKS.approve.choices.map((x) => x.text);
     expect(rows(b)).toEqual([
       ["main", [c[0], c[1], c[2]]],
-      ["deny", [c[3], copyText("askBlock.choice.more", { label: c[4] }), c[5]]],
+      ["hold", [c[3], copyText("askBlock.choice.more", { label: c[4] }), c[5]]],
+    ]);
+  });
+
+  it("★ 哪一项进哪一段照核心给的 `row`，不按选项 id 认", () => {
+    const moved = { ...ASKS.approve, choices: ASKS.approve.choices.map((x) => (x.id === "always-1" ? { ...x, row: "hold" as const } : x)) };
+    const { b } = rig(tab(needs(moved)));
+    const c = moved.choices.map((x) => x.text);
+    expect(rows(b)).toEqual([
+      ["main", [c[0], c[1]]],
+      ["hold", [c[2], c[3], copyText("askBlock.choice.more", { label: c[4] }), c[5]]],
     ]);
   });
 

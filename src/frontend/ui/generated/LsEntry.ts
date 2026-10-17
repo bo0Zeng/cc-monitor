@@ -12,7 +12,11 @@ export type LsEntry = { path: WirePath,
 /**
  * 末段名（那台按自己的分隔符切好）。
  */
-name: WirePath, kind: FileKind, size?: number, mtime_secs?: number, 
+name: WirePath, kind: FileKind, size?: number, 
+/**
+ * `size` 写好的字（`2.1 MB`，`copy_core::size_text`）；目录 · 指向目录的链接 · 读不到大小的 ⇒ 缺。
+ */
+size_text?: string, mtime_secs?: number, 
 /**
  * 那台按本地钟写好的短写法。
  */

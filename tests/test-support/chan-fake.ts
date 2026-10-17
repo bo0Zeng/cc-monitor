@@ -375,10 +375,11 @@ function productAccount(a: Record<string, unknown>): Record<string, unknown> {
   out.badge = a.badge ?? { text: "badge", warn: false, title: "" };
   // 号色是那台账号库里的一格（`Manifest::with_colors`）：夹具不写 ⇒ 第 0 格占位（判号色的判据自己写）。
   out.color = a.color ?? 0;
-  // 号牌字 ·「5h 那一格」· 选不了的那一句都是那台后端写好的格：夹具不写 ⇒ 号牌照名字前两个字占位，另两格空（判它们的判据自己写）。
+  // 号牌字 ·「5h 那一格」· 选不了的那一句 · 给不给［登录…］都是那台后端写好的格：夹具不写 ⇒ 号牌照名字前两个字占位，其余空 / 不给（判它们的判据自己写）。
   out.plate = a.plate ?? String(a.name ?? "").slice(0, 2);
   out.quota = a.quota ?? null;
   out.unselectable = a.unselectable ?? null;
+  out.login = a.login ?? false;
   return out;
 }
 

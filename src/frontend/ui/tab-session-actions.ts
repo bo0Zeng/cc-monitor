@@ -1,27 +1,26 @@
 /**
- * 对一个会话做的动作：resume（直连 / tmux / 就地）· 换号重启 · 杀 tmux 会话 · 打开工作目录 · 在新窗口打开 · 切到终端窗口；
+ * 对一个会话做的动作：恢复 · 换号重启 · 杀 tmux 会话 · 打开工作目录 · 在新窗口打开 · 切到终端窗口；
  * 外加 tab 层零散的后端调用（忘掉会话 · 把 monitor 拉到前面 · DEV 探针日志）。
  * 只经 `commands.x(…)` 说话（不直呼 `invoke`）；宿主只给四样只读 / 回调（`TabSessionHost`），不碰 tab 栏、不碰流 DOM。
  */
 import { confirmDialog, type ConfirmFn } from "./kit/dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { askOf, FOLLOW, type AccountAsk } from "./launch-account";
-import { resumeLocalSession } from "./local-resume";
+import type { AccountAsk } from "./launch-account";
+import type { Run } from "./generated/Run";
 import { toast, failToast } from "./kit/toast";
-import { runRemoteResume } from "./remote-launch-run";
+import { openSession } from "./session-open";
 import { isLocalOrigin, isRemoteOrigin, type Origin } from "./ipc/origin";
 import { frontByLocalLabel, planRemoteFront } from "./remote-terminal-front";
 import type { FrontResult } from "./front-result";
 import type { FrontOutcome } from "./generated/FrontOutcome";
 import { commands } from "./ipc/commands";
-import { probeSessionRecord, reasonOf, type RecordProbe } from "./session-reads";
+import { probeSessionRecord, type RecordProbe } from "./session-reads";
 import { openFileWindow } from "./file-window";
 import {
   readRemoteConfig,
   findHostByOrigin,
 } from "./remote-config";
-import { callStop, sayReply, type Reply, type StartItem } from "./tab-batch-run";
-import { startInTmuxThenAttach } from "./tmux-resume";
+import { callStop, sayReply, type Reply } from "./tab-batch-run";
 // 标签页里的会话都是流跟的那一家（记录树那一家）。
 import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
@@ -47,8 +46,6 @@ export interface TabSessionHost {
 }
 
 export class TabSessionActions {
-  /** 正在 tmux 版 resume 的 sid：双击之间不互斥的话，两次并发各自算出该建的名字，可能真建出两个声称同一 sid 的 tmux 容器。 */
-  private resumingSids = new Set<string>();
   constructor(private readonly host: TabSessionHost) {}
 
   /** 在独立只读窗口打开（右键 / 快捷键 / 拖拽撕离）。拖拽撕离给落点屏幕坐标，后端在那里摆窗口；不给就居中。 */
@@ -71,39 +68,6 @@ export class TabSessionActions {
     } catch (e) {
       failToast(copyText("tabSessionActions.openInWindow.failed"), e);
     }
-  }
-
-  /**
-   * resume 之前先问那台后端：这条会话的记录还在不在（对方记录没了 ⇒ 重开必失败，要报错，不许静默变成起了个新会话）。
-   * - 不在 ⇒ 说清查的是哪台、哪棵记录树，tab 落「记录已不在」，回 `false`（调用方不开终端）；
-   * - 在 ⇒ 「记录已不在」翻回已结束，回 `true`；
-   * - 问不到 / 形状不对 ⇒ 当「不知道」、回 `true` 照起，但说一句（不许把问不到当成不在）。
-   * 判定住那台后端，前端不探文件。`configDir` ＝ 这次 resume 用的账号配置目录（那台判完号交回的），不带 ⇒ 查它的家目录。
-   */
-  private async recordStillThere(tab: Tab, configDir?: string): Promise<boolean> {
-    let probe: RecordProbe;
-    try {
-      // 经通道直接问那台后端的 `history-record`（`session-reads.ts::probeSessionRecord`）。
-      probe = await probeSessionRecord(tab.origin, tab.sessionId, configDir);
-    } catch (e) {
-      // 问不到 / 形状不对（旧后端）同「不知道」：只有一个明明白白的 `present: false` 才拦 —— 但说出来。
-      toast(
-        copyText("tabSessionActions.recordUnknown.title"),
-        reasonOf(e, tab.origin),
-      );
-      return true;
-    }
-    this.host.markRecord(tab.sessionId, probe.present);
-    if (probe.present) return true;
-    toast(
-      copyText("sessionState.recordGone.title"),
-      copyText("sessionState.recordGone.body", {
-        who: isLocalOrigin(tab.origin) ? copyText("tabSessionActions.who.local") : copyText("tabSessionActions.who.remote", { machine: tab.origin }),
-        root: probe.root,
-        sid: tab.sessionId,
-      }),
-    );
-    return false;
   }
 
   /** 离线条的［重新连接］：那台断着在退避里等 ⇒ 立刻重拨一次（壳那一侧 `backend_start`：流在跑就是「别等了」）。 */
@@ -163,89 +127,18 @@ export class TabSessionActions {
     return true;
   }
 
-  /** 这个会话是哪一家（会话事实到了才知道）；还不知道 ⇒ 说一句、`null`（不落哪一家）。 */
-  private agentOrSay(tab: Tab): string | null {
-    if (tab.agent !== null) return tab.agent;
-    toast(copyText("tabSessionActions.agent.unknown"), "", { level: "info" });
-    return null;
-  }
-
-  async resumeTab(sid: string, accountName?: string, useBase = false): Promise<void> {
+  /**
+   * 恢复这一个：说不清那台在不在跑 ⇒ 不恢复；否则交那台（`session-open`：判号 · 判放在哪 · 问记录 · 活进程门 · 在跑就接上），
+   * 那台说的记录在不在落进这条 tab。`ask` 里没有的格 ＝ 跟随 / 照这台。同一个会话在飞时再点不重发（`session-open.ts`）。
+   */
+  async resume(sid: string, ask: { account?: AccountAsk; run?: Run } = {}): Promise<void> {
     const tab = this.host.tab(sid);
     if (!tab || this.refuseUnseen(tab)) return;
-    const agent = this.agentOrSay(tab);
-    if (agent === null) return;
-    // 用哪个号那台判（点名的号 / 账号 0 / 跟随这条会话上次的号）；判完、开窗之前问记录还在不在（查那个号那棵树）。
-    const account = askOf(accountName, useBase);
-    const preflight = (configDir: string | undefined): Promise<boolean> => this.recordStillThere(tab, configDir);
-    if (isRemoteOrigin(tab.origin)) {
-      const origin = tab.origin;
-      await runRemoteResume(
-        origin,
-        agent,
-        sid,
-        tab.projectDir ?? "",
-        { account, preflight },
-      );
-      return;
-    }
-    // 本机 resume 的编排只有一份（`local-resume.ts`）：铸名 → 起（本机后端判号）。
-    await resumeLocalSession({
-      agent,
-      sid,
-      cwd: tab.projectDir ?? "",
-      account,
-      preflight,
-    });
-  }
-
-  /**
-   * tmux 版 resume（远端）：在那台 tmux 会话里幂等 resume；本机 tab 不走这里。`resumingSids` 挡并发双击。
-   * `accountName` 与直连版同参同义（账号与容器是正交的两组选项，不能只有直连版能选号）。
-   */
-  async resumeTabTmux(sid: string, accountName?: string, useBase = false): Promise<void> {
-    if (this.resumingSids.has(sid)) return;
-    this.resumingSids.add(sid);
-    try {
-      await this.resumeTabTmuxInner(sid, askOf(accountName, useBase));
-    } finally {
-      this.resumingSids.delete(sid);
-    }
-  }
-
-  private async resumeTabTmuxInner(sid: string, account: AccountAsk): Promise<void> {
-    const tab = this.host.tab(sid);
-    if (!tab || isLocalOrigin(tab.origin) || this.refuseUnseen(tab)) return;
-    // 起法与批量「在 tmux 里后台起」同一条（那台判号 · 判在不在跑 · 空 tmux 就地键入 · 铸名交一行 ccm，建完不接进去），
-    //   单个只多一步：起好之后开一个终端接进去。
-    const item: StartItem = { sid, cwd: tab.projectDir ?? "", account };
-    await this.startInTmuxThenAttach(tab, item, (again) => this.resumeTabTmuxInner(sid, again ?? account));
-  }
-
-  /**
-   * 交那台在 tmux 里起这一个（`sessions-start`，与批量同一条），起好了（或本来就在跑）开一个终端接进去。
-   * 起法本身不依赖标签页对象，住 `tmux-resume.ts`（历史页「恢复 ▾」同一条）；这里只把那台说的「记录在不在」落进这条 tab。
-   */
-  private async startInTmuxThenAttach(
-    tab: Tab,
-    item: StartItem,
-    again: (account?: AccountAsk) => Promise<void>,
-  ): Promise<void | false> {
-    const agent = this.agentOrSay(tab);
-    if (agent === null) return false;
-    return startInTmuxThenAttach(
-      { origin: tab.origin, agent, sid: tab.sessionId, cwd: item.cwd },
-      item.account ?? FOLLOW,
-      { again, onRecord: (present) => this.host.markRecord(tab.sessionId, present) },
+    await openSession(
+      tab.origin,
+      { what: { kind: "resume", sid }, ...ask, local: isLocalOrigin(tab.origin) },
+      { onRecord: (present) => this.host.markRecord(sid, present) },
     );
-  }
-
-  /** 本机：在那个空 tmux 里就地 resume，再开一个终端接进去（与批量同一条；账号跟随同本机 Resume）。 */
-  async resumeLocalInTmux(sid: string, account: AccountAsk = FOLLOW): Promise<void> {
-    const tab = this.host.tab(sid);
-    if (!tab) return;
-    const item: StartItem = { sid, cwd: tab.projectDir ?? "", account };
-    await this.startInTmuxThenAttach(tab, item, (again) => this.resumeLocalInTmux(sid, again ?? account));
   }
 
   /**
@@ -281,7 +174,7 @@ export class TabSessionActions {
         return;
       }
       if (r.outcome !== "done") {
-        const said = sayReply(origin, "stop", r);
+        const said = sayReply(origin, r);
         // 关卡 2 拒的 ⇒ 提示带「对齐后重试」（只对这个会话重验 ＋ 重打，再过一次关卡）。
         if (r.why === "wrong_owner") offerResyncRetry(origin, sid, copyText("tabSessionActions.kill.failed", { title }), said, kill);
         else toast(copyText("tabSessionActions.kill.failed", { title }), said, { detail: r.copyDetail });

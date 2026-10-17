@@ -30,10 +30,10 @@ import { banner } from "./kit/banner";
 import { detailOf } from "./kit/detail";
 import { icon } from "./kit/icon";
 import { splitButton } from "./kit/split-button";
-import { defaultPick, resumeAccounts, resumeHint, resumeMenuItems, type ResumeAccounts, type ResumePick } from "./resume-menu";
-import { resumeHistoryRow } from "./history-resume";
-import { resumeInTmuxAt } from "./resume-defaults";
-import { askOf, FOLLOW, type AccountAsk } from "./launch-account";
+import { defaultPick, pickAsk, resumeAccounts, resumeHint, resumeMenuItems, type ResumeAccounts, type ResumePick } from "./resume-menu";
+import { openSession } from "./session-open";
+import { standingOf } from "./sessions-where";
+import type { Run } from "./generated/Run";
 import { openNewSession } from "./new-session";
 import { revealInFolder } from "./reveal-in-folder";
 import { terminalFrontAvailable } from "./terminal-front";
@@ -43,7 +43,6 @@ import { flashFrontDone, showFrontResult } from "./front-pop";
 import { machineName } from "./control-said";
 import { openSettingsWindow } from "./open-settings";
 import { connectTerminalOf } from "./settings-dest";
-import { startInTmuxThenAttach } from "./tmux-resume";
 import { SWITCH_TO_SESSION_EVENT } from "./window-events";
 import { windowStatus, windowTitle } from "./viewer-window-text";
 import { bootstrapAgentWindow } from "./views/agent-window";
@@ -152,7 +151,7 @@ async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
   const paint = (): void => {
     void win.setTitle(windowTitle(r, live)).catch(() => {});
     crumbs.replaceChildren(...crumbsOf(r, live === true));
-    acts.replaceChildren(...actionsOf(r, live === true, viewer));
+    acts.replaceChildren(...actionsOf(r, live === true));
   };
   paint();
   await viewer.load({
@@ -206,12 +205,12 @@ async function viewerFront(b: HTMLElement, r: HistoryRow, origin: Origin): Promi
   showFrontResult(b, r.sessionId, { ...view, acts }, async (a) => {
     if (a.kind === "retry") await viewerFront(b, r, origin);
     else if (a.kind === "connect") await openSettingsWindow(undefined, connectTerminalOf(LOCAL_ORIGIN));
-    else if (a.kind === "open-in-terminal") await startInTmuxThenAttach({ origin, agent: r.agent, sid: r.sessionId, cwd: r.projectPath }, FOLLOW, { again: async () => {} });
+    else if (a.kind === "open-in-terminal") await openSession(origin, { what: { kind: "look", sid: r.sessionId }, local: isLocalOrigin(origin) });
   });
 }
 
 /** 右端：［恢复 ▾］或［切过去］· 打开目录（本机）· Windows 上在跑的「切到终端」。 */
-function actionsOf(r: HistoryRow, live: boolean, viewer: SessionViewer): HTMLElement[] {
+function actionsOf(r: HistoryRow, live: boolean): HTMLElement[] {
   const out: HTMLElement[] = [];
   if (live) {
     // 切过去：主窗口拉前、切到那个会话的标签页（窗口留着）。
@@ -225,7 +224,7 @@ function actionsOf(r: HistoryRow, live: boolean, viewer: SessionViewer): HTMLEle
       }),
     );
   } else {
-    out.push(resumeControl(r, viewer));
+    out.push(resumeControl(r));
   }
   if (!r.origin && r.projectPath) {
     out.push(button({ label: copyText("history.menu.openDir"), kind: "icon", icon: "folder", hint: copyText("history.menu.openDir"), onClick: () => void revealInFolder(r.projectPath) }));
@@ -245,24 +244,20 @@ function actionsOf(r: HistoryRow, live: boolean, viewer: SessionViewer): HTMLEle
   return out;
 }
 
-/** ［恢复 ▾］：与历史页同一个组件；起了 ⇒ 主窗口那边等它出现（窗口留着）；没起 ⇒ 消息流上面一条错误条 ＋［重试］。 */
-function resumeControl(r: HistoryRow, viewer: SessionViewer): HTMLElement {
-  const pick: ResumePick = defaultPick(r.origin ?? LOCAL_ORIGIN);
+/** ［恢复 ▾］：与历史页同一个组件；起了 ⇒ 主窗口那边等它出现（窗口留着）；没起 ⇒ 那一句已经说过。 */
+function resumeControl(r: HistoryRow): HTMLElement {
+  const origin = r.origin ?? LOCAL_ORIGIN;
+  const pick: ResumePick = defaultPick();
   let accounts: ResumeAccounts = !r.can.accounts
     ? { kind: "none", agentName: r.agentTag ?? r.agent }
     : r.lastAccount
       ? { kind: "list", items: [{ name: r.lastAccount, label: r.lastAccount, quota: null, last: true }] }
       : { kind: "off" };
-  // 选不了的号：那台不起、给替代 ⇒ 点了替代 ⇒ 带那个号再起一次（`again`）。
-  const go = async (account: AccountAsk = askOf(pick.account, pick.useBase)): Promise<void> => {
-    viewer.showBanner(null);
+  let machineRun: Run | undefined;
+  const go = async (): Promise<void> => {
     setBusy(sb.main, copyText("history.resume.busy"));
     try {
-      await resumeHistoryRow(r, { tmux: pick.tmux, account }, (a) => go(a ?? account));
-    } catch (e) {
-      const said = copyText("history.resume.failed", { machine: r.origin ?? copyText("history.filter.local"), why: String(e) });
-      const retry = button({ label: copyText("history.group.retry"), size: "compact", onClick: () => void go(account) });
-      viewer.showBanner(banner("error", said, [retry], detailOf(e)));
+      await openSession(origin, { what: { kind: "resume", sid: r.sessionId }, ...pickAsk(pick), local: isLocalOrigin(origin) });
     } finally {
       setBusy(sb.main, null);
     }
@@ -273,26 +268,23 @@ function resumeControl(r: HistoryRow, viewer: SessionViewer): HTMLElement {
     onClick: () => void go(),
     moreLabel: copyText("history.resume.more"),
     items: async () => {
-      accounts = await resumeAccounts(r.origin ?? LOCAL_ORIGIN, r.agent, { hasAccounts: r.can.accounts, agentName: r.agentTag ?? r.agent, last: r.lastAccount });
-      sb.main.title = resumeHint(accounts, pick);
+      const [a, where] = await Promise.all([
+        resumeAccounts(origin, r.agent, { hasAccounts: r.can.accounts, agentName: r.agentTag ?? r.agent, last: r.lastAccount }),
+        standingOf(origin, r.sessionId),
+      ]);
+      accounts = a;
+      machineRun = where?.run;
+      sb.main.title = resumeHint(accounts, pick, machineRun);
       return resumeMenuItems({
         accounts,
         pick,
-        onChange: (p) => (sb.main.title = resumeHint(accounts, p)),
-        newInDir: () => void openNewSession({ origin: r.origin ?? LOCAL_ORIGIN, cwd: r.projectPath, agent: r.agent }),
+        machineRun,
+        onChange: (p) => (sb.main.title = resumeHint(accounts, p, machineRun)),
+        newInDir: () => void openNewSession({ origin, cwd: r.projectPath, agent: r.agent }),
       });
     },
   });
   sb.root.dataset.role = "resume";
-  // 默认的「运行于」照那台「恢复到 tmux 里」（这扇窗问那台一次；菜单没动过才换）。
-  let touched = false;
-  const before = pick.tmux;
-  void resumeInTmuxAt(r.origin ?? LOCAL_ORIGIN).then((on) => {
-    if (touched || pick.tmux !== before) return;
-    pick.tmux = on;
-    sb.main.title = resumeHint(accounts, pick);
-  });
-  sb.more.addEventListener("click", () => (touched = true), { once: true });
   if (r.can.resume === "bg") {
     setDisabled(sb.main, copyText("history.row.bgHint"));
     setDisabled(sb.more, copyText("history.row.bgHint"));

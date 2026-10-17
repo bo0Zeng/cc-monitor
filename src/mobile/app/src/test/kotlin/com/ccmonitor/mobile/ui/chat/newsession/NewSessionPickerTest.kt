@@ -53,6 +53,7 @@ class NewSessionPickerTest {
         "unselectable" to if (selectable) null else "需登录",
         "authKind" to "subscription",
         "badge" to mapOf("text" to if (selectable) "已登录" else "需登录", "warn" to !selectable),
+        "login" to !selectable,
     )
 
     private fun accounts(

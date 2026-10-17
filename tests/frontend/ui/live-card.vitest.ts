@@ -24,13 +24,6 @@ vi.mock("../../../src/frontend/ui/tasks-panel", () => ({ fetchSessionTasks: vi.f
 vi.mock("../../../src/frontend/ui/behavior", () => ({
   getBehavior: vi.fn().mockResolvedValue({ resumeCommand: "cct" }),
 }));
-vi.mock("../../../src/frontend/ui/remote-launch-run", () => ({
-  runRemoteResume: vi.fn().mockResolvedValue(undefined),
-  runRemoteResumeTmux: vi.fn().mockResolvedValue(undefined),
-  runLocalResumeIntoExistingTmux: vi.fn().mockResolvedValue(true),
-  runRemoteResumeIntoExistingTmux: vi.fn().mockResolvedValue(true),
-  runRemoteAttach: vi.fn().mockResolvedValue(undefined),
-}));
 vi.mock("../../../src/frontend/ui/fork-flow", () => ({ runForkFlow: vi.fn().mockResolvedValue(undefined) }));
 
 import { LiveBoard, renderCardText } from "../../../src/frontend/ui/live-card";

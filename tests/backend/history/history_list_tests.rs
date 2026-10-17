@@ -695,9 +695,7 @@ fn asking_by_sid_scans_one_session_and_answers_the_same() {
     std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
     let live = LiveSet([S4.to_string()].into_iter().collect());
     let listing = |only: Option<&str>| {
-        let tree = crate::history::listing::sessions_by_dir_for(&home, only)
-            .expect("读得了")
-            .expect("记录树在");
+        let tree = tree_for(&home, only).expect("读得了").expect("记录树在");
         listing_from(tree, &[], &live, &json!({ S1: "work" }))
     };
     let whole = listing(None);
@@ -716,9 +714,11 @@ fn asking_by_sid_scans_one_session_and_answers_the_same() {
         }
         for r in narrow["rows"].as_array().unwrap() {
             let scanned = r["jsonlPath"].as_str().is_some_and(|p| !p.is_empty());
+            // 分叉来的那一条（S4 分自 S1）⇒ 父会话那一份也整份扫（那一行要父会话的显示标题）。
+            let parent = sid == S4 && r["sessionId"] == S1;
             assert_eq!(
                 scanned,
-                r["sessionId"] == sid,
+                r["sessionId"] == sid || parent,
                 "只扫一份那一形扫了别的会话：{r}"
             );
         }
@@ -953,4 +953,41 @@ fn a_session_the_ledger_calls_reconnectable_is_listed_as_reconnectable() {
         [&r, &o, &live].map(|x| crate::history::listing::status_of(x.is_live, x.reconnectable)),
         ["reconnectable", "ended", "live"]
     );
+}
+
+/// ★ 分叉来的那一行带父会话的显示标题（同父会话自己那一行的 `label`，父会话被筛掉 / 隐藏也照它）；父会话不在这台的清单里 ⇒ 缺；
+/// 不是分叉来的 ⇒ 缺。按项目看的每一组带最近活动写好的字（同行尾那一格的写法）；读不了的那一组 ⇒ `null`。
+#[test]
+fn a_forked_row_names_its_parent_and_groups_say_when() {
+    let tz = crate::Tz::default();
+    let v = answer(json!({"query": "分出来"}));
+    assert_eq!(
+        find(&v, S5)["forkedFrom"],
+        json!({"label": find(&answer(json!({"hidden": true})), S4)["label"]})
+    );
+    assert!(find(&v, S4).get("forkedFrom").is_none(), "不是分叉来的");
+    let mut l = listing();
+    let rows = l["rows"].as_array_mut().unwrap();
+    rows.retain(|r| r["sessionId"] != S4);
+    let orphan = answer_from(&l, None, Ok(&ann()), &ask(json!({})), 1_000, &tz);
+    assert!(
+        find(&orphan, S5).get("forkedFrom").is_none(),
+        "父会话不在这台的清单里 ⇒ 缺"
+    );
+    let all = answer(json!({"hidden": true}));
+    for g in all["groups"].as_array().unwrap() {
+        let want = if g["failed"].is_null() {
+            json!(
+                crate::common::time::history_at_text(
+                    g["lastActivity"].as_i64().unwrap(),
+                    1_000,
+                    &tz
+                )
+                .0
+            )
+        } else {
+            Value::Null
+        };
+        assert_eq!(g["atText"], want, "{g}");
+    }
 }

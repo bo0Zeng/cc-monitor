@@ -9,7 +9,7 @@ use egui_phosphor::regular as ph;
 use std::sync::{Arc, Mutex};
 
 use super::kit;
-use super::select::Item;
+use super::select::{ActionFace, Item, ItemFace};
 use super::shell::FileWindow;
 use super::source::breadcrumbs;
 use super::theme::{bar_frame, metrics, palette};

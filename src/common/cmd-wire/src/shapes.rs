@@ -5,7 +5,7 @@
 pub const SHAPES: &[(&str, &str)] = &[
     ("accounts-add", "ffb62a67"),
     ("accounts-init", "6b5379da"),
-    ("accounts-list", "9568790c"),
+    ("accounts-list", "fb14879e"),
     ("accounts-login-cmd", "a6d298b1"),
     ("accounts-mcp-pick", "fc80a269"),
     ("accounts-mcp-read", "ff26131b"),
@@ -205,11 +205,11 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("terminal-ssh", "3f3647ff"),
     ("terminal-unfollow", "7ffb2c4f"),
     ("terminals-list", "8b48f403"),
-    ("transfer-copy", "75cff2a5"),
-    ("transfer-download", "ea994d2b"),
+    ("transfer-copy", "0791839e"),
+    ("transfer-download", "f83655b6"),
     ("transfer-start", "deec43c9"),
     ("transfer-stop", "7ae1c448"),
-    ("transfer-upload", "6cbce9e4"),
+    ("transfer-upload", "3dd6679f"),
 ];
 
 /// typed 命令里开跑之后撤不动的那几条（阻塞档），按命令名排。客户端撤单时读本侧这一份：指纹对得上才会发，对上了两边必然一致。

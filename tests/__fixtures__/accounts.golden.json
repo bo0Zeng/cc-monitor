@@ -23,7 +23,8 @@
         "color": 3,
         "plate": "ze",
         "quota": null,
-        "unselectable": null
+        "unselectable": null,
+        "login": false
       },
       {
         "authKind": "subscription",
@@ -47,7 +48,8 @@
         "color": 0,
         "plate": "a",
         "quota": null,
-        "unselectable": null
+        "unselectable": null,
+        "login": false
       },
       {
         "authKind": "api-key",
@@ -71,7 +73,8 @@
         "color": 1,
         "plate": "b",
         "quota": null,
-        "unselectable": null
+        "unselectable": null,
+        "login": false
       }
     ],
     "meta": {

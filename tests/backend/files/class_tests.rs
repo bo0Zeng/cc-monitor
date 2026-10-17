@@ -109,7 +109,7 @@ fn images_preview_and_view_each_up_to_their_own_cap() {
         at(PREVIEW_IMAGE_MAX_BYTES).preview,
         PreviewGate::Image(PREVIEW_IMAGE_MAX_BYTES)
     );
-    // 预览放不下、查看页放得下 ⇒ 那一句指向「查看」。
+    // 预览放不下、查看页放得下 ⇒ 那一句指向「查看」；连查看页也放不下 ⇒ 与查看页同一句。
     assert_eq!(
         at(PREVIEW_IMAGE_MAX_BYTES + 1).preview,
         PreviewGate::No(copy_text(
@@ -117,6 +117,16 @@ fn images_preview_and_view_each_up_to_their_own_cap() {
             &[
                 ("size", &size_text(PREVIEW_IMAGE_MAX_BYTES + 1)),
                 ("limit", &size_text(PREVIEW_IMAGE_MAX_BYTES))
+            ]
+        ))
+    );
+    assert_eq!(
+        at(VIEW_IMAGE_MAX_BYTES + 1).preview,
+        PreviewGate::No(copy_text(
+            "beFilesOpen.view.tooBig",
+            &[
+                ("size", &size_text(VIEW_IMAGE_MAX_BYTES + 1)),
+                ("limit", &size_text(VIEW_IMAGE_MAX_BYTES))
             ]
         ))
     );

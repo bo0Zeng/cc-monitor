@@ -249,11 +249,9 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/control-said.ts", // 那台握手时说过做不到的几项置灰：`unavailableSaid`（事实住 monitor 那份 Offer）
     "src/frontend/ui/copy-table.ts", // 固定那一项的两句提示（说到会话状态）住文案表
     "src/frontend/ui/duration-format.ts", // 「没人答时自动答 ▸」那几档的时长照短时长写（`fmtDur`）
-    "src/frontend/ui/kit/toast.ts",
     "src/frontend/ui/ipc/origin.ts", // 本机 / 远端各给哪几项（原先是 backend-policy 的 LOCAL_ORIGIN ＋ 各处 `=== null`）
-    "src/frontend/ui/remote-launch-run.ts",
-    "src/frontend/ui/resume-menu.ts", // 「恢复 ▸」那一组选项怎么摆（历史页「恢复 ▾」同一个组件）
-    "src/frontend/ui/launch-account.ts", // 勾着的号 ⇒ 交那台判的那一问（`askOf`：本机在 tmux 里那一条要它）
+    "src/frontend/ui/resume-menu.ts",
+    "src/frontend/ui/session-open.ts", // 在终端里打开 · 就地恢复 · 恢复 ▸ 交那台（`session-open`） // 「恢复 ▸」那一组选项怎么摆（历史页「恢复 ▾」同一个组件）
     "src/frontend/ui/new-session.ts", // 「恢复 ▸」最底下「在此目录新建会话」：开起新会话框（历史页同一个）
     "src/frontend/ui/kit/menu.ts",
     "src/frontend/ui/tab-session-state.ts", // 给 Resume 还是给换号重启 · 本机「杀死会话」占位
@@ -272,18 +270,12 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/file-window.ts", // F78：远端会话「打开工作目录」（老 SFTP 面板删了，改开文件窗口）
     "src/frontend/ui/ipc/commands.ts",
     "src/frontend/ui/ipc/origin.ts", // 本机 / 远端各走哪条动作
-    // 起会话那一格「要哪个号」与「选不了」那个选择框（判号在那台后端）。
-    "src/frontend/ui/launch-account.ts",
-    // 本机 resume 的编排收进 `local-resume.ts`（校验 sid · 铸名 · 账号 · 记 pin 都在里面）
-    //   ⇒ 本份不再直接要 `launch-requests.ts`（sid 校验）与 `remote-launch.ts`（内联铸名那六行）。
-    "src/frontend/ui/local-resume.ts",
     "src/frontend/ui/remote-config.ts",
-    "src/frontend/ui/remote-launch-run.ts",
     "src/frontend/ui/remote-terminal-front.ts", // 远端 ↗ 的前两问（那台谁在显示它 · 本机哪串进程开着那条连接）
     "src/frontend/ui/resync.ts", // 关卡 2 拒了结束会话 ⇒ 提示带「对齐后重试」（认拒绝码 ＋ 对齐 ＋ 再做一次，都在那一个口）
-    "src/frontend/ui/session-reads.ts", // resume 之前问记录还在不在（经通道问 `history-record`）
-    "src/frontend/ui/tab-batch-run.ts", // 杀 / 在 tmux 里 Resume 交那台（`sessions-stop` / `sessions-start`，与批量同一条）
-    "src/frontend/ui/tmux-resume.ts", // 在 tmux 里 Resume 那一条起法（不依赖标签页对象，历史页「恢复 ▾」同一条）；这里只把「记录在不在」落进 tab
+    "src/frontend/ui/session-open.ts", // 恢复交那台（`session-open`：判号 · 放在哪 · 问记录都在那台）；这里只把「记录在不在」落进 tab
+    "src/frontend/ui/session-reads.ts", // 那台重新对齐过 ⇒ 固定条逐条问记录还在不在（经通道问 `history-record`）
+    "src/frontend/ui/tab-batch-run.ts", // 杀交那台（`sessions-stop`，与批量同一条）
   ],
 };
 

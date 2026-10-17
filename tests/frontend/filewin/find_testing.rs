@@ -715,6 +715,7 @@ impl FakeBackend {
                                     cmd_wire::files::FileKind::File
                                 },
                                 size: Some(r.size),
+                                size_text: Some(copy_core::size_text(r.size)),
                                 mtime_secs: None,
                                 mtime_text: None,
                                 mtime_full: None,
@@ -1704,5 +1705,6 @@ pub fn gated(mut l: crate::source::Listed) -> crate::source::Listed {
     l.class = class;
     l.type_text = type_text;
     l.gates = gates;
+    l.size_text = Some(copy_core::size_text(l.row.size));
     l
 }

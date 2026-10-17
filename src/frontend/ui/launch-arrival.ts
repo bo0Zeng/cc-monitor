@@ -2,7 +2,7 @@
  * 「起会话的真成功正信号：只有看见那台后端报出这个会话才说起来了；预算内没见到 ⇒ 说命令发出去了，
  * 但没看到会话起来，并给出启动器那一行的退出原话，不报成功」。
  *
- * 起会话的各条路（`remote-launch-run.ts` 的执行器 · `local-resume.ts` · 历史页起新会话 · cc-bus 派生）把命令发出去之后
+ * 起会话的各条路（`session-open.ts` · cc-bus 派生）把命令发出去之后
  * 不再自己说「起来了」，而是交一件「等它」（[`expectArrival`]）。等的那一方只有一个：**主窗口**（它订着每台机器的会话流，
  * 设置窗 / 查看窗订不全）⇒ 预期经窗口间事件交过去（同 `settings/events.ts` 那两条跨窗事件的做法），主窗口在
  * [`bindLaunchArrivals`] 里收下、在 [`noteLive`] 里对那台报上来的活会话（`live` 格）。预算到了还没见到 ⇒ 说没见到：
@@ -45,8 +45,6 @@ export interface SlotSpec {
   cwd: string;
   /** 起在 tmux 会话里 ⇒ 它的名字；开窗起的 ⇒ `null`。 */
   tmuxName: string | null;
-  /** 起的是哪一家（［在终端里打开］按它渲命令）。 */
-  agent: string;
   /** 认报到用的那一格（分叉 ⇒ sid；新起的 ⇒ 目录）。 */
   match: ArrivalMatch;
   /**
@@ -68,8 +66,10 @@ export interface ArrivalSpec {
   ticket?: string;
   /** 发起方所在的窗口（不是主窗口 ⇒ 那一句在那里也说一遍）。由 [`expectArrival`] 填。 */
   from?: string;
-  /** 占位标签页要的两样（起在哪个目录 · 哪一家）：给了、又是在主窗口里发起的 ⇒ 走占位标签页（[`setArrivalSlots`]）。 */
-  slot?: { cwd: string; agent: string };
+  /** 占位标签页要的那一样（起在哪个目录）：给了、又是在主窗口里发起的 ⇒ 走占位标签页（[`setArrivalSlots`]）。 */
+  slot?: { cwd: string };
+  /** 发请求那一刻这台已经报过的 sid（同 [`SlotSpec.before`]）；缺 ⇒ 收下这一件那一刻。 */
+  before?: string[];
 }
 
 /**
@@ -79,6 +79,11 @@ export interface ArrivalSpec {
 let slots: ((spec: SlotSpec) => boolean) | null = null;
 export function setArrivalSlots(fn: ((spec: SlotSpec) => boolean) | null): void {
   slots = fn;
+}
+
+/** 这扇窗长得出占位标签页（主窗口）。 */
+export function slotsHere(): boolean {
+  return slots !== null;
 }
 
 /** 那一句：主窗口里说，发起方在别的窗口 ⇒ 那里也说一遍。 */
@@ -112,7 +117,7 @@ export interface LiveSeen {
 
 interface Pending extends ArrivalSpec {
   /** `{cwd}` 那一格：预期那一刻这台已经报过的 sid（它们不算「新起的」）。 */
-  before: Set<string>;
+  old: Set<string>;
   /** 到点说「没看到」的那一下；`null` ＝ 不设期限（占位标签页那一形：一直等到报到或被关掉）。 */
   timer: ReturnType<typeof setTimeout> | null;
   /** 报到了交给谁（占位标签页那一形）；没有 ⇒ 照常说那一句、回发起方。 */
@@ -181,12 +186,13 @@ export function expectArrival(spec: ArrivalSpec): void {
  * 这里不计时；别的 ⇒ 预算到了说一句「没看到」。
  */
 export function watchArrival(spec: ArrivalSpec): void {
+  const before = new Set(spec.before ?? seenLive.get(key(spec.origin))?.keys() ?? []);
   if (slots && spec.slot && spec.ticket === undefined && (spec.from === undefined || spec.from === MAIN_WINDOW)) {
-    if (slots({ origin: spec.origin, cwd: spec.slot.cwd, tmuxName: spec.tmuxName, agent: spec.slot.agent, match: spec.match })) return;
+    if (slots({ origin: spec.origin, cwd: spec.slot.cwd, tmuxName: spec.tmuxName, match: spec.match, ...(spec.before ? { before } : {}) })) return;
   }
   const p: Pending = {
     ...spec,
-    before: new Set(seenLive.get(key(spec.origin))?.keys() ?? []),
+    old: before,
     // 一次性的预算（`polling_registry` 登记）：到点只说一次「没看到」，不重试、不轮询。
     // 调度：一次性 —— 起会话之后等那台报出它的预算，到点只说一次；见到了当场清
     timer: setTimeout(() => {
@@ -223,7 +229,7 @@ export function watchUntilArrived(origin: Origin, match: ArrivalMatch, onArrived
     match,
     tmuxName: null,
     arrived: null,
-    before: from,
+    old: from,
     timer: null,
     onArrived,
   };
@@ -269,7 +275,7 @@ export async function awaitArrival(spec: ArrivalSpec): Promise<string | null> {
 export function noteLive(origin: Origin, sid: string, seen: LiveSeen): void {
   const k = key(origin);
   for (const p of pending) {
-    if (key(p.origin) !== k || !arrivalMatches(p.match, sid, seen, p.before)) continue;
+    if (key(p.origin) !== k || !arrivalMatches(p.match, sid, seen, p.old)) continue;
     if (p.timer !== null) clearTimeout(p.timer);
     pending.delete(p);
     if (p.onArrived) {

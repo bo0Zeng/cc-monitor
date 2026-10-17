@@ -16,11 +16,11 @@
 //
 // account 传字面 "-" 或省略 = 跟随（判据渲染这一侧当「不表态」，远端那一行落 `--base`）；给了 = 点名那个号（`--account <名>`，
 // 号要登记在沙箱家目录的账号清单里：调用它的套件自己写那份 `accounts.json`）。
-import { planResumeDirect } from "../../src/frontend/ui/launch-requests.ts";
+import { planResumeDirect } from "../test-support/launch-requests.ts";
 import { renderCmdViaProduction } from "./launch-render-driver.ts";
 // 这几套跑的是 claude 那一家（假的 claude 当启动器）。
 import { DEFAULT_AGENT } from "../../src/frontend/ui/agent-profile.ts";
-import type { LaunchContext, LaunchModifiers } from "../../src/frontend/ui/launch-types.ts";
+import type { LaunchContext, LaunchModifiers } from "../test-support/launch-types.ts";
 
 /** 在 tmux 会话 `name` 里 resume `sid`（后端换号重启 / 分叉起的就是这一形）。 */
 function resumeInTmux(sid: string, name: string, cwd: string, mods: LaunchModifiers, ccmSid: string | undefined): LaunchContext {

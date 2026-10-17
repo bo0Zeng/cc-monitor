@@ -159,6 +159,7 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::Tz) -> QuotaRead 
         );
         if let Some(o) = o {
             sh.windows = show::windows_of(o, &key, now);
+            show::per_pct_of_slots(&mut sh);
         }
         sh
     };

@@ -28,7 +28,6 @@ import { mountTabBarResizer } from "./tab-bar-width";
 import { terminalFrontCommand } from "./terminal-front-command";
 import { loadTheme } from "./theme";
 import { SETTINGS_APPLIED_EVENT } from "./settings";
-import { forgetResumeDefaults } from "./resume-defaults";
 import { RESYNC_DONE_EVENT } from "./settings/events";
 import {
   AGENT_WINDOW_EVENT,
@@ -80,7 +79,7 @@ import { lastAccounts } from "./history-reads";
 import { decodeTasks, TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
 import { MainDrawer } from "./main-drawer";
-import { TerminalPage } from "./terminal-page";
+import { TerminalPage, type Watched } from "./terminal-page";
 import { onMachineState } from "./machine-feed";
 import type { Tab } from "./tab-model";
 import { REVEAL_RUN_EVENT } from "./cards/speaker-bar";
@@ -100,7 +99,7 @@ import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";
 import { currentAccountForBadge } from "./accounts";
 import { fetchSessionAccounts, fetchAccounts } from "./account-reads";
 import { bindLaunchArrivals, noteLive, setArrivalSlots } from "./launch-arrival";
-import { FOCUS_SESSION_EVENT, openNewSession, setNewSessionPlaceholder } from "./new-session";
+import { FOCUS_SESSION_EVENT, openNewSession } from "./new-session";
 import { copyText } from "./copy-table";
 import { appStore } from "./app-store";
 import { OverlayRouter } from "./overlay-router";
@@ -218,10 +217,11 @@ window.addEventListener("DOMContentLoaded", async () => {
   status.appendChild(tasksPanel.summaryElement);
   const agentsPanel = new AgentsPanel();
   status.appendChild(agentsPanel.summaryElement);
-  // 终端页跟着当前标签页走；`tabs` 在下面才建 ⇒ 先经一个口子取当前标签页，建好了再接上。
+  // 终端页跟着当前标签页走（占位标签页显着时看它的那个终端）；`tabs` 在下面才建 ⇒ 先经两个口子取，建好了再接上。
   let activeTab: () => Tab | null = () => null;
+  let watched: () => Watched | null = () => null;
   const terminalPage = new TerminalPage({
-    active: () => activeTab(),
+    active: () => watched(),
     front: (sid) => tabs.frontFor(sid),
     focusStream: () => {
       const el = activeTab()?.streamEl;
@@ -377,20 +377,23 @@ window.addEventListener("DOMContentLoaded", async () => {
     mainDrawer.open("terminal");
   };
   // 起新会话：在主窗口里起的先长出占位标签页、报到了换成真的；在设置 / 查看窗里起的点了［切过去］再切，先把主窗口拉到前面。
-  setNewSessionPlaceholder((spec) => tabs.addLaunchSlot(spec));
   // 别的起会话路（恢复 · cc-bus 派生 · 开窗 resume）在主窗口里发起的也走同一件占位标签页。
   setArrivalSlots((spec) => tabs.addLaunchSlot(spec));
   // 占位标签页那一页显着：会话头与真标签页的选中样子让开。
   tabs.onSlotShown = (on) => {
     sessionHead.el.toggleAttribute("data-slot-over", on);
     tabBar.toggleAttribute("data-slot-over", on);
+    terminalPage.sessionChanged();
   };
   void listen<{ origin: string; sid: string }>(FOCUS_SESSION_EVENT, (e) => {
     const w = getCurrentWindow();
     void w.unminimize().then(() => w.setFocus()).catch(() => {});
     tabs.switchTo(e.payload.sid);
   });
-  tabs.onViewTerminal = () => mainDrawer.dock.show("terminal");
+  tabs.onViewTerminal = () => {
+    terminalPage.sessionChanged();
+    mainDrawer.dock.show("terminal");
+  };
   const activeOrigin = (): Origin | null => {
     const sid = tabs.activeSessionId();
     return sid === null ? null : tabs.originOf(sid);
@@ -456,6 +459,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   };
   // 当前 tab 那一格变了 → 刷新 HUD context% chip（会话事实到了 / 切会话 / 要不到 ⇒ chip 说原因）。订阅 store。
   activeTab = () => tabs.activeTab();
+  watched = () => tabs.watched();
   // 报错卡上去它的终端那两颗：当前会话的消息流根上标「能不能」（与会话头同一道），点了交 `tabs`。
   function paintTerminalActs(): void {
     const t = tabs.activeTab();
@@ -529,7 +533,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   void listen(SETTINGS_APPLIED_EVENT, () => {
     void loadTheme(); // 主题：loadTheme 内部 applyTheme
     void getBehavior().then((b) => tabs.applyBehavior(b)); // 行为
-    forgetResumeDefaults(); // 恢复默认的「运行于」：各台那一格可能改了，下次重问
     void getKeybindings().then((kb) => {
       dispatcher.applyOverrides(kb); // 键位：热应用主窗口 dispatcher
       refreshCmdkChord(); // 键位变 → 同步刷新命令 chip 的 kbd（兑现「改键即变」）

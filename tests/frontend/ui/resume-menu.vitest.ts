@@ -10,7 +10,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("../../../src/frontend/ui/account-reads", () => ({ fetchAccounts: vi.fn() }));
 vi.mock("../../../src/frontend/ui/acct-center", () => ({ refreshQuota: vi.fn() }));
 
-import { defaultPick, resumeAccounts, resumeHint, resumeMenuItems, type ResumeAccounts, type ResumePick } from "../../../src/frontend/ui/resume-menu";
+import { defaultPick, pickAsk, resumeAccounts, resumeHint, resumeMenuItems, type ResumeAccounts, type ResumePick } from "../../../src/frontend/ui/resume-menu";
 import { fetchAccounts } from "../../../src/frontend/ui/account-reads";
 import { refreshQuota } from "../../../src/frontend/ui/acct-center";
 import { appStore, putIn } from "../../../src/frontend/ui/app-store";
@@ -120,8 +120,8 @@ const shape = (items: ReturnType<typeof resumeMenuItems>): string[] =>
   items.map((i) => (i.divider ? "—" : i.heading ? `[${i.label}]` : `${i.checked ? "✓" : ""}${i.label}${i.detail ? `|${i.detail}` : ""}`));
 
 describe("菜单怎么摆", () => {
-  it("账号 · 运行于两组单选 ＋ 在此目录新建会话；跟随时勾在上次的号上，不用 tmux 勾着", () => {
-    const items = resumeMenuItems({ accounts: LIST, pick: defaultPick(), newInDir: () => {} });
+  it("账号 · 运行于两组单选 ＋ 在此目录新建会话；跟随时勾在上次的号上，运行于勾在那台答的默认上", () => {
+    const items = resumeMenuItems({ accounts: LIST, pick: defaultPick(), machineRun: "direct", newInDir: () => {} });
     expect(shape(items)).toEqual([
       `[${copyText("resumeMenu.group.account")}]`,
       `✓work|${copyText("resumeMenu.account.quotaLast", { quota: "5h 41%" })}`,
@@ -143,9 +143,9 @@ describe("菜单怎么摆", () => {
     const items = resumeMenuItems({ accounts: LIST, pick, onChange: (p) => seen.push({ ...p }) });
     items[2].onClick?.();
     items[6].onClick?.();
-    expect(pick).toEqual({ tmux: true, account: "home", useBase: false });
+    expect(pick).toEqual({ run: "tmux", account: "home", useBase: false });
     items[3].onClick?.();
-    expect(pick).toEqual({ tmux: true, account: undefined, useBase: true });
+    expect(pick).toEqual({ run: "tmux", account: undefined, useBase: true });
     expect(seen.length).toBe(3);
     expect(resumeHint(LIST, pick)).toBe(
       copyText("resumeMenu.hint.pick", { pick: copyText("resumeMenu.pick.account", { account: copyText("resumeMenu.account.base"), run: copyText("resumeMenu.hint.tmux") }) }),
@@ -153,7 +153,7 @@ describe("菜单怎么摆", () => {
   });
 
   it("有 run ⇒ 最上面一行「恢复」，右侧灰字是勾着的那一组，点了按它起", () => {
-    const pick: ResumePick = { tmux: true, account: "home", useBase: false };
+    const pick: ResumePick = { run: "tmux", account: "home", useBase: false };
     const run = vi.fn();
     const items = resumeMenuItems({ accounts: LIST, pick, run });
     expect(items[0].label).toBe(copyText("history.row.resume"));
@@ -166,8 +166,20 @@ describe("菜单怎么摆", () => {
   it("没有账号这一维 ⇒ 账号组灰一行「Codex · 无账号维」；没开多账号 ⇒ 账号组不出、悬停只说方式", () => {
     const none = resumeMenuItems({ accounts: { kind: "none", agentName: "Codex" }, pick: defaultPick() });
     expect(none[1]).toMatchObject({ label: copyText("history.resume.noAccounts", { agent: "Codex" }), enabled: false });
-    const off = resumeMenuItems({ accounts: { kind: "off" }, pick: defaultPick() });
-    expect(shape(off)).toEqual([`[${copyText("resumeMenu.group.run")}]`, copyText("resumeMenu.run.tmux"), `✓${copyText("resumeMenu.run.direct")}`]);
-    expect(resumeHint({ kind: "off" }, defaultPick())).toBe(copyText("resumeMenu.hint.pick", { pick: copyText("resumeMenu.run.direct") }));
+    const off = resumeMenuItems({ accounts: { kind: "off" }, pick: defaultPick(), machineRun: "tmux" });
+    expect(shape(off)).toEqual([`[${copyText("resumeMenu.group.run")}]`, `✓${copyText("resumeMenu.run.tmux")}`, copyText("resumeMenu.run.direct")]);
+    expect(resumeHint({ kind: "off" }, defaultPick(), "direct")).toBe(copyText("resumeMenu.hint.pick", { pick: copyText("resumeMenu.run.direct") }));
+  });
+
+  it("★ 运行于没动过、也没问到那台 ⇒ 两项都不勾、悬停写照机器设置；请求里不带号也不带放在哪", () => {
+    const pick = defaultPick();
+    const items = resumeMenuItems({ accounts: { kind: "off" }, pick });
+    expect(shape(items)).toEqual([`[${copyText("resumeMenu.group.run")}]`, copyText("resumeMenu.run.tmux"), copyText("resumeMenu.run.direct")]);
+    expect(resumeHint({ kind: "off" }, pick)).toBe(copyText("resumeMenu.hint.pick", { pick: copyText("resumeMenu.run.machine") }));
+    expect(pickAsk(pick)).toEqual({});
+    items[1].onClick?.();
+    expect(pickAsk(pick)).toEqual({ run: "tmux" });
+    expect(pickAsk({ run: null, account: "w", useBase: false })).toEqual({ account: { kind: "named", name: "w" } });
+    expect(pickAsk({ run: "direct", account: undefined, useBase: true })).toEqual({ account: { kind: "base" }, run: "direct" });
   });
 });
