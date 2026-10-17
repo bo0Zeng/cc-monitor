@@ -984,10 +984,7 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
     );
 
     // ③ 反向自检：确认上面读到的是真源码，不是空串
-    assert!(
-        mcp.len() > 3_000,
-        "include_str! 读空了"
-    );
+    assert!(mcp.len() > 3_000, "include_str! 读空了");
 }
 
 /// **用户选的 shell profile 不许冒充常量**：`UserShellProfile` 的每一个载体，申报路径里都有它那种 profile 的占位符

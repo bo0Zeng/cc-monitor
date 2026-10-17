@@ -143,7 +143,7 @@ async fn run_staged(
         )
     };
     let (got, _) = host
-        .exec(format!("{} -- {sub}", relay_route_core::home_shell(staged)))
+        .exec(format!("{} -- --{sub}", relay_route_core::home_shell(staged)))
         .await
         .map_err(|e| failed(&e))?;
     let line = |t: &str| {
@@ -217,7 +217,7 @@ pub async fn install(
         // ③ 放进暂存区 ＋ 读回 → 那一份自己核字节、`rename(2)` 换进落点。落点上原来有一份 ⇒ 这一趟是更新。
         on(Step::Place { updating });
         let staged = stage(host, &bytes).await?;
-        let placed = run_staged(host, &staged, "--place-self", machine).await?;
+        let placed = run_staged(host, &staged, "place-self", machine).await?;
         if placed["placed"] != Value::Bool(true) {
             return Err(Fail::new(
                 "place_failed",
@@ -267,7 +267,7 @@ pub async fn uninstall(
         .expect("slot_of 只回带着的那一格");
     let bytes = bytes_of(slot, load)?;
     let staged = stage(host, &bytes).await?;
-    let got = run_staged(host, &staged, "--unplace-self", machine).await?;
+    let got = run_staged(host, &staged, "unplace-self", machine).await?;
     let removed = got["removed"].as_bool().ok_or_else(|| {
         Fail::new(
             "place_failed",
@@ -278,13 +278,10 @@ pub async fn uninstall(
         )
     })?;
     let path = format!("~/{}", relay_route_core::BACKEND_LANDING_REL);
-    let key = if removed {
-        "rsSftp.uninstall.done"
+    let said = if removed {
+        copy_text("rsSftp.uninstall.done", &[("path", &path)])
     } else {
-        "rsSftp.uninstall.absent"
+        copy_text("rsSftp.uninstall.absent", &[("path", &path)])
     };
-    Ok(Removed {
-        removed,
-        said: copy_text(key, &[("path", &path)]),
-    })
+    Ok(Removed { removed, said })
 }

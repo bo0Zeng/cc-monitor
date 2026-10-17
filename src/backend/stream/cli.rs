@@ -91,7 +91,12 @@ pub(crate) const STREAM_ONLY: &[&str] = &[
 /// 2026-10-09 复核（第二个前端的审计 §4）：起新会话框三问 · tab 栏批量停 / 起 / 问样子 · 铸终端名 · 开终端那一串 · 各台搜索结果合并
 /// 九条放出（事实全在这台：tmux 名单现探、会话快照问一次重探一次、记录在不在现读、合并是纯计算 ⇒ 一次性进程答的与常驻那一个同样是真话）。
 /// 留下的两条是 ↗ 拉前那一问的两半，只有能拉前桌面窗口的那一方用得着，第二个前端自己也说不用。
-pub(crate) const UI_ONLY: &[&str] = &["session-terminals", "terminal-processes", "deploy-install"];
+pub(crate) const UI_ONLY: &[&str] = &[
+    "session-terminals",
+    "terminal-processes",
+    "deploy-install",
+    "deploy-uninstall",
+];
 
 /// 命令名 → CLI 子命令（`launch` → `--launch`）。
 pub(crate) fn flag_of(name: &str) -> String {

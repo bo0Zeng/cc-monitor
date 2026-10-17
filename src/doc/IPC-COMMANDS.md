@@ -11609,7 +11609,7 @@ type UserPathState = "on" | "off" | "unknown" | "not_windows";
 ```ts
 type DeployInstallReq = { dial: MachineDial, slots: Array<SlotRow>, 
 /**
- * 那台的名字（非空；进度帧 `deploy.machine` 也是它）。
+ * 那台的名字（非空；状态成品按它记）。
  */
 machine: string, };
 type Installed = { 
@@ -11684,6 +11684,77 @@ path: string, };
 ```
 
 码：`bad_args` · `io_failed` · `refused` · `unreachable` · `undecidable` · `not_carried` · `fenced` · `place_failed`
+
+#### `deploy-uninstall`
+
+卸那台的后端。
+
+收 `args` · 可撤 · 只在流上
+
+入参 `DeployInstallReq` · 回包 `Uninstalled`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type DeployInstallReq = { dial: MachineDial, slots: Array<SlotRow>, 
+/**
+ * 那台的名字（非空；状态成品按它记）。
+ */
+machine: string, };
+type MachineConfig = { 
+/**
+ * 首选地址。
+ */
+host: string, 
+/**
+ * 登录用户。
+ */
+user: string, 
+/**
+ * 这台的名字（空 ⇒ 用 `host`）。
+ */
+label?: string, 
+/**
+ * 口（缺 ⇒ 22）。
+ */
+port?: number, 
+/**
+ * 私钥路径（缺 / 空 ⇒ 走 ssh-agent）。
+ */
+keyPath?: string, 
+/**
+ * 记下的主机指纹（`SHA256:…`）。
+ */
+hostKeyFingerprint?: string, 
+/**
+ * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
+ */
+addresses: Array<string>, 
+/**
+ * 跳板那一台的名字（空 ⇒ 直连）。
+ */
+jump?: string, };
+type MachineDial = { machine: MachineConfig, saved?: MachineConfig | null, jump?: MachineConfig | null, prefer?: Prefer | null, 
+/**
+ * 用法（存着不读：问那台的每一趟按自己的用法改，`capture` · `forward`）。
+ */
+use?: string | null, 
+/**
+ * ssh-agent 套接字的路径（界面进程此刻的 `SSH_AUTH_SOCK`；缺 ⇒ 用本进程自己的）。
+ */
+agent_sock?: string | null, };
+type Prefer = { host: string, port: number, };
+type SlotRow = { os: string, arch: string, id: string, 
+/**
+ * 本机上那一格字节的文件（绝对路径；本后端读它，不经帧传字节）。
+ */
+path: string, };
+type Uninstalled = { 
+/**
+ * 删了落点那一份 ⇒ `true`；本来就不在 ⇒ `false`。
+ */
+removed: boolean, said: string, };
+```
+
+码：`bad_args` · `io_failed` · `refused` · `unreachable` · `not_carried` · `fenced` · `place_failed`
 
 #### `machine-round`
 
@@ -13433,6 +13504,7 @@ needs: string | null, };
 | `--terminal-ssh` | ＝ 帧命令 `terminal-ssh`：给一台远端开终端要跑的那一串 |
 | `--terminals-list` | ＝ 帧命令 `terminals-list`：这台的终端名单（形状与宿主无关；这一版宿主是 tmux） |
 | `--tmux-notify` `<backend_pid> <backend_starttime>` | tmux 钩子用：核对身份后叫正在跑的后端立刻重扫 tmux；身份对不上静默退出 0；不碰文件系统 |
+| `--unplace-self` | 卸载那一趟：暂存区里传上去的这一份删掉落点 `~/.cc-monitor/bin/ccm`（不认身份）、再删自己；回 `{removed: true\|false}`；不在暂存区 ⇒ `outside_staging` |
 
 ## 6. 几条命令的出入参类型
 

@@ -108,7 +108,7 @@ pub(crate) fn slots_of(rows: &[SlotRow]) -> Result<Vec<deploy::Slot>, Fail> {
 pub(crate) struct DeployInstallReq {
     pub(crate) dial: crate::dial::pick::MachineDial,
     pub(crate) slots: Vec<SlotRow>,
-    /// 那台的名字（非空；进度帧 `deploy.machine` 也是它）。
+    /// 那台的名字（非空；状态成品按它记）。
     pub(crate) machine: String,
 }
 

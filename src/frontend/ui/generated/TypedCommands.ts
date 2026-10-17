@@ -329,6 +329,7 @@ import type { TransferOpened } from "./TransferOpened";
 import type { TransferUploadReq } from "./TransferUploadReq";
 import type { Trust } from "./Trust";
 import type { UnfollowReq } from "./UnfollowReq";
+import type { Uninstalled } from "./Uninstalled";
 import type { UserInputs } from "./UserInputs";
 import type { UserInputsReq } from "./UserInputsReq";
 import type { UserPath } from "./UserPath";
@@ -382,6 +383,7 @@ export interface TypedCommands {
   "chores-mark": { req: ChoresMarkReq; reply: ChoresMarks; code: "bad_args" | "io_failed" | "marks_unreadable" };
   "data-report": { req: FootprintReq; reply: DataReport; code: "bad_args" | "failed" };
   "deploy-install": { req: DeployInstallReq; reply: Installed; code: "bad_args" | "io_failed" | "refused" | "unreachable" | "undecidable" | "not_carried" | "fenced" | "place_failed" };
+  "deploy-uninstall": { req: DeployInstallReq; reply: Uninstalled; code: "bad_args" | "io_failed" | "refused" | "unreachable" | "not_carried" | "fenced" | "place_failed" };
   "drift-report": { req: NoArgs; reply: DriftReport; code: "bad_args" };
   "exit-policy-read": { req: NoArgs; reply: ExitPolicy; code: "bad_args" };
   "exit-policy-set": { req: ExitPolicySet; reply: ExitPolicy; code: "bad_args" | "io_failed" };

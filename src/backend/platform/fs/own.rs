@@ -488,22 +488,23 @@ pub(crate) fn own_dir(dir: &Path) -> Result<(), Said> {
         let mode = Ro::mode(&md).unwrap_or(0);
         if mode & 0o077 != 0 {
             let private = Ro::perms_from_mode(PRIVATE_DIR_MODE).expect("unix 有权限位");
-            std::fs::set_permissions(dir, private).map_err(
-                |e| {
-                    Said::with_raw(
-                        copy_text(
-                            "beOwnState.dir.tooWide",
-                            &[
-                                ("dir", &shown),
-                                ("mode", &format!("{:04o}", mode & 0o7777)),
-                                ("why", &copy_core::io_reason(e.kind())),
-                            ],
-                        ),
-                        &e,
-                    )
-                },
-            )?;
-            tracing::info!("后端自家目录 {shown} 权限 {:04o} ⇒ 收回 0700", mode & 0o7777);
+            std::fs::set_permissions(dir, private).map_err(|e| {
+                Said::with_raw(
+                    copy_text(
+                        "beOwnState.dir.tooWide",
+                        &[
+                            ("dir", &shown),
+                            ("mode", &format!("{:04o}", mode & 0o7777)),
+                            ("why", &copy_core::io_reason(e.kind())),
+                        ],
+                    ),
+                    &e,
+                )
+            })?;
+            tracing::info!(
+                "后端自家目录 {shown} 权限 {:04o} ⇒ 收回 0700",
+                mode & 0o7777
+            );
         }
     }
     Ok(())
