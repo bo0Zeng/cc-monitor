@@ -1,5 +1,7 @@
 package com.ccmonitor.mobile.cache
 
+import com.ccmonitor.mobile.core.claude.link.wire.SyncHand
+
 /*
  * 手机本地缓存，聊天屏与会话列表那两侧看到的样子。装的都是那台核心交来的成品原样（`rows[]` 一格一格），读回来交给与线上同一个解码器；
  * 手机不在缓存上另算一份。读的时候先上缓存（离线打开看得到上次那几条）、再跟那台对齐（连上以后照那台的成品覆盖）。
@@ -149,16 +151,20 @@ interface ChatCache {
     }
 }
 
-/** 一台机器的会话列表缓存：`history-list` 的 `rows[]` 原样，照那台的先后。列表本身不淘汰。 */
+/**
+ * 一台机器的会话列表缓存：`history-list` 不带筛选那一问手上那一份（记号 · 先后 · 各行原样 · 头），离线照它画、下次带着记号问。
+ * 照那台的一答换（[SyncHand.apply]）在调用方，这里只整份存取。列表本身不淘汰。
+ */
 interface ListCache {
-    suspend fun rows(): List<Any?>
+    /** 手上那一份；没存过 ⇒ 空的那一份（不带记号问 ⇒ 那台答整份）。 */
+    suspend fun hand(): SyncHand
 
-    /** 那台给了一份新的：整份换上（[rows] 是 sid ＋ 那一行原样）。 */
-    suspend fun save(rows: List<Pair<String, Any?>>)
+    /** 换好的那一份整份换上：行 · 先后 · 记号 · 头同一个事务。 */
+    suspend fun keep(hand: SyncHand)
 
     object None : ListCache {
-        override suspend fun rows(): List<Any?> = emptyList()
+        override suspend fun hand(): SyncHand = SyncHand()
 
-        override suspend fun save(rows: List<Pair<String, Any?>>) = Unit
+        override suspend fun keep(hand: SyncHand) = Unit
     }
 }

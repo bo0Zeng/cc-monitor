@@ -5,14 +5,15 @@
 //! # 形状
 //!
 //! ```text
-//! history-list {origin?, listing?, raw?, sid?, query?, sort?, within_days?, hidden?, limit?}   （入参 · 回包 · 码都是类型）
+//! history-list {origin?, listing?, raw?, sid?, query?, sort?, within_days?, hidden?, held?, range?}   （入参 · 回包 · 码都是类型）
 //!   raw: true      这台自己的清单 `{rows, failed}`（不并注解、不筛不排）—— 远端那一份就是那台常驻答的它（热缓存）
 //!   origin 缺席    这台；给了 = 那一台：`listing` 是界面经已开着的长连接问那台 `raw` 拿回来的原样（那台自己判活、自己读上次的号），
 //!                  本进程记着它；不带 `listing` ⇒ 用记着的那份（敲字搜索），没记着 ⇒ `no_listing`（界面先问那台、再带着来）
 //!   ⚠ 这台**不替界面去问那台**（原先经 `remote_ask` 在那台起一次性进程、每次开页冷扫一遍；那台常驻早就热着同一份）
 //!   ⇒ 并上这台的注解（星标 · 改名 · 隐藏）⇒ 筛（隐藏 · 时间 · 搜索词）⇒ 补上被筛掉的分叉父会话（`context`）⇒ 排 ⇒ 截
 //!   sid: 只要那一个会话那一行（独立查看窗按会话 ID 开任意一个会话，含已结束的、隐藏的）：别的筛一概不看、不补父会话
-//!   ⇒ {rows, groups, total, truncated, notice}
+//!   ⇒ 带键集合那一形（`common/views.rs`，键 ＝ 会话 ID）：`range` 那一窗（缺 ⇒ 头 2000 行）；头 ＝ {groups, notice} ＋ 总数；
+//!     带着上次的 `held` ⇒ 没变 `same` · 只给变了的那几行 `up`（先后变了才带 `order`）；不带 · 对不上 ⇒ `whole`
 //! ```
 //!
 //! 判定全在这里：搜什么（显示标题 · 第一句 · 项目名）· 按什么排（`at`）· 每行能不能恢复 / 分叉 / 删、不能的为什么。
@@ -21,8 +22,9 @@
 //! 注解读不到 / 读不懂 ⇒ 行照出（星标 · 隐藏按没有算），`notice` 说一句为什么。
 
 pub(crate) use cmd_wire::listing::{
-    FailedDir, HistoryGroup, HistoryList, HistoryListReply, HistoryRow, Listing, RawRow,
+    FailedDir, HistoryGroup, HistoryHead, HistoryListReply, HistoryRow, Listing, RawRow,
 };
+use cmd_wire::sync::{Head, Held, Patch, Range};
 use std::collections::{BTreeMap, BTreeSet};
 
 use copy_core::copy_text;
@@ -30,12 +32,21 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::common::cells::Words;
+use crate::common::views::{ViewSource, Views};
 use crate::history::history_annotations::{Loaded, Table};
 use crate::history::listing::{can_of, RowLife};
 use crate::wire::SessionFaceExt as _;
 
-/// 默认最多回多少行（按时间看时超过它只列最近这些、底部「更早的用搜索找」）。
-const DEFAULT_LIMIT: usize = 2000;
+/// 不带 `range` 时一窗回几行：排好的头这些行（按时间看时超过它只列最近这些、底部「更早的用搜索找」）。
+const DEFAULT_LIMIT: u32 = 2000;
+const DEFAULT_WINDOW: Range = Range {
+    from: 0,
+    limit: DEFAULT_LIMIT,
+};
+
+/// 每种问法一份备忘（`common/views.rs`）：浏览那几问（不带搜索词 · 不按会话 ID）8 份；带搜索词 · 按会话 ID 的另 4 份，敲字不挤掉浏览的。
+static BROWSE: std::sync::LazyLock<Views> = std::sync::LazyLock::new(|| Views::new(8));
+static NARROW: std::sync::LazyLock<Views> = std::sync::LazyLock::new(|| Views::new(4));
 
 /// 远端清单的缓存：那台的名字 ⇒ 界面交进来的那台 `raw` 的回答。搜索框每敲一下都问一次，不能每次都再交一整份；
 /// 不按时间过期（这一层不看钟）：界面开页与「刷新」再问那台、带着新的 `listing` 来，那时才换。
@@ -358,10 +369,14 @@ pub(crate) struct HistoryListReq {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) hidden: Option<bool>,
-    /// 最多回几行（缺省 2000，1–20000）；多出的不回、`truncated`。
+    /// 上次这一问答的记号（原样交回）：对得上 ⇒ 没变 · 只给变了的那几行；缺 · 对不上（那台重启过 · 换了问法）⇒ 整份。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number"))]
-    pub(crate) limit: Option<u64>,
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) held: Option<Held>,
+    /// 只要排好的那一窗（`limit` 1–20000）；缺 ⇒ 头 2000 行。总数在回包的头里。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) range: Option<Range>,
 }
 
 crate::wire::typed::codes! {
@@ -400,7 +415,7 @@ impl crate::wire::typed::Handle for HistoryListCmd {
 }
 
 /// 筛排那几格（入参解好、值域核过）。
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct Ask {
     /// 只要这一个会话（别的筛不看）。
     pub sid: Option<String>,
@@ -408,7 +423,8 @@ pub(crate) struct Ask {
     pub by_created: bool,
     pub within_ms: Option<i64>,
     pub hidden: bool,
-    pub limit: usize,
+    /// 答哪一窗（不进问法的键：几只手各看各的窗共用一份备忘）。
+    pub range: Range,
 }
 
 fn bad(what: &str) -> (&'static str, String) {
@@ -438,10 +454,14 @@ pub(crate) fn parse_ask(req: &HistoryListReq) -> Result<Ask, (&'static str, Stri
         Some(d @ 1..=3650) => Some(d as i64 * 86_400_000),
         Some(_) => return Err(bad("`within_days` must be 1..=3650")),
     };
-    let limit = match req.limit {
-        None => DEFAULT_LIMIT,
-        Some(n @ 1..=20_000) => n as usize,
-        Some(_) => return Err(bad("`limit` must be 1..=20000")),
+    let range = match req.range {
+        None => DEFAULT_WINDOW,
+        Some(
+            r @ Range {
+                limit: 1..=20_000, ..
+            },
+        ) => r,
+        Some(_) => return Err(bad("`range.limit` must be 1..=20000")),
     };
     Ok(Ask {
         sid,
@@ -449,7 +469,7 @@ pub(crate) fn parse_ask(req: &HistoryListReq) -> Result<Ask, (&'static str, Stri
         by_created: req.sort == Some(Sort::Created),
         within_ms,
         hidden: req.hidden == Some(true),
-        limit,
+        range,
     })
 }
 
@@ -564,7 +584,7 @@ fn row_of(
     }
 }
 
-/// 一台的清单（`raw` 那一形）＋ 注解 ＋ 入参 ⇒ 成品。`origin` ＝ 问的是哪一台（缺 ＝ 这台）。`now_ms` 由调用方给（时间筛的「现在」）；
+/// 一台的清单（`raw` 那一形）＋ 注解 ＋ 入参 ⇒ 成品：头 ＋ 排好的全部行（窗口在 [`patch_from`] 切）。`origin` ＝ 问的是哪一台（缺 ＝ 这台）。`now_ms` 由调用方给（时间筛的「现在」）；
 /// `tz` ＝ 看的那一台的时区（请求信封带来的）：每行的行尾 · 分段 · 时间段三格按它写好（偏移按各自那一刻）。
 pub(crate) fn answer_from(
     listing: &Listing,
@@ -573,7 +593,7 @@ pub(crate) fn answer_from(
     ask: &Ask,
     now_ms: i64,
     tz: &crate::Tz,
-) -> HistoryList {
+) -> (HistoryHead, Vec<HistoryRow>) {
     let t = ann.as_ref().ok().copied();
     let mut all: Vec<Finished> = listing
         .rows
@@ -617,7 +637,6 @@ pub(crate) fn answer_from(
             && ask.query.as_deref().is_none_or(|q| hits(f, q))
     };
     let (mut out, rest): (Vec<Finished>, Vec<Finished>) = all.into_iter().partition(|f| kept(f));
-    let total = out.len();
     // 分叉的父会话被隐藏 / 被筛掉 ⇒ 照样带上、标 `context`（界面淡显，子会话照样挂在它名下）。按会话 ID 要一行 ⇒ 不补父会话。
     let present: BTreeSet<&str> = out.iter().map(|f| f.raw.session_id.as_str()).collect();
     let parents: BTreeSet<String> = if ask.sid.is_some() {
@@ -648,8 +667,6 @@ pub(crate) fn answer_from(
         b.at.cmp(&a.at)
             .then_with(|| a.session_id.cmp(&b.session_id))
     });
-    let truncated = rows.len() > ask.limit;
-    rows.truncate(ask.limit);
     let mut groups = groups_of(&rows, listing, now_ms, tz);
     // 问的是哪一台：每行每组都带上（界面把几台并成一列时认得出是哪台的）。
     if let Some(o) = origin {
@@ -659,13 +676,88 @@ pub(crate) fn answer_from(
             .iter_mut()
             .for_each(|g| g.origin = Some(cmd_wire::Machine(o.to_string())));
     }
-    HistoryList {
+    (
+        HistoryHead {
+            groups,
+            notice: ann.err(),
+        },
         rows,
-        groups,
-        total,
-        truncated,
-        notice: ann.err(),
+    )
+}
+
+/// 一问在数据层眼里的样子：问法的键 ＝ 决定集合的那几格（哪台 · 会话 ID · 搜索词 · 排法 · 时间窗 · 隐藏的出不出；不含窗口），
+/// 此刻的全部项 ＝ [`answer_from`] 排好的行（键 ＝ 会话 ID）。
+struct Source<'a> {
+    listing: &'a Listing,
+    origin: Option<&'a str>,
+    ann: Result<&'a Table, String>,
+    ask: &'a Ask,
+    now_ms: i64,
+    tz: &'a crate::Tz,
+}
+
+impl ViewSource for Source<'_> {
+    type Head = HistoryHead;
+    type Item = HistoryRow;
+    fn ask_key(&self) -> String {
+        let a = self.ask;
+        serde_json::json!([
+            self.origin,
+            a.sid,
+            a.query,
+            a.by_created,
+            a.within_ms,
+            a.hidden
+        ])
+        .to_string()
     }
+    fn now(&self) -> (HistoryHead, Vec<(String, HistoryRow)>) {
+        let (head, rows) = answer_from(
+            self.listing,
+            self.origin,
+            self.ann.clone(),
+            self.ask,
+            self.now_ms,
+            self.tz,
+        );
+        let rows = rows
+            .into_iter()
+            .map(|r| (r.session_id.clone(), r))
+            .collect();
+        (head, rows)
+    }
+}
+
+/// 浏览那几问 ⇒ [`BROWSE`]；带搜索词 · 按会话 ID ⇒ [`NARROW`]。
+fn views_for(ask: &Ask) -> &'static Views {
+    if ask.query.is_some() || ask.sid.is_some() {
+        &NARROW
+    } else {
+        &BROWSE
+    }
+}
+
+/// [`answer_from`] 那一份经数据层答成 `range` 那一窗：带着对得上的 `held` ⇒ 没变 / 只给变了的；否则整份。
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn patch_from(
+    views: &Views,
+    listing: &Listing,
+    origin: Option<&str>,
+    ann: Result<&Table, String>,
+    ask: &Ask,
+    held: Option<&Held>,
+    now_ms: i64,
+    tz: &crate::Tz,
+) -> Patch<HistoryHead, HistoryRow> {
+    let src = Source {
+        listing,
+        origin,
+        ann,
+        ask,
+        now_ms,
+        tz,
+    };
+    views.answer(&src, held, Some(ask.range))
 }
 
 /// 一组有没有在跑的：档位（有在跑的 2 · 说不清 1 · 都没在跑 0）。
@@ -753,76 +845,91 @@ fn groups_of(
 }
 
 /// 格目录与出参对拍的样本：每个可缺的格都填上、每个列表都不空。
-pub(crate) fn specimen() -> HistoryList {
+pub(crate) fn specimen() -> Patch<HistoryHead, HistoryRow> {
     let s = |v: &str| v.to_string();
     let w = |v: &str| Words(v.to_string());
-    let mut l = HistoryList {
-        rows: vec![HistoryRow {
-            agent: s("agent"),
-            session_id: s("s"),
-            project_path: s("/w"),
-            project_name: s("w"),
-            ai_title: Some(s("t")),
-            first_user_excerpt: s("e"),
-            title: s("t"),
-            started_at: 1,
-            updated_at: 2,
-            jsonl_path: s("/p"),
-            message_count_approx: 1,
-            is_bg: false,
-            starred: true,
-            custom_title: Some(s("c")),
-            hidden: crate::control::session_hidden::judge(&crate::control::session_hidden::Facts {
-                pin: Some(crate::history::history_annotations::Hide::On),
-                ..Default::default()
-            }),
-            forked_from_session_id: Some(s("f")),
-            forked_from_message_uuid: Some(s("u")),
-            forked_from: Some(cmd_wire::listing::ForkedFrom { label: w("f") }),
-            project_dir: s("-w"),
-            group: s("agent:/w"),
-            last_account: Some(s("a")),
-            label: w("c"),
-            untitled: false,
-            face: crate::wire::SessionFace::of(crate::wire::Life::Live {
-                activity: Some(crate::agents::SessionActivity::Working),
-                tmux: None,
-            }),
-            can: can_of("agent", Some(RowLife::Ended), false),
-            agent_tag: Some(w("g")),
-            context: Some(true),
-            at: 2,
-            at_text: w("t"),
-            section_text: w("s"),
-            span_text: w("p"),
-            origin: Some(cmd_wire::Machine(s("m"))),
-        }],
-        groups: vec![HistoryGroup {
-            key: s("agent:/w"),
-            agent: s("agent"),
-            project_name: s("w"),
-            project_path: s("/w"),
-            project_dir: s("-w"),
-            count: 1,
-            has_live: Some(false),
-            starred: false,
-            last_activity: 2,
-            at_text: Some(w("t")),
-            order: 2,
-            failed: Some(s("x")),
-            origin: Some(cmd_wire::Machine(s("m"))),
-        }],
-        total: 1,
-        truncated: false,
-        notice: Some(s("n")),
-    };
+    let mut rows = vec![HistoryRow {
+        agent: s("agent"),
+        session_id: s("s"),
+        project_path: s("/w"),
+        project_name: s("w"),
+        ai_title: Some(s("t")),
+        first_user_excerpt: s("e"),
+        title: s("t"),
+        started_at: 1,
+        updated_at: 2,
+        jsonl_path: s("/p"),
+        message_count_approx: 1,
+        is_bg: false,
+        starred: true,
+        custom_title: Some(s("c")),
+        hidden: crate::control::session_hidden::judge(&crate::control::session_hidden::Facts {
+            pin: Some(crate::history::history_annotations::Hide::On),
+            ..Default::default()
+        }),
+        forked_from_session_id: Some(s("f")),
+        forked_from_message_uuid: Some(s("u")),
+        forked_from: Some(cmd_wire::listing::ForkedFrom { label: w("f") }),
+        project_dir: s("-w"),
+        group: s("agent:/w"),
+        last_account: Some(s("a")),
+        label: w("c"),
+        untitled: false,
+        face: crate::wire::SessionFace::of(crate::wire::Life::Live {
+            activity: Some(crate::agents::SessionActivity::Working),
+            tmux: None,
+        }),
+        can: can_of("agent", Some(RowLife::Ended), false),
+        agent_tag: Some(w("g")),
+        context: Some(true),
+        at: 2,
+        at_text: w("t"),
+        section_text: w("s"),
+        span_text: w("p"),
+        origin: Some(cmd_wire::Machine(s("m"))),
+    }];
+    let groups = vec![HistoryGroup {
+        key: s("agent:/w"),
+        agent: s("agent"),
+        project_name: s("w"),
+        project_path: s("/w"),
+        project_dir: s("-w"),
+        count: 1,
+        has_live: Some(false),
+        starred: false,
+        last_activity: 2,
+        at_text: Some(w("t")),
+        order: 2,
+        failed: Some(s("x")),
+        origin: Some(cmd_wire::Machine(s("m"))),
+    }];
     // 离开活的那两形也各露一行（能做什么那几格的「不能」与为什么：已结束只灰终端那两格，记录已不在连换模型 · 权限档也灰）。
-    for life in [crate::wire::Life::Ended, crate::wire::Life::Gone] {
-        let mut left = l.rows[0].clone();
+    for (sid, life) in [
+        ("e", crate::wire::Life::Ended),
+        ("g", crate::wire::Life::Gone),
+    ] {
+        let mut left = rows[0].clone();
+        left.session_id = s(sid);
         left.face = crate::wire::SessionFace::of(life);
-        l.rows.push(left);
+        rows.push(left);
     }
-    l
+    Patch {
+        held: Held(s("h")),
+        whole: true,
+        same: false,
+        order: Some(rows.iter().map(|r| r.session_id.clone()).collect()),
+        head: Some(Head {
+            total: rows.len() as u32,
+            info: HistoryHead {
+                groups,
+                notice: Some(s("n")),
+            },
+        }),
+        up: rows
+            .into_iter()
+            .map(|r| (r.session_id.clone(), r))
+            .collect(),
+    }
 }
 
 // ───────────────────────── 帧面 ─────────────────────────
@@ -858,6 +965,7 @@ pub(crate) async fn answer(
             .map(HistoryListReply::Listing);
     }
     let ask = parse_ask(&req)?;
+    let held = req.held;
     let origin = match req.origin {
         None => None,
         Some(cmd_wire::Machine(s)) if !s.is_empty() => Some(s),
@@ -874,11 +982,13 @@ pub(crate) async fn answer(
     blocking(move || {
         // 并的是清单自己带来的那台的注解（本机的那份只并本机会话；远端那台自己并好了它那份）。
         let ann = listing_annotations(&listing);
-        Ok(HistoryListReply::List(answer_from(
+        Ok(HistoryListReply::List(patch_from(
+            views_for(&ask),
             &listing,
             origin.as_deref(),
             ann.as_ref().map_err(Clone::clone),
             &ask,
+            held.as_ref(),
             now_ms(),
             &tz,
         )))

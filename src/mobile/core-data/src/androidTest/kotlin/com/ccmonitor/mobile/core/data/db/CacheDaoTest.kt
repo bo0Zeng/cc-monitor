@@ -70,6 +70,22 @@ class CacheDaoTest {
             assertNull(all.getValue("b").ord)
         }
 
+    /** 记号 · 头与行同一次写下、同一次读回；再写一回整份换上（记号跟着换，点开过的那条照留）。 */
+    @Test
+    fun theListMarkAndItsRowsAreKeptTogether() =
+        runTest {
+            assertEquals(null to emptyList<CachedSession>(), dao.heldList("h"))
+            dao.keepList("h", listOf("a" to "A", "b" to "B"), ListHold("h", "e.1.1", "{\"total\":2}"))
+            dao.viewed("h", "a", at = 3)
+            val (hold, rows) = dao.heldList("h")
+            assertEquals(ListHold("h", "e.1.1", "{\"total\":2}"), hold)
+            assertEquals(listOf("a" to "A", "b" to "B"), rows.map { it.sid to it.listRow })
+            dao.keepList("h", listOf("b" to "B2"), ListHold("h", "e.1.2", null))
+            assertEquals("e.1.2", dao.listHold("h")?.held)
+            assertEquals(listOf("b" to "B2"), dao.listed("h").map { it.sid to it.listRow })
+            assertEquals(3L, dao.allSessions("h").first { it.sid == "a" }.viewedAt)
+        }
+
     /** 草稿变待发是一个事务：待发落不下（同一个 id 已在）⇒ 草稿还在。落下了 ⇒ 草稿没了、待发在。 */
     @Test
     fun promotingADraftIsOneTransaction() =

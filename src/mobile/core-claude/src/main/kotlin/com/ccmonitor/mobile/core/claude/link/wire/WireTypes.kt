@@ -466,13 +466,12 @@ enum class AnswerResult {
     ANSWERED,
 }
 
-@WireOf("HistoryList")
+/** `history-list` 回包的头里业务那一格（[SyncHead.info]）：按目录看时的组 · 注解没并上那一句。 */
+@WireOf("HistoryHead")
 @JsonClass(generateAdapter = true)
-data class HistoryListPage(
-    val rows: List<HistoryRow>,
+data class HistoryHead(
     val groups: List<HistoryGroup>,
     val notice: String?,
-    val truncated: Boolean,
 )
 
 /** 按目录看时的一组：几台的组按 `order` 并成一列；时刻照那台写好的 `atText`（读不了的那一组 ⇒ `null`）。 */

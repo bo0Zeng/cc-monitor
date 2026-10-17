@@ -11,12 +11,14 @@
 //! 2. **注解并的是这台的**（远端行也并）；`label` = 改过的标题 ＞ 标题 ＞ 第一句；都没有 ⇒ `untitled`。
 //! 3. **能做什么**：在跑 ⇒ 恢复 `switch`、删 `live`；分身 ⇒ `bg`、不能分叉；判不了活 ⇒ 删 `unsure`；没有账号维的那一家 ⇒ `accounts:false`。
 //! 4. **筛**：隐藏的默认不出（`hidden:true` 才出）· 时间窗 · 搜索词只比显示标题 / 第一句 / 项目名、不分大小写。
-//! 5. **分叉父会话被筛掉** ⇒ 照样带上、标 `context`，不算进 `total`。
-//! 6. **排与截**：`activity` 按最后活动、`created` 按开始，`at` 就是那个键；`limit` 截 ⇒ `truncated`。
+//! 5. **分叉父会话被筛掉** ⇒ 照样带上、标 `context`（也是一行，算进总数）。
+//! 6. **排与窗口**：`activity` 按最后活动、`created` 按开始，`at` 就是那个键；`range` 只回那一窗、总数是整份的。
 //! 7. **分组**：有在跑的 → 有星标的 → 最近动过的；读不了的目录是一组、带原因。
 //! 8. **远端**：那台的 `raw` 清单由界面问那台常驻、带着交进来（`listing`），这台并 · 筛 · 排并记着；敲字用记着的；没记着 ⇒ `no_listing`；\n//!    这台不再替界面去问那台（生产段里没有 `remote_ask`）。
 //! 10. **按会话 ID 要一行**（`sid`：独立查看窗开任意一个会话）：只回那一行（隐藏的、出了时间窗的也回）、不补父会话；
 //!     形状不对 ⇒ `bad_args`（先于 IO）；没有这个会话 ⇒ 空清单。
+//! 11. **带记号再问**（`common/views.rs`）：同一问第二次 ⇒ `same`；一条会话写了一行 ⇒ `up` 只它一行（先后没变不带 `order`）；
+//!     换问法 ⇒ `whole`；帧面那一臂带着 `held` 来照样答。
 //! 9. **跨语言金样** `tests/__fixtures__/history-list.golden.json`（TS 严格解码器读同一份，`tests/frontend/ui/history-list-reads.vitest.ts`）。
 //!
 //! # 买不到
@@ -43,6 +45,7 @@ fn listing_from(
     serde_json::to_value(super::listing_from(tree, synth, live, last)).unwrap()
 }
 
+/// 整份那一答（新开一份备忘、不带记号）照线上读，摊成「行（照 `order`）· 组 · 注解那一句 · 总数」给逐格的判据看。
 fn answer_from(
     listing: &Value,
     origin: Option<&str>,
@@ -51,8 +54,52 @@ fn answer_from(
     now_ms: i64,
     tz: &crate::Tz,
 ) -> Value {
+    let views = Views::new(8);
+    flat(&patch(&views, listing, origin, ann, ask, None, now_ms, tz))
+}
+
+/// 经数据层答一问（[`super::patch_from`]），照线上读。
+#[allow(clippy::too_many_arguments)]
+fn patch(
+    views: &Views,
+    listing: &Value,
+    origin: Option<&str>,
+    ann: Result<&Table, String>,
+    ask: &Ask,
+    held: Option<&Value>,
+    now_ms: i64,
+    tz: &crate::Tz,
+) -> Value {
     let l: Listing = serde_json::from_value(listing.clone()).expect("清单读不回来");
-    serde_json::to_value(super::answer_from(&l, origin, ann, ask, now_ms, tz)).unwrap()
+    let held: Option<Held> = held.map(|h| serde_json::from_value(h.clone()).expect("记号"));
+    serde_json::to_value(super::patch_from(
+        views,
+        &l,
+        origin,
+        ann,
+        ask,
+        held.as_ref(),
+        now_ms,
+        tz,
+    ))
+    .unwrap()
+}
+
+/// 整份那一答摊平：行照 `order` 从 `up` 取。不是整份 ⇒ 判据写错了。
+fn flat(p: &Value) -> Value {
+    assert_eq!(p["whole"], true, "摊平只给整份那一答：{p}");
+    let rows: Vec<Value> = p["order"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|k| p["up"][k.as_str().unwrap()].clone())
+        .collect();
+    json!({
+        "rows": rows,
+        "groups": p["head"]["info"]["groups"],
+        "notice": p["head"]["info"]["notice"],
+        "total": p["head"]["total"],
+    })
 }
 
 fn with_own_annotations(listing: &mut Value, loaded: &crate::history::history_annotations::Loaded) {
@@ -75,6 +122,11 @@ async fn answer_wire(args: Value) -> Result<Value, (&'static str, String)> {
     super::answer(req, Default::default())
         .await
         .map(|r| serde_json::to_value(r).unwrap())
+}
+
+/// 帧面那一臂的整份那一答摊平（[`flat`]）。
+async fn answer_flat(args: Value) -> Result<Value, (&'static str, String)> {
+    answer_wire(args).await.map(|v| flat(&v))
 }
 
 fn listing_annotations(listing: &Value) -> Result<Table, String> {
@@ -347,9 +399,9 @@ fn rows_carry_annotations_label_and_what_can_be_done() {
 fn filters_and_context_parents() {
     let v = answer(json!({}));
     assert!(!sids(&v).contains(&S2.to_string()), "隐藏的默认不出");
-    // S4 星标 ＋ 隐藏、S5 是它分出来的 ⇒ S4 照样带上、标 context，不算进 total。
+    // S4 星标 ＋ 隐藏、S5 是它分出来的 ⇒ S4 照样带上、标 context（也是一行，算进 total）。
     assert_eq!(find(&v, S4)["context"], true);
-    assert_eq!(v["total"], 4, "S1 S3 S5 codex；S4 是 context 不计");
+    assert_eq!(v["total"], 5, "S1 S3 S5 codex ＋ context 的 S4");
     let v = answer(json!({"hidden": true}));
     assert!(
         find(&v, S4).get("context").is_none(),
@@ -410,7 +462,7 @@ fn one_session_by_id_ignores_the_other_filters() {
     }
 }
 
-/// ★ 判据 6：排与截。
+/// ★ 判据 6：排与窗口。
 #[test]
 fn sort_key_and_limit() {
     let v = answer(json!({"hidden": true}));
@@ -431,13 +483,13 @@ fn sort_key_and_limit() {
         vec!["019a0000-0000-7000-8000-00000000c0de", S5, S4, S3, S2, S1],
         "created ⇒ startedAt 倒序（合成历史的开始 = 修改时刻 650）"
     );
-    let v = answer(json!({"hidden": true, "limit": 2}));
-    assert_eq!(v["rows"].as_array().unwrap().len(), 2);
-    assert_eq!(v["truncated"], true);
-    assert_eq!(v["total"], 6);
+    let v = answer(json!({"hidden": true, "range": {"from": 1, "limit": 2}}));
+    assert_eq!(sids(&v), vec![S1, S2], "只回那一窗");
+    assert_eq!(v["total"], 6, "总数是整份的");
     for bad in [
         json!({"sort": "x"}),
-        json!({"limit": 0}),
+        json!({"range": {"from": 0, "limit": 0}}),
+        json!({"limit": 2}),
         json!({"within_days": "7"}),
         json!({"query": 1}),
         json!({"hidden": "y"}),
@@ -499,7 +551,7 @@ fn groups_rank_live_then_starred_then_recent_and_keep_failed_dirs() {
 /// 行与组带 `origin`；`listing` 不带 `origin` / 形状不对 ⇒ `bad_args`。
 #[tokio::test]
 async fn a_remote_listing_is_handed_in_and_kept_for_typing() {
-    let ask = answer_wire;
+    let ask = answer_flat;
     // 每个判据用自己的机器名（缓存是进程级的一张表）。
     let e = ask(json!({"origin": "list-dev"})).await.unwrap_err();
     assert_eq!(e.0, "no_listing", "没记着那台的清单却答了：{e:?}");
@@ -579,14 +631,18 @@ fn the_remote_listing_never_spawns_a_oneshot_process() {
 /// ★ 判据 9：跨语言金样（远端一台的成品，带 context 父会话与读不了的那一组）。
 #[test]
 fn the_product_matches_the_cross_language_golden() {
-    let got = answer_from(
+    let mut got = patch(
+        &Views::new(8),
         &listing(),
         Some("dev"),
         Ok(&ann()),
         &ask(json!({})),
+        None,
         1_000,
         &Default::default(),
     );
+    // 记号里有进程随机的那一段：金样里换成定值（TS · 手机只存它、原样交回）。
+    got["held"] = json!("h1");
     crate::golden::assert_golden(
         "tests/__fixtures__/history-list.golden.json",
         &format!("{}\n", serde_json::to_string_pretty(&got).unwrap()),
@@ -798,9 +854,9 @@ fn a_remote_sessions_annotation_lives_on_that_machine() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// ★ 手机读的这一条，线上字节钉住：换成类型之前用旧代码跑出的字节存在 `tests/__fixtures__/history-list.wire-bytes.txt`（每行 `名字<TAB>字节`），
+/// ★ 手机读的这一条，线上字节钉住：换成带键集合那一形时重钉过一回（记号换成定值 `h1`）；字节存在 `tests/__fixtures__/history-list.wire-bytes.txt`（每行 `名字<TAB>字节`），
 /// 之后逐字节比（经 `serde_json::Value` 那一跳，同帧面）。没有重写开关：字节变了就是线上形状变了，先问手机那一侧。
-/// A 手机那一问（不带 `origin`）· B 注解读不到 ＋ 搜索词 · C 按开始排 ＋ 截 ＋ 隐藏的也出 · R1 R2 `raw` 那一形（带注解 / 带读不到的那一句）·
+/// A 手机那一问（不带 `origin`）· B 注解读不到 ＋ 搜索词 · C 按开始排 ＋ 一窗 ＋ 隐藏的也出 · R1 R2 `raw` 那一形（带注解 / 带读不到的那一句）·
 /// D 经帧面那一臂交进远端那份（行组带 `origin`）。
 #[test]
 fn the_wire_bytes_the_phone_reads_stay_the_same() {
@@ -816,22 +872,27 @@ fn the_wire_bytes_the_phone_reads_stay_the_same() {
             .collect();
     let wire = |v: Value| serde_json::to_string(&v).unwrap();
     let tz = crate::Tz::default();
-    let a = answer_from(&listing(), None, Ok(&ann()), &ask(json!({})), 1_000, &tz);
-    let b = answer_from(
-        &listing(),
-        None,
-        annotations(&Loaded::NoPath),
-        &ask(json!({"query": "回调"})),
-        1_000,
-        &tz,
-    );
-    let c = answer_from(
-        &listing(),
-        None,
+    let pin = |mut v: Value| {
+        v["held"] = json!("h1");
+        v
+    };
+    let whole = |ann: Result<&Table, String>, args: Value| {
+        pin(patch(
+            &Views::new(8),
+            &listing(),
+            None,
+            ann,
+            &ask(args),
+            None,
+            1_000,
+            &tz,
+        ))
+    };
+    let a = whole(Ok(&ann()), json!({}));
+    let b = whole(annotations(&Loaded::NoPath), json!({"query": "回调"}));
+    let c = whole(
         Ok(&ann()),
-        &ask(json!({"limit": 2, "sort": "created", "hidden": true})),
-        1_000,
-        &tz,
+        json!({"range": {"from": 0, "limit": 2}, "sort": "created", "hidden": true}),
     );
     let mut r1 = listing();
     with_own_annotations(&mut r1, &Loaded::Read(ann()));
@@ -841,11 +902,11 @@ fn the_wire_bytes_the_phone_reads_stay_the_same() {
         .enable_all()
         .build()
         .unwrap();
-    let d = rt
+    let d = pin(rt
         .block_on(answer_wire(
             json!({"origin": "pin-wire", "listing": r1.clone(), "within_days": 1}),
         ))
-        .unwrap();
+        .unwrap());
     let got: BTreeMap<String, String> = [
         ("A", a),
         ("B", b),
@@ -888,15 +949,14 @@ fn rows_carry_the_hidden_cell_judged_from_that_machines_facts() {
         }
     }
     let run = |l: &Listing, ann: &Table| {
-        serde_json::to_value(super::answer_from(
-            l,
+        answer_from(
+            &serde_json::to_value(l).unwrap(),
             None,
             Ok(ann),
             &ask(json!({"hidden": true})),
             1_000,
             &Default::default(),
-        ))
-        .unwrap()
+        )
     };
     let v = run(&l, &ann());
     let s1_label = find(&v, S1)["label"].as_str().unwrap().to_string();
@@ -912,15 +972,14 @@ fn rows_carry_the_hidden_cell_judged_from_that_machines_facts() {
         "不隐藏的那一行那一格得是 null（格恒在）"
     );
     // 默认清单里没有它们（隐藏的不进）。
-    let plain = serde_json::to_value(super::answer_from(
-        &l,
+    let plain = answer_from(
+        &serde_json::to_value(&l).unwrap(),
         None,
         Ok(&ann()),
         &ask(json!({})),
         1_000,
         &Default::default(),
-    ))
-    .unwrap();
+    );
     assert!(!sids(&plain).contains(&S3.to_string()));
     // 那台偏好子会话显示 ⇒ 不隐藏；单个那一格写了「取消隐藏」⇒ 别名那一格也不算。
     l.rules.child_tab = cmd_wire::session::Tab::Show;
@@ -1000,4 +1059,73 @@ fn a_forked_row_names_its_parent_and_groups_say_when() {
         };
         assert_eq!(g["atText"], want, "{g}");
     }
+}
+
+/// ★ 判据 11：带记号再问。同一问第二次 ⇒ `same`；一条会话写了一行 ⇒ `up` 只它一行；跳到最前 ⇒ 另带 `order`；换问法 ⇒ `whole`。
+#[test]
+fn asking_again_with_the_mark_answers_only_what_changed() {
+    let views = Views::new(8);
+    let tz = crate::Tz::default();
+    let go = |l: &Value, args: Value, held: Option<&Value>| {
+        patch(&views, l, None, Ok(&ann()), &ask(args), held, 1_000, &tz)
+    };
+    let l = listing();
+    let first = go(&l, json!({}), None);
+    assert_eq!(first["whole"], true, "头一问 ⇒ 整份");
+    let again = go(&l, json!({}), Some(&first["held"]));
+    assert_eq!(again["same"], true, "什么都没变 ⇒ same：{again}");
+    assert_eq!(again["up"], json!({}));
+    // S3 写了一行：最后活动 700 → 750、条数多一条（仍排在 S1 之后、codex 之前 ⇒ 先后不变）。
+    let mut wrote = l.clone();
+    for r in wrote["rows"].as_array_mut().unwrap() {
+        if r["sessionId"] == S3 {
+            r["updatedAt"] = json!(750);
+            r["messageCountApprox"] = json!(4);
+        }
+    }
+    let one = go(&wrote, json!({}), Some(&again["held"]));
+    assert_eq!(one["whole"], false);
+    assert_eq!(one["same"], false);
+    let keys: Vec<&String> = one["up"].as_object().unwrap().keys().collect();
+    assert_eq!(keys, vec![S3], "只它一行：{one}");
+    assert_eq!(one["up"][S3]["messageCountApprox"], 4);
+    assert!(one["order"].is_null(), "先后没变不带 order");
+    // 正控：它跳到最前（最后活动最新）⇒ 照样只它一行，另带新的先后。
+    let mut top = wrote.clone();
+    for r in top["rows"].as_array_mut().unwrap() {
+        if r["sessionId"] == S3 {
+            r["updatedAt"] = json!(2_000);
+        }
+    }
+    let moved = go(&top, json!({}), Some(&one["held"]));
+    let keys: Vec<&String> = moved["up"].as_object().unwrap().keys().collect();
+    assert_eq!(keys, vec![S3]);
+    assert_eq!(moved["order"][0], S3, "带了新的先后");
+    // 换问法（排法 · 搜索词 · 隐藏的也出）⇒ 整份，哪怕带着记号。
+    for other in [
+        json!({"sort": "created"}),
+        json!({"query": "回调"}),
+        json!({"hidden": true}),
+    ] {
+        let p = go(&top, other.clone(), Some(&moved["held"]));
+        assert_eq!(p["whole"], true, "{other} ⇒ 整份");
+    }
+}
+
+/// ★ 判据 11（帧面那一臂）：带着上次的 `held` 来问 ⇒ 没变就 `same`；入参里的 `held` 形状不对 ⇒ `bad_args`。
+#[tokio::test]
+async fn the_frame_arm_takes_the_mark() {
+    let l = listing();
+    let first = answer_wire(json!({"origin": "mark-arm", "listing": l}))
+        .await
+        .unwrap();
+    assert_eq!(first["whole"], true);
+    let again = answer_wire(json!({"origin": "mark-arm", "held": first["held"]}))
+        .await
+        .unwrap();
+    assert_eq!(again["same"], true, "{again}");
+    let e = answer_wire(json!({"origin": "mark-arm", "held": 7}))
+        .await
+        .unwrap_err();
+    assert_eq!(e.0, "bad_args");
 }

@@ -5,6 +5,7 @@ import com.ccmonitor.mobile.core.claude.link.wire.Hide
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsRow
 import com.ccmonitor.mobile.core.claude.link.wire.SessionDot
 import com.ccmonitor.mobile.core.claude.link.wire.SessionFace
+import com.ccmonitor.mobile.core.claude.link.wire.SyncHand
 import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
 import org.junit.Assert.assertEquals
@@ -167,8 +168,30 @@ class ProductsTest {
 
     @Test
     fun `history-list：缺 label 的行 ⇒ 整份解不出，不拿 sid 顶标题`() {
-        assertNull(HistoryList.of(mapOf("rows" to listOf(mapOf("sessionId" to "s")))))
+        assertNull(HistoryList.of(whole(listOf(mapOf("sessionId" to "s")))))
     }
+
+    @Test
+    fun `history-list：不是整份（带记号那一问的答）⇒ of 不当整份收；窗外还有 ⇒ truncated`() {
+        val golden = Fixtures.json("history-list.golden.json") as Map<*, *>
+        assertNull(HistoryList.of(golden + ("whole" to false)))
+        val hand = SyncHand().apply(HistoryList.patch(golden)!!)
+        val head = hand.head!!
+        assertEquals(false, HistoryList.page(hand)!!.truncated)
+        assertEquals(true, HistoryList.page(hand.copy(head = head.copy(total = head.total + 1)))!!.truncated)
+        assertEquals(mapOf("held" to "h1"), HistoryList.args(ListAsk(), "h1"))
+    }
+
+    /** 不带记号那一问的整份回包（行照给的先后）。 */
+    private fun whole(rows: List<Map<String, Any?>>): Map<String, Any?> =
+        mapOf(
+            "held" to "h",
+            "whole" to true,
+            "same" to false,
+            "order" to rows.map { it["sessionId"] },
+            "up" to rows.associateBy { it["sessionId"] },
+            "head" to mapOf("total" to rows.size, "info" to mapOf("groups" to emptyList<Any?>(), "notice" to null)),
+        )
 
     @Test
     fun `history-list：行上隐藏那一格照收（后端写好的那一句）`() {
@@ -176,7 +199,7 @@ class ProductsTest {
         assertEquals(
             Hidden("由 a 启动 · 子会话默认隐藏"),
             HistoryList
-                .ofRows(rows)
+                .of(whole(rows))
                 ?.rows
                 ?.single()
                 ?.hidden,

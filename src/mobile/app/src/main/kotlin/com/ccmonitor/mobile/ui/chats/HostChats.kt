@@ -6,6 +6,7 @@ import com.ccmonitor.mobile.core.claude.link.Busy
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Deploying
 import com.ccmonitor.mobile.core.claude.link.HistoryList
+import com.ccmonitor.mobile.core.claude.link.HistoryListPage
 import com.ccmonitor.mobile.core.claude.link.HistorySearch
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.ListAsk
@@ -16,11 +17,11 @@ import com.ccmonitor.mobile.core.claude.link.deployFix
 import com.ccmonitor.mobile.core.claude.link.wire.CanDelete
 import com.ccmonitor.mobile.core.claude.link.wire.ForkedFrom
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryGroup
-import com.ccmonitor.mobile.core.claude.link.wire.HistoryListPage
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryRow
 import com.ccmonitor.mobile.core.claude.link.wire.HistorySearchReply
 import com.ccmonitor.mobile.core.claude.link.wire.MachineFixButton
 import com.ccmonitor.mobile.core.claude.link.wire.SessionDot
+import com.ccmonitor.mobile.core.claude.link.wire.SyncHand
 import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.link.Fetched
@@ -44,10 +45,13 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * 一台机器的会话清单：问 `history-list`（带这一屏的筛选）· 本地缓存 · 会话帧上的状态。会话屏每台一份、抽屉「最近」一份。
- * 缓存是没筛选的那一份 `rows[]` 原样：只在没筛选时画、只存没筛选时问到的；连上以后照那台新的那一份覆盖。
+ * 缓存是没筛选那一问手上那一份（[ListCache]）：只在没筛选时画；没筛选那一问带着它的记号问、照答换了（[SyncHand.apply]）整份存回，
+ * 那台只给变了的那几行。带筛选的每次整份、不存。
  */
 @OptIn(FlowPreview::class)
 class HostChats(
@@ -68,13 +72,17 @@ class HostChats(
     private val cached = MutableStateFlow<HistoryListPage?>(null)
     private val asked = MutableStateFlow(ListAsk())
 
+    /** 没筛选那一问手上那一份（先从缓存读）；读 · 问 · 换 · 存一趟一趟来，不叠着（叠着就拿旧记号的答盖新的那一份）。 */
+    private var hand: SyncHand? = null
+    private val syncing = Mutex()
+
     val state: StateFlow<HostSnap> =
         combine(link.state, link.table, list, combine(cached, deploying, asked, ::Triple)) { l, t, got, (c, d, a) ->
             HostSnap(hostId, machine, l, t, got, c, d, a)
         }.stateIn(scope, SharingStarted.Eagerly, HostSnap(hostId, machine, link.state.value, link.table.value, Fetched.Loading, null, null, ListAsk()))
 
     init {
-        scope.launch { cached.value = cache.rows().takeIf { it.isNotEmpty() }?.let(HistoryList::ofRows) }
+        scope.launch { cached.value = syncing.withLock { held() }.takeIf { it.order.isNotEmpty() }?.let(HistoryList::page) }
         scope.launch {
             link.state
                 .map { it is LinkState.Up }
@@ -101,20 +109,30 @@ class HostChats(
     fun fetch() {
         val wanted = asked.value
         scope.launch {
-            val reply = link.call(HistoryList.COMMAND, HistoryList.args(wanted))
-            val got = fetched(reply, HistoryList.COMMAND, HistoryList::of)
+            val got =
+                if (wanted == ListAsk()) {
+                    syncing.withLock { synced() }
+                } else {
+                    fetched(link.call(HistoryList.COMMAND, HistoryList.args(wanted)), HistoryList.COMMAND, HistoryList::of)
+                }
             if (wanted != asked.value) return@launch
             list.value = got
-            if (got is Fetched.Got && reply is Reply.Ok && wanted == ListAsk()) {
-                HistoryList.rawRows(reply.data)?.let { raw ->
-                    cache.save(
-                        got.value.rows
-                            .map { it.sessionId }
-                            .zip(raw),
-                    )
-                }
-            }
         }
+    }
+
+    private suspend fun held(): SyncHand = hand ?: cache.hand().also { hand = it }
+
+    /** 没筛选那一问：带着手上那一份的记号问，照答换好、整份存回；答不上 · 解不开 ⇒ 手上那一份不动。 */
+    private suspend fun synced(): Fetched<HistoryListPage> {
+        val mine = held()
+        val reply = link.call(HistoryList.COMMAND, HistoryList.args(ListAsk(), mine.held))
+        val next = (reply as? Reply.Ok)?.let { HistoryList.patch(it.data) }?.let(mine::apply)
+        val page = next?.let(HistoryList::page)
+        if (next != null && page != null) {
+            hand = next
+            cache.keep(next)
+        }
+        return fetched(reply, HistoryList.COMMAND) { page }
     }
 
     /** 搜这台的会话内容（[Searched]）。 */

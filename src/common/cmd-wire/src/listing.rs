@@ -3,30 +3,28 @@
 
 use crate::cells::Words;
 use crate::session::{Hidden, Hide, LaunchTab, Rules};
+use crate::sync::Patch;
 use crate::Machine;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// `history-list` 的回包：`raw` ⇒ 这台自己那份清单；平时 ⇒ 并好 · 筛好 · 排好的成品。线上不带标签（两形的键不重：成品有 `groups`）。
+/// `history-list` 的回包：`raw` ⇒ 这台自己那份清单；平时 ⇒ 并好 · 筛好 · 排好的成品，按带键集合那一形答（键 ＝ 会话 ID，
+/// 不带记号 ⇒ 整份；带着上次的记号 ⇒ 没变 / 只给变了的那几行）。线上不带标签（两形的键不重：成品有 `held`）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(untagged)]
 pub enum HistoryListReply {
     Listing(Listing),
-    List(HistoryList),
+    List(Patch<HistoryHead, HistoryRow>),
 }
 
-/// `history-list` 的成品。
+/// `history-list` 成品的头（行之外的那几格；总数在 `cmd_wire::sync::Head`）：按项目看时的分组 · 注解没并上的那一句。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct HistoryList {
-    pub rows: Vec<HistoryRow>,
+pub struct HistoryHead {
     pub groups: Vec<HistoryGroup>,
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub total: usize,
-    pub truncated: bool,
     /// 注解没并上的那一句；并上了 ⇒ `null`。
     pub notice: Option<String>,
 }

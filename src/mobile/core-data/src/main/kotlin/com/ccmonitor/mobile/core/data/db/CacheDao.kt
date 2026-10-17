@@ -7,7 +7,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Upsert
 
-/** 缓存六张表的存取（[CachedSession] · [RecordPage] · [SyncAnchor] · [PendingSend] · [Draft] · [PendingBatch]）。只搬原样，不认 JSON 里的格。 */
+/** 缓存七张表的存取（[CachedSession] · [ListHold] · [RecordPage] · [SyncAnchor] · [PendingSend] · [Draft] · [PendingBatch]）。只搬原样，不认 JSON 里的格。 */
 @Dao
 abstract class CacheDao {
     // ---- 会话列表 ----------------------------------------------------------
@@ -38,6 +38,27 @@ abstract class CacheDao {
         val gone = viewed.keys.filter { it !in listed }.map { CachedSession(hostId, it, null, null, viewed[it]) }
         upsertSessions(gone + rows.mapIndexed { i, (sid, row) -> CachedSession(hostId, sid, row, i, viewed[sid]) })
         dropUnlistedUnviewed(hostId)
+    }
+
+    @Query("SELECT * FROM list_holds WHERE hostId = :hostId")
+    abstract suspend fun listHold(hostId: String): ListHold?
+
+    @Upsert
+    protected abstract suspend fun putListHold(hold: ListHold)
+
+    /** 手上那一份会话列表：记号与头 ＋ 照先后的那几行（同一个读事务：两样是同一次答写下的）。 */
+    @Transaction
+    open suspend fun heldList(hostId: String): Pair<ListHold?, List<CachedSession>> = listHold(hostId) to listed(hostId)
+
+    /** 照那台的一答换好的那一份整份换上：行与先后（[replaceList]）· 记号与头，同一个事务。 */
+    @Transaction
+    open suspend fun keepList(
+        hostId: String,
+        rows: List<Pair<String, String>>,
+        hold: ListHold,
+    ) {
+        replaceList(hostId, rows)
+        putListHold(hold)
     }
 
     @Query("INSERT OR IGNORE INTO sessions (hostId, sid, listRow, ord, viewedAt) VALUES (:hostId, :sid, NULL, NULL, :at)")

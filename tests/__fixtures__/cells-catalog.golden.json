@@ -3349,439 +3349,457 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "groups[].agent",
+          "path": "head.info.groups[].agent",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "text",
-          "path": "groups[].atText",
+          "path": "head.info.groups[].atText",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "groups[].count",
+          "path": "head.info.groups[].count",
           "type": "number"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "groups[].failed",
+          "path": "head.info.groups[].failed",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "groups[].hasLive",
+          "path": "head.info.groups[].hasLive",
           "type": "bool"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "groups[].key",
+          "path": "head.info.groups[].key",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "groups[].lastActivity",
+          "path": "head.info.groups[].lastActivity",
           "type": "number"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "groups[].order",
+          "path": "head.info.groups[].order",
           "type": "number"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "groups[].origin",
+          "path": "head.info.groups[].origin",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "groups[].projectDir",
+          "path": "head.info.groups[].projectDir",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "groups[].projectName",
+          "path": "head.info.groups[].projectName",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "groups[].projectPath",
+          "path": "head.info.groups[].projectPath",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "groups[].starred",
+          "path": "head.info.groups[].starred",
           "type": "bool"
         },
         {
           "frozen": true,
           "kind": "value",
-          "path": "notice",
+          "path": "head.info.notice",
           "type": "string"
         },
         {
           "frozen": true,
           "kind": "value",
-          "path": "rows[].agent",
+          "path": "head.total",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "held",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "order[]",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "same",
+          "type": "bool"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "up.*.agent",
           "type": "string"
         },
         {
           "frozen": true,
           "kind": "text",
-          "path": "rows[].agentTag",
+          "path": "up.*.agentTag",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].aiTitle",
+          "path": "up.*.aiTitle",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].at",
+          "path": "up.*.at",
           "type": "number"
         },
         {
           "frozen": true,
           "kind": "text",
-          "path": "rows[].atText",
+          "path": "up.*.atText",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].can.accounts",
+          "path": "up.*.can.accounts",
           "type": "bool"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].can.delete",
+          "path": "up.*.can.delete",
           "type": "enum"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].can.fork",
+          "path": "up.*.can.fork",
           "type": "bool"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].can.resume",
+          "path": "up.*.can.resume",
           "type": "enum"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].context",
+          "path": "up.*.context",
           "type": "bool"
         },
         {
           "frozen": true,
           "kind": "value",
-          "path": "rows[].customTitle",
+          "path": "up.*.customTitle",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].face.can.close.can",
+          "path": "up.*.face.can.close.can",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "text",
-          "path": "rows[].face.can.close.why",
+          "path": "up.*.face.can.close.why",
           "type": "string"
         },
         {
           "frozen": true,
           "kind": "value",
-          "path": "rows[].face.can.model.can",
+          "path": "up.*.face.can.model.can",
           "type": "string"
         },
         {
           "frozen": true,
           "kind": "text",
-          "path": "rows[].face.can.model.why",
+          "path": "up.*.face.can.model.why",
           "type": "string"
         },
         {
           "frozen": true,
           "kind": "value",
-          "path": "rows[].face.can.permission.can",
+          "path": "up.*.face.can.permission.can",
           "type": "string"
         },
         {
           "frozen": true,
           "kind": "text",
-          "path": "rows[].face.can.permission.why",
+          "path": "up.*.face.can.permission.why",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].face.can.reattach.can",
+          "path": "up.*.face.can.reattach.can",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "text",
-          "path": "rows[].face.can.reattach.why",
+          "path": "up.*.face.can.reattach.why",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].face.can.resume.can",
+          "path": "up.*.face.can.resume.can",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "text",
-          "path": "rows[].face.can.resume.why",
+          "path": "up.*.face.can.resume.why",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].face.can.term.can",
+          "path": "up.*.face.can.term.can",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].face.can.term.tmux",
+          "path": "up.*.face.can.term.tmux",
           "type": "bool"
         },
         {
           "frozen": false,
           "kind": "text",
-          "path": "rows[].face.can.term.why",
+          "path": "up.*.face.can.term.why",
           "type": "string"
         },
         {
           "frozen": true,
           "kind": "value",
-          "path": "rows[].face.dot",
+          "path": "up.*.face.dot",
           "type": "enum"
         },
         {
           "frozen": false,
           "kind": "text",
-          "path": "rows[].face.line",
+          "path": "up.*.face.line",
           "type": "string"
         },
         {
           "frozen": true,
           "kind": "value",
-          "path": "rows[].face.live.activity",
+          "path": "up.*.face.live.activity",
           "type": "enum"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].face.live.is",
+          "path": "up.*.face.live.is",
           "type": "string"
         },
         {
           "frozen": true,
           "kind": "text",
-          "path": "rows[].face.name",
+          "path": "up.*.face.name",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].face.order",
+          "path": "up.*.face.order",
           "type": "number"
         },
         {
           "frozen": true,
           "kind": "value",
-          "path": "rows[].face.settled",
+          "path": "up.*.face.settled",
           "type": "bool"
         },
         {
           "frozen": false,
           "kind": "text",
-          "path": "rows[].face.tip",
+          "path": "up.*.face.tip",
           "type": "string"
         },
         {
           "frozen": true,
           "kind": "tone",
-          "path": "rows[].face.tone",
+          "path": "up.*.face.tone",
           "type": "enum"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].firstUserExcerpt",
+          "path": "up.*.firstUserExcerpt",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "text",
-          "path": "rows[].forkedFrom.label",
+          "path": "up.*.forkedFrom.label",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].forkedFromMessageUuid",
+          "path": "up.*.forkedFromMessageUuid",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].forkedFromSessionId",
+          "path": "up.*.forkedFromSessionId",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].group",
+          "path": "up.*.group",
           "type": "string"
         },
         {
           "frozen": true,
           "kind": "value",
-          "path": "rows[].hidden.by",
+          "path": "up.*.hidden.by",
           "type": "enum"
         },
         {
           "frozen": true,
           "kind": "value",
-          "path": "rows[].hidden.said",
+          "path": "up.*.hidden.said",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].isBg",
+          "path": "up.*.isBg",
           "type": "bool"
         },
         {
           "frozen": true,
           "kind": "value",
-          "path": "rows[].jsonlPath",
+          "path": "up.*.jsonlPath",
           "type": "string"
         },
         {
           "frozen": true,
           "kind": "text",
-          "path": "rows[].label",
+          "path": "up.*.label",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].lastAccount",
+          "path": "up.*.lastAccount",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].messageCountApprox",
+          "path": "up.*.messageCountApprox",
           "type": "number"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].origin",
+          "path": "up.*.origin",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].projectDir",
+          "path": "up.*.projectDir",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].projectName",
+          "path": "up.*.projectName",
           "type": "string"
         },
         {
           "frozen": true,
           "kind": "value",
-          "path": "rows[].projectPath",
+          "path": "up.*.projectPath",
           "type": "string"
         },
         {
           "frozen": true,
           "kind": "text",
-          "path": "rows[].sectionText",
+          "path": "up.*.sectionText",
           "type": "string"
         },
         {
           "frozen": true,
           "kind": "value",
-          "path": "rows[].sessionId",
+          "path": "up.*.sessionId",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "text",
-          "path": "rows[].spanText",
+          "path": "up.*.spanText",
           "type": "string"
         },
         {
           "frozen": true,
           "kind": "value",
-          "path": "rows[].starred",
+          "path": "up.*.starred",
           "type": "bool"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].startedAt",
+          "path": "up.*.startedAt",
           "type": "number"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].title",
+          "path": "up.*.title",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].untitled",
+          "path": "up.*.untitled",
           "type": "bool"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].updatedAt",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "total",
+          "path": "up.*.updatedAt",
           "type": "number"
         },
         {
           "frozen": true,
           "kind": "value",
-          "path": "truncated",
+          "path": "whole",
           "type": "bool"
         }
       ],
