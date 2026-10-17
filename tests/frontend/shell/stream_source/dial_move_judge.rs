@@ -45,7 +45,7 @@ pub(crate) const DIAL_SITES: &[(&str, usize, bool, &str, &str)] = &[
         0,
         true,
         "**搬走了**：SFTP 进了本机常驻后端（用户），与其它 SSH 同一条连接；\
-             部署经那条 `files` 链路（`dial_host::RemoteFs`），传输经 `transfer-*`。\
+             部署经 `deploy-*`，传输经 `transfer-*`。\
              〔从前：「SFTP 会话要一个 russh 连接句柄，不是一条字节流 ⇒ 仍在界面进程里拨，用 `inproc_dial.rs` 那一份」。〕",
         "已经是 0。这一行留着是为了让「又长回来一处」当场红（处数钉成 0，不是删行）。",
     ),
@@ -470,7 +470,7 @@ fn russh_is_named_nowhere_in_the_monitor_crate() {
         users.is_empty(),
         "界面 crate 里又点名了 `russh` / `russh_sftp`：{users:?}\n\
          ⇒ 有人在界面进程里又拨起 SSH / 开起 SFTP 来了 —— SSH 与 SFTP 都归本机常驻后端（`src/backend/dial/`），\
-         界面经 `dial_host`（链路 · `RemoteFs`）与 `transfer-*` 够到它们。"
+         界面经 `dial_host`（链路）与 `deploy-*` · `transfer-*` 够到它们。"
     );
     // 清单那一面：界面 crate 的依赖段里没有这两条（也没有只为它们而钉的 `primefield`）。
     let manifest = include_str!("../../../../src/frontend/shell/Cargo.toml");

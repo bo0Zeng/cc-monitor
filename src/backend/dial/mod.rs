@@ -10,7 +10,7 @@
 //!
 //! SFTP 也在拨号核心（`ssh_dial::sftp`）：在池里那条连接上开 sftp 子系统；本后端装的规矩是远端写只许暂存区一处（`~/.cc-monitor/staging/`）。
 //! 界面拿不到原始 SFTP 字节（`use:"subsystem"` 回 `unsupported_use`）：装 · 卸走帧命令 `deploy-install` · `deploy-uninstall`，
-//! 传输走入方向命令 `transfer-*`（`control/transfer.rs`）；链路 `use:"files"`（受限的远端文件一问一答）协议上还在、界面已不用。边界见 `INVARIANTS §41.6` 与 `readonly_guard::remote_write_layer`。
+//! 传输走入方向命令 `transfer-*`（`control/transfer.rs`）。边界见 `INVARIANTS §41.6` 与 `readonly_guard::remote_write_layer`。
 //!
 //! # 一条链路上的字节（线上帧见 `wire.rs` 的 `LinkData`）
 //!
@@ -21,8 +21,7 @@
 //! 后端 → 界面  stages=true 时先有若干行 {"stage":{…}}（与界面 `ConnectStage` 同形）；progress=true 时每过一步当场一行 {"progress":…}（`ssh_dial::step`）
 //! 然后恰好一行 ack（DialAck，`\n` 结尾）
 //! 其后按用法：stream 原样字节 · capture 一行 Captured 后结束 ·
-//! forward 每接进一条连接一行 {"accepted":n} ·
-//! files 之后一问一答（上行一行请求、下行一行应答，`sftp.rs` 头注）
+//! forward 每接进一条连接一行 {"accepted":n}
 //! ```
 //!
 //! ack 把「断开」与「连上了但远端还没说话」分开；ack 带 `v` 与 `uses`，界面据 `uses` 当场认出这个后端不认哪种用法。

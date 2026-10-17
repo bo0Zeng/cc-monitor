@@ -586,7 +586,7 @@ pub fn branch_sum(ids: &[String]) -> String {
     s.hex()
 }
 
-/// 链路字节进 JSON 串的编码与它的逆：住拨号核心那一份（`ssh_dial::b64`；那边的 files 一问一答也用它，两处只许一份）。
+/// 链路字节进 JSON 串的编码与它的逆：住拨号核心那一份（`ssh_dial::b64`，只许一份）。
 pub use ssh_dial::b64::{b64_decode, b64_encode};
 
 /// `stream-watch` 应答里的一格：这个会话刚进了这条流的名单，它的这份记录从第 `seq` 行起上流

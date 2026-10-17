@@ -426,8 +426,6 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
         ("stream", Use::Stream),
         ("capture", Use::Capture),
         ("forward", Use::Forward),
-        // 受限的远端文件一问一答（部署）。
-        ("files", Use::Files),
         // PTY 上的交互 shell（手机终端屏）。
         ("shell", Use::Shell),
         // 只握着连接（手机「连上一台」那一形）。
@@ -444,7 +442,7 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
     }
     assert_eq!(
         USES.len(),
-        6,
+        5,
         "`uses` 与 `Use` 的变体必须一一对应（两向：上面逐个读过，这里数一遍）"
     );
     // 转发走不占 `MaxSessions` 的那一道。
@@ -453,13 +451,105 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
         super::uses::Lane::Tunnel,
         "转发占了 session 通道的格"
     );
-    // 原始子系统字节流刻意不认（SFTP 住本机后端，界面只拿 `files` 的一问一答与 `transfer-*`，
+    // 原始子系统字节流刻意不认（SFTP 住本机后端，界面只经帧命令 `deploy-*` · `transfer-*` 用它，
     // 见 `dial/mod.rs` 头注）：读到它就是请求坏了。
     let sub = r#"{"host":"h","port":1,"user":"u","key_path":null,"host_key_fingerprint":null,"use":"subsystem"}"#;
     assert!(
         parse_request(sub).is_err(),
         "代理认了 subsystem —— SFTP 的协议字节会回到界面进程"
     );
+}
+
+/// 生产源里点名的拨号用法（后端 `Use::X` · 各端请求里写的 `"use"` 值 · 壳 `dial_host::request(cfg, "<用法>", …)`）
+/// == 手写的这五种，两向。SFTP 只经帧命令（`deploy-*` · `transfer-*`）用，链路上没有文件那一种用法。
+/// 增删一种用法时同拍改这张表。
+#[test]
+fn the_dial_uses_named_in_production_are_exactly_these() {
+    use std::collections::BTreeSet;
+    fn quoted_after(s: &str) -> Option<String> {
+        let s = s.trim_start().strip_prefix('"')?;
+        let end = s.find('"')?;
+        let w = &s[..end];
+        (!w.is_empty() && w.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')).then(|| w.to_string())
+    }
+    fn ident(b: u8) -> bool {
+        b.is_ascii_alphanumeric() || b == b'_'
+    }
+    let src = guard_core::addr::repo_src_root();
+    let mut files: Vec<(String, String)> = Vec::new();
+    for (root, ext) in [
+        (guard_core::addr::backend_src_root(), "rs"),
+        (guard_core::addr::shell_src_root(), "rs"),
+        (src.join("mobile/core-rs/rust"), "rs"),
+        (src.join("mobile"), "kt"),
+    ] {
+        for (path, text) in guard_core::scan_tree!(&root, &[ext]) {
+            let rel = guard_core::addr::rel_of(&path);
+            if ext == "kt" && !rel.contains("/src/main/") {
+                continue;
+            }
+            let prod = if ext == "rs" { guard_core::production_code(&text) } else { text };
+            files.push((rel, prod));
+        }
+    }
+    let mut named: BTreeSet<String> = BTreeSet::new();
+    let mut seen_by: BTreeSet<&str> = BTreeSet::new();
+    for (rel, text) in &files {
+        let mut at = 0;
+        while let Some(i) = text[at..].find("Use::") {
+            let i = at + i + "Use::".len();
+            let w: String = text[i..].chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
+            if w.starts_with(|c: char| c.is_ascii_uppercase()) {
+                named.insert(w.to_ascii_lowercase());
+                seen_by.insert("Use::");
+            }
+            at = i;
+        }
+        let mut at = 0;
+        while let Some(i) = text[at..].find("\"use\"") {
+            let i = at + i + "\"use\"".len();
+            let rest = text[i..].trim_start();
+            if let Some(r) = rest.strip_prefix(':').or_else(|| rest.strip_prefix(',')) {
+                if let Some(w) = quoted_after(r) {
+                    named.insert(w);
+                    seen_by.insert("\"use\"");
+                }
+            }
+            at = i;
+        }
+        if rel.starts_with("src/frontend/shell/") {
+            let mut at = 0;
+            while let Some(i) = text[at..].find("request(") {
+                let start = at + i;
+                at = start + "request(".len();
+                if start > 0 && ident(text.as_bytes()[start - 1]) && !text[..start].ends_with("::") {
+                    continue;
+                }
+                let rest = text[at..].trim_start();
+                let n = rest.bytes().take_while(|&b| ident(b) || b == b'&').count();
+                if n == 0 {
+                    continue;
+                }
+                if let Some(r) = rest[n..].trim_start().strip_prefix(',') {
+                    if let Some(w) = quoted_after(r) {
+                        named.insert(w);
+                        seen_by.insert("request(");
+                    }
+                }
+            }
+        }
+    }
+    // 正控：三种写法各至少命中一处（量具没塌）。
+    assert_eq!(
+        seen_by,
+        BTreeSet::from(["Use::", "\"use\"", "request("]),
+        "有一种写法一处都没扫到 —— 扫描面塌了，下面的相等会在缩水的人群上成立"
+    );
+    let want: BTreeSet<String> = ["stream", "capture", "forward", "shell", "hold"]
+        .into_iter()
+        .map(String::from)
+        .collect();
+    assert_eq!(named, want, "生产源里点名的拨号用法与这张表对不上");
 }
 
 /// ack 与阶段行的线上形状：ack 带 `v`/`uses`/`endpoint`；阶段行是 `{"stage":{"kind":…}}`，

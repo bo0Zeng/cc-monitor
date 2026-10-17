@@ -1,5 +1,5 @@
 //! **SFTP 住本机常驻后端**：在池里那条 SSH 连接上开 sftp 子系统 ·
-//! **远端写围栏（只许暂存区一处）** · 远端写原语 · 部署那条链路（`use:"files"`）的一问一答。
+//! **远端写围栏（只许暂存区一处）** · 远端写原语（部署 `deploy::install` · 传输 `control/transfer.rs` 调它们）。
 //!
 //! # 要求
 //!
@@ -13,7 +13,7 @@
 //! `readonly_guard::remote_write_layer` 钉三件：① 生产段里命中远端写能力网 / 动词网的文件 == `{ssh-dial/sftp.rs}`；
 //! ② 本文件声明的写根（[`STAGING_ROOT`]）== `~/.cc-monitor/staging`；
 //! ③ 本文件里每个含远端改动动词的函数，第一个改动之前先有一次 [`fenced_remote`] 调用。
-//! ⇒ **写原语只许住这里、只许从这里的函数进**；别的文件（`control/transfer.rs`、`uses.rs`）只调它们。
+//! ⇒ **写原语只许住这里、只许从这里的函数进**；别的文件（`deploy/install.rs` · `control/transfer.rs`）只调它们。
 //!
 //! # 围栏（[`fence_lexical`] 纯函数 ＋ [`fenced_remote`] 解链接）
 //!
@@ -38,13 +38,11 @@ use std::sync::Arc;
 
 use russh_sftp::client::SftpSession;
 use russh_sftp::protocol::{FileAttributes, OpenFlags};
-use tokio::io::{
-    AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt,
-};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 use crate::connect::Linked;
 use crate::uses::{Lane, Lease};
-use crate::{pool, write_line, DialRequest, StageSink};
+use crate::{pool, DialRequest, StageSink};
 
 /// 🔴 **远端写根：恰好暂存区这一处**（home 相对）。`readonly_guard::remote_write_layer` 现读本行源码逐字比。
 ///
@@ -63,12 +61,6 @@ pub enum WriteRules {
     /// 部署：只许 [`STAGING_ROOT`] 那一处（后端 · 手机）；建出来的目录当场收成 `dir_mode`（宿主交后端自家目录那一个权限位）。
     Deploy { dir_mode: u32 },
 }
-
-/// files 链路上一行请求的上限（请求都是短 JSON；`put` 的字节不走行）。
-const REQUEST_LINE_CAP: u64 = 64 * 1024;
-
-/// `put` 一次最多收多少字节（后端二进制今天 MB 级；上限给宽，但不许无界进内存）。
-pub const MAX_PUT_BYTES: u64 = 64 << 20;
 
 /// 一条开在池里那条连接上的 SFTP 会话（占这条连接的一格通道，传输另占一格车道）。
 pub struct Session {
@@ -832,48 +824,6 @@ pub async fn list_entries(s: &Session, path: &str) -> Result<Vec<(String, bool, 
         .collect())
 }
 
-/// 一条路径的真路径（远端 `realpath`）。读，不过围栏。
-pub async fn real_path(s: &Session, path: &str) -> Result<String, Said> {
-    s.sftp().canonicalize(path.to_string()).await.map_err(|e| {
-        Said::with_raw(
-            copy_text(
-                "beSftp.realpath.failed",
-                &[("path", path), ("why", &why_of(&e))],
-            ),
-            &e,
-        )
-    })
-}
-
-/// 改名（两头都先过围栏；标准 SFTP 的改名不覆盖：落点已在 ⇒ 服务端回失败）。
-pub async fn rename_entry(s: &Session, from: &str, to: &str) -> Result<(), Refusal> {
-    let a = fenced_remote(s, from, Intent::File).await?;
-    let b = fenced_remote(s, to, Intent::File).await?;
-    s.sftp().rename(a.clone(), b.clone()).await.map_err(|e| {
-        io_raw(
-            copy_text(
-                "beSftp.rename.failed",
-                &[("from", &a), ("to", &b), ("why", &why_of(&e))],
-            ),
-            &e,
-        )
-    })
-}
-
-/// 删一个空目录（先过围栏）。
-pub async fn remove_dir(s: &Session, path: &str) -> Result<(), Refusal> {
-    let rel = fenced_remote(s, path, Intent::File).await?;
-    s.sftp().remove_dir(rel.clone()).await.map_err(|e| {
-        io_raw(
-            copy_text(
-                "beSftp.remove.failed",
-                &[("path", &rel), ("why", &why_of(&e))],
-            ),
-            &e,
-        )
-    })
-}
-
 /// 删一份文件。回「真删了」（不在 ⇒ `false`，不算错）。
 pub async fn remove(s: &Session, path: &str) -> Result<bool, Refusal> {
     let rel = fenced_remote(s, path, Intent::File).await?;
@@ -1016,253 +966,6 @@ pub async fn exists(s: &Session, path: &str) -> Option<bool> {
 /// 整份读回来；读不出 ⇒ `None`。
 pub async fn read_all(s: &Session, path: &str) -> Option<Vec<u8>> {
     s.sftp().read(path.to_string()).await.ok()
-}
-
-// ═══ files 链路（`use:"files"`）：受限远端文件的一问一答 ════════════════════════════════
-//
-// ack 之后，monitor 每写一行请求、这里回一行应答；`put` 那一行之后紧跟 `size` 个原始字节。
-// monitor 那一侧是 `dial_host::RemoteFs`（部署的业务判定都在那边，这里只执行）。
-
-/// 有上限地读一行（不含换行）。EOF 且没读到东西 ⇒ `None`。⚠ 必须写成 `.take(` 这个点调用。
-async fn read_line_capped<R: AsyncBufRead + Unpin>(
-    r: &mut R,
-    cap: u64,
-) -> Result<Option<String>, Said> {
-    let mut line = String::new();
-    let n = (&mut *r)
-        .take(cap + 1)
-        .read_line(&mut line)
-        .await
-        .map_err(|e| {
-            Said::with_raw(
-                copy_text("beSftp.request.readFailed", &[("why", &why_of(&e))]),
-                &e,
-            )
-        })?;
-    if n == 0 {
-        return Ok(None);
-    }
-    if n as u64 > cap && !line.ends_with('\n') {
-        return Err(crate::malformed(&format!("request line longer than {cap} bytes")).into());
-    }
-    Ok(Some(line.trim_end_matches(['\n', '\r']).to_string()))
-}
-
-fn arg_str<'a>(v: &'a serde_json::Value, k: &str) -> Result<&'a str, String> {
-    v.get(k)
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| crate::malformed(&format!("missing `{k}` (string)")))
-}
-
-fn arg_u64(v: &serde_json::Value, k: &str) -> Result<u64, String> {
-    v.get(k)
-        .and_then(serde_json::Value::as_u64)
-        .ok_or_else(|| crate::malformed(&format!("missing `{k}` (non-negative integer)")))
-}
-
-/// 失败那一形：与后端 CLI 错误信封同一对键（`code` ＋ `message`，`readonly_guard::error_envelope_registry` 签字），
-/// 多一格 `detail`（复制详情：时刻 · 机器 · 命令 `files <op>` · 码 · 下层原话；排法同失败应答那一格）。
-fn refused(op: &str, code: &str, message: &str, raw: Option<&str>) -> serde_json::Value {
-    let (message, raw) = crate::parts(message, raw);
-    let detail = crate::env::get()
-        .facts
-        .detail(&format!("files {op}"), Some(code), raw.as_deref());
-    serde_json::json!({ "code": code, "message": message, "detail": detail })
-}
-
-fn refusal(op: &str, r: &Refusal) -> serde_json::Value {
-    refused(op, r.code(), r.message(), r.raw())
-}
-
-/// 一条请求。`put` 从 `input` 里再收 `size` 个字节。
-async fn answer<R: AsyncRead + Unpin>(
-    s: &Session,
-    req: &serde_json::Value,
-    input: &mut R,
-) -> serde_json::Value {
-    let op = req
-        .get("op")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or("");
-    let res: Result<serde_json::Value, serde_json::Value> = async {
-        let bad = |m: String| refused(op, "bad_request", &m, None);
-        match op {
-            "home" => Ok(serde_json::json!({ "home": s.home() })),
-            // `stat` 那一问删了：它唯一的问者（monitor 部署时问落点在不在）随部署判定进了本机后端
-            //   （`deploy` crate 直接用本文件的 `metadata_size` / `exists`），这条链路上零调用方。
-            "read" => {
-                let path = arg_str(req, "path").map_err(bad)?;
-                let max = arg_u64(req, "max").map_err(bad)?;
-                let data = read_all(s, path).await;
-                if let Some(d) = &data {
-                    if d.len() as u64 > max {
-                        return Err(refused(
-                            op,
-                            "too_big",
-                            &copy_text(
-                                "beSftp.read.tooBig",
-                                &[
-                                    ("path", path),
-                                    ("size", &d.len().to_string()),
-                                    ("max", &max.to_string()),
-                                ],
-                            ),
-                            None,
-                        ));
-                    }
-                }
-                // 只在需要时补问：读不出 ⇒ 在不在；读到空 ⇒ 大小。
-                let (exists, size) = match &data {
-                    None => (exists(s, path).await, None),
-                    Some(d) if d.is_empty() => (None, metadata_size(s, path).await.flatten()),
-                    Some(_) => (None, None),
-                };
-                Ok(serde_json::json!({
-                    "data": data.as_deref().map(crate::b64::b64_encode),
-                    "exists": exists,
-                    "size": size,
-                }))
-            }
-            "put" => {
-                let path = arg_str(req, "path").map_err(bad)?;
-                let size = arg_u64(req, "size").map_err(bad)?;
-                let mode = arg_u64(req, "mode").map_err(bad)? as u32;
-                let verify = req
-                    .get("verify")
-                    .and_then(serde_json::Value::as_bool)
-                    .unwrap_or(false);
-                if size > MAX_PUT_BYTES {
-                    // 字节已经在路上 —— 收掉丢弃，别让下一行请求读到半截二进制。
-                    let _ = tokio::io::copy(&mut (&mut *input).take(size), &mut tokio::io::sink())
-                        .await;
-                    return Err(refused(
-                        op,
-                        "too_big",
-                        &crate::malformed(&format!("put of {size} bytes exceeds {MAX_PUT_BYTES}")),
-                        None,
-                    ));
-                }
-                let mut bytes = Vec::with_capacity(size as usize);
-                (&mut *input)
-                    .take(size)
-                    .read_to_end(&mut bytes)
-                    .await
-                    .map_err(|e| {
-                        refused(
-                            op,
-                            "io",
-                            &copy_text("beSftp.put.receiveFailed", &[("why", &why_of(&e))]),
-                            Some(&e.to_string()),
-                        )
-                    })?;
-                if bytes.len() as u64 != size {
-                    return Err(refused(
-                        op,
-                        "bad_request",
-                        &copy_text(
-                            "beSftp.put.short",
-                            &[
-                                ("size", &size.to_string()),
-                                ("got", &bytes.len().to_string()),
-                            ],
-                        ),
-                        None,
-                    ));
-                }
-                // `verify` ⇒ 读回比对、读回不对当场删（部署那一趟）；否则只原子放。
-                if verify {
-                    put_verified(s, path, &bytes, mode).await
-                } else {
-                    put_atomic(s, path, &bytes, mode).await
-                }
-                .map_err(|r| refusal(op, &r))?;
-                Ok(serde_json::json!({}))
-            }
-            "list" => {
-                let path = arg_str(req, "path").map_err(bad)?;
-                let entries = list_entries(s, path)
-                    .await
-                    .map_err(|e| refused(op, "io", &e.said, e.raw.as_deref()))?;
-                let rows: Vec<serde_json::Value> = entries
-                    .into_iter()
-                    .map(|(name, dir, size)| serde_json::json!({"name": name, "dir": dir, "size": size}))
-                    .collect();
-                Ok(serde_json::json!({ "entries": rows }))
-            }
-            "realpath" => {
-                let path = arg_str(req, "path").map_err(bad)?;
-                let p = real_path(s, path)
-                    .await
-                    .map_err(|e| refused(op, "io", &e.said, e.raw.as_deref()))?;
-                Ok(serde_json::json!({ "path": p }))
-            }
-            "rename" => {
-                let from = arg_str(req, "from").map_err(bad)?;
-                let to = arg_str(req, "to").map_err(bad)?;
-                rename_entry(s, from, to)
-                    .await
-                    .map_err(|r| refusal(op, &r))?;
-                Ok(serde_json::json!({}))
-            }
-            "rmdir" => {
-                let path = arg_str(req, "path").map_err(bad)?;
-                remove_dir(s, path).await.map_err(|r| refusal(op, &r))?;
-                Ok(serde_json::json!({}))
-            }
-            "remove" => {
-                let path = arg_str(req, "path").map_err(bad)?;
-                let removed = remove(s, path).await.map_err(|r| refusal(op, &r))?;
-                Ok(serde_json::json!({ "removed": removed }))
-            }
-            "mkdirs" => {
-                let path = arg_str(req, "path").map_err(bad)?;
-                make_dirs(s, path).await.map_err(|r| refusal(op, &r))?;
-                Ok(serde_json::json!({}))
-            }
-            other => Err(refused(
-                op,
-                "unknown_op",
-                &crate::malformed(&format!(
-                    "unknown op `{other}` (known: home / read / put / remove / mkdirs / list / realpath / rename / rmdir)"
-                )),
-                None,
-            )),
-        }
-    }
-    .await;
-    res.unwrap_or_else(|e| e)
-}
-
-/// files 链路的服务循环：读一行请求、回一行应答，直到 monitor 那头关了（上行 EOF）。
-pub async fn serve_files<R, W>(s: &Session, input: R, out: &mut W)
-where
-    R: AsyncRead + Unpin + Send,
-    W: AsyncWrite + Unpin + Send,
-{
-    let mut rd = tokio::io::BufReader::new(input);
-    loop {
-        let line = match read_line_capped(&mut rd, REQUEST_LINE_CAP).await {
-            Ok(Some(l)) => l,
-            Ok(None) => return,
-            Err(e) => {
-                let _ =
-                    write_line(out, &refused("-", "bad_request", &e.said, e.raw.as_deref())).await;
-                return;
-            }
-        };
-        let reply = match serde_json::from_str::<serde_json::Value>(&line) {
-            Ok(req) => answer(s, &req, &mut rd).await,
-            Err(e) => refused(
-                "-",
-                "bad_request",
-                &crate::malformed("request line is not JSON"),
-                Some(&e.to_string()),
-            ),
-        };
-        if write_line(out, &reply).await.is_err() {
-            return;
-        }
-    }
 }
 
 /// 台架：合成 SFTP 服务端（逐条记改动路径）。本文件的判据与后端 `control/transfer.rs` 的判据（经 `test-support`）共用。

@@ -172,7 +172,7 @@ pub const MAX_CONNECTIONS_PER_HOST: usize = 3;
 pub enum Lane {
     /// 长流（交互，活得长）：借一格通道，并记在这条连接的「长流数」上。
     Stream,
-    /// capture · files 链路（交互，短命）：借一格通道。
+    /// capture（交互，短命）：借一格通道。
     Query,
     /// 传输：先过传输车道、再过通道闸。
     Transfer,

@@ -539,8 +539,8 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
             "sr1b_loopback_deploy_and_transfer_through_the_resident_backend",
             "不是 e2e：同上一条，要**真 sshd**（sftp 子系统起始目录钉在临时目录）＋ 编好的后端二进制。\
              触发器是读数脚本 `tests/evidence/SR1b-sftp-loopback.py --monitor`（设好 `SR1B_LOOPBACK` 按名字跑这一条，\
-             核输出里那句 `SR1B-LOOPBACK-MONITOR ok`）。谁什么时候跑：改 `sftp.rs` 部署那几问 / `sftp_pool.rs` 中继 /\
-             `dial_host::RemoteFs` / 后端 `ssh-dial/sftp.rs` · `control/transfer.rs` 时，交付前跑一趟、把输出贴进报告。",
+             核输出里那句 `SR1B-LOOPBACK-MONITOR ok`）。谁什么时候跑：改 `deploy.rs` / `sftp_pool.rs` 中继 /\
+             后端 `ssh-dial/sftp.rs` · `deploy/` · `control/transfer.rs` 时，交付前跑一趟、把输出贴进报告。",
         ),
         (
             "a_real_backend_feeds_local_lines_through_the_production_read_loop",

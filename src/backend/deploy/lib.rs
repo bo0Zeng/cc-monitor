@@ -219,7 +219,7 @@ pub fn identity_decision(
     }
 }
 
-/// 残件多久没动过才算没人要：远大于等一次 `put` 的上限（monitor `dial_host::FILES_PUT_DEADLINE`，600 秒）
+/// 残件多久没动过才算没人要：远大于界面等一趟部署的上限（`deploy-install`，600 秒）
 /// ⇒ 另一个部署者正在写的那一份（修改时间随写不断刷新）不会被当成残件；也容得下两台机器之间一些钟差。
 pub const LEFTOVER_STALE_SECS: u64 = 3600;
 

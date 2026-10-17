@@ -20,7 +20,7 @@ use crate::stream_source::RemoteConfig;
 pub(crate) const INSTALL_CMD: &str = "deploy-install";
 pub(crate) const UNINSTALL_CMD: &str = "deploy-uninstall";
 
-/// 等那一趟的上限：问几次那台 ＋ 推一份 MB 级的字节 ＋ 读回（同 `files` 链路 `put` 的上限，`dial_host::FILES_PUT_DEADLINE`）。
+/// 等那一趟的上限：问几次那台 ＋ 推一份 MB 级的字节 ＋ 读回。
 const INSTALL_BUDGET: std::time::Duration = std::time::Duration::from_secs(600);
 
 /// 这一趟做了什么（应答的 `action`）。

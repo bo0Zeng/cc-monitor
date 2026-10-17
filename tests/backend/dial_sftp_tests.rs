@@ -1,10 +1,9 @@
-//! `ssh-dial/sftp.rs` 的判据：远端写围栏（只许暂存区一处）· 解链接 · files 链路的一问一答。
+//! `ssh-dial/sftp.rs` 的判据：远端写围栏（只许暂存区一处）· 解链接 · 部署与传输那几下只写暂存区。
 //!
 //! 台架是 `sftp_rig`（合成 SFTP 服务端，逐条记改动路径）。**判据看服务端的改动表，不信被测侧的自述。**
 
 use super::rig::{self, HOME};
-use super::{fence_lexical, open_for_write, serve_files, Intent, Refusal, STAGING_ROOT};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use super::{fence_lexical, open_for_write, Intent, Refusal, STAGING_ROOT};
 
 // ═══ B3 · 词法那一道：逐形正反 ════════════════════════════════════════════════════════
 
@@ -195,73 +194,23 @@ async fn opening_a_symlink_for_write_is_refused() {
     assert!(fs.lock().unwrap().mutated.is_empty());
 }
 
-// ═══ files 链路：一问一答 ══════════════════════════════════════════════════════════════
+// ═══ 部署 · 传输那几下：改动只落在暂存区 ═════════════════════════════════════════════════
 
-/// 起一条 files 链路（生产 `serve_files`）接在台架会话上，回 `(写端, 读端)`。
-async fn link_on(
-    fs: std::sync::Arc<std::sync::Mutex<rig::Fs>>,
-) -> (
-    tokio::io::WriteHalf<tokio::io::DuplexStream>,
-    BufReader<tokio::io::ReadHalf<tokio::io::DuplexStream>>,
-) {
-    let s = rig::session_on(fs).await;
-    let (ours, theirs) = tokio::io::duplex(1 << 20);
-    tokio::spawn(async move {
-        let (r, mut w) = tokio::io::split(theirs);
-        serve_files(&s, r, &mut w).await;
-    });
-    let (r, w) = tokio::io::split(ours);
-    (w, BufReader::new(r))
-}
-
-async fn ask(
-    w: &mut tokio::io::WriteHalf<tokio::io::DuplexStream>,
-    r: &mut BufReader<tokio::io::ReadHalf<tokio::io::DuplexStream>>,
-    req: serde_json::Value,
-    bytes: Option<&[u8]>,
-) -> serde_json::Value {
-    let mut line = req.to_string();
-    line.push('\n');
-    w.write_all(line.as_bytes()).await.unwrap();
-    if let Some(b) = bytes {
-        w.write_all(b).await.unwrap();
-    }
-    w.flush().await.unwrap();
-    let mut back = String::new();
-    r.read_line(&mut back).await.unwrap();
-    serde_json::from_str(&back).unwrap_or_else(|e| panic!("应答不是 JSON（{e}）：{back:?}"))
-}
-
-/// 🔴🔴 **B2：一趟部署 ＋ 暂存区写跑下来，服务端记下的改动路径全在暂存区里**（非空、全在根下）；
-/// 越界的五种请求（含往安装位置那一层写）一律 `fenced`、服务端改动表**零增长**。
+/// 🔴🔴 **B2：部署那几下（建目录 · 放 ＋ 读回 · 盖掉旧的 · 删）与传输开写跑下来，服务端记下的改动路径全在暂存区里**
+/// （非空、全在根下）；越界的五种（含往安装位置那一层写）一律 `Fenced`、服务端改动表**零增长**。
 #[tokio::test]
-async fn a_deploy_shaped_session_touches_only_staging_and_refuses_everything_else() {
+async fn deploy_and_transfer_writes_touch_only_staging_and_refuse_everything_else() {
     let fs = rig::home(false, false);
-    let (mut w, mut r) = link_on(fs.clone()).await;
+    let s = rig::session_on(fs.clone()).await;
 
-    let home = ask(&mut w, &mut r, serde_json::json!({"op":"home"}), None).await;
-    assert_eq!(home["home"], HOME);
-
-    // 首次部署：暂存区还不在 ⇒ 逐级建。
-    let v = ask(
-        &mut w,
-        &mut r,
-        serde_json::json!({"op":"mkdirs","path": format!("{HOME}/.cc-monitor/staging")}),
-        None,
-    )
-    .await;
-    assert!(v.get("code").is_none(), "{v}");
+    // 首次部署：暂存区还不在 ⇒ 逐级建（`deploy::install` 那一下）。
+    super::make_dirs(&s, &format!("{HOME}/.cc-monitor/staging"))
+        .await
+        .expect("建暂存区");
     let bin = rig::corpus(100_000);
-    let v = ask(
-        &mut w,
-        &mut r,
-        serde_json::json!({"op":"put","path": format!("{HOME}/.cc-monitor/staging/cc-monitor-backend"),
-                           "size": bin.len(), "mode": 0o700, "verify": true}),
-        Some(&bin),
-    )
-    .await;
-    // `verify` ⇒ 读回比对（`put_verified`）：过了只回一个空对象，落点上是那一份字节。
-    assert!(v.get("code").is_none(), "读回逐字节应当相同：{v}");
+    super::put_verified(&s, &format!("{HOME}/.cc-monitor/staging/cc-monitor-backend"), &bin, 0o700)
+        .await
+        .expect("读回逐字节应当相同");
     assert_eq!(
         fs.lock()
             .unwrap()
@@ -269,91 +218,34 @@ async fn a_deploy_shaped_session_touches_only_staging_and_refuses_everything_els
         Some(bin.clone())
     );
     // 再放一次（盖掉旧的）：旧的改名成 `.bak` 再删，临时件上位 —— 目录里只剩那一份。
-    let v = ask(
-        &mut w,
-        &mut r,
-        serde_json::json!({"op":"put","path": ".cc-monitor/staging/cc-monitor-backend","size": 3,"mode": 0o700,"verify": false}),
-        Some(b"new"),
-    )
-    .await;
-    assert!(v.get("code").is_none(), "{v}");
-    // 暂存区一份。
-    let v = ask(
-        &mut w,
-        &mut r,
-        serde_json::json!({"op":"put","path": ".cc-monitor/staging/aa.part","size": 2,"mode": 0o600}),
-        Some(b"xy"),
-    )
-    .await;
-    assert!(v.get("code").is_none(), "{v}");
-    // 读 · 看 · 删。
-    let v = ask(
-        &mut w,
-        &mut r,
-        serde_json::json!({"op":"read","path": ".cc-monitor/staging/cc-monitor-backend","max": 1024}),
-        None,
-    )
-    .await;
-    assert_eq!(v["data"], crate::b64::b64_encode(b"new"));
-    // `stat` 那一问删了（零调用方）⇒ 对端当不认识的一问回 `unknown_op`，链路照常往下走。
-    let v = ask(
-        &mut w,
-        &mut r,
-        serde_json::json!({"op":"stat","path": ".cc-monitor/staging/nope"}),
-        None,
-    )
-    .await;
-    assert_eq!(v["code"], "unknown_op", "{v}");
-    let v = ask(
-        &mut w,
-        &mut r,
-        serde_json::json!({"op":"remove","path": ".cc-monitor/staging/aa.part"}),
-        None,
-    )
-    .await;
-    assert_eq!(v["removed"], true);
+    super::put_atomic(&s, ".cc-monitor/staging/cc-monitor-backend", b"new", 0o700)
+        .await
+        .expect("盖掉旧的");
+    // 传输那一下：暂存件开写、再删（撤了那一形）。
+    drop(
+        open_for_write(&s, ".cc-monitor/staging/aa.part", true)
+            .await
+            .expect("开暂存件"),
+    );
+    assert_eq!(super::remove(&s, ".cc-monitor/staging/aa.part").await.ok(), Some(true));
 
-    // —— 越界：四种形，一律拒，改动表零增长 ——
+    // —— 越界：五种形，一律拒，改动表零增长 ——
     let before = fs.lock().unwrap().mutated.len();
-    for (req, bytes) in [
-        (
-            serde_json::json!({"op":"put","path": ".bashrc","size": 1,"mode": 0o644}),
-            Some(&b"x"[..]),
-        ),
-        (
-            serde_json::json!({"op":"put","path": format!("{HOME}/.local/bin/ccm"),"size": 1,"mode": 0o755}),
-            Some(&b"x"[..]),
-        ),
-        (
-            serde_json::json!({"op":"remove","path": "/etc/passwd"}),
-            None,
-        ),
-        (
-            serde_json::json!({"op":"mkdirs","path": ".cc-monitor/staging/../../.ssh"}),
-            None,
-        ),
-        (
-            serde_json::json!({"op":"put","path": ".cc-monitor/bin/ccm","size": 1,"mode": 0o700}),
-            Some(&b"x"[..]),
-        ),
-    ] {
-        let v = ask(&mut w, &mut r, req.clone(), bytes).await;
-        assert_eq!(v["code"], "fenced", "越界请求没被围栏拒：{req} ⇒ {v}");
+    let refusals = [
+        super::put_atomic(&s, ".bashrc", b"x", 0o644).await.err(),
+        super::put_atomic(&s, &format!("{HOME}/.local/bin/ccm"), b"x", 0o755).await.err(),
+        super::remove(&s, "/etc/passwd").await.err(),
+        super::make_dirs(&s, ".cc-monitor/staging/../../.ssh").await.err(),
+        super::put_atomic(&s, ".cc-monitor/bin/ccm", b"x", 0o700).await.err(),
+    ];
+    for (i, r) in refusals.iter().enumerate() {
+        assert!(matches!(r, Some(Refusal::Fenced { .. })), "第 {i} 种越界没被围栏拒：{r:?}");
     }
     assert_eq!(
         fs.lock().unwrap().mutated.len(),
         before,
         "被拒的请求在服务端留下了改动"
     );
-    // 协议上的坏形：说一声，链路照旧能用。
-    let v = ask(
-        &mut w,
-        &mut r,
-        serde_json::json!({"op":"chmod","path":"x"}),
-        None,
-    )
-    .await;
-    assert_eq!(v["code"], "unknown_op");
 
     // 🔴 改动全在暂存区里（非空：这一趟确实写到了）。
     let g = fs.lock().unwrap();
@@ -377,73 +269,6 @@ async fn a_deploy_shaped_session_touches_only_staging_and_refuses_everything_els
         staged,
         vec![".cc-monitor/staging/cc-monitor-backend"],
         "盖掉旧的之后不许留临时件 / 备份"
-    );
-}
-
-/// 请求行不是 JSON ⇒ 回一条 `bad_request`，链路照旧活着（下一问照答）。
-#[tokio::test]
-async fn a_garbled_request_line_is_answered_and_the_link_keeps_going() {
-    let fs = rig::home(true, false);
-    let (mut w, mut r) = link_on(fs).await;
-    w.write_all(b"not json\n").await.unwrap();
-    let mut back = String::new();
-    r.read_line(&mut back).await.unwrap();
-    let v: serde_json::Value = serde_json::from_str(&back).unwrap();
-    assert_eq!(v["code"], "bad_request");
-    // 那一句不带解析器的原话；原话与命令进 `detail`（复制详情）。
-    let said = v["message"].as_str().unwrap();
-    let detail = v["detail"].as_str().expect("失败应答行没有 detail");
-    assert!(!said.contains("expected"), "解析器原话上了句子：{said}");
-    assert!(detail.contains("expected"), "解析器原话没进详情：{detail}");
-    assert!(detail.contains("bad_request"), "详情里没有码：{detail}");
-    // 围栏拒绝那一形同样带详情（命令那一项写到 `files <op>`）。
-    let v = ask(
-        &mut w,
-        &mut r,
-        serde_json::json!({"op":"remove","path":"elsewhere/x"}),
-        None,
-    )
-    .await;
-    assert_eq!(v["code"], "fenced");
-    assert!(
-        v["detail"]
-            .as_str()
-            .is_some_and(|d| d.contains("files remove")),
-        "围栏拒绝的应答没有带命令的详情：{v}"
-    );
-    let v = ask(&mut w, &mut r, serde_json::json!({"op":"home"}), None).await;
-    assert_eq!(v["home"], HOME);
-}
-
-/// `read` 超过这一问给的上限 ⇒ `too_big`，不把整份塞回来。
-#[tokio::test]
-async fn a_read_over_the_callers_cap_is_refused_not_truncated() {
-    let fs = rig::home(true, false);
-    fs.lock().unwrap().files.insert(
-        ".cc-monitor/bin/big".to_string(),
-        rig::Entry {
-            bytes: rig::corpus(5000),
-        },
-    );
-    let (mut w, mut r) = link_on(fs).await;
-    let v = ask(
-        &mut w,
-        &mut r,
-        serde_json::json!({"op":"read","path":".cc-monitor/bin/big","max": 4999}),
-        None,
-    )
-    .await;
-    assert_eq!(v["code"], "too_big", "{v}");
-    let v = ask(
-        &mut w,
-        &mut r,
-        serde_json::json!({"op":"read","path":".cc-monitor/bin/none","max": 10}),
-        None,
-    )
-    .await;
-    assert!(
-        v["data"].is_null() && v["exists"] == false,
-        "读不出 ⇒ 补问在不在：{v}"
     );
 }
 
@@ -701,15 +526,10 @@ async fn hx2_two_interleaved_deploys_leave_one_whole_copy_and_no_litter() {
 #[tokio::test]
 async fn hx1_the_dirs_a_deploy_creates_are_made_private_and_an_existing_one_is_left_alone() {
     let fs = rig::home(false, false);
-    let (mut w, mut r) = link_on(fs.clone()).await;
-    let v = ask(
-        &mut w,
-        &mut r,
-        serde_json::json!({"op":"mkdirs","path": ".cc-monitor/staging"}),
-        None,
-    )
-    .await;
-    assert!(v.get("code").is_none(), "{v}");
+    let s = rig::session_on(fs.clone()).await;
+    super::make_dirs(&s, ".cc-monitor/staging")
+        .await
+        .expect("建暂存区");
     let g = fs.lock().unwrap();
     assert_eq!(
         g.dir_modes.get(".cc-monitor/staging").copied(),
@@ -786,93 +606,6 @@ fn sftp_failures_wrapped_in_io_errors_still_land_on_the_right_reason_word() {
     for (e, want) in cases {
         assert_eq!(super::why_of_io(&e), want, "{e:?}");
     }
-}
-
-// ═══ 手机文件屏要的那几问：列目录 · 真路径 · 改名 · 删空目录 ══════════════════════════════════════
-
-/// 列目录（名 · 是不是目录 · 大小）与真路径是读，哪种规矩都答；改名 · 删空目录是写，先过围栏（这里装的是部署那两处）。
-#[tokio::test]
-async fn the_files_link_lists_resolves_renames_and_removes_empty_dirs() {
-    let fs = rig::home(false, true);
-    {
-        let mut g = fs.lock().unwrap();
-        g.files.insert(
-            ".cc-monitor/staging/a.txt".into(),
-            rig::Entry {
-                bytes: b"abc".to_vec(),
-            },
-        );
-        g.dirs.insert(".cc-monitor/staging/sub".into());
-    }
-    let (mut w, mut r) = link_on(fs.clone()).await;
-    let v = ask(
-        &mut w,
-        &mut r,
-        serde_json::json!({"op":"list","path": ".cc-monitor/staging"}),
-        None,
-    )
-    .await;
-    let mut got: Vec<(String, bool, u64)> = v["entries"]
-        .as_array()
-        .unwrap_or_else(|| panic!("{v}"))
-        .iter()
-        .map(|e| {
-            (
-                e["name"].as_str().unwrap().to_string(),
-                e["dir"].as_bool().unwrap(),
-                e["size"].as_u64().unwrap_or(0),
-            )
-        })
-        .collect();
-    got.sort();
-    assert_eq!(
-        got,
-        vec![("a.txt".into(), false, 3), ("sub".into(), true, 0)]
-    );
-    let v = ask(
-        &mut w,
-        &mut r,
-        serde_json::json!({"op":"realpath","path": "."}),
-        None,
-    )
-    .await;
-    assert_eq!(v["path"], HOME, "{v}");
-    let v = ask(
-        &mut w,
-        &mut r,
-        serde_json::json!({"op":"rename","from": ".cc-monitor/staging/a.txt","to": ".cc-monitor/staging/b.txt"}),
-        None,
-    )
-    .await;
-    assert!(v.get("code").is_none(), "{v}");
-    assert!(fs
-        .lock()
-        .unwrap()
-        .files
-        .contains_key(".cc-monitor/staging/b.txt"));
-    let v = ask(
-        &mut w,
-        &mut r,
-        serde_json::json!({"op":"rmdir","path": ".cc-monitor/staging/sub"}),
-        None,
-    )
-    .await;
-    assert!(v.get("code").is_none(), "{v}");
-    assert!(!fs.lock().unwrap().dirs.contains(".cc-monitor/staging/sub"));
-    // 围栏照旧：改名改到写根外面 ⇒ 拒，盘上不动。
-    let v = ask(
-        &mut w,
-        &mut r,
-        serde_json::json!({"op":"rename","from": ".cc-monitor/staging/b.txt","to": ".ssh/authorized_keys"}),
-        None,
-    )
-    .await;
-    assert_eq!(v["code"], "fenced", "{v}");
-    assert!(fs
-        .lock()
-        .unwrap()
-        .files
-        .contains_key(".cc-monitor/staging/b.txt"));
 }
 
 // ═══ 放 ＋ 读回（`put_verified`：读回不对当场删）══════════════════════════════════════════

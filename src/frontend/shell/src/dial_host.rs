@@ -125,10 +125,9 @@ pub(crate) fn request(
     use_: &str,
     extra: serde_json::Value,
 ) -> serde_json::Value {
-    let mut req = machine_facts(cfg);
+    let mut req = transfer_dial(cfg);
     if let Some(obj) = req.as_object_mut() {
         obj.insert("use".into(), serde_json::json!(use_));
-        obj.insert("agent_sock".into(), serde_json::json!(agent_sock()));
     }
     if let (Some(obj), serde_json::Value::Object(more)) = (req.as_object_mut(), extra) {
         obj.extend(more);
@@ -157,10 +156,13 @@ pub(crate) fn machine_facts(cfg: &RemoteConfig) -> serde_json::Value {
     })
 }
 
-/// 传输台那一趟的拨号请求（本机后端开单时读进去、起跑时拿它开 sftp 会话）。
-/// 用法写 `files`（SFTP 那一族）；后端的传输台只读身份与鉴权那几项，用法不看。
+/// 传输 · 部署那一趟的拨号请求（本机后端拿它开 sftp 会话）：只有这台的事实与 agent，不点用法（不开链路）。
 pub(crate) fn transfer_dial(cfg: &RemoteConfig) -> serde_json::Value {
-    request(cfg, "files", serde_json::json!({}))
+    let mut req = machine_facts(cfg);
+    if let Some(obj) = req.as_object_mut() {
+        obj.insert("agent_sock".into(), serde_json::json!(agent_sock()));
+    }
+    req
 }
 
 /// 总时限落在链路读写上的那一层：到点之后每一次读 / 写都报 `TimedOut`，不再碰里面那条链路。
@@ -441,7 +443,7 @@ async fn open(
     Ok((DialStream { r }, ack))
 }
 
-/// 本机后端说没拨成 / 没做成：那一句 ＋ 它写好的详情（拨号与 files 链路都跑在**本机**常驻后端里 ⇒ 原样，不补「本机」行）；
+/// 本机后端说没拨成 / 没做成：那一句 ＋ 它写好的详情（拨号与 sftp 都跑在**本机**常驻后端里 ⇒ 原样，不补「本机」行）；
 /// 老后端没写详情 ⇒ 壳写时刻与本机。
 pub(crate) fn refused_said(why: String, detail: Option<&str>) -> Said {
     match detail.filter(|d| !d.trim().is_empty()) {
