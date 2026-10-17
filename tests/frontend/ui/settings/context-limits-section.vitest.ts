@@ -14,12 +14,12 @@ const { sets, emitted, machines } = vi.hoisted(() => ({
 vi.mock("../../../../src/frontend/ui/machine-prefs", () => ({
   readPrefs: async (origin: string) => {
     const m = machines.get(origin)!;
-    return { state: m.state, reason: m.reason, detail: null, path: null, prefs: { launchers: {}, resumeInTmux: false, models: {}, contextLimits: { ...m.limits } } };
+    return { state: m.state, reason: m.reason, detail: null, path: null, prefs: { launchers: {}, resumeInTmux: false, models: {}, permissionModes: {}, contextLimits: { ...m.limits } } };
   },
   setPrefs: async (origin: string, patch: { contextLimits: Record<string, number> }) => {
     sets.push([origin, patch]);
     machines.get(origin)!.limits = patch.contextLimits;
-    return { state: "ok", reason: null, detail: null, path: null, prefs: { launchers: {}, resumeInTmux: false, models: {}, contextLimits: patch.contextLimits } };
+    return { state: "ok", reason: null, detail: null, path: null, prefs: { launchers: {}, resumeInTmux: false, models: {}, permissionModes: {}, contextLimits: patch.contextLimits } };
   },
 }));
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(async (n: string) => void emitted.push(n)), listen: vi.fn() }));

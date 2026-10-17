@@ -58,7 +58,7 @@ vi.mock("../../../src/frontend/ui/account-reads", async () => {
 });
 vi.mock("../../../src/frontend/ui/acct-center", () => ({ refreshQuota: vi.fn(async () => {}) }));
 vi.mock("../../../src/frontend/ui/behavior", () => ({ getBehavior: vi.fn(async () => ({ resumeCommand: "" })) }));
-vi.mock("../../../src/frontend/ui/machine-prefs", () => ({ readPrefs: vi.fn(async () => ({ state: "absent", prefs: { launchers: {}, resumeInTmux: false, models: {}, contextLimits: {} } })) }));
+vi.mock("../../../src/frontend/ui/machine-prefs", () => ({ readPrefs: vi.fn(async () => ({ state: "absent", prefs: { launchers: {}, resumeInTmux: false, models: {}, permissionModes: {}, contextLimits: {} } })) }));
 const arrival = vi.hoisted(() => ({
   awaitArrival: vi.fn(async () => "new-sid"),
   expectArrival: vi.fn(),

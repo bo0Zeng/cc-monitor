@@ -27,7 +27,7 @@ vi.mock("../../../src/frontend/ui/ipc/chan-caller", async (orig) => ({
   callTyped: (_o: string, op: string, args: unknown) => {
     typed.push({ op, args });
     if (op === "plan-pb-check") return Promise.resolve(checked);
-    return Promise.resolve({ state: "ok", reason: null, detail: null, path: null, prefs: { launchers: {}, resumeInTmux: false, models: {}, contextLimits: {}, agentHomes: {}, pbDir: (args as { pbDir?: string }).pbDir ?? "/opt/pb" } });
+    return Promise.resolve({ state: "ok", reason: null, detail: null, path: null, prefs: { launchers: {}, resumeInTmux: false, models: {}, permissionModes: {}, contextLimits: {}, agentHomes: {}, pbDir: (args as { pbDir?: string }).pbDir ?? "/opt/pb" } });
   },
 }));
 
