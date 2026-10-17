@@ -291,7 +291,7 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 
 ## 24bis. 远端 idle-tmux 灰灯（audit-fixes F03.2）：`REMOTE_IDLE` 与 `remote_active` 正交、同一 emitter 单写
 
-已并进 §24：「claude 退了、tmux 会话还在」就是账本里的**可重连**（tab 两轴 `Tab.state`，`tab-session-state.ts::SessionState`；转移只在 `nextState` 一处，行为只经 `isResumeOnly` / `hasTerminal` / `isLive` 读）。`/branch`、`/clear` 原地换 sid ⇒ 旧 sid 恒归档、不查 tmux 快照。tmux 的观测分四态（`tmux_observe.rs::classify_tmux_probe`：有会话 · 零会话 · 没有 tmux · 观测不到），只有前两态参与收割。
+已并进 §24：「claude 退了、tmux 会话还在」就是账本里的**可重连**（那台后端出整份脸 `SessionFace`，界面存 `Tab.face`、只经 `face-can.ts` 读 `can`，不攒状态）。`/branch`、`/clear` 原地换 sid ⇒ 旧 sid 恒归档、不查 tmux 快照。tmux 的观测分四态（`tmux_observe.rs::classify_tmux_probe`：有会话 · 零会话 · 没有 tmux · 观测不到），只有前两态参与收割。
 
 ---
 

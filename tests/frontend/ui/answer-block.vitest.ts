@@ -17,21 +17,22 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AnswerBlock, type AnswerHost, type AnswerOutcome } from "../../../src/frontend/ui/answer-block";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 import type { Ask, Needs } from "../../../src/frontend/ui/session-reads";
-import { LIVE, LIVE_ATTACHABLE } from "../../../src/frontend/ui/tab-session-state";
+import { liveFace } from "../../test-support/session-faces";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { waitedNow } from "../../../src/frontend/ui/duration-format";
 
 const ASKS = JSON.parse(readFileSync(resolve(__dirname, "../../__fixtures__/needs-ask.golden.json"), "utf8")) as Record<"approve" | "subAgent" | "plan" | "question", Ask>;
 const NOW = Date.parse("2026-10-11T12:00:00Z");
-const waiting = { doing: "needs_you" as const, waitingFor: "permission prompt", text: copyText("beSession.activity.needsYou"), tone: "need", order: 1 };
+/** 在等人：脸 ＋ 同一刻的会话事实那一句（需手动那一份只在两份同一刻时作数）。 */
+const waiting = { face: liveFace("needs_you"), line: { for: "needs_you" as const, text: "", clock: null, peek: null } };
 
 function needs(ask: Ask | null, over: Partial<Needs> = {}): Needs {
   return { kind: "approve", tool: "Bash", call: "toolu_1", what: "w", sinceMs: NOW - 12_000, text: "核心·等批准", head: "核心·等批准 · Bash", headCode: null, tone: "need", rank: 1, waitedMs: 12_000, waitedText: "核心·12s", ask, manualText: ask ? null : "核心·只能在终端里答", receivedAt: NOW, ...over };
 }
 
 function tab(n: Needs | null, sid = "s1"): Tab {
-  return { sessionId: sid, origin: LOCAL_ORIGIN, state: LIVE, activity: n ? waiting : null, needs: n } as unknown as Tab;
+  return { sessionId: sid, origin: LOCAL_ORIGIN, ...(n ? waiting : { face: liveFace("working"), line: null }), needs: n } as unknown as Tab;
 }
 
 function rig(t: Tab | null, outcome: AnswerOutcome = { kind: "answered" }) {
@@ -322,15 +323,14 @@ describe("每一种需手动都有地方出（钉条删了以后）", () => {
     }
   });
 
-  it("★ 会话事实还没到（只有活动信号说在等）⇒ 也出：头一行是活动信号那一句", () => {
-    const t = { sessionId: "s1", origin: LOCAL_ORIGIN, state: LIVE, activity: waiting, needs: null } as unknown as Tab;
+  it("★ 会话事实还没到（只有脸说在等）⇒ 不出：种类判不出，不猜", () => {
+    const t = { sessionId: "s1", origin: LOCAL_ORIGIN, face: liveFace("needs_you"), line: null, needs: null } as unknown as Tab;
     const { b } = rig(t);
-    expect(b.el.hidden).toBe(false);
-    expect(b.el.querySelector("[data-part=head]")!.textContent).toContain(waiting.text);
+    expect(b.el.hidden).toBe(true);
   });
 
   it("★ 能不能去终端都一样：远端在 tmux 里 · Windows 有 ↗ · 都不行 ⇒ 块里都不放终端那几颗主按钮", () => {
-    const remote = { ...tab(needs(null)), origin: "devbox", state: LIVE_ATTACHABLE } as unknown as Tab;
+    const remote = { ...tab(needs(null)), origin: "devbox", face: liveFace("working", true) } as unknown as Tab;
     expect(rig(remote).b.el.querySelectorAll("button").length).toBe(0);
     document.body.innerHTML = "";
     vi.mocked(terminalFrontAvailable).mockReturnValue(true);

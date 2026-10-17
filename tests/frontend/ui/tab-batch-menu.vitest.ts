@@ -14,12 +14,12 @@ import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/to
 import { askText } from "../../../src/frontend/ui/kit/dialog";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { showMessage } from "../../../src/frontend/ui/status-messages";
-import { LIVE, ENDED, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
+import { goldenFace, liveFace } from "../../test-support/session-faces";
 import { LOCAL_ORIGIN, originFromWire } from "../../../src/frontend/ui/ipc/origin";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 
 const tab = (sid: string, live: boolean, extra: Partial<Tab> = {}): Tab =>
-  ({ sessionId: sid, origin: LOCAL_ORIGIN, title: `T-${sid}`, label: `T-${sid}`, labelProject: null, projectDir: null, background: false, bgName: null, forkedFromSessionId: null, state: live ? LIVE : ENDED, pinned: false, group: null, ...extra }) as Tab;
+  ({ sessionId: sid, origin: LOCAL_ORIGIN, title: `T-${sid}`, label: `T-${sid}`, labelProject: null, projectDir: null, background: false, bgName: null, forkedFromSessionId: null, face: live ? liveFace("working", true) : goldenFace("ended"), pinned: false, group: null, ...extra }) as Tab;
 
 let tabs: Tab[];
 let host: TabBatchHost;
@@ -86,13 +86,29 @@ describe("批量菜单", () => {
   });
 
   it("说不清（那台暂时看不见）的不算可起、也不说「已经结束了」：理由说看不见", async () => {
-    tabs = [tab("a", false), tab("u", false, { state: UNSEEN })];
+    tabs = [tab("a", false), tab("u", false, { face: null })];
     run.start.mockResolvedValue([{ sid: "a", outcome: "done", why: "" }]);
     open();
     await press(copyText("tabBatch.menu.startTmux", { n: 1 }));
     expect(run.start.mock.calls[0][0].map((t: Tab) => t.sessionId)).toEqual(["a"]);
-    const unseen = copyText("tabBatch.result.skippedLine", { title: "T-u", why: copyText("sessionState.unseen.tooltip") });
+    const unseen = copyText("tabBatch.result.skippedLine", { title: "T-u", why: copyText("sessionState.unseen.noResume") });
     expect(toastBody().split("\n")).toContain(unseen);
+  });
+
+  it("★ 杀：能做的照脸上 can.term 数，跳过的理由照抄各自那一格的 why；「已结束几个」按点数（不拿句子比）", async () => {
+    const ended = { ...goldenFace("ended"), can: { ...goldenFace("ended").can, term: { can: "no" as const, why: "核心·e" } } };
+    const gone = { ...goldenFace("gone"), can: { ...goldenFace("gone").can, term: { can: "no" as const, why: "核心·g" } } };
+    tabs = [tab("e1", false, { face: ended }), tab("e2", false, { face: ended }), tab("g", false, { face: gone }), tab("r", true)];
+    run.stop.mockResolvedValue([{ sid: "r", outcome: "done", why: "" }]);
+    open();
+    await press(copyText("tabBatch.menu.stop", { n: 1 }));
+    expect(run.stop.mock.calls[0][0].map((t: Tab) => t.sessionId)).toEqual(["r"]);
+    expect((run.confirm.mock.calls[0][0] as { note?: string }).note).toBe(copyText("sessionState.batch.skipped", { n: 3 }));
+    expect(toastBody().split("\n")).toEqual([
+      copyText("tabBatch.result.skippedLine", { title: "T-e1", why: "核心·e" }),
+      copyText("tabBatch.result.skippedLine", { title: "T-e2", why: "核心·e" }),
+      copyText("tabBatch.result.skippedLine", { title: "T-g", why: "核心·g" }),
+    ]);
   });
 
   it("B2 · 杀：确认框列出这一批，只交还在跑的；结果一条：做了 · 跳过（为什么）· 失败（为什么）", async () => {

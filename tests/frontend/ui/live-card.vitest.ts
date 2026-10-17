@@ -7,6 +7,7 @@
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { owned } from "../../test-support/owned-tab-manager.ts";
+import { announced } from "../../test-support/session-faces";
 
 vi.mock("@tauri-apps/api/core", async () => {
   const rig = await import("../../test-support/session-viewer-rig");
@@ -151,7 +152,7 @@ describe("T8 活卡断 / 丢不碰 jsonl 那条对的路（抄流可以有缺口
     const barEl = document.createElement("div");
     const streamRootEl = document.createElement("div");
     document.body.append(barEl, streamRootEl);
-    const tm = owned(new TabManager(barEl, streamRootEl));
+    const tm = owned(announced(new TabManager(barEl, streamRootEl)));
     tm.setLivePainter(livePainter);
     tm.onLine(jsonl[0] as never);
     for (const f of seq) tm.onLiveCard(pay(f));
@@ -190,7 +191,7 @@ describe("T8 活卡断 / 丢不碰 jsonl 那条对的路（抄流可以有缺口
     const barEl = document.createElement("div");
     const streamRootEl = document.createElement("div");
     document.body.append(barEl, streamRootEl);
-    const tm = owned(new TabManager(barEl, streamRootEl));
+    const tm = owned(announced(new TabManager(barEl, streamRootEl)));
     tm.setLivePainter(livePainter);
     const trailer = (): string =>
       [...streamRootEl.querySelectorAll(".stream")].map((s) => [...s.children].slice(1).map((c) => c.textContent).join("|")).join("#");

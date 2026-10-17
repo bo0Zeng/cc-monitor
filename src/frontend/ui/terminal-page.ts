@@ -18,9 +18,9 @@ import { countText } from "./format";
 import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
 import { saidOfControl, machineName } from "./control-said";
-import { canResume, hasTerminal } from "./tab-session-state";
+import { canResume, faceOf, hasTerminal, inTmux, isLive, machineOf } from "./face-can";
 import { terminalFrontAvailable } from "./terminal-front";
-import { dotOf, fullTitle, machineOf, stateWord } from "./session-face";
+import { dotOf, fullTitle, stateWord } from "./session-face";
 import { renderScreen, screenPre } from "./terminal-screen";
 import { startFollow, type Follow, type FollowEvents, type FollowStop } from "./terminal-follow";
 import { listTerminals, previewShot, sendToTerminal, type TerminalRow, type TerminalSend, type TerminalSent, type TerminalShot } from "./terminal-reads";
@@ -545,9 +545,9 @@ export class TerminalPage {
       return;
     }
     if (this.phase === "none") {
-      const ended = canResume(tab.state); // 已结束（能恢复的那一态）
-      // 活着、容器事实是「不在任何 tmux 里」（后端 `session_added.container` = none）：照实说，不当成别人起的。
-      const outside = tab.state.liveness === "live" && tab.state.recoverability === "resumable";
+      const ended = canResume(faceOf(tab)); // 已结束（能恢复的那一态）
+      // 活着、不在 tmux 里（那台判的 `can.term`）：照实说，不当成别人起的。
+      const outside = isLive(faceOf(tab)) && !inTmux(faceOf(tab));
       const sid = this.sid;
       this.body.replaceChildren(
         ended
@@ -592,7 +592,7 @@ export class TerminalPage {
     this.liveTag.textContent = this.live.at === "on" ? copyText("terminal.head.live") : copyText("terminal.head.joining");
     this.snapTag.hidden = this.live.at !== "snapOnly";
     if (this.live.at === "snapOnly") this.snapTag.title = this.live.said;
-    this.frontBtn.style.display = terminalFrontAvailable() && hasTerminal(tab.state) ? "" : "none";
+    this.frontBtn.style.display = terminalFrontAvailable() && hasTerminal(faceOf(tab)) ? "" : "none";
 
     const bars: HTMLElement[] = [];
     if (row.programExited) {

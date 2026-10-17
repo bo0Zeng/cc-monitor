@@ -4,11 +4,11 @@
  *
  * 每一项在一个 tab 上的语义就是单个菜单里那一项：杀死会话 · Resume（tmux 后台 / 各开一个终端）· 固定 / 取消固定 ·
  * 加入集合 / 新建集合 / 移出集合 · 关闭（同 ×）。「能做的个数」按单个菜单亮那一项用的同一个谓词数
- * （杀 = 有终端可去 `hasTerminal`；Resume / 关闭 = 已结束 `isResumeOnly`）；那台能不能做、怎么做由那台后端判（`tab-batch-run.ts`）。
+ * （杀 = 有终端可去 `can.term`；Resume ＝ `can.resume`；关闭 ＝ `can.close` 为 quiet；跳过的理由照抄那一格的 `why`）；那台能不能做、怎么做由那台后端判（`tab-batch-run.ts`）。
  * 固定 · 集合 · 关闭是 monitor 自己的界面状态，不经后端。
  */
 import type { Tab } from "./tab-model";
-import { canResume, hasTerminal, isResumeOnly } from "./tab-session-state";
+import { canResume, closesQuietly, faceOf, hasTerminal, isEnded } from "./face-can";
 import { copyText } from "./copy-table";
 import { openMenu, type MenuItem } from "./kit/menu";
 import type { TabCollection } from "./tab-collections";
@@ -58,10 +58,8 @@ function split(tabs: readonly Tab[], ok: (t: Tab) => boolean, why: string | ((t:
   return [yes, no];
 }
 
-/** 说不清（那台暂时看不见）的那几个说「看不见」，不说「已经结束了 / 还在运行」。 */
-function unseenOr(why: string): (t: Tab) => string {
-  return (t) => (t.state.liveness === "unseen" ? copyText("sessionState.unseen.tooltip") : why);
-}
+/** 那一样不给做时那台写好的那一句（`can.*.why`）。 */
+const whyOf = (c: { can: string; why?: string }): string => c.why ?? "";
 
 /** 结果提示：一句汇总（做了 · 失败几个）；逐个跳过与失败的（各为什么）进「消息」那一条，［查看］展开。 */
 export function sayBatch(action: string | ((done: number, failed: number) => string), tabs: readonly Tab[], outcomes: readonly BatchOutcome[]): void {
@@ -123,12 +121,12 @@ export function openBatchMenu(
       })();
     },
   });
-  const [stoppable, notStoppable] = split(tabs, (t) => hasTerminal(t.state), unseenOr(copyText("tabBatch.why.ended", { ended: copyText("sessionState.ended.name") })));
-  const [startable, notStartable] = split(tabs, (t) => canResume(t.state), unseenOr(copyText("tabBatch.why.live")));
+  const [stoppable, notStoppable] = split(tabs, (t) => hasTerminal(faceOf(t)), (t) => whyOf(faceOf(t).can.term));
+  const [startable, notStartable] = split(tabs, (t) => canResume(faceOf(t)), (t) => whyOf(faceOf(t).can.resume));
   const items: MenuItem[] = [
     { label: copyText("tabBatch.menu.head", { n: tabs.length }), heading: true },
     item(copyText("tabBatch.menu.stop", { n: stoppable.length }), stoppable.length, async () => {
-      const ended = notStoppable.filter((o) => o.why === copyText("tabBatch.why.ended", { ended: copyText("sessionState.ended.name") })).length;
+      const ended = tabs.filter((t) => isEnded(faceOf(t))).length;
       const confirm = {
         title: copyText("tabBatch.stop.title", { n: stoppable.length }),
         action: copyText("tabBatch.stop.action", { n: stoppable.length }),
@@ -192,7 +190,10 @@ export function openBatchMenu(
     item(copyText("tabBatch.menu.hide", { n: hideable.length }), hideable.length, () => host.hide(hideable.map((t) => t.sessionId)), false, copyText("tabBatch.why.hidden")),
     item(copyText("tabBatch.menu.unhide", { n: unhideable.length }), unhideable.length, () => host.unhide(unhideable.map((t) => t.sessionId)), false, copyText("tabBatch.why.notHidden")),
   );
-  const [closable, notClosable] = split(tabs, (t) => isResumeOnly(t.state), copyText("tabBatch.why.live"));
+  const [closable, notClosable] = split(tabs, (t) => closesQuietly(faceOf(t)), (t) => {
+    const c = faceOf(t).can.close;
+    return c.can === "no" ? c.why : faceOf(t).tip;
+  });
   items.push(
     item(copyText("tabBatch.menu.close", { n: closable.length }), closable.length, () =>
       local(copyText("tabBatch.action.close"), tabs, closable, notClosable, (s) => host.closeTabs(s)),

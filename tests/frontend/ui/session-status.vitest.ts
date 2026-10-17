@@ -1,24 +1,31 @@
-// 活着的会话那颗点 / 灯：按核心写好的语气排（标签栏 · 状态点 · 监控板 · 轮换名单共用 `activityFace`），不认活动态的码。
+// 会话那颗点照后端那份整份脸画：金样里每种点都落到 `kit/status-dot` 的那一颗（样式表里有它那一档），灯那一档按点取。
 import { describe, it, expect } from "vitest";
-import { activityFace, sessionDot } from "../../../src/frontend/ui/session-status";
-import { ENDED, LIVE, RECONNECTABLE } from "../../../src/frontend/ui/tab-session-state";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { lightOf } from "../../../src/frontend/ui/session-status";
+import { statusDot } from "../../../src/frontend/ui/kit/status-dot";
+import type { SessionDot } from "../../../src/frontend/ui/generated/SessionDot";
+import { allFaces } from "../../test-support/session-faces";
+import { REPO_ROOT } from "../../test-support/repo-root";
 
-describe("activityFace", () => {
-  it("★ 核心的语气各对一颗点、一盏灯：now 在跑 · need 需手动 · 其余常规", () => {
-    expect(activityFace("now")).toEqual({ dot: "running", light: "" });
-    expect(activityFace("need")).toEqual({ dot: "needs-you", light: "waiting" });
-    expect(activityFace("plain")).toEqual({ dot: "idle", light: "idle" });
-  });
-  it("还没收到那一格 ⇒ 在运行的点、不叠灯", () => {
-    expect(activityFace(null)).toEqual({ dot: "running", light: "" });
-  });
-});
+const CSS = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/kit/status-dot.module.css"), "utf8");
 
-describe("sessionDot", () => {
-  it("颜色按语气、形状按两轴：死了的语气再新也不算", () => {
-    expect(sessionDot(LIVE, "plain")).toBe("idle");
-    expect(sessionDot(LIVE, "need")).toBe("needs-you");
-    expect(sessionDot(RECONNECTABLE, "now")).toBe("exited");
-    expect(sessionDot(ENDED, "now")).toBe("ended");
+describe("会话点照脸画", () => {
+  it("★ 金样里每种点 ⇒ 状态点那一颗（data-state ＝ 线上名、样式表里有那一档、读屏名 ＝ 短名）", () => {
+    const faces = allFaces();
+    // 金样罩住线上每一种点（这张表漏一种编不过）。
+    const every = { running: 1, "needs-you": 1, background: 1, idle: 1, exited: 1, ended: 1, gone: 1, unknown: 1 } satisfies Record<SessionDot, 1>;
+    expect([...new Set(faces.map(([, f]) => f.dot))].sort()).toEqual(Object.keys(every).sort());
+    for (const [key, f] of faces) {
+      const d = statusDot(f.dot, f.name, "compact");
+      expect(d.dataset.state, key).toBe(f.dot);
+      expect(d.getAttribute("aria-label"), key).toBe(f.name);
+      expect(CSS.includes(`.dot[data-state="${f.dot}"]`), `${key}：样式表里没有 ${f.dot} 那一档`).toBe(true);
+    }
+  });
+
+  it("灯：需手动呼吸、空闲暗着，别的不叠", () => {
+    const got = Object.fromEntries(allFaces().map(([k, f]) => [k, lightOf(f.dot)]));
+    expect(got).toMatchObject({ "live-needs-you-tmux": "waiting", "live-idle": "idle", "live-working-plain": "", ended: "", reconnectable: "", unclear: "" });
   });
 });

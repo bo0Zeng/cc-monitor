@@ -158,7 +158,7 @@ export class AccountsSection {
     };
     try {
       await bindEvents(
-        { onLine: () => {}, onSessionEnded: () => {}, onChanged: pushed },
+        { onLine: () => {}, onSessionFace: () => {}, onChanged: pushed },
         { changed: origins.flatMap((origin) => (["accounts", "quota"] as const).map((topic) => ({ origin, topic }))) },
       );
     } catch (e) {

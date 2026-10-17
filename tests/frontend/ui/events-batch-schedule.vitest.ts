@@ -90,7 +90,7 @@ async function bind(): Promise<Harness> {
   const onLine = vi.fn();
   await bindEvents({
     onLine,
-    onSessionEnded: vi.fn(),
+    onSessionFace: vi.fn(),
     onBatchStart,
     onBatchEnd,
   } as never, { streams: [{ origin: "<local>", kind: "session-lines" }] });
@@ -322,7 +322,7 @@ describe("〔CF2〕会话流：还 credit 与丢格", () => {
     await bindEvents(
       {
         onLine: (p: { seq: number }) => order.push(`line ${p.seq}`),
-        onSessionEnded: vi.fn(),
+        onSessionFace: vi.fn(),
         onBatchStart: vi.fn(),
         onBatchEnd: vi.fn(),
         onStreamGap: (o: string) => order.push(`gap ${o}`),

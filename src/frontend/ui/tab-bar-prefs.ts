@@ -34,7 +34,7 @@ import {
 } from "./tab-bar-state";
 import { patchConfig, type ConfigEdit } from "./config";
 import type { Tab } from "./tab-model";
-import { LIVE, UNSEEN, isLive } from "./tab-session-state";
+import { faceOf, isLive } from "./face-can";
 import { copyText } from "./copy-table";
 import { toast, failToast, silentUndo, undoToast } from "./kit/toast";
 import type { TabStore } from "./tab-store";
@@ -381,11 +381,7 @@ export class TabBarPrefs {
         this.host.createSkeletonTab(p.sid, p.cwd, p.origin, p.background, p.name);
         const t = this.store.tabs.get(p.sid);
         if (!t) continue;
-        // 凭空造的 tab：那台早到的去向（暂存的已结束 / 可重连）建 tab 时已落实；没人说过它 ⇒ 说不清。
-        if (t.state === LIVE) {
-          t.state = UNSEEN;
-          t.activity = null;
-        }
+        // 凭空造的 tab：那台早到的脸建 tab 时已落实；没人说过它 ⇒ 没有脸（画说不清）。
         t.parentPath = p.jsonlPath; // resume 与「有没有记录」都靠它
         t.title = p.title; // 骨架期就显示正确标题，不等读文件
         t.pinned = true;
@@ -451,7 +447,7 @@ export class TabBarPrefs {
         prev?.account ??
         null,
       // 按活性一轴判：可重连的 claude 已经没了 ⇒ 不是「此刻还活着」。
-      lastActiveAt: isLive(tab.state) ? Date.now() : prev?.lastActiveAt ?? null,
+      lastActiveAt: isLive(faceOf(tab)) ? Date.now() : prev?.lastActiveAt ?? null,
       background: tab.background,
       name: tab.bgName,
       title: tab.title,

@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import { owned } from "../../test-support/owned-tab-manager.ts";
+import { announced } from "../../test-support/session-faces";
 import { invoke } from "@tauri-apps/api/core";
 
 vi.mock("@tauri-apps/api/core", async () => {
@@ -168,7 +169,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     const streamRootEl = document.createElement("div");
     const panel = new AgentsPanel();
     document.body.replaceChildren(barEl, streamRootEl, panel.summaryElement, panel.pageElement);
-    const tm = owned(new TabManager(barEl, streamRootEl, undefined, undefined, panel));
+    const tm = owned(announced(new TabManager(barEl, streamRootEl, undefined, undefined, panel)));
     tm.setLivePainter(livePainter);
     return { tm, streamRootEl, panel };
   }

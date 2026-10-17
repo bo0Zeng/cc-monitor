@@ -28,7 +28,7 @@ import { streamFake } from "../../test-support/chan-stream-fake.ts";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
 async function bind(): Promise<void> {
-  await bindEvents({ onLine: vi.fn(), onSessionEnded: vi.fn() } as never, {
+  await bindEvents({ onLine: vi.fn(), onSessionFace: vi.fn() } as never, {
     streams: [
       { origin: "<local>", kind: "session-lines" },
       { origin: "devbox", kind: "session-lines" },
@@ -84,7 +84,7 @@ describe("一台机器的会话流一直看不见 ⇒ 说出来", () => {
 
   it("一开始就看不见、20 秒还没看见 ⇒ 恰一条「还没连上那台」，带「打开设置」", async () => {
     const help = vi.fn();
-    await bindEvents({ onLine: vi.fn(), onSessionEnded: vi.fn(), openMachineSettings: help } as never, {
+    await bindEvents({ onLine: vi.fn(), onSessionFace: vi.fn(), openMachineSettings: help } as never, {
       streams: [{ origin: "devbox", kind: "session-lines" }],
     });
     streamFake.subscriptions[0].sink([unseen("Unreachable")]);

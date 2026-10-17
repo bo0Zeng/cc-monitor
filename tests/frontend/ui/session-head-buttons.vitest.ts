@@ -36,7 +36,7 @@ import { closeMenu } from "../../../src/frontend/ui/kit/menu";
 import { closePopover } from "../../../src/frontend/ui/kit/popover";
 import { undoToast } from "../../../src/frontend/ui/kit/toast";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
-import { ENDED, LIVE } from "../../../src/frontend/ui/tab-session-state";
+import { goldenFace, liveFace } from "../../test-support/session-faces";
 import { terminalFrontAvailable } from "../../../src/frontend/ui/terminal-front";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { dispatcher } from "../../../src/frontend/ui/keybindings/registry";
@@ -46,7 +46,7 @@ dispatcher.start(); // Esc 走弹层栈（window 上那一个监听）
 
 function tab(sid: string, over: Partial<Tab> = {}): Tab {
   return {
-    sessionId: sid, title: sid, background: false, bgName: null, label: null, labelProject: null, projectDir: `/w/${sid}`, state: LIVE, pinned: false, group: null,
+    sessionId: sid, title: sid, background: false, bgName: null, label: null, labelProject: null, projectDir: `/w/${sid}`, face: liveFace("working"), line: null, pinned: false, group: null,
     origin: LOCAL_ORIGIN, activity: null, forkedFromSessionId: null, writers: [], unread: 0, needs: null, backgroundWork: null, pending: [], lastSay: null, ...over,
   } as unknown as Tab;
 }
@@ -189,7 +189,7 @@ describe("会话头那一排", () => {
 
   it("已结束：清单里勾了「恢复」也只出状态那一颗", async () => {
     store.cfg = { sessionHead: { buttons: ["resume", "find"] } };
-    const { h } = rig(tab("e", { state: ENDED }));
+    const { h } = rig(tab("e", { face: goldenFace("ended") }));
     await h.loadButtons();
     const resumes = [...h.el.querySelectorAll("button")].filter((b) => (b.getAttribute("aria-label") ?? b.textContent ?? "").startsWith(copyText("sessionHead.act.resume")));
     expect(resumes).toHaveLength(1);

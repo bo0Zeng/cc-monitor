@@ -24,6 +24,7 @@ import { callStop, sayReply, type Reply, type StartItem } from "./tab-batch-run"
 import { startInTmuxThenAttach } from "./tmux-resume";
 // 标签页里的会话都是流跟的那一家（记录树那一家）。
 import type { Tab } from "./tab-model";
+import { faceOf } from "./face-can";
 import { copyText } from "./copy-table";
 import type { KillNote } from "./tmux-control";
 import { offerResyncRetry, resyncMachines, resyncMachinesSaid } from "./resync";
@@ -42,8 +43,6 @@ export interface TabSessionHost {
   tab(sid: string): Tab | undefined;
   /** attach / 「杀死空 tmux」对这个会话有没有意义。 */
   isAttachable(sid: string): boolean;
-  /** resume 一跳问过那台后端之后，把「记录在不在」落进这条 tab 的状态（`TabManager.markRecord`）。 */
-  markRecord(sid: string, present: boolean): void;
 }
 
 export class TabSessionActions {
@@ -93,7 +92,6 @@ export class TabSessionActions {
       );
       return true;
     }
-    this.host.markRecord(tab.sessionId, probe.present);
     if (probe.present) return true;
     toast(
       copyText("sessionState.recordGone.title"),
@@ -131,7 +129,7 @@ export class TabSessionActions {
   /**
    * 那台「重新对齐」过 ⇒ 它上面的固定条逐条问一次记录还在不在（与 resume 前那一问同一个 `history-record`）。
    * 号的记录树都链回同一份共享库 ⇒ 不按号分树，问那台的家。
-   * 没了的**标出来**（`markRecord`）、说一句；**不自动摘** —— 点那条提示才摘（`unpin`）。问不到 ⇒ 不标。
+   * 没了的那台会重发一帧脸（记录已不在）；这里说一句、**不自动摘** —— 点那条提示才摘（`unpin`）。问不到 ⇒ 不标。
    */
   async flagPinsWithoutRecord(origin: string, pinned: Tab[], unpin: (sid: string) => void): Promise<void> {
     if (pinned.length === 0) return;
@@ -143,7 +141,6 @@ export class TabSessionActions {
       } catch {
         continue;
       }
-      this.host.markRecord(tab.sessionId, probe.present);
       if (!probe.present) gone.push(tab);
     }
     if (gone.length === 0) return;
@@ -156,7 +153,7 @@ export class TabSessionActions {
 
   /** 说不清（那台暂时看不见）⇒ 不恢复、说一句：会话也许还在跑，再起一份就是同一会话两个 claude。 */
   private refuseUnseen(tab: Tab): boolean {
-    if (tab.state.liveness !== "unseen") return false;
+    if (faceOf(tab).dot !== "unknown") return false;
     toast(copyText("sessionState.unseen.noResume"), copyText("sessionState.unseen.tooltip"), {
       level: "info",
     });
@@ -236,7 +233,7 @@ export class TabSessionActions {
     return startInTmuxThenAttach(
       { origin: tab.origin, agent, sid: tab.sessionId, cwd: item.cwd },
       item.account ?? FOLLOW,
-      { again, onRecord: (present) => this.host.markRecord(tab.sessionId, present) },
+      { again },
     );
   }
 

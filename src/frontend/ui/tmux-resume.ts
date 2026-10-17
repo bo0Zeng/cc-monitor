@@ -24,8 +24,6 @@ export interface TmuxResumeTarget {
 export interface TmuxResumeHooks {
   /** 再起一次（选不了的号换了一个 / 对齐之后重试）。 */
   again(account?: AccountAsk): Promise<void>;
-  /** 那台说了记录在不在（标签页据此画「记录已不在」；历史页不用）。 */
-  onRecord?(present: boolean): void;
 }
 
 /** 起，起好了接进去。回 `false` = 没起（已经出过声）。 */
@@ -44,7 +42,6 @@ export async function startInTmuxThenAttach(t: TmuxResumeTarget, account: Accoun
     return false;
   }
   if (r.why === "record_gone") {
-    hooks.onRecord?.(false);
     toast(
       copyText("sessionState.recordGone.title"),
       copyText("sessionState.recordGone.body", {
@@ -61,7 +58,6 @@ export async function startInTmuxThenAttach(t: TmuxResumeTarget, account: Accoun
     else toast(copyText("remoteLaunchRun.inPlace.notRun"), said);
     return false;
   }
-  if (r.outcome === "done") hooks.onRecord?.(true);
   // 在跑的不止一个 ⇒ 接第一个（接回可撤销），但说出来。
   if (r.why === "ambiguous") {
     toast(

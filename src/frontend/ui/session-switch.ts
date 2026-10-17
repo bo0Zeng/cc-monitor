@@ -8,6 +8,7 @@
  * 读回的字只盖到下一份会话事实里那一格变了为止（之后照后端那一格）。
  */
 import type { Tab } from "./tab-model";
+import { faceOf } from "./face-can";
 import type { AgentFacts } from "./generated/AgentFacts";
 import type { NewSessionPick } from "./generated/NewSessionPick";
 import type { NewFacts } from "./generated/NewFacts";
@@ -85,8 +86,8 @@ export function chipFace(tab: Tab, kind: SwitchKind, local: SwitchLocal, unavail
   if (unavailable !== null) return { text, enabled: false, why: unavailable, spinning: false };
   // 那一家没有可换的（清单问到了、是空的）⇒ 只显示字。
   if (picks === 0) return { text, enabled: false, why: null, spinning: false };
-  const can = tab.switch?.[kind];
-  if (can?.can === "no") return { text, enabled: false, why: can.why, spinning: false };
+  const can = faceOf(tab).can[kind];
+  if (can.can === "no") return { text, enabled: false, why: can.why, spinning: false };
   return { text, enabled: true, why: null, spinning: false };
 }
 

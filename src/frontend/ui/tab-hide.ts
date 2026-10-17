@@ -9,7 +9,7 @@
 import type { Tab } from "./tab-model";
 import type { TabStore } from "./tab-store";
 import type { TabBarPrefs } from "./tab-bar-prefs";
-import { isResumeOnly } from "./tab-session-state";
+import { faceOf, isEnded } from "./face-can";
 import { sameHidden, undoHide, type HideSet, type SessionHidden } from "./session-hidden";
 import { copyText } from "./copy-table";
 import type { Hide } from "./generated/Hide";
@@ -117,7 +117,7 @@ export class TabHide {
   /** 隐藏了又结束的：不留（「已隐藏」只列活的，要看去历史）；正看着的那一个切走再收。 */
   reap(): void {
     for (const t of [...this.store.tabs.values()]) {
-      if ((t.hidden ?? null) !== null && isResumeOnly(t.state) && t.sessionId !== this.store.activeId) this.host.close(t.sessionId);
+      if ((t.hidden ?? null) !== null && isEnded(faceOf(t)) && t.sessionId !== this.store.activeId) this.host.close(t.sessionId);
     }
   }
 }

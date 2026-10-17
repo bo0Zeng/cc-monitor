@@ -39,6 +39,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { owned } from "../../test-support/owned-tab-manager.ts";
+import { announced } from "../../test-support/session-faces";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -430,7 +431,7 @@ describe("秤 6 丙：三个账本的大小进 `debugSnapshot`", () => {
     const barEl = document.createElement("div");
     const streamRootEl = document.createElement("div");
     document.body.append(barEl, streamRootEl);
-    tm = owned(new TabManager(barEl, streamRootEl));
+    tm = owned(announced(new TabManager(barEl, streamRootEl)));
   });
   afterEach(() => vi.unstubAllGlobals());
 

@@ -10,7 +10,8 @@
  */
 import { toast } from "./kit/toast";
 import type { Tab } from "./tab-model";
-import { canResume, hasTerminal, isResumeOnly, type SessionState } from "./tab-session-state";
+import { canResume, closesFromMenu, faceOf, hasTerminal } from "./face-can";
+import type { SessionFace } from "./generated/SessionFace";
 import { copyText } from "./copy-table";
 import type { TabCollection } from "./tab-collections";
 import { defaultPick, resumeAccounts, resumeMenuItems, type ResumeAccounts, type ResumePick } from "./resume-menu";
@@ -158,17 +159,17 @@ export class TabMenu {
   /** 这个标签页的菜单项（右键与会话头「⋯」同一份；要问那台的几格先画成转圈）。 */
   private build(sid: string): { items: MenuItem[]; t: Tab | undefined; unseen: boolean; remote: string | null; local: boolean } {
     const t = this.host.tab(sid);
-    const unseen = t?.state.liveness === "unseen";
+    const unseen = t !== undefined && faceOf(t).dot === "unknown";
     const unseenWhy = t && unseen ? copyText("tabMenu.unseen.why", { machine: machineName(t.origin) }) : undefined;
     const grey = (it: MenuItem): MenuItem => (unseenWhy ? { ...it, enabled: false, pending: false, why: unseenWhy, onClick: () => {} } : it);
     const remote = t !== undefined && isRemoteOrigin(t.origin) && t.projectDir ? t.origin : null;
-    const local = t !== undefined && isLocalOrigin(t.origin) && hasTerminal(t.state);
+    const local = t !== undefined && isLocalOrigin(t.origin) && hasTerminal(faceOf(t));
     const items: MenuItem[] = [];
 
     // ① 看它
     items.push({ id: "popOut", icon: "popOut", label: copyText("tabMenu.open.openInWindow"), detail: keyOf("tab.pop-out"), onClick: () => void this.actions.openInNewWindow(sid) });
     if (t?.projectDir) items.push({ icon: "folder", label: copyText("tabMenu.open.cwd"), detail: keyOf("tab.open-cwd"), onClick: () => this.host.openCwd(sid) });
-    if (t && hasTerminal(t.state) && terminalFrontAvailable()) {
+    if (t && hasTerminal(faceOf(t)) && terminalFrontAvailable()) {
       items.push({ icon: "front", label: copyText("tabMenu.open.front"), detail: keyOf("terminal.bring-front"), onClick: () => this.host.front(sid) });
     }
     if (t) items.push({ icon: "terminal", label: copyText("tabMenu.open.drawer"), detail: keyOf("panel.toggle-terminal"), onClick: () => this.host.viewTerminal(sid) });
@@ -200,7 +201,7 @@ export class TabMenu {
     // ③ 恢复 · 在终端里打开 · 账号
     items.push({ label: "", divider: true });
     if (t && unseen) items.push(grey({ icon: "history", label: copyText("tabMenu.item.resume") }));
-    else if (t && canResume(t.state)) {
+    else if (t && canResume(faceOf(t))) {
       // 恢复 ▸：与历史页「恢复 ▾」同一个组件（`resume-menu.ts`）；账号那一组等那台的号到了再换上（`appendAccountMenuItems`）。
       items.push({ id: "resume", icon: "history", label: copyText("tabMenu.item.resume"), submenu: this.buildResumeSubmenu(sid, { kind: "off" }) });
     }
@@ -212,7 +213,7 @@ export class TabMenu {
     // ④ 关闭标签页：已结束 · 记录已不在 · 状态不明的才关得掉；在跑的灰着（先结束）。
     items.push({ label: "", divider: true });
     if (t) {
-      const closable = isResumeOnly(t.state);
+      const closable = closesFromMenu(faceOf(t));
       items.push({
         id: "close",
         icon: "close",
@@ -247,7 +248,7 @@ export class TabMenu {
     if (remote !== null && t) void this.resolveRemoteTmuxItems(remote, sid, fullTitle(t));
     if (local && t) void this.resolveLocalTmuxItems(sid, fullTitle(t));
     // 已结束的会话：那台的号到了再把「恢复 ▸」的账号组换上。
-    if (t) void this.appendAccountMenuItems(t.origin, sid, t.state);
+    if (t) void this.appendAccountMenuItems(t.origin, sid, faceOf(t));
   }
 
   /** 「分组 ▸」那一层，作用于这几个（命令面板「加入分组…」开的也是它；多选 ⇒ 每项带个数）。 */
@@ -277,7 +278,7 @@ export class TabMenu {
    */
   openResumeMenu(anchor: HTMLElement, sid: string): void {
     const t = this.host.tab(sid);
-    if (!t || !canResume(t.state)) return;
+    if (!t || !canResume(faceOf(t))) return;
     void this.resumeAccountsOf(t.origin, t.agent).then((accounts) => {
       if (anchor.isConnected) openMenu({ el: anchor, align: "end" }, this.buildResumeSubmenu(sid, accounts).map((i) => gateByOffer(t.origin, i)));
     });
@@ -404,9 +405,9 @@ export class TabMenu {
   private async appendAccountMenuItems(
     origin: string,
     sid: string,
-    state: SessionState,
+    face: SessionFace,
   ): Promise<void> {
-    if (state.liveness === "unseen" || !isResumeOnly(state)) return;
+    if (!canResume(face)) return;
     const gen = menuGeneration();
     const accounts = await this.resumeAccountsOf(origin, this.host.tab(sid)?.agent ?? null);
     if (gen !== menuGeneration() || accounts.kind === "off") return;

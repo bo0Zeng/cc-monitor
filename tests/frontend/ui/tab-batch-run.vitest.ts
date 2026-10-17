@@ -266,11 +266,10 @@ describe("单个在 tmux 里恢复（不依赖标签页对象）", () => {
     const attach = vi
       .spyOn(remote, "runRemoteAttach")
       .mockResolvedValue(undefined);
-    const onRecord = vi.fn();
     await startInTmuxThenAttach(
       { origin: "r1", agent: "codex", sid: "cx", cwd: "/w/cx" },
       { kind: "follow" },
-      { again: vi.fn(), onRecord },
+      { again: vi.fn() },
     );
     const [, op, body] = calls[0];
     expect(op).toBe("sessions-start");
@@ -281,7 +280,6 @@ describe("单个在 tmux 里恢复（不依赖标签页对象）", () => {
       items: [{ sid: "cx", cwd: "/w/cx", account: { kind: "follow" } }],
     });
     expect(Object.keys(body).filter((k) => ["launcher", "defaultLauncher", "models"].includes(k)), "启动命令 · 模型表那台自己读").toEqual([]);
-    expect(onRecord).toHaveBeenCalledWith(true);
     expect(attach).toHaveBeenCalledWith("r1", "codex", "cx-1");
   });
 });

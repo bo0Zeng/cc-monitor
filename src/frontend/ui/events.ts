@@ -16,25 +16,22 @@ import type { SessionLiveCardPayload } from "./generated/SessionLiveCardPayload"
 import type { SessionRuns } from "./generated/SessionRuns";
 import type { SessionBranchPayload } from "./generated/SessionBranchPayload";
 import type { WatchFrom } from "./generated/WatchFrom";
-import type { WireSessionContainer } from "./generated/WireSessionContainer";
-import type { Switch } from "./generated/Switch";
+import type { SessionFace } from "./generated/SessionFace";
 export type { JsonlLinePayload };
 
 
 export interface EventHandlers {
   /** 一行记录。payload 带 seq，RecordTimeline 按 seq 排进 DOM，先到后到不影响画面。 */
   onLine: (e: JsonlLinePayload) => void;
-  /** 会话已结束；`sw` · `order` ＝ 那台随去向带来的「此刻能不能换」与组内序。 */
-  onSessionEnded: (sessionId: string, sw?: Switch | null, order?: number | null) => void;
   /**
-   * 远端 claude 退出但 tmux 会话仍在 → 灰灯（idle-tmux），不归档。后端在会话没了而 `@ccm_sid` 还在时发 `idle` 格（与 ended 格对同一 sid 二选一）。
-   * 与 ended 格同进 queue：要相对该会话的行与之后的 remote-added 保序。前端 tabs.markTmuxIdle 置灰点。
+   * 一条会话此刻的整份脸（那台后端判好的：宣告 · 活动 · 去向三帧都带）。宣告 · 活动那两帧当场派（稀疏、Tab 还没建由宿主暂存），
+   * 去向那一帧进 queue（与行保序）。同一 sid 后到的覆盖先到的。
    */
-  onSessionIdle?: (sessionId: string, sw?: Switch | null, order?: number | null) => void;
+  onSessionFace: (sessionId: string, face: SessionFace) => void;
+  /** 核心报来叫这条会话什么（宣告 · 活动那两帧带的 `label` · `label_project`），当场派。 */
+  onSessionName?: (sessionId: string, label: string, labelProject: string | null) => void;
   /**
-   * 会话（重新）变活。后端在 sessions/<PID>.json 新增且 PID 探活通过时发 —— 崩溃 → Tab 灰显 → `/resume` 后回 live，无需 F5。
-   * 与 ended 格同进 queue（保持结束 / 复活的先后）。
-   * 前端复活已归档的本地 Tab（tabs.reviveTab）。
+   * 本机会话宣告（`session_added`）：建骨架 Tab。与去向帧同进 queue（保持结束 / 复活的先后）。
    */
   onSessionStarted?: (
     sessionId: string,
@@ -66,11 +63,6 @@ export interface EventHandlers {
       hidden: SessionHidden | null;
     },
   ) => void;
-  /**
-   * 活会话住在什么容器里（`container` 格，本机与远端同一个事件）。
-   * 进 queue：与 `remote-added` / 行保序（先建 tab、再落容器；早到的由 TabManager 暂存）。
-   */
-  onSessionContainer?: (sessionId: string, container: WireSessionContainer) => void;
   /**
    * 一个会话的运行表（会话流里的 `runs` 格，那台后端的成品）：列在 agent 面板里，状态标到派出它的那张工具卡上（不进主 tab 的消息流）。
    * 进 queue：排在那个会话的宣告之后（处理它时 tab 已在）。
@@ -123,10 +115,6 @@ export interface EventHandlers {
    */
   onChanged?: (origin: Origin, topic: Topic, change: Changed) => void;
   /**
-   * 会话红绿灯与名字（那台 `session_status`；宣告那一格也带一份）：天然稀疏，当场派。
-   */
-  onSessionActivity?: (payload: SessionStatus) => void;
-  /**
    * 那台机器的会话流里**丢了几格**（没 credit 时句柄丢了、原位报的 `gap`）。
    * 丢的是哪几个会话的哪几行，流里说不出来（一条订阅里混着多个会话）⇒ 宿主对那台机器的每个 tab 按行号补
    * （`TabManager.onStreamGap`）。进 queue：与行保序（丢在哪两格之间，补就从那里起）。
@@ -170,9 +158,8 @@ type Queued =
   | { kind: "batch-end" }
   // 那台机器的流里丢了几格（`gap`）。
   | { kind: "gap"; origin: Origin }
-  | { kind: "ended"; sessionId: string; switch: Switch | null; order: number | null }
-  // 灰灯（idle-tmux）—— 与 ended 同 queue 保序，见 onSessionIdle。
-  | { kind: "idle"; sessionId: string; switch: Switch | null; order: number | null }
+  // 去向那一帧带的脸 —— 与行同 queue 保序（见 onSessionFace）。
+  | { kind: "face"; sessionId: string; face: SessionFace }
   | {
       kind: "started";
       sessionId: string;
@@ -195,8 +182,7 @@ type Queued =
       name: string | null;
       hidden: SessionHidden | null;
     }
-  // 容器事实 / 某台清单报完了 —— 同一 queue 保序（见 EventHandlers 里两条的注释）。
-  | { kind: "container"; sessionId: string; container: WireSessionContainer }
+  // 某台清单报完了 —— 同一 queue 保序（见 EventHandlers 里那一条的注释）。
   | { kind: "runs"; payload: SessionRuns }
   | { kind: "branch"; payload: SessionBranchPayload }
   | { kind: "watch"; origin: Origin; payload: WatchFrom }
@@ -451,10 +437,8 @@ export async function bindEvents(
         // perf：记录 batch payload 全部 drain 完毕的时刻（不是 onBatchEnd fire）
         perf.batchDrainEnd = performance.now();
         scheduleBatchEnd();
-      } else if (item.kind === "ended") {
-        handlers.onSessionEnded(item.sessionId, item.switch, item.order);
-      } else if (item.kind === "idle") {
-        handlers.onSessionIdle?.(item.sessionId, item.switch, item.order);
+      } else if (item.kind === "face") {
+        handlers.onSessionFace(item.sessionId, item.face);
       } else if (item.kind === "started") {
         handlers.onSessionStarted?.(item.sessionId, {
           cwd: item.cwd,
@@ -472,8 +456,6 @@ export async function bindEvents(
           name: item.name,
           hidden: item.hidden,
         });
-      } else if (item.kind === "container") {
-        handlers.onSessionContainer?.(item.sessionId, item.container);
       } else if (item.kind === "runs") {
         handlers.onSessionRuns?.(item.payload);
       } else if (item.kind === "branch") {
@@ -579,6 +561,10 @@ export async function bindEvents(
   const onStreamItems = (origin: Origin, hold: StreamHold, items: Item[]): void => {
     // 每一格都占过一格 credit：进队的处理掉再还，当场派的 · 读不懂的当场记还。
     const take = (q: Queued): void => void queue.push({ ...q, grant: hold });
+    const status = (p: Pick<SessionStatus, "sid" | "face" | "label" | "label_project">): void => {
+      handlers.onSessionName?.(p.sid, p.label, p.label_project ?? null);
+      handlers.onSessionFace(p.sid, p.face);
+    };
     const owe = (): void => {
       hold.owed += 1;
       owedHolds.add(hold);
@@ -627,13 +613,12 @@ export async function bindEvents(
               hidden: p.hidden ?? null,
             });
           }
-          // 此刻的灯与名字当场派（同 `status`）；容器排在建 tab 之后（这一格的 credit 已随宣告记过）。
-          handlers.onSessionActivity?.(p);
-          if (p.container) queue.push({ kind: "container", sessionId: p.sid, container: p.container });
+          // 此刻的脸与名字当场派（同 `status`）：Tab 还没建由宿主暂存。
+          status(p);
         } else if (f !== null && typeof f === "object" && "status" in f) {
-          // 红绿灯稀疏，当场派（不进 queue）。
+          // 稀疏，当场派（不进 queue）。
           owe();
-          handlers.onSessionActivity?.(f.status);
+          status(f.status);
         } else if (f !== null && typeof f === "object" && "runs" in f) {
           take({ kind: "runs", payload: f.runs });
         } else if (f !== null && typeof f === "object" && "branch" in f) {
@@ -641,8 +626,7 @@ export async function bindEvents(
         } else if (f !== null && typeof f === "object" && "watch" in f) {
           take({ kind: "watch", origin, payload: f.watch });
         } else if (f !== null && typeof f === "object" && "state" in f) {
-          const st = f.state;
-          take({ kind: st.state === "ended" ? "ended" : "idle", sessionId: st.sid, switch: st.switch, order: st.state_order });
+          take({ kind: "face", sessionId: f.state.sid, face: f.state.face });
         } else if (f !== null && typeof f === "object" && "unseen" in f) {
           take({ kind: "unseen", origin: f.unseen.origin });
         } else if (f !== null && typeof f === "object" && "listed" in f) {

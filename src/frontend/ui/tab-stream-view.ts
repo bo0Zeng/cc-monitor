@@ -46,7 +46,7 @@ import { budgetWithin } from "./ipc/chan-caller";
 import { findInSession, readSessionIndex } from "./session-reads";
 import { readLines, readRange } from "./record-reads";
 import type { Tab } from "./tab-model";
-import { isResumeOnly } from "./tab-session-state";
+import { faceOf, hasTerminal } from "./face-can";
 import type { TabStore } from "./tab-store";
 import { ColdReads, IdleSlot } from "./tab-cold-reads";
 import { copyText } from "./copy-table";
@@ -631,7 +631,7 @@ export class TabStreamView {
       .filter(
         ([sid, t]) =>
           sid !== this.store.activeId &&
-          !isResumeOnly(t.state) &&
+          hasTerminal(faceOf(t)) &&
           t.window.pendingCount > 0 &&
           (t.window.floorSeq === null || !this.contentReachesBottom(t)),
       )
@@ -1210,12 +1210,9 @@ export class TabStreamView {
     if (payloads.length === 0) return;
     const wasBatch = this.store.inBatch;
     this.store.inBatch = true;
-    // 取回来的是历史：远端 tab「见行就翻活」那一格不认它（`TabStore.historyFeed` 头注）。
-    this.store.historyFeed = true;
     try {
       for (const p of payloads) this.host.onLine(p);
     } finally {
-      this.store.historyFeed = false;
       this.store.inBatch = wasBatch;
       if (!wasBatch) {
         this.flushMidBatchBuffer(tab);

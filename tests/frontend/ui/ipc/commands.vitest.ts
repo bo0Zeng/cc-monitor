@@ -29,6 +29,7 @@
  */
 import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 import { owned } from "../../../test-support/owned-tab-manager.ts";
+import { announced, goldenFace } from "../../../test-support/session-faces";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { resolve, join, sep } from "node:path";
 import ts from "typescript";
@@ -499,10 +500,10 @@ describe("本机起会话的主路：交「跟随」给本机后端、界面一�
     const bar = document.createElement("div");
     const root = document.createElement("div");
     document.body.append(bar, root);
-    const tm = owned(new TabManager(bar, root));
+    const tm = owned(announced(new TabManager(bar, root)));
     const t = tm.ensureTab(sid, "/home/u/p", `/p/${sid}.jsonl`, LOCAL_ORIGIN);
     t.agent = "claude"; // 会话事实到了（是哪一家由后端说）
-    tm.archiveTab(sid);
+    tm.onFace(sid, goldenFace("ended"));
     await (tm as unknown as { actions: TabSessionActions }).actions.resumeTab(sid);
     await new Promise((r) => setTimeout(r, 0));
   }
