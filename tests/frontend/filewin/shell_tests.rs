@@ -584,6 +584,13 @@ fn xvfb_worker_opens_a_real_window() {
             }
             Err(e) => xvfb::emit("a.window_w", format!("几何问不到：{e}")),
         }
+        // 字体在后台载入：等这扇窗复核过再关（下面读的正是那份裁决）。
+        for () in guard_core::wall::rounds() {
+            if matches!(font_verdict(), Some(FontState::Checked(_))) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
         // 🔴〔X1 2026-09-24 修根因〕关窗改成**像窗口管理器那样请它关**
         //    （`WM_DELETE_WINDOW`，住 `xvfb::close_like_a_wm`），不再 `xdotool windowclose`。
         //

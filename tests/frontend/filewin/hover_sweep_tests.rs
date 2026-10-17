@@ -601,11 +601,8 @@ async fn real_window_rig_for_the_frame_log() {
             opts,
             Box::new(move |cc| {
                 crate::theme::install(&cc.egui_ctx, &theme);
-                w.font = crate::fonts::FontState::Pending(crate::fonts::install(
-                    &cc.egui_ctx,
-                    Some(&theme),
-                ));
                 let mut ws = Workspace::new(w);
+                ws.fonts = Some(crate::fonts::load(&cc.egui_ctx, Some(theme.clone())));
                 ws.theme = Some(theme);
                 match scene.as_str() {
                     "tabs" => {

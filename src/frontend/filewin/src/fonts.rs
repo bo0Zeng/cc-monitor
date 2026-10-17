@@ -123,8 +123,10 @@
 //! ⇒ 形状：
 //! | 拍 | 在哪 | 干什么 |
 //! |---|---|---|
-//! | 第一拍 [`install`] | `eframe` 的创建闭包（`CreationContext`） | 读文件 ＋ `set_fonts`。**不复核** |
-//! | 第二拍 [`verify`] | `App::ui` 的**第一帧** | 跑量具，出 `Option<String>` |
+//! | 第一拍 [`load`] | 创建闭包起的一条线程；交回由 `Workspace::frame` 收（[`Loading::poll`]） | 扫字体 · 读文件，收下时 `set_fonts`。**不复核** |
+//! | 第二拍 [`verify`] | 收下之后的那一帧 | 跑量具，出 `Option<String>` |
+//!
+//! 第一拍不在画帧那条线程上：冷缓存下扫一遍系统字体要几秒，窗口要等第一帧画完才摆上屏幕。
 //!
 //! ⚠ 所以 [`Attempt`] 刻意**只说「从哪装的」，不说「装好没有」** —— 第一拍问不出后者。
 //!
@@ -508,8 +510,8 @@ pub struct Faces {
     pub mono: Option<Face>,
 }
 
-/// 照主题的字族去这台机器的字体里找。
-pub fn faces_for(theme: &filewin_contract::Theme) -> Faces {
+/// 照主题的字族去这台机器的字体里找（扫一遍系统字体：冷缓存下要几秒，只在 [`load`] 那条线程上跑）。
+fn faces_for(theme: &filewin_contract::Theme) -> Faces {
     let mut db = fontdb::Database::new();
     db.load_system_fonts();
     Faces {
@@ -518,15 +520,49 @@ pub fn faces_for(theme: &filewin_contract::Theme) -> Faces {
     }
 }
 
-/// 第一拍：主题字体（有就放链首）· 图标字 · 一份 CJK 字体（链尾兜底）交给 `ctx`。**在创建闭包里调。不复核**（§四）。
-pub fn install(ctx: &egui::Context, theme: Option<&filewin_contract::Theme>) -> Attempt {
-    let faces = theme.map(faces_for).unwrap_or_default();
-    install_with(ctx, &candidates(), &faces)
+/// 后台那一趟载入：交回时把字体交给 `ctx`（[`Loading::poll`]）。
+pub struct Loading(std::sync::mpsc::Receiver<(egui::FontDefinitions, Attempt)>);
+
+/// 第一拍：主题字体（有就放链首）· 图标字 · 一份 CJK 字体（链尾兜底）在另一条线程上备好，**不复核**（§四）。
+/// 画帧那条线程不等它：没交回之前窗口只画底色与转圈（`Workspace::frame`）。
+pub fn load(ctx: &egui::Context, theme: Option<filewin_contract::Theme>) -> Loading {
+    load_with(ctx, move || {
+        let faces = theme.as_ref().map(faces_for).unwrap_or_default();
+        definitions(&candidates(), &faces)
+    })
 }
 
-/// 同 [`install`]，只装 CJK 回退与图标字、候选表由调用方给（判据用）。
-pub fn install_from(ctx: &egui::Context, candidates: &[String]) -> Attempt {
-    install_with(ctx, candidates, &Faces::default())
+/// 同 [`load`]，备字体那一步由调用方给（判据用）。
+pub fn load_with(
+    ctx: &egui::Context,
+    job: impl FnOnce() -> (egui::FontDefinitions, Attempt) + Send + 'static,
+) -> Loading {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let ctx = ctx.clone();
+    std::thread::Builder::new()
+        .name("filewin-fonts".into())
+        .spawn(move || {
+            let _ = tx.send(job());
+            ctx.request_repaint();
+        })
+        .expect("起不了载入字体的线程");
+    Loading(rx)
+}
+
+impl Loading {
+    /// 交回了 ⇒ 装进 `ctx`（下一帧起生效）、回「从哪装的」；还没交回 ⇒ `None`。不阻塞。
+    pub fn poll(&self, ctx: &egui::Context) -> Option<Attempt> {
+        match self.0.try_recv() {
+            Ok((defs, attempt)) => {
+                ctx.set_fonts(defs);
+                Some(attempt)
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => None,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                panic!("载入字体的线程没交回就退了")
+            }
+        }
+    }
 }
 
 /// 一份字体的数据。
@@ -538,8 +574,8 @@ fn data(bytes: Vec<u8>, index: u32) -> Arc<egui::FontData> {
     })
 }
 
-/// 装字：主题字体放链首（拉丁字由它画，同主界面）；图标字跟在 egui 自带正文字后面；CJK 字体**追加在末尾当兜底**。
-pub fn install_with(ctx: &egui::Context, candidates: &[String], faces: &Faces) -> Attempt {
+/// 备字：主题字体放链首（拉丁字由它画，同主界面）；图标字跟在 egui 自带正文字后面；CJK 字体**追加在末尾当兜底**。
+fn definitions(candidates: &[String], faces: &Faces) -> (egui::FontDefinitions, Attempt) {
     let mut defs = egui::FontDefinitions::default();
     // 图标（工具条 · 文件种类）：Phosphor 那一份，只占私用区，挂在比例字链第二位（排在 egui 自带正文字之后）。
     egui_phosphor::add_to_fonts(&mut defs, egui_phosphor::Variant::Regular);
@@ -587,8 +623,8 @@ pub fn install_with(ctx: &egui::Context, candidates: &[String], faces: &Faces) -
         }
         break;
     }
-    ctx.set_fonts(defs);
-    attempt.unwrap_or(Attempt::NoneFound { tried })
+    let attempt = attempt.unwrap_or(Attempt::NoneFound { tried });
+    (defs, attempt)
 }
 
 /// 一个字符在字形图集里的格子。`None` = 这个字排不出字形（空串／空行）。
@@ -708,7 +744,7 @@ pub fn verify(ctx: &egui::Context, attempt: &Attempt) -> Option<String> {
 pub enum FontState {
     /// 压根没装过。判据直接 `FileWindow::new(...)` 建出来的窗口就是这一态。
     NotInstalled,
-    /// 装过了，还没复核（第一帧之前）。
+    /// 装过了，还没复核（收下字体的那一帧）。
     Pending(Attempt),
     /// 复核过了。`None` = 没问题；`Some` = 要画到窗口上那句话。
     Checked(Option<String>),

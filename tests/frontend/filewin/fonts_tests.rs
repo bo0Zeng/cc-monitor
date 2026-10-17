@@ -665,6 +665,13 @@ fn without_a_cjk_font_the_probe_is_almost_entirely_unrenderable() {
 // 装上之后
 // ═══════════════════════════════════════════════════════════════════
 
+/// 备好字体、装进 `ctx`（只 CJK 回退与图标字，候选表由判据给）。
+fn install_from(ctx: &egui::Context, candidates: &[String]) -> Attempt {
+    let (defs, attempt) = super::definitions(candidates, &super::Faces::default());
+    ctx.set_fonts(defs);
+    attempt
+}
+
 /// 本机上第一个存在的候选字体。`None` = 这台机器一份 CJK 字体都没有。
 fn first_available_font() -> Option<String> {
     super::candidates()
@@ -685,7 +692,7 @@ fn installing_a_system_font_makes_the_whole_probe_renderable() {
         );
     };
     let ctx = egui::Context::default();
-    let attempt = super::install_from(&ctx, &[path.clone()]);
+    let attempt = install_from(&ctx, &[path.clone()]);
     assert!(
         matches!(attempt, Attempt::Loaded { .. }),
         "装 {path} 没成功：{attempt:?}"
@@ -730,7 +737,7 @@ fn installing_appends_as_fallback_so_latin_keeps_its_own_font() {
     };
     let after = {
         let ctx = egui::Context::default();
-        super::install_from(&ctx, &[path]);
+        install_from(&ctx, &[path]);
         ready(&ctx);
         ctx.fonts_mut(|f| (f.glyph_width(&prop(), 'A'), f.glyph_width(&mono(), 'A')))
     };
@@ -749,7 +756,7 @@ fn installing_appends_as_fallback_so_latin_keeps_its_own_font() {
 #[test]
 fn verify_says_out_loud_when_no_font_was_found() {
     let ctx = egui::Context::default();
-    let attempt = super::install_from(&ctx, &[]);
+    let attempt = install_from(&ctx, &[]);
     assert_eq!(attempt, Attempt::NoneFound { tried: Vec::new() });
     ready(&ctx);
     let note = super::verify(&ctx, &attempt).expect("一个字体都没装上，居然不出声");
@@ -765,7 +772,7 @@ fn verify_says_out_loud_when_no_font_was_found() {
 #[test]
 fn every_notice_this_module_can_produce_is_pure_ascii() {
     let ctx = egui::Context::default();
-    let attempt = super::install_from(&ctx, &[]);
+    let attempt = install_from(&ctx, &[]);
     ready(&ctx);
     let mut notes: Vec<String> = vec![
         super::NOTICE_PREFIX.to_string(),
