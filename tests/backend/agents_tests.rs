@@ -676,7 +676,7 @@ fn beta_mcp(_: Option<&Path>, _: &McpLook) -> McpRead {
 }
 /// 两家各在自己的根下找：根不是自己那一棵 ⇒ 照实说找错了地方（判据看得出通用层交的是谁的根）。
 fn alpha_find(root: &Path, sid: &str) -> Result<PathBuf, String> {
-    if root != Path::new("/home/alpha-tree") {
+    if root != Path::new("/h/alpha-tree") {
         return Err(format!("alpha: asked under {root:?}"));
     }
     (sid == "alpha-sid")
@@ -862,7 +862,7 @@ fn finding_a_session_asks_every_family_under_its_own_root() {
         excerpt: |_| String::new(),
         root: || Some(PathBuf::from("/beta-dated")),
     });
-    let home = Path::new("/home");
+    let home = Path::new("/h");
     let at = |reg: &[Adapter], sid| find_session_among(reg, home, sid).map(|s| (s.root, s.file));
     assert_eq!(
         at(&reg, "beta-sid"),
@@ -871,7 +871,7 @@ fn finding_a_session_asks_every_family_under_its_own_root() {
     assert_eq!(
         at(&reg, "alpha-sid"),
         Ok((
-            PathBuf::from("/home/alpha-tree"),
+            PathBuf::from("/h/alpha-tree"),
             PathBuf::from("/alpha/rec")
         ))
     );

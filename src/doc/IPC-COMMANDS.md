@@ -4981,11 +4981,11 @@ sid: string,
 configDir?: string, };
 type RecordProbe = { 
 /**
- * `<sid>.jsonl` 在记录树里（根那一层或项目目录那一层）找得到。
+ * 那条会话的记录在这台找得到（哪一家的都算）。
  */
 present: boolean, 
 /**
- * 查的那棵记录树的根。
+ * 找到 ⇒ 那份所在的记录根；找不到 ⇒ 查的那棵记录树的根。
  */
 root: string, };
 ```
@@ -12740,5 +12740,5 @@ needs: string | null, };
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `present` | bool | `<sid>.jsonl` 在记录树里（根那一层或项目目录那一层）找得到 |
-| `root` | string | 查的那棵记录树的根 |
+| `present` | bool | 那条会话的记录在这台找得到（哪一家的都算） |
+| `root` | string | 找到 ⇒ 那份所在的记录根；找不到 ⇒ 查的那棵记录树的根 |
