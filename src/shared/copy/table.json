@@ -30550,13 +30550,13 @@
     "rot.win.fiveHour": {
       "kind": "body",
       "role": "片段",
-      "zh": "5 小时",
+      "zh": "5h",
       "args": []
     },
     "rot.win.sevenDay": {
       "kind": "body",
       "role": "片段",
-      "zh": "7 天",
+      "zh": "7d",
       "args": []
     },
     "rot.win.other": {
@@ -30962,13 +30962,13 @@
     "rot.ask.createName": {
       "kind": "control",
       "role": "标签",
-      "zh": "名字（就是文件名）",
+      "zh": "名字",
       "args": []
     },
     "rot.ask.createNote": {
       "kind": "body",
       "role": "说明",
-      "zh": "每号切入 · 切出都是「默认」，上限 90%；建好后下拉里多一项。",
+      "zh": "名字就是文件名；每号切入 · 切出都是「默认」，上限 90%；建好后下拉里多一项",
       "args": []
     },
     "rot.ask.createGo": {
@@ -30992,8 +30992,9 @@
     "rot.pane.foot": {
       "kind": "body",
       "role": "说明",
-      "zh": "改的是策略「{name}」· 改了就存成新版",
-      "args": ["name"]
+      "zh": "改的是策略「{name}」 · 改一格就存成新版",
+      "args": ["name"],
+      "waive": {"C-W5": "用户定的句子（轮换的提示表）"}
     },
     "rot.pane.noUse": {
       "kind": "body",
@@ -31038,9 +31039,9 @@
       "args": []
     },
     "rot.seg.v": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "上限",
+      "kind": "aria",
+      "role": "读屏",
+      "zh": "段上限",
       "args": []
     },
     "rot.seg.dash": {
@@ -31052,7 +31053,7 @@
     "rot.seg.del": {
       "kind": "action",
       "role": "按钮",
-      "zh": "删这一段",
+      "zh": "删这段",
       "args": []
     },
     "rot.seg.add": {

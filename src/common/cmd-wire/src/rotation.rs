@@ -825,7 +825,7 @@ pub struct RotCell {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub under: Option<String>,
-    /// 分段后面那几窗：能「同第一窗」，那颗按钮的字（「同 5 小时」）。
+    /// 分段后面那几窗：能「同第一窗」，那颗按钮的字（「同 5h」）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub same: Option<String>,

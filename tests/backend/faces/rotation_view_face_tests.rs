@@ -1023,7 +1023,7 @@ fn the_board_carries_each_cell_resolved_once() {
     assert!(!kind0.choices.is_empty() && kind0.choices.iter().all(|c| !c.label.is_empty()));
     let caps = pick(r0, "caps", Some("5h"));
     assert_eq!(caps.from, form::RotFrom::All);
-    assert_eq!(caps.label, "用量上限 · 5 小时");
+    assert_eq!(caps.label, "用量上限 · 5h");
     let zero = copy_core::copy_text("rot.day.zero", &[]);
     assert_eq!(
         caps.segs
@@ -1051,7 +1051,7 @@ fn the_board_carries_each_cell_resolved_once() {
     );
     assert!(
         rules.contains(&format!(
-            "用量上限 · 5 小时{sep}00:00–10:00 · 上限 0%{sep}10:00–24:00 · 上限 80%"
+            "用量上限 · 5h{sep}00:00–10:00 · 上限 0%{sep}10:00–24:00 · 上限 80%"
         )),
         "{rules:?}"
     );
@@ -1134,7 +1134,7 @@ fn the_editor_board_shows_cells_by_their_conditions_and_marks_by_the_choice() {
     let w7 = &row1[1];
     assert_eq!(
         (w7.from, w7.same.as_deref()),
-        (form::RotFrom::Same, Some("同 5 小时"))
+        (form::RotFrom::Same, Some("同 5h"))
     );
     assert_eq!(row1[0].same, None, "第一窗没有那颗按钮");
     assert_eq!(

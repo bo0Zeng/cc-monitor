@@ -2544,7 +2544,11 @@ wordsBad: boolean,
 /**
  * 文件头里没写时区（分时段按 UTC 算）。
  */
-tzUnknown: boolean, };
+tzUnknown: boolean, 
+/**
+ * 不是照编辑器那一份存出来的（代码或声明跟它此刻的不一样）。
+ */
+hand: boolean, };
 type RotationStrategiesReply = { 
 /**
  * 照 id 排。
@@ -2606,11 +2610,23 @@ num?: number, from: RotFrom,
 /**
  * 能是空（`null`）：空的那一项怎么叫。
  */
-nullable?: string, choices?: Array<RotChoice>, min?: number, max?: number, segs?: Array<RotDaySeg>, };
+nullable?: string, choices?: Array<RotChoice>, min?: number, max?: number, segs?: Array<RotDaySeg>, 
+/**
+ * 数格前面那半句。
+ */
+lead?: string, 
+/**
+ * 这一格只在那一格取某值时出：挂在它下面（那一格的 `key`）。
+ */
+under?: string, 
+/**
+ * 分段后面那几窗：能「同第一窗」，那颗按钮的字（「同 5h」）。
+ */
+same?: string, };
 type RotChoice = { v: string, label: string, };
 type RotDaySeg = { from: number, to: number, v: number, text: string, tip: string, };
 type RotFormKind = "percent" | "minutes" | "toggle" | "choice" | "daySegments";
-type RotFrom = "own" | "all" | "default";
+type RotFrom = "own" | "all" | "default" | "same";
 type RotHint = { "k": "hold", until?: number, account?: string, 
 /**
  * `until` 的钟面（`HH:MM`，看的那一台的时区；不在今天带日期）。
@@ -2618,6 +2634,7 @@ type RotHint = { "k": "hold", until?: number, account?: string,
 untilText?: string, } | { "k": "strategyError", error: RotStrategyError, path?: string, } | { "k": "tzUnknown", zone: string, } | { "k": "oldScripts", n: number, files: Array<RotOldFile>, } | { "k": "newer" } | { "k": "older", n: number, } | { "k": "wordsBad" } | { "k": "bookUnreadable", text: string, };
 type RotLogCause = { "k": "order" } | { "k": "unusable" } | { "k": "temp" } | { "k": "useNow" } | { "k": "hold", until?: number, } | { "k": "error" };
 type RotLogRow = { because: string, at: number, from: string, to: string, cause: RotLogCause, why?: string, };
+type RotMark = { glyph?: string, dashed: boolean, tip: string, };
 type RotNote = { hint: RotHint, tone: Tone, text: string, 
 /**
  * 复制详情（出错那一条带原话；别的没有）。
@@ -2629,7 +2646,7 @@ type RotPastLane = { account: string, segs: Array<RotPastSeg>, };
 type RotPastSeg = { from: number, to: number, sendable: boolean, reset: boolean, text: string, };
 type RotPastUse = { from: number, to: number, account?: string, };
 type RotPlate = { color: number, label: Words, text: Words, };
-type RotRow = { account: string, line: string, hover: string, cells: Array<RotCell>, rules: Array<string>, };
+type RotRow = { account: string, line: string, hover: string, cells: Array<RotCell>, rules: Array<string>, marks: Array<RotMark>, };
 type RotStrategyError = { line?: number, msg: string, };
 type RotStrategyItem = { id: string, 
 /**
@@ -2651,7 +2668,11 @@ wordsBad: boolean,
 /**
  * 文件头里没写时区（分时段按 UTC 算）。
  */
-tzUnknown: boolean, };
+tzUnknown: boolean, 
+/**
+ * 不是照编辑器那一份存出来的（代码或声明跟它此刻的不一样）。
+ */
+hand: boolean, };
 type RotTarget = { sid: string, } | { strategy: string, };
 type RotTryDecision = { 
 /**
@@ -2793,8 +2814,9 @@ type Words = string;
 ```ts
 type RotBadCell = { cell: string, code: string, };
 type RotConflict = { rev: string, };
-type RotEdit = { "set": { key: string, row?: number, v: unknown, } } | { "day": { key: string, row?: number, window: string, from: number, to: number, v: number | null, } } | { "move": { from: number, to: number, } } | { "add": { account: string, } } | { "remove": { row: number, } };
+type RotEdit = { "set": { key: string, row?: number, v: unknown, } } | { "day": { key: string, row?: number, window: string, from: number, to: number, v: number | null, } } | { "seg": { key: string, row?: number, window: string, at?: number, seg?: RotSeg, } } | { "same": { key: string, row?: number, window: string, same: boolean, } } | { "move": { from: number, to: number, } } | { "add": { account: string, } } | { "remove": { row: number, } };
 type RotRefused = { cells: Array<RotBadCell>, };
+type RotSeg = { from: number, to: number, v: number, };
 type RotStrategyRev = { rev: string, };
 type RotationSettingsReq = { strategy: string, edit: RotEdit, ifRev: string, };
 ```
@@ -2904,9 +2926,9 @@ type RotBadStrategy = { line?: number, };
 type RotStrategyId = { id: string, };
 type RotationStrategyAddReq = { 
 /**
- * 一份策略文件的原文（说明 ＋ 头 ＋ 代码）。
+ * 一份策略文件的原文（说明 ＋ 头 ＋ 代码）：从文件添加；缺 ⇒ 新建（照编辑器那一份，号列表 ＝ 账号库全部号，时区 ＝ 这台的）。
  */
-source: string, 
+source?: string, 
 /**
  * 存成的文件名（＝ 标题）。
  */

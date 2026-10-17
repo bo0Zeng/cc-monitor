@@ -117,6 +117,7 @@ pub(super) mod tests {
         // 两份账本共用的存取（rotation.json 与配置编辑层那一份）。
         "quota/rotation.rs",
         // 轮换的配置编辑层：策略文件与目录 · 设置的声明 · 会话用哪份（rotation-uses.json）· 两份账本的升级链。不认识上游选择与账号库管理。
+        "quota/setup/editor.rs",
         "quota/setup/form.rs",
         "quota/setup/migrate.rs",
         "quota/setup/mod.rs",

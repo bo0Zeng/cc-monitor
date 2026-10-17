@@ -434,8 +434,6 @@ function accountPane(
   const pane = el("div", (e) => (e.className = s.rotPane));
   pane.dataset.account = account;
   pane.dataset.rotEditor = "";
-  pane.setAttribute("role", "dialog");
-  pane.setAttribute("aria-label", nameIn(view, account));
   const top = el("div", (e) => (e.className = s.rotPaneTop));
   top.append(
     avatar(view, account, spec.origin),
