@@ -32,7 +32,6 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -65,6 +64,7 @@ import com.ccmonitor.mobile.core.claude.link.wire.RotDaySeg
 import com.ccmonitor.mobile.core.claude.link.wire.RotFormKind
 import com.ccmonitor.mobile.core.claude.link.wire.RotFrom
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.Touch
@@ -315,7 +315,7 @@ private fun Segments(
     var adding by remember(segs) { mutableIntStateOf(0) }
     segs.forEachIndexed { i, g -> SegLine(cell, g, i, onEdit = { e -> board.edit(e, id) }, onDel = { board.edit(RotEdit.seg(cell.key, row, win, i, null), id) }, row = row) }
     repeat(adding) { SegLine(cell, null, null, onEdit = { e -> board.edit(e, id) }, onDel = { adding-- }, row = row) }
-    TextButton(onClick = { adding++ }, modifier = Modifier.testTag("rot-seg-add-$id")) {
+    SecondaryButton(onClick = { adding++ }, modifier = Modifier.testTag("rot-seg-add-$id")) {
         PhIcon(Ph.Plus, contentDescription = null, size = Touch.iconInline)
         Text(" " + copyText("rot.seg.add"))
     }
@@ -334,10 +334,9 @@ private fun SegLine(
     var from by remember(g) { mutableStateOf(g?.let { dayClock(it.from) }.orEmpty()) }
     var to by remember(g) { mutableStateOf(g?.let { dayClock(it.to) }.orEmpty()) }
     var v by remember(g) { mutableStateOf(g?.let { numText(it.v) }.orEmpty()) }
-    val commit = {
-        val e = segEdit(cell, row, at, from, to, v)
-        if (e != null && (g == null || minutesOf(from) != g.from || minutesOf(to) != g.to || v.trim().toDoubleOrNull() != g.v)) onEdit(e)
-    }
+    val was = g?.let { segEdit(cell, row, at, dayClock(it.from), dayClock(it.to), numText(it.v)) }
+    // 三格都写对了、又跟读到的那段不一样才交（只是挪了焦点不交）。
+    val commit: () -> Unit = { segEdit(cell, row, at, from, to, v)?.takeIf { it != was }?.let(onEdit) }
     val hint = copyText("rot.seg.placeholder")
     Row(Modifier.fillMaxWidth().testTag("rot-seg-${at ?: "new"}"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         InputBox(from, { from = it }, false, 72.dp, copyText("rot.seg.from"), KeyboardType.Number, null, placeholder = hint, commit = commit)

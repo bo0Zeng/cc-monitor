@@ -102,7 +102,12 @@ fun RotationScreen(
                 !ui.loaded -> Skeleton()
                 else -> {
                     ui.readFailed?.let { ReadFailed(it.text, it.detail) { scope.launch { board.refresh() } } }
-                    val edit = { account: String? -> ui.view?.strategy?.id?.let { onEditStrategy(it, account) } ?: Unit }
+                    val edit = { account: String? ->
+                        ui.view
+                            ?.strategy
+                            ?.id
+                            ?.let { onEditStrategy(it, account) } ?: Unit
+                    }
                     BoardBody(ui, board, sid, table.sessions.mapValues { it.value.name.orEmpty() }, onOpenFile, edit)
                 }
             }

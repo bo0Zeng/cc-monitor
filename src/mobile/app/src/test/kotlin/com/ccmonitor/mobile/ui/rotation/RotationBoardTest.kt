@@ -29,7 +29,11 @@ class RotationBoardTest {
         row: Int,
         key: String,
         window: String,
-    ) = Rotation.ofView(view)!!.board.rows[row].cells.first { it.key == key && it.window == window }
+    ) = Rotation
+        .ofView(view)!!
+        .board.rows[row]
+        .cells
+        .first { it.key == key && it.window == window }
 
     /** 设置页读的是哪一份（`rotation-view` 入参的 `target.strategy`）。 */
     private fun shownIn(args: Map<String, Any?>?): String = (args?.get("target") as Map<*, *>)["strategy"] as String
@@ -219,7 +223,13 @@ class RotationBoardTest {
         assertEquals("夹具·同 5h", w7.same)
         assertTrue("同第一窗 ⇒ 不画段", !segsShown(w7))
         assertTrue(segsShown(cellOf(RotFixture.view(), 0, "caps", "5h")))
-        assertEquals("夹具·合计达到", v.board.rows[2].cells.first { it.key == "outTotal" }.lead)
+        assertEquals(
+            "夹具·合计达到",
+            v.board.rows[2]
+                .cells
+                .first { it.key == "outTotal" }
+                .lead,
+        )
         assertEquals(emptyList<String>(), marksOf(v, "work").map { it.tip })
         assertEquals(listOf("↺", "⇥"), marksOf(v, "lab").map { it.glyph })
         assertEquals(listOf(true), marksOf(v, "team").map { it.dashed })
@@ -314,7 +324,12 @@ class RotationBoardTest {
             assertEquals(listOf("夹具·90.0"), cap.segs!!.map { it.text })
             assertEquals(RotFrom.SAME, rows[0].cells.first { it.window == "7d" }.from)
             assertEquals("夹具·一有额度", rows[2].cells.first { it.key == "outTotal" }.nullable)
-            assertEquals("夹具·智能切换的说明", v.board.all.single().help)
+            assertEquals(
+                "夹具·智能切换的说明",
+                v.board.all
+                    .single()
+                    .help,
+            )
         }
 
     @Test
