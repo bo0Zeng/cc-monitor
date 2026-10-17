@@ -1288,11 +1288,19 @@ fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
         1,
         "向适配层要那两个键的那一处不见了 / 变形了"
     );
+    // 配置目录键只在 `owner_of` 里抠一处；它的两个调用方（会话那几行 · 宣告判号）都传适配层给的那个键。
     assert_eq!(
-        prod.matches("proc_env_var(pid, env_keys.config_dir)")
-            .count(),
+        prod.matches("proc_env_var(pid, key)").count(),
         1,
-        "抠 `CLAUDE_CONFIG_DIR` 那一处不见了 / 变形了"
+        "抠 `CLAUDE_CONFIG_DIR` 那一处（`owner_of`）不见了 / 变形了"
+    );
+    let calls = prod.matches("owner_of(pid, ").count();
+    let keyed = prod.matches("owner_of(pid, env_keys.config_dir").count()
+        + prod.matches("owner_of(pid, face.session_env.config_dir").count();
+    assert_eq!(
+        (calls, keyed),
+        (2, 2),
+        "`owner_of` 的调用方变了，或有一处传的不是适配层给的配置目录键"
     );
     assert_eq!(
         prod.matches("proc_env_var(pid, env_keys.base_url)").count(),

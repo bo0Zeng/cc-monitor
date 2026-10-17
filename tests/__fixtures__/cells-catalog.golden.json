@@ -1667,6 +1667,12 @@
     {
       "cells": [
         {
+          "frozen": false,
+          "kind": "value",
+          "path": "account",
+          "type": "string"
+        },
+        {
           "frozen": true,
           "kind": "value",
           "path": "activity",

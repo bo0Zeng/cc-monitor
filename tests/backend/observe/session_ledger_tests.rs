@@ -38,6 +38,7 @@ fn added(sid: &str) -> Ev {
         waiting_for: None,
         hidden: None,
         container: None,
+        account: None,
         pid: 0,
     })
     .into()
@@ -158,6 +159,7 @@ fn a_removal_waits_for_an_observation_and_asks_for_one() {
         waiting_for: None,
         hidden: None,
         container: None,
+        account: None,
         pid: 0,
     }));
     assert!(!l.awaits_observation());

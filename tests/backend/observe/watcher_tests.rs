@@ -2233,6 +2233,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         waiting_for: None,
         hidden: None,
         container: None,
+        account: None,
         pid: 0,
     }));
     sink.send(Frame::SessionAdded(crate::wire::SessionAdded {
@@ -2249,6 +2250,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         waiting_for: None,
         hidden: None,
         container: None,
+        account: None,
         pid: 0,
     }));
     assert_eq!(
@@ -2271,6 +2273,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         waiting_for: None,
         hidden: None,
         container: None,
+        account: None,
         pid: 0,
     }));
     sink.send(Frame::SessionAdded(crate::wire::SessionAdded {
@@ -2287,6 +2290,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         waiting_for: None,
         hidden: None,
         container: None,
+        account: None,
         pid: 0,
     }));
     sink.send(Frame::SessionAdded(crate::wire::SessionAdded {
@@ -2303,6 +2307,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         waiting_for: None,
         hidden: None,
         container: None,
+        account: None,
         pid: 0,
     }));
     assert_eq!(sink.subs[0].dropped, 3);
@@ -2349,6 +2354,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         waiting_for: None,
         hidden: None,
         container: None,
+        account: None,
         pid: 0,
     }));
     assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded(_))));

@@ -56,6 +56,7 @@ A new session file appeared。
 | `hidden` | Hidden? | 隐藏那一格（不占标签页）；不隐藏 ⇒ 不上线 |
 | `container` | SessionContainer? | 这条会话住在什么容器里（见 `SessionContainer`） |
 | `pid` | number | 那个 claude 进程的 **pid**（恒在） |
+| `account` | string? | 这条会话跑在哪个号下（账号库里的号名；那台后端宣告时判一次） |
 
 ### `session_primed`
 
@@ -3169,21 +3170,6 @@ appExit?: boolean | null, };
 ```
 
 码：`bad_args`
-
-#### `accounts-sessions`
-
-正在跑的会话各属哪个账号。
-
-不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --accounts-sessions`
-
-入参 `NoArgs` · 回包 `SessionLines`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type NoArgs = Record<symbol, never>;
-type SessionLines = { lines: Array<string>, };
-```
-
-码：`bad_args` · `too_large`
 
 #### `accounts-trust`
 
@@ -12928,7 +12914,6 @@ needs: string | null, };
 | `--accounts-remove` | ＝ 帧命令 `accounts-remove`：删一个号 |
 | `--accounts-repair` | ＝ 帧命令 `accounts-repair`：修复账号库（幂等） |
 | `--accounts-rollback` | ＝ 帧命令 `accounts-rollback`：按一份备份还原 |
-| `--accounts-sessions` | ＝ 帧命令 `accounts-sessions`：正在跑的会话各属哪个账号 |
 | `--accounts-set-default` | ＝ 帧命令 `accounts-set-default`：设默认号 |
 | `--accounts-trust` | ＝ 帧命令 `accounts-trust`：换号前的信任预检 |
 | `--accounts-verify` | ＝ 帧命令 `accounts-verify`：核对账号库 |
