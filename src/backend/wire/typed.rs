@@ -302,7 +302,10 @@ fn find_culprit_key<R: serde::de::DeserializeOwned>(v: &serde_json::Value) -> Op
 }
 
 /// 契约错只回「哪一格 · 期望什么形」，不回调用方给的原值；原值只进本机日志。
-fn sanitize_de_error<R: serde::de::DeserializeOwned>(v: &serde_json::Value, raw: &str) -> String {
+pub(crate) fn sanitize_de_error<R: serde::de::DeserializeOwned>(
+    v: &serde_json::Value,
+    raw: &str,
+) -> String {
     let raw_clean = raw.split(" at line ").next().unwrap_or(raw).trim();
     if raw_clean.starts_with("invalid type:")
         || raw_clean.starts_with("invalid value:")

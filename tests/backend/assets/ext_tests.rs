@@ -1551,3 +1551,20 @@ async fn a_done_that_does_not_parse_says_that_backend_differs() {
 const MANY_PREVIEW: &str = r#"{"machines":[{"card":{"config":null,"kind":"skill","name":"demo","path":"<BASE>/b/.claude/skills/demo","slots":[],"stop":null,"suspects":[],"tokens":{"source":"f8dce283cc18be65","target":"9c3ddcd3288c214b"},"unchanged":false,"writes":["SKILL.md"]},"detail":null,"error":null,"files":["<BASE>/b/.claude/skills/demo · SKILL.md"],"name":"laptop","to":"laptop"}],"place":{"level":"user"},"places":[{"at":{"level":"user"},"note":null,"ok":true},{"at":{"dir":"<BASE>/b/proj","level":"project"},"note":null,"ok":true}],"slots":[]}"#;
 const MANY_APPLY: &str = r#"{"machines":[{"detail":null,"done":{"changed":["SKILL.md"],"note":null,"path":"<BASE>/b/.claude/skills/demo"},"error":null,"name":"laptop","to":"laptop"}]}"#;
 const MANY_NO_PLACE: &str = r#"{"machines":[{"card":null,"detail":null,"error":"勾选的机器无共同的可安装位置","files":[],"name":"laptop","to":"laptop"},{"card":null,"detail":null,"error":"勾选的机器无共同的可安装位置","files":[],"name":"本机","to":null}],"place":null,"places":[{"at":{"level":"user"},"note":"来源与目标相同","ok":false},{"at":{"dir":"<BASE>/b/proj","level":"project"},"note":"本机无此位置","ok":false},{"at":{"dir":"<BASE>/a/proj","level":"project"},"note":"laptop 无此位置","ok":false}],"slots":[]}"#;
+
+/// 解调用方给的 ExtLoc 失败时，拒绝体里不回显入参原值（哨兵串）。
+#[test]
+fn ext_loc_judged_bad_args_omits_sentinel_value_from_rejection() {
+    let sentinel = "SENTINEL_SECRET_TOKEN_EXT_LOC_54321";
+    let bad_val = serde_json::json!({ "level": sentinel });
+    let fail = ExtLoc::shape_of(Some(&bad_val), "place").expect_err("应当因位置格式错误拒绝");
+    let rejection = format!("{} {:?}", fail.message, fail.raw);
+    assert!(
+        !rejection.contains(sentinel),
+        "拒绝体中泄露了哨兵串原值：{rejection}"
+    );
+    assert!(
+        rejection.contains("place"),
+        "拒绝体应包含字段名：{rejection}"
+    );
+}
