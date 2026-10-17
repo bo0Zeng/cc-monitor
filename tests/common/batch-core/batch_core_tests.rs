@@ -140,16 +140,38 @@ fn a_chmod_undo_groups_the_done_items_by_what_they_were_before() {
 fn a_chmod_undo_is_all_or_nothing() {
     use ItemState::*;
     let p = plan(Verb::Chmod, 2);
-    assert_eq!(undo_plan(&p, &chmod_reply(&[(Done, Some(0o644)), (Done, None)])), None);
-    assert_eq!(undo_plan(&p, &chmod_reply(&[(Done, Some(0o644)), (Done, Some(0o70000))])), None, "不是权限位 ⇒ 当读不到");
-    assert_eq!(undo_plan(&p, &chmod_reply(&[(Failed, None), (Skipped, None)])), None);
-    assert_eq!(undo_plan(&plan(Verb::Delete, 1), &chmod_reply(&[(Done, Some(0o644))])), None);
+    assert_eq!(
+        undo_plan(&p, &chmod_reply(&[(Done, Some(0o644)), (Done, None)])),
+        None
+    );
+    assert_eq!(
+        undo_plan(
+            &p,
+            &chmod_reply(&[(Done, Some(0o644)), (Done, Some(0o70000))])
+        ),
+        None,
+        "不是权限位 ⇒ 当读不到"
+    );
+    assert_eq!(
+        undo_plan(&p, &chmod_reply(&[(Failed, None), (Skipped, None)])),
+        None
+    );
+    assert_eq!(
+        undo_plan(&plan(Verb::Delete, 1), &chmod_reply(&[(Done, Some(0o644))])),
+        None
+    );
 }
 
 /// 🔴 复制一组：同一个父目录 ⇒ 根是那个目录的上一级公共处；目标在别的分支 ⇒ 根是两边的公共上级，`from` / `to` 是根下相对段。
 #[test]
 fn a_copy_plan_roots_at_the_common_parent() {
-    let p = copy_plan(b"/srv/a", &[b"x".to_vec(), b"d".to_vec()], b"/srv/a/sub", "devbox").unwrap();
+    let p = copy_plan(
+        b"/srv/a",
+        &[b"x".to_vec(), b"d".to_vec()],
+        b"/srv/a/sub",
+        "devbox",
+    )
+    .unwrap();
     assert_eq!(
         p.args,
         serde_json::json!({"root": "/srv/a", "items": [{"from": "x", "to": "sub/x"}, {"from": "d", "to": "sub/d"}]})
@@ -157,11 +179,22 @@ fn a_copy_plan_roots_at_the_common_parent() {
     assert_eq!(p.names, vec!["x", "d"]);
     assert_eq!(p.into.as_deref(), Some("/srv/a/sub"));
     let p = copy_plan(b"/srv/a/b", &[b"x".to_vec()], b"/srv/c/", "devbox").unwrap();
-    assert_eq!(p.args, serde_json::json!({"root": "/srv", "items": [{"from": "a/b/x", "to": "c/x"}]}));
+    assert_eq!(
+        p.args,
+        serde_json::json!({"root": "/srv", "items": [{"from": "a/b/x", "to": "c/x"}]})
+    );
     let p = copy_plan(b"/a", &[b"x".to_vec()], b"/b", "devbox").unwrap();
-    assert_eq!(p.args, serde_json::json!({"root": "/", "items": [{"from": "a/x", "to": "b/x"}]}), "只在根下相交");
+    assert_eq!(
+        p.args,
+        serde_json::json!({"root": "/", "items": [{"from": "a/x", "to": "b/x"}]}),
+        "只在根下相交"
+    );
     let p = copy_plan(b"/w", &[b"d".to_vec()], b"/w/d", "devbox").unwrap();
-    assert_eq!(p.args, serde_json::json!({"root": "/w", "items": [{"from": "d", "to": "d/d"}]}), "复制进它自己底下：根按上一级算");
+    assert_eq!(
+        p.args,
+        serde_json::json!({"root": "/w", "items": [{"from": "d", "to": "d/d"}]}),
+        "复制进它自己底下：根按上一级算"
+    );
 }
 
 /// 🔴 同名那一问的答：整组一个答 ⇒ 每个键同一格；逐项选 ⇒ 点过的照点、没点的跳过；取消 ⇒ `None`。
@@ -173,9 +206,18 @@ fn an_answer_has_one_cell_per_key_and_unpicked_rows_skip() {
     ]))
     .unwrap();
     let all = answer_of(&c, Some(Decide::KeepBoth), None).unwrap();
-    assert_eq!(all.values().copied().collect::<Vec<_>>(), vec![Decide::KeepBoth; 2]);
+    assert_eq!(
+        all.values().copied().collect::<Vec<_>>(),
+        vec![Decide::KeepBoth; 2]
+    );
     let picks = BTreeMap::from([("1".to_string(), Decide::Overwrite)]);
     let each = answer_of(&c, None, Some(&picks)).unwrap();
-    assert_eq!(each, BTreeMap::from([("0".to_string(), Decide::Skip), ("1".to_string(), Decide::Overwrite)]));
+    assert_eq!(
+        each,
+        BTreeMap::from([
+            ("0".to_string(), Decide::Skip),
+            ("1".to_string(), Decide::Overwrite)
+        ])
+    );
     assert_eq!(answer_of(&c, None, None), None);
 }

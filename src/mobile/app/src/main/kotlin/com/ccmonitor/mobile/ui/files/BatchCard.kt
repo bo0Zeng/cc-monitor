@@ -65,7 +65,7 @@ fun BatchCard(
                 BatchEvent.ENDED -> {
                     Text(e.said.orEmpty())
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (e.failed.isNotEmpty()) SecondaryButton(onClick = { showFailed = true }) { Text(copyText("mobFiles.failedShow")) }
+                        if (e.failed.isNotEmpty()) SecondaryButton(onClick = { showFailed = true }) { Text(copyText("mobFiles.batch.failedShow")) }
                         if (e.retry) SecondaryButton(onClick = onRetry) { Text(copyText("rsFilewinBatch.btn.retry")) }
                         SecondaryButton(onClick = onDismiss) { Text(copyText("kit.toast.close")) }
                     }

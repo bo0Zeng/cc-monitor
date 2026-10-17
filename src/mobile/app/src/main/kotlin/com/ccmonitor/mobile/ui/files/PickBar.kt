@@ -45,7 +45,7 @@ internal fun PickBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         PhIconButton(Ph.X, copyText("mobKit.act.close"), onClick = onClose, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(copyText("mobFiles.picked", "n" to n), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(copyText("mobFiles.pick.count", "n" to n), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         menu.bar.forEach { e -> SecondaryButton(onClick = { onPick(e) }) { Text(e.text, color = ink(e)) } }
         if (menu.more.isNotEmpty()) {
             Box {

@@ -161,10 +161,7 @@ fn the_phone_gets_its_bar_and_more_with_why_for_the_grey_ones() {
 #[test]
 fn the_phone_previews_and_edits_by_the_gates() {
     let open = Gates {
-        preview: PreviewGate::Text(cmd_wire::files::TextPreview {
-            cap: 9,
-            lang: None,
-        }),
+        preview: PreviewGate::Text(cmd_wire::files::TextPreview { cap: 9, lang: None }),
         view: None,
         edit: Gate::Cap(9),
     };
@@ -240,7 +237,11 @@ fn the_phone_greys_what_the_machine_cannot_do_now() {
         let want = (e.id != "selectAll").then(|| ro.clone());
         assert_eq!((e.id, e.why.clone()), (e.id, want));
     }
-    assert_eq!(phone_menu(&[dir("d")], &off).tap, Some("open"), "进目录照常");
+    assert_eq!(
+        phone_menu(&[dir("d")], &off).tap,
+        Some("open"),
+        "进目录照常"
+    );
     let no_chmod = Here {
         offline: false,
         unavailable: vec!["files-chmod".into()],
@@ -251,7 +252,11 @@ fn the_phone_greys_what_the_machine_cannot_do_now() {
         chmod.why,
         Some(copy_text("rsFilewinShell.menu.unavailableHere", &[]))
     );
-    assert!(m.more.iter().filter(|e| e.id != "chmod" && e.id != "preview").all(|e| e.enabled));
+    assert!(m
+        .more
+        .iter()
+        .filter(|e| e.id != "chmod" && e.id != "preview")
+        .all(|e| e.enabled));
     assert_eq!(refused_here(Action::Chmod, &no_chmod), chmod.why);
     assert_eq!(refused_here(Action::Open, &off), None);
 }
@@ -294,9 +299,7 @@ fn the_facts_come_from_the_ls_row() {
         let e: cmd_wire::files::LsEntry = serde_json::from_value(v).unwrap();
         PickIn::of_ls(&e)
     };
-    let base = |name: serde_json::Value, kind: &str, class: &str| {
-        serde_json::json!({ "path": "/x", "name": name, "kind": kind, "class": class, "type_text": "" })
-    };
+    let base = |name: serde_json::Value, kind: &str, class: &str| serde_json::json!({ "path": "/x", "name": name, "kind": kind, "class": class, "type_text": "" });
     let mut dl = base("dl".into(), "symlink", "folder");
     dl["link_dir"] = true.into();
     dl["link_to"] = "dir".into();
@@ -324,7 +327,10 @@ fn the_facts_come_from_the_ls_row() {
         ]
     );
     let o = row(odd);
-    assert_eq!((o.lossy, o.raw, o.name.as_str()), (true, true, "od\u{FFFD}"));
+    assert_eq!(
+        (o.lossy, o.raw, o.name.as_str()),
+        (true, true, "od\u{FFFD}")
+    );
 }
 
 /// ★ 一行的复制 · 下载两道门（桌面行上那颗按钮 · 复制到另一栏 · 下载问的都是它）：复制收名字寻址得到的文件与目录；

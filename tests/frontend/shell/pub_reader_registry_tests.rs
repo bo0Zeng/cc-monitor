@@ -45,6 +45,21 @@ const EXEMPT: &[(&str, &str, &str)] = &[
         "手机那一侧「名单从空开始报」的口（桌面的在看名单经登记表上的客户端报，不经循环）：读者是手机嵌的 Rust 核心（`src/mobile/core-rs`，不在 monitor 的扫描面里）与本 crate 的判据",
     ),
     (
+        "src/common/batch-core/src/lib.rs",
+        "CMD_STOP",
+        "手机那一侧停一组发的命令名：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/batch.rs`，后端那棵 workspace，不在扫描面里）",
+    ),
+    (
+        "src/common/batch-core/src/lib.rs",
+        "undo_plan",
+        "手机那一侧改权限一组的撤销（桌面经同一个 `undo_groups`）：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/batch.rs`，不在扫描面里）与本 crate 的判据",
+    ),
+    (
+        "src/common/batch-core/src/lib.rs",
+        "copy_plan",
+        "手机「复制到…」那一组的入参（桌面经同一个 `copy_req` 算公共根）：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/batch.rs`，不在扫描面里）与本 crate 的判据",
+    ),
+    (
         "src/backend/footprint/registry.rs",
         "NOT_MANAGED",
         "足迹申报表的「不归它管」那一半（逐条写为什么不属这张表）：读者是 footprint 的登记判据，理由文字进文案普查台账",

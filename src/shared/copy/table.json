@@ -31413,19 +31413,19 @@
       "zh": "全选",
       "args": []
     },
-    "mobFiles.picked": {
+    "mobFiles.pick.count": {
       "kind": "title",
       "role": "标题",
       "zh": "已选 {n}",
       "args": ["n"]
     },
-    "mobFiles.copyHere": {
+    "mobFiles.pick.copyHere": {
       "kind": "action",
       "role": "按钮",
-      "zh": "复制到这里",
+      "zh": "复制到此处",
       "args": []
     },
-    "mobFiles.failedShow": {
+    "mobFiles.batch.failedShow": {
       "kind": "action",
       "role": "按钮",
       "zh": "看失败的",

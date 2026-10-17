@@ -15,11 +15,11 @@ use std::sync::{Arc, Mutex};
 use copy_core::copy_text;
 
 use super::batch::BatchBoard;
-use batch_core::Phase;
 use super::download::DownloadBoard;
 use super::extract::ExtractBoard;
 use super::size::SizeBoard;
 use super::transfer::{DropBoard, Pending};
+use batch_core::Phase;
 
 /// 已完成的行最多留几行（更早的自动清掉）。
 pub const KEEP_FINISHED: usize = 50;
@@ -298,9 +298,7 @@ impl Progress {
                         ),
                         batch_core::Verb::Chmod
                         | batch_core::Verb::Download
-                        | batch_core::Verb::Upload => {
-                            put(transfers, (*icon, name, String::new()))
-                        }
+                        | batch_core::Verb::Upload => put(transfers, (*icon, name, String::new())),
                     }
                 }
                 Trip::Extract { name, .. } => put(

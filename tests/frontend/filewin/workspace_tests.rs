@@ -457,8 +457,7 @@ fn a_dropped_link_shows_the_strip_keeps_the_stale_listing_and_blocks_writes() {
     );
     // 下载也要那台（读也得连着）⇒ 同样灰着（「要不要那台机器」一处判，`offline_cmd`）。
     assert_eq!(
-        ws.pane_on(0)
-            .refused_here(crate::select::Action::Download),
+        ws.pane_on(0).refused_here(crate::select::Action::Download),
         Some(read_only.clone()),
         "下载要那台机器，离线时却没挡"
     );

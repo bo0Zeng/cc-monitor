@@ -305,7 +305,9 @@ pub async fn go(
         &board,
         |args| {
             let (line, at) = (line.clone(), at.clone());
-            async move { super::source::ask_batch(&line, &at, cmd, &args, batch_core::BATCH_BUDGET).await }
+            async move {
+                super::source::ask_batch(&line, &at, cmd, &args, batch_core::BATCH_BUDGET).await
+            }
         },
         || {
             let (line, home) = (line.clone(), home.clone());

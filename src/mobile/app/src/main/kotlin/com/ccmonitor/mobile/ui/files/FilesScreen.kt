@@ -2,7 +2,6 @@ package com.ccmonitor.mobile.ui.files
 
 import android.content.Context
 import android.net.Uri
-import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.ManagedActivityResultLauncher
@@ -565,7 +564,7 @@ private fun DialogHost(
                 },
                 onDismiss = close,
                 title = copyText("mobFiles.menu.copyTo"),
-                pick = copyText("mobFiles.copyHere"),
+                pick = copyText("mobFiles.pick.copyHere"),
             )
         is FilesDialog.Edit -> EditDialog(d, onDialog)
         is FilesDialog.ConfirmSave ->

@@ -215,7 +215,12 @@ pub fn answer_of(
         Some(p) => Some(
             conflicts
                 .iter()
-                .map(|c| (c.key.clone(), p.get(&c.key).copied().unwrap_or(Decide::Skip)))
+                .map(|c| {
+                    (
+                        c.key.clone(),
+                        p.get(&c.key).copied().unwrap_or(Decide::Skip),
+                    )
+                })
                 .collect(),
         ),
         None => all.map(|d| conflicts.iter().map(|c| (c.key.clone(), d)).collect()),
