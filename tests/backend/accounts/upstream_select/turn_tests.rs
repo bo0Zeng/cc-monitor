@@ -368,6 +368,61 @@ fn a_refusal_rejudges_in_the_same_send() {
     );
 }
 
+/// ★ 429 同一发的重判也在账本那把锁里：读会话那一条 → 判 → 落账一气做完。锁被别处拿着、那边把 b 从这个会话里去掉了 ⇒
+/// 等锁放开再读，看得见 b 不用了（a 刚被拒、b 不用 ⇒ 停发），不照锁外那一份旧的换到 b。
+#[test]
+fn a_refusal_rejudges_inside_the_ledger_lock() {
+    let home = Home::new("refused-lock", [None, None]);
+    home.strategy(None, false);
+    let hop = home.hop();
+    let own = home.own();
+    let t = now();
+    steer(&hop, &own, t);
+    let (held_tx, held_rx) = std::sync::mpsc::channel();
+    let path = home.root.join(rotation::FILE_NAME);
+    let other_own = home.own();
+    let other = std::thread::spawn(move || {
+        let store = RotationStore::at(Some(path));
+        rotation::relay_change(&store, &other_own, |b| {
+            held_tx.send(()).expect("通知");
+            // 拿着锁的这一段里，别处去掉了 b（锁外读的那一份看不见）。
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            if let Some(s) = b.sessions.get_mut(SID) {
+                s.off.push("b".into());
+            }
+        })
+        .expect("写");
+    });
+    held_rx.recv().expect("锁拿到了");
+    let b = body();
+    let none = |_: &str| None;
+    let heard = QuotaReading {
+        status: None,
+        refused: true,
+        limiting: None,
+        resets_at: Some(t + 600),
+        windows: Vec::new(),
+        overage: None,
+    };
+    let go = hop.on_refused(
+        &Turn {
+            agent: "claude-code",
+            start: "a",
+            sid: SID,
+            body: &b,
+            row: &none,
+            now: t + 1,
+        },
+        "a",
+        &heard,
+        &["a".to_string()],
+        &own,
+    );
+    other.join().expect("线程");
+    assert_eq!(go.as_ref().map(which), Some("hold"), "看得见 b 不用了 ⇒ 停发");
+    assert_eq!(home.session().current, "a", "没换到 b");
+}
+
 /// ★ 硬上限两个号都到了 ⇒ 停发：回那一家的「用满」回包；记一条停发、同一个 `until` 不重记。
 #[test]
 fn hard_caps_on_every_account_hold_the_send() {
