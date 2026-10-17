@@ -1144,12 +1144,13 @@ export class TabBarView {
     refs.acctBadge.style.display = "";
   }
 
-  /** 这个会话用的号（`ghost` ＝ 上次用的、不是此刻探到的）；不知道 ⇒ `null`。走中转的会话照那台 `rotation-view` 的在用号（轮换换过号也对）。 */
+  /** 这个会话用的号（`ghost` ＝ 上次用的、不是此刻在跑的）；不知道 ⇒ `null`。走中转的会话照那台 `rotation-view` 的在用号（轮换换过号也对）。 */
   private accountOf(sid: string, tab: Tab): { name: string; ghost: boolean } | null {
     if (!shouldShowAccountBadge(tab.origin, this.store.accountReadyOrigins)) return null;
     const cur = appStore.sessionRotation.get().get(sid)?.read?.current;
     if (cur) return { name: cur, ghost: false };
-    const b = sessionBadge(sid, tab.origin, this.store.sessionAccountsByS, this.store.accountEmailByName, this.store.accountLastByS);
+    const face = faceOf(tab);
+    const b = sessionBadge(sid, tab.origin, face.account ?? null, isLive(face), this.store.accountEmailByName, this.store.accountLastByS);
     if (!b || !b.account) return null;
     return { name: b.account, ghost: b.source === "last" };
   }

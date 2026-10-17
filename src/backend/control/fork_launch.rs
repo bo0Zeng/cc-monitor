@@ -2,7 +2,7 @@
 //!
 //! 号与终端只有源会话**此刻活着**才知道：pidfile 随进程消失；各号的 `projects/` 都链回共享的记录树，记录住在哪说明不了号；
 //! 记录里也没有号的字段 ⇒ 已退出的会话一律「不知道」，不拿当前号顶替（那会静默用错身份跑一条对话）。
-//! 两个信号各答各的、不互相顶替：活没活 / 在哪个终端 ← 终端名单（`@ccm_sid` 精确匹配、前台是 agent）；用哪个号 ← 进程名单（同 `accounts-sessions`）。
+//! 两个信号各答各的、不互相顶替：活没活 / 在哪个终端 ← 终端名单（`@ccm_sid` 精确匹配、前台是 agent）；用哪个号 ← 进程名单（`accounts_query::session_accounts` 那几行）。
 //!
 //! 句子不在这里：只回码，由各前端照码说。事实由入口（`faces/fork_face.rs`）收齐交进来。
 
@@ -85,7 +85,7 @@ pub(crate) fn infer(s: &Source) -> Launch {
     }
 }
 
-/// 进程名单里的一行（`accounts-sessions` 那一行里推断要的几格）。
+/// 进程名单里的一行（`session_accounts` 那一行里推断要的几格）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ProcessRow {
     pub(crate) sid: String,
@@ -96,7 +96,7 @@ pub(crate) struct ProcessRow {
     pub(crate) bare: bool,
 }
 
-/// `accounts-sessions` 的一行 ⇒ [`ProcessRow`]（缺 sid 的不要）。
+/// `session_accounts` 的一行 ⇒ [`ProcessRow`]（缺 sid 的不要）。
 pub(crate) fn process_row_of(v: &Value) -> Option<ProcessRow> {
     let s = |k: &str| v.get(k).and_then(Value::as_str).filter(|x| !x.is_empty());
     Some(ProcessRow {

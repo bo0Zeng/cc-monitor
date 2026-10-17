@@ -258,8 +258,8 @@ export function diskOf(w: World): Record<string, MachineDisk> {
         Object.assign(files, s.convo.files());
         Object.assign(mtimes, s.convo.mtimes());
       }
-      // 每台头一个住在 tmux 里的会话连着一个终端窗口，别的在后台。
-      const live = mine.map(liveOf);
+      // 活会话轮着跑在前两个号下（账号徽章有东西画）；每台头一个住在 tmux 里的会话连着一个终端窗口，别的在后台。
+      const live = mine.map((s, i) => ({ ...liveOf(s), account: ACCOUNTS[i % 2].name }));
       const shown = live.find((l) => l.tmux !== false && l.fate !== "ended");
       if (shown) shown.windows = 1;
       return [m, { ...d, files, mtimes, live: [...d.live, ...live] }];

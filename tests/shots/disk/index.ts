@@ -27,6 +27,8 @@ export interface LiveSession {
   status?: "busy" | "waiting" | "idle" | "shell";
   waitingFor?: string;
   statusUpdatedAt?: number;
+  /** 替身进程环境里的配置目录指向账号库里哪个号（后端读它，宣告里说会话跑在哪个号下）。缺 ⇒ 不设（账号 0）。 */
+  account?: string;
   /** 它那个窗格里此刻那一屏（原样的终端输出，`./screen`）：替身起来先印进自己的窗格，真后端抓屏 · 实时画面读的就是它。缺 ⇒ 空屏。 */
   screen?: string;
   /** 连着它那个 tmux 会话的终端窗口数（台架在同一台私有 tmux 里起几个嵌套的客户端 attach 上去）。缺 ⇒ 0（在后台）。 */

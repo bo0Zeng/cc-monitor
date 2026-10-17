@@ -1680,6 +1680,8 @@ struct ReaderState {
     added: HashMap<String, Frame>,
     /// 宣告时说的是「读记录中」的会话（此刻在干什么只有记录说、记录还没读完）：读完必说一次判出来的那一态（判不出 ⇒ 说不清）。
     reading: HashSet<String>,
+    /// 这台的账号库目录：宣告时判会话跑在哪个号下读它（夹具换成自己的）。
+    accts_dir: PathBuf,
 }
 
 impl ReaderState {
@@ -1691,17 +1693,18 @@ impl ReaderState {
     }
 
     /// 此刻叫这条会话什么（[`crate::wire::NameFace`]）；没记着它（没宣告过）⇒ 只凭 sid。
-    /// 活会话此刻那一态的整份脸：容器照宣告那一帧（判不了 ⇒ 不知道在不在 tmux 里）。
+    /// 活会话此刻那一态的整份脸：容器 · 号照宣告那一帧（判不了 ⇒ 不知道在不在 tmux 里 · 不带号）。
     fn live_face(
         &self,
         sid: &str,
         activity: Option<crate::agents::SessionActivity>,
     ) -> crate::wire::SessionFace {
-        let container = match self.added.get(sid) {
-            Some(Frame::SessionAdded(a)) => a.container.as_ref(),
-            _ => None,
+        use crate::wire::SessionFaceExt as _;
+        let (container, account) = match self.added.get(sid) {
+            Some(Frame::SessionAdded(a)) => (a.container.as_ref(), a.face.account.clone()),
+            _ => (None, None),
         };
-        crate::wire::SessionFace::of(crate::wire::Life::live(activity, container))
+        crate::wire::SessionFace::of(crate::wire::Life::live(activity, container)).under(account)
     }
 
     fn name_face(&self, sid: &str) -> crate::wire::NameFace {
@@ -1923,6 +1926,7 @@ impl ReaderState {
             prime_bytes: 0,
             added: HashMap::new(),
             reading: HashSet::new(),
+            accts_dir: crate::observe::accounts_query::default_accts_dir(),
         }
     }
 }
@@ -2655,7 +2659,13 @@ fn report_to(id: u64, state: &mut ReaderState, sink: &mut FrameSink) {
             Some(e),
         ) = (&mut added, entry)
         {
-            *face = announced_face(state.reading.contains(&sid), e.activity, container.as_ref());
+            let account = face.account.take();
+            *face = announced_face(
+                state.reading.contains(&sid),
+                e.activity,
+                container.as_ref(),
+                account,
+            );
             *name_face = crate::history::search_rules::name_face(&e.facts);
             waiting_for.clone_from(&e.waiting_for);
             if e.path.is_some() {
@@ -3290,7 +3300,11 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
     if reading {
         state.reading.insert(sid.clone());
     }
-    let face = announced_face(reading, a.activity, container.as_ref());
+    // 那一家有账号库才判：进程环境里的配置目录对上账号库里哪个号。
+    let account = crate::agents::accounts_face(a.kind).and_then(|f| {
+        crate::observe::accounts_query::account_of_process(pid, &f, &state.accts_dir)
+    });
+    let face = announced_face(reading, a.activity, container.as_ref(), account);
     let added = Frame::SessionAdded(crate::wire::SessionAdded {
         sid: sid.clone(),
         agent_kind: a.kind.to_string(),
@@ -3320,13 +3334,15 @@ fn announced_face(
     reading: bool,
     activity: Option<crate::agents::SessionActivity>,
     container: Option<&crate::wire::SessionContainer>,
+    account: Option<String>,
 ) -> crate::wire::SessionFace {
-    use crate::wire::Life;
+    use crate::wire::{Life, SessionFaceExt as _};
     crate::wire::SessionFace::of(if reading {
         Life::reading(container)
     } else {
         Life::live(activity, container)
     })
+    .under(account)
 }
 
 /// 给一条刚宣告的会话起一趟预读：记下代号、这条会话的内容帧从此刻拦下（[`FrameSink::send`]），交线程池（夹具没有池 ⇒ 就地跑、就地装回）。
@@ -4605,7 +4621,11 @@ impl FrameSink {
         for sid in due {
             s.kept_answered.insert(sid.clone());
             l.said_ended(&sid);
-            s.push(Frame::session_state(sid, crate::wire::SessionFate::Ended));
+            s.push(Frame::session_state(
+                sid,
+                crate::wire::SessionFate::Ended,
+                None,
+            ));
         }
     }
 

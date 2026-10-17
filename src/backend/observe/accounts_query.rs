@@ -1,8 +1,7 @@
 //! 多账号（账号库：每个号一个配置目录，共享项链回同一个配置根）的只读消费侧（写侧是 `accounts/manage/`）。
 //!
-//! 帧面三条（`inbound::REGISTRY` 的账号族，宿主 `faces/read_face.rs`）：
+//! 帧面两条（`inbound::REGISTRY` 的账号族，宿主 `faces/read_face.rs`）：
 //! - `accounts-list` → `{meta, accounts, notice}`（[`list_product_with`]）。
-//! - `accounts-sessions` → 每条运行中会话一行：它的 `CLAUDE_CONFIG_DIR` 属于哪个账号（[`session_accounts`]）。
 //! - `accounts-trust` → `{trusted, known}`：目标账号是否已信任该目录（换号 resume 前的预检 —— 首次用某账号进某目录，
 //!   CC 会弹信任确认，会卡住编排）；`configDir` 缺席 = 账号 0（它没有 configDir，`.claude.json` 在 `$HOME`）。
 //!
@@ -14,8 +13,8 @@
 //!
 //! # 谓词的作用面不对称
 //!
-//! `is_safe_config_dir` 的调用点都在清单侧（源是 accounts manifest）；`accounts-sessions` 那条路的 `configDir` 来自
-//! `/proc/<pid>/environ`，没过谓词就作为帧字段发出去。不给它套谓词：进程侧的值只拿去与 `by_dir`（只装过了谓词的目录）比对，
+//! `is_safe_config_dir` 的调用点都在清单侧（源是 accounts manifest）；会话那几行（[`session_accounts`]）的 `configDir` 来自
+//! `/proc/<pid>/environ`，没过谓词。不给它套谓词：进程侧的值只拿去与 `by_dir`（只装过了谓词的目录）比对，
 //! 不安全的值匹配不上、`account` 恒 `None`；若把它丢弃（置 `None`），那条会话就变成 `bare: true` —— 等于把一个可疑会话贴成默认账号。
 //! ⇒ 归属安全、展示未净化；要表达「configDir 不可信」得给帧加一个状态位（改上线契约）。
 
@@ -224,7 +223,7 @@ fn session_process_identity_ok(pid: u32, pidfile: &serde_json::Value) -> bool {
     }
 }
 
-/// 一条会话在出参里的全部字段（`accounts-sessions` 每行一个）。
+/// 一条会话在 [`session_accounts`] 里的全部字段（每条一行）。
 struct SessionRow {
     pid: u32,
     sid: Option<String>,
@@ -985,14 +984,9 @@ fn waiting_needs(agent_home: &Path, sid: &str) -> Option<super::recognize::facts
     super::recognize::facts::needs_of(kind, &pending, Some(&wait))
 }
 
-/// 正在跑的会话各属哪个号：扫 `<claude_dir>/sessions/<PID>.json`，每条一行。
-pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
-    // 向注册表要「会话进程环境里该读哪两个键」只问这一次（账号 · 上游地址；账号库那一家的 `AccountsFace.session_env`）。
-    let Some(env_keys) = crate::agents::account_library_face().map(|f| f.session_env) else {
-        return Vec::new();
-    };
-    // `None` 这个 key 是账号 0（configDir 缺席）：裸起的会话归属到它。
-    let by_dir: Vec<(Option<String>, String)> = load_manifest(accts_dir)
+/// 账号库里每个号的配置目录（规范过的写法）⇒ 号名；`None` 这个 key 是账号 0（configDir 缺席）：裸起的会话归属到它。
+fn dirs_of(accts_dir: &Path) -> Vec<(Option<String>, String)> {
+    load_manifest(accts_dir)
         .map(|m| {
             m.accounts
                 .into_iter()
@@ -1005,7 +999,65 @@ pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<Strin
                 })
                 .collect()
         })
-        .unwrap_or_default();
+        .unwrap_or_default()
+}
+
+/// 一个活进程跑在哪个号下（[`owner_of`]）。
+#[derive(Default)]
+struct Owner {
+    /// 进程环境里的配置目录（规范过的写法）；没设 ⇒ `None`。
+    config_dir: Option<String>,
+    account: Option<String>,
+    /// 环境这一刻取不到（读失败，或读回 0 字节：exec 窗口 / 僵尸进程）：不归属、不算裸起。
+    /// 不然它会走成「没设」、正好撞上账号 0 那个 `None` 键 ⇒ 一条真跑在账号 Z 下的会话被报成账号 0 的。
+    env_unreadable: bool,
+}
+
+/// 读活进程 `pid` 环境里的配置目录键，对上账号库（[`dirs_of`]）：有就逐字匹配，没设就是账号 0。
+/// 键不在与值是空串合并成「没设」，理由在 `EnvRead` 的类型头注。
+fn owner_of(pid: u32, key: &str, by_dir: &[(Option<String>, String)]) -> Owner {
+    let cfg = match proc_env_var(pid, key) {
+        EnvRead::Value(v) => Some(norm_dir(&v).to_string()),
+        EnvRead::Unset => None,
+        EnvRead::Unreadable => {
+            return Owner {
+                env_unreadable: true,
+                ..Owner::default()
+            }
+        }
+    };
+    let account = by_dir
+        .iter()
+        .find(|(d, _)| d.as_deref() == cfg.as_deref())
+        .map(|(_, n)| n.clone());
+    Owner {
+        config_dir: cfg,
+        account,
+        env_unreadable: false,
+    }
+}
+
+/// 一条刚宣告的会话跑在哪个号下：那一家有账号库（`face`）才判；判不了 ⇒ `None`。会话宣告带的就是它。
+pub(crate) fn account_of_process(
+    pid: u32,
+    face: &crate::agents::AccountsFace,
+    accts_dir: &Path,
+) -> Option<String> {
+    owner_of(pid, face.session_env.config_dir, &dirs_of(accts_dir)).account
+}
+
+/// 这台机器上的账号库目录（宣告时判号读它）。
+pub(crate) fn default_accts_dir() -> PathBuf {
+    resolve_accts_dir()
+}
+
+/// 正在跑的会话各属哪个号：扫 `<claude_dir>/sessions/<PID>.json`，每条一行。
+pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
+    // 向注册表要「会话进程环境里该读哪两个键」只问这一次（账号 · 上游地址；账号库那一家的 `AccountsFace.session_env`）。
+    let Some(env_keys) = crate::agents::account_library_face().map(|f| f.session_env) else {
+        return Vec::new();
+    };
+    let by_dir = dirs_of(accts_dir);
 
     let mut out: Vec<SessionRow> = Vec::new();
     for (pid, v) in pidfiles(agent_home) {
@@ -1014,18 +1066,11 @@ pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<Strin
         // 判活必须过 procStart 身份对拍：PID 会被复用，只按 /proc/<pid> 存在性判活会把已死会话误贴成「活着 + 别人的账号」。
         // 身份不符 → 当作该会话已死，不读 environ、不归属。
         let alive = session_process_identity_ok(pid, &v);
-        // 环境这一刻取不到（读失败，或读回 0 字节：exec 窗口 / 僵尸进程）单独一支：不归属、不算裸起。
-        // 不然它会走成 `cfg_norm = None`、在下面的 `by_dir` 里正好撞上账号 0 那个 `None` 键 ⇒ 一条真跑在账号 Z 下的会话被报成账号 0 的。
-        // 另两支（键不在 / 值是空串）仍然合并，理由在 `EnvRead` 的类型头注。
-        let (cfg, cfg_env_unreadable) = if alive {
-            match proc_env_var(pid, env_keys.config_dir) {
-                EnvRead::Value(v) => (Some(v), false),
-                EnvRead::Unset => (None, false),
-                EnvRead::Unreadable => (None, true),
-            }
+        // 进程已死时一个字节都不读 ⇒ 谈不上「取不到」，那一格照旧是「没读」。
+        let owner = if alive {
+            owner_of(pid, env_keys.config_dir, &by_dir)
         } else {
-            // 进程已死时一个字节都不读 ⇒ 谈不上「取不到」，那一格照旧是「没读」。
-            (None, false)
+            Owner::default()
         };
         // 第二个键：只折成「走不走本机中转」一个布尔；值带钥匙，这一行之后就丢掉。
         let via_relay = if alive {
@@ -1033,7 +1078,7 @@ pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<Strin
                 // 环境里是中转地址 ≠ 真走中转：agent 自己的设置文件可能压过它（`settings_may_set_base_url`）⇒ 那时说不清。
                 EnvRead::Value(v) if relay_route_core::split_keyed_base_url(&v).is_some() => {
                     let settings_win = (env_keys.settings_may_set_base_url)(
-                        cfg.as_deref().map(Path::new),
+                        owner.config_dir.as_deref().map(Path::new),
                         agent_home,
                         cwd.map(Path::new),
                     );
@@ -1046,25 +1091,14 @@ pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<Strin
         } else {
             None
         };
-        let cfg_norm = cfg.as_deref().map(|c| norm_dir(c).to_string());
-        // 归属：有 configDir 就逐字匹配；没有、进程确实活着、且环境这一刻读得到才是账号 0。
-        // 进程已死时不归属（cfg 恒 None）；环境取不到时也不归属：那一刻不知道它设没设。
-        let account = if alive && !cfg_env_unreadable {
-            by_dir
-                .iter()
-                .find(|(d, _)| d.as_deref() == cfg_norm.as_deref())
-                .map(|(_, n)| n.clone())
-        } else {
-            None
-        };
         out.push(SessionRow {
             pid,
             sid: sid.map(str::to_string),
             cwd: cwd.map(str::to_string),
-            config_dir: cfg_norm,
-            account,
+            config_dir: owner.config_dir,
+            account: owner.account,
             alive,
-            cfg_env_unreadable,
+            cfg_env_unreadable: owner.env_unreadable,
             via_relay,
         });
     }
@@ -1163,11 +1197,8 @@ fn trust_in(root: &Path, cwd: &str) -> Result<String, (String, String)> {
     )
 }
 
-/// 帧面那两条（`accounts-list` / `accounts-sessions`）的入口。
-///
-/// 跑的是 CLI 那两臂**同一个函数**（[`list_accounts`] / [`session_accounts`]），账号库目录
 /// `machine-interrupts` 的成品：停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前会打断什么。
-/// `lines` 是这台活会话那几行（`accounts-sessions` 同一份）：活着且经本机中转 ⇒ `relayedSessions`；活着而说不清走不走 ⇒ `relayedMaybe`；
+/// `lines` 是这台活会话那几行（[`session_accounts`]）：活着且经本机中转 ⇒ `relayedSessions`；活着而说不清走不走 ⇒ `relayedMaybe`；
 /// 活着的都算 `liveStreams`（停的那几秒 cc-monitor 里这几个不更新）。`forwards` 是这台后端账上通往 `machine` 的转发（没给 `machine` ⇒ 0）。
 /// 读不懂的行跳过。**纯函数**。
 pub(crate) fn machine_product(lines: &[String], forwards: u32) -> Interrupts {

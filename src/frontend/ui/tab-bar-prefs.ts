@@ -442,7 +442,7 @@ export class TabBarPrefs {
       origin: tab.origin,
       // 缺了 resume 会静默落到默认号：两个源都读不到 ⇒ `null`（没记到，不是默认号）。
       account:
-        this.store.sessionAccountsByS.get(tab.sessionId)?.account ??
+        tab.face?.account ??
         this.store.accountLastByS.get(tab.sessionId) ??
         prev?.account ??
         null,

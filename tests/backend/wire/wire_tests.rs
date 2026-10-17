@@ -311,7 +311,8 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 project_dir: Some(s("/w")),
                 name: Some(s("n")),
                 path: Some(s("/p/s1.jsonl")),
-                face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: Some(crate::agents::SessionActivity::NeedsYou), tmux: None }),
+                face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: Some(crate::agents::SessionActivity::NeedsYou), tmux: None })
+                    .under(Some(s("b"))),
                 name_face: crate::history::search_rules::name_face(
                     &crate::history::search_rules::LabelFacts {
                         title: Some(s("t")),
@@ -367,7 +368,8 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
         [
             Frame::SessionStatus(crate::wire::SessionStatus {
                 sid: s("s1"),
-                face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: Some(crate::agents::SessionActivity::NeedsYou), tmux: None }),
+                face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: Some(crate::agents::SessionActivity::NeedsYou), tmux: None })
+                    .under(Some(s("b"))),
                 name_face: crate::history::search_rules::name_face(
                     &crate::history::search_rules::LabelFacts {
                         title: Some(s("t")),
@@ -389,8 +391,8 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
         {
             // 全格：可重连；最少格：已结束（不能那几样带为什么）。
             [
-                Frame::session_state(s("s1"), SessionFate::Reconnectable),
-                Frame::session_state(s("s1"), SessionFate::Ended),
+                Frame::session_state(s("s1"), SessionFate::Reconnectable, Some(s("b"))),
+                Frame::session_state(s("s1"), SessionFate::Ended, None),
             ]
         },
         [
@@ -1206,7 +1208,7 @@ fn mig1_session_state_has_exactly_these_bytes() {
         )
         .unwrap();
         assert_eq!(
-            to_line(&Frame::session_state("abc".into(), state)).unwrap(),
+            to_line(&Frame::session_state("abc".into(), state, None)).unwrap(),
             format!("{{\"kind\":\"session_state\",\"sid\":\"abc\",\"state\":\"{word}\",\"face\":{face}}}\n")
         );
     }
@@ -1629,7 +1631,7 @@ fn session_frames_carry_the_state_written_and_toned() {
             "sessionState.ended.tooltip",
         ),
     ] {
-        let v = &serde_json::to_value(Frame::session_state("s".into(), f)).unwrap()["face"];
+        let v = &serde_json::to_value(Frame::session_state("s".into(), f, None)).unwrap()["face"];
         assert_eq!(v["name"], copy_core::copy_text(name, &[]), "{f:?}");
         assert_eq!(v["tip"], copy_core::copy_text(hint, &[]), "{f:?}");
         assert_eq!(v["tone"], "plain", "{f:?}");
@@ -1982,7 +1984,8 @@ fn the_fates_sort_after_every_live_session_on_one_ruler() {
     })
     .collect();
     let fate = |f| {
-        serde_json::to_value(Frame::session_state("s".into(), f)).unwrap()["face"]["order"].as_u64()
+        serde_json::to_value(Frame::session_state("s".into(), f, None)).unwrap()["face"]["order"]
+            .as_u64()
     };
     assert_eq!(live, [0, 1, 2, 3].into());
     assert_eq!(

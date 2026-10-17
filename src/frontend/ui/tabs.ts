@@ -18,7 +18,7 @@ import type { SessionBranchPayload } from "./generated/SessionBranchPayload";
 import { openNewSession } from "./new-session";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
 import type { JsonlLinePayload } from "./events";
-import { detectAccountMismatch, type SessionAccount } from "./accounts";
+import { detectAccountMismatch } from "./accounts";
 import type { BehaviorConfig } from "./behavior";
 import { failToast, toast, undoToast } from "./kit/toast";
 import { detailOf } from "./kit/detail";
@@ -42,7 +42,7 @@ import type { MenuItem } from "./kit/menu";
 import { TabSelection } from "./tab-selection";
 import { openBatchMenu, type TabBatchHost } from "./tab-batch-menu";
 import { TabStore, type ActiveView } from "./tab-store";
-import { appStore, type Slice } from "./app-store";
+import { appStore, type AccountFacts, type Slice } from "./app-store";
 import { TabStreamView } from "./tab-stream-view";
 import { LiveCards, type LivePainter } from "./live-card";
 import type { SessionLiveCardPayload } from "./generated/SessionLiveCardPayload";
@@ -116,9 +116,9 @@ export class TabManager {
     }
     if (onTabsChanged) this.store.subscribe(onTabsChanged);
     this.store.subscribe(() => this.reportKept());
-    // 账号快照变了 ⇒ 同一拍应用。
-    appStore.sessionAccounts.subscribe((snap) => {
-      if (snap) this.setSessionAccounts(snap.rows, snap.emailByName, snap.lastByS, snap.readyOrigins, snap.currentByOrigin);
+    // 账号清单那一侧换了 ⇒ 同一拍重画徽章。
+    appStore.accountFacts.subscribe((f) => {
+      if (f) this.setAccountFacts(f);
     });
     this.bar = new TabBarView(this.store, this.prefs, barEl, {
       refreshTabBar: () => this.refreshTabBar(),
@@ -569,24 +569,12 @@ export class TabManager {
     return this.store.tabs.has(sessionId);
   }
 
-  /**
-   * 会话账号归属 ＋ 账号邮箱表，喂完刷新所有 tab 的账号徽章。生产上只由 `appStore.sessionAccounts` 的订阅调；判据可直接喂。
-   */
-  setSessionAccounts(
-    rows: SessionAccount[],
-    emailByName: Map<string, string>,
-    lastAccountByS: Map<string, string> = new Map(),
-    readyOrigins: Set<string> = new Set(),
-    currentByOrigin: Map<string, string> = new Map(),
-  ): void {
-    this.store.sessionAccountsByS = new Map();
-    for (const r of rows) {
-      if (r.sessionId) this.store.sessionAccountsByS.set(r.sessionId, r);
-    }
-    this.store.accountEmailByName = emailByName;
-    this.store.accountLastByS = lastAccountByS;
-    this.store.accountReadyOrigins = readyOrigins;
-    this.store.currentByOrigin = currentByOrigin;
+  /** 账号清单那一侧换了一份 ⇒ 刷新所有 tab 的账号徽章。只由 `appStore.accountFacts` 的订阅调。 */
+  private setAccountFacts(f: AccountFacts): void {
+    this.store.accountEmailByName = f.emailByName;
+    this.store.accountLastByS = f.lastByS;
+    this.store.accountReadyOrigins = f.readyOrigins;
+    this.store.currentByOrigin = f.currentByOrigin;
     this.bar.refreshAccountBadges();
   }
 
@@ -607,7 +595,7 @@ export class TabManager {
         unread: tab.unread,
         background: tab.background,
         backgroundWork: tab.backgroundWork,
-        account: this.store.sessionAccountsByS.get(tab.sessionId)?.account ?? null,
+        account: tab.face?.account ?? null,
       });
     }
     return out;
@@ -677,6 +665,7 @@ export class TabManager {
       unavailable: t?.facts.unavailableReason ?? null,
       projectDir: t?.projectDir ?? null,
       modelText: t?.modelText ?? null,
+      account: t?.face?.account ?? null,
     });
   }
 
@@ -873,6 +862,7 @@ export class TabManager {
     const was = tab.face;
     if (JSON.stringify(was) === JSON.stringify(face)) return;
     tab.face = face;
+    if (sessionId === this.store.activeId) this.publishActive();
     const doing = face.live.is === "yes" ? face.live.activity : undefined;
     const before = was?.live.is === "yes" ? was.live.activity : undefined;
     if (doing !== before) {

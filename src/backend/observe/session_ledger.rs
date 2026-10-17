@@ -55,18 +55,8 @@ pub(crate) struct SessionLedger {
     ended: BTreeMap<String, bool>,
     /// 活会话的记录路径（帧上带过的最新那一份）。
     paths: BTreeMap<String, String>,
-}
-
-fn state(sid: &str, state: SessionFate) -> Frame {
-    Frame::session_state(sid.to_string(), state)
-}
-
-/// 已结束那一帧：记录在 ⇒ 已结束，不在 ⇒ 记录已不在。
-fn left(sid: &str, present: bool) -> Frame {
-    Frame::session_left(
-        sid.to_string(),
-        if present { Life::Ended } else { Life::Gone },
-    )
+    /// 宣告时判的号（脸上那一格）：离开「活」的那几张脸照旧带它。
+    accounts: BTreeMap<String, String>,
 }
 
 fn bound_in(view: &BTreeMap<String, BTreeSet<String>>, sid: &str) -> bool {
@@ -93,8 +83,14 @@ impl SessionLedger {
     /// 一帧要发出去之前：`(它自己发不发, 紧跟它之后补发的帧)`。
     pub(crate) fn on_frame(&mut self, f: &Frame) -> (bool, Vec<Frame>) {
         match f {
-            Frame::SessionAdded(crate::wire::SessionAdded { sid, path, .. }) => {
+            Frame::SessionAdded(crate::wire::SessionAdded {
+                sid, path, face, ..
+            }) => {
                 self.live.insert(sid.clone());
+                match &face.account {
+                    Some(a) => self.accounts.insert(sid.clone(), a.clone()),
+                    None => self.accounts.remove(sid),
+                };
                 self.ended.remove(sid);
                 if let Some(p) = path {
                     self.paths.insert(sid.clone(), p.clone());
@@ -172,7 +168,7 @@ impl SessionLedger {
             self.pending.remove(&sid);
             if bound_in(&now, &sid) {
                 self.reconnectable.insert(sid.clone());
-                out.push(state(&sid, SessionFate::Reconnectable));
+                out.push(self.state(&sid, SessionFate::Reconnectable));
             } else {
                 out.push(self.end(&sid));
             }
@@ -221,7 +217,7 @@ impl SessionLedger {
                     && self.reconnectable.insert(sid.clone())
                 {
                     self.ended.remove(sid);
-                    out.push(state(sid, SessionFate::Reconnectable));
+                    out.push(self.state(sid, SessionFate::Reconnectable));
                 }
             }
             self.view = Some(now);
@@ -241,7 +237,17 @@ impl SessionLedger {
             .remove(sid)
             .is_none_or(|p| std::path::Path::new(&p).exists());
         self.ended.insert(sid.to_string(), present);
-        left(sid, present)
+        self.left(sid, present)
+    }
+
+    fn state(&self, sid: &str, state: SessionFate) -> Frame {
+        Frame::session_state(sid.to_string(), state, self.accounts.get(sid).cloned())
+    }
+
+    /// 已结束那一帧：记录在 ⇒ 已结束，不在 ⇒ 记录已不在。
+    fn left(&self, sid: &str, present: bool) -> Frame {
+        let life = if present { Life::Ended } else { Life::Gone };
+        Frame::session_left(sid.to_string(), life, self.accounts.get(sid).cloned())
     }
 
     /// 一条连接手上留着、账上没有的那条，只给它答过已结束：账上也记着（之后问到记录在不在照样翻）。
@@ -251,10 +257,10 @@ impl SessionLedger {
 
     /// 问过这条的记录在不在（`history-record` · `session-open` 恢复那一问答完递来的）：说过已结束的那条翻了 ⇒ 一帧给每条连接。
     pub(crate) fn on_record(&mut self, sid: &str, present: bool) -> Vec<Frame> {
-        match self.ended.get_mut(sid) {
-            Some(was) if *was != present => {
-                *was = present;
-                vec![left(sid, present)]
+        match self.ended.get(sid) {
+            Some(&was) if was != present => {
+                self.ended.insert(sid.to_string(), present);
+                vec![self.left(sid, present)]
             }
             _ => Vec::new(),
         }
@@ -283,7 +289,7 @@ impl SessionLedger {
         let mut out: Vec<Frame> = self
             .reconnectable
             .iter()
-            .map(|sid| state(sid, SessionFate::Reconnectable))
+            .map(|sid| self.state(sid, SessionFate::Reconnectable))
             .collect();
         if self.listed {
             out.push(Frame::SessionsReplayed(crate::wire::SessionsReplayed {}));

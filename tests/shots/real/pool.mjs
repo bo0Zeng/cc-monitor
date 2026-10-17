@@ -214,8 +214,8 @@ export function backendPool({ repo, sandbox }) {
     const paints = new Map();
     const names = tmuxNames(m);
     let first = true;
-    const newSession = (name, cmd, fmt) => {
-      const line = `T new-session -d -s ${q(name)} -x ${PANE_COLS} -y ${PANE_ROWS}${fmt ? ` -P -F '${fmt}'` : ""} ${q(cmd)}`;
+    const newSession = (name, cmd, fmt, env = "") => {
+      const line = `T new-session -d -s ${q(name)} -x ${PANE_COLS} -y ${PANE_ROWS}${env ? ` -e ${env}` : ""}${fmt ? ` -P -F '${fmt}'` : ""} ${q(cmd)}`;
       // 头一个会话把 server 起起来：状态栏关掉（窗格与连上来的终端窗口同高，嵌套的客户端不把窗口挤矮一行）。
       const after = first ? ` \\; set -g status off` : "";
       first = false;
@@ -226,21 +226,23 @@ export function backendPool({ repo, sandbox }) {
       if (l.tmux === false && l.fate) throw new Error(`${origin} 上 ${l.sid}：不住 tmux 的替身演不了收场（台架从沙箱外够不着它）`);
       if (l.tmux === false && (l.screen || l.windows)) throw new Error(`${origin} 上 ${l.sid}：不住 tmux 的替身没有窗格，印不了那一屏、也连不了终端窗口`);
       const name = names.get(k);
+      // 替身跑在哪个号下：环境里的配置目录（后端读替身的 environ 判，同真的 claude）。
+      const cfg = l.account ? `CLAUDE_CONFIG_DIR=${q(`${H}/.cc-monitor/accounts/${l.account}`)}` : "";
       // 替身先把那一屏印进自己的窗格（真后端抓屏读的就是它）。
       writeFileSync(path.join(setup, `${k}.screen`), l.screen ?? "");
       const paint = `cat ${H}/.shots-setup/${k}.screen; `;
-      if (l.tmux === false) sh.push("sleep 3600 & pid=$!");
+      if (l.tmux === false) sh.push(`${cfg ? `${cfg} ` : ""}sleep 3600 & pid=$!`);
       else if (l.fate === "reconnectable") {
         // 替身是窗格里那个 shell 的子进程：它被杀之后窗格还在（shell 接着睡）。
         const pf = `${H}/.shots-setup/${k}.pid`;
-        sh.push(`${newSession(name, `${paint}sleep 3600 & echo $! > ${pf}; wait; exec sleep 3600`, "#{pane_id}")} >/dev/null`, `while [ ! -s ${pf} ]; do sleep 0.02; done`, `pid=$(cat ${pf})`);
+        sh.push(`${newSession(name, `${paint}sleep 3600 & echo $! > ${pf}; wait; exec sleep 3600`, "#{pane_id}", cfg)} >/dev/null`, `while [ ! -s ${pf} ]; do sleep 0.02; done`, `pid=$(cat ${pf})`);
         doomed.push({ sid: l.sid, fate: "reconnectable", act: ["run-shell", `kill $(cat ${pf})`] });
       } else {
         // 替身印完那一屏就读一个命名管道、读到的原样印进窗格（台架往后再印一屏走它：`/__ccm/paint`）；pid 经 exec 不变。
         // 它以 `claude` 的名字跑（指向 sh 的链接，读管道的 cat 是它的子进程）：后端按前台程序名认「agent 在跑」（`agents::is_agent_process`）。
         // 不把 cat 本身改名：有的发行版 cat 是按自己名字分派的多合一程序，改了名就不是 cat 了。
         const fifo = `${H}/.shots-setup/${k}.paint`;
-        sh.push(`mkfifo ${fifo}`, `pid=$(${newSession(name, `${paint}exec ${H}/.shots-setup/claude -c ${q(`cat 0<> ${fifo}; exit`)}`, "#{pane_pid}")})`);
+        sh.push(`mkfifo ${fifo}`, `pid=$(${newSession(name, `${paint}exec ${H}/.shots-setup/claude -c ${q(`cat 0<> ${fifo}; exit`)}`, "#{pane_pid}", cfg)})`);
         paints.set(l.sid, path.join(setup, `${k}.paint`));
       }
       if (l.fate === "ended") doomed.push({ sid: l.sid, fate: "ended", act: ["kill-session", "-t", `=${name}`] });

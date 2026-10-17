@@ -477,3 +477,45 @@ fn an_ending_whose_record_is_already_missing_is_said_gone() {
         [("x".into(), crate::wire::SessionDot::Gone)]
     );
 }
+
+/// 宣告时判的号（脸上那一格）离开「活」之后照旧在脸上：可重连 · 已结束 · 记录已不在那几张都带它；没判出号的不带。
+#[test]
+fn the_account_said_at_announce_stays_on_the_faces_after_it_leaves() {
+    let mut l = SessionLedger::new();
+    let with = |sid: &str, account: Option<&str>| match added(sid) {
+        Ev::F(Frame::SessionAdded(mut a)) => {
+            a.face = a.face.under(account.map(str::to_string));
+            Frame::SessionAdded(a)
+        }
+        _ => unreachable!(),
+    };
+    let accounts = |fs: Vec<Frame>| -> Vec<(String, Option<String>)> {
+        fs.into_iter()
+            .filter_map(|f| match f {
+                Frame::SessionState(s) => Some((s.sid, s.face.account)),
+                _ => None,
+            })
+            .collect()
+    };
+    let gone = |sid: &str| {
+        Frame::SessionRemoved(crate::wire::SessionRemoved {
+            sid: sid.into(),
+            cause: RemovalCause::Superseded,
+            by: None,
+        })
+    };
+    l.on_frame(&with("a", Some("b")));
+    l.on_frame(&with("z", None));
+    let (_, out) = l.on_frame(&gone("a"));
+    assert_eq!(
+        accounts(out),
+        vec![("a".to_string(), Some("b".to_string()))]
+    );
+    let (_, out) = l.on_frame(&gone("z"));
+    assert_eq!(accounts(out), vec![("z".to_string(), None)]);
+    // 记录在不在翻了（已结束 ⇄ 记录已不在）那一张也带。
+    assert_eq!(
+        accounts(l.on_record("a", false)),
+        vec![("a".to_string(), Some("b".to_string()))]
+    );
+}

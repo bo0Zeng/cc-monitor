@@ -4,7 +4,7 @@
 //!
 //! 「帧面 16 条，账号与 8 条只读查询都不在 ⇒ 每点一下拨一次 SSH、
 //! 每 10 秒对每台机器握一次手」。那八条（`--list-projects` / `--list-sessions` /
-//! `--read-session` / `--read-session-tail` / `--session-accounts` / `--list-accounts` /
+//! `--read-session` / `--read-session-tail` / `--list-accounts` /
 //! `--search` 等）此前每问一次就新拨一条 TCP+SSH+鉴权，exec 一次后端、
 //! 读完 stdout 就断 —— 而同一台机器上**早就有一条**长连接（流模式那条），
 //! 入方向一问一答也早就通了（`inbound_client`）。后端那边把八条登记上了帧面

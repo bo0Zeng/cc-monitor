@@ -7,7 +7,6 @@
  * 零 DOM、零 IPC：它只存东西、只做「新 tab 落在哪一格」这类纯顺序运算。谁什么时候改它、
  * 改完要刷哪块界面，是 `TabManager`（组装根）与各视图的事。
  */
-import type { SessionAccount } from "./accounts";
 import type { TaskEntry } from "./tasks-panel";
 import type { SessionFace } from "./generated/SessionFace";
 import type { Tab, TabsSummary } from "./tab-model";
@@ -28,15 +27,18 @@ export interface ActiveView {
   projectDir: string | null;
   /** 当前会话的模型写给人看的字（`Tab.modelText`，后端那一格；HUD 浮层里那一句照抄）。 */
   modelText: string | null;
+  /** 当前会话跑在哪个号下（那台在脸上说的；没说 ⇒ `null`）：状态栏账号按钮读它。 */
+  account: string | null;
 }
 
-const NO_ACTIVE: ActiveView = { sid: null, usage: null, unavailable: null, projectDir: null, modelText: null };
+const NO_ACTIVE: ActiveView = { sid: null, usage: null, unavailable: null, projectDir: null, modelText: null, account: null };
 const sameActive = (a: ActiveView, b: ActiveView): boolean =>
   a.sid === b.sid &&
   JSON.stringify(a.usage) === JSON.stringify(b.usage) &&
   a.unavailable === b.unavailable &&
   a.projectDir === b.projectDir &&
-  a.modelText === b.modelText;
+  a.modelText === b.modelText &&
+  a.account === b.account;
 const sameSummary = (a: TabsSummary, b: TabsSummary): boolean =>
   a.total === b.total && a.live === b.live && a.dead === b.dead && a.faces === b.faces;
 
@@ -57,14 +59,12 @@ export class TabStore {
   savedOrder: string[] = [];
   /**
    * sid → attach 进去对人有没有意义（pidfile 的 `attachable`，经后端帧透传）。只记显式 false 的那些；缺席 = 可以。
-   * 单独一张表：它是「某个 sid 的一条会话级元信息」，与 `sessionAccountsByS` 同形。
+   * 单独一张表：它是「某个 sid 的一条会话级元信息」。
    */
   readonly notAttachableSids = new Set<string>();
-  /** 远端 live 探测的会话账号归属（sid → 探测行）。main.ts 喂。 */
-  sessionAccountsByS = new Map<string, SessionAccount>();
   /** 账号名 → 邮箱（徽章悬停用）。 */
   accountEmailByName = new Map<string, string>();
-  /** sid → lastAccount（history-metadata）：live 探测不到时徽章的兜底来源。main.ts 喂。 */
+  /** sid → lastAccount（history-metadata）：宣告没说号时徽章的兜底来源。 */
   accountLastByS = new Map<string, string>();
   /** 账号可查询的远端 origin 集（available）。只有这些 origin 的会话才显徽章。 */
   accountReadyOrigins = new Set<string>();

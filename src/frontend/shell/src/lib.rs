@@ -764,8 +764,7 @@ pub fn run() {
             launch::open_local_terminal,
             // A2 那两条账号清单（远端 `list_remote_accounts` · 本机 `list_local_accounts`）与
             //   换号前的信任预检（`check_account_trust`）退役：前端经通道说 `accounts-list` / `accounts-trust`，后端出成品。
-            // 「某会话属于哪个账号」那两条（本机 E79 · 远端 A2）退役：
-            //   本机与远端同一条路 —— 前端经通道 `chan_call` 说 `accounts-sessions`。
+            // 「某会话属于哪个账号」那两条（本机 E79 · 远端 A2）退役：那台后端在会话宣告里说（`session_added.account`）。
             launch::open_terminal_window,
             // 设置页「终端」那一行的事实（挑终端的判定住平台层）。
             launch::terminal_choices,

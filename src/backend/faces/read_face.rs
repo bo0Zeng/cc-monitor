@@ -183,54 +183,6 @@ impl crate::wire::typed::Handle for DriftReportCmd {
     }
 }
 
-/// `accounts-sessions` 的回包：每条运行中会话一行（`{pid, sessionId, cwd, configDir, account, bare, alive, viaRelay}` 那一行 JSON 原样）；
-/// `account:null` ＝ 查不到（不猜）。
-#[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct SessionLines {
-    pub(crate) lines: Vec<String>,
-}
-
-crate::wire::typed::codes! {
-    /// `accounts-sessions` 的码：整份超过一帧装得下的（不截断：截断的清单会被当成完整的用）。
-    pub(crate) enum AccountsSessionsErr {
-        TooLarge = "too_large",
-    }
-}
-
-/// `accounts-sessions`：正在跑的会话各属哪个账号（读 pidfile ＋ 账号库 ⇒ 阻塞档）。
-pub(crate) struct AccountsSessions;
-
-impl crate::wire::typed::Command for AccountsSessions {
-    const NAME: &'static str = "accounts-sessions";
-    const TAKES_INPUT: bool = false;
-    type Req = crate::wire::typed::NoArgs;
-    type Reply = SessionLines;
-    type Err = AccountsSessionsErr;
-}
-
-impl crate::wire::typed::Handle for AccountsSessions {
-    type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
-        _req: crate::wire::typed::NoArgs,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<SessionLines, AccountsSessionsErr>> + Send + 'static
-    {
-        async move { sessions_at(&crate::history::listing::agent_home()) }
-    }
-}
-
-/// [`AccountsSessions`] 的本体，家目录是参数（判据拿夹具喂它）。
-pub(crate) fn sessions_at(home: &std::path::Path) -> Result<SessionLines, AccountsSessionsErr> {
-    let lines = crate::observe::accounts_query::session_lines_for_frame(home);
-    let size: usize = lines.iter().map(|l| l.len() + 1).sum();
-    if size > LINES_CAP_BYTES {
-        return Err(AccountsSessionsErr::TooLarge(too_large(size).1));
-    }
-    Ok(SessionLines { lines })
-}
-
 crate::wire::typed::codes! {
     /// `accounts-list` 的码：整份超过一帧装得下的。
     pub(crate) enum AccountsListErr {

@@ -1,5 +1,5 @@
 // 多账号前端的账号模型（纯，零 IO）。账号 = 一个 CLAUDE_CONFIG_DIR。
-// 只装「一个账号长什么样、能不能选、该显示成什么」：形状（`Account` · `AccountsState` · `SessionAccount`）· 降级判定（`deriveUi`）·
+// 只装「一个账号长什么样、能不能选、该显示成什么」：形状（`Account` · `AccountsState`）· 降级判定（`deriveUi`）·
 // 可用性照后端写好的 `selectable`（`selectableAccounts`）· 徽章文案。起会话用哪个号由会话所在那台的后端判。
 // 别处：经通道读 → `account-reads.ts`；每号模型偏好 → `account-prefs.ts`；起会话「要哪个号」→ `launch-account.ts`。
 import { machineName } from "./ipc/chan-caller";
@@ -19,23 +19,6 @@ export type Account = Omit<AccountRow, FixtureOptional> & Partial<Pick<AccountRo
 type MetaOptional = "unsupported" | "nextDefault" | "home";
 /** 那台机器的账号库（manifest）的概况 —— `accounts-list` 成品的 `meta` 那一格。 */
 export type AccountsMeta = Omit<ListMeta, MetaOptional> & Partial<Pick<ListMeta, MetaOptional>>;
-
-export interface SessionAccount {
-  pid: number;
-  sessionId: string | null;
-  cwd: string | null;
-  configDir: string | null;
-  /** configDir 反查得到的账号名；null = 不知道（不猜）。 */
-  account: string | null;
-  bare: boolean;
-  alive: boolean;
-  /**
-   * 这条会话的上游地址是不是**本机中转**那一形（后端从 `/proc/<pid>/environ` 的 `ANTHROPIC_BASE_URL` 折出的一个布尔，
-   * 值本身带中转钥匙、不出参）。`null` = 不知道（进程已死 / 环境这一刻取不到 / 老后端没有这个键）。
-   * 读者：机器页「停」本机后端之前数几条会断（`settings/backend-section.ts::stopWarning`）。
-   */
-  viaRelay?: boolean | null;
-}
 
 /** 账号功能在某台远端的整体状态（UI 直接消费）。 */
 export interface AccountsState {
@@ -142,9 +125,9 @@ export function detectAccountMismatch(
 
 
 /**
- * 会话 sid → 徽章信息（DESIGN §3 三源优先级）：
- *   源① live 探测（`/proc/<pid>/environ` 硬真相）——优先；
- *   源② lastAccount（history-metadata：上次用本工具带账号起该会话时记的）——探测不到时兜底，标"上次"；
+ * 会话 sid → 徽章信息（三源优先级）：
+ *   源① 会话宣告说的号（那台后端读会话进程环境判的）、会话还活着 ——「此刻」；
+ *   源② 结束了的：宣告说过的号，没有就看 lastAccount（history-metadata：上次用本工具带账号起该会话时记的），标"上次"；
  *   源③ 都无 → `—`、不猜。
  * 本地会话（`LOCAL_ORIGIN`）不产徽章。
  */
@@ -159,25 +142,23 @@ export interface SessionBadge {
 export function sessionBadge(
   sid: string,
   origin: Origin,
-  liveByS: Map<string, SessionAccount>,
+  said: string | null,
+  live: boolean,
   emailByName: Map<string, string>,
   lastAccountByS?: Map<string, string>,
 ): SessionBadge | null {
   if (isLocalOrigin(origin)) return null; // 本机会话不出账号徽章
-  // 源①：live 探测——唯一硬真相，优先。
-  const live = liveByS.get(sid);
-  if (live && live.alive && live.account) {
-    const email = emailByName.get(live.account) ?? "";
+  if (live && said) {
+    const email = emailByName.get(said) ?? "";
     return {
       known: true,
-      tooltip: copyText("accounts.sessionBadge.live", { account: live.account, email: email ? ` · ${email}` : "" }),
+      tooltip: copyText("accounts.sessionBadge.live", { account: said, email: email ? ` · ${email}` : "" }),
       source: "live",
-      account: live.account,
+      account: said,
     };
   }
-  // 源②：cc-monitor 记的 lastAccount（归档/未在跑的会话探测不到 live，用它兜底）；
-  // 标"上次用本工具起"避免误当成当前实时。
-  const last = lastAccountByS?.get(sid);
+  // 标"上次"避免误当成此刻在跑的号。
+  const last = said ?? lastAccountByS?.get(sid);
   if (last) {
     const email = emailByName.get(last) ?? "";
     return {

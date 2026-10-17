@@ -93,7 +93,7 @@ const DEPS: Record<string, readonly string[]> = {
   "src/frontend/ui/tabs.ts": [
     "src/frontend/ui/agent-window-open.ts", // 面板那一行 / 派出卡的卡头：开那个子运行自己的窗口
     "src/frontend/ui/accounts.ts", // debugSessionsSnapshot 的「账号不一致」派生（detectAccountMismatch）
-    "src/frontend/ui/app-store.ts", // 「账号快照变了」改订阅 store（`appStore.sessionAccounts`）
+    "src/frontend/ui/app-store.ts", // 账号清单那一侧改订阅 store（`appStore.accountFacts`）
     "src/frontend/ui/cards/subagent.ts", // 运行表到了：派出子运行的那张卡标上是哪个、什么状态
     "src/frontend/ui/control-said.ts", // ↗ 结局浮层里的机器名（`machineName`）
     "src/frontend/ui/copy-table.ts", // W 关掉之后那条「已关闭 · 撤销」

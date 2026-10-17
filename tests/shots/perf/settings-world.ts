@@ -67,11 +67,6 @@ export function settingsPerfWorld(): World {
   const sids = w.sessions.map((s) => s.sid);
   putRotation(d, { sessions: Object.fromEntries(sids.map((sid) => [sid, { start: accts[0], current: accts[0], since: t - 3600 }])) });
   putWarm(d, [{ account: accts[1], at: t + 2.5 * 3600 }]);
-  w.ops["accounts-sessions"] = (origin, _req, world) => ({
-    lines: world.sessions
-      .filter((s) => s.origin === origin)
-      .map((s, i) => JSON.stringify({ pid: 4100 + i, sessionId: s.sid, cwd: s.cwd, configDir: `/home/user/.cc-monitor/accounts/${accts[i % accts.length]}`, account: accts[i % accts.length], bare: false, alive: true, viaRelay: null })),
-  });
   // ── 扩展：几百个 × 十几台 ──
   // 造一次、记成线上那一串：之后每问只 `JSON.parse` 一遍（真壳也是后端交一串、页里解析）—— 每问现拼几百行的深拷贝是假后端自己的活，不该算进产品读数。
   const extList = w.ops["ext-list"];

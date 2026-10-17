@@ -29,11 +29,6 @@ export function chanReply(v: unknown): ArrayBuffer {
   return u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength) as ArrayBuffer;
 }
 
-/** 按行那一族（`{"lines": [...]}`）的应答。 */
-export function linesReply(rows: unknown[]): ArrayBuffer {
-  return chanReply({ lines: rows.map((r) => (typeof r === "string" ? r : JSON.stringify(r))) });
-}
-
 /** 「那台没有控制通道」（`Hop{1 open, NotSent, Unreachable}`）—— monitor 那一跳会拒的那个值；那一句是 monitor 写的（替身照本机那一形填）。 */
 export const NO_CHANNEL = {
   err: { Hop: { idx: 1, tag: "open", reach: "NotSent", why: "Unreachable" } },

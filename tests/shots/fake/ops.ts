@@ -13,22 +13,6 @@ export function defaultOps(): Record<string, OpHandler> {
   return {
     // 会话外的需手动清单：默认世界里没有（「需手动」浮层与登录抽屉那几张的世界 `scenes/login.ts` 换掉这一条）。
     "manual-list": () => ({ items: [] }),
-    "accounts-sessions": (origin, _req, w) => ({
-      lines: w.sessions
-        .filter((s) => s.origin === origin && !s.ended)
-        .map((s, i) =>
-          JSON.stringify({
-            pid: 4100 + i,
-            sessionId: s.sid,
-            cwd: s.cwd,
-            configDir: `/home/user/.cc-monitor/accounts/${ACCOUNTS[i % 2].name}`,
-            account: ACCOUNTS[i % 2].name,
-            bare: false,
-            alive: true,
-            viaRelay: null,
-          }),
-        ),
-    }),
     "accounts-trust": () => ({ known: true, trusted: true }),
     // 账号页打开时顺手核一次：缺省世界里都对得上。
     "accounts-verify": () => ({ pass: true, fails: 0, warns: 0, checks: [] }),

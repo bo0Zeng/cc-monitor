@@ -2130,6 +2130,12 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "face.account",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "face.can.close.can",
           "type": "string"
         },
@@ -2327,6 +2333,12 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "face.account",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "face.can.close.can",
           "type": "string"
         },
@@ -2491,6 +2503,12 @@
     },
     {
       "cells": [
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.account",
+          "type": "string"
+        },
         {
           "frozen": false,
           "kind": "value",

@@ -94,6 +94,8 @@ fn in_tmux(c: Option<&SessionContainer>) -> Option<bool> {
 /// **一条会话整份脸的唯一构造口**（[`SessionFace`]）：点 · 字 · 语气 · 序 · 能做什么都只在这里判。
 pub(crate) trait SessionFaceExt: Sized {
     fn of(life: Life) -> Self;
+    /// 带上这条会话跑在哪个号下（`account`，宣告时判的那一个）。
+    fn under(self, account: Option<String>) -> Self;
 }
 
 fn no(why: Words) -> Allow {
@@ -101,6 +103,11 @@ fn no(why: Words) -> Allow {
 }
 
 impl SessionFaceExt for SessionFace {
+    fn under(mut self, account: Option<String>) -> Self {
+        self.account = account;
+        self
+    }
+
     fn of(life: Life) -> Self {
         let running = || Words(copy_core::copy_text("tabBatch.why.live", &[]));
         let ended_why = |name: &Words| {
@@ -126,6 +133,7 @@ impl SessionFaceExt for SessionFace {
                     tip,
                     tone: Tone::Plain,
                     order: 4,
+                    account: None,
                     can: SessionCan {
                         close: CanClose::No { why: running() },
                         resume: no(running()),
@@ -158,6 +166,7 @@ impl SessionFaceExt for SessionFace {
                     live: FaceLive::No,
                     settled: true,
                     line: tip.clone(),
+                    account: None,
                     can: SessionCan {
                         close: CanClose::Quiet,
                         resume: if gone { no(tip.clone()) } else { Allow::Yes },
@@ -183,6 +192,7 @@ impl SessionFaceExt for SessionFace {
                     line: name.clone(),
                     tone: Tone::Plain,
                     order: 3,
+                    account: None,
                     can: SessionCan {
                         close: CanClose::No { why: name.clone() },
                         resume: no(Words(copy_core::copy_text(
@@ -288,6 +298,7 @@ fn live_face(activity: Option<SessionActivity>, tmux: Option<bool>, reading: boo
         tip,
         tone,
         order,
+        account: None,
         can: SessionCan {
             close: CanClose::No { why: running() },
             resume: no(running()),
@@ -383,10 +394,10 @@ pub(crate) trait FrameMake {
         body: Option<serde_json::Value>,
     ) -> Frame;
 
-    /// `session_state` 帧：去向 ＋ 它写好的字与语气（只此一处造这一帧）。
-    fn session_state(sid: String, state: SessionFate) -> Frame;
+    /// `session_state` 帧：去向 ＋ 它写好的字与语气（只此一处造这一帧）；`account` 是宣告时判的那个号（脸上带着）。
+    fn session_state(sid: String, state: SessionFate, account: Option<String>) -> Frame;
     /// 离开「活」的那一帧（[`Life::Reconnectable`] · [`Life::Ended`] · [`Life::Gone`]）。
-    fn session_left(sid: String, life: Life) -> Frame;
+    fn session_left(sid: String, life: Life, account: Option<String>) -> Frame;
 
     /// `overflow` 帧：这条连接拥塞丢了约 `lines` 行 · 会话状态要不要（已）重新对齐，写成那一句。
     fn overflow(lines: u64, realigned: bool) -> Frame;
@@ -439,22 +450,23 @@ impl FrameMake for Frame {
         Frame::Overflow(Overflow { said: Words(said) })
     }
 
-    fn session_state(sid: String, state: SessionFate) -> Frame {
+    fn session_state(sid: String, state: SessionFate, account: Option<String>) -> Frame {
         Frame::session_left(
             sid,
             match state {
                 SessionFate::Reconnectable => Life::Reconnectable,
                 SessionFate::Ended => Life::Ended,
             },
+            account,
         )
     }
 
-    fn session_left(sid: String, life: Life) -> Frame {
+    fn session_left(sid: String, life: Life, account: Option<String>) -> Frame {
         let state = match life {
             Life::Reconnectable => SessionFate::Reconnectable,
             _ => SessionFate::Ended,
         };
-        let face = SessionFace::of(life);
+        let face = SessionFace::of(life).under(account);
         Frame::SessionState(SessionState { sid, state, face })
     }
 

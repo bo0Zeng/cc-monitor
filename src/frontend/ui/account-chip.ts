@@ -53,8 +53,8 @@ export interface AccountChipDeps {
   openSettings: () => void;
   /** 有当前会话时点按钮：开 / 关本会话的「账号」面板。 */
   togglePanel?: (sid: string, origin: Origin) => void;
-  /** 切完当前账号后回调：让 main.ts 立刻重算会话账号归属，否则最长有 10s 的反向窗口。 */
-  onDefaultChanged?: () => void;
+  /** 切完当前账号后回调：让 main.ts 立刻重问那几台的默认号（徽章「不一致」照它比）。 */
+  onDefaultChanged?: (origin: Origin) => void;
 }
 
 export class AccountChip {
@@ -66,7 +66,7 @@ export class AccountChip {
   /** 本会话那一形：`[⇄] [头像] 名 窗口 用量 [↻重置]`（无会话时藏着）。 */
   private sessionEl: HTMLElement;
   /** 此刻的当前会话（`null` ＝ 没有 tab ⇒ 按钮退成「默认 work」）。 */
-  private active: { sid: string; origin: Origin } | null = null;
+  private active: { sid: string; origin: Origin; account: string | null } | null = null;
   private chipModel: ChipModel | null = null;
   /** chip 绑的那台机器（`refresh` 之前没意义 —— 那时 `state` 也是 `null`）。 */
   private origin: Origin = LOCAL_ORIGIN;
@@ -114,40 +114,35 @@ export class AccountChip {
     appStore.accounts.subscribe(() => {
       if (this.bound) this.paint();
     });
-    // 本会话那一形：额度账 · 会话轮换格 · 会话归属那份快照任何一样变了 ⇒ 原地换数。
+    // 本会话那一形：额度账 · 会话轮换格任何一样变了 ⇒ 原地换数。
     const repaint = (): void => {
       if (this.active) this.paint();
     };
     appStore.quota.subscribe(repaint);
     appStore.sessionRotation.subscribe(repaint);
-    appStore.sessionAccounts.subscribe(repaint);
   }
 
   /** 当前会话换了（`tabs.active`）：有 ⇒ 按钮画本会话那个号；没有 ⇒ 退成「默认 work」。 */
-  setActive(a: { sid: string; origin: Origin } | null): void {
-    if (this.active?.sid === a?.sid && this.active?.origin === a?.origin) return;
+  setActive(a: { sid: string; origin: Origin; account: string | null } | null): void {
+    if (this.active?.sid === a?.sid && this.active?.origin === a?.origin && this.active?.account === a?.account) return;
     this.active = a;
     this.paint();
   }
 
-  /** 这个会话在 tab 栏徽章那份快照里归属的号（中转没见过它时只能画这个）。 */
-  private fallbackAccount(sid: string): string | null {
-    return appStore.sessionAccounts.get()?.rows.find((r) => r.sessionId === sid)?.account ?? null;
-  }
 
   /** 本会话那一形这一刻的样子（没有当前会话 / 一样都不知道 ⇒ `null`）。 */
   private sessionModel(): ChipModel | null {
     const a = this.active;
     if (!a) return null;
     const entry = appStore.sessionRotation.get().get(a.sid);
-    return sessionChip(entry, this.fallbackAccount(a.sid), appStore.quota.get().get(a.origin) ?? null);
+    return sessionChip(entry, a.account, appStore.quota.get().get(a.origin) ?? null);
   }
 
   private hoverCard(): HTMLElement | null {
     const a = this.active;
     if (!a || !this.chipModel) return null;
     const entry = appStore.sessionRotation.get().get(a.sid);
-    const rows = sessionHoverRows(entry, this.fallbackAccount(a.sid), appStore.quota.get().get(a.origin) ?? null);
+    const rows = sessionHoverRows(entry, a.account, appStore.quota.get().get(a.origin) ?? null);
     if (!rows) return null;
     const tone = this.chipModel.tone;
     const tones: Record<number, "refused" | "warn"> = {};
@@ -360,8 +355,8 @@ export class AccountChip {
       // 默认账号住那台的账号库清单：重问那一台。
       if (origin === this.origin) await this.refresh();
       else await fetchAccounts(origin);
-      // 立刻重算会话账号（否则要等下一拍 10s 轮询，期间「对齐」会把会话打回刚被切走的旧账号）。
-      this.deps.onDefaultChanged?.();
+      // 立刻重问那一台的默认号（否则「对齐」会把会话打回刚被切走的旧账号）。
+      this.deps.onDefaultChanged?.(origin);
       // 选即生效、不另报：下拉合上、按钮上的字就是结果。
     } catch (e) {
       failToast(copyText("accountChip.selectDefault.failed"), e, { level: "error" });

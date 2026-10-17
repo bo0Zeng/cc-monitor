@@ -541,6 +541,7 @@ fn corpus(name: &str) -> Vec<Value> {
                     <crate::wire::Frame as crate::wire::FrameMake>::session_left(
                         "s".into(),
                         crate::wire::Life::Gone,
+                        None,
                     ),
                 )
                 .unwrap(),
@@ -621,12 +622,36 @@ fn real_quota_read() -> crate::faces::quota_read::QuotaRead {
     )
 }
 
-/// ★ 样本把每一格都露出来了：没有 `None`、没有空列表（不然那一格在目录里就漏了）。
+/// 类型里有、这件成品从不写的格：整份脸里的号只有会话那几帧带（宣告时判的），冷读出来的脸判不出。样本照实留空。
+const NEVER_WRITTEN: &[(&str, &str)] = &[
+    ("facts", "startedBy.face.account"),
+    ("facts", "children[].face.account"),
+    ("needs_row", "face.account"),
+    ("history_list", "rows[].face.account"),
+];
+
+/// ★ 样本把每一格都露出来了：没有 `None`、没有空列表（不然那一格在目录里就漏了）；空着的只许是 [`NEVER_WRITTEN`] 登记的，登记的也确实空着。
 #[test]
 fn every_specimen_fills_every_cell() {
     for p in PRODUCTS {
         let (cells, holes) = cells_of(p);
-        assert!(holes.is_empty(), "成品 {} 的样本没写全：{holes:#?}", p.name);
+        let waived: BTreeSet<String> = NEVER_WRITTEN
+            .iter()
+            .filter(|(n, _)| *n == p.name)
+            .map(|(_, c)| format!("{c}: absent"))
+            .collect();
+        let left: BTreeSet<String> = holes
+            .iter()
+            .filter(|h| !waived.contains(*h))
+            .cloned()
+            .collect();
+        assert!(left.is_empty(), "成品 {} 的样本没写全：{left:#?}", p.name);
+        let stale: Vec<&String> = waived.iter().filter(|w| !holes.contains(*w)).collect();
+        assert!(
+            stale.is_empty(),
+            "成品 {} 登记了从不写、样本里却写了：{stale:#?}",
+            p.name
+        );
         assert!(!cells.is_empty(), "成品 {} 一格都没有", p.name);
     }
 }

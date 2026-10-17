@@ -1288,11 +1288,21 @@ fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
         1,
         "向适配层要那两个键的那一处不见了 / 变形了"
     );
+    // 配置目录键只在 `owner_of` 里抠一处；它的两个调用方（会话那几行 · 宣告判号）都传适配层给的那个键。
     assert_eq!(
-        prod.matches("proc_env_var(pid, env_keys.config_dir)")
-            .count(),
+        prod.matches("proc_env_var(pid, key)").count(),
         1,
-        "抠 `CLAUDE_CONFIG_DIR` 那一处不见了 / 变形了"
+        "抠 `CLAUDE_CONFIG_DIR` 那一处（`owner_of`）不见了 / 变形了"
+    );
+    let calls = prod.matches("owner_of(pid, ").count();
+    let keyed = prod.matches("owner_of(pid, env_keys.config_dir").count()
+        + prod
+            .matches("owner_of(pid, face.session_env.config_dir")
+            .count();
+    assert_eq!(
+        (calls, keyed),
+        (2, 2),
+        "`owner_of` 的调用方变了，或有一处传的不是适配层给的配置目录键"
     );
     assert_eq!(
         prod.matches("proc_env_var(pid, env_keys.base_url)").count(),
@@ -1301,80 +1311,11 @@ fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
     );
 }
 
-/// ★★ **「盘上写着的」↔「我们真发的」对拍**〔`KP5FD4` 那句「判据要自己长出来」〕。
+/// ★ 本文件头注把读会话进程环境的**两个**键都点了名：加第二个键、却留着「只抠一个键」那句假话 ⇒ 红。
 ///
-/// # 它为什么非有不可
-///
-/// `K-P5f` 摸底现打过：往会话归属那几行（今天的帧命令 `accounts-sessions`）加字段这条路**撞 0 道机检**
-/// （`protocol_doc_guard` 那两条一条够不着它 —— 出参是本文件里一个就地
-/// `serde_json::json!`，不是 `wire.rs` 里的类型；另一条数的是**子命令名**，
-/// 而那条命令早在表里）。⇒ 文档那一行**只靠人记得改**。
-/// 而「没有闸看着的文档事实」正是本工作区反复判过的假绿源
-/// （「写着有、其实没有」同族）。**这条就是那道闸。**
-///
-/// # 三格
-///
-/// | 格 | 断的是什么 | 翻掉它的形状 |
-/// |---|---|---|
-/// | ① | 帧命令 `accounts-sessions` 的回包类型说明里的字段表逐字等于生产段真发的那几个键（**顺序也算**） | 加一个字段不改说明 / 改了名字 |
-/// | ② | 本文件头注把**两个**环境变量键都点了名 | 加第二个键、却留着「只抠一个键」那句假话 |
-///
-/// # ⚠ 它买不到什么
-///
-/// 只买「**那几个名字都在场**」。文档那一行**说得对不对**（比如 `bare` 的语义
-/// 解释）它一个字都判不了 —— 那是评审的活。
+/// 只买「那几个名字都在场」；说得对不对是评审的活。
 #[test]
-fn the_protocol_doc_row_for_session_accounts_matches_what_we_emit() {
-    // 协议参考的命令那一节从回包类型生成：`accounts-sessions` 的回包 `SessionLines` 的说明就是这里那一行。
-    let face = include_str!("../../../src/backend/faces/read_face.rs");
-    let end = face
-        .find("pub(crate) struct SessionLines {")
-        .expect("`read_face.rs` 里没有 `SessionLines`");
-    let row: String = face[..end]
-        .lines()
-        .rev()
-        .skip_while(|l| !l.trim_start().starts_with("///"))
-        .take_while(|l| l.trim_start().starts_with("///") || l.trim_start().starts_with("#["))
-        .filter(|l| l.trim_start().starts_with("///"))
-        .collect::<Vec<_>>()
-        .join(" ");
-
-    // ── ① 出参字段表：从生产段把 `json!` 的键抠出来，与文档里那个花括号表对拍 ──
-    let prod = production_text();
-    let start = prod
-        .find("fn session_accounts(agent_home")
-        .expect("找不到 `session_accounts` —— 抽取器坏了");
-    let body = &prod[start..];
-    let j = body
-        .find("serde_json::json!({")
-        .expect("`session_accounts` 里找不到出参 `json!` —— 抽取器坏了");
-    let mut keys: Vec<String> = Vec::new();
-    for l in body[j..].lines().skip(1) {
-        let t = l.trim();
-        if t == "})" {
-            break;
-        }
-        if let Some(r) = t.strip_prefix('"') {
-            if let Some(i) = r.find("\":") {
-                keys.push(r[..i].to_string());
-            }
-        }
-    }
-    assert_eq!(
-        keys.len(),
-        8,
-        "从出参 `json!` 只抠到 {} 个键（应为 8）—— 抽取器坏了，下面那格会零命中地绿：{keys:?}",
-        keys.len()
-    );
-    let table = format!("{{{}}}", keys.join(", "));
-    assert!(
-        row.contains(&table),
-        "\n★★ `accounts-sessions` 的 `lines` 那一格说明里找不到字段表 {table:?}。\n\
-             出参加了字段 / 改了名 / 换了顺序，而文档没跟着改 —— **盘上留了一句假话**，\n\
-             而这条路撞 0 道机检，除了本条没有任何东西会说。\n\
-             那一行现在写的是：\n  {row}"
-    );
-
+fn the_header_names_both_env_keys_we_read() {
     // ── ② 「只抠几个键」那句诚实边界：本文件头注得把两个键点到名 ──
     let header: String = include_str!("../../../src/backend/observe/accounts_query.rs")
         .lines()

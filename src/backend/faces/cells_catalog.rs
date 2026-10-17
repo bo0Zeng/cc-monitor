@@ -1176,7 +1176,8 @@ mod specimens {
             face: crate::wire::SessionFace::of(crate::wire::Life::Live {
                 activity: Some(activity),
                 tmux: None,
-            }),
+            })
+            .under(some("b")),
             name_face: named(),
             waiting_for: some("w"),
             hidden: crate::control::session_hidden::judge(&crate::control::session_hidden::Facts {
@@ -1210,7 +1211,8 @@ mod specimens {
                     face: crate::wire::SessionFace::of(crate::wire::Life::Live {
                         activity: Some(a),
                         tmux: None,
-                    }),
+                    })
+                    .under(some("b")),
                     name_face: named(),
                     waiting_for: some("w"),
                     path: some("p"),
@@ -1222,7 +1224,7 @@ mod specimens {
     pub(super) fn session_state() -> Vec<Specimen> {
         [Life::Reconnectable, Life::Ended, Life::Gone]
             .into_iter()
-            .map(|l| node_of(&Frame::session_left(s("s"), l)))
+            .map(|l| node_of(&Frame::session_left(s("s"), l, some("b"))))
             .collect()
     }
 

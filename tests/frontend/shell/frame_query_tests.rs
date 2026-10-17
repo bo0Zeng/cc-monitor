@@ -8,7 +8,6 @@ const MOVED: &[(&str, &str)] = &[
     ("--read-session-tail", "history-tail"),
     ("--search", "history-search"),
     ("--list-accounts", "accounts-list"),
-    ("--session-accounts", "accounts-sessions"),
     // 骨架索引与大纲清单：每开一个大会话就要一次（不是「点一次才发一次」）。
     //   `--read-session-from-offset` 的另一形（`--until`，按区间取正文）早就走 `history-read` ——
     //   两形都上了帧面，这个子命令从此一条拨号都不剩。
@@ -223,11 +222,6 @@ fn the_dial_per_query_path_is_gone() {
 /// 已迁到通道的帧命令：前端经通道（`callTyped(origin, "<op>", …)`）直接问那台后端，monitor 那一跳只搬字节。
 /// 迁的判准只有一条：迁过去之后，**那条应答的解释只有一个家**。
 const CHANNELED: &[(&str, &str)] = &[
-    (
-        "accounts-sessions",
-        "本机与远端都迁：两条 Tauri 命令（远端帧面 · 本机一次性 exec）各在 Rust 里把同一种行解析一遍；\
-         迁过去之后逐行解释只剩 `src/frontend/ui/account-reads.ts::parseSessionAccountLines` 一处",
-    ),
     (
         "history-search",
         "远端那半迁：逐台 fan-out ＋ 补 origin ＋ 与本机索引合并三件事搬到 `src/frontend/ui/views/history-search.ts`，\

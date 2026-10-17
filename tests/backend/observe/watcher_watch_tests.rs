@@ -300,7 +300,7 @@ fn told(rx: &mut FrameRx) -> Vec<String> {
             Frame::SessionState(s) => {
                 assert_eq!(
                     Frame::SessionState(s.clone()),
-                    Frame::session_state(s.sid.clone(), s.state),
+                    Frame::session_state(s.sid.clone(), s.state, None),
                     "与别处发的同一句"
                 );
                 out.push(format!("{:?} {}", s.state, s.sid));
@@ -493,6 +493,7 @@ fn a_lost_session_state_is_reported_again_in_place_after_the_overflow() {
     sink.send(Frame::session_state(
         "z".into(),
         crate::wire::SessionFate::Ended,
+        None,
     ));
     while rx.try_recv().is_ok() {}
     sink.send_to(1, gone("t"));
@@ -575,6 +576,7 @@ fn a_report_that_jams_again_is_said_and_reported_again_until_it_gets_through() {
     sink.send(Frame::session_state(
         "z".into(),
         crate::wire::SessionFate::Ended,
+        None,
     ));
     while rx.try_recv().is_ok() {}
     fill(&mut sink, 7); // 头一格先补上那一句，后面七格填料

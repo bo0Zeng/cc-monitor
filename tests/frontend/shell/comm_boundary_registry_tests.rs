@@ -153,7 +153,7 @@ fn comms_packages(all: &[Package]) -> Vec<&Package> {
 /// 🔴**那一天到了**：文件窗口（今住独立包 `src/frontend/filewin/`）是第一个真调用点
 /// （`source::ask`）。表从两列扩成三列 —— 第二列是**这个入口的前端语料住在哪一种语言里**：
 /// `call` / `subscribe` 这两个裸词在 TS 语料里另有与本通道无关的同名调用
-/// （`launcher-diagnostics.ts` 的本地 `call(true)`、`session-accounts-poll.ts` 的 `subscribe(() => …)`），
+/// （`launcher-diagnostics.ts` 的本地 `call(true)` 这类），
 /// 按语言分人群才不假红。Rust 那一侧的人群是 [`RUST_FRONTENDS`]。
 const ENTRIES: &[(&str, &str, &str)] = &[
     (

@@ -304,6 +304,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 | `tone` | Tone |  |
 | `order` | number | 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5 |
 | `can` | SessionCan |  |
+| `account` | string? | 跑在账号库里哪个号下：那台后端宣告时读会话进程环境判一次，这条会话之后的脸（含离开「活」的那几张）都带它 |
 
 #### `FaceLive`
 
@@ -3257,21 +3258,6 @@ appExit?: boolean | null, };
 
 码：`bad_args`
 
-#### `accounts-sessions`
-
-正在跑的会话各属哪个账号。
-
-不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --accounts-sessions`
-
-入参 `NoArgs` · 回包 `SessionLines`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type NoArgs = Record<symbol, never>;
-type SessionLines = { lines: Array<string>, };
-```
-
-码：`bad_args` · `too_large`
-
 #### `accounts-trust`
 
 换号前的信任预检。
@@ -4437,7 +4423,12 @@ line: Words, tone: Tone,
 /**
  * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
  */
-order: number, can: SessionCan, };
+order: number, can: SessionCan, 
+/**
+ * 跑在账号库里哪个号下：那台后端宣告时读会话进程环境判一次，这条会话之后的脸（含离开「活」的那几张）都带它。
+ * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
+ */
+account?: string, };
 type Tab = "show" | "hide";
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
@@ -4589,7 +4580,12 @@ line: Words, tone: Tone,
 /**
  * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
  */
-order: number, can: SessionCan, };
+order: number, can: SessionCan, 
+/**
+ * 跑在账号库里哪个号下：那台后端宣告时读会话进程环境判一次，这条会话之后的脸（含离开「活」的那几张）都带它。
+ * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
+ */
+account?: string, };
 type SessionHits = { 
 /**
  * 这个会话是哪一家（线上的 kind）：恢复按它起。全文搜索只扫记录树 ⇒ 都是记录树那一家。
@@ -4803,7 +4799,12 @@ line: Words, tone: Tone,
 /**
  * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
  */
-order: number, can: SessionCan, };
+order: number, can: SessionCan, 
+/**
+ * 跑在账号库里哪个号下：那台后端宣告时读会话进程环境判一次，这条会话之后的脸（含离开「活」的那几张）都带它。
+ * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
+ */
+account?: string, };
 type SessionHits = { 
 /**
  * 这个会话是哪一家（线上的 kind）：恢复按它起。全文搜索只扫记录树 ⇒ 都是记录树那一家。
@@ -6580,7 +6581,12 @@ line: Words, tone: Tone,
 /**
  * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
  */
-order: number, can: SessionCan, };
+order: number, can: SessionCan, 
+/**
+ * 跑在账号库里哪个号下：那台后端宣告时读会话进程环境判一次，这条会话之后的脸（含离开「活」的那几张）都带它。
+ * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
+ */
+account?: string, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
@@ -6799,7 +6805,12 @@ line: Words, tone: Tone,
 /**
  * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
  */
-order: number, can: SessionCan, };
+order: number, can: SessionCan, 
+/**
+ * 跑在账号库里哪个号下：那台后端宣告时读会话进程环境判一次，这条会话之后的脸（含离开「活」的那几张）都带它。
+ * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
+ */
+account?: string, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
@@ -7200,7 +7211,12 @@ line: Words, tone: Tone,
 /**
  * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
  */
-order: number, can: SessionCan, };
+order: number, can: SessionCan, 
+/**
+ * 跑在账号库里哪个号下：那台后端宣告时读会话进程环境判一次，这条会话之后的脸（含离开「活」的那几张）都带它。
+ * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
+ */
+account?: string, };
 type SessionFacts = { 
 /**
  * 源会话 sid；不是分叉来的 ⇒ `null`。
@@ -13578,7 +13594,12 @@ line: Words, tone: Tone,
 /**
  * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
  */
-order: number, can: SessionCan, };
+order: number, can: SessionCan, 
+/**
+ * 跑在账号库里哪个号下：那台后端宣告时读会话进程环境判一次，这条会话之后的脸（含离开「活」的那几张）都带它。
+ * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
+ */
+account?: string, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
@@ -13905,7 +13926,12 @@ line: Words, tone: Tone,
 /**
  * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
  */
-order: number, can: SessionCan, };
+order: number, can: SessionCan, 
+/**
+ * 跑在账号库里哪个号下：那台后端宣告时读会话进程环境判一次，这条会话之后的脸（含离开「活」的那几张）都带它。
+ * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
+ */
+account?: string, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
@@ -13930,7 +13956,6 @@ type Words = string;
 | `--accounts-remove` | ＝ 帧命令 `accounts-remove`：删一个号 |
 | `--accounts-repair` | ＝ 帧命令 `accounts-repair`：修复账号库（幂等） |
 | `--accounts-rollback` | ＝ 帧命令 `accounts-rollback`：按一份备份还原 |
-| `--accounts-sessions` | ＝ 帧命令 `accounts-sessions`：正在跑的会话各属哪个账号 |
 | `--accounts-set-default` | ＝ 帧命令 `accounts-set-default`：设默认号 |
 | `--accounts-trust` | ＝ 帧命令 `accounts-trust`：换号前的信任预检 |
 | `--accounts-verify` | ＝ 帧命令 `accounts-verify`：核对账号库 |
