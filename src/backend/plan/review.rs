@@ -19,6 +19,10 @@ use std::path::{Path, PathBuf};
 /// 那份文件最大多少字节（超了当读不懂）。
 pub(crate) const MAX_BYTES: u64 = 1024 * 1024;
 
+/// 那一份：状态（读不懂不覆盖）。
+const DOC: crate::common::own_state::Doc<Review> =
+    crate::common::own_state::Doc::state(relay_route_core::PLAN_REVIEW_REL, MAX_BYTES);
+
 /// 记下的两样。
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -111,7 +115,7 @@ pub(crate) fn review_path() -> Option<PathBuf> {
 
 /// 读一次（三态）。
 pub(crate) fn read_at(path: &Path) -> crate::common::own_state::Read<Review> {
-    crate::common::own_state::read_json(path, MAX_BYTES)
+    DOC.read(path)
 }
 
 /// 标成品用：读不懂的那份照什么都没记算（写的那一刻才回错）。
@@ -128,9 +132,7 @@ type Err = crate::wire::spec::Fail;
 fn edit_at(own: &Own, f: impl FnOnce(&mut Review)) -> Result<(), Err> {
     let no_home = |_| Err::new("io_failed", copy_text("bePlan.review.noHome", &[]));
     let dir = own.home_dir().map_err(no_home)?;
-    let file = own
-        .at_home(relay_route_core::PLAN_REVIEW_REL)
-        .map_err(no_home)?;
+    let file = own.at_home(DOC.rel).map_err(no_home)?;
     own.ensure_dir(&dir).map_err(|e| {
         Err::from((
             "io_failed",

@@ -75,10 +75,14 @@ pub fn policy_path() -> Option<PathBuf> {
 /// 读盘的上限：文件只有一格布尔。
 const MAX_BYTES: u64 = 4096;
 
+/// 退出行为：状态（读不懂 ⇒ 照实说、按缺省办）。
+const DOC: crate::common::own_state::Doc<serde_json::Value> =
+    crate::common::own_state::Doc::state(relay_route_core::BACKEND_POLICY_REL, MAX_BYTES);
+
 /// 读一次 `path`。**每次调用都真去读盘**，没有任何记忆。
 pub fn read_at(path: &Path) -> Read {
-    use crate::common::own_state::{read_json, Read as Raw};
-    let v: serde_json::Value = match read_json(path, MAX_BYTES) {
+    use crate::common::own_state::Read as Raw;
+    let v: serde_json::Value = match DOC.read(path) {
         Raw::Present(v) => v,
         Raw::Absent => return Read::Absent,
         Raw::Unreadable(why) => return Read::Unreadable(why),

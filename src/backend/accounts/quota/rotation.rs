@@ -66,7 +66,9 @@ pub(crate) type DiskSeen<D> = std::collections::HashMap<PathBuf, (Option<Stamp>,
 pub(crate) trait Doc:
     Clone + PartialEq + Serialize + DeserializeOwned + Send + 'static
 {
-    const FILE: &'static str;
+    /// 那一份的声明（落点 · 读上限 · 状态）。
+    const DISK: crate::common::own_state::Doc<Self>;
+    const FILE: &'static str = relay_route_core::file_name_of(Self::DISK.rel);
     /// 这一版的版本号。
     fn version() -> u64;
     /// 没有文件时那一份。
@@ -82,7 +84,8 @@ pub(crate) trait Doc:
 }
 
 impl Doc for Book {
-    const FILE: &'static str = FILE_NAME;
+    const DISK: crate::common::own_state::Doc<Self> =
+        crate::common::own_state::Doc::state(relay_route_core::ROTATION_REL, MAX_BYTES);
     fn version() -> u64 {
         book::BOOK_VERSION
     }
@@ -126,7 +129,7 @@ pub(crate) enum Disk<D> {
 /// ★ 读一次盘：这一版照形状读（多一格 ⇒ 读不懂）；旧版 ⇒ [`Disk::Old`]；别的版本 ⇒ 读不懂。
 pub(crate) fn read_at<D: Doc>(path: &Path) -> Disk<D> {
     use crate::common::own_state::Read;
-    let v: Value = match crate::common::own_state::read_json(path, MAX_BYTES) {
+    let v: Value = match D::DISK.read_as(path) {
         Read::Absent => return Disk::Absent,
         Read::Unreadable(e) => return Disk::Unreadable(e),
         Read::Present(v) => v,

@@ -23,6 +23,10 @@ const VERSION: u32 = 1;
 /// 读盘的上限：几张小表。
 const MAX_BYTES: u64 = 256 * 1024;
 
+/// 这台偏好：状态（读不懂不覆盖）。
+pub(crate) const DOC: crate::common::own_state::Doc<OnDisk> =
+    crate::common::own_state::Doc::state(relay_route_core::PREFS_REL, MAX_BYTES);
+
 /// 一张表至多几条（启动命令按家 · 模型按号 · 上限按子串）。
 pub(crate) const PREFS_ROWS_MAX: usize = 256;
 
@@ -74,7 +78,7 @@ impl Default for Prefs {
 /// 盘上整份（多一格版本）。
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct OnDisk {
+pub(crate) struct OnDisk {
     version: u32,
     #[serde(flatten)]
     prefs: Prefs,
@@ -136,7 +140,7 @@ impl Loaded {
 
 /// 某个家目录底下那份文件。
 pub(crate) fn path_in(home: &Path) -> PathBuf {
-    home.join(relay_route_core::PREFS_REL)
+    home.join(DOC.rel)
 }
 
 /// 这台那份文件（家目录说不出 ⇒ `None`）。
@@ -146,8 +150,8 @@ pub(crate) fn path_now() -> Option<PathBuf> {
 
 /// 读一次 `path`。每次都真去读盘。
 pub(crate) fn read_at(path: &Path) -> Loaded {
-    use crate::common::own_state::{read_json, Read};
-    match read_json::<OnDisk>(path, MAX_BYTES) {
+    use crate::common::own_state::Read;
+    match DOC.read(path) {
         Read::Absent => Loaded::Absent,
         Read::Unreadable(why) => Loaded::Unreadable(why),
         Read::Present(d) if d.version != VERSION => Loaded::Unreadable(Said::with_raw(

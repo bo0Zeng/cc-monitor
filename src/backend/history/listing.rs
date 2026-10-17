@@ -332,9 +332,13 @@ fn table() -> std::sync::MutexGuard<'static, std::collections::BTreeMap<PathBuf,
     SESSION_META.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// 落盘那一份：缓存（读不出来 · 版本对不上 ⇒ 当没有，照记录重扫）。
+const STORE_DOC: crate::common::own_state::Doc<Saved> =
+    crate::common::own_state::Doc::cache(relay_route_core::LISTING_CACHE_REL, STORE_MAX_READ);
+
 /// 落盘那一份的（目录, 文件）。
 fn store_at(own: &Own) -> Option<(OwnPath, OwnPath)> {
-    let rel = relay_route_core::LISTING_CACHE_REL.strip_prefix(".cc-monitor/")?;
+    let rel = STORE_DOC.rel.strip_prefix(".cc-monitor/")?;
     let (dir, name) = rel.rsplit_once('/')?;
     let dir = own.path(dir).ok()?;
     let file = dir.join(name).ok()?;
@@ -346,23 +350,12 @@ pub(crate) fn load_from(own: &Own) {
     let Some((_, file)) = store_at(own) else {
         return;
     };
-    let Ok(meta) = Ro::metadata(file.as_path()) else {
-        return;
+    let parse = |r: &mut dyn std::io::Read| {
+        serde_json::from_reader(r).map_err(|e| crate::common::said::Said::from(e.to_string()))
     };
-    if !meta.is_file() || meta.len() > STORE_MAX_READ {
-        tracing::warn!("listing cache skipped: not a file or over the cap");
-        return;
-    }
-    let saved: Saved = match Ro::open(file.as_path())
-        .map_err(|e| e.to_string())
-        .and_then(|f| {
-            serde_json::from_reader(std::io::BufReader::new(f)).map_err(|e| e.to_string())
-        }) {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::debug!("listing cache unreadable: {e}");
-            return;
-        }
+    let saved: Saved = match STORE_DOC.read_stream(file.as_path(), parse) {
+        crate::common::own_state::Read::Present(s) => s,
+        _ => return,
     };
     if saved.v != STORE_VERSION {
         return;

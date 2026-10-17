@@ -11,11 +11,11 @@
 //!   删了能从记录重建，足迹里归「能重建」一类（`relay_route_core::SKELETON_DIR_REL`）。
 //! - 写只经 [`Own`]：建目录 · 拿目录锁 · 原子写（流式）· 删文件。
 //! - **按块读写**：写的时候边序列化边往盘上流（缓冲一块 [`READ_BLOCK`]），每过一块在两项之间插一个换行（JSON 允许）⇒ 文件是一行行
-//!   不长于约一块的；读的时候经 [`Blocks`] 一块一块读、边读边解析 ⇒ 手里不再有整份原文，峰值 ≈ 一块 ＋ 解出来的那份结构。
+//!   不长于约一块的；读的时候流式读（`own_state::Doc::read_stream`）、边读边解析 ⇒ 手里不再有整份原文，峰值 ≈ 一块缓冲 ＋ 解出来的那份结构。
 //! - **键是规范化之后的路径**（[`crate::common::fence::real_path`]）：预读那一路拿的是走出来的路径（可能经符号链接），冷开扫描图拿的是
 //!   围栏放行之后的路径 —— 同一份记录两种写法落到同一个键上，实时跟读起步时按这个键找得到冷开扫描图落的那一份。
 
-use crate::common::append_read::{Blocks, READ_BLOCK};
+use crate::common::append_read::READ_BLOCK;
 use crate::platform::fs::{Own, OwnPath, Ro};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -36,6 +36,12 @@ pub(crate) const MAX_FILES: usize = 256;
 
 /// 读一份骨架的上限。
 const MAX_READ: u64 = 1 << 30;
+
+/// 一份骨架：缓存（读不出来 · 版本或路径对不上 ⇒ 当没有，照记录整份重扫）。各份读成哪一形由 [`Skeletons::load`] 的调用方定。
+const DOC: crate::common::own_state::Doc<serde_json::Value> = crate::common::own_state::Doc::cache(
+    ".cc-monitor/cache/skeleton/<记录路径的摘要>.json",
+    MAX_READ,
+);
 
 /// 一份骨架记的「读到哪了」：那一刻的长度 · 修改时刻 · 游标（最后一个整行之后）· 游标前那几个字节。
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -164,20 +170,14 @@ impl Skeletons {
         let key = key_of(path);
         let f = self.file(&key)?;
         // 不在 ⇒ 没落过（不出声）；别的读不出（超了上限 · 不是文件 · 读错）· 解析不了 ⇒ 说一声是哪一份，当没有、照记录整份重扫。
-        let meta = Ro::metadata(f.as_path()).ok()?;
-        if !meta.is_file() || meta.len() > MAX_READ {
-            tracing::warn!(
-                "skeleton for {} skipped: not a file or over the cap",
-                path.display()
-            );
+        let parse = |r: &mut dyn std::io::Read| {
+            serde_json::from_reader::<_, File<T>>(r)
+                .map_err(|e| crate::common::said::Said::from(e.to_string()))
+        };
+        let crate::common::own_state::Read::Present(got) = DOC.read_stream(f.as_path(), parse)
+        else {
             return None;
-        }
-        let blocks = Blocks::open(f.as_path())
-            .map_err(|e| tracing::warn!("skeleton for {} skipped: {e}", path.display()))
-            .ok()?;
-        let got: File<T> = serde_json::from_reader(std::io::BufReader::new(BlockRead::new(blocks)))
-            .map_err(|e| tracing::debug!("skeleton for {} unreadable: {e}", path.display()))
-            .ok()?;
+        };
         (got.v == VERSION && Path::new(&got.path) == key).then_some(got.body)
     }
 
@@ -257,7 +257,7 @@ fn key_of(path: &Path) -> std::path::PathBuf {
     crate::common::fence::real_path(path).unwrap_or_else(|| path.to_path_buf())
 }
 
-/// 边序列化边写：缓冲一块，写出去的字节每过一块就在下一个数组元素 / 对象键之前插一个换行 ⇒ 文件一行行不长于约一块（[`Blocks`] 读得动）。
+/// 边序列化边写：缓冲一块，写出去的字节每过一块就在下一个数组元素 / 对象键之前插一个换行 ⇒ 文件一行行不长于约一块（按行读的工具也读得动）。
 fn write_lined<T: Serialize>(f: &mut dyn std::io::Write, v: &T) -> std::io::Result<()> {
     use std::io::Write as _;
     let since = std::rc::Rc::new(std::cell::Cell::new(0usize));
@@ -324,47 +324,6 @@ impl serde_json::ser::Formatter for Lined {
         first: bool,
     ) -> std::io::Result<()> {
         self.gap(w, first)
-    }
-}
-
-/// [`Blocks`] 当一个 `Read` 用：一块一块往外给，读到尾再给没有换行的那一截。
-struct BlockRead {
-    blocks: Blocks<crate::platform::fs::RoFile>,
-    cur: Vec<u8>,
-    pos: usize,
-    done: bool,
-}
-
-impl BlockRead {
-    fn new(blocks: Blocks<crate::platform::fs::RoFile>) -> Self {
-        BlockRead {
-            blocks,
-            cur: Vec::new(),
-            pos: 0,
-            done: false,
-        }
-    }
-}
-
-impl std::io::Read for BlockRead {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        while self.pos >= self.cur.len() {
-            if self.done {
-                return Ok(0);
-            }
-            self.cur = match self.blocks.next()? {
-                Some(b) => b,
-                None => {
-                    self.done = true;
-                    self.blocks.rest()
-                }
-            };
-            self.pos = 0;
-        }
-        let n = buf.len().min(self.cur.len() - self.pos);
-        buf[..n].copy_from_slice(&self.cur[self.pos..self.pos + n]);
-        self.pos += n;
-        Ok(n)
     }
 }
 

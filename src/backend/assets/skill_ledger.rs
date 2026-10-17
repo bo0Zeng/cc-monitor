@@ -45,6 +45,10 @@ pub const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::SKI
 pub const FORMAT_V: u64 = 1;
 /// 读一份记录的上限。一个文件一条约 100 字节 ⇒ 4 MiB 装得下四万个文件；超了当读不懂（不拿截断的当完整的）。
 pub const MAX_BYTES: u64 = 4 * 1024 * 1024;
+
+/// 装记录：状态（读不懂不覆盖；更新的格式也算读不懂）。
+const DOC: crate::common::own_state::Doc<Ledger> =
+    crate::common::own_state::Doc::state(relay_route_core::SKILL_LEDGER_REL, MAX_BYTES);
 /// 一趟 `add` 最多收这么多个文件（与 skill 读 / 装同一个上限，不另起一份）。
 use crate::assets::asset_catalog::SKILL_MAX_FILES as MAX_FILES;
 
@@ -114,34 +118,31 @@ pub fn ledger_path() -> Option<PathBuf> {
 pub type Read = crate::common::own_state::Read<Ledger>;
 
 pub fn read_at(path: &Path) -> Read {
-    crate::common::own_state::read_bytes(path, MAX_BYTES).and_then(|bytes| {
+    DOC.read_with(path, |bytes| {
         // 先只看版本：更新的格式整份不认（它可能多了这一版不认得的格子），也不覆盖。
         let v = serde_json::from_slice::<Value>(&bytes)
             .ok()
             .and_then(|j| j.get("v").and_then(Value::as_u64));
         if let Some(v) = v.filter(|v| *v != FORMAT_V) {
-            return Read::Unreadable(
-                copy_text(
-                    "beSkillLedger.read.otherVersion",
-                    &[
-                        ("path", &path.display().to_string()),
-                        ("mine", &FORMAT_V.to_string()),
-                        ("theirs", &v.to_string()),
-                    ],
-                )
-                .into(),
-            );
+            return Err(copy_text(
+                "beSkillLedger.read.otherVersion",
+                &[
+                    ("path", &path.display().to_string()),
+                    ("mine", &FORMAT_V.to_string()),
+                    ("theirs", &v.to_string()),
+                ],
+            )
+            .into());
         }
-        match serde_json::from_slice::<Ledger>(&bytes) {
-            Ok(l) => Read::Present(l),
-            Err(e) => Read::Unreadable(crate::common::said::Said::with_raw(
+        serde_json::from_slice::<Ledger>(&bytes).map_err(|e| {
+            crate::common::said::Said::with_raw(
                 copy_text(
                     "beSkillLedger.read.unknown",
                     &[("path", &path.display().to_string())],
                 ),
                 e,
-            )),
-        }
+            )
+        })
     })
 }
 
@@ -328,9 +329,7 @@ pub(crate) fn record_at(
         crate::wire::spec::Fail::from(("io_failed", copy_text("beSkillLedger.path.noHome", &[])))
     };
     let lock_dir = own.home_dir().map_err(no_home)?;
-    let file = own
-        .at_home(relay_route_core::SKILL_LEDGER_REL)
-        .map_err(no_home)?;
+    let file = own.at_home(DOC.rel).map_err(no_home)?;
     let path = file.as_path();
     // 只建那一层、建的那一下就是 0700。
     own.ensure_dir(&lock_dir).map_err(|e| {

@@ -54,6 +54,10 @@ pub const SKILL_MAX_FILES: usize = 512;
 pub const SKILL_MAX_FILE_BYTES: u64 = 4 * 1024 * 1024;
 /// 读自己那份目录文件的上限（远超正常量级；超了当读不出来，不截断）。
 pub const CATALOG_MAX_BYTES: u64 = 16 * 1024 * 1024;
+
+/// 资产目录：状态（读不出来不覆盖；更新的格式整份不认）。
+const DOC: crate::common::own_state::Doc<Catalog> =
+    crate::common::own_state::Doc::state(relay_route_core::ASSET_CATALOG_REL, CATALOG_MAX_BYTES);
 /// 机器 id 的长度上限（入参校验用；本模块生成的是 16 个十六进制字符）。
 const MAX_ID_BYTES: usize = 64;
 
@@ -813,7 +817,7 @@ fn new_machine_id() -> String {
 pub type Read = crate::common::own_state::Read<Catalog>;
 
 pub fn read_at(path: &Path) -> Read {
-    crate::common::own_state::read_json::<Catalog>(path, CATALOG_MAX_BYTES).and_then(|c| {
+    DOC.read(path).and_then(|c| {
         if c.v == FORMAT_V {
             Read::Present(c)
         } else {
@@ -855,7 +859,7 @@ pub fn update_at(
     incoming: Option<BTreeMap<String, Snapshot>>,
 ) -> Result<CatalogReply, crate::wire::spec::Fail> {
     let (cat, problems, changed) = update_with(own, scanned, label, incoming, false, now_secs())?;
-    let path = own.at_home(relay_route_core::ASSET_CATALOG_REL).ok();
+    let path = own.at_home(DOC.rel).ok();
     Ok(wire(
         &cat,
         &problems,
@@ -901,9 +905,7 @@ fn update_core(
         crate::wire::spec::Fail::from(("io_failed", copy_text("beAssetCatalog.write.noHome", &[])))
     };
     let dir = own.home_dir().map_err(no_home)?;
-    let file = own
-        .at_home(relay_route_core::ASSET_CATALOG_REL)
-        .map_err(no_home)?;
+    let file = own.at_home(DOC.rel).map_err(no_home)?;
     let path = file.as_path();
     own.ensure_dir(&dir).map_err(|e| {
         (

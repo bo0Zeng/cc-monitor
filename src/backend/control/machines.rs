@@ -24,6 +24,10 @@ const VERSION: u32 = 1;
 /// 读盘的上限。
 const MAX_BYTES: u64 = 1024 * 1024;
 
+/// 机器表：状态（读不懂不覆盖）。
+pub(crate) const DOC: crate::common::own_state::Doc<OnDisk> =
+    crate::common::own_state::Doc::state(relay_route_core::MACHINES_REL, MAX_BYTES);
+
 /// 一张表至多几台。
 pub(crate) const HOSTS_MAX: usize = 256;
 
@@ -95,7 +99,7 @@ impl Host {
 /// 盘上整份。
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct OnDisk {
+pub(crate) struct OnDisk {
     version: u32,
     hosts: Vec<Host>,
 }
@@ -128,7 +132,7 @@ impl Loaded {
 
 /// 某个家目录底下那份文件。
 pub(crate) fn path_in(home: &Path) -> PathBuf {
-    home.join(relay_route_core::MACHINES_REL)
+    home.join(DOC.rel)
 }
 
 fn not_ours(path: &Path, why: String) -> Said {
@@ -143,8 +147,8 @@ fn not_ours(path: &Path, why: String) -> Said {
 
 /// 读一次 `path`。每次都真去读盘。
 pub(crate) fn read_at(path: &Path) -> Loaded {
-    use crate::common::own_state::{read_json, Read};
-    match read_json::<OnDisk>(path, MAX_BYTES) {
+    use crate::common::own_state::Read;
+    match DOC.read(path) {
         Read::Absent => Loaded::Absent,
         Read::Unreadable(why) => Loaded::Unreadable(why),
         Read::Present(d) if d.version != VERSION => Loaded::Unreadable(not_ours(
@@ -525,11 +529,8 @@ pub(crate) struct MachinesReply {
 
 /// 库里每台记下的那几把的指纹（库读不出来 ⇒ 空：那一处另有拨号时的那一句）。
 fn host_keys_of(home: &Path, hosts: &[Host]) -> std::collections::BTreeMap<String, Vec<String>> {
-    use crate::common::own_state::{read_bytes, Read};
-    let text = match read_bytes(&home.join(relay_route_core::KNOWN_HOSTS_REL), 4 << 20) {
-        Read::Present(b) => String::from_utf8(b).unwrap_or_default(),
-        _ => String::new(),
-    };
+    let known = crate::dial::known_hosts::KNOWN_HOSTS;
+    let text = crate::dial::known_hosts::read_at(&home.join(known.rel)).unwrap_or_default();
     hosts
         .iter()
         .filter_map(|h| {

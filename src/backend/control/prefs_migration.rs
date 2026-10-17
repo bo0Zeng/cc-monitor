@@ -21,6 +21,7 @@
 
 use super::machine_prefs::{self, write as write_prefs, Prefs, PREFS_ROWS_MAX};
 use super::machines;
+use crate::common::own_state::Doc;
 use crate::dial::remote_ask::{ask_json, Remote, Table};
 use crate::platform::Own;
 use serde_json::Value;
@@ -38,6 +39,12 @@ const HANDOFF_VERSION: u32 = 1;
 
 /// 读盘的上限（同 `prefs.json`：几张小表；机器表封顶 256 台）。
 const MAX_BYTES: u64 = 4 * 1024 * 1024;
+
+/// 「待交」：状态（读不懂 ⇒ 不再交、也不写回）。
+const HANDOFF: Doc<Handoff> = Doc::state(relay_route_core::PREFS_HANDOFF_REL, MAX_BYTES);
+
+/// monitor 那份设置文件（只读，换形的来源）：状态（读不懂 ⇒ 不搬）。
+const CONFIG: Doc<Value> = Doc::state(".cc-monitor/config.json", MAX_BYTES);
 
 /// 拆出来的那几份：本机一份 · 远端每台一份（按 origin）。
 #[derive(Debug, Default, PartialEq)]
@@ -148,15 +155,15 @@ struct Handoff {
 }
 
 fn handoff_path(own: &Own) -> Option<std::path::PathBuf> {
-    own.at_home(relay_route_core::PREFS_HANDOFF_REL)
+    own.at_home(HANDOFF.rel)
         .ok()
         .map(|p| p.as_path().to_path_buf())
 }
 
 /// 还待交的那几台（读不懂 / 不在 ⇒ 空：读不懂的那一份不再交，也不写回）。
 pub(crate) fn read_pending(own: &Own) -> BTreeMap<String, Prefs> {
-    use crate::common::own_state::{read_json, Read};
-    match handoff_path(own).map(|p| read_json::<Handoff>(&p, MAX_BYTES)) {
+    use crate::common::own_state::Read;
+    match handoff_path(own).map(|p| HANDOFF.read(&p)) {
         Some(Read::Present(h)) if h.version == HANDOFF_VERSION => h.machines,
         _ => BTreeMap::new(),
     }
@@ -169,9 +176,7 @@ fn write_pending(own: &Own, machines: BTreeMap<String, Prefs>) -> Result<(), Str
         .lock(&dir)
         .map_err(|e| crate::common::said::Said::from(e).said)?;
     let path = dir
-        .join(relay_route_core::file_name_of(
-            relay_route_core::PREFS_HANDOFF_REL,
-        ))
+        .join(relay_route_core::file_name_of(HANDOFF.rel))
         .map_err(|e| e.said)?;
     if machines.is_empty() {
         return match own.delete_file(&path) {
@@ -192,8 +197,8 @@ fn write_pending(own: &Own, machines: BTreeMap<String, Prefs>) -> Result<(), Str
 
 /// 换形那一次的本体（句柄是参数）。
 pub(crate) fn migrate_in(own: &Own) -> Migrated {
-    use crate::common::own_state::{read_json, Read};
-    let Some(prefs_at) = own.at_home(relay_route_core::PREFS_REL).ok() else {
+    use crate::common::own_state::Read;
+    let Some(prefs_at) = own.at_home(machine_prefs::DOC.rel).ok() else {
         return Migrated::NoConfig;
     };
     if machine_prefs::read_at(prefs_at.as_path()) != machine_prefs::Loaded::Absent {
@@ -211,7 +216,7 @@ pub(crate) fn migrate_in(own: &Own) -> Migrated {
             Ok(h) => h,
             Err(e) => return Migrated::WriteFailed(crate::common::said::Said::from(e).said),
         };
-        read_json::<Value>(cfg_at.as_path(), MAX_BYTES)
+        CONFIG.read(cfg_at.as_path())
     };
     let cfg = match read {
         Read::Absent => return Migrated::NoConfig,
@@ -295,8 +300,8 @@ pub(crate) fn machines_of(cfg: &Value) -> Result<Vec<machines::Host>, String> {
 
 /// 机器表那一次的本体：`machines.json` 不在 ⇒ 锁里只读 `config.json`，`remote` 写成 `machines.json`（`config.json` 不动）。
 pub(crate) fn migrate_machines_in(own: &Own) -> MachinesMoved {
-    use crate::common::own_state::{read_json, Read};
-    let Some(at) = own.at_home(relay_route_core::MACHINES_REL).ok() else {
+    use crate::common::own_state::Read;
+    let Some(at) = own.at_home(machines::DOC.rel).ok() else {
         return MachinesMoved::NoConfig;
     };
     if machines::read_at(at.as_path()) != machines::Loaded::Absent {
@@ -313,7 +318,7 @@ pub(crate) fn migrate_machines_in(own: &Own) -> MachinesMoved {
             Ok(h) => h,
             Err(e) => return MachinesMoved::WriteFailed(crate::common::said::Said::from(e).said),
         };
-        read_json::<Value>(cfg_at.as_path(), MAX_BYTES)
+        CONFIG.read(cfg_at.as_path())
     };
     let cfg = match read {
         Read::Absent => return MachinesMoved::NoConfig,
@@ -349,11 +354,11 @@ fn old_homes(cfg: &Value) -> BTreeMap<String, String> {
 /// 换形之前那一次（`prefs.json` 还不在）：数据目录还在 `config.json` 那一格旧键里 ⇒ 照它（只读）。
 /// 起来时 [`super::machine_prefs::apply_agent_homes`] 在换形之前就要用到它，下一版随本文件删。
 pub(crate) fn agent_homes_before_move(own: &Own) -> BTreeMap<String, std::path::PathBuf> {
-    use crate::common::own_state::{read_json, Read};
+    use crate::common::own_state::Read;
     let Some(at) = own.root().and_then(|r| r.join(CONFIG_NAME).ok()) else {
         return BTreeMap::new();
     };
-    match read_json::<Value>(at.as_path(), MAX_BYTES) {
+    match CONFIG.read(at.as_path()) {
         Read::Present(v) => old_homes(&v)
             .into_iter()
             .map(|(k, d)| (k, std::path::PathBuf::from(d)))

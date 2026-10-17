@@ -25,6 +25,10 @@ pub(crate) type Read = crate::common::own_state::Read<Map<String, Value>>;
 /// 读盘的上限（一份令牌）。
 const MAX_BYTES: u64 = 1 << 20;
 
+/// 一个号的凭据文件（住那个号的配置目录，那一家登记的文件名）：状态（读不出来就不续、不覆盖）。
+const DOC: crate::common::own_state::Doc<Map<String, Value>> =
+    crate::common::own_state::Doc::state("<号的配置目录>/<那一家的凭据文件>", MAX_BYTES);
+
 pub(crate) fn creds_path(dir: &Path, face: &LoginFace) -> PathBuf {
     dir.join(face.creds_file)
 }
@@ -34,13 +38,11 @@ pub(crate) fn read(dir: &Path, face: &LoginFace) -> Read {
 }
 
 fn read_at(path: &Path) -> Read {
-    crate::common::own_state::read_bytes(path, MAX_BYTES).and_then(|b| {
-        match serde_json::from_slice::<Value>(&b) {
-            Ok(Value::Object(m)) => Read::Present(m),
-            Ok(_) => Read::Unreadable(copy_text("beOauthStore.read.notObject", &[]).into()),
-            // 解析错误的文本可能带着原文片段 ⇒ 只说「不是 JSON」。
-            Err(_) => Read::Unreadable(copy_text("beOauthStore.read.notJson", &[]).into()),
-        }
+    DOC.read_with(path, |b| match serde_json::from_slice::<Value>(&b) {
+        Ok(Value::Object(m)) => Ok(m),
+        Ok(_) => Err(copy_text("beOauthStore.read.notObject", &[]).into()),
+        // 解析错误的文本可能带着原文片段 ⇒ 只说「不是 JSON」。
+        Err(_) => Err(copy_text("beOauthStore.read.notJson", &[]).into()),
     })
 }
 

@@ -19,6 +19,7 @@
 //! 只在有新事实时写（新来处第一次被用 · 新会话第一次带着父被看见 · 每天头一次被用到刷新时刻）；平常一发零写盘。
 //! [`DROP_AFTER`] 没被用到的整条清掉（写的时候顺手清）。跨进程锁里读 → 改 → `own_state` 原子写；读不懂的那一份不覆盖。
 
+use crate::common::own_state::Doc;
 use crate::common::said::Said;
 use crate::platform::fs::{Own, Ro, Stamp};
 use copy_core::copy_text;
@@ -156,8 +157,11 @@ type Read = crate::common::own_state::Read<Book>;
 /// 读盘的上限（90 天清一次，远到不了）。
 const MAX_BYTES: u64 = 16 << 20;
 
+/// 那一份：状态（读不懂不覆盖）。
+const DOC: Doc<Book> = Doc::state(relay_route_core::LINEAGE_REL, MAX_BYTES);
+
 pub(crate) fn read_at(path: &Path) -> Read {
-    crate::common::own_state::read_json(path, MAX_BYTES)
+    DOC.read(path)
 }
 
 /// 盘上那一份 ＋ 一份缓存（盘上的戳变了才重读）。`path = None` ⇒ 家推不出来，只在内存里。

@@ -45,7 +45,7 @@ impl Writer {
         edit: &mut dyn FnMut(&str) -> Option<String>,
     ) -> Result<(), crate::common::said::Said> {
         let own = &self.0;
-        let file = own.at_home(relay_route_core::KNOWN_HOSTS_REL)?;
+        let file = own.at_home(KNOWN_HOSTS.rel)?;
         let dir = own.home_dir()?;
         own.ensure_dir(&dir).map_err(|e| e.to_string())?;
         let held = own.lock(&dir).map_err(crate::common::said::Said::from)?;
@@ -58,13 +58,17 @@ impl Writer {
 }
 
 /// 读那份文件（没有 ⇒ 空串）。读不出来的那份不当空的（当空的写回会把别的几台记下的钥匙一起抹掉）。
-fn read_at(file: &std::path::Path) -> Result<String, crate::common::said::Said> {
-    use crate::common::own_state::{read_bytes, Read};
-    match read_bytes(file, MAX_BYTES) {
+pub(crate) fn read_at(file: &std::path::Path) -> Result<String, crate::common::said::Said> {
+    use crate::common::own_state::Read;
+    match KNOWN_HOSTS.read_with(file, utf8) {
         Read::Absent => Ok(String::new()),
-        Read::Present(b) => String::from_utf8(b).map_err(|e| e.to_string().into()),
+        Read::Present(s) => Ok(s),
         Read::Unreadable(why) => Err(why),
     }
+}
+
+fn utf8(b: Vec<u8>) -> Result<String, crate::common::said::Said> {
+    String::from_utf8(b).map_err(|e| e.to_string().into())
 }
 
 /// 拨号核心的那份库（[`ssh_dial::env::HostKeys`]）：哪个进程都读那份文件；写只经启动时装的那只手（[`installed`]），
@@ -107,8 +111,8 @@ impl Writer {
     /// 那份配置内容不对就在锁里写成对的（内容没变不写盘），回它的路径。
     pub(crate) fn terminal_config(&self) -> Result<PathBuf, crate::common::said::Said> {
         let own = &self.0;
-        let known = own.at_home(relay_route_core::KNOWN_HOSTS_REL)?;
-        let file = own.at_home(relay_route_core::SSH_CONFIG_REL)?;
+        let known = own.at_home(KNOWN_HOSTS.rel)?;
+        let file = own.at_home(SSH_CONFIG.rel)?;
         let body = config_text(
             &known.as_path().to_string_lossy(),
             USER_CONFIG,
@@ -117,7 +121,11 @@ impl Writer {
         let dir = own.home_dir()?;
         own.ensure_dir(&dir).map_err(|e| e.to_string())?;
         let held = own.lock(&dir).map_err(crate::common::said::Said::from)?;
-        if read_at(file.as_path()).ok().as_deref() != Some(body.as_str()) {
+        let now = match SSH_CONFIG.read_with(file.as_path(), utf8) {
+            crate::common::own_state::Read::Present(s) => Some(s),
+            _ => None,
+        };
+        if now.as_deref() != Some(body.as_str()) {
             own.write(&file, &held, body.as_bytes())?;
         }
         Ok(file.as_path().to_path_buf())
@@ -148,6 +156,14 @@ fn config_word(v: &str) -> String {
 
 /// 读盘的上限（一台一行，远到不了）。
 const MAX_BYTES: u64 = 4 << 20;
+
+/// 主机钥匙库：状态（读不懂不覆盖）。
+pub(crate) const KNOWN_HOSTS: crate::common::own_state::Doc<String> =
+    crate::common::own_state::Doc::state(relay_route_core::KNOWN_HOSTS_REL, MAX_BYTES);
+
+/// 开终端那一行用的配置：缓存（照钥匙库的路径现写，读不懂 ⇒ 当没有、重写）。
+const SSH_CONFIG: crate::common::own_state::Doc<String> =
+    crate::common::own_state::Doc::cache(relay_route_core::SSH_CONFIG_REL, MAX_BYTES);
 
 #[cfg(test)]
 #[path = "../../../tests/backend/dial_known_hosts_tests.rs"]

@@ -1067,6 +1067,18 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
+        "src/backend/control/ccm/mod.rs",
+        "PLUGIN_FILE_MAX_BYTES",
+        "读回答题插件的一份文件（`~/.cc-monitor/answer-plugin/` 底下，只为比内容一样不一样）；超了 ⇒ `warn!` 带路径，当没有、重写",
+        "跳过+说清",
+    ),
+    (
+        "src/backend/relay/key.rs",
+        "KEY_MAX_BYTES",
+        "中转钥匙文件 `~/.cc-monitor/relay-key`（一行）；超了 ⇒ `warn!` 带路径说读不懂，当没有、重铸一把",
+        "跳过+说清",
+    ),
+    (
         "src/backend/dial/known_hosts.rs",
         "MAX_BYTES",
         "后端自有的主机钥匙 `~/.cc-monitor/known_hosts`（读不出来 ⇒ 不覆盖、回错，记钥匙那一处留一行日志）",

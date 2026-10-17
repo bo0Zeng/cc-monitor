@@ -91,10 +91,19 @@ pub(crate) fn pass_key_on_disk(home: &Path) -> Option<String> {
 
 /// 读回盘上那一把。不在 / 读不动 / 形状不对 ⇒ `None`（**只读**：探针与门都走这里）。
 pub(crate) fn read_key(path: &Path) -> Option<Key> {
-    crate::platform::fs::Ro::read_to_string(path)
-        .ok()
-        .and_then(|s| Key::from_text(&s))
+    let text = |b: Vec<u8>| String::from_utf8(b).map_err(|e| e.to_string().into());
+    match DOC.read_with(path, text) {
+        crate::common::own_state::Read::Present(s) => Key::from_text(&s),
+        _ => None,
+    }
 }
+
+/// 钥匙文件：缓存那一种（读不出来 ⇒ 当没有、[`ensure_key`] 重铸一把）。
+const DOC: crate::common::own_state::Doc<String> =
+    crate::common::own_state::Doc::cache(relay_route_core::KEY_FILE_REL, KEY_MAX_BYTES);
+
+/// 读盘的上限（一行钥匙）。
+const KEY_MAX_BYTES: u64 = 4096;
 
 /// 给一条中转地址（构造口产物）插上这台盘上那条路由要的那一把钥匙（[`KeyKind::for_url`]，**只读**）⇒ agent 进程要的展开形
 /// （环境变量里的、参数里的、用户自己贴进设置文件的那一段 —— 那里写不了 `$(cat …)`）。钥匙在这里插、不以裸值出本模块；
@@ -116,7 +125,7 @@ fn read_key_checked(path: &Path) -> Option<(Key, Verdict)> {
 /// 钥匙文件的权限结论随钥匙交回：宽了照实说、不拒、不自己改（改了不等于没漏，真要换钥匙会打断所有活会话）。
 /// **本模块唯一的写口**（只在中转绑上口之后调，`relay/listen.rs`）。
 pub(crate) fn ensure_key(own: &Own) -> Result<(Key, Verdict), crate::common::said::Said> {
-    let file = own.at_home(relay_route_core::KEY_FILE_REL)?;
+    let file = own.at_home(DOC.rel)?;
     let dir = own.home_dir()?;
     let path = file.as_path();
     if let Some(got) = read_key_checked(path) {

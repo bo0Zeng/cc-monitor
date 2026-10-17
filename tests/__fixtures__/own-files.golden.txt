@@ -1,0 +1,29 @@
+== cache/skeleton/<摘要>.json
+{"v":4,"path":"<home>/rec.jsonl","body":{"rows":[1,2,3],"tail":"x"}}
+== chores.json
+{"declined":["agents"],"selfPaste":"/x/.bashrc","startSkipped":false}
+
+== known_hosts
+box.lan ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA
+
+== launch-pending/4242.json
+{"account":"work","at":1700000000,"plugin":true}
+
+== machines.json
+{"version":1,"hosts":[{"label":"box","host":"box.lan","port":2222,"user":"u","keyPath":"","addresses":["10.0.0.2"],"jump":"","connect":true}]}
+
+== plan-review.json
+{"acks":{"/w":{"s1":["k1"]}},"returns":{}}
+
+== prefs.json
+{"version":1,"launchers":{},"resumeInTmux":false,"models":{},"permissionModes":{},"contextLimits":{},"agentHomes":{},"pbDir":null,"childTab":"hide","bgTab":"show"}
+
+== ssh_config
+UserKnownHostsFile <home>/.cc-monitor/known_hosts
+Include ~/.ssh/config
+Include <system ssh config>
+
+== strategies/even.rhai
+// rotation
+fn pick() {}
+

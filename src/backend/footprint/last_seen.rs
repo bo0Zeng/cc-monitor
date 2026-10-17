@@ -132,6 +132,10 @@ pub(crate) const MAX_VALUE_BYTES: usize = 256 * 1024;
 pub(crate) const MAX_ORIGINS: usize = 64;
 /// 整份文件最大多少字节（超了当读不懂）：每份封顶 × 两样 × 台数封顶 ＝ 256 KiB × 2 × 64。
 const MAX_FILE_BYTES: u64 = 32 * 1024 * 1024;
+
+/// 那一份：缓存（再连上一次就有）。
+const DOC: crate::common::own_state::Doc<Map<String, Value>> =
+    crate::common::own_state::Doc::cache(relay_route_core::LAST_SEEN_REL, MAX_FILE_BYTES);
 /// 机器名最长多少字节。
 const MAX_ORIGIN_BYTES: usize = 256;
 
@@ -143,7 +147,7 @@ fn bad(d: &str) -> crate::wire::spec::Fail {
 
 /// 这台机器上那份文件的路径；家目录解析不出来 ⇒ `None`。
 pub(crate) fn store_path() -> Option<PathBuf> {
-    Some(crate::platform::paths::home_dir()?.join(relay_route_core::LAST_SEEN_REL))
+    Some(crate::platform::paths::home_dir()?.join(DOC.rel))
 }
 
 fn origin_arg(m: &cmd_wire::Machine) -> Result<&str, crate::wire::spec::Fail> {
@@ -152,18 +156,11 @@ fn origin_arg(m: &cmd_wire::Machine) -> Result<&str, crate::wire::spec::Fail> {
         .ok_or_else(|| bad("`origin` missing or not a short non-empty string"))
 }
 
-/// 整份（读不懂 / 不在 ⇒ 空）。形状：`{<origin>: {<kind>: {atMs, value}}}`。
+/// 整份（读不懂 / 不在 ⇒ 空：缓存，下一次记的时候整份重来）。形状：`{<origin>: {<kind>: {atMs, value}}}`。
 fn load(path: &Path) -> Map<String, Value> {
-    match crate::common::own_state::read_json::<Map<String, Value>>(path, MAX_FILE_BYTES) {
+    match DOC.read(path) {
         crate::common::own_state::Read::Present(m) => m,
-        crate::common::own_state::Read::Absent => Map::new(),
-        crate::common::own_state::Read::Unreadable(why) => {
-            tracing::warn!(
-                "上次值 {} 读不懂（{why}）⇒ 照没记过算，下一次记的时候整份重来",
-                path.display()
-            );
-            Map::new()
-        }
+        _ => Map::new(),
     }
 }
 
@@ -279,8 +276,7 @@ fn place(own: &Own) -> Result<(OwnPath, OwnPath), crate::wire::spec::Fail> {
         |_| crate::wire::spec::Fail::from(("io_failed", copy_text("beLastSeen.store.noHome", &[])));
     Ok((
         own.home_dir().map_err(no_home)?,
-        own.at_home(relay_route_core::LAST_SEEN_REL)
-            .map_err(no_home)?,
+        own.at_home(DOC.rel).map_err(no_home)?,
     ))
 }
 

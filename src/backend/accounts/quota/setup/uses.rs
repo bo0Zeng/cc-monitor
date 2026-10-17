@@ -30,7 +30,10 @@ pub(crate) struct UsesBook {
 }
 
 impl Doc for UsesBook {
-    const FILE: &'static str = FILE_NAME;
+    const DISK: crate::common::own_state::Doc<Self> = crate::common::own_state::Doc::state(
+        relay_route_core::ROTATION_USES_REL,
+        rotation::MAX_BYTES,
+    );
     fn version() -> u64 {
         USES_VERSION
     }
@@ -270,7 +273,7 @@ pub(crate) fn migrate_at(own: &Own, env: &UpgradeEnv<'_>) -> Result<Migrated, Sa
             &m,
         )
     };
-    let raw: Value = match crate::common::own_state::read_json(path, rotation::MAX_BYTES) {
+    let raw: Value = match <Book as Doc>::DISK.read_as(path) {
         Read::Absent => return Ok(out),
         Read::Unreadable(e) => return Err(e),
         Read::Present(v) => v,

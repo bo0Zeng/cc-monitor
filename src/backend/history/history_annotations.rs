@@ -41,6 +41,10 @@ use serde_json::{json, Map, Value};
 /// 一条注解约 150 字节 ⇒ 64 MiB 装得下四十万条；真撞上说明那份文件不对劲，不拿截断的当完整的用。
 pub const MAX_BYTES: u64 = 64 * 1024 * 1024;
 
+/// 注解文件：状态（读不懂 ⇒ 读回「不知道」、拒写）。读成原文字节，升级链在内存里先升一遍再解。
+const FILE: crate::common::own_state::Doc<Vec<u8>> =
+    crate::common::own_state::Doc::state(".cc-monitor/history-metadata.json", MAX_BYTES);
+
 /// 单个那一格（[`Entry::hide`]；线上形住 `cmd-wire`，隐藏的判定在控制面也读它）。
 pub use cmd_wire::session::Hide;
 
@@ -147,8 +151,8 @@ pub fn path_from(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
 
 /// 读原文（带上限）。`Ok(None)` = 文件不在。
 fn read_raw(path: &Path) -> Result<Option<Vec<u8>>, crate::common::said::Said> {
-    use crate::common::own_state::{read_bytes, Read};
-    match read_bytes(path, MAX_BYTES) {
+    use crate::common::own_state::Read;
+    match FILE.read_with(path, Ok) {
         Read::Absent => Ok(None),
         Read::Present(b) => Ok(Some(b)),
         Read::Unreadable(why) => Err(why),
