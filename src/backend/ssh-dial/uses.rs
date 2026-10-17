@@ -95,7 +95,7 @@ pub use crate::pool::Lane;
 pub fn lane_of(u: Use) -> Lane {
     match u {
         Use::Stream => Lane::Stream,
-        Use::Capture | Use::Files => Lane::Query,
+        Use::Capture => Lane::Query,
         Use::Shell => Lane::Stream,
         // 不开通道（`MaxSessions` 不数它），同隧道那一道。
         Use::Hold => Lane::Tunnel,
@@ -638,25 +638,6 @@ async fn serve<R, W>(
                 return;
             }
             forward(Arc::clone(&lease.linked), listener, spec, &mut input, out).await
-        }
-        Use::Files => {
-            // sftp 子系统开好了才回 ack：「远端没开 sftp」要落在 ack 那一行里，不是第一条应答里。
-            let fp = lease.linked.fingerprint.clone();
-            let session = match moving(out, steps, crate::sftp::open(lease, req, stages)).await {
-                Ok(s) => s,
-                Err(e) => {
-                    // 拨号应答那一行：那一句进 `error`，SFTP 那一下的原话进 `detail`。
-                    let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
-                    return;
-                }
-            };
-            if write_stages_then_ack(out, stages, &ok_ack(&lease.linked))
-                .await
-                .is_err()
-            {
-                return;
-            }
-            crate::sftp::serve_files(&session, &mut input, out).await;
         }
         Use::Hold => {
             if write_stages_then_ack(out, stages, &ok_ack(&lease.linked))

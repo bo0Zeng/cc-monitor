@@ -14,7 +14,7 @@ const GUARDED: &[&str] = &[
     "src/frontend/shell/src/frame_query.rs",
     "src/frontend/shell/src/inbound_client.rs",
     "src/frontend/shell/src/local_backend.rs",
-    // 原先被 SFTP 拨号挡路石那张底账挡回的那份：那张账随 SR1b 退役，它今天只照本机后端的计划经 `files` 链路放字节，两道都过。
+    // 原先被 SFTP 拨号挡路石那张底账挡回的那份：那张账随 SR1b 退役，它今天只问本机后端 `deploy-install` · `deploy-uninstall`，两道都过。
     "src/frontend/shell/src/deploy.rs",
     // 原先被宿主无关判据挡回的那份：`remote-health` 改经注入的 `HealthOut`（`lib.rs::remote_health_out` 造），生产段零窗口把手。
     // 会话流来源是一个目录：整个目录都在人群里（[`guarded_files`] 展开以 `/` 结尾的那一格）。

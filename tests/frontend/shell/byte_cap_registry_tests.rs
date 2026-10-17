@@ -767,26 +767,11 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "一条链路手里的信用（= 在途下行字节）：`link-open` 的初始窗口与累计 `link-credit`",
         "拒收+回错",
     ),
-    // 部署读版本标记 / 入口 shim 那一问的上限（经本机后端 `files` 链路的 `read`，`max` 就是它）。
-    // `sftp.rs` 读版本标记那一读的上限那一行删了：那一读随 cc-acct-iso 的部署命令退役。
     // 公钥推送（本机常驻后端）读本机那份 `.pub` 的上限：先问大小，超了就不读、原话拒。
     (
         "src/backend/assets/pubkey.rs",
         "PUB_READ_MAX",
         "本机那份 `.pub`（公钥一行几百字节；超了就不是公钥）",
-        "拒收+回错",
-    ),
-    // SFTP 住本机常驻后端：部署链路（`use:"files"`）一问一答的两个界。
-    (
-        "src/backend/ssh-dial/sftp.rs",
-        "REQUEST_LINE_CAP",
-        "files 链路上一行请求（短 JSON；`put` 的字节不走行）",
-        "拒收+回错",
-    ),
-    (
-        "src/backend/ssh-dial/sftp.rs",
-        "MAX_PUT_BYTES",
-        "一次 `put` 收进内存的字节（后端二进制今天 MB 级）。超了 ⇒ 那几个字节照收照丢（别让下一行请求读到半截二进制）、回 `too_big`",
         "拒收+回错",
     ),
     (
@@ -1835,15 +1820,6 @@ const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
              （已在 `CAPS` 里登记，超限语义「拒收+回错」⇒ 413）。\
              `n > cap` 的判断在 `take(n)` **之前**，所以这里读不满 `cap` 就停 —— \
              不是静默截断：超限那一支一个字节都不读，直接回 413。",
-    ),
-    // files 链路的 `put`：`size` 是请求里**声明**的字节数（monitor 给），不是上限；
-    //   上限是具名常量 `MAX_PUT_BYTES`（已在 `CAPS` 里），`size > MAX_PUT_BYTES` 的判断在 `take(size)` **之前**。
-    (
-        "src/backend/ssh-dial/sftp.rs",
-        "size",
-        "`put` 的 `size` 是请求里声明的长度（对端给的），**不是上限**；上限是具名常量 `MAX_PUT_BYTES`\
-             （已在 `CAPS` 里，超限「拒收+回错」）。`size > MAX_PUT_BYTES` 那一支在 `take(size)` **之前**：\
-             超了就把那几个字节照收照丢、回 `too_big`；没超才读进内存，读不满回 `bad_request` —— 不是静默截断。",
     ),
     // 🔴 按需拉取那一跳的「一趟别读过头」那条摘了 —— 随 `sidecars/` 整棵走。
     //    它记的是「那个上限是同一趟里两个量的和，它只负责『一趟别读过头』，

@@ -119,7 +119,7 @@ fn link_ok(link: &str) -> Result<(), String> {
 pub(crate) struct LinkOpenReq {
     /// 链路 id：客户端给、客户端负责唯一（1..=128 字节）。
     pub(crate) link: String,
-    /// 拨号请求（`host` · `port` · `user` · `key_path` · `use` …，蛇形键；形状由拨号那一层解）；`use:"files"` 开 sftp 一问一答。
+    /// 拨号请求（`host` · `port` · `user` · `key_path` · `use` …，蛇形键；形状由拨号那一层解）。
     #[cfg_attr(test, ts(type = "Record<string, unknown>"))]
     pub(crate) dial: serde_json::Value,
     /// 初始下行信用（字节），在 [32 KiB, 16 MiB] 之内。
