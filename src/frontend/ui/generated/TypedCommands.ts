@@ -559,14 +559,12 @@ export interface RefusalData {
   "login-finish": { "bad_paste": LoginAgain; "refused": LoginAgain; "no_job": LoginAgain; "child_timed_out": LoginAgain };
   "login-start": { "not_found": LoginAgain; "unsupported": LoginAgain; "failed": LoginAgain };
   "machines-set": { "element_gone": Gone; "bad_machine": MachineFault };
-  "rotation-save": { "refused": RotRefused; "conflict": RotConflict };
   "rotation-settings": { "refused": RotRefused; "conflict": RotConflict };
   "rotation-strategy-add": { "bad_strategy": RotBadStrategy };
   "rotation-strategy-delete": { "in_use": RotInUse };
   "rotation-strategy-rename": { "conflict": RotConflict };
   "rotation-strategy-tz": { "conflict": RotConflict };
   "rotation-use-now": { "unusable": RotUnusable };
-  "rotation-view": { "refused": RotRefused };
   "session-open": { "bad_args": OpenRefusal; "unknown_agent": OpenRefusal; "bad_command": OpenRefusal; "no_dir": OpenRefusal; "account_unavailable": OpenRefusal; "place_unavailable": OpenRefusal; "bad_tmux_name": OpenRefusal; "tmux_taken": OpenRefusal; "record_gone": OpenRefusal; "already_live": OpenRefusal; "not_in_tmux": OpenRefusal; "wrong_owner": OpenRefusal; "unobservable": OpenRefusal; "fork_failed": OpenRefusal; "refused": OpenRefusal; "start_failed": OpenRefusal; "child_timed_out": OpenRefusal; "launch_pending": OpenRefusal; "no_strategy": OpenRefusal };
   "session-restart": { "account_unavailable": AccountUnavailable; "ambiguous": RestartRefused; "already_live": RestartRefused; "stop_failed": RestartRefused; "start_failed": RestartRefused };
   "terminal-follow": { "bad_target": FollowRefused; "not_known": FollowRefused; "ambiguous": FollowRefused; "no_tmux": FollowRefused; "tmux_too_old": FollowRefused; "too_many_follows": FollowRefused; "unobservable": FollowRefused; "child_timed_out": FollowRefused };

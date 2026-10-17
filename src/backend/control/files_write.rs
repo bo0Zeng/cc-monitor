@@ -557,7 +557,7 @@ pub fn mode_of_text(t: &str) -> Result<u32, WriteFail> {
 }
 
 /// 改 unix 权限位（只收低 12 位），另交**改之前**的权限位（低 12 位；读不到 ⇒ `None`）：调用方据它撤销。
-/// **跟链接** ⇒ 走 [`resolve_existing_in_root`]。非 unix 平台上**如实回失败**，不假装改成了（`Permissions` 在那边只有一个只读位）。
+/// **跟链接** ⇒ 走 `Last::Follow`。非 unix 平台上**如实回失败**，不假装改成了（`Permissions` 在那边只有一个只读位）。
 pub fn change_mode_reporting(
     face: &Face,
     root: &Path,

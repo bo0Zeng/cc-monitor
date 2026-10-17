@@ -12,6 +12,7 @@
  * 真 `RemoteSection` ＋ 真 `BackendSection`（寄居模式），页宿主照设置窗那样给每页挂那台的几格；只把 IPC 与 config 换成桩。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import HEALTH_GOLDEN from "../../../__fixtures__/backend-health.golden.json";
 
 vi.mock("../../../../src/frontend/ui/config", () => ({ loadConfig: vi.fn(), patchConfig: vi.fn() })); // 写口换成按键补丁
 vi.mock("@tauri-apps/api/core", () => ({
@@ -38,7 +39,7 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
           case "backend_machines":
             return Promise.resolve([...ipc.registered]);
           case "backend_status":
-            return Promise.resolve({ channel: true, pid: 7, health: { state: "unknown", summary: "无退出记录", why: null, detail: null } });
+            return Promise.resolve({ channel: true, pid: 7, health: HEALTH_GOLDEN.cases[0].face });
           // 「退出行为」那一问改走通道：一发 `chan_call`（op = `exit-policy-read`），回后端那份字节。
           case "chan_call": {
             // 机器表住本机后端（`machines-read`）：照 `mount` 摆的那几台答。

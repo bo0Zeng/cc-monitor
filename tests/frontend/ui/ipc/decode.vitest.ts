@@ -1,13 +1,9 @@
-// 严格收的三个小件只住 `ipc/decode.ts` 一处：是不是对象 · 键恰好这几格 · 必有几格 ＋ 可缺几格。
+// 严格收的两个小件只住 `ipc/decode.ts` 一处：键恰好这几格 · 必有几格 ＋ 可缺几格。
 import { describe, it, expect } from "vitest";
-import { exactKeys, isObj, optionalKeys } from "../../../../src/frontend/ui/ipc/decode";
+import { exactKeys, optionalKeys } from "../../../../src/frontend/ui/ipc/decode";
 import { productionTsFiles } from "../../../test-support/production-sources.ts";
 
 describe("ipc/decode", () => {
-  it("isObj：只认普通对象", () => {
-    expect([{}, { a: 1 }].map(isObj)).toEqual([true, true]);
-    expect([null, [], "x", 1, undefined].map(isObj)).toEqual([false, false, false, false, false]);
-  });
   it("exactKeys：多一格 / 缺一格都不收，顺序不论", () => {
     expect(exactKeys({ a: 1, b: 2 }, ["b", "a"])).toBe(true);
     expect(exactKeys({ a: 1 }, ["a", "b"])).toBe(false);
