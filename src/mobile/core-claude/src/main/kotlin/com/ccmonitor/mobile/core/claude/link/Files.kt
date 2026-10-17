@@ -175,11 +175,11 @@ object FilesLs {
 
     /** 整份那一形的回包 ⇒ 照先后的每一行（原行 ＋ 解好的那一份）＋ 头；不是整份 · 有一行解不出 ⇒ `null`。 */
     private fun whole(data: Any?): Pair<List<Pair<Any?, LsEntry>>, LsHead>? {
-        val p = Wire.bind<SyncPatch>(data) ?: return null
-        if (!p.whole) return null
+        val p = Wire.bind<SyncPatch>(data)?.takeIf { it.whole && it.order != null } ?: return null
         val head = Wire.bind<LsHead>(p.head?.info) ?: return null
-        val rows = (p.order ?: return null).map { k -> p.up[k].let { raw -> raw to (Wire.bind<LsEntry>(raw) ?: return null) } }
-        return rows to head
+        val order = p.order.orEmpty()
+        val rows = order.mapNotNull { k -> p.up[k].let { raw -> Wire.bind<LsEntry>(raw)?.let { raw to it } } }
+        return if (rows.size == order.size) rows to head else null
     }
 
     private fun entryOf(e: LsEntry): Entry? {

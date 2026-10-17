@@ -820,6 +820,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 文件管理那一族的线上类型：路径字节的那一形（`{"b16"}` 的键 · 取字节）。界面只发 `files-delete-session`，不解路径字节。
     HEX_KEY: NONE,
     bytes: NONE,
+    // 路径字节当集合键 · 推送 `key` 用的那一串（`files-ls` 每行的键、`changed {files_dir}` 的键）。界面不列目录，TS 侧没有孪生。
+    key: NONE,
     // 会话族手机问的那几条：回包类型住这里的那几条命令 · 按类型解回包 · 判据对后端 `impl Command` 用的名字。
     //   只有手机嵌的 Rust 核心解（界面按生成的 TS 类型收，不另解），TS 侧没有孪生。
     COMMANDS: NONE,
@@ -857,6 +859,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     descending: NONE,
     // 带键集合手上那份照答换（`sync::Hand::apply`）：Rust 消费方与手机 `SyncHand` 照同一份金样；界面问本机后端拿整份、不换，TS 侧没有孪生。
     apply: NONE,
+    // 手上那份照先后摊开（`sync::Hand::in_order`）：同上，界面不存手上那份。
+    in_order: NONE,
   },
   "copy-core": {
     backend_old: "J22",
