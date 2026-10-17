@@ -507,9 +507,15 @@ fn the_account_said_at_announce_stays_on_the_faces_after_it_leaves() {
     l.on_frame(&with("a", Some("b")));
     l.on_frame(&with("z", None));
     let (_, out) = l.on_frame(&gone("a"));
-    assert_eq!(accounts(out), vec![("a".to_string(), Some("b".to_string()))]);
+    assert_eq!(
+        accounts(out),
+        vec![("a".to_string(), Some("b".to_string()))]
+    );
     let (_, out) = l.on_frame(&gone("z"));
     assert_eq!(accounts(out), vec![("z".to_string(), None)]);
     // 记录在不在翻了（已结束 ⇄ 记录已不在）那一张也带。
-    assert_eq!(accounts(l.on_record("a", false)), vec![("a".to_string(), Some("b".to_string()))]);
+    assert_eq!(
+        accounts(l.on_record("a", false)),
+        vec![("a".to_string(), Some("b".to_string()))]
+    );
 }

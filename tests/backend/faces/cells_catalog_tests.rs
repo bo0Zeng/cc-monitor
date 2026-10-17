@@ -640,10 +640,18 @@ fn every_specimen_fills_every_cell() {
             .filter(|(n, _)| *n == p.name)
             .map(|(_, c)| format!("{c}: absent"))
             .collect();
-        let left: BTreeSet<String> = holes.iter().filter(|h| !waived.contains(*h)).cloned().collect();
+        let left: BTreeSet<String> = holes
+            .iter()
+            .filter(|h| !waived.contains(*h))
+            .cloned()
+            .collect();
         assert!(left.is_empty(), "成品 {} 的样本没写全：{left:#?}", p.name);
         let stale: Vec<&String> = waived.iter().filter(|w| !holes.contains(*w)).collect();
-        assert!(stale.is_empty(), "成品 {} 登记了从不写、样本里却写了：{stale:#?}", p.name);
+        assert!(
+            stale.is_empty(),
+            "成品 {} 登记了从不写、样本里却写了：{stale:#?}",
+            p.name
+        );
         assert!(!cells.is_empty(), "成品 {} 一格都没有", p.name);
     }
 }

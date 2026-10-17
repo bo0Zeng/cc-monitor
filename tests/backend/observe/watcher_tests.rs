@@ -1547,7 +1547,8 @@ fn the_announcement_says_which_account_the_session_runs_under() {
         let mut child = cmd.spawn().expect("spawn sleep");
         let pid = child.id();
         // 环境与 cmdline 同一刻摆上：看见 cmdline 就读得到环境。
-        while !std::fs::read(format!("/proc/{pid}/cmdline")).is_ok_and(|c| c.starts_with(b"sleep")) {
+        while !std::fs::read(format!("/proc/{pid}/cmdline")).is_ok_and(|c| c.starts_with(b"sleep"))
+        {
             std::thread::yield_now();
         }
         let ticks = proc_starttime(pid).expect("child starttime");
@@ -1574,7 +1575,11 @@ fn the_announcement_says_which_account_the_session_runs_under() {
     };
     let b = Some("b".to_string());
     assert_eq!(announce(Some(&cfg), "acct-b"), (b.clone(), b));
-    assert_eq!(announce(None, "acct-none"), (None, None), "没设配置目录、账号库里也没有账号 0 ⇒ 不说");
+    assert_eq!(
+        announce(None, "acct-none"),
+        (None, None),
+        "没设配置目录、账号库里也没有账号 0 ⇒ 不说"
+    );
     std::fs::remove_dir_all(&dir).ok();
 }
 

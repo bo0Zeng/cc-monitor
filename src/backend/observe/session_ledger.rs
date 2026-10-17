@@ -83,7 +83,9 @@ impl SessionLedger {
     /// 一帧要发出去之前：`(它自己发不发, 紧跟它之后补发的帧)`。
     pub(crate) fn on_frame(&mut self, f: &Frame) -> (bool, Vec<Frame>) {
         match f {
-            Frame::SessionAdded(crate::wire::SessionAdded { sid, path, face, .. }) => {
+            Frame::SessionAdded(crate::wire::SessionAdded {
+                sid, path, face, ..
+            }) => {
                 self.live.insert(sid.clone());
                 match &face.account {
                     Some(a) => self.accounts.insert(sid.clone(), a.clone()),

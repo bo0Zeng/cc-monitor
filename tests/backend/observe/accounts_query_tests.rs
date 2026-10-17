@@ -1296,7 +1296,9 @@ fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
     );
     let calls = prod.matches("owner_of(pid, ").count();
     let keyed = prod.matches("owner_of(pid, env_keys.config_dir").count()
-        + prod.matches("owner_of(pid, face.session_env.config_dir").count();
+        + prod
+            .matches("owner_of(pid, face.session_env.config_dir")
+            .count();
     assert_eq!(
         (calls, keyed),
         (2, 2),

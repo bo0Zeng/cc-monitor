@@ -4425,7 +4425,7 @@ line: Words, tone: Tone,
 order: number, can: SessionCan, 
 /**
  * 跑在账号库里哪个号下：那台后端宣告时读会话进程环境判一次，这条会话之后的脸（含离开「活」的那几张）都带它。
- * 那一家没有账号库 · 判不了 · 清单行 ⇒ 不上线。
+ * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
 type Tab = "show" | "hide";
@@ -4582,7 +4582,7 @@ line: Words, tone: Tone,
 order: number, can: SessionCan, 
 /**
  * 跑在账号库里哪个号下：那台后端宣告时读会话进程环境判一次，这条会话之后的脸（含离开「活」的那几张）都带它。
- * 那一家没有账号库 · 判不了 · 清单行 ⇒ 不上线。
+ * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
 type SessionHits = { 
@@ -4801,7 +4801,7 @@ line: Words, tone: Tone,
 order: number, can: SessionCan, 
 /**
  * 跑在账号库里哪个号下：那台后端宣告时读会话进程环境判一次，这条会话之后的脸（含离开「活」的那几张）都带它。
- * 那一家没有账号库 · 判不了 · 清单行 ⇒ 不上线。
+ * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
 type SessionHits = { 
@@ -6583,7 +6583,7 @@ line: Words, tone: Tone,
 order: number, can: SessionCan, 
 /**
  * 跑在账号库里哪个号下：那台后端宣告时读会话进程环境判一次，这条会话之后的脸（含离开「活」的那几张）都带它。
- * 那一家没有账号库 · 判不了 · 清单行 ⇒ 不上线。
+ * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
@@ -6807,7 +6807,7 @@ line: Words, tone: Tone,
 order: number, can: SessionCan, 
 /**
  * 跑在账号库里哪个号下：那台后端宣告时读会话进程环境判一次，这条会话之后的脸（含离开「活」的那几张）都带它。
- * 那一家没有账号库 · 判不了 · 清单行 ⇒ 不上线。
+ * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
@@ -7213,7 +7213,7 @@ line: Words, tone: Tone,
 order: number, can: SessionCan, 
 /**
  * 跑在账号库里哪个号下：那台后端宣告时读会话进程环境判一次，这条会话之后的脸（含离开「活」的那几张）都带它。
- * 那一家没有账号库 · 判不了 · 清单行 ⇒ 不上线。
+ * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
 type SessionFacts = { 
@@ -13575,7 +13575,7 @@ line: Words, tone: Tone,
 order: number, can: SessionCan, 
 /**
  * 跑在账号库里哪个号下：那台后端宣告时读会话进程环境判一次，这条会话之后的脸（含离开「活」的那几张）都带它。
- * 那一家没有账号库 · 判不了 · 清单行 ⇒ 不上线。
+ * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
@@ -13907,7 +13907,7 @@ line: Words, tone: Tone,
 order: number, can: SessionCan, 
 /**
  * 跑在账号库里哪个号下：那台后端宣告时读会话进程环境判一次，这条会话之后的脸（含离开「活」的那几张）都带它。
- * 那一家没有账号库 · 判不了 · 清单行 ⇒ 不上线。
+ * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";

@@ -2586,7 +2586,12 @@ fn report_to(id: u64, state: &mut ReaderState, sink: &mut FrameSink) {
         ) = (&mut added, entry)
         {
             let account = face.account.take();
-            *face = announced_face(state.reading.contains(&sid), e.activity, container.as_ref(), account);
+            *face = announced_face(
+                state.reading.contains(&sid),
+                e.activity,
+                container.as_ref(),
+                account,
+            );
             *name_face = crate::history::search_rules::name_face(&e.facts);
             waiting_for.clone_from(&e.waiting_for);
             if e.path.is_some() {
@@ -3222,8 +3227,9 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
         state.reading.insert(sid.clone());
     }
     // 那一家有账号库才判：进程环境里的配置目录对上账号库里哪个号。
-    let account = crate::agents::accounts_face(a.kind)
-        .and_then(|f| crate::observe::accounts_query::account_of_process(pid, &f, &state.accts_dir));
+    let account = crate::agents::accounts_face(a.kind).and_then(|f| {
+        crate::observe::accounts_query::account_of_process(pid, &f, &state.accts_dir)
+    });
     let face = announced_face(reading, a.activity, container.as_ref(), account);
     let added = Frame::SessionAdded(crate::wire::SessionAdded {
         sid: sid.clone(),
@@ -4541,7 +4547,11 @@ impl FrameSink {
         for sid in due {
             s.kept_answered.insert(sid.clone());
             l.said_ended(&sid);
-            s.push(Frame::session_state(sid, crate::wire::SessionFate::Ended, None));
+            s.push(Frame::session_state(
+                sid,
+                crate::wire::SessionFate::Ended,
+                None,
+            ));
         }
     }
 

@@ -1984,7 +1984,8 @@ fn the_fates_sort_after_every_live_session_on_one_ruler() {
     })
     .collect();
     let fate = |f| {
-        serde_json::to_value(Frame::session_state("s".into(), f, None)).unwrap()["face"]["order"].as_u64()
+        serde_json::to_value(Frame::session_state("s".into(), f, None)).unwrap()["face"]["order"]
+            .as_u64()
     };
     assert_eq!(live, [0, 1, 2, 3].into());
     assert_eq!(
