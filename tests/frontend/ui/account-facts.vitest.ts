@@ -1,4 +1,7 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, it, expect, vi } from "vitest";
+import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import {
   askHost,
   createAccountFacts,
@@ -77,6 +80,24 @@ describe("账号清单那一侧：只在那台清单可能变了时问那一台"
     feed.refresh("devbox");
     await settle();
     expect([...got.at(-1)!.currentByOrigin.keys()]).toEqual(["devbox"]);
+  });
+});
+
+describe("主界面接线：谁会重问账号清单", () => {
+  // 会话起停不在里面：会话跑在哪个号下由那台在宣告里说（`tabs.vitest.ts` 那条「3 台、起停一条会话」管徽章那一半）。
+  it("★ 重问只有三处：本界面切号（那一台）· 那台 `changed/accounts`（那一台）· 订阅登记好之后补刷一次（各台）", () => {
+    const src = readFileSync(resolve(REPO_ROOT, "src", "frontend", "ui", "main.ts"), "utf8");
+    const lines = (needle: RegExp): string[] => src.split("\n").filter((l) => needle.test(l)).map((l) => l.trim());
+    expect(lines(/accountFacts\.refresh\(/)).toEqual([
+      "onDefaultChanged: (origin: Origin) => accountFacts.refresh(origin),",
+      "accountFacts.refresh(origin);",
+    ]);
+    expect(lines(/onAccountsChanged\(/).filter((l) => !l.startsWith("const "))).toEqual([
+      "onAccountsChanged(origin);",
+      "onAccountsChanged();",
+    ]);
+    // 带台的那一处在 `changed` 的 accounts 分支里
+    expect(/case "accounts":\s*onAccountsChanged\(origin\);/.test(src)).toBe(true);
   });
 });
 
