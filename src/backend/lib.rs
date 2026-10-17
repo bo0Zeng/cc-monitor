@@ -109,7 +109,7 @@ pub const PROTO_VERSION: u32 = 1;
 
 /// 后端身份（`Hello` 帧的 `build_id`，也烤进二进制的身份戳）：monitor 拿它比内嵌那份的，不同 ⇒ 那台该换后端。
 /// 后端发出去的东西变了（子命令集 · 冻结格 · 形状指纹 · 行为）就打一个新的：`tests/scripts/bump-build-id.sh`，再 re-embed。
-pub const BUILD_ID: &str = "p10t-batch-core";
+pub const BUILD_ID: &str = "p10u-arrive-book";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
