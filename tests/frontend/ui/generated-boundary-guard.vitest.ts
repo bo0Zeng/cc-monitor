@@ -34,7 +34,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { relative, resolve } from "node:path";
+import { relative, resolve, sep } from "node:path";
 
 const ROOT = REPO_ROOT;
 const read = (p: string) => readFileSync(resolve(ROOT, p), "utf8");
@@ -127,6 +127,9 @@ function crateDirOf(filePath: string): string | null {
   return null;
 }
 
+/** 仓根相对、分隔符一律 `/`（Windows 上 `relative` 给的是 `\`，登记目录写的是 `/`）。 */
+const repoRel = (abs: string): string => relative(ROOT, abs).split(sep).join("/");
+
 /** 现算一个导出类型的落点目录（仓根相对）。 */
 function resolveTargetDir(filePath: string, attrs: string): string | null {
   const crateDir = crateDirOf(filePath);
@@ -134,11 +137,11 @@ function resolveTargetDir(filePath: string, attrs: string): string | null {
   const concatM = /export_to\s*=\s*concat!\(env!\("CARGO_MANIFEST_DIR"\),\s*"([^"]+)"\)/.exec(attrs);
   if (concatM) {
     const rel = concatM[1].replace(/^\//, "");
-    return relative(ROOT, resolve(ROOT, crateDir, rel));
+    return repoRel(resolve(ROOT, crateDir, rel));
   }
   const litM = /export_to\s*=\s*"([^"]+)"/.exec(attrs);
   if (litM) {
-    return relative(ROOT, resolve(ROOT, crateDir, "bindings", litM[1]));
+    return repoRel(resolve(ROOT, crateDir, "bindings", litM[1]));
   }
   return null;
 }

@@ -41,7 +41,8 @@ function pb(root: string, cwd: string, ...args: string[]): { rc: number | null; 
 
 const dumped = (root: string, cwd: string): Record<string, unknown> => JSON.parse(pb(root, cwd, "dump").out) as Record<string, unknown>;
 
-describe("pb 替身", () => {
+// 替身是起 `python3` 的一段脚本、PATH 照 Unix 给：截图台架只在 Linux 上跑，Windows 那一格让开。
+describe.skipIf(process.platform === "win32")("pb 替身", () => {
   it("插件清单的名字是 planned-build，入口在 pb 的位置", () => {
     const d = blankDisk();
     putPb(d);
