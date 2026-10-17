@@ -68,10 +68,9 @@
 //! ⚠ **够不着的那批逐条列在下面「保证不了什么」1–4** —— 别把上面这句读成「只剩一种拼法」。
 //!
 //! - **它数的是什么**（两条针，各数各的）：
-//!   ① 生产段里 `mpsc::channel::<Frame>(` 出现几次 = **3**（`PINS` 里 `observe/watcher.rs`
-//!      那一行）—— **搬 `Frame` 的 mpsc 通道的诞生点**，不是类型名的出现处。
-//!      今天 3 = 观测 1（`observe/watcher.rs`）+ 应答 2（`main.rs`：stdio 那条 + 常驻那条，
-//!      与 `writer_task(` 那条针的 2 同源）。
+//!   ① **搬 `Frame` 的 mpsc 通道的诞生点**，不是类型名的出现处（`PINS` 里两行）：
+//!      观测通道 `mpsc::unbounded_channel::<(Frame, usize)>(` = 1（`observe/watcher.rs`，按字节记账的那条）；
+//!      应答通道 `mpsc::channel::<Frame>(` = 2（`main.rs`：stdio 那条 + 常驻那条，与 `writer_task(` 那条针的 2 同源）。
 //!   ② 生产段里 `::channel(` 出现几次 = **0**
 //!      （[`tests::no_qualified_channel_call_leaves_its_payload_type_to_inference`]）——
 //!      一处「**带路径前缀而把载荷类型交给推导**」的诞生点都没有。
@@ -195,16 +194,14 @@ mod tests {
         // `busy.swap(true` 那一行摘了：多客户之后不再有「谁拿到那一张牌」。
         (
             "observe/watcher.rs",
-            "mpsc::channel::<Frame>(",
+            "mpsc::unbounded_channel::<(Frame, usize)>(",
             1,
-            3,
-            "观测帧**每条连接一个消费者**，钉在那条通道的**诞生点**上：`watcher::WatcherPoke::attach` 里\
-             `mpsc::channel::<Frame>(CHANNEL_CAPACITY)` 那一句，**全 crate 只此一处造观测通道**（每接一条连接走一次）。\
+            1,
+            "观测帧**每条连接一个消费者**，钉在那条通道的**诞生点**上：`watcher::frame_channel` 里那一句\
+             （按字节记账，`WatcherPoke::attach` 每接一条连接走一次），**全 crate 只此一处造观测通道**。\
              `tokio` 的 `Receiver` 不可 clone ⇒ 一条通道**至多**一个消费端 ⇒ 一条连接至多一个消费端；\
              扇出在 watcher 里（`FrameSink::fan`：整台那一层过一次，再逐条连接投），丢帧账按连接记（`watcher::Sub`）。\
              再造第二处 `Frame` 通道 = 有一条绕开整台那一层（会话账本 · 预读拦帧）的路 ⇒ 回来重判。\
-             ⇒ 全 crate 3 = 观测 1 + `main.rs` 的应答通道 2（stdio 那条 + 常驻那条，\
-             与 `writer_task(` 那条针的 2 同源）。第 4 处出现时回来重判它是哪一种。\
              ⚠ 本行从 `mpsc::Receiver<Frame>`（数**类型名出现几处**）换成**诞生点**：\
              旧针把 `writer_task` 的两个**形参**算进那个 3，于是抽一个借用同一条通道的 helper\
              这种**零语义变更的纯重构**会红（`K-G2 D2` 实打）。传递 / 借用 / move 一个**已有的**\
@@ -216,6 +213,14 @@ mod tests {
              那条钉着「生产段里 `::channel(` 恰好 0 处」，把**带路径前缀的**诞生点逼回 turbofish\
              这一种写法，本行在**那两条锚点够得着的范围内**才数得全（够不着的四条列在模块头注）。\
              **改本行之前先读那一条。**",
+        ),
+        (
+            "main.rs",
+            "mpsc::channel::<Frame>(",
+            2,
+            2,
+            "应答通道**一条载体一条**：stdio 那条 + 常驻那条（与 `writer_task(` 那条针的 2 同源）。\
+             第 3 处 = 又造了一条搬 `Frame` 的通道（turbofish 那一形）⇒ 回来重判它是哪一种。",
         ),
         (
             "wire/listen.rs",
@@ -647,7 +652,9 @@ mod tests {
         //    「只验一个拼法」正是那一版被打回的原因。
         let caught = |probe: &str| {
             (
-                probe.matches(needle).count(),
+                PINS.iter()
+                    .map(|p| probe.matches(p.1).count())
+                    .sum::<usize>(),
                 probe.matches(BARE_BIRTH).count(),
             )
         };
@@ -666,7 +673,7 @@ mod tests {
             assert!(
                 by_pin + by_bare > 0,
                 "「再造一条 `Frame` 通道」的拼法 {spelling} **两条针都没认出来**\n\
-                 （`{needle}` {by_pin} 处 · `{BARE_BIRTH}` {by_bare} 处）：\n\
+                 （`PINS` 各锚点 {by_pin} 处 · `{BARE_BIRTH}` {by_bare} 处）：\n\
                  {probe:?}\n\
                  ★ 这一刀是**真的**第二个消费端（`Receiver` 不可 clone，第二个消费端只能这么来）。\n\
                  消假阳把牙一起拔了，而恒绿的判据就是假绿。"

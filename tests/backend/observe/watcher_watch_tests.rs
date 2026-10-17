@@ -9,18 +9,11 @@ use crate::wire::WatchFrom;
 const A: &str = "s-wa";
 const B: &str = "s-wb";
 
-fn rig(
-    tag: &str,
-) -> (
-    PathBuf,
-    ReaderState,
-    FrameSink,
-    tokio::sync::mpsc::Receiver<Frame>,
-) {
+fn rig(tag: &str) -> (PathBuf, ReaderState, FrameSink, FrameRx) {
     let dir = std::env::temp_dir().join(format!("ccm-watch-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let (tx, rx) = tokio::sync::mpsc::channel::<Frame>(256);
+    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES);
     let mut state = ReaderState::new(dir.clone());
     state.active_sids.insert(A.to_string());
     state.active_sids.insert(B.to_string());
@@ -48,7 +41,7 @@ fn append(path: &Path, n: usize) {
 }
 
 /// 这一趟上了流的行：`(会话, 行号)`。
-fn lines(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<(String, u64)> {
+fn lines(rx: &mut FrameRx) -> Vec<(String, u64)> {
     let mut out = Vec::new();
     while let Ok(f) = rx.try_recv() {
         if let Frame::Line(crate::wire::Line {
@@ -220,7 +213,7 @@ fn a_list_on_the_attach_line_holds_from_the_first_frame() {
             }),
         );
     }
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(256);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
     let ask = crate::wire::WatchAsk {
         sids: vec![A.into()],
         branch: vec![crate::wire::BranchHeld {
@@ -293,14 +286,14 @@ fn conn(
     state: &mut ReaderState,
     id: u64,
     ask: Option<crate::wire::WatchAsk>,
-) -> tokio::sync::mpsc::Receiver<Frame> {
-    let (tx, rx) = tokio::sync::mpsc::channel::<Frame>(256);
+) -> FrameRx {
+    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES);
     join(Sub::new(id, tx, crate::Tz::default()), ask, state, sink);
     rx
 }
 
 /// 这一趟收到的会话账那几帧：`ended x` · `reconnectable x` · `listed`。
-fn told(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<String> {
+fn told(rx: &mut FrameRx) -> Vec<String> {
     let mut out = Vec::new();
     while let Ok(f) = rx.try_recv() {
         match f {
@@ -401,14 +394,14 @@ fn reporting_again_answers_only_the_new_ones() {
 
 // ── 拥塞：通了先一句 overflow（那台写的）；丢过行以外的 ⇒ 原连接上就地重报，客户端不判、不重接 ──
 
-/// 一条通道容量 8 的连接：在看 A、要 A 的主线外清单、手上留着 k（那台不在说）；接上那一份读掉。
+/// 一条通道恰好装得下 8 帧填料（[`filler`]，比重报里哪一帧都大）的连接：在看 A、要 A 的主线外清单、手上留着 k（那台不在说）；接上那一份读掉。
 fn narrow(
     tag: &str,
 ) -> (
     PathBuf,
     ReaderState,
     FrameSink,
-    tokio::sync::mpsc::Receiver<Frame>,
+    FrameRx,
 ) {
     let (dir, mut state, _, _rx0) = rig(tag);
     let mut sink = ledgered(true);
@@ -416,7 +409,7 @@ fn narrow(
     append(&pa, 1);
     process_jsonl(&pa, &mut state, &mut sink);
     state.added.insert(A.to_string(), added_frame(A));
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(8);
+    let (tx, mut rx) = frame_channel(8 * wire_bytes(&filler()));
     let ask = crate::wire::WatchAsk {
         sids: vec![A.into()],
         branch: vec![crate::wire::BranchHeld {
@@ -442,15 +435,35 @@ fn gone(sid: &str) -> Frame {
     })
 }
 
-/// 把通道塞满（`n` 格填料）。
+/// 填料：一帧「不见了」，路径垫长到比重报里哪一帧都大（通道按字节封顶，[`narrow`] 按它的大小开 8 格）。
+fn filler() -> Frame {
+    Frame::SessionFileGone(crate::wire::SessionFileGone {
+        session_id: "f".into(),
+        path: "x".repeat(4_000),
+    })
+}
+
+/// 往通道里放 `n` 格填料。
 fn fill(sink: &mut FrameSink, n: usize) {
     for _ in 0..n {
+        sink.send_to(1, filler());
+    }
+}
+
+/// 把通道余下那一点也用小填料塞满（再来一帧最小的也放不下）。
+fn brim(sink: &mut FrameSink) {
+    let small = wire_bytes(&gone("f"));
+    loop {
+        let tx = &sink.subs[0].tx;
+        if tx.held.load(std::sync::atomic::Ordering::Acquire) + small > tx.cap {
+            return;
+        }
         sink.send_to(1, gone("f"));
     }
 }
 
 /// 读掉通道里的全部，记成一行一件。
-fn heard(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<String> {
+fn heard(rx: &mut FrameRx) -> Vec<String> {
     use crate::wire::TopicExt as _;
     let mut out = Vec::new();
     while let Ok(f) = rx.try_recv() {
@@ -571,11 +584,12 @@ fn a_report_that_jams_again_is_said_and_reported_again_until_it_gets_through() {
         crate::wire::SessionFate::Ended,
     ));
     while rx.try_recv().is_ok() {}
-    fill(&mut sink, 7); // 头一格先补上那一句，通道又满
+    fill(&mut sink, 7); // 头一格先补上那一句，后面七格填料
+    brim(&mut sink); // 余下那一点也塞满，通道又满
     sink.send_to(1, gone("t")); // 这一帧丢
     report_owed(&mut state, &mut sink); // 重报整份又丢
     let first = heard(&mut rx);
-    assert_eq!(first.len(), 8);
+    assert!(first.len() >= 8, "{first:?}");
     assert_eq!(first[0], realigned());
     assert!(first[1..].iter().all(|f| f == "gone f"), "{first:?}");
     sink.send_to(1, gone("t"));
