@@ -347,7 +347,11 @@ fn smart_on_switches_early_when_it_pays_and_takes_the_first_to_expire() {
     let mut full = c["ctx"].clone();
     full["accounts"][2]["used"]["w5h"] = json!(95.0);
     let v = decide_case(&full, s);
-    assert_eq!(v.order.first().map(String::as_str), Some("B"), "用满换号先用最先作废的：{v:?}");
+    assert_eq!(
+        v.order.first().map(String::as_str),
+        Some("B"),
+        "用满换号先用最先作废的：{v:?}"
+    );
 }
 
 /// ★ 智能切换关着：同一组事实，在用的 C 没到上限就留着，其余照号牌；用满时照号牌换（A）。

@@ -419,7 +419,11 @@ fn a_refusal_rejudges_inside_the_ledger_lock() {
         &own,
     );
     other.join().expect("线程");
-    assert_eq!(go.as_ref().map(which), Some("hold"), "看得见 b 不用了 ⇒ 停发");
+    assert_eq!(
+        go.as_ref().map(which),
+        Some("hold"),
+        "看得见 b 不用了 ⇒ 停发"
+    );
     assert_eq!(home.session().current, "a", "没换到 b");
 }
 
