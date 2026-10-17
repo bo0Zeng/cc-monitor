@@ -2891,7 +2891,7 @@ fn a_new_process_taking_a_live_sid_counts_as_its_arrival() {
     let sessions = dir.join("sessions");
     std::fs::create_dir_all(sessions.join("dup")).unwrap();
     let mut kids = vec![vis2_sleeper(), vis2_sleeper()];
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects"));
     let old = vis2_pidfile(&sessions, kids[0].id(), "again-sid");
