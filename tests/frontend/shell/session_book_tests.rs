@@ -140,10 +140,9 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
     );
 }
 
-/// 〔「说不清」是**那台**的〕线上一格机器级 `unseen {origin}`（不再逐会话一格）；旁路快照被撤时
-/// 没说过的那一条：那台没报完 ⇒ 机器级说不清 ＋ 那台说过的活 / 可重连的再说一次（前端按机器落，紧跟着翻回来）；报完了 ⇒ 不说（那台答）。
+/// 〔「说不清」是**那台**的〕线上一格机器级 `unseen {origin}`（不再逐会话一格）。
 #[test]
-fn unseen_is_one_machine_level_cell_and_settle_again_follows_the_list() {
+fn unseen_is_one_machine_level_cell() {
     let mut b = Book::default();
     b.step(live("pi", "a"));
     b.step(left("pi", "r", SessionFate::Reconnectable));
@@ -155,24 +154,6 @@ fn unseen_is_one_machine_level_cell_and_settle_again_follows_the_list() {
         .map(|o| serde_json::to_string(&o.frame()).unwrap())
         .collect();
     assert_eq!(frames, vec![r#"{"unseen":{"origin":"pi"}}"#.to_string()]);
-
-    b.step(live("pi", "a"));
-    let said = |v: Vec<Out>| -> Vec<String> {
-        v.iter()
-            .map(|o| match o {
-                Out::Live { sid, .. } => format!("live {sid}"),
-                Out::Left { state, .. } => format!("left {} {:?}", state.sid, state.state),
-                Out::Unseen { origin, .. } => format!("unseen {origin}"),
-                other => format!("{other:?}"),
-            })
-            .collect()
-    };
-    assert_eq!(said(b.settle_again("pi", "q")), vec!["unseen pi", "live a"]);
-    b.step(In::Listed {
-        origin: "pi".into(),
-    });
-    assert!(b.settle_again("pi", "q").is_empty(), "报完了、没说过的不说");
-    assert!(b.settle_again("pi", "a").is_empty(), "活着的不说");
 }
 
 /// ★ 活会话一格 `added`，就是那台的 `session_added`：骨架那几格 · 此刻的灯与名字 · 容器 · 隐藏那一格一起带（不再拆成三格、不重拼）。期望值手写。

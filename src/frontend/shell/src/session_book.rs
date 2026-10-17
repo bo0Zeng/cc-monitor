@@ -445,22 +445,6 @@ impl Out {
 }
 
 impl Book {
-    /// 旁路快照被取消（会话离开了 / 连接断了）时那条会话**此刻**的终局 —— 快照行可能已经把刚落定的 tab 翻活，
-    /// 原样再说一次它现在是什么（原先这里恒补「已结束」，那是 monitor 自己在裁）。活着 ⇒ 不说；这条连接上没说过 ⇒ 说不清。
-    /// 没说过它：那台还没报完清单 ⇒ 机器级说不清（见 [`Self::unseen_block`]）；报完了 ⇒ 不说（去向由那台答）。
-    pub fn settle_again(&self, origin: &str, sid: &str) -> Vec<Out> {
-        let b = self.origins.get(origin);
-        match b.and_then(|b| b.sessions.get(sid)) {
-            Some(Product::Live(_)) => Vec::new(),
-            Some(Product::Left(s)) => vec![Out::Left {
-                origin: origin.to_string(),
-                state: s.clone(),
-            }],
-            None if b.is_some_and(|b| b.listed) => Vec::new(),
-            None => self.unseen_block(origin, vec![sid.to_string()]),
-        }
-    }
-
     /// 连接还在、却说不清某几条（那台还没报完清单）时的那一段：机器级 `unseen` ＋ 那台说过的活会话 / 可重连的再说一次
     /// （前端按机器落说不清会把它们一并落下，紧跟着翻回来）。
     fn unseen_block(&self, origin: &str, sids: Vec<String>) -> Vec<Out> {
