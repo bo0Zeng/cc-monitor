@@ -364,7 +364,7 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
     /// 正是当年那个 `!fields.is_empty()` 代用品会判错的形状。
     ///
     /// `files-index-status` 是第四条，**同一形**：
-    /// 它一个入参都没有（`files::CAPABILITIES` 里那条 `args` 就是空的），
+    /// 它一个入参都没有（`cmd_wire::files::IndexStatusReq` 一个字段都没有），
     /// 出方向却有十个字段。声明成收输入 ⇒ `--files-index-status` 会挂在那儿等 EOF，
     /// 而它恰恰是「这台机器上的索引新鲜不新鲜」那条**探活式**问话。
     /// ⚠ 同族另外三条（`files-ls` / `files-stat` / `files-find`）**要**输入，不在这张表里。

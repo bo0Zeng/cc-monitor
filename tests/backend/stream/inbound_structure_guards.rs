@@ -185,43 +185,28 @@ fn the_registry_families_are_exactly_the_files_in_the_registry_directory() {
     );
 }
 
-/// ★★ **`files-read` 上线的那四条，登记的就是它声明的那四条。**
+/// ★★ **`files-read` 上线的那一组 == 它的 `Ask` 声明的那一组**，而且每一条真够得到入口、只回自己登记的码。
 ///
-/// # 它治的是哪一形
-///
-/// 这一族的能力声明住 `files::CAPABILITIES`（那张表，由
-/// `files::tests::the_capability_names_match_the_design_registry_in_both_directions`
-/// 两向钉着），而线上那一面是**第二张表**（本文件的 `REGISTRY`）。
-/// 两张手写表之间没有判据 = 「上线少接一条」「契约面抄漏一个字段」都静默 ——
-/// 而那正是 `p1t-removal-cause` 那次真 bug 的形状（表里有、分派没有）。
-///
-/// ⇒ 本条把两张表**判相等**，三向都判：
-/// ① 命令名集合（经 `-`↔`.` 那一条翻译）**两向相等**；
-/// ② 每条的 `codes` 逐字相等；
-/// ③ 每条的 `fields` == 那条能力的 `args` ∪ `fields`（排序去重后**相等**）。
-///
-/// ⚠ 它**买不到**「文档写得对」（那是 `protocol_doc_guard` 那几条的活），
-/// 也买不到「`files::CAPABILITIES` 自己说的是实话」——
-/// 那一侧由 `tests/backend/files/capability_guard.rs` 的实打对拍钉着
-/// （出方向字段是**真调一次**比出来的）。本条只钉「两张表没有分叉」。
+/// 两张表：读族每条 `Ask` 的 `CAPABILITY`（`files::tests::CAPABILITIES` 从它们现取）与命令表 `REGISTRY`。
+/// 两张之间没有判据 = 「上线少接一条」「表里有、分派没有」都静默（`p1t-removal-cause` 那次真 bug 的形状）。
 #[test]
 fn the_files_read_family_is_online_exactly_as_it_is_declared() {
     // ④ 那一步真调每一条读能力：`files-index-rebuild` 不给 `path` 就重走家目录、装上常驻那一份 ⇒ 拿那把唯一的锁
     //   （不拿 ⇒ 与 `files::index` 那几条「清空了再查」并发时把状态换掉，CI 上并行跑时现红过）。
     let _lock = crate::files::index::tests::resident_lock();
     // ① 名字：能力名把 `.` 换成 `-` 就是线上名（反向那一半住 `files::answer_wire`）。
-    let declared: std::collections::BTreeSet<String> = crate::files::capability_names()
-        .into_iter()
+    let declared: std::collections::BTreeSet<String> = crate::files::tests::CAPABILITIES
+        .iter()
         .map(|n| n.replace('.', "-"))
         .collect();
     assert!(
         declared.len() >= 4,
-        "`files::CAPABILITIES` 只声明了 {} 条 —— 本条在空转",
+        "读族只声明了 {} 条 —— 本条在空转",
         declared.len()
     );
     // 反向替换够用的前提：能力名里**没有** `-`。它一旦被破坏，`answer_wire` 会静默地
     // 去查一个不存在的能力名，而上面那个映射照样对得上。
-    for n in crate::files::capability_names() {
+    for n in crate::files::tests::CAPABILITIES {
         assert!(
             !n.contains('-'),
             "能力名 `{n}` 里有 `-` —— `files::answer_wire` 的反向替换从此会翻错，\n\
@@ -229,7 +214,7 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
         );
     }
     // 🔴 `files-` 这个线上前缀底下**从此有两族**，而它们**互不相交**：
-    //   读那一族的住址是 `files::CAPABILITIES`（`src/backend/files/`，整族纯读），
+    //   读那一族的住址是 `files::Ask`（`src/backend/files/`，整族纯读），
     //   写那一面的住址是 `control::files_write::MANAGE_COMMANDS`（`control/`，会改变世界）。
     //   ⇒ 本条的人群必须**先把写那一面减掉**，否则它会把写那一面当成「读族漏声明了一条」
     //   （现打：不减的话逐字报 `files-create` 在 wired 里而不在 declared 里）。
@@ -283,7 +268,7 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
         .collect();
     assert_eq!(
         wired, declared,
-        "\n`files-read` 上线的那一组与 `files::CAPABILITIES` 声明的那一组对不上。\n\
+        "\n`files-read` 上线的那一组与读族 `Ask` 声明的那一组对不上。\n\
          少接一条的后果是静默的：能力在、判据在，而调用方发过去只会拿到 `unknown_command`。"
     );
     // ★ 写那一面的**同形相等断言**：登记表 ↔ `REGISTRY` 上真上线的那几条，两向。
@@ -321,8 +306,8 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
 
     // ② ③ 逐条：读的那几条都在登记表上。
     let mut checked = 0usize;
-    for cap in crate::files::CAPABILITIES {
-        let online = cap.name.replace('.', "-");
+    for cap in crate::files::tests::CAPABILITIES {
+        let online = cap.replace('.', "-");
         let spec = super::REGISTRY
             .iter()
             .find(|s| s.name == online)
@@ -348,7 +333,7 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
     }
     assert_eq!(
         checked,
-        crate::files::CAPABILITIES.len(),
+        crate::files::tests::CAPABILITIES.len(),
         "只逐条判过 {checked} 条 —— 本条在空转"
     );
 }

@@ -1,35 +1,14 @@
 //! `files-read` 这一族：后端侧只读的文件面 —— 搜索（SFTP 只能递归 `READDIR`、N 次往返，协议里也没有常驻索引）及其同族的纯读
 //! （列目录 · 元数据 · 读文本 / 按块读 · 问 home · 算大小 · grep）。写面住 `control/files_write.rs`，SFTP 只做传输。
 //!
-//! # 三条硬边界（能力声明的一部分，不是注释）
+//! 整族一个字节都不写：读盘只经 [`crate::platform::fs::Ro`]，拿不到写句柄（`readonly_guard` 另把整个后端的写盘形状钉成登记表）。
+//! 四个 target 同一份源码、同一组能力；保鲜是定期重走 ＋ 浏览目录挂监听（[`browse_watch`]，各平台语义不对等）。
+//! 「定期重走」的周期住 [`index::REWALK_INTERVAL_SECS`]，由 `files.index.status` 交出去，界面显示那个延迟。
 //!
-//! ## ① 整族一个字节都不写，而且这一条进声明的语义
-//!
-//! [`CAPABILITIES`] 的第三栏 [`Capability::effect`] 是闭集（[`Effect`]），每条能力都说自己落在哪一格；
-//! `tests/backend/files/capability_guard.rs` 把它钉成相等断言：从实现源码派生出来的那一格 == 这里声明的那一格。
-//! 派生的人群是 [`Capability::impl_files`]，那几张表的并集又被钉成恰好等于本族目录下的全部 `.rs`（分区恒等）。
-//! ⇒ 往本族任何一份实现里写一个改动盘上东西的动词，声明这一侧第一个红（`readonly_guard` 跟着红，两道都在）。
-//!
-//! ## ② 跨 target 不对等，而且必须如实声明
-//!
-//! | 表 | 判法 | 为什么 |
-//! |---|---|---|
-//! | [`CAPABILITIES`] 的 [`Capability::targets`] | 集合相等 —— 每条能力在 [`TARGETS`] 全体上都要有 | 「能力在不在」在各平台上必须是同一个答案 |
-//! | [`FRESHNESS`] | 逐 target 一行，刻意不判相等 | 保鲜机制逐平台不是一件事；判成相等 = 逼人写假声明 |
-//!
-//! [`FRESHNESS`] 另有一条反向判据：不许全部平台都填同一个机制串（为了让对拍变绿把几行抄成一样，就是假声明的长相）。
-//!
-//! ## ③ 「定期重走」的周期是能力的一部分，必须可查询
-//!
-//! 住 [`index::REWALK_INTERVAL_SECS`]，由 `files.index.status` 交出去（[`index::Status::rewalk_interval_secs`]），界面显示那个延迟。
-//!
-//! # 线上面与汇总
-//!
-//! 线上名与能力名的翻译只有一处：[`answer_wire`]。本族在能力汇总 [`crate::capability_ledger`] 里是一个面（人群 [`crate::CAPABILITY_FACES`]）。
+//! 线上名与能力名的翻译只有一处：每条 [`Ask`] 自己的 `CAPABILITY`（`files.ls` ↔ `files-ls`）。
 //! 索引怎么建、什么时候变新是机制的线上面：`files-index-rebuild`（[`index::rebuild_once`]）· `files-browse`（[`browse_watch::set_browsing`]）；
 //! 节拍归调用方（后端零定时器）—— 没人发 rebuild，`files.find` 就回 `index_missing: true`。
 //! 常驻那一份索引是进程级的 ⇒ 这几条要在同一条连接上才配得起来；CLI 面一次 exec 一个进程，建好的索引随进程没了。
-//! 跨 target 的对等断言（各面能力集横着对、逐条登记豁免）没做；它与「在这台机器上做不到」（[`crate::wire::Unavailable`]，运行期逐机器）是两个轴。
 
 use crate::platform::fs::Ro;
 use cmd_wire::files::{self as wire, FileKind, WirePath};
@@ -45,210 +24,6 @@ pub mod query;
 pub mod raw;
 // `files.size`（算目录大小）。
 pub mod size;
-
-/// 这一族的名字。
-#[cfg(test)]
-pub const FAMILY: &str = "files-read";
-
-/// 一条能力的**副作用档**。**闭集。**
-///
-/// 🔴 [`Effect::TouchesDisk`] 今天**没有任何一条能力声明它** —— 它存在的唯一理由是
-/// 让「有人往这一族里加了一个会动盘上东西的操作」这件事在**声明这一侧可表达、可断言**。
-/// 一个只有一个成员的枚举没法承载一条相等断言（派生出来的那一侧无处可落），
-/// 而那条相等断言就是边界① 要的「声明那道更早」。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Effect {
-    /// 遍历 · 读文件名 · 存内存 · 答查询。**一个字节都不往盘上写。**
-    ReadsOnly,
-    /// 这一族里有一处会改动盘上的东西。**今天零条**。
-    TouchesDisk,
-}
-
-/// 编译 target 轴：住 [`crate::Target`]（汇总那一层，声明 target 的面不止一个），本族再导出它。
-pub use crate::{Target, TARGETS};
-
-/// 一条能力的登记。入参 · 回包 · 码表不在这里写：入参与回包是 `cmd_wire::files` 的类型（[`Ask`] 把它们挂到能力上），码表在命令表那一行的错误枚举里。
-///
-/// ⚠ 后四栏（`impl_files` / `args` / `fields` / `codes`）**只被判据读** ——
-/// 那正是它们存在的理由：把「这条能力的契约面」写成**数据**，好让机检对着它比
-///（形状照 `inbound::CommandSpec`，那份头注逐字写着同一条理由）。
-pub struct Capability {
-    /// 线上能力名。那张表逐字。
-    pub name: &'static str,
-    /// 它做什么（登记散文，只给判据读、不上界面 ⇒ 不叫 `what`：那个字段名会被普查当成文案出口）。
-    pub purpose: &'static str,
-    /// 🔴 副作用档。边界① 的兑现处 —— 判据把它与**从实现派生**出来的那一格判相等。
-    pub effect: Effect,
-    /// 实现它的那几份文件（本族目录下的文件名）。**派生的人群就是这张表。**
-    pub impl_files: &'static [&'static str],
-    /// 它在哪些 target 上有实现。边界②：这一栏必须是 [`TARGETS`] 全体。
-    pub targets: &'static [Target],
-}
-
-/// 🔴 **这一族的能力声明 —— 唯一住址。**
-///
-/// 六条，与「这一族有哪些」那张表 ＋ 它下面那张「第五、第六条」的表
-/// **逐字同名**（判据按名字两向对拍，改一边不改另一边当场红）。
-pub const CAPABILITIES: &[Capability] = &[
-    Capability {
-        name: "files.ls",
-        purpose: "列一个目录的直接子项（名字走原始字节）",
-        effect: Effect::ReadsOnly,
-        impl_files: &["class.rs", "mod.rs", "raw.rs"],
-        targets: TARGETS,
-    },
-    Capability {
-        name: "files.stat",
-        purpose: "一个路径的元数据",
-        effect: Effect::ReadsOnly,
-        impl_files: &["mod.rs", "raw.rs"],
-        targets: TARGETS,
-    },
-    Capability {
-        name: "files.find",
-        purpose: "🔴 **在常驻索引里查** —— SFTP 给不了的那一条，整族的存在理由（Everything 式搜索词 · 分页 · 同一个搜索框的旧号丢掉）",
-        effect: Effect::ReadsOnly,
-        impl_files: &["browse_watch.rs", "class.rs", "index.rs", "mod.rs", "query.rs", "raw.rs"],
-        targets: TARGETS,
-    },
-    Capability {
-        name: "files.index.status",
-        purpose: "索引的新鲜度 ／ 条目数 ／ 常驻字节，**以及后端声明的重走周期**（边界③）",
-        effect: Effect::ReadsOnly,
-        impl_files: &["browse_watch.rs", "index.rs", "mod.rs"],
-        targets: TARGETS,
-    },
-    // ── 建索引 · 保鲜 ────────────────
-    // 机制的线上面，不是节拍（节拍归调用方）。两条都在边界① 之内：`rebuild_once` 是遍历 ＋ 换掉内存里那一份，
-    // `set_browsing` 是登记名单 ＋ 重列一遍 —— 都不往盘上写一个字节。
-    Capability {
-        name: "files.index.rebuild",
-        purpose: "🔴 **走一遍，就一遍，做完返回** —— `index::rebuild_once` 的线上面（只有机制，没有节拍）",
-        effect: Effect::ReadsOnly,
-        impl_files: &["index.rs", "mod.rs", "raw.rs"],
-        targets: TARGETS,
-    },
-    Capability {
-        name: "files.browse",
-        purpose: "告诉后端「用户现在在看哪几个目录」—— `browse_watch::set_browsing` 的线上面（保鲜的另一半）",
-        effect: Effect::ReadsOnly,
-        impl_files: &["browse_watch.rs", "mod.rs", "raw.rs"],
-        targets: TARGETS,
-    },
-    // ── 窗口的两问：读一份文本 · 那台机器的 home 在哪 ────────────
-    // 两条都纯读 ⇒ 进这一族。
-    Capability {
-        name: "files.read.text",
-        purpose: "读一份文本进编辑器 —— **超上限整趟拒、不截断**；含 NUL / 不是 UTF-8 也拒",
-        effect: Effect::ReadsOnly,
-        impl_files: &["mod.rs", "raw.rs"],
-        targets: TARGETS,
-    },
-    // ── 「算目录大小」：读族第九条 ────────────────
-    //   在那台机器上走一遍、只回几个数（＋「零流量」）。纯读，整族照旧一个字节不写。
-    Capability {
-        name: "files.size",
-        purpose: "算一个目录（或文件）有多大 —— 不跟链接、不进别的文件系统，只回几个数",
-        effect: Effect::ReadsOnly,
-        impl_files: &["mod.rs", "raw.rs", "size.rs"],
-        targets: TARGETS,
-    },
-    // ── 按字节寻址分块读回 ─────────────────────────
-    // 非 UTF-8 名的下载（SFTP 库的路径是 `String`，寻址不到）经后端链路一块一块读回；与 `files-stage-chunk`（分块写进暂存区）对称。纯读。
-    Capability {
-        name: "files.read.chunk",
-        purpose: "从一份普通文件的 `offset` 起读至多 `len` 字节（原始字节，b16 送回）—— 下载非 UTF-8 名那条路的一块",
-        effect: Effect::ReadsOnly,
-        impl_files: &["mod.rs", "raw.rs"],
-        targets: TARGETS,
-    },
-    // ── 读族第十一条：按内容搜 ─────────────────────────────
-    //   在那台机器上走一遍一个目录、只回命中的那几份（有字节与条数上界、可撤、不跟链接）。纯读，整族照旧一个字节不写。
-    Capability {
-        name: "files.grep",
-        purpose: "在一个目录底下按内容搜 —— 不跟链接、不进别的文件系统，有字节与命中数上界，每份回第一处命中那一行",
-        effect: Effect::ReadsOnly,
-        impl_files: &["grep.rs", "mod.rs", "raw.rs"],
-        targets: TARGETS,
-    },
-    Capability {
-        name: "files.home",
-        purpose: "后端这个进程的用户 home（绝对路径）—— 窗口开窗时「开在哪儿」那一问",
-        effect: Effect::ReadsOnly,
-        impl_files: &["mod.rs", "raw.rs"],
-        targets: TARGETS,
-    },
-];
-
-/// **保鲜机制逐 target 的如实声明**（边界②的另一半）。
-///
-/// 🔴 **这张表刻意不参加任何「三个平台要一样」的对拍。** 理由：
-/// 「把它们判成相等会**逼人写假声明**」。它参加的是另外两条：
-/// ① 每个 target 恰好一行（集合相等，不许漏一个平台）；
-/// ② **不许三行填成同一个机制串**（那就是假声明的长相）。
-pub struct Freshness {
-    pub target: Target,
-    /// 保鲜怎么做（这个平台上的**机制名**，一句话）。
-    pub how: &'static str,
-    /// 非特权身份拿不拿得到。后端是**以用户身份经 SSH 起的，不是 root**。
-    pub unprivileged: bool,
-    /// 这一格的证据档。
-    pub evidence: Evidence,
-    /// 🔴 这一格**没**买到什么。**不许留空**（判据有长度地板）。
-    pub gap: &'static str,
-}
-
-/// 一格声明背后是什么证据。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Evidence {
-    /// 本机现打，读数有住址。
-    Measured,
-    /// 文献读数，没实测。
-    LiteratureOnly,
-    /// 判不了 —— 缺什么写在 [`Freshness::gap`] 里。
-    Undetermined,
-}
-
-pub const FRESHNESS: &[Freshness] = &[
-    Freshness {
-        target: Target::LinuxGnu,
-        how: "定期重走（周期由调用方出节拍）＋ 浏览目录挂 inotify，一个 watch 一个目录",
-        unprivileged: true,
-        evidence: Evidence::Measured,
-        gap: "**不是实时**。要全文件系统监听就得 root：`man 2 fanotify_init` 一手逐字 —— \
-              非特权不许 `FAN_MARK_MOUNT` / `FAN_MARK_FILESYSTEM`。\
-              而 watch 上限本机现打 262144、home 下 640413 条目⇒ 全挂挂不住。\
-              另：**冷缓存下走一遍要多久没量过**（`drop_caches` 要 root）。",
-    },
-    Freshness {
-        target: Target::LinuxMusl,
-        how: "同 gnu 那一格（同一份源码、同一个内核接口），差别只在链接方式",
-        unprivileged: true,
-        evidence: Evidence::Undetermined,
-        gap: "🔴 **这一格是「没验」，不是「验过没事」。** 门禁的 `muslbuild` 那格买的是\
-              「**编得出静态字节**」，**不买**「在真远端上跑得起来」（无真机、不运行）。\
-              ⇒ 静态 musl 下 `inotify` 的行为**没有任何读数**。",
-    },
-    Freshness {
-        target: Target::Windows,
-        how: "定期重走 ＋ 浏览目录走 ReadDirectoryChangesW（notify 在这个平台上的后端）",
-        unprivileged: true,
-        evidence: Evidence::LiteratureOnly,
-        gap: "**没实测**（本仓的 Windows 虚拟机上没跑过本族）。\
-              ⚠ Everything 那套（读 MFT ＋ 订阅 USN Journal）**两段都要管理员**\
-              （voidtools FAQ 逐字），而我们的后端不是 ⇒ 那条路对我们关着，\
-              这一格拿不到 Everything 那种「整盘一秒」。",
-    },
-    Freshness {
-        target: Target::MacOs,
-        how: "定期重走 ＋ 浏览目录走 FSEvents（notify 在这个平台上的后端）",
-        unprivileged: true,
-        evidence: Evidence::LiteratureOnly,
-        gap: "🟡 **文献读数，没实测**（那张表里这一格逐字就是这么标的）。\
-              FSEvents 能无特权递归监听一棵树、Spotlight 的索引普通用户可查（`mdfind`）——\
-              两条都**没碰过**。⇒ 这个平台上「保鲜要不要换成另一套机制」判不了。",
-    },
-];
 
 // ══════════════════════ 命令面（形状照 `inbound::CommandSpec` 的处理器）══════════════════════
 
@@ -1319,13 +1094,13 @@ pub fn answer<A: Ask>(req: A, tz: &crate::common::time::Tz) -> Answer<A::Reply> 
     req.answer(tz)
 }
 
-/// 能力名单（汇总那一层读）。
-pub fn capability_names() -> Vec<&'static str> {
-    CAPABILITIES.iter().map(|c| c.name).collect()
-}
 #[cfg(test)]
-#[path = "../../../tests/backend/files/capability_guard.rs"]
+#[path = "../../../tests/backend/files/answer_tests.rs"]
 pub(crate) mod tests;
+// 本族的能力名单住测试侧（从每条 `Ask` 的 `CAPABILITY` 现取），名字在这里占着：生产里再立一张同名的声明表，测试构建编不过。
+#[cfg(test)]
+#[allow(unused_imports)]
+use tests::CAPABILITIES;
 
 // **文件管理后端模块**与原生后端那条边界的判据
 // （用户逐字「后端要模块化, 即原生后端＋文件管理后端. 现在先解耦清楚」）。

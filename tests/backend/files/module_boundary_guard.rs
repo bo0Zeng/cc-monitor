@@ -9,7 +9,7 @@
 //! |---|---|---|
 //! | ① | 这个模块**只许依赖** `platform` / `common` / 下面一层的基础设施（业务模块之间零依赖；适配层那一类为零） | [`every_edge_out_of_the_file_backend_is_declared`]：模块生产段够到外面的**每一条**符号路径，与 [`OUTWARD`] **逐格相等**；每一格的类别必须与它的路径首段对得上 |
 //! | ② | 原生后端**零处**伸手进它**内部** | [`the_native_backend_reaches_the_file_backend_only_through_its_doors`]：模块之外的后端生产段够到模块的符号，集合 == [`DOORS`]（几个入口函数，零个内部符号） |
-//! | ③ | 外界够到它**只有一扇门**（命令注册那一处） | 同上那一条的**文件**那一维：[`DOORS`] 里除了挂载／汇总那一格，住址全在入方向（命令表文件管理那一族 · 分派） |
+//! | ③ | 外界够到它**只有一扇门**（命令注册那一处） | 同上那一条的**文件**那一维：[`DOORS`] 的住址全在入方向（命令表文件管理那一族 · 分派） |
 //!
 //! 形状照前端那一侧的先例 `tests/frontend/shell/filewin/boundary_tests.rs`（正向逐格相等 ＋
 //! 反向一元素零命中守卫 ＋ 抽取器在合成语料上正反各喂一遍）。抽取器是**移植**过来的一份，
@@ -227,24 +227,18 @@ fn inward_edges(prod: &str) -> BTreeSet<String> {
 // ① 正向：模块只许够到下面那几层（platform / common / 基础设施）—— 逐格相等
 // ═══════════════════════════════════════════════════════════════════
 
-/// 一条外向边的类别。**闭集三类**。
+/// 一条外向边的类别。**闭集两类**。
 ///
 /// 「两块零互相依赖（共用 platform / common 除外）」读成
 /// **业务模块之间**零依赖：文件模块往外只许够到**下面那几层** —— 没有一类装得下原生那一块的业务
 /// （会话 · tmux · 账号 · 拨号与两台之间的传输 · 资产 · 历史），也没有一类装得下适配层（`agents::`）：
 /// 删会话那两问（落点 · 形状）由门经 `control::files_write::SessionPort` 递进来，文件模块不认任何一家的记录布局。
-/// 〔此前另有「围栏」「target 轴」「传输」「建自家目录」四类：围栏那两条改经门、建自家目录随 `own_dir` 进了 `common/`，
-/// target 轴与传输并进 [`Kind::Infra`]。〕
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Kind {
     /// `platform/` —— 唯一允许平台原语的层。
     Platform,
     /// `common/` —— 两块共用的判定。
     Common,
-    /// 🔴 **汇总层的能力声明轴**：`lib.rs` 的 `TARGETS` / `Target`（住 crate 根，没有前缀）。
-    /// 〔此前还许 `dial::sftp::` · `wire::` 两个前缀，都是传输台用的；传输台归原生那一块（layer11）之后
-    /// 这一块一条都不引，前缀一并撤了 ⇒ 拨号那一半与帧面再引一条就当场红。〕
-    Infra,
 }
 
 /// ★ **登记表**：模块生产段够到外面的符号，**逐条**，带类别与理由。
@@ -489,13 +483,6 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         Kind::Common,
         "列目录 · 问元数据 · 查找回的修改时间旁边那两格（列里那一格 · 完整那一格）按看的那一台的时区写好，文件窗口照抄",
     ),
-    (
-        "TARGETS",
-        Kind::Infra,
-        "能力声明表（`files::CAPABILITIES`）逐条声明「在哪几个 target 上做得到」，那个轴住汇总层 `lib.rs`\
-         （声明 target 的面不止一个）—— 声明契约，不是行为依赖",
-    ),
-    ("Target", Kind::Infra, "同上一格：target 轴的元素类型"),
 ];
 
 /// ★★ 模块够到外面的每一条边都在表里，表里也不留死行；而且**只有**那三类。
@@ -540,80 +527,55 @@ fn every_edge_out_of_the_file_backend_is_declared() {
 // ② ③ 反向：原生后端只经那几扇门够到它 —— 零命中守卫
 // ═══════════════════════════════════════════════════════════════════
 
-/// 一扇门的类别。
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Door {
-    /// **命令注册那一处** —— 用户那句「外界够到它只有一扇门」指的就是这一类。
-    Command,
-    /// 挂载与汇总：`lib.rs` 的能力清单（`CAPABILITY_FACES`）读这个模块**声明**了哪些能力名。
-    /// 🔴 它是第二个**住址**，如实单列：读的是一张声明表，不是一次行为调用；
-    /// 条数被钉死（[`the_doors_are_the_command_registry_plus_one_ledger_read`]）。
-    Ledger,
-}
-
-/// ★ 门：`(住址, 符号, 类别)`。**每一个符号都是入口函数，零个内部符号**
+/// ★ 门：`(住址, 符号)`，住址全在命令注册那一处（用户那句「外界够到它只有一扇门」）。**每一个符号都是入口函数，零个内部符号**
 /// （`files::index::*` / `files::raw::*` / 围栏那几个函数 —— 原生后端一个都够不到）。
-const DOORS: &[(&str, &str, Door)] = &[
+const DOORS: &[(&str, &str)] = &[
     // 读的那几条：入参的类型选中那条能力（[`crate::files::Ask`]），本体只经 `files::answer` 一个入口。
-    (
-        "stream/inbound/files_face.rs",
-        "files::answer",
-        Door::Command,
-    ),
-    ("stream/inbound/files_face.rs", "files::Ask", Door::Command),
+    ("stream/inbound/files_face.rs", "files::answer"),
+    ("stream/inbound/files_face.rs", "files::Ask"),
     // 按内容搜要**可撤**（异步档：阻塞线程上那一趟看取消位）⇒ 同一族的第二个入口函数，
     //   不是内部符号：它自己再进 `answer_grep`（与唯一入口 `answer` 里那一臂同一个本体）。
     (
         "stream/inbound/files_face.rs",
         "files::answer_grep_cancellable",
-        Door::Command,
     ),
     // 写的那几条（写面 · 上传提交 · 解压）：同读的那一半，一个入口 ＋ 选本体的那个 trait（入参类型挂在它上面）。
     (
         "stream/inbound/files_write_face.rs",
         "control::files_write::answer",
-        Door::Command,
     ),
     (
         "stream/inbound/files_write_face.rs",
         "control::files_write::Act",
-        Door::Command,
     ),
     // 删会话那两问的窄口：门把适配层那两个函数装进这个类型递给写面（`SESSION_PORT`）。
     (
         "stream/inbound/files_session_face.rs",
         "control::files_write::SessionPort",
-        Door::Command,
     ),
     // 删会话那一条的本体（它要门递的那两问，不经 `Act`）。
     (
         "stream/inbound/files_session_face.rs",
         "control::files_write::delete_session_of",
-        Door::Command,
     ),
     // 一组一条的复制（`control/files_batch.rs`）：同名要问那一形带同名清单（码表里 `exists` 带 `data`），不经 `Act` 那一扇（它只交码与那一句）。
     (
         "stream/inbound/files_write_face.rs",
         "control::files_batch::copy",
-        Door::Command,
     ),
     (
         "stream/inbound/files_write_face.rs",
         "control::files_batch::CopyRefused",
-        Door::Command,
     ),
     // 上传的提交：同名要问那一形同样带同名清单（`exists` 带 `data`），不经 `Act` 那一扇。
     (
         "stream/inbound/files_write_face.rs",
         "control::files_commit::commit_upload_of",
-        Door::Command,
     ),
     (
         "stream/inbound/files_write_face.rs",
         "control::files_commit::CommitRefused",
-        Door::Command,
     ),
-    ("lib.rs", "files::capability_names", Door::Ledger),
 ];
 
 #[test]
@@ -634,7 +596,7 @@ fn the_native_backend_reaches_the_file_backend_only_through_its_doors() {
     }
     let want: BTreeSet<(String, String)> = DOORS
         .iter()
-        .map(|(f, s, _)| ((*f).to_string(), (*s).to_string()))
+        .map(|(f, s)| ((*f).to_string(), (*s).to_string()))
         .collect();
     assert_eq!(
         found,
@@ -650,7 +612,7 @@ fn the_native_backend_reaches_the_file_backend_only_through_its_doors() {
 /// **文件模块与原生那一块的业务零依赖**：往外只够到下面那几层。
 ///
 /// - 每一格的类别与路径首段对得上（没有这一条，`OUTWARD` 可以把一条 `observe::…` 登记成 `Kind::Common` 让上一条变绿）；
-/// - 基础设施那一类只许 target 轴那两格，每一格都写得出理由，条数**相等**；
+/// - 每一格都写得出理由；
 /// - 没有一类装得下 `agents::`（适配层）—— 删会话那两问经门递进来，这一向的边今天为零。
 /// 反方向（原生那一块零处伸手进文件模块、只经门）由 [`the_native_backend_reaches_the_file_backend_only_through_its_doors`] 判。
 #[test]
@@ -659,7 +621,6 @@ fn the_file_backend_depends_on_no_business_module_only_on_the_layers_below() {
         let ok = match kind {
             Kind::Platform => has_prefix(path, "platform::"),
             Kind::Common => has_prefix(path, "common::"),
-            Kind::Infra => *path == "Target" || *path == "TARGETS",
         };
         assert!(
             ok,
@@ -667,41 +628,27 @@ fn the_file_backend_depends_on_no_business_module_only_on_the_layers_below() {
         );
         assert!(!why.trim().is_empty(), "`{path}` 没写为什么要这条边");
     }
-    let infra = OUTWARD.iter().filter(|(_, k, _)| *k == Kind::Infra).count();
-    assert_eq!(
-        infra, 2,
-        "基础设施那一类从 2 条变成了 {infra} 条 —— **相等，不是上限**：\
-         变多 = 文件模块又往下面那一层多要了一样东西（先问能不能不要）；变少 = 同拍删行"
-    );
 }
 
-/// ★ 门的**住址**：命令那一类全住入方向（命令表里文件管理那一族 · 分派的硬臂与读循环），汇总那一类恰好一格、住 `lib.rs`。
+/// ★ 门的**住址**：全住入方向（命令表里文件管理那一族 · 分派的硬臂与读循环）。
 #[test]
-fn the_doors_are_the_command_registry_plus_one_ledger_read() {
-    for (file, sym, door) in DOORS {
-        let homes: &[&str] = match door {
-            Door::Command => &[
-                "stream/inbound/registry/file_manager.rs",
-                // 读的那几条 typed 命令（命令表那一行点它们的名）。
-                "stream/inbound/files_face.rs",
-                // 写的那几条 typed 命令（同上）。
-                "stream/inbound/files_write_face.rs",
-                "stream/inbound/files_session_face.rs",
-                "stream/inbound/mod.rs",
-            ],
-            Door::Ledger => &["lib.rs"],
-        };
+fn the_doors_are_the_command_registry() {
+    for (file, sym) in DOORS {
+        let homes: &[&str] = &[
+            "stream/inbound/registry/file_manager.rs",
+            // 读的那几条 typed 命令（命令表那一行点它们的名）。
+            "stream/inbound/files_face.rs",
+            // 写的那几条 typed 命令（同上）。
+            "stream/inbound/files_write_face.rs",
+            "stream/inbound/files_session_face.rs",
+            "stream/inbound/mod.rs",
+        ];
         assert!(
             homes.contains(file),
-            "`{sym}` 登记成 `{door:?}` 门，却住在 `{file}` —— 那不是那一类门的住址"
+            "`{sym}` 登记成门，却住在 `{file}` —— 那不是门的住址"
         );
     }
-    let ledger = DOORS.iter().filter(|(_, _, d)| *d == Door::Ledger).count();
-    assert_eq!(
-        ledger, 1,
-        "命令注册之外的门从 1 格变成了 {ledger} 格 —— 用户逐字「外界够到它只有一扇门」"
-    );
-    let command = DOORS.iter().filter(|(_, _, d)| *d == Door::Command).count();
+    let command = DOORS.len();
     assert_eq!(
         // 6 → 7：多了解压面 `control::files_extract::answer_wire`。
         // 7 → 8：多了删会话那两问的窄口类型 `control::files_write::SessionPort`。

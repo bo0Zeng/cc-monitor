@@ -35,11 +35,6 @@ const EXEMPT: &[(&str, &str, &str)] = &[
         "手机那一侧一问一答取连接的口：读者是手机嵌的 Rust 核心（`src/mobile/core-rs`，不在 monitor 的扫描面里）与本 crate 的判据",
     ),
     (
-        "src/backend/files/mod.rs",
-        "FRESHNESS",
-        "保鲜机制逐 target 的声明（刻意不判相等）：读者是 `capability_guard` 的反向判据，各格的说明文字进文案普查台账",
-    ),
-    (
         "src/backend/control/files_commit.rs",
         "COMMIT_COMMANDS",
         "文件管理写面的命令声明表：读者是 `readonly_guard`「拿得到 `Face` 的命令」与 inbound 结构判据的对拍（另一侧是命令表里的档位，两侧异源）",
@@ -58,16 +53,6 @@ const EXEMPT: &[(&str, &str, &str)] = &[
         "src/backend/agents/claudecode/paths.rs",
         "is_inside_tree",
         "`~/.claude*` 那个星号包含哪些树的唯一住址；零生产消费者由 `readonly_guard` 的 STAGED_ZERO 登记数着，接回生产路径那一刻那边红",
-    ),
-    (
-        "src/backend/lib.rs",
-        "capability_ledger",
-        "能力账的汇总本体：从各族声明现推（写成函数而不是第二张表，免得声明与汇总漂开），读者是 `capability_ledger_guard` 那张异源点名表",
-    ),
-    (
-        "src/backend/lib.rs",
-        "capabilities_on",
-        "每个 target 上做得到哪些的现推那一段（只读声明，`target_parity_guard` 从源码钉它不读差异表），读者是对等判据",
     ),
     (
         "src/backend/lib.rs",
