@@ -582,31 +582,8 @@ impl Hop {
         if let Some(p) = self.cached(a, &s, &plan) {
             return self.go_for(own, a, &lib, &s, &plan, p, None, Vec::new());
         }
-        if let Some(j) = self.judge_in_turn(own, a) {
-            let InTurn {
-                before,
-                after,
-                plan,
-                d,
-                facts,
-            } = j;
-            let to = match &d.pick {
-                Pick::Use(x) if *x != before.current => x.clone(),
-                _ => {
-                    self.remember(a, &after, &plan, &d, &[]);
-                    return self.go_for(own, a, &lib, &after, &plan, d.pick, None, Vec::new());
-                }
-            };
-            if let Ok(go) = self.prepare(own, a, &lib, &to) {
-                self.remember(a, &after, &plan, &d, &[]);
-                return go;
-            }
-            // 换到的号接不上：那一笔撤回（没换成的不记），照同一份事实带着它再判（同 429）。
-            self.undo(own, a.sid, &after, &before);
-            let tried = vec![to];
-            let d = self.judge(a, &before, &plan, &facts, &tried);
-            let pick = d.pick.clone();
-            return self.go_for(own, a, &lib, &before, &plan, pick, Some((d, facts)), tried);
+        if let Some(j) = self.judge_in_turn(own, a, &[], None) {
+            return self.follow(own, a, &lib, j, Vec::new());
         }
         // 账本写不成：照锁外那一份判，成了再落账（写不进去就只这一发照它走）。
         let facts = self.accts(a.sid, &s, &self.store.now(), &plan.settings, a.row, a.now);
@@ -617,15 +594,27 @@ impl Hop {
 
     /// ★ 各会话的判依次来：在账本那把跨进程的锁里读会话那一条与别的会话此刻在哪个号上 → 判 → 落账，
     /// 后一个会话判时看得见前一个刚换到哪（[`Self::others_on`] 照这一份账本）。账本写不成 · 会话不轮换 ⇒ `None`。
-    fn judge_in_turn(&self, own: &Own, a: &Turn<'_>) -> Option<InTurn> {
+    /// `tried` ＝ 这一发已经发过的号（429 同一发重判）；`refused` ＝ 刚被拒的那个号与拒到几点（额度账未必已经记下）。
+    fn judge_in_turn(
+        &self,
+        own: &Own,
+        a: &Turn<'_>,
+        tried: &[String],
+        refused: Option<(&str, u64)>,
+    ) -> Option<InTurn> {
         let r = rotation::relay_change(&self.store, own, |b| {
             let before = b.sessions.get(a.sid)?.clone();
             let plan = Adopted::of(before.uses.as_ref());
             if plan.id.is_empty() {
                 return None;
             }
-            let facts = self.accts(a.sid, &before, b, &plan.settings, a.row, a.now);
-            let d = self.judge(a, &before, &plan, &facts, &[]);
+            let mut facts = self.accts(a.sid, &before, b, &plan.settings, a.row, a.now);
+            if let Some((id, until)) = refused {
+                if let Some(x) = facts.iter_mut().find(|x| x.id == id) {
+                    x.refused_until = Some(until);
+                }
+            }
+            let d = self.judge(a, &before, &plan, &facts, tried);
             let n = b.sessions.get_mut(a.sid)?;
             apply(n, &d, &facts, a.now, None);
             Some(InTurn {
@@ -640,6 +629,35 @@ impl Hop {
             tracing::warn!("[rotate] {}", e.logged());
             None
         })
+    }
+
+    /// 锁里那一判之后：换到别的号 ⇒ 备那个号的料，接不上就撤回那一笔（没换成的不记）、照同一份事实带着它再判；
+    /// 留着 · 停发 ⇒ 照它走。`tried` ＝ 这一发已经发过的号（平时空）。
+    fn follow(&self, own: &Own, a: &Turn<'_>, lib: &Library, j: InTurn, tried: Vec<String>) -> Go {
+        let InTurn {
+            before,
+            after,
+            plan,
+            d,
+            facts,
+        } = j;
+        let to = match &d.pick {
+            Pick::Use(x) if *x != before.current => x.clone(),
+            _ => {
+                self.remember(a, &after, &plan, &d, &tried);
+                return self.go_for(own, a, lib, &after, &plan, d.pick, None, tried);
+            }
+        };
+        if let Ok(go) = self.prepare(own, a, lib, &to) {
+            self.remember(a, &after, &plan, &d, &tried);
+            return go;
+        }
+        self.undo(own, a.sid, &after, &before);
+        let mut tried = tried;
+        tried.push(to);
+        let d = self.judge(a, &before, &plan, &facts, &tried);
+        let pick = d.pick.clone();
+        self.go_for(own, a, lib, &before, &plan, pick, Some((d, facts)), tried)
     }
 
     /// 撤回锁里落的那一笔：会话那一条还是落账后的样子 ⇒ 换回落账前的（别人又改过 ⇒ 不动）。
@@ -681,29 +699,37 @@ impl Hop {
                 return Some(go);
             }
         }
-        let mut facts = self.accts(a.sid, &s, &self.store.now(), &plan.settings, a.row, a.now);
         // 刚回来的那一发被拒：额度账未必已经记下，照它把那个号记成被拒。
-        if let Some(x) = facts.iter_mut().find(|x| x.id == heard_from) {
-            x.refused_until = Some(heard.resets_at.unwrap_or(a.now + 60).max(a.now + 1));
-        }
+        let until = heard.resets_at.unwrap_or(a.now + 60).max(a.now + 1);
         let mut tried = tried.to_vec();
         if !tried.iter().any(|t| t == heard_from) {
             tried.push(heard_from.to_string());
         }
-        let d = self.judge(a, &s, &plan, &facts, &tried);
         // 号列表里的号事实上一个都发不出去 ⇒ 上游那份拒绝就是真的「用满」，原样交回（不另造一份）；
         // 有号发得出去、只是策略此刻不用它们 ⇒ 停发，回我们那份「用满」（重置时刻照策略交的）。
-        let pool: Vec<&Acct> = {
+        let all_shut = |s: &Session, plan: &Adopted, facts: &[Acct], d: &Decision| {
             let ids = listed_ids(&plan.settings, &s.start);
-            facts
-                .iter()
-                .filter(|x| ids.is_empty() || ids.contains(&x.id.as_str()))
-                .collect()
+            matches!(d.pick, Pick::Hold { .. })
+                && facts
+                    .iter()
+                    .filter(|x| ids.is_empty() || ids.contains(&x.id.as_str()))
+                    .all(|x| tried.contains(&x.id) || !standing::sendable(x, a.now))
         };
-        let all_shut = pool
-            .iter()
-            .all(|x| tried.contains(&x.id) || !standing::sendable(x, a.now));
-        if all_shut && matches!(d.pick, Pick::Hold { .. }) {
+        // 同发之前那一判：在账本那把锁里读会话那一条 → 判 → 落账。
+        if let Some(j) = self.judge_in_turn(own, a, &tried, Some((heard_from, until))) {
+            if all_shut(&j.before, &j.plan, &j.facts, &j.d) {
+                self.remember(a, &j.after, &j.plan, &j.d, &tried);
+                return None;
+            }
+            return Some(self.follow(own, a, &lib, j, tried.clone()));
+        }
+        // 账本写不成：照锁外那一份判，成了再落账。
+        let mut facts = self.accts(a.sid, &s, &self.store.now(), &plan.settings, a.row, a.now);
+        if let Some(x) = facts.iter_mut().find(|x| x.id == heard_from) {
+            x.refused_until = Some(until);
+        }
+        let d = self.judge(a, &s, &plan, &facts, &tried);
+        if all_shut(&s, &plan, &facts, &d) {
             self.commit(own, a, &s, &plan, &d, &facts, &tried);
             return None;
         }

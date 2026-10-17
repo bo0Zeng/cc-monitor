@@ -1,7 +1,9 @@
-//! 编辑器那一份：读得懂 · 新建出来的还认得是它 · 改了代码就是手写；它的代码照声明的意思判（用量上限 · 切入 · 切出），在后端的一判里跑。
+//! 编辑器那一份：读得懂 · 新建出来的还认得是它 · 改了代码就是手写；它的代码照声明的意思判（用量上限 · 切入 · 切出 · 智能切换），在后端的一判里跑。
 
 use super::*;
-use crate::accounts::quota::rules::decide::{turn, Ctx, Decision, Pick, Sigma, Strategy, Verdict};
+use crate::accounts::quota::rules::decide::{
+    turn, Ctx, CtxAcct, Decision, Me, Pick, PromptCache, Sigma, Strategy, Verdict,
+};
 use crate::accounts::quota::rules::{code, Acct};
 use crate::accounts::quota::strategy::Fail;
 use serde_json::{json, Value};
@@ -142,6 +144,7 @@ fn default_keeps_the_current_until_its_cap_then_goes_by_the_list() {
     // 7 天没另设同 5 小时：A 的 5 小时上限 50，7 天用了 60 ⇒ A 也到了上限。
     let s = settings(&[("A.caps", json!({"5h": [{"from": 0, "to": 1440, "v": 50}]}))]);
     let mut a = acct("A", 10.0);
+    a.weekly = true;
     a.used[1] = 60.0;
     assert_eq!(
         used(&run(&s, "B", None, &[a, acct("B", 95.0), acct("C", 0.0)])),
@@ -248,4 +251,177 @@ fn a_zero_segment_stops_it_and_wakes_at_the_edge() {
     );
     assert_eq!(used(&d), "B");
     assert_eq!(d.wake_at, Some(DAY + 16 * 3600));
+}
+
+// ───────────── 智能切换 ─────────────
+
+/// rotsim 跑智能切换那一份（算法定稿时的那份）留下的判：ctx 原样（号名换成了字母）＋ 那一份对它排出的先后。
+const CASES: &str = include_str!("editor_smart_cases.json");
+
+fn cases() -> Vec<Value> {
+    serde_json::from_str(CASES).expect("夹具读得懂")
+}
+
+fn case(name: &str) -> Value {
+    cases()
+        .into_iter()
+        .find(|c| c["case"] == name)
+        .unwrap_or_else(|| panic!("夹具里有「{name}」"))
+}
+
+/// 一判的 ctx 照夹具拼回来，`settings` 换成给的那一份，调编辑器的代码。
+fn decide_case(c: &Value, settings: &Value) -> Verdict {
+    let pair = |v: &Value| [v["w5h"].as_f64(), v["w7d"].as_f64()];
+    let int = |v: &Value| [v["w5h"].as_u64(), v["w7d"].as_u64()];
+    let accounts: Vec<CtxAcct> = c["accounts"]
+        .as_array()
+        .expect("accounts")
+        .iter()
+        .map(|a| CtxAcct {
+            id: a["id"].as_str().expect("id").into(),
+            pos: a["pos"].as_u64().unwrap_or(0) as usize,
+            api: a["kind"] == "api",
+            sendable: a["sendable"] == true,
+            used: pair(&a["used"]).map(|u| u.unwrap_or(0.0)),
+            resets: int(&a["resets"]),
+            refused_until: a["refusedUntil"].as_u64(),
+            rate: pair(&a["rate"]),
+            per_pct: int(&a["tokensPerPct"]),
+            weekly: a["weekly"] == true,
+            off: false,
+            others: a["others"]["w5h"].as_f64(),
+        })
+        .collect();
+    let s = &c["session"];
+    let me = Me {
+        pace: s["pace"].as_f64(),
+        spread: s["spread"].as_f64(),
+        context: s["context"].as_u64(),
+        write_extra: s["writeExtra"].as_f64(),
+        ttl: s["ttl"].as_u64(),
+        grow: s["grow"].as_f64(),
+        cached: s["cached"].as_object().map_or(Vec::new(), |m| {
+            m.iter()
+                .map(|(k, v)| PromptCache {
+                    account: k.clone(),
+                    until: v["until"].as_u64().unwrap_or(0),
+                    tokens: v["tokens"].as_u64().unwrap_or(0),
+                })
+                .collect()
+        }),
+    };
+    let ctx = Ctx {
+        now: c["now"].as_u64().expect("now"),
+        clock: c["clock"].as_u64().expect("clock") as u16,
+        start: "",
+        current: c["current"].as_str().unwrap_or(""),
+        settings,
+        memo: c.get("memo").filter(|m| !m.is_null()),
+        accounts,
+        me: &me,
+        pinned: c["pinned"] == true,
+        temp: &[],
+    };
+    ed().0
+        .code
+        .decide_in(test_engine(), &ctx)
+        .unwrap_or_else(|e| panic!("编辑器的代码跑出错（{}）：{e:?}", c["case"]))
+}
+
+fn why_of<'a>(v: &'a Verdict, id: &str) -> &'a str {
+    v.why
+        .iter()
+        .find(|(a, _)| a == id)
+        .map_or("", |(_, w)| w.as_str())
+}
+
+/// ★ 智能切换开着：额度紧时在用的 C 还剩不少、5 小时后才作废，B 剩 40%、半小时后作废 ⇒ 照推演当场换去 B；
+/// 用满换号时也先用最先作废的（B），不照号牌（A）。
+#[test]
+fn smart_on_switches_early_when_it_pays_and_takes_the_first_to_expire() {
+    let c = case("b · 场景 60 · 智能切换");
+    let s = &c["ctx"]["settings"];
+    let v = decide_case(&c["ctx"], s);
+    assert_eq!(v.order.first().map(String::as_str), Some("B"), "{v:?}");
+    assert!(why_of(&v, "B").starts_with("智能切换"), "{v:?}");
+    let mut full = c["ctx"].clone();
+    full["accounts"][2]["used"]["w5h"] = json!(95.0);
+    let v = decide_case(&full, s);
+    assert_eq!(
+        v.order.first().map(String::as_str),
+        Some("B"),
+        "用满换号先用最先作废的：{v:?}"
+    );
+}
+
+/// ★ 智能切换关着：同一组事实，在用的 C 没到上限就留着，其余照号牌；用满时照号牌换（A）。
+#[test]
+fn smart_off_keeps_the_current_and_goes_by_the_list() {
+    let c = case("b · 场景 60 · 智能切换");
+    let mut s = c["ctx"]["settings"].clone();
+    s["smart"] = json!(false);
+    let v = decide_case(&c["ctx"], &s);
+    assert_eq!(v.order, ["C", "A", "B", "D", "E", "F", "G"]);
+    let mut full = c["ctx"].clone();
+    full["accounts"][2]["used"]["w5h"] = json!(95.0);
+    let v = decide_case(&full, &s);
+    assert_eq!(v.order.first().map(String::as_str), Some("A"), "{v:?}");
+}
+
+/// ★ 编辑器那一份与算法定稿时的那一份对同一组事实排出同样的先后（rotsim 的几十判：提前换 · 不值得换 · 用满换号 ·
+/// 延迟切入 · 强制切出 · 停发 · 手动选的 · 量不到用速 · 30 个号）。
+#[test]
+fn it_orders_the_same_as_the_algorithm_on_the_simulated_facts() {
+    let all = cases();
+    assert!(all.len() >= 30, "夹具够多：{}", all.len());
+    let mut off = Vec::new();
+    for c in &all {
+        let v = decide_case(&c["ctx"], &c["ctx"]["settings"]);
+        let want: Vec<String> = serde_json::from_value(c["order"].clone()).expect("order");
+        if v.order != want {
+            off.push(format!("{}：得 {:?}，应 {:?}", c["case"], v.order, want));
+        }
+    }
+    assert!(off.is_empty(), "排法不一样：\n{}", off.join("\n"));
+}
+
+/// 合成的 `n` 个号（号名不相干）：都开着窗、用了一半、重置时刻错开，除在用的 n03（剩得多、5 小时后重置）与 n05（半小时后作废）外
+/// 都压着别的会话；本会话用速量得到，起伏 `spread`。
+fn many(n: usize, spread: f64) -> Value {
+    const T0: u64 = 1_791_907_200;
+    let ids: Vec<String> = (0..n).map(|i| format!("n{i:02}")).collect();
+    let accounts: Vec<Value> = ids
+        .iter()
+        .enumerate()
+        .map(|(i, id)| {
+            let (u, r) = match i {
+                3 => (20.0, T0 + 299 * 60),
+                5 => (50.0, T0 + 30 * 60),
+                _ => (50.0, T0 + (20 + (i as u64 * 37) % 280) * 60),
+            };
+            json!({"id": id, "pos": i, "kind": "sub", "sendable": true,
+                   "used": {"w5h": u, "w7d": 0.0}, "resets": {"w5h": r, "w7d": T0 + 6 * 86_400},
+                   "rate": {"w5h": 0.3}, "tokensPerPct": {"w5h": 150_000, "w7d": 150_000},
+                   "others": {"w5h": if i == 3 || i == 5 { 0.0 } else { 0.3 }}, "weekly": false})
+        })
+        .collect();
+    json!({"case": format!("{n} 个号 · 起伏 {spread}"), "now": T0, "clock": 540, "current": "n03",
+           "settings": {"accounts": ids.iter().map(|id| json!({"id": id})).collect::<Vec<_>>(), "smart": true},
+           "accounts": accounts,
+           "session": {"pace": 150_000.0, "spread": spread, "context": 150_000, "writeExtra": 1.9, "grow": 0.0, "cached": {}},
+           "pinned": false})
+}
+
+/// ★ 号多了一判也在操作数上限里判完、不走兜底：推演开销由算法自己封顶（推不起几遍就少比几个候选，一个都推不起就不提前换）。
+/// 用速起伏大时低的那一档是 0，别的会话那一档不用、不并进池子（不拿 0 去除）。30 个号、没起伏时照推演提前换去快作废的 n00。
+#[test]
+fn many_accounts_judge_within_the_limit() {
+    for (n, spread) in [(9, 0.6), (15, 0.0), (15, 0.6), (30, 0.0), (30, 0.6)] {
+        let c = many(n, spread);
+        decide_case(&c, &c["settings"]);
+    }
+    let c = many(30, 0.0);
+    let v = decide_case(&c, &c["settings"]);
+    assert_eq!(v.order.first().map(String::as_str), Some("n00"), "{v:?}");
+    assert!(why_of(&v, "n00").starts_with("智能切换"), "{v:?}");
 }

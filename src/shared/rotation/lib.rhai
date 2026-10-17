@@ -6,12 +6,15 @@
 //      accounts: [ #{ start?: true, id?: "lab", caps?, capKind?, ... } ] }   // 号列表；先后就是同权时的先后
 
 // 某组分段在某个钟点（一天里第几分钟）的上限；落空 ＝ 100。
-fn cap_at(segs, clock) {
-  if segs == () { return 100.0; }
+fn cap_at(segs, clock) { cap_or(segs, clock, 100.0) }
+
+// 同 cap_at，落空（没有分段 · 这个钟点不在哪一段里）⇒ dflt。
+fn cap_or(segs, clock, dflt) {
+  if segs == () { return dflt; }
   for s in segs {
     if s.from <= clock && clock < s.to { return s.v.to_float(); }
   }
-  100.0
+  dflt
 }
 
 // 某组分段从此刻起到下一条边界还有几分钟（没有分段 ⇒ ()）。边界两边上限一样的不算（一整天一段的，零点不是边界）。
@@ -122,4 +125,205 @@ fn hold_from(s, rows, accts, ids, now, clock, extra) {
     if t != () && t > now && (best == () || t < best) { best = t; }
   }
   best
+}
+
+// ───────────── 智能切换用的几样（只算、不决定）─────────────
+// 单位：额度是百分点；用量与代价折成「折合输入 token」（号的 tokensPerPct ＝ 1% 约多少，跨号比时乘它）；时刻是秒，用速按分。
+
+// 一窗此刻的用量（w ＝ "w5h" | "w7d"）：读数缺 ⇒ 0；过了重置时刻 ⇒ 0。
+fn used_of(a, w, now) {
+  let u = a.used[w];
+  let r = a.resets[w];
+  if u == () || (r != () && r <= now) { 0.0 } else { u.to_float() }
+}
+
+// 一个号此刻那一份额度与它什么时候作废（c5 · c7 ＝ 两窗此刻的上限）：
+//   amt ＝ 余量（有周上限 ⇒ 两窗「上限 − 用量」取小，没有 ⇒ 只看 5 小时窗）· l7 ＝ 周窗剩的（没有周上限 ⇒ ()）· open ＝ 5 小时窗开着；
+//   wk ＝ 周上限卡着（周剩的不够它 5 小时窗一路用到周重置）⇒ 5 小时窗剩的不作废，作废看周重置；
+//   exp ＝ 作废的时刻：周上限卡着 ⇒ 周重置；只有 5 小时卡着 ⇒ 5 小时重置；没开窗 ⇒ ()（用了才开，开了 5 小时后才作废）。
+fn piece(a, c5, c7, now) {
+  let l5 = c5 - used_of(a, "w5h", now);
+  let r5 = a.resets.w5h;
+  let open = r5 != () && r5 > now;
+  let e5 = if open { r5 } else { () };
+  if a.weekly != true { return #{ amt: l5, exp: e5, wk: false, open: open, l7: () }; }
+  let l7 = c7 - used_of(a, "w7d", now);
+  let r7 = a.resets.w7d;
+  let on7 = r7 != () && r7 > now;
+  let wins = if on7 { (r7 - now + 17999) / 18000 } else { 1 };
+  let amt = if l7 < l5 { l7 } else { l5 };
+  if l7 < c5 * wins.to_float() {
+    return #{ amt: amt, exp: if on7 { r7 } else { now + 7 * 86400 }, wk: true, open: open, l7: l7 };
+  }
+  #{ amt: amt, exp: e5, wk: false, open: open, l7: l7 }
+}
+
+// 要换号时「先用最先作废的」那个先后的键（越小越先）：只有 5 小时卡着、扣掉别的会话到作废前会用掉的（others，点 / 分；说不出 ⇒ 0）
+//   还有剩 ⇒ 离作废还有几秒；没开窗 ⇒ 第二档；周上限卡着 · 别的会话会用完的 ⇒ 最后。同一档的先后由调用方再照号牌排。
+fn due_rank(p, others, now) {
+  if p.exp == () { return 1000000000; }
+  if p.wk { return 3000000000; }
+  let o = if others != () { others } else { 0.0 };
+  if p.amt - o * (p.exp - now).to_float() / 60.0 > 0.0 { p.exp - now } else { 3000000000 }
+}
+
+// 写缓存比读缓存多的倍数（本会话那一档）；说不出 ⇒ 1.9（1 小时档：写 2 倍、读 0.1 倍）。
+fn write_extra(sess) {
+  if sess.writeExtra != () { sess.writeExtra.to_float() } else { 1.9 }
+}
+
+// 换到号 id 当场多花的（折合输入 token）：本会话在它上面的缓存还在 ⇒ 只补写缓存之后新长的那段，否则整段上下文重写一遍。
+fn switch_cost(sess, id, now) {
+  let full = if sess.context != () { sess.context.to_float() } else { 0.0 };
+  let c = if sess.cached != () { sess.cached[id] } else { () };
+  if c != () && c["until"] != () && c["until"] > now && c.tokens != () {
+    let miss = full - c.tokens.to_float();
+    return write_extra(sess) * (if miss > 0.0 { miss } else { 0.0 });
+  }
+  write_extra(sess) * full
+}
+
+// 本会话在一份额度作废前用得掉多少（折合输入 token）：free ＝ 那份扣掉别人会用掉的还剩几点 · pace ＝ 本会话用速（token / 分）·
+//   tpp ＝ 那个号 1% 约多少 · minutes ＝ 离作废还有几分钟。
+fn usable(free, pace, tpp, minutes) {
+  let can = pace / tpp * minutes;
+  (if free < can { free } else { can }) * tpp
+}
+
+// 用速的几档（[倍数, 权]）：起伏（σ/μ）说不出或是 0 ⇒ 只一档；否则 μ、μ ± √3σ，权 2/3 · 1/6 · 1/6（正态的三点求积）。
+fn pace_bands(spread) {
+  let cv = if spread != () { spread.to_float() } else { 0.0 };
+  if cv <= 0.0 { return [[1.0, 1.0]]; }
+  let lo = 1.0 - 1.7320508 * cv;
+  [[if lo > 0.0 { lo } else { 0.0 }, 1.0 / 6.0], [1.0, 2.0 / 3.0], [1.0 + 1.7320508 * cv, 1.0 / 6.0]]
+}
+
+// 视野里这个号每次 5 小时重置后再来的那几份（[[百分点, 起, 作废]]）：至多到 now + horizon；满上限（segs5 照那一刻的钟点，落空 ⇒ dflt），
+//   有周上限的号几份加起来不超过周窗剩的（left7；没有周上限 ⇒ ()）；周上限卡着（wk）的那几份作废都在 exp（周重置）。
+fn refills(r5, left7, wk, exp, segs5, dflt, clock, now, horizon) {
+  let out = [];
+  let r = r5;
+  let left = left7;
+  while r != () && r > now && r < now + horizon {
+    let c5 = cap_or(segs5, (clock + (r - now) / 60) % 1440, dflt);
+    let c = if left != () && left < c5 { left } else { c5 };
+    if c > 0.0 { out.push([c, r, if wk { exp } else { r + 18000 }]); }
+    if left != () { left -= c; }
+    r += 18000;
+  }
+  out
+}
+
+// 往后推演（只算、不决定）：推到 o.end，回「卡住发不出的量 ＋ 用掉的周上限卡着的额度 ＋ 本会话一路换号重写缓存的量」（折合输入 token）。
+//   前六个是按列放的每份额度：数量 · 起 · 作废 · 号 · 周上限卡着 · 延迟切入的号（按列放，号多时也不超沙箱的数组 / 表上限）。
+//   守着的人（别的会话 · 本会话）一直用他那个号此刻那份，用完或作废再并进「池子」：别的会话守在哪 · 那份在第几格 · 用速多少在 oev
+//   （#{acc: [号], q: [格], r: [token / 分]}；o.m ＝ 这一档用速的倍数）；本会话这一条：o.at ＝ 它要守的那份在第几格，o.rho ＝ 本会话的用速，
+//   o.share ＝ 别的会话也守在这个号上的用速。池子照最先作废的那份用（延迟切入的最后）；本会话并进池子以后跟着池子走，池子每换一个号本会话就换一次：
+//   换到缓存期内用过的号只补写新长的那段（o.grow：每分钟多出的重写量），否则整段重写（o.kfull）；重写的量也从那个号的额度里出。
+//   o 另有：mine（本会话守的号）· lump（现在换过去当场重写的量，留着 ＝ 0）· cache（#{号: 缓存到几点}）· ttl · now · end。
+//   每一步只碰排在最前的那份：能用的按作废先后、还没开始的按开始先后各排一列（整数键 ＋ 沙箱自带的排序），一次推演随份数线性涨。
+//   开销封顶在调用方：一遍约 600 × 份数次操作，视野至多两个 5 小时窗（每号至多三份）；一判先算推得起几遍、至多比 3 个候选，
+//   一遍都推不起就不推（号多 · 用速有起伏时提前换就少了，不会撞上一判 20 万次的上限）。rotsim 量的一判最多：9 · 15 · 30 个号
+//   18.5 万 · 18.0 万 · 18.1 万（量得到用速），1.0 万 · 1.5 万 · 2.8 万（量不到）；50 · 100 个号 7.3 万 · 8.3 万（推不起，不提前换）。
+fn project(amt, st, ex, who, wk, late, oev, o) {
+  let now = o.now;
+  let t_end = o.end;
+  let cache = o.cache;
+  let n = amt.len();
+  let cost = o.lump;
+  // 别的会话：守在各自号上，用完或作废的那一刻并进池子（编码：时刻 × 1024 ＋ 第几条）
+  let evt = []; let erho = []; let elump = []; let eme = [];
+  let q = 0;
+  while q < oev.acc.len() {
+    let r = oev.r[q] * o.m;
+    if oev.acc[q] != o.mine && r > 0.0 {   // 这一档用速是 0 的（起伏大时低的那一档）⇒ 他不用、不并进池子
+      let z = oev.q[q];
+      let tt = now;
+      if z != () {
+        let dt = amt[z] / r * 60.0;
+        if ex[z] - now < dt { dt = (ex[z] - now).to_float(); }
+        if wk[z] { cost += r * dt / 60.0; }
+        amt[z] = 0.0;
+        tt = now + dt.to_int();
+      }
+      if tt < t_end { evt.push(tt * 1024 + erho.len()); erho.push(r); elump.push(0.0); eme.push(false); }
+    }
+    q += 1;
+  }
+  // 本会话这一条
+  let k = o.at;
+  let rho = o.rho;
+  if o.share != () { rho += o.share; }
+  if k == () || rho <= 0.0 { evt.push(now * 1024 + erho.len()); erho.push(o.rho); elump.push(o.lump); eme.push(true); }
+  else {
+    let need = amt[k] - o.lump;
+    if wk[k] { cost += o.lump; }
+    if need <= 0.0 { amt[k] = 0.0; evt.push(now * 1024 + erho.len()); erho.push(o.rho); elump.push(-need); eme.push(true); }
+    else {
+      let dt = need / rho * 60.0;
+      if ex[k] - now < dt { dt = (ex[k] - now).to_float(); }
+      if wk[k] { cost += o.rho * dt / 60.0; }
+      amt[k] = 0.0;
+      let t = now + dt.to_int();
+      if t < t_end { evt.push(t * 1024 + erho.len()); erho.push(o.rho); elump.push(0.0); eme.push(true); }
+    }
+  }
+  evt.sort();
+  let avail = []; let pend = [];
+  let i = 0;
+  while i < n {
+    if amt[i] > 0.0 && ex[i] > now {
+      if st[i] > now { pend.push(st[i] * 1024 + i); } else { avail.push((if late[i] { 4000000000000000 } else { 0 }) + ex[i] * 1024 + i); }
+    }
+    i += 1;
+  }
+  pend.sort();
+  avail.sort();
+  let d = 0.0; let due = 0.0; let tau = now; let ei = 0; let pi = 0;
+  let me_in = false; let my = o.mine; let guard = 0;
+  while tau < t_end && guard < 4 * n + 4 * evt.len() + 16 {
+    guard += 1;
+    while ei < evt.len() && evt[ei] / 1024 <= tau {
+      let q = evt[ei] % 1024;
+      d += erho[q]; due += elump[q];
+      if eme[q] { me_in = true; }
+      ei += 1;
+    }
+    let moved = false;
+    while pi < pend.len() && pend[pi] / 1024 <= tau {
+      let j = pend[pi] % 1024;
+      avail.push((if late[j] { 4000000000000000 } else { 0 }) + ex[j] * 1024 + j);
+      pi += 1; moved = true;
+    }
+    if moved { avail.sort(); }
+    while avail.len() > 0 && (amt[avail[0] % 1024] <= 0.0 || ex[avail[0] % 1024] <= tau) { avail.remove(0); }
+    let nxt = if ei < evt.len() { evt[ei] / 1024 } else { t_end };
+    if pi < pend.len() && pend[pi] / 1024 < nxt { nxt = pend[pi] / 1024; }
+    if d <= 0.0 && due <= 0.0 { tau = nxt; continue; }
+    if avail.len() == 0 { cost += d * (nxt - tau).to_float() / 60.0 + due; due = 0.0; tau = nxt; continue; }
+    let k = avail[0] % 1024;
+    if me_in && who[k] != my {
+      let c = cache[who[k]];
+      let r = if c != () && c > tau { o.grow * (tau - now).to_float() / 60.0 } else { o.kfull };
+      cost += r; due += r;
+      cache[my] = tau + o.ttl;
+      my = who[k];
+    }
+    if due > 0.0 {
+      let take = if due < amt[k] { due } else { amt[k] };
+      amt[k] -= take; due -= take;
+      if wk[k] { cost += take; }
+      continue;
+    }
+    let end = if ex[k] < nxt { ex[k] } else { nxt };
+    let e2 = tau + (amt[k] / d * 60.0).ceiling().to_int();
+    if e2 < end { end = e2; }
+    if end <= tau { end = tau + 1; }
+    let used = d * (end - tau).to_float() / 60.0;
+    if used > amt[k] { used = amt[k]; }
+    amt[k] -= used;
+    if wk[k] { cost += used; }
+    tau = end;
+  }
+  cost
 }
