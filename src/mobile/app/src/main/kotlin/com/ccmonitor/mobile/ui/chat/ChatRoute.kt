@@ -56,6 +56,7 @@ import com.ccmonitor.mobile.ui.common.rememberHostLink
 import com.ccmonitor.mobile.ui.drawer.ChatDrawer
 import com.ccmonitor.mobile.ui.drawer.DRAWER_OPEN_DESCRIPTION
 import com.ccmonitor.mobile.ui.drawer.DrawerAction
+import com.ccmonitor.mobile.ui.needs.NeedsEntry
 import com.ccmonitor.mobile.ui.session.SessionTabManager
 import com.ccmonitor.mobile.ui.session.TerminalOps
 import kotlinx.coroutines.flow.map
@@ -86,6 +87,8 @@ fun ChatRoute(
     onOpenRotation: (String) -> Unit = {},
     /** 顶栏「⋯」→ 在终端里打开：终端屏开一个标签，附着它所在的 tmux 会话（名字是那台名单上的），终端已经不在 ⇒ 先让那台恢复再附着。 */
     onOpenTerminal: (SessionTabManager.TabTarget.Terminal) -> Unit = {},
+    /** 顶栏右上「需手动 n」：总览。 */
+    onOpenOverview: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // 先把连接建起来；持有挂在对话上，由 `ChatController.sessionFor(hostId = …)` 负责。
@@ -114,7 +117,7 @@ fun ChatRoute(
         onDrawerAction(if (action == DrawerAction.NewConversation && cwd != null) DrawerAction.NewDraft(hostId, cwd) else action)
     }
     val picker = vm.picker
-    val needs = rememberChatNeeds(open.key, backends.of(hostId), sid, host.machine)
+    val needs = rememberChatNeeds(open.key, hostId, backends.of(hostId), sid, host.machine)
     val terminals = remember(hostId) { TerminalOps(backends.of(hostId), { host.machine }) }
     ChatDrawer(hostId, link is HostLink.Ready, drawerState, onDrawer) {
         Scaffold(
@@ -132,6 +135,7 @@ fun ChatRoute(
                     },
                     onTerminal = onOpenTerminal,
                     onRotation = onOpenRotation,
+                    needs = { NeedsEntry(onOpenOverview) },
                 )
             },
         ) { inner ->
@@ -254,6 +258,8 @@ private fun ChatTopBar(
     findTerminal: suspend (String) -> TermEntry?,
     onTerminal: (SessionTabManager.TabTarget.Terminal) -> Unit,
     onRotation: (String) -> Unit,
+    /** ⋯ 左边那颗「需手动 n」（0 不画；空的新建会话里同样有）。 */
+    needs: @Composable () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
     var terminal by remember(sid) { mutableStateOf<TermEntry?>(null) }
@@ -271,6 +277,7 @@ private fun ChatTopBar(
         title = { Text(title, style = MaterialTheme.typography.titleMedium) },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = LocalAppTokens.current.bg2, scrolledContainerColor = LocalAppTokens.current.bg2),
         actions = {
+            needs()
             if (sid != null) {
                 IconButton(
                     onClick = {

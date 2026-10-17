@@ -43,10 +43,9 @@ import {
 import { listen } from "@tauri-apps/api/event";
 import { HistoryView } from "./views/history";
 import { PlanView } from "./views/plan";
-import { PlanNeedsBook, type PlanNeedItem } from "./plan-needs";
-import { ManualBook } from "./manual-book";
+import { PlanNeedsBook } from "./plan-needs";
+import { NeedsBook } from "./needs-book";
 import { openLoginDrawer } from "./login-drawer";
-import type { PanelPlan } from "./needs-panel";
 import { CcBusView } from "./views/cc-bus-view";
 import { GridMonitorView } from "./views/grid-monitor";
 import { CommandBarView, type Command } from "./views/command-bar";
@@ -249,18 +248,19 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // 启动时记住的那一格（上次所在的 tab）：只在那个会话出现时恢复、就绪前不许被覆盖、没等到就明说（`startup-active.ts`）。
   let startup: StartupActive | null = null;
-  // 计划那一侧的「需手动」的账（会话头那一枚标 · 标签栏的数 · Ctrl J 都读它；计划页问到的交给它）。
+  // 计划的账（会话头那一枚标 · 计划页开页先画的那一份；计划页问到的交给它）。
   const planNeeds = new PlanNeedsBook();
-  const manualBook = new ManualBook();
+  // 「需手动」的账：各台 `sessions-needs` 整份、本机合好（入口 · 浮层 · Ctrl J · 窗口标题都读它）。
+  const needsBook = new NeedsBook();
   // 那台接上了（起来时本机后端还在起 · 断开之后又连上）⇒ 接上之前问过它的那几处再问一次；终端页停在「那台断开」的实时自己重新订上。
   onMachineUp((origin) => {
     terminalPage.machineUp(origin);
     void chores.refresh(origin);
-    void manualBook.refresh(origin);
+    void needsBook.refresh(origin);
     if (isLocalOrigin(origin)) void start.refresh();
   });
-  // 窗口标题的 N 同侧栏入口（会话 ＋ 计划项 ＋ 会话外的每一项）。`tabs` 建好之后才会被调到（标签页栏那一次刷新排在下一个微任务里）。
-  const paintNeedsTitle = (): void => needsTitle.observe(tabs.needsCount());
+  // 窗口标题的 N 同侧栏入口（后端合好的总数）。
+  const paintNeedsTitle = (): void => needsTitle.observe(needsBook.total());
 
   // 会话头（主区顶上 40px）与「需手动」钉条（消息流底部）：只读当前 tab，做事经 `tabs` 那几条。
   const sessionHead = new SessionHead({
@@ -589,19 +589,18 @@ window.addEventListener("DOMContentLoaded", async () => {
   planView.book = planNeeds;
   // 文件窗口「在计划里看」：壳已把主窗口拉到前面；开计划页、选中那一格（片按机器区分）。
   void listen<PlanOpenSaid>(PLAN_OPEN_EVENT, (e) => void planView.openAt(e.payload.origin, e.payload.workspace, e.payload.slice, e.payload.id));
-  tabs.attachPlanNeeds({ count: () => planNeeds.total(), at: () => planView.needAt(), open: (i) => void planView.openNeedItem(i), slices: () => planSlices(planNeeds.items()) });
-  // 会话外的「需手动」（`manual-list`）：数进「需手动 N」与窗口标题；点那一行开登录抽屉（入参 ＝ 那一项的 `fix.args`）。
-  tabs.attachManual(manualBook, (origin, item) => {
-    if (item.fix) openLoginDrawer({ origin, target: item.fix.args, onDone: () => void manualBook.refresh(origin) });
+  planView.needItems = () => needsBook.plans();
+  tabs.attachPlanNeeds({ at: () => planView.needAt(), open: (i) => void planView.openNeedItem(i) });
+  // 「需手动」：入口 · 浮层 · 窗口标题；点会话外那一行开登录抽屉（入参 ＝ 那一项的 `fix.args`）。
+  tabs.attachNeeds(needsBook, (origin, item) => {
+    if (item.fix) openLoginDrawer({ origin, target: item.fix.args, onDone: () => void needsBook.refresh(origin) });
   });
-  manualBook.subscribe(() => paintNeedsTitle());
-  const planTrigger = headButton("plan-trigger", "plan", copyText("main.cmd.openPlan"), hintWithKey(copyText("main.topbar.planHint"), "app.toggle-plan"), () => overlays.toggle("plan"));
-  planNeeds.subscribe(() => {
-    tabs.planNeedsChanged();
+  needsBook.subscribe(() => {
     paintNeedsTitle();
-    sessionHead.render();
-    planTrigger.dataset.needs = String(planNeeds.total() > 0);
+    planTrigger.dataset.needs = String(needsBook.plans().length > 0);
   });
+  const planTrigger = headButton("plan-trigger", "plan", copyText("main.cmd.openPlan"), hintWithKey(copyText("main.topbar.planHint"), "app.toggle-plan"), () => overlays.toggle("plan"));
+  planNeeds.subscribe(() => sessionHead.render());
 
   // 多 agent 并排监控入口：跨机器只读状态板（一屏看所有会话实时状态，点卡片跳会话；不派发、不驱动 agent）。
   const gridMonitorView = new GridMonitorView(tabs);
@@ -850,8 +849,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
   // 「没回来的组员」等每台都在自己那条流上报完了才认（壳那一刻先在别的台的流上到了也不算）。
   tabs.setMachines(machines as Origin[]);
-  // 会话外的需手动：每台问一次（之后那台推 `changed {manual}` 再问它）。
-  void manualBook.refreshAll(machines as Origin[]);
+  // 需手动：每台问一次（之后那台推 `changed {needs | plan | manual}` · 条上会话进出需手动再问它）。
+  void needsBook.refreshAll(machines as Origin[]);
   // await：保证 listener 注册完成、会话流订阅在 monitor 那一侧登记好，再 emit frontend-ready
   // （它就是这些订阅的就绪点：后端先重发宣告、再按 credit 交留存、再对账 —— 顺序见 `event_replay·rs::ready_point`）。
   await bindEvents({
@@ -864,6 +863,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     onSessionFace: (sessionId, face) => {
       const tab = tabs.tabsInOrder().find((t) => t.sessionId === sessionId);
       const ended = face.dot === "ended" && tab?.face?.dot !== "ended";
+      // 进出「需手动」⇒ 那台的需手动整份重问。
+      if (tab && (face.dot === "needs-you") !== (tab.face?.dot === "needs-you")) needsBook.poke(tab.origin);
       tabs.onFace(sessionId, face);
       if (!ended) return;
       accountsRefresher.request(); // 会话结束了
@@ -936,17 +937,19 @@ window.addEventListener("DOMContentLoaded", async () => {
           const plan = { moved, all: change.all || moved.length !== change.cells.length };
           planView.onChanged(origin, plan);
           planNeeds.onChanged(origin, plan);
+          needsBook.poke(origin);
           break;
         }
         case "needs": {
           // 那个会话挂着的待答请求变了（挂上 · 撤掉 · 有人答掉 · 「没人答时自动答」那一格改了）⇒ 重问它的会话事实（答题块跟着换）；可能漏了 ⇒ 这台的都问一次。
           if (change.all) tabs.rereadFactsOn(origin);
           for (const c of change.cells) if (c.key !== null) tabs.rereadFacts(c.key);
+          needsBook.poke(origin);
           break;
         }
         case "manual":
-          // 那台会话外的需手动清单可能变了 ⇒ 重问那一台（可能漏了也只问那一台：清单不分键）。
-          void manualBook.refresh(origin);
+          // 那台会话外的需手动清单可能变了 ⇒ 重问那一台的整份。
+          needsBook.poke(origin);
           break;
         case "profiles":
           break;
@@ -1036,13 +1039,3 @@ window.addEventListener("DOMContentLoaded", async () => {
   //   强制 wry 重新 put_Bounds，把 WebView2 合成层钉回左上角）—— DOM 这一层够不着合成层偏移。
 });
 
-/** 计划项按片收成浮层那几行（同一片的几条一行、带条数；点它去那一片的第一条）。 */
-function planSlices(items: readonly PlanNeedItem[]): PanelPlan[] {
-  const out: PanelPlan[] = [];
-  items.forEach((it, i) => {
-    const last = out[out.length - 1];
-    if (last && last.origin === it.origin && last.workspace === it.workspace && last.slice === it.slice) last.n++;
-    else out.push({ origin: it.origin, workspace: it.workspace, slice: it.slice, n: 1, first: i });
-  });
-  return out;
-}

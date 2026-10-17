@@ -52,7 +52,7 @@ import { NO_LINEAGE, type SessionHidden } from "./session-hidden";
 import { setAutoAnswer, setHide } from "./session-hidden-cmds";
 import { TabBarDrag } from "./tab-bar-drag";
 import { TabBarView, type PlanNeeds } from "./tab-bar-view";
-import type { ManualBook } from "./manual-book";
+import type { NeedsBook } from "./needs-book";
 import type { ManualItem } from "./login-reads";
 import { TabRouter } from "./tab-router";
 import { applyFacts } from "./tab-session-facts";
@@ -75,7 +75,6 @@ import { updateBackendOf } from "./backend-deploy";
 import { machineName } from "./control-said";
 import { closeFrontResult, flashFrontDone, setFrontBusy, showFrontResult } from "./front-pop";
 import { CHANNEL_ACTS, LaunchSlots, type SlotSpec } from "./launch-slot";
-import { askNeedsOrder } from "./needs-order";
 import type { Watched } from "./terminal-page";
 import type { ActionId } from "./keybindings/actions";
 
@@ -142,7 +141,6 @@ export class TabManager {
       toggleSelect: (sid) => this.pick(sid, "toggle"),
       openMenuAt: (el, sid) => this.openMenu(el, sid),
       rereadAll: () => this.rereadAll(),
-      needsOrder: (origins) => askNeedsOrder(origins),
       reconnect: (origin) => this.reconnect(origin),
     });
     this.slots = new LaunchSlots(
@@ -1119,15 +1117,14 @@ export class TabManager {
     void this.bar.nextNeeds();
   }
 
-  /** 计划那一侧的「需手动」挂进来（几条 · 站在第几条 · 去第几条 · 按片列出），之后数变了调 `planNeedsChanged`。 */
+  /** 计划那一侧的「需手动」挂进来（站在第几条 · 去第几条）。 */
   attachPlanNeeds(plan: PlanNeeds): void {
     this.bar.plan = plan;
-    this.bar.planNeedsChanged();
   }
 
-  /** 会话外的「需手动」挂进来（每台 `manual-list` 的账 · 点那一行开登录抽屉）；账变了 ⇒ 入口 · 浮层 · 窗口标题跟着重画。 */
-  attachManual(book: ManualBook, login: (origin: Origin, item: ManualItem) => void): void {
-    this.bar.manual = { book, login };
+  /** 「需手动」的账挂进来（各台整份、本机合好 · 点会话外那一行开登录抽屉）；账变了 ⇒ 入口 · 浮层跟着重画。 */
+  attachNeeds(book: NeedsBook, login: (origin: Origin, item: ManualItem) => void): void {
+    this.bar.needs = { book, login };
     book.subscribe(() => this.bar.planNeedsChanged());
     this.bar.planNeedsChanged();
   }
@@ -1136,7 +1133,7 @@ export class TabManager {
     this.bar.planNeedsChanged();
   }
 
-  /** 此刻需手动的会话数（窗口标题用）。 */
+  /** 此刻需手动的数（窗口标题用；后端合好的总数）。 */
   needsCount(): number {
     return this.bar.needsCountNow();
   }

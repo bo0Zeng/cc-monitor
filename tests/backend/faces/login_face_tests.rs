@@ -53,10 +53,7 @@ fn the_manual_list_names_each_thing_and_how_to_fix_it() {
         dirs: vec![],
         problems: vec![],
     };
-    let got = serde_json::to_value(
-        manual_of("claude", &accounts, None, &[], Some(("claude", &mcp))).expect("列得出"),
-    )
-    .unwrap();
+    let got = json!({ "items": manual_of("claude", &accounts, None, &[], Some(("claude", &mcp))).expect("列得出") });
     let fix = |a: &str| json!({ "command": "login-start", "args": { "kind": "account", "agent": "claude", "account": a } });
     let mcp_fix = |a: Value, s: &str| {
         json!({ "command": "login-start",
@@ -78,15 +75,10 @@ fn the_manual_list_names_each_thing_and_how_to_fix_it() {
         ]})
     );
     // 那一家不在 app 里登 ⇒ 不列需登录的号（没有解法的不列成「点了能解」）。
-    let fake = serde_json::to_value(
-        manual_of("no-such-agent", &accounts, None, &[], None).expect("列得出"),
-    )
-    .unwrap();
+    let fake =
+        json!({ "items": manual_of("no-such-agent", &accounts, None, &[], None).expect("列得出") });
     assert_eq!(fake, json!({ "items": [] }));
-    let no_mcp_login = serde_json::to_value(
-        manual_of("no-such-agent", &accounts, None, &[], Some(("fake", &mcp))).expect("列得出"),
-    )
-    .unwrap();
+    let no_mcp_login = json!({ "items": manual_of("no-such-agent", &accounts, None, &[], Some(("fake", &mcp))).expect("列得出") });
     assert_eq!(no_mcp_login["items"][0]["kind"], "mcpLogin");
     assert_eq!(
         no_mcp_login["items"][0]["fix"],
@@ -116,10 +108,7 @@ fn an_account_whose_renewal_was_refused_is_listed_as_needing_a_new_login() {
         row("q", "subscription", true, true),
         row("ok", "subscription", true, true),
     ]);
-    let got = serde_json::to_value(
-        manual_of("claude", &accounts, None, &["q".to_string()], None).expect("列得出"),
-    )
-    .unwrap();
+    let got = json!({ "items": manual_of("claude", &accounts, None, &["q".to_string()], None).expect("列得出") });
     assert_eq!(
         got,
         json!({ "items": [
@@ -130,7 +119,7 @@ fn an_account_whose_renewal_was_refused_is_listed_as_needing_a_new_login() {
     );
 }
 
-/// 账号库清单在、却读不懂 ⇒ 回 `unreadable` ＋ 为什么，不回空清单（空清单看起来像「没事」）。
+/// 账号库清单在、却读不懂 ⇒ 回那一句为什么，不回空清单（空清单看起来像「没事」）。
 /// 读法照账号清单那一份（坏 JSON 的清单 ⇒ `meta.error` 那一句）；没有清单（没启用多账号）照旧列得出。
 #[test]
 fn an_unreadable_account_library_is_said_not_listed_as_nothing() {
@@ -142,11 +131,8 @@ fn an_unreadable_account_library_is_said_not_listed_as_nothing() {
     let product = list_product_with(&accts, None, &[], &[], "claude", "claude", false);
     let why = library_unreadable(&accts);
     assert_eq!(why, product.meta.error, "同账号清单那一句");
-    let fail = manual_of("claude", &product, why, &[], None)
-        .expect_err("读不懂 ⇒ 不是空清单")
-        .into_fail();
-    assert_eq!(fail.code, "unreadable");
-    assert_eq!(Some(fail.message), product.meta.error, "那一句是为什么");
+    let fail = manual_of("claude", &product, why, &[], None).expect_err("读不懂 ⇒ 不是空清单");
+    assert_eq!(Some(fail), product.meta.error, "那一句是为什么");
     let nope = root.join("nope");
     assert_eq!(
         library_unreadable(&nope),
@@ -155,9 +141,8 @@ fn an_unreadable_account_library_is_said_not_listed_as_nothing() {
     );
     let absent = list_product_with(&nope, None, &[], &[], "claude", "claude", false);
     assert_eq!(
-        serde_json::to_value(manual_of("claude", &absent, None, &[], None).expect("没有清单照列"))
-            .unwrap(),
-        json!({ "items": [] })
+        manual_of("claude", &absent, None, &[], None).expect("没有清单照列"),
+        Vec::new()
     );
     let _ = std::fs::remove_dir_all(&root);
 }

@@ -5,7 +5,7 @@ import type { SessionFace } from "./SessionFace";
 import type { Words } from "./Words";
 
 /**
- * 这台上需手动的会话清单（`sessions-needs` 的一行）：会话 id ＋ 它在等什么（同 `history-facts.needs` 那一份成品）。
+ * 一条在等人的会话（`sessions-needs` 会话那一项）：会话 id ＋ 它在等什么（同 `history-facts.needs` 那一份成品）。
  */
 export type NeedsRow = { sid: string, 
 /**

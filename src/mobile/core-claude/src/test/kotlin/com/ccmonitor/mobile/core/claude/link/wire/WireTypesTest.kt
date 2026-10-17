@@ -156,6 +156,8 @@ class WireTypesTest {
                     .split("|")
                     .map(String::trim)
                     .filter { it != "null" }
+                    // 联合各支同名那一格（一支 `string`、一支 `string | null`）并起来只算一个型。
+                    .distinct()
                     .joinToString(" | ")
             fits(decl, cell.type, core)?.let { "${c.name}.${cell.name}：$it" }
         }

@@ -1420,8 +1420,89 @@ fn ranked(tier: usize, waited_ms: Option<u64>) -> Needs {
     }
 }
 
-/// ★ 各台合成一个先后只经 [`merge_needs`]（`sessions-needs-merge`，桌面 `Ctrl+J` 走这一份）：跨台照 `rank` 比；
-/// 全都一样照给的台序与台内原来的先后；每条带回它那台。每一例的几条拆在两台上交进来（期望手写）。
+/// 一条在等的会话那一行（夹具）：危险度第 `tier` 档 · 已等多久。
+fn waiting_row(sid: &str, tier: usize, waited: Option<u64>) -> cmd_wire::needs::NeedsRow {
+    cmd_wire::needs::NeedsRow {
+        sid: sid.to_string(),
+        label: crate::common::cells::Words("t".into()),
+        face: <crate::wire::SessionFace as crate::wire::SessionFaceExt>::of(
+            crate::wire::Life::Live {
+                activity: Some(crate::agents::SessionActivity::NeedsYou),
+                tmux: None,
+            },
+        ),
+        needs: ranked(tier, waited),
+        hidden: None,
+    }
+}
+
+/// 会话外的一项（夹具）：号 `account` 需登录。
+fn account_item(account: &str) -> cmd_wire::needs::ManualItem {
+    cmd_wire::needs::ManualItem::AccountLogin {
+        agent: "claude".into(),
+        account: account.into(),
+        said: account.into(),
+        fix: cmd_wire::needs::ManualFix {
+            command: "login-start".into(),
+            args: cmd_wire::needs::LoginStartReq::Account {
+                agent: "claude".into(),
+                account: account.into(),
+            },
+        },
+    }
+}
+
+/// 一项的短名（判先后用）：会话 ⇒ sid；计划 ⇒ `片#k`；会外 ⇒ `@号`。
+fn item_name(i: &cmd_wire::needs::NeedsItem) -> String {
+    use cmd_wire::needs::{ManualItem, NeedsItem};
+    match i {
+        NeedsItem::Session { session, .. } => session.sid.clone(),
+        NeedsItem::Plan { slice, k, .. } => format!("{slice}#{k}"),
+        NeedsItem::Manual {
+            manual: ManualItem::AccountLogin { account, .. },
+            ..
+        } => format!("@{account}"),
+        NeedsItem::Manual { .. } => "@mcp".into(),
+    }
+}
+
+/// ★ 一台的需手动整份（`sessions-needs`）只经 [`needs_list`] 拼：在等的会话（照 `needs.rank`）· 计划里每一片要人看的每一格 ·
+/// 会话外的每一项，依次排；计划 · 会外各占会话之后的一档（判不出种类的会话也排在计划前）。会外那一截读不出 ⇒ 那一句、那一截不列。
+#[test]
+fn one_machines_needs_are_sessions_then_plan_cells_then_the_rest() {
+    let got = needs_list(
+        vec![waiting_row("s", 7, None)],
+        &[("/w".into(), "a".into(), 2)],
+        Ok(vec![account_item("work")]),
+        vec![],
+    );
+    let names: Vec<String> = got.items.iter().map(item_name).collect();
+    assert_eq!(names, ["s", "a#0", "a#1", "@work"]);
+    assert_eq!(got.manual_unreadable, None);
+    let ranks: Vec<u64> = got.items.iter().map(rank_of).collect();
+    assert!(
+        ranks.windows(2).all(|w| w[0] <= w[1]),
+        "先后就是 rank 的先后：{ranks:?}"
+    );
+    let v = serde_json::to_value(&got.items[1]).unwrap();
+    assert_eq!(
+        v,
+        json!({"kind": "plan", "rank": v["rank"], "workspace": "/w", "slice": "a", "k": 0})
+    );
+    let unreadable = needs_list(vec![], &[], Err("坏了".into()), vec![]);
+    assert!(unreadable.items.is_empty());
+    assert_eq!(
+        unreadable.manual_unreadable,
+        Some(crate::common::cells::Words("坏了".into()))
+    );
+    // 回包两端同一个类型：解得开、重写出来一样。
+    let wire = serde_json::to_value(&got).unwrap();
+    let back: cmd_wire::needs::NeedsList = serde_json::from_value(wire.clone()).unwrap();
+    assert_eq!(serde_json::to_value(&back).unwrap(), wire);
+}
+
+/// ★ 各台合成一份只经 [`merge_needs`]（`sessions-needs-merge`）：跨台照 `rank` 比；并列 ⇒ 本机在前、再照给的台序与台内原来的先后；
+/// 每项带回它那台；`total` 是各台加起来几项；会外读不出的那几台各带那一句。每一例的几条拆在几台上交进来（期望手写）。
 #[test]
 fn needs_merge_orders_across_machines_by_the_one_rule() {
     type Case<'a> = (
@@ -1456,48 +1537,81 @@ fn needs_merge_orders_across_machines_by_the_one_rule() {
             &["c", "b", "a"],
         ),
         (
-            "全都一样照给的台序与台内的先后",
+            "并列本机在前，再照给的台序与台内的先后",
             &[
-                ("<local>", "a", 2, None),
-                ("<local>", "b", 2, None),
                 ("devbox", "c", 2, Some(7)),
                 ("devbox", "d", 2, Some(7)),
-                ("devbox", "e", 2, None),
+                ("<local>", "a", 2, Some(7)),
+                ("<local>", "b", 2, Some(7)),
+                ("gpu", "e", 2, Some(7)),
             ],
-            &["c", "d", "a", "b", "e"],
+            &["a", "b", "c", "d", "e"],
         ),
     ];
     for (name, rows, want) in cases {
         let mut machines: Vec<NeedsMachine> = Vec::new();
         for (m, sid, tier, waited) in *rows {
-            let row = cmd_wire::needs::NeedsRow {
-                sid: sid.to_string(),
-                label: crate::common::cells::Words("t".into()),
-                face: <crate::wire::SessionFace as crate::wire::SessionFaceExt>::of(
-                    crate::wire::Life::Live {
-                        activity: Some(crate::agents::SessionActivity::NeedsYou),
-                        tmux: None,
-                    },
-                ),
-                needs: ranked(*tier, *waited),
-                hidden: None,
+            let item = cmd_wire::needs::NeedsItem::Session {
+                rank: ranked(*tier, *waited).rank,
+                session: waiting_row(sid, *tier, *waited),
             };
             match machines.iter_mut().find(|x| x.origin.0 == *m) {
-                Some(x) => x.waiting.push(row),
+                Some(x) => x.list.items.push(item),
                 None => machines.push(NeedsMachine {
                     origin: cmd_wire::Machine(m.to_string()),
-                    waiting: vec![row],
+                    list: cmd_wire::needs::NeedsList {
+                        items: vec![item],
+                        answered: vec![],
+                        manual_unreadable: None,
+                    },
                 }),
             }
         }
         let got = merge_needs(machines);
-        let sids: Vec<&str> = got.order.iter().map(|x| x.sid.as_str()).collect();
+        let sids: Vec<String> = got.items.iter().map(|x| item_name(&x.item)).collect();
         assert_eq!(&sids, want, "{name}");
-        for x in &got.order {
-            let (m, ..) = rows.iter().find(|r| r.1 == x.sid).unwrap();
-            assert_eq!(x.origin.0, *m, "{name}：{} 带回的台不对", x.sid);
+        assert_eq!(got.total as usize, rows.len(), "{name}");
+        for x in &got.items {
+            let (m, ..) = rows.iter().find(|r| r.1 == item_name(&x.item)).unwrap();
+            assert_eq!(
+                x.origin.0,
+                *m,
+                "{name}：{} 带回的台不对",
+                item_name(&x.item)
+            );
         }
     }
+    // 两台各一份整份：会话先、计划次之、会外最后；计划 · 会外并列时本机在前；总数相加；读不出的那台各带那一句。
+    let remote = needs_list(
+        vec![waiting_row("r", 1, Some(5))],
+        &[("/w".into(), "x".into(), 1)],
+        Err("读不懂".into()),
+        vec![],
+    );
+    let local = needs_list(
+        vec![],
+        &[("/v".into(), "y".into(), 1)],
+        Ok(vec![account_item("home")]),
+        vec![],
+    );
+    let got = merge_needs(vec![
+        NeedsMachine {
+            origin: cmd_wire::Machine("devbox".into()),
+            list: remote,
+        },
+        NeedsMachine {
+            origin: cmd_wire::Machine::local(),
+            list: local,
+        },
+    ]);
+    let names: Vec<String> = got.items.iter().map(|x| item_name(&x.item)).collect();
+    assert_eq!(names, ["r", "y#0", "x#0", "@home"]);
+    assert_eq!(got.total, 4);
+    let v = serde_json::to_value(&got).unwrap();
+    assert_eq!(
+        v["unreadable"],
+        json!([{"origin": "devbox", "said": "读不懂"}])
+    );
 }
 
 /// 钉条第一行由核心写（`head`：种类 ＋ 工具名，「等批准 · Bash」），等宽那一段也由核心挑（`headCode`：批准 · 回答 · 放行带主参数，

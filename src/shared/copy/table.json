@@ -28707,6 +28707,12 @@
       "zh": "标签页",
       "args": []
     },
+    "mobOverview.screen.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "总览",
+      "args": []
+    },
     "mobTabs.list.title": {
       "kind": "title",
       "role": "标题",

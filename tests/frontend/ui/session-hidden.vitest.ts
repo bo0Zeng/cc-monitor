@@ -9,6 +9,7 @@
  *
  * 夹具只造结构（sid · 路径 · 后端那一句的占位），不采会话正文。
  */
+import { fakeNeedsBook, listOf, sessionItem } from "../../test-support/needs-fake";
 import faces from "../../__fixtures__/session-face.golden.json";
 import type { SessionFace } from "../../../src/frontend/ui/generated/SessionFace";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -116,7 +117,6 @@ function bar(tabs: Tab[], prefs: Partial<TabBarPrefs> = {}) {
     openMenuAt: vi.fn(),
     rereadAll: vi.fn().mockResolvedValue(undefined),
     reconnect: vi.fn(),
-    needsOrder: vi.fn(async () => []),
   } satisfies TabBarViewHost;
   const el = document.createElement("div");
   document.body.appendChild(el);
@@ -185,6 +185,11 @@ describe("标签栏：栏底「已隐藏 N」那一行照 hidden 格画", () => 
 
   it("★ 隐藏的会话在等人：「需手动」照样数它、`Ctrl+J` 照样跳过去；收着的那一行汇总那颗需手动的点", async () => {
     const r = bar([tab("a"), tab("b", { hidden: BG, ...waiting, needs: approve() })]);
+    // 那台的整份里照样有它（隐藏不影响需手动：后端那一侧列它，`sessions-needs` 判据管）。
+    const needs = fakeNeedsBook({ [LOCAL_ORIGIN]: listOf([sessionItem("b", approve())]) });
+    r.view.needs = { book: needs.book, login: vi.fn() };
+    needs.book.subscribe(() => r.view.planNeedsChanged());
+    await needs.book.refresh(LOCAL_ORIGIN);
     const strip = r.el.querySelector<HTMLElement>(".tab-needs")!;
     expect(strip.style.display).toBe("");
     expect(strip.querySelector(".tab-needs-count")?.textContent).toBe("1");

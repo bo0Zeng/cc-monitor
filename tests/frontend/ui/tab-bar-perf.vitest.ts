@@ -109,7 +109,6 @@ function rig(n: number, grouped = 0): Rig {
     openMenuAt: vi.fn(),
     rereadAll: vi.fn().mockResolvedValue(undefined),
     reconnect: vi.fn(),
-    needsOrder: vi.fn(async () => []),
   };
   const bar = document.createElement("div");
   bar.id = "tab-bar";

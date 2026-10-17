@@ -1,4 +1,4 @@
-//! 命令表 · 账号：`accounts-*` · `apikey-*` · `quota-read` · `quota-probe` · `rotation-*` · `login-*` · `manual-list`。
+//! 命令表 · 账号：`accounts-*` · `apikey-*` · `quota-read` · `quota-probe` · `rotation-*` · `login-*`。
 
 use crate::wire::spec::CommandSpec;
 
@@ -87,9 +87,5 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     crate::wire::typed::blocking::<crate::faces::login_face::LoginCancel>(
         "收一份登录作业",
-    ),
-    // 会话外的需手动清单（需登录的号 · 需登录的 MCP）：每一项带写好的那一句和怎么解。读账号清单 ＋ MCP 缓存 ⇒ 阻塞档。
-    crate::wire::typed::blocking::<crate::faces::login_face::ManualListCmd>(
-        "会话外的需手动清单：需登录的号 · 需登录的 MCP",
     ),
 ];

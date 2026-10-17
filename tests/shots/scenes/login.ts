@@ -1,7 +1,7 @@
 /**
  * 「需手动」浮层与登录抽屉：浮层的几种情形 · 抽屉从起登录到各种结局 · 别的入口。
  *
- * 会话外的需手动清单（`manual-list`）与登录那三条（`login-start` · `login-finish` · `login-cancel`）都是场景合成的答法；
+ * 会话外的需手动清单（各台 `sessions-needs` 里会外那一截，`world.manualAt`）与登录那三条（`login-start` · `login-finish` · `login-cancel`）都是场景合成的答法；
  * 不起任何登录程序。号名 · 服务器名 · 链接全是编的。
  */
 import type { Scene } from "./index";
@@ -26,11 +26,7 @@ const mcpItem = (account: string, server: string) => ({ kind: "mcpLogin", accoun
 function manualWorld(lists: Record<string, unknown[] | Refuse>): () => World {
   return () => {
     const w = defaultWorld();
-    w.ops["manual-list"] = (origin) => {
-      const got = lists[origin] ?? [];
-      if (got instanceof Refuse) throw got;
-      return { items: got };
-    };
+    w.manualAt = (origin) => lists[origin] ?? [];
     return w;
   };
 }
@@ -102,14 +98,14 @@ export const LOGIN_SCENES: Scene[] = [
     openPanel,
     () => {
       const w = busyWorld();
-      w.hopDown = { devbox: ["manual-list"] };
+      w.hopDown = { devbox: ["sessions-needs"] };
       return w;
     },
   ),
   scene(
     "needs-panel-unreadable",
     "需手动浮层 · 清单无法读取",
-    "gpu-01 回了话、账号库无法解析（回码 unreadable）：入口不带数字、虚线框；面板照常列读到的，底部一条虚线说哪台无法读取（原话在悬停里）",
+    "gpu-01 回了话、账号库无法解析（会外那一截读不出）：入口不带数字、虚线框；面板照常列读到的，底部一条虚线说哪台无法读取（那一句在悬停里）",
     openPanel,
     manualWorld({ [LOCAL]: [acctItem("team")], "gpu-01": new Refuse("unreadable", copyText("beAccountsQuery.loadManifest.unreadable", { path: "/home/user/.cc-monitor/accounts/accounts.json", why: "expected value at line 3 column 5" })) }),
   ),
@@ -134,7 +130,7 @@ export const LOGIN_SCENES: Scene[] = [
       // 会话都不在等；会话外那份第一问有一项、之后（推了「需手动变了」再问）就空了。
       for (const s of w.sessions) if (s.activity === "needs_you") s.activity = "idle";
       let asked = 0;
-      w.ops["manual-list"] = (origin) => ({ items: origin === LOCAL && asked++ < 2 ? [acctItem("team")] : [] });
+      w.manualAt = (origin) => (origin === LOCAL && asked++ < 2 ? [acctItem("team")] : []);
       return w;
     },
   ),

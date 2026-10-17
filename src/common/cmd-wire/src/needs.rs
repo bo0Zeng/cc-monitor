@@ -1,18 +1,123 @@
-//! 「需手动」那一族的线上形（`sessions-needs` 的回包 · `history-facts.needs` 那一份成品 · 挂着的待答请求 `needs.ask`）——
+//! 「需手动」那一族的线上形（`sessions-needs` 的回包 · 会话外那一项与它的解法 `login-start` 入参 · `history-facts.needs` 那一份成品 · 挂着的待答请求 `needs.ask`）——
 //! 两侧同一份：后端按这里的类型写（判定与写字在后端 `observe::recognize::facts` · `agents::asks`），手机嵌的 Rust 核心按这里的类型解。
 
 use crate::cells::{Tone, Words};
 use serde::{Deserialize, Serialize};
 
-/// `sessions-needs` 的回包：这台上需手动的会话，先答的在前。
+/// `sessions-needs` 的回包：这台上需手动的每一项（在等的会话 · 计划需看的格 · 会话外的），那台排好（`rank` 小的在前）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct NeedsList {
-    /// 此刻活着、那台说在等人的会话（`needs.rank` 小的在前）；一个都没有 ⇒ 空。
-    pub waiting: Vec<NeedsRow>,
+    /// 依次：此刻活着、那台说在等人的会话 · 计划里要人看的格 · 会话外的（需登录的号 · MCP）；一项都没有 ⇒ 空。
+    pub items: Vec<NeedsItem>,
     /// 提问没人答、已替人答过的会话（各留最近一次，那条会话下一次挂上提问才换掉），按会话 id 排。
     pub answered: Vec<AnsweredRow>,
+    /// 会话外那一截读不出（账号库清单在、却读不懂）⇒ 那一句；那一截这时不列（空清单看起来像「没事」）。读得出 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub manual_unreadable: Option<Words>,
+}
+
+/// 需手动的一项（`sessions-needs` 里的一项）。`rank` 是先后（小的先答，合并各台也只按它排）：会话照 `needs.rank`，计划格 · 会话外各占会话之后的一档。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub enum NeedsItem {
+    /// 一条在等人的会话。
+    Session {
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        rank: u64,
+        session: NeedsRow,
+    },
+    /// 计划里一片要人看的一格：哪个工作区 · 哪一片 · 那一片里第几条（0 起）。
+    Plan {
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        rank: u64,
+        workspace: String,
+        slice: String,
+        k: u32,
+    },
+    /// 会话外的一项（需登录的号 · MCP）。
+    Manual {
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        rank: u64,
+        manual: ManualItem,
+    },
+}
+
+/// 一项需手动怎么解：问哪条命令、交什么入参。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct ManualFix {
+    pub command: String,
+    pub args: LoginStartReq,
+}
+
+/// 会话外的一项需手动（每一项带写好的那一句）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub enum ManualItem {
+    /// 一个订阅号还没登录（`fix` ＝ 在 app 里登：`login-start`）。
+    AccountLogin {
+        agent: String,
+        account: String,
+        said: String,
+        fix: ManualFix,
+    },
+    /// 一个 MCP 服务器要登录（那一家最近一次连它时记下的、还在有效期内）。`fix` ＝ 在 app 里登：`login-start {kind: mcp}`；
+    /// 那一家不在 app 里登 MCP ⇒ `null`（只能在会话里登），这时 `why` 说为什么没有解法。
+    McpLogin {
+        /// 在哪个号里；没设账号的那一份 ⇒ `null`。
+        account: Option<String>,
+        server: String,
+        scope: String,
+        said: String,
+        fix: Option<ManualFix>,
+        /// `fix` 为 `null` 时必有：为什么没有解法（写好的那一句）；有 `fix` ⇒ 缺。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        why: Option<String>,
+    },
+}
+
+/// `login-start` 的入参：登录什么（同一个目标新开一份就替掉旧的；`login-finish` 成了原样交回）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub enum LoginStartReq {
+    /// 一个号：哪一家（`accounts-list` 的 `agent`）· 账号库里的哪个号（账号 0 是 `0`）。
+    Account { agent: String, account: String },
+    /// 一个号里的一个 MCP 服务器：哪一家 · 哪个号（没设账号 ⇒ `null`：那一家的默认配置目录）· 服务器名（`mcp-read` 里那一条）·
+    /// 那一条配置所属的项目目录（项目级 · 本地级要它；用户级 ⇒ `null`）。
+    Mcp {
+        agent: String,
+        account: Option<String>,
+        server: String,
+        project_dir: Option<String>,
+    },
 }
 
 /// 替人答过的那一条：会话 id ＋ 写好的那一句（「10 分钟没人答，已自动答：…」）。
@@ -38,7 +143,7 @@ pub struct AutoAnswer {
     pub say: Option<String>,
 }
 
-/// 这台上需手动的会话清单（`sessions-needs` 的一行）：会话 id ＋ 它在等什么（同 `history-facts.needs` 那一份成品）。
+/// 一条在等人的会话（`sessions-needs` 会话那一项）：会话 id ＋ 它在等什么（同 `history-facts.needs` 那一份成品）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]

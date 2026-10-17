@@ -1,7 +1,9 @@
 package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.claude.link.wire.DirChecked
+import com.ccmonitor.mobile.core.claude.link.wire.LoginStartReq
 import com.ccmonitor.mobile.core.claude.link.wire.LoginStarted
+import com.ccmonitor.mobile.core.claude.link.wire.LoginTarget
 import com.ccmonitor.mobile.core.claude.link.wire.RotationStrategiesReply
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
 import com.ccmonitor.mobile.core.claude.link.wire.AccountsList as WireAccounts
@@ -54,10 +56,14 @@ object Login {
     const val FINISH: String = "login-finish"
     const val CANCEL: String = "login-cancel"
 
-    fun startAccount(
+    /** 起一趟登录：入参就是目标原样（会话外那一项的 `fix.args`，或 [account] 拼的那一形）；手机不带 `browserHere`（后端缺省答不在）。 */
+    fun start(target: LoginStartReq): Map<String, Any?> = Wire.args(target)
+
+    /** 号那一形的目标（新建会话 · 设置账号那边拼：同 `fix.args` 那一形）。 */
+    fun account(
         agent: String,
         account: String,
-    ): Map<String, Any?> = mapOf("kind" to "account", "agent" to agent, "account" to account)
+    ): LoginStartReq = LoginStartReq(kind = LoginTarget.ACCOUNT, agent = agent, account = account, server = null, projectDir = null)
 
     fun finish(
         job: String,

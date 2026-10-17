@@ -2,7 +2,7 @@
  * 主窗口的标签页栏 · 「需手动」· 会话头：一个会话读成什么、谁在等你、去哪答。
  *
  * - `session-face.ts`：状态点 · 状态句 · peek · 需手动（活动信号说不在等了 ⇒ 手上那份当场不认；说在等、种类没到 ⇒ 不猜）；
- * - `needs-order.ts`：`Ctrl+J` 的先后问后端（各台 `sessions-needs`，跨台本机 `sessions-needs-merge`），界面只把条上的对上去；
+ * - `needs-book.ts`：「需手动」的账问后端（各台 `sessions-needs` 整份，本机 `sessions-needs-merge` 合一份 ＋ 总数），界面不排不数；
  * - 标签页栏：「需手动 N」只在 N ≥ 1 时出、点它开浮层（浮层本身见 `needs-panel.vitest.ts`）、`Ctrl+J` 跳等得最久的；机器离线条（`{machine} 离线 · N 会话状态不明`）＋［重新连接］；
  * - 窗口标题（消息流底部的答题块另见 `answer-block.vitest.ts`）；
  * - 会话头：按状态多一颗（已结束［恢复 ▾］· Claude 已退出（远端）［在终端里打开］· 状态不明［重新连接］）。
@@ -12,7 +12,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { TabStore } from "../../../src/frontend/ui/tab-store";
 
-/** `askNeedsOrder` 经 `callTyped` 问：那一条换成手上的假的，别处照真的。 */
+/** `needs-book.ts` 经 `callTyped` 问：那一条换成手上的假的，别处照真的。 */
 const typed = vi.hoisted(() => ({ fake: null as ((...a: unknown[]) => Promise<unknown>) | null }));
 vi.mock("../../../src/frontend/ui/ipc/chan-caller", async (orig) => {
   const real = await orig<typeof import("../../../src/frontend/ui/ipc/chan-caller")>();
@@ -27,7 +27,9 @@ import type { FactsLine } from "../../../src/frontend/ui/generated/FactsLine";
 import type { WireSessionActivity } from "../../../src/frontend/ui/generated/WireSessionActivity";
 import { goldenFace, liveFace } from "../../test-support/session-faces";
 import { abbrOf, dotOf, fullTitle, groupSummary, needsOf, nextNeedsStep, peekLine, stateLine, stateWord, titleParts } from "../../../src/frontend/ui/session-face";
-import { askNeedsOrder, orderNeeds } from "../../../src/frontend/ui/needs-order";
+import { NeedsBook } from "../../../src/frontend/ui/needs-book";
+import { ChanError } from "../../../src/comms/inward/chan";
+import { fakeNeedsBook, listOf, sessionItem } from "../../test-support/needs-fake";
 import { NeedsTitle } from "../../../src/frontend/ui/needs-bar";
 import { SessionHead, terminalActsOf } from "../../../src/frontend/ui/session-head";
 import { buildApiErrorCard } from "../../../src/frontend/ui/cards/api-error";
@@ -133,36 +135,33 @@ describe("一个会话读成什么（session-face）：点 · 字照抄那台的
     expect(peekLine(tab("c", { face: goldenFace("ended") }))).toBeNull();
   });
 
-  it("★ `Ctrl+J` 的先后照后端排好的那一份；后端没列到的（那台问不到 · 活动信号先到）排在后面、照条上顺序；当前就是 ⇒ 下一个、转回头", () => {
-    const tabs = [tab("a"), tab("b", { ...waiting, needs: approve() }), tab("c", { ...waiting, needs: approve() }), tab("d", { ...waiting, needs: approve() }), tab("e", { ...waiting, needs: approve() })];
-    const needing = tabs.filter((t) => needsOf(t) !== null);
-    // 后端说 e · b · x（x 不在条上 / 不在等 ⇒ 不要）；c · d 后端没列 ⇒ 照条上顺序跟在后面。
-    const order = orderNeeds(needing, ["e", "b", "x", "a"]);
-    expect(order).toEqual(["e", "b", "c", "d"]);
-    expect([nextNeedsStep(order, "a", null, 0), nextNeedsStep(order, "e", null, 0), nextNeedsStep(order, "d", null, 0), nextNeedsStep([], "a", null, 0)]).toEqual([{ sid: "e" }, { sid: "b" }, { sid: "e" }, null]);
+  it("★ `Ctrl+J` 照合好的那一份走：当前就是 ⇒ 下一个、转回头；会话走完接计划项", () => {
+    const order = ["e", "b", "c"];
+    expect([nextNeedsStep(order, "a", null, 0), nextNeedsStep(order, "e", null, 0), nextNeedsStep(order, "c", null, 0), nextNeedsStep([], "a", null, 0)]).toEqual([{ sid: "e" }, { sid: "b" }, { sid: "e" }, null]);
+    expect([nextNeedsStep(order, "c", null, 2), nextNeedsStep(order, null, 0, 2), nextNeedsStep(order, null, 1, 2)]).toEqual([{ plan: 0 }, { plan: 1 }, { sid: "e" }]);
   });
 
-  it("★ 问后端：各台问 `sessions-needs`、原样按台交本机 `sessions-needs-merge`，回它排好的会话；问不到的那台不交", async () => {
+  it("★ 问后端：各台问 `sessions-needs`、原样按台交本机 `sessions-needs-merge`；断开的那台不交、记成断开；数 ＝ 合好的 `total`，界面不自己加", async () => {
     const asked: { origin: string; op: string; args: unknown }[] = [];
-    const row = (sid: string) => ({ sid, needs: approve(), hidden: null });
+    const devbox = { items: [sessionItem("d1", approve())], answered: [] };
+    const local = { items: [sessionItem("l1", approve()), sessionItem("l2", approve())], answered: [] };
     const call = vi.fn(async (origin: string, op: string, args: unknown) => {
       asked.push({ origin, op, args });
       if (op === "sessions-needs") {
-        if (origin === "gpu-01") throw new Error("够不着");
-        return { waiting: origin === "devbox" ? [row("d1")] : [row("l1"), row("l2")] };
+        if (origin === "gpu-01") throw new ChanError({ layer: "hop" } as never, "够不着");
+        return origin === "devbox" ? devbox : local;
       }
-      return { order: [{ origin: "devbox", sid: "d1" }, { origin: "<local>", sid: "l2" }, { origin: "<local>", sid: "l1" }] };
+      return { items: [], total: 5, unreadable: [] };
     });
     typed.fake = call as never;
-    const got = await askNeedsOrder(["<local>", "devbox", "gpu-01"]);
-    expect(got).toEqual(["d1", "l2", "l1"]);
+    const book = new NeedsBook();
+    await book.refreshAll(["<local>", "devbox", "gpu-01"]);
     expect(asked.filter((x) => x.op === "sessions-needs").map((x) => x.origin).sort()).toEqual(["<local>", "devbox", "gpu-01"]);
     const merge = asked.filter((x) => x.op === "sessions-needs-merge");
-    expect(merge.map((x) => x.origin)).toEqual(["<local>"]);
-    expect(merge[0]!.args).toEqual({ machines: [{ origin: "<local>", waiting: [row("l1"), row("l2")] }, { origin: "devbox", waiting: [row("d1")] }] });
-    call.mockClear();
-    expect(await askNeedsOrder([]), "没有人在等 ⇒ 不问").toEqual([]);
-    expect(call).not.toHaveBeenCalled();
+    expect(merge.every((x) => x.origin === "<local>")).toBe(true);
+    expect(merge.at(-1)!.args).toEqual({ machines: [{ origin: "<local>", list: local }, { origin: "devbox", list: devbox }] });
+    expect(book.total(), "照后端合好的总数").toBe(5);
+    expect(book.offline()).toEqual(["gpu-01"]);
     typed.fake = null;
   });
 
@@ -178,8 +177,8 @@ describe("一个会话读成什么（session-face）：点 · 字照抄那台的
   });
 });
 
-/** 标签页栏台架：store 里摆好 tab，宿主全是替身；后端排好的「需手动」先后是 `ranked`。 */
-function bar(tabs: Tab[], ranked: string[] = []): { view: TabBarView; host: TabBarViewHost; store: TabStore; el: HTMLElement } {
+/** 标签页栏台架：store 里摆好 tab，宿主全是替身；「需手动」的账里本机答的是在等的那几个（照 `ranked` 的先后；不给 ⇒ 条上的顺序）。 */
+async function bar(tabs: Tab[], ranked?: string[]) {
   const store = new TabStore();
   for (const t of tabs) {
     store.tabs.set(t.sessionId, t);
@@ -206,18 +205,22 @@ function bar(tabs: Tab[], ranked: string[] = []): { view: TabBarView; host: TabB
     openMenuAt: vi.fn(),
     rereadAll: vi.fn().mockResolvedValue(undefined),
     reconnect: vi.fn(),
-    needsOrder: vi.fn(async (_origins: readonly string[]) => ranked),
   } satisfies TabBarViewHost;
   const el = document.createElement("div");
   document.body.appendChild(el);
   const view = new TabBarView(store, { collections: [] } as unknown as TabBarPrefs, el, host);
+  const waits = ranked ?? tabs.filter((t) => needsOf(t) !== null).map((t) => t.sessionId);
+  const needs = fakeNeedsBook({ [LOCAL_ORIGIN]: listOf(waits.map((sid) => sessionItem(sid, needsOf(store.tabs.get(sid)!) ?? approve()))) });
+  view.needs = { book: needs.book, login: vi.fn() };
+  needs.book.subscribe(() => view.planNeedsChanged());
   view.refresh();
-  return { view, host, store, el };
+  await needs.book.refresh(LOCAL_ORIGIN);
+  return { view, host: host as TabBarViewHost & typeof host, store, el, needs };
 }
 
 describe("标签页栏：「需手动 N」与机器离线条", () => {
-  it("★ 「需手动」只在有人等你时出、写数；点它开浮层、点那一行跳过去；行尾「等批准」换掉未读数", () => {
-    const r = bar([tab("a"), tab("b", { ...waiting, needs: approve(NOW - 10_000), unread: 3 }), tab("c")]);
+  it("★ 「需手动」只在有人等你时出、写数；点它开浮层、点那一行跳过去；行尾「等批准」换掉未读数", async () => {
+    const r = await bar([tab("a"), tab("b", { ...waiting, needs: approve(NOW - 10_000), unread: 3 }), tab("c")]);
     const strip = r.el.querySelector<HTMLElement>(".tab-needs")!;
     expect(strip.style.display).toBe("");
     expect(strip.querySelector(".tab-needs-count")?.textContent).toBe("1");
@@ -227,8 +230,10 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
     document.querySelector<HTMLElement>('[data-row="session"]')!.click();
     expect(r.host.answerAt, "浮层里那一行 ⇒ 跳过去、焦点进答题块").toHaveBeenCalledWith("b");
     expect(r.host.switchTo).not.toHaveBeenCalled();
-    // 答完了（活动信号说不在等）⇒ 那一条收起，未读数回来。
+    // 答完了（那台重问回来不在等了）⇒ 那一条收起，未读数回来。
     (r.store.tabs.get("b") as Tab).face = liveFace("working");
+    r.needs.answers[LOCAL_ORIGIN] = listOf([]);
+    await r.needs.book.refresh(LOCAL_ORIGIN);
     r.view.refresh();
     expect(strip.style.display).toBe("none");
     expect(b.badge.textContent).toBe("3");
@@ -237,14 +242,15 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
   it("★ 悬停「需手动」不再开菜单（并进点开的那个浮层）；`Ctrl+J` 照旧直接跳后端排在最前的、不开浮层", async () => {
     vi.useFakeTimers();
     try {
-      const r = bar([tab("a", { ...waiting, needs: approve(NOW - 10_000) }), tab("b", { ...waiting, needs: approve(NOW - 60_000) })], ["b", "a"]);
+      const r = await bar([tab("a", { ...waiting, needs: approve(NOW - 10_000) }), tab("b", { ...waiting, needs: approve(NOW - 60_000) })], ["b", "a"]);
       const strip = r.el.querySelector<HTMLElement>(".tab-needs")!;
       strip.dispatchEvent(new Event("mouseenter"));
       vi.advanceTimersByTime(2_000);
       expect(document.querySelector('[role="menu"]'), "悬停不开").toBeNull();
       expect(document.querySelector('[role="dialog"]'), "悬停不开").toBeNull();
+      r.needs.asked.length = 0;
       await r.view.nextNeeds();
-      expect(r.host.needsOrder, "只问有人在等的那几台").toHaveBeenCalledWith([LOCAL_ORIGIN]);
+      expect(r.needs.asked, "跳之前先重问一回").toEqual([LOCAL_ORIGIN]);
       expect(r.host.answerAt).toHaveBeenCalledWith("b");
       expect(document.querySelector('[role="dialog"]'), "Ctrl+J 不开浮层").toBeNull();
     } finally {
@@ -252,8 +258,25 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
     }
   });
 
-  it("★ 点标签上那颗「需手动」的点 ⇒ 跳过去、焦点进答题块；点标签别处 / 不在等的点 ⇒ 照常切", () => {
-    const r = bar([tab("a"), tab("b", { ...waiting, needs: approve(NOW - 10_000) })]);
+  it("★ 数 ＝ 后端合好的 total：合回 5、条上只有一个在等 ⇒ 入口写 5（界面不自己加）", async () => {
+    const store = new TabStore();
+    const t = tab("a", { ...waiting, needs: approve() });
+    store.tabs.set("a", t);
+    store.orderedIds.push("a");
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const view = new TabBarView(store, { collections: [] } as unknown as TabBarPrefs, el, (await bar([])).host);
+    const needs = fakeNeedsBook({ [LOCAL_ORIGIN]: listOf([sessionItem("a", approve())]) }, (m) => ({ items: m.flatMap((x) => x.list.items.map((item) => ({ origin: x.origin, item }))), total: 5, unreadable: [] }));
+    view.needs = { book: needs.book, login: vi.fn() };
+    needs.book.subscribe(() => view.planNeedsChanged());
+    await needs.book.refresh(LOCAL_ORIGIN);
+    view.refresh();
+    expect(view.needsCountNow()).toBe(5);
+    expect(el.querySelector(".tab-needs .tab-needs-count")?.textContent).toBe("5");
+  });
+
+  it("★ 点标签上那颗「需手动」的点 ⇒ 跳过去、焦点进答题块；点标签别处 / 不在等的点 ⇒ 照常切", async () => {
+    const r = await bar([tab("a"), tab("b", { ...waiting, needs: approve(NOW - 10_000) })]);
     r.view.tabButtons.get("b")!.root.querySelector<HTMLElement>(".tab-dot")!.click();
     expect(r.host.answerAt).toHaveBeenCalledWith("b");
     r.view.tabButtons.get("a")!.root.querySelector<HTMLElement>(".tab-dot")!.click();
@@ -261,8 +284,8 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
     expect(r.host.answerAt).toHaveBeenCalledTimes(1);
   });
 
-  it("★ 挂着的请求换了（挂上 · 答掉 · 只能在终端里答那一句变了）⇒ 摘要变、订阅者（答题块 · 窗口标题）重画；种类没变也算", () => {
-    const r = bar([tab("a", { ...waiting, needs: approve(NOW - 10_000) })]);
+  it("★ 挂着的请求换了（挂上 · 答掉 · 只能在终端里答那一句变了）⇒ 摘要变、订阅者（答题块 · 窗口标题）重画；种类没变也算", async () => {
+    const r = await bar([tab("a", { ...waiting, needs: approve(NOW - 10_000) })]);
     const seen: unknown[] = [];
     r.store.subscribe((x) => seen.push(x));
     const n0 = seen.length;
@@ -275,8 +298,8 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
     expect(seen.length, "换成只能在终端里答").toBe(n0 + 2);
   });
 
-  it("★ 机器离线：那台看不见、还有状态不明的会话 ⇒ 一条（离线 · 几个状态不明 · 采样多久前）＋［重新连接］；连上了自己消失", () => {
-    const r = bar([tab("a"), tab("g1", { origin: "gpu-01" as never, face: null }), tab("g2", { origin: "gpu-01" as never, face: null })]);
+  it("★ 机器离线：那台看不见、还有状态不明的会话 ⇒ 一条（离线 · 几个状态不明 · 采样多久前）＋［重新连接］；连上了自己消失", async () => {
+    const r = await bar([tab("a"), tab("g1", { origin: "gpu-01" as never, face: null }), tab("g2", { origin: "gpu-01" as never, face: null })]);
     r.view.markOriginDown("gpu-01", true, Date.now() - 180_000);
     r.view.refresh();
     const row = r.el.querySelector<HTMLElement>(".tab-machine-down-row")!;
@@ -295,8 +318,8 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
     expect(r.el.querySelector(".tab-machine-down-row")).toBeNull();
   });
 
-  it("状态不明的行不当已结束画：虚线环、标题常色、行尾没有 ×（只右键能关）", () => {
-    const r = bar([tab("g1", { origin: "gpu-01" as never, face: null })]);
+  it("状态不明的行不当已结束画：虚线环、标题常色、行尾没有 ×（只右键能关）", async () => {
+    const r = await bar([tab("g1", { origin: "gpu-01" as never, face: null })]);
     const b = r.view.tabButtons.get("g1")!;
     expect(b.dot.dataset.state).toBe("unknown");
     expect([b.root.classList.contains("unseen"), b.root.classList.contains("ended")]).toEqual([true, false]);

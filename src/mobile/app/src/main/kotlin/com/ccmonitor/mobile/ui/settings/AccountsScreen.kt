@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.ccmonitor.mobile.core.claude.link.Login
 import com.ccmonitor.mobile.core.claude.link.wire.AccountRow
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.icon.BackButton
@@ -36,12 +37,12 @@ import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.chat.newsession.AccountBadge
 import com.ccmonitor.mobile.ui.chat.newsession.DefaultTag
-import com.ccmonitor.mobile.ui.chat.newsession.LoginFlow
-import com.ccmonitor.mobile.ui.chat.newsession.LoginSheet
 import com.ccmonitor.mobile.ui.chat.newsession.PickRow
 import com.ccmonitor.mobile.ui.chat.newsession.Sheet
 import com.ccmonitor.mobile.ui.chat.newsession.SheetHead
 import com.ccmonitor.mobile.ui.common.rememberHostLink
+import com.ccmonitor.mobile.ui.login.LoginFlow
+import com.ccmonitor.mobile.ui.login.LoginSheet
 import com.ccmonitor.mobile.ui.nav.settingsGroupScreenInsets
 import org.koin.compose.koinInject
 
@@ -91,7 +92,7 @@ fun AccountsScreen(
     ui.accounts.firstOrNull { it.name == open }?.let { a ->
         AccountSheet(a, a.name == ui.defaultAccount, ui, onDismiss = { open = null }, onLogin = {
             open = null
-            login = LoginFlow(feed, here.machine, ui.agent?.kind.orEmpty(), a.name, scope).also { it.start() }
+            login = LoginFlow(feed, here.machine, Login.account(ui.agent?.kind.orEmpty(), a.name), scope).also { it.start() }
         }, onSetDefault = {
             open = null
             board.setDefault(a.name)
@@ -122,7 +123,7 @@ private fun LoginFor(
     onClosed: () -> Unit,
 ) {
     val step by f.state.collectAsState()
-    val row = ui.accounts.firstOrNull { it.name == step.account }
+    val row = ui.accounts.firstOrNull { it.name == step.target.account }
     LoginSheet(f, row?.plate, row?.color, machine, onClosed = onClosed)
 }
 

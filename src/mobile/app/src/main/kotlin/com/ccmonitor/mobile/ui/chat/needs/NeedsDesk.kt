@@ -1,15 +1,14 @@
 package com.ccmonitor.mobile.ui.chat.needs
 
-import com.ccmonitor.mobile.core.claude.link.Changed
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.NeedsAnswer
 import com.ccmonitor.mobile.core.claude.link.NeedsPick
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.SessionsNeeds
 import com.ccmonitor.mobile.core.claude.link.wire.Needs
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsAsk
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsChoice
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsChoiceRow
+import com.ccmonitor.mobile.core.claude.link.wire.NeedsList
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsNote
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsQuestion
 import com.ccmonitor.mobile.core.copy.DurationFormat
@@ -17,21 +16,16 @@ import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
+import com.ccmonitor.mobile.ui.needs.MachineNeeds
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.merge
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 
 /** 聊天屏上需手动那一块此刻的样子：钉条 ＋ 答题抽屉（都可能没有）。 */
@@ -155,8 +149,8 @@ private const val DENY_STOP = "deny-stop"
 private const val ANSWER = "answer"
 
 /**
- * 一条会话的需手动（聊天屏那一块）：sid 有了就问 `sessions-needs` 取这一条；那台推 `changed {needs, key=sid}`、这条会话的会话帧变了、
- * 换了一条流 ⇒ 去抖后重问。答走 `needs-answer`（同桌面那一条，不送键）：
+ * 一条会话的需手动（聊天屏那一块）：读跨会话需手动板上那台那一份（[NeedsBoard]，这里不另问 `sessions-needs`）里这一条；
+ * 什么时候重问归板管，这里答完叫它重问一次。答走 `needs-answer`（同桌面那一条，不送键）：
  * - 答上了 ⇒ 抽屉收起，那一份不再给［答］，钉条等重问里没了才消失；
  * - `already_answered` · `closed_elsewhere` ⇒ 抽屉里按钮全灰、那台那一句、只留［关闭］，随后重问；
  * - 抽屉开着、重问里那条请求没了（终端 / 桌面先答了 · 没人答、那台替人答了）⇒ 同一态，那一句同桌面（替人答的那一种照那台那一句）；
@@ -164,11 +158,12 @@ private const val ANSWER = "answer"
  * - 别的失败 ⇒ 那一句 ＋ 详情，照旧可点。
  * 字 · 选项 · 次序 · 附话要求全照那台（[NeedsAsk]）；这里只记这边答到哪了。
  */
-@OptIn(FlowPreview::class)
 class NeedsDesk(
     private val link: CoreLink,
-    /** 那台流上的 `changed` 帧（`ResidentFeed.pushes`）。 */
-    pushes: Flow<Changed>,
+    /** 板上那台此刻那一份（[NeedsBoard.state] 里那一台）。 */
+    board: Flow<MachineNeeds?>,
+    /** 叫板重问那一台。 */
+    private val reask: () -> Unit,
     sid: Flow<String?>,
     private val machine: String,
     private val scope: CoroutineScope,
@@ -189,25 +184,15 @@ class NeedsDesk(
 
     /** 这边答过 / 别处先答了的那一份：重问里还在也不再给［答］。 */
     private var settled: String? = null
-    private val wake = Channel<Unit>(Channel.CONFLATED)
 
     init {
         scope.launch {
-            sid.filterNotNull().distinctUntilChanged().collectLatest { s ->
-                current = s
-                wake.trySend(Unit)
-                merge(
-                    pushes.map { if (it.topic == NeedsAnswer.TOPIC && it.key == s) Unit else null }.filterNotNull(),
-                    link.table
-                        .map { it.faces[s]?.dot }
-                        .distinctUntilChanged()
-                        .drop(1)
-                        .map { },
-                    link.epoch.drop(1).map { },
-                ).collect { wake.trySend(Unit) }
-            }
+            combine(sid.filterNotNull().distinctUntilChanged(), board.map { it?.list }.filterNotNull().distinctUntilChanged()) { s, list -> s to list }
+                .collect { (s, list) ->
+                    current = s
+                    take(s, list)
+                }
         }
-        scope.launch { wake.receiveAsFlow().debounce(DEBOUNCE_MS).collect { fetch() } }
     }
 
     /** ［答］：升起抽屉（答不了的不升）。 */
@@ -294,13 +279,13 @@ class NeedsDesk(
                     settled = sheet.ask.id
                     update { it.copy(sheet = null) }
                     publish()
-                    wake.trySend(Unit)
+                    reask()
                 }
                 r is Reply.Failed && NeedsAnswer.gone(r.failure.code) -> {
                     settled = sheet.ask.id
                     update { ui -> ui.copy(sheet = ui.sheet?.copy(sending = null, noteFor = null, gone = r.failure.message)) }
                     publish()
-                    wake.trySend(Unit)
+                    reask()
                 }
                 else -> {
                     val p = r.problem(machine, NeedsAnswer.COMMAND) ?: unreadableReply(machine, NeedsAnswer.COMMAND, r.toString())
@@ -310,12 +295,11 @@ class NeedsDesk(
         }
     }
 
-    private suspend fun fetch() {
-        val s = current ?: return
-        val r = link.call(SessionsNeeds.COMMAND, null, READ_MS)
-        // 读不出 ⇒ 照常画已读到的（不清钉条，下一次变化再问）。
-        val list = (r as? Reply.Ok)?.let { SessionsNeeds.list(it.data) } ?: return
-        needs = list.waiting.firstOrNull { it.sid == s }?.needs
+    private fun take(
+        s: String,
+        list: NeedsList,
+    ) {
+        needs = list.items.firstNotNullOfOrNull { it.session?.takeIf { r -> r.sid == s } }?.needs
         answered = list.answered.firstOrNull { it.sid == s }?.said
         receivedAt = now()
         val ask = needs?.ask
@@ -355,10 +339,6 @@ class NeedsDesk(
     }
 
     companion object {
-        /** 推送 · 会话帧连着来时合成一次重问。 */
-        const val DEBOUNCE_MS = 300L
-        private const val READ_MS = 15_000L
-
         /** 答是就地登记、立刻回（同桌面 `ANSWER_WITHIN_MS`）。 */
         private const val ANSWER_MS = 15_000L
     }

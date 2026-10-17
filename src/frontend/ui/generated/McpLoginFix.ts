@@ -2,7 +2,7 @@
 import type { ManualFix } from "./ManualFix";
 
 /**
- * 一个 MCP 服务器在一个号里要登录时怎么解（`manual-list` 那一项 · `mcp-read` 需登录那一格同一处写）。
+ * 一个 MCP 服务器在一个号里要登录时怎么解（`sessions-needs` 会外那一项 · `mcp-read` 需登录那一格同一处写）。
  */
 export type McpLoginFix = { 
 /**

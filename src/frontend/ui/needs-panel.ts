@@ -1,5 +1,5 @@
 /**
- * 侧栏顶上「需手动 n」点开的那个浮层（400 宽）：在等的会话（照现在的序）· 计划项 · 一条分隔线 · 会话外的每一项（`manual-list`）；
+ * 侧栏顶上「需手动 n」点开的那个浮层（400 宽）：在等的会话 · 计划项 · 一条分隔线 · 会话外的每一项（各台 `sessions-needs` 本机合好的那一份，照它的序）；
  * 底部断开 / 清单无法读取的那几台各一条虚线。没有小标题：会话行是琥珀点 ＋ 标题，会话外那几行是号 / MCP 图标，靠形就分得开。
  *
  * 这里只排版：会话行的字照会话事实那一份（`session-face.ts`）；会话外那一行第一行是后端写好的 `said`、第二行是问来那台的机器名
@@ -13,7 +13,6 @@ import { statusDot } from "./kit/status-dot";
 import { machineName } from "./ipc/chan-caller";
 import { isRemoteOrigin, type Origin } from "./ipc/origin";
 import type { ManualItem } from "./login-reads";
-import type { ManualState } from "./manual-book";
 import s from "./needs-panel.module.css";
 
 /** 一行里几格之间那一个分隔。 */
@@ -42,7 +41,11 @@ export interface PanelPlan {
 export interface PanelFacts {
   sessions: readonly PanelSession[];
   plans: readonly PanelPlan[];
-  manual: readonly [Origin, ManualState][];
+  manual: readonly { origin: Origin; item: ManualItem }[];
+  /** 断开的那几台（不计）。 */
+  offline: readonly Origin[];
+  /** 会话外那一截读不出的那几台（那台那一句）。 */
+  unreadable: readonly { origin: Origin; said: string }[];
 }
 
 export interface PanelActs {
@@ -91,8 +94,7 @@ export function renderNeedsPanel(f: PanelFacts, acts: PanelActs, selected: numbe
     add(r.el, () => acts.plan(p.first));
   }
 
-  const items: { origin: Origin; item: ManualItem }[] = [];
-  for (const [origin, st] of f.manual) if (st.t === "ok") for (const item of st.items) items.push({ origin, item });
+  const items = f.manual;
   if (rows.length > 0 && items.length > 0) root.appendChild(rule());
   for (const { origin, item } of items) {
     const r = row(icon(item.kind === "mcpLogin" ? "plug" : "account", "compact"));
@@ -122,18 +124,17 @@ export function renderNeedsPanel(f: PanelFacts, acts: PanelActs, selected: numbe
 
   if (rows.length === 0 && root.querySelector("[data-inert]") === null) root.appendChild(empty());
 
-  for (const [origin, st] of f.manual) {
-    if (st.t === "offline") {
-      const n = note(copyText("needs.panel.offline", { machine: machineName(origin) }));
-      n.dataset.note = "offline";
-      root.appendChild(n);
-    } else if (st.t === "unreadable") {
-      const n = note(copyText("needs.panel.unreadable", { machine: machineName(origin) }));
-      n.dataset.note = "unreadable";
-      // 原话在悬停里。
-      n.title = [st.message, st.detail].filter((x) => x.trim() !== "").join("\n");
-      root.appendChild(n);
-    }
+  for (const origin of f.offline) {
+    const n = note(copyText("needs.panel.offline", { machine: machineName(origin) }));
+    n.dataset.note = "offline";
+    root.appendChild(n);
+  }
+  for (const u of f.unreadable) {
+    const n = note(copyText("needs.panel.unreadable", { machine: machineName(u.origin) }));
+    n.dataset.note = "unreadable";
+    // 那台那一句在悬停里。
+    n.title = u.said;
+    root.appendChild(n);
   }
 
   let at = -1;

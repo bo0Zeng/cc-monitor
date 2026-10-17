@@ -313,6 +313,23 @@ fn list(req: &PlanListReq, tz: &crate::Tz) -> Result<wire::PlanList, Fail> {
     wired::<wire::PlanList>(json!({ "pb": pb, "workspaces": workspaces }))
 }
 
+/// 这台计划里要人看的那几片（工作区 · 片名 · 几格，照 `plan-list` 的先后）：同 `plan-list {}` 那一路取（认过的目录照本子里那一份，不重问 pb）。
+/// 读不出 ⇒ 没有（计划那一截空着，不挡会话那几项）。
+pub(crate) fn need_slices(tz: &crate::Tz) -> Vec<(String, String, u32)> {
+    let Ok(list) = list(&PlanListReq::default(), tz) else {
+        return Vec::new();
+    };
+    list.workspaces
+        .iter()
+        .flat_map(|ws| {
+            ws.slices
+                .iter()
+                .filter(|sl| sl.need_count > 0)
+                .map(|sl| (ws.workspace.clone(), sl.name.clone(), sl.need_count))
+        })
+        .collect()
+}
+
 /// `plan-list` 的入参。
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]

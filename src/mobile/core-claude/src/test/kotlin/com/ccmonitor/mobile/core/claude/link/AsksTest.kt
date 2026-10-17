@@ -63,41 +63,43 @@ class AsksTest {
         val data =
             mapOf(
                 "answered" to listOf(mapOf("sid" to "s9", "said" to "10 分钟没人答，已自动答：继续")),
-                "waiting" to
-                    listOf(
-                        mapOf(
-                            "sid" to "s1",
-                            "label" to "标题 s1",
-                            "face" to Fixtures.face("live-needs-you-tmux"),
-                            "needs" to
-                                mapOf(
-                                    "kind" to "approve",
-                                    "text" to "等批准",
-                                    "head" to "等批准 · Bash",
-                                    "headCode" to "touch a.txt",
-                                    "tone" to "need",
-                                    "rank" to 0.0,
-                                    "waitedMs" to 12_000.0,
-                                    "waitedText" to "12s",
-                                    "ask" to golden["approve"],
-                                    "manualText" to null,
-                                ),
-                        ),
-                        mapOf(
-                            "sid" to "s2",
-                            "label" to "标题 s2",
-                            "face" to Fixtures.face("live-needs-you-tmux"),
-                            "needs" to
-                                mapOf(
-                                    "kind" to "unknown",
-                                    "text" to "需手动",
-                                    "head" to "需手动",
-                                    "headCode" to null,
-                                    "tone" to "need",
-                                    "rank" to 1.0,
-                                    "ask" to null,
-                                    "manualText" to "只能在终端里答",
-                                ),
+                "items" to
+                    sessionItems(
+                        listOf(
+                            mapOf(
+                                "sid" to "s1",
+                                "label" to "标题 s1",
+                                "face" to Fixtures.face("live-needs-you-tmux"),
+                                "needs" to
+                                    mapOf(
+                                        "kind" to "approve",
+                                        "text" to "等批准",
+                                        "head" to "等批准 · Bash",
+                                        "headCode" to "touch a.txt",
+                                        "tone" to "need",
+                                        "rank" to 0.0,
+                                        "waitedMs" to 12_000.0,
+                                        "waitedText" to "12s",
+                                        "ask" to golden["approve"],
+                                        "manualText" to null,
+                                    ),
+                            ),
+                            mapOf(
+                                "sid" to "s2",
+                                "label" to "标题 s2",
+                                "face" to Fixtures.face("live-needs-you-tmux"),
+                                "needs" to
+                                    mapOf(
+                                        "kind" to "unknown",
+                                        "text" to "需手动",
+                                        "head" to "需手动",
+                                        "headCode" to null,
+                                        "tone" to "need",
+                                        "rank" to 1.0,
+                                        "ask" to null,
+                                        "manualText" to "只能在终端里答",
+                                    ),
+                            ),
                         ),
                     ),
             )
@@ -163,3 +165,6 @@ class AsksTest {
             listOf("NeedsRow", "Needs", "NeedsAsk", "NeedsAskRun", "NeedsChoice", "NeedsNote", "NeedsQuestion", "NeedsQuestionOption", "AnswerReq", "AskPick", "Answered")
     }
 }
+
+/** `sessions-needs` 会话那几项（夹具：照先后包成会话那一臂）。 */
+internal fun sessionItems(rows: List<Map<String, Any?>?>): List<Map<String, Any?>> = rows.filterNotNull().map { mapOf("kind" to "session", "rank" to 0.0, "session" to it) }

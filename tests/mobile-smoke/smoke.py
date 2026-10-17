@@ -1510,6 +1510,43 @@ def walk():
     with Step("11b-大文本编辑"):
         big_text()
 
+    with Step("12-总览"):
+        # 聊天屏右上「需手动 n」：n ＝ 那台 sessions-needs 整份的项数（台架那台要有一个需登录的号 ＋ 一个挂着批准的会话，造法由合测那一轮定）；
+        # 点进总览 → 会话行 · 号那一行都在 → 点号那一行 ⇒ 登录抽屉、标题「登录账号」→［取消］⇒ 抽屉关 → 返回 ⇒ 回聊天屏。
+        launch()
+        items = (frames("sessions-needs", {}).get("data") or {}).get("items") or []
+        if not any(i.get("kind") == "manual" for i in items) or not any(i.get("kind") == "session" for i in items):
+            raise Step.Fail(f"台架那台的需手动里没有会话 ＋ 会外两样：{[i.get('kind') for i in items]!r}")
+        entry = t("tabBar.needs.aria", n=len(items))
+        if not wait(entry, 30):
+            raise Step.Fail(f"聊天屏右上没有「{entry}」")
+        tap(entry)
+        if not wait(t("mobOverview.screen.title"), 15):
+            raise Step.Fail("点了入口没进总览")
+        shot("12-总览")
+        tap(t("newSession.account.login"))
+        if not wait(t("login.sheet.account"), 20):
+            raise Step.Fail("点号那一行没开登录抽屉")
+        tap(t("kit.dialog.cancel"))
+        time.sleep(2)
+        if ui.find(t("login.sheet.account")) is not None:
+            raise Step.Fail("［取消］之后抽屉还在")
+        adb("shell", "input", "keyevent", "4")
+        if not wait(entry, 15):
+            raise Step.Fail("从总览返回没回到聊天屏")
+
+    with Step("12b-离线"):
+        # 停掉台架那台的中转 ⇒ 入口的数减掉那台（只连着这一台 ⇒ 入口不画；总览组底那一句「{machine} 离线 · 未计入」截图看）。停中转的造法由合测那一轮定。
+        stop = os.environ.get("CCM_SMOKE_STOP_RELAY")
+        if not stop:
+            raise Step.Fail("没给停中转的命令（CCM_SMOKE_STOP_RELAY）")
+        subprocess.run(stop, shell=True, check=False)
+        end = time.time() + 40
+        while time.time() < end and ui.find(entry) is not None:
+            time.sleep(1)
+        if ui.find(entry) is not None:
+            raise Step.Fail("那台断了，入口照旧在数它")
+
     report()
 
 

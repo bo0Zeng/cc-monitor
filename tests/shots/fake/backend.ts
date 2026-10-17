@@ -108,6 +108,8 @@ const WINDOWS_FACE: Record<string, Record<string, { meta: Record<string, unknown
 
 type Emit = (event: string, payload: unknown) => unknown;
 
+/** 会话外那一档的先后（同后端：会话八档 ＋ 计划一档之后，每档 2^40）。 */
+const MANUAL_RANK = 10 * 2 ** 40;
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
@@ -185,12 +187,24 @@ export class FakeBackend {
     throw f.fail;
   }
 
+  /** 场景给了那台会话外的需手动（`world.manualAt`）⇒ 真后端那一份里会外那一截换成它（排在会话外那一档，同后端）。 */
+  private withManual(origin: string, body: ArrayBuffer): ArrayBuffer {
+    const got = this.world.manualAt?.(origin);
+    if (got === undefined) return body;
+    const v = JSON.parse(dec.decode(body)) as { items: { kind: string }[]; manualUnreadable?: string };
+    v.items = v.items.filter((i) => i.kind !== "manual");
+    if (got instanceof Refuse) v.manualUnreadable = got.message;
+    else v.items.push(...got.map((manual) => ({ kind: "manual", rank: MANUAL_RANK, manual })));
+    return enc.encode(JSON.stringify(v)).buffer;
+  }
+
   /** 那台真后端此刻在等人的会话（`sessions-needs`）；那台看不见 ⇒ 空。 */
   private async realNeeds(origin: string): Promise<{ sid: string; needs: { ask: unknown; manualText: unknown } }[]> {
     if (this.world.unseenMachines.includes(origin)) return [];
     try {
       const body = await this.real(origin, "sessions-needs", {}, null);
-      return ((JSON.parse(dec.decode(body)) as { waiting?: unknown[] }).waiting ?? []) as { sid: string; needs: { ask: unknown; manualText: unknown } }[];
+      const items = (JSON.parse(dec.decode(body)) as { items?: { kind: string; session?: unknown }[] }).items ?? [];
+      return items.filter((i) => i.kind === "session").map((i) => i.session) as { sid: string; needs: { ask: unknown; manualText: unknown } }[];
     } catch {
       return [];
     }
@@ -364,6 +378,7 @@ export class FakeBackend {
       const face = WINDOWS_FACE[origin]?.[op];
       return new Promise((r) => setTimeout(r, delay))
         .then(() => this.real(origin, op, req, args.view))
+        .then((b) => (op === "sessions-needs" ? this.withManual(origin, b) : b))
         .then((b) => {
           if (!face) return b;
           const v = JSON.parse(dec.decode(b)) as { meta?: object };

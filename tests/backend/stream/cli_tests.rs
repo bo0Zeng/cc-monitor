@@ -385,7 +385,7 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         // 各账号共用的用户级 MCP 此刻的样子：同上，问的就是「这台」，不收参数。
         "accounts-mcp-read",
         "accounts-sessions",
-        // 这台上需手动的会话清单：问的就是「这台」此刻在等人的那几个，不收参数（手机一次问一台）。
+        // 这台上需手动的整份：问的就是「这台」此刻在等人的会话 · 计划格 · 会话外的，不收参数（手机一次问一台）。
         "sessions-needs",
         "bus-list",
         "bus-state",
@@ -411,8 +411,6 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "forward-list",
         // 这台的 cc-bus 钩子诊断：无入参（问的就是「这台」）。
         "hooks-diag",
-        // 会话外的需手动清单：无入参（问的就是「这台」）。
-        "manual-list",
         // 读回配置文件整份：无入参（问的就是「这台」那一份）。
         "profiles-read",
     ];

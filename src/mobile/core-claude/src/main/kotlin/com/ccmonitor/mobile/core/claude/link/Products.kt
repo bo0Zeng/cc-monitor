@@ -98,13 +98,14 @@ data class SessionTable(
     }
 }
 
-/** `sessions-needs`：这台需手动的会话，已按 `rank` 排（同一档等得久的在前）——出口照这个先后，不另排。核心按 `cmd-wire` 那一份解过。 */
+/** `sessions-needs`：这台需手动的整份（在等的会话 · 计划格 · 会话外的），那台排好——出口照这个先后，不另排。核心按 `cmd-wire` 那一份解过。 */
 object SessionsNeeds {
     const val COMMAND: String = "sessions-needs"
 
-    fun of(data: Any?): List<NeedsRow>? = list(data)?.waiting
+    /** 会话那几项（照那台的先后）。 */
+    fun of(data: Any?): List<NeedsRow>? = list(data)?.items?.mapNotNull { it.session }
 
-    /** 整份（在等的 ＋ 替人答过的那几条）。 */
+    /** 整份（每一项 ＋ 替人答过的那几条 ＋ 会外那一截读不出的那一句）。 */
     fun list(data: Any?): NeedsList? = Wire.bind<NeedsList>(data)
 }
 

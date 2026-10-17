@@ -41,7 +41,9 @@ fn answer_at(home: &Path, cmd: &str, args: &serde_json::Value, tz: &crate::Tz) -
         "history-branch" => via::<h::HistoryBranchCmd>(args, |r| h::branch_at(home, r)),
         "history-tail" => via::<h::HistoryTailCmd>(args, |r| h::tail_at(home, r, tz)),
         "history-record" => via::<h::HistoryRecordCmd>(args, |r| h::record_at(home, r)),
-        "sessions-needs" => via::<h::SessionsNeedsCmd>(args, |_| Ok(h::needs_at(home))),
+        "sessions-needs" => {
+            via::<h::SessionsNeedsCmd>(args, |_| Ok(h::needs_at(home, &[], Ok(Vec::new()))))
+        }
         "history-index" => via::<h::HistoryIndexCmd>(args, |r| h::index_at(home, r)),
         "history-user-inputs" => via::<h::UserInputsCmd>(args, |r| h::user_inputs_at(home, r)),
         "history-turns" => via::<h::HistoryTurnsCmd>(args, |r| h::turns_at(home, r, tz)),
@@ -1574,7 +1576,7 @@ fn sessions_needs_lists_the_waiting_sessions_each_with_its_history_facts_needs()
         let _ = c.wait();
     }
     let _ = std::fs::remove_dir_all(&home);
-    let rows = list["waiting"].as_array().expect("waiting 是数组");
+    let rows = &session_rows(&list);
     // 序照核心那一处（先答哪个：危险度 · 再等得久的在前），清单不另排。
     let sids: Vec<&str> = rows.iter().map(|r| r["sid"].as_str().unwrap()).collect();
     assert_eq!(sids, vec!["s-net", ask, "s-norecord"], "{list}");
@@ -1634,6 +1636,8 @@ fn a_hidden_background_session_still_lists_its_needs() {
         &home,
         &here,
         &Default::default(),
+        &[],
+        Ok(Vec::new()),
     ))
     .unwrap();
     for mut c in kids {
@@ -1641,7 +1645,7 @@ fn a_hidden_background_session_still_lists_its_needs() {
         let _ = c.wait();
     }
     let _ = std::fs::remove_dir_all(&home);
-    let rows = list["waiting"].as_array().expect("waiting 是数组");
+    let rows = &session_rows(&list);
     let row = |sid: &str| {
         rows.iter()
             .find(|r| r["sid"] == sid)
@@ -2080,12 +2084,12 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
         tail,
         r#"{"end":273,"eof":true,"from":1,"held":{"mark":"152-273-b4aa604defe0685c","next":3,"next_byte":273,"path":"<home>/projects/-golden/r.jsonl"},"how":"tail","next":273,"rows":[{"cwd":"/w","end":152,"hash":12521928789128290262,"record":{"agent":"claude","at":"t1","blocks":[{"text":"q","type":"text"}],"cwd":"/w","id":"r-1","t":"said","who":{"speaker":{"kind":"human"},"text":"q"}}},{"end":273,"hash":11353788305326452798,"record":{"agent":"claude","at":"t2","autoReply":false,"blocks":[{"text":"a","type":"text"}],"id":"r-2","t":"reply"}}],"split_at":55,"tail_from":1,"total":3}"#
     );
-    assert_eq!(needs, r#"{"answered":[],"waiting":[]}"#);
+    assert_eq!(needs, r#"{"answered":[],"items":[]}"#);
     // 清单里有一行的那一形（`needs` 那一份成品与 `history-facts` 同一个类型）。
     let row = {
         use crate::observe::recognize::facts::{needs_of, PidWait};
-        crate::faces::history_face::NeedsList {
-            waiting: vec![crate::observe::accounts_query::NeedsRow {
+        crate::observe::recognize::facts::needs_list(
+            vec![crate::observe::accounts_query::NeedsRow {
                 sid: "s-1".into(),
                 label: crate::common::cells::Words("t".into()),
                 face: crate::wire::SessionFace::of(crate::wire::Life::Live {
@@ -2104,11 +2108,13 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
                 .expect("在等就有需手动"),
                 hidden: None,
             }],
-            answered: vec![crate::faces::history_face::AnsweredRow {
+            &[],
+            Ok(Vec::new()),
+            vec![crate::faces::history_face::AnsweredRow {
                 sid: "s-2".into(),
                 said: crate::common::cells::Words("w".into()),
             }],
-        }
+        )
     };
     let row_bytes = serde_json::to_string(&serde_json::to_value(&row).unwrap()).unwrap();
     // 手机嵌的 Rust 核心按 `cmd-wire` 那一份解这几份（`replies::decode_reply`）：解得开、按类型重写出来逐字节相同。
@@ -2125,7 +2131,7 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
     }
     assert_eq!(
         row_bytes,
-        r#"{"answered":[{"said":"w","sid":"s-2"}],"waiting":[{"face":{"can":{"close":{"can":"no","why":"运行中"},"model":{"can":"no","why":"先答完需手动"},"permission":{"can":"no","why":"先答完需手动"},"reattach":{"can":"no","why":"运行中"},"resume":{"can":"no","why":"运行中"},"term":{"can":"yes","tmux":false}},"dot":"needs-you","line":"需手动","live":{"activity":"needs_you","is":"yes"},"name":"需手动","order":0,"settled":false,"tip":"需手动","tone":"need"},"hidden":null,"label":"t","needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":null,"rank":3298534883325,"sinceMs":1,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"waitedText":"<1s","what":null},"sid":"s-1"}]}"#
+        r#"{"answered":[{"said":"w","sid":"s-2"}],"items":[{"kind":"session","rank":3298534883325,"session":{"face":{"can":{"close":{"can":"no","why":"运行中"},"model":{"can":"no","why":"先答完需手动"},"permission":{"can":"no","why":"先答完需手动"},"reattach":{"can":"no","why":"运行中"},"resume":{"can":"no","why":"运行中"},"term":{"can":"yes","tmux":false}},"dot":"needs-you","line":"需手动","live":{"activity":"needs_you","is":"yes"},"name":"需手动","order":0,"settled":false,"tip":"需手动","tone":"need"},"hidden":null,"label":"t","needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":null,"rank":3298534883325,"sinceMs":1,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"waitedText":"<1s","what":null},"sid":"s-1"}}]}"#
     );
 }
 
@@ -2208,6 +2214,17 @@ fn phone_decodes_back(cmd: &str, bytes: &str) {
 }
 
 /// 照手机那一份入参问一条只读命令，应答原样（成功那一支）。
+/// `sessions-needs` 回包里会话那几项的 `session` 那一格（照回包的先后）。
+fn session_rows(list: &serde_json::Value) -> Vec<serde_json::Value> {
+    list["items"]
+        .as_array()
+        .expect("items 是数组")
+        .iter()
+        .filter(|i| i["kind"] == "session")
+        .map(|i| i["session"].clone())
+        .collect()
+}
+
 fn phone_wire(home: &Path, cmd: &str, args: serde_json::Value) -> serde_json::Value {
     answer_at(home, cmd, &args, &Default::default()).unwrap_or_else(|e| panic!("{cmd}: {e:?}"))
 }

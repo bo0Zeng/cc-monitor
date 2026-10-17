@@ -10,10 +10,13 @@ import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.ui.Faces
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
+import com.ccmonitor.mobile.ui.needs.NeedsBoard
+import com.ccmonitor.mobile.ui.needs.NeedsSource
 import com.squareup.moshi.Moshi
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -27,7 +30,7 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 一条会话的需手动：读 `sessions-needs` 里这一条、答走 `needs-answer`（同桌面那一条命令），那台推 `changed {needs}` 就重问。
+ * 一条会话的需手动：读需手动板上那台那一份里这一条（这里不另问）、答走 `needs-answer`（同桌面那一条命令），答完叫板重问。
  * 字 · 选项 · 次序 · 附话要求全照那台那一份（跨语言金样 `needs-ask.golden.json`），手机只排版。
  */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -76,10 +79,12 @@ class NeedsDeskTest {
                             answered?.let { mapOf("sid" to "s1", "said" to it) },
                             mapOf("sid" to "other", "said" to "别的会话那一句"),
                         ),
-                    "waiting" to
-                        listOfNotNull(
-                            mine?.let { mapOf("sid" to "s1", "label" to "标题 s1", "face" to Faces.raw["live-needs-you-tmux"], "needs" to it) },
-                            mapOf("sid" to "other", "label" to "标题 other", "face" to Faces.raw["live-needs-you-tmux"], "needs" to mapOf("kind" to "answer", "text" to "等回答", "head" to "等回答", "tone" to "need", "rank" to 1.0)),
+                    "items" to
+                        sessionItems(
+                            listOfNotNull(
+                                mine?.let { mapOf("sid" to "s1", "label" to "标题 s1", "face" to Faces.raw["live-needs-you-tmux"], "needs" to it) },
+                                mapOf("sid" to "other", "label" to "标题 other", "face" to Faces.raw["live-needs-you-tmux"], "needs" to mapOf("kind" to "answer", "text" to "等回答", "head" to "等回答", "tone" to "need", "rank" to 1.0)),
+                            ),
                         ),
                 ),
             )
@@ -106,15 +111,16 @@ class NeedsDeskTest {
             }
         }
         val pushes = MutableSharedFlow<Changed>(extraBufferCapacity = 16)
-        val desk = NeedsDesk(link, pushes, MutableStateFlow("s1"), "box", backgroundScope, now = { 0L })
+        val needs = NeedsBoard(MutableStateFlow(mapOf("box" to NeedsSource(link, pushes))), backgroundScope)
+        val desk = NeedsDesk(link, needs.state.map { it["box"] }, { needs.reask("box") }, MutableStateFlow("s1"), "box", backgroundScope, now = { 0L })
         runCurrent()
-        advanceTimeBy(NeedsDesk.DEBOUNCE_MS + 1)
+        advanceTimeBy(NeedsBoard.DEBOUNCE_MS + 1)
         runCurrent()
         return Rig(link, board, pushes, desk)
     }
 
     private fun TestScope.settle() {
-        advanceTimeBy(NeedsDesk.DEBOUNCE_MS + 1)
+        advanceTimeBy(NeedsBoard.DEBOUNCE_MS + 1)
         runCurrent()
     }
 
@@ -179,12 +185,11 @@ class NeedsDeskTest {
         }
 
     @Test
-    fun `推 changed needs（这一条）⇒ 重问；别的主题 · 别的会话不问`() =
+    fun `推 changed needs ⇒ 板重问那一台、这一条跟着换；别的主题不问`() =
         runTest {
             val r = rig(null)
             assertNull(r.desk.state.value.bar)
             val before = r.link.calls("sessions-needs").size
-            r.pushes.emit(Changed("needs", "other"))
             r.pushes.emit(Changed("tasks", "s1"))
             settle()
             assertEquals(before, r.link.calls("sessions-needs").size)
@@ -227,7 +232,8 @@ class NeedsDeskTest {
             val link = FakeCoreLink()
             val board = Board().also { it.mine = needs("approve") }
             link.answer = { cmd, _ -> if (cmd == "sessions-needs") board.reply() else Reply.LinkDown }
-            val desk = NeedsDesk(link, MutableSharedFlow(), MutableStateFlow("s1"), "box", backgroundScope, now = { 0L }, answerCall = { _, _ -> gate.await() })
+            val needs = NeedsBoard(MutableStateFlow(mapOf("box" to NeedsSource(link, MutableSharedFlow()))), backgroundScope)
+            val desk = NeedsDesk(link, needs.state.map { it["box"] }, { needs.reask("box") }, MutableStateFlow("s1"), "box", backgroundScope, now = { 0L }, answerCall = { _, _ -> gate.await() })
             settle()
             desk.open()
             desk.pick("allow")
@@ -425,3 +431,6 @@ class NeedsDeskTest {
         assertEquals("段只照那台给的 row，不按 id 认", listOf("always-1", "release"), choiceGroups(moved).last().map { it.choice.id })
     }
 }
+
+/** `sessions-needs` 会话那几项（夹具：照先后包成会话那一臂）。 */
+internal fun sessionItems(rows: List<Map<String, Any?>?>): List<Map<String, Any?>> = rows.filterNotNull().map { mapOf("kind" to "session", "rank" to 0.0, "session" to it) }
