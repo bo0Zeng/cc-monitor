@@ -278,18 +278,73 @@ impl Typed {
     }
 }
 
-/// 入参 ⇒ `R`。缺 ＝ `{}`；多一个键 · 缺一个必填 · 类型不对 ⇒ `bad_args`（解码器那一句进原话）。
+/// 找出是哪个字段解码失败（不泄露原值）。
+fn find_culprit_key<R: serde::de::DeserializeOwned>(v: &serde_json::Value) -> Option<String> {
+    let map = v.as_object()?;
+    if map.len() == 1 {
+        return map.keys().next().cloned();
+    }
+    for (k, _) in map {
+        let mut sub = map.clone();
+        sub.remove(k);
+        match serde_json::from_value::<R>(serde_json::Value::Object(sub)) {
+            Ok(_) => return Some(k.clone()),
+            Err(e2) => {
+                let s2 = e2.to_string();
+                if s2.contains(&format!("missing field `{k}`")) {
+                    return Some(k.clone());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// 契约错只回「哪一格 · 期望什么形」，不回调用方给的原值；原值只进本机日志。
+pub(crate) fn sanitize_de_error<R: serde::de::DeserializeOwned>(
+    v: &serde_json::Value,
+    raw: &str,
+) -> String {
+    let raw_clean = raw.split(" at line ").next().unwrap_or(raw).trim();
+    if raw_clean.starts_with("invalid type:")
+        || raw_clean.starts_with("invalid value:")
+        || raw_clean.starts_with("unknown variant ")
+    {
+        let key = find_culprit_key::<R>(v);
+        if let Some((_, exp)) = raw_clean.split_once(", expected ") {
+            let exp = exp.trim();
+            if let Some(k) = key {
+                if raw_clean.starts_with("unknown variant ") {
+                    format!("`{k}`: unknown variant, expected {exp}")
+                } else {
+                    format!("`{k}`: expected {exp}")
+                }
+            } else {
+                format!("expected {exp}")
+            }
+        } else if let Some(k) = key {
+            format!("`{k}`: invalid value")
+        } else {
+            "invalid value".to_string()
+        }
+    } else {
+        raw_clean.to_string()
+    }
+}
+
+/// 入参 ⇒ `R`。缺 ＝ `{}`；多一个键 · 缺一个必填 · 类型不对 ⇒ `bad_args`。
+/// 契约错只回「哪一格 · 期望什么形」，不回调用方给的原值；原值只进本机日志。
 pub(crate) fn take<R: serde::de::DeserializeOwned>(args: &serde_json::Value) -> Result<R, Fail> {
     let v = if args.is_null() {
         serde_json::Value::Object(Default::default())
     } else {
         args.clone()
     };
-    serde_json::from_value(v).map_err(|e| {
-        Fail::new(
-            "bad_args",
-            crate::common::contract::malformed(&e.to_string()),
-        )
+    serde_json::from_value::<R>(v.clone()).map_err(|e| {
+        let raw = e.to_string();
+        tracing::warn!("contract: bad_args deserialization failed: {raw}");
+        let detail = sanitize_de_error::<R>(&v, &raw);
+        Fail::new("bad_args", crate::common::contract::malformed(&detail))
     })
 }
 

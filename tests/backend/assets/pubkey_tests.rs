@@ -373,3 +373,34 @@ async fn the_push_reply_has_exactly_the_golden_keys() {
     assert_eq!(keys(&got), keys(&golden["product"]));
     assert_eq!(got, golden["product"]);
 }
+
+/// 推公钥「认不出的类型」拒绝体只说「认不出这份公钥的类型」与文件名，不回文件内容（哨兵串）。
+#[tokio::test]
+async fn push_public_key_unknown_type_omits_sentinel_content_and_reports_file() {
+    let sentinel = "SENTINEL_SECRET_TOKEN_PUBKEY_98765";
+    let fake_reach = FakeReach::new(true);
+    let read = |_p: &str| Ok(format!("{sentinel} foo@bar\n"));
+    let err = answer_push(&args(), &fake_reach, &read)
+        .await
+        .expect_err("应拒绝未知公钥类型");
+    assert_eq!(err.0, "refused");
+    assert!(
+        !err.1.contains(sentinel),
+        "拒绝体中泄露了文件内容哨兵串：{}",
+        err.1
+    );
+    assert!(
+        err.1.contains("/k/id_ed25519.pub"),
+        "拒绝体未包含文件名：{}",
+        err.1
+    );
+    assert!(
+        copy_core::copy_matches_with(
+            "rsPubkey.pushPublicKey.unknownType",
+            &[("path", "/k/id_ed25519.pub")],
+            &err.1,
+        ),
+        "拒绝体未按规范使用文案表：{}",
+        err.1
+    );
+}

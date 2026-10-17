@@ -297,10 +297,13 @@ impl ExtLoc {
             ))
         })?;
         let loc: ExtLoc = serde_json::from_value(v.clone()).map_err(|e| {
+            let raw = e.to_string();
+            tracing::warn!("contract: bad_args deserialization failed: {raw}");
+            let detail = crate::wire::typed::sanitize_de_error::<ExtLoc>(v, &raw);
             (
                 "bad_args",
                 crate::common::contract::malformed(&format!(
-                    "`{key}` must be {{level: user}} or {{level: project, dir}}: {e}"
+                    "`{key}` must be {{level: user}} or {{level: project, dir}}: {detail}"
                 )),
             )
         })?;

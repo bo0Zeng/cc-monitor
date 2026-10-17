@@ -165,8 +165,7 @@ fn give_back(
     let waiting = |sid: &str| crate::observe::accounts_query::waiting_now(&home, sid, &asked);
     let send = |a: &Value, resume: bool| {
         use crate::faces::session_say_face as say;
-        let req: say::SessionSayReq =
-            serde_json::from_value(a.clone()).map_err(|e| bad(&e.to_string()))?;
+        let req: say::SessionSayReq = typed::take(a)?;
         let again = |r: &say::SessionSayReq| {
             resume
                 .then(|| say::resume_here(&r.sid, r.client.as_deref(), Some(&r.text), files))

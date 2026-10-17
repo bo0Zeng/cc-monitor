@@ -346,3 +346,23 @@ fn the_phone_decodes_each_reply_with_the_type_the_backend_answers_with() {
         );
     }
 }
+
+/// 契约错拒绝体不带出调用方给的原值（特别是哨兵串 / 秘密）。
+#[test]
+fn take_bad_args_omits_sentinel_value_from_rejection() {
+    #[derive(serde::Deserialize, Debug)]
+    struct DummyReq {
+        port: u16,
+    }
+    let sentinel = "SENTINEL_SECRET_VALUE_12345";
+    let args = serde_json::json!({ "port": sentinel });
+    let fail = super::take::<DummyReq>(&args).expect_err("should fail");
+    let rejection = format!(
+        "code={} message={} raw={:?}",
+        fail.code, fail.message, fail.raw
+    );
+    assert!(
+        !rejection.contains(sentinel),
+        "拒绝体中泄露了哨兵串：{rejection}"
+    );
+}
