@@ -1549,7 +1549,7 @@ fn the_announcement_says_which_account_the_session_runs_under() {
             std::thread::yield_now();
         }
         let ticks = proc_starttime(pid).expect("child starttime");
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+        let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
         let mut sink = FrameSink::new(tx);
         let mut state = ReaderState::new(dir.join("projects"));
         state.accts_dir = accts.clone();
