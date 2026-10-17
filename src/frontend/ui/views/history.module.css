@@ -155,22 +155,37 @@
     outline: none;
   }
 
-  .hvFoot {
-    padding: var(--space-5);
-    color: var(--text-2);
-    font-size: var(--font-size-small);
-    text-align: center;
+  /* 虚拟滚动：整列高的一块垫底，手上那一窗摆在它该在的高度上（项都是定高，与 history.ts 里那组数同一组）。 */
+  .hvSpacer {
+    position: relative;
+  }
+
+  .hvBlock {
+    position: absolute;
+    right: 0;
+    left: 0;
   }
 
   .hvSec {
-    position: sticky;
-    top: 0;
-    z-index: var(--z-sticky);
+    box-sizing: border-box;
+    height: 32px;
     padding: 10px var(--space-4) var(--space-2);
     background: var(--bg);
     color: var(--text-2);
     font-size: var(--font-size-small);
     font-weight: var(--font-weight-strong);
+  }
+
+  /* 列表顶上粘着的那一条（看得见的第一项所在的那一段）：盖在垫底那一块上、不占高。 */
+  .hvSec[data-pin="true"] {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-sticky);
+    margin-bottom: -32px;
+  }
+
+  .hvSec[data-pin="true"]:empty {
+    visibility: hidden;
   }
 
   .hvRow {

@@ -1,8 +1,9 @@
 /**
  * **历史页**：主窗口上的全屏视图，列表在左、内容在右。
  *
- * - 列表：默认「按时间」平铺（今天 · 昨天 · 本周 · 按月分段），「按项目」是第二种看法；数据是每台一份平铺清单
- *   （后端 `history-list`：判活 · 标题 · 每行能做什么 · 分组都在那里定），哪台先答先画、一台没答不挡别的台。
+ * - 列表：默认「按时间」平铺（今天 · 昨天 · 本周 · 按月分段），「按项目」是第二种看法；几台在本机后端并成一列
+ *   （`history-browse`：判活 · 标题 · 每行能做什么 · 分组 · 怎么并 · 分叉挂哪都在那里定），这里只问看得见的那一窗（虚拟滚动、滚到哪问到哪）、照项画。
+ *   开页 · 刷新：一问照手上的马上答，每台远端另一问先同步它（慢的不挡别的）；一台读不到在列表顶说。
  * - 一个搜索框：敲字 ⇒ 后端按标题 / 第一句 / 项目名过滤全部会话；回车 ⇒ 内容搜索（各台 `history-search`），结果按会话分块。
  * - 「筛选」浮层：机器 · 时间 · 排序 · 显示已隐藏 · 搜内容时谁说的 · 含工具输出与思考。选项记在本机（界面偏好）。
  * - 右边：点一行就地看（只读查看器），列表不动。
@@ -24,12 +25,14 @@ import { askText, confirmDialog } from "../kit/dialog";
 import { dispatcher } from "../keybindings/registry";
 import { copyText } from "../copy-table";
 import { commands } from "../ipc/commands";
-import { isLocalOrigin, LOCAL_ORIGIN } from "../ipc/origin";
+import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import { annotate, forgetAnnotation } from "../history-reads";
 import { setHide } from "../session-hidden-cmds";
 import { undoHide } from "../session-hidden";
-import { fetchList, mergeByAt, mergeGroups, type HistoryGroup, type HistoryList, type HistoryRow } from "../history-list-reads";
+import { fetchBrowse, type BrowseWindow, type HistoryGroup, type HistoryMachine, type HistoryRow } from "../history-list-reads";
+import type { HistoryBrowseReq } from "../generated/HistoryBrowseReq";
+import type { HistorySection } from "../generated/HistorySection";
 import { searchAllMachines, type SearchResult, type SessionHits } from "./history-search";
 import { SessionViewer, viewerPath, type ViewerHead } from "./session-viewer";
 import { defaultPick, pickAsk, resumeAccounts, resumeHint, resumeMenuItems, type ResumeAccounts, type ResumePick } from "../resume-menu";
@@ -66,15 +69,6 @@ function loadPrefs(): Prefs {
   return { ...DEFAULT_PREFS, ...v, off: Array.isArray(v.off) ? v.off.filter((x) => typeof x === "string") : [] };
 }
 
-/** 一台此刻的样子。 */
-type Machine =
-  | { state: "loading"; prev: HistoryList | null }
-  | { state: "ok"; list: HistoryList }
-  | { state: "failed"; why: string };
-
-/** 一台的键：本机 `""`、远端那台的名字。 */
-const keyOf = (origin: string | undefined): string => origin ?? "";
-
 /** 敲字之后停多久才问（乙5：150 ms）。 */
 const QUERY_DEBOUNCE_MS = 150;
 /** 列表可拖的宽（默认 420，320–640）；键盘一步 16。 */
@@ -86,6 +80,14 @@ const isNarrow = (): boolean => window.matchMedia?.("(max-width: 799px)").matche
 
 /** 方向键走行时停多久才读右边（快速划过不读）。 */
 const PREVIEW_DEBOUNCE_MS = 200;
+
+/** 列表里每种项的高（与 `history.module.css` 里的同一组数）：按时间的会话行 · 段头；按项目的组头与紧凑行同高。 */
+const ROW_H = 52;
+const SEC_H = 32;
+const COMPACT_H = 30;
+/** 看得见的那几项上下各多要几项（滚一点不必再问）。一窗至多 2000 项（后端的上限）。 */
+const PAD = 20;
+const WINDOW_MAX = 2000;
 
 export class HistoryView {
   /** 删会话前问一句：主窗口里它此刻活着吗（列表拉下来那一刻的状态可能已旧）。 */
@@ -99,8 +101,20 @@ export class HistoryView {
   private isOpen = false;
   private prefs: Prefs = loadPrefs();
   private machines: string[] = [""];
-  private per = new Map<string, Machine>();
-  private seq = 0;
+  /** 这一列手上的那一窗（还没答过 ⇒ `null`）；本机后端整问没答上 ⇒ `failed` 那一句。 */
+  private win: BrowseWindow | null = null;
+  private failed: string | null = null;
+  /** 要的那一窗（第几项起 · 几项）：滚到哪问到哪。 */
+  private want = { from: 0, limit: 2 * PAD };
+  /** 发问的先后号：比已画的那一问早发的答不画。开一次页换一个号（关了再开，上一回的答不画）。 */
+  private issued = 0;
+  private shownIssued = 0;
+  private opens = 0;
+  /** 没答回来的问几问（> 0 ⇒ 刷新转圈）· 正在同步的远端那几台。 */
+  private inFlight = 0;
+  private syncing = new Set<string>();
+  /** 走到两头（Home / End）时那一头还不在手上那一窗里 ⇒ 等那一窗答回来再选。 */
+  private pending: "first" | "last" | null = null;
   private query = "";
   private queryTimer: ReturnType<typeof setTimeout> | null = null;
   /** 内容搜索：`null` = 没在搜内容（列表是清单）。 */
@@ -112,7 +126,8 @@ export class HistoryView {
   private picks = new Map<string, ResumePick>();
   private previewTimer: ReturnType<typeof setTimeout> | null = null;
   private openForks = new Set<string>(safeGetJson<string[]>(LS_KEYS.historyExpandedForks) ?? []);
-  private openGroups = new Set<string>();
+  /** 按项目看时哪几组开着：`open` 是全部的样子，`except` 里那几组（`台\u0000键`）反过来。 */
+  private fold = { open: false, except: new Set<string>() };
   /** 鼠标点一行时焦点进列表那一下：不让列表自己的「焦点落到选中行」接手。 */
   private quietFocus = false;
   /** 列表上有鼠标 / 焦点 ⇒ 新数据先不重排。 */
@@ -127,6 +142,8 @@ export class HistoryView {
   private listEl!: HTMLElement;
   private listHead!: HTMLElement;
   private stripsEl!: HTMLElement;
+  /** 按时间看时列表顶上粘着的段头。 */
+  private readonly sticky = pinnedSection();
   private contentEl!: HTMLElement;
   private splitEl!: HTMLElement;
   private viewer: SessionViewer | null = null;
@@ -151,20 +168,32 @@ export class HistoryView {
     // 开页即给焦点（不等远端）。
     this.searchInput.focus();
     this.machines = ["", ...(await commands.list_remote_mcp_origins().catch(() => [] as string[]))];
-    // 开页那一问带 `fresh`：远端那台的清单后端记着、不按时间过期，开页与「刷新」才再问那台。
-    this.refresh(true);
+    // 开页：先答手上的，远端那几台各自同步一次（后端记着副本、不按时间过期，开页与「刷新」才再问那台）。
+    this.restart();
+    this.refresh(this.remotes());
   }
 
   close(): void {
     if (!this.isOpen) return;
     this.picks.clear();
-    this.seq++;
+    this.opens++;
     this.contentSeq++;
     closePopover();
     this.disposeViewer();
     this.root.remove();
     this.isOpen = false;
     dispatcher.popOverlay(this.layer);
+  }
+
+  /**
+   * 那台推了「清单变了」（`changed/history_list`）：开着、那台在这一页上 ⇒ 再问看得见的那一窗（远端那台带它的 `fresh`，本机后端先同步副本）。
+   * 改名 · 星标 · 隐藏 · 删了 · 会话起停之后的重问都走这一处（那台的推送叫回来），页里不另问。
+   */
+  onListMoved(origin: Origin): void {
+    if (!this.isOpen) return;
+    const m = isLocalOrigin(origin) ? "" : origin;
+    if (!this.wanted().includes(m)) return;
+    this.refresh(m ? [m] : []);
   }
 
   /** Ctrl+F 落在历史页：右边有会话 ⇒ 会话内查找；否则不接（交给主窗口）。 */
@@ -204,35 +233,80 @@ export class HistoryView {
     return this.machines.filter((m) => !this.prefs.off.includes(m));
   }
 
-  /** 逐台问清单（`fresh` ＝ 远端那台先由本机后端同步一次副本）。哪台先答先画。 */
-  private refresh(fresh: boolean, only?: string): void {
-    const seq = ++this.seq;
-    const ask = {
-      query: this.query || undefined,
-      sort: this.prefs.sort,
-      withinDays: this.prefs.withinDays || undefined,
-      hidden: this.prefs.hidden,
-      fresh,
+  private remotes(): string[] {
+    return this.wanted().filter((m) => m !== "");
+  }
+
+  /** 这一问（`fresh` ＝ 先同步的那几台远端）：要哪几台 · 筛排 · 怎么看 · 开合 · 窗口。 */
+  private askOf(fresh: string[]): HistoryBrowseReq {
+    const split = (k: string): [string, string] => {
+      const i = k.indexOf("\u0000");
+      return [k.slice(0, i), k.slice(i + 1)];
     };
-    const targets = only !== undefined ? [only] : this.wanted();
-    for (const m of targets) {
-      const was = this.per.get(m);
-      this.per.set(m, { state: "loading", prev: was?.state === "ok" ? was.list : was?.state === "loading" ? was.prev : null });
-      fetchList(m || undefined, ask).then(
-        (list) => {
-          if (seq !== this.seq && only === undefined) return;
-          this.per.set(m, { state: "ok", list });
-          this.scheduleRender();
-        },
-        (e: unknown) => {
-          if (seq !== this.seq && only === undefined) return;
-          this.per.set(m, { state: "failed", why: saidOf(e) });
-          this.scheduleRender();
-        },
-      );
+    return {
+      here: this.wanted().includes(""),
+      remotes: this.remotes(),
+      fresh,
+      ...(this.query ? { query: this.query } : {}),
+      sort: this.prefs.sort,
+      ...(this.prefs.withinDays ? { within_days: this.prefs.withinDays } : {}),
+      ...(this.prefs.hidden ? { hidden: true } : {}),
+      by: this.prefs.view,
+      groups: {
+        open: this.fold.open,
+        except: [...this.fold.except].map(split).map(([o, key]) => ({ ...(o ? { origin: o } : {}), key })),
+      },
+      forks: [...this.openForks].map(split).map(([o, sid]) => ({ ...(o ? { origin: o } : {}), sid })),
+      range: { ...this.want },
+    };
+  }
+
+  /** 这一问是哪一问（除了先同步哪几台，别的都算）。 */
+  private genOf(req: HistoryBrowseReq): string {
+    return JSON.stringify([this.opens, { ...req, fresh: [] }]);
+  }
+
+  /** 换了看什么（搜索词 · 筛选 · 看法）⇒ 回到顶、从头一窗问起。 */
+  private restart(): void {
+    this.listEl.scrollTop = 0;
+    this.want = windowAround(0, Math.ceil(this.listEl.clientHeight / (this.prefs.view === "time" ? ROW_H : COMPACT_H)));
+  }
+
+  /** 问这一列：一问照手上的（马上答）＋ `sync` 里每台远端各一问（那一台同步完才答，慢的不挡别的）。 */
+  private refresh(sync: readonly string[] = []): void {
+    this.ask([], "data");
+    for (const m of sync) {
+      if (!this.remotes().includes(m)) continue;
+      this.syncing.add(m);
+      this.ask([m], "data");
     }
-    this.refreshBtn.dataset.busy = "true";
-    this.scheduleRender();
+    this.renderChrome();
+  }
+
+  /** 发一问。`scroll` ＝ 滚出来的那一窗（答回来就画，鼠标在列表上也画）；`data` ＝ 数据变了（鼠标在列表上先不重排）。 */
+  private ask(fresh: string[], why: "data" | "scroll"): void {
+    const req = this.askOf(fresh);
+    const gen = this.genOf(req);
+    const n = ++this.issued;
+    this.inFlight++;
+    const land = (w: BrowseWindow | null, failed: string | null): void => {
+      this.inFlight--;
+      for (const m of fresh) this.syncing.delete(m);
+      if (!this.isOpen) return;
+      const current = gen === this.genOf(this.askOf([])) && n > this.shownIssued;
+      // 同步那一问被后来的问顶掉了 · 自己没答上：副本已在本机后端换好（或记下了没成的那一句）⇒ 照现在的样子再问一次手上的。
+      if (fresh.length > 0 && (!current || w === null)) return this.ask([], why);
+      if (!current) return this.renderChrome();
+      this.shownIssued = n;
+      if (w) this.win = w;
+      this.failed = failed;
+      if (why === "scroll") this.renderNow();
+      else this.scheduleRender();
+    };
+    fetchBrowse(req).then(
+      (w) => land(w, null),
+      (e: unknown) => land(null, saidOf(e)),
+    );
   }
 
   private setQuery(q: string): void {
@@ -250,7 +324,8 @@ export class HistoryView {
       const q = this.searchInput.value.trim();
       if (q === this.query) return this.renderNow();
       this.query = q;
-      this.refresh(false);
+      this.restart();
+      this.refresh();
     }, QUERY_DEBOUNCE_MS);
     this.renderNow();
   }
@@ -315,7 +390,8 @@ export class HistoryView {
       onChange: (k) => {
         this.prefs.view = k;
         this.savePrefs();
-        this.renderNow();
+        this.restart();
+        this.refresh();
       },
     });
     views.classList.add(s.hvViews);
@@ -347,7 +423,7 @@ export class HistoryView {
       kind: "icon",
       icon: "refresh",
       hint: copyText("history.page.refresh"),
-      onClick: () => this.refresh(true),
+      onClick: () => this.refresh(this.remotes()),
     });
     top.append(back, views, search, this.filterBtn, this.refreshBtn);
     return top;
@@ -366,6 +442,7 @@ export class HistoryView {
     this.listEl.setAttribute("aria-label", copyText("history.page.list"));
     this.listEl.tabIndex = 0;
     this.listEl.addEventListener("keydown", (ev) => this.onListKey(ev));
+    this.listEl.addEventListener("scroll", () => this.onScroll());
     // Tab 进列表 ⇒ 焦点落到选中的那一行（没有就第一行）；鼠标点进来的不在这里管（点的那一行自己选，见 `hooks().select`）。
     this.listEl.addEventListener("focus", (ev) => {
       if (ev.target === this.listEl && !this.quietFocus) this.moveSelection(this.selected ?? this.order[0] ?? null, true);
@@ -423,8 +500,10 @@ export class HistoryView {
     const changed = (refetch: boolean): void => {
       this.savePrefs();
       this.markFilterBtn();
-      if (refetch) this.refresh(false);
-      else this.renderNow();
+      if (refetch) {
+        this.restart();
+        this.refresh();
+      } else this.renderNow();
     };
     const researchIfContent = (): void => {
       if (this.content) void this.runContentSearch();
@@ -456,14 +535,15 @@ export class HistoryView {
     openPopover(this.filterBtn, panel, { label: copyText("history.page.filter") });
   }
 
-  /** 筛选里一台机器那一格：勾回 ⇒ 只再问它；那台上次没答上 ⇒ 标「离线」。 */
+  /** 筛选里一台机器那一格：勾掉 / 勾回 ⇒ 重问这一列（勾回的远端那台先同步一次）；那台上次没读到 ⇒ 标「离线」。 */
   private machineCheck(m: string, changed: (refetch: boolean) => void): HTMLElement {
     const c = checkbox(m ? m : copyText("history.filter.local"), !this.prefs.off.includes(m), (on) => {
       this.prefs.off = on ? this.prefs.off.filter((x) => x !== m) : [...this.prefs.off, m];
-      if (on) this.refresh(false, m);
       changed(false);
+      this.restart();
+      this.refresh(on && m ? [m] : []);
     });
-    if (this.per.get(m)?.state === "failed") {
+    if (this.readOf(m)?.is === "failed") {
       const w = document.createElement("span");
       w.className = s.hvFilterWarn;
       w.textContent = copyText("history.filter.offline");
@@ -477,7 +557,8 @@ export class HistoryView {
     this.savePrefs();
     this.markFilterBtn();
     this.setQuery("");
-    this.refresh(false);
+    this.restart();
+    this.refresh();
   }
 
   // ───────────────────────── 画 ─────────────────────────
@@ -491,27 +572,36 @@ export class HistoryView {
     this.renderNow();
   }
 
+  /** 一台在头里那一格（这一列还没答过 · 那台不在这一问里 ⇒ 缺）。 */
+  private readOf(m: string): HistoryMachine["read"] | undefined {
+    return this.win?.head.machines.find((x) => (x.origin ?? "") === m)?.read;
+  }
+
   /** 不动列表的那几块（刷新转圈 · 提示条 · 筛选数）。 */
   private renderChrome(): void {
-    const loading = this.wanted().some((m) => this.per.get(m)?.state === "loading");
-    this.refreshBtn.dataset.busy = String(loading);
+    this.refreshBtn.dataset.busy = String(this.inFlight > 0);
     this.markFilterBtn();
     this.stripsEl.replaceChildren(...this.machineStrips(), ...this.contentStrips());
   }
 
-  /** 每台一条：没答上 ⇒［重新连接］（本机 ⇒［重试］）；答了但说清单不全 ⇒［重试］。 */
+  /** 每台一条：没读到 ⇒［重新连接］（本机 ⇒［重试］）；读到了但说清单不全 ⇒［重试］。本机后端整问没答上 ⇒ 红条［重试］。 */
   private machineStrips(): HTMLElement[] {
     const strips: HTMLElement[] = [];
+    if (this.failed !== null) {
+      strips.push(strip("error", copyText("history.list.localFailed"), { label: copyText("history.list.retry"), run: () => this.refresh(this.remotes()) }));
+    }
     for (const m of this.wanted()) {
-      const st = this.per.get(m);
-      if (st?.state === "failed") {
+      if (this.syncing.has(m)) continue;
+      const st = this.readOf(m);
+      const again = (): void => this.refresh(m ? [m] : []);
+      if (st?.is === "failed") {
         strips.push(
           m
-            ? strip("warn", copyText("history.list.machineDown", { machine: m }), { label: copyText("history.list.reconnect"), run: () => this.refresh(true, m) })
-            : strip("error", copyText("history.list.localFailed"), { label: copyText("history.list.retry"), run: () => this.refresh(true, "") }),
+            ? strip("warn", copyText("history.list.machineDown", { machine: m }), { label: copyText("history.list.reconnect"), run: again })
+            : strip("error", copyText("history.list.localFailed"), { label: copyText("history.list.retry"), run: again }),
         );
-      } else if (st?.state === "ok" && st.list.notice) {
-        strips.push(strip("warn", copyText("history.list.notice"), { label: copyText("history.list.retry"), run: () => this.refresh(true, m) }));
+      } else if (st?.is === "ok" && st.notice) {
+        strips.push(strip("warn", copyText("history.list.notice"), { label: copyText("history.list.retry"), run: again }));
       }
     }
     return strips;
@@ -531,50 +621,46 @@ export class HistoryView {
     return strips;
   }
 
-  private lists(): HistoryList[] {
-    const out: HistoryList[] = [];
-    for (const m of this.wanted()) {
-      const st = this.per.get(m);
-      if (st?.state === "ok") out.push(st.list);
-      else if (st?.state === "loading" && st.prev) out.push(st.prev);
-    }
-    return out;
+  /** 这一列的几何（只照项数 · 段头算：每种项一个定高）。 */
+  private geom(): Geometry {
+    return geometry(this.prefs.view, this.win?.total ?? 0, this.win?.head.sections ?? []);
   }
 
   private renderNow(): void {
     this.dirty = false;
     this.renderChrome();
-    const lists = this.lists();
-    const rows = mergeByAt(lists.map((l) => l.rows));
-    this.rowsByKey = new Map(rows.map((r) => [rowKey(r), r]));
-    const anyLoading = this.wanted().some((m) => this.per.get(m)?.state === "loading");
+    const w = this.win;
+    this.rowsByKey = new Map();
+    for (const l of w?.lines ?? []) if (l.kind === "row") this.rowsByKey.set(rowKey(l.row), l.row);
     const body: HTMLElement[] = [];
     this.order = [];
     const hooks = this.hooks();
     if (this.content) {
       this.renderContent(body, hooks);
-    } else if (rows.length === 0) {
-      body.push(this.emptyList(anyLoading));
-    } else if (this.prefs.view === "time") {
-      this.renderByTime(body, rows, hooks, lists);
+    } else if (!w || w.total === 0) {
+      body.push(this.emptyList(!w || this.inFlight > 0 || this.syncing.size > 0));
     } else {
-      this.renderByProject(body, rows, hooks, lists);
-    }
-    if (lists.some((l) => l.truncated) && !this.content) {
-      const more = document.createElement("div");
-      more.className = s.hvFoot;
-      more.textContent = copyText("history.list.truncated");
-      body.push(more);
+      this.renderHead(w);
+      this.renderLines(body, w, hooks);
     }
     const top = this.listEl.scrollTop;
+    const refocus = this.listEl.contains(document.activeElement) && document.activeElement !== this.listEl;
     this.listEl.replaceChildren(...body);
     this.listEl.scrollTop = top;
     this.markRows();
+    this.paintSticky();
+    if (refocus) {
+      const el = this.selected ? this.rowEl(this.selected) : null;
+      (el ?? this.listEl).focus({ preventScroll: true });
+    }
+    if (this.pending) this.settlePending();
+    // 答回来那一窗盖不住看得见的那几项（数据变了、整列变短了）⇒ 照现在的位置再问一窗。
+    this.onScroll();
   }
 
   /** 一行都没有：还在读 ⇒ 骨架；带着字或筛选 ⇒「没有匹配」＋［清除筛选］；否则说还没有会话。 */
-  private emptyList(anyLoading: boolean): HTMLElement {
-    if (anyLoading) {
+  private emptyList(loading: boolean): HTMLElement {
+    if (loading) {
       this.listHead.replaceChildren(copyText("history.list.reading", { machines: this.wanted().map((m) => m || copyText("history.filter.local")).join(` ${copyText("cssMarks.sep.dot")} `) }));
       return skeletonRows(6);
     }
@@ -585,87 +671,19 @@ export class HistoryView {
       : emptyState({ text: copyText("history.list.empty"), hint: copyText("history.list.emptyHint") });
   }
 
-  /** 每个父会话下挂着的分叉（同一台；只认清单里的父会话）。 */
-  private forksOf(rows: HistoryRow[]): Map<string, HistoryRow[]> {
-    const have = new Set(rows.map(rowKey));
-    const kids = new Map<string, HistoryRow[]>();
-    for (const r of rows) {
-      if (!r.forkedFromSessionId) continue;
-      const p = rowKey({ origin: r.origin, sessionId: r.forkedFromSessionId });
-      if (!have.has(p)) continue;
-      const a = kids.get(p) ?? [];
-      a.push(r);
-      kids.set(p, a);
+  /** 列表头：按时间 ⇒ 几个会话（各台几行之和）；按项目 ⇒ 几个项目 · 几个会话 ＋ 全部展开 / 全部收起。 */
+  private renderHead(w: BrowseWindow): void {
+    if (this.prefs.view === "time") {
+      this.listHead.replaceChildren(copyText("history.list.count", { n: w.head.machines.reduce((n, m) => n + m.total, 0) }));
+      return;
     }
-    return kids;
-  }
-
-  private pushRow(body: HTMLElement[], r: HistoryRow, hooks: RowHooks, kids: Map<string, HistoryRow[]>, compact: boolean, child: boolean): void {
-    const k = rowKey(r);
-    const mine = kids.get(k) ?? [];
-    const open = this.openForks.has(k);
-    const orphan = !child && r.forkedFromSessionId !== undefined && !this.rowsByKey.has(rowKey({ origin: r.origin, sessionId: r.forkedFromSessionId }));
-    body.push(sessionRow(r, hooks, { compact, forks: mine.length, forksOpen: open, child, orphan }));
-    this.order.push(k);
-    if (open) for (const c of mine) this.pushRow(body, c, hooks, kids, compact, true);
-  }
-
-  private renderByTime(body: HTMLElement[], rows: HistoryRow[], hooks: RowHooks, lists: HistoryList[]): void {
-    const total = lists.reduce((n, l) => n + l.total, 0);
-    this.listHead.replaceChildren(copyText("history.list.count", { n: total }));
-    const kids = this.forksOf(rows);
-    let sec = "";
-    for (const r of rows) {
-      // 挂在父会话下的分叉不在顶层出。
-      if (r.forkedFromSessionId && this.rowsByKey.has(rowKey({ origin: r.origin, sessionId: r.forkedFromSessionId }))) continue;
-      // 分段头是那台写好的字（今天 · 昨天 · 本周 · 按月）：换了字就起新的一段。
-      if (r.sectionText !== sec) {
-        sec = r.sectionText;
-        body.push(sectionHead(sec));
-      }
-      this.pushRow(body, r, hooks, kids, false, false);
-    }
-  }
-
-  private renderByProject(body: HTMLElement[], rows: HistoryRow[], hooks: RowHooks, lists: HistoryList[]): void {
-    const groups = mergeGroups(lists.map((l) => l.groups));
-    this.projectHead(groups);
-    const byGroup = rowsByGroup(rows);
-    const kids = this.forksOf(rows);
-    for (const g of groups) {
-      const gk = groupKey(g);
-      // 搜着字的时候组都展开（命中的就在眼前）。
-      const open = this.query !== "" || this.openGroups.has(gk);
-      body.push(
-        groupHead(g, {
-          open,
-          onToggle: () => {
-            if (this.openGroups.has(gk)) this.openGroups.delete(gk);
-            else this.openGroups.add(gk);
-            this.renderNow();
-          },
-          onNew: () => void openNewSession({ origin: g.origin ?? LOCAL_ORIGIN, cwd: g.projectPath, agent: g.agent }),
-          onRetry: () => this.refresh(true, keyOf(g.origin)),
-        }),
-      );
-      if (!open) continue;
-      for (const r of byGroup.get(gk) ?? []) {
-        if (r.forkedFromSessionId && this.rowsByKey.has(rowKey({ origin: r.origin, sessionId: r.forkedFromSessionId }))) continue;
-        this.pushRow(body, r, hooks, kids, true, false);
-      }
-    }
-  }
-
-  /** 按项目那一看法的列表头：几个项目 · 几个会话 ＋ 全部展开 / 全部收起。 */
-  private projectHead(groups: HistoryGroup[]): void {
-    const sessions = groups.reduce((n, g) => n + g.count, 0);
     const head = document.createElement("span");
-    head.textContent = copyText("history.list.countProjects", { p: groups.length, n: sessions });
+    head.textContent = copyText("history.list.countProjects", { p: w.head.projects, n: w.head.grouped });
     const end = document.createElement("span");
     end.className = s.hvHeadEnd;
     const all = (open: boolean): void => {
-      this.openGroups = open ? new Set(groups.map(groupKey)) : new Set();
-      this.renderNow();
+      this.fold = { open, except: new Set() };
+      this.refresh();
     };
     end.append(
       button({ label: copyText("history.list.expandAll"), kind: "ghost", size: "compact", onClick: () => all(true) }),
@@ -673,6 +691,78 @@ export class HistoryView {
     );
     this.listHead.replaceChildren(head, end);
   }
+
+  /**
+   * 手上那一窗照项画：整列高的一块垫底，那一窗摆在它该在的高度上（虚拟滚动；项都是定高，段头落在第几项之前由头给）。
+   * 按时间看时顶上另有一条粘着的段头，写看得见的第一项所在的那一段。
+   */
+  private renderLines(body: HTMLElement[], w: BrowseWindow, hooks: RowHooks): void {
+    const g = this.geom();
+    const spacer = document.createElement("div");
+    spacer.className = s.hvSpacer;
+    spacer.style.height = `${g.height}px`;
+    const block = document.createElement("div");
+    block.className = s.hvBlock;
+    block.style.top = `${g.blockTop(w.from)}px`;
+    const compact = this.prefs.view === "project";
+    w.lines.forEach((line, j) => {
+      for (const sec of w.head.sections) if (sec.at === w.from + j) block.appendChild(sectionHead(sec.text));
+      if (line.kind === "group") {
+        block.appendChild(this.groupLine(line.group, line.open));
+        return;
+      }
+      block.appendChild(sessionRow(line.row, hooks, { compact, forks: line.forks, forksOpen: line.forksOpen, child: line.child, orphan: line.orphan }));
+      this.order.push(rowKey(line.row));
+    });
+    spacer.appendChild(block);
+    if (!compact) {
+      this.sticky.textContent = "";
+      body.push(this.sticky);
+    }
+    body.push(spacer);
+  }
+
+  /** 按项目看的组头：点了开合（开合交后端摊）· ［新建］在那个目录起新会话 · 读不了的那一组［重试］再同步那一台。 */
+  private groupLine(g: HistoryGroup, open: boolean): HTMLElement {
+    const gk = groupKey(g);
+    return groupHead(g, {
+      open,
+      onToggle: () => {
+        if (this.fold.except.has(gk)) this.fold.except.delete(gk);
+        else this.fold.except.add(gk);
+        this.refresh();
+      },
+      onNew: () => void openNewSession({ origin: g.origin ?? LOCAL_ORIGIN, cwd: g.projectPath, agent: g.agent }),
+      onRetry: () => this.refresh(g.origin ? [g.origin] : []),
+    });
+  }
+
+  /** 顶上粘着的段头：看得见的第一项落在哪一段。 */
+  private paintSticky(): void {
+    const w = this.win;
+    if (!w || this.content || this.prefs.view !== "time" || !this.sticky.isConnected) return;
+    const at = this.geom().lineAt(this.listEl.scrollTop);
+    let text = "";
+    for (const sec of w.head.sections) if (sec.at <= at) text = sec.text;
+    // 没有段（空着）⇒ CSS 让它不占眼（`:empty`）。
+    this.sticky.textContent = text;
+  }
+
+  /** 滚了：粘着的段头跟上；看得见的那几项不全在手上那一窗里 ⇒ 问看得见的那一窗（上下各多带一截）。 */
+  private onScroll(): void {
+    this.paintSticky();
+    const w = this.win;
+    if (!w || this.content || w.total === 0) return;
+    const g = this.geom();
+    const first = g.lineAt(this.listEl.scrollTop);
+    const last = g.lineAt(this.listEl.scrollTop + this.listEl.clientHeight);
+    if (w.from <= first && w.from + w.lines.length - 1 >= last) return;
+    const want = windowAround(first, last);
+    if (want.from === this.want.from && want.limit === this.want.limit) return;
+    this.want = want;
+    this.ask([], "scroll");
+  }
+
 
   /** 内容搜索的结果：每个会话一块（会话行 ＋ 前几处命中）。 */
   private renderContent(body: HTMLElement[], hooks: RowHooks): void {
@@ -776,7 +866,16 @@ export class HistoryView {
   private onListKey(ev: KeyboardEvent): void {
     if (ev.isComposing) return;
     const i = this.selected ? this.order.indexOf(this.selected) : -1;
-    const page = Math.max(1, Math.floor(this.listEl.clientHeight / 52));
+    const page = Math.max(1, Math.floor(this.listEl.clientHeight / ROW_H));
+    // 走到两头：那一头不在手上那一窗里 ⇒ 滚过去、等那一窗答回来再选（[`settlePending`]）。
+    const w = this.win;
+    if (w && !this.content && ((ev.key === "Home" && w.from > 0) || (ev.key === "End" && w.from + w.lines.length < w.total))) {
+      return this.consume(ev, () => {
+        this.pending = ev.key === "Home" ? "first" : "last";
+        this.listEl.scrollTop = ev.key === "Home" ? 0 : this.geom().height;
+        this.onScroll();
+      });
+    }
     const to = navTarget(ev.key, i, this.order.length, page);
     if (to === "search") return this.consume(ev, () => this.searchInput.focus());
     if (to !== null) return this.consume(ev, () => this.moveSelection(this.order[Math.max(0, Math.min(this.order.length - 1, to))] ?? null, true));
@@ -805,6 +904,17 @@ export class HistoryView {
         if (ev.shiftKey) this.consume(ev, () => this.menu(r, this.rowEl(rowKey(r)) ?? this.listEl));
         return;
     }
+  }
+
+  /** Home / End 要的那一头答回来了 ⇒ 选它。 */
+  private settlePending(): void {
+    const w = this.win;
+    if (!w) return;
+    const at = this.pending === "first" ? w.from === 0 : w.from + w.lines.length >= w.total;
+    if (!at) return;
+    const k = this.pending === "first" ? this.order[0] : this.order.at(-1);
+    this.pending = null;
+    this.moveSelection(k ?? null, true);
   }
 
   private consume(ev: KeyboardEvent, f: () => void): void {
@@ -840,8 +950,8 @@ export class HistoryView {
       ...(jumpTo !== undefined ? { scrollTo: { uuid: jumpTo.uuid, line: jumpTo.line } } : {}),
       ...(jumpTo?.tool !== undefined ? { scrollToTool: jumpTo.tool } : {}),
       suppressBranch: !r.can.fork,
-      // 在跑的跟着长（与独立查看窗同一条订阅）；起了 / 结束了 ⇒ 重问那一台的清单（头上［切过去］／［恢复］跟着那台的判定换）。
-      follow: r.face.live.is === "yes" ? { sid: r.sessionId, live: true, onLive: () => this.refresh(r.origin !== undefined, r.origin ?? "") } : undefined,
+      // 在跑的跟着长（与独立查看窗同一条订阅）；起了 / 结束了那台推「清单变了」（[`onListMoved`]），这里不另问。
+      follow: r.face.live.is === "yes" ? { sid: r.sessionId, live: true } : undefined,
     });
   }
 
@@ -956,7 +1066,7 @@ export class HistoryView {
         if (this.openForks.has(k)) this.openForks.delete(k);
         else this.openForks.add(k);
         safeSetJson(LS_KEYS.historyExpandedForks, [...this.openForks]);
-        this.renderNow();
+        this.refresh();
       },
       needs: (r) => (r.origin ? null : this.needsOf(r.sessionId)),
     };
@@ -1017,8 +1127,8 @@ export class HistoryView {
 
   private async star(r: HistoryRow): Promise<void> {
     try {
+      // 列表跟着那台的推送重问（[`onListMoved`]）。
       await annotate(r.origin ?? LOCAL_ORIGIN, r.sessionId, { starred: !r.starred });
-      this.refresh(Boolean(r.origin), keyOf(r.origin));
     } catch (e) {
       failToast(copyText("history.star.failed"), e);
     }
@@ -1031,9 +1141,7 @@ export class HistoryView {
     const origin = r.origin ?? LOCAL_ORIGIN;
     try {
       const prev = await setHide(origin, r.sessionId, to ? "on" : "off");
-      this.refresh(Boolean(r.origin), keyOf(r.origin));
-      if (to)
-        undoToast(copyText("history.hide.done", { label: labelOf(r) }), () => void setHide(origin, r.sessionId, undoHide(prev)).then(() => this.refresh(Boolean(r.origin), keyOf(r.origin))), () => {});
+      if (to) undoToast(copyText("history.hide.done", { label: labelOf(r) }), () => void setHide(origin, r.sessionId, undoHide(prev)), () => {});
     } catch (e) {
       failToast(copyText("history.hide.failed"), e);
     }
@@ -1050,8 +1158,7 @@ export class HistoryView {
     const before = r.customTitle;
     try {
       await annotate(r.origin ?? LOCAL_ORIGIN, r.sessionId, { customTitle: next.trim() });
-      this.refresh(Boolean(r.origin), keyOf(r.origin));
-      undoToast(copyText("history.rename.done"), () => void annotate(r.origin ?? LOCAL_ORIGIN, r.sessionId, { customTitle: before ?? "" }).then(() => this.refresh(Boolean(r.origin), keyOf(r.origin))), () => {});
+      undoToast(copyText("history.rename.done"), () => void annotate(r.origin ?? LOCAL_ORIGIN, r.sessionId, { customTitle: before ?? "" }), () => {});
     } catch (e) {
       failToast(copyText("history.rename.failed"), e);
     }
@@ -1082,8 +1189,51 @@ export class HistoryView {
       this.showPlaceholder();
     }
     toast(copyText("history.delete.done", { label }), "", { level: "success" });
-    this.refresh(Boolean(r.origin), keyOf(r.origin));
   }
+}
+
+/** 列表顶上粘着的段头（字跟着滚改）。 */
+function pinnedSection(): HTMLElement {
+  const el = sectionHead("");
+  el.dataset.pin = "true";
+  return el;
+}
+
+/** 这一列的几何：项都是定高（按时间 52 · 段头 32；按项目 30），段头落在第几项之前由后端给 ⇒ 第几项在多高、多高是第几项都算得出。 */
+interface Geometry {
+  /** 整列多高。 */
+  height: number;
+  /** 第 `from` 项起的那一窗摆在多高（连它前面落着的段头）。 */
+  blockTop(from: number): number;
+  /** 这个高度上是第几项（夹在 0 与末项之间）。 */
+  lineAt(y: number): number;
+}
+
+function geometry(by: ViewMode, total: number, sections: readonly HistorySection[]): Geometry {
+  const r = by === "time" ? ROW_H : COMPACT_H;
+  const h = by === "time" ? SEC_H : 0;
+  const before = (i: number): number => sections.filter((x) => x.at < i).length;
+  return {
+    height: total * r + h * sections.length,
+    blockTop: (from) => from * r + h * before(from),
+    lineAt: (y) => {
+      let i = 0;
+      let top = 0;
+      for (const x of sections) {
+        const end = top + (x.at - i) * r;
+        if (y < end) break;
+        top = end + h;
+        i = x.at;
+      }
+      return Math.max(0, Math.min(total - 1, i + Math.floor(Math.max(0, y - top) / r)));
+    },
+  };
+}
+
+/** 看得见的第 `first` 到第 `last` 项 ⇒ 要的那一窗（上下各多带 [`PAD`] 项）。 */
+function windowAround(first: number, last: number): { from: number; limit: number } {
+  const from = Math.max(0, first - PAD);
+  return { from, limit: Math.min(WINDOW_MAX, last - from + 1 + PAD) };
 }
 
 /** 列表里走行的键 ⇒ 走到第几行（未夹到两头）；↑ 在第一行 ⇒ 回搜索框；不是走行的键 ⇒ `null`。 */
@@ -1200,18 +1350,6 @@ function listSizer(root: HTMLElement, initial: number, leftEdge: () => number, s
     set(now + (ev.key === "ArrowLeft" ? -LIST_STEP : LIST_STEP), true);
   });
   return el;
-}
-
-/** 行按「那台 ＋ 组」归堆（键与 [`groupKey`] 同形）。 */
-function rowsByGroup(rows: HistoryRow[]): Map<string, HistoryRow[]> {
-  const byGroup = new Map<string, HistoryRow[]>();
-  for (const r of rows) {
-    const k = `${r.origin ?? ""}\u0000${r.group}`;
-    const a = byGroup.get(k) ?? [];
-    a.push(r);
-    byGroup.set(k, a);
-  }
-  return byGroup;
 }
 
 function groupKey(g: HistoryGroup): string {

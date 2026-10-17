@@ -12,10 +12,6 @@ export type HistoryListReq = {
  */
 origin?: string, 
 /**
- * `true` ⇒ 先问那一台（`origin`）同步一次本进程记着的副本再答（开页 · 刷新）；缺 ⇒ 手上有就用手上那份（敲字搜索）。不带 `origin` ⇒ `bad_args`。
- */
-fresh?: boolean, 
-/**
  * 只要这一个会话那一行（独立查看窗；别的筛一概不看、不补父会话）。形状同 `history-record`（`[A-Za-z0-9-]`，1..=64）。
  */
 sid?: string, 

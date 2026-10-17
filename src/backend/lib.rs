@@ -423,6 +423,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     //   **是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。
     // 主线外清单的冷读（手机端不发帧命令，从 CLI 面问）。⚠ 新子命令 ⇒ BUILD_ID 发版时统一 bump。
     "--history-branch",
+    // `history-browse`（历史页那一列，几台并成一列）派生的 CLI 面：一次性进程里没有远端副本 ⇒ 远端那几台要带 `fresh` 才读得到（照实说没读过）。
+    // ⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    "--history-browse",
     "--history-facts",
     "--history-find",
     "--history-index",
