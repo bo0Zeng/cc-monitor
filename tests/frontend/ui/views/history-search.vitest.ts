@@ -24,7 +24,7 @@ import { chanArgsJson, chanReply, isChanCall, NO_CHANNEL, type ChanCallArgs } fr
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
 /** 那台 `history-search` 答回来的一行（不带 origin）。 */
-function row(sid: string, updatedAt: number, hitCount: number): SessionHits {
+function row(sid: string, updatedAt: number, moreHits: number): SessionHits {
   return {
     agent: "claude",
     sessionId: sid,
@@ -33,8 +33,8 @@ function row(sid: string, updatedAt: number, hitCount: number): SessionHits {
     jsonlPath: `/${sid}.jsonl`,
     title: "t",
     updatedAt,
-    hitCount,
     hits: [],
+    moreHits,
     hitsTruncated: false,
     isBg: false,
     status: "ended",
@@ -61,7 +61,7 @@ function mergedRows(args: ChanCallArgs, reverse: boolean): unknown[] {
 /** 本机后端合一份那一问的替身（按交进来的原样回，好让下面几条只看扇出那一半）。 */
 function passMerge(args: ChanCallArgs): ArrayBuffer {
   const rows = mergedRows(args, false) as SessionHits[];
-  return chanReply({ totalHits: rows.reduce((a, s) => a + s.hitCount, 0), sessionCount: rows.length, truncated: false, sessions: rows });
+  return chanReply({ totalHits: rows.reduce((a, s) => a + s.hits.length + s.moreHits, 0), sessionCount: rows.length, truncated: false, sessions: rows });
 }
 
 beforeEach(() => invokeMock.mockReset());

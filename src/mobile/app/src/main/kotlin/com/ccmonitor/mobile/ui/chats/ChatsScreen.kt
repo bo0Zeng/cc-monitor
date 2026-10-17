@@ -233,7 +233,7 @@ private fun SearchContentRow(
     }
 }
 
-/** 搜内容那一份：合好的那一句 · 没答的台等几句 · 每个会话一块（前 [HITS_SHOWN] 处命中 ＋「+N 处」）；还在问 ⇒ 搜索中 ＋ 骨架。 */
+/** 搜内容那一份：合好的那一句 · 没答的台等几句 · 每个会话一块（后端给的那几处命中 ＋「+N 处」）；还在问 ⇒ 搜索中 ＋ 骨架。 */
 private fun LazyListScope.contentHits(
     c: ContentUi,
     act: ChatsActions,
@@ -269,7 +269,7 @@ private fun HitsBlock(
             Text(r.atText, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         val accent = LocalAppTokens.current.accent
-        r.hits.take(HITS_SHOWN).forEach { hit ->
+        r.hits.forEach { hit ->
             Text(
                 buildAnnotatedString {
                     append(hit.before)
@@ -283,8 +283,7 @@ private fun HitsBlock(
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
-        val more = r.hitCount - minOf(r.hits.size, HITS_SHOWN)
-        if (more > 0) Text(copyText("history.searchSession.more", "n" to more), style = MaterialTheme.typography.bodySmall, color = accent, modifier = Modifier.padding(top = 4.dp))
+        if (r.moreHits > 0) Text(copyText("history.searchSession.more", "n" to r.moreHits), style = MaterialTheme.typography.bodySmall, color = accent, modifier = Modifier.padding(top = 4.dp))
     }
 }
 
@@ -512,8 +511,5 @@ internal const val WEEK = 7
 internal const val MONTH = 30
 private const val SKELETON_ROWS = 8
 private const val SKELETON_HITS = 4
-
-/** 每个会话最多摆几处命中（其余写「+N 处」）。 */
-private const val HITS_SHOWN = 3
 private const val SKELETON_TITLE = 0.6f
 private const val SKELETON_SUB = 0.4f

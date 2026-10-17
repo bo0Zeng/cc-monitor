@@ -24,7 +24,7 @@ pub(crate) struct HistorySearchReq {
     #[serde(default)]
     #[cfg_attr(test, ts(optional, type = "number"))]
     pub(crate) after_ms: Option<u64>,
-    /// 全局片段上限（`hitCount` 仍报全量）。
+    /// 全局片段上限（没给的照样记进 `moreHits`）。
     #[serde(default)]
     #[cfg_attr(test, ts(optional, type = "number"))]
     pub(crate) limit: Option<u64>,

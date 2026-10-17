@@ -186,16 +186,16 @@ beforeEach(() => {
     if (c.op === "history-search") {
       if (world.search === "fail") return Promise.reject(new Error("搜不动"));
       return chanReply({
-        sessions: [{ agent: "claude", sessionId: "a", projectPath: "/w/p", projectName: "p", jsonlPath: "/x/a.jsonl", title: "标题 a", updatedAt: NOW, hitCount: 1, hits: [{ uuid: "u1", tsMs: NOW, kind: "user", before: "**前", matched: "词", after: "`后`" }], hitsTruncated: false, isBg: false, status: "ended", can: { resume: "yes", accounts: true, fork: true, delete: "yes" } }],
+        sessions: [{ agent: "claude", sessionId: "a", projectPath: "/w/p", projectName: "p", jsonlPath: "/x/a.jsonl", title: "标题 a", updatedAt: NOW, hits: [{ uuid: "u1", tsMs: NOW, kind: "user", before: "**前", matched: "词", after: "`后`" }], moreHits: 0, hitsTruncated: false, isBg: false, status: "ended", can: { resume: "yes", accounts: true, fork: true, delete: "yes" } }],
         unreadable: 0,
         skipped: [],
       });
     }
     if (c.op === "history-search-merge") {
-      const ms = args.machines as { origin: string; sessions: { hitCount: number }[] }[];
+      const ms = args.machines as { origin: string; sessions: { hits: unknown[]; moreHits: number }[] }[];
       // 合并那一臂替真后端添上那台的名字（本机不添）与行尾 · 时间段两格。
       const ss = ms.flatMap((m) => m.sessions.map((s) => ({ ...s, ...(m.origin === LOCAL_ORIGIN ? {} : { origin: m.origin }), atText: "12:00", spanText: "12:00–12:00" })));
-      return chanReply({ totalHits: ss.reduce((n, s) => n + s.hitCount, 0), sessionCount: ss.length, truncated: false, sessions: ss });
+      return chanReply({ totalHits: ss.reduce((n, s) => n + s.hits.length + s.moreHits, 0), sessionCount: ss.length, truncated: false, sessions: ss });
     }
     if (c.op === "history-annotate") return chanReply({ entry: { starred: false, customTitle: null, hide: "on", updatedAt: 1 }, prev: null });
     if (c.op === "files-delete-session") return chanReply({ path: "/x" });

@@ -21,9 +21,13 @@ title: string,
  */
 updatedAt: number, 
 /**
- * 本会话命中总数（可能 > `hits` 条数）。
+ * 前几处命中（每个会话至多 `search_rules::PER_SESSION_CAP` 处，预算花完的更少）。
  */
-hitCount: number, hits: Array<SearchHit>, 
+hits: Array<SearchHit>, 
+/**
+ * `hits` 之外这个会话还有几处命中。
+ */
+moreHits: number, 
 /**
  * 本会话有命中被「全局 snippet 预算用完」挡下了。
  */

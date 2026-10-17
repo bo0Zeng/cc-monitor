@@ -21,7 +21,7 @@
   "history-list": [null,{"query":"q","within_days":7,"sort":"created","hidden":true},{"sort":"activity"}],
   "history-read": [{"path":"/p/s.jsonl","offset":0,"until":10}],
   "history-search": [{"query":"q"}],
-  "history-search-merge": [{"machines":[{"origin":"<local>","sessions":[{"agent":"claude","sessionId":"s","projectPath":"/w","projectName":"w","jsonlPath":"/w/s.jsonl","title":"t","updatedAt":1,"hitCount":1,"hits":[{"uuid":"u","tsMs":0,"kind":"user","before":"","matched":"q","after":"","offset":0}],"hitsTruncated":false,"isBg":false,"status":"ended","can":{"resume":"yes","accounts":true,"fork":true,"delete":"yes"}}]},{"origin":"h2","sessions":[]}]}],
+  "history-search-merge": [{"machines":[{"origin":"<local>","sessions":[{"agent":"claude","sessionId":"s","projectPath":"/w","projectName":"w","jsonlPath":"/w/s.jsonl","title":"t","updatedAt":1,"hits":[{"uuid":"u","tsMs":0,"kind":"user","before":"","matched":"q","after":"","offset":0}],"moreHits":0,"hitsTruncated":false,"isBg":false,"status":"ended","can":{"resume":"yes","accounts":true,"fork":true,"delete":"yes"}}]},{"origin":"h2","sessions":[]}]}],
   "history-tail": [{"path":"/p/s.jsonl","n":50}],
   "kill": [{"name":"demo","client":"mobile"}],
   "launch-render-cli": [{"agent":"claude","action":{"kind":"attach","name":"demo"},"container":{"kind":"tmux","name":"demo","send_into":false},"account":{"kind":"base"}}],

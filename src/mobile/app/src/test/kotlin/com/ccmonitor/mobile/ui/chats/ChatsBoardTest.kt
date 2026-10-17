@@ -140,7 +140,7 @@ class ChatsBoardTest {
     /** 一台 `history-search` 的回包；会话里放一格手机的类不认的（`spanText`），合并那一问里要原样还在。 */
     private fun hits(sid: String) =
         mapOf(
-            "sessions" to listOf(mapOf("sessionId" to sid, "title" to sid, "hitCount" to 1, "hits" to emptyList<Any>(), "forkedFrom" to null, "spanText" to "keep-$sid")),
+            "sessions" to listOf(mapOf("sessionId" to sid, "title" to sid, "hits" to emptyList<Any>(), "moreHits" to 1, "forkedFrom" to null, "spanText" to "keep-$sid")),
             "unreadable" to 2,
             "skipped" to listOf("Codex"),
         )
@@ -151,7 +151,7 @@ class ChatsBoardTest {
                 "totalHits" to rows.size,
                 "sessionCount" to rows.size,
                 "truncated" to false,
-                "sessions" to rows.map { (origin, sid) -> mapOf("origin" to origin, "atText" to "09:00", "sessionId" to sid, "title" to sid, "hitCount" to 1, "hits" to emptyList<Any>()) },
+                "sessions" to rows.map { (origin, sid) -> mapOf("origin" to origin, "atText" to "09:00", "sessionId" to sid, "title" to sid, "hits" to emptyList<Any>(), "moreHits" to 1) },
             ),
         )
 

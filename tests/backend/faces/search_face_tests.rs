@@ -42,8 +42,12 @@ fn the_search_answer_says_what_it_could_not_search_and_titles_mode_finds_title_o
     let v = ask(true);
     assert_eq!(v.sessions.len(), 1, "按标题搜没搜到那一个会话");
     assert_eq!(
-        (v.sessions[0].title.as_str(), v.sessions[0].hit_count),
-        ("订单重试", 0)
+        (
+            v.sessions[0].title.as_str(),
+            v.sessions[0].hits.len(),
+            v.sessions[0].more_hits
+        ),
+        ("订单重试", 0, 0)
     );
     std::fs::remove_dir_all(&home).ok();
 }
@@ -59,8 +63,8 @@ fn merge_takes_rows_per_machine_and_names_only_the_remote_ones() {
         jsonl_path: format!("/w/{sid}.jsonl"),
         title: sid.into(),
         updated_at: at,
-        hit_count: hits,
         hits: vec![],
+        more_hits: hits,
         hits_truncated: cut,
         is_bg: false,
         status: crate::observe::search_query::Liveness::Ended,

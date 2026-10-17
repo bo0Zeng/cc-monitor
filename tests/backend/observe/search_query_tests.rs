@@ -66,10 +66,10 @@ fn search_end_to_end_and_rejects_traversal() {
     );
     assert_eq!(hit["projectPath"], "/home/pi/proj");
     assert_eq!(
-        hit["hitCount"], 2,
+        (hit["hits"].as_array().unwrap().len(), &hit["moreHits"]),
+        (2, &serde_json::json!(0)),
         "user + assistant both match 'docker' ci"
     );
-    assert!(hit["hits"].as_array().unwrap().len() == 2);
     assert_eq!(
         hit["hitsTruncated"], false,
         "预算充足、两条都给了 snippet ⇒ 没被截断"
@@ -85,7 +85,7 @@ fn search_end_to_end_and_rejects_traversal() {
     };
     let mut budget2 = SnippetBudget::new(opts_u.limit);
     let hu = hits_v(&jsonl, &entry, "docker", &opts_u, &mut budget2, 1).expect("user hits");
-    assert_eq!(hu["hitCount"], 1);
+    assert_eq!(hu["hits"].as_array().unwrap().len(), 1);
 
     std::fs::remove_dir_all(&tmp).ok();
 }
@@ -124,8 +124,9 @@ fn agent_reports_are_searchable_as_their_own_kind() {
         .map(|h| h["kind"].as_str().unwrap())
         .collect();
     assert_eq!(kinds, vec!["user", "report", "report"]);
-    assert_eq!(ask(Some("report")).unwrap()["hitCount"], 2);
-    assert_eq!(ask(Some("user")).unwrap()["hitCount"], 1, "user 只要人说的");
+    let n = |r: Value| r["hits"].as_array().unwrap().len();
+    assert_eq!(n(ask(Some("report")).unwrap()), 2);
+    assert_eq!(n(ask(Some("user")).unwrap()), 1, "user 只要人说的");
     assert!(ask(Some("assistant")).is_none());
 }
 
@@ -158,7 +159,13 @@ fn system_injections_are_never_searched() {
     for tools in [false, true] {
         assert!(ask("注入词乙", tools).is_none(), "isMeta 那一条不搜");
         assert!(ask("注入词丙", tools).is_none(), "全是注入的那一条不搜");
-        assert_eq!(ask("注入词甲", tools).unwrap()["hitCount"], 1);
+        assert_eq!(
+            ask("注入词甲", tools).unwrap()["hits"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
     }
 }
 
@@ -282,12 +289,11 @@ fn truncation_is_stated_not_left_to_an_empty_array() {
     let b = rows.iter().find(|r| r["sessionId"] == "b").unwrap();
     assert_eq!(a["hitsTruncated"], false, "a 全给到了 ⇒ 没被砍");
     assert_eq!(b["hits"].as_array().unwrap().len(), 0);
-    assert_eq!(b["hitCount"], 5);
+    assert_eq!(b["moreHits"], 5);
     assert_eq!(
         b["hitsTruncated"], true,
-        "🔴 `hitCount>0` 而 `hits: []` 必须自己说出「我被预算砍了」——\
-             收口前这一格不存在，下游只能拿 `hitCount > hits.len()` 反推，\
-             而那个式子对「预算砍的」与「本会话超 30 条」给出同一个答案。"
+        "🔴 `moreHits>0` 而 `hits: []` 必须自己说出「我被预算砍了」—— \
+             单看条数分不开「预算砍的」与「本会话只摆前几处」。"
     );
     // 预算充足 ⇒ 两个都 false（反空真：这条判据不是恒 true）
     let rows = run_search(&home, "docker", 300);
@@ -295,6 +301,33 @@ fn truncation_is_stated_not_left_to_an_empty_array() {
         assert_eq!(r["hitsTruncated"], false, "预算充足时不许乱报截断");
     }
     std::fs::remove_dir_all(&home).ok();
+}
+
+/// 每个会话只给前 3 处命中（两端照摆），`moreHits` 是这一行之外真还有的那几处（界面写「+N 处」）：
+/// 7 处 ⇒ 3 ＋ 4；2 处 ⇒ 2 ＋ 0；预算花完、一条没给 ⇒ 0 ＋ 全部。
+#[test]
+fn a_session_gives_its_first_three_hits_and_counts_the_rest() {
+    let home = corpus("more", &[("a", 3_000, 7), ("b", 2_000, 2), ("c", 1_000, 5)]);
+    let rows = run_search(&home, "docker", 5);
+    std::fs::remove_dir_all(&home).ok();
+    let got: Vec<Value> = rows
+        .iter()
+        .map(|r| {
+            serde_json::json!([
+                r["sessionId"],
+                r["hits"].as_array().unwrap().len(),
+                r["moreHits"]
+            ])
+        })
+        .collect();
+    assert_eq!(
+        got,
+        [
+            serde_json::json!(["a", 3, 4]),
+            serde_json::json!(["b", 2, 0]),
+            serde_json::json!(["c", 0, 5])
+        ]
+    );
 }
 
 /// `KR100D1` 第 ③ 刀（本侧那一半）：**改 `search_rules` 一处，本侧真跑出来的东西跟着变**。
@@ -371,7 +404,7 @@ fn w5vis_an_unreadable_session_is_counted_and_said_not_silently_dropped() {
 }
 
 /// 一行合并用的会话行（只有排序与计数要的那几格是要紧的）。
-fn row(sid: &str, updated: i64, hits: u32, cut: bool) -> SessionHits {
+fn row(sid: &str, updated: i64, more: u32, cut: bool) -> SessionHits {
     SessionHits {
         agent: "a".into(),
         session_id: sid.into(),
@@ -380,8 +413,8 @@ fn row(sid: &str, updated: i64, hits: u32, cut: bool) -> SessionHits {
         jsonl_path: String::new(),
         title: sid.into(),
         updated_at: updated,
-        hit_count: hits,
         hits: vec![],
+        more_hits: more,
         hits_truncated: cut,
         is_bg: false,
         status: Liveness::Ended,
@@ -400,9 +433,21 @@ fn the_merge_frame_sorts_newest_first_stably_and_sums_what_each_machine_said() {
         sessions: rows,
     };
     let local = cmd_wire::LOCAL;
+    // 命中数 = 摆出来的 ＋ `moreHits`：local-old 摆 1 处、还有 2 处。
+    let mut old = row("local-old", 100, 2, false);
+    old.hits.push(SearchHit {
+        uuid: "u".into(),
+        ts_ms: 0,
+        kind: "user".into(),
+        before: String::new(),
+        matched: "q".into(),
+        after: String::new(),
+        tool: None,
+        offset: 0,
+    });
     let merged = merge_at(
         vec![
-            on(local, vec![row("local-old", 100, 3, false)]),
+            on(local, vec![old]),
             on("pi", vec![row("rem-new", 300, 2, false)]),
             on("wsl", vec![row("rem-mid", 200, 1, false)]),
             on("pi", vec![row("tie-a", 150, 0, false)]),

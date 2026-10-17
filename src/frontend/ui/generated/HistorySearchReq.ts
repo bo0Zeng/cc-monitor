@@ -22,7 +22,7 @@ scope?: SearchScope,
  */
 after_ms?: number, 
 /**
- * 全局片段上限（`hitCount` 仍报全量）。
+ * 全局片段上限（没给的照样记进 `moreHits`）。
  */
 limit?: number, 
 /**

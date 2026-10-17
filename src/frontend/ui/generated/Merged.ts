@@ -6,7 +6,7 @@ import type { MergedRow } from "./MergedRow";
  */
 export type Merged = { 
 /**
- * `hitCount` 之和。
+ * 各会话命中数（`hits` 条数 ＋ `moreHits`）之和。
  */
 totalHits: number, sessionCount: number, 
 /**

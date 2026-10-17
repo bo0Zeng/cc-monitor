@@ -197,7 +197,7 @@ fn find_and_global_search_agree_on_the_same_file() {
             )
             .expect("读得动");
         let s = session_hits_in(&p, &entry, &q, &opts, &mut budget, 0).expect("有命中");
-        // 两者刻意的差别只有一处：`--search` 也列没有 uuid 的记录（uuid 记成空串）、本命令不列。
+        // 两者刻意的差别两处：`--search` 也列没有 uuid 的记录（uuid 记成空串）、本命令不列；`--search` 每个会话只给前几处。
         //   agent 回报（种类 `report`）两边都收。
         let searched: Vec<(String, String, String, String)> = s
             .hits
@@ -220,8 +220,8 @@ fn find_and_global_search_agree_on_the_same_file() {
                 (g("uuid"), g("before"), g("matched"), g("after"))
             })
             .collect();
-        assert!(!found.is_empty());
-        assert_eq!(found, searched, "tools={tools}");
+        assert!(!searched.is_empty());
+        assert_eq!(found[..searched.len()], searched[..], "tools={tools}");
     }
     std::fs::remove_dir_all(&tmp).ok();
 }
