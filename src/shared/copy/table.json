@@ -1521,6 +1521,13 @@
       "args": ["why"],
       "limited": ["连接"]
     },
+    "rsRemoteResident.handshake.notAttachReply": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "连接失败 · 内容无法解析",
+      "args": [],
+      "limited": ["连接"]
+    },
     "rsRemoteResident.handshake.refused": {
       "kind": "error",
       "role": "报错",

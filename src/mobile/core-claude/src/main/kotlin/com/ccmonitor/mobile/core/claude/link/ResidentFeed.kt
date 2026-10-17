@@ -253,7 +253,7 @@ class ResidentFeed(
             "frame" -> Json.obj(body)?.let { onFrame(it) } ?: broke(kind, body)
             // 核心按 `cmd-wire` 那一份类型解不开的一帧（两端版本对不上），原样那一行。
             "unread" -> broke("frame", body)
-            "watch_from" -> watchFromOf(body)?.forEach { fromFlow.tryEmit(it) } ?: broke(kind, body)
+            "watch_from" -> onWatchFrom(body)
             "ssh" -> sshFlow.value = body == "true"
             "reply" -> onReply(body)
             "moved" -> onMoved(body)
@@ -309,6 +309,10 @@ class ResidentFeed(
     }
 
     /** `moved {call, done, total}`：交给在等那一趟的那一口（总数不知道 ⇒ `-1`）。 */
+    private fun onWatchFrom(body: String) {
+        watchFromOf(body)?.forEach { fromFlow.tryEmit(it) } ?: broke("watch_from", body)
+    }
+
     private fun onMoved(body: String) {
         val m = Json.obj(body) ?: return broke("moved", body)
         val id = m.num("call") ?: return broke("moved", body)

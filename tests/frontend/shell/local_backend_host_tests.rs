@@ -2763,7 +2763,7 @@ fn the_user_actionable_start_failures_all_reach_the_user() {
         prod.matches("StartOutcome::Failed {").count(),
         5,
         "`StartOutcome::Failed` 的构造点不是 5 处了 —— 新增一处失败就给它分档：\n\
-             动得了手 ⇒ 调 `machine_state::note_local_refused` 把下一步交给本机那一行；诚实降级 ⇒ 只进日志。\n\
+             动得了手 ⇒ 调 `note_local_refused` 把下一步交给本机那一行；诚实降级 ⇒ 只进日志。\n\
              改完把这个数改对，别只改数。"
     );
     // 握手 / 钥匙读不动都原样进「接不上」那一臂，那一臂交下一步。
@@ -2773,7 +2773,7 @@ fn the_user_actionable_start_failures_all_reach_the_user() {
         "握手失败不再原样交给「接不上」那一臂"
     );
     assert_eq!(
-        prod.matches("note_local_refused(").count(),
+        prod.matches("note_local_refused(").count() - prod.matches("fn note_local_refused(").count(),
         2,
         "`note_local_refused` 在这里不是 2 处（被拒那一臂交一句 · 起之前清一次）——\n\
              少了 = 某一条动得了手的路退回了只写日志；多了 = 又有一条路分进这一档，回来把本条一起改。"

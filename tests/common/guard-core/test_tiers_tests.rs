@@ -77,6 +77,7 @@ const SUPPORT: &[&str] = &[
     "tests/backend/ssh_dial_support.rs", // 拨号核心判据共用的几样（人群的根 · 测试档装的那一套 · 登记的钥匙）
     "tests/backend/accounts/upstream_select/upstreams_testing.rs", // 把一家的默认上游换成假上游
     "tests/frontend/shell/backend_kill_creation_detect.rs",
+    "tests/frontend/shell/frame_fixtures.rs", // 壳判据用的几帧（同一版后端的 hello · 帧去向 · 活会话宣告）
     "tests/frontend/filewin/copy_testing.rs",
     "tests/frontend/filewin/find_testing.rs",
     "tests/frontend/filewin/rows_testing.rs",

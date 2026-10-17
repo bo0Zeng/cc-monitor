@@ -25,9 +25,9 @@ pub mod attach;
 pub mod batch;
 pub mod cells;
 pub mod files;
-pub mod fnv;
 #[cfg(any(test, feature = "ts"))]
 pub mod fingerprint;
+pub mod fnv;
 pub mod frame;
 pub mod frame_shapes;
 pub mod listing;

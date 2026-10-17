@@ -30,11 +30,11 @@ mod backend_policy;
 use crate::detail::Said;
 use comms_inward::{backend_route, origin, ssh_link};
 #[cfg(test)]
-#[path = "../../../../tests/frontend/shell/frame_fixtures.rs"]
-mod frame_fixtures; // 判据用的几帧（hello · 去向 · 宣告）
-#[cfg(test)]
 #[path = "../../../../tests/frontend/shell/backend_route_senders_tests.rs"]
 mod backend_route_senders_tests; // 每个走后端的发送端都经那一份分流规则（遍历 monitor 源码树）
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/frame_fixtures.rs"]
+mod frame_fixtures; // 判据用的几帧（hello · 去向 · 宣告）
 #[cfg(test)]
 #[path = "../../../../tests/comms/inward/origin_tests.rs"]
 mod origin_tests; // P2s（C8）：每台机一份后端策略（生效值住内存，持久化归前端）
@@ -98,7 +98,6 @@ mod copy_table; // 对外文案表的 Rust 读口（与前端 `copyText` 同一�
 /// 这一版的产品版本号（全产品一个源：monitor 那个包的版本，与安装包 · 界面同一个号）。
 pub(crate) const PRODUCT_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub(crate) mod detail; // 壳这一端写的「复制详情」那几行 ＋ 壳命令失败的那一形 `Said`
-
 
 // 截图台架那个无头壳只在台架编译时有（发版构建不带）：判据 · 本体。
 #[cfg(test)]

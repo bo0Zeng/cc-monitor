@@ -4187,6 +4187,7 @@ hide?: Hide,
  * 没人答的提问等几分钟替人答一句（判定住后端 `control::asks`）；缺 ＝ 关。
  */
 autoAnswer?: AutoAnswer, updatedAt: number, };
+type ForkedFrom = { label: string, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type Hide = "on" | "off";
@@ -7455,6 +7456,7 @@ body?: string, } | { "kind": "compactSummary",
  */
 charsText: string, } | { "kind": "interrupt" } | { "kind": "toolResult" };
 type StepAsk = { "kind": "questions", questions: Array<AskQuestion>, } | { "kind": "plan", text: string, title: PlanTitle, };
+type StepBody = { "kind": "changes", changes: Array<TextChange>, } | { "kind": "command", line: string, };
 type StepResult = { 
 /**
  * 成功（`false` ＝ 失败或被拒）。
@@ -7518,6 +7520,7 @@ chars?: number,
  */
 kind?: ResultKind, };
 type TailHow = "tail" | "resume" | "handoff" | "truncated" | "rewritten";
+type TextChange = { old: string, new: string, };
 type TitleBy = "agent" | "user";
 type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
 type ToolStep = { 
@@ -7534,9 +7537,17 @@ arg?: string,
  */
 path?: boolean, 
 /**
- * 说明（Bash 的 `description` 那一类）。
+ * 说明（命令那一句注一类）。
  */
 note?: string, 
+/**
+ * 这一步说的那份文件：绝对路径原样（界面「在文件窗口里定位」按它）；不是路径 · 相对路径 ⇒ 缺。
+ */
+file?: string, 
+/**
+ * 展开那一下画什么（改动 · 命令）；没有 ⇒ 界面照原文画入参。
+ */
+body?: StepBody, 
 /**
  * 这一家认不认得这个工具（`false` ⇒ 界面画问号、给原文）。
  */
@@ -7968,7 +7979,11 @@ quota: Words | null,
  * 选不了（`selectable: false`）的那一句：需登录 · 没配 key · 不隔离 · 号目录不在；选得了 ⇒ `null`。
  * 账号 0 不经选号（起它走「不指定号」那一条）⇒ 恒 `null`。
  */
-unselectable: Words | null, name: string, 
+unselectable: Words | null, 
+/**
+ * 给不给［登录…］：需登录、而这一家能在 app 里登录 ⇒ `true`（需登录却登不了的，`unselectable` 那一句说为什么）。
+ */
+login: boolean, name: string, 
 /**
  * 号在人眼里叫什么（账号 0 ⇒ 「~/.claude」那一句，其余照原名）。
  */
@@ -12231,7 +12246,11 @@ seenHostKey: string | null,
 /**
  * 这一轮没连上 / 做不了时的复制详情（界面照原样跟在问题行那句后面）。
  */
-detail: string | null, };
+detail: string | null, 
+/**
+ * 下一步那一句（壳写好的；只有本机起后端被拒时有）。界面照原样画在问题行下面。
+ */
+next: string | null, };
 type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
 type VersionRelation = "same" | "older" | "newer" | "incomparable";
 ```
@@ -12288,7 +12307,11 @@ seenHostKey: string | null,
 /**
  * 这一轮没连上 / 做不了时的复制详情（界面照原样跟在问题行那句后面）。
  */
-detail: string | null, };
+detail: string | null, 
+/**
+ * 下一步那一句（壳写好的；只有本机起后端被拒时有）。界面照原样画在问题行下面。
+ */
+next: string | null, };
 type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
 type NoArgs = Record<symbol, never>;
 type VersionRelation = "same" | "older" | "newer" | "incomparable";

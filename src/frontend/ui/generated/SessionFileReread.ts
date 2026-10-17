@@ -4,7 +4,7 @@ import type { RereadWhy } from "./RereadWhy";
 /**
  * **活会话的记录文件被改过了，已从头重读**（截短 · 或游标之前被原地改写）。
  *
- * 紧跟在这一趟重读出来的 `line` 帧**之前**；重读的行号从 0 重数 ⇒ 下游据这一帧把这个会话旧的一代整份作废。
+ * 重读那一趟照读照数、不逐行上流；行号从 0 重数 ⇒ 下游据这一帧把这个会话旧的一代整份作废，照宣告那样从尾段取到第 `lines` 行。
  */
 export type SessionFileReread = { 
 /**
@@ -18,4 +18,8 @@ path: string,
 /**
  * 为什么从头重读。
  */
-why: RereadWhy, };
+why: RereadWhy, 
+/**
+ * 重读完那份记录的完整行数 L（之后的第一帧 `line` 的 `seq` 就是它）。
+ */
+lines: number, };

@@ -206,7 +206,9 @@ pub(crate) async fn apply(
                 wire::RereadWhy::Truncated => FileChange::Truncated,
                 wire::RereadWhy::Rewritten => FileChange::Rewritten,
             };
-            intake.notice(&r.session_id, &r.path, change, Some(r.lines)).await
+            intake
+                .notice(&r.session_id, &r.path, change, Some(r.lines))
+                .await
         }
         Ordered::SessionRuns(runs) => crate::session_book::feed(BookIn::Runs { origin: at, runs }),
         Ordered::SessionBranch(b) => crate::session_book::feed(BookIn::Branch {

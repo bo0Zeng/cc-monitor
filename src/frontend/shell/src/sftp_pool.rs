@@ -329,9 +329,8 @@ pub fn watch_ticket(
         let id = id.to_string();
         tokio::spawn(async move {
             let Some(client) = owner.upgrade() else {
-                state.send_modify(|s| {
-                    s.end = Some(failed(copy_text("reason.local.linkLost", &[])))
-                });
+                state
+                    .send_modify(|s| s.end = Some(failed(copy_text("reason.local.linkLost", &[]))));
                 return;
             };
             if let Err(e) = client

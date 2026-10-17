@@ -1,9 +1,9 @@
 {
   "说明": [
     "出口扫描判据（tests/frontend/ui/exit-judgment-scan.vitest.ts）的欠账名单：界面与壳里「自己判定、自己格式化、按码取字」今天的存量，只许删、不许加。",
-    "每格 = 文件 × 规则（规则表 tests/frontend/ui/exit-rules.ts）× 剥过注释后的命中数，逐格恒等；ceiling = 各格之和，只许往下改（判据里 153ING_AT_MOST 同改）。",
+    "每格 = 文件 × 规则（规则表 tests/frontend/ui/exit-rules.ts）× 剥过注释后的命中数，逐格恒等；ceiling = 各格之和，只许往下改（判据里 CEILING_AT_MOST 同改）。",
     "kind：第 1 批 / 第 3 批 / 第 7 批 = 复审三排给哪一批收；留 = 不是违例（why 写凭什么：界面自己的骨架词表 · 宿主 / 通道本职的失败句 · 开发者日志 · 排版几何）。10-10 起没有「待分」（判据钉着）。",
-    "手机端并进来：roots 里加它的目录与语言，跑一次判据，逐格登进来、ceiling 与 153ING_AT_MOST 加上那几格 —— 唯一一次许加。"
+    "手机端并进来：roots 里加它的目录与语言，跑一次判据，逐格登进来、ceiling 与 CEILING_AT_MOST 加上那几格 —— 唯一一次许加。"
   ],
   "roots": [
     {

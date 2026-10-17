@@ -466,6 +466,7 @@ pub struct SessionFileReread {
     /// 为什么从头重读。
     pub why: RereadWhy,
     /// 重读完那份记录的完整行数 L（之后的第一帧 `line` 的 `seq` 就是它）。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub lines: u64,
 }
 

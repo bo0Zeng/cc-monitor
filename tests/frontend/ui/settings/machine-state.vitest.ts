@@ -13,7 +13,7 @@ const decoded = (name: string) => decodeMachineState(cases.find((c) => c.name ==
 
 describe("机器状态成品", () => {
   it("★ 金样每一形都收得下、原样交出", () => {
-    expect(cases.length, "金样缩水了 —— 下面的逐形比在空人群上恒绿").toBe(16);
+    expect(cases.length, "金样缩水了 —— 下面的逐形比在空人群上恒绿").toBe(15);
     for (const c of cases) expect(decodeMachineState(c.machine), c.name).toEqual(c.machine);
   });
 

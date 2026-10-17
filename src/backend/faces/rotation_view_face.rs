@@ -777,11 +777,7 @@ fn cells_of(c: &form::Cell, settings: &Value, row: Option<usize>) -> Vec<RotCell
 }
 
 /// 设置那几块：总体（`scope: all`）· 号列表每一行（字 ＋ `scope: each` 那几格）。
-fn board_of(
-    form: &[form::Cell],
-    settings: &Value,
-    listed: &[RotAccount],
-) -> RotBoard {
+fn board_of(form: &[form::Cell], settings: &Value, listed: &[RotAccount]) -> RotBoard {
     let of = |scope: form::Scope, row: Option<usize>| -> Vec<RotCell> {
         form.iter()
             .filter(|c| c.scope == scope)
