@@ -113,7 +113,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("link-close", "4d0d7242"),
     ("link-credit", "61e9069f"),
     ("link-data", "84c8808c"),
-    ("link-open", "ccd7a6d5"),
+    ("link-open", "a6c3f507"),
     ("login-cancel", "3578d171"),
     ("login-finish", "7369b835"),
     ("login-start", "c94ad92f"),

@@ -2306,21 +2306,21 @@ mod error_envelope_registry {
     /// 全树一趟：扫了几份文件，与每一处信封的 `(文件相对路径, 那一行逐字)`。
     fn envelope_sites() -> (usize, Vec<(String, String)>) {
         let root = guard_core::addr::backend_src_root();
-        let files = guard_core::scan_tree!(&root, &["rs"]);
-        let mut out = Vec::new();
-        for (f, src) in &files {
+        let (mut scanned, mut out) = (0, Vec::new());
+        for (f, src) in guard_core::scan_tree!(&root, &["rs"]) {
+            scanned += 1;
             let rel = f
                 .strip_prefix(&root)
-                .unwrap_or(f)
+                .unwrap_or(&f)
                 .to_string_lossy()
                 .replace('\\', "/");
-            for line in guard_core::production_code(src).lines() {
+            for line in guard_core::production_code(&src).lines() {
                 if code_key_hits(line) > 0 {
                     out.push((rel.clone(), line.trim().to_string()));
                 }
             }
         }
-        (files.len(), out)
+        (scanned, out)
     }
 
     /// ★★ 正题：后端生产段里手拼的失败信封 == 零处（人群非空）。
@@ -2345,7 +2345,11 @@ mod error_envelope_registry {
         let escaped = format!("eprintln!(\"{{\\\"{CODE_KEY}\\\":1}}\")");
         assert_eq!(code_key_hits(&escaped), 1, "转义写法认不出来：{escaped}");
         let bare = format!("let {CODE_KEY} = out.status.{CODE_KEY}();");
-        assert_eq!(code_key_hits(&bare), 0, "裸词 `{CODE_KEY}` 被数进来了：{bare}");
+        assert_eq!(
+            code_key_hits(&bare),
+            0,
+            "裸词 `{CODE_KEY}` 被数进来了：{bare}"
+        );
     }
 }
 

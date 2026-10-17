@@ -470,7 +470,8 @@ fn the_dial_uses_named_in_production_are_exactly_these() {
         let s = s.trim_start().strip_prefix('"')?;
         let end = s.find('"')?;
         let w = &s[..end];
-        (!w.is_empty() && w.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')).then(|| w.to_string())
+        (!w.is_empty() && w.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'))
+            .then(|| w.to_string())
     }
     fn ident(b: u8) -> bool {
         b.is_ascii_alphanumeric() || b == b'_'
@@ -488,7 +489,11 @@ fn the_dial_uses_named_in_production_are_exactly_these() {
             if ext == "kt" && !rel.contains("/src/main/") {
                 continue;
             }
-            let prod = if ext == "rs" { guard_core::production_code(&text) } else { text };
+            let prod = if ext == "rs" {
+                guard_core::production_code(&text)
+            } else {
+                text
+            };
             files.push((rel, prod));
         }
     }
@@ -498,9 +503,12 @@ fn the_dial_uses_named_in_production_are_exactly_these() {
         let mut at = 0;
         while let Some(i) = text[at..].find("Use::") {
             let i = at + i + "Use::".len();
-            let w: String = text[i..].chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
-            if w.starts_with(|c: char| c.is_ascii_uppercase()) {
-                named.insert(w.to_ascii_lowercase());
+            let variant: String = text[i..]
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric())
+                .collect();
+            if variant.starts_with(|c: char| c.is_ascii_uppercase()) {
+                named.insert(variant.to_ascii_lowercase());
                 seen_by.insert("Use::");
             }
             at = i;
@@ -510,8 +518,8 @@ fn the_dial_uses_named_in_production_are_exactly_these() {
             let i = at + i + "\"use\"".len();
             let rest = text[i..].trim_start();
             if let Some(r) = rest.strip_prefix(':').or_else(|| rest.strip_prefix(',')) {
-                if let Some(w) = quoted_after(r) {
-                    named.insert(w);
+                if let Some(word) = quoted_after(r) {
+                    named.insert(word);
                     seen_by.insert("\"use\"");
                 }
             }
@@ -522,7 +530,8 @@ fn the_dial_uses_named_in_production_are_exactly_these() {
             while let Some(i) = text[at..].find("request(") {
                 let start = at + i;
                 at = start + "request(".len();
-                if start > 0 && ident(text.as_bytes()[start - 1]) && !text[..start].ends_with("::") {
+                if start > 0 && ident(text.as_bytes()[start - 1]) && !text[..start].ends_with("::")
+                {
                     continue;
                 }
                 let rest = text[at..].trim_start();
@@ -531,8 +540,8 @@ fn the_dial_uses_named_in_production_are_exactly_these() {
                     continue;
                 }
                 if let Some(r) = rest[n..].trim_start().strip_prefix(',') {
-                    if let Some(w) = quoted_after(r) {
-                        named.insert(w);
+                    if let Some(word) = quoted_after(r) {
+                        named.insert(word);
                         seen_by.insert("request(");
                     }
                 }

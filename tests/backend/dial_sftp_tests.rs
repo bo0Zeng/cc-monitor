@@ -208,9 +208,14 @@ async fn deploy_and_transfer_writes_touch_only_staging_and_refuse_everything_els
         .await
         .expect("建暂存区");
     let bin = rig::corpus(100_000);
-    super::put_verified(&s, &format!("{HOME}/.cc-monitor/staging/cc-monitor-backend"), &bin, 0o700)
-        .await
-        .expect("读回逐字节应当相同");
+    super::put_verified(
+        &s,
+        &format!("{HOME}/.cc-monitor/staging/cc-monitor-backend"),
+        &bin,
+        0o700,
+    )
+    .await
+    .expect("读回逐字节应当相同");
     assert_eq!(
         fs.lock()
             .unwrap()
@@ -227,19 +232,31 @@ async fn deploy_and_transfer_writes_touch_only_staging_and_refuse_everything_els
             .await
             .expect("开暂存件"),
     );
-    assert_eq!(super::remove(&s, ".cc-monitor/staging/aa.part").await.ok(), Some(true));
+    assert_eq!(
+        super::remove(&s, ".cc-monitor/staging/aa.part").await.ok(),
+        Some(true)
+    );
 
     // —— 越界：五种形，一律拒，改动表零增长 ——
     let before = fs.lock().unwrap().mutated.len();
     let refusals = [
         super::put_atomic(&s, ".bashrc", b"x", 0o644).await.err(),
-        super::put_atomic(&s, &format!("{HOME}/.local/bin/ccm"), b"x", 0o755).await.err(),
+        super::put_atomic(&s, &format!("{HOME}/.local/bin/ccm"), b"x", 0o755)
+            .await
+            .err(),
         super::remove(&s, "/etc/passwd").await.err(),
-        super::make_dirs(&s, ".cc-monitor/staging/../../.ssh").await.err(),
-        super::put_atomic(&s, ".cc-monitor/bin/ccm", b"x", 0o700).await.err(),
+        super::make_dirs(&s, ".cc-monitor/staging/../../.ssh")
+            .await
+            .err(),
+        super::put_atomic(&s, ".cc-monitor/bin/ccm", b"x", 0o700)
+            .await
+            .err(),
     ];
     for (i, r) in refusals.iter().enumerate() {
-        assert!(matches!(r, Some(Refusal::Fenced { .. })), "第 {i} 种越界没被围栏拒：{r:?}");
+        assert!(
+            matches!(r, Some(Refusal::Fenced { .. })),
+            "第 {i} 种越界没被围栏拒：{r:?}"
+        );
     }
     assert_eq!(
         fs.lock().unwrap().mutated.len(),
