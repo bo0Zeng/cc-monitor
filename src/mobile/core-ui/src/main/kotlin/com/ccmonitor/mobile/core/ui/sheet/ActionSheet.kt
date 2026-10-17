@@ -23,11 +23,16 @@ import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 
-/** 底部抽屉里的一项：图标 ＋ 字（照文案表）；[danger] ⇒ 字与图标 `--error-text`（删除这类撤不回的，点了再弹确认框）。 */
+/**
+ * 底部抽屉里的一项：图标 ＋ 字（照文案表）；[danger] ⇒ 字与图标 `--error-text`（删除这类撤不回的，点了再弹确认框）；
+ * [enabled] 为假 ⇒ 灰着、点不动；[hint] 是字下面一行（为什么是现在这样）。
+ */
 data class SheetAction(
     val icon: Ph,
     val text: String,
     val danger: Boolean = false,
+    val enabled: Boolean = true,
+    val hint: String? = null,
     val onClick: () -> Unit,
 )
 
@@ -41,8 +46,6 @@ fun ActionSheet(
     title: String?,
     actions: List<SheetAction>,
     onDismiss: () -> Unit,
-    /** 标题底下一句说明（那一项为什么是现在这样）；没有 ⇒ 不画。 */
-    note: String? = null,
 ) {
     val tokens = LocalAppTokens.current
     ModalBottomSheet(
@@ -55,32 +58,35 @@ fun ActionSheet(
             title?.let {
                 Text(it, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.sm))
             }
-            note?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = tokens.spacing.lg, end = tokens.spacing.lg, bottom = tokens.spacing.sm),
-                )
-            }
             actions.forEachIndexed { i, a ->
                 if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                val color = if (a.danger) tokens.errorText else MaterialTheme.colorScheme.onSurface
+                val dim = MaterialTheme.colorScheme.onSurfaceVariant
+                val color =
+                    when {
+                        !a.enabled -> dim.copy(alpha = DISABLED_ALPHA)
+                        a.danger -> tokens.errorText
+                        else -> MaterialTheme.colorScheme.onSurface
+                    }
                 Row(
                     Modifier
                         .fillMaxWidth()
                         .heightIn(min = Touch.rowSetting)
-                        .clickable {
+                        .clickable(enabled = a.enabled) {
                             a.onClick()
                             onDismiss()
                         }.padding(horizontal = tokens.spacing.lg),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md),
                 ) {
-                    PhIcon(a.icon, contentDescription = null, tint = if (a.danger) tokens.errorText else MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(a.text, color = color, style = MaterialTheme.typography.bodyMedium)
+                    PhIcon(a.icon, contentDescription = null, tint = if (a.danger && a.enabled) tokens.errorText else color.takeIf { !a.enabled } ?: dim)
+                    Column {
+                        Text(a.text, color = color, style = MaterialTheme.typography.bodyMedium)
+                        a.hint?.let { Text(it, color = dim, style = MaterialTheme.typography.bodySmall) }
+                    }
                 }
             }
         }
     }
 }
+
+private const val DISABLED_ALPHA = 0.38f

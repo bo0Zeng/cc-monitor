@@ -4,6 +4,7 @@ package com.ccmonitor.mobile.ui.chats
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -27,11 +28,19 @@ import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.Deploying
 import com.ccmonitor.mobile.core.claude.link.ListSort
@@ -49,6 +58,7 @@ import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import com.ccmonitor.mobile.ui.common.DashedBar
 import com.ccmonitor.mobile.ui.common.DeployStepLine
+import com.ccmonitor.mobile.ui.common.STRING_SET_SAVER
 import com.ccmonitor.mobile.ui.common.StatusDot
 import com.ccmonitor.mobile.ui.common.deployLabel
 
@@ -64,20 +74,27 @@ object ChatsTags {
     const val SHOW_HIDDEN = "chats-show-hidden"
     const val SKELETON = "chats-skeleton"
     const val CHIP = "chats-chip"
+    const val SEARCH = "chats-search"
+    const val SEARCH_CONTENT = "chats-search-content"
+    const val RENAME = "chats-rename"
 }
 
 /** 一屏上点下去的那几件事（交给板 · 导航）。 */
 class ChatsActions(
-    val open: (ChatRow) -> Unit,
+    val open: (hostId: String, sessionId: String) -> Unit,
     val menu: (ChatRow) -> Unit,
     /** 一台顶上那一条的［重试］/［重新连接］。 */
     val retry: (HostBar) -> Unit,
     val deploy: (hostId: String) -> Unit,
     val filters: ((Filters) -> Filters) -> Unit,
+    /** 按目录展开后第一项：在那台那个目录里新建会话。 */
+    val newInDir: (hostId: String, cwd: String) -> Unit,
+    /** 「搜内容「{q}」」那一行。 */
+    val searchContent: () -> Unit,
 )
 
 /**
- * 会话屏的列表：顶上生效的筛选（chip，点一颗去掉）· 各台的条 · 注解没并上那一句，下面几台并好的一段一段。
+ * 会话屏的列表：顶上生效的筛选（chip，点一颗去掉）· 各台的条 · 注解没并上那一句，下面几台并好的一段一段（按目录 ⇒ 一个目录一行，点开就地展开）。
  * 第一次读画骨架（不转圈）；一行都没有 ⇒ 「无会话记录」或「无匹配」＋［清除筛选］。
  */
 @Composable
@@ -87,6 +104,7 @@ fun ChatsScreen(
     listState: LazyListState,
     modifier: Modifier = Modifier,
 ) {
+    var open by rememberSaveable(stateSaver = STRING_SET_SAVER) { mutableStateOf(emptySet<String>()) }
     LazyColumn(modifier.fillMaxSize().testTag(ChatsTags.LIST), state = listState) {
         item { Chips(ui, act.filters) }
         items(ui.bars, key = { "bar-${it.hostId}" }) { HostBarView(it, act) }
@@ -98,12 +116,28 @@ fun ChatsScreen(
             }
         }
         ui.notices.forEach { n -> item { Text(n, style = monoSmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) } }
-        when {
-            ui.skeleton -> items(SKELETON_ROWS) { SkeletonRow() }
-            ui.empty != Empty.NONE -> item { EmptyView(ui, act.filters) }
-            else -> for (s in ui.sections) section(s, act)
-        }
-        if (ui.truncated) item { Text(copyText("history.list.truncated"), style = monoSmall, modifier = Modifier.padding(16.dp)) }
+        body(ui, act, open) { id -> open = if (id in open) open - id else open + id }
+        if (ui.truncated && ui.content == null) item { Text(copyText("history.list.truncated"), style = monoSmall, modifier = Modifier.padding(16.dp)) }
+    }
+}
+
+/** 列表本体：搜内容那一份 · 「搜内容「{q}」」· 骨架 · 空 · 按目录 · 按时间。[onToggle] 展开 / 收起一组。 */
+private fun LazyListScope.body(
+    ui: ChatsUi,
+    act: ChatsActions,
+    open: Set<String>,
+    onToggle: (String) -> Unit,
+) {
+    ui.content?.let { c ->
+        contentHits(c, act)
+        return
+    }
+    ui.query?.let { q -> item(key = "search-content") { SearchContentRow(q, act.searchContent) } }
+    when {
+        ui.skeleton -> items(SKELETON_ROWS) { SkeletonRow() }
+        ui.empty != Empty.NONE -> item { EmptyView(ui, act.filters) }
+        ui.filters.view == ChatsView.DIR -> for (g in ui.groups) group(g, g.id in open, ui, act) { onToggle(g.id) }
+        else -> for (s in ui.sections) section(s, act)
     }
 }
 
@@ -178,12 +212,149 @@ private fun LazyListScope.section(
     items(s.rows, key = { "${it.hostId}\n${it.sessionId}" }) { r -> SessionRow(r, act) }
 }
 
+/** 「搜内容「{q}」」：列表最上一行，点了各台搜会话内容。 */
+@Composable
+private fun SearchContentRow(
+    q: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = Touch.rowSetting)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp)
+            .testTag(ChatsTags.SEARCH_CONTENT),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        PhIcon(Ph.MagnifyingGlass, contentDescription = null, size = Touch.iconInline, tint = LocalAppTokens.current.accent)
+        Text(copyText("mobChats.search.content", "q" to q), style = MaterialTheme.typography.bodyMedium, color = LocalAppTokens.current.accent, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** 搜内容那一份：合好的那一句 · 没答的台等几句 · 每个会话一块（前 [HITS_SHOWN] 处命中 ＋「+N 处」）；还在问 ⇒ 搜索中 ＋ 骨架。 */
+private fun LazyListScope.contentHits(
+    c: ContentUi,
+    act: ChatsActions,
+) {
+    item(key = "content-head") {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Text(c.summary ?: if (c.searching) copyText("history.search.searching") else copyText("mobChats.search.content", "q" to c.query), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            c.lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            c.problem?.let { p ->
+                ErrorLine(p.text)
+                CopyDetailButton(p.text, p.detail)
+            }
+        }
+    }
+    when {
+        c.searching -> items(SKELETON_HITS) { SkeletonRow() }
+        c.rows.isEmpty() && c.summary != null -> item { Text(copyText("history.search.noMatch", "q" to c.query), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(16.dp).testTag(ChatsTags.EMPTY)) }
+        else -> items(c.rows, key = { "hit-${it.hostId}\n${it.row.sessionId}" }) { HitsBlock(it, act) }
+    }
+}
+
+/** 一个会话的命中：标题 · 时刻（机器小标签在前）／ 每处命中一行（命中的字强调）／ 还有几处。点哪儿都打开那条会话。 */
+@Composable
+private fun HitsBlock(
+    h: ContentRow,
+    act: ChatsActions,
+) {
+    val r = h.row
+    Column(Modifier.fillMaxWidth().clickable { act.open(h.hostId, r.sessionId) }.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            h.machineTag?.let { MachineTag(it) }
+            Text(r.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = rowTitle(), modifier = Modifier.weight(1f))
+            Text(r.atText, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        val accent = LocalAppTokens.current.accent
+        r.hits.take(HITS_SHOWN).forEach { hit ->
+            Text(
+                buildAnnotatedString {
+                    append(hit.before)
+                    withStyle(SpanStyle(color = accent, fontWeight = FontWeight.SemiBold)) { append(hit.matched) }
+                    append(hit.after)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        val more = r.hitCount - minOf(r.hits.size, HITS_SHOWN)
+        if (more > 0) Text(copyText("history.searchSession.more", "n" to more), style = MaterialTheme.typography.bodySmall, color = accent, modifier = Modifier.padding(top = 4.dp))
+    }
+}
+
+/** 一个目录一行；展开着 ⇒ 下面先「在此目录新建会话」，再那组的会话（一行只标题 ＋ 时刻）。 */
+private fun LazyListScope.group(
+    g: ChatGroup,
+    open: Boolean,
+    ui: ChatsUi,
+    act: ChatsActions,
+    onToggle: () -> Unit,
+) {
+    item(key = "group-${g.id}") { GroupRow(g, open, onToggle) }
+    if (!open) return
+    item(key = "new-${g.id}") {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = Touch.rowSetting)
+                .clickable { act.newInDir(g.hostId, g.group.projectPath) }
+                .padding(start = 44.dp, end = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            PhIcon(Ph.Plus, contentDescription = null, size = Touch.iconInline, tint = LocalAppTokens.current.accent)
+            Text(copyText("history.menu.newInDir"), style = MaterialTheme.typography.bodyMedium, color = LocalAppTokens.current.accent)
+        }
+    }
+    items(ui.rowsOf(g), key = { "in-${g.id}\n${it.sessionId}" }) { r ->
+        DotRow(r.dot, r.status?.text, onClick = { act.open(r.hostId, r.sessionId) }, onLongClick = { act.menu(r) }) {
+            if (r.starred) PhIcon(Ph.Star, contentDescription = null, size = Touch.iconInline, tint = LocalAppTokens.current.warn)
+            Text(r.label, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            r.atText?.let { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+    }
+}
+
+/** 组那一行：目录短名 · 时刻 ／ 机器小标签 · 几条（读不了 ⇒ 加载失败）／ 路径（等宽）；有在跑的画点。 */
+@Composable
+private fun GroupRow(
+    g: ChatGroup,
+    open: Boolean,
+    onToggle: () -> Unit,
+) {
+    val h = g.group
+    DotRow(SessionDot.RUNNING.takeIf { h.hasLive == true }, null, onClick = onToggle) {
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(h.projectName, maxLines = 1, overflow = TextOverflow.Ellipsis, style = rowTitle(), modifier = Modifier.weight(1f))
+                h.atText?.let { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                g.machineTag?.let { MachineTag(it) }
+                if (h.failed != null) {
+                    Text(copyText("history.group.failed"), style = MaterialTheme.typography.bodySmall, color = LocalAppTokens.current.errorText)
+                } else {
+                    Text(copyText("history.group.count", "n" to h.count), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Text(h.projectPath, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        PhIcon(if (open) Ph.CaretDown else Ph.CaretRight, contentDescription = null, size = Touch.iconInline, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
 @Composable
 private fun SessionRow(
     r: ChatRow,
     act: ChatsActions,
 ) {
-    DotRow(r.dot, r.status?.text, onClick = { act.open(r) }, onLongClick = { act.menu(r) }) {
+    DotRow(r.dot, r.status?.text, onClick = { act.open(r.hostId, r.sessionId) }, onLongClick = { act.menu(r) }) {
         Column(Modifier.weight(1f)) {
             // 第一层：★ · 标题 · 时刻；第二层：机器小标签 · 状态字 · 目录短名 · 家牌 ·「已隐藏」· 分叉那一句（有的才写，用 · 连）。
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -278,9 +449,21 @@ internal fun rowTitle() = MaterialTheme.typography.titleSmall
 private fun SkeletonRow() {
     val c = MaterialTheme.colorScheme.surfaceContainerHigh
     val shape = RoundedCornerShape(LocalAppTokens.current.radius.s)
-    Column(Modifier.fillMaxWidth().heightIn(min = Touch.rowDouble).padding(start = 44.dp, end = 16.dp, top = 12.dp).testTag(ChatsTags.SKELETON)) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = Touch.rowDouble)
+            .padding(start = 44.dp, end = 16.dp, top = 12.dp)
+            .testTag(ChatsTags.SKELETON),
+    ) {
         Box(Modifier.fillMaxWidth(SKELETON_TITLE).height(12.dp).background(c, shape))
-        Box(Modifier.padding(top = 8.dp).fillMaxWidth(SKELETON_SUB).height(10.dp).background(c, shape))
+        Box(
+            Modifier
+                .padding(top = 8.dp)
+                .fillMaxWidth(SKELETON_SUB)
+                .height(10.dp)
+                .background(c, shape),
+        )
     }
 }
 
@@ -328,5 +511,9 @@ private fun toneColor(t: Tone?): Color {
 internal const val WEEK = 7
 internal const val MONTH = 30
 private const val SKELETON_ROWS = 8
+private const val SKELETON_HITS = 4
+
+/** 每个会话最多摆几处命中（其余写「+N 处」）。 */
+private const val HITS_SHOWN = 3
 private const val SKELETON_TITLE = 0.6f
 private const val SKELETON_SUB = 0.4f

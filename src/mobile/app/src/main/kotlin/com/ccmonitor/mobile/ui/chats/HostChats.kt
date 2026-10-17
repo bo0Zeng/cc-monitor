@@ -6,6 +6,7 @@ import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Deploying
 import com.ccmonitor.mobile.core.claude.link.Fix
 import com.ccmonitor.mobile.core.claude.link.HistoryList
+import com.ccmonitor.mobile.core.claude.link.HistorySearch
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.ListAsk
 import com.ccmonitor.mobile.core.claude.link.Reply
@@ -17,6 +18,7 @@ import com.ccmonitor.mobile.core.claude.link.wire.ForkedFrom
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryGroup
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryListPage
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryRow
+import com.ccmonitor.mobile.core.claude.link.wire.HistorySearchReply
 import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.link.Fetched
@@ -102,10 +104,28 @@ class HostChats(
             if (wanted != asked.value) return@launch
             list.value = got
             if (got is Fetched.Got && reply is Reply.Ok && wanted == ListAsk()) {
-                HistoryList.rawRows(reply.data)?.let { raw -> cache.save(got.value.rows.map { it.sessionId }.zip(raw)) }
+                HistoryList.rawRows(reply.data)?.let { raw ->
+                    cache.save(
+                        got.value.rows
+                            .map { it.sessionId }
+                            .zip(raw),
+                    )
+                }
             }
         }
     }
+
+    /** 搜这台的会话内容（[Searched]）。 */
+    suspend fun searchContent(q: String): Searched =
+        when (val reply = link.call(HistorySearch.COMMAND, HistorySearch.args(q))) {
+            Reply.TimedOut, Reply.LinkDown, Reply.Cancelled -> Searched.Down
+            else ->
+                when (val got = fetched(reply, HistorySearch.COMMAND) { d -> HistorySearch.of(d)?.let { r -> HistorySearch.rawSessions(d)?.let { Searched.Got(r, it) } } }) {
+                    is Fetched.Got -> got.value
+                    is Fetched.Failed -> Searched.Failed(got.problem)
+                    Fetched.Loading -> Searched.Down
+                }
+        }
 
     /** 问这台一条命令、照 [decode] 解回包。 */
     suspend fun <T> call(
@@ -133,6 +153,20 @@ class HostChats(
         val LIST_TOPICS = setOf("session_hidden")
         const val LIST_DEBOUNCE_MS = 1_000L
     }
+}
+
+/** 一台搜内容的结局：答了（回包 ＋ `sessions` 原样）· 没答（断着 · 无应答）· 答了读不出。 */
+sealed interface Searched {
+    data class Got(
+        val reply: HistorySearchReply,
+        val raw: List<Any?>,
+    ) : Searched
+
+    data object Down : Searched
+
+    data class Failed(
+        val problem: Problem,
+    ) : Searched
 }
 
 /** 一台此刻手上的全部：流 · 会话表 · 清单这一问 · 缓存 · 装到哪一步 · 带的筛选。 */

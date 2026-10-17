@@ -35,13 +35,13 @@ import com.ccmonitor.mobile.ui.chat.ChatController
 import com.ccmonitor.mobile.ui.chat.ChatRoute
 import com.ccmonitor.mobile.ui.chat.chatKey
 import com.ccmonitor.mobile.ui.chat.newConversationId
+import com.ccmonitor.mobile.ui.chats.ChatsRoute
 import com.ccmonitor.mobile.ui.drawer.DrawerAction
 import com.ccmonitor.mobile.ui.drawer.DrawerNav
 import com.ccmonitor.mobile.ui.files.FilesScreen
 import com.ccmonitor.mobile.ui.host.HostEditorScreen
 import com.ccmonitor.mobile.ui.host.HostListScreen
 import com.ccmonitor.mobile.ui.identity.IdentityScreen
-import com.ccmonitor.mobile.ui.chats.ChatsRoute
 import com.ccmonitor.mobile.ui.rotation.RotationScreen
 import com.ccmonitor.mobile.ui.session.SessionScreen
 import com.ccmonitor.mobile.ui.session.SessionTabManager
@@ -448,6 +448,7 @@ private fun NavGraphBuilder.chatRoutes(
         ChatsRoute(
             hostId = hostId,
             onOpen = { host, sid -> nav.navigate(Screen.Chat.of(host, sid)) },
+            onNewInDir = { host, cwd -> nav.navigate(Screen.Chat.of(host, newConversationId(), isNew = true, cwd = cwd)) },
             onDrawerAction = { action -> nav.followDrawer(action, hostId, tabManager) },
         )
     }

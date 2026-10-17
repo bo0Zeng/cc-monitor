@@ -30025,6 +30025,24 @@
       "zh": "用量",
       "args": []
     },
+    "mobChats.search.aria": {
+      "kind": "aria",
+      "role": "读屏",
+      "zh": "搜索会话",
+      "args": []
+    },
+    "mobChats.search.placeholder": {
+      "kind": "control",
+      "role": "占位",
+      "zh": "搜标题、项目",
+      "args": []
+    },
+    "mobChats.search.content": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "搜内容「{q}」",
+      "args": ["q"]
+    },
     "mobChats.fork.from": {
       "kind": "body",
       "role": "片段",

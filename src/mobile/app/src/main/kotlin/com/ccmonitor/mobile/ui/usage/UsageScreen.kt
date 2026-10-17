@@ -25,7 +25,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -57,6 +56,7 @@ import com.ccmonitor.mobile.ui.chat.newsession.AccountBadge
 import com.ccmonitor.mobile.ui.chat.newsession.DefaultTag
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import com.ccmonitor.mobile.ui.common.DashedBar
+import com.ccmonitor.mobile.ui.common.STRING_SET_SAVER
 import com.ccmonitor.mobile.ui.common.rememberHostLink
 import com.ccmonitor.mobile.ui.nav.settingsGroupScreenInsets
 import com.ccmonitor.mobile.ui.rotation.NoteBox
@@ -81,7 +81,7 @@ fun UsageScreen(
     val board = remember(here.hostId) { MachineSettings(feed, here.machine, feed.changed, scope) }
     val ui by board.state.collectAsState()
     val link by feed.state.collectAsState()
-    var open by rememberSaveable(stateSaver = OPEN_SAVER) { mutableStateOf(emptySet<String>()) }
+    var open by rememberSaveable(stateSaver = STRING_SET_SAVER) { mutableStateOf(emptySet<String>()) }
     Column(Modifier.fillMaxSize().settingsGroupScreenInsets()) {
         Row(Modifier.padding(horizontal = 8.dp).heightIn(min = Touch.topBar), verticalAlignment = Alignment.CenterVertically) {
             BackButton(onBack)
@@ -117,9 +117,6 @@ fun UsageScreen(
         }
     }
 }
-
-/** 展开着的号名集（存成列表才进得了 `rememberSaveable`）。 */
-private val OPEN_SAVER = listSaver<Set<String>, String>({ it.toList() }, { it.toSet() })
 
 /** 结论两行（大字 · 小字，都不能发 ⇒ 红）；没有结论 ⇒ 那台那一句（读不出 ⇒ 红条 ＋［复制详情］［重试］）。 */
 @Composable

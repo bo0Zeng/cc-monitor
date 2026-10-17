@@ -13,6 +13,7 @@ import com.ccmonitor.mobile.core.claude.link.Toned
 import com.ccmonitor.mobile.core.claude.link.wire.Can
 import com.ccmonitor.mobile.core.claude.link.wire.CanDelete
 import com.ccmonitor.mobile.core.claude.link.wire.ForkedFrom
+import com.ccmonitor.mobile.core.claude.link.wire.HistoryGroup
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryListPage
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryRow
 import com.ccmonitor.mobile.core.claude.link.wire.Tone
@@ -32,7 +33,13 @@ class ChatsViewTest {
         section: String,
         at: Long = 0,
         status: String = "live",
-    ) = HistoryRow(sid, "标题 $sid", at, "09:0$sid", section, false, "w", "/w", "/w", "/w/$sid.jsonl", "claude", null, status, null, null, null, Can(CanDelete.YES))
+        group: String = "/w",
+    ) = HistoryRow(sid, "标题 $sid", at, "09:0$sid", section, false, "w", group, group, "$group/$sid.jsonl", "claude", null, status, null, null, null, Can(CanDelete.YES))
+
+    private fun group(
+        key: String,
+        order: Long,
+    ) = HistoryGroup(key, key.substringAfterLast('/'), key, 1, false, order, "09:00", null)
 
     private fun page(vararg rows: HistoryRow) = HistoryListPage(rows.toList(), emptyList(), null, false)
 
@@ -204,5 +211,30 @@ class ChatsViewTest {
         assertEquals("分叉自「修登录」", forkLine(ForkedFrom("修登录"), "p1"))
         assertEquals("分叉自其他会话", forkLine(null, "p1"))
         assertNull(forkLine(null, null))
+    }
+
+    @Test
+    fun `按目录：两台的组按 order 并；同名目录在两台是两行；展开那一组 ＝ 并好那一列里它的行、次序照并好的`() {
+        val a =
+            hostPart(
+                snap(got = Fetched.Got(HistoryListPage(listOf(row("a1", "今天", 90, group = "/a"), row("a2", "今天", 50, group = "/b"), row("a3", "昨天", 20, group = "/a")), listOf(group("/a", 30), group("/b", 10)), null, false))),
+            )
+        val b =
+            hostPart(
+                snap(got = Fetched.Got(HistoryListPage(listOf(row("b1", "今天", 70, group = "/a"), row("b2", "昨天", 40, group = "/c")), listOf(group("/a", 20), group("/c", 5)), null, false)), id = "h2", machine = "gpu"),
+            )
+        val v = view(a, b, filters = Filters(view = ChatsView.DIR))
+        assertEquals(listOf("h1" to "/a", "h2" to "/a", "h1" to "/b", "h2" to "/c"), v.groups.map { it.hostId to it.group.key })
+        assertEquals(
+            "同名目录两台两个键",
+            4,
+            v.groups
+                .map { it.id }
+                .toSet()
+                .size,
+        )
+        assertEquals(listOf(null, "gpu", null, "gpu"), v.groups.map { it.machineTag })
+        assertEquals(listOf("a1", "a3"), v.rowsOf(v.groups[0]).map { it.sessionId })
+        assertEquals(listOf("b1"), v.rowsOf(v.groups[1]).map { it.sessionId })
     }
 }

@@ -1,6 +1,8 @@
 package com.ccmonitor.mobile.ui.chats
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.DrawerValue
@@ -8,6 +10,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
@@ -20,11 +24,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import com.ccmonitor.mobile.core.claude.link.FilesDeleteSession
 import com.ccmonitor.mobile.core.claude.link.HistoryAnnotate
 import com.ccmonitor.mobile.core.claude.link.wire.Hide
 import com.ccmonitor.mobile.core.copy.copyText
@@ -54,12 +64,13 @@ import org.koin.core.parameter.parametersOf
 
 /**
  * 会话屏的入口：勾上的每台各建一条 SSH 持有（离屏放手），通了那台的常驻流就接上、问清单；几台并成一列交 [ChatsScreen]。
- * 顶栏：抽屉 · 会话 · 漏斗（有筛选生效时强调色）。手指在滚时列表冻住，松手换最新的。
+ * 顶栏：抽屉 · 会话 · 🔍（换成搜索框，返回先收框）· 漏斗（有筛选生效时强调色）。手指在滚时列表冻住，松手换最新的。
  */
 @Composable
 fun ChatsRoute(
     hostId: String,
     onOpen: (hostId: String, sessionId: String) -> Unit,
+    onNewInDir: (hostId: String, cwd: String) -> Unit,
     onDrawerAction: (DrawerAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -79,28 +90,89 @@ fun ChatsRoute(
     }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    val snackbar = LocalAppSnackbar.current
     val listState = rememberLazyListState()
     LaunchedEffect(listState.isScrollInProgress) { if (listState.isScrollInProgress) board.hold() else board.release() }
     var filtering by remember { mutableStateOf(false) }
+    var searching by rememberSaveable { mutableStateOf(false) }
+    var typed by rememberSaveable { mutableStateOf("") }
+    val closeSearch = {
+        searching = false
+        typed = ""
+        board.query(null)
+    }
+    BackHandler(enabled = searching, onBack = closeSearch)
     var menuFor by remember { mutableStateOf<ChatRow?>(null) }
     if (filtering) FilterSheet(ui, board::filters, onDismiss = { filtering = false })
-    menuFor?.let { r -> RowMenu(r, onHide = { scope.launch { board.chats(r.hostId)?.let { toggleHidden(it, snackbar, r) } } }, onDismiss = { menuFor = null }) }
+    menuFor?.let { r -> RowSheets(board, r, scope, onNewInDir, onDismiss = { menuFor = null }) }
     val act =
         ChatsActions(
-            open = { onOpen(it.hostId, it.sessionId) },
+            open = onOpen,
             menu = { menuFor = it },
             retry = { b -> retry(board, links, attempts, b) },
             deploy = { id -> board.chats(id)?.deploy?.invoke() },
             filters = board::filters,
+            newInDir = onNewInDir,
+            searchContent = board::searchContent,
         )
     ChatDrawer(hostId, links[hostId] is HostLink.Ready, drawerState, onDrawerAction) {
         Scaffold(
             modifier = modifier,
-            topBar = { ChatsTopBar(ui.filters.active, onFilter = { filtering = true }, onOpenDrawer = { scope.launch { drawerState.open() } }) },
+            topBar = {
+                if (searching) {
+                    SearchBar(typed, onType = {
+                        typed = it
+                        board.query(it)
+                    }, onClose = closeSearch)
+                } else {
+                    ChatsTopBar(ui.filters.active, onSearch = { searching = true }, onFilter = { filtering = true }, onOpenDrawer = { scope.launch { drawerState.open() } })
+                }
+            },
         ) { inner -> ChatsScreen(ui, act, listState, Modifier.fillMaxSize().padding(inner)) }
     }
 }
+
+/**
+ * 长按一行：抽屉（[RowMenu]）· 改标题框 · 删除确认框。交那台的那一问在屏的协程 [scope] 里跑，结果出在应用根部的反馈里。
+ * 抽屉点了要弹框的那一项先关抽屉、留住那一行，框关了才算收完（[onDismiss]）。
+ */
+@Composable
+private fun RowSheets(
+    board: ChatsBoard,
+    r: ChatRow,
+    /** 屏的协程（抽屉关了照跑完）。 */
+    scope: CoroutineScope,
+    onNewInDir: (hostId: String, cwd: String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val snackbar = LocalAppSnackbar.current
+    var dialog by remember(r) { mutableStateOf<RowDialog?>(null) }
+    val on = { job: suspend (HostChats) -> Unit -> scope.launch { board.chats(r.hostId)?.let { job(it) } } }
+    when (dialog) {
+        null -> {
+            val ops =
+                MenuOps(
+                    star = { on { annotate(it, snackbar, HistoryAnnotate.star(r.sessionId, !r.starred), copyText("history.star.failed")) } },
+                    rename = { dialog = RowDialog.RENAME },
+                    hide = { on { toggleHidden(it, snackbar, r) } },
+                    newInDir = { onNewInDir(r.hostId, r.projectPath) },
+                    delete = { dialog = RowDialog.DELETE },
+                )
+            // 点了要弹框的那一项：抽屉照关（ActionSheet 点完就关），可那一行留着给框用。
+            RowMenu(r, ops, onDismiss = { if (dialog == null) onDismiss() })
+        }
+        RowDialog.RENAME ->
+            RenameDialog(r, onDismiss = onDismiss) { title ->
+                on { annotate(it, snackbar, HistoryAnnotate.rename(r.sessionId, title), copyText("history.rename.failed"), done = copyText("history.rename.done")) }
+            }
+        RowDialog.DELETE ->
+            DeleteDialog(r, board.chats(r.hostId)?.machine ?: r.hostId, onDismiss = onDismiss) {
+                on { deleteSession(it, snackbar, r) }
+            }
+    }
+}
+
+/** 长按之后弹的那个框。 */
+private enum class RowDialog { RENAME, DELETE }
 
 /** 一台的［重试］/［重新连接］：SSH 那层接不上 ⇒ 整条重建；否则交那台（断着重接、通着重问）。 */
 private fun retry(
@@ -129,10 +201,46 @@ private suspend fun toggleHidden(
                     (setHide(chats, row.sessionId, r.value.prev) as? Fetched.Failed)?.let { snackbar.show(Notice(it.problem.text, it.problem.detail)) }
                 }
             }
-        is Fetched.Failed -> snackbar.show(Notice(copyText("history.hide.failed"), listOf(r.problem.text, r.problem.detail).filter(String::isNotBlank).joinToString("\n")))
+        is Fetched.Failed -> snackbar.show(Notice(copyText("history.hide.failed"), detailOf(r)))
         Fetched.Loading -> Unit
     }
 }
+
+/** 标星 · 改标题：交那台改那一格；成了重问清单（[done] 有就出一句），没成照那台那一句报。 */
+private suspend fun annotate(
+    chats: HostChats,
+    snackbar: AppSnackbarController,
+    args: Map<String, Any?>,
+    failed: String,
+    done: String? = null,
+) {
+    when (val r = chats.call(HistoryAnnotate.COMMAND, args, HistoryAnnotate::of)) {
+        is Fetched.Got -> {
+            chats.fetch()
+            done?.let(snackbar::show)
+        }
+        is Fetched.Failed -> snackbar.show(Notice(failed, detailOf(r)))
+        Fetched.Loading -> Unit
+    }
+}
+
+/** 删一条历史会话（那台删记录文件连同附属）；成了重问清单。 */
+private suspend fun deleteSession(
+    chats: HostChats,
+    snackbar: AppSnackbarController,
+    row: ChatRow,
+) {
+    when (val r = chats.call(FilesDeleteSession.COMMAND, FilesDeleteSession.args(row.sessionId)) { }) {
+        is Fetched.Got -> {
+            chats.fetch()
+            snackbar.show(copyText("history.delete.done", "label" to row.label))
+        }
+        is Fetched.Failed -> snackbar.show(Notice(copyText("history.delete.failed", "label" to row.label), detailOf(r)))
+        Fetched.Loading -> Unit
+    }
+}
+
+private fun detailOf(f: Fetched.Failed): String = listOf(f.problem.text, f.problem.detail).filter(String::isNotBlank).joinToString("\n")
 
 private suspend fun setHide(
     chats: HostChats,
@@ -144,15 +252,49 @@ private suspend fun setHide(
 @Composable
 private fun ChatsTopBar(
     filtered: Boolean,
+    onSearch: () -> Unit,
     onFilter: () -> Unit,
     onOpenDrawer: () -> Unit,
 ) {
     TopAppBar(
         actions = {
+            PhIconButton(Ph.MagnifyingGlass, copyText("mobChats.search.aria"), onClick = onSearch, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             PhIconButton(Ph.Funnel, copyText("history.page.filter"), onClick = onFilter, tint = if (filtered) LocalAppTokens.current.accent else MaterialTheme.colorScheme.onSurfaceVariant)
         },
         navigationIcon = { PhIconButton(Ph.List, DRAWER_OPEN_DESCRIPTION, onClick = onOpenDrawer, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
         title = { Text(copyText("mobDrawer.item.chats"), style = MaterialTheme.typography.titleMedium) },
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = LocalAppTokens.current.bg2, scrolledContainerColor = LocalAppTokens.current.bg2),
+    )
+}
+
+/** 搜索框顶栏：← 收起（同返回）· 框（边打边搜标题）。 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SearchBar(
+    text: String,
+    onType: (String) -> Unit,
+    onClose: () -> Unit,
+) {
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    TopAppBar(
+        navigationIcon = { PhIconButton(Ph.ArrowLeft, copyText("mobKit.act.back"), onClick = onClose, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+        title = {
+            TextField(
+                value = text,
+                onValueChange = onType,
+                placeholder = { Text(copyText("mobChats.search.placeholder")) },
+                singleLine = true,
+                colors =
+                    TextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                    ),
+                modifier = Modifier.fillMaxWidth().focusRequester(focus).testTag(ChatsTags.SEARCH),
+            )
+        },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = LocalAppTokens.current.bg2, scrolledContainerColor = LocalAppTokens.current.bg2),
     )
 }
