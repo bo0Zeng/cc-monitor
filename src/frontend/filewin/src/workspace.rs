@@ -38,6 +38,7 @@
 //! - 后台标签（不在任何一栏上）的「一问」要切回去才看得见；标签名前那个「●」就是为这个。
 
 use super::copy::CopyJob;
+use super::fonts::FontState;
 use super::shell::FileWindow;
 use super::source::Listed;
 use copy_core::copy_text;
@@ -130,6 +131,8 @@ pub struct Workspace {
     /// 已经报过警告的调用处（`文件, 行`）。
     slip_sites: std::sync::Mutex<std::collections::HashSet<(&'static str, u32)>>,
     /// 帧日志（开窗时照环境变量开；平时关着，什么都不做）。
+    /// 系统字体那一趟载入（[`super::fonts::load`]）；`None` ＝ 收下了或没起过（判据直接建的窗口）。
+    pub fonts: Option<super::fonts::Loading>,
     pub frame_log: super::frame_log::FrameLog,
 }
 
@@ -310,6 +313,7 @@ impl Workspace {
             notice: None,
             preview: None,
             theme: None,
+            fonts: None,
             sidebar_open: true,
             home: Default::default(),
             home_go: false,
@@ -1218,6 +1222,18 @@ impl Workspace {
         self.settle_link(Some(ctx.clone()));
         // ── 那台的计划变了：订一次那条流；变了 ⇒ 每个标签页重问一次「格」一列 ──
         self.settle_plan(Some(ctx.clone()));
+        // ── 系统字体还在载入：只画底色与转圈（这时画字，中文全是方块）；收下的那一帧起各栏接着复核 ──
+        if let Some(fonts) = &self.fonts {
+            if let Some(attempt) = fonts.poll(&ctx) {
+                self.fonts = None;
+                for tab in self.sides.iter_mut().flat_map(|s| s.tabs.iter_mut()) {
+                    tab.pane.font = FontState::Pending(attempt.clone());
+                }
+                ctx.request_repaint();
+            }
+            ui.centered_and_justified(|ui| ui.add(egui::Spinner::new().size(24.0)));
+            return;
+        }
         // ── 窗口的框：工具条 · 命令栏 · 状态栏 · 「进度」表 · 左栏（`chrome.rs`）──
         self.chrome_ui(ui);
         // ── 预览（右侧一块，跟焦点那一栏）──

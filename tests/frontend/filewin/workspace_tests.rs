@@ -1725,7 +1725,10 @@ async fn screenshot_for_the_shots_tool() {
         }
         impl eframe::App for Shot {
             fn ui(&mut self, ui: &mut egui::Ui, _f: &mut eframe::Frame) {
-                self.n += 1;
+                // 帧数从字体收下之后数起（之前那几帧只有转圈）。
+                if self.ws.fonts.is_none() {
+                    self.n += 1;
+                }
                 if self.n == 5 && self.preview {
                     self.ws.set_preview(true);
                 }
@@ -1934,11 +1937,8 @@ async fn screenshot_for_the_shots_tool() {
             opts,
             Box::new(move |cc| {
                 crate::theme::install(&cc.egui_ctx, &theme);
-                w.font = crate::fonts::FontState::Pending(crate::fonts::install(
-                    &cc.egui_ctx,
-                    Some(&theme),
-                ));
                 let mut ws = Workspace::new(w);
+                ws.fonts = Some(crate::fonts::load(&cc.egui_ctx, Some(theme.clone())));
                 ws.theme = Some(theme);
                 ws.ask_home(Some(cc.egui_ctx.clone()));
                 if split {
@@ -3012,4 +3012,57 @@ async fn perf_rig_worker() {
     phase("after_idle", 10.0, &|| {});
     let _ = crate::rows::testing::xvfb::close_like_a_wm(&display, &id);
     let _ = tokio::task::spawn_blocking(move || h.join()).await;
+}
+
+/// 🔴**第一帧不等系统字体**：载入（扫字体 · 读 CJK 那份）在另一条线程上跑，没回来时这一帧照样画完 ——
+/// 只画底色与转圈、一个字都不画（缺的字会画成方块）；回来之后下一帧起正文照画，那一栏的字体裁决接着走（装了没复核 → 复核过）。
+#[test]
+fn the_first_frame_does_not_wait_for_the_system_fonts() {
+    use crate::fonts::{Attempt, FontState};
+    let ui_thread = std::thread::current().id();
+    let (go, gate) = std::sync::mpsc::channel::<()>();
+    let (ran_tx, ran_on) = std::sync::mpsc::channel();
+    let mut d = Drive::new();
+    let mut ws = Workspace::new(pane("/srv/fonts", &["a.txt"]));
+    ws.fonts = Some(crate::fonts::load_with(&d.ctx, move || {
+        let here = std::thread::current().id();
+        let _ = ran_tx.send(here);
+        // 跑在画帧那条线程上就不等闸（等了第一帧本身就卡死）：下面第一句断言照样红。
+        if here != ui_thread {
+            let _ = gate.recv_timeout(guard_core::wall::CEILING);
+        }
+        let none = Attempt::NoneFound { tried: Vec::new() };
+        (egui::FontDefinitions::default(), none)
+    }));
+    let ran = ran_on.recv_timeout(guard_core::wall::CEILING);
+    assert_ne!(ran, Ok(ui_thread), "载入跑在画帧那条线程上");
+    let painted = d.frame(&mut ws, Vec::new());
+    assert!(ws.fonts.is_some(), "载入还没回来，这一帧却已经收下了字体");
+    assert_eq!(painted, Vec::new(), "载入期间画了字");
+
+    go.send(()).unwrap();
+    for () in guard_core::wall::rounds() {
+        d.frame(&mut ws, Vec::new());
+        if ws.fonts.is_none() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(ws.fonts.is_none(), "放行之后到兜底上限还没收下字体");
+    let none = Attempt::NoneFound { tried: Vec::new() };
+    assert_eq!(
+        ws.pane_on(0).font,
+        FontState::Pending(none),
+        "收下之后那一栏不是「装了没复核」"
+    );
+    let painted = d.frame(&mut ws, Vec::new());
+    assert!(
+        painted.iter().any(|(s, _)| s == "a.txt"),
+        "收下字体之后正文没画：{painted:?}"
+    );
+    assert!(
+        matches!(ws.pane_on(0).font, FontState::Checked(_)),
+        "收下之后的那一帧没复核：{:?}",
+        ws.pane_on(0).font
+    );
 }

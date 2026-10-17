@@ -111,7 +111,8 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 # 修改时间按本机本地时间画（`MIT OR Apache-2.0`）。已在锁文件里（别的依赖带进来的，`clock` 一支已开），零新包。
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # 主界面字族里的名字 → 这台机器上的那份字体文件（MIT）。
-fontdb = { version = "0.23", default-features = false, features = ["std", "fs"] }
+# `memmap`：扫字体时只读到各份的表头那几页（不开就把每份整个读进来，系统字体合计常有几百 MB）；memmap2 已在锁文件里。
+fontdb = { version = "0.23", default-features = false, features = ["std", "fs", "memmap"] }
 
 [target.'cfg(not(windows))'.dependencies]
 eframe = { version = "0.36", default-features = false, features = ["glow"] }

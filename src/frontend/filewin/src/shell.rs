@@ -5342,10 +5342,10 @@ pub fn open_detached_seeded(
                 if let Some(t) = &theme {
                     super::theme::install(&cc.egui_ctx, t);
                 }
-                // 第一拍：读文件 ＋ `set_fonts`。**这里复核不了**（`fonts.rs §四`）。
-                w.font = FontState::Pending(fonts::install(&cc.egui_ctx, theme.as_ref()));
                 // 最外一层是 `Workspace`（标签页 ＋ 双栏 ＋ 预览），开窗那一个目录视图是它的第一个标签页。
                 let mut ws = super::workspace::Workspace::new(w);
+                // 第一拍：系统字体在另一条线程上载入，第一帧不等它（`fonts.rs §四`）。
+                ws.fonts = Some(fonts::load(&cc.egui_ctx, theme.clone()));
                 ws.theme = theme;
                 // 上次的缩放（主界面的字号随样子交过来，这里在它之上整体缩放）· 预览开没开。
                 ws.restore_view(super::workspace::ViewMemo::open(view));
