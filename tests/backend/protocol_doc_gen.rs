@@ -936,9 +936,10 @@ fn oneshot_types(out: &mut String) {
             "`history-list` 每行与全文搜索每行的「这一行能做什么」",
         ),
         (
-            "observe/history_query.rs",
+            "observe/recognize/index_row.rs",
             "骨架索引的一行（`history-index` 的 `rows` 装运之前）",
         ),
+        ("observe/query/locate.rs", "`history-record` 的出参"),
     ] {
         let src = read(rel);
         let _ = writeln!(out, "### {what}\n");

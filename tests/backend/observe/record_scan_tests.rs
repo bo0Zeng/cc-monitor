@@ -6,6 +6,7 @@
 //! | R2 | 同一份没变 ⇒ 第二次拿到的就是第一次那张（同一个 `Arc`）；追加一行 / 改了修改时刻 ⇒ 重扫、读到新内容 | 真文件 |
 //! | R3 | 条数上限：超了先淘汰最久没用的；单张比字节上限还大 ⇒ 不留（每次现扫） | 真文件 |
 //! | R4 | 几个线程同时冷开同一份 ⇒ 只扫一遍（都拿到同一张） | 真文件、8 线程 |
+//! | R10 | 图被挤掉 / 太大不留 ⇒ 留下事实尾巴；再问事实只读追加的那一截，答案同从 0 扫 | 真文件 |
 
 use super::*;
 use std::io::Write as _;
@@ -75,14 +76,14 @@ fn fixture(turns: usize) -> String {
 fn each_on_its_own(bytes: &[u8]) -> (Vec<String>, Vec<String>, Vec<String>, u64) {
     let kind = crate::agents::record_tree_kind().unwrap_or_default();
     let (mut index, mut inputs, mut turns) = (Vec::new(), Vec::new(), Vec::new());
-    let mut scan = crate::observe::turns::TurnScan::default();
+    let mut scan = crate::observe::recognize::turns::TurnScan::default();
     let mut lines = crate::observe::lines::Lines::new(bytes, 0);
     while let Some(row) = lines.next().unwrap() {
         let body = row.body();
         if crate::observe::lines::counts(body) {
-            let r = crate::observe::history_query::index_row_of(
+            let r = crate::observe::recognize::index_row::index_row(
                 kind,
-                crate::observe::lines::parse(body).as_ref(),
+                body,
                 row.at,
                 row.whole.len() as u64,
             );
@@ -91,11 +92,18 @@ fn each_on_its_own(bytes: &[u8]) -> (Vec<String>, Vec<String>, Vec<String>, u64)
         let Some(v) = crate::observe::lines::parse(body) else {
             continue;
         };
-        if let Some(mut r) = crate::observe::user_inputs::user_input_of(&v) {
+        if let Some(mut r) = crate::observe::recognize::user_inputs::user_input_of(
+            crate::agents::record_tree_kind().unwrap_or_default(),
+            &v,
+        ) {
             r.at = row.at;
             inputs.push(serde_json::to_string(&r).unwrap());
         }
-        if let Some(t) = scan.line(row.at, &v) {
+        let kind = crate::agents::record_tree_kind().unwrap_or_default();
+        let Some(beat) = crate::agents::beat_of(kind, &v) else {
+            continue;
+        };
+        if let Some(t) = scan.line(row.at, kind, &v, &beat) {
             turns.push(serde_json::to_string(&t).unwrap());
         }
     }
@@ -139,22 +147,23 @@ fn r1_one_pass_equals_each_scan_on_its_own() {
         .collect();
     assert_eq!(got_turns, want_turns, "轮次");
 
-    let limits = crate::observe::facts_query::ContextLimits::default();
-    let want_facts = crate::observe::facts_query::scan_facts(
-        bytes,
-        crate::observe::facts_query::SessionFacts::default(),
-        &limits,
-        None,
-    )
-    .unwrap();
-    assert_eq!(map.facts(&limits, None), want_facts, "事实");
+    let mut want_facts = crate::observe::recognize::facts::SessionFacts::default();
+    let mut lines = crate::observe::lines::Lines::new(bytes, 0);
+    while let Some(row) = lines.next().unwrap() {
+        crate::observe::recognize::facts::note_line(
+            &mut want_facts,
+            crate::agents::record_tree_kind().unwrap_or_default(),
+            row.body(),
+        );
+    }
+    assert_eq!(map.facts, want_facts, "事实");
     assert!(
         want_facts.forked_from.is_some() && want_facts.usage.is_some(),
         "夹具该带分叉与用量"
     );
 
     for n in [0usize, 1, 2, 5, 1000] {
-        let want = crate::observe::history_query::tail_plan_of(bytes, n).unwrap();
+        let want = crate::observe::query::tail::tail_plan_of(bytes, n).unwrap();
         assert_eq!(map.tail(n), want, "尾段 n={n}");
     }
 }
@@ -282,7 +291,6 @@ fn r5_retracted_lines_are_listed_and_left_out_of_inputs_and_turns() {
 
 /// 一张图的全部样子（线上那几样 ＋ 线上不带、续扫要用的那几格），比「接着扫的」与「整份扫的」用。
 fn whole(map: &ScanMap) -> String {
-    let limits = crate::observe::facts_query::ContextLimits::default();
     let rows = |v: &[TurnRow]| -> Vec<String> {
         v.iter()
             .map(|r| {
@@ -304,12 +312,12 @@ fn whole(map: &ScanMap) -> String {
         serde_json::to_string(&map.inputs).unwrap(),
         rows(&map.turns),
         map.off,
-        map.facts(&limits, None),
+        map.facts,
         map.tail(3),
     )
 }
 
-/// 带分叉、带一轮没收尾的合成记录（结构性的假行）。
+/// 带分叉、带一轮没收尾的合成记录（结构性的假行）；同一次请求写出的两条回复隔着一条工具结果（同一请求替掉前一条要的那一格，线上不带、骨架落它）。
 fn branched(turns: usize) -> String {
     let mut s = fixture(turns);
     s.truncate(s.rfind('\n').unwrap() + 1); // 去掉残尾
@@ -317,11 +325,11 @@ fn branched(turns: usize) -> String {
     s.push('\n');
     s.push_str(r#"{"type":"user","uuid":"b2","parentUuid":"e0","timestamp":"2026-10-01T01:00:05.000Z","message":{"role":"user","content":"回退后这句"}}"#);
     s.push('\n');
-    s.push_str(r#"{"type":"assistant","uuid":"b25","parentUuid":"b2","timestamp":"2026-10-01T01:00:05.500Z","message":{"model":"m-x","content":[{"type":"thinking","thinking":"想"},{"type":"tool_use","id":"tq","name":"Bash","input":{"command":"pwd"}}]}}"#);
+    s.push_str(r#"{"type":"assistant","uuid":"b25","parentUuid":"b2","requestId":"rq","timestamp":"2026-10-01T01:00:05.500Z","message":{"model":"m-x","content":[{"type":"thinking","thinking":"想"},{"type":"tool_use","id":"tq","name":"Bash","input":{"command":"pwd"}}],"usage":{"input_tokens":7,"output_tokens":1}}}"#);
     s.push('\n');
     s.push_str(r#"{"type":"user","uuid":"b26","parentUuid":"b25","timestamp":"2026-10-01T01:00:05.700Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tq","content":"/w"}]}}"#);
     s.push('\n');
-    s.push_str(r#"{"type":"assistant","uuid":"b3","parentUuid":"b26","timestamp":"2026-10-01T01:00:06.000Z","message":{"model":"m-x","content":[{"type":"text","text":"还在跑"},{"type":"tool_use","id":"tb","name":"Bash","input":{"command":"ls"}}]}}"#);
+    s.push_str(r#"{"type":"assistant","uuid":"b3","parentUuid":"b26","requestId":"rq","timestamp":"2026-10-01T01:00:06.000Z","message":{"model":"m-x","content":[{"type":"text","text":"还在跑"},{"type":"tool_use","id":"tb","name":"Bash","input":{"command":"ls"}}],"usage":{"input_tokens":7,"output_tokens":3}}}"#);
     s.push('\n');
     s.push_str(r#"{"type":"user","uuid":"b4","parentUuid":"b3","timestamp":"2026-10-01T01:01:00.000Z","message":{"role":"user","content":"下一句"}}"#);
     s.push('\n');
@@ -539,5 +547,75 @@ fn r9_a_continuation_extends_the_held_map_by_the_appended_bytes_only() {
     )
     .unwrap();
     assert_eq!(whole(&m), whole(&fresh), "接着扫的跟整份扫的不一样");
+    std::fs::remove_dir_all(&d).ok();
+}
+
+/// R10（事实尾巴）：扫描图被挤掉（条数上限）· 单张比字节上限还大不留 ⇒ 按路径留下事实尾巴；之后记录追加了一截，
+/// 再问事实只读追加的那一截 ＋ 见证，答案与此刻从 0 扫的那一份逐格相同（同一请求替掉前一条那一格也接得上）。
+/// 尾巴对不上（截断重写）⇒ 整份重扫，答的是新内容。
+#[test]
+fn r10_an_evicted_map_leaves_a_facts_tail_that_reads_only_the_appended_bytes() {
+    let d = sandbox("r10");
+    let probe = crate::observe::skeleton::WITNESS;
+    let limits = crate::observe::recognize::facts::ContextLimits::default();
+    let cold = |p: &std::path::Path| {
+        let all = std::fs::read(p).unwrap();
+        let mut f = ScanMap::scan_with(
+            &all[..],
+            all.len() as u64,
+            crate::agents::record_tree_kind().unwrap_or_default(),
+            None,
+        )
+        .unwrap()
+        .facts;
+        crate::observe::recognize::facts::settle_limit(&mut f, &limits, None);
+        f
+    };
+    let half = |t: &str| {
+        t[..t
+            .find("\"uuid\":\"b3\"")
+            .and_then(|i| t[..i].rfind('\n'))
+            .unwrap()
+            + 1]
+            .to_string()
+    };
+    let rest = |t: &str| t[half(t).len()..].to_string();
+    let text = branched(3);
+    let (a, b) = (d.join("a.jsonl"), d.join("b.jsonl"));
+    std::fs::write(&a, half(&text)).unwrap();
+    std::fs::write(&b, fixture(1)).unwrap();
+
+    // 条数上限 1：问 b 挤掉 a 的图。
+    let scans = RecordScans::new(1, 64 << 20);
+    scans.get(&a).unwrap();
+    scans.get(&b).unwrap();
+    append(&a, &rest(&text));
+    let before = scans.bytes_read();
+    let got = scans.facts(&a, &limits, None).unwrap();
+    assert_eq!(
+        scans.bytes_read() - before,
+        rest(&text).len() as u64 + probe,
+        "图被挤掉后再问事实，没有只读追加的那一截"
+    );
+    assert_eq!(got, cold(&a), "接着尾巴算的跟从 0 扫的不一样");
+    assert_eq!(
+        got.tokens.as_ref().map(|t| t.requests),
+        Some(4),
+        "同一请求的两条算成了两次"
+    );
+
+    // 单张比字节上限还大 ⇒ 不留图、留尾巴。
+    let tiny = RecordScans::new(4, 1);
+    std::fs::write(&b, branched(2)).unwrap();
+    tiny.facts(&b, &limits, None).unwrap();
+    let more = "{\"type\":\"user\",\"uuid\":\"z\",\"message\":{\"role\":\"user\",\"content\":\"再一句\"}}\n";
+    append(&b, more);
+    let before = tiny.bytes_read();
+    assert_eq!(tiny.facts(&b, &limits, None).unwrap(), cold(&b));
+    assert_eq!(tiny.bytes_read() - before, more.len() as u64 + probe);
+
+    // 截断重写（比尾巴的游标还短）⇒ 整份重扫。
+    std::fs::write(&b, more).unwrap();
+    assert_eq!(tiny.facts(&b, &limits, None).unwrap(), cold(&b));
     std::fs::remove_dir_all(&d).ok();
 }

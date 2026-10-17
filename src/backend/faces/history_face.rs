@@ -2,11 +2,19 @@
 //! 按行号（`history-lines`）· 一个子运行（`history-run`）· 尾段在哪（`history-tail`）· 主线外（`history-branch`）·
 //! 记录还在不在（`history-record`）· 这台上需手动的会话（`sessions-needs`）· 会话事实（`history-facts`）· 骨架索引等几条扫描。
 //!
-//! 查询本体住 `observe/`（`history_query` · `record_page`），这里只有线上那三个类型和接线；家目录是参数（判据拿夹具喂 `*_at`）。
+//! 查询本体住 `observe/query/`，这里只有线上那三个类型和接线；家目录是参数（判据拿夹具喂 `*_at`）。
 //! 入方向不许出现 `observe::` 的那条线照旧：本文件住 `faces/`，与 `read_face` 同一层。
 
-use crate::observe::history_query::{self, RecordProbe, TailPlan};
-use crate::observe::record_page::{RecordLine, RunRow};
+use crate::observe::query::body::{RecordLine, RunRow};
+use crate::observe::query::branch::{branch_page, Branch, BranchReq};
+use crate::observe::query::index::{index_page, HistoryIndex, HistoryIndexReq};
+use crate::observe::query::inputs::{user_inputs_page, UserInputs, UserInputsReq};
+use crate::observe::query::locate::{self, RecordProbe};
+use crate::observe::query::tail::TailPlan;
+use crate::observe::query::turns::{HistoryTurns, HistoryTurnsReq};
+#[cfg(test)]
+use crate::observe::query::ENVELOPE_BYTES;
+use crate::observe::query::{body, tail};
 use crate::wire::typed::{codes, of_pair, Command, NoArgs};
 pub(crate) use cmd_wire::needs::{AnsweredRow, NeedsList};
 /// 这两条的回包住 `cmd-wire`（手机按同一份解，记录那一格按完整记录）；后端写的那一份记录是原样的一团（缺省 `Value`）。
@@ -108,7 +116,7 @@ pub(crate) fn read_at(
     let lower = of_pair(HistoryReadErr::Failed);
     let offset = req.offset.unwrap_or(0);
     let (target, face) = record_face(home, &req.path).map_err(&lower)?;
-    let page = history_query::read_page(
+    let page = body::read_page(
         home,
         &req.path,
         offset,
@@ -118,7 +126,7 @@ pub(crate) fn read_at(
     )
     .map_err(&lower)?;
     Ok(HistoryRead {
-        rows: crate::observe::record_page::rows_of(
+        rows: crate::observe::query::body::rows_of(
             &mut reader(&face, &target, offset, tz),
             offset,
             &page.bytes,
@@ -210,7 +218,7 @@ pub(crate) fn page_at(
     let lower = of_pair(HistoryPageErr::Failed);
     let offset = req.offset.unwrap_or(0);
     let (target, face) = record_face(home, &req.path).map_err(&lower)?;
-    let page = history_query::read_page(
+    let page = body::read_page(
         home,
         &req.path,
         offset,
@@ -219,7 +227,7 @@ pub(crate) fn page_at(
         LINE_CAP_BYTES,
     )
     .map_err(&lower)?;
-    let (lines, next_seq) = crate::observe::record_page::record_lines_of_page(
+    let (lines, next_seq) = crate::observe::query::body::record_lines_of_page(
         &mut reader(&face, &target, offset, tz),
         &target,
         req.seq.unwrap_or(0),
@@ -293,7 +301,7 @@ pub(crate) fn lines_at(
 ) -> Result<HistoryLines, HistoryLinesErr> {
     let lower = of_pair(HistoryLinesErr::Failed);
     let (target, face) = record_face(home, &req.path).map_err(&lower)?;
-    let page = history_query::read_lines(
+    let page = body::read_lines(
         home,
         &req.path,
         req.from.unwrap_or(0),
@@ -303,7 +311,7 @@ pub(crate) fn lines_at(
     )
     .map_err(&lower)?;
     let first = page.starts.first().copied().unwrap_or(0);
-    let (lines, _) = crate::observe::record_page::record_lines(
+    let (lines, _) = crate::observe::query::body::record_lines(
         &mut reader(&face, &target, first, tz),
         &target,
         page.from,
@@ -414,13 +422,13 @@ pub(crate) fn run_at(
     let lower = of_pair(HistoryRunErr::Failed);
     let from = req.from.unwrap_or(0);
     let (source, run) =
-        history_query::run_source(home, &req.parent, req.run.as_deref(), req.tool.as_deref())
+        locate::run_source(home, &req.parent, req.run.as_deref(), req.tool.as_deref())
             .map_err(&lower)?;
     let path = source.to_string_lossy().into_owned();
     let (target, face) = record_face(home, &path).map_err(&lower)?;
-    let page = history_query::read_page(home, &path, from, None, READ_PAGE_BYTES, LINE_CAP_BYTES)
+    let page = body::read_page(home, &path, from, None, READ_PAGE_BYTES, LINE_CAP_BYTES)
         .map_err(&lower)?;
-    let rows = crate::observe::record_page::run_rows(
+    let rows = crate::observe::query::body::run_rows(
         &mut reader(&face, &target, from, tz),
         from,
         &page.bytes,
@@ -439,39 +447,6 @@ pub(crate) fn run_at(
 }
 
 // ───────────────────────── history-branch ─────────────────────────
-
-/// `history-branch` 的入参。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct BranchReq {
-    /// jsonl 路径（围栏同 `history-read`）。
-    pub(crate) path: String,
-    /// 从清单第几条起（缺 ⇒ 0；下一页传 `next`）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number | null"))]
-    pub(crate) from: Option<u64>,
-    /// 可选：一页最多几条（一页另有字节上限 `REPLY_PAGE_BYTES`，先到哪个算哪个）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number | null"))]
-    pub(crate) limit: Option<u64>,
-}
-
-/// `history-branch` 的回包。
-#[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Branch {
-    /// 回退掉的那几条记录的 `id`（只含进界面的；文件序），这一页是清单里从 `from` 起的那几条；这一家的记录没有链 ⇒ 恒空。
-    pub(crate) off: Vec<String>,
-    /// 最后一个完整行的末字节（之后的由实时帧 `session_branch` 接着说）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) end: u64,
-    /// 下一页从清单第几条起；没有下一页 ⇒ `null`。
-    #[cfg_attr(test, ts(type = "number | null"))]
-    pub(crate) next: Option<u64>,
-}
 
 codes! {
     /// `history-branch` 的码。
@@ -503,33 +478,7 @@ impl crate::wire::typed::Handle for HistoryBranchCmd {
 
 /// [`HistoryBranchCmd`] 的本体，家目录是参数。
 pub(crate) fn branch_at(home: &Path, req: BranchReq) -> Result<Branch, HistoryBranchErr> {
-    branch_page(home, req, REPLY_PAGE_BYTES)
-}
-
-/// [`branch_at`] 的本体，一页的上限是参数。清单出自扫描图（同一张），按条切页。
-pub(crate) fn branch_page(
-    home: &Path,
-    req: BranchReq,
-    cap: usize,
-) -> Result<Branch, HistoryBranchErr> {
-    let map = history_query::cold_scan(home, &req.path).map_err(HistoryBranchErr::Failed)?;
-    let from = usize::try_from(req.from.unwrap_or(0)).unwrap_or(usize::MAX);
-    let fixed = jlen(&Branch {
-        off: Vec::new(),
-        end: u64::MAX,
-        next: Some(u64::MAX),
-    });
-    let mut pager = Pager::new(cap, fixed, req.limit);
-    let rest = map.off.get(from..).unwrap_or_default();
-    let n = rest
-        .iter()
-        .take_while(|id| pager.admit(jlen(*id) + 1))
-        .count();
-    Ok(Branch {
-        off: rest[..n].to_vec(),
-        end: map.end,
-        next: (n < rest.len()).then(|| (from + n) as u64),
-    })
+    branch_page(home, req, REPLY_PAGE_BYTES).map_err(HistoryBranchErr::Failed)
 }
 
 // ───────────────────────── history-tail ─────────────────────────
@@ -615,14 +564,14 @@ pub(crate) fn tail_at(
 ) -> Result<HistoryTail, HistoryTailErr> {
     let failed = HistoryTailErr::Failed;
     let path = req.path;
-    let tail = history_query::tail_now(home, &path, usize::try_from(req.n).unwrap_or(usize::MAX))
+    let tail = tail::tail_now(home, &path, usize::try_from(req.n).unwrap_or(usize::MAX))
         .map_err(failed)?;
     let plan = tail.plan;
     let mark = |start: u64, end: u64| {
-        history_query::mark_at(home, &path, start, end, LINE_CAP_BYTES).map_err(failed)
+        tail::mark_at(home, &path, start, end, LINE_CAP_BYTES).map_err(failed)
     };
     let how = how_of(req.held.as_ref(), &path, &plan, req.n, |m| {
-        history_query::mark_span(m)
+        tail::mark_span(m)
             .and_then(|(s, e)| mark(s, e).ok().flatten())
             .is_some_and(|now| now == m)
     });
@@ -708,8 +657,7 @@ pub(crate) fn record_at(
     home: &Path,
     req: HistoryRecordReq,
 ) -> Result<RecordProbe, HistoryRecordErr> {
-    history_query::record_for(home, req.config_dir.as_deref(), &req.sid)
-        .map_err(HistoryRecordErr::BadArgs)
+    locate::record_for(home, req.config_dir.as_deref(), &req.sid).map_err(HistoryRecordErr::BadArgs)
 }
 
 // ───────────────────────── sessions-needs ─────────────────────────
@@ -765,13 +713,13 @@ pub(crate) fn needs_with(
             home,
             &crate::control::asks::sids(),
             &|n, sid| {
-                let path = history_query::session_record(home, sid)
+                let path = locate::session_record(home, sid)
                     .ok()
                     .map(|p| p.to_string_lossy().into_owned());
                 let off = path.as_deref().and_then(|path| {
                     answer_off_of(
-                        &history_query::facts_holders(home, path).unwrap_or_default(),
-                        history_query::facts_agent(home, path).as_deref(),
+                        &locate::facts_holders(home, path).unwrap_or_default(),
+                        locate::facts_agent(home, path).as_deref(),
                     )
                 });
                 dress_ask(n, sid, off.as_ref())
@@ -785,7 +733,7 @@ pub(crate) fn needs_with(
         // 这台家里的会话才列（登记表是进程里一份）。
         answered: crate::control::asks::answered_rows()
             .into_iter()
-            .filter(|r| history_query::session_record(home, &r.sid).is_ok())
+            .filter(|r| locate::session_record(home, &r.sid).is_ok())
             .collect(),
     }
 }
@@ -798,7 +746,7 @@ pub(crate) fn needs_with(
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct NeedsMergeReq {
-    pub(crate) machines: Vec<crate::observe::facts_query::NeedsMachine>,
+    pub(crate) machines: Vec<crate::observe::recognize::facts::NeedsMachine>,
 }
 
 codes! {
@@ -812,7 +760,7 @@ pub(crate) struct NeedsMergeCmd;
 impl Command for NeedsMergeCmd {
     const NAME: &'static str = "sessions-needs-merge";
     type Req = NeedsMergeReq;
-    type Reply = crate::observe::facts_query::NeedsMerged;
+    type Reply = crate::observe::recognize::facts::NeedsMerged;
     type Err = NeedsMergeErr;
 }
 
@@ -822,10 +770,10 @@ impl crate::wire::typed::Handle for NeedsMergeCmd {
         req: NeedsMergeReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<
-        Output = Result<crate::observe::facts_query::NeedsMerged, NeedsMergeErr>,
+        Output = Result<crate::observe::recognize::facts::NeedsMerged, NeedsMergeErr>,
     > + Send
            + 'static {
-        std::future::ready(Ok(crate::observe::facts_query::merge_needs(req.machines)))
+        std::future::ready(Ok(crate::observe::recognize::facts::merge_needs(req.machines)))
     }
 }
 
@@ -892,229 +840,7 @@ macro_rules! scan_codes {
     };
 }
 
-// ───────────────────────── 分页（index · user-inputs · turns · branch）─────────────────────────
-
-/// 一条应答那一行里信封那一截的余量（`{"kind":"reply","id":…,"ok":true,"data":` 与收尾；`id` 是客户端起的短号）。
-pub(crate) const ENVELOPE_BYTES: usize = 256;
-
-/// **一页的装法**（四条分页命令共用这一份）：先占住回包里不随条目变的那一截（空回包按最长的续点序列化）＋ 信封，
-/// 再一项一项加它序列化后的字节数（上界）；装不下 · 到了 `limit` 项 ⇒ 停，下一项就是下一页的头。
-/// ⇒ 一条应答一行 ≤ 上限。一页至少装一项：一项单独就比上限大 ⇒ 这一页只有它（不切一项）。
-pub(crate) struct Pager {
-    room: usize,
-    used: usize,
-    limit: usize,
-    taken: usize,
-}
-
-impl Pager {
-    pub(crate) fn new(cap: usize, fixed: usize, limit: Option<u64>) -> Self {
-        Pager {
-            room: cap.saturating_sub(fixed + ENVELOPE_BYTES),
-            used: 0,
-            limit: limit.map_or(usize::MAX, |n| {
-                usize::try_from(n.max(1)).unwrap_or(usize::MAX)
-            }),
-            taken: 0,
-        }
-    }
-
-    /// 这一项（`cost` 字节）装得下 ⇒ 记上、回 `true`；装不下 ⇒ `false`（这一页到此为止）。
-    pub(crate) fn admit(&mut self, cost: usize) -> bool {
-        if self.taken >= self.limit || (self.taken > 0 && self.used + cost > self.room) {
-            return false;
-        }
-        self.used += cost;
-        self.taken += 1;
-        true
-    }
-
-    /// 最后装进去的那一项换了个样子（还没收尾那一轮按此刻的会话事实补了字）：照新的字节数改账；超了 ⇒ `false`（调用方把它挪到下一页）。
-    fn redo_last(&mut self, old: usize, new: usize) -> bool {
-        self.used = self.used - old + new;
-        self.taken <= 1 || self.used <= self.room
-    }
-}
-
-/// 一个值序列化后几个字节。
-fn jlen<T: serde::Serialize + ?Sized>(v: &T) -> usize {
-    serde_json::to_vec(v).map_or(0, |b| b.len())
-}
-
-/// 一个数写成十进制几个字。
-fn digits(n: u64) -> usize {
-    n.checked_ilog10().map_or(1, |d| d as usize + 1)
-}
-
 // ───────────────────────── history-index ─────────────────────────
-
-/// `history-index` 的入参。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct HistoryIndexReq {
-    /// jsonl 路径（围栏同 `history-read`）。
-    pub(crate) path: String,
-    /// 从哪个字节起（缺 ⇒ 0；续传带上次的 `end`）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number | null"))]
-    pub(crate) offset: Option<u64>,
-    /// 可选：只收起点 `< until` 的行。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number | null"))]
-    pub(crate) until: Option<u64>,
-    /// 可选：一页最多几行（一页另有字节上限 `REPLY_PAGE_BYTES`，先到哪个算哪个）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number | null"))]
-    pub(crate) limit: Option<u64>,
-}
-
-/// 一张稀疏小表的行号列：每项与上一项的行号差（第一项与 −1 比；连着 ＝ 0）。
-fn gap(last: &mut i64, i: usize) -> u64 {
-    let i = i as i64;
-    let d = (i - *last - 1) as u64;
-    *last = i;
-    d
-}
-
-/// 骨架索引的正文那五个数（五个全 0 的行不进表）。
-#[derive(Debug, Default, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct IndexBody {
-    /// 行号差。
-    #[cfg_attr(test, ts(type = "Array<number>"))]
-    pub(crate) at: Vec<u64>,
-    pub(crate) ch: Vec<u32>,
-    pub(crate) cj: Vec<u32>,
-    pub(crate) pl: Vec<u32>,
-    pub(crate) cb: Vec<u32>,
-    pub(crate) cl: Vec<u32>,
-}
-
-/// 骨架索引的来源那一列（只有带来源的行）。
-#[derive(Debug, Default, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct IndexSpeaker {
-    /// 行号差。
-    #[cfg_attr(test, ts(type = "Array<number>"))]
-    pub(crate) at: Vec<u64>,
-    pub(crate) v: Vec<String>,
-}
-
-/// 骨架索引里用户输入的摘要与时刻（没有时刻 ⇒ 空串）。
-#[derive(Debug, Default, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct IndexInputs {
-    /// 行号差。
-    #[cfg_attr(test, ts(type = "Array<number>"))]
-    pub(crate) at: Vec<u64>,
-    pub(crate) x: Vec<String>,
-    pub(crate) ts: Vec<String>,
-}
-
-/// **骨架索引按列排**（17 MB 的会话一份索引六千多行，逐行对象里键名占一大半）：
-///
-/// - 每行都有的几格各一列：`o`（与上一行末尾的字节差，第一行与 `from` 比；连着 ＝ 0）· `n` · `t`（`classes` 里的号，
-///   从 1 起，0 ＝ 不进界面）· `fd`（0 ＝ 没有）· `u`（没有 ⇒ `null`）。
-/// - 稀疏的几格各一张小表（`body` · `sp` · `inputs`），`at` 是与上一项的行号差。
-/// - `sc` 不上帧面（CLI 那一臂照旧逐行出 [`crate::observe::history_query::IndexRow`]）。
-///
-/// 界面读法只在 `session-reads.ts::unpackIndex` 一处（装回逐行，下游照旧），跨语言金样钉两侧。
-#[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct HistoryIndex {
-    /// 起点字节。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) from: u64,
-    /// 这一页最后一行的末字节 ＝ 下一次续传该带的 `offset`（最后一页 ⇒ 最后一个完整行的末字节）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) end: u64,
-    /// 下一页从哪个字节起（＝ 下一页第一行的起点）；没有下一页 ⇒ `null`。
-    #[cfg_attr(test, ts(type = "number | null"))]
-    pub(crate) next: Option<u64>,
-    /// 行数（每一列都这么长）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) count: usize,
-    /// 本份里出现过的记录类（`t` 列的号从 1 起指它）。
-    pub(crate) classes: Vec<crate::agents::record::RecordClass>,
-    #[cfg_attr(test, ts(type = "Array<number>"))]
-    pub(crate) o: Vec<u64>,
-    #[cfg_attr(test, ts(type = "Array<number>"))]
-    pub(crate) n: Vec<u64>,
-    #[cfg_attr(test, ts(type = "Array<number>"))]
-    pub(crate) t: Vec<usize>,
-    pub(crate) fd: Vec<u32>,
-    pub(crate) u: Vec<Option<String>>,
-    pub(crate) body: IndexBody,
-    pub(crate) sp: IndexSpeaker,
-    pub(crate) inputs: IndexInputs,
-}
-
-/// 逐行的骨架 ⇒ 按列排的那一份（见 [`HistoryIndex`]）。
-pub(crate) fn pack_index(
-    from: u64,
-    end: u64,
-    rows: &[crate::observe::history_query::IndexRow],
-) -> HistoryIndex {
-    let mut ix = HistoryIndex {
-        from,
-        end,
-        next: None,
-        count: rows.len(),
-        classes: Vec::new(),
-        o: Vec::new(),
-        n: Vec::new(),
-        t: Vec::new(),
-        fd: Vec::new(),
-        u: Vec::new(),
-        body: IndexBody::default(),
-        sp: IndexSpeaker::default(),
-        inputs: IndexInputs::default(),
-    };
-    let (mut lb, mut ls, mut li) = (-1i64, -1i64, -1i64);
-    let mut prev_end = from;
-    for (i, r) in rows.iter().enumerate() {
-        ix.o.push(r.o.saturating_sub(prev_end));
-        ix.n.push(r.n);
-        prev_end = r.o + r.n;
-        ix.t.push(match r.t {
-            Some(c) => {
-                let k = ix.classes.iter().position(|x| *x == c).unwrap_or_else(|| {
-                    ix.classes.push(c);
-                    ix.classes.len() - 1
-                });
-                k + 1
-            }
-            None => 0,
-        });
-        ix.fd.push(r.fd);
-        ix.u.push(r.u.clone());
-        if [r.ch, r.cj, r.pl, r.cb, r.cl].iter().any(|n| *n != 0) {
-            let b = &mut ix.body;
-            b.at.push(gap(&mut lb, i));
-            b.ch.push(r.ch);
-            b.cj.push(r.cj);
-            b.pl.push(r.pl);
-            b.cb.push(r.cb);
-            b.cl.push(r.cl);
-        }
-        if let Some(v) = r.sp {
-            ix.sp.at.push(gap(&mut ls, i));
-            ix.sp.v.push(v.to_string());
-        }
-        if let Some(x) = &r.x {
-            ix.inputs.at.push(gap(&mut li, i));
-            ix.inputs.x.push(x.clone());
-            ix.inputs.ts.push(r.ts.clone().unwrap_or_default());
-        }
-    }
-    ix
-}
 
 scan_codes!(
     /// `history-index` 的码。
@@ -1144,109 +870,10 @@ impl crate::wire::typed::Handle for HistoryIndexCmd {
 
 /// [`HistoryIndexCmd`] 的本体，家目录是参数。
 pub(crate) fn index_at(home: &Path, req: HistoryIndexReq) -> Result<HistoryIndex, HistoryIndexErr> {
-    index_page(home, req, REPLY_PAGE_BYTES)
-}
-
-/// 一行骨架索引在按列排的那一份里至多占几个字节（`i` ＝ 它在这一页里排第几；行号差 ≤ `i`，偏移差 ≤ 偏移本身）。
-/// 记录类第一次出现那一行另算它在 `classes` 里那一项。
-fn index_row_cost(
-    r: &crate::observe::history_query::IndexRow,
-    i: usize,
-    seen: &mut Vec<crate::agents::record::RecordClass>,
-) -> usize {
-    let at = digits(i as u64) + 1;
-    let mut n = digits(r.o) + digits(r.n) + digits(r.fd.into()) + jlen(&r.u) + 3 + 5;
-    n += match r.t {
-        Some(c) if !seen.contains(&c) => {
-            seen.push(c);
-            jlen(&c) + 1 + digits(seen.len() as u64)
-        }
-        Some(_) => digits(seen.len() as u64),
-        None => 1,
-    };
-    let body = [r.ch, r.cj, r.pl, r.cb, r.cl];
-    if body.iter().any(|v| *v != 0) {
-        n += at + body.iter().map(|v| digits((*v).into()) + 1).sum::<usize>();
-    }
-    if let Some(v) = r.sp {
-        n += at + jlen(v) + 1;
-    }
-    if let Some(x) = &r.x {
-        n += at + jlen(x) + 1 + jlen(r.ts.as_deref().unwrap_or("")) + 1;
-    }
-    n
-}
-
-/// [`index_at`] 的本体，一页的上限是参数（判据拿小上限喂）。
-///
-/// 行从哪来：一律从那一份的扫描图上切（从 0 起 · 从中间续都一样；图不在了照骨架起步或重扫，见 [`history_query::scan_from`]）。
-pub(crate) fn index_page(
-    home: &Path,
-    req: HistoryIndexReq,
-    cap: usize,
-) -> Result<HistoryIndex, HistoryIndexErr> {
-    let offset = req.offset.unwrap_or(0);
-    let fixed = jlen(&pack_index(u64::MAX, u64::MAX, &[])) + digits(u64::MAX);
-    let mut pager = Pager::new(cap, fixed, req.limit);
-    let mut seen = Vec::new();
-    let mut rows: Vec<crate::observe::history_query::IndexRow> = Vec::new();
-    let mut next = None;
-    let map = history_query::scan_from(home, &req.path, offset).map_err(HistoryIndexErr::Failed)?;
-    let start = map.index.partition_point(|r| r.o < offset);
-    // `until`：只收起点在它之前的行；末端是界外第一行的起点（没有 ⇒ 扫到的末端）。
-    let stop = req
-        .until
-        .map_or(map.index.len(), |u| map.index.partition_point(|r| r.o < u));
-    let end = map.index.get(stop).map_or(map.end, |r| r.o);
-    for r in &map.index[start..stop.max(start)] {
-        if !pager.admit(index_row_cost(r, rows.len(), &mut seen)) {
-            next = Some(r.o);
-            break;
-        }
-        rows.push(r.clone());
-    }
-    let mut ix = pack_index(offset, next.unwrap_or(end), &rows);
-    ix.next = next;
-    Ok(ix)
+    index_page(home, req, REPLY_PAGE_BYTES).map_err(HistoryIndexErr::Failed)
 }
 
 // ───────────────────────── history-user-inputs ─────────────────────────
-
-/// `history-user-inputs` 的入参。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct UserInputsReq {
-    /// jsonl 路径（围栏同 `history-read`）。
-    pub(crate) path: String,
-    /// 起点（缺 ⇒ 0；增量传上次的 `end`，下一页传 `next`）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number | null"))]
-    pub(crate) from: Option<u64>,
-    /// 可选：一页最多几条（一页另有字节上限 `REPLY_PAGE_BYTES`，先到哪个算哪个）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number | null"))]
-    pub(crate) limit: Option<u64>,
-}
-
-/// `history-user-inputs` 的回包：「人说过的话」清单。
-#[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct UserInputs {
-    /// 这份清单从哪个字节起（＝ 请求的 `from`）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) from: u64,
-    /// 这一页管到哪个字节 ＝ 下一次增量该带的 `from`（最后一页 ⇒ 最后一个完整行的末字节）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) end: u64,
-    /// 下一页从哪个字节起（＝ 下一页第一条那一行的起点）；没有下一页 ⇒ `null`。
-    #[cfg_attr(test, ts(type = "number | null"))]
-    pub(crate) next: Option<u64>,
-    /// 每条用户输入，对话序。
-    pub(crate) entries: Vec<crate::observe::user_inputs::UserInputRow>,
-}
 
 scan_codes!(
     /// `history-user-inputs` 的码。
@@ -1275,80 +902,10 @@ impl crate::wire::typed::Handle for UserInputsCmd {
 
 /// [`UserInputsCmd`] 的本体，家目录是参数。
 pub(crate) fn user_inputs_at(home: &Path, req: UserInputsReq) -> Result<UserInputs, UserInputsErr> {
-    user_inputs_page(home, req, REPLY_PAGE_BYTES)
-}
-
-/// [`user_inputs_at`] 的本体，一页的上限是参数。来源同 [`index_page`]：一律从扫描图上切。
-pub(crate) fn user_inputs_page(
-    home: &Path,
-    req: UserInputsReq,
-    cap: usize,
-) -> Result<UserInputs, UserInputsErr> {
-    let from = req.from.unwrap_or(0);
-    let fixed = jlen(&UserInputs {
-        from: u64::MAX,
-        end: u64::MAX,
-        next: Some(u64::MAX),
-        entries: Vec::new(),
-    });
-    let mut pager = Pager::new(cap, fixed, req.limit);
-    let mut rows = Vec::new();
-    let mut next = None;
-    let map = history_query::scan_from(home, &req.path, from).map_err(UserInputsErr::Failed)?;
-    let start = map.inputs.partition_point(|r| r.at < from);
-    for r in &map.inputs[start..] {
-        if !pager.admit(jlen(r) + 1) {
-            next = Some(r.at);
-            break;
-        }
-        rows.push(r.clone());
-    }
-    let end = map.end;
-    Ok(UserInputs {
-        from,
-        end: next.unwrap_or(end),
-        next,
-        entries: rows,
-    })
+    user_inputs_page(home, req, REPLY_PAGE_BYTES).map_err(UserInputsErr::Failed)
 }
 
 // ───────────────────────── history-turns ─────────────────────────
-
-/// `history-turns` 的入参。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct HistoryTurnsReq {
-    /// jsonl 路径（围栏同 `history-read`）。
-    pub(crate) path: String,
-    /// 从这个字节起扫（缺 ⇒ 0；续取传还在跑的那一轮的 `at`）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number | null"))]
-    pub(crate) from: Option<u64>,
-    /// 可选：一页最多几轮（一页另有字节上限 `REPLY_PAGE_BYTES`，先到哪个算哪个）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number | null"))]
-    pub(crate) limit: Option<u64>,
-}
-
-/// `history-turns` 的回包。
-#[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct HistoryTurns {
-    /// 起点字节（＝ 请求的 `from`）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) from: u64,
-    /// 这一页管到哪个字节（有下一页 ⇒ ＝ `next`；最后一页 ⇒ 最后一个完整行的末字节，残尾不计）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) end: u64,
-    /// 下一页从哪个字节起（＝ 下一页第一轮的 `at`）；没有下一页 ⇒ `null`。
-    #[cfg_attr(test, ts(type = "number | null"))]
-    pub(crate) next: Option<u64>,
-    /// 这一段里的每一轮，文件序；`startText` · `endText` 是看的那一台钟上的 `HH:MM`（界面照抄；解不出 ⇒ 空串）。
-    pub(crate) turns: Vec<crate::observe::turns::TurnRow>,
-}
 
 scan_codes!(
     /// `history-turns` 的码。
@@ -1390,82 +947,43 @@ pub(crate) fn turns_at(
     turns_page(home, req, tz, REPLY_PAGE_BYTES)
 }
 
-/// [`turns_at`] 的本体，一页的上限是参数。来源同 [`index_page`]。每一轮先按看的那一台的钟写好再算字节；
-/// 还没收尾的最后一轮只在最后一页、按这台此刻的会话事实拼进过程行（拼完超了这一页 ⇒ 挪到下一页）。
+/// [`turns_at`] 的本体，一页的上限是参数：从扫描图上切（[`crate::observe::query::turns::turns_page`]），
+/// 还没收尾的最后一轮按这台此刻的会话事实拼进过程行（判定同 `history-facts`）；整份过上限 ⇒ `too_large`。
 pub(crate) fn turns_page(
     home: &Path,
     req: HistoryTurnsReq,
     tz: &crate::Tz,
     cap: usize,
 ) -> Result<HistoryTurns, HistoryTurnsErr> {
-    let path = req.path.as_str();
-    let from = req.from.unwrap_or(0);
-    let fixed = jlen(&HistoryTurns {
-        from: u64::MAX,
-        end: u64::MAX,
-        next: Some(u64::MAX),
-        turns: Vec::new(),
-    });
-    let mut pager = Pager::new(cap, fixed, req.limit);
-    let mut turns: Vec<crate::observe::turns::TurnRow> = Vec::new();
-    let mut costs: Vec<usize> = Vec::new();
-    let mut next = None;
-    let mut take = |row: &crate::observe::turns::TurnRow, next: &mut Option<u64>| -> bool {
-        let mut t = row.clone();
-        t.stamp(tz);
-        let c = jlen(&t) + 1;
-        if !pager.admit(c) {
-            *next = Some(t.at);
-            return false;
-        }
-        turns.push(t);
-        costs.push(c);
-        true
-    };
-    let map = history_query::scan_from(home, path, from).map_err(HistoryTurnsErr::Failed)?;
-    let start = map.turns.partition_point(|t| t.at < from);
-    for t in &map.turns[start..] {
-        if !take(t, &mut next) {
-            break;
-        }
-    }
-    let end = map.end;
-    drop(take);
-    // 还没收尾的最后一轮（只会在最后一页）：「现在在做哪一步 / 在等什么」按这台此刻的会话事实拼进过程行（判定同 `history-facts`）。
-    if next.is_none() {
-        if let Some(last) = turns.last_mut().filter(|t| !t.done) {
-            let sid = Path::new(path)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("");
-            let holders = history_query::facts_holders(home, path).unwrap_or_default();
-            let off = answer_off_of(&holders, history_query::facts_agent(home, path).as_deref());
-            let needs = dress_ask(
-                crate::observe::facts_query::needs_of(
-                    &last.pending,
-                    crate::observe::accounts_query::session_wait(home, sid).as_ref(),
-                ),
-                sid,
-                off.as_ref(),
-            );
-            let live = !holders.is_empty();
-            crate::observe::turns::dress_live(last, needs.as_ref(), live);
-            let old = costs.last().copied().unwrap_or(0);
-            if !pager.redo_last(old, jlen(&*last) + 1) {
-                next = turns.pop().map(|t| t.at);
-            }
-        }
-    }
-    let reply = HistoryTurns {
-        from,
-        end: next.unwrap_or(end),
-        next,
-        turns,
-    };
+    let path = req.path.clone();
+    let reply = crate::observe::query::turns::turns_page(home, req, tz, cap, &|last| {
+        dress_open_turn(home, &path, last)
+    })
+    .map_err(HistoryTurnsErr::Failed)?;
     match over_cap(&reply) {
         Some(said) => Err(HistoryTurnsErr::TooLarge(said)),
         None => Ok(reply),
     }
+}
+
+/// 还没收尾那一轮的「现在在做哪一步 / 在等什么」：此刻谁持着它 · 答题口接没接上 · pidfile 说在等什么。
+fn dress_open_turn(home: &Path, path: &str, last: &mut crate::observe::recognize::turns::TurnRow) {
+    let sid = Path::new(path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+    let holders = locate::facts_holders(home, path).unwrap_or_default();
+    let off = answer_off_of(&holders, locate::facts_agent(home, path).as_deref());
+    let needs = dress_ask(
+        crate::observe::recognize::facts::needs_of(
+            crate::agents::record_kind_of(Path::new(path)).unwrap_or_default(),
+            &last.pending,
+            crate::observe::accounts_query::session_wait(home, sid).as_ref(),
+        ),
+        sid,
+        off.as_ref(),
+    );
+    crate::observe::recognize::turns::dress_live(last, needs.as_ref(), !holders.is_empty());
 }
 
 // ───────────────────────── history-find ─────────────────────────
@@ -1557,7 +1075,7 @@ pub(crate) fn find_at(
     };
     let scope = req.scope.map(super::search_face::SearchScope::word);
     let include_tools = req.include_tools.unwrap_or(false);
-    let target = history_query::session_path_at(home, &req.path).map_err(HistoryFindErr::Failed)?;
+    let target = locate::session_path_at(home, &req.path).map_err(HistoryFindErr::Failed)?;
     let mut hits = Capped::default();
     let scanned = match search_query::find_indexed(
         home,
@@ -1570,8 +1088,7 @@ pub(crate) fn find_at(
     ) {
         Some(r) => r,
         None => {
-            let r = history_query::open_session_at(home, &req.path, 0)
-                .map_err(HistoryFindErr::Failed)?;
+            let r = locate::open_session_at(home, &req.path, 0).map_err(HistoryFindErr::Failed)?;
             search_query::scan_session_find(r, &req.query, include_tools, scope, page, |h| {
                 hits.push(&search_query::with_hit_text(h, tz))
             })
@@ -1592,26 +1109,17 @@ pub(crate) fn find_at(
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct HistoryFactsReq {
-    /// jsonl 路径（围栏同 `history-read`）。
+    /// jsonl 路径（围栏同 `history-read`）。接着上一次算由后端按路径留着（`observe::record_scan`），调用方什么都不带。
     pub(crate) path: String,
-    /// 可缺：续传令牌 ＝ 上一次应答里的 `{end, rev}`。缺 / `null` ⇒ 从字节 0 扫；给了 ⇒ 从那台续算表里那一份（[`facts_cache`]）
-    /// 接着扫、累加在它上面；表里没有 ⇒ `stale_prior`（调用方不带令牌从 0 要）。带不带 `view` 都是这两格（投影不去它们）。
-    ///
-    /// [`facts_cache`]: crate::observe::facts_cache
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) prior: Option<crate::observe::facts_cache::FactsToken>,
 }
 
 codes! {
     /// `history-facts` 的码。
     pub(crate) enum HistoryFactsErr {
-        /// 读不动（围栏外 · 打不开 · 续点越过文件尾 / 不在行边界：调用方从 0 重要一份）。
+        /// 读不动（围栏外 · 打不开）。
         Failed = "failed",
         /// 整份回包过上限（不截断）。
         TooLarge = "too_large",
-        /// 续传令牌对不上这台续算表里的任何一份（挤掉了 · 后端重启过 · 一次性进程）：调用方不带令牌从 0 要一份。
-        StalePrior = "stale_prior",
     }
 }
 
@@ -1621,7 +1129,7 @@ pub(crate) struct HistoryFactsCmd;
 impl Command for HistoryFactsCmd {
     const NAME: &'static str = "history-facts";
     type Req = HistoryFactsReq;
-    type Reply = crate::observe::facts_query::SessionFacts;
+    type Reply = crate::observe::recognize::facts::SessionFacts;
     type Err = HistoryFactsErr;
 }
 
@@ -1631,7 +1139,7 @@ impl crate::wire::typed::Handle for HistoryFactsCmd {
         req: HistoryFactsReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<
-        Output = Result<crate::observe::facts_query::SessionFacts, HistoryFactsErr>,
+        Output = Result<crate::observe::recognize::facts::SessionFacts, HistoryFactsErr>,
     > + Send
            + 'static {
         async move {
@@ -1646,19 +1154,10 @@ impl crate::wire::typed::Handle for HistoryFactsCmd {
 pub(crate) fn facts_at(
     home: &Path,
     req: HistoryFactsReq,
-    limits: &crate::observe::facts_query::ContextLimits,
-) -> Result<crate::observe::facts_query::SessionFacts, HistoryFactsErr> {
-    use crate::observe::{accounts_query, facts_cache, facts_query};
+    limits: &crate::observe::recognize::facts::ContextLimits,
+) -> Result<crate::observe::recognize::facts::SessionFacts, HistoryFactsErr> {
+    use crate::observe::{accounts_query, recognize::facts};
     let path = req.path.as_str();
-    let prior = match req.prior {
-        None => None,
-        Some(token) => Some(facts_cache::find(path, token).ok_or_else(|| {
-            HistoryFactsErr::StalePrior(format!(
-                "resume token {}@{} is not in this backend's table",
-                token.rev, token.end
-            ))
-        })?),
-    };
     // 中转看见过这个会话的请求 ⇒ 它带没带扩展上下文那一项（会话 id ＝ 记录文件名，中转的流标签就是它）。
     let sid = Path::new(path)
         .file_stem()
@@ -1667,28 +1166,15 @@ pub(crate) fn facts_at(
     let relay = crate::agents::context_marks()
         .into_iter()
         .find_map(|m| crate::observe::relay_marks::seen(sid, m));
-    let mut facts = match prior {
-        // 冷开（没有续点）⇒ 共用那张扫描图；有续点 ⇒ 从它的 `end` 接着扫、累加在它上面。
-        None => history_query::cold_scan(home, path)
-            .map_err(HistoryFactsErr::Failed)?
-            .facts(limits, relay),
-        Some(prior) => {
-            let r = history_query::open_facts_at(home, path, prior.end)
-                .map_err(HistoryFactsErr::Failed)?;
-            facts_query::scan_facts(r, prior, limits, relay)
-                .map_err(|e| HistoryFactsErr::Failed(format!("stream failed: {e}")))?
-        }
-    };
+    let mut facts = locate::facts(home, path, limits, relay).map_err(HistoryFactsErr::Failed)?;
     if facts.project_dir.is_none() {
-        facts.project_dir = history_query::facts_project_dir(home, path);
+        facts.project_dir = locate::facts_project_dir(home, path);
     }
     if facts.agent.is_none() {
-        facts.agent = history_query::facts_agent(home, path);
+        facts.agent = locate::facts_agent(home, path);
     }
-    // 记进续算表、铸新 rev（项目目录 · 哪一家读到即锁定、跟着进表；下面那几格每次现查，不进表）；从哪一份续来的那一份同时摘掉。
-    facts_cache::keep(path, &mut facts, req.prior.map(|t| t.rev));
     // 此刻谁持着它：判活只问这一处（照那一家声明的方式判；判不了 ⇒ 没有人、且「状态不明」说是判不了）。
-    let holders = history_query::facts_holders(home, path);
+    let holders = locate::facts_holders(home, path);
     facts.writers = holders.clone().unwrap_or_default();
     // 权限档的字：那一家的权限档那一处给（同 `session-permission` 回包的 `modeText`）。
     facts.permission_mode_text = facts
@@ -1704,7 +1190,7 @@ pub(crate) fn facts_at(
         .zip(facts.usage.as_ref().and_then(|u| u.model.as_deref()))
         .and_then(|(kind, model)| crate::agents::model_text(kind, model))
         .map(crate::common::cells::Words);
-    // 需手动：那台 pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类（不累加，`prior` 里那一份不用）。
+    // 需手动：那台 pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类（不累加）。
     // 答题口没接上 ⇒ 那一句（[`answer_off_of`]，每次按持着它的进程现查）；配上挂着的待答请求（`needs.ask`：可以怎么答；
     // 挡着终端的那种 pidfile 不说在等，照它补出一份），没有挂着的 ⇒「只能在终端里答」换成它为什么（[`dress_ask`]）。
     facts.answer_off = answer_off_of(&facts.writers, facts.agent.as_deref());
@@ -1713,22 +1199,23 @@ pub(crate) fn facts_at(
         crate::history::history_annotations::auto_answer_of(sid).map(|a| a.after_min);
     facts.auto_answered = crate::control::asks::answered(sid);
     facts.needs = dress_ask(
-        facts_query::needs_of(
+        facts::needs_of(
+            crate::agents::record_kind_of(Path::new(path)).unwrap_or_default(),
             &facts.pending,
             accounts_query::session_wait(home, sid).as_ref(),
         ),
         sid,
         facts.answer_off.as_ref(),
     );
-    // 后台任务运行中：那台 pidfile 此刻说是这一态 ⇒ 配上记录里还没收场的后台命令写那一句（不累加，`prior` 里那一份不用）。
+    // 后台任务运行中：那台 pidfile 此刻说是这一态 ⇒ 配上记录里还没收场的后台命令写那一句（不累加）。
     facts.background = accounts_query::session_background(home, sid).map(|born| {
         let now = crate::common::time::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
-        facts_query::background_of(&facts.bg_tasks, born, now)
+        facts::background_of(&facts.bg_tasks, born, now)
     });
     // 每一步还没结果时的样子：在等你 · 在跑 · 状态不明（界面只读这一格）。判不了活 ⇒ 状态不明说的是判不了。
-    facts_query::settle_pending(&mut facts, holders.is_some());
+    facts::settle_pending(&mut facts, holders.is_some());
     // 会话血缘：由谁启动 · 起了哪几个（不累加，每次现查；子会话隐不隐藏照同一处判）。
     let (parent, children) = kin_of(home, sid, &crate::control::session_hidden::Here::read_now());
     facts.started_by = parent;
@@ -1745,11 +1232,11 @@ pub(crate) fn kin_of(
     sid: &str,
     here: &crate::control::session_hidden::Here,
 ) -> (
-    Option<crate::observe::facts_query::Kin>,
-    Vec<crate::observe::facts_query::Kin>,
+    Option<crate::observe::recognize::facts::Kin>,
+    Vec<crate::observe::recognize::facts::Kin>,
 ) {
     use crate::history::session_hidden::title_here;
-    use crate::observe::facts_query::Kin;
+    use crate::observe::recognize::facts::Kin;
     let annotations = match crate::history::history_annotations::load() {
         crate::history::history_annotations::Loaded::Read(t) => t,
         _ => Default::default(),

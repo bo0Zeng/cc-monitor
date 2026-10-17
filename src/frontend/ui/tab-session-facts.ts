@@ -3,7 +3,7 @@
  *
  * 分叉血缘 · 改动文件集 · 最新 usage · 项目目录 · 在写它的进程：本文件从前是「从一条 JSONL 记录里抽事实」的几个抽取器，
  * 挂在 `onLine` 旁路上一条一条攒（表里标「读 json」的那四行）。今天判定与累加都在后端
- * （`observe/facts_query.rs`，帧命令 `history-facts`），本文件只剩**投影**：成品里的数组落成 tab 上的
+ * （`observe/recognize/facts.rs`，帧命令 `history-facts`），本文件只剩**投影**：成品里的数组落成 tab 上的
  * `Map` / `Set`、`usage` 拆成两格，并回「这次哪几样变了」—— 变了之后刷哪块界面是调用方（`TabManager`）的事。
  *
  * 子 agent 的列表与状态不在这里：那是运行表（后端 `session_runs`，`runs.ts`），界面不自己判。

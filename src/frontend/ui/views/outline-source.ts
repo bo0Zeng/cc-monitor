@@ -1,5 +1,5 @@
 /**
- * 大纲的数据源：问后端要，不在前端攒。「什么算一条用户输入」只住后端（`observe/user_inputs.rs`），
+ * 大纲的数据源：问后端要，不在前端攒。「什么算一条用户输入」只住后端（`observe/recognize/user_inputs.rs`），
  * 实时 tab 与历史查看器都经同一处要（`session-reads.ts::listUserInputs`，帧命令 `history-user-inputs`，`IPC-PROTOCOL.md §10.4`）。
  *
  * # 形状

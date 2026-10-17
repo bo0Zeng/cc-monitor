@@ -138,7 +138,7 @@ fn the_tail_says_how_to_go_on_from_what_the_caller_holds() {
     let resumed = ask(2, Some(first.held.clone()));
     assert_eq!((resumed.how, seqs(&resumed)), (TailHow::Resume, vec![4, 5]));
     // 扫描图留着那一支：同一个答案。
-    let _ = crate::observe::history_query::cold_scan(&home, &path);
+    let _ = crate::observe::query::locate::cold_scan(&home, &path);
     let again = ask(2, Some(first.held.clone()));
     assert_eq!(
         (again.how, seqs(&again), &again.held),

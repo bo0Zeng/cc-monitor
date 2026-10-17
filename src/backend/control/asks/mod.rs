@@ -2,7 +2,7 @@
 //! 经 `needs-ask` 把请求挂进来、阻塞等；任一出口（桌面 · 手机）经 `needs-answer` 答，**第一个答案落下**，其余回 `already_answered`；
 //! hook 那条连接断了（终端那边先答了 · 被打断 · 到点）⇒ 撤掉，之后再答回 `closed_elsewhere`。挂上 · 撤掉 · 答掉都推 `changed {needs, key: sid}`。
 //!
-//! 成品挂在会话的 `needs` 上（`observe::facts_query::dress_ask`）：`needs.ask` 是「这一条可以怎么答」—— 选项的字、语气、要不要附一句话都由这里写好，出口不按工具名取字；
+//! 成品挂在会话的 `needs` 上（`observe::recognize::facts::dress_ask`）：`needs.ask` 是「这一条可以怎么答」—— 选项的字、语气、要不要附一句话都由这里写好，出口不按工具名取字；
 //! pidfile 说在等、却没有挂着的请求（用户自己起的会话 · 只能本人答的框 · 工作区信任框 …）⇒ `ask: null`，`manualText` 写好「只能在终端里答」。
 //!
 //! **没人答时自动答**（只管提问；批准工具 · 批计划是安全闸，一律不自动答 —— 只此一处判，[`auto_of`]）：这条会话的注解开着

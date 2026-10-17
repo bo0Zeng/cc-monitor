@@ -832,12 +832,6 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "end",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "forkedFrom",
           "type": "string"
         },
@@ -1204,12 +1198,6 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "rev",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "startedBy.hidden.by",
           "type": "enum"
         },
@@ -1259,18 +1247,6 @@
           "frozen": false,
           "kind": "value",
           "path": "tokens.input",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "tokens.last.id",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "tokens.last.tokens[]",
           "type": "number"
         },
         {

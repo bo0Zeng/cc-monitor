@@ -1,5 +1,5 @@
 //! 待答请求的**成品**（会话 `needs.ask`）与它怎么写字：通用、不认是哪一家（那一家的 hook 输入由各家适配层翻成 [`super::AskIn`]）。
-//! 住 `agents/` 这一层（同过程里那张提问卡 [`super::StepAsk`]）：登记表（`control::asks`）与会话事实（`observe::facts_query` 的 `needs`）都要它，
+//! 住 `agents/` 这一层（同过程里那张提问卡 [`super::StepAsk`]）：登记表（`control::asks`）与会话事实（`observe::recognize::facts` 的 `needs`）都要它，
 //! 而那两层彼此不引。
 
 use super::{AskIn, AskKind};

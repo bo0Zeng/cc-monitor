@@ -211,7 +211,7 @@ pub(crate) struct Page {
     pub eof: bool,
 }
 
-/// 一页的逐行成品（后端 `observe/record_page.rs::rows_of`）⇒ 搬运的那一形；有一行的记录不是一团 ⇒ `None`（整页当形状对不上）。
+/// 一页的逐行成品（后端 `observe/query/body.rs::rows_of`）⇒ 搬运的那一形；有一行的记录不是一团 ⇒ `None`（整页当形状对不上）。
 pub(crate) fn rows_of(rows: Vec<cmd_wire::record::ReadRow>) -> Option<Vec<Row>> {
     rows.into_iter()
         .map(|r| {

@@ -2044,7 +2044,7 @@ fn the_mcp_word_of_a_live_record_is_read_from_where_the_last_look_stopped() {
             serde_json::json!({"type": "attachment", "timestamp": "2026-10-09T10:00:00.000Z", "attachment": {"type": "deferred_tools_delta", "failedMcpServers": [{"name": name, "error": "e"}]}})
         )
     };
-    let names = |v: &[crate::observe::facts_query::McpTrouble]| -> Vec<String> {
+    let names = |v: &[crate::observe::recognize::facts::McpTrouble]| -> Vec<String> {
         v.iter().map(|m| m.name.clone()).collect()
     };
     let dir = tmpdir("mcp-tail");
@@ -2211,7 +2211,7 @@ fn app_exit_interrupts_follow_this_backends_own_exit_choice() {
 #[test]
 fn live_doing_reads_activity_and_what_it_waits_for() {
     use crate::agents::SessionActivity as A;
-    use crate::observe::facts_query::NeedsKind as K;
+    use crate::observe::recognize::facts::NeedsKind as K;
     let home = tmpdir("doing");
     let dir = home.join("projects").join("-n");
     fs::create_dir_all(&dir).unwrap();

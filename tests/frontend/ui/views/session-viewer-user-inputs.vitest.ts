@@ -5,9 +5,9 @@
  *
  * ## 🔴 口径不在这里量了（SE1）
  *
- * 「一条用户输入」的口径**只有一个住址**：后端 `observe/user_inputs.rs`（四条：`type:"user"` ＋
+ * 「一条用户输入」的口径**只有一个住址**：后端 `observe/recognize/user_inputs.rs`（四条：`type:"user"` ＋
  * 非 `isMeta` ＋ **非 `isSidechain`** ＋ 有 uuid ＋ 纯文本非空），判据在 Rust 那侧
- * （`user_inputs_tests.rs`，每条口径两向）。查看器从 SE1 起**问后端要**清单（`list_user_inputs`），
+ * （`recognize/user_inputs_tests.rs`，每条口径两向）。查看器从 SE1 起**问后端要**清单（`list_user_inputs`），
  * 本文件量的是：后端给什么就列什么、按它的顺序 · 问的是这一份会话 · 点一下跳过去。
  * 后端那份清单由台子里的 `outlineBackend` 替身**逐条写明**（它不判 —— 不拿前端算的去对前端）。
  *

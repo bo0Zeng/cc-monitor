@@ -373,9 +373,17 @@ impl Facts {
                 }
                 "user" | "assistant" => {
                     if self.forked.is_none() {
-                        self.forked = crate::history::listing::fork_origin(&v).map(|(p, _)| p);
+                        self.forked = crate::agents::fork_origin_of(
+                            crate::agents::record_tree_kind().unwrap_or_default(),
+                            &v,
+                        )
+                        .map(|(p, _)| p);
                     }
-                    let opens_turn = super::user_inputs::user_input_of(&v).is_some();
+                    let opens_turn = super::recognize::user_inputs::user_input_of(
+                        crate::agents::record_tree_kind().unwrap_or_default(),
+                        &v,
+                    )
+                    .is_some();
                     let Some(rt) = record_text(&v, tools).or_else(|| {
                         opens_turn.then(|| RecordText {
                             is_assistant: false,
@@ -1230,7 +1238,11 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
         if matches!(
             v.get("type").and_then(Value::as_str),
             Some("user" | "assistant")
-        ) && super::user_inputs::user_input_of(&v).is_some()
+        ) && super::recognize::user_inputs::user_input_of(
+            crate::agents::record_tree_kind().unwrap_or_default(),
+            &v,
+        )
+        .is_some()
         {
             turn += 1;
         }

@@ -2,22 +2,25 @@
 //! 按（路径 · 长度 · 修改时刻）留着，那几条帧命令（`history-tail` · `-index` · `-user-inputs` · `-turns` · `-facts`）从字节 0 问时共用。
 //!
 //! - 一遍：每个完整行只解析一次，同一个值喂给五样各自的那一步（各自的口径仍只住各自的模块：
-//!   [`super::history_query::index_row_of`] · [`super::user_inputs::user_input_of`] · [`super::turns::TurnScan`] ·
-//!   [`super::facts_query::note_record`] · [`super::lines::counts`]）。
+//!   [`super::recognize::index_row::index_row_of`] · [`super::recognize::user_inputs::user_input_of`] · [`super::recognize::turns::TurnScan`] ·
+//!   [`super::recognize::facts::note_record`] · [`super::lines::counts`]）。
 //! - 留着：没变 ⇒ 那一张；变长了 ⇒ 核游标前那几个字节（见证），对得上就从那一张接着扫追加的那一截（还没收尾那一轮的扫描状态
 //!   也留着）、对不上 ⇒ 整份重扫；条数与估算字节各有上限，超了先淘汰最久没用的；单张比字节上限还大就不留。
 //! - 落盘：大记录扫完落一份骨架（[`super::skeleton`]）；进程里没有那一张时照骨架起步 —— 没变 ⇒ 不读，变长了 ⇒ 只读追加的那一截。
 //! - 同时冷开同一份（界面开一条会话几问是一齐发的）：先到的那一个扫，后到的等它扫完拿同一张 —— 那一张是它们发问之后才扫完的，
 //!   每样都带着 `end`，续取从那里接。
 //! - 只扫到问的那一刻的长度：之后写进来的不在这一张里（键对得上内容）。
+//! - 事实尾巴：一张图被挤掉（或太大不留）时按路径留下它的事实累加器（游标 · 见证 · 累加器），至多 [`TAIL_KEEP`] 条；
+//!   之后问事实（[`RecordScans::facts`]）图不在、尾巴在且见证对得上 ⇒ 只认事实地接着读追加的那一截，不读骨架、不整份重扫。
 
-use super::facts_query::{ContextLimits, SessionFacts};
-use super::history_query::{IndexRow, TailPlan};
+use super::recognize::facts::{ContextLimits, SessionFacts};
+use super::recognize::index_row::IndexRow;
+use super::recognize::turns::{TurnRow, TurnScan};
+use super::recognize::user_inputs::UserInputRow;
 use super::skeleton::{Look, Mark, Skeletons};
-use super::turns::{TurnRow, TurnScan};
-use super::user_inputs::UserInputRow;
 use crate::agents::mainline::Chain;
 use crate::platform::fs::{Ro, RoFile};
+use cmd_wire::session::TailPlan;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -38,8 +41,8 @@ pub(crate) struct ScanMap {
     pub(crate) turns: Vec<TurnRow>,
     /// 主线外清单（回退掉的那几条，文件序；`history-branch`）。用户输入与轮次已经不含它们。
     pub(crate) off: Vec<String>,
-    /// 定上下文上限之前的事实（上限按每次问的上限表现定）。
-    facts: SessionFacts,
+    /// 定上下文上限之前的事实（上限按每次问的上限表现定，[`RecordScans::facts`]）。
+    pub(crate) facts: SessionFacts,
     /// 接着扫要的那几样（骨架也落它）。
     rest: Rest,
     /// 估算的常驻字节（字节上限按它算）。
@@ -54,7 +57,7 @@ pub(crate) struct ScanMap {
 struct Rest {
     witness: Vec<u8>,
     inputs: Vec<UserInputRow>,
-    #[serde(with = "super::turns::skel::rows")]
+    #[serde(with = "super::recognize::turns::skel::rows")]
     turns: Vec<TurnRow>,
     open: TurnScan,
     #[serde(with = "crate::agents::mainline::skel")]
@@ -70,6 +73,7 @@ struct Scan {
     starts: Vec<u64>,
     #[serde(deserialize_with = "index_back")]
     index: Vec<IndexRow>,
+    #[serde(deserialize_with = "super::recognize::facts::skel::deserialize")]
     facts: SessionFacts,
     rest: Rest,
 }
@@ -80,6 +84,7 @@ struct ScanView<'a> {
     end: u64,
     starts: &'a [u64],
     index: &'a [IndexRow],
+    #[serde(serialize_with = "super::recognize::facts::skel::serialize")]
     facts: &'a SessionFacts,
     rest: &'a Rest,
 }
@@ -160,21 +165,11 @@ impl Scan {
         let run_of = face.and_then(|f| f.run_of);
         let runs = crate::agents::run_faces(kind);
         let mut lines = super::lines::Lines::new(r, self.end).upto(upto);
-        let probe = super::skeleton::WITNESS as usize;
         while let Some(row) = lines.next()? {
             let (start, buf) = (row.at, row.whole);
             let read = buf.len();
             self.end = start + read as u64;
-            self.facts.end = self.end;
-            let w = &mut self.rest.witness;
-            if buf.len() >= probe {
-                w.clear();
-                w.extend_from_slice(&buf[buf.len() - probe..]);
-            } else {
-                w.extend_from_slice(buf);
-                let drop = w.len().saturating_sub(probe);
-                w.drain(..drop);
-            }
+            slide(&mut self.rest.witness, buf);
             let body = row.body();
             // 一行只解一次：链事实与下面那四样吃同一份（[`super::lines::parse`] 同一口径）。
             let text = String::from_utf8_lossy(body);
@@ -192,28 +187,31 @@ impl Scan {
                     self.rest.activity = Some(a);
                 }
             }
+            // 一拍也只算一次：骨架索引 · 用户输入 · 轮次 · 事实吃同一拍。
+            let beat = v.and_then(|v| crate::agents::beat_of(kind, v));
             let counted = super::lines::counts(body);
             if counted {
                 self.starts.push(start);
-                self.index.push(super::history_query::index_row_of(
+                self.index.push(super::recognize::index_row::index_row_of(
                     kind,
                     v,
+                    beat.as_ref(),
                     start,
                     read as u64,
                 ));
             }
-            let Some(v) = v else {
+            let (Some(v), Some(beat)) = (v, beat) else {
                 continue;
             };
-            if let Some(mut row) = super::user_inputs::user_input_of(&v) {
+            if let Some(mut row) = super::recognize::user_inputs::user_input_given(kind, v, &beat) {
                 row.at = start;
                 self.rest.inputs.push(row);
             }
-            if let Some(row) = self.rest.open.line(start, &v) {
+            if let Some(row) = self.rest.open.line(start, kind, v, &beat) {
                 self.rest.turns.push(row);
             }
-            if super::facts_query::could_matter(body, &self.facts) {
-                super::facts_query::note_record(&mut self.facts, &v);
+            if super::recognize::facts::could_matter(kind, body, &self.facts) {
+                super::recognize::facts::note_record(&mut self.facts, kind, v, &beat);
             }
         }
         Ok(())
@@ -308,11 +306,11 @@ impl ScanMap {
         }
     }
 
-    /// 尾段那张图：最后 `n` 个可计行从哪开始（同 [`super::history_query::tail_plan_of`]）。
-    pub(crate) fn tail(&self, n: usize) -> super::history_query::Tail {
+    /// 尾段那张图：最后 `n` 个可计行从哪开始（同 [`super::query::tail::tail_plan_of`]）。
+    pub(crate) fn tail(&self, n: usize) -> super::query::tail::Tail {
         let total = self.starts.len();
         let from = total - n.max(1).min(total);
-        super::history_query::Tail {
+        super::query::tail::Tail {
             plan: TailPlan {
                 total: total as u64,
                 tail_from: from as u64,
@@ -321,18 +319,6 @@ impl ScanMap {
             },
             last: self.starts.last().copied(),
         }
-    }
-
-    /// 事实：按这一次的上限表与中转标记定上下文上限。
-    pub(crate) fn facts(&self, limits: &ContextLimits, relay: Option<bool>) -> SessionFacts {
-        let mut f = self.facts.clone();
-        super::facts_query::settle_limit(&mut f, limits, relay);
-        f
-    }
-
-    /// 还没结果的工具调用（文件序；种类判「需手动」用）。
-    pub(crate) fn pending(&self) -> &[super::facts_query::PendingCall] {
-        &self.facts.pending
     }
 
     /// 粗估常驻字节：每行一份定长 ＋ 里面的串长。
@@ -401,10 +387,40 @@ struct Flight {
     cv: Condvar,
 }
 
+/// 一张图被挤掉时留下的事实累加器：从 `end` 接着读（读之前核游标前的见证）。
+#[derive(Clone)]
+struct Tail {
+    path: PathBuf,
+    end: u64,
+    witness: Vec<u8>,
+    facts: SessionFacts,
+    used: u64,
+}
+
 struct Inner {
     slots: Vec<Slot>,
     flights: Vec<(PathBuf, Arc<Flight>)>,
+    tails: Vec<Tail>,
     tick: u64,
+}
+
+impl Inner {
+    /// 按路径留下这一张的事实尾巴（同一份旧的那条换掉；满了挤掉最久没用的）。
+    fn leave_tail(&mut self, path: &Path, map: &ScanMap) {
+        self.tails.retain(|t| t.path != path);
+        self.tails.push(Tail {
+            path: path.to_path_buf(),
+            end: map.end,
+            witness: map.rest.witness.clone(),
+            facts: map.facts.clone(),
+            used: self.tick,
+        });
+        if self.tails.len() > TAIL_KEEP {
+            if let Some(i) = (0..self.tails.len()).min_by_key(|&i| self.tails[i].used) {
+                self.tails.remove(i);
+            }
+        }
+    }
 }
 
 /// 扫描图的缓存。
@@ -424,6 +440,9 @@ pub(crate) struct RecordScans {
 const MAX_ENTRIES: usize = 16;
 const MAX_BYTES: usize = 64 << 20;
 
+/// 事实尾巴至多留几条：每个开着的 tab（桌面）/ 会话页（手机）占一条；一条最大约 140 KB（改动文件 1000 条封顶），64 条封顶约 9 MB。
+pub(crate) const TAIL_KEEP: usize = 64;
+
 /// 全进程那一份。
 pub(crate) fn global() -> &'static RecordScans {
     static G: std::sync::OnceLock<RecordScans> = std::sync::OnceLock::new();
@@ -434,6 +453,19 @@ pub(crate) fn global() -> &'static RecordScans {
             None => scans,
         }
     })
+}
+
+/// 读过一行之后，见证换成游标前那 [`super::skeleton::WITNESS`] 个字节。
+fn slide(w: &mut Vec<u8>, line: &[u8]) {
+    let probe = super::skeleton::WITNESS as usize;
+    if line.len() >= probe {
+        w.clear();
+        w.extend_from_slice(&line[line.len() - probe..]);
+    } else {
+        w.extend_from_slice(line);
+        let drop = w.len().saturating_sub(probe);
+        w.drain(..drop);
+    }
 }
 
 /// 读游标前那几个字节、跟见证比（`file` 读完停在 `end`）。回：对得上没有 · 读了几个字节。
@@ -454,6 +486,7 @@ impl RecordScans {
             inner: Mutex::new(Inner {
                 slots: Vec::new(),
                 flights: Vec::new(),
+                tails: Vec::new(),
                 tick: 0,
             }),
             home: None,
@@ -563,6 +596,7 @@ impl RecordScans {
             if let Ok(map) = &scanned {
                 if map.bytes <= self.max_bytes {
                     let tick = g.tick;
+                    g.tails.retain(|t| t.path != path);
                     g.slots.push(Slot {
                         path: path.to_path_buf(),
                         stamp,
@@ -570,6 +604,8 @@ impl RecordScans {
                         used: tick,
                     });
                     self.evict(&mut g);
+                } else {
+                    g.leave_tail(path, map);
                 }
             }
         }
@@ -682,8 +718,67 @@ impl RecordScans {
             else {
                 return;
             };
-            g.slots.remove(oldest);
+            let gone = g.slots.remove(oldest);
+            g.leave_tail(&gone.path, &gone.map);
         }
+    }
+
+    /// `path` 此刻的会话事实（上下文上限按这一次的上限表与中转标记定）：图留着 · 正在扫 ⇒ 照图（[`Self::get`]）；
+    /// 图不在、事实尾巴在且见证对得上 ⇒ 只认事实地接着读追加的那一截；都不成 ⇒ 现扫整份（[`Self::get`]）。
+    pub(crate) fn facts(
+        &self,
+        path: &Path,
+        limits: &ContextLimits,
+        relay: Option<bool>,
+    ) -> std::io::Result<SessionFacts> {
+        let tail = {
+            let g = self.lock();
+            let held =
+                g.slots.iter().any(|s| s.path == path) || g.flights.iter().any(|(p, _)| p == path);
+            (!held)
+                .then(|| g.tails.iter().find(|t| t.path == path).cloned())
+                .flatten()
+        };
+        let mut facts = match tail {
+            Some(t) => match self.follow(t)? {
+                Some(f) => f,
+                None => self.get(path)?.facts.clone(),
+            },
+            None => self.get(path)?.facts.clone(),
+        };
+        super::recognize::facts::settle_limit(&mut facts, limits, relay);
+        Ok(facts)
+    }
+
+    /// 从尾巴的游标接着读到此刻的长度（只认事实），读完换下那一条；变短了 · 见证对不上 ⇒ `None`。
+    fn follow(&self, mut t: Tail) -> std::io::Result<Option<SessionFacts>> {
+        let mut file = Ro::open(&t.path)?;
+        let kind = crate::agents::record_kind_of(&t.path).unwrap_or_default();
+        let len = file.metadata()?.len();
+        if len < t.end {
+            return Ok(None);
+        }
+        let (holds, k) = witness_holds(&mut file, t.end, &t.witness)?;
+        self.read.fetch_add(k, Ordering::Relaxed);
+        if !holds {
+            return Ok(None);
+        }
+        self.read.fetch_add(len - t.end, Ordering::Relaxed);
+        let mut lines = super::lines::Lines::new(std::io::BufReader::new(file), t.end).upto(len);
+        while let Some(row) = lines.next()? {
+            slide(&mut t.witness, row.whole);
+            super::recognize::facts::note_line(&mut t.facts, kind, row.body());
+        }
+        t.end = lines.end();
+        let facts = t.facts.clone();
+        let mut g = self.lock();
+        if !g.slots.iter().any(|s| s.path == t.path) {
+            g.tick += 1;
+            t.used = g.tick;
+            g.tails.retain(|x| x.path != t.path);
+            g.tails.push(t);
+        }
+        Ok(Some(facts))
     }
 }
 

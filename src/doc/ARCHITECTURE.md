@@ -269,7 +269,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 | 盯文件 · 出 `line` 帧 | 后端 `observe/watcher.rs`（每条连接一份） |
 | 会话账本（活 / 可重连 / 已结束，单写者） | `observe/session_ledger.rs` |
 | 记录解释（一行 → 通用记录） | `agents/<家>/`，Claude 的链与主线在 `agents/claudecode/` · `agents/mainline.rs` |
-| 划段（一轮里哪几条收进「过程」） | `observe/turns.rs` |
+| 划段（一轮里哪几条收进「过程」） | `observe/recognize/turns.rs` |
 | 子运行（子 agent）表 | `observe/runs.rs`，帧 `session_runs` |
 | 帧定义与发帧 | `wire/mod.rs` · `stream/tap.rs` · 活卡 `stream/live.rs` · 主题表 `wire/topic.rs` |
 | 收口 · 重放 · 就绪点 | 壳 `stream_source/` · `event_replay.rs` · `session_book.rs` · `stream_watch.rs` |

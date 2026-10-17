@@ -63,29 +63,35 @@ fn patch_of(hunks: &[Value]) -> (Vec<PatchHunk>, bool) {
 }
 use serde_json::Value;
 
-/// 主参数是路径的工具（入参 `file_path` / `notebook_path`）。
-const PATH_TOOLS: &[(&str, &str)] = &[
-    ("Read", "file_path"),
-    ("Edit", "file_path"),
-    ("MultiEdit", "file_path"),
-    ("Write", "file_path"),
-    ("NotebookEdit", "notebook_path"),
-    ("NotebookRead", "notebook_path"),
+/// 工具 ⇒ 主参数取哪个入参 · 它是不是路径。**「工具 → 主参数」只此一张**：消息流那一行（[`step_of`]）·
+/// 没结果的调用那一行（`beat::what_of`）· 待答请求的钉条（`asks`）都查它，各按自己的长度截。
+const MAIN_ARGS: &[(&str, &str, bool)] = &[
+    ("Read", "file_path", true),
+    ("Edit", "file_path", true),
+    ("MultiEdit", "file_path", true),
+    ("Write", "file_path", true),
+    ("NotebookEdit", "notebook_path", true),
+    ("NotebookRead", "notebook_path", true),
+    ("Bash", "command", false),
+    ("Grep", "pattern", false),
+    ("Glob", "pattern", false),
+    ("WebFetch", "url", false),
+    ("WebSearch", "query", false),
+    ("Agent", "description", false),
+    ("Task", "description", false),
+    ("Skill", "skill", false),
+    ("BashOutput", "bash_id", false),
+    ("KillShell", "shell_id", false),
+    ("SlashCommand", "command", false),
 ];
-/// 主参数是别的一格的工具（工具名 ⇒ 入参字段）。
-const ARG_TOOLS: &[(&str, &str)] = &[
-    ("Bash", "command"),
-    ("Grep", "pattern"),
-    ("Glob", "pattern"),
-    ("WebFetch", "url"),
-    ("WebSearch", "query"),
-    ("Agent", "description"),
-    ("Task", "description"),
-    ("Skill", "skill"),
-    ("BashOutput", "bash_id"),
-    ("KillShell", "shell_id"),
-    ("SlashCommand", "command"),
-];
+
+/// 这个工具的主参数取哪个入参 · 是不是路径（[`MAIN_ARGS`]）；没登记 ⇒ `None`。
+pub(crate) fn main_arg(name: &str) -> Option<(&'static str, bool)> {
+    MAIN_ARGS
+        .iter()
+        .find(|(t, _, _)| *t == name)
+        .map(|&(_, k, path)| (k, path))
+}
 /// 认得、但没有主参数的工具（只写工具名）。
 const BARE_TOOLS: &[&str] = &["TodoWrite", "ExitPlanMode", "AskUserQuestion", "LS"];
 /// 说明那一格（Bash 的 `description`）。
@@ -144,34 +150,23 @@ fn named(name: &str, input: &Value) -> ToolStep {
             .map(one_line)
             .filter(|s| !s.is_empty())
     };
-    if let Some((_, k)) = PATH_TOOLS.iter().find(|(t, _)| *t == name) {
+    if let Some((k, path)) = main_arg(name) {
+        // 路径类没有说明格；Agent / Task 的主参数就是它的说明 ⇒ 说明格不再重复。
+        let note = (!path && k != NOTE_FIELD)
+            .then(|| field(NOTE_FIELD))
+            .flatten();
         // 文件窗口按远端的 POSIX 路径定位：只给绝对路径（相对的会落到错的目录）。
         let file = input
-            .get(*k)
+            .get(k)
             .and_then(Value::as_str)
-            .filter(|p| p.starts_with('/'))
+            .filter(|p| path && p.starts_with('/'))
             .map(str::to_string);
         return ToolStep {
             tool: name.to_string(),
             arg: field(k),
-            path: true,
-            note: None,
-            file,
-            body: None,
-            known: true,
-            text: None,
-            ask: None,
-        };
-    }
-    if let Some((_, k)) = ARG_TOOLS.iter().find(|(t, _)| *t == name) {
-        // Agent / Task 的主参数就是它的说明 ⇒ 说明格不再重复。
-        let note = (*k != NOTE_FIELD).then(|| field(NOTE_FIELD)).flatten();
-        return ToolStep {
-            tool: name.to_string(),
-            arg: field(k),
-            path: false,
+            path,
             note,
-            file: None,
+            file,
             body: None,
             known: true,
             text: None,

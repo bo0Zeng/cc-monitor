@@ -16,8 +16,8 @@
  *
  * # 第五问：会话事实（`history-facts`）
  *
- * 分叉血缘 · 改动文件集 · agent 列表 · 最新 usage 四样由后端读一遍文件出成品（`observe/facts_query.rs`）。续传令牌是上一份成品里的
- * `{end, rev}` 两格（[`readSessionFacts`] 的 `prior`；那台常驻后端记着那一份累加器，`observe/facts_cache.rs`）—— 本文件与调用方不读、不合并成品。
+ * 分叉血缘 · 改动文件集 · agent 列表 · 最新 usage 四样由后端读一遍文件出成品（`observe/recognize/facts.rs`）。只交路径：
+ * 接着上一次算由那台后端按路径记着（`observe/record_scan.rs`）—— 本文件与调用方不读、不合并成品。
  */
 import { ChanError, type CallError } from "../../comms/inward/chan";
 import { budgetWithin, callTyped, refusalOf } from "./ipc/chan-caller";
@@ -100,25 +100,25 @@ export interface SessionIndexResult {
   failure?: OutlineFailure;
 }
 
-/** 最新 usage ＋ 上下文上限 ＋ 写好的字（后端 `facts_query::UsageFact`：上限、百分比、字都由后端定，界面照抄）。 */
+/** 最新 usage ＋ 上下文上限 ＋ 写好的字（后端 `recognize::facts::UsageFact`：上限、百分比、字都由后端定，界面照抄）。 */
 export type { UsageFact };
 /** 一串重试的结局 · 一个还没有结果的工具调用 · 「需手动」的种类（类型从后端生成）。 */
 export type { RetryOutcome, PendingCall, NeedsKind };
-/** 后台任务运行中那一态的成品（后端 `facts_query::Background`）。 */
+/** 后台任务运行中那一态的成品（后端 `recognize::facts::Background`）。 */
 export type BackgroundWork = FactsBackground;
 /** 一条挂着的待答请求 · 一个选项 · 一道题（后端 `agents/asks.rs`，会话 `needs.ask`）。 */
 export type Ask = NeedsAsk;
 export type AskChoice = NeedsChoice;
 export type AskQuestionItem = NeedsQuestion;
 
-/** 「需手动」的成品（后端 `facts_query::Needs`），多一格本机收到它的时刻。 */
+/** 「需手动」的成品（后端 `recognize::facts::Needs`），多一格本机收到它的时刻。 */
 export type Needs = WireNeeds & {
   /** 本机收到这一份的时刻（本机钟，不在线上）：会走的钟从它起接着加（`duration-format.ts::waitedNow`）。 */
   receivedAt: number;
 };
 
 /**
- * 一份会话的事实（后端 `facts_query::SessionFacts`，类型从后端生成），`needs` 多一格本机收到的时刻。
+ * 一份会话的事实（后端 `recognize::facts::SessionFacts`，类型从后端生成），`needs` 多一格本机收到的时刻。
  */
 export type SessionFacts = Omit<WireFacts, "needs"> & { needs: Needs | null };
 
@@ -285,18 +285,11 @@ export async function readSessionIndex(origin: Origin, jsonlPath: string, fromOf
 }
 
 /**
- * **会话事实**：`prior` = 上一次拿到的那份成品（只交它的 `{end, rev}` 当续传令牌；`null` ⇒ 从字节 0 扫）。
- * 那台续算表里没有了 ⇒ `stale_prior`，与别的失败一样落进 `available:false`，调用方不带令牌重要（`facts-source.ts`）。
- * 要不到 ⇒ `available:false` ＋ 种类（分档同大纲：`oldBackend` 结构性 / 其余瞬时）＋ 一句人话。
+ * **会话事实**：要不到 ⇒ `available:false` ＋ 种类（分档同大纲：`oldBackend` 结构性 / 其余瞬时）＋ 一句人话。
  */
-export async function readSessionFacts(
-  origin: Origin,
-  jsonlPath: string,
-  prior: SessionFacts | null,
-): Promise<FactsResult> {
+export async function readSessionFacts(origin: Origin, jsonlPath: string): Promise<FactsResult> {
   try {
     const args: HistoryFactsReq = { path: jsonlPath };
-    if (prior) args.prior = { end: prior.end, rev: prior.rev };
     const budget = budgetWithin(READ_BUDGET_MS);
     return { available: true, facts: factsOf(await callTyped(origin, "history-facts", args, budget)) };
   } catch (e) {

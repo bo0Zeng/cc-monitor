@@ -1,5 +1,5 @@
 //! 「需手动」那一族的线上形（`sessions-needs` 的回包 · `history-facts.needs` 那一份成品 · 挂着的待答请求 `needs.ask`）——
-//! 两侧同一份：后端按这里的类型写（判定与写字在后端 `observe::facts_query` · `agents::asks`），手机嵌的 Rust 核心按这里的类型解。
+//! 两侧同一份：后端按这里的类型写（判定与写字在后端 `observe::recognize::facts` · `agents::asks`），手机嵌的 Rust 核心按这里的类型解。
 
 use crate::cells::{Tone, Words};
 use serde::{Deserialize, Serialize};

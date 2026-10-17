@@ -430,7 +430,7 @@ export interface TypedCommands {
   "forward-stop": { req: ForwardId; reply: ForwardId; code: "bad_args" | "not_found" };
   "history-annotate": { req: AnnotateReq; reply: Annotated; code: "bad_args" | "annotations_unreadable" | "io_failed" | "no_annotations" };
   "history-branch": { req: BranchReq; reply: Branch; code: "bad_args" | "failed" };
-  "history-facts": { req: HistoryFactsReq; reply: SessionFacts; code: "bad_args" | "failed" | "too_large" | "stale_prior" };
+  "history-facts": { req: HistoryFactsReq; reply: SessionFacts; code: "bad_args" | "failed" | "too_large" };
   "history-find": { req: HistoryFindReq; reply: HistoryFind; code: "bad_args" | "failed" | "too_large" };
   "history-forget": { req: ForgetReq; reply: Forgotten; code: "bad_args" | "annotations_unreadable" | "io_failed" | "no_annotations" };
   "history-index": { req: HistoryIndexReq; reply: HistoryIndex; code: "bad_args" | "failed" | "too_large" };

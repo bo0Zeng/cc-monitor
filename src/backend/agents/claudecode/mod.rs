@@ -15,7 +15,7 @@
 //!
 //! # ⚠ 搬进来的是**知识**，不是**机器**
 //!
-//! `S3` 的 Bx 实测推翻了"读盘族 = 两千行"这个印象：`history_query`(923) /
+//! `S3` 的 Bx 实测推翻了"读盘族 = 两千行"这个印象：`observe::query`(923) /
 //! `search_query`(676) / `watcher`(4885) 里的 `jsonl` 绝大多数是**变量名与函数名**
 //!（`jsonl_path` / `read_jsonl` / `newest_jsonl`）—— 那是**通用的流式读取机器**，与 agent 无关。
 //! 真知识只有**带引号的那几处**（后缀判定 6 · 目录名 4 · 身份/账号 ~12 · 判活与 resume ~5）。
@@ -33,6 +33,7 @@ pub(crate) mod asks;
 pub(crate) mod assets;
 // 后台命令在记录里的样子（起 · 任务号 · 收场通知）。
 pub(crate) mod background;
+pub(crate) mod beat;
 // 分叉的记录变换 ＋ 按 sid 找那份会话文件（原共享 crate `branch-core`，只剩后端用）。
 pub(crate) mod branch;
 // 工具词表（卡型 · 判活进程名）：从 monitor `adapter.rs` 画像表与共享 crate `agent-tools-core` 收进来。
@@ -259,7 +260,6 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
         tool: text::extract_tool_text,
         user: text::user_text_of_record,
         queued: text::queued_of_record,
-        result: steps::result_of,
         lands: record_of::lands_of,
     }),
     delete: Some(super::SessionDelete {
@@ -281,6 +281,11 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
     project_dir: Some(parse::project_dir),
     mcp_said: Some(mcp::said_of),
     quiet_unread: Some(record_of::quiet_unread_of),
+    beats: Some(beat::BEATS),
+    fork: Some(super::ForkFace {
+        of_record: branch::fork_origin,
+        of_field: branch::forked_pair,
+    }),
 };
 
 pub(crate) const ASSETS: super::AssetFace = super::AssetFace {

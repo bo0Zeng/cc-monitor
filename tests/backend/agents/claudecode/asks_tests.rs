@@ -316,3 +316,20 @@ fn the_installed_version_reads_from_the_install_layout() {
     );
     assert!(PLUGIN_MIN_VERSION > [2, 1, 279] && PLUGIN_MIN_VERSION <= [2, 1, 280]);
 }
+
+/// 钉条那一段与消息流那一行认同一张「工具 → 主参数」表；表外的工具才按那串常见键猜。
+#[test]
+fn the_pin_names_the_main_argument_of_every_tool_the_step_line_knows() {
+    for (tool, input, want) in [
+        ("WebSearch", json!({"query": "rust 2024"}), "rust 2024"),
+        ("Task", json!({"description": "查一下"}), "查一下"),
+        ("Skill", json!({"skill": "pdf"}), "pdf"),
+        ("KillShell", json!({"shell_id": "s-1"}), "s-1"),
+        ("SomeNewTool", json!({"path": "/w/x"}), "/w/x"),
+    ] {
+        let mut req = bash_req();
+        req["tool_name"] = json!(tool);
+        req["tool_input"] = input;
+        assert_eq!(read(&req).unwrap().what.as_deref(), Some(want), "{tool}");
+    }
+}

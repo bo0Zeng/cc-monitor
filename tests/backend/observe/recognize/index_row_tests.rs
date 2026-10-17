@@ -59,7 +59,7 @@ fn index_rows_share_the_seq_space_with_the_tail_counter() {
     let data: &[u8] = b"{\"type\":\"user\",\"uuid\":\"a\"}\n\n   \n{\"type\":\"assistant\",\"uuid\":\"b\"}\n\xEF\xBB\xBF{\"type\":\"system\",\"subtype\":\"api_error\",\"timestamp\":\"t\"}\n{\"type\":\"torn";
     let v = index_of(data, 0, None);
     let (_, rows, tail) = split(&v);
-    let (meta, _, _) = split_tail(data, 1_000);
+    let (meta, _, _) = crate::observe::query::tail::split_tail(data, 1_000);
     let total: serde_json::Value = serde_json::from_str(meta.trim()).unwrap();
     assert_eq!(
         rows.len() as u64,
@@ -124,9 +124,9 @@ fn facts_count_prose_code_and_folded_units_separately() {
         ]}
     })
     .to_string();
-    let r = index_row_of(
+    let r = index_row(
         tree(),
-        crate::observe::lines::parse(line.as_bytes()).as_ref(),
+        line.as_bytes(),
         10,
         line.len() as u64 + 1,
     );
@@ -151,9 +151,9 @@ fn facts_count_prose_code_and_folded_units_separately() {
 #[test]
 fn facts_for_user_string_meta_sidechain_system_and_garbage() {
     let u = r#"{"type":"user","isMeta":true,"isSidechain":true,"agentId":"a1","message":{"role":"user","content":"两行\n第二行"}}"#;
-    let r = index_row_of(
+    let r = index_row(
         tree(),
-        crate::observe::lines::parse(u.as_bytes()).as_ref(),
+        u.as_bytes(),
         0,
         0,
     );
@@ -162,9 +162,9 @@ fn facts_for_user_string_meta_sidechain_system_and_garbage() {
     assert_eq!((r.pl, r.ch, r.cj), (2, 5, 5));
     // tool_result 数组：只算折叠单元，正文 0
     let tr = r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t","content":"大段输出"}]}}"#;
-    let r = index_row_of(
+    let r = index_row(
         tree(),
-        crate::observe::lines::parse(tr.as_bytes()).as_ref(),
+        tr.as_bytes(),
         0,
         0,
     );
@@ -172,9 +172,9 @@ fn facts_for_user_string_meta_sidechain_system_and_garbage() {
     // system：正文在顶层 content
     let sys = r#"{"type":"system","content":"API Error"}"#;
     assert_eq!(
-        index_row_of(
+        index_row(
             tree(),
-            crate::observe::lines::parse(sys.as_bytes()).as_ref(),
+            sys.as_bytes(),
             0,
             0
         )
@@ -182,9 +182,9 @@ fn facts_for_user_string_meta_sidechain_system_and_garbage() {
         9
     );
     // 🔴 非 JSON：**行仍在**（占一个 seq），只是没有料 —— 丢了它后面全错一位
-    let bad = index_row_of(
+    let bad = index_row(
         tree(),
-        crate::observe::lines::parse(b"{\"type\":\"user\"").as_ref(),
+        b"{\"type\":\"user\"",
         5,
         15,
     );
@@ -194,9 +194,9 @@ fn facts_for_user_string_meta_sidechain_system_and_garbage() {
 /// 零值不上线：索引每条一行，省下来的是乘以条数的字节。
 #[test]
 fn zero_facts_are_not_serialized() {
-    let r = index_row_of(
+    let r = index_row(
         tree(),
-        crate::observe::lines::parse(br#"{"type":"attachment"}"#).as_ref(),
+        br#"{"type":"attachment"}"#,
         0,
         22,
     );
@@ -209,8 +209,8 @@ fn zero_facts_are_not_serialized() {
 /// 对**同一份**金标准 —— 两侧实现不同源，金标准是手算的（见 `.golden` 头注）。
 #[test]
 fn index_rows_match_the_shared_seq_space_golden() {
-    let data: &[u8] = include_bytes!("../../__fixtures__/skeleton-seq-space.jsonl");
-    let golden = include_str!("../../__fixtures__/skeleton-seq-space.golden");
+    let data: &[u8] = include_bytes!("../../../__fixtures__/skeleton-seq-space.jsonl");
+    let golden = include_str!("../../../__fixtures__/skeleton-seq-space.golden");
     let mut want: Vec<(u64, Option<String>)> = Vec::new();
     let (mut count, mut end) = (None, None);
     for l in golden.lines() {

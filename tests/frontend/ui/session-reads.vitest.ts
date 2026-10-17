@@ -179,8 +179,6 @@ describe("〔STC〕第五问：会话事实", () => {
   it("★★ 金样：后端真出的会话事实就是生成的那个类型（逐字段）", () => {
     const f = factsOf(wire);
     expect(f).toEqual({
-      end: 3131,
-      rev: 1,
       forkedFrom: "src-0",
       touchedFiles: ["/w/a.ts"],
       usage: {
@@ -221,7 +219,6 @@ describe("〔STC〕第五问：会话事实", () => {
         cacheWrite1h: 0,
         requests: 1,
         text: copyText("beSpend.tokens.line", { input: "1", output: "0", read: "3", write: "2" }),
-        last: { id: "", tokens: [1, 0, 3, 2, 0] },
       },
       cost: { micros: 424200, partial: false, text: copyText("beSpend.cost.exact", { usd: "0.42" }) },
       bgTasks: [{ call: "tu-b1", task: "bb1", cmd: "make test-all", at: "2026-10-09T08:00:00.000Z" }],
@@ -256,30 +253,24 @@ describe("〔STC〕第五问：会话事实", () => {
     expect(read(null), "没有挂着的").toBeNull();
   });
 
-  it("★ 说对的帧命令、对的请求体：没有令牌 ⇒ 只带 path；有 ⇒ prior 只带上一份的 {end, rev}；失败折成 available:false ＋ 种类", async () => {
+  it("★ 说对的帧命令、对的请求体：恒只带 path；失败折成 available:false ＋ 种类", async () => {
     const product = factsOf(wire);
     invokeMock.mockResolvedValueOnce(chanReply(golden["history-facts"]));
-    const r1 = await readSessionFacts("<local>", "/p/s.jsonl", null);
+    const r1 = await readSessionFacts("<local>", "/p/s.jsonl");
     expect(r1).toEqual({ available: true, facts: product });
     const a1 = invokeMock.mock.calls[0][1] as ChanCallArgs;
     expect([a1.origin, a1.op]).toEqual(["<local>", "history-facts"]);
     expect(chanArgsJson(a1)).toEqual({ path: "/p/s.jsonl" });
-
-    invokeMock.mockResolvedValueOnce(chanReply(golden["history-facts"]));
-    await readSessionFacts("pi", "/p/s.jsonl", product);
-    const a2 = invokeMock.mock.calls[1][1] as ChanCallArgs;
-    expect(a2.origin).toBe("pi");
-    expect(chanArgsJson(a2)).toEqual({ path: "/p/s.jsonl", prior: { end: wire.end, rev: wire.rev } });
     invokeMock.mockClear();
 
     invokeMock.mockRejectedValueOnce(UNSUPPORTED);
-    const r3 = await readSessionFacts("pi", "/p/s.jsonl", null);
+    const r3 = await readSessionFacts("pi", "/p/s.jsonl");
     expect(r3.available).toBe(false);
     expect(r3.available === false && r3.failure).toBe("oldBackend");
     expect(r3.available === false && r3.reason).toMatch(copyPattern("peerVersion.said.old"));
 
     invokeMock.mockRejectedValueOnce(refusedReply("failed", "past EOF"));
-    const r4 = await readSessionFacts("pi", "/p/s.jsonl", product);
+    const r4 = await readSessionFacts("pi", "/p/s.jsonl");
     expect(r4.available === false && r4.failure).toBe("transport");
   });
 });

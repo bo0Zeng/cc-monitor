@@ -422,7 +422,7 @@ describe("TabManager 生命周期", () => {
 
   // === issue #63①：fork 血缘徽标 ===
   // 分叉血缘改由后端出成品（`history-facts`），这一组搬进文件末尾「会话事实」那组（后端给了什么 ⇒ tab 上是什么）；
-  //   「首条锁定 · 只认 user/assistant」那两条口径住后端 `tests/backend/observe/facts_query_tests.rs`。
+  //   「首条锁定 · 只认 user/assistant」那两条口径住后端 `tests/backend/observe/recognize/facts_tests.rs`。
 
   // === Batch5-F19：last-active 写回 ===
 
@@ -1977,7 +1977,7 @@ describe("F79 杀死会话（二次确认 ＋ 交那台 sessions-stop）", () =>
 });
 
 // 「F70 会话改动集聚合」那一组搬进文件末尾「会话事实」那组：改动文件集由后端出成品（口径 · 去重 · 近因序
-//   住 `tests/backend/observe/facts_query_tests.rs`），前端这边只剩「成品 ⇒ 监控板 peek 的透传」。
+//   住 `tests/backend/observe/recognize/facts_tests.rs`），前端这边只剩「成品 ⇒ 监控板 peek 的透传」。
 
 describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", () => {
 
@@ -2021,7 +2021,7 @@ describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", (
   });
 
   // F91b-fix(batch18)：touchedFiles 近因序（peek `recentFiles` 尾部 = 最近改的）。近因序今天由后端排
-  //   （`facts_query_tests.rs::the_three_facts_follow_the_moved_rules`），前端只保序透传 —— 那一条在文件末尾「〔STC〕会话事实」那组。
+  //   （`recognize/facts_tests.rs::the_three_facts_follow_the_moved_rules`），前端只保序透传 —— 那一条在文件末尾「〔STC〕会话事实」那组。
 });
 
 describe("account-ux U5 tab 徽章「信息才显」", () => {
@@ -5064,8 +5064,8 @@ describe.each([
 // ════════════════════════════════════════════════════════════════════════════
 //
 // 分叉血缘 · 改动文件集 · 最新 usage 由后端出成品（帧命令 `history-facts`，`session-reads.ts` 第五问）。
-// 口径（首条锁定 · 近因序 · 上界 · 取文件序最后一条）全在后端判据（`tests/backend/observe/facts_query_tests.rs`）；
-// 这一组只钉前端那一侧：成品原样落到 tab 上、原样当续传令牌交回去、只刷变了的那几块、要不到就出声。
+// 口径（首条锁定 · 近因序 · 上界 · 取文件序最后一条）全在后端判据（`tests/backend/observe/recognize/facts_tests.rs`）；
+// 这一组只钉前端那一侧：成品原样落到 tab 上、每问只交路径、只刷变了的那几块、要不到就出声。
 // 子 agent 的列表与状态不在会话事实里（运行表，`tests/frontend/ui/runs.vitest.ts`）。
 // 夹具只造结构（sid / 路径 / 占位 id），不采会话正文。
 describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () => {
@@ -5073,8 +5073,6 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     agent: "claude",
     startedBy: null,
     children: [],
-    end: 100,
-    rev: 7,
     forkedFrom: null,
     touchedFiles: [],
     usage: null,
@@ -5117,15 +5115,15 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     await vi.waitFor(() => expect(asked.some((a) => a.path.endsWith(`/${sid}.jsonl`)), `后台 ${sid} 那一趟没轮到`).toBe(true), UNTIL_CEILING);
     await settle();
   };
-  /** 记下每一问的 `(origin, path, prior)`；答法由 `answer` 现算（抛 ⇒ 通道那一跳的失败形状原样抛）。 */
-  let asked: { origin: string; path: string; prior: unknown }[] = [];
-  const answerFacts = (answer: (path: string, prior: unknown) => unknown): void => {
+  /** 记下每一问的 `(origin, path, body)`；答法由 `answer` 现算（抛 ⇒ 通道那一跳的失败形状原样抛）。 */
+  let asked: { origin: string; path: string; body: unknown }[] = [];
+  const answerFacts = (answer: (path: string) => unknown): void => {
     asked = [];
     vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
       if (!isChanCall(cmd, args, "history-facts")) return undefined;
-      const body = chanArgsJson(args) as { path: string; prior?: unknown };
-      asked.push({ origin: args.origin, path: body.path, prior: body.prior ?? null });
-      return chanReply(answer(body.path, body.prior ?? null));
+      const body = chanArgsJson(args) as { path: string };
+      asked.push({ origin: args.origin, path: body.path, body });
+      return chanReply(answer(body.path));
     });
   };
   let tm: TabManager;
@@ -5197,7 +5195,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     await settle();
     const tab = home(tm).store.tabs.get("pd")!;
     expect(tab.projectDir).toBe("/a/proj");
-    answerFacts(() => facts({ end: 200 }));
+    answerFacts(() => facts());
     tm.onLine({ ...(line("pd", 1) as object), cwd: "/a/proj/sub" } as never);
     await settle();
     expect(tab.projectDir).toBe("/a/proj");
@@ -5226,33 +5224,18 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     expect(home(tm).store.tabs.get("fr")!.title.startsWith("↳ [pi] ")).toBe(true);
   });
 
-  it("续传：第二问把上一份成品的 {end, rev} 当 prior 交回去；成品整份替换（后端说什么就是什么）", async () => {
+  it("又长了再问：每一问只交路径；成品整份替换（后端说什么就是什么）", async () => {
     let n = 0;
-    const first = facts({ end: 10, forkedFrom: "p1", touchedFiles: ["/a"] });
-    const second = facts({ end: 20, forkedFrom: "p1", touchedFiles: ["/b", "/a"] });
+    const first = facts({ forkedFrom: "p1", touchedFiles: ["/a"] });
+    const second = facts({ forkedFrom: "p1", touchedFiles: ["/b", "/a"] });
     answerFacts(() => (n++ === 0 ? first : second));
     tm.onLine(line("s", 0));
     await settle();
     tm.onLine(line("s", 1));
     await settle();
-    expect(asked.map((a) => a.prior)).toEqual([null, { end: first.end, rev: first.rev }]);
+    expect(asked.map((a) => Object.keys(a.body as object))).toEqual([["path"], ["path"]]);
     const tab = home(tm).store.tabs.get("s")!;
     expect([...tab.touchedFiles]).toEqual(["/b", "/a"]);
-  });
-
-  it("带着 prior 要不到（那台续算表里没有了 stale_prior · 续点越过文件尾 = 截断 / 重写）⇒ 不带 prior 从 0 重要一趟", async () => {
-    let n = 0;
-    answerFacts((_p, prior) => {
-      n++;
-      if (n === 2 && prior !== null) throw { err: "Refused", body: [...new TextEncoder().encode('{"code":"stale_prior","message":"not in table"}')] };
-      return facts({ end: n * 10, touchedFiles: [`/f${n}`] });
-    });
-    tm.onLine(line("t", 0));
-    await settle();
-    tm.onLine(line("t", 1));
-    await settle();
-    expect(asked.map((a) => a.prior === null)).toEqual([true, false, true]);
-    expect([...home(tm).store.tabs.get("t")!.touchedFiles]).toEqual(["/f3"]);
   });
 
   it("批期不问；批结束当前 tab 当场问，后台 tab 空闲时轮到再问（不只 active，一个一个）", async () => {
@@ -6551,15 +6534,13 @@ describe("ui3 · 组成块：落点反馈看块、窄栏悬停带组名", () => 
 
 // 8a ④：N 个 tab 冷起，到当前 tab 画出尾段、它那一趟落地之前，后端只收到当前那一个会话的冷读命令；
 // 后台的冷读排在它之后、空闲时一个一个来；切进来停住的插到最前。数命令，不按墙钟。
-// 冷读 ＝ 后端要从头扫的那几问：`history-facts` 不带 prior · `history-turns` from 0 · 骨架索引 · 大纲清单。夹具只造结构（sid / 路径）。
+// 冷读 ＝ 后端要从头扫的那几问：一个 tab 的头一问 `history-facts` · `history-turns` from 0 · 骨架索引 · 大纲清单。夹具只造结构（sid / 路径）。
 describe("〔8a ④〕冷起只先问当前 tab：后台的冷读排在当前 tab 那一趟之后、一个一个来", () => {
   const COLD_OPS = new Set(["history-facts", "history-turns", "history-index", "history-user-inputs"]);
   const facts = (): SessionFacts => ({
     agent: "claude",
     startedBy: null,
     children: [],
-    end: 100,
-    rev: 7,
     forkedFrom: null,
     touchedFiles: [],
     usage: null,
@@ -6590,6 +6571,8 @@ describe("〔8a ④〕冷起只先问当前 tab：后台的冷读排在当前 ta
   };
   /** 发出去的冷读：哪一问 · 哪个会话（按路径认）。 */
   let cold: { op: string; sid: string }[] = [];
+  /** 问过会话事实的会话（头一问才是冷读）。 */
+  let factsAsked = new Set<string>();
   /** 扣着不答的会话（它的 facts / turns 挂起，`release` 才答）。 */
   let holding = new Set<string>();
   let held: { sid: string; go: () => void }[] = [];
@@ -6610,6 +6593,7 @@ describe("〔8a ④〕冷起只先问当前 tab：后台的冷读排在当前 ta
   beforeEach(() => {
     vi.clearAllMocks();
     cold = [];
+    factsAsked = new Set();
     holding = new Set();
     held = [];
     idle = [];
@@ -6626,10 +6610,11 @@ describe("〔8a ④〕冷起只先问当前 tab：后台的冷读排在当前 ta
       if (cmd !== "chan_call") return undefined;
       const a = args as { op: string };
       if (!COLD_OPS.has(a.op)) return undefined;
-      const body = chanArgsJson(args as never) as { path: string; prior?: unknown; from?: number };
+      const body = chanArgsJson(args as never) as { path: string; from?: number };
       const sid = sidOf(body.path);
       if (!["A", "B", "C"].includes(sid)) return undefined; // 前面几组留下的 TabManager 还在排它们的空闲回调：不算这一组的
-      const isCold = a.op === "history-facts" ? body.prior == null : a.op === "history-turns" ? body.from === 0 : true;
+      const isCold = a.op === "history-facts" ? !factsAsked.has(sid) : a.op === "history-turns" ? body.from === 0 : true;
+      if (a.op === "history-facts") factsAsked.add(sid);
       if (isCold) cold.push({ op: a.op, sid });
       if (a.op !== "history-facts" && a.op !== "history-turns") throw UNSUPPORTED;
       const reply = chanReply(a.op === "history-facts" ? facts() : { from: 0, end: 0, turns: [] });

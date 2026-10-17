@@ -54,7 +54,7 @@ pub(crate) struct Live {
     /// `working` · `needs_you` · `idle`；说不清 ⇒ `None`。
     pub(crate) activity: Option<crate::agents::SessionActivity>,
     /// 在等你时等的是哪一类（批准 · 回答 · 计划 · 说不清）。
-    pub(crate) needs: Option<crate::observe::facts_query::NeedsKind>,
+    pub(crate) needs: Option<crate::observe::recognize::facts::NeedsKind>,
 }
 
 /// 加工一份 dump 时问「这个 id 是谁」的口：生产由帧面宿主拼（会话表 ＋ 记录树），判据喂一张表。

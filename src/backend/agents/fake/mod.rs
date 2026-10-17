@@ -369,6 +369,8 @@ fn records_face(
         project_dir: None,
         mcp_said: None,
         quiet_unread: None,
+        beats: None,
+        fork: None,
     }
 }
 

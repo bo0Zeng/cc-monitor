@@ -399,7 +399,7 @@ def selfcheck(files):
     | 6 | 在测试体**末尾追加**一行 | 变异 1 删中间，逮不到「末尾多/少一行」（步 7c 新加）|
 
     🔴 变异 4/5/6 是步 7c 为 `src/backend` 补的：那棵树的形状与 `src/frontend/shell` 不同 ——
-    多块文件更多（`main.rs` 4 块 · `observe/history_query.rs` 4 块）、`mod.rs` 占比更高
+    多块文件更多（`main.rs` 4 块 · `observe/query/locate.rs` 4 块）、`mod.rs` 占比更高
     （目标名要用目录名，见 `dest_for`）、`include_str!` 更密。**变异 4 是其中最要紧的一条**：
     原来的三种全部只动 `moved[0]`，一个「只对账第一块」的 bug 会安静地绿。
 
@@ -524,7 +524,7 @@ def main():
             "src/common/guard-core/src/lib.rs",  # crates/ 那一形
             "src/backend/observe/watcher.rs",           # 5306 行（本仓最大）
             "src/backend/main.rs",                      # 4 块 · include_str!
-            "src/backend/observe/history_query.rs",     # 4 块
+            "src/backend/observe/query/locate.rs",     # 4 块
             "src/backend/dial/mod.rs",                  # mod.rs → 目录名那一形
             "src/backend/platform/pidwatch/mod.rs",     # mod.rs ＋ 2 块
         ]

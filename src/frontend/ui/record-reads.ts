@@ -57,7 +57,7 @@ const PIECE_BUDGET_MS = 120_000;
 /** 漂移账：一问（30 秒，同会话读面那几问）。 */
 const DRIFT_BUDGET_MS = 30_000;
 
-/** 一条记录行（后端 `record_page::RecordLine`）⇒ 载荷；`origin` 由问的那一方打上（这是地址，不是解释）。 */
+/** 一条记录行（后端 `body::RecordLine`）⇒ 载荷；`origin` 由问的那一方打上（这是地址，不是解释）。 */
 function payloadOf(origin: Origin, v: RecordLine): JsonlLinePayload {
   const p: JsonlLinePayload = { session_id: v.session_id, path: v.path, seq: v.seq, cwd: v.cwd, record: v.record };
   if (!isLocalOrigin(origin)) p.origin = origin;

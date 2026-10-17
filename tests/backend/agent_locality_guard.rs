@@ -153,6 +153,21 @@ mod tests {
                 format!("\"cc{}\"", "a"),
                 "别名名字（由那一家的 wrapper 名派生）",
             ),
+            // 下面这几根是 Claude 记录的格名与类型名：读它们的只许是那一家的「一拍」（`agents/claudecode/beat.rs`），
+            // 轮次 · 事实 · 大纲只吃通用的一拍（`agents::beat`）。
+            (format!("isApiError{}", "Message"), "记录格名"),
+            (format!("stop_{}", "reason"), "记录格名"),
+            (format!("toolUse{}", "Result"), "记录格名"),
+            (format!("request{}", "Id"), "记录格名"),
+            (format!("totalCost{}", "USD"), "记录格名"),
+            (format!("hasUnknown{}", "ModelCost"), "记录格名"),
+            (format!("is{}", "Meta"), "记录格名"),
+            (format!("\"end_{}\"", "turn"), "停下的原因值"),
+            (format!("\"api_{}\"", "error"), "记录子类型名"),
+            (format!("\"permission-{}\"", "mode"), "记录类型名"),
+            (format!("\"cost-{}\"", "state"), "记录类型名"),
+            (format!("deferred_tools_{}", "delta"), "附件类型名"),
+            (format!("run_in_{}", "background"), "工具入参名"),
         ]
     }
 

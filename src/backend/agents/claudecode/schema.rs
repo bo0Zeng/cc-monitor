@@ -405,7 +405,7 @@ pub enum JsonlRecord {
     FrameLink {},
     // Claude Code 2.1.29x 新写的簿记行（10-14 语料，114 份会话：atis-latch 11378 行 / 98 份 · history-suppression 1805 ·
     // bridge-session 1790 · cost-state 328 / 113 份 · artifact-comment-monitor 4 · artifact-autoreact-ledger 4，都没有链身份）：
-    // 认识、不上屏、不进链（同上面那一批）。`cost-state` 的花费由会话事实直接读（`observe/facts_query.rs`），不经这里。
+    // 认识、不上屏、不进链（同上面那一批）。`cost-state` 的花费由会话事实直接读（`observe/recognize/facts.rs`），不经这里。
     // 往后再冒出来的没身份新类型不必等登记：适配层不给它们出卡、只在会话事实里记数（`record_of::quiet_unread_of`）。
     #[serde(rename = "atis-latch")]
     AtisLatch {},

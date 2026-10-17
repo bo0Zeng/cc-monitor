@@ -2,16 +2,44 @@
 //!
 //! 核原文：「**『这个会话到目前为止是什么样』＝ 全会话事实 ＝ 读 json** …… 后端要提供的查询都是『读一遍文件』级别：
 //! …… 改动文件集 / agent 列表 / 分叉血缘（没做）」（agent 列表今天是运行表，不在会话事实里）；「旁路记账员改读 json」。
-//! 本族钉的是**口径**（逐格、从前端旧实现逐字搬来的那几条）与**续传**（接力扫 == 一次扫完）。
+//! 本族钉的是**口径**（逐格、从前端旧实现逐字搬来的那几条）与**接着算**（接力扫 == 一次扫完）。
 //!
 //! 夹具只造**结构**（记录类型、工具名、键名、占位串），不采任何真会话正文。
 
 use super::*;
+use crate::agents::beat::SAY_CHARS;
 use serde_json::json;
+
+/// 夹具都是记录树那一家的记录。
+fn tree() -> &'static str {
+    crate::agents::record_tree_kind().unwrap_or_default()
+}
+
+/// 一条已解析的记录不过快路、直接累加（「过滤 / 不过滤」对拍的那一侧）。
+fn note_slow(f: &mut SessionFacts, v: &Value) {
+    if let Some(b) = crate::agents::beat_of(tree(), v) {
+        note_record(f, tree(), v, &b);
+    }
+}
 
 /// 一份夹具会话：每条记录一行（`\n` 收尾）。
 fn jsonl(records: &[Value]) -> String {
     records.iter().map(|r| format!("{r}\n")).collect()
+}
+
+/// 读 `r` 的完整行逐行累加到 `facts` 上（每行经 [`note_line`]，同事实尾巴接着读那一路），再按 `limits` · `relay` 定上下文上限。
+fn scan_facts<R: std::io::BufRead>(
+    r: R,
+    mut facts: SessionFacts,
+    limits: &ContextLimits,
+    relay: Option<bool>,
+) -> std::io::Result<SessionFacts> {
+    let mut lines = crate::observe::lines::Lines::new(r, 0);
+    while let Some(row) = lines.next()? {
+        note_line(&mut facts, tree(), row.body());
+    }
+    settle_limit(&mut facts, limits, relay);
+    Ok(facts)
 }
 
 fn scan_all(text: &str) -> SessionFacts {
@@ -121,11 +149,10 @@ fn only_complete_lines_count() {
     let f = scan_all(&body);
     assert_eq!(f.touched_files, vec!["/p/a"]);
     assert_eq!(f.usage, None, "残尾那条带 usage，但没写完 ⇒ 不算");
-    assert_eq!(f.end as usize, body.rfind('\n').unwrap() + 1);
 }
 
-/// ★★ **续传 == 一次扫完**：夹具在**每一个**行边界切成两段，前一段的成品（常驻后端表里记的那一份，`facts_cache`）
-/// 当 `prior` 接着扫后一段 ⇒ 与一次扫完逐格相等（两向：`assert_eq` 比整个结构）。
+/// ★★ **接着算 == 一次扫完**：夹具在**每一个**行边界切成两段，前一段的成品（后端按路径留着的那一份累加器）
+/// 接着扫后一段 ⇒ 与一次扫完逐格相等（两向：`assert_eq` 比整个结构）。
 #[test]
 fn resuming_from_any_line_boundary_equals_one_pass() {
     let mut recs = mixed();
@@ -139,7 +166,6 @@ fn resuming_from_any_line_boundary_equals_one_pass() {
     assert!(cuts.len() > recs.len(), "切点没取到");
     for cut in cuts {
         let head = scan_all(&text[..cut]);
-        assert_eq!(head.end as usize, cut);
         let resumed = scan_facts(&text.as_bytes()[cut..], head, &Vec::new(), None).unwrap();
         assert_eq!(resumed, whole, "在字节 {cut} 处接力，结果与一次扫完不同");
     }
@@ -171,9 +197,8 @@ fn the_fast_path_never_changes_the_answer() {
     );
     let mut slow = SessionFacts::default();
     for line in text.lines() {
-        slow.end += line.len() as u64 + 1;
         if let Some(v) = crate::observe::lines::parse(line.as_bytes()) {
-            note_record(&mut slow, &v);
+            note_slow(&mut slow, &v);
         }
     }
     assert_eq!(fast, slow);
@@ -183,21 +208,15 @@ fn the_fast_path_never_changes_the_answer() {
         ..SessionFacts::default()
     };
     assert!(!could_matter(
+        tree(),
         br#"{"type":"user","uuid":"u","forkedFrom":{"sessionId":"y"}}"#,
         &f
     ));
     assert!(!could_matter(
+        tree(),
         br#"{"type":"user","uuid":"u","message":{"content":[{"type":"tool_result"}]}}"#,
         &f
     ));
-}
-
-#[test]
-fn the_edit_tool_lookup_answers_from_its_table() {
-    for (name, key) in EDIT_TOOL_PATH_KEYS {
-        assert_eq!(edit_path_key(name), Some(*key));
-    }
-    assert_eq!(edit_path_key("Read"), None);
 }
 
 /// 写类工具的口径 —— **逐条搬自前端被删的 `tests/frontend/ui/panorama/session-files.test.ts`**（七条，被测对象
@@ -314,8 +333,8 @@ fn the_context_limit_is_decided_here_and_never_below_what_was_seen() {
     );
 }
 
-/// ★ 一份会话：最新一轮掉下来了（压缩过），见过的最大一轮照样记着 ⇒ 上限仍是 1M；续传接力也一样（peak 跟着 prior 走）。
-/// 设置表随每一次问交来：同一份 `prior` 换一张表再问 ⇒ 上限跟着变。
+/// ★ 一份会话：最新一轮掉下来了（压缩过），见过的最大一轮照样记着 ⇒ 上限仍是 1M；接力也一样（peak 跟着累加器走）。
+/// 设置表随每一次问交来：同一份累加器换一张表再问 ⇒ 上限跟着变。
 #[test]
 fn the_peak_survives_a_compaction_and_a_resume_and_the_setting_applies_each_time() {
     let text = jsonl(&[
@@ -480,10 +499,10 @@ fn needs_is_decided_from_the_wait_and_the_pending_call() {
     let ask = vec![call("q", "AskUserQuestion", Some("要不要？"))];
     let plan = vec![call("p", "ExitPlanMode", None)];
     // 不在等 ⇒ 没有。
-    assert_eq!(needs_of(&bash, None), None);
+    assert_eq!(needs_of(tree(), &bash, None), None);
     // 批准框 ＋ 一步没结果 ⇒ 批准那一步。
     assert_eq!(
-        needs_of(&bash, Some(&wait(Some(W::Permission)))),
+        needs_of(tree(), &bash, Some(&wait(Some(W::Permission)))),
         Some(Needs {
             kind: NeedsKind::Approve,
             tool: Some("Bash".into()),
@@ -506,12 +525,12 @@ fn needs_is_decided_from_the_wait_and_the_pending_call() {
     );
     // 批准框里是提问 ⇒ 回答；是计划 ⇒ 批准计划；那台没说是哪种框时同样认这两个工具。
     for w in [Some(W::Permission), None] {
-        let n = needs_of(&ask, Some(&wait(w))).unwrap();
+        let n = needs_of(tree(), &ask, Some(&wait(w))).unwrap();
         assert_eq!(
             (n.kind, n.what.as_deref()),
             (NeedsKind::Answer, Some("要不要？"))
         );
-        let n = needs_of(&plan, Some(&wait(w))).unwrap();
+        let n = needs_of(tree(), &plan, Some(&wait(w))).unwrap();
         assert_eq!(
             (n.kind, n.tool.as_deref(), n.call.as_deref(), n.what),
             (NeedsKind::Plan, Some("ExitPlanMode"), Some("p"), None)
@@ -527,11 +546,11 @@ fn needs_is_decided_from_the_wait_and_the_pending_call() {
         (W::Dialog, NeedsKind::Choose, false),
     ];
     for (w, kind, with_call) in kinds {
-        let n = needs_of(&bash, Some(&wait(Some(w)))).unwrap();
+        let n = needs_of(tree(), &bash, Some(&wait(Some(w)))).unwrap();
         assert_eq!(n.kind, kind, "{w:?}");
         assert_eq!(n.call.is_some(), with_call, "{w:?}");
         // 记录里没有没结果的调用：种类照旧，只是说不出是哪一步。
-        let n = needs_of(&[], Some(&wait(Some(w)))).unwrap();
+        let n = needs_of(tree(), &[], Some(&wait(Some(w)))).unwrap();
         assert_eq!((n.kind, n.call), (kind, None), "{w:?}");
     }
     // 弹着别的框（选项框 · 联网 · 协作 · 目标）时，底下那个提问 / 计划轮不到：先答的是顶上那个框。
@@ -542,14 +561,14 @@ fn needs_is_decided_from_the_wait_and_the_pending_call() {
         (W::Goal, NeedsKind::Goal),
     ] {
         assert_eq!(
-            needs_of(&ask, Some(&wait(Some(w)))).unwrap().kind,
+            needs_of(tree(), &ask, Some(&wait(Some(w)))).unwrap().kind,
             kind,
             "{w:?}"
         );
     }
     // 那台没说在等什么（或说了认不出的词）· 也没有提问 / 计划 ⇒ 判不出（不猜成批准）。
     for pending in [bash.clone(), vec![]] {
-        let n = needs_of(&pending, Some(&wait(None))).unwrap();
+        let n = needs_of(tree(), &pending, Some(&wait(None))).unwrap();
         assert_eq!(
             (n.kind, n.tool, n.call, n.what),
             (NeedsKind::Unknown, None, None, None)
@@ -575,9 +594,8 @@ fn the_fast_path_keeps_pending_and_last_say_exact() {
     let fast = scan_all(&text);
     let mut slow = SessionFacts::default();
     for line in text.lines() {
-        slow.end += line.len() as u64 + 1;
         if let Some(v) = crate::observe::lines::parse(line.as_bytes()) {
-            note_record(&mut slow, &v);
+            note_slow(&mut slow, &v);
         }
     }
     assert_eq!(fast, slow);
@@ -585,10 +603,12 @@ fn the_fast_path_keeps_pending_and_last_say_exact() {
     // 正控：有没结果的调用时，别人的工具结果照旧不解析。
     let f = scan_all(&jsonl(&recs[..1]));
     assert!(!could_matter(
+        tree(),
         br#"{"type":"user","uuid":"u","message":{"content":[{"type":"tool_result","tool_use_id":"other"}]}}"#,
         &f
     ));
     assert!(could_matter(
+        tree(),
         br#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"b2"}]}}"#,
         &f
     ));
@@ -635,7 +655,7 @@ fn handed_back_runs_are_the_ones_that_handed_back() {
 }
 
 /// ★ 一步还没结果时的样子只在这里判：那台说在等的正是它 ⇒ 在等你；有活进程 ⇒ 在跑；没有 ⇒ 状态不明、带原因码
-/// （没有活进程持着 `noWriter` · 这一家不留 pidfile、判不了活 `untracked`）；每次现判、不随续传令牌留下来。
+/// （没有活进程持着 `noWriter` · 这一家不留 pidfile、判不了活 `untracked`）；每次现判、不随累加器留下来。
 #[test]
 fn a_step_without_a_result_is_running_only_when_a_live_process_holds_the_session() {
     let text = jsonl(&[assistant(vec![
@@ -666,6 +686,7 @@ fn a_step_without_a_result_is_running_only_when_a_live_process_holds_the_session
     settle_pending(&mut f, true);
     assert_eq!(states(&f), [(StepWait::Running, None); 2]);
     f.needs = needs_of(
+        tree(),
         &f.pending,
         Some(&PidWait {
             waiting_for: Some(crate::agents::WaitOn::Permission),
@@ -679,7 +700,7 @@ fn a_step_without_a_result_is_running_only_when_a_live_process_holds_the_session
         states(&f),
         [(StepWait::Awaiting, None), (StepWait::Running, None)]
     );
-    // 续传：令牌里带着上一次的样子也收（形状恰好）。
+    // 上线那一形：每一步的样子照写。
     let wire = serde_json::to_value(&f).unwrap();
     assert_eq!(
         (
@@ -768,7 +789,7 @@ fn priced(req: &str, model: &str, usage: Value) -> Value {
 }
 
 /// 用量成品：同一次请求写出的几条只算一次（取最后一条）· 写缓存分 5m / 1h 两档（没分档的整份算 5m）· 成品串后端写好；
-/// 续传接力（从任一行边界接着扫）== 一次扫完。
+/// 接力（从任一行边界接着扫）== 一次扫完。
 #[test]
 fn tokens_count_each_request_once_with_two_cache_write_tiers() {
     let text = jsonl(&[
@@ -963,7 +984,7 @@ fn the_mcp_only_scan_says_what_the_full_facts_say() {
     ];
     let text = jsonl(&recs);
     let mut got = Vec::new();
-    let read = mcp_from(text.as_bytes(), &mut got).unwrap();
+    let read = mcp_from(text.as_bytes(), tree(), &mut got).unwrap();
     assert_eq!(read, text.len() as u64, "整份都是完整行");
     assert_eq!(got, scan_all(&text).mcp);
     assert_eq!(
@@ -1038,7 +1059,7 @@ fn needs_carries_its_words_and_tone() {
         (vec![], None, NeedsKind::Unknown, "beSession.needs.unknown"),
     ];
     for (pending, w, kind, key) in cases {
-        let n = needs_of(&pending, Some(&wait(w))).unwrap();
+        let n = needs_of(tree(), &pending, Some(&wait(w))).unwrap();
         assert_eq!(n.kind, kind);
         let v = serde_json::to_value(&n).unwrap();
         assert_eq!(v["text"], copy_core::copy_text(key, &[]), "{kind:?}");
@@ -1105,9 +1126,8 @@ fn background_commands_are_kept_until_their_end_notice() {
     // 快路：每行都解析与先过滤再解析结果一样。
     let mut slow = SessionFacts::default();
     for line in text.lines() {
-        slow.end += line.len() as u64 + 1;
         if let Some(v) = crate::observe::lines::parse(line.as_bytes()) {
-            note_record(&mut slow, &v);
+            note_slow(&mut slow, &v);
         }
     }
     assert_eq!(f, slow);
@@ -1277,7 +1297,7 @@ fn needs_carry_a_rank_riskier_first() {
     let ranks: Vec<u64> = order
         .into_iter()
         .map(|(p, w, kind)| {
-            let n = needs_of(&p, Some(&wait(w))).unwrap();
+            let n = needs_of(tree(), &p, Some(&wait(w))).unwrap();
             assert_eq!(n.kind, kind);
             n.rank
         })
@@ -1307,6 +1327,7 @@ fn how_long_it_has_waited_is_measured_on_the_machine_that_wrote_the_start() {
     }];
     let at = |since: Option<u64>, read: u64| {
         let n = needs_of(
+            tree(),
             &bash,
             Some(&PidWait {
                 waiting_for: Some(W::Permission),
@@ -1495,7 +1516,7 @@ fn needs_carries_the_pinned_bar_headline_written_with_the_tool() {
     };
     let bash = vec![call("b", "Bash", Some("rm -rf build/"))];
     let plan = vec![call("p", "ExitPlanMode", Some("计划正文头一行"))];
-    let n = needs_of(&bash, Some(&wait(Some(W::Permission)))).unwrap();
+    let n = needs_of(tree(), &bash, Some(&wait(Some(W::Permission)))).unwrap();
     assert_eq!(
         n.head.0,
         copy_core::copy_text("needs.bar.approve", &[("tool", "Bash")])
@@ -1506,10 +1527,10 @@ fn needs_carries_the_pinned_bar_headline_written_with_the_tool() {
         copy_core::copy_text("beSession.needs.approve", &[]),
         "短的那一格照旧"
     );
-    let n = needs_of(&plan, Some(&wait(Some(W::Permission)))).unwrap();
+    let n = needs_of(tree(), &plan, Some(&wait(Some(W::Permission)))).unwrap();
     assert_eq!(n.head.0, copy_core::copy_text("needs.bar.plan", &[]));
     assert_eq!(n.head_code, None, "计划不带等宽那一段");
-    let n = needs_of(&bash, Some(&wait(Some(W::Network)))).unwrap();
+    let n = needs_of(tree(), &bash, Some(&wait(Some(W::Network)))).unwrap();
     assert_eq!(n.head.0, copy_core::copy_text("needs.bar.network", &[]));
     assert_eq!(n.head_code.as_deref(), Some("rm -rf build/"));
     for (w, key) in [
@@ -1518,12 +1539,12 @@ fn needs_carries_the_pinned_bar_headline_written_with_the_tool() {
         (Some(W::Dialog), "needs.bar.choose"),
         (None, "needs.bar.unknown"),
     ] {
-        let n = needs_of(&[], Some(&wait(w))).unwrap();
+        let n = needs_of(tree(), &[], Some(&wait(w))).unwrap();
         assert_eq!(n.head.0, copy_core::copy_text(key, &[]), "{w:?}");
         assert_eq!(n.head_code, None, "{w:?}");
     }
     // 批准框但判不出工具名 ⇒ 第一行就是短的那一格。
-    let n = needs_of(&[], Some(&wait(Some(W::Permission)))).unwrap();
+    let n = needs_of(tree(), &[], Some(&wait(Some(W::Permission)))).unwrap();
     assert_eq!(
         (n.kind, n.head.clone()),
         (NeedsKind::Approve, n.text.clone())

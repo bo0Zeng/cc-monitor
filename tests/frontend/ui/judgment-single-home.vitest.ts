@@ -386,7 +386,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J19: {
     what: "工具词表：哪些工具名算「展开 = 子会话」（agent 工具）· 哪个工具名画成哪一种卡 · tmux 前台命令哪几个算 agent 的会话",
-    // 两个 Rust 住址（后端 `observe/facts_query.rs` 喂会话事实 · monitor `adapter.rs` 喂渲染 agent 卡）
+    // 两个 Rust 住址（后端 `observe/recognize/facts.rs` 喂会话事实 · monitor `adapter.rs` 喂渲染 agent 卡）
     //   收成一份进新立的共享 crate `agent-tools-core`（两半编译期不许互咬 ——
     //   共享 crate 是唯一合法的形；现有 core 没有一个的身份是「工具词表」）。
     //   两边都成它的别名，异源对拍（后端常量 == 生成物里 claude 那一行）随之退役。
@@ -401,9 +401,9 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       { text: "agentTools", count: 0 },
       { text: "livenessProcessNames", count: 0 },
     ],
-    rustGone: ["src/backend/observe/facts_query.rs::is_agent_tool"],
+    rustGone: ["src/backend/observe/recognize/facts.rs::is_agent_tool"],
     rustNeedles: [
-      { file: "src/backend/observe/facts_query.rs", text: '&["Agent", "Task"]', count: 0 },
+      { file: "src/backend/observe/recognize/facts.rs", text: '&["Agent", "Task"]', count: 0 },
       // monitor `adapter.rs` 那一行摘了：那份文件随 monitor 的适配表整删（起会话事实只住后端适配层）。
       { file: "src/backend/agents/claudecode/cards.rs", text: '&["Agent", "Task"]', count: 1 },
     ],

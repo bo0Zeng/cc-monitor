@@ -1,4 +1,4 @@
-//! 「你说过的话」清单纯核的判据（`observe::user_inputs`）。
+//! 「你说过的话」清单纯核的判据（`observe::recognize::user_inputs`）。
 //!
 //! 买到：四条口径逐条两向（该进的一条不少、不该进的一条不多，**按文件顺序**）· 头尾形状 ·
 //! `end` 只算完整行 · 增量从 `end` 接得上（切成两段再拼 == 一次全量，逐条相等）· 摘要的截断/折叠。
@@ -47,8 +47,13 @@ fn bytes_of(lines: &[String]) -> Vec<u8> {
 
 /// 冷开扫描图那一张（夹具的记录不带父子链 ⇒ 不认链、不滤主线外；帧面 `history-user-inputs` 从它上面切）。
 fn map_of(data: &[u8]) -> crate::observe::record_scan::ScanMap {
-    crate::observe::record_scan::ScanMap::scan_with(data, data.len() as u64, tree(), None)
-        .expect("scan ok")
+    crate::observe::record_scan::ScanMap::scan_with(
+        data,
+        data.len() as u64,
+        crate::agents::record_tree_kind().unwrap_or_default(),
+        None,
+    )
+    .expect("scan ok")
 }
 
 /// 从 `from` 起切（同帧面那一段），摊成 `[{from}, 每条…, {count, end}]`：中段是条目，尾格是条数与扫到的末端。

@@ -6557,22 +6557,13 @@ count: number,
 tone: Tone, };
 type FactsClock = { text: Words, from: number, };
 type FactsCost = { micros: number, partial: boolean, text: Words, };
-type FactsLastRequest = { id: string, tokens: Array<number>, };
-type FactsToken = { end: number, rev: number, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type HistoryFactsReq = { 
 /**
- * jsonl 路径（围栏同 `history-read`）。
+ * jsonl 路径（围栏同 `history-read`）。接着上一次算由后端按路径留着（`observe::record_scan`），调用方什么都不带。
  */
-path: string, 
-/**
- * 可缺：续传令牌 ＝ 上一次应答里的 `{end, rev}`。缺 / `null` ⇒ 从字节 0 扫；给了 ⇒ 从那台续算表里那一份（[`facts_cache`]）
- * 接着扫、累加在它上面；表里没有 ⇒ `stale_prior`（调用方不带令牌从 0 要）。带不带 `view` 都是这两格（投影不去它们）。
- *
- * [`facts_cache`]: crate::observe::facts_cache
- */
-prior?: FactsToken, };
+path: string, };
 type Kin = { sid: string, title: string, 
 /**
  * 此刻活着（这台 pidfile 说的）。
@@ -6743,7 +6734,7 @@ id: string,
  */
 name: string, 
 /**
- * 主参数一行（[`WHAT_KEYS`]；提问取第一问）；没登记 / 入参里没有 ⇒ `null`。
+ * 主参数一行（那一家的「工具 → 主参数」表；提问取第一问）；没登记 / 入参里没有 ⇒ `null`。
  */
 what: string | null, 
 /**
@@ -6755,7 +6746,7 @@ at: string | null,
  */
 atMs: number | null, 
 /**
- * 这一步此刻的样子（[`settle_pending`] 每次现判，不累加；`prior` 里那一份不用）。
+ * 这一步此刻的样子（[`settle_pending`] 每次现判，不累加）。
  */
 state: StepWait, 
 /**
@@ -6791,15 +6782,6 @@ type RetryRun = {
 id: string, outcome: RetryOutcome, };
 type SessionFacts = { 
 /**
- * 最后一个完整行的末字节 ＝ 下一次的续点（续传令牌 `{end, rev}` 的一半）。
- */
-end: number, 
-/**
- * 这一份在那台常驻后端续算表里的号（续传令牌的另一半，[`super::facts_cache`]）：下一问交回 `{end, rev}` 就从这一份接着扫。
- * 扫描本身不读它；只在出成品那一刻由续算表铸。
- */
-rev: number, 
-/**
  * 源会话 sid；不是分叉来的 ⇒ `null`。
  */
 forkedFrom: string | null, 
@@ -6813,7 +6795,7 @@ touchedFiles: Array<string>,
 usage: UsageFact | null, 
 /**
  * `usage.model` 写给人看的名字（那一家的模型那一处给：`agents::model_text`）；没有 usage · 认不出是哪一家 · 这一家认不出这个值 ⇒ `null`
- * （界面照抄，不自己拼）。每次现给，不进续算表。
+ * （界面照抄，不自己拼）。每次现给，不累加。
  */
 modelText: Words | null, 
 /**
@@ -6826,7 +6808,7 @@ projectDir: string | null,
  */
 agent: string | null, 
 /**
- * 此刻持着这条会话的活进程 pid（`accounts_query::session_holders`：照那一家声明的判活方式查），升序；不累加，每次现查（`prior` 里那一份不用）。
+ * 此刻持着这条会话的活进程 pid（`accounts_query::session_holders`：照那一家声明的判活方式查），升序；不累加，每次现查。
  * 不止一个 ⇒ 同一条会话有几个进程在同时写。判不了 ⇒ 空。
  */
 writers: Array<number>, 
@@ -6839,7 +6821,7 @@ pending: Array<PendingCall>,
  */
 lastSay: LastSay | null, 
 /**
- * **需手动**：那台说在等、等的是什么（不累加，每次现查；`prior` 里那一份不用）。不在等 ⇒ `null`。
+ * **需手动**：那台说在等、等的是什么（不累加，每次现查）。不在等 ⇒ `null`。
  */
 needs: Needs | null, 
 /**
@@ -6856,7 +6838,7 @@ retries: Array<RetryRun>,
 permissionMode: string | null, 
 /**
  * 同一档写给人看的那一句（那一家的权限档那一处给：`agents::permission_mode_text`，切档回包的 `modeText` 同一处）；
- * 没有档 · 认不出是哪一家 · 这一家认不出这一档 ⇒ `null`（界面照抄，不自己拼）。每次现给，不进续算表。
+ * 没有档 · 认不出是哪一家 · 这一家认不出这一档 ⇒ `null`（界面照抄，不自己拼）。每次现给，不累加。
  */
 permissionModeText: Words | null, 
 /**
@@ -6868,11 +6850,11 @@ tokens: TokenUse | null,
  */
 cost: FactsCost | null, 
 /**
- * 还没收场的后台命令（文件序）：累加的那一份账，续传时原样带回来。
+ * 还没收场的后台命令（文件序）：累加的那一份账。
  */
 bgTasks: Array<BgTask>, 
 /**
- * **后台任务运行中**：那台说一轮停了、后台命令还在跑 ⇒ 状态一句（不累加，每次现查；`prior` 里那一份不用）。不是这一态 ⇒ `null`。
+ * **后台任务运行中**：那台说一轮停了、后台命令还在跑 ⇒ 状态一句（不累加，每次现查）。不是这一态 ⇒ `null`。
  */
 background: FactsBackground | null, 
 /**
@@ -6893,7 +6875,7 @@ autoAnswered: Words | null,
  */
 mcp: Array<McpTrouble>, 
 /**
- * 由谁启动（会话血缘里它的主会话）；不是谁起的 ⇒ `null`。不累加，每次现查（`prior` 里那一份不用）。
+ * 由谁启动（会话血缘里它的主会话）；不是谁起的 ⇒ `null`。不累加，每次现查。
  */
 startedBy: Kin | null, 
 /**
@@ -6913,11 +6895,7 @@ requests: number,
 /**
  * 写好的串（输入 · 输出 · 读缓存 · 写缓存）。
  */
-text: Words, 
-/**
- * 上一次请求（续传时同一次请求的后一条要替掉它）：键 · 那一次的五个数。
- */
-last: FactsLastRequest | null, };
+text: Words, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
 type UnclearWhy = "noWriter" | "untracked";
 type UsageFact = { 
@@ -6960,7 +6938,7 @@ limitFromText: Words | null, };
 type Words = string;
 ```
 
-码：`bad_args` · `failed` · `too_large` · `stale_prior`
+码：`bad_args` · `failed` · `too_large`
 
 #### `history-branch`
 
@@ -14123,6 +14101,8 @@ needs: string | null, };
 | `fd` | number? | 折叠单元数：`tool_use` / `tool_result` / `thinking` / `redacted_thinking` / `image` 块 |
 | `x` | string? | 这一行是一条**用户输入**（大纲的一项）⇒ 它的摘要；不是 ⇒ 省略 |
 | `ts` | string? | 同上那一行的 `timestamp`（空串 ⇒ 省略；清单那边的空串 == 这里缺席） |
+
+### `history-record` 的出参
 
 #### `RecordProbe`
 

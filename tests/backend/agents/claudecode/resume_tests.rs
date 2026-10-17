@@ -115,7 +115,7 @@ fn the_model_command_is_slash_model_and_the_value() {
     assert_eq!(super::model_command("sonnet[1m]"), "/model sonnet[1m]");
 }
 
-/// ★ 每一档都有字：起会话可选的 ∪ 只会显示的那几档 == 记录里会写的那七个值（`facts_query_tests` 那七个：六个真值 ＋ 别名 `manual`），
+/// ★ 每一档都有字：起会话可选的 ∪ 只会显示的那几档 == 记录里会写的那七个值（`recognize::facts::tests` 那七个：六个真值 ＋ 别名 `manual`），
 /// 两向；每一档经同一处（[`crate::agents::permission_mode_text`]）给字、字取自文案表；屏底认得出的档都在里面。认不出的档不猜字。
 #[test]
 fn every_mode_the_session_can_be_in_has_its_words() {

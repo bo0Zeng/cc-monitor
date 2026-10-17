@@ -116,13 +116,13 @@ pub(crate) fn with_launch_ctx<T>(
 /// 恢复那一条要从记录里读的：记录在这台记录树里找；哪一家 · 工作目录 · 模型 · 权限档从会话事实那一处扫描读（上限表用不着，不读）。
 /// 任一找不到 ⇒ `None`（不恢复）。`session-say` 恢复那一支同一份。
 pub(crate) fn resume_of(sid: &str) -> Option<ResumeOf> {
-    use crate::observe::history_query as hq;
+    use crate::observe::query::locate as hq;
     let home = crate::history::listing::agent_home();
     let path = hq::session_record(&home, sid).ok()?;
     let path = path.to_str()?;
     let agent = hq::facts_agent(&home, path)?;
     let cwd = hq::facts_project_dir(&home, path)?;
-    let facts = hq::cold_scan(&home, path).ok()?.facts(&Vec::new(), None);
+    let facts = hq::facts(&home, path, &Vec::new(), None).ok()?;
     Some(ResumeOf {
         agent,
         cwd,

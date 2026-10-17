@@ -10,7 +10,7 @@ use shell_quote_core::session_id_ok as is_plain_sid;
 
 /// `K-R88`：sid 的形状是 `find_session_file` 先过的那一把闸，且它先于任何 IO。
 ///
-/// ⚠ 这里只测纯判定那一半；「在树上找得到 / 找不到」那一半由调用方各自的测试驱动（`fork_write` · `history_query` · 删会话）。
+/// ⚠ 这里只测纯判定那一半；「在树上找得到 / 找不到」那一半由调用方各自的测试驱动（`fork_write` · `observe::query` · 删会话）。
 #[test]
 fn a_session_id_that_could_spell_another_path_is_refused() {
     assert!(is_plain_sid("0473c3a0-1111-2222-3333-444455556666"));

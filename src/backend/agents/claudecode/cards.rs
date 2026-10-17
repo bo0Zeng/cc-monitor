@@ -8,7 +8,7 @@ use crate::agents::ToolCard;
 const AGENT_TOOLS: &[&str] = &["Agent", "Task"];
 /// 交互工具（agent 在等用户决定）。
 const INTERACTIVE_TOOLS: &[&str] = &["AskUserQuestion", "ExitPlanMode"];
-/// 写类工具（参数按行级 diff 画）。NotebookEdit **不在内**（会话事实的「改动文件」那张另算它，`observe/facts_query.rs`）。
+/// 写类工具（参数按行级 diff 画）。NotebookEdit **不在内**（会话事实的「改动文件」那张另算它，`observe/recognize/facts.rs`）。
 const DIFF_TOOLS: &[&str] = &["Edit", "Write", "MultiEdit"];
 /// 结果默认按 Markdown 画的工具。
 const MD_TOOLS: &[&str] = &["Read", "Grep", "WebFetch", "NotebookRead", "TodoWrite"];

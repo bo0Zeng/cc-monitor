@@ -1154,6 +1154,27 @@ mod tests {
             "faces",
             "faces 是账号库与上游选择接头的那一处：账号库由 faces 读好交进来（`LibraryRead`）",
         ),
+        // 读一份记录的四层（`observe` 里头）：读行 → 认行 → 扫描图与骨架 → 查询，跟读在最上；只许往下引。
+        (
+            "observe::lines",
+            "observe::recognize · record_scan · skeleton · query · watcher",
+            "读行在最下：一行行读 · 算不算一行 · 一行怎么解析",
+        ),
+        (
+            "observe::recognize",
+            "observe::record_scan · skeleton · query · watcher",
+            "认行只认给它的那一行，不碰文件、不问扫描图",
+        ),
+        (
+            "observe::record_scan",
+            "observe::query · watcher",
+            "扫描图一份记录扫一趟，查询与跟读都来要它",
+        ),
+        (
+            "observe::query",
+            "observe::watcher",
+            "查询只读扫描图；跟读起步也问扫描图",
+        ),
     ];
 
     /// 帧面的协议零件（`wire`）只许引的那几个顶层模块：它们自己也只引 `platform` / `common`。
@@ -1386,6 +1407,61 @@ mod tests {
         m
     }
 
+    /// 一个顶层模块里头的一层（`top/layer.rs` 或 `top/layer/` 底下）引了同一顶层里哪几个不许引的兄弟：
+    /// `not` 写作 `top::a · b · c`。认 `crate::top::x` · `super::x`（顶层那一级的文件）· `super::super::x`（下一级目录里的文件）。
+    fn inner_refs(top: &str, layer: &str, not: &str) -> Vec<(usize, String, String)> {
+        let root = guard_core::addr::backend_src_root().join(top);
+        let targets: Vec<&str> = not
+            .strip_prefix(&format!("{top}::"))
+            .expect("`not` 以同一顶层开头")
+            .split(" · ")
+            .collect();
+        let mut files = vec![root.join(format!("{layer}.rs"))];
+        let mut stack = vec![root.join(layer)];
+        while let Some(d) = stack.pop() {
+            for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else if p.extension().is_some_and(|x| x == "rs") {
+                    files.push(p);
+                }
+            }
+        }
+        files.retain(|p| p.is_file());
+        assert!(
+            !files.is_empty(),
+            "`{top}::{layer}` 一份文件都没有 —— 这一行是空转"
+        );
+        let mut out = Vec::new();
+        for p in files {
+            let nested = p.parent() != Some(root.as_path());
+            let up = if nested { "super::super::" } else { "super::" };
+            let layer_src = production_code(&std::fs::read_to_string(&p).expect("read rs"));
+            for t in &targets {
+                let n = [format!("crate::{top}::{t}"), format!("{up}{t}")]
+                    .iter()
+                    .map(|needle| {
+                        layer_src
+                            .match_indices(needle.as_str())
+                            .filter(|(i, _)| {
+                                let after = layer_src[i + needle.len()..].chars().next();
+                                let before = layer_src[..*i].chars().next_back();
+                                !after.is_some_and(is_ident_char)
+                                    && !before.is_some_and(|c| is_ident_char(c) || c == ':')
+                            })
+                            .count()
+                    })
+                    .sum::<usize>();
+                if n > 0 {
+                    let rel = p.strip_prefix(&root).unwrap_or(&p).display().to_string();
+                    out.push((n, rel, t.to_string()));
+                }
+            }
+        }
+        out
+    }
+
     /// ★ **功能之间只许单向**：定了方向的那几对反方向零处；任何两个顶层模块都不许互相引用。
     #[test]
     fn features_reference_each_other_one_way_only() {
@@ -1393,6 +1469,14 @@ mod tests {
         let count = |a: &str, b: &str| m.get(&(a.to_string(), b.to_string())).copied();
         let mut bad = Vec::new();
         for (who, not, why) in ONE_WAY {
+            if let Some((top, layer)) = who.split_once("::") {
+                for (n, file, to) in inner_refs(top, layer, not) {
+                    bad.push(format!(
+                        "{who} → {top}::{to}：{n} 处（{file}；{who} 在 {to} 之下：{why}）"
+                    ));
+                }
+                continue;
+            }
             if let Some((n, files)) = count(who, not) {
                 bad.push(format!(
                     "{who} → {not}：{n} 处 / {files} 份（方向定的是 {not} → {who}：{why}）"
