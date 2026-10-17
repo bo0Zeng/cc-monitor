@@ -392,16 +392,12 @@ class ResidentFeedTest {
         }
 
     @Test
-    fun `流上的帧折成会话表与几条流；拥塞那一句不叫重接（那台就地重报）`() =
+    fun `拥塞那一句不叫重接（那台就地重报）`() =
         runTest(UnconfinedTestDispatcher()) {
             val core = FakeCore()
-            val f = feed(core)
-            val kinds = mutableListOf<String>()
-            backgroundScope.launch { f.changes.collect { kinds += it } }
+            feed(core)
             core.emit("frame", """{"kind":"sessions_replayed"}""")
-            assertEquals(listOf("sessions_replayed"), kinds)
             core.emit("frame", """{"kind":"overflow","said":"连接拥塞 · 会话状态已重新对齐"}""")
-            assertEquals(listOf("sessions_replayed", "overflow"), kinds)
             assertFalse("拥塞不重接：那台在原连接上整份重报", core.kicks.contains(true))
         }
 

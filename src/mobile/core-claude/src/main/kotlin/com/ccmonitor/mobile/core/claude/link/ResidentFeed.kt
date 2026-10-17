@@ -153,11 +153,6 @@ class ResidentFeed(
     private val epochFlow = MutableStateFlow(0L)
     override val epoch: StateFlow<Long> = epochFlow.asStateFlow()
 
-    private val changeFlow = MutableSharedFlow<String>(extraBufferCapacity = BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
-
-    /** 每来一帧发它的 `kind`：出口据此重问（`session_added` ⇒ 重问 `history-list` …）。 */
-    val changes: SharedFlow<String> = changeFlow.asSharedFlow()
-
     private val changedFlow = MutableSharedFlow<Changed>(extraBufferCapacity = BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
     /** 流上的 `changed` 帧（哪一样变了 · 哪一个）：出口照它重读那一份。 */
@@ -394,7 +389,6 @@ class ResidentFeed(
     private suspend fun onFrame(frame: Map<String, Any?>) {
         val next = tableFlow.value.step(frame, onBreak)
         tableFlow.value = next
-        frame.str("kind")?.let(changeFlow::tryEmit)
         Changed.of(frame)?.let(changedFlow::tryEmit)
         if (frame.str("kind") == LiveFrame.KIND) LiveFrame.of(frame)?.let(liveFlow::tryEmit) ?: broke("frame", frame.toString())
         // 满了就在这里等（停收），不丢行。

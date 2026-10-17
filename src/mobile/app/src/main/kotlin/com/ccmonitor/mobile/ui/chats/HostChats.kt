@@ -42,7 +42,6 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -59,7 +58,7 @@ class HostChats(
     /** 这台在屏上的名字。 */
     val machine: String,
     val link: CoreLink,
-    /** 清单该重问了（会话增删 · 隐藏那一格变了）。 */
+    /** 清单该重问了（那台推的 `changed {history_list}`）。 */
     listChanged: Flow<Unit>,
     deploying: StateFlow<Deploying?>,
     private val reconnect: () -> Unit,
@@ -166,11 +165,8 @@ class HostChats(
         }
 
     companion object {
-        /** 会话帧里叫清单重问的那几种（会话增删）。 */
-        val LIST_KINDS = setOf("session_added", "session_removed")
-
-        /** 推帧主题：某条会话隐藏那一格变了（那台判的）。 */
-        val LIST_TOPICS = setOf("session_hidden")
+        /** 推帧主题：那台的会话清单动了（会话来去 · 名字 / 状态 · 记录长了 · 注解 · 隐藏规则，那台判的）。 */
+        const val LIST_TOPIC = "history_list"
         const val LIST_DEBOUNCE_MS = 1_000L
     }
 }
@@ -358,7 +354,7 @@ fun hostChats(
             hostId = h.id,
             machine = h.label,
             link = feed,
-            listChanged = merge(feed.changes.filter { it in HostChats.LIST_KINDS }, feed.changed.filter { it.topic in HostChats.LIST_TOPICS }).map { },
+            listChanged = feed.changed.filter { it.topic == HostChats.LIST_TOPIC }.map { },
             deploying = feed.deploying,
             reconnect = feed::reconnect,
             deploy = { backends.deploy(h.id) },

@@ -72,6 +72,7 @@ impl FrameSink {
             ledger: None,
             priming: HashSet::new(),
             arrivals: crate::observe::arrivals::Arrivals::default(),
+            list: std::sync::Arc::default(),
         }
     }
 
@@ -83,6 +84,71 @@ impl FrameSink {
             .extend(sids.iter().map(|x| x.to_string()));
         s
     }
+}
+
+/// 夹具那一份清单节点自上一次看过之后响没响（看过就算取走）。
+fn list_rang(rx: &mut tokio::sync::watch::Receiver<u64>) -> bool {
+    let r = rx.has_changed().expect("节点还在");
+    rx.borrow_and_update();
+    r
+}
+
+/// ★ 扇出去的帧说的事让清单里那一行变了 ⇒ 响清单的节点：记录长了（一行一行来，同一个会话只响一下）· 别的会话结束 ·
+/// 记录被改写从头重读；与清单无关的帧（运行表）不响。
+#[test]
+fn frames_that_move_a_row_ring_the_list_node_once_per_session() {
+    let (tx, _rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let mut sink = FrameSink::new(tx);
+    let mut list = sink.list.subscribe();
+    let line = |seq: u64| {
+        Frame::Line(crate::wire::Line {
+            session_id: "a".into(),
+            path: "/w/a.jsonl".into(),
+            seq,
+            record: None,
+            cwd: None,
+            byte_offset: 0,
+            rid: None,
+        })
+    };
+    sink.send(line(1));
+    assert!(list_rang(&mut list), "记录长了一行 ⇒ 响");
+    sink.send(line(2));
+    sink.send(line(3));
+    assert!(!list_rang(&mut list), "同一个会话还没答过清单 ⇒ 不再响");
+    sink.send(Frame::session_state(
+        "b".into(),
+        crate::wire::SessionFate::Ended,
+        None,
+    ));
+    assert!(list_rang(&mut list), "别的会话结束了 ⇒ 响");
+    sink.list.asked();
+    sink.send(Frame::SessionFileReread(crate::wire::SessionFileReread {
+        session_id: "a".into(),
+        path: "/w/a.jsonl".into(),
+        why: crate::wire::RereadWhy::Rewritten,
+        lines: 0,
+    }));
+    assert!(list_rang(&mut list), "答过清单之后同一个会话再变 ⇒ 再响");
+    sink.send(Frame::SessionRuns(crate::wire::SessionRuns {
+        sid: "c".into(),
+        runs: Vec::new(),
+        ended: Vec::new(),
+    }));
+    assert!(!list_rang(&mut list), "运行表与清单无关");
+}
+
+/// ★ 注解动了（改名 · 星标 · 隐藏 · 别的进程写的也算）⇒ 重判隐藏那一处响清单的节点（不分会话：不在跟的那几行也可能变）。
+#[test]
+fn annotations_moving_ring_the_list_node() {
+    let (tx, _rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let mut sink = FrameSink::new(tx);
+    let mut list = sink.list.subscribe();
+    let mut state = ReaderState::new(std::path::PathBuf::from("/nonexistent-projects"));
+    state.reload_annotations(crate::history::history_annotations::Table::new(), &mut sink);
+    assert!(list_rang(&mut list), "注解动了 ⇒ 响");
+    state.rejudge_hidden(&mut sink);
+    assert!(list_rang(&mut list), "隐藏规则动了 ⇒ 响");
 }
 
 // ---------- P2（zero-poll-liveness）：pidfd 判活 ----------

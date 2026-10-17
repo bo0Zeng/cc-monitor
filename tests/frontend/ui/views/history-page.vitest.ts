@@ -247,6 +247,32 @@ describe("开页 · 每台一问 · 按时间", () => {
   });
 });
 
+describe("那台推了「清单变了」", () => {
+  it("开着 ⇒ 只再问推的那一台（远端带 fresh，本机不带）；关着 · 筛掉的那一台 ⇒ 不问", async () => {
+    world.local = [row({ sessionId: "a" })];
+    world.dev = [row({ sessionId: "b", at: NOW - 2000 })];
+    const v = await opened();
+    invokeMock.mock.calls.length = 0;
+    world.dev = [row({ sessionId: "d", at: NOW - 500 }), row({ sessionId: "b", at: NOW - 2000 })];
+    v.onListMoved("dev");
+    await flush();
+    expect(calls("history-list").map((a) => [a.origin ?? "", a.fresh])).toEqual([["dev", true]]);
+    expect(titles()).toEqual(["标题 d", "标题 b", "标题 a"]);
+    invokeMock.mock.calls.length = 0;
+    v.onListMoved(LOCAL_ORIGIN);
+    await flush();
+    expect(calls("history-list").map((a) => [a.origin ?? "", a.fresh ?? false])).toEqual([["", false]]);
+    v.close();
+    invokeMock.mock.calls.length = 0;
+    v.onListMoved("dev");
+    await flush();
+    expect(calls("history-list"), "关着不问").toEqual([]);
+    v.onListMoved("elsewhere");
+    await flush();
+    expect(calls("history-list"), "不在这一页的台不问").toEqual([]);
+  });
+});
+
 describe("一台没答", () => {
   it("dev 答不上 ⇒ 顶上一条［重新连接］，点了只再问 dev、带 fresh；本机照画", async () => {
     world.local = [row({ sessionId: "a" })];
