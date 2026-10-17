@@ -28602,9 +28602,9 @@
     "mobSsh.hostKey.unmigrated": {
       "kind": "error",
       "role": "原因格",
-      "zh": "主机指纹升级时没转存完整 · 原有 {n} 条、转存后 {m} 条 · 暂不连接任何机器 · 下次启动再试",
+      "zh": "主机指纹转存不全 · 原有 {n} 条、转存 {m} 条 · 暂不连接 · 下次启动再试",
       "args": ["n", "m"],
-      "limited": ["SSH 主机指纹"]
+      "limited": ["连接", "SSH 主机指纹"]
     },
     "mobSsh.forgetAll.action": {
       "kind": "action",

@@ -1038,7 +1038,7 @@ fn adopt_with(
     }
 }
 
-/// [`wait_listening`] 两次探问之间的那一拍（常驻那条等它听上 · 被监护那条等它说上话，同一拍）。
+/// [`wait_listening`] 两次探问之间停的那一下（常驻那条等它听上口 · 被监护那条等它说上话，停法同一个）。
 fn listen_pause() {
     std::thread::sleep(std::time::Duration::from_millis(LISTEN_WAIT_INTERVAL_MS));
 }
