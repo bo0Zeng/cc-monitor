@@ -232,16 +232,17 @@ fn the_switch_and_the_port_come_from_the_launching_process_env() {
     );
 }
 
-/// 起 agent 那一下插的钥匙读自这台家目录下那份文件，插在第一段；钥匙不在 ⇒ 插不出（ccm 据此当中转不在）。
+/// 起 agent 那一下插的钥匙读自这台家目录下那份文件，插在第一段；插哪一把按地址的路由（`/t/` ⇒ 只许直通那一把 · `/s/` ⇒ 根钥匙），
+/// 与哪一家无关（claude 的 `/t/` 也只拿直通那一把）。钥匙不在 ⇒ 插不出（ccm 据此当中转不在）。
 #[test]
-fn the_exec_time_key_comes_from_the_home_key_file_and_goes_into_the_first_segment() {
+fn the_exec_time_key_comes_from_the_home_key_file_and_follows_the_route() {
     let home = std::env::temp_dir().join(format!("ep-key-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&home);
     let get = |k: &str| (k == "HOME").then(|| home.to_string_lossy().into_owned());
-    let url = "http://127.0.0.1:8788/t/claude-code/_";
-    use crate::relay::KeyKind;
+    let pass_url = "http://127.0.0.1:8788/t/claude-code/_";
+    let full_url = "http://127.0.0.1:8788/s/claude-code/w";
     assert_eq!(
-        keyed_for_exec(url, KeyKind::Full, &get),
+        keyed_for_exec(pass_url, &get),
         None,
         "钥匙文件不在却插出来了"
     );
@@ -249,21 +250,20 @@ fn the_exec_time_key_comes_from_the_home_key_file_and_goes_into_the_first_segmen
     let file = home.join(relay_route_core::KEY_FILE_REL);
     std::fs::create_dir_all(file.parent().unwrap()).unwrap();
     std::fs::write(&file, &key).unwrap();
-    assert_eq!(
-        keyed_for_exec(url, KeyKind::Full, &get).as_deref(),
-        Some(format!("http://127.0.0.1:8788/{key}/t/claude-code/_").as_str())
-    );
     // 只许直通那一把从根钥匙派生（盘上没有第二份）：插出来的不是根钥匙。
     let pass = crate::relay::pass_key_on_disk(&home).expect("根钥匙在就派生得出来");
     assert_ne!(pass, key, "只许直通那一把就是根钥匙本身");
     assert_eq!(
-        keyed_for_exec(url, KeyKind::Pass, &get).as_deref(),
-        Some(format!("http://127.0.0.1:8788/{pass}/t/claude-code/_").as_str())
+        keyed_for_exec(pass_url, &get).as_deref(),
+        Some(format!("http://127.0.0.1:8788/{pass}/t/claude-code/_").as_str()),
+        "claude 的 `/t/` 插的不是只许直通那一把"
     );
-    assert_eq!(keyed_for_exec("https://x/t/a/b", KeyKind::Full, &get), None);
-    // 插哪一把按那一家的注入格：地址拼进参数的那一家只拿直通那一把。
-    assert_eq!(key_kind_of("codex"), KeyKind::Pass);
-    assert_eq!(key_kind_of("claude-code"), KeyKind::Full);
+    assert_eq!(
+        keyed_for_exec(full_url, &get).as_deref(),
+        Some(format!("http://127.0.0.1:8788/{key}/s/claude-code/w").as_str()),
+        "`/s/` 插的不是根钥匙"
+    );
+    assert_eq!(keyed_for_exec("https://x/t/a/b", &get), None);
     let _ = std::fs::remove_dir_all(&home);
 }
 

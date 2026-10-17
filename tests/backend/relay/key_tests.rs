@@ -49,7 +49,7 @@ fn the_pass_key_is_derived_from_the_root_and_never_stored() {
     seed_test_home(&home);
     let url = "http://127.0.0.1:8788/t/codex/_";
     assert_eq!(
-        keyed_with_key_on_disk(&home, url, KeyKind::Pass).as_deref(),
+        keyed_with_key_on_disk(&home, url).as_deref(),
         Some(format!("http://127.0.0.1:8788/{}/t/codex/_", p1.expose()).as_str())
     );
     assert_eq!(pass_key_on_disk(&home).as_deref(), Some(p1.expose()));

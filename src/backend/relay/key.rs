@@ -13,14 +13,13 @@
 //!
 //! # 钥匙怎么到 agent 手里（不在本文件，但本文件的住址是它的另一半）
 //!
-//! `ccm` 在最终 exec 那一处照那一家的注入格（`agents::Inject`）做：认地址环境变量的那一家，直路在自己进程里读这个文件、
-//! 把钥匙拼进那个变量（经本文件 [`keyed_with_key_on_disk`]）；地址只能拼进参数的那一家，拼进参数的是插了**只许直通那一把**
-//! （[`KeyKind::Pass`]，[`pass_of`] 从根钥匙派生）的地址。非得经 shell 那一趟：全权那一把写成**读这个文件的命令替换** `$(cat ~/<KEY_FILE_REL>)`，
-//! 只许直通那一把在 `ccm` 里现算、照字面写进那个词（它本来就进 argv）
-//! （`control/ccm/plan.rs::relay_export`，shell 写法出自 `platform/shell/posix.rs::home_file_between`）。
-//! ⇒ 全权那一把只从这个文件进 agent 进程自己的 env；交给终端的那一行、`tmux send-keys` 的 argv、shell 历史、线上帧里都没有它。
-//! 只许直通那一把会进那一家的 argv 与它自己的日志，也进「直接敲的也走中转」要用户自己贴的那一段（那条地址恒是 `/t/`，
-//! 插哪一把按地址定：[`KeyKind::for_url`]）—— 它只开得了 `/t/`（永不代入凭据），见 `comms_outward::door`。
+//! 插哪一把全仓只按地址的路由定（[`KeyKind::for_url`]：`/s/` ⇒ 全权 · `/t/` ⇒ **只许直通那一把**，[`pass_of`] 从根钥匙派生），
+//! 与哪一家无关；那一家的注入格（`agents::Inject`）只管地址放进环境变量还是参数。`ccm` 在最终 exec 那一处读这个文件、
+//! 插好那一把（经本文件 [`keyed_with_key_on_disk`]）。非得经 shell 那一趟：`/s/` 的钥匙段写成**读这个文件的命令替换**
+//! `$(cat ~/<KEY_FILE_REL>)`，`/t/` 照字面写只许直通那一把（`control/ccm/plan.rs`，shell 写法出自 `platform/shell/posix.rs::home_file_between`）。
+//! ⇒ 全权那一把只从这个文件进 API 号会话的 agent 进程自己的 env；交给终端的那一行、`tmux send-keys` 的 argv、shell 历史、线上帧里都没有它。
+//! 只许直通那一把会进打印出来的那一行、别名预览、那一家的 argv 与它自己的日志，也进「直接敲的也走中转」要用户自己贴的那一段
+//! —— 它只开得了 `/t/`（永不代入凭据），见 `comms_outward::door`。
 //!
 //! # 一把根钥匙，两个范围
 //!
@@ -97,10 +96,11 @@ pub(crate) fn read_key(path: &Path) -> Option<Key> {
         .and_then(|s| Key::from_text(&s))
 }
 
-/// 给一条中转地址（构造口产物）插上这台盘上 `kind` 那一把钥匙（**只读**）⇒ agent 进程要的展开形
+/// 给一条中转地址（构造口产物）插上这台盘上那条路由要的那一把钥匙（[`KeyKind::for_url`]，**只读**）⇒ agent 进程要的展开形
 /// （环境变量里的、参数里的、用户自己贴进设置文件的那一段 —— 那里写不了 `$(cat …)`）。钥匙在这里插、不以裸值出本模块；
 /// 钥匙文件不在 / 形状不对 / 地址不是构造口产物 ⇒ `None`。
-pub(crate) fn keyed_with_key_on_disk(home: &Path, url: &str, kind: KeyKind) -> Option<String> {
+pub(crate) fn keyed_with_key_on_disk(home: &Path, url: &str) -> Option<String> {
+    let kind = KeyKind::for_url(url)?;
     let key = scoped(read_key(&home.join(relay_route_core::KEY_FILE_REL))?, kind);
     relay_route_core::keyed_base_url(url, key.expose())
 }

@@ -936,20 +936,20 @@ fn exec_direct(d: &plan::Direct, own: &crate::platform::fs::Own) -> i32 {
     if d.unset_config_dir && !cfg_env.is_empty() {
         std::env::remove_var(cfg_env);
     }
-    // 钥匙从这台的钥匙文件读进来、exec 那一刻才插（不进打印出来的命令）。读不到 ⇒ 不起（注进去每一发都被中转拒）。
-    //   认地址环境变量的那一家：全权那一把插进那个变量；地址拼进参数的那一家：只许直通那一把插进参数里那个词。
-    use crate::accounts::upstream_select::endpoint::{keyed_for_args, keyed_for_env};
+    // 钥匙从这台的钥匙文件读进来、exec 那一刻才插（不进打印出来的命令）；插哪一把按地址的路由，放哪按那一家的注入格。
+    //   读不到 ⇒ 不起（注进去每一发都被中转拒）。
     let get = |k: &str| std::env::var(k).ok();
     let mut argv = d.argv.clone();
-    match (&d.relay, &d.relay_via) {
-        (Some(url), plan::RelayVia::Env(var)) => match keyed_for_env(url, &get) {
-            Some(keyed) => std::env::set_var(var, keyed),
+    let keyed = match &d.relay {
+        Some(url) => match crate::accounts::upstream_select::endpoint::keyed_for_exec(url, &get) {
+            Some(keyed) => Some((url, keyed)),
             None => return die(&copy_text("beCcm.relay.noKey", &[])),
         },
-        (Some(url), plan::RelayVia::Args) => {
-            let Some(keyed) = keyed_for_args(url, &get) else {
-                return die(&copy_text("beCcm.relay.noKey", &[]));
-            };
+        None => None,
+    };
+    match (keyed, &d.relay_via) {
+        (Some((_, keyed)), plan::RelayVia::Env(var)) => std::env::set_var(var, keyed),
+        (Some((url, keyed)), plan::RelayVia::Args) => {
             for a in argv.iter_mut() {
                 if plan::split_at_key(a, url).is_some() {
                     *a = a.replacen(url.as_str(), &keyed, 1);

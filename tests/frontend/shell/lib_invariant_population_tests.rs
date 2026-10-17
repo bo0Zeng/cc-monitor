@@ -407,7 +407,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
     ),
     (
         "src/backend/control/ccm/plan.rs",
-        &["build_among", "carried_into_pane", "qarg", "relay_word", "render", "render_container", "render_container_tail", "render_direct", "render_short"],
+        &["build_among", "carried_into_pane", "posix_relay_word", "qarg", "render", "render_container", "render_container_tail", "render_direct", "render_short"],
         &[
             ("src/backend/control/ccm/plan.rs", "validate_tmux_name"),
             ("src/backend/control/ccm/plan.rs", "free_text_gate"),
