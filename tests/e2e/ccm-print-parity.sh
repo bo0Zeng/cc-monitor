@@ -1,9 +1,7 @@
 #!/bin/bash
 # F03「--print 平价预言机」：验证**生产渲染器**产出的 `ccm …` 调用行，被真 ccm 解析后，
 # 展开结果里确实含有渲染器想表达的每个意图（sid / tmux 名 / cwd / launcher / ccm-sid）。
-# 生产渲染器是 Rust（`ccm_invocation::render_ccm_invocation`）；那几行从入库夹具
-# `cli-golden.json` 取（cargo 逐字节保证它们 == 生产产出，来历链见 `ccm-print-parity-emit.mts` 头注）。
-# 原先现场跑 TS 渲染器 `renderCli`（已删，零生产调用）。**12 条断言一个字没改。**
+# 那几行从 `session-open` 本体取（`open-line-emit.sh`：起会话时交出去的那一行，渲染器是 `ccm_invocation`）。
 #
 # 这是唯一能在没有真远端机器的场景下验证「CLI 渲染器真的会让 ccm 干对事」的手段——
 # tests/e2e/resume-suite.sh / restart-suite.sh 的 shim 对未知 invoke 一律走 default 分支（等价于
@@ -23,7 +21,7 @@ ck() { if [ "$2" = "$3" ]; then printf 'PASS | %s\n' "$1"; PASS=$((PASS+1))
        else printf 'FAIL | %s\n      期望含: %s\n      实得: %s\n' "$1" "$2" "$3"; FAIL=$((FAIL+1)); fi; }
 contains() { case "$2" in *"$1"*) echo yes ;; *) echo no ;; esac; }
 
-# renderCli 产出的命令行以裸 `ccm` 开头（那正是它该产出的东西），所以下面 `bash -c` 执行它时
+# 那几行以裸 `ccm` 开头（上面换过），所以下面 `bash -c` 执行它时
 # `ccm` 要经 PATH 解析。**必须把 PATH 指向仓内 shared/ccm**，否则解析到的是开发者本机
 # `~/.local/bin/ccm` 那份装机版——于是这套「平价预言机」验的就不是本仓代码，而是碰巧装在
 # 机器上的某个版本（可能比仓内旧/新）。CI 上根本没装 ccm，12 条断言全红，正是靠这个才暴露出来。
@@ -46,8 +44,15 @@ BIN="$(mktemp -d)"; NOHOME="$(mktemp -d)"; trap 'rm -rf "$BIN" "$NOHOME"; tmux_s
 ln -s "$CCM_NATIVE" "$BIN/ccm"
 export PATH="$BIN:$PATH"
 
-echo "===== 生产命令行（入库夹具里 cargo 对过生产渲染器的那四行，不手搓）====="
-TSV="$(cd "$REPO" && npx tsx tests/e2e/ccm-print-parity-emit.mts)"
+echo "===== 生产命令行（session-open 交出去的那四行，不手搓）====="
+# 打头那个词（这台装好的入口）换成 `ccm`：下面经 PATH 叫本树这一份。
+emit() { local l; l="$(bash "$HERE/open-line-emit.sh" "$@")" || { echo "取不到 $*" >&2; exit 2; }; printf 'ccm %s' "${l#* }"; }
+TSV="$(
+  printf 'resumeTmuxWithIdentity\t%s\n' "$(emit shape=resume-tmux sid=p1 cwd=/tmp name=cc-p1 launcher=claude account=base)"
+  printf 'newTmuxCustomLauncher\t%s\n' "$(emit shape=new-tmux cwd='/home/pi/my proj' name=cc-proj launcher=CCMPROBE account=base)"
+  printf 'attach\t%s\n' "$(emit shape=attach name=cc-p1 launcher=claude)"
+  printf 'resumeTmuxWithModel\t%s\n' "$(emit shape=resume-tmux sid=p1 cwd=/tmp name=cc-p1 launcher=claude account=base model=opus)"
+)" || exit 2
 echo "$TSV" | sed 's/^/  /'
 
 get_line() { echo "$TSV" | awk -F'\t' -v k="$1" '$1==k{print $2}'; }

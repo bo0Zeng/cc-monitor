@@ -4,7 +4,7 @@
 # 与黄金串的分工：黄金串断言「命令串长什么样」，本脚本断言「这条命令在真 tmux 上干了什么」。
 # 二者缺一不可——上一轮修复三门禁全绿却让 send-keys 完全失效，正是因为只有前者。
 #
-# 输入 = 生产渲染链产出的那一行 `ccm …`（tests/e2e/tmux-target-emit.mts → launch-render-driver.ts → Rust render_ccm_launch），真跑它。
+# 输入 = `session-open` 本体交出去的那一行 `ccm …`（tests/e2e/open-line-emit.sh），真跑它。
 # 隔离 -L socket + tmux shim，不碰用户任何真实会话。
 # 跑法：bash tests/e2e/tmux-target-acceptance.sh   （需要 tmux；npm run test:tmux-target）
 . "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
@@ -13,7 +13,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 SP="$(mktemp -d)"
 trap 'rm -rf "$SP"; tmux_shim_cleanup' EXIT
-# 生产命令串来自**生产渲染链**（不手搓等价命令）——见 tmux-target-emit.mts 头注
+# 命令串从 `session-open` 本体取（不手搓等价命令）：上一轮修复三门禁全绿却让 `send-keys` 完全失效，因为黄金串只断言
+# 「写出了打算写的字符串」。启动器用 `CCMPROBE`（纯字母词）而非 `claude`：真 claude 会清屏，把载荷盖掉 ⇒ 「兄弟未被污染」会假 PASS。
 # shellcheck source=tests/e2e/tmux-shim.sh
 . "$HERE/tmux-shim.sh" --names-only
 SOCK="$(e2e_run_name ccmF01)" || exit 2
@@ -29,7 +30,17 @@ export PATH="$SHIM:$PATH"
 . "$HERE/ccm-shim.sh"
 # 取串必须在换家目录之后：起会话那一行直接叫 `<家>/.cc-monitor/bin/ccm` 的绝对路径，先取串就会指到开发机上真装的那一份
 # （本机碰巧有 ⇒ 跑的是它、假绿；CI 上没有 ⇒ 红）。
-(cd "$REPO" && npx tsx tests/e2e/tmux-target-emit.mts) > "$SP/f01-cmds.tsv"
+emit() { bash "$HERE/open-line-emit.sh" launcher=CCMPROBE "$@" || echo "取不到 $*" >> "$SP/emit-failed"; }
+{
+  # 恢复进新建的 cc-p1（兄弟名 cc-p1-2 已存在时，绝不能碰它）
+  printf 'resumeTmux\t%s\n' "$(emit shape=resume-tmux sid=p1 cwd=/tmp name=cc-p1)"
+  # 空 tmux 那一形键进 cc-p1 的那一行（那台后端照名字精确键入；cc-p1 不在时必须失败，绝不能落进 cc-p1-2）
+  printf 'resumeIntoExisting\t%s\n' "$(emit shape=into-existing sid=p1 name=cc-p1)"
+  printf 'attach\t%s\n' "$(emit shape=attach name=cc-p1)"
+  # 起新会话进 tmux
+  printf 'launcher\t%s\n' "$(emit shape=new-tmux cwd=/tmp name=cc-p1)"
+} > "$SP/f01-cmds.tsv"
+[ ! -e "$SP/emit-failed" ] || { cat "$SP/emit-failed"; exit 2; }
 grep -qF "$CCM_ENTRY" "$SP/f01-cmds.tsv" || { echo "取出的起会话那一行没指向本趟沙箱里的 ccm（$CCM_ENTRY）"; exit 1; }
 # 收尾只收自己这一趟那台（中途退出也收，别留一台孤儿 server）。
 trap 'e2e_tmux_reap "$TMUX_BIN" "$SOCK"; ccm_shim_cleanup; rm -rf "$SP"; tmux_shim_cleanup' EXIT
@@ -51,9 +62,11 @@ ck() { # ck <描述> <期望> <实得>
 }
 
 echo "===== 场景 A：只有兄弟会话 cc-p1-2（cc-p1 不存在）====="
+# 键入：那台后端按名字精确键进那个会话（`launch send-into` 的 `=名:` 形），这里照做。
+into() { T -u send-keys -t '=cc-p1:' "$(CMD resumeIntoExisting)" Enter; }
 reset; T new-session -d -s cc-p1-2; ready cc-p1-2
-bash -c "$(CMD resumeIntoExisting)" >/dev/null 2>&1; rc=$?
-ck "生产串 resumeIntoExisting → rc≠0" "nonzero" "$([ $rc -ne 0 ] && echo nonzero || echo zero)"
+into >/dev/null 2>&1; rc=$?
+ck "生产串 resumeIntoExisting 键进 '=cc-p1:' → rc≠0" "nonzero" "$([ $rc -ne 0 ] && echo nonzero || echo zero)"
 ck "兄弟 cc-p1-2 未收到载荷" "clean" "$(pane cc-p1-2 | grep -q CCMPROBE && echo POLLUTED || echo clean)"
 bash -c "$(CMD attach)" >/dev/null 2>&1; rc=$?
 ck "生产串 attach → rc≠0（注：无 tty 下 attach 必失败，本行只作冒烟；正例见场景 E）" "nonzero" "$([ $rc -ne 0 ] && echo nonzero || echo zero)"
@@ -71,7 +84,7 @@ ck "兄弟 cc-p1-2 仍存活" "cc-p1-2 " "$(sessions)"
 echo
 echo "===== 场景 B：cc-p1 与 cc-p1-2 并存 ====="
 reset; T new-session -d -s cc-p1-2; T new-session -d -s cc-p1; ready cc-p1-2 cc-p1
-bash -c "$(CMD resumeIntoExisting)" >/dev/null 2>&1
+into >/dev/null 2>&1
 landed cc-p1
 ck "载荷落进 cc-p1" "HIT" "$(pane cc-p1 | grep -q CCMPROBE && echo HIT || echo MISS)"
 ck "兄弟 cc-p1-2 未被污染" "clean" "$(pane cc-p1-2 | grep -q CCMPROBE && echo POLLUTED || echo clean)"
@@ -101,11 +114,11 @@ ck "兄弟 cc-p1-2 未被污染" "clean" "$(pane cc-p1-2 | grep -q CCMPROBE && e
 ck "@ccm_sid_expect 写在 cc-p1 上" "p1" "$(T show-options -v -t '=cc-p1:' @ccm_sid_expect 2>/dev/null)"
 
 echo
-echo "===== 场景 E：posixQuote 名路径（buildLauncherCmd 生产串）+ pty 下 attach 正例 ====="
+echo "===== 场景 E：起新会话进 tmux（生产串）+ pty 下 attach 正例 ====="
 reset; T new-session -d -s cc-p1-2; ready cc-p1-2
 bash -c "$(CMD launcher)" >/dev/null 2>&1
 landed cc-p1
-ck "cc-p1 被建出（posixQuote 名路径）" "yes" "$(T has-session -t '=cc-p1:' 2>/dev/null && echo yes || echo no)"
+ck "cc-p1 被建出（新起那一形）" "yes" "$(T has-session -t '=cc-p1:' 2>/dev/null && echo yes || echo no)"
 ck "载荷落进 cc-p1" "HIT" "$(pane cc-p1 | grep -q CCMPROBE && echo HIT || echo MISS)"
 ck "兄弟 cc-p1-2 未被污染" "clean" "$(pane cc-p1-2 | grep -q CCMPROBE && echo POLLUTED || echo clean)"
 # pty 下 attach 正例：真名存在 → 能接上（不再是"无 tty 必失败"的伪证据）

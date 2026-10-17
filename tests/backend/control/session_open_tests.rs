@@ -32,6 +32,14 @@ struct Rig {
     fork_err: bool,
     rotation_err: bool,
     prefs: crate::control::machine_prefs::Prefs,
+    /// 恢复那一条记录里的目录与模型。
+    cwd: String,
+    model: Option<String>,
+    /// 账号库里的号（名字）；铸名替身回的名字（缺 ⇒ 按基名那一形）。
+    names: Vec<String>,
+    minted: Option<String>,
+    /// 给 e2e 出那一行：哪个目录都在、入口是这台装好的那一份。
+    e2e: bool,
     ccm: RefCell<Vec<Vec<String>>>,
     sent: RefCell<Vec<(String, String)>>,
     marks: RefCell<usize>,
@@ -51,6 +59,11 @@ impl Rig {
             fork_err: false,
             rotation_err: false,
             prefs: Default::default(),
+            cwd: "/p".into(),
+            model: None,
+            names: vec!["work".into()],
+            minted: None,
+            e2e: false,
             ccm: RefCell::new(vec![]),
             sent: RefCell::new(vec![]),
             marks: RefCell::new(0),
@@ -69,8 +82,8 @@ impl Rig {
         let facts = Facts {
             resume: (!self.gone).then(|| ResumeOf {
                 agent: "claude".into(),
-                cwd: "/p".into(),
-                model: None,
+                cwd: self.cwd.clone(),
+                model: self.model.clone(),
                 permission_mode: None,
             }),
             fork_tmux: None,
@@ -128,6 +141,9 @@ impl Rig {
             Ok((self.ccm_rc, String::new(), "坏了".into()))
         };
         let mint = |base: NameBase| -> Result<String, CmdErr> {
+            if let Some(n) = &self.minted {
+                return Ok(n.clone());
+            }
             Ok(match base {
                 NameBase::Cwd(_) => "p-cc".into(),
                 NameBase::ForkOf(s) => format!("{s}-fork-cc"),
@@ -142,11 +158,16 @@ impl Rig {
             Ok(true)
         };
         let library = || {
-            la::Library::of_product(&crate::observe::accounts_query::test_support::list(vec![
-                crate::observe::accounts_query::test_support::row_with("work", |a| {
-                    a.config_dir = Some("/h/.cc/work".into())
-                }),
-            ]))
+            la::Library::of_product(&crate::observe::accounts_query::test_support::list(
+                self.names
+                    .iter()
+                    .map(|n| {
+                        crate::observe::accounts_query::test_support::row_with(n, |a| {
+                            a.config_dir = Some(format!("/h/.cc/{n}"))
+                        })
+                    })
+                    .collect(),
+            ))
         };
         let accounts = la::Facts {
             has_accounts: true,
@@ -155,9 +176,12 @@ impl Rig {
         };
         let entry: fn() -> Option<String> = if self.no_entry {
             || None
+        } else if self.e2e {
+            crate::platform::paths::installed_ccm_entry
         } else {
             || Some("/b/ccm".into())
         };
+        let is_dir: fn(&str) -> bool = if self.e2e { |_| true } else { |d| d == "/p" };
         f(&Deps {
             list: &list,
             record: &record,
@@ -168,7 +192,7 @@ impl Rig {
             caps: &caps,
             local_facts: local::Facts {
                 windows: false,
-                is_dir: |d| d == "/p",
+                is_dir,
                 entry,
             },
             accounts: &accounts,
@@ -733,4 +757,99 @@ fn shell_makes_or_joins_a_bare_session_or_enters_a_dir() {
     }
     assert_eq!(rig.shells.borrow().len(), 1);
     assert!(rig.ccm.borrow().is_empty() && rig.sent.borrow().is_empty());
+}
+
+/// e2e 要的那一份意图（`CCM_E2E_OPEN`，只给 `tests/e2e/open-line-emit.sh` 用）。
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct E2eOpen {
+    /// `resume-tmux` · `into-existing` · `direct` · `attach` · `new-tmux`。
+    shape: String,
+    #[serde(default)]
+    sid: Option<String>,
+    #[serde(default)]
+    cwd: Option<String>,
+    /// tmux 会话名（新建的 · 键进去的 · 接进去的）。
+    #[serde(default)]
+    name: Option<String>,
+    launcher: String,
+    /// 线上 `account` 那一形；缺 ＝ 跟随。
+    #[serde(default)]
+    account: Option<Value>,
+    #[serde(default)]
+    model: Option<String>,
+    /// `local` · `remote`。
+    here: String,
+}
+
+/// **e2e 取「app 起会话时真正跑的那一行」的数据出口**：意图照 `session-open` 的入参走一遍本体（替身只记不做），
+/// 吐它交出去的那一行 —— 后台起的那几形是交给 ccm 的 argv（逐个引号化连起来）、键进空 tmux 的是键入的那一行、
+/// 开窗与接回的是回包里的 `line`。`OPEN_LINE<<<…>>>` 或 `OPEN_LINE_ERR<<<…>>>`。
+#[test]
+#[ignore]
+fn emit_open_line_for_e2e() {
+    let raw = std::env::var("CCM_E2E_OPEN")
+        .expect("缺 CCM_E2E_OPEN —— 本出口只给 tests/e2e/open-line-emit.sh 用");
+    let e: E2eOpen =
+        serde_json::from_str(&raw).unwrap_or_else(|err| panic!("意图解析不了（{err}）：{raw}"));
+    let named = e.account.as_ref().and_then(|a| a["name"].as_str()).map(str::to_string);
+    let name = e.name.clone().unwrap_or_default();
+    let sid = e.sid.clone().unwrap_or_default();
+    let mut rig = Rig::new(Some(vec![]));
+    rig.e2e = true;
+    rig.names = named.into_iter().collect();
+    rig.cwd = e.cwd.clone().unwrap_or_default();
+    rig.model = e.model.clone();
+    rig.minted = e.name.clone();
+    rig.prefs.launchers.insert("claude".into(), e.launcher.clone());
+    let (what, run) = match e.shape.as_str() {
+        "resume-tmux" => (json!({ "kind": "resume", "sid": sid }), Some("tmux")),
+        "direct" => (json!({ "kind": "resume", "sid": sid }), Some("direct")),
+        "into-existing" => {
+            rig.rows = Some(vec![row(&name, Some(&sid), false)]);
+            (json!({ "kind": "resume", "sid": sid }), Some("tmux"))
+        }
+        "attach" => {
+            rig.rows = Some(vec![row(&name, None, false)]);
+            (json!({ "kind": "look", "session": name }), None)
+        }
+        "new-tmux" => {
+            let mut w = json!({ "kind": "new", "agent": "claude", "cwd": rig.cwd, "tmuxName": name });
+            if let Some(m) = &e.model {
+                w["model"] = json!(m);
+            }
+            (w, Some("tmux"))
+        }
+        other => panic!("不认识的 shape `{other}`"),
+    };
+    let mut req = json!({ "what": what, "local": e.here == "local" });
+    if let Some(r) = run {
+        req["run"] = json!(r);
+    }
+    if let Some(a) = &e.account {
+        req["account"] = a.clone();
+    }
+    let said = match rig.open(req) {
+        Err((code, said, _, raw)) => Err(format!("{code}: {said} {}", raw.unwrap_or_default())),
+        Ok(o) => {
+            let argv = rig.ccm.borrow().first().cloned();
+            let typed = rig.sent.borrow().first().map(|(_, l)| l.clone());
+            Ok(match (argv, typed) {
+                (Some(argv), _) => argv
+                    .iter()
+                    .map(|t| crate::control::launch_render::ccm_invocation::argv(t))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                (None, Some(line)) => line,
+                (None, None) => o.line.unwrap_or_default(),
+            })
+        }
+    };
+    match said {
+        Ok(line) => {
+            assert!(!line.contains('\n'), "那一行带换行，标记行会被截断：{line:?}");
+            println!("OPEN_LINE<<<{line}>>>");
+        }
+        Err(e) => println!("OPEN_LINE_ERR<<<{}>>>", e.replace('\n', " ")),
+    }
 }

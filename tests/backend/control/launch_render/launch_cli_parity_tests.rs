@@ -232,33 +232,3 @@ fn every_monitor_launch_path_hands_over_one_ccm_line() {
         assert!(ok, "「{}」交出去的不是一行 ccm：{line}", c.name);
     }
 }
-
-/// **e2e 取「app 真正会跑的那一行」的 Rust 那一跳**（`#[ignore]` 数据出口，`tests/e2e/launch-render-emit.sh` 跑它）。
-///
-/// 请求由 e2e 那一侧用生产 TS 的 `plan*` ＋ `buildCliRenderRequest` 产（`tests/e2e/launch-render-driver.ts`），
-/// 经环境变量 `CCM_E2E_RENDER_REQ` 递进来；这里拿生产 wire 类型反序列化、跑生产命令本体（能力问这台后端自己），原样吐出去。
-/// 渲得出 ⇒ `LAUNCH_RENDER<<<命令>>>`；拒 ⇒ `LAUNCH_RENDER_ERR<<<理由>>>`（拒绝本身是读数）；请求缺失 / 解析不了 ⇒ panic。
-#[test]
-#[ignore]
-fn emit_launch_render_for_e2e() {
-    let raw = std::env::var("CCM_E2E_RENDER_REQ")
-        .expect("缺 CCM_E2E_RENDER_REQ —— 本出口只给 tests/e2e/launch-render-driver.ts 用");
-    let req: super::super::wire::CliRenderRequest =
-        serde_json::from_str(&raw).unwrap_or_else(|e| panic!("请求解析不了（{e}）：{raw}"));
-    // 那台的偏好（启动命令 · 每号模型）：不上线，驱动另交一份（没交 ⇒ 缺省）。
-    let prefs: crate::control::machine_prefs::Prefs = std::env::var("CCM_E2E_RENDER_PREFS")
-        .ok()
-        .map(|p| serde_json::from_str(&p).unwrap_or_else(|e| panic!("偏好解析不了（{e}）：{p}")))
-        .unwrap_or_default();
-    let req = req.with_prefs(&prefs);
-    match super::super::wire::render_ccm_launch(&req, &as_asked(&req)) {
-        Ok(cmd) => {
-            assert!(
-                !cmd.contains('\n'),
-                "渲出来的命令带换行，标记行会被截断：{cmd:?}"
-            );
-            println!("LAUNCH_RENDER<<<{cmd}>>>");
-        }
-        Err(e) => println!("LAUNCH_RENDER_ERR<<<{}>>>", e.replace('\n', " ")),
-    }
-}

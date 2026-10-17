@@ -151,10 +151,10 @@ const E2E_SUPPORT: &[&str] = &[
     "tests/e2e/ccm-shim.sh", // 把编出来的后端二进制以 `ccm` 之名放上 PATH ＋ 沙箱 HOME（真跑那一行 `ccm …` 的几套 source 它）
     "tests/e2e/fake-claude",
     "tests/e2e/gen-idle-tmux.sh",
-    "tests/e2e/launch-render-emit.sh", // 生产 Rust 渲染器给 e2e 的出口（`launch-render-driver.ts` 调它）
     "tests/e2e/local-backend-container/build-image.sh",
     "tests/e2e/local-backend-container/guard-run-netns.sh",
     "tests/e2e/local-backend-container/rig.sh",
+    "tests/e2e/open-line-emit.sh", // `session-open` 本体交出去的那一行给 e2e 的出口
     "tests/e2e/reap-orphan-backends.sh",
     "tests/e2e/sandbox-env.sh", // 各套最前面 source：无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
     "tests/e2e/tier2-rig.sh",
@@ -363,16 +363,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/frontend/filewin/shell_tests.rs", needle: "shell::tests::xvfb_worker_opens_with_no_x_server_at_all" },
     ),
     (
-        // 生产命令 `launch-render-cli` 给 e2e 的数据出口（`resume-suite` · `resume-backend-frames` ·
-        //   `tmux-target-acceptance` 几套经这个驱动取「app 真正会交给终端的那一行 `ccm …`」）。
-        "tests/backend/control/launch_render/launch_cli_parity_tests.rs",
-        "emit_launch_render_for_e2e",
-        Trigger::Filter { by: "tests/e2e/launch-render-emit.sh", needle: "emit_launch_render_for_e2e" },
-    ),
-    (
-        "tests/backend/control/launch_render/local_tests.rs",
-        "emit_local_launch_command_for_e2e",
-        Trigger::Filter { by: "tests/e2e/p3t-local-tmux.sh", needle: "emit_local_launch_command_for_e2e" },
+        // `session-open` 本体交出去的那一行给 e2e 的数据出口（`resume-suite` · `resume-backend-frames` ·
+        //   `tmux-target-acceptance` · `ccm-print-parity` · `p3t-local-tmux` 几套经它取「app 真正会跑的那一行」）。
+        "tests/backend/control/session_open_tests.rs",
+        "emit_open_line_for_e2e",
+        Trigger::Filter { by: "tests/e2e/open-line-emit.sh", needle: "emit_open_line_for_e2e" },
     ),
     (
         "tests/frontend/shell/local_backend_host_tests.rs",
