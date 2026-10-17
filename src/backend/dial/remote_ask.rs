@@ -1,7 +1,7 @@
 //! **本机后端问远端后端**的那一跳 —— 全后端**只此一处**。
 //!
 //! 「观测方沿它本来就拥有的那条连接去拉被观测方」（零新通道）。用它的：资产目录同步（[`command_line`] ＋ [`DialRemote`]）·
-//! 两台之间的枢纽 · 公钥 · 历史清单（[`ask_json`]）· 公钥与部署计划（[`capture_full`]）· 端口转发与探测（[`capped_line`] · [`REACH`]）。
+//! 两台之间的枢纽 · 公钥（[`ask_json`]）· 那台常驻的清单（[`ask_resident`]）· 公钥与部署计划（[`capture_full`]）· 端口转发与探测（[`capped_line`] · [`REACH`]）。
 //!
 //! # 形状（乙：池里那条连接上多开一个 capture exec）
 //!
@@ -276,9 +276,87 @@ async fn ask_via<Req: serde::Serialize, Reply: serde::de::DeserializeOwned>(
     if let Some(z) = zone.as_deref() {
         argv.extend([crate::wire::cli_words::TZ_FLAG, z]);
     }
-    let line = command_line(&argv);
+    let v = exchange(
+        dial,
+        machine,
+        &command_line(&argv),
+        format!("{args}\n"),
+        remote,
+    )
+    .await?;
+    reply_of(machine, cmd, v)
+}
+
+/// 问那一台的**常驻**跑一条帧命令（`--resident-call --stdin-line`，命令名与入参一行进 stdin）：问到的是那台热着的那一个
+/// （它的缓存 · 备忘都在），不在那台起一个冷进程；那台常驻没在跑 ⇒ `resident_absent`（那一句说那台的名字）。
+/// `total` ＝ 发起方这一问愿意等多久（[`crate::platform::child::Deadline::within`] 算好的），经期限口交给那台、本机也只等这么久。
+pub(crate) async fn ask_resident<C: crate::wire::typed::Command>(
+    machine: &str,
+    req: &C::Req,
+    tz: &crate::Tz,
+    total: crate::platform::child::Deadline,
+    table: &Table,
+    remote: &dyn Remote,
+) -> Result<C::Reply, Said>
+where
+    C::Req: serde::Serialize,
+    C::Reply: serde::de::DeserializeOwned,
+{
+    let r = lock(table).get(machine).cloned().ok_or_else(|| Said {
+        code: Some("unreachable".to_string()),
+        message: unreachable_message(machine),
+    })?;
+    let call = crate::wire::listen::ResidentCall {
+        cmd: C::NAME.to_string(),
+        args: serde_json::to_value(req).map_err(|e| Said {
+            code: None,
+            message: e.to_string(),
+        })?,
+    };
+    let line = serde_json::to_string(&call).map_err(|e| Said {
+        code: None,
+        message: e.to_string(),
+    })?;
+    let ms = total.as_ms().to_string();
+    let zone = tz.iana_name();
+    let mut argv = vec![
+        crate::wire::cli_words::RESIDENT_CALL_FLAG,
+        crate::wire::cli_words::STDIN_LINE_FLAG,
+        crate::wire::cli_words::WITHIN_MS_FLAG,
+        ms.as_str(),
+    ];
+    if let Some(z) = zone.as_deref() {
+        argv.extend([crate::wire::cli_words::TZ_FLAG, z]);
+    }
+    let command = command_line(&argv);
+    let asked = exchange(&r.dial, machine, &command, format!("{line}\n"), remote);
+    let v = match crate::platform::child::bounded(total, asked).await {
+        Ok(got) => got,
+        Err(after) => Err(Said {
+            code: Some(crate::wire::listen::CALL_TIMED_OUT.to_string()),
+            message: crate::wire::listen::call_timed_out(machine, after),
+        }),
+    }
+    .map_err(|s| match s.code.as_deref() {
+        Some(crate::wire::listen::CALL_ABSENT) => Said {
+            code: s.code,
+            message: crate::wire::listen::call_absent(machine),
+        },
+        _ => s,
+    })?;
+    reply_of(machine, C::NAME, v)
+}
+
+/// 跑那一条命令、读它 stdout 那一行 JSON（那台不认这条子命令 ⇒ 说那台太旧）。
+async fn exchange(
+    dial: &Value,
+    machine: &str,
+    line: &str,
+    stdin: String,
+    remote: &dyn Remote,
+) -> Result<Value, Said> {
     let out = remote
-        .run_coded(dial, line, Some(format!("{args}\n")))
+        .run_coded(dial, line.to_string(), Some(stdin))
         .await
         .map_err(|s| match s.code.as_deref() {
             Some(UNKNOWN_COMMAND) => Said {
@@ -287,14 +365,13 @@ async fn ask_via<Req: serde::Serialize, Reply: serde::de::DeserializeOwned>(
             },
             _ => s,
         })?;
-    let v = serde_json::from_str(out.trim()).map_err(|e| {
+    serde_json::from_str(out.trim()).map_err(|e| {
         tracing::warn!("reply from {machine} is not JSON: {e}");
         Said {
             code: None,
             message: copy_core::reply_unreadable(machine),
         }
-    })?;
-    reply_of(machine, cmd, v)
+    })
 }
 
 // ───────────────────────── 生产那一个对面：经 dial 的 capture ─────────────────────────

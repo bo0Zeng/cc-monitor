@@ -2,21 +2,17 @@
  * **历史页的平铺会话清单**，经通道问本机常驻后端（帧面 `history-list`，后端 `history/history_list.rs`）。
  *
  * 一台一问（`origin` 缺席 = 本机）：哪台先答先画，一台没答不挡别的台。
- * 远端：开页 / 「刷新」（`fresh`）先经已开着的长连接问那台常驻 `raw`（那台热缓存），再把那份原样（`listing`）交本机后端并注解 · 筛 · 排；
- * 敲字只问本机后端（它记着那份），它说 `no_listing`（没记着：本机后端重启过 / 头一次）⇒ 同开页那一套。照全文搜索的做法：扇出在这里、判定在后端。
+ * 远端那台的清单由本机后端自己问那台的常驻、记着副本（`history/remote_listing.rs`）：开页 / 「刷新」带 `fresh`（先同步一次），敲字只问本机后端。
  * 判定都在后端：显示标题 · 搜什么 · 怎么排（`at`）· 每行能做什么（`can`）· 分组。这里只做三件事：
- * 问谁（含远端那一份的装运）、按类型收（入参 · 回包从后端类型生成，形状由握手指纹核；跨语言金样 `tests/__fixtures__/history-list.golden.json`）、
+ * 问谁、按类型收（入参 · 回包从后端类型生成，形状由握手指纹核；跨语言金样 `tests/__fixtures__/history-list.golden.json`）、
  * 把各台各自排好的行按 `at` 并成一列。
  */
-import { budgetWithin, callTyped, refusalIn, ReplyUnreadable } from "./ipc/chan-caller";
+import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./ipc/origin";
 import type { HistoryList } from "./generated/HistoryList";
 import type { HistoryRow } from "./generated/HistoryRow";
 import type { HistoryGroup } from "./generated/HistoryGroup";
-import type { HistoryListing } from "./generated/HistoryListing";
-import type { HistoryListReply } from "./generated/HistoryListReply";
 import type { HistoryListReq } from "./generated/HistoryListReq";
-import { saidOf } from "./kit/detail";
 
 /** 一行会话 · 按项目看时的一组 · 一台的成品（类型从后端生成）。 */
 export type { HistoryList, HistoryRow, HistoryGroup };
@@ -29,68 +25,26 @@ export interface HistoryListAsk {
   sort?: "activity" | "created";
   withinDays?: number;
   hidden?: boolean;
-  /** 远端那一台：不用本机后端记着的那份，再问一次那台（开页 · 「刷新」）。不下发给后端。 */
+  /** 远端那一台：本机后端先问那台同步一次副本再答（开页 · 「刷新」）。本机不带。 */
   fresh?: boolean;
 }
 
-/** 一问 30 秒（远端那台常驻热着那份清单；盖住一整份经长连接回来、本机后端并一遍）。 */
+/** 一问 30 秒（本机后端问远端那台时盖住一次同步：没变只回一个记号，头一次是整份）。 */
 const LIST_BUDGET_MS = 30_000;
-
-/** 回包两形里平时那一形（成品带 `groups`）；问的不是 `raw` 却回了清单 ⇒ 抛（细目只进日志）。 */
-function listOf(r: HistoryListReply): HistoryList {
-  if ("groups" in r) return r;
-  throw new ReplyUnreadable(LOCAL_ORIGIN, "history-list answered a raw listing to a non-raw ask");
-}
-
-/** 回包两形里 `raw` 那一形（这台自己的清单）；回了成品 ⇒ 抛。 */
-function listingOf(r: HistoryListReply): HistoryListing {
-  if (!("groups" in r)) return r;
-  throw new ReplyUnreadable(LOCAL_ORIGIN, "history-list answered a product to a raw ask");
-}
 
 /** 一台的清单（`origin` 缺席 = 本机）。失败 ⇒ 抛（给人看的那句 `kit/detail.ts::saidOf` 取）。 */
 export async function fetchList(origin: string | undefined, ask: HistoryListAsk): Promise<HistoryList> {
   // 只带给了的那几格（缺 = 后端缺省）。
   const args: HistoryListReq = {
     ...(origin ? { origin } : {}),
+    ...(origin && ask.fresh ? { fresh: true } : {}),
     ...(ask.sid ? { sid: ask.sid } : {}),
     ...(ask.query ? { query: ask.query } : {}),
     ...(ask.sort ? { sort: ask.sort } : {}),
     ...(ask.withinDays ? { within_days: ask.withinDays } : {}),
     ...(ask.hidden ? { hidden: true } : {}),
   };
-  if (!origin) return askLocal(args);
-  if (!ask.fresh) {
-    try {
-      return await askLocal(args);
-    } catch (e) {
-      if (!notHeld(e)) throw e;
-    }
-  }
-  // 那台常驻答的 `raw` 原样交过去（并 · 筛 · 排在本机后端）。
-  const listing = await askRemoteRaw(origin);
-  return askLocal({ origin, listing, ...args });
-}
-
-/** 本机后端那一问（并 · 筛 · 排都在它那里；形状由握手指纹核）。 */
-async function askLocal(args: HistoryListReq): Promise<HistoryList> {
-  return listOf(await callTyped(LOCAL_ORIGIN, "history-list", args, budgetWithin(LIST_BUDGET_MS)));
-}
-
-/** 经已开着的长连接问那台常驻它自己的清单。失败 ⇒ 抛那台那一句（谁老了 / 谁够不到说的是那台）。 */
-async function askRemoteRaw(origin: string): Promise<HistoryListing> {
-  let reply: HistoryListReply;
-  try {
-    reply = await callTyped(origin, "history-list", { raw: true }, budgetWithin(LIST_BUDGET_MS));
-  } catch (e) {
-    throw new Error(saidOf(e));
-  }
-  return listingOf(reply);
-}
-
-/** 本机后端说「那台的清单还没取回」。 */
-function notHeld(e: unknown): boolean {
-  return refusalIn(e)?.code === "no_listing";
+  return callTyped(LOCAL_ORIGIN, "history-list", args, budgetWithin(LIST_BUDGET_MS));
 }
 
 /** 各台各自按 `key` 倒序排好的一列 ⇒ 并成一列（同值保持台的先后，稳定）。只并、不另判。 */

@@ -4141,19 +4141,10 @@ type NoArgs = Record<symbol, never>;
 
 收 `args` · 可撤 · CLI：`ccm -- --history-list`
 
-入参 `HistoryListReq` · 回包 `HistoryListReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `HistoryListReq` · 回包 `HistoryList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
-type AutoAnswer = { 
-/**
- * 挂上的提问等满几分钟还没人答就替人答；补丁里给 0 ＝ 关（摘掉这一格）。
- */
-afterMin: number, 
-/**
- * 替人答的那一句；缺 ⇒ 后端那一句缺省的。
- */
-say?: string, };
 type Can = { 
 /**
  * `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
@@ -4175,25 +4166,10 @@ type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Wor
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
-type Entry = { starred: boolean, customTitle: string | null, 
-/**
- * 单个那一格：`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则。
- */
-hide?: Hide, 
-/**
- * 没人答的提问等几分钟替人答一句（判定住后端 `control::asks`）；缺 ＝ 关。
- */
-autoAnswer?: AutoAnswer, 
-/**
- * 终端没了时换的模型 / 权限档，下次恢复照它起（只由那两条换的命令写）；缺 ＝ 没记。
- */
-resumeWith?: ResumeWith, updatedAt: number, };
 type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type ForkedFrom = { label: string, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
-type Hide = "on" | "off";
-type HistoryFailedDir = { projectDir: string, error: string, };
 type HistoryGroup = { key: string, agent: string, projectName: string, projectPath: string, projectDir: string, count: number, 
 /**
  * 有在跑的 ⇒ `true`；有答不了的 ⇒ `null`；都没在跑 ⇒ `false`。
@@ -4220,22 +4196,15 @@ type HistoryList = { rows: Array<HistoryRow>, groups: Array<HistoryGroup>, total
  * 注解没并上的那一句；并上了 ⇒ `null`。
  */
 notice: string | null, };
-type HistoryListReply = HistoryListing | HistoryList;
 type HistoryListReq = { 
 /**
- * `true` ⇒ 只回**这台自己**的清单 `{rows, failed, annotations | annotationsNotice}`（不筛不排、不看别的入参）——
- * 远端那一份就是那台常驻答的它；注解跟着会话住在那台，并的是清单带来的那份。
- */
-raw?: boolean, 
-/**
- * 那台的名字（`listing` 是它的；行与组都标上它）。缺 ⇒ 这台。
+ * 那台的名字（行与组都标上它）。缺 ⇒ 这台。
  */
 origin?: string, 
 /**
- * 那一台（`origin`）自己答的 `raw` 清单原样（界面经长连接问那台常驻拿回来）；本进程记着、换掉旧的。
- * 缺 ⇒ 用记着的那份，没记着 ⇒ `no_listing`；不带 `origin` ⇒ `bad_args`。
+ * `true` ⇒ 先问那一台（`origin`）同步一次本进程记着的副本再答（开页 · 刷新）；缺 ⇒ 手上有就用手上那份（敲字搜索）。不带 `origin` ⇒ `bad_args`。
  */
-listing?: HistoryListing, 
+fresh?: boolean, 
 /**
  * 只要这一个会话那一行（独立查看窗；别的筛一概不看、不补父会话）。形状同 `history-record`（`[A-Za-z0-9-]`，1..=64）。
  */
@@ -4260,40 +4229,6 @@ hidden?: boolean,
  * 最多回几行（缺省 2000，1–20000）；多出的不回、`truncated`。
  */
 limit?: number, };
-type HistoryListing = { rows: Array<HistoryRawRow>, failed: Array<HistoryFailedDir>, 
-/**
- * 那台自己那份注解（sid ⇒ 注解）；读不到 ⇒ 缺，`annotationsNotice` 说为什么。
- */
-annotations?: { [key in string]: Entry }, annotationsNotice?: string, 
-/**
- * 那台偏好里子会话 · 分身会话进不进标签页（隐藏的判定照那一台的）。
- */
-rules: Rules, };
-type HistoryRawRow = { agent: string, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, 
-/**
- * 显示标题（用户改过的另在 `customTitle`）：与全文搜索同一条规则。
- */
-title: string, startedAt: number, updatedAt: number, jsonlPath: string, 
-/**
- * 这台判的活不活（判不了：合成历史没有 pidfile ⇒ `null`）。
- */
-life: HistoryRowLife | null, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
-/**
- * 起会话时给了 `--tab` 的那一格（那台的启动台账）；没给 ⇒ 缺。
- */
-launchTab?: LaunchTab, 
-/**
- * 主会话（那台的会话血缘）；没有 ⇒ 缺。
- */
-parent?: string, forkedFromSessionId?: string, forkedFromMessageUuid?: string, 
-/**
- * 读它那一组用的键（记录目录名 · 合成历史 `<kind>:<cwd>`）。
- */
-projectDir: string, 
-/**
- * 分组键：哪一家 ＋ 真实目录。
- */
-group: string, lastAccount?: string, };
 type HistoryRow = { agent: string, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, title: string, startedAt: number, updatedAt: number, jsonlPath: string, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
 /**
  * 隐藏那一格（判定只住后端 `control/session_hidden.rs`）；不隐藏 ⇒ `null`（格恒在）。
@@ -4331,11 +4266,7 @@ at: number, atText: Words, sectionText: Words, spanText: Words,
  * 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
  */
 origin?: string, };
-type HistoryRowLife = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended" };
 type HistorySort = "activity" | "created";
-type LaunchTab = { tab: Tab, alias?: string, };
-type ResumeWith = { model?: string, permissionMode?: string, end: number, };
-type Rules = { childTab: Tab, bgTab: Tab, };
 type SessionCan = { 
 /**
  * 关掉它的标签页。
@@ -4392,13 +4323,85 @@ order: number, can: SessionCan,
  * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
-type Tab = "show" | "hide";
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
 
-码：`bad_args` · `failed` · `no_listing`
+码：`bad_args` · `failed` · `unreachable` · `resident_absent`
+
+#### `history-listing`
+
+这台的清单（按记号只给变了的）。
+
+收 `args` · 可撤 · CLI：`ccm -- --history-listing`
+
+入参 `HistoryListingReq` · 回包 `SyncPatch<HistoryListingHead, HistoryRawRow>`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AutoAnswer = { 
+/**
+ * 挂上的提问等满几分钟还没人答就替人答；补丁里给 0 ＝ 关（摘掉这一格）。
+ */
+afterMin: number, 
+/**
+ * 替人答的那一句；缺 ⇒ 后端那一句缺省的。
+ */
+say?: string, };
+type Entry = { starred: boolean, customTitle: string | null, 
+/**
+ * 单个那一格：`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则。
+ */
+hide?: Hide, 
+/**
+ * 没人答的提问等几分钟替人答一句（判定住后端 `control::asks`）；缺 ＝ 关。
+ */
+autoAnswer?: AutoAnswer, 
+/**
+ * 终端没了时换的模型 / 权限档，下次恢复照它起（只由那两条换的命令写）；缺 ＝ 没记。
+ */
+resumeWith?: ResumeWith, updatedAt: number, };
+type Hide = "on" | "off";
+type HistoryFailedDir = { projectDir: string, error: string, };
+type HistoryListingHead = { failed: Array<HistoryFailedDir>, annotations: { [key in string]: Entry } | null, annotationsNotice: string | null, rules: Rules, };
+type HistoryListingReq = { held: SyncHeld | null, };
+type HistoryRawRow = { agent: string, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, 
+/**
+ * 显示标题（用户改过的另在 `customTitle`）：与全文搜索同一条规则。
+ */
+title: string, startedAt: number, updatedAt: number, jsonlPath: string, 
+/**
+ * 这台判的活不活（判不了：合成历史没有 pidfile ⇒ `null`）。
+ */
+life: HistoryRowLife | null, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
+/**
+ * 起会话时给了 `--tab` 的那一格（那台的启动台账）；没给 ⇒ 缺。
+ */
+launchTab?: LaunchTab, 
+/**
+ * 主会话（那台的会话血缘）；没有 ⇒ 缺。
+ */
+parent?: string, forkedFromSessionId?: string, forkedFromMessageUuid?: string, 
+/**
+ * 读它那一组用的键（记录目录名 · 合成历史 `<kind>:<cwd>`）。
+ */
+projectDir: string, 
+/**
+ * 分组键：哪一家 ＋ 真实目录。
+ */
+group: string, lastAccount?: string, };
+type HistoryRowLife = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended" };
+type LaunchTab = { tab: Tab, alias?: string, };
+type ResumeWith = { model?: string, permissionMode?: string, end: number, };
+type Rules = { childTab: Tab, bgTab: Tab, };
+type SyncHead<H> = { total: number, info: H, };
+type SyncHeld = string;
+type SyncPatch<H, T> = { held: SyncHeld, whole: boolean, same: boolean, order: Array<string> | null, up: { [key in string]: T }, head: SyncHead<H> | null, };
+type Tab = "show" | "hide";
+type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
+```
+
+码：`bad_args` · `failed`
 
 #### `history-search`
 
@@ -14062,6 +14065,7 @@ type Words = string;
 | `--history-last-accounts` | ＝ 帧命令 `history-last-accounts`：sid → 上次用哪个号起 |
 | `--history-lines` | ＝ 帧命令 `history-lines`：按行号取回一段 |
 | `--history-list` | ＝ 帧命令 `history-list`：历史页的平铺会话清单 |
+| `--history-listing` | ＝ 帧命令 `history-listing`：这台的清单（按记号只给变了的） |
 | `--history-page` | ＝ 帧命令 `history-page`：按字节分页读，出记录行 |
 | `--history-read` | ＝ 帧命令 `history-read`：按字节分页读一份会话 |
 | `--history-record` | ＝ 帧命令 `history-record`：这条会话的记录还在不在 |
@@ -14112,6 +14116,7 @@ type Words = string;
 | `--quota-read` | ＝ 帧命令 `quota-read`：这台的额度账 |
 | `--remote-reach` | ＝ 帧命令 `remote-reach`：本机后端的可达表登记 |
 | `--resident-attach` | 小中继：连这台家里常驻后端的套接字，stdin → 套接字、套接字 → stdout 原样对拷，任一边断就退；断开 ⇒ stdout 一行 `{attach:"refused", reason: absent\|unreachable}`、退出 2 |
+| `--resident-call` `[--stdin-line] [--within-ms <毫秒>] [--tz <IANA 名>]` | 问这台的常驻后端一条帧命令（stdin 一行 `{cmd, args}`）：连套接字、握手（在看名单交空的）、发请求、等那一条应答，stdout 一行回包、退出 0；常驻答了失败 ⇒ stderr 一行它那一份失败信封、退出 2；没人在听 ⇒ `resident_absent`（不起冷进程顶上）；到期限没回 ⇒ `timed_out` |
 | `--resident-ensure` `[--replace]` | 确保这台的常驻后端在听：已在 ⇒ `{pid, replaced: false}`（pid 是套接字对端）；没在 ⇒ 起一个脱离的自己、回 `{pid, replaced}`；`--replace` 在听那一位比自己旧才停掉再起（只升不降） |
 | `--resident-stop` `[--grace <秒>]` | 停这台的常驻后端：问套接字在听的是谁 → SIGTERM → 宽限（缺省 35 秒）→ SIGKILL；回 `{stopped: graceful\|killed\|not_running, pid}` |
 | `--resolve` | ＝ 帧命令 `resolve`：按 `ResumeSpec` 推出恢复命令 `CommandPlan` |

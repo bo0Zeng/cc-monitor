@@ -8,6 +8,11 @@
 //! - `--resident-attach`：**小中继**。连这台的套接字，stdin → 套接字、套接字 → stdout 原样对拷，任一边断就退。
 //!   monitor 经 ssh exec 跑它（ssh 证明了本人，它在那台以本人身份连本人通道）；断开 ⇒ stdout 回一行
 //!   `{"attach":"refused","reason":"absent"|"unreachable"}` 再退（monitor 读第一行就分得出）。
+//! - `--resident-call --stdin-line [--within-ms <毫秒>] [--tz <IANA 名>]`：**问这台的常驻一条帧命令**（stdin 一行 `{cmd, args}`）。
+//!   连套接字 → 读 hello → 交 attach 行（在看名单交空的：只问不看）→ 发请求 → 等那一条应答（别的帧略过）→ stdout 一行回包、退出 0；
+//!   失败 ⇒ stderr 一行失败信封（常驻答的码原样）、退出 2。没人在听 ⇒ `resident_absent`（不起一个冷的顶上：后端是给定的）。
+//!   等多久归发起方（`--within-ms`，缺 ⇒ [`RESIDENT_CALL_CAP`]），经期限原语 `platform::child::bounded` 那一处有界等待。
+//!   后端问后端的那一跳（`dial/remote_ask.rs::ask_resident`）经 ssh exec 跑它。
 //! - `--resident-stop [--grace <秒>]`：**同机监督者**那一形（k8s `terminationGracePeriodSeconds` · systemd `TimeoutStopSec`）：
 //!   连这台的套接字问在听的是谁（对端 pid 由内核报，不靠盘上的记录）→ SIGTERM（它排空后自己退）→ 在宽限期内等内核通知 →
 //!   到点 SIGKILL → 回 `{"stopped":"graceful"|"killed"|"not_running","pid":n|null}`。
@@ -16,7 +21,7 @@
 //! 门牌按这台的家算（`~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`）⇒ 一台机器一个家一个常驻后端，与 Claude 目录、与哪一家 agent 都无关。
 //! 套接字 · 目录独占锁都住 `<家>/run/`，由常驻后端自己写（本机远端一个写者）；没有钥匙（门由内核给：目录 `0700` ＋ 对端 uid，`own-chan`）。
 
-use crate::platform::child::{Child, ChildFail};
+use crate::platform::child::{Child, ChildFail, Deadline, Until};
 use crate::platform::child_env::OWN_ENVS;
 use crate::platform::fs::{Own, OwnLock, OwnPath};
 use std::path::{Path, PathBuf};
@@ -77,6 +82,7 @@ pub fn account_home() -> Option<PathBuf> {
 const ENSURE: &str = "resident-ensure";
 const STOP: &str = "resident-stop";
 const ATTACH: &str = "resident-attach";
+const CALL: &str = "resident-call";
 
 fn fail(cmd: &str, code: &str, message: impl Into<copy_core::said::Said>) -> i32 {
     crate::wire::detail::emit_err(cmd, code, message)
@@ -167,6 +173,219 @@ pub async fn attach() -> i32 {
         } => {}
     }
     0
+}
+
+/// `--resident-call` 等常驻回话的上限（发起方没给 `--within-ms` 时按它；给了更早的 ⇒ 照那个）。
+pub(crate) const RESIDENT_CALL_CAP: Deadline = Deadline::secs(30);
+
+/// `--resident-call` 那一条请求的 id（一条连接只问这一次）。
+const CALL_ID: &str = "resident-call";
+
+/// 常驻那条连接上一行帧的上限（应答里一整份清单也在这之内；同问远端那一跳收 stdout 的上限）。
+const FRAME_LINE_CAP: usize = 16 * 1024 * 1024;
+
+/// `--resident-call`：问这台的常驻一条帧命令（头注）。
+pub async fn call(args: &[String], tz: &crate::Tz) -> i32 {
+    let refuse = |code: &str, message: String| {
+        crate::wire::detail::Failed::new(Some(CALL), code, message, None, None).emit_to(
+            &mut std::io::stderr(),
+            false,
+            tz,
+        )
+    };
+    let within_ms = match crate::control::cli_args::within_of(args) {
+        Ok(ms) => ms,
+        Err((code, message)) => return refuse(code, message),
+    };
+    let line = match crate::control::cli_args::read_args(
+        args,
+        std::io::stdin(),
+        crate::control::cli_args::STDIN_QUIET,
+    ) {
+        Ok(l) => l,
+        Err((code, message)) => return refuse(code, message),
+    };
+    let asked: crate::wire::listen::ResidentCall = match serde_json::from_str(line.trim()) {
+        Ok(a) => a,
+        Err(e) => {
+            return refuse(
+                "bad_args",
+                crate::common::contract::malformed(&format!("stdin is not {{cmd, args}}: {e}")),
+            )
+        }
+    };
+    let Some(dh) = data_home() else {
+        return refuse("no_home", copy_text("beResident.home.missing", &[]));
+    };
+    let total = match within_ms {
+        Some(ms) => Deadline::within(RESIDENT_CALL_CAP, Until::after(Deadline::millis(ms))),
+        None => RESIDENT_CALL_CAP,
+    };
+    match call_at(&dh, &asked, within_ms, tz, total).await {
+        Ok(data) => {
+            println!("{data}");
+            0
+        }
+        Err(f) => f.emit_to(&mut std::io::stderr(), false, tz),
+    }
+}
+
+/// [`call`] 的本体（这台的家 · 期限由调用方给）：常驻答成 ⇒ 回包；答了失败 ⇒ 它那一份失败原样（码 · 那一句 · 复制详情）；
+/// 没人在听 ⇒ `resident_absent`；断了 · 到点 ⇒ 各自那一句。
+pub(crate) async fn call_at(
+    data_home: &Path,
+    asked: &crate::wire::listen::ResidentCall,
+    within_ms: Option<u64>,
+    tz: &crate::Tz,
+    total: Deadline,
+) -> Result<serde_json::Value, crate::wire::detail::Failed> {
+    let peer = copy_core::peer_machine();
+    let fail = |code: &str, message: String| {
+        crate::wire::detail::Failed::new(Some(CALL), code, message, None, None)
+    };
+    let req = serde_json::json!({
+        "id": CALL_ID,
+        "cmd": asked.cmd,
+        "args": asked.args,
+        "within_ms": within_ms,
+        "tz": tz.iana_name(),
+    });
+    let reply = crate::platform::child::bounded(total, async {
+        let mut here = Here::open(data_home).await?;
+        here.send(&req).await?;
+        here.reply(CALL_ID).await
+    })
+    .await;
+    let reply = match reply {
+        Ok(Ok(r)) => r,
+        Ok(Err(Unreached::Absent)) => {
+            return Err(fail(
+                crate::wire::listen::CALL_ABSENT,
+                crate::wire::listen::call_absent(&peer),
+            ))
+        }
+        Ok(Err(Unreached::Broken)) => {
+            return Err(fail(
+                "failed",
+                copy_text("beResident.call.dropped", &[("machine", &peer)]),
+            ))
+        }
+        Err(after) => {
+            return Err(fail(
+                crate::wire::listen::CALL_TIMED_OUT,
+                crate::wire::listen::call_timed_out(&peer, after),
+            ))
+        }
+    };
+    let reply: cmd_wire::frame::Reply = serde_json::from_value(reply).map_err(|e| {
+        fail(
+            "failed",
+            crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
+                copy_text("beResident.call.dropped", &[("machine", &peer)]),
+                e,
+            )),
+        )
+    })?;
+    if reply.ok {
+        return Ok(reply.data.unwrap_or_else(|| serde_json::json!({})));
+    }
+    // 常驻答的那一份失败原样交回（码 · 那一句 · 复制详情 · 按码定形的 `data`），不压成一个码。
+    Err(crate::wire::detail::Failed {
+        code: reply.code.unwrap_or_else(|| "failed".to_string()),
+        message: reply.message.unwrap_or_default(),
+        detail: reply.detail.unwrap_or_default(),
+        data: reply.data,
+    })
+}
+
+/// 这台常驻的一条只问不看的连接：hello 之后交 attach 行（在看名单交空的），回话「接上了」才算接上。
+/// `--resident-call` 与会话级答题 hook（`control/asks/hook.rs`）同用这一处。
+pub(crate) struct Here {
+    rd: tokio::io::BufReader<tokio::io::ReadHalf<own_chan::Stream>>,
+    wr: tokio::io::WriteHalf<own_chan::Stream>,
+}
+
+/// 接不上 · 问不成的两种。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Unreached {
+    /// 没人在听（套接字不在 / 拒连）。
+    Absent,
+    /// 连上了，但握手不对 · 断了 · 一行超长。
+    Broken,
+}
+
+impl Here {
+    /// 连这台家里的套接字、握手。
+    pub(crate) async fn open(data_home: &Path) -> Result<Here, Unreached> {
+        use cmd_wire::attach::{AttachLine, AttachReply};
+        let sock = own_chan::connect(&relay_route_core::listen_socket_for(data_home))
+            .await
+            .map_err(|e| match e.kind() {
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::ConnectionRefused => {
+                    Unreached::Absent
+                }
+                _ => Unreached::Broken,
+            })?;
+        let (rd, wr) = tokio::io::split(sock);
+        let mut here = Here {
+            rd: tokio::io::BufReader::new(rd),
+            wr,
+        };
+        let hello = here.line(HELLO_CAP as usize).await?;
+        if hello.get("kind").and_then(serde_json::Value::as_str) != Some("hello") {
+            return Err(Unreached::Broken);
+        }
+        let attach = AttachLine {
+            watch: Some(crate::wire::WatchAsk::default()),
+            ..AttachLine::default()
+        };
+        here.write(&attach.line()).await?;
+        let ack = here.line(crate::wire::listen::ATTACH_LINE_CAP).await?;
+        match AttachReply::of(&ack.to_string()) {
+            Some(AttachReply::Ok { .. }) => Ok(here),
+            _ => Err(Unreached::Broken),
+        }
+    }
+
+    /// 发一条请求（一行 JSON）。
+    pub(crate) async fn send(&mut self, req: &serde_json::Value) -> Result<(), Unreached> {
+        self.write(&format!("{req}\n")).await
+    }
+
+    /// 等 `id` 那一条应答（别的帧略过）：交回那一帧整份。
+    pub(crate) async fn reply(&mut self, id: &str) -> Result<serde_json::Value, Unreached> {
+        loop {
+            let v = self.line(FRAME_LINE_CAP).await?;
+            if v.get("kind").and_then(serde_json::Value::as_str) == Some("reply")
+                && v.get("id").and_then(serde_json::Value::as_str) == Some(id)
+            {
+                return Ok(v);
+            }
+        }
+    }
+
+    /// 读一行 JSON（有上限；不是 JSON 的那一行当没看见、读下一行）。断了 · 超长 ⇒ `Broken`。
+    async fn line(&mut self, cap: usize) -> Result<serde_json::Value, Unreached> {
+        use crate::wire::listen::HandshakeLine;
+        loop {
+            match crate::wire::listen::read_capped_line(&mut self.rd, cap).await {
+                Ok(HandshakeLine::Line(l)) => {
+                    if let Ok(v) = serde_json::from_str(l.trim()) {
+                        return Ok(v);
+                    }
+                }
+                Ok(HandshakeLine::Eof | HandshakeLine::TooLong(_)) | Err(_) => {
+                    return Err(Unreached::Broken)
+                }
+            }
+        }
+    }
+
+    async fn write(&mut self, line: &str) -> Result<(), Unreached> {
+        crate::wire::listen::write_line(&mut self.wr, line)
+            .await
+            .map_err(|_| Unreached::Broken)
+    }
 }
 
 /// 中继断开的那一格（纯函数）：没人在听（文件不在 / 拒连）⇒ `absent`（刚起的还没绑上，monitor 隔一会儿再接）；

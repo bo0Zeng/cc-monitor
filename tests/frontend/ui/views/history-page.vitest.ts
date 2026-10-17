@@ -72,7 +72,7 @@ import { HistoryView } from "../../../../src/frontend/ui/views/history";
 import { toast } from "../../../../src/frontend/ui/kit/toast";
 import { openSession } from "../../../../src/frontend/ui/session-open";
 import { resumeAccounts } from "../../../../src/frontend/ui/resume-menu";
-import { chanArgsJson, chanReply, NO_CHANNEL, refusedReply, type ChanCallArgs } from "../../../test-support/chan-fake";
+import { chanArgsJson, chanReply, refusedReply, type ChanCallArgs } from "../../../test-support/chan-fake";
 import { answerAskDialog, answerAskText, noAskDialog } from "../../../test-support/ask-dialog-driver.ts";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { closeMenu } from "../../../../src/frontend/ui/kit/menu";
@@ -120,17 +120,16 @@ const list = (rows: Record<string, unknown>[]) => ({ rows, groups: [], total: ro
 /** 每台的回答（`origin` 缺 = 本机）；`fail` 里的那几台答不上。 */
 let world: { local: Record<string, unknown>[]; dev: Record<string, unknown>[]; fail: Set<string>; search: "ok" | "fail" };
 
-/** 交本机后端的那几问（远端那台常驻的 `raw` 那一跳另数，见 [`rawAsks`]）。 */
+/** 交本机后端的那几问（界面只问本机后端：远端那台由它自己去问）。 */
 function calls(op: string): Record<string, unknown>[] {
   return invokeMock.mock.calls
     .filter((c) => c[0] === "chan_call" && (c[1] as ChanCallArgs).op === op)
-    .map((c) => chanArgsJson(c[1] as ChanCallArgs) as Record<string, unknown>)
-    .filter((a) => a.raw !== true);
+    .map((c) => chanArgsJson(c[1] as ChanCallArgs) as Record<string, unknown>);
 }
 
-/** 经长连接直接问 dev 那台常驻 `history-list {raw}` 的次数。 */
-function rawAsks(): number {
-  return invokeMock.mock.calls.filter((c) => c[0] === "chan_call" && (c[1] as ChanCallArgs).op === "history-list" && (c[1] as ChanCallArgs).origin === "dev").length;
+/** 要本机后端先问 dev 那台同步一次副本（`fresh`）的次数。 */
+function syncs(): number {
+  return calls("history-list").filter((a) => a.origin === "dev" && a.fresh === true).length;
 }
 
 /** 钟往前拨 `ms`（只假 `setTimeout`：页里的两处停顿 —— 敲字之后 · 方向键走行之后 —— 拨到界上判，不真等）。 */
@@ -168,11 +167,9 @@ beforeEach(() => {
     const c = a as ChanCallArgs;
     const args = chanArgsJson(c) as Record<string, unknown>;
     if (c.op === "history-list") {
-      // 那台常驻答它自己的清单（`raw`）；够不到 ⇒ 通道那一跳就断了。
-      if (c.origin === "dev") return world.fail.has("dev") ? Promise.reject(NO_CHANNEL) : chanReply({ rows: world.dev, failed: [] });
       const o = (args.origin as string | undefined) ?? "";
-      // 本机后端：dev 的清单没交过来、也没记着（上一次就没取回）⇒ `no_listing`。
-      if (o === "dev" && args.listing === undefined && world.fail.has("dev")) return Promise.reject(refusedReply("no_listing", "dev 的会话清单未取回"));
+      // 本机后端问 dev 那台的常驻问不成（那台常驻不在）⇒ 照实失败。
+      if (o === "dev" && world.fail.has("dev")) return Promise.reject(refusedReply("resident_absent", "dev 后端未在运行"));
       if (world.fail.has(o)) return Promise.reject(refusedReply("failed", `${o} 读不出`));
       const q = String(args.query ?? "");
       const mine = (o ? world.dev : world.local).filter((r) => !q || String(r.label).includes(q));
@@ -211,9 +208,8 @@ describe("开页 · 每台一问 · 按时间", () => {
     const v = await opened();
     expect(document.activeElement?.classList.contains("history-search")).toBe(true);
     expect(calls("history-list").map((a) => a.origin ?? "")).toEqual(["", "dev"]);
-    // 开页：dev 那一份先经长连接问那台常驻（热缓存），再带着交本机后端合并。
-    expect(rawAsks()).toBe(1);
-    expect(calls("history-list")[1].listing).toEqual({ rows: world.dev, failed: [] });
+    // 开页：dev 那一份要本机后端先问那台同步一次（`fresh`）。
+    expect(syncs()).toBe(1);
     expect(rows().map((r) => r.dataset.key?.split("\u0000")[1])).toEqual(["a", "b", "c"]);
     expect(byText('[role="option"]', "标题 b")?.textContent).toContain("dev");
     // 分段头照抄那台写好的字：同一个字的挨着的行一段，换了字起新的一段。
@@ -237,7 +233,7 @@ describe("开页 · 每台一问 · 按时间", () => {
       ["", "标题"],
       ["dev", "标题"],
     ]);
-    expect(rawAsks(), "敲字不该再去问那台").toBe(0);
+    expect(syncs(), "敲字不该再去问那台").toBe(0);
     expect(titles()).toEqual(["标题 a"]);
     v.close();
   });
@@ -256,8 +252,8 @@ describe("一台没答", () => {
     world.dev = [row({ sessionId: "b", at: NOW })];
     byText("button", copyText("history.list.reconnect"))!.click();
     await flush();
-    expect(calls("history-list").map((a) => [a.origin, a.sort, "listing" in a, a.fresh])).toEqual([["dev", "activity", true, undefined]]);
-    expect(rawAsks(), "重新连接 ⇒ 再问那台一次").toBe(1);
+    expect(calls("history-list").map((a) => [a.origin, a.sort, a.fresh])).toEqual([["dev", "activity", true]]);
+    expect(syncs(), "重新连接 ⇒ 再问那台一次").toBe(1);
     expect(titles()).toEqual(["标题 b", "标题 a"]);
     expect(document.body.textContent).not.toContain(msg);
     v.close();
@@ -728,12 +724,12 @@ describe("列表顶上的提示条 · 空着时说什么", () => {
     expect(retries).toHaveLength(2);
     retries[0].click();
     await flush();
-    expect(calls("history-list").map((a) => [a.origin ?? "", "listing" in a])).toEqual([["", false]]);
-    expect(rawAsks()).toBe(0);
+    expect(calls("history-list").map((a) => [a.origin ?? "", a.fresh])).toEqual([["", undefined]]);
+    expect(syncs()).toBe(0);
     retries[1].click();
     await flush();
-    expect(calls("history-list").map((a) => [a.origin ?? "", "listing" in a]).at(-1)).toEqual(["dev", true]);
-    expect(rawAsks()).toBe(1);
+    expect(calls("history-list").map((a) => [a.origin ?? "", a.fresh]).at(-1)).toEqual(["dev", true]);
+    expect(syncs()).toBe(1);
     v.close();
   });
 

@@ -857,6 +857,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     descending: NONE,
     // 带键集合手上那份照答换（`sync::Hand::apply`）：Rust 消费方与手机 `SyncHand` 照同一份金样；界面问本机后端拿整份、不换，TS 侧没有孪生。
     apply: NONE,
+    // 一台的清单拆成「头 ＋ 行」· 拼回去（`listing::Listing`，`history-listing` 那一问的带键集合两头用）：只搬格子、没有判断；界面不收这一形，TS 侧没有孪生。
+    split: NONE,
+    join: NONE,
   },
   "copy-core": {
     backend_old: "J22",

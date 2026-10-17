@@ -11,7 +11,7 @@
 
 use crate::agents::SessionActivity;
 use serde_json::{json, Value};
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 /// stdin 上限（同 CLI 入参那一道）：超了整份拒。
 const STDIN_CAP: u64 = 1_048_576;
@@ -78,53 +78,30 @@ async fn ask_resident(
     )>,
 ) -> Option<Value> {
     let dh = crate::platform::paths::data_home()?;
-    let sock = own_chan::connect(&relay_route_core::listen_socket_for(&dh))
-        .await
-        .ok()?;
-    let (rd, mut wr) = tokio::io::split(sock);
-    let mut lines = tokio::io::BufReader::new(rd).lines();
-    // 先读 hello，再交 attach 那一行（协议 §1 · §3）。
-    let hello: Value = serde_json::from_str(&lines.next_line().await.ok()??).ok()?;
-    if hello.get("kind").and_then(Value::as_str) != Some("hello") {
-        return None;
-    }
-    use cmd_wire::attach::{AttachLine, AttachReply};
-    wr.write_all(AttachLine::default().line().as_bytes())
-        .await
-        .ok()?;
-    let ack = AttachReply::of(&lines.next_line().await.ok()??)?;
-    if !matches!(ack, AttachReply::Ok { .. }) {
-        return None;
-    }
+    // 连常驻 ＋ 握手（hello → attach 行）与 `--resident-call` 同一处（`control/resident.rs::Here`）。
+    let mut here = crate::control::resident::Here::open(&dh).await.ok()?;
     let req = json!({ "id": REQ_ID, "cmd": "needs-ask", "args": { "agent": agent, "hook": hook } });
-    wr.write_all(format!("{req}\n").as_bytes()).await.ok()?;
+    here.send(&req).await.ok()?;
     let (_watching, mut closed) = match closed {
         Some((w, rx)) => (Some(w), Some(rx)),
         None => (None, None),
     };
-    loop {
-        tokio::select! {
-            line = lines.next_line() => {
-                let line = line.ok()??;
-                let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
-                if v.get("kind").and_then(Value::as_str) == Some("reply")
-                    && v.get("id").and_then(Value::as_str) == Some(REQ_ID)
-                {
-                    if v.get("ok").and_then(Value::as_bool) != Some(true) {
-                        return None;
-                    }
-                    return v.pointer("/data/decision").filter(|d| d.is_object()).cloned();
-                }
-            }
-            r = async {
-                match closed.as_mut() {
-                    Some(rx) => rx.await,
-                    None => std::future::pending().await,
-                }
-            } => {
-                let _ = r;
+    tokio::select! {
+        v = here.reply(REQ_ID) => {
+            let v = v.ok()?;
+            if v.get("ok").and_then(Value::as_bool) != Some(true) {
                 return None;
             }
+            v.pointer("/data/decision").filter(|d| d.is_object()).cloned()
+        }
+        r = async {
+            match closed.as_mut() {
+                Some(rx) => rx.await,
+                None => std::future::pending().await,
+            }
+        } => {
+            let _ = r;
+            None
         }
     }
 }

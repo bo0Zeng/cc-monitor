@@ -59,6 +59,11 @@ impl Deadline {
         }
     }
 
+    /// 交给下一跳的期限口（`--within-ms` · 请求信封 `within_ms`）的毫秒数：发起方的期限原样往下带，不在这里造新的。
+    pub(crate) fn as_ms(self) -> u64 {
+        u64::try_from(self.0.as_millis()).unwrap_or(u64::MAX)
+    }
+
     /// 给文案用的秒数（向上取整）。
     pub(crate) fn shown_secs(self) -> u64 {
         u64::try_from(self.0.as_millis().div_ceil(1000)).unwrap_or(u64::MAX)

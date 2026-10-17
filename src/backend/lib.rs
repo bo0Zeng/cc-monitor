@@ -431,8 +431,11 @@ pub const SUBCOMMANDS: &[&str] = &[
     // `history-lines`（按行号取回）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的，
     //   BUILD_ID 打版本号时统一 bump。
     "--history-lines",
-    // `history-list`（历史页的平铺清单）的 CLI 面：远端那一支问的就是它（`raw`）。**是新子命令** ⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
+    // `history-list`（历史页的平铺清单）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
     "--history-list",
+    // `history-listing`（这台自己的清单，按带键集合答）派生的 CLI 面：别的后端经 `--resident-call` 问常驻那一个；一次性进程里备忘活不过这一趟 ⇒ 每问整份。
+    // ⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    "--history-listing",
     // `history-page`（按字节分页出记录行）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
     "--history-page",
     "--history-read",
@@ -463,6 +466,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 卸载那一趟：暂存区里传上去的那一份删掉落点那一份（同一个文件）。
     "--unplace-self",
     "--resident-attach",
+    // 后端问后端：问这台常驻一条帧命令（`control/resident.rs::call`；`remote_ask::ask_resident` 经 ssh exec 跑它）。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    "--resident-call",
     "--resident-ensure",
     "--resident-stop",
     // 帧面 `resolve` 派生的 CLI 面（手写那一臂删了，信封与别的命令同一形）。

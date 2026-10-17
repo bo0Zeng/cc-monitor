@@ -8,7 +8,7 @@ use crate::files::{
     FilesPathBytesReply, FilesPathReply, FilesStageChunkReply, FilesWrittenReply, LsReply,
     ReadChunkReply, ReadTextReply, StatReply,
 };
-use crate::listing::HistoryListReply;
+use crate::listing::HistoryList;
 use crate::needs::{Answered, NeedsList};
 use crate::quota::QuotaRead;
 use crate::record::{HistoryLines, HistoryRead, OrUnread};
@@ -72,7 +72,7 @@ replies! {
     "files-stat" => StatReply,
     "files-write-text" => FilesWrittenReply,
     "history-lines" => HistoryLines<OrUnread>,
-    "history-list" => HistoryListReply,
+    "history-list" => HistoryList,
     "history-read" => HistoryRead<OrUnread>,
     "history-tail" => HistoryTail<OrUnread>,
     "kill" => Killed,

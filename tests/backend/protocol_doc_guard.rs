@@ -37,6 +37,11 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "wire/cli_words.rs",
         include_str!("../../src/backend/wire/cli_words.rs"),
     ),
+    // 期限口的读法（`within_of`）从 `stream/cli.rs` 挪进读入参那一处（`--resident-call` 也读它）：本判据自己算出来的。
+    (
+        "control/cli_args.rs",
+        include_str!("../../src/backend/control/cli_args.rs"),
+    ),
     (
         "agents/asks.rs",
         include_str!("../../src/backend/agents/asks.rs"),

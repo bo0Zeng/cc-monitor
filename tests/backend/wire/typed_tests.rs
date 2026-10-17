@@ -223,6 +223,19 @@ pub fn shape_of(cmd: &str) -> Option<&'static str> {{\n    SHAPES.iter().find(|(
     fresh("src/common/cmd-wire/src/shapes.rs", &want);
 }
 
+/// 一个 TS 类型名里要 import 的那几个具名类型（`null` · 内联的不用）：本身就是一份声明的；带类型参数的（`SyncPatch<A, B>`）⇒ 打头那个 ＋ 每个参数里具名的。
+fn named_in(t: &str, decls: &[(String, String)]) -> Vec<String> {
+    t.split(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .filter(|tok| !tok.is_empty())
+        .filter(|tok| {
+            decls
+                .iter()
+                .any(|(n, _)| n == tok || n.starts_with(&format!("{tok}<")))
+        })
+        .map(str::to_string)
+        .collect()
+}
+
 #[test]
 fn the_ui_command_map_is_what_the_types_say() {
     let rows = typed();
@@ -231,10 +244,7 @@ fn the_ui_command_map_is_what_the_types_say() {
     let mut data = String::new();
     for (name, shape) in &rows {
         for t in [&shape.req, &shape.reply] {
-            // 具名类型才 import（`null` · 内联的不用）。
-            if shape.decls.iter().any(|(n, _)| n == t) {
-                imports.insert(t.clone());
-            }
+            imports.extend(named_in(t, &shape.decls));
         }
         let codes = shape
             .codes
@@ -251,9 +261,7 @@ fn the_ui_command_map_is_what_the_types_say() {
                 .data
                 .iter()
                 .map(|(code, ty)| {
-                    if shape.decls.iter().any(|(n, _)| n == ty) {
-                        imports.insert(ty.clone());
-                    }
+                    imports.extend(named_in(ty, &shape.decls));
                     format!("\"{code}\": {ty}")
                 })
                 .collect();
