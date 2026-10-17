@@ -140,7 +140,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     //    照样绿着」⇒ 下次再有「app 自带某个二进制」这类申报，右边仍要去钉真源码。
     // 载荷内核搬进后端：原先 `tests/frontend/shell/payload_tests.rs → identity_tag.rs`（令牌变量名双写点）
     //   与 `tests/frontend/shell/history_tests.rs → ccm/argv.rs · ccm/plan.rs`（本机接回那一句真读得懂）三条边成了后端 crate 内部的读，摘了；
-    //   接回那一句的牙换成 `launch_render/launch_cli_parity_tests.rs::every_rendered_ccm_line_is_accepted_by_the_ccm_argv`。
+    //   接回那一句的牙换成 `launch_render/ccm_invocation_tests.rs::every_rendered_ccm_line_is_accepted_by_the_ccm_argv`。
     // 「谁给 agent 进程定 env」那张两半人群闭表（后端测试读 monitor `platform/terminal.rs`）这条边摘了：
     //   起会话只交一行 `ccm …` 之后，给 agent 进程定 env 的只剩 `ccm`（`control/ccm/`，同一个 crate 里有判据），
     //   开窗那一跳的 `.env(k, v)` 由 monitor 自己的 `launch_tests.rs::every_terminal_window_backend_opens_carries_the_backend_path` 钉着。

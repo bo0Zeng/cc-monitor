@@ -438,12 +438,12 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ),
     // 起新会话框的两问读数（起的那一问是上面的 `session-open`；分叉随它写，界面不单独问 `session-fork`）。
     (
-        "session-new-facts",
-        "后端出成品 `{recent, tmux, agents, fork}`（`faces/session_new_face.rs`，只读）；前端 `new-session-reads.ts::askFacts` 问、回包按 typed 的类型收（形状由握手指纹管），monitor 这一侧零发送点",
+        "session-open-facts",
+        "后端出成品 `{recent, tmux, agents, fork}`（`faces/session_open_face.rs`，只读）；前端 `new-session-reads.ts::askFacts` 问、回包按 typed 的类型收（形状由握手指纹管），monitor 这一侧零发送点",
     ),
     (
-        "session-new-dir",
-        "typed：后端出成品 `DirChecked`（`faces/session_new_face.rs::SessionNewDir`，只读）；前端 `new-session-reads.ts::askDir` 按类型问，monitor 这一侧零发送点",
+        "session-open-dir",
+        "typed：后端出成品 `DirChecked`（`faces/session_open_face.rs::SessionOpenDir`，只读）；前端 `new-session-reads.ts::askDir` 按类型问，monitor 这一侧零发送点",
     ),
     // 会话中途换模型 · 切权限档：那台送那一家的那一行 / 按切档键、从记录里读回，界面直接说。
     (

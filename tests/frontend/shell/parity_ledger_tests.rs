@@ -167,7 +167,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     // 接上去拿到的是 `--tmux`，也就是本机旧路结构上产不出来的**会话容器**。
     //
     // 本行仍是 `Side::Remote`，但理由换了：**POSIX 本机不需要一条 IPC 命令** ——
-    // 它的渲染器就住在 Rust 里（本机后端 `control/launch_render/local.rs::plan`），前端不必绕一圈问自己。
+    // 它的渲染器就住在 Rust 里（本机后端 `control/launch_render/mod.rs::line_of`），前端不必绕一圈问自己。
     // ★★ **P3b 结清（08-12）：这一行从 `Remote` 变 `Both`，不再是不对称。**
     //
     // 它原来的注释写「Remote-only 且未裁定 —— 本机该不该也有一个后端进程来收这件事，
@@ -607,7 +607,7 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     //   是同一条命令的两侧收成了一条路（远端那半改走 `bus-send`，不再拼 shell 串）。
     //   ⇒ 命令总数与能力总数都不动，只有这个数 +1；`cc-bus.cockpit` 仍不对称
     //   （spawn / 广播 / 收掉三条还是 `Remote`），所以不对称条数也不动。
-    // - K-R109 **+1**（`render_local_attach`，`Local`）—— 本机后端产 attach 那一句。
+    // - K-R109 **+1**（本机接回那一条，`Local`）—— 本机后端产 attach 那一句。
     //   归**已有**能力 `session.launch`（理由逐条写在 `LEDGER` 那一行旁边）⇒
     //   命令总数 +1、能力总数不动、不对称数不动，**只有这个数跟着 +1**。
     //   ⚠ 派工单点名的是「`commands.vitest.ts` 两个 147 ＋ `LEDGER` 一行」三处，

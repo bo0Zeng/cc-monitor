@@ -7527,6 +7527,18 @@
       "zh": "Claude 在后台起的主会话副本 · 默认进不进标签栏",
       "args": []
     },
+    "settings.machine.permissionMode": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "新会话的权限档",
+      "args": []
+    },
+    "settings.machine.permissionModeHelp": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "起新会话时用 · 会话里仍可切换",
+      "args": []
+    },
     "settings.machine.tabShow": {
       "kind": "action",
       "role": "按钮",
@@ -13599,12 +13611,6 @@
       "zh": "Windows 上不支持接回已有会话",
       "args": []
     },
-    "rsHistory.newSession.noDir": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "路径不存在 · {cwd} · 未新建会话",
-      "args": ["cwd"]
-    },
     "rsHistory.relay.downRefused": {
       "kind": "error",
       "role": "报错",
@@ -13622,12 +13628,6 @@
       "role": "说明",
       "zh": "各机器在跑的会话里无 {sid} · 停在当前标签页",
       "args": ["sid"]
-    },
-    "rsHistory.launch.noSessionName": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "缺会话名 · 无法启动",
-      "args": []
     },
     "rsHistory.launcher.badChars": {
       "kind": "error",
@@ -28897,6 +28897,13 @@
       "args": [],
       "limited": ["tmux"]
     },
+    "mobTerm.tmux.none": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{host} 无 tmux",
+      "args": ["host"],
+      "limited": ["tmux"]
+    },
     "mobTerm.capture.copied": {
       "kind": "body",
       "role": "toast",
@@ -28914,13 +28921,6 @@
       "role": "toast",
       "zh": "公钥已存在 · 未改动",
       "args": []
-    },
-    "mobKeyPush.result.unsure": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "推送未确认 · 远端 ~/.ssh/authorized_keys 需手动核对",
-      "args": [],
-      "limited": ["SSH"]
     },
     "mobKeyPush.result.noPublic": {
       "kind": "body",
@@ -29555,12 +29555,11 @@
       "args": [],
       "limited": ["tmux"]
     },
-    "mobKeys.err.actionNoTmux": {
+    "mobKeys.err.actionUnavailable": {
       "kind": "error",
       "role": "报错",
-      "zh": "{action}不可用 · {machine} 无 tmux",
-      "args": ["action", "machine"],
-      "limited": ["tmux"]
+      "zh": "{action}不可用 · {why}",
+      "args": ["action", "why"]
     },
     "mobKeys.err.groupGone": {
       "kind": "error",
@@ -30092,19 +30091,6 @@
       "zh": "连接断开后自动重新连接",
       "args": [],
       "limited": ["连接"]
-    },
-    "mobHostEdit.os.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "远端系统",
-      "args": []
-    },
-    "mobHostEdit.os.windowsHint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "可用  连接 · 终端 · 文件\n不可用  tmux · 后台 agent",
-      "args": [],
-      "limited": ["tmux", "连接"]
     },
     "mobHostEdit.auth.title": {
       "kind": "title",

@@ -37,7 +37,6 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
           const req: unknown = a0.payload ? JSON.parse(new TextDecoder().decode(new Uint8Array(a0.payload))) : null;
           chanSent.push({ origin: a0.origin, op, req });
         }
-        // 铸名那一问（`terminal-name-mint`）按帧命令名回：名字 ⇒ 那台后端的成品 `{name}`；别的 ⇒ 原样 reject（通道那一层的错）。
         // 「会打断什么」按帧命令名回：一个函数 (那台, 请求) ⇒ 那台后端的成品；没摆 ⇒ 原样 reject（问不到）。
         if (op === "machine-interrupts") {
           const answer = ipcReplies.get(op) as ((o: string, req: Record<string, unknown>) => unknown) | undefined;
@@ -45,12 +44,6 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
           const a0 = args[0] as { origin: string; payload: number[] };
           const req = JSON.parse(new TextDecoder().decode(new Uint8Array(a0.payload))) as Record<string, unknown>;
           const u = new TextEncoder().encode(JSON.stringify(answer(a0.origin, req)));
-          return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
-        }
-        if (op === "terminal-name-mint") {
-          const minted = ipcReplies.get(op);
-          if (typeof minted !== "string") return Promise.reject(minted);
-          const u = new TextEncoder().encode(JSON.stringify({ name: minted }));
           return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
         }
         // 机器表那三条（本机后端）：照假盘那一份现算（替身在 `config-patch-fake.ts`）。
@@ -818,7 +811,6 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(dlg, "起新会话框没开出来 —— 下面的断言会零命中地绿").toBeTruthy();
     expect(dlg!.textContent).toContain(copyText("newSession.title.onMachine", { machine: "a" }));
     expect(dlg!.querySelector<HTMLButtonElement>(`button[aria-label="${copyText("newSession.label.machine")}"]`)!.disabled).toBe(true);
-    expect(chanOps).not.toContain("terminal-name-mint");
     expect(chanOps.some((op) => /^launch-render-/.test(op))).toBe(false);
     document.body.innerHTML = "";
   });

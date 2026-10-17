@@ -418,7 +418,7 @@ describe("设置：行为页那个开关不在了 · 机器页两行", () => {
   it("★ 机器页：子会话 · 分身会话两行，读回之前灰着、哪一段都不选（缺省只住后端）；照那台读回的实际值画；点了交 `prefs-set {childTab | bgTab}`", async () => {
     let answer: (v: unknown) => void = () => {};
     vi.mocked(readPrefs).mockReturnValue(new Promise((r) => (answer = r)) as never);
-    vi.mocked(setPrefs).mockResolvedValue({ state: "ok", prefs: { launchers: {}, resumeInTmux: false, models: {}, contextLimits: {}, agentHomes: {}, childTab: "show", bgTab: "hide" } } as never);
+    vi.mocked(setPrefs).mockResolvedValue({ state: "ok", prefs: { launchers: {}, resumeInTmux: false, models: {}, permissionModes: {}, contextLimits: {}, agentHomes: {}, childTab: "show", bgTab: "hide" } } as never);
     const m = machineLaunchRows(LOCAL_ORIGIN, "m-1");
     document.body.append(...m.rows);
     m.load();
@@ -431,7 +431,7 @@ describe("设置：行为页那个开关不在了 · 机器页两行", () => {
     seg("bg-tab").querySelector<HTMLElement>("[data-key=hide]")!.click();
     expect(vi.mocked(setPrefs), "读回之前点了不交").not.toHaveBeenCalled();
     // 那台读回的不是缺省那一组（子会话显示 · 分身隐藏）⇒ 照它画。
-    answer({ state: "ok", reason: null, detail: null, path: null, prefs: { launchers: {}, resumeInTmux: false, models: {}, contextLimits: {}, agentHomes: {}, childTab: "show", bgTab: "hide" } });
+    answer({ state: "ok", reason: null, detail: null, path: null, prefs: { launchers: {}, resumeInTmux: false, models: {}, permissionModes: {}, contextLimits: {}, agentHomes: {}, childTab: "show", bgTab: "hide" } });
     await new Promise((r) => setTimeout(r, 0));
     expect([on("child-tab"), on("bg-tab")]).toEqual(["show", "hide"]);
     expect([grey("child-tab"), grey("bg-tab")]).toEqual(["false", "false"]);

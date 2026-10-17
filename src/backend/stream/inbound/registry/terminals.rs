@@ -3,10 +3,6 @@
 use crate::wire::spec::CommandSpec;
 
 pub(super) const SPECS: &[CommandSpec] = &[
-    // 起会话那一行 `ccm …`（`control/launch_render/`）：交给终端的只有这一行，环境与中转地址归那台的 `ccm`。
-    //   `launch-local`：本机那几形（阻塞档：核一次「新起」的目录在不在）；`launch-render-cli`：远端那几形（纯函数）。
-    crate::wire::typed::blocking::<crate::faces::launch_face::LaunchLocal>("本机起会话那一行 `ccm …`"),
-    crate::wire::typed::blocking::<crate::faces::launch_face::LaunchRenderCli>("远端起会话那一行 `ccm …`"),
     // 〔「待迁」最后一行〕**开终端那一串**：`{machine, saved?, jump?, prefer?, command}` ⇒ `{command}`（按本机终端方言的一行：
     //   Windows `& '<ssh 全路径>' -t[ -J …] -p … [-i …] user@host -- '<bash -lic …>'`，别处同一组参数的 POSIX shell 一行）。组请求走 `ssh-dial/machine.rs::resolve`，本体 `dial/terminal.rs`。
     //   查几个文件找 ssh 客户端（`platform/ssh_client.rs`）⇒ 阻塞档；不拨号、不起进程。
@@ -44,9 +40,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
         "切权限档（开着 ⇒ 按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按；终端没了 ⇒ 记下、下次恢复照它起）",
     ),
     crate::wire::typed::blocking::<crate::faces::session_say_face::SessionSay>("往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车；终端没了 ⇒ 按记下的号恢复、那一句当第一句交）"),
-    crate::wire::typed::blocking::<crate::faces::session_say_face::SessionResume>(
-        "终端没了的会话先在这台恢复（同说一句里恢复那一支，不带那一句），回它落在哪个 tmux 会话",
-    ),
     // 终端实时预览三条（`control/terminal_follow.rs`）：订阅名单里一个终端的画面，有变化就推一整屏（`terminal_screen` 帧），
     //   一帧在途、客户端回执之后才推下一帧；停了推 `terminal_follow_end`。都是 `Run::Builtin`：要碰本连接的票表与应答通道 ⇒ **只在帧面**。
     crate::wire::typed::frame::<crate::control::terminal_follow::TerminalFollow>(
@@ -58,15 +51,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::frame::<crate::control::terminal_follow::TerminalUnfollow>(
         "退订一个终端的画面（幂等，不发收尾帧）",
     ),
-    // **起会话要一个终端名 —— 问这台**：`{cwd}`（`<项目名>-cc`）或 `{forkOf}`（`<…>-fork-cc`）⇒ `{name}`（按这台那张会话快照避让）。
-    //   本体 `control/ccm/mod.rs::TerminalNameMint`（这一版宿主只有 tmux）；阻塞档（快照问一次就起一次 `tmux`）。
-    crate::wire::typed::blocking::<crate::control::ccm::TerminalNameMint>(
-        "起会话要的终端名",
-    ),
     // F04a：**第一条破坏性命令。** 三道门在 `control/gate::admit_destructive`，
     // 对句柄下手不对名字。⚠ monitor 侧改走这条路是 **F04b**（定框 C6 的顺序）。
     crate::wire::typed::blocking::<crate::control::kill::Kill>("杀一个 tmux 会话"),
-    // 一批会话的停 / 起：每一个同单个那一条（`kill` · `launch` · `launch-render-cli` · `launch-local`），逐个答结局。
+    // 一批会话的停：每一个同单个那一条（`kill`），逐个答结局。
     //   阻塞档（逐个起 tmux）；要动 tmux / 读记录的几样由帧面那层壳交进去（`faces/session_batch_face.rs`）。
     crate::wire::typed::blocking::<crate::faces::session_batch_face::SessionsStop>(
         "停一批会话（逐个答，一个不成不挡下一个）",
@@ -74,19 +62,15 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::faces::session_batch_face::SessionsWhere>(
         "一批会话各在这台哪个终端里",
     ),
-    crate::wire::typed::blocking::<crate::faces::session_batch_face::SessionsStart>("起 / 接回一批会话（逐个答）"),
-    // **起新会话 —— 全产品一个请求**（`control/session_new.rs`，宿主 `faces/session_new_face.rs`）：这台判目录 · 号（选不了带替代号）·
-    //   终端名 · 分叉（只在这一步写分支记录）· 起；回「起好了 / 要开窗跑那一行」，某一格不行 ⇒ 失败信封 `data.field` 说是哪一格。
-    crate::wire::typed::blocking::<crate::faces::session_new_face::SessionNew>("起一个新会话（全产品一个框、一个请求）"),
-    // **起会话 · 恢复 · 接回 —— 一个请求**（`control/session_open.rs`，宿主 `faces/session_open_face.rs`）：意图进去，这台判号 · 放在哪 ·
+    // **起会话 · 恢复 · 接回 —— 一个请求**（`control/session_open/`，宿主 `faces/session_open_face.rs`）：意图进去，这台判号 · 放在哪 ·
     //   记录在不在 · 已有进程在写 · 在跑 / 就地 / 新开，回「落在哪 ＋ 要开终端就跑这一行」；每个码的那一句后端写好。
     crate::wire::typed::blocking::<crate::faces::session_open_face::SessionOpen>("起会话 · 恢复 · 接回（一个请求：落在哪 ＋ 要开终端就跑的那一行）"),
     // 起新会话框打开时问一次：这台最近用过的目录 · 有没有 tmux · 能起哪几家 · 分叉源会话的三格（只读，不写分支记录）。
-    crate::wire::typed::blocking::<crate::faces::session_new_face::SessionNewFacts>(
+    crate::wire::typed::blocking::<crate::faces::session_open_face::SessionOpenFacts>(
         "起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法",
     ),
     // 工作目录那一格失焦时问：在不在 · 这台此刻会给它铸的终端名（没 tmux ⇒ `null`）。
-    crate::wire::typed::blocking::<crate::faces::session_new_face::SessionNewDir>(
+    crate::wire::typed::blocking::<crate::faces::session_open_face::SessionOpenDir>(
         "起新会话前核一个目录：在不在 · 会用哪个终端名",
     ),
     // 换号重启（`control/session_restart.rs`）：查号 → 找终端 → 先压缩（可选，等摘要）→ 停旧 → 同一终端名用新号起 → 等报出，全在这台做完。

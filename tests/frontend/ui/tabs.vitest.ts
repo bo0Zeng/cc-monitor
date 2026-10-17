@@ -156,7 +156,6 @@ import {
   isChanCall,
   launchRenderShim,
   sessionReadCalls,
-  tmuxMintCalls,
   UNSUPPORTED,
   withAccountReads,
   withHistoryReads,
@@ -1164,7 +1163,6 @@ describe("恢复交那台：恰好一问 session-open（本机 / 远端 × 不�
       }
     }
     expect(sessionReadCalls(vi.mocked(invoke).mock.calls, "probe_session_record")).toEqual([]);
-    expect(tmuxMintCalls(vi.mocked(invoke).mock.calls)).toEqual([]);
     expect(historyCalls(vi.mocked(invoke).mock.calls, "update_history_metadata")).toHaveLength(0);
   });
 

@@ -3,9 +3,9 @@ package com.ccmonitor.mobile.ui.chat
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.Said
+import com.ccmonitor.mobile.core.claude.link.wire.AgentPick
 import com.ccmonitor.mobile.core.claude.link.wire.Allow
 import com.ccmonitor.mobile.core.claude.link.wire.CanWord
-import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.ui.Faces
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -37,8 +37,8 @@ class ChatSessionMidTest {
         }
     }
 
-    private val opus = NewSessionPick("opus", "Opus")
-    private val plan = NewSessionPick("plan", "规划模式")
+    private val opus = AgentPick("opus", "Opus")
+    private val plan = AgentPick("plan", "规划模式")
 
     @Test
     fun `换模型：转圈期间两颗都在换、读回 done 才换成读回的字；勾上换成的那一项`() =
@@ -67,7 +67,7 @@ class ChatSessionMidTest {
             val replies = ArrayDeque(listOf<Reply>(Reply.Ok(mapOf("result" to "done", "model" to "Sonnet", "said" to null)), Reply.TimedOut, Reply.Ok(mapOf("result" to "unsure", "model" to null, "said" to "结果未知，看一眼终端"))))
             val s = existing(link) { cmd, _ -> if (cmd == "session-model") replies.removeFirst() else null }
             runCurrent()
-            s.switchModel(NewSessionPick("sonnet", "Sonnet"))
+            s.switchModel(AgentPick("sonnet", "Sonnet"))
             runCurrent()
             assertEquals("Sonnet", s.state.value.model.text)
             s.switchModel(opus)
@@ -98,7 +98,7 @@ class ChatSessionMidTest {
             runCurrent()
             assertEquals("规划模式", s.state.value.permission.text)
             assertEquals(listOf(mapOf("sid" to "s1", "mode" to "plan", "client" to "mobile")), link.calls("session-permission"))
-            s.switchPermission(NewSessionPick("default", "逐个确认"))
+            s.switchPermission(AgentPick("default", "逐个确认"))
             runCurrent()
             assertEquals("规划模式", s.state.value.permission.text)
             assertEquals("先答完需手动", s.state.value.note)
@@ -168,6 +168,7 @@ class ChatSessionMidTest {
             val facts =
                 mapOf(
                     "recent" to emptyList<Any>(),
+                    "tmux" to true,
                     "agents" to
                         listOf(
                             mapOf(
@@ -180,14 +181,14 @@ class ChatSessionMidTest {
                             ),
                         ),
                 )
-            val s = existing(link) { cmd, _ -> if (cmd == "session-new-facts") Reply.Ok(facts) else null }
+            val s = existing(link) { cmd, _ -> if (cmd == "session-open-facts") Reply.Ok(facts) else null }
             runCurrent()
             s.loadPicks()
             runCurrent()
-            assertEquals(Picks(listOf(opus), listOf(plan), NewSessionPick("default", "默认"), "换模型也改此号以后新会话的默认"), s.state.value.picks)
+            assertEquals(Picks(listOf(opus), listOf(plan), AgentPick("default", "默认"), "换模型也改此号以后新会话的默认"), s.state.value.picks)
             s.loadPicks()
             runCurrent()
-            assertEquals("问到过就不再问", 1, link.calls("session-new-facts").size)
+            assertEquals("问到过就不再问", 1, link.calls("session-open-facts").size)
         }
 
     @Test

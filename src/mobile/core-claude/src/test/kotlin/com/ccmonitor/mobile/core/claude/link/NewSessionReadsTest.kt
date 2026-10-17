@@ -8,29 +8,30 @@ import org.junit.Test
 
 /** 新建会话那几屏问那台的几条：入参照协议的格，回包照 `IPC-COMMANDS.md` 那一形解，缺必填格 ⇒ 解不出。 */
 class NewSessionReadsTest {
-    private val base = mapOf("agent" to "claude", "cwd" to "~/proj", "place" to "tmux", "local" to false, "ticket" to "t-1", "prompt" to "你好")
+    private val what = mapOf("kind" to "new", "agent" to "claude", "cwd" to "~/proj", "prompt" to "你好")
+    private val base = mapOf("what" to what, "run" to "tmux", "local" to false, "ticket" to "t-1", "client" to "mobile")
 
     @Test
-    fun `session-new：账号 · 轮换只在改过时交；改了交那一形（named · strategy，不轮换 ＝ null）`() {
-        assertEquals(base, SessionNew.args(cwd = "~/proj", ticket = "t-1", agent = "claude", prompt = "你好", account = null, rotation = null))
+    fun `session-open 新起：账号 · 轮换只在改过时交；改了交那一形（named · strategy，不轮换 ＝ null）`() {
+        assertEquals(base, SessionOpen.newIn(cwd = "~/proj", ticket = "t-1", agent = "claude", prompt = "你好", account = null, rotation = null))
         assertEquals(
             base + ("account" to mapOf("kind" to "named", "name" to "work")),
-            SessionNew.args(cwd = "~/proj", ticket = "t-1", agent = "claude", prompt = "你好", account = "work"),
+            SessionOpen.newIn(cwd = "~/proj", ticket = "t-1", agent = "claude", prompt = "你好", account = "work"),
         )
         assertEquals(
-            base + ("rotation" to mapOf("strategy" to null)),
-            SessionNew.args(cwd = "~/proj", ticket = "t-1", agent = "claude", prompt = "你好", rotation = SessionNew.Rotation(null)),
+            base + ("what" to what + ("rotation" to mapOf("strategy" to null))),
+            SessionOpen.newIn(cwd = "~/proj", ticket = "t-1", agent = "claude", prompt = "你好", rotation = SessionOpen.Rotation(null)),
         )
         assertEquals(
-            base + ("rotation" to mapOf("strategy" to "night")),
-            SessionNew.args(cwd = "~/proj", ticket = "t-1", agent = "claude", prompt = "你好", rotation = SessionNew.Rotation("night")),
+            base + ("what" to what + ("rotation" to mapOf("strategy" to "night"))),
+            SessionOpen.newIn(cwd = "~/proj", ticket = "t-1", agent = "claude", prompt = "你好", rotation = SessionOpen.Rotation("night")),
         )
     }
 
     @Test
-    fun `session-new-facts：最近的目录照那台给的序，带写好的时刻字`() {
+    fun `session-open-facts：最近的目录照那台给的序，带写好的时刻字`() {
         val facts =
-            SessionNewFacts.of(
+            SessionOpenFacts.of(
                 mapOf(
                     "recent" to listOf(mapOf("cwd" to "/h/a", "lastMs" to 2.0, "lastText" to "19:02"), mapOf("cwd" to "/h/b", "lastMs" to 1.0, "lastText" to "昨天")),
                     "tmux" to true,
@@ -39,15 +40,15 @@ class NewSessionReadsTest {
                 ),
             )!!
         assertEquals(listOf("/h/a" to "19:02", "/h/b" to "昨天"), facts.recent.map { it.cwd to it.lastText })
-        assertNull("最近一格缺 lastText ⇒ 解不出", SessionNewFacts.of(mapOf("recent" to listOf(mapOf("cwd" to "/h/a", "lastMs" to 1.0)), "agents" to emptyList<Any>())))
+        assertNull("最近一格缺 lastText ⇒ 解不出", SessionOpenFacts.of(mapOf("recent" to listOf(mapOf("cwd" to "/h/a", "lastMs" to 1.0)), "agents" to emptyList<Any>())))
     }
 
     @Test
-    fun `session-new-dir：只交目录；在不在照回包`() {
-        assertEquals(mapOf("cwd" to "~/x"), SessionNewDir.args("~/x"))
-        assertEquals(false, SessionNewDir.of(mapOf("exists" to false, "tmuxName" to null)))
-        assertEquals(true, SessionNewDir.of(mapOf("exists" to true, "tmuxName" to "x-cc")))
-        assertNull(SessionNewDir.of(mapOf("tmuxName" to null)))
+    fun `session-open-dir：只交目录；在不在照回包`() {
+        assertEquals(mapOf("cwd" to "~/x"), SessionOpenDir.args("~/x"))
+        assertEquals(false, SessionOpenDir.of(mapOf("exists" to false, "tmuxName" to null)))
+        assertEquals(true, SessionOpenDir.of(mapOf("exists" to true, "tmuxName" to "x-cc")))
+        assertNull(SessionOpenDir.of(mapOf("tmuxName" to null)))
     }
 
     @Test

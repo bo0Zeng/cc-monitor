@@ -14,13 +14,13 @@ import com.ccmonitor.mobile.core.claude.link.LiveCardState
 import com.ccmonitor.mobile.core.claude.link.RecordLine
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionCommandList
-import com.ccmonitor.mobile.core.claude.link.SessionNew
+import com.ccmonitor.mobile.core.claude.link.SessionOpen
 import com.ccmonitor.mobile.core.claude.link.SessionSay
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.claude.link.TerminalInput
+import com.ccmonitor.mobile.core.claude.link.wire.AgentPick
 import com.ccmonitor.mobile.core.claude.link.wire.Held
 import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
-import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
 import com.ccmonitor.mobile.core.claude.link.wire.RecordKind
 import com.ccmonitor.mobile.core.claude.link.wire.SessionCommands
 import com.ccmonitor.mobile.core.claude.link.wire.TailHow
@@ -99,17 +99,17 @@ data class SwitchChip(
     /** 上一次换成了的那一项（原值）：抽屉里勾它。 */
     val value: String? = null,
     /** 正在换成的那一项（写它的字、转圈）；不在换 ⇒ `null`。 */
-    val pending: NewSessionPick? = null,
+    val pending: AgentPick? = null,
     /** 此刻不能换：那台写好的那一句（会话帧的 `switch`；那台离线 ⇒ 离线那一句）；能换 ⇒ `null`。 */
     val blocked: String? = null,
 )
 
-/** 两个 chip 抽屉里列的：那台 `session-new-facts` 给这条会话那一家的模型与权限档；问不到 ⇒ [error] 是那一句。 */
+/** 两个 chip 抽屉里列的：那台 `session-open-facts` 给这条会话那一家的模型与权限档；问不到 ⇒ [error] 是那一句。 */
 data class Picks(
-    val models: List<NewSessionPick> = emptyList(),
-    val modes: List<NewSessionPick> = emptyList(),
+    val models: List<AgentPick> = emptyList(),
+    val modes: List<AgentPick> = emptyList(),
     /** 模型抽屉第一项「默认」（那台给的值与字）；那一家没有 ⇒ `null`。 */
-    val modelDefault: NewSessionPick? = null,
+    val modelDefault: AgentPick? = null,
     /** 模型抽屉底那一行灰字（那台写的）；没有 ⇒ `null`。 */
     val modelNote: String? = null,
     val error: String? = null,
@@ -142,14 +142,14 @@ sealed interface ChatTarget {
         val ticket: String,
         /** 从哪进来的那个目录（在一条会话里点「新建会话」⇒ 那条的目录）；没有 ⇒ `null`（那台最近的第一个 · `~`，见 [NewSessionPicker]）。 */
         val cwd: String?,
-        /** 这台存的那一家（线上 kind，主机设置里选的）；没选 ⇒ `null`。起的时候照那台 `session-new-facts` 认：认得 ⇒ 它，否则那台列的第一家。 */
+        /** 这台存的那一家（线上 kind，主机设置里选的）；没选 ⇒ `null`。起的时候照那台 `session-open-facts` 认：认得 ⇒ 它，否则那台列的第一家。 */
         val agent: String?,
     ) : ChatTarget
 }
 
 /**
  * 一条会话的聊天状态。起会话、送字、正文都走那台的核心（[CoreLink]）：
- * - 新建会话：第一条按 ➤ ⇒ `session-new`（在那台 tmux 里起，桌面那一侧看得到、接得上），那一句随起交（`prompt`：那台作为启动参数交给 agent，
+ * - 新建会话：第一条按 ➤ ⇒ `session-open`（在那台 tmux 里起，桌面那一侧看得到、接得上），那一句随起交（`prompt`：那台作为启动参数交给 agent，
  *   作为启动参数交，送没送到看回包）；那台没交（回包没有 `prompt`）⇒ 等它报到（会话表里那个目录新出现的一条）再经 `terminal-input` 送。
  *   新起的会话记录要等第一句进去才落盘 ⇒ 读正文之前先等那台推来它的记录路径（[freshPath]）。
  * - 送字 / 停：`terminal-input`（字 · `esc`）；送没送到是那台判的（`delivered` · `unsure` · `refused`）。
@@ -215,7 +215,7 @@ class ChatSession(
         var deliveryText: String?,
         var attempts: Int = 1,
     ) {
-        /** 这一句已随 `session-new` 交出去了（结局已标上）。 */
+        /** 这一句已随 `session-open` 交出去了（结局已标上）。 */
         var handed = false
     }
 
@@ -304,9 +304,9 @@ class ChatSession(
     }
 
     /** 换模型（见 [ChatChips.switchModel]）。 */
-    fun switchModel(pick: NewSessionPick) = chips.switchModel(pick)
+    fun switchModel(pick: AgentPick) = chips.switchModel(pick)
 
-    fun switchPermission(pick: NewSessionPick) = chips.switchPermission(pick)
+    fun switchPermission(pick: AgentPick) = chips.switchPermission(pick)
 
     fun loadPicks() =
         chips.loadPicks(
@@ -422,7 +422,7 @@ class ChatSession(
             else -> failed(r.problem(machine, SessionSay.COMMAND)?.text)
         }
 
-    /** 那台判的送没送到（`terminal-input` 的回话 · `session-new` 回包里第一句的结局）⇒ 标与那一句。 */
+    /** 那台判的送没送到（`terminal-input` 的回话 · `session-open` 回包里第一句的结局）⇒ 标与那一句。 */
     private fun outcomeOf(res: TerminalInput.Result): Pair<DeliveryState?, String?> =
         when (res) {
             TerminalInput.Result.Delivered -> null to null
@@ -481,15 +481,17 @@ class ChatSession(
         val p = picker ?: return
         p.settled()
         val c = p.chosen()
-        val args = SessionNew.args(c.cwd, d.ticket, c.agent, first.text, c.account, c.rotation)
-        val answer =
-            when (val r = link.call(SessionNew.COMMAND, args, NEW_MS)) {
-                is Reply.Ok -> SessionNew.of(r.data) ?: return failSession(unreadableReply(machine, SessionNew.COMMAND, r.data.toString()).text)
-                else -> return failSession(r.problem(machine, SessionNew.COMMAND)?.text)
+        val args = SessionOpen.newIn(c.cwd, d.ticket, c.agent, first.text, c.account, c.rotation)
+        val (answer, cwd) =
+            when (val r = link.call(SessionOpen.COMMAND, args, NEW_MS)) {
+                is Reply.Ok ->
+                    SessionOpen.of(r.data)?.let { a -> a.cwd?.let { a to it } }
+                        ?: return failSession(unreadableReply(machine, SessionOpen.COMMAND, r.data.toString()).text)
+                else -> return failSession(r.problem(machine, SessionOpen.COMMAND)?.text)
             }
         val arrived =
             answer.sid ?: withTimeoutOrNull(arrivalMs) {
-                link.table.mapNotNull { SessionNew.arrived(it, answer.cwd, before)?.sid }.first()
+                link.table.mapNotNull { SessionOpen.arrived(it, cwd, before)?.sid }.first()
             } ?: return failSession(copyText("launchArrival.missed.title"))
         answer.prompt?.let { said ->
             first.handed = true
@@ -498,7 +500,7 @@ class ChatSession(
         }
         sid = arrived
         cache.bind(outgoing.map { it.localId }, arrived)
-        _state.value = _state.value.copy(sid = arrived, cwd = answer.cwd)
+        _state.value = _state.value.copy(sid = arrived, cwd = cwd)
         syncHold()
         follow = scope.launch { attach(arrived, fresh = true) }
     }
@@ -876,7 +878,7 @@ class ChatSession(
         /** 等新起的会话报到多久（同桌面 `ARRIVAL_BUDGET_MS`）。 */
         const val ARRIVAL_MS = 45_000L
 
-        /** 这边等起会话多久（`session-new` 是阻塞档：不交 `within_ms`、到点不撤单；第一句作为启动参数交，起好就回）。 */
+        /** 这边等起会话多久（`session-open` 是阻塞档：不交 `within_ms`、到点不撤单；第一句作为启动参数交，起好就回）。 */
         private const val NEW_MS = 45_000L
         private const val INPUT_MS = 20_000L
 

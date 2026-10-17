@@ -1029,12 +1029,10 @@ fn the_probe_frame_answers_the_same_card_as_the_cli_flag() {
     );
 }
 
-/// 要求：「tmux 名派生 ＋ 撞名避让只留后端，前端要名字就问后端」。
-/// 帧命令 `terminal-name-mint` 两形各一格 == 手写期望；避让问的是**交进来那张快照**（被占 ⇒ 往后排）；没装 tmux ⇒ 基名；入参不恰一格 ⇒ `bad_args`。
+/// 要求：「tmux 名派生 ＋ 撞名避让只留后端」。起会话铸名两形各一格 == 手写期望；避让问的是**交进来那张快照**（被占 ⇒ 往后排）；没装 tmux ⇒ 基名。
 #[test]
-fn the_mint_frame_derives_here_and_steps_aside_on_this_machines_snapshot() {
+fn minting_derives_here_and_steps_aside_on_this_machines_snapshot() {
     use crate::common::session_snapshot::{SessionRow, SessionSnapshot};
-    use serde_json::json;
     let snap = SessionSnapshot::with_prober(|| {
         Ok(["proj-cc", "proj-fork-cc", "proj-fork-cc-2"]
             .iter()
@@ -1045,7 +1043,7 @@ fn the_mint_frame_derives_here_and_steps_aside_on_this_machines_snapshot() {
             .collect())
     });
     use crate::control::session_batch::NameBase;
-    let mint = |b: NameBase| terminal_name_mint_with(b, &snap).map(|m| m.name);
+    let mint = |b: NameBase| terminal_name_mint_with(b, &snap);
     assert_eq!(mint(NameBase::Cwd("/home/u/proj")).unwrap(), "proj-cc-2");
     assert_eq!(mint(NameBase::Cwd("/home/u/other")).unwrap(), "other-cc");
     assert_eq!(mint(NameBase::ForkOf("proj-cc")).unwrap(), "proj-fork-cc-3");
@@ -1055,28 +1053,9 @@ fn the_mint_frame_derives_here_and_steps_aside_on_this_machines_snapshot() {
     );
     let no_tmux = SessionSnapshot::with_prober(|| Err(("no_tmux", "tmux: not found".to_string())));
     assert_eq!(
-        terminal_name_mint_with(NameBase::Cwd("/home/u/proj"), &no_tmux)
-            .unwrap()
-            .name,
+        terminal_name_mint_with(NameBase::Cwd("/home/u/proj"), &no_tmux).unwrap(),
         "proj-cc"
     );
-    // 入参组合不对（两个都没给 · 两个都给）⇒ `bad_args`，不去问快照；形状不对（类型错 · 多一个键）在解入参那一步就拒了。
-    use crate::wire::typed::{Codes as _, Handle as _};
-    for (cwd, fork_of) in [(None, None), (Some("/a"), Some("b"))] {
-        let req = TerminalNameMintReq {
-            cwd: cwd.map(str::to_string),
-            fork_of: fork_of.map(str::to_string),
-        };
-        let cx = crate::wire::typed::Cx {
-            tz: Default::default(),
-            until: None,
-            needs: (),
-        };
-        let got = crate::wire::spec::finish(TerminalNameMint::run(req, cx))
-            .unwrap_err()
-            .into_fail();
-        assert_eq!(got.code, "bad_args");
-    }
 }
 
 // ── 起会话只有 ccm 一处（要求：「所有的起会话都是一处ccm」）──────────────────────────────

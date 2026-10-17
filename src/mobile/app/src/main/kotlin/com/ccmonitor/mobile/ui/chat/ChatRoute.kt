@@ -36,7 +36,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ccmonitor.mobile.cache.ChatCache
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
+import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.claude.link.TerminalsList
 import com.ccmonitor.mobile.core.copy.copyText
@@ -224,7 +224,7 @@ private fun rememberChatHost(hostId: String): ChatHost? {
     return got
 }
 
-/** 顶栏的名字：这台那一家写给人看的名字（那台 `session-new-facts` 给的）；还没问到 ⇒ 空。 */
+/** 顶栏的名字：这台那一家写给人看的名字（那台 `session-open-facts` 给的）；还没问到 ⇒ 空。 */
 @Composable
 private fun rememberProductName(
     hostId: String,
@@ -232,8 +232,8 @@ private fun rememberProductName(
 ): String {
     val backends = koinInject<HostBackends>()
     val got by produceState("", hostId, stored) {
-        val r = backends.of(hostId).call(SessionNewFacts.COMMAND, emptyMap())
-        value = (r as? Reply.Ok)?.let { SessionNewFacts.of(it.data) }?.let { SessionNewFacts.pick(it.agents, stored)?.text }.orEmpty()
+        val r = backends.of(hostId).call(SessionOpenFacts.COMMAND, emptyMap())
+        value = (r as? Reply.Ok)?.let { SessionOpenFacts.of(it.data) }?.let { SessionOpenFacts.pick(it.agents, stored)?.text }.orEmpty()
     }
     return got
 }
@@ -337,7 +337,7 @@ fun chatKey(
 ): String = "$hostId/$sessionId"
 
 /**
- * 新建会话那张草稿的票：界面上的 [chatKey] 用它，起会话也带它（`session-new.ticket`：期限到了同一张再问，那台不起第二个）。
+ * 新建会话那张草稿的票：界面上的 [chatKey] 用它，起会话也带它（`session-open` 的 `ticket`：期限到了同一张再问，那台不起第二个）。
  * 会话起好之后的 sid 是那台报到时说的，不是它。
  */
 fun newConversationId(): String = UUID.randomUUID().toString()

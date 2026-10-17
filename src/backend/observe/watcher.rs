@@ -955,7 +955,7 @@ pub fn poke_all() {
     }
 }
 
-/// 这台刚问过一条会话的记录在不在（`history-record` · `sessions-start` 答完）：交每一份在跑的 watcher 的会话账本。
+/// 这台刚问过一条会话的记录在不在（`history-record` · `session-open` 恢复那一问答完）：交每一份在跑的 watcher 的会话账本。
 pub(crate) fn record_seen(sid: &str, present: bool) {
     for (_, w) in LIVE.lock().unwrap_or_else(|e| e.into_inner()).iter() {
         let _ = w.send(WatchEvent::RecordSeen {

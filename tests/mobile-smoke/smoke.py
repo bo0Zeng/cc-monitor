@@ -427,8 +427,8 @@ def add_host(name):
 
 
 def claude_models(cell="models"):
-    """那台给 claude 的模型 · 权限档（session-new-facts 那一家的 `models` / `permissionModes`）。"""
-    facts = json.loads(subprocess.run([sys.executable, os.path.join(here, "frames.py"), "session-new-facts", "{}"],
+    """那台给 claude 的模型 · 权限档（session-open-facts 那一家的 `models` / `permissionModes`）。"""
+    facts = json.loads(subprocess.run([sys.executable, os.path.join(here, "frames.py"), "session-open-facts", "{}"],
                                       capture_output=True, text=True).stdout or "{}")
     agents = (facts.get("data") or {}).get("agents") or []
     got = next((a[cell] for a in agents if a.get("kind") == "claude"), [])
@@ -449,10 +449,10 @@ def pane_has(name, text, secs):
 
 
 def switch_model(name):
-    """终端屏的命令面板里换模型：列的是那台给的那一家的模型（session-new-facts），点一个 ⇒ session-model。
+    """终端屏的命令面板里换模型：列的是那台给的那一家的模型（session-open-facts），点一个 ⇒ session-model。
     替身读到 `/model <值>` 就落那一家的读回 ⇒ 结局「换成了」，那台写好的那一句上屏（Toast，经无障碍事件看）；
     回包解不开 · 没换成 ⇒ 提示条「发送失败」。"""
-    facts = json.loads(subprocess.run([sys.executable, os.path.join(here, "frames.py"), "session-new-facts", "{}"],
+    facts = json.loads(subprocess.run([sys.executable, os.path.join(here, "frames.py"), "session-open-facts", "{}"],
                                       capture_output=True, text=True).stdout or "{}")
     agents = (facts.get("data") or {}).get("agents") or []
     models = next((a["models"] for a in agents if a.get("kind") == "claude"), [])
@@ -1037,7 +1037,7 @@ def walk():
             raise Step.Fail("chip 上方说换模型结果未知（没读回）")
         if ui.find(pick["value"]) is None:
             raise Step.Fail(f"chip 没换成读回的字「{pick['value']}」")
-        # 权限档 chip：抽屉里列那台给的档（session-new-facts）。替身不画档位那一行、也不认切档键（按下去的键会混进它读的下一行），这里只开抽屉不切。
+        # 权限档 chip：抽屉里列那台给的档（session-open-facts）。替身不画档位那一行、也不认切档键（按下去的键会混进它读的下一行），这里只开抽屉不切。
         tap(t("session.permission.title"))
         modes = claude_models("permissionModes")
         if not wait(modes[0]["text"], 10):
@@ -1376,10 +1376,47 @@ def walk():
         switch_model(name)
         adb("shell", "input", "keyevent", "4")
 
+    with Step("9b-tmux 新建"):
+        # tmux 管理窗「新建」：请那台建一个空会话（session-open 的 shell 那一形），手机不拼 tmux 命令；台架 tmux 里看得到它。
+        drawer(t("mobDrawer.item.terminal"))
+        time.sleep(2)
+        hide_keyboard()
+        tap(t("mobDefaultButtons.label.tmux")); time.sleep(3)
+        tap(t("mobTmux.new.name")); typed(f"{T}new"); hide_keyboard()
+        tap(t("mobTmux.new.detached"))
+        end = time.time() + 20
+        while time.time() < end and f"{T}new" not in tmux_sessions():
+            time.sleep(1)
+        if f"{T}new" not in tmux_sessions():
+            raise Step.Fail(f"点了「{t('mobTmux.new.detached')}」，台架 tmux 里没有 {T}new")
+        shot("9b-新建")
+        adb("shell", "input", "keyevent", "4")
+
+    with Step("9c-推公钥"):
+        # 命令面板「推送公钥」：问那台后端 authorized-keys-add，结局照回包说；这把钥匙本来就在（连上用的就是它）⇒「已在」那一句。
+        hide_keyboard()
+        tap(t("mobDefaultButtons.label.command")); time.sleep(1.5)
+        tap(t("mobPalette.item.key")); time.sleep(1.5)
+        said = t("mobKeyPush.result.already")
+        row = ui.find("smoke")
+        if row is None:
+            raise Step.Fail("推送公钥那一框里没有「smoke」那把钥匙")
+        # 无障碍事件流和 `uiautomator dump` 抢同一个口：看事件的这几秒里只点，不 dump 屏。
+        events = subprocess.Popen(["adb", "shell", "uiautomator", "events"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        try:
+            time.sleep(1)
+            adb("shell", "input", "tap", *map(str, ui.center(row)))
+            time.sleep(6)
+        finally:
+            events.terminate()
+        if said not in events.communicate(timeout=5)[0]:
+            raise Step.Fail(f"没看到那台的结局「{said}」")
+        adb("shell", "input", "keyevent", "4")
+
     with Step("10-Codex"):
         launch()
-        # 哪几家是那台给的（session-new-facts）：新建会话顶栏下那一颗 agent chip 列得出，手机自己不认识 Codex。
-        facts = json.loads(subprocess.run([sys.executable, os.path.join(here, "frames.py"), "session-new-facts", "{}"],
+        # 哪几家是那台给的（session-open-facts）：新建会话顶栏下那一颗 agent chip 列得出，手机自己不认识 Codex。
+        facts = json.loads(subprocess.run([sys.executable, os.path.join(here, "frames.py"), "session-open-facts", "{}"],
                                           capture_output=True, text=True).stdout or "{}")
         names = {a.get("kind"): a.get("text") for a in (facts.get("data") or {}).get("agents") or []}
         if "codex" not in names or "claude" not in names:
@@ -1411,8 +1448,9 @@ def report():
     with Step("12-轮换屏"):
         # 从会话进轮换屏（聊天屏「⋯」→ 轮换）· 换策略 · 长按号名拖到最上那条成临时条目 · 改一格 · 存；每一样都核那台的记录。
         seed_rotation()
-        started = frames("session-new", {"agent": "claude", "cwd": "~/work", "place": "tmux", "local": False, "ticket": f"{T}rot",
-                                         "prompt": f"{T} rotation", "rotation": {"strategy": "smoke-a"}}, 45000)
+        started = frames("session-open", {"what": {"kind": "new", "agent": "claude", "cwd": "~/work", "prompt": f"{T} rotation",
+                                                   "rotation": {"strategy": "smoke-a"}},
+                                          "run": "tmux", "local": False, "ticket": f"{T}rot"}, 45000)
         sid = (started.get("data") or {}).get("sid")
         if not sid:
             raise Step.Fail(f"台架起不了带轮换的会话：{started!r}"[:300])

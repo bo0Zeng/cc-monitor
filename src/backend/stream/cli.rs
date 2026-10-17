@@ -69,7 +69,6 @@ pub(crate) fn cli_exposed(spec: &CommandSpec) -> bool {
 pub(crate) const STREAM_ONLY: &[&str] = &[
     "resync",
     "accounts-list",
-    "launch-local",
     "forward-start",
     "forward-stop",
     "forward-list",

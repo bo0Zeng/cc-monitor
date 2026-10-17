@@ -7,7 +7,7 @@
 //! - 写方法是文件管理面的动词闭集：`O_EXCL` 新建 · 覆盖写（只给原地覆盖那一处）· 建目录 · 改名（含不覆盖改名两形）·
 //!   删文件 · 删空目录 · 改权限 · 建链接；外加暂存区那一层（后端自家目录，`own_dir`）。打开文件一律不跟链接（`O_NOFOLLOW`），做进方法里。
 //! - [`NewFile`] 只会 `O_EXCL` 新建一份此前不存在的文件、一次写满：分叉写分支记录用，拿不到改 · 删 · 覆盖的能力。
-//!   造只许分叉那两条命令（`session-fork` · `session-new`）在命令表里造。
+//!   造只许分叉那两条命令（`session-fork` · `session-open`）在命令表里造。
 
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};

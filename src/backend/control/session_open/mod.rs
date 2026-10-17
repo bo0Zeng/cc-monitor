@@ -3,8 +3,8 @@
 //! 这台自己判：用哪个号（选不了 ⇒ 不起、带替代号）· 放在哪（没说 ⇒ [`default_run`]；说了 tmux 而这台没有 ⇒ 拒，不改道）·
 //! 记录在不在 · 已有进程在写就不起（直路一样）· 在跑不另起 · 空 tmux 就地起 · 都不是就铸名新开。界面与手机只开窗口、等会话出现。
 //!
-//! 起会话的本体只在这一个模块里（[`start_one`] 一族模块外不可见）：换号重启经 [`relaunch_in`]、`session-say` 恢复那一支经 [`resume_saying`]、
-//! 旧的批量起经 [`resume_item`] 进来，判定与渲那一行都是同一份。
+//! 起会话的本体只在这一个模块里（[`start_one`] 一族模块外不可见）：换号重启经 [`relaunch_in`]、`session-say` 恢复那一支经 [`resume_saying`]
+//! 进来，判定与渲那一行都是同一份。
 //! 要动 tmux / 读记录 / 起 ccm 的几样由入口经 [`Deps`] 交进来（control 不引用 observe），判据交替身。
 
 use super::launch_account::{self as la, AccountAsk, LaunchedAccount, Settled};
@@ -12,26 +12,20 @@ use super::launch_render::{self as lr, Act, Here, Launch};
 use super::session_batch::{
     carriers, listed, pids_said, pretrust, CmdErr, Deps, NameBase, Standing, TmuxEntry,
 };
-use super::session_new::{
-    expand_home, first_prompt_refused, ForkFrom, ForkWrite, PreRotation, RotationPick,
-    SessionNewField as Field, SessionNewRefusal as Refusal,
+pub(crate) mod new;
+use crate::platform::child::{Child, Deadline};
+pub use cmd_wire::session::{FirstSay, Landed, Opened, Run};
+pub(crate) use new::{
+    dir_answer, DirChecked, ForkFrom, ForkWrite, OpenDirErr, OpenDirReq, PreRotation,
 };
-pub use cmd_wire::session::{FirstSay, Landed, Opened};
+use new::{
+    expand_home, first_prompt_refused, OpenField as Field, OpenRefusal as Refusal, RotationPick,
+};
 use serde::Deserialize;
 use serde_json::Value;
 
 /// 失败：码 ＋ 那一句 ＋ `data`（[`Refusal`]：哪一格 · 选不了号那一形）＋ 下层原话（不进那一句，进复制详情；没有 ⇒ `None`）。
 pub(crate) type Failed = (&'static str, String, Option<Value>, Option<String>);
-
-/// 放在哪：这台 tmux 里（关终端不断）· 直路（开一个终端直接跑，关了就停）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum Run {
-    Tmux,
-    Direct,
-}
 
 /// `session-open` 的入参（`deny_unknown_fields`：多送一格 ⇒ 拒）。
 #[derive(Debug, Deserialize)]
@@ -129,7 +123,7 @@ pub(crate) struct NewOpen {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) model: Option<String>,
-    /// 起在哪一个权限档（那一家声明的档之一）；缺 ＝ 跟随那一家自己的默认。
+    /// 起在哪一个权限档（那一家声明的档之一）；缺 ＝ 这台偏好里那一家的那一档，没设 ⇒ 那一家自己的默认。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) permission_mode: Option<String>,
@@ -248,10 +242,6 @@ pub(crate) struct Item {
     pub(crate) sid: String,
     pub(crate) cwd: String,
     pub(crate) account: AccountAsk,
-    /// 必铸新终端名（旧的批量起里分叉出来的那一条）：不就地键入已有的终端、不复用任何已有的名字。
-    pub(crate) fresh: bool,
-    /// 分叉出来的那一条的源会话 sid：新名从源会话此刻所在终端的名字铸。
-    pub(crate) fork_of: Option<String>,
     /// 起的时候就交的第一句（`session-say` 终端没了、恢复再送那一项）。
     pub(crate) say: Option<String>,
     /// 这一趟用的模型（会话记录里最后那一个）；缺 ＝ 跟随偏好表。
@@ -302,7 +292,7 @@ impl Batch {
 fn here_of(local: bool, deps: &Deps) -> Here {
     if local {
         Here::Local {
-            windows: deps.local_facts.windows,
+            windows: deps.host.windows,
         }
     } else {
         Here::Remote
@@ -375,8 +365,6 @@ fn dispatch(
                 sid,
                 cwd: r.cwd,
                 account,
-                fresh: false,
-                fork_of: None,
                 say: None,
                 model: r.model,
                 permission_mode: r.permission_mode,
@@ -427,7 +415,6 @@ fn attach_line(name: &str, here: Here, deps: &Deps) -> Result<String, Failed> {
         agent: String::new(),
         act: Act::Attach(name.to_string()),
         tmux: Some(name.to_string()),
-        send_into: false,
         cwd: None,
         ccm_sid: None,
         model: None,
@@ -528,7 +515,7 @@ fn shell(
         }
         Some(raw) => {
             let d = expand_home(raw, home);
-            if d.is_empty() || !(deps.local_facts.is_dir)(&d) {
+            if d.is_empty() || !(deps.host.is_dir)(&d) {
                 return Err(fail(
                     "no_dir",
                     copy_core::copy_text("beSessionNew.cwd.missing", &[("cwd", raw)]),
@@ -597,7 +584,6 @@ fn resume_launch(it: &Item, b: &Batch, tmux: Option<&str>) -> Launch {
         agent: b.agent.clone(),
         act: Act::Resume(it.sid.clone()),
         tmux: tmux.map(str::to_string),
-        send_into: false,
         cwd: Some(it.cwd.clone()),
         ccm_sid: tmux.map(|_| it.sid.clone()),
         model: it
@@ -612,12 +598,15 @@ fn resume_launch(it: &Item, b: &Batch, tmux: Option<&str>) -> Launch {
 
 /// 这台 `ccm` 的入口（那几行直接叫它，不靠 `PATH`）。
 fn own_entry(deps: &Deps) -> Result<String, String> {
-    (deps.local_facts.entry)()
-        .ok_or_else(|| copy_core::copy_text("beLaunchRender.entry.noHome", &[]))
+    (deps.host.entry)().ok_or_else(|| copy_core::copy_text("beLaunchRender.entry.noHome", &[]))
 }
 
+/// 应答里的 `account`：实际用的号（账号库里的那一形；别的 ⇒ `None`）。
 fn launched(account: &Settled) -> Option<LaunchedAccount> {
-    lr::launched(account)
+    match account {
+        Settled::Account(a) => Some(a.clone()),
+        _ => None,
+    }
 }
 
 /// 选不了号 ⇒ `account_unavailable`，`data` 带要的号与替代。
@@ -720,11 +709,6 @@ fn start_in_tmux(
             (Landed::Running, first, Some(note))
         }
         _ if !live.is_empty() => return Err(already_live(live)),
-        Standing::Idle(_) | Standing::None if it.fresh => {
-            let name = fresh_name(fork_base(it, rows), rows, deps)?;
-            start_named(it, b, account, &name, here, deps)?;
-            (Landed::Started, name, None)
-        }
         Standing::Idle(e) => {
             let entry = own_entry(deps).map_err(|m| fail("refused", m, None))?;
             // 键进那个窗格的直路那一行：窗格里已经在那个目录，不带 `--cwd`。
@@ -771,11 +755,6 @@ fn taken(name: &str) -> Failed {
         Some(Field::TmuxName),
     );
     (c, s, d, Some(name.to_string()))
-}
-
-/// 分叉那一形的基名：源会话此刻所在终端的名字（在跑的那一个；命中多个取第一个）；不在任何终端里 ⇒ 工作目录。
-fn fork_base<'a>(it: &'a Item, rows: &'a [TmuxEntry]) -> NameBase<'a> {
-    NameBase::ForkOf(source_terminal(rows, it.fork_of.as_deref()).unwrap_or(&it.cwd))
 }
 
 fn source_terminal<'a>(rows: &'a [TmuxEntry], sid: Option<&str>) -> Option<&'a str> {
@@ -828,6 +807,31 @@ fn run_ccm(argv: &[String], name: &str, deps: &Deps) -> Result<(), Failed> {
     }
 }
 
+/// 当 ccm 起自己那一趟的期限。
+const SELF_AS_CCM_SECS: u64 = 15;
+const SELF_AS_CCM_WITHIN: Deadline = Deadline::secs(SELF_AS_CCM_SECS);
+
+/// `session-open` 一条的总期限：列一次名单（同 `sessions-where` 的 8 s）＋ 当 ccm 起一趟。
+pub(crate) const OPEN_CAP: Deadline = Deadline::secs(8 + SELF_AS_CCM_SECS);
+
+/// 交一行 ccm：这台后端自己就是 ccm（同一个二进制，argv 不过 shell）。不接进去（`--detach`），等它退出、收它的话。
+/// 去掉 `TMUX` / `TMUX_PANE`：单个那一项是在一个新开的终端里跑这一行，那里不在 tmux 里。
+/// 失败 ⇒ 单个那一条的 `(码, 原话)`：起不来 ⇒ `start_failed`；过了期限 ⇒ `child_timed_out`。
+pub(crate) fn run_self_as_ccm(argv: &[String]) -> Result<(i32, String, String), CmdErr> {
+    let me = std::env::current_exe().map_err(|e| ("start_failed", e.to_string()))?;
+    let out = Child::new(me)
+        .args(argv.iter().skip(1))
+        .env_remove("TMUX")
+        .env_remove("TMUX_PANE")
+        .run(SELF_AS_CCM_WITHIN)
+        .map_err(|e| e.into_cmd_err("start_failed", |e| e.to_string()))?;
+    Ok((
+        out.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    ))
+}
+
 /// 原因码：那一家起的时候不收第一句（恢复再送那一项起不了）。
 pub(crate) const NO_FIRST_PROMPT: &str = "no_first_prompt";
 
@@ -839,23 +843,6 @@ pub(crate) fn resume_saying(it: &Item, agent: &str, deps: &Deps) -> Result<Opene
         return Err((NO_FIRST_PROMPT, agent.to_string(), None, None));
     }
     start_one(it, &b, Run::Tmux, Here::Remote, deps)
-}
-
-/// 旧的批量起那一项（逐项走同一个核心）。
-pub(crate) fn resume_item(
-    it: &Item,
-    agent: &str,
-    run: Run,
-    local: bool,
-    deps: &Deps,
-) -> Result<Opened, Failed> {
-    start_one(
-        it,
-        &Batch::of(agent, deps.prefs),
-        run,
-        here_of(local, deps),
-        deps,
-    )
 }
 
 /// **换号重启**起新那一步：旧的已停，在让出来的那个名字里用判好的号起。
@@ -928,7 +915,12 @@ fn start_new(
     {
         return Err(malformed("`model` is not a model name"));
     }
-    let permission_args: Vec<String> = match req.permission_mode.as_deref() {
+    // 没给 ⇒ 这台偏好里那一家的那一档（那一家已不认 ⇒ 不带）。
+    let asked_mode = req
+        .permission_mode
+        .clone()
+        .or_else(|| crate::control::machine_prefs::permission_mode_for(deps.prefs, kind));
+    let permission_args: Vec<String> = match asked_mode.as_deref() {
         None => Vec::new(),
         Some(m) => match face.permission {
             Some(p) if p.modes.iter().any(|c| c.value == m) => {
@@ -961,7 +953,7 @@ fn start_new(
         str::to_string,
     );
     let cwd = expand_home(req.cwd.trim(), home);
-    if cwd.is_empty() || !(deps.local_facts.is_dir)(&cwd) {
+    if cwd.is_empty() || !(deps.host.is_dir)(&cwd) {
         return Err(fail(
             "no_dir",
             copy_core::copy_text("beSessionNew.cwd.missing", &[("cwd", req.cwd.trim())]),
@@ -1036,7 +1028,6 @@ fn start_new(
             None => Act::New,
         },
         tmux: name.clone(),
-        send_into: false,
         cwd: Some(cwd.clone()),
         // 身份标记打在建出来的 tmux 会话上（resume · 先定好 sid 的新起才说得出 sid）。
         ccm_sid: sid.clone().filter(|_| name.is_some()),
@@ -1122,5 +1113,9 @@ fn new_tmux_name(
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/control/session_open_tests.rs"]
+#[path = "../../../../tests/backend/control/session_open_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../../tests/backend/control/session_open_new_tests.rs"]
+mod new_tests;

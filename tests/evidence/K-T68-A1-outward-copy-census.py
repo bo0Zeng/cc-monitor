@@ -117,7 +117,7 @@ EXCLUDED_DIRS = (
 )
 EXCLUDED_FILE_RE = re.compile(
     r"(\.vitest\.ts|\.test\.ts|\.spec\.ts|\.d\.ts)$"
-    r"|-golden\.ts$"            # 住在 src/ 里的入库夹具（launch-cli-golden.ts …）
+    r"|-golden\.ts$"            # 住在 src/ 里的入库夹具
     r"|/build\.rs$"             # 构建脚本：println!/panic! 只进构建日志
     r"|/guard_support\.rs$"     # 判据支撑，不是生产面
     r"|/stream/inbound/cli_only\.rs$"  # 协议参考的料（CLI 独有子命令的说明），同上那条目录

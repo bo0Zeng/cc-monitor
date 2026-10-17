@@ -178,7 +178,7 @@ class SchemaDispositionTest {
 
     private companion object {
         /** 改 schema 版本时同时改这里。 */
-        const val PINNED_VERSION = 19
+        const val PINNED_VERSION = 20
 
         const val APP_DATABASE = "core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/db/AppDatabase.kt"
         const val MIGRATIONS = "core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/db/Migrations.kt"

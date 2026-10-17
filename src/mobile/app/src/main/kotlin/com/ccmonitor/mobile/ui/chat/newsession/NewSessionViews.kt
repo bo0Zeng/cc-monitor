@@ -139,7 +139,7 @@ fun AgentSheet(
     ui.agents.forEach { a -> PickRow(title = a.text, tag = NewSessionTags.ROW, selected = a.kind == ui.agent, onClick = { onPick(a.kind) }) }
 }
 
-/** 工作目录抽屉：「最近的」＋「浏览…」。 */
+/** 工作目录抽屉：「浏览…」在头一行（最近的再多也不把它挤出屏）＋「最近的」。 */
 @Composable
 fun CwdSheet(
     ui: NewSessionUi,
@@ -149,6 +149,13 @@ fun CwdSheet(
     onDismiss: () -> Unit,
 ) = Sheet(onDismiss) {
     SheetHead(copyText("newSession.label.cwd"), machine)
+    PickRow(
+        title = copyText("mobNewSession.dir.browse"),
+        tag = NewSessionTags.BROWSE,
+        onClick = onBrowse,
+        trail = { PhIcon(Ph.CaretRight, contentDescription = null, size = Touch.iconInline, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+    )
+    HorizontalDivider(Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
     SheetSection(copyText("newSession.recent.label"))
     if (ui.recent.isEmpty()) {
         Text(
@@ -170,13 +177,6 @@ fun CwdSheet(
             trail = { Text(r.lastText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) },
         )
     }
-    HorizontalDivider(Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
-    PickRow(
-        title = copyText("mobNewSession.dir.browse"),
-        tag = NewSessionTags.BROWSE,
-        onClick = onBrowse,
-        trail = { PhIcon(Ph.CaretRight, contentDescription = null, size = Touch.iconInline, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
-    )
 }
 
 /** 账号抽屉：上面账号，下面一节轮换。长按一个号 ⇒「设为默认」。 */

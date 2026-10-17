@@ -3,9 +3,9 @@
 /**
  * 一个可选值：交回去的原值 ＋ 写给人看的字。
  */
-export type NewSessionPick = { 
+export type AgentPick = { 
 /**
- * 原值（`session-new` 的 `model` / `permissionMode` 收的就是它）。
+ * 原值（`session-open` 的 `model` / `permissionMode` 收的就是它）。
  */
 value: string, 
 /**

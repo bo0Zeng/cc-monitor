@@ -24,8 +24,7 @@ import kotlinx.coroutines.flow.map
  * - 强制全断：[disconnectAll]。
  *
  * 不提供单机强断 `disconnect(id)`：生产代码里没人要。
- * 别的文件仍会碰 [SshConnectionManager]，要的是通道工厂（`commandChannel` / `commandExecutor`）、
- * 会话计数，不是连接的生死，所以不收进这里。
+ * 别的文件仍会碰 [SshConnectionManager]，要的是会话状态 · 计数，不是连接的生死，所以不收进这里。
  *
  * 收口是因为调用方在哪个线程、有几个，靠人记会记错：在主线程上连接时，失败路径的同步 `close()` 会成为
  * 主线程网络写，异常再被外层吞掉，连接就静默泄漏。

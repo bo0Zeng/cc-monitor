@@ -596,6 +596,9 @@ body.settings-window-mode .settings-panel {
   padding: var(--space-4) 0;
   border-bottom: 1px solid var(--border);
 }
+.machine-cc-row[hidden] {
+  display: none;
+}
 
 .machine-cc-row > label {
   flex: 1;

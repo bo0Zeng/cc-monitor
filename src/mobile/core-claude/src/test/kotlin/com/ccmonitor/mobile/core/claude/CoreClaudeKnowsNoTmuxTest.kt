@@ -7,17 +7,17 @@ import org.junit.Test
 import java.io.File
 
 /**
- * `core-claude` 不许知道 tmux：「怎么跑」（tmux 编排）归 `:app` 的 TmuxBackend。
+ * `core-claude` 不许知道 tmux：「怎么跑」（tmux 编排）全在那台核心。
  * `kotlin("jvm")` 只守住了「没有 Android」那一半，「没有 tmux 语法」这一半由这条守。
  *
  * 判据只看代码：注释里提 tmux 是正常的，所以扫描前先剥注释，剥完还剩 `tmux` 的才算在碰它。
- * 只认小写 `tmux`：`TmuxBackend` 这类类型名出现在 import 或类型注解里是合法的。
- * 放过的只有协议里的线上词（[WIRE_WORDS]）：`session-new` 那一格「起在哪」· 指名的会话名 · `launch-render-cli` 的容器种类 ·
+ * 只认小写 `tmux`：`newInTmux` 这类名字是合法的。
+ * 放过的只有协议里的线上词（[WIRE_WORDS]）：`session-open` 那一格「起在哪」· 指名的会话名 · `session-open-facts` 的「有没有 tmux」·
  * `terminals-list` 每行的会话名。那是请那台核心在它的 tmux 里做，手机不碰 tmux。
  */
 class CoreClaudeKnowsNoTmuxTest {
     private companion object {
-        val WIRE_WORDS = listOf("\"place\" to \"tmux\"", "\"tmuxName\" to ", "\"kind\" to \"tmux\"", "@Json(name = \"tmux_name\")")
+        val WIRE_WORDS = listOf("put(\"run\", \"tmux\")", "\"tmuxName\" to ", "val tmux: Boolean", "@Json(name = \"tmux_name\")")
     }
 
     /** 本模块的 main 源集。测试的工作目录可能是仓根或模块目录，两种都试。 */
@@ -55,7 +55,7 @@ class CoreClaudeKnowsNoTmuxTest {
                 }.flatten()
 
         assertTrue(
-            "core-claude 不许出现 tmux 语法（「怎么跑」归 :app 的 TmuxBackend）：\n" + offenders.joinToString("\n"),
+            "core-claude 不许出现 tmux 语法（「怎么跑」全在那台核心）：\n" + offenders.joinToString("\n"),
             offenders.isEmpty(),
         )
     }

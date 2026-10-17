@@ -22,7 +22,7 @@ vi.mock("../../../src/frontend/ui/ipc/chan-caller", async (orig) => ({
       calls.push({ op, body: args });
       return Promise.resolve(reply);
     }
-    return Promise.resolve({ state: "ok", reason: null, detail: null, path: null, prefs: { launchers: {}, resumeInTmux: false, models: {}, contextLimits: {}, agentHomes: {}, pbDir: (args as { pbDir?: string }).pbDir ?? "/opt/pb" } });
+    return Promise.resolve({ state: "ok", reason: null, detail: null, path: null, prefs: { launchers: {}, resumeInTmux: false, models: {}, permissionModes: {}, contextLimits: {}, agentHomes: {}, pbDir: (args as { pbDir?: string }).pbDir ?? "/opt/pb" } });
   },
 }));
 

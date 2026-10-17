@@ -18,8 +18,8 @@ use crate::rotation::{
     RotationViewReply,
 };
 use crate::session::{
-    HistoryTail, Killed, ModeSwitched, ModelSwitched, NewFacts, Opened, Preview, Rendered, Sent,
-    SessionCommands, SessionNew, TerminalsList,
+    HistoryTail, Killed, ModeSwitched, ModelSwitched, OpenFacts, Opened, Preview, Sent,
+    SessionCommands, TerminalsList,
 };
 use serde::Serialize;
 
@@ -77,7 +77,6 @@ replies! {
     "history-read" => HistoryRead<OrUnread>,
     "history-tail" => HistoryTail<OrUnread>,
     "kill" => Killed,
-    "launch-render-cli" => Rendered,
     "needs-answer" => Answered,
     "quota-read" => QuotaRead,
     "rotation-facts" => RotationFactsReply,
@@ -98,8 +97,7 @@ replies! {
     "rotation-view" => RotationViewReply,
     "session-commands" => SessionCommands,
     "session-model" => ModelSwitched,
-    "session-new" => SessionNew,
-    "session-new-facts" => NewFacts,
+    "session-open-facts" => OpenFacts,
     "session-open" => Opened,
     "session-permission" => ModeSwitched,
     "session-say" => Sent,

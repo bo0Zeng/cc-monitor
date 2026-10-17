@@ -249,7 +249,7 @@ impl SessionLedger {
         self.ended.entry(sid.to_string()).or_insert(true);
     }
 
-    /// 问过这条的记录在不在（`history-record` · `sessions-start` 答完递来的）：说过已结束的那条翻了 ⇒ 一帧给每条连接。
+    /// 问过这条的记录在不在（`history-record` · `session-open` 恢复那一问答完递来的）：说过已结束的那条翻了 ⇒ 一帧给每条连接。
     pub(crate) fn on_record(&mut self, sid: &str, present: bool) -> Vec<Frame> {
         match self.ended.get_mut(sid) {
             Some(was) if *was != present => {

@@ -99,14 +99,12 @@ const WAITING_ROWS: &[(&str, &str)] = &[
     ("cli-subcommands", "--launch"),
     ("wire-commands", "terminal-preview"),
     ("wire-commands", "terminal-input"),
-    ("wire-commands", "session-resume"),
     ("wire-commands", "session-say"),
     ("wire-commands", "session-permission"),
     ("wire-commands", "session-model"),
     ("wire-commands", "terminal-follow"),
     ("cli-subcommands", "--terminal-preview"),
     ("cli-subcommands", "--terminal-input"),
-    ("cli-subcommands", "--session-resume"),
     ("cli-subcommands", "--session-say"),
     ("cli-subcommands", "--session-permission"),
     ("cli-subcommands", "--session-model"),
@@ -912,28 +910,20 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
         "足迹：与 `data-report` 同住 `footprint/mod.rs` 与帧面 `faces/footprint_report_face.rs`（引用图按文件取），它自己不问 tmux（tmux 那一行只 stat PATH）",
     ),
     (
-        "session-new",
-        "起新会话：tmux 那一形没 tmux ⇒ `place` 那一格不行（`place_unavailable`），开终端那一形本来用不着 tmux（Windows 本机照做）",
-    ),
-    (
         "session-open",
         "起会话 · 恢复 · 接回：要 tmux 而这台没有 ⇒ `place_unavailable`（不改道），直路本来用不着 tmux（Windows 本机照做）",
     ),
     (
-        "session-new-facts",
+        "session-open-facts",
         "起新会话框的这台事实：没 tmux ⇒ `tmux: false`、只剩开终端那一形，别的几格照答",
     ),
     (
-        "session-new-dir",
+        "session-open-dir",
         "目录那一问：没 tmux ⇒ `tmuxName: null`（没有名字可铸），目录在不在照答",
     ),
     (
         "terminals-list",
         "终端名单：没 tmux ⇒ 这台没有 tmux 终端、答空名单（不是错）；托管终端做出来后名单里还有它们",
-    ),
-    (
-        "sessions-start",
-        "批量起：tmux 那一形没 tmux ⇒ 逐个答「这台没 tmux」跳过、命令照答；开终端那一形本来用不着 tmux（Windows 本机照做）",
     ),
     (
         "sessions-where",
@@ -981,7 +971,6 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
     ("bus-inbox", "同 `bus-list` 那个文件（`control/cc_bus.rs` 经 gate 挂 `live`）；读收件箱本身转调 `cc-log`，不用 tmux"),
     ("resync", "打标经 `identity_tag::tag`：不在 tmux / tmux 起不来 ⇒ 那个会话不打（结局说进日志），对齐照做、照回差异；它的能力是对表，不是 tmux"),
     ("hooks-diag", "同 `mcp-read`：只因与 `session-terminals` 同住 `feature_face.rs` 被连带；读 settings ＋ stat 本身不碰 tmux"),
-    ("terminal-name-mint", "铸名只拿会话快照避让：这台没装 tmux ⇒ 一个名字都没占 ⇒ 交基名，命令照答，不回 `no_tmux`（起不起得来归起会话那一步说）"),
     ("mcp-read", "与 `session-terminals` 同住 `feature_face.rs`（引用图按文件算，因此连带）；读 MCP 本身不碰 tmux"),
     ("tasks-list", "同 `mcp-read`：只因与 `session-terminals` 同住 `feature_face.rs` 被连带；本身不碰 tmux"),
     (

@@ -26,7 +26,7 @@ class AgentArchetypeTest {
      * |---|---|
      * | `Text("…Claude…")` 新增一句 | 红 |
      * | `"Cla" + "ude"` 拼接 | 抓不到 |
-     * | 产品名住一个常量再 `Text(那个常量)` | 抓不到（聊天屏顶栏的标题读那台 `session-new-facts` 给的名字） |
+     * | 产品名住一个常量再 `Text(那个常量)` | 抓不到（聊天屏顶栏的标题读那台 `session-open-facts` 给的名字） |
      * | `strings.xml` 里的任何一句 | 扫不到 |
      */
     @Test
@@ -44,7 +44,7 @@ class AgentArchetypeTest {
         }
         assertTrue("前提：扫描器得真认出 `Text(` 调用，否则恒绿（实得 $calls 处）", calls > 100)
         assertEquals(
-            "上屏的产品名要读那台给的名字（session-new-facts 的 agents[].text）。多出来的那条请改掉；" +
+            "上屏的产品名要读那台给的名字（session-open-facts 的 agents[].text）。多出来的那条请改掉；" +
                 "确属「远端那个 Claude」而非本服务器产品名的，连同理由加进 PINNED_HARDCODED_PRODUCT_NAMES。",
             PINNED_HARDCODED_PRODUCT_NAMES,
             found.toMap(),

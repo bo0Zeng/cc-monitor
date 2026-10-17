@@ -3,4 +3,4 @@
 /**
  * 哪一格不行（`data.field`）。
  */
-export type SessionNewField = "agent" | "command" | "cwd" | "account" | "place" | "tmuxName";
+export type OpenField = "agent" | "command" | "cwd" | "account" | "place" | "tmuxName";

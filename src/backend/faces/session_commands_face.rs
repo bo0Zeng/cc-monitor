@@ -80,8 +80,8 @@ fn answer(req: &SessionCommandsReq) -> Result<SessionCommands, Fail> {
     };
     let project = crate::agents::project_dir_of(&record).map(PathBuf::from);
     let root = config_root_of(
-        super::launch_face::last_of(&req.sid).as_deref(),
-        &super::launch_face::library_of(kind),
+        super::launch_account_face::last_of(&req.sid).as_deref(),
+        &super::launch_account_face::library_of(kind),
         crate::agents::home_of_kind(kind).as_deref(),
     );
     let mut out = match root {

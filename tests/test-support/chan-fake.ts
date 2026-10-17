@@ -107,18 +107,6 @@ export function refusedReply(code: string, message: string, data?: unknown): { e
   return { err: "Refused", body: Array.from(new TextEncoder().encode(JSON.stringify(body))), said: message, detail };
 }
 
-/**
- * 起会话那几条的替身答复里，判据可以让那台说「要的号选不了」：内层回 `{ unavailable: {...} }`（`account_unavailable` 的 `data`）。
- * 也可以回 `{ account: {name, configDir, model} }` 说那台判出来实际用的号（缺 ⇒ `null`）。
- */
-function launchOutcome(out: unknown): { unavailable?: unknown; account: unknown; cmd?: unknown } {
-  if (out !== null && typeof out === "object" && !Array.isArray(out)) {
-    const o = out as Record<string, unknown>;
-    if ("unavailable" in o || "account" in o) return { unavailable: o.unavailable, account: o.account ?? null, cmd: o.cmd };
-  }
-  return { account: null, cmd: out };
-}
-
 // ════════════════════════════════════════════════════════════════════════════
 //  账号库那几条帧命令（`accounts-init` · `accounts-add` · … · `accounts-login-cmd`）：判据里那台后端的罐头答复
 // ════════════════════════════════════════════════════════════════════════════
@@ -511,8 +499,6 @@ export function withHistoryReads(
   return async (cmd, args) => {
     const st = standingAsked(cmd, args, answer);
     if (st) return st;
-    const mint = tmuxMintOf(cmd, args);
-    if (mint) return tmuxMintProduct(answer(mint[0], mint[1]));
     if (cmd === "chan_call") {
       const a = args as ChanCallArgs;
       const body = [
@@ -706,34 +692,8 @@ export function ccBusControlShim(
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// 起会话那两问（那一行 `ccm …`）改走通道之后，判据那一侧的翻译
+// 起会话那几条判据的替身：开终端那三步译回旧的那一条
 // ════════════════════════════════════════════════════════════════════════════
-//
-// 今天是一发 `chan_call`（op = `launch-render-cli` · `launch-local`）⇒ 本节把那一发译回旧名字交给判据手里的 `invoke` 替身：
-// - 那一行：替身回串 ⇒ `{cmd}`；没答 ⇒ 一个认得出的中性替身 `ccm <rendered:请求>`；抛 ⇒ 对端拒（码 `refused`，原话）。
-// - 本机起会话：按 `action.kind` 译回三条旧命令之一（旧形参），回 `{cmd, account}`；
-//   抛 ⇒ 对端拒（码 `refused`）。开窗那一跳（`open_local_terminal`）原样交给替身。
-/**
- * 一发 `launch-local` 的请求体 ⇒ 它从前那三条 Tauri 命令（见本节头注）里的哪一条 ＋ 旧形参。
- * ⚠ 译法逐格照 `src/frontend/ui/launch-render.ts::planLocalLaunch` 发的键：`account` 缺席 ⇒ 旧形参里也缺席（三态不许压成两态）。
- */
-function localLaunchOldArgs(b: Record<string, unknown>): [string, Record<string, unknown>] {
-  const action = b.action as { kind: string; sid?: string };
-  const account = "account" in b ? { account: b.account } : {};
-  if (action.kind === "attach") return ["render_local_attach", { tmuxName: b.tmuxName }];
-  if (action.kind === "new") return ["new_local_session", { cwd: b.cwd, ...account }];
-  return ["resume_history_session", { agent: b.agent, sessionId: action.sid, cwd: b.cwd, tmuxName: b.tmuxName, ...account }];
-}
-
-/** 判据手里那个 `invoke` 替身收到的全部调用里，本机起会话那几发（译回旧名字 ＋ 旧形参）。 */
-export function localLaunchCalls(calls: ReadonlyArray<readonly unknown[]>, which: string): Record<string, unknown>[] {
-  return calls
-    .filter(([cmd, args]) => isChanCall(String(cmd), args, "launch-local"))
-    .map(([, args]) => localLaunchOldArgs(chanArgsJson(args as ChanCallArgs) as Record<string, unknown>))
-    .filter(([name]) => name === which)
-    .map(([, a]) => a);
-}
-
 export function launchRenderShim(
   inner: (cmd: string, args?: unknown) => unknown,
 ): (cmd: string, args?: unknown) => Promise<unknown> {
@@ -741,45 +701,7 @@ export function launchRenderShim(
   return async (cmd, args) => {
     // 开终端那三步也在这里译回旧的那一条（起会话那几条判据都要开终端）。
     if (isTerminalStep(cmd, args)) return term(cmd, args);
-    if (cmd !== "chan_call") return inner(cmd, args);
-    const mint = tmuxMintOf(cmd, args);
-    if (mint) return tmuxMintProduct(inner(mint[0], mint[1]));
-    const a = args as ChanCallArgs;
-    const body = () => chanArgsJson(a) as Record<string, unknown>;
-    switch (a.op) {
-      case "launch-render-cli": {
-        // 那一行由那台后端渲（Rust，`wire::render_ccm_launch`）；桩答的是一个认得出的中性替身（`ccm <rendered:请求>`），
-        //   判据判的是「前端把后端交的那一行原样交出去」与「请求里带了什么」，不是渲得对不对（那是 `cli-golden.json` 的活）。
-        let out: unknown;
-        try {
-          out = await inner("render_ccm_launch", { req: body() });
-        } catch (e) {
-          throw refusedReply("refused", wordsOf(e));
-        }
-        const o = launchOutcome(out);
-        if (o.unavailable !== undefined) throw refusedReply("account_unavailable", "unavailable", o.unavailable);
-        return chanReply({
-          cmd: typeof o.cmd === "string" ? o.cmd : `ccm <rendered:${JSON.stringify(body())}>`,
-          account: o.account,
-        });
-      }
-      case "launch-local": {
-        const [name, old] = localLaunchOldArgs(body());
-        let raw: unknown;
-        try {
-          raw = await inner(name, old);
-        } catch (e) {
-          throw refusedReply("refused", wordsOf(e));
-        }
-        const o = launchOutcome(raw);
-        if (o.unavailable !== undefined) throw refusedReply("account_unavailable", "unavailable", o.unavailable);
-        const out = o.cmd;
-        if (name === "render_local_attach") return chanReply({ cmd: out ?? "ccm <backend-rendered-attach>", account: null });
-        return chanReply({ cmd: "ccm <backend-rendered-local-line>", account: o.account });
-      }
-      default:
-        return inner(cmd, args);
-    }
+    return inner(cmd, args);
   };
 }
 
@@ -839,49 +761,8 @@ export function withTmuxReads(
   return async (cmd, args) => {
     const st = standingAsked(cmd, args, inner);
     if (st) return st;
-    const m = tmuxMintOf(cmd, args);
-    if (m) return tmuxMintProduct(inner(m[0], m[1]));
     return inner(cmd, args);
   };
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// 起会话要的 tmux 名改问那台后端（`terminal-name-mint`）之后，判据那一侧的翻译
-// ════════════════════════════════════════════════════════════════════════════
-//
-// 同上一节的译法：一发 `chan_call`（op = `terminal-name-mint`）译成判据手里那个替身认得的名字 `tmux_name_mint`
-// （形参 `{origin, cwd}` / `{origin, forkOf}`），替身答一个**名字**。派生 ＋ 避让的规则只在后端（`control/ccm/plan.rs`）⇒
-// 这里**不重抄**：判据自己写死「那台铸了什么」，钉的是前端问了谁、问的什么、用的是不是它铸回来的、问不到时怎么办。
-// - 名字（字符串）⇒ 成品 `{name}`；`{ bad: v }` ⇒ 原样回 `v`（形状不认那一格）；
-// - `undefined`（替身没答）⇒ 那台没有控制通道（问不到）；抛 ⇒ 那台后端拒（码 `bad_args`，原话带着）。
-/** 一发 `chan_call` 若是铸名那一问 ⇒ `["tmux_name_mint", {origin, …入参}]`；否则 `null`。 */
-export function tmuxMintOf(cmd: string, args: unknown): [string, Record<string, unknown>] | null {
-  if (!isChanCall(cmd, args, "terminal-name-mint")) return null;
-  return ["tmux_name_mint", { origin: args.origin, ...(chanArgsJson(args) as Record<string, unknown>) }];
-}
-
-/** 替身答的 ⇒ 后端成品（见本节头注）。 */
-async function tmuxMintProduct(got: Promise<unknown> | unknown): Promise<ArrayBuffer> {
-  let v: unknown;
-  try {
-    v = await got;
-  } catch (e) {
-    throw refusedReply("bad_args", wordsOf(e));
-  }
-  if (v === undefined) throw NO_CHANNEL;
-  if (typeof v === "string") return chanReply({ name: v });
-  return chanReply((v as { bad: unknown }).bad);
-}
-
-/** 被问过的铸名那几发（`[origin, 入参]`，入参去掉 `origin`）。 */
-export function tmuxMintCalls(calls: ReadonlyArray<readonly unknown[]>): [string, Record<string, unknown>][] {
-  return calls
-    .map(([c, a]) => tmuxMintOf(String(c), a))
-    .filter((x): x is [string, Record<string, unknown>] => x !== null)
-    .map(([, a]) => {
-      const { origin, ...rest } = a;
-      return [String(origin), rest];
-    });
 }
 
 // ════════════════════════════════════════════════════════════════════════════

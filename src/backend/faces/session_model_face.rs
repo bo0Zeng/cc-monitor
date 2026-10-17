@@ -24,7 +24,7 @@ const READBACK_MS: u64 = 15_000;
 pub(crate) struct SessionModelReq {
     /// 会话 id。
     pub(crate) sid: String,
-    /// 要换成的模型（原值；必须是 `session-new-facts` 那一家 `models` 里的一个）。
+    /// 要换成的模型（原值；必须是 `session-open-facts` 那一家 `models` 里的一个）。
     pub(crate) model: String,
     /// 自报的前端（过「哪个前端的会话」那一维，同 `terminal-input`）。
     #[serde(default)]

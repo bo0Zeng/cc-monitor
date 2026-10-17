@@ -198,21 +198,19 @@ fixtures:
 孤儿**(治 #76),且账号注入正确的 `CLAUDE_CONFIG_DIR`(治 #75)。复用 F-E0 的 fake-claude/gen-idle-tmux。
 
 **★ 诚实分层**:GUI resume 一键拉起要真开一个终端窗口(`platform/terminal.rs::open_local`),无头门禁里不开窗。因此 argv/孤儿断言的诚实天花板
-= **命令级**:直接驱**生产渲染链**(生产 `launch-requests.ts::plan*` → 生产 `buildLaunchRenderRequest` →
-生产 Rust `render_launch_payload`,经 `resume-cmd-driver.ts` → `launch-render-driver.ts`,不重写)拿到 app **真正会跑**的命令串,再把该串真跑到真 tmux + fake-claude,
+= **命令级**:取 `session-open` 本体交出去的那一行(`open-line-emit.sh`,不重写)拿到 app **真正会跑**的命令串,再把该串真跑到真 tmux + fake-claude,
 断言 argv.log(`--resume <sid>` + `CLAUDE_CONFIG_DIR`)与 `tmux ls` 孤儿数。复活(灰→live)的**检测**由
-后端判活边沿断言(后端半场)。本地 resume(`resume_history_session`)同为 Windows-only,Linux 不可执行。
+后端判活边沿断言(后端半场)。
 
 fixtures / 驱动:
-- `resume-cmd-driver.ts`——tsx 驱动器,命令串经 `launch-render-driver.ts` 走生产渲染链(生产 TS 请求 → 生产 Rust
-  `render_launch_payload`,后者经 `cargo test --lib emit_launch_render_for_e2e -- --ignored` 那个数据出口),
-  账号解析 import 真实 `accounts.ts`,打印 app 真会跑的 resume 命令串 / 账号解析结果(套件据其 stdout 断言并真跑到 tmux)。
-  ⚠ 第一次跑要编 monitor 的 lib 测试(几分钟);之后走缓存。
+- `open-line-emit.sh`——跑 `#[ignore]` 数据出口 `session_open_tests.rs::emit_open_line_for_e2e`:意图照 `session-open` 的入参
+  走一遍本体(替身只记不做),印它交出去的那一行(交给 ccm 的 argv · 键进空 tmux 的那一行 · 回包里的 `line`)。
+  ⚠ 第一次跑要编后端的 lib 测试(几分钟);之后走缓存。
 - `fake-claude` 必须可执行(`chmod +x`;直接被 `gen-idle-tmux` 内联 exec)——F-E0 提交时误落 100644,已修 100755。
 
 两级跑法(都无需 GUI,全自动):
 
-1. **命令级整合(最全,主套件)**:`bash tests/e2e/resume-suite.sh`。逐边界:①`resume-cmd-driver.ts` 取真源命令串,
+1. **命令级整合(最全,主套件)**:`bash tests/e2e/resume-suite.sh`。逐边界:①`open-line-emit.sh` 取真源命令串,
    ②断言命令形状(复用名/无 new-session/无 -N/`CLAUDE_CONFIG_DIR` 前缀),③真 send-keys 进 idle pane 的 sh,
    ④断言 argv.log(sid 命中行的 `CLAUDE_CONFIG_DIR` + `--resume`)与 `tmux list-sessions` 孤儿计数。覆盖:idle
    就地复用无孤儿 / 无 tmux 新建注账号 / 带 pin 落 X 目录(两隔离账号) / 不带 pin 走基座

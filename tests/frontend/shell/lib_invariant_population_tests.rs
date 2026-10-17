@@ -450,7 +450,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
     // 就地 resume 回落那一形外层包一层 tmux —— 目标 `=名:`（名字过 `gate_rules::existing_tmux_name_issue`）· 键进 pane 的那一行直路 `ccm …`（本侧渲好的整串）。
     (
         "src/backend/control/launch_render/ccm_invocation.rs",
-        &["argv", "render_parts"],
+        &["argv"],
         &[
             (
                 "src/common/shell-quote-core/src/lib.rs",

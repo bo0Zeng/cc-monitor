@@ -57,7 +57,7 @@ export const REAL_OPS = new Set([
   // 改注解（星标 · 改名 · 隐藏）：真后端写台架盘上那一份，它的观测那一侧照新注解重判隐藏、推 `changed/session_hidden`。
   "history-annotate",
   // 起新会话框那一份事实（最近的目录 · 有没有 tmux · 各家 · 分叉那一形的起点与时刻字）：真后端照台架盘上的记录与那台的 tmux 答。
-  "session-new-facts",
+  "session-open-facts",
   // 各台的 MCP 列表与小标：真后端读台架盘上的用户级配置、各号的「要登录」那一笔与活会话记录里的断开。
   "mcp-read",
   // 终端里敲 ccm 走到哪（别名页最上那一句）：那台后端现问终端的 PATH、判、出句子。

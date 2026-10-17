@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # 冒烟台架的帧客户端：经台架 sshd 开一条 `ccm -- --resident-attach`（和手机同一条路），问一句、印回话。
-# 用法：frames.py <命令> [JSON 入参] [期限毫秒]   ·   frames.py watch <秒>（只看流上的帧）   例：frames.py session-new '{"agent":"claude","cwd":"~/work","place":"tmux","local":false,"ticket":"t1","prompt":"hi"}' 45000
+# 用法：frames.py <命令> [JSON 入参] [期限毫秒]   ·   frames.py watch <秒>（只看流上的帧）   例：frames.py session-open '{"what":{"kind":"new","agent":"claude","cwd":"~/work","prompt":"hi"},"run":"tmux","local":false,"ticket":"t1"}' 45000
 # 回话那一行原样印到 stdout；期间流上来的帧（会话帧 · line 帧）印到 stderr，带收到的时刻（秒）。
 import json
 import os

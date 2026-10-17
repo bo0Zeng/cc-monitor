@@ -166,11 +166,6 @@ const STREAM_ONLY_WHY: &[(&str, &str)] = &[
         "每个号的徽章（API key 号「经中转 / 中转未运行」）读本进程的监听状态；一次性进程里没有中转，只能说「中转未运行」—— 那是假话。",
     ),
     (
-        "launch-local",
-        "它经 `accounts::upstream_select::endpoint::launch_relay` 读本进程的中转监听状态；一次性进程里没有中转 ⇒ \
-         「非它不可」的号会被误拒、「有它更好」的会被说成直连。",
-    ),
-    (
         "forward-start",
         "转发账住常驻那一个进程：一次性进程开出来的转发随进程退出就没了 —— 口放掉、账也没了，回的 `id` 是个死号。",
     ),
@@ -200,7 +195,7 @@ const STREAM_ONLY_WHY: &[(&str, &str)] = &[
         "停旧 ＋ 起新那一步拿的是**退出排空的票**（`wire::drain::DRAIN`），等压缩摘要与等新进程报出各一次有界等待（各 ≤ 1 h）——\
          「发起方走了那台照样做完」靠的就是那张票钉住**常驻进程**不退；一次性进程里那张票钉的是命令自己那个进程，\
          钉不住任何东西，而调用方还得把一次调用挂在那儿几分钟 ⇒ 真依赖流语义。命令行那一侧要同一件事：\
-         `--sessions-stop` 再 `--sessions-start`，自己掌期限。",
+         `--sessions-stop` 再 `--session-open`，自己掌期限。",
     ),
     (
         "needs-answer",
@@ -594,16 +589,6 @@ fn the_argv_payload_answers_byte_for_byte_like_stdin() {
             "history-page",
             serde_json::json!({"path": "/nonexistent/cli2nd/a.jsonl", "from": 0}),
         ),
-        (
-            "launch-render-cli",
-            serde_json::json!({
-                "action": {"kind": "new"},
-                "account": {"kind": "base"},
-                "container": {"kind": "none"},
-                "cwd": "/w",
-                "launcher": "claude",
-            }),
-        ),
         ("files-stat", serde_json::json!({"path": "/"})),
     ];
     let mut saw_ok = false;
@@ -972,13 +957,10 @@ fn the_withheld_tables_do_not_overlap_and_each_holds_its_own_kind() {
 #[test]
 fn the_commands_released_from_ui_only_are_on_the_cli() {
     for name in [
-        "session-new",
-        "session-new-facts",
-        "session-new-dir",
+        "session-open-facts",
+        "session-open-dir",
         "sessions-stop",
-        "sessions-start",
         "sessions-where",
-        "terminal-name-mint",
         "terminal-ssh",
         "history-search-merge",
     ] {

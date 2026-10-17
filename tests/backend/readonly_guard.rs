@@ -745,14 +745,10 @@ mod tests {
         // 文件管理面的写句柄：只有分派那一层造 —— `spec.rs::with_face`（按档装处理器的 `prepare` 那一档 · 资产域那扇门的进程内分派都经它，句柄只活那一问），
         //   按命令表那一族（typed 的 `Facing` 那一档）递下去；传输台那四条硬臂的票表在帧面那一处造的时候领一份。
         ("Face::issue", &["stream/inbound/mod.rs", "wire/spec.rs"]),
-        // 分叉那只只会新建的手：只有分叉那三条命令造 —— 都是 typed，各在它自己那份实现里。
+        // 分叉那只只会新建的手：只有分叉那两条命令造 —— 都是 typed，各在它自己那份实现里。
         (
             "NewFile::issue",
-            &[
-                "faces/fork_face.rs",
-                "faces/session_new_face.rs",
-                "faces/session_open_face.rs",
-            ],
+            &["faces/fork_face.rs", "faces/session_open_face.rs"],
         ),
         // 「已过路径解析」只有路径解析本身担保得了：根底下那两道（`common/root_path.rs`，文件管理写面与传输台共用）＋ 写面自己那几道。
         (
@@ -1211,17 +1207,17 @@ mod spawn_registry {
             "<非字面量>",
             "问**起会话那个 shell** 的 `PATH`（`session_shell_path`）：用户的 `$SHELL` 起一次 `-l -i -c`，固定脚本只 `printf` 出 `PATH`，\
              不吃任何输入、有期限。被起的是用户自己的登录 shell，它读不读 / 写不写什么由用户的 rc 文件定；后端进程自身不写用户数据。\
-             按后端生命周期只问一次（缓存）；只从足迹报告（`footprint-report` · `data-report`）判 agent 命令行装没装、起新会话框（`session-new-facts`）判这台能起哪几家时进来。",
+             按后端生命周期只问一次（缓存）；只从足迹报告（`footprint-report` · `data-report`）判 agent 命令行装没装、起新会话框（`session-open-facts`）判这台能起哪几家时进来。",
             "缩性质",
             "有别的办法拿到用户登录环境的 `PATH` 而不起他的 shell 的那天摘掉。⚠ 脚本只许是打出 `PATH` 那一句。",
         ),
         // `relay/machine.rs` 那一行（远端起一个脱离的 `--relay`）摘了：中转只住常驻后端进程里，那一处起法随之删。
         (
-            "control/session_batch.rs",
+            "control/session_open/mod.rs",
             "<非字面量>",
-            "tab 栏在 tmux 里后台起会话：**本后端这个二进制自己**（`current_exe`）当 ccm 跑界面那一行（同一个渲染器、只多 `--detach`），\
+            "在 tmux 里后台起会话：**本后端这个二进制自己**（`current_exe`）当 ccm 跑界面那一行（同一个渲染器、只多 `--detach`），\
              argv 不过 shell、stdin 空、等它退出收话。被起的是 ccm 那一趟，它自己的起法（建 tmux 会话、键入、收尾）由本护栏照样管；\
-             **不是**后端进程自身写用户既有数据。只从帧命令 `sessions-start`（tmux 那一形、那台没有带着这个 sid 的会话）进来。",
+             **不是**后端进程自身写用户既有数据。只从 `session-open`（tmux 那一形、要新建会话）· 换号重启 · 说一句恢复进来。",
             "缩性质",
             "起会话改由别的入口在后端起的那天摘掉。⚠ 不许往这一处底下加第二种用途 —— 它起的永远是本二进制的 ccm 那一趟。",
         ),

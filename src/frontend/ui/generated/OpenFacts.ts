@@ -2,11 +2,12 @@
 import type { AgentFacts } from "./AgentFacts";
 import type { ForkFacts } from "./ForkFacts";
 import type { RecentDir } from "./RecentDir";
+import type { Run } from "./Run";
 
 /**
- * `session-new-facts` 的应答。
+ * `session-open-facts` 的应答。
  */
-export type NewFacts = { 
+export type OpenFacts = { 
 /**
  * 这台最近用过的工作目录（各家记录里的，新的在前、同一个目录一次、最多 8 个）。
  */
@@ -15,6 +16,10 @@ recent: Array<RecentDir>,
  * 这台有没有 tmux（`false` ⇒ 只能开终端窗口）。
  */
 tmux: boolean, 
+/**
+ * 新建框默认「运行于」：同 `session-open {what: new}` 不给 `run` 时落的那一形（有 tmux 就 tmux，分叉照源会话那一种）。
+ */
+run: Run, 
 /**
  * 这台能起的几家（注册表里由我们起的、默认启动器在这台 `PATH` 上找得到的；注册表序），各带名字与可选的模型 · 权限档。
  */

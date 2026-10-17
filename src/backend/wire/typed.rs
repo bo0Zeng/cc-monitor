@@ -114,7 +114,7 @@ pub(crate) fn of_fail_said<E: Codes>(
     of_fail(f, fallback)
 }
 
-/// 文件管理面（同 `faces::launch_face::Files`）：生产那一份住 `stream/inbound`（`LocalFiles`），由命令表那一行递进来
+/// 文件管理面（同 `faces::launch_account_face::Files`）：生产那一份住 `stream/inbound`（`LocalFiles`），由命令表那一行递进来
 /// —— 写面只有 `stream/inbound/` 够得着（`readonly_guard` 第三层），本文件不点它的名。
 pub(crate) type Files = &'static (dyn crate::common::door::Door + Sync);
 

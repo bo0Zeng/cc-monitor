@@ -16,8 +16,7 @@ import org.koin.compose.koinInject
 /**
  * 界面的建连门：确保一台主机是通的，并回答「现在能用吗，不能的话为什么」。
  *
- * `commandChannel(hostId)` 在无活连接时抛 `ConnectionDeadException`，所以对话列表和对话屏
- * 必须先经过这里。建连走 `HostConnector.connect`（密码/身份解析、跳板链、纪元守门都在里面），
+ * 对话列表和对话屏要先经过这里。建连走 `HostConnector.connect`（密码/身份解析、跳板链、纪元守门都在里面），
  * 持有走 `HostConnector.retain` / `release`。本文件不碰任何连接细节。
  */
 sealed interface HostLink {

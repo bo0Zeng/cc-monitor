@@ -2,74 +2,31 @@
 //!
 //! 起会话只有 `ccm` 一处：每一条起会话 / 接回 / 换号重启 / 分叉交给终端的都只是一行 `ccm …`
 //! （[`ccm_invocation`] 渲），环境、中转地址、身份标记由那台机器上的 `ccm` 自己做。
-//! 「起什么」只有一份 [`Launch`]、变成渲染器那份 spec 只有一处映射（本机与远端的三处差别都写在那里）；
-//! [`wire`]（`launch-render-cli`）· [`local`]（`launch-local`）只是把各自的入参换成它。
-//! 本机远端同一条 `chan.call(origin, …)`：渲的就是那台机器要跑的那一行，能力问它自己。
+//! 「起什么」只有一份 [`Launch`]（`session-open` 一族拼它），变成渲染器那份 spec 只有一处映射（本机与远端的三处差别都写在那里）。
 
 pub mod ccm_invocation;
-pub(crate) mod local;
-pub mod wire;
 
-#[cfg(test)]
-mod cli_parity;
+use crate::control::launch_account::Settled;
 
-use crate::control::launch_account::{self as la, Settled};
-
-crate::wire::typed::codes! {
-    /// `launch-render-cli` · `launch-local` 的码（两条同一份）。
-    pub(crate) enum LaunchRenderErr {
-        /// 渲不出来（坏输入 · 目录不在 · 那一家认不得）：那一句说为什么。
-        Refused = "refused",
-        /// 要的号选不了：`data` 带要的号与替代。
-        AccountUnavailable = "account_unavailable" => la::AccountUnavailable,
-    }
+/// 这台的平台与目录在不在（本机那一形要的事实；判据喂确定的值）。生产那一份是 [`Host::PRODUCTION`]。
+#[derive(Clone, Copy)]
+pub(crate) struct Host {
+    /// 本地终端是 PowerShell（Windows）还是 POSIX shell。Windows 上没有 tmux ⇒ 一律直路。
+    pub(crate) windows: bool,
+    pub(crate) is_dir: fn(&str) -> bool,
+    /// 这台 `ccm` 的入口（绝对路径）：那一行直接叫它，不靠终端 `PATH`。说不出 ⇒ `None`（拒）。
+    pub(crate) entry: fn() -> Option<String>,
 }
 
-/// 选不了号 ⇒ 命令级码 `account_unavailable`，`data` 是那一形。
-pub(crate) fn unavailable(u: la::AccountUnavailable) -> LaunchRenderErr {
-    let said = la::unavailable_said(&u);
-    LaunchRenderErr::AccountUnavailable(said, u)
+impl Host {
+    pub(crate) const PRODUCTION: Host = Host {
+        windows: crate::platform::shell::LOCAL_TERMINAL_IS_POWERSHELL,
+        is_dir: |p| std::path::Path::new(p).is_dir(),
+        entry: crate::platform::paths::installed_ccm_entry,
+    };
 }
 
-/// `launch-render-cli` · `launch-local` 的应答：线上形住 `cmd-wire::session`。
-pub(crate) use cmd_wire::session::Rendered;
-
-/// 应答里的 `account`：实际用的号（账号库里的那一形；别的 ⇒ `None`）。
-pub(crate) fn launched(account: &Settled) -> Option<la::LaunchedAccount> {
-    match account {
-        Settled::Account(a) => Some(a.clone()),
-        _ => None,
-    }
-}
-
-/// `launch-render-cli`：那台机器要跑的那一行 `ccm …`；渲不出来 ⇒ `refused` ＋ 理由；要的号选不了 ⇒ `account_unavailable`。
-pub(crate) fn answer_cli(
-    req: &wire::CliRenderRequest,
-    facts: &la::Facts,
-) -> Result<Rendered, LaunchRenderErr> {
-    let account = wire::settle(req, facts).map_err(unavailable)?;
-    let cmd = wire::render_ccm_launch(req, &account).map_err(LaunchRenderErr::Refused)?;
-    Ok(Rendered {
-        cmd,
-        account: launched(&account),
-    })
-}
-
-/// `launch-local`：本机起会话那一行；坏输入 / 目录不在 ⇒ `refused`；要的号选不了 ⇒ `account_unavailable`。
-pub(crate) fn answer_local(
-    req: &local::LocalLaunchRequest,
-    facts: &la::Facts,
-) -> Result<Rendered, LaunchRenderErr> {
-    let account = local::settle(req, facts).map_err(unavailable)?;
-    let cmd =
-        local::plan(req, &account, &local::Facts::PRODUCTION).map_err(LaunchRenderErr::Refused)?;
-    Ok(Rendered {
-        cmd,
-        account: launched(&account),
-    })
-}
-
-/// 起会话那一行要说的「起什么」：`launch-render-cli` · `launch-local` 的入参与 `session-open` 都先变成它，再经 [`spec_with`] 一处变成渲染器那份 spec。
+/// 起会话那一行要说的「起什么」：经 [`spec_with`] 一处变成渲染器那份 spec。
 #[derive(Debug, Clone)]
 pub(crate) struct Launch {
     /// 哪一家（线上的 kind）。
@@ -77,8 +34,6 @@ pub(crate) struct Launch {
     pub(crate) act: Act,
     /// 建进哪个 tmux 会话（接回 ⇒ 接进哪个）；`None` ＝ 直路。
     pub(crate) tmux: Option<String>,
-    /// 往那个已有的空 tmux 会话里就地键入（再接进去）。
-    pub(crate) send_into: bool,
     pub(crate) cwd: Option<String>,
     /// 身份标记（打在建出来的 tmux 会话上；Windows 上没有 tmux ⇒ 不打）。
     pub(crate) ccm_sid: Option<String>,
@@ -195,10 +150,7 @@ fn spec_with<T>(
         agent: &l.agent,
         action,
         container: match tmux {
-            Some(name) => ci::Container::Tmux {
-                name,
-                send_into: l.send_into,
-            },
+            Some(name) => ci::Container::Tmux { name },
             None => ci::Container::None,
         },
         cwd: l.cwd.as_deref().filter(|c| !c.is_empty() && !local_direct),
@@ -229,10 +181,6 @@ fn checked_launcher(launcher: &str) -> Result<&str, String> {
         _ => Ok(l),
     }
 }
-
-#[cfg(test)]
-#[path = "../../../../tests/backend/control/launch_render/answers_tests.rs"]
-mod tests;
 
 // 假启动器是 POSIX shell 脚本、`ccm` 在那一形上 exec 掉子进程 ⇒ 只在 POSIX 上跑。
 #[cfg(all(test, unix))]

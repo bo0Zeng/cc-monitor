@@ -42,7 +42,7 @@ class FileOpsTest {
     @Test
     fun aClashComesBackAsTheBackendsListAndAnsweringResendsTheSameStagedCopy() =
         runTest {
-            val conflict = mapOf("key" to "0", "name" to "up.bin", "kind" to "file", "size" to 9.0, "there" to "file", "there_size" to 3.0, "there_mtime_text" to "14:02", "dir_into" to false)
+            val conflict = mapOf("key" to "0", "name" to "up.bin", "kind" to "file", "size" to 9.0, "size_text" to "9 B", "there" to "file", "there_size" to 3.0, "there_size_text" to "3 B", "there_mtime_text" to "14:02", "dir_into" to false)
             val link =
                 FakeCoreLink().apply {
                     transferred = { Reply.Ok(staged) }
@@ -57,7 +57,7 @@ class FileOpsTest {
             val ops = FileOps(link) { "box" }
             val c = ops.upload(dir, "up.bin", { 17 }) { _, _ -> }.getOrThrow() as FileOps.Upload.Clash
             assertEquals("同名 1 项", c.said)
-            assertEquals(listOf(Triple(3L, "14:02", false)), c.conflicts.map { Triple(it.thereSize, it.thereMtimeText, it.dirInto) })
+            assertEquals(listOf(Triple("3 B", "14:02", false)), c.conflicts.map { Triple(it.thereSizeText, it.thereMtimeText, it.dirInto) })
             assertEquals(FileOps.Upload.Done, ops.commit(dir, c.name, c.staged, "keep_both").getOrThrow())
             assertEquals("块不重送", 1, link.transfers.size)
             val again = link.calls("files-commit-upload").last()!!

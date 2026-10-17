@@ -62,8 +62,7 @@ class HostConnectorGatewayTest {
      * 够得着 `SshConnectionManager` 的生产文件，一个不多一个不少。
      *
      * 这条比上一条硬：它不问「调了哪支」，问「谁拿得到那个句柄」，拿得到就能 connect、close、disconnect。
-     * 表里的文件要的都不是「连接的生死与句柄」，而是通道工厂（`commandChannel` / `commandExecutor`）、
-     * `sessions` / `activeCount` 状态流；逐条见 [MANAGER_REACHABLE]。
+     * 表里的文件要的都不是「连接的生死与句柄」，而是 `sessions` / `activeCount` 状态流；逐条见 [MANAGER_REACHABLE]。
      *
      * 它拦得住「又多一个文件够得着」，拦不住「已经够得着的那些在自己文件里直调生死」。
      */
@@ -330,10 +329,9 @@ class HostConnectorGatewayTest {
          * |---|---|
          * | `core-ssh/…/SshConnectionManager.kt` | 它自己 |
          * | `core-ssh/…/di/SshModule.kt` | 它的 Koin 定义处（`single { SshConnectionManager(get()) }`） |
-         * | `core-ssh/…/CommandChannel.kt` | `commandChannel` / `commandExecutor` 两支扩展函数（接收者隐式，按 `manager.` 扫看不见它） |
          * | `app/…/ssh/HostConnector.kt` | 网关 |
-         * | `app/…/service/SshKeepAliveService.kt` | `sessions` / `activeCount` / 通道工厂 |
-         * | `app/…/ui/session/SessionViewModel.kt` | 通道工厂 + `sessions` |
+         * | `app/…/service/SshKeepAliveService.kt` | `sessions` / `activeCount` |
+         * | `app/…/ui/session/SessionViewModel.kt` | `sessions` / `reachedOf` |
          *
          * 没有一条在拿「连接的生死与句柄」。
          */
@@ -342,7 +340,6 @@ class HostConnectorGatewayTest {
                 KEEP_ALIVE,
                 GATEWAY,
                 SESSION_VM,
-                "core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/CommandChannel.kt",
                 "core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/SshConnectionManager.kt",
                 "core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/di/SshModule.kt",
             )
@@ -354,11 +351,9 @@ class HostConnectorGatewayTest {
          * |---|---|
          * | `SshConnectionManager.kt` | 它自己，没有接收者 |
          * | `di/SshModule.kt` | `single { SshConnectionManager(get()) }`，构造而非调用 |
-         * | `CommandChannel.kt` | 两支扩展函数，接收者隐式（`connection(id)` 裸调），按 `manager.` 扫天然看不见。注意：这是个真盲区，谁都可以写一支 `fun SshConnectionManager.xxx()` 在里面裸调 `connect(…)` |
          */
         private val MANAGER_REACHABLE_WITHOUT_RECEIVER =
             setOf(
-                "core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/CommandChannel.kt",
                 "core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/SshConnectionManager.kt",
                 "core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/di/SshModule.kt",
             )

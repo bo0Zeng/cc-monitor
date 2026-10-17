@@ -173,7 +173,7 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     (
         "open_local_terminal",
         Own::Window,
-        "开一个本机终端窗口跑那一行（`ccm …` 由本机后端 `launch-local` 出成品；这里不判不拼，只开窗）",
+        "开一个本机终端窗口跑那一行（`ccm …` 由本机后端 `session-open` 出成品；这里不判不拼，只开窗）",
     ),
     // 放字节：判定（该不该换 · 换成哪一格 · 落点那一份是谁）住本机常驻后端 `deploy-plan`。
     (

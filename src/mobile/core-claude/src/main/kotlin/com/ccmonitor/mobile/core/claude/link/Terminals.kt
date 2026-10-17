@@ -2,14 +2,12 @@ package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.claude.link.wire.Killed
 import com.ccmonitor.mobile.core.claude.link.wire.Preview
-import com.ccmonitor.mobile.core.claude.link.wire.Rendered
-import com.ccmonitor.mobile.core.claude.link.wire.Resumed
 import com.ccmonitor.mobile.core.claude.link.wire.TerminalsListReply
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
 
 /*
- * 那台的终端：列 · 抓屏 · 结束 · 进终端那一行。都是那台核心的帧命令（`IPC-COMMANDS.md` 各节），
- * 找哪个窗格、怎么附着全在那台；手机只拼入参，回包由嵌的 Rust 核心按 `cmd-wire` 那一份解过、装进 `link/wire/` 的声明类；
+ * 那台的终端：列 · 抓屏 · 结束。都是那台核心的帧命令（`IPC-COMMANDS.md` 各节），
+ * 找哪个窗格、怎么附着全在那台（进终端那一行是 [SessionOpen] 的回包）；手机只拼入参，回包由嵌的 Rust 核心按 `cmd-wire` 那一份解过、装进 `link/wire/` 的声明类；
  * 句柄（`terminal`）不拼不解析，原样交回。
  */
 
@@ -55,15 +53,6 @@ object TerminalsList {
     ): String? = rows.firstOrNull { it.name == name }?.terminal
 }
 
-/** `session-resume`：终端没了的会话先在那台恢复（号 · 模型 · 权限档那台照记录定），回它落在哪个 tmux 会话。 */
-object SessionResume {
-    const val COMMAND: String = "session-resume"
-
-    fun args(sid: String): Map<String, Any?> = mapOf("sid" to sid, "client" to CLIENT)
-
-    fun of(data: Any?): String? = Wire.bind<Resumed>(data)?.session
-}
-
 /** `terminal-preview`：抓一个终端的一屏（纯文字）。 */
 object TerminalPreview {
     const val COMMAND: String = "terminal-preview"
@@ -82,26 +71,4 @@ object Kill {
 
     /** 杀成了没有。 */
     fun of(data: Any?): Boolean? = Wire.bind<Killed>(data)?.killed
-}
-
-/**
- * 进终端那一行：问 `launch-render-cli` 要那台要跑的 `ccm …`（与桌面「命令已复制」复制的是同一条），
- * 手机在自己的终端里原样敲进去。只交意图（接回 [name] 那个会话、不起 agent），启动命令一截都不拼：那台自己定。
- */
-object AttachLine {
-    const val COMMAND: String = "launch-render-cli"
-
-    /** [agent]：那个终端里那一家的线上名（照 `terminals-list` · `session-new-facts` 给的原值）。 */
-    fun args(
-        agent: String,
-        name: String,
-    ): Map<String, Any?> =
-        mapOf(
-            "agent" to agent,
-            "action" to mapOf("kind" to "attach", "name" to name),
-            "container" to mapOf("kind" to "tmux", "name" to name, "send_into" to false),
-            "account" to mapOf("kind" to "base"),
-        )
-
-    fun of(data: Any?): String? = Wire.bind<Rendered>(data)?.cmd
 }

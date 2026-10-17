@@ -43,7 +43,7 @@ vi.mock("../../../../src/frontend/ui/remote-config", () => ({
   findHostByOrigin: (hosts: { label: string }[], o: string) => hosts.find((h) => h.label === o) ?? null,
 }));
 vi.mock("../../../../src/frontend/ui/events", () => ({ bindEvents: () => Promise.resolve() }));
-/** 那台有没有 tmux（`session-new-facts` 的 `tmux`）。 */
+/** 那台有没有 tmux（`session-open-facts` 的 `tmux`）。 */
 const facts = vi.hoisted(() => ({ tmux: true, asked: 0 }));
 vi.mock("../../../../src/frontend/ui/new-session-reads", () => ({
   askFacts: async () => {
@@ -62,11 +62,11 @@ vi.mock("../../../../src/frontend/ui/machine-prefs", () => ({
     // 判据按号给（`getModelForAccount` 的答法与号名无关）⇒ 每个号读到的都是那一个值。
     const v = (await getModelForAccount(origin)) as string | undefined;
     const models = new Proxy({}, { get: () => v });
-    return { state: "ok", prefs: { launchers: {}, resumeInTmux: false, contextLimits: {}, models } };
+    return { state: "ok", prefs: { launchers: {}, resumeInTmux: false, contextLimits: {}, models, permissionModes: {} } };
   },
   setPrefs: async (origin: string, patch: { models?: Record<string, string | null> }) => {
     for (const [name, m] of Object.entries(patch.models ?? {})) await setModelForAccount(origin, name, m);
-    return { state: "ok", prefs: { launchers: {}, resumeInTmux: false, contextLimits: {}, models: {} } };
+    return { state: "ok", prefs: { launchers: {}, resumeInTmux: false, contextLimits: {}, models: {}, permissionModes: {} } };
   },
 }));
 vi.mock("../../../../src/frontend/ui/account-ops", async (orig) => ({

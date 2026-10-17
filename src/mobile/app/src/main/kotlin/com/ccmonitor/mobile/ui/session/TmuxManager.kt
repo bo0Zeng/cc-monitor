@@ -25,43 +25,24 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.TerminalsList
 import com.ccmonitor.mobile.core.copy.copyText
-import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
+import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
-import com.ccmonitor.mobile.ssh.SessionBackend
-import com.ccmonitor.mobile.ssh.TmuxBackend
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 /**
- * 跑一条会退出的命令，收集 stdout 到完成。字节累积后一次性解码（多字节 UTF-8 不被 chunk 边界劈坏）。
- * :app 内经 exec 通道跑一次性命令的唯一入口（切模型、抓屏也走它）。
- */
-internal suspend fun runOnce(
-    channel: RemoteCommandChannel,
-    cmd: String,
-): String {
-    val buf = java.io.ByteArrayOutputStream()
-    channel.exec(cmd).collect { buf.write(it) }
-    return buf.toString("UTF-8")
-}
-
-/**
  * tmux 会话管理弹窗：列出、附着、结束、新建，不用手输命令。
- * 列 · 结束 · 后台起 cc 是那台核心的命令（[terminals] 带着它们，见 `TerminalOps`）；附着要进终端，经 [onAttach] 交给调用方
- * （新 tab 敲那台渲出的那一行）。「新建」是用户在 shell 里会敲的那一条，经 [channel] 跑。
- * 状态与 scope 都在本函数，子块只收参数。
+ * 列 · 结束 · 新建 · 后台起 cc 都是那台核心的命令（[terminals] 带着它们，见 `TerminalOps`）；附着要进终端，经 [onAttach] 交给调用方
+ * （新 tab 敲那台渲出的那一行）。状态与 scope 都在本函数，子块只收参数。
  */
 @Composable
 fun TmuxManagerDialog(
-    channel: RemoteCommandChannel,
     terminals: TerminalOps,
     onAttach: (String) -> Unit,
     onDismiss: () -> Unit,
-    backend: SessionBackend = TmuxBackend, // 「新建」那一条由会话后端给出
 ) {
     val scope = rememberCoroutineScope()
     var sessions by remember { mutableStateOf<List<TerminalsList.Row>>(emptyList()) }
@@ -87,9 +68,7 @@ fun TmuxManagerDialog(
         title = { Text(copyText("mobTmux.dialog.title")) },
         text = {
             TmuxManagerBody(
-                channel = channel,
                 terminals = terminals,
-                backend = backend,
                 loading = loading,
                 sessions = sessions,
                 newName = newName,
@@ -100,6 +79,7 @@ fun TmuxManagerDialog(
                     newName = ""
                     refresh()
                 },
+                onFailed = { snackbar.show(Notice(it)) },
                 scope = scope,
             )
         },
@@ -124,9 +104,7 @@ fun TmuxManagerDialog(
 /** 弹窗主体：会话列表 + 新建行。 */
 @Composable
 private fun TmuxManagerBody(
-    channel: RemoteCommandChannel,
     terminals: TerminalOps,
-    backend: SessionBackend,
     loading: Boolean,
     sessions: List<TerminalsList.Row>,
     newName: String,
@@ -134,6 +112,7 @@ private fun TmuxManagerBody(
     onAttach: (String) -> Unit,
     onKillRequested: (TerminalsList.Row) -> Unit,
     onCreated: () -> Unit,
+    onFailed: (String) -> Unit,
     scope: kotlinx.coroutines.CoroutineScope,
 ) {
     val tokens = LocalAppTokens.current
@@ -150,21 +129,21 @@ private fun TmuxManagerBody(
             onNameChange = onNameChange,
             onNewDetached = { n ->
                 scope.launch {
-                    runCatching { runOnce(channel, backend.newDetachedCommand(n)) }
+                    terminals.create(n)?.let(onFailed)
                     onCreated()
                 }
             },
             onNewDetachedCc = { n ->
                 scope.launch {
-                    terminals.startAgent(n)
+                    terminals.startAgent(n)?.let(onFailed)
                     onCreated()
                 }
             },
-            // 先在后台建（用户会敲的那一条），再像附着已有的一样进去。
+            // 先请那台建（在了就不动），再像附着已有的一样进去；没建成 ⇒ 那一句、不进。
             onNewAttach = { n ->
                 scope.launch {
-                    runCatching { runOnce(channel, backend.newDetachedCommand(n)) }
-                    onAttach(n)
+                    val failed = terminals.create(n)
+                    if (failed != null) onFailed(failed) else onAttach(n)
                 }
             },
         )

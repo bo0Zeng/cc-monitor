@@ -1143,26 +1143,6 @@ fn the_account_reads_keep_their_wire_bytes() {
 /// 逐字节比手机那一侧收的形状（入参照抄手机发的那一份：`core-claude/.../link/Terminals.kt`）。
 #[test]
 fn the_replies_the_phone_reads_keep_their_wire_bytes() {
-    let entry = crate::control::launch_render::ccm_invocation::argv(
-        &crate::platform::paths::installed_ccm_entry().unwrap(),
-    );
-    let attach = serde_json::json!({
-        "agent": "claude",
-        "action": { "kind": "attach", "name": "demo-cc" },
-        "container": { "kind": "tmux", "name": "demo-cc", "send_into": false },
-        "cwd": null,
-        "account": { "kind": "base" },
-        "ccmSid": null,
-        "model": null,
-    });
-    let got = run_registered("launch-render-cli", attach).expect("launch-render-cli 渲得出");
-    assert_eq!(
-        serde_json::to_string(&got).unwrap(),
-        format!(
-            r#"{{"account":null,"cmd":{}}}"#,
-            serde_json::to_string(&format!("{entry} -- --attach demo-cc")).unwrap()
-        )
-    );
     // 终端那三条：经登记表跑一趟手机发的那一份（这台测试档的 tmux 是本进程自己那个空 socket ⇒ 空名单 · 不在名单），
     //   再拿纯构造器喂金样原料 ＋ 几格「有才出」的（没标 agent · 没声明 client · 别的着色属性 · 不带颜色），逐字节比换形之前那一版写出来的。
     let wire = |v: &dyn erased_wire::Wire| v.bytes();
@@ -1288,10 +1268,10 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
         wire(&crate::control::launch::reply("demo-cc", true, false)),
         r##"{"created":true,"session":"demo-cc","typed":false}"##
     );
-    // session-new：手机那一份入参（`core-claude/.../link/Sessions.kt`）经登记表跑；目录不在 ⇒ 失败信封的 `data` 照旧（哪一格 ＋ 选不了号那一形）。
+    // session-open 新起那一形：手机那一份入参（`core-claude/.../link/Sessions.kt`）经登记表跑；目录不在 ⇒ 失败信封的 `data`（哪一格 ＋ 选不了号那一形）。
     let e = run_registered(
-        "session-new",
-        serde_json::json!({ "agent": "claude", "cwd": "/definitely/not/here", "place": "tmux", "local": false, "ticket": "t-1", "prompt": "hi" }),
+        "session-open",
+        serde_json::json!({ "what": { "kind": "new", "agent": "claude", "cwd": "/definitely/not/here", "prompt": "hi" }, "run": "tmux", "local": false, "ticket": "t-1" }),
     )
     .unwrap_err();
     assert_eq!(
@@ -1300,24 +1280,6 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
             "no_dir",
             r##"{"field":"cwd","unavailable":null}"##.to_string()
         )
-    );
-    let started = crate::control::session_new::SessionNew {
-        outcome: crate::control::session_new::SessionNewOutcome::Started,
-        session: Some("demo-cc".into()),
-        sid: None,
-        cmd: None,
-        account: None,
-        agent: "claude".into(),
-        cwd: "/srv/p".into(),
-        prompt: Some(crate::control::session_new::FirstSay {
-            result: "delivered".into(),
-            why: None,
-            said: None,
-        }),
-    };
-    assert_eq!(
-        wire(&started),
-        r##"{"account":null,"agent":"claude","cmd":null,"cwd":"/srv/p","outcome":"started","prompt":{"result":"delivered","said":null,"why":null},"session":"demo-cc","sid":null}"##
     );
 }
 
@@ -1392,23 +1354,15 @@ fn the_terminal_trio_refuses_fields_it_does_not_use() {
 fn the_session_family_refuses_what_its_request_types_do_not_have() {
     for (cmd, args) in [
         (
-            "session-new-dir",
+            "session-open-dir",
             serde_json::json!({ "cwd": "/x", "extra": 1 }),
         ),
-        ("session-new-dir", serde_json::json!({ "forkOf": "s-1" })),
+        ("session-open-dir", serde_json::json!({ "forkOf": "s-1" })),
         (
             "sessions-where",
             serde_json::json!({ "sids": ["s-1"], "extra": 1 }),
         ),
         ("sessions-stop", serde_json::json!({ "sids": "s-1" })),
-        (
-            "sessions-start",
-            serde_json::json!({ "mode": "tmux", "local": true, "agent": "claude", "items": [{ "sid": "s-1", "cwd": "/w", "extra": 1 }] }),
-        ),
-        (
-            "sessions-start",
-            serde_json::json!({ "mode": "screen", "local": true, "agent": "claude", "items": [] }),
-        ),
         (
             "session-terminals",
             serde_json::json!({ "sid": "s-1", "extra": 1 }),
@@ -1416,10 +1370,6 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
         (
             "terminal-processes",
             serde_json::json!({ "terminals": [{ "ssh": null, "activity": null, "extra": 1 }] }),
-        ),
-        (
-            "launch-local",
-            serde_json::json!({ "agent": "claude", "action": { "kind": "new" }, "x": 1 }),
         ),
         (
             "session-say",
@@ -1452,18 +1402,18 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
             serde_json::json!({ "mode": "send-into", "name": "x", "cwd": 5, "payload": "y" }),
         ),
         (
-            "session-new",
-            serde_json::json!({ "agent": "claude", "cwd": "/x", "place": "tmux", "local": false, "extra": 1 }),
+            "session-open",
+            serde_json::json!({ "what": { "kind": "new", "agent": "claude", "cwd": "/x", "extra": 1 }, "local": false }),
         ),
         (
-            "session-new",
-            serde_json::json!({ "agent": "claude", "cwd": "/x", "place": "tmux", "local": false, "rotation": "c1" }),
+            "session-open",
+            serde_json::json!({ "what": { "kind": "new", "agent": "claude", "cwd": "/x", "rotation": "c1" }, "local": false }),
         ),
         (
-            "session-new-facts",
+            "session-open-facts",
             serde_json::json!({ "forkOf": "s-1", "extra": 1 }),
         ),
-        ("session-new-facts", serde_json::json!({ "at": 1 })),
+        ("session-open-facts", serde_json::json!({ "at": 1 })),
         (
             "session-fork",
             serde_json::json!({ "sid": "s-1", "uuid": "u-1", "extra": 1 }),

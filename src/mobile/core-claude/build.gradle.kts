@@ -92,8 +92,6 @@ tasks.named<Test>("test") {
 }
 
 dependencies {
-    // 用 api：RemoteExecutor 出现在公开构造参数里（OneShot），消费方的 compile classpath 上要见到它。
-    api(project(":core-remote"))
     implementation(libs.moshi)
     ksp(libs.moshi.kotlin.codegen)
     // 传输用 Flow<ByteArray>。用 -core（纯 JVM artifact），不引 Android 耦合。

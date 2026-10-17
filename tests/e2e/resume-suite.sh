@@ -4,9 +4,8 @@
 # 点 resume 要真开一个终端窗口(`platform/terminal.rs::open_local`),无头门禁不开窗,
 # 故 argv 断言的诚实天花板 = 命令级(直接驱真源 builder)。见 tests/e2e/README。
 #
-# 每条边界:①用 `resume-cmd-driver.ts` 取 app **真正会跑**的命令串(走生产渲染链:生产 plan* →
-# 生产 Rust render_launch_payload,不重写);②断言命令形状(复用 cc-<sid8> 名/无 new-session/无 -N/CLAUDE_CONFIG_DIR 前缀);③真把该串
-# 跑到真 tmux(send-keys 进 idle pane 的 sh);④断言 argv.log(sid 命中行的 CLAUDE_CONFIG_DIR + `--resume`)
+# 每条边界:①用 `open-line-emit.sh` 取 app **真正会跑**的那一行(`session-open` 本体交出去的那一行,不重写);
+# ②断言命令形状(复用 cc-<sid8> 名/无 new-session/无 -N/账号旗标);③真把该串跑到真 tmux(空 tmux 那一形照那台后端的做法键进 idle pane 的 sh);④断言 argv.log(sid 命中行的 CLAUDE_CONFIG_DIR + `--resume`)
 # 与 `tmux list-sessions` 孤儿计数。红线:backend 零改(不跑它) / 隔离 CLAUDE_CONFIG_DIR 绝不碰真 ~/.claude。
 . "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
 set -euo pipefail
@@ -41,7 +40,6 @@ REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 FAKE_DIR="$(mktemp -d /tmp/e2e-resume-fake.XXXXXX)"
 cp "$REPO/tests/e2e/fake-claude" "$FAKE_DIR/fake-claude" && chmod +x "$FAKE_DIR/fake-claude"
 FAKE="$FAKE_DIR/fake-claude"
-DRIVER="$REPO/tests/e2e/resume-cmd-driver.ts"
 GEN="$REPO/tests/e2e/gen-idle-tmux.sh"
 
 # 三个隔离 CLAUDE_CONFIG_DIR:remote/base(初始 live+idle 落这)、账号 A、账号 B(模拟两账号,#75/pin)。
@@ -69,11 +67,21 @@ cleanup() {
 }
 trap 'cleanup; _gc_sock_cleanup' EXIT
 
-drv() { npx tsx "$DRIVER" "$@"; }
+# drv <形> …:session-open 本体交出去的那一行(参数照旧:into-existing <sid> <名> <启动器> [号] · tmux-new <sid> <目录> <启动器> <名> [号] · direct <sid> <目录> <启动器> [号])。
+emit() { bash "$REPO/tests/e2e/open-line-emit.sh" "$@"; }
+drv() {
+  local m="$1"; shift
+  case "$m" in
+    into-existing) emit shape=into-existing sid="$1" name="$2" launcher="$3" account="${4:--}" ;;
+    tmux-new) emit shape=resume-tmux sid="$1" cwd="$2" launcher="$3" name="$4" account="${5:--}" ;;
+    direct) emit shape=direct sid="$1" cwd="$2" launcher="$3" account="${4:--}" ;;
+  esac
+}
 
-# fire_resume <cmd>:真把 app 会跑的 resume 串执行到 tmux(send-keys 进 idle pane)。命令尾部的
-# `tmux attach` 无 tty 即刻失败(headless,无害)——send-keys 已把 resume 打进 pane 的 sh。timeout 兜底。
+# fire_resume <cmd>:真把 app 会跑的那一行执行(建 tmux 的那几形 ccm 建完不接进去)。timeout 兜底。
 fire_resume() { timeout "$WALL_CEILING_S" bash -c "$1" >/dev/null 2>&1 || true; }
+# fire_into <会话名> <那一行>:空 tmux 那一形 —— 那台后端把这一行键进那个会话的窗格(`launch send-into`),这里照做。
+fire_into() { tmux -u send-keys -t "=$1:" "$2" Enter >/dev/null 2>&1 || true; }
 
 # 造一个 idle-tmux(灰):跑 fake-claude→拿 pid→kill→pane 落回 sh(会话+@ccm_sid 仍在)。回显 session 名。
 make_idle() {  # <sid> <claude_dir>
@@ -134,11 +142,11 @@ SID1="$(cat /proc/sys/kernel/random/uuid)"; S1="cc-${SID1:0:8}"
 make_idle "$SID1" "$REMOTE_DIR" >/dev/null
 CMD1="$(drv into-existing "$SID1" "$S1" "$FAKE" -)"
 echo "   cmd: $CMD1"
-if echo "$CMD1" | grep -qF "send-keys -t '=$S1:' '$CCM_ENTRY --resume $SID1 " && ! echo "$CMD1" | grep -q "new-session\|--ccm-tmux"; then
-  ok "B1 命令复用原名 $S1、无 new-session(就地 resume,治 #76 根因)"
+if echo "$CMD1" | grep -qF "$CCM_ENTRY --resume $SID1 " && ! echo "$CMD1" | grep -q "new-session\|--ccm-tmux"; then
+  ok "B1 键进 $S1 的是直路那一行、不建新会话(就地 resume,治 #76 根因)"
 else bad "B1 命令未就地复用(含 new-session 或名不符)"; fi
 BEFORE1="$(session_exists "$S1")"
-fire_resume "$CMD1"
+fire_into "$S1" "$CMD1"
 # 基座 resume(unset CLAUDE_CONFIG_DIR)→ fake-claude 落回自身默认目录(模拟真 claude 落 ~/.claude)。
 if AL="$(wait_argv_resume "$BASE_DEFAULT" "$SID1")"; then ok "B1 argv.log 见 resume: $AL"; else bad "B1 上限内 argv.log 无 resume 行"; fi
 ORPH1="$(orphan_count "$S1")"; AFTER1="$(session_exists "$S1")"
@@ -157,7 +165,7 @@ echo "$CMD2D" | grep -q "^$CCM_ENTRY --resume $SID2 -- --ccm-agent claude --acco
 CMD2T="$(drv tmux-new "$SID2" "$CWD_DIR" "$FAKE" "$S2" a)"
 echo "   tmux-new: $CMD2T"
 SESSIONS+=("$S2")
-echo "$CMD2T" | grep -q "^$CCM_ENTRY --resume $SID2 -- --ccm-tmux=$S2 --ccm-sid=$SID2 " && ok "B2 tmux-new 是一行 ccm：建 $S2 并带身份标记" || bad "B2 tmux-new 命令形状不符"
+echo "$CMD2T" | grep -q "^$CCM_ENTRY --resume $SID2 -- --ccm-tmux=$S2 --detach --ccm-sid=$SID2 " && ok "B2 tmux-new 是一行 ccm：建 $S2 并带身份标记" || bad "B2 tmux-new 命令形状不符"
 fire_resume "$CMD2T"
 if AL="$(wait_argv_resume "$ACCT_A" "$SID2")"; then
   echo "   argv(A): $AL"
@@ -171,12 +179,11 @@ SID3="$(cat /proc/sys/kernel/random/uuid)"; S3="cc-${SID3:0:8}"
 make_idle "$SID3" "$REMOTE_DIR" >/dev/null
 CMD3="$(drv into-existing "$SID3" "$S3" "$FAKE" b)"
 echo "   cmd: $CMD3"
-# idle 复用是 send-keys 形态:整个载荷再被 posixQuote 包一层,内层 ' → '\''(故不按裸引号 grep);
-# 断言 export 前缀 + B 目录路径同时出现即可,真正的路由证据是下面 argv 落 B 目录。
+# 真正的路由证据是下面 argv 落 B 目录。
 if echo "$CMD3" | grep -qF -- "--account b"; then
   ok "B3 pin 命令点名账号 B（--account b）"
 else bad "B3 pin 命令缺 B 前缀"; fi
-fire_resume "$CMD3"
+fire_into "$S3" "$CMD3"
 if AL="$(wait_argv_resume "$ACCT_B" "$SID3")"; then
   echo "   argv(B): $AL"
   # 关键:argv 落 B 目录,且 remote/base 目录里**不该**有本 sid 的 resume(证明 pin 路由到 B 不是 base)
@@ -192,7 +199,7 @@ CMD4="$(drv into-existing "$SID4" "$S4" "$FAKE" -)"
 echo "   cmd: $CMD4"
 echo "$CMD4" | grep -qF -- " -- --ccm-agent claude --base " && ok "B4 基座命令带 --base（ccm 清掉 shell 残留旧号,#75 复用变体逃生口）" || bad "B4 基座命令缺 --base"
 # 不带 pin 时跟随落哪个号由那台后端判（`launch_account.rs::pick`，Rust 判据 ＋ ccm 端到端那一条钉着）。
-fire_resume "$CMD4"
+fire_into "$S4" "$CMD4"
 if AL="$(wait_argv_resume "$BASE_DEFAULT" "$SID4")"; then ok "B4 基座 resume 执行(argv 落默认隔离目录): $AL"; else bad "B4 上限内基座 argv 无 resume"; fi
 
 # ── B6a:重复 resume 幂等(tmux-new create-gate:第二次 new-session 失败短路,不双 resume)──────
@@ -226,7 +233,7 @@ SID7="$(cat /proc/sys/kernel/random/uuid)"
 #    名字不再是 `<sid8>-cc`，改成从 **cwd** 派生的 `<项目名>-cc`。
 #    这条 e2e 是全套件唯一断言「生产侧 tmux 命名形状」的地方（见上面 E67③ 那段），
 #    所以它**必须跟着改** —— 上一次没跟上时它红了两个版本。
-# 名字由后端铸（`terminal-name-mint {cwd}`：`/tmp/e2e-remote` ⇒ `e2e-remote-cc`，派生与避让的逐格归
+# 名字由后端铸（`session-open-dir` 与 `ccm` 同一个 `plan::mint_tmux_name`：`/tmp/e2e-remote` ⇒ `e2e-remote-cc`，派生与避让的逐格归
 #    `tests/backend/control/ccm/plan_tests.rs`）；本套件不碰后端 ⇒ 这里用后端会铸的那个名字，改钉「它在建之前确实没被占」——
 #    否则下面测到的是 create-gate 短路、不是回退新建（原先那一格 `drv mint-name` 调的前端铸名口随 J7 删了）。
 EXPECT7="e2e-remote-cc"   # basename("/tmp/e2e-remote") + `-cc`；撞名时才追加 `-2/-3`

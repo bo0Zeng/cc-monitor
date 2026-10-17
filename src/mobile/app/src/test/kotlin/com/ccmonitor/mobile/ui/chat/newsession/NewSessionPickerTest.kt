@@ -1,7 +1,7 @@
 package com.ccmonitor.mobile.ui.chat.newsession
 
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.SessionNew
+import com.ccmonitor.mobile.core.claude.link.SessionOpen
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -16,7 +16,7 @@ import org.junit.Test
 
 /**
  * 新建会话的选项：打开就是填好的，四样默认值都读那台；点 chip 只为改，改了才交那一格。
- * 判据：默认值从哪来 · 哪颗 chip 不画 · 目录不在灰掉 · 换 agent 账号重问 · 设为默认走那台 · 交给 session-new 的只有改过的。
+ * 判据：默认值从哪来 · 哪颗 chip 不画 · 目录不在灰掉 · 换 agent 账号重问 · 设为默认走那台 · 交给 session-open 的只有改过的。
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class NewSessionPickerTest {
@@ -78,11 +78,11 @@ class NewSessionPickerTest {
     ) = FakeCoreLink().also { l ->
         l.answer = { cmd, args ->
             when (cmd) {
-                "session-new-facts" -> ok(f)
+                "session-open-facts" -> ok(f)
                 "files-home" -> ok(mapOf("path" to "/h/me"))
                 "accounts-list" -> ok(a(args))
                 "rotation-strategies" -> ok(strategies)
-                "session-new-dir" -> ok(mapOf("exists" to (args?.get("cwd") != "/h/gone"), "tmuxName" to null))
+                "session-open-dir" -> ok(mapOf("exists" to (args?.get("cwd") != "/h/gone"), "tmuxName" to null))
                 "accounts-set-default" -> ok(mapOf("applied" to true))
                 else -> Reply.LinkDown
             }
@@ -127,7 +127,7 @@ class NewSessionPickerTest {
         }
 
     @Test
-    fun `什么都没改 ⇒ 交给 session-new 的只有目录与 agent，账号 · 轮换不交（那台按它的默认）`() =
+    fun `什么都没改 ⇒ 交给 session-open 的只有目录与 agent，账号 · 轮换不交（那台按它的默认）`() =
         runTest {
             val p = picker(link())
             p.openAccounts()
@@ -144,9 +144,9 @@ class NewSessionPickerTest {
             runCurrent()
             p.pickAccount("personal")
             p.pickRotation(null)
-            assertEquals(Chosen("/h/work/orders", "claude", "personal", SessionNew.Rotation(null)), p.chosen())
+            assertEquals(Chosen("/h/work/orders", "claude", "personal", SessionOpen.Rotation(null)), p.chosen())
             p.pickRotation("night")
-            assertEquals(SessionNew.Rotation("night"), p.chosen().rotation)
+            assertEquals(SessionOpen.Rotation("night"), p.chosen().rotation)
             p.pickRotation("spread")
             assertNull("又选回新会话用的那份 ⇒ 不交", p.chosen().rotation)
         }

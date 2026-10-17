@@ -39,35 +39,58 @@ data class FirstSay(
     val said: String?,
 )
 
-@WireOf("SessionNew")
+/** `session-open` 的成品：落在哪 · 哪个 tmux 会话 · 要在终端里敲的那一行（那台渲好的）· 第一句的结局。 */
+@WireOf("Opened")
 @JsonClass(generateAdapter = true)
-data class SessionNewReply(
-    val outcome: SessionNewOutcome,
+data class Opened(
+    val landed: Landed,
     val session: String?,
+    val line: String?,
     val sid: String?,
-    val cwd: String,
+    val cwd: String?,
+    val note: String?,
     val prompt: FirstSay?,
 )
 
 @JsonClass(generateAdapter = false)
-enum class SessionNewOutcome {
+enum class Landed {
     @Json(name = "started")
     STARTED,
 
-    @Json(name = "open")
-    OPEN,
+    @Json(name = "in_place")
+    IN_PLACE,
+
+    @Json(name = "running")
+    RUNNING,
+
+    @Json(name = "idle")
+    IDLE,
+
+    @Json(name = "window")
+    WINDOW,
 }
 
-@WireOf("Rendered")
+/** `authorized-keys-add`：那一行公钥并进去了，还是本来就在。 */
+@WireOf("KeyAdded")
 @JsonClass(generateAdapter = true)
-data class Rendered(
-    val cmd: String,
+data class KeyAdded(
+    val outcome: PushOutcome,
 )
 
-@WireOf("NewFacts")
+@JsonClass(generateAdapter = false)
+enum class PushOutcome {
+    @Json(name = "added")
+    ADDED,
+
+    @Json(name = "already")
+    ALREADY,
+}
+
+@WireOf("OpenFacts")
 @JsonClass(generateAdapter = true)
-data class NewFacts(
+data class OpenFacts(
     val recent: List<RecentDir>,
+    val tmux: Boolean,
     val agents: List<AgentFacts>,
 )
 
@@ -76,15 +99,15 @@ data class NewFacts(
 data class AgentFacts(
     val kind: String,
     val text: String,
-    val models: List<NewSessionPick>,
-    val modelDefault: NewSessionPick?,
+    val models: List<AgentPick>,
+    val modelDefault: AgentPick?,
     val modelNote: String?,
-    val permissionModes: List<NewSessionPick>,
+    val permissionModes: List<AgentPick>,
 )
 
-@WireOf("NewSessionPick")
+@WireOf("AgentPick")
 @JsonClass(generateAdapter = true)
-data class NewSessionPick(
+data class AgentPick(
     val value: String,
     val text: String,
 )
@@ -914,9 +937,9 @@ data class Conflicts(
 @JsonClass(generateAdapter = true)
 data class Conflict(
     val name: Any,
-    val size: Long?,
+    @Json(name = "size_text") val sizeText: String?,
     @Json(name = "mtime_text") val mtimeText: String?,
-    @Json(name = "there_size") val thereSize: Long?,
+    @Json(name = "there_size_text") val thereSizeText: String?,
     @Json(name = "there_mtime_text") val thereMtimeText: String?,
     @Json(name = "dir_into") val dirInto: Boolean,
 )
@@ -1413,13 +1436,6 @@ enum class LoginAgainHow {
     @Json(name = "none")
     NONE,
 }
-
-/** `session-resume`：那条会话此刻在哪个 tmux 会话里。 */
-@WireOf("Resumed")
-@JsonClass(generateAdapter = true)
-data class Resumed(
-    val session: String,
-)
 
 // 流上的会话帧（核心按 `cmd-wire` 那一份类型重写过的一行）。
 

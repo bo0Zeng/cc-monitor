@@ -19,7 +19,7 @@ const REDRAWS_PER_PRESS: usize = 4;
 pub(crate) struct SessionPermissionReq {
     /// 会话 id。
     pub(crate) sid: String,
-    /// 要切到的档（原值；必须是 `session-new-facts` 那一家 `permissionModes` 里的一个）。
+    /// 要切到的档（原值；必须是 `session-open-facts` 那一家 `permissionModes` 里的一个）。
     pub(crate) mode: String,
     /// 自报的前端（过「哪个前端的会话」那一维，同 `terminal-input`）。
     #[serde(default)]

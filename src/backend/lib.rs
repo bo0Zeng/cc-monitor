@@ -276,9 +276,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     // ⚠ 入参（含 key）**从 stdin 读**（`takes_input: true`），不收 argv —— argv 在同机任何用户的 `ps` 里都看得见。
     "--apikey-key-set",
     // `--relay-ensure` / `--relay-status` 随帧面那两条删了。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
-    // 起会话那一行 `ccm …` 的渲染（`inbound::REGISTRY` 的 `launch-render-cli`，纯函数）自动派生的 CLI 面，入参从 stdin 读。
-    //   `launch-local` 不上 CLI 面（`STREAM_ONLY`）。`--launch-render-payload` 随载荷那条删了 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
-    "--launch-render-cli",
     // 「足迹」出成品（`inbound::REGISTRY` 的 `footprint-report`，替掉 `--footprint-probe`）派生的 CLI 面。只读。
     "--footprint-report",
     // 「文件与数据」那一份成品（`data-report`，同一份足迹重排）派生的 CLI 面。只读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
@@ -470,24 +467,21 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 帧面 `resolve` 派生的 CLI 面（手写那一臂删了，信封与别的命令同一形）。
     "--resolve",
     // `--resync` 摘了（`stream::cli::STREAM_ONLY`：一次性进程里没有 watcher，答 `watchers: 0` 是假话）。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
-    // 起新会话框那三问 ＋ tab 栏多选的批量停 / 起 / 问样子（`inbound::REGISTRY` 的 `session-new*` / `sessions-*`）
-    //   自动派生的 CLI 面：六条的事实**全在这台**（tmux 名单现探 · 记录在不在 · 铸名经同一张会话快照 ——
+    // 起新会话框那两问 ＋ tab 栏多选的批量停 / 问样子（`inbound::REGISTRY` 的 `session-open-*` / `sessions-*`）
+    //   自动派生的 CLI 面：四条的事实**全在这台**（tmux 名单现探 · 记录在不在 · 铸名经同一张会话快照 ——
     //   `SessionSnapshot::query` 没有「只读缓存」那条路，一次性进程问它一次它就重探一次），
     //   一格都不读本进程的可达表 / 监听状态 / 在飞表 ⇒ 不进 `stream::cli::STREAM_ONLY`，照派生规则上 CLI 面。
     //   登记在本表的理由与上面那几族逐字相同 —— `is_query_mode` 那道闸门读的就是本表，不在表里 ⇒ 当未知 flag 静默进流模式。
     // ⚠ 是新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。
-    "--session-new",
-    "--session-new-dir",
-    "--session-new-facts",
+    "--session-open-dir",
+    "--session-open-facts",
     // 起会话 · 恢复 · 接回一个请求（`session-open`）派生的 CLI 面，理由同上。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
     "--session-open",
     // 往会话说一句（`session-say`）派生的 CLI 面（stdin 一段 JSON 当 `args`）。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
     "--session-commands",
     "--session-model",
     "--session-permission",
-    "--session-resume",
     "--session-say",
-    "--sessions-start",
     "--sessions-stop",
     "--sessions-where",
     // `ssh-config-import` 帧命令自动派生的 CLI 面（理由同 `--tasks-list`）。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
@@ -498,9 +492,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--tasks-list",
     // 终端管理 L1 三条帧命令自动派生的 CLI 面（stdin 一段 JSON 当 `args`）。⚠ 新子命令 ⇒ `BUILD_ID` 发版时统一 bump。
     "--terminal-input",
-    // 铸终端名 · 开终端那一串（`terminal-name-mint` / `terminal-ssh`）派生的 CLI 面：原先在 `stream::cli` 那张「只有界面用得着」的表里，
-    //   复核后放出（铸名经会话快照现探；那一串由入参与这台的 ssh 客户端算出）。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
-    "--terminal-name-mint",
+    // 开终端那一串（`terminal-ssh`）派生的 CLI 面：原先在 `stream::cli` 那张「只有界面用得着」的表里，
+    //   复核后放出（那一串由入参与这台的 ssh 客户端算出）。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
     "--terminal-preview",
     "--terminal-ssh",
     "--terminals-list",
@@ -976,13 +969,6 @@ pub const TARGET_GAPS: &[TargetGap] = &[
     },
     TargetGap {
         family: "wire-commands",
-        capability: "session-resume",
-        target: Target::Windows,
-        kind: GapKind::Owed,
-        rationale: "恢复再附着：同 `session-say` 终端没了那一支（在 tmux 里起）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
-    },
-    TargetGap {
-        family: "wire-commands",
         capability: "session-say",
         target: Target::Windows,
         kind: GapKind::Owed,
@@ -1015,13 +1001,6 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         target: Target::Windows,
         kind: GapKind::Owed,
         rationale: "与帧面 `session-permission` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
-    },
-    TargetGap {
-        family: "cli-subcommands",
-        capability: "--session-resume",
-        target: Target::Windows,
-        kind: GapKind::Owed,
-        rationale: "与帧面 `session-resume` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
     },
     TargetGap {
         family: "cli-subcommands",

@@ -1,8 +1,8 @@
 package com.ccmonitor.mobile.core.claude.link
 
+import com.ccmonitor.mobile.core.claude.link.wire.AgentPick
 import com.ccmonitor.mobile.core.claude.link.wire.CommandScope
 import com.ccmonitor.mobile.core.claude.link.wire.ModeSwitchResult
-import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
 import com.ccmonitor.mobile.core.claude.link.wire.SessionAct
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -71,11 +71,12 @@ class SessionsMidTest {
     }
 
     @Test
-    fun `session-new-facts：那一家的权限档清单照原样解`() {
+    fun `session-open-facts：那一家的权限档清单照原样解`() {
         val agents =
-            SessionNewFacts.of(
+            SessionOpenFacts.of(
                 mapOf(
                     "recent" to emptyList<Any>(),
+                    "tmux" to true,
                     "agents" to
                         listOf(
                             mapOf(
@@ -90,8 +91,8 @@ class SessionsMidTest {
                 ),
             )
         val one = agents?.agents?.single()
-        assertEquals(listOf(NewSessionPick("plan", "规划模式")), one?.permissionModes)
-        assertEquals(NewSessionPick("default", "默认"), one?.modelDefault)
+        assertEquals(listOf(AgentPick("plan", "规划模式")), one?.permissionModes)
+        assertEquals(AgentPick("default", "默认"), one?.modelDefault)
         assertEquals("换模型也改此号以后新会话的默认", one?.modelNote)
     }
 }

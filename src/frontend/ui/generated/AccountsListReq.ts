@@ -6,6 +6,6 @@ import type { AgentKind } from "./AgentKind";
  */
 export type AccountsListReq = { 
 /**
- * 这次起会话的是哪一家（线上的 kind，同 `session-new-facts` 给的那一格；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`）。
+ * 这次起会话的是哪一家（线上的 kind，同 `session-open-facts` 给的那一格；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`）。
  */
 agent: AgentKind, };

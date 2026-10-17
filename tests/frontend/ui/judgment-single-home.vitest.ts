@@ -174,8 +174,8 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     rustNeedles: [
       { file: LAUNCH_RS, text: "';' | '|' | '&'", count: 0 },
       { file: "src/frontend/shell/src/history.rs", text: "'-' | '_' | '.' | ' '", count: 0 },
-      // 本机起会话的计划与渲染搬进本机后端 ⇒ 私有那份最可能长回来的地方跟着挪。
-      { file: "src/backend/control/launch_render/local.rs", text: "'-' | '_' | '.' | ' '", count: 0 },
+      // 起会话的渲染住后端 `launch_render/mod.rs` ⇒ 私有那份最可能长回来的地方跟着挪。
+      { file: "src/backend/control/launch_render/mod.rs", text: "'-' | '_' | '.' | ' '", count: 0 },
       { file: "src/backend/control/ccm/plan.rs", text: "free_text_ok(&o.launcher)", count: 0 },
     ],
   },
@@ -234,8 +234,8 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J7: {
     what: "tmux 名派生 ＋ 撞名避让",
     // 翻 `zero`：派生（`name_segment` → `<段>-cc` / `<段>-fork-cc`）＋ 避让只在后端，
-    //   帧命令 `terminal-name-mint`（`control/ccm/mod.rs::TerminalNameMint`，按那台的会话快照避让）；
-    //   界面要名字就问它（`src/frontend/ui/terminal-name-mint.ts`）。TS 那份（`remote-launch.ts` 整份 · `shell-quote.ts::tmuxNameSegment` ·
+    //   起会话时那台自己铸（`control/ccm/mod.rs::terminal_name_mint_with`，按那台的会话快照避让）；
+    //   界面不要名字（`session-open` 回落在哪个会话）。TS 那份（`remote-launch.ts` 整份 · `shell-quote.ts::tmuxNameSegment` ·
     //   `fork-launch.ts::forkTmuxName`）删。
     homes: [
       "src/backend/control/ccm/plan.rs::derive_tmux_name",

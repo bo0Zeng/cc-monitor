@@ -1,4 +1,4 @@
-//! 会话族那几条帧命令的**回包**线上形（`terminal-input` · `session-new` · `launch-render-cli` · `session-new-facts` · `session-model` ·
+//! 会话族那几条帧命令的**回包**线上形（`terminal-input` · `session-open` · `session-open-facts` · `session-model` ·
 //! `session-permission` · `session-commands` · `session-say` · `terminals-list` · `terminal-preview` · `kill` · `history-tail`）—— 两侧同一份：后端按这里的类型回，
 //! 手机嵌的 Rust 核心按这里的类型解（[`decode_reply`]），界面用从这里导出的类型（`src/frontend/ui/generated/`）。
 //! 入参与码还住后端（`control/terminals_wire.rs` 等）：手机交的入参不经这里。
@@ -493,20 +493,6 @@ pub struct Hidden {
     pub said: String,
 }
 
-/// `launch-render-cli` · `launch-local` 的应答：那一行 `ccm …` ＋ 实际用的号（账号 0 / 不指定 ⇒ `null`）。
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
-)]
-pub struct Rendered {
-    /// 那一行 `ccm …`。
-    pub cmd: String,
-    /// 实际用的号（账号库里的那一形；别的 ⇒ `null`）。
-    pub account: Option<LaunchedAccount>,
-}
-
 /// 第一句交进会话的结局（同 `terminal-input` 的应答那几格）。第一句作为启动参数交给那一家 ⇒ 起好了就是 `delivered`（起不成整条失败、走不到这里）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -521,46 +507,6 @@ pub struct FirstSay {
     pub why: Option<String>,
     /// `refused` 时给人看的那一句（写好）；别的 ⇒ `null`。
     pub said: Option<String>,
-}
-
-/// 结局。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
-)]
-#[serde(rename_all = "lowercase")]
-pub enum SessionNewOutcome {
-    /// 在这台 tmux 里后台起好了（`session` 是会话名）。
-    Started,
-    /// 要开一个终端窗口跑 `cmd`（窗口由 monitor 开）。
-    Open,
-}
-
-/// `session-new` 的成品。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
-)]
-pub struct SessionNew {
-    pub outcome: SessionNewOutcome,
-    /// tmux 会话名（`started` 那一形；开窗那一形 ⇒ `null`）。
-    pub session: Option<String>,
-    /// 分叉出来的新会话 sid · 新起时这台先定好的 sid（那一家认先定 sid）；那一家不认 ⇒ `null`（报到之前说不出）。
-    pub sid: Option<String>,
-    /// 开窗那一形要跑的那一行（`started` ⇒ `null`）。
-    pub cmd: Option<String>,
-    /// 实际用的号（账号 0 / 不指定 ⇒ `null`）。
-    pub account: Option<LaunchedAccount>,
-    /// 起的是哪一家。
-    pub agent: String,
-    /// 起在哪个目录（`~` 已按这台的家目录展开：认报到的会话按它）。
-    pub cwd: String,
-    /// 第一句交进去的结局；没给第一句 ⇒ `null`。
-    pub prompt: Option<FirstSay>,
 }
 
 /// `session-open` 落在哪。
@@ -612,18 +558,33 @@ pub struct Opened {
     pub prompt: Option<FirstSay>,
 }
 
-/// `session-new-facts` 的应答。
+/// 放在哪：这台 tmux 里（关终端不断）· 直路（开一个终端直接跑，关了就停）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "lowercase")]
+pub enum Run {
+    Tmux,
+    Direct,
+}
+
+/// `session-open-facts` 的应答。
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
-pub struct NewFacts {
+pub struct OpenFacts {
     /// 这台最近用过的工作目录（各家记录里的，新的在前、同一个目录一次、最多 8 个）。
     pub recent: Vec<RecentDir>,
     /// 这台有没有 tmux（`false` ⇒ 只能开终端窗口）。
     pub tmux: bool,
+    /// 新建框默认「运行于」：同 `session-open {what: new}` 不给 `run` 时落的那一形（有 tmux 就 tmux，分叉照源会话那一种）。
+    pub run: Run,
     /// 这台能起的几家（注册表里由我们起的、默认启动器在这台 `PATH` 上找得到的；注册表序），各带名字与可选的模型 · 权限档。
     pub agents: Vec<AgentFacts>,
     /// 没给 `forkOf` ⇒ `null`。
@@ -658,20 +619,22 @@ pub struct RecentDir {
 )]
 #[serde(rename_all = "camelCase")]
 pub struct AgentFacts {
-    /// 线上的 kind（交回 `session-new.agent` 的那一格）。
+    /// 线上的 kind（交回 `session-open {what: new}` 的 `agent` 那一格）。
     pub kind: String,
     /// 这一家写给人看的名字。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
     pub text: String,
     /// 起会话可选的模型（不选 ＝ 跟着那一家自己的默认）；这一家没声明 ⇒ 空。
-    pub models: Vec<Pick>,
+    pub models: Vec<AgentPick>,
     /// 换模型抽屉的第一项「默认」：会话开着时交 `session-model` 这个值 ⇒ 回到那一家自己的缺省模型（起会话不交它，不选就是默认）；
     /// 这一家没声明 ⇒ `null`。
-    pub model_default: Option<Pick>,
+    pub model_default: Option<AgentPick>,
     /// 抽屉底那一行：换模型的副作用（那一家自己的行为，例如也改这个号以后新会话的默认）；没有 ⇒ `null`。
     pub model_note: Option<String>,
     /// 起会话可选的权限档（不给越过批准那一档）；这一家没有 ⇒ 空。
-    pub permission_modes: Vec<Pick>,
+    pub permission_modes: Vec<AgentPick>,
+    /// 从这台起新会话默认的那一档（这台偏好里设了、且还在上面那张清单里）；没设 ⇒ `null`（跟随那一家自己的默认）。
+    pub permission_default: Option<AgentPick>,
 }
 
 /// 一个可选值：交回去的原值 ＋ 写给人看的字。
@@ -679,10 +642,10 @@ pub struct AgentFacts {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, rename = "NewSessionPick", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
-pub struct Pick {
-    /// 原值（`session-new` 的 `model` / `permissionMode` 收的就是它）。
+pub struct AgentPick {
+    /// 原值（`session-open` 的 `model` / `permissionMode` 收的就是它）。
     pub value: String,
     /// 写给人看的字。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
@@ -766,7 +729,7 @@ pub enum ForkTerminal {
     None,
 }
 
-/// 三格推断的结果（线上 `session-fork` 回复的 `launch`，`session-new-facts` 的 `fork.launch` 同一形）。
+/// 三格推断的结果（线上 `session-fork` 回复的 `launch`，`session-open-facts` 的 `fork.launch` 同一形）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(

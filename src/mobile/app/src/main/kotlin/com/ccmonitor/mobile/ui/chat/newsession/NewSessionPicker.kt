@@ -6,9 +6,9 @@ import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.FilesHome
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.RotationStrategies
-import com.ccmonitor.mobile.core.claude.link.SessionNew
-import com.ccmonitor.mobile.core.claude.link.SessionNewDir
-import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
+import com.ccmonitor.mobile.core.claude.link.SessionOpen
+import com.ccmonitor.mobile.core.claude.link.SessionOpenDir
+import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
 import com.ccmonitor.mobile.core.claude.link.wire.AccountRow
 import com.ccmonitor.mobile.core.claude.link.wire.AgentFacts
 import com.ccmonitor.mobile.core.claude.link.wire.RotStrategyItem
@@ -68,16 +68,16 @@ data class NewSessionUi(
     val agentText: String? get() = agents.firstOrNull { it.kind == agent }?.text
 }
 
-/** 发第一条时交给 `session-new` 的那几格：账号 · 轮换只在改过时有（没改 ⇒ `null`，那台按它的默认）。 */
+/** 发第一条时交给 `session-open` 的那几格：账号 · 轮换只在改过时有（没改 ⇒ `null`，那台按它的默认）。 */
 data class Chosen(
     val cwd: String,
     val agent: String,
     val account: String?,
-    val rotation: SessionNew.Rotation?,
+    val rotation: SessionOpen.Rotation?,
 )
 
 /**
- * 一张新建会话草稿的选项：打开就问那台一次（`session-new-facts` · `accounts-list`；没问到 ⇒ 流接上了再问），四样默认值都是那台的；
+ * 一张新建会话草稿的选项：打开就问那台一次（`session-open-facts` · `accounts-list`；没问到 ⇒ 流接上了再问），四样默认值都是那台的；
  * 点 chip 只为改，改了才多交那一格。账号抽屉打开那一刻再问一次账号 · 额度 · 轮换（关了不再问）。手机不另记默认。
  */
 class NewSessionPicker(
@@ -114,13 +114,13 @@ class NewSessionPicker(
     suspend fun settled() = loaded.await()
 
     private suspend fun loadFacts() {
-        val r = link.call(SessionNewFacts.COMMAND, emptyMap(), READ_MS)
-        val facts = (r as? Reply.Ok)?.let { SessionNewFacts.of(it.data) }
+        val r = link.call(SessionOpenFacts.COMMAND, emptyMap(), READ_MS)
+        val facts = (r as? Reply.Ok)?.let { SessionOpenFacts.of(it.data) }
         if (facts == null) {
-            _state.update { it.copy(factsFailed = copyText("newSession.facts.failed", "machine" to machine, "why" to failed(r, SessionNewFacts.COMMAND))) }
+            _state.update { it.copy(factsFailed = copyText("newSession.facts.failed", "machine" to machine, "why" to failed(r, SessionOpenFacts.COMMAND))) }
             return
         }
-        val agent = SessionNewFacts.pick(facts.agents, storedAgent)?.kind
+        val agent = SessionOpenFacts.pick(facts.agents, storedAgent)?.kind
         _state.update { s ->
             s.copy(
                 agents = facts.agents,
@@ -197,7 +197,7 @@ class NewSessionPicker(
         done: (Boolean) -> Unit = {},
     ) {
         scope.launch {
-            val exists = (link.call(SessionNewDir.COMMAND, SessionNewDir.args(cwd), READ_MS) as? Reply.Ok)?.let { SessionNewDir.of(it.data) }
+            val exists = (link.call(SessionOpenDir.COMMAND, SessionOpenDir.args(cwd), READ_MS) as? Reply.Ok)?.let { SessionOpenDir.of(it.data) }
             _state.update { s ->
                 when (exists) {
                     true -> s.copy(cwd = cwd, recent = s.recent.map { if (it.cwd == cwd) it.copy(missing = false) else it })
@@ -230,7 +230,7 @@ class NewSessionPicker(
     fun chosen(): Chosen {
         val s = _state.value
         val account = s.account?.takeIf { it != s.defaultAccount }
-        val rotation = s.strategies?.let { if (s.rotation != s.forNew) SessionNew.Rotation(s.rotation) else null }
+        val rotation = s.strategies?.let { if (s.rotation != s.forNew) SessionOpen.Rotation(s.rotation) else null }
         return Chosen(s.cwd, s.agent ?: storedAgent.orEmpty(), account, rotation)
     }
 

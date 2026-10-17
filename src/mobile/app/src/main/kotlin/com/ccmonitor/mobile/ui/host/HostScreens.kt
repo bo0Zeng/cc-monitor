@@ -49,7 +49,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.Deploying
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
+import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
 import com.ccmonitor.mobile.core.claude.link.deployFix
 import com.ccmonitor.mobile.core.claude.link.wire.AgentFacts
 import com.ccmonitor.mobile.core.copy.copyText
@@ -384,14 +384,13 @@ fun HostEditorScreen(
     var user by remember { mutableStateOf("") }
     var authRef by remember { mutableStateOf<String?>(null) }
     var authIsPassword by remember { mutableStateOf(false) } // 认证方式：钥匙 / 密码
-    var isWindows by remember { mutableStateOf(false) } // 远端 OS；Windows 走 PowerShell 方言，没有 tmux/Claude
     var password by remember { mutableStateOf("") } // 明文密码，保存时加密
     var extraAddresses by remember { mutableStateOf("") }
     var workingDir by remember { mutableStateOf("") }
     var useTmux by remember { mutableStateOf(false) }
     var autoReconnect by remember { mutableStateOf(true) }
     var group by remember { mutableStateOf("") }
-    // 这台起会话用哪一家：存线上 kind 原值（那台 `session-new-facts` 给的）；没选 ⇒ null。
+    // 这台起会话用哪一家：存线上 kind 原值（那台 `session-open-facts` 给的）；没选 ⇒ null。
     var agentKind by remember { mutableStateOf<String?>(null) }
     var proxyJumpHostId by remember { mutableStateOf<String?>(null) } // 经跳板机（另一台 Host 的 id）
     // 新建直接 Loaded；编辑先 Loading，载入后转 Loaded 或 NotFound（防首帧空表，也防查无时静默新建）。
@@ -411,7 +410,6 @@ fun HostEditorScreen(
                 user = h.username
                 authRef = h.authRef
                 authIsPassword = h.passwordEnc != null
-                isWindows = h.os.equals("windows", ignoreCase = true)
                 if (h.passwordEnc != null) password = vm.hostPassword(h) ?: "" // 回显解密后的密码
                 extraAddresses = h.extraAddresses ?: ""
                 workingDir = h.defaultWorkingDir ?: ""
@@ -487,32 +485,18 @@ fun HostEditorScreen(
             modifier = Modifier.fillMaxWidth(),
         )
         OutlinedTextField(group, { group = it }, label = { Text(copyText("mobHostEdit.field.group")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        // 起会话用哪一家：列那台能起的几家（`session-new-facts`，名字是那台写好的）；那台没连上 ⇒ 列不出，这一行不画。
+        // 起会话用哪一家：列那台能起的几家（`session-open-facts`，名字是那台写好的）；那台没连上 ⇒ 列不出，这一行不画。
         val agents = rememberAgentsOf(hostId)
         if (agents.isNotEmpty()) {
             Text(copyText("mobHostEdit.agent.title"), style = MaterialTheme.typography.labelMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                val picked = SessionNewFacts.pick(agents, agentKind)?.kind
+                val picked = SessionOpenFacts.pick(agents, agentKind)?.kind
                 agents.forEach { a -> ChoiceRow(a.text, a.kind == picked) { agentKind = a.kind } }
             }
         }
         // 开关即 useTmux；文案不说「连接」「tmux」。
         SwitchRow(copyText("mobHostEdit.switch.workspace"), useTmux) { useTmux = it }
         SwitchRow(copyText("mobHostEdit.switch.reconnect"), autoReconnect) { autoReconnect = it }
-
-        // 远端系统：POSIX（Linux/macOS，默认）或 Windows（PowerShell，没有 tmux）。
-        Text(copyText("mobHostEdit.os.title"), style = MaterialTheme.typography.labelMedium)
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            ChoiceRow("Linux/macOS", !isWindows) { isWindows = false }
-            ChoiceRow("Windows", isWindows) { isWindows = true }
-        }
-        if (isWindows) {
-            Text(
-                copyText("mobHostEdit.os.windowsHint"),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
 
         // 认证方式：钥匙或密码，二选一。
         Text(copyText("mobHostEdit.auth.title"), style = MaterialTheme.typography.labelMedium)
@@ -567,7 +551,6 @@ fun HostEditorScreen(
                             autoReconnect = autoReconnect,
                             groupId = group.trim().ifBlank { null },
                             proxyJumpHostId = proxyJumpHostId,
-                            os = if (isWindows) "windows" else null,
                             agentKind = agentKind,
                         )
                     // 密码模式加密进 passwordEnc；钥匙模式清空 passwordEnc（encryptPassword(_, null) 统一处理）。
@@ -665,14 +648,14 @@ private fun BackendRow(hostId: String) {
     }
 }
 
-/** 那台能起的几家（`session-new-facts`）；还没存的新主机 · 那台没连上 · 问不到 ⇒ 空。 */
+/** 那台能起的几家（`session-open-facts`）；还没存的新主机 · 那台没连上 · 问不到 ⇒ 空。 */
 @Composable
 private fun rememberAgentsOf(hostId: String?): List<AgentFacts> {
     val backends = koinInject<HostBackends>()
     val got by androidx.compose.runtime.produceState(emptyList<AgentFacts>(), hostId) {
         if (hostId == null) return@produceState
-        val r = backends.of(hostId).call(SessionNewFacts.COMMAND, emptyMap(), AGENTS_MS)
-        value = (r as? Reply.Ok)?.let { SessionNewFacts.of(it.data)?.agents }.orEmpty()
+        val r = backends.of(hostId).call(SessionOpenFacts.COMMAND, emptyMap(), AGENTS_MS)
+        value = (r as? Reply.Ok)?.let { SessionOpenFacts.of(it.data)?.agents }.orEmpty()
     }
     return got
 }

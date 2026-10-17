@@ -13,7 +13,7 @@ pub(crate) mod footprint_report_face; // 「足迹」那两条成品（typed）�
 pub mod fork_face;
 pub(crate) mod history_face; // 读一份会话记录的那几条（typed）：history-read · -page · -lines · -run · -tail · -branch · -record · sessions-needs
 pub(crate) mod hub_inner_face; // 枢纽问各台的那 8 条内层命令（typed）：名字 · 入参 · 回包取 `assets::hub_wire` 那三样
-pub mod launch_face; // 帧面 `launch-local` / `launch-render-cli` 的宿主壳：交起会话挑号要的事实（账号库 · 上次的号） // 帧面 `session-fork` 的宿主壳：找家目录、交 `control/fork_write`（本体与 CLI `--fork-session` 同一份）
+pub(crate) mod launch_account_face; // 起会话挑号要的事实（账号库 · 上次的号）与起之前预标信任：`session-open` · 换号重启 · 会话里切号同一份
 pub mod login_face; // 在 app 里登录一个号（`login-*`）· 会话外的需手动清单（`manual-list`）
 pub mod plan_face; // 帧面 `plan-list` · `plan-read` · `plan-cell-view`：计划读面要的这台事实（pb 装在哪 · 会话在哪些目录 · id 是哪个会话）
 pub mod plan_return_face; // 帧面 `plan-return`：计划退回（拼那一行 · 判能不能送 · 走 `terminal-input` 的本体 · 记已退回）
@@ -35,7 +35,6 @@ pub mod session_batch_face;
 pub(crate) mod session_commands_face; // 帧面 `session-commands`（typed）：一条会话能用的斜杠命令与 Skill
 pub(crate) mod session_mode_face;
 pub(crate) mod session_model_face; // 帧面 `session-model`（typed）：换模型（送那一行、从记录读回；终端没了记下等恢复） // 帧面 `session-permission`（typed）：切权限档（按循环键、等重画、读回到了为止；终端没了记下等恢复）
-pub mod session_new_face; // 帧面 `session-new` · `session-new-facts` · `session-new-dir`：起新会话框要的这台事实 ＋ 起
-pub(crate) mod session_open_face; // 帧面 `session-open`：起新的 · 恢复 · 接回一个请求（恢复那条的记录 · 分叉源在不在 tmux 由这层读）
+pub(crate) mod session_open_face; // 帧面 `session-open` · `-facts` · `-dir`：起新的 · 恢复 · 接回一个请求，起新会话框要的这台事实与目录那一问
 pub mod session_restart_face;
-pub(crate) mod session_say_face; // 帧面 `session-say`（typed）：往一条会话说一句，在等人 ⇒ 不送，不在等 ⇒ 照 `terminal-input` 送 // 帧面 `session-restart` 的宿主壳：每一步一份批量那份事实、停旧 ＋ 起新拿退出排空的票、两种等待住观测层 // 帧面 `sessions-stop` / `sessions-start` 的宿主壳：把 tmux 名单 · 记录在不在 · 杀 · 建会话那几样交给 control/session_batch
+pub(crate) mod session_say_face; // 帧面 `session-say`（typed）：往一条会话说一句，在等人 ⇒ 不送，不在等 ⇒ 照 `terminal-input` 送 // 帧面 `session-restart` 的宿主壳：每一步一份批量那份事实、停旧 ＋ 起新拿退出排空的票、两种等待住观测层 // 帧面 `sessions-where` / `sessions-stop` 的宿主壳：把 tmux 名单 · 记录在不在 · 杀 · 建会话那几样交给 control/session_batch

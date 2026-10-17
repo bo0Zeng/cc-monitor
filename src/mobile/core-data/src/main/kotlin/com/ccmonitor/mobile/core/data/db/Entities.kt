@@ -3,7 +3,7 @@ package com.ccmonitor.mobile.core.data.db
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
-/** SSH 主机：地址与认证、tmux/Claude 面、重连策略。 */
+/** SSH 主机：地址与认证、tmux/Claude 面、重连策略。那台是什么系统 · shell 方言 · 有没有 tmux 都问那台，不存。 */
 @Entity(tableName = "hosts")
 data class Host(
     @PrimaryKey val id: String,
@@ -26,10 +26,8 @@ data class Host(
     val proxyJumpHostId: String? = null,
     // 密码认证：CryptoBox 加密后 Base64（TEXT，非明文）；非空 → 用密码认证（优先于 authRef）；null = 不用密码。
     val passwordEnc: String? = null,
-    // 远端 OS：null/"posix" = POSIX（bash/sh+tmux，默认）；"windows" = Windows（PowerShell，无 tmux）。命令按 os 走方言。
-    val os: String? = null,
     // 这台起会话用哪一家。旧值（`ClaudeCode` / `Codex`）不迁：那台认不出 ⇒ 当没选。
-    // 存那台 `session-new-facts` 给的线上 kind 原值（主机设置里选的那一家）；没选 ⇒ null。
+    // 存那台 `session-open-facts` 给的线上 kind 原值（主机设置里选的那一家）；没选 ⇒ null。
     val agentKind: String? = null,
 )
 

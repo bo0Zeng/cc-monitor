@@ -58,7 +58,6 @@ pub mod place_self;
 pub mod resident;
 pub mod resolve_query;
 pub(crate) mod session_batch;
-pub(crate) mod session_new;
 pub(crate) mod session_open;
 pub(crate) mod ship_text; // CLI `--text`：回包里写好的格（顶上 `text` · 每一处 `rows`）拼成字，所有命令通用
                           // 起新会话那一趟的票（期限到了再问一次 ⇒ 认出同一趟，不起第二个）。

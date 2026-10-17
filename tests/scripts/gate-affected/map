@@ -94,7 +94,7 @@ tests/frontend/ui/**            coverage  vitest 本体：改它就改了覆盖�
 tests/copy/**                   coverage  文案表的 vitest 与夹具
 tests/naming/**                 coverage  命名判据（vitest）
 tests/shots/**                  coverage,shots  截图场景（TS，tsc 恒跑；vitest 有几份读它）；无头壳的例子源（real/shell_main.rs）与台架编它的那一条也在这
-tests/test-support/**           coverage,e2e  vitest 与 e2e 驱动共用的辅助（launch-cli-golden 等）
+tests/test-support/**           coverage  vitest 共用的辅助
 
 # ── 壳那棵 workspace ─────────────────────────────────────────────────────────────────
 src/frontend/shell/**           shellrs,e2e-local  monitor 包：源码 · build.rs · tauri.conf.json · capabilities · 图标都是编译输入；e2e 读的那几份由规则 ② 另加

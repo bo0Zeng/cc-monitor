@@ -138,7 +138,7 @@ const TERMINAL_SURFACE_FILES: &[(&str, &str)] = &[
     (
         "control/launch_render/ccm_invocation.rs",
         "`ccm …` 调用行的渲染器：它写的是用户终端里那一行 `ccm` 的旗标（终端命令面），不是后端自己分派的 wire 子命令；\
-         接盘判据 `launch_cli_parity_tests::every_rendered_ccm_line_is_accepted_by_the_ccm_argv`（渲出的每一行都过 `argv::parse`）。",
+         接盘判据 `ccm_invocation_tests::every_rendered_ccm_line_is_accepted_by_the_ccm_argv`（渲出的每一行都过 `argv::parse`）。",
     ),
 ];
 
@@ -595,7 +595,7 @@ mod tests {
              它真红就是那条 include 没了或读了别的文件。）"
         );
         // 渲染器那一格的接盘判据：渲出的每一行都过 `argv::parse`。
-        let render_side = include_str!("control/launch_render/launch_cli_parity_tests.rs");
+        let render_side = include_str!("control/launch_render/ccm_invocation_tests.rs");
         assert!(
             render_side.contains("fn every_rendered_ccm_line_is_accepted_by_the_ccm_argv")
                 && render_side.contains("argv::parse("),

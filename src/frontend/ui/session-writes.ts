@@ -3,7 +3,7 @@
  *
  * 本机远端同一条 `chan.call(origin, …)`：`files-delete-session {sid} → {path}`（只收 sid，落点由后端按 sid 在它自己的记录树里找、必须恰是 `<sid>.jsonl`）。
  * 入参 · 回包的类型从后端生成（`generated/TypedCommands.ts`），两端形状由握手时的形状指纹核过。
- * 分叉本身随起新会话那一个请求写（`session-new` 带 `forkFrom`）；分叉源会话那三格是生成类型 `ForkLaunch`（`session-new-facts` 回包里带着）。
+ * 分叉本身随起新会话那一个请求写（`session-open {what: new}` 带 `fork`）；分叉源会话那三格是生成类型 `ForkLaunch`（`session-open-facts` 回包里带着）。
  */
 import { ChanError } from "../../comms/inward/chan";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";

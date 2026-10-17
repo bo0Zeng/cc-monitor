@@ -14,6 +14,10 @@ launchers?: { [key in string]: string }, resumeInTmux?: boolean,
  */
 models?: { [key in string]: string | null }, 
 /**
+ * 某几家新会话的权限档：`{kind: 档 | null}`，`null` ⇒ 删掉那一条。写的时候核在那一家的清单里。
+ */
+permissionModes?: { [key in string]: string | null }, 
+/**
  * 整张上限表（整张换掉）。
  */
 contextLimits?: { [key in string]: number }, 

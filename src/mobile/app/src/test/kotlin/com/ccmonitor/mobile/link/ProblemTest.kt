@@ -21,8 +21,8 @@ class ProblemTest {
 
     @Test
     fun `成品解不出（应答在、形状不对）与应答缺格同一个说法`() {
-        val p = unreadableReply("box", "session-new", "{outcome=started}")
+        val p = unreadableReply("box", "session-open", "{outcome=started}")
         assertEquals(copyText("peerVersion.said.unreadable", "machine" to "box"), p.text)
-        assertTrue(p.detail, p.detail.contains("session-new"))
+        assertTrue(p.detail, p.detail.contains("session-open"))
     }
 }

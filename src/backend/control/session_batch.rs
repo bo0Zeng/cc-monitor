@@ -1,15 +1,13 @@
-//! **一批会话一次问**：「这个 sid 由哪个 tmux 会话在跑」· 停 · 起。tab 栏的单个菜单与批量菜单都走这里（单个 = 一个 sid 的一批）。
+//! **一批会话一次问**：「这个 sid 由哪个 tmux 会话在跑」· 停。tab 栏的单个菜单与批量菜单都走这里（单个 = 一个 sid 的一批）。
 //!
-//! 「这个 sid 此刻在这台 tmux 里是什么样」只在 [`standing`] 判一次，停 / 起 / 菜单就绪三处共用：
-//! 停 = 同 `kill`（三道门、杀句柄、顺手注销 cc-bus）；起 = 逐项走 `session-open` 恢复那一支（[`super::session_open`]）。一个不成不挡下一个。
+//! 「这个 sid 此刻在这台 tmux 里是什么样」只在 [`standing`] 判一次，停 / 菜单就绪 / 起会话（`session-open`）共用：
+//! 停 = 同 `kill`（三道门、杀句柄、顺手注销 cc-bus）。一个不成不挡下一个。
 //!
 //! 要动 tmux / 读记录 / 起 ccm 的几样由入口经 [`Deps`] 交进来（control 不引用 observe），判据交替身。
 
-use super::launch_account::{AccountAsk, AccountUnavailable, LaunchedAccount, Settled};
-use super::launch_render::local;
+use super::launch_account::Settled;
 use super::session_open as open;
-use crate::platform::child::{Child, Deadline};
-use serde_json::Value;
+use crate::platform::child::Deadline;
 use std::collections::BTreeSet;
 
 /// 一批的上界：兜坏输入（一屏 tab 栏放不下这么多），不是兜格式。
@@ -51,12 +49,12 @@ pub(crate) struct Deps<'a> {
     pub(crate) send_into: &'a dyn Fn(&str, &str, &str) -> Result<(), crate::wire::spec::Fail>,
     /// 交一行 ccm（argv，`argv[0]` 是 `ccm`）⇒ `(退出码, stdout, stderr)`。生产那一份起这台后端自己（它就是 ccm）。
     pub(crate) run_ccm: &'a dyn Fn(&[String]) -> Result<(i32, String, String), CmdErr>,
-    /// 基名从哪来 ⇒ 这台铸的新会话名（同 `terminal-name-mint`：按这台此刻的会话名避让）。
+    /// 基名从哪来 ⇒ 这台铸的新会话名（`control::ccm::terminal_name_mint_with`：按这台此刻的会话名避让）。
     pub(crate) mint: &'a dyn Fn(NameBase) -> Result<String, CmdErr>,
     /// 这台 ccm 会哪些（渲那一行用）。
     pub(crate) caps: &'a BTreeSet<String>,
     /// 本机那一形的事实（平台 · 目录在不在）。
-    pub(crate) local_facts: local::Facts,
+    pub(crate) host: super::launch_render::Host,
     /// 起会话挑号要的事实（这台的账号库 · 某条会话上次用的号）。
     pub(crate) accounts: &'a super::launch_account::Facts<'a>,
     /// sid ⇒ 此刻持着它的活进程 pid（这台的 pidfile，升序）。起之前问：已有在写的 ⇒ 不再起一个。
@@ -91,9 +89,6 @@ pub(crate) fn listed(deps: &Deps) -> Result<Option<Vec<TmuxEntry>>, CmdErr> {
     })
 }
 
-/// 原因码：这条会话已有活进程在写，没起（再起一个就是两个进程同写一份记录）。
-pub(crate) const ALREADY_LIVE: &str = "session_already_live";
-
 /// pid 列表的那一串（`detail` 与话里同一形）。
 pub(crate) fn pids_said(pids: &[u32]) -> String {
     pids.iter()
@@ -102,7 +97,7 @@ pub(crate) fn pids_said(pids: &[u32]) -> String {
         .join(", ")
 }
 
-/// 铸名的基名从哪来（同 `terminal-name-mint` 的 `cwd` / `forkOf`）。
+/// 铸名的基名从哪来：工作目录 · 分叉的源。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NameBase<'a> {
     /// 工作目录 ⇒ `<项目名>-cc`。
@@ -123,15 +118,9 @@ pub(crate) struct Answer {
     /// 落在哪个 tmux 会话上（停 · 起在 tmux 里 · 本机开终端那一形）。
     pub(crate) session: Option<String>,
     pub(crate) bus: Option<super::cc_bus::BusNote>,
-    /// 开终端那一形要跑的那一行。
-    pub(crate) cmd: Option<String>,
-    /// 起的那一条实际用的号（`launch-local` 应答那一格同形；停 / 没起 ⇒ `null`）。
-    pub(crate) account: Option<LaunchedAccount>,
-    /// 选不了号那一项的那一形（同 `account_unavailable` 的 `data`；别的 ⇒ `null`）。
-    pub(crate) unavailable: Option<AccountUnavailable>,
 }
 
-/// `sessions-stop` / `sessions-start` 的应答：逐个结果，与入参同序。
+/// `sessions-stop` 的应答：逐个结果，与入参同序。
 #[derive(Debug, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -152,9 +141,7 @@ pub(crate) struct Outcome {
     pub(crate) outcome: &'static str,
     /// 跳过 / 失败的原因码（做成了 ⇒ `null`）。
     pub(crate) why: Option<String>,
-    /// 那一个的原话。
-    pub(crate) detail: String,
-    /// 停的那一项没做成的那一句（失败的与 `kill` 被拒同一张表）；做成了 / 起 ⇒ `null`。
+    /// 停的那一项没做成的那一句（失败的与 `kill` 被拒同一张表）；做成了 ⇒ `null`。
     pub(crate) said: Option<String>,
     /// 失败那一个的复制详情（码 ＋ 原话；别的 ⇒ 空串）。
     pub(crate) copy_detail: String,
@@ -162,12 +149,6 @@ pub(crate) struct Outcome {
     pub(crate) session: Option<String>,
     /// 停做成了那一个：同 `kill` 应答的 `bus`。
     pub(crate) bus: Option<super::cc_bus::BusNote>,
-    /// 开终端那一形要跑的那一行。
-    pub(crate) cmd: Option<String>,
-    /// 起的那一条实际用的号（停 / 没起 ⇒ `null`）。
-    pub(crate) account: Option<LaunchedAccount>,
-    /// 选不了号的那一项：带要的号与替代（别的 ⇒ `null`）。
-    pub(crate) unavailable: Option<AccountUnavailable>,
 }
 
 /// `sessions-where` 的应答：逐个结果，与入参同序。
@@ -229,9 +210,6 @@ impl Answer {
             detail,
             session: None,
             bus: None,
-            cmd: None,
-            account: None,
-            unavailable: None,
         }
     }
     fn skipped(sid: &str, code: &str, detail: String) -> Self {
@@ -243,36 +221,28 @@ impl Answer {
     fn done(sid: &str) -> Self {
         Self::new(sid, "done", None, String::new())
     }
-    fn with_unavailable(self, unavailable: Option<AccountUnavailable>) -> Self {
-        Self {
-            unavailable,
-            ..self
-        }
-    }
-    /// `cmd`：`sessions-stop` / `sessions-start`。停的每个没做成的那一项带 `said`（失败那几句与单条结束同一张表，
-    /// [`crate::control::kill::said`]）；失败那一项另带 `copyDetail`（复制详情：码 ＋ 那一项的原话）。
-    fn to_wire(self, cmd: &str) -> Outcome {
+    /// 停的每个没做成的那一项带 `said`（失败那几句与单条结束同一张表，[`crate::control::kill::said`]）；
+    /// 失败那一项另带 `copyDetail`（复制详情：码 ＋ 那一项的原话）。
+    fn to_wire(self) -> Outcome {
         let failed = self.outcome == "failed";
         let said = match self.why.as_deref() {
-            Some(why) if cmd == "sessions-stop" => Some(stop_said(why, &self)),
+            Some(why) => Some(stop_said(why, &self)),
             _ => None,
         };
         let copy_detail = match (&self.why, failed) {
-            (Some(why), true) => crate::wire::detail::of(Some(cmd), why, Some(&self.detail)),
+            (Some(why), true) => {
+                crate::wire::detail::of(Some("sessions-stop"), why, Some(&self.detail))
+            }
             _ => String::new(),
         };
         Outcome {
             sid: self.sid,
             outcome: self.outcome,
             why: self.why,
-            detail: self.detail,
             said,
             copy_detail,
             session: self.session,
             bus: self.bus,
-            cmd: self.cmd,
-            account: self.account,
-            unavailable: self.unavailable,
         }
     }
 }
@@ -409,7 +379,7 @@ pub(crate) fn stop(req: &SidsReq, deps: &Deps) -> Result<Batched, CmdErr> {
     let rows = listed(deps)?;
     let results: Vec<Outcome> = sids
         .iter()
-        .map(|sid| stop_one(sid, rows.as_deref(), deps).to_wire("sessions-stop"))
+        .map(|sid| stop_one(sid, rows.as_deref(), deps).to_wire())
         .collect();
     Ok(Batched { results })
 }
@@ -443,194 +413,6 @@ fn stop_one(sid: &str, rows: Option<&[TmuxEntry]>, deps: &Deps) -> Answer {
             }
         }
     }
-}
-
-/// `sessions-start` 一项的入参。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct StartItemReq {
-    /// 会话 id。
-    pub(crate) sid: String,
-    /// 那一项的工作目录。
-    pub(crate) cwd: String,
-    /// 用哪个号：缺 ＝ 跟随。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) account: Option<AccountAsk>,
-    /// 分叉出来的那一条 ⇒ 必铸新终端名。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) fresh_terminal: Option<bool>,
-    /// 源会话 sid（只许与 `fresh_terminal: true` 一起）：新名从源会话此刻所在终端的名字铸。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) fork_of: Option<String>,
-}
-
-fn item_of(v: &StartItemReq) -> Result<open::Item, CmdErr> {
-    if !shell_quote_core::session_id_ok(&v.sid) {
-        return Err(bad(&format!("not a session id: {:?}", v.sid)));
-    }
-    let fresh = v.fresh_terminal.unwrap_or(false);
-    let fork_of = match v.fork_of.as_deref() {
-        None => None,
-        Some(s) if !shell_quote_core::session_id_ok(s) => {
-            return Err(bad("`fork_of` must be a session id"))
-        }
-        Some(_) if !fresh => return Err(bad("`fork_of` goes with `fresh_terminal: true`")),
-        Some(s) => Some(s.to_string()),
-    };
-    Ok(open::Item {
-        sid: v.sid.clone(),
-        cwd: v.cwd.clone(),
-        // 缺席 ＝ 跟随。
-        account: v.account.clone().unwrap_or(AccountAsk::Follow),
-        fresh,
-        fork_of,
-        say: None,
-        model: None,
-        permission_mode: None,
-    })
-}
-
-/// `sessions-start` 的起法：在 tmux 里后台起 · 只渲那一行交回（窗口由界面开）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum StartMode {
-    Tmux,
-    Window,
-}
-
-/// `sessions-start` 的入参：整批一份的那几样 ＋ 逐项。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct SessionsStartReq {
-    /// `tmux`（在 tmux 里后台起）· `window`（只渲那一行交回，窗口由界面开）。
-    pub(crate) mode: StartMode,
-    /// 这台是不是界面所在那台（开终端那一形按它选本机 / 远端那一行）。
-    pub(crate) local: bool,
-    /// 整批一家（线上的 kind）。启动命令 · 模型表这台自己读（`prefs.json`），不随请求交。
-    pub(crate) agent: String,
-    /// 要起的会话（1–64 项，sid 不重复）。
-    pub(crate) items: Vec<StartItemReq>,
-    /// 自报的前端，同 `kill`。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) client: Option<String>,
-}
-
-/// `sessions-start`：逐项走 `session-open` 恢复那一支（[`open::resume_item`]），与入参同序答。
-pub(crate) fn start(req: &SessionsStartReq, deps: &Deps) -> Result<Batched, CmdErr> {
-    if req.items.is_empty() || req.items.len() > MAX_BATCH {
-        return Err(bad(&format!("`items` must hold 1..={MAX_BATCH} entries")));
-    }
-    let items = req
-        .items
-        .iter()
-        .map(item_of)
-        .collect::<Result<Vec<_>, _>>()?;
-    for (i, it) in items.iter().enumerate() {
-        if items[..i].iter().any(|x| x.sid == it.sid) {
-            return Err(bad(&format!("duplicate session id: {:?}", it.sid)));
-        }
-    }
-    let run = match req.mode {
-        StartMode::Tmux => {
-            // 名单看不见 ⇒ 整条不成（同别的先列名单的命令）。
-            listed(deps)?;
-            open::Run::Tmux
-        }
-        StartMode::Window => open::Run::Direct,
-    };
-    let results = items
-        .iter()
-        .map(|it| {
-            outcome_of(
-                &it.sid,
-                open::resume_item(it, &req.agent, run, req.local, deps),
-            )
-            .to_wire("sessions-start")
-        })
-        .collect();
-    Ok(Batched { results })
-}
-
-/// `session-open` 那一项的结局 ⇒ 批量那一形（在跑 ⇒ 跳过；码照旧名）。
-fn outcome_of(sid: &str, r: Result<open::Opened, open::Failed>) -> Answer {
-    match r {
-        Ok(o) => match o.landed {
-            open::Landed::Running => {
-                let why = if o.note.is_some() {
-                    "ambiguous"
-                } else {
-                    "running"
-                };
-                Answer {
-                    session: o.session.clone(),
-                    ..Answer::skipped(sid, why, o.session.unwrap_or_default())
-                }
-            }
-            open::Landed::Window => Answer {
-                cmd: o.line,
-                account: o.account,
-                ..Answer::done(sid)
-            },
-            _ => Answer {
-                session: o.session,
-                account: o.account,
-                ..Answer::done(sid)
-            },
-        },
-        Err((code, said, data, raw)) => {
-            let detail = raw.unwrap_or(said);
-            match code {
-                "account_unavailable" => {
-                    let u = data
-                        .and_then(|d| {
-                            serde_json::from_value::<super::session_new::SessionNewRefusal>(d).ok()
-                        })
-                        .and_then(|r| r.unavailable);
-                    let requested = u.as_ref().map_or(detail, |u| u.requested.clone());
-                    Answer::skipped(sid, code, requested).with_unavailable(u)
-                }
-                "record_gone" => Answer::skipped(sid, code, detail),
-                "already_live" => Answer::skipped(sid, ALREADY_LIVE, detail),
-                "place_unavailable" => Answer::skipped(sid, "no_tmux", String::new()),
-                "tmux_taken" => Answer {
-                    session: Some(detail.clone()),
-                    ..Answer::failed(sid, ("name_taken", detail))
-                },
-                _ => Answer::failed(sid, (code, detail)),
-            }
-        }
-    }
-}
-
-/// 当 ccm 起自己那一趟的期限：界面等 `sessions-start` 的预算是 10 s ＋ 每个 6 s（单个 16 s），收一档到 15 s。
-const SELF_AS_CCM_WITHIN: Deadline = Deadline::secs(15);
-
-/// 交一行 ccm：这台后端自己就是 ccm（同一个二进制，argv 不过 shell）。不接进去（`--detach`），等它退出、收它的话。
-/// 去掉 `TMUX` / `TMUX_PANE`：单个那一项是在一个新开的终端里跑这一行，那里不在 tmux 里。
-/// 失败 ⇒ 单个那一条的 `(码, 原话)`：起不来 ⇒ `start_failed`；过了期限 ⇒ `child_timed_out`。
-pub(crate) fn run_self_as_ccm(argv: &[String]) -> Result<(i32, String, String), CmdErr> {
-    let me = std::env::current_exe().map_err(|e| ("start_failed", e.to_string()))?;
-    let out = Child::new(me)
-        .args(argv.iter().skip(1))
-        .env_remove("TMUX")
-        .env_remove("TMUX_PANE")
-        .run(SELF_AS_CCM_WITHIN)
-        .map_err(|e| e.into_cmd_err("start_failed", |e| e.to_string()))?;
-    Ok((
-        out.status.code().unwrap_or(-1),
-        String::from_utf8_lossy(&out.stdout).into_owned(),
-        String::from_utf8_lossy(&out.stderr).into_owned(),
-    ))
 }
 
 #[cfg(test)]

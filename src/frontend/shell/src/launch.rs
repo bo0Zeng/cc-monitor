@@ -131,7 +131,7 @@ pub async fn terminal_dial(origin: String) -> Result<serde_json::Value, Said> {
 }
 
 /// **在本机开一个终端窗口跑 `cmd`**（工作目录 `cwd`，不在就不设）—— monitor 在起会话这件事上只剩这一下。
-/// 那一串由本机后端出成品（帧命令 `launch-local`：计划 · 账号前缀 · 中转前缀 · 身份 token 全在那里），这里不判、不拼。
+/// 那一串由本机后端出成品（帧命令 `session-open` 回包里的 `line`），这里不判、不拼。
 /// 开窗同 [`open_terminal_window`]（[`open_local`](crate::platform::terminal::open_local)，结局同形），多一个起始目录。阻塞那一截不占 IPC 线程。
 #[tauri::command]
 pub async fn open_local_terminal(
