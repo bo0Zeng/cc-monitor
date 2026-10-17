@@ -25,7 +25,8 @@ import { ChanError } from "../../../src/comms/inward/chan";
 import { answerNeeds } from "../../../src/frontend/ui/answer-reads";
 
 const enc = (v: unknown) => new TextEncoder().encode(JSON.stringify(v));
-const refused = (code: string, message: string) => new ChanError({ layer: "peer", why: "refused", body: enc({ code, message }) }, "d1");
+// 被拒那一句 monitor 照对端那一句原样交（`ChanError.message`）；界面不再从体里另取。
+const refused = (code: string, message: string) => new ChanError({ layer: "peer", why: "refused", body: enc({ code, message }) }, message, "d1");
 
 beforeEach(() => {
   calls.length = 0;
@@ -57,10 +58,9 @@ describe("needs-answer", () => {
     };
     expect(await answerNeeds("devbox", "s1", { ask: "a", choice: "x" })).toEqual({ kind: "failed", said: "核心·该项不可选", detail: "d1" });
     reply = async () => {
-      throw new ChanError({ layer: "hop", at: { idx: 1, tag: "open" }, reach: "NotSent", why: "Unreachable" }, "d2");
+      throw new ChanError({ layer: "hop", at: { idx: 1, tag: "open" }, reach: "NotSent", why: "Unreachable" }, "壳·离线", "d2");
     };
-    const r = await answerNeeds("devbox", "s1", { ask: "a", choice: "allow" });
-    expect(r.kind).toBe("failed");
+    expect(await answerNeeds("devbox", "s1", { ask: "a", choice: "allow" })).toEqual({ kind: "failed", said: "壳·离线", detail: "d2" });
     // 回包认不出那一层不在这里判：needs-answer 是 typed 命令，形状由握手指纹管（第 8 批）。
   });
 });

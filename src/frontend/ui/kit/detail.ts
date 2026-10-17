@@ -39,6 +39,11 @@ export function writtenSaid(e: unknown): string | null {
   return e instanceof Error && typeof (e as { detail?: unknown }).detail === "string" && e.message.trim() !== "" ? e.message : null;
 }
 
+/** 一次失败给人看的那一句，没有界面那句 `title` 可兜时用：出错那一端写好的 ⇒ 那一句；别的 ⇒ 它自己的 `message`。 */
+export function saidOf(e: unknown): string {
+  return writtenSaid(e) ?? (e instanceof Error ? e.message : String(e));
+}
+
 /** 行内那一句报错（一块里的状态行 · 一行下面那句红字）：[`failSaid`] 定那一句，有详情 ⇒ 后面跟［复制详情］。 */
 export function sayFailure(el: HTMLElement, title: string, e: unknown): void {
   sayWithDetail(el, failSaid(title, e), detailOf(e));

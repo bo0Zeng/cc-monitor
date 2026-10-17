@@ -590,14 +590,13 @@ fn vis2_pinning_asks_the_backend_machine_table_for_one_if_empty_cell() {
         }] })
     );
     assert_eq!(
-        pin_outcome(Ok(serde_json::json!({"kept": 0, "pinned": []}))),
-        Ok(PinWrite::Written)
+        pin_outcome(&serde_json::json!({"kept": 0, "pinned": []})),
+        PinWrite::Written
     );
     assert_eq!(
-        pin_outcome(Ok(serde_json::json!({"kept": 1, "pinned": []}))),
-        Ok(PinWrite::AlreadySet)
+        pin_outcome(&serde_json::json!({"kept": 1, "pinned": []})),
+        PinWrite::AlreadySet
     );
-    assert_eq!(pin_outcome(Err("认不出".into())), Err("认不出".to_string()));
 }
 
 /// 默认转严格：盘上那一份当 `saved` 一并交过去（固化之后，手里那份起来时读的 `cfg` 还没有指纹也照样转严格）——

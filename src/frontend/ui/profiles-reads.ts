@@ -12,8 +12,7 @@
  * 合并 · 校验 · 标签 · 值怎么说全在那台后端。入参 · 回包都是后端类型生成的（`generated/`），
  * 回包形状由握手时的形状指纹管，这里不逐格判。
  */
-import { ChanError } from "../../comms/inward/chan";
-import { budgetWithin, callTyped, refusalOf, saidFrom } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, refusalIn } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import type { ProfileForm as ProfileFormWire } from "./generated/ProfileForm";
 import type { ProfileSlotId } from "./generated/ProfileSlotId";
@@ -24,6 +23,7 @@ import type { ProfileAffected } from "./generated/ProfileAffected";
 import type { ProfileBase } from "./generated/ProfileBase";
 import type { ProfileOp as ProfileOpWire } from "./generated/ProfileOp";
 import type { ProfilesWriteDone } from "./generated/ProfilesWriteDone";
+import { saidOf } from "./kit/detail";
 
 /** 一段的表单：`null` / `false` ＝ 继承（没写进这一段）。 */
 export type ProfileForm = ProfileFormWire;
@@ -48,13 +48,13 @@ export class ProfilesStale extends Error {}
 /** 五问的期限：读一份小文件、合并几层、写一份（秒级）。给 30 秒。 */
 const PROFILES_BUDGET_MS = 30_000;
 
-const said = (e: unknown, origin: Origin): Error => new Error(saidFrom(e, origin));
+const said = (e: unknown): Error => new Error(saidOf(e));
 
 export async function readProfiles(origin: Origin): Promise<ProfilesBook> {
   try {
     return await callTyped(origin, "profiles-read", {}, budgetWithin(PROFILES_BUDGET_MS));
   } catch (e) {
-    throw said(e, origin);
+    throw said(e);
   }
 }
 
@@ -62,7 +62,7 @@ export async function resolveProfile(origin: Origin, name: string, edit: Profile
   try {
     return await callTyped(origin, "profiles-resolve", { name, edit, at }, budgetWithin(PROFILES_BUDGET_MS));
   } catch (e) {
-    throw said(e, origin);
+    throw said(e);
   }
 }
 
@@ -71,7 +71,7 @@ export async function profileImpact(origin: Origin, changes: ProfileOp[]): Promi
     const { affected } = await callTyped(origin, "profiles-impact", { changes }, budgetWithin(PROFILES_BUDGET_MS));
     return affected;
   } catch (e) {
-    throw said(e, origin);
+    throw said(e);
   }
 }
 
@@ -80,7 +80,7 @@ export async function profileBases(origin: Origin, name: string): Promise<Base[]
     const { bases } = await callTyped(origin, "profiles-bases", { name }, budgetWithin(PROFILES_BUDGET_MS));
     return bases;
   } catch (e) {
-    throw said(e, origin);
+    throw said(e);
   }
 }
 
@@ -89,10 +89,9 @@ export async function writeProfiles(origin: Origin, changes: ProfileOp[], finger
   try {
     return await callTyped(origin, "profiles-write", { changes, fingerprint }, budgetWithin(PROFILES_BUDGET_MS));
   } catch (e) {
-    const err = e instanceof ChanError ? e.error : null;
-    if (err && err.layer === "peer" && err.why === "refused" && refusalOf(err.body)?.code === "stale") {
-      throw new ProfilesStale(saidFrom(e, origin));
+    if (refusalIn(e)?.code === "stale") {
+      throw new ProfilesStale(saidOf(e));
     }
-    throw said(e, origin);
+    throw said(e);
   }
 }

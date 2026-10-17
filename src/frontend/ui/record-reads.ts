@@ -21,7 +21,7 @@
  * 按偏移取一段 · 按行号取一段交「折起那一行」那份声明（`src/shared/views/folded-record.json`：省掉工具入参 · 结果正文 · 逐段改动 · 一步展开那一格；
  * 壳的旁路快照交同一份）；按记录 id 取回那一行不交（展开那一下要的就是全文）。
  */
-import { budgetWithin, callTyped, saidFrom } from "./ipc/chan-caller";
+import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import type { JsonlLinePayload } from "./generated/JsonlLinePayload";
 import type { LineRecord } from "./generated/LineRecord";
@@ -33,6 +33,7 @@ import type { RecordLine } from "./generated/RecordLine";
 import type { DriftFaceReport } from "./generated/DriftFaceReport";
 import { copyText } from "./copy-table";
 import FOLDED from "../../shared/views/folded-record.json";
+import { saidOf } from "./kit/detail";
 
 /** 一页子运行记录（后端 `faces/history_face.rs` 的 `history-run`，类型从后端生成）。 */
 export type RunPage = HistoryRun;
@@ -73,12 +74,12 @@ export function linesOf(origin: Origin, v: HistoryLines): SessionLinesPage {
   return { from: v.from, next: v.next, eof: v.eof, payloads: v.lines.map((l) => payloadOf(origin, l)) };
 }
 
-/** typed 那几条的一问：回包按类型用（形状由握手指纹管）；失败 ⇒ 抛一个给人看的 `Error`（`ipc/chan-caller.ts::saidFrom`）。 */
-async function asked<T>(origin: Origin, reply: Promise<T>): Promise<T> {
+/** typed 那几条的一问：回包按类型用（形状由握手指纹管）；失败 ⇒ 抛一个给人看的 `Error`（那一句 monitor 写好，`kit/detail.ts::saidOf` 取）。 */
+async function asked<T>(reply: Promise<T>): Promise<T> {
   try {
     return await reply;
   } catch (e) {
-    throw new Error(saidFrom(e, origin));
+    throw new Error(saidOf(e));
   }
 }
 
@@ -107,7 +108,7 @@ async function readRangeAs(
   let at = offset;
   let seq = seqBase;
   for (;;) {
-    const page = pageOf(origin, await asked(origin, callTyped(origin, "history-page", { path: jsonlPath, offset: at, until, seq }, budget, view)));
+    const page = pageOf(origin, await asked(callTyped(origin, "history-page", { path: jsonlPath, offset: at, until, seq }, budget, view)));
     // 逐条接，不展开成实参：一页按字节算（1 MiB），短行能有几十万行，超过 V8（WebView2）一次调用的实参上限会抛 RangeError。
     for (const p of page.payloads) out.push(p);
     if (page.eof || page.next <= at) return out;
@@ -149,7 +150,7 @@ export async function readLines(
 ): Promise<SessionLinesPage> {
   const budget = budgetWithin(leftMs);
   const req = until === undefined ? { path: jsonlPath, from } : { path: jsonlPath, from, until };
-  return linesOf(origin, await asked(origin, callTyped(origin, "history-lines", req, budget, FOLDED)));
+  return linesOf(origin, await asked(callTyped(origin, "history-lines", req, budget, FOLDED)));
 }
 
 /** 一个子运行要读哪一个：子运行本身（运行表里那一格）‖ 派出它的那次工具调用（后端在父记录里找派出链接）。 */
@@ -158,7 +159,7 @@ export type RunWhich = { run: string; tool?: string } | { run?: string; tool: st
 /** **一个子运行的记录，一页**（按运行读，通用命令 `history-run`）：父记录 ＋ 哪一个 ＋ 从哪个字节起。 */
 export async function loadRunPage(origin: Origin, parentJsonlPath: string, which: RunWhich, from = 0): Promise<RunPage> {
   const budget = budgetWithin(PIECE_BUDGET_MS);
-  return await asked(origin, callTyped(origin, "history-run", { parent: parentJsonlPath, ...which, from }, budget));
+  return await asked(callTyped(origin, "history-run", { parent: parentJsonlPath, ...which, from }, budget));
 }
 
 /** **一份记录的主线外清单**（冷读一次；之后的变化由实时帧 `branch` 说）：那台按页给，照 `next` 接着问、拼成一份。 */
@@ -167,7 +168,7 @@ export async function readBranch(origin: Origin, jsonlPath: string): Promise<Bra
   let at: number | null = 0;
   let end = 0;
   while (at !== null) {
-    const page: Branch = await asked(origin, callTyped(origin, "history-branch", { path: jsonlPath, from: at }, budgetWithin(PIECE_BUDGET_MS)));
+    const page: Branch = await asked(callTyped(origin, "history-branch", { path: jsonlPath, from: at }, budgetWithin(PIECE_BUDGET_MS)));
     off.push(...page.off);
     end = page.end;
     at = page.next ?? null;
@@ -178,6 +179,6 @@ export async function readBranch(origin: Origin, jsonlPath: string): Promise<Bra
 /** **那台后端的漂移账**（看不懂的记录类型）。 */
 export async function readRecordDrift(origin: Origin): Promise<RecordDriftFace[]> {
   const budget = budgetWithin(DRIFT_BUDGET_MS);
-  const { faces } = await asked(origin, callTyped(origin, "drift-report", {}, budget));
+  const { faces } = await asked(callTyped(origin, "drift-report", {}, budget));
   return faces;
 }

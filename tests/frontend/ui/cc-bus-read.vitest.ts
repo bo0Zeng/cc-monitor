@@ -11,7 +11,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
 import { readInbox, readState } from "../../../src/frontend/ui/cc-bus-control";
-import { ControlError } from "../../../src/frontend/ui/control-said";
+import { ChanError } from "../../../src/comms/inward/chan";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, refusedReply, type ChanCallArgs } from "../../test-support/chan-fake";
 
@@ -49,8 +49,8 @@ describe("SH1 · 驾驶舱读面：经通道问、失败说清", () => {
         throw refusedReply(code, `detail-${code}`);
       });
       const e = await readInbox("devbox", "alpha_cc").catch((x: unknown) => x);
-      expect(e, code).toBeInstanceOf(ControlError);
-      said.add((e as ControlError).message);
+      expect(e, code).toBeInstanceOf(ChanError);
+      said.add((e as ChanError).message);
     }
     expect(said.size).toBe(codes.length);
   });

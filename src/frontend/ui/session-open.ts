@@ -4,10 +4,9 @@
  * 新建框的失败按格落在框里（它自己排），成了同样交 [`landOpened`]。「说不清不恢复」归标签页那一侧：连接断了是界面唯一自己知道的事。
  */
 import { ChanError } from "../../comms/inward/chan";
-import { budgetWithin, callTyped, machineName, refusalOf } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, machineName, refusalIn } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
-import { saidOfTransport } from "./control-said";
-import { detailOf } from "./kit/detail";
+import { detailOf, saidOf } from "./kit/detail";
 import { exactKeys, isObj } from "./ipc/decode";
 import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
@@ -58,16 +57,14 @@ export async function askOpen(origin: Origin, req: SessionOpenReq): Promise<Open
     return { kind: "opened", opened: await callTyped(origin, "session-open", req, budgetWithin(OPEN_BUDGET_MS)) };
   } catch (e) {
     const detail = detailOf(e);
-    if (!(e instanceof ChanError)) return { kind: "unreachable", said: String(e), detail };
-    const err = e.error;
-    if (err.layer === "peer" && err.why === "refused") {
-      const r = refusalOf(err.body);
-      if (r?.code === "launch_pending") return { kind: "pending", said: r.message, detail };
-      if (r) return { kind: "refused", code: r.code, said: r.message, ...refusalData(r.data), detail };
-    }
+    const r = refusalIn(e);
+    if (r?.code === "launch_pending") return { kind: "pending", said: saidOf(e), detail };
+    if (r) return { kind: "refused", code: r.code, said: saidOf(e), ...refusalData(r.data), detail };
     // 发出去了、没等到回话 ⇒ 结果未知，不说失败。
-    if (err.layer === "hop" && err.reach !== "NotSent") return { kind: "timeout", said: copyText("sessionOpen.timeout.title", { machine: machineName(origin) }), detail };
-    return { kind: "unreachable", said: saidOfTransport(origin, err), detail };
+    if (e instanceof ChanError && e.error.layer === "hop" && e.error.reach !== "NotSent") {
+      return { kind: "timeout", said: copyText("sessionOpen.timeout.title", { machine: machineName(origin) }), detail };
+    }
+    return { kind: "unreachable", said: saidOf(e), detail };
   }
 }
 

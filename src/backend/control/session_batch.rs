@@ -154,7 +154,7 @@ pub(crate) struct Outcome {
     pub(crate) why: Option<String>,
     /// 那一个的原话。
     pub(crate) detail: String,
-    /// 停失败那一个的那一句（与 `kill` 被拒同一张表）；别的 ⇒ `null`。
+    /// 停的那一项没做成的那一句（失败的与 `kill` 被拒同一张表）；做成了 / 起 ⇒ `null`。
     pub(crate) said: Option<String>,
     /// 失败那一个的复制详情（码 ＋ 原话；别的 ⇒ 空串）。
     pub(crate) copy_detail: String,
@@ -249,15 +249,12 @@ impl Answer {
             ..self
         }
     }
-    /// `cmd`：`sessions-stop` / `sessions-start`。失败那一项多两格：`said`（停的那一句与单条结束同一张表，[`crate::control::kill::said`]；
-    /// 起的那几句要那台的称呼，界面说）· `copyDetail`（复制详情：码 ＋ 那一项的原话）。
+    /// `cmd`：`sessions-stop` / `sessions-start`。停的每个没做成的那一项带 `said`（失败那几句与单条结束同一张表，
+    /// [`crate::control::kill::said`]）；失败那一项另带 `copyDetail`（复制详情：码 ＋ 那一项的原话）。
     fn to_wire(self, cmd: &str) -> Outcome {
         let failed = self.outcome == "failed";
-        let said = match (&self.why, failed && cmd == "sessions-stop") {
-            (Some(why), true) => Some(crate::control::kill::said(
-                self.session.as_deref().unwrap_or_default(),
-                why,
-            )),
+        let said = match self.why.as_deref() {
+            Some(why) if cmd == "sessions-stop" => Some(stop_said(why, &self)),
             _ => None,
         };
         let copy_detail = match (&self.why, failed) {
@@ -394,6 +391,16 @@ pub(crate) fn where_(req: &SidsReq, deps: &Deps) -> Result<Whereabouts, CmdErr> 
         rows.is_some(),
     );
     Ok(Whereabouts { results, run })
+}
+
+/// 停的那一项没做成的那一句：跳过的三种这里说，停了没成的与单条结束同一张表。
+fn stop_said(why: &str, a: &Answer) -> String {
+    match why {
+        "no_tmux" => copy_core::copy_text("tabBatch.why.noTmux", &[]),
+        "not_in_tmux" => copy_core::copy_text("tabBatch.why.notInTmux", &[]),
+        "ambiguous" => copy_core::copy_text("tabBatch.why.ambiguous", &[("names", &a.detail)]),
+        _ => crate::control::kill::said(a.session.as_deref().unwrap_or_default(), why),
+    }
 }
 
 /// `sessions-stop`：逐个停，与入参同序答。

@@ -52,7 +52,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   「拿到了那一份 data」与「三态里的另外两态」在类型上分得开。
     // **上面那一行（`find.rs`）退役了**：文件窗口成了独立进程，只经通道说 `call`，
     //   搜索不再直连进程级登记表（`inbound_client`），分层判定在通道宿主那一侧（`host.rs`，
-    //   走分流器的分层出口）。窗口一侧只把分好层的结果翻成一句人话（`filewin/source.rs::said`）。
+    //   走分流器的分层出口）。窗口一侧只照抄通道那一句（`comms_inward::chan::said`）。
     //   ⇒ 两份新发现的 `.call(` 都**不做回落决策、也碰不到 inbound**，牙与纯路由器那一档同一套：
     // · `source.rs` —— 窗口进程里说 `Comms::call` 的唯一一处（`filewin/source.rs::ask`）。
     ("source.rs", Verdict::PureRouterNoFallbackDecision),

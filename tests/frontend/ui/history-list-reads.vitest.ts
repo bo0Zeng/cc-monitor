@@ -19,7 +19,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
 import { fetchList, mergeByAt, mergeGroups, type HistoryGroup, type HistoryList, type HistoryRow } from "../../../src/frontend/ui/history-list-reads";
-import { HistoryShapeError } from "../../../src/frontend/ui/history-reads";
+import { ReplyUnreadable } from "../../../src/frontend/ui/ipc/chan-caller";
 import { chanArgsJson, chanReply, refusedReply, type ChanCallArgs } from "../../test-support/chan-fake";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -45,9 +45,9 @@ describe("回包两形", () => {
   const raw = { rows: [], failed: [] };
   it("平时那一问回了 raw 清单 ⇒ 抛；raw 那一问回了成品 ⇒ 抛", async () => {
     invokeMock.mockImplementation(() => Promise.resolve(chanReply(raw)));
-    await expect(fetchList(undefined, {})).rejects.toThrow(HistoryShapeError);
+    await expect(fetchList(undefined, {})).rejects.toThrow(ReplyUnreadable);
     invokeMock.mockImplementation(() => Promise.resolve(chanReply(empty)));
-    await expect(fetchList("dev", { fresh: true })).rejects.toThrow(HistoryShapeError);
+    await expect(fetchList("dev", { fresh: true })).rejects.toThrow(ReplyUnreadable);
   });
 });
 

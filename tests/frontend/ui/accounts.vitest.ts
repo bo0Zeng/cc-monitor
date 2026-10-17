@@ -85,8 +85,8 @@ describe("deriveUi 降级矩阵（DESIGN §7）", () => {
   //    **再也到不了**，连档带测一起下岗。
   // 要求：「后端需更新在任何查询失败时都显示」⇒「只在真的版本不够时显示；查询失败按码说查询失败」。
   it("🔴 K-R59 · WF2：`available:false` 按失败种类分 —— 对端不认 ⇒ needs-update；其余 ⇒ query-failed（原因原样）；不再有「安静隐藏」那一档", () => {
-    const failed = deriveUi(state({ available: false, error: copyText("reason.link.lost") }));
-    expect(failed).toEqual({ kind: "query-failed", reason: copyText("reason.link.lost") });
+    const failed = deriveUi(state({ available: false, error: "壳·离线" }));
+    expect(failed).toEqual({ kind: "query-failed", reason: "壳·离线" });
     // 原因串里碰巧有「过旧」也不算（从前按串猜）：种类只看 `oldBackend`。
     expect(deriveUi(state({ available: false, error: "版本过旧？" })).kind).toBe("query-failed");
   });

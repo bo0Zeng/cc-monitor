@@ -169,11 +169,6 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ),
     ("chan_want", Own::Channel, "通信层面 A：credit"),
     ("chan_stop", Own::Channel, "通信层面 A：撤订"),
-    (
-        "chan_cancel",
-        Own::Channel,
-        "通信层面 A：撤掉 webview 那一跳上带编号的一问（撤单过这一跳）",
-    ),
     // 起会话的那一行进了后端之后，monitor 在这件事上只剩开窗这一格。
     (
         "open_local_terminal",

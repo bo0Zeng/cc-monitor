@@ -18,7 +18,7 @@
 import { countText } from "./format";
 import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
-import { saidOfControl, machineName } from "./control-said";
+import { machineName } from "./control-said";
 import { canResume, hasTerminal } from "./tab-session-state";
 import { terminalFrontAvailable } from "./terminal-front";
 import { dotOf, fullTitle, machineOf, stateWord } from "./session-face";
@@ -28,7 +28,7 @@ import { listTerminals, previewShot, sendToTerminal, type TerminalRow, type Term
 import type { Origin } from "./ipc/origin";
 import { button, setBusy, setButtonLabel, setDisabled } from "./kit/button";
 import { banner } from "./kit/banner";
-import { copyDetailButton, detailOf } from "./kit/detail";
+import { copyDetailButton, detailOf, saidOf } from "./kit/detail";
 import { emptyState } from "./kit/empty";
 import { statusDot, setDot } from "./kit/status-dot";
 import { spinner } from "./kit/progress";
@@ -36,16 +36,16 @@ import s from "./terminal-page.module.css";
 
 /** 终端页要的几条读写（缺省走通道；测试换成假的）。 */
 export interface TerminalReads {
-  list(origin: Origin, label: string): Promise<TerminalRow[]>;
-  shot(origin: Origin, terminal: string, label: string): Promise<TerminalShot>;
-  send(origin: Origin, terminal: string, what: TerminalSend, seen: string | null, label: string): Promise<TerminalSent>;
+  list(origin: Origin): Promise<TerminalRow[]>;
+  shot(origin: Origin, terminal: string): Promise<TerminalShot>;
+  send(origin: Origin, terminal: string, what: TerminalSend, seen: string | null): Promise<TerminalSent>;
   /** 订实时画面。 */
   follow(origin: Origin, terminal: string, events: FollowEvents): Follow;
 }
 
 export const CHANNEL_READS: TerminalReads = {
   list: listTerminals,
-  shot: (origin, terminal, label) => previewShot(origin, { terminal }, label),
+  shot: (origin, terminal) => previewShot(origin, { terminal }),
   send: sendToTerminal,
   follow: (origin, terminal, events) => startFollow(origin, terminal, events),
 };
@@ -323,13 +323,12 @@ export class TerminalPage {
     }
     const mine = ++this.seq;
     const origin = this.origin;
-    const label = labelOf(w);
     if (this.row === null) {
       this.phase = "loading";
       this.paint();
     }
     try {
-      const rows = await this.reads.list(origin, label);
+      const rows = await this.reads.list(origin);
       if (mine !== this.seq) return;
       const hits = rows.filter((r) => (w.kind === "tab" ? r.sid === w.tab.sessionId : r.terminal === w.terminal));
       if (hits.length === 0) {
@@ -353,7 +352,7 @@ export class TerminalPage {
     } catch (e) {
       if (mine !== this.seq) return;
       this.phase = "error";
-      this.error = saidOfControl(e);
+      this.error = saidOf(e);
       this.errorDetail = detailOf(e);
       this.paint();
       return;
@@ -414,7 +413,7 @@ export class TerminalPage {
     const row = this.row;
     if (!w || row === null || this.origin === undefined) return false;
     try {
-      const shot = await this.reads.shot(this.origin, row.terminal, labelOf(w));
+      const shot = await this.reads.shot(this.origin, row.terminal);
       if (mine !== this.seq) return true;
       if (this.live.at === "on") return true; // 实时那一帧比这一张新
       this.shotError = null;
@@ -422,7 +421,7 @@ export class TerminalPage {
       return true;
     } catch (e) {
       if (mine !== this.seq) return false;
-      this.shotError = saidOfControl(e);
+      this.shotError = saidOf(e);
       this.shotDetail = detailOf(e);
       this.paint();
       return false;
@@ -488,9 +487,9 @@ export class TerminalPage {
     let failed: string | null = null;
     let detail = "";
     try {
-      sent = await this.reads.send(this.origin, row.terminal, what, this.shot?.screen ?? null, labelOf(w));
+      sent = await this.reads.send(this.origin, row.terminal, what, this.shot?.screen ?? null);
     } catch (e) {
-      failed = saidOfControl(e);
+      failed = saidOf(e);
       detail = detailOf(e);
     }
     if (sid !== this.sid) return false;

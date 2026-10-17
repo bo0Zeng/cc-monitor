@@ -132,8 +132,11 @@ async fn a_hello_that_answers_ping_is_all_green() {
         .and_then(|t| t.strip_suffix(post))
         .unwrap_or_else(|| panic!("不是那三格：{hello}"));
     assert!(dur.starts_with(|c: char| c.is_ascii_digit()), "{hello}");
-    // 做不到的按码分类交出去（那句人话归 monitor，`control-said.ts::unavailableReason`）。
-    assert_eq!(r["backendGaps"], json!([{"code": "no_tmux", "count": 1}]));
+    // 做不到的按码分类交出去，每类带那一句（与置灰那一句同一个家 `copy_core::unavailable`，称呼那台用表单里的名字）。
+    assert_eq!(
+        r["backendGaps"],
+        json!([{"code": "no_tmux", "count": 1, "said": copy_core::unavailable("no_tmux", "devbox")}])
+    );
     assert!(is_not_a_log_line(hello), "机器页那一行又是日志行：{hello}");
 }
 

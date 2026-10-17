@@ -2,14 +2,14 @@
  * **历史注解与上次账号表，经通道问常驻后端**（注解的读写者是本机常驻后端，文件原地不动）。
  *
  * 清单那一族（平铺会话清单）住 `history-list-reads.ts`。这里只剩：改注解（星标 / 改标题 / 隐藏）· 删会话后连带删注解 ·
- * 「这台上每条会话上次用哪个号起」（三条都按类型问：入参 · 回包从后端类型生成）；外加两处共用的东西：形状不对的那一种错（[`HistoryShapeError`]）与给人看的那句话（[`historyReasonOf`]）。
+ * 「这台上每条会话上次用哪个号起」（三条都按类型问：入参 · 回包从后端类型生成）。
  *
  * # 期限（`X6`：调用点显式给）
  *
  * 注解几问 10 秒（读写一份小文件）。
  */
-import { budgetWithin, callTyped, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
-import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { budgetWithin, callTyped } from "./ipc/chan-caller";
+import type { Origin } from "./ipc/origin";
 import type { Annotated } from "./generated/Annotated";
 import type { Patch } from "./generated/Patch";
 
@@ -17,19 +17,6 @@ import type { Patch } from "./generated/Patch";
 
 
 const ANNOTATION_BUDGET_MS = 10_000;
-
-/** 形状不对（本机后端回的东西认不出）。`message` 只是细目（英文，进日志）；给人看的那句由 [`historyReasonOf`] 按码取。 */
-export class HistoryShapeError extends ReplyUnreadable {
-  constructor(what: string) {
-    super(what);
-    this.name = "HistoryShapeError";
-  }
-}
-
-/** 一次失败 ⇒ 给人看的那句话（`chan-caller.ts::saidFrom`；清单与搜索都是本机后端答的，远端那台的原因由它说成人话带回来）。 */
-export function historyReasonOf(e: unknown): string {
-  return saidFrom(e, LOCAL_ORIGIN);
-}
 
 // ─── 问 ───
 

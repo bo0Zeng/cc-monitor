@@ -6,10 +6,11 @@
  * （可能还没保存）＋ 已保存的那一份 ＋ 跳板那一台（同 `remote-probe.ts`）。入参 · 回包都是后端类型生成的；回包形状由握手时的形状指纹管。
  * 本机后端不在 ⇒ 通道那一层报（D11，不回落）。
  */
-import { budgetWithin, callTyped, saidFrom } from "./ipc/chan-caller";
+import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./backend-policy";
 import { hostKey, type RemoteHostConfig } from "./remote-config";
 import type { PubkeyPushed } from "./generated/PubkeyPushed";
+import { saidOf } from "./kit/detail";
 
 /** 推送的结局（`outcome` · `pubPath` · `via`）。 */
 export type PushResult = PubkeyPushed;
@@ -33,6 +34,6 @@ export async function pushPublicKey(
   try {
     return await callTyped(LOCAL_ORIGIN, "pubkey-push", { machine, saved: mine, jump, pubKeyPath }, budgetWithin(PUSH_BUDGET_MS));
   } catch (e) {
-    throw new Error(saidFrom(e, LOCAL_ORIGIN));
+    throw new Error(saidOf(e));
   }
 }

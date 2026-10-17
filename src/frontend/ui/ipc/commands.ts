@@ -18,7 +18,8 @@ import type { Said } from "../generated/Said";
 
 /**
  * 壳命令失败（Rust `detail::Said`：一句 ＋ 复制详情那几行）⇒ 一个 `Error`：`message` 与 `String(e)` 都是那一句，
- * `detail` 是复制详情（`kit/detail.ts::detailOf` 取）。全仓壳命令的失败只这一形；别的形状原样抛（不猜）。
+ * `detail` 是复制详情（`kit/detail.ts::detailOf` 取）。别的形状原样抛（不猜）：通道那条的失败（`chan/webview.rs::Fail`，
+ * 多一格三层 `err`）也带这两格，但它要由 `chan.ts` 解回三层，不是 `Said`。
  */
 export class SaidError extends Error {
   readonly detail: string;
@@ -33,7 +34,13 @@ export class SaidError extends Error {
 }
 
 function isSaid(v: unknown): v is Said {
-  return v !== null && typeof v === "object" && typeof (v as Said).said === "string" && typeof (v as Said).detail === "string";
+  return (
+    v !== null &&
+    typeof v === "object" &&
+    !("err" in v) &&
+    typeof (v as Said).said === "string" &&
+    typeof (v as Said).detail === "string"
+  );
 }
 
 async function callShell<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
@@ -292,25 +299,17 @@ export const commands = {
     payload: number[];
     view: object | null;
     leftMs: number;
-    callId: string | null;
   }) => invoke<ArrayBuffer>("chan_call", args),
 
   /**
-   * 撤掉 webview 这一跳上带编号的那一问（`chan/webview.rs::chan_cancel`）。
-   * 调用方同样**不直接用它**：`chan.call` 在 `Budget.cancel` 拨下时自己发。回那一问此刻在不在飞。**桶①**。
-   */
-  chan_cancel: (args: { id: string }) => invoke<boolean>("chan_cancel", args),
-
-  /**
-   * 那台机器的能力事实（`chan/webview.rs::chan_offer`）：认哪些 op · 这台做不到哪几条（附码）·
-   * 撤掉之后停得下的那几条。判断在 monitor 那边做完，本侧只查成员。`null` = 今天没有控制通道。
+   * 那台机器的能力事实（`chan/webview.rs::chan_offer`）：认哪些 op · 这台做不到哪几条（附码与置灰时说的那一句）。
+   * 判断在 monitor 那边做完，本侧只查成员。`null` = 今天没有控制通道。
    * ⚠ 调用方经 `src/comms/inward/chan.ts` 的 `chan.offer` / `chan.cachedOffer` 用它。
    */
   chan_offer: (args: { origin: Origin }) =>
     invoke<{
       ops: string[];
-      unavailable: [string, string][];
-      stoppable: string[];
+      unavailable: [string, string, string][];
     } | null>("chan_offer", args),
 
   /**

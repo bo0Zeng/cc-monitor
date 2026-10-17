@@ -5,7 +5,7 @@
  * |---|---|
  * | 三层错误按 monitor 交回的线上形状解回 —— 与 Rust 那侧打的**同一份金标准**对拍（两侧异源：Rust 造、TS 解） | 「金标准」那一条 |
  * | 期限过了一个字节都不发（`Hop{0 write, NotSent, Overrun}`）；过线的是「还剩多少」 | 「期限」那两条 |
- * | 本地撤单立即回（`Ours{Cancelled}`），不等 monitor | 「撤单」那两条 |
+ * | 能力事实按三格收（op · 码 · 那一句）；`chan_call` 只带那五格 | 「NET2」那一条 · 「`chan_call` 那一跳」那一条 |
  * | 载荷两个方向逐字节原样（含非 UTF-8 字节） | 「载荷」那一条 |
  * | 解不出来的拒绝一律 `ours/Broken`，不猜 | 「解不出」那一条 |
  * | 成员本身不解释载荷：生产段零 `JSON.parse` / `JSON.stringify`（正控：调用方那一侧的同一个识别器命中） | 最后一条 |
@@ -47,10 +47,10 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
 
 import { invoke } from "@tauri-apps/api/core";
 import { ChanError, chan, decodeFail, decodeItem, remaining, type CallError, type Item } from "../../../src/comms/inward/chan";
-import { budgetWithin, saidFrom } from "../../../src/frontend/ui/ipc/chan-caller";
+import { budgetWithin } from "../../../src/frontend/ui/ipc/chan-caller";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { stripComments } from "../../test-support/strip-comments";
-import { copyText } from "../../../src/frontend/ui/copy-table";
 import { nonEmpty } from "../../test-support/non-empty";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -70,6 +70,22 @@ beforeEach(() => {
 });
 
 describe("〔C4a〕webview 通道客户端", () => {
+  it("★ 壳交回的失败（金标准那四种 ＋ 那一句 ＋ 详情）经 `chan_call` 一跳照样解回三层，详情原样上身", async () => {
+    const golden = JSON.parse(
+      readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/chan-webview-fail.golden.json"), "utf8"),
+    ) as Record<string, object>;
+    for (const [k, raw] of Object.entries(golden)) {
+      invokeMock.mockRejectedValueOnce({ ...raw, said: `句 ${k}`, detail: `详情 ${k}` });
+      const e = await chan.call("devbox", "op", new Uint8Array(), budgetWithin(5_000)).then(
+        () => null,
+        (x: unknown) => x,
+      );
+      expect(e, k).toBeInstanceOf(ChanError);
+      expect((e as ChanError).error, k).toEqual(decodeFail(raw));
+      expect((e as ChanError).detail, k).toBe(`详情 ${k}`);
+    }
+  });
+
   it("★★ 金标准：Rust 造的那四种失败形状，TS 逐个解回 `§3.3.1` 的三层", () => {
     const golden = JSON.parse(
       readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/chan-webview-fail.golden.json"), "utf8"),
@@ -92,10 +108,16 @@ describe("〔C4a〕webview 通道客户端", () => {
     expect(decodeFail(golden.ours)).toEqual({ layer: "ours", why: "Misuse" });
   });
 
-  it("★ 期限已过：一个字节都不发，答 `Hop{0 write, NotSent, Overrun}`", async () => {
-    const e = await failOf(chan.call("devbox", "op", new Uint8Array([1]), { until: performance.now() - 1 }));
-    expect(e).toEqual({ layer: "hop", at: { idx: 0, tag: "write" }, reach: "NotSent", why: "Overrun" });
-    expect(invokeMock, "过期了还发了").not.toHaveBeenCalled();
+  it("★ 期限已过：照样交 monitor、`leftMs` 是 0（后端那一跳一个字节都不发由 monitor 守）；它回的那一句与详情原样上身", async () => {
+    const said = copyText("rsChanSaid.hop.expired");
+    invokeMock.mockRejectedValue({ err: { Hop: { idx: 0, tag: "write", reach: "NotSent", why: "Overrun" } }, body: [], said, detail: "D" });
+    let thrown: unknown;
+    await chan.call("devbox", "op", new Uint8Array([1]), { until: performance.now() - 1 }).catch((e: unknown) => (thrown = e));
+    expect((invokeMock.mock.calls[0][1] as { leftMs: number }).leftMs).toBe(0);
+    expect(thrown).toBeInstanceOf(ChanError);
+    const e = thrown as ChanError;
+    expect(e.error).toEqual({ layer: "hop", at: { idx: 0, tag: "write" }, reach: "NotSent", why: "Overrun" });
+    expect([e.message, e.detail]).toEqual([said, "D"]);
   });
 
   it("★ 过线的是「还剩多少」：钟定住时 `leftMs` 恰是给的毫秒，绝对时刻不上线", async () => {
@@ -123,65 +145,26 @@ describe("〔C4a〕webview 通道客户端", () => {
     expect(without.view).toBeNull();
   });
 
-  it("★ 撤单：已经拨下的不发；在飞时拨下立即回 `Ours{Cancelled}`，不等 monitor", async () => {
-    const pre = new AbortController();
-    pre.abort();
-    expect(await failOf(chan.call("devbox", "op", new Uint8Array(), budgetWithin(5_000, pre.signal)))).toEqual({
-      layer: "ours",
-      why: "Cancelled",
-    });
-    expect(invokeMock).not.toHaveBeenCalled();
-
-    let answer: (v: ArrayBuffer) => void = () => {};
-    invokeMock.mockReturnValue(new Promise<ArrayBuffer>((r) => (answer = r)));
-    const ac = new AbortController();
-    const p = chan.call("devbox", "op", new Uint8Array(), budgetWithin(5_000, ac.signal));
-    ac.abort();
-    expect(await failOf(p)).toEqual({ layer: "ours", why: "Cancelled" });
-    answer(new ArrayBuffer(0)); // monitor 那一侧晚到的结局没人收了 —— 不许炸
-  });
-
-  it("🔴〔MIG-3b 续 · 撤单不许回退〕撤单过 webview 那一跳：带撤单的那一问带编号，拨下 ⇒ 恰一发 `chan_cancel` 带着同一个编号；不带撤单的不带编号、不发", async () => {
-    invokeMock.mockImplementation((cmd: string) =>
-      cmd === "chan_call" ? new Promise<ArrayBuffer>(() => {}) : Promise.resolve(cmd === "chan_cancel" ? true : null),
-    );
-    const ac = new AbortController();
-    const p = chan.call("devbox", "slow", new Uint8Array(), budgetWithin(5_000, ac.signal));
-    const callArgs = invokeMock.mock.calls.find((c) => c[0] === "chan_call")?.[1] as { callId: string | null };
-    expect(typeof callArgs.callId).toBe("string");
-    expect(invokeMock.mock.calls.some((c) => c[0] === "chan_cancel"), "还没撤就发了撤单").toBe(false);
-    ac.abort();
-    await failOf(p);
-    const cancels = invokeMock.mock.calls.filter((c) => c[0] === "chan_cancel");
-    expect(cancels).toEqual([["chan_cancel", { id: callArgs.callId }]]);
-
-    invokeMock.mockClear();
-    void chan.call("devbox", "fire", new Uint8Array(), budgetWithin(5_000));
-    const plain = invokeMock.mock.calls.find((c) => c[0] === "chan_call")?.[1] as { callId: string | null };
-    expect(plain.callId, "不带撤单的那一问不该带编号").toBeNull();
-  });
-
-  it("〔NET2〕本地撤单按手里那份 Offer 说清「那台可能还在跑」：撤不动的带 runsOn、撤得动的不带", async () => {
-    let answer: (v: ArrayBuffer) => void = () => {};
-    invokeMock.mockImplementation((cmd: string) =>
-      cmd === "chan_offer"
-        ? Promise.resolve({ ops: ["cancel", "slow", "quick"], unavailable: [["kill", "no_tmux"]], stoppable: ["quick"] })
-        : new Promise<ArrayBuffer>((r) => (answer = r)),
+  it("〔NET2〕那台的能力事实：做不到的每一条是「op · 码 · 那一句」三格（那一句 monitor 写好）；形状不对 ⇒ 当作没把握", async () => {
+    invokeMock.mockImplementation((cmd: string, args: { origin?: string }) =>
+      Promise.resolve(
+        cmd !== "chan_offer"
+          ? null
+          : args.origin === "net2-m"
+            ? { ops: ["kill", "slow"], unavailable: [["kill", "no_tmux", "net2-m 无 tmux"]] }
+            : { ops: ["kill"], unavailable: [["kill", "no_tmux"]] },
+      ),
     );
     const offer = await chan.offer("net2-m");
-    expect(offer?.stoppable).toEqual(["quick"]);
+    expect(offer).toEqual({ ops: ["kill", "slow"], unavailable: [["kill", "no_tmux", "net2-m 无 tmux"]] });
     expect(chan.cachedOffer("net2-m")).toEqual(offer);
-    for (const [op, runsOn] of [["slow", true], ["quick", false]] as const) {
-      const ac = new AbortController();
-      const p = chan.call("net2-m", op, new Uint8Array(), budgetWithin(5_000, ac.signal));
-      ac.abort();
-      const e = await failOf(p);
-      expect(e, op).toEqual(runsOn ? { layer: "ours", why: "Cancelled", runsOn: true } : { layer: "ours", why: "Cancelled" });
-      expect(saidFrom(new ChanError(e), "net2-m").includes(copyText("chanCaller.said.withdrawnRunsOn")), op).toBe(runsOn);
-    }
-    answer(new ArrayBuffer(0));
-    // monitor 交回的那一形（`WireErr::OursRunsOn`）解回同一格。
-    expect(decodeFail({ err: { OursRunsOn: "Cancelled" }, body: [] })).toEqual({ layer: "ours", why: "Cancelled", runsOn: true });
+    expect(await chan.offer("net2-old"), "少了那一句的一形不收").toBeNull();
+  });
+
+  it("`chan_call` 那一跳只带地址 · 操作名 · 载荷 · 出口声明 · 还剩多少", async () => {
+    invokeMock.mockResolvedValue(new Uint8Array([7]).buffer);
+    await chan.call("devbox", "op", new Uint8Array([1]), budgetWithin(5_000));
+    expect(Object.keys(invokeMock.mock.calls[0][1] as object).sort()).toEqual(["leftMs", "op", "origin", "payload", "view"]);
   });
 
   it("★ 载荷两个方向逐字节原样（含 NUL 与非 UTF-8 字节）", async () => {

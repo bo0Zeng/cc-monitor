@@ -302,6 +302,9 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     // ── 通道客户端 ──
     ("comms_inward::chan::client::Client", Kind::Channel),
     ("comms_inward::chan::client::Client::over", Kind::Channel),
+    // 通道没成时那一句（全产品一份住通信层）：窗口照抄，不自己按层说。
+    ("comms_inward::chan::said::refused", Kind::Channel),
+    ("comms_inward::chan::said::said", Kind::Channel),
     // ── 线上类型 ──
     ("comms_inward::chan::wire::Body", Kind::Wire),
     ("comms_inward::chan::wire::Budget", Kind::Wire),
@@ -313,9 +316,7 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     ("comms_inward::chan::wire::HopFault", Kind::Wire),
     ("comms_inward::chan::wire::Op", Kind::Wire),
     ("comms_inward::chan::wire::Origin", Kind::Wire),
-    ("comms_inward::chan::wire::OursFault", Kind::Wire),
     ("comms_inward::chan::wire::PeerFault", Kind::Wire),
-    ("comms_inward::chan::wire::Reach", Kind::Wire),
     // 订阅那一口（`source::watch`，窗口进程里唯一一处 `subscribe`）用到的四样。
     ("comms_inward::chan::wire::By", Kind::Wire),
     ("comms_inward::chan::wire::Item", Kind::Wire),

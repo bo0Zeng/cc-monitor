@@ -262,34 +262,10 @@ impl From<OursFault> for CallError {
     }
 }
 
+/// 那一句（[`super::said::said`]）；这一层不知道是哪台，称呼「该机」。
 impl std::fmt::Display for CallError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            // 不把「第 N 跳」与枚举名（{:?}）原样上屏，每一格给一句人话；
-            // 跳号与标签留给日志（调用方要细节时自己拿 `at` / `reach`）。
-            CallError::Hop {
-                why,
-                reach: _,
-                at: _,
-            } => f.write_str(&match why {
-                HopFault::Unreachable => copy_text("rsChanWire.hop.unreachable", &[]),
-                HopFault::Dropped => copy_text("rsChanWire.hop.dropped", &[]),
-                HopFault::Overrun => copy_text("reason.link.noAnswer", &[]),
-            }),
-            CallError::Peer { why } => f.write_str(&match why {
-                // 这一层不知道那台叫什么：知道的调用方按码自己取（`copy_core::backend_old(名字)`）。
-                PeerFault::Unsupported => copy_core::backend_old(&copy_core::peer_machine()),
-                PeerFault::Refused { .. } => copy_text("rsChanWire.peer.refused", &[]),
-            }),
-            CallError::Ours { why, runs_on } => f.write_str(&match why {
-                OursFault::Cancelled if *runs_on => {
-                    copy_text("rsChanWire.ours.cancelledRunsOn", &[])
-                }
-                OursFault::Cancelled => copy_text("reason.op.cancelled", &[]),
-                OursFault::Misuse => copy_text("reason.code.bug", &[]),
-                OursFault::Broken => copy_text("reason.code.bug", &[]),
-            }),
-        }
+        f.write_str(&super::said::said(self, &Origin(copy_core::peer_machine())))
     }
 }
 

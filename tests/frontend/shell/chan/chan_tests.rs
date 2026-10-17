@@ -617,6 +617,7 @@ fn nothing_in_the_channel_listens() {
         vec![
             "comms-inward:client.rs",
             "comms-inward:router.rs",
+            "comms-inward:said.rs",
             "comms-inward:wire.rs",
             "壳:host.rs",
             "壳:mod.rs",

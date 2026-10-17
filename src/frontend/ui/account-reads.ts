@@ -7,11 +7,12 @@
  */
 import { appStore, putIn } from "./app-store";
 import type { Origin } from "./ipc/origin";
-import { budgetWithin, callTyped, isOldBackend, saidFrom } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, isOldBackend } from "./ipc/chan-caller";
 import { DEFAULT_AGENT, lookupAgentProfile, type AgentProfileRow } from "./agent-profile";
 import { AGENT_PROFILE_TABLE } from "./generated/agent-profile-table";
 import type { AccountsState, SessionAccount } from "./accounts";
 import { recallSeen, rememberSeen } from "./last-seen";
+import { saidOf } from "./kit/detail";
 
 /**
  * 问那台机器（**本机也一样**）的账号状态：每次都发 `accounts-list`，答回来那一份放进 store（画的那几处订它）。
@@ -34,7 +35,7 @@ export async function fetchAccounts(origin: Origin): Promise<AccountsState> {
     state = {
       origin,
       available: false,
-      error: saidFrom(e, origin),
+      error: saidOf(e),
       oldBackend: isOldBackend(e),
       meta: null,
       accounts: [],
@@ -183,6 +184,6 @@ export async function checkTrust(origin: Origin, configDir: string | null, cwd: 
     const got = await callTyped(origin, "accounts-trust", { configDir, cwd }, budgetWithin(TRUST_BUDGET_MS));
     return { available: true, error: null, trusted: got.trusted, known: got.known };
   } catch (e) {
-    return { available: false, trusted: false, known: false, error: saidFrom(e, origin) };
+    return { available: false, trusted: false, known: false, error: saidOf(e) };
   }
 }

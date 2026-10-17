@@ -42,6 +42,7 @@ import {
   spawnAgent,
 } from "../../../src/frontend/ui/cc-bus-control";
 import { ControlError } from "../../../src/frontend/ui/control-said";
+import { detailOf as errDetail, writtenSaid } from "../../../src/frontend/ui/kit/detail";
 import type { BusSent } from "../../../src/frontend/ui/generated/BusSent";
 import type { BusSpawnedNow } from "../../../src/frontend/ui/generated/BusSpawnedNow";
 import type { BusBroadcast } from "../../../src/frontend/ui/generated/BusBroadcast";
@@ -98,8 +99,9 @@ async function saidOf(act: () => Promise<unknown>): Promise<string> {
   try {
     await act();
   } catch (e) {
-    expect(e, "抛的不是 ControlError —— 调用方拿不到那一句").toBeInstanceOf(ControlError);
-    return (e as ControlError).message;
+    const said = writtenSaid(e);
+    expect(said, "抛的不是带那一句的错 —— 调用方拿不到那一句").not.toBeNull();
+    return said ?? "";
   }
   throw new Error("本该失败却成功了");
 }
@@ -109,8 +111,7 @@ async function detailOf(act: () => Promise<unknown>): Promise<string> {
   try {
     await act();
   } catch (e) {
-    expect(e).toBeInstanceOf(ControlError);
-    return (e as ControlError).detail;
+    return errDetail(e);
   }
   throw new Error("本该失败却成功了");
 }
@@ -121,7 +122,7 @@ function thrownBy(act: () => unknown): string {
     act();
   } catch (e) {
     expect(e).toBeInstanceOf(ControlError);
-    return (e as ControlError).message;
+    return (e as Error).message;
   }
   throw new Error("本该抛却没抛");
 }
@@ -211,7 +212,7 @@ describe("〔C4e〕查在线：问不到 ≠ 不在线", () => {
     const cases: [string, { ok: unknown } | { fail: unknown }, string, CopyKey][] = [
       ["不在名单里", { ok: LIST.reply }, "nobody_cc", "ccBus.online.unknown"],
       ["live 是 null", { ok: withNull }, "n_cc", "ccBus.online.unknown"],
-      ["通道不在", { fail: NO_CHANNEL }, "alpha_cc", "control.channel.remoteDown"],
+      ["通道不在", { fail: NO_CHANNEL }, "alpha_cc", "rsChanSaid.hop.localDown"],
       ["被拒", { fail: refusedReply("child_timed_out", copyText("ccBus.online.timedOut")) }, "alpha_cc", "ccBus.online.timedOut"],
     ];
     for (const [what, reply, id, key] of cases) {
@@ -277,7 +278,7 @@ describe("〔C4e〕回值几态逐态一句", () => {
 });
 
 describe("〔C4e〕失败怎么说", () => {
-  it("★★ 拒绝码（取自金样）：那台写好的那一句原样上屏、复制详情带码（逐码一句由后端判：`said_tests.rs`）；拒绝体读不出 ⇒ 仍说出一句", async () => {
+  it("★★ 拒绝码（取自金样）：那台写好的那一句原样上屏、复制详情带码（逐码一句由后端判：`said_tests.rs`）", async () => {
     const drives: [string, GoldenOp, () => Promise<unknown>][] = [
       ["bus-list", LIST, () => agentOnline("devbox", "alpha_cc")],
       ["bus-send", SEND, () => sendMessage("devbox", "alpha_cc", "hi")],
@@ -293,20 +294,15 @@ describe("〔C4e〕失败怎么说", () => {
         answer({ fail: refusedReply(code, `S-${code}`) });
         expect(await detailOf(act), `${op}：复制详情里没有码`).toContain(code);
       }
-      answer({ fail: { err: "Refused", body: [0xff] } });
-      expect(await saidOf(act), `${op}：拒绝体读不出来时没说出一句`).not.toBe("");
     }
   });
 
 
-  it("★ 本机照样经通道问；通道不在时本机与远端两句话不同，远端那句点得出是哪台", async () => {
+  it("★ 本机照样经通道问；通道不在时原样取 monitor 写的那一句（本机远端怎么称呼由它说）", async () => {
     answer({ ok: KILL.reply });
     await killAgent(LOCAL_ORIGIN, "alpha_cc");
     expect(sentCalls()).toEqual([[LOCAL_ORIGIN, "bus-kill", KILL.request]]);
-    answer({ fail: NO_CHANNEL });
-    const local = await saidOf(() => sendMessage(LOCAL_ORIGIN, "alpha_cc", "hi"));
-    const remote = await saidOf(() => sendMessage("kr-remote-label", "alpha_cc", "hi"));
-    expect(local).not.toBe(remote);
-    expect(remote).toContain("kr-remote-label");
+    answer({ fail: { ...NO_CHANNEL, said: "M-kr-remote-label" } });
+    expect(await saidOf(() => sendMessage("kr-remote-label", "alpha_cc", "hi"))).toBe("M-kr-remote-label");
   });
 });

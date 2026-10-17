@@ -104,7 +104,7 @@ describe("批量停：每台一次、逐个答", () => {
         return {
           results: [
             res(sids[0], "done", null, { session: "a-cc" }),
-            res(sids[1], "skipped", "not_in_tmux"),
+            res(sids[1], "skipped", "not_in_tmux", { said: "S-b" }),
           ],
         };
       return {
@@ -134,9 +134,8 @@ describe("批量停：每台一次、逐个答", () => {
     expect(by.b).toEqual({
       sid: "b",
       outcome: "skipped",
-      why: copyText("tabBatch.why.notInTmux", {
-        machine: copyText("control.machine.local"),
-      }),
+      // 跳过那一句也由那台写好（每个原因码都配），界面不按码现说。
+      why: "S-b",
     });
     expect(by.c).toEqual({
       sid: "c",

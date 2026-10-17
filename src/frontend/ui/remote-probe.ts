@@ -11,11 +11,12 @@
  * 拨号请求在后端组（`src/backend/ssh-dial/machine.rs`）。按形状严格收；本机后端不在 ⇒ 通道那一层报（D11，不回落）。
  */
 import { chan, ChanError, type Item } from "../../comms/inward/chan";
-import { budgetWithin, callTyped, saidFrom, unreadableFrom } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, ReplyUnreadable } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./backend-policy";
 import type { ConnectStage } from "./generated/ConnectStage";
 import { hostKey, type RemoteHostConfig } from "./remote-config";
 import { exactKeys, isObj } from "./ipc/decode";
+import { saidOf } from "./kit/detail";
 
 /** 测试连接的结局。 */
 export interface ConnTestResult {
@@ -29,8 +30,8 @@ export interface ConnTestResult {
   backendOk: boolean;
   /** 那台后端的三格（版本 · 能用几项 / 做不到几项 · 往返毫秒），后端按文案表拼好的一句（不再是 `v=.. build=..` 日志行）。 */
   backendHello: string | null;
-  /** 这台说做不到的那几类：码 ＋ 这一类几项（后端按 hello 的 `unavailable` 分好；空 = 没有 / 没回 hello）。人话在界面说（`control-said.ts::unavailableReason`）。 */
-  backendGaps: { code: string; count: number }[];
+  /** 这台说做不到的那几类：码 ＋ 这一类几项 ＋ 那一句（后端按 hello 的 `unavailable` 分好、写好；空 = 没有 / 没回 hello）。 */
+  backendGaps: { code: string; count: number; said: string }[];
   /** 人读的总体状态 / 失败原因（一句，不接下层原话）。 */
   message: string;
   /** 没过时那台写的复制详情（时刻 · 机器 · 命令 · 原话）；都过了 ⇒ `null`。 */
@@ -50,7 +51,7 @@ export type ProbeStop =
   | { at: "hello" }
   | { at: "control" };
 
-/** 到点没等到结局：`stop` = 最后收到的那一格说的那一段；`message` = 通道那一层怎么说的（按层，`saidFrom`）。 */
+/** 到点没等到结局：`stop` = 最后收到的那一格说的那一段；`message` = 通道没成那一句（monitor 写）。 */
 export class ProbeStalled extends Error {
   constructor(
     readonly stop: ProbeStop,
@@ -64,7 +65,7 @@ export class ProbeStalled extends Error {
 const nullableStr = (v: unknown): v is string | null => v === null || typeof v === "string";
 
 function bad(): never {
-  throw unreadableFrom(LOCAL_ORIGIN, "remoteProbe reply shape");
+  throw new ReplyUnreadable(LOCAL_ORIGIN, "remoteProbe reply shape");
 }
 
 /** 结局那一格的体。严格收。 */
@@ -79,7 +80,7 @@ export function decodeProbe(v: unknown): ConnTestResult {
     !nullableStr(v.backendHello) ||
     !Array.isArray(v.backendGaps) ||
     !v.backendGaps.every(
-      (g) => isObj(g) && exactKeys(g, ["code", "count"]) && typeof g.code === "string" && Number.isInteger(g.count),
+      (g) => isObj(g) && exactKeys(g, ["code", "count", "said"]) && typeof g.code === "string" && Number.isInteger(g.count) && typeof g.said === "string",
     ) ||
     typeof v.message !== "string" ||
     !nullableStr(v.detail)
@@ -92,7 +93,7 @@ export function decodeProbe(v: unknown): ConnTestResult {
     endpoint: v.endpoint,
     backendOk: v.backendOk,
     backendHello: v.backendHello,
-    backendGaps: v.backendGaps as { code: string; count: number }[],
+    backendGaps: v.backendGaps as ConnTestResult["backendGaps"],
     message: v.message,
     detail: v.detail,
   };
@@ -157,7 +158,7 @@ export async function probeMachine(
         try {
           cell = decodeCell(JSON.parse(it.body));
         } catch (e) {
-          broken = unreadableFrom(LOCAL_ORIGIN, e instanceof Error ? e.message : String(e));
+          broken = new ReplyUnreadable(LOCAL_ORIGIN, e instanceof Error ? e.message : String(e));
           arrived();
           return;
         }
@@ -172,7 +173,7 @@ export async function probeMachine(
         }
       } else if (it.t === "gap" || it.t === "closed") {
         // 进度格不许丢（丢了就说不清停在哪）；流关了而结局没到 ⇒ 两端契约对不上。
-        broken = unreadableFrom(LOCAL_ORIGIN, "remoteProbe reply shape");
+        broken = new ReplyUnreadable(LOCAL_ORIGIN, "remoteProbe reply shape");
         arrived();
       }
     }
@@ -185,9 +186,9 @@ export async function probeMachine(
     } catch (e) {
       if (end !== null) return end;
       if (e instanceof ChanError && e.error.layer === "hop" && e.error.why === "Overrun") {
-        throw new ProbeStalled(stop, saidFrom(e, LOCAL_ORIGIN));
+        throw new ProbeStalled(stop, saidOf(e));
       }
-      throw new Error(saidFrom(e, LOCAL_ORIGIN));
+      throw new Error(saidOf(e));
     }
     // 结局那一格排在应答之前发（同一条应答通道），但两条路到界面的先后不保证 ⇒ 等它到。
     await ended;

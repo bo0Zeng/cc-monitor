@@ -44,7 +44,7 @@ pub const FIRST_SCREEN_BUDGET: std::time::Duration = std::time::Duration::from_s
 ///
 /// # Errors
 ///
-/// home 问不到 / 解不出起点 · 目录列不出来 —— 带那一跳的原话（[`super::source::said`] 翻过的）。
+/// home 问不到 / 解不出起点 · 目录列不出来 —— 带那一跳的原话（[`comms_inward::chan::said::said`] 翻过的）。
 pub async fn first_screen(
     line: &super::source::Line,
     source: &Source,

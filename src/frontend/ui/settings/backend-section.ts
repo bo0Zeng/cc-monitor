@@ -9,7 +9,7 @@
  */
 
 import { commands, type StopAnswer } from "../ipc/commands";
-import { budgetWithin, callTyped, peerVersionSaid, saidFrom } from "../ipc/chan-caller";
+import { budgetWithin, callTyped, unreadableSaid } from "../ipc/chan-caller";
 import type { ExitPolicy } from "../generated/ExitPolicy";
 import type { LogTail } from "../generated/LogTail";
 import { isLocalOrigin, type Origin } from "../ipc/origin";
@@ -34,7 +34,7 @@ import { readRecordDrift } from "../record-reads";
 import { ccRow } from "./cc-row";
 import { decodeMachineState, type MachineState } from "./machine-state";
 import { exactKeys, isObj } from "../ipc/decode";
-import { sayFailure, sayWithDetail } from "../kit/detail";
+import { sayFailure, sayWithDetail, saidOf } from "../kit/detail";
 
 /** 「停」的结局说一句（三个词各一句，穷举 —— 多一个词 tsc 就红）；机器页那一行照它说。 */
 export function stopSaid(a: StopAnswer): string {
@@ -66,12 +66,12 @@ function exitAnswerOf(v: ExitPolicy): ExitAnswer {
 /** 「退出行为」那两问的期限：10 秒。 */
 const EXIT_POLICY_BUDGET_MS = 10_000;
 
-/** 问那台机器（本机也一样）「退出行为」的值（`exit-policy-read`，经通道）。失败就抛（说法住 `chan-caller.ts::saidFrom`）。 */
+/** 问那台机器（本机也一样）「退出行为」的值（`exit-policy-read`，经通道）。失败就抛（那一句 monitor 写好）。 */
 async function askExitPolicy(origin: Origin): Promise<ExitAnswer> {
   try {
     return exitAnswerOf(await callTyped(origin, "exit-policy-read", {}, budgetWithin(EXIT_POLICY_BUDGET_MS)));
   } catch (e) {
-    throw new Error(saidFrom(e, origin));
+    throw new Error(saidOf(e));
   }
 }
 
@@ -80,7 +80,7 @@ async function putExitPolicy(origin: Origin, kill: boolean): Promise<ExitAnswer>
   try {
     return exitAnswerOf(await callTyped(origin, "exit-policy-set", { killOnExit: kill }, budgetWithin(EXIT_POLICY_BUDGET_MS)));
   } catch (e) {
-    throw new Error(saidFrom(e, origin));
+    throw new Error(saidOf(e));
   }
 }
 
@@ -92,7 +92,7 @@ async function askBackendLog(origin: Origin): Promise<BackendLog> {
   try {
     return await callTyped(origin, "backend-log", {}, budgetWithin(EXIT_POLICY_BUDGET_MS));
   } catch (e) {
-    throw new Error(saidFrom(e, origin));
+    throw new Error(saidOf(e));
   }
 }
 
@@ -483,7 +483,7 @@ export class BackendSection {
     for (const extra of col.querySelectorAll("[data-health-extra]")) extra.remove();
     const face = decodeHealthFace(raw);
     if (face === null) {
-      el.textContent = peerVersionSaid("reply_unreadable", origin);
+      el.textContent = unreadableSaid(origin);
       delete el.dataset.health;
       console.warn(`[PB1] ${origin} 的健康读数形状不对：${JSON.stringify(raw)}`);
       return;

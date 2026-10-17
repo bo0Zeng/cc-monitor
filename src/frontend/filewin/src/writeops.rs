@@ -300,7 +300,7 @@ where
 /// 后端写面按「一个根 ＋ 一段相对名」收参。删 · 改权限的对象是当前目录的直接子项 ⇒ 「上一级 ＋ 尾段」；
 /// 新建 · 改名的名字原样交那台、带 `single: true`（合不合法、是不是一段由那台按它的平台判，不合 ⇒ 码 [`BAD_NAME`]）。
 ///
-/// ⚠ 回来的 `Err` **原样**带出去（后端那句拒绝经 [`super::source::said`] 翻成人话），由 [`WriteBoard::ui`] 画到窗口上。
+/// ⚠ 回来的 `Err` **原样**带出去（后端那句拒绝经 [`comms_inward::chan::said::said`] 翻成人话），由 [`WriteBoard::ui`] 画到窗口上。
 pub async fn apply_remote(line: &Line, origin: &Origin, op: &WriteOp) -> Result<(), String> {
     apply_remote_in(line, origin, op, None).await
 }

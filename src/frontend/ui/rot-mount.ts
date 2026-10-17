@@ -6,7 +6,7 @@
 import { accountLabel } from "./acct-words";
 import { board, type BoardActs, type BoardState } from "./rot-board";
 import { copyText } from "./copy-table";
-import { callTyped, saidFrom } from "./ipc/chan-caller";
+import { callTyped } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import { banner } from "./kit/banner";
 import { openOnMachine } from "./file-window";
@@ -16,6 +16,7 @@ import { failToast } from "./kit/toast";
 import { readStrategies, readView, refusedCode, rotBudget } from "./rot-reads";
 import type { RotationStrategiesReply } from "./generated/RotationStrategiesReply";
 import type { RotationViewReply } from "./generated/RotationViewReply";
+import { saidOf } from "./kit/detail";
 
 export interface RotMountSpec {
   origin: Origin;
@@ -125,7 +126,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
       readErr = null;
     } catch (e) {
       if (my !== seq) return;
-      readErr = saidFrom(e, origin);
+      readErr = saidOf(e);
     }
     paint();
   };
@@ -345,7 +346,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
             return void failToast(copyText("rot.fail.useNow"), e);
           const why =
             view?.accounts.find((f) => f.account === account)?.blocked?.text ??
-            saidFrom(e, origin);
+            saidOf(e);
           state.refused = {
             account,
             text: copyText("rot.acct.refused", {

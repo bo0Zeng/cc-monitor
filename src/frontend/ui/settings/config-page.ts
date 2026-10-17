@@ -14,7 +14,7 @@ import { isLocalOrigin, type Origin } from "../ipc/origin";
 import { button } from "../kit/button";
 import { confirmDialog } from "../kit/dialog";
 import { failToast } from "../kit/toast";
-import { saidOfControl } from "../control-said";
+
 import { accountsMcpPick, accountsMcpRead, accountsMcpRemove, accountsMcpSync, type AccountMcpView } from "../account-ops";
 import { extList, type ExtList } from "../ext-reads";
 import { CONFIG_SHOWN_EVENT, SETTINGS_GO_EVENT } from "./events";
@@ -22,6 +22,7 @@ import { buildAliasManager, type AliasManagerSpec } from "./machine-aliases";
 import { cfgRow, type CfgRow } from "./cfg-row";
 import { countTags } from "./chore-tags";
 import { readDataReport } from "./data-reads";
+import { saidOf } from "../kit/detail";
 
 
 function cap(text: string): HTMLElement {
@@ -139,7 +140,7 @@ function buildMcpRow(origin: () => Origin, machine: () => string): { row: CfgRow
     row.setStatus("off", copyText("kit.state.reading"));
     accountsMcpRead(origin()).then(paint, (e: unknown) => {
       row.setStatus("warn", copyText("cfgPage.mcp.readFailed"));
-      body.replaceChildren(line("cfg-hint", saidOfControl(e)));
+      body.replaceChildren(line("cfg-hint", saidOf(e)));
     });
   };
   return { row, load };
@@ -195,7 +196,7 @@ function buildExtRow(origin: () => Origin, machine: () => string, go: (el: HTMLE
     row.setStatus("off", copyText("kit.state.reading"));
     extList(false).then(paint, (e: unknown) => {
       row.setStatus("warn", copyText("cfgPage.ext.readFailed"));
-      row.body.replaceChildren(line("cfg-hint", saidOfControl(e)));
+      row.body.replaceChildren(line("cfg-hint", saidOf(e)));
     });
   };
   return { row, load };

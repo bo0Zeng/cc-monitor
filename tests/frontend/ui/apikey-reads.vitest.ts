@@ -15,7 +15,6 @@ import {
   NO_CHANNEL,
   type ChanCallArgs,
 } from "../../test-support/chan-fake";
-import { copyText } from "../../../src/frontend/ui/copy-table";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
@@ -51,7 +50,7 @@ describe("〔HX2〕W2 写 key：经通道交那台机器的后端", () => {
   it("失败说人话、话里不带明文", async () => {
     invokeMock.mockRejectedValue(NO_CHANNEL);
     const err = await writeApikeyKey("host-a", "/d", "sk-SHOULD-NOT-SHOW").catch((e: Error) => e);
-    expect(String(err)).toMatch(copyText("reason.link.lost"));
+    expect(String(err)).toMatch(NO_CHANNEL.said);
     expect(String(err)).not.toContain("sk-SHOULD-NOT-SHOW");
   });
 });

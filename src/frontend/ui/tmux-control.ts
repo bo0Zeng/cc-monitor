@@ -7,13 +7,10 @@
  * 期限：结束 10 秒。
  */
 import { copyText } from "./copy-table";
-import { asSaid, ControlError, machineName, saidOfControl, settleTyped, type Refusals } from "./control-said";
+import { ControlError, machineName, settleTyped } from "./control-said";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import type { Killed } from "./generated/Killed";
-
-// 与 `cc-bus-control.ts` 共用的那几样（`ControlError` · 通道三层的说法 · 成品形状核验 · `settleTyped`）住 `control-said.ts`。
-export { ControlError, saidOfControl };
 
 /** 结束成了之后顺手注销 cc-bus 那几行（后端写好的句子 ＋ 复制详情；没什么可说 ⇒ `said` 是 `null`）。 */
 export interface KillNote {
@@ -27,10 +24,6 @@ const CONTROL_BUDGET_MS = 10_000;
 // ─── 结束会话 ───
 
 /** 结束会话的拒绝码 ⇒ 一句话。身份门 / 窗口门两档说清拦下的原因（它们的下一步与「会话不在」完全不同）。 */
-export function killRefusals(target: string): Refusals {
-  return asSaid(() => copyText("tmuxControl.kill.noReason", { target }));
-}
-
 /**
  * `kill` 的回包 ⇒ 做成了没有 ＋顺手从 cc-bus 名册注销的结局那一句（没有要说的 ⇒ `null`）。
  * `killed` 不为真 ⇒ 「后端没确认结束」（**不当成功**：破坏性动作在未知状态上不许往下走）。
@@ -50,5 +43,5 @@ export function killedOf(origin: Origin, target: string, v: Killed): KillNote {
 export async function killSession(origin: Origin, target: string, sid?: string): Promise<KillNote> {
   const req = sid === undefined ? { name: target } : { name: target, sid };
   const budget = budgetWithin(CONTROL_BUDGET_MS);
-  return killedOf(origin, target, await settleTyped(origin, "kill", callTyped(origin, "kill", req, budget), killRefusals(target)));
+  return killedOf(origin, target, await settleTyped(origin, "kill", callTyped(origin, "kill", req, budget)));
 }

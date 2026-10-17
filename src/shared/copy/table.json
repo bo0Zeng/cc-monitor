@@ -21,12 +21,6 @@
       "zh": "账号名不合规 · 只用字母、数字、_、- · 字母或数字开头 · 最长 {max}",
       "args": ["max"]
     },
-    "accountOps.said.noReason": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "后端报错 · 原因不明",
-      "args": []
-    },
     "beAcctExec.key.noDoor": {
       "kind": "error",
       "role": "报错",
@@ -2191,36 +2185,6 @@
       "zh": "该机",
       "args": []
     },
-    "control.channel.localDown": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "本机后端未运行 · 未执行",
-      "args": []
-    },
-    "control.channel.remoteDown": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 离线 · 未执行",
-      "args": ["machine"]
-    },
-    "control.channel.unsure": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 操作结果未知\n先刷新会话列表再决定是否重试",
-      "args": ["machine"]
-    },
-    "control.channel.cancelled": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "操作已撤回",
-      "args": []
-    },
-    "control.channel.cancelledRunsOn": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "操作已撤回 · 该机器无法停止它 · 可能仍在跑",
-      "args": []
-    },
     "control.unavailable.noTmux": {
       "kind": "body",
       "role": "说明",
@@ -2290,12 +2254,6 @@
       "role": "报错",
       "zh": "读取画面被拒",
       "args": []
-    },
-    "terminalReads.preview.noReason": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "读取画面被拒 · {target} · 原因不明",
-      "args": ["target"]
     },
     "terminalReads.preview.badTarget": {
       "kind": "error",
@@ -2371,12 +2329,6 @@
       "zh": "结束 {target} 被拒",
       "args": ["target"]
     },
-    "tmuxControl.kill.noReason": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "结束 {target} 被拒 · 原因不明",
-      "args": ["target"]
-    },
     "tmuxControl.kill.listSep": {
       "kind": "body",
       "role": "片段",
@@ -2425,12 +2377,6 @@
       "zh": "查询在线状态失败",
       "args": []
     },
-    "ccBus.online.noReason": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "查询 {id} 在线状态失败 · 原因不明",
-      "args": ["id"]
-    },
     "ccBus.online.unknown": {
       "kind": "error",
       "role": "报错",
@@ -2460,12 +2406,6 @@
       "kind": "error",
       "role": "报错",
       "zh": "读取 cc-bus 失败",
-      "args": []
-    },
-    "ccBus.read.noReason": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "读取失败 · 原因不明",
       "args": []
     },
     "ccBus.send.empty": {
@@ -2546,12 +2486,6 @@
       "zh": "发给 {id} 失败",
       "args": ["id"]
     },
-    "ccBus.send.noReason": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "发给 {id} 失败 · 原因不明",
-      "args": ["id"]
-    },
     "ccBus.send.delivered": {
       "kind": "body",
       "role": "片段",
@@ -2600,12 +2534,6 @@
       "zh": "结束 {id} 失败",
       "args": ["id"]
     },
-    "ccBus.kill.noReason": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "结束 {id} 失败 · 原因不明",
-      "args": ["id"]
-    },
     "ccBus.kill.killed": {
       "kind": "body",
       "role": "说明",
@@ -2648,12 +2576,6 @@
       "zh": "新开 agent 失败",
       "args": []
     },
-    "ccBus.spawn.noReason": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "新开 agent 失败 · 原因不明",
-      "args": []
-    },
     "ccBus.spawn.done": {
       "kind": "body",
       "role": "toast",
@@ -2694,12 +2616,6 @@
       "kind": "error",
       "role": "报错",
       "zh": "广播失败",
-      "args": []
-    },
-    "ccBus.broadcast.noReason": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "广播失败 · 原因不明",
       "args": []
     },
     "ccBus.broadcast.done": {
@@ -3666,30 +3582,6 @@
       "zh": "上下文已压缩 · 摘要 {n} 字 · {time}",
       "args": ["n", "time"]
     },
-    "chanCaller.said.withdrawn": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "查询已撤回",
-      "args": []
-    },
-    "chanCaller.said.withdrawnRunsOn": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "查询已撤回 · 该机无法停止它 · 可能仍在跑",
-      "args": []
-    },
-    "chanCaller.said.timeout": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "后端答复超时",
-      "args": []
-    },
-    "chanCaller.said.error": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "后端报错 · 原因不明",
-      "args": []
-    },
     "keybindingActions.category.account": {
       "kind": "title",
       "role": "标题",
@@ -4338,7 +4230,7 @@
       "zh": "取消隐藏（{n}）",
       "args": ["n"]
     },
-    "tabBatch.stop.line": {
+    "tabBatch.line.remote": {
       "kind": "body",
       "role": "片段",
       "zh": "{title}（{machine}）",
@@ -4456,22 +4348,22 @@
     "tabBatch.why.noTmux": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 无 tmux",
-      "args": ["machine"],
+      "zh": "未装 tmux",
+      "args": [],
       "limited": ["tmux"]
     },
     "tabBatch.why.notInTmux": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 上未找到它的 tmux 会话",
-      "args": ["machine"],
+      "zh": "未找到它的 tmux 会话",
+      "args": [],
       "limited": ["tmux"]
     },
     "tabBatch.why.ambiguous": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} · tmux 会话 {names} · 无法确定 · 未动",
-      "args": ["machine", "names"],
+      "zh": "tmux 会话 {names} · 无法确定 · 未动",
+      "args": ["names"],
       "limited": ["tmux"]
     },
     "tabBatch.why.running": {
@@ -9737,48 +9629,6 @@
       "zh": "窗口未连上后端 · 重开窗口",
       "args": []
     },
-    "rsFilewinSource.said.internal": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "程序出错 · 重开本窗口",
-      "args": []
-    },
-    "rsFilewinSource.said.hopFault": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未完成 · {what} · {did} · {leg}",
-      "args": ["leg", "what", "did"]
-    },
-    "rsFilewinSource.said.legHost": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "主程序与后端之间",
-      "args": []
-    },
-    "rsFilewinSource.said.legWindow": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "文件窗口与主程序之间",
-      "args": []
-    },
-    "rsFilewinSource.said.mayHaveRun": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "结果未知",
-      "args": []
-    },
-    "rsFilewinSource.said.notSent": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "请求未发出",
-      "args": []
-    },
-    "rsFilewinSource.said.unreachable": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "离线",
-      "args": []
-    },
     "rsFilewinSource.watch.localBreak": {
       "kind": "error",
       "role": "原因格",
@@ -9955,35 +9805,11 @@
       "zh": "新建目录",
       "args": []
     },
-    "rsFilewinFind.refusal.line": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "{hint} · {said}",
-      "args": ["hint", "said"]
-    },
-    "rsFilewinFind.refusal.cannotOpen": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "后端无法打开此目录 · 无权限或目录不在该机器上",
-      "args": []
-    },
-    "rsFilewinFind.refusal.badPath": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "后端不认此路径",
-      "args": []
-    },
     "rsFilewinFind.firstBuild.line": {
       "kind": "body",
       "role": "说明",
       "zh": "首建文件清单 · {machine} · 约 {dur}",
       "args": ["machine", "dur"]
-    },
-    "rsFilewinFind.refusal.badQuery": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "搜索词写法不对",
-      "args": []
     },
     "rsFilewinWorkspace.acrossArgs.notUnder": {
       "kind": "error",
@@ -11841,31 +11667,6 @@
       "zh": "加锁 {dir} 失败",
       "args": ["dir"]
     },
-    "rsChanWire.hop.unreachable": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "离线",
-      "args": []
-    },
-    "rsChanWire.hop.dropped": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "连接中途断开",
-      "args": [],
-      "limited": ["连接"]
-    },
-    "rsChanWire.peer.refused": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "后端拒绝",
-      "args": []
-    },
-    "rsChanWire.ours.cancelledRunsOn": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "已取消 · 对方无法中止 · 结果未知",
-      "args": []
-    },
     "rsSshLink.dial.failed": {
       "kind": "error",
       "role": "原因格",
@@ -12021,6 +11822,55 @@
       "role": "报错",
       "zh": "一段声称 {n} 字节，超过上限 {cap}",
       "args": ["n", "cap"]
+    },
+    "rsChanSaid.hop.expired": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "已超时 · 未执行",
+      "args": []
+    },
+    "rsChanSaid.hop.localDown": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "本机后端未运行 · 未执行",
+      "args": []
+    },
+    "rsChanSaid.hop.remoteDown": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} 离线 · 未执行",
+      "args": ["machine"]
+    },
+    "rsChanSaid.hop.overrun": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} 回复超时 · 结果未知",
+      "args": ["machine"]
+    },
+    "rsChanSaid.hop.dropped": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "与 {machine} 的连接断开 · 结果未知",
+      "args": ["machine"],
+      "limited": ["连接"]
+    },
+    "rsChanSaid.peer.refusedNoReason": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} 后端拒绝 · 原因不明",
+      "args": ["machine"]
+    },
+    "rsChanSaid.ours.cancelled": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "已取消",
+      "args": []
+    },
+    "rsChanSaid.ours.cancelledRunsOn": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "已取消 · {machine} 无法中止 · 结果未知",
+      "args": ["machine"]
     },
     "rsChanHost.transfer.noResume": {
       "kind": "error",
@@ -13814,30 +13664,6 @@
       "role": "报错",
       "zh": "{who}的回答前后不一致 · {plan}",
       "args": ["who", "plan"]
-    },
-    "rsFrameQuery.who.local": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "本机",
-      "args": []
-    },
-    "rsFrameQuery.who.remote": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{machine}",
-      "args": ["machine"]
-    },
-    "rsFrameQuery.call.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{who}查询失败 · {said}",
-      "args": ["who", "said"]
-    },
-    "rsFrameQuery.call.failedNoReason": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "{who}查询失败 · 原因不明",
-      "args": ["who"]
     },
     "rsFrameQuery.call.overdue": {
       "kind": "error",
@@ -17335,12 +17161,6 @@
       "zh": "正在交出",
       "args": []
     },
-    "askBlock.fail.noReason": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未答出 · 原因不明",
-      "args": []
-    },
     "askBlock.gone.elsewhere": {
       "kind": "body",
       "role": "说明",
@@ -18246,12 +18066,6 @@
       "role": "报错",
       "zh": "刷新被拒 · {said}",
       "args": ["said"]
-    },
-    "resync.call.noReason": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "刷新被拒 · 原因不明",
-      "args": []
     },
     "resync.done.diff": {
       "kind": "body",
@@ -23123,14 +22937,6 @@
       "zh": "仅快照",
       "args": []
     },
-    "terminal.head.snapshotOnlyOld": {
-      "kind": "body",
-      "role": "悬停",
-      "zh": "{machine} 要更新 · 实时画面不可用",
-      "args": [
-        "machine"
-      ]
-    },
     "terminal.bar.liveStopped": {
       "kind": "body",
       "role": "说明",
@@ -23379,12 +23185,6 @@
       "role": "报错",
       "zh": "发送被拒",
       "args": []
-    },
-    "terminalReads.input.noReason": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "送往 {target} 被拒，无原因",
-      "args": ["target"]
     },
     "keybindingActions.panel.terminal": {
       "kind": "action",

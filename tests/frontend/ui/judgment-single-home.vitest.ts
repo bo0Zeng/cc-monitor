@@ -68,7 +68,7 @@ import { nonEmpty } from "../../test-support/non-empty.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36" | "J37";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36" | "J37" | "J38";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -456,11 +456,12 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J22: {
     what: "因对方版本说不成的两个码（版本旧 / 回的认不出）各取哪一句、本机怎么称呼",
-    // 两侧各一个取句口，取的是表里同两条键（`peerVersion.said.*`）与同一个本机称呼（`control.machine.local`）；
-    // 说话那一层不知道名字时的称呼（`control.machine.peer`）只有 Rust 那一侧用（通信层兜底 · 后端自己答不认）。
+    // 版本旧那一句只有 Rust 写（monitor 交在 `ChanError.message`）；回的认不出是界面自己知道的事，两侧各一个取句口，
+    // 取的是表里同一条键（`peerVersion.said.unreadable`）与同一个本机称呼（`control.machine.local`）。
     homes: ["copy-core::backend_old", "copy-core::reply_unreadable", "copy-core::local_machine", "copy-core::peer_machine"],
     status: "mirror",
-    defs: ["peerVersionSaid"],
+    defs: ["unreadableSaid"],
+    gone: ["peerVersionSaid"],
     needles: [],
     parity: {
       via: "src/shared/copy/table.json",
@@ -661,6 +662,14 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       { text: 'copyText("machineState.problem.', count: 0 },
     ],
   },
+  J38: {
+    what: "那台握手时说做不到的一个码 ⇒ 说成哪一句（置灰 · 测试连接那一格的「做不到的那几类」）",
+    // 置灰那一句由壳随能力事实交来，测试连接那几类由后端答复带来 ⇒ 界面那一份删了。
+    homes: ["copy-core::unavailable"],
+    status: "zero",
+    defs: ["unavailableReason"],
+    needles: [],
+  },
   J29: {
     what: "这个号能不能选 · 这台的默认号是谁（标了的第一个，没标 ⇒ 第一个）",
     homes: ["acct-core::account_selectable", "acct-core::effective_default"],
@@ -826,6 +835,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     local_machine: "J22",
     peer_machine: "J22",
     reply_unreadable: "J22",
+    unavailable: "J37",
     TABLE_JSON: NONE,
     // 天数 ⇒ 公历（后端 · monitor · 文件窗口写日期与「复制详情」的时刻都经它）；界面那一份 TS 删了（J23 zero）。
     civil_from_days: "J23",

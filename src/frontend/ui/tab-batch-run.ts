@@ -6,16 +6,16 @@
  *   每项的结局取那台那一句；落在窗口里的那几项逐个开窗（[`ON_LANDED`] 后台那一列）。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import { machineName, saidOfControl, settleTyped, unavailableSaid, type Refusals } from "./control-said";
+import { settleTyped, unavailableSaid } from "./control-said";
+import { batchRefused } from "./sessions-where";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
-import { killRefusals } from "./tmux-control";
 import type { Tab } from "./tab-model";
 import type { Run } from "./generated/Run";
 import { askOpen, ON_LANDED } from "./session-open";
 import type { Outcome } from "./generated/Outcome";
 import { openLocalTerminal, openTerminal } from "./terminal-open";
-import { failSaid } from "./kit/detail";
+import { failSaid, saidOf } from "./kit/detail";
 
 /** 一个 tab 的结局（`why` 是给人看的那一句；做成了 ⇒ 空串）。 */
 export interface BatchOutcome {
@@ -31,34 +31,8 @@ export type Reply = Outcome;
 
 /** 一台的整体失败（通道不在 · 后端太旧 · 拒了整批）⇒ 那一台的每一个都记成失败、带同一句。 */
 function machineFailed(sids: readonly string[], e: unknown): BatchOutcome[] {
-  const why = saidOfControl(e);
+  const why = saidOf(e);
   return sids.map((sid) => ({ sid, outcome: "failed", why }));
-}
-
-/** 整批被那台拒了（命令级的码）怎么说。 */
-function batchRefusals(origin: Origin): Refusals {
-  return {
-    byCode: (_code, said) => copyText("tabBatch.why.batchRefused", { machine: machineName(origin), said }),
-    noReason: () => copyText("tabBatch.why.batchRefused", { machine: machineName(origin), said: copyText("reason.io.unknown") }),
-  };
-}
-
-/** 停：后端答的跳过 / 失败原因 ⇒ 人话（失败的照单个那条的说法，`tmux-control.ts::killRefusals`）。 */
-export function sayReply(origin: Origin, r: Reply): string {
-  const machine = machineName(origin);
-  const target = r.session ?? "";
-  switch (r.why) {
-    case null:
-      return "";
-    case "no_tmux":
-      return copyText("tabBatch.why.noTmux", { machine });
-    case "not_in_tmux":
-      return copyText("tabBatch.why.notInTmux", { machine });
-    case "ambiguous":
-      return copyText("tabBatch.why.ambiguous", { machine, names: r.detail });
-    default:
-      return r.said ?? killRefusals(target).noReason();
-  }
 }
 
 function groupByOrigin(tabs: readonly Tab[]): Map<Origin, Tab[]> {
@@ -84,7 +58,7 @@ const BATCH_EACH_MS = 6_000;
 /** 停：问那台一次（`sids` 那几个），逐个答。问不到 / 形状不对 ⇒ 抛 `ControlError`。 */
 export async function callStop(origin: Origin, sids: readonly string[]): Promise<Reply[]> {
   const budget = budgetWithin(BATCH_BASE_MS + BATCH_EACH_MS * sids.length);
-  const v = await settleTyped(origin, "sessions-stop", callTyped(origin, "sessions-stop", { sids: [...sids] }, budget), batchRefusals(origin));
+  const v = await settleTyped(origin, "sessions-stop", callTyped(origin, "sessions-stop", { sids: [...sids] }, budget), batchRefused(origin));
   return v.results;
 }
 
@@ -96,7 +70,7 @@ export async function stopMany(tabs: readonly Tab[]): Promise<BatchOutcome[]> {
       const no = offered(origin, "sessions-stop", sids);
       if (no) return no;
       try {
-        return (await callStop(origin, sids)).map((r) => ({ sid: r.sid, outcome: r.outcome, why: sayReply(origin, r), ...(r.copyDetail !== "" ? { detail: r.copyDetail } : {}) }));
+        return (await callStop(origin, sids)).map((r) => ({ sid: r.sid, outcome: r.outcome, why: r.said ?? "", ...(r.copyDetail !== "" ? { detail: r.copyDetail } : {}) }));
       } catch (e) {
         return machineFailed(sids, e);
       }

@@ -236,7 +236,6 @@ fn stop_kills_exactly_the_one_session_carrying_each_sid() {
     // 杀的恰好是带着 A 的那一个，按 sid 核；命中两个的那一个一下都不碰（同单个菜单「命中多个拒杀」）。
     assert_eq!(*rig.calls.borrow(), vec![format!("kill a-cc {A}")]);
     assert_eq!(out["results"][0]["session"], "a-cc");
-    assert_eq!(out["results"][2]["detail"], "c-cc, c-cc-2");
 }
 
 #[test]
@@ -261,6 +260,71 @@ fn stop_says_why_per_session_and_one_failure_does_not_stop_the_rest() {
         outcomes(&out),
         vec![(A.into(), "skipped".into(), json!("no_tmux"))]
     );
+}
+
+/// 停的每一项没做成 ⇒ 那一句由这台写好（`said`）：名单里的三种（没 tmux · 没找到 · 命中多个）与杀不成的每个码；
+/// 做成的那一项没有那一句。句子里不出现码。
+#[test]
+fn every_stop_item_not_done_carries_its_sentence() {
+    let said_of = |rig: Rig, sid: &str| -> (String, Value) {
+        let out = rig.run(|d| stop(&json!({ "sids": [sid] }), d)).unwrap();
+        let r = &out["results"][0];
+        (
+            r["why"].as_str().unwrap_or_default().to_string(),
+            r["said"].clone(),
+        )
+    };
+    let mut cases = vec![
+        said_of(Rig::new(None), A),
+        said_of(Rig::new(Some(vec![])), A),
+        said_of(
+            Rig::new(Some(vec![
+                row("c-cc", Some(C), true),
+                row("c-cc-2", Some(C), true),
+            ])),
+            C,
+        ),
+    ];
+    for code in [
+        "too_many_windows",
+        "wrong_owner",
+        "child_timed_out",
+        "kill_failed",
+        "no_such_session",
+        "odd_new_code",
+    ] {
+        let mut rig = Rig::new(Some(vec![row("a-cc", Some(A), true)]));
+        rig.kill_err = Some(code);
+        cases.push(said_of(rig, A));
+    }
+    let codes: Vec<&str> = cases.iter().map(|(c, _)| c.as_str()).collect();
+    assert_eq!(
+        codes,
+        [
+            "no_tmux",
+            "not_in_tmux",
+            "ambiguous",
+            "too_many_windows",
+            "wrong_owner",
+            "child_timed_out",
+            "kill_failed",
+            "no_such_session",
+            "odd_new_code"
+        ]
+    );
+    for (code, said) in &cases {
+        let said = said
+            .as_str()
+            .unwrap_or_else(|| panic!("{code}：没有那一句"));
+        assert!(
+            !said.is_empty() && !said.contains(code.as_str()),
+            "{code}：{said}"
+        );
+    }
+    assert!(cases[2].1.as_str().unwrap().contains("c-cc, c-cc-2"));
+    let done = Rig::new(Some(vec![row("a-cc", Some(A), true)]));
+    let out = done.run(|d| stop(&json!({ "sids": [A] }), d)).unwrap();
+    assert_eq!(out["results"][0]["said"], Value::Null);
 }
 
 #[test]

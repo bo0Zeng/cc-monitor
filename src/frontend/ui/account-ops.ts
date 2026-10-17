@@ -18,7 +18,7 @@
  * 建目录、搭链接、写清单、放凭据或 key、重写别名文件都由那台后端做。每条都能先 `dryRun` 预演（回将要做的那几步）。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import { asSaid, settleTyped, type Refusals } from "./control-said";
+import { settleTyped } from "./control-said";
 import type { Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { ACCOUNT_NAME_MAX, accountNameOk } from "./generated/judgment-rules";
@@ -58,11 +58,6 @@ const CHANGE_BUDGET_MS = 60_000;
 /** 只读 / 只算的那两条。 */
 const READ_BUDGET_MS = 20_000;
 
-/** 被拒：那一句由那台后端写好（契约对不上那一档也是）；没说 ⇒ 原因不明。 */
-function refusals(): Refusals {
-  return asSaid(() => copyText("accountOps.said.noReason"));
-}
-
 /** 建账号库。 */
 export async function accountsInit(
   origin: Origin,
@@ -72,7 +67,6 @@ export async function accountsInit(
     origin,
     "accounts-init",
     callTyped(origin, "accounts-init", args, budgetWithin(CHANGE_BUDGET_MS)),
-    refusals(),
   );
 }
 
@@ -85,7 +79,6 @@ export async function accountsAdd(
     origin,
     "accounts-add",
     callTyped(origin, "accounts-add", args, budgetWithin(CHANGE_BUDGET_MS)),
-    refusals(),
   );
 }
 
@@ -103,7 +96,6 @@ export async function accountsSetDefault(
       { name },
       budgetWithin(CHANGE_BUDGET_MS),
     ),
-    refusals(),
   );
 }
 
@@ -116,7 +108,6 @@ export async function accountsRemove(
     origin,
     "accounts-remove",
     callTyped(origin, "accounts-remove", args, budgetWithin(CHANGE_BUDGET_MS)),
-    refusals(),
   );
 }
 
@@ -129,7 +120,6 @@ export async function accountsRepair(
     origin,
     "accounts-repair",
     callTyped(origin, "accounts-repair", args, budgetWithin(CHANGE_BUDGET_MS)),
-    refusals(),
   );
 }
 
@@ -147,7 +137,6 @@ export async function accountsRollback(
       args,
       budgetWithin(CHANGE_BUDGET_MS),
     ),
-    refusals(),
   );
 }
 
@@ -157,7 +146,6 @@ export async function accountsVerify(origin: Origin): Promise<VerifyReport> {
     origin,
     "accounts-verify",
     callTyped(origin, "accounts-verify", {}, budgetWithin(READ_BUDGET_MS)),
-    refusals(),
   );
 }
 
@@ -175,7 +163,6 @@ export async function accountsLoginCmd(
       { name },
       budgetWithin(READ_BUDGET_MS),
     ),
-    refusals(),
   );
   return v.cmd;
 }
@@ -186,7 +173,6 @@ export async function accountsMcpRead(origin: Origin): Promise<AccountMcpView> {
     origin,
     "accounts-mcp-read",
     callTyped(origin, "accounts-mcp-read", {}, budgetWithin(READ_BUDGET_MS)),
-    refusals(),
   );
 }
 
@@ -204,7 +190,6 @@ export async function accountsMcpRemove(
       { name },
       budgetWithin(CHANGE_BUDGET_MS),
     ),
-    refusals(),
   );
 }
 
@@ -219,7 +204,6 @@ export async function accountsMcpPick(
     origin,
     "accounts-mcp-pick",
     callTyped(origin, "accounts-mcp-pick", req, budgetWithin(CHANGE_BUDGET_MS)),
-    refusals(),
   );
 }
 
@@ -237,6 +221,5 @@ export async function accountsMcpSync(
       { on },
       budgetWithin(CHANGE_BUDGET_MS),
     ),
-    refusals(),
   );
 }

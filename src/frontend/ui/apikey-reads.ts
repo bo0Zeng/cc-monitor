@@ -16,7 +16,8 @@
  * 替别的数据目录干活的后端接不上，`<local>` 那条长连接就不存在。
  * ⚠ 账号 id 只由后端推：前端交 `configDir`，一个字都不从它推账号 id。
  */
-import { budgetWithin, callTyped, saidFrom } from "./ipc/chan-caller";
+import { budgetWithin, callTyped } from "./ipc/chan-caller";
+import { saidOf } from "./kit/detail";
 import type { Origin } from "./ipc/origin";
 import type { KeySet } from "./generated/KeySet";
 
@@ -39,6 +40,6 @@ export async function writeApikeyKey(
     const req = baseUrl === undefined ? { configDir, key } : { configDir, key, baseUrl };
     return await callTyped(origin, "apikey-key-set", req, budgetWithin(APIKEY_BUDGET_MS));
   } catch (e) {
-    throw new Error(saidFrom(e, origin));
+    throw new Error(saidOf(e));
   }
 }

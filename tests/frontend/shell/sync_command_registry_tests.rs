@@ -63,10 +63,6 @@ const SYNC_ALLOWED: &[(&str, &str)] = &[
         "读进程内那张远端句柄表的名字（内存，锁只在这一下）",
     ),
     (
-        "chan/webview.rs::chan_cancel",
-        "撤一条在飞的调用：在进程内的在飞表里摘一行、发撤单不等回话",
-    ),
-    (
         "chan/webview.rs::chan_offer",
         "读进程内那台机器的能力事实（握手时记下的，内存）",
     ),

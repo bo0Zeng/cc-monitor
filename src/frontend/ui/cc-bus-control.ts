@@ -27,7 +27,7 @@
  */
 import { copyText } from "./copy-table";
 import { arrivedBody, expectArrival } from "./launch-arrival";
-import { asSaid, ControlError, machineName, settleTyped, type Refusals } from "./control-said";
+import { ControlError, machineName, settleTyped } from "./control-said";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import type { BusSent } from "./generated/BusSent";
@@ -49,10 +49,6 @@ const SPAWN_BUDGET_MS = 90_000;
 
 // ─── 查在线（`bus-list`）───
 
-function listRefusals(id: string): Refusals {
-  return asSaid(() => copyText("ccBus.online.noReason", { id }));
-}
-
 /**
  * 问 `origin` 上的 agent `id` 此刻在不在线（名单里那份**核过身份**的三态）。
  * 只回确定的答案；问不到 ⇒ 抛 [`ControlError`]（「问不到」不是「不在线」，见头注）。
@@ -60,7 +56,7 @@ function listRefusals(id: string): Refusals {
  */
 export async function agentOnline(origin: Origin, id: string): Promise<boolean> {
   const sent = callTyped(origin, "bus-list", {}, budgetWithin(ONLINE_BUDGET_MS));
-  const { agents } = await settleTyped(origin, "bus-list", sent, listRefusals(id));
+  const { agents } = await settleTyped(origin, "bus-list", sent);
   const hit = agents.find((a) => a.id === id);
   if (hit === undefined || hit.live === null) {
     throw new ControlError(copyText("ccBus.online.unknown", { id, machine: machineName(origin) }), "not in the roster, or live is null");
@@ -69,10 +65,6 @@ export async function agentOnline(origin: Origin, id: string): Promise<boolean> 
 }
 
 // ─── 发消息（`bus-send`）───
-
-function sendRefusals(id: string): Refusals {
-  return asSaid(() => copyText("ccBus.send.noReason", { id }));
-}
 
 /**
  * `bus-send` 的成品 ⇒ 那一句。三态在线**不许在这一层被抹平**：「发出去了」与「发出去了但没人会读」对用户是两件事。
@@ -88,14 +80,10 @@ export function saidOfDelivery(id: string, v: BusSent): string {
 export async function sendMessage(origin: Origin, id: string, text: string): Promise<string> {
   if (text.trim() === "") throw new ControlError(copyText("ccBus.send.empty"), "empty message, nothing sent");
   const sent = callTyped(origin, "bus-send", { to: id, text, from: MONITOR_BUS_ID }, budgetWithin(WRITE_BUDGET_MS));
-  return saidOfDelivery(id, await settleTyped(origin, "bus-send", sent, sendRefusals(id)));
+  return saidOfDelivery(id, await settleTyped(origin, "bus-send", sent));
 }
 
 // ─── 收掉（`bus-kill`）───
-
-function killRefusals(id: string): Refusals {
-  return asSaid(() => copyText("ccBus.kill.noReason", { id }));
-}
 
 /** `bus-kill` 的成品 ⇒ 那一句。三态分开说：真收了 · 身份对不上**只摘了陈旧登记而会话没动** · 两样都没发生。 */
 export function saidOfKill(id: string, v: BusKilled): string {
@@ -107,7 +95,7 @@ export function saidOfKill(id: string, v: BusKilled): string {
 /** 收掉 `origin` 上的 agent `id`（**破坏性，不可撤销** —— 调用方两步确认）。回那一句；失败 ⇒ 抛 [`ControlError`]。 */
 export async function killAgent(origin: Origin, id: string): Promise<string> {
   const sent = callTyped(origin, "bus-kill", { id }, budgetWithin(WRITE_BUDGET_MS));
-  return saidOfKill(id, await settleTyped(origin, "bus-kill", sent, killRefusals(id)));
+  return saidOfKill(id, await settleTyped(origin, "bus-kill", sent));
 }
 
 // ─── 派生（`bus-spawn`）───
@@ -129,10 +117,6 @@ export function checkSpawnShape(req: SpawnRequest): void {
   if (req.dir.trim() === "") throw new ControlError(copyText("ccBus.spawn.needDir"), "empty working directory");
 }
 
-function spawnRefusals(): Refusals {
-  return asSaid(() => copyText("ccBus.spawn.noReason"));
-}
-
 /**
  * `bus-spawn` 的成品 ⇒ 那一句。`id` 是 `null` 时**不许**说成「没起来」（后端从回显里认名字，认不出只说明换了说法，
  * 会话多半已经在跑 —— 说成失败，用户会重试、再起一个真 agent）。
@@ -147,7 +131,7 @@ export async function spawnAgent(origin: Origin, req: SpawnRequest): Promise<str
   checkSpawnShape(req);
   const account = req.account !== undefined && req.account !== "" ? { account: req.account } : { base: true };
   const sent = callTyped(origin, "bus-spawn", { tool: req.tool, dir: req.dir, task: req.task, ...account }, budgetWithin(SPAWN_BUDGET_MS));
-  const v = await settleTyped(origin, "bus-spawn", sent, spawnRefusals());
+  const v = await settleTyped(origin, "bus-spawn", sent);
   const said = saidOfSpawn(v);
   // cc-spawn 回了不等于 agent 起来了（pane 里当场退回 shell 那一形它照样回 0）：
   //   等那台报出一条在这个目录里新起的会话再说；没见到就抓那个 tmux 会话的一屏当原话。
@@ -163,10 +147,6 @@ export async function spawnAgent(origin: Origin, req: SpawnRequest): Promise<str
 }
 
 // ─── 广播（`bus-broadcast`）───
-
-function broadcastRefusals(): Refusals {
-  return asSaid(() => copyText("ccBus.broadcast.noReason"));
-}
 
 /**
  * `bus-broadcast` 的成品 ⇒ 那一句。三个数**分开说**（发到几个 · 跳过几个不在线的 · 失败几个），
@@ -190,7 +170,7 @@ export function saidOfBroadcast(v: BusBroadcast): string {
 export async function broadcast(origin: Origin, text: string): Promise<string> {
   if (text.trim() === "") throw new ControlError(copyText("ccBus.broadcast.empty"), "empty broadcast text, nothing sent");
   const sent = callTyped(origin, "bus-broadcast", { text, from: MONITOR_BUS_ID }, budgetWithin(WRITE_BUDGET_MS));
-  return saidOfBroadcast(await settleTyped(origin, "bus-broadcast", sent, broadcastRefusals()));
+  return saidOfBroadcast(await settleTyped(origin, "bus-broadcast", sent));
 }
 
 // ─── 驾驶舱读面（`bus-state` · `bus-inbox`）───
@@ -204,16 +184,12 @@ export type BusState = BusStateWire;
 /** 收件箱：消息 ＋ 坏行数 ＋ 截没截。 */
 export type BusInbox = BusInboxWire;
 
-function readRefusals(): Refusals {
-  return asSaid(() => copyText("ccBus.read.noReason"));
-}
-
 /** 读 `origin` 那台的名册 ＋ 派生台账（登记时间 · 派生时间 · 坏行数）。失败 ⇒ 抛 [`ControlError`]（读不到 ≠ 一个都没有）。 */
 export async function readState(origin: Origin): Promise<BusState> {
-  return settleTyped(origin, "bus-state", callTyped(origin, "bus-state", {}, budgetWithin(READ_BUDGET_MS)), readRefusals());
+  return settleTyped(origin, "bus-state", callTyped(origin, "bus-state", {}, budgetWithin(READ_BUDGET_MS)));
 }
 
 /** 只读看 `origin` 上 agent `id` 收件箱的尾巴（不推已读位置）。失败 ⇒ 抛 [`ControlError`]。 */
 export async function readInbox(origin: Origin, id: string): Promise<BusInbox> {
-  return settleTyped(origin, "bus-inbox", callTyped(origin, "bus-inbox", { id }, budgetWithin(READ_BUDGET_MS)), readRefusals());
+  return settleTyped(origin, "bus-inbox", callTyped(origin, "bus-inbox", { id }, budgetWithin(READ_BUDGET_MS)));
 }

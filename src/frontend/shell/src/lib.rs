@@ -814,8 +814,6 @@ pub fn run() {
             //   （`skill-host-list` / `-read` / `-write`，声明与围栏住后端 `agents/claudecode/skill_host.rs`）。
             // **主界面说 `call` 的那一跳**：webview ⇒ 通道 ⇒ 注入的后端句柄。
             chan::webview::chan_call,
-            // 〔「撤单不许回退」〕撤单过 webview 那一跳（带编号撤那一问）。
-            chan::webview::chan_cancel,
             // 会话内容经通道的 `subscribe`（本地撤单 · credit）。
             chan::webview::chan_offer,
             chan::webview::chan_subscribe,

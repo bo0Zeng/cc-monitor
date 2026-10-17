@@ -155,7 +155,9 @@ fn drawn_files() -> Vec<(String, String)> {
     //   （`entry.rs` 在那边，人群与搬家前逐份相同）。`mod.rs` 的躯体成了本包的 `lib.rs`（两份都摘）；两侧各有一份 `proc.rs`（都摘）；
     //   `frame_log.rs`（帧日志）同理：它写的是一份日志文件，一个字都不画在 egui 上。
     //   `render.rs`（挑哪块显卡）同理：它的话只上 stderr（挑中的那一行 · 挑不出时那一句），一个字都不画在 egui 上。
+    //   通信层的 `chan/said.rs` 进人群：通道没成时窗口上画的那一句从它取（全产品一份，不住本包）。
     let monitor_side = guard_core::addr::repo_root().join("src/frontend/shell/src/filewin");
+    let said = guard_core::addr::repo_root().join("src/comms/inward/chan/said.rs");
     let mut out: Vec<(String, String)> = guard_core::scan_tree_excluding(
         &dir,
         &["rs"],
@@ -174,6 +176,10 @@ fn drawn_files() -> Vec<(String, String)> {
         &["rs"],
         &["mod.rs", "proc.rs"],
     ))
+    .chain(std::iter::once((
+        said.clone(),
+        std::fs::read_to_string(&said).expect("读不到 chan/said.rs"),
+    )))
     .map(|(path, src)| {
         let name = path
             .file_name()
@@ -388,7 +394,8 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
         // 34 → 36，多的是 `imgview.rs`（图片查看页：头条 · 画面 · 状态栏那几句）· `picture.rs`（读图解图没成的那几句）。
         //   字形一个没多：两份的字全经文案表取，源码里不留非 ASCII 字面量。
         // 36 → 37，多的是 `batch.rs`（一组一条命令那一层：冲突框 · 逐项选 · 进度那一行 · 断开那一句）。
-        37,
+        // 37 → 38，多的是通信层的 `chan/said.rs`（通道没成时窗口上那一句，全产品一份）。
+        38,
         "人群应当是 10 份（2026-09-21 现打：copy · corpus · entry · **find** · rows · scale · \
          shell · source · transfer · **writeops**；`fonts.rs` 与 `mod.rs` 摘掉了。\
          ⚠ `corpus.rs` 的非 ASCII 字面量是 0，按字符数统计时看不见它 —— \
@@ -437,7 +444,8 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
         // 349 → 351：一组一条命令那一层（冲突框 · 逐项选 · 进度那一行 · 断开那一句）多两个字，逐笔来路住 `fonts.rs` 的 `PROBE` 上方。
         // 351 → 350，＋2 −3（＋`继 续` −`勾 照 着`：上传那张自带勾选的同名表删了，结局行多一颗「继续」；逐笔来路住 `fonts.rs` 的 `PROBE` 上方）。
         // 350 → 346，−`三 例 围 范`、零 ＋（名字与权限位交那台判，那几句随之删了；逐笔来路住 `fonts.rs` 的 `PROBE` 上方）。
-        346,
+        // 346 → 342，＋1 −5（通道那一句并成通信层一份、`chan/said.rs` 进人群；逐笔来路住 `fonts.rs` 的 `PROBE` 上方）。
+        342,
         "现扫出 {} 个不同的非 ASCII 字符（2026-09-21 现打 249；第五刀之前是 205、\
          〔书签旧键退役：341 → 337，−4 零 ＋（`entry.rs` 搬家那两句删了，逐笔来路住 `fonts.rs` 的 `PROBE` 上方）〕\
          〔334 → 338，恰好 ＋4、零 −（`仍 然 摘 盘`，编辑器存盘 CAS 那几句，逐笔来路住 `fonts.rs` 的 `PROBE` 上方）〕\
@@ -550,7 +558,8 @@ fn without_a_cjk_font_the_probe_is_almost_entirely_unrenderable() {
         // 343 → 345：探针 349 → 351（＋`余 核 逐` −`询`），全是汉字。
         // 345 → 344：探针 351 → 350（＋`继 续` −`勾 照 着`，上传那张同名表删了），全是汉字，现打。
         // 344 → 340：探针 350 → 346（−`三 例 围 范`，名字与权限位交那台判），全是汉字，现打。
-        340,
+        // 340 → 336：探针 346 → 342（＋`运` −`之 方 求 词 请`，通道那一句并成通信层一份），全是汉字，现打。
+        336,
         "比例字体下画不出的字数变了（2026-09-21 现打 238 / 探针 {} 字；\
          〔CP2b filewin 第二份 09-25：344 → **329**（现打），探针 358 → 343 —— 差额 −15 ＝ ＋9 −24 全是汉字，不装字体全画不出〕\
          〔CP2b 全量抽表 09-25：338 → **344**（现打），探针 352 → 358 字 —— 差额 ＋6 ＝ 新进的 9 个汉字不装字体全画不出、\
@@ -622,7 +631,8 @@ fn without_a_cjk_font_the_probe_is_almost_entirely_unrenderable() {
         // 342 → 344：同比例那一格（探针 ＋`余 核 逐` −`询`）。
         // 344 → 343：同比例那一格（探针 ＋`继 续` −`勾 照 着`），现打。
         // 343 → 339：同比例那一格（探针 −`三 例 围 范`）。
-        339,
+        // 339 → 335：同比例那一格（探针 ＋`运` −`之 方 求 词 请`），现打。
+        335,
         "等宽字体下画不出的字数变了（2026-09-22 现打 300 —— 那时比比例少**两**个\
          〔CP2b filewin 第二份 09-25：342 → **327**（现打），与比例那一格同一个 −15；329 − 327 = 2 那条关系没动〕\
          〔CP2b 全量抽表 09-25：336 → **342**（现打），与比例那一格同一个 ＋6；344 − 342 = 2 那条关系没动〕\

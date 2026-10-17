@@ -6,7 +6,7 @@
  * 界面不拿名单自己筛、不按目录猜。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import { machineName, settleTyped, type Refusals } from "./control-said";
+import { machineName, settleTyped } from "./control-said";
 import type { StandingWord } from "./generated/StandingWord";
 import type { Whereabouts } from "./generated/Whereabouts";
 import type { Origin } from "./ipc/origin";
@@ -28,11 +28,9 @@ export interface Standing {
 /** 期限：那台问一次 tmux 名单就答。 */
 const STANDING_BUDGET_MS = 10_000;
 
-function refusals(origin: Origin): Refusals {
-  return {
-    byCode: (_code, said) => copyText("tabBatch.why.batchRefused", { machine: machineName(origin), said }),
-    noReason: () => copyText("tabBatch.why.batchRefused", { machine: machineName(origin), said: copyText("reason.io.unknown") }),
-  };
+/** 整批被那台拒了：那一句前面带上是哪台（批量的提示里机器只有界面知道）。停 · 起 · 问样子共用。 */
+export function batchRefused(origin: Origin): (said: string) => string {
+  return (said) => copyText("tabBatch.why.batchRefused", { machine: machineName(origin), said });
 }
 
 /** 应答 ⇒ 逐个样子（类型从 Rust 生成，形状由握手指纹核过）。 */
@@ -40,10 +38,10 @@ export function standingsFrom(reply: Whereabouts): Standing[] {
   return reply.results.map((r) => ({ kind: r.standing, names: r.names, terminals: r.terminals.map((t) => t.terminal), run: reply.run }));
 }
 
-/** 那台上这几个会话各自的样子（与 `sids` 同序）。问不到 ⇒ 抛 `ControlError`（那一句已经说好）。 */
+/** 那台上这几个会话各自的样子（与 `sids` 同序）。问不到 ⇒ 抛（那一句已经说好）。 */
 export async function standingsOf(origin: Origin, sids: readonly string[]): Promise<Standing[]> {
   const budget = budgetWithin(STANDING_BUDGET_MS);
-  const v = await settleTyped(origin, "sessions-where", callTyped(origin, "sessions-where", { sids: [...sids] }, budget), refusals(origin));
+  const v = await settleTyped(origin, "sessions-where", callTyped(origin, "sessions-where", { sids: [...sids] }, budget), batchRefused(origin));
   return standingsFrom(v);
 }
 

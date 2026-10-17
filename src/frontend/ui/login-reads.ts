@@ -10,11 +10,10 @@
  *
  * 判 · 拼句 · 能不能接着粘全在后端：失败回包的 `data.again` 说「接着粘 · 重新开始 · 没法再来」，这里只把它原样交出去，不按码分。
  */
-import { ChanError, type CallError } from "../../comms/inward/chan";
-import { budgetWithin, callTyped, refusalOf } from "./ipc/chan-caller";
+import { ChanError } from "../../comms/inward/chan";
+import { budgetWithin, callTyped, isOldBackend, refusalIn } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
-import { saidOfTransport } from "./control-said";
-import { copyText } from "./copy-table";
+import { detailOf, saidOf } from "./kit/detail";
 import type { ManualItem } from "./generated/ManualItem";
 import type { LoginStartReq } from "./generated/LoginStartReq";
 import type { LoginStarted } from "./generated/LoginStarted";
@@ -44,15 +43,9 @@ export async function readManual(origin: Origin): Promise<ManualRead> {
     const got = await callTyped(origin, "manual-list", {}, budgetWithin(MANUAL_BUDGET_MS));
     return { t: "ok", items: got.items };
   } catch (e) {
-    if (!(e instanceof ChanError)) return { t: "unreadable", message: e instanceof Error ? e.message : String(e), detail: "" };
-    const err = e.error;
-    if (err.layer === "peer" && err.why === "unsupported") return { t: "old" };
-    if (err.layer === "hop") return { t: "offline" };
-    if (err.layer === "peer" && err.why === "refused") {
-      const r = refusalOf(err.body);
-      return { t: "unreadable", message: r?.message ?? "", detail: e.detail };
-    }
-    return { t: "unreadable", message: saidOfTransport(origin, err), detail: e.detail };
+    if (isOldBackend(e)) return { t: "old" };
+    if (e instanceof ChanError && e.error.layer === "hop") return { t: "offline" };
+    return { t: "unreadable", message: saidOf(e), detail: detailOf(e) };
   }
 }
 
@@ -68,17 +61,11 @@ export class LoginFailed extends Error {
   }
 }
 
-/** 通道上的失败 ⇒ [`LoginFailed`]。对端说不行 ⇒ 照它的 `message` 与 `data.again`；别的层（够不着 · 答没答）⇒ 那一句照通道那一层说，作业在不在不知道 ⇒ 重新开始。 */
-function failedOf(origin: Origin, e: unknown): LoginFailed {
+/** 通道上的失败 ⇒ [`LoginFailed`]，那一句 monitor 写好。对端说不行 ⇒ 照它的 `data.again`；别的层（够不着 · 答没答）⇒ 作业在不在不知道 ⇒ 重新开始。 */
+function failedOf(e: unknown): LoginFailed {
   if (e instanceof LoginFailed) return e;
-  if (!(e instanceof ChanError)) return new LoginFailed(e instanceof Error ? e.message : String(e), "", "restart");
-  const err: CallError = e.error;
-  if (err.layer === "peer" && err.why === "refused") {
-    const r = refusalOf(err.body);
-    const again = againOf(r?.data);
-    return new LoginFailed(r?.message.trim() ? r.message : copyText("chanCaller.said.error"), e.detail, again);
-  }
-  return new LoginFailed(saidOfTransport(origin, err), e.detail, "restart");
+  const r = refusalIn(e);
+  return new LoginFailed(saidOf(e), detailOf(e), r ? againOf(r.data) : "restart");
 }
 
 /** 拒绝体里的 `data.again`；没带（只有 `bad_args`：入参形状不对，不是一条能走的路）⇒ 不给重来。 */
@@ -95,7 +82,7 @@ export async function loginStart(origin: Origin, target: LoginStartReq): Promise
   try {
     return await callTyped(origin, "login-start", { ...target, browserHere: isLocalOrigin(origin) }, budgetWithin(START_BUDGET_MS));
   } catch (e) {
-    throw failedOf(origin, e);
+    throw failedOf(e);
   }
 }
 
@@ -104,7 +91,7 @@ export async function loginFinish(origin: Origin, job: string, pasted: string): 
   try {
     await callTyped(origin, "login-finish", { job, pasted }, budgetWithin(FINISH_BUDGET_MS));
   } catch (e) {
-    throw failedOf(origin, e);
+    throw failedOf(e);
   }
 }
 

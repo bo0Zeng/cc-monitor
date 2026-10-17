@@ -795,7 +795,7 @@ pub const LS_LIMIT: usize = 50_000;
 
 /// 列一个目录 —— **只问后端**（`D11`：没有退路）。
 ///
-/// 回 `(行, 截断了吗)`。问不到 ⇒ 那句原话（[`said`] 翻过的）原样交出去。
+/// 回 `(行, 截断了吗)`。问不到 ⇒ 那句原话（[`comms_inward::chan::said::said`] 翻过的）原样交出去。
 pub async fn list_dir(
     line: &Line,
     source: &Source,
@@ -840,12 +840,12 @@ pub async fn ask(
 ///
 /// 🔴为什么要把码留下来：编辑器读文本那一问，后端的
 /// `too_large` / `not_text` 与「断开」是**两件事**（前者说「这份不是一份能编辑的文本」，
-/// 后者说「这一趟没走通」），而 [`said`] 翻完之后只剩一句话 —— 分它们就只能猜字符串前缀。
+/// 后者说「这一趟没走通」），而 [`comms_inward::chan::said::said`] 翻完之后只剩一句话 —— 分它们就只能猜字符串前缀。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Failed {
     /// 对端拒绝时它给的那个码（`None` = 不是对端拒的：没走通 / 这一侧拼错 / 对端不认这条命令）。
     pub code: Option<String>,
-    /// 给人看的那句话（[`said`] 翻过的，或这一侧自己的那句）。
+    /// 给人看的那句话（[`comms_inward::chan::said::said`] 翻过的，或这一侧自己的那句）。
     pub said: String,
     /// 「复制详情」那几行（首行之外）：对端拒了 ⇒ 那台后端写好的那份；通道没走通 / 这一侧的错 ⇒ 窗口进程自己写（[`detail_of`]）。
     /// 空 ⇒ 不出按钮。
@@ -951,7 +951,7 @@ fn now_stamp() -> String {
 pub fn detail_of(at: &Origin, cmd: &str, e: &comms_inward::chan::wire::CallError) -> String {
     let origin = at.0.as_str();
     use comms_inward::chan::wire::{CallError, PeerFault};
-    // 拒绝体读不懂（不是 JSON）⇒ 那段原文进「原话」（句子只说被拒，[`said`]）。
+    // 拒绝体读不懂（不是 JSON）⇒ 那段原文进「原话」（句子只说被拒，[`comms_inward::chan::said::said`]）。
     let mut raw_body: Option<String> = None;
     if let CallError::Peer {
         why: PeerFault::Refused { body },
@@ -1166,7 +1166,7 @@ async fn ask_raw(
         .map_err(|e| super::batch::Rebuff {
             failed: Failed {
                 code: refused_code(&e),
-                said: said(origin, cmd, &e),
+                said: comms_inward::chan::said::said(&e, origin),
                 detail: detail_of(origin, cmd, &e),
             },
             data: refused_data(&e),
@@ -1336,10 +1336,9 @@ pub async fn watch_coded(
                         Err(f)
                     }
                     "cancelled" => Err(plain(super::transfer::CANCELLED.to_string())),
-                    _ => Err(plain(super::find::refusal(
-                        kind,
-                        text("code"),
+                    _ => Err(plain(comms_inward::chan::said::refused(
                         text("message"),
+                        origin,
                     ))),
                 };
             }
@@ -1453,70 +1452,6 @@ pub fn refused_code(e: &comms_inward::chan::wire::CallError) -> Option<String> {
             .as_str()
             .map(str::to_string),
         _ => None,
-    }
-}
-
-/// 通道那三层失败→ 窗口上那一句话。**穷尽 `match`，不许 `_ =>`。**
-///
-/// 🔴 对端说了话（`Peer{Refused}`）时 body 是宿主那一侧拼的 `{"code","message"}`
-/// （`backend_route::layer_call_error` 逐字），翻成人话走 [`super::find::refusal`] ——
-/// 与从前经 `inbound_client` 直连时**同一个翻译**，一句都没换。
-///
-/// ⚠ `reach` 那一格要说出来：`Sent` / `Unknown` 的意思是「对面可能已经做了」，
-/// 对写面那几条这一句是承重的（用户据此决定要不要再点一次）。
-pub fn said(origin: &Origin, cmd: &str, e: &comms_inward::chan::wire::CallError) -> String {
-    use comms_inward::chan::wire::{CallError, HopFault, OursFault, PeerFault, Reach};
-    match e {
-        CallError::Peer { why } => match why {
-            PeerFault::Refused { body } => {
-                match serde_json::from_slice::<serde_json::Value>(&body.0) {
-                    Ok(v) => super::find::refusal(
-                        cmd,
-                        v.get("code")
-                            .and_then(serde_json::Value::as_str)
-                            .unwrap_or(""),
-                        v.get("message")
-                            .and_then(serde_json::Value::as_str)
-                            .unwrap_or(""),
-                    ),
-                    // 拒绝体读不懂：句子只说被拒，那段原文进详情（[`detail_of`]）。
-                    Err(_) => copy_text("reason.code.refused", &[]),
-                }
-            }
-            // 那台不认这条命令：全产品同一句，名字是这扇窗看着的那台。
-            PeerFault::Unsupported => copy_core::backend_old(&origin.0),
-        },
-        CallError::Hop { at, reach, why } => {
-            let what = match why {
-                HopFault::Unreachable => &copy_text("rsFilewinSource.said.unreachable", &[]),
-                HopFault::Dropped => &copy_text("reason.link.lost", &[]),
-                HopFault::Overrun => &copy_text("reason.link.noAnswer", &[]),
-            };
-            let did = match reach {
-                Reach::NotSent => &copy_text("rsFilewinSource.said.notSent", &[]),
-                Reach::Sent | Reach::Unknown => &copy_text("rsFilewinSource.said.mayHaveRun", &[]),
-            };
-            let leg = if at.idx == 0 {
-                &copy_text("rsFilewinSource.said.legWindow", &[])
-            } else {
-                &copy_text("rsFilewinSource.said.legHost", &[])
-            };
-            copy_text(
-                "rsFilewinSource.said.hopFault",
-                &[
-                    ("leg", &leg.to_string()),
-                    ("what", &what.to_string()),
-                    ("did", &did.to_string()),
-                ],
-            )
-        }
-        CallError::Ours { why, runs_on } => match why {
-            // 那台对这一条不认撤 ⇒ 说它可能还在跑。
-            OursFault::Cancelled if *runs_on => copy_text("rsChanWire.ours.cancelledRunsOn", &[]),
-            OursFault::Cancelled => copy_text("reason.op.cancelled", &[]),
-            OursFault::Misuse => copy_text("rsFilewinSource.said.internal", &[]),
-            OursFault::Broken => copy_text("reason.content.unparsable", &[]),
-        },
     }
 }
 

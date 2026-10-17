@@ -12,11 +12,8 @@
  * ```
  *
  * - **期限**：`Budget.until` 是**绝对时刻**（`performance.now()` 钟面，单调）。过线换成「还剩多少」；
- *   已经过了 ⇒ `Hop{0 write, NotSent, Overrun}`，**一个字节都不发**（`§10.4` 那张表第一行）。
+ *   已经过了 ⇒ 交 `0`，monitor 回 `Hop{0 write, NotSent, Overrun}`，**后端那一跳一个字节都不发**（`§10.4` 那张表第一行）。
  *   第 1 跳的上界由 monitor 那一侧执行（`chan/webview.rs` → `router::settle`）⇒ **本文件零定时器**。
- * - **撤单**：`Budget.cancel`（`AbortSignal`）拨下 ⇒ 立即 `Ours{Cancelled}`（本地撤单，`§3.3.3`）。
- *   〔「撤单不许回退」〕同时带着这一问的编号发 `chan_cancel` ⇒ monitor 那一侧丢掉那次调用、补发 `cancel`
- *   给后端 ⇒ 可取消档真停下。那台对这一条不认撤（`Offer.stoppable` 里没有）⇒ 仍是 `runsOn`。
  * - **错误三层**（`§3.3.1`）：`hop`（传输错，带跳号 ＋ `reach`）· `peer`（对端说不认 / 说不行，后者带不透明体）·
  *   `ours`（我们自己错）。monitor 交回来的是回环那条同一份线上形状（`wire::err_to_wire`），这里解回三层；
  *   解不出来的一律 `ours/Broken`（对端说的话解不出来 = 内部不变量破了），**不猜**。
@@ -40,7 +37,7 @@
  *
  * # 买不到
  *
- * - **不买对端撤活**（同上）· **不买重连**（这一跳是进程内 IPC，没有「连接」可断）。
+ * - **不买撤单**（一问发出去就等到结局或期限）· **不买重连**（这一跳是进程内 IPC，没有「连接」可断）。
  * - **`subscribe` 没有续传**：webview 页面一重载 JS 状态全没，游标无处可存 ⇒ 句柄对 `from` 原位说用法错。
  */
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -48,12 +45,11 @@ import { commands } from "../../frontend/ui/ipc/commands";
 import type { Origin } from "../../frontend/ui/ipc/origin";
 
 /**
- * 一次调用的期限与撤单手柄。`until` 是绝对时刻（`performance.now()` 钟面），**调用者给，本文件不造**
+ * 一次调用的期限。`until` 是绝对时刻（`performance.now()` 钟面），**调用者给，本文件不造**
  * （造它的那一手在调用方那一侧：`ipc/chan-caller.ts::budgetWithin`，`X5`：通信层里零「重新 `now() + …`」）。
  */
 export interface Budget {
   readonly until: number;
-  readonly cancel?: AbortSignal;
 }
 
 /** 离期限还剩多少毫秒（已过则为零）。**只在过线那一下用** —— 与 `wire.rs::Budget::remaining` 同一件事。 */
@@ -71,27 +67,20 @@ export type CallError =
   | { layer: "hop"; at: { idx: number; tag: HopTag }; reach: Reach; why: HopFault }
   | { layer: "peer"; why: "unsupported" }
   | { layer: "peer"; why: "refused"; body: Uint8Array }
-  | { layer: "ours"; why: OursFault; runsOn?: boolean };
+  | { layer: "ours"; why: OursFault };
 
-/** `call` 失败时抛的那一个。`error` 是分好层的结局；`message` 只给日志看。 */
+/**
+ * `call` 失败时抛的那一个。`error` 是分好层的结局（调用方要按层 / 按码分支的读它）；`message` 是给人看的那一句、
+ * `detail` 是「复制详情」那几行，都由 monitor 写好交回（[`saidOfFail`] · [`detailOfFail`]），本侧不按层另写。
+ */
 export class ChanError extends Error {
-  // `detail`：「复制详情」那几行（monitor 交回来的：对端说「不行」⇒ 那台写的那份 ＋ 本机一行；别的层 ⇒ monitor 写）。
-  // 本页自己判的失败（期限早已过 · 本地撤单）没有 ⇒ 空串（界面就不出按钮）。
-  constructor(readonly error: CallError, readonly detail = "") {
-    super(`通道：${describeCallError(error)}`);
+  constructor(
+    readonly error: CallError,
+    said = "",
+    readonly detail = "",
+  ) {
+    super(said);
     this.name = "ChanError";
-  }
-}
-
-/** 给日志 / 开发者看的一句（不是界面文案：界面那句话由调用方按层自己说）。 */
-export function describeCallError(e: CallError): string {
-  switch (e.layer) {
-    case "hop":
-      return `第 ${e.at.idx} 跳卡在 ${e.at.tag}：${e.why}（发出去了没有：${e.reach}）`;
-    case "peer":
-      return e.why === "unsupported" ? "对端不认这个操作" : "对端答「不行」";
-    case "ours":
-      return `本侧：${e.why}`;
   }
 }
 
@@ -104,9 +93,18 @@ const BROKEN: CallError = { layer: "ours", why: "Broken" };
 
 /** monitor 交回来的失败里那份复制详情（`{ …, detail }`）；没有 / 形状不对 ⇒ 空串。 */
 export function detailOfFail(raw: unknown): string {
+  return stringField(raw, "detail");
+}
+
+/** monitor 交回来的失败里给人看的那一句（`{ …, said }`，`chan/said.rs` 写）；没有 / 形状不对 ⇒ 空串（调用方按自己那件事说）。 */
+export function saidOfFail(raw: unknown): string {
+  return stringField(raw, "said");
+}
+
+function stringField(raw: unknown, key: "said" | "detail"): string {
   if (raw === null || typeof raw !== "object") return "";
-  const d = (raw as { detail?: unknown }).detail;
-  return typeof d === "string" ? d : "";
+  const v = (raw as Record<string, unknown>)[key];
+  return typeof v === "string" ? v : "";
 }
 
 /**
@@ -149,27 +147,17 @@ export function decodeFail(raw: unknown): CallError {
     if (typeof o.Ours === "string" && OURS_FAULTS.includes(o.Ours)) {
       return { layer: "ours", why: o.Ours as OursFault };
     }
-    // 本侧撤了、那台对这一条不认撤 ⇒ 它可能还在跑。
-    if (typeof o.OursRunsOn === "string" && OURS_FAULTS.includes(o.OursRunsOn)) {
-      return { layer: "ours", why: o.OursRunsOn as OursFault, runsOn: true };
-    }
   }
   return BROKEN;
 }
 
 /**
  * 那台机器的能力事实（monitor 那边的 `chan::wire::Offer` 判完之后的一份拷贝，`chan/webview.rs::OfferView`）。
- * 本侧**只查成员**，不另算：做不到的那几条带码；`stoppable` 是撤掉之后停得下的那几条。
+ * 本侧**只查成员**，不另算：做不到的那几条带码与置灰时说的那一句（monitor 写好）。
  */
 export interface Offer {
   readonly ops: readonly string[];
-  readonly unavailable: readonly (readonly [string, string])[];
-  readonly stoppable: readonly string[];
-}
-
-/** 这台做不到 `op` ⇒ 那个码（与那台事后会回的同一个）；做得到 / 没把握 ⇒ `null`。 */
-export function unavailableCode(offer: Offer | null | undefined, op: string): string | null {
-  return offer?.unavailable.find(([o]) => o === op)?.[1] ?? null;
+  readonly unavailable: readonly (readonly [string, string, string])[];
 }
 
 /** 每台一份：第一次对它 `call` 时去问（不等它），通道那一跳出了事就作废（重连之后可能换了一份）。 */
@@ -181,12 +169,12 @@ const strings = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) =
 /** monitor 交回来的那一份 ⇒ `Offer`；形状不对 ⇒ `null`（当作没把握，不猜）。 */
 export function decodeOffer(raw: unknown): Offer | null {
   if (raw === null || typeof raw !== "object") return null;
-  const { ops, unavailable, stoppable } = raw as Record<string, unknown>;
-  const pairs =
+  const { ops, unavailable } = raw as Record<string, unknown>;
+  const rows =
     Array.isArray(unavailable) &&
-    unavailable.every((p) => Array.isArray(p) && p.length === 2 && strings(p));
-  if (!strings(ops) || !pairs || !strings(stoppable)) return null;
-  return { ops, unavailable: unavailable as [string, string][], stoppable };
+    unavailable.every((p) => Array.isArray(p) && p.length === 3 && strings(p));
+  if (!strings(ops) || !rows) return null;
+  return { ops, unavailable: unavailable as [string, string, string][] };
 }
 
 function askOffer(origin: Origin): Promise<Offer | null> {
@@ -205,22 +193,6 @@ function askOffer(origin: Origin): Promise<Offer | null> {
     .finally(() => asking.delete(origin));
   asking.set(origin, p);
   return p;
-}
-
-/** 本地撤单那一格：拨下的那一刻就回（不等 monitor）。`runsOn`：那台对这一条不认撤 ⇒ 它可能还在跑。 */
-function whenAborted(signal: AbortSignal, runsOn: () => boolean): { promise: Promise<never>; dispose: () => void } {
-  let onAbort: (() => void) | null = null;
-  const promise = new Promise<never>((_, reject) => {
-    onAbort = () =>
-      reject(new ChanError(runsOn() ? { layer: "ours", why: "Cancelled", runsOn: true } : { layer: "ours", why: "Cancelled" }));
-    signal.addEventListener("abort", onAbort, { once: true });
-  });
-  return {
-    promise,
-    dispose: () => {
-      if (onAbort) signal.removeEventListener("abort", onAbort);
-    },
-  };
 }
 
 /** `§3.3.4` 流里的一格（webview 这一跳的样子：体是文本，见头注）。 */
@@ -333,48 +305,15 @@ export const chan = {
    * `view`：出口的声明（要哪几格 · 哪几格不要），原样搬进后端的请求信封、不进载荷；本文件不读它。没给 ⇒ 全量。
    */
   async call(origin: Origin, op: string, payload: Uint8Array, budget: Budget, view: object | null = null): Promise<Uint8Array> {
-    if (budget.cancel?.aborted === true) throw new ChanError({ layer: "ours", why: "Cancelled" });
-    const left = remaining(budget);
-    if (left <= 0) {
-      throw new ChanError({
-        layer: "hop",
-        at: { idx: 0, tag: "write" },
-        reach: "NotSent",
-        why: "Overrun",
-      });
-    }
-    // 撤得掉的那一问带一个编号（撤单那一条按它找到在飞的那一问）。
-    const callId = budget.cancel ? crypto.randomUUID() : null;
-    const sent = commands
-      .chan_call({ origin, op, payload: Array.from(payload), view, leftMs: left, callId })
-      .then(
-        (buf) => new Uint8Array(buf),
-        (raw: unknown) => {
-          const e = decodeFail(raw);
-          if (e.layer === "hop") offers.delete(origin);
-          throw new ChanError(e, detailOfFail(raw));
-        },
-      );
-    if (!budget.cancel) return sent;
-    // 撤得掉的那一问才要那台的 Offer（撤了之后说「可能还在跑」）：没问过就去问（不等它）。
-    if (!offers.has(origin)) void askOffer(origin);
-    // 撤了之后那一问在 monitor 那一侧以「已撤」收场；它那时的结局没人收了 —— 别让它变成一次未处理的拒绝。
-    sent.catch(() => {});
-    const onAbort = (): void => {
-      if (callId !== null) void commands.chan_cancel({ id: callId }).catch(() => {});
-    };
-    budget.cancel.addEventListener("abort", onAbort, { once: true });
-    const offer = (): Offer | null | undefined => offers.get(origin);
-    const abort = whenAborted(budget.cancel, () => {
-      const o = offer();
-      return o !== null && o !== undefined && !o.stoppable.includes(op);
-    });
-    try {
-      return await Promise.race([sent, abort.promise]);
-    } finally {
-      abort.dispose();
-      budget.cancel.removeEventListener("abort", onAbort);
-    }
+    // 期限早已过也照样交给 monitor（`leftMs: 0`）：它一个字节都不往后端发、回「已超时 · 未执行」那一句。
+    return commands.chan_call({ origin, op, payload: Array.from(payload), view, leftMs: remaining(budget) }).then(
+      (buf) => new Uint8Array(buf),
+      (raw: unknown) => {
+        const e = decodeFail(raw);
+        if (e.layer === "hop") offers.delete(origin);
+        throw new ChanError(e, saidOfFail(raw), detailOfFail(raw));
+      },
+    );
   },
 
   /**
