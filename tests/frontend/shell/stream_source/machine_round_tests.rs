@@ -23,8 +23,7 @@ async fn a_fresh_local_channel_gets_every_machines_latest_round() {
     let b: Arc<dyn Looped> = Arc::new(Still(State::Down {
         problem: Problem::new("拨号没成", "").because(Some(Why::Auth), None),
         needs_hand: false,
-        unsupported: false,
-        fix: None,
+        blocker: None,
     }));
     {
         let mut f = feeds().lock().unwrap_or_else(|e| e.into_inner());

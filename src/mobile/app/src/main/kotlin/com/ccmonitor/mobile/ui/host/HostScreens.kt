@@ -49,10 +49,10 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.Deploying
-import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionDot
 import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
+import com.ccmonitor.mobile.core.claude.link.deployFix
 import com.ccmonitor.mobile.core.claude.link.wire.AgentFacts
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Endpoint
@@ -649,7 +649,7 @@ object HostEditTags {
 }
 
 /**
- * 主机设置里那一行：标题 ＋ 一颗按钮（核心点名的那一种：安装 / 更新；没点名 ⇒ 核对版本）＋ 过程与结局（核心写好的话）。
+ * 主机设置里那一行：标题 ＋ 一颗按钮（成品给的那一颗：安装 / 更新；没给 ⇒ 核对版本）＋ 过程与结局（核心写好的话）。
  * 按下去才连那台（这一屏在就持有那条连接），连上就叫核心装；判定 · 做法 · 话都在核心，同对话屏问题条那几句。
  */
 @Composable
@@ -666,7 +666,7 @@ private fun BackendRow(hostId: String) {
         conn = held
         LaunchedEffect(held, presses) { if (held == HostLink.Ready) backends.deploy(hostId) }
     }
-    val fix = (link as? LinkState.Down)?.fix ?: (link as? LinkState.Up)?.fix
+    val fix = link.deployFix()
     val step = deploying as? Deploying.Step
     Text(copyText("mobHostEdit.backend.title"), style = MaterialTheme.typography.labelMedium)
     SecondaryButton(

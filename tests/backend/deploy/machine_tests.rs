@@ -10,7 +10,7 @@ const VER: &str = "9.9.9";
 fn round(r: Round) -> Fact {
     Fact::Round {
         round: r,
-        version: VER.to_string(),
+        version: Some(VER.to_string()),
     }
 }
 
@@ -29,35 +29,57 @@ fn down_(why: Option<Why>) -> Fact {
             why,
             seen_key: Some("SHA256:new".into()),
         },
-        unsupported: false,
+        blocker: None,
     })
 }
 
-fn unsupported() -> Fact {
+/// 断在那台本身的一轮：那一句是通信层写的那一句（[`NO_BACKEND`] 那种照原样上问题行）。
+fn blocked(b: Blocker) -> Fact {
     round(Round::Down {
         problem: RoundProblem {
-            text: "起不了".into(),
+            text: if b == Blocker::NoBackend {
+                NO_BACKEND.into()
+            } else {
+                "起不了".into()
+            },
             detail: String::new(),
             why: None,
             seen_key: None,
         },
-        unsupported: true,
+        blocker: Some(b),
     })
 }
 
-fn of(facts: Vec<Fact>, enabled: bool) -> MachineState {
+const NO_BACKEND: &str = "远端回的不是我们的后端";
+
+fn unsupported() -> Fact {
+    blocked(Blocker::NotUnix)
+}
+
+fn folded(facts: Vec<Fact>) -> Entry {
     let mut e = Entry::default();
     for f in facts {
         fold(&mut e, f);
     }
-    product(&e, M, enabled)
+    e
 }
 
-/// 问题行那一句：没有 · 文案表那一条（`{machine}` 那一格填那台的名字）· 部署那一步的那一句。
+/// 桌面那一端（自己会装后端）。
+fn of(facts: Vec<Fact>, enabled: bool) -> MachineState {
+    product(&folded(facts), M, enabled, true)
+}
+
+/// 手机那一端（不自己装：没有后端那一轮给［安装］）。
+fn phone(facts: Vec<Fact>) -> MachineState {
+    product(&folded(facts), M, true, false)
+}
+
+/// 问题行那一句：没有 · 文案表那一条（`{machine}` 那一格填那台的名字）· 部署那一步的那一句 · 那一轮通信层写的那一句原样。
 enum S {
     No,
     Key(&'static str),
     Step(Step),
+    Said(&'static str),
 }
 
 /// 一行：那一态 · 原因码 · 名字旁那个词的键（空 ＝ 空串）· 问题行那一句 · 修法（依次）。
@@ -86,6 +108,7 @@ fn want(r: Row) -> (K, Option<Why>, String, String, Vec<(MachineFix, String)>) {
         S::No => String::new(),
         S::Key(k) => text(k),
         S::Step(s) => s.said(M),
+        S::Said(t) => t.to_string(),
     };
     (
         r.0,
@@ -344,6 +367,30 @@ fn every_fact_lands_on_its_state_word_sentence_and_fixes() {
             ),
         ),
         (
+            "没有后端（自己会装 ⇒ 不给［安装］）",
+            vec![blocked(Blocker::NoBackend)],
+            true,
+            (
+                K::Down,
+                Some(W::Other),
+                "machinePage.state.down",
+                S::Said(NO_BACKEND),
+                vec![F::Retry, F::ConnSettings],
+            ),
+        ),
+        (
+            "后端旧了（接不上）",
+            vec![blocked(Blocker::OldBackend)],
+            true,
+            (
+                K::NeedsUpdate,
+                None,
+                "machineState.word.needsUpdate",
+                S::Key("machineState.problem.needsUpdate"),
+                vec![F::Update],
+            ),
+        ),
+        (
             "关了连接这台",
             vec![down_(Some(W::Auth))],
             false,
@@ -358,6 +405,72 @@ fn every_fact_lands_on_its_state_word_sentence_and_fixes() {
     ];
     for (name, facts, enabled, w) in cases {
         assert_eq!(row(&of(facts, enabled)), want(w), "「{name}」");
+    }
+}
+
+/// 不自己装后端的那一端（手机）：没有后端那一轮只给［安装］；别的与桌面同一份（`installs` 只动这一格）。
+#[test]
+fn a_host_that_does_not_install_is_offered_install_only_when_the_backend_is_missing() {
+    use MachineFix as F;
+    let cases: Vec<(&str, Vec<Fact>, Row)> = vec![
+        (
+            "没有后端",
+            vec![blocked(Blocker::NoBackend)],
+            (
+                K::Down,
+                Some(Why::Other),
+                "machinePage.state.down",
+                S::Said(NO_BACKEND),
+                vec![F::Install],
+            ),
+        ),
+        (
+            "后端旧了（接不上）",
+            vec![blocked(Blocker::OldBackend)],
+            (
+                K::NeedsUpdate,
+                None,
+                "machineState.word.needsUpdate",
+                S::Key("machineState.problem.needsUpdate"),
+                vec![F::Update],
+            ),
+        ),
+        (
+            "那台旧（接上了）",
+            vec![up(Relation::Older, &[])],
+            (
+                K::NeedsUpdate,
+                None,
+                "machineState.word.needsUpdate",
+                S::Key("machineState.problem.needsUpdate"),
+                vec![F::Update],
+            ),
+        ),
+        (
+            "密钥被拒",
+            vec![down_(Some(Why::Auth))],
+            (
+                K::Down,
+                Some(Why::Auth),
+                "machinePage.state.down",
+                S::Key("machineState.down.auth"),
+                vec![F::PushKey, F::ConnSettings],
+            ),
+        ),
+        (
+            "不是 Unix",
+            vec![unsupported()],
+            (
+                K::Unsupported,
+                None,
+                "machineState.word.unsupported",
+                S::Key("machineState.problem.notUnix"),
+                vec![],
+            ),
+        ),
+    ];
+    for (name, facts, w) in cases {
+        assert_eq!(row(&phone(facts)), want(w), "「{name}」");
     }
 }
 
@@ -419,6 +532,17 @@ fn a_failed_round_carries_the_copy_detail() {
         .detail
         .expect("做不了那一轮没有详情");
     assert_eq!(d, "对象：gpu-01\n断在：起不了\n码：not_unix");
+    let d = of(vec![blocked(Blocker::OldBackend)], true)
+        .detail
+        .expect("后端旧了那一轮没有详情");
+    assert_eq!(d, "对象：gpu-01\n断在：起不了\n码：old_backend");
+    let d = phone(vec![blocked(Blocker::NoBackend)])
+        .detail
+        .expect("没有后端那一轮没有详情");
+    assert_eq!(
+        d,
+        format!("对象：gpu-01\n断在：{NO_BACKEND}\n码：no_backend")
+    );
     for (name, facts, enabled) in [
         (
             "新一轮",

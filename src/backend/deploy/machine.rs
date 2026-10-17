@@ -3,7 +3,8 @@
 
 use cmd_wire::attach::Relation;
 use cmd_wire::machine::{
-    FixButton, MachineFix, MachineState, MachineStateKind as K, Round, RoundProblem, Stage, Why,
+    Blocker, FixButton, MachineFix, MachineState, MachineStateKind as K, Round, RoundProblem,
+    Stage, Why,
 };
 use copy_core::copy_text;
 use copy_core::detail::{Detail, Label, Target};
@@ -21,13 +22,18 @@ pub struct Entry {
     os: Option<String>,
     /// 这一轮没连上 / 做不了时那一句（原因码 · 那台出示的指纹 · 详情都在里面）。
     problem: Option<RoundProblem>,
+    /// 这一轮断在那台本身的哪一处。
+    blocker: Option<Blocker>,
 }
 
 /// 一件事实。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Fact {
-    /// 接常驻那一段的一轮结论；`version` 是本侧的产品版本号（那台与这一版同一份字节时就是它的号）。
-    Round { round: Round, version: String },
+    /// 接常驻那一段的一轮结论；`version` 是本侧的产品版本号（那台与这一版同一份字节时就是它的号；报不出 ⇒ 空）。
+    Round {
+        round: Round,
+        version: Option<String>,
+    },
     /// 部署走到哪一步。
     Step(Step),
     /// 部署那一趟收了（成没成都算）；问到了那台的系统就带上。
@@ -48,22 +54,27 @@ pub fn fold(e: &mut Entry, fact: Fact) {
                 });
                 e.stage = None;
                 e.relation = Some(relation);
-                e.version = (relation == Relation::Same).then_some(version);
+                e.version = version.filter(|_| relation == Relation::Same);
                 e.problem = None;
+                e.blocker = None;
             }
-            Round::Down {
-                problem,
-                unsupported,
-            } => {
-                e.state = Some(if unsupported {
-                    K::Unsupported
-                } else if problem.why == Some(Why::HostKey) {
-                    K::HostKeyChanged
-                } else {
-                    K::Down
+            Round::Down { problem, blocker } => {
+                e.state = Some(match blocker {
+                    Some(Blocker::NotUnix) => K::Unsupported,
+                    // 不认这一版的 attach 行 ⇒ 那台旧（这一轮没比出新旧，上一轮的作废）。
+                    Some(Blocker::OldBackend) => {
+                        e.relation = None;
+                        e.version = None;
+                        K::NeedsUpdate
+                    }
+                    Some(Blocker::NoBackend) | None if problem.why == Some(Why::HostKey) => {
+                        K::HostKeyChanged
+                    }
+                    Some(Blocker::NoBackend) | None => K::Down,
                 });
                 e.stage = None;
                 e.problem = Some(problem);
+                e.blocker = blocker;
             }
         },
         Fact::Step(s) => match s {
@@ -88,10 +99,12 @@ fn busy(e: &mut Entry, state: K, stage: Option<Stage>) {
     e.state = Some(state);
     e.stage = stage;
     e.problem = None;
+    e.blocker = None;
 }
 
-/// 读一台的成品。`machine` 是给人看的名字；`enabled = false` ⇒ 「连接这台」关着（停用）。
-pub fn product(e: &Entry, machine: &str, enabled: bool) -> MachineState {
+/// 读一台的成品。`machine` 是给人看的名字；`enabled = false` ⇒ 「连接这台」关着（停用）；
+/// `installs` ⇒ 这一端自己会把后端装上去（桌面：下一轮自己装，不给［安装］；手机不装）。
+pub fn product(e: &Entry, machine: &str, enabled: bool, installs: bool) -> MachineState {
     let state = match (enabled, e.state) {
         (false, _) => K::Disabled,
         (true, s) => s.unwrap_or(K::Unknown),
@@ -100,10 +113,13 @@ pub fn product(e: &Entry, machine: &str, enabled: bool) -> MachineState {
         K::Down | K::HostKeyChanged => e.problem.as_ref().map(|p| p.why.unwrap_or(Why::Other)),
         _ => None,
     };
-    let problem = e
-        .problem
-        .as_ref()
-        .filter(|_| matches!(state, K::Down | K::HostKeyChanged | K::Unsupported));
+    let problem = e.problem.as_ref().filter(|_| {
+        matches!(
+            state,
+            K::Down | K::HostKeyChanged | K::Unsupported | K::NeedsUpdate
+        )
+    });
+    let blocker = problem.and(e.blocker);
     MachineState {
         state,
         reason: why,
@@ -116,8 +132,12 @@ pub fn product(e: &Entry, machine: &str, enabled: bool) -> MachineState {
         version_relation: e.relation,
         os: e.os.clone(),
         word: word(state, e.relation),
-        said: said(state, e.stage, why, machine),
-        fixes: fixes(state, why)
+        said: match (state, blocker, problem) {
+            // 没有后端：是哪一种（没装 · 起不了 · 不是我们的）只有通信层那一句说得清。
+            (K::Down, Some(Blocker::NoBackend), Some(p)) => p.text.clone(),
+            _ => said(state, e.stage, why, machine),
+        },
+        fixes: fixes(state, why, blocker, installs)
             .into_iter()
             .map(|fix| FixButton {
                 fix,
@@ -127,7 +147,7 @@ pub fn product(e: &Entry, machine: &str, enabled: bool) -> MachineState {
         seen_host_key: problem
             .filter(|_| state == K::HostKeyChanged)
             .and_then(|p| p.seen_key.clone()),
-        detail: problem.map(|p| detail(machine, p, &code(state, why))),
+        detail: problem.map(|p| detail(machine, p, &code(why, blocker))),
     }
 }
 
@@ -181,9 +201,10 @@ fn said(state: K, stage: Option<Stage>, why: Option<Why>, machine: &str) -> Stri
 }
 
 /// 每一态给哪几颗修法（只在这里定；原因码穷尽，加一个码编不过）。
-fn fixes(state: K, why: Option<Why>) -> Vec<MachineFix> {
+fn fixes(state: K, why: Option<Why>, blocker: Option<Blocker>, installs: bool) -> Vec<MachineFix> {
     use MachineFix as F;
     match state {
+        K::Down if blocker == Some(Blocker::NoBackend) && !installs => vec![F::Install],
         K::Down => match why.unwrap_or(Why::Other) {
             Why::Auth | Why::KeyUnreadable => vec![F::PushKey, F::ConnSettings],
             Why::Password => vec![F::PushKey],
@@ -218,15 +239,15 @@ pub fn label(fix: MachineFix) -> String {
     }
 }
 
-/// 复制详情里「码」那一项：没连上 ⇒ 原因码（线上那个名字）；做不了 ⇒ `not_unix`。
-fn code(state: K, why: Option<Why>) -> String {
-    if state == K::Unsupported {
-        return "not_unix".to_string();
+/// 复制详情里「码」那一项（线上那个名字）：断在那台本身 ⇒ 是哪一处；别的 ⇒ 原因码。
+fn code(why: Option<Why>, blocker: Option<Blocker>) -> String {
+    match blocker {
+        Some(b) => serde_json::to_value(b),
+        None => serde_json::to_value(why.unwrap_or(Why::Other)),
     }
-    serde_json::to_value(why.unwrap_or(Why::Other))
-        .ok()
-        .and_then(|v| v.as_str().map(str::to_string))
-        .unwrap_or_default()
+    .ok()
+    .and_then(|v| v.as_str().map(str::to_string))
+    .unwrap_or_default()
 }
 
 /// 那一轮的复制详情：那一句进「断在」、连的是哪台进「对象」、码是这一轮的；其余照那一句带的那份。

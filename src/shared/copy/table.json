@@ -220,18 +220,6 @@
       "zh": "{machine} 后端版本不同 · 需更新",
       "args": ["machine"]
     },
-    "peerVersion.said.newer": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 后端较新 · 不会换回",
-      "args": ["machine"]
-    },
-    "peerVersion.said.incomparable": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 后端版本不可比",
-      "args": ["machine"]
-    },
     "peerVersion.said.unreadable": {
       "kind": "error",
       "role": "报错",

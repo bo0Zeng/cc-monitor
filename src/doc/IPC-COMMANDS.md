@@ -11695,9 +11695,10 @@ path: string, };
 
 ```ts
 type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "other";
+type MachineBlocker = "not_unix" | "no_backend" | "old_backend";
 type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
 type MachineFixButton = { fix: MachineFix, label: string, };
-type MachineRound = { "state": "connecting" } | { "state": "up", relation: VersionRelation, differs: Array<string>, } | { "state": "down", problem: MachineRoundProblem, unsupported: boolean, };
+type MachineRound = { "state": "connecting" } | { "state": "up", relation: VersionRelation, differs: Array<string>, } | { "state": "down", problem: MachineRoundProblem, blocker: MachineBlocker | null, };
 type MachineRoundProblem = { text: string, detail: string, why: DialWhy | null, seen_key: string | null, };
 type MachineRoundReq = { machine: string, round: MachineRound, version: string, };
 type MachineStage = "deploy" | "attach";

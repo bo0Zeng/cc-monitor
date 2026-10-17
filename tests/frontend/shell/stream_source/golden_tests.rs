@@ -166,7 +166,10 @@ async fn an_unread_frame_is_said_once_per_kind_per_connection() {
         ],
         "健康信息不是每种恰好一句：{said:?}"
     );
-    assert_eq!(said[0].message, copy_core::backend_frames_differ("台架"));
+    assert_eq!(
+        said[0].message,
+        copy_core::copy_text("peerVersion.said.framesDiffer", &[("machine", "台架")])
+    );
     assert!(
         said[1].message.contains("台架") && said[1].message.contains("line"),
         "解不开那一句没点名那台与那一种：{}",

@@ -1,5 +1,7 @@
 package com.ccmonitor.mobile.core.claude.link
 
+import com.ccmonitor.mobile.core.claude.link.wire.MachineState
+import com.ccmonitor.mobile.core.claude.link.wire.Wire
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.BufferOverflow
@@ -215,8 +217,10 @@ class ResidentFeed(
         }
     }
 
+    /** `state` 那一行：通没通（`state` · `epoch`）＋ 那台的状态成品（`machine`，按线上类型装）。 */
     private fun onState(m: Map<String, Any?>) {
-        val said = { key: String -> m.obj(key)?.let { Said(it.str("text").orEmpty(), it.str("detail").orEmpty()) } }
+        val machine = Wire.bind<MachineState>(m["machine"]) ?: return broke("state", m.toString())
+        val said = Said(machine.said, machine.detail.orEmpty())
         when (m.str("state")) {
             "connecting" -> {
                 tableFlow.value = SessionTable()
@@ -225,9 +229,9 @@ class ResidentFeed(
             "up" -> {
                 val e = m.num("epoch") ?: 0L
                 if (e != epochFlow.value) epochFlow.value = e
-                stateFlow.value = LinkState.Up(said("notice"), Fix.of(m.str("fix")))
+                stateFlow.value = LinkState.Up(said.takeIf { it.text.isNotEmpty() }, machine.fixes)
             }
-            "down" -> stateFlow.value = LinkState.Down(said("problem") ?: Said("", ""), m.bool("needs_hand") == true, Fix.of(m.str("fix")))
+            "down" -> stateFlow.value = LinkState.Down(said, machine.fixes)
             else -> broke("state", m.toString())
         }
         // 「装好了」那一句只留到下一次出事（断了 · 又说要更新）；没装上那一句留着，等下一趟。

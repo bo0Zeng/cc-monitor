@@ -373,8 +373,6 @@ async fn a_running_resident_is_attached_with_one_exec() {
             epoch: 1,
             relation: Relation::Same,
             differs: vec![],
-            notice: None,
-            fix: None,
         }
     );
     assert_eq!(
@@ -412,46 +410,23 @@ async fn a_resident_that_is_not_running_is_ensured_then_attached() {
     assert_eq!(f.ensured.load(Ordering::SeqCst), 1);
 }
 
-/// 新旧是那台在 attach 回话里给的（attach 行带手上这一版）：装不了后端的（手机）那台旧 ⇒ 照接、说要更新、点名「更新」；
-/// 那台新 ⇒ 照接、说较新、不点名「更新」（该更新的是这一侧）；同一版 ⇒ 不说。不另问一趟。
+/// 新旧是那台在 attach 回话里给的（attach 行带手上这一版）：装不了后端的（手机）旧的 · 新的都照接，新旧原样记在 `Up` 里
+/// （说什么、给不给［更新］由后端照它定）。不另问一趟。
 #[tokio::test(start_paused = true)]
-async fn the_relation_comes_back_in_the_attach_reply_and_only_an_older_one_asks_for_an_update() {
-    for (theirs, relation, text, fix) in [
-        (
-            "p9a-old",
-            Relation::Older,
-            Some(copy_core::backend_old("box")),
-            Some(Fix::Update),
-        ),
-        (
-            "p11a-next",
-            Relation::Newer,
-            Some(copy_core::backend_newer("box")),
-            None,
-        ),
-        (MINE, Relation::Same, None, None),
+async fn the_relation_comes_back_in_the_attach_reply_and_the_phone_attaches_either_way() {
+    for (theirs, relation) in [
+        ("p9a-old", Relation::Older),
+        ("p11a-next", Relation::Newer),
+        (MINE, Relation::Same),
     ] {
         let f = Arc::new(Fake::default());
         f.attaches.lock().unwrap().push_back(upp(theirs));
         let (feed, _) = start(&f);
         until("流接上了", || up(&feed)).await;
-        let State::Up {
-            relation: r,
-            notice,
-            fix: x,
-            ..
-        } = feed.state()
-        else {
+        let State::Up { relation: r, .. } = feed.state() else {
             unreachable!()
         };
-        assert_eq!(
-            (r, notice.as_ref().map(|p| p.text.clone()), x),
-            (relation, text, fix),
-            "{theirs}"
-        );
-        if let Some(p) = notice {
-            assert!(p.detail.contains(theirs), "{}", p.detail);
-        }
+        assert_eq!(r, relation, "{theirs}");
         assert_eq!(
             *f.attach_lines.lock().unwrap(),
             [format!(
@@ -487,7 +462,6 @@ async fn without_its_own_build_the_relation_is_incomparable() {
         feed.state(),
         State::Up {
             relation: Relation::Incomparable,
-            fix: None,
             ..
         }
     ));
@@ -497,7 +471,7 @@ async fn without_its_own_build_the_relation_is_incomparable() {
     );
 }
 
-/// 那台认不得带 `mine` 的 attach 行（比这一形早）⇒ 当旧：手机接不上、断着、点名「更新」，不自己反复试。
+/// 那台认不得带 `mine` 的 attach 行（比这一形早）⇒ 当旧：手机接不上、断着、记「后端旧了」，不自己反复试。
 #[tokio::test(start_paused = true)]
 async fn a_backend_that_refuses_the_new_attach_line_is_old() {
     let f = Arc::new(Fake::default());
@@ -514,8 +488,10 @@ async fn a_backend_that_refuses_the_new_attach_line_is_old() {
     })
     .await;
     match feed.state() {
-        State::Down { problem, fix, .. } => {
-            assert_eq!(fix, Some(Fix::Update));
+        State::Down {
+            problem, blocker, ..
+        } => {
+            assert_eq!(blocker, Some(Blocker::OldBackend));
             assert_eq!(problem.text, copy_core::backend_old("box"));
         }
         other => panic!("{other:?}"),
@@ -745,8 +721,6 @@ async fn a_host_that_installs_replaces_an_older_backend_once_then_attaches() {
                 epoch: 1,
                 relation: Relation::Same,
                 differs: vec![],
-                notice: None,
-                fix: None,
             }
         );
         assert_eq!(f.rounds.load(Ordering::SeqCst), 1, "开拨之前那一步跑一回");
@@ -762,7 +736,7 @@ async fn a_host_that_installs_replaces_an_older_backend_once_then_attaches() {
         assert!(at < up_at, "hello 先于 Up：{seen:?}");
     }
 
-    // 换过还旧（落点上那份也旧）⇒ 照接、说要更新，不再换第二次，不点名「更新」。
+    // 换过还旧（落点上那份也旧）⇒ 照接、记那台旧，不再换第二次。
     let f = Arc::new(Fake::default());
     f.ensures.lock().unwrap().push_back(swapped(true));
     {
@@ -771,26 +745,20 @@ async fn a_host_that_installs_replaces_an_older_backend_once_then_attaches() {
         a.push_back(upp("p9b-still-old"));
     }
     let (feed, _) = start_desk(&f);
-    until("换过一次之后照接、带那一句", || {
+    until("换过一次之后照接", || up(&feed)).await;
+    assert_eq!(f.captured.lock().unwrap().len(), 1, "只换一次");
+    assert!(
         matches!(
             feed.state(),
             State::Up {
-                notice: Some(_),
+                relation: Relation::Older,
                 ..
             }
-        )
-    })
-    .await;
-    assert_eq!(f.captured.lock().unwrap().len(), 1, "只换一次");
-    match feed.state() {
-        State::Up {
-            notice: Some(p),
-            relation: Relation::Older,
-            fix: None,
-            ..
-        } => assert!(p.detail.contains("p9b-still-old"), "{}", p.detail),
-        other => panic!("换过还旧 ⇒ 接上、带那一句：{other:?}"),
-    }
+        ),
+        "换过还旧 ⇒ 接上、记那台旧：{:?}",
+        feed.state()
+    );
+    assert_eq!(feed.theirs().as_deref(), Some("p9b-still-old"));
 
     // 那台说没换（在听的不比落点旧）⇒ 不重接，接着的就是第一条。
     let f = Arc::new(Fake::default());
@@ -822,11 +790,11 @@ async fn a_host_that_installs_retries_a_missing_backend_by_itself() {
             e,
             Event::State(State::Down {
                 needs_hand: false,
-                unsupported: false,
+                blocker: Some(Blocker::NoBackend),
                 ..
             })
         )),
-        "没装那一轮 ⇒ 断着、不要人动手"
+        "没装那一轮 ⇒ 断着、记没有后端、不要人动手"
     );
 }
 
@@ -844,7 +812,7 @@ async fn a_remote_that_is_not_unix_waits_for_a_hand() {
                 feed.state(),
                 State::Down {
                     needs_hand: true,
-                    unsupported: true,
+                    blocker: Some(Blocker::NotUnix),
                     ..
                 }
             )
@@ -877,7 +845,7 @@ async fn a_remote_that_is_not_unix_waits_for_a_hand() {
     waits(&feed, &f).await;
 }
 
-/// 拨号拒了：原因码与那台出示的指纹随断开那一句走到 `Down`（宿主按它定那一态与修法）；交给手机的 JSON 里不出这两格。
+/// 拨号拒了：原因码与那台出示的指纹随断开那一句走到 `Down`（后端按它定那一态与修法）。
 #[tokio::test(start_paused = true)]
 async fn a_refused_dial_carries_its_reason_and_the_seen_key_into_down() {
     let f = Arc::new(Fake::default());
@@ -895,11 +863,6 @@ async fn a_refused_dial_carries_its_reason_and_the_seen_key_into_down() {
     assert_eq!(
         (problem.why, problem.seen_key.as_deref()),
         (Some(cmd_wire::machine::Why::Auth), Some("SHA256:seen"))
-    );
-    assert_eq!(
-        serde_json::to_value(&state).unwrap()["problem"],
-        serde_json::json!({"text": "密钥被拒", "detail": "命令：dial"}),
-        "交出去的那一份多了格"
     );
 }
 
@@ -1076,7 +1039,7 @@ fn the_ensure_answer_is_read_the_same_on_both_ends() {
         (p.text, k),
         (
             copy_text("rsRemoteResident.ensure.answerUnreadable", &[]),
-            FailKind::Install(Fix::Install)
+            FailKind::Blocked(Blocker::NoBackend)
         )
     );
     let (p, k) = fail(exec(&hello("p1a-old"), "", None));
@@ -1084,7 +1047,7 @@ fn the_ensure_answer_is_read_the_same_on_both_ends() {
         (p.text, k),
         (
             copy_core::backend_old("devbox"),
-            FailKind::Install(Fix::Update)
+            FailKind::Blocked(Blocker::OldBackend)
         )
     );
     let (p, k) = fail(exec("", "sh: ccm: not found", Some(127)));
@@ -1092,7 +1055,7 @@ fn the_ensure_answer_is_read_the_same_on_both_ends() {
         (p.text, k),
         (
             copy_text("remoteHealth.head.notDeployed", &[]),
-            FailKind::Install(Fix::Install)
+            FailKind::Blocked(Blocker::NoBackend)
         )
     );
     let (p, k) = fail(exec(
@@ -1100,7 +1063,7 @@ fn the_ensure_answer_is_read_the_same_on_both_ends() {
         r#"{"code":"unsupported","message":"不是 unix","detail":"命令: resident-ensure"}"#,
         Some(2),
     ));
-    assert_eq!(k, FailKind::Unsupported);
+    assert_eq!(k, FailKind::Blocked(Blocker::NotUnix));
     assert_eq!(
         p.text,
         copy_text("rsRemoteResident.ensure.unsupported", &[])
@@ -1120,7 +1083,7 @@ fn the_ensure_answer_is_read_the_same_on_both_ends() {
         (
             "x",
             "Permission denied (os error 13)",
-            FailKind::Install(Fix::Install)
+            FailKind::Blocked(Blocker::NoBackend)
         )
     );
     let (p, _) = fail(exec("", "garbage", Some(1)));
@@ -1333,18 +1296,22 @@ async fn a_wake_while_up_asks_at_once() {
     );
 }
 
-/// 装不了后端的宿主（手机）断在「装一次会好」那几种 ⇒ 状态里点名要哪一种：没装 ⇒ `install`；不认这一版子命令的老后端 ⇒ `update`。
-/// 装得了的（桌面）下一轮自己装 ⇒ 不点名。
+/// 断在那台本身的哪一处两端照实记（`blocker`：没装 ⇒ 没有后端；不认这一版子命令的老后端 ⇒ 后端旧了）；
+/// 等不等人按只看这一端装不装：装不了的（手机）停下等人，装得了的（桌面）下一轮自己装。
 #[tokio::test(start_paused = true)]
-async fn the_phone_is_told_whether_to_install_or_update() {
+async fn both_ends_record_where_the_round_was_blocked_and_only_the_phone_waits() {
     let absent = || Exec {
         exit_status: Some(127),
         stdout: String::new(),
         stderr: "ccm: not found".into(),
     };
-    let fix_of = |s: State| match s {
-        State::Down { fix, .. } => fix,
-        _ => None,
+    let stuck = |s: State| match s {
+        State::Down {
+            blocker,
+            needs_hand,
+            ..
+        } => (blocker, needs_hand),
+        other => panic!("{other:?}"),
     };
     let f = Arc::new(Fake::default());
     f.ensures.lock().unwrap().push_back(absent());
@@ -1359,9 +1326,7 @@ async fn the_phone_is_told_whether_to_install_or_update() {
         )
     })
     .await;
-    assert_eq!(fix_of(feed.state()), Some(Fix::Install));
-    let v: serde_json::Value = serde_json::to_value(feed.state()).unwrap();
-    assert_eq!(v["fix"], "install", "{v}");
+    assert_eq!(stuck(feed.state()), (Some(Blocker::NoBackend), true));
 
     let f = Arc::new(Fake::default());
     f.ensures.lock().unwrap().push_back(Exec {
@@ -1380,30 +1345,32 @@ async fn the_phone_is_told_whether_to_install_or_update() {
         )
     })
     .await;
-    assert_eq!(fix_of(feed.state()), Some(Fix::Update));
+    assert_eq!(stuck(feed.state()), (Some(Blocker::OldBackend), true));
 
     let f = Arc::new(Fake::default());
     f.ensures.lock().unwrap().push_back(absent());
     f.attaches.lock().unwrap().push_back(Peer::Absent);
-    let seen_fix: Arc<Mutex<Vec<Option<Fix>>>> = Arc::default();
-    let s = Arc::clone(&seen_fix);
+    let seen: Arc<Mutex<Vec<(Option<Blocker>, bool)>>> = Arc::default();
+    let s = Arc::clone(&seen);
     let feed = Feed::start(
         cfg(),
         Some(Arc::new(D(Arc::clone(&f)))),
         sink(move |e| {
-            if let Event::State(State::Down { fix, .. }) = e {
-                s.lock().unwrap().push(fix);
+            if let Event::State(st @ State::Down { .. }) = e {
+                s.lock().unwrap().push(stuck(st));
             }
         }),
     );
-    until("桌面断过一轮", || {
-        !seen_fix.lock().unwrap().is_empty()
+    until("桌面断在没有后端那一轮", || {
+        seen.lock()
+            .unwrap()
+            .contains(&(Some(Blocker::NoBackend), false))
     })
     .await;
     assert!(
-        seen_fix.lock().unwrap().iter().all(Option::is_none),
-        "{:?}",
-        seen_fix.lock().unwrap()
+        seen.lock().unwrap().iter().all(|(_, hand)| !hand),
+        "桌面不等人：{:?}",
+        seen.lock().unwrap()
     );
     feed.close();
 }
@@ -1451,7 +1418,7 @@ fn frames_seen(seen: &Seen) -> Vec<String> {
         .collect()
 }
 
-/// 那台有一种帧形状不同：握手那一刻就点名（`differs` ＋ 那一句），那一种的行一条不交，别的照交。
+/// 那台有一种帧形状不同：握手那一刻就点名（`differs`），那一种的行一条不交，别的照交。
 #[tokio::test(start_paused = true)]
 async fn a_frame_kind_whose_shape_differs_is_named_at_hello_and_never_handed_over() {
     let f = Arc::new(Fake::default());
@@ -1459,16 +1426,7 @@ async fn a_frame_kind_whose_shape_differs_is_named_at_hello_and_never_handed_ove
     let (feed, seen) = start(&f);
     until("流接上了", || up(&feed)).await;
     match feed.state() {
-        State::Up {
-            differs,
-            notice: Some(p),
-            ..
-        } => {
-            assert_eq!(differs, ["session_status"]);
-            // 那台（p10h）比这一版（p10g）新：那一句说较新，对不上的帧种进详情。
-            assert_eq!(p.text, copy_core::backend_newer("box"));
-            assert!(p.detail.contains("session_status"), "{}", p.detail);
-        }
+        State::Up { differs, .. } => assert_eq!(differs, ["session_status"]),
         other => panic!("形状不同的那一种要在接上那一刻点名：{other:?}"),
     }
     until("line 照交", || {
@@ -1485,14 +1443,10 @@ async fn a_hello_whose_body_does_not_parse_attaches_and_hands_over_nothing() {
     f.attaches.lock().unwrap().push_back(upp(HEAD_ONLY));
     let (feed, seen) = start(&f);
     until("流接上了", || up(&feed)).await;
-    let State::Up {
-        differs, notice, ..
-    } = feed.state()
-    else {
+    let State::Up { differs, .. } = feed.state() else {
         unreachable!()
     };
     assert_eq!(differs.len(), cmd_wire::frame_shapes::FRAMES.len());
-    assert!(notice.is_some());
     // 那台照发了三行；读完它们（再等一会儿）也一行不交。
     tokio::time::sleep(Duration::from_secs(5)).await;
     assert!(frames_seen(&seen).is_empty(), "{:?}", frames_seen(&seen));

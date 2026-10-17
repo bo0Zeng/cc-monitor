@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ccmonitor.mobile.cache.ListCache
 import com.ccmonitor.mobile.core.claude.link.Deploying
-import com.ccmonitor.mobile.core.claude.link.Fix
 import com.ccmonitor.mobile.core.claude.link.HistoryAnnotate
 import com.ccmonitor.mobile.core.claude.link.HistoryList
 import com.ccmonitor.mobile.core.claude.link.LinkState
@@ -14,9 +13,11 @@ import com.ccmonitor.mobile.core.claude.link.SessionDot
 import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.SessionsNeeds
 import com.ccmonitor.mobile.core.claude.link.Toned
+import com.ccmonitor.mobile.core.claude.link.deployFix
 import com.ccmonitor.mobile.core.claude.link.wire.Annotated
 import com.ccmonitor.mobile.core.claude.link.wire.Hide
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryListPage
+import com.ccmonitor.mobile.core.claude.link.wire.MachineFixButton
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsRow
 import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import com.ccmonitor.mobile.core.copy.DurationFormat
@@ -192,8 +193,8 @@ data class ConversationsUiState(
     val linkProblem: Problem? = null,
     /** 通着、但要人动手的那一句（那台后端旧了：照用对得上的那几条，屏上排在需手动最前）；没有 ⇒ `null`。 */
     val linkNotice: Problem? = null,
-    /** 核心点名「装一次会好」的那一种（问题条上给［安装］/［更新］）；没点名 ⇒ `null`。 */
-    val fix: Fix? = null,
+    /** 成品给的「装一次会好」那一颗（问题条上给［安装］/［更新］）；没给 ⇒ `null`。 */
+    val fix: MachineFixButton? = null,
     /** 装 / 更新后端这一趟走到哪了（核心写好的话）；没装过 ⇒ `null`。 */
     val deploying: Deploying? = null,
     val connecting: Boolean = true,
@@ -275,7 +276,7 @@ internal fun view(
     if (link is LinkState.Down) {
         return ConversationsUiState(
             linkProblem = link.problem(),
-            fix = link.fix,
+            fix = link.deployFix(),
             deploying = deploying,
             connecting = false,
             listLoading = false,
@@ -290,7 +291,7 @@ internal fun view(
     return ConversationsUiState(
         connecting = false,
         linkNotice = (link as? LinkState.Up)?.notice(),
-        fix = (link as? LinkState.Up)?.fix,
+        fix = link.deployFix(),
         deploying = deploying,
         needs = (needs as? Fetched.Got)?.value.orEmpty().map { NeedsItem(it.sid, labels[it.sid], it.needs.text, it.needs.waitedMs, needsAt, SessionDot.live(it.needs.tone)) },
         needsProblem = (needs as? Fetched.Failed)?.problem,

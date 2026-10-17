@@ -6,6 +6,7 @@
 use super::*;
 use crate::event_replay::EventReplay;
 use crate::session_book::In as BookIn;
+use cmd_wire::machine::Blocker;
 use resident_client::feed::{Boxed, Event, Exec, Feed, Problem, Progress, State, Transport};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
@@ -357,9 +358,7 @@ pub(crate) async fn consume_remote(
             }
             Event::State(State::Connecting) => round_started = std::time::Instant::now(),
             Event::State(State::Down {
-                problem,
-                unsupported,
-                ..
+                problem, blocker, ..
             }) => {
                 attached = None;
                 match conn.take() {
@@ -369,7 +368,12 @@ pub(crate) async fn consume_remote(
                         crate::inbound_client::unregister(&host_label, &c.client);
                         tracing::warn!("stream_source [{host_label}] remote source ended");
                     }
-                    None => on_round_failed(&host_label, &health, &problem, unsupported),
+                    None => on_round_failed(
+                        &host_label,
+                        &health,
+                        &problem,
+                        blocker == Some(Blocker::NotUnix),
+                    ),
                 }
                 // 这条连接没了 ⇒ 订了这台会话流的那些订阅原位收一格 `Unseen`（不是终点）。
                 replay.origin_seen(&crate::origin::Origin(host_label.clone()), false);
