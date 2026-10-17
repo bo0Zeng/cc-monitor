@@ -9,6 +9,10 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 import { diskOf } from "./world";
 import type { Convo } from "./records";
 import { WALL_CEILING_MS } from "../../test-support/wall-ceiling";
+import { roundsOf, VERSION } from "./machine";
+import type { MachineRound } from "../../../src/frontend/ui/generated/MachineRound";
+
+const LOCAL = "<local>";
 
 /**
  * 交给真后端答的帧命令（`real/pool.mjs` 每台机器起的那一个，读 `world.disk` 那几份原始文件）。场景不许再替它们写答（`world.ops` 里有就报）。
@@ -74,6 +78,11 @@ export const REAL_OPS = new Set([
   "ssh-config-import",
   // 别名块预览（往一份空文件里装一次会写成什么）：真后端照那份启动文件的方言写。
   "aliases-block-render",
+  // 机器表（本机后端读台架盘上的 `machines.json`）与远端各台的状态成品：每台那一轮的结论由台架开页前交（`machine-round`，[`roundsOf`]），
+  // 部署那一侧的事实在盘上（`MachineDisk.deploy`），名字旁的词 · 问题行 · 修法 · 复制详情都是本机后端算的。
+  "machines-read",
+  "machines-try",
+  "machine-read",
 ]);
 
 /**
@@ -83,7 +92,7 @@ export const REAL_OPS = new Set([
  * 其余几种还是这里合成：`session-live-card`（活卡帧，台架没有真流量，场景自己推）· 其余几种 `changed/<topic>`（场景演换号那一下自己推，`pushChanged`；
  * 换号那几条帧命令还是合成的）。看不见 / 被关掉的那几台（`unseenMachines` · `closedMachines`）是连接那一跳的事，照旧这里演。
  */
-export const SHELL_KINDS = new Set(["session-lines", "changed/accounts", "changed/profiles", "changed/tasks", "changed/needs", "changed/session_hidden"]);
+export const SHELL_KINDS = new Set(["session-lines", "changed/accounts", "changed/profiles", "changed/tasks", "changed/needs", "changed/session_hidden", "changed/machines", "changed/machine"]);
 const shellKind = (kind: string): boolean => SHELL_KINDS.has(kind) || kind.startsWith("session-lines/") || kind.startsWith("terminal-screen/");
 
 /**
@@ -155,6 +164,8 @@ export class FakeBackend {
         void this.emit("chan-items", d);
       };
       await new Promise<void>((resolve) => (es.onopen = () => resolve()));
+      // 每台接常驻那一轮的结论交本机后端（同壳 `stream_source::run::send_round`），开页之前交完。
+      for (const r of roundsOf(world)) await this.call(LOCAL, "machine-round", r as unknown as Record<string, unknown>, null);
     });
     if (!opts.mainWindow) {
       for (const origin of new Set(world.sessions.map((x) => x.origin))) {
@@ -167,6 +178,11 @@ export class FakeBackend {
   /** 交给壳 `chan_call` 那一跳：成 ⇒ 原样字节；不成 ⇒ 壳交给页的那一形（`{err, body, detail}`，原样抛）。 */
   private async real(origin: string, op: string, req: Record<string, unknown>, view: unknown, leftMs?: number): Promise<ArrayBuffer> {
     await this.ready;
+    return this.call(origin, op, req, view, leftMs);
+  }
+
+  /** [`real`] 那一跳本身（不等起好：起世界那一段自己也用）。 */
+  private async call(origin: string, op: string, req: Record<string, unknown>, view: unknown, leftMs?: number): Promise<ArrayBuffer> {
     const r = await fetch("/__ccm/call", { method: "POST", body: JSON.stringify({ key: this.key, origin, op, args: req, view: view ?? null, leftMs }) });
     const f = (await r.json()) as { ok: boolean; body?: string; fail?: unknown };
     if (f.ok) return enc.encode(f.body ?? "null").buffer;
@@ -238,6 +254,11 @@ export class FakeBackend {
   /** 那个会话的替身往自己的窗格里再印一段（原样的终端输出）：真后端照常抓到、订着实时画面的照常收到新的一屏。 */
   paint(origin: string, sid: string, text: string): Promise<void> {
     return this.tell("paint", { origin, sid, text });
+  }
+
+  /** 场景在开页之后演那台又一轮的结论（经本机后端 `machine-round`，同壳交的那一条；它推 `changed {machine}`）。 */
+  async round(machine: string, round: MachineRound): Promise<void> {
+    await this.real(LOCAL, "machine-round", { machine, round, version: VERSION }, null);
   }
 
   /** 场景演那台断了：那台后端当场杀掉（壳那一侧照真的那一套作废那台的成品、各条订阅说断了）。 */

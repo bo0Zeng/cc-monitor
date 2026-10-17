@@ -283,6 +283,7 @@ export function backendPool({ repo, sandbox }) {
       CCM_BACKEND_STDERR_LOG: `${H}/.shots-run/stderr.log`,
       TZ: SHOTS_TZ,
       CCM_SHOTS_NOW_MS: String(Math.round(now)),
+      ...(m.deploy ? { CCM_SHOTS_DEPLOY: JSON.stringify(m.deploy) } : {}),
     };
     const passwd = path.join(dir, "passwd");
     writeFileSync(passwd, `root:x:0:0:root:/root:/bin/sh\nuser:x:${process.getuid()}:${process.getgid()}:user:${H}:/bin/sh\n`);

@@ -262,7 +262,14 @@ export function diskOf(w: World): Record<string, MachineDisk> {
       const live = mine.map(liveOf);
       const shown = live.find((l) => l.tmux !== false && l.fate !== "ended");
       if (shown) shown.windows = 1;
-      return [m, { ...d, files, mtimes, live: [...d.live, ...live] }];
+      if (m !== LOCAL) return [m, { ...d, files, mtimes, live: [...d.live, ...live] }];
+      // 本机后端那张机器表（场景那份 `config.remote.hosts`）与每台部署那一侧的事实（系统 · 正在装的那几台）。
+      const hosts = ((w.config.remote ?? {}) as { hosts?: { label: string }[] }).hosts ?? [];
+      if (hosts.length > 0) files[".cc-monitor/machines.json"] = JSON.stringify({ version: 1, hosts }, null, 2) + "\n";
+      const deploy = Object.fromEntries(
+        hosts.map((h) => [h.label, { os: h.label === "win-laptop" ? "Windows" : "Linux", ...(w.installingMachines?.includes(h.label) ? { step: "install" as const } : {}) }]),
+      );
+      return [m, { ...d, files, mtimes, live: [...d.live, ...live], deploy }];
     }),
   );
 }

@@ -124,22 +124,6 @@ function installingWorld(): World {
   return w;
 }
 
-/** 一帧状态成品（推送那一路的样子；形状同金样）。 */
-const pushed = (state: string, extra: Record<string, unknown> = {}): Record<string, unknown> => ({
-  state,
-  reason: null,
-  stage: null,
-  version: null,
-  versionRelation: null,
-  os: "Linux",
-  word: "",
-  said: "",
-  fixes: [],
-  seenHostKey: null,
-  detail: null,
-  ...extra,
-});
-
 export const SETTINGS_SCENES: Scene[] = [
   settings("settings-ssh-import-taken", "设置 · 添加机器 · 撞名", "从 ~/.ssh/config 选：build-02 改名成 gpu-01（列表里已有），就地拦", async () => {
     await go("machines");
@@ -177,16 +161,10 @@ export const SETTINGS_SCENES: Scene[] = [
   settings("settings-machines-installing", "设置 · 机器 · 正在装", "gpu-01 正在装 cc-monitor：虚线点 ＋「安装中」＋ 进度条", async () => {
     await go("machines");
   }, installingWorld),
-  settings("settings-machines-pushed", "设置 · 机器 · 状态推送", "页面开着时本机后端推来两帧：devbox 正在连（启动 cc-monitor）、gpu-01 正在更新 —— 那两行原位换", async (ctx) => {
+  settings("settings-machines-pushed", "设置 · 机器 · 状态推送", "页面开着时又来两轮结论、本机后端推来两帧：devbox 正在连（启动 cc-monitor）、gpu-01 比这一版旧 —— 那两行原位换", async (ctx) => {
     await go("machines");
-    ctx.backend.pushChanged(LOCAL, "machine", {
-      key: "devbox",
-      body: pushed("connecting", { stage: "attach", word: copyText("machineState.word.connecting"), said: "连接 devbox · 启动 cc-monitor" }),
-    });
-    ctx.backend.pushChanged(LOCAL, "machine", {
-      key: "gpu-01",
-      body: pushed("updating", { word: copyText("machineState.word.updating"), said: "更新 gpu-01 · cc-monitor" }),
-    });
+    await ctx.backend.round("devbox", { state: "connecting" });
+    await ctx.backend.round("gpu-01", { state: "up", relation: "older", differs: [] });
     await sleep(800);
   }),
 

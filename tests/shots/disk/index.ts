@@ -58,6 +58,11 @@ export interface MachineDisk {
    * （演「画面读不出」）。缺 ⇒ 真 tmux 原样。
    */
   tmuxShim?: { version?: string; noServer?: string[] };
+  /**
+   * 部署那一侧的事实（只给本机后端：它那张机器状态表收）：那台是什么系统 · 部署走到哪一步。台架没有 ssh 那条路、部署不真跑，
+   * 起后端时经 `CCM_SHOTS_DEPLOY` 交（`src/backend/control/machine_state.rs::shots_deploy`）。
+   */
+  deploy?: Record<string, { os?: string; step?: "plan" | "install" | "update" | "restart" }>;
 }
 
 export const blankDisk = (): MachineDisk => ({ files: {}, live: [] });

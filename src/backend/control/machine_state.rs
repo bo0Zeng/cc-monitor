@@ -9,6 +9,15 @@ use std::sync::Mutex;
 
 static TABLE: Mutex<BTreeMap<String, Entry>> = Mutex::new(BTreeMap::new());
 
+/// 那张表（取的头一回，带特性 `shots` 编的后端先收下台架交的部署事实：[`shots_deploy`]）。
+fn table() -> std::sync::MutexGuard<'static, BTreeMap<String, Entry>> {
+    #[allow(unused_mut)]
+    let mut t = TABLE.lock().unwrap_or_else(|e| e.into_inner());
+    #[cfg(feature = "shots")]
+    shots_deploy::seed(&mut t);
+    t
+}
+
 /// 进程里那条「某台的成品变了」的通道（流连接订它推 `changed {machine}`）：那台的名字 ＋ 成品。
 pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<(String, MachineState)> {
     static TX: std::sync::OnceLock<tokio::sync::broadcast::Sender<(String, MachineState)>> =
@@ -41,7 +50,7 @@ pub(crate) fn note(machine: &str, fact: Fact) -> MachineState {
 pub(crate) fn note_in(hosts: &[(String, bool)], machine: &str, fact: Fact) -> MachineState {
     let enabled = enabled_in(hosts, machine);
     let p = {
-        let mut t = TABLE.lock().unwrap_or_else(|e| e.into_inner());
+        let mut t = table();
         let e = t.entry(machine.to_string()).or_default();
         fold(e, fact);
         product(e, machine, enabled, true)
@@ -58,7 +67,7 @@ pub(crate) fn table_moved() {
 /// [`table_moved`] 的本体（机器表由调用方给）。
 pub(crate) fn table_moved_in(hosts: &[(String, bool)]) {
     let products: Vec<(String, MachineState)> = {
-        let mut t = TABLE.lock().unwrap_or_else(|e| e.into_inner());
+        let mut t = table();
         t.retain(|m, _| hosts.iter().any(|(n, _)| n == m));
         hosts
             .iter()
@@ -82,7 +91,7 @@ pub(crate) fn read() -> BTreeMap<String, MachineState> {
 
 /// [`read`] 的本体（机器表由调用方给）。
 pub(crate) fn read_in(hosts: &[(String, bool)]) -> BTreeMap<String, MachineState> {
-    let t = TABLE.lock().unwrap_or_else(|e| e.into_inner());
+    let t = table();
     hosts
         .iter()
         .map(|(n, c)| {
@@ -176,6 +185,66 @@ impl crate::wire::typed::Handle for MachineReadCmd {
     ) -> impl std::future::Future<Output = Result<MachineRead, MachineReadErr>> + Send + 'static
     {
         async move { Ok(MachineRead { machines: read() }) }
+    }
+}
+
+/// 截图台架的部署事实：台架没有 ssh 那条路、部署不真跑，每台走到哪一步 · 那台是什么系统由台架起进程时交
+/// （环境变量 `CCM_SHOTS_DEPLOY`：`{"<名字>": {"os"?: "Linux", "step"?: "plan" | "install" | "update" | "restart"}}`），
+/// 表头一回被取时照部署那一侧的两件事实收下（[`Fact::Deployed`] · [`Fact::Step`]）。默认构建里这一段不编进去。
+#[cfg(feature = "shots")]
+mod shots_deploy {
+    use super::{fold, Entry, Fact};
+    use deploy::Step;
+    use std::collections::BTreeMap;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Given {
+        os: Option<String>,
+        step: Option<StepGiven>,
+    }
+
+    #[derive(Clone, Copy, serde::Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    enum StepGiven {
+        Plan,
+        Install,
+        Update,
+        Restart,
+    }
+
+    static DONE: AtomicBool = AtomicBool::new(false);
+
+    pub(super) fn seed(t: &mut BTreeMap<String, Entry>) {
+        if DONE.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let Ok(raw) = std::env::var("CCM_SHOTS_DEPLOY") else {
+            return;
+        };
+        let given: BTreeMap<String, Given> = match serde_json::from_str(&raw) {
+            Ok(g) => g,
+            Err(e) => {
+                tracing::error!("CCM_SHOTS_DEPLOY 认不出：{e}");
+                return;
+            }
+        };
+        for (machine, g) in given {
+            let e = t.entry(machine).or_default();
+            fold(e, Fact::Deployed { os: g.os });
+            if let Some(s) = g.step {
+                fold(
+                    e,
+                    Fact::Step(match s {
+                        StepGiven::Plan => Step::Plan,
+                        StepGiven::Install => Step::Place { updating: false },
+                        StepGiven::Update => Step::Place { updating: true },
+                        StepGiven::Restart => Step::Restart,
+                    }),
+                );
+            }
+        }
     }
 }
 
