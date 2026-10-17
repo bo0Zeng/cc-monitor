@@ -7,6 +7,7 @@ import com.ccmonitor.mobile.core.claude.link.wire.Hide
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryListPage
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsList
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsRow
+import com.ccmonitor.mobile.core.claude.link.wire.QuotaReadReply
 import com.ccmonitor.mobile.core.claude.link.wire.SessionActivityWord
 import com.ccmonitor.mobile.core.claude.link.wire.SessionAddedFrame
 import com.ccmonitor.mobile.core.claude.link.wire.SessionFateWord
@@ -22,9 +23,6 @@ import com.ccmonitor.mobile.core.claude.link.wire.Wire
  * 核心成品的解码：只认格、不判、不写字。每一格的意思以 `IPC-COMMANDS.md` 为准；
  * 形状对不上（缺必填格）⇒ `null`，由调用方报「两端契约对不上」，不补默认值。
  */
-
-/** 语气（[Tone]，线上类）的一个词；认不出 ⇒ `null`（照 plain 画、报一次）。 */
-fun toneOf(s: String?): Tone? = Wire.bind<Tone>(s)
 
 /** 一格写好的字 ＋ 它的语气。 */
 data class Toned(
@@ -275,49 +273,9 @@ object HistoryAnnotate {
     fun of(data: Any?): Annotated? = Wire.bind<Annotated>(data)
 }
 
-/** `quota-read`：这台的额度账。每号一段 `rows`（写好的几行）· `fiveHour`（「5h 41%」那一格）· `warm`（开窗那一判）。 */
+/** `quota-read`：这台的额度账。手机只读每个出过数的号「5h 那一格」写好的字（新会话框每个号后面那一格）。 */
 object QuotaRead {
     const val COMMAND: String = "quota-read"
 
-    data class Account(
-        val account: String,
-        /** 首行 名 · 类型 · 标签；其余每行 键 · 值 · ↻ · 距今 —— 照抄，不另排。 */
-        val rows: List<List<Toned>>,
-        /** 「5h 那一格」写好的字；按量号 · 没出过数的号 ⇒ `null`。 */
-        val fiveHour: String?,
-        /** 开窗那一判那一句。 */
-        val warmText: String?,
-    )
-
-    data class Answer(
-        /** `present` · `absent` · `unreadable`。 */
-        val state: String,
-        /** 读不出 / 一个号都没有 ⇒ 那一句；否则 `null`。 */
-        val text: String?,
-        /** 只在 `unreadable` 时有：复制详情。 */
-        val detail: String?,
-        /** 出过数的号在前、没出过数的在后，各按核心给的先后。 */
-        val accounts: List<Account>,
-        val usableNow: List<String>,
-    )
-
-    private fun account(m: Map<String, Any?>): Account {
-        val rows =
-            m["rows"].asList().map { row ->
-                row.asList().map { cell -> cell.asObj().let { c -> Toned(c.str("text").need(), toneOf(c.str("tone"))) } }
-            }
-        return Account(m.str("account").need(), rows, m.str("fiveHour"), m.obj("warm")?.str("text"))
-    }
-
-    fun of(data: Any?): Answer? =
-        decoding {
-            val m = data.asObj()
-            Answer(
-                state = m.str("state").need(),
-                text = m.str("text"),
-                detail = m.str("detail"),
-                accounts = m.objs("accounts").need().map(::account) + m.objs("unseen").need().map(::account),
-                usableNow = m.strs("usableNow").orEmpty(),
-            )
-        }
+    fun of(data: Any?): QuotaReadReply? = Wire.bind<QuotaReadReply>(data)
 }

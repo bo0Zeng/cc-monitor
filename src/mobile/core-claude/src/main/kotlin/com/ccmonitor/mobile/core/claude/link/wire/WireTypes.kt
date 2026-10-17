@@ -1108,6 +1108,19 @@ data class ProfilesWriteDone(
     val reload: String?,
 )
 
+@WireOf("QuotaRead")
+@JsonClass(generateAdapter = true)
+data class QuotaReadReply(
+    val accounts: List<QuotaFiveHour>,
+)
+
+@WireOf("QuotaAccount")
+@JsonClass(generateAdapter = true)
+data class QuotaFiveHour(
+    val account: String,
+    val fiveHour: String?,
+)
+
 // 流上的会话帧（核心按 `cmd-wire` 那一份类型重写过的一行）。
 
 @WireOf("SessionAdded")

@@ -181,29 +181,16 @@ class ProductsTest {
     }
 
     @Test
-    fun `quota-read：每号的行、5h 那一格、开窗那一句照抄；出过数的在前`() {
-        val cell = { t: String, tone: String -> mapOf("text" to t, "tone" to tone) }
-        val data =
-            mapOf(
-                "state" to "present",
-                "text" to null,
-                "usableNow" to listOf("personal"),
-                "accounts" to
-                    listOf(
-                        mapOf(
-                            "account" to "personal",
-                            "fiveHour" to "5h 63%",
-                            "rows" to listOf(listOf(cell("personal", "plain"), cell("订阅", "plain")), listOf(cell("5h", "plain"), cell("63%", "warn"))),
-                            "warm" to mapOf("act" to "wait", "text" to "5h 63% ↻18:30"),
-                        ),
-                    ),
-                "unseen" to listOf(mapOf("account" to "work", "fiveHour" to null, "rows" to listOf(listOf(cell("work", "plain"))), "warm" to mapOf("act" to "send", "text" to "未计时"))),
-            )
-        val a = QuotaRead.of(data)!!
-        assertEquals(listOf("personal", "work"), a.accounts.map { it.account })
-        assertEquals(Toned("63%", Tone.WARN), a.accounts[0].rows[1][1])
-        assertEquals("5h 63%", a.accounts[0].fiveHour)
-        assertEquals("未计时", a.accounts[1].warmText)
-        assertNull("行里一格缺 text ⇒ 解不出", QuotaRead.of(data + ("unseen" to listOf(mapOf("account" to "w", "rows" to listOf(listOf(mapOf("tone" to "plain"))))))))
+    fun `quota-read：金样每一份都解得开，每号「5h 那一格」照抄`() {
+        @Suppress("UNCHECKED_CAST")
+        val cases = Fixtures.json("quota-read.golden.json")["cases"] as List<Map<String, Any?>>
+        assertTrue("金样里一份都没有 —— 本条在空转", cases.isNotEmpty())
+        for (c in cases) {
+            @Suppress("UNCHECKED_CAST")
+            val raw = (c["reply"] as Map<String, Any?>)["accounts"] as List<Map<String, Any?>>
+            val got = QuotaRead.of(c["reply"])
+            assertEquals("${c["name"]}", raw.map { it["account"] to it["fiveHour"] }, got?.accounts?.map { it.account to it.fiveHour })
+        }
+        assertNull("号缺名字 ⇒ 解不出", QuotaRead.of(mapOf("accounts" to listOf(mapOf("fiveHour" to "5h 1%")))))
     }
 }
