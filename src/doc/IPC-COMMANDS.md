@@ -4427,6 +4427,8 @@ type CanResume = "yes" | "switch" | "bg";
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
 type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type ForkedFrom = { label: string, };
+type Hidden = { by: HiddenBy, said: string, };
+type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type HistorySearchReply = { 
 /**
  * 每命中会话一行，最近优先。
@@ -4495,6 +4497,18 @@ atText: string,
  * 内容头那一段。
  */
 spanText: string, 
+/**
+ * 显示的名字：改过的名 ＞ 那台扫出的标题（同历史清单那一行的 `label`）。
+ */
+label: string, 
+/**
+ * 星标（那台的注解）。
+ */
+starred: boolean, 
+/**
+ * 隐藏那一格（那台判的，与历史清单那一行同一条规则）；不隐藏 ⇒ `null`。
+ */
+hidden: Hidden | null, 
 /**
  * 这个会话是哪一家（线上的 kind）：恢复按它起。全文搜索只扫记录树 ⇒ 都是记录树那一家。
  */
@@ -4628,6 +4642,8 @@ type CanResume = "yes" | "switch" | "bg";
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
 type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type ForkedFrom = { label: string, };
+type Hidden = { by: HiddenBy, said: string, };
+type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type HistorySearchMergeReq = { machines: Array<Origin>, search: HistorySearchReq, };
 type HistorySearchReq = { 
 /**
@@ -4692,6 +4708,18 @@ atText: string,
  * 内容头那一段。
  */
 spanText: string, 
+/**
+ * 显示的名字：改过的名 ＞ 那台扫出的标题（同历史清单那一行的 `label`）。
+ */
+label: string, 
+/**
+ * 星标（那台的注解）。
+ */
+starred: boolean, 
+/**
+ * 隐藏那一格（那台判的，与历史清单那一行同一条规则）；不隐藏 ⇒ `null`。
+ */
+hidden: Hidden | null, 
 /**
  * 这个会话是哪一家（线上的 kind）：恢复按它起。全文搜索只扫记录树 ⇒ 都是记录树那一家。
  */

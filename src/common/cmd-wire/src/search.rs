@@ -73,7 +73,8 @@ pub struct SearchHit {
     pub line: u64,
 }
 
-/// `history-search` 回包里的一行：那台扫出来的会话行 ＋ 那台按问的那一方的时区写好的两格时刻字（都按 `updatedAt`）。
+/// `history-search` 回包里的一行：那台扫出来的会话行 ＋ 那台按问的那一方的时区写好的两格时刻字（都按 `updatedAt`）
+/// ＋ 那台此刻对这条会话的注解与隐藏（同历史清单那一行，界面不再拿清单去对）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
@@ -86,6 +87,12 @@ pub struct SearchRow {
     pub at_text: String,
     /// 内容头那一段。
     pub span_text: String,
+    /// 显示的名字：改过的名 ＞ 那台扫出的标题（同历史清单那一行的 `label`）。
+    pub label: String,
+    /// 星标（那台的注解）。
+    pub starred: bool,
+    /// 隐藏那一格（那台判的，与历史清单那一行同一条规则）；不隐藏 ⇒ `null`。
+    pub hidden: Option<crate::session::Hidden>,
 }
 
 /// `history-search` 的回包（一台）。

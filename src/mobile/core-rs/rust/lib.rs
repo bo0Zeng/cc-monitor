@@ -1459,6 +1459,9 @@ mod tests {
             r["updatedAt"] = json!(at);
             r["atText"] = json!("09:05");
             r["spanText"] = json!("09:05–09:05");
+            r["label"] = json!(sid);
+            r["starred"] = json!(true);
+            r["hidden"] = json!(null);
             r
         };
         let a = json!({"sessions": [line("a1", 100)], "unreadable": 1, "skipped": ["Codex"]});

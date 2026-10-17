@@ -222,11 +222,6 @@ fn the_dial_per_query_path_is_gone() {
 /// 已迁到通道的帧命令：前端经通道（`callTyped(origin, "<op>", …)`）直接问那台后端，monitor 那一跳只搬字节。
 /// 迁的判准只有一条：迁过去之后，**那条应答的解释只有一个家**。
 const CHANNELED: &[(&str, &str)] = &[
-    (
-        "history-search",
-        "远端那半迁：逐台 fan-out ＋ 补 origin ＋ 与本机索引合并三件事搬到 `src/frontend/ui/views/history-search.ts`，\
-         每件只有那一个家。本机那半也迁了：本机也经通道问本机后端，monitor 内存索引删了",
-    ),
     // 会话读面那三条：**解释挪进后端、直接出成品**（`read_face.rs`），monitor 那一份
     //   「核头尾、剥行、失败分档」删了；界面经 `src/frontend/ui/session-reads.ts` 问，本机与远端同一条路。
     (
@@ -511,11 +506,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "resync",
         "新帧命令（手动对齐）：后端出成品 `{added, removed, retagged, watchers}`（`resync_face.rs` → `observe/watcher.rs::resync`）；\
          前端 `src/frontend/ui/control-said.ts::resync` 问、按类型收（`callTyped`），monitor 这一侧零发送点",
-    ),
-    (
-        "sessions-needs",
-        "`BORN_ON_FRAME` 那一条：后端出成品（这台需手动的整份：在等的会话 · 计划格 · 会话外的，`recognize::facts::needs_list` 排好）；\
-         本机后端合各台时经 `--resident-call` 问它（`sessions-needs-merge`），monitor 这一侧零发送点",
     ),
     (
         "sessions-needs-merge",

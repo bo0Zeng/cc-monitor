@@ -95,26 +95,55 @@ async fn search_here(
     tz: crate::common::time::Tz,
 ) -> Result<HistorySearchReply, HistorySearchErr> {
     tokio::task::spawn_blocking(move || {
+        let annotations = match crate::history::history_annotations::load() {
+            crate::history::history_annotations::Loaded::Read(t) => t,
+            _ => Default::default(),
+        };
+        let here = crate::control::session_hidden::Here::read_now();
+        let mark = |row: &cmd_wire::search::SessionHits| Marks {
+            label: annotations
+                .get(&row.session_id)
+                .and_then(|e| e.custom_title.clone())
+                .filter(|t| !t.trim().is_empty())
+                .unwrap_or_else(|| row.title.clone()),
+            starred: annotations.get(&row.session_id).is_some_and(|e| e.starred),
+            hidden: crate::history::session_hidden::hidden_here(
+                &here,
+                &annotations,
+                &row.session_id,
+                row.is_bg,
+                &|p| crate::history::session_hidden::title_here(p, &annotations),
+            ),
+        };
         search_at(
             &crate::history::listing::agent_home(),
             req,
             super::read_face::LINES_CAP_BYTES,
             crate::common::time::now_ms(),
             &tz,
+            &mark,
         )
     })
     .await
     .unwrap_or_else(|e| Err(HistorySearchErr::Failed(e.to_string())))
 }
 
-/// [`HistorySearch`] 的本体，家目录 · 回包上限 · 此刻 · 看的那一台的时区是参数（判据拿夹具喂它、拿小上限验「超了就拒、不截断」）。
-/// 生产只有一个上限：`read_face::LINES_CAP_BYTES`。每行添上行尾 `atText` 与内容头 `spanText`（都按 `updatedAt`，按 `tz` 写）。
+/// 一行添上的那台的说法：显示的名字 · 星标 · 隐藏那一格（生产 ＝ 这台的注解 ＋ 隐藏规则，同历史清单那一行）。
+pub(crate) struct Marks {
+    pub(crate) label: String,
+    pub(crate) starred: bool,
+    pub(crate) hidden: Option<cmd_wire::session::Hidden>,
+}
+
+/// [`HistorySearch`] 的本体，家目录 · 回包上限 · 此刻 · 看的那一台的时区 · 每行那台的说法是参数（判据拿夹具喂它、拿小上限验「超了就拒、不截断」）。
+/// 生产只有一个上限：`read_face::LINES_CAP_BYTES`。每行添上行尾 `atText` 与内容头 `spanText`（都按 `updatedAt`，按 `tz` 写）与 [`Marks`]。
 pub(crate) fn search_at(
     home: &std::path::Path,
     req: HistorySearchReq,
     cap: usize,
     now_ms: i64,
     tz: &crate::common::time::Tz,
+    mark: &dyn Fn(&cmd_wire::search::SessionHits) -> Marks,
 ) -> Result<HistorySearchReply, HistorySearchErr> {
     let opts = SearchOpts {
         include_tools: req.include_tools == Some(true),
@@ -130,10 +159,14 @@ pub(crate) fn search_at(
     let unreadable = search_query::search_into(home, &req.query, &opts, &mut |row| {
         let at = row.updated_at;
         let (at_text, _, span_text) = crate::common::time::history_times(at, at, at, now_ms, tz);
+        let m = mark(&row);
         let row = SearchRow {
             row,
             at_text: at_text.0,
             span_text: span_text.0,
+            label: m.label,
+            starred: m.starred,
+            hidden: m.hidden,
         };
         // 上限照逐行那一形算（每行一份 JSON ＋ 换行）。
         size += serde_json::to_vec(&row).map_or(0, |b| b.len()) + 1;

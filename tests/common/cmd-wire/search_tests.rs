@@ -35,6 +35,9 @@ fn reply_text(rows: &[(&str, i64, u32, bool)], unreadable: usize, skipped: &[&st
             r["hitsTruncated"] = json!(cut);
             r["atText"] = json!(format!("at-{sid}"));
             r["spanText"] = json!(format!("span-{sid}"));
+            r["label"] = json!(sid);
+            r["starred"] = json!(false);
+            r["hidden"] = json!(null);
             r
         })
         .collect();

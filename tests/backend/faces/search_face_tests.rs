@@ -4,6 +4,15 @@ use super::*;
 use crate::wire::SessionFaceExt as _;
 use cmd_wire::Machine;
 
+/// 没有注解 · 不隐藏的那台说法。
+fn plain(row: &cmd_wire::search::SessionHits) -> Marks {
+    Marks {
+        label: row.title.clone(),
+        starred: false,
+        hidden: None,
+    }
+}
+
 /// 全文搜索的应答把「读不动几份」与「内容搜索不覆盖的那几家」一起交回（此前只进日志，界面只能说「共 N 条」像是全的）；
 /// `titles: true` 只比标题与第一句：只在标题里出现的词也搜得到那一个会话。
 #[test]
@@ -37,6 +46,7 @@ fn the_search_answer_says_what_it_could_not_search_and_titles_mode_finds_title_o
             crate::faces::read_face::LINES_CAP_BYTES,
             0,
             &Default::default(),
+            &plain,
         )
         .expect("搜索")
     };
@@ -97,6 +107,7 @@ fn each_row_carries_its_row_and_span_texts_written_here() {
         crate::faces::read_face::LINES_CAP_BYTES,
         now,
         &Default::default(),
+        &plain,
     )
     .expect("搜索");
     std::fs::remove_dir_all(&home).ok();
@@ -104,6 +115,55 @@ fn each_row_carries_its_row_and_span_texts_written_here() {
     assert_eq!(
         (s.at_text.as_str(), s.span_text.as_str()),
         ("09:05", "09:05–09:05")
+    );
+}
+
+/// ★ 每行带那台此刻对这条会话的说法：显示的名字 · 星标 · 隐藏那一格（同历史清单那一行；界面不再拿清单去对）。
+#[test]
+fn each_row_carries_this_machines_label_star_and_hidden() {
+    let home = std::env::temp_dir().join(format!("b8-search-marks-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let dir = home.join("projects").join("-w-m");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("0000aaaa-0000-4000-8000-0000000000d1.jsonl"),
+        r#"{"type":"user","uuid":"u1","timestamp":"2026-10-07T09:05:00Z","cwd":"/w/m","message":{"role":"user","content":"占位词"}}"#,
+    )
+    .unwrap();
+    let req = HistorySearchReq {
+        query: "占位词".to_string(),
+        include_tools: None,
+        scope: None,
+        after_ms: None,
+        limit: None,
+        titles: None,
+    };
+    let mark = |row: &cmd_wire::search::SessionHits| Marks {
+        label: format!("改过的-{}", &row.session_id[..4]),
+        starred: true,
+        hidden: Some(cmd_wire::session::Hidden {
+            by: cmd_wire::session::HiddenBy::Own,
+            said: "占位理由".into(),
+        }),
+    };
+    let v = search_at(
+        &home,
+        req,
+        crate::faces::read_face::LINES_CAP_BYTES,
+        0,
+        &Default::default(),
+        &mark,
+    )
+    .expect("搜索");
+    std::fs::remove_dir_all(&home).ok();
+    let s = &v.sessions[0];
+    assert_eq!(
+        (
+            s.label.as_str(),
+            s.starred,
+            s.hidden.as_ref().map(|h| h.said.as_str())
+        ),
+        ("改过的-0000", true, Some("占位理由"))
     );
 }
 
@@ -128,6 +188,9 @@ fn reply_text(rows: &[(&str, i64)]) -> String {
             r["updatedAt"] = json!(at);
             r["atText"] = json!("09:05");
             r["spanText"] = json!("09:05–09:05");
+            r["label"] = json!(format!("名-{sid}"));
+            r["starred"] = json!(true);
+            r["hidden"] = json!({"by": "self", "said": "已隐藏"});
             r
         })
         .collect();
@@ -287,13 +350,14 @@ fn an_oversized_search_answer_is_refused_not_truncated() {
         limit: None,
         titles: None,
     };
-    let small = search_at(&home, req(), 1024, 0, &Default::default());
+    let small = search_at(&home, req(), 1024, 0, &Default::default(), &plain);
     let full = search_at(
         &home,
         req(),
         crate::faces::read_face::LINES_CAP_BYTES,
         0,
         &Default::default(),
+        &plain,
     );
     std::fs::remove_dir_all(&home).ok();
     assert!(
@@ -352,6 +416,7 @@ fn hits_carry_their_offset_and_forks_name_their_parent() {
         crate::faces::read_face::LINES_CAP_BYTES,
         0,
         &Default::default(),
+        &plain,
     )
     .expect("搜索");
     let by = |sid: &str| {

@@ -177,7 +177,7 @@ beforeEach(() => {
     searchAt: (o) =>
       o === LOCAL_ORIGIN
         ? {
-            sessions: [{ agent: "claude", sessionId: "a", projectPath: "/w/p", projectName: "p", jsonlPath: "/x/a.jsonl", title: "标题 a", updatedAt: NOW, hits: [{ uuid: "u1", tsMs: NOW, kind: "user", before: "**前", matched: "词", after: "`后`" }], moreHits: 0, hitsTruncated: false, isBg: false, face: goldenFace("ended"), can: { resume: "yes", accounts: true, fork: true, delete: "yes" } }],
+            sessions: [{ agent: "claude", sessionId: "a", projectPath: "/w/p", projectName: "p", jsonlPath: "/x/a.jsonl", title: "标题 a", label: "标题 a", starred: false, hidden: null, updatedAt: NOW, hits: [{ uuid: "u1", tsMs: NOW, kind: "user", before: "**前", matched: "词", after: "`后`" }], moreHits: 0, hitsTruncated: false, isBg: false, face: goldenFace("ended"), can: { resume: "yes", accounts: true, fork: true, delete: "yes" } }],
             unreadable: 0,
             skipped: [],
           }
@@ -302,6 +302,26 @@ describe("内容搜索", () => {
     await flush();
     expect(document.querySelector("mark")).toBeNull();
     expect(document.body.textContent).toContain(copyText("history.search.failed", { why: "" }).trim().split("·")[0].trim());
+    v.close();
+  });
+
+  it("★ 命中那一行的名字 · 星标 · 隐藏照那台在命中行上带来的画（清单里没有这一行也一样，界面不拿清单去对）", async () => {
+    world.local = [];
+    const base = world.searchAt;
+    world.searchAt = (o) => {
+      const r = base(o);
+      if (r === "down" || o !== LOCAL_ORIGIN) return r;
+      return { ...r, sessions: r.sessions.map((x) => ({ ...x, label: "改过的名", starred: true, hidden: { by: "self", said: "占位理由" } })) };
+    };
+    const v = await opened();
+    const input = document.querySelector<HTMLInputElement>(".history-search")!;
+    input.value = "词";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await flush();
+    const body = document.body.textContent ?? "";
+    expect(body).toContain("改过的名");
+    expect(body).toContain(copyText("history.row.hidden"));
+    expect(document.querySelector('[role="option"] svg[data-icon="star"]'), "星标那一枚没画").not.toBeNull();
     v.close();
   });
 });
