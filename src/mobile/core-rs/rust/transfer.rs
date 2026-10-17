@@ -501,17 +501,19 @@ mod tests {
                         "/sdcard/f",
                         &mut seen,
                     );
+                    // 撤了之后再让几圈：拉的那一趟该在这几圈里收手（计圈数，不按墙钟）。
                     let stop = async {
                         tokio::task::yield_now().await;
                         halt.set();
+                        for _ in 0..64 {
+                            tokio::task::yield_now().await;
+                        }
                     };
-                    let (line, ()) =
-                        tokio::time::timeout(std::time::Duration::from_secs(5), async {
-                            tokio::join!(pull, stop)
-                        })
-                        .await
-                        .expect("撤了还在等那台");
-                    line
+                    tokio::select! {
+                        biased;
+                        line = pull => line,
+                        () = stop => panic!("撤了还在等那台"),
+                    }
                 });
             assert_eq!(
                 json(&line),
