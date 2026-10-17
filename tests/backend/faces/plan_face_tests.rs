@@ -53,3 +53,37 @@ fn slice_goes_with_take_and_only_with_it() {
     .unwrap_err();
     assert_eq!(f.code, "bad_args");
 }
+
+/// ★ 不重问时（`plan-list {}` · `sessions-needs` 计划那一截）同一个目录只起一次 pb：认出是工作区 · 不是工作区 · 读不成（pb 失败 · 不认得）
+/// 都记在本子里，连问两次第二次照记下的那个结局；读不成的那一种照旧说 pb 不认得。`fresh` ⇒ 重起。
+#[test]
+fn an_unfresh_list_runs_pb_once_per_dir_whatever_it_said() {
+    use crate::plan::dump::Ran;
+    let tz = crate::Tz::default();
+    let cases: [(&str, fn() -> Ran); 3] = [
+        ("不是工作区", || Ran::NotWorkspace("x".into())),
+        ("读不成", || Ran::Failed {
+            said: "坏了".into(),
+            raw: None,
+        }),
+        ("不认得", || Ran::Unsupported("老 pb".into())),
+    ];
+    for (name, ran) in cases {
+        let b = crate::plan::book::Book::default();
+        let runs = std::cell::Cell::new(0);
+        let read = |dir: &Path| {
+            runs.set(runs.get() + 1);
+            b.take(ran(), dir, &crate::plan::fixture::who, 1)
+        };
+        let first = list_in(&b, vec!["/d".into()], false, &read, &tz).expect("列得出");
+        let again = list_in(&b, vec!["/d".into()], false, &read, &tz).expect("列得出");
+        assert_eq!(runs.get(), 1, "{name}：同一个目录连问两次只起一次 pb");
+        assert_eq!(
+            serde_json::to_value(&first).unwrap(),
+            serde_json::to_value(&again).unwrap(),
+            "{name}：第二次照记下的结局"
+        );
+        list_in(&b, vec!["/d".into()], true, &read, &tz).expect("列得出");
+        assert_eq!(runs.get(), 2, "{name}：fresh ⇒ 重起");
+    }
+}

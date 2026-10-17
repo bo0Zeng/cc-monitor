@@ -24,7 +24,7 @@ struct Seen {
 }
 
 /// 读不成的几种（帧面翻成码）。
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Miss {
     /// 那个目录不在 pb 工作区里。
     NotWorkspace(String),
@@ -40,6 +40,8 @@ pub(crate) struct Book {
     seen: Mutex<BTreeMap<String, Seen>>,
     /// 目录 ⇒ 它所在的工作区（`None` ＝ pb 说它不在工作区里）。
     dirs: Mutex<BTreeMap<PathBuf, Option<String>>>,
+    /// 起 pb 读不成、又没有上一次好的可给的目录 ⇒ 那一次的结局（不重问时照它答，不再起 pb；读成了 · 认出不是工作区就摘掉）。
+    unread: Mutex<BTreeMap<PathBuf, Miss>>,
     /// `(工作区, 片)` ⇒ 顶块进「看全局」那一步那次的 rev（顶块离开那一步就删；「要你看」顶块那一条的键用它）。
     entered: Mutex<BTreeMap<(String, String), String>>,
 }
@@ -91,6 +93,7 @@ impl Book {
                     .unwrap_or_default()
                     .to_string();
                 lock(&self.dirs).insert(dir.to_path_buf(), Some(ws.clone()));
+                lock(&self.unread).remove(dir);
                 let rev = rev_of(&raw);
                 let mut seen = lock(&self.seen);
                 let prev = seen.remove(&ws);
@@ -154,9 +157,10 @@ impl Book {
             }
             Ran::NotWorkspace(said) => {
                 lock(&self.dirs).insert(dir.to_path_buf(), None);
+                lock(&self.unread).remove(dir);
                 Err(Miss::NotWorkspace(said))
             }
-            Ran::Unsupported(said) => Err(Miss::Unsupported(said)),
+            Ran::Unsupported(said) => self.miss_at(dir, Miss::Unsupported(said)),
             Ran::Failed { said, raw } => {
                 let ws = self.workspace_of(dir);
                 let seen = lock(&self.seen);
@@ -166,7 +170,10 @@ impl Book {
                         out["stale"] = json!({"said": said, "raw": raw, "since": prev.read_at});
                         Ok(out)
                     }
-                    None => Err(Miss::Failed { said, raw }),
+                    None => {
+                        drop(seen);
+                        self.miss_at(dir, Miss::Failed { said, raw })
+                    }
                 }
             }
         }
@@ -195,6 +202,17 @@ impl Book {
     }
 
     /// 这个目录认过、在哪个工作区里（没认过 ⇒ `None`；认过不在工作区里 ⇒ `Some(None)`）。
+    /// 记下这个目录读不成的结局、原样回它。
+    fn miss_at(&self, dir: &Path, m: Miss) -> Result<Value, Miss> {
+        lock(&self.unread).insert(dir.to_path_buf(), m.clone());
+        Err(m)
+    }
+
+    /// 这个目录上一次起 pb 读不成、又没有好的可给 ⇒ 那一次的结局；没记过 ⇒ `None`。
+    pub(crate) fn unread(&self, dir: &Path) -> Option<Miss> {
+        lock(&self.unread).get(dir).cloned()
+    }
+
     pub(crate) fn known_dir(&self, dir: &Path) -> Option<Option<String>> {
         lock(&self.dirs).get(dir).cloned()
     }

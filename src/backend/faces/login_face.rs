@@ -4,7 +4,7 @@
 
 use crate::accounts::sign_in::{self, FinishFail, SignInEnd};
 use crate::wire::spec::Fail;
-use crate::wire::typed::{self, Command, NoArgs};
+use crate::wire::typed::{self, Command};
 use copy_core::copy_text;
 
 pub(crate) use cmd_wire::needs::{LoginStartReq, ManualFix, ManualItem};
