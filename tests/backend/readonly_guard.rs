@@ -2911,7 +2911,7 @@ mod g6_dependency_signoff {
             "tokio",
             DEV_DEPS,
             UNMEASURED,
-            "测试档多开 `test-util`（停着的钟，`advance` 才走）：判「挂着的提问自己带的期限」不按墙钟等。\
+            "测试档多开 `test-util`（停着的钟，`advance` 才走）：判「挂着的提问自己带的期限」· 保活几轮判死不按墙钟等。\
              同一个包（`[dependencies]` 里那一条），**只在测试期多一个特性**，不进发布二进制",
         ),
         (

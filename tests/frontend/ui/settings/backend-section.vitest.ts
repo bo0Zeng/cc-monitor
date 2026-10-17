@@ -276,9 +276,13 @@ describe("P2s backend 开关区", () => {
   });
 
   it("★ 起完之后轮询到落定，不画一张操作前的快照（A4）", async () => {
+    // 起之前那台没连上：操作前的那张快照说「未连接」，「已连接」只能是轮询读到的。
+    status = { channel: false, pid: null };
     const s = new BackendSection({ headless: true });
     await flush();
     await flush();
+    const state = (): string | null | undefined => s.element.querySelector(".backend-row-state")?.textContent;
+    expect(state()).toContain(copyText("backend.status.notConnected"));
     // 起：命令返回时后端还没起来（channel:false），第三次才连上。
     statusQueue = [
       { channel: false, pid: null },
@@ -288,12 +292,11 @@ describe("P2s backend 开关区", () => {
     const start = s.element.querySelector<HTMLButtonElement>('.backend-row [data-op="start"]')!;
     start.click();
     expect(start.disabled, "起的那一趟没禁用本行按钮").toBe(true);
-    // 等这一趟收场（按钮放开 = 轮询停了），不按墙钟歇；上限只防挂死。
-    //   等「已连接」不行：起之前就画着「已连接」，等到的是操作前那张，轮询还在跑、漏进后面的用例。
-    await vi.waitFor(() => expect(start.disabled).toBe(false), UNTIL_CEILING);
-    expect(statusQueue, "没轮询到落定就放开了按钮").toEqual([]);
+    // 等这一趟轮询收场（按钮放开）再判：按条件等，上限只防挂死；没收场的轮询会漏进下一格的计数。
+    await vi.waitFor(() => expect(start.disabled, "起完那一趟还没收场").toBe(false), UNTIL_CEILING);
+    expect(statusQueue.length, "没读到第三次就停手了").toBe(0);
     expect(
-      s.element.querySelector(".backend-row-state")?.textContent,
+      state(),
       "起完只画了一次就停手 —— 那张是操作前的快照（backend_start 只是 spawn 了监护线程就返回）",
     ).toContain(copyText("backend.status.connected"));
   });
@@ -545,13 +548,10 @@ describe("〔ST2 · 第二刀 步 6〕后端开关表格式四栏：长文案进
     statusQueue = [{ ...status, channel: false }, { ...status, channel: false }];
     const start = s.element.querySelector<HTMLButtonElement>('[data-op="start"]')!;
     start.click();
-    // 等起完那一趟收场（按钮放开 = 轮询停了）再数；只等队列读空不够，那之后还要再画一遍。按条件等，上限只防挂死。
+    // 等起完那一趟收场（按钮放开：两次 channel:false 都读过、落定那次也画完）再数；按条件等，上限只防挂死。
     await vi.waitFor(() => expect(start.disabled).toBe(false), UNTIL_CEILING);
-    expect(statusQueue).toEqual([]);
-    await vi.waitFor(
-      () => expect(s.element.querySelector<HTMLElement>('.backend-row [data-col="health"]')!.querySelectorAll("[data-health-extra]").length).toBe(1),
-      UNTIL_CEILING,
-    );
+    expect(statusQueue.length).toBe(0);
+    expect(s.element.querySelector<HTMLElement>('.backend-row [data-col="health"]')!.querySelectorAll("[data-health-extra]").length).toBe(1);
   });
 
   it("★★ 〔PB1 · P3〕金样每一形：后端给什么就画什么 —— 一句 · 状态 · ⓘ 在不在 · [详情] 在不在，逐格相等", async () => {
