@@ -1342,12 +1342,6 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "rev",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "startedBy.face.can.close.can",
           "type": "string"
         },

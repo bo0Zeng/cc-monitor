@@ -81,7 +81,7 @@ fn each_on_its_own(bytes: &[u8]) -> (Vec<String>, Vec<String>, Vec<String>, u64)
     while let Some(row) = lines.next().unwrap() {
         let body = row.body();
         if crate::observe::lines::counts(body) {
-            let r = crate::observe::recognize::index_row::index_row(
+            let r = crate::observe::recognize::index_row::tests::index_row(
                 kind,
                 body,
                 row.at,

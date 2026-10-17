@@ -9,8 +9,8 @@
 //! 键名一律换成线上惯例（小驼峰）；pb 那边多出来的键不带过来（形状版本没变就不该多，多了说明该升形状版本了）。
 
 use super::{Live, WhoPort, Whose};
-use copy_core::copy_text;
 use crate::wire::SessionFaceExt as _;
+use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 use std::collections::BTreeMap;
 

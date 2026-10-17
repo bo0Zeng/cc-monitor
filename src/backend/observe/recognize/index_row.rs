@@ -72,19 +72,7 @@ fn is_zero(n: &u32) -> bool {
     *n == 0
 }
 
-/// 一行 → [`IndexRow`]。**纯函数**，不碰文件系统。
-///
-/// 解析失败（半截 / 非 JSON）**不丢这一行** —— 它仍占一个 seq，只是没有料（`t` 省略）；
-/// 丢了它，后面每一行的 seq 都会错一位（那是「计数对不上而且不会报错」的那一形）。
-/// 生产里扫描图逐行已解析过、走 [`index_row_of`]；这一份只给判据从原文起。
-#[cfg(test)]
-pub(crate) fn index_row(kind: &str, line: &[u8], offset: u64, len: u64) -> IndexRow {
-    let v = super::super::lines::parse(line);
-    let beat = v.as_ref().and_then(|v| crate::agents::beat_of(kind, v));
-    index_row_of(kind, v.as_ref(), beat.as_ref(), offset, len)
-}
-
-/// [`index_row`] 的后半：这一行已经解析过（解析不了 ⇒ `None`，那一行照样占位）。
+/// 一行（已经解析过；解析不了 ⇒ `None`，那一行照样占位 —— 丢了它，后面每一行的 seq 都会错一位）→ [`IndexRow`]。**纯函数**，不碰文件系统。
 /// `kind` ＝ 这份记录是哪一家的（[`crate::agents::record_kind_of`]）：这一行进不进界面、谁说的都照那一家的认法判。
 pub(crate) fn index_row_of(
     kind: &str,
@@ -208,4 +196,4 @@ fn count_prose(s: &str, row: &mut IndexRow) {
 
 #[cfg(test)]
 #[path = "../../../../tests/backend/observe/recognize/index_row_tests.rs"]
-mod tests;
+pub(crate) mod tests; // `pub(crate)`：从原文起的那一行 `tests::index_row` 给扫描图 · 格目录的判据共用

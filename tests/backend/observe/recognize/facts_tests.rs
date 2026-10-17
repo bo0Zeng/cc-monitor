@@ -1473,10 +1473,12 @@ fn needs_merge_orders_across_machines_by_the_one_rule() {
             let row = cmd_wire::needs::NeedsRow {
                 sid: sid.to_string(),
                 label: crate::common::cells::Words("t".into()),
-                face: <crate::wire::SessionFace as crate::wire::SessionFaceExt>::of(crate::wire::Life::Live {
-                    activity: Some(crate::agents::SessionActivity::NeedsYou),
-                    tmux: None,
-                }),
+                face: <crate::wire::SessionFace as crate::wire::SessionFaceExt>::of(
+                    crate::wire::Life::Live {
+                        activity: Some(crate::agents::SessionActivity::NeedsYou),
+                        tmux: None,
+                    },
+                ),
                 needs: ranked(*tier, *waited),
                 hidden: None,
             };

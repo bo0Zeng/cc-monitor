@@ -774,7 +774,9 @@ impl crate::wire::typed::Handle for NeedsMergeCmd {
         Output = Result<crate::observe::recognize::facts::NeedsMerged, NeedsMergeErr>,
     > + Send
            + 'static {
-        std::future::ready(Ok(crate::observe::recognize::facts::merge_needs(req.machines)))
+        std::future::ready(Ok(crate::observe::recognize::facts::merge_needs(
+            req.machines,
+        )))
     }
 }
 

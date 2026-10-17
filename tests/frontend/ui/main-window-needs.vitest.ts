@@ -134,7 +134,7 @@ describe("一个会话读成什么（session-face）：点 · 字照抄那台的
   });
 
   it("★ `Ctrl+J` 的先后照后端排好的那一份；后端没列到的（那台问不到 · 活动信号先到）排在后面、照条上顺序；当前就是 ⇒ 下一个、转回头", () => {
-    const tabs = [tab("a"), tab("b", { ...waiting }), tab("c", { ...waiting }), tab("d", { ...waiting }), tab("e", { ...waiting })];
+    const tabs = [tab("a"), tab("b", { ...waiting, needs: approve() }), tab("c", { ...waiting, needs: approve() }), tab("d", { ...waiting, needs: approve() }), tab("e", { ...waiting, needs: approve() })];
     const needing = tabs.filter((t) => needsOf(t) !== null);
     // 后端说 e · b · x（x 不在条上 / 不在等 ⇒ 不要）；c · d 后端没列 ⇒ 照条上顺序跟在后面。
     const order = orderNeeds(needing, ["e", "b", "x", "a"]);

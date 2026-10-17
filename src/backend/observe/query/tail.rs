@@ -56,12 +56,8 @@ pub(crate) fn mark_span(mark: &str) -> Option<(u64, u64)> {
 /// 尾段那一趟扫描的结果：线上形住 `cmd-wire::session`（`history-tail` 的回包里那一块）。
 pub(crate) use cmd_wire::session::TailPlan;
 
-/// 尾段那张图 ＋ 最后一个可计行的起点（记号从它算到 `end`；一行都没有 ⇒ `None`）。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Tail {
-    pub(crate) plan: TailPlan,
-    pub(crate) last: Option<u64>,
-}
+/// 尾段那张图 ＋ 最后一个可计行的起点：住读行那一层（扫描图也出它，扫描图在查询之下）。
+pub(crate) use super::super::lines::Tail;
 
 /// 尾段那张图的扫描本体：读 `reader`（从字节 0 起）出 [`Tail`]。**纯 I/O 泛型**。
 ///

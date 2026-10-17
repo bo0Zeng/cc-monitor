@@ -105,6 +105,14 @@ pub(crate) fn parse(line: &[u8]) -> Option<serde_json::Value> {
     crate::agents::Line::new(&String::from_utf8_lossy(line), 0).into_value()
 }
 
+/// 尾段那张图（`history-tail` 回包里那一块）＋ 最后一个可计行的起点（记号从它算到 `end`；一行都没有 ⇒ `None`）。
+/// 现数一遍行（查询那一层）与扫描图上切（扫描图那一层）都出它。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Tail {
+    pub(crate) plan: cmd_wire::session::TailPlan,
+    pub(crate) last: Option<u64>,
+}
+
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/lines_tests.rs"]
 mod tests;
