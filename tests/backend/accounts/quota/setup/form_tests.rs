@@ -1,4 +1,4 @@
-//! 策略设置的声明：后端只照格的种类校验形状与范围，不认格的意思；24 小时条上刷一段是纯算术。
+//! 策略设置的声明：后端只照格的种类校验形状与范围，不认格的意思；分段上刷一截是纯算术。
 
 use super::*;
 use serde_json::json;
@@ -147,13 +147,13 @@ fn second_person_or_structure_words_in_labels_are_flagged() {
     }
 }
 
-/// ★ 24 小时条上刷一段：刷进去、跨午夜拆两截、`null` 删那一截、连着一样的并成一段。
+/// ★ 分段上刷一截（`seg` 那一意图的算术）：刷进去、`null` 删那一截、连着一样的并成一段。
 #[test]
-fn painting_a_span_splits_merges_and_wraps() {
+fn painting_a_span_splits_and_merges() {
     assert_eq!(day_paint(&[], 1200, 1380, Some(0.0)), [(1200, 1380, 0.0)]);
     assert_eq!(
-        day_paint(&[(0, 1440, 80.0)], 1320, 120, Some(50.0)),
-        [(0, 120, 50.0), (120, 1320, 80.0), (1320, 1440, 50.0)]
+        day_paint(&[(0, 1440, 80.0)], 1320, 1440, Some(50.0)),
+        [(0, 1320, 80.0), (1320, 1440, 50.0)]
     );
     assert_eq!(
         day_paint(&[(0, 600, 80.0), (600, 1440, 0.0)], 600, 900, Some(80.0)),
@@ -163,7 +163,13 @@ fn painting_a_span_splits_merges_and_wraps() {
         day_paint(&[(0, 600, 80.0)], 300, 900, None),
         [(0, 300, 80.0)]
     );
-    assert_eq!(day_paint(&[], 60, 60, Some(10.0)), [(0, 1440, 10.0)]);
+}
+
+/// ★ 24 小时条上刷一段那一意图（`day`）没有了：分段只经 `seg` · `same` 改。
+#[test]
+fn the_day_paint_intent_is_gone() {
+    let day = json!({"day": {"key": "caps", "window": "5h", "from": 0, "to": 60, "v": 1}});
+    assert!(serde_json::from_value::<RotEdit>(day).is_err());
 }
 
 fn cell<'a>(f: &'a [Cell], key: &str) -> &'a Cell {
@@ -245,7 +251,7 @@ fn a_cell_resolves_own_then_all_then_default_and_null_counts_as_set() {
     );
 }
 
-/// ★ 改设置交意图：设一格 · 刷段（照此刻生效的那组刷、写成那一行自己的；刷空 ⇒ 删那一窗、那一行全空 ⇒ 删那一格回到跟总体）·
+/// ★ 改设置交意图：设一格 · 改分段（照此刻生效的那组改、写成那一行自己的；删空 ⇒ 删那一窗、那一行全空 ⇒ 删那一格回到跟总体）·
 /// 拖号牌（排到落点前头）· 加 · 移出 · 不动；行号越界 · 不是 24 小时条 ⇒ 入参不对。
 #[test]
 fn an_edit_is_applied_where_the_form_says() {
@@ -253,48 +259,28 @@ fn an_edit_is_applied_where_the_form_says() {
     let s = json!({"caps": {"5h": [{"from": 0, "to": 1440, "v": 80}]},
                    "accounts": [{"start": true}, {"id": "a"}, {"id": "b", "delay": 5}]});
     let ap = |e: RotEdit| apply(&f, &s, &e);
-    let painted = ap(RotEdit::Day {
+    let seg = |row: Option<usize>, at: Option<usize>, g: Option<(u64, u64, f64)>| RotEdit::Seg {
         key: "caps".into(),
-        row: Some(1),
+        row,
         window: "5h".into(),
-        from: 0,
-        to: 600,
-        v: Some(50.0),
-    })
-    .expect("ok");
+        at,
+        seg: g.map(|(from, to, v)| RotSeg { from, to, v }),
+    };
+    let painted = ap(seg(Some(1), None, Some((0, 600, 50.0)))).expect("ok");
     assert_eq!(
         painted["accounts"][1]["caps"],
         json!({"5h": [{"from": 0, "to": 600, "v": 50}, {"from": 600, "to": 1440, "v": 80}]}),
         "照跟着的总体那组刷"
     );
     assert_eq!(painted["caps"], s["caps"], "总体没动");
-    let erased = apply(
-        &f,
-        &painted,
-        &RotEdit::Day {
-            key: "caps".into(),
-            row: Some(1),
-            window: "5h".into(),
-            from: 0,
-            to: 0,
-            v: None,
-        },
-    )
-    .expect("ok");
+    let once = apply(&f, &painted, &seg(Some(1), Some(1), None)).expect("ok");
+    let erased = apply(&f, &once, &seg(Some(1), Some(0), None)).expect("ok");
     assert_eq!(
         erased["accounts"][1],
         json!({"id": "a"}),
-        "刷空 ⇒ 回到跟总体"
+        "删空 ⇒ 回到跟总体"
     );
-    let total = ap(RotEdit::Day {
-        key: "caps".into(),
-        row: None,
-        window: "5h".into(),
-        from: 0,
-        to: 0,
-        v: None,
-    })
-    .expect("ok");
+    let total = ap(seg(None, Some(0), None)).expect("ok");
     assert_eq!(total["caps"], json!({}), "总体那一格刷空只删那一窗");
     assert_eq!(
         ap(RotEdit::Set {
@@ -349,21 +335,27 @@ fn an_edit_is_applied_where_the_form_says() {
             row: Some(7),
             v: json!(1),
         },
-        RotEdit::Day {
+        RotEdit::Seg {
             key: "close".into(),
             row: None,
             window: "5h".into(),
-            from: 0,
-            to: 60,
-            v: Some(1.0),
+            at: None,
+            seg: Some(RotSeg {
+                from: 0,
+                to: 60,
+                v: 1.0,
+            }),
         },
-        RotEdit::Day {
+        RotEdit::Seg {
             key: "caps".into(),
             row: None,
             window: "5h".into(),
-            from: 0,
-            to: 2000,
-            v: Some(1.0),
+            at: None,
+            seg: Some(RotSeg {
+                from: 0,
+                to: 2000,
+                v: 1.0,
+            }),
         },
     ] {
         assert!(apply(&f, &s, &bad).is_err(), "{bad:?}");

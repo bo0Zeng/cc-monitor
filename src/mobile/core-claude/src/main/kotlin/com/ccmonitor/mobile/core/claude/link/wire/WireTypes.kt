@@ -860,6 +860,13 @@ data class RotStrategyItem(
     val error: RotStrategyError?,
     val inUse: List<String>,
     val forNew: Boolean,
+    val hand: Boolean,
+)
+
+@WireOf("RotStrategyId")
+@JsonClass(generateAdapter = true)
+data class RotStrategyId(
+    val id: String,
 )
 
 @WireOf("RotStrategyError")
@@ -1011,6 +1018,15 @@ data class RotRow(
     val hover: String,
     val cells: List<RotCell>,
     val rules: List<String>,
+    val marks: List<RotMark>,
+)
+
+@WireOf("RotMark")
+@JsonClass(generateAdapter = true)
+data class RotMark(
+    val glyph: String?,
+    val dashed: Boolean,
+    val tip: String,
 )
 
 @WireOf("RotCell")
@@ -1026,7 +1042,12 @@ data class RotCell(
     val from: RotFrom,
     val nullable: String?,
     val choices: List<RotChoice>?,
+    val min: Double?,
+    val max: Double?,
     val segs: List<RotDaySeg>?,
+    val lead: String?,
+    val under: String?,
+    val same: String?,
 )
 
 @JsonClass(generateAdapter = false)

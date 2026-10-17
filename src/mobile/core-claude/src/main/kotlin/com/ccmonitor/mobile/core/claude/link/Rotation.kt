@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.claude.link.wire.ChangedFrame
+import com.ccmonitor.mobile.core.claude.link.wire.RotStrategyId
 import com.ccmonitor.mobile.core.claude.link.wire.RotationViewReply
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
 
@@ -78,6 +79,12 @@ object Rotation {
         at: Int,
     ): Map<String, Any?> = mapOf("sid" to sid, "op" to mapOf("place" to mapOf("account" to account, "at" to at)))
 
+    /** 会话顺序里拖一行：拖完那一串「接下来先用谁」（第一格在用的号不在里头）。 */
+    fun set(
+        sid: String,
+        next: List<String>,
+    ): Map<String, Any?> = mapOf("sid" to sid, "op" to mapOf("set" to next))
+
     fun clearTemp(sid: String): Map<String, Any?> = mapOf("sid" to sid, "op" to "clear")
 
     /** 这个会话先不用（[off]）/ 再用 [account]。 */
@@ -92,10 +99,14 @@ object Rotation {
         account: String,
     ): Map<String, Any?> = mapOf("sid" to sid, "account" to account)
 
+    /** 从文件添加（[source] ＝ 那份原文）；[source] 缺 ⇒ 新建（照编辑器那一份）。 */
     fun add(
-        source: String,
+        source: String?,
         name: String,
-    ): Map<String, Any?> = mapOf("source" to source, "name" to name)
+    ): Map<String, Any?> = if (source == null) mapOf("name" to name) else mapOf("source" to source, "name" to name)
+
+    /** 加 · 复制 · 改名回的那一份的名字。 */
+    fun ofId(data: Any?): String? = Wire.bind<RotStrategyId>(data)?.id
 
     fun copy(
         id: String,
@@ -125,15 +136,34 @@ object RotEdit {
         v: Any?,
     ): Map<String, Any?> = mapOf("set" to at(row, mapOf("key" to key, "v" to v)))
 
-    /** 24 小时条那一窗上把 `[from, to)` 刷成 [v]（`null` ＝ 删这一截；一天里的分钟，`to ≤ from` 跨午夜、相等 ＝ 一整天）。 */
-    fun day(
+    /** 分段那一窗（[window]）里：[at] ＋ [seg] ⇒ 第 [at] 段换成它；只 [at] ⇒ 删第 [at] 段；只 [seg] ⇒ 加一段（`[from, to)` 一天里的分钟 · 上限）。 */
+    fun seg(
         key: String,
         row: Int?,
         window: String,
-        from: Long,
-        to: Long,
-        v: Double?,
-    ): Map<String, Any?> = mapOf("day" to at(row, mapOf("key" to key, "window" to window, "from" to from, "to" to to, "v" to v)))
+        at: Int?,
+        seg: RotSegment?,
+    ): Map<String, Any?> =
+        mapOf(
+            "seg" to
+                at(
+                    row,
+                    buildMap {
+                        put("key", key)
+                        put("window", window)
+                        at?.let { put("at", it) }
+                        seg?.let { put("seg", mapOf("from" to it.from, "to" to it.to, "v" to it.v)) }
+                    },
+                ),
+        )
+
+    /** 分段后面那一窗：[same] ⇒ 同第一窗（删掉自己的）；否则另设（把此刻生效的写成自己的）。 */
+    fun same(
+        key: String,
+        row: Int?,
+        window: String,
+        same: Boolean,
+    ): Map<String, Any?> = mapOf("same" to at(row, mapOf("key" to key, "window" to window, "same" to same)))
 
     fun move(
         from: Int,
@@ -149,6 +179,13 @@ object RotEdit {
         m: Map<String, Any?>,
     ): Map<String, Any?> = if (row == null) m else m + ("row" to row)
 }
+
+/** 分段里的一段（线上 `RotSeg`）：一天里的分钟 `[from, to)` · 上限。 */
+data class RotSegment(
+    val from: Long,
+    val to: Long,
+    val v: Double,
+)
 
 /** 流上一帧 `changed`：哪一样变了（`topic`）· 哪一个（`key`）。 */
 data class Changed(

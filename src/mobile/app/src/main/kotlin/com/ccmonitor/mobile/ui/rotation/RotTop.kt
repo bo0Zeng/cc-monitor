@@ -58,27 +58,26 @@ import com.ccmonitor.mobile.ui.common.CopyDetailButton
 
 // ─────────────────────────────── 第一行
 
-/** 策略下拉（满宽 48 dp）＋「⋯」＋ 会话里的［编辑策略］＋ 下面的说明（默认两行，点 ⌄ 展开）。会话里选中的 ＝ 它载入的；设置页选中的 ＝ 新会话用的。 */
+/**
+ * 策略下拉（满宽 48 dp）＋ 下面的说明（默认两行，点 ⌄ 展开）。会话里选中的 ＝ 它载入的，右边［编辑策略］；
+ * 设置页选中的 ＝ 在看的那份（是新会话用的 ⇒ 带「新会话用这份」），右边「⋯」（对策略的操作只在设置页）。
+ */
 @Composable
 internal fun FirstRow(
     ui: RotationUi,
     board: RotationBoard,
     sid: String?,
     titles: Map<String, String>,
-    onEditStrategy: () -> Unit,
+    onEditStrategy: (String?) -> Unit,
 ) {
     var picking by remember { mutableStateOf(false) }
     var more by remember { mutableStateOf(false) }
     val list = ui.list?.strategies.orEmpty()
     val current =
-        if (sid == null) {
-            ui.list?.forNew.orEmpty()
-        } else {
-            ui.view
-                ?.strategy
-                ?.id
-                .orEmpty()
-        }
+        ui.view
+            ?.strategy
+            ?.id
+            .orEmpty()
     val item = list.firstOrNull { it.id == current }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Surface(
@@ -91,28 +90,30 @@ internal fun FirstRow(
             Row(Modifier.padding(horizontal = 12.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(item?.id ?: copyText("rot.none.label"), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                    if (sid == null && item?.forNew == true) Tag(copyText("rot.tag.forNew"))
+                    if (sid == null && item?.forNew == true) Tag(copyText("rot.tag.forNewHere"))
                 }
                 Text(CARET, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        Surface(onClick = { more = true }, shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.size(48.dp).testTag(RotTags.MORE)) {
-            Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) { Text(MORE_GLYPH, style = MaterialTheme.typography.titleMedium) }
+        if (sid == null) {
+            Surface(onClick = { more = true }, shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.size(48.dp).testTag(RotTags.MORE)) {
+                Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) { Text(MORE_GLYPH, style = MaterialTheme.typography.titleMedium) }
+            }
         }
     }
     if (sid != null && ui.view?.strategy != null) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            SecondaryButton(onClick = onEditStrategy, modifier = Modifier.testTag(RotTags.EDIT)) { Text(copyText("rot.top.edit")) }
+            SecondaryButton(onClick = { onEditStrategy(null) }, modifier = Modifier.testTag(RotTags.EDIT)) { Text(copyText("rot.top.edit")) }
         }
     }
     About(ui.view, board, sid != null)
     if (picking) {
-        PickSheet(list, current, sid != null, onPick = { id ->
+        PickSheet(list, ui.list?.forNew.orEmpty(), current, sid == null, board, onPick = { id ->
             picking = false
             if (id != current.ifEmpty { null }) board.pick(id)
         }) { picking = false }
     }
-    if (more) MoreSheet(item, sid != null, titles, board) { more = false }
+    if (more) MoreSheet(item, titles, board) { more = false }
 }
 
 /** 说明：选中那份的开头注释（默认两行，⌄ 展开）；不轮换 ⇒「只用开会话的号」＋ 号牌（会话里）。 */
@@ -132,6 +133,7 @@ private fun About(
                 AccountBadge(boardUi.plate(view.start)?.text, boardUi.plate(view.start)?.color, 18)
                 Text(board.label(view.start), style = MaterialTheme.typography.bodyMedium)
             }
+            if (!inSession) SecondaryButton(onClick = board::create) { Text(copyText("rot.more.create")) }
         }
         return
     }
@@ -155,19 +157,28 @@ private fun About(
 @OptIn(ExperimentalFoundationApi::class)
 private fun Modifier.combinedClickableOnce(onClick: () -> Unit): Modifier = this.combinedClickable(onClick = onClick)
 
-/** 下拉抽屉：「不轮换」＋ 每份（文件名 · 说明第一行；出错的写「这份策略出错」；会话里新会话用的那份带小标）；选中的打勾。 */
+/** 下拉抽屉：「不轮换」＋ 每份（文件名 · 说明第一行；出错的写「这份策略出错」；带「新会话用」「手写」小标）；选中的打勾；设置页末尾「新建策略…」。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PickSheet(
     list: List<RotStrategyItem>,
+    forNew: String,
     current: String,
-    inSession: Boolean,
+    settings: Boolean,
+    board: RotationBoard,
     onPick: (String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         SheetHead(copyText("rot.top.pick"), null)
-        PickRow(copyText("rot.none.label"), "rot-pick-none", second = copyText("rot.none.desc"), selected = current.isEmpty(), onClick = { onPick(null) })
+        PickRow(
+            copyText("rot.none.label"),
+            "rot-pick-none",
+            second = copyText("rot.none.desc"),
+            selected = current.isEmpty(),
+            onClick = { onPick(null) },
+            trail = { if (forNew.isEmpty()) Tag(copyText("rot.tag.forNew")) },
+        )
         list.forEach { st ->
             PickRow(
                 st.id,
@@ -175,19 +186,31 @@ private fun PickSheet(
                 second = if (st.error != null) copyText("rot.top.unreadable") else st.summary.ifEmpty { null },
                 selected = st.id == current,
                 onClick = { onPick(st.id) },
-                trail = { if (inSession && st.forNew) Tag(copyText("rot.tag.forNew")) },
+                trail = {
+                    if (st.forNew) Tag(copyText("rot.tag.forNew"))
+                    if (st.hand) Tag(copyText("rot.tag.hand"))
+                },
             )
+        }
+        if (settings) {
+            HorizontalDivider(Modifier.padding(vertical = 4.dp))
+            PickRow(copyText("rot.more.create"), "rot-pick-create", onClick = {
+                onDismiss()
+                board.create()
+            })
         }
         SheetEnd()
     }
 }
 
-/** 「⋯」抽屉：复制 · 改名… ·（会话里）设为新会话用这份 · 删除（有会话在用 ⇒ 灰，右边「{n} 个会话在用」，长按列出会话标题）· 从文件添加…。 */
+/**
+ * 「⋯」抽屉（设置页）：复制 · 改名… · 设为新会话用这份 · 删除（有会话在用 ⇒ 灰，右边「{n} 个会话在用」，长按列出会话标题）·
+ * 新建策略… · 从文件添加…。
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MoreSheet(
     item: RotStrategyItem?,
-    inSession: Boolean,
     titles: Map<String, String>,
     board: RotationBoard,
     onDismiss: () -> Unit,
@@ -210,14 +233,12 @@ private fun MoreSheet(
                 onDismiss()
                 board.rename(st.id, st.rev)
             })
-            if (inSession) {
-                PickRow(copyText("rot.more.forNew"), "rot-more-fornew", enabled = !st.forNew, onClick = {
-                    if (!st.forNew) {
-                        onDismiss()
-                        board.forNew(st.id)
-                    }
-                })
-            }
+            PickRow(copyText("rot.more.forNew"), "rot-more-fornew", enabled = !st.forNew, onClick = {
+                if (!st.forNew) {
+                    onDismiss()
+                    board.forNew(st.id)
+                }
+            })
             val busy = st.inUse.size
             PickRow(
                 copyText("rot.more.delete"),
@@ -242,6 +263,10 @@ private fun MoreSheet(
             }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
         }
+        PickRow(copyText("rot.more.create"), "rot-more-create", onClick = {
+            onDismiss()
+            board.create()
+        })
         PickRow(copyText("rot.more.add"), "rot-more-add", onClick = { pickFile.launch(arrayOf("*/*")) })
         SheetEnd()
     }
@@ -385,10 +410,11 @@ private fun AskName(
     ModalBottomSheet(onDismissRequest = { board.named("") }, modifier = Modifier.testTag("rot-ask-name")) {
         Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(ask.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            OutlinedTextField(name, { name = it }, label = { Text(copyText("rot.ask.name")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(name, { name = it }, label = { Text(ask.label) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            ask.note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
                 SecondaryButton(onClick = { board.named("") }) { Text(copyText("kit.dialog.cancel")) }
-                Button(onClick = { board.named(name) }, enabled = name.isNotBlank()) { Text(copyText("rot.ask.go")) }
+                Button(onClick = { board.named(name) }, enabled = name.isNotBlank()) { Text(ask.action) }
             }
         }
         SheetEnd()

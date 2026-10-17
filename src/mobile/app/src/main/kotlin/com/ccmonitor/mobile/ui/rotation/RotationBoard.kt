@@ -43,13 +43,22 @@ sealed interface RotAsk {
         val id: String,
     ) : RotAsk
 
-    /** 问一个名字：复制 · 改名 · 从文件添加（[initial] 是框里先填的）。 */
+    /** 问一个名字：复制 · 改名 · 从文件添加 · 新建（[initial] 是框里先填的；[note] ＝ 框下面那一句）。 */
     data class Name(
         val title: String,
         val initial: String,
+        val label: String = copyText("rot.ask.name"),
+        val action: String = copyText("rot.ask.go"),
+        val note: String? = null,
         val go: (String) -> Unit,
     ) : RotAsk
 }
+
+/** 设置页先看哪一份、开哪个号的编辑小窗（会话里［编辑策略］跳过来带的）。 */
+data class RotFocus(
+    val strategy: String,
+    val account: String?,
+)
 
 /** 轮换屏此刻要画的（全是那台的回包 ＋ 这一屏上点过的几样）。 */
 data class RotationUi(
@@ -60,7 +69,9 @@ data class RotationUi(
     /** 头一回读完了没有（没读完 ⇒ 骨架）。 */
     val loaded: Boolean = false,
     val hours: Int = HOURS_12,
-    /** 点开了哪个号（设置页 ⇒ 号牌展开；会话 ⇒ 底下拉出那一份）。 */
+    /** 设置页在看哪一份（`null` ⇒ 新会话用的那份）。 */
+    val shown: String? = null,
+    /** 点开了哪个号（设置页 ⇒ 编辑小窗；会话 ⇒ 只看的那一张），都从底下拉出。 */
     val open: String? = null,
     /** ［立即用］被拦下那一句（那个号 · 那一句）。 */
     val refused: Pair<String, String>? = null,
@@ -93,8 +104,10 @@ class RotationBoard(
     private val scope: CoroutineScope,
     /** 流上的 `changed`：这个会话的轮换 · 这台的策略目录变了 ⇒ 再读。 */
     changes: Flow<Changed>? = null,
+    /** 设置页：先看这一份、开这个号（会话里［编辑策略］跳过来）。 */
+    focus: RotFocus? = null,
 ) {
-    private val _state = MutableStateFlow(RotationUi())
+    private val _state = MutableStateFlow(RotationUi(shown = focus?.strategy, open = focus?.account))
     val state: StateFlow<RotationUi> = _state.asStateFlow()
 
     private val reading = Mutex()
@@ -134,8 +147,12 @@ class RotationBoard(
         command: String,
     ) = _state.update { it.copy(readFailed = problemOf(r, command), loaded = true) }
 
-    /** 看哪一处：会话 ⇒ 它；设置页 ⇒ 新会话用的那份（没有 ⇒ `null`，只画第一行）。 */
-    private fun where(list: RotationStrategiesReply): RotWhere? = sid?.let { RotWhere.Session(it) } ?: list.forNew.takeIf { it.isNotEmpty() }?.let { RotWhere.Strategy(it) }
+    /** 看哪一处：会话 ⇒ 它；设置页 ⇒ 在看的那份（还在目录里），否则新会话用的那份（没有 ⇒ `null`，只画第一行）。 */
+    private fun where(list: RotationStrategiesReply): RotWhere? {
+        if (sid != null) return RotWhere.Session(sid)
+        val shown = _state.value.shown?.takeIf { id -> list.strategies.any { it.id == id } }
+        return (shown ?: list.forNew).takeIf { it.isNotEmpty() }?.let { RotWhere.Strategy(it) }
+    }
 
     /**
      * 发一条写：成了 ⇒ 再读；`conflict`（别处改过）⇒ 不报、再读（提示由那台出）；别的 ⇒ [onFail]（缺省：底部一句「做什么失败 · 那台的话」）。
@@ -169,13 +186,23 @@ class RotationBoard(
 
     // ── 第一行
 
-    /** 下拉选了一份（`null` ＝ 不轮换）。会话 ⇒ `rotation-use`（载入它此刻的版本）；设置页 ⇒ `rotation-for-new`。 */
-    fun pick(id: String?) =
-        if (sid == null) {
-            launchWrite(copyText("rot.fail.forNew"), Rotation.FOR_NEW, Rotation.forNew(id))
-        } else {
-            launchWrite(copyText("rot.fail.use"), Rotation.USE, Rotation.use(sid, id))
+    /** 下拉选了一份（`null` ＝ 不轮换）。会话 ⇒ `rotation-use`（载入它此刻的版本）；设置页 ⇒ 看它（「不轮换」⇒ 新会话不轮换）。 */
+    fun pick(id: String?) {
+        when {
+            sid != null -> launchWrite(copyText("rot.fail.use"), Rotation.USE, Rotation.use(sid, id))
+            id != null -> show(id)
+            else -> {
+                _state.update { it.copy(shown = null, open = null) }
+                launchWrite(copyText("rot.fail.forNew"), Rotation.FOR_NEW, Rotation.forNew(null))
+            }
         }
+    }
+
+    /** 设置页换去看 [id] 那一份。 */
+    private fun show(id: String) {
+        _state.update { it.copy(shown = id, open = null) }
+        scope.launch { refresh() }
+    }
 
     fun answer(yes: Boolean) {
         val ask = _state.value.ask ?: return
@@ -225,6 +252,28 @@ class RotationBoard(
         it.copy(ask = RotAsk.Name(copyText("rot.ask.addTitle"), fileName.removeSuffix(".rhai")) { name -> launchWrite(copyText("rot.fail.add"), Rotation.ADD, Rotation.add(source, name)) })
     }
 
+    /** 新建策略：只问名字，那台照编辑器那一份建；设置页接着看新建的那份。 */
+    fun create() =
+        _state.update {
+            it.copy(
+                ask =
+                    RotAsk.Name(
+                        copyText("rot.ask.createTitle"),
+                        "",
+                        label = copyText("rot.ask.createName"),
+                        action = copyText("rot.ask.createGo"),
+                        note = copyText("rot.ask.createNote"),
+                    ) { name ->
+                        scope.launch {
+                            val r = link.call(Rotation.ADD, Rotation.add(null, name), WRITE_MS)
+                            if (r !is Reply.Ok) return@launch fail(copyText("rot.fail.create"), problemOf(r, Rotation.ADD))
+                            if (sid == null) Rotation.ofId(r.data)?.let { id -> _state.update { it.copy(shown = id, open = null) } }
+                            refresh()
+                        }
+                    },
+            )
+        }
+
     private fun launchWrite(
         what: String,
         command: String,
@@ -236,7 +285,7 @@ class RotationBoard(
     // ── 设置
 
     /**
-     * 设置页改了一格（[cell] ＝ 哪一格，没收下时那一行底下写那一句）· 刷了一段 · 拖了号牌 · 移出 · 加号：一个意图（[RotEdit]），
+     * 设置页改了一格（[cell] ＝ 哪一格，没收下时那一行底下写那一句）· 改了一段 · 拖了号牌 · 移出 · 加号：一个意图（[RotEdit]），
      * 那台照声明改完、当场存成那份的新版（`ifRev` ＝ 读到的那一版；对不上 ⇒ 重读）。
      */
     fun edit(
@@ -293,6 +342,22 @@ class RotationBoard(
     ) {
         val s = sid ?: return
         launchWrite(copyText("rot.fail.temp"), Rotation.TEMP, Rotation.place(s, account, at))
+    }
+
+    /** 顺序里长按把第 [i] 行拖到第 [to] 格：第一格 ⇒ 现在用；别处 ⇒ 本会话先后照拖完那一串（[dropRow]）。 */
+    fun drop(
+        account: String,
+        i: Int,
+        to: Int,
+    ) {
+        val s = sid ?: return
+        val line = _state.value.view?.lineup ?: return
+        if (line.getOrNull(i) != account) return
+        when (val d = dropRow(line, i, to)) {
+            null -> Unit
+            is RowDrop.UseNow -> useNow(d.account)
+            is RowDrop.Set -> launchWrite(copyText("rot.fail.temp"), Rotation.TEMP, Rotation.set(s, d.next))
+        }
     }
 
     fun clearTemp() {

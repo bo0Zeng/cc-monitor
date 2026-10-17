@@ -65,8 +65,8 @@ class NewSessionPickerTest {
         mapOf(
             "strategies" to
                 listOf(
-                    mapOf("id" to "night", "description" to "夜里只用 personal", "summary" to "夜里只用 personal", "rev" to "r", "inUse" to emptyList<Any>(), "forNew" to false, "wordsBad" to false, "tzUnknown" to false),
-                    mapOf("id" to "spread", "description" to "work → personal", "summary" to "work → personal", "rev" to "r", "inUse" to emptyList<Any>(), "forNew" to true, "wordsBad" to false, "tzUnknown" to false),
+                    mapOf("id" to "night", "description" to "夜里只用 personal", "summary" to "夜里只用 personal", "rev" to "r", "inUse" to emptyList<Any>(), "forNew" to false, "wordsBad" to false, "tzUnknown" to false, "hand" to false),
+                    mapOf("id" to "spread", "description" to "work → personal", "summary" to "work → personal", "rev" to "r", "inUse" to emptyList<Any>(), "forNew" to true, "wordsBad" to false, "tzUnknown" to false, "hand" to false),
                 ),
             "forNew" to "spread",
             "oldScripts" to 0.0,

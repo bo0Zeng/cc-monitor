@@ -28267,12 +28267,6 @@
       "zh": "轮换",
       "args": []
     },
-    "mobRot.cards.hint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "长按拖动改默认优先级",
-      "args": []
-    },
     "mobReading.bash.title": {
       "kind": "title",
       "role": "标题",
@@ -30600,24 +30594,6 @@
       "role": "悬停",
       "zh": "{from}–{to} · 上限 {v}%",
       "args": ["from", "to", "v"]
-    },
-    "rot.day.pop": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "{from}–{to} · 上限",
-      "args": ["from", "to"]
-    },
-    "rot.day.popLabel": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "分段上限",
-      "args": []
-    },
-    "rot.day.del": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "删这段",
-      "args": []
     },
     "rot.sim.range": {
       "kind": "control",

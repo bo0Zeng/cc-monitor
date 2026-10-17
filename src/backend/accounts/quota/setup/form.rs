@@ -371,7 +371,7 @@ pub(crate) struct RotSeg {
     pub(crate) v: f64,
 }
 
-/// 改设置的一个意图（`rotation-settings` 的 `edit`）：设一格 · 分段里改 / 加 / 删一段 · 同第一窗与否 · 24 小时条上刷一段 · 拖号牌 · 加号 · 移出。
+/// 改设置的一个意图（`rotation-settings` 的 `edit`）：设一格 · 分段里改 / 加 / 删一段 · 同第一窗与否 · 拖号牌 · 加号 · 移出。
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -385,20 +385,6 @@ pub(crate) enum RotEdit {
         row: Option<usize>,
         #[cfg_attr(test, ts(type = "unknown"))]
         v: Value,
-    },
-    /// 在那一窗此刻生效的段上把 `[from, to)` 刷成 `v`（`null` ⇒ 删掉那一截；`to ≤ from` ⇒ 跨午夜），写成那一行自己的。
-    Day {
-        key: String,
-        #[serde(default)]
-        #[cfg_attr(test, ts(optional))]
-        row: Option<usize>,
-        window: String,
-        #[cfg_attr(test, ts(type = "number"))]
-        from: u64,
-        #[cfg_attr(test, ts(type = "number"))]
-        to: u64,
-        #[cfg_attr(test, ts(type = "number | null"))]
-        v: Option<f64>,
     },
     /// 分段那一窗此刻生效的段里：`at` ＋ `seg` ⇒ 第 `at` 段换成 `seg`；只 `at` ⇒ 删第 `at` 段；只 `seg` ⇒ 加一段（压过它盖住的）。写成那一行自己的。
     Seg {
@@ -523,21 +509,6 @@ pub(crate) fn apply(form: &[Cell], settings: &Value, edit: &RotEdit) -> Result<V
         } => {
             row_mut(top, *i)?.insert(key.clone(), v.clone());
         }
-        RotEdit::Day {
-            key,
-            row,
-            window,
-            from,
-            to,
-            v,
-        } => {
-            let c = segments_cell(form, key)?;
-            if *from > DAY_MIN || *to > DAY_MIN {
-                return Err("`from` and `to` must be minutes of a day (0–1440)".into());
-            }
-            let (now, _) = day_of(c, settings, *row, window);
-            put_window(top, key, *row, window, &day_paint(&now, *from, *to, *v))?;
-        }
         RotEdit::Seg {
             key,
             row,
@@ -601,8 +572,8 @@ pub(crate) fn apply(form: &[Cell], settings: &Value, edit: &RotEdit) -> Result<V
     Ok(out)
 }
 
-/// 24 小时条上刷一段（[`RotEdit::Day`]）：在 `segs` 上把 `[from, to)` 刷成 `v`（`null` ⇒ 删掉那一截，回到跟总体）；
-/// `to ≤ from` ⇒ 跨午夜（相等 ⇒ 一整天）。回照先后排好、连着一样的并成一段的新分段。只是分段的算术，不是换号的想法。
+/// 分段上刷一截（[`RotEdit::Seg`] 用）：在 `segs` 上把 `[from, to)`（`from < to`）刷成 `v`（`null` ⇒ 删掉那一截）。
+/// 回照先后排好、连着一样的并成一段的新分段。只是分段的算术，不是换号的想法。
 pub(crate) fn day_paint(
     segs: &[(u64, u64, f64)],
     from: u64,
@@ -617,13 +588,7 @@ pub(crate) fn day_paint(
         }
     }
     let (from, to) = (from.min(DAY_MIN) as usize, to.min(DAY_MIN) as usize);
-    let mut paint = |a: usize, b: usize| day[a..b].iter_mut().for_each(|m| *m = v);
-    if from < to {
-        paint(from, to);
-    } else {
-        paint(from, n);
-        paint(0, to);
-    }
+    day[from.min(to)..to].iter_mut().for_each(|m| *m = v);
     let mut out: Vec<(u64, u64, f64)> = Vec::new();
     let mut i = 0;
     while i < n {

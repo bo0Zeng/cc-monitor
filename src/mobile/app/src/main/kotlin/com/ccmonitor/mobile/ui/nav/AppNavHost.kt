@@ -43,6 +43,7 @@ import com.ccmonitor.mobile.ui.files.FilesScreen
 import com.ccmonitor.mobile.ui.host.HostEditorScreen
 import com.ccmonitor.mobile.ui.host.HostListScreen
 import com.ccmonitor.mobile.ui.identity.IdentityScreen
+import com.ccmonitor.mobile.ui.rotation.RotFocus
 import com.ccmonitor.mobile.ui.rotation.RotationScreen
 import com.ccmonitor.mobile.ui.session.SessionScreen
 import com.ccmonitor.mobile.ui.session.SessionTabManager
@@ -393,10 +394,22 @@ private fun NavGraphBuilder.rotationRoutes(
                     nullable = true
                     defaultValue = null
                 },
+                navArgument(Screen.Rotation.ARG_STRATEGY) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument(Screen.Rotation.ARG_ACCOUNT) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
             ),
     ) { entry ->
         val hostId = entry.arguments?.getString("hostId").orEmpty()
-        RotationRoute(nav, tabManager, hostId, entry.arguments?.getString(Screen.Rotation.ARG_SID))
+        val args = entry.arguments
+        val focus = args?.getString(Screen.Rotation.ARG_STRATEGY)?.let { RotFocus(it, args.getString(Screen.Rotation.ARG_ACCOUNT)) }
+        RotationRoute(nav, tabManager, hostId, args?.getString(Screen.Rotation.ARG_SID), focus)
     }
     composable(Screen.RotationHere.route) {
         HereOrNone { here ->
@@ -429,6 +442,7 @@ private fun RotationRoute(
     tabManager: SessionTabManager,
     hostId: String,
     sid: String?,
+    focus: RotFocus? = null,
 ) {
     val hosts = koinInject<HostRepository>()
     val machine by produceState<String?>(null, hostId) { value = runCatching { hosts.get(hostId) }.getOrNull()?.label ?: hostId }
@@ -439,7 +453,8 @@ private fun RotationRoute(
         machine = name,
         onBack = { nav.popBackStack() },
         onOpenFile = { path -> nav.navigate(Screen.Session.of(tabManager.open(hostId, SessionTabManager.TabTarget.Files), path)) },
-        onEditStrategy = { nav.navigate(Screen.Rotation.of(hostId)) },
+        onEditStrategy = { strategy, account -> nav.navigate(Screen.Rotation.edit(hostId, strategy, account)) },
+        focus = focus,
     )
 }
 

@@ -16,11 +16,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -29,8 +35,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -45,6 +56,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.RotEdit
 import com.ccmonitor.mobile.core.claude.link.wire.RotAccount
+import com.ccmonitor.mobile.core.claude.link.wire.RotMark
+import com.ccmonitor.mobile.core.claude.link.wire.RotRow
 import com.ccmonitor.mobile.core.claude.link.wire.RotationViewReply
 import com.ccmonitor.mobile.core.claude.link.wire.WinFact
 import com.ccmonitor.mobile.core.copy.copyText
@@ -63,7 +76,7 @@ internal fun Cards(
     view: RotationViewReply,
     board: RotationBoard,
 ) {
-    RotHeader(copyText("rot.h.cards"), copyText("mobRot.cards.hint"))
+    RotHeader(copyText("rot.h.cards"), copyText("rot.h.cardsHint"))
     val listed = view.accounts.take(view.listed)
     val rows = view.board.rows
     val rects = remember { mutableStateMapOf<Int, Rect>() }
@@ -79,7 +92,7 @@ internal fun Cards(
                 Card(
                     i = i,
                     f = f,
-                    hover = rows.getOrNull(i)?.hover.orEmpty(),
+                    row = rows.getOrNull(i),
                     ui = ui,
                     board = board,
                     lifted = drag?.first == i,
@@ -101,7 +114,7 @@ internal fun Cards(
             AddCard(Modifier.width(w), enabled = view.accounts.size > view.listed) { adding = true }
         }
     }
-    ui.open?.let { a -> AccountPane(ui, view, board, a) }
+    ui.open?.let { a -> EditSheet(ui, view, board, a) }
     if (adding) AddSheet(view, board) { adding = false }
 }
 
@@ -133,7 +146,7 @@ private fun Modifier.cardDrag(
 private fun Card(
     i: Int,
     f: RotAccount,
-    hover: String,
+    row: RotRow?,
     ui: RotationUi,
     board: RotationBoard,
     lifted: Boolean,
@@ -142,9 +155,12 @@ private fun Card(
 ) {
     val accent = MaterialTheme.colorScheme.primary
     val open = ui.open == f.account
+    val marks = row?.marks.orEmpty()
+    val dashed = marks.any { it.dashed }
     val border =
         when {
             open || landing -> BorderStroke(if (landing) 2.dp else 1.dp, accent)
+            dashed -> null
             else -> BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         }
     Box(modifier.graphicsLayer { shadowElevation = if (lifted) LIFT else 0f }) {
@@ -156,14 +172,15 @@ private fun Card(
                 Modifier
                     .fillMaxWidth()
                     .height(44.dp)
+                    .dashedFrame(dashed && border == null, MaterialTheme.colorScheme.outline)
                     .clickable { board.open(if (open) null else f.account) }
-                    .semantics { contentDescription = board.label(f.account) + copyText("kit.text.sep") + hover }
+                    .semantics { contentDescription = (listOf(board.label(f.account)) + marks.map { it.tip } + listOfNotNull(row?.hover)).joinToString(copyText("kit.text.sep")) }
                     .testTag("${RotTags.CARD}-${f.account}"),
         ) {
             Row(Modifier.padding(horizontal = 8.dp).dim(f.blocked != null), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text((i + 1).toString(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 AccountBadge(f.plate.text, f.plate.color, 18)
-                Text(board.label(f.account), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                NameWithMarks(board.label(f.account), marks, Modifier.weight(1f))
                 Meters(f)
             }
         }
@@ -235,9 +252,57 @@ private fun AddSheet(
     }
 }
 
-/** 设置页点开的那个号：名 · 此刻用量与重置 ·［移出］· `scope: each` 那几格。 */
+/** 号名旁的记号（那台照声明给的字形；虚线框画在号牌 · 那一行上）。 */
 @Composable
-private fun AccountPane(
+internal fun Marks(marks: List<RotMark>) {
+    marks.mapNotNull { it.glyph }.forEach { g -> Text(g, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+}
+
+/** 号名（长的截断）＋ 紧跟着的记号。 */
+@Composable
+internal fun NameWithMarks(
+    name: String,
+    marks: List<RotMark>,
+    modifier: Modifier = Modifier,
+    bold: Boolean = false,
+) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(
+            name,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (bold) FontWeight.SemiBold else null,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        Marks(marks)
+    }
+}
+
+/** 延迟切入那种记号：号牌 · 那一行画虚线框（字从悬停那一句读）。 */
+internal fun Modifier.dashedFrame(
+    on: Boolean,
+    line: Color,
+): Modifier =
+    if (!on) {
+        this
+    } else {
+        drawBehind {
+            drawRoundRect(
+                line,
+                style = Stroke(1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 4f))),
+                cornerRadius = CornerRadius(6.dp.toPx()),
+            )
+        }
+    }
+
+/**
+ * 设置页点号牌从底下拉出的编辑小窗（同桌面 `accountPane`）：头一行号名 · 用量与重置 · ✕；那台给的格（挂着的缩进）；
+ * 底行「改的是策略「X」 · 改一格就存成新版」接在用旧版那一句［都载入新版］·［移出这份策略］。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EditSheet(
     ui: RotationUi,
     view: RotationViewReply,
     board: RotationBoard,
@@ -246,17 +311,32 @@ private fun AccountPane(
     val i = view.accounts.indexOfFirst { it.account == account }.takeIf { it in 0 until view.listed } ?: return
     val f = view.accounts[i]
     val row = view.board.rows.getOrNull(i)
-    Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth().testTag("rot-pane-$account")) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    ModalBottomSheet(onDismissRequest = { board.open(null) }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), modifier = Modifier.testTag("rot-pane-$account")) {
+        Column(Modifier.padding(horizontal = 20.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 AccountBadge(f.plate.text, f.plate.color, 20)
                 Text(board.label(account), fontWeight = FontWeight.SemiBold)
+                Marks(row?.marks.orEmpty())
+                Text(row?.line.orEmpty(), style = MaterialTheme.typography.bodySmall, color = muted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                IconButton(onClick = { board.open(null) }, modifier = Modifier.semantics { contentDescription = copyText("rot.pane.close") }) {
+                    PhIcon(Ph.X, contentDescription = null, size = Touch.iconInline, tint = muted)
+                }
             }
-            Text(row?.line.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            SecondaryButton(onClick = { board.edit(RotEdit.remove(i)) }) { Text(copyText("rot.acct.remove")) }
             f.blocked?.let { b -> NoteBox(NoteTone.WARN) { Text(b.text, style = MaterialTheme.typography.bodySmall) } }
-            row?.cells?.forEach { CellRows(ui, board, it, i) }
+            row?.let { r -> paneCells(r).forEach { (cell, indent) -> CellRows(ui, board, cell, i, indent) } }
+            HorizontalDivider()
+            val (foot, older) = paneFoot(view)
+            Text(foot, style = MaterialTheme.typography.bodySmall, color = muted)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+                if (older) OutlinedButton(onClick = board::loadNew) { Text(copyText("rot.hint.loadAll")) }
+                SecondaryButton(onClick = {
+                    board.open(null)
+                    board.edit(RotEdit.remove(i))
+                }) { Text(copyText("rot.acct.remove")) }
+            }
         }
+        SheetEnd()
     }
 }
 
