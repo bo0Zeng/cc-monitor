@@ -19,11 +19,11 @@ title: string,
 /**
  * 记录文件最后改动的毫秒。
  */
-updatedAt: number, 
+updatedAt: number, hits: Array<SearchHit>, 
 /**
- * 本会话命中总数（可能 > `hits` 条数）。
+ * `hits` 之外这个会话还有几处命中。
  */
-hitCount: number, hits: Array<SearchHit>, 
+moreHits: number, 
 /**
  * 本会话有命中被「全局 snippet 预算用完」挡下了。
  */

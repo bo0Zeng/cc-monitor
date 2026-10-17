@@ -17,8 +17,8 @@ pub(crate) const MAIN_CAP: usize = 20_000;
 pub(crate) const TOOL_CAP: usize = 4_000;
 /// snippet 命中点前后各保留的字符数。
 pub(crate) const SNIPPET_CTX: usize = 48;
-/// 单会话最多返回的 snippet 条数（防一个会话刷屏；命中总数仍报全量）。
-pub(crate) const PER_SESSION_CAP: usize = 30;
+/// 每个会话给几处命中的 snippet（两端照摆；其余只计数，记进那一行的 `moreHits`）。
+pub(crate) const PER_SESSION_CAP: usize = 3;
 /// `limit` 缺省值（IPC 与 `--limit` 两侧同）。
 pub(crate) const DEFAULT_LIMIT: usize = 300;
 /// `limit` 的下界 / 上界。
@@ -36,7 +36,7 @@ pub(crate) fn clamp_limit(n: usize) -> usize {
 ///
 /// 🔴 `BudgetExhausted` 与 `SessionCapped` 是**两件不同的事**，别再合成一个 bool：
 /// 前者是「整份结果被砍了」（该让用户知道，缩小范围/加大 limit），
-/// 后者是「这个会话话太多、只列前 30 条」（点进去看就行，结果没被砍）。
+/// 后者是「这个会话只摆前几处」（点进去看就行，结果没被砍）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SnippetVerdict {
     /// 给 snippet（预算已记账）。
@@ -47,11 +47,7 @@ pub(crate) enum SnippetVerdict {
     SessionCapped,
 }
 
-/// 全局 snippet 预算。**判定只有这一处**，两侧都调它。
-///
-/// 收口前两侧各写一个 `if kept < limit && hits.len() < CAP`：条件相同，但
-/// **谁都不记得自己是因为哪一条不给的** ⇒ 下游只好用 `hitCount > hits.len()` 反推，
-/// 而那个式子对两种原因给出同一个答案。
+/// 全局 snippet 预算。**判定只有这一处**；它说得出不给的原因（下游从条数反推分不开两种）。
 #[derive(Debug)]
 pub(crate) struct SnippetBudget {
     limit: usize,

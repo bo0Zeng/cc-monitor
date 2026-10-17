@@ -493,8 +493,8 @@ data class MergedRow(
     val atText: String,
     val sessionId: String,
     val title: String,
-    val hitCount: Long,
     val hits: List<SearchHit>,
+    val moreHits: Long,
 )
 
 @WireOf("SessionHits")
@@ -502,8 +502,8 @@ data class MergedRow(
 data class SessionHits(
     val sessionId: String,
     val title: String,
-    val hitCount: Long,
     val hits: List<SearchHit>,
+    val moreHits: Long,
     val forkedFrom: ForkedFrom?,
 )
 

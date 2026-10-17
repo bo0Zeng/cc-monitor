@@ -26,7 +26,7 @@ export type SessionHits = MergedRow;
 
 /** 合成之后的一份结果。 */
 export interface SearchResult {
-  /** 全局命中总数（各会话 `hitCount` 之和，可能 > 返回的 hit 条数） */
+  /** 全局命中总数（各会话摆出来的 ＋ `moreHits`） */
   totalHits: number;
   sessionCount: number;
   /** 整份结果被 `limit` 砍过（任一台、任一会话 `hitsTruncated`）。 */

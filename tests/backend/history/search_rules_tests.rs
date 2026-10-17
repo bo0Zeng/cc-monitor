@@ -1,7 +1,7 @@
 //! 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md` 的 `--search` 条（最近优先 · `hitsTruncated`）＋（口径只有一个家）
 //!
 //! 核原文：`--search` 条逐字「① **行序 = snippet 预算顺序 = 最近优先**（按 jsonl mtime 降序）」，并说「本会话超
-//! `PER_SESSION_CAP`(30) 条只列前 30」与「全局 `--limit` 用完」**不是一回事** —— `budget_tells_exhausted_apart_from_session_cap`
+//! `PER_SESSION_CAP` 条只列前几条」与「全局 `--limit` 用完」**不是一回事** —— `budget_tells_exhausted_apart_from_session_cap`
 //! 与 `sort_by_recency_is_newest_first` 判的正是这两句。其余助手（找词 · 片段 · 截断 · 标题）的单测挂在 `D1` 下。
 //! 随通用口径从共享 crate `search-core` 搬来（期望一字未改）；Claude 记录文本那几格在 `agents/claudecode/text_tests.rs`。
 

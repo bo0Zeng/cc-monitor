@@ -295,21 +295,17 @@ function whoOf(kind: string): string {
   }
 }
 
-/** 每个会话最多摆几处命中（其余写「+N 处 ▸」，点了右边打开这个会话）。 */
-export const HITS_SHOWN = 3;
-
-/** 内容搜索的一块：会话行 ＋ 前几处命中 ＋「+N 处 ▸」。 */
+/** 内容搜索的一块：会话行 ＋ 后端给的那几处命中 ＋「+N 处 ▸」（点了右边打开这个会话）。 */
 export function hitsBlock(row: HTMLElement, sh: SessionHits, open: (hit: Hit | null) => void): HTMLElement {
   const el = document.createElement("div");
   el.className = s.hvHits;
   el.appendChild(row);
-  for (const hit of sh.hits.slice(0, HITS_SHOWN)) el.appendChild(hitLine(hit, () => open(hit)));
-  const more = sh.hitCount - Math.min(sh.hits.length, HITS_SHOWN);
-  if (more > 0) {
+  for (const hit of sh.hits) el.appendChild(hitLine(hit, () => open(hit)));
+  if (sh.moreHits > 0) {
     const m = document.createElement("button");
     m.type = "button";
     m.className = s.hvMore;
-    m.textContent = copyText("history.searchSession.more", { n: more });
+    m.textContent = copyText("history.searchSession.more", { n: sh.moreHits });
     m.addEventListener("click", () => open(null));
     el.appendChild(m);
   }
