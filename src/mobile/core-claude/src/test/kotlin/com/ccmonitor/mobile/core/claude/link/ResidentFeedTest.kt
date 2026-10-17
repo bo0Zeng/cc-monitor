@@ -209,7 +209,7 @@ class ResidentFeedTest {
             assertEquals(Triple("history-list", """{"limit":3}""", 7_000L), core.calls.single())
             core.emit("reply", """{"call":1,"ok":true,"data":{"rows":[]}}""")
             assertEquals(Reply.Ok(mapOf("rows" to emptyList<Any>())), ok.await())
-            val failed = async { f.call("session-new") }
+            val failed = async { f.call("session-open") }
             core.emit("reply", """{"call":2,"ok":false,"code":"differs","message":"box 后端版本不同","detail":"d"}""")
             assertEquals(Reply.Failed(CoreFailure("differs", "box 后端版本不同", "d", null)), failed.await())
             for ((line, want) in listOf("""{"call":3,"timeout":true}""" to Reply.TimedOut, """{"call":4,"down":true}""" to Reply.LinkDown)) {

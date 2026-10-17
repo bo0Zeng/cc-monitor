@@ -486,7 +486,7 @@ pub(crate) fn relay_change<R>(
     store.change(own, f)
 }
 
-/// 起之前那一笔的本体：在 `store` 里给定好的 `sid` 记一条、用 `strategy`（空 ⇒ 不轮换）。面上的 `session-new`（`faces::rotation_face::preset_with`）与 ccm 的 `--no-rotation` 都走这一下。
+/// 起之前那一笔的本体：在 `store` 里给定好的 `sid` 记一条、用 `strategy`（空 ⇒ 不轮换）。面上的 `session-open`（`faces::rotation_face::preset_with`）与 ccm 的 `--no-rotation` 都走这一下。
 pub(crate) fn preset(
     store: &RotationStore,
     own: &Own,

@@ -645,7 +645,7 @@ pub struct AgentFacts {
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct AgentPick {
-    /// 原值（`session-new` 的 `model` / `permissionMode` 收的就是它）。
+    /// 原值（`session-open` 的 `model` / `permissionMode` 收的就是它）。
     pub value: String,
     /// 写给人看的字。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]

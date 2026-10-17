@@ -9,7 +9,7 @@
 //!
 //! 写经 [`crate::platform::fs::NewFile`]：那只手只有一件事 —— `O_EXCL` 新建一份此前不存在的文件、一次写满；
 //! 目标已存在直接失败。删、改名、复制、截断、追加、覆盖、建目录它都没有（projects 目录本来就在）。
-//! 它由分叉那两条命令（`session-fork` · `session-new`）在各自的实现里领，别处拿不到。
+//! 它由分叉那两条命令（`session-fork` · `session-open`）在各自的实现里领，别处拿不到。
 //!
 //! 这条边界背后的判据不是「backend 不许碰文件系统」，而是
 //! **「backend 不许改动用户既有数据」**。`O_EXCL` 新建一个此前不存在的文件不违反后者
@@ -149,7 +149,7 @@ pub(crate) fn fork_at(
     })
 }
 
-/// 起新会话那一条（`session-new` 带 `forkFrom`）写分支记录：同 [`fork_at`] 那一份本体，回新会话的 sid。
+/// 起新会话那一条（`session-open` 新起带 `fork`）写分支记录：同 [`fork_at`] 那一份本体，回新会话的 sid。
 pub(crate) fn fork_for_launch(
     nf: &NewFile,
     agent_home: &Path,

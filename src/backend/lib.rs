@@ -1407,8 +1407,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 帧面 `resolve` 派生的 CLI 面（手写那一臂删了，信封与别的命令同一形）。
     "--resolve",
     // `--resync` 摘了（`stream::cli::STREAM_ONLY`：一次性进程里没有 watcher，答 `watchers: 0` 是假话）。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
-    // 起新会话框那三问 ＋ tab 栏多选的批量停 / 起 / 问样子（`inbound::REGISTRY` 的 `session-new*` / `sessions-*`）
-    //   自动派生的 CLI 面：六条的事实**全在这台**（tmux 名单现探 · 记录在不在 · 铸名经同一张会话快照 ——
+    // 起新会话框那两问 ＋ tab 栏多选的批量停 / 问样子（`inbound::REGISTRY` 的 `session-open-*` / `sessions-*`）
+    //   自动派生的 CLI 面：四条的事实**全在这台**（tmux 名单现探 · 记录在不在 · 铸名经同一张会话快照 ——
     //   `SessionSnapshot::query` 没有「只读缓存」那条路，一次性进程问它一次它就重探一次），
     //   一格都不读本进程的可达表 / 监听状态 / 在飞表 ⇒ 不进 `stream::cli::STREAM_ONLY`，照派生规则上 CLI 面。
     //   登记在本表的理由与上面那几族逐字相同 —— `is_query_mode` 那道闸门读的就是本表，不在表里 ⇒ 当未知 flag 静默进流模式。

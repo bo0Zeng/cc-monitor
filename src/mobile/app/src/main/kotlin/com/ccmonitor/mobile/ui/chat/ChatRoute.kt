@@ -337,7 +337,7 @@ fun chatKey(
 ): String = "$hostId/$sessionId"
 
 /**
- * 新建会话那张草稿的票：界面上的 [chatKey] 用它，起会话也带它（`session-new.ticket`：期限到了同一张再问，那台不起第二个）。
+ * 新建会话那张草稿的票：界面上的 [chatKey] 用它，起会话也带它（`session-open` 的 `ticket`：期限到了同一张再问，那台不起第二个）。
  * 会话起好之后的 sid 是那台报到时说的，不是它。
  */
 fun newConversationId(): String = UUID.randomUUID().toString()

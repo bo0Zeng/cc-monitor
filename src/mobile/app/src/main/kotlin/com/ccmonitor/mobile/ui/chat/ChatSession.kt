@@ -148,7 +148,7 @@ sealed interface ChatTarget {
 
 /**
  * 一条会话的聊天状态。起会话、送字、正文都走那台的核心（[CoreLink]）：
- * - 新建会话：第一条按 ➤ ⇒ `session-new`（在那台 tmux 里起，桌面那一侧看得到、接得上），那一句随起交（`prompt`：那台作为启动参数交给 agent，
+ * - 新建会话：第一条按 ➤ ⇒ `session-open`（在那台 tmux 里起，桌面那一侧看得到、接得上），那一句随起交（`prompt`：那台作为启动参数交给 agent，
  *   作为启动参数交，送没送到看回包）；那台没交（回包没有 `prompt`）⇒ 等它报到（会话表里那个目录新出现的一条）再经 `terminal-input` 送。
  *   新起的会话记录要等第一句进去才落盘 ⇒ 读正文之前先等那台推来它的记录路径（[freshPath]）。
  * - 送字 / 停：`terminal-input`（字 · `esc`）；送没送到是那台判的（`delivered` · `unsure` · `refused`）。
@@ -214,7 +214,7 @@ class ChatSession(
         var deliveryText: String?,
         var attempts: Int = 1,
     ) {
-        /** 这一句已随 `session-new` 交出去了（结局已标上）。 */
+        /** 这一句已随 `session-open` 交出去了（结局已标上）。 */
         var handed = false
     }
 
@@ -415,7 +415,7 @@ class ChatSession(
             else -> failed(r.problem(machine, SessionSay.COMMAND)?.text)
         }
 
-    /** 那台判的送没送到（`terminal-input` 的回话 · `session-new` 回包里第一句的结局）⇒ 标与那一句。 */
+    /** 那台判的送没送到（`terminal-input` 的回话 · `session-open` 回包里第一句的结局）⇒ 标与那一句。 */
     private fun outcomeOf(res: TerminalInput.Result): Pair<DeliveryState?, String?> =
         when (res) {
             TerminalInput.Result.Delivered -> null to null
@@ -853,7 +853,7 @@ class ChatSession(
         /** 等新起的会话报到多久（同桌面 `ARRIVAL_BUDGET_MS`）。 */
         const val ARRIVAL_MS = 45_000L
 
-        /** 这边等起会话多久（`session-new` 是阻塞档：不交 `within_ms`、到点不撤单；第一句作为启动参数交，起好就回）。 */
+        /** 这边等起会话多久（`session-open` 是阻塞档：不交 `within_ms`、到点不撤单；第一句作为启动参数交，起好就回）。 */
         private const val NEW_MS = 45_000L
         private const val INPUT_MS = 20_000L
 

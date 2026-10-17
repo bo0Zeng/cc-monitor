@@ -1,5 +1,5 @@
 //! 换号那一族的帧面宿主：把账号库（`accounts/manage`）读成上游选择换号要的那几格交进去 —— 上游选择与账号库管理互不认识，
-//! 两边只在这里接上。另住 `quota-read`（额度账的显示态）与 `session-new` 起之前那一笔（新会话先定好用哪份策略）。
+//! 两边只在这里接上。另住 `quota-read`（额度账的显示态）与 `session-open` 起之前那一笔（新会话先定好用哪份策略）。
 //! 第五版的 typed 命令在 `rotation_view_face` · `rotation_edit_face` · `rotation_try_face` · `rotation_facts_face`。
 
 use crate::accounts::upstream_select::rotate::{LibAccount, Library, LibraryRead};
@@ -224,9 +224,9 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::Tz) -> QuotaRead 
     )
 }
 
-// ── session-new 起之前那一笔 ──────────────────────────────────────────────────────────
+// ── session-open 新起之前那一笔 ──────────────────────────────────────────────────────────
 
-/// `session-new` 带 `rotation: {strategy}`：起之前在这台的账本里给那个定好的 sid 记一条、用那一份（会话一报到就已经是它）。
+/// `session-open` 带 `rotation: {strategy}`：起之前在这台的账本里给那个定好的 sid 记一条、用那一份（会话一报到就已经是它）。
 /// 策略目录里没有那一份 ⇒ `no_strategy`。`kind` ＝ 线上的那一家（记成它的路由名；认不出 ⇒ `bad_args`）。
 pub(crate) fn preset_with(
     ctx: &Ctx,

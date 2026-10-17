@@ -68,7 +68,7 @@ data class NewSessionUi(
     val agentText: String? get() = agents.firstOrNull { it.kind == agent }?.text
 }
 
-/** 发第一条时交给 `session-new` 的那几格：账号 · 轮换只在改过时有（没改 ⇒ `null`，那台按它的默认）。 */
+/** 发第一条时交给 `session-open` 的那几格：账号 · 轮换只在改过时有（没改 ⇒ `null`，那台按它的默认）。 */
 data class Chosen(
     val cwd: String,
     val agent: String,

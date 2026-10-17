@@ -16,7 +16,7 @@ import org.junit.Test
 
 /**
  * 新建会话的选项：打开就是填好的，四样默认值都读那台；点 chip 只为改，改了才交那一格。
- * 判据：默认值从哪来 · 哪颗 chip 不画 · 目录不在灰掉 · 换 agent 账号重问 · 设为默认走那台 · 交给 session-new 的只有改过的。
+ * 判据：默认值从哪来 · 哪颗 chip 不画 · 目录不在灰掉 · 换 agent 账号重问 · 设为默认走那台 · 交给 session-open 的只有改过的。
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class NewSessionPickerTest {
@@ -127,7 +127,7 @@ class NewSessionPickerTest {
         }
 
     @Test
-    fun `什么都没改 ⇒ 交给 session-new 的只有目录与 agent，账号 · 轮换不交（那台按它的默认）`() =
+    fun `什么都没改 ⇒ 交给 session-open 的只有目录与 agent，账号 · 轮换不交（那台按它的默认）`() =
         runTest {
             val p = picker(link())
             p.openAccounts()

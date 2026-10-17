@@ -86,7 +86,7 @@ fn answer(
     })
 }
 
-/// 起新会话要的那几下（写分支记录 · 先定 sid · 写 / 撤轮换）＋ 这台的家目录，交给 `f`。`session-new` 同一份。
+/// 起新会话要的那几下（写分支记录 · 先定 sid · 写 / 撤轮换）＋ 这台的家目录，交给 `f`。
 pub(crate) fn with_launch_ctx<T>(
     own: &crate::platform::fs::Own,
     nf: &crate::platform::fs::NewFile,
