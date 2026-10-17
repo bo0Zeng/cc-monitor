@@ -2629,7 +2629,7 @@ type RotPastLane = { account: string, segs: Array<RotPastSeg>, };
 type RotPastSeg = { from: number, to: number, sendable: boolean, reset: boolean, text: string, };
 type RotPastUse = { from: number, to: number, account?: string, };
 type RotPlate = { color: number, label: Words, text: Words, };
-type RotRow = { account: string, line: string, hover: string, cells: Array<RotCell>, };
+type RotRow = { account: string, line: string, hover: string, cells: Array<RotCell>, rules: Array<string>, };
 type RotStrategyError = { line?: number, msg: string, };
 type RotStrategyItem = { id: string, 
 /**

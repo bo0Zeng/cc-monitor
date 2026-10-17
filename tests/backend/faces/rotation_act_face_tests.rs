@@ -82,17 +82,12 @@ fn an_account_left_out_for_this_session_is_not_used() {
     let ctx = home.ctx();
     home.saw(&ctx, S1);
     let op = |op: RotTempOp| {
-        temp_with(
-            &ctx,
-            &home.own(),
-            &RotationTempReq {
-                sid: S1.into(),
-                op,
-            },
-        )
-        .expect("ok")
+        temp_with(&ctx, &home.own(), &RotationTempReq { sid: S1.into(), op }).expect("ok")
     };
-    assert_eq!(op(RotTempOp::Set(vec!["b".into(), "api".into(), "b".into()])).temp, ["b", "api"]);
+    assert_eq!(
+        op(RotTempOp::Set(vec!["b".into(), "api".into(), "b".into()])).temp,
+        ["b", "api"]
+    );
     let got = op(RotTempOp::Off {
         account: "b".into(),
         off: true,
@@ -118,7 +113,11 @@ fn an_account_left_out_for_this_session_is_not_used() {
     let pick = v.decision.as_ref().and_then(|d| d.pick.clone());
     assert_eq!(pick.as_deref(), Some("api"), "去掉的号不该被换上");
     assert_eq!(v.off, ["b"]);
-    assert_eq!(v.lineup.first().map(String::as_str), Some("a"), "第一格是在用的号");
+    assert_eq!(
+        v.lineup.first().map(String::as_str),
+        Some("a"),
+        "第一格是在用的号"
+    );
     let at = |x: &str| v.lineup.iter().position(|a| a == x).expect("在顺序里");
     assert!(at("api") < at("b"), "去掉的沉底：{:?}", v.lineup);
     let lane = v
@@ -127,7 +126,9 @@ fn an_account_left_out_for_this_session_is_not_used() {
         .and_then(|t| t.lanes.iter().find(|l| l.account == "b"))
         .expect("b 那一行");
     assert!(
-        lane.segs.iter().all(|s| !s.sendable && s.text == copy_text("rot.sim.off", &[])),
+        lane.segs
+            .iter()
+            .all(|s| !s.sendable && s.text == copy_text("rot.sim.off", &[])),
         "{:?}",
         lane.segs
     );

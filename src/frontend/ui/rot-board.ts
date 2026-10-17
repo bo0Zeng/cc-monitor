@@ -433,26 +433,6 @@ function nowOf(view: RotationViewReply, account: string): string {
   return why ?? view.accounts.find((f) => f.account === account)?.blocked?.text ?? "";
 }
 
-/** 一格设置写成一句（只看不改）：值的字照回包（选项名 · 可空的说法 · 24 小时条每段的悬停句）。 */
-function ruleLine(cell: RotCell): string {
-  const v = (() => {
-    switch (cell.kind) {
-      case "toggle":
-        return copyText(cell.v === true ? "rot.order.on" : "rot.order.off");
-      case "choice":
-        return cell.choices?.find((c) => c.v === cell.v)?.label ?? "";
-      case "daySegments":
-        return (cell.segs ?? []).map((g) => g.tip).join(copyText("kit.text.sep"));
-      case "percent":
-      case "minutes":
-        return cell.v === null && cell.nullable !== undefined
-          ? cell.nullable
-          : `${cell.num ?? 0}${copyText(cell.kind === "percent" ? "rot.unit.percent" : "rot.unit.minutes")}`;
-    }
-  })();
-  return `${cell.label}${copyText("kit.text.sep")}${v}`;
-}
-
 /** 点一行出的小窗：只看（此刻 · 它在这份策略里的规则）＋ 现在用 · 编辑策略。 */
 function orderPop(spec: BoardSpec, view: RotationViewReply, account: string, anchor: HTMLElement): void {
   const pop = el("div", (e) => (e.className = s.rotPane));
@@ -465,7 +445,7 @@ function orderPop(spec: BoardSpec, view: RotationViewReply, account: string, anc
   const i = view.accounts.findIndex((f) => f.account === account);
   const row = i >= 0 && i < view.listed ? view.board.rows[i] : undefined;
   if (row) pop.appendChild(el("div", (e) => (e.className = s.rotPaneLine), row.line));
-  for (const c of row?.cells ?? []) pop.appendChild(el("div", (e) => (e.className = s.rotPaneLine), ruleLine(c)));
+  for (const r of row?.rules ?? []) pop.appendChild(el("div", (e) => (e.className = s.rotPaneLine), r));
   const btns = el("div", (e) => (e.className = s.rotPaneTop));
   if (spec.acts.useNow && account !== view.current) {
     const use = spec.acts.useNow;
@@ -517,7 +497,7 @@ function order(spec: BoardSpec, view: RotationViewReply): HTMLElement {
     if (i === 0) r.dataset.inUse = "true";
     if (f?.blocked) r.dataset.blocked = "true";
     const off = view.off.includes(account);
-    if (off) r.dataset.off = "true";
+    if (off) r.dataset.leftOut = "true";
     const tick = document.createElement("input");
     tick.type = "checkbox";
     tick.checked = !off;

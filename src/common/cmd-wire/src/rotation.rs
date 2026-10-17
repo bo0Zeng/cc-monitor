@@ -786,7 +786,7 @@ pub struct RotCell {
     pub segs: Vec<RotDaySeg>,
 }
 
-/// 号列表的一行：号 · 展开头一行（两窗用量 · 重置）· 号牌悬停那一句 · `scope: each` 那几格。
+/// 号列表的一行：号 · 展开头一行（两窗用量 · 重置）· 号牌悬停那一句 · `scope: each` 那几格 · 那几格写成的句子（会话里只看的规则摘要，一格一句）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
@@ -795,6 +795,7 @@ pub struct RotRow {
     pub line: String,
     pub hover: String,
     pub cells: Vec<RotCell>,
+    pub rules: Vec<String>,
 }
 
 /// 设置那几块：总体设置（`scope: all`）· 号列表每一行（照 `settings.accounts` 的先后，与 `accounts` 前 `listed` 个一一对应）。

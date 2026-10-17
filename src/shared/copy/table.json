@@ -30810,13 +30810,14 @@
       "role": "说明",
       "zh": "策略「{name}」改过了 · 这个会话还在用旧版",
       "args": ["name"],
-      "waive": {"C-W17": "用户定的句子（轮换的提示表）"}
+      "waive": {"C-W5": "用户定的句子（轮换的提示表）", "C-W17": "用户定的句子（轮换的提示表）"}
     },
     "beRotation.hint.older": {
       "kind": "body",
       "role": "说明",
       "zh": "{n} 个会话还在用旧版",
-      "args": ["n"]
+      "args": ["n"],
+      "waive": {"C-W5": "用户定的句子（轮换的提示表）", "C-W11": "用户定的句子（轮换的提示表）"}
     },
     "rot.ask.go": {
       "kind": "action",
@@ -30876,13 +30877,15 @@
       "kind": "action",
       "role": "按钮",
       "zh": "载入新版",
-      "args": []
+      "args": [],
+      "waive": {"C-W5": "用户定的句子（轮换的提示表）"}
     },
     "rot.hint.loadAll": {
       "kind": "action",
       "role": "按钮",
       "zh": "都载入新版",
-      "args": []
+      "args": [],
+      "waive": {"C-W5": "用户定的句子（轮换的提示表）"}
     },
     "rot.hint.code": {
       "kind": "action",
@@ -30966,7 +30969,8 @@
       "kind": "error",
       "role": "报错",
       "zh": "载入新版失败",
-      "args": []
+      "args": [],
+      "waive": {"C-W5": "用户定的句子（轮换的提示表）"}
     },
     "rot.fail.useNow": {
       "kind": "error",

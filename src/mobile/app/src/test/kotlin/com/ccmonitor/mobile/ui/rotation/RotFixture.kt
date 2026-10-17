@@ -77,7 +77,7 @@ internal object RotFixture {
         account: String,
         line: String,
         cells: List<Map<String, Any?>>,
-    ) = mapOf("account" to account, "line" to line, "hover" to "夹具·$account 悬停", "cells" to cells)
+    ) = mapOf("account" to account, "line" to line, "hover" to "夹具·$account 悬停", "cells" to cells, "rules" to listOf("夹具·$account 的规则"))
 
     /** 后端解好的那几格（合成的）：总体两格 ＋ 每号一行；work 跟总体、team 自己设了启用延迟。 */
     val BOARD =

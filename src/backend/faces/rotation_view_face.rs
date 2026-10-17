@@ -403,7 +403,12 @@ fn lineup_of(s: &book::Session, d: &Decision, facts: &[Acct], now: u64) -> Vec<S
     };
     let mut out = vec![s.current.clone()];
     let ids: Vec<&String> = facts.iter().map(|x| &x.id).collect();
-    let usable = d.sigma.temp.iter().chain(&d.order).chain(ids.iter().copied());
+    let usable = d
+        .sigma
+        .temp
+        .iter()
+        .chain(&d.order)
+        .chain(ids.iter().copied());
     for a in usable.filter(|a| ok(a)).chain(ids.iter().copied()) {
         if !out.contains(a) {
             out.push(a.clone());
@@ -781,7 +786,44 @@ fn cells_of(c: &form::Cell, settings: &Value, row: Option<usize>) -> Vec<RotCell
     }]
 }
 
-/// 设置那几块：总体（`scope: all`）· 号列表每一行（字 ＋ `scope: each` 那几格）。
+/// 一格写成一句（只看的规则摘要）：名字 · 此刻的值（选项名 · 可空的说法 · 24 小时条每段那一句）。
+fn rule_of(c: &RotCell) -> String {
+    let sep = copy_text("kit.text.sep", &[]);
+    let v = match c.kind {
+        form::Kind::Toggle if c.v == Value::Bool(true) => copy_text("rot.order.on", &[]),
+        form::Kind::Toggle => copy_text("rot.order.off", &[]),
+        form::Kind::OneOf => c
+            .choices
+            .iter()
+            .find(|x| Value::String(x.v.clone()) == c.v)
+            .map(|x| x.label.clone())
+            .unwrap_or_default(),
+        form::Kind::DaySegments => c
+            .segs
+            .iter()
+            .map(|g| g.tip.clone())
+            .collect::<Vec<_>>()
+            .join(&sep),
+        form::Kind::Percent | form::Kind::Minutes => match (&c.v, &c.nullable) {
+            (Value::Null, Some(n)) => n.clone(),
+            _ if c.kind == form::Kind::Percent => {
+                format!(
+                    "{}{}",
+                    c.num.unwrap_or(0.0),
+                    copy_text("rot.unit.percent", &[])
+                )
+            }
+            _ => format!(
+                "{}{}",
+                c.num.unwrap_or(0.0),
+                copy_text("rot.unit.minutes", &[])
+            ),
+        },
+    };
+    format!("{}{sep}{v}", c.label)
+}
+
+/// 设置那几块：总体（`scope: all`）· 号列表每一行（字 ＋ `scope: each` 那几格 ＋ 写成的句子）。
 fn board_of(form: &[form::Cell], settings: &Value, listed: &[RotAccount]) -> RotBoard {
     let of = |scope: form::Scope, row: Option<usize>| -> Vec<RotCell> {
         form.iter()
@@ -802,11 +844,13 @@ fn board_of(form: &[form::Cell], settings: &Value, listed: &[RotAccount]) -> Rot
                     line.push_str(&copy_text("kit.text.sep", &[]));
                     line.push_str(&copy_text("rot.acct.reset", &[("at", at)]));
                 }
+                let cells = of(form::Scope::Each, Some(i));
                 RotRow {
                     account: f.account.clone(),
                     line,
                     hover: copy_text("rot.card.hover", &[("u5", &u5), ("u7", &u7)]),
-                    cells: of(form::Scope::Each, Some(i)),
+                    rules: cells.iter().map(rule_of).collect(),
+                    cells,
                 }
             })
             .collect(),

@@ -24,8 +24,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.wire.RotCell
-import com.ccmonitor.mobile.core.claude.link.wire.RotFormKind
 import com.ccmonitor.mobile.core.claude.link.wire.RotationViewReply
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
@@ -45,25 +43,6 @@ private fun nowOf(
         ?.why
         ?.firstOrNull { it.account == account }
         ?.why ?: view.accounts.firstOrNull { it.account == account }?.blocked?.text.orEmpty()
-
-/** 一格设置写成一句（只看）：值的字照回包（选项名 · 可空的说法 · 24 小时条每段的那一句）。 */
-private fun ruleLine(c: RotCell): String {
-    val v =
-        when (c.kind) {
-            RotFormKind.TOGGLE -> copyText(if (c.v == true) "rot.order.on" else "rot.order.off")
-            RotFormKind.CHOICE -> c.choices?.firstOrNull { it.v == c.v }?.label.orEmpty()
-            RotFormKind.DAY_SEGMENTS -> c.segs.orEmpty().joinToString(copyText("kit.text.sep")) { it.tip }
-            RotFormKind.PERCENT, RotFormKind.MINUTES ->
-                if (c.v == null && c.nullable != null) {
-                    c.nullable.orEmpty()
-                } else {
-                    val n = c.num ?: 0.0
-                    val num = if (n % 1.0 == 0.0) n.toLong().toString() else n.toString()
-                    num + copyText(if (c.kind == RotFormKind.PERCENT) "rot.unit.percent" else "rot.unit.minutes")
-                }
-        }
-    return c.label + copyText("kit.text.sep") + v
-}
 
 /** 顺序这一块：小标题 ＋ 被拦下那一句 ＋ 一号一行 ＋ 点开的那个号（底下拉出）。 */
 @Composable
@@ -138,7 +117,7 @@ private fun OrderSheet(
             }
             nowOf(view, account).takeIf(String::isNotEmpty)?.let { Text(copyText("rot.order.now", "why" to it), style = MaterialTheme.typography.bodyMedium) }
             row?.let { Text(it.line, style = MaterialTheme.typography.bodySmall, color = muted) }
-            row?.cells?.forEach { Text(ruleLine(it), style = MaterialTheme.typography.bodySmall, color = muted) }
+            row?.rules?.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = muted) }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
                 SecondaryButton(onClick = {
                     board.open(null)

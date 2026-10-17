@@ -24,12 +24,6 @@
     flex: 1;
   }
 
-  .rotDirty {
-    flex: none;
-    color: var(--warn);
-    white-space: nowrap;
-  }
-
   .rotWhere {
     color: var(--text-2);
   }
@@ -101,7 +95,8 @@
     transform: translate(4px, -4px) rotate(-1.5deg);
   }
 
-  .rotCard[data-blocked="true"] {
+  .rotCard[data-blocked="true"],
+  .rotCard[data-left-out="true"] {
     opacity: var(--state-disabled-opacity);
   }
 

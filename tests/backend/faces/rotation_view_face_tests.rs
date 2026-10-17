@@ -424,14 +424,27 @@ fn a_strategy_view_reads_the_file_as_it_is_now() {
         },
         hours: Some(24),
     };
-    let settings = json!({"caps": {}, "capKind": "hard", "accounts": [{"start": true}, {"id": "b"}]});
+    let settings =
+        json!({"caps": {}, "capKind": "hard", "accounts": [{"start": true}, {"id": "b"}]});
     home.settings_of("by-list", settings);
-    let v = view_with(&ctx, &req("by-list"), now(), &crate::Tz::default(), &home.alive())
-        .expect("ok");
+    let v = view_with(
+        &ctx,
+        &req("by-list"),
+        now(),
+        &crate::Tz::default(),
+        &home.alive(),
+    )
+    .expect("ok");
     assert_eq!(v.listed, 2, "照文件此刻的号列表");
     assert!(v.lineup.is_empty() && v.past.is_none(), "设置页没有会话");
     assert!(matches!(
-        view_with(&ctx, &req("nope"), now(), &crate::Tz::default(), &home.alive()),
+        view_with(
+            &ctx,
+            &req("nope"),
+            now(),
+            &crate::Tz::default(),
+            &home.alive()
+        ),
         Err(RotationViewErr::NoStrategy(_))
     ));
     assert!(matches!(
@@ -483,7 +496,10 @@ fn a_preset_session_does_not_take_a_route_name_as_an_agent() {
 
 /// 这个会话载入的那份（id；不轮换 ⇒ 缺）。
 pub(crate) fn used(ctx: &Ctx, sid: &str) -> Option<String> {
-    ctx.hop.store.now().sessions[sid].uses.as_ref().map(|c| c.id.clone())
+    ctx.hop.store.now().sessions[sid]
+        .uses
+        .as_ref()
+        .map(|c| c.id.clone())
 }
 
 /// ★ 新会话框选「不轮换」：起之前写成不轮换的会话（策略 id 空），不去策略目录里找。
@@ -567,7 +583,8 @@ fn a_session_view_draws_what_already_happened() {
     seen_resetting(&ctx, "a", 0.3, None, n + 4 * 3600);
     seen(&ctx, "b", 1.0, None);
     home.copy_of(&ctx, S1, |c| {
-        c.settings = json!({"caps": {}, "capKind": "hard", "accounts": [{"start": true}, {"id": "b"}]});
+        c.settings =
+            json!({"caps": {}, "capKind": "hard", "accounts": [{"start": true}, {"id": "b"}]});
     });
     rotation::face_change(&ctx.hop.store, &home.own(), |b| {
         let s = b.sessions.get_mut(S1).expect("s1");
@@ -870,7 +887,11 @@ fn a_session_keeps_its_copy_until_it_loads_the_new_version() {
 
     home.load(&ctx, S1, Some("by-list"));
     let v = session_view(&ctx, &home, S1);
-    assert!(!newer(&v) && v.listed == 2, "载入新版以后照新的：{:?}", v.hints);
+    assert!(
+        !newer(&v) && v.listed == 2,
+        "载入新版以后照新的：{:?}",
+        v.hints
+    );
     assert_eq!(older(&page()).map(|x| x.0), Some(1));
     crate::faces::rotation_edit_face::reload_with(
         &ctx,
@@ -1015,4 +1036,28 @@ fn the_board_carries_each_cell_resolved_once() {
         ]
     );
     assert_eq!(pick(r0, "caps", Some("7d")).segs, []);
+    // 会话里只看的规则摘要：一格一句，名字 · 此刻的值（选项名 · 每段那一句 · 可空的说法）都是这里写好的。
+    let sep = copy_core::copy_text("kit.text.sep", &[]);
+    let rules = &v.board.rows[0].rules;
+    assert_eq!(rules.len(), r0.len());
+    let kind = kind0.choices.iter().find(|c| c.v == "hard").expect("hard");
+    assert!(
+        rules.contains(&format!("{}{sep}{}", kind0.label, kind.label)),
+        "{rules:?}"
+    );
+    assert!(
+        rules.contains(&format!(
+            "用量上限 · 5h{sep}00:00–10:00 · 上限 0%{sep}10:00–24:00 · 上限 80%"
+        )),
+        "{rules:?}"
+    );
+    let stint = pick(r0, "stint", None);
+    assert!(
+        rules.contains(&format!(
+            "{}{sep}{}",
+            stint.label,
+            stint.nullable.expect("可空")
+        )),
+        "{rules:?}"
+    );
 }

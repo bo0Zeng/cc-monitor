@@ -57,10 +57,7 @@ pub(crate) fn copy_of_file(id: &str, rev: &str, file: &script::File) -> Copy {
 
 /// 目录里那一份此刻的副本：没了 · 读不懂 ⇒ 缺（载入不了）。
 pub(crate) fn copy_of(s: &shelf::Shelved) -> Option<Copy> {
-    s.file
-        .as_ref()
-        .ok()
-        .map(|f| copy_of_file(&s.id, &s.rev, f))
+    s.file.as_ref().ok().map(|f| copy_of_file(&s.id, &s.rev, f))
 }
 
 /// 策略目录 `dir` 里 id 那一份此刻的副本（`id` 空 · 没了 · 读不懂 ⇒ 缺）。

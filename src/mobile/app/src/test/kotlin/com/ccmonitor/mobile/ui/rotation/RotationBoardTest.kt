@@ -102,7 +102,14 @@ class RotationBoardTest {
             val v = b.state.value.view!!
             assertEquals(listOf("team", "work", "api", "lab"), v.lineup)
             assertEquals(listOf("api"), v.off)
-            assertEquals("夹具·work 的理由", v.decision!!.why.single().why)
+            assertEquals(
+                "夹具·work 的理由",
+                v.decision!!
+                    .why
+                    .single()
+                    .why,
+            )
+            assertEquals(listOf("夹具·work 的规则"), v.board.rows[0].rules)
             b.off("lab", true)
             assertEquals(mapOf("sid" to "s1", "op" to mapOf("off" to mapOf("account" to "lab", "off" to true))), link.calls(Rotation.TEMP).single())
             b.pick("night")

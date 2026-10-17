@@ -35,7 +35,14 @@ fn an_unreadable_book_is_never_overwritten() {
     let home = Home::new("unread");
     std::fs::write(home.file(), "{not json").expect("w");
     let store = home.store();
-    assert!(face_change(&store, &home.own(), |b| b.saw("s", "claude-code", "a", 1, || None)).is_err());
+    assert!(face_change(&store, &home.own(), |b| b.saw(
+        "s",
+        "claude-code",
+        "a",
+        1,
+        || None
+    ))
+    .is_err());
     assert_eq!(
         std::fs::read_to_string(home.file()).expect("r"),
         "{not json"
@@ -65,7 +72,14 @@ fn an_old_book_reads_as_none_and_is_not_written() {
         assert!(matches!(read_at::<Book>(&home.file()), Disk::Old));
         let store = home.store();
         assert!(store.now().sessions.is_empty());
-        assert!(face_change(&store, &home.own(), |b| b.saw("s", "claude-code", "a", 1, || None)).is_err());
+        assert!(face_change(&store, &home.own(), |b| b.saw(
+            "s",
+            "claude-code",
+            "a",
+            1,
+            || None
+        ))
+        .is_err());
         assert_eq!(
             std::fs::read_to_string(home.file()).expect("r"),
             v.to_string()
@@ -83,7 +97,10 @@ fn new_sessions_are_kept_and_stale_ones_are_dropped() {
     assert!(b.saw("s1", "claude-code", "c", 200, || None));
     let s = &b.sessions["s1"];
     assert_eq!((s.current.as_str(), s.temp.len()), ("c", 0));
-    assert!(!b.saw("s1", "claude-code", "c", 300, || None), "同一天再看见不该改");
+    assert!(
+        !b.saw("s1", "claude-code", "c", 300, || None),
+        "同一天再看见不该改"
+    );
     b.saw("s2", "claude-code", "a", 300, || None);
     let later = 300 + book::DROP_AFTER + 1;
     b.saw("s3", "claude-code", "a", later, || None);

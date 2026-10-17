@@ -132,7 +132,11 @@ impl Adopted {
             code: code::cached(&c.rev, &c.code),
             time_varying: c.time_varying,
             settings: c.settings.clone(),
-            tz: c.tz.as_deref().and_then(crate::Tz::iana).unwrap_or_default(),
+            tz: c
+                .tz
+                .as_deref()
+                .and_then(crate::Tz::iana)
+                .unwrap_or_default(),
         }
     }
 }

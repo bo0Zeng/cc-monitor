@@ -210,9 +210,8 @@ fn w4_the_only_in_place_write_is_the_in_place_arm_of_replace_contents() {
         "后端生产段就地写的集合变了"
     );
     // 那一处在 `replace_contents` 里、在「该不该原子换」那一问的答案那一支之内。
-    let prod = guard_core::production_code(include_str!(
-        "../../../src/backend/control/files_write.rs"
-    ));
+    let prod =
+        guard_core::production_code(include_str!("../../../src/backend/control/files_write.rs"));
     assert_eq!(prod.matches("fn replace_contents(").count(), 1);
     let seg = &prod[prod.find("fn replace_contents(").expect("replace_contents")..];
     let seg = &seg[..seg.find("\n}\n").expect("replace_contents 的尾")];

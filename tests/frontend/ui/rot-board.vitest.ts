@@ -30,7 +30,7 @@ const each = (fallback: boolean, from: RotCell["from"]): RotCell[] => [
   { key: "fallback", kind: "toggle", label: "夹具·开关", v: fallback, from },
   { key: "delay", kind: "minutes", label: "夹具·延迟", v: 0, num: 0, from: "default", min: 0, max: 1440 },
 ];
-const row = (account: string, cells: RotCell[]): RotRow => ({ account, line: `夹具·${account} 那一行`, hover: `夹具·${account} 悬停`, cells });
+const row = (account: string, cells: RotCell[]): RotRow => ({ account, line: `夹具·${account} 那一行`, hover: `夹具·${account} 悬停`, cells, rules: [`夹具·${account} 的规则`] });
 const BOARD = {
   all: [
     { key: "close", kind: "percent", label: "夹具·容差", v: 25, num: 25, from: "own", min: 0, max: 100 },
@@ -276,7 +276,7 @@ describe("会话的顺序", () => {
     const pop = document.querySelector<HTMLElement>("[data-rot-pop]")!;
     expect(pop.textContent).toContain(copyText("rot.order.now", { why: "夹具·lab 的理由" }));
     expect(pop.textContent).toContain("夹具·lab 那一行");
-    expect(pop.textContent).toContain("夹具·全天 90");
+    expect(pop.textContent).toContain("夹具·lab 的规则");
     expect(pop.querySelector("input"), "只看不改").toBeNull();
     button(pop, copyText("rot.acct.useNow", { account: "lab" }))!.click();
     expect(a.useNow).toHaveBeenCalledWith("lab");

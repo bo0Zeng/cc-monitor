@@ -19,7 +19,6 @@ declare const classes: {
   readonly rotDayPopText: string;
   readonly rotDaySeg: string;
   readonly rotDayTick: string;
-  readonly rotDirty: string;
   readonly rotHdr: string;
   readonly rotHdrNote: string;
   readonly rotHdrText: string;

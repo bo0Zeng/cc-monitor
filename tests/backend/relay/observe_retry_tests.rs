@@ -1087,7 +1087,10 @@ fn a_session_started_inside_another_opens_the_default_config() {
     })
     .expect("write");
     assert!(send_on(relay, path, "s-kid", "").starts_with("HTTP/1.1 200"));
-    let kid = setup.book.now().sessions["s-kid"].uses.clone().map(|c| c.id);
+    let kid = setup.book.now().sessions["s-kid"]
+        .uses
+        .clone()
+        .map(|c| c.id);
     assert_eq!(kid.unwrap_or_default(), setup.uses.now().for_new);
 }
 

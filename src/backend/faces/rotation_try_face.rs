@@ -249,7 +249,12 @@ pub(crate) fn timeline_of(
                             text: if s.off {
                                 copy_core::copy_text("rot.sim.off", &[])
                             } else {
-                                seg_text(s.sendable, s.reset, &face(s.from), (k == 0).then_some(left))
+                                seg_text(
+                                    s.sendable,
+                                    s.reset,
+                                    &face(s.from),
+                                    (k == 0).then_some(left),
+                                )
                             },
                             left,
                         }

@@ -1064,6 +1064,8 @@ data class RotRow(
     val line: String,
     val hover: String,
     val cells: List<RotCell>,
+    /** 那几格写成的句子（会话里只看的规则摘要，一格一句）。 */
+    val rules: List<String>,
 )
 
 @WireOf("RotCell")

@@ -2,6 +2,6 @@
 import type { RotCell } from "./RotCell";
 
 /**
- * 号列表的一行：号 · 展开头一行（两窗用量 · 重置）· 号牌悬停那一句 · `scope: each` 那几格。
+ * 号列表的一行：号 · 展开头一行（两窗用量 · 重置）· 号牌悬停那一句 · `scope: each` 那几格 · 那几格写成的句子（会话里只看的规则摘要，一格一句）。
  */
-export type RotRow = { account: string, line: string, hover: string, cells: Array<RotCell>, };
+export type RotRow = { account: string, line: string, hover: string, cells: Array<RotCell>, rules: Array<string>, };

@@ -42,7 +42,12 @@ fn settings_edits_are_saved_into_the_file_as_a_new_version() {
             },
         )
     };
-    let settings = || script::parse(&file(&home, "by-list")).expect("读得懂").head.settings;
+    let settings = || {
+        script::parse(&file(&home, "by-list"))
+            .expect("读得懂")
+            .head
+            .settings
+    };
     let got = edit(RotEdit::Add {
         account: "b".into(),
     })
@@ -64,7 +69,11 @@ fn settings_edits_are_saved_into_the_file_as_a_new_version() {
     })
     .expect("ok");
     assert_eq!(settings(), mine(), "一步步改出来的就是那一份");
-    assert_eq!(code_of(&file(&home, "by-list")), code_of(&before), "代码动了");
+    assert_eq!(
+        code_of(&file(&home, "by-list")),
+        code_of(&before),
+        "代码动了"
+    );
     let saved = file(&home, "by-list");
     match edit(RotEdit::Set {
         key: "delay".into(),
@@ -128,13 +137,22 @@ fn use_and_for_new() {
     to(Some("third"), S1).expect("换");
     let s = ctx.hop.store.now().sessions[S1].clone();
     let c = s.uses.expect("载入了");
-    assert_eq!((c.id.as_str(), c.rev.clone()), ("third", rev(&home, "third")));
+    assert_eq!(
+        (c.id.as_str(), c.rev.clone()),
+        ("third", rev(&home, "third"))
+    );
     assert!(s.memo.is_none(), "上一份记的 memo 该清");
     to(None, S1).expect("不轮换");
     assert!(ctx.hop.store.now().sessions[S1].uses.is_none());
     shelf::write_file(&home.own(), "broken", "fn decide(").expect("写");
-    assert!(matches!(to(Some("broken"), S1), Err(RotationUseErr::NoStrategy(_))));
-    assert!(matches!(to(Some("third"), S2), Err(RotationUseErr::NoSession(_))));
+    assert!(matches!(
+        to(Some("broken"), S1),
+        Err(RotationUseErr::NoStrategy(_))
+    ));
+    assert!(matches!(
+        to(Some("third"), S2),
+        Err(RotationUseErr::NoSession(_))
+    ));
     for_new_with(
         &ctx,
         &home.own(),

@@ -107,16 +107,17 @@ fn u1_every_config_becomes_a_users_own_file_and_new_sessions_do_not_rotate() {
     for id in ["默认配置 1", "夜里省着用", "自己写的"] {
         file(&u, id);
     }
-    assert_eq!(
-        used(&u, "plain"),
-        "默认配置 1",
-        "文件名照配置名（＝ 标题）"
-    );
+    assert_eq!(used(&u, "plain"), "默认配置 1", "文件名照配置名（＝ 标题）");
 }
 
 /// 那个会话载入的那份（id）。
 fn used(u: &Upgraded, sid: &str) -> String {
-    u.book.sessions[sid].uses.as_ref().expect("会话带着副本").id.clone()
+    u.book.sessions[sid]
+        .uses
+        .as_ref()
+        .expect("会话带着副本")
+        .id
+        .clone()
 }
 
 /// ★ 设置一格不丢：线 · 时段 ⇒ 分段上限；都到上限就停 ⇒ 硬上限；优先 ⇒ 号列表最前、备用 ⇒ 耗尽后启用（不出排）；

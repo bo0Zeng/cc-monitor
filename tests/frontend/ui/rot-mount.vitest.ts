@@ -50,7 +50,7 @@ const VIEW: RotationViewReply = {
   now: 1,
   nowText: "00:00", title: null,
   strategy: LIST.strategies[0],
-  board: { all: [{ key: "close", kind: "percent", label: "夹具·容差", v: 25, num: 25, from: "own", min: 0, max: 100 }], rows: [{ account: "work", line: "", hover: "", cells: [] }] },
+  board: { all: [{ key: "close", kind: "percent", label: "夹具·容差", v: 25, num: 25, from: "own", min: 0, max: 100 }], rows: [{ account: "work", line: "", hover: "", cells: [], rules: [] }] },
   start: "work",
   current: "team",
   lineup: ["team", "work"],

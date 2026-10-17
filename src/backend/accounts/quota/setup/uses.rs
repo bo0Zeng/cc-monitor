@@ -96,7 +96,12 @@ impl Setup {
     }
 
     /// 给这几个会话载入 `copy`（换了一份 ⇒ memo 与叫醒清掉：那是上一份记的；临时动作照留）。回载入了几个。
-    pub(crate) fn load(&self, own: &Own, sids: &[String], copy: Option<&Copy>) -> Result<usize, Said> {
+    pub(crate) fn load(
+        &self,
+        own: &Own,
+        sids: &[String],
+        copy: Option<&Copy>,
+    ) -> Result<usize, Said> {
         rotation::face_change(&self.book, own, |b| {
             let mut n = 0;
             for sid in sids {
@@ -113,6 +118,7 @@ impl Setup {
 }
 
 impl Adoptions for Setup {
+    /// 〔继承表〕轮换那一格：新会话载入 `forNew` 那一份此刻的副本，不看起它的那条会话载入的是哪份。
     fn for_new(&self) -> Option<Copy> {
         super::copy_at(self.dir().as_deref(), &self.uses.now().for_new)
     }
