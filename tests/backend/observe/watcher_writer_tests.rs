@@ -358,7 +358,8 @@ fn activities(frames: &[Frame]) -> Vec<Option<String>> {
         .map(|f| {
             let v: serde_json::Value =
                 serde_json::from_str(crate::wire::to_line(f).unwrap().trim()).unwrap();
-            v.get("activity")
+            v["face"]["live"]
+                .get("activity")
                 .and_then(|a| a.as_str())
                 .map(str::to_string)
         })
@@ -379,13 +380,12 @@ fn a_codex_round_ending_turns_the_session_idle_and_the_next_round_turns_it_worki
         "宣告不等记录（这一家没有进程状态文件 ⇒ 宣告时判不出）；读完记录停在 task_complete ⇒ 接着一帧说闲着"
     );
     // 判不出就照实说：宣告那一帧写的是「读记录中」，不先说一句读完才知道真假的（如「运行中」）。
-    let Some(Frame::SessionAdded(crate::wire::SessionAdded { doing: face, .. })) = first.first()
-    else {
+    let Some(Frame::SessionAdded(crate::wire::SessionAdded { face, .. })) = first.first() else {
         unreachable!()
     };
     assert_eq!(
-        face,
-        &crate::wire::ActivityFace::reading(),
+        face.name,
+        crate::wire::SessionFace::of(crate::wire::Life::Reading { tmux: None }).name,
         "宣告那一帧说的不是「读记录中」"
     );
     let append = |r: &Rig, s: &str| {

@@ -70,12 +70,6 @@ pub struct HistoryRow {
     pub label: Words,
     /// 改过的标题 · 标题 · 第一句都没有（界面写「没有说过话的会话」）。
     pub untitled: bool,
-    /// `live` 在跑 · `reconnectable` claude 退了、tmux 里还挂着它 · `ended` 已结束 · `unknown` 说不清（活不活只出这一格）。
-    #[cfg_attr(
-        any(test, feature = "ts"),
-        ts(type = "\"live\" | \"reconnectable\" | \"ended\" | \"unknown\"")
-    )]
-    pub status: String,
     /// 那台此刻对这一行的说法（活着的照它的进程状态文件判在干什么；判不了活 ⇒ 状态不明）。
     pub face: crate::frame::SessionFace,
     pub can: Can,

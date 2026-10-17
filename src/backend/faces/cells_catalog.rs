@@ -582,9 +582,6 @@ fn put(
     }
 }
 
-/// 会话帧上 `switch` 那两格（[`crate::wire::Switch`]）按 `can` 分能换 · 不能换两种。
-const SWITCH_TAGS: &[(&str, &str)] = &[("model", "can"), ("permission", "can")];
-
 /// 一件成品。
 pub(crate) struct Product {
     /// 成品名（声明里 `cells` 的键）。帧是帧的 `kind`。
@@ -647,17 +644,17 @@ pub(crate) const PRODUCTS: &[Product] = &[
     // `lines` 10-12 挪出这一帧（read8a：宣告不等预读，行数改由读完那一帧 `session_primed` 带）：手机从来没读过它，只有桌面壳在读、同一刀跟上。
     Product {
         name: "session_added",
-        tags: SWITCH_TAGS,
+        tags: &[],
         specimens: specimens::session_added,
     },
     Product {
         name: "session_status",
-        tags: SWITCH_TAGS,
+        tags: &[],
         specimens: specimens::session_status,
     },
     Product {
         name: "session_state",
-        tags: SWITCH_TAGS,
+        tags: &[],
         specimens: specimens::session_state,
     },
     Product {
@@ -694,10 +691,8 @@ mod specimens {
         RetryOutcome, RetryRun, SessionFacts, StepWait, TokenUse, UnclearWhy, UsageFact,
     };
     use crate::observe::history_query::IndexRow;
-    use crate::wire::{
-        ActivityFace, Frame, Life, RemovalCause, SessionContainer, SessionFace, SessionFate,
-    };
-    use crate::wire::{ActivityFaceExt as _, FrameMake as _, SessionFaceExt as _};
+    use crate::wire::{Frame, Life, RemovalCause, SessionContainer, SessionFace, SessionFate};
+    use crate::wire::{FrameMake as _, SessionFaceExt as _};
     use std::collections::BTreeMap;
 
     fn s(v: &str) -> String {
@@ -1042,7 +1037,6 @@ mod specimens {
                     started_by: Some(crate::observe::facts_query::Kin {
                         sid: s("k"),
                         title: s("t"),
-                        live: true,
                         face: SessionFace::of(Life::Live {
                             activity: Some(SessionActivity::Working),
                             tmux: None,
@@ -1057,7 +1051,6 @@ mod specimens {
                     children: vec![crate::observe::facts_query::Kin {
                         sid: s("k"),
                         title: s("t"),
-                        live: true,
                         face: SessionFace::of(Life::Live {
                             activity: Some(SessionActivity::Working),
                             tmux: None,
@@ -1177,7 +1170,6 @@ mod specimens {
             project_dir: some("/w"),
             name: some("n"),
             path: some("/p"),
-            doing: ActivityFace::of(Some(activity)),
             face: crate::wire::SessionFace::of(crate::wire::Life::Live {
                 activity: Some(activity),
                 tmux: None,
@@ -1212,7 +1204,6 @@ mod specimens {
             .map(|a| {
                 node_of::<Frame>(&Frame::SessionStatus(crate::wire::SessionStatus {
                     sid: s("s"),
-                    doing: ActivityFace::of(Some(a)),
                     face: crate::wire::SessionFace::of(crate::wire::Life::Live {
                         activity: Some(a),
                         tmux: None,

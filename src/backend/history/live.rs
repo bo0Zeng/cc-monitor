@@ -123,7 +123,7 @@ pub(crate) fn live_activity(
 mod tests;
 
 /// 此刻可重连的那几条（claude 退了、tmux 里还挂着它）：会话账本（`observe::session_ledger`，整台一份）每变一次交一份来，
-/// 历史清单那一行的 `status` 照它分出 `reconnectable`。没有在跑的流（一次性子命令）⇒ 空：那几条照「已结束」。
+/// 清单行 · 搜索命中 · 血缘的活不活照它分出可重连（[`life_of`]）。没有在跑的流（一次性子命令）⇒ 空：那几条照「已结束」。
 static RECONNECTABLE: std::sync::Mutex<std::collections::BTreeSet<String>> =
     std::sync::Mutex::new(std::collections::BTreeSet::new());
 
@@ -141,4 +141,17 @@ pub(crate) fn reconnectable(sid: &str) -> bool {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .contains(sid)
+}
+
+/// 这台判的这一条活不活：活着照 [`live_activity`] 那一份，否则可重连 · 已结束。
+pub(crate) fn life_of(
+    live: &std::collections::BTreeMap<String, Option<crate::agents::SessionActivity>>,
+    sid: &str,
+) -> cmd_wire::listing::RowLife {
+    use cmd_wire::listing::RowLife;
+    match live.get(sid) {
+        Some(&activity) => RowLife::Live { activity },
+        None if reconnectable(sid) => RowLife::Reconnectable,
+        None => RowLife::Ended,
+    }
 }

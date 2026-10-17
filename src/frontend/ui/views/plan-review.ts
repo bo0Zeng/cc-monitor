@@ -10,6 +10,7 @@ import { writeClipboard } from "../clipboard";
 import { copyText } from "../copy-table";
 import { returnCell, PlanMiss, type PlanCell, type PlanNeed, type PlanReturned, type PlanSlice, type PlanWho } from "../plan-reads";
 import { blockRoots, cellIndex } from "./plan-model";
+import { isLive } from "../face-can";
 import s from "./plan-review.module.css";
 
 /** 计划页借给这里的几样。 */
@@ -177,9 +178,9 @@ export function openReturn(host: ReviewHost, slice: PlanSlice, cell: ReturnTarge
   const blkTitle = cell.blockTitle;
   const owner = cell.owner;
   const signer = cell.signer === false ? null : cell.signer;
-  const canSend = (w: PlanWho | null): boolean => w !== null && w.sid !== null && w.alive && w.activity !== "needs_you";
+  const canSend = (w: PlanWho | null): boolean => w !== null && w.sid !== null && w.face.live.is === "yes" && w.face.live.activity !== "needs_you";
   // 已结束、认得出 ⇒ 送出时先在它那台恢复它，这一行当它的第一句（后端 `resume`）。
-  const ended = (w: PlanWho | null): boolean => w !== null && w.sid !== null && !w.alive;
+  const ended = (w: PlanWho | null): boolean => w !== null && w.sid !== null && !isLive(w.face);
   let to: "owner" | "signer" = !canSend(owner) && canSend(signer) ? "signer" : "owner";
   const target = (): PlanWho | null => (to === "owner" ? owner : signer);
   const box = document.createElement("div");

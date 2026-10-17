@@ -158,7 +158,6 @@ impl Book {
                     .get_mut(&origin)
                     .and_then(|b| b.sessions.get_mut(&status.sid))
                 {
-                    m.doing = status.doing.clone();
                     m.face = status.face.clone();
                     m.name_face = status.name_face.clone();
                     m.waiting_for = status.waiting_for.clone();

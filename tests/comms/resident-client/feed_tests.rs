@@ -263,7 +263,7 @@ async fn serve(peer: Peer, s: tokio::io::DuplexStream, f: Arc<Fake>) {
         .get_mut()
         .write_all(if !gated { &b""[..] } else {
             concat!(
-                r#"{"kind":"session_status","sid":"s","activity":"idle","said":"闲着","tone":"neutral","activity_order":2,"name":"n"}"#,
+                r#"{"kind":"session_status","sid":"s","activity":"idle","said":"闲着","tone":"neutral","name":"n"}"#,
                 "\n",
                 r#"{"kind":"line","session_id":"s","path":"/p","seq":0,"byte_offset":3}"#,
                 "\n"

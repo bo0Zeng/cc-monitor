@@ -28,11 +28,11 @@ pub use cmd_wire::frame::FaceLive;
 /// 帧的线上形住 `cmd-wire`（[`cmd_wire::frame`]，客户端按同一份解）；这里是后端在它上面做的事：写字 · 判定 · 丢帧规矩 · 分页 · 钟面
 /// （扩展特征：孤儿规则不许在那边的类型上加固有方法）。
 pub use cmd_wire::frame::{decode, Frame, Hello, Line, SessionAdded, SessionPrimed, SessionStatus};
-pub use cmd_wire::frame::{ActivityFace, CanSwitch, NameFace, SessionActivity, Switch};
 pub use cmd_wire::frame::{Allow, CanClose, CanTerm, SessionCan, SessionDot, SessionFace};
 pub use cmd_wire::frame::{Cancelled, Changed, Overflow, Reply, SessionRemoved, SessionState};
 pub use cmd_wire::frame::{FilesBatch, LinkData, LinkEnd, Probe, SessionsReplayed, Transfer};
 pub use cmd_wire::frame::{FollowEnd, RereadWhy, SessionContainer, TerminalHost, TransferEnd};
+pub use cmd_wire::frame::{NameFace, SessionActivity};
 pub use cmd_wire::frame::{RemovalCause, SessionFate, Topic, Unavailable};
 pub use cmd_wire::frame::{RunDid, RunEnded, RunInfo, RunState, RunWhy};
 pub use cmd_wire::frame::{SessionBranch, SessionRuns, TerminalFollowEnd, TerminalScreen};
@@ -70,6 +70,20 @@ impl Life {
     /// 记录还没读完的那一段（容器同上）。
     pub(crate) fn reading(c: Option<&SessionContainer>) -> Self {
         Life::Reading { tmux: in_tmux(c) }
+    }
+
+    /// 清单行 · 搜索命中那一段：那台判的活不活（判不了 ⇒ 说不清；清单不看容器）。
+    pub(crate) fn of_row(life: Option<cmd_wire::listing::RowLife>) -> Self {
+        use cmd_wire::listing::RowLife;
+        match life {
+            Some(RowLife::Live { activity }) => Life::Live {
+                activity,
+                tmux: None,
+            },
+            Some(RowLife::Reconnectable) => Life::Reconnectable,
+            Some(RowLife::Ended) => Life::Ended,
+            None => Life::Unclear,
+        }
     }
 }
 
@@ -297,79 +311,6 @@ fn live_face(activity: Option<SessionActivity>, tmux: Option<bool>, reading: boo
     }
 }
 
-/// 写好的字与语气（短名 · 悬停那一句 · 语气）与监控板的序：`session_state` 帧上带着，出口照抄。
-pub(crate) trait SessionFateExt {
-    fn cells(self) -> (Words, Words, Tone, u8);
-}
-
-impl SessionFateExt for SessionFate {
-    /// 同 [`SessionFace::of`] 那一段的短名 · 悬停 · 语气 · 序。
-    fn cells(self) -> (Words, Words, Tone, u8) {
-        let f = SessionFace::of(match self {
-            SessionFate::Reconnectable => Life::Reconnectable,
-            SessionFate::Ended => Life::Ended,
-        });
-        (f.name, f.tip, f.tone, f.order)
-    }
-}
-
-/// **活会话此刻在干什么的那几格的唯一构造口**（[`ActivityFace`]，`session_added` · `session_status` 都带它，平铺在帧上）：
-/// 帧上这几格只经这里来，不许哪一处另拼（格是公开的、客户端要解；判据 `the_written_faces_are_built_in_one_place_only` 守「只在这里造」）。
-///
-/// 在跑 ⇒ 运行中 · `now`；在等人 ⇒ 需手动 · `need`；闲着 ⇒ 空闲 · `plain`；一轮停了、后台命令还在跑 ⇒ 后台任务运行中 · `busy`；
-/// 活着、那一家没说在干什么（`None`）⇒ 说不清 · `plain`（出口照画，不自己补一种默认）。
-/// 序：等人 0 · 在干活 1 · 后台任务运行中 2 · 闲着 / 说不清 3（要人操作的先看；序跟着语气走）。
-pub(crate) trait ActivityFaceExt: Sized {
-    fn of(a: Option<SessionActivity>) -> Self;
-    fn reading() -> Self;
-}
-
-impl ActivityFaceExt for ActivityFace {
-    /// 那一态 ⇒ 这几格（同 [`SessionFace::of`] 那一段）。
-    fn of(a: Option<SessionActivity>) -> Self {
-        Self::from_face(
-            a,
-            SessionFace::of(Life::Live {
-                activity: a,
-                tmux: None,
-            }),
-        )
-    }
-
-    /// 宣告时判不出、要等记录读完才判得出的那一刻：字照实说「读记录中」。
-    fn reading() -> Self {
-        Self::from_face(None, SessionFace::of(Life::Reading { tmux: None }))
-    }
-}
-
-trait FromFace {
-    fn from_face(a: Option<SessionActivity>, f: SessionFace) -> Self;
-}
-
-impl FromFace for ActivityFace {
-    fn from_face(a: Option<SessionActivity>, f: SessionFace) -> Self {
-        ActivityFace {
-            activity: a,
-            activity_text: f.name,
-            activity_tone: f.tone,
-            activity_order: f.order,
-            switch: switch_of(&f.can),
-        }
-    }
-}
-
-/// 今天的 `switch` 那一格（同 `face.can` 的模型 · 权限档两样）。
-pub(crate) fn switch_of(c: &SessionCan) -> Switch {
-    let one = |a: &Allow| match a {
-        Allow::Yes => CanSwitch::Yes,
-        Allow::No { why } => CanSwitch::No { why: why.clone() },
-    };
-    Switch {
-        model: one(&c.model),
-        permission: one(&c.permission),
-    }
-}
-
 /// **这条会话叫什么那两格的唯一构造口**（[`NameFace`]）：`label` ＝ [`crate::history::search_rules::session_label`]（与历史清单 · 全文搜索同一个函数）；
 /// `label_project` ＝ 项目目录最后一截。
 pub(crate) trait NameFaceExt: Sized {
@@ -524,16 +465,7 @@ impl FrameMake for Frame {
             _ => SessionFate::Ended,
         };
         let face = SessionFace::of(life);
-        Frame::SessionState(SessionState {
-            sid,
-            state,
-            state_text: face.name.clone(),
-            state_hint: face.tip.clone(),
-            state_tone: face.tone,
-            state_order: face.order,
-            switch: switch_of(&face.can),
-            face,
-        })
+        Frame::SessionState(SessionState { sid, state, face })
     }
 
     fn failed(id: String, f: crate::wire::detail::Failed) -> Frame {

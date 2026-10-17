@@ -1175,7 +1175,7 @@ async fn an_ended_cell_carries_the_words_of_the_backend_that_answered_it() {
     assert_eq!(ended.len(), 1, "只该有那台答的那一格：{ended:?}");
     assert_eq!(ended[0]["sid"], "x");
     assert_eq!(ended[0]["state"], "ended");
-    assert_eq!(ended[0]["state_text"], "那台写的");
+    assert_eq!(ended[0]["face"]["name"], "那台写的");
 }
 
 /// ★ 起停那几格没 credit 也照交、照扣（credit 可欠）：欠着的时候行照丢、原位 `Gap`；还清之后下一行照交。
@@ -1508,10 +1508,10 @@ fn the_codex_sample_frames_decode() {
         match crate::stream_source::decode(l).unwrap_or_else(|_| panic!("壳解不开这一帧：{l}"))
         {
             Frame::SessionAdded(a) => {
-                announced_text = Some(a.doing.activity_text.clone());
+                announced_text = Some(a.face.name.clone());
                 // 判不出 ⇒ 语气 plain（不是「在跑」那一种）：壳原样转交，不自己补。
                 assert_eq!(
-                    a.doing.activity_tone,
+                    a.face.tone,
                     cmd_wire::cells::Tone::Plain,
                     "宣告那一帧判不出却用了在跑的语气"
                 );
@@ -1528,7 +1528,7 @@ fn the_codex_sample_frames_decode() {
                         activity: Some(cmd_wire::frame::SessionActivity::Working),
                     } =>
             {
-                working_text.get_or_insert(st.doing.activity_text.clone());
+                working_text.get_or_insert(st.face.name.clone());
             }
             Frame::Line(_) => lines += 1,
             _ => {}

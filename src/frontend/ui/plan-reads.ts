@@ -198,23 +198,20 @@ function progressOf(v: unknown, what: string): PlanProgress | null {
 }
 
 const WHO_KINDS = new Set(["session", "subagent", "unknown"]);
-const ACTIVITIES = new Set(["working", "needs_you", "idle"]);
 
 export function decodeWho(v: unknown, what: string): PlanWho | null {
   if (v === null || v === undefined) return null;
   const o = obj(v, what);
   const kind = str(o.kind, `${what}.kind`);
   if (!WHO_KINDS.has(kind)) bad(`${what}.kind ${kind}`);
-  const activity = strOrNull(o.activity, `${what}.activity`);
-  if (activity !== null && !ACTIVITIES.has(activity)) bad(`${what}.activity ${activity}`);
+  if (o.face === undefined) bad(`${what}.face`);
   return {
     id: str(o.id, `${what}.id`),
     kind: kind as PlanWho["kind"],
     sid: strOrNull(o.sid, `${what}.sid`),
-    alive: bool(o.alive, `${what}.alive`),
-    activity: activity as PlanWho["activity"],
     needs: strOrNull(o.needs, `${what}.needs`),
-    face: obj(o.face, `${what}.face`) as unknown as SessionFace,
+    // 整份脸按生成类型收（两端形状由握手时的形状指纹核过，同 `callTyped`），不另逐格解。
+    face: o.face as SessionFace,
   };
 }
 

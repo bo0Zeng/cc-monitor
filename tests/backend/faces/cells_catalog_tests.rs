@@ -41,8 +41,8 @@ pub(crate) struct Pending {
 /// 还缺的格（手机端 10-09 缺格清单）。落地那一刻删掉这里那一行（判据两向钉）。今天一条都不缺；机制留着，下一张缺格清单进这里。
 ///
 /// 已落地 / 不补的（这里不再登记）：
-/// - G1 会话灯「后台任务运行中」那一档 ⇒ `activity` 的闭集多了 `backgroundWork`（不是新格），字与语气在 `activity_text` · `activity_tone`。
-/// - G2 会话状态的字与语气 ⇒ `session_*.activity_text` · `activity_tone` · `session_state.state_text` …
+/// - G1 会话灯「后台任务运行中」那一档 ⇒ 整份脸 `face.live.activity` 的闭集多了 `backgroundWork`（不是新格），点在 `face.dot`。
+/// - G2 会话状态的字与语气 ⇒ 会话三帧的 `face.name` · `face.tone`。
 /// - G3 「在等什么」的字与先答哪个 ⇒ `facts.needs.text` · `facts.needs.rank`。那台 pidfile 的 `waitingFor` 六个原值由适配层翻成
 ///   [`WaitOn`](crate::agents::WaitOn)，再与记录里没结果的那一步一起在 `facts_query::needs_of` 判成八种 `needs.kind`（映射只在这两处）；
 ///   字与序跟着种类走，不另挂在 `session_status` 上。
@@ -88,9 +88,15 @@ pub(crate) const FROZEN: &[(&str, Frozen)] = &[
             "waiting_for",
             "agent_kind",
             "attachable",
-            "activity",
-            "activity_text",
-            "activity_tone",
+            "face.dot",
+            "face.live.activity",
+            "face.settled",
+            "face.name",
+            "face.tone",
+            "face.can.model.can",
+            "face.can.model.why",
+            "face.can.permission.can",
+            "face.can.permission.why",
             "background",
         ]),
     ),
@@ -99,12 +105,31 @@ pub(crate) const FROZEN: &[(&str, Frozen)] = &[
         Frozen::Cells(&[
             "sid",
             "waiting_for",
-            "activity",
-            "activity_text",
-            "activity_tone",
+            "face.dot",
+            "face.live.activity",
+            "face.settled",
+            "face.name",
+            "face.tone",
+            "face.can.model.can",
+            "face.can.model.why",
+            "face.can.permission.can",
+            "face.can.permission.why",
         ]),
     ),
-    ("session_state", Frozen::No),
+    (
+        "session_state",
+        Frozen::Cells(&[
+            "sid",
+            "face.dot",
+            "face.settled",
+            "face.name",
+            "face.tone",
+            "face.can.model.can",
+            "face.can.model.why",
+            "face.can.permission.can",
+            "face.can.permission.why",
+        ]),
+    ),
     ("session_removed", Frozen::Cells(&["sid", "cause"])),
     (
         "quota_read",
@@ -142,6 +167,15 @@ pub(crate) const FROZEN: &[(&str, Frozen)] = &[
             "rows[].jsonlPath",
             "rows[].agent",
             "rows[].agentTag",
+            "rows[].face.dot",
+            "rows[].face.live.activity",
+            "rows[].face.settled",
+            "rows[].face.name",
+            "rows[].face.tone",
+            "rows[].face.can.model.can",
+            "rows[].face.can.model.why",
+            "rows[].face.can.permission.can",
+            "rows[].face.can.permission.why",
             "rows[].starred",
             "rows[].customTitle",
             "rows[].hidden.by",

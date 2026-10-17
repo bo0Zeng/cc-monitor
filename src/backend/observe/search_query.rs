@@ -79,8 +79,6 @@ pub(crate) struct SessionHits {
     pub(crate) hits_truncated: bool,
     /// 后台分身会话。
     pub(crate) is_bg: bool,
-    /// 那台判的：在跑 · 已结束（全文搜索只扫记录树，判得了活）。
-    pub(crate) status: Liveness,
     /// 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
     pub(crate) can: crate::history::listing::Can,
     /// 那台此刻对这个会话的说法（同历史清单那一行的 `face`）。
@@ -106,36 +104,6 @@ pub(crate) struct SearchHit {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub(crate) tool: Option<String>,
-}
-
-/// 全文搜索那一行的活不活：只扫记录树、看得到这台的 pidfile ⇒ 只有两态。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum Liveness {
-    Live,
-    Ended,
-}
-
-impl Liveness {
-    fn of(live: bool) -> Liveness {
-        if live {
-            Liveness::Live
-        } else {
-            Liveness::Ended
-        }
-    }
-
-    /// 同历史清单那一格的词（`history::listing::status_of`，`can_of` 按它判）。
-    fn word(self) -> &'static str {
-        use crate::history::listing::RowLife;
-        crate::history::listing::status_of(Some(if self == Liveness::Live {
-            RowLife::Live { activity: None }
-        } else {
-            RowLife::Ended
-        }))
-    }
 }
 
 /// 帧面那条（`history-search`）的入口：每命中会话一行交给 `push`。回「读不动、没搜到」的会话数（帧面那条把它交给界面说出来）。
@@ -748,21 +716,11 @@ impl SearchIndex {
                 }
                 if let Some(mut session) = session {
                     // 能不能恢复由这台判（活不活看这台的 pidfile），与历史清单的行同一个函数。
-                    session.status = Liveness::of(live.contains_key(&session.session_id));
+                    let life = crate::history::live::life_of(&live, &session.session_id);
                     session.face =
-                        crate::wire::SessionFace::of(match live.get(&session.session_id) {
-                            Some(activity) => crate::wire::Life::Live {
-                                activity: *activity,
-                                tmux: None,
-                            },
-                            None if crate::history::live::reconnectable(&session.session_id) => {
-                                crate::wire::Life::Reconnectable
-                            }
-                            None => crate::wire::Life::Ended,
-                        });
+                        crate::wire::SessionFace::of(crate::wire::Life::of_row(Some(life)));
                     session.is_bg = bg;
-                    session.can =
-                        crate::history::listing::can_of(&session.agent, session.status.word(), bg);
+                    session.can = crate::history::listing::can_of(&session.agent, Some(life), bg);
                     push(session)?;
                 }
             }
@@ -979,7 +937,11 @@ fn session_row(
         .to_string();
     SessionHits {
         // 活不活 · 分身 · 能做什么由扫的那一层按这台的 pidfile 补（[`SearchIndex::search`]）；这里先按「已结束、不是分身」占位。
-        can: crate::history::listing::can_of(&agent, Liveness::Ended.word(), false),
+        can: crate::history::listing::can_of(
+            &agent,
+            Some(crate::history::listing::RowLife::Ended),
+            false,
+        ),
         face: crate::wire::SessionFace::of(crate::wire::Life::Ended),
         agent,
         session_id,
@@ -992,7 +954,6 @@ fn session_row(
         hits,
         hits_truncated: session_starved,
         is_bg: false,
-        status: Liveness::Ended,
     }
 }
 

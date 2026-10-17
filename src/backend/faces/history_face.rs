@@ -1810,15 +1810,9 @@ pub(crate) fn kin_of(
     let kin = |k: &str| Kin {
         sid: k.to_string(),
         title: title_here(k, &annotations),
-        live: live.contains_key(k),
-        face: crate::wire::SessionFace::of(match live.get(k) {
-            Some(activity) => crate::wire::Life::Live {
-                activity: *activity,
-                tmux: None,
-            },
-            None if crate::history::live::reconnectable(k) => crate::wire::Life::Reconnectable,
-            None => crate::wire::Life::Ended,
-        }),
+        face: crate::wire::SessionFace::of(crate::wire::Life::of_row(Some(
+            crate::history::live::life_of(&live, k),
+        ))),
         hidden: crate::history::session_hidden::hidden_here(
             here,
             &annotations,

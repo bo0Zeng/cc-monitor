@@ -140,7 +140,6 @@
       "spanText": "00:00–00:00",
       "starred": false,
       "startedAt": 500,
-      "status": "ended",
       "title": "从父会话分出来的",
       "untitled": false,
       "updatedAt": 1000
@@ -213,7 +212,6 @@
       "spanText": "00:00–00:00",
       "starred": true,
       "startedAt": 100,
-      "status": "live",
       "title": "支付回调验签",
       "untitled": false,
       "updatedAt": 900
@@ -284,7 +282,6 @@
       "spanText": "00:00–00:00",
       "starred": false,
       "startedAt": 300,
-      "status": "ended",
       "title": "没有说过话的会话",
       "untitled": true,
       "updatedAt": 700
@@ -356,7 +353,6 @@
       "spanText": "00:00–00:00",
       "starred": false,
       "startedAt": 650,
-      "status": "unknown",
       "title": "列出 Codex 的会话",
       "untitled": false,
       "updatedAt": 650
@@ -430,7 +426,6 @@
       "spanText": "00:00–00:00",
       "starred": true,
       "startedAt": 400,
-      "status": "ended",
       "title": "分叉的父会话",
       "untitled": false,
       "updatedAt": 600

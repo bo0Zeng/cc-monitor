@@ -47,7 +47,7 @@ vi.mock("../../../src/frontend/ui/ipc/commands", () => ({
 vi.mock("../../../src/frontend/ui/history-list-reads", () => ({
   fetchList: () =>
     Promise.resolve({
-      rows: [{ sessionId: "s1", status: "live", face: liveFace("working"), jsonlPath: "/p/s1.jsonl", label: "主会话", untitled: false, agent: "claude", projectName: "proj" }],
+      rows: [{ sessionId: "s1", face: liveFace("working"), jsonlPath: "/p/s1.jsonl", label: "主会话", untitled: false, agent: "claude", projectName: "proj" }],
     }),
 }));
 vi.mock("../../../src/frontend/ui/record-reads", () => ({

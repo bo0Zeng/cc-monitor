@@ -92,13 +92,9 @@ pub(crate) fn who_json(id: Option<&str>, who: WhoPort) -> Value {
     let Some(id) = id.filter(|i| !i.is_empty()) else {
         return Value::Null;
     };
-    let live_json = |l: &Option<Live>| match l {
-        Some(l) => (
-            true,
-            serde_json::to_value(l.activity).unwrap_or(Value::Null),
-            serde_json::to_value(l.needs).unwrap_or(Value::Null),
-        ),
-        None => (false, Value::Null, Value::Null),
+    let needs_json = |l: &Option<Live>| match l {
+        Some(l) => serde_json::to_value(l.needs).unwrap_or(Value::Null),
+        None => Value::Null,
     };
     let face_of = |l: &Option<Live>| {
         crate::wire::SessionFace::of(match l {
@@ -109,15 +105,15 @@ pub(crate) fn who_json(id: Option<&str>, who: WhoPort) -> Value {
             None => crate::wire::Life::Ended,
         })
     };
-    let (kind, sid, live, face) = match who(id) {
-        Whose::Session { sid, live } => ("session", Some(sid), live_json(&live), face_of(&live)),
+    let (kind, sid, needs, face) = match who(id) {
+        Whose::Session { sid, live } => ("session", Some(sid), needs_json(&live), face_of(&live)),
         Whose::Subagent { parent, live } => {
-            ("subagent", Some(parent), live_json(&live), face_of(&live))
+            ("subagent", Some(parent), needs_json(&live), face_of(&live))
         }
         Whose::Unknown => (
             "unknown",
             None,
-            (false, Value::Null, Value::Null),
+            Value::Null,
             crate::wire::SessionFace::of(crate::wire::Life::Unclear),
         ),
     };
@@ -125,9 +121,7 @@ pub(crate) fn who_json(id: Option<&str>, who: WhoPort) -> Value {
         "id": id,
         "kind": kind,
         "sid": sid,
-        "alive": live.0,
-        "activity": live.1,
-        "needs": live.2,
+        "needs": needs,
         "face": face,
     })
 }

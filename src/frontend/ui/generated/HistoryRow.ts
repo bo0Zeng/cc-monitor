@@ -21,10 +21,6 @@ label: Words,
  */
 untitled: boolean, 
 /**
- * `live` 在跑 · `reconnectable` claude 退了、tmux 里还挂着它 · `ended` 已结束 · `unknown` 说不清（活不活只出这一格）。
- */
-status: "live" | "reconnectable" | "ended" | "unknown", 
-/**
  * 那台此刻对这一行的说法（活着的照它的进程状态文件判在干什么；判不了活 ⇒ 状态不明）。
  */
 face: SessionFace, can: Can, 

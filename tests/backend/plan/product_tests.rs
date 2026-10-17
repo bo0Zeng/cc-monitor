@@ -72,8 +72,8 @@ fn owners_and_signers_are_resolved_to_sessions() {
     assert_eq!(owner["kind"], "subagent");
     assert_eq!(owner["sid"], MAIN);
     assert_eq!(owner["id"], SUB);
-    assert_eq!(owner["alive"], true);
-    assert_eq!(owner["activity"], "needs_you");
+    assert_eq!(owner["face"]["live"]["is"], "yes");
+    assert_eq!(owner["face"]["live"]["activity"], "needs_you");
     assert_eq!(owner["needs"], "approve");
     let signs = &cell(&m.doc, "A1-1")["signs"];
     assert_eq!(signs[1]["by"]["kind"], "unknown");

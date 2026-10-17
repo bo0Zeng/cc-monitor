@@ -8,7 +8,7 @@ export type PlanWho = { id: string, kind: "session" | "subagent" | "unknown",
 /**
  * 主会话 ⇒ 它自己；子 agent ⇒ 父会话；认不出 ⇒ `null`。
  */
-sid: string | null, alive: boolean, activity: "working" | "needs_you" | "idle" | null, 
+sid: string | null, 
 /**
  * 在等你时等的是哪一类（批准 · 回答 · 计划 · 说不清）。
  */

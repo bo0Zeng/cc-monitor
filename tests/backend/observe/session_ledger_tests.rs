@@ -3,7 +3,6 @@
 //! 一张真值表钉 `observe::session_ledger` 的全部裁决：摘除按 cause ＋ 摘除之后才起的快照 · 只收割可重连的（活的只认 pidfile）·
 //! 按会话句柄认会话（改名不算关）· 一个会话里几个窗格各挂各的 · 不可观测不收割 · 每一份快照推出（没报过的）可重连 · 清单压到快照之后。
 use super::*;
-use crate::wire::ActivityFaceExt as _;
 use crate::wire::SessionFaceExt as _;
 use crate::wire::{Frame, RemovalCause, SessionFate};
 
@@ -34,7 +33,6 @@ fn added(sid: &str) -> Ev {
         project_dir: None,
         name: None,
         path: None,
-        doing: crate::wire::ActivityFace::of(None),
         face: crate::wire::SessionFace::of(crate::wire::Life::Live {
             activity: None,
             tmux: None,
@@ -158,7 +156,6 @@ fn a_removal_waits_for_an_observation_and_asks_for_one() {
         project_dir: None,
         name: None,
         path: None,
-        doing: crate::wire::ActivityFace::of(None),
         face: crate::wire::SessionFace::of(crate::wire::Life::Live {
             activity: None,
             tmux: None,
@@ -368,7 +365,6 @@ fn a_session_that_comes_back_leaves_reconnectable_and_the_list_passes_once_tmux_
 fn status(sid: &str) -> Frame {
     Frame::SessionStatus(crate::wire::SessionStatus {
         sid: sid.into(),
-        doing: crate::wire::ActivityFace::of(None),
         face: crate::wire::SessionFace::of(crate::wire::Life::Live {
             activity: None,
             tmux: None,

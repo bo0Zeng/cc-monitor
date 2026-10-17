@@ -188,8 +188,13 @@ fn the_live_cell_is_the_backends_session_added_frame() {
                 "background": true,
                 "hidden": {"by": "bg", "said": "后端那一句"},
                 "container": {"host": "tmux", "terminal": "tmux-1-2"},
-                "activity": "working",
-                "activity_text": "跑着",
+                "face": {
+                    "dot": "running", "live": {"is": "yes", "activity": "working"}, "settled": false,
+                    "name": "跑着", "tip": "跑着", "line": "跑着", "tone": "now", "order": 1,
+                    "can": {"close": {"can": "no", "why": "运行中"}, "resume": {"can": "no", "why": "运行中"},
+                            "term": {"can": "yes", "tmux": true}, "reattach": {"can": "no", "why": "运行中"},
+                            "model": {"can": "yes"}, "permission": {"can": "yes"}},
+                },
             }),
         ),
     };
@@ -213,7 +218,7 @@ fn the_live_cell_is_the_backends_session_added_frame() {
         serde_json::json!({"host": "tmux", "terminal": "tmux-1-2"})
     );
     assert_eq!(
-        (&a["activity"], &a["activity_text"]),
+        (&a["face"]["live"]["activity"], &a["face"]["name"]),
         (&serde_json::json!("working"), &serde_json::json!("跑着"))
     );
 }

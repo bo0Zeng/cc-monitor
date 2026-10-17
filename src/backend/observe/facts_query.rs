@@ -317,7 +317,7 @@ pub(crate) fn line_of(
     })
 }
 
-/// 会话血缘里的另一条会话（会话头「由 … 启动」· 「子会话 N」那一列）：编号 · 叫它什么 · 活不活 · 隐不隐藏（判定住 `control/session_hidden.rs`）。
+/// 会话血缘里的另一条会话（会话头「由 … 启动」· 「子会话 N」那一列）：编号 · 叫它什么 · 此刻的整份脸 · 隐不隐藏（判定住 `control/session_hidden.rs`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -325,8 +325,6 @@ pub(crate) fn line_of(
 pub(crate) struct Kin {
     pub(crate) sid: String,
     pub(crate) title: String,
-    /// 此刻活着（这台 pidfile 说的）。
-    pub(crate) live: bool,
     /// 此刻这条会话的整份脸。
     pub(crate) face: crate::wire::SessionFace,
     /// 隐藏那一格；不隐藏 ⇒ `null`（格恒在）。

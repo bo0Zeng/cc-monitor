@@ -1260,7 +1260,6 @@ function rowFromHits(sh: SessionHits): HistoryRow {
     customTitle: null,
     // 命中那一行不带隐藏那一格（全文搜索不判它）⇒ 按没隐藏画；它在清单里那一行到了照那一行。
     hidden: null,
-    status: sh.status,
     face: sh.face,
     can: sh.can,
     ...(sh.origin ? { origin: sh.origin } : {}),

@@ -282,7 +282,7 @@ fn the_machine_listing_carries_group_dir_failures_synth_and_last_accounts() {
     assert_eq!(
         answer(json!({}))["rows"][0].get("life"),
         None,
-        "成品里活不活只出 status 一格"
+        "成品里活不活只在整份脸里"
     );
     assert_eq!(
         l["failed"],
@@ -297,7 +297,7 @@ fn rows_carry_annotations_label_and_what_can_be_done() {
     let s1 = find(&v, S1);
     assert_eq!(s1["starred"], true);
     assert_eq!(s1["label"], "支付回调验签");
-    assert_eq!(s1["status"], "live");
+    assert_eq!(s1["face"]["live"]["is"], "yes");
     assert_eq!(
         s1["can"],
         json!({"resume": "switch", "accounts": true, "fork": true, "delete": "live"})
@@ -320,7 +320,7 @@ fn rows_carry_annotations_label_and_what_can_be_done() {
         .iter()
         .find(|r| r["agent"] == "codex")
         .unwrap();
-    assert_eq!(cx["status"], "unknown");
+    assert_eq!(cx["face"]["dot"], "unknown", "合成历史判不了活 ⇒ 状态不明");
     assert_eq!(cx["agentTag"], "Codex", "不是默认那一家 ⇒ 行上画它的叫法");
     assert_eq!(s1["agentTag"], Value::Null, "默认那一家不画");
     assert_eq!(
@@ -965,7 +965,11 @@ fn a_session_the_ledger_calls_reconnectable_is_listed_as_reconnectable() {
     .unwrap();
     crate::history::live::set_reconnectable(&Default::default());
     assert_eq!(
-        [&r, &o, &live].map(|x| crate::history::listing::status_of(x.life)),
-        ["reconnectable", "ended", "live"]
+        [&r, &o, &live].map(|x| x.life),
+        [
+            Some(RowLife::Reconnectable),
+            Some(RowLife::Ended),
+            Some(RowLife::Live { activity: None })
+        ]
     );
 }

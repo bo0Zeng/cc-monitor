@@ -57,7 +57,7 @@ describe("接过仓库", () => {
   });
 });
 
-const who = (alive: boolean): PlanWho => ({ kind: "session", sid: "s-1", parent: null, alive, activity: alive ? "idle" : null, needs: null }) as unknown as PlanWho;
+const who = (alive: boolean): PlanWho => ({ kind: "session", sid: "s-1", parent: null, needs: null, face: { live: alive ? { is: "yes", activity: "idle" } : { is: "no" } } }) as unknown as PlanWho;
 const host: ReviewHost = {
   origin: () => "<local>",
   workspace: () => "/work",

@@ -27,7 +27,7 @@ const ONE: { [K in Kind]: unknown } = {
   file_notice: { session_id: "s", origin: "<local>", path: "/p/s.jsonl", change: "gone" },
   added: { sid: "s", agent_kind: "claude", pid: 1, container: { host: "none" } },
   status: { sid: "s" },
-  state: { sid: "s", state: "ended", state_order: 5 },
+  state: { sid: "s", state: "ended" },
   unseen: { origin: "<local>" },
   listed: { origin: "<local>", all: true },
   snapshot_inflight: { count: 0 },

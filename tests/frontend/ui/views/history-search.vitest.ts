@@ -39,7 +39,6 @@ function row(sid: string, updatedAt: number, hitCount: number): SessionHits {
     hits: [],
     hitsTruncated: false,
     isBg: false,
-    status: "ended",
     face: faces.ended as SessionFace,
     can: { resume: "yes", accounts: true, fork: true, delete: "yes" },
   };

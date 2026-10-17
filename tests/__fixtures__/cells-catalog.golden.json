@@ -875,12 +875,6 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "children[].live",
-          "type": "bool"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "children[].sid",
           "type": "string"
         },
@@ -1441,12 +1435,6 @@
           "kind": "value",
           "path": "startedBy.hidden.said",
           "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "startedBy.live",
-          "type": "bool"
         },
         {
           "frozen": false,
@@ -2071,30 +2059,6 @@
         {
           "frozen": true,
           "kind": "value",
-          "path": "activity",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "activity_order",
-          "type": "number"
-        },
-        {
-          "frozen": true,
-          "kind": "text",
-          "path": "activity_text",
-          "type": "string"
-        },
-        {
-          "frozen": true,
-          "kind": "tone",
-          "path": "activity_tone",
-          "type": "enum"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
           "path": "agent_kind",
           "type": "string"
         },
@@ -2141,27 +2105,27 @@
           "type": "string"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "value",
           "path": "face.can.model.can",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "face.can.model{can=no}.why",
           "type": "string"
         },
         {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.can.permission.can",
-          "type": "enum"
+          "frozen": true,
+          "kind": "text",
+          "path": "face.can.model.why",
+          "type": "string"
         },
         {
-          "frozen": false,
+          "frozen": true,
+          "kind": "value",
+          "path": "face.can.permission.can",
+          "type": "string"
+        },
+        {
+          "frozen": true,
           "kind": "text",
-          "path": "face.can.permission{can=no}.why",
+          "path": "face.can.permission.why",
           "type": "string"
         },
         {
@@ -2201,7 +2165,7 @@
           "type": "bool"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "value",
           "path": "face.dot",
           "type": "enum"
@@ -2213,7 +2177,7 @@
           "type": "string"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "value",
           "path": "face.live.activity",
           "type": "enum"
@@ -2225,7 +2189,7 @@
           "type": "string"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "text",
           "path": "face.name",
           "type": "string"
@@ -2237,7 +2201,7 @@
           "type": "number"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "value",
           "path": "face.settled",
           "type": "bool"
@@ -2249,7 +2213,7 @@
           "type": "string"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "tone",
           "path": "face.tone",
           "type": "enum"
@@ -2315,30 +2279,6 @@
           "type": "string"
         },
         {
-          "frozen": false,
-          "kind": "value",
-          "path": "switch.model.can",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "switch.model{can=no}.why",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "switch.permission.can",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "switch.permission{can=no}.why",
-          "type": "string"
-        },
-        {
           "frozen": true,
           "kind": "value",
           "path": "waiting_for",
@@ -2349,30 +2289,6 @@
     },
     {
       "cells": [
-        {
-          "frozen": true,
-          "kind": "value",
-          "path": "activity",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "activity_order",
-          "type": "number"
-        },
-        {
-          "frozen": true,
-          "kind": "text",
-          "path": "activity_text",
-          "type": "string"
-        },
-        {
-          "frozen": true,
-          "kind": "tone",
-          "path": "activity_tone",
-          "type": "enum"
-        },
         {
           "frozen": false,
           "kind": "value",
@@ -2386,27 +2302,27 @@
           "type": "string"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "value",
           "path": "face.can.model.can",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "face.can.model{can=no}.why",
           "type": "string"
         },
         {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.can.permission.can",
-          "type": "enum"
+          "frozen": true,
+          "kind": "text",
+          "path": "face.can.model.why",
+          "type": "string"
         },
         {
-          "frozen": false,
+          "frozen": true,
+          "kind": "value",
+          "path": "face.can.permission.can",
+          "type": "string"
+        },
+        {
+          "frozen": true,
           "kind": "text",
-          "path": "face.can.permission{can=no}.why",
+          "path": "face.can.permission.why",
           "type": "string"
         },
         {
@@ -2446,7 +2362,7 @@
           "type": "bool"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "value",
           "path": "face.dot",
           "type": "enum"
@@ -2458,7 +2374,7 @@
           "type": "string"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "value",
           "path": "face.live.activity",
           "type": "enum"
@@ -2470,7 +2386,7 @@
           "type": "string"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "text",
           "path": "face.name",
           "type": "string"
@@ -2482,7 +2398,7 @@
           "type": "number"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "value",
           "path": "face.settled",
           "type": "bool"
@@ -2494,7 +2410,7 @@
           "type": "string"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "tone",
           "path": "face.tone",
           "type": "enum"
@@ -2530,30 +2446,6 @@
           "type": "string"
         },
         {
-          "frozen": false,
-          "kind": "value",
-          "path": "switch.model.can",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "switch.model{can=no}.why",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "switch.permission.can",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "switch.permission{can=no}.why",
-          "type": "string"
-        },
-        {
           "frozen": true,
           "kind": "value",
           "path": "waiting_for",
@@ -2577,27 +2469,27 @@
           "type": "string"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "value",
           "path": "face.can.model.can",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "face.can.model{can=no}.why",
           "type": "string"
         },
         {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.can.permission.can",
-          "type": "enum"
+          "frozen": true,
+          "kind": "text",
+          "path": "face.can.model.why",
+          "type": "string"
         },
         {
-          "frozen": false,
+          "frozen": true,
+          "kind": "value",
+          "path": "face.can.permission.can",
+          "type": "string"
+        },
+        {
+          "frozen": true,
           "kind": "text",
-          "path": "face.can.permission{can=no}.why",
+          "path": "face.can.permission.why",
           "type": "string"
         },
         {
@@ -2643,7 +2535,7 @@
           "type": "string"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "value",
           "path": "face.dot",
           "type": "enum"
@@ -2661,7 +2553,7 @@
           "type": "string"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "text",
           "path": "face.name",
           "type": "string"
@@ -2673,7 +2565,7 @@
           "type": "number"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "value",
           "path": "face.settled",
           "type": "bool"
@@ -2685,7 +2577,7 @@
           "type": "string"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "tone",
           "path": "face.tone",
           "type": "enum"
@@ -2697,7 +2589,7 @@
           "type": "string"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "value",
           "path": "sid",
           "type": "string"
@@ -2707,54 +2599,6 @@
           "kind": "value",
           "path": "state",
           "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "state_hint",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "state_order",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "state_text",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "tone",
-          "path": "state_tone",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "switch.model.can",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "switch.model{can=no}.why",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "switch.permission.can",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "switch.permission{can=no}.why",
-          "type": "string"
         }
       ],
       "name": "session_state"
@@ -3564,25 +3408,25 @@
           "type": "string"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "value",
           "path": "rows[].face.can.model.can",
           "type": "string"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "text",
           "path": "rows[].face.can.model.why",
           "type": "string"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "value",
           "path": "rows[].face.can.permission.can",
           "type": "string"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "text",
           "path": "rows[].face.can.permission.why",
           "type": "string"
@@ -3630,7 +3474,7 @@
           "type": "string"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "value",
           "path": "rows[].face.dot",
           "type": "enum"
@@ -3642,7 +3486,7 @@
           "type": "string"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "value",
           "path": "rows[].face.live.activity",
           "type": "enum"
@@ -3654,7 +3498,7 @@
           "type": "string"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "text",
           "path": "rows[].face.name",
           "type": "string"
@@ -3666,7 +3510,7 @@
           "type": "number"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "value",
           "path": "rows[].face.settled",
           "type": "bool"
@@ -3678,7 +3522,7 @@
           "type": "string"
         },
         {
-          "frozen": false,
+          "frozen": true,
           "kind": "tone",
           "path": "rows[].face.tone",
           "type": "enum"
@@ -3802,12 +3646,6 @@
           "kind": "value",
           "path": "rows[].startedAt",
           "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "rows[].status",
-          "type": "string"
         },
         {
           "frozen": false,

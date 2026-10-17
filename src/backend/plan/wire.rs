@@ -18,9 +18,6 @@ pub(crate) struct PlanWho {
     pub kind: String,
     /// 主会话 ⇒ 它自己；子 agent ⇒ 父会话；认不出 ⇒ `null`。
     pub sid: Option<String>,
-    pub alive: bool,
-    #[cfg_attr(test, ts(type = "\"working\" | \"needs_you\" | \"idle\" | null"))]
-    pub activity: Option<String>,
     /// 在等你时等的是哪一类（批准 · 回答 · 计划 · 说不清）。
     pub needs: Option<String>,
     /// 此刻那条会话的整份脸（认不出 ⇒ 状态不明）。

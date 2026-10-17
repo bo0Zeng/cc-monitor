@@ -50,7 +50,6 @@ A new session file appeared。
 | `project_dir` | string? | 会话的项目目录：会话起在哪个目录（tab 标题 · 打开工作目录 · 分组都用它） |
 | `name` | string? | pidfile 里的会话名 |
 | `path` | string? | 该会话 jsonl 的远端绝对路径（同 sid 多文件时取 mtime 最新者）；宣告时还没写首行 ⇒ 缺 |
-| `doing` | ActivityFace | 宣告时此刻在干什么（`ActivityFace`，平铺在帧上） |
 | `face` | SessionFace | 宣告时这条会话的整份脸 |
 | `name_face` | NameFace | 叫这条会话什么（`NameFace`，平铺在帧上） |
 | `waiting_for` | string? | 宣告时在等什么（同 `session_status`） |
@@ -75,7 +74,6 @@ A new session file appeared。
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `sid` | string | 会话 id |
-| `doing` | ActivityFace | 此刻在干什么（同 `session_added` 那几格，`ActivityFace`） |
 | `face` | SessionFace | 此刻这条会话的整份脸 |
 | `name_face` | NameFace | 叫这条会话什么（同 `session_added` 那两格；改了名、来了标题 / 第一句也发这一帧） |
 | `waiting_for` | string? | 在等什么（pidfile 里的 `waitingFor`） |
@@ -89,11 +87,6 @@ A new session file appeared。
 |---|---|---|
 | `sid` | string | 会话 id |
 | `state` | SessionFate | 离开「活」之后的去向 |
-| `state_text` | Words | 那一种写好的短名 |
-| `state_hint` | Words | 悬停那一句 |
-| `state_tone` | Tone | 语气 |
-| `state_order` | number | 监控板组内的序（与活会话的 `activity_order` 同一把尺、排在它们之后；小的在前） |
-| `switch` | Switch | 此刻能不能换模型 · 权限档（离开「活」那一形） |
 | `face` | SessionFace | 离开「活」之后这条会话的整份脸（可重连 · 已结束 · 记录已不在） |
 
 ### `session_removed`
@@ -294,34 +287,6 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 - `needs_you` —— 在等人（批准 · 回答 · 弹窗）
 - `idle` —— 闲着，等下一句输入
 - `background_work` —— 一轮停了，它在后台起的命令还在跑（跑完多半会接着干）
-
-#### `ActivityFace`
-
-**活会话此刻在干什么的那几格**（`session_added` · `session_status` 都带它，平铺在帧上）：那一态（`activity`，说不清 ⇒ 不上线）· 写好的字 · 语气 · 监控板组内的序（`activity_order`，小的在前）· 能不能换。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `activity` | SessionActivity? |  |
-| `activity_text` | Words |  |
-| `activity_tone` | Tone |  |
-| `activity_order` | number |  |
-| `switch` | Switch | 此刻能不能换模型 · 权限档（随那一态判） |
-
-#### `Switch`
-
-**此刻能不能换模型 · 权限档**（会话帧上的 `switch`）。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `model` | CanSwitch | 换模型（`session-model`） |
-| `permission` | CanSwitch | 切权限档（`session-permission`） |
-
-#### `CanSwitch`
-
-一样此刻能不能换：`{can: "yes"}` · `{can: "no", why: 写好的那一句}`。
-
-- `can: "yes"` —— 能换
-- `can: "no"`，带 `why` Words —— 此刻不能（chip 灰着，上方写这一句）
 
 #### `SessionFace`
 
@@ -4296,10 +4261,6 @@ label: Words,
  */
 untitled: boolean, 
 /**
- * `live` 在跑 · `reconnectable` claude 退了、tmux 里还挂着它 · `ended` 已结束 · `unknown` 说不清（活不活只出这一格）。
- */
-status: "live" | "reconnectable" | "ended" | "unknown", 
-/**
  * 那台此刻对这一行的说法（活着的照它的进程状态文件判在干什么；判不了活 ⇒ 状态不明）。
  */
 face: SessionFace, can: Can, 
@@ -4452,7 +4413,6 @@ limit?: number,
  * 只比会话标题与第一句（不搜内容）。
  */
 titles?: boolean, };
-type Liveness = "live" | "ended";
 type SearchHit = { 
 /**
  * 消息 uuid：打开查看器后据此滚动定位、高亮。
@@ -4544,10 +4504,6 @@ hitsTruncated: boolean,
  */
 isBg: boolean, 
 /**
- * 那台判的：在跑 · 已结束（全文搜索只扫记录树，判得了活）。
- */
-status: Liveness, 
-/**
  * 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
  */
 can: Can, 
@@ -4595,7 +4551,6 @@ type CanResume = "yes" | "switch" | "bg";
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
 type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type HistorySearchMergeReq = { machines: Array<MachineHits>, };
-type Liveness = "live" | "ended";
 type MachineHits = { origin: Origin, sessions: Array<SessionHits>, };
 type Merged = { 
 /**
@@ -4647,10 +4602,6 @@ hitsTruncated: boolean,
  * 后台分身会话。
  */
 isBg: boolean, 
-/**
- * 那台判的：在跑 · 已结束（全文搜索只扫记录树，判得了活）。
- */
-status: Liveness, 
 /**
  * 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
  */
@@ -4749,10 +4700,6 @@ hitsTruncated: boolean,
  * 后台分身会话。
  */
 isBg: boolean, 
-/**
- * 那台判的：在跑 · 已结束（全文搜索只扫记录树，判得了活）。
- */
-status: Liveness, 
 /**
  * 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
  */
@@ -6583,10 +6530,6 @@ path: string,
  */
 prior?: FactsToken, };
 type Kin = { sid: string, title: string, 
-/**
- * 此刻活着（这台 pidfile 说的）。
- */
-live: boolean, 
 /**
  * 此刻这条会话的整份脸。
  */
@@ -13024,7 +12967,7 @@ type PlanWho = { id: string, kind: "session" | "subagent" | "unknown",
 /**
  * 主会话 ⇒ 它自己；子 agent ⇒ 父会话；认不出 ⇒ `null`。
  */
-sid: string | null, alive: boolean, activity: "working" | "needs_you" | "idle" | null, 
+sid: string | null, 
 /**
  * 在等你时等的是哪一类（批准 · 回答 · 计划 · 说不清）。
  */
@@ -13352,7 +13295,7 @@ type PlanWho = { id: string, kind: "session" | "subagent" | "unknown",
 /**
  * 主会话 ⇒ 它自己；子 agent ⇒ 父会话；认不出 ⇒ `null`。
  */
-sid: string | null, alive: boolean, activity: "working" | "needs_you" | "idle" | null, 
+sid: string | null, 
 /**
  * 在等你时等的是哪一类（批准 · 回答 · 计划 · 说不清）。
  */
