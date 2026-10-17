@@ -5,9 +5,8 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { Scene } from "./index";
 import type { World } from "../fake/types";
 import { defaultWorld, LOCAL } from "../fake/world";
-import { putAccounts, putPrefs, putQuota } from "../disk";
+import { HOME, putAccounts, putPrefs, putQuota } from "../disk";
 import { ACCOUNTS } from "../fake/ops";
-import { PB_DIR_GOOD } from "../fake/machine";
 import { PROFILE_ACCOUNTS, PROFILES_FILE, putProfileAccounts, putProfiles, staleBook, type ProfilesLook } from "../disk/profiles";
 import { emit } from "@tauri-apps/api/event";
 import { byText, click, sleep, waitFor } from "./helpers";
@@ -457,7 +456,7 @@ export const SETTINGS_SCENES: Scene[] = [
     await sleep(500);
   }, () => {
     const w = defaultWorld();
-    putPrefs(w.disk[LOCAL], { pbDir: PB_DIR_GOOD });
+    putPrefs(w.disk[LOCAL], { pbDir: `${HOME}/tools/planned-build` });
     return w;
   }),
   settings("settings-machine-local-pb-dir-bad", "设置 · 本机 · pb 路径不能用", "「pb 路径」填一个底下没有 pb 的目录：那台说不能用、不存，行下是那台那一句", async () => {
@@ -467,9 +466,14 @@ export const SETTINGS_SCENES: Scene[] = [
     const row = await waitFor('.settings-page:not([hidden]) [data-anchor="pb-dir"]');
     row.scrollIntoView({ block: "center" });
     const input = row.querySelector("input")!;
-    input.value = "/opt/tools";
+    input.value = `${HOME}/tools`;
     input.dispatchEvent(new Event("change"));
     await sleep(800);
+  }, () => {
+    // 那台起一次 pb 问能不能用（真后端）：填的是一个在的目录，底下没有 pb。
+    const w = defaultWorld();
+    w.disk[LOCAL].files["tools/notes.txt"] = "\n";
+    return w;
   }),
   settings("settings-machines-add", "设置 · 添加机器 · 自己填", "机器页点「添加机器」→「自己填」", async () => {
     await go("machines");

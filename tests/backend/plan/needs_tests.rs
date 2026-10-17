@@ -1,7 +1,7 @@
 //! 要你看四种的判定：顶块走到看全局 · 判据红 · 接手的会话停了而那一块没做完 · 接手的会话在等你；键带条目版本；计数不含「问人」那一种。
 
 use super::*;
-use crate::plan::fixture::{dump, MAIN, SUB};
+use crate::plan::fixture::{dump, MAIN, STRANGER, SUB};
 use crate::plan::{product, Whose};
 use serde_json::json;
 
@@ -221,8 +221,16 @@ fn a_return_lands_when_a_new_child_appears_or_the_body_changes() {
     let cells = sl["cells"].as_array().unwrap();
     let st = landing(&at, &cell, cells);
     assert_eq!(st["state"], "returned");
-    assert_eq!(st["to"], MAIN);
+    // 送给谁照线上那一形（与在长它的 · 签它的同形）：记下的 sid 对到这一格此刻的那一位。
+    assert_eq!(st["to"], cell["owner"]);
+    assert_eq!(st["to"]["sid"], MAIN);
     assert_eq!(st["at"], 5);
+    // 这一格此刻已经没有那一位（接手换了人）⇒ 说不出是谁。
+    let gone = Returned {
+        to: STRANGER.into(),
+        ..at.clone()
+    };
+    assert_eq!(landing(&gone, &cell, cells)["to"], Value::Null);
     // 送达未知：还没落地时照实说。
     let unsure = Returned {
         result: "unsure".into(),
