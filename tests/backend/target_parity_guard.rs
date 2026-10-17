@@ -99,12 +99,14 @@ const WAITING_ROWS: &[(&str, &str)] = &[
     ("cli-subcommands", "--launch"),
     ("wire-commands", "terminal-preview"),
     ("wire-commands", "terminal-input"),
+    ("wire-commands", "session-resume"),
     ("wire-commands", "session-say"),
     ("wire-commands", "session-permission"),
     ("wire-commands", "session-model"),
     ("wire-commands", "terminal-follow"),
     ("cli-subcommands", "--terminal-preview"),
     ("cli-subcommands", "--terminal-input"),
+    ("cli-subcommands", "--session-resume"),
     ("cli-subcommands", "--session-say"),
     ("cli-subcommands", "--session-permission"),
     ("cli-subcommands", "--session-model"),
@@ -140,7 +142,7 @@ fn no_gap_rationale_picks_the_windows_mechanism() {
     let want: BTreeSet<(&str, &str)> = WAITING_ROWS.iter().copied().collect();
     assert_eq!(
         cites, want,
-        "写「Windows 后台机制」的理由串那几行 ≠ 点名的那 19 行（`ccm-launcher × Windows` 8 ＋ 命令面 11）"
+        "写「Windows 后台机制」的理由串那几行 ≠ 点名的那 21 行（`ccm-launcher × Windows` 8 ＋ 命令面 13）"
     );
     let picks: Vec<String> = TARGET_GAPS
         .iter()
@@ -186,9 +188,9 @@ fn both_tiers_have_real_members_and_their_sizes_are_pinned() {
 /// 否则「零命中」可能只是剥法把它剥没了。
 #[test]
 fn the_derivation_never_reads_the_gap_table() {
-    let path = crate::guard_support::src_root().join("lib.rs");
+    let path = guard_core::addr::backend_src_root().join("lib.rs");
     let raw = std::fs::read_to_string(&path).expect("读 lib.rs");
-    let prod = crate::guard_support::production_code(&raw);
+    let prod = guard_core::production_code(&raw);
     let needle = "TARGET_GAPS";
     assert!(
         prod.matches(needle).count() >= 1,
@@ -369,7 +371,7 @@ fn every_parity_face_is_populated_on_every_target() {
             f.family
         );
         assert!(
-            crate::guard_support::src_root()
+            guard_core::addr::backend_src_root()
                 .join(f.declared_in)
                 .is_file(),
             "命令面 `{}` 说它住 `{}`，盘上没有这份文件",
@@ -527,7 +529,7 @@ type Tree = std::collections::BTreeMap<String, String>;
 /// 后端 crate 的库那棵树（`main.rs` 是二进制根，不在库的模块树里 ⇒ 不收）。
 fn backend_tree() -> Tree {
     // 走仓里唯一的遍历口径（`scanning_guard_registry` 那条纪律）；本文件住 `tests/backend/`，不在被扫的树里。
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     guard_core::scan_tree!(&root, &["rs"])
         .into_iter()
         .map(|(p, raw)| {
@@ -914,6 +916,10 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
         "起新会话：tmux 那一形没 tmux ⇒ `place` 那一格不行（`place_unavailable`），开终端那一形本来用不着 tmux（Windows 本机照做）",
     ),
     (
+        "session-open",
+        "起会话 · 恢复 · 接回：要 tmux 而这台没有 ⇒ `place_unavailable`（不改道），直路本来用不着 tmux（Windows 本机照做）",
+    ),
+    (
         "session-new-facts",
         "起新会话框的这台事实：没 tmux ⇒ `tmux: false`、只剩开终端那一形，别的几格照答",
     ),
@@ -1192,7 +1198,7 @@ fn every_ccm_capability_that_rides_tmux_is_declared_tmux_carried() {
     };
     // 账号那一格要一个**真在盘上**的目录（`resolve_account` 会看它在不在）：借后端源码根（一定在，不建不删 ——
     // 建临时目录会让本文件在测试层分区里从「源码扫描」升成「集成」，`test_tiers` 那张表跟着要挪）。
-    let acct_dir = crate::guard_support::src_root();
+    let acct_dir = guard_core::addr::backend_src_root();
     // 账号 0 排第一个：没标默认号 ⇒ 默认号是它（不指定号），基线不落到 `acct-x` 上（否则 `--account acct-x` 与基线同形）。
     let table = AccountTable::from_accounts(vec![
         Account {

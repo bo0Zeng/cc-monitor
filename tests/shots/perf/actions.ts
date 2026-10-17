@@ -461,17 +461,14 @@ async function menu(): Promise<Record<string, unknown>> {
   });
 }
 
-/** 一屏终端画面（`k` 变出不同的行：每帧都真变）。 */
-function screen(k: number): unknown {
-  const lines = Array.from({ length: 40 }, (_, i) => {
-    const text = `     transforming (${k * 40 + i}) packages/mod-${(k + i) % 23}/src/page.ts  ${"·".repeat((k + i) % 30)}`;
-    return { text, spans: [{ from: 5, to: 17, fg: "bright-black" }, { from: 24, to: 52, fg: "blue" }] };
-  });
-  lines.push({ text: `✶ Building… (${k}s · ↑ ${k}.2k tokens · esc to interrupt)`, spans: [{ from: 0, to: 11, fg: "#d97757" }] });
-  return { lines, screen: `0000000000${String(k).padStart(6, "0")}`, captured_at: Math.floor(Date.now() / 1000), captured_at_text: "10:42:05" };
+/** 一屏终端画面（原样的终端输出，`k` 变出不同的行：每帧都真变）：替身印进自己的窗格，真后端照常推给订着的抽屉。 */
+function screen(k: number): string {
+  const rows = Array.from({ length: 30 }, (_, i) => `     \x1b[90mtransforming (${k * 30 + i})\x1b[0m \x1b[34mpackages/mod-${(k + i) % 23}/src/page.ts\x1b[0m  ${"·".repeat((k + i) % 30)}`);
+  rows.push(`\x1b[38;2;217;119;87m✶ Building…\x1b[0m (${k}s · ↑ ${k}.2k tokens · esc to interrupt)`);
+  return `\x1b[H\x1b[2J${rows.join("\r\n")}`;
 }
 
-/** 终端抽屉：最长那条的终端开在抽屉里，实时画面 30 帧 / 秒推 5 s，关抽屉。 */
+/** 终端抽屉：最长那条的终端开在抽屉里，替身窗格 30 帧 / 秒换屏 5 s（真后端一帧在途等回执，推到抽屉的帧数由它定），关抽屉。 */
 async function drawer(): Promise<Record<string, unknown>> {
   await toLongest();
   const be = window.__perfBackend;
@@ -484,8 +481,13 @@ async function drawer(): Promise<Record<string, unknown>> {
     await sleep(500);
     for (let k = 0; k < 150; k++) {
       const t = performance.now();
-      await step(steps, "frame", () => be.pushScreen(active.origin, screen(k)));
+      await step(steps, "frame", () => be.paint(active.origin, active.sid, screen(k)));
       await sleep(Math.max(0, 33 - (performance.now() - t)));
+    }
+    // 最后那一屏真到了抽屉（不然量的是一块不动的画面）：真后端一帧在途等回执，中间的可以并掉，末一屏不会丢。
+    const last = `(149s ·`;
+    for (const t0 = performance.now(); !$("#bottom-drawer pre")?.textContent?.includes(last); await sleep(50)) {
+      if (performance.now() - t0 > 10_000) throw new Error("替身窗格换了屏，抽屉 10 s 没画出最后那一屏");
     }
     await step(steps, "close", () => key("`", { ctrl: true, code: "Backquote" }));
     await sleep(300);

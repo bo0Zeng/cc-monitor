@@ -80,7 +80,7 @@ const WIRED: &[(&str, usize, usize, usize)] = &[
 /// 人群从生产源码派生（`src/frontend/shell/src` 整棵，剥测试段与注释），`frame_tally.rs` 自己不算。
 #[test]
 fn w5vis_every_frame_reader_keeps_the_tally_and_nothing_else_pretends_to() {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let mut seen: Vec<(String, usize, usize, usize)> = Vec::new();
     for (path, raw) in guard_core::scan_tree_excluding(
         &root.join("src/frontend/shell/src"),
@@ -155,7 +155,7 @@ fn w5vis_no_frame_reader_skips_an_unparsed_frame_silently() {
     let stdio = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/local_backend.rs"
     ));
-    let ssh = crate::guard_support::stream_source_production();
+    let ssh = guard_core::addr::stream_source_production();
     for (f, head, must) in SKIPS {
         let prod = if *f == "local_backend.rs" {
             &stdio

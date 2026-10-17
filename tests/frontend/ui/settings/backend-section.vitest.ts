@@ -60,10 +60,6 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
       calls.push({ name: "backend_stop", args: a });
       return Promise.resolve(stopAnswer);
     },
-    local_ccm_entry_status: (fresh?: boolean) => {
-      calls.push({ name: "local_ccm_entry_status", args: fresh });
-      return Promise.resolve({ ok: true, summary: "S", message: "" });
-    },
     backend_machines: () => {
       calls.push({ name: "backend_machines", args: null });
       return Promise.resolve(["<local>", "甲机"]);
@@ -479,24 +475,6 @@ describe("P2s backend 开关区", () => {
       { origin: rows[1].dataset.backendCells, body: {} },
       { origin: rows[0].dataset.backendCells, body: {} },
     ]);
-  });
-  /** 手动兜底：「本机 PATH 探针的 5 分钟缓存在『重新对齐』时作废，不再多等」。 */
-  it("FIX4 ⑥：本机那一行 [重新对齐] 作废本机 ccm 那份缓存（`fresh`）；远端那一行不碰", async () => {
-    const s = new BackendSection({ headless: true });
-    await flush();
-    await flush();
-    const rows = [...s.element.querySelectorAll<HTMLElement>("[data-backend-cells]")];
-    const ask = (o: string) =>
-      [...rows.find((r) => r.dataset.backendCells === o)!.querySelectorAll("button")].find((b) => b.textContent === copyText("backend.buildCells.resync"))!.click();
-    calls.length = 0;
-    ask("甲机");
-    await flush();
-    await flush();
-    expect(calls.filter((c) => c.name === "local_ccm_entry_status")).toEqual([]);
-    ask("<local>");
-    await flush();
-    await flush();
-    expect(calls.filter((c) => c.name === "local_ccm_entry_status")).toEqual([{ name: "local_ccm_entry_status", args: true }]);
   });
 });
 

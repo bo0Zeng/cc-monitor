@@ -74,8 +74,8 @@ fun NewSessionPane(
     }
     login?.let { f ->
         val target by f.state.collectAsStateWithLifecycle()
-        val color = ui.accounts.firstOrNull { it.name == target.account }?.color
-        LoginSheet(f, color, machine, onClosed = {
+        val row = ui.accounts.firstOrNull { it.name == target.account }
+        LoginSheet(f, row?.plate, row?.color, machine, onClosed = {
             login = null
             picker.openAccounts()
         })

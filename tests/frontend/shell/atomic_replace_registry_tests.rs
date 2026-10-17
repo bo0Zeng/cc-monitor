@@ -9,9 +9,9 @@ const RULE: &str = "\
       理由：它**保留 dst 原有的 ACL/ADS/创建时间**。`MoveFileExW` 会把 tmp 的\n\
       继承 ACL 覆盖上去 ⇒ 用户 explicit ACE 丢失 ⇒ Documents 重定向到非默认盘的\n\
       用户读不了自己的 profile（v1.7.10 真踩过）。\n\
-  · 写 **monitor 自己的**文件（config.json / 日志轮转）\n\
-    ⇒ `MoveFileExW(tmp, dst, MOVEFILE_REPLACE_EXISTING)` 就够 —— 文件是我们自己的，\n\
-      tmp 的 ACL 覆盖上去没有受害者。§4 的要求**只限定在用户文件**。\n\
+  · 写 **monitor 自己的**文件（config.json · 释放出来的程序）\n\
+    ⇒ 临时件 `sync_all` 后 `std::fs::rename(tmp, dst)` 就够（Windows 上即覆盖已在的目标，长路径前缀标准库自己补；\n\
+      不手写 `MoveFileExW`）—— 文件是我们自己的，tmp 的 ACL 覆盖上去没有受害者。§4 的要求**只限定在用户文件**。\n\
 拿不准就当成用户文件（两种错判的代价不对称：多保留一次 ACL 无害，丢一次 ACL 用户读不了文件）。";
 
 /// 每个生产调用点登记：`(相对 src/frontend/shell/src 的路径, 符号, 外层项, 写的是哪类文件, 为什么是这一套)`，按「文件 × 符号 × 外层项」认。
@@ -37,12 +37,12 @@ const SITES: &[(&str, &str, &str, &str, &str)] = &[
     ),
     // `cc_bus_deploy.rs [rename]` 那一行摘了：覆盖前整目录改名留底随装 cc-bus 进了本机后端（`assets/cc_bus_install.rs`，经 `files-rename`）。
     (
-        "platform/fs.rs", // 原住 `config.rs` 的 `atomic_replace`（两个平台臂一起搬进壳的平台层）
-        "MoveFileExW",
-"atomic_replace",
+        "config.rs",
+        "rename",
+        "patch_config_at",
         "monitor 自己的 config.json",
-        "写的是我们自己的配置文件，tmp 的 ACL 覆盖到 dst 没有受害者。\
-             §4 把 ReplaceFileW 的要求**限定在用户文件**，这里不在其中。",
+        "写的是我们自己的配置文件：临时件先落盘再换名上位，tmp 的 ACL 覆盖到 dst 没有受害者。\
+             §4 把保 ACL 的要求**限定在用户文件**，这里不在其中。",
     ),
     // `logging.rs [MoveFileExW]` 摘了：诊断写口改经 `config::patch_config_at`（config.json 唯一的写函数），
     //   它那份从 config.rs 复制来的 `atomic_replace` 随之删了。
@@ -67,14 +67,6 @@ const SITES: &[(&str, &str, &str, &str, &str)] = &[
              ⚠ 副本是**刻意**的（模块头注论证过不建统一写入器：两类文件的正确行为本来就不同），\
              但刻意复制的代价就是**两处都得被看住** —— 这正是登记表存在的理由。",
     ),
-    (
-        "platform/fs.rs", // 同上
-        "rename",
-"atomic_replace",
-        "**monitor 自己的** config.json（POSIX 分支）",
-        "同文件那条 `MoveFileExW` 的 `cfg(not(windows))` 对侧。写的是我们自己的配置，\
-             POSIX 上 rename 即原子替换，无 ACL 顾虑。",
-    ),
     // `logging.rs [rename]` 同上一起摘。
     // `sftp.rs [rename] 2`（远端上传落地的两步：旧的改名 `.bak` · 临时件上位）摘了 ——
     //   那段原子上传随 SFTP 搬进本机常驻后端（`src/backend/ssh-dial/sftp.rs::put_atomic`，写只许两处）；本表只管 monitor。
@@ -83,8 +75,8 @@ const SITES: &[(&str, &str, &str, &str, &str)] = &[
 ];
 
 fn src_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::crate_src_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::shell_src_root()
 }
 
 /// 剥掉整行注释 —— 本文件与 `mcp.rs` / `profile_installer.rs` 的**头注里就写着这两个符号**。
@@ -165,7 +157,7 @@ fn call_sites() -> Vec<(String, String, String)> {
         for (i, l) in lines.iter().enumerate() {
             for (name, pat) in SCANNED {
                 if l.contains(pat) {
-                    let func = crate::guard_support::enclosing_fn(&lines, i);
+                    let func = guard_core::addr::enclosing_fn(&lines, i);
                     out.push((rel.clone(), (*name).to_string(), func));
                 }
             }
@@ -220,17 +212,17 @@ fn each_entry_names_the_file_class_it_writes() {
         );
     }
     // 两套都必须真的有人用 —— 只剩一套时这张表就退化成一句废话，该回来重读 §4。
-    let mv = SITES
+    let own = SITES
         .iter()
-        .filter(|(_, s, ..)| *s == "MoveFileExW")
+        .filter(|(_, s, _, class, _)| *s == "rename" && class.contains("monitor 自己"))
         .count();
     let rp = SITES
         .iter()
         .filter(|(_, s, ..)| *s == "ReplaceFileW")
         .count();
     assert!(
-        mv > 0 && rp > 0,
-        "登记表里只剩一套语义（MoveFileExW {mv} 条 / ReplaceFileW {rp} 条）—— \
+        own > 0 && rp > 0,
+        "登记表里只剩一套语义（monitor 自己的 rename {own} 条 / ReplaceFileW {rp} 条）—— \
              「两类文件两种语义」这条分工是否还成立？回去重读 `src/doc/INVARIANTS.md §4`"
     );
 }
@@ -240,7 +232,7 @@ fn each_entry_names_the_file_class_it_writes() {
 /// 且 `MoveFileExW` 仍被明令排除 —— 否则本模块整套论证的前提就没了。
 #[test]
 fn the_doc_rule_this_registry_rests_on_is_still_there() {
-    let doc = fs::read_to_string(crate::guard_support::repo_root().join("src/doc/INVARIANTS.md"))
+    let doc = fs::read_to_string(guard_core::addr::repo_root().join("src/doc/INVARIANTS.md"))
         .expect("src/doc/INVARIANTS.md 读不到 —— 路径变了就把这条一起改");
     let sec = doc
         .split("## 4. ")

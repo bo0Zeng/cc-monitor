@@ -41,7 +41,7 @@ pub(crate) const DIAL_SITES: &[(&str, usize, bool, &str, &str)] = &[
         "已经是 0。这一行留着是为了让「又长回来一处」当场红（处数钉成 0，不是删行）。",
     ),
     (
-        "sftp.rs",
+        "deploy.rs",
         0,
         true,
         "**搬走了**：SFTP 进了本机常驻后端（用户），与其它 SSH 同一条连接；\
@@ -69,11 +69,11 @@ fn corpus() -> Vec<(&'static str, String)> {
     vec![
         (
             "stream_source/",
-            crate::guard_support::stream_source_production(),
+            guard_core::addr::stream_source_production(),
         ),
         (
-            "sftp.rs",
-            production_code(include_str!("../../../../src/frontend/shell/src/sftp.rs")),
+            "deploy.rs",
+            production_code(include_str!("../../../../src/frontend/shell/src/deploy.rs")),
         ),
     ]
 }
@@ -266,7 +266,7 @@ fn every_registered_dial_site_says_what_it_is_and_when_it_could_go() {
 /// —— 一个原始字符串里塞进这么一行，**整棵树的剥法当场坏掉**
 /// （实打：`structural_scan` / `cross_half_edge_registry` / `write_half_guard` 三族
 /// 一起红，报的都是 `guard_core` 里那条剥法的断言）。
-/// `guard_support` 那条 `every_backend_file_strips_clean` 的头注逐字预告过这一形，
+/// `every_backend_file_strips_clean` 的头注逐字预告过这一形，
 /// **这一轮把它撞出来了**。逐行存 ⇒ 那个 `}` 永远带着缩进，剥法看不见它。
 const BODY_BEFORE_THIS_ITEM_LINES: &[&str] = &[
     "pub async fn connect_and_exec(",
@@ -412,7 +412,7 @@ fn the_shared_stripper_keeps_the_entry_body_this_guard_must_scan() {
     //    本条真正会缩水的那一段是原语的函数体（在第一个测试模块之后）。
     guard_core::assert_stripper_keeps(
         "stream_source::dial_move_judge · stream_source/",
-        &crate::guard_support::stream_source_raw(),
+        &guard_core::addr::stream_source_raw(),
         // 锚点换成收全那一个原语（流那一个删了）；它同样在第一个测试模块之后。
         &["pub async fn connect_and_exec_capture("],
     );

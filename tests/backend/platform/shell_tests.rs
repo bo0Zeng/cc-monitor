@@ -345,7 +345,7 @@ fn a_script_install_is_refused_only_when_the_policy_forbids_scripts() {
 /// 「认得出」就是「起得来」）。认法：生产代码里切 `PATH` 的那一下（`split_paths(`）只许住 `platform/shell/mod.rs`、恰好一处。
 #[test]
 fn only_find_session_command_walks_path() {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let files = guard_core::scan_tree_excluding(&root, &["rs"], &[]);
     assert!(
         files.len() > 200,
@@ -390,5 +390,37 @@ fn only_find_session_command_walks_path() {
     assert_eq!(
         home_count, 1,
         "{HOME} 里切 PATH 的应恰好一处（find_session_command 那一下）"
+    );
+}
+
+/// Windows 上问新开终端的 `PATH` 那一句：标记成对夹住输出（读回只认 `parse_marked_path` 那一对）、标记按 PowerShell 字面量写。
+#[test]
+fn the_fresh_path_query_brackets_its_answer_with_the_mark() {
+    let q = super::powershell::fresh_path_query(super::SESSION_PATH_MARK);
+    let lit = super::dialect::ps_literal(super::SESSION_PATH_MARK);
+    assert_eq!(q.matches(lit.as_str()).count(), 2, "{q}");
+    assert!(q.contains("'Machine'") && q.contains("'User'"), "{q}");
+}
+
+/// ★ 进一个目录那一行：方言按这台（POSIX ⇒ `cd`，PowerShell ⇒ `Set-Location -LiteralPath`），目录照各自的引号器成一个词。
+#[test]
+fn entering_a_dir_is_written_in_each_dialect() {
+    use super::dialect::Shell;
+    assert_eq!(
+        super::enter_dir_line_in(Shell::Posix, "/a b/it's"),
+        r"cd '/a b/it'\''s'"
+    );
+    assert_eq!(
+        super::enter_dir_line_in(Shell::PowerShell, r"C:\a b\it's"),
+        r"Set-Location -LiteralPath 'C:\a b\it''s'"
+    );
+    let here = if cfg!(windows) {
+        Shell::PowerShell
+    } else {
+        Shell::Posix
+    };
+    assert_eq!(
+        super::enter_dir_line("/p"),
+        super::enter_dir_line_in(here, "/p")
     );
 }

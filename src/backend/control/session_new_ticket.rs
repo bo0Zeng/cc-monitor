@@ -31,7 +31,7 @@ impl<T> Default for Tickets<T> {
 }
 
 /// 生产那一份。
-pub(crate) static TICKETS: Tickets<super::session_new::SessionNew> =
+pub(crate) static TICKETS: Tickets<super::session_open::Opened> =
     Tickets(Mutex::new(VecDeque::new()));
 
 /// 票合不合格：非空、有界、只许字母数字与 `-`（它会进日志与应答）。

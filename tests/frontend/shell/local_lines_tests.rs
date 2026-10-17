@@ -207,7 +207,7 @@ const FRAMES: &[(&str, &str)] = &[
 fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
     // 两向：表里的种类 == parse_frame 的全部臂。
     let fed: BTreeSet<String> = FRAMES.iter().map(|(k, _)| k.to_string()).collect();
-    let all = crate::guard_support::parse_frame_kinds();
+    let all = guard_core::addr::parse_frame_kinds();
     assert_eq!(
         fed, all,
         "喂进吸收点的帧种类与 `parse_frame` 认得的种类对不上 —— 新长了一种帧：\

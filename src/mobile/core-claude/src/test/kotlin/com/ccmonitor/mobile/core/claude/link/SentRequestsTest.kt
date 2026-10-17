@@ -2,6 +2,7 @@ package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.claude.link.wire.Hide
 import com.ccmonitor.mobile.core.claude.link.wire.RotSeg
+import com.ccmonitor.mobile.core.claude.link.wire.TabPref
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -22,21 +23,25 @@ class SentRequestsTest {
             AccountsList.COMMAND to listOf(AccountsList.args("claude"), AccountsList.args("")),
             AccountsSetDefault.COMMAND to listOf(AccountsSetDefault.args("a")),
             FilesChmod.COMMAND to listOf(FilesChmod.args(dir, bin, 420L)),
-            FilesCommitUpload.COMMAND to listOf(FilesCommitUpload.args(dir, "up.bin", "k", SHA, 3L, 9L)),
+            FilesCommitUpload.COMMAND to
+                listOf(
+                    FilesCommitUpload.args(dir, "up.bin", FilesCommitUpload.Staged("k", 3L, 9L, SHA)),
+                    FilesCommitUpload.args(dir, "up.bin", FilesCommitUpload.Staged("k", 3L, 9L, SHA), "overwrite"),
+                    FilesCommitUpload.args(dir, "up.bin", FilesCommitUpload.Staged("k", 3L, 9L, SHA), "keep_both"),
+                ),
             FilesCreate.COMMAND to listOf(FilesCreate.args(dir, "a.txt")),
             FilesDelete.COMMAND to listOf(FilesDelete.args(dir, bin, recursive = true), FilesDelete.args(dir, bin, recursive = false)),
             FilesHome.COMMAND to listOf(emptyMap()),
             FilesLs.COMMAND to listOf(FilesLs.args(bin), FilesLs.dirs("/w")),
             FilesMkdir.COMMAND to listOf(FilesMkdir.args(dir, "d")),
-            FilesReadChunk.COMMAND to listOf(FilesReadChunk.args(bin, 0L)),
-            FilesReadText.COMMAND to listOf(FilesReadText.args(bin)),
+            FilesReadText.COMMAND to listOf(FilesReadText.args(bin, 262_144L)),
             FilesRename.COMMAND to listOf(FilesRename.args(dir, bin, "b")),
-            FilesStageChunk.COMMAND to listOf(FilesStageChunk.args("k", 0L, byteArrayOf(0, -1), 2)),
             FilesStat.COMMAND to listOf(FilesStat.args(bin)),
             FilesWriteText.COMMAND to listOf(FilesWriteText.args(dir, bin, "x", SHA)),
             HistoryFacts.COMMAND to listOf(HistoryFacts.args("/p/s.jsonl")),
             HistoryLines.COMMAND to listOf(HistoryLines.args("/p/s.jsonl", 0L, 10L)),
             HistoryAnnotate.COMMAND to listOf(HistoryAnnotate.hide("s", Hide.ON), HistoryAnnotate.hide("s", Hide.OFF), HistoryAnnotate.hide("s", null)),
+            HistoryFacts.COMMAND to listOf(HistoryFacts.args("/p/s.jsonl")),
             HistoryList.COMMAND to listOf(HistoryList.args(false), HistoryList.args(true)),
             HistoryRead.COMMAND to listOf(HistoryRead.args("/p/s.jsonl", 0L, 10L)),
             HistoryTail.COMMAND to listOf(HistoryTail.args("/p/s.jsonl", 50)),
@@ -54,6 +59,15 @@ class SentRequestsTest {
             Profiles.FROM_LINE to listOf(Profiles.fromLineArgs("cct", "claude --resume", "~/w", "cc"), Profiles.fromLineArgs("cct", "claude", null, null)),
             Profiles.WRITE to listOf(Profiles.createArgs("f", FORM), Profiles.createArgs(null, FORM)),
             QuotaRead.COMMAND to listOf(null),
+            MachinePrefs.READ to listOf(null),
+            MachinePrefs.SET to
+                listOf(
+                    MachinePrefs.tab(TabKind.CHILD, TabPref.SHOW),
+                    MachinePrefs.tab(TabKind.BG, TabPref.HIDE),
+                    MachinePrefs.model("work", "opus"),
+                    MachinePrefs.model("work", null),
+                ),
+            SessionResume.COMMAND to listOf(SessionResume.args("s")),
             Rotation.DAY_PAINT to listOf(Rotation.dayPaint(listOf(RotSeg(0L, 10L, 1.0)), 0L, 10L, 0.5), Rotation.dayPaint(emptyList(), 0L, 10L, null)),
             Rotation.FOR_NEW to listOf(Rotation.forNew("s1"), Rotation.forNew(null)),
             Rotation.REVERT to listOf(Rotation.revert("s")),
@@ -73,6 +87,7 @@ class SentRequestsTest {
                     Rotation.view(RotWhere.Session("s"), 12),
                     Rotation.view(RotWhere.Strategy("x"), 12, mapOf("k" to 1L), "r"),
                 ),
+            SessionResume.COMMAND to listOf(SessionResume.args("s")),
             SessionCommandList.COMMAND to listOf(SessionCommandList.args("s")),
             SessionModel.COMMAND to listOf(SessionModel.args("s", "opus")),
             SessionNew.COMMAND to
@@ -85,6 +100,7 @@ class SentRequestsTest {
             SessionNewDir.COMMAND to listOf(SessionNewDir.args("/w")),
             SessionNewFacts.COMMAND to listOf(emptyMap()),
             SessionPermission.COMMAND to listOf(SessionPermission.args("s", "plan")),
+            SessionResume.COMMAND to listOf(SessionResume.args("s")),
             SessionSay.COMMAND to listOf(SessionSay.args("s", "hi")),
             SessionsNeeds.COMMAND to listOf(null),
             TerminalInput.COMMAND to listOf(TerminalInput.text("s", "hi"), TerminalInput.key("s", "esc")),
@@ -98,10 +114,11 @@ class SentRequestsTest {
             sent.toSortedMap().entries.joinToString(",\n", "{\n", "\n}\n") { (cmd, all) ->
                 "  ${Json.line(cmd)}: " + all.joinToString(",", "[", "]") { it?.let(Json::args) ?: "null" }
             }
-        val file = File(Fixtures.repoRoot, "tests/__fixtures__/$GOLDEN")
-        if (file.takeIf { it.isFile }?.readText() != want) {
-            file.writeText(want)
-            error("$GOLDEN 跟这里拼出来的不一样，已重写：提交新的那一份")
+        // 金样只比不写：不一样时现拼的那份落到 .build/golden/ 下同一路径，对过后 tests/scripts/bless-golden.sh 拷回。
+        val rel = "tests/__fixtures__/$GOLDEN"
+        if (File(Fixtures.repoRoot, rel).takeIf { it.isFile }?.readText() != want) {
+            File(Fixtures.repoRoot, ".build/golden/$rel").apply { parentFile.mkdirs() }.writeText(want)
+            error("$GOLDEN 跟这里拼出来的不一样：现拼的在 .build/golden/$rel，对过后跑 tests/scripts/bless-golden.sh")
         }
     }
 

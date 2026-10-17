@@ -89,13 +89,13 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::guard_support::production_code;
+    use guard_core::production_code;
     use std::path::{Path, PathBuf};
 
     // ══════════════════════════ 人群 ══════════════════════════
 
     fn src_root() -> PathBuf {
-        crate::guard_support::src_root()
+        guard_core::addr::backend_src_root()
     }
 
     fn rel_of(p: &Path, root: &Path) -> String {
@@ -627,6 +627,12 @@ mod tests {
     ///
     /// 形状 = `(文件相对路径, 那一行的逐字锚点, 堆, 理由)`
     const REGISTERED: &[(&str, &str, &str, &str)] = &[
+        (
+            "files/class.rs",
+            "\"sh\", \"bash\"",
+            "合法线外",
+            "认代码文件的扩展名表：`sh` · `bash` 是文件名后缀（列表里画代码图标、预览按它上色），不起 shell、不假设哪个平台上有它。",
+        ),
         (
             "control/ccm/mod.rs",
             "Child::new(\"sh\")",

@@ -4,7 +4,6 @@
 use super::{Clash, DeadLines, Facts, Hooks, Relay, SelfPaste, StaleCcm};
 use crate::assets::aliases;
 use crate::common::door::Door;
-use crate::platform::fs::Ro;
 use crate::platform::shell::dialect::Shell;
 use serde_json::Value;
 use std::path::Path;
@@ -106,9 +105,13 @@ pub(crate) fn facts(door: &dyn Door, needs_install: Vec<crate::footprint::data::
     Facts {
         windows,
         needs_install,
-        stale_ccm: home_path
-            .as_deref()
-            .and_then(|h| stale_ccm(h, std::env::var_os("PATH").as_deref(), windows)),
+        stale_ccm: home_path.as_deref().and_then(|h| {
+            stale_ccm(
+                h,
+                crate::platform::shell::session_shell_path().as_deref(),
+                windows,
+            )
+        }),
         self_paste,
         clashes,
         dead,
@@ -158,41 +161,52 @@ fn mcp_login() -> Vec<super::McpLogin> {
     out
 }
 
-/// PATH 上先找到的 `ccm` 不是 cc-monitor 放的那一份 ⇒ 那一份。
-pub(crate) fn stale_ccm(
-    home: &Path,
-    path: Option<&std::ffi::OsStr>,
-    windows: bool,
-) -> Option<StaleCcm> {
-    // 敲 `ccm` 会起来的那一个（找法只住 `platform::shell::find_session_command`）。
-    let crate::platform::shell::SessionCommand::Found { file: first, .. } =
-        crate::platform::shell::find_session_command("ccm", path?.to_str(), windows, &|p| {
-            p.is_file()
-        })
+/// 终端里敲 `ccm` 走到的不是 cc-monitor 放的那一份 ⇒ 那一份（判法只住 `control::ccm::on_path::reach`）。
+pub(crate) fn stale_ccm(home: &Path, path: Option<&str>, windows: bool) -> Option<StaleCcm> {
+    let name = if windows { "ccm.exe" } else { "ccm" };
+    let ours = home.join(".cc-monitor").join("bin").join(name);
+    let crate::control::ccm::on_path::Reach::Other(first) =
+        crate::control::ccm::on_path::reach(path, &ours, windows, &|p| p.is_file())
     else {
         return None;
     };
-    let name = if windows { "ccm.exe" } else { "ccm" };
-    let ours = home.join(".cc-monitor").join("bin").join(name);
-    let canon = |p: &Path| Ro::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
-    if canon(&first) == canon(&ours) {
-        return None;
-    }
     Some(StaleCcm {
         needs_root: !first.starts_with(home),
         path: first.display().to_string(),
     })
 }
 
-/// 直接敲的 agent 也走中转：声明了这一形的每一家各一件（`relay-optin` 那一份 ＋ 那份设置文件现在的内容）。
+/// 直接敲的 agent 也走中转：声明了这一形的每一家各一件（`endpoint::optin_report` 那一份 ＋ 那份设置文件现在的内容）。
 fn relay() -> Vec<Relay> {
+    let Some(home) = crate::platform::paths::home_dir() else {
+        return Vec::new();
+    };
+    let up = crate::accounts::upstream_select::Upstreams::from_env(&|k| std::env::var(k).ok());
+    relay_at(
+        &home,
+        &crate::accounts::upstream_select::file_face::machine_rows(),
+        &|agent| up.as_ref().is_some_and(|u| u.has(agent)),
+    )
+}
+
+/// [`relay`] 的本体（家目录 · 表 · 哪几家登记了默认上游都是参数，判据喂夹具）。
+pub(crate) fn relay_at(
+    home: &Path,
+    routed: &[String],
+    registered: &dyn Fn(&str) -> bool,
+) -> Vec<Relay> {
     crate::agents::settings_env_families()
         .into_iter()
-        .filter_map(|(agent, name, face)| {
-            let r = crate::accounts::upstream_select::endpoint::optin_report(agent).ok()?;
+        .map(|(agent, name, face)| {
+            let r = crate::accounts::upstream_select::endpoint::optin_report_at(
+                home,
+                agent,
+                &face,
+                routed,
+                registered(agent),
+            );
             let path = r.source.display().to_string();
-            let secret = r.url.as_deref().and_then(key_segment);
-            Some(Relay {
+            Relay {
                 agent: agent.to_string(),
                 name: name.to_string(),
                 slot: face.slot,
@@ -201,17 +215,9 @@ fn relay() -> Vec<Relay> {
                 text: read_small(&r.source),
                 path,
                 url: r.url,
-                secret,
-            })
+            }
         })
         .collect()
-}
-
-/// 插好钥匙的中转地址里那把钥匙（口之后、路由之前那一截；界面显示时遮住它）。不是那一形 ⇒ `None`。
-pub(crate) fn key_segment(url: &str) -> Option<String> {
-    let (head, tail) = relay_route_core::split_keyed_base_url(url)?;
-    url.get(head.len()..url.len() - tail.len())
-        .map(str::to_string)
 }
 
 /// cc-bus 自动收信：`hooks-diag` 那一份 ＋ 那份设置文件现在的内容。这台跑不了 cc-bus ⇒ 不出这一件。

@@ -16,7 +16,7 @@
  * `tests/__fixtures__/scale2-height-line-records.jsonl`（**与秤 2 同一份，不另造**）。
  * 🔴 **结构采自真机、正文一个字都不是真的** —— 数据源纪律
  * 2026-09-18 已改判成「结构照真的，内容一律合成」（用户逐字「这是测试啊 / 不应该进」）。
- * 产出它的是 `tests/evidence/U-scale2-sample-records.ts`（逐字符同形替换 ＋ 两道自检）。
+ * 产出它的是 `tests/evidence/U-scale2-sample-records.ts`（逐字符同形替换 ＋ 三道自检）。
  * 桶边界与秤 2（`tests/frontend/ui/scale2-height-corpus.ts` 的 `BUCKETS`）**逐字同一套**。
  *
  * # 🔴 反空真：绿必须来自相等断言

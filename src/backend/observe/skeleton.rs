@@ -1,9 +1,9 @@
 //! **大记录的骨架落盘**：一份记录扫过一遍得出的东西存在数据目录的 `cache/skeleton/` 底下，
 //! 后端重启 · 重连 · 冷开时照它接着读，不再整份重来。
 //!
-//! - 两样各一份文件（同一个键、两个写者，不互相读改）：预读那一路（[`crate::observe::watcher`]：游标 · 行数 · 链索引 · 子运行那几行 ·
-//!   最后一件说了的活动）· 冷开扫描图（[`crate::observe::record_scan`]：行起点 · 骨架索引 · 用户输入 · 轮次 ·
-//!   还没收尾那一轮的扫描状态 · 事实 · 链索引）。
+//! - 一份记录一个文件，写者只有冷开扫描图（[`crate::observe::record_scan`]：行起点 · 骨架索引 · 用户输入 · 轮次 ·
+//!   还没收尾那一轮的扫描状态 · 事实 · 链索引 · 子运行那几行 · 最后一件说了的活动）；实时跟读（[`crate::observe::watcher`]）
+//!   起步时照它接着读，不另落一份。
 //! - 键 ＝ 路径 ＋ 长度 ＋ 修改时刻 ＋ 游标前 [`WITNESS`] 字节的见证（[`Mark`]）：
 //!   长度与修改时刻都没变 ⇒ 不开文件（读 0 字节）；变长 ⇒ 读见证、对得上就从游标接着读（读 追加的 ＋ 见证）；其余 ⇒ 整份重扫。
 //! - 格式带版本号（[`VERSION`]），认不出 · 解析不了 · 路径对不上 ⇒ 当没有，整份重扫（不迁移）。
@@ -13,7 +13,7 @@
 //! - **按块读写**：写的时候边序列化边往盘上流（缓冲一块 [`READ_BLOCK`]），每过一块在两项之间插一个换行（JSON 允许）⇒ 文件是一行行
 //!   不长于约一块的；读的时候经 [`Blocks`] 一块一块读、边读边解析 ⇒ 手里不再有整份原文，峰值 ≈ 一块 ＋ 解出来的那份结构。
 //! - **键是规范化之后的路径**（[`crate::common::fence::real_path`]）：预读那一路拿的是走出来的路径（可能经符号链接），冷开扫描图拿的是
-//!   围栏放行之后的路径 —— 同一份记录两种写法落到同一个键上，两样各自的那份文件都在同一个摘要底下，谁都能按这个键找到对方那一份。
+//!   围栏放行之后的路径 —— 同一份记录两种写法落到同一个键上，实时跟读起步时按这个键找得到冷开扫描图落的那一份。
 
 use crate::common::append_read::{Blocks, READ_BLOCK};
 use crate::platform::fs::{Own, OwnPath, Ro};
@@ -23,7 +23,7 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 /// 格式版本：骨架里任何一样的形状变了就加一（旧的那几份读出来版本对不上 ⇒ 整份重扫、覆盖）。
-pub(crate) const VERSION: u32 = 2;
+pub(crate) const VERSION: u32 = 3;
 
 /// 见证多长：游标前这么多字节（续读核「游标之前没被改写」的那一段，watcher 的续读指纹也是这个数）。
 pub const WITNESS: u64 = 64;
@@ -94,7 +94,7 @@ pub(crate) struct Skeletons {
     min_len: u64,
 }
 
-/// 整台那一份（启动入口装：[`install`]）。冷开扫描图（全进程一份）经它找家；预读那一路由 watcher 自己带着。
+/// 整台那一份（启动入口装：[`install`]）。冷开扫描图（全进程一份）经它找家。
 static INSTALLED: OnceLock<Skeletons> = OnceLock::new();
 
 /// 启动时装一次（拿启动时造的写句柄）。
@@ -154,42 +154,46 @@ impl Skeletons {
         self.own.path(dir_rel()).ok()
     }
 
-    fn file(&self, key: &Path, what: &str) -> Option<OwnPath> {
-        self.dir()?
-            .join(&format!("{}.{what}.json", digest(key)))
-            .ok()
+    fn file(&self, key: &Path) -> Option<OwnPath> {
+        self.dir()?.join(&format!("{}.json", digest(key))).ok()
     }
 
-    /// 读 `path` 那一样（`what`：`prime` · `scan`）。没有 · 读不出 · 版本或路径对不上 ⇒ `None`。
-    pub(crate) fn load<T: DeserializeOwned>(&self, path: &Path, what: &str) -> Option<T> {
+    /// `path` 那一份落过没有（只看在不在，不读）。
+    pub(crate) fn has(&self, path: &Path) -> bool {
+        self.file(&key_of(path))
+            .is_some_and(|f| Ro::metadata(f.as_path()).is_ok_and(|m| m.is_file()))
+    }
+
+    /// 读 `path` 那一份。没有 · 读不出 · 版本或路径对不上 ⇒ `None`。
+    pub(crate) fn load<T: DeserializeOwned>(&self, path: &Path) -> Option<T> {
         let key = key_of(path);
-        let f = self.file(&key, what)?;
+        let f = self.file(&key)?;
         // 不在 ⇒ 没落过（不出声）；别的读不出（超了上限 · 不是文件 · 读错）· 解析不了 ⇒ 说一声是哪一份，当没有、照记录整份重扫。
         let meta = Ro::metadata(f.as_path()).ok()?;
         if !meta.is_file() || meta.len() > MAX_READ {
             tracing::warn!(
-                "skeleton {what} for {} skipped: not a file or over the cap",
+                "skeleton for {} skipped: not a file or over the cap",
                 path.display()
             );
             return None;
         }
         let blocks = Blocks::open(f.as_path())
-            .map_err(|e| tracing::warn!("skeleton {what} for {} skipped: {e}", path.display()))
+            .map_err(|e| tracing::warn!("skeleton for {} skipped: {e}", path.display()))
             .ok()?;
         let got: File<T> = serde_json::from_reader(std::io::BufReader::new(BlockRead::new(blocks)))
-            .map_err(|e| tracing::debug!("skeleton {what} for {} unreadable: {e}", path.display()))
+            .map_err(|e| tracing::debug!("skeleton for {} unreadable: {e}", path.display()))
             .ok()?;
         (got.v == VERSION && Path::new(&got.path) == key).then_some(got.body)
     }
 
-    /// 落 `path` 那一样（整份原子写）。写不成只记一笔调试日志：缓存，下一次照记录重扫。
-    pub(crate) fn store<T: Serialize>(&self, path: &Path, what: &str, body: &T) {
-        if let Err(e) = self.try_store(path, what, body) {
-            tracing::debug!("skeleton {what} for {} not stored: {e}", path.display());
+    /// 落 `path` 那一份（整份原子写）。写不成只记一笔调试日志：缓存，下一次照记录重扫。
+    pub(crate) fn store<T: Serialize>(&self, path: &Path, body: &T) {
+        if let Err(e) = self.try_store(path, body) {
+            tracing::debug!("skeleton for {} not stored: {e}", path.display());
         }
     }
 
-    fn try_store<T: Serialize>(&self, path: &Path, what: &str, body: &T) -> Result<(), String> {
+    fn try_store<T: Serialize>(&self, path: &Path, body: &T) -> Result<(), String> {
         let dir = self.dir().ok_or("no data dir")?;
         let mut at = self.own.root().ok_or("no data dir")?;
         for seg in dir_rel().split('/') {
@@ -197,7 +201,7 @@ impl Skeletons {
             self.own.ensure_dir(&at).map_err(|e| e.to_string())?;
         }
         let key = key_of(path);
-        let file = self.file(&key, what).ok_or("bad name")?;
+        let file = self.file(&key).ok_or("bad name")?;
         let held = self.own.lock(&dir).map_err(|e| format!("{e:?}"))?;
         self.own
             .write_streamed(&file, &held, |f| {

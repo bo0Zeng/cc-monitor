@@ -177,7 +177,7 @@ fn at_home(addr: &str) -> bool {
 
 /// 人群：`(模块住址, 生产段)`。
 fn population() -> Vec<(String, String)> {
-    let root = crate::guard_support::crate_src_root();
+    let root = guard_core::addr::shell_src_root();
     guard_core::scan_tree_excluding(&root, &["rs"], &[])
         .into_iter()
         .map(|(p, raw)| {

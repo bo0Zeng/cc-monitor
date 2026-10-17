@@ -154,6 +154,7 @@ class ProductsTest {
     fun `sessions-needs：照核心的先后，不另排；字照抄，已等读毫秒`() {
         val data =
             mapOf(
+                "answered" to emptyList<Any>(),
                 "waiting" to
                     listOf(
                         mapOf("sid" to "b", "needs" to mapOf("kind" to "approve", "text" to "等批准 · Bash", "head" to "等批准 · Bash", "tone" to "need", "rank" to 0.0, "waitedMs" to 180000.0, "waitedText" to "3m")),
@@ -165,35 +166,8 @@ class ProductsTest {
         assertEquals("等批准 · Bash", rows[0].needs.text)
         assertEquals("已等那一格读毫秒（手机按此刻走表），不抄收到那一刻写好的字", 180_000L, rows[0].needs.waitedMs)
         assertEquals(null, rows[1].needs.waitedMs)
-        assertEquals(emptyList<NeedsRow>(), SessionsNeeds.of(mapOf("waiting" to emptyList<Any>())))
+        assertEquals(emptyList<NeedsRow>(), SessionsNeeds.of(mapOf("waiting" to emptyList<Any>(), "answered" to emptyList<Any>())))
         assertNull("缺 text ⇒ 契约对不上", SessionsNeeds.of(mapOf("waiting" to listOf(mapOf("sid" to "a", "needs" to mapOf("kind" to "x", "head" to "需手动", "tone" to "need", "rank" to 0.0))))))
         assertNull("缺 head（钉条第一行）⇒ 契约对不上", SessionsNeeds.of(mapOf("waiting" to listOf(mapOf("sid" to "a", "needs" to mapOf("kind" to "x", "text" to "需手动", "tone" to "need", "rank" to 0.0))))))
-    }
-
-    @Test
-    fun `quota-read：每号的行、5h 那一格、开窗那一句照抄；出过数的在前`() {
-        val cell = { t: String, tone: String -> mapOf("text" to t, "tone" to tone) }
-        val data =
-            mapOf(
-                "state" to "present",
-                "text" to null,
-                "usableNow" to listOf("personal"),
-                "accounts" to
-                    listOf(
-                        mapOf(
-                            "account" to "personal",
-                            "fiveHour" to "5h 63%",
-                            "rows" to listOf(listOf(cell("personal", "plain"), cell("订阅", "plain")), listOf(cell("5h", "plain"), cell("63%", "warn"))),
-                            "warm" to mapOf("act" to "wait", "text" to "5h 63% ↻18:30"),
-                        ),
-                    ),
-                "unseen" to listOf(mapOf("account" to "work", "fiveHour" to null, "rows" to listOf(listOf(cell("work", "plain"))), "warm" to mapOf("act" to "send", "text" to "未计时"))),
-            )
-        val a = QuotaRead.of(data)!!
-        assertEquals(listOf("personal", "work"), a.accounts.map { it.account })
-        assertEquals(Toned("63%", Tone.WARN), a.accounts[0].rows[1][1])
-        assertEquals("5h 63%", a.accounts[0].fiveHour)
-        assertEquals("未计时", a.accounts[1].warmText)
-        assertNull("行里一格缺 text ⇒ 解不出", QuotaRead.of(data + ("unseen" to listOf(mapOf("account" to "w", "rows" to listOf(listOf(mapOf("tone" to "plain"))))))))
     }
 }

@@ -1,24 +1,31 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 /**
  * 主窗口的标签页栏 · 「需手动」· 会话头：一个会话读成什么、谁在等你、去哪答。
  *
- * - `session-face.ts`：状态点 · 状态句 · peek · 需手动（活动信号说不在等了 ⇒ 手上那份当场不认；说在等、种类没到 ⇒ 不猜）· `Ctrl+J` 的顺序；
+ * - `session-face.ts`：状态点 · 状态句 · peek · 需手动（活动信号说不在等了 ⇒ 手上那份当场不认；说在等、种类没到 ⇒ 不猜）；
+ * - `needs-order.ts`：`Ctrl+J` 的先后问后端（各台 `sessions-needs`，跨台本机 `sessions-needs-merge`），界面只把条上的对上去；
  * - 标签页栏：「需手动 N」只在 N ≥ 1 时出、点它开浮层（浮层本身见 `needs-panel.vitest.ts`）、`Ctrl+J` 跳等得最久的；机器离线条（`{machine} 离线 · N 会话状态不明`）＋［重新连接］；
- * - 窗口标题与系统通知（消息流底部的答题块另见 `answer-block.vitest.ts`）；
+ * - 窗口标题（消息流底部的答题块另见 `answer-block.vitest.ts`）；
  * - 会话头：按状态多一颗（已结束［恢复 ▾］· Claude 已退出（远端）［在终端里打开］· 状态不明［重新连接］）。
  *
  * 夹具只造结构（sid · 路径 · 占位工具名），不采会话正文。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { TabStore } from "../../../src/frontend/ui/tab-store";
+
+/** `askNeedsOrder` 经 `callTyped` 问：那一条换成手上的假的，别处照真的。 */
+const typed = vi.hoisted(() => ({ fake: null as ((...a: unknown[]) => Promise<unknown>) | null }));
+vi.mock("../../../src/frontend/ui/ipc/chan-caller", async (orig) => {
+  const real = await orig<typeof import("../../../src/frontend/ui/ipc/chan-caller")>();
+  return { ...real, callTyped: (...a: unknown[]) => (typed.fake ? typed.fake(...a) : (real.callTyped as (...b: unknown[]) => Promise<unknown>)(...a)) };
+});
 import { TabBarView, type TabBarViewHost } from "../../../src/frontend/ui/tab-bar-view";
 import type { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 import type { Needs } from "../../../src/frontend/ui/session-reads";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, RECONNECTABLE, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
-import { abbrOf, dotOf, fullTitle, groupSummary, needsOf, needsOrder, nextNeedsStep, peekLine, stateLine, stateWord, titleParts } from "../../../src/frontend/ui/session-face";
+import { abbrOf, dotOf, fullTitle, groupSummary, needsOf, nextNeedsStep, peekLine, stateLine, stateWord, titleParts } from "../../../src/frontend/ui/session-face";
+import { askNeedsOrder, orderNeeds } from "../../../src/frontend/ui/needs-order";
 import { NeedsTitle } from "../../../src/frontend/ui/needs-bar";
 import { SessionHead, terminalActsOf } from "../../../src/frontend/ui/session-head";
 import { buildApiErrorCard } from "../../../src/frontend/ui/cards/api-error";
@@ -53,6 +60,8 @@ function tab(sid: string, over: Partial<Tab> = {}): Tab {
     writers: [],
     unread: 0,
     needs: null,
+    autoAnswer: null,
+    autoAnswered: null,
     backgroundWork: null,
     pending: [],
     lastSay: null,
@@ -169,30 +178,37 @@ describe("一个会话读成什么（session-face）", () => {
     expect(peekLine(tab("d", { state: ENDED, lastSay: { text: "结论", at: null, atMs: null } }))).toBeNull();
   });
 
-  it("★ `Ctrl+J`：照核心的先后（危险度在前、同一档等得久的在前、不知道等了多久的排这一档最后、同档按条上顺序）；当前就是 ⇒ 下一个、转回头；没有 ⇒ null", () => {
-    const tabs = [
-      tab("a"),
-      tab("b", { activity: waiting, needs: { ...approve(), rank: 1, waitedMs: 10_000, receivedAt: NOW } }),
-      tab("c", { activity: waiting }),
-      tab("d", { activity: waiting, needs: { ...approve(), rank: 1, waitedMs: 90_000, receivedAt: NOW } }),
-      tab("e", { activity: waiting, needs: { ...approve(), rank: 0, waitedMs: 1_000, receivedAt: NOW } }),
-      // 早收到的那一份：收到时等了 5s，之后本机又走了 120s ⇒ 此刻等了 125s，排在 d 前面（不拿别的机器的钟比）。
-      tab("f", { activity: waiting, needs: { ...approve(), rank: 1, waitedMs: 5_000, receivedAt: NOW - 120_000 } }),
-    ];
-    const order = needsOrder(tabs, NOW);
-    expect(order).toEqual(["e", "f", "d", "b", "c"]);
-    expect([nextNeedsStep(order, "a", null, 0), nextNeedsStep(order, "e", null, 0), nextNeedsStep(order, "c", null, 0), nextNeedsStep([], "a", null, 0)]).toEqual([{ sid: "e" }, { sid: "f" }, { sid: "e" }, null]);
+  it("★ `Ctrl+J` 的先后照后端排好的那一份；后端没列到的（那台问不到 · 活动信号先到）排在后面、照条上顺序；当前就是 ⇒ 下一个、转回头", () => {
+    const tabs = [tab("a"), tab("b", { activity: waiting }), tab("c", { activity: waiting }), tab("d", { activity: waiting }), tab("e", { activity: waiting })];
+    const needing = tabs.filter((t) => needsOf(t) !== null);
+    // 后端说 e · b · x（x 不在条上 / 不在等 ⇒ 不要）；c · d 后端没列 ⇒ 照条上顺序跟在后面。
+    const order = orderNeeds(needing, ["e", "b", "x", "a"]);
+    expect(order).toEqual(["e", "b", "c", "d"]);
+    expect([nextNeedsStep(order, "a", null, 0), nextNeedsStep(order, "e", null, 0), nextNeedsStep(order, "d", null, 0), nextNeedsStep([], "a", null, 0)]).toEqual([{ sid: "e" }, { sid: "b" }, { sid: "e" }, null]);
   });
 
-  it("★ 先后对核心那一处的共用金样（needs-order.golden.json，Rust needs_first 读同一份）", () => {
-    const golden = JSON.parse(readFileSync(resolve(__dirname, "../../__fixtures__/needs-order.golden.json"), "utf8")) as {
-      cases: { name: string; needs: { id: string; rank: number; waitedMs: number | null }[]; want: string[] }[];
-    };
-    expect(golden.cases.length).toBeGreaterThanOrEqual(4);
-    for (const c of golden.cases) {
-      const tabs = c.needs.map((n) => tab(n.id, { activity: waiting, needs: { ...approve(), rank: n.rank, waitedMs: n.waitedMs, receivedAt: NOW } }));
-      expect(needsOrder(tabs, NOW), c.name).toEqual(c.want);
-    }
+  it("★ 问后端：各台问 `sessions-needs`、原样按台交本机 `sessions-needs-merge`，回它排好的会话；问不到的那台不交", async () => {
+    const asked: { origin: string; op: string; args: unknown }[] = [];
+    const row = (sid: string) => ({ sid, needs: approve(), hidden: null });
+    const call = vi.fn(async (origin: string, op: string, args: unknown) => {
+      asked.push({ origin, op, args });
+      if (op === "sessions-needs") {
+        if (origin === "gpu-01") throw new Error("够不着");
+        return { waiting: origin === "devbox" ? [row("d1")] : [row("l1"), row("l2")] };
+      }
+      return { order: [{ origin: "devbox", sid: "d1" }, { origin: "<local>", sid: "l2" }, { origin: "<local>", sid: "l1" }] };
+    });
+    typed.fake = call as never;
+    const got = await askNeedsOrder(["<local>", "devbox", "gpu-01"]);
+    expect(got).toEqual(["d1", "l2", "l1"]);
+    expect(asked.filter((x) => x.op === "sessions-needs").map((x) => x.origin).sort()).toEqual(["<local>", "devbox", "gpu-01"]);
+    const merge = asked.filter((x) => x.op === "sessions-needs-merge");
+    expect(merge.map((x) => x.origin)).toEqual(["<local>"]);
+    expect(merge[0]!.args).toEqual({ machines: [{ origin: "<local>", waiting: [row("l1"), row("l2")] }, { origin: "devbox", waiting: [row("d1")] }] });
+    call.mockClear();
+    expect(await askNeedsOrder([]), "没有人在等 ⇒ 不问").toEqual([]);
+    expect(call).not.toHaveBeenCalled();
+    typed.fake = null;
   });
 
   it("窄窗两个字母取项目目录名里的字母；标题拆成项目那一格 ＋ 名字（都是核心给的；核心还没报 ⇒ sid 前 8 位）", () => {
@@ -207,8 +223,8 @@ describe("一个会话读成什么（session-face）", () => {
   });
 });
 
-/** 标签页栏台架：store 里摆好 tab，宿主全是替身。 */
-function bar(tabs: Tab[]): { view: TabBarView; host: TabBarViewHost; store: TabStore; el: HTMLElement } {
+/** 标签页栏台架：store 里摆好 tab，宿主全是替身；后端排好的「需手动」先后是 `ranked`。 */
+function bar(tabs: Tab[], ranked: string[] = []): { view: TabBarView; host: TabBarViewHost; store: TabStore; el: HTMLElement } {
   const store = new TabStore();
   for (const t of tabs) {
     store.tabs.set(t.sessionId, t);
@@ -235,6 +251,7 @@ function bar(tabs: Tab[]): { view: TabBarView; host: TabBarViewHost; store: TabS
     openMenuAt: vi.fn(),
     rereadAll: vi.fn().mockResolvedValue(undefined),
     reconnect: vi.fn(),
+    needsOrder: vi.fn(async (_origins: readonly string[]) => ranked),
   } satisfies TabBarViewHost;
   const el = document.createElement("div");
   document.body.appendChild(el);
@@ -262,16 +279,17 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
     expect(b.badge.textContent).toBe("3");
   });
 
-  it("★ 悬停「需手动」不再开菜单（并进点开的那个浮层）；`Ctrl+J` 照旧直接跳等得最久的、不开浮层", () => {
+  it("★ 悬停「需手动」不再开菜单（并进点开的那个浮层）；`Ctrl+J` 照旧直接跳后端排在最前的、不开浮层", async () => {
     vi.useFakeTimers();
     try {
-      const r = bar([tab("a", { activity: waiting, needs: approve(NOW - 10_000) }), tab("b", { activity: waiting, needs: approve(NOW - 60_000) })]);
+      const r = bar([tab("a", { activity: waiting, needs: approve(NOW - 10_000) }), tab("b", { activity: waiting, needs: approve(NOW - 60_000) })], ["b", "a"]);
       const strip = r.el.querySelector<HTMLElement>(".tab-needs")!;
       strip.dispatchEvent(new Event("mouseenter"));
       vi.advanceTimersByTime(2_000);
       expect(document.querySelector('[role="menu"]'), "悬停不开").toBeNull();
       expect(document.querySelector('[role="dialog"]'), "悬停不开").toBeNull();
-      r.view.nextNeeds();
+      await r.view.nextNeeds();
+      expect(r.host.needsOrder, "只问有人在等的那几台").toHaveBeenCalledWith([LOCAL_ORIGIN]);
       expect(r.host.answerAt).toHaveBeenCalledWith("b");
       expect(document.querySelector('[role="dialog"]'), "Ctrl+J 不开浮层").toBeNull();
     } finally {

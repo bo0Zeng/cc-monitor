@@ -420,7 +420,7 @@ describe("TabManager 生命周期", () => {
     tm.onLine(mkPayload(7, "u-1") as never); // 同 (sid,seq) 重复 → 去重
     expect(spy.mock.calls.length).toBe(after1);
     tm.onLine(mkPayload(8, "u-2") as never); // 新 seq → 放行
-    expect(spy.mock.calls.length).toBeGreaterThan(after1);
+    expect(spy.mock.calls.length).toBe(after1 + 1);
   });
 
   // === issue #63①：fork 血缘徽标 ===
@@ -751,7 +751,7 @@ describe("TabManager 生命周期", () => {
     tm.onBatchStart();
     tm.onLine(mkContent("act", 101, "a-2")); // active 批期直渲
     const actCalls = spy.mock.calls.length;
-    expect(actCalls).toBeGreaterThanOrEqual(2);
+    expect(actCalls).toBe(2);
     expect(home(tm).store.tabs.get("act")!.window.floorSeq).toBe(100);
 
     tm.onLine(mkContent("bg", 50, "b-1")); // 后台 virgin：收纳
@@ -4234,6 +4234,108 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
     expect(t.window.pendingCount).toBe(200);
   });
 
+  // 一个 tab 都没开（启动时 · 全关掉以后）：快捷键 · 会话头开关 · 重放批结束 · 探针都可能照来，一样都不碰谁、不问后端。
+  it("没有当前 tab ⇒ Ctrl+F · Alt+↑ · 显示系统注入 · 批结束 · 探针快照什么都不做", () => {
+    const view = home(tm).view;
+    tm.openFind();
+    tm.stepTurn(1);
+    view.toggleInjected();
+    view.toggleInjected();
+    tm.onBatchStart();
+    tm.onBatchEnd();
+    expect(vi.mocked(invoke).mock.calls.filter((c) => c[0] === "chan_call"), "没有 tab 也去问后端").toEqual([]);
+    expect(tm.debugSnapshot()).toBe(JSON.stringify({ active: null }));
+    expect(view.trailerOf("nope")).toBeNull();
+  });
+
+  // 缺得多、正文整份重来（`onSessionWatch` → `catchUpTo` → `restartTail`）：已经拿过的骨架账本接着续 ——
+  // 只要新尾段之上它没覆盖到的那一截（从上次索引的末字节要），不从 0 再要；续不上 ⇒ 这一份不用了，下一次触发点从 0 要。
+  describe("★ 正文重来，骨架账本接着续", () => {
+    const fromOffsets = (sid: string) =>
+      indexCalls()
+        .filter(([, a]) => (a as { jsonlPath: string }).jsonlPath === `/p/${sid}.jsonl`)
+        .map(([, a]) => (a as { fromOffset: number }).fromOffset);
+    /** 索引从 `fromOffset` 字节往后 `n` 行（第 i 行占 [10i, 10i + 10)，uuid 与 `mk` 同一套）。 */
+    const idxFrom = (fromOffset: number, n: number) => ({
+      available: true,
+      from: fromOffset,
+      end: fromOffset + n * 10,
+      rows: Array.from({ length: n }, (_, k) => ({ o: fromOffset + k * 10, n: 10, t: "reply", u: `u${fromOffset / 10 + k}`, ch: 100, pl: 1 })),
+    });
+    /**
+     * 一个 tab 先接上 `[0, first)` 的骨架，再从 `watchAt` 起上流（缺得多 ⇒ 正文重来）；按行号取一页答到 `end`。
+     * `more`：续传那一问的答法（拿到这一刻新尾段的 floor）。
+     */
+    async function restarted(sid: string, first: number, watchAt: number, end: number, more: (floor: number, fromOffset: number) => unknown) {
+      vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string, args: Record<string, unknown>) => {
+        if (cmd === "read_session_index") {
+          const from = args.fromOffset as number;
+          return Promise.resolve(from === 0 ? idx(first) : more(home(tm).store.tabs.get(sid)!.window.floorSeq!, from));
+        }
+        if (cmd === "read_session_lines") {
+          const from = args.from as number;
+          const until = (args.until as number | undefined) ?? end;
+          return Promise.resolve({ from, next: until, eof: args.until === undefined, payloads: Array.from({ length: until - from }, (_, k) => mk(sid, from + k, `u${from + k}`)) });
+        }
+        return Promise.resolve(undefined);
+      }) as never));
+      const t0 = replay(sid);
+      await settle();
+      expect(t0.skeleton, "前置：骨架要接上").not.toBeNull();
+      tm.onSessionWatch(LOCAL_ORIGIN, { session_id: sid, path: `/p/${sid}.jsonl`, seq: watchAt });
+      const t = home(tm).store.tabs.get(sid)!;
+      expect(t, "缺得多却没重来正文").not.toBe(t0);
+      // 新的一代同样给一个「已满屏」的几何（同 `replay`），不然 jsdom 里补批会一路按行号取到第 0 行
+      Object.defineProperty(t.streamEl, "scrollHeight", { value: 2000, configurable: true });
+      Object.defineProperty(t.streamEl, "clientHeight", { value: 800, configurable: true });
+      return t;
+    }
+
+    it("续得上 ⇒ 从上次索引的末字节只要到新尾段之上，接上", async () => {
+      const t = await restarted("cs", 300, 2000, 2500, (floor, from) => idxFrom(from, floor - from / 10));
+      await vi.waitFor(() => expect(fromOffsets("cs").length, "重来之后没再要骨架").toBe(2), UNTIL_CEILING);
+      expect(fromOffsets("cs"), "重来之后骨架又从 0 整份要").toEqual([0, 3000]);
+      await vi.waitFor(() => expect(t.skeleton, "续上了却没接").not.toBeNull(), UNTIL_CEILING);
+      expect(t.skeleton!.pendingRows).toBe(t.window.floorSeq);
+    });
+
+    it("账本已经盖过新尾段 ⇒ 一问都不发，直接接上", async () => {
+      const t = await restarted("cw0", 1000, 1000, 1000, () => {
+        throw new Error("不该续传");
+      });
+      await vi.waitFor(() => expect(t.skeleton, "账本够用却没接").not.toBeNull(), UNTIL_CEILING);
+      expect(fromOffsets("cw0")).toEqual([0]);
+      expect(t.skeleton!.pendingRows).toBe(t.window.floorSeq);
+    });
+
+    it("续不上 ⇒ 这一份不用了：下一次触发点从 0 要", async () => {
+      const t = await restarted("cf", 300, 2000, 2500, (_f, from) => ({ available: false, reason: "抖了一下", failure: "transport", from, end: from, rows: [] }));
+      await vi.waitFor(() => expect(t.skeletonFetch).toBe("again"), UNTIL_CEILING);
+      expect(t.skeleton).toBeNull();
+      tm.onBatchStart();
+      tm.onBatchEnd();
+      await settle();
+      // 从 0 要回来的那一份盖不到新尾段 ⇒ 从它的末字节续；还是续不上 ⇒ 不接（盖不到尾段的账本接上去，占位里那一截没有行），重问过一次 ⇒ 定死
+      expect(fromOffsets("cf")).toEqual([0, 3000, 0, 3000]);
+      expect(t.skeleton, "续不上也接了：占位里尾段之上那一截账本里没有").toBeNull();
+      expect(t.skeletonFetch).toBe("done");
+    });
+
+    it("续传回来时已经切走 ⇒ 停着；切回来停住了再接，不重问", async () => {
+      let answer!: () => void;
+      const t = await restarted("cp", 300, 2000, 2500, (floor, from) => new Promise((r) => (answer = () => r(idxFrom(from, floor - from / 10)))));
+      await vi.waitFor(() => expect(fromOffsets("cp")).toEqual([0, 3000]), UNTIL_CEILING);
+      tm.onLine(mk("cpOther", 5, "cpo5"));
+      tm.switchTo("cpOther");
+      answer();
+      await settle();
+      expect(t.skeleton, "切走了还在后台接骨架").toBeNull();
+      tm.switchTo("cp");
+      await vi.waitFor(() => expect(t.skeleton, "切回来停住了该接上").not.toBeNull(), UNTIL_CEILING);
+      expect(fromOffsets("cp"), "停着的那一份直接用，不重问").toEqual([0, 3000]);
+    });
+  });
+
   it("门控：占位里的行收纳；岛（ensure 物化过的一段）里迟到的行就地建卡，不收纳", async () => {
     // 按偏移取 60 那一问一直在路上（取回中的行不算还在占位里；取不到才放回占位）
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
@@ -5168,6 +5270,8 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     background: null,
     mcp: [],
     answerOff: null,
+    autoAnswer: null,
+    autoAnswered: null,
     quietUnread: null,
     ...p,
   });
@@ -6055,7 +6159,9 @@ describe("拖整组 · 多选拖 · 自动滚", () => {
     expect(document.body.querySelector(".tab-drag-ghost")!.textContent).toContain(copyText("tabDrop.ghost.many", { title: "z", n: 1 }).slice(-2));
     up(5);
     expect(home(tm).store.orderedIds).toEqual(["y", "z", "x", "a", "b"]);
-    expect([...bar.querySelectorAll(".tab.selected")].length, "仍选着").toBeGreaterThanOrEqual(2);
+    const selected = ["x", "y", "z", "a", "b"].filter((s) => rootOf(s).classList.contains("selected"));
+    expect(selected, "仍选着").toEqual(["y", "z"]);
+    expect(bar.querySelectorAll(".tab.selected").length).toBe(2);
   });
 
   it("多选一起压在组员中间停住 ⇒ 一起进组，「已移到「订单」 ×2」", () => {
@@ -6376,7 +6482,7 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段", () 
     tm.onLine(line("wf", 50));
     for (let k = 0; k < 5; k++) await settle();
     const live = turnsAsks();
-    expect(live, "实时来一行就要一次").toBeGreaterThan(before);
+    expect(live, "实时来一行就要一次").toBe(before + 1);
     tm.onSessionWatch(LOCAL_ORIGIN, { session_id: "wf", path: "/p/wf.jsonl", seq: 50 });
     for (let k = 0; k < 5; k++) await settle();
     expect(lineReads()).toEqual([{ from: 10, until: 50 }]);
@@ -6649,6 +6755,8 @@ describe("〔8a ④〕冷起只先问当前 tab：后台的冷读排在当前 ta
     background: null,
     mcp: [],
     answerOff: null,
+    autoAnswer: null,
+    autoAnswered: null,
     quietUnread: null,
   });
   const line = (sid: string, seq: number) =>

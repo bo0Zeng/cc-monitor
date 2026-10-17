@@ -229,7 +229,7 @@ pub const LINES: &[Key] = &[
     },
 ];
 
-/// 问那台机器的 (OS, arch) 那条命令（一次性 exec，`exec_site_registry` 登记）。
+/// 问那台机器的 (OS, arch) 那条命令（后端部署那一趟一次性 exec）。
 pub const UNAME_CMD: &str = "uname -s -m";
 
 /// `uname -s -m` 的收全结果 → 键。**纯函数**。

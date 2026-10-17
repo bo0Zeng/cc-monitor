@@ -1085,7 +1085,7 @@ async fn screenshot_for_the_shots_tool() {
         "empty" => vdir.join("empty-dir").to_string_lossy().to_string(),
         "missing" => vdir.join("gone").to_string_lossy().to_string(),
         // 查看页那两张：docs 里有两张真解得开的图。
-        "view" | "view-menu" => vdir.join("docs").to_string_lossy().to_string(),
+        "view" | "view-menu" | "big-view" => vdir.join("docs").to_string_lossy().to_string(),
         _ => d.clone(),
     };
     // 窗口开在 d 上：先走开一步再回来，列表才真去问一趟（导航到当前目录是空操作）。
@@ -1644,6 +1644,40 @@ async fn screenshot_for_the_shots_tool() {
             );
         }
     }
+    // 大文件那几种提示：那一行换成那么大一份（合成后端替真后端给它的门），选中它。
+    let big = match scene.as_str() {
+        "big-preview" => Some(("notes.txt", 300 * 1024)),
+        "big-image" => Some(("logo.png", 6 * 1024 * 1024)),
+        "big-edit" => Some(("notes.txt", 9 * 1024 * 1024)),
+        "big-view" => Some(("architecture.png", 40 * 1024 * 1024)),
+        _ => None,
+    };
+    if let Some((name, size)) = big {
+        let i = row_of(&w, name);
+        {
+            let mut rows = w.listing.rows.lock().unwrap();
+            rows[i].row.size = size;
+            rows[i] = crate::find::testing::gated(rows[i].clone());
+        }
+        w.apply_intent(
+            crate::select::Intent::Edge {
+                end: false,
+                extend: false,
+            },
+            0.0,
+            None,
+        );
+        for _ in 0..i {
+            w.apply_intent(
+                crate::select::Intent::Step {
+                    by: 1,
+                    extend: false,
+                },
+                0.0,
+                None,
+            );
+        }
+    }
     if scene == "plan-menu" {
         let i = row_of(&w, "main.rs");
         w.tally.menu_clicked = Some(i);
@@ -1656,7 +1690,11 @@ async fn screenshot_for_the_shots_tool() {
         .unwrap_or(1280.0);
     let scene_name = scene.clone();
     let theme = crate::theme::testing::default_theme();
-    let preview = scene == "main" || scene.starts_with("plan") || scene == "view-menu";
+    let preview = scene == "main"
+        || scene.starts_with("plan")
+        || scene == "view-menu"
+        || scene == "big-preview"
+        || scene == "big-image";
     let split = scene == "split";
     let h = std::thread::spawn(move || {
         struct Shot {
@@ -1751,7 +1789,21 @@ async fn screenshot_for_the_shots_tool() {
                         }
                     });
                 }
-                if self.n == 3 && self.scene == "view" {
+                if self.n == 3 && self.scene == "big-edit" {
+                    let i = self
+                        .ws
+                        .pane_on(0)
+                        .listing
+                        .rows
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .position(|r| r.name == "notes.txt");
+                    if let Some(i) = i {
+                        self.ws.pane_on_mut(0).begin_edit(i, Some(ui.ctx().clone()));
+                    }
+                }
+                if self.n == 3 && (self.scene == "view" || self.scene == "big-view") {
                     self.ws
                         .pane_on_mut(0)
                         .perform(crate::select::Action::View, Some(ui.ctx().clone()));
@@ -1903,6 +1955,7 @@ fn an_editor_on_the_right_side_stays_in_the_right_side() {
         name: "right.txt".into(),
         text: long,
         sha256: crate::find::testing::fake_sha256(""),
+        cap: 8 * 1024 * 1024,
     });
     assert!(right.settle_opened_edits());
     let mut d = Drive::new();
@@ -1972,6 +2025,7 @@ fn open_text(p: &mut FileWindow, text: &str) {
         name: "t.txt".into(),
         text: text.into(),
         sha256: crate::find::testing::fake_sha256(""),
+        cap: 8 * 1024 * 1024,
     });
     assert!(p.settle_opened_edits());
 }
@@ -2302,6 +2356,30 @@ fn opening_a_text_opens_an_edit_tab_beside_the_folder_and_again_switches_to_it()
     assert_eq!(ws.tabs_on(0), 2, "答了「不保存」那一页没关");
 }
 
+/// 「进度」表里该画全的那几行字：每趟下载两行（名字 · 落点）＋ 失败那一趟的两句原因。排好序。
+fn progress_rows_of(downloads: usize) -> Vec<String> {
+    let mut want: Vec<String> = (0..downloads)
+        .flat_map(|k| {
+            [
+                copy_text(
+                    "rsFilewinProgress.download.running",
+                    &[("name", &format!("big-{k}.iso"))],
+                ),
+                copy_text(
+                    "rsFilewinProgress.download.detail",
+                    &[("dest", &format!("/tmp/big-{k}.iso"))],
+                ),
+            ]
+        })
+        .chain([
+            "r-2.tar.gz：磁盘满".to_string(),
+            "r-3.tar.gz：没有权限".to_string(),
+        ])
+        .collect();
+    want.sort_unstable();
+    want
+}
+
 /// 「进度」表照行数长高：四趟在跑 ＋ 一趟上传失败（两个没成，自动摊开）⇒ 失败那一行与它底下每一句原因都整个画在表里，
 /// 不被状态栏压住、不在表的可见区外面。改值验：失败那一行不摊开（原因挤成一行截断）⇒ 本条红。
 #[test]
@@ -2363,7 +2441,13 @@ fn the_progress_table_grows_to_show_an_expanded_failure_whole() {
         .filter(|(t, _)| t.contains("big-") || t.contains("r-2") || t.contains("r-3"))
         .map(|(_, r)| r)
         .collect();
-    assert!(rows.len() >= 6, "表里的行没画全：{painted:?}");
+    let mut names: Vec<&str> = painted
+        .iter()
+        .filter(|(t, _)| t.contains("big-") || t.contains("r-2") || t.contains("r-3"))
+        .map(|(t, _)| t.as_str())
+        .collect();
+    names.sort_unstable();
+    assert_eq!(names, progress_rows_of(4), "表里的行没画全：{painted:?}");
     for r in &rows {
         assert!(
             r.top() >= head.bottom(),
@@ -2459,7 +2543,9 @@ fn the_progress_table_is_tall_enough_that_no_row_is_clipped() {
         .iter()
         .filter(|(t, _, _)| t.contains("big-") || t.contains("r-2") || t.contains("r-3"))
         .collect();
-    assert!(rows.len() >= 7, "表里的行没画全：{clipped:?}");
+    let mut names: Vec<&str> = rows.iter().map(|(t, _, _)| t.as_str()).collect();
+    names.sort_unstable();
+    assert_eq!(names, progress_rows_of(5), "表里的行没画全：{clipped:?}");
     for (t, r, clip) in rows {
         assert!(
             r.top() >= clip.top() - 0.5 && r.bottom() <= clip.bottom() + 0.5,
@@ -2858,7 +2944,7 @@ async fn perf_rig_worker() {
         println!("perf.{name}.cpu_ms={}", (cpu() - c0) * 10);
         println!("perf.{name}.frames={}", frames() - f0);
     };
-    let ids = crate::rows::testing::xvfb::wait_for_windows(&display, "big", 20_000);
+    let ids = crate::rows::testing::xvfb::wait_for_windows(&display, "big");
     let Some(id) = ids.first().cloned() else {
         panic!("窗口没起来");
     };

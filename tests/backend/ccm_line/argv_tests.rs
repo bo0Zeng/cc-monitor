@@ -297,7 +297,7 @@ fn the_ccm_argv_is_parsed_in_exactly_one_place() {
     ];
     let mut hits: Vec<String> = Vec::new();
     for (name, raw) in others {
-        let prod = crate::guard_support::production_code(raw);
+        let prod = guard_core::production_code(raw);
         if prod.contains("\"--") {
             hits.push((*name).to_string());
         }

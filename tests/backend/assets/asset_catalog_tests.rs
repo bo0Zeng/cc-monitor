@@ -446,7 +446,7 @@ fn a_malformed_incoming_catalog_is_refused_not_guessed() {
 /// （数据页那一行由后端照契约那张表 `OWN_HOME_ENTRIES` 列，同一个家）；第三个 ⇒ 红（第二个写者冒出来了）。
 #[test]
 fn the_file_name_has_exactly_one_home_in_all_production_code() {
-    let src = crate::guard_support::repo_root().join("src");
+    let src = guard_core::addr::repo_root().join("src");
     let needle = format!("{}-{}.json", "assets", "catalog");
     let via_const = format!("{}_{}_REL", "ASSET", "CATALOG");
     let mut scanned = 0usize;
@@ -454,7 +454,7 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
     for (path, body) in guard_core::scan_tree_excluding(&src, &["rs", "ts", "sh"], &[]) {
         scanned += 1;
         let code = match path.extension().and_then(|e| e.to_str()) {
-            Some("rs") => crate::guard_support::production_code(&body),
+            Some("rs") => guard_core::production_code(&body),
             Some("ts") => guard_core::strip_comment_lines(&body),
             _ => guard_core::strip_hash_comment_lines(&body),
         };

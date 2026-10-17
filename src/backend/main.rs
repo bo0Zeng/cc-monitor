@@ -120,7 +120,7 @@ async fn main() {
     let own = cc_monitor_backend::platform::Own::issue();
     // 握手认下的主机钥匙记进 cc-monitor 那份 known_hosts：哪条拨号路上都可能发生 ⇒ 这里装一次那只只会记钥匙的手。
     dial::install_known_hosts(&own);
-    // 冷开扫描图（全进程一份）的骨架落在数据目录底下：这里装一次那个家（预读那一路由 watcher 自己带着同一个写句柄）。
+    // 冷开扫描图（全进程一份）的骨架落在数据目录底下：这里装一次那个家（实时跟读起步也照它）。
     observe::skeleton::install(&own);
     let backend_args: Vec<String> = {
         let rest: Vec<String> = process_argv.iter().skip(1).cloned().collect();
@@ -252,9 +252,7 @@ async fn main() {
     } else {
         start_relay();
     }
-    // 全文搜索的常驻索引起来就后台建（两条载体都要；一次性线程，建完就退）。
-    observe::search_query::warm_in_background(agent_home.clone());
-    // 历史清单的缓存同样起来就后台热（低优先级的一次性线程）：第一次打开历史页 / 按 sid 开查看窗不再现扫整台。
+    // 历史清单的缓存起来就后台热（低优先级的一次性线程）：第一次打开历史页 / 按 sid 开查看窗不再现扫整台。
     history::listing::warm_listing_in_background(agent_home.clone());
     // 别名清单换了存法（配置文件 `profiles.toml`）：这台的配置文件还不在、旧形状的别名文件在 ⇒ 起来时一次性转过去（迁完就不再看旧文件）。
     stream::inbound::migrate_aliases();

@@ -649,7 +649,7 @@ fn a_symlink_that_stays_inside_the_target_root_still_writes() {
 ///（写句柄只递给文件管理那一族，`readonly_guard` 钉着），本条刻意不替它作证。
 #[test]
 fn the_write_primitive_is_no_longer_a_zero_consumer_symbol() {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let needle = format!("files_{}::", "write");
     let mut consumers: Vec<String> = Vec::new();
     let mut scanned = 0usize;
@@ -1807,7 +1807,7 @@ fn a_recursive_delete_walks_through_non_utf8_children() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// 用户文件的读改写（`files-peek` / `files-put`）＋ 删历史会话
+// 用户文件的读改写（`Door::peek` / `Door::put`）＋ 删历史会话
 // ══════════════════════════════════════════════════════════════════════════
 //
 // 买到的：全在本机临时目录上真跑 —— CAS 真的拒（盘上一个字节不动）· 相同不写 · 备份逐字节 ＋ 权限位 ·
@@ -2410,9 +2410,8 @@ fn w5vis_a_backup_that_cannot_keep_the_original_mode_is_removed_and_refused() {
         0o600
     );
     // 接线。
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/files_write.rs"
-    ));
+    let prod =
+        guard_core::production_code(include_str!("../../../src/backend/control/files_write.rs"));
     assert_eq!(
         prod.matches("set_permissions(&bak, p).ok()").count(),
         0,
@@ -2632,7 +2631,7 @@ fn a_recursive_copy_that_fails_midway_undoes_what_it_built() {
 // ═══════════════════════════════════════════════════════════════════════════════════════
 //
 // 要求：「编辑器存盘带 CAS（`expect`）」＋ 摘要形；
-// 「读的那一刻与写的那一刻之间，盘上那份被别人改了 ⇒ `stale`，一个字节不写」（原写给 `files-put`，同一条理由）。
+// 「读的那一刻与写的那一刻之间，盘上那份被别人改了 ⇒ `stale`，一个字节不写」（原写给 `Door::put`，同一条理由）。
 
 /// 摘要的算法住后端一处；判据拿**另一份实现**（`sha2`，只在测试期链接）对拍 —— 异源，两侧同源恒真那一形排除。
 fn sha2_hex(bytes: &[u8]) -> String {
@@ -2952,7 +2951,7 @@ fn what_the_file_face_creates_inside_the_own_home_is_only_for_the_owner() {
 #[test]
 fn the_two_name_rules_match_the_hand_written_expectations() {
     use crate::platform::paths::{unix_name_problem, windows_name_problem, NameProblem};
-    let path = crate::guard_support::repo_root().join("tests/__fixtures__/file-names.golden.json");
+    let path = guard_core::addr::repo_root().join("tests/__fixtures__/file-names.golden.json");
     let g: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&path).expect("金样")).expect("JSON");
     let word = |p: Option<NameProblem>| match p {

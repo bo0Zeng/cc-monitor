@@ -1,4 +1,4 @@
-//! 流程工具住在仓里（10-10 flow3）：门禁入口 `gate-clean.sh` · 按改动挑格 `gate-affected.sh`（＋ `gate-affected/plan.py` · `gate-affected/map`）·
+//! 流程工具住在仓里：门禁入口 `gate-clean.sh` · 按改动挑格 `gate-affected.sh`（＋ `gate-affected/plan.py` · `gate-affected/map`）·
 //! 重活隔离 `heavy.sh` · 推候选分支 `push-candidate.sh`，连同早先进仓的 `quick-check.sh` · `bump-build-id.sh`。
 //!
 //! 从前它们在仓外、只认一台机器、没有版本：门禁入口的 tmux 隔离改坏了几天没人发现，挑格的表与仓里的格对不上也只有跑起来才知道。
@@ -9,6 +9,7 @@
 //! - `heavy.sh` 在没有 `systemd-run --user` 的机器上（CI · Windows · 没有 user session）退成直接跑，并说一声；起的命令看不见外面会话的变量
 //!   （表 `session-vars`；枚举环境的只有 `session-scrub.sh`，e2e 的 `sandbox-env.sh` 照它摘）；
 //! - 「这棵树自己改了哪些」的起点（`base.sh`）先认分支上游；没提交的生成物（`generated-drift.sh`）逐份印出；
+//!   金样判据落下的现打那份由 `bless-golden.sh` 逐份拷回原处；
 //! - `quick-check.sh` 的手机那一段：相对 main 改到手机读的东西才跑（经 heavy、gradle 带 `--no-daemon`），没改到就跳过并说一声；
 //!   「手机读的东西」那张表（`mobile_reads`）对着 `src/mobile` 里字面写到的仓内路径核，漏一处就红。
 
@@ -32,6 +33,7 @@ mod tests {
         "tests/scripts/session-scrub.sh",
         "tests/scripts/base.sh",
         "tests/scripts/generated-drift.sh",
+        "tests/scripts/bless-golden.sh",
     ];
 
     /// 带 `--help` 的入口。
@@ -43,7 +45,7 @@ mod tests {
     ];
 
     fn root() -> PathBuf {
-        crate::guard_support::repo_root()
+        guard_core::addr::repo_root()
     }
 
     fn scratch(tag: &str) -> PathBuf {
@@ -96,7 +98,7 @@ mod tests {
     }
 
     /// 私人扫描只认 PATH 上的 `private-scan.sh`：门禁与推送都在做任何事之前找它，找不到就停（门禁不许落成 OK、推送拒推），
-    /// 并说缺的是哪一个；环境变量指过去的不算。正控：PATH 上有它就过了这一关、停在后面的「不在仓里」。
+    /// 并说缺的是哪一个。正控：PATH 上有它就过了这一关、停在后面的「不在仓里」。
     #[test]
     fn gate_and_push_stop_without_the_private_scan_on_path() {
         const MISSING: &str = "PATH 上没有 private-scan.sh";
@@ -107,12 +109,10 @@ mod tests {
             for on_path in [false, true] {
                 let d = scratch("pscan");
                 let bin = tool_bin(&d, &["bash", "git", "sed", "dirname", "cat", "mkdir"]);
-                let fake = d.join("fake-scan.sh");
-                std::fs::write(&fake, "exit 0\n").unwrap();
                 if on_path {
                     use std::os::unix::fs::PermissionsExt;
                     let on = bin.join("private-scan.sh");
-                    std::fs::copy(&fake, &on).unwrap();
+                    std::fs::write(&on, "exit 0\n").unwrap();
                     std::fs::set_permissions(&on, std::fs::Permissions::from_mode(0o755)).unwrap();
                 }
                 let out = Command::new(bin.join("bash"))
@@ -120,7 +120,6 @@ mod tests {
                     .args(args)
                     .current_dir(&d)
                     .env("PATH", &bin)
-                    .env("PRIVATE_SCAN", &fake)
                     .env("GATE_STATE_DIR", d.join("state"))
                     .env_remove("TMUX")
                     .env_remove("TMUX_PANE")
@@ -154,8 +153,7 @@ mod tests {
                 .arg(root())
                 .stdin(std::process::Stdio::piped())
                 .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .env_remove("GATE_AFFECTED_MAP");
+                .stderr(std::process::Stdio::piped());
             if trust {
                 c.arg("--trust-ci");
             }
@@ -487,6 +485,95 @@ mod tests {
             .unwrap()
     }
 
+    /// ★ 槽位先来先得：三个槽位都占着时先后来了 A、B，放开一个 ⇒ A 先拿到。
+    /// B 那一份认 4 个槽位、第 4 个空着：各自去问槽位的写法 B 一进门就拿走第 4 个、插到 A 前面；
+    /// 排队的写法 B 排在 A 后面，轮到它之前不问槽位。
+    #[test]
+    fn heavy_hands_a_freed_slot_to_whoever_waited_first() {
+        use std::io::{BufRead, BufReader};
+        use std::process::{Child, Stdio};
+        let d = scratch("heavy-fifo");
+        let bin = tool_bin(
+            &d,
+            &[
+                "bash", "sh", "flock", "seq", "sleep", "mkdir", "echo", "cat", "true", "rm",
+            ],
+        );
+        let slots = d.join("state/heavy-slots");
+        std::fs::create_dir_all(&slots).unwrap();
+        // 三个槽位各由一个持锁的子进程占着；关掉它的标准输入就放开。
+        let mut holders: Vec<Child> = (1..=3)
+            .map(|i| {
+                let mut h = Command::new("bash")
+                    .args(["-c", "exec 9>\"$0\"; flock 9; echo held; read _"])
+                    .arg(slots.join(i.to_string()))
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .spawn()
+                    .unwrap();
+                let mut line = String::new();
+                BufReader::new(h.stdout.as_mut().unwrap())
+                    .read_line(&mut line)
+                    .unwrap();
+                assert_eq!(line, "held\n");
+                h
+            })
+            .collect();
+        let order = d.join("order");
+        // 起一个等的人，等它说出「排队等」才回（它已经问过一圈、没拿到）。
+        let waiter = |name: &str, slots: &str| -> Child {
+            let mut c = Command::new(bin.join("bash"))
+                .arg(root().join("tests/scripts/heavy.sh"))
+                .args(["bash", "-c", "echo \"$0\" >> order", name])
+                .current_dir(&d)
+                .env("PATH", &bin)
+                .env("GATE_STATE_DIR", d.join("state"))
+                .env("HEAVY_SLOTS", slots)
+                .env_remove("HEAVY_HELD")
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            let mut err = BufReader::new(c.stderr.take().unwrap());
+            let mut line = String::new();
+            while line.trim_end() != format!("heavy: {slots} 个槽位都占着，排队等…") {
+                line.clear();
+                assert!(
+                    err.read_line(&mut line).unwrap() > 0,
+                    "{name} 没排队就拿到了槽位（插在先来的前面）"
+                );
+            }
+            std::thread::spawn(move || std::io::copy(&mut err, &mut std::io::sink()));
+            c
+        };
+        let mut a = waiter("A", "3");
+        let mut b = waiter("B", "4");
+        drop(holders[0].stdin.take());
+        let _ = holders[0].wait();
+        let first = guard_core::wall::rounds()
+            .find_map(|()| {
+                let got = std::fs::read_to_string(&order).unwrap_or_default();
+                if got.is_empty() {
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                    return None;
+                }
+                Some(got)
+            })
+            .expect("放开一个槽位后谁都没拿到");
+        assert_eq!(
+            first.lines().next(),
+            Some("A"),
+            "后来的 B 抢在先来的 A 前面拿到了槽位"
+        );
+        for h in &mut holders[1..] {
+            drop(h.stdin.take());
+            let _ = h.wait();
+        }
+        assert!(a.wait().unwrap().success());
+        assert!(b.wait().unwrap().success());
+        assert_eq!(std::fs::read_to_string(&order).unwrap(), "A\nB\n");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     /// 本进程的 nice 值再降 10（封顶 19）：判据自己可能就跑在一份降过的重活里。
     fn lowered_nice() -> String {
         let stat = std::fs::read_to_string("/proc/self/stat").unwrap();
@@ -635,15 +722,23 @@ mod tests {
         std::fs::write(p, text).unwrap();
     }
 
-    /// 一棵假仓：main 上有一份假 gradlew（记下参数、写一份三条的 test-results），工作分支上只改 `changed` 那一条。
-    /// 返回 quick-check `--mobile` 的输出与假 gradlew 收到的参数（没被调就是 None）。
-    fn quick_mobile(tag: &str, changed: &str) -> (String, String, Option<String>) {
+    /// quick-check `--mobile` 那一趟：输出 · 假 gradlew 收到的参数 · 它看到的那几个并行数变量（没被调就是 None）。
+    struct QuickMobile {
+        plan: String,
+        said: String,
+        args: Option<String>,
+        env: Option<String>,
+    }
+
+    /// 一棵假仓：main 上有一份假 gradlew（记下参数 · 它看得见的变量名 · 并行数变量，写一份三条的 test-results），工作分支上只改 `changed` 那一条。
+    /// `envs`：跑 quick-check 时另设（`Some`）或清掉（`None`）的变量；`nproc` 另给一个假的、说 24（判据不随跑它的机器变）。
+    fn quick_mobile(tag: &str, changed: &str, envs: &[(&str, Option<&str>)]) -> QuickMobile {
         let d = scratch(tag);
         git(&d, &["init", "-q", "-b", "main"]);
         write(
             &d,
             "src/mobile/gradlew",
-            "#!/bin/sh\necho \"$@\" > ../../gradlew-args\nenv | cut -d= -f1 > ../../gradlew-env\nmkdir -p ../../.build/mobile/app/test-results/t\necho '<testsuite name=\"x\" tests=\"3\" failures=\"0\">' > ../../.build/mobile/app/test-results/t/TEST-x.xml\n",
+            "#!/bin/sh\necho \"$@\" > ../../gradlew-args\nenv | cut -d= -f1 > ../../gradlew-env\necho \"RUST_TEST_THREADS=$RUST_TEST_THREADS GATE_VITEST_WORKERS=$GATE_VITEST_WORKERS\" > ../../gradlew-share\nmkdir -p ../../.build/mobile/app/test-results/t\necho '<testsuite name=\"x\" tests=\"3\" failures=\"0\">' > ../../.build/mobile/app/test-results/t/TEST-x.xml\n",
         );
         assert!(Command::new("chmod")
             .args(["+x", "src/mobile/gradlew"])
@@ -651,7 +746,11 @@ mod tests {
             .status()
             .unwrap()
             .success());
-        write(&d, ".gitignore", ".build/\ngradlew-args\ngradlew-env\n");
+        write(
+            &d,
+            ".gitignore",
+            ".build/\ngradlew-args\ngradlew-env\ngradlew-share\nbin/\n",
+        );
         git(&d, &["add", "-A"]);
         git(&d, &["commit", "-q", "-m", "base"]);
         git(&d, &["checkout", "-q", "-b", "work"]);
@@ -659,15 +758,33 @@ mod tests {
         git(&d, &["add", "-A"]);
         git(&d, &["commit", "-q", "-m", "work"]);
         let script = root().join("tests/scripts/quick-check.sh");
+        let bin = d.join("bin");
+        write(&d, "bin/nproc", "#!/bin/sh\necho 24\n");
+        assert!(Command::new("chmod")
+            .args(["+x", "bin/nproc"])
+            .current_dir(&d)
+            .status()
+            .unwrap()
+            .success());
+        let path = format!(
+            "{}:{}",
+            bin.display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
         let (outer, kept) = outer_session();
         let run = |arg: &str| {
-            let mut c = Command::new("bash");
+            let mut cmd = Command::new("bash");
             for k in outer.iter().chain(&kept) {
-                c.env(k, "outer-session");
+                cmd.env(k, "outer-session");
             }
-            c.arg(&script)
-                .arg(arg)
-                .current_dir(&d)
+            cmd.arg(&script).arg(arg).env("PATH", &path);
+            for (k, v) in envs {
+                match v {
+                    Some(v) => cmd.env(k, v),
+                    None => cmd.env_remove(k),
+                };
+            }
+            cmd.current_dir(&d)
                 .env("JAVA_HOME", d.join("no-jdk"))
                 .env("ANDROID_HOME", d.join("no-sdk"))
                 .env("GRADLE_USER_HOME", d.join("no-gradle"))
@@ -697,8 +814,14 @@ mod tests {
             let lost: Vec<&String> = kept.iter().filter(|k| !seen.contains(k.as_str())).collect();
             assert!(lost.is_empty(), "判据输入没传到 gradle：{lost:?}");
         }
+        let env = std::fs::read_to_string(d.join("gradlew-share")).ok();
         let _ = std::fs::remove_dir_all(&d);
-        (plan, said, args)
+        QuickMobile {
+            plan,
+            said,
+            args,
+            env,
+        }
     }
 
     #[test]
@@ -708,7 +831,9 @@ mod tests {
             "tests/__fixtures__/history-list.golden.json",
             "src/mobile/app/src/main/kotlin/X.kt",
         ] {
-            let (plan, said, args) = quick_mobile("mobile-run", changed);
+            let QuickMobile {
+                plan, said, args, ..
+            } = quick_mobile("mobile-run", changed, &[]);
             assert!(
                 plan.contains(&format!("MOBILE: 跑 —— 改到 {changed}")),
                 "{plan}"
@@ -729,7 +854,9 @@ mod tests {
             assert!(said.trim_end().contains("QUICK: OK"), "{said}");
         }
         // 没改到 ⇒ 跳过，并说一声；gradle 一次都没调。
-        let (plan, said, args) = quick_mobile("mobile-skip", "src/frontend/ui/x.ts");
+        let QuickMobile {
+            plan, said, args, ..
+        } = quick_mobile("mobile-skip", "src/frontend/ui/x.ts", &[]);
         assert!(plan.contains("MOBILE: 跳过"), "{plan}");
         assert!(args.is_none(), "没改到手机读的东西却调了 gradle：{said}");
         assert!(
@@ -737,6 +864,57 @@ mod tests {
             "跳过了却没说：{said}"
         );
         assert!(said.trim_end().contains("QUICK: OK"), "{said}");
+    }
+
+    /// 快检每路的测试并行数（10-15）：几路快检同时跑时，每路的测试按默认各起满核数的线程 / worker，互相挤
+    ///   （量过：8 个线程比默认省一到三成 CPU、墙钟持平；4 个墙钟变长）。⇒ Rust 测试线程 · vitest worker · gradle worker
+    ///   都拿「核数 ÷ heavy 槽位数」那一份（槽位数照 `HEAVY_SLOTS`，默认与 heavy.sh 同一个 3）；外面设了 Rust / vitest 那两个变量就听外面的。
+    /// 观测点是假 gradlew：它跑在 `run` 给的环境里（cargo 与 vitest 那几步同一个 `run`），收到的参数与变量就是各步拿到的。
+    #[test]
+    fn quick_check_gives_each_test_runner_its_share_of_the_cores() {
+        let changed = "src/mobile/app/src/main/kotlin/X.kt";
+        let clear: [(&str, Option<&str>); 3] = [
+            ("RUST_TEST_THREADS", None),
+            ("GATE_VITEST_WORKERS", None),
+            ("HEAVY_SLOTS", None),
+        ];
+        let seen = |envs: &[(&str, Option<&str>)]| {
+            let q = quick_mobile("mobile-share", changed, envs);
+            let args = q.args.unwrap_or_else(|| panic!("没调 gradle：{}", q.said));
+            let env = q.env.unwrap_or_default();
+            (args, env.trim().to_string())
+        };
+        // 默认：24 核 ÷ 3 槽 = 8
+        let (args, env) = seen(&clear);
+        assert!(
+            args.split_whitespace().any(|a| a == "--max-workers=8"),
+            "gradle 没拿到那一份：{args}"
+        );
+        assert_eq!(env, "RUST_TEST_THREADS=8 GATE_VITEST_WORKERS=8");
+        // 槽位数跟着 HEAVY_SLOTS：24 ÷ 4 = 6
+        let (args, env) = seen(&[clear[0], clear[1], ("HEAVY_SLOTS", Some("4"))]);
+        assert!(
+            args.split_whitespace().any(|a| a == "--max-workers=6"),
+            "{args}"
+        );
+        assert_eq!(env, "RUST_TEST_THREADS=6 GATE_VITEST_WORKERS=6");
+        // 外面设了就听外面的
+        let (_, env) = seen(&[
+            ("RUST_TEST_THREADS", Some("5")),
+            ("GATE_VITEST_WORKERS", Some("7")),
+            clear[2],
+        ]);
+        assert_eq!(env, "RUST_TEST_THREADS=5 GATE_VITEST_WORKERS=7");
+        // heavy.sh 的槽位默认与这里同一个数（这一份是按槽位分的）：两边那一行整行钉住，上面 24 ÷ 3 = 8 那一趟已证快检真按 3 算
+        let heavy = std::fs::read_to_string(root().join("tests/scripts/heavy.sh")).unwrap();
+        let qc = std::fs::read_to_string(root().join("tests/scripts/quick-check.sh")).unwrap();
+        guard_core::pin_line(&heavy, "slots=${HEAVY_SLOTS:-3}")
+            .unwrap_or_else(|e| panic!("heavy.sh 的槽位默认不是 3 了（快检那一份要跟着改）：{e}"));
+        guard_core::pin_line(
+            &qc,
+            r#"share=$(( $(nproc) / ${HEAVY_SLOTS:-3} )); [ "$share" -ge 1 ] || share=1"#,
+        )
+        .unwrap_or_else(|e| panic!("快检按的槽位默认认不出了：{e}"));
     }
 
     /// `mobile_reads` 漏没漏：`src/mobile` 的 Kotlin / Gradle 源里字面写到的仓内（手机树外）路径，每一条都得落在表里某一项下。
@@ -1228,6 +1406,34 @@ mod tests {
         assert_eq!(o.status.code(), Some(1), "{said}");
         let got: BTreeSet<String> = said.lines().map(|l| l[3..].to_string()).collect();
         assert_eq!(got, want, "印出来的与没提交的生成物对不上");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// ★ 重打金样（`bless-golden.sh`）：金样判据落在 `.build/golden/` 下的现打那份逐份拷回仓里原处、删掉现打的那份、逐份印出；
+    /// 一份都没有 ⇒ 退 1。落点取判据那一侧的 [`crate::golden::FRESH_DIR`]：两边对不上这条就红。
+    #[test]
+    fn bless_golden_copies_each_fresh_golden_back_and_clears_it() {
+        let d = scratch("bless");
+        git(&d, &["init", "-q", "-b", "main"]);
+        let bless = |d: &Path| bash(&root().join("tests/scripts/bless-golden.sh"), &[], d);
+        write(&d, "tests/g/a.json", "old\n");
+        let fresh = crate::golden::FRESH_DIR;
+        write(&d, &format!("{fresh}/tests/g/a.json"), "new\n");
+        write(&d, &format!("{fresh}/src/doc/X.md"), "doc\n");
+        let o = bless(&d);
+        let said = String::from_utf8_lossy(&o.stdout);
+        assert_eq!(o.status.code(), Some(0), "{said}");
+        let got: BTreeSet<&str> = said.lines().collect();
+        assert_eq!(
+            got,
+            BTreeSet::from(["重打 src/doc/X.md", "重打 tests/g/a.json"])
+        );
+        let read = |rel: &str| std::fs::read_to_string(d.join(rel)).unwrap();
+        assert_eq!(read("tests/g/a.json"), "new\n");
+        assert_eq!(read("src/doc/X.md"), "doc\n");
+        assert!(!d.join(fresh).exists(), "拷回之后现打的那份还在");
+        let o = bless(&d);
+        assert_eq!(o.status.code(), Some(1), "没有现打的金样却没说");
         let _ = std::fs::remove_dir_all(&d);
     }
 }

@@ -1234,6 +1234,12 @@ impl<'a> Line<'a> {
             .as_ref()
     }
 
+    /// 整行拿走（解过就是那一份，没解过当场解）；连 JSON 都不是 ⇒ `None`。
+    pub(crate) fn into_value(self) -> Option<serde_json::Value> {
+        self.value();
+        self.value.into_inner().flatten()
+    }
+
     /// 只要几格：整行解过就从那一份里取（树上走，不再解文本），没解过就从文本直接解那几格。
     pub(crate) fn read<T: serde::de::DeserializeOwned>(&self) -> serde_json::Result<T> {
         match self.value.get() {
@@ -2146,13 +2152,11 @@ pub(crate) struct QuotaReading {
     pub(crate) overage: Option<QuotaOverage>,
 }
 
-/// 一家的用户级设置文件里「上游地址」那一格：住哪 · 怎么读出来 · 要贴的那一段长什么样（格式知识与那一次只读都在这一家）。
+/// 一家的用户级设置文件里「上游地址」那一格：住哪 · 怎么读出来 · 怎么合进去（格式知识与那一次只读都在这一家）。
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct SettingsEnvFace {
     /// 家目录（`$HOME`）→ 那份文件（各号共用的那一份）＋ 里面写的上游地址（**只读**）。
     pub(crate) read: fn(&Path) -> (PathBuf, SettingsBaseUrl),
-    /// 地址 → 要合并进那份文件的那一段。
-    pub(crate) snippet: fn(&str) -> String,
     /// （那份文件现在的内容, 地址）→ 合好的整份（只算不写；「待办」按它算 diff）。现在的内容读不懂 ⇒ `None`。
     pub(crate) merge: fn(&str, &str) -> Option<String>,
     /// 地址住那份文件里哪一格（「待办」那一件的位置行）。
@@ -2212,15 +2216,6 @@ pub(crate) fn settings_env_families() -> Vec<(&'static str, &'static str, Settin
             Some((u.route_id, name, u.settings_env?))
         })
         .collect()
-}
-
-/// 路由名那一家「直接敲的也走中转」那一格。没登记 / 没有这一形 ⇒ `None`。
-pub(crate) fn settings_env_face(route_id: &str) -> Option<SettingsEnvFace> {
-    REGISTRY
-        .iter()
-        .filter_map(|a| a.upstream.as_ref())
-        .find(|u| u.route_id == route_id)
-        .and_then(|u| u.settings_env)
 }
 
 /// 各家登记的会话标识头（注册序、去重）：中转经上游选择拿到这份名单，按它从请求里认会话 —— 会话 id 归 agent 自己。

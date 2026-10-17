@@ -16,6 +16,7 @@ import { SkeletonLedger } from "../../../src/frontend/ui/live-window";
 import { RecordTimeline } from "../../../src/frontend/ui/record-timeline";
 import { SKELETON_GAP_CLASS, SkeletonView, ledgerFromIndex } from "../../../src/frontend/ui/skeleton-view";
 import { MessageStream } from "../../../src/frontend/ui/stream";
+import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
 
 // 列宽那一组要真 `TabStreamView`（它只在被问时才碰到 IPC；这里一次都不问）
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(null) }));
@@ -67,20 +68,26 @@ function installLayout(scrollEl: HTMLElement, content: HTMLElement): { scrollTop
 const asst = (u: string): SkeletonFacts => ({ o: 0, n: 1, t: "reply", u, ch: 200, pl: 2 });
 
 /** 宿主：建卡 = 往 timeline 里插一个带 `data-h`（真高）的 div；记下每次被要了哪一段。 */
-function makeHost(timeline: RecordTimeline, realH: (seq: number) => number) {
+function makeHost(timeline: RecordTimeline, realH: (seq: number) => number, builds = (_s: number) => true) {
   const calls: Array<[number, number]> = [];
+  const gaveBack: Array<readonly [number, number]> = [];
   return {
     calls,
+    gaveBack,
     materialize(lo: number, hi: number): Array<[number, number]> {
       calls.push([lo, hi]);
-      buildCards(timeline, lo, hi, realH);
+      buildCards(timeline, lo, hi, realH, builds);
       return [];
+    },
+    released(ranges: ReadonlyArray<readonly [number, number]>): void {
+      gaveBack.push(...ranges);
     },
   };
 }
 
-function buildCards(timeline: RecordTimeline, lo: number, hi: number, realH: (seq: number) => number): void {
+function buildCards(timeline: RecordTimeline, lo: number, hi: number, realH: (seq: number) => number, builds = (_s: number) => true): void {
   for (let s = lo; s < hi; s++) {
+    if (!builds(s)) continue;
     const el = document.createElement("div");
     el.dataset.h = String(realH(s));
     el.dataset.seq = String(s);
@@ -98,10 +105,11 @@ function makeFetchingHost(timeline: RecordTimeline, realH: (seq: number) => numb
       return [[lo, hi]];
     },
     build: (lo: number, hi: number) => buildCards(timeline, lo, hi, realH),
+    released(_ranges: ReadonlyArray<readonly [number, number]>): void {},
   };
 }
 
-function setup(total: number, renderedFrom: number, realH = (_s: number) => 60) {
+function setup(total: number, renderedFrom: number, realH = (_s: number) => 60, rows?: SkeletonFacts[], builds?: (s: number) => boolean) {
   const scrollEl = document.createElement("div");
   document.body.appendChild(scrollEl);
   const stream = new MessageStream(scrollEl);
@@ -110,9 +118,9 @@ function setup(total: number, renderedFrom: number, realH = (_s: number) => 60) 
   const layout = installLayout(scrollEl, content);
   const ledger = new SkeletonLedger(
     0,
-    Array.from({ length: total }, (_, i) => asst(`u${i}`)),
+    rows ?? Array.from({ length: total }, (_, i) => asst(`u${i}`)),
   );
-  const host = makeHost(timeline, realH);
+  const host = makeHost(timeline, realH, builds);
   // 已渲染的尾巴
   host.materialize(renderedFrom, total);
   host.calls.length = 0;
@@ -234,6 +242,134 @@ describe("🔴 只物化可见区", () => {
     s.scrollEl.getBoundingClientRect = () => ({ top: 0, bottom: 0, height: 0 }) as DOMRect;
     expect(s.view.fillVisible()).toBe(0);
     expect(s.host.calls.length).toBe(0);
+  });
+});
+
+describe("🔴 视口外的卡交回占位", () => {
+  /** 流里此刻的总高（一维布局模型：占位的内联高 ＋ 卡的真高）。 */
+  const totalOf = (content: HTMLElement) =>
+    Array.from(content.children).reduce((a, c) => a + (parseFloat((c as HTMLElement).style.height) || Number((c as HTMLElement).dataset.h ?? 0)), 0);
+  /** 视口里那几张卡：seq 与屏幕上的位置。 */
+  const inView = (content: HTMLElement) =>
+    cardsIn(content)
+      .map((c) => [Number((c as HTMLElement).dataset.seq), c.getBoundingClientRect()] as const)
+      .filter(([, r]) => r.height > 0 && r.bottom > 0 && r.top < VIEW_H)
+      .map(([seq, r]) => [seq, r.top]);
+  /** 滚一下：补可见区补到收敛，建了卡就交回远处的（宿主滚动监听里就是这两步）；交回前后总高不许变。 */
+  const scrollTo = (s: ReturnType<typeof setup>, y: number) => {
+    s.layout.scrollTop = Math.max(0, y);
+    let built = 0;
+    for (let k = 0, n = 1; k < 6 && n > 0; k++) built += n = s.view.fillVisible();
+    if (built === 0) return;
+    const h = totalOf(s.content);
+    s.view.release();
+    expect(totalOf(s.content), "交回占位改了总高").toBeCloseTo(h, 6);
+  };
+  const realH = (q: number) => 40 + (q % 7) * 10; // 真高与估高对不上、行行不同
+  /** 上界：视口 ± 留着的屏数 ＋ 补可见区的余量（各半屏）里最多装几张卡，再加两头各一张没切开的。 */
+  const bound = (screens: number) => Math.ceil(((2 * screens + 2) * VIEW_H) / 40) + 2;
+  /** 从底一屏一屏滚到顶（`dir` −1）或从顶滚到底（+1）；每一步已建卡数都不许过上界。 */
+  const sweep = (s: ReturnType<typeof setup>, dir: -1 | 1) => {
+    for (let k = 0; k < 2000; k++) {
+      const bottom = totalOf(s.content) - VIEW_H;
+      const y = dir < 0 ? s.layout.scrollTop - VIEW_H * 0.9 : Math.min(bottom, s.layout.scrollTop + VIEW_H * 0.9);
+      scrollTo(s, y);
+      expect(cardsIn(s.content).length, `滚到 ${Math.round(y)}`).toBeLessThanOrEqual(bound(SkeletonView.KEEP_SCREENS));
+      if (dir < 0 ? s.layout.scrollTop <= 0 : s.layout.scrollTop >= totalOf(s.content) - VIEW_H - 0.5) return;
+    }
+    throw new Error("滚不到头");
+  };
+
+  it("从底滚到顶再滚回底：已建卡数一路不过上界，交回的那几行回到占位里", () => {
+    const s = setup(600, 550, realH);
+    s.view.attach(550);
+    scrollTo(s, totalOf(s.content) - VIEW_H);
+    sweep(s, -1);
+    sweep(s, 1);
+    expect(s.host.gaveBack.length).toBeGreaterThan(0);
+    for (const [lo, hi] of s.host.gaveBack.slice(-3)) expect(s.view.isPending(lo) || s.view.isPending(hi - 1) || cardsIn(s.content).some((c) => Number((c as HTMLElement).dataset.seq) === lo)).toBe(true);
+  });
+
+  it("滚回来内容与高度不变：同一处视口里还是那几张卡、在同一个位置；再走一趟总高一点不动", () => {
+    const s = setup(600, 550, realH);
+    s.view.attach(550);
+    scrollTo(s, totalOf(s.content) - VIEW_H);
+    sweep(s, -1);
+    sweep(s, 1); // 走过一趟：每一行都建过、量过
+    const y = s.layout.scrollTop;
+    const seen = inView(s.content);
+    const h = totalOf(s.content);
+    sweep(s, -1);
+    expect(totalOf(s.content), "滚到顶：总高变了").toBeCloseTo(h, 6);
+    sweep(s, 1);
+    expect(totalOf(s.content), "滚回底：总高变了").toBeCloseTo(h, 6);
+    expect(s.layout.scrollTop).toBeCloseTo(y, 6);
+    expect(inView(s.content)).toEqual(seen);
+  });
+
+  it("只在轮与回答的开头切：工具调用与它的结果、合进左邻居的那几行不会被切开", () => {
+    // 一轮六行：人说 · 回答（带正文）· 调用 · 结果（注入进调用那一行，不建卡）· 调用 · 结果
+    const shape = (q: number): SkeletonFacts => {
+      const u = `u${q}`;
+      switch (q % 6) {
+        case 0:
+          return { o: 0, n: 1, t: "said", u, ch: 80, pl: 1 };
+        case 1:
+          return { o: 0, n: 1, t: "reply", u, ch: 200, pl: 2 };
+        case 2:
+        case 4:
+          return { o: 0, n: 1, t: "reply", u, fd: 1 };
+        default:
+          return { o: 0, n: 1, t: "said", u, fd: 1 };
+      }
+    };
+    const rows = Array.from({ length: 1200 }, (_, q) => shape(q));
+    const cut = (q: number) => q % 6 === 0 || q % 6 === 1;
+    const s = setup(1200, 1140, realH, rows, (q) => q % 6 !== 3 && q % 6 !== 5);
+    s.view.attach(1140);
+    scrollTo(s, totalOf(s.content) - VIEW_H);
+    sweep(s, -1);
+    expect(s.host.gaveBack.length).toBeGreaterThan(0);
+    for (const [lo, hi] of s.host.gaveBack) {
+      expect(cut(lo), `从第 ${lo} 行切`).toBe(true);
+      expect(cut(hi), `切到第 ${hi} 行`).toBe(true);
+    }
+  });
+
+  it("一下跳到顶、正文还在路上（已建的全在视口下方远处）：底下那一截照样交回", () => {
+    const s = setup(600, 550, realH);
+    const host = { ...makeFetchingHost(s.timeline, realH), gaveBack: [] as Array<readonly [number, number]> };
+    host.released = (r: ReadonlyArray<readonly [number, number]>) => void host.gaveBack.push(...r);
+    const view = new SkeletonView(s.ledger, s.scrollEl, s.timeline, host);
+    view.attach(550);
+    s.layout.scrollTop = 0;
+    view.fillVisible();
+    expect(cardsIn(s.content).length).toBe(50);
+    view.release();
+    expect(host.gaveBack.length).toBe(1);
+    expect(cardsIn(s.content).length).toBeLessThanOrEqual(1);
+  });
+
+  it("收起时一次做（只留视口那一截）", () => {
+    const s = setup(600, 550, realH);
+    s.view.attach(550);
+    scrollTo(s, totalOf(s.content) - VIEW_H);
+    sweep(s, -1);
+    scrollTo(s, totalOf(s.content) / 2);
+    const seen = inView(s.content);
+    const h = totalOf(s.content);
+    s.view.release(0);
+    expect(totalOf(s.content)).toBeCloseTo(h, 6);
+    expect(inView(s.content)).toEqual(seen);
+    expect(cardsIn(s.content).length).toBeLessThanOrEqual(bound(0));
+  });
+
+  it("没有布局（视口高 0）：一张都不交 —— 不猜", () => {
+    const s = setup(500, 0, realH);
+    s.view.attach(0);
+    s.scrollEl.getBoundingClientRect = () => ({ top: 0, bottom: 0, height: 0 }) as DOMRect;
+    expect(s.view.release(0)).toBe(0);
+    expect(cardsIn(s.content).length).toBe(500);
   });
 });
 
@@ -597,5 +733,84 @@ describe("〔P3〕列宽变了", () => {
     expect(s.ledger.heightOf(10, 11)).toBe(55);
     expect(new Set(widths)).toEqual(new Set([500])); // assistant 正文宽 == 列宽
     expect(s.view.staleCount).toBe(0);
+  });
+
+  it("宿主接线：大账本改列宽只当场估视口附近，远处的行空闲时一段一段补完（同一个排着的不重复排）", async () => {
+    const { TabStreamView } = await import("../../../src/frontend/ui/tab-stream-view");
+    const { TabStore } = await import("../../../src/frontend/ui/tab-store");
+    const total = 45_000; // 过了 `SkeletonView.LAZY_ROWS` 才只当场估附近；远处的比一段（`SETTLE_ROWS`）多 ⇒ 要补好几段
+    const s = setup(total, total - 10);
+    s.view.attach(total - 10);
+    s.layout.scrollTop = s.ledger.heightOf(0, total - 10) - VIEW_H / 2;
+    const w = initialColumnWidth() / 2;
+    expect(s.view.relayout(w)).toBe(true);
+    const far = s.ledger.staleRows;
+    expect(far, "前置：远处要留着没估、比两段多").toBeGreaterThan(2 * 20_000);
+    const steps = vi.spyOn(s.view, "settleLayout");
+    const tsv = new TabStreamView(new TabStore(), document.createElement("div"), {} as never) as unknown as {
+      settleLayoutLater(sk: SkeletonView): void;
+      dispose(): void;
+    };
+    tsv.settleLayoutLater(s.view);
+    tsv.settleLayoutLater(s.view);
+    await vi.waitFor(() => expect(s.ledger.staleRows).toBe(0), UNTIL_CEILING);
+    expect(steps.mock.calls.length, "一段至多补 `SETTLE_ROWS` 行；同一个排了两次也只补一遍").toBe(Math.ceil(far / 20_000));
+    for (let i = 0; i < total; i += 997) {
+      expect(s.ledger.heightOf(i, i + 1), `第 ${i} 行`).toBeCloseTo(estimateFromFacts(s.ledger.factsOf(i)!, w), 6);
+    }
+    tsv.dispose();
+  });
+
+  it("宿主接线·第二级：只要会建卡的行、连着的并成一段一问；算的途中列宽变了 ⇒ 放回、接着交；回来时 tab 已换代 ⇒ 不收", async () => {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const { recordReadCalls } = await import("../../test-support/chan-fake");
+    const { HeightRefiner } = await import("../../../src/frontend/ui/height-refiner");
+    const { TabStreamView } = await import("../../../src/frontend/ui/tab-stream-view");
+    const { TabStore } = await import("../../../src/frontend/ui/tab-store");
+    vi.mocked(invoke).mockClear();
+    // 第 i 行在文件里占 [10i, 10i + 10)；第 7 行不建卡（没有正文）
+    const s = setup(20, 10, () => 60, Array.from({ length: 20 }, (_, i) => (i === 7 ? { o: i * 10, n: 10, t: "reply", u: `u${i}` } : { ...asst(`u${i}`), o: i * 10, n: 10 })));
+    s.view.attach(10);
+    vi.spyOn(s.view, "nearbyUnrefined").mockReturnValue([5, 6, 7, 8, 9]);
+    const releases: Array<() => void> = [];
+    const refiner = new HeightRefiner((items) => new Promise((r) => releases.push(() => r(items.map(() => 33)))));
+    const store = new TabStore();
+    const tab = {
+      sessionId: "t",
+      skeleton: s.view,
+      parentPath: "/p/t.jsonl",
+      origin: "<local>",
+      // 第 9 行账本里有正文（不必去取）
+      window: { peekSeqs: (seqs: Set<number>) => (seqs.has(9) ? [{ seq: 9, record: rec(9) }] : []) },
+    };
+    store.tabs.set("t", tab as never);
+    const tsv = new TabStreamView(store, document.createElement("div"), {} as never, refiner) as unknown as { refineNearby(t: unknown): void };
+    tsv.refineNearby(tab);
+    const ranges = () => recordReadCalls(vi.mocked(invoke).mock.calls, "read_session_range").map((a) => [a.offset, a.until, a.seqBase]);
+    expect(ranges(), "5、6 并成一段，7 不建卡不要，8 另起一段，9 账本里有").toEqual([
+      [50, 70, 5],
+      [80, 90, 8],
+    ]);
+    await vi.waitFor(() => expect(releases.length).toBe(1), UNTIL_CEILING);
+    s.view.relayout(initialColumnWidth() / 2); // 算的途中列宽变了 ⇒ 这一批作废
+    releases[0]!();
+    await vi.waitFor(() => expect(releases.length, "作废的那一批没放回重交").toBe(2), UNTIL_CEILING);
+    releases[1]!();
+    await vi.waitFor(() => expect(s.ledger.isRefined(9)).toBe(true), UNTIL_CEILING);
+    expect(s.ledger.heightOf(9, 10)).toBe(33);
+    expect(s.view.staleCount).toBe(0);
+    // 都要过了 ⇒ 不再问
+    vi.mocked(invoke).mockClear();
+    tsv.refineNearby(tab);
+    expect(ranges()).toEqual([]);
+    // 回来时 tab 已换代（正文重来）⇒ 不收、不接着交
+    s.view.returnStale([5]);
+    tsv.refineNearby(tab);
+    store.tabs.set("t", { ...tab } as never);
+    s.view.returnStale([6]);
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(releases.length, "换代之后还交了 Worker").toBe(2);
+    expect(s.view.staleCount, "换代之后还接着交").toBe(1);
   });
 });

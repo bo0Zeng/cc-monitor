@@ -3,8 +3,8 @@ use std::path::PathBuf;
 const INVARIANTS: &str = include_str!("../../../src/doc/INVARIANTS.md");
 
 fn repo_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::repo_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::repo_root()
 }
 
 /// 本族判据的人群：仓里**跟踪着**的文件（`git ls-files` 口径，仓根相对、正斜杠）。
@@ -532,7 +532,7 @@ fn every_repo_path_named_in_the_docs_still_resolves() {
 fn the_linux_job_still_inherits_the_version_guard() {
     let rel = guard_core::strip_hash_comment_lines(
         &std::fs::read_to_string(
-            crate::guard_support::repo_root().join(".github/workflows/release.yml"),
+            guard_core::addr::repo_root().join(".github/workflows/release.yml"),
         )
         .expect("读不到 release.yml"),
     );

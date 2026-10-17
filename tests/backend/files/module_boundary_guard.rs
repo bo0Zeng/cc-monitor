@@ -197,7 +197,7 @@ const MODULE_PATHS: &[&str] = &[
 ];
 
 fn src_root() -> PathBuf {
-    crate::guard_support::src_root()
+    guard_core::addr::backend_src_root()
 }
 
 fn rel(root: &Path, p: &Path) -> String {

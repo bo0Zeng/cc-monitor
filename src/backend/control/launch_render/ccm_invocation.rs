@@ -323,7 +323,6 @@ fn render_parts(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Parts, Refusa
             return Err(Refusal::MissingCap((*c).to_string()));
         }
     }
-    let face = launch_face(spec.agent)?;
     let need = |c: &str| -> Result<(), Refusal> {
         if caps.contains(c) {
             Ok(())
@@ -336,7 +335,7 @@ fn render_parts(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Parts, Refusa
     let mut tokens: Vec<String> = vec![spec.ccm_path.to_string()];
     let mut ours: Vec<String> = Vec::new();
 
-    // attach 不起 agent：`ccm -- --attach <名>` 不接受任何修饰 flag。
+    // attach 不起 agent：`ccm -- --attach <名>` 不接受任何修饰 flag，也不问是哪一家。
     if let Action::Attach { .. } = spec.action {
         let Container::Tmux { name, .. } = spec.container else {
             return Err(Refusal::AttachNeedsTmux);
@@ -347,6 +346,7 @@ fn render_parts(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Parts, Refusa
         ours.push(name.to_string());
         return Ok(Parts::Argv(join_halves(tokens, ours)));
     }
+    let face = launch_face(spec.agent)?;
 
     // 就地 resume：键进那个 pane 的是**直路**那一行（pane 里已经有 shell，不再建容器），外层只包这一行。
     if let Container::Tmux {

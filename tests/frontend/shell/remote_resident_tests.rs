@@ -123,11 +123,13 @@ fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back
             &exec("", r#"{"code":"spawn_failed","message":"x"}"#, Some(2)),
             "devbox"
         ),
-        Err(AttachErr::Failed("x".into()))
+        Err(AttachErr::Failed(Said::written("x".into())))
     );
     assert_eq!(
         parse_answer(&exec(&hello("p1a-old"), "", None), "devbox"),
-        Err(AttachErr::Failed(copy_core::backend_old("devbox").into()))
+        Err(AttachErr::Failed(Said::written(copy_core::backend_old(
+            "devbox"
+        ))))
     );
 }
 

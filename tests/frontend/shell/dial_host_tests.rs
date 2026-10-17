@@ -25,7 +25,7 @@ fn cfg(label: &str) -> RemoteConfig {
 #[test]
 fn the_request_hands_over_the_machine_as_is() {
     let c = cfg("c2-dial-host-a");
-    let req = request(&c, "stream", serde_json::json!({"command": "x"})).expect("造不出请求");
+    let req = request(&c, "stream", serde_json::json!({"command": "x"}));
     let written: std::collections::BTreeSet<String> =
         req.as_object().unwrap().keys().cloned().collect();
     let machine_rs = include_str!("../../../src/backend/ssh-dial/machine.rs");
@@ -73,7 +73,7 @@ fn the_request_hands_over_the_machine_as_is() {
 #[test]
 fn the_last_winner_goes_over_as_prefer_while_the_config_is_unchanged() {
     let c = cfg("c2-dial-host-b");
-    let req = request(&c, "stream", serde_json::json!({})).unwrap();
+    let req = request(&c, "stream", serde_json::json!({}));
     assert_eq!(req["prefer"], serde_json::Value::Null, "没连过 ⇒ 不交");
     crate::stream_source::record_last_good(
         &c,
@@ -82,14 +82,14 @@ fn the_last_winner_goes_over_as_prefer_while_the_config_is_unchanged() {
             port: 2222,
         },
     );
-    let req = request(&c, "stream", serde_json::json!({})).unwrap();
+    let req = request(&c, "stream", serde_json::json!({}));
     assert_eq!(
         req["prefer"],
         serde_json::json!({"host": "192.0.2.9", "port": 2222})
     );
     let mut moved = c.clone();
     moved.addresses = vec!["192.0.2.7".into()];
-    let req = request(&moved, "stream", serde_json::json!({})).unwrap();
+    let req = request(&moved, "stream", serde_json::json!({}));
     assert_eq!(
         req["prefer"],
         serde_json::Value::Null,
@@ -102,7 +102,7 @@ fn the_last_winner_goes_over_as_prefer_while_the_config_is_unchanged() {
 fn a_jump_to_itself_is_not_looked_up_here() {
     let mut c = cfg("c2-dial-host-c");
     c.jump = Some("c2-dial-host-c".into());
-    let req = request(&c, "stream", serde_json::json!({})).unwrap();
+    let req = request(&c, "stream", serde_json::json!({}));
     assert_eq!(req["jump"], serde_json::Value::Null);
     assert_eq!(req["machine"]["jump"], "c2-dial-host-c");
 }
@@ -165,7 +165,7 @@ fn dial_traces(prod: &str) -> Vec<String> {
 /// 正控：同一个判定函数喂一段含三根针的合成代码，三根都要量到（不是「这把尺子什么都量不到」）。
 #[test]
 fn the_dial_proxy_leaves_no_trace_in_monitor_production() {
-    let root = crate::guard_support::repo_root().join("src/frontend/shell/src");
+    let root = guard_core::addr::repo_root().join("src/frontend/shell/src");
     let mut hits: Vec<String> = Vec::new();
     let mut scanned = 0usize;
     for (path, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
@@ -355,7 +355,7 @@ fn lives_long_sites(file: &str, prod: &str) -> Vec<(String, String)> {
 /// 少一处 = 长连接流 / 端口转发 / 部署会在 120 s 被掐断。正控：合成语料里多种一处必被认出、且认对所在函数。
 #[test]
 fn only_the_three_long_lived_links_drop_the_deadline() {
-    let root = crate::guard_support::crate_src_root();
+    let root = guard_core::addr::shell_src_root();
     let mut got: Vec<(String, String)> = Vec::new();
     let mut scanned = 0usize;
     for (path, file_text) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {

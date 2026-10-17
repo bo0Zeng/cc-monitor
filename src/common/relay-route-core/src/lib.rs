@@ -170,7 +170,7 @@ pub const KNOWN_HOSTS_REL: &str = ".cc-monitor/known_hosts";
 
 /// 〔同上〕**起会话便条**（`ccm` 最终那一跳写、观测侧认完即清）：一个进程一张 `<pid>.json`（号 ＋ 时刻）。
 pub const LAUNCH_NOTES_DIR_REL: &str = ".cc-monitor/launch-pending";
-/// 大记录的骨架（后端在数据目录底下落的缓存：预读与冷开扫描图从它接着读，删了照记录重建；`observe/skeleton.rs`）。
+/// 大记录的骨架（后端冷开扫描图在数据目录底下落的缓存，实时跟读起步也照它；删了照记录重建；`observe/skeleton.rs`）。
 pub const SKELETON_DIR_REL: &str = ".cc-monitor/cache/skeleton";
 
 /// 〔同上〕**答题插件**（`ccm` 换了启动器起会话时写、经 `CLAUDE_CODE_PLUGIN_DIRS` 交给那一家）：清单 ＋ 答题那一组 hook，内容由后端生成、随时可重写。
@@ -239,6 +239,38 @@ pub fn keyed_base_url(url: &str, key: &str) -> Option<String> {
     let head_len = "http://127.0.0.1:".len() + after_scheme.find('/')? + 1;
     let (head, tail) = url.split_at(head_len);
     Some(format!("{head}{key}/{tail}"))
+}
+
+/// 一行里每一条插好钥匙的我们那一形地址（[`split_keyed_base_url`] 认得的），钥匙段换成 `…`；其余逐字不变。
+/// 读者：「待办」里从用户文件原样摘出的行（贴过的老地址里那把钥匙不出后端）。
+pub fn hide_key(line: &str) -> String {
+    const HEAD: &str = "http://127.0.0.1:";
+    let url_byte =
+        |b: u8| b.is_ascii_alphanumeric() || matches!(b, b':' | b'/' | b'-' | b'_' | b'~');
+    let mut out = String::with_capacity(line.len());
+    let mut rest = line;
+    while let Some(at) = rest.find(HEAD) {
+        let (before, from) = rest.split_at(at);
+        out.push_str(before);
+        let len = HEAD.len()
+            + from
+                .bytes()
+                .skip(HEAD.len())
+                .position(|b| !url_byte(b))
+                .unwrap_or(from.len() - HEAD.len());
+        let (url, after) = from.split_at(len);
+        match split_keyed_base_url(url) {
+            Some((head, tail)) => {
+                out.push_str(head);
+                out.push('…');
+                out.push_str(tail);
+            }
+            None => out.push_str(url),
+        }
+        rest = after;
+    }
+    out.push_str(rest);
+    out
 }
 
 /// 路由路径第一段的两个前缀 = 两种模式（「为什么用两个前缀而不是一个哨兵段」）。

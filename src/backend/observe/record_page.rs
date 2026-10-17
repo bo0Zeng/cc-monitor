@@ -1,7 +1,7 @@
 //! **按路径读会话正文、出成品** —— 后端读正文的冷路（旁路快照那一页 ·
 //! 查看器整页 · 按偏移 · 按行号 · 子 agent）共用的那一个核。
 //!
-//! 它只做「通用的流式读取机器」那一半：切行 · 可计行编号（口径只住 `history_query::line_counts`）· 挑哪一家来解释
+//! 它只做「通用的流式读取机器」那一半：切行 · 可计行编号（口径只住 `lines::counts`）· 挑哪一家来解释
 //! （注册表 `agents::record_face_of`，按那份文件落在谁的根下）· 配排队消息的打字时刻（[`TypedTimes`]，只认适配层给的
 //! [`crate::agents::QueueMark`]）· 装成品。**一行在界面里是什么**住适配层（`agents/<名>/` 的 `RecordFace.parse`，出通用记录）。
 //!
@@ -143,7 +143,7 @@ pub(crate) fn rows_of(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Vec
     let mut last: Option<usize> = None;
     for (body, start, end) in split_lines_full(offset, bytes)
         .into_iter()
-        .filter(|(body, _, _)| super::history_query::line_counts(body))
+        .filter(|(body, _, _)| super::lines::counts(body))
     {
         let (mut record, mut cwd) = reader
             .interpret(body, start)
@@ -220,7 +220,7 @@ pub(crate) fn record_lines<'b>(
     let mut next = seq;
     let mut out: Vec<RecordLine> = Vec::new();
     for (body, start, end) in lines {
-        if !super::history_query::line_counts(body) {
+        if !super::lines::counts(body) {
             continue;
         }
         let at = next;
@@ -270,10 +270,7 @@ pub(crate) fn run_rows(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Ve
                 continue;
             }
         }
-        let text = String::from_utf8_lossy(body);
-        let rid = serde_json::from_str::<Value>(text.trim_start_matches('\u{feff}').trim())
-            .ok()
-            .and_then(|v| faces.response_id(&v));
+        let rid = super::lines::parse(body).and_then(|v| faces.response_id(&v));
         out.push(RunRow { record, rid });
     }
     out

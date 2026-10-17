@@ -189,11 +189,11 @@ fn here_reads_pin_ledger_and_lineage_for_one_session() {
 /// 生产代码里拼 `Hidden { … }` 的只有本文件；那三处的源码各自经本模块判（[`judge`] 或 [`Here::hidden`]）。
 #[test]
 fn the_three_carriers_get_the_cell_from_this_one_function() {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let here = root.join("control/session_hidden.rs");
     let mut builders = Vec::new();
     for (path, text) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
-        let code = crate::guard_support::production_side_of(&path, &text);
+        let code = guard_core::addr::production_side_of(&path, &text);
         if path != here && code.contains("Hidden {") {
             builders.push(path.display().to_string());
         }
@@ -208,7 +208,7 @@ fn the_three_carriers_get_the_cell_from_this_one_function() {
         ("faces/history_face.rs", "sessions-needs 每一行"),
     ] {
         let text = std::fs::read_to_string(root.join(file)).expect("读得出");
-        let code = crate::guard_support::production_code(&text);
+        let code = guard_core::production_code(&text);
         assert!(
             code.contains("session_hidden::"),
             "{why}（{file}）没经 control/session_hidden.rs 判隐藏"

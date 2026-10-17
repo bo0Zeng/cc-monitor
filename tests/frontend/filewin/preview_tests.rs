@@ -20,6 +20,10 @@ use crate::select::Intent;
 use crate::source::Row;
 use crate::workspace::Workspace;
 
+/// 合成后端给的预览上限（窗口不认这几个数，照门上给的用）。
+const PREVIEW_MAX_BYTES: u64 = 64 * 1024;
+const IMAGE_MAX_BYTES: u64 = 4 * 1024 * 1024;
+
 fn row(name: &str, size: u64, is_dir: bool) -> Row {
     Row {
         name: name.into(),
@@ -37,7 +41,11 @@ async fn rig(tag: &str, rows: Vec<Row>) -> (Wired, FileWindow) {
     )
     .await;
     let w = window_on(&wired, "/srv");
-    *w.listing.rows.lock().unwrap() = rows.into_iter().map(Into::into).collect();
+    // 照真列表那样带着后端（合成后端）给的种类与门。
+    *w.listing.rows.lock().unwrap() = rows
+        .into_iter()
+        .map(|r| crate::find::testing::gated(r.into()))
+        .collect();
     (wired, w)
 }
 
@@ -178,7 +186,7 @@ async fn what_is_not_read_says_why_and_sends_nothing() {
     );
     step(&mut w, &mut p); // big.log
     assert!(
-        matches!(p.view(), View::Idle(s) if copy_core::copy_matches_with("rsFilewinPreview.decide.tooBig", &[("name", "big.log")], &s)),
+        matches!(p.view(), View::Idle(s) if copy_core::copy_matches("beFilesOpen.preview.tooBig", &s)),
         "{:?}",
         p.view()
     );
@@ -208,7 +216,7 @@ async fn what_is_not_read_says_why_and_sends_nothing() {
     follow_until_settled(&mut p, &w).await;
     assert!(
         matches!(p.view(), View::Said(s) if copy_core::copy_matches("rsFilewinPreview.follow.notText", &s)
-            || copy_core::copy_matches("rsFilewinPreview.decide.binaryKind", &s)),
+            || copy_core::copy_matches("beFilesOpen.preview.binaryKind", &s)),
         "{:?}",
         p.view()
     );
@@ -290,9 +298,6 @@ fn code_is_highlighted_line_by_line_and_unknown_kinds_stay_plain() {
         "`fn main` 那一行只有一种颜色：{colors:?}"
     );
     assert_eq!(lines[1].text, "fn main() {");
-    assert_eq!(code_lang("/a/main.rs").as_deref(), Some("rs"));
-    assert_eq!(code_lang("/a/notes.txt"), None, "纯文本不上色");
-    assert_eq!(code_lang("/a/blob.weird"), None);
 }
 
 fn paint_narrow(ctx: &egui::Context, p: &Preview) -> Vec<(String, egui::Rect)> {
@@ -387,7 +392,7 @@ fn same_size_new_text_with_more_lines_does_not_reuse_the_old_wrap() {
 }
 
 /// 🔴 **图片超预览上限照实说为什么不显示**：超 [`IMAGE_MAX_BYTES`] 的图不读（线上零条 `files-read-chunk`），
-/// 面板上那一句点名文件、它多大、上限多少、指向头上的「查看」（查看页放得下）；头上「查看」「下载」都在。正控：恰好在上限上的那张照读。
+/// 面板上那一句说它多大、上限多少、指向头上的「查看」（查看页放得下）；头上「查看」「下载」都在。正控：恰好在上限上的那张照读。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_image_over_the_cap_says_why_it_is_not_shown() {
     let (wired, mut w) = rig(
@@ -416,13 +421,13 @@ async fn an_image_over_the_cap_says_why_it_is_not_shown() {
     };
     assert!(
         copy_core::copy_matches_with(
-            "rsFilewinPreview.decide.imageTooBig",
-            &[("name", "huge.png"), ("size", &size), ("limit", &limit)],
+            "beFilesOpen.preview.imageTooBig",
+            &[("size", &size), ("limit", &limit)],
             &said
         ),
         "那一句不是「多大 · 上限多少 · 不预览」：{said:?}"
     );
-    for part in ["huge.png", size.as_str(), limit.as_str()] {
+    for part in [size.as_str(), limit.as_str()] {
         assert!(said.contains(part), "那一句没说到 {part}：{said:?}");
     }
     // 预览放不下、查看页放得下（查看上限 32 MB）⇒ 那一句指向头上的「查看」，不让人去下载。
@@ -482,10 +487,10 @@ async fn an_image_over_the_cap_says_why_it_is_not_shown() {
     drop(wired);
 }
 
-/// 连查看页也放不下（超 [`crate::picture::PICTURE_MAX_BYTES`]）⇒ 预览那一句与查看页同一句：超过查看上限 · 可下载到本机再打开；不读。
+/// 连查看页也放不下（门上查看那一道是「不」）⇒ 预览那一句照门上给的写：与查看页同一句（超过查看上限 · 可下载到本机再打开）；不读。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_image_over_the_viewer_cap_points_to_download() {
-    let cap = crate::picture::PICTURE_MAX_BYTES;
+    let cap = 32 * 1024 * 1024;
     let (_wired, mut w) = rig("fw-pv-hugeimg", vec![row("pano.png", cap + 1, false)]).await;
     let mut p = Preview::default();
     w.apply_intent(
@@ -498,9 +503,8 @@ async fn an_image_over_the_viewer_cap_points_to_download() {
     );
     p.follow(&w, None);
     let want = copy_core::copy_text(
-        "rsFilewinImgview.state.tooBig",
+        "beFilesOpen.view.tooBig",
         &[
-            ("name", "pano.png"),
             ("size", &copy_core::size_text(cap + 1)),
             ("limit", &copy_core::size_text(cap)),
         ],

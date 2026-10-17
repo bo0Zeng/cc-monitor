@@ -164,6 +164,11 @@ mod tests {
     /// 长出永久居民 —— 递减棘轮就此失去意义（`S3-Y3`）。
     const NOT_AGENT_KNOWLEDGE: &[(&str, &str, &str)] = &[
         (
+            "files/class.rs",
+            "\"jsonl\"",
+            "文件管理器认代码文件的扩展名表（`jsonl` 画代码图标、预览按它上色），不是哪个 agent 的会话格式知识。",
+        ),
+        (
             "control/cc_bus.rs",
             ".claude",
             "这是 **cc-bus 的门牌号**（`~/.claude/skills/cc-bus/scripts`），不是 agent 知识 —— \
@@ -332,7 +337,7 @@ mod tests {
     /// （`the_scan_tree_macro_no_longer_excludes_its_caller_after_the_split` 守着这件事）。
     /// 本条的人群里没有本文件，靠的是**住址**：判据住 `tests/backend/`，不在被扫的 `src/` 下。
     fn sources() -> Vec<(String, String)> {
-        let src_dir = crate::guard_support::src_root();
+        let src_dir = guard_core::addr::backend_src_root();
         let files: Vec<(PathBuf, String)> = guard_core::scan_tree!(&src_dir, &["rs"]);
         files
             .into_iter()

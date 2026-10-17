@@ -2,8 +2,8 @@ use super::CROSS_EDGES;
 use std::path::{Path, PathBuf};
 
 fn repo_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::repo_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::repo_root()
 }
 
 /// 两棵树里所有 `.rs`（相对仓根，`/` 分隔）。
@@ -68,7 +68,7 @@ fn half_of(rel: &str) -> &'static str {
     //   文件窗口的判据住 `tests/frontend/filewin/`。
     static POPULATION: std::sync::LazyLock<Vec<String>> = std::sync::LazyLock::new(|| {
         let root = repo_root();
-        guard_core::population_trees(&crate::guard_support::crate_src_root())
+        guard_core::population_trees(&guard_core::addr::shell_src_root())
             .into_iter()
             .map(|(_, src)| {
                 let pkg = src.parent().expect("人群树是 <包>/src").to_path_buf();
@@ -258,7 +258,7 @@ fn discovered_edges() -> Vec<(String, String, String)> {
 fn the_edge_scan_sees_both_trees_and_actually_parses() {
     let files = both_halves();
     // 采集面与 git 跟踪着的那几棵对拍（遍历坏了 / 漏了子目录都红）。
-    crate::guard_support::assert_scanned_every_tracked(
+    guard_core::addr::assert_scanned_every_tracked(
         "跨半边的两半",
         &files,
         &[

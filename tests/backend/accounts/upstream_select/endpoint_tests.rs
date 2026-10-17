@@ -17,13 +17,6 @@
 use super::*;
 use serde_json::Value;
 
-// 入参经 typed 那一处收（同分派），再交本体（盖住 `super::*` 里的同名口）。
-fn answer_optin(args: &Value) -> Result<Value, (&'static str, String)> {
-    let req: crate::faces::relay_optin_face::OptinReq =
-        crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))?;
-    crate::faces::relay_optin_face::answer_optin(&req).map(|r| serde_json::to_value(r).unwrap())
-}
-
 fn named(d: &str) -> LaunchAccount {
     LaunchAccount::Named {
         config_dir: d.to_string(),
@@ -274,9 +267,9 @@ fn the_exec_time_key_comes_from_the_home_key_file_and_goes_into_the_first_segmen
     let _ = std::fs::remove_dir_all(&home);
 }
 
-// ── `relay-optin`：直接敲的 claude 也走中转（可选、生成让你贴）──────────────────────────
+// ── 直接敲的 claude 也走中转（可选、用户自己贴）──────────────────────────
 // 要求（用户原话）：「往每个号的 settings.json 里写 env / 这个可以变成可选, 像是生成命令一样让用户自己粘贴」——
-//   后端只读那台的 `~/.claude/settings.json` 判装没装、对不对，生成的片段指向的端口与钥匙等于那台中转当前的值。
+//   后端只读那台的 `~/.claude/settings.json` 判装没装、对不对，生成的地址指向的端口与钥匙等于那台中转当前的值。
 // 异源：钥匙文件与设置文件由本判据现写进临时家目录；期望的地址是手写字面量（不由构造口现算）。
 
 /// 夹具家目录（临时目录；钥匙文件 ＋ claude 设置文件都由各条判据现写）。
@@ -291,6 +284,16 @@ fn optin_home(tag: &str) -> std::path::PathBuf {
 const OPTIN_K1: &str = "1111111111111111111111111111111111111111111111111111111111111111";
 const OPTIN_K2: &str = "2222222222222222222222222222222222222222222222222222222222222222";
 
+/// 根钥匙派生出的只许直通那一把（照中转的派生法在这里现算：HMAC-SHA256(根, "ccm-relay/t") 的小写十六进制）。
+fn pass_hex(root: &str) -> String {
+    let k = ring::hmac::Key::new(ring::hmac::HMAC_SHA256, root.as_bytes());
+    ring::hmac::sign(&k, b"ccm-relay/t")
+        .as_ref()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
 fn put_key(home: &std::path::Path, key: &str) {
     std::fs::write(home.join(".cc-monitor/relay-key"), key).unwrap();
 }
@@ -299,35 +302,38 @@ fn put_settings(home: &std::path::Path, raw: &str) {
     std::fs::write(home.join(".claude/settings.json"), raw).unwrap();
 }
 
+/// 那一份报告写成 JSON（判据按格比，`url` 为空 ⇒ `null`）。
 fn optin(home: &std::path::Path, routed: &[String], registered: bool) -> Value {
-    serde_json::to_value(optin_at(
+    let r = optin_report_at(
         home,
         "claude-code",
         &crate::agents::claudecode::paths::SETTINGS_ENV,
         routed,
         registered,
-        &|p| p == 8788,
-    ))
-    .unwrap()
+    );
+    serde_json::json!({
+        "state": r.state.name(),
+        "source": r.source.display().to_string(),
+        "url": r.url,
+    })
 }
 
-/// 片段里那一个地址（解析片段本身，不比原文排版）。
+/// 要贴的那条地址。
 fn snippet_url(v: &Value) -> String {
-    let s = v["snippet"].as_str().expect("该有片段");
-    let parsed: Value = serde_json::from_str(s).expect("片段不是 JSON");
-    parsed["env"]["ANTHROPIC_BASE_URL"]
-        .as_str()
-        .expect("片段里没有那个键")
-        .to_string()
+    v["url"].as_str().expect("该有要贴的地址").to_string()
 }
 
-/// ★ 五态 × 片段：没贴 ⇒ 没装 ＋ 片段指向这台中转的口与盘上那把钥匙；照片段合并进去 ⇒ 已装、不再带片段；
-/// 中转换了钥匙 ⇒ 过期 ＋ 新片段带新钥匙；口不对 ⇒ 过期；别人的地址 ⇒ 另一态；读不了 / 读不懂 ⇒ 说读不了、不当没装。
+/// ★ 五态 × 地址：没贴 ⇒ 没装 ＋ 地址指向这台中转的口、插的是盘上根钥匙派生的只许直通那一把（那条地址恒是 `/t/`，全权那一把不出后端）；
+/// 照旧贴过全权那一把的 ⇒ 过期；照地址合并进去 ⇒ 已装、不再带地址；
+/// 中转换了钥匙 ⇒ 过期 ＋ 新地址带新钥匙；口不对 ⇒ 过期；别人的地址 ⇒ 另一态；读不了 / 读不懂 ⇒ 说读不了、不当没装。
 #[test]
 fn optin_judges_the_pasted_address_against_the_relay_port_and_key_on_disk() {
     let home = optin_home("states");
     put_key(&home, OPTIN_K1);
-    let want1 = format!("http://127.0.0.1:8788/{OPTIN_K1}/t/claude-code/_");
+    let want1 = format!(
+        "http://127.0.0.1:8788/{}/t/claude-code/_",
+        pass_hex(OPTIN_K1)
+    );
 
     // 文件不在 ⇒ 没装。
     let v = optin(&home, &[], true);
@@ -335,11 +341,8 @@ fn optin_judges_the_pasted_address_against_the_relay_port_and_key_on_disk() {
     assert_eq!(
         snippet_url(&v),
         want1,
-        "片段的口与钥匙要等于这台中转现在那一份"
+        "地址的口要等于这台中转的口、钥匙段要是只许直通那一把"
     );
-    assert_eq!(v["listening"], true);
-    assert_eq!(v["note"], "");
-    assert_eq!(v["missing"], "");
     assert!(
         v["source"]
             .as_str()
@@ -353,24 +356,36 @@ fn optin_judges_the_pasted_address_against_the_relay_port_and_key_on_disk() {
     put_settings(&home, r#"{"env":{"ANTHROPIC_BASE_URL":""}}"#);
     assert_eq!(optin(&home, &[], true)["state"], "absent", "空串当没写");
 
-    // 照片段合并进去（别的设置留着）⇒ 已装、不再带片段。
+    // 照地址合并进去（别的设置留着）⇒ 已装、不再带地址。
     put_settings(
         &home,
         &format!(r#"{{"model":"x","env":{{"OTHER":"1","ANTHROPIC_BASE_URL":"{want1}"}}}}"#),
     );
     let v = optin(&home, &[], true);
     assert_eq!(v["state"], "installed", "{v}");
-    assert_eq!(v["snippet"], Value::Null, "已装 ⇒ 钥匙不再出这台");
-    assert_eq!(v["missing"], "");
+    assert_eq!(v["url"], Value::Null, "已装 ⇒ 钥匙不再出这台");
 
-    // 中转换了钥匙 ⇒ 过期 ＋ 新片段带新钥匙。
+    // 中转换了钥匙 ⇒ 过期 ＋ 新地址带新钥匙。
     put_key(&home, OPTIN_K2);
     let v = optin(&home, &[], true);
     assert_eq!(v["state"], "stale", "{v}");
     assert_eq!(
         snippet_url(&v),
-        format!("http://127.0.0.1:8788/{OPTIN_K2}/t/claude-code/_")
+        format!(
+            "http://127.0.0.1:8788/{}/t/claude-code/_",
+            pass_hex(OPTIN_K2)
+        )
     );
+    // 照旧贴的是全权那一把（根钥匙本身）⇒ 过期，要贴的换成直通那一把。
+    put_settings(
+        &home,
+        &format!(
+            r#"{{"env":{{"ANTHROPIC_BASE_URL":"http://127.0.0.1:8788/{OPTIN_K2}/t/claude-code/_"}}}}"#
+        ),
+    );
+    let v = optin(&home, &[], true);
+    assert_eq!(v["state"], "stale", "{v}");
+    assert!(!snippet_url(&v).contains(OPTIN_K2), "{v}");
     // 口不对（钥匙对）⇒ 过期；没带钥匙段的老形 ⇒ 过期。
     put_settings(
         &home,
@@ -385,16 +400,16 @@ fn optin_judges_the_pasted_address_against_the_relay_port_and_key_on_disk() {
     );
     assert_eq!(optin(&home, &[], true)["state"], "stale");
 
-    // 用户自己的端点 ⇒ 另一态（不说成「贴的过期了」），照给片段。
+    // 用户自己的端点 ⇒ 另一态（不说成「贴的过期了」），照给地址。
     put_settings(
         &home,
         r#"{"env":{"ANTHROPIC_BASE_URL":"https://p.example"}}"#,
     );
     let v = optin(&home, &[], true);
     assert_eq!(v["state"], "other", "{v}");
-    assert!(v["snippet"].is_string());
+    assert!(v["url"].is_string());
 
-    // 读不懂：坏 JSON · 顶层不是对象 · env 不是对象 · 值不是串 ⇒ 读不了，不当没装；照给片段。
+    // 读不懂：坏 JSON · 顶层不是对象 · env 不是对象 · 值不是串 ⇒ 读不了，不当没装；照给地址。
     for bad in [
         "{ not json",
         "[]",
@@ -404,27 +419,24 @@ fn optin_judges_the_pasted_address_against_the_relay_port_and_key_on_disk() {
         put_settings(&home, bad);
         let v = optin(&home, &[], true);
         assert_eq!(v["state"], "unreadable", "{bad} ⇒ {v}");
-        assert_ne!(v["note"], "", "读不了要说为什么：{bad}");
-        assert!(v["snippet"].is_string());
+        assert!(v["url"].is_string());
     }
     // 读不了：那是个目录。
     std::fs::remove_file(home.join(".claude/settings.json")).unwrap();
     std::fs::create_dir_all(home.join(".claude/settings.json")).unwrap();
     let v = optin(&home, &[], true);
     assert_eq!(v["state"], "unreadable", "{v}");
-    assert_ne!(v["note"], "");
     let _ = std::fs::remove_dir_all(&home);
 }
 
 /// 生成不了的两种：中转还没起来过（没有钥匙文件）· 决策表不给这一条（这一家没登记默认上游 / 表里有个号就叫 `_`）⇒
-/// 不给片段、说为什么；文件里有我们那一形的地址仍判得出「不是现在那一条」。
+/// 不给地址；文件里有我们那一形的地址仍判得出「不是现在那一条」。
 #[test]
-fn optin_without_a_key_or_a_route_gives_no_snippet_and_says_why() {
+fn optin_without_a_key_or_a_route_gives_no_snippet() {
     let home = optin_home("nokey");
     let v = optin(&home, &[], true);
     assert_eq!(v["state"], "absent");
-    assert_eq!(v["snippet"], Value::Null);
-    assert_ne!(v["missing"], "", "没钥匙要说为什么生成不了");
+    assert_eq!(v["url"], Value::Null);
     put_settings(
         &home,
         &format!(
@@ -440,53 +452,7 @@ fn optin_without_a_key_or_a_route_gives_no_snippet_and_says_why() {
     put_key(&home, OPTIN_K1);
     for (routed, registered) in [(vec![], false), (vec!["_".to_string()], true)] {
         let v = optin(&home, &routed, registered);
-        assert_eq!(v["snippet"], Value::Null, "{routed:?} {registered}");
-        assert_ne!(v["missing"], "");
+        assert_eq!(v["url"], Value::Null, "{routed:?} {registered}");
     }
     let _ = std::fs::remove_dir_all(&home);
-}
-
-/// 成品两侧对拍：贴过、钥匙换了的那一台 ⇒ 整份成品 == 金样（界面解码器 `relay-optin-reads.ts` 读同一份）。
-#[test]
-fn optin_product_is_the_golden_the_ui_decodes() {
-    let home = optin_home("golden");
-    put_key(&home, OPTIN_K2);
-    put_settings(
-        &home,
-        &format!(
-            r#"{{"env":{{"ANTHROPIC_BASE_URL":"http://127.0.0.1:8788/{OPTIN_K1}/t/claude-code/_"}}}}"#
-        ),
-    );
-    let got = serde_json::to_string_pretty(&optin(&home, &[], true))
-        .unwrap()
-        .replace(&home.display().to_string(), "/HOME");
-    let want = include_str!("../../../__fixtures__/relay-optin.golden.json");
-    assert_eq!(
-        got.trim(),
-        want.trim(),
-        "成品形状变了 —— 界面解码器读的是同一份金样，两边要一起改"
-    );
-    let _ = std::fs::remove_dir_all(&home);
-}
-
-/// ★ `relay-optin` 按家取那一格：入参缺 `agent` ⇒ `bad_args`（不猜是哪一家）；登记了这一形的家取到它自己那一格，
-/// 没登记的名字 ⇒ `bad_args`（入参认不出）。
-#[test]
-fn relay_optin_takes_the_family_from_its_args() {
-    assert_eq!(
-        answer_optin(&serde_json::json!({})).unwrap_err().0,
-        "bad_args"
-    );
-    assert_eq!(
-        answer_optin(&serde_json::json!({"agent": "agent-unregistered"}))
-            .unwrap_err()
-            .0,
-        "bad_args"
-    );
-    let cc = crate::agents::settings_env_face("claude-code").expect("claude-code 有这一形");
-    assert_eq!(
-        (cc.snippet)("http://x"),
-        (crate::agents::claudecode::paths::SETTINGS_ENV.snippet)("http://x")
-    );
-    assert!(crate::agents::settings_env_face("agent-unregistered").is_none());
 }

@@ -91,8 +91,8 @@ const REGISTERED: &[Candidate] = &[
 // ───────────────────────────── 量具 ─────────────────────────────
 
 fn repo_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::repo_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::repo_root()
 }
 
 /// 读一份**必须存在**的文件（相对仓根）。
@@ -143,7 +143,7 @@ fn segment_after(hay: &str, anchor: &str, close: &str) -> String {
 /// backend 命令注册表里的**每一条命令名**（命令表各族那张 `SPECS` 表内，段界之内，逐族取）。
 fn backend_command_names() -> Vec<String> {
     let mut out = Vec::new();
-    for (rel, _) in crate::guard_support::backend_registry_sources() {
+    for (rel, _) in guard_core::addr::backend_registry_sources() {
         let prod = rust_production(&rel);
         let seg = segment_after(&prod, "const SPECS: &[CommandSpec] = &[", "\n];");
         let key = format!("name{} \"", ':');
@@ -159,7 +159,7 @@ fn backend_command_names() -> Vec<String> {
     }
     // typed 那几行（第 8 批起）不写 `name:`：名字从后端类型生成的命令表读（`generated/TypedCommands.ts` 每条一行 `"名字": { req: …`）。
     let map = std::fs::read_to_string(
-        crate::guard_support::repo_root().join("src/frontend/ui/generated/TypedCommands.ts"),
+        guard_core::addr::repo_root().join("src/frontend/ui/generated/TypedCommands.ts"),
     )
     .expect("生成的命令表");
     // 逐字认：行首（去空白）一个带引号的名字、紧跟 `: { req:`。
@@ -180,7 +180,7 @@ fn backend_command_names() -> Vec<String> {
 /// **为什么运行期读文件而不是 `include_str!`**：后者会在 monitor 与后端之间造一条
 /// **编译期**跨 crate 边（`cross_half_edge_registry` 那族要单独登记），而本条要的只是一份文本。
 fn ccm_module_source(file: &str) -> String {
-    let p = crate::guard_support::repo_root()
+    let p = guard_core::addr::repo_root()
         .join("src/backend/control/ccm")
         .join(file);
     std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {}：{e}", p.display()))
@@ -583,9 +583,9 @@ fn the_classification_is_guard_corpus_only_and_no_production_code_consumes_it() 
     files.extend(guard_core::scan_tree!(&root.join("src/backend"), &["rs"]));
     let seen: Vec<String> = files
         .iter()
-        .map(|(p, _)| crate::guard_support::rel_of(p))
+        .map(|(p, _)| guard_core::addr::rel_of(p))
         .collect();
-    crate::guard_support::assert_scanned_every_tracked(
+    guard_core::addr::assert_scanned_every_tracked(
         "引用插件分类模块的人群",
         &seen,
         &["src/frontend/shell/src", "src/backend"],

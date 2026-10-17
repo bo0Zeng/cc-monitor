@@ -13,14 +13,14 @@
 //!
 //! **性质**：每一条同步命令的**名字级调用闭包**里，「在 IPC 派发线程上等外面」的针所在的 fn ——
 //! [`NEEDLES`]：`block_on(`（同步里等一次 async 往返的唯一桥）· `TcpStream::connect`（同步连后端口）——
-//! 恒等于 [`PENDING`] 那张例外表：`{同步命令 → 针所在 fn 集合}` 两向相等。
+//! 零处（零命中带正控）。
 //!
-//! **异源**：左边是现扫源码现算的闭包；右边是手写的例外表与手写的合成夹具。
+//! **异源**：左边是现扫源码现算的闭包；右边是手写的合成夹具。
 //!
 //! **正控**：① [`the_reach_analyzer_sees_a_three_hop_chain_and_only_that`]：合成的几份源码（三跳链 · 方法调用 ·
 //! `async` 命令 · 字面量里的针 · 同名歧义）⇒ 分析器恰好报出那一条；② 真仓：本机起会话那两条被认成 **async** 命令
 //! （扫描器看得见属性 ＋ `async` 那一格；`backend_start` 改 async 之后它也在这张单子上）；
-//! ③ 例外表今天是空的 ⇒ 真仓上的阳性对照只剩 ② —— 合成夹具 ① 管「分析器看得见链」，② 管「扫描器读得到真仓的属性」。
+//! 合成夹具 ① 管「分析器看得见链」，② 管「扫描器读得到真仓的属性」。
 //!
 //! # 名字级闭包怎么算（规则写全，改规则就是改判据）
 //!
@@ -33,8 +33,7 @@
 //!
 //! - **针认七样**（[`NEEDLES`]）：等 async 往返 · 同步连口 · 起子进程 · 等子进程 · 睡 · 起停串行锁。
 //!   「读写文件」**不在射程**（今天还同步的 `load_config` / `patch_config` / `cc_*_auto_launch` 读写的是 monitor 自己几 KB 的
-//!   一份文件，逐条登记在 [`SYNC_ALLOWED`]）；`local_ccm_entry_status`（跑 `ccm --ccm-probe`）· `backend_status`（等起停那把锁）
-//!   10-02 改成了 `async`。
+//!   一份文件，逐条登记在 [`SYNC_ALLOWED`]）；`backend_status`（等起停那把锁）10-02 改成了 `async`。
 //! - 只看 monitor 这一个 crate（`#[tauri::command]` 全在这里）；共享 crate 里的阻塞看不见（今天零处）。
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -51,16 +50,6 @@ const NEEDLES: &[&str] = &[
     "thread::sleep(",
     "LIFECYCLE.lock(",
 ];
-
-/// 🔴 **例外表**：`(同步命令, 它的闭包里够得着的针所在 fn, 为什么)`。键形 `相对 src/frontend/shell/src 的路径::fn 名`。
-///
-/// ⚠ **登记 ≠ 认可**。这里每一行都是**偏离 `INVARIANTS §10`**、由 TL3 报备、待定（改 `async` ＋
-/// `spawn_blocking`，或在 `§10` 登记例外）。裁掉一行 ⇒ 从这里删那一行（本条两向相等，删了不改代码会红）。
-///
-/// 今天**空**：原先那一行 `backend_control::backend_start`（机器页「起」：同步命令一路
-/// `start_local_backend → start_detached → adopt_with`，在 IPC 派发线程上连本机后端口、读 hello、`sleep` 等绑定、
-/// `attach_stream` 里 `block_on`）「改 async」，本机那一支进了 `spawn_blocking` ⇒ 摘掉。
-const PENDING: &[(&str, &[&str], &str)] = &[];
 
 /// 🔴 **同步命令白名单**：`(同步命令, 为什么它不会等外面)` —— 与盘上现扫出来的同步 `#[tauri::command]` 两向相等。
 /// 新加一条同步命令 ⇒ 要么写 `async`（`§10` 默认），要么在这里写一句为什么它不等外面（不起进程 · 不连口 · 不睡 · 不等锁）。
@@ -528,42 +517,21 @@ fn this_crate() -> Vec<(String, String)> {
 
 // ───────────────────────────── 判据 ─────────────────────────────
 
-/// ★★★ **同步命令的调用闭包里，「在 IPC 派发线程上等外面」的针 == 例外表**（两向相等）。
+/// ★★★ **同步命令的调用闭包里零处「在 IPC 派发线程上等外面」的针**。
 #[test]
-fn no_sync_command_waits_on_the_outside_except_the_registered_deviations() {
+fn no_sync_command_waits_on_the_outside() {
     let a = analyze(&this_crate());
     assert_eq!(
         a.attrs, a.cmd_items,
         "有两个 `#[tauri::command` 属性对上了同一个 fn 定义 —— 抽取器坏了，本条此刻无效\
          （`#[cfg]` 两支同名的命令是两个定义，各算一个：例 `lib.rs::bring_monitor_to_front`）"
     );
-    let want: BTreeMap<String, BTreeSet<String>> = PENDING
-        .iter()
-        .map(|(cmd, hits, _)| {
-            (
-                (*cmd).to_string(),
-                hits.iter().map(|h| (*h).to_string()).collect(),
-            )
-        })
-        .collect();
-    let extra: Vec<_> = a
-        .reach
-        .iter()
-        .filter(|(k, v)| want.get(*k) != Some(*v))
-        .collect();
-    let stale: Vec<_> = want
-        .iter()
-        .filter(|(k, v)| a.reach.get(*k) != Some(*v))
-        .collect();
     assert!(
-        extra.is_empty() && stale.is_empty(),
-        "\n🔴 **同步 `#[tauri::command]` 的调用闭包里够得着「等外面」的写法**（`INVARIANTS §10`）：\n\
-         盘上有、例外表里没有（或针集合不同）：{extra:#?}\n\
-         例外表里有、盘上已经没有（或针集合不同）：{stale:#?}\n\n\
-         ⇒ 前一种：那条命令会在 IPC 派发线程上等（`block_on` / 同步连口），期间别的 IPC 全排队 ——\n\
-            改 `pub async fn` ＋ 同步那一截包 `spawn_blocking`（`§10` 实施口诀；先例 `launch.rs::open_local_terminal`），\n\
-            别往例外表里加一行了事（加一行 = 偏离设计）。\n\
-         ⇒ 后一种：修好了 ⇒ 从 `PENDING` 删掉那一行；只是换了针所在的 fn ⇒ 按实数改并写清为什么。"
+        a.reach.is_empty(),
+        "\n🔴 **同步 `#[tauri::command]` 的调用闭包里够得着「等外面」的写法**（`INVARIANTS §10`）：{:#?}\n\n\
+         ⇒ 那条命令会在 IPC 派发线程上等（`block_on` / 同步连口），期间别的 IPC 全排队 ——\n\
+            改 `pub async fn` ＋ 同步那一截包 `spawn_blocking`（`§10` 实施口诀；先例 `launch.rs::open_local_terminal`）。",
+        a.reach
     );
 }
 
@@ -584,9 +552,9 @@ fn every_sync_command_is_on_the_whitelist_with_a_reason() {
     for (c, why) in SYNC_ALLOWED {
         assert!(why.chars().count() >= 8, "`{c}` 没写清为什么它不等外面");
     }
-    // 正控：今天改成 async 的那两条确实在 async 那一侧（扫描器读得出 `async`，白名单那一向不是空真）。
+    // 正控：这两条确实在 async 那一侧（扫描器读得出 `async`，白名单那一向不是空真）。
     for cmd in [
-        "ccm_probe.rs::local_ccm_entry_status",
+        "data_paths.rs::get_data_paths",
         "backend_control.rs::backend_status",
     ] {
         assert!(a.async_cmds.contains(cmd), "`{cmd}` 不在 async 命令里");

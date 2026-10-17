@@ -44,13 +44,13 @@ fn register(table: &Table, args: &Value) -> Result<String, (&'static str, String
 
 /// 生产段（剥测试模块 ＋ 整行注释 ＋ 行尾注释）—— 指纹只认代码，不认说起它的散文。
 fn code_of(body: &str) -> String {
-    let prod = crate::guard_support::production_code(body);
+    let prod = guard_core::production_code(body);
     guard_core::strip_trailing_comments(&guard_core::strip_comment_lines(&prod))
 }
 
 /// 后端生产树里，含 `needle` 的文件（相对 `src/backend/`）。
 fn homes_of(needle: &str) -> (std::collections::BTreeSet<String>, usize) {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let mut scanned = 0usize;
     let mut homes = std::collections::BTreeSet::new();
     for (path, body) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {

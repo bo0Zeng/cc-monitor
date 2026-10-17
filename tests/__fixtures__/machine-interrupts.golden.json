@@ -2,7 +2,7 @@
   "说明": [
     "machine-interrupts 帧命令的跨语言金样（停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前会打断什么）。",
     "Rust：tests/backend/observe/accounts_query_tests.rs 按 lines ＋ forwards 走生产函数 machine_product 现产，与 reply 逐格相等。",
-    "TS：tests/frontend/ui/settings/interrupts.vitest.ts 读同一份 reply，逐形严格解码、排成「中断 · 保留」两行。",
+    "TS：tests/frontend/ui/settings/interrupts.vitest.ts 读同一份 reply，排成「中断 · 保留」两行。",
     "会话行是结构夹具（pid 与字段是造的），不取自任何真机。"
   ],
   "cases": [

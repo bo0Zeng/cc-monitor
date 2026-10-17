@@ -102,6 +102,7 @@ async function rig() {
       }
       return [];
     },
+    released() {},
   });
   view.attach(total);
   const read = vi.fn(async (): Promise<TurnsResult> => ({ available: true, from: 0, end: total * 100, turns: Array.from({ length: TURNS }, (_, k) => turn(k)) }));
@@ -210,7 +211,7 @@ describe("冷切停住那一帧：骨架后到", () => {
     await fold.refresh();
     layout.scrollTop = 1e9; // 贴底（尾巴那一屏）
     const ledger = new SkeletonLedger(0, Array.from({ length: total }, (_, i) => facts(i)));
-    const mkView = (): SkeletonView => (view = new SkeletonView(ledger, scrollEl, timeline, { materialize: (lo, hi) => { for (let s = lo; s < hi; s++) card(s); return []; } }));
+    const mkView = (): SkeletonView => (view = new SkeletonView(ledger, scrollEl, timeline, { materialize: (lo, hi) => { for (let s = lo; s < hi; s++) card(s); return []; }, released() {} }));
     return { content, scrollEl, fold, ledger, mkView, floor };
   }
 
@@ -271,7 +272,7 @@ describe("大折叠 × 骨架：每段管哪几行照后端的 `after` · `until
     const timeline = new RecordTimeline(stream);
     installLayout(scrollEl, stream.contentElement);
     const ledger = new SkeletonLedger(0, Array.from({ length: 30 }, (_, i) => facts(i)));
-    const view = new SkeletonView(ledger, scrollEl, timeline, { materialize: () => [] });
+    const view = new SkeletonView(ledger, scrollEl, timeline, { materialize: () => [], released() {} });
     view.attach(30);
     const one = (k: number, until: string | null): TurnRow => ({ ...turn(k), shown: [], folds: [{ ...turn(k).folds[0], until }] });
     const read = async (): Promise<TurnsResult> => ({ available: true, from: 0, end: 3000, turns: second ? [one(0, until0), one(2, null)] : [one(0, until0)] });

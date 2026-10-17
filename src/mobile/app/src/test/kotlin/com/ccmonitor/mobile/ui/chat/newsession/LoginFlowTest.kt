@@ -21,7 +21,7 @@ class LoginFlowTest {
     fun `起 · 粘错一回（那一格下面那一句、作业还在）· 再交成了 ⇒ done；成了之后收起不再撤`() =
         runTest {
             val l = FakeCoreLink()
-            var finish: Reply = Reply.Failed(CoreFailure("bad_paste", "粘贴的内容对不上本次登录 · 可重新粘贴", "d"))
+            var finish: Reply = Reply.Failed(CoreFailure("bad_paste", "粘贴的内容对不上本次登录 · 可重新粘贴", "d", mapOf("again" to "paste")))
             l.answer = { cmd, _ ->
                 when (cmd) {
                     "login-start" -> Reply.Ok(started)
@@ -42,6 +42,7 @@ class LoginFlowTest {
             runCurrent()
             assertEquals(mapOf("job" to "j1", "pasted" to "abc"), l.calls("login-finish").single())
             assertEquals("粘贴的内容对不上本次登录 · 可重新粘贴", f.state.value.pasteError)
+            assertNull("接着粘：抽屉不换成失败那一态", f.state.value.failed)
             finish = Reply.Ok(mapOf("target" to mapOf("kind" to "account")))
             f.submit("abd")
             runCurrent()
@@ -75,5 +76,47 @@ class LoginFlowTest {
             f.cancel()
             runCurrent()
             assertEquals(listOf(mapOf("job" to "j1")), l.calls("login-cancel"))
+        }
+
+    /** 交了没成：怎么办照那台的 `again` —— 重新开始 ⇒ 失败那一态 ＋［重新开始］；没法再来 ⇒ 只那一句。 */
+    @Test
+    fun `交了没成 ⇒ 照 again：restart 给重新开始、none 不给，作业都已收`() =
+        runTest {
+            for ((again, can) in listOf("restart" to true, "none" to false)) {
+                val l = FakeCoreLink()
+                l.answer = { cmd, _ ->
+                    when (cmd) {
+                        "login-start" -> Reply.Ok(started)
+                        "login-finish" -> Reply.Failed(CoreFailure("expired", "这次登录已过期", "d", mapOf("again" to again)))
+                        else -> Reply.Ok(mapOf("was" to true))
+                    }
+                }
+                val f = LoginFlow(l, "smokebox", "claude", "team", backgroundScope)
+                f.start()
+                runCurrent()
+                f.submit("abc")
+                runCurrent()
+                val s = f.state.value
+                assertEquals(again, "这次登录已过期", s.failed)
+                assertEquals(again, can, s.canRestart)
+                assertNull(again, s.pasteError)
+                assertNull(again, s.started)
+            }
+        }
+
+    /** 没起成：那台说没法再来 ⇒ 不给［重新开始］；没说（超时 · 断线）⇒ 给。 */
+    @Test
+    fun `没起成 ⇒ again none 不给重新开始；回包里没有 again ⇒ 给`() =
+        runTest {
+            for ((reply, can) in listOf(
+                Reply.Failed(CoreFailure("unsupported", "不支持", "d", mapOf("again" to "none"))) to false,
+                Reply.TimedOut to true,
+            )) {
+                val l = FakeCoreLink().also { it.answer = { _, _ -> reply } }
+                val f = LoginFlow(l, "smokebox", "codex", "cx", backgroundScope)
+                f.start()
+                runCurrent()
+                assertEquals(reply.toString(), can, f.state.value.canRestart)
+            }
         }
 }

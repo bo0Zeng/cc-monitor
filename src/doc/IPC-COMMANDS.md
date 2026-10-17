@@ -1,4 +1,4 @@
-<!-- 生成物，勿手改：由 tests/backend/protocol_doc_gen.rs 从代码生成。重生成：在 src/backend 下 CCM_REGEN_PROTOCOL_DOC=yes cargo test --lib -- protocol_doc_gen -->
+<!-- 生成物，勿手改：由 tests/backend/protocol_doc_gen.rs 从代码生成。重生成：在 src/backend 下 cargo test --lib -- protocol_doc_gen 现打，再 bash tests/scripts/bless-golden.sh 拷回 -->
 
 # 协议参考（帧 · 命令 · CLI）
 
@@ -390,7 +390,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 - `rotation_strategies` —— 这台的策略目录 · 新会话用哪份 · 哪个会话用哪份
 - `plan` —— 这台某个 pb 工作区的计划（`key` ＝ 工作区根，`rev` ＝ 新的输出摘要，与手上那一份相同 ⇒ 不用问； `body` ＝ `{needs}`：这个工作区此刻要你看的数，没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）
 - `tasks` —— 这台某个会话的任务清单（`key` ＝ sid）
-- `needs` —— 这台某个会话挂着的待答请求（`key` ＝ sid：挂上 · 撤掉 · 答掉；重问 `sessions-needs` 或那个会话的 `history-facts`）
+- `needs` —— 这台某个会话挂着的待答请求（`key` ＝ sid：挂上 · 撤掉 · 答掉 · 「没人答时自动答」那一格改了；重问 `sessions-needs` 或那个会话的 `history-facts`）
 - `login` —— 一份登录作业自己收了（`key` ＝ 作业号；`body` ＝ `{state: done \| failed, said?, detail?}`）
 - `manual` —— 这台会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了 · 某个号记「MCP 要登录」的那份文件翻了；重问 `manual-list`）
 - `machines` —— 这一端的机器表（`machines.json` 被改写；重问 `machines-read`）
@@ -1362,22 +1362,6 @@ type WirePath = string | { b16: string };
 
 码：`bad_args` · `bad_path` · `exists` · `io_failed` · `refused` · `unsupported`
 
-#### `files-link`
-
-建一条符号链接。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-link`
-
-入参 `FilesLinkReq` · 回包 `FilesPathReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type FilesLinkReq = { root: WirePath, rel: WirePath, target: WirePath, };
-type FilesPathReply = { path: WirePath, };
-type WirePath = string | { b16: string };
-```
-
-码：`bad_args` · `bad_path` · `io_failed` · `refused`
-
 #### `files-write-text`
 
 覆盖写一份已经在的普通文件。
@@ -1391,38 +1375,6 @@ type FilesWriteTextReq = { root: WirePath, rel: WirePath, content: WirePath, exp
 type FilesWrittenReply = { path: WirePath, bytes: number, sha256: Sha256Hex, };
 type Sha256Expect = { sha256: Sha256Hex, };
 type Sha256Hex = string;
-type WirePath = string | { b16: string };
-```
-
-码：`bad_args` · `bad_path` · `io_failed` · `refused` · `stale`
-
-#### `files-peek`
-
-读改写的读那一半。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-peek`
-
-入参 `FilesPeekReq` · 回包 `FilesPeekReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type FilesPeekReply = { path: WirePath, exists: boolean, text: string | null, };
-type FilesPeekReq = { root: WirePath, rel: WirePath, };
-type WirePath = string | { b16: string };
-```
-
-码：`bad_args` · `bad_path` · `io_failed` · `not_text` · `refused` · `too_large`
-
-#### `files-put`
-
-整份替换一份文本文件。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-put`
-
-入参 `FilesPutReq` · 回包 `FilesPutReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type FilesPutReply = { path: WirePath, bytes: number, changed: boolean, created: boolean, backup: WirePath | null, };
-type FilesPutReq = { root: WirePath, rel: WirePath, content: WirePath, expect: WirePath | null, backup?: boolean, parents?: boolean, };
 type WirePath = string | { b16: string };
 ```
 
@@ -1643,8 +1595,13 @@ type WirePath = string | { b16: string };
 入参 `FindReq` · 回包 `FindReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
 type FileKind = "dir" | "file" | "symlink" | "other";
 type FilesFindHit = { path: WirePath, kind: FileKind, 
+/**
+ * 画哪种图标（索引不跟链接 ⇒ 链接画 [`FileClass::Link`]）。
+ */
+class: FileClass, 
 /**
  * 相对搜索起点的那一段（所在目录）。
  */
@@ -1716,7 +1673,14 @@ type WirePath = string | { b16: string };
 
 ```ts
 type Crumb = { name: WirePath, path: WirePath, };
+type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
 type FileKind = "dir" | "file" | "symlink" | "other";
+type Gate = { "cap": number } | { "no": string };
+type Gates = { preview: PreviewGate, 
+/**
+ * 查看页：只在两端解得开的那几种图上有。
+ */
+view?: Gate, edit: Gate, };
 type LinkTo = "dir" | "file" | "missing";
 type LsEntry = { path: WirePath, 
 /**
@@ -1738,7 +1702,19 @@ link_dir?: boolean,
 /**
  * 链接指向哪一种（只在链接上）。
  */
-link_to?: LinkTo, };
+link_to?: LinkTo, 
+/**
+ * 画哪种图标（链接画它指向的那一种：指向目录 ⇒ 文件夹，其余按名字）。
+ */
+class: FileClass, 
+/**
+ * 「类型」那一列的字（那台写好）。
+ */
+type_text: string, 
+/**
+ * 读得起来的那几道门；目录（含指向目录的链接）缺。
+ */
+gates?: Gates, };
 type LsReply = { 
 /**
  * 排好的（[`LsReq::sort`]）。
@@ -1778,7 +1754,9 @@ dirs_only?: boolean,
  */
 sort?: LsSort, };
 type LsSort = { by: LsSortBy, reverse?: boolean, };
-type LsSortBy = "name" | "size" | "mtime";
+type LsSortBy = "name" | "size" | "mtime" | "type";
+type PreviewGate = { "text": TextPreview } | { "image": number } | { "no": string };
+type TextPreview = { cap: number, lang?: string, };
 type WirePath = string | { b16: string };
 ```
 
@@ -1796,11 +1774,7 @@ type WirePath = string | { b16: string };
 type FileKind = "dir" | "file" | "symlink" | "other";
 type StatReply = { path: WirePath, 
 /**
- * 末段名（那台按自己的分隔符切好；到顶 ⇒ 空）。
- */
-name: WirePath, 
-/**
- * 上一级；到顶 ⇒ `null`。
+ * 上一级（那台按自己的路径规则切）；到顶 ⇒ `null`。
  */
 up: WirePath | null, kind: FileKind, size: number, readonly: boolean, 
 /**
@@ -2480,7 +2454,11 @@ type RotationStrategiesReq = Record<symbol, never>;
 入参 `RotationViewReq` · 回包 `RotationViewReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Fact = { 
+type FactBlocked = { why: FactWhy, until?: number, text: string, };
+type FactWhy = "refused" | "overage" | "used" | "login" | "key";
+type LoginState = "ok" | "needsLogin" | "needsKey";
+type QuotaKind = "sub" | "api";
+type RotAccount = { plate: RotPlate, 
 /**
  * 路由第 2 段。
  */
@@ -2493,10 +2471,6 @@ seenAt?: number,
  * 事实上用不了 ⇒ 有；能用 ⇒ 缺。
  */
 blocked?: FactBlocked, };
-type FactBlocked = { why: FactWhy, until?: number, text: string, };
-type FactWhy = "refused" | "overage" | "used" | "login" | "key";
-type LoginState = "ok" | "needsLogin" | "needsKey";
-type QuotaKind = "sub" | "api";
 type RotBadCell = { cell: string, code: string, };
 type RotFormCell = { key: string, kind: RotFormKind, scope: RotFormScope, 
 /**
@@ -2531,7 +2505,7 @@ type RotPast = { from: number, uses: Array<RotPastUse>, lanes: Array<RotPastLane
 type RotPastLane = { account: string, segs: Array<RotPastSeg>, };
 type RotPastSeg = { from: number, to: number, sendable: boolean, reset: boolean, fromText: string, };
 type RotPastUse = { from: number, to: number, account?: string, };
-type RotPlate = { color: number, label: Words, };
+type RotPlate = { color: number, label: Words, text: Words, };
 type RotRefused = { cells: Array<RotBadCell>, };
 type RotStrategyError = { line?: number, msg: string, };
 type RotStrategyItem = { id: string, 
@@ -2650,13 +2624,9 @@ dirty: boolean,
  */
 start: string, current: string, 
 /**
- * 每个号的事实，照号列表的先后（列表里没有的接在后面）。
+ * 每个号的事实 ＋ 号牌，照号列表的先后（列表里没有的接在后面）。
  */
-accounts: Array<Fact>, 
-/**
- * `accounts` 里每个号的号牌（号色 · 号名），按号 id。
- */
-plates: { [key in string]: RotPlate }, 
+accounts: Array<RotAccount>, 
 /**
  * 号列表里有几个（`accounts` 前这么多个是列表里的）。
  */
@@ -4014,11 +3984,24 @@ type Annotated = { entry: Entry,
  * 改之前单个隐藏那一格（`on` · `off` · 没有 ⇒ `null`）：撤销「隐藏」照它交回去（`null` ⇒ `rule`），不把照规则显示的钉成单独显示。
  */
 prev: Hide | null, };
+type AutoAnswer = { 
+/**
+ * 挂上的提问等满几分钟还没人答就替人答；补丁里给 0 ＝ 关（摘掉这一格）。
+ */
+afterMin: number, 
+/**
+ * 替人答的那一句；缺 ⇒ 后端那一句缺省的。
+ */
+say?: string, };
 type Entry = { starred: boolean, customTitle: string | null, 
 /**
  * 单个那一格：`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则。
  */
-hide?: Hide, updatedAt: number, };
+hide?: Hide, 
+/**
+ * 没人答的提问等几分钟替人答一句（判定住后端 `control::asks`）；缺 ＝ 关。
+ */
+autoAnswer?: AutoAnswer, updatedAt: number, };
 type Hide = "on" | "off";
 type HideAsk = "on" | "off" | "rule";
 type Patch = { 
@@ -4033,7 +4016,11 @@ customTitle?: string | null,
 /**
  * 单个那一格：`on` · `off` · `rule`（摘掉、回到规则）。
  */
-hide?: HideAsk | null, };
+hide?: HideAsk | null, 
+/**
+ * 没人答时自动答：`{afterMin, say?}`，`afterMin: 0` 摘掉（关）；没给 `say` ⇒ 留着原来那一句、空白 ⇒ 回到缺省；值怎么算数由 `control::asks::auto_checked` 判。
+ */
+autoAnswer?: AutoAnswer | null, };
 ```
 
 码：`bad_args` · `annotations_unreadable` · `io_failed` · `no_annotations`
@@ -4089,6 +4076,15 @@ type NoArgs = Record<symbol, never>;
 入参 `HistoryListReq` · 回包 `HistoryListReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AutoAnswer = { 
+/**
+ * 挂上的提问等满几分钟还没人答就替人答；补丁里给 0 ＝ 关（摘掉这一格）。
+ */
+afterMin: number, 
+/**
+ * 替人答的那一句；缺 ⇒ 后端那一句缺省的。
+ */
+say?: string, };
 type Can = { 
 /**
  * `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
@@ -4112,7 +4108,11 @@ type Entry = { starred: boolean, customTitle: string | null,
 /**
  * 单个那一格：`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则。
  */
-hide?: Hide, updatedAt: number, };
+hide?: Hide, 
+/**
+ * 没人答的提问等几分钟替人答一句（判定住后端 `control::asks`）；缺 ＝ 关。
+ */
+autoAnswer?: AutoAnswer, updatedAt: number, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type Hide = "on" | "off";
@@ -5990,6 +5990,7 @@ type TurnSpan = { text: string, from: number | null, to: number | null, };
 入参 `NoArgs` · 回包 `NeedsList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AnsweredRow = { sid: string, said: Words, };
 type AskKind = "approve" | "answer" | "plan";
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
@@ -6027,7 +6028,8 @@ headCode: string | null,
  */
 tone: Tone, 
 /**
- * 先答哪个的序（0 最先）：顶上那个框先答（`kind` 已按它判），再按危险度（[`NEEDS_BY_DANGER`]）。
+ * 先答序（小的先答，出口只按它排）：危险度那一档在高位（顶上那个框先答，再按危险度），同一档里等得越久越小，
+ * 不知道等了多久的排这一档最后。算进的是这一份答出那一刻已等多久 ⇒ 会走的钟那一侧从收到起又等了多久照减（`waitedMs` 为 `null` 的不减）。
  */
 rank: number, 
 /**
@@ -6097,13 +6099,22 @@ id: string, text: Words, tone: Tone,
 /**
  * 要不要附一句话：none · optional · required。
  */
-note: NeedsNote, };
+note: NeedsNote, 
+/**
+ * 排在哪一段（出口照它分段，不按 id 认）。
+ */
+row: NeedsChoiceRow, };
+type NeedsChoiceRow = "main" | "hold" | "release";
 type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
 type NeedsList = { 
 /**
- * 此刻活着、那台说在等人的会话（`needs.rank` 先答的在前，同一档等得久的在前）；一个都没有 ⇒ 空。
+ * 此刻活着、那台说在等人的会话（`needs.rank` 小的在前）；一个都没有 ⇒ 空。
  */
-waiting: Array<NeedsRow>, };
+waiting: Array<NeedsRow>, 
+/**
+ * 提问没人答、已替人答过的会话（各留最近一次，那条会话下一次挂上提问才换掉），按会话 id 排。
+ */
+answered: Array<AnsweredRow>, };
 type NeedsNote = "none" | "optional" | "required";
 type NeedsQuestion = { 
 /**
@@ -6125,6 +6136,161 @@ type NeedsRow = { sid: string, needs: Needs,
  */
 hidden: Hidden | null, };
 type NoArgs = Record<symbol, never>;
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Words = string;
+```
+
+码：`bad_args`
+
+#### `sessions-needs-merge`
+
+把各台的需手动清单合成一个先后。
+
+收 `args` · 可撤 · CLI：`ccm -- --sessions-needs-merge`
+
+入参 `NeedsMergeReq` · 回包 `NeedsMerged`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AskKind = "approve" | "answer" | "plan";
+type Hidden = { by: HiddenBy, said: string, };
+type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
+type Needs = { kind: NeedsKind, 
+/**
+ * 等的是哪个工具调用（工具名原样）；判不出 ⇒ `null`。
+ */
+tool: string | null, 
+/**
+ * 那个调用的 id（记录里 `tool_use` 的 `id`）：界面据此把过程里那一步画成「在等你批准」；判不出 ⇒ `null`。
+ */
+call: string | null, 
+/**
+ * 批准：那一步的主参数；回答：问题原文头一行；计划 / 判不出 ⇒ `null`。
+ */
+what: string | null, 
+/**
+ * 何时起等（那台 pidfile 的 `statusUpdatedAt`，epoch ms）；没有 ⇒ `null`。
+ */
+sinceMs: number | null, 
+/**
+ * 写好的字（等批准 · 等回答 · 需手动），出口照抄。
+ */
+text: Words, 
+/**
+ * 钉条第一行（种类 ＋ 工具名：「等批准 · Bash」· 等批准 · 计划 · 等放行 · 联网 …，[`needs_head`]），出口照抄；短的那一格是 `text`。
+ */
+head: Words, 
+/**
+ * 钉条里等宽那一段（批准 · 回答 · 放行带那一步的主参数 / 问题；别的种类不带）⇒ `null`。
+ */
+headCode: string | null, 
+/**
+ * 语气（恒 `need`）。
+ */
+tone: Tone, 
+/**
+ * 先答序（小的先答，出口只按它排）：危险度那一档在高位（顶上那个框先答，再按危险度），同一档里等得越久越小，
+ * 不知道等了多久的排这一档最后。算进的是这一份答出那一刻已等多久 ⇒ 会走的钟那一侧从收到起又等了多久照减（`waitedMs` 为 `null` 的不减）。
+ */
+rank: number, 
+/**
+ * 到这一份答出的那一刻已经等了多久（毫秒）：`sinceMs` 与读那份 pidfile 的时刻**同在那台的钟上**相减，不跨机器减；
+ * 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：手机与 CLI 按节拍重问；桌面从收到那一刻起接着加（时长读口对同一份金样）。
+ */
+waitedMs: number | null, 
+/**
+ * `waitedMs` 写好的字（短时长那一处 `copy_core::short_duration`，与过程行步骤耗时同一种写法）；没有起点 ⇒ `null`。
+ */
+waitedText: Words | null, 
+/**
+ * 这一条可以怎么答（挂着的待答请求，`control::asks`）：选项的字 · 语气 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
+ */
+ask: NeedsAsk | null, 
+/**
+ * `ask` 为 `null` 时写好的那一句（「只能在终端里答」）；有 `ask` ⇒ `null`。
+ */
+manualText: Words | null, };
+type NeedsAsk = { 
+/**
+ * 这一次请求的 id（后端发的，不是那一家的）：答的时候原样交回。
+ */
+id: string, 
+/**
+ * 种类（同 `needs.kind` 那一套里的三种：approve · answer · plan）。
+ */
+kind: AskKind, 
+/**
+ * 工具名原样。
+ */
+tool: string, 
+/**
+ * 子运行（子 agent）发的 ⇒ 是哪一趟 `{id, kind}`（那一家原样）；主会话 ⇒ `null`。
+ */
+run: NeedsAskRun | null, 
+/**
+ * 一行摘要（命令头一行 · 路径 · 第一道题）；说不出 ⇒ `null`。
+ */
+what: string | null, 
+/**
+ * 要批的东西的全文（命令全文 · 写哪个文件写成什么 · 计划原文），不截。
+ */
+detail: string, 
+/**
+ * 能选的几项，排好序（「以后不再问」那几项不放第一位）。
+ */
+choices: Array<NeedsChoice>, 
+/**
+ * 提问那一种的题目；别的种类为空。
+ */
+questions: Array<NeedsQuestion>, 
+/**
+ * 何时挂上的（epoch ms，这台的钟）。
+ */
+sinceMs: number, };
+type NeedsAskRun = { id: string, 
+/**
+ * 它是哪一种（那一家原样，如 `general-purpose`）；没说 ⇒ `null`。
+ */
+kind: string | null, };
+type NeedsAt = { origin: Origin, sid: string, };
+type NeedsChoice = { 
+/**
+ * 答的时候交回的那个词（闭集见 `control::asks::verdict_of`）。
+ */
+id: string, text: Words, tone: Tone, 
+/**
+ * 要不要附一句话：none · optional · required。
+ */
+note: NeedsNote, 
+/**
+ * 排在哪一段（出口照它分段，不按 id 认）。
+ */
+row: NeedsChoiceRow, };
+type NeedsChoiceRow = "main" | "hold" | "release";
+type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
+type NeedsMachine = { origin: Origin, waiting: Array<NeedsRow>, };
+type NeedsMergeReq = { machines: Array<NeedsMachine>, };
+type NeedsMerged = { order: Array<NeedsAt>, };
+type NeedsNote = "none" | "optional" | "required";
+type NeedsQuestion = { 
+/**
+ * `q0` · `q1` …（答的时候 `picks` 按它键）。
+ */
+id: string, text: string, header: string | null, multi: boolean, options: Array<NeedsQuestionOption>, 
+/**
+ * 恒 `true`：每题都许写自由文本（那一家框里的「Type something」）。
+ */
+other: boolean, };
+type NeedsQuestionOption = { 
+/**
+ * `q0o0` …
+ */
+id: string, text: string, detail: string | null, };
+type NeedsRow = { sid: string, needs: Needs, 
+/**
+ * 隐藏那一格（照常列在这里：隐藏不影响需手动）；不隐藏 ⇒ `null`（格恒在）。
+ */
+hidden: Hidden | null, };
+type Origin = string;
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
 type Words = string;
 ```
@@ -6329,7 +6495,8 @@ headCode: string | null,
  */
 tone: Tone, 
 /**
- * 先答哪个的序（0 最先）：顶上那个框先答（`kind` 已按它判），再按危险度（[`NEEDS_BY_DANGER`]）。
+ * 先答序（小的先答，出口只按它排）：危险度那一档在高位（顶上那个框先答，再按危险度），同一档里等得越久越小，
+ * 不知道等了多久的排这一档最后。算进的是这一份答出那一刻已等多久 ⇒ 会走的钟那一侧从收到起又等了多久照减（`waitedMs` 为 `null` 的不减）。
  */
 rank: number, 
 /**
@@ -6399,7 +6566,12 @@ id: string, text: Words, tone: Tone,
 /**
  * 要不要附一句话：none · optional · required。
  */
-note: NeedsNote, };
+note: NeedsNote, 
+/**
+ * 排在哪一段（出口照它分段，不按 id 认）。
+ */
+row: NeedsChoiceRow, };
+type NeedsChoiceRow = "main" | "hold" | "release";
 type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
 type NeedsNote = "none" | "optional" | "required";
 type NeedsQuestion = { 
@@ -6563,6 +6735,14 @@ background: FactsBackground | null,
  * （「这条会话只能在终端里答批准」；不累加，每次按持着它的进程现查）。接上了 / 判不了 ⇒ `null`。
  */
 answerOff: Words | null, 
+/**
+ * **没人答时自动答**：会话注解里那一格设的几分钟（`control::asks` 判只管提问）；关 ⇒ `null`。不累加，每次现读。
+ */
+autoAnswer: number | null, 
+/**
+ * 上一条提问没人答、已替人答过 ⇒ 写好的那一句（「10 分钟没人答，已自动答：…」，这条会话下一次挂上提问才换掉）；没有 ⇒ `null`。不累加，每次现查。
+ */
+autoAnswered: Words | null, 
 /**
  * 这个会话里那一家说有毛病的 MCP 服务器（要登录 · 断开 · 还在连），按名字排；没列的不等于连上了。
  */
@@ -7179,11 +7359,7 @@ wholeCovers: Array<string>, file: string | null,
 /**
  * 去哪一处做（设置窗的页 · 栏 · 锚点）。
  */
-go: UndoAt | null, howUrl: string | null, 
-/**
- * 显示时要遮住的那把钥匙。
- */
-mask: string | null, action: ChoreAction, };
+go: UndoAt | null, howUrl: string | null, action: ChoreAction, };
 type ChoreAction = "copyCommand" | "copySnippet" | "decide" | "locate" | "how" | "installFirst";
 type ChoreKind = "must" | "decide" | "install" | "installOptional" | "optional";
 type ChoreState = "todo" | "done" | "expired" | "blocked" | "declined";
@@ -7269,6 +7445,71 @@ type FirstRunStepId = "terminal" | "named" | "remote";
 入参 `LastSeenReadReq` · 回包 `LastSeen`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AccountRow = { 
+/**
+ * API 号在这台 apikey 表里那一行的掩码（只留末四位）；订阅号 / 表里没有 / 没配 key ⇒ `null`。key 本体从不出后端。
+ */
+keyMasked: string | null, 
+/**
+ * 同上，那一行的端点。
+ */
+baseUrl: string | null, 
+/**
+ * 账号菜单每一项右边那一枚徽章。
+ */
+badge: Badge, 
+/**
+ * 号牌上那一两个字（号色那一格里画的，唯一写法在后端）。
+ */
+plate: Words, 
+/**
+ * 这个号「5h 那一格」写好的字（同 `quota-read` 那一格：账读不出 ⇒ `5h 读不到`）；没出过数 · 按量号 ⇒ `null`。
+ */
+quota: Words | null, 
+/**
+ * 选不了（`selectable: false`）的那一句：需登录 · 没配 key · 不隔离 · 号目录不在；选得了 ⇒ `null`。
+ * 账号 0 不经选号（起它走「不指定号」那一条）⇒ 恒 `null`。
+ */
+unselectable: Words | null, name: string, 
+/**
+ * 号在人眼里叫什么（账号 0 ⇒ 「~/.claude」那一句，其余照原名）。
+ */
+label: string, email: string, 
+/**
+ * `null` ＝ 账号 0（下游据此不注入配置目录那一格）。
+ */
+configDir: string | null, isDefault: boolean, 
+/**
+ * `isolated` · `in-place`。
+ */
+mode: string, exists: boolean, 
+/**
+ * 凭据文件在不在（不代表凭据有效；可用性看 `authReady`）。
+ */
+loggedIn: boolean, 
+/**
+ * `subscription` · `api-key`。
+ */
+authKind: string, authReady: boolean, 
+/**
+ * 能拿来起会话 / 选为默认（`acct_core::account_selectable`）。
+ */
+selectable: boolean, 
+/**
+ * 号色（`--acct-c0..c7` 第几格，账号库里的事实），界面只画它。
+ */
+color: number, };
+type AccountsList = { meta: ListMeta, 
+/**
+ * 每账号一行，清单次序。
+ */
+accounts: Array<AccountRow>, 
+/**
+ * 「能用但有缺」的那一句（几件都有 ⇒ 连成一句）：启用了却一个账号 0 都没有（写清单的那一侧旧到不认账号 0）·
+ * 这台的 API key 凭据文件不是只给本人（宽在哪 ＋ 怎么修；查不出 ⇒ 为什么）；都没有 ⇒ `null`。
+ */
+notice: string | null, };
+type Badge = { text: Words, warn: boolean, title: Words, };
 type ChangedFile = { path: string, what: string, 
 /**
  * 撤回在哪（设置窗的页 · 栏 · 锚点）；没有 ⇒ `null`。
@@ -7282,11 +7523,7 @@ wholeCovers: Array<string>, file: string | null,
 /**
  * 去哪一处做（设置窗的页 · 栏 · 锚点）。
  */
-go: UndoAt | null, howUrl: string | null, 
-/**
- * 显示时要遮住的那把钥匙。
- */
-mask: string | null, action: ChoreAction, };
+go: UndoAt | null, howUrl: string | null, action: ChoreAction, };
 type ChoreAction = "copyCommand" | "copySnippet" | "decide" | "locate" | "how" | "installFirst";
 type ChoreKind = "must" | "decide" | "install" | "installOptional" | "optional";
 type ChoreState = "todo" | "done" | "expired" | "blocked" | "declined";
@@ -7305,12 +7542,45 @@ tmux: boolean | null,
 chores: number, own: Array<OwnItem>, };
 type DiffOp = "same" | "del" | "add";
 type DiffRow = { n: number | null, op: DiffOp, text: string, };
-type LastSeen = { accounts: SeenEntry | null, data: SeenData | null, };
+type LastSeen = { accounts: Seen<AccountsList> | null, data: Seen<DataReport> | null, };
 type LastSeenReadReq = { 
 /**
  * 哪台（机器名）。
  */
 origin: Origin, };
+type ListMeta = { 
+/**
+ * 这台建了账号库（清单读得出）。
+ */
+enabled: boolean, acctsDir: string, manifestPath: string, updatedAt: string | null, 
+/**
+ * 账号 0 的配置目录（清单里写了才有）。
+ */
+sharedStore: string | null, 
+/**
+ * 清单里认得的号数。
+ */
+count: number, 
+/**
+ * 清单读不出的那一句。
+ */
+error: string | null, 
+/**
+ * 这台做不了多账号的那一句（做得了 ⇒ `null`）。
+ */
+unsupported: string | null, 
+/**
+ * 删掉默认号之后新会话默认谁（同删号那一条的答案）。
+ */
+nextDefault: string | null, 
+/**
+ * 这台的默认号（标了的第一个，没标 ⇒ 第一个；`acct_core::effective_default`）。
+ */
+effectiveDefault: string | null, 
+/**
+ * 这台的家目录（界面把路径里的它缩成 `~`；推不出 ⇒ `null`）。
+ */
+home: string | null, };
 type Origin = string;
 type OwnClass = "truth" | "cache";
 type OwnItem = { 
@@ -7330,21 +7600,18 @@ path: string, dir: boolean, class: OwnClass, exists: boolean,
  * 文件的字节数；目录 / 不在 ⇒ `null`。
  */
 size: number | null, };
-type SeenData = { "state": "kept", 
+type Seen<T> = { "state": "kept", 
 /**
  * 记下的时刻（毫秒）。
  */
-atMs: number, value: DataReport, } | { "state": "unreadable", atMs: number, };
-type SeenEntry = { 
+atMs: number, value: T, } | { "state": "unreadable", atMs: number, };
+type Seen<T> = { "state": "kept", 
 /**
  * 记下的时刻（毫秒）。
  */
-atMs: number, 
-/**
- * 那一份应答原样。
- */
-value: Record<string, unknown>, };
+atMs: number, value: T, } | { "state": "unreadable", atMs: number, };
 type UndoAt = { page: string, tab?: string, anchor?: string, };
+type Words = string;
 ```
 
 码：`bad_args` · `io_failed`
@@ -7695,11 +7962,11 @@ name: string, project: string | null, };
 type SkillLedgerFile = { digest: string, created: boolean, };
 type SkillPlan = { root: string, dir: string, 
 /**
- * 写的时候 `files-put` 用的 `root`。
+ * 写的时候 `Door::put` 用的 `root`。
  */
 base: string, 
 /**
- * 写的时候 `files-put` 用的相对前缀：`rel` = `<prefix>/<path>`。
+ * 写的时候 `Door::put` 用的相对前缀：`rel` = `<prefix>/<path>`。
  */
 prefix: string, rows: Array<SkillPlanRow>, target: Array<SkillTargetFile>, 
 /**
@@ -10012,6 +10279,29 @@ seen_screen?: string, };
 
 码：`bad_args` · `no_tmux` · `no_such_session` · `unobservable` · `child_timed_out`
 
+#### `session-resume`
+
+终端没了的会话先在这台恢复（同说一句里恢复那一支，不带那一句），回它落在哪个 tmux 会话。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-resume` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
+
+入参 `SessionResumeReq` · 回包 `Resumed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Resumed = { session: string, };
+type SessionResumeReq = { 
+/**
+ * 会话 id。
+ */
+sid: string, 
+/**
+ * 自报的前端（同 `session-say`）。
+ */
+client?: string, };
+```
+
+码：`bad_args` · `elsewhere` · `not_resumed` · `no_tmux`
+
 #### `terminal-follow`
 
 订阅一个终端的画面（有变化推一整屏，一帧在途等回执；订着时那台 tmux 里多一个只读客户端，用户自己配的 client-attached / client-detached 钩子会被它触发）。
@@ -10303,6 +10593,7 @@ client?: string, };
 入参 `SidsReq` · 回包 `Whereabouts`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type Run = "tmux" | "direct";
 type SidsReq = { 
 /**
  * 那几个会话（1–64 个，不重复）。
@@ -10339,7 +10630,11 @@ names: Array<string>,
  * 与 `names` 同序同数：名单里那一行的句柄。
  */
 terminals: Array<TerminalAt>, };
-type Whereabouts = { results: Array<Whereabout>, };
+type Whereabouts = { results: Array<Whereabout>, 
+/**
+ * 这台恢复默认放在哪（这台的偏好「恢复时进 tmux」× 有没有 tmux）。
+ */
+run: Run, };
 ```
 
 码：`bad_args` · `unobservable` · `child_timed_out`
@@ -10657,6 +10952,184 @@ unavailable: AccountUnavailable | null, };
 码：`bad_args` · `unknown_agent` · `bad_command` · `no_dir` · `account_unavailable` · `place_unavailable` · `bad_tmux_name` · `tmux_taken` · `unobservable` · `fork_failed` · `refused` · `start_failed` · `child_timed_out` · `launch_pending` · `no_strategy`
 
 失败带 `data` 的码：`bad_args` ⇒ `SessionNewRefusal` · `unknown_agent` ⇒ `SessionNewRefusal` · `bad_command` ⇒ `SessionNewRefusal` · `no_dir` ⇒ `SessionNewRefusal` · `account_unavailable` ⇒ `SessionNewRefusal` · `place_unavailable` ⇒ `SessionNewRefusal` · `bad_tmux_name` ⇒ `SessionNewRefusal` · `tmux_taken` ⇒ `SessionNewRefusal` · `unobservable` ⇒ `SessionNewRefusal` · `fork_failed` ⇒ `SessionNewRefusal` · `refused` ⇒ `SessionNewRefusal` · `start_failed` ⇒ `SessionNewRefusal` · `child_timed_out` ⇒ `SessionNewRefusal` · `launch_pending` ⇒ `SessionNewRefusal` · `no_strategy` ⇒ `SessionNewRefusal`
+
+#### `session-open`
+
+起会话 · 恢复 · 接回（一个请求：落在哪 ＋ 要开终端就跑的那一行）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-open`
+
+入参 `SessionOpenReq` · 回包 `Opened`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AccountAsk = { "kind": "follow" } | { "kind": "base" } | { "kind": "named", name: string, };
+type AccountUnavailable = { 
+/**
+ * 要的那个号。
+ */
+requested: string, 
+/**
+ * 它是这条会话上次用的号（跟随），不是这一次点名的。
+ */
+pinned: boolean, 
+/**
+ * 这台的账号清单读得出来。
+ */
+listKnown: boolean, 
+/**
+ * 给的显式替代（这台的默认号）；`null` ⇒ 只能「不指定号」。
+ */
+alternative: string | null, };
+type AgentKind = string;
+type FirstSay = { 
+/**
+ * `delivered` · `unsure`（不知道送没送到，别重发）· `refused`。
+ */
+result: string, 
+/**
+ * `refused` 的原因（同 `terminal-input`）；别的 ⇒ `null`。
+ */
+why: string | null, 
+/**
+ * `refused` 时给人看的那一句（写好）；别的 ⇒ `null`。
+ */
+said: string | null, };
+type ForkFrom = { 
+/**
+ * 源会话 id。
+ */
+sid: string, 
+/**
+ * 从哪条消息处分叉。
+ */
+uuid: string, };
+type Landed = "started" | "in_place" | "running" | "idle" | "window";
+type LaunchedAccount = { name: string, configDir: string, 
+/**
+ * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
+ */
+model: string | null, };
+type NewOpen = { 
+/**
+ * 哪一家（线上的 kind）。必填。
+ */
+agent: AgentKind, 
+/**
+ * 工作目录（开头的 `~` 按这台的家目录读）。
+ */
+cwd: string, 
+/**
+ * 用户改过的终端名（只跟 tmux）；缺 ⇒ 这台铸（分叉不收：名字从源会话的终端名铸）。
+ */
+tmuxName?: string, 
+/**
+ * 这一趟手填的启动命令（空 / 缺 ⇒ 这台偏好里那一家的启动命令）。
+ */
+command?: string, 
+/**
+ * 分叉自哪一条（只在这一步写分支记录）。
+ */
+fork?: ForkFrom, 
+/**
+ * 第一句：起的时候交给那一家；只跟 tmux。
+ */
+prompt?: string, 
+/**
+ * 这一趟用的模型（压过偏好表）；缺 ＝ 跟随。
+ */
+model?: string, 
+/**
+ * 起在哪一个权限档（那一家声明的档之一）；缺 ＝ 跟随那一家自己的默认。
+ */
+permissionMode?: string, 
+/**
+ * 轮换：缺 ＝ 用「新会话用」的那份策略 · `{strategy: id}` ＝ 起之前按定好的 sid 写成用那一份。
+ */
+rotation?: RotationPick, };
+type OpenWhat = { "kind": "new" } & NewOpen | { "kind": "resume", sid: string, } | { "kind": "look", sid?: string, session?: string, } | { "kind": "shell", session?: string, cwd?: string, };
+type Opened = { 
+/**
+ * 落在哪：`started` · `in_place` · `running` · `idle` · `window`。
+ */
+landed: Landed, 
+/**
+ * 落在哪个 tmux 会话（`window` ⇒ `null`）。
+ */
+session: string | null, 
+/**
+ * 要开终端跑的那一行（那台渲好的）：`window` ⇒ 起会话那一行（不跑就没起）或进目录那一行；其余 ⇒ 接进那个 tmux 会话那一行。
+ */
+line: string | null, 
+/**
+ * 恢复 / 接回 ⇒ 那一条；新起 ⇒ 先定好的 sid（那一家不认先定 ⇒ `null`）。
+ */
+sid: string | null, 
+/**
+ * 起的是哪一家（接回不起 agent ⇒ `null`）。
+ */
+agent: AgentKind | null, 
+/**
+ * 起在哪个目录（`~` 已按这台的家目录展开；开窗的起始目录、认报到都用它；接回 · 接上已有的 shell ⇒ `null`）。
+ */
+cwd: string | null, 
+/**
+ * 实际用的号（账号 0 / 不表态 / 没另起 ⇒ `null`）。
+ */
+account: LaunchedAccount | null, 
+/**
+ * 那台要附带说的一句（命中几个在跑的、接了第一个）；没有 ⇒ `null`。
+ */
+note: string | null, 
+/**
+ * 第一句交进去的结局；没给第一句 ⇒ `null`。
+ */
+prompt: FirstSay | null, };
+type RotationPick = { 
+/**
+ * 策略的 id（策略目录里的文件名去掉 `.rhai`，非空）；`null` ⇒ 这个会话不轮换（新会话用的那份不管它）。
+ */
+strategy: string | null, };
+type Run = "tmux" | "direct";
+type SessionNewField = "agent" | "command" | "cwd" | "account" | "place" | "tmuxName";
+type SessionNewRefusal = { 
+/**
+ * 不行的那一格；整体的（起不来 · 分叉写不成 · 渲不出）⇒ `null`。
+ */
+field: SessionNewField | null, 
+/**
+ * 选不了号（码 `account_unavailable`）⇒ 那一形；别的 ⇒ `null`。
+ */
+unavailable: AccountUnavailable | null, };
+type SessionOpenReq = { 
+/**
+ * 起新的 · 恢复某条 · 接回 · 开一个 shell。
+ */
+what: OpenWhat, 
+/**
+ * 缺 ＝ 跟随：恢复 ⇒ 这条会话上次的号；新起 ⇒ 这台的默认号；分叉 ⇒ 源会话的号。
+ */
+account?: AccountAsk, 
+/**
+ * 放在哪；缺 ＝ 这台定（新起：有 tmux 就 tmux、分叉照源会话那一种；恢复：照这台的偏好）。接回不收。
+ */
+run?: Run, 
+/**
+ * 开窗的那台就是这台（本机 Windows 渲 PowerShell；本机直路不带工作目录）。
+ */
+local: boolean, 
+/**
+ * 这一趟的票（每次点一下一张；期限到了带同一张再问 ⇒ 认出同一趟，不起第二个）。缺 ⇒ 不认。
+ */
+ticket?: string, 
+/**
+ * 自报的前端（就地键入过身份门，同 `kill`）。
+ */
+client?: string, };
+```
+
+码：`bad_args` · `unknown_agent` · `bad_command` · `no_dir` · `account_unavailable` · `place_unavailable` · `bad_tmux_name` · `tmux_taken` · `record_gone` · `already_live` · `not_in_tmux` · `wrong_owner` · `unobservable` · `fork_failed` · `refused` · `start_failed` · `child_timed_out` · `launch_pending` · `no_strategy`
+
+失败带 `data` 的码：`bad_args` ⇒ `SessionNewRefusal` · `unknown_agent` ⇒ `SessionNewRefusal` · `bad_command` ⇒ `SessionNewRefusal` · `no_dir` ⇒ `SessionNewRefusal` · `account_unavailable` ⇒ `SessionNewRefusal` · `place_unavailable` ⇒ `SessionNewRefusal` · `bad_tmux_name` ⇒ `SessionNewRefusal` · `tmux_taken` ⇒ `SessionNewRefusal` · `record_gone` ⇒ `SessionNewRefusal` · `already_live` ⇒ `SessionNewRefusal` · `not_in_tmux` ⇒ `SessionNewRefusal` · `wrong_owner` ⇒ `SessionNewRefusal` · `unobservable` ⇒ `SessionNewRefusal` · `fork_failed` ⇒ `SessionNewRefusal` · `refused` ⇒ `SessionNewRefusal` · `start_failed` ⇒ `SessionNewRefusal` · `child_timed_out` ⇒ `SessionNewRefusal` · `launch_pending` ⇒ `SessionNewRefusal` · `no_strategy` ⇒ `SessionNewRefusal`
 
 #### `session-new-facts`
 
@@ -10985,7 +11458,7 @@ args: Array<string>, };
 
 #### `ccm-probe`
 
-这台的 `ccm` 会哪些。
+这台的 `ccm` 会哪些、终端里敲它走到哪。
 
 不收 `args` · 可撤 · 只在流上
 
@@ -11008,8 +11481,39 @@ agents: Array<string>,
 /**
  * 这一份的 `BUILD_ID`。
  */
-build: string, };
+build: string, 
+/**
+ * 终端里敲 `ccm` 走到的是不是这一份，与那一句。
+ */
+onPath: OnPath, };
 type NoArgs = Record<symbol, never>;
+type OnPath = { verdict: OnPathVerdict, said: string, };
+type OnPathVerdict = "ours" | "other" | "absent" | "unknown";
+```
+
+码：`bad_args`
+
+#### `ccm-user-path`
+
+`ccm` 所在目录在不在用户级 `PATH` 上 · 加 · 撤。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --ccm-user-path`
+
+入参 `UserPathReq` · 回包 `UserPath`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type UserPath = { state: UserPathState, said: string, 
+/**
+ * 问不出 / 改没成时的复制详情（原话在里面）；顺利 ⇒ `null`。
+ */
+detail: string | null, 
+/**
+ * 在 ⇒ 撤那一段；不在 ⇒ 加那一段；判不了 ⇒ `null`。
+ */
+command: string | null, };
+type UserPathOp = "read" | "add" | "remove";
+type UserPathReq = { op: UserPathOp, };
+type UserPathState = "on" | "off" | "unknown" | "not_windows";
 ```
 
 码：`bad_args`
@@ -11712,46 +12216,6 @@ type PinnedDay = { origin: Origin, day: string, };
 码：`bad_args` · `unreadable` · `element_gone` · `element_exists` · `bad_machine` · `io_failed`
 
 失败带 `data` 的码：`element_gone` ⇒ `Gone` · `bad_machine` ⇒ `MachineFault`
-
-#### `relay-optin`
-
-直接敲的 agent 也走中转。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
-
-入参 `OptinReq` · 回包 `Optin`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type AgentKind = string;
-type Optin = { 
-/**
- * `installed`（写着的就是现在那一条）· `stale`（是我们那一形，钥匙 / 端口 / 路由换了）· `absent` · `other`（别的上游）· `unreadable`。
- */
-state: "installed" | "stale" | "absent" | "other" | "unreadable", 
-/**
- * 那份文件为什么读不了（`unreadable` 才有，其余空串）。
- */
-note: string, 
-/**
- * 那一段为什么生成不了；已装 / 生成得了 ⇒ 空串。
- */
-missing: string, 
-/**
- * 读的是哪份文件（这台后端看到的路径）。
- */
-source: string, 
-/**
- * 要合并进那份文件的那一段（**带钥匙**）；已装或生成不了 ⇒ `null`。
- */
-snippet: string | null, 
-/**
- * 这台我们的中转此刻在不在听。
- */
-listening: boolean, };
-type OptinReq = { agent: AgentKind, };
-```
-
-码：`bad_args` · `failed`
 
 #### `drift-report`
 
@@ -12672,6 +13136,7 @@ needs: string | null, };
 | `--bus-state` | ＝ 帧命令 `bus-state`：总线名单 ＋ spawn 台账一次回全 |
 | `--cc-bus-install` | ＝ 帧命令 `cc-bus-install`：把这台二进制带着的 cc-bus 装到这台 |
 | `--cc-bus-install-state` | ＝ 帧命令 `cc-bus-install-state`：装 cc-bus 到这台之前看一眼 |
+| `--ccm-user-path` | ＝ 帧命令 `ccm-user-path`：`ccm` 所在目录在不在用户级 `PATH` 上 · 加 · 撤 |
 | `--chores-mark` | ＝ 帧命令 `chores-mark`：记下「待办」里的一个选择 |
 | `--data-report` | ＝ 帧命令 `data-report`：「文件与数据」那一份成品 |
 | `--deploy-plan` | ＝ 帧命令 `deploy-plan`：那台的后端要不要换、换成哪一格 |
@@ -12697,11 +13162,8 @@ needs: string | null, };
 | `--files-home` | ＝ 帧命令 `files-home`：后端这个用户的 home |
 | `--files-index-rebuild` | ＝ 帧命令 `files-index-rebuild`：重建常驻文件名索引：走一遍，做完返回 |
 | `--files-index-status` | ＝ 帧命令 `files-index-status`：索引的新鲜度 / 条目数 / 常驻字节 |
-| `--files-link` | ＝ 帧命令 `files-link`：建一条符号链接 |
 | `--files-ls` | ＝ 帧命令 `files-ls`：列一个目录的直接子项 |
 | `--files-mkdir` | ＝ 帧命令 `files-mkdir`：新建一个目录 |
-| `--files-peek` | ＝ 帧命令 `files-peek`：读改写的读那一半 |
-| `--files-put` | ＝ 帧命令 `files-put`：整份替换一份文本文件 |
 | `--files-read-chunk` | ＝ 帧命令 `files-read-chunk`：按字节寻址分块读回 |
 | `--files-read-text` | ＝ 帧命令 `files-read-text`：读一份文本进编辑器 |
 | `--files-rename` | ＝ 帧命令 `files-rename`：改名 / 同根内移动 |
@@ -12796,9 +13258,12 @@ needs: string | null, };
 | `--session-new` | ＝ 帧命令 `session-new`：起一个新会话（全产品一个框、一个请求） |
 | `--session-new-dir` | ＝ 帧命令 `session-new-dir`：起新会话前核一个目录：在不在 · 会用哪个终端名 |
 | `--session-new-facts` | ＝ 帧命令 `session-new-facts`：起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法 |
+| `--session-open` | ＝ 帧命令 `session-open`：起会话 · 恢复 · 接回（一个请求：落在哪 ＋ 要开终端就跑的那一行） |
 | `--session-permission` | ＝ 帧命令 `session-permission`：会话开着时切权限档（按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按） |
+| `--session-resume` | ＝ 帧命令 `session-resume`：终端没了的会话先在这台恢复（同说一句里恢复那一支，不带那一句），回它落在哪个 tmux 会话 |
 | `--session-say` | ＝ 帧命令 `session-say`：往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车；终端没了 ⇒ 按记下的号恢复、那一句当第一句交） |
 | `--sessions-needs` | ＝ 帧命令 `sessions-needs`：这台上需手动的会话清单 |
+| `--sessions-needs-merge` | ＝ 帧命令 `sessions-needs-merge`：把各台的需手动清单合成一个先后 |
 | `--sessions-start` | ＝ 帧命令 `sessions-start`：起 / 接回一批会话（逐个答） |
 | `--sessions-stop` | ＝ 帧命令 `sessions-stop`：停一批会话（逐个答，一个不成不挡下一个） |
 | `--sessions-where` | ＝ 帧命令 `sessions-where`：一批会话各在这台哪个终端里 |

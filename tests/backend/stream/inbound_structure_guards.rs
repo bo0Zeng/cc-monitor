@@ -8,7 +8,7 @@
 #[test]
 fn inbound_never_reaches_into_the_observe_layer() {
     // 人群 = 入方向整个目录（收行分派 · 规格 · 排空 · 门 · 命令表各族）。
-    let src: String = crate::guard_support::inbound_sources()
+    let src: String = guard_core::addr::backend_inbound_sources()
         .into_iter()
         .map(|(_, prod)| prod)
         .collect::<Vec<_>>()
@@ -40,7 +40,7 @@ fn inbound_never_reaches_into_the_observe_layer() {
 #[test]
 fn the_request_id_is_never_parsed() {
     // 人群 = 入方向整个目录（同上一条）。
-    let src: String = crate::guard_support::inbound_sources()
+    let src: String = guard_core::addr::backend_inbound_sources()
         .into_iter()
         .map(|(_, prod)| prod)
         .collect::<Vec<_>>()
@@ -95,7 +95,7 @@ fn hello_commands_are_the_registry_names_in_order() {
         from_registry
     );
     // hello 那一格读的就是它（`main.rs` 拼握手帧那一处）。
-    let main = crate::guard_support::production_code(include_str!("../../../src/backend/main.rs"));
+    let main = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
     guard_core::find_pinned(&main, "commands: inbound::command_names()")
         .expect("`main.rs` 的 hello 不再从 `inbound::command_names()` 取 `commands`");
 }
@@ -108,15 +108,15 @@ fn hello_commands_are_the_registry_names_in_order() {
 /// 两侧异源：一侧是盘上的文件，一侧是 `mod.rs` 里 `FAMILIES` 那张表的源码（再与编进去的族数对一次）。
 #[test]
 fn the_registry_families_are_exactly_the_files_in_the_registry_directory() {
-    let sources = crate::guard_support::inbound_sources();
+    let sources = guard_core::addr::backend_inbound_sources();
     let on_disk: std::collections::BTreeSet<String> = sources
         .iter()
-        .filter_map(|(rel, _)| rel.strip_prefix("stream/inbound/registry/"))
+        .filter_map(|(rel, _)| rel.strip_prefix("src/backend/stream/inbound/registry/"))
         .map(|f| f.trim_end_matches(".rs").to_string())
         .collect();
     let (_, mod_rs) = sources
         .iter()
-        .find(|(rel, _)| rel == "stream/inbound/mod.rs")
+        .find(|(rel, _)| rel == "src/backend/stream/inbound/mod.rs")
         .expect("入方向目录里没有 mod.rs");
     let at = guard_core::find_pinned(mod_rs, "const FAMILIES: &[&[super::CommandSpec]] = &[")
         .expect("`mod.rs` 里锚不住 `FAMILIES`");
@@ -394,7 +394,7 @@ fn no_frame_command_or_derived_cli_flag_names_the_tmux_host() {
 #[test]
 fn no_handler_validates_an_arg_and_then_throws_it_away() {
     // 扫 `src/backend`（本条住 `tests/backend/`，不在自己的语料里 —— 靠住址，见 `scan_tree!` 头注）。
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let files = guard_core::scan_tree!(&root, &["rs"]);
     assert!(
         files.len() > 50,
@@ -422,7 +422,7 @@ fn no_handler_validates_an_arg_and_then_throws_it_away() {
     let mut hits = Vec::new();
     let mut seen_calls = 0usize;
     for (f, raw) in &files {
-        let prod = crate::guard_support::production_side_of(f, raw);
+        let prod = guard_core::addr::production_side_of(f, raw);
         for line in prod.lines() {
             seen_calls += line.matches("_arg(").count();
             if discarded(line) {

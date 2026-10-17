@@ -464,7 +464,7 @@ fn one_windows_burst_fits_the_transfer_lane_and_never_fills_the_connection() {
 fn the_wire_names_the_window_says_are_the_ones_the_other_side_answers() {
     // 窗口 ⇄ monitor 传输中继那三个名字的相等挪到了 monitor 那一侧（`tests/frontend/shell/filewin/cross_half_tests.rs`）。
     let backend = std::fs::read_to_string(
-        crate::guard_support::repo_root().join("src/backend/control/files_commit.rs"),
+        guard_core::addr::repo_root().join("src/backend/control/files_commit.rs"),
     )
     .expect("读后端提交那一份");
     assert_eq!(
@@ -590,7 +590,7 @@ impl comms_inward::chan::router::Backends for XferHost {
             }
             "files-home" => serde_json::json!({ "path": "/srv/a.bin" }),
             "files-stat" => serde_json::json!({
-                "path": "/srv/a.bin", "name": "a.bin", "up": "/srv", "kind": "file", "size": 3, "readonly": false,
+                "path": "/srv/a.bin", "up": "/srv", "kind": "file", "size": 3, "readonly": false,
                 "owner": null, "link_target": null
             }),
             // 回包照那条命令的类型（块：只有 `bytes`；提交：落点 ＋ 字节数）。

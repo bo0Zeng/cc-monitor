@@ -282,7 +282,9 @@ fn the_carried_window_binary_is_placed_and_returned_even_with_one_beside_the_exe
             .said,
         copy_text("rsFilewinProc.bin.noHome", &[])
     );
-    let no_dir = |_: &Path| -> Result<(), crate::detail::Said> { Err("不许建".into()) };
+    let no_dir = |_: &Path| -> Result<(), crate::detail::Said> {
+        Err(crate::detail::Said::written("不许建".into()))
+    };
     let fresh = root.join("fresh");
     let e = resolve_window_bin_in(None, Some(b"x"), Some(&fresh), &mk, &no_dir)
         .expect_err("建不了目录也解出来了");
@@ -797,9 +799,8 @@ fn a_window_process_that_dies_at_once_comes_back_as_a_reason() {
 /// 「起不来时真的报错」由 [`a_window_process_that_dies_at_once_comes_back_as_a_reason`] 买。
 #[test]
 fn the_entry_command_has_no_in_process_fallback_left() {
-    let src =
-        std::fs::read_to_string(crate::guard_support::crate_src_root().join("filewin/entry.rs"))
-            .expect("entry.rs 读不动");
+    let src = std::fs::read_to_string(guard_core::addr::shell_src_root().join("filewin/entry.rs"))
+        .expect("entry.rs 读不动");
     let prod = guard_core::production_code(&src);
     // ★ 反向自检：剥完之后生产段**不是空的**，否则下面那条零命中恒真。
     assert!(

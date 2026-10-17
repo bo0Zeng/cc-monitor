@@ -58,8 +58,6 @@ private object XorCrypto : CryptoBox {
     override fun encrypt(plain: ByteArray) = xor(plain)
 
     override fun decrypt(blob: ByteArray) = xor(blob)
-
-    override fun isEncrypted(blob: ByteArray) = true
 }
 
 /** withPassword/password 不碰 DAO——全 no-op。 */

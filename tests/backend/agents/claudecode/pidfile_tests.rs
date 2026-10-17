@@ -60,7 +60,7 @@ fn unknown_words_are_booked_not_silent() {
 /// `"interactive"` 字面量（零命中 ＋ 正控：同一个扫描器在本适配层那份里找得到它）。
 #[test]
 fn only_the_adapter_spells_the_pidfile_kind_word() {
-    let backend = crate::guard_support::src_root();
+    let backend = guard_core::addr::backend_src_root();
     let shell = backend.join("../frontend/shell/src");
     let needle = "\"interactive\"";
     let mut hits = Vec::new();
@@ -68,7 +68,7 @@ fn only_the_adapter_spells_the_pidfile_kind_word() {
     let adapter = backend.join("agents/claudecode/pidfile.rs");
     for root in [&backend, &shell] {
         for (at, raw) in guard_core::scan_tree!(root, &["rs"]) {
-            if !crate::guard_support::production_code(&raw).contains(needle) {
+            if !guard_core::production_code(&raw).contains(needle) {
                 continue;
             }
             if at == adapter {
@@ -127,7 +127,7 @@ fn every_waiting_word_maps_to_what_is_awaited() {
 /// 「在等什么」那几个词只在适配层认：后端别处 ＋ monitor 的壳，生产段零处拼它们（零命中 ＋ 正控）。
 #[test]
 fn only_the_adapter_spells_the_waiting_words() {
-    let backend = crate::guard_support::src_root();
+    let backend = guard_core::addr::backend_src_root();
     let shell = backend.join("../frontend/shell/src");
     let adapter = backend.join("agents/claudecode/pidfile.rs");
     let needles = [
@@ -142,7 +142,7 @@ fn only_the_adapter_spells_the_waiting_words() {
     let mut control = 0;
     for root in [&backend, &shell] {
         for (at, raw) in guard_core::scan_tree!(root, &["rs"]) {
-            let prod = crate::guard_support::production_code(&raw);
+            let prod = guard_core::production_code(&raw);
             for n in needles {
                 if !prod.contains(n) {
                     continue;

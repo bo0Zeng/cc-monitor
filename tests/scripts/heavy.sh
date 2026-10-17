@@ -6,7 +6,7 @@
 #   systemd-oomd 按「整组」杀，主会话和各路一起没了（不是谁发了 kill）。
 # 做法两件：
 #   ① 每份重活单独一个 systemd scope、封顶内存 ⇒ 内存吃紧时 oomd / 内核挑的是这一份，主会话那一组不受牵连；
-#   ② 槽位：同时最多 HEAVY_SLOTS 份（默认 3），多出来的排队等，不靠「大家自觉少开」。
+#   ② 槽位：同时最多 HEAVY_SLOTS 份（默认 3），多出来的按先来后到排队等，不靠「大家自觉少开」。
 #   ③ 让着人（10-13 busy1）：scope 进专用切片 ccheavy.slice，切片 CPUWeight=20（默认 100；systemctl --user set-property --runtime，
 #      写在运行时目录、重启即无）；命令前加 nice -n 10 · ionice -c 3（有就加）。机器忙时交互的那几个进程先拿到 CPU。
 #      权重设在切片上才管用：scope 自己的权重只跟同一个父组里的兄弟比（heavy 的 scope 本来都在 app.slice 里，彼此一样低等于没降）；
@@ -47,17 +47,40 @@ fi
 if command -v nice >/dev/null 2>&1; then scope+=(nice -n 10); else echo "heavy: 没有 nice ⇒ CPU 优先级不降" >&2; fi
 if command -v ionice >/dev/null 2>&1; then scope+=(ionice -c 3); else echo "heavy: 没有 ionice ⇒ IO 优先级不降" >&2; fi
 command -v flock >/dev/null 2>&1 || { echo "heavy: 没有 flock ⇒ 不排槽位" >&2; export HEAVY_HELD=0; exec "${scrub[@]}" "${scope[@]}" "$@"; }
+# 先来先得：每个等的人进门先在排队目录里取一个号（号文件由它自己持锁 ⇒ 持锁的号才算还在等，死了的号谁见了都清掉），
+#   只有排最前的那一个去问槽位，拿到就交号。各自轮询槽位的话后来的常抢在先来的前面，几十路同时跑时先来的会一直饿着。
+q="$dir/queue"
+mkdir -p "$q"
+exec 7>"$q/.lock"; flock 7
+read -r n < "$q/.next" 2>/dev/null || n=0
+echo $((n + 1)) > "$q/.next"
+me="$q/$(printf '%012d' "$n")"
+exec 8>"$me"; flock -n 8
+exec 7>&-
+first() {  # 排最前的活号是不是自己（清号与取号同在 .lock 下，刚取的号来不及持锁就被当死号清掉的事不会有）
+  local f ok=0
+  exec 7>"$q/.lock"; flock 7
+  for f in "$q"/[0-9]*; do
+    [ "$f" = "$me" ] && break
+    if (exec 6>>"$f" && flock -n 6); then rm -f -- "$f"; else ok=1; break; fi
+  done
+  exec 7>&-
+  return $ok
+}
 waited=0
 while :; do
-  for i in $(seq 1 "$slots"); do
-    exec 9>"$dir/$i"
-    if flock -n 9; then
-      [ "$waited" -gt 0 ] && echo "heavy: 等了 ${waited} 秒拿到槽位 $i" >&2
-      export HEAVY_HELD=$i
-      exec "${scrub[@]}" "${scope[@]}" "$@"
-    fi
-    exec 9>&-
-  done
+  if first; then
+    for i in $(seq 1 "$slots"); do
+      exec 9>"$dir/$i"
+      if flock -n 9; then
+        rm -f -- "$me"; exec 8>&-
+        [ "$waited" -gt 0 ] && echo "heavy: 等了 ${waited} 秒拿到槽位 $i" >&2
+        export HEAVY_HELD=$i
+        exec "${scrub[@]}" "${scope[@]}" "$@"
+      fi
+      exec 9>&-
+    done
+  fi
   [ "$waited" -eq 0 ] && echo "heavy: ${slots} 个槽位都占着，排队等…" >&2
-  sleep 5; waited=$((waited + 5))
+  sleep 1; waited=$((waited + 1))
 done

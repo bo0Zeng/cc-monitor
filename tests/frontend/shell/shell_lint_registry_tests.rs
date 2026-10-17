@@ -10,8 +10,8 @@ const EXEMPT: &[(&str, &str)] = &[(
 )];
 
 fn repo_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::repo_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::repo_root()
 }
 
 /// shellcheck 的人群：门禁 `tests/scripts/gate.sh` 里 `GATE_SHELLCHECK_GLOBS='…'` 那一行的各个 glob

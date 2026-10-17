@@ -19,7 +19,7 @@ fn the_backend_frame_dispatch_has_no_catch_all_arm() {
     // ⚠ **不能按首个 cfg-test 切**：本文件有十几个测试模块，第一个在 915 行，
     //   而要守的那条分派在 3552 行 —— 第一版就是这么写的，
     //   抽取器自检当场报「只扫到 0 条臂」。用共享原语剥全部测试段。
-    let prod = crate::guard_support::stream_source_production();
+    let prod = guard_core::addr::stream_source_production();
     let lines: Vec<&str> = prod.lines().collect();
     let ind = |l: &str| l.len() - l.trim_start().len();
     let mut arms = 0usize;
@@ -115,7 +115,7 @@ fn the_shared_stripper_keeps_the_dispatch_this_guard_must_scan() {
     //    第一条 `Some(InboundFrame::` 臂与它所在的 `async fn dispatch(` 都在第一个测试模块之后。
     guard_core::assert_stripper_keeps(
         "stream_source::frame_dispatch_shape",
-        &crate::guard_support::stream_source_raw(),
+        &guard_core::addr::stream_source_raw(),
         &["Some(InboundFrame::", "async fn dispatch("],
     );
 }
@@ -124,7 +124,7 @@ fn the_shared_stripper_keeps_the_dispatch_this_guard_must_scan() {
 /// 与本机那条流同一个口；monitor 生产段里交活卡的地方恰好两处：远端这一臂 ＋ 本机吸收点。
 #[test]
 fn the_remote_stream_hands_live_frames_to_the_session_live_with_its_own_origin() {
-    let prod = crate::guard_support::stream_source_production();
+    let prod = guard_core::addr::stream_source_production();
     let arm = prod
         .lines()
         .find(|l| {

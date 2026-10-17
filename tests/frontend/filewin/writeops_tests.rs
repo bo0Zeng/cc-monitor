@@ -1015,7 +1015,7 @@ fn gp1_the_chmod_box_says_the_current_mode_and_prefills_only_what_it_really_read
 #[test]
 fn gp1_the_mode_is_read_from_the_stat_reply_or_not_at_all() {
     let st = |mode: Option<u32>| {
-        let mut v = serde_json::json!({"path": "/a", "name": "a", "up": "/", "kind": "file", "size": 1, "readonly": false});
+        let mut v = serde_json::json!({"path": "/a", "up": "/", "kind": "file", "size": 1, "readonly": false});
         if let Some(m) = mode {
             v["mode"] = serde_json::json!(m);
         }

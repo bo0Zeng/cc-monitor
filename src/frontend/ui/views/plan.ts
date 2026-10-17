@@ -611,7 +611,7 @@ export class PlanView {
     b.disabled = true;
     try {
       const r = await takeRepo(cur.origin, cur.workspace, slice.name);
-      const took = r.took!;
+      const took = r.took;
       toast(copyText("plan.take.done", { slice: took.slice, path: took.path }), took.switched ? copyText("plan.take.switched", { slice: took.slice }) : "", { level: "success" });
       this.refresh(false, cur.origin);
     } catch (e) {

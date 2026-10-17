@@ -201,14 +201,14 @@ fn no_two_test_attributes_land_on_the_same_function() {
 /// ② `K-R110` 之后它**永远不会再因此红** —— 那一形已经被
 ///    `guard_core::assert_test_module_ranges_are_brace_balanced` 正确处理掉了
 ///    （匹配单位从「行」换成「计数」，区间在原始字符串里收尾会被它当场逮住）。
-/// ⇒ **今天真正守这一形的是那条判据**；本条经 `assert_tree_strips_clean` 调到它，
-///    本条自己守的只剩「这棵树剥得干净 ＋ 文件数没缩水」。
+/// ⇒ **今天真正守这一形的是那条判据**；本条经剥法自检（`assert_tree_strips_clean` · 规则入口的 `File::prod`）调到它，
+///    本条自己守的只剩「这棵树剥得干净」。
 ///
-/// 🔴 **这一段在两棵树里各住一份，逐字必须相同**
-/// （`src/backend/guard_support.rs` ＋ `tests/frontend/shell/structural_scan_tests.rs`）——
+/// 🔴 **这一段在两处各住一份，逐字必须相同**
+/// （`tests/common/guard-core/rules/strip_clean.rs` ＋ `tests/frontend/shell/structural_scan_tests.rs`）——
 /// `K-R110` 交回时点名过这个形状：**两个住址、同一句话**，改一处漏一处，
 /// 下一次还是一处真一处假。钉着它的是
-/// `guard_support_tests.rs::the_two_strip_clean_notes_stay_one_sentence`，**只改一处当场红**。
+/// `strip_clean.rs::the_two_strip_clean_notes_stay_one_sentence`，**只改一处当场红**。
 // ⟦KR115D3 共用段·止⟧
 #[test]
 fn every_monitor_file_strips_clean() {
@@ -684,10 +684,7 @@ fn the_detour_scanner_sees_every_visibility() {
     );
     for (what, src) in [
         ("`#[cfg(test)]` 修饰的是模块声明，不是再导出", &mod_only),
-        (
-            "再导出的是**别的 crate** 的东西（`guard_support.rs` 就是这一形）",
-            &foreign,
-        ),
+        ("再导出的是**别的 crate** 的东西", &foreign),
         ("再导出的是 `super::`，不是本文件的测试模块", &from_super),
         (
             "再导出包在另一个 `mod` 里 —— **已登记的盲区**，不是正当写法",
@@ -820,7 +817,7 @@ fn every_comment_stripping_transformer_is_registered() {
         // 剥 TS 行尾 `//` 的那一份（生产接线钉那组判据自带的）摘了：那组判据随载荷那一层一起删了。
     ];
 
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let mut found: Vec<String> = Vec::new();
     // 🔴 **补上 `"tests"` 这一棵。**
     //
@@ -950,9 +947,9 @@ fn comment_stripping_has_exactly_one_shared_implementation() {
     let mut found: Vec<String> = Vec::new();
     for root in [
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
-        crate::guard_support::tests_root().join("frontend/shell"),
-        crate::guard_support::tests_root().join("comms/inward"), // 本 crate 的第二棵测试树
-        crate::guard_support::tests_root().join("frontend/filewin"), // 文件窗口的测试树
+        guard_core::addr::tests_root().join("frontend/shell"),
+        guard_core::addr::tests_root().join("comms/inward"), // 本 crate 的第二棵测试树
+        guard_core::addr::tests_root().join("frontend/filewin"), // 文件窗口的测试树
     ] {
         for (f, raw) in guard_core::scan_tree!(&root, &["rs"]) {
             // 只看生产段之外也一样：私有剥法一律住在测试模块里，所以扫整份。
@@ -1289,7 +1286,7 @@ fn every_position_comparison_over_source_pins_and_bounds_its_anchors() {
     // —— 红得对，而它红的正是「一整棵树掉出扫描面」。
     // ⚠ A 类同治：改用 `scan_tree_excluding` 的明写名单。本文件住 `tests/frontend/shell/`，
     //   现在在人群里，而它头注里就带着这一族的示例文本 ⇒ 必须明写摘掉，摘不到就 panic。
-    let root = crate::guard_support::repo_root().to_path_buf();
+    let root = guard_core::addr::repo_root().to_path_buf();
     let mut files = Vec::new();
     for (sub, excluded) in [
         ("src/frontend/shell/src", &[] as &[&str]),
@@ -1434,7 +1431,7 @@ fn every_position_comparison_over_source_pins_and_bounds_its_anchors() {
 /// 算错了却被人补了一个假落点 ⇒ 判据变绿而它证明的事根本不成立。
 /// 形状与从前那条帧节奏说法判据（今天并进 `retired-names.tsv`）同源（本仓已有先例）。
 fn addr_repo_root() -> std::path::PathBuf {
-    crate::guard_support::repo_root().to_path_buf()
+    guard_core::addr::repo_root().to_path_buf()
 }
 
 /// 地址判据的**语料面**：四个根下的全部 `.rs` + 本文件自己。
@@ -1679,7 +1676,6 @@ fn line_number_addresses_stay_in_range_and_never_grow() {
     ///
     /// ⚠ 加行之前先问一遍：**能不能点符号**？答得出来就别加。
     const INVENTORY: &[(&str, &str, usize)] = &[
-        ("atomic_replace_registry.rs", "fenced_block.rs", 5),
         ("ui_contract.rs", "tauri-2.11.2/src/ipc/mod.rs", 181),
         ("launch_tests.rs", "launch.rs", 122),
         // 🔴 **这一行删了 —— 那处行号地址改成了符号地址。**
@@ -1898,7 +1894,7 @@ fn the_verb_scan_reads_production_only_and_is_not_vacuous() {
     // 真树上打一发：这个动词在真文件里确实有命中（恒空的扫描买不到任何东西）。
     assert!(
         fn_names_starting_with(
-            include_str!("../../../src/frontend/shell/src/sftp.rs"),
+            include_str!("../../../src/frontend/shell/src/deploy.rs"),
             &["uninstall"]
         )
         .contains(&"uninstall_remote_backend".to_string()),
@@ -2307,12 +2303,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "list_history_projects",
             1,
         ),
-        // 测试替身里那一格（`mcp-server-put` 帧命令删了，替身那一格跟着删）一直替这处病史遮着「还活着」。
-        (
-            "tests/frontend/shell/remote_write_registry_tests.rs",
-            "write_project_mcp_server",
-            1,
-        ),
         // 那份壳命令登记表的改数史（「−2：…机器表搬进本机后端」）点了已删的壳命令名；它一直被截图台架那份假壳命令表遮着「还活着」，
         // 台架那一条换成假后端的 `machines-try` 以后才被看见。那句是病史，该留。
         (
@@ -2361,7 +2351,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "inline_literal_byte_caps_are_still_just_the_one",
             1,
         ),
-        // `ccm_probe.rs` 那一行出列：探针头注里「本机远端同一条」那段改写了（远端改问那台后端 `ccm-probe`），不再点那条旧判据名。
         (
             "tests/backend/footprint/rows_tests.rs",
             "locality_is_derivable_from_destination_today",
@@ -2863,7 +2852,7 @@ fn the_split_stays_done_and_p9_is_blocked_for_a_reason_that_says_itself() {
             "fn no_test_code_leaks_into_any_production_section",
         ),
         (
-            "tests/backend/guard_support_tests.rs",
+            "tests/common/guard-core/rules/strip_clean.rs",
             "fn every_backend_file_strips_clean",
         ),
         (

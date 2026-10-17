@@ -225,11 +225,11 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/frontend/shell/src/platform/hwnd.rs", "let _ = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut owner_pid)) };", Why::NotAnError, "要的是出参里的属主 pid，返回值（线程 id）用不上"),
     ("src/frontend/shell/src/platform/hwnd.rs", "let _ = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut owner)) };", Why::NotAnError, "按属主筛的那一遍：同上，要的是出参里的属主 pid"),
     ("src/frontend/shell/src/platform/hwnd.rs", "let _ = EnumWindows(Some(cb), LPARAM(pid as isize));", Why::NotAnError, "回调里自己收结果、从不提前停；枚举失败 ⇒ 收到的是空表，调用方照「没有窗口」说"),
-    ("src/frontend/shell/src/ccm_probe.rs", "let _ = child.kill();", Why::Reap, ""),
-    ("src/frontend/shell/src/ccm_probe.rs", "let _ = child.wait();", Why::Reap, ""),
+    ("src/frontend/shell/src/backend_once.rs", "let _ = child.kill();", Why::Reap, ""),
+    ("src/frontend/shell/src/backend_once.rs", "let _ = child.wait();", Why::Reap, ""),
     // `capture_full` 交入参那条写线程：对面不读 stdin 就退了 ⇒ 写端断，结局由它的退出码与 stderr 说；等那条线程收尾同理。
-    ("src/frontend/shell/src/ccm_probe.rs", "let _ = w.write_all(&bytes);", Why::DeadLink, ""),
-    ("src/frontend/shell/src/ccm_probe.rs", "let _ = w.join();", Why::Signal, ""),
+    ("src/frontend/shell/src/backend_once.rs", "let _ = w.write_all(&bytes);", Why::DeadLink, ""),
+    ("src/frontend/shell/src/backend_once.rs", "let _ = w.join();", Why::Signal, ""),
     ("src/comms/inward/chan/client.rs", "tx.send(Err(hop(0, \"read\", Reach::Unknown, HopFault::Dropped))).ok();", Why::PeerGone, ""),
     ("src/comms/inward/chan/client.rs", "tx.send(Job { head, body: Vec::new(), written: None, }).await.ok();", Why::PeerGone, ""),
     ("src/comms/inward/chan/client.rs", "tx.send(r).ok();", Why::PeerGone, ""),
@@ -575,7 +575,7 @@ fn test_only_modules(files: &[(PathBuf, String)]) -> BTreeSet<PathBuf> {
 
 /// 盘上的人群：`(仓根相对路径, 归一化语句) → 处数`。
 fn population() -> BTreeMap<(String, String), usize> {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let mut files = Vec::new();
     for sub in ROOTS {
         files.extend(guard_core::scan_tree_excluding(
@@ -683,7 +683,7 @@ fn w5vis_the_swallow_detector_sees_exactly_the_bare_forms() {
 /// ③ 测试专用模块确实被排除：派生出来的那一组里有两份已知的、生产段里带 `let _ =` 的测试专用文件（正控）。
 #[test]
 fn w5vis_test_only_modules_are_derived_and_excluded() {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let mut files = Vec::new();
     for sub in ROOTS {
         files.extend(guard_core::scan_tree_excluding(

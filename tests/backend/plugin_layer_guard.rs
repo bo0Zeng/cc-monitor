@@ -43,7 +43,7 @@ const FILES_IN_THIS_LAYER: &[&str] = &["discover.rs", "invoke.rs", "mod.rs", "pr
 /// ⇒ 排除**明写成空名单**：本判据已经不在被扫的那棵树里，没有「摘掉我自己」这回事。
 /// 顺带那个射程缺口**关掉了**：`mod.rs` 的生产段从此真的在人群里。
 fn plugin_sources() -> Vec<(String, String)> {
-    let root = crate::guard_support::src_root().join("plugin");
+    let root = guard_core::addr::backend_src_root().join("plugin");
     let mut out: Vec<(String, String)> = guard_core::scan_tree_excluding(&root, &["rs"], &[])
         .into_iter()
         .map(|(p, s)| {
@@ -52,7 +52,7 @@ fn plugin_sources() -> Vec<(String, String)> {
                 .unwrap_or(&p)
                 .to_string_lossy()
                 .replace('\\', "/");
-            (rel, crate::guard_support::production_code(&s))
+            (rel, guard_core::production_code(&s))
         })
         .collect();
     out.sort();
@@ -79,7 +79,7 @@ fn the_plugin_layer_collection_is_complete() {
              **少了的**：文件没了就摘登记；也可能是采集坏了，那样下面那条对漏掉的是瞎的。"
     );
     for (name, prod) in &files {
-        crate::guard_support::assert_no_test_code(&format!("plugin/{name}"), prod);
+        guard_core::assert_no_test_code(&format!("plugin/{name}"), prod);
     }
 }
 

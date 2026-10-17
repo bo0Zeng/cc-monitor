@@ -459,9 +459,8 @@ fn enclosing_fn(code: &str, at: usize) -> String {
 
 #[test]
 fn d3_the_ticket_is_taken_once_before_the_blocking_spawn_and_every_stream_exit_drains() {
-    let inbound = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/stream/inbound/mod.rs"
-    ));
+    let inbound =
+        guard_core::production_code(include_str!("../../../src/backend/stream/inbound/mod.rs"));
     // 取票：恰好一处，在 `handle_line`（`SpawnBlocking` 那一支）里，且在 `spawn_blocking(` 之前。
     let enters = call_sites(&inbound, "DRAIN.enter");
     assert_eq!(enters.len(), 1, "取票应恰好一处：{enters:?}");
@@ -483,7 +482,7 @@ fn d3_the_ticket_is_taken_once_before_the_blocking_spawn_and_every_stream_exit_d
     );
 
     // `process::exit(` 的所在函数那一格挪进 [`x15_the_process_exits_only_in_main_and_exit_after_drain`]（全树，不只 `main.rs`）。
-    let main = crate::guard_support::production_code(include_str!("../../../src/backend/main.rs"));
+    let main = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
     let mut drains: Vec<String> = call_sites(&main, "exit_after_drain")
         .into_iter()
         .map(|i| enclosing_fn(&main, i))
@@ -502,8 +501,7 @@ fn d3_the_ticket_is_taken_once_before_the_blocking_spawn_and_every_stream_exit_d
     );
 
     // 生产入口交给本体的期限恰是 `DRAIN_DEADLINE`（判据用短期限走的是同一个本体）。收场那几样住 `drain.rs`。
-    let drain =
-        crate::guard_support::production_code(include_str!("../../../src/backend/wire/drain.rs"));
+    let drain = guard_core::production_code(include_str!("../../../src/backend/wire/drain.rs"));
     let within: Vec<usize> = call_sites(&drain, "exit_after_drain_within");
     assert_eq!(within.len(), 1, "本体只该被生产入口调一处：{within:?}");
     assert_eq!(enclosing_fn(&drain, within[0]), "exit_after_drain");
@@ -525,7 +523,7 @@ fn d3_the_ticket_is_taken_once_before_the_blocking_spawn_and_every_stream_exit_d
 /// （`exit_after_drain` 的本体：生产入口只经它，期限由 d3 钉）。别处一处都不许有 —— 模块里想退就把退出码交回调用方。
 #[test]
 fn x15_the_process_exits_only_in_main_and_exit_after_drain() {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let mut found: Vec<(String, String)> = Vec::new();
     let mut scanned = 0usize;
     for (path, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
@@ -535,7 +533,7 @@ fn x15_the_process_exits_only_in_main_and_exit_after_drain() {
             .unwrap_or(&path)
             .to_string_lossy()
             .replace('\\', "/");
-        let prod = crate::guard_support::production_code(&src);
+        let prod = guard_core::production_code(&src);
         for i in call_sites(&prod, "process::exit") {
             found.push((rel.clone(), enclosing_fn(&prod, i)));
         }
@@ -573,7 +571,7 @@ fn x15_the_process_exits_only_in_main_and_exit_after_drain() {
 /// 形状：`main.rs` 生产段里 `.with_ansi(` 恰好一处，参数恰是「stderr 是不是终端」（一次性模式另与上「不是一次性」：它写诊断文件）；`fmt()` 恰好一处（没有第二个不设它的初始化）。
 #[test]
 fn a1_the_backend_log_is_colored_only_on_a_terminal() {
-    let main = crate::guard_support::production_code(include_str!("../../../src/backend/main.rs"));
+    let main = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
     let at: Vec<usize> = main.match_indices(".with_ansi(").map(|(i, _)| i).collect();
     assert_eq!(at.len(), 1, "`.with_ansi(` 不是恰好一处：{at:?}");
     let arg = &main[at[0] + ".with_ansi(".len()..];

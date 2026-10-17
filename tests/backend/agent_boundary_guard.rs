@@ -153,7 +153,7 @@ mod tests {
     )];
 
     fn src_dir() -> PathBuf {
-        crate::guard_support::src_root()
+        guard_core::addr::backend_src_root()
     }
 
     /// 针 —— **运行时拼**。
@@ -176,7 +176,7 @@ mod tests {
     /// ⚠ 只剥注释、**不剥字符串**：通用层里出现 `"claude"` 这个字符串字面量，
     /// 那正是要抓的东西（比如 `if kind == "claude"`）。
     fn production_lines(src: &str) -> Vec<(usize, String)> {
-        crate::guard_support::production_code(src)
+        guard_core::production_code(src)
             .lines()
             .enumerate()
             .map(|(i, l)| (i + 1, l.to_string()))

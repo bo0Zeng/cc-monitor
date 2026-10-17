@@ -68,7 +68,7 @@ fn extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place() {
     //    历史查询（`observe/history_query.rs`）自己一份头部窗口都没有，只问适配层 —— 否则上面那条会零命中地绿。
     let read = |rel: &str| {
         guard_core::production_code(
-            &std::fs::read_to_string(crate::guard_support::repo_root().join(rel))
+            &std::fs::read_to_string(guard_core::addr::repo_root().join(rel))
                 .unwrap_or_else(|_| panic!("读不到 {rel}")),
         )
     };
@@ -109,7 +109,7 @@ fn extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place() {
 /// （后端在目标机上 `cargo build` 就咬住旁边这棵树了）。运行时读没有这个代价 ——
 /// 同 `K-R97` 那条 `extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place`。
 fn r88_backend_production(rel: &str) -> String {
-    let p = crate::guard_support::repo_root().join(rel);
+    let p = guard_core::addr::repo_root().join(rel);
     let raw = std::fs::read_to_string(&p)
         .unwrap_or_else(|e| panic!("读不到后端的 {rel}：{e} —— 先修住址，别绕过本条"));
     guard_core::production_code(&raw)
@@ -235,7 +235,7 @@ fn the_two_apikey_rules_are_defined_only_in_acct_core() {
     );
     let core_prod = guard_core::production_code(
         &std::fs::read_to_string(
-            crate::guard_support::repo_src_root().join("common/acct-core/src/lib.rs"),
+            guard_core::addr::repo_src_root().join("common/acct-core/src/lib.rs"),
         )
         .unwrap(),
     );

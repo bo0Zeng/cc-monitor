@@ -933,9 +933,9 @@ fn destination_checks_still_run_under_every_host() {
 fn declared_destinations_are_pinned_to_the_real_writers() {
     use guard_core::pin_definition;
 
-    // ① ccm：`sftp.rs` 里那个常量就是真落点
-    let sftp = include_str!("../../../src/frontend/shell/src/sftp.rs");
-    // 落点就是后端本身：`sftp.rs` 的落点常量取自 `relay_route_core`（两半同一份），那一份逐字是 `.cc-monitor/bin/ccm`。
+    // ① ccm：`deploy.rs` 里那个常量就是真落点
+    let sftp = include_str!("../../../src/frontend/shell/src/deploy.rs");
+    // 落点就是后端本身：`deploy.rs` 的落点常量取自 `relay_route_core`（两半同一份），那一份逐字是 `.cc-monitor/bin/ccm`。
     pin_definition(
         sftp,
         "pub(crate) const LANDING_REL: &str = relay_route_core::BACKEND_LANDING_REL;",
@@ -971,7 +971,7 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
     assert_eq!(
         remote_dests,
         vec![&ToolDestination::RemoteHomeRelative(".cc-monitor/bin/ccm")],
-        "注册表声明的 ccm 远端落点与 sftp.rs 的 LANDING_REL 不一致"
+        "注册表声明的 ccm 远端落点与 deploy.rs 的 LANDING_REL 不一致"
     );
 
     // ② 项目 MCP：写进了那台后端（`assets/mcp_edit.rs`），落点是资产面那一家的项目级 MCP 文件名

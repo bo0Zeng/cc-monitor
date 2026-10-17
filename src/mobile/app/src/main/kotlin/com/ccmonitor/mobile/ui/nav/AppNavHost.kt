@@ -48,6 +48,8 @@ import com.ccmonitor.mobile.ui.session.SessionTabManager
 import com.ccmonitor.mobile.ui.session.SessionTabsSheet
 import com.ccmonitor.mobile.ui.session.SessionsOverviewScreen
 import com.ccmonitor.mobile.ui.session.keys.KeysEditorScreen
+import com.ccmonitor.mobile.ui.settings.AccountsScreen
+import com.ccmonitor.mobile.ui.settings.Here
 import com.ccmonitor.mobile.ui.settings.SettingsScreen
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
@@ -98,10 +100,16 @@ private fun AppNavGraph(
         }
         composable(Screen.Settings.route) {
             // 设置面上的去处住 `settingsEntries()`，这里只把路由交给 nav。
-            SettingsScreen(
-                onBack = { nav.popBackStack() },
-                onNavigate = { route -> nav.navigate(route) },
-            )
+            HereOrNone { here -> SettingsScreen(here, onBack = { nav.popBackStack() }, onNavigate = { route -> nav.navigate(route) }) }
+        }
+        composable(Screen.Accounts.route) {
+            HereOrNone { here ->
+                if (here == null) {
+                    LaunchedEffect(Unit) { nav.navigate(Screen.Hosts.route) { popUpTo(Screen.Accounts.route) { inclusive = true } } }
+                } else {
+                    AccountsScreen(here, onBack = { nav.popBackStack() })
+                }
+            }
         }
         rotationRoutes(nav, tabManager)
         sessionRoute(nav, tabManager)
@@ -259,6 +267,7 @@ private fun HostedSession(
                     open.hostId,
                     target.cd,
                     target.tmuxSession, // 进终端 tab 首连即敲那台渲出的那一行，接回该会话
+                    target.resume,
                     onAttachInNewTab = { name -> onOpenTmuxTab(open.hostId, name) },
                     onShowTabs = { showTabs = true },
                     onEditKeys = onEditKeys,
@@ -374,15 +383,28 @@ private fun NavGraphBuilder.rotationRoutes(
         RotationRoute(nav, tabManager, hostId, entry.arguments?.getString(Screen.Rotation.ARG_SID))
     }
     composable(Screen.RotationHere.route) {
-        val settings = koinInject<SettingsRepository>()
-        val hosts = koinInject<HostRepository>()
-        val here by produceState<String?>(null) { value = settings.getLastHost()?.let { id -> hosts.get(id) }?.id ?: "" }
-        when (val id = here) {
-            null -> Unit
-            "" -> LaunchedEffect(Unit) { nav.navigate(Screen.Hosts.route) { popUpTo(Screen.RotationHere.route) { inclusive = true } } }
-            else -> RotationRoute(nav, tabManager, id, null)
+        HereOrNone { here ->
+            if (here == null) {
+                LaunchedEffect(Unit) { nav.navigate(Screen.Hosts.route) { popUpTo(Screen.RotationHere.route) { inclusive = true } } }
+            } else {
+                RotationRoute(nav, tabManager, here.hostId, null)
+            }
         }
     }
+}
+
+/**
+ * 设置那一组屏的当前那台：上次那台（核对过还在主机表里）；没有 ⇒ `null`。还在查 ⇒ 不画。
+ * 设置 · 账号 · 轮换（设置页那一形）三处同一份。
+ */
+@Composable
+private fun HereOrNone(content: @Composable (Here?) -> Unit) {
+    val settings = koinInject<SettingsRepository>()
+    val hosts = koinInject<HostRepository>()
+    val here by produceState<Result<Here?>?>(null) {
+        value = Result.success(settings.getLastHost()?.let { id -> hosts.get(id) }?.let { Here(it.id, it.label.ifEmpty { it.id }) })
+    }
+    here?.let { content(it.getOrNull()) }
 }
 
 @Composable
@@ -451,7 +473,7 @@ private fun NavGraphBuilder.chatRoutes(
             draftCwd = entry.arguments?.getString(Screen.Chat.ARG_CWD),
             onDrawerAction = { action -> nav.followDrawer(action, hostId, tabManager) },
             onOpenRotation = { s -> nav.navigate(Screen.Rotation.of(hostId, s)) },
-            onOpenTerminal = { name -> nav.navigate("session/${tabManager.open(hostId, SessionTabManager.TabTarget.Terminal(tmuxSession = name))}") },
+            onOpenTerminal = { to -> nav.navigate("session/${tabManager.open(hostId, to)}") },
         )
     }
 }

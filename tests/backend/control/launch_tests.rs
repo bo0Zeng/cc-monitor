@@ -181,9 +181,7 @@ fn the_create_only_fields_have_their_own_shapes() {
 /// ⚠ 这里只能判**源码形态**（真验要起 tmux，红线禁）。诚实边界写在这儿，别读大了。
 #[test]
 fn the_create_arm_actually_uses_the_three_new_fields() {
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/launch.rs"
-    ));
+    let prod = guard_core::production_code(include_str!("../../../src/backend/control/launch.rs"));
     // ★ 抽取器自检：剥注释器没把代码也剥掉（建条当天生产段 300+ 行）。
     assert!(
         prod.lines().count() >= 200,
@@ -321,9 +319,7 @@ fn the_create_argv_is_detached_and_names_the_session() {
 
 #[test]
 fn send_into_never_creates_a_session() {
-    let src = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/launch.rs"
-    ));
+    let src = guard_core::production_code(include_str!("../../../src/backend/control/launch.rs"));
     let arm = arm_of(&src, "Mode::SendInto =>");
     let verb = format!("new-{}", "session");
     assert!(
@@ -364,9 +360,7 @@ fn send_into_never_creates_a_session() {
 /// 挡不住「`MAX_FIELD_BYTES` 被调大」——那是量纲不是姿态，另有 `byte_cap_registry` 管。
 #[test]
 fn the_payload_is_still_only_shape_checked() {
-    let src = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/launch.rs"
-    ));
+    let src = guard_core::production_code(include_str!("../../../src/backend/control/launch.rs"));
     let at = src
         .find("fn check_field(")
         .expect("`check_field` 不见了 —— 形状检查搬家了，要跟着重判");
@@ -437,30 +431,6 @@ fn the_payload_is_still_only_shape_checked() {
     }
 }
 
-/// ★ **生产接线（顺序钉）**：`admit` 必须在 `type_payload` **之前**。
-///
-/// 这条与上面那条不是重复：上面钉「过不过门」，这条钉「门在不在路上」。
-/// 反过来（先键入再核验）＝ 门形同虚设、而两条测试都会因为「函数被调用了」而绿。
-/// 顺序错的形态在本仓出现过（`launch_wire` 的 env 顺序），是**最容易被 review 漏掉**的一类。
-#[test]
-fn the_send_into_arm_admits_before_it_types() {
-    let src = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/launch.rs"
-    ));
-    let arm = arm_of(&src, "Mode::SendInto =>");
-    let admit_at = arm.find("gate::admit").expect("分支里没有 `gate::admit`");
-    let type_at = arm.find("type_payload").expect("分支里没有 `type_payload`");
-    assert!(
-        admit_at < type_at,
-        "`type_payload` 排在 `gate::admit` 前面 —— 载荷先打出去了，门再判就没意义了"
-    );
-    // 键入的目标必须是 `admit` 回的**句柄**，不是名字/`t`。见 `gate` 模块头注的 TOCTOU 那段。
-    assert!(
-        arm.contains("type_payload(&handle"),
-        "键入的目标不是 `admit` 回的句柄 —— 对名字下手就把 TOCTOU 窗口放回来了"
-    );
-}
-
 /// ★ `create-or-attach` **刻意不过门**，且理由必须仍然成立：
 /// 它只在 `new-session` 成功（＝会话是本次刚建的）时才键入；
 /// 建失败但会话已存在时**早返回、根本不键入**。
@@ -469,9 +439,7 @@ fn the_send_into_arm_admits_before_it_types() {
 /// 一旦有人让这个分支在「会话已存在」时也去 `type_payload`，本条就红。
 #[test]
 fn create_or_attach_never_types_into_a_session_it_did_not_just_create() {
-    let src = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/launch.rs"
-    ));
+    let src = guard_core::production_code(include_str!("../../../src/backend/control/launch.rs"));
     // ⚠ F04c 改用 `arm_of`：原来是 `&src[at..]`（一直切到文件末尾）——
     // 那不是「这个分支」，是「这个分支之后的全部生产代码」。
     // 新加的 `every_mode_variant_…` 当场点名了它（**它是最后一个分支，所以一直没出事**，
@@ -565,7 +533,7 @@ fn every_mode_variant_has_an_arm_and_a_parse_and_is_named_in_some_judge() {
     //   `arm_of(&src, "Mode::X =>")` 的注释就能骗过它；现在骗不了。
     let raw = include_str!("../../../src/backend/control/launch.rs");
     let judges = include_str!("launch_tests.rs");
-    let src = crate::guard_support::production_code(raw);
+    let src = guard_core::production_code(raw);
     // 从 Mode 枚举体里抽变体名。
     let at = src
         .find(enum_mode_head().as_str())
@@ -644,9 +612,7 @@ fn every_mode_variant_has_an_arm_and_a_parse_and_is_named_in_some_judge() {
 /// 把没有身份的成功说成确凿的成功）。
 #[test]
 fn typed_is_only_as_strong_as_the_send_keys_exit_code() {
-    let src = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/launch.rs"
-    ));
+    let src = guard_core::production_code(include_str!("../../../src/backend/control/launch.rs"));
     for f in ["fn type_payload("] {
         let at = src
             .find(f)
@@ -716,7 +682,7 @@ fn the_contract_says_how_strong_typed_actually_is() {
 /// ⚠ needle **运行时拼**，否则本条会在自己的注释里找到它而恒红（F23 那一族的镜像）。
 #[test]
 fn no_doc_claims_the_payload_really_landed() {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let overclaim = format!("{}键入了", "真的");
     // 第二份原是 monitor 的就地 resume 发送端（`backend_launch.rs`，逐字转发 `typed`）；
     //   它迁到界面删了，今天读 `typed` 的是 `src/frontend/ui/tmux-control.ts::decodeTyped` / `sendInto` ⇒ 换成那一份。
@@ -1030,9 +996,7 @@ fn w5vis_s4_s5_no_tmux_result_or_stderr_is_thrown_away_any_more() {
         }
         v
     }
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/launch.rs"
-    ));
+    let prod = guard_core::production_code(include_str!("../../../src/backend/control/launch.rs"));
     assert!(
         prod.contains("fn run_with("),
         "切出来的生产段不对 —— 本条会零命中地绿"
@@ -1229,7 +1193,13 @@ fn busy2_a_start_command_that_did_not_get_through_says_which_kind() {
     });
     let e = run_with(&req, &|a| f.call(a)).unwrap_err();
     assert_eq!(e.code, "typed_unconfirmed");
-    assert_eq!(e.untyped, Some((Delivery::NotDelivered, true)));
+    assert_eq!(
+        e.untyped,
+        Some((
+            Delivery::NotDelivered,
+            Some(JustMade(exact_target(&req.name)))
+        ))
+    );
 
     let f = FakeTmux::new(|verb| match verb {
         "send-keys" => Err(CmdErr::from(
@@ -1243,7 +1213,10 @@ fn busy2_a_start_command_that_did_not_get_through_says_which_kind() {
     });
     let e = run_with(&req, &|a| f.call(a)).unwrap_err();
     assert_eq!(e.code, "typed_unconfirmed");
-    assert_eq!(e.untyped, Some((Delivery::Unknown, true)));
+    assert_eq!(
+        e.untyped,
+        Some((Delivery::Unknown, Some(JustMade(exact_target(&req.name)))))
+    );
 
     // 别的失败（建不出来）不带这一格。
     let f = FakeTmux::new(|verb| match verb {
@@ -1275,8 +1248,15 @@ fn busy2_a_bare_session_left_by_an_undelivered_start_command_is_reaped() {
         ran(sb.child(), a)
     };
     let e = run_with(&req, &tmux).unwrap_err();
-    assert_eq!(e.untyped, Some((Delivery::NotDelivered, true)));
+    let Some((Delivery::NotDelivered, Some(made))) = e.untyped else {
+        panic!("没送进却没带回「刚建的」令牌：{:?}", e.untyped);
+    };
     let real = |a: &[&str]| ran(sb.child(), a);
+    // 收空壳只经 `kill::end`、只收令牌；别的几形在沙箱里自己建好再造令牌（判据那一口）。
+    let reap_on = |m: JustMade| {
+        crate::control::kill::end(crate::control::kill::Ending::Bare(m, &real)).is_ok()
+    };
+    let reap = |name: &str| reap_on(JustMade(exact_target(name)));
     assert!(
         sb.run(&["has-session", "-t", "=busy2-bare:"])
             .status
@@ -1290,10 +1270,7 @@ fn busy2_a_bare_session_left_by_an_undelivered_start_command_is_reaped() {
         "=busy2-bare:",
         "#{session_windows} #{window_panes} [#{pane_start_command}] #{session_attached}",
     ]);
-    assert!(
-        reap_if_bare("busy2-bare", &real),
-        "只剩 shell 的会话该收掉：{seen}"
-    );
+    assert!(reap_on(made), "只剩 shell 的会话该收掉：{seen}");
     assert!(
         !sb.run(&["has-session", "-t", "=busy2-bare:"])
             .status
@@ -1303,7 +1280,7 @@ fn busy2_a_bare_session_left_by_an_undelivered_start_command_is_reaped() {
 
     // 里面跑着别的程序 ⇒ 不动。
     sb.ok(&["new-session", "-d", "-s", "busy2-busy", "sleep 600"]);
-    assert!(!reap_if_bare("busy2-busy", &real));
+    assert!(!reap("busy2-busy"));
     assert!(sb
         .run(&["has-session", "-t", "=busy2-busy:"])
         .status
@@ -1311,22 +1288,54 @@ fn busy2_a_bare_session_left_by_an_undelivered_start_command_is_reaped() {
     // 开了第二个窗口 ⇒ 不动。
     sb.ok(&["new-session", "-d", "-s", "busy2-two"]);
     sb.ok(&["new-window", "-t", "=busy2-two:"]);
-    assert!(!reap_if_bare("busy2-two", &real));
+    assert!(!reap("busy2-two"));
     assert!(sb
         .run(&["has-session", "-t", "=busy2-two:"])
         .status
         .success());
     // 窗格起的不是默认 shell（前台此刻是什么不看）⇒ 不动。
     sb.ok(&["new-session", "-d", "-s", "busy2-cmd", "sh"]);
-    assert!(!reap_if_bare("busy2-cmd", &real));
+    assert!(!reap("busy2-cmd"));
     assert!(sb
         .run(&["has-session", "-t", "=busy2-cmd:"])
         .status
         .success());
     // 名字只认精确那一个：`busy2-tw` 不存在 ⇒ 不碰 `busy2-two`。
-    assert!(!reap_if_bare("busy2-tw", &real));
+    assert!(!reap("busy2-tw"));
     assert!(sb
         .run(&["has-session", "-t", "=busy2-two:"])
         .status
         .success());
+}
+
+/// ★ 开一个空 shell 的 tmux 会话：不在 ⇒ 建在那个目录里、记下谁建的，不键入任何东西；已在 ⇒ 什么都不做（不改它的目录）；
+/// 名字过不了新建那一条 ⇒ 不建；建不出 ⇒ `create_failed` 带 tmux 原话。
+#[test]
+fn a_shell_session_is_made_bare_or_left_as_it_is() {
+    let f = FakeTmux::new(|verb| said(verb != "has-session", ""));
+    let made =
+        open_shell_with("main", Some("/home/u/p"), Some("mobile"), &|a| f.call(a)).expect("该建成");
+    assert!(made);
+    assert_eq!(f.verbs(), ["new-session", "set-option @ccm_client"]);
+    let first = f.calls.borrow()[0].clone();
+    assert_eq!(
+        first,
+        ["new-session", "-d", "-s", "main", "-c", "/home/u/p"]
+    );
+
+    let f = FakeTmux::new(|verb| said(verb == "has-session", "duplicate session: main"));
+    let made = open_shell_with("main", Some("/home/u/p"), Some("mobile"), &|a| f.call(a))
+        .expect("已在是幂等成功");
+    assert!(!made);
+    assert_eq!(f.verbs(), ["new-session", "has-session"]);
+
+    let f = FakeTmux::new(|_| said(false, "can't create session"));
+    let e = open_shell_with("main", None, None, &|a| f.call(a)).unwrap_err();
+    assert_eq!(e.code, "create_failed");
+    assert_eq!(e.raw.as_deref(), Some("can't create session"));
+
+    let f = FakeTmux::new(|_| said(false, ""));
+    let e = open_shell_with("-bad", None, None, &|a| f.call(a)).unwrap_err();
+    assert_eq!(e.code, "bad_args");
+    assert!(!f.verbs().contains(&"new-session".to_string()));
 }

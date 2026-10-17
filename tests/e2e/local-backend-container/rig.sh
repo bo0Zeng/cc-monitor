@@ -116,7 +116,7 @@ command -v docker >/dev/null 2>&1 || { echo "需要 docker" >&2; exit 2; }
 # 在容器里以**普通用户 tester** 跑一条登录+交互 shell。
 # 🔴 `-lic` 不是 `-lc`：Ubuntu 的 `~/.bashrc` 头一行就是
 #    `case $- in *i*) ;; *) return;; esac` —— **非交互 shell 会在读到我们那一段之前就 return**。
-#    产品自己的探针（`ccm_probe.rs::probe_with`）用的也正是 `bash -lic`，这里与它同口径。
+#    产品问终端 `PATH` 那一趟（后端 `platform/shell/mod.rs::fresh_terminal_path`）同样起交互登录 shell，这里与它同口径。
 tsh() { docker exec -u tester -e HOME=/home/tester "$CT" bash -lic "$*" 2>/dev/null; }
 # 对照口径：非交互登录 shell。两者**分开报** —— 差别本身就是一条读数。
 tshl() { docker exec -u tester -e HOME=/home/tester "$CT" bash -lc "$*" 2>/dev/null; }
@@ -299,7 +299,7 @@ line
 
 # ══════════════════════════════════════════════════════════════════
 echo "== P9 -- --ccm-probe 那六行"
-# 两条路分开问（`ccm_probe.rs` 头注逐字：这两条问的不是同一件事）：
+# 两条路分开问（这两条问的不是同一件事）：
 #   ① 直接问**我们放下去的那一份**（路径我们自己知道，不经 shell）
 #   ② 问**用户 PATH 上那个**（非走登录 shell 不可）
 P_DIRECT="$(tsh "\$HOME/$DIR_REAL/ccm -- --ccm-probe 2>/dev/null")"

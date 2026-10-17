@@ -454,7 +454,7 @@ mod tests {
     ///
     /// 夹具是本进程刚写出来的：写的那一刻并行测试里别的线程恰好 fork，子进程在 exec 之前
     /// 还攥着那份写 fd ⇒ 此刻 execve 它 = `ETXTBSY`（门禁全量跑时现打逮到过一次）。
-    /// 认 `os error 26`（errno），不认 `Text file busy`（随 locale 变）；同 `ccm_probe_tests` 那一处。
+    /// 认 `os error 26`（errno），不认 `Text file busy`（随 locale 变）。
     /// 不能像 `identity_tag_tests` 那样改经 `/bin/sh` 起：这里要证的正是通用层真的 exec 了它。
     fn run_past_busy(
         bin: &Path,
@@ -694,12 +694,12 @@ mod tests {
 
     /// backend 的 `src/` 根。
     fn src_root() -> PathBuf {
-        crate::guard_support::src_root()
+        guard_core::addr::backend_src_root()
     }
 
     /// 那个真适配层今天的生产段（活体对拍语料，不是手抄的 fixture）。
     fn real_adapter_production() -> String {
-        crate::guard_support::production_code(include_str!("../../src/backend/control/cc_bus.rs"))
+        guard_core::production_code(include_str!("../../src/backend/control/cc_bus.rs"))
     }
 
     /// 通用调用口那一层今天的生产段，逐文件。
@@ -722,7 +722,7 @@ mod tests {
                     .unwrap_or(&p)
                     .to_string_lossy()
                     .replace('\\', "/");
-                (rel, crate::guard_support::production_code(&s))
+                (rel, guard_core::production_code(&s))
             })
             .collect();
         out.sort();
@@ -1444,7 +1444,7 @@ mod tests {
             "本文件的文件级 `{attr}` 不是恰好一处 —— 掉了就会被编进生产二进制，\
              多了说明有人复制了一份"
         );
-        let prod = crate::guard_support::production_code(own);
+        let prod = guard_core::production_code(own);
         assert!(
             !prod.contains("fn "),
             "本文件剥掉测试段之后还剩函数 —— 那些东西会进生产二进制：\n{prod}"
@@ -1454,7 +1454,7 @@ mod tests {
             "本文件的生产段里出现了 `plugin` 边 —— 那条边会进 `layering_guard` 的账，\
              而本文件的每一条都该在 `#[cfg(test)]` 里"
         );
-        crate::guard_support::assert_no_test_code("plugin_walk_fixture.rs", &prod);
+        guard_core::assert_no_test_code("plugin_walk_fixture.rs", &prod);
 
         // ② `lib.rs` 里那一行 `mod` 声明在（掉了本文件整个不编译，但它也可能被改成
         //    别的形状；钉住它，顺带把「PM 预批的那一行」写成一条读数）。
@@ -1495,11 +1495,8 @@ mod tests {
         //
         //    成因（别处推不出来，所以记在这里）：`scan_tree_excluding_self` 拿 `file!()`
         //    做**后缀比**。本文件的 `file!()` 逐字是 `../../tests/backend/plugin_walk_fixture.rs`，
-        //    而 backend 的 `guard_support::tests_root()` 逐字是
-        //    `CARGO_MANIFEST_DIR.join("../../tests/backend")` —— **那个根自己带着同一段 `..`**
-        //    ⇒ 扫出来的路径串正好以那个折返形结尾 ⇒ 后缀比**命中** ⇒ 自摘真的把本文件摘走了。
-        //    （monitor 那半边的根一律过 `repo_root()` 的 `.parent().parent()`，串里没有 `..`
-        //     ⇒ 那半边一处都**不生效**。两侧的差别只在这一个字符串上。）
+        //    而后端测试树那个根当时逐字是 `CARGO_MANIFEST_DIR.join("../../tests/backend")` —— **自己带着同一段 `..`**
+        //    ⇒ 后缀比**命中** ⇒ 自摘真的把本文件摘走了。今天的住址（`guard_core::addr`）从仓根往下拼、不带 `..` ⇒ 自摘在这里也不生效。
         //
         //    ⇒ 两个后果：① 原先那句「宏认不出它是调用者 ⇒ 把本文件也收了进来」**是假的**；
         //    ② 它下面那把 `retain` 今天**一份都摘不到**（死值验 `K8`：整刀拿掉，本条照样绿）。
@@ -1509,13 +1506,13 @@ mod tests {
         //    而不是安静地把本文件收进自己的语料（上面第一条断言刚刚证明过
         //    「本文件的测试段含这个 needle」⇒ 真收进来就会多出一项）。
         pop.extend(guard_core::scan_tree_excluding(
-            &crate::guard_support::tests_root(),
+            &guard_core::addr::backend_tests_root(),
             &["rs"],
             &["plugin_walk_fixture.rs"],
         ));
         // 中转 crate 的单测树（`tests/comms/outward/`，后端的人群声明带进来的那棵）。
         pop.extend(guard_core::scan_tree_excluding(
-            &crate::guard_support::comms_tests_root(),
+            &guard_core::addr::comms_tests_root(),
             &["rs"],
             &[],
         ));
@@ -1667,9 +1664,8 @@ mod tests {
              （摘了它 `discover` 的兜底档就自相矛盾：找得到插件却跑不动）。"
         );
         // ③ 的另一半：源码面 —— 清环境这个动作**在**，而且只有一处。
-        let invoke_prod = crate::guard_support::production_code(include_str!(
-            "../../src/backend/plugin/invoke.rs"
-        ));
+        let invoke_prod =
+            guard_core::production_code(include_str!("../../src/backend/plugin/invoke.rs"));
         assert_eq!(
             invoke_prod.matches(".inherit_only(").count(),
             1,
@@ -1964,8 +1960,7 @@ mod tests {
         //
         // ⚠ 分母：`cc_bus_boundary_guard` 那 5 根针的**词**住它自己那份源码里，
         //   这里不复述成第二份字面量 —— 只断言「它的语料里一个本夹具的词都没有」。
-        let their_guard =
-            crate::guard_support::production_code(include_str!("cc_bus_boundary_guard.rs"));
+        let their_guard = guard_core::production_code(include_str!("cc_bus_boundary_guard.rs"));
         let vocab = fixture_vocabulary();
         let covered: Vec<&str> = vocab
             .iter()
@@ -1981,7 +1976,7 @@ mod tests {
         // 落点 5：`E5` 裁定「插件调用复用那一处口」⇒ 一处起进程点都不许加。
         // 生产段那个数由 `readonly_guard::spawn_registry` 的相等断言看着（这里没动它）；
         // 这里只钉本文件这一侧：本文件的**生产段**里一个 `Command` 都没有。
-        let own_prod = crate::guard_support::production_code(own_source());
+        let own_prod = guard_core::production_code(own_source());
         assert!(
             !own_prod.contains("Command::"),
             "本文件的生产段里出现了起进程的形 —— 那会让 `SPAWN_SITES_TODAY` 那个数涨一格"

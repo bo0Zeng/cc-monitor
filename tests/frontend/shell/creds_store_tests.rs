@@ -134,7 +134,7 @@ const PLAINTEXT_SCAN_TREES: &[&str] = &["src/frontend/shell/src", "src/common", 
 ///
 /// 回修前，「取明文恰好 N 处」这条性质由两处判据分管，而它们的人群加起来**盖不住产品**：
 /// · `creds-core/src/lib.rs` 只扫 `include_str!("../../../src/frontend/shell/src/lib.rs")`——**它自己这一个文件**；
-/// · `relay/creds_guard.rs` 扫后端那个 crate；
+/// · 后端那个 crate 另有一条只扫自己的（已删：本条三棵树罩住它）；
 /// ⇒ **`src/frontend/shell` 整个不在任何人的人群里**，而 monitor 恰恰是明文**第一次进程序**的地方
 ///   （`write_apikey_credentials_key(key: String)`）。
 /// D1 审计刀 B 实打：在 monitor 生产段取一次明文 `eprintln!` 出去
@@ -157,7 +157,7 @@ const PLAINTEXT_SCAN_TREES: &[&str] = &["src/frontend/shell/src", "src/common", 
 /// **三格一起才成立**：定义面（有几个出口）· 调用面（每个出口被调几次、在哪）· 本条（人群覆盖三棵树）。
 #[test]
 fn the_two_plaintext_exits_are_called_from_exactly_one_place_each_across_all_three_trees() {
-    let root = crate::guard_support::repo_root().to_path_buf();
+    let root = guard_core::addr::repo_root().to_path_buf();
 
     let mut files: Vec<(String, String)> = Vec::new();
     for sub in PLAINTEXT_SCAN_TREES {
@@ -251,7 +251,7 @@ fn the_definition_table_and_the_call_site_table_name_the_same_exits() {
     // `tests/common/creds-core/lib_tests.rs`。表本身一个字没改 ——
     // 变的只是它住哪儿。⇒ 指对地方，不是放宽（读数逐字：「一处都找不到 ⇒ 本条按红处理」，
     // 这条反空真**按设计响了**，别把它调松）。
-    let table_home = crate::guard_support::tests_root().join("common/creds-core/lib_tests.rs");
+    let table_home = guard_core::addr::tests_root().join("common/creds-core/lib_tests.rs");
     let core = std::fs::read_to_string(&table_home).unwrap_or_else(|e| {
         panic!("读不到定义面那张表所在的 {table_home:?}：{e} —— 抽取器坏了，本条会零命中地绿")
     });

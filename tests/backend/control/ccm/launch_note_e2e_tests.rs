@@ -1,7 +1,7 @@
 //! **经 `ccm` 用某个号起一次 ⇒ 那个号记到那条会话名下**（端到端，正反两向）。
 //!
 //! 隔离的家目录里一份账号库清单（号 `x`）、`PATH` 上只有一个假 `claude`（把自己的 pid 写进一个文件就退）。
-//! 子进程走生产那一条：`launch-local` 的入参 → 本机那一行 `ccm …`（`local::plan_argv`）→ `ccm` 自己（exec 掉子进程）→ 假启动器。
+//! 子进程走生产那一条：`launch-local` 的入参 → 本机那一行 `ccm …`（`local::plan`，照终端那样切回词）→ `ccm` 自己（exec 掉子进程）→ 假启动器。
 //! 父进程拿假启动器报的 pid 当 pidfile 里的 pid，照观测侧那样认便条（`launch_account::adopt`）⇒ 读回那条会话的号。
 //! 买不到：真 claude 写 pidfile 那一下（这里由父进程代为「看见」）· Windows 那一臂（起好子进程再写便条）。
 
@@ -161,8 +161,10 @@ fn launch_note_child_entry_point() {
         crate::control::launch_render::local::settle(&req, f)
     })
     .expect("号判得出来");
-    let argv = crate::control::launch_render::local::plan_argv(&req, &account, &facts, false)
-        .expect("渲得出那一行");
+    // 终端里敲的就是 `launch-local` 渲出来的那一行：照 POSIX 引号切回词，交给 ccm。
+    let line =
+        crate::control::launch_render::local::plan(&req, &account, &facts).expect("渲得出那一行");
+    let argv = crate::platform::shell::dialect::Posix::split_words(&line).expect("那一行切得回词");
     let code = crate::control::ccm::run(
         &argv[1..],
         &argv[..1],

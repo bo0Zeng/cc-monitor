@@ -27,8 +27,7 @@
 //! 与改动范围的旧叫法（「写」＋「区」）。写的是「现在是什么样」，不是「这一次做了什么」。
 //! 放过两类：产品文案里 Claude 的「一轮」（`PRODUCT_TURN_PHRASES` 那几句，界面与手机照抄、判据引用它们）；
 //! 文案表 · cc-bus 包（Claude 的「一轮」是那里的真术语）· 禁用词表与对外文案普查量具（它们列这个词就是为了禁它）。
-//! 第三副网眼（口语的连接说法）：「连不」＋「上」。连接说「断开」，机器状态说「{machine} 离线」。放过禁用词表与文案规则表（列它、举它当反例）；
-//! 等整份重写的手写文档登记在 `COLLOQUIAL_AWAITING_REWRITE`，那里一没了它就红、逼着删登记。
+//! 第三副网眼（口语的连接说法）：「连不」＋「上」。连接说「断开」，机器状态说「{machine} 离线」。放过禁用词表与文案规则表（列它、举它当反例）。
 //!
 //! 买不到：换了说法、不落在网眼上的指路（代号网只认登记过的前缀；编号网只认几种常见写法）。
 
@@ -41,10 +40,7 @@ const LOCK_FILES: &[&str] = &["Cargo.lock", "package-lock.json"];
 
 /// 仓根（本 crate 住 `src/common/guard-core`）。
 pub(super) fn repo() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
-        .canonicalize()
-        .expect("guard-core 的上三级 = 仓根")
+    crate::addr::repo_root()
 }
 
 /// 词表：点名仓外东西的那几类词 `(类, 前半, 后半)`，并进 [`net`]。每个词拆两段、运行期拼；词边界一律写成 ASCII 字符类（`\b` 认 Unicode，整张网会掉出快路径、慢四十倍）；那个单字用 `\x{7A3F}` 写，说明里也不写出它。
@@ -213,9 +209,6 @@ fn colloquial_net() -> Regex {
 
 /// 第三副网眼不扫的：禁用词表与文案规则表（列这个词、举它当反例，为的是禁它）。
 const COLLOQUIAL_EXEMPT: &[&str] = &["src/shared/copy/terms.json", "src/shared/copy/rules.json"];
-
-/// 第三副网眼暂不扫、等整份重写的手写文档：重写落地时那一处跟着没了，下面的幽灵检查逼着把这一行删掉。
-const COLLOQUIAL_AWAITING_REWRITE: &[&str] = &[];
 
 /// 一行里第一处施工口吻的字节偏移（产品文案那几句先换成等长的空白再找）。
 fn first_process_word(net: &Regex, line: &str) -> Option<usize> {
@@ -505,25 +498,13 @@ fn no_tracked_text_uses_the_build_process_names() {
     );
     let (net, words, decl) = (process_names_net(), process_words_net(), test_declaration());
     let colloquial = colloquial_net();
-    for rel in COLLOQUIAL_AWAITING_REWRITE {
-        let text = texts
-            .iter()
-            .find(|(r, _)| r == rel)
-            .map(|(_, t)| t.as_str())
-            .unwrap_or("");
-        assert!(
-            colloquial.is_match(text),
-            "{rel} 里已经没有口语的连接说法了 —— 从 `COLLOQUIAL_AWAITING_REWRITE` 里删掉这一行，别留一张空号豁免"
-        );
-    }
     let mut hits = Vec::new();
     for (rel, text) in &texts {
         if PROCESS_NAMES_EXEMPT.contains(&rel.as_str()) {
             continue;
         }
         let check_words = !process_words_exempt(rel);
-        let check_colloquial = !COLLOQUIAL_EXEMPT.contains(&rel.as_str())
-            && !COLLOQUIAL_AWAITING_REWRITE.contains(&rel.as_str());
+        let check_colloquial = !COLLOQUIAL_EXEMPT.contains(&rel.as_str());
         for (i, line) in text.lines().enumerate() {
             if decl.is_match(line) {
                 continue;

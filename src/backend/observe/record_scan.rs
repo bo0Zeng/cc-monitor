@@ -3,7 +3,7 @@
 //!
 //! - 一遍：每个完整行只解析一次，同一个值喂给五样各自的那一步（各自的口径仍只住各自的模块：
 //!   [`super::history_query::index_row_of`] · [`super::user_inputs::user_input_of`] · [`super::turns::TurnScan`] ·
-//!   [`super::facts_query::note_record`] · [`super::history_query::line_counts`]）。
+//!   [`super::facts_query::note_record`] · [`super::lines::counts`]）。
 //! - 留着：没变 ⇒ 那一张；变长了 ⇒ 核游标前那几个字节（见证），对得上就从那一张接着扫追加的那一截（还没收尾那一轮的扫描状态
 //!   也留着）、对不上 ⇒ 整份重扫；条数与估算字节各有上限，超了先淘汰最久没用的；单张比字节上限还大就不留。
 //! - 落盘：大记录扫完落一份骨架（[`super::skeleton`]）；进程里没有那一张时照骨架起步 —— 没变 ⇒ 不读，变长了 ⇒ 只读追加的那一截。
@@ -19,17 +19,10 @@ use super::user_inputs::UserInputRow;
 use crate::agents::mainline::Chain;
 use crate::platform::fs::{Ro, RoFile};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::SystemTime;
-
-/// 一行记录的解析（去 BOM 与两头空白）。解析不了 ⇒ `None`。各扫描都经它，口径只有这一份。
-pub(crate) fn parse_record(line: &[u8]) -> Option<Value> {
-    let text = String::from_utf8_lossy(line);
-    serde_json::from_str(text.trim_start_matches('\u{feff}').trim()).ok()
-}
 
 /// 一遍扫出来的那几样（都是从字节 0 起）。
 #[derive(Debug, Default)]
@@ -55,7 +48,8 @@ pub(crate) struct ScanMap {
     stored: u64,
 }
 
-/// 接着扫要的：游标前的见证 · 没滤主线外的用户输入与收了尾的轮次 · 还没收尾那一轮 · 链索引。
+/// 接着扫要的：游标前的见证 · 没滤主线外的用户输入与收了尾的轮次 · 还没收尾那一轮 · 链索引；
+/// 外加实时跟读起步要的两样：说到子运行的那几行原文（过了预筛的）· 最后一件说了的「此刻在干什么」。
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 struct Rest {
     witness: Vec<u8>,
@@ -65,6 +59,8 @@ struct Rest {
     open: TurnScan,
     #[serde(with = "crate::agents::mainline::skel")]
     chain: Chain,
+    runs: Vec<String>,
+    activity: Option<crate::agents::SessionActivity>,
 }
 
 /// 扫到一半的样子：从它接着读（[`Scan::feed`]），读完收成一张图（[`Scan::done`]）。骨架落的也是它（[`ScanView`] 是借着写的那一形）。
@@ -150,9 +146,6 @@ fn index_back<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<IndexRow>, D
         .collect())
 }
 
-/// 链事实面（注册表 `RecordFace.chain`）。
-type ChainOf = Option<fn(&crate::agents::Line<'_>) -> Option<crate::agents::mainline::ChainFact>>;
-
 impl Scan {
     /// 从 `self.end` 接着读 `r`（`r` 已定位在那里），读到 `upto` 为止（之后的不读；残尾不计）。
     fn feed<R: std::io::BufRead>(
@@ -160,39 +153,46 @@ impl Scan {
         r: R,
         upto: u64,
         kind: &str,
-        chain: ChainOf,
+        face: Option<crate::agents::RecordFace>,
     ) -> std::io::Result<()> {
-        use std::io::BufRead as _;
-        let mut r = r.take(upto.saturating_sub(self.end));
-        let mut buf: Vec<u8> = Vec::new();
+        let chain = face.and_then(|f| f.chain);
+        let said = face.and_then(|f| f.activity);
+        let run_of = face.and_then(|f| f.run_of);
+        let runs = crate::agents::run_faces(kind);
+        let mut lines = super::lines::Lines::new(r, self.end).upto(upto);
         let probe = super::skeleton::WITNESS as usize;
-        loop {
-            buf.clear();
-            let read = r.read_until(b'\n', &mut buf)?;
-            if read == 0 || buf.last() != Some(&b'\n') {
-                break; // EOF / 残尾不计
-            }
-            let start = self.end;
-            self.end += read as u64;
+        while let Some(row) = lines.next()? {
+            let (start, buf) = (row.at, row.whole);
+            let read = buf.len();
+            self.end = start + read as u64;
             self.facts.end = self.end;
             let w = &mut self.rest.witness;
             if buf.len() >= probe {
                 w.clear();
                 w.extend_from_slice(&buf[buf.len() - probe..]);
             } else {
-                w.extend_from_slice(&buf);
+                w.extend_from_slice(buf);
                 let drop = w.len().saturating_sub(probe);
                 w.drain(..drop);
             }
-            let body = &buf[..buf.len() - 1];
-            // 一行只解一次：链事实与下面那四样吃同一份（[`parse_record`] 同一口径）。
+            let body = row.body();
+            // 一行只解一次：链事实与下面那四样吃同一份（[`super::lines::parse`] 同一口径）。
             let text = String::from_utf8_lossy(body);
             let line = crate::agents::Line::new(&text, start);
             let v = line.value();
             if let Some(f) = chain.and_then(|c| c(&line)) {
                 self.rest.chain.load(f);
             }
-            let counted = super::history_query::line_counts(body);
+            if runs.hint(line.text()) {
+                self.rest.runs.push(line.text().to_string());
+            }
+            // 子运行的记录不说主运行此刻在干什么（同实时那一路 `watcher::send_line`）。
+            if let Some(a) = said.and_then(|f| f(&line)) {
+                if run_of.is_none_or(|f| line.value().and_then(f).is_none()) {
+                    self.rest.activity = Some(a);
+                }
+            }
+            let counted = super::lines::counts(body);
             if counted {
                 self.starts.push(start);
                 self.index.push(super::history_query::index_row_of(
@@ -252,6 +252,41 @@ impl Scan {
 }
 
 impl ScanMap {
+    /// 实时跟读从这一张起步要的那几样：读到哪（游标 · 当时的长度 · 游标前的见证）· 几个可计行 · 链索引 ·
+    /// 说到子运行的那几行原文 · 最后一件说了的「此刻在干什么」。
+    pub(crate) fn seen(&self) -> u64 {
+        self.seen
+    }
+
+    pub(crate) fn witness(&self) -> &[u8] {
+        &self.rest.witness
+    }
+
+    pub(crate) fn lines(&self) -> u64 {
+        self.starts.len() as u64
+    }
+
+    pub(crate) fn chain(&self) -> &Chain {
+        &self.rest.chain
+    }
+
+    pub(crate) fn runs(&self) -> &[String] {
+        &self.rest.runs
+    }
+
+    pub(crate) fn activity(&self) -> Option<crate::agents::SessionActivity> {
+        self.rest.activity
+    }
+
+    /// 某一条记录（`uuid`）落在主线的第几轮、那一轮从何时起（分叉框顶上那一句）：数它之前起了几轮（轮次同 `history-turns`）。
+    /// 找不到那一条 / 它在第一句之前 ⇒ `None`。
+    pub(crate) fn turn_at(&self, uuid: &str) -> Option<(u64, String)> {
+        let at = self.index.iter().find(|r| r.u.as_deref() == Some(uuid))?.o;
+        let n = self.turns.partition_point(|t| t.at <= at);
+        let t = self.turns.get(n.checked_sub(1)?)?;
+        Some((n as u64, t.start.clone()))
+    }
+
     /// 接着扫：这一张的样子抄一份，从 `end` 往后读。
     fn resume(&self) -> Scan {
         Scan {
@@ -341,7 +376,8 @@ impl ScanMap {
             })
             .sum();
         // 接着扫要的那几样：没滤的用户输入与轮次（与滤过的同量级）· 链索引每个节点几个短串。
-        let chain = self.rest.chain.len() * 160;
+        let chain = self.rest.chain.len() * 160
+            + self.rest.runs.iter().map(|r| 24 + r.len()).sum::<usize>();
         self.starts.len() * 8 + index + 2 * (inputs + turns) + chain + 1024
     }
 }
@@ -430,6 +466,16 @@ impl RecordScans {
         self
     }
 
+    /// 到此刻为扫描图从记录里读了多少字节（实时跟读起步那一趟照它记账；判据也数它）。
+    pub(crate) fn bytes_read(&self) -> u64 {
+        self.read.load(Ordering::Relaxed)
+    }
+
+    /// 这么长的记录扫完会不会落骨架（有家 ＋ 够大）。
+    pub(crate) fn would_keep(&self, len: u64) -> bool {
+        self.skeletons().is_some_and(|h| h.wants(len))
+    }
+
     fn skeletons(&self) -> Option<&Skeletons> {
         self.home.as_ref()
     }
@@ -453,12 +499,18 @@ impl RecordScans {
         Some(s.map.clone())
     }
 
-    /// 续取用（分页的后几页 · 轮次 / 大纲 / 索引从上次的末端续）：这一份的图留着（哪怕记录已经又长了）⇒ 接着扫到此刻、回那张
-    /// （追加只读新的那一截 ＋ 见证，同 [`Self::get`]）；没留着 ⇒ `None`（调用方从文件那一处扫，不为一次续取冷开整份）。
-    pub(crate) fn held(&self, path: &Path) -> Option<Arc<ScanMap>> {
-        let held = self.lock().slots.iter().any(|s| s.path == path);
-        if !held {
-            return None;
+    /// 实时跟读起步用：这一份的图留着、或盘上落过骨架 ⇒ 照它接着扫到此刻的那一张（同 [`Self::get`]：没变不读，变长了只读追加的那一截）；
+    /// 都没有 · 正有人在从头扫它 ⇒ `None`（调用方自己轻读一遍行数与链，不在这里等一整遍解析）。
+    pub(crate) fn kept(&self, path: &Path) -> Option<Arc<ScanMap>> {
+        {
+            let g = self.lock();
+            if g.flights.iter().any(|(p, _)| p == path) {
+                return None;
+            }
+            let held = g.slots.iter().any(|s| s.path == path);
+            if !held && !self.skeletons().is_some_and(|h| h.has(path)) {
+                return None;
+            }
         }
         self.get(path).ok()
     }
@@ -542,7 +594,7 @@ impl RecordScans {
         let mut from = base.filter(|b| len > b.seen).map(|b| b.resume());
         if from.is_none() {
             stored = 0;
-            if let Some(k) = home.and_then(|h| h.load::<Skel>(path, SKEL_WHAT)) {
+            if let Some(k) = home.and_then(|h| h.load::<Skel>(path)) {
                 match k.mark.look(len, mtime) {
                     Look::Same => {
                         let mut map = k.scan.done(len);
@@ -570,9 +622,9 @@ impl RecordScans {
         file.seek(SeekFrom::Start(scan.end))?;
         self.read
             .fetch_add(len.saturating_sub(scan.end), Ordering::Relaxed);
-        let chain = crate::agents::record_face_of(path).and_then(|f| f.chain);
+        let face = crate::agents::record_face_of(path);
         let kind = crate::agents::record_kind_of(path).unwrap_or_default();
-        scan.feed(std::io::BufReader::new(file), len, kind, chain)?;
+        scan.feed(std::io::BufReader::new(file), len, kind, face)?;
         let mut map = scan.done(len);
         map.stored = stored;
         // 盘上那份照的是 `stored`：没落过 · 接着扫过了门槛 ⇒ 落一份新的（落了就记成照到此刻）；没过门槛 ⇒ 不重写几十 MB。
@@ -603,7 +655,6 @@ impl RecordScans {
         let h = std::thread::spawn(move || {
             home.store(
                 &p,
-                SKEL_WHAT,
                 &SkelView {
                     mark,
                     scan: map.view(),
@@ -633,9 +684,6 @@ impl RecordScans {
         }
     }
 }
-
-/// 骨架里这一样叫什么（与预读那一份分开两个文件）。
-const SKEL_WHAT: &str = "scan";
 
 /// 等正在扫的那一份扫完（阻塞等它的结果，不是定时醒）。
 fn wait(f: &Flight) -> std::io::Result<Arc<ScanMap>> {

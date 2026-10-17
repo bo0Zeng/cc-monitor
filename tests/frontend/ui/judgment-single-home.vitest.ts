@@ -51,6 +51,8 @@
  *   本判据只核它们在表里，**不核** TS 里真没有同义实现（语义判不动）。
  * - 指纹只抓「登记过的那几种写法」：换个名字、换种写法重写一遍，这里看不见。
  * - Rust 侧一条判定有几个家只判**登记过的并家**（⑦ `rustGone` / `rustNeedles`）；没登记的多家看不见。
+ * - 人群只取共享 crate 的项：**后端模块里的判定在 TS 里长出孪生，这里看不见**。按「两侧都读的金样」认也认不出 ——
+ *   两侧都读的金样多半是线上形状（后端写、界面解），按文件名分不出哪一份是规则对拍。
  * - `guard-core` 的 dev-only 现核只看下面 [`CARGO_TOMLS`] 列的那几份；仓里新长一份 `Cargo.toml` 不会自动进来。
  */
 import { existsSync, readFileSync } from "node:fs";
@@ -225,7 +227,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       { file: "src/backend/control/gate_rules.rs", text: '"*?.:="', count: 1 },
       { file: "src/backend/control/ccm/plan.rs", text: '"*?.:="', count: 0 },
       // monitor `tmux.rs` 那一格（Gate 1 调 gate-core 恰一处 · 私有谓词不许长回来）随整份文件删了：
-      //   monitor 生产段零处够门，由 `tests/frontend/shell/gate_singleton_guard_tests.rs::the_monitor_holds_no_gate_of_its_own` 钉。
+      //   monitor 不依赖后端 crate，够不到门；送键与杀只收后端门发的令牌（`control/gate.rs`）。
     ],
   },
   J7: {
@@ -410,7 +412,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J16: {
     what: "账号种类的取值集",
     homes: ["acct-core::AUTH_KINDS"],
-    // 解码白名单与 `AuthKind` 类型都读生成物（`acct_core::AUTH_KINDS` 现生成）；手写字面量两形钉零。
+    // `AuthKind` 类型读生成物（`acct_core::AUTH_KINDS` 现生成）；手写字面量两形钉零。
     status: "generated",
     defs: [],
     gone: ["AUTH_KINDS"],
@@ -421,11 +423,11 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     gen: {
       file: "src/frontend/ui/generated/judgment-rules.ts",
       exports: ["AUTH_KINDS", "AuthKind"],
-      importers: ["src/frontend/ui/accounts-decode.ts", "src/frontend/ui/accounts.ts"],
+      importers: ["src/frontend/ui/accounts.ts"],
     },
     parity: {
       via: "tests/__fixtures__/accounts.golden.json",
-      tests: ["tests/backend/observe/accounts_query_tests.rs", "tests/frontend/ui/accounts-decode.vitest.ts"],
+      tests: ["tests/backend/observe/accounts_query_tests.rs"],
     },
   },
   J20: {
@@ -533,7 +535,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     what: "短时长（N5：45s · 6m · 1h50m · 3d）与距今（+12m）⇒ 会走的钟那一截 · 已等多久 · 到重置还有多久",
     homes: ["copy-core::short_duration", "copy-core::rel_duration"],
     // 认可的双读口（与 J24 同理）：核心写静态的那一刻填一次（`…Text` · `…RelText`），桌面会走的钟只留这一个读口（`duration-format.ts`），
-    //   手机端 `DurationFormat.kt` 同一份金样；界面别处自己拼时长由出口扫描判据（`exit-judgment-scan.vitest.ts` 的 `durUnit`）钉着。
+    //   手机经 JNI 调核心那一份；界面别处自己拼时长由出口扫描判据（`exit-judgment-scan.vitest.ts` 的 `durUnit`）钉着。
     status: "mirror",
     defs: ["fmtDur"],
     needles: [],
@@ -757,6 +759,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 线上一家 agent 的名字（`AgentKind`）：收下 · 取串。不是判定（kind ⇄ 路由名那一换住后端 `agents`）；界面拿生成的类型当串用，没有孪生。
     new: NONE,
     as_str: NONE,
+    // `files-ls` 那一列是不是从大到小（后端排序 · 文件窗口表头的箭头）。界面不列目录，TS 侧没有孪生。
+    descending: NONE,
   },
   "copy-core": {
     backend_old: "J22",
@@ -835,9 +839,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     credentials_path: NONE,
     DEFAULT: NONE,
     expose_for_auth_header: NONE,
-    expose_for_persisting: NONE,
-    // 登录令牌（订阅号续期）：第三个明文出口 ＋ 读 / 写回 / 请求体三个纯函数；TS 侧零处碰凭据。
-    expose_for_token_request: NONE,
+    // 登录令牌（订阅号续期）：读 / 写回 / 请求体三个纯函数；TS 侧零处碰凭据。
     merge_secret: NONE,
     merge_tokens: NONE,
     refresh_body: NONE,
@@ -1013,13 +1015,15 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     ANSWER_PLUGIN_DIR_REL: NONE,
     // 主机钥匙（后端拨号侧写；开终端那一行交给 ssh；数据位置页按它列）。
     KNOWN_HOSTS_REL: NONE,
-    // 记录骨架目录（后端预读与冷开扫描图落的缓存；数据位置页按它列）。
+    // 记录骨架目录（后端冷开扫描图落的缓存；数据位置页按它列）。
     SKELETON_DIR_REL: NONE,
     // 后端落点（`~/.cc-monitor/bin/ccm`，两半同一份）；TS 侧没有孪生（界面那句话里的路径在文案表里）。
     BACKEND_LANDING_REL: NONE,
     BACKEND_LANDING_SHELL: NONE,
     base_url: NONE,
     base_url_shape_ok: NONE,
+    // 一行里插好钥匙的地址把钥匙段换成 `…`（「待办」摘出的原文行）；界面照画，TS 侧没有孪生。
+    hide_key: NONE,
     KEY_FILE_REL: "J14",
     key_shape_ok: NONE,
     // 把钥匙插进中转地址（`split_keyed_base_url` 的逆，给用户自己贴的那一段用）；TS 侧没有孪生。

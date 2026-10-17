@@ -85,3 +85,72 @@ fn the_backend_release_profile_is_built_for_size_and_keeps_unwinding() {
         field("panic")
     );
 }
+
+/// 测试档里给几样依赖开优化（10-15 量过）：快检的测试段，每个测试二进制的墙钟 ＝ 它最慢的那一条，而最慢的那几条
+/// 慢在**依赖**不开优化 —— 后端轮换一致性的推演（s22 · s26 · s36）跑在沙箱里的 Rhai 上，壳那棵文件窗口的 hover 扫读与滚动区跑在 egui 上。
+/// - 后端：rhai（＋ 它热路径上的 smartstring · ahash）开 3 ⇒ 后端测试二进制 89–93 s → 30–36 s、CPU 少四成六；冷编多一成。
+/// - 壳：egui 那一族开 3 ⇒ 文件窗口测试二进制 40–42 s → 28–31 s、CPU 少四成；冷编多不到一成。
+/// - 只给这几样、不给 `"*"`：全部依赖开 2 时测试一样快，但壳冷编的 CPU 涨到近四倍。工作区自己的 crate 照旧不开（内循环的增量编译不受影响）。
+/// 判法：两棵 workspace 的 `[profile.dev.package.*]` 两向等于下面这张表，且每一项都在那棵的 `Cargo.lock` 里
+/// （名字对不上时 cargo 只警告一声、什么都不做 ⇒ 改名 / 换掉依赖以后这条就红，不会安静地失效）。
+#[test]
+fn the_test_build_optimizes_the_dependencies_the_slowest_tests_run_on() {
+    let backend = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let cases: [(&std::path::Path, &[&str]); 2] = [
+        (backend, &["ahash", "rhai", "smartstring"]),
+        (
+            &backend.join("../frontend/shell"),
+            &[
+                "ab_glyph",
+                "ab_glyph_rasterizer",
+                "ecolor",
+                "egui",
+                "egui_extras",
+                "emath",
+                "epaint",
+            ],
+        ),
+    ];
+    for (dir, want) in cases {
+        let read = |f: &str| {
+            let p = dir.join(f);
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {}：{e}", p.display()))
+        };
+        let doc: toml_edit::DocumentMut = read("Cargo.toml").parse().expect("Cargo.toml 解不动");
+        let lock: toml_edit::DocumentMut = read("Cargo.lock").parse().expect("Cargo.lock 解不动");
+        let locked: BTreeSet<String> = lock
+            .get("package")
+            .and_then(|p| p.as_array_of_tables())
+            .expect("Cargo.lock 里没有 [[package]] —— 量具坏了")
+            .iter()
+            .filter_map(|t| t.get("name").and_then(|n| n.as_str()).map(str::to_string))
+            .collect();
+        let overrides = doc
+            .get("profile")
+            .and_then(|p| p.get("dev"))
+            .and_then(|d| d.get("package"))
+            .and_then(|p| p.as_table_like());
+        let got: BTreeSet<String> = overrides
+            .map(|t| t.iter().map(|(k, _)| k.to_string()).collect())
+            .unwrap_or_default();
+        let want: BTreeSet<String> = want.iter().map(|s| s.to_string()).collect();
+        assert_eq!(got, want, "{}：测试档开优化的依赖与表对不上", dir.display());
+        for name in &got {
+            assert!(
+                locked.contains(name),
+                "{}：`[profile.dev.package.{name}]` 不在 Cargo.lock 里 —— cargo 只警告、不生效",
+                dir.display()
+            );
+            let level = overrides
+                .and_then(|t| t.get(name))
+                .and_then(|v| v.get("opt-level"))
+                .map(|v| v.to_string().trim().to_string());
+            assert_eq!(
+                level.as_deref(),
+                Some("3"),
+                "{}：{name} 的 opt-level",
+                dir.display()
+            );
+        }
+    }
+}

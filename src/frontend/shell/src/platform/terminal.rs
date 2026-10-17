@@ -3,6 +3,8 @@
 //! Windows：`wt.exe` / `powershell.exe` 开窗。「跑什么」的校验与 argv 住 `launch.rs::build_local_posix_argv`；
 //! 两条 Tauri 命令（`open_terminal_window` · `open_local_terminal`）也留在 `launch.rs`，都经本文件的 [`open_local`] 开窗。
 
+use crate::detail::Said;
+
 /// 常见终端怎么交给它一条命令：`(程序名, 命令前垫的参数)`，各家约定不同（逐个照它的用法串核过；后面整串 argv 原样接上）。
 /// 先两个「交给系统定」的出口（freedesktop `xdg-terminal-exec` —— Ubuntu 26.04 的「默认终端」就按它的配置走 ·
 /// Debian / Ubuntu alternatives 的 `x-terminal-emulator`，Debian 政策要它收 `-e <命令> <参数…>`），再各桌面的默认与常见终端。
@@ -212,7 +214,7 @@ pub(crate) const KEEP_OPEN: &str = r#"eval "$1"; exec "${SHELL:-bash}" -l"#;
 pub(crate) fn local_posix_spawn_plan(
     cmd: &str,
     term: &[String],
-) -> Result<(String, Vec<String>), String> {
+) -> Result<(String, Vec<String>), Said> {
     let argv = crate::launch::build_local_posix_argv(cmd)?;
     Ok(build_local_posix_spawn(term, &argv))
 }
@@ -254,7 +256,7 @@ pub(crate) const ONE_STRING: &[&str] = &["tilix"];
 /// 在 **POSIX 本机**开一个终端窗口跑一条命令（不经 ssh、不经 PowerShell）：挑到终端 ⇒ 开窗；一个都没探到 ⇒ [`TerminalOpen::NoWindow`]
 /// （不回落到无窗口直起：要人交互的那一行跑在看不见的地方等于没跑）；设置里指定的不在 ⇒ [`TerminalOpen::SetMissing`]。
 #[cfg(not(windows))]
-pub fn launch_local_posix(cmd: &str, cwd: Option<&str>) -> Result<TerminalOpen, String> {
+pub fn launch_local_posix(cmd: &str, cwd: Option<&str>) -> Result<TerminalOpen, Said> {
     match pick_terminal() {
         Ok(term) => open_window_via(cmd, cwd, term.as_deref()),
         Err(SetMissing(name)) => {
@@ -270,7 +272,7 @@ pub(crate) fn open_window_via(
     cmd: &str,
     cwd: Option<&str>,
     term: Option<&[String]>,
-) -> Result<TerminalOpen, String> {
+) -> Result<TerminalOpen, Said> {
     match term {
         Some(t) => launch_local_posix_via(cmd, cwd, t)
             .map(|()| TerminalOpen::Opened)
@@ -283,21 +285,24 @@ pub(crate) fn open_window_via(
 #[cfg(not(windows))]
 #[derive(Debug)]
 pub(crate) enum LaunchFail {
-    Plan(String),
+    Plan(Said),
     Spawn(std::io::Error),
 }
 
 #[cfg(not(windows))]
 impl LaunchFail {
-    /// 给人看的那一句：起不来 ⇒ 「启动本机命令失败 · <原因词>」，系统原话记一行日志。
-    pub(crate) fn into_said(self) -> String {
+    /// 给人看的那一句：起不来 ⇒ 「启动本机命令失败 · <原因词>」，系统原话进详情（也记一行日志）。
+    pub(crate) fn into_said(self) -> Said {
         match self {
             LaunchFail::Plan(s) => s,
             LaunchFail::Spawn(e) => {
                 tracing::warn!("launch: spawn terminal failed: {e}");
-                crate::copy_table::copy_text(
-                    "rsLaunch.local.spawnFailed",
-                    &[("why", &copy_core::spawn_reason(e.kind()))],
+                Said::with_raw(
+                    crate::copy_table::copy_text(
+                        "rsLaunch.local.spawnFailed",
+                        &[("why", &copy_core::spawn_reason(e.kind()))],
+                    ),
+                    e,
                 )
             }
         }
@@ -428,7 +433,7 @@ pub(crate) fn launch_local_posix_via(
 ///   Linux 上 test 档真编译、单测在那儿跑 ⇒ 不属于本族（`D8 阻-2`）；第九轮已给它配了
 ///   `utils_tests.rs::the_relay_prefix_survives_the_powershell_encoding_byte_for_byte`。
 #[cfg(windows)]
-pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Result<(), String> {
+pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Result<(), Said> {
     use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
     use std::process::Command;
 
@@ -506,7 +511,15 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
         Lifetime::Detached,
         StderrSink::Inherit,
     )
-    .map_err(|e| format!("spawn powershell failed: {e}"))?;
+    .map_err(|e| {
+        Said::with_raw(
+            crate::copy_table::copy_text(
+                "rsLaunch.local.powershellFailed",
+                &[("why", &copy_core::spawn_reason(e.kind()))],
+            ),
+            e,
+        )
+    })?;
     tracing::info!("launch: powershell window via fallback console");
     Ok(())
 }
@@ -525,7 +538,7 @@ pub enum TerminalOpen {
 
 /// 在本机开一个终端窗口跑 `cmd`（工作目录 `cwd`，不在就不设）—— 「这台电脑能不能开终端窗口、用哪个」只在这一处答：
 /// POSIX 按设置 / 探到的终端开（[`launch_local_posix`]）；Windows 开 PowerShell 窗口（[`launch_powershell_window`]）。
-pub fn open_local(cmd: &str, cwd: Option<&str>) -> Result<TerminalOpen, String> {
+pub fn open_local(cmd: &str, cwd: Option<&str>) -> Result<TerminalOpen, Said> {
     #[cfg(not(windows))]
     let out = launch_local_posix(cmd, cwd);
     #[cfg(windows)]

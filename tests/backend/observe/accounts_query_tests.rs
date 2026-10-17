@@ -1233,8 +1233,8 @@ fn production_text() -> String {
         "include_str! 没读到源码，本条在空转（实得 {} 字节）",
         me.len()
     );
-    let prod = crate::guard_support::production_code(me);
-    crate::guard_support::assert_no_test_code("accounts_query.rs", &prod);
+    let prod = guard_core::production_code(me);
+    guard_core::assert_no_test_code("accounts_query.rs", &prod);
     assert!(
         prod.contains("fn session_accounts(agent_home: &Path")
             && prod.contains("struct SessionRow {")
@@ -1688,9 +1688,8 @@ fn the_list_product_carries_each_api_accounts_masked_key_and_address() {
     let _ = fs::remove_dir_all(&root);
 }
 
-/// ★★ **跨语言金样**：两条成品对同一份夹具 == `tests/__fixtures__/accounts.golden.json`（夹具根替换成 `<root>`）。
-/// 那份金样的另一个读者是 TS 解码器（`tests/frontend/ui/accounts-decode.vitest.ts`）⇒ 两侧异源：后端改一个键名本条红，
-/// TS 解码器改一个键名那边红。金样手写落盘（本条红时印出现打的成品，人读过再改）。
+/// ★★ **金样**：两条成品对同一份夹具 == `tests/__fixtures__/accounts.golden.json`（夹具根替换成 `<root>`）。
+/// 界面那一侧按生成类型收（形状由握手指纹管），不再另读这份。金样手写落盘（本条红时印出现打的成品，人读过再改）。
 #[test]
 fn the_account_products_match_the_cross_language_golden() {
     let (root, accts) = c4c_fixture("c4c-golden", true);
@@ -1872,7 +1871,7 @@ fn the_accounts_library_lives_under_the_contract_directory_name() {
         (".cc-monitor/accounts", "accounts.json"),
         "账号库位置变了 —— 改了它后端就去别处找账号库，界面上只表现为「一个账号都没有」"
     );
-    let prod = crate::guard_support::production_code(include_str!(
+    let prod = guard_core::production_code(include_str!(
         "../../../src/backend/observe/accounts_query.rs"
     ));
     let at = guard_core::find_pinned(&prod, "fn resolve_accts_dir() -> PathBuf {")
@@ -1891,7 +1890,7 @@ fn the_accounts_library_lives_under_the_contract_directory_name() {
 /// 脚本那一族的人群里真有门禁与 ccm 那套 e2e；合成串里两个针都认得出。
 #[test]
 fn nothing_in_the_product_still_points_at_the_old_account_library() {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     // 针运行时拼：本文件自己不进人群也不含针。
     let old_dir = format!(".claude-{}", "accts");
     let old_env = format!("CCM_ACCTS_{}", "MANIFEST");

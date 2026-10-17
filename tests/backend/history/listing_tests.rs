@@ -453,7 +453,7 @@ fn warming_the_listing_leaves_nothing_to_rescan() {
 /// 〔perfC #4〕接线：`main.rs` 起来就热清单缓存，恰好一处（按行为量要起真二进制再从外面看缓存）。
 #[test]
 fn main_warms_the_listing_once() {
-    let main = crate::guard_support::production_code(include_str!("../../../src/backend/main.rs"));
+    let main = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
     guard_core::find_pinned(
         &main,
         "history::listing::warm_listing_in_background(agent_home.clone());",
@@ -461,7 +461,7 @@ fn main_warms_the_listing_once() {
     .unwrap_or_else(|e| panic!("`main.rs` 里热清单缓存不是恰好一处：{e}"));
 }
 
-/// 〔perfC #4〕后台那两条热缓存的线程真降了优先级（Linux：这条线程的 nice 值），而且只降它自己。
+/// 〔perfC #4〕后台热清单缓存的线程真降了优先级（Linux：这条线程的 nice 值），而且只降它自己。
 #[cfg(target_os = "linux")]
 #[test]
 fn background_warmers_run_at_low_priority() {
@@ -483,22 +483,11 @@ fn background_warmers_run_at_low_priority() {
         i64::from(crate::platform::proc::BACKGROUND_NICE).max(before)
     );
     assert_eq!(nice_of_this_thread(), before, "降到了别的线程身上");
-    for (file, src) in [
-        (
-            "history/listing.rs",
-            include_str!("../../../src/backend/history/listing.rs"),
-        ),
-        (
-            "observe/search_query.rs",
-            include_str!("../../../src/backend/observe/search_query.rs"),
-        ),
-    ] {
-        let src = crate::guard_support::production_code(src);
-        assert!(
-            src.contains("crate::platform::proc::lower_this_thread();"),
-            "{file} 的后台热缓存线程没降优先级"
-        );
-    }
+    let src = guard_core::production_code(include_str!("../../../src/backend/history/listing.rs"));
+    assert!(
+        src.contains("crate::platform::proc::lower_this_thread();"),
+        "history/listing.rs 的后台热缓存线程没降优先级"
+    );
 }
 
 /// d：清单缓存的追加读按块 —— 两问之间长了 8 MiB，读的时候本线程手里最多两块多一点（今天整截读进一个 `Vec`）；

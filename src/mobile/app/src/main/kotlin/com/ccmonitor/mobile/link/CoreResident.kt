@@ -42,6 +42,21 @@ object CoreResident : ResidentCore {
         retry: Boolean,
     ) = Core.residentKick(handle, retry)
 
+    override fun stage(
+        handle: Long,
+        fd: Int,
+        name: String,
+        withinMs: Long,
+    ): Long = Core.transferStage(handle, fd, name, withinMs)
+
+    override fun pull(
+        handle: Long,
+        fd: Int,
+        args: String,
+        shown: String,
+        withinMs: Long,
+    ): Long = Core.transferPull(handle, fd, args, shown, withinMs)
+
     override fun deploy(
         handle: Long,
         slots: String,

@@ -35,6 +35,11 @@ pub(crate) fn cd_then_login_shell(quoted_dir: Option<&str>) -> String {
     }
 }
 
+/// `cd <已 quote 的目录>`（只进目录，不跟别的命令）。
+pub(crate) fn cd(quoted_dir: &str) -> String {
+    format!("cd {quoted_dir}")
+}
+
 /// 「这台有没有这条命令」：`command -v <名> >/dev/null 2>&1`（退出码答）。
 pub(crate) fn has_command(name: &str) -> String {
     format!("command -v {name} >/dev/null 2>&1")
@@ -75,6 +80,11 @@ pub(crate) fn home_file_between(head: &str, rel: &str, tail: &str) -> String {
 /// 一个词：家目录底下 `rel` 那条路径（`"$HOME/<rel>"`，双引号里只展开 `$HOME`）。
 pub(crate) fn home_path_word(rel: &str) -> String {
     format!("\"$HOME/{rel}\"")
+}
+
+/// 家目录底下 `rel` 写给人看的那一形（`$HOME/<rel>`，与生成进命令里的那一形同）。
+pub(crate) fn home_path_shown(rel: &str) -> String {
+    format!("$HOME/{rel}")
 }
 
 /// `$HOME/x` / `${HOME}/x` / `~/x` ⇒ `Some("x")`（家目录底下那一截）；别的形 ⇒ `None`（不猜）。

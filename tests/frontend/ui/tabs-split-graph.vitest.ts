@@ -105,6 +105,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/backend-deploy.ts", // ↗ 浮层［更新］就地把这一版换到那台（与机器卡同一处部署）
     "src/frontend/ui/ipc/origin.ts", // 本机 / 远端只经这一处判（线上缺省 = 本机的那一下表示法转换也在这里）
     "src/frontend/ui/live-card.ts", // 中转抄出的流式活卡：tap 格进状态机、同对账键的记录落盘即撤卡；子运行那几行
+    "src/frontend/ui/needs-order.ts", // 「需手动」的先后问后端（`askNeedsOrder`），交给标签页栏
     "src/frontend/ui/record-reads.ts", // 出口省掉的正文展开那一下按骨架偏移取回那一行（`readRecordById`，挂在 tab 的 `fullRecord` 上）
     "src/frontend/ui/runs.ts", // 监控板 peek 的子运行名：标签缺席时的通用叫法只住 `runs.ts::runLabel`
     "src/frontend/ui/tab-bar-drag.ts",
@@ -119,7 +120,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/tab-session-facts.ts",
     "src/frontend/ui/tab-hide.ts", // 隐藏那几件（帧上那一格落到 tab 上 · 隐藏 / 取消隐藏 · 撤销 · 隐藏了又结束的收走）
     "src/frontend/ui/session-hidden.ts", // 新建的 tab 血缘那一格的空值（`NO_LINEAGE`）
-    "src/frontend/ui/session-hidden-cmds.ts", // 隐藏那几件交的命令（`history-annotate {hide}`）由组装根接给 `tab-hide`
+    "src/frontend/ui/session-hidden-cmds.ts", // 隐藏那几件交的命令（`history-annotate {hide}`）由组装根接给 `tab-hide`；「没人答时自动答」那一格同一条命令
     "src/frontend/ui/session-face.ts", // 历史页那一行的「需手动」徽标问它（`needsWordOf`：与标签页行同一份 `needsOf`，字照抄核心写的）
     "src/frontend/ui/tab-session-state.ts", // 会话状态只经 `nextState` 改（转移表）＋ 关 / 拉前两道谓词
     "src/frontend/ui/tab-store.ts",
@@ -203,6 +204,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/kit/menu.ts", // 组的菜单（「⋯」/ 组头右键）
     "src/frontend/ui/kit/popover.ts", // 「需手动」点开的那个浮层（开 · 关 · 数据变了原地换内容）
     "src/frontend/ui/needs-panel.ts", // 那个浮层里排什么（会话 · 计划项 · 会话外的每一项 · 断开 / 无法读取）
+    "src/frontend/ui/needs-order.ts", // `Ctrl+J` 与浮层的先后：条上的照后端排好的那一份对上去（`orderNeeds`）
     "src/frontend/ui/kit/status-dot.ts", // 状态点
     "src/frontend/ui/kit/tooltip.ts", // 悬停卡（锚在行右侧）· 行尾动作的悬停提示
     "src/frontend/ui/session-face.ts", // 一个会话读成什么：状态点 · 状态句 · peek · 需手动（标签页行 · 会话头 · 悬停卡同一份）
@@ -245,6 +247,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/agent-profile.ts", // 恢复 ▸ 的账号组：这一家有没有账号这一维 · 叫什么（会话是哪一家由会话事实给）
     "src/frontend/ui/control-said.ts", // 那台握手时说过做不到的几项置灰：`unavailableSaid`（事实住 monitor 那份 Offer）
     "src/frontend/ui/copy-table.ts", // 固定那一项的两句提示（说到会话状态）住文案表
+    "src/frontend/ui/duration-format.ts", // 「没人答时自动答 ▸」那几档的时长照短时长写（`fmtDur`）
     "src/frontend/ui/kit/toast.ts",
     "src/frontend/ui/ipc/origin.ts", // 本机 / 远端各给哪几项（原先是 backend-policy 的 LOCAL_ORIGIN ＋ 各处 `=== null`）
     "src/frontend/ui/remote-launch-run.ts",

@@ -1,5 +1,5 @@
 /**
- * **本机能力**（界面这一半）：monitor 跑在哪个系统上、↗ 在这台上是不是真的、本机 shell 说哪种方言、本机 PATH 上 `ccm` 那份短缓存作不作数。
+ * **本机能力**（界面这一半）：monitor 跑在哪个系统上、↗ 在这台上是不是真的、本机 shell 说哪种方言。
  * 判定只住壳（`src/frontend/shell/src/platform/host_facts.rs`）：它在每个 webview 起页时注入 `window.__CCM_HOST__`，这里只读、不猜
  * （User-Agent 判法退役）。读不到 / 形状不对（不该发生：壳每一页都注入）⇒ 「认不出」那一份 {@link UNKNOWN_HOST}：系统写不出、方言不猜，
  * ↗ 照常显示（错藏起来用户就找不到这颗按钮）。
@@ -13,11 +13,10 @@ export interface HostFacts {
   terminalFront: boolean;
   /** `null` ＝ 认不出（别名那一格明说、安装入口置灰）。 */
   shellDialect: "posix" | "powershell" | null;
-  ccmPathCache: boolean;
 }
 
 /** 读不到壳那一份时的样子。 */
-export const UNKNOWN_HOST: HostFacts = { os: "unknown", terminalFront: true, shellDialect: null, ccmPathCache: true };
+export const UNKNOWN_HOST: HostFacts = { os: "unknown", terminalFront: true, shellDialect: null };
 
 const OSES: readonly HostOs[] = ["windows", "macos", "linux"];
 
@@ -25,10 +24,10 @@ const OSES: readonly HostOs[] = ["windows", "macos", "linux"];
 export function readHostFacts(v: unknown): HostFacts {
   if (v === null || typeof v !== "object") return UNKNOWN_HOST;
   const o = v as Record<string, unknown>;
-  if (typeof o.terminalFront !== "boolean" || typeof o.ccmPathCache !== "boolean") return UNKNOWN_HOST;
+  if (typeof o.terminalFront !== "boolean") return UNKNOWN_HOST;
   const os = OSES.find((x) => x === o.os) ?? "unknown";
   const shellDialect = o.shellDialect === "posix" || o.shellDialect === "powershell" ? o.shellDialect : null;
-  return { os, terminalFront: o.terminalFront, shellDialect, ccmPathCache: o.ccmPathCache };
+  return { os, terminalFront: o.terminalFront, shellDialect };
 }
 
 /** 测试覆盖值。非 null 时 `hostFacts()` 直接返回它。 */

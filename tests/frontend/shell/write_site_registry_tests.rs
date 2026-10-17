@@ -85,7 +85,7 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
           供 `include_bytes!` 内嵌。写的是 cargo 自己的构建目录，不碰用户环境；\
           ⚠ 〔`K-R70` 09-12 订正本行后半句〕它**不再读旁边那份 `.build_id` 清单** —— \
           身份改从二进制字节里扫（`CC_MONITOR_BUILD_STAMP`），\
-          由 `sftp_tests.rs::the_embedded_identity_comes_from_the_bytes_not_from_a_label` 守着"),
+          由 `deploy_tests.rs::the_embedded_identity_comes_from_the_bytes_not_from_a_label` 守着"),
     // 进程清单的编法搬进 `src/common/win-manifest`（两个前端包的 `build.rs` 都调它）；它在人群里（`population`），文件名是 `lib.rs`。
     ("lib.rs", "embed_for_every_artifact", None,
      "构建期：往 `OUT_DIR` 写一行 `.rc`（指向 `win-manifest/app.manifest`），编成 Windows 进程清单资源，\
@@ -109,7 +109,6 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     // ── 这里原来有一行 `creds_store.rs` 的凭据写口（K-H2a：账号的第三方 API key 那份文件）。
     //    「每台机器上这份文件的程序写者恰好一个 ＝ 那台的后端」⇒ 本机那一份也交本机常驻后端写
     //    （`apikey-key-set` → `src/backend/accounts/upstream_select/file_face.rs`，后端自有状态，写经 `Own`），本进程一个字节不落 ⇒ 摘行。
-    ("fs.rs", "atomic_replace", None, "原子替换原语的本地副本（同上，归 `atomic_replace_registry` 判；原住 `config.rs`，住壳的平台层）"),
     ("lib.rs", "open_log_dir", None, "打开日志目录前确保它存在"),
     ("logging.rs", "build_rolling_appender", None, "monitor 自己的滚动日志"),
     // `logging.rs` 那两行（`write_diagnostics_to_config` · `atomic_replace` 副本）摘了：诊断写口改经
@@ -239,8 +238,8 @@ fn no_alias_or_item_import_can_hide_a_write_call() {
 }
 
 fn src_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::crate_src_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::shell_src_root()
 }
 
 /// 语料 = `src/` 整棵树 **+ `build.rs`**。
@@ -430,7 +429,6 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     ("config.rs", "patch_config_at", Lands::OwnState),
     ("prefs_migration.rs", "finish_at", Lands::OwnState),
     // `creds_store.rs` 的凭据写口那一行摘了（理由同上一张表）。
-    ("fs.rs", "atomic_replace", Lands::OwnState), // 原住 `config.rs`
     ("lib.rs", "open_log_dir", Lands::OwnState),
     ("logging.rs", "build_rolling_appender", Lands::OwnState),
     // `logging.rs` 两行随写盘一起摘（见 `WRITE_SITES` 同处）。
@@ -505,22 +503,19 @@ fn every_monitor_write_site_lands_outside_the_users_files() {
 
 /// ② 的人群：用户文件的写从这些文件里搬走了（`RW1` 的七个子步逐份交给后端）。
 const MOVED_OUT: &[&str] = &[
-    // `account_aliases.rs` · `fenced_block.rs` 整份搬进了那台后端（`assets/aliases/`）⇒ 出名单；
-    //   `profile_installer.rs` 只剩用户级 PATH 那一格，留在名单里。
-    "profile_installer.rs",
+    // `account_aliases.rs` · `fenced_block.rs` · `profile_installer.rs` 整份搬进了那台后端 ⇒ 出名单。
     // `mcp.rs` 整份删了（MCP 读写进了那台后端）⇒ 出名单。
     // `skill_host.rs` 整份删了（收件箱那一面进了后端）⇒ 出名单。
-    "cc_bus_deploy.rs",
+    // `cc_bus_deploy.rs` 整份删了（装前那道本机 `ccm` 预检随它删）⇒ 出名单。
     "history.rs",
     // `remote_history.rs` 整份删了（最后一个函数随子 agent 那条命令退役）⇒ 出名单。
     // `user_files.rs` 整份删了（最后一个用户「认出旧入口并删」随那条迁移链删了）⇒ 出名单。
 ];
 
 /// ② 的针：本机写原语（`WRITE_CALLS`）＋ 委托出去的写（通用原子写 / 旧的回读回滚写入器）＋ SFTP 上传原语。
-/// **运行时拼**（写成字面量会被别的判据当成靶子，见 `remote_write_registry_tests::write_prims` 头注）。
-/// ⚠ SFTP 会话上的 `.rename(` / `.remove_file(` 那一族**不在这里**：持 SFTP 会话的文件由
-///   `remote_write_registry` 逐处申报（它的人群就是「拿得到会话的那几份」），本条再数一遍只会与
-///   `Door::rename` 这种经后端的调用撞名。
+/// **运行时拼**（写成字面量会被别的判据当成靶子）。
+/// ⚠ SFTP 会话上的 `.rename(` / `.remove_file(` 那一族**不在这里**：monitor 拿不到 SFTP 会话（依赖清单里没有 SSH crate），
+///   数它们只会与 `Door::rename` 这种经后端的调用撞名。
 fn moved_out_needles() -> Vec<String> {
     let mut v: Vec<String> = WRITE_CALLS.iter().map(|s| s.to_string()).collect();
     // ⚠ 名字也**运行时拼**：其中两个是已删的旧名，写成字面量会让死名普查把它们当成活名。
@@ -535,23 +530,11 @@ fn moved_out_needles() -> Vec<String> {
     v
 }
 
-/// ② 里**逐行登记的例外**：搬走写盘的那几份文件里，还在写 **monitor 自己的**状态文件的那几行。
-/// `(文件, 那一行逐字, 写的是什么)`。整行相等，不是子串；每一行必须恰好出现一次（幽灵检查）。
-/// **今天是空表**：唯一那一行（`history.rs` 写 `history-metadata.json` —— 标星 / 改名 / 隐藏这些注解）摘了：
-/// 注解的读写者换成本机常驻后端（`src/backend/history/history_annotations.rs`，写经 `Own`；文件原地不动）⇒
-/// 搬走写盘的这几份文件里，连 monitor 自己的状态也一行都不写了。表留着：新长一处「写自己的状态」时第一个要表态的地方。
-const OWN_STATE_LINES: &[(&str, &str, &str)] = &[];
-
-fn moved_out_hits(file: &str, prod: &str) -> Vec<String> {
+fn moved_out_hits(prod: &str) -> Vec<String> {
     let needles = moved_out_needles();
     prod.lines()
         .map(str::trim)
         .filter(|l| needles.iter().any(|n| l.contains(n.as_str())))
-        .filter(|l| {
-            !OWN_STATE_LINES
-                .iter()
-                .any(|(f, line, _)| *f == file && l == line)
-        })
         .map(str::to_string)
         .collect()
 }
@@ -567,17 +550,8 @@ fn the_files_that_used_to_write_users_files_write_nothing_now() {
         let prod = guard_core::production_code(&raw);
         guard_core::assert_no_test_code(f, &prod);
         scanned += 1;
-        for hit in moved_out_hits(f, &prod) {
+        for hit in moved_out_hits(&prod) {
             offenders.push(format!("  {f}: {hit}"));
-        }
-        for (lf, line, what) in OWN_STATE_LINES {
-            if lf == f {
-                assert_eq!(
-                    prod.lines().filter(|l| l.trim() == *line).count(),
-                    1,
-                    "登记的自有状态写（{what}）在 `{f}` 里不是恰好一行 —— 改了就同轮改登记"
-                );
-            }
         }
     }
     assert_eq!(scanned, MOVED_OUT.len());
@@ -585,17 +559,17 @@ fn the_files_that_used_to_write_users_files_write_nothing_now() {
         offenders.is_empty(),
         "这些文件的写已经交给那台机器的后端了，生产段却又长出了写原语：\n{}\n\n\
          用户逐字「现在只允许后端的文件管理部分写文件」（也管本机）。\n\
-         ⇒ 改用 `user_files::edit` / `Door`（`files-peek` / `files-put` …），别在 monitor 进程里落盘。",
+         ⇒ 写经那台后端（文件管理面），别在 monitor 进程里落盘。",
         offenders.join("\n")
     );
     // 正控：往一份真源码的副本里塞一处直写，必须被数出来（不许在空人群上恒绿）。
-    let raw = std::fs::read_to_string(root.join("profile_installer.rs")).expect("读");
+    let raw = std::fs::read_to_string(root.join("history.rs")).expect("读");
     let poisoned = format!(
         "{}\nfn sneaky(p: &std::path::Path) {{ let _ = std::fs::write(p, b\"x\"); }}\n",
         guard_core::production_code(&raw)
     );
     assert_eq!(
-        moved_out_hits("profile_installer.rs", &poisoned).len(),
+        moved_out_hits(&poisoned).len(),
         1,
         "正控没过 —— 针或剥法坏了，本条空转"
     );

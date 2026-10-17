@@ -39,6 +39,7 @@ pub trait KeySource: Send + Sync {
 }
 
 /// 认下的 host key 记到哪（桌面：cc-monitor 那份 known_hosts，开终端那一跳认同一把；手机：回调进 Room）。
+/// 只在那一台鉴权过了之后才交（鉴权不过的对端写不进信任库）。
 pub trait HostKeys: Send + Sync {
     /// `key` = OpenSSH 公钥那一行的前两段（算法 ＋ base64）。写不了只记日志，不拦这条连接。
     fn remember(&self, host: &str, port: u16, key: &str);

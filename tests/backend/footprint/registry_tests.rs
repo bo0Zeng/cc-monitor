@@ -980,7 +980,7 @@ fn every_carrier_says_which_one_it_is() {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Why {
     /// **符号名**（那几个 `*_backend` 的 `pub async fn`、以及对它们的逐字引用）。
-    /// 改它要与 `structural_scan` 的逐字签名钉、`parity_ledger`、`remote_write_registry` 那几张登记表**同拍**改 ——
+    /// 改它要与 `structural_scan` 的逐字签名钉、`parity_ledger` 那几张登记表**同拍**改 ——
     /// 那是一件纯符号改名件，与这里的正题（名字说错了「它**是什么**」）不同轴。
     /// **解锁条件**：另立一件「符号改名」，把那几张表一起带上。
     /// ✅ **那一件做了**（全仓冻结窗口）——
@@ -1231,26 +1231,26 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
     use std::path::PathBuf;
 
     // 本判据随申报表搬进了后端，扫的仍是 monitor 那半边（外加随表搬来的那四份）：根改按仓根现算。
-    let shell = crate::guard_support::repo_root().join("src/frontend/shell");
+    let shell = guard_core::addr::repo_root().join("src/frontend/shell");
     let manifest = shell.as_path();
     let src_root = manifest.join("src");
-    let crates_root = crate::guard_support::repo_root().join("src/common");
+    let crates_root = guard_core::addr::repo_root().join("src/common");
     let mut files: Vec<(PathBuf, String)> = guard_core::scan_tree!(&src_root, &["rs"]);
     files.extend(guard_core::scan_tree!(&crates_root, &["rs"]));
     // 🔴 monitor 这半边今天**第三棵树**：
     //    测试段整个住 `<repo>/tests/frontend/shell`。少扫它 ⇒ 搬过去的那几处旧名字
     //    整批掉出人群，读起来像「债还了」，而那句话一个字没改。
     files.extend(guard_core::scan_tree!(
-        &crate::guard_support::repo_root().join("tests/frontend/shell"),
+        &guard_core::addr::repo_root().join("tests/frontend/shell"),
         &["rs"]
     ));
     // monitor 那半边的通信层成员单测镜像住 `tests/comms/inward/`。
     files.extend(guard_core::scan_tree!(
-        &crate::guard_support::repo_root().join("tests/comms/inward"),
+        &guard_core::addr::repo_root().join("tests/comms/inward"),
         &["rs"]
     ));
     // 闭集的家与随它搬进后端的三份判据（它们不在上面三棵根里了，逐份加回来）。
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     for (rel, text) in [
         (
             "src/backend/footprint/registry.rs",
@@ -1286,7 +1286,7 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
         //    不这么做的话那棵树的住址会印成绝对路径，表一写死就换台机器就假。
         let rel = p
             .strip_prefix(manifest)
-            .or_else(|_| p.strip_prefix(crate::guard_support::repo_root()))
+            .or_else(|_| p.strip_prefix(guard_core::addr::repo_root()))
             .unwrap_or(p)
             .to_string_lossy()
             .replace('\\', "/");
@@ -1602,7 +1602,7 @@ struct Claim {
 
 /// **唯一一份**对拍表。覆盖由下面那条性质的第 ① 步钉死（多一条少一条都红）。
 fn claims() -> Vec<Claim> {
-    const SFTP: &str = include_str!("../../../src/frontend/shell/src/sftp.rs");
+    const DEPLOY: &str = include_str!("../../../src/frontend/shell/src/deploy.rs");
     // 别名块（`ccm` 的装 / 卸口）进了那台后端：`src/backend/assets/aliases/block.rs`。
     const PROFILE_INSTALLER: &str = include_str!("../../../src/backend/assets/aliases/block.rs");
     // 项目 `.mcp.json` 的写进了那台后端（D 组收进后端）：装 / 卸口住 `src/backend/assets/mcp_edit.rs`。
@@ -1614,9 +1614,9 @@ fn claims() -> Vec<Claim> {
     const SKILL_INSTALL: &str = include_str!("../../../src/backend/assets/skill_flow.rs");
     // 账号库由那台后端自己建（界面「启用多账号」）：装口住 `src/backend/accounts/manage/wire.rs`（`accounts-init` 走它）。
     const ACCOUNTS_WIRE: &str = include_str!("../../../src/backend/accounts/manage/wire.rs");
-    let sftp = || ImplHome {
-        addr: "sftp.rs",
-        text: SFTP,
+    let deploy = || ImplHome {
+        addr: "deploy.rs",
+        text: DEPLOY,
     };
     let profile = || ImplHome {
         addr: "block.rs",
@@ -1673,13 +1673,13 @@ fn claims() -> Vec<Claim> {
         },
         Claim {
             tool: "backend",
-            home: Some(sftp()),
+            home: Some(deploy()),
             install: Some(ImplSite {
-                addr: "sftp.rs::deploy_remote_backend",
+                addr: "deploy.rs::deploy_remote_backend",
                 definition: "pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, Said> {",
             }),
             uninstall: Some(ImplSite {
-                addr: "sftp.rs::uninstall_remote_backend",
+                addr: "deploy.rs::uninstall_remote_backend",
                 definition: "pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, Said> {",
             }),
         },
@@ -1804,7 +1804,7 @@ fn every_tool_declares_install_and_uninstall_as_the_implementations_really_are()
     // ②b 反向自检：负向扫描在**真树**上不是零命中的（零命中 ⇒ 那一半是空真）。
     assert!(
         guard_core::fn_names_starting_with(
-            include_str!("../../../src/frontend/shell/src/sftp.rs"),
+            include_str!("../../../src/frontend/shell/src/deploy.rs"),
             &["uninstall"]
         )
         .contains(&"uninstall_remote_backend".to_string()),

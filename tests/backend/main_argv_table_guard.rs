@@ -75,7 +75,7 @@ fn arm_tokens(block: &str) -> Vec<&str> {
 /// 少于它就是块界找错或剥测试剥过头，本条会零命中地绿。
 #[test]
 fn every_dispatch_arm_actually_calls_an_implementation() {
-    let src = crate::guard_support::production_code(include_str!("../../src/backend/main.rs"));
+    let src = guard_core::production_code(include_str!("../../src/backend/main.rs"));
     let block = dispatch_block(&src);
     let arms: Vec<&str> = block
         .lines()
@@ -211,7 +211,7 @@ fn every_listed_subcommand_is_actually_dispatched() {
 ///   而它已经不在三分表里的任何一张 ⇒ 那条当场红。
 #[test]
 fn every_listed_subcommand_has_a_live_dispatch_route() {
-    let src = crate::guard_support::production_code(include_str!("../../src/backend/main.rs"));
+    let src = guard_core::production_code(include_str!("../../src/backend/main.rs"));
     let block = dispatch_block(&src);
     // 反喂饱自检：那张表**不许**落进臂侧的扫描面，否则本条退化成上面那条瞎子。
     assert!(
@@ -331,7 +331,7 @@ fn listed_subcommands_still_enter_query_mode() {
 /// 恰好一处，住 `main.rs::main`；`control/ccm/plan.rs` 那一格由调用方交（`ccm::run` 的 `process_argv`）。
 #[test]
 fn x15_the_process_argv_is_read_once_in_main() {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let needles = [format!("env::{}(", "args"), format!("env::{}(", "args_os")];
     let mut found: Vec<(String, String)> = Vec::new();
     let mut scanned = 0usize;
@@ -342,7 +342,7 @@ fn x15_the_process_argv_is_read_once_in_main() {
             .unwrap_or(&path)
             .to_string_lossy()
             .replace('\\', "/");
-        let prod = crate::guard_support::production_code(&src);
+        let prod = guard_core::production_code(&src);
         for n in &needles {
             for (i, _) in prod.match_indices(n.as_str()) {
                 let head = &prod[..i];
@@ -429,7 +429,7 @@ fn a_retired_oneshot_with_arguments_answers_unknown_command() {
 /// ★ 留下的那几条照旧是子命令、照旧有落点（字面量臂或派生臂）。异源：手抄方案「留」那一节。
 #[test]
 fn kept_oneshot_subcommands_are_still_dispatched() {
-    let src = crate::guard_support::production_code(include_str!("../../src/backend/main.rs"));
+    let src = guard_core::production_code(include_str!("../../src/backend/main.rs"));
     let literal = arm_tokens(dispatch_block(&src));
     for f in [
         "--resident-ensure",
@@ -458,7 +458,7 @@ fn kept_oneshot_subcommands_are_still_dispatched() {
 /// ★ `--resolve` 不再有手写臂：它照派生规则走 CLI 面（信封与别的命令同一形）。
 #[test]
 fn resolve_rides_the_derived_arm_only() {
-    let src = crate::guard_support::production_code(include_str!("../../src/backend/main.rs"));
+    let src = guard_core::production_code(include_str!("../../src/backend/main.rs"));
     let literal = arm_tokens(dispatch_block(&src));
     assert!(!literal.contains(&"--resolve"), "`--resolve` 的手写臂还在");
     assert!(crate::stream::cli::spec_for("--resolve").is_some());

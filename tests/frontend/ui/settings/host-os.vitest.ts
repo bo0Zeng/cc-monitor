@@ -21,16 +21,15 @@ describe("readHostFacts", () => {
   });
 
   it("★ 读不到 / 形状不对 ⇒ 认不出那一份：↗ 照常显示、方言不猜", () => {
-    for (const v of [undefined, null, "linux", {}, { os: "linux" }, { os: "linux", terminalFront: "yes", ccmPathCache: true }]) {
+    for (const v of [undefined, null, "linux", {}, { os: "linux" }, { os: "linux", terminalFront: "yes" }]) {
       expect(readHostFacts(v), JSON.stringify(v)).toEqual(UNKNOWN_HOST);
     }
     expect(UNKNOWN_HOST).toMatchObject({ os: "unknown", terminalFront: true, shellDialect: null });
     // 系统 / 方言认不出的那一格单独落「认不出」，别的格照收。
-    expect(readHostFacts({ os: "plan9", terminalFront: false, shellDialect: "fish", ccmPathCache: false })).toEqual({
+    expect(readHostFacts({ os: "plan9", terminalFront: false, shellDialect: "fish" })).toEqual({
       os: "unknown",
       terminalFront: false,
       shellDialect: null,
-      ccmPathCache: false,
     });
   });
 

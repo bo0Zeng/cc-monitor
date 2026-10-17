@@ -614,9 +614,8 @@ fn asking_for_bus_registration_and_not_getting_it_is_never_silent() {
     let _ = std::fs::remove_dir_all(&d);
 
     // ② 查找次序**三档都在**：`PATH` 那一档是补回来的，别再删。
-    let me = crate::guard_support::production_code(include_str!(
-        "../../../../src/backend/control/ccm/plan.rs"
-    ));
+    let me =
+        guard_core::production_code(include_str!("../../../../src/backend/control/ccm/plan.rs"));
     for anchor in [
         "std::env::var(\"CC_BUS_SCRIPTS\")",
         "join(\"cc-bus\").join(\"scripts\")",
@@ -1240,9 +1239,8 @@ fn on_windows_runnable_means_a_file_whose_extension_is_in_pathext() {
 /// 两向：那一臂里判定函数恰好 1 处；`is_exec` 函数体里裸 `p.is_file()` 零处（正控：unix 臂的 `m.is_file()` 在）。
 #[test]
 fn the_non_unix_arm_of_is_exec_delegates_to_the_pathext_rule() {
-    let me = crate::guard_support::production_code(include_str!(
-        "../../../../src/backend/control/ccm/plan.rs"
-    ));
+    let me =
+        guard_core::production_code(include_str!("../../../../src/backend/control/ccm/plan.rs"));
     let body = me
         .split("fn is_exec(p: &std::path::Path) -> bool {")
         .nth(1)
@@ -1315,9 +1313,8 @@ fn the_home_is_home_then_userprofile_and_paths_under_it_are_joined_per_segment()
     );
 
     // 生产那一处真的走这两个函数，不再手拼 `{home}/…`。
-    let me = crate::guard_support::production_code(include_str!(
-        "../../../../src/backend/control/ccm/plan.rs"
-    ));
+    let me =
+        guard_core::production_code(include_str!("../../../../src/backend/control/ccm/plan.rs"));
     let from_process = me
         .split("pub(crate) fn from_process(process_argv: &[String]) -> Self {")
         .nth(1)
@@ -2611,11 +2608,11 @@ fn every_tmux_subcommand_rendered_for_a_client_is_a_utf8_client() {
     let mut sources: Vec<(std::path::PathBuf, String)> = Vec::new();
     for dir in ["control/ccm", "control/launch_render"] {
         sources.extend(guard_core::scan_tree!(
-            &crate::guard_support::src_root().join(dir),
+            &guard_core::addr::backend_src_root().join(dir),
             &["rs"]
         ));
     }
-    let join_home = crate::guard_support::src_root().join("common/tmux_utf8.rs");
+    let join_home = guard_core::addr::backend_src_root().join("common/tmux_utf8.rs");
     sources.push((
         join_home.clone(),
         std::fs::read_to_string(&join_home).expect("读不了 tmux_utf8.rs"),
@@ -2623,7 +2620,7 @@ fn every_tmux_subcommand_rendered_for_a_client_is_a_utf8_client() {
     let mut source_tmux = 0;
     for (path, text) in &sources {
         files += 1;
-        let (seen, b) = tmux_words_without_utf8_flag(&crate::guard_support::production_code(text));
+        let (seen, b) = tmux_words_without_utf8_flag(&guard_core::production_code(text));
         source_tmux += seen;
         bad.extend(
             b.into_iter()

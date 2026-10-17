@@ -64,9 +64,7 @@ fn run_of_tool(parent: &Path, faces: &crate::agents::RunFaces, tool: &str) -> Op
         if !line.contains(tool) {
             continue;
         }
-        let Ok(v) =
-            serde_json::from_str::<serde_json::Value>(line.trim_start_matches('\u{feff}').trim())
-        else {
+        let Some(v) = super::lines::parse(line.as_bytes()) else {
             continue;
         };
         if let Some(r) = faces
@@ -90,9 +88,7 @@ fn first_run_of(path: &Path, faces: &crate::agents::RunFaces) -> Option<String> 
         .lines()
         .map_while(Result::ok)
         .take(HEAD_LINES)
-        .filter_map(|l| {
-            serde_json::from_str::<serde_json::Value>(l.trim_start_matches('\u{feff}').trim()).ok()
-        })
+        .filter_map(|l| super::lines::parse(l.as_bytes()))
         .find_map(|v| faces.run_of(&v))
         .map(|m| m.run)
 }
@@ -142,14 +138,25 @@ pub(crate) fn cold_scan(
         .map_err(|e| format!("open failed: {e}"))
 }
 
-/// 续取用（同一道围栏）：扫描图留着 ⇒ 接着扫到此刻的那一张（记录又长了只读新的那一截）；没留着 ⇒ `None`
-/// （分页的后几页 · 轮次 / 大纲 / 索引续取从它切，切不了就从文件那一处扫）。
-pub(crate) fn held_scan(
+/// 续取用（同一道围栏）：从 `from` 起问的那一张扫描图（同 [`cold_scan`]：留着且没变 ⇒ 那一张；变长了 ⇒ 接着扫追加的那一截；
+/// 不在了 ⇒ 照骨架起步或整份重扫）。`from` 越过文件尾 ⇒ 报错（截断 / 重写过，调用方从 0 重要）。
+pub(crate) fn scan_from(
     agent_home: &Path,
     jsonl_path: &str,
-) -> Result<Option<std::sync::Arc<super::record_scan::ScanMap>>, String> {
+    from: u64,
+) -> Result<std::sync::Arc<super::record_scan::ScanMap>, String> {
     let target = validate_session_path(agent_home, jsonl_path)?;
-    Ok(super::record_scan::global().held(&target))
+    let len = Ro::metadata(&target)
+        .map_err(|e| format!("stat failed: {e}"))?
+        .len();
+    if from > len {
+        return Err(format!(
+            "`from` {from} is past EOF ({len} bytes): file was truncated or rewritten"
+        ));
+    }
+    super::record_scan::global()
+        .get(&target)
+        .map_err(|e| format!("open failed: {e}"))
 }
 
 /// 尾段那张图：扫描图留着且没变 ⇒ 从它切；否则现数一遍行（只数行、不解析，比等整遍扫描快得多 —— 冷开时界面最先要它）。
@@ -172,38 +179,14 @@ pub(crate) fn file_id(first: Option<&[u8]>) -> String {
 }
 
 /// 从头读到第一个可计行（不含 `\n`）；一行都没有 ⇒ `None`。
-fn first_counted<R: std::io::BufRead>(mut r: R) -> std::io::Result<Option<Vec<u8>>> {
-    let mut buf: Vec<u8> = Vec::new();
-    loop {
-        buf.clear();
-        if r.read_until(b'\n', &mut buf)? == 0 || buf.last() != Some(&b'\n') {
-            return Ok(None);
-        }
-        buf.pop();
-        if line_counts(&buf) {
-            return Ok(Some(buf));
+fn first_counted<R: std::io::BufRead>(r: R) -> std::io::Result<Option<Vec<u8>>> {
+    let mut lines = super::lines::Lines::new(r, 0);
+    while let Some(row) = lines.next()? {
+        if super::lines::counts(row.body()) {
+            return Ok(Some(row.body().to_vec()));
         }
     }
-}
-
-/// 大纲清单的打开口（围栏 ＋「起点越过文件尾 ⇒ 报错」＋ 定位）。
-pub(crate) fn open_user_inputs_at(
-    agent_home: &Path,
-    jsonl_path: &str,
-    from: u64,
-) -> Result<std::io::BufReader<RoFile>, String> {
-    use std::io::{Seek, SeekFrom};
-    let target = validate_session_path(agent_home, jsonl_path)?;
-    let mut f = Ro::open(&target).map_err(|e| format!("open failed: {e}"))?;
-    let len = f.metadata().map_err(|e| format!("stat failed: {e}"))?.len();
-    if from > len {
-        return Err(format!(
-            "`from` {from} is past EOF ({len} bytes): file was truncated or rewritten"
-        ));
-    }
-    f.seek(SeekFrom::Start(from))
-        .map_err(|e| format!("seek failed: {e}"))?;
-    Ok(std::io::BufReader::new(f))
+    Ok(None)
 }
 
 /// `history-facts` 的项目目录那一格：过读会话那同一道围栏，再问记录归属的那一家（只读开头）。
@@ -282,43 +265,6 @@ pub(crate) fn open_session_at(
     Ok(std::io::BufReader::new(f))
 }
 
-/// **骨架索引**的扫描：读 `r`（已定位在 `from`）每个可计行一条 [`IndexRow`] 交给 `on_row`，回 `(count, end)`。
-/// `kind` ＝ 这份记录是哪一家的（[`index_row_of`]）。
-/// `until`：只收**起点** `< until` 的行（起点在界内的那一行整行收，不劈半行）。`end` ＝ 最后一个完整行的末字节（torn 残尾不计）＝ 下一次续传的起点。
-/// 帧面 `history-index`（`read_face.rs`，CLI 面 `--history-index`）用它；「这一行占不占 seq」仍只住 [`line_counts`]。
-pub(crate) fn scan_session_index<R: std::io::BufRead>(
-    kind: &str,
-    mut r: R,
-    from: u64,
-    until: Option<u64>,
-    mut on_row: impl FnMut(&IndexRow) -> std::io::Result<()>,
-) -> std::io::Result<(u64, u64)> {
-    let mut pos = from;
-    let mut end = from;
-    let mut count: u64 = 0;
-    let mut buf: Vec<u8> = Vec::new();
-    loop {
-        if until.is_some_and(|u| pos >= u) {
-            break;
-        }
-        buf.clear();
-        let read = r.read_until(b'\n', &mut buf)?;
-        if read == 0 || buf.last() != Some(&b'\n') {
-            break; // EOF / torn 残尾不计（F14 口径）
-        }
-        let start = pos;
-        pos += read as u64;
-        end = pos;
-        let body = &buf[..buf.len() - 1];
-        if !line_counts(body) {
-            continue; // 空行不占 seq（判定只有 `line_counts` 一个住址）
-        }
-        on_row(&index_row(kind, body, start, read as u64))?;
-        count += 1;
-    }
-    Ok((count, end))
-}
-
 /// 骨架索引的一行：**位置 ＋ 身份 ＋ 宽度无关料**（第一格 · `§2.5b 路 D`）。
 ///
 /// 键名刻意短（每条记录一行，大会话上万行）；**缺省即零 / 假**，零值不序列化。
@@ -391,20 +337,10 @@ fn is_zero(n: &u32) -> bool {
     *n == 0
 }
 
-/// 一行 → [`IndexRow`]。**纯函数**，不碰文件系统。
+/// 一行（已经解析过；解析不了 ⇒ `None`）→ [`IndexRow`]。**纯函数**，不碰文件系统。
 ///
 /// 解析失败（半截 / 非 JSON）**不丢这一行** —— 它仍占一个 seq，只是没有料（`t` 省略）；
 /// 丢了它，后面每一行的 seq 都会错一位（那是「计数对不上而且不会报错」的那一形）。
-pub(crate) fn index_row(kind: &str, line: &[u8], offset: u64, len: u64) -> IndexRow {
-    index_row_of(
-        kind,
-        super::record_scan::parse_record(line).as_ref(),
-        offset,
-        len,
-    )
-}
-
-/// [`index_row`] 的后半：这一行已经解析过（解析不了 ⇒ `None`，那一行照样占位）。
 /// `kind` ＝ 这份记录是哪一家的（[`crate::agents::record_kind_of`]）：这一行进不进界面、谁说的都照那一家的认法判。
 pub(crate) fn index_row_of(
     kind: &str,
@@ -544,41 +480,26 @@ pub(crate) fn tail_plan(
 }
 
 /// [`tail_plan`] 的扫描本体：读 `reader`（从字节 0 起）出 [`TailPlan`]。**纯 I/O 泛型**。
-pub(crate) fn tail_plan_of<R: std::io::BufRead>(
-    mut reader: R,
-    n: usize,
-) -> std::io::Result<TailPlan> {
+pub(crate) fn tail_plan_of<R: std::io::BufRead>(reader: R, n: usize) -> std::io::Result<TailPlan> {
     let mut recent: std::collections::VecDeque<u64> = std::collections::VecDeque::new();
     let keep = n.max(1);
     let mut total: u64 = 0;
-    let mut pos: u64 = 0;
-    let mut complete_end: u64 = 0;
     let mut head: Option<Vec<u8>> = None;
-    let mut buf: Vec<u8> = Vec::new();
-    loop {
-        buf.clear();
-        let read = reader.read_until(b'\n', &mut buf)?;
-        if read == 0 {
-            break;
-        }
-        let line_start = pos;
-        pos += read as u64;
-        if *buf.last().unwrap() != b'\n' {
-            break; // torn 残尾不计（F14 口径）
-        }
-        complete_end = pos;
-        if !line_counts(&buf[..buf.len() - 1]) {
-            continue; // 空行不计（与 watcher/monitor 口径一致 —— 判定只有 `line_counts` 一个住址）
+    let mut lines = super::lines::Lines::new(reader, 0);
+    while let Some(row) = lines.next()? {
+        if !super::lines::counts(row.body()) {
+            continue; // 空行不计（与实时跟读同一个判定：`lines::counts`）
         }
         if head.is_none() {
-            head = Some(buf[..buf.len() - 1].to_vec());
+            head = Some(row.body().to_vec());
         }
         total += 1;
-        recent.push_back(line_start);
+        recent.push_back(row.at);
         if recent.len() > keep {
             recent.pop_front();
         }
     }
+    let complete_end = lines.end();
     let tail_from = total - recent.len() as u64;
     let split_at = recent.front().copied().unwrap_or(complete_end);
     Ok(TailPlan {
@@ -713,8 +634,8 @@ pub(crate) struct ReadPage {
 ///
 /// # 口径
 ///
-/// - 「第几行」只有一个家：[`line_counts`]（BOM 与全空白不占号）＋ 没 `\n` 收尾的残尾不计 ——
-///   与 [`tail_plan`] 的 `total` · [`scan_session_index`] 的行号 · 实时 `line` 帧的 `seq` 同一个空间。
+/// - 「第几行」只有一个家：[`super::lines::counts`]（BOM 与全空白不占号）＋ 没 `\n` 收尾的残尾不计 ——
+///   与 [`tail_plan`] 的 `total` · 冷开扫描图的行号 · 实时 `line` 帧的 `seq` 同一个空间。
 /// - 只交**可计行**（空行在号外，交出去调用方也不会给它编号）；第 k 条就是第 `from + k` 行。
 /// - `until` 缺 ＝ 到最后一个完整行为止。
 ///
@@ -745,7 +666,7 @@ pub(crate) fn read_lines(
 
 /// [`read_lines`] 的内核：读 `r`（从文件头起）。**纯 I/O 泛型**，单测直接喂字节。
 pub(crate) fn read_lines_from<R: std::io::BufRead>(
-    mut r: R,
+    r: R,
     from: u64,
     until: Option<u64>,
     page: usize,
@@ -757,24 +678,20 @@ pub(crate) fn read_lines_from<R: std::io::BufRead>(
     let mut ends: Vec<u64> = Vec::new();
     let mut bytes: usize = 0;
     let mut n: u64 = 0; // 下一个可计行的行号
-    let mut pos: u64 = 0; // 这一行的起点字节偏移
     let mut end: u64 = 0; // 最后一个数到的可计行之后
-    let mut buf: Vec<u8> = Vec::new();
+    let mut rows = super::lines::Lines::new(r, 0);
     let eof = loop {
         if n >= until {
             break false;
         }
-        buf.clear();
-        let start = pos;
-        let read = r
-            .read_until(b'\n', &mut buf)
-            .map_err(|e| ("failed", format!("scan failed: {e}")))?;
-        pos += read as u64;
-        if read == 0 || buf.last() != Some(&b'\n') {
+        let Some(row) = rows
+            .next()
+            .map_err(|e| ("failed", format!("scan failed: {e}")))?
+        else {
             break true; // 文件到头；torn 残尾不计（同 `tail_plan`）
-        }
-        let body = &buf[..buf.len() - 1];
-        if !line_counts(body) {
+        };
+        let (start, pos, body) = (row.at, row.at + row.whole.len() as u64, row.body());
+        if !super::lines::counts(body) {
             continue;
         }
         let at = n;
@@ -903,46 +820,6 @@ pub(crate) struct RecordProbe {
     pub root: String,
 }
 
-/// 这一行**算不算一行**（＝ 口径 `watcher::read_new_lines`：BOM 与全空白跳过）。
-///
-/// 🔴 **全仓只有这一个住址** —— 扫描循环数 `total`、`split_tail` 数 `starts`，
-/// 两边判得必须**一模一样**；口径一分家，计数就对不上，而那种错**不会报错**。
-///
-/// # 为什么先看字节（秤 7）
-///
-/// 原来这一跳对**每一行**做 `String::from_utf8_lossy(整行)` 再 `trim()`，
-/// **只为回答「这行是不是空的」** —— 那是一次**整文件 UTF-8 校验**。
-/// 实测（15.1 MiB 会话，laptop）：`tail` **19.52 → 3.79 ms**、其中「数行」那一趟
-/// **17.89 → 2.98 ms（↓83%）**，**出字节一字节不差**。
-/// 剩下的 ~3 ms/15.1 MiB（≈5 GiB/s ≈ `memchr`）才是说的
-/// 那个**真·不可避免的 O(文件)**。
-///
-/// # 短路为什么是对的
-///
-/// - 任何 `< 0x80` 的字节都是**独立的 ASCII 字符** —— UTF-8 多字节序列的
-///   首字节与续字节**全部 ≥ 0x80** ⇒ 不会把半个字符误读成 ASCII。
-/// - BOM（`U+FEFF` ＝ `EF BB BF`）**三个字节全非 ASCII** ⇒ 短路条件碰不到它。
-/// - ⇒ 只要有一个 ASCII 非空白字节，这行剥 BOM、`trim` 完**必然非空**。
-/// - 短路**不成立**时退回原判定（保守），所以这不是近似，是**等价**。
-///
-/// ⚠⚠ **谓词必须是 `char::from(b).is_whitespace()`，不能写成 `b.is_ascii_whitespace()`**
-/// —— 后者**不含 `U+000B`**（垂直制表），而 `str::trim` 含它。
-/// 秤 7 的第一版变体就是这么写错的，**靠穷举才逮出来**（全部 1/2/3 字节共
-/// 16 843 008 个 ＋ 300 万随机串，分歧 0）——
-/// **单测没逮住，因为没有那个样本。**
-pub(crate) fn line_counts(line: &[u8]) -> bool {
-    // 快路：有 ASCII 非空白 ⇒ 必非空，不必解码
-    if line
-        .iter()
-        .any(|b| b.is_ascii() && !char::from(*b).is_whitespace())
-    {
-        return true;
-    }
-    // 慢路：可能全是空白 / 多字节 ⇒ 按原判定来
-    let text = String::from_utf8_lossy(line);
-    !text.trim_start_matches('\u{feff}').trim().is_empty()
-}
-
 /// 纯函数：把文件字节按"最新 N 可计行优先"切成 (meta 行, 尾段, 头段)。
 /// 只处理到最后一个 `\n`（torn 残尾不进任何段——F14 口径）。
 /// 生产路径已流式化（read_session_tail，审计 D 内存修订）；本函数保留为
@@ -957,7 +834,7 @@ fn split_tail(bytes: &[u8], n: usize) -> (String, &[u8], &[u8]) {
     let mut starts: Vec<usize> = Vec::new();
     let mut pos = 0usize;
     for line in complete.split_inclusive(|&b| b == b'\n') {
-        if line_counts(&line[..line.len() - 1]) {
+        if super::lines::counts(&line[..line.len() - 1]) {
             starts.push(pos);
         }
         pos += line.len();

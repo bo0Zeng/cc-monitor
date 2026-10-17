@@ -198,6 +198,10 @@ pub(crate) struct SessionFacts {
     /// **答题口没接上**：ccm 起这条会话时挂不上答题 hook（用户自己给的会话级设置读不出 / 形状不认）· 不是 ccm 起的、持着它的进程身上看不出挂过 ⇒ 写好的那一句
     /// （「这条会话只能在终端里答批准」；不累加，每次按持着它的进程现查）。接上了 / 判不了 ⇒ `null`。
     pub(crate) answer_off: Option<Words>,
+    /// **没人答时自动答**：会话注解里那一格设的几分钟（`control::asks` 判只管提问）；关 ⇒ `null`。不累加，每次现读。
+    pub(crate) auto_answer: Option<u32>,
+    /// 上一条提问没人答、已替人答过 ⇒ 写好的那一句（「10 分钟没人答，已自动答：…」，这条会话下一次挂上提问才换掉）；没有 ⇒ `null`。不累加，每次现查。
+    pub(crate) auto_answered: Option<Words>,
     /// 这个会话里那一家说有毛病的 MCP 服务器（要登录 · 断开 · 还在连），按名字排；没列的不等于连上了。
     pub(crate) mcp: Vec<McpTrouble>,
     /// 由谁启动（会话血缘里它的主会话）；不是谁起的 ⇒ `null`。不累加，每次现查（`prior` 里那一份不用）。
@@ -626,10 +630,6 @@ pub(crate) fn needs_of(pending: &[PendingCall], wait: Option<&PidWait>) -> Optio
         Some(W::Goal) => (NeedsKind::Goal, None),
         Some(W::Dialog) => (NeedsKind::Choose, None),
     };
-    let rank = NEEDS_BY_DANGER
-        .iter()
-        .position(|k| *k == kind)
-        .map_or(u8::MAX, |i| i as u8);
     let waited_ms = wait.since_ms.map(|t| wait.read_at_ms.saturating_sub(t));
     Some(Needs {
         kind,
@@ -646,7 +646,7 @@ pub(crate) fn needs_of(pending: &[PendingCall], wait: Option<&PidWait>) -> Optio
             _ => None,
         },
         tone: crate::common::cells::Tone::Need,
-        rank,
+        rank: needs_rank(kind, waited_ms),
         waited_ms,
         waited_text: waited_ms.map(|ms| Words(copy_core::short_duration(ms))),
         // 配不配挂着的请求在顶层壳（`faces::read_face` 查常驻进程那一份登记表，经 [`dress_ask_with`] 配）。
@@ -694,10 +694,7 @@ pub(crate) fn dress_ask_with(
                     _ => None,
                 },
                 tone: crate::common::cells::Tone::Need,
-                rank: NEEDS_BY_DANGER
-                    .iter()
-                    .position(|k| *k == kind)
-                    .map_or(u8::MAX, |i| i as u8),
+                rank: needs_rank(kind, Some(waited)),
                 waited_ms: Some(waited),
                 waited_text: Some(Words(copy_core::short_duration(waited))),
                 ask: Some(a),
@@ -739,7 +736,7 @@ pub(crate) fn needs_head(kind: NeedsKind, tool: Option<&str>) -> Words {
     })
 }
 
-/// 「需手动」先答哪个（[`Needs::rank`] 的来历，唯一一处）：种类已按顶上那个框判（顶上的先答），这里再按危险度 ——
+/// 「需手动」危险度那一档（[`needs_rank`] 的高位）：种类已按顶上那个框判（顶上的先答），这里再按危险度 ——
 /// 放行联网（沙箱里的命令要出网）· 批准一步（工具要动手）在前；协作请求 · 会话目标 · 计划次之；回答 · 选一项 · 判不出最后。
 pub(crate) const NEEDS_BY_DANGER: [NeedsKind; 8] = [
     NeedsKind::Network,
@@ -752,17 +749,64 @@ pub(crate) const NEEDS_BY_DANGER: [NeedsKind; 8] = [
     NeedsKind::Unknown,
 ];
 
-/// **几条「需手动」先答哪个**（唯一一处：`sessions-needs` 按它排）：危险度序在前（[`Needs::rank`]）；同一档里等得久的在前
-/// （[`Needs::waited_ms`]，各自在那台算的）；不知道等了多久的排这一档最后。
-pub(crate) fn needs_first(a: &Needs, b: &Needs) -> std::cmp::Ordering {
-    a.rank
-        .cmp(&b.rank)
-        .then_with(|| match (a.waited_ms, b.waited_ms) {
-            (Some(x), Some(y)) => y.cmp(&x),
-            (Some(_), None) => std::cmp::Ordering::Less,
-            (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => std::cmp::Ordering::Equal,
+/// 先答序里一档危险度占多宽（毫秒）：同一档里「已等多久」只在这一格里动，跨不到下一档（约 34 年）。
+const NEEDS_TIER_SPAN: u64 = 1 << 40;
+
+/// **几条「需手动」先答哪个**（[`Needs::rank`] 的唯一一处，小的先答；`sessions-needs` 与 [`merge_needs`] 都只按它排）：危险度那一档（[`NEEDS_BY_DANGER`]）在高位；
+/// 同一档里等得越久越小（已等多久在那台算）；不知道等了多久的排这一档最后。
+pub(crate) fn needs_rank(kind: NeedsKind, waited_ms: Option<u64>) -> u64 {
+    let tier = NEEDS_BY_DANGER
+        .iter()
+        .position(|k| *k == kind)
+        .map_or(NEEDS_BY_DANGER.len(), |i| i) as u64;
+    let last = NEEDS_TIER_SPAN - 1;
+    tier * NEEDS_TIER_SPAN + waited_ms.map_or(last, |w| last - 1 - w.min(last - 1))
+}
+
+/// `sessions-needs-merge` 入参里的一台：它的名字（本机逐字 `"<local>"`）＋ 它答回来的 `sessions-needs` 那几行原样。
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct NeedsMachine {
+    pub(crate) origin: cmd_wire::Machine,
+    pub(crate) waiting: Vec<cmd_wire::needs::NeedsRow>,
+}
+
+/// `sessions-needs-merge` 的回包：各台需手动的会话，先答的在前。
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct NeedsMerged {
+    pub(crate) order: Vec<NeedsAt>,
+}
+
+/// 合好的一条：哪台 · 哪个会话。
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct NeedsAt {
+    pub(crate) origin: cmd_wire::Machine,
+    pub(crate) sid: String,
+}
+
+/// **各台的「需手动」合成一个先后**（`sessions-needs-merge`）：照各行的 `rank`（[`needs_rank`]）排；并列 ⇒ 给的台序、台内原来的先后。
+/// 各台的 `rank` 是同一回问回来的、已等多久各在那台的钟上量，跨台照样比。纯计算。
+pub(crate) fn merge_needs(machines: Vec<NeedsMachine>) -> NeedsMerged {
+    let mut all: Vec<(cmd_wire::Machine, cmd_wire::needs::NeedsRow)> = machines
+        .into_iter()
+        .flat_map(|m| {
+            let origin = m.origin;
+            m.waiting.into_iter().map(move |r| (origin.clone(), r))
         })
+        .collect();
+    all.sort_by_key(|(_, r)| r.needs.rank);
+    NeedsMerged {
+        order: all
+            .into_iter()
+            .map(|(origin, r)| NeedsAt { origin, sid: r.sid })
+            .collect(),
+    }
 }
 
 /// 最新 usage ＋ 这份会话的上下文上限 ＋ 写好的字（状态栏 · 监控板 · 手机读同一份；出口不算百分比、不排数）。
@@ -924,22 +968,17 @@ pub(crate) fn context_limit(
 /// **纯 I/O 泛型**，单测直接喂字节。只看完整行（`\n` 收尾）；torn 残尾不看、不计进 `end`。
 /// 上限每次按此刻的 `limits` 与中转看见的（`relay`）重判（设置改过 / 中转看见了 ⇒ 带着上一份成品再问一次就是新的数）。
 pub(crate) fn scan_facts<R: std::io::BufRead>(
-    mut r: R,
+    r: R,
     mut facts: SessionFacts,
     limits: &ContextLimits,
     relay: Option<bool>,
 ) -> std::io::Result<SessionFacts> {
-    let mut buf: Vec<u8> = Vec::new();
-    loop {
-        buf.clear();
-        let read = r.read_until(b'\n', &mut buf)?;
-        if read == 0 || buf.last() != Some(&b'\n') {
-            break;
-        }
-        facts.end += read as u64;
-        let line = &buf[..buf.len() - 1];
+    let mut lines = super::lines::Lines::new(r, facts.end);
+    while let Some(row) = lines.next()? {
+        facts.end = row.at + row.whole.len() as u64;
+        let line = row.body();
         if could_matter(line, &facts) {
-            if let Some(v) = super::record_scan::parse_record(line) {
+            if let Some(v) = super::lines::parse(line) {
                 note_record(&mut facts, &v);
             }
         }
@@ -954,28 +993,23 @@ const MCP_MARK: &[u8] = b"\"deferred_tools_delta\"";
 /// 只要 `mcp` 那一格：从 `r` 此刻的位置读到尾，只解析带 [`MCP_MARK`] 的完整行、经 [`note_mcp`] 接着 `mcp` 往下改（口径与整份事实那一格同一处）。
 /// 回读过的字节数（只算到最后一个完整行：半行留给下一次）。扩展页问「这台活会话里谁断开」用（`observe::accounts_query::McpBook`）。
 pub(crate) fn mcp_from<R: std::io::BufRead>(
-    mut r: R,
+    r: R,
     mcp: &mut Vec<McpTrouble>,
 ) -> std::io::Result<u64> {
     let mut f = SessionFacts {
         mcp: std::mem::take(mcp),
         ..SessionFacts::default()
     };
-    let mut buf: Vec<u8> = Vec::new();
-    let mut done = 0u64;
+    let mut lines = super::lines::Lines::new(r, 0);
     let out = loop {
-        buf.clear();
-        let read = match r.read_until(b'\n', &mut buf) {
-            Ok(n) => n,
+        let row = match lines.next() {
+            Ok(Some(row)) => row,
+            Ok(None) => break Ok(lines.end()),
             Err(e) => break Err(e),
         };
-        if read == 0 || buf.last() != Some(&b'\n') {
-            break Ok(done);
-        }
-        done += read as u64;
-        let line = &buf[..buf.len() - 1];
+        let line = row.body();
         if contains(line, MCP_MARK) {
-            if let Some(v) = super::record_scan::parse_record(line) {
+            if let Some(v) = super::lines::parse(line) {
                 note_mcp(&mut f, &v);
             }
         }

@@ -25,7 +25,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::guard_support::production_code;
+    use guard_core::production_code;
 
     /// 允许的 `observe → control` 跨层引用，逐条列举。
     ///
@@ -93,7 +93,7 @@ mod tests {
 
     /// 收集某一层下所有 `.rs` 的 `(相对路径, 生产段)`。
     fn layer_sources(layer: &str) -> Vec<(String, String)> {
-        let root = crate::guard_support::src_root().join(layer);
+        let root = guard_core::addr::backend_src_root().join(layer);
         layer_sources_at(&root, layer)
     }
 
@@ -278,7 +278,7 @@ mod tests {
     /// ⇒ 改成**数量相等**：独立走一遍目录树数 `.rs`，与采集到的条数比。
     /// 它对「文件增删」免疫（那是正常演进），只对「采集漏了」敏感 —— 而后者才是要防的。
     fn assert_collection_is_complete(layer: &str, files: &[(String, String)]) {
-        let root = crate::guard_support::src_root().join(layer);
+        let root = guard_core::addr::backend_src_root().join(layer);
         assert_collection_is_complete_at(&root, layer, files);
     }
 
@@ -317,7 +317,7 @@ mod tests {
         // 都有这条，本护栏初版是唯一没有的（Phase D 审计指出）。
         // 它挡的是「剥少了 ⇒ 护栏开始扫测试代码 ⇒ 被夹具打红 ⇒ 有人顺手放宽护栏」。
         for (name, prod) in files {
-            crate::guard_support::assert_no_test_code(&format!("{layer}/{name}"), prod);
+            guard_core::assert_no_test_code(&format!("{layer}/{name}"), prod);
         }
     }
 
@@ -344,7 +344,7 @@ mod tests {
 
     /// 后端顶层模块名（`lib.rs` 里的 `pub mod <名>;`），从源码现取。
     fn top_modules() -> Vec<String> {
-        let lib = std::fs::read_to_string(crate::guard_support::src_root().join("lib.rs"))
+        let lib = std::fs::read_to_string(guard_core::addr::backend_src_root().join("lib.rs"))
             .expect("读 lib.rs");
         production_code(&lib)
             .lines()
@@ -406,10 +406,10 @@ mod tests {
     /// 起因：一次性模式的诊断落点曾引 `crate::control::resident::STDERR_LOG_REL`；常量现住 `stderr_log` 自己，控制面反过来引它。
     #[test]
     fn the_stderr_log_module_only_references_the_bottom_layers() {
-        let path = crate::guard_support::src_root().join("stderr_log.rs");
+        let path = guard_core::addr::backend_src_root().join("stderr_log.rs");
         let src = std::fs::read_to_string(&path).expect("读 stderr_log.rs");
         let files = vec![("stderr_log.rs".to_string(), production_code(&src))];
-        crate::guard_support::assert_no_test_code("stderr_log.rs", &files[0].1);
+        guard_core::assert_no_test_code("stderr_log.rs", &files[0].1);
         assert!(
             files[0].1.contains("crate::platform::"),
             "stderr_log.rs 生产段里连 platform 都没引到 —— 剥法坏了，下面的判是空的"
@@ -612,7 +612,7 @@ mod tests {
     // ⚠ 分母先说清：`relay/` 今天是 **12 个 `.rs`**（09-02 现打，`ls -1 src/relay/*.rs | wc -l`）。
     // 件文件 `§0` 写的「8 个文件」量于 **08-26**，此后长了 4 个 ⇒ **那个数已经馊了，别沿用**。
     //
-    // ⚠ **别与 `relay/bind_guard` · 〔AR1 已退役〕`relay/nodelay_guard` 混起来**（件文件 `§0a`）：
+    // ⚠ **别与规则 `bind_guard` · 〔AR1 已退役〕`relay/nodelay_guard` 混起来**（件文件 `§0a`）：
     // 那两条护的是**中转自己的行为**（绑哪个口、开不开 Nagle；后者今天由 `server_tests.rs` 的行为格判），
     // 与「**层与层之间谁能引谁**」不是一回事。拿它们答「已经有护栏了」，
     // 正是本区「量具的作用域对不上事实」那一族。
@@ -736,7 +736,7 @@ mod tests {
     /// 中转 crate 的公开项 == [`RELAY_EXPORTS`]（两向集合相等；从 `lib.rs` 生产段现抠）。
     #[test]
     fn the_relay_layer_exports_exactly_the_registered_items() {
-        let src = std::fs::read_to_string(crate::guard_support::relay_root().join("lib.rs"))
+        let src = std::fs::read_to_string(guard_core::addr::relay_root().join("lib.rs"))
             .expect("读中转 crate 的 lib.rs（`src/comms/outward/lib.rs`）");
         let found = relay_crate_public_items(&production_code(&src));
         let mut want: Vec<String> = RELAY_EXPORTS
@@ -1299,7 +1299,7 @@ mod tests {
     /// `crate::<名>` 照它记到那个模块头上（不然经根转一手就躲过了量法）。
     /// ⚠ `lib.rs` 里**自己定义**、内含别的模块类型的这里看不见：那一形手理（const1 起根上不再有这样的，`StreamWants` 挪去 `stream::inbound::views`）。
     fn root_reexports(tops: &[String]) -> std::collections::BTreeMap<String, String> {
-        let lib = std::fs::read_to_string(crate::guard_support::src_root().join("lib.rs"))
+        let lib = std::fs::read_to_string(guard_core::addr::backend_src_root().join("lib.rs"))
             .expect("读 lib.rs");
         let mut out = std::collections::BTreeMap::new();
         for l in production_code(&lib).lines() {
@@ -1328,7 +1328,7 @@ mod tests {
 
     /// 全后端两两引用的次数：`(谁, 引谁) → (处, 份)`。人群＝各顶层模块目录下全部 `.rs`，减去父模块写明只在测试档的。
     fn reference_matrix() -> std::collections::BTreeMap<(String, String), (usize, usize)> {
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         let tops = top_modules();
         let via_root = root_reexports(&tops);
         let mut m: std::collections::BTreeMap<(String, String), (usize, usize)> =

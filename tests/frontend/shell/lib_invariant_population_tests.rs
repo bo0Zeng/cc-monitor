@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, BTreeSet};
 /// 仓里要扫的生产源码：`src/` 下（摘掉 `vendor/`）的 Rust · TS · shell（`.sh` 与无后缀带 shebang 的脚本）。
 /// 返回 `(仓内相对路径, 剥掉注释与测试段之后的正文)`。
 fn production_sources() -> Vec<(String, String)> {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let src = root.join("src");
     // 遍历口径只有一份（`guard_core`）：带扩展名的那几种 ＋ 整棵 `src/shared/`（cc-bus 脚本没有扩展名）。
     let mut files = guard_core::scan_tree_excluding(&src, &["rs", "ts", "sh"], &[]);
@@ -531,10 +531,12 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "我们那份别名文件的路径",
     ),
     // 问起会话那个 shell 的 `PATH`：quote 进去的只有一个常量标记（`SESSION_PATH_MARK`），不收任何外来值。
+    // 「进那个目录」那一行（`session-open` 开 shell 只给目录那一形）：目录是请求里的自由文本路径，先过 `free_text_ok`
+    //   （不含 NUL / CR / LF：那一行要键进终端），再核这台盘上是个目录。
     (
         "src/backend/platform/shell/mod.rs",
-        &["login_shell_asking_path"],
-        &[],
+        &["enter_dir_line_in", "login_shell_asking_path"],
+        &[("src/common/shell-quote-core/src/lib.rs", "free_text_ok")],
         "",
         "夹住 `PATH` 的那个常量标记",
     ),
@@ -578,7 +580,7 @@ fn every_file_that_quotes_a_value_into_a_shell_line_is_registered() {
         "`INVARIANTS §47` 的人群（把值 quote 进 shell 串的生产文件 × 外层函数）与登记表对不上（两向）。\n\
          多出来的 = 新长的拼接点：说清拼进去的是什么、外部值靠哪个放行判定（`§47` ① / ②）；登记了而盘上没有 = 删了 / 改了，跟着改表。"
     );
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     for &(f, _, checked, quote_only, ours) in QUOTE_SITES {
         assert!(
             !checked.is_empty() || !quote_only.is_empty() || !ours.is_empty(),

@@ -191,6 +191,14 @@ enum class Tone {
 @JsonClass(generateAdapter = true)
 data class NeedsList(
     val waiting: List<NeedsRow>,
+    val answered: List<AnsweredRow>,
+)
+
+@WireOf("AnsweredRow")
+@JsonClass(generateAdapter = true)
+data class AnsweredRow(
+    val sid: String,
+    val said: String,
 )
 
 @WireOf("NeedsRow")
@@ -259,7 +267,20 @@ data class NeedsChoice(
     val text: String,
     val tone: Tone,
     val note: NeedsNote,
+    val row: NeedsChoiceRow,
 )
+
+@JsonClass(generateAdapter = false)
+enum class NeedsChoiceRow {
+    @Json(name = "main")
+    MAIN,
+
+    @Json(name = "hold")
+    HOLD,
+
+    @Json(name = "release")
+    RELEASE,
+}
 
 @JsonClass(generateAdapter = false)
 enum class NeedsNote {
@@ -714,6 +735,34 @@ data class LsEntry(
     val size: Long?,
     @Json(name = "mtime_text") val mtimeText: String?,
     @Json(name = "link_dir") val linkDir: Boolean?,
+    val gates: Gates?,
+)
+
+@WireOf("Gates")
+@JsonClass(generateAdapter = true)
+data class Gates(
+    val preview: PreviewGate,
+    val edit: Gate,
+)
+
+@WireOf("PreviewGate")
+@JsonClass(generateAdapter = true)
+data class PreviewGate(
+    val text: TextPreview?,
+    val no: String?,
+)
+
+@WireOf("TextPreview")
+@JsonClass(generateAdapter = true)
+data class TextPreview(
+    val cap: Long,
+)
+
+@WireOf("Gate")
+@JsonClass(generateAdapter = true)
+data class Gate(
+    val cap: Long?,
+    val no: String?,
 )
 
 @WireOf("LsReply")
@@ -736,7 +785,6 @@ data class Crumb(
 @WireOf("StatReply")
 @JsonClass(generateAdapter = true)
 data class StatReply(
-    val name: Any,
     val up: Any?,
     val kind: FileKind,
     val mode: Long?,
@@ -749,18 +797,23 @@ data class ReadTextReply(
     val sha256: String,
 )
 
-@WireOf("HexBytes")
+// ── 上传提交撞了同名（码 `exists` 的 `data`）：要放过去的 → 已有的。 ──
+
+@WireOf("Conflicts")
 @JsonClass(generateAdapter = true)
-data class HexBytes(
-    val b16: String,
+data class Conflicts(
+    val conflicts: List<Conflict>,
 )
 
-@WireOf("ReadChunkReply")
+@WireOf("Conflict")
 @JsonClass(generateAdapter = true)
-data class ReadChunkReply(
-    val size: Long,
-    val eof: Boolean,
-    val content: HexBytes,
+data class Conflict(
+    val name: Any,
+    val size: Long?,
+    @Json(name = "mtime_text") val mtimeText: String?,
+    @Json(name = "there_size") val thereSize: Long?,
+    @Json(name = "there_mtime_text") val thereMtimeText: String?,
+    @Json(name = "dir_into") val dirInto: Boolean,
 )
 
 // ── 一组的回包（`files-delete` · `files-chmod`：手机一次只交一项）：逐项结局 ＋ 后端拼好的那一句。 ──
@@ -812,7 +865,7 @@ data class RotationViewReply(
     val dirty: Boolean,
     val start: String,
     val current: String,
-    val accounts: List<Fact>,
+    val accounts: List<RotAccount>,
     val listed: Int,
     val decision: RotTryDecision?,
     val timeline: RotTryTimeline?,
@@ -873,13 +926,22 @@ data class RotFormChoice(
     val label: Any,
 )
 
-@WireOf("Fact")
+@WireOf("RotAccount")
 @JsonClass(generateAdapter = true)
-data class Fact(
+data class RotAccount(
     val account: String,
     val w5h: WinFact,
     val w7d: WinFact,
     val blocked: FactBlocked?,
+    val plate: RotPlate,
+)
+
+@WireOf("RotPlate")
+@JsonClass(generateAdapter = true)
+data class RotPlate(
+    val color: Int,
+    val label: String,
+    val text: String,
 )
 
 @WireOf("WinFact")
@@ -1079,4 +1141,158 @@ data class ProfileRow(
 data class ProfilesWriteDone(
     val wrote: Boolean,
     val reload: String?,
+)
+
+/** `accounts-list`：这台账号库里的号（号牌字 · 5h 那一格 · 选不了的那一句都是那台写好的）。 */
+@WireOf("AccountsList")
+@JsonClass(generateAdapter = true)
+data class AccountsList(
+    val meta: ListMeta,
+    val accounts: List<AccountRow>,
+)
+
+@WireOf("ListMeta")
+@JsonClass(generateAdapter = true)
+data class ListMeta(
+    val effectiveDefault: String?,
+    val home: String?,
+)
+
+@WireOf("AccountRow")
+@JsonClass(generateAdapter = true)
+data class AccountRow(
+    val name: String,
+    val label: String,
+    val color: Int,
+    val plate: String,
+    val quota: String?,
+    val unselectable: String?,
+    val selectable: Boolean,
+    val configDir: String?,
+    val mode: String,
+    val authKind: String,
+    val badge: Badge,
+)
+
+/** 号行右边那一枚（[warn] ⇒ 要人动手的那一种，界面只画这一种）。 */
+@WireOf("Badge")
+@JsonClass(generateAdapter = true)
+data class Badge(
+    val text: String,
+    val warn: Boolean,
+)
+
+/** `quota-read`：每号用量那一格（出过数的在 [accounts]，没出过数的在 [unseen]）。 */
+@WireOf("QuotaRead")
+@JsonClass(generateAdapter = true)
+data class QuotaReadReply(
+    val accounts: List<QuotaAccount>,
+    val unseen: List<QuotaUnseen>,
+)
+
+@WireOf("QuotaAccount")
+@JsonClass(generateAdapter = true)
+data class QuotaAccount(
+    val account: String,
+    val usage: Usage,
+)
+
+@WireOf("QuotaUnseen")
+@JsonClass(generateAdapter = true)
+data class QuotaUnseen(
+    val account: String,
+    val usage: QuotaUnseenUsage,
+)
+
+/** 用量那一格：连成的一句 ＋ 语气（状态栏按钮 · 切号下拉同一份）。 */
+@WireOf("Usage")
+@JsonClass(generateAdapter = true)
+data class Usage(
+    val text: String,
+    val tone: UsageTone,
+)
+
+@WireOf("QuotaUnseenUsage")
+@JsonClass(generateAdapter = true)
+data class QuotaUnseenUsage(
+    val text: String,
+    val tone: UsageTone,
+)
+
+@JsonClass(generateAdapter = false)
+enum class UsageTone {
+    @Json(name = "plain")
+    PLAIN,
+
+    @Json(name = "fail")
+    FAIL,
+
+    @Json(name = "warn")
+    WARN,
+}
+
+/** `prefs-read` · `prefs-set`（写完读回）：这台的偏好；读不懂（[state] 为 unreadable）也照答那一份。 */
+@WireOf("PrefsReply")
+@JsonClass(generateAdapter = true)
+data class PrefsReply(
+    val state: PrefsState,
+    val reason: String?,
+    val detail: String?,
+    val prefs: Prefs,
+)
+
+@JsonClass(generateAdapter = false)
+enum class PrefsState {
+    @Json(name = "absent")
+    ABSENT,
+
+    @Json(name = "ok")
+    OK,
+
+    @Json(name = "unreadable")
+    UNREADABLE,
+}
+
+@WireOf("Prefs")
+@JsonClass(generateAdapter = true)
+data class Prefs(
+    val models: Map<String, String>,
+    val childTab: TabPref,
+    val bgTab: TabPref,
+)
+
+/** 一种会话进不进标签栏（也管手机的「最近」列不列它）。 */
+@JsonClass(generateAdapter = false)
+enum class TabPref {
+    @Json(name = "show")
+    SHOW,
+
+    @Json(name = "hide")
+    HIDE,
+}
+
+/** 登录失败的 `data`：还能怎么办（那台照码定）。 */
+@WireOf("LoginAgain")
+@JsonClass(generateAdapter = true)
+data class LoginAgain(
+    val again: LoginAgainHow,
+)
+
+@JsonClass(generateAdapter = false)
+enum class LoginAgainHow {
+    @Json(name = "paste")
+    PASTE,
+
+    @Json(name = "restart")
+    RESTART,
+
+    @Json(name = "none")
+    NONE,
+}
+
+/** `session-resume`：那条会话此刻在哪个 tmux 会话里。 */
+@WireOf("Resumed")
+@JsonClass(generateAdapter = true)
+data class Resumed(
+    val session: String,
 )

@@ -229,6 +229,43 @@ fn bad_inputs_are_refused_and_say_which_cell() {
     );
 }
 
+/// ★ 用户名 / 地址 / 跳板用户 / 跳板地址打头是 `-` ⇒ 拒（`ssh` 会把它当成一个选项读）；中间带 `-` 照常（正控）。
+#[test]
+fn a_leading_dash_in_any_bare_word_is_refused() {
+    assert!(run(machine("my-host", "my-user", 22, None), "x").is_ok());
+    assert_eq!(
+        run(machine("h", "-oProxyCommand", 22, None), "x")
+            .unwrap_err()
+            .0,
+        "refused",
+        "用户名打头是 -"
+    );
+    assert_eq!(
+        run(machine("-oProxyCommand", "u", 22, None), "x")
+            .unwrap_err()
+            .0,
+        "refused",
+        "地址打头是 -"
+    );
+    let m = json!({ "host": "t", "user": "u", "port": 22, "label": "target", "jump": "bastion" });
+    let hop = |host: &str, user: &str| json!({ "host": host, "user": user, "port": 22, "label": "bastion" });
+    assert!(
+        answer(&json!({ "machine": m, "jump": hop("jump-1", "pi-x"), "command": "x" })).is_ok()
+    );
+    for (j, why) in [
+        (hop("jump.local", "-x"), "跳板用户打头是 -"),
+        (hop("-x", "pi"), "跳板地址打头是 -"),
+    ] {
+        assert_eq!(
+            answer(&json!({ "machine": m, "jump": j, "command": "x" }))
+                .unwrap_err()
+                .0,
+            "refused",
+            "{why}"
+        );
+    }
+}
+
 /// 流进 `terminal-ssh` 的远端命令的全部来路（起会话只有那一行 `ccm …`，就地 resume 那一格外层包一层 tmux）×
 /// 入库夹具的每条请求 × 典型工作目录 ⇒ `(哪条, 渲出来的命令)`。渲不出来的（拒）不在里面。
 fn every_rendered_remote_command(cwds: &[&str]) -> Vec<(String, String)> {

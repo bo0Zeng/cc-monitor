@@ -44,7 +44,8 @@ fn window(rows: Vec<Row>) -> FileWindow {
         Source::remote(synth_cfg("keys")),
         "/srv/data".to_string(),
         None,
-        rows,
+        rows.into_iter()
+            .map(|r| crate::find::testing::gated(r.into())),
     );
     *w.listing.error.lock().unwrap() = None;
     w
@@ -709,7 +710,7 @@ fn open_menu(
 #[test]
 fn the_menu_lists_exactly_what_the_selection_allows() {
     use copy_core::copy_static as c;
-    let big = crate::editor::MAX_EDIT_BYTES as u64 + 1;
+    let big = 8 * 1024 * 1024 + 1;
     let lossy = "\u{FFFD}x";
     let delete = copy_core::copy_text("rsFilewinSelect.menu.delete", &[]);
     let delete2 = copy_core::copy_text("rsFilewinSelect.menu.deleteMany", &[("n", "2")]);
@@ -1194,7 +1195,7 @@ fn drive_real_keys(
     use crate::rows::testing::xvfb;
     let mut log = Vec::new();
     let sleep = |ms: u64| std::thread::sleep(std::time::Duration::from_millis(ms));
-    let ids = xvfb::wait_for_windows(display, KEY_PROBE_TITLE, 20_000);
+    let ids = xvfb::wait_for_windows(display, KEY_PROBE_TITLE);
     let Some(id) = ids.first().cloned() else {
         shared.lock().unwrap().close_now = true;
         log.push("一个窗口都没等到".into());

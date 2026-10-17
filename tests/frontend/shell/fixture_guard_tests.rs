@@ -2,7 +2,7 @@ use super::*;
 
 /// 仓根。**只跳一级**（`src/frontend/shell` 的上级就是仓根，那是 cargo 给的事实）。
 fn fg_repo_root() -> std::path::PathBuf {
-    crate::guard_support::repo_root().to_path_buf()
+    guard_core::addr::repo_root().to_path_buf()
 }
 
 /// **活引用语料面**：`src` ＋ `tests` 两棵互不包含的根，按

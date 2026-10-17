@@ -40,7 +40,7 @@
 //!   不是把这一列删掉。今天盘面上一处都没有这一形。
 //! - **`build.rs` 刻意不在人群里**：它跑在构建期，`SPAWNS` 已经把它那两处登记成
 //!   「不进那个出口」并写了理由。同一件事记两张表 ⇒ 两张会各自漂。
-//!   ⇒ 本条的扫描面逐字是 `crate_src_root()` 一棵树，**构建期那一格不归它**。
+//!   ⇒ 本条的扫描面逐字是 `shell_src_root()` 一棵树，**构建期那一格不归它**。
 //! - **同文件同函数内两处落点，本条区分得开处数、区分不开各自的策略**：
 //!   `platform/terminal.rs::launch_powershell_window` 今天就有两跳（`wt.exe` / `powershell.exe`），
 //!   本表为它留**两行同键**、处数对得上；但「哪一跳配哪三格」仍归
@@ -88,37 +88,7 @@ const SITES: &[(&str, &str, &str, &str)] = &[
          ⚠ **stdout 刻意不接**：接成管子而没人读，对面一写满就卡死。",
     ),
     (
-        "ccm_probe.rs",
-        "probe_with",
-        "spawn_managed_cmd",
-        "argv 是 `bash -lic <CCM_PROBE_CMD>`，而且 stdin 要 null、stdout 要 piped ——\
-         这三样都是本处特有的（探针唯一有用的字节在 stdout 上）。出口只回答三条策略，\
-         不回答「跑什么」⇒ `Command` 必须由这里装好再递进去。",
-    ),
-    (
-        "ccm_probe.rs",
-        "probe_via_fresh_powershell",
-        "spawn_managed_cmd",
-        "Windows 那一形的「终端里敲 `ccm` 走到哪」，两跳各造一个：`powershell.exe -NoProfile` 现拼 PATH ·\
-         带那份 PATH（`env`）照常加载 profile 的 `powershell.exe` 问探测串；stdin null、stdout piped 同 `probe_with`。\
-         出口只回答三条策略 ⇒ `Command` 由这里装好再递进去。（这一行记第一跳。）",
-    ),
-    (
-        "ccm_probe.rs",
-        "probe_via_fresh_powershell",
-        "spawn_managed_cmd",
-        "同上一行的第二跳：带现拼的 PATH、照常加载 profile 的那一个（`PATH` 与 argv 都是本处特有的）。",
-    ),
-    (
-        "ccm_probe.rs",
-        "probe_binary_uncached",
-        "spawn_managed_cmd",
-        "与上一行**共用同一段等待与解析**（`probe_spawned`），差的只有「怎么起」：\
-         这一跳是 `<我们放下去的那份 ccm> --ccm-probe`，一个 shell 都不起。\
-         ⇒ 两条起法各造一个 `Command`，正是那个共用点存在的前提。",
-    ),
-    (
-        "ccm_probe.rs",
+        "backend_once.rs",
         "ask_once",
         "spawn_managed_cmd",
         "问我们自己放下去的那份后端一次（帧命令的 CLI 面）：argv 是 `-- --<命令>`、stdin 要接成管道交入参 JSON、\
@@ -170,16 +140,8 @@ const SITES: &[(&str, &str, &str, &str)] = &[
         "spawn_managed_cmd",
         "机器页「停」本机后端：起一次 `<后端> --resident-stop`（不经 shell），等与强杀由那个一次性子命令做（同机监督者）。\
          argv 是那个二进制与一个常量 flag，环境与起它时同一份（`backend_env`：中转口 ·（隔离跑时）家 ·（填了覆盖时）Claude 目录），\
-         它按同一个家算出同一个口。等带期限（`ccm_probe::capture_full`，起那一下在它的闭包里交给出口）。\
+         它按同一个家算出同一个口。等带期限（`backend_once::capture_full`，起那一下在它的闭包里交给出口）。\
          stdout 要 piped（结局那一行是返回值）、stderr 要 captured（失败那句 `{code,message}`）。⚠ 已登记在 `SPAWNS`。",
-    ),
-    (
-        "profile_installer.rs",
-        "run_user_path_powershell",
-        "spawn_managed_cmd",
-        "argv 的四段是**承重的**：`-NoProfile`（这一跳的行为不许被用户 profile 左右，\
-         而这里刚把我们自己那段从 profile 里删掉）· `-NonInteractive`（界面点一下不许挂住）\
-         · `-Command <我们自己 render 出来的脚本>`。stdout 要 piped：它是返回值。",
     ),
     // 别名撞名问 PowerShell 内建别名那一行（`ask_get_alias`）随方言进了那台后端 —— 后端那一处起进程由它自己的 `readonly_guard::spawn_registry` 登记。
     // 拨号代理宿主那一行**摘了**：它不再起 `--dial` 子进程（拨号挪进本机常驻后端，经流上的链路做）。
@@ -198,7 +160,7 @@ const SITES: &[(&str, &str, &str, &str)] = &[
 
 /// 本 crate 的源码根 —— 住址唯一源。
 fn src_root() -> PathBuf {
-    crate::guard_support::crate_src_root()
+    guard_core::addr::shell_src_root()
 }
 
 /// 那个唯一出口自己的住址（相对仓根）。**明写，不靠 `file!()` 自摘** ——

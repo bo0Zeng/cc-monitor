@@ -36,12 +36,11 @@ pub(crate) const REMOTE_NEEDS: &str = "assets-catalog-merge";
 const BUDGET: Duration = Duration::from_secs(180);
 
 /// 一台远端的入参：`origin` ＋ 拨号请求（`capture` 用法；后端会再钉一遍）。那台后端的路径不交：落点恒是 `relay_route_core::BACKEND_LANDING_SHELL`。
-pub(crate) fn args_for(cfg: &crate::stream_source::RemoteConfig) -> Result<Value, String> {
-    let dial = crate::dial_host::request(cfg, "capture", json!({}))?;
-    Ok(json!({
+pub(crate) fn args_for(cfg: &crate::stream_source::RemoteConfig) -> Value {
+    json!({
         "origin": cfg.origin_label(),
-        "dial": dial,
-    }))
+        "dial": crate::dial_host::request(cfg, "capture", json!({})),
+    })
 }
 
 /// 本机后端那一跳（生产 = 本机常驻后端那条流；判据用替身）。
@@ -70,7 +69,7 @@ pub(crate) async fn sync_with(
     target: &crate::stream_source::RemoteConfig,
     local: &impl LocalBackend,
 ) -> Result<Value, String> {
-    local.call(args_for(target)?).await
+    local.call(args_for(target)).await
 }
 
 /// 本机后端**可达表登记**那条命令（与 `src/backend/stream/inbound/mod.rs::REGISTRY` 同名，判据现抠对拍）。
@@ -85,7 +84,7 @@ const REACH_BUDGET: Duration = Duration::from_secs(10);
 
 /// 把「怎么够到那台」登记进本机后端的可达表（本机后端太旧不认 ⇒ 报，调用方只记一行 warn）。
 async fn register_reach(cfg: &crate::stream_source::RemoteConfig) -> Result<(), String> {
-    let args = args_for(cfg)?;
+    let args = args_for(cfg);
     let client = crate::dial_host::local_backend_accepting(REACH_CMD).await?;
     client
         .call(REACH_CMD, args, REACH_BUDGET)

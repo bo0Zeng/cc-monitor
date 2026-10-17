@@ -130,6 +130,37 @@ fn a_foreign_local_backend_is_judged_by_build_order() {
     );
 }
 
+/// 起本机后端被拒（口上有东西、接不上）：下一步那一句跟着本机那一台的成品走，直到再起一次把它清掉；接上了不说。
+#[test]
+fn a_refused_local_start_carries_the_next_step() {
+    let _g = crate::inbound_client::local_origin_test_lock();
+    note_local_foreign(None);
+    note_local_refused(Some("停掉那个进程再重开"));
+    let p = local_product(false, Some("p8c-mine"));
+    assert_eq!(
+        (p.state, p.next.as_deref()),
+        (MachineStateKind::Down, Some("停掉那个进程再重开"))
+    );
+    note_local_foreign(Some("p7a-old"));
+    assert_eq!(
+        local_product(false, Some("p8c-mine")).next.as_deref(),
+        Some("停掉那个进程再重开"),
+        "口上是旧版那一形（要更新）也带着"
+    );
+    note_local_foreign(None);
+    assert_eq!(
+        local_product(true, Some("p8c-mine")).next,
+        None,
+        "接上了就不说"
+    );
+    note_local_refused(None);
+    assert_eq!(local_product(false, Some("p8c-mine")).next, None);
+    let o = fresh("远端无下一步");
+    dial_failed(&o, Some("auth"), None, &said("拨号没成"));
+    down(&o);
+    assert_eq!(product(&o, true).next, None, "远端那几台不带");
+}
+
 #[test]
 fn the_version_relation_decides_up_needs_update_newer() {
     for (rel, want, fixes) in [
@@ -220,14 +251,23 @@ fn the_product_matches_the_cross_language_golden() {
             "本机没连上" => {
                 let _g = crate::inbound_client::local_origin_test_lock();
                 note_local_foreign(None);
+                note_local_refused(None);
                 return local_product(false, Some("p7z"));
+            }
+            "本机被拒" => {
+                let _g = crate::inbound_client::local_origin_test_lock();
+                note_local_foreign(None);
+                note_local_refused(Some("结束口上那个进程再重开（结构夹具）"));
+                let p = local_product(false, Some("p7z"));
+                note_local_refused(None);
+                return p;
             }
             other => panic!("金样里多了一形：{other}"),
         }
         product(&o, name != "停用")
     };
     let cases = golden["cases"].as_array().expect("金样没有 cases");
-    assert_eq!(cases.len(), 14, "金样的形数变了 —— 两侧一起改");
+    assert_eq!(cases.len(), 15, "金样的形数变了 —— 两侧一起改");
     for c in cases {
         let name = c["name"].as_str().unwrap();
         // 金样里产品版本号写成占位 `<ver>`（发版会改它，金样不跟着改）。

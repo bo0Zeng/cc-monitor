@@ -2,6 +2,6 @@
 import type { Words } from "./Words";
 
 /**
- * `rotation-view` 里一个号的号牌：号色（`--acct-c0..c7` 第几格，同 `accounts-list` 那一格）· 号名（人眼里叫什么，同额度那几处）。
+ * 一个号的号牌：号色（`--acct-c0..c7` 第几格，同 `accounts-list` 那一格）· 号名（人眼里叫什么，同额度那几处）· 号牌字（同 `accounts-list` 那一格）。
  */
-export type RotPlate = { color: number, label: Words, };
+export type RotPlate = { color: number, label: Words, text: Words, };

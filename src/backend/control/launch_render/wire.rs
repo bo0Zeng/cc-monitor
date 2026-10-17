@@ -2,9 +2,6 @@
 //!
 //! 渲不出来是拒（码 `refused` ＋ 理由）：起会话只有这一条路，没有别的路可换。
 
-use super::ccm_invocation::{
-    ccm_argv, render_ccm_invocation, Action, CliAccount, CliSpec, Container,
-};
 use crate::control::launch_account::{self as la, AccountAsk, Settled};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
@@ -39,15 +36,9 @@ pub struct CliRenderRequest {
 }
 
 impl CliRenderRequest {
-    /// 填上不上线的那三格：启动命令 · 模型表照这台的偏好，默认启动器问适配层（认不出那一家 ⇒ 空，渲的时候照拒）。
-    ///
-    /// 〔继承表〕启动命令 · 模型那一格（照这台，不随主会话）。
+    /// 填上不上线的那三格：启动命令 · 模型表照这台的偏好，默认启动器问适配层（[`super::Launch::launchers`]）。
     pub(crate) fn with_prefs(mut self, prefs: &crate::control::machine_prefs::Prefs) -> Self {
-        self.default_launcher =
-            crate::agents::launch_face_among(crate::agents::REGISTRY, &self.agent)
-                .map_or("", |f| f.default_launcher)
-                .to_string();
-        self.launcher = prefs.launcher_for(&self.agent, &self.default_launcher);
+        (self.launcher, self.default_launcher) = super::Launch::launchers(&self.agent, prefs);
         self.models = prefs.models.clone();
         self
     }
@@ -89,12 +80,7 @@ pub(crate) fn render_ccm_launch(
     req: &CliRenderRequest,
     account: &Settled,
 ) -> Result<String, String> {
-    let caps: BTreeSet<String> = crate::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
-        .into_iter()
-        .map(str::to_string)
-        .collect();
-    let entry = own_entry()?;
-    render_ccm_launch_with(req, account, &caps, &entry)
+    render_ccm_launch_with(req, account, &super::own_caps(), &own_entry()?)
 }
 
 /// 这台 `ccm` 的入口（绝对路径）：那一行直接叫它 —— 远端交互 shell 的 `PATH` 上未必有 `ccm`（没装接入块就没有）。
@@ -110,67 +96,35 @@ pub(crate) fn render_ccm_launch_with(
     caps: &BTreeSet<String>,
     ccm_path: &str,
 ) -> Result<String, String> {
-    with_spec(req, account, false, ccm_path, |spec| {
-        render_ccm_invocation(spec, caps)
-    })
-    .map_err(|r| r.reason())
-}
-
-/// 同一行的 argv 形；`detach` ⇒ 建进 tmux 之后不接进去（这台后端替人在 tmux 里起会话时用 —— 与界面那一行同一份映射、同一个渲染器）。
-pub(crate) fn ccm_launch_argv(
-    req: &CliRenderRequest,
-    account: &Settled,
-    caps: &BTreeSet<String>,
-    ccm_path: &str,
-    detach: bool,
-) -> Result<Vec<String>, String> {
-    with_spec(req, account, detach, ccm_path, |spec| ccm_argv(spec, caps)).map_err(|r| r.reason())
-}
-
-/// 上线入参 ＋ 判好的号 ⇒ 渲染器那份 spec（唯一的映射）。
-fn with_spec<T>(
-    req: &CliRenderRequest,
-    account: &Settled,
-    detach: bool,
-    ccm_path: &str,
-    f: impl FnOnce(&CliSpec) -> Result<T, super::ccm_invocation::Refusal>,
-) -> Result<T, super::ccm_invocation::Refusal> {
-    let action = match &req.action {
-        WireAction::New => Action::New,
-        WireAction::Resume { sid } => Action::Resume { sid },
-        WireAction::Attach { name } => Action::Attach { name },
-    };
-    let container = match &req.container {
-        WireContainer::None => Container::None,
-        WireContainer::Tmux { name, send_into } => Container::Tmux {
-            name,
-            send_into: *send_into,
-        },
-    };
-    // 远端是 ssh 过去，那台的继承态不是 monitor 的环境 ⇒ 不表态也落账号 0。
-    let (account, picked_model) = match account {
-        Settled::Base | Settled::Unsaid => (CliAccount::Base, None),
-        Settled::Account(a) => (
-            CliAccount::Named {
-                name: a.name.as_str(),
-            },
-            a.model.as_deref(),
-        ),
-    };
-    let args: Vec<&str> = req.preset_args.iter().map(String::as_str).collect();
-    let spec = CliSpec {
-        agent: &req.agent,
-        action,
-        container,
-        cwd: req.cwd.as_deref(),
+    super::line_of(
+        &launch_of(req),
         account,
-        ccm_sid: req.ccm_sid.as_deref(),
-        model: req.model.as_deref().or(picked_model),
-        launcher: &req.launcher,
-        default_launcher: &req.default_launcher,
-        args: &args,
+        super::Here::Remote,
+        caps,
         ccm_path,
-        detach,
+    )
+}
+
+/// 上线入参 ⇒ [`super::Launch`]。
+fn launch_of(req: &CliRenderRequest) -> super::Launch {
+    let (tmux, send_into) = match &req.container {
+        WireContainer::None => (None, false),
+        WireContainer::Tmux { name, send_into } => (Some(name.clone()), *send_into),
     };
-    f(&spec)
+    super::Launch {
+        agent: req.agent.clone(),
+        act: match &req.action {
+            WireAction::New => super::Act::New,
+            WireAction::Resume { sid } => super::Act::Resume(sid.clone()),
+            WireAction::Attach { name } => super::Act::Attach(name.clone()),
+        },
+        tmux,
+        send_into,
+        cwd: req.cwd.clone(),
+        ccm_sid: req.ccm_sid.clone(),
+        model: req.model.clone(),
+        launcher: req.launcher.clone(),
+        default_launcher: req.default_launcher.clone(),
+        preset_args: req.preset_args.clone(),
+    }
 }

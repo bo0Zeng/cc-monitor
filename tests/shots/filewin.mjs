@@ -51,6 +51,10 @@ export const FILEWIN_SCENES = [
   { id: "filewin-batch-end", scene: "batch-end", title: "文件窗口 · 结局行两颗", desc: "「进度」表：上传一摞停了 ⇒［继续］（没传的那几项再开单，续传先对尾块）· 复制到另一台部分失败 ⇒［重试失败的］（只重没成的那一项，另一张票）；状态栏「已选 3 项 · 大小」（都是文件才写大小）" },
   { id: "filewin-batch-done", scene: "batch-done", title: "文件窗口 · 一组全成", desc: "一组复制全成 ⇒ 右下角回执「已复制 2 项 → ~/work/b」（后端那一行原样）；「进度」表收着" },
   { id: "filewin-batch-each", scene: "batch-each", title: "文件窗口 · 同名冲突框 · 逐项选", desc: "逐项选展开：每行一个三段（跳过｜保留两份｜覆盖；目录只给前两段）·［取消］［确定］" },
+  { id: "filewin-big-preview", scene: "big-preview", title: "文件窗口 · 预览 · 文本太大", desc: "notes.txt 换成 300 K：预览那一栏摆后端那道预览门写好的那一句（预览上限 64 K · 可点「编辑」打开），不读" },
+  { id: "filewin-big-image", scene: "big-image", title: "文件窗口 · 预览 · 图太大", desc: "logo.png 换成 6 M：预览那一栏摆后端那一句（超过图片预览上限 4 M · 不预览 · 可下载），头上照样给「查看」「下载」" },
+  { id: "filewin-big-edit", scene: "big-edit", title: "文件窗口 · 编辑 · 超编辑上限", desc: "notes.txt 换成 9 M、回车编辑：编辑页正中摆后端那道编辑门写好的那一句（多多少字节 · 不截断），没发读" },
+  { id: "filewin-big-view", scene: "big-view", title: "文件窗口 · 查看页 · 图太大", desc: "docs 里 architecture.png 换成 40 M、查看：画面正中摆后端那道查看门写好的那一句（超过查看上限 32 M · 可下载），没读" },
 ].map((s) => ({ dir: "文件窗口", width: 1280, height: 800, ...s }));
 
 export async function shootFilewin({ repo, sandbox, out, scenes, env, buildEnv, children }) {

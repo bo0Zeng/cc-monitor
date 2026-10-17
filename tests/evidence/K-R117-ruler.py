@@ -119,17 +119,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     #   「`ccm` 就是后端的 CLI 入口 …… ⇒ 装 ccm 与装后端是同一个动作」）。MC1 之后那三条命令装 / 卸 / 预览的是
     #   **别名块**（`install_remote_alias_block` · `aliases_block_*`），入口那一半并进了「部署后端」按钮 ⇒ 按
     #   改名改归 ②，住下面 ② 那一段。
-    # 🔴 `K-R135`（`R85`/`R87`/`R88`）：用户级 PATH 那一格（现在状态 · 加 · 撤）。
-    # 归 ① 而不是 ②：② 是「生成 rc 片段**让用户自己填**」，而这一格是**用户点一下、产品就执行**
-    # （`R85` 逐字「应该让用户手动点击加，也能管理删除」）。它是「装 ccm」这件事的**后半** ——
-    # 二进制放下去了却敲不到等于没装（`K-R129`/`K-R132` 那条已发版缺陷就是这一形）
-    # ⇒ 与 `ccm.install`（已改名 `alias.block-install` 挪去 ②）是同一颗按钮的两半。⚠ 同族的 `ccm.install-ui` 当时在 ① 里，
-    # 而它的理由逐字写着「装 ccm 之前的预览 / **扫 PATH**」—— PATH 这件事本来就归 ①。
-    ("ccm.user-path", (B1, "R85+R87+R88",
-                       "把我们那个 bin 目录放上**用户级** PATH，让三种终端都敲得到 `ccm`；"
-                       "POSIX 那一侧的同一件事是写进 rc 的那个围栏块")),
-    ("ccm.status", (B1, "R64+K26+K-R111",
-                    "查装态（`K-R111`：该挪进安装面）")),
+    # `ccm.user-path` 摘了：用户级 PATH 那一格进了那台后端（`ccm-user-path`），界面经通道问，不再是 Tauri 命令。
+    # `ccm.status` 摘了：终端里敲 `ccm` 走到哪那一格进了那台后端（`ccm-probe` 的 `onPath`），界面经通道直问，不再是 Tauri 命令。
     # 🔴 这张归档表的四个能力 id 跟着账本改了：
     #   `daemon.deploy` · `app.daemon-policy` · `daemon.lifecycle` · `daemon.status`
     #   → `backend.*`。判据自己红的时候说「**别改表去凑**」，核法照它给的两条：
@@ -148,8 +139,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     #   （帧命令 `mcp-server-put` / `-remove` · `mcp-sync-*`，界面经通道直问）⇒ 它们不再是 Tauri 命令、不在 `LEDGER` 里
     #   （归档表留一个不存在的 id 会让 `R3b` 恒红）。「装 MCP」那一件的装口住 `tool_registry` 的 `project-mcp` 那一行（后端写口）。
     # `skill.install` 摘了（理由同上：装 / 卸进了被写那台后端，不再是 Tauri 命令）。装口住 `tool_registry` 的 `skill-install` 那一行。
-    ("cc-bus.deploy", (B3, "K34",
-                       "落点是 `<claude_dir>/skills/cc-bus/` ⇒ 属「装 skill」，不属「装后端」")),
+    # `cc-bus.deploy` 摘了：装前那道本机 `ccm` 预检删了（`cc-spawn` 先找 cc-monitor 放的那份后端，PATH 上那份由别名页那一格说）。
     # `cc-bus.install-state` 摘了：三态进了本机后端（`cc-bus-install-state`），不再是 Tauri 命令。
     # `skill.inbox` 摘了：收件箱那一面进了那台后端（`skill-host-*`），不再是 Tauri 命令。
     # ─────────────────────────── 非装面 ───────────────────────────
@@ -244,11 +234,8 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         # 能力 id 改成 `alias.block-*`、归档挪到 ②；切件分组（S2）是「那条命令住哪个改动范围」的历史读数，不随归档改。
         #   本条红时逐字「别改表去凑」—— 核过了，是「有人改了命令名」那一种，改表是跟上真相。
         # `aliases_block_*` 三条摘了（别名块进了那台后端，`aliases-block-*`）。
-        "ccm_user_path_add",
-        "ccm_user_path_remove",
-        "ccm_user_path_status",
-        "local_ccm_entry_status",
-        # 远端那台装没装 ccm 由那台后端渲染时自己现查（`launch_render/wire.rs::render_ccm_launch`）；本机那一格是 `local_ccm_entry_status`。
+        # `ccm_user_path_*` 三条摘了（用户级 PATH 那一格进了那台后端，`ccm-user-path`）⇒ 本组今天零条。
+        # `local_ccm_entry_status` 摘了：那一格进了那台后端（`ccm-probe`），界面经通道直问。
     ), "§3-3 第二行：后端改动范围 `lib.rs`（`cc_integration_*` ＋ `ccm_user_path_*`）· `ccm_probe.rs`，"
        "收 10 条 = `lib.rs` 里五条 `cc_integration_*` ＋ **三条 `ccm_user_path_*`** ＋ `ccm_probe.rs` 里两条。"
        "⚠ 限定词承重：`lib.rs` 里还住着 `aliases_*` 三条，那几条归 S4。"
@@ -289,9 +276,7 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         #   一个字节没动 —— 它照样在两个方向上有牙（表指了盘上没有的命令 ⇒ 红；
         #   盘上多一条谁都没认领的命令 ⇒ 红）。动的只是这张**人的判断表**里的成员，
         #   因为它描述的那个现实变了。
-        # 装 · 三态 · 记账在本机后端（`cc-bus-install` / `-state`）；这里只有装前那道本机 `ccm` 预检
-        #   （归 `cc-bus.deploy`，调用点在 `cc-bus-section.ts`）。
-        "cc_bus_ccm_precheck",
+        # 装 · 三态 · 记账在本机后端（`cc-bus-install` / `-state`）；装前那道本机 `ccm` 预检删了。
         # MCP 推 / 拉两条与单条写 / 删两条摘了：进了那台后端（界面经通道直问），不再是 Tauri 命令。
         # skill 装 / 卸三条摘了：进了被写那台后端（界面经通道直问），不再是 Tauri 命令。
     ), "§3-3 第五行：件 = ③，收「7 条 ＋ 2 处写盘落点」。"
@@ -325,19 +310,10 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "S1 收完远端半时改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S1']`（`K-R131` 09-15：这一栏从前逐字写着"
             "「目标：空」，与 `FRONTEND_GOAL_PER_GROUP = 1` 同份输出里打架）")),
-    ("S2", (("src/frontend/ui/settings/machine-aliases.ts",),
-            "**2 → 1**：`src/ccm-probe.ts` 删了（远端探测住进那台后端）。"
-            "**3 → 2**：`src/frontend/ui/settings/cc_integration.ts` 并进了 "
-            "`src/frontend/ui/settings/machine-aliases.ts`（界面合成一份，终端集成成了 PowerShell 那一侧的别名块），"
-            "它那几处 `cc_integration_*` 调用换到同一份文件里 ⇒ 落点少一份。"
-            "量于 09-15 · 同上。`src/frontend/ui/launcher-diagnostics.ts` → "
-            "`src/frontend/ui/settings/machine-aliases.ts`：本机别名块的装 / 卸 / 扫（`cc_integration_*`）· "
-            "`local_ccm_entry_status` · 用户级 PATH 那三条（`ccm_user_path_*`）整块搬去了机器页「别名」。"
-            "**份数没变（3 → 3），是换了一份**：`launcher-diagnostics.ts` 今天一条 S2 调用都没有了",
-            "S2 收完本机半时改这一行。**目标不在这一栏** —— 住 "
-            "`FRONTEND_GOAL_PER_ITEM['S2']`。"
-            "⚠ `src/frontend/ui/settings/panel.ts` **不在**这张名单里：它今天只在一句注释里提到 "
-            "终端集成那几条，不是调用点（见 `§S5d` 第二档）")),
+    ("S2", ((),
+            "**1 → 0**：用户级 PATH 那三条（`ccm_user_path_*`）进了那台后端（`ccm-user-path`），"
+            "`src/frontend/ui/settings/machine-aliases.ts` 经通道问 ⇒ S2 这一组没有 Tauri 命令了",
+            "S2 时改这一行。**目标不在这一栏** —— 住 `FRONTEND_GOAL_PER_ITEM['S2']`。")),
     ("S3", ((),
             "**1 → 0**：`src/frontend/ui/settings/accounts-section.ts` 那一处（一键部署账号库）改经通道问那台后端 `acct-iso-install`，"
             "S3 这一组没有 Tauri 命令了。量于 09-15 · 同上",
@@ -353,9 +329,8 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "`src/frontend/ui/settings/machine-aliases.ts`（别名管理器并进机器页），份数不变",
             "S4 时改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S4']`")),
-    ("S5", (("src/frontend/ui/settings/ext-section.ts",),
-            "份数不变、换了住处：cc-bus 的装口从驾驶舱（`src/frontend/ui/settings/cc-bus-section.ts`）搬进扩展页（③ 那一处），"
-            "装完那一句本机 `ccm` 够不够新（`cc_bus_ccm_precheck`）跟着过去。"
+    ("S5", ((),
+            "**1 → 0**：`src/frontend/ui/settings/ext-section.ts` 那一处（装完 cc-bus 问本机 `ccm` 够不够新）删了。"
             "**2 → 1**：`src/frontend/ui/views/inbox-view.ts`（收件箱写）改经通道问那台后端。"
             "量于 09-15 · 同上。**3 → 2**：`src/frontend/ui/settings/mcp-section.ts` 那几处（MCP 写 / 推拉 · skill 装卸）"
             "改经通道问那台后端，不再调 S5 的 Tauri 命令",

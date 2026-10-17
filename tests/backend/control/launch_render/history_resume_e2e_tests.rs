@@ -3,7 +3,7 @@
 //! 一个隔离的家目录里放一份合成的 Claude 记录与一份合成的 Codex 记录（只有结构，文字是编的），`PATH` 上只有两个假启动器
 //! （`claude` · `codex`：把自己叫什么、收到什么参数、账号变量在不在写进一个文件就退）。子进程里走生产那一整条：
 //! 历史清单（`history_list::machine_listing`，那一行带 `agent`）→ 界面那一问的入参（`launch-local`，`agent` 取那一行的）→ 本机那一行 `ccm …`
-//! （`local::plan_argv`）→ `ccm` 自己（`control::ccm::run`，exec 掉子进程）→ 假启动器。
+//! （`local::plan`，照终端那样切回词）→ `ccm` 自己（`control::ccm::run`，exec 掉子进程）→ 假启动器。
 //! Codex 那一行 ⇒ `codex --no-daemon resume <sid>`；Claude 那一行 ⇒ `claude --resume <sid>`。两行都不带账号变量。
 //! 买不到：界面里点那一下（GUI）· 真 codex / 真 claude · tmux 那一形（直路那一形就是 pane 里最终跑的那一趟）。
 
@@ -152,13 +152,14 @@ fn history_resume_child_entry_point() {
         is_dir: |_| true,
         entry: || Some("ccm".into()),
     };
-    let argv = super::local::plan_argv(
+    // 终端里敲的就是 `launch-local` 渲出来的那一行：照 POSIX 引号切回词，交给 ccm。
+    let line = super::local::plan(
         &req,
         &crate::control::launch_account::Settled::Unsaid,
         &facts,
-        false,
     )
     .expect("渲得出那一行");
+    let argv = crate::platform::shell::dialect::Posix::split_words(&line).expect("那一行切得回词");
     eprintln!("ccm 那一行：{argv:?}");
     let code = crate::control::ccm::run(
         &argv[1..],

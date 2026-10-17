@@ -22,4 +22,20 @@ class KeyCapTest {
         assertNull("字符不在头上不算", keyCapIcon(":w⏎"))
         assertNull(keyCapIcon("↑↑"))
     }
+
+    @Test
+    fun storedIconNamesAreThePhosphorNames() {
+        assertEquals(Ph.ArrowUp, keyIcon("arrow-up"))
+        assertEquals(Ph.ArrowElbowDownLeft, keyIcon("arrow-elbow-down-left"))
+        assertEquals(Ph.FloppyDisk, keyIcon("floppy-disk"))
+        assertNull("不在可选那一份里的名字当没选", keyIcon("arrow-fat-up"))
+        assertNull(keyIcon("ArrowUp"))
+        assertNull(keyIcon(null))
+    }
+
+    @Test
+    fun everyPickableIconRoundTripsByName() {
+        assertEquals(KEY_ICONS, KEY_ICONS.map { keyIcon(it.iconName()) })
+        assertEquals("可选的不许重复", KEY_ICONS.size, KEY_ICONS.toSet().size)
+    }
 }

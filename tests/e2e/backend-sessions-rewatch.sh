@@ -128,9 +128,10 @@ _proj_recreate() {
   # ← 换 inode：等它看见目录没了、再建回来等它重新挂上，之后写的两行走新 inode 上的事件。
   rm -rf -- "$F/projects"; said "$W/projre.err" "目录消失了 $F/projects"
   mkdir -p "$F/projects/p"; said "$W/projre.err" "已（重新）挂上 watch: $F/projects" 2
-  printf '{"type":"user","sessionId":"%s","message":{"role":"user","content":"一"}}\n' "$sid" \
+  # 新 inode 上那份与旧的开头不同：开头相同的话后端照见证当作同一份接着读（只发新长出来的那行），数不出「两行都来了」。
+  printf '{"type":"user","sessionId":"%s","message":{"role":"user","content":"三"}}\n' "$sid" \
     > "$F/projects/p/$sid.jsonl"
-  printf '{"type":"user","sessionId":"%s","message":{"role":"user","content":"二"}}\n' "$sid" \
+  printf '{"type":"user","sessionId":"%s","message":{"role":"user","content":"四"}}\n' "$sid" \
     >> "$F/projects/p/$sid.jsonl"
   said "$out" '"kind":"line"' 2
   kill "$dp" "$vpid" 2>/dev/null; wait "$dp" 2>/dev/null

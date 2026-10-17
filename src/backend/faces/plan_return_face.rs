@@ -166,7 +166,11 @@ fn give_back(
         use crate::faces::session_say_face as say;
         let req: say::SessionSayReq =
             serde_json::from_value(a.clone()).map_err(|e| bad(&e.to_string()))?;
-        let again = |r: &say::SessionSayReq| resume.then(|| say::resume_here(r, files)).flatten();
+        let again = |r: &say::SessionSayReq| {
+            resume
+                .then(|| say::resume_here(&r.sid, r.client.as_deref(), Some(&r.text), files))
+                .flatten()
+        };
         say::say_with(&req, &waiting, &crate::control::terminals_wire::say, &again)
             .and_then(|sent| crate::wire::spec::wire(&sent))
     };

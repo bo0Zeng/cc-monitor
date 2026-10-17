@@ -38,6 +38,7 @@ import com.ccmonitor.mobile.core.data.db.autoCap
 import com.ccmonitor.mobile.core.data.db.isModifiedDefault
 import com.ccmonitor.mobile.core.data.db.modName
 import com.ccmonitor.mobile.core.data.repo.SettingsRepository
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.IconTextButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
@@ -47,6 +48,7 @@ import com.ccmonitor.mobile.ui.nav.settingsGroupScreenInsets
 import com.ccmonitor.mobile.ui.session.GestureSpec
 import com.ccmonitor.mobile.ui.session.SystemTimings
 import com.ccmonitor.mobile.ui.session.gestureSpec
+import com.ccmonitor.mobile.ui.session.keyIcon
 
 /** 编辑一颗上叠着的那一个抽屉。 */
 private sealed interface Sheet {
@@ -60,13 +62,15 @@ private sealed interface Sheet {
 
     data object Group : Sheet
 
+    data object Icon : Sheet
+
     data class Duration(
         val double: Boolean,
     ) : Sheet
 }
 
 /**
- * 编辑一颗：键帽（不填照单击自动写）· 所在组 · 单击 · 双击 · 长按（各一个三段分段按钮）· 更多（这颗的两个时长）·
+ * 编辑一颗：键帽（另写字或另选图标，都不填照单击自动写）· 所在组 · 单击 · 双击 · 长按（各一个三段分段按钮）· 更多（这颗的两个时长）·
  * 底部「还原默认」（默认按键改过的才有）·「删除按键」。修饰键只有所在组和三行固定的意思。保存在顶栏右边。
  */
 @Composable
@@ -118,11 +122,20 @@ private fun EditBody(
     val mod = d.modifier
     if (mod == null) {
         SectionLabel(copyText("mobKeys.edit.cap"))
+        // 另写字或另选图标，二选一；都没有 ＝ 照单击自动写（占位字说会写成什么）。
+        val icon = keyIcon(d.icon)
         OutlinedTextField(
             value = d.label,
-            onValueChange = { onDraft(d.copy(label = it)) },
+            onValueChange = { onDraft(d.withLabel(it)) },
             singleLine = true,
-            placeholder = { Text(copyText("mobKeys.edit.capAuto", "x" to (tapCap ?: copyText("mobKeys.edit.capFollow")))) },
+            placeholder =
+                if (icon == null) {
+                    { Text(copyText("mobKeys.edit.capAuto", "x" to (tapCap ?: copyText("mobKeys.edit.capFollow")))) }
+                } else {
+                    null
+                },
+            leadingIcon = icon?.let { { PhIcon(it, contentDescription = d.icon, size = Touch.iconInline) } },
+            trailingIcon = { SecondaryButton(onClick = { onSheet(Sheet.Icon) }) { Text(copyText("mobKeys.edit.capIcon")) } },
             modifier = Modifier.fillMaxWidth(),
         )
     }
@@ -152,7 +165,7 @@ private fun EditBody(
     }
 }
 
-/** 编辑一颗上的抽屉：录入 · 选 App 动作 · 选组 · 这颗的时长。 */
+/** 编辑一颗上的抽屉：录入 · 选 App 动作 · 选组 · 选键帽图标 · 这颗的时长。 */
 @Composable
 private fun EditSheet(
     sheet: Sheet?,
@@ -178,30 +191,45 @@ private fun EditSheet(
                 onDraft(d.copy(groupId = it))
                 onDone()
             }, onDismiss = onDone)
-        is Sheet.Duration -> {
-            val system = if (sheet.double) ViewConfiguration.getDoubleTapTimeout() else ViewConfiguration.getLongPressTimeout()
-            val total = if (sheet.double) state.doubleTapMs else state.longPressMs
-            DurationSheet(
-                title = if (sheet.double) copyText("mobKeys.dur.double") else copyText("mobKeys.dur.long"),
-                sub =
-                    d.label.ifBlank {
-                        d.tap.binding
-                            ?.let { autoCap(it, state::groupName) }
-                            .orEmpty()
-                    },
-                single = true,
-                own = if (sheet.double) d.doubleTapMs else d.longPressMs,
-                following = total ?: system,
-                system = system,
-                range = if (sheet.double) SettingsRepository.DOUBLE_TAP_MS_RANGE else SettingsRepository.LONG_PRESS_MS_RANGE,
-                onSave = { ms ->
-                    onDraft(if (sheet.double) d.copy(doubleTapMs = ms) else d.copy(longPressMs = ms))
-                    onDone()
-                },
-                onDismiss = onDone,
-            )
-        }
+        Sheet.Icon ->
+            IconPickSheet(d.icon, onPick = {
+                onDraft(d.withIcon(it))
+                onDone()
+            }, onDismiss = onDone)
+        is Sheet.Duration -> OneKeyDurationSheet(sheet.double, d, state, onDraft, onDone)
     }
+}
+
+/** 这一颗另设的时长（双击判定 · 长按）。 */
+@Composable
+private fun OneKeyDurationSheet(
+    double: Boolean,
+    d: KeyDraft,
+    state: KeysState,
+    onDraft: (KeyDraft) -> Unit,
+    onDone: () -> Unit,
+) {
+    val system = if (double) ViewConfiguration.getDoubleTapTimeout() else ViewConfiguration.getLongPressTimeout()
+    val total = if (double) state.doubleTapMs else state.longPressMs
+    DurationSheet(
+        title = if (double) copyText("mobKeys.dur.double") else copyText("mobKeys.dur.long"),
+        sub =
+            d.label.ifBlank {
+                d.tap.binding
+                    ?.let { autoCap(it, state::groupName) }
+                    .orEmpty()
+            },
+        single = true,
+        own = if (double) d.doubleTapMs else d.longPressMs,
+        following = total ?: system,
+        system = system,
+        range = if (double) SettingsRepository.DOUBLE_TAP_MS_RANGE else SettingsRepository.LONG_PRESS_MS_RANGE,
+        onSave = { ms ->
+            onDraft(if (double) d.copy(doubleTapMs = ms) else d.copy(longPressMs = ms))
+            onDone()
+        },
+        onDismiss = onDone,
+    )
 }
 
 internal fun triggerName(t: Trigger): String =

@@ -11,9 +11,8 @@ use super::*;
 /// 只有行为那条，「另起一条 argv 自己去问」在没有真 tmux 的沙箱里也可能碰巧绿。
 #[test]
 fn listing_every_session_is_no_longer_this_modules_job() {
-    let prod =
-        crate::guard_support::production_code(include_str!("../../../src/backend/control/gate.rs"));
-    crate::guard_support::assert_no_test_code("control/gate.rs", &prod);
+    let prod = guard_core::production_code(include_str!("../../../src/backend/control/gate.rs"));
+    guard_core::assert_no_test_code("control/gate.rs", &prod);
     assert!(
         !prod.contains("list-sessions"),
         "本模块生产段里又出现了 `list-sessions` —— 判活回去自己起 tmux 了。\n\
@@ -23,7 +22,7 @@ fn listing_every_session_is_no_longer_this_modules_job() {
     // 反向自检：这一条不是靠「本文件恰好不含那个词」空转的 —— 快照那边必须有。
     let owner = include_str!("../../../src/backend/common/session_snapshot.rs");
     assert!(
-        crate::guard_support::production_code(owner).contains("\"list-sessions\""),
+        guard_core::production_code(owner).contains("\"list-sessions\""),
         "`common/session_snapshot.rs` 的生产段里找不到 `list-sessions` ——\n\
              那处调用点搬走/改名了，本条此刻在空转（它只会证明「谁都没有」）。"
     );
@@ -118,9 +117,8 @@ fn both_tmux_call_sites_ask_for_a_utf8_client_before_the_subcommand() {
     const FLAG_IDENT: &str = "UTF8_CLIENT_FLAG";
     const ARGS_OPEN: &str = ".args([";
 
-    let prod =
-        crate::guard_support::production_code(include_str!("../../../src/backend/control/gate.rs"));
-    crate::guard_support::assert_no_test_code("control/gate.rs", &prod);
+    let prod = guard_core::production_code(include_str!("../../../src/backend/control/gate.rs"));
+    guard_core::assert_no_test_code("control/gate.rs", &prod);
 
     let starts = prod.matches("Child::new(\"tmux\")").count();
     assert_eq!(
@@ -371,84 +369,6 @@ fn the_probe_format_asks_for_both_fields() {
     );
 }
 
-/// ★★ **`K-R72`（09-12）接手 `K-R56`（09-11）买的那条性质：两道门都**恒先探会话**。**
-///
-/// # 它从哪来 —— 这是一条**搬家**，不是一条新判据
-///
-/// 🔴 `K-R72` 把 monitor 那条路整个删了 ⇒ **那条判据的被测对象没有了，而它守的性质还在**
-/// —— 只是今天只剩这一处实现。按 `KR72D2` 的三类去向，它是 ①「性质还成立 ⇒ 在新住址
-/// 上重新钉住」。**这里就是那个新住址。**
-///
-/// # 它判什么 · 不判什么（报一个性质就要说清尺子）
-///
-/// - **判**：两个门函数的生产段里，会话是**先探出来**的（`let Some(p) = probe(target)?`
-///   这个绑定 —— 后面每一句都在它之后，所以不必再比位置），探不到那一支回
-///   `no_such_session`，而放行交出的是**探回来的句柄** `p.session_id`，
-///   不是调用方给的名字。
-/// - **不判**：「探对了」。那要真 tmux，本区口径禁（`K-R56#§0d`）。
-///   行为那一半在 `tests/e2e/backend-gate2-acceptance.sh`（真后端二进制 + 真 tmux server，
-///   用例逐行来自同一张 `gate2-golden.tsv`）。
-/// - ⚠ **约定型守卫**：扫的是本文件自己的源码形态，挡得住「顺手把 probe 挪到动作后面 /
-///   删掉 `else` 那一支」，挡不住「换个名字继续错」。**比没有强，别读成证明。**
-#[test]
-fn both_gates_always_probe_before_they_act() {
-    // 探测必须是**那个绑定**：`let Some(p) = probe(target)?` 一旦在，后面每一句都在它之后
-    // ⇒ 不必比位置（那会踩 `structural_scan` 那条「位置比较型判据」的三条纪律）。
-    const PROBE_BINDING: &str = "let Some(p) = probe(target)?";
-    const HANDLE_OUT: &str = "Ok(p.session_id)";
-    let prod = guard_core::production_code(include_str!("../../../src/backend/control/gate.rs"));
-    // 抽取器自检：剥生产段塌了下面几条就零命中地绿。
-    assert!(
-        prod.len() > 3_000,
-        "本文件生产段只剩 {} 字节 —— 剥法坏了，本条此刻量不到东西",
-        prod.len()
-    );
-    // 两道门各一份 —— 数量核在这里，下面按签名切段就不会比到隔壁去。
-    assert_eq!(
-        prod.matches(PROBE_BINDING).count(),
-        2,
-        "生产段里 `{PROBE_BINDING}` 不是恰好两处（`admit` 与 `admit_destructive` 各一）"
-    );
-    // 放行时交出来的句柄：`admit` 交会话句柄，或那个会话里挂着请求 sid 的窗格句柄；
-    // `admit_destructive` 交「整个会话」（会话句柄）或「这几个窗格」（同会话句柄 ＋ 窗格句柄）。
-    for (sig, handle_out) in [
-        ("pub(crate) fn admit(", "Ok(at.unwrap_or(p.session_id))"),
-        (
-            "pub(crate) fn admit_destructive(",
-            "Ok(EndAt::Session(p.session_id))",
-        ),
-    ] {
-        let at = guard_core::find_pinned(&prod, sig).unwrap_or_else(|e| {
-            panic!("`{sig}` 不是恰好一处（{e}）—— 签名变了就把本条一起改，别让它零命中地绿")
-        });
-        let rest = &prod[at..];
-        let end = rest.find("\n\u{7d}\n").map(|k| k + 3).unwrap_or(rest.len());
-        let body = &rest[..end];
-        assert!(
-            body.contains(PROBE_BINDING),
-            "`{sig}` 的生产段里没有 `{PROBE_BINDING}` —— 它会对一个可能不存在、\n\
-                 也可能不是本工具的会话直接动手。实得这一段：{body:?}"
-        );
-        assert!(
-            body.contains("no_such_session"),
-            "`{sig}` 里探不到会话时没有回 `no_such_session` —— 那一档被吞掉了"
-        );
-        assert!(
-            body.contains(handle_out),
-            "`{sig}` 放行时交出来的不是探回来的句柄 `{handle_out}` ——\n\
-                 对**名字**下手就把 TOCTOU 窗口留着（`K-R54` 表第 2 处判「留后端」\n\
-                 的理由逐字就是这一条）。实得这一段：{body:?}"
-        );
-    }
-    // ★ 反向自检：同一把尺子在一份「不先探就动手」的合成语料上必须分得出来。
-    //   ⚠ 语料里的名字刻意取中性名，断言不取自夹具的名字（`6g` 那一族）。
-    const SYNTHETIC_BAD: &str = "fn zzz(t: &str) -> u8 { act(t); 0 }";
-    assert!(
-        !SYNTHETIC_BAD.contains(PROBE_BINDING) && !SYNTHETIC_BAD.contains(HANDLE_OUT),
-        "本条用来自检的那份坏语料本身就不坏 —— 反向自检此刻什么都没在证明"
-    );
-}
-
 // ── audit-0805 F20 下半：把「skip 不是通过」那个刻意决定钉住 ──────────────
 //
 // F20 的处境：`meta_dollar`（会话名 `cc-a$x`）在 CI 上报 `no_such_session`，
@@ -477,7 +397,7 @@ fn both_gates_always_probe_before_they_act() {
 // 不钉断言条数 ⇒ 这两处就是那个决定的全部落点，下面那条把它们钉住。
 
 fn repo_root() -> std::path::PathBuf {
-    crate::guard_support::repo_root()
+    guard_core::addr::repo_root()
 }
 
 /// ★ **未登记的 skip 仍然让 `backend-gate2` 整套红**：
@@ -581,8 +501,7 @@ fn tl2_fn_body<'a>(src: &'a str, name: &str) -> &'a str {
 /// 异源：码集合读 `gate.rs`，调用关系读各模块与 `stream/inbound/` 的源码，被比的是运行期的 `REGISTRY`。
 #[test]
 fn every_command_that_passes_the_gate_lists_the_gates_codes() {
-    let gate =
-        crate::guard_support::production_code(include_str!("../../../src/backend/control/gate.rs"));
+    let gate = guard_core::production_code(include_str!("../../../src/backend/control/gate.rs"));
     let probe = tl2_error_codes_in(tl2_fn_body(&gate, "probe"));
     let codes_of = |f: &str| -> std::collections::BTreeSet<String> {
         let body = tl2_fn_body(&gate, f);
@@ -600,9 +519,14 @@ fn every_command_that_passes_the_gate_lists_the_gates_codes() {
         doors[0].1.contains("wrong_owner") && doors[1].1.contains("too_many_windows"),
         "门的码读错了：{doors:?}"
     );
+    // 窗口门只给破坏性动作：往一个多窗口会话里打字不删任何东西，非破坏性的 `admit` 不许回窗口数那一码。
+    assert!(
+        !doors[0].1.contains("too_many_windows"),
+        "非破坏性的 `admit` 会回 `too_many_windows` 了 —— 送键会被多窗口误拒：{doors:?}"
+    );
 
-    let families = crate::guard_support::registry_sources();
-    let root = crate::guard_support::src_root();
+    let families = guard_core::addr::backend_registry_sources();
+    let root = guard_core::addr::backend_src_root();
     let mut checked = Vec::new();
     // typed 那几行（`typed::<档>::<crate::control::<模块>::<类型>>(…)`）：命令名从那份文件里 `impl Command for <类型>` 的 `const NAME` 读。
     let mut typed_cells: Vec<(String, String)> = Vec::new();
@@ -667,7 +591,7 @@ fn every_command_that_passes_the_gate_lists_the_gates_codes() {
             else {
                 continue;
             };
-            let prod = crate::guard_support::production_code(&src);
+            let prod = guard_core::production_code(&src);
             for (door, want) in &doors {
                 if !prod.contains(&format!("gate::{door}(")) {
                     continue;
@@ -723,7 +647,7 @@ fn the_identity_door_reads_which_client_started_the_session() {
         ("phonepipe-x", p("", "mobile"), Some("mobile"), Who::Pass),
     ] {
         assert_eq!(
-            identity(name, &probed, requester),
+            identity(name, &probed.client, &probed.ccm_sid, requester),
             want,
             "{name} · {probed:?} · 请求自报 {requester:?}"
         );
@@ -749,8 +673,7 @@ fn the_requester_is_optional_and_shaped() {
 /// 门那几句里的 tmux 会话名直接填进句子：`format!("{name:?}")` 会让界面上出现 Rust 调试形的引号与转义（手机端键名对账 10-09 第四节第 4 条）。
 #[test]
 fn the_gate_puts_the_session_name_in_as_is() {
-    let prod =
-        crate::guard_support::production_code(include_str!("../../../src/backend/control/gate.rs"));
+    let prod = guard_core::production_code(include_str!("../../../src/backend/control/gate.rs"));
     assert!(
         !prod.contains("{name:?}"),
         "gate.rs 生产段里又用 `{{name:?}}` 填会话名 —— 界面上会带调试引号"

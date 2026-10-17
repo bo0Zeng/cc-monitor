@@ -52,8 +52,10 @@ export function applyFacts(tab: Tab, f: SessionFacts): FactsChange {
   const writers = tab.writers.length !== f.writers.length || tab.writers.some((p, i) => p !== f.writers[i]);
   tab.writers = [...f.writers];
 
-  const needs = JSON.stringify(tab.needs) !== JSON.stringify(f.needs);
+  const needs = JSON.stringify(tab.needs) !== JSON.stringify(f.needs) || tab.autoAnswer !== f.autoAnswer || tab.autoAnswered !== f.autoAnswered;
   tab.needs = f.needs;
+  tab.autoAnswer = f.autoAnswer;
+  tab.autoAnswered = f.autoAnswered;
   const peek = JSON.stringify([tab.pending, tab.lastSay, tab.backgroundWork]) !== JSON.stringify([f.pending, f.lastSay, f.background]);
   tab.backgroundWork = f.background;
   tab.pending = f.pending;

@@ -39,7 +39,8 @@ import type { ManualItem } from "./login-reads";
 import type { Origin } from "./ipc/origin";
 import { foldCaret } from "./kit/fold";
 import { fmtDur } from "./duration-format";
-import { abbrOf, dotOf, fullTitle, groupSummary, machineOf, needsOf, needsOrder, nextNeedsStep, peekLine, stateLine, stateWord, titleParts, sinceText } from "./session-face";
+import { abbrOf, dotOf, fullTitle, groupSummary, machineOf, needsOf, nextNeedsStep, peekLine, stateLine, stateWord, titleParts, sinceText } from "./session-face";
+import { orderNeeds } from "./needs-order";
 
 /** TabButton 的 DOM 引用：refreshTabBar 局部更新依赖这些 ref 避免重新创建 button */
 export interface TabButtonRefs {
@@ -122,6 +123,8 @@ export interface TabBarViewHost {
   toggleSelect(sid: string): void;
   /** 栏顶「刷新」：有打开 tab 的每台对齐 ＋ 补读一次；做完才 resolve。 */
   rereadAll(): Promise<void>;
+  /** 「需手动」那几个会话的先后：问后端（各台排好的、跨台本机合；`needs-order.ts::askNeedsOrder`）。 */
+  needsOrder(origins: readonly Origin[]): Promise<string[]>;
   /** 行尾「更多」：开这个 tab 的菜单（锚在那颗按钮上）。 */
   openMenuAt(anchor: HTMLElement, sid: string): void;
   /** 离线条的［重新连接］：那台断着在退避里等 ⇒ 立刻重拨。 */
@@ -275,23 +278,46 @@ export class TabBarView {
 
   /**
    * 计划那一侧的「需手动」（计划页挂进来）：几条 · 此刻站在第几条（计划页开着且选着那一条；否则 `null`）· 去第几条。
-   * 会话在前、计划项在后；计划项的数进「需手动 N」与窗口标题，不发系统通知。
+   * 会话在前、计划项在后；计划项的数进「需手动 N」与窗口标题。
    */
   plan: PlanNeeds = { count: () => 0, at: () => null, open: () => {}, slices: () => [] };
 
   /**
-   * 会话外的「需手动」（宿主挂进来）：每台 `manual-list` 的账 · 点那一行开登录抽屉。条数进「需手动 N」与窗口标题，不进 `Ctrl+J`、不发系统通知。
+   * 会话外的「需手动」（宿主挂进来）：每台 `manual-list` 的账 · 点那一行开登录抽屉。条数进「需手动 N」与窗口标题，不进 `Ctrl+J`。
    */
   manual: { book: ManualBook | null; login: (origin: Origin, item: ManualItem) => void } = { book: null, login: () => {} };
 
-  /** 「需手动」的下一站（`Ctrl+J` · 点「需手动」那一条）：会话在前、计划项在后。没有 ⇒ 什么都不做。 */
-  nextNeeds(): void {
-    const order = needsOrder(this.visibleOrder().map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined), Date.now());
+  /** 「需手动」的下一站（`Ctrl+J` · 点「需手动」那一条）：会话在前（先后先问后端）、计划项在后。没有 ⇒ 什么都不做。 */
+  async nextNeeds(): Promise<void> {
+    const order = await this.rankNeeds();
     const at = this.plan.at();
     const step = nextNeedsStep(order, at === null ? this.store.activeId : null, at, this.plan.count());
     if (step === null) return;
     if ("sid" in step) this.host.answerAt(step.sid);
     else this.plan.open(step.plan);
+  }
+
+  /** 后端上一回排好的「需手动」先后（`Ctrl+J` · 浮层开的那一下重问；问不到 ⇒ 照上一回的）。 */
+  private needsRanked: string[] = [];
+
+  /** 条上在等的那几个，按条上的顺序。 */
+  private needingTabs(): Tab[] {
+    return this.visibleOrder()
+      .map((sid) => this.store.tabs.get(sid))
+      .filter((t): t is Tab => t !== undefined && needsOf(t) !== null);
+  }
+
+  /** 问一回后端那份先后（只问有人在等的那几台），回条上在等的那几个照它排好的。 */
+  private async rankNeeds(): Promise<string[]> {
+    const origins = [...new Set(this.needingTabs().map((t) => t.origin))];
+    if (origins.length > 0) {
+      try {
+        this.needsRanked = await this.host.needsOrder(origins);
+      } catch (e) {
+        console.warn("[needs] 需手动的先后问不到，照上一回的：", e);
+      }
+    }
+    return orderNeeds(this.needingTabs(), this.needsRanked);
   }
 
   /** 此刻「需手动」的数：需要处理的会话 ＋ 计划项 ＋ 会话外的每一项（窗口标题用，与入口同一个数）。 */
@@ -325,6 +351,7 @@ export class TabBarView {
     this.needsEl.classList.add("is-open");
     content.focus();
     void this.manual.book?.again();
+    void this.rankNeeds().then(() => this.repaintNeedsPanel());
   }
 
   /** 浮层那一份内容（`at` ＝ 键盘选着第几行）。 */
@@ -342,7 +369,7 @@ export class TabBarView {
 
   private needsFacts(): PanelFacts {
     const now = Date.now();
-    const sessions = needsOrder(this.visibleOrder().map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined), now).map((sid) => {
+    const sessions = orderNeeds(this.needingTabs(), this.needsRanked).map((sid) => {
       const t = this.store.tabs.get(sid)!;
       return { sid, origin: t.origin, title: fullTitle(t), state: stateLine(t, now).text, what: needsOf(t)?.what ?? null };
     });

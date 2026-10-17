@@ -427,7 +427,7 @@ fn colors_at(accts_dir: &Path) -> std::collections::BTreeMap<String, u8> {
 /// （`rows`：表里有哪几条账号 id，调用方从 `accounts::upstream_select::file_face` 读来 —— 与中转里的上游选择同一个出处）；
 /// 「哪几个号在表里有行」只问 `acct_core::apikey_routed_subset`（`table_agent`：这台机器上那份文件属于哪一家）。
 /// `notice`：「能用但有缺」—— manifest 启用了、却一个账号 0 都没有（写它的那一侧旧到不认账号 0）。措辞不说「远端」：本机远端同一条路。
-/// `relay_running` ＝ 这台的中转在不在（徽章要它；调用方读本进程的监听状态，与 `relay-optin` 的 `listening` 同一个判准 ⇒
+/// `relay_running` ＝ 这台的中转在不在（徽章要它；调用方读本进程的监听状态 ⇒
 /// 只有常驻进程答得出真话，`accounts-list` 在 `STREAM_ONLY`）。
 pub(crate) fn list_product(
     rows: &[String],
@@ -830,7 +830,7 @@ pub(crate) fn live_doing(agent_home: &Path) -> std::collections::BTreeMap<String
 }
 
 /// **这台上需手动的会话**：此刻活着、那台说在等人的每一个（判活与「在等人」同 [`live_doing`]），带它在等什么（[`waiting_needs`]，不另判），
-/// 先答的在前（[`super::facts_query::needs_first`]）。
+/// 先答的在前（`needs.rank` 小的先，[`super::facts_query::needs_rank`]）。
 /// `asked` ＝ 此刻有待答请求挂着的会话（常驻进程那一份登记表，顶层壳交进来）；`dress` ＝ 给一条 `needs` 配上它挂着的请求（同上）。
 /// `hidden(sid, 是不是分身)` ＝ 那一格（顶层壳经 `control/session_hidden.rs` 判）。
 pub(crate) fn live_needs(
@@ -868,7 +868,10 @@ pub(crate) fn live_needs(
         .collect::<Vec<_>>();
     // 先答哪个照核心那一处（同一档、同样久 ⇒ 按会话 id，稳定）。
     rows.sort_by(|a, b| {
-        super::facts_query::needs_first(&a.needs, &b.needs).then_with(|| a.sid.cmp(&b.sid))
+        a.needs
+            .rank
+            .cmp(&b.needs.rank)
+            .then_with(|| a.sid.cmp(&b.sid))
     });
     rows
 }

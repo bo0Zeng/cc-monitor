@@ -61,7 +61,8 @@ import { KeysOverview } from "./views/keys-overview";
 import { StatusMessages } from "./status-messages";
 import { StatusChores } from "./status-chores";
 import { choresOf } from "./settings/data-reads";
-import { readReadiness } from "./settings/readiness-reads";
+import { readReadiness, type Readiness } from "./settings/readiness-reads";
+import { MainEmpty } from "./main-empty";
 import { StatusStart } from "./status-start";
 import { restoreZoom, stepZoom } from "./zoom";
 import { mountTabBarFold, tabBarManuallyFolded, toggleTabBarFold } from "./tab-bar-fold";
@@ -185,7 +186,15 @@ window.addEventListener("DOMContentLoaded", async () => {
   status.appendChild(chores.el);
   void chores.refreshAll();
   // 「开始用 · 剩 N 步」（有才出，紧跟「待办」）：本机后端 `first-run` 的 `left`，与设置窗机器页「开始用」同一个数。
-  const start = new StatusStart({ read: readReadiness, open: () => void openSettingsWindow(undefined, dest.START) });
+  // 一个会话都没有时正文区中央那一块；同一份「开始用」也告诉它本机终端接上没有。
+  const empty = new MainEmpty(() => void openSettingsWindow(undefined, dest.connectTerminalOf(LOCAL_ORIGIN)));
+  streamRoot.appendChild(empty.el);
+  const readStart = async (): Promise<Readiness | null> => {
+    const r = await readReadiness();
+    empty.readiness(r);
+    return r;
+  };
+  const start = new StatusStart({ read: readStart, open: () => void openSettingsWindow(undefined, dest.START) });
   status.appendChild(start.el);
   void start.refresh();
   void getCurrentWindow()
@@ -240,10 +249,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   const usageHud = new UsageHud();
   status.appendChild(usageHud.summaryElement);
 
-  const empty = document.createElement("div");
-  empty.className = "empty-state";
-  empty.innerHTML = copyText("main.empty.noSessions");
-  streamRoot.appendChild(empty);
 
   // 启动时记住的那一格（上次所在的 tab）：只在那个会话出现时恢复、就绪前不许被覆盖、没等到就明说（`startup-active.ts`）。
   let startup: StartupActive | null = null;
@@ -315,8 +320,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     ({ total }) => {
       // tab 集合变了 ⇒ 新出现的会话问一次它那台的轮换格（构造途中也会叫到这里 ⇒ 排到下一拍，`tabs` 已赋值）。
       queueMicrotask(() => syncSessions(tabs.snapshotSessions()));
-      empty.style.display = total > 0 ? "none" : "";
-      // 会话头 · 「需手动」钉条 · 窗口标题与系统通知：跟着标签页栏一起刷（构造途中也会叫到 ⇒ 排到下一拍）。
+      empty.el.style.display = total > 0 ? "none" : "";
+      // 会话头 · 「需手动」钉条 · 窗口标题：跟着标签页栏一起刷（构造途中也会叫到 ⇒ 排到下一拍）。
       queueMicrotask(() => {
         sessionHead.render();
         terminalPage.sessionChanged();
@@ -573,12 +578,12 @@ window.addEventListener("DOMContentLoaded", async () => {
   planView.switchTo = (sid) => tabs.switchTo(sid);
   planView.reconnect = (origin) => tabs.reconnect(origin);
   planView.resume = (anchor, sid) => tabs.openResumeFor(anchor, sid);
-  // 计划那一侧的「需手动」：数进标签栏「需手动 N」与窗口标题，Ctrl J 会话在前、计划项在后（不发系统通知）。
+  // 计划那一侧的「需手动」：数进标签栏「需手动 N」与窗口标题，Ctrl J 会话在前、计划项在后。
   planView.book = planNeeds;
   // 文件窗口「在计划里看」：壳已把主窗口拉到前面；开计划页、选中那一格（片按机器区分）。
   void listen<PlanOpenSaid>(PLAN_OPEN_EVENT, (e) => void planView.openAt(e.payload.origin, e.payload.workspace, e.payload.slice, e.payload.id));
   tabs.attachPlanNeeds({ count: () => planNeeds.total(), at: () => planView.needAt(), open: (i) => void planView.openNeedItem(i), slices: () => planSlices(planNeeds.items()) });
-  // 会话外的「需手动」（`manual-list`）：数进「需手动 N」与窗口标题；点那一行开登录抽屉（入参 ＝ 那一项的 `fix.args`）。不发系统通知。
+  // 会话外的「需手动」（`manual-list`）：数进「需手动 N」与窗口标题；点那一行开登录抽屉（入参 ＝ 那一项的 `fix.args`）。
   tabs.attachManual(manualBook, (origin, item) => {
     if (item.fix) openLoginDrawer({ origin, target: item.fix.args, onDone: () => void manualBook.refresh(origin) });
   });
@@ -929,7 +934,7 @@ window.addEventListener("DOMContentLoaded", async () => {
           break;
         }
         case "needs": {
-          // 那个会话挂着的待答请求变了（挂上 · 撤掉 · 有人答掉）⇒ 重问它的会话事实（答题块跟着换）；可能漏了 ⇒ 这台的都问一次。
+          // 那个会话挂着的待答请求变了（挂上 · 撤掉 · 有人答掉 · 「没人答时自动答」那一格改了）⇒ 重问它的会话事实（答题块跟着换）；可能漏了 ⇒ 这台的都问一次。
           if (change.all) tabs.rereadFactsOn(origin);
           for (const c of change.cells) if (c.key !== null) tabs.rereadFacts(c.key);
           break;

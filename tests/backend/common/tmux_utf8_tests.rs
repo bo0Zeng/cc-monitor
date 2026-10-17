@@ -104,7 +104,7 @@ fn second_homes(files: &[(String, String)], decl: &str) -> Vec<String> {
 /// ⇒ 排除**明写成名单**，并写清排掉的是谁：那个家。`scan_tree_excluding` 摘不到就 panic，
 /// 所以「家搬走了」不会安静地变成「人人都是第二个家」。
 fn crate_production_sources() -> Vec<(String, String)> {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     guard_core::scan_tree_excluding(&root, &["rs"], &["common/tmux_utf8.rs"])
         .into_iter()
         .map(|(p, raw)| {
@@ -113,7 +113,7 @@ fn crate_production_sources() -> Vec<(String, String)> {
                 .unwrap_or(&p)
                 .to_string_lossy()
                 .replace('\\', "/");
-            (rel, crate::guard_support::production_code(&raw))
+            (rel, guard_core::production_code(&raw))
         })
         .collect()
 }
@@ -126,10 +126,9 @@ fn crate_production_sources() -> Vec<(String, String)> {
 /// - **反面**：别处**零声明**。
 #[test]
 fn each_kou_jing_has_exactly_one_home_and_it_is_this_file() {
-    let home = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/common/tmux_utf8.rs"
-    ));
-    crate::guard_support::assert_no_test_code("common/tmux_utf8.rs", &home);
+    let home =
+        guard_core::production_code(include_str!("../../../src/backend/common/tmux_utf8.rs"));
+    guard_core::assert_no_test_code("common/tmux_utf8.rs", &home);
     let others = crate_production_sources();
     // 反空真：语料塌了 ⇒ 下面「别处零声明」会空着绿。
     assert!(
@@ -175,13 +174,11 @@ fn both_consumer_layers_reference_the_home_instead_of_declaring_their_own() {
     let files: Vec<(String, String)> = vec![
         (
             "control/gate.rs".to_string(),
-            crate::guard_support::production_code(include_str!(
-                "../../../src/backend/control/gate.rs"
-            )),
+            guard_core::production_code(include_str!("../../../src/backend/control/gate.rs")),
         ),
         (
             "observe/tmux_observe.rs".to_string(),
-            crate::guard_support::production_code(include_str!(
+            guard_core::production_code(include_str!(
                 "../../../src/backend/observe/tmux_observe.rs"
             )),
         ),

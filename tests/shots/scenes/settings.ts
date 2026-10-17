@@ -135,7 +135,21 @@ const pushed = (state: string, extra: Record<string, unknown> = {}): Record<stri
   fixes: [],
   seenHostKey: null,
   detail: null,
+  next: null,
   ...extra,
+});
+
+/** 起本机后端被拒（口上是上一版留下的后端）那一刻本机那一台的成品；下一步那句照壳的文案拼。 */
+const localRefused = pushed("needs_update", {
+  reason: "local",
+  version: null,
+  versionRelation: "older",
+  os: null,
+  fixes: ["retry"],
+  next: copyText("rsLocalBackendHost.start.refusedNext", {
+    why: copyText("rsLocalBackendHost.hello.buildMismatch", { theirs: "p7a-4.1.0", ours: "p8c-4.1.1" }),
+    pidPath: "/home/user/.cc-monitor/run/backend.pid",
+  }),
 });
 
 export const SETTINGS_SCENES: Scene[] = [
@@ -182,6 +196,16 @@ export const SETTINGS_SCENES: Scene[] = [
     await sleep(800);
   }),
 
+  settings("settings-machines-local-refused", "设置 · 机器 · 本机后端被拒", "升级后旧的本机后端还占着口：本机那一行「要更新」＋［重试］，问题行下面是壳写好的下一步（结束哪个进程 · 进程号记在哪）", async () => {
+    await go("machines");
+    await emit("machine-state", { origin: "<local>", machine: localRefused });
+    await sleep(800);
+  }),
+  settings("settings-machine-local-refused", "设置 · 本机 · 本机后端被拒", "同上，本机那一页卡头：问题行 ＋ 下一步", async () => {
+    await go("machine:（本机）");
+    await emit("machine-state", { origin: "<local>", machine: localRefused });
+    await sleep(800);
+  }),
   settings("settings-landing", "设置 · 打开时", "设置窗打开时落在的那一页", async () => {
     await waitFor(".settings-nav");
     await sleep(1500);
@@ -190,7 +214,7 @@ export const SETTINGS_SCENES: Scene[] = [
   page("settings-appearance", "设置 · 外观", "外观：字 · 颜色 · 快捷键", "appearance"),
   page("settings-logs", "设置 · 日志", "日志：开关、级别、日志文件", "logs"),
   page("settings-data", "设置 · 文件与数据 · 待办", "文件与数据第一栏：顶上各类数 · 每台一段（急的在前）· 每件 点 · 名字 · 类 · 位置 · 现状 · 主按钮 · 已做的折起 · 断开的那台离线未检查", "data"),
-  settings("settings-data-chore-open", "设置 · 待办 · 实时显示点开", "点开一件：为什么 · 怎么做 · diff（钥匙遮住）· 复制这几行 / 复制改好的整份文件（含 2 件）· 不用了 · 存盘后自己认出", async () => {
+  settings("settings-data-chore-open", "设置 · 待办 · 实时显示点开", "点开一件：为什么 · 怎么做 · diff · 复制这几行 / 复制改好的整份文件（含 2 件）· 不用了 · 存盘后自己认出", async () => {
     await go("data");
     await sleep(500);
     const row = document.querySelector<HTMLElement>('.settings-page:not([hidden]) [data-machine="devbox"] [data-chore="relay:claude-code"]');
@@ -199,7 +223,7 @@ export const SETTINGS_SCENES: Scene[] = [
     document.querySelector<HTMLElement>('.settings-page:not([hidden]) [data-machine="devbox"] [data-chore="relay:claude-code"]')?.scrollIntoView({ block: "start" });
     await sleep(400);
   }),
-  settings("settings-data-chore-codex", "设置 · 待办 · Codex 实时显示点开", "Codex 那一件：位置 config.toml · openai_base_url · 在最前面加一行 · diff（钥匙遮住）· 复制这一行 / 复制改好的整份文件", async () => {
+  settings("settings-data-chore-codex", "设置 · 待办 · Codex 实时显示点开", "Codex 那一件：位置 config.toml · openai_base_url · 在最前面加一行 · diff · 复制这一行 / 复制改好的整份文件", async () => {
     await go("data");
     await sleep(500);
     const sel = '.settings-page:not([hidden]) [data-machine="devbox"] [data-chore="relay:codex"]';

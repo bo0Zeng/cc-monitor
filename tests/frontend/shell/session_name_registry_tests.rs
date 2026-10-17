@@ -39,8 +39,8 @@ const REGISTERED: &[(&str, &str, &str)] = &[
 ];
 
 fn repo_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::repo_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::repo_root()
 }
 
 /// 生产段：`.rs` 用 `guard_core`（连测试段一起剥）；`.ts` / shell 只剥整行注释。
@@ -86,7 +86,7 @@ fn scan_files() -> Vec<PathBuf> {
     collect_ts(&root.join("src"), &mut files);
     files.sort();
     // 壳那棵换成它的全部人群根（壳 `src/` ＋ manifest 明写的兄弟包，窗口包也在内）；有几个住 `src/common/`，去重。
-    for r in crate::guard_support::crate_population_roots() {
+    for r in guard_core::addr::shell_population_roots() {
         collect_rs(&r, &mut files);
     }
     collect_rs(&root.join("src/common"), &mut files);

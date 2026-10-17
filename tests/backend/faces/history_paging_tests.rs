@@ -255,9 +255,9 @@ fn every_paged_reply_fits_the_cap_and_the_pages_add_up_to_the_whole() {
     assert_eq!(Value::Array(got), serde_json::to_value(&whole.off).unwrap());
 }
 
-/// 从中间起、扫描图里没有这一份（另一份记录，没冷开过）⇒ 从文件那一处扫、满了就停：拼起来照样等于整份。
+/// 从中间起、记录又长了（留着的那张图对不上）⇒ 接着扫追加的那一截再切：拼起来照样等于整份。
 #[test]
-fn pages_from_the_middle_without_a_scan_map_read_the_file_and_still_add_up() {
+fn pages_from_the_middle_after_the_record_grew_still_add_up() {
     let home = scratch("file");
     let path = fixture(&home, "s-file", 80, 200);
     let tz = crate::Tz::default();
@@ -273,7 +273,7 @@ fn pages_from_the_middle_without_a_scan_map_read_the_file_and_still_add_up() {
     )
     .unwrap();
     let mid = first.next.expect("要分页");
-    // 文件长一行 ⇒ 扫描图对不上（peek 不出）⇒ 第 2 页起从文件扫。
+    // 文件长一行 ⇒ 留着的图对不上 ⇒ 第 2 页起接着扫追加的那一行再切。
     let mut f = std::fs::OpenOptions::new()
         .append(true)
         .open(&path)
@@ -332,6 +332,62 @@ fn pages_from_the_middle_without_a_scan_map_read_the_file_and_still_add_up() {
     .unwrap();
     assert_eq!(t.turns.len(), 3, "limit 管一页几轮");
     assert_eq!(t.next, Some(t.end));
+}
+
+/// 从中间续取时扫描图在不在，答案都一样：两份逐字节相同的记录，一份冷开过（图在）、一份没开过（图不在），
+/// 从同一处起问用户输入与轮次 —— 回退掉的那几句（主线外）两边都不列。
+#[test]
+fn a_page_from_the_middle_is_the_same_whether_the_scan_map_is_held_or_not() {
+    let home = scratch("held");
+    let held = fixture(&home, "s-held", 40, 50);
+    let cold = fixture(&home, "s-cold", 40, 50);
+    let tz = crate::Tz::default();
+    let inputs = |path: &str, from: Option<u64>| {
+        user_inputs_page(
+            &home,
+            UserInputsReq {
+                path: path.to_string(),
+                from,
+                limit: None,
+            },
+            usize::MAX,
+        )
+        .unwrap()
+    };
+    let turns = |path: &str, from: Option<u64>| {
+        turns_page(
+            &home,
+            HistoryTurnsReq {
+                path: path.to_string(),
+                from,
+                limit: None,
+            },
+            &tz,
+            usize::MAX,
+        )
+        .unwrap()
+    };
+    let whole = inputs(&held, None);
+    let _ = turns(&held, None);
+    let mid = whole.entries[whole.entries.len() / 2].at;
+    let (a, b) = (inputs(&held, Some(mid)), inputs(&cold, Some(mid)));
+    assert!(
+        a.entries.iter().all(|r| !r.uuid.starts_with("dead-")),
+        "图在：回退掉的不列"
+    );
+    assert_eq!(
+        serde_json::to_value(&b.entries).unwrap(),
+        serde_json::to_value(&a.entries).unwrap(),
+        "图不在时续取的用户输入与图在时不一样"
+    );
+    assert_eq!((b.end, b.next), (a.end, a.next));
+    let (a, b) = (turns(&held, Some(mid)), turns(&cold, Some(mid)));
+    assert_eq!(
+        serde_json::to_value(&b.turns).unwrap(),
+        serde_json::to_value(&a.turns).unwrap(),
+        "图不在时续取的轮次与图在时不一样"
+    );
+    assert_eq!((b.end, b.next), (a.end, a.next));
 }
 
 #[test]

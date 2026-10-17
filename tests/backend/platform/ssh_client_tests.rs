@@ -173,7 +173,9 @@ fn the_real_check_wants_a_runnable_file_and_reads_absence_as_absence() {
 /// 进程表里认「这个进程是不是 ssh」（`dial/terminal_processes.rs` 比进程名）不是找，不在射程里。
 #[test]
 fn ssh_client_guard_only_this_file_locates_ssh() {
-    let src = crate::guard_support::src_root().join("../..").join("src");
+    let src = guard_core::addr::backend_src_root()
+        .join("../..")
+        .join("src");
     let needles = [
         "OpenSSH\\\\ssh",
         "OpenSSH\\ssh",

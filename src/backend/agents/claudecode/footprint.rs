@@ -328,7 +328,7 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
         uninstallable: true,
         carriers: &[
             // **推 / 拉**（B）：这份文件唯一的写入来源 —— 条目是从另一台机器那份里**原样**拷来的（`mcp_sync.rs`），
-            //   写经那台后端 `files-put`；卸经 `ext-uninstall-apply`。远端那台的足迹栏按那台机器问（RM1a），`host` 是项目目录。
+            //   写经那台后端 `Door::put`；卸经 `ext-uninstall-apply`。远端那台的足迹栏按那台机器问（RM1a），`host` 是项目目录。
             Carrier {
                 what: Text(|| copy_text("rsToolRegistry.tools.mcpSyncWhat", &[])),
                 source: ToolSource::Generated,

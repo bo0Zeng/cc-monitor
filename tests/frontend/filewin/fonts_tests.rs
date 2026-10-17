@@ -114,7 +114,7 @@ fn string_literals(src: &str) -> Vec<String> {
 /// 让它进人群等于**恒等两侧同源**：`PROBE` 里随手多一个字，扫描也照样「找到」它。
 /// 这条排除的正当性由 [`fonts_rs_draws_nothing_at_all`] 买。
 fn drawn_files() -> Vec<(String, String)> {
-    let dir = crate::guard_support::crate_src_root();
+    let dir = guard_core::addr::filewin_src_root();
     // 🔴 走 `guard_core` 而不是裸 `read_dir` —— `scanning_guard_registry` 那条判据
     //    钉着「扫描型判据不许自己遍历」，理由是一个不摘掉自己的扫描判据会
     //    **在自己的语料里找到自己 ⇒ 恒绿**。
@@ -153,10 +153,9 @@ fn drawn_files() -> Vec<(String, String)> {
     //   而那正是本条今天刻意不判的东西。
     // 窗口独立成包：「`filewin/` 那棵树」今天是两棵 —— 本包 ＋ monitor 那一侧 `src/frontend/shell/src/filewin/`
     //   （`entry.rs` 在那边，人群与搬家前逐份相同）。`mod.rs` 的躯体成了本包的 `lib.rs`（两份都摘）；两侧各有一份 `proc.rs`（都摘）；
-    //   `guard_support.rs` 是本包的判据住址（`#![cfg(test)]`，一个字都不画），同 `proc.rs` 那条理由摘掉。
     //   `frame_log.rs`（帧日志）同理：它写的是一份日志文件，一个字都不画在 egui 上。
     //   `render.rs`（挑哪块显卡）同理：它的话只上 stderr（挑中的那一行 · 挑不出时那一句），一个字都不画在 egui 上。
-    let monitor_side = crate::guard_support::repo_root().join("src/frontend/shell/src/filewin");
+    let monitor_side = guard_core::addr::repo_root().join("src/frontend/shell/src/filewin");
     let mut out: Vec<(String, String)> = guard_core::scan_tree_excluding(
         &dir,
         &["rs"],
@@ -164,7 +163,6 @@ fn drawn_files() -> Vec<(String, String)> {
             "fonts.rs",
             "lib.rs",
             "proc.rs",
-            "guard_support.rs",
             "frame_log.rs",
             "render.rs",
             "main.rs",
@@ -197,7 +195,7 @@ fn label_chars() -> std::collections::BTreeSet<char> {
     //   只数字面量的话，抽完表之后这条会对着一个缩水的人群相等（它真画出去的字没被数到）。
     let table: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(
-            crate::guard_support::crate_src_root().join("../../../shared/copy/table.json"),
+            guard_core::addr::filewin_src_root().join("../../../shared/copy/table.json"),
         )
         .expect("读不到文案表"),
     )
@@ -212,6 +210,18 @@ fn label_chars() -> std::collections::BTreeSet<char> {
                 .as_str()
                 .unwrap_or_else(|| panic!("文案表里没有 {key}"));
             set.extend(zh.chars().filter(|c| !c.is_ascii()));
+        }
+    }
+    // 后端写好、窗口照画的那几句（种类 · 「类型」那一列 · 预览 / 看图 / 编辑那几道门不许时那一句）。
+    for (key, e) in entries {
+        if key.starts_with("beFilesKind.") || key.starts_with("beFilesOpen.") {
+            set.extend(
+                e["zh"]
+                    .as_str()
+                    .unwrap_or("")
+                    .chars()
+                    .filter(|c| !c.is_ascii()),
+            );
         }
     }
     set
@@ -279,7 +289,7 @@ fn f() {
 fn fonts_rs_draws_nothing_at_all() {
     // 变量名不叫 `src`：包根下的路径变短、rustfmt 把读盘并成一行之后，`needle_anchor_registry` 那条按**变量名**认语料的棘轮
     //   会把同文件 `copy_text_keys(src)` 里的 `rest` 误认成它的派生（两个 `src` 不是同一个东西）。
-    let fonts_rs = std::fs::read_to_string(crate::guard_support::crate_src_root().join("fonts.rs"))
+    let fonts_rs = std::fs::read_to_string(guard_core::addr::filewin_src_root().join("fonts.rs"))
         .expect("fonts.rs 读不动");
     // 只看代码，不看注释 —— 注释里当然会提到这些名字
     let code: String = {

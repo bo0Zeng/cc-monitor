@@ -173,9 +173,7 @@ const TRANSCALLS: &[(&str, &str, &str, &str)] = &[
 /// 取法与 `readonly_guard::g6_reach` 那一格**刻意相同**（`run("` / `run_as("` 之后
 /// 那一个字符串字面量）—— 两处认的是同一件事实，取法不同才会各说各话。
 fn transcalled_today() -> Vec<String> {
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/cc_bus.rs"
-    ));
+    let prod = guard_core::production_code(include_str!("../../../src/backend/control/cc_bus.rs"));
     let mut out: Vec<String> = Vec::new();
     for opener in ["run(\"", "run_as(\"", "read_via(\""] {
         let mut from = 0usize;
@@ -258,9 +256,7 @@ fn every_shelled_out_command_carries_a_written_ruling() {
 /// ★ `KR113D1`：`bus-state` **一次回全**（两半在同一个函数里取）。两半改读 cc-bus 的机器可读形。
 #[test]
 fn bus_state_answers_both_halves_from_one_call() {
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/cc_bus.rs"
-    ));
+    let prod = guard_core::production_code(include_str!("../../../src/backend/control/cc_bus.rs"));
     let body = prod
         .split("pub(crate) fn state_for_inbound")
         .nth(1)

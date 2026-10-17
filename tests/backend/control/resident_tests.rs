@@ -339,7 +339,7 @@ fn upgrading_retires_the_old_resident_so_the_relay_port_frees_up() {
     assert!(!relay_route_core::legacy_listen_pid_for(&dh).exists());
     assert!(!dh.join(relay_route_core::LEGACY_LISTEN_TOKEN_NAME).exists());
     // 顺序：同一条线程里先 `retire_legacy`，后 `host_relay`。
-    let main = crate::guard_support::production_code(include_str!("../../../src/backend/main.rs"));
+    let main = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
     let at = main
         .find("control::resident::retire_legacy")
         .expect("main.rs 里没有升级那一跳");
