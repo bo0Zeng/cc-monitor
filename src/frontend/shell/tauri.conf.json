@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "cc-monitor",
-  "version": "4.1.10",
+  "version": "5.0.0",
   "identifier": "com.ccmonitor.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -32,8 +32,8 @@
     "publisher": "cc-monitor",
     "copyright": "Copyright © 2026 cc-monitor contributors",
     "category": "DeveloperTool",
-    "shortDescription": "Claude Code CLI 的只读输出渲染窗口",
-    "longDescription": "cc-monitor 把 Claude Code CLI 写到 ~/.claude/projects/*.jsonl 的实时对话用现代 UI 渲染：Markdown / LaTeX / 代码高亮 / 工具调用折叠卡 / Tab 自动管理 / 历史会话浏览与恢复。完全只读、零侵入。Windows 11 / 10。",
+    "shortDescription": "把各台机器上的 Claude Code 会话收进一个窗口",
+    "longDescription": "cc-monitor 把本机与 SSH 远端机器上的 Claude Code 会话收进一个窗口：实时显示对话与工具调用（Markdown / LaTeX / 代码高亮 / 工具调用折叠卡），在消息流里答批准 · 提问 · 计划，起 · 恢复 · 分叉会话，多账号与额度轮换，远端机器的文件管理；配套 Android 手机端。Windows 10 / 11 · Linux。",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
