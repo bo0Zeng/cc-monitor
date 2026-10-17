@@ -12,10 +12,11 @@ import { icon } from "../kit/icon";
 import { foldCaret } from "../kit/fold";
 import { toast, failToast } from "../kit/toast";
 import { copyText } from "../copy-table";
+import { saidOf } from "../kit/detail";
 import { writeClipboard } from "../clipboard";
 import { renderMarkdown } from "../render";
 import type { Origin } from "../ipc/origin";
-import { fetchCellView, PlanMiss, PLAN_EDGE_KINDS, type PlanCell, type PlanEdgeKind, type PlanRef, type PlanSlice, type PlanWho } from "../plan-reads";
+import { fetchCellView, PLAN_EDGE_KINDS, type PlanCell, type PlanEdgeKind, type PlanRef, type PlanSlice, type PlanWho } from "../plan-reads";
 import { ancestry, blockRoots, cellIndex, kindSlot, statusLook } from "./plan-model";
 import { phaseBadge, setKindColor, STATUS_ICON } from "./plan-bits";
 import s from "./plan-cell.module.css";
@@ -374,7 +375,7 @@ export class CellDetail {
           if (this.viewOpen === cell.id) fill();
         },
         (e: unknown) => {
-          this.views.set(key, { none: e instanceof PlanMiss ? e.said : String(e) });
+          this.views.set(key, { none: saidOf(e) });
           if (this.viewOpen === cell.id) fill();
         },
       );

@@ -26,12 +26,15 @@ import { dispatcher } from "../keybindings/registry";
 import { copyText } from "../copy-table";
 import { writeClipboard } from "../clipboard";
 import { commands } from "../ipc/commands";
+import { ChanError } from "../../../comms/inward/chan";
+import { ControlError } from "../control-said";
+import { saidOf } from "../kit/detail";
 import { LOCAL_ORIGIN, isRemoteOrigin, type Origin } from "../ipc/origin";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import type { Tab } from "../tab-model";
 import { titleParts } from "../session-face";
 import { faceOf } from "../face-can";
-import { ackNeed, fetchPlanList, fetchPlanRead, planCommand, PlanMiss, takeRepo, type PlanCell, type PlanNeed, type PlanList, type PlanRead, type PlanSlice, type PlanWho } from "../plan-reads";
+import { ackNeed, fetchPlanList, fetchPlanRead, planCommand, takeRepo, type PlanCell, type PlanNeed, type PlanList, type PlanRead, type PlanSlice, type PlanWho } from "../plan-reads";
 import type { PlanMoved } from "../changed-stream";
 import {
   blockRoots,
@@ -73,7 +76,7 @@ function loadPrefs(): Prefs {
 type Machine =
   | { state: "loading"; prev: PlanList | null }
   | { state: "ok"; list: PlanList; at: number }
-  | { state: "failed"; why: PlanMiss; prev: PlanList | null; at: number | null };
+  | { state: "failed"; offline: boolean; prev: PlanList | null; at: number | null };
 
 /** 页头一枚片：哪台 · 哪个工作区 · 叫什么。 */
 interface SliceRef {
@@ -85,7 +88,7 @@ interface SliceRef {
 const refKey = (r: SliceRef): string => `${r.origin}\u0000${r.workspace}\u0000${r.name}`;
 
 /** 一个工作区读到的那一份（选中的片所在的那一个才读）。 */
-type Read = { state: "loading"; prev: PlanRead | null } | { state: "ok"; doc: PlanRead } | { state: "failed"; why: PlanMiss; prev: PlanRead | null };
+type Read = { state: "loading"; prev: PlanRead | null } | { state: "ok"; doc: PlanRead } | { state: "failed"; prev: PlanRead | null };
 
 export class PlanView {
   /** 主窗口里这个会话的标签页（拿标题、状态点）；不在 ⇒ `null`。 */
@@ -270,7 +273,7 @@ export class PlanView {
           const was2 = this.per.get(m);
           const keep = was2?.state === "loading" ? was2.prev : null;
           const lastAt = was?.state === "ok" ? was.at : was?.state === "failed" ? was.at : null;
-          this.per.set(m, { state: "failed", why: e instanceof PlanMiss ? e : new PlanMiss("other", String(e)), prev: keep, at: lastAt });
+          this.per.set(m, { state: "failed", offline: e instanceof ChanError && e.error.layer === "hop", prev: keep, at: lastAt });
           this.afterList();
         },
       );
@@ -325,8 +328,8 @@ export class PlanView {
         this.takePending();
         this.render();
       },
-      (e: unknown) => {
-        this.reads.set(key, { state: "failed", why: e instanceof PlanMiss ? e : new PlanMiss("other", String(e)), prev });
+      () => {
+        this.reads.set(key, { state: "failed", prev });
         this.render();
       },
     );
@@ -411,7 +414,7 @@ export class PlanView {
     try {
       await ackNeed(cur.origin, cur.workspace, slice.name, need.key, true);
     } catch (e) {
-      failToast(copyText("plan.review.ackFailed"), e instanceof PlanMiss ? e.said : e);
+      failToast(copyText("plan.review.ackFailed"), e);
       return;
     }
     const what = need.cell ? (cellIndex(slice).get(need.cell)?.title ?? need.cell) : slice.name;
@@ -422,7 +425,7 @@ export class PlanView {
         run: () =>
           void ackNeed(cur.origin, cur.workspace, slice.name, need.key, false).then(
             () => this.read(cur.origin, cur.workspace),
-            (e: unknown) => failToast(copyText("plan.review.ackFailed"), e instanceof PlanMiss ? e.said : e),
+            (e: unknown) => failToast(copyText("plan.review.ackFailed"), e),
           ),
       },
     });
@@ -561,7 +564,7 @@ export class PlanView {
           this.refresh(false, origin);
           return true;
         } catch (e) {
-          this.autoFail = e instanceof PlanMiss ? e.said : String(e);
+          this.autoFail = saidOf(e);
           this.render();
           return false;
         }
@@ -613,7 +616,7 @@ export class PlanView {
       toast(copyText("plan.take.done", { slice: took.slice, path: took.path }), took.switched ? copyText("plan.take.switched", { slice: took.slice }) : "", { level: "success" });
       this.refresh(false, cur.origin);
     } catch (e) {
-      failToast(copyText("plan.take.failed"), e instanceof PlanMiss ? e.said : e);
+      failToast(copyText("plan.take.failed"), e);
     } finally {
       b.disabled = false;
     }
@@ -625,11 +628,11 @@ export class PlanView {
     b.disabled = true;
     try {
       const r = await planCommand(cur.origin, cur.workspace, "view");
-      if (!r.path) throw new PlanMiss("other", r.said ?? "");
+      if (!r.path) throw new ControlError(r.said ?? "");
       await openPath(r.path);
       toast(copyText("plan.page.wholeOpened"), "", { level: "success" });
     } catch (e) {
-      failToast(copyText("plan.page.wholeFailed"), e instanceof PlanMiss ? e.said : e);
+      failToast(copyText("plan.page.wholeFailed"), e);
     } finally {
       b.disabled = false;
     }
@@ -716,7 +719,7 @@ export class PlanView {
     const out: HTMLElement[] = [];
     const cur = this.current;
     const m = cur ? this.per.get(cur.origin) : undefined;
-    if (cur && m?.state === "failed" && m.why.code === "offline" && m.prev) {
+    if (cur && m?.state === "failed" && m.offline && m.prev) {
       const re = button({ label: copyText("plan.strip.reconnect"), size: "compact", onClick: () => this.reconnect(cur.origin) });
       out.push(banner("warn", copyText("plan.strip.offline", { machine: cur.origin, time: this.currentDoc()?.readAtText ?? copyText("plan.page.none") }), [re]));
     }

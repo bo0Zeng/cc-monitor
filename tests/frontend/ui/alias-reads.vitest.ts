@@ -16,7 +16,8 @@ import {
   renderAliasBlock,
 } from "../../../src/frontend/ui/alias-reads";
 import { REPO_ROOT } from "../../test-support/repo-root";
-import { chanArgsJson, chanReply, type ChanCallArgs } from "../../test-support/chan-fake";
+import { ChanError } from "../../../src/comms/inward/chan";
+import { chanArgsJson, chanReply, refusedReply, type ChanCallArgs } from "../../test-support/chan-fake";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const G = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/aliases.golden.json"), "utf8")) as Record<
@@ -54,5 +55,14 @@ describe("请求：问对那台、说对那条、参数原样", () => {
       ["devbox", "aliases-block-install", { rcPath: "~/.bashrc" }],
       ["devbox", "aliases-block-remove", { rcPath: "~/.bashrc" }],
     ]);
+  });
+});
+
+describe("没成：通道上的失败原样交到调用方", () => {
+  it("被拒 ⇒ 那台写的那一句 ＋ 复制详情都在（不换成只剩一句的 Error）", async () => {
+    invokeMock.mockRejectedValueOnce(refusedReply("outside_home", "只能落在 home 之内"));
+    const e = await installAliasBlock("devbox", "/etc/x").catch((x: unknown) => x);
+    expect(e).toBeInstanceOf(ChanError);
+    expect([(e as ChanError).message, (e as ChanError).detail]).toEqual(["只能落在 home 之内", refusedReply("outside_home", "").detail]);
   });
 });

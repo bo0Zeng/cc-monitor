@@ -179,14 +179,8 @@ export class CcBusSection {
 
   /** 列远端（`list_remote_mcp_origins`：通用的「列远端配置标签」，名字带 mcp 是历史）。 */
   private async loadOrigins(): Promise<void> {
-    let origins: string[] = [];
-    try {
-      // 不只防 reject：也可能 resolve 成非数组，不校验形状的话下一行就抛。
-      const got = await commands.list_remote_mcp_origins();
-      if (Array.isArray(got)) origins = got;
-    } catch {
-      /* 拿不到就当没有远端，不影响面板其余部分 */
-    }
+    // 拿不到就当没有远端，不影响面板其余部分。
+    const origins = await commands.list_remote_mcp_origins().catch(() => [] as string[]);
     this.originSel.replaceChildren();
     // 本机永远在列表里（本机的 `~/.cc-bus/` 就在本地）。
     for (const o of origins) {
@@ -253,8 +247,7 @@ export class CcBusSection {
   private async loadAccounts(origin: string): Promise<void> {
     let names: string[] = [];
     try {
-      const st = await fetchAccounts(origin);
-      names = Array.isArray(st?.accounts) ? selectableAccounts(st).map((a) => a.name) : [];
+      names = selectableAccounts(await fetchAccounts(origin)).map((a) => a.name);
     } catch {
       /* 拿不到 ⇒ 只留「不指定」 */
     }
