@@ -27,7 +27,7 @@ const MAX_BYTES: u64 = 1 << 20;
 
 /// 一个号的凭据文件（住那个号的配置目录，那一家登记的文件名）：状态（读不出来就不续、不覆盖）。
 const DOC: crate::common::own_state::Doc<Map<String, Value>> =
-    crate::common::own_state::Doc::state("<号的配置目录>/<那一家的凭据文件>", MAX_BYTES);
+    crate::common::own_state::Doc::state("<account-config-dir>/<credentials-file>", MAX_BYTES);
 
 pub(crate) fn creds_path(dir: &Path, face: &LoginFace) -> PathBuf {
     dir.join(face.creds_file)

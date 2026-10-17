@@ -1028,7 +1028,7 @@ fn lay_plugin(d: &plan::Direct, own: &crate::platform::fs::Own) -> plan::Direct 
 
 /// 答题插件的一份文件：缓存（照这一版现写；读不出来 ⇒ 当没有、重写）。
 const PLUGIN_FILE: crate::common::own_state::Doc<String> = crate::common::own_state::Doc::cache(
-    ".cc-monitor/answer-plugin/<那一份>",
+    ".cc-monitor/answer-plugin/<file>",
     PLUGIN_FILE_MAX_BYTES,
 );
 

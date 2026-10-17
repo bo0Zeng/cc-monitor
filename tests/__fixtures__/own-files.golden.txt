@@ -1,4 +1,4 @@
-== cache/skeleton/<摘要>.json
+== cache/skeleton/<digest>.json
 {"v":4,"path":"<home>/rec.jsonl","body":{"rows":[1,2,3],"tail":"x"}}
 == chores.json
 {"declined":["agents"],"selfPaste":"/x/.bashrc","startSkipped":false}
@@ -10,7 +10,7 @@ box.lan ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA
 {"account":"work","at":1700000000,"plugin":true}
 
 == machines.json
-{"version":1,"hosts":[{"label":"box","host":"box.lan","port":2222,"user":"u","keyPath":"","addresses":["10.0.0.2"],"jump":"","connect":true}]}
+{"version":1,"hosts":[{"label":"box","host":"box.lan","port":2222,"user":"u","keyPath":"","addresses":["box-2.example"],"jump":"","connect":true}]}
 
 == plan-review.json
 {"acks":{"/w":{"s1":["k1"]}},"returns":{}}

@@ -39,7 +39,7 @@ const MAX_READ: u64 = 1 << 30;
 
 /// 一份骨架：缓存（读不出来 · 版本或路径对不上 ⇒ 当没有，照记录整份重扫）。各份读成哪一形由 [`Skeletons::load`] 的调用方定。
 const DOC: crate::common::own_state::Doc<serde_json::Value> = crate::common::own_state::Doc::cache(
-    ".cc-monitor/cache/skeleton/<记录路径的摘要>.json",
+    ".cc-monitor/cache/skeleton/<digest>.json",
     MAX_READ,
 );
 

@@ -22,7 +22,7 @@ fn files_under(root: &Path) -> Vec<(String, Vec<u8>)> {
     let mut out = vec![];
     let mut stack = vec![root.to_path_buf()];
     while let Some(d) = stack.pop() {
-        for e in std::fs::read_dir(&d).expect("read_dir").flatten() {
+        for e in crate::platform::fs::Ro::read_dir(&d).expect("list").flatten() {
             let p = e.path();
             if p.is_dir() {
                 stack.push(p);
@@ -49,7 +49,7 @@ fn write_all(own: &Own, home: &Path) {
     crate::plan::review::answer_ack(own, "/w", "s1", "k1", &["k1".to_string()]).expect("review");
     let host = serde_json::from_value(json!({
         "label": "box", "host": "box.lan", "port": 2222, "user": "u", "keyPath": "",
-        "addresses": ["10.0.0.2"], "jump": "", "connect": true
+        "addresses": ["box-2.example"], "jump": "", "connect": true
     }))
     .expect("host");
     crate::control::machines::write(own, &[host]).expect("machines");
@@ -78,7 +78,7 @@ fn own_files_are_written_byte_for_byte_as_before() {
     let mut got = String::new();
     for (rel, bytes) in files_under(&home.join(".cc-monitor")) {
         let rel = if rel.starts_with("cache/skeleton/") {
-            "cache/skeleton/<摘要>.json".to_string()
+            "cache/skeleton/<digest>.json".to_string()
         } else {
             rel
         };
