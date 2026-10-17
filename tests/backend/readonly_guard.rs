@@ -2800,6 +2800,13 @@ mod g6_dependency_signoff {
             "对外文案表的 Rust 取文口（编译期内嵌 `src/shared/copy/table.json` ＋ 具名占位符替换，纯字符串变换）；\
              与 monitor、creds-core 共用同一份；仓内 crate，现打 0 处写面",
         ),
+        (
+            "batch-core",
+            DEPS,
+            MEASURED_CLEAN,
+            "一组一条命令的全过程与它的字（结局那一句 `said_of` · 标题 · 没成的那几行 · 同名那一行的说明）：\
+             与文件窗口、手机嵌的核心共用同一份；纯计算 ＋ 问法由调用方给，仓内 crate，现打 0 处写面",
+        ),
         // `gate-core` 那一行摘了：它收成本 crate 的模块 `control/gate_rules.rs`（命名空间那一条那条判据数它的写面）。
         (
             "guard-core",
