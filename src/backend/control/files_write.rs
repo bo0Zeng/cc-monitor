@@ -584,18 +584,6 @@ pub fn delete_empty_dir(
     }
 }
 
-/// 改 unix 权限位（只收低 12 位）。**跟链接** ⇒ 走 [`resolve_existing_in_root`]。
-///
-/// ⚠ 非 unix 平台上**如实回失败**，不假装改成了（`Permissions` 在那边只有一个只读位）。
-pub fn change_mode(
-    face: &Face,
-    root: &Path,
-    rel: impl AsRef<Path>,
-    mode: u32,
-) -> Result<PathBuf, WriteRefusal> {
-    change_mode_reporting(face, root, rel, mode).map(|(p, _)| p)
-}
-
 /// 线上那几个字（八进制写法）⇒ 权限位；两个界面都只交原文，解与拒只在这里。
 /// 超出 `0o7777` 拒而不掩：敲了 `100644`（连文件类型位一起抄来的）掩成 `644` 就是改了别的东西。
 pub fn mode_of_text(t: &str) -> Result<u32, WriteFail> {
@@ -612,7 +600,8 @@ pub fn mode_of_text(t: &str) -> Result<u32, WriteFail> {
     Err(WriteFail::from(("refused", said)))
 }
 
-/// 同 [`change_mode`]，另交**改之前**的权限位（低 12 位；读不到 ⇒ `None`）：调用方据它撤销。
+/// 改 unix 权限位（只收低 12 位），另交**改之前**的权限位（低 12 位；读不到 ⇒ `None`）：调用方据它撤销。
+/// **跟链接** ⇒ 走 [`resolve_existing_in_root`]。非 unix 平台上**如实回失败**，不假装改成了（`Permissions` 在那边只有一个只读位）。
 pub fn change_mode_reporting(
     face: &Face,
     root: &Path,

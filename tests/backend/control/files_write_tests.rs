@@ -1025,7 +1025,7 @@ fn chmod_follows_links_so_it_resolves_to_the_end_before_judging() {
     std::os::unix::fs::symlink(&outside, root.join("away.txt")).expect("放指到根外的链接");
 
     // 正控。
-    change_mode(&Face::issue(), &root, "run.sh", 0o700).expect("干净的改权限被误拒");
+    change_mode_reporting(&Face::issue(), &root, "run.sh", 0o700).expect("干净的改权限被误拒");
     let m = std::fs::metadata(root.join("run.sh"))
         .expect("读")
         .permissions()
@@ -1033,7 +1033,7 @@ fn chmod_follows_links_so_it_resolves_to_the_end_before_judging() {
     assert_eq!(m & 0o7777, 0o700, "说改了，盘上的权限位不对");
 
     // 名字干净（`innocent.txt`），解到底是会话文件 ⇒ **照改**，改的是那份真文件。
-    change_mode(&Face::issue(), &root, "innocent.txt", 0o600)
+    change_mode_reporting(&Face::issue(), &root, "innocent.txt", 0o600)
         .expect("🔴 经链接改会话文件的权限被拒了");
     let m = std::fs::metadata(&live)
         .expect("读会话元数据")
@@ -1043,7 +1043,7 @@ fn chmod_follows_links_so_it_resolves_to_the_end_before_judging() {
     // 🔴 阴性：名字干净（`away.txt`），解到底跑出了根 ⇒ 拒，而且根外那一份权限位没变。
     //    只解父目录的那一道（`resolve_in_root`）在这一形上是**瞎的** —— 这一格就是
     //    `resolve_existing_in_root` 存在的理由。
-    let err = change_mode(&Face::issue(), &root, "away.txt", 0o000)
+    let err = change_mode_reporting(&Face::issue(), &root, "away.txt", 0o000)
         .expect_err("借一条链接把根外那一份改成了不可读");
     assert_eq!(err.code(), "refused", "{err:?}");
     let after = std::fs::metadata(&outside)

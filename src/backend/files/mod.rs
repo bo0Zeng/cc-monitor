@@ -376,7 +376,7 @@ fn stat(req: wire::StatReq, tz: &crate::common::time::Tz) -> Answer<wire::StatRe
         readonly: md.permissions().readonly(),
         // unix 权限位（低 12 位：rwx×3 ＋ setuid / setgid / sticky）—— 同一次 `metadata`、同样跟链接，
         //   与本条其余几格同源。非 unix 平台**缺席**（不是 0：0 是一个真能设的权限值，报 0 等于说假话）；
-        //   那边改权限本来就回 `no_unix_mode`（`control/files_write.rs::change_mode`）。
+        //   那边改权限本来就回 `no_unix_mode`（`control/files_write.rs::change_mode_reporting`）。
         mode: crate::platform::fs::Ro::mode(&md).map(|m| m & 0o7777),
         mtime_secs: mtime,
         mtime_text: texts.as_ref().map(|t| t.0.clone()),
@@ -1097,10 +1097,6 @@ pub fn answer<A: Ask>(req: A, tz: &crate::common::time::Tz) -> Answer<A::Reply> 
 #[cfg(test)]
 #[path = "../../../tests/backend/files/answer_tests.rs"]
 pub(crate) mod tests;
-// 本族的能力名单住测试侧（从每条 `Ask` 的 `CAPABILITY` 现取），名字在这里占着：生产里再立一张同名的声明表，测试构建编不过。
-#[cfg(test)]
-#[allow(unused_imports)]
-use tests::CAPABILITIES;
 
 // **文件管理后端模块**与原生后端那条边界的判据
 // （用户逐字「后端要模块化, 即原生后端＋文件管理后端. 现在先解耦清楚」）。

@@ -517,10 +517,6 @@ pub(crate) fn ccm_launcher_with(p: crate::platform::tmux::TmuxPlatform) -> Vec<&
 #[cfg(test)]
 #[path = "../../tests/backend/target_parity_guard.rs"]
 mod target_parity_guard;
-// 对等判据的 target 轴与差异表住测试侧，名字在库根占着：生产里再立同名的，测试构建编不过。
-#[cfg(test)]
-#[allow(unused_imports)]
-use target_parity_guard::{Target, TARGET_GAPS};
 
 /// ① 流模式 flag：出现即剥离，**不影响模式判定**。只剩「我是流模式」那一个词；这条流要什么由声明说（`StreamWants::view`）。
 pub const STREAM_FLAGS: &[&str] = &[wire::cli_words::STREAM_FLAG_EXPLICIT];
@@ -599,7 +595,7 @@ pub const NO_TMUX: &str = "no_tmux";
 
 /// 命令级 code —— **「这个平台没有 unix 权限位」**。
 ///
-/// 只有 `files-chmod` 声明它（`control/files_write.rs::change_mode` 在非 unix 上回它）。
+/// 只有 `files-chmod` 声明它（`control/files_write.rs::change_mode_reporting` 在非 unix 上回它）。
 /// 与 [`NO_TMUX`] 同形：真相是 `inbound::REGISTRY` 里命令自己登记的 `codes`，本常量只拿去查那张表；
 /// `hello.unavailable` 经 [`unix_mode_unavailable`] 读它。
 pub const NO_UNIX_MODE: &str = "no_unix_mode";

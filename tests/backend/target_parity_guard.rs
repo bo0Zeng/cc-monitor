@@ -10,8 +10,6 @@
 //! - 只看得见声明说得出来的差异：CLI 独有的子命令（如 `--tmux-notify`）没有逐 target 声明，判成处处都在。
 //! - 判的是「做得到」这根轴的声明，不是「编得过」（门禁的 `winchk-backend` / `muslbuild`），更不是真机上跑得起来；
 //!   macOS 一列是纯声明（没有产线、没有编译门禁）。
-//!
-//! 测试侧的 [`Target`] 与 [`TARGET_GAPS`] 在库根占着名字（`lib.rs` 那一行 `use`）：生产里再立一张同名的，测试构建编不过。
 
 use crate::control::ccm::CCM_TMUX_CARRIED;
 use crate::platform::tmux::{TmuxPlatform, TMUX_PLATFORM};
@@ -19,7 +17,7 @@ use std::collections::BTreeSet;
 
 /// 四个编译 target（Linux musl / gnu · Windows · macOS）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum Target {
+enum Target {
     LinuxGnu,
     LinuxMusl,
     Windows,
@@ -61,7 +59,7 @@ const NO_MODE_BITS: &str =
     "改的是 unix 权限位（命令声明了 `no_unix_mode`）；Windows 上没有这套位，不跨过去";
 
 /// 四个 target 之间的差异：`(面, 名, 哪个 target 上没有, 理由)`。
-pub(crate) const TARGET_GAPS: &[(&str, &str, Target, &str)] = &[
+const TARGET_GAPS: &[(&str, &str, Target, &str)] = &[
     ("wire-commands", "kill", Target::Windows, NO_TMUX_YET),
     ("wire-commands", "launch", Target::Windows, NO_TMUX_YET),
     (
