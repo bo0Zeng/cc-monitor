@@ -1,9 +1,9 @@
 /**
  * 轮换第五版：会话面板（平时 · 点一行看这个号 · 临时条目 · 先不用一个号 · 停发 · 策略出错 · 策略改过了 · 不轮换 · 拖一行改本会话先后）·
- * 设置 → 机器 → 轮换（号牌 · 24 小时条上刷一段）。
+ * 设置 → 机器 → 轮换（号牌 · 点号牌出的编辑小窗）。
  *
  * 账号库 · 额度账 · 轮换账本（第三版）· 策略文件落成本机家目录里的原始文件，`rotation-strategies` · `rotation-view` 全由真后端答
- * （真跑那份策略、真推演）。策略取 `rotation-weight.rhai`（号名换成合成的）。
+ * （真跑那份策略、真推演）。策略是照编辑器那一份建的（随后端带的 `editor.rhai`，换上合成的号列表与设置）。
  * 号名 work · team · lab · personal · api 与会话都是合成的；时刻按此刻的钟现算。
  */
 import type { Scene } from "./index";
@@ -12,11 +12,28 @@ import type { World } from "../fake/types";
 import { defaultWorld, LOCAL, sidOf } from "../fake/world";
 import { emit } from "@tauri-apps/api/event";
 import { byText, click, mainReady, openTab, sleep, waitFor } from "./helpers";
-import WEIGHT from "./rotation-weight.rhai?raw";
+import EDITOR from "../../../src/shared/rotation/editor.rhai?raw";
 
 const M = 60;
 const now = (): number => Math.floor(Date.now() / 1000);
-const NAME = "按权重轮换";
+const NAME = "高并发";
+
+/** 照编辑器那一份建的策略：头换成这份设置（时区 UTC）。 */
+function edited(settings: unknown): string {
+  return EDITOR.replace('"format": 5,', '"format": 5,\n  "tz": "UTC",').replace('"settings": { "accounts": [], "smart": true }', `"settings": ${JSON.stringify(settings)}`);
+}
+
+/** 高并发：lab 强制切入；team 20:00–23:00 不用；api 延迟切入 ＋ 强制切出（其余合计 400%）。 */
+const SETTINGS = {
+  accounts: [
+    { id: "work" },
+    { id: "team", caps: { "5h": [{ from: 0, to: 1200, v: 90 }, { from: 1200, to: 1380, v: 0 }, { from: 1380, to: 1440, v: 90 }] } },
+    { id: "lab", in: "force" },
+    { id: "personal" },
+    { id: "api", in: "delay", wait: 0, out: "force", outTotal: 400 },
+  ],
+  smart: true,
+};
 
 /** 一个号在额度账上那一条。`5h` / `7d` ＝ 用了几成 ＋ 几分钟后重置；不给 ⇒ 那一窗没开。 */
 function ledger(account: string, w5?: [number, number], w7?: [number, number], refused = false): QuotaSpec {
@@ -52,8 +69,8 @@ function rotWorld(build: (rw: RotWorld) => void = () => {}): () => World {
     const t = now();
     const rw: RotWorld = {
       quota: normal(),
-      sessions: { 0: { start: "work", current: "team", strategy: NAME, log: [{ at: t - 83 * M, from: "work", to: "team", cause: { k: "order" }, why: "权重最高" }] } },
-      strategies: { [NAME]: WEIGHT },
+      sessions: { 0: { start: "work", current: "team", strategy: NAME, log: [{ at: t - 83 * M, from: "work", to: "team", cause: { k: "order" }, why: "号牌顺序" }] } },
+      strategies: { [NAME]: edited(SETTINGS) },
       forNew: NAME,
     };
     build(rw);
@@ -125,7 +142,7 @@ const NIGHT_BROKEN = `fn decide(ctx) {
 }
 `;
 export const ROTATION_SCENES: Scene[] = [
-  panelScene("rot-panel", "面板 · 平时", "按权重轮换（照「我们的轮换」写法的策略）：第一行下拉 ＋ ⋯ ＋ 编辑策略 · 说明 · 顺序（第一格在用的 team，每行一个勾 · 用量 · 此刻怎样，用不了的沉底）· 模拟照真推演", openPanel),
+  panelScene("rot-panel", "面板 · 平时", "高并发（照编辑器建的那一份）：第一行下拉 ＋ 编辑策略 · 说明 · 顺序（第一格在用的 team，每行一个勾 · 用量 · 号名旁的记号 · 此刻怎样，用不了的沉底）· 模拟照真推演", openPanel),
   panelScene("rot-open", "面板 · 点一行看这个号", "点顺序里 lab 那一行：小窗贴着那一行，只看 —— 此刻怎样 · 用量与重置 · 它在这份策略里的规则 · 立即用 lab · 编辑策略", async () => {
     await openPanel();
     await tap(`${PANEL} [data-rot-row][data-account="lab"]`, "[data-rot-pop]");
@@ -140,22 +157,17 @@ export const ROTATION_SCENES: Scene[] = [
     }),
   ),
   {
-    id: "rot-day",
+    id: "rot-edit",
     page: "settings",
     dir: "轮换",
-    title: "设置 · 24 小时条上刷一段",
-    desc: "设置页点号牌 team、在它的 5h 条上点一下：点中的那一段整段弹出 `00:00–24:00 · 上限 [  ] %` · 0% · 50% · 100% · 删这段",
+    title: "设置 · 点一个号：在这里改",
+    desc: "设置页点号牌 team：编辑小窗贴着号牌出来 —— 用量上限一段一行（20:00–23:00 · 0%）、上面那条只画；7 天［同 5 小时 · 另设］；切入 · 切出；底行「改的是策略「高并发」· 改了就存成新版」·［移出这份策略］",
     width: 1280,
     height: 1000,
     world: rotWorld(),
     act: async () => {
       await openSettingsRot();
-      await tap(`${SECTION} button[data-account="team"]`, `${SECTION} div[data-account="team"]`);
-      const el = await waitFor(`${SECTION} div[data-account="team"] [data-day-bar]`);
-      const r = el.getBoundingClientRect();
-      el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, clientX: r.left + 2 }));
-      el.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, clientX: r.left + 2 }));
-      await sleep(700);
+      await tap(`${SECTION} button[data-account="team"]`, `${SECTION} [data-rot-editor]`);
     },
   },
   panelScene(
@@ -170,7 +182,7 @@ export const ROTATION_SCENES: Scene[] = [
   panelScene(
     "rot-hold",
     "面板 · 一个号都用不了 · 已停发",
-    "四个订阅号都被拒、api 还在启用延迟里：顶上琥珀一条照后端那一句（几点谁恢复 · 还有多久）；模拟里同一段画成「停下」",
+    "四个订阅号都被拒：顶上琥珀一条照后端那一句（几点谁恢复 · 还有多久）；模拟里同一段画成「停下」",
     openPanel,
     rotWorld((rw) => {
       rw.quota = [ledger("work", [100, 97], [60, 3 * 1440], true), ledger("team", [100, 127], [40, 4 * 1440], true), ledger("lab", [100, 47], [30, 3 * 1440], true), ledger("personal", [100, 200], [100, 2 * 1440], true)];
@@ -228,19 +240,14 @@ export const ROTATION_SCENES: Scene[] = [
   panelScene(
     "rot-newer",
     "面板 · 策略改过了",
-    "设置页里改过这份策略（存成新版）、这个会话还在用它载入的那一版：蓝条「策略「按权重轮换」改过了 · 这个会话还在用旧版」［载入新版］",
+    "设置页里改过这份策略（存成新版）、这个会话还在用它载入的那一版：蓝条「策略「高并发」改过了 · 这个会话还在用旧版」［载入新版］",
     openPanel,
     rotWorld((rw) => {
       rw.sessions[0] = {
         ...rw.sessions[0],
         stale: {
           rev: "h:000000000000",
-          settings: {
-            accounts: [{ id: "work" }, { id: "team" }, { id: "lab" }, { id: "personal" }, { id: "api", fallback: true, delay: 30, stint: 20 }],
-            caps: { "5h": [{ from: 0, to: 1440, v: 90 }], "7d": [{ from: 0, to: 1440, v: 90 }] },
-            close: 30,
-            force: 25,
-          },
+          settings: { ...SETTINGS, accounts: SETTINGS.accounts.map((a) => (a.id === "api" ? { ...a, wait: 30 } : a)) },
         },
       };
     }),
@@ -281,7 +288,7 @@ export const ROTATION_SCENES: Scene[] = [
     page: "settings",
     dir: "轮换",
     title: "设置 · 机器 · 轮换",
-    desc: "本机的「轮换」栏：第一行下拉选中的就是新会话用的，右边写「设置 · 本机」；下面号牌 · 总体设置 · 模拟（改一格当场存成新版）",
+    desc: "本机的「轮换」栏：第一行下拉 ＋ ⋯ ＋「新会话用这份」，右边写「设置 · 本机」；号牌（lab ↺ · api 虚线框 ⇥）· 总体只一个「智能切换」· 模拟",
     width: 1280,
     height: 1000,
     world: rotWorld(),
