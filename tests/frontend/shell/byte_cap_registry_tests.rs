@@ -52,6 +52,10 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "NEEDS_TIER_SPAN",
+        "**毫秒**不是字节：`backend/observe/facts_query.rs` 先答序里一档危险度占多宽，同一档里已等多久只在这一格里动。",
+    ),
+    (
         "LIVE_TEXT_KEEP",
         "**字数**（Unicode 字符数）不是字节：`backend/stream/live.rs` 一张活卡的正文只留尾巴这么多字，截过头的卡带 `clipped`、整张重发；定稿归记录，什么都不丢。",
     ),
@@ -384,13 +388,13 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "BIG_LINE_BYTES",
         "**进大文件模式的门槛**，不是上限：最长一行超过它，编辑面就换成「只排视口内的行、\
              长行只排可见段」那一面。**没有任何东西被拒、被截** —— 越过它的文件照样整份打开、\
-             照样能改能存；编辑的真上限是 `filewin/editor.rs::MAX_EDIT_BYTES`（下面 `CAPS` 那一行）。\
+             照样能改能存；编辑的真上限是后端那道编辑门（`files/mod.rs::READ_TEXT_MAX_BYTES`，下面 `CAPS` 那一行）。\
              数由 `bigfile::derive_threshold(LINE_READING)` 推出，判据钉「推算式 == 常量」。",
     ),
     (
         "BIG_TOTAL_BYTES",
         "同上，全文那一维的门槛（全文超过它进大文件模式）。按真敲键重打读数后 1 MiB → 256 KiB；\
-             编辑上限同拍抬到 1 MiB（`editor::MAX_EDIT_BYTES`；再抬到 8 MiB）⇒ 这一条从此**在打开时就会开火**。",
+             编辑上限是 8 MiB ⇒ 这一条在打开时就会开火。",
     ),
     (
         "FRAME_BUDGET_US",
@@ -475,41 +479,23 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "一趟 `files-ls` 一屏最多几条目录项（**条目数，不是字节**）",
         "截断+说清",
     ),
-    // 池子那一份同值的 `MAX_EDIT_BYTES`（「SFTP 在线编辑的文件体量」）随那条读文本命令一起走了。
-    // 文件窗口编辑器的上限**搬回窗口**（它答「文本控件打字卡不卡」，
-    //   是窗口的偏好）：每趟经 `max_bytes` 送给后端 `files-read-text`，后端按它整趟拒、不截断。
-    // 🔴256 KiB → 1 MiB（那时存盘整份装一行，上限钉成后端入方向一行）。
-    // 🔴1 MiB → **8 MiB**：装不进一行的分块走暂存区（下面 `SAVE_LINE_CAP` 那一行），
-    //   能存多大改由后端 `files-commit-text` 的天花板定，而它就是 `files/mod.rs::READ_TEXT_MAX_BYTES`
-    //   （存得回的要读得回来）⇒ 对 E 改钉这一对。
+    // 预览 · 看图那几道门（后端在 `files-ls` 每行上判好给出，两端照画）。超了：**不读**，摆出后端写好的那一句；不截一半。
     (
-        "src/frontend/filewin/src/editor.rs",
-        "MAX_EDIT_BYTES",
-        "文件窗口编辑器能打开、能存回的文本体量 ＝ 后端 `files-read-text` / `files-commit-text` 的天花板",
+        "src/backend/files/class.rs",
+        "PREVIEW_TEXT_MAX_BYTES",
+        "预览一份文本读多少（跟着光标走，每挪一次一趟 `files-read-text`）",
         "拒收+回错",
     ),
-    // 预览自己的上限（**刻意不借编辑上限**：预览跟着光标走，↑↓ 一路按下去
-    //   每一步都是一趟 `files-read-text`；编辑上限是「点了编辑」那一下的量）。
-    //   超了：**不读**，面板上说「有 N，预览只看 M 以内的文件」；不截一半来预览（截断的文本会被当成全文）。
     (
-        "src/frontend/filewin/src/preview.rs",
-        "PREVIEW_MAX_BYTES",
-        "文件窗口预览一份文本的体量（每挪一次光标一趟）",
+        "src/backend/files/class.rs",
+        "PREVIEW_IMAGE_MAX_BYTES",
+        "预览一张图读回多少字节（逐块经 `files-read-chunk`）",
         "拒收+回错",
     ),
-    // 图片预览一张图读多少（逐块经 `files-read-chunk` 读回）。超了：**不读**，面板上说「图片只预览 N 以内的」；不截一半来解码。
     (
-        "src/frontend/filewin/src/preview.rs",
-        "IMAGE_MAX_BYTES",
-        "文件窗口预览一张图片的字节数（窗口自己解码）",
-        "拒收+回错",
-    ),
-    // 一张图最多读多少（预览 · 「看一眼」· 查看页共用那一份；查看页的上限就是它）。超了：列表那一行就超 ⇒ **不读**、画面上说多大 · 上限多少；
-    //   读的途中变大了 ⇒ 读到它就停、说「读取中超过上限 · 不显示」；不截一半来解码。
-    (
-        "src/frontend/filewin/src/picture.rs",
-        "PICTURE_MAX_BYTES",
-        "文件窗口一张图读回多少字节（查看页的上限；逐块经 `files-read-chunk`）",
+        "src/backend/files/class.rs",
+        "VIEW_IMAGE_MAX_BYTES",
+        "查看页一张图读回多少字节（逐块经 `files-read-chunk`）",
         "拒收+回错",
     ),
     // 解码一张图最多占多少内存。超了：**不解**，说「像素过多 · 无法解码」（不说「解不开」）。
@@ -1566,18 +1552,6 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
     // 它断言搜索那一侧（今天只剩后端）生产段**不许**再出现 `const MAIN_CAP` / `const TOOL_CAP` 之类的定义，
     // monitor 生产树里零处再搜由 `search_kou_jing_guard.rs::the_monitor_grows_no_search_helpers` 断言。
     // ⇒ 这两个数搬回任何一侧，当场红。
-
-    // 对 E〔F9 续 09-24 立；F9c〕：窗口的编辑上限**就是**后端读 / 提交存盘的天花板 ⇒ 钉相等。
-    //   窗口多给 ⇒ 打得开、改得了，存的时候后端 `files-commit-text` 拒（`bytes` 越过天花板）、读的时候
-    //   `files-read-text` 拒 `max_bytes`；窗口少给 ⇒ 存得回的文件被本地冤拒。两个方向都是错。
-    // 上一版这一对钉的是「编辑上限 == 后端入方向一行」（那时存盘整份装一行）；那一对换成下面的对 F。
-    let e1 = by("src/frontend/filewin/src/editor.rs", "MAX_EDIT_BYTES");
-    let e2 = by("src/backend/files/mod.rs", "READ_TEXT_MAX_BYTES");
-    assert_eq!(
-        e1, e2,
-        "窗口编辑上限与后端读 / 提交存盘的天花板漂开了（窗口 {e1} / 后端 {e2}）。\
-             存得回的要读得回来：`files-read-text` 的 `max_bytes` 与 `files-commit-text` 的 `bytes` 都按它拒。"
-    );
 
     // 对 F：窗口存盘时一行的上限 ＝ 后端入方向一行的上限 ⇒ 钉相等。
     //   窗口多给一个字节 ⇒ 后端整行丢弃（`line_too_long`）；少给 ⇒ 只是多切几块（不错，但两份数漂了就该有人看）。

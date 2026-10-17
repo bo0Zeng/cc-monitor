@@ -1137,7 +1137,6 @@ fn no_production_code_writes_the_agent_settings_file() {
         "OpenOptions",
         "write_all",
         "door::put",
-        "files-put",
         "fs::rename",
         "door::rename",
     ];

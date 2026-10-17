@@ -2307,12 +2307,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "list_history_projects",
             1,
         ),
-        // 测试替身里那一格（`mcp-server-put` 帧命令删了，替身那一格跟着删）一直替这处病史遮着「还活着」。
-        (
-            "tests/frontend/shell/remote_write_registry_tests.rs",
-            "write_project_mcp_server",
-            1,
-        ),
         // 那份壳命令登记表的改数史（「−2：…机器表搬进本机后端」）点了已删的壳命令名；它一直被截图台架那份假壳命令表遮着「还活着」，
         // 台架那一条换成假后端的 `machines-try` 以后才被看见。那句是病史，该留。
         (
@@ -2361,7 +2355,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "inline_literal_byte_caps_are_still_just_the_one",
             1,
         ),
-        // `ccm_probe.rs` 那一行出列：探针头注里「本机远端同一条」那段改写了（远端改问那台后端 `ccm-probe`），不再点那条旧判据名。
         (
             "tests/backend/footprint/rows_tests.rs",
             "locality_is_derivable_from_destination_today",

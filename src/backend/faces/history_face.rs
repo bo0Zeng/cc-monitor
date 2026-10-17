@@ -8,7 +8,7 @@
 use crate::observe::history_query::{self, RecordProbe, TailPlan};
 use crate::observe::record_page::{RecordLine, RunRow};
 use crate::wire::typed::{codes, of_pair, Command, NoArgs};
-pub(crate) use cmd_wire::needs::NeedsList;
+pub(crate) use cmd_wire::needs::{AnsweredRow, NeedsList};
 /// 这两条的回包住 `cmd-wire`（手机按同一份解，记录那一格按完整记录）；后端写的那一份记录是原样的一团（缺省 `Value`）。
 pub(crate) use cmd_wire::record::{HistoryLines, HistoryRead};
 use std::path::Path;
@@ -705,6 +705,11 @@ pub(crate) fn needs_with(
                 })
             },
         ),
+        // 这台家里的会话才列（登记表是进程里一份）。
+        answered: crate::control::asks::answered_rows()
+            .into_iter()
+            .filter(|r| history_query::session_record(home, &r.sid).is_ok())
+            .collect(),
     }
 }
 
@@ -1674,6 +1679,10 @@ pub(crate) fn facts_at(
     // 答题口没接上 ⇒ 那一句（[`answer_off_of`]，每次按持着它的进程现查）；配上挂着的待答请求（`needs.ask`：可以怎么答；
     // 挡着终端的那种 pidfile 不说在等，照它补出一份），没有挂着的 ⇒「只能在终端里答」换成它为什么（[`dress_ask`]）。
     facts.answer_off = answer_off_of(&facts.writers, facts.agent.as_deref());
+    // 没人答时自动答：注解里那一格 · 上一条替人答过的那一句（判定与记录都住 `control::asks`）。
+    facts.auto_answer =
+        crate::history::history_annotations::auto_answer_of(sid).map(|a| a.after_min);
+    facts.auto_answered = crate::control::asks::answered(sid);
     facts.needs = dress_ask(
         facts_query::needs_of(
             &facts.pending,

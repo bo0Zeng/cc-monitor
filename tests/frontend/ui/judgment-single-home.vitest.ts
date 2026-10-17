@@ -51,6 +51,8 @@
  *   本判据只核它们在表里，**不核** TS 里真没有同义实现（语义判不动）。
  * - 指纹只抓「登记过的那几种写法」：换个名字、换种写法重写一遍，这里看不见。
  * - Rust 侧一条判定有几个家只判**登记过的并家**（⑦ `rustGone` / `rustNeedles`）；没登记的多家看不见。
+ * - 人群只取共享 crate 的项：**后端模块里的判定在 TS 里长出孪生，这里看不见**。按「两侧都读的金样」认也认不出 ——
+ *   两侧都读的金样多半是线上形状（后端写、界面解），按文件名分不出哪一份是规则对拍。
  * - `guard-core` 的 dev-only 现核只看下面 [`CARGO_TOMLS`] 列的那几份；仓里新长一份 `Cargo.toml` 不会自动进来。
  */
 import { existsSync, readFileSync } from "node:fs";
@@ -757,6 +759,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 线上一家 agent 的名字（`AgentKind`）：收下 · 取串。不是判定（kind ⇄ 路由名那一换住后端 `agents`）；界面拿生成的类型当串用，没有孪生。
     new: NONE,
     as_str: NONE,
+    // `files-ls` 那一列是不是从大到小（后端排序 · 文件窗口表头的箭头）。界面不列目录，TS 侧没有孪生。
+    descending: NONE,
   },
   "copy-core": {
     backend_old: "J22",

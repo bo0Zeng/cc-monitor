@@ -635,15 +635,23 @@ mod tests {
         std::fs::write(p, text).unwrap();
     }
 
-    /// 一棵假仓：main 上有一份假 gradlew（记下参数、写一份三条的 test-results），工作分支上只改 `changed` 那一条。
-    /// 返回 quick-check `--mobile` 的输出与假 gradlew 收到的参数（没被调就是 None）。
-    fn quick_mobile(tag: &str, changed: &str) -> (String, String, Option<String>) {
+    /// quick-check `--mobile` 那一趟：输出 · 假 gradlew 收到的参数 · 它看到的那几个并行数变量（没被调就是 None）。
+    struct QuickMobile {
+        plan: String,
+        said: String,
+        args: Option<String>,
+        env: Option<String>,
+    }
+
+    /// 一棵假仓：main 上有一份假 gradlew（记下参数 · 它看得见的变量名 · 并行数变量，写一份三条的 test-results），工作分支上只改 `changed` 那一条。
+    /// `envs`：跑 quick-check 时另设（`Some`）或清掉（`None`）的变量；`nproc` 另给一个假的、说 24（判据不随跑它的机器变）。
+    fn quick_mobile(tag: &str, changed: &str, envs: &[(&str, Option<&str>)]) -> QuickMobile {
         let d = scratch(tag);
         git(&d, &["init", "-q", "-b", "main"]);
         write(
             &d,
             "src/mobile/gradlew",
-            "#!/bin/sh\necho \"$@\" > ../../gradlew-args\nenv | cut -d= -f1 > ../../gradlew-env\nmkdir -p ../../.build/mobile/app/test-results/t\necho '<testsuite name=\"x\" tests=\"3\" failures=\"0\">' > ../../.build/mobile/app/test-results/t/TEST-x.xml\n",
+            "#!/bin/sh\necho \"$@\" > ../../gradlew-args\nenv | cut -d= -f1 > ../../gradlew-env\necho \"RUST_TEST_THREADS=$RUST_TEST_THREADS GATE_VITEST_WORKERS=$GATE_VITEST_WORKERS\" > ../../gradlew-share\nmkdir -p ../../.build/mobile/app/test-results/t\necho '<testsuite name=\"x\" tests=\"3\" failures=\"0\">' > ../../.build/mobile/app/test-results/t/TEST-x.xml\n",
         );
         assert!(Command::new("chmod")
             .args(["+x", "src/mobile/gradlew"])
@@ -651,7 +659,11 @@ mod tests {
             .status()
             .unwrap()
             .success());
-        write(&d, ".gitignore", ".build/\ngradlew-args\ngradlew-env\n");
+        write(
+            &d,
+            ".gitignore",
+            ".build/\ngradlew-args\ngradlew-env\ngradlew-share\nbin/\n",
+        );
         git(&d, &["add", "-A"]);
         git(&d, &["commit", "-q", "-m", "base"]);
         git(&d, &["checkout", "-q", "-b", "work"]);
@@ -659,15 +671,33 @@ mod tests {
         git(&d, &["add", "-A"]);
         git(&d, &["commit", "-q", "-m", "work"]);
         let script = root().join("tests/scripts/quick-check.sh");
+        let bin = d.join("bin");
+        write(&d, "bin/nproc", "#!/bin/sh\necho 24\n");
+        assert!(Command::new("chmod")
+            .args(["+x", "bin/nproc"])
+            .current_dir(&d)
+            .status()
+            .unwrap()
+            .success());
+        let path = format!(
+            "{}:{}",
+            bin.display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
         let (outer, kept) = outer_session();
         let run = |arg: &str| {
-            let mut c = Command::new("bash");
+            let mut cmd = Command::new("bash");
             for k in outer.iter().chain(&kept) {
-                c.env(k, "outer-session");
+                cmd.env(k, "outer-session");
             }
-            c.arg(&script)
-                .arg(arg)
-                .current_dir(&d)
+            cmd.arg(&script).arg(arg).env("PATH", &path);
+            for (k, v) in envs {
+                match v {
+                    Some(v) => cmd.env(k, v),
+                    None => cmd.env_remove(k),
+                };
+            }
+            cmd.current_dir(&d)
                 .env("JAVA_HOME", d.join("no-jdk"))
                 .env("ANDROID_HOME", d.join("no-sdk"))
                 .env("GRADLE_USER_HOME", d.join("no-gradle"))
@@ -697,8 +727,14 @@ mod tests {
             let lost: Vec<&String> = kept.iter().filter(|k| !seen.contains(k.as_str())).collect();
             assert!(lost.is_empty(), "判据输入没传到 gradle：{lost:?}");
         }
+        let env = std::fs::read_to_string(d.join("gradlew-share")).ok();
         let _ = std::fs::remove_dir_all(&d);
-        (plan, said, args)
+        QuickMobile {
+            plan,
+            said,
+            args,
+            env,
+        }
     }
 
     #[test]
@@ -708,7 +744,9 @@ mod tests {
             "tests/__fixtures__/history-list.golden.json",
             "src/mobile/app/src/main/kotlin/X.kt",
         ] {
-            let (plan, said, args) = quick_mobile("mobile-run", changed);
+            let QuickMobile {
+                plan, said, args, ..
+            } = quick_mobile("mobile-run", changed, &[]);
             assert!(
                 plan.contains(&format!("MOBILE: 跑 —— 改到 {changed}")),
                 "{plan}"
@@ -729,7 +767,9 @@ mod tests {
             assert!(said.trim_end().contains("QUICK: OK"), "{said}");
         }
         // 没改到 ⇒ 跳过，并说一声；gradle 一次都没调。
-        let (plan, said, args) = quick_mobile("mobile-skip", "src/frontend/ui/x.ts");
+        let QuickMobile {
+            plan, said, args, ..
+        } = quick_mobile("mobile-skip", "src/frontend/ui/x.ts", &[]);
         assert!(plan.contains("MOBILE: 跳过"), "{plan}");
         assert!(args.is_none(), "没改到手机读的东西却调了 gradle：{said}");
         assert!(
@@ -737,6 +777,57 @@ mod tests {
             "跳过了却没说：{said}"
         );
         assert!(said.trim_end().contains("QUICK: OK"), "{said}");
+    }
+
+    /// 快检每路的测试并行数（10-15）：几路快检同时跑时，每路的测试按默认各起满核数的线程 / worker，互相挤
+    ///   （量过：8 个线程比默认省一到三成 CPU、墙钟持平；4 个墙钟变长）。⇒ Rust 测试线程 · vitest worker · gradle worker
+    ///   都拿「核数 ÷ heavy 槽位数」那一份（槽位数照 `HEAVY_SLOTS`，默认与 heavy.sh 同一个 3）；外面设了 Rust / vitest 那两个变量就听外面的。
+    /// 观测点是假 gradlew：它跑在 `run` 给的环境里（cargo 与 vitest 那几步同一个 `run`），收到的参数与变量就是各步拿到的。
+    #[test]
+    fn quick_check_gives_each_test_runner_its_share_of_the_cores() {
+        let changed = "src/mobile/app/src/main/kotlin/X.kt";
+        let clear: [(&str, Option<&str>); 3] = [
+            ("RUST_TEST_THREADS", None),
+            ("GATE_VITEST_WORKERS", None),
+            ("HEAVY_SLOTS", None),
+        ];
+        let seen = |envs: &[(&str, Option<&str>)]| {
+            let q = quick_mobile("mobile-share", changed, envs);
+            let args = q.args.unwrap_or_else(|| panic!("没调 gradle：{}", q.said));
+            let env = q.env.unwrap_or_default();
+            (args, env.trim().to_string())
+        };
+        // 默认：24 核 ÷ 3 槽 = 8
+        let (args, env) = seen(&clear);
+        assert!(
+            args.split_whitespace().any(|a| a == "--max-workers=8"),
+            "gradle 没拿到那一份：{args}"
+        );
+        assert_eq!(env, "RUST_TEST_THREADS=8 GATE_VITEST_WORKERS=8");
+        // 槽位数跟着 HEAVY_SLOTS：24 ÷ 4 = 6
+        let (args, env) = seen(&[clear[0], clear[1], ("HEAVY_SLOTS", Some("4"))]);
+        assert!(
+            args.split_whitespace().any(|a| a == "--max-workers=6"),
+            "{args}"
+        );
+        assert_eq!(env, "RUST_TEST_THREADS=6 GATE_VITEST_WORKERS=6");
+        // 外面设了就听外面的
+        let (_, env) = seen(&[
+            ("RUST_TEST_THREADS", Some("5")),
+            ("GATE_VITEST_WORKERS", Some("7")),
+            clear[2],
+        ]);
+        assert_eq!(env, "RUST_TEST_THREADS=5 GATE_VITEST_WORKERS=7");
+        // heavy.sh 的槽位默认与这里同一个数（这一份是按槽位分的）：两边那一行整行钉住，上面 24 ÷ 3 = 8 那一趟已证快检真按 3 算
+        let heavy = std::fs::read_to_string(root().join("tests/scripts/heavy.sh")).unwrap();
+        let qc = std::fs::read_to_string(root().join("tests/scripts/quick-check.sh")).unwrap();
+        guard_core::pin_line(&heavy, "slots=${HEAVY_SLOTS:-3}")
+            .unwrap_or_else(|e| panic!("heavy.sh 的槽位默认不是 3 了（快检那一份要跟着改）：{e}"));
+        guard_core::pin_line(
+            &qc,
+            r#"share=$(( $(nproc) / ${HEAVY_SLOTS:-3} )); [ "$share" -ge 1 ] || share=1"#,
+        )
+        .unwrap_or_else(|e| panic!("快检按的槽位默认认不出了：{e}"));
     }
 
     /// `mobile_reads` 漏没漏：`src/mobile` 的 Kotlin / Gradle 源里字面写到的仓内（手机树外）路径，每一条都得落在表里某一项下。

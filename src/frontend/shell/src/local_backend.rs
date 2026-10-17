@@ -10,7 +10,7 @@
 //!   本模块过 `backend::tests::the_backend_layer_stays_host_agnostic`（禁 `AppHandle` 等把手）。
 //!
 //! 用 `std::process::Command`，**刻意不引入 `tauri-plugin-shell`**：
-//! 摸底实测 monitor 今天的 tauri 插件只有 opener/dialog/notification/single-instance，
+//! 摸底实测 monitor 今天的 tauri 插件只有 opener/dialog/single-instance，
 //! 而 Tauri 的 sidecar API 要 `AppHandle` —— 那会让本模块**当场违反**宿主无关那条机检。
 //! `externalBin` 只是**打包器**的事（把二进制放进安装包并按 triple 命名），与「怎么起它」无关。
 //!
@@ -983,9 +983,11 @@ fn sweep_moved_aside(dir: &Path, name: &str) {
 }
 
 /// 〔判定只在后端〕问手上这份字节「放不放」的那一口 —— **宿主注入**（起进程的三条策略是宿主知识，；
-/// 本层平台无关）。入参 = 暂存件的路径 · 帧命令 `place-verdict` 的入参；回 = 它的答，或没问成的那一形。生产 = `ccm_probe::ask_place_verdict`。
-pub type PlaceAsk<'a> =
-    &'a dyn Fn(&Path, &serde_json::Value) -> Result<serde_json::Value, crate::ccm_probe::OnceErr>;
+/// 本层平台无关）。入参 = 暂存件的路径 · 帧命令 `place-verdict` 的入参；回 = 它的答，或没问成的那一形。生产 = `backend_once::ask_place_verdict`。
+pub type PlaceAsk<'a> = &'a dyn Fn(
+    &Path,
+    &serde_json::Value,
+) -> Result<serde_json::Value, crate::backend_once::OnceErr>;
 
 /// 放不下来的两形（下一步不同，互不合并）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1009,8 +1011,8 @@ fn drop_partial(tmp: &Path) {
 }
 
 /// 没问成的那几形 → 一句话（手上那份字节说「不」时那句就是它自己的话，原样）。
-fn unasked(e: crate::ccm_probe::OnceErr) -> Said {
-    use crate::ccm_probe::OnceErr;
+fn unasked(e: crate::backend_once::OnceErr) -> Said {
+    use crate::backend_once::OnceErr;
     let why = match e {
         OnceErr::Refused { message, .. } => return message.into(),
         OnceErr::Spawn(e) => Said::with_raw(copy_text("rsLocalBackend.place.askSpawn", &[]), &e),
@@ -1028,7 +1030,7 @@ fn unasked(e: crate::ccm_probe::OnceErr) -> Said {
 /// `place-verdict` 的答 → 放（`true`）/ 不动（`false`）。**严格收**：恰 `{action, why}`、`action` 两个词之一；别的都是没问成（不猜）。
 pub(crate) fn decode_place(v: &serde_json::Value) -> Result<bool, Said> {
     let bad = || {
-        unasked(crate::ccm_probe::OnceErr::Unreadable(
+        unasked(crate::backend_once::OnceErr::Unreadable(
             v.to_string().chars().take(200).collect(),
         ))
     };

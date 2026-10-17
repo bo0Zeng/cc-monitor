@@ -370,36 +370,6 @@ fn the_write_replies_the_file_window_reads_keep_their_wire_bytes() {
             json!({ "root": r, "rel": "moved.txt", "content": "abcd", "expect": sha(b"abc") }),
         ),
         (
-            "peek",
-            "files-peek",
-            json!({ "root": r, "rel": "moved.txt" }),
-        ),
-        (
-            "peek-missing",
-            "files-peek",
-            json!({ "root": r, "rel": "nope.txt" }),
-        ),
-        (
-            "put-new",
-            "files-put",
-            json!({ "root": r, "rel": "put.txt", "content": "p1", "expect": null }),
-        ),
-        (
-            "put-backup",
-            "files-put",
-            json!({ "root": r, "rel": "put.txt", "content": "p2", "expect": "p1", "backup": true }),
-        ),
-        (
-            "put-same",
-            "files-put",
-            json!({ "root": r, "rel": "put.txt", "content": "p2", "expect": "p2" }),
-        ),
-        (
-            "link",
-            "files-link",
-            json!({ "root": r, "rel": "ln", "target": "moved.txt" }),
-        ),
-        (
             "delete",
             "files-delete",
             json!({ "root": r, "items": [{ "rel": "copied.txt" }] }),

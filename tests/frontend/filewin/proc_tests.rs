@@ -162,8 +162,8 @@ impl comms_inward::chan::router::Backends for ScreenHost {
                         .to_string();
                     json(serde_json::json!({
                         "entries": [
-                            { "path": format!("{dir}/甲"), "name": "甲", "kind": "dir" },
-                            { "path": format!("{dir}/乙.txt"), "name": "乙.txt", "kind": "file", "size": 3 },
+                            { "path": format!("{dir}/甲"), "name": "甲", "kind": "dir", "class": "folder", "type_text": "" },
+                            { "path": format!("{dir}/乙.txt"), "name": "乙.txt", "kind": "file", "size": 3, "class": "text", "type_text": "" },
                         ],
                         "crumbs": [],
                         "truncated": false,

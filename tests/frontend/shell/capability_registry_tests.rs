@@ -11,11 +11,6 @@ const ALLOWED: &[(&str, &str)] = &[
              ⚠ 它只能**打开**，不能读写内容",
     ),
     ("dialog:default", "文件选择框（SFTP 上传/下载选本地路径）"),
-    (
-        "notification:default",
-        "notification 插件往每个页面里注入一层 `window.Notification`，加载时就问一次权限 —— 不给这一格每个窗口一开就是一条 \
-             「not allowed」。界面不发通知；壳自己发（`platform/notify.rs`；Windows 那一臂在壳里用插件）",
-    ),
     ("core:window:allow-minimize", "最小化"),
     ("core:window:allow-set-title", "窗口标题写「cc-monitor · 需手动 N」（任务栏、Alt+Tab 里看得见谁在等你）"),
     ("core:window:allow-set-fullscreen", "全屏"),
@@ -23,7 +18,7 @@ const ALLOWED: &[(&str, &str)] = &[
     ("core:window:allow-close", "关窗"),
     (
         "core:window:allow-unminimize",
-        "把窗口拉到前面那一下先还原：主窗口（点系统通知 · 设置窗跳回账号面板 · 起会话落地）与 agent 窗口（滚到派出卡）",
+        "把窗口拉到前面那一下先还原：主窗口（设置窗跳回账号面板 · 起会话落地）与 agent 窗口（滚到派出卡）",
     ),
     ("core:window:allow-set-focus", "同上，还原之后给它焦点"),
     (

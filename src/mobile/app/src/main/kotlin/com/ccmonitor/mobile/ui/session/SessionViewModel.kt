@@ -102,6 +102,7 @@ class SessionViewModel(
     private val hostId: String,
     cdArg: String?,
     tmuxArg: String?, // 进终端 tab 首连即接回的会话名（敲那台渲出的那一行）；普通 tab 为 null
+    resumeArg: String?, // 终端没了的那条会话（sid）：首连先让那台恢复、再接回它落在的那个会话；普通 tab 为 null
     private val manager: SshConnectionManager,
     private val hostRepo: HostRepository,
     private val identityRepo: IdentityRepository,
@@ -193,6 +194,9 @@ class SessionViewModel(
     /** 进终端 tab 要接回的会话名（首连与重连都敲那台渲出的那一行）；普通 tab 为 null。 */
     private val attachTo: String? = tmuxArg?.ifBlank { null }
 
+    /** 先恢复再接回的那条会话（sid）。重连时照样先问那台：已经在跑 ⇒ 那台回它所在的那个，不另起。 */
+    private val resumeSid: String? = resumeArg?.ifBlank { null }
+
     // 当前所在的 tmux 会话名，每个 tab 各记各的（同主机多 tab 不互相覆盖），跨重连保留。
     // 切模型 · 抓屏按它找那台名单里的终端。进终端 tab 以 [attachTo] 初始化。
     private val _tmuxSession = MutableStateFlow(attachTo)
@@ -227,7 +231,7 @@ class SessionViewModel(
     val moved: StateFlow<List<MovedLaunch>> = _moved.asStateFlow()
 
     private fun loadAliases() {
-        if (attachTo != null || _aliasPicked.value) return
+        if (attachTo != null || resumeSid != null || _aliasPicked.value) return
         viewModelScope.launch { terminals.aliases().onSuccess { _aliases.value = it } }
     }
 
@@ -371,9 +375,11 @@ class SessionViewModel(
         host: Host,
         ts: TerminalSession,
     ) {
-        attachTo?.let { name ->
-            terminals
-                .attachLine(name)
+        val name = attachTo?.let { Result.success(it) } ?: resumeSid?.let { terminals.resume(it) }
+        if (name != null) {
+            name
+                .onSuccess { _tmuxSession.value = it }
+                .mapCatching { terminals.attachLine(it).getOrThrow() }
                 .onSuccess { ts.send("$it\n".toByteArray()) }
                 .onFailure { _notices.trySend(it.message.orEmpty()) }
             return

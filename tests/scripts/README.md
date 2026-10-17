@@ -18,7 +18,7 @@
 | [`gate-affected.sh`](gate-affected.sh) | 按改动挑格跑门禁：`git diff <基>...HEAD`（基默认取 `base.sh`，`--base` 可指）改到的路径照 [`gate-affected/map`](gate-affected/map)（路径 → 格组，每行带理由）挑格，挑格那一半是 [`gate-affected/plan.py`](gate-affected/plan.py)（`--dry-run` 只印计划；表与 `gate.sh` 对不上就停）。`--trust-ci` 是合并用的工作树推候选分支之前那一趟：先 `quick-check.sh`，CI 会跑的格交给 CI，只跑恒跑的便宜格 ＋ 被改到的本机才有的格 ＋ 被改到被测对象的 e2e 套件。裁决恒是 PARTIAL，末行 `AFFECTED: OK` / `AFFECTED: 红` |
 | [`heavy.sh`](heavy.sh) | 重活（cargo 编测 · quick-check · 门禁 · gradle · 截图台架）一律经它跑：起命令前经 `session-scrub.sh` 摘掉会话变量；每份一个 `systemd-run --user --scope`、封顶内存，同时最多 `HEAVY_SLOTS` 份、多的排队；已经在一份重活里面（外层经它跑的）就直接跑，不再排槽位。没有 `systemd-run --user` 的机器（CI · Windows · 没有 user session）不封顶、直接跑，并说一声 |
 | [`push-candidate.sh`](push-candidate.sh) | 推送：`w8/<名>` 强推到候选分支 `next` → 用 `gh` 等 CI 跑完 → 全绿才在主工作树上把 `main` 快进过去并推；有红就停、印红的 job 与失败日志，`main` 不动 |
-| [`bump-build-id.sh`](bump-build-id.sh) | 发版时打版本号的机械那一半：改 `src/backend/lib.rs` 的 `BUILD_ID`；子命令集变了就把指纹历史表（只留上一版 ＋ 当前版两行）最老那行删掉、追加新行（新行取自指纹那条红时印的 `NEW-ROW`）。版本谱系那段说明照旧人写，下一步是 `re-embed.sh` |
+| [`bump-build-id.sh`](bump-build-id.sh) | 发版时打版本号的机械那一半：改 `src/backend/lib.rs` 的 `BUILD_ID`；子命令集变了就把指纹历史表（只留上一版 ＋ 当前版两行）最老那行删掉、追加新行（新行取自指纹那条红时印的 `NEW-ROW`）。下一步是 `re-embed.sh` |
 | [`xvfb-free.sh`](xvfb-free.sh) | 起一台私有 Xvfb：在 `:100–:899` 里挑空号、按 X 的老规矩建 `/tmp/.X<n>-lock` 占住（门禁的网络命名空间里外都认得），号由 Xvfb 写在标准输出第一行；`release <n> <pid>` 收场。文件窗口台架与截图工具共用 |
 | [`apt-install.sh`](apt-install.sh) | CI 上装 apt 包的唯一写法（两份 workflow 每一处都调它）：每趟 update / install 套 `timeout`、apt 下载带重试、一趟没成歇一下再来、最多 3 趟；调它的那一步自带 `timeout-minutes` |
 | [`release-notes.mjs`](release-notes.mjs) | GitHub Release 的正文生成器：从 `CHANGELOG.md` 里本版那一段生成正文，`release.yml` 两处发布步骤都用它；`--check` 只验不写，门禁 `release-gate` 那一格调它 |

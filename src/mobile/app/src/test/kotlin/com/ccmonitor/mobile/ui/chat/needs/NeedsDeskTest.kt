@@ -4,6 +4,7 @@ import com.ccmonitor.mobile.core.claude.link.Changed
 import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsAsk
+import com.ccmonitor.mobile.core.claude.link.wire.NeedsChoiceRow
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
 import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.copy.copyText
@@ -63,9 +64,17 @@ class NeedsDeskTest {
     private class Board {
         var mine: Map<String, Any?>? = null
 
+        /** 这一条会话上一条提问替人答过的那一句（`null` ＝ 没有）。 */
+        var answered: String? = null
+
         fun reply(): Reply =
             Reply.Ok(
                 mapOf(
+                    "answered" to
+                        listOfNotNull(
+                            answered?.let { mapOf("sid" to "s1", "said" to it) },
+                            mapOf("sid" to "other", "said" to "别的会话那一句"),
+                        ),
                     "waiting" to
                         listOfNotNull(
                             mine?.let { mapOf("sid" to "s1", "needs" to it) },
@@ -117,6 +126,29 @@ class NeedsDeskTest {
             assertEquals("touch a.txt", bar.line2)
             assertTrue("挂着请求 ⇒ 有［答］", bar.canAnswer)
             assertEquals(copyText("sessionFace.state.waiting", "kind" to "等批准 · Bash", "waited" to DurationFormat.waited(12_000L, 0L, 0L)!!), bar.firstLine(0L))
+        }
+
+    @Test
+    fun `替人答过的那一句：没在等时照那台那一句画一行、没有钉条；抽屉开着时那一份没了就写这一句；再挂上提问就换回钉条`() =
+        runTest {
+            val r = rig(needs("approve"))
+            r.desk.open()
+            assertNull(r.desk.state.value.answered)
+            r.board.mine = null
+            r.board.answered = "10 分钟没人答，已自动答：继续"
+            r.pushes.emit(Changed("needs", "s1"))
+            settle()
+            val ui = r.desk.state.value
+            assertNull(ui.bar)
+            assertEquals("10 分钟没人答，已自动答：继续", ui.answered)
+            assertEquals("10 分钟没人答，已自动答：继续", ui.sheet?.gone)
+            r.desk.dismiss()
+            r.board.mine = needs("approve")
+            r.board.answered = null
+            r.pushes.emit(Changed("needs", "s1"))
+            settle()
+            assertNull(r.desk.state.value.answered)
+            assertNotNull(r.desk.state.value.bar)
         }
 
     @Test
@@ -387,5 +419,8 @@ class NeedsDeskTest {
         val q = choiceGroups(Wire.bind<NeedsAsk>(golden["question"])!!)
         assertEquals(listOf(listOf("answer"), listOf("dismiss")), q.map { g -> g.map { it.choice.id } })
         assertEquals(ChoiceLook.QUIET, q[1].single().look)
+
+        val moved = sub.copy(choices = sub.choices.map { if (it.id == "always-1") it.copy(row = NeedsChoiceRow.RELEASE) else it })
+        assertEquals("段只照那台给的 row，不按 id 认", listOf("always-1", "release"), choiceGroups(moved).last().map { it.choice.id })
     }
 }

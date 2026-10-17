@@ -35,6 +35,7 @@ import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import type { ActionId } from "./keybindings/actions";
 import { terminalFrontAvailable } from "./terminal-front";
 import { fullTitle } from "./session-face";
+import { fmtDur } from "./duration-format";
 
 /** 菜单项 id ⇒ 它要那台后端做的那条命令（那台握手时说过做不到 ⇒ 置灰并说为什么）。 */
 const ITEM_OPS: Readonly<Record<string, string>> = { kill: "kill", "resume-into": "launch" };
@@ -128,6 +129,8 @@ export interface TabMenuHost {
   togglePin(sid: string): void;
   /** 关掉这个标签（与批量菜单「关闭标签」、× 同一个动作）。 */
   close(sid: string): void;
+  /** 「没人答时自动答」那一格（`history-annotate {autoAnswer}`；`0` ＝ 关）：只交命令（那台推帧、会话事实跟着重读），没交成说一句。 */
+  autoAnswer(sid: string, min: number): void;
   /** 隐藏 · 取消隐藏（与批量菜单同一口：交命令、给撤销 toast；栏上那一格等推帧来了才挪）。 */
   hide(sids: readonly string[]): void;
   unhide(sids: readonly string[]): void;
@@ -139,6 +142,23 @@ export interface TabMenuHost {
   openAccountPanel?: (sid: string) => void;
   /** 面板接上了没有（没接 ⇒ 不给「账号…」）。 */
   accountPanelWired?: () => boolean;
+}
+
+/** 「没人答时自动答」可选的几档（分钟；`0` ＝ 关）。上限由那台判（超了回 `bad_args`）。 */
+export const AUTO_ANSWER_MINUTES: readonly number[] = [0, 5, 15, 30];
+
+/** 「没人答时自动答 ▸」那一组单选：勾在会话事实那一格上（不在这几档里 ⇒ 多列一项，勾在它上）。 */
+export function autoAnswerItems(t: Pick<Tab, "autoAnswer">, set: (min: number) => void): MenuItem[] {
+  const now = t.autoAnswer ?? 0;
+  const mins = AUTO_ANSWER_MINUTES.includes(now) ? AUTO_ANSWER_MINUTES : [...AUTO_ANSWER_MINUTES, now].sort((a, b) => a - b);
+  return mins.map((m) => ({
+    label: m === 0 ? copyText("tabMenu.autoAnswer.off") : fmtDur(m * 60),
+    radio: "autoAnswer",
+    checked: m === now,
+    onClick: () => {
+      if (m !== now) set(m);
+    },
+  }));
 }
 
 export class TabMenu {
@@ -196,6 +216,7 @@ export class TabMenu {
     }
     if (hidden === null && this.host.collectionsLoaded()) items.push({ id: "group", icon: "list", label: copyText("tabMenu.collection.add"), submenu: this.groupItems([sid]) });
     if (t && hidden === null) items.push({ id: "hide", icon: "hidden", label: copyText("tabBar.menu.hide"), title: copyText("tabBar.hidden.tip"), onClick: () => this.host.hide([sid]) });
+    if (t && !isResumeOnly(t.state)) items.push(grey({ id: "autoAnswer", icon: "question", label: copyText("tabMenu.autoAnswer.label"), title: copyText("tabMenu.autoAnswer.tip"), submenu: autoAnswerItems(t, (min) => this.host.autoAnswer(sid, min)) }));
 
     // ③ 恢复 · 在终端里打开 · 账号
     items.push({ label: "", divider: true });

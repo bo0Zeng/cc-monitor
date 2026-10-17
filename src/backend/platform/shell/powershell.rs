@@ -158,3 +158,19 @@ pub(crate) fn home_file_between(head: &str, rel: &str, tail: &str) -> String {
         super::dialect::ps_literal(rel)
     )
 }
+
+// ─── 新开一个终端时的 `PATH`（`platform::shell::fresh_terminal_path` 用） ───
+
+/// 注册表里机器级 ＋ 用户级拼成的 `PATH`，夹在一对 `mark` 中间。自己编成 UTF-8 字节直写标准输出流：
+/// 不经控制台编码（中文系统是 936）⇒ `PATH` 里有非 ASCII 目录时读回不坏。
+#[cfg(any(not(unix), test))]
+pub(crate) fn fresh_path_query(mark: &str) -> String {
+    let m = super::dialect::ps_literal(mark);
+    format!(
+        "$t = (@([Environment]::GetEnvironmentVariable('Path', 'Machine'), [Environment]::GetEnvironmentVariable('Path', 'User')) | Where-Object {{ $_ }}) -join ';'\n\
+$b = [Text.Encoding]::UTF8.GetBytes({m} + $t + {m})\n\
+$o = [Console]::OpenStandardOutput()\n\
+$o.Write($b, 0, $b.Length)\n\
+$o.Flush()\n"
+    )
+}

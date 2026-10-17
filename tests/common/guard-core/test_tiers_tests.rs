@@ -106,7 +106,6 @@ const SUPPORT: &[&str] = &[
     "tests/frontend/shell/polling_registry.rs",
     "tests/frontend/shell/pub_reader_registry.rs",
     "tests/frontend/shell/quote_singleton_guard.rs",
-    "tests/frontend/shell/remote_write_registry.rs",
     "tests/frontend/shell/rust_timer_registry.rs",
     "tests/frontend/shell/scanning_guard_registry.rs",
     "tests/frontend/shell/session_name_registry.rs",
@@ -412,6 +411,16 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Manual("读数不是判据：`W2_COST=1` 时才量慢路与快路的墙钟（墙钟不当判据）"),
     ),
     (
+        "tests/shots/proc-start.vitest.ts",
+        "process.platform===\"\"",
+        Trigger::Manual("Windows 上让开：判的是沙箱开场 sh 里读 `/proc` 的那一句；Linux 上门禁与 quick-check 的整套 vitest 跑它"),
+    ),
+    (
+        "tests/shots/tmux-stand-in.vitest.ts",
+        "process.platform===\"\"",
+        Trigger::Manual("Windows 上让开：替身是一段 sh、转交真 tmux；Linux 上门禁与 quick-check 的整套 vitest 跑它"),
+    ),
+    (
         "tests/frontend/shell/sftp_tests.rs",
         "sr1b_loopback_deploy_and_transfer_through_the_resident_backend",
         Trigger::Filter { by: "tests/evidence/SR1b-sftp-loopback.py", needle: "sr1b_loopback_deploy_and_transfer_through_the_resident_backend" },
@@ -436,11 +445,6 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "tests/frontend/shell/profile_installer_tests.rs",
         "wf1_real_powershell_add_then_remove_restores_the_user_path",
         Trigger::Manual("读数不是判据：要一个 PowerShell（`CCM_PWSH`）跑生成的加 / 撤两段（注册表换替身）；跑法住它自己的头注"),
-    ),
-    (
-        "tests/frontend/shell/ccm_probe_tests.rs",
-        "wf1_the_windows_probe_script_reports_card_and_where_ccm_resolves",
-        Trigger::Manual("读数不是判据：要一个 PowerShell（`CCM_PWSH`）跑 Windows 那一形的探测串三种情形；跑法住它自己的头注"),
     ),
     (
         "tests/frontend/shell/profile_installer_tests.rs",

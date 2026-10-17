@@ -2,6 +2,8 @@
   "history-facts": {
     "agent": "claude",
     "answerOff": null,
+    "autoAnswer": null,
+    "autoAnswered": null,
     "background": null,
     "bgTasks": [
       {

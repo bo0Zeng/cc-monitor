@@ -232,6 +232,8 @@ describe("〔STC〕第五问：会话事实", () => {
         { name: "m-n", status: "needsLogin", detail: null, at: null },
       ],
       answerOff: null,
+      autoAnswer: null,
+      autoAnswered: null,
       startedBy: null,
       children: [],
       quietUnread: { count: 1, kinds: ["golden-future-ledger"], text: copyText("record.unread.quiet", { n: "1", types: "golden-future-ledger" }) },

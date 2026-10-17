@@ -588,76 +588,6 @@ pub(crate) fn running_backend_bin() -> Option<std::path::PathBuf> {
         .clone()
 }
 
-/// `K-P1-D1` `重-2`：**上一次「那个口上有东西，但接不上它」的下一步该干什么。**
-///
-/// # 为什么要有这么一个格子
-///
-/// 「对不上就**出声**并拒绝」这句话（`§0b-2㈡` / `listen.rs` 诚实边界②）在
-/// **手动点「起」**那条路上是兑现的（`backend_control::backend_start` 回 `Err` ⇒ 前端 toast），
-/// 而在**自动起**那条路上（`lib.rs` 的 `setup`，用户每天真正走的那条）
-/// 回修前只进了 `tracing::info!` —— **不是 `warn`，也没有任何东西到用户眼前。**
-///
-/// 它有一个具体的触发场景，不是理论：套接字按家目录确定性算（`relay_route_core::listen_socket_for`），
-/// 而 `hello_verdict` 拿「我这一版」（`byte_table::my_backend_id`）逐字比 —— **升级 monitor 之后，
-/// 上一次脱离留下的那个后端还在听同一个套接字** ⇒ `Stranger` ⇒ `Adopt::Refused`
-/// ⇒ **本机后端起不来，而界面上什么都不说。**
-/// ⚠ 这一格是**常驻带来的新场景**：翻面之前 backend 153ms 就死了，根本不存在「上一个还在听」。
-///
-/// # 为什么是一条**记录**，而不是从 `reason` 串里反推
-///
-/// 反推要拿字符串去认「这是不是一次拒绝」——那正是 `KPY5` 花一整条 DoD 治的那件事
-/// （假信号不会报错，它只是一直说是）。⇒ 这里与 [`DETACHED`] 同一个形状：
-/// **只在真的走过那条路时才被写下**，写它的唯一入口是 [`note_start_refusal`]。
-///
-/// ⚠ `StartOutcome` 的形状**不能动**（加一个变体或一个字段，`backend_control.rs`
-/// 那个 `match` 当场编不过，而它这里不改）⇒ 走这条旁路。
-static LAST_START_REFUSAL: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
-
-/// 记下「这一次失败**用户动得了手**，而且下一步是什么」。**写 [`LAST_START_REFUSAL`] 的唯一入口。**
-///
-/// # 为什么要有这个函数〔`D2` `重-D2-1`，08-27 补〕
-///
-/// 上一轮只在 `Adopt::Refused` 那一臂写了记录，而 `StartOutcome::Failed` 的构造点
-/// **现打 6 处**（`the_user_actionable_start_failures_all_reach_the_user` 把这个分母钉住了）。
-/// 其中当时「宿主自己铸钥匙失败」那一支（今天钥匙由常驻后端自己写，那一支随之删了）——
-/// 走的是 `None =>` ⇒ `tracing::info!` ⇒ **用户什么都看不到**。
-///
-/// ★ 而这撞的是 `lib.rs` 自己写下的分档标准〔引的是 **2026-09-10 之前**那一版原话，
-/// 逐字保着 —— 这一段说的是 08-27 当时的判断，改写引文就是改写历史〕：
-/// 「**拒绝**（口上有东西、接不上）=
-/// 一件**用户能动手解决的事** ⇒ 说到眼前；别的失败（安装包里还没有 local_backend…）=
-/// 诚实降级 ⇒ 仍走日志」。
-/// ⚠ 括号里那个例子今天不成立（09-10 干净 win11 现打，PM：装出来那份跑着 2 个
-/// `cc-monitor-backend.exe`、裸 `monitor.exe` 那份 0 个 ⇒ 安装包里带着本机后端），
-/// `lib.rs` 那处已订正为「这一份产物里没带本机后端」。**分档标准本身一格没动。**
-/// 「盘上有个零字节的 token 文件，删掉它再起一次」按这条标准
-/// **属于前者**，而上一轮把它落在了后者。⇒ **`阻-4` 只修了一半**：它让诊断指对了地方，
-/// 而「指对了的那句话被谁听见」落在了 `重-2` 的人群外面。
-///
-/// # 用它的口径（新增失败构造点时照这一条分档）
-///
-/// - **用户动得了手**（删一个文件、停一个进程、改一个权限位）⇒ 调本函数，
-///   并且那句话要**说得出下一步**（判据钉着「下一步」这三个字）；
-/// - **诚实降级**（**这一份产物里没带 local_backend** —— 裸 exe / 开发树、
-///   或释放内嵌那一份也失败了；或这台机不走脱离那条路）⇒ **不要**调本函数：
-///   每次启动都弹一次就成了噪音。那一档仍走 `tracing::info!`。
-///   〔订正 2026-09-10（v3.7.0）—— 原话逐字：「**诚实降级**（安装包里还没有本机后端、
-///    这台机不走脱离那条路）」。「安装包里还没有」今天不成立：09-10 干净 win11 现打
-///    （PM）装出来那份跑着 2 个 `cc-monitor-backend.exe`、裸 `monitor.exe` 那份 0 个。
-///    ⚠ **分档口径一格没动**，换掉的只是它举的那个例子。〕
-fn note_start_refusal(next_step: String) {
-    *LAST_START_REFUSAL.lock().unwrap_or_else(|e| e.into_inner()) = Some(next_step);
-}
-
-/// 取走上一次拒绝的「下一步能做什么」。**取走**（不是读）——
-/// 同一次拒绝不许被两条路各说一遍，也不许留到下一次启动还在那儿。
-pub fn take_start_refusal() -> Option<String> {
-    LAST_START_REFUSAL
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .take()
-}
-
 /// `KPY5` 的源头：**起它的时候走没走脱离那条路**。
 ///
 /// ⚠ **不许拿 `channel` 或 `pid` 反推** —— 那正是 `P2d §0a` 翻掉的 `SSH_CONNECTION` 那一形
@@ -975,16 +905,15 @@ fn start_detached(
         }
         // ⚠ **不静默复用，也不静默再起一个** —— 两条都会让状态更糟。
         Adopt::Refused(why) => {
-            // ★★ `重-2`：**这一臂是「出声并拒绝」里「出声」那一半的源头。**
-            //    自动起那条路（`lib.rs`）拿它决定要不要把话说到用户眼前 ——
-            //    而不是去 `reason` 串里认字（那是 `KPY5` 治的那种假信号）。
-            note_start_refusal(copy_text(
-                "rsLocalBackendHost.start.refusedNotice",
+            // 被拒是动得了手的那一档（结束占着口的那个进程）：下一步交给本机那一台的状态成品，设置窗照画。
+            // 只在这一臂写，不从 `reason` 串里认字；诚实降级那几档（没带后端 · 释放失败）只进日志。
+            crate::machine_state::note_local_refused(Some(&copy_text(
+                "rsLocalBackendHost.start.refusedNext",
                 &[
                     ("why", &why.said),
                     ("pidPath", &(pid_path(&dir).display()).to_string()),
                 ],
-            ));
+            )));
             return DetachOutcome::Done(StartOutcome::Failed {
                 reason: Said::restate(
                     copy_text(
@@ -1203,7 +1132,7 @@ fn resolve_backend_bin(
         &crate::platform::fs::make_executable,
         &crate::platform::fs::ensure_private_dir,
         // 放不放问手上那份字节自己（起进程的三条策略由宿主给）。
-        &crate::ccm_probe::ask_place_verdict,
+        &crate::backend_once::ask_place_verdict,
     ) {
         Resolved::Found(p) => Ok(p),
         Resolved::Missing { reason, looked_at } => Err((reason, looked_at)),
@@ -1278,8 +1207,8 @@ fn run_resident_stop_within(
     let handed = backend_env();
     // 三条策略：`Hidden`（一次性子命令不该闪窗）· `JobKillOnClose`（就地等它退，别留后代）·
     // `Captured`（失败那一句 `{code,message}` 在 stderr 上，要读回来说给人听）。
-    // 等法与本机探针同一段（`ccm_probe::capture_full`：读线程 ＋ 带上限地等，到点杀掉收尸）。
-    let got = crate::ccm_probe::capture_full(
+    // 等法与问后端一次同一段（`backend_once::capture_full`：读线程 ＋ 带上限地等，到点杀掉收尸）。
+    let got = crate::backend_once::capture_full(
         deadline,
         &|| {
             let mut cmd = std::process::Command::new(bin);
@@ -1300,7 +1229,7 @@ fn run_resident_stop_within(
     );
     let out = match got {
         Ok(c) => c,
-        Err(crate::ccm_probe::CaptureFail::Spawn(e)) => {
+        Err(crate::backend_once::CaptureFail::Spawn(e)) => {
             return Err(Said::with_raw(
                 copy_text(
                     "rsLocalBackendHost.stop.spawnFailed",
@@ -1309,14 +1238,14 @@ fn run_resident_stop_within(
                 &e,
             ))
         }
-        Err(crate::ccm_probe::CaptureFail::TimedOut) => {
+        Err(crate::backend_once::CaptureFail::TimedOut) => {
             return Err(copy_text(
                 "rsLocalBackendHost.stop.timedOut",
                 &[("dur", &copy_core::format_elapsed(deadline))],
             )
             .into())
         }
-        Err(crate::ccm_probe::CaptureFail::Read(e)) => {
+        Err(crate::backend_once::CaptureFail::Read(e)) => {
             return Err(Said::with_raw(
                 copy_text("rsLocalBackendHost.stop.readFailed", &[]),
                 &e,
@@ -1470,6 +1399,8 @@ pub fn start_local_backend() -> StartOutcome {
     // 句柄表本身只在读写那一下拿 ⇒ 这一趟里释放 ~10MB、等绑口、握手的那几秒，查状态与退出那一臂不被挡住
     // （从前锁的就是句柄表，`backend_status` 跟着等）。
     let _life = LIFECYCLE.lock().unwrap_or_else(|e| e.into_inner());
+    // 上一次被拒的那句下一步作废：这一趟被拒会重新写下。
+    crate::machine_state::note_local_refused(None);
     let g = LOCAL_BACKEND.lock().unwrap_or_else(|e| e.into_inner());
     if g.is_some() {
         return StartOutcome::AlreadyRunning;
@@ -1541,7 +1472,7 @@ pub fn start_local_backend() -> StartOutcome {
         // 与常驻那条路交的是**同一份**（上面那个 `handed`）。
         handed,
         // 同上：放不放问手上那份字节自己。
-        &crate::ccm_probe::ask_place_verdict,
+        &crate::backend_once::ask_place_verdict,
     );
     if let Some(h) = sup {
         let mut g = LOCAL_BACKEND.lock().unwrap_or_else(|e| e.into_inner());

@@ -778,7 +778,7 @@ fn facts_say_what_the_session_is_waiting_for() {
     let (waited, rest) = split_waited(&waiting);
     assert_eq!(
         rest,
-        serde_json::json!({"kind": "approve", "tool": "Bash", "call": "b1", "what": "rm -rf build/", "sinceMs": 1_700_000_000_000u64, "text": copy_core::copy_text("beSession.needs.approve", &[]), "head": copy_core::copy_text("needs.bar.approve", &[("tool", "Bash")]), "headCode": "rm -rf build/", "tone": "need", "rank": 1, "ask": null, "manualText": copy_core::copy_text("beAsk.manual.offElsewhere", &[])})
+        serde_json::json!({"kind": "approve", "tool": "Bash", "call": "b1", "what": "rm -rf build/", "sinceMs": 1_700_000_000_000u64, "text": copy_core::copy_text("beSession.needs.approve", &[]), "head": copy_core::copy_text("needs.bar.approve", &[("tool", "Bash")]), "headCode": "rm -rf build/", "tone": "need", "ask": null, "manualText": copy_core::copy_text("beAsk.manual.offElsewhere", &[])})
     );
     // 已等多久在这台算（这台读 pidfile 那一刻减那份 pidfile 里的起点），字由时长那一处写。
     let ms = waited.expect("有起点就有已等多久");
@@ -1733,11 +1733,19 @@ fn a_hidden_background_session_still_lists_its_needs() {
 }
 
 /// 一份 `needs` 拆成「已等多久（毫秒）」与其余各格（已等的那两格随问的时刻变，单拿出来判）。
+/// 先答序跟着已等多久走 ⇒ 一起摘掉，先核它就是那一处算出来的（同一种类、同一个已等多久）。
 fn split_waited(n: &serde_json::Value) -> (Option<u64>, serde_json::Value) {
     let mut rest = n.clone();
     let o = rest.as_object_mut().expect("needs 是对象");
     let ms = o.remove("waitedMs").and_then(|v| v.as_u64());
     o.remove("waitedText");
+    let kind: crate::observe::facts_query::NeedsKind =
+        serde_json::from_value(o["kind"].clone()).expect("needs.kind");
+    assert_eq!(
+        o.remove("rank").and_then(|v| v.as_u64()),
+        Some(crate::observe::facts_query::needs_rank(kind, ms)),
+        "needs.rank 不是先答序那一处算的"
+    );
     (ms, rest)
 }
 
@@ -2176,7 +2184,7 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
         tail,
         r#"{"end":273,"file":"dfb90402727f63bf","split_at":55,"tail_from":1,"total":3}"#
     );
-    assert_eq!(needs, r#"{"waiting":[]}"#);
+    assert_eq!(needs, r#"{"answered":[],"waiting":[]}"#);
     // 清单里有一行的那一形（`needs` 那一份成品与 `history-facts` 同一个类型）。
     let row = {
         use crate::observe::facts_query::{needs_of, PidWait};
@@ -2193,6 +2201,10 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
                 )
                 .expect("在等就有需手动"),
                 hidden: None,
+            }],
+            answered: vec![crate::faces::history_face::AnsweredRow {
+                sid: "s-2".into(),
+                said: crate::common::cells::Words("w".into()),
             }],
         }
     };
@@ -2211,7 +2223,7 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
     }
     assert_eq!(
         row_bytes,
-        r#"{"waiting":[{"hidden":null,"needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":null,"rank":2,"sinceMs":1,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"waitedText":"<1s","what":null},"sid":"s-1"}]}"#
+        r#"{"answered":[{"said":"w","sid":"s-2"}],"waiting":[{"hidden":null,"needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":null,"rank":3298534883325,"sinceMs":1,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"waitedText":"<1s","what":null},"sid":"s-1"}]}"#
     );
 }
 

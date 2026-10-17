@@ -114,10 +114,7 @@ fn the_monitor_has_no_cc_bus_write_path_any_more() {
         .iter()
         .map(|v| format!("cc-{v}"))
         .collect();
-    // 唯一豁免：部署器 `cc_bus_deploy.rs` 把这几份脚本**装到盘上**（字节表 + 装之前核 ccm 够不够新的那几句话），
-    // 不调用它们。判的是**两向相等**：生产段里提到这几个名字的 monitor 文件集合 == {部署器}。
-    // 别的文件一出现就是多一个元素；部署器不再提（比如字节表挪走了）就是少一个 —— 豁免过期，也红。
-    let deployer = "cc_bus_deploy.rs";
+    // 判的是零命中：生产段里提到这几个名字的 monitor 文件一个都没有（装 cc-bus 进了本机后端）。
     let mut who = std::collections::BTreeSet::new();
     let mut files = 0usize;
     for (p, one_file) in
@@ -137,13 +134,10 @@ fn the_monitor_has_no_cc_bus_write_path_any_more() {
         }
     }
     assert!(files > 100, "只扫到 {files} 份 monitor 源码 —— 遍历坏了");
-    // 部署器那份字节表随装 cc-bus 进了本机后端（`src/backend/assets/cc_bus_install.rs`）⇒ 豁免过期、人群清零。
-    let _ = deployer;
-    let only_deployer: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    assert_eq!(
-        who, only_deployer,
-        "monitor 生产段里提到 cc-bus 写面脚本名的文件 ≠ {{部署器 × 四个名字}} —— 多出来的那个就是在 monitor 里长回的一条\
-         拼 shell 串的路（它只许经后端的 `bus-*` 原语，界面经 `src/frontend/ui/cc-bus-control.ts` 一处说）；少了就是豁免过期"
+    assert!(
+        who.is_empty(),
+        "monitor 生产段里提到 cc-bus 写面脚本名的文件 {who:?} —— 那就是在 monitor 里长回的一条\
+         拼 shell 串的路（它只许经后端的 `bus-*` 原语，界面经 `src/frontend/ui/cc-bus-control.ts` 一处说）"
     );
     let backend = guard_core::production_code(
         &std::fs::read_to_string(root.join("src/backend/control/cc_bus.rs"))

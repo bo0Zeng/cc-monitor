@@ -191,6 +191,14 @@ enum class Tone {
 @JsonClass(generateAdapter = true)
 data class NeedsList(
     val waiting: List<NeedsRow>,
+    val answered: List<AnsweredRow>,
+)
+
+@WireOf("AnsweredRow")
+@JsonClass(generateAdapter = true)
+data class AnsweredRow(
+    val sid: String,
+    val said: String,
 )
 
 @WireOf("NeedsRow")
@@ -259,7 +267,20 @@ data class NeedsChoice(
     val text: String,
     val tone: Tone,
     val note: NeedsNote,
+    val row: NeedsChoiceRow,
 )
+
+@JsonClass(generateAdapter = false)
+enum class NeedsChoiceRow {
+    @Json(name = "main")
+    MAIN,
+
+    @Json(name = "hold")
+    HOLD,
+
+    @Json(name = "release")
+    RELEASE,
+}
 
 @JsonClass(generateAdapter = false)
 enum class NeedsNote {
@@ -714,6 +735,34 @@ data class LsEntry(
     val size: Long?,
     @Json(name = "mtime_text") val mtimeText: String?,
     @Json(name = "link_dir") val linkDir: Boolean?,
+    val gates: Gates?,
+)
+
+@WireOf("Gates")
+@JsonClass(generateAdapter = true)
+data class Gates(
+    val preview: PreviewGate,
+    val edit: Gate,
+)
+
+@WireOf("PreviewGate")
+@JsonClass(generateAdapter = true)
+data class PreviewGate(
+    val text: TextPreview?,
+    val no: String?,
+)
+
+@WireOf("TextPreview")
+@JsonClass(generateAdapter = true)
+data class TextPreview(
+    val cap: Long,
+)
+
+@WireOf("Gate")
+@JsonClass(generateAdapter = true)
+data class Gate(
+    val cap: Long?,
+    val no: String?,
 )
 
 @WireOf("LsReply")
@@ -736,7 +785,6 @@ data class Crumb(
 @WireOf("StatReply")
 @JsonClass(generateAdapter = true)
 data class StatReply(
-    val name: Any,
     val up: Any?,
     val kind: FileKind,
     val mode: Long?,
@@ -812,7 +860,7 @@ data class RotationViewReply(
     val dirty: Boolean,
     val start: String,
     val current: String,
-    val accounts: List<Fact>,
+    val accounts: List<RotAccount>,
     val listed: Int,
     val decision: RotTryDecision?,
     val timeline: RotTryTimeline?,
@@ -873,13 +921,22 @@ data class RotFormChoice(
     val label: Any,
 )
 
-@WireOf("Fact")
+@WireOf("RotAccount")
 @JsonClass(generateAdapter = true)
-data class Fact(
+data class RotAccount(
     val account: String,
     val w5h: WinFact,
     val w7d: WinFact,
     val blocked: FactBlocked?,
+    val plate: RotPlate,
+)
+
+@WireOf("RotPlate")
+@JsonClass(generateAdapter = true)
+data class RotPlate(
+    val color: Int,
+    val label: String,
+    val text: String,
 )
 
 @WireOf("WinFact")
@@ -1079,4 +1136,59 @@ data class ProfileRow(
 data class ProfilesWriteDone(
     val wrote: Boolean,
     val reload: String?,
+)
+
+/** `accounts-list`：这台账号库里的号（号牌字 · 5h 那一格 · 选不了的那一句都是那台写好的）。 */
+@WireOf("AccountsList")
+@JsonClass(generateAdapter = true)
+data class AccountsList(
+    val meta: ListMeta,
+    val accounts: List<AccountRow>,
+)
+
+@WireOf("ListMeta")
+@JsonClass(generateAdapter = true)
+data class ListMeta(
+    val effectiveDefault: String?,
+    val home: String?,
+)
+
+@WireOf("AccountRow")
+@JsonClass(generateAdapter = true)
+data class AccountRow(
+    val name: String,
+    val label: String,
+    val color: Int,
+    val plate: String,
+    val quota: String?,
+    val unselectable: String?,
+    val selectable: Boolean,
+    val configDir: String?,
+    val mode: String,
+)
+
+/** 登录失败的 `data`：还能怎么办（那台照码定）。 */
+@WireOf("LoginAgain")
+@JsonClass(generateAdapter = true)
+data class LoginAgain(
+    val again: LoginAgainHow,
+)
+
+@JsonClass(generateAdapter = false)
+enum class LoginAgainHow {
+    @Json(name = "paste")
+    PASTE,
+
+    @Json(name = "restart")
+    RESTART,
+
+    @Json(name = "none")
+    NONE,
+}
+
+/** `session-resume`：那条会话此刻在哪个 tmux 会话里。 */
+@WireOf("Resumed")
+@JsonClass(generateAdapter = true)
+data class Resumed(
+    val session: String,
 )

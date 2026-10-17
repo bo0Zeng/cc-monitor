@@ -55,6 +55,7 @@ export function defaultOps(): Record<string, OpHandler> {
       ]),
     ),
     "tasks-list": (_o, req, w) => ({ tasks: w.sessions.find((s) => s.sid === req.sid)?.tasks ?? [] }),
+    // 起新会话框的另两问：那个目录在不在 · 起会话那一下的结局（那份事实交真后端答）。
     "session-new-dir": (_o, req) => ({ exists: !String(req.cwd).includes("nope"), tmuxName: `${String(req.cwd).split("/").filter(Boolean).pop() ?? "session"}-cc` }),
     "session-new": (_o, req) => ({
       outcome: req.place === "tmux" ? "started" : "open",

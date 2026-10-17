@@ -83,15 +83,13 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
              同一份没认上的这一趟不再认（`tty_tried`），不是节拍器。",
     ),
     (
-        "src/ccm_probe.rs",
+        "src/backend_once.rs",
         "capture_full",
         "wait-for-condition",
-        "P3t D 阶段补审：`probe_with` 的 10ms 轮询 `try_wait` —— 等**本机 ccm 探测那个子进程退出**，\
-             上限是 `LOCAL_PROBE_TIMEOUT`（5s），到点 `kill` + `wait` 收尸。\
-             **不是节拍器**：一次探测最多醒 500 次，探完就没了，且结果缓存 5 分钟。\
-             ⚠ 为什么非轮询不可：std 不提供 `wait_timeout`，而这条**必须有上限** —— \
-             它跑的是用户自己的交互式 rc（`bash -lic`），内容不在本仓控制之下，\
-             没上限就等于「点一次恢复永远转圈」。退役归：std 有了 `wait_timeout` 之后（今天没有）。",
+        "10ms 轮询 `try_wait` —— 等问后端一次那个子进程退出，上限由调用方给（自举那一问 20s），到点 `kill` + `wait` 收尸。\
+             **不是节拍器**：一问一等，答完就没了。\
+             ⚠ 为什么非轮询不可：std 不提供 `wait_timeout`，而这条**必须有上限**（杀毒软件会先扫一份新写的 exe）。\
+             退役归：std 有了 `wait_timeout` 之后（今天没有）。",
     ),
     (
         "resident-client/feed.rs",

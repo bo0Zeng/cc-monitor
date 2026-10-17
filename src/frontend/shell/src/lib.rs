@@ -46,7 +46,6 @@ mod ui_error;
 // 通信层面 A 的第一个进程外客户端那条路（末尾「面 A 的第一个外部客户端：通道」）。
 // `pub` 同 `filewin`：它的客户端那一半给另一个二进制（外部前端）经 `monitor_lib::chan` 用。
 mod app_restart; // 设置窗「现在重启」：重起 cc-monitor 自己
-mod cc_bus_deploy; // PS1：把内嵌的 cc-bus 装到 <claude_dir>/skills/（U10b 裁「开」后落地；只读铁律第 7 条例外）
 pub mod chan;
 mod clipboard; // 写系统剪贴板那一条命令（回真成败）：全产品的复制只这一口
 mod config;
@@ -121,9 +120,6 @@ mod files_batch_relay; // 后端的 `files_batch` 帧（一组做到哪了）按
 mod live_card;
 mod probe_relay; // 本机后端的 `probe` 帧（测试连接的进度格）原样转给界面订的 `probe-progress/<票>`
 mod remote_resident; // 远端常驻后端：起 · 找（`--resident-ensure`）→ 隧道 → 握手；停（`--resident-stop`）
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/remote_write_registry.rs"]
-mod remote_write_registry; // devbench F10c：远端写面登记（接三张表各自划出去、然后没人接的那道缝）
 mod session_book;
 mod terminal_screen_relay; // 本机 / 远端后端的终端实时预览帧原样转给界面订的 `terminal-screen/<票>` // 后端的 `live_card` 帧（活卡成品）原样转给前端 `session-live-card`
                            // 起子进程的**唯一出口**（三个策略都没有 Default）。
@@ -142,7 +138,8 @@ mod sftp;
 // 并行跑（aggregate：本地 + 远端 session 同时显示为 Tab）。本机会话内容也经本模块的
 // `LineIntake` / `consume_local` 走同一个出口（flush_lines → batch_to_payloads → on_line_batch_awaited）；
 // 远端行带 origin=host 标签。
-mod ccm_probe;
+// 问自己放下去的那份后端一次（帧命令的 CLI 面）：本机后端自举那一问。
+mod backend_once;
 mod stream_source;
 // 每条长连接报「在看哪几个会话」（那台后端 `stream-watch`）：主窗口在看的 tab ∪ 查看窗跟着的会话。
 mod stream_watch;
@@ -574,7 +571,6 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_notification::init())
         .setup(move |app| {
             // **重放缓冲与本机内容消费者先于本机后端就位。** 本机会话内容从此是
             // 本机后端的 `line` 帧（`local_lines` 头注）；后端一接上就开始宣告、发行 ⇒ 接住它们的那一头
@@ -585,37 +581,9 @@ pub fn run() {
             local_lines::install(app.handle().clone(), replay.clone());
             stream_watch::spawn(replay.clone());
 
-            // F05a（定框 C7：没有 daemonless）：起并看住**本机后端进程**。
-            // 〔`K-R59` 09-11：`C7` 的第二格今天补上了 —— 远端那个 `daemonless`
-            //  每机开关整格删除（定框 `K35`），从此**没有「没有后端」这回事**。〕
-            //
-            // ⚠ **走哪一支取决于用户手里是哪一份产物**〔订正 2026-09-10，v3.7.0〕。
-            //
-            //
-            // 证伪它的读数：09-10 干净 win11 虚拟机上现打（PM，真安装包 + 真裸 exe 各一趟）——
-            // **装出来那份** `C:\Program Files\cc-monitor\` 下 `cc-monitor-backend.exe`
-            // **2 个进程在跑**；**裸 `monitor.exe`** 那份 **0 个**。
-            // F05b 已经做完并随 v3.7.0 发出去了：`externalBin` 配在
-            // `src/frontend/shell/tauri.sidecar.conf.json`，发版那一步用
-            // `npx tauri build --config src/frontend/shell/tauri.sidecar.conf.json` 注入。
-            // ⚠ 它**刻意不进基础 `tauri.conf.json`** —— 进了会让 `cargo test` 也要求当前
-            // target 的那份二进制存在。⇒ **「基础配置里没有」≠「没配」，别再把这两句写成一句。**
-            //
-            // ⇒ 降级那一支仍然在（裸 exe · 开发树走的就是它），只是**不再是常数**。
-            // 它**不是**「接线没做」：接线在这里，是**这一份产物里没带**，两者的区别就在那个
-            // tagged 返回值上。它**刻意不扫仓库 dev 产物** —— backend 一起来就无条件往
-            // tmux server 装三条全局 hook 且没有开关，扫到 dev 产物就起它 = 去改用户真实
-            // tmux 的状态（F05 摸底 §2.5）。
+            // 起本机后端：字节用这一份产物内嵌的那份，释放到 `~/.cc-monitor/bin`（文件名带 build_id）再起；exe 旁不找、不扫开发产物。
+            // 失败只进日志：被拒（口上有东西、接不上）那一句下一步由 `local_backend_host` 交给本机那一台的状态成品，设置窗照画。
             {
-                use local_backend::Resolved;
-                // P2z（定框 C10）：exe 旁边没有本机后端时，把**已内嵌**的那份释放到本机再起 ——
-                // 「单 exe 也能起后端进程」那句话的落点。
-                //
-                // 两样宿主知识在这里给（backend 层不认识它们）：
-                //   · 落点 `~/.cc-monitor/bin`：与远端自部署同一个目录，但**文件名带 build_id**
-                //     ⇒ 与远端那份结构上不可能撞（理由见 `extract_embedded_to` 头注的 D1 段）。
-                //   · 这台机器的 (OS, arch)：`byte_table::choose` 按它挑内嵌字节；取不到时交进去那句拒绝的话，
-                //     函数把它接在「旁边没有」后面、不伪造理由。
                 use local_backend_host::StartOutcome;
                 match local_backend_host::start_local_backend() {
                     StartOutcome::Started(p) => {
@@ -624,60 +592,11 @@ pub fn run() {
                     StartOutcome::AlreadyRunning => {
                         tracing::info!("本机后端已经在跑（启动路径不重复起）")
                     }
-                    StartOutcome::Failed { reason, looked_at } => {
-                        // ★★ `K-P1-D1` `重-2`：**「对不上就出声并拒绝」那句话，
-                        //    在这条路上不许只进日志。**
-                        //
-                        // 两条起法只有手动那条会让用户看见（`crate::backend_control::backend_start`
-                        // 回 `Err` ⇒ 前端 toast）。而这一条 —— 用户每天真正走的那条 ——
-                        // 回修前是 `tracing::info!`，连 `warn` 都不是。
-                        //
-                        // 触发场景不是理论：口按家目录算死，`hello_verdict` 逐字比
-                        // 「我这一版」（`byte_table::my_backend_id`）⇒ **升级 monitor 之后上一次脱离留下的那个
-                        // backend 还在听同一个口** ⇒ `Stranger` ⇒ `Adopt::Refused`
-                        // ⇒ 本机后端起不来，而界面上什么都不说。
-                        // ⚠ 这是**常驻带来的新场景**：翻面之前 backend 153ms 就死了。
-                        //
-                        // ⚠ 分两档，因为这两件事不是一回事：
-                        //   · **拒绝**（口上有东西、接不上）= 一件用户能动手解决的事 ⇒ 说到眼前；
-                        //   · 别的失败（**这一份产物里没带 local_backend** —— 裸 exe / 开发树，
-                        //     或释放内嵌那一份也失败了）= **诚实降级**，
-                        //     每次启动都弹一次就成了噪音 ⇒ 仍走日志。
-                        //     〔订正 2026-09-10（v3.7.0）—— 原话逐字：「别的失败（安装包里
-                        //      还没有 local_backend…）= 今天的**诚实降级**」。括号里那句今天不成立：
-                        //      09-10 干净 win11 现打（PM）装出来那份跑着 2 个
-                        //      `cc-monitor-backend.exe`、裸 `monitor.exe` 那份 0 个。
-                        //      ⚠ **分档标准本身一格没动**，换掉的只是它举的那个例子 ——
-                        //      「诚实降级」这一档今天仍然有人（裸 exe · 开发树 · 释放失败）。〕
-                        //   分档的依据是 `local_backend_host` 里那条**只在真的被拒绝时才写下**的记录，
-                        //   **不是**去 `reason` 串里认字（那是 `KPY5` 治的那种假信号）。
-                        match local_backend_host::take_start_refusal() {
-                            Some(next_step) => {
-                                tracing::warn!(
-                                    "本机后端未启动: {}（{}）；找过 {looked_at:?}",
-                                    reason.said,
-                                    reason.raw()
-                                );
-                                if let Err(e) = crate::platform::notify::show(
-                                    app.handle(),
-                                    &copy_text("rsLib.run.localBackendDown", &[]),
-                                    &next_step,
-                                ) {
-                                    // 通知发不出去也要留痕，别让「说出口」这件事静默失败。
-                                    tracing::warn!(
-                                        "本机后端拒绝的通知发不出去（{e}）：{next_step}"
-                                    );
-                                }
-                            }
-                            None => {
-                                tracing::info!(
-                                    "本机后端未启动: {}（{}）；找过 {looked_at:?}",
-                                    reason.said,
-                                    reason.raw()
-                                )
-                            }
-                        }
-                    }
+                    StartOutcome::Failed { reason, looked_at } => tracing::warn!(
+                        "本机后端未启动: {}（{}）；找过 {looked_at:?}",
+                        reason.said,
+                        reason.raw()
+                    ),
                 }
             }
 
@@ -909,13 +828,8 @@ pub fn run() {
             //    ⚠ 界面上点得到它的地方是旧 SFTP 面板的表头 —— 那块面板按 `§6.6 C`
             //    要退役，而在这个窗口真能替代它之前删掉旧的等于把功能拿走 ⇒ 这一刀不删。
             filewin::entry::open_file_window,
-            // 远端 `ccm` 探针那条命令退役：渲染进了那台后端，能力问它自己。
-            // 🔴 `K-R69` / `KR69D2`：本机 `ccm` 这一格（我们那一份 · PATH 上那一份 · 判词）。
-            ccm_probe::local_ccm_entry_status,
             // skill 接入面三条（收件箱的列 / 读 / 写）退役：界面经通道直问那台后端
             //   （`skill-host-list` / `-read` / `-write`，声明与围栏住后端 `agents/claudecode/skill_host.rs`）。
-            // cc-bus 装 / 三态进了本机后端（`cc-bus-install` / `-state`）；留下装前那道本机 `ccm` 预检。
-            cc_bus_deploy::cc_bus_ccm_precheck,
             // **主界面说 `call` 的那一跳**：webview ⇒ 通道 ⇒ 注入的后端句柄。
             chan::webview::chan_call,
             // 〔「撤单不许回退」〕撤单过 webview 那一跳（带编号撤那一问）。

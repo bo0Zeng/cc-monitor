@@ -50,7 +50,7 @@ import type { SessionLiveCardPayload } from "./generated/SessionLiveCardPayload"
 import { TabBarPrefs } from "./tab-bar-prefs";
 import { TabHide } from "./tab-hide";
 import { NO_LINEAGE, type SessionHidden } from "./session-hidden";
-import { setHide } from "./session-hidden-cmds";
+import { setAutoAnswer, setHide } from "./session-hidden-cmds";
 import { TabBarDrag } from "./tab-bar-drag";
 import { TabBarView, type PlanNeeds } from "./tab-bar-view";
 import type { ManualBook } from "./manual-book";
@@ -392,6 +392,11 @@ export class TabManager {
       close: (sid) => this.closeTab(sid),
       hide: (sids) => this.hider.hide(sids),
       unhide: (sids) => this.hider.unhide(sids),
+      autoAnswer: (sid, min) => {
+        const t = this.store.tabs.get(sid);
+        if (!t) return;
+        setAutoAnswer(t.origin, sid, min).catch((e: unknown) => failToast(copyText("tabMenu.autoAnswer.failed"), e));
+      },
       openCwd: (sid) => void this.openTabCwd(sid),
       front: (sid) => this.frontFor(sid),
       viewTerminal: (sid) => {
@@ -776,6 +781,8 @@ export class TabManager {
       permissionModeText: null,
       switch: this.store.pendingSwitch.get(sessionId) ?? null,
       needs: null,
+      autoAnswer: null,
+      autoAnswered: null,
       backgroundWork: null,
       pending: [],
       lastSay: null,
@@ -1235,12 +1242,12 @@ export class TabManager {
     this.bar.planNeedsChanged();
   }
 
-  /** 此刻需手动的会话数（窗口标题 · 系统通知用）。 */
+  /** 此刻需手动的会话数（窗口标题用）。 */
   needsCount(): number {
     return this.bar.needsCountNow();
   }
 
-  /** 全部 tab，按条上看到的顺序（窗口标题 · 系统通知数「需手动」用）。 */
+  /** 全部 tab，按条上看到的顺序（窗口标题数「需手动」用）。 */
   tabsInOrder(): Tab[] {
     return this.bar.visibleOrder().map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined);
   }

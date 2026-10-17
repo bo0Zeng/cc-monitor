@@ -99,12 +99,14 @@ const WAITING_ROWS: &[(&str, &str)] = &[
     ("cli-subcommands", "--launch"),
     ("wire-commands", "terminal-preview"),
     ("wire-commands", "terminal-input"),
+    ("wire-commands", "session-resume"),
     ("wire-commands", "session-say"),
     ("wire-commands", "session-permission"),
     ("wire-commands", "session-model"),
     ("wire-commands", "terminal-follow"),
     ("cli-subcommands", "--terminal-preview"),
     ("cli-subcommands", "--terminal-input"),
+    ("cli-subcommands", "--session-resume"),
     ("cli-subcommands", "--session-say"),
     ("cli-subcommands", "--session-permission"),
     ("cli-subcommands", "--session-model"),
@@ -140,7 +142,7 @@ fn no_gap_rationale_picks_the_windows_mechanism() {
     let want: BTreeSet<(&str, &str)> = WAITING_ROWS.iter().copied().collect();
     assert_eq!(
         cites, want,
-        "写「Windows 后台机制」的理由串那几行 ≠ 点名的那 19 行（`ccm-launcher × Windows` 8 ＋ 命令面 11）"
+        "写「Windows 后台机制」的理由串那几行 ≠ 点名的那 21 行（`ccm-launcher × Windows` 8 ＋ 命令面 13）"
     );
     let picks: Vec<String> = TARGET_GAPS
         .iter()

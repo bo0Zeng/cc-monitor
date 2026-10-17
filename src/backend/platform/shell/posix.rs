@@ -77,6 +77,11 @@ pub(crate) fn home_path_word(rel: &str) -> String {
     format!("\"$HOME/{rel}\"")
 }
 
+/// 家目录底下 `rel` 写给人看的那一形（`$HOME/<rel>`，与生成进命令里的那一形同）。
+pub(crate) fn home_path_shown(rel: &str) -> String {
+    format!("$HOME/{rel}")
+}
+
 /// `$HOME/x` / `${HOME}/x` / `~/x` ⇒ `Some("x")`（家目录底下那一截）；别的形 ⇒ `None`（不猜）。
 pub(crate) fn home_relative(raw: &str) -> Option<&str> {
     ["$HOME/", "${HOME}/", "~/"]

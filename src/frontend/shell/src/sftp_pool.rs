@@ -419,8 +419,3 @@ pub(crate) fn fail_owned_by(client: &Arc<InboundClient>, why: &str) {
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/sftp_pool_tests.rs"]
 pub(crate) mod tests;
-
-/// **SFTP 那一族收到只剩传输**的恒等登记；再收到「中继零 SFTP」。
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/sftp_family_registry_tests.rs"]
-mod family_registry;

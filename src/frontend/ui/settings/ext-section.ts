@@ -21,7 +21,6 @@
 import { copyText } from "../copy-table";
 import { icon, type IconName } from "../kit/icon";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
-import { commands } from "../ipc/commands";
 import { syncAssets } from "../assets-sync-reads";
 import { openFileWindow } from "../file-window";
 import { revealInFolder } from "../reveal-in-folder";
@@ -914,9 +913,7 @@ export class ExtSection {
         const key = m.to ?? "";
         if (m.done) {
           const text = copyText("extPage.install.doneOne", { machine: m.name, said: m.done.note ?? copyText("extPage.done.written", { n: String(m.done.changed.length) }) });
-          const here = m.to === null;
-          const warn = r.builtin !== null && here ? await commands.cc_bus_ccm_precheck() : null;
-          inst.results.set(key, { ok: true, text: warn ? `${text} ${copyText("extPage.done.warn", { said: warn })}` : text });
+          inst.results.set(key, { ok: true, text });
           inst.picked.delete(key);
         } else if (m.error) {
           inst.results.set(key, { ok: false, text: copyText("extPage.error.install", { machine: m.name, said: m.error }), detail: m.detail });

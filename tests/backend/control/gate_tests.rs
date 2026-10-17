@@ -600,6 +600,11 @@ fn every_command_that_passes_the_gate_lists_the_gates_codes() {
         doors[0].1.contains("wrong_owner") && doors[1].1.contains("too_many_windows"),
         "门的码读错了：{doors:?}"
     );
+    // 窗口门只给破坏性动作：往一个多窗口会话里打字不删任何东西，非破坏性的 `admit` 不许回窗口数那一码。
+    assert!(
+        !doors[0].1.contains("too_many_windows"),
+        "非破坏性的 `admit` 会回 `too_many_windows` 了 —— 送键会被多窗口误拒：{doors:?}"
+    );
 
     let families = crate::guard_support::registry_sources();
     let root = crate::guard_support::src_root();

@@ -9,7 +9,7 @@
 //! 差异四态与「不同的要显式说盖、不然整趟拒」那道闸用 `mcp_sync::{diff, plan}`（键 = 文件相对路径，值 = `{text, exec}`，JSON 值相等即相同）；
 //! 这台机器的事实用 `mcp_sync::{Facts, Live, There, is_abs_any}`。本模块只多出 skill 自己的那几条可疑项规则（[`suspects_of`]）。
 //!
-//! 一个字节都不写（写经 monitor → 那台后端 `files-put`，带 `expect`）· 不改写任何一个文件的内容。
+//! 一个字节都不写（写经 monitor → 那台后端 `Door::put`，带 `expect`）· 不改写任何一个文件的内容。
 
 use crate::platform::fs::Ro;
 use copy_core::copy_text;
@@ -458,7 +458,7 @@ pub(crate) fn answer_plan_with(
             .collect::<BTreeMap<String, SkillLedgerFile>>()
     });
     // 只交这一趟拷的那几个路径在这台上的原文（写的时候当 CAS 期望）；只在这台有的那几个不碰，也不回传。
-    // 写的落点：`files-put` 的 `root` 必须已在 ⇒ skill 根在就用它，不在就用它的上一层（配置根）、让 `parents` 建出来。
+    // 写的落点：`Door::put` 的 `root` 必须已在 ⇒ skill 根在就用它，不在就用它的上一层（配置根）、让 `parents` 建出来。
     // 项目级那一形往上最多两层（`<项目>/.claude/skills` 的 `.claude` 也可能还没有）。
     let base = if root.is_dir() {
         root.clone()
