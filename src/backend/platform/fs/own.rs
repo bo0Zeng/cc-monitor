@@ -383,25 +383,32 @@ impl DiagLog {
         }
     }
 
-    /// `O_EXCL` 新建当前那份（已在 ⇒ 照实报错，不截断）。
-    pub(crate) fn create(&self) -> std::io::Result<DiagFile> {
-        std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&self.cur)
-            .map(DiagFile)
-    }
-
-    /// 只追加一整行（`O_APPEND`，不在就新建、只给本人；目录不在 ⇒ `Err`，不替它建）。
-    pub(crate) fn append_line(&self, line: &[u8]) -> std::io::Result<()> {
+    /// 诊断文件的打开选项与落地：unix 上 0600（只给本人）。两口共用这一处。
+    fn open_cur(&self, create_new: bool, append: bool) -> std::io::Result<DiagFile> {
         let mut o = std::fs::OpenOptions::new();
-        o.append(true).create(true);
+        if create_new {
+            o.write(true).create_new(true);
+        }
+        if append {
+            o.append(true).create(true);
+        }
         #[cfg(unix)]
         {
             use std::os::unix::fs::OpenOptionsExt as _;
             o.mode(0o600);
         }
-        o.open(&self.cur)?.write_all(line)
+        o.open(&self.cur).map(DiagFile)
+    }
+
+    /// `O_EXCL` 新建当前那份（已在 ⇒ 照实报错，不截断；只给本人）。
+    pub(crate) fn create(&self) -> std::io::Result<DiagFile> {
+        self.open_cur(true, false)
+    }
+
+    /// 只追加一整行（`O_APPEND`，不在就新建、只给本人；目录不在 ⇒ `Err`，不替它建）。
+    pub(crate) fn append_line(&self, line: &[u8]) -> std::io::Result<()> {
+        let mut f = self.open_cur(false, true)?;
+        f.write_all(line)
     }
 }
 
