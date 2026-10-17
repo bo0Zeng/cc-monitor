@@ -48,8 +48,6 @@ const NOT_WRITTEN_HERE: &[&str] = &["set -gx", "set -e "];
 
 /// `platform/shell/` 之外**允许**的命中：只有散文（串里讲 `exec` 这个词，不是一句要执行的 shell）。
 const PROSE: &[(&str, &str, usize)] = &[
-    // 能力表那一栏的说明文字（「要 shell 拆词：`set -f; exec $cmd`」）。
-    ("lib.rs", "exec ", 1),
     // 判活那一格的说明（「exec 窗口，或进程已成僵尸」）。
     ("platform/proc.rs", "exec ", 1),
     // 足迹申报表里 `ccm` 远端那一份碰的 rc 文件（`~/.bashrc`，一条**申报路径**，给人看「动过哪份文件」，不产 shell）。
@@ -181,13 +179,12 @@ fn census_of(src: &str) -> BTreeMap<&'static str, usize> {
 fn census() -> BTreeMap<(String, &'static str), usize> {
     let root = guard_core::addr::backend_src_root();
     let files = guard_core::scan_tree_excluding(&root, &["rs"], &[]);
-    // 抽取器自检：人群里必须有适配层那几份与登记散文的那两份（遍历塌了 ⇒ 本条零命中地绿）。
+    // 抽取器自检：人群里必须有适配层那几份与登记散文的 `platform/proc.rs`（遍历塌了 ⇒ 本条零命中地绿）。
     for must in [
         "platform/shell/mod.rs",
         "platform/shell/dialect.rs",
         "platform/shell/posix.rs",
         "platform/shell/powershell.rs",
-        "lib.rs",
         "platform/proc.rs",
     ] {
         assert!(
@@ -212,7 +209,7 @@ fn census() -> BTreeMap<(String, &'static str), usize> {
     out
 }
 
-/// ★ 正题：方言专属语法字面量**只住 `platform/shell/`**（之外只剩登记的两处散文）；清单每一根在适配层里都量得到。
+/// ★ 正题：方言专属语法字面量**只住 `platform/shell/`**（之外只剩登记的那几处散文）；清单每一根在适配层里都量得到。
 #[test]
 fn shell_dialect_syntax_lives_only_in_the_platform_shell_layer() {
     let all = census();
