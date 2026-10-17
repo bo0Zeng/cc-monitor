@@ -81,34 +81,8 @@ mod tests {
     /// 扫描时整体排除它们 —— 判据因此不需要回答「这是谁的知识」，
     /// 只需要回答「这是不是 agent 知识」（`S3` §1b-4）。
     ///
-    /// ⚠这里面有一家是**夹具家**（见 [`FIXTURE_HOMES`]）：它在文件树里、
-    /// 在本表里，但**不在** [`crate::agents::REGISTRY`] 里，模块声明还带着 `#[cfg(test)]`。
-    /// 生产家与夹具家的条数各自有账，[`every_agent_adapter_has_exactly_one_registry_entry`]
-    /// 算的就是那笔账。
-    const HOMES: &[&str] = &["agents/codex/", "agents/claudecode/", "agents/fake/"];
-
-    /// **夹具家**：住在 `agents/<名>/`、进 [`HOMES`]，但**不进生产注册表**。
-    ///
-    /// # 它为什么必须单独登记，而不是"反正 `HOMES` 里多一行"
-    ///
-    /// [`HOMES`] 是**四条判据共用的排除表** —— 进了它，那一整层的格式知识就不被判据①扫。
-    /// 对一个真 agent 那是对的；对一个夹具，那立刻开出一条捷径：
-    /// **把通用层里洗不掉的 agent 知识挪进 `agents/fake/`**，判据①当场安静。
-    ///
-    /// ⇒ 三条对价，缺一条这张表就是逃生舱：
-    /// ① **只许 `fake` 那一家**——「再加一个夹具家」得先改判据、说清第一家为什么不够；
-    /// ② **必须真在文件树里**（幽灵检查，见判据⑥）；
-    /// ③ **绝不许进 [`crate::agents::REGISTRY`]**，且模块声明必须带 `#[cfg(test)]`
-    ///    —— 那两条由 `crate::agents::fake::tests::the_fixture_agent_never_ships` 双向钉住。
-    const FIXTURE_HOMES: &[(&str, &str)] = &[(
-        "fake",
-        "`S6` 的最小假 agent —— 本区**验收件**的量具。它存在的唯一理由是回答\
-         「加一个新 agent 到底要动通用层几处」，所以它必须长得**像一个真 agent**\
-         （住 `agents/<名>/`、12 种能力齐全、进 `HOMES`），又必须**永远上不了生产**\
-         （`#[cfg(test)]` + 不进 `REGISTRY`）。⚠ 它的每一种能力都**刻意与 Claude 不同形**：\
-         同形的话，通用层拿 Claude 的知识去解释它的 home 恰好也能读出东西，\
-         `S6` 的正题就退化成一个粉饰的通过。",
-    )];
+    /// 最小假 agent（`agents::fake`）住 `tests/`、只在测试档编，不在本表的人群里。
+    const HOMES: &[&str] = &["agents/codex/", "agents/claudecode/"];
 
     /// 针：**agent 的目录布局与文件格式**，运行时拼（本文件的散文里就有这些词）。
     ///
@@ -206,7 +180,7 @@ mod tests {
         // `stream/inbound/registry/history.rs` 那一条摘了（第 8 批）：`history-search-merge` 成了 typed 命令，登记里不再手写字段表。
     ];
 
-    /// ② 的针：每一家 agent 的**名字**（wire kind · 适配器 id · 中转路由名），外加夹具家的 kind，**带引号的整串**。
+    /// ② 的针：每一家 agent 的**名字**（wire kind · 适配器 id · 中转路由名），**带引号的整串**。
     /// 从注册表派生，不另写一份 —— 加一家，针跟着长。
     ///
     /// ⚠ 带引号是刻意的：`== "claude"` · `match … "codex" =>` · `const X: &str = "claude-code"` 都是这一形，
@@ -221,9 +195,6 @@ mod tests {
             if let Some(u) = &a.upstream {
                 names.push(u.route_id);
             }
-        }
-        for (fixture, _) in FIXTURE_HOMES {
-            names.push(fixture);
         }
         names.sort_unstable();
         names.dedup();
@@ -702,37 +673,16 @@ mod tests {
              少掉的那家反过来 —— 它自己的格式知识会被当成通用层的泄漏。"
         );
 
-        // **夹具家不该进生产注册表** —— 先把这笔账单独结清，再对生产家的数。
-        // 夹具家只许那一个最小假 agent（`fake`）：夹具家享受判据①的整层豁免，多一家就多一处可以往里塞 agent 知识而不会响的地方。
-        for (name, _) in FIXTURE_HOMES {
-            assert_eq!(
-                *name, "fake",
-                "又登记了一个夹具家 `{name}` —— 只许那一个最小假 agent"
-            );
-        }
-        for (name, _) in FIXTURE_HOMES {
-            assert!(
-                in_tree.iter().any(|n| n == name),
-                "`FIXTURE_HOMES` 里登记的夹具家 `{name}` 在文件树里不存在 —— \n\
-                 目录删了而登记没跟（幽灵条目），或者名字写错了。实得：{in_tree:?}"
-            );
-        }
-
         let reg = crate::agents::REGISTRY;
-        let production_homes = in_tree.len() - FIXTURE_HOMES.len();
         assert_eq!(
             reg.len(),
-            production_homes,
-            "\n有 {} 个 agent 家（其中 {} 家是夹具），生产注册表却有 {} 条。\n\
-             ⚠ 少一条 = 那家**永远不会出现在 `hello.homes` 里**，而编译、判据①②③④全绿 —— \n\
-             `S6` 的最小假 agent 会一头撞上它。\n\
-             ⚠ 多一条 = 注册表在指一个不存在的适配层，**或者夹具家混进了生产**\n\
-             （后者更坏：真填 `homes` 那天后端会向仓外消费方声明一个不存在的 agent）。\n\
-             家：{in_tree:?}｜夹具：{:?}｜注册的 kind：{:?}",
             in_tree.len(),
-            FIXTURE_HOMES.len(),
+            "\n有 {} 个 agent 家，生产注册表却有 {} 条。\n\
+             ⚠ 少一条 = 那家**永远不会出现在 `hello.homes` 里**，而编译、判据①②③④全绿。\n\
+             ⚠ 多一条 = 注册表在指一个不存在的适配层。\n\
+             家：{in_tree:?}｜注册的 kind：{:?}",
+            in_tree.len(),
             reg.len(),
-            FIXTURE_HOMES.iter().map(|(n, _)| *n).collect::<Vec<_>>(),
             reg.iter().map(|a| a.kind).collect::<Vec<_>>()
         );
     }

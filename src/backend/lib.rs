@@ -25,6 +25,7 @@ mod agent_boundary_guard; // S1：通用层不许知道任何 agent 的名字与
 mod agent_locality_guard; // S2：agent 的格式知识只许住 agents/<名>/ + 通用层零个 agent 名字面量（整体 #[cfg(test)]）
 pub mod agents; // S2/S3：agent 适配层——每个 agent 一份，装它专属的知识（codex + claudecode）
 #[cfg(test)]
+#[path = "../../tests/backend/alloc_probe.rs"]
 mod alloc_probe; // U-2：线程级内存量具（F22：`VmHWM` 是进程级的，会把邻居测试算进来）
 #[cfg(test)]
 #[path = "../../tests/backend/allocator_guard.rs"]

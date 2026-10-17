@@ -1,7 +1,5 @@
 # 语料变量上的裸匹配欠账（needle_anchor_registry_tests.rs 判两向相等）：住址<TAB>接收者.原语("字面量")。只许删行。
 tests/backend/agent_locality_guard.rs	rel.strip_prefix("agents/"
-tests/backend/agents/fake_tests.rs	prev_line.contains("cfg(test)"
-tests/backend/agents/fake_tests.rs	prev_prev.contains("cfg(test)"
 tests/backend/alloc_probe_tests.rs	attr.contains("multi_thread"
 tests/backend/alloc_probe_tests.rs	head.rfind("#[test]"
 tests/backend/assets/aliases/aliases_tests.rs	ccm_src.contains("\"beCcm.usage.body\""

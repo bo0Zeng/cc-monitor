@@ -154,6 +154,7 @@ mod local_lines;
 // 三条读帧循环共用的丢帧账（认不出的帧 · 非 UTF-8 行：计数、按 2 的幂次说、流结束出总账）。
 /// `shared/ccm` 的强度契约（仅测试构建）。
 #[cfg(test)]
+#[path = "../../../../tests/frontend/shell/ccm_cli_contract.rs"]
 mod ccm_cli_contract;
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/cross_half_edge_registry.rs"]

@@ -12,8 +12,8 @@
 //!    写进 `[dependencies]` 就连 glibc / Windows 版一起换了（Windows 还要多编一棵 C）。
 //! 2. `main.rs` 的生产段里恰好一处 `#[global_allocator]`，紧挨着它的属性是 `#[cfg(target_env = "musl")]`，类型是 `mimalloc::MiMalloc`。
 //!    放在 `main.rs`（只有远端那个二进制有它）而不放库面：本机 GUI 进程把后端当库链进去，库里定全局分配器会连壳一起换。
-//! 3. 库面（`src/backend` 下 `main.rs` 之外每一份 `.rs` 的生产段）不许出现 `#[global_allocator]`；
-//!    测试档的量具 `alloc_probe.rs` 整份是 `cfg(test)`（挂载处带着），明写排除。
+//! 3. 库面（`src/backend` 下 `main.rs` 之外每一份 `.rs` 的生产段）不许出现 `#[global_allocator]`
+//!    （测试档的量具 `alloc_probe` 住 `tests/`，不在人群里）。
 //!
 //! # 买不到什么
 //!
@@ -102,11 +102,7 @@ fn the_remote_binary_sets_mimalloc_as_global_allocator_only_on_musl() {
 #[test]
 fn the_library_face_sets_no_global_allocator() {
     let root = guard_core::addr::backend_src_root();
-    let files = guard_core::scan_tree_excluding(
-        &root,
-        &["rs"],
-        &["src/backend/main.rs", "src/backend/alloc_probe.rs"],
-    );
+    let files = guard_core::scan_tree_excluding(&root, &["rs"], &["src/backend/main.rs"]);
     assert!(
         files.len() >= 100,
         "只扫到 {} 份 `.rs` —— 走树坏了，本条在空转",

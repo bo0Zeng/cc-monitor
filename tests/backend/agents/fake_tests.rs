@@ -545,11 +545,7 @@ fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
 
 /// `S6-Z5`：**夹具家永远不上生产** —— 判据两向。
 ///
-/// # 没有这一条，`agents/fake/` 就是一条捷径
-///
-/// 本层进了 `agent_locality_guard::HOMES`（那是四条判据共用的**排除表**）——
-/// 也就是说它整层的格式知识都不被判据①扫。这是对的（它确实是一个 agent 家），
-/// 但代价必须付：它**不许**混进 `agents::REGISTRY`，也**不许**丢掉那行 `#[cfg(test)]`。
+/// 它**不许**混进 `agents::REGISTRY`，挂载处也**不许**丢掉那行 `#[cfg(test)]`。
 /// 前者混进去 ⇒ 真 `hello.homes` 会声明一个根本不存在的 agent；
 /// 后者丢掉 ⇒ 生产二进制里凭空多出一个假 agent 的知识，而没有任何东西会说。
 #[test]
@@ -564,17 +560,20 @@ fn the_fixture_agent_never_ships() {
     // ② 模块声明必须带 `#[cfg(test)]` —— 生产二进制里零字节。
     let mod_path = guard_core::addr::backend_src_root().join("agents/mod.rs");
     let mod_rs = std::fs::read_to_string(mod_path).expect("读 agents/mod.rs");
-    let decl = format!("mod {AGENT_KIND};");
-    let idx = mod_rs.find(&decl).unwrap_or_else(|| {
+    let decl = format!("pub(crate) mod {AGENT_KIND};");
+    let lines: Vec<&str> = mod_rs.lines().map(str::trim).collect();
+    let at = lines.iter().position(|l| *l == decl).unwrap_or_else(|| {
         panic!("`agents/mod.rs` 里找不到 `{decl}` —— 夹具家的模块声明改了形状，本条在空转")
     });
-    let head = &mod_rs[..idx];
-    let prev_line = head.lines().next_back().unwrap_or_default();
-    let prev_prev = head.lines().nth_back(1).unwrap_or_default();
+    let attrs: Vec<&str> = lines[..at]
+        .iter()
+        .rev()
+        .take_while(|l| l.starts_with("#["))
+        .copied()
+        .collect();
     assert!(
-        prev_line.contains("cfg(test)") || prev_prev.contains("cfg(test)"),
-        "`{decl}` 上面没有 `#[cfg(test)]` —— 夹具 agent 会被编进生产二进制。\n\
-             上一行：{prev_line:?}\n上上行：{prev_prev:?}"
+        attrs.contains(&"#[cfg(test)]"),
+        "`{decl}` 上面那串属性里没有 `#[cfg(test)]` —— 夹具 agent 会被编进生产二进制。\n属性：{attrs:?}"
     );
 }
 

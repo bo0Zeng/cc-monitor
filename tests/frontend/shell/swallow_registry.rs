@@ -10,7 +10,7 @@
 //! # 人群（从源码派生，不手写名单）
 //!
 //! `src/backend` · `src/frontend/shell/src` · `src/common` 下的生产 `.rs`
-//! （`guard_core::production_code` 剥测试段与注释；`#[cfg(test)] mod x;` 引进来的测试专用模块按 `mod` 声明派生、整份排除），
+//! （`guard_core::production_code` 剥测试段与注释；测试专用的整份文件住 `tests/`，不在这几棵根里），
 //! 里面的两种形：
 //! 1. `let _ = <表达式>;` —— **不含**两种不是吞错的：表达式只是标识符 / 元组 / 引用（`let _ = pid;`，cfg 臂里压未用参数）·
 //!    以 `?` 结尾（错误照旧上抛）；

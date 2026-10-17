@@ -868,12 +868,6 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
 fn every_place_that_splits_a_remote_path_is_declared() {
     /// `(文件, 函数, 为什么它可以切)`。
     const DECLARED: &[(&str, &str, &str)] = &[
-        (
-            "corpus.rs",
-            "measure",
-            "合成语料的统计（深度 / 段长），不是远端路径",
-        ),
-        ("corpus.rs", "synth_rows", "合成语料取名字，不是远端路径"),
         ("source.rs", "breadcrumbs", "面包屑那一摞前缀"),
         ("filewin-contract/lib.rs", "parent_dir", "上一级"),
         ("filewin-contract/lib.rs", "remote_basename", "尾段"),
@@ -907,7 +901,6 @@ fn every_place_that_joins_a_remote_path_is_declared() {
             "common_dir_bytes",
             "两条路径按段比出来的公共前缀",
         ),
-        ("corpus.rs", "synth_paths", "合成语料铺字节，不是远端路径"),
         (
             "batch.rs",
             "name_of",

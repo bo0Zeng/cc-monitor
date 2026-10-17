@@ -697,5 +697,5 @@ pub(crate) const FIXTURE_SESSION_ID: &str = "00000000-0000-4000-8000-0000000000f
 pub(crate) const FIXTURE_CWD: &str = "/home/u/proj";
 
 #[cfg(test)]
-#[path = "../../../../tests/backend/agents/fake_tests.rs"]
+#[path = "../fake_tests.rs"]
 mod tests;

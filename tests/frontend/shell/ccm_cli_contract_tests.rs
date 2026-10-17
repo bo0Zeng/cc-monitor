@@ -112,7 +112,7 @@ fn the_cc_spawn_judges_say_out_loud_they_pin_the_repo_copy_not_the_running_one()
     //      而它在这一格上**第一次真的成立**（`§4.2` 订正说的是「全仓不成立」，不是「一处都不成立」）。
     //   ② 反向钉一句「针在本文件里恰好一处」：哪天有人把那段头注搬回测试段，
     //      本条当场红 —— 也就是「自指回来了」这件事从此有人看着。
-    let target = include_str!("../../../src/frontend/shell/src/ccm_cli_contract.rs");
+    let target = include_str!("ccm_cli_contract.rs");
     let me = include_str!("ccm_cli_contract_tests.rs");
     for must in ["本机真正在跑的不是它", "没有任何东西真的按它部署"] {
         assert_eq!(
