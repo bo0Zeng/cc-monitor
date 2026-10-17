@@ -81,17 +81,13 @@ pub(crate) trait SessionFaceExt: Sized {
     fn of(life: Life) -> Self;
 }
 
-fn said(key: &str) -> Words {
-    Words(copy_core::copy_text(key, &[]))
-}
-
 fn no(why: Words) -> Allow {
     Allow::No { why }
 }
 
 impl SessionFaceExt for SessionFace {
     fn of(life: Life) -> Self {
-        let running = || said("tabBatch.why.live");
+        let running = || Words(copy_core::copy_text("tabBatch.why.live", &[]));
         let ended_why = |name: &Words| {
             Words(copy_core::copy_text(
                 "tabBatch.why.ended",
@@ -102,13 +98,16 @@ impl SessionFaceExt for SessionFace {
             Life::Live { activity, tmux } => live_face(activity, tmux, false),
             Life::Reading { tmux } => live_face(None, tmux, true),
             Life::Reconnectable => {
-                let tip = said("sessionState.reconnectable.tooltip");
+                let tip = Words(copy_core::copy_text(
+                    "sessionState.reconnectable.tooltip",
+                    &[],
+                ));
                 SessionFace {
                     dot: SessionDot::Exited,
                     activity: None,
                     live: false,
                     settled: false,
-                    name: said("sessionState.reconnectable.name"),
+                    name: Words(copy_core::copy_text("sessionState.reconnectable.name", &[])),
                     line: tip.clone(),
                     tip,
                     tone: Tone::Plain,
@@ -118,8 +117,14 @@ impl SessionFaceExt for SessionFace {
                         resume: no(running()),
                         term: CanTerm::Yes { tmux: true },
                         reattach: Allow::Yes,
-                        model: no(said("beSessionSwitch.why.ended")),
-                        permission: no(said("beSessionSwitch.why.ended")),
+                        model: no(Words(copy_core::copy_text(
+                            "beSessionSwitch.why.ended",
+                            &[],
+                        ))),
+                        permission: no(Words(copy_core::copy_text(
+                            "beSessionSwitch.why.ended",
+                            &[],
+                        ))),
                     },
                 }
             }
@@ -128,14 +133,14 @@ impl SessionFaceExt for SessionFace {
                 let (dot, name, tip) = if gone {
                     (
                         SessionDot::Gone,
-                        said("sessionState.gone.name"),
-                        said("sessionState.gone.tooltip"),
+                        Words(copy_core::copy_text("sessionState.gone.name", &[])),
+                        Words(copy_core::copy_text("sessionState.gone.tooltip", &[])),
                     )
                 } else {
                     (
                         SessionDot::Ended,
-                        said("sessionState.ended.name"),
-                        said("sessionState.ended.tooltip"),
+                        Words(copy_core::copy_text("sessionState.ended.name", &[])),
+                        Words(copy_core::copy_text("sessionState.ended.tooltip", &[])),
                     )
                 };
                 let why = ended_why(&name);
@@ -150,8 +155,14 @@ impl SessionFaceExt for SessionFace {
                         resume: if gone { no(tip.clone()) } else { Allow::Yes },
                         term: CanTerm::No { why: why.clone() },
                         reattach: no(why),
-                        model: no(said("beSessionSwitch.why.ended")),
-                        permission: no(said("beSessionSwitch.why.ended")),
+                        model: no(Words(copy_core::copy_text(
+                            "beSessionSwitch.why.ended",
+                            &[],
+                        ))),
+                        permission: no(Words(copy_core::copy_text(
+                            "beSessionSwitch.why.ended",
+                            &[],
+                        ))),
                     },
                     name,
                     tip,
@@ -160,7 +171,7 @@ impl SessionFaceExt for SessionFace {
                 }
             }
             Life::Unclear => {
-                let name = said("beSession.activity.unclear");
+                let name = Words(copy_core::copy_text("beSession.activity.unclear", &[]));
                 SessionFace {
                     dot: SessionDot::Unknown,
                     activity: None,
@@ -172,7 +183,10 @@ impl SessionFaceExt for SessionFace {
                     order: 3,
                     can: SessionCan {
                         close: CanClose::No { why: name.clone() },
-                        resume: no(said("sessionState.unseen.noResume")),
+                        resume: no(Words(copy_core::copy_text(
+                            "sessionState.unseen.noResume",
+                            &[],
+                        ))),
                         term: CanTerm::No { why: name.clone() },
                         reattach: no(name.clone()),
                         model: no(name.clone()),
@@ -187,56 +201,80 @@ impl SessionFaceExt for SessionFace {
 
 /// 进程在的那几段（`reading` ＝ 记录还没读完、此刻在干什么只有记录说）。
 fn live_face(activity: Option<SessionActivity>, tmux: Option<bool>, reading: bool) -> SessionFace {
-    let running = || said("tabBatch.why.live");
+    let running = || Words(copy_core::copy_text("tabBatch.why.live", &[]));
     let (dot, key, tone, order) = match activity {
         Some(SessionActivity::NeedsYou) => (
             SessionDot::NeedsYou,
-            "beSession.activity.needsYou",
+            Words(copy_core::copy_text("beSession.activity.needsYou", &[])),
             Tone::Need,
             0,
         ),
         Some(SessionActivity::Working) => (
             SessionDot::Running,
-            "beSession.activity.working",
+            Words(copy_core::copy_text("beSession.activity.working", &[])),
             Tone::Now,
             1,
         ),
         Some(SessionActivity::BackgroundWork) => (
             SessionDot::Background,
-            "beSession.activity.backgroundWork",
+            Words(copy_core::copy_text(
+                "beSession.activity.backgroundWork",
+                &[],
+            )),
             Tone::Busy,
             2,
         ),
-        Some(SessionActivity::Idle) => {
-            (SessionDot::Idle, "beSession.activity.idle", Tone::Plain, 3)
-        }
+        Some(SessionActivity::Idle) => (
+            SessionDot::Idle,
+            Words(copy_core::copy_text("beSession.activity.idle", &[])),
+            Tone::Plain,
+            3,
+        ),
         // 判不出就照实说「状态不明」，不说一句没判出来的「运行中」；序与闲着同一档。
         None if reading => (
             SessionDot::Idle,
-            "beSession.activity.reading",
+            Words(copy_core::copy_text("beSession.activity.reading", &[])),
             Tone::Plain,
             3,
         ),
         None => (
             SessionDot::Idle,
-            "beSession.activity.unclear",
+            Words(copy_core::copy_text("beSession.activity.unclear", &[])),
             Tone::Plain,
             3,
         ),
     };
-    let name = said(key);
+    let name = key;
     let tip = match tmux {
-        Some(true) => said("sessionState.liveAttachable.tooltip"),
-        Some(false) => said("sessionState.liveResumable.tooltip"),
+        Some(true) => Words(copy_core::copy_text(
+            "sessionState.liveAttachable.tooltip",
+            &[],
+        )),
+        Some(false) => Words(copy_core::copy_text(
+            "sessionState.liveResumable.tooltip",
+            &[],
+        )),
         None => name.clone(),
     };
     // 在等人 ⇒ 都不能换（按键 · 送的那一行会落进那个框里）；一轮在跑 ⇒ 模型不能（排成下一条消息）、权限档能；其余都能。
     let (model, permission) = match activity {
         Some(SessionActivity::NeedsYou) => (
-            no(said("beSessionSwitch.why.waiting")),
-            no(said("beSessionSwitch.why.waiting")),
+            no(Words(copy_core::copy_text(
+                "beSessionSwitch.why.waiting",
+                &[],
+            ))),
+            no(Words(copy_core::copy_text(
+                "beSessionSwitch.why.waiting",
+                &[],
+            ))),
         ),
-        Some(SessionActivity::Working) => (no(said("beSessionSwitch.why.running")), Allow::Yes),
+        Some(SessionActivity::Working) => (
+            no(Words(copy_core::copy_text(
+                "beSessionSwitch.why.running",
+                &[],
+            ))),
+            Allow::Yes,
+        ),
         _ => (Allow::Yes, Allow::Yes),
     };
     SessionFace {
