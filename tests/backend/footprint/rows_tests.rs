@@ -933,16 +933,8 @@ fn destination_checks_still_run_under_every_host() {
 fn declared_destinations_are_pinned_to_the_real_writers() {
     use guard_core::pin_definition;
 
-    // ① ccm：`deploy.rs` 里那个常量就是真落点
-    let sftp = include_str!("../../../src/frontend/shell/src/deploy.rs");
-    // 落点就是后端本身：`deploy.rs` 的落点常量取自 `relay_route_core`（两半同一份），那一份逐字是 `.cc-monitor/bin/ccm`。
-    pin_definition(
-        sftp,
-        "pub(crate) const LANDING_REL: &str = relay_route_core::BACKEND_LANDING_REL;",
-        "pub(crate) const LANDING_REL",
-        "ccm 远端落点",
-    )
-    .unwrap();
+    // ① ccm：真落点只由那台后端自己写（`Own::place_staged` 换进 · `Own::clear_landing` 删掉，都取 `relay_route_core` 那一个常量），
+    //   那一份逐字是 `.cc-monitor/bin/ccm`。
     pin_definition(
         include_str!("../../../src/common/relay-route-core/src/lib.rs"),
         r#"pub const BACKEND_LANDING_REL: &str = ".cc-monitor/bin/ccm";"#,
@@ -971,7 +963,7 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
     assert_eq!(
         remote_dests,
         vec![&ToolDestination::RemoteHomeRelative(".cc-monitor/bin/ccm")],
-        "注册表声明的 ccm 远端落点与 deploy.rs 的 LANDING_REL 不一致"
+        "注册表声明的 ccm 远端落点与 relay_route_core::BACKEND_LANDING_REL 不一致"
     );
 
     // ② 项目 MCP：写进了那台后端（`assets/mcp_edit.rs`），落点是资产面那一家的项目级 MCP 文件名
@@ -992,10 +984,7 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
     );
 
     // ③ 反向自检：确认上面读到的是真源码，不是空串
-    assert!(
-        sftp.len() > 10_000 && mcp.len() > 3_000,
-        "include_str! 读空了"
-    );
+    assert!(mcp.len() > 3_000, "include_str! 读空了");
 }
 
 /// **用户选的 shell profile 不许冒充常量**：`UserShellProfile` 的每一个载体，申报路径里都有它那种 profile 的占位符

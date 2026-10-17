@@ -430,7 +430,7 @@ impl Wired {
             if let Ok(at) =
                 crate::common::root_path::resolve_in_root(&home, relay_route_core::STAGING_DIR_REL)
             {
-                let _ = face.make_dir_private(&at);
+                let _ = face.own_dir(&at);
             }
         }
         let w = Wired {

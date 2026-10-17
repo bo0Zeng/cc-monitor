@@ -45,7 +45,7 @@ use std::path::{Path, PathBuf};
 
 /// 暂存区相对 `$HOME` 的那一段。值只住契约 crate（`relay_route_core::STAGING_DIR_REL`，monitor 的数据位置页按它列出）；
 /// 往里写的一侧（`ssh-dial/sftp.rs::STAGING_ROOT` · `control/transfer.rs`）同在本 crate，由
-/// `dial_sftp_tests::the_declared_write_roots_are_exactly_staging_and_bin` 直接比。
+/// `dial_sftp_tests::the_declared_write_root_is_exactly_staging` 直接比。
 pub const STAGING_DIR: &str = relay_route_core::STAGING_DIR_REL;
 
 // 暂存件的键长与后缀住 `common/staging.rs`：造键的一侧（传输台，原生那一块）与提交的一侧（这里）各引各的。
@@ -353,33 +353,18 @@ pub(crate) fn move_failed(
 
 // ═══════════════ 存盘的块：写一块 · 读回拼起来提交 · 删掉 ═══════════════
 
-/// 暂存区在盘上的位置；不在就建（两层：`~/.cc-monitor` 与它底下的 `staging`，已在不算错）。
+/// 暂存区在盘上的位置；不在就建（两层：`~/.cc-monitor` 与它底下的 `staging`）。
 ///
-/// 每一层**先过路径解析**（以上一层为根）再建 —— `Face` 只收它交回的 `Resolved`。
-/// ⚠ `~/.cc-monitor` 若是用户自己放的一条链接，跟过去（后端自己的家，与 `exit_policy` 同一个家）。
+/// 每一层**先过路径解析**（以上一层为根）再问后端自家目录那一判（`Face::own_dir`：建的那一下 0700；已在必须是本人的真目录，
+/// 放宽了 ⇒ 收回 0700；`~/.cc-monitor` 是链接 ⇒ 拒、出声，不往里写正文）。
 fn ensure_staging(face: &Face, home: &Path) -> Result<PathBuf, WriteRefusal> {
     let mut at = home.to_path_buf();
     for seg in STAGING_DIR.split('/') {
         let next = resolve_in_root(&at, seg).map_err(WriteRefusal::Refused)?;
-        // 这一趟建出来的那一层建的那一下就是 0700、已在的不动（`platform/fs` 带权限位建一层目录的那一个函数）。
-        face.make_dir_private(&next).map_err(|e| {
-            WriteRefusal::io(
-                copy_text(
-                    "reason.fs.writeFailed",
-                    &[
-                        ("path", &next.display().to_string()),
-                        ("why", &io_reason(e.kind())),
-                    ],
-                ),
-                &e,
-            )
+        face.own_dir(&next).map_err(|s| match s.raw {
+            Some(raw) => WriteRefusal::IoSaid { said: s.said, raw },
+            None => WriteRefusal::Refused(s.said),
         })?;
-        if !Ro::metadata(&next).is_ok_and(|m| m.is_dir()) {
-            return Err(WriteRefusal::Refused(copy_text(
-                "beFilesCommit.staging.notDir",
-                &[("path", &next.display().to_string())],
-            )));
-        }
         at = next.into_path_buf();
     }
     Ok(at)

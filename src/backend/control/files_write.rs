@@ -331,14 +331,11 @@ pub fn make_dir(face: &Face, root: &Path, rel: impl AsRef<Path>) -> Result<PathB
 /// 这台机器上后端自家目录的权限位：新建在 `~/.cc-monitor` 里的文件只给本人读写。
 const OWN_FILE_MODE: u32 = 0o600;
 
-/// **新建**在这台机器自家目录（`$HOME/.cc-monitor`，含它本身）里的东西只给本人：文件 [`OWN_FILE_MODE`] · 目录
-/// `own_dir::PRIVATE_DIR_MODE`（unix；别的平台照常建，那边按父目录继承 ACL）。只管新建：覆盖写沿用原权限位、复制照抄源的。
-/// `at` 是过了路径解析的那一条（父目录已解开）。
-/// 答不出家在哪 ⇒ 不收紧。
+/// **新建**在这台机器自家目录（`$HOME/.cc-monitor` 底下，那个目录是后端认的本人真目录：`platform::fs::inside_own_dir`）里的东西只给本人：
+/// 文件 [`OWN_FILE_MODE`] · 目录 `own_dir::PRIVATE_DIR_MODE`（unix；别的平台照常建，那边按父目录继承 ACL）。只管新建：覆盖写沿用原权限位、复制照抄源的。
+/// `at` 是过了路径解析的那一条（父目录已解开）。不在自家目录底下 ⇒ 不收紧。
 fn own_mode(at: &Path, dir: bool) -> Option<Perms> {
-    let home = crate::platform::paths::home_dir()?;
-    let home = Ro::canonicalize(&home).unwrap_or(home);
-    if !at.starts_with(home.join(crate::common::own_dir::DIR_NAME)) {
+    if !crate::platform::fs::inside_own_dir(at) {
         return None;
     }
     let mode = if dir {

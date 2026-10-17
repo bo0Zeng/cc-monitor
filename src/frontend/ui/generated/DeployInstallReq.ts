@@ -7,6 +7,6 @@ import type { SlotRow } from "./SlotRow";
  */
 export type DeployInstallReq = { dial: MachineDial, slots: Array<SlotRow>, 
 /**
- * 那台的名字（非空；进度帧 `deploy.machine` 也是它）。
+ * 那台的名字（非空；状态成品按它记）。
  */
 machine: string, };

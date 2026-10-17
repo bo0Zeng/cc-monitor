@@ -1,27 +1,28 @@
 //! **SFTP 住本机常驻后端**：在池里那条 SSH 连接上开 sftp 子系统 ·
-//! **远端写围栏（只许两处）** · 远端写原语 · 部署那条链路（`use:"files"`）的一问一答。
+//! **远端写围栏（只许暂存区一处）** · 远端写原语 · 部署那条链路（`use:"files"`）的一问一答。
 //!
 //! # 要求
 //!
 //! 「SFTP 怎么进单一常驻后端」一题选「**进本机常驻后端，只写暂存区**」：SFTP 连接由本机常驻后端管、
 //! 与其它 SSH 复用；只往远端暂存区写，落进用户目录仍只经远端后端文件管理提交（`files-commit-upload`）；
-//! 界面进程零 SSH。F08（自部署后端）**按构造搬不进远端后端**（那时它还不在），搬进**本机**后端没这个问题
-//! ⇒ 第二个写根是部署目录 `~/.cc-monitor/bin/`。
+//! 界面进程零 SSH。F08（自部署后端）也只往暂存区放字节：换进 `~/.cc-monitor/bin/`、卸载都由传上去的那一份在那台上自己做
+//! （`--place-self` · `--unplace-self`）⇒ 写根只有暂存区一处。
 //!
 //! # 🔴 本文件是后端里**唯一**一份能改远端文件系统的代码（红线 `I7`，`INVARIANTS §41.6`）
 //!
 //! `readonly_guard::remote_write_layer` 钉三件：① 生产段里命中远端写能力网 / 动词网的文件 == `{ssh-dial/sftp.rs}`；
-//! ② 本文件声明的写根（[`REMOTE_WRITE_ROOTS`]）== `{~/.cc-monitor/staging, ~/.cc-monitor/bin}`；
+//! ② 本文件声明的写根（[`STAGING_ROOT`]）== `~/.cc-monitor/staging`；
 //! ③ 本文件里每个含远端改动动词的函数，第一个改动之前先有一次 [`fenced_remote`] 调用。
 //! ⇒ **写原语只许住这里、只许从这里的函数进**；别的文件（`control/transfer.rs`、`uses.rs`）只调它们。
 //!
 //! # 围栏（[`fence_lexical`] 纯函数 ＋ [`fenced_remote`] 解链接）
 //!
 //! - 路径归一成 home 相对（home = SFTP `realpath(".")`，即起始目录）：绝对路径必须在 `<home>/` 底下；
-//! - 词法：不许 `..` / `.` / 空段；前两段必须恰好是某一个根；写文件必须**在根底下**（不是根自己）；
-//!   建目录另放行两个根自己与它们唯一的祖先 `.cc-monitor`（首次部署要建）；
-//! - 写根本身：`.cc-monitor` 与那个根 `lstat` 不是链接、`realpath` 仍在 home 底下（挡「`bin` 本身是指向 `~/.ssh` 的链接」）；
-//! - 解链接：目标的父目录 `realpath` 之后必须仍在那个根的 `realpath` 之下（挡「`bin/x` 是指向 `~/.ssh` 的链接」）；
+//! - 词法：不许 `..` / `.` / 空段；前两段必须恰好是写根；写文件必须**在根底下**（不是根自己）；
+//!   建目录另放行根自己与它的祖先 `.cc-monitor`（首次部署要建）；
+//! - 写根本身：`.cc-monitor` 与写根 `lstat` 不是链接、`realpath` 仍在 home 底下（挡「`staging` 本身是指向 `~/.ssh` 的链接」）；
+//!   与本机后端自家目录同一条规矩（不是链接；本机那一份另核属主与权限位：`platform/fs/own.rs::own_dir`）；
+//! - 解链接：目标的父目录 `realpath` 之后必须仍在写根的 `realpath` 之下（挡「`staging/x` 是指向 `~/.ssh` 的链接」）；
 //!   打开写的那一格另问一次 `lstat`，最后一段是链接就拒（开写会跟过去）。
 //!
 //! # 买不到什么（逐条）
@@ -45,16 +46,13 @@ use crate::connect::Linked;
 use crate::uses::{Lane, Lease};
 use crate::{pool, write_line, DialRequest, StageSink};
 
-/// 🔴 **远端写根：恰好这两处**（home 相对）。`readonly_guard::remote_write_layer` 现读本行源码逐字比。
+/// 🔴 **远端写根：恰好暂存区这一处**（home 相对）。`readonly_guard::remote_write_layer` 现读本行源码逐字比。
 ///
-/// - `staging`：上传只写暂存区，落进用户目录由远端后端 `files-commit-upload` 做；
-/// - `bin`：自部署（F08 后端二进制 ＋ `.build_id` · `ccm` 入口），后端还不在时只能靠它放上去。
-pub const REMOTE_WRITE_ROOTS: [&str; 2] = [".cc-monitor/staging", ".cc-monitor/bin"];
+/// 上传只写这里，落进用户目录由远端后端 `files-commit-upload` 做；自部署也只把后端字节放进这里，换进 `~/.cc-monitor/bin/` · 卸载都由
+/// 传上去的那一份自己在那台上做（`--place-self` · `--unplace-self`）。与 `control/files_commit.rs::STAGING_DIR` 相等（同一个 crate，判据直接比）。
+pub const STAGING_ROOT: &str = ".cc-monitor/staging";
 
-/// 暂存区那一根（与 `control/files_commit.rs::STAGING_DIR` 相等 —— 同一个 crate，判据直接比）。
-pub const STAGING_ROOT: &str = REMOTE_WRITE_ROOTS[0];
-
-/// 两个根唯一的祖先：后端的家。只在「建目录」那一形里放行（首次部署要建它）。
+/// 写根的祖先：后端的家。只在「建目录」那一形里放行（首次部署要建它）。
 const ROOTS_HOME: &str = ".cc-monitor";
 
 /// **远端写的规矩**（宿主装进 [`crate::env::Env::files`]，一个进程一种；线上交来的请求改不动它）。
@@ -62,7 +60,7 @@ const ROOTS_HOME: &str = ".cc-monitor";
 pub enum WriteRules {
     /// 一个字节都不许写（没装宿主那一套时的缺省：宁可写不成，不许写错地方）。
     ReadOnly,
-    /// 部署：只许 [`REMOTE_WRITE_ROOTS`] 那两处（后端 · 手机）；建出来的目录当场收成 `dir_mode`（宿主交后端自家目录那一个权限位）。
+    /// 部署：只许 [`STAGING_ROOT`] 那一处（后端 · 手机）；建出来的目录当场收成 `dir_mode`（宿主交后端自家目录那一个权限位）。
     Deploy { dir_mode: u32 },
 }
 
@@ -283,7 +281,7 @@ impl Session {
 pub enum Intent {
     /// 建 / 写 / 删 / 改名一份文件：必须**在某个根底下**（不是根自己）。
     File,
-    /// 建一个目录：根底下、根自己、或两个根唯一的祖先 `.cc-monitor`。
+    /// 建一个目录：根底下、根自己、或它的祖先 `.cc-monitor`。
     Dir,
 }
 
@@ -417,7 +415,7 @@ fn why_of_sftp(e: &russh_sftp::client::error::Error) -> String {
     }
 }
 
-/// **纯词法那一道**：把 `path` 归一成 home 相对，判它落不落在两个根里。
+/// **纯词法那一道**：把 `path` 归一成 home 相对，判它落不落在写根里。
 ///
 /// 回 `(home 相对路径, 它在哪个根底下)`；第二项 `None` = 它是 `.cc-monitor` 本身（只有建目录那一形放行）。
 pub fn fence_lexical(
@@ -461,21 +459,15 @@ pub fn fence_lexical(
     if intent == Intent::Dir && rel == ROOTS_HOME {
         return Ok((rel, None));
     }
-    for root in REMOTE_WRITE_ROOTS {
-        let under = rel
-            .strip_prefix(root)
-            .is_some_and(|rest| rest.starts_with('/'));
-        if under || (intent == Intent::Dir && rel == root) {
-            return Ok((rel, Some(root)));
-        }
+    let under = rel
+        .strip_prefix(STAGING_ROOT)
+        .is_some_and(|rest| rest.starts_with('/'));
+    if under || (intent == Intent::Dir && rel == STAGING_ROOT) {
+        return Ok((rel, Some(STAGING_ROOT)));
     }
     Err(copy_text(
-        "beSftp.fence.outsideRoots",
-        &[
-            ("a", REMOTE_WRITE_ROOTS[0]),
-            ("b", REMOTE_WRITE_ROOTS[1]),
-            ("path", p),
-        ],
+        "beSftp.fence.outsideRoot",
+        &[("path", p), ("root", STAGING_ROOT)],
     ))
 }
 

@@ -19,7 +19,9 @@ mod face;
 mod own;
 mod ro;
 pub use face::{Face, FaceFile, NewFile, NewFileFail, Resolved};
-pub(crate) use own::{AccountCreds, CredsLock, DiagFile, OwnPath, RenewLock, PRIVATE_DIR_MODE};
+pub(crate) use own::{
+    inside_own_dir, AccountCreds, CredsLock, DiagFile, OwnPath, RenewLock, PRIVATE_DIR_MODE,
+};
 pub use own::{DiagLog, Own, OwnLock};
 pub(crate) use ro::{Metadata, Perms, Ro, RoFile, Stamp};
 

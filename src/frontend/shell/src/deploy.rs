@@ -2,6 +2,7 @@
 //!
 //! 装那一趟整趟在本机常驻后端（帧命令 `deploy-install`，编排住后端 `deploy` crate，手机同一份）：问那台要哪一格 · 落点那一份是谁 ·
 //! 只升不降 · 取字节自检 · 放进那台的暂存区 ＋ 读回 · 那一份自己换进落点（`--place-self`）· 收拾残件。
+//! 卸载同样整趟在后端（帧命令 `deploy-uninstall`：传一份暂存件、由它删落点那一份）。
 //! 本模块只交事实（怎么够到那台 · 这一版带着的那几格字节落在本机哪个文件）、把后端推来的每一步交机器状态（`deploy` 帧）、把结局交出去。
 //!
 //! ## 只读铁律豁免（INVARIANT §1 / 账本 SS-G）—— 穷举登记见 `src/doc/INVARIANTS.md §1`
@@ -13,18 +14,14 @@
 use crate::copy_table::copy_text;
 use crate::detail::Said;
 
-use crate::dial_host::RemoteFs;
 use crate::stream_source::RemoteConfig;
 
-/// 本机常驻后端那条命令的名字（与 `src/backend/stream/inbound/mod.rs` 那条硬臂同名）。
+/// 本机常驻后端那两条命令的名字（命令表 `src/backend/stream/inbound/registry/machine.rs` 里那两行）。
 pub(crate) const INSTALL_CMD: &str = "deploy-install";
+pub(crate) const UNINSTALL_CMD: &str = "deploy-uninstall";
 
 /// 等那一趟的上限：问几次那台 ＋ 推一份 MB 级的字节 ＋ 读回（同 `files` 链路 `put` 的上限，`dial_host::FILES_PUT_DEADLINE`）。
 const INSTALL_BUDGET: std::time::Duration = std::time::Duration::from_secs(600);
-
-/// 后端的落点：SFTP 那一侧（家目录相对）· 给人看的。**本机与远端同一个**，常量住 `relay_route_core`。
-pub(crate) const LANDING_REL: &str = relay_route_core::BACKEND_LANDING_REL;
-const LANDING_SHOWN: &str = "~/.cc-monitor/bin/ccm";
 
 /// 这一趟做了什么（应答的 `action`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -137,34 +134,39 @@ async fn install(cfg: &RemoteConfig) -> Result<Installed, Said> {
     install_for(cfg, slot_rows()?).await
 }
 
-/// [`install`] 的本体，「带着哪几格」由调用方交（生产 = 这一版的槽落成的文件；回环台架交它送去的那一份）。
-async fn install_for(cfg: &RemoteConfig, slots: Vec<serde_json::Value>) -> Result<Installed, Said> {
+/// 问本机常驻后端一条装 / 卸的命令：入参只有事实（怎么够到那台 · 带着哪几格 · 那台叫什么），回应答原样。
+async fn ask_backend(
+    cfg: &RemoteConfig,
+    cmd: &'static str,
+    slots: Vec<serde_json::Value>,
+    dial: &serde_json::Value,
+) -> Result<serde_json::Value, Said> {
     use crate::backend_route::{route_call_error, Routed};
-    let command = |said: String| Said::new(said, INSTALL_CMD, None);
-    let dial = crate::dial_host::transfer_dial(cfg);
     let args = serde_json::json!({
         "dial": dial,
         "slots": slots,
         "machine": cfg.origin_label(),
     });
-    let client = crate::dial_host::local_backend_accepting(INSTALL_CMD)
+    let client = crate::dial_host::local_backend_accepting(cmd)
         .await
-        .map_err(command)?;
+        .map_err(|said| Said::new(said, cmd, None))?;
     // 那一趟在本机常驻后端里 ⇒ 它写的那份详情（那台答 `uname` 的原话也在里面）原样带上。
-    let data = client
-        .call(INSTALL_CMD, args, INSTALL_BUDGET)
-        .await
-        .map_err(|e| {
-            let said = match route_call_error(&e, &copy_core::local_machine(), |_code, message| {
-                message.to_string()
-            }) {
-                Routed::NoChannel(s) | Routed::Refused(s) => s,
-            };
-            Said::of_call(said, INSTALL_CMD, &crate::origin::Origin::local(), &e)
-        })?;
-    let got =
-        decode_installed(&data.ok_or_else(|| command(copy_text("rsSftp.plan.internal", &[])))?)
-            .map_err(command)?;
+    let data = client.call(cmd, args, INSTALL_BUDGET).await.map_err(|e| {
+        let said = match route_call_error(&e, &copy_core::local_machine(), |_code, message| {
+            message.to_string()
+        }) {
+            Routed::NoChannel(s) | Routed::Refused(s) => s,
+        };
+        Said::of_call(said, cmd, &crate::origin::Origin::local(), &e)
+    })?;
+    data.ok_or_else(|| Said::new(copy_text("rsSftp.plan.internal", &[]), cmd, None))
+}
+
+/// [`install`] 的本体，「带着哪几格」由调用方交（生产 = 这一版的槽落成的文件；回环台架交它送去的那一份）。
+async fn install_for(cfg: &RemoteConfig, slots: Vec<serde_json::Value>) -> Result<Installed, Said> {
+    let dial = crate::dial_host::transfer_dial(cfg);
+    let data = ask_backend(cfg, INSTALL_CMD, slots, &dial).await?;
+    let got = decode_installed(&data).map_err(|said| Said::new(said, INSTALL_CMD, None))?;
     // 第一次连一台没钉过指纹的机器就在这一跳 ⇒ 照 monitor 自己开链路那几条同一个判定固化。
     crate::dial_host::settle_host_key(cfg, &dial, &got.ack);
     Ok(got)
@@ -183,8 +185,7 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, Said>
 }
 
 // ============================================================================
-// F08c：手动安装 / 卸载后端（设置面板两个按钮）。安装逻辑同自动部署、但返回人读结果；
-// 卸载删落点那个文件（固定落点 `~/.cc-monitor/bin/ccm`，没有外来路径要守）。
+// F08c：手动安装 / 卸载后端（设置面板两个按钮）。安装同自动部署那一趟；卸载也整趟在后端，回那一句。
 // ============================================================================
 
 /// 手动安装 / 更新远端后端（机器页 ①「部署后端」按钮）：与自动部署同一趟（[`install`]），回那一句。
@@ -200,28 +201,37 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, Said> {
         .map_err(|s| s.named("deploy_remote_backend"))
 }
 
-/// 卸载远端后端（设置面板「卸载后端」按钮）：删落点那个文件（它就是 `ccm`，卸后端就是卸 `ccm`）。
+/// 卸载远端后端（设置面板「卸载后端」按钮）：请本机常驻后端删那台落点那一份（它就是 `ccm`，卸后端就是卸 `ccm`），回后端写的那一句。
 /// 只读铁律豁免（SS-G）：用户显式触发的删。注意：若该机器仍启用，自动部署会在下次连接重新装回——提示见返回消息。
 #[tauri::command]
 pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, Said> {
-    let r: Result<String, Said> = async move {
-        // 经本机常驻后端那条 `files` 链路删（写只许 `~/.cc-monitor/bin/` 与暂存区 —— 围栏拒 ⇒ 原话带回）。
-        let fs = RemoteFs::open(&cfg).await?;
-        let removed = fs.remove(LANDING_REL).await?;
-        tracing::info!(
-            "远端 [{}] 卸载后端：{LANDING_SHOWN} {}",
-            cfg.origin_label(),
-            if removed { "已删" } else { "本来就不在" }
-        );
-        let path = LANDING_SHOWN.to_string();
-        if removed {
-            Ok(copy_text("rsSftp.uninstall.done", &[("path", &path)]))
-        } else {
-            Ok(copy_text("rsSftp.uninstall.absent", &[("path", &path)]))
-        }
+    let r = async {
+        let slots = slot_rows()?;
+        uninstall_for(&cfg, slots).await
     }
     .await;
     r.map_err(|s| s.named("uninstall_remote_backend"))
+}
+
+/// [`uninstall_remote_backend`] 的本体，「带着哪几格」由调用方交（同 [`install_for`]）。
+async fn uninstall_for(cfg: &RemoteConfig, slots: Vec<serde_json::Value>) -> Result<String, Said> {
+    let dial = crate::dial_host::transfer_dial(cfg);
+    let data = ask_backend(cfg, UNINSTALL_CMD, slots, &dial).await?;
+    let said = decode_uninstalled(&data).map_err(|said| Said::new(said, UNINSTALL_CMD, None))?;
+    tracing::info!("远端 [{}] 卸载后端：{said}", cfg.origin_label());
+    Ok(said)
+}
+
+/// `deploy-uninstall` 的应答 → 那一句（严格收：键集恰是 `{removed, said}`）。
+pub(crate) fn decode_uninstalled(v: &serde_json::Value) -> Result<String, String> {
+    let bad = || copy_text("rsSftp.plan.badProduct", &[("v", &v.to_string())]);
+    let obj = v.as_object().ok_or_else(bad)?;
+    let mut keys: Vec<&str> = obj.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    if keys != ["removed", "said"] || !obj["removed"].is_boolean() {
+        return Err(bad());
+    }
+    obj["said"].as_str().map(str::to_string).ok_or_else(bad)
 }
 
 #[cfg(test)]

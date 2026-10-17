@@ -5,7 +5,7 @@
 //! - [`Face`] 只有分派那一层造（`wire/spec.rs::with_face`：按档装处理器的 `prepare`〔帧面 · CLI 面〕与资产域那扇门都经它；另有帧面给传输台的那一份），
 //!   按命令表声明的那一族（typed 的 `Facing` 那一档，只有文件管理写的那一族用）递给处理函数；别的命令拿不到这个值，也就写不出来。
 //! - 写方法是文件管理面的动词闭集：`O_EXCL` 新建 · 覆盖写（只给原地覆盖那一处）· 建目录 · 改名（含不覆盖改名两形）·
-//!   删文件 · 删空目录 · 改权限 · 建链接；外加暂存区那一层带权限位的建目录。打开文件一律不跟链接（`O_NOFOLLOW`），做进方法里。
+//!   删文件 · 删空目录 · 改权限 · 建链接；外加暂存区那一层（后端自家目录，`own_dir`）。打开文件一律不跟链接（`O_NOFOLLOW`），做进方法里。
 //! - [`NewFile`] 只会 `O_EXCL` 新建一份此前不存在的文件、一次写满：分叉写分支记录用，拿不到改 · 删 · 覆盖的能力。
 //!   造只许分叉那两条命令（`session-fork` · `session-new`）在命令表里造。
 
@@ -110,9 +110,9 @@ impl Face {
         std::fs::create_dir(at.as_path())
     }
 
-    /// 建一层只给本人的目录（0700；已在不动）：上传暂存区那两层。
-    pub(crate) fn make_dir_private(&self, at: &Resolved) -> io::Result<()> {
-        super::own::create_dir_private(at.as_path())
+    /// 上传暂存区那两层：后端自家目录（[`super::own::own_dir`]，同 `Own` 那一份规矩：建的那一下 0700；已在必须是本人的真目录，放宽了收回 0700）。
+    pub(crate) fn own_dir(&self, at: &Resolved) -> Result<(), copy_core::said::Said> {
+        super::own::own_dir(at.as_path())
     }
 
     /// 改名（目标已在会被顶掉，同 `rename(2)`）。

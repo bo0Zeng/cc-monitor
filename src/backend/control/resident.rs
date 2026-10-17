@@ -489,8 +489,8 @@ fn swap_lock(own: &Own) -> Result<OwnLock, Said> {
     let (root, run) = run_dir(own)?;
     let swap = run.join("swap")?;
     ensure_dir(own, &root)?;
-    ensure_dir(own, &run)?;
-    ensure_dir(own, &swap)?;
+    own.own_dir(&run)?;
+    own.own_dir(&swap)?;
     own.lock(&swap).map_err(Said::from)
 }
 
@@ -564,7 +564,8 @@ pub fn claim(own: &Own) -> Claim {
         Err(e) => return Claim::Failed(e.logged()),
     };
     let dir = run.as_path();
-    if let Err(e) = ensure_dir(own, &root).and_then(|()| ensure_dir(own, &run)) {
+    // 门牌那一层是后端自家目录（本人的、只给本人的真目录；不合 ⇒ 拒、出声，不在别人能进的目录里开门）。
+    if let Err(e) = ensure_dir(own, &root).and_then(|()| own.own_dir(&run)) {
         return Claim::Failed(e.logged());
     }
     let held = match own.try_lock(&run) {

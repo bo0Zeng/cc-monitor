@@ -4,13 +4,13 @@
 //! 经它与本机后端之间那条已有的流开一条链路（`link-open`，[`link`]），交一份拨号请求（[`DialRequest`]），然后只在这条链路上收发字节。
 //! 多地址竞速 · 跳板 · host key 校验（严格 / TOFU，回报实得指纹）· 鉴权（`key_path` 私钥文件 · ssh-agent）· keepalive ·
 //! 开 channel 之后的几种用法（[`Use`]）住拨号核心那个 crate（`ssh-dial/`，手机同一份）；本目录是后端这一侧：
-//! 装上本后端的那一套（[`host`]：钥匙文件 · cc-monitor 那份 known_hosts · 本机 agent · 详情事实 · 部署那两处写根）、
+//! 装上本后端的那一套（[`host`]：钥匙文件 · cc-monitor 那份 known_hosts · 本机 agent · 详情事实 · 部署那一处写根）、
 //! 帧面链路（[`link`]）· 端口转发的账 · 测试连接 · 问远端后端 · 开终端那一串 · `ssh -G`。
 //! 界面那一侧没有 `russh` 拨号、也没有回落：常驻后端不在 ⇒ monitor 报（`dial_host.rs`）。
 //!
-//! SFTP 也在拨号核心（`ssh_dial::sftp`）：在池里那条连接上开 sftp 子系统；本后端装的规矩是远端写只许两处（`~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/`）。
-//! 界面拿不到原始 SFTP 字节（`use:"subsystem"` 回 `unsupported_use`）：部署走链路 `use:"files"`（受限的远端文件一问一答），
-//! 传输走入方向命令 `transfer-*`（`control/transfer.rs`）。边界见 `INVARIANTS §41.6` 与 `readonly_guard::remote_write_layer`。
+//! SFTP 也在拨号核心（`ssh_dial::sftp`）：在池里那条连接上开 sftp 子系统；本后端装的规矩是远端写只许暂存区一处（`~/.cc-monitor/staging/`）。
+//! 界面拿不到原始 SFTP 字节（`use:"subsystem"` 回 `unsupported_use`）：装 · 卸走帧命令 `deploy-install` · `deploy-uninstall`，
+//! 传输走入方向命令 `transfer-*`（`control/transfer.rs`）；链路 `use:"files"`（受限的远端文件一问一答）协议上还在、界面已不用。边界见 `INVARIANTS §41.6` 与 `readonly_guard::remote_write_layer`。
 //!
 //! # 一条链路上的字节（线上帧见 `wire.rs` 的 `LinkData`）
 //!
@@ -92,14 +92,14 @@ pub(crate) mod sftp {
     pub(crate) use super::sftp_rig as rig;
 }
 
-/// 台架（合成 SFTP 服务端）：起会话之前先装上本后端的那一套（写按部署那两处）。
+/// 台架（合成 SFTP 服务端）：起会话之前先装上本后端的那一套（写按部署那一处）。
 #[cfg(test)]
 #[path = "../../../tests/backend/dial_sftp_rig_host.rs"]
 pub(crate) mod sftp_rig;
 
 /// 装上本后端交给拨号核心的那一套（一个进程一次；`main` 起来就装，进拨号核心的几个口也各装一次兜住测试档）：
 /// 钥匙是私钥文件的路径 · 认下的 host key 记进 cc-monitor 那份 known_hosts · 本机 ssh-agent · 详情写本后端的时刻与机器 ·
-/// 远端写只许部署那两处（建出来的目录收成 [`crate::common::own_dir::PRIVATE_DIR_MODE`]）。
+/// 远端写只许暂存区那一处（建出来的目录收成 [`crate::common::own_dir::PRIVATE_DIR_MODE`]）。
 pub fn host() {
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {

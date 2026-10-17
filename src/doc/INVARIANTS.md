@@ -470,7 +470,7 @@ PID 死亡判定用 `pidfd` 绑进程实例本身 ⇒ PID 复用在机制上无�
 | 新建层 | `control/fork_write.rs` | 必须含 `.create_new(true)`（带前导点：只许由调用满足，不许被注释喂饱）；不得有删除 / 改名 / 复制 / 链接 / 截断 / 追加 / 覆盖写 / 建目录 / `set_len` / `.create(true)` |
 | 文件管理写面 | `control/files_write.rs` · `control/files_commit.rs` | 改动动词是闭集；每一处改动之前先过路径解析（`files_write::resolve_in_root`：逐段只许普通段、拼出来仍在根下、父目录解链接后仍在根下；跟链接的动词用 `resolve_existing_in_root`），针 `readonly_guard::RESOLVE_CALLS`；这一面不问数据是谁的（文件管理器可以改会话文件） |
 | 后端自有状态文件 | 按文件登记（第四层表，相等断言） | 每份只写它自己那一个文件 |
-| 远端（SFTP） | `ssh-dial/sftp.rs` | 只往远端 `~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/` 写，每处改动先过 `ssh-dial/sftp.rs::fenced_remote`；落进用户目录只经远端后端 `files-commit-upload` |
+| 远端（SFTP） | `ssh-dial/sftp.rs` | 只往远端 `~/.cc-monitor/staging/` 写，每处改动先过 `ssh-dial/sftp.rs::fenced_remote`；落进用户目录只经远端后端 `files-commit-upload`；换进 `~/.cc-monitor/bin/` · 卸载由传上去的那一份在那台上自己做（`--place-self` · `--unplace-self`） |
 
 删历史会话（`files-delete-session`）那一道单列：只收 sid、必须是一份会话记录，`readonly_guard::the_file_manager_face_never_asks_the_session_shape` 钉着「问会话形状的只有删会话那三处」。TOCTOU（判定与动手之间的窗）未闭合，如实登记。
 

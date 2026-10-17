@@ -335,6 +335,7 @@ fn the_deploy_paths_only_hand_facts_to_the_backend() {
             "connect_and_exec_capture(",
             "fs.put(",
             "fs.mkdirs(",
+            "fs.remove(",
         ]
         .into_iter()
         .filter(|f| code.contains(f))
@@ -362,12 +363,18 @@ fn the_deploy_paths_only_hand_facts_to_the_backend() {
         }
     }
     let body = dp1_body(&prod, "async fn install_for(");
-    guard_core::find_pinned(&body, ".call(INSTALL_CMD, args, INSTALL_BUDGET)")
+    guard_core::find_pinned(&body, "ask_backend(cfg, INSTALL_CMD, slots, &dial)")
         .unwrap_or_else(|e| panic!("装那一口不是恰好一处问本机后端（{e}）"));
+    let body = dp1_body(&prod, "async fn uninstall_for(");
+    guard_core::find_pinned(&body, "ask_backend(cfg, UNINSTALL_CMD, slots, &dial)")
+        .unwrap_or_else(|e| panic!("卸那一口不是恰好一处问本机后端（{e}）"));
+    let body = dp1_body(&prod, "async fn ask_backend(");
+    guard_core::find_pinned(&body, ".call(cmd, args, INSTALL_BUDGET)")
+        .unwrap_or_else(|e| panic!("问本机后端那一口不是恰好一处（{e}）"));
     // 正控：每一种写法都认得出来。
     assert_eq!(
-        decisions("probe_key( choose( key_from_uname( judge( stamp_scan_cmd( interpret_stamp_scan( interpret_target_probe( identity_decision( identity_of_bytes( build_relation( connect_and_exec_capture( fs.put( fs.mkdirs(").len(),
-        13
+        decisions("probe_key( choose( key_from_uname( judge( stamp_scan_cmd( interpret_stamp_scan( interpret_target_probe( identity_decision( identity_of_bytes( build_relation( connect_and_exec_capture( fs.put( fs.mkdirs( fs.remove(").len(),
+        14
     );
 }
 
@@ -457,18 +464,39 @@ fn the_landing_constant_is_the_backend_one_and_no_entry_is_made_here() {
     ] {
         assert!(!prod.contains(gone), "deploy.rs 又在造 ccm 入口了：{gone}");
     }
-    assert_eq!(LANDING_REL, relay_route_core::BACKEND_LANDING_REL);
-    assert_eq!(LANDING_REL, ".cc-monitor/bin/ccm");
 }
 
-/// **界面那一侧对着真后端 ＋ 真 sshd**：部署那几问经 `RemoteFs`（`files` 链路）、
+/// 卸载那一口的应答解码读后端那一侧同一份金样里的 `uninstalled`（后端 `deploy_plan_tests` 核键集 == 真产出）；严格收。
+#[test]
+fn the_uninstall_reply_decoder_reads_the_golden() {
+    let golden: serde_json::Value = serde_json::from_str(include_str!(
+        "../../__fixtures__/deploy-install.golden.json"
+    ))
+    .unwrap();
+    let product = &golden["uninstalled"];
+    assert_eq!(
+        decode_uninstalled(product).as_deref(),
+        Ok("placeholder-uninstall")
+    );
+    let mut missing = product.clone();
+    missing.as_object_mut().unwrap().remove("removed");
+    let mut extra = product.clone();
+    extra["surprise"] = serde_json::json!(1);
+    let mut not_bool = product.clone();
+    not_bool["removed"] = serde_json::json!("yes");
+    for bad in [missing, extra, not_bool] {
+        assert!(decode_uninstalled(&bad).is_err(), "该拒却收了：{bad}");
+    }
+}
+
+/// **界面那一侧对着真后端 ＋ 真 sshd**：装 · 卸经本机常驻后端（`deploy-install` · `deploy-uninstall`）、
 /// 传输经中继（`sftp_pool::transfer_call` / `watch_ticket`），全程界面进程零 SSH。
 ///
 /// 只由 `tests/evidence/SR1b-sftp-loopback.py --monitor` 带 `SR1B_LOOPBACK`
 /// （`{host,port,user,key_path,backend,home,rhome,up,dl_remote,dl_local}`）来跑；那台 sshd 的 sftp 起始目录是临时的 `rhome`，
 /// 写不到真 home。买到：部署判定四形（缺 ⇒ 部署 · 装完 ⇒ 那台 sshd 上真扫出戳、跳过 · 截成 0 字节 ⇒ 重部署 ·
 /// 无戳的文件 ⇒ 显式失败不覆盖；从前那份三行入口也一样）·
-/// 卸载按钮删后端那一份 · 两个写根之外 ⇒ 后端围栏拒、原话带回 · 上传 / 下载经中继走完、帧翻成 `Snap` 终局。
+/// 卸载按钮删后端那一份 · 上传 / 下载经中继走完、帧翻成 `Snap` 终局。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "要真 sshd ＋ 真后端二进制：由 tests/evidence/SR1b-sftp-loopback.py --monitor 带环境变量来跑"]
 async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
@@ -499,7 +527,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     });
     // 落点是固定的 `~/.cc-monitor/bin/ccm`（SFTP 那一侧家目录相对；台架的 sshd 要把 shell 的 `HOME` 也设成 `rhome`，
     //   身份扫描那一发走 shell、读的是 `"$HOME"/.cc-monitor/bin/ccm`）。
-    let backend_path = format!("{rhome}/{LANDING_REL}");
+    let backend_path = format!("{rhome}/{}", relay_route_core::BACKEND_LANDING_REL);
     let cfg = crate::stream_source::RemoteConfig {
         host: s("host"),
         label: "sr1b-loopback".into(),
@@ -512,7 +540,6 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     };
     // ① 装那一趟整趟在本机常驻后端（`deploy-install`）：这一版「带着」的那一格就是台架那台的键、字节是被测的那份后端本身
     //   （它得真跑得起 `--place-self`），身份读它自己的戳。
-    let fs = RemoteFs::open(&cfg).await.expect("开不了 files 链路");
     let me = std::fs::read(s("backend")).expect("读不到被测后端");
     let deploy_contract::RemoteIdentity::Stamp(id) = deploy_contract::identity_of_bytes(
         &me,
@@ -541,7 +568,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         leftover,
         "判定之后盘上那份变了"
     );
-    let msg = uninstall_remote_backend(cfg.clone())
+    let msg = uninstall_for(&cfg, slots.clone())
         .await
         .expect("卸载（出路）");
     assert!(msg.starts_with("已删除 ~/.cc-monitor/bin/ccm"), "{msg}");
@@ -566,17 +593,8 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         "无戳的文件 ⇒ 该显式失败：{d3:?}"
     );
     std::fs::write(&backend_path, &me).unwrap();
-    // ③ 暂存区之外 ⇒ 后端围栏拒、原话带回、盘上零改动
-    let outside = format!("{rhome}/.cc-monitor/elsewhere/cc-monitor-backend");
-    let e = fs.put(&outside, b"x", 0o700, true).await.unwrap_err();
-    assert!(
-        e.said.contains("~/.cc-monitor/staging/"),
-        "拒绝的话没说只许哪一处：{e}"
-    );
-    assert!(!std::path::Path::new(&outside).exists());
-    drop(fs);
-    // ④ 卸载按钮（真命令）：只删后端那一份（旁挂标记退役）
-    let msg = uninstall_remote_backend(cfg.clone()).await.expect("卸载");
+    // ④ 卸载（同那颗按钮的本体）：传一份暂存件、由它删后端那一份
+    let msg = uninstall_for(&cfg, slots.clone()).await.expect("卸载");
     assert!(msg.starts_with("已删除 ~/.cc-monitor/bin/ccm"), "{msg}");
     assert!(!std::path::Path::new(&backend_path).exists());
     // ⑤ 上传经中继：开单 → 订阅即起跑 → 终局 Done，暂存件逐字节等于本机那份

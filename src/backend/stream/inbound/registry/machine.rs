@@ -21,6 +21,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::asynchronous::<crate::control::deploy_plan::DeployInstall>(
         "给那台装 / 升级后端",
     ),
+    // **卸那台的后端**：入参同上 → `{removed, said}`（传一份暂存件、由它删落点那一份；拨号 · 等远端 ⇒ 异步档）。
+    crate::wire::typed::asynchronous::<crate::control::deploy_plan::DeployUninstall>(
+        "卸那台的后端",
+    ),
     // **那台远端此刻的状态**：壳交接常驻那一轮的结论（`machine-round`，原样的事实）· 机器表里每台的成品（`machine-read`）。
     //   判定在 `deploy::machine`，表在 `control/machine_state.rs`（进程里的状态 ⇒ 只在流上答）。
     crate::wire::typed::blocking::<crate::control::machine_state::MachineRoundCmd>(

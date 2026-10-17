@@ -333,6 +333,11 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "只读打开交回的那一份（解压读包：只读、只挪位置）",
     ),
     (
+        "platform::fs::inside_own_dir",
+        Kind::Platform,
+        "新建落在这台机器自家目录（`~/.cc-monitor`）里的东西只给本人：那一层认不认由自家目录那一处判",
+    ),
+    (
         "platform::fs::noreplace_unsupported",
         Kind::Platform,
         "不覆盖改名那一格：那块盘不认这个旗时退回 `link ＋ unlink`（要问是不是「没有这件原语」）",
@@ -458,11 +463,6 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "common::contract::malformed",
         Kind::Common,
         "契约错只进表一句（「请求格式不对」，诊断记日志）",
-    ),
-    (
-        "common::own_dir::DIR_NAME",
-        Kind::Common,
-        "新建落在这台机器自家目录（`~/.cc-monitor`）里的东西只给本人：认那个目录要它的名字",
     ),
     (
         "common::own_dir::PRIVATE_DIR_MODE",

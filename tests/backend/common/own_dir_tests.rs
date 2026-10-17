@@ -159,17 +159,17 @@ fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
             &std::fs::read_to_string(guard_core::addr::backend_src_root().join(p)).expect("读"),
         )
     };
-    // 暂存区那两层：经文件管理面句柄那一个带权限位建目录的方法（`Face::make_dir_private`，本体同上那一个函数），恰好一处。
+    // 暂存区那两层：经文件管理面句柄那一个自家目录方法（`Face::own_dir`，本体同 `Own::own_dir` 那一个函数），恰好一处。
     assert_eq!(
         src("control/files_commit.rs")
-            .matches("face.make_dir_private(")
+            .matches("face.own_dir(")
             .count(),
         1,
-        "暂存区建目录不是经 `Face::make_dir_private` 恰好一处"
+        "暂存区建目录不是经 `Face::own_dir` 恰好一处"
     );
     assert!(
-        src("platform/fs/face.rs").contains("super::own::create_dir_private("),
-        "`Face::make_dir_private` 的本体不是自家目录那一个函数了"
+        src("platform/fs/face.rs").contains("super::own::own_dir("),
+        "`Face::own_dir` 的本体不是自家目录那一个函数了"
     );
     // 已搬上 `Own` 的（只读只读护栏第二刀逐份搬）：建那一层经 `Own::ensure_dir` 恰好一处。
     for f in MOVED_TO_OWN {

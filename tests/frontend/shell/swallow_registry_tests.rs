@@ -98,7 +98,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/control/tmux_hook.rs", "let _ = crate::platform::signal::send_sigusr1(pid);", Why::PeerGone, "信号送不到 = 那个进程已不在；发之前有进程身份复核（做得好的对照组）"),
     ("src/backend/control/transfer_copy.rs", "let _ = crate::dial::sftp::remove(&self.to, &staging_part(&key)).await;", Why::CleanupAfterFailure, "一份文件没传成 ⇒ 删落点那台暂存区里的半截；删不掉只是暂存区里多一份，孤儿扫会收"),
     ("src/backend/control/transfer_copy.rs", "let _ = self.face.delete_file(&at);", Why::CleanupAfterFailure, "本机中转那一份不论成败都删；删不掉只是暂存区里多一份，孤儿扫会收"),
-    ("src/backend/control/transfer_copy.rs", "let _ = face.make_dir_private(&at);", Why::CleanupAfterFailure, "建本机暂存区：建不成时下一步落暂存件那一下照实报错，不在这里先报"),
+    ("src/backend/control/transfer_copy.rs", "let _ = face.own_dir(&at);", Why::CleanupAfterFailure, "建本机暂存区：建不成时下一步落暂存件那一下照实报错，不在这里先报"),
     ("src/backend/control/transfer.rs", "let _ = forward.await;", Why::Reap, "等进度转发任务收尾（它自己只往已结束的票上报数）"),
     ("src/backend/control/transfer.rs", "let _ = rf.shutdown().await;", Why::DeadLink, "关远端文件句柄；传输的结局已经定了"),
     ("src/backend/control/transfer.rs", "let _ = sftp::remove(s, &part).await;", Why::CleanupAfterFailure, "撤了 ⇒ 删暂存区里的半截（用户说了不要）；删不掉只是暂存区里多一份，孤儿扫会收"),

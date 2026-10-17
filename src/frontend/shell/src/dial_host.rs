@@ -46,8 +46,8 @@ const ACK_DEADLINE: Duration = Duration::from_secs(45);
 /// 调用方这一侧执行；到点 ⇒ 读写报 `TimedOut` ⇒ 调用方返回、丢掉链路 ⇒ `link-close` ⇒ 后端收掉那个任务、格还回去。
 ///
 /// **默认有，豁免要点名**：[`open`] 开出来的每一条链路出生就带着它；本来就该长活的几形
-/// （远端常驻后端那条长流 · 部署文件面 —— 后者每一问自带期限）显式调 [`DialStream::lives_long`] 摘掉，
-/// 那三处由 `dial_host_tests::only_the_three_long_lived_links_drop_the_deadline` 两向钉住。
+/// （远端常驻后端那条长流）显式调 [`DialStream::lives_long`] 摘掉，
+/// 那一处由 `dial_host_tests::only_the_long_lived_links_drop_the_deadline` 两向钉住。
 ///
 /// 值：今天各调用方外面套的最宽是「握手 45 s ＋ 读 30 s」、当时账号工具的部署整趟 45 s ⇒ 120 s 不收紧任何一条既有的；
 /// 它是**天花板**（调用方外面再套的更短期限照旧先到）。⚠ 「值归后端」这一格没做到（与 [`ACK_DEADLINE`] 同住这里）。
@@ -169,7 +169,7 @@ pub(crate) fn transfer_dial(cfg: &RemoteConfig) -> serde_json::Value {
 /// 关写半边（`shutdown` = 关链路）不受它管 —— 到点之后调用方照样要能把链路关掉。
 pub(crate) struct Bounded<S> {
     inner: S,
-    /// 到点那一刻 ＋ 用来说话的几样。`None` = 不设（长活那三形）。
+    /// 到点那一刻 ＋ 用来说话的几样。`None` = 不设（长活那一形）。
     due: Option<Due>,
 }
 
@@ -289,7 +289,7 @@ impl<S: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for Bounded<S> {
 /// 丢掉这个结构 = 关链路（`link-close`）= 后端收掉它的拨号 / 服务任务；那条 SSH 连接**不跟着断**
 /// （同一台远端的别的链路可能还在用它）。
 ///
-/// 出生就带着 [`ONE_SHOT_DEADLINE`]（[`open`] 起算）；长活那三形调 [`DialStream::lives_long`] 摘掉。
+/// 出生就带着 [`ONE_SHOT_DEADLINE`]（[`open`] 起算）；长活那一形调 [`DialStream::lives_long`] 摘掉。
 pub struct DialStream {
     /// ⚠ **必须是 `BufReader` 本体**：ack 那一行是按行读的，缓冲里很可能已经预读了后面的字节。
     /// 期限那一层垫在 `BufReader` 底下 ⇒ 握手那几行、收全那一行、调用方自己的读写全在同一个时限里。
@@ -297,8 +297,8 @@ pub struct DialStream {
 }
 
 impl DialStream {
-    /// **摘掉总时限**：只给本来就该长活的那三形（后端长连接流 · 端口转发 · 部署文件面）。
-    /// 调用点由 `dial_host_tests::only_the_three_long_lived_links_drop_the_deadline` 两向钉住 ——
+    /// **摘掉总时限**：只给本来就该长活的那一形（后端长连接流）。
+    /// 调用点由 `dial_host_tests::only_the_long_lived_links_drop_the_deadline` 两向钉住 ——
     /// 多一处 = 又有一条一次性的路没有总时限（红线）。
     pub(crate) fn lives_long(mut self) -> Self {
         self.r.get_mut().due = None;
@@ -727,146 +727,6 @@ pub(crate) async fn capture(
 
 // 端口转发那一形（`ForwardLink` · `forward`）退役：转发账连同开链路一起住本机常驻后端
 //   （`src/backend/dial/forwards.rs`，查的是后端自己的可达表），界面经 `chan.call(<local>, "forward-*")` 直接问。
-
-// ═══ 部署那条路：受限的远端文件一问一答（链路 `use:"files"`）═══════════════════
-//
-// 用户「SFTP 进本机常驻后端，只写暂存区」：界面进程零 SSH / 零 SFTP。自部署（F08 后端二进制 · `.build_id` ·
-// `ccm` 入口）照本机常驻后端出的计划放字节（`deploy.rs`），
-// 执行交给本机常驻后端那一份 SFTP（`src/backend/ssh-dial/sftp.rs`）—— 它**只许往 `~/.cc-monitor/staging/` 与
-// `~/.cc-monitor/bin/` 写**（越界 ⇒ 应答 `code:"fenced"`，这里原话带回）。线上形状住后端那份头注与协议文档。
-
-/// 一行应答的字节上限（`read` 的数据 base64 进这一行；部署读的都是小文件：标记 · 入口 · 脚本）。
-fn files_reply_cap() -> u64 {
-    8 * 1024 * 1024
-}
-
-/// `put` 之后等那一行应答的上限：后端先把字节收全（本机管道），再经 SFTP 传到远端（网络），再读回比对。
-/// 一份 MB 级的后端二进制在慢链路上要好一会儿 —— 给宽，但有界。
-const FILES_PUT_DEADLINE: Duration = Duration::from_secs(600);
-
-/// 其余几问（`home` · `read` · `remove` · `mkdirs`）等应答的上限：各是一两个 SFTP 往返。
-const FILES_ASK_DEADLINE: Duration = Duration::from_secs(60);
-
-/// 部署用的远端文件句柄：一条开在本机后端里的 `files` 链路。**只有这几问，写只许两处。**
-///
-/// 丢掉它 = 关链路 = 后端收掉那条 sftp 通道（那条 SSH 连接不跟着断）。
-pub(crate) struct RemoteFs {
-    link: tokio::sync::Mutex<DialStream>,
-}
-
-impl RemoteFs {
-    /// 开一条 `files` 链路（拨号 / 池里复用 · 开 sftp 子系统），问一次起始目录（答得出 = 链路通了；值本身没人要）。
-    pub(crate) async fn open(cfg: &RemoteConfig) -> Result<RemoteFs, Said> {
-        let req = request(cfg, "files", serde_json::json!({}));
-        let (link, _) = open(cfg, &req, "files", &mut |_| {}, &mut || {}).await?;
-        let fs = RemoteFs {
-            // 长活：一次部署问好几次，**每一问**自带期限（[`FILES_ASK_DEADLINE`] / [`FILES_PUT_DEADLINE`]）。
-            link: tokio::sync::Mutex::new(link.lives_long()),
-        };
-        let v = fs.ask(serde_json::json!({"op": "home"}), None).await?;
-        v.get("home")
-            .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| Said::with_raw(copy_text("rsDialHost.open.noHome", &[]), &v))?;
-        Ok(fs)
-    }
-
-    /// 一问一答。`bytes` 跟在请求行后面（只有 `put` 用）。失败那一形（`{"code","message","detail"}`）⇒ 那一句 ＋ 后端写的详情。
-    async fn ask(
-        &self,
-        req: serde_json::Value,
-        bytes: Option<&[u8]>,
-    ) -> Result<serde_json::Value, Said> {
-        use tokio::io::AsyncWriteExt;
-        let deadline = if bytes.is_some() {
-            FILES_PUT_DEADLINE
-        } else {
-            FILES_ASK_DEADLINE
-        };
-        let mut link = self.link.lock().await;
-        let round = async {
-            let mut line = req.to_string();
-            line.push('\n');
-            let sent = |e: std::io::Error| {
-                Said::with_raw(
-                    copy_text(
-                        "rsDialHost.ask.sendBytesFailed",
-                        &[("why", &copy_core::io_reason(e.kind()))],
-                    ),
-                    &e,
-                )
-            };
-            link.write_all(line.as_bytes()).await.map_err(sent)?;
-            if let Some(b) = bytes {
-                link.write_all(b).await.map_err(sent)?;
-            }
-            link.flush().await.map_err(sent)?;
-            ssh_link::reply_line(&mut link.r, files_reply_cap())
-                .await
-                .map_err(link_said)
-        };
-        let v = tokio::time::timeout(deadline, round).await.map_err(|_| {
-            Said::of(
-                "rsDialHost.ask.timeout",
-                &[("dur", &copy_core::format_elapsed(deadline))],
-            )
-        })??;
-        if let Some(code) = v.get("code").and_then(serde_json::Value::as_str) {
-            let message = v
-                .get("message")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or("");
-            let said = if code == "fenced" {
-                copy_text(
-                    "rsDialHost.ask.writeFenced",
-                    &[("said", &message.to_string())],
-                )
-            } else {
-                message.to_string()
-            };
-            let detail = v.get("detail").and_then(serde_json::Value::as_str);
-            return Err(refused_said(said, detail));
-        }
-        Ok(v)
-    }
-
-    // 这里原先是 `stat` 那一问（落点那个文件在不在 / 多大）：落点那一份是谁改由本机常驻后端出计划时自己问（`deploy-plan`），
-    //   monitor 这一侧零调用方 ⇒ 删了；链路那一侧的 `stat` 一问随之也删了。
-
-    // `read` 那一问（整份读回一个小文件）零调用方了：唯一的读者是按目录取版本标记那条路（已退役）⇒ 删了。
-    //   链路那一侧的 `read` 一问照旧在（`files` 链路协议没动）。
-
-    /// 原子上传（EXCL 临时件 → 旧的改名 `.bak` → 上位 → 删 `.bak`；**绝不 setstat**）。`verify` ⇒ 后端读回比对、读回不对当场删掉
-    /// 并回那一句（`put_verified`）。
-    pub(crate) async fn put(
-        &self,
-        path: &str,
-        bytes: &[u8],
-        mode: u32,
-        verify: bool,
-    ) -> Result<(), Said> {
-        self.ask(
-            serde_json::json!({"op": "put", "path": path, "size": bytes.len(), "mode": mode, "verify": verify}),
-            Some(bytes),
-        )
-        .await
-        .map(|_| ())
-    }
-
-    /// 删一份（不在 ⇒ `false`）。
-    pub(crate) async fn remove(&self, path: &str) -> Result<bool, Said> {
-        let v = self
-            .ask(serde_json::json!({"op": "remove", "path": path}), None)
-            .await?;
-        Ok(v.get("removed").and_then(serde_json::Value::as_bool) == Some(true))
-    }
-
-    /// `mkdir -p`（每一级都过后端那道围栏）。
-    pub(crate) async fn mkdirs(&self, path: &str) -> Result<(), Said> {
-        self.ask(serde_json::json!({"op": "mkdirs", "path": path}), None)
-            .await
-            .map(|_| ())
-    }
-}
 
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/dial_host_tests.rs"]

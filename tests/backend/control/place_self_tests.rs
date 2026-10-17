@@ -6,6 +6,7 @@
 //! | P2 | 字节自报的不是这一版 ⇒ `not_self`、暂存件当场删、落点一个字节不动 | 真目录 |
 //! | P3 | 不在暂存区里（落点上那一份自己跑了这条）⇒ `outside_staging`、那份文件不删、落点不动 | 真目录 |
 //! | P4 | 部署起的那个暂存名被叫成这条子命令 ⇒ 进后端（不被当成一段配置） | 纯函数 |
+//! | P5 | `--unplace-self`：暂存区里那一份删掉落点那一份（不认身份）、再删自己；落点本来不在 ⇒ `false`；不在暂存区里 ⇒ `outside_staging`、什么都不删 | 真目录 |
 
 use super::*;
 use std::path::{Path, PathBuf};
@@ -137,4 +138,31 @@ fn p4_the_staged_name_routes_to_the_backend() {
         crate::control::ccm::route(&argv0, &args),
         crate::control::ccm::Entry::Backend(vec!["--place-self".into()])
     );
+}
+
+#[test]
+fn p5_a_staged_copy_removes_the_landing_and_itself() {
+    let home = sandbox("p5");
+    put(
+        &home,
+        relay_route_core::BACKEND_LANDING_REL,
+        b"no stamp at all",
+    );
+    let staged_rel = format!(
+        "{}/cc-monitor-backend.1-2-3.new",
+        relay_route_core::STAGING_DIR_REL
+    );
+    let own = Own::issue_at(&home);
+    let staged = put(&home, &staged_rel, &backend("any"));
+    assert_eq!(unplace(&own, &staged), Ok(true));
+    assert_eq!(landing(&home), None);
+    assert!(!staged.exists(), "暂存件还在");
+    let staged = put(&home, &staged_rel, &backend("any"));
+    assert_eq!(unplace(&own, &staged), Ok(false), "落点本来就不在");
+    assert!(!staged.exists(), "暂存件还在");
+    // 不在暂存区里（落点上那一份自己跑了这条）⇒ 拒、一个字节不动。
+    let at_landing = put(&home, relay_route_core::BACKEND_LANDING_REL, b"x");
+    let (code, _) = unplace(&own, &at_landing).unwrap_err();
+    assert_eq!(code, "outside_staging");
+    assert!(at_landing.exists());
 }

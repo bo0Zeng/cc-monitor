@@ -254,7 +254,7 @@ impl Table {
 
     fn open_req(&self, r: LinkOpenReq) -> Result<(), LinkOpenErr> {
         link_ok(&r.link).map_err(LinkOpenErr::BadArgs)?;
-        // 原始子系统字节流不交给界面：SFTP 住本机常驻后端（`ssh-dial/sftp.rs`），界面只有部署 `use:"files"` 与传输 `transfer-*` 两条路；
+        // 原始子系统字节流不交给界面：SFTP 住本机常驻后端（`ssh-dial/sftp.rs`），界面只经帧命令（装 · 卸 `deploy-*` · 传输 `transfer-*`）用它；
         // 把协议字节交出去，界面进程就又碰 SSH 了。协议上认得这个词，说得出为什么不做。
         if r.dial.get("use").and_then(serde_json::Value::as_str) == Some("subsystem") {
             return Err(LinkOpenErr::UnsupportedUse(
