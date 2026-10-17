@@ -384,3 +384,44 @@ fn it_orders_the_same_as_the_algorithm_on_the_simulated_facts() {
     }
     assert!(off.is_empty(), "排法不一样：\n{}", off.join("\n"));
 }
+
+/// 合成的 `n` 个号（号名不相干）：都开着窗、用了一半、重置时刻错开，除在用的 n03（剩得多、5 小时后重置）与 n05（半小时后作废）外
+/// 都压着别的会话；本会话用速量得到，起伏 `spread`。
+fn many(n: usize, spread: f64) -> Value {
+    const T0: u64 = 1_791_907_200;
+    let ids: Vec<String> = (0..n).map(|i| format!("n{i:02}")).collect();
+    let accounts: Vec<Value> = ids
+        .iter()
+        .enumerate()
+        .map(|(i, id)| {
+            let (u, r) = match i {
+                3 => (20.0, T0 + 299 * 60),
+                5 => (50.0, T0 + 30 * 60),
+                _ => (50.0, T0 + (20 + (i as u64 * 37) % 280) * 60),
+            };
+            json!({"id": id, "pos": i, "kind": "sub", "sendable": true,
+                   "used": {"w5h": u, "w7d": 0.0}, "resets": {"w5h": r, "w7d": T0 + 6 * 86_400},
+                   "rate": {"w5h": 0.3}, "tokensPerPct": {"w5h": 150_000, "w7d": 150_000},
+                   "others": {"w5h": if i == 3 || i == 5 { 0.0 } else { 0.3 }}, "weekly": false})
+        })
+        .collect();
+    json!({"case": format!("{n} 个号 · 起伏 {spread}"), "now": T0, "clock": 540, "current": "n03",
+           "settings": {"accounts": ids.iter().map(|id| json!({"id": id})).collect::<Vec<_>>(), "smart": true},
+           "accounts": accounts,
+           "session": {"pace": 150_000.0, "spread": spread, "context": 150_000, "writeExtra": 1.9, "grow": 0.0, "cached": {}},
+           "pinned": false})
+}
+
+/// ★ 号多了一判也在操作数上限里判完、不走兜底：推演开销由算法自己封顶（推不起几遍就少比几个候选，一个都推不起就不提前换）。
+/// 用速起伏大时低的那一档是 0，别的会话那一档不用、不并进池子（不拿 0 去除）。30 个号、没起伏时照推演提前换去快作废的 n00。
+#[test]
+fn many_accounts_judge_within_the_limit() {
+    for (n, spread) in [(9, 0.6), (15, 0.0), (15, 0.6), (30, 0.0), (30, 0.6)] {
+        let c = many(n, spread);
+        decide_case(&c, &c["settings"]);
+    }
+    let c = many(30, 0.0);
+    let v = decide_case(&c, &c["settings"]);
+    assert_eq!(v.order.first().map(String::as_str), Some("n00"), "{v:?}");
+    assert!(why_of(&v, "n00").starts_with("智能切换"), "{v:?}");
+}

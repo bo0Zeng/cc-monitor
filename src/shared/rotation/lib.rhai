@@ -222,6 +222,9 @@ fn refills(r5, left7, wk, exp, segs5, dflt, clock, now, horizon) {
 //   换到缓存期内用过的号只补写新长的那段（o.grow：每分钟多出的重写量），否则整段重写（o.kfull）；重写的量也从那个号的额度里出。
 //   o 另有：mine（本会话守的号）· lump（现在换过去当场重写的量，留着 ＝ 0）· cache（#{号: 缓存到几点}）· ttl · now · end。
 //   每一步只碰排在最前的那份：能用的按作废先后、还没开始的按开始先后各排一列（整数键 ＋ 沙箱自带的排序），一次推演随份数线性涨。
+//   开销封顶在调用方：一遍约 600 × 份数次操作，视野至多两个 5 小时窗（每号至多三份）；一判先算推得起几遍、至多比 3 个候选，
+//   一遍都推不起就不推（号多 · 用速有起伏时提前换就少了，不会撞上一判 20 万次的上限）。rotsim 量的一判最多：9 · 15 · 30 个号
+//   18.5 万 · 18.0 万 · 18.1 万（量得到用速），1.0 万 · 1.5 万 · 2.8 万（量不到）；50 · 100 个号 7.3 万 · 8.3 万（推不起，不提前换）。
 fn project(amt, st, ex, who, wk, late, oev, o) {
   let now = o.now;
   let t_end = o.end;
@@ -232,8 +235,8 @@ fn project(amt, st, ex, who, wk, late, oev, o) {
   let evt = []; let erho = []; let elump = []; let eme = [];
   let q = 0;
   while q < oev.acc.len() {
-    if oev.acc[q] != o.mine {
-      let r = oev.r[q] * o.m;
+    let r = oev.r[q] * o.m;
+    if oev.acc[q] != o.mine && r > 0.0 {   // 这一档用速是 0 的（起伏大时低的那一档）⇒ 他不用、不并进池子
       let z = oev.q[q];
       let tt = now;
       if z != () {
