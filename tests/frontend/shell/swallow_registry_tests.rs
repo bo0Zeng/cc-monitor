@@ -203,6 +203,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/comms/resident-client/feed.rs", "let _ = kicks.changed().await;", Why::Signal, ""),
     ("src/frontend/shell/src/event_replay.rs", "let _ = CHANGED_TAP.send(seen);", Why::PeerGone, "「X 变了」另交旁听口一份：此刻没有文件窗口在订 ⇒ 没人收（订上之后的每一格照常收到）"),
     ("src/frontend/shell/src/local_backend.rs", "let _ = c.kill();", Why::Reap, ""),
+    ("src/frontend/shell/src/local_backend_host.rs", "let _ = ended_tx.lock().unwrap_or_else(|e| e.into_inner()).send(how);", Why::PeerGone, "被监护那一命结束了，告诉起它的那一趟别再等：那一趟已经等到握手回去了，就没人要这一声"),
     ("src/frontend/shell/src/local_backend.rs", "let _ = c.wait();", Why::Reap, ""),
     ("src/frontend/shell/src/local_backend.rs", "let _ = std::fs::remove_file(&tmp);", Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
     ("src/frontend/shell/src/local_backend.rs", "let _ = std::fs::remove_file(ent.path());", Why::CleanupAfterFailure, "清过期的释放半成品（`STALE_PARTIAL_AGE`）· 换版时挪开的旧 `ccm`；删不掉下次再清"),

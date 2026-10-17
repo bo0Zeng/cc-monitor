@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.ui.common
 
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -12,7 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import com.ccmonitor.mobile.core.copy.copyText
-import com.ccmonitor.mobile.core.ui.button.SecondaryButton
+import com.ccmonitor.mobile.core.ui.dialog.DangerConfirmDialog
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
 import com.ccmonitor.mobile.ssh.OldHostKeys
 import kotlinx.coroutines.Dispatchers
@@ -40,21 +39,16 @@ fun UnmigratedHostKeys() {
         asking = false
         round++
     }
-    AlertDialog(
-        onDismissRequest = back,
+    DangerConfirmDialog(
         title = { Text(copyText("mobSsh.forgetAll.title")) },
         text = { Text(copyText("mobSsh.forgetAll.body")) },
-        confirmButton = {
-            SecondaryButton(
-                onClick = {
-                    asking = false
-                    scope.launch {
-                        if (withContext(Dispatchers.IO) { old.forgetAll() }) snackbar.show(copyText("mobSsh.forgetAll.done")) else round++
-                    }
-                },
-                danger = true,
-            ) { Text(copyText("mobSsh.forgetAll.ok")) }
+        confirm = copyText("mobSsh.forgetAll.ok"),
+        onConfirm = {
+            asking = false
+            scope.launch {
+                if (withContext(Dispatchers.IO) { old.forgetAll() }) snackbar.show(copyText("mobSsh.forgetAll.done")) else round++
+            }
         },
-        dismissButton = { SecondaryButton(onClick = back) { Text(copyText("kit.dialog.cancel")) } },
+        onDismiss = back,
     )
 }

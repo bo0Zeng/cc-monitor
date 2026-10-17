@@ -28585,9 +28585,9 @@
     "mobSsh.hostKey.unmigrated": {
       "kind": "error",
       "role": "原因格",
-      "zh": "主机指纹迁移不一致 · 旧表 {n} 条、读回 {m} 条 · 下次启动重迁",
+      "zh": "主机指纹转存不全 · 原有 {n} 条、转存 {m} 条 · 暂不连接 · 下次启动再试",
       "args": ["n", "m"],
-      "limited": ["SSH 主机指纹"]
+      "limited": ["连接", "SSH 主机指纹"]
     },
     "mobSsh.forgetAll.action": {
       "kind": "action",
@@ -28605,7 +28605,7 @@
     "mobSsh.forgetAll.body": {
       "kind": "body",
       "role": "确认框",
-      "zh": "删除  旧表与已迁入的主机指纹\n之后  每台下次连接时重新记录 · 不可撤销",
+      "zh": "删除  已记录的全部主机指纹（含升级前的那份）\n之后  每台下次连接时重新记录 · 不可撤销",
       "args": [],
       "limited": ["SSH 主机指纹", "连接"]
     },

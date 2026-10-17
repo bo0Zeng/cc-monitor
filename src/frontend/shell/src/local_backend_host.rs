@@ -1020,7 +1020,7 @@ fn adopt_with(
         detached_exit,
         wait,
         std::time::Instant::now,
-        || std::thread::sleep(std::time::Duration::from_millis(LISTEN_WAIT_INTERVAL_MS)),
+        listen_pause,
     );
     match got {
         Ok(None) => Adopt::None,
@@ -1036,6 +1036,11 @@ fn adopt_with(
         }
         Err(why) => Adopt::Refused(why),
     }
+}
+
+/// [`wait_listening`] 两次探问之间停的那一下（常驻那条等它听上口 · 被监护那条等它说上话，停法同一个）。
+fn listen_pause() {
+    std::thread::sleep(std::time::Duration::from_millis(LISTEN_WAIT_INTERVAL_MS));
 }
 
 /// 问 `sock` 上有没有我们的后端在听（`probe`：`Ok(None)` 没人 · `Ok(Some)` 是我们的 · `Err` 有人占着但不是）。
@@ -1465,34 +1470,76 @@ pub fn start_local_backend() -> StartOutcome {
         DetachOutcome::Done(out) => return note_never_started(out),
         DetachOutcome::NotTaken => {}
     }
-    let (resolved, sup) = local_backend::start_or_extract(
-        &extract_dir,
-        embedded,
-        // `backend-split` 的 C10：平台知识由宿主注入，backend 那半不认识 `#[cfg(unix)]`。
-        &crate::platform::fs::make_executable,
-        &crate::platform::fs::ensure_private_dir,
-        // ★ `K-P3b`：backend 这条监护路的死亡账**就记在这个闭包里**（见它的头注）。
-        backend_supervise_events(),
-        // ★：起进程那一下的三条答案由**宿主**给（backend 那半不认识平台）。
-        crate::spawn_managed::local_backend_supervised(),
-        // 与常驻那条路交的是**同一份**（上面那个 `handed`）。
-        handed,
-        // 同上：放不放问手上那份字节自己。
-        &crate::backend_once::ask_place_verdict,
-    );
-    if let Some(h) = sup {
-        let mut g = LOCAL_BACKEND.lock().unwrap_or_else(|e| e.into_inner());
-        *g = Some(h);
-        // 记下被监护那一份的二进制（给窗口导 `CCM_BACKEND_BIN`，见 [`running_backend_bin`]）。
-        if let Resolved::Found(p) = &resolved {
-            *SUPERVISED_BIN.lock().unwrap_or_else(|e| e.into_inner()) = Some(p.clone());
+    // 不脱离的那一支：监护着起，存好句柄再等它说上话（[`start_supervised`]）。
+    let resolved = start_supervised(backend_supervise_events(), |events| {
+        let (resolved, sup) = local_backend::start_or_extract(
+            &extract_dir,
+            embedded,
+            // `backend-split` 的 C10：平台知识由宿主注入，backend 那半不认识 `#[cfg(unix)]`。
+            &crate::platform::fs::make_executable,
+            &crate::platform::fs::ensure_private_dir,
+            // ★ `K-P3b`：backend 这条监护路的死亡账**就记在这个闭包里**（`backend_supervise_events` 的头注）。
+            events,
+            // ★：起进程那一下的三条答案由**宿主**给（backend 那半不认识平台）。
+            crate::spawn_managed::local_backend_supervised(),
+            // 与常驻那条路交的是**同一份**（上面那个 `handed`）。
+            handed,
+            // 同上：放不放问手上那份字节自己。
+            &crate::backend_once::ask_place_verdict,
+        );
+        if let Some(h) = sup {
+            let mut g = LOCAL_BACKEND.lock().unwrap_or_else(|e| e.into_inner());
+            *g = Some(h);
+            // 记下被监护那一份的二进制（给窗口导 `CCM_BACKEND_BIN`，见 [`running_backend_bin`]）。
+            if let Resolved::Found(p) = &resolved {
+                *SUPERVISED_BIN.lock().unwrap_or_else(|e| e.into_inner()) = Some(p.clone());
+            }
         }
-    }
+        resolved
+    });
     // ★ `K-P3b`：另一个返回 `Failed` 的出口，同样从 `note_never_started` 过。
     note_never_started(match resolved {
         Resolved::Found(p) => StartOutcome::Started(p),
         Resolved::Missing { reason, looked_at } => StartOutcome::Failed { reason, looked_at },
     })
+}
+
+/// 被监护那一支（不脱离的平台 · 关掉脱离时）：`start` 拿着包了一层的 `events` 去起，起出监护 ⇒ 等这一命说上话（本机通道登记上）
+/// 或先结束再回 —— 与常驻那条起完等它听上同一个等法（[`wait_listening`] · [`AFTER_SPAWN_LISTEN_WITHIN`]），起完到握手之间本机那一行是「连接中」。
+/// 没起出监护 ⇒ 那一层随 `start` 丢掉，当场回。
+fn start_supervised<R>(
+    events: std::sync::Arc<dyn Fn(local_backend::SuperviseEvent) + Send + Sync>,
+    start: impl FnOnce(std::sync::Arc<dyn Fn(local_backend::SuperviseEvent) + Send + Sync>) -> R,
+) -> R {
+    let (ended_tx, ended) = std::sync::mpsc::channel::<String>();
+    let ended_tx = std::sync::Mutex::new(ended_tx);
+    let out = start(std::sync::Arc::new(move |e| {
+        let how = match &e {
+            local_backend::SuperviseEvent::Exited { code, .. } => Some(format!("code={code:?}")),
+            local_backend::SuperviseEvent::GaveUp { reason, .. } => Some(reason.clone()),
+            local_backend::SuperviseEvent::Started { .. } => None,
+        };
+        events(e);
+        if let Some(how) = how {
+            let _ = ended_tx.lock().unwrap_or_else(|e| e.into_inner()).send(how);
+        }
+    }));
+    let spoke = wait_listening(
+        std::path::Path::new(crate::inbound_client::LOCAL_ORIGIN),
+        || Ok(crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN).map(|_| ())),
+        || match ended.try_recv() {
+            Ok(how) => Some(how),
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => Some(String::new()),
+            Err(std::sync::mpsc::TryRecvError::Empty) => None,
+        },
+        Some(AFTER_SPAWN_LISTEN_WITHIN),
+        std::time::Instant::now,
+        listen_pause,
+    );
+    if let Err(e) = spoke {
+        tracing::info!("被监护的本机后端起完没等到握手：{}", e.said);
+    }
+    out
 }
 
 /// 起来时起本机后端：结局交给 `then`。

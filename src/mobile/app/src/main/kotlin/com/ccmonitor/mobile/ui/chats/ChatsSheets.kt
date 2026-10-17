@@ -38,6 +38,7 @@ import com.ccmonitor.mobile.core.claude.link.ListSort
 import com.ccmonitor.mobile.core.claude.link.wire.CanDelete
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
+import com.ccmonitor.mobile.core.ui.dialog.DangerConfirmDialog
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.sheet.ActionSheet
 import com.ccmonitor.mobile.core.ui.sheet.SheetAction
@@ -206,7 +207,7 @@ internal fun RenameDialog(
     )
 }
 
-/** 删除先问一次：正文照 [deleteBody]，删除键红。 */
+/** 删除先问一次：正文照 [deleteBody]，删除键红、焦点在取消上（[DangerConfirmDialog]）。 */
 @Composable
 internal fun DeleteDialog(
     row: ChatRow,
@@ -214,16 +215,14 @@ internal fun DeleteDialog(
     onDismiss: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
+    DangerConfirmDialog(
         title = { Text(copyText("history.delete.title", "label" to row.label), maxLines = 2, overflow = TextOverflow.Ellipsis) },
         text = { Column { deleteBody(machine, row.canDelete).forEach { Text(it, style = MaterialTheme.typography.bodyMedium) } } },
-        confirmButton = {
-            SecondaryButton(onClick = {
-                onDelete()
-                onDismiss()
-            }, danger = true) { Text(copyText("history.delete.action")) }
+        confirm = copyText("history.delete.action"),
+        onConfirm = {
+            onDelete()
+            onDismiss()
         },
-        dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
+        onDismiss = onDismiss,
     )
 }

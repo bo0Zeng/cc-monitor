@@ -2839,7 +2839,7 @@ fn the_timer_registry_names_every_caller_of_the_one_wait_here() {
                 .or_else(|| t.strip_prefix("async fn "))
                 .or_else(|| t.strip_prefix("fn "))
             {
-                if let Some(name) = rest.split('(').next() {
+                if let Some(name) = rest.split(['(', '<']).next() {
                     cur = name.trim().to_string();
                 }
             }
@@ -2859,17 +2859,17 @@ fn the_timer_registry_names_every_caller_of_the_one_wait_here() {
     let home_of_sleep = enclosing("thread::sleep(", false);
     assert_eq!(
         home_of_sleep,
-        vec!["adopt_with".to_string()],
-        "那处 `sleep` 不住 `adopt_with` 了（现在住 {home_of_sleep:?}）——\
+        vec!["listen_pause".to_string()],
+        "那处 `sleep` 不住 `listen_pause` 了（现在住 {home_of_sleep:?}）——\
              它搬家了，本条与登记表那一行都要跟着重判"
     );
 
-    // 谁在用它 —— **从代码派生，不写死**。
-    let callers = enclosing("adopt_with(", true);
+    // 谁在用它 —— **从代码派生，不写死**（它是当函数值交出去的，不带括号）。
+    let callers = enclosing("listen_pause", true);
     // 反空真②：少于两个调用方 ⇒ 抽取坏了（或真的只剩一条路，那也要回来重判说法）。
     assert!(
         callers.len() >= 2,
-        "只抽到 {} 个 `adopt_with` 的调用方：{callers:?} —— \
+        "只抽到 {} 个 `listen_pause` 的调用方：{callers:?} —— \
              `重-4` 那条病的形状正是「两个调用方只写了一个」，抽不出两个本条就在空转",
         callers.len()
     );
@@ -2901,7 +2901,7 @@ fn the_timer_registry_names_every_caller_of_the_one_wait_here() {
             entry.contains(c.as_str()),
             "`rust_timer_registry` 那一行没有点到 `{c}` —— 而它是那处 `sleep` 的调用方之一。\n\
                  ★ 那张表对 `wait-for-condition` 这一类的要求逐字是「**说清等什么**、上限是多少」，\n\
-                 而两个调用方等的**不是同一件事**（一个等 bind、一个等 `stream-busy` 那张牌）。\n\
+                 而两个调用方等的**不是同一件事**（一个等刚脱离的那个听上口、一个等刚被监护的那个说上话）。\n\
                  ⇒ 只写其中一个 = 登记表在替一个不存在的性质背书。\n\
                  抽到的调用方全体：{callers:?}"
         );
@@ -4421,6 +4421,89 @@ fn stopping_the_supervised_local_backend_is_not_recorded_as_a_crash() {
         (base.crashed, base.refused, base.misread),
         "叫停被记成了一次死亡（前 {base:?} / 后 {after:?}）"
     );
+}
+
+/// 被监护那一支（Windows · 关掉脱离时）起完到握手之间本机那一行是「连接中」：替身起来了、没说话 ⇒ 起那一趟还没回来、读作连接中；
+/// 放它说 hello ⇒ 起那一趟回来、读作连着。起完不等握手就回来 ⇒ 第一句断言红（中间那一段读作没连上）。
+#[cfg(unix)]
+#[test]
+fn the_supervised_start_reads_as_connecting_until_the_hello() {
+    use cmd_wire::machine::MachineStateKind;
+    use std::sync::Arc;
+    let _guard = crate::inbound_client::local_origin_test_lock();
+    super::note_local_foreign(None);
+    let dir = std::env::temp_dir().join(format!("ccm-sup-hello-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("建不了夹具目录");
+    let (up, gate) = (dir.join("up"), dir.join("gate"));
+    let hello = concat!(
+        r#"{"kind":"hello","v":1,"build_id":"sup-hello","host_arch":"x86_64","#,
+        r#""claude_dir":"/dev/null","commands":["ping"]}"#
+    );
+    let envs = vec![
+        ("CCM_SUP_HELLO".to_string(), hello.to_string()),
+        ("CCM_SUP_UP".to_string(), up.display().to_string()),
+        ("CCM_SUP_GATE".to_string(), gate.display().to_string()),
+    ];
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _starting = super::Starting::on();
+        let h = super::start_supervised(backend_supervise_events(), |events| {
+            local_backend::supervise_with_stdio(
+                std::path::PathBuf::from("sh"),
+                vec![
+                    "-c".into(),
+                    concat!(
+                        ": > \"$CCM_SUP_UP\"; ",
+                        "while [ ! -e \"$CCM_SUP_GATE\" ]; do sleep 0.02; done; ",
+                        "printf '%s\\n' \"$CCM_SUP_HELLO\"; exec sleep 30"
+                    )
+                    .into(),
+                ],
+                envs,
+                local_backend::CrashLimits::default(),
+                Arc::new(|| 0),
+                events,
+                Some(Arc::new(|i, o| {
+                    local_backend::local_stdio_consumer(&local_backend::StdioRoute::local(), i, o)
+                })),
+                crate::spawn_managed::local_backend_supervised(),
+            )
+        });
+        let _ = tx.send(h);
+    });
+    let t0 = std::time::Instant::now();
+    while !up.exists() {
+        assert!(
+            t0.elapsed() < guard_core::wall::CEILING,
+            "到兜底上限替身还没起来"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let early = rx.try_recv().ok();
+    let returned_early = early.is_some();
+    let between = super::local_machine_now().state;
+    std::fs::write(&gate, "").expect("放行不了替身");
+    let h = early.or_else(|| rx.recv_timeout(guard_core::wall::CEILING).ok());
+    let after = super::local_machine_now().state;
+    if let Some(h) = &h {
+        h.stop();
+    }
+    while crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN).is_some() {
+        assert!(
+            t0.elapsed() < guard_core::wall::CEILING,
+            "到兜底上限通道还没摘"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(
+        (between, returned_early),
+        (MachineStateKind::Connecting, false),
+        "被监护那一支起完、还没握手：起那一趟已经回来了 ⇒ 本机那一行读作没连上"
+    );
+    assert!(h.is_some(), "说上话之后起那一趟没回来");
+    assert_eq!(after, MachineStateKind::Up, "说上话之后本机那一行不是连着");
 }
 
 /// 刚起的后端晚 3 秒才听上口（冷启动 · 机器忙）：照样等到、接上；假钟每一拍走 20ms，不真等。
