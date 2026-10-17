@@ -1,7 +1,6 @@
 package com.ccmonitor.mobile.core.ssh
 
 import com.ccmonitor.mobile.core.remote.RemoteExecutor
-import kotlinx.coroutines.flow.Flow
 import java.io.Closeable
 
 /**
@@ -31,8 +30,6 @@ interface SshTransport :
         cols: Int = 80,
         rows: Int = 24,
     ): ShellChannel
-
-    fun execStream(command: String): Flow<ByteArray>
 
     /**
      * 这条连接的拨号身份那一份请求（JSON，不带用法）：常驻流（共用那条重连循环）在嵌的核心里照它拨、在同一条连接上开自己的链路。

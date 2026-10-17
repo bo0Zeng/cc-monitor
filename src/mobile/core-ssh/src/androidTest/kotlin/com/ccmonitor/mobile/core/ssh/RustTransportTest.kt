@@ -3,7 +3,6 @@ package com.ccmonitor.mobile.core.ssh
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ccmonitor.mobile.core.data.crypto.SshKeyGenerator
-import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.After
@@ -58,12 +57,10 @@ class RustTransportTest {
         assertTrue(r.stderrTail, r.stderrTail.contains("oops"))
     }
 
-    /** 流式 exec 与常驻流交给核心的那一份拨号请求：连上过就有（关了也还在），照它开的链路复用这一条连接；同一份身份上再握的那条请求一字不差。 */
+    /** 常驻流交给核心的那一份拨号请求：连上过就有（关了也还在）；同一份身份上再握的那条请求一字不差。 */
     @Test
-    fun a_stream_rides_the_same_connection_and_the_dial_request_outlives_the_hold() {
+    fun the_dial_request_outlives_the_hold() {
         val t = connected()
-        val out = runBlocking { withTimeout(WALL_CEILING_MS) { t.execStream("printf 'a\\nb\\n'").toList() } }
-        assertEquals("a\nb\n", out.joinToString("") { it.toString(Charsets.UTF_8) })
         val req = org.json.JSONObject(t.dialRequest ?: error("连着却没有拨号请求"))
         assertTrue(req.toString(), req.has("host") && !req.has("use"))
         t.close()
