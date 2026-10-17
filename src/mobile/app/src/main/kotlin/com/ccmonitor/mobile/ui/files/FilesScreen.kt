@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -39,17 +40,26 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.FilesCommitUpload
 import com.ccmonitor.mobile.core.claude.link.FilesLs
+import com.ccmonitor.mobile.core.claude.link.PickMenu
 import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Bookmark
@@ -76,20 +86,18 @@ import java.util.UUID
 
 /** 当前打开的对话框。 */
 private sealed interface FilesDialog {
-    data class Menu(
-        val entry: FilesLs.Entry,
-    ) : FilesDialog
-
     data class Rename(
         val entry: FilesLs.Entry,
     ) : FilesDialog
 
+    /** 删选中的那几项（先问一次，列出名字）。 */
     data class Delete(
-        val entry: FilesLs.Entry,
+        val entries: List<FilesLs.Entry>,
     ) : FilesDialog
 
+    /** 改选中那几项的权限位（[now]：只选一项时它此刻的权限位）。 */
     data class Chmod(
-        val entry: FilesLs.Entry,
+        val entries: List<FilesLs.Entry>,
         val now: String?,
     ) : FilesDialog
 
@@ -117,8 +125,8 @@ private sealed interface FilesDialog {
 }
 
 /**
- * 文件屏：浏览 · 上传下载 · 书签 · 在此打开终端 · 改名 / 删除 / 改权限 / 新建 · 预览与编辑 · 面包屑 · 排序。
- * 读写都问那台后端（[FilesViewModel] → [FileOps]）；这里只渲染与 Android 那一侧（选文件 · 存到本机 · 对话框）。
+ * 文件屏：浏览 · 上传下载 · 书签 · 在此打开终端 · 新建 · 选择模式（长按进；顶栏与 ⋯ 照核心那一份：下载 · 删除 · 改名 · 改权限 · 预览 · 编辑 …）·
+ * 面包屑 · 排序。读写都问那台后端（[FilesViewModel] → [FileOps]）；这里只渲染与 Android 那一侧（选文件 · 存到本机 · 对话框）。
  */
 @Composable
 fun FilesScreen(
@@ -147,9 +155,12 @@ fun FilesScreen(
     val actions = entryActions(vm) { dialog = it }
     val uploadLauncher = rememberUploadLauncher(vm)
 
+    val selection by vm.selection.collectAsState()
+    BackHandler(enabled = selection.active, onBack = vm::unpick)
+
     Scaffold(
         floatingActionButton = {
-            if (ui is FilesUi.Ready) {
+            if (ui is FilesUi.Ready && !selection.active) {
                 // 只放字的那一种（带空图标那一种的字不进无障碍树，读屏念不出、冒烟也认不出）。
                 ExtendedFloatingActionButton(
                     onClick = { uploadLauncher.launch("*/*") },
@@ -184,7 +195,7 @@ fun FilesScreen(
         }
     }
 
-    DialogHost(dialog = dialog, vm = vm, actions = actions, onDialog = { dialog = it })
+    DialogHost(dialog = dialog, vm = vm, onDialog = { dialog = it })
     val clash by vm.clash.collectAsState()
     clash?.let { (dir, c) ->
         ConflictSheet(copyText("rsFilewinBatch.verb.upload"), dir, c.said, c.conflicts, FilesCommitUpload.ANSWERS, vm::answer)
@@ -196,7 +207,7 @@ private class EntryActions(
     val download: (FilesLs.Entry) -> Unit,
     val preview: (FilesLs.Entry) -> Unit,
     val startEdit: (FilesLs.Entry) -> Unit,
-    val startChmod: (FilesLs.Entry) -> Unit,
+    val startChmod: (List<FilesLs.Entry>) -> Unit,
 )
 
 @Composable
@@ -215,7 +226,7 @@ private fun entryActions(
             },
             preview = { e -> scope.launch { vm.readText(e, e.preview).onSuccess { onDialog(FilesDialog.Preview(e.name, it.text)) } } },
             startEdit = { e -> scope.launch { vm.readText(e, e.edit).onSuccess { onDialog(FilesDialog.Edit(e, it.text, it.sha256)) } } },
-            startChmod = { e -> scope.launch { onDialog(FilesDialog.Chmod(e, vm.modeText(e))) } },
+            startChmod = { es -> scope.launch { onDialog(FilesDialog.Chmod(es, es.singleOrNull()?.let { vm.modeText(it) })) } },
         )
     }
 }
@@ -246,6 +257,8 @@ private fun ReadyContent(
     val busy by vm.busy.collectAsState()
     val progress by vm.progress.collectAsState()
     val sortBySize by vm.sortBySize.collectAsState()
+    val selection by vm.selection.collectAsState()
+    val online by vm.online.collectAsState()
     val dir = cwd ?: return
     val entries = listing.entries
     val bookmarkRepo = koinInject<BookmarkRepository>()
@@ -253,19 +266,25 @@ private fun ReadyContent(
     val scope = rememberCoroutineScope()
     val tokens = LocalAppTokens.current
     Column(Modifier.fillMaxSize()) {
-        // 书签存那一串：名字不是合法 UTF-8 的目录不给星标。
-        val bookmarked = dir.text?.let { t -> bookmarks.firstOrNull { it.path == t } }
-        PathHeader(
-            dir = dir,
-            listing = listing,
-            bookmarked = bookmarked,
-            onNavigate = vm::navigateTo,
-            onToggleBookmark = {
-                dir.text?.let { toggleBookmark(scope, bookmarkRepo, hostId, it, listing.crumbs.lastOrNull()?.first ?: dir.shown, bookmarked) }
-            },
-        )
-        Toolbar(dir, sortBySize, vm, onOpenTerminal, onShowTabs, onDialog)
-        BookmarkBar(bookmarks, vm, bookmarkRepo)
+        if (selection.active) {
+            val menu by vm.menu.collectAsState()
+            PickBar(selection.size, menu, onClose = vm::unpick) { picked(it, vm, actions, onDialog) }
+        } else {
+            // 书签存那一串：名字不是合法 UTF-8 的目录不给星标。
+            val bookmarked = dir.text?.let { t -> bookmarks.firstOrNull { it.path == t } }
+            PathHeader(
+                dir = dir,
+                listing = listing,
+                bookmarked = bookmarked,
+                onNavigate = vm::navigateTo,
+                onToggleBookmark = {
+                    dir.text?.let { toggleBookmark(scope, bookmarkRepo, hostId, it, listing.crumbs.lastOrNull()?.first ?: dir.shown, bookmarked) }
+                },
+            )
+            Toolbar(dir, sortBySize, vm, onOpenTerminal, onShowTabs, onDialog)
+            BookmarkBar(bookmarks, vm, bookmarkRepo)
+        }
+        if (!online) OfflineBand(vm)
         val p = progress
         when {
             p != null -> LinearProgressIndicator(progress = { p }, modifier = Modifier.fillMaxWidth())
@@ -279,16 +298,87 @@ private fun ReadyContent(
                 modifier = Modifier.padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.sm),
             )
         }
-        LazyColumn(Modifier.fillMaxSize()) {
-            items(entries, key = { it.path.hashCode() }) { e ->
-                EntryRow(
-                    e,
-                    onClick = { if (e.isDir) vm.navigateTo(e.path) else actions.download(e) },
-                    onLongClick = { onDialog(FilesDialog.Menu(e)) },
-                )
-            }
+        EntryList(entries, selection, vm, actions)
+    }
+}
+
+/** 这一层的那几行：选择模式里点一下切换；平时点一下照核心给的那一件做（进去 · 预览 · 下载）；长按进选择模式（短震）。 */
+@Composable
+private fun EntryList(
+    entries: List<FilesLs.Entry>,
+    selection: Selection,
+    vm: FilesViewModel,
+    actions: EntryActions,
+) {
+    val haptic = LocalHapticFeedback.current
+    LazyColumn(Modifier.fillMaxSize()) {
+        items(entries, key = { it.path.hashCode() }) { e ->
+            EntryRow(
+                e,
+                picking = selection.active,
+                picked = e in selection,
+                onClick = {
+                    if (selection.active) {
+                        vm.pick(e)
+                    } else {
+                        when (vm.tapOf(e)) {
+                            "open" -> vm.navigateTo(e.path)
+                            "preview" -> actions.preview(e)
+                            "download" -> actions.download(e)
+                        }
+                    }
+                },
+                onLongClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    vm.pick(e)
+                },
+            )
         }
     }
+}
+
+/** 顶栏 · ⋯ 里点了一项：灰着的 ⇒ 底部说那一句为什么；否则照它做（选中的那几项）。 */
+private fun picked(
+    item: PickMenu.Entry,
+    vm: FilesViewModel,
+    actions: EntryActions,
+    onDialog: (FilesDialog) -> Unit,
+) {
+    val es = vm.picked()
+    val one = es.singleOrNull()
+    if (!item.enabled) {
+        vm.say(item.why.orEmpty())
+        return
+    }
+    when (item.id) {
+        "download" -> es.forEach(actions.download)
+        "delete" -> onDialog(FilesDialog.Delete(es))
+        "chmod" -> actions.startChmod(es)
+        "selectAll" -> vm.pickAll()
+        "rename" -> one?.let { onDialog(FilesDialog.Rename(it)) }
+        "preview" -> one?.let(actions.preview)
+        "edit" -> one?.let(actions.startEdit)
+    }
+}
+
+/** 那台断着：列表顶一条淡色虚线框（选中照留，能做的那几件由核心灰掉）。 */
+@Composable
+private fun OfflineBand(vm: FilesViewModel) {
+    val tokens = LocalAppTokens.current
+    val machine by produceState("") { value = vm.machine() }
+    val line = tokens.borderStrong
+    Text(
+        copyText("front.body.offline", "machine" to machine),
+        style = monoSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.sm)
+                .drawBehind {
+                    drawRoundRect(line, style = Stroke(1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(DASH, GAP))), cornerRadius = CornerRadius(tokens.radius.m.toPx()))
+                }.padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.sm),
+    )
 }
 
 /** 工具条：tab 面板 · 新建目录 · 新建空文件 · 排序 · 在此打开终端。 */
@@ -418,14 +508,12 @@ private fun toggleBookmark(
 private fun DialogHost(
     dialog: FilesDialog?,
     vm: FilesViewModel,
-    actions: EntryActions,
     onDialog: (FilesDialog?) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val close = { onDialog(null) }
     when (val d = dialog) {
         null -> {}
-        is FilesDialog.Menu -> EntryMenu(d.entry, actions, onDialog)
         is FilesDialog.Rename ->
             NameDialog(copyText("rsFilewinWriteops.label.rename"), d.entry.name, close) {
                 vm.rename(d.entry, it)
@@ -441,8 +529,8 @@ private fun DialogHost(
                 vm.create(it)
                 close()
             }
-        is FilesDialog.Delete -> DeleteDialog(d.entry, close) { vm.delete(listOf(d.entry)) }
-        is FilesDialog.Chmod -> ChmodDialog(d, close) { vm.chmod(listOf(d.entry), it) }
+        is FilesDialog.Delete -> DeleteDialog(d.entries, close) { vm.delete(d.entries) }
+        is FilesDialog.Chmod -> ChmodDialog(d, close) { vm.chmod(d.entries, it) }
         is FilesDialog.Preview -> PreviewDialog(d.name, d.content, close)
         is FilesDialog.Edit -> EditDialog(d, onDialog)
         is FilesDialog.ConfirmSave ->
@@ -456,58 +544,21 @@ private fun DialogHost(
     }
 }
 
-@Composable
-private fun EntryMenu(
-    entry: FilesLs.Entry,
-    actions: EntryActions,
-    onDialog: (FilesDialog?) -> Unit,
-) {
-    val then = { act: (FilesLs.Entry) -> Unit ->
-        onDialog(null)
-        act(entry)
-    }
-    AlertDialog(
-        onDismissRequest = { onDialog(null) },
-        title = { Text(entry.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        text = {
-            Column {
-                if (!entry.isDir) {
-                    if (entry.preview != null) {
-                        SecondaryButton(onClick = { then(actions.preview) }) { Text(copyText("rsFilewinWorkspace.label.preview")) }
-                    }
-                    SecondaryButton(onClick = { then(actions.startEdit) }) { Text(copyText("rsFilewinEditor.label.edit")) }
-                    SecondaryButton(onClick = { then(actions.download) }) { Text(copyText("rsFilewinDownload.label.download")) }
-                }
-                SecondaryButton(onClick = { onDialog(FilesDialog.Rename(entry)) }) { Text(copyText("rsFilewinWriteops.label.rename")) }
-                SecondaryButton(onClick = { then(actions.startChmod) }) { Text(copyText("rsFilewinWriteops.label.chmod")) }
-                SecondaryButton(onClick = { onDialog(FilesDialog.Delete(entry)) }, danger = true) {
-                    Text(copyText("rsFilewinWriteops.label.delete"))
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = { SecondaryButton(onClick = { onDialog(null) }) { Text(copyText("kit.dialog.cancel")) } },
-    )
-}
-
-/** 删除先问一次（目录连同里面全部）。 */
+/** 删除先问一次：列出那几项（目录连同里面全部）；按钮写项数。 */
 @Composable
 private fun DeleteDialog(
-    entry: FilesLs.Entry,
+    entries: List<FilesLs.Entry>,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
+    val label = copyText("rsFilewinSelect.label.deleteMany", "n" to entries.size)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(copyText("rsFilewinWriteops.label.delete")) },
+        title = { Text(label) },
         text = {
-            Text(
-                if (entry.isDir) {
-                    copyText("rsFilewinWriteops.op.rmdir", "path" to entry.path.shown)
-                } else {
-                    copyText("rsFilewinWriteops.op.rm", "path" to entry.path.shown)
-                },
-            )
+            Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+                entries.forEach { Text(it.name, style = monoSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            }
         },
         confirmButton = {
             SecondaryButton(
@@ -516,7 +567,7 @@ private fun DeleteDialog(
                     onDismiss()
                 },
                 danger = true,
-            ) { Text(copyText("rsFilewinWriteops.label.delete")) }
+            ) { Text(label) }
         },
         dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
@@ -530,9 +581,12 @@ private fun ChmodDialog(
     onConfirm: (String) -> Unit,
 ) {
     var value by remember(d) { mutableStateOf(d.now.orEmpty()) }
+    val title =
+        d.entries.singleOrNull()?.let { copyText("rsFilewinWriteops.heading.chmodOne", "name" to it.name) }
+            ?: copyText("rsFilewinSelect.label.chmodMany", "n" to d.entries.size)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(copyText("rsFilewinWriteops.heading.chmodOne", "name" to d.entry.name), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value, { value = it }, singleLine = true, textStyle = monoSmall, modifier = Modifier.fillMaxWidth())
@@ -657,6 +711,9 @@ private fun BookmarkChip(
 @Composable
 private fun EntryRow(
     e: FilesLs.Entry,
+    /** 在选择模式（行首一格勾选框）。 */
+    picking: Boolean,
+    picked: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
@@ -665,11 +722,13 @@ private fun EntryRow(
         Modifier
             .fillMaxWidth()
             .heightIn(min = Touch.rowFile)
+            .background(if (picked) tokens.selectedBg else Color.Transparent)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.md),
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (picking) PhIcon(if (picked) Ph.CheckSquare else Ph.Square, contentDescription = null, tint = if (picked) tokens.accent else tokens.textFaint)
         PhIcon(if (e.isDir) Ph.FolderSimple else Ph.File, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Column(Modifier.weight(1f)) {
             Text(e.name, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface)
@@ -692,3 +751,7 @@ private fun nameOf(
 
 /** 面包屑至多排几段（含「…」那一段）。 */
 private const val CRUMBS_SHOWN = 4
+
+/** 离线那一条虚线的划与空（px）。 */
+private const val DASH = 6f
+private const val GAP = 4f

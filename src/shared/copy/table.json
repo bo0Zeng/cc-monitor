@@ -31416,6 +31416,12 @@
       "zh": "全选",
       "args": []
     },
+    "mobFiles.picked": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "已选 {n}",
+      "args": ["n"]
+    },
     "mobFiles.failedShow": {
       "kind": "action",
       "role": "按钮",

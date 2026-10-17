@@ -91,6 +91,16 @@ class ResidentFeedTest {
             answers += id to answer
         }
 
+        val picks = mutableListOf<Pair<Long, String>>()
+
+        override fun pickMenu(
+            handle: Long,
+            rows: String,
+        ): String {
+            picks += handle to rows
+            return """{"bar":[{"id":"download","text":"下载","enabled":false,"why":"docs"}],"more":[],"tap":"open"}"""
+        }
+
         override fun batchStop(id: Long) {
             answers += id to "stop"
         }
@@ -271,6 +281,23 @@ class ResidentFeedTest {
             assertEquals(listOf("sessions_replayed"), kinds)
             core.emit("frame", """{"kind":"overflow","dropped":3,"lost":[],"lost_truncated":true}""")
             assertTrue("丢了会话帧 ⇒ ［重试］那一下（整份重来）", core.kicks.contains(true))
+        }
+
+    @Test
+    fun `能做什么：列表那一行原样交核心（整数照整数写），核心那一行解成菜单`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val core = FakeCore()
+            val f = feed(core)
+            val reply =
+                """{"entries":[{"path":"/h/docs","name":"docs","kind":"dir","class":"folder","type_text":"",""" +
+                    """"mtime_secs":1700000000,"size":12}],"up":null,"crumbs":[],"truncated":false,"total":1}"""
+            val listing = FilesLs.of(Json.obj(reply))!!
+            val menu = f.picks(listing.entries.map { it.row })
+            assertEquals(
+                """[{"path":"/h/docs","name":"docs","kind":"dir","class":"folder","type_text":"","mtime_secs":1700000000,"size":12}]""",
+                core.picks.single().second,
+            )
+            assertEquals(PickMenu(listOf(PickMenu.Entry("download", "下载", false, "docs")), emptyList(), "open"), menu)
         }
 
     @Test

@@ -6,6 +6,8 @@ import com.ccmonitor.mobile.core.claude.link.BatchAnswer
 import com.ccmonitor.mobile.core.claude.link.BatchEvent
 import com.ccmonitor.mobile.core.claude.link.FilesLs
 import com.ccmonitor.mobile.core.claude.link.FilesReadText
+import com.ccmonitor.mobile.core.claude.link.LinkState
+import com.ccmonitor.mobile.core.claude.link.PickMenu
 import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
@@ -19,11 +21,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -53,7 +59,7 @@ class FilesViewModel(
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
     private val feed = backends.of(hostId)
-    private val ops = FileOps(feed) { hostRepo.get(hostId)?.label ?: hostId }
+    private val ops = FileOps(feed, ::machine)
 
     private val _ui = MutableStateFlow<FilesUi>(FilesUi.Connecting)
     val ui: StateFlow<FilesUi> = _ui.asStateFlow()
@@ -63,6 +69,50 @@ class FilesViewModel(
 
     private val _listing = MutableStateFlow(FilesLs.Listing(emptyList(), truncated = false, total = 0))
     val listing: StateFlow<FilesLs.Listing> = _listing.asStateFlow()
+
+    private val _selection = MutableStateFlow(Selection())
+
+    /** 选择模式里选中的那几项（空 ⇒ 不在选择模式）。 */
+    val selection: StateFlow<Selection> = _selection.asStateFlow()
+
+    /** 那台此刻通着（断着 ⇒ 选中照留、能做的那几件由核心灰掉，列表顶一条说离线）。 */
+    val online: StateFlow<Boolean> = feed.state.map { it is LinkState.Up }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    /** 选中那几项此刻能做什么（核心照那几行与此刻那一台判；不在选择模式 ⇒ 空）。 */
+    val menu: StateFlow<PickMenu> =
+        combine(_selection, _listing, feed.state) { sel, l, _ ->
+            if (sel.active) feed.picks(sel.of(l.entries).map { it.row }) else PickMenu()
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, PickMenu())
+
+    /** 这一屏的那一层（[dir] 换了 ⇒ 选中清空；同一层重列 ⇒ 只留还在的）。 */
+    private fun shown(
+        dir: RemotePath,
+        listed: FilesLs.Listing,
+    ) {
+        _selection.value = if (dir == _cwd.value) _selection.value.kept(listed.entries) else Selection()
+        _listing.value = listed
+        _cwd.value = dir
+    }
+
+    /** 长按 / 选择模式里点一下：切换这一项。 */
+    fun pick(e: FilesLs.Entry) {
+        _selection.value = _selection.value.toggle(e)
+    }
+
+    fun pickAll() {
+        _selection.value = _selection.value.all(_listing.value.entries)
+    }
+
+    /** ✕ · 返回键：退出选择模式。 */
+    fun unpick() {
+        _selection.value = Selection()
+    }
+
+    /** 选中的那几行（照列表的先后）。 */
+    fun picked(): List<FilesLs.Entry> = _selection.value.of(_listing.value.entries)
+
+    /** 不在选择模式时点一下这一行做什么（核心照表给：`open` · `preview` · `download`；什么都不做 ⇒ `null`）。 */
+    fun tapOf(e: FilesLs.Entry): String? = feed.picks(listOf(e.row)).tap
 
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy.asStateFlow()
@@ -113,8 +163,7 @@ class FilesViewModel(
                 try {
                     withContext(io) { ensureSsh() }
                     val dir = _cwd.value ?: ops.home().getOrThrow()
-                    _listing.value = ops.list(dir).getOrThrow()
-                    _cwd.value = dir
+                    shown(dir, ops.list(dir).getOrThrow())
                     FilesUi.Ready
                 } catch (ce: CancellationException) {
                     throw ce
@@ -145,8 +194,7 @@ class FilesViewModel(
                     val listed = ops.list(at.dir, _sortBySize.value).onFailure(::say).getOrNull()
                     _busy.value = false
                     if (listed != null) {
-                        _listing.value = listed
-                        _cwd.value = at.dir
+                        shown(at.dir, listed)
                         listed.entries.find { it.path == at.file }?.let { e ->
                             readText(e, e.preview).onSuccess { _opened.tryEmit(at.name.shown to it.text) }
                         }
@@ -162,17 +210,15 @@ class FilesViewModel(
             _busy.value = true
             ops
                 .list(dir, _sortBySize.value)
-                .onSuccess {
-                    _listing.value = it
-                    _cwd.value = dir
-                }.onFailure(::say)
+                .onSuccess { shown(dir, it) }
+                .onFailure(::say)
             _busy.value = false
         }
     }
 
     private suspend fun refresh() {
         val dir = _cwd.value ?: return
-        ops.list(dir, _sortBySize.value).onSuccess { _listing.value = it }.onFailure(::say)
+        ops.list(dir, _sortBySize.value).onSuccess { shown(dir, it) }.onFailure(::say)
     }
 
     /** 名称 ⇄ 大小：那台照它重排一遍。 */
@@ -180,6 +226,14 @@ class FilesViewModel(
         _sortBySize.value = !_sortBySize.value
         viewModelScope.launch { refresh() }
     }
+
+    /** 底部说一句（点了灰着的那一项：核心写好的为什么）。 */
+    fun say(said: String) {
+        _events.tryEmit(Notice(said))
+    }
+
+    /** 这台在屏上的名字。 */
+    suspend fun machine(): String = hostRepo.get(hostId)?.label ?: hostId
 
     private fun say(e: Throwable) {
         if (e is CancellationException) throw e
@@ -246,13 +300,14 @@ class FilesViewModel(
         if (e.over) viewModelScope.launch { refresh() }
     }
 
-    /** 起一组（[start] 回编号；0 ＝ 这台不在 ⇒ 那一句）。 */
+    /** 起一组（[start] 回编号；0 ＝ 这台不在 ⇒ 那一句）；起了就退出选择模式。 */
     private fun group(start: suspend (RemotePath) -> Long) {
         val dir = _cwd.value ?: return
+        unpick()
         viewModelScope.launch {
             val id = start(dir)
             if (id == 0L) {
-                _events.tryEmit(Notice(copyText("front.body.offline", "machine" to (hostRepo.get(hostId)?.label ?: hostId))))
+                _events.tryEmit(Notice(copyText("front.body.offline", "machine" to machine())))
             } else {
                 mine += id
                 early.remove(id)?.let(::onBatch)

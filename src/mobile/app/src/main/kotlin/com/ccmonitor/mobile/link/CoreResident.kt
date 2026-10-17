@@ -73,6 +73,14 @@ object CoreResident : ResidentCore {
         Core.batchStop(id)
     }
 
+    override fun pickMenu(
+        handle: Long,
+        rows: String,
+    ): String {
+        ensureRustCore()
+        return Core.pickMenu(handle, rows)
+    }
+
     override fun deploy(
         handle: Long,
         slots: String,

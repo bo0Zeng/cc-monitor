@@ -7,6 +7,7 @@ import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.LiveFrame
 import com.ccmonitor.mobile.core.claude.link.LiveSession
+import com.ccmonitor.mobile.core.claude.link.PickMenu
 import com.ccmonitor.mobile.core.claude.link.RecordLine
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionTable
@@ -93,6 +94,15 @@ internal class FakeCoreLink :
 
     override fun batchStop(id: Long) {
         stopped += id
+    }
+
+    /** 「能做什么」那一问交进来的原行（每一问一份）；回 [menu]。 */
+    val picked = mutableListOf<List<Any?>>()
+    var menu: (List<Any?>) -> PickMenu = { PickMenu() }
+
+    override fun picks(rows: List<Any?>): PickMenu {
+        picked.add(rows)
+        return menu(rows)
     }
 
     /** 核心交来一格（照核心那一行，经 [BatchEvent.of] 解）。 */

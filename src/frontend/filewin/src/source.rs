@@ -638,40 +638,28 @@ pub const CMD_LS: &str = "files-ls";
 /// （两侧不同源），与表里声明的那一摞**逐格相等**；右栏那句「怎么来的」
 /// 每一行各挂一条**行为**断言。加一格 / 丢一格 / 说法漂了，三种都红。
 pub fn row_from_ls_entry(v: &cmd_wire::files::LsEntry) -> Listed {
-    use cmd_wire::files::{FileKind, LinkTo};
-    // 🔴 有损与否看**字节**，不看转出来的那个串里有没有 U+FFFD。
-    //    后者是一个猜：真叫 `\u{FFFD}` 的文件会被误判成有损。
-    // 只看**名字那一段**（那台按自己的分隔符切好的 `name`）：目录有损而名字干净的那一行
-    //   名字照样能用（整条路径的字节由窗口按当前目录的字节拼，`FileWindow::row_path`）。
-    let raw = &v.name.0;
-    let lossy_name = std::str::from_utf8(raw).is_err();
-    let path = String::from_utf8_lossy(&v.path.0).to_string();
-    let name = String::from_utf8_lossy(raw).to_string();
-    // 有损名留住名字那一段的原始字节。
-    let raw_name = lossy_name.then(|| raw.clone());
-    // 🔴 `kind` 落**两格**，不是一格：压成一个布尔就是「看不出哪个是符号链接」。
-    let is_dir = v.kind == FileKind::Dir;
-    let link = v.kind == FileKind::Symlink;
+    // 链接 · 断链 · 有损名那几格与手机同一处认（`pick-core`）；名字那一段的字节留着寻址（有损名的路径由窗口按当前目录的字节拼）。
+    let f = pick_core::PickIn::of_ls(v);
     Listed {
         row: Row {
-            name,
-            path,
-            is_dir,
+            path: String::from_utf8_lossy(&v.path.0).to_string(),
+            is_dir: f.is_dir,
             size: v.size.unwrap_or(0),
-            lossy_name,
+            lossy_name: f.lossy,
+            name: f.name,
         },
-        link,
-        link_dir: link && v.link_dir == Some(true),
+        link: f.link,
+        link_dir: f.link_dir,
         // 🔴 原样带上来。缺了就是 `None`（＝**后端没送**）—— 不许兜底成 0，
         //    那是 1970-01-01，一个看起来很像真读数的假时间。
         mtime_secs: v.mtime_secs,
         mtime_text: v.mtime_text.clone(),
         mtime_full: v.mtime_full.clone(),
-        raw_name,
-        link_broken: link && v.link_to == Some(LinkTo::Missing),
+        raw_name: f.raw.then(|| v.name.0.clone()),
+        link_broken: f.link_broken,
         class: v.class,
         type_text: v.type_text.clone(),
-        gates: v.gates.clone(),
+        gates: f.gates,
         size_text: v.size_text.clone(),
     }
 }

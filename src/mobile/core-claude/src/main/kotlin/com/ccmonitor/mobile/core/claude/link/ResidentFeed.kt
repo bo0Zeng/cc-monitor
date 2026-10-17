@@ -2,6 +2,7 @@ package com.ccmonitor.mobile.core.claude.link
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -82,6 +83,12 @@ interface ResidentCore {
     )
 
     fun batchStop(id: Long)
+
+    /** 文件页那一问（`files-ls` 的原行，JSON 数组）⇒ 核心那一行（[PickMenu.of]）；[handle] 还没开 ⇒ 0（当断着）。 */
+    fun pickMenu(
+        handle: Long,
+        rows: String,
+    ): String
 
     /** 给那台装 / 更新后端（[slots] = 包里那几格解到的文件，JSON）；事经 `deploy` 那一种交回。那台不在 · 正在装 ⇒ `false`。 */
     fun deploy(
@@ -258,6 +265,13 @@ class ResidentFeed(
     ) = core.batchAnswer(id, BatchAnswer.wire(answer)?.let(Json::args))
 
     override fun batchStop(id: Long) = core.batchStop(id)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    override fun picks(rows: List<Any?>): PickMenu {
+        ensure()
+        val h = if (opened.isCompleted) opened.getCompleted() else 0L
+        return PickMenu.of(core.pickMenu(h, Json.line(rows)))
+    }
 
     override fun hold(sid: String): AutoCloseable {
         ensure()

@@ -434,6 +434,11 @@ impl Offer {
         &self.ops
     }
 
+    /// 这台做不到的那几个 op。
+    pub fn unavailable_ops(&self) -> Vec<String> {
+        self.unavailable.iter().map(|(o, _)| o.clone()).collect()
+    }
+
     /// 这台做不到这个 op ⇒ 那个码（与对端事后会回的同一个）；做得到 / 没把握 ⇒ `None`。
     pub fn unavailable(&self, op: &str) -> Option<&str> {
         self.unavailable

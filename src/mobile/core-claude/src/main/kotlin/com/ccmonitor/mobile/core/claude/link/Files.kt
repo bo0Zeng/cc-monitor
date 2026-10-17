@@ -124,6 +124,8 @@ object FilesLs {
         val preview: Open? = null,
         /** 编辑那道门（那台判的）；目录 ⇒ `null`。 */
         val edit: Open? = null,
+        /** 那台交来的这一行原样（「能做什么」交核心认：[CoreLink.picks]）。 */
+        val row: Any? = null,
     ) {
         /** 屏上那一串名字。 */
         val name: String get() = rel.shown
@@ -161,7 +163,8 @@ object FilesLs {
     /** 有一格路径读不出 ⇒ 整份不认（`null`）。 */
     fun of(data: Any?): Listing? {
         val r = Wire.bind<LsReply>(data) ?: return null
-        val entries = r.entries.map(::entryOf)
+        val rows = ((data as? Map<*, *>)?.get("entries") as? List<*>).orEmpty()
+        val entries = r.entries.mapIndexed { i, e -> entryOf(e)?.copy(row = rows.getOrNull(i)) }
         val crumbs = r.crumbs.map { c -> RemotePath.of(c.name)?.let { n -> RemotePath.of(c.path)?.let { n.shown to it } } }
         // 上一级缺 ＝ 到顶；给了却读不出 ⇒ 同那几格读不出。
         val up = r.up?.let { RemotePath.of(it) ?: return null }

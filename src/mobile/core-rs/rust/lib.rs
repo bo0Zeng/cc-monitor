@@ -294,13 +294,14 @@ pub fn ssh_config_json(text: &str) -> String {
     serde_json::to_string(&ssh_dial::config_text::parse(text)).unwrap_or_else(|_| "[]".to_string())
 }
 
-/// 文件页选中这几项（`pick-core` 的 [`pick_core::PickIn`] 数组）⇒ 顶栏与 ⋯ 两组（每项 `id · text · enabled · why`）；读不动 ⇒ `[]`。
-pub fn pick_menu_json(text: &str) -> String {
-    let Ok(picks) = serde_json::from_str::<Vec<pick_core::PickIn>>(text) else {
-        return "[]".to_string();
-    };
+/// 文件页选中这几项（`files-ls` 回包 `entries[]` 里的原行）· 此刻那一台（[`resident::here`]）⇒ 顶栏 · ⋯ · 点一下做什么
+/// （`pick_core::PhoneMenu`）；读不动 ⇒ 什么都不给。
+pub fn pick_menu_json(rows: &str, here: &pick_core::Here) -> String {
+    let picks: Vec<pick_core::PickIn> = serde_json::from_str::<Vec<cmd_wire::files::LsEntry>>(rows)
+        .map(|v| v.iter().map(pick_core::PickIn::of_ls).collect())
+        .unwrap_or_default();
     let picks: Vec<pick_core::Pick> = picks.iter().map(pick_core::PickIn::pick).collect();
-    serde_json::to_string(&pick_core::phone_menu(&picks)).unwrap_or_else(|_| "[]".to_string())
+    serde_json::to_string(&pick_core::phone_menu(&picks, here)).unwrap_or_default()
 }
 
 // ═══ 链路表 ═════════════════════════════════════════════════════════════════════
@@ -617,16 +618,17 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_parseSshConfig<'l>
     })
 }
 
-/// `Core.pickMenu(picks)`：文件页选中这几项 ⇒ 顶栏与 ⋯ 两组（[`pick_menu_json`]）。
+/// `Core.pickMenu(handle, rows)`：文件页选中这几项（`files-ls` 的原行）⇒ 顶栏 · ⋯ · 点一下做什么（[`pick_menu_json`]）。
 #[no_mangle]
 pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_pickMenu<'l>(
     mut env: JNIEnv<'l>,
     _class: JClass<'l>,
-    picks: JString<'l>,
+    handle: jlong,
+    rows: JString<'l>,
 ) -> jstring {
     guarded(std::ptr::null_mut(), || {
-        let text = string(&mut env, &picks).unwrap_or_default();
-        env.new_string(pick_menu_json(&text))
+        let text = string(&mut env, &rows).unwrap_or_default();
+        env.new_string(pick_menu_json(&text, &resident::here(handle)))
             .map(|s| s.into_raw())
             .unwrap_or(std::ptr::null_mut())
     })
@@ -945,19 +947,33 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_residentClose<'l>(
 mod tests {
     use resident_client::backoff::DIAL_WITHIN;
 
-    /// 文件页那一问：交进选中的几项（camelCase）⇒ 两组、每项四格；读不动 ⇒ `[]`。
+    /// 文件页那一问：交进 `files-ls` 的原行 ⇒ 顶栏 · ⋯（每项四格）· 点一下做什么；那台断着 ⇒ 灰着说离线；读不动 ⇒ 什么都不给。
     #[test]
-    fn the_pick_menu_answers_two_groups_of_four_cells() {
-        let v: serde_json::Value = serde_json::from_str(&super::pick_menu_json(
-            r#"[{"name":"docs","isDir":true,"class":"folder"}]"#,
-        ))
-        .unwrap();
-        assert_eq!(v[0][0]["id"], "download");
-        assert_eq!(v[0][0]["enabled"], false);
-        assert!(v[0][0]["why"].as_str().is_some_and(|w| w.contains("docs")));
-        assert_eq!(v[1][0].as_object().map(|o| o.len()), Some(4));
-        assert_eq!(super::pick_menu_json("{"), "[]");
+    fn the_pick_menu_reads_the_ls_rows_as_they_came() {
+        let rows = r#"[{"path":"/h/docs","name":"docs","kind":"dir","class":"folder","type_text":"","mtime_secs":12}]"#;
+        let up = pick_core::Here::default();
+        let v: serde_json::Value =
+            serde_json::from_str(&super::pick_menu_json(rows, &up)).unwrap();
+        assert_eq!(v["bar"][0]["id"], "download");
+        assert_eq!(v["bar"][0]["enabled"], false);
+        assert!(v["bar"][0]["why"].as_str().is_some_and(|w| w.contains("docs")));
+        assert_eq!(v["more"][0].as_object().map(|o| o.len()), Some(4));
+        assert_eq!(v["tap"], "open");
+        let off = pick_core::Here {
+            offline: true,
+            unavailable: vec![],
+        };
+        let v: serde_json::Value =
+            serde_json::from_str(&super::pick_menu_json(rows, &off)).unwrap();
+        assert_eq!(
+            v["more"][0]["why"],
+            copy_core::copy_text("rsFilewinChrome.link.readOnly", &[])
+        );
+        let none: serde_json::Value =
+            serde_json::from_str(&super::pick_menu_json("{", &up)).unwrap();
+        assert_eq!((none["bar"].clone(), none["tap"].clone()), (serde_json::json!([]), serde_json::Value::Null));
     }
+
     use std::time::Duration;
     use tokio::io::AsyncWriteExt;
 

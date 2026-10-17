@@ -84,8 +84,11 @@ object Core {
     /** 一段 `~/.ssh/config` 文本 ⇒ 可导入主机的 JSON 数组（`alias` · `host_name` · `port` · `user` · `identity_file`）。 */
     external fun parseSshConfig(text: String): String
 
-    /** 文件页选中这几项（JSON 数组，每项 `name` · `isDir` · `class` …）⇒ 顶栏与 ⋯ 两组（[FilePicks]）。 */
-    external fun pickMenu(picks: String): String
+    /** 文件页选中这几项（`files-ls` 的原行，JSON 数组）· 此刻那一台（[residentOpen] 的编号）⇒ `{bar, more, tap}`。 */
+    external fun pickMenu(
+        handle: Long,
+        rows: String,
+    ): String
 
     /** 开一条链路，回编号；请求读不动 ⇒ 0。 */
     external fun open(request: String): Long

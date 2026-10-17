@@ -25,7 +25,7 @@
   "profiles-from-line": [{"name":"cct","line":"claude --resume","cwd":"~/w","sessionName":"cc"},{"name":"cct","line":"claude","cwd":null,"sessionName":null}],
   "profiles-read": [{}],
   "profiles-write": [{"changes":[{"op":"set","was":null,"form":{"name":"cct","cwd":"~/w","tmux":{"mode":"fixed","name":"cc"},"args":"--resume"}}],"fingerprint":"f"},{"changes":[{"op":"set","was":null,"form":{"name":"cct","cwd":"~/w","tmux":{"mode":"fixed","name":"cc"},"args":"--resume"}}],"fingerprint":null}],
-  "rotation-day-paint": [{"segs":[{"from":0,"to":10,"v":1.0}],"from":0,"to":10,"v":0.5},{"segs":[],"from":0,"to":10,"v":null}],
+  "rotation-day-paint": [{"segs":[{"from":0,"to":10,"v":1}],"from":0,"to":10,"v":0.5},{"segs":[],"from":0,"to":10,"v":null}],
   "rotation-for-new": [{"strategy":"s1"},{"strategy":null}],
   "rotation-revert": [{"sid":"s"}],
   "rotation-save": [{"target":{"sid":"s"},"ifRev":"r"},{"target":{"strategy":"x"},"ifRev":"r","settings":{"k":1}}],

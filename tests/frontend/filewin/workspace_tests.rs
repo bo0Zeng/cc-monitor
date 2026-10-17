@@ -452,13 +452,13 @@ fn a_dropped_link_shows_the_strip_keeps_the_stale_listing_and_blocks_writes() {
     // 写类那几件做不了，说同一句。
     let read_only = copy_text("rsFilewinChrome.link.readOnly", &[]);
     assert_eq!(
-        ws.pane_on(0).offline_refusal(crate::select::Action::Rename),
+        ws.pane_on(0).refused_here(crate::select::Action::Rename),
         Some(read_only.clone())
     );
     // 下载也要那台（读也得连着）⇒ 同样灰着（「要不要那台机器」一处判，`offline_cmd`）。
     assert_eq!(
         ws.pane_on(0)
-            .offline_refusal(crate::select::Action::Download),
+            .refused_here(crate::select::Action::Download),
         Some(read_only.clone()),
         "下载要那台机器，离线时却没挡"
     );
@@ -478,7 +478,7 @@ fn a_dropped_link_shows_the_strip_keeps_the_stale_listing_and_blocks_writes() {
         "又连上了却没重列那一屏"
     );
     assert_eq!(
-        ws.pane_on(0).offline_refusal(crate::select::Action::Rename),
+        ws.pane_on(0).refused_here(crate::select::Action::Rename),
         None
     );
 }

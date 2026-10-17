@@ -2,9 +2,10 @@
 //! 与手机文件页的顶栏 ＋ ⋯ 各一张）· 表里有、这一份做不了的为什么（[`blocked`]）。桌面文件窗口与手机嵌的核心都调它，
 //! 两端不另写 `if`。图标 · 快捷键 · 字的排法归各自的出口；手机那一份连字一起出（[`phone_menu`]：每项 `id · text · enabled · why`）。
 //!
-//! 事实照 `files-ls` 的一行填（[`Pick`]）：是不是目录 · 链接 · 断链 · 名字读不读得出 · 种类 · 三道门，都是那台后端判好的。
+//! 事实照 `files-ls` 的一行填（[`Pick`] · [`PickIn::of_ls`]）：是不是目录 · 链接 · 断链 · 名字读不读得出 · 种类 · 三道门，都是那台后端判好的。
+//! 此刻做不到的（那台断着 · 那台说做不到那条命令）也在这里判（[`refused_here`]）。
 
-use cmd_wire::files::{FileClass, Gate, Gates};
+use cmd_wire::files::{FileClass, FileKind, Gate, Gates, LinkTo, LsEntry, PreviewGate};
 use copy_core::copy_text;
 
 /// 一项的事实（`files-ls` 的一行；桌面借窗口那一行的格，手机照 [`PickIn`] 解）。
@@ -51,28 +52,39 @@ impl Pick<'_> {
     }
 }
 
-/// 手机交进来的一项（同 [`Pick`]，自己拥有那几格）。
-#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// 一项自己拥有的那几格（同 [`Pick`]）：从 `files-ls` 那一行认（[`PickIn::of_ls`]）。
+#[derive(Debug, Clone, PartialEq)]
 pub struct PickIn {
     pub name: String,
     pub is_dir: bool,
-    #[serde(default)]
     pub link: bool,
-    #[serde(default)]
     pub link_dir: bool,
-    #[serde(default)]
     pub link_broken: bool,
-    #[serde(default)]
     pub lossy: bool,
-    #[serde(default)]
     pub raw: bool,
     pub class: FileClass,
-    #[serde(default)]
     pub gates: Option<Gates>,
 }
 
 impl PickIn {
+    /// 🔴 `files-ls` 的一行 ⇒ 那几格（桌面文件窗口列一屏 · 手机交来的原行都走它）。有损看名字那一段的**字节**
+    /// （不看转出来的串里有没有 U+FFFD）；线上那一行带着字节，有损名恒寻址得到。
+    pub fn of_ls(e: &LsEntry) -> Self {
+        let link = e.kind == FileKind::Symlink;
+        let lossy = std::str::from_utf8(e.name.bytes()).is_err();
+        Self {
+            name: String::from_utf8_lossy(e.name.bytes()).into_owned(),
+            is_dir: e.kind == FileKind::Dir,
+            link,
+            link_dir: link && e.link_dir == Some(true),
+            link_broken: link && e.link_to == Some(LinkTo::Missing),
+            lossy,
+            raw: lossy,
+            class: e.class,
+            gates: e.gates.clone(),
+        }
+    }
+
     pub fn pick(&self) -> Pick<'_> {
         Pick {
             name: &self.name,
@@ -304,12 +316,23 @@ const ONE: &[Item] = &[
     Item::SelectAll,
 ];
 
-/// 🔴 **手机那张表**：第一组顶栏、第二组 ⋯。没有编辑 · 查看 · 解压 · 算大小 · 另一台 · 另一栏（手机直连每一台，同一台换个目录就是另一栏那件事）。
+/// 手机选一份文本 ⋯ 里那几项（打头是预览 · 编辑）。
+const TEXT: &[Item] = &[
+    Item::Act(A::View),
+    Item::Act(A::Edit),
+    Item::Act(A::Rename),
+    Item::Act(A::CopyTo),
+    Item::Act(A::Chmod),
+    Item::SelectAll,
+];
+
+/// 🔴 **手机那张表**：第一组顶栏、第二组 ⋯。查看在手机上是文本预览（手机不开看图页）；没有解压 · 算大小 · 另一台 · 另一栏
+/// （手机直连每一台，同一台换个目录就是另一栏那件事）。
 const PHONE: Table = &[
     (Picked::Here, &[]),
     (Picked::Dir, &[BAR, ONE]),
     (Picked::DirLink, &[BAR, ONE]),
-    (Picked::Text, &[BAR, ONE]),
+    (Picked::Text, &[BAR, TEXT]),
     (Picked::Image, &[BAR, ONE]),
     (Picked::Archive, &[BAR, ONE]),
     (Picked::File, &[BAR, ONE]),
@@ -330,6 +353,17 @@ const PHONE: Table = &[
         ],
     ),
     (Picked::ManyNameless, &[&[], &[Item::SelectAll]]),
+];
+
+/// 🔴 **手机点一下那一行做什么**（同桌面双击）：目录 ⇒ 进去 · 文本 ⇒ 预览 · 别的文件 ⇒ 下载；断链 · 名字读不出的文件 ⇒ 不做。
+const PHONE_TAP: &[(Picked, Action)] = &[
+    (Picked::Dir, A::Open),
+    (Picked::DirLink, A::Open),
+    (Picked::NamelessDir, A::Open),
+    (Picked::Text, A::View),
+    (Picked::Image, A::Download),
+    (Picked::Archive, A::Download),
+    (Picked::File, A::Download),
 ];
 
 /// 这个出口那张表。
@@ -401,6 +435,15 @@ pub fn why_not_editable(p: &Pick) -> Option<String> {
     }
 }
 
+/// 手机预览不了的为什么（那台的预览门说的 · 没给门）；预览得了 ⇒ `None`。
+fn why_not_previewable(p: &Pick) -> Option<String> {
+    match p.gates.map(|g| &g.preview) {
+        Some(PreviewGate::Text(_)) => None,
+        Some(PreviewGate::No(said)) => Some(said.clone()),
+        _ => Some(copy_text("rsFilewinSource.gates.unlisted", &[])),
+    }
+}
+
 /// 表里有、但**这一份**做不了的那一件 ⇒ 为什么（灰着、说哪几项为什么；键盘按了说同一句）。
 /// 编辑不了 · 选中里有目录不能下载（下载只收文件）· 多选里名字只有原始字节的那几项不能复制到另一台（那一条按路径串寻址）。
 pub fn blocked(a: Action, picked: &[Pick]) -> Option<String> {
@@ -410,6 +453,8 @@ pub fn blocked(a: Action, picked: &[Pick]) -> Option<String> {
     };
     match (a, picked) {
         (Action::Edit, [r]) => why_not_editable(r),
+        // 桌面的查看是看图页（只给开得了的图）；手机的是文本预览，照预览那道门。
+        (Action::View, [r]) if !r.viewable() => why_not_previewable(r),
         (Action::Download, _) => names(&|r: &Pick| r.opens_as_dir())
             .map(|n| copy_text("rsFilewinSelect.why.dirDownload", &[("names", &n)])),
         (Action::CrossCopy, [_, _, ..]) => names(&|r: &Pick| r.lossy)
@@ -430,6 +475,30 @@ pub fn actions_for(o: Outlet, picked: &[Pick]) -> Vec<Action> {
         .collect()
 }
 
+/// 此刻那一台的样子：断没断着 · 那台说做不到的那几条命令（`hello.unavailable`）。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Here {
+    pub offline: bool,
+    pub unavailable: Vec<String>,
+}
+
+/// 这一件落到哪条命令上（那台说做不到它 ⇒ 这一件做不到）。
+fn command_of(a: Action) -> Option<&'static str> {
+    match a {
+        Action::Chmod => Some(<cmd_wire::files::FilesChmodReq as cmd_wire::files::Call>::NAME),
+        _ => None,
+    }
+}
+
+/// 🔴 **此刻做不到的那一件 ⇒ 为什么（唯一一处）**：那台说做不到那条命令 ⇒ 这台不支持；断着、而这一件要碰那台
+/// （进目录除外：进去那一下自己会说断开）⇒ 离线 · 只读。桌面菜单 · 键盘 · 手机顶栏与 ⋯ 都问它。
+pub fn refused_here(a: Action, here: &Here) -> Option<String> {
+    if command_of(a).is_some_and(|c| here.unavailable.iter().any(|u| u == c)) {
+        return Some(copy_text("rsFilewinShell.menu.unavailableHere", &[]));
+    }
+    (here.offline && a != Action::Open).then(|| copy_text("rsFilewinChrome.link.readOnly", &[]))
+}
+
 /// 手机那一项：交回的词 · 字 · 能不能点 · 灰着的为什么（手机没有悬停，点了在底部说这一句）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Entry {
@@ -442,6 +511,9 @@ pub struct Entry {
 /// 手机那一项交回的词。桌面没有的那几项不在手机表里，问到了 ⇒ `None`。
 fn phone_id(i: Item) -> Option<&'static str> {
     Some(match i {
+        Item::Act(A::Open) => "open",
+        Item::Act(A::View) => "preview",
+        Item::Act(A::Edit) => "edit",
         Item::Act(A::Download) => "download",
         Item::Act(A::Delete) => "delete",
         Item::Act(A::Rename) => "rename",
@@ -455,6 +527,8 @@ fn phone_id(i: Item) -> Option<&'static str> {
 /// 手机那一项的字（`n` ＝ 选中了几项：⋯ 里改权限对多项说「改权限 · n 项」）。
 fn phone_text(i: Item, n: usize) -> String {
     match i {
+        Item::Act(A::View) => copy_text("rsFilewinWorkspace.label.preview", &[]),
+        Item::Act(A::Edit) => copy_text("rsFilewinEditor.label.edit", &[]),
         Item::Act(A::Download) => copy_text("rsFilewinDownload.label.download", &[]),
         Item::Act(A::Delete) => copy_text("rsFilewinWriteops.label.delete", &[]),
         Item::Act(A::Rename) => copy_text("rsFilewinWriteops.label.rename", &[]),
@@ -467,16 +541,25 @@ fn phone_text(i: Item, n: usize) -> String {
     }
 }
 
-/// ★ 手机文件页选中这几项时的两组（顶栏 · ⋯）：每项 `id · text · enabled · why`。
-pub fn phone_menu(picked: &[Pick]) -> Vec<Vec<Entry>> {
-    menu_groups(Outlet::Phone, picked_kind(picked), false)
+/// 手机文件页选中这几项时交回的：顶栏一组 · ⋯ 一组（每项 `id · text · enabled · why`）· 单选时点一下那一行做什么。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct PhoneMenu {
+    pub bar: Vec<Entry>,
+    pub more: Vec<Entry>,
+    pub tap: Option<&'static str>,
+}
+
+/// ★ 手机文件页选中这几项（此刻那一台 [`Here`]）⇒ [`PhoneMenu`]。
+pub fn phone_menu(picked: &[Pick], here: &Here) -> PhoneMenu {
+    let kind = picked_kind(picked);
+    let mut groups = menu_groups(Outlet::Phone, kind, false)
         .into_iter()
         .map(|g| {
             g.into_iter()
                 .filter_map(|i| {
                     let id = phone_id(i)?;
                     let why = match i {
-                        Item::Act(a) => blocked(a, picked),
+                        Item::Act(a) => blocked(a, picked).or_else(|| refused_here(a, here)),
                         _ => None,
                     };
                     Some(Entry {
@@ -486,9 +569,15 @@ pub fn phone_menu(picked: &[Pick]) -> Vec<Vec<Entry>> {
                         why,
                     })
                 })
-                .collect()
-        })
-        .collect()
+                .collect::<Vec<_>>()
+        });
+    let bar = groups.next().unwrap_or_default();
+    let more = groups.next().unwrap_or_default();
+    let tap = PHONE_TAP
+        .iter()
+        .find(|(k, _)| *k == kind)
+        .and_then(|(_, a)| phone_id(Item::Act(*a)));
+    PhoneMenu { bar, more, tap }
 }
 
 #[cfg(test)]
