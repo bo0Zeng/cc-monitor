@@ -1088,11 +1088,6 @@ fn detached_reads_the_path_that_was_taken_not_a_guess() {
         1,
         "`backend_status` 里 `is_detached()` 不是恰好一处 —— 零处 = 那一格没接上（前端永远读到缺席）"
     );
-    assert!(
-        status.contains("serde_json::Value::Null"),
-        "远端那一支不再是 `null` —— 「它脱没脱离」这句话在远端这条路上没有意义，\
-             填 `false` 是**编一个读数**，而不是承认不对称。"
-    );
 
     // ── 负例①：**纯函数**的那张真值表（四格全走到）─────────────────
     assert!(

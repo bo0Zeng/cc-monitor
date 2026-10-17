@@ -36,8 +36,8 @@ vi.mock("../../../src/frontend/ui/ipc/chan-caller", () => ({
 
 import { MACHINE_STATE_EVENT, onMachineState } from "../../../src/frontend/ui/machine-feed";
 
-const cases = golden.cases as unknown as { name: string; machine: MachineState }[];
-const of = (name: string): MachineState => cases.find((c) => c.name === name)!.machine;
+// 金样里的成品各取几形（哪一形不要紧：这里只核原样交到）。
+const [up, connecting, installing, , , , , needsUpdate] = (golden.cases as unknown as { machine: MachineState }[]).map((c) => c.machine);
 const frame = (seq: number, body: unknown) => ({ t: "frame", seq, body: JSON.stringify(body) });
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
@@ -51,24 +51,24 @@ describe("机器状态成品的推送", () => {
   it("★ 本机那一帧原样交（形状是壳导出的类型）", () => {
     const got: [string, MachineState][] = [];
     onMachineState((o, m) => got.push([o, m]));
-    listeners.get(MACHINE_STATE_EVENT)!({ payload: { origin: "<local>", machine: of("本机被拒") } });
-    expect(got).toEqual([["<local>", of("本机被拒")]]);
+    listeners.get(MACHINE_STATE_EVENT)!({ payload: { origin: "<local>", machine: connecting } });
+    expect(got).toEqual([["<local>", connecting]]);
   });
 
   it("★ 远端那几格：带了成品的原样交；没带的那一格 ⇒ 整份重问 machine-read、每台交一次", async () => {
     const got: [string, MachineState][] = [];
     onMachineState((o, m) => got.push([o, m]));
     await flush();
-    sink!([frame(0, { key: "box", body: of("要更新") })]);
-    expect(got).toEqual([["box", of("要更新")]]);
+    sink!([frame(0, { key: "box", body: needsUpdate })]);
+    expect(got).toEqual([["box", needsUpdate]]);
     expect(reads, "带了成品不重问").toEqual([]);
-    readReply = { machines: { box: of("连着"), lab: of("停用") } };
+    readReply = { machines: { box: up, lab: installing } };
     sink!([frame(1, { key: "lab" })]);
     await flush();
     expect(reads).toEqual(["machine-read"]);
     expect(got.slice(1)).toEqual([
-      ["box", of("连着")],
-      ["lab", of("停用")],
+      ["box", up],
+      ["lab", installing],
     ]);
   });
 });
