@@ -63,7 +63,7 @@ const MAX_FAILURES = 3;
 export type TurnsWhere = () => { origin: Origin; jsonlPath: string } | null;
 type Read = (origin: Origin, path: string, from: number) => Promise<TurnsResult>;
 /**
- * 这个 tab 的骨架（没接上 ⇒ `null`）：占位里有没有边界按账本的 uuid→seq 认；折着的段告诉它（按 0 高、不物化）；
+ * 这个 tab 的骨架（没接上 ⇒ `null`）：占位里有没有边界按后端给的行号认；折着的段告诉它（按 0 高、不物化）；
  * 展开一段后叫它物化露出来的那部分。
  */
 export type TurnsSkeleton = () => {
@@ -71,8 +71,8 @@ export type TurnsSkeleton = () => {
   fillVisible(): number;
   setFolds(f: TurnFolds): void;
 } | null;
-/** 骨架账本里本模块要的那几样：uuid→seq（认边界）、账本尾（`until` 是 `null` 的那一段到哪）。 */
-type TurnsLedger = { uuidToSeq: ReadonlyMap<string, number>; endSeq: number };
+/** 骨架账本里本模块要的那几样：账本的头尾（段的两头行号是后端给的，落在账本外的那一段不折；`until` 是 `null` 的那一段到账本尾）。 */
+type TurnsLedger = { base: number; endSeq: number };
 
 /** 「显示系统注入」这扇窗的开关（缺省不露）。 */
 export function injectedShownDefault(): boolean {
@@ -354,18 +354,19 @@ export class TurnFold {
   }
 
   /**
-   * **每一段在账本里占哪几行**（骨架没接上 ⇒ `null`，按起点升序）：照后端那一段的 `after` 与 `until` 取 ——
-   * `after` 那一行之后、到 `until` 那一行之前（`until` 是 `null` ⇒ 到账本尾）；两头有一头账本里找不到 ⇒ 那一段不折。
+   * **每一段在账本里占哪几行**（骨架没接上 ⇒ `null`，按起点升序）：照后端那一段两头的行号取 ——
+   * `after` 那一行之后、到 `until` 那一行之前（`until` 是 `null` ⇒ 到账本尾）；两头有一头落在账本外 ⇒ 那一段不折。
    * 账本按 0 高的那几段（`foldSkeleton`）与占位藏不藏（`apply`）都从它来 ⇒ 两边说法不会分家。
    */
   private foldSpans(ledger: TurnsLedger | null = this.skeleton()?.ledger ?? null): FoldSpanRow[] | null {
     if (!ledger) return null;
-    const seq = ledger.uuidToSeq;
+    const inside = (s: number): boolean => s >= ledger.base && s < ledger.endSeq;
     const rows: FoldSpanRow[] = [];
     for (const ref of this.byAfter.values()) {
-      const at = seq.get(ref.key);
-      const end = ref.fold.until === null ? ledger.endSeq : seq.get(ref.fold.until);
-      if (at === undefined || end === undefined || end <= at) continue;
+      const at = ref.fold.afterLine;
+      const until = ref.fold.untilLine;
+      const end = until ?? ledger.endSeq;
+      if (!inside(at) || (until !== null && !inside(until)) || end <= at) continue;
       rows.push({ ref, line: at, start: at + 1, end });
     }
     return rows.sort((a, b) => a.start - b.start);

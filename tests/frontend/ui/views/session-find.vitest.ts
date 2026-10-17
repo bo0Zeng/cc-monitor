@@ -74,9 +74,12 @@ import { dispatcher } from "../../../../src/frontend/ui/keybindings/registry";
 import { findInSession, type FindResult } from "../../../../src/frontend/ui/session-reads";
 import { FindStrip, __resetFindScopeForTests } from "../../../../src/frontend/ui/find-strip";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
+import type { JumpTarget } from "../../../../src/frontend/ui/views/user-input-panel";
 
 const hit = (uuid: string, matched = "needle", before = "a ", after = " b", turn = 0, tsMs = 0, tsText = "") => ({
   uuid,
+  // 后端给的行号：夹具里 `u{行号}` 照它，别的随便给一个（只核它被原样带去跳）。
+  line: /^u\d+$/.test(uuid) ? Number(uuid.slice(1)) : 100 + uuid.length,
   kind: "assistant",
   before,
   matched,
@@ -285,7 +288,7 @@ describe("会话内查找 · 搜索", () => {
   });
 
   it("🔴 结果是框里这个词的 ⇒ 回车 / F3 下一条、Shift+F3 上一条、↓ 也走，选中即跳（到头绕回）", async () => {
-    const jumpTo = vi.fn((_uuid: string) => document.createElement("div"));
+    const jumpTo = vi.fn((_to: JumpTarget) => document.createElement("div"));
     const { p } = panelWith({ search: vi.fn(async () => found([hit("a"), hit("b"), hit("c")])), jumpTo } as Partial<SessionFindHost>);
     enter(p, "x");
     await settleOutline();
@@ -294,7 +297,8 @@ describe("会话内查找 · 搜索", () => {
     press(p, { key: "ArrowDown" });
     press(p, { key: "ArrowDown" });
     press(p, { key: "F3", shiftKey: true });
-    expect(jumpTo.mock.calls.map((c) => c[0])).toEqual(["a", "b", "c", "a", "c"]);
+    expect(jumpTo.mock.calls.map((c) => c[0].uuid)).toEqual(["a", "b", "c", "a", "c"]);
+    expect(jumpTo.mock.calls[0][0], "跳的是命中带来的那一条（uuid ＋ 行号）").toMatchObject({ uuid: "a", line: 101 });
     expect(hitRows(p.el).map((r) => r.getAttribute("aria-selected"))).toEqual(["false", "false", "true"]);
   });
 

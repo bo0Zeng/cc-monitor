@@ -336,8 +336,8 @@ describe("TabManager 生命周期", () => {
     });
     tm.createSkeletonTab("sk2", "/root/proj", LOCAL_ORIGIN);
     const tab = tm.ensureTab("sk2", null, "/fake/sk2.jsonl", LOCAL_ORIGIN);
-    tab.skeleton = { ledger: { uuidToSeq: new Map([["r1", 0]]), factsOf: () => ({ o: 0, n: 10 }) }, dispose: () => {} } as unknown as typeof tab.skeleton;
-    await tab.fullRecord("r1").catch(() => null);
+    tab.skeleton = { ledger: { factsOf: () => ({ o: 0, n: 10 }) }, dispose: () => {} } as unknown as typeof tab.skeleton;
+    await tab.fullRecord({ id: "r1", seq: 0 }).catch(() => null);
     expect(asked).toEqual(["/fake/sk2.jsonl"]);
   });
 
@@ -3778,15 +3778,17 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
     tm = makeTM();
   });
 
+  /** 第 s 行是哪一类记录（行与索引两边同一个算法）。 */
+  const kindAt = (s: number): "said" | "reply" => (s % 3 === 0 ? "said" : "reply");
   const mk = (sid: string, seq: number, uuid: string) =>
     ({
       session_id: sid,
       cwd: "/p",
       path: `/p/${sid}.jsonl`,
       seq,
-      record: { t: "reply", id: uuid } as never,
+      record: { t: kindAt(seq), id: uuid } as never,
     }) as never;
-  /** 索引：第 i 行 uuid = `u{i + shift}`（shift ≠ 0 模拟「seq 空间对不上」） */
+  /** 索引：第 i 行的类是第 `i + shift` 行的（shift ≠ 0 模拟「seq 空间对不上」） */
   const idx = (n: number, shift = 0) => ({
     available: true,
     from: 0,
@@ -3794,8 +3796,7 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
     rows: Array.from({ length: n }, (_, i) => ({
       o: i * 10,
       n: 10,
-      t: "reply",
-      u: `u${i + shift}`,
+      t: kindAt(i + shift),
       ch: 100,
       pl: 1,
     })),
@@ -3980,7 +3981,7 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
     expect(indexCalls().length, "重问过一次还失败 ⇒ 不再问（有界）").toBe(2);
   });
 
-  it("🔴 seq 空间对不上（uuid 在索引里落在别的 seq）⇒ 不接 —— 不许硬对", async () => {
+  it("🔴 seq 空间对不上（索引里同一个 seq 那一行是另一类记录）⇒ 不接 —— 不许硬对", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
       Promise.resolve(cmd === "read_session_index" ? idx(300, 7) : undefined),
     ) as never));
@@ -4240,23 +4241,23 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
     expect(spy.mock.calls.map((c) => (c[0] as { seq: number }).seq)).toEqual([298, 299, 300, 301, 302]);
   });
 
-  it("大纲跳转：点到还在占位里的一条 ⇒ 先按 uuid→seq 物化那一段再跳", async () => {
+  it("大纲跳转：点到还在占位里的一条 ⇒ 先按后端给的行号物化那一段再跳", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
       Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
     ) as never));
     const t = replay("jump");
     await settle();
     expect(t.skeleton!.isPending(42)).toBe(true);
-    const host = (t.inputsPanel as unknown as { host: { jumpTo(u: string): unknown } }).host;
+    const host = (t.inputsPanel as unknown as { host: { jumpTo(to: { uuid: string; line: number }): unknown } }).host;
     // jsdom 没有 `CSS.escape`（`revealCard` 要它）；本格判的是「跳之前先物化」，找不找得到卡不在本格
     const g = globalThis as unknown as { CSS?: { escape(s: string): string } };
     g.CSS ??= { escape: (x: string) => x };
-    host.jumpTo("u42");
+    host.jumpTo({ uuid: "u42", line: 42 });
     expect(t.skeleton!.isPending(42)).toBe(false);
   });
 
   // 数据源换成后端之后，这条路必须照旧通：行是后端清单给的（不是流上攒的），
-  //   点**那一行**（不是直接调宿主）⇒ 先按 uuid→seq 物化再跳。
+  //   点**那一行**（不是直接调宿主）⇒ 先按那一行带的行号物化再跳。
   it("🔴 SE1：大纲的行来自后端清单，点到还在占位里的那一行 ⇒ 先物化那一段再跳", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
       Promise.resolve(
@@ -4268,9 +4269,9 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
                 from: 0,
                 end: 3,
                 entries: [
-                  { uuid: "u7", excerpt: "七", timestamp: "" },
-                  { uuid: "u42", excerpt: "四十二", timestamp: "" },
-                  { uuid: "u250", excerpt: "二百五十", timestamp: "" },
+                  { at: 70, line: 7, uuid: "u7", excerpt: "七", timestamp: "" },
+                  { at: 420, line: 42, uuid: "u42", excerpt: "四十二", timestamp: "" },
+                  { at: 2500, line: 250, uuid: "u250", excerpt: "二百五十", timestamp: "" },
                 ],
               }
             : undefined,

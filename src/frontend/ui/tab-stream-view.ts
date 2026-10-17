@@ -26,7 +26,7 @@ import { SkeletonView, ledgerFromIndex, rowRuns } from "./skeleton-view";
 import { eagerBodyChars, setInjectedShown, skeletonKind } from "./height-estimate";
 // 「大纲」与历史查看器共用同一份界面与跳转；清单问后端要（`OutlineSource`）。
 // 大纲在会话内查找面板里（`SessionFindPanel`：搜索 / 大纲两个模式，跳只有一个住址）。
-import type { JumpResult } from "./views/user-input-panel";
+import type { JumpResult, JumpTarget } from "./views/user-input-panel";
 import { OutlineSource, outlineSeedFromIndex } from "./views/outline-source";
 import { SessionFindPanel } from "./views/session-find";
 import { TurnFold, injectedShownDefault, processExpandedDefault, setInjectedShownDefault, setProcessExpandedDefault } from "./turn-fold";
@@ -314,7 +314,7 @@ export class TabStreamView {
         }
         return findInSession(t.origin, t.parentPath, query, includeTools, skip, scope);
       },
-      jumpTo: (uuid, tool) => this.jumpInTab(sessionId, streamEl, uuid, tool),
+      jumpTo: (to, tool) => this.jumpInTab(sessionId, streamEl, to, tool),
       unjumpableHint: copyText("tabStreamView.search.notLoaded"),
     });
     this.finds.set(sessionId, find);
@@ -344,7 +344,7 @@ export class TabStreamView {
       speaker: () => speakerNameOf(this.store.tabs.get(sessionId)?.agent ?? null),
       // 刻度跳不过去（那一段还取不回来：骨架没接上、`jumpInTab` 已经踢了一次要骨架）⇒ 这一下就算了，再点多半已接上。
       // 不能让它成一条没人接的 rejection：全局兜底会把整条状态栏换成一行「REJ: …」。
-      jump: (uuid) => void Promise.resolve(this.jumpInTab(sessionId, streamEl, uuid)).catch(() => undefined),
+      jump: (to) => void Promise.resolve(this.jumpInTab(sessionId, streamEl, to)).catch(() => undefined),
       inFront: () => this.store.activeId === sessionId,
     });
     turnFold.onTurns = () => turnRail.render();
@@ -524,12 +524,11 @@ export class TabStreamView {
    * - 都不是（骨架还没到）⇒ 踢一次要骨架、reject「索引未就绪」（重试时多半已经接上）。
    * 等的期间 tab 被关掉 ⇒ 落空（`null`）。
    */
-  private jumpInTab(sessionId: string, streamEl: HTMLElement, uuid: string, tool?: string): JumpResult {
+  private jumpInTab(sessionId: string, streamEl: HTMLElement, { uuid, line: seq }: JumpTarget, tool?: string): JumpResult {
     const tab = this.store.tabs.get(sessionId);
     if (!tab) return null;
     const sk = tab.skeleton;
-    const seq = sk?.ledger.uuidToSeq.get(uuid);
-    if (sk && seq !== undefined && sk.isPending(seq)) {
+    if (sk && sk.isPending(seq)) {
       sk.ensure(seq);
       const inflight = this.rangeFetches.get(tab);
       if (!inflight || inflight.size === 0) return revealCard(streamEl, uuid, tool);
@@ -1040,7 +1039,7 @@ export class TabStreamView {
             failed(more.failure !== "oldBackend");
             return;
           }
-          got.ledger.append(more.rows);
+          got.ledger.append(more.pages);
           end = more.end;
         }
         this.indexEnds.set(tab, end);
@@ -1072,7 +1071,7 @@ export class TabStreamView {
           tab.skeletonFetch = "again";
           return;
         }
-        if (res) ledger.append(res.rows);
+        if (res) ledger.append(res.pages);
         this.indexEnds.set(tab, res ? res.end : end);
         tab.skeletonFetch = "done";
         if (this.store.activeId !== tab.sessionId) {
@@ -1089,18 +1088,17 @@ export class TabStreamView {
 
   /**
    * 接骨架：`[0, floor)` 画成占位。**接之前先对拍 seq 空间** —— 抽几条还在 pending 的记录，
-   * 它们的 uuid 在索引里必须落在同一个 seq 上；对不上（本地截断重读换过 seq，INVARIANTS §25）
+   * 索引里同一个 seq 那一行的记录类必须与它一样（两边都是后端给的类）；对不上（本地截断重读换过 seq，INVARIANTS §25）
    * 就**不接**，退回尾部窗口（不许硬对）。
    */
   private attachSkeleton(tab: Tab, ledger: SkeletonLedger): void {
     const floor = tab.window.floorSeq;
     if (floor === null || tab.skeleton) return;
     for (const p of tab.window.peek(8)) {
-      const u = p.record.id;
-      const at = ledger.uuidToSeq.get(u);
-      if (at !== p.seq) {
+      const at = ledger.factsOf(p.seq)?.t;
+      if (at !== p.record.t) {
         console.warn(
-          `[tabs] 骨架未接（${tab.sessionId.slice(0, 8)}）：seq ${p.seq} 在索引里是 ${String(at)} —— seq 空间对不上`,
+          `[tabs] 骨架未接（${tab.sessionId.slice(0, 8)}）：seq ${p.seq} 是 ${p.record.t}，在索引里是 ${String(at)} —— seq 空间对不上`,
         );
         return;
       }

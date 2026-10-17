@@ -5,9 +5,13 @@
  */
 export type FindHit = { 
 /**
- * 命中的那条记录的 uuid（界面按骨架索引 `uuid → seq` 跳过去）。
+ * 命中的那条记录的 uuid（界面按它找卡）。
  */
 uuid: string, 
+/**
+ * 它的行号（与实时行的 `seq` 同一个空间；界面按它物化那一段）。
+ */
+line: number, 
 /**
  * `user` · `assistant` · `report`（agent 回报）· `tool`。
  */

@@ -773,9 +773,9 @@ export class TabManager {
       runCards: new Map(),
       // 出口省掉的正文展开那一下：按骨架里那一行的偏移取回全文（骨架还没接上 ⇒ 说清、下次再取）。
       // 机器与记录路径按展开那一刻的 tab 取：骨架 tab 建的时候路径还是空串，首条行才回填。
-      fullRecord: (id: string) => {
+      fullRecord: (from) => {
         const t = this.store.tabs.get(sessionId);
-        return readRecordById(t?.origin ?? origin, t?.parentPath || sourcePath, t ? this.view.ledgerOf(t) : null, id);
+        return readRecordById(t?.origin ?? origin, t?.parentPath || sourcePath, t ? this.view.ledgerOf(t) : null, from);
       },
       // 下面三样只经 `facts` 落下来（后端 `history-facts` 出成品，`onSessionFacts`）。
       touchedFiles: new Set(), // 会话改动集

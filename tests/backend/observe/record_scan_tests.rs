@@ -78,9 +78,12 @@ fn each_on_its_own(bytes: &[u8]) -> (Vec<String>, Vec<String>, Vec<String>, u64)
     let (mut index, mut inputs, mut turns) = (Vec::new(), Vec::new(), Vec::new());
     let mut scan = crate::observe::recognize::turns::TurnScan::default();
     let mut lines = crate::observe::lines::Lines::new(bytes, 0);
+    let mut line = 0u64;
     while let Some(row) = lines.next().unwrap() {
         let body = row.body();
+        let at_line = line;
         if crate::observe::lines::counts(body) {
+            line += 1;
             let r = crate::observe::recognize::index_row::tests::index_row(
                 kind,
                 body,
@@ -97,13 +100,14 @@ fn each_on_its_own(bytes: &[u8]) -> (Vec<String>, Vec<String>, Vec<String>, u64)
             &v,
         ) {
             r.at = row.at;
+            r.line = at_line;
             inputs.push(serde_json::to_string(&r).unwrap());
         }
         let kind = crate::agents::record_tree_kind().unwrap_or_default();
         let Some(beat) = crate::agents::beat_of(kind, &v) else {
             continue;
         };
-        if let Some(t) = scan.line(row.at, kind, &v, &beat) {
+        if let Some(t) = scan.line(row.at, at_line, kind, &v, &beat) {
             turns.push(serde_json::to_string(&t).unwrap());
         }
     }
@@ -618,4 +622,68 @@ fn r10_an_evicted_map_leaves_a_facts_tail_that_reads_only_the_appended_bytes() {
     std::fs::write(&b, more).unwrap();
     assert_eq!(tiny.facts(&b, &limits, None).unwrap(), cold(&b));
     std::fs::remove_dir_all(&d).ok();
+}
+
+/// R10：轮次（你那句 · 每段过程的两头）与用户输入带的行号，就是那一条在骨架索引里的下标（行号只在扫的这一处数）；
+/// 夹具里有空行与坏行（不算一行），行号与「第几个物理行」不同。
+#[test]
+fn r10_turns_folds_and_inputs_carry_the_index_row_of_their_uuid() {
+    let text = branched(3);
+    let bytes = text.as_bytes();
+    let map = ScanMap::scan_with(
+        bytes,
+        bytes.len() as u64,
+        crate::agents::record_tree_kind().unwrap_or_default(),
+        Some(crate::agents::claudecode::RECORDS),
+    )
+    .unwrap();
+    let mut claimed: Vec<(String, u64)> = Vec::new();
+    for t in &map.turns {
+        claimed.push((t.uuid.clone(), t.line));
+        for f in &t.folds {
+            claimed.push((f.after.clone(), f.after_line));
+            if let (Some(u), Some(l)) = (&f.until, f.until_line) {
+                claimed.push((u.clone(), l));
+            }
+            assert_eq!(
+                f.until.is_some(),
+                f.until_line.is_some(),
+                "until 与它的行号同有同无"
+            );
+        }
+    }
+    for r in &map.inputs {
+        claimed.push((r.uuid.clone(), r.line));
+    }
+    let row_of = |u: &str| {
+        map.index
+            .iter()
+            .position(|r| r.u.as_deref() == Some(u))
+            .map(|i| i as u64)
+    };
+    let want: Vec<(String, u64)> = claimed
+        .iter()
+        .map(|(u, _)| (u.clone(), row_of(u).expect("那一条不在索引里")))
+        .collect();
+    assert_eq!(claimed, want, "带的行号与骨架索引里的下标不一样");
+    let folds_until = map
+        .turns
+        .iter()
+        .flat_map(|t| &t.folds)
+        .filter(|f| f.until.is_some())
+        .count();
+    assert!(
+        map.turns.len() >= 2 && folds_until >= 1,
+        "夹具要有几轮、带 until 的过程：{} 轮、{folds_until} 段带 until",
+        map.turns.len()
+    );
+    let physical = |u: &str| {
+        text.split('\n')
+            .position(|l| l.contains(&format!("\"uuid\":\"{u}\"")))
+            .unwrap() as u64
+    };
+    assert!(
+        want.iter().any(|(u, l)| physical(u) != *l),
+        "正控：夹具里要有行号与物理行号不同的"
+    );
 }

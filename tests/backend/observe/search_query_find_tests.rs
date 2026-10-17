@@ -530,3 +530,103 @@ fn find_wire(
             (f.code, f.message)
         })
 }
+
+/// ★ 命中带行号：会话内查找（现扫与常驻索引两臂）与全局搜索的每条命中，行号 ＝ 那一条在扫描图骨架索引里的下标
+/// （夹具里有坏行 · 空行 · 带 BOM 的行，行号与物理行号不同）。
+#[test]
+fn hits_carry_the_index_row_of_their_record() {
+    let home = std::env::temp_dir().join(format!("find-line-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let dir = home.join("projects").join("p");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("s.jsonl");
+    let data = bytes_of(&fixture());
+    std::fs::write(&path, &data).unwrap();
+    let map = crate::observe::record_scan::ScanMap::scan_with(
+        &data[..],
+        data.len() as u64,
+        crate::agents::record_tree_kind().unwrap_or_default(),
+        None,
+    )
+    .unwrap();
+    let row_of = |u: &str| {
+        map.index
+            .iter()
+            .position(|r| r.u.as_deref() == Some(u))
+            .map(|i| i as u64)
+    };
+    let check = |what: &str, got: Vec<(String, u64)>| {
+        assert!(got.len() >= 3, "{what}：夹具该有几条命中");
+        let want: Vec<(String, u64)> = got
+            .iter()
+            .map(|(u, _)| (u.clone(), row_of(u).expect("命中那一条不在索引里")))
+            .collect();
+        assert_eq!(got, want, "{what}：命中带的行号与骨架索引里的下标不一样");
+        let physical = |u: &str| {
+            fixture()
+                .iter()
+                .position(|l| l.contains(&format!("\"uuid\":\"{u}\"")))
+                .unwrap() as u64
+        };
+        assert!(
+            got.iter().any(|(u, l)| physical(u) != *l),
+            "{what}：正控，要有行号与物理行号不同的"
+        );
+    };
+    let pairs = |v: &serde_json::Value| -> Vec<(String, u64)> {
+        v["hits"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|h| {
+                (
+                    h["uuid"].as_str().unwrap().to_string(),
+                    h["line"].as_u64().unwrap(),
+                )
+            })
+            .collect()
+    };
+    let p = path.display().to_string();
+    let scanned = find(&data, Q, true, FIND_DEFAULT_LIMIT);
+    check(
+        "现扫",
+        pairs(&serde_json::json!({ "hits": scanned[1..scanned.len() - 1] })),
+    );
+    let wire = find_wire(
+        &home,
+        "history-find",
+        &serde_json::json!({"path": p, "query": Q, "include_tools": true, "limit": 500}),
+        &Default::default(),
+    )
+    .unwrap();
+    check("常驻索引", pairs(&wire));
+    let opts = SearchOpts {
+        include_tools: true,
+        scope: None,
+        after_ms: 0,
+        limit: crate::history::search_rules::DEFAULT_LIMIT,
+        titles: false,
+    };
+    let mut entry = FileEntry::empty(true);
+    entry
+        .take(None, &mut Blocks::new(&data[..], 7))
+        .expect("读得动");
+    let s = session_hits_in(
+        &path,
+        &entry,
+        &Q.to_lowercase(),
+        &opts,
+        &mut SnippetBudget::new(opts.limit),
+        0,
+    )
+    .expect("有命中");
+    check(
+        "全局搜索",
+        s.hits
+            .iter()
+            .filter(|h| !h.uuid.is_empty())
+            .map(|h| (h.uuid.clone(), h.line))
+            .collect(),
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}

@@ -400,10 +400,7 @@ fn index_and_user_input_answers_carry_the_rows_the_fixture_predicts() {
     .unwrap();
     assert_eq!(
         keys(&v),
-        [
-            "body", "classes", "count", "end", "fd", "from", "inputs", "n", "next", "o", "sp", "t",
-            "u"
-        ],
+        ["body", "classes", "count", "end", "fd", "from", "inputs", "n", "next", "o", "sp", "t"],
         "骨架索引的成品形状变了"
     );
     let mut o = 0u64;
@@ -1717,10 +1714,11 @@ fn a_projected_facts_reply_is_the_whole_one_minus_what_it_omits() {
 }
 
 /// 帧面骨架索引按列装回的逐行（判据用：与夹具逐行比）。
-/// 读法同界面 `session-reads.ts::decodeIndex`（那一侧的读者由跨语言金样钉）；`sc` 不上帧面（占位不用它）。
+/// 读法同界面骨架账本收列那一处（`live-window.ts::SkeletonLedger.append`，那一侧的读者由跨语言金样钉）；`sc` 不上帧面（占位不用它），
+/// uuid 只有用户输入那几行带（在 `inputs` 那张小表里）。
 pub(crate) fn rows_of_index(v: &serde_json::Value) -> Vec<serde_json::Value> {
     let col = |k: &str| v[k].as_array().cloned().unwrap_or_default();
-    let (o, n, t, fd, u) = (col("o"), col("n"), col("t"), col("fd"), col("u"));
+    let (o, n, t, fd) = (col("o"), col("n"), col("t"), col("fd"));
     let classes = col("classes");
     let mut at = v["from"].as_u64().unwrap();
     let mut rows: Vec<serde_json::Map<String, serde_json::Value>> = (0
@@ -1734,9 +1732,6 @@ pub(crate) fn rows_of_index(v: &serde_json::Value) -> Vec<serde_json::Value> {
             let k = t[i].as_u64().unwrap() as usize;
             if k > 0 {
                 r.insert("t".into(), classes[k - 1].clone());
-            }
-            if !u[i].is_null() {
-                r.insert("u".into(), u[i].clone());
             }
             if fd[i].as_u64() != Some(0) {
                 r.insert("fd".into(), fd[i].clone());
@@ -1762,7 +1757,7 @@ pub(crate) fn rows_of_index(v: &serde_json::Value) -> Vec<serde_json::Value> {
         x.as_u64() == Some(0)
     });
     sparse("sp", &["v"], &|_, _| false);
-    sparse("inputs", &["x", "ts"], &|k, x| {
+    sparse("inputs", &["u", "x", "ts"], &|k, x| {
         k == "ts" && x.as_str() == Some("")
     });
     rows.into_iter()
@@ -1776,7 +1771,8 @@ pub(crate) fn rows_of_index(v: &serde_json::Value) -> Vec<serde_json::Value> {
 }
 
 /// ★ 骨架索引在帧面上**按列排**：每格一列（偏移是与上一行末尾的差，`t` 是本份 `classes` 里的号，0 ＝ 不进界面）；
-/// 稀疏的几格（正文那五个数 · 来源 · 用户输入的摘要与时刻）各一张小表，`at` 是与上一项的行号差（连着 ＝ 0）。`sc` 不上帧面。
+/// 稀疏的几格（正文那五个数 · 来源 · 用户输入的 uuid · 摘要与时刻）各一张小表，`at` 是与上一项的行号差（连着 ＝ 0）。
+/// `sc` 不上帧面；每行的 uuid 不上帧面（行号就是下标），只有用户输入那几行在小表里带着。
 #[test]
 fn the_index_is_packed_by_column_with_offsets_as_differences() {
     use crate::agents::record::RecordClass;
@@ -1823,10 +1819,9 @@ fn the_index_is_packed_by_column_with_offsets_as_differences() {
             "from": 0, "end": 315, "next": null, "count": 4,
             "classes": ["said", "reply"],
             "o": [0, 0, 6, 0], "n": [100, 194, 10, 5], "t": [1, 2, 0, 1], "fd": [0, 2, 0, 0],
-            "u": ["in-1", "out-1", "m", null],
             "body": {"at": [0], "ch": [14], "cj": [0], "pl": [1], "cb": [0], "cl": [0]},
             "sp": {"at": [3], "v": ["system"]},
-            "inputs": {"at": [0], "x": ["alpha"], "ts": ["t1"]},
+            "inputs": {"at": [0], "u": ["in-1"], "x": ["alpha"], "ts": ["t1"]},
         })
     );
     let mut back: Vec<serde_json::Value> = rows
@@ -1834,6 +1829,9 @@ fn the_index_is_packed_by_column_with_offsets_as_differences() {
         .map(|r| serde_json::to_value(r).unwrap())
         .collect();
     back[3].as_object_mut().unwrap().remove("sc");
+    for r in &mut back[1..3] {
+        r.as_object_mut().unwrap().remove("u");
+    }
     assert_eq!(rows_of_index(&v), back, "按列装回来与原来的逐行不一样");
 }
 

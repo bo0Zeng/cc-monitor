@@ -189,6 +189,8 @@ impl Scan {
             }
             // 一拍也只算一次：骨架索引 · 用户输入 · 轮次 · 事实吃同一拍。
             let beat = v.and_then(|v| crate::agents::beat_of(kind, v));
+            // 这一行的行号（不算一行的那几行与下一行同号，它们解析不出记录、用不上）。
+            let line = self.starts.len() as u64;
             let counted = super::lines::counts(body);
             if counted {
                 self.starts.push(start);
@@ -205,9 +207,10 @@ impl Scan {
             };
             if let Some(mut row) = super::recognize::user_inputs::user_input_given(kind, v, &beat) {
                 row.at = start;
+                row.line = line;
                 self.rest.inputs.push(row);
             }
-            if let Some(row) = self.rest.open.line(start, kind, v, &beat) {
+            if let Some(row) = self.rest.open.line(start, line, kind, v, &beat) {
                 self.rest.turns.push(row);
             }
             if super::recognize::facts::could_matter(kind, body, &self.facts) {

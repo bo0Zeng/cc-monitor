@@ -190,7 +190,7 @@ export function renderContentRecord(
   // 3. 渲染
   // 建卡计数（与收纳计数对照，emitPerfSummary 落盘；jsdom 单测没有 main.ts，防 undefined）
   if (window.__ccmPerf) window.__ccmPerf.recordsRendered = (window.__ccmPerf.recordsRendered ?? 0) + 1;
-  const result = renderMessage(message, ctx);
+  const result = renderMessage(message, ctx, payload.seq);
   const tRender = probe ? performance.now() : 0;
   markToolAnchors(message, ctx); // 在秤 1 的 render 段之外（那一段只夹 renderMessage；秤 2 的 DOM 指纹也只认它的产物）
 

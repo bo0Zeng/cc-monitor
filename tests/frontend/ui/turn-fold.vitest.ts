@@ -22,6 +22,7 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 
 const turn = (uuid: string, at: number, over: Partial<TurnRow> = {}): TurnRow => ({
   at,
+  line: 0,
   uuid,
   start: "2026-10-06T02:01:00Z",
   end: "2026-10-06T02:04:02Z",
@@ -44,10 +45,22 @@ const turn = (uuid: string, at: number, over: Partial<TurnRow> = {}): TurnRow =>
   ...over,
 });
 
+/** 后端给的行号：照 `seqs`（uuid ⇒ 行号）填上每一轮开头与每段两头的行号（判据里写 uuid 好读）。 */
+function lined(seqs: ReadonlyMap<string, number>, turns: TurnRow[]): TurnRow[] {
+  const at = (u: string): number => seqs.get(u) ?? 9_999;
+  return turns.map((t) => ({
+    ...t,
+    line: at(t.uuid),
+    folds: t.folds.map((f) => ({ ...f, afterLine: at(f.after), untilLine: f.until === null ? null : at(f.until) })),
+  }));
+}
+
 /** 一段过程（缺省：跟在 `after` 后面、工具 ×2、收尾了）。 */
 function seg(after: string, over: Partial<FoldSegment> = {}): FoldSegment {
   return {
     after,
+    afterLine: 0,
+    untilLine: null,
     parts: [
       { text: "头", tone: "plain" },
       { text: "工具 ×2", tone: "plain" },
@@ -245,7 +258,7 @@ describe("按段折叠", () => {
     expect(hidden(p3)).toBe(true);
   });
 
-  it("骨架占位按账本（uuid→seq）认：整块落在某一段里 ⇒ 折着就藏（不物化）、后面接着折；里面夹着边界 ⇒ 露着、后面的卡归占位末尾所在的那一段（那一段的 after 还没建 ⇒ 先不画行）；展开 ⇒ 露出并叫骨架物化", async () => {
+  it("骨架占位按后端给的行号认：整块落在某一段里 ⇒ 折着就藏（不物化）、后面接着折；里面夹着边界 ⇒ 露着、后面的卡归占位末尾所在的那一段（那一段的 after 还没建 ⇒ 先不画行）；展开 ⇒ 露出并叫骨架物化", async () => {
     const gapIn = document.createElement("div");
     gapIn.className = "stream-skeleton-gap";
     gapIn.dataset.skeletonLo = "3";
@@ -261,8 +274,8 @@ describe("按段折叠", () => {
     document.body.replaceChildren(content);
     const fill = vi.fn(() => 0);
     const seqs = new Map([["u1", 1], ["e1", 10], ["u2", 20]]);
-    const read = vi.fn(async (): Promise<TurnsResult> => ({ available: true, from: 0, end: 10, turns: [turn("u1", 0, { shown: ["e1"], folds: [seg("u1", { until: "e1" })] }), turn("u2", 5)] }));
-    const fold = new TurnFold(content, content, () => ({ origin: "local" as never, jsonlPath: "/p/s.jsonl" }), read, () => ({ ledger: { uuidToSeq: seqs, endSeq: 40 }, fillVisible: fill, setFolds: vi.fn() }));
+    const read = vi.fn(async (): Promise<TurnsResult> => ({ available: true, from: 0, end: 10, turns: lined(seqs, [turn("u1", 0, { shown: ["e1"], folds: [seg("u1", { until: "e1" })] }), turn("u2", 5)]) }));
+    const fold = new TurnFold(content, content, () => ({ origin: "local" as never, jsonlPath: "/p/s.jsonl" }), read, () => ({ ledger: { base: 0, endSeq: 40 }, fillVisible: fill, setFolds: vi.fn() }));
     await fold.refresh();
     expect([hidden(gapIn), hidden(after)]).toEqual([true, true]);
     expect(gapIn.dataset.procOf).toBe("u1");
@@ -284,9 +297,9 @@ describe("按段折叠", () => {
       available: true,
       from: 0,
       end: 10,
-      turns: [turn("u1", 0, { shown: ["e1"], folds: [seg("u1", { until: "e1" })] }), turn("u2", 5, { folds: [seg("u2", { until: "u3" })] }), turn("u3", 9, { folds: [] })],
+      turns: lined(seqs, [turn("u1", 0, { shown: ["e1"], folds: [seg("u1", { until: "e1" })] }), turn("u2", 5, { folds: [seg("u2", { until: "u3" })] }), turn("u3", 9, { folds: [] })]),
     }));
-    const sk = { ledger: { uuidToSeq: seqs, endSeq: 40 }, fillVisible: vi.fn(() => 0), setFolds };
+    const sk = { ledger: { base: 0, endSeq: 40 }, fillVisible: vi.fn(() => 0), setFolds };
     const fold = new TurnFold(content, content, () => ({ origin: "local" as never, jsonlPath: "/p/s.jsonl" }), read, () => sk);
     await fold.refresh();
     expect(setFolds).toHaveBeenLastCalledWith({ folded: [[2, 10], [13, 30]], lines: [1, 12], linePx: 40 });
@@ -395,8 +408,8 @@ describe("按段折叠", () => {
     document.body.replaceChildren(content);
     const setFolds = vi.fn();
     const seqs = new Map([["u1", 1], ["e1", 10], ["u2", 12]]);
-    const read = vi.fn(async (): Promise<TurnsResult> => ({ available: true, from: 0, end: 10, turns: [turn("u1", 0, { shown: ["e1"] }), turn("u2", 5)] }));
-    const sk = { ledger: { uuidToSeq: seqs, endSeq: 40 }, fillVisible: vi.fn(() => 0), setFolds };
+    const read = vi.fn(async (): Promise<TurnsResult> => ({ available: true, from: 0, end: 10, turns: lined(seqs, [turn("u1", 0, { shown: ["e1"] }), turn("u2", 5)]) }));
+    const sk = { ledger: { base: 0, endSeq: 40 }, fillVisible: vi.fn(() => 0), setFolds };
     const fold = new TurnFold(content, content, () => ({ origin: "local" as never, jsonlPath: "/p/s.jsonl" }), read, () => sk);
     let reads = 0;
     const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
@@ -476,7 +489,7 @@ describe("排队插话落成了人话", () => {
 describe("轮次刻度", () => {
   const box = (top: number, bottom: number) => ({ top, bottom, height: bottom - top }) as DOMRect;
   function railRig(n: number, waiting = false) {
-    const turns = Array.from({ length: n }, (_, i) => turn(`u${i}`, i * 10, { said: `第 ${i} 句`, reply: `回 ${i}` }));
+    const turns = Array.from({ length: n }, (_, i) => turn(`u${i}`, i * 10, { line: i * 3, said: `第 ${i} 句`, reply: `回 ${i}` }));
     const content = document.createElement("div");
     const heads = turns.map((t, i) => {
       const el = card("card-user", t.uuid);
@@ -513,11 +526,11 @@ describe("轮次刻度", () => {
   it("点一格 ⇒ 跳到那一轮开头；Alt+↑↓ 上 / 下一轮", () => {
     const { rail, jump, ticks } = railRig(5);
     ticks()[4].click();
-    expect(jump).toHaveBeenLastCalledWith("u4");
+    expect(jump).toHaveBeenLastCalledWith(expect.objectContaining({ uuid: "u4", line: 12 }));
     rail.step(1);
-    expect(jump).toHaveBeenLastCalledWith("u3");
+    expect(jump).toHaveBeenLastCalledWith(expect.objectContaining({ uuid: "u3", line: 9 }));
     rail.step(-1);
-    expect(jump).toHaveBeenLastCalledWith("u1");
+    expect(jump).toHaveBeenLastCalledWith(expect.objectContaining({ uuid: "u1", line: 3 }));
   });
 
   it("正文列 ≤ 900px 不出；没有轮不出", () => {

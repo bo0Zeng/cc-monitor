@@ -16,7 +16,7 @@ import type { OutlineSource } from "./views/outline-source";
 import type { TurnFold } from "./turn-fold";
 import type { TurnRail } from "./turn-rail";
 import type { FactsSource } from "./views/facts-source";
-import type { ToolResultBlock, ToolUseSeen } from "./cards/index";
+import type { RecordAt, ToolResultBlock, ToolUseSeen } from "./cards/index";
 import type { Origin } from "./ipc/origin";
 import type { SessionFace } from "./generated/SessionFace";
 import type { FactsLine } from "./generated/FactsLine";
@@ -155,8 +155,8 @@ export interface Tab {
     string,
     { block: ToolResultBlock; element: HTMLElement }
   >;
-  /** 出口省掉的正文展开那一下按记录 id 取回那一行全文（`RenderContext.fullRecord`；按这个 tab 的骨架取）。 */
-  fullRecord: (id: string) => Promise<LineRecord | null>;
+  /** 出口省掉的正文展开那一下取回那一行全文（`RenderContext.fullRecord`；按这个 tab 的骨架取）。 */
+  fullRecord: (from: RecordAt) => Promise<LineRecord | null>;
   /**
    * 按 seq 去重集合。一个 Tab == 一个 jsonl == 一个 seq 空间（seq ＝ 当前文件里的行号）：重连后后端从 0 重发 → 命中即丢，Tab 内容不翻倍。
    * 这是入口唯一一道去重：文件从头重读时后端先出声、行号从 0 重数，这个 tab 整份重来（`TabStreamView.restartContent`，新的一代配新的集合；INVARIANTS § 25）。

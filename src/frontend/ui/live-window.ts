@@ -8,6 +8,7 @@
  * 「哪些 seq 还没物化」以骨架的占位集（`SkeletonView.isPending`）为准，本类只是「还没建卡的 payload 放哪」的账本。
  */
 import type { JsonlLinePayload } from "./events";
+import type { HistoryIndex } from "./generated/HistoryIndex";
 import {
   estimateFromFacts,
   skeletonKind,
@@ -359,8 +360,49 @@ export class TailWindow {
 
 // ═══════════════════════════════════════════════════════════════════════
 // 〔骨架〕**骨架账本**：拿到后端索引就知道「一共多少条、每条大概多高、
-// uuid 在哪一条」—— 不持有任何正文。
+// 每条在记录里的哪一段字节」—— 不持有任何正文。
 // ═══════════════════════════════════════════════════════════════════════
+
+type Typed = Float64Array | Uint32Array | Uint8Array;
+
+/** 一列只往后加的数（翻倍扩容）：骨架账本按列存，几十万行不建几十万个小对象。 */
+class Column<T extends Typed> {
+  private data: T;
+  length = 0;
+
+  constructor(private readonly make: (n: number) => T) {
+    this.data = make(64);
+  }
+
+  push(v: number): void {
+    if (this.length === this.data.length) {
+      const next = this.make(this.data.length * 2);
+      next.set(this.data);
+      this.data = next;
+    }
+    this.data[this.length++] = v;
+  }
+
+  at(i: number): number {
+    return this.data[i];
+  }
+
+  /** 升序列里 `< v` 的有几个（稀疏表按行号找项用）。 */
+  lowerBound(v: number): number {
+    let l = 0;
+    let r = this.length;
+    while (l < r) {
+      const m = (l + r) >>> 1;
+      if (this.data[m] < v) l = m + 1;
+      else r = m;
+    }
+    return l;
+  }
+}
+
+const f64 = (n: number): Float64Array => new Float64Array(n);
+const u32 = (n: number): Uint32Array => new Uint32Array(n);
+const u8 = (n: number): Uint8Array => new Uint8Array(n);
 
 /**
  * 骨架账本（纯数据，零 DOM）。
@@ -372,7 +414,13 @@ export class TailWindow {
  * 本账本回答三件 `TailWindow` 答不了的事：
  * 1. **总条数与总高**（`endSeq` / `heightOf`）—— 画骨架的总高与滚动条；
  * 2. **某个像素落在哪一条**（`seqAt`）—— 只物化可见区用；
- * 3. **某个 uuid 是第几条**（`uuidToSeq`）—— 跳转用。
+ * 3. **某一条在记录里的哪一段字节**（`factsOf`）—— 按偏移取正文用。
+ * 跳转的目标由后端直接给行号（轮次 · 过程段 · 命中 · 大纲），本账本不认 uuid。
+ *
+ * # 存法
+ *
+ * 按列收后端索引（帧面 `history-index` 本来按列排）：每行都有的几格各一列定长数组，稀疏的几格（正文那五个数 · 来源）
+ * 各一张按行号升序的小表；`factsOf(seq)` 现拼一行的料。
  *
  * # 坐标
  *
@@ -395,7 +443,19 @@ export interface TurnFolds {
 
 export class SkeletonLedger {
   readonly base: number;
-  private rows: SkeletonFacts[] = [];
+  /** 每行：起点字节 · 字节长 · 记录类（`classes` 里的号，从 1 起；0 ＝ 不进界面）· 折叠单元数。 */
+  private off = new Column(f64);
+  private len = new Column(u32);
+  private cls = new Column(u8);
+  private fd = new Column(u32);
+  /** 本账本里出现过的记录类（各页的 `classes` 并成一张）。 */
+  private classes: string[] = [];
+  /** 正文那五个数：哪几行（下标，升序）＋ 五列。 */
+  private bodyAt = new Column(u32);
+  private body = [new Column(u32), new Column(u32), new Column(u32), new Column(u32), new Column(u32)] as const;
+  /** 来源：哪几行（下标，升序）＋ 那个词。 */
+  private spAt = new Column(u32);
+  private spV: string[] = [];
   /** prefix[i] = seq [base, base+i) 的估高之和；长度 = 行数 + 1 */
   private prefix: number[] = [0];
   private kinds: SkeletonKind[] = [];
@@ -409,8 +469,6 @@ export class SkeletonLedger {
   /** 〔大折叠〕带过程行的轮的开头（seq）：那一行多算一条过程行的高（`linePx`）。 */
   private lines = new Set<number>();
   private linePx = 0;
-  /** uuid → seq（无 uuid 的行不占） */
-  readonly uuidToSeq = new Map<string, number>();
   /**
    * 〔列宽变了、还没按新列宽估的行〕视口附近之外的那两截：`[0, staleBelow)` 与 `[staleAbove, staleEnd)`（下标），
    * 照旧按上一个列宽的估值占着；[`settle`] 一段一段补估（离视口近的先）。
@@ -421,24 +479,53 @@ export class SkeletonLedger {
   /** 到此刻按第一级估过几行（判据：改列宽当场只估视口附近那几行）。 */
   estimated = 0;
 
-  constructor(base: number, rows: SkeletonFacts[], colW?: number) {
+  constructor(base: number, pages: readonly HistoryIndex[], colW?: number) {
     this.base = base;
     this.colW = colW;
-    this.append(rows);
+    this.append(pages);
   }
 
-  /** 续传：把 `[endSeq, …)` 的新行接到尾巴上（索引的 `from` 必须是上次的 `end`）。 */
-  append(rows: SkeletonFacts[]): void {
-    for (const r of rows) {
-      const seq = this.base + this.rows.length;
-      const kind = skeletonKind(r);
-      const h = estimateFromFacts(r, this.colW);
+  /** 续传：把 `[endSeq, …)` 的新行接到尾巴上（索引的 `from` 必须是上次的 `end`；几页按序）。 */
+  append(pages: readonly HistoryIndex[]): void {
+    for (const page of pages) this.appendPage(page);
+  }
+
+  private appendPage(v: HistoryIndex): void {
+    const first = this.off.length;
+    const cls = v.classes.map((c) => {
+      const k = this.classes.indexOf(c);
+      return (k < 0 ? this.classes.push(c) : k + 1);
+    });
+    let at = v.from;
+    for (let i = 0; i < v.count; i++) {
+      at += v.o[i];
+      this.off.push(at);
+      this.len.push(v.n[i]);
+      at += v.n[i];
+      this.cls.push(v.t[i] > 0 ? cls[v.t[i] - 1] : 0);
+      this.fd.push(v.fd[i]);
+    }
+    let i = first - 1;
+    v.body.at.forEach((g, j) => {
+      i += g + 1;
+      this.bodyAt.push(i);
+      const cols = [v.body.ch, v.body.cj, v.body.pl, v.body.cb, v.body.cl];
+      this.body.forEach((c, k) => c.push(cols[k][j]));
+    });
+    i = first - 1;
+    v.sp.at.forEach((g, j) => {
+      i += g + 1;
+      this.spAt.push(i);
+      this.spV.push(v.sp.v[j]);
+    });
+    for (let k = first; k < this.off.length; k++) {
+      const seq = this.base + k;
+      const f = this.factsOf(seq)!;
+      const h = estimateFromFacts(f, this.colW);
       this.estimated++;
-      this.rows.push(r);
-      this.kinds.push(kind);
+      this.kinds.push(skeletonKind(f));
       this.est.push(h);
       this.prefix.push(this.prefix[this.prefix.length - 1] + this.rowHeight(seq, h));
-      if (r.u) this.uuidToSeq.set(r.u, seq);
     }
   }
 
@@ -452,7 +539,7 @@ export class SkeletonLedger {
     const redo = [...this.refined.keys()];
     this.colW = colW;
     this.refined.clear();
-    const n = this.rows.length;
+    const n = this.off.length;
     const lo = near ? this.clampIdx(near[0]) : 0;
     const hi = near ? Math.max(lo, this.clampIdx(near[1])) : n;
     for (let i = lo; i < hi; i++) this.reestimate(i);
@@ -491,7 +578,7 @@ export class SkeletonLedger {
 
   /** 一行按当前列宽重估第一级；回：变没变。 */
   private reestimate(i: number): boolean {
-    const h = estimateFromFacts(this.rows[i], this.colW);
+    const h = estimateFromFacts(this.factsOf(this.base + i)!, this.colW);
     this.estimated++;
     if (this.est[i] === h) return false;
     this.est[i] = h;
@@ -528,7 +615,7 @@ export class SkeletonLedger {
     let lowest = Infinity;
     for (const [seq, px] of entries) {
       const i = seq - this.base;
-      if (i < 0 || i >= this.rows.length || !(px >= 0)) continue;
+      if (i < 0 || i >= this.off.length || !(px >= 0)) continue;
       if (measured ? this.isFolded(seq) : this.kinds[i] === "none") continue;
       const h = measured && this.lines.has(seq) ? Math.max(0, px - this.linePx) : px;
       if (this.refined.get(seq) === h) continue;
@@ -590,19 +677,19 @@ export class SkeletonLedger {
   }
 
   private rebuildFrom(lowest: number): void {
-    for (let i = lowest; i < this.rows.length; i++) {
+    for (let i = lowest; i < this.off.length; i++) {
       this.prefix[i + 1] = this.prefix[i] + this.rowHeight(this.base + i, this.est[i]);
     }
   }
 
   /** 行数 */
   get count(): number {
-    return this.rows.length;
+    return this.off.length;
   }
 
   /** 最后一行之后的 seq（半开上界） */
   get endSeq(): number {
-    return this.base + this.rows.length;
+    return this.base + this.off.length;
   }
 
   /** 全会话估高 */
@@ -610,9 +697,27 @@ export class SkeletonLedger {
     return this.prefix[this.prefix.length - 1];
   }
 
-  /** seq 那一行的料（越界 ⇒ undefined） */
+  /** seq 那一行的料（越界 ⇒ undefined；现拼，不留）。 */
   factsOf(seq: number): SkeletonFacts | undefined {
-    return this.rows[seq - this.base];
+    const i = seq - this.base;
+    if (!(i >= 0 && i < this.off.length)) return undefined;
+    const f: SkeletonFacts = { o: this.off.at(i), n: this.len.at(i) };
+    const c = this.cls.at(i);
+    if (c > 0) f.t = this.classes[c - 1] as SkeletonFacts["t"];
+    const fd = this.fd.at(i);
+    if (fd > 0) f.fd = fd;
+    const b = this.bodyAt.lowerBound(i);
+    if (b < this.bodyAt.length && this.bodyAt.at(b) === i) {
+      const [ch, cj, pl, cb, cl] = this.body.map((col) => col.at(b));
+      if (ch > 0) f.ch = ch;
+      if (cj > 0) f.cj = cj;
+      if (pl > 0) f.pl = pl;
+      if (cb > 0) f.cb = cb;
+      if (cl > 0) f.cl = cl;
+    }
+    const s = this.spAt.lowerBound(i);
+    if (s < this.spAt.length && this.spAt.at(s) === i) f.sp = this.spV[s];
+    return f;
   }
 
   /** seq 区间 `[lo, hi)` 的估高（越界部分按 0 算） */
@@ -644,6 +749,6 @@ export class SkeletonLedger {
   }
 
   private clampIdx(seq: number): number {
-    return Math.min(Math.max(seq - this.base, 0), this.rows.length);
+    return Math.min(Math.max(seq - this.base, 0), this.off.length);
   }
 }

@@ -18,6 +18,7 @@ import { SKELETON_GAP_CLASS, SkeletonView, ledgerFromIndex } from "../../../src/
 import { MessageStream } from "../../../src/frontend/ui/stream";
 import { nonEmpty } from "../../test-support/non-empty";
 import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
+import { indexPages } from "../../test-support/pack-index";
 
 // 列宽那一组要真 `TabStreamView`（它只在被问时才碰到 IPC；这里一次都不问）
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(null) }));
@@ -66,7 +67,7 @@ function installLayout(scrollEl: HTMLElement, content: HTMLElement): { scrollTop
   return state;
 }
 
-const asst = (u: string): SkeletonFacts => ({ o: 0, n: 1, t: "reply", u, ch: 200, pl: 2 });
+const asst = (): SkeletonFacts => ({ o: 0, n: 1, t: "reply", ch: 200, pl: 2 });
 
 /** 宿主：建卡 = 往 timeline 里插一个带 `data-h`（真高）的 div；记下每次被要了哪一段。 */
 function makeHost(timeline: RecordTimeline, realH: (seq: number) => number, builds = (_s: number) => true) {
@@ -119,7 +120,7 @@ function setup(total: number, renderedFrom: number, realH = (_s: number) => 60, 
   const layout = installLayout(scrollEl, content);
   const ledger = new SkeletonLedger(
     0,
-    rows ?? Array.from({ length: total }, (_, i) => asst(`u${i}`)),
+    indexPages(rows ?? Array.from({ length: total }, () => asst())),
   );
   const host = makeHost(timeline, realH, builds);
   // 已渲染的尾巴
@@ -310,17 +311,16 @@ describe("🔴 视口外的卡交回占位", () => {
   it("只在轮与回答的开头切：工具调用与它的结果、合进左邻居的那几行不会被切开", () => {
     // 一轮六行：人说 · 回答（带正文）· 调用 · 结果（注入进调用那一行，不建卡）· 调用 · 结果
     const shape = (q: number): SkeletonFacts => {
-      const u = `u${q}`;
       switch (q % 6) {
         case 0:
-          return { o: 0, n: 1, t: "said", u, ch: 80, pl: 1 };
+          return { o: 0, n: 1, t: "said", ch: 80, pl: 1 };
         case 1:
-          return { o: 0, n: 1, t: "reply", u, ch: 200, pl: 2 };
+          return { o: 0, n: 1, t: "reply", ch: 200, pl: 2 };
         case 2:
         case 4:
-          return { o: 0, n: 1, t: "reply", u, fd: 1 };
+          return { o: 0, n: 1, t: "reply", fd: 1 };
         default:
-          return { o: 0, n: 1, t: "said", u, fd: 1 };
+          return { o: 0, n: 1, t: "said", fd: 1 };
       }
     };
     const rows = Array.from({ length: 1200 }, (_, q) => shape(q));
@@ -464,8 +464,8 @@ describe("大折叠：折着的过程不物化", () => {
 
   it("只剩不占高的行（工具结果注入进调用那一行那种）的占位落在视口里 ⇒ 照样物化（不因高 0 永远留着）；扣掉折着的那几段", () => {
     const s = setup(30, 20);
-    const rows = Array.from({ length: 30 }, (_, i): SkeletonFacts => (i === 11 ? { o: 0, n: 1, t: "said", fd: 1 } : i === 10 ? { o: 0, n: 1, t: "reply", fd: 1 } : asst(`u${i}`)));
-    const ledger = new SkeletonLedger(0, rows);
+    const rows = Array.from({ length: 30 }, (_, i): SkeletonFacts => (i === 11 ? { o: 0, n: 1, t: "said", fd: 1 } : i === 10 ? { o: 0, n: 1, t: "reply", fd: 1 } : asst()));
+    const ledger = new SkeletonLedger(0, indexPages(rows));
     const view = new SkeletonView(ledger, s.scrollEl, s.timeline, s.host);
     view.attach(20);
     expect(ledger.heightOf(11, 12)).toBe(0);
@@ -504,11 +504,11 @@ describe("跳转与续传", () => {
   it("续传：账本 append 之后 refreshHeights 把占位高补上", () => {
     const s = setup(10, 10);
     // 账本只有前 5 行，已渲染从 10 起 ⇒ [5,10) 的高先是 0
-    const ledger = new SkeletonLedger(0, Array.from({ length: 5 }, (_, i) => asst(`a${i}`)));
+    const ledger = new SkeletonLedger(0, indexPages(Array.from({ length: 5 }, () => asst())));
     const view = new SkeletonView(ledger, s.scrollEl, s.timeline, s.host);
     const h0 = view.attach(10);
     expect(h0).toBeCloseTo(ledger.heightOf(0, 5));
-    ledger.append(Array.from({ length: 5 }, (_, i) => asst(`b${i}`)));
+    ledger.append(indexPages(Array.from({ length: 5 }, () => asst())));
     view.refreshHeights();
     expect(view.pendingHeight).toBeCloseTo(ledger.heightOf(0, 10));
     const gap = s.content.querySelector(`.${SKELETON_GAP_CLASS}`) as HTMLElement;
@@ -516,9 +516,9 @@ describe("跳转与续传", () => {
   });
 
   it("ledgerFromIndex：available=false ⇒ 带原因退回，不建账本", () => {
-    const r = ledgerFromIndex({ available: false, reason: "老后端", end: 0, rows: [] });
+    const r = ledgerFromIndex({ available: false, reason: "老后端", end: 0, pages: [] });
     expect(r).toEqual({ ok: false, reason: "老后端" });
-    const ok = ledgerFromIndex({ available: true, end: 9, rows: [asst("x")] });
+    const ok = ledgerFromIndex({ available: true, end: 9, pages: indexPages([asst()]) });
     expect(ok.ok && ok.ledger.count === 1 && ok.end === 9).toBe(true);
   });
 });
@@ -561,9 +561,9 @@ describe("〔RENDER2〕第二级估高", () => {
     let x = 7;
     const rnd = (n: number): number => ((x = (x * 1103515245 + 12345) % 2147483648) % n);
     const rows: SkeletonFacts[] = Array.from({ length: 400 }, (_, i) =>
-      i % 5 === 0 ? { o: i, n: 1 } : { o: i, n: 1, t: "reply", u: `r${i}`, ch: 30 + rnd(900), pl: 1 + rnd(4) },
+      i % 5 === 0 ? { o: i, n: 1 } : { o: i, n: 1, t: "reply", ch: 30 + rnd(900), pl: 1 + rnd(4) },
     );
-    const ledger = new SkeletonLedger(0, rows);
+    const ledger = new SkeletonLedger(0, indexPages(rows));
     const first = Array.from({ length: 400 }, (_, i) => ledger.heightOf(i, i + 1));
     const want = [...first];
     for (let k = 0; k < 60; k++) {
@@ -633,7 +633,7 @@ describe("〔RENDER2〕第二级与第一级同一套外框常数", () => {
     const cases: Array<[unknown, SkeletonFacts]> = [
       [
         { agent: "claude", t: "said", id: "a", who: { speaker: { kind: "human" }, text: "第一行abc\nsecond line" }, blocks: [{ type: "text", text: "第一行abc\nsecond line" }] },
-        { o: 0, n: 1, t: "said", u: "a", ch: "第一行abc".length + "second line".length, cj: 3, pl: 2 },
+        { o: 0, n: 1, t: "said", ch: "第一行abc".length + "second line".length, cj: 3, pl: 2 },
       ],
       [
         {
@@ -646,7 +646,7 @@ describe("〔RENDER2〕第二级与第一级同一套外框常数", () => {
           ],
           autoReply: false,
         },
-        { o: 0, n: 1, t: "reply", u: "b", ch: "para one".length + "para two".length, pl: 2, cb: 1, cl: 2, fd: 1 },
+        { o: 0, n: 1, t: "reply", ch: "para one".length + "para two".length, pl: 2, cb: 1, cl: 2, fd: 1 },
       ],
     ];
     for (const [rec, facts] of cases) {
@@ -769,7 +769,7 @@ describe("〔P3〕列宽变了", () => {
     const { TabStore } = await import("../../../src/frontend/ui/tab-store");
     vi.mocked(invoke).mockClear();
     // 第 i 行在文件里占 [10i, 10i + 10)；第 7 行不建卡（没有正文）
-    const s = setup(20, 10, () => 60, Array.from({ length: 20 }, (_, i) => (i === 7 ? { o: i * 10, n: 10, t: "reply", u: `u${i}` } : { ...asst(`u${i}`), o: i * 10, n: 10 })));
+    const s = setup(20, 10, () => 60, Array.from({ length: 20 }, (_, i) => (i === 7 ? { o: i * 10, n: 10, t: "reply" } : { ...asst(), o: i * 10, n: 10 })));
     s.view.attach(10);
     vi.spyOn(s.view, "nearbyUnrefined").mockReturnValue([5, 6, 7, 8, 9]);
     const releases: Array<() => void> = [];

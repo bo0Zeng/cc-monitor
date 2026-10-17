@@ -19,4 +19,8 @@ tool?: string,
 /**
  * 这条记录那一行在记录文件里的起点（字节；交给 `history-read` 的 `offset` 就从它读起）。
  */
-offset: number, };
+offset: number, 
+/**
+ * 这条记录的行号（与实时行的 `seq` 同一个空间；打开查看器后按它物化、按 `uuid` 找卡）。
+ */
+line: number, };
