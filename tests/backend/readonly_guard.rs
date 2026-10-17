@@ -654,22 +654,23 @@ mod tests {
         "RoAsyncFile(tokio::fs::File)",
     ];
     /// `platform/fs/face.rs`（文件管理面 `Face` · 分叉那只手 `NewFile`）点名的标准库条目：写面动词闭集
-    /// （`O_EXCL` 新建 · 覆盖写 · 整份写〔Windows〕· 建目录 · 改名 · 删文件 · 删空目录 · 改权限 · 建链接）与开出来那一份的类型。
+    /// （unix 上是 `*at` 一族，经 `libc`；Windows 臂按路径：新建 · 就地覆盖写 · 建目录 · 改名 · 删文件 · 删空目录 · 改权限）、
+    /// unix 上从描述符包成文件的那一下、读权限位的那一个特征，与开出来那一份的类型。
     /// 谁能调由类型管：方法都在 `Face` / `NewFile` 上（写方法只收 `Resolved`），两者只有登记的那几处造（[`ISSUERS`]）。
     const FACE_NAMES: &[&str] = &[
         "std::fs::OpenOptions {",
         "std::fs::OpenOptions::new()",
-        "std::os::unix::fs::OpenOptionsExt",
-        "std::fs::write(",
         "std::fs::create_dir(",
         "std::fs::rename(",
         "std::fs::remove_file(",
         "std::fs::remove_dir(",
         "std::fs::set_permissions(",
-        "std::os::unix::fs::symlink(",
         "FaceFile(std::fs::File)",
         "FaceAsyncFile(tokio::fs::File)",
         "tokio::fs::File::from_std(",
+        "io::Result<std::fs::File>",
+        "std::fs::File::from(",
+        "std::os::unix::fs::PermissionsExt",
     ];
     /// `platform/fs/own.rs`（自家状态写句柄 `Own`）点名的标准库条目：它的写只有这几样（删文件 · 改名 · 带权限位建一层目录）；
     /// 原子写的旁名经 `creds_core::perm::create_private` 建（依赖签字那一侧管）。谁能调由类型管：方法都在 `Own` 上，`Own` 只在启动时造。
@@ -751,11 +752,10 @@ mod tests {
             "NewFile::issue",
             &["faces/fork_face.rs", "faces/session_new_face.rs"],
         ),
-        // 「已过路径解析」只有路径解析本身担保得了：根底下那两道（`common/root_path.rs`，文件管理写面与传输台共用）＋ 写面自己那几道。
-        (
-            "Resolved::vouch",
-            &["common/root_path.rs", "control/files_write.rs"],
-        ),
+        // 「已过路径解析」只有路径解析本身造得出：从根句柄逐段开（`common/root_path.rs`，文件管理写面与传输台共用）；
+        // 按路径担保的那一形只给删会话那一道（写面）。
+        ("Resolved::walk", &["common/root_path.rs"]),
+        ("Resolved::vouch", &["control/files_write.rs"]),
     ];
 
     #[test]

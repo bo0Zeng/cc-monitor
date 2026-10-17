@@ -470,10 +470,10 @@ pub fn cut_line(p: &Plan, t: &Tick) -> String {
     )
 }
 
-/// 同名那一行的说明：`2.1 MB · 10-12 14:02 → 已有 1.8 MB · 10-01 09:10`；目录同名 ⇒ `目录不合并 · 跳过或保留两份`。
+/// 同名那一行的说明：`2.1 MB · 10-12 14:02 → 已有 1.8 MB · 10-01 09:10`；不给覆盖（目录不合并）⇒ `目录不合并 · 跳过或保留两份`。
 /// 大小 · 时刻照抄后端写好的字（按看的那一台的钟），不换算。
 pub fn conflict_meta(c: &Conflict) -> String {
-    if c.dir_into {
+    if !c.answers.contains(&Decide::Overwrite) {
         return copy_text("rsFilewinBatch.ask.dirNoMerge", &[]);
     }
     let side = |size: &Option<String>, mtime: &Option<String>| {

@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.ui.files
 
+import com.ccmonitor.mobile.core.claude.link.BatchEvent
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.FilesCommitUpload
 import com.ccmonitor.mobile.core.claude.link.FilesCreate
@@ -13,7 +14,6 @@ import com.ccmonitor.mobile.core.claude.link.FilesWriteText
 import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.Transfer
-import com.ccmonitor.mobile.core.claude.link.wire.Conflict
 import com.ccmonitor.mobile.core.claude.link.wire.FileKind
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.link.Problem
@@ -114,6 +114,13 @@ class FileOps(
         mode: String,
     ): Long = feed.batch(mapOf("chmod" to mapOf("root" to dir.wire, "items" to entries.map { mapOf("rel" to it.rel.wire, "name" to it.name) }, "mode" to mode)))
 
+    /** 把当前目录里这几项复制到 [to]（同一台；公共根 · 入参由核心拼，同名那台问）：同 [delete]。 */
+    suspend fun copy(
+        dir: RemotePath,
+        entries: List<FilesLs.Entry>,
+        to: RemotePath,
+    ): Long = feed.batch(mapOf("copy" to mapOf("from" to dir.wire, "names" to entries.map { it.rel.wire }, "to" to to.wire)))
+
     /** 那一组没成的那几项再做一次（[undo] ⇒ 撤销那一组改的权限）：核心照它记着的那一组另起。 */
     suspend fun again(
         id: Long,
@@ -129,7 +136,8 @@ class FileOps(
             val staged: FilesCommitUpload.Staged,
             /** 那台写的那一句（「同名 1 项」）。 */
             val said: String,
-            val conflicts: List<Conflict>,
+            /** 抽屉那几行（核心写好的）。 */
+            val rows: List<BatchEvent.Clash>,
         ) : Upload
     }
 
@@ -159,8 +167,8 @@ class FileOps(
     ): Result<Upload> {
         val r = feed.call(FilesCommitUpload.COMMAND, FilesCommitUpload.args(dir, name, staged, onExists), CHUNK_MS)
         val clash = (r as? Reply.Failed)?.failure?.takeIf { it.code == EXISTS }
-        val conflicts = clash?.let { FilesCommitUpload.conflictsOf(it.data) }
-        if (clash != null && conflicts != null) return Result.success(Upload.Clash(name, staged, clash.message, conflicts))
+        val rows = clash?.let { feed.clashes(it.data) }.orEmpty()
+        if (clash != null && rows.isNotEmpty()) return Result.success(Upload.Clash(name, staged, clash.message, rows))
         return when (r) {
             is Reply.Ok -> Result.success(Upload.Done)
             else -> Result.failure(Failed(r.problem(machine(), FilesCommitUpload.COMMAND) ?: Problem("", "")))

@@ -3,6 +3,7 @@ package com.ccmonitor.mobile.core.claude.link
 /**
  * 一组一条命令走到哪（核心交的 `batch` 那一行；字全由核心写好，这里不拼一个字）。
  * [phase]：`running`（[current] 手上那一项 · [frac] 几成）· `asking`（[conflicts] 同名那几项）· `cut`（[line] 断开那一行）·
+ * `asking` 时 [go] 是逐项选完那一颗的字（那个动作）。
  * `ended`（[said] 结局句 · [failed] 没成的那几行（[failedTitle] 那一屏的标题）· [details] 复制详情 · [retry] / [undo] 给不给）· `failed`（[said] · [details]）· `dropped`（取消了）。
  */
 data class BatchEvent(
@@ -20,15 +21,26 @@ data class BatchEvent(
     val retry: Boolean = false,
     val undo: Boolean = false,
     val conflicts: List<Clash> = emptyList(),
+    val go: String? = null,
 ) {
-    /** 同名的一项：名字 · 那一行的说明（核心写好）· 是不是目录 · 目录撞目录（不合并，覆盖灰）。 */
+    /** 同名的一项：键 · 名字 · 那一行的说明（核心写好）· 这一项能怎么答（那台给的：`overwrite` · `skip` · `keep_both`）。 */
     data class Clash(
         val key: String,
         val name: String,
         val meta: String,
-        val dir: Boolean,
-        val dirInto: Boolean,
-    )
+        val answers: List<String>,
+    ) {
+        companion object {
+            /** 核心那一行 ⇒ 一项；认不出 ⇒ `null`。 */
+            fun of(c: Map<String, Any?>): Clash? =
+                Clash(
+                    key = c.str("key") ?: return null,
+                    name = c.str("name") ?: return null,
+                    meta = c.str("meta").orEmpty(),
+                    answers = c.strs("answers").orEmpty(),
+                )
+        }
+    }
 
     /** 收场了（结局 · 没成 · 取消）。 */
     val over: Boolean get() = phase == ENDED || phase == FAILED || phase == DROPPED
@@ -56,16 +68,8 @@ data class BatchEvent(
                 details = m.str("details"),
                 retry = m.bool("retry") == true,
                 undo = m.bool("undo") == true,
-                conflicts =
-                    m.objs("conflicts").orEmpty().map { c ->
-                        Clash(
-                            key = c.str("key") ?: return null,
-                            name = c.str("name") ?: return null,
-                            meta = c.str("meta").orEmpty(),
-                            dir = c.bool("dir") == true,
-                            dirInto = c.bool("dir_into") == true,
-                        )
-                    },
+                conflicts = m.objs("conflicts").orEmpty().map { Clash.of(it) ?: return null },
+                go = m.str("go"),
             )
     }
 }

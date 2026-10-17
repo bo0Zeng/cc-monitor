@@ -90,6 +90,9 @@ object Core {
         rows: String,
     ): String
 
+    /** 同名清单（码 `exists` 的 `data`）⇒ 抽屉那几行 `[{key, name, meta, answers}]`。 */
+    external fun clashRows(data: String): String
+
     /** 开一条链路，回编号；请求读不动 ⇒ 0。 */
     external fun open(request: String): Long
 

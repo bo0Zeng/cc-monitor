@@ -1,7 +1,5 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.Conflict
-import com.ccmonitor.mobile.core.claude.link.wire.Conflicts
 import com.ccmonitor.mobile.core.claude.link.wire.FileKind
 import com.ccmonitor.mobile.core.claude.link.wire.FilesPathReply
 import com.ccmonitor.mobile.core.claude.link.wire.LsEntry
@@ -294,9 +292,6 @@ object FilesRename {
 object FilesCommitUpload {
     const val COMMAND: String = "files-commit-upload"
 
-    /** 上传那一件撞了同名能怎么答（`skip` 那台不收：只有一件，不放就不提交）。 */
-    val ANSWERS: List<String> = listOf("overwrite", "keep_both")
-
     fun args(
         dir: RemotePath,
         name: String,
@@ -328,7 +323,4 @@ object FilesCommitUpload {
                 }
         }
     }
-
-    /** 码 `exists` 的 `data` ⇒ 同名清单；解不出 ⇒ `null`。 */
-    fun conflictsOf(data: Any?): List<Conflict>? = Wire.bind<Conflicts>(data)?.conflicts
 }

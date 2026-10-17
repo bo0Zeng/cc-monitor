@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.ui.files
 
+import com.ccmonitor.mobile.core.claude.link.BatchEvent
 import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.FilesLs
 import com.ccmonitor.mobile.core.claude.link.RemotePath
@@ -44,7 +45,7 @@ class FileOpsTest {
     @Test
     fun aClashComesBackAsTheBackendsListAndAnsweringResendsTheSameStagedCopy() =
         runTest {
-            val conflict = mapOf("key" to "0", "name" to "up.bin", "kind" to "file", "size" to 9.0, "there" to "file", "there_size" to 3.0, "there_size_text" to "3 字节", "there_mtime_text" to "14:02", "dir_into" to false)
+            val conflict = mapOf("key" to "0", "name" to "up.bin", "kind" to "file", "size" to 9.0, "there" to "file", "there_size" to 3.0, "there_size_text" to "3 字节", "there_mtime_text" to "14:02", "answers" to listOf("overwrite", "keep_both"))
             val link =
                 FakeCoreLink().apply {
                     transferred = { Reply.Ok(staged) }
@@ -59,7 +60,7 @@ class FileOpsTest {
             val ops = FileOps(link) { "box" }
             val c = ops.upload(dir, "up.bin", { 17 }) { _, _ -> }.getOrThrow() as FileOps.Upload.Clash
             assertEquals("同名 1 项", c.said)
-            assertEquals(listOf(Triple("3 字节", "14:02", false)), c.conflicts.map { Triple(it.thereSizeText, it.thereMtimeText, it.dirInto) })
+            assertEquals(listOf(BatchEvent.Clash("0", "up.bin", "3 字节", listOf("overwrite", "keep_both"))), c.rows)
             assertEquals(FileOps.Upload.Done, ops.commit(dir, c.name, c.staged, "keep_both").getOrThrow())
             assertEquals("块不重送", 1, link.transfers.size)
             val again = link.calls("files-commit-upload").last()!!
@@ -103,11 +104,13 @@ class FileOpsTest {
             assertEquals(1L, ops.delete(dir, listOf(d, f)))
             assertEquals(2L, ops.chmod(dir, listOf(f), "644"))
             assertEquals(3L, ops.again(1L, undo = true))
+            assertEquals(4L, ops.copy(dir, listOf(d, f), RemotePath.of("/w/sub")))
             assertEquals(
                 listOf(
                     mapOf("delete" to mapOf("root" to "/w", "items" to listOf(mapOf("rel" to "d", "name" to "d", "dir" to true), mapOf("rel" to "f", "name" to "f", "dir" to false)))),
                     mapOf("chmod" to mapOf("root" to "/w", "items" to listOf(mapOf("rel" to "f", "name" to "f")), "mode" to "644")),
                     mapOf("undo" to 1L),
+                    mapOf("copy" to mapOf("from" to "/w", "names" to listOf("d", "f"), "to" to "/w/sub")),
                 ),
                 link.wants,
             )

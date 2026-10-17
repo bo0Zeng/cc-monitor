@@ -844,25 +844,6 @@ data class ReadTextReply(
     val sha256: String,
 )
 
-// ── 上传提交撞了同名（码 `exists` 的 `data`）：要放过去的 → 已有的。 ──
-
-@WireOf("Conflicts")
-@JsonClass(generateAdapter = true)
-data class Conflicts(
-    val conflicts: List<Conflict>,
-)
-
-@WireOf("Conflict")
-@JsonClass(generateAdapter = true)
-data class Conflict(
-    val name: Any,
-    @Json(name = "size_text") val sizeText: String?,
-    @Json(name = "mtime_text") val mtimeText: String?,
-    @Json(name = "there_size_text") val thereSizeText: String?,
-    @Json(name = "there_mtime_text") val thereMtimeText: String?,
-    @Json(name = "dir_into") val dirInto: Boolean,
-)
-
 // ── 轮换屏（mobrot）：`rotation-view` 那一份 ＋ 写那几条的回包。策略写的字（`StrategyText` ＝ 一句或分语言）声明成 `Any`，取字在 `Rotation.text`。 ──
 
 @WireOf("RotationViewReply")

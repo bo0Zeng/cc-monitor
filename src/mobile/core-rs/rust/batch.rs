@@ -82,13 +82,7 @@ impl PhoneBoard {
             ),
             Phase::Asking => (
                 "asking",
-                serde_json::json!({ "conflicts": lock(&self.asking).iter().map(|c| serde_json::json!({
-                    "key": c.key,
-                    "name": String::from_utf8_lossy(c.name.bytes()),
-                    "meta": batch_core::conflict_meta(c),
-                    "dir": c.kind == cmd_wire::files::FileKind::Dir,
-                    "dir_into": c.dir_into,
-                })).collect::<Vec<_>>() }),
+                serde_json::json!({ "conflicts": clash_rows(&lock(&self.asking)), "go": self.plan.verb.text() }),
             ),
             Phase::Cut(line) => ("cut", serde_json::json!({ "line": line })),
             Phase::Ended(r) => {
@@ -152,6 +146,21 @@ impl Board for PhoneBoard {
         self.emit(&Phase::Asking);
         async move { rx.await.ok().flatten() }
     }
+}
+
+/// 同名那一问的几行（抽屉照画）：键 · 名字 · 那一行的说明（核心写好）· 这一项能怎么答（那台给的）。
+pub fn clash_rows(conflicts: &[Conflict]) -> serde_json::Value {
+    conflicts
+        .iter()
+        .map(|c| {
+            serde_json::json!({
+                "key": c.key,
+                "name": String::from_utf8_lossy(c.name.bytes()),
+                "meta": batch_core::conflict_meta(c),
+                "answers": c.answers,
+            })
+        })
+        .collect()
 }
 
 /// 在做的 · 做完还留着（重试 · 撤销照它另起）的那几组，按编号。
@@ -486,7 +495,7 @@ mod tests {
                         1 => Err(Rebuff {
                             failed: Failed { code: Some("exists".into()), said: "同名 1 项".into(), detail: String::new() },
                             data: Some(serde_json::json!({"conflicts": [{"key": "0", "name": "a.txt", "kind": "file",
-                                "size_text": "3 字节", "there": "file", "there_size_text": "1 字节", "dir_into": false}]})),
+                                "size_text": "3 字节", "there": "file", "there_size_text": "1 字节", "answers": ["overwrite", "skip", "keep_both"]}]})),
                             cut: false,
                         }),
                         2 => Err(rebuff_of("devbox", "files-delete", CallError::Disconnected)),
@@ -508,7 +517,7 @@ mod tests {
         let phases: Vec<&str> = seen.iter().map(|e| e["phase"].as_str().unwrap()).collect();
         assert_eq!(phases, ["asking", "running", "cut", "running", "ended"]);
         assert_eq!(seen[0]["conflicts"][0]["meta"], batch_core::conflict_meta(&serde_json::from_value(
-            serde_json::json!({"key": "0", "name": "a.txt", "kind": "file", "size_text": "3 字节", "there": "file", "there_size_text": "1 字节", "dir_into": false})).unwrap()));
+            serde_json::json!({"key": "0", "name": "a.txt", "kind": "file", "size_text": "3 字节", "there": "file", "there_size_text": "1 字节", "answers": ["overwrite", "skip", "keep_both"]})).unwrap()));
         assert!(seen[2]["line"].as_str().unwrap().starts_with("devbox"));
         let end = &seen[4];
         assert_eq!(end["said"], "删除 2 项 · 完成 1 · 失败 ×1", "结局句照后端那一句");

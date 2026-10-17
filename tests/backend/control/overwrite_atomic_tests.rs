@@ -141,12 +141,12 @@ fn w2_the_swap_keeps_mode_follows_the_link_and_leaves_no_side_file() {
             .is_symlink(),
         "链接被顶掉了"
     );
-    // 不剩旁名：旁名的形状是确定的（`.<名>.ccm-put-<pid>-<序>.part`），序号从本进程的计数器来 ⇒ 按这个进程到目前为止发出去的号逐个看。
-    let upto = PUT_SEQ.load(std::sync::atomic::Ordering::Relaxed);
+    // 不剩旁名：旁名的形状是确定的（`.<名>.ccm-swap-<pid>-<序>.part`），序号从本进程的计数器来 ⇒ 按这个进程到目前为止发出去的号逐个看。
+    let upto = SWAP_SEQ.load(std::sync::atomic::Ordering::Relaxed);
     let left: Vec<u64> = (0..upto)
         .filter(|seq| {
             root.join(format!(
-                ".real.txt.ccm-put-{}-{seq}.part",
+                ".real.txt.ccm-swap-{}-{seq}.part",
                 std::process::id()
             ))
             .exists()
@@ -157,85 +157,16 @@ fn w2_the_swap_keeps_mode_follows_the_link_and_leaves_no_side_file() {
     std::fs::remove_dir_all(&root).ok();
 }
 
-#[test]
-fn w3_a_placeholder_that_could_not_be_removed_is_named_in_the_refusal() {
-    use crate::control::files_commit::{move_failed, LandFail};
-    let dest = Path::new("/x/y/a.bin");
-    let failed = LandFail {
-        why: copy_core::reason::io_reason(std::io::ErrorKind::StorageFull),
-        raw: "No space left on device (os error 28)".into(),
-    };
-    // 撤掉了 ⇒ 只说写入失败那一句（没什么要用户做的）；系统原话进复制详情，不上句子。
-    let plain = move_failed(dest, &failed, &Ok(()));
-    assert!(
-        copy_core::copy_matches("beFilesCommit.upload.moveFailedNote", plain.message()),
-        "{}",
-        plain.message()
-    );
-    assert!(
-        !plain.message().contains("0 字节"),
-        "撤掉了还多说：{}",
-        plain.message()
-    );
-    assert!(
-        !plain.message().contains("os error"),
-        "原话上了句子：{}",
-        plain.message()
-    );
-    assert_eq!(plain.code(), "io_failed");
-    assert_eq!(plain.raw(), Some("No space left on device (os error 28)"));
-    // 撤不掉 ⇒ 整句换成另一条键：写入失败那一行 ＋ 删除失败那一行（同一个路径、各自的原因词）＋ 提示；两句原话都进详情。
-    let err = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
-    let shown_err = err.to_string();
-    let left = move_failed(dest, &failed, &Err(err));
-    let said = left.message();
-    assert!(
-        said.contains("/x/y/a.bin")
-            && copy_core::copy_matches("beFilesCommit.upload.placeholderLeft", said)
-            && said.lines().count() == plain.message().lines().count() + 2
-            && said.contains(&copy_core::reason::io_reason(
-                std::io::ErrorKind::PermissionDenied
-            )),
-        "{said}"
-    );
-    assert!(
-        !said.contains(&shown_err) && !said.contains("os error"),
-        "原话上了句子：{said}"
-    );
-    let raw = left.raw().unwrap_or_default();
-    assert!(
-        raw.contains("os error 28") && raw.contains(&shown_err),
-        "{raw}"
-    );
-    // 接线：提交那一支拿「撤占位」的真结局去问它（不是 `let _ =` 吞掉）。
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/files_commit.rs"
-    ));
-    let undo = prod
-        .find("let undo = face.delete_file(&dest);")
-        .expect("撤占位那一句");
-    let tail = &prod[undo..];
-    assert!(
-        tail.find("move_failed(&dest, &fail, &undo)")
-            .is_some_and(|i| i < 400),
-        "撤占位的结局没交给 move_failed"
-    );
-    assert!(
-        !prod.contains("let _ = face.delete_file(&dest)"),
-        "撤占位的结局又被吞了"
-    );
-}
-
 /// 后端碰盘的唯一住址（原语本体住这里）。
 const FS_HOME: &str = "platform/fs/";
 
-/// 就地写在一段生产代码里的位置：`fs::write(` · 截断开（`.truncate(true)`）这两形原语，
-/// 与文件管理面句柄上调它们的那两个方法（`Face::write_whole` · `Face::overwrite`）。
+/// 就地写在一段生产代码里的位置：`fs::write(` · 截断开（`.truncate(true)` · `O_TRUNC`）这几形原语，
+/// 与文件管理面句柄上调它的那个方法（`Face::overwrite`）。
 fn write_calls(code: &str) -> Vec<usize> {
     let mut at: Vec<usize> = code
         .match_indices("fs::write(")
         .chain(code.match_indices(".truncate(true)"))
-        .chain(code.match_indices(".write_whole("))
+        .chain(code.match_indices("O_TRUNC"))
         .chain(code.match_indices(".overwrite("))
         .map(|(i, _)| i)
         .collect();
@@ -244,8 +175,7 @@ fn write_calls(code: &str) -> Vec<usize> {
 }
 
 #[test]
-fn w4_the_only_in_place_write_left_is_the_windows_arm_of_swap_in() {
-    // ① 全后端生产段的人群：`fs::write(` 只住 `control/files_write.rs`。
+fn w4_the_only_in_place_write_is_the_in_place_arm_of_replace_contents() {
     let roots = crate::guard_support::code_roots();
     let mut files: Vec<String> = Vec::new();
     let mut prims: Vec<String> = Vec::new();
@@ -257,7 +187,7 @@ fn w4_the_only_in_place_write_left_is_the_windows_arm_of_swap_in() {
             .to_string_lossy()
             .replace('\\', "/");
         for _ in write_calls(&prod) {
-            // 原语本体住 `platform/fs/`（下面单数）；调用方的人群不算它。
+            // 原语本体住 `platform/fs/`；调用方的人群不算它。
             if rel.starts_with(FS_HOME) {
                 prims.push(rel.clone());
             } else {
@@ -265,7 +195,7 @@ fn w4_the_only_in_place_write_left_is_the_windows_arm_of_swap_in() {
             }
         }
     }
-    // 原语那一侧：两形各恰好一处，都在文件管理面的句柄里（`write_whole` · `overwrite` 两个方法的本体）。
+    // 原语那一侧：`Face::overwrite` 的 unix 臂（`O_TRUNC`）与 Windows 臂（`.truncate(true)`）。
     assert_eq!(
         prims,
         vec![
@@ -274,51 +204,31 @@ fn w4_the_only_in_place_write_left_is_the_windows_arm_of_swap_in() {
         ],
         "就地写的原语住址变了"
     );
-    // 两处：`swap_in` 的 Windows 臂 ＋ `overwrite_text` 的「硬链接 / 别人的属主」那一支
-    // （后者从 `fs::write` 换成不跟链接的截断开，处数不变）。
     assert_eq!(
         files,
-        vec![
-            "control/files_write.rs".to_string(),
-            "control/files_write.rs".to_string()
-        ],
+        vec!["control/files_write.rs".to_string()],
         "后端生产段就地写的集合变了"
     );
-    // ② 那一处在 `swap_in` 那一段里、且那一段恰好一个 `#[cfg(windows)]`、就地写跟在它后面。
+    // 那一处在 `replace_contents` 里、在「该不该原子换」那一问的答案那一支之内。
     let prod = crate::guard_support::production_code(include_str!(
         "../../../src/backend/control/files_write.rs"
     ));
+    assert_eq!(prod.matches("fn replace_contents(").count(), 1);
+    let seg = &prod[prod.find("fn replace_contents(").expect("replace_contents")..];
+    let seg = &seg[..seg.find("\n}\n").expect("replace_contents 的尾")];
     assert_eq!(
-        prod.matches("fn swap_in(").count(),
+        write_calls(seg).len(),
         1,
-        "swap_in 不是恰好一处"
+        "replace_contents 里就地写不是恰好一处"
     );
-    let seg = &prod[prod.find("fn swap_in(").expect("swap_in")..];
-    let seg = &seg[..seg.find("\n}\n").expect("swap_in 的尾")];
-    assert_eq!(
-        seg.matches("#[cfg(windows)]").count(),
-        1,
-        "swap_in 里 Windows 臂不是恰好一处"
-    );
-    assert_eq!(write_calls(seg).len(), 1, "swap_in 里就地写不是恰好一处");
-    let win = seg.find("#[cfg(windows)]").expect("Windows 臂");
-    assert!(win < write_calls(seg)[0], "就地写不在 Windows 臂里");
-    // ③ 另一处在 `overwrite_text` 里、且在「该不该原子换」那一问（`in_place_reason(`）的答案那一支之内（之后、`swap_in(` 之前）。
-    assert_eq!(prod.matches("pub fn overwrite_text(").count(), 1);
-    let ow = &prod[prod.find("pub fn overwrite_text(").expect("overwrite_text")..];
-    let ow = &ow[..ow.find("\n}\n").expect("overwrite_text 的尾")];
-    assert_eq!(
-        write_calls(ow).len(),
-        1,
-        "overwrite_text 里就地写不是恰好一处"
-    );
-    let asked = ow.find("in_place_reason(").expect("那一问");
-    let swap = ow.find("swap_in(").expect("原子换那一支");
-    let w = write_calls(ow)[0];
-    assert!(asked < w && w < swap, "就地写不在「不该原子换」那一支里");
-    // 正控：数法认得出两形就地写（原语与句柄上的方法）。
+    let asked = seg.find("in_place_reason(").expect("那一问");
+    let arm = seg.find("if in_place {").expect("就地那一支");
+    let w = write_calls(seg)[0];
+    assert!(asked < arm && arm < w, "就地写不在「不该原子换」那一支里");
+    // 正控：数法认得出几形就地写。
     assert_eq!(write_calls("std::fs::write(&p, b)").len(), 1);
     assert_eq!(write_calls("face.overwrite(&real)").len(), 1);
+    assert_eq!(write_calls("libc::O_WRONLY | libc::O_TRUNC").len(), 1);
     assert_eq!(
         write_calls("opener().write(true).truncate(true).open(&p)").len(),
         1
@@ -359,7 +269,7 @@ fn h1_a_hardlinked_target_is_written_in_place_so_both_names_see_it() {
 }
 
 /// 「该不该原子换」那一问逐格（属主那一格要 root 才造得出真文件，只在纯函数上量 —— 如实登记）；
-/// 接线：`overwrite_text` 问它时交的恰是 `links_and_owner` 与 `current_uid`。
+/// 接线：`replace_contents` 问它时交的恰是 `links_and_owner` 与 `current_uid`。
 #[test]
 fn h2_the_in_place_reasons_are_exactly_links_and_owner() {
     assert_eq!(in_place_reason(1, 1000, 1000), None);
@@ -382,11 +292,7 @@ fn h2_the_in_place_reasons_are_exactly_links_and_owner() {
         prod.matches("in_place_reason(links, owner, crate::platform::paths::current_uid())")
             .count(),
         1,
-        "overwrite_text 问的不是这台进程的 uid"
+        "replace_contents 问的不是这台进程的 uid"
     );
-    assert_eq!(
-        prod.matches("let links_owner = links_and_owner(&real);")
-            .count(),
-        1
-    );
+    assert_eq!(prod.matches("links_and_owner(&real)").count(), 1);
 }

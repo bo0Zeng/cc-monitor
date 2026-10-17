@@ -304,6 +304,13 @@ pub fn pick_menu_json(rows: &str, here: &pick_core::Here) -> String {
     serde_json::to_string(&pick_core::phone_menu(&picks, here)).unwrap_or_default()
 }
 
+/// 一问一答撞了同名（码 `exists` 的 `data`：同名清单）⇒ 抽屉那几行（[`batch::clash_rows`]，一组那一问同一份）；读不动 ⇒ `[]`。
+pub fn clash_rows_json(data: &str) -> String {
+    serde_json::from_str::<cmd_wire::batch::Conflicts>(data)
+        .map(|c| batch::clash_rows(&c.conflicts).to_string())
+        .unwrap_or_else(|_| "[]".to_string())
+}
+
 // ═══ 链路表 ═════════════════════════════════════════════════════════════════════
 
 struct Link {
@@ -629,6 +636,21 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_pickMenu<'l>(
     guarded(std::ptr::null_mut(), || {
         let text = string(&mut env, &rows).unwrap_or_default();
         env.new_string(pick_menu_json(&text, &resident::here(handle)))
+            .map(|s| s.into_raw())
+            .unwrap_or(std::ptr::null_mut())
+    })
+}
+
+/// `Core.clashRows(data)`：同名清单 ⇒ 抽屉那几行（[`clash_rows_json`]）。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_clashRows<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    data: JString<'l>,
+) -> jstring {
+    guarded(std::ptr::null_mut(), || {
+        let text = string(&mut env, &data).unwrap_or_default();
+        env.new_string(clash_rows_json(&text))
             .map(|s| s.into_raw())
             .unwrap_or(std::ptr::null_mut())
     })
@@ -972,6 +994,20 @@ mod tests {
         let none: serde_json::Value =
             serde_json::from_str(&super::pick_menu_json("{", &up)).unwrap();
         assert_eq!((none["bar"].clone(), none["tap"].clone()), (serde_json::json!([]), serde_json::Value::Null));
+    }
+
+    /// 一问一答撞了同名：清单 ⇒ 抽屉那几行（说明由核心写、答法照那台给的）；读不动 ⇒ `[]`。
+    #[test]
+    fn a_clash_list_becomes_the_rows_of_the_sheet() {
+        let data = r#"{"conflicts":[{"key":"0","name":"up.bin","kind":"file","size_text":"9 字节","there":"file","there_size_text":"3 字节","answers":["overwrite","keep_both"]}]}"#;
+        let v: serde_json::Value = serde_json::from_str(&super::clash_rows_json(data)).unwrap();
+        let c: cmd_wire::batch::Conflicts = serde_json::from_str(data).unwrap();
+        assert_eq!(
+            v,
+            serde_json::json!([{ "key": "0", "name": "up.bin",
+                "meta": batch_core::conflict_meta(&c.conflicts[0]), "answers": ["overwrite", "keep_both"] }])
+        );
+        assert_eq!(super::clash_rows_json("{"), "[]");
     }
 
     use std::time::Duration;

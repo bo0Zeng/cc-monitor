@@ -253,6 +253,20 @@ pub(crate) fn choice_of(
     }
 }
 
+/// 同名的那一项能怎么答（同名清单里那一格，两端照画）：两头有一头是目录 ⇒ 目录不合并、不给覆盖；
+/// `skip` ⇒ 这条命令收不收「跳过」（只一项的上传提交不收：跳过就是什么都不交）。
+pub(crate) fn answers_of(dir_into: bool, skip: bool) -> Vec<Decide> {
+    let mut a = Vec::with_capacity(3);
+    if !dir_into {
+        a.push(Decide::Overwrite);
+    }
+    if skip {
+        a.push(Decide::Skip);
+    }
+    a.push(Decide::KeepBoth);
+    a
+}
+
 /// 同名清单里那两格时刻（文件的修改时刻，unix 秒）⇒ 写好的字：按此刻与看的那一台的时区（同额度与轮换那几处时刻的写法）。
 pub(crate) fn moment_text(secs: Option<i64>, tz: &crate::Tz) -> Option<String> {
     secs.filter(|s| *s > 0)

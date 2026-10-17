@@ -34,8 +34,8 @@ import com.ccmonitor.mobile.core.ui.theme.monoBody
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 
 /**
- * 浏览屏（全屏）：顶栏 ← ＋「选目录」＋ 机器名；路径一行（↑ 上一级）；只列文件夹；底部路径 ＋「选这个目录」。
- * 点一行 ＝ 进去；长按 ＝ 选中它（淡底，底部写的是它）；← 退出浏览、不改选择。
+ * 浏览屏（全屏）：顶栏 ← ＋ [title]（缺省「选目录」）＋ 机器名；路径一行（↑ 上一级）；只列文件夹；底部路径 ＋ [pick]（缺省「选这个目录」）。
+ * 点一行 ＝ 进去；长按 ＝ 选中它（淡底，底部写的是它）；← 退出浏览、不改选择。新建会话选目录 · 文件页复制到… 同一屏。
  */
 @Composable
 fun DirBrowseScreen(
@@ -44,6 +44,8 @@ fun DirBrowseScreen(
     home: String?,
     onPick: (String) -> Unit,
     onDismiss: () -> Unit,
+    title: String = copyText("mobNewSession.dir.browseTitle"),
+    pick: String = copyText("mobNewSession.dir.pick"),
 ) {
     val s by browser.state.collectAsStateWithLifecycle()
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
@@ -51,7 +53,7 @@ fun DirBrowseScreen(
             Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
                 Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onDismiss, modifier = Modifier.semantics { contentDescription = copyText("mobKit.act.close") }) { Text(BACK, style = MaterialTheme.typography.titleLarge) }
-                    Text(copyText("mobNewSession.dir.browseTitle"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(machine, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp))
                 }
                 PathBar(s.path?.let { homeShort(it, home) }.orEmpty(), onUp = browser::up)
@@ -69,7 +71,7 @@ fun DirBrowseScreen(
                         )
                     }
                 }
-                Footer(browser.picked()?.let { homeShort(it, home) }, enabled = browser.picked() != null && !s.loading) { browser.picked()?.let(onPick) }
+                Footer(browser.picked()?.let { homeShort(it, home) }, pick, enabled = browser.picked() != null && !s.loading) { browser.picked()?.let(onPick) }
             }
         }
     }
@@ -89,6 +91,7 @@ private fun PathBar(
 @Composable
 private fun Footer(
     path: String?,
+    pick: String,
     enabled: Boolean,
     onPick: () -> Unit,
 ) {
@@ -104,7 +107,7 @@ private fun Footer(
                     .heightIn(min = 48.dp)
                     .testTag(NewSessionTags.PICK),
         ) {
-            Text(copyText("mobNewSession.dir.pick"))
+            Text(pick)
         }
     }
 }

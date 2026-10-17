@@ -114,7 +114,7 @@ fn commit_without_overwrite_refuses_an_existing_target_and_touches_nothing() {
     .expect_err("该拒");
     assert_eq!(
         e.code(),
-        "io_failed",
+        "exists",
         "目标已在是盘上的事实，不是围栏：{}",
         e.message()
     );
@@ -163,6 +163,35 @@ fn commit_with_overwrite_replaces_the_target_whole() {
     )
     .expect("目标不在也该落");
     assert_eq!(std::fs::read(root.join("c.txt")).unwrap(), b"fresh");
+}
+
+/// 盖掉一份只给本人的目标（0600：钥匙 · 令牌一类）：换上来的内容仍是 0600，不是暂存件那一份按 umask 的权限位。
+#[test]
+#[cfg(unix)]
+fn an_overwriting_commit_keeps_the_target_mode() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let (home, root) = rig("keepmode");
+    let staged = stage(&home, KEY, b"new");
+    std::fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o644)).unwrap();
+    std::fs::write(root.join("k"), b"secret").unwrap();
+    std::fs::set_permissions(root.join("k"), std::fs::Permissions::from_mode(0o600)).unwrap();
+    commit_upload(
+        &Face::issue(),
+        &home,
+        KEY,
+        &root,
+        "k",
+        true,
+        &staged_sha(&home, KEY),
+    )
+    .expect("该换掉");
+    assert_eq!(std::fs::read(root.join("k")).unwrap(), b"new");
+    let mode = std::fs::metadata(root.join("k"))
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o7777;
+    assert_eq!(mode, 0o600, "盖掉之后权限位跟了暂存件");
 }
 
 /// 🔴🔴 **提交先过路径解析**：目标带上跳段 / 是绝对路径 ⇒ 拒；盘上零新增；暂存件原样。
@@ -947,62 +976,6 @@ fn hx1_the_staging_dirs_are_born_private_and_an_existing_one_is_left_alone() {
     std::fs::remove_dir_all(&home).ok();
 }
 
-/// 要求：「跨盘提交与非标准 SFTP 起始目录 —— `staging/` 与目标不在同一个盘 ⇒ `EXDEV`，
-/// 上传提交失败原样带回（要做就得『复制 ＋ 删』，一步复制在禁表里）」＋ `§5.1` 那张表「暂存区与目标不同盘 ⇒ `EXDEV` 失败」。
-///
-/// 注入「改名上位回 `EXDEV`」（跨盘在测试里造不出来，如实）：两支（不覆盖 · 覆盖）各一趟 ⇒ 目标逐字节等于暂存件、暂存件被消耗、
-/// 目标目录里不留暂存旁名；覆盖那一支顶掉旧内容。阴性：不注入 ⇒ 走同盘改名那一支（结果同形，证明注入口没把生产那一支换掉）。
-#[test]
-fn a_cross_device_commit_falls_back_to_copy_and_delete() {
-    for (overwrite, tag) in [(false, "xdev-new"), (true, "xdev-over")] {
-        let (home, root) = rig(tag);
-        let body = b"\x00across\xffdisks\n".to_vec();
-        let staged = stage(&home, KEY, &body);
-        if overwrite {
-            std::fs::write(root.join("a.bin"), b"old").unwrap();
-        }
-        let (landed, n) = commit_upload_in(
-            &Face::issue(),
-            &home,
-            KEY,
-            &root,
-            Path::new("a.bin"),
-            overwrite,
-            &staged_sha(&home, KEY),
-            true,
-        )
-        .unwrap_or_else(|e| panic!("跨盘那一支没落进去（overwrite={overwrite}）：{e:?}"));
-        assert_eq!(n, body.len() as u64);
-        assert_eq!(
-            std::fs::read(&landed).expect("读落点"),
-            body,
-            "跨盘落进去的字节不对"
-        );
-        assert!(!staged.exists(), "跨盘那一支没消耗暂存件");
-        let side = root.join(format!(".a.bin.ccm-commit-{KEY}.part"));
-        assert!(
-            std::fs::symlink_metadata(&side).is_err(),
-            "目标目录里留下了暂存旁名"
-        );
-    }
-    // 阴性：不注入 ⇒ 同盘改名那一支（结果同形）。
-    let (home, root) = rig("xdev-none");
-    let staged = stage(&home, KEY, b"same");
-    commit_upload_in(
-        &Face::issue(),
-        &home,
-        KEY,
-        &root,
-        Path::new("c.bin"),
-        false,
-        &staged_sha(&home, KEY),
-        false,
-    )
-    .expect("同盘那一支该落进去");
-    assert_eq!(std::fs::read(root.join("c.bin")).unwrap(), b"same");
-    assert!(!staged.exists());
-}
-
 /// 线上那一臂：`files-commit-upload` 带 `chunks` ⇒ 先把块拼成暂存件再走同一条提交（整份摘要照核）；
 /// 摘要对不上 ⇒ `stale`、目标不在（块形与 SFTP 那条路同一道 CAS）。。
 #[test]
@@ -1064,36 +1037,6 @@ fn the_commit_face_lands_under_a_byte_named_rel() {
     std::fs::remove_dir_all(&h).ok();
 }
 
-/// 不覆盖那一形占位没成：已存在 ⇒「先删掉它或换个名字」那句建议；别的原因（无权限）⇒ 只说占不了位 ＋ 原因词，不配那句建议；原话都进详情。
-#[test]
-fn a_placeholder_failure_gives_the_advice_that_fits_its_reason() {
-    let dest = std::path::Path::new("/srv/up.txt");
-    let said = |e: std::io::Error| match placeholder_refused(dest, &e) {
-        WriteRefusal::IoSaid { said, raw } => {
-            assert!(!raw.trim().is_empty(), "原话丢了");
-            said
-        }
-        other => panic!("不是带原话的那一形：{other:?}"),
-    };
-    let exists = said(std::io::Error::from(std::io::ErrorKind::AlreadyExists));
-    assert_eq!(
-        exists,
-        copy_text("beFilesCommit.upload.exists", &[("path", "/srv/up.txt")])
-    );
-    let denied = said(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
-    assert_eq!(
-        denied,
-        copy_text(
-            "beFilesCommit.upload.cantPlace",
-            &[
-                ("path", "/srv/up.txt"),
-                ("why", &io_reason(std::io::ErrorKind::PermissionDenied))
-            ]
-        )
-    );
-    assert_ne!(denied, exists);
-}
-
 /// 同名照成组复制那一条：没答（缺 `on_exists` ＝ `ask`）⇒ 码 `exists`、同名清单一项（键 `0` · 名字 · 已在那一份的大小），
 /// 拼块之前就回 ⇒ 块一个没收、目标一个字节没动；同一份入参改答 `overwrite` 再交 ⇒ 盖掉；`keep_both` ⇒ 另起名落下。
 #[test]
@@ -1123,9 +1066,12 @@ fn a_clash_is_asked_before_assembling_and_the_same_request_with_an_answer_lands(
             assert_eq!(c.conflicts.len(), 1);
             let one = &c.conflicts[0];
             assert_eq!((one.key.as_str(), one.name.bytes()), ("0", &b"a.txt"[..]));
+            assert_eq!((one.size, one.there_size), (Some(11), Some(4)));
+            use cmd_wire::batch::Decide;
             assert_eq!(
-                (one.size, one.there_size, one.dir_into),
-                (Some(11), Some(4), false)
+                one.answers,
+                vec![Decide::Overwrite, Decide::KeepBoth],
+                "只一件的上传不收跳过，清单就不该给"
             );
         }
         other => panic!("没答该回同名清单：{other:?}"),

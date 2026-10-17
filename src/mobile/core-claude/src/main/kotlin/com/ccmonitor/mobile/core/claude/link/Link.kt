@@ -118,6 +118,9 @@ interface CoreLink {
 
     /** 文件页选中这几项（[FilesLs.Entry.row]，那台交来的原行）此刻能做什么（核心照此刻那一台判：断着 · 那台做不到的命令）。 */
     fun picks(rows: List<Any?>): PickMenu
+
+    /** 一问一答撞了同名（码 `exists` 的 `data`）⇒ 抽屉那几行（说明由核心写，一组那一问同一份）；认不出 ⇒ 空。 */
+    fun clashes(data: Any?): List<BatchEvent.Clash>
 }
 
 /** 分块传哪一半（[CoreLink.transfer]）。 */

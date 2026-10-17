@@ -81,6 +81,11 @@ object CoreResident : ResidentCore {
         return Core.pickMenu(handle, rows)
     }
 
+    override fun clashRows(data: String): String {
+        ensureRustCore()
+        return Core.clashRows(data)
+    }
+
     override fun deploy(
         handle: Long,
         slots: String,

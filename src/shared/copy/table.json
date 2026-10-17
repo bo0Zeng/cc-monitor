@@ -10919,12 +10919,6 @@
       "zh": "窗口出错 · 选择框未打开 · 重开此窗口",
       "args": []
     },
-    "beFilesCommit.exdev.noName": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "目标 {rel} 无文件名",
-      "args": ["rel"]
-    },
     "rsFilewinCopy.batch.listSep": {
       "kind": "body",
       "role": "片段",
@@ -18514,34 +18508,13 @@
       "zh": "上传内容与本机那份不符 · 目标未动 · 须从头重传 · {tail}",
       "args": ["tail"]
     },
-    "beFilesCommit.upload.exists": {
+    "beFilesWrite.swap.exists": {
       "kind": "error",
       "role": "报错",
       "zh": "{path} 已存在 · 不覆盖 · 先删掉它或换个名字",
       "args": [
         "path"
       ]
-    },
-    "beFilesCommit.upload.cantPlace": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{path} 无法占位 · {why}",
-      "args": [
-        "path",
-        "why"
-      ]
-    },
-    "beFilesCommit.upload.moveFailedNote": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "写入失败 · {path} · {why}",
-      "args": ["path", "why"]
-    },
-    "beFilesCommit.upload.placeholderLeft": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "写入失败 · {path} · {why}\n删除失败 · 留下的 0 字节空文件 · {leftWhy}\n非用户数据 · 删后再试",
-      "args": ["path", "why", "leftWhy"]
     },
     "beFilesCommit.staging.notDir": {
       "kind": "error",
@@ -28245,12 +28218,6 @@
       "zh": "未装",
       "args": []
     },
-    "beFilesCommit.land.badPath": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "路径不合规",
-      "args": []
-    },
     "rsShellCmd.self.crashed": {
       "kind": "error",
       "role": "报错",
@@ -31421,6 +31388,12 @@
       "role": "标题",
       "zh": "已选 {n}",
       "args": ["n"]
+    },
+    "mobFiles.copyHere": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "复制到这里",
+      "args": []
     },
     "mobFiles.failedShow": {
       "kind": "action",

@@ -57,7 +57,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.FilesCommitUpload
+import com.ccmonitor.mobile.core.claude.link.BatchEvent
 import com.ccmonitor.mobile.core.claude.link.FilesLs
 import com.ccmonitor.mobile.core.claude.link.PickMenu
 import com.ccmonitor.mobile.core.claude.link.RemotePath
@@ -75,6 +75,8 @@ import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
+import com.ccmonitor.mobile.ui.chat.newsession.DirBrowseScreen
+import com.ccmonitor.mobile.ui.chat.newsession.DirBrowser
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -99,6 +101,13 @@ private sealed interface FilesDialog {
     data class Chmod(
         val entries: List<FilesLs.Entry>,
         val now: String?,
+    ) : FilesDialog
+
+    /** 复制到…：选目标目录（[browser] 那一屏）。 */
+    data class CopyTo(
+        val entries: List<FilesLs.Entry>,
+        val browser: DirBrowser,
+        val machine: String,
     ) : FilesDialog
 
     data object Mkdir : FilesDialog
@@ -184,6 +193,7 @@ fun FilesScreen(
             }
             val group by vm.batch.collectAsState()
             group?.let { e ->
+                if (e.phase == BatchEvent.ASKING) ConflictSheet(e.title, null, e.conflicts, e.go) { vm.answerBatch(e.id, it) }
                 BatchCard(
                     e,
                     onStop = { vm.stopBatch(e.id) },
@@ -196,9 +206,16 @@ fun FilesScreen(
     }
 
     DialogHost(dialog = dialog, vm = vm, onDialog = { dialog = it })
+    UploadClash(vm)
+}
+
+/** 上传撞了同名：同一张冲突抽屉（只一项：整组那一个答）。 */
+@Composable
+private fun UploadClash(vm: FilesViewModel) {
     val clash by vm.clash.collectAsState()
     clash?.let { (dir, c) ->
-        ConflictSheet(copyText("rsFilewinBatch.verb.upload"), dir, c.said, c.conflicts, FilesCommitUpload.ANSWERS, vm::answer)
+        val title = copyText("rsFilewinBatch.ask.title", "action" to copyText("rsFilewinBatch.verb.upload"), "n" to c.rows.size, "dir" to dir.shown)
+        ConflictSheet(title, c.said, c.rows, null, vm::answer)
     }
 }
 
@@ -208,6 +225,7 @@ private class EntryActions(
     val preview: (FilesLs.Entry) -> Unit,
     val startEdit: (FilesLs.Entry) -> Unit,
     val startChmod: (List<FilesLs.Entry>) -> Unit,
+    val startCopy: (List<FilesLs.Entry>) -> Unit,
 )
 
 @Composable
@@ -227,6 +245,13 @@ private fun entryActions(
             preview = { e -> scope.launch { vm.readText(e, e.preview).onSuccess { onDialog(FilesDialog.Preview(e.name, it.text)) } } },
             startEdit = { e -> scope.launch { vm.readText(e, e.edit).onSuccess { onDialog(FilesDialog.Edit(e, it.text, it.sha256)) } } },
             startChmod = { es -> scope.launch { onDialog(FilesDialog.Chmod(es, es.singleOrNull()?.let { vm.modeText(it) })) } },
+            startCopy = { es ->
+                scope.launch {
+                    val b = vm.browser()
+                    b.open(vm.cwd.value?.text ?: HOME)
+                    onDialog(FilesDialog.CopyTo(es, b, vm.machine()))
+                }
+            },
         )
     }
 }
@@ -354,6 +379,7 @@ private fun picked(
         "download" -> es.forEach(actions.download)
         "delete" -> onDialog(FilesDialog.Delete(es))
         "chmod" -> actions.startChmod(es)
+        "copyTo" -> actions.startCopy(es)
         "selectAll" -> vm.pickAll()
         "rename" -> one?.let { onDialog(FilesDialog.Rename(it)) }
         "preview" -> one?.let(actions.preview)
@@ -532,6 +558,19 @@ private fun DialogHost(
         is FilesDialog.Delete -> DeleteDialog(d.entries, close) { vm.delete(d.entries) }
         is FilesDialog.Chmod -> ChmodDialog(d, close) { vm.chmod(d.entries, it) }
         is FilesDialog.Preview -> PreviewDialog(d.name, d.content, close)
+        is FilesDialog.CopyTo ->
+            DirBrowseScreen(
+                d.browser,
+                d.machine,
+                home = null,
+                onPick = {
+                    vm.copyTo(d.entries, RemotePath.of(it))
+                    close()
+                },
+                onDismiss = close,
+                title = copyText("mobFiles.menu.copyTo"),
+                pick = copyText("mobFiles.copyHere"),
+            )
         is FilesDialog.Edit -> EditDialog(d, onDialog)
         is FilesDialog.ConfirmSave ->
             ConfirmSaveDialog(
@@ -748,6 +787,9 @@ private fun nameOf(
             if (c.moveToFirst()) c.getColumnIndex(OpenableColumns.DISPLAY_NAME).takeIf { it >= 0 }?.let(c::getString) else null
         }
     }.getOrNull()
+
+/** 复制到… 那一屏从哪开（当前目录读不成字时）：那台的家。 */
+private const val HOME = "~"
 
 /** 面包屑至多排几段（含「…」那一段）。 */
 private const val CRUMBS_SHOWN = 4

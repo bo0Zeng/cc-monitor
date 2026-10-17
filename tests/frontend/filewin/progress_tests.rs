@@ -293,7 +293,7 @@ async fn a_batch_the_user_cancelled_never_shows_up() {
                         detail: String::new(),
                     },
                     data: Some(serde_json::json!({"conflicts": [
-                        {"key": "0", "name": "x", "kind": "file", "there": "file", "dir_into": false}
+                        {"key": "0", "name": "x", "kind": "file", "there": "file", "answers": ["overwrite", "skip", "keep_both"]}
                     ]})),
                     cut: false,
                 })

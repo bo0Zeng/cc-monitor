@@ -90,6 +90,9 @@ interface ResidentCore {
         rows: String,
     ): String
 
+    /** 同名清单（JSON）⇒ 抽屉那几行（JSON 数组）。 */
+    fun clashRows(data: String): String
+
     /** 给那台装 / 更新后端（[slots] = 包里那几格解到的文件，JSON）；事经 `deploy` 那一种交回。那台不在 · 正在装 ⇒ `false`。 */
     fun deploy(
         handle: Long,
@@ -272,6 +275,12 @@ class ResidentFeed(
         val h = if (opened.isCompleted) opened.getCompleted() else 0L
         return PickMenu.of(core.pickMenu(h, Json.line(rows)))
     }
+
+    override fun clashes(data: Any?): List<BatchEvent.Clash> =
+        (Json.value(core.clashRows(Json.line(data))) as? List<*>).orEmpty().mapNotNull { m ->
+            @Suppress("UNCHECKED_CAST")
+            (m as? Map<String, Any?>)?.let(BatchEvent.Clash::of)
+        }
 
     override fun hold(sid: String): AutoCloseable {
         ensure()

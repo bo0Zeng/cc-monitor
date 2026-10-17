@@ -168,8 +168,8 @@ fn a_copy_plan_roots_at_the_common_parent() {
 #[test]
 fn an_answer_has_one_cell_per_key_and_unpicked_rows_skip() {
     let c: Vec<Conflict> = serde_json::from_value(serde_json::json!([
-        {"key": "0", "name": "a", "kind": "file", "there": "file", "dir_into": false},
-        {"key": "1", "name": "b", "kind": "file", "there": "file", "dir_into": false},
+        {"key": "0", "name": "a", "kind": "file", "there": "file", "answers": ["overwrite", "skip", "keep_both"]},
+        {"key": "1", "name": "b", "kind": "file", "there": "file", "answers": ["overwrite", "skip", "keep_both"]},
     ]))
     .unwrap();
     let all = answer_of(&c, Some(Decide::KeepBoth), None).unwrap();

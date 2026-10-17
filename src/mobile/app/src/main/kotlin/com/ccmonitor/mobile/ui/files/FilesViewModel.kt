@@ -15,6 +15,7 @@ import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.ssh.HostConnector
+import com.ccmonitor.mobile.ui.chat.newsession.DirBrowser
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -322,6 +323,14 @@ class FilesViewModel(
         mode: String,
     ) = group { ops.chmod(it, entries, mode) }
 
+    fun copyTo(
+        entries: List<FilesLs.Entry>,
+        to: RemotePath,
+    ) = group { ops.copy(it, entries, to) }
+
+    /** 复制到… 那一屏的目录浏览（同一台、只列文件夹；与新建会话选目录同一个浏览器）。 */
+    suspend fun browser(): DirBrowser = DirBrowser(feed, machine(), viewModelScope)
+
     /** ［重试失败的］（[undo] ⇒ ［撤销］）：照那一组另起。 */
     fun again(
         id: Long,
@@ -375,11 +384,11 @@ class FilesViewModel(
         fd: () -> Int,
     ) = landed(name) { dir -> withContext(io) { ops.upload(dir, name, fd, ::track) }.also { _progress.value = null } }
 
-    /** 同名那一问的答：`null` ⇒ 不传了（暂存件交那台的孤儿扫）；否则同一份暂存件带这个答再交一次。 */
-    fun answer(onExists: String?) {
+    /** 同名那一问的答：取消 ⇒ 不传了（暂存件交那台的孤儿扫）；否则同一份暂存件带这个答再交一次（只一项：整组那一个答）。 */
+    fun answer(a: BatchAnswer?) {
         val (dir, c) = _clash.value ?: return
         _clash.value = null
-        if (onExists == null) return
+        val onExists = (a as? BatchAnswer.All)?.decide ?: return
         landed(c.name, dir) { ops.commit(it, c.name, c.staged, onExists) }
     }
 

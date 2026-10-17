@@ -100,6 +100,13 @@ internal class FakeCoreLink :
     val picked = mutableListOf<List<Any?>>()
     var menu: (List<Any?>) -> PickMenu = { PickMenu() }
 
+    /** 同名清单 ⇒ 抽屉那几行（核心那一份的替身：名字照抄、说明写成那台给的大小）。 */
+    override fun clashes(data: Any?): List<BatchEvent.Clash> =
+        ((data as? Map<*, *>)?.get("conflicts") as? List<*>).orEmpty().map { c ->
+            val m = c as Map<*, *>
+            BatchEvent.Clash(m["key"] as String, m["name"] as String, m["there_size_text"] as String, (m["answers"] as List<*>).map { it as String })
+        }
+
     override fun picks(rows: List<Any?>): PickMenu {
         picked.add(rows)
         return menu(rows)
