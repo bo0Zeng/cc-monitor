@@ -3559,6 +3559,43 @@ fn resync_waits_for_every_live_watcher_and_never_hangs_on_a_gone_one() {
     );
 }
 
+/// 恢复问过记录（`session-open` · `session-say` 恢复那一支同一处）⇒ 在不在交到每一份在跑的 watcher（会话账本据此翻已结束 ⇄ 记录已不在）：
+/// 记录不在 ⇒ 交「不在」、不恢复（回记录已不在）；记录在 ⇒ 交「在」、照记录起（哪一家 · 目录）。
+#[test]
+fn resuming_hands_whether_the_record_is_there_to_the_session_ledger() {
+    crate::observe::record_hook::install(record_seen);
+    let home = std::env::temp_dir().join(format!("ccm-resume-seen-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let proj = home.join("projects").join("-w");
+    std::fs::create_dir_all(&proj).unwrap();
+    let sid = "7e1f0c2a-9b3d-4e5f-8a6b-0c1d2e3f4a5b";
+    let (tx, rx) = std::sync::mpsc::channel::<WatchEvent>();
+    let me = live_enter(tx);
+    let ours = |rx: &std::sync::mpsc::Receiver<WatchEvent>| {
+        rx.try_iter()
+            .filter_map(|ev| match ev {
+                WatchEvent::RecordSeen { sid: s, present } if s == sid => Some(present),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    let open = crate::faces::session_open_face::resume_in;
+
+    assert!(open(&home, sid).is_none(), "记录不在 ⇒ 不恢复");
+    assert_eq!(ours(&rx), [false]);
+
+    std::fs::write(
+        proj.join(format!("{sid}.jsonl")),
+        format!("{{\"type\":\"user\",\"cwd\":\"/w\",\"sessionId\":\"{sid}\"}}\n"),
+    )
+    .unwrap();
+    let r = open(&home, sid).expect("记录在 ⇒ 照起");
+    assert_eq!(r.cwd, "/w");
+    assert_eq!(ours(&rx), [true]);
+    live_leave(me);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
 /// 帧面 `resync` 的成品 == 跨语言金样的形状（键集合相等、每格是计数）；`sid` 给了却不是非空字符串 ⇒ `bad_args`。
 /// 界面那一侧 `tests/frontend/ui/resync.vitest.ts` 按同一份金样解。
 #[test]

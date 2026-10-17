@@ -117,8 +117,13 @@ pub(crate) fn with_launch_ctx<T>(
 /// 恢复那一条要从记录里读的：记录在这台记录树里找；哪一家 · 工作目录 · 模型 · 权限档从会话事实那一处扫描读（上限表用不着，不读）。
 /// 任一找不到 ⇒ `None`（不恢复）。`session-say` 恢复那一支同一份。
 pub(crate) fn resume_of(sid: &str) -> Option<ResumeOf> {
+    resume_in(&crate::history::listing::agent_home(), sid)
+}
+
+/// [`resume_of`] 在记录树 `home` 里找。
+pub(crate) fn resume_in(home: &std::path::Path, sid: &str) -> Option<ResumeOf> {
     use crate::observe::query::locate as hq;
-    let home = crate::history::listing::agent_home();
+    let home = home.to_path_buf();
     // 记录在不在交这台的会话账本（同 `history-record`：说过已结束的那条随之在「已结束 ⇄ 记录已不在」之间翻）。
     let path = hq::session_record(&home, sid);
     crate::observe::record_hook::seen(sid, path.is_ok());
