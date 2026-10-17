@@ -816,10 +816,12 @@ pub(crate) fn specimen() -> HistoryList {
         truncated: false,
         notice: Some(s("n")),
     };
-    // 离开活的那一形也露一行（能做什么那几格的「不能」与为什么）。
-    let mut ended = l.rows[0].clone();
-    ended.face = crate::wire::SessionFace::of(crate::wire::Life::Ended);
-    l.rows.push(ended);
+    // 离开活的那两形也各露一行（能做什么那几格的「不能」与为什么：已结束只灰终端那两格，记录已不在连换模型 · 权限档也灰）。
+    for life in [crate::wire::Life::Ended, crate::wire::Life::Gone] {
+        let mut left = l.rows[0].clone();
+        left.face = crate::wire::SessionFace::of(life);
+        l.rows.push(left);
+    }
     l
 }
 

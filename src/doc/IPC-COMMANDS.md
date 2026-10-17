@@ -4114,7 +4114,11 @@ hide?: Hide,
 /**
  * 没人答的提问等几分钟替人答一句（判定住后端 `control::asks`）；缺 ＝ 关。
  */
-autoAnswer?: AutoAnswer, updatedAt: number, };
+autoAnswer?: AutoAnswer, 
+/**
+ * 终端没了时换的模型 / 权限档，下次恢复照它起（只由那两条换的命令写）；缺 ＝ 没记。
+ */
+resumeWith?: ResumeWith, updatedAt: number, };
 type Hide = "on" | "off";
 type HideAsk = "on" | "off" | "rule";
 type Patch = { 
@@ -4134,6 +4138,7 @@ hide?: HideAsk | null,
  * 没人答时自动答：`{afterMin, say?}`，`afterMin: 0` 摘掉（关）；没给 `say` ⇒ 留着原来那一句、空白 ⇒ 回到缺省；值怎么算数由 `control::asks::auto_checked` 判。
  */
 autoAnswer?: AutoAnswer | null, };
+type ResumeWith = { model?: string, permissionMode?: string, end: number, };
 ```
 
 码：`bad_args` · `annotations_unreadable` · `io_failed` · `no_annotations`
@@ -4228,7 +4233,11 @@ hide?: Hide,
 /**
  * 没人答的提问等几分钟替人答一句（判定住后端 `control::asks`）；缺 ＝ 关。
  */
-autoAnswer?: AutoAnswer, updatedAt: number, };
+autoAnswer?: AutoAnswer, 
+/**
+ * 终端没了时换的模型 / 权限档，下次恢复照它起（只由那两条换的命令写）；缺 ＝ 没记。
+ */
+resumeWith?: ResumeWith, updatedAt: number, };
 type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type ForkedFrom = { label: string, };
 type Hidden = { by: HiddenBy, said: string, };
@@ -4738,7 +4747,11 @@ tool?: string,
 /**
  * 这条记录那一行在记录文件里的起点（字节；交给 `history-read` 的 `offset` 就从它读起）。
  */
-offset: number, };
+offset: number, 
+/**
+ * 这条记录的行号（与实时行的 `seq` 同一个空间；打开查看器后按它物化、按 `uuid` 找卡）。
+ */
+line: number, };
 type SessionCan = { 
 /**
  * 关掉它的标签页。

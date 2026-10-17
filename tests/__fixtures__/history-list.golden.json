@@ -97,12 +97,10 @@
             "can": "quiet"
           },
           "model": {
-            "can": "no",
-            "why": "会话已退出"
+            "can": "yes"
           },
           "permission": {
-            "can": "no",
-            "why": "会话已退出"
+            "can": "yes"
           },
           "reattach": {
             "can": "no",
@@ -243,12 +241,10 @@
             "can": "quiet"
           },
           "model": {
-            "can": "no",
-            "why": "会话已退出"
+            "can": "yes"
           },
           "permission": {
-            "can": "no",
-            "why": "会话已退出"
+            "can": "yes"
           },
           "reattach": {
             "can": "no",
@@ -385,12 +381,10 @@
             "can": "quiet"
           },
           "model": {
-            "can": "no",
-            "why": "会话已退出"
+            "can": "yes"
           },
           "permission": {
-            "can": "no",
-            "why": "会话已退出"
+            "can": "yes"
           },
           "reattach": {
             "can": "no",

@@ -514,7 +514,39 @@ fn corpus(name: &str) -> Vec<Value> {
             out.push(serde_json::to_value(real_quota_read()).unwrap());
             out
         }
-        "history_list" => vec![serde_json::from_str(&golden("history-list.golden.json")).unwrap()],
+        "history_list" => {
+            let mut g: Value = serde_json::from_str(&golden("history-list.golden.json")).unwrap();
+            // 金样里没有「记录已不在」那一行（离开「活」两样都能换）⇒ 补一行，灰的那两格（`can.*.why`）才露得出来。
+            let gone = serde_json::to_value(
+                <crate::wire::SessionFace as crate::wire::SessionFaceExt>::of(
+                    crate::wire::Life::Gone,
+                ),
+            )
+            .unwrap();
+            let rows = g["rows"].as_array_mut().unwrap();
+            let mut r = rows[0].clone();
+            r["face"] = gone;
+            rows.push(r);
+            vec![g]
+        }
+        // 会话流金样里没有「记录已不在」那一帧（离开「活」两样都能换）⇒ 补一帧，灰的那两格才露得出来。
+        "session_state" => {
+            let mut v: Vec<Value> = golden("session-stream.golden.jsonl")
+                .lines()
+                .map(|l| serde_json::from_str::<Value>(l).unwrap())
+                .filter(|v| v["kind"] == "session_state")
+                .collect();
+            v.push(
+                serde_json::to_value(
+                    <crate::wire::Frame as crate::wire::FrameMake>::session_left(
+                        "s".into(),
+                        crate::wire::Life::Gone,
+                    ),
+                )
+                .unwrap(),
+            );
+            v
+        }
         frame => golden("session-stream.golden.jsonl")
             .lines()
             .map(|l| serde_json::from_str::<Value>(l).unwrap())

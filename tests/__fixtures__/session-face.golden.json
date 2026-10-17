@@ -5,12 +5,10 @@
         "can": "quiet"
       },
       "model": {
-        "can": "no",
-        "why": "会话已退出"
+        "can": "yes"
       },
       "permission": {
-        "can": "no",
-        "why": "会话已退出"
+        "can": "yes"
       },
       "reattach": {
         "can": "no",
@@ -42,11 +40,11 @@
       },
       "model": {
         "can": "no",
-        "why": "会话已退出"
+        "why": "记录已不在 · 不可恢复"
       },
       "permission": {
         "can": "no",
-        "why": "会话已退出"
+        "why": "记录已不在 · 不可恢复"
       },
       "reattach": {
         "can": "no",
@@ -302,12 +300,10 @@
         "why": "运行中"
       },
       "model": {
-        "can": "no",
-        "why": "会话已退出"
+        "can": "yes"
       },
       "permission": {
-        "can": "no",
-        "why": "会话已退出"
+        "can": "yes"
       },
       "reattach": {
         "can": "yes"
