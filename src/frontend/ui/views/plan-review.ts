@@ -8,7 +8,8 @@ import { formDialog } from "../kit/dialog";
 import { toast, failToast } from "../kit/toast";
 import { writeClipboard } from "../clipboard";
 import { copyText } from "../copy-table";
-import { returnCell, PlanMiss, type PlanCell, type PlanNeed, type PlanReturned, type PlanSlice, type PlanWho } from "../plan-reads";
+import { saidOf } from "../kit/detail";
+import { returnCell, type PlanCell, type PlanNeed, type PlanReturned, type PlanSlice, type PlanWho } from "../plan-reads";
 import { blockRoots, cellIndex } from "./plan-model";
 import { isLive } from "../face-can";
 import s from "./plan-review.module.css";
@@ -300,7 +301,7 @@ export function openReturn(host: ReviewHost, slice: PlanSlice, cell: ReturnTarge
         }
         return r.said ?? "";
       } catch (e) {
-        return e instanceof PlanMiss ? e.said : String(e);
+        return saidOf(e);
       }
     },
   });

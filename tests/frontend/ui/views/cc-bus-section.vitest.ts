@@ -516,6 +516,7 @@ describe("B03 审计修复：驾驶舱如实呈现 + 两步确认不可绕过", 
   });
 
   it("【重要-1】UI 不得承诺代码没实现的行为（原文案写了「点别处不算」）", () => {
+    mockInvoke.mockImplementation(async () => []);
     const s = new CcBusSection();
     const all = s.element.textContent ?? "";
     expect(all).not.toContain("点别处不算");

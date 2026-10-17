@@ -11,7 +11,7 @@
  * | `ccm` 所在目录在不在用户级 PATH 上 · 加 · 撤（做完现问） | `ccm-user-path` | [`UserPath`] |
  *
  * 规则 · 方言 · 围栏整族在那台后端（`src/backend/assets/aliases/`）。入参 · 回包都是后端类型生成的（`generated/`），
- * 回包形状由握手时的形状指纹管，这里不逐格判。**前端不做安全判断**。
+ * 回包形状由握手时的形状指纹管，这里不逐格判；没成原样抛（那一句 ＋ 详情是出错那一端写的）。**前端不做安全判断**。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
@@ -25,7 +25,6 @@ import type { PolicySet as PolicySetWire } from "./generated/PolicySet";
 import type { OnPath } from "./generated/OnPath";
 import type { UserPath } from "./generated/UserPath";
 import type { UserPathOp } from "./generated/UserPathOp";
-import { saidOf } from "./kit/detail";
 
 /** 方言：别名文件、别名块、source 那一行问的是同一个问题。 */
 export type Shell = ShellKind;
@@ -50,72 +49,43 @@ export type AliasListing = AliasListingWire;
 
 /** 这几问的期限：读几份小文件 / 写一份 / 起一次 PowerShell 问内建别名（秒级）。给 30 秒。 */
 const ALIAS_BUDGET_MS = 30_000;
-const said = (e: unknown): Error => new Error(saidOf(e));
 
 /** 读回那台上的启动文件候选；`rcPath` = 人另指的那一份（那台后端过围栏）。 */
-export async function readAliases(origin: Origin, shell: Shell, rcPath: string | null): Promise<AliasListing> {
-  try {
-    return await callTyped(origin, "aliases-read", { shell, rcPath }, budgetWithin(ALIAS_BUDGET_MS));
-  } catch (e) {
-    throw said(e);
-  }
+export function readAliases(origin: Origin, shell: Shell, rcPath: string | null): Promise<AliasListing> {
+  return callTyped(origin, "aliases-read", { shell, rcPath }, budgetWithin(ALIAS_BUDGET_MS));
 }
 
 /** 那台终端里敲 `ccm` 走到的是不是 cc-monitor 放的那一份、给人读的那一句（那台后端现问新开终端的 `PATH`）。 */
 export async function readCcmOnPath(origin: Origin): Promise<OnPath> {
-  try {
-    const { onPath } = await callTyped(origin, "ccm-probe", {}, budgetWithin(ALIAS_BUDGET_MS));
-    return onPath;
-  } catch (e) {
-    throw said(e);
-  }
+  const { onPath } = await callTyped(origin, "ccm-probe", {}, budgetWithin(ALIAS_BUDGET_MS));
+  return onPath;
 }
 
 /** 用户级 PATH 那一格：读 · 加 · 撤，回做完之后现问的成品（状态 · 那一句 · 详情 · 那段命令）。 */
-export async function userPath(origin: Origin, op: UserPathOp): Promise<UserPath> {
-  try {
-    return await callTyped(origin, "ccm-user-path", { op }, budgetWithin(ALIAS_BUDGET_MS));
-  } catch (e) {
-    throw said(e);
-  }
+export function userPath(origin: Origin, op: UserPathOp): Promise<UserPath> {
+  return callTyped(origin, "ccm-user-path", { op }, budgetWithin(ALIAS_BUDGET_MS));
 }
 
 /** 别名块预览（往一份空文件里装一次会写成什么；方言由 `rcPath` 的扩展名定）。 */
 export async function renderAliasBlock(origin: Origin, rcPath: string): Promise<string> {
-  try {
-    const { text } = await callTyped(origin, "aliases-block-render", { rcPath }, budgetWithin(ALIAS_BUDGET_MS));
-    return text;
-  } catch (e) {
-    throw said(e);
-  }
+  const { text } = await callTyped(origin, "aliases-block-render", { rcPath }, budgetWithin(ALIAS_BUDGET_MS));
+  return text;
 }
 
 /** 别名块装进那台上人选的那份启动文件（幂等，整块替换）。 */
 export async function installAliasBlock(origin: Origin, rcPath: string): Promise<void> {
-  try {
-    await callTyped(origin, "aliases-block-install", { rcPath }, budgetWithin(ALIAS_BUDGET_MS));
-  } catch (e) {
-    throw said(e);
-  }
+  await callTyped(origin, "aliases-block-install", { rcPath }, budgetWithin(ALIAS_BUDGET_MS));
 }
 
 /**
  * 把那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned`（后端只做这一件固定的事）。
  * **只在用户点了、确认了之后调**（不代改）。
  */
-export async function allowLocalScripts(origin: Origin, host: PsHost): Promise<PolicySet> {
-  try {
-    return await callTyped(origin, "powershell-policy-set", { host }, budgetWithin(ALIAS_BUDGET_MS));
-  } catch (e) {
-    throw said(e);
-  }
+export function allowLocalScripts(origin: Origin, host: PsHost): Promise<PolicySet> {
+  return callTyped(origin, "powershell-policy-set", { host }, budgetWithin(ALIAS_BUDGET_MS));
 }
 
 /** 别名块卸掉（整块删，块外一个字节不动）。 */
 export async function removeAliasBlock(origin: Origin, rcPath: string): Promise<void> {
-  try {
-    await callTyped(origin, "aliases-block-remove", { rcPath }, budgetWithin(ALIAS_BUDGET_MS));
-  } catch (e) {
-    throw said(e);
-  }
+  await callTyped(origin, "aliases-block-remove", { rcPath }, budgetWithin(ALIAS_BUDGET_MS));
 }

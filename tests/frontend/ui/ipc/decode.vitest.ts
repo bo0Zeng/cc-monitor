@@ -22,9 +22,6 @@ describe("ipc/decode", () => {
   });
 });
 
-/** 别名配置那一份（`alias-reads.ts`）另一路正在改，合进主线之后再收进来；除它之外零处。 */
-const PENDING = new Set(["src/frontend/ui/alias-reads.ts"]);
-
 describe("严格收的小件只有一个家", () => {
   it("界面生产段里零处自己定义 isObj / 键集合比较（正控：decode.ts 里认得出）", () => {
     const own = /\b(const|function)\s+(isObj|sameKeys|exactKeys|exactly)\b/;
@@ -34,7 +31,7 @@ describe("严格收的小件只有一个家", () => {
     for (const s of productionTsFiles("src/frontend/ui")) {
       const mine = own.test(s.text) || sortedKeys.test(s.text);
       if (s.file === "src/frontend/ui/ipc/decode.ts") control = mine;
-      else if (mine && !PENDING.has(s.file)) hits.push(s.file);
+      else if (mine) hits.push(s.file);
     }
     expect(control, "正控：decode.ts 里没认出定义 —— 识别器坏了或住址搬了").toBe(true);
     expect(hits, "这几份又自己写了一份").toEqual([]);
