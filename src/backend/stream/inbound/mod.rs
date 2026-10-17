@@ -190,6 +190,8 @@ where
         // 本连接发起的登录作业：同上，随本读循环一起死 ⇒ monitor 走了，它开的登录子命令一律杀（`accounts::sign_in::Desk` 的 `Drop`）。
         //   与待答请求同一个连接号。
         let _logins = crate::accounts::sign_in::Desk::of(asks.conn());
+        // 本连接交的浏览名单：同上，随本读循环一起死 ⇒ 它在看的目录（别人没在看的）不再盯（`files_face::Browsing` 的 `Drop`）。
+        let _browsing = files_face::Browsing(asks.conn());
         let mut rd = BufReader::new(stdin);
         let mut buf: Vec<u8> = Vec::new();
         // 本行是否已经超限。超限之后**只丢字节、不再往 buf 里塞**（O(1) 内存）。
@@ -418,6 +420,13 @@ fn dispatch(
                 ),
             )
         }
+        // 正在看的目录：名单记在**本连接**名下（连接断了摘掉）⇒ 硬臂带上本连接的号；改 watch 要读盘 ⇒ 阻塞池。
+        "files-browse" => Disposition::SpawnBlocking(
+            req,
+            crate::wire::typed::answer_blocking::<files_face::FilesBrowse, _>(move |r, _cx| {
+                files_face::browse(asks, r)
+            }),
+        ),
         "needs-ask" => Disposition::SpawnData(
             req,
             crate::wire::typed::answer_async::<crate::control::asks::NeedsAsk, _, _>(

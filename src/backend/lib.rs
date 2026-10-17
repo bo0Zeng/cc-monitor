@@ -396,7 +396,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--files-commit-text",
     // 删历史会话。登记理由同上面写面那几条（CLI 面从 `REGISTRY` 派生）。
     "--files-delete-session",
-    "--files-browse",
     "--files-find",
     "--files-index-rebuild",
     "--files-index-status",

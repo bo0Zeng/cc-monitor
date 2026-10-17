@@ -242,19 +242,22 @@ impl Command for FilesBrowse {
     type Err = FilesBrowseErr;
 }
 
-impl crate::wire::typed::Handle for FilesBrowse {
-    type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
-        req: wire::BrowseReq,
-        cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<wire::BrowseReply, FilesBrowseErr>> + Send + 'static
-    {
-        let (cx, ()) = cx.split();
-        async move {
-            let cx = &cx;
+/// `files-browse` 的本体：名单记在**本连接**名下（`conn` ＝ 读循环那一份连接号），帧面硬臂交进阻塞池调它。
+pub(crate) fn browse(conn: u64, req: wire::BrowseReq) -> Result<wire::BrowseReply, FilesBrowseErr> {
+    crate::files::browse(conn, req).map_err(|f| {
+        typed::of_fail(
+            Fail::new(f.code, f.said).with_raw(f.raw.as_deref()),
+            FilesBrowseErr::BadArgs,
+        )
+    })
+}
 
-            ask(req, cx, FilesBrowseErr::BadArgs)
-        }
+/// 本连接交的浏览名单跟着它走：读循环一份，它一丢（连接断了）⇒ 那一份摘掉（别的连接也在看的目录照旧盯着）。
+pub(crate) struct Browsing(pub(crate) u64);
+
+impl Drop for Browsing {
+    fn drop(&mut self) {
+        crate::files::leave_browsing(self.0);
     }
 }
 

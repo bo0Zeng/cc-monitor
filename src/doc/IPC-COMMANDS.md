@@ -1584,9 +1584,9 @@ type WirePath = string | { b16: string };
 
 #### `files-browse`
 
-告诉后端「用户现在在看哪几个目录」。
+告诉后端「这条连接现在在看哪几个目录」（各条连接的并集被盯着；连接断了摘掉它那份）。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-browse`
+收 `args` · 连接内就地做完 · 只在流上
 
 入参 `BrowseReq` · 回包 `BrowseReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
@@ -14037,7 +14037,6 @@ type Words = string;
 | `--ext-uninstall-apply` | ＝ 帧命令 `ext-uninstall-apply`：从这台卸一个扩展 |
 | `--ext-uninstall-preview` | ＝ 帧命令 `ext-uninstall-preview`：从这台卸一个扩展之前那张卡 |
 | `--files-batch-stop` | ＝ 帧命令 `files-batch-stop`：撤一组复制 · 删除 · 改权限 |
-| `--files-browse` | ＝ 帧命令 `files-browse`：告诉后端「用户现在在看哪几个目录」 |
 | `--files-chmod` | ＝ 帧命令 `files-chmod`：一组改成同一个 unix 权限位 |
 | `--files-commit-text` | ＝ 帧命令 `files-commit-text`：按块读回、拼起来、覆盖写 |
 | `--files-commit-upload` | ＝ 帧命令 `files-commit-upload`：把暂存区里一份传完的上传件挪进目标 |

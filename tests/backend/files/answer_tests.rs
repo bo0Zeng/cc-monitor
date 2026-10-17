@@ -13,7 +13,8 @@ pub(crate) const CAPABILITIES: &[&str] = &[
     <w::StatReq as Ask>::CAPABILITY,
     <w::FindReq as Ask>::CAPABILITY,
     <w::RebuildReq as Ask>::CAPABILITY,
-    <w::BrowseReq as Ask>::CAPABILITY,
+    // 浏览名单跟着连接走（不是 `Ask`：帧面硬臂带本连接的号进 `files::browse`）；判据里记在 [`TEST_CONN`] 名下。
+    "files.browse",
     <w::ReadTextReq as Ask>::CAPABILITY,
     <w::ReadChunkReq as Ask>::CAPABILITY,
     <w::SizeReq as Ask>::CAPABILITY,
@@ -21,6 +22,9 @@ pub(crate) const CAPABILITIES: &[&str] = &[
     <w::HomeReq as Ask>::CAPABILITY,
     <w::IndexStatusReq as Ask>::CAPABILITY,
 ];
+
+/// 判据里交浏览名单用的那条连接号（帧面那一侧每条连接一个号，从 1 起）。
+pub(crate) const TEST_CONN: u64 = 1;
 
 /// 判据里按能力名问一条（同命令表那一扇门：入参先按它的类型解，形状不对 ⇒ `bad_args`；回包按线上那一形摊回 JSON）。
 /// 名字从每条 [`Ask`] 自己声明的 [`Ask::CAPABILITY`] 来，不在里面 ⇒ `unknown_capability`。
@@ -54,7 +58,20 @@ pub(crate) fn answer(
         n if n == <w::StatReq as Ask>::CAPABILITY => one::<w::StatReq>(args, tz),
         n if n == <w::FindReq as Ask>::CAPABILITY => one::<w::FindReq>(args, tz),
         n if n == <w::RebuildReq as Ask>::CAPABILITY => one::<w::RebuildReq>(args, tz),
-        n if n == <w::BrowseReq as Ask>::CAPABILITY => one::<w::BrowseReq>(args, tz),
+        "files.browse" => {
+            let v = if args.is_null() {
+                serde_json::json!({})
+            } else {
+                args.clone()
+            };
+            let req: w::BrowseReq = serde_json::from_value(v).map_err(|e| {
+                Refused::from((
+                    "bad_args",
+                    crate::common::contract::malformed(&e.to_string()),
+                ))
+            })?;
+            super::browse(TEST_CONN, req).map(|r| serde_json::to_value(r).expect("回包总能序列化"))
+        }
         n if n == <w::ReadTextReq as Ask>::CAPABILITY => one::<w::ReadTextReq>(args, tz),
         n if n == <w::ReadChunkReq as Ask>::CAPABILITY => one::<w::ReadChunkReq>(args, tz),
         n if n == <w::SizeReq as Ask>::CAPABILITY => one::<w::SizeReq>(args, tz),

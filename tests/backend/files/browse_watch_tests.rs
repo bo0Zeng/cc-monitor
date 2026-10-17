@@ -32,7 +32,7 @@ fn the_browse_list_is_a_real_diff() {
     let b = fx.root.join("d0001");
     let c = fx.root.join("d0002");
 
-    let first = set_browsing(&[a.clone(), b.clone()]);
+    let first = set_browsing(1, &[a.clone(), b.clone()]);
     assert_eq!(
         first,
         Applied {
@@ -45,7 +45,7 @@ fn the_browse_list_is_a_real_diff() {
     assert_eq!(watched_count(), 2);
 
     // 换一批：`a` 留着（**不该被重新挂一次**）、`b` 走、`c` 来。
-    let second = set_browsing(&[a.clone(), c.clone()]);
+    let second = set_browsing(1, &[a.clone(), c.clone()]);
     assert_eq!(
         second,
         Applied {
@@ -58,7 +58,7 @@ fn the_browse_list_is_a_real_diff() {
     assert_eq!(watched_count(), 2);
 
     // 重复的目录只算一次。
-    let dup = set_browsing(&[a.clone(), a.clone(), a]);
+    let dup = set_browsing(1, &[a.clone(), a.clone(), a]);
     assert_eq!(dup.added, 0, "同一个目录报了三次，不该被挂三份");
     assert_eq!(watched_count(), 1);
 }
@@ -72,7 +72,7 @@ fn going_over_the_cap_is_reported_not_swallowed() {
     let dirs: Vec<std::path::PathBuf> = (0..MAX_BROWSE_WATCHES + over)
         .map(|d| fx.root.join(format!("d{d:04}")))
         .collect();
-    let applied = set_browsing(&dirs);
+    let applied = set_browsing(1, &dirs);
     assert_eq!(applied.added, MAX_BROWSE_WATCHES, "挂上的个数不等于上限");
     assert_eq!(
         applied.rejected, over,
@@ -148,7 +148,7 @@ fn a_file_created_after_the_walk_is_found_because_its_directory_is_being_watched
     );
 
     // ② 声明「我在浏览这个目录」，然后造那个文件。
-    set_browsing(&[dir.clone()]);
+    set_browsing(1, &[dir.clone()]);
     std::fs::File::create(dir.join("born-after-the-walk")).expect("造那个文件");
 
     // ③ 事件到达等价于调一次 `on_change`（真 inotify 那一跳另有一条判据）。
@@ -191,7 +191,7 @@ fn an_entry_deleted_on_disk_stops_being_returned_once_its_directory_is_relisted(
     let before = crate::files::index::tests::query("about-to-be-deleted", 10);
     assert_eq!(before.total_hits, 1, "它本该在索引里 —— 夹具坏了");
 
-    set_browsing(&[dir.clone()]);
+    set_browsing(1, &[dir.clone()]);
     std::fs::remove_file(&doomed).expect("删掉它");
     assert!(on_change(crate::files::raw::path_bytes(&dir)));
 
@@ -212,7 +212,7 @@ fn an_entry_deleted_on_disk_stops_being_returned_once_its_directory_is_relisted(
 fn an_event_outside_the_browse_list_changes_nothing() {
     let _lock = resident_lock();
     let fx = make_tree("stranger", 2, 1, 0);
-    set_browsing(&[fx.root.join("d0000")]);
+    set_browsing(1, &[fx.root.join("d0000")]);
     assert!(
         !on_change(crate::files::raw::path_bytes(&fx.root.join("d0001"))),
         "不在名单上的目录也被当成自己的事处理了 —— 那会让 overlay 无边界地长"
@@ -224,7 +224,7 @@ fn the_event_path_maps_back_to_the_watched_directory() {
     let _lock = resident_lock();
     let fx = make_tree("mapback", 1, 1, 0);
     let dir = fx.root.join("d0000");
-    set_browsing(&[dir.clone()]);
+    set_browsing(1, &[dir.clone()]);
     let dir_bytes = crate::files::raw::path_bytes(&dir).to_vec();
     // 事件给目录自己。
     assert_eq!(dir_for_event(&dir_bytes), Some(dir_bytes.clone()));
@@ -251,7 +251,7 @@ fn the_real_watcher_arms_and_delivers() {
     let _lock = resident_lock();
     let fx = make_tree("realwatch", 1, 1, 0);
     let dir = fx.root.join("d0000");
-    set_browsing(&[dir.clone()]);
+    set_browsing(1, &[dir.clone()]);
 
     let mut w = match BrowseWatcher::start() {
         Ok(w) => w,
@@ -348,7 +348,7 @@ fn a_change_in_a_watched_directory_is_announced_by_its_key() {
     let fx = make_tree("watchsay", 2, 1, 0);
     let a = fx.root.join("d0000");
     let b = fx.root.join("d0001");
-    set_browsing(std::slice::from_ref(&a));
+    set_browsing(1, std::slice::from_ref(&a));
     let mut rx = dir_changes().subscribe();
     let bytes = |p: &std::path::Path| super::super::raw::path_bytes(p).to_vec();
     assert!(!on_change(&bytes(&b)), "不在名单上的目录被当成了在看的");
@@ -356,5 +356,37 @@ fn a_change_in_a_watched_directory_is_announced_by_its_key() {
     let key = cmd_wire::files::WirePath(bytes(&a)).key();
     assert_eq!(rx.try_recv().ok(), Some(key), "重列过却没说一声");
     assert!(rx.try_recv().is_err(), "不在名单上的那一下也说了");
-    set_browsing(&[]);
+    set_browsing(1, &[]);
+}
+
+/// 名单每条连接各一份、盯的是并集：两条连接各交一个目录 ⇒ 两个目录都盯着、各自有动静都说一声（后交的不盖掉先交的）；
+/// 一条连接断了 ⇒ 只它交的那个目录不再盯，两条都交了的那个照旧盯着。
+#[test]
+fn each_connection_keeps_its_own_list_and_leaving_drops_only_its_dirs() {
+    let _lock = resident_lock();
+    let fx = make_tree("watchconn", 3, 1, 0);
+    let (a, b, c) = (
+        fx.root.join("d0000"),
+        fx.root.join("d0001"),
+        fx.root.join("d0002"),
+    );
+    let bytes = |p: &std::path::Path| super::super::raw::path_bytes(p).to_vec();
+    set_browsing(1, &[a.clone(), c.clone()]);
+    set_browsing(2, &[b.clone(), c.clone()]);
+    let mut rx = dir_changes().subscribe();
+    for d in [&a, &b, &c] {
+        assert!(on_change(&bytes(d)), "{} 有连接在看，却没盯着", d.display());
+        assert_eq!(
+            rx.try_recv().ok(),
+            Some(cmd_wire::files::WirePath(bytes(d)).key()),
+            "{} 动过却没说一声",
+            d.display()
+        );
+    }
+    leave(2);
+    assert!(!on_change(&bytes(&b)), "交它的那条连接断了，b 还盯着");
+    assert!(on_change(&bytes(&a)), "断的是另一条连接，a 却不盯了");
+    assert!(on_change(&bytes(&c)), "c 还有一条连接在看，却不盯了");
+    set_browsing(1, &[]);
+    assert_eq!(watched_count(), 0, "名单都空了还盯着");
 }

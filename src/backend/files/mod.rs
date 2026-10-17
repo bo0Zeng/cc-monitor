@@ -135,6 +135,11 @@ const KINDS_BY_CODE: [FileKind; 4] = [
     FileKind::Other,
 ];
 
+/// 一条连接断了：它交的那一份浏览名单摘掉（别的连接也在看的目录照旧盯着）。
+pub fn leave_browsing(conn: u64) {
+    browse_watch::leave(conn);
+}
+
 /// 正被浏览的某个目录有了动静、重列过 ⇒ 那个目录（[`browse_watch::dir_changes`]；推 `changed {files_dir}` 的那一头订它）。
 pub fn dir_changes() -> tokio::sync::broadcast::Receiver<String> {
     browse_watch::dir_changes().subscribe()
@@ -646,15 +651,16 @@ fn unreadable_paths() -> Vec<WirePath> {
         .collect()
 }
 
-/// `files.browse` —— 告诉后端「用户现在在看哪几个目录」。
+/// `files.browse` —— 这条连接（`conn`）此刻在看哪几个目录（整份）：每条连接各一份，盯的是并集。
+/// 名单跟着连接走 ⇒ 只在帧面（一次 exec 的进程交了也随它没了）；连接断了调 [`leave_browsing`]。
 ///
 /// [`browse_watch::set_browsing`] 登记名单 ＋ 当场把那几个目录各重列一遍（结果进 overlay，查询时盖掉大索引里的对应条目）；
 /// [`browse_watch::keep_watching`] 让进程里那一个监听器跟上名单 ⇒ 浏览的目录此后一有动静 overlay 就跟着重列。
-/// 买不到：watch 绑 inode 不绑路径 · 内核队列溢出 · 窗口关了没人发空名单（最后那份名单的 watch 留到下一次）。
+/// 买不到：watch 绑 inode 不绑路径 · 内核队列溢出。
 /// `rejected` 必须跟着回去，并同拍带上 `browse_watch_cap`：只回一个数、不说上限，调用方没法判该少送几个。
-fn browse(req: wire::BrowseReq) -> Answer<wire::BrowseReply> {
+pub fn browse(conn: u64, req: wire::BrowseReq) -> Answer<wire::BrowseReply> {
     let dirs = dirs_of(&req.dirs)?;
-    let applied = browse_watch::set_browsing(&dirs);
+    let applied = browse_watch::set_browsing(conn, &dirs);
     let w = browse_watch::keep_watching();
     Ok(wire::BrowseReply {
         added: applied.added as u64,
@@ -1085,14 +1091,6 @@ impl Ask for wire::RebuildReq {
     type Reply = wire::RebuildReply;
     fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::RebuildReply> {
         index_rebuild(self)
-    }
-}
-
-impl Ask for wire::BrowseReq {
-    const CAPABILITY: &'static str = "files.browse";
-    type Reply = wire::BrowseReply;
-    fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::BrowseReply> {
-        browse(self)
     }
 }
 
