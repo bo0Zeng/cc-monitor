@@ -4,7 +4,7 @@
 //! 其余（心跳、用量增量、工具入参增量、不认识的新事件、读不懂的原文）一律不出事件。
 //! 每发用量另读（[`spent`]）：开头那一件的输入 · 缓存读写，收尾前那一件的输出。
 
-use super::{BlockKind, Spent, StreamEv};
+use super::{BlockKind, Prompt, Spent, StreamEv, Tier};
 use serde_json::Value;
 
 /// 这个协议的流面（走这个协议的那几家在 `DefaultUpstream::stream` 里登记它）。
@@ -32,21 +32,38 @@ pub(crate) fn spent(data: &str) -> Option<Spent> {
     match v.get("type").and_then(Value::as_str)? {
         "message_start" => {
             let u = v.get("message")?.get("usage")?;
-            let write = match u.get("cache_creation") {
-                Some(c) if c.is_object() => {
-                    n(c, "ephemeral_5m_input_tokens") * CACHE_WRITE_5M
-                        + n(c, "ephemeral_1h_input_tokens") * CACHE_WRITE_1H
-                }
-                _ => n(u, "cache_creation_input_tokens") * CACHE_WRITE_5M,
+            let (w5, w1) = match u.get("cache_creation") {
+                Some(c) if c.is_object() => (
+                    n(c, "ephemeral_5m_input_tokens"),
+                    n(c, "ephemeral_1h_input_tokens"),
+                ),
+                _ => (n(u, "cache_creation_input_tokens"), 0.0),
             };
+            let tier = if w1 > 0.0 && w1 >= w5 {
+                Some(Tier {
+                    ttl: 3600,
+                    extra: CACHE_WRITE_1H - CACHE_READ,
+                })
+            } else if w5 > 0.0 {
+                Some(Tier {
+                    ttl: 300,
+                    extra: CACHE_WRITE_5M - CACHE_READ,
+                })
+            } else {
+                None
+            };
+            let (input, read) = (n(u, "input_tokens"), n(u, "cache_read_input_tokens"));
             Some(Spent {
-                units: n(u, "input_tokens") + write + n(u, "cache_read_input_tokens") * CACHE_READ,
-                opens: true,
+                units: input + w5 * CACHE_WRITE_5M + w1 * CACHE_WRITE_1H + read * CACHE_READ,
+                prompt: Some(Prompt {
+                    tokens: (input + w5 + w1 + read) as u64,
+                    tier,
+                }),
             })
         }
         "message_delta" => Some(Spent {
             units: n(v.get("usage")?, "output_tokens") * OUTPUT,
-            opens: false,
+            prompt: None,
         }),
         _ => None,
     }

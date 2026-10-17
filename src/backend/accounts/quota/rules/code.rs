@@ -114,6 +114,16 @@ fn ctx_dynamic(c: &Ctx<'_>) -> Dynamic {
                 "tokensPerPct".into(),
                 pair(opt(a.per_pct[0]), opt(a.per_pct[1])),
             );
+            m.insert("weekly".into(), a.weekly.into());
+            m.insert("off".into(), a.off.into());
+            m.insert(
+                "others".into(),
+                a.others.map_or(Dynamic::UNIT, |o| {
+                    let mut w = Map::new();
+                    w.insert("w5h".into(), o.into());
+                    Dynamic::from(w)
+                }),
+            );
             Dynamic::from(m)
         })
         .collect();
@@ -129,6 +139,40 @@ fn ctx_dynamic(c: &Ctx<'_>) -> Dynamic {
     m.insert("settings".into(), json(c.settings));
     m.insert("memo".into(), c.memo.map_or(Dynamic::UNIT, json));
     m.insert("accounts".into(), Dynamic::from(accounts));
+    m.insert("session".into(), session_dynamic(c.me));
+    m.insert("pinned".into(), c.pinned.into());
+    m.insert(
+        "temp".into(),
+        Dynamic::from(
+            c.temp
+                .iter()
+                .map(|a| Dynamic::from(a.clone()))
+                .collect::<rhai::Array>(),
+        ),
+    );
+    Dynamic::from(m)
+}
+
+/// ctx 的 `session`：本会话量出来的，量不到的格是 `()`；`cached` ＝ `#{号: #{until, tokens}}`。
+fn session_dynamic(me: &super::decide::Me) -> Dynamic {
+    let int = |x: u64| Dynamic::from(i64::try_from(x).unwrap_or(i64::MAX));
+    let opt = |v: Option<u64>| v.map_or(Dynamic::UNIT, int);
+    let optf = |v: Option<f64>| v.map_or(Dynamic::UNIT, Dynamic::from);
+    let mut cached = Map::new();
+    for c in &me.cached {
+        let mut x = Map::new();
+        x.insert("until".into(), int(c.until));
+        x.insert("tokens".into(), int(c.tokens));
+        cached.insert(c.account.as_str().into(), Dynamic::from(x));
+    }
+    let mut m = Map::new();
+    m.insert("pace".into(), optf(me.pace));
+    m.insert("spread".into(), optf(me.spread));
+    m.insert("context".into(), opt(me.context));
+    m.insert("writeExtra".into(), optf(me.write_extra));
+    m.insert("ttl".into(), opt(me.ttl));
+    m.insert("grow".into(), optf(me.grow));
+    m.insert("cached".into(), Dynamic::from(cached));
     Dynamic::from(m)
 }
 

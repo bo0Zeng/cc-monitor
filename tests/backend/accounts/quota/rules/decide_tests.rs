@@ -76,6 +76,8 @@ fn acct(id: &str, used5h: f64) -> Acct {
         barred: None,
         rate: [None, None],
         per_pct: [None, None],
+        weekly: false,
+        others: None,
     }
 }
 
@@ -916,6 +918,8 @@ fn group(seed: u64) -> (Value, Vec<Acct>, Sigma) {
                 Some(0.01 + g.upto(10) as f64 / 100.0),
             ],
             per_pct: [None, None],
+            weekly: false,
+            others: None,
         })
         .collect();
     let temp: Vec<String> = ids.iter().filter(|_| g.upto(4) == 0).cloned().collect();

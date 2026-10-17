@@ -14,6 +14,8 @@ fn a(id: &str, used: f64, rate: Option<f64>) -> Acct {
         barred: None,
         rate: [rate, None],
         per_pct: [None, None],
+        weekly: false,
+        others: None,
     }
 }
 

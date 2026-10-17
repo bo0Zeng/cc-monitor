@@ -143,6 +143,7 @@ pub(crate) fn sigma_of(s: &Session) -> Sigma {
             })
             .collect(),
         memo: s.memo.clone(),
+        me: Default::default(),
     }
 }
 
@@ -216,14 +217,26 @@ pub(crate) fn apply(
     };
 }
 
+/// 锁里判的那一下：落账前 · 落账后的会话那一条 · 照它判的那一份 · 这一判 · 它看的事实。
+struct InTurn {
+    before: Session,
+    after: Session,
+    plan: Adopted,
+    d: Decision,
+    facts: Vec<Acct>,
+}
+
 /// 备料最多试几个号（每试不成一个就记进 `tried` 再判一次）。
 const PREPARE_TRIES: usize = 8;
 
 impl Hop {
     /// ★ 交给判的那一排事实（照 [`listed`] 的先后；开会话用的号不在账号库里也带上）。用速是每个号自己在额度账里量出来的，量不到就空着。
+    /// `book` ＝ 判的时候看的那一份账本（别的会话此刻在哪个号上照它：同一把锁里判，前一个会话刚换到哪就算到哪）。
     pub(crate) fn accts(
         &self,
+        sid: &str,
         s: &Session,
+        book: &book::Book,
         settings: &Value,
         row: &dyn Fn(&str) -> Option<bool>,
         now: u64,
@@ -248,12 +261,61 @@ impl Hop {
                 x.barred = None;
             }
         }
+        for x in &mut all {
+            x.others = self.others_on(&s.agent, sid, book, x, now);
+        }
         listed(settings, &s.start, all)
+    }
+
+    /// ★ 别的会话压在 `x` 5 小时窗上的用速（点 / 分）＝ 号的总用速里不是这台的那一份 ＋ 这台别的会话此刻在它上面的用速。
+    /// 这台的会话在哪个号上照 `book`（没记在账本里的照它最近一发答它的号）；用速按 `x` 的「1% ≈ 多少」折成点。
+    /// 量不到号的总用速 · 1% ≈ 多少 · 窗口没开 ⇒ 空（不知道别人会不会用掉它）。
+    fn others_on(
+        &self,
+        agent: &str,
+        sid: &str,
+        book: &book::Book,
+        x: &Acct,
+        now: u64,
+    ) -> Option<f64> {
+        let tpp = x.per_pct[0].filter(|t| *t > 0)? as f64;
+        let o = self.quota.entry(agent, &x.id)?;
+        let name = crate::accounts::quota::facts::slot_window(
+            Some(&o.reading),
+            "5h",
+            now,
+            &super::rotate::slot_fn(agent),
+        )?;
+        let total = o.load(&name, now)?;
+        let spend = self.quota.spend();
+        let away = (total - spend.here(agent, &x.id, now) / tpp).max(0.0);
+        let near: f64 = spend
+            .others(agent, sid, now)
+            .iter()
+            .filter(|(k, at, _)| {
+                book.sessions
+                    .get(k)
+                    .filter(|b| b.agent == agent)
+                    .map_or(at.as_str(), |b| b.current.as_str())
+                    == x.id
+            })
+            .map(|(_, _, pace)| pace / tpp)
+            .sum();
+        Some(away + near)
+    }
+
+    /// 判的会话状态：会话那一条 ＋ 本会话此刻量出来的。
+    pub(crate) fn sigma(&self, sid: &str, s: &Session, now: u64) -> Sigma {
+        Sigma {
+            me: self.quota.spend().me(sid, now),
+            ..sigma_of(s)
+        }
     }
 
     /// 照会话那一条判一次（纯：不写、不碰缓存）。
     pub(crate) fn judge_session(
         &self,
+        sid: &str,
         s: &Session,
         plan: &Adopted,
         facts: &[Acct],
@@ -261,7 +323,7 @@ impl Hop {
         tried: &[String],
     ) -> Decision {
         decide::turn(
-            &sigma_of(s),
+            &self.sigma(sid, s, now),
             facts,
             &plan.settings,
             plan,
@@ -336,7 +398,7 @@ impl Hop {
         facts: &[Acct],
         tried: &[String],
     ) -> Decision {
-        let d = self.judge_session(s, plan, facts, a.now, tried);
+        let d = self.judge_session(a.sid, s, plan, facts, a.now, tried);
         if let Some(e) = &d.strategy_error {
             tracing::warn!("[rotate] 策略「{}」这一判走了兜底：{}", plan.id, e.msg);
         }
@@ -357,12 +419,17 @@ impl Hop {
         tried: &[String],
     ) {
         let n = self.settle(own, a.sid, s, d, facts, a.now);
+        self.remember(a, &n, plan, d, tried);
+    }
+
+    /// 落了账的这一判记进缓存（带着 `tried` 判的不缓存：下一发照事实重判）。
+    fn remember(&self, a: &Turn<'_>, n: &Session, plan: &Adopted, d: &Decision, tried: &[String]) {
         let mut c = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         if tried.is_empty() {
             c.map.insert(
                 a.sid.to_string(),
                 Cached {
-                    snap: snap(&n),
+                    snap: snap(n),
                     plan: key(plan),
                     pick: d.pick.clone(),
                     tn: d.tn,
@@ -451,7 +518,8 @@ impl Hop {
                         return Go::Start;
                     };
                     // 回包里卡着的那个窗口：在这一刻重置的那一窗（先看到时最早恢复的那个号）。
-                    let facts = self.accts(s, &plan.settings, a.row, a.now);
+                    let facts =
+                        self.accts(a.sid, s, &self.store.now(), &plan.settings, a.row, a.now);
                     let win = |f: &Acct| (0..2).find(|w| f.resets[*w] == Some(at));
                     let w = facts
                         .iter()
@@ -475,7 +543,14 @@ impl Hop {
                         tried.push(x);
                         let facts = match judged.take() {
                             Some((_, f)) => f,
-                            None => self.accts(s, &plan.settings, a.row, a.now),
+                            None => self.accts(
+                                a.sid,
+                                s,
+                                &self.store.now(),
+                                &plan.settings,
+                                a.row,
+                                a.now,
+                            ),
                         };
                         let d = self.judge(a, s, plan, &facts, &tried);
                         pick = d.pick.clone();
@@ -504,15 +579,78 @@ impl Hop {
         if plan.id.is_empty() {
             return Go::Start;
         }
-        let (pick, judged) = match self.cached(a, &s, &plan) {
-            Some(p) => (p, None),
-            None => {
-                let facts = self.accts(&s, &plan.settings, a.row, a.now);
-                let d = self.judge(a, &s, &plan, &facts, &[]);
-                (d.pick.clone(), Some((d, facts)))
+        if let Some(p) = self.cached(a, &s, &plan) {
+            return self.go_for(own, a, &lib, &s, &plan, p, None, Vec::new());
+        }
+        if let Some(j) = self.judge_in_turn(own, a) {
+            let InTurn {
+                before,
+                after,
+                plan,
+                d,
+                facts,
+            } = j;
+            let to = match &d.pick {
+                Pick::Use(x) if *x != before.current => x.clone(),
+                _ => {
+                    self.remember(a, &after, &plan, &d, &[]);
+                    return self.go_for(own, a, &lib, &after, &plan, d.pick, None, Vec::new());
+                }
+            };
+            if let Ok(go) = self.prepare(own, a, &lib, &to) {
+                self.remember(a, &after, &plan, &d, &[]);
+                return go;
             }
-        };
-        self.go_for(own, a, &lib, &s, &plan, pick, judged, Vec::new())
+            // 换到的号接不上：那一笔撤回（没换成的不记），照同一份事实带着它再判（同 429）。
+            self.undo(own, a.sid, &after, &before);
+            let tried = vec![to];
+            let d = self.judge(a, &before, &plan, &facts, &tried);
+            let pick = d.pick.clone();
+            return self.go_for(own, a, &lib, &before, &plan, pick, Some((d, facts)), tried);
+        }
+        // 账本写不成：照锁外那一份判，成了再落账（写不进去就只这一发照它走）。
+        let facts = self.accts(a.sid, &s, &self.store.now(), &plan.settings, a.row, a.now);
+        let d = self.judge(a, &s, &plan, &facts, &[]);
+        let pick = d.pick.clone();
+        self.go_for(own, a, &lib, &s, &plan, pick, Some((d, facts)), Vec::new())
+    }
+
+    /// ★ 各会话的判依次来：在账本那把跨进程的锁里读会话那一条与别的会话此刻在哪个号上 → 判 → 落账，
+    /// 后一个会话判时看得见前一个刚换到哪（[`Self::others_on`] 照这一份账本）。账本写不成 · 会话不轮换 ⇒ `None`。
+    fn judge_in_turn(&self, own: &Own, a: &Turn<'_>) -> Option<InTurn> {
+        let r = rotation::relay_change(&self.store, own, |b| {
+            let before = b.sessions.get(a.sid)?.clone();
+            let plan = Adopted::of(before.uses.as_ref());
+            if plan.id.is_empty() {
+                return None;
+            }
+            let facts = self.accts(a.sid, &before, b, &plan.settings, a.row, a.now);
+            let d = self.judge(a, &before, &plan, &facts, &[]);
+            let n = b.sessions.get_mut(a.sid)?;
+            apply(n, &d, &facts, a.now, None);
+            Some(InTurn {
+                after: n.clone(),
+                before,
+                plan,
+                d,
+                facts,
+            })
+        });
+        r.unwrap_or_else(|e| {
+            tracing::warn!("[rotate] {}", e.logged());
+            None
+        })
+    }
+
+    /// 撤回锁里落的那一笔：会话那一条还是落账后的样子 ⇒ 换回落账前的（别人又改过 ⇒ 不动）。
+    fn undo(&self, own: &Own, sid: &str, after: &Session, before: &Session) {
+        if let Err(e) = rotation::relay_change(&self.store, own, |b| {
+            if b.sessions.get(sid) == Some(after) {
+                b.sessions.insert(sid.to_string(), before.clone());
+            }
+        }) {
+            tracing::warn!("[rotate] {}", e.logged());
+        }
     }
 
     /// ★ 回包被拒：在同一发里带着 `tried`（这一发已经发过的号）再判一次（算法 #27）。别的请求刚把这个会话换走了 ⇒ 跟上它。
@@ -543,7 +681,7 @@ impl Hop {
                 return Some(go);
             }
         }
-        let mut facts = self.accts(&s, &plan.settings, a.row, a.now);
+        let mut facts = self.accts(a.sid, &s, &self.store.now(), &plan.settings, a.row, a.now);
         // 刚回来的那一发被拒：额度账未必已经记下，照它把那个号记成被拒。
         if let Some(x) = facts.iter_mut().find(|x| x.id == heard_from) {
             x.refused_until = Some(heard.resets_at.unwrap_or(a.now + 60).max(a.now + 1));

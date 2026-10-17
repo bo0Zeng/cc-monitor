@@ -578,6 +578,7 @@ fn the_size_of_one_percent_is_measured_kept_and_aged() {
             &format!(
                 r#"{{"type":"message_start","message":{{"usage":{{"input_tokens":{input}}}}}}}"#
             ),
+            t,
         );
     };
     seen(0.10, t);

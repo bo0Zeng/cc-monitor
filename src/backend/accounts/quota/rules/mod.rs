@@ -35,6 +35,10 @@ pub(crate) struct Acct {
     pub(crate) rate: [Option<f64>; 2],
     /// 两窗「1% ≈ 多少用量」（折合输入 token）：这个号自己在额度账里量出来的；量不到 ⇒ 空。只交给策略，判与推演不看它。
     pub(crate) per_pct: [Option<u64>; 2],
+    /// 有周上限（读数里有周用量那一格；没读数 ⇒ 当没有）。
+    pub(crate) weekly: bool,
+    /// 别的会话压在 5 小时窗上的用速（点 / 分）：照会话算（[`crate::accounts::upstream_select::rotate::Hop::accts`]）；说不出 ⇒ 空。
+    pub(crate) others: Option<f64>,
 }
 
 /// 跟窗口无关的「用不了」。
@@ -69,6 +73,8 @@ impl Acct {
             barred,
             rate: [f.w5h.rate, f.w7d.rate],
             per_pct: [f.w5h.tokens_per_pct, f.w7d.tokens_per_pct],
+            weekly: f.weekly,
+            others: None,
         }
     }
 }

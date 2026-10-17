@@ -113,17 +113,43 @@ fn usage_is_read_from_the_opening_and_closing_events_only() {
         spent(start),
         Some(Spent {
             units: 10.0 + 125.0 + 100.0,
-            opens: true
+            prompt: Some(Prompt {
+                tokens: 1110,
+                tier: Some(Tier {
+                    ttl: 300,
+                    extra: CACHE_WRITE_5M - CACHE_READ
+                })
+            })
         })
     );
     let tiers = r#"{"type":"message_start","message":{"usage":{"input_tokens":0,"cache_creation_input_tokens":300,"cache_creation":{"ephemeral_5m_input_tokens":100,"ephemeral_1h_input_tokens":200},"cache_read_input_tokens":0}}}"#;
     assert_eq!(spent(tiers).map(|s| s.units), Some(125.0 + 400.0));
+    assert_eq!(
+        spent(tiers).and_then(|s| s.prompt),
+        Some(Prompt {
+            tokens: 300,
+            tier: Some(Tier {
+                ttl: 3600,
+                extra: CACHE_WRITE_1H - CACHE_READ
+            })
+        }),
+        "两档都写 ⇒ 写得多的那一档"
+    );
+    let read_only = r#"{"type":"message_start","message":{"usage":{"input_tokens":5,"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"cache_read_input_tokens":900}}}"#;
+    assert_eq!(
+        spent(read_only).and_then(|s| s.prompt),
+        Some(Prompt {
+            tokens: 905,
+            tier: None
+        }),
+        "只读缓存 ⇒ 说不出是哪一档"
+    );
     let delta = r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":10,"output_tokens":40}}"#;
     assert_eq!(
         spent(delta),
         Some(Spent {
             units: 200.0,
-            opens: false
+            prompt: None
         })
     );
     for silent in [

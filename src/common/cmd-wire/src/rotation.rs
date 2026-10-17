@@ -74,6 +74,8 @@ pub struct Fact {
     pub kind: Kind,
     pub w5h: WinFact,
     pub w7d: WinFact,
+    /// 有周上限：读数里有周用量那一格（没出过数 ⇒ 当没有）。
+    pub weekly: bool,
     pub login: LoginState,
     /// 额度账上最后一次看到它（没出过数 ⇒ 缺）。
     #[serde(skip_serializing_if = "Option::is_none")]

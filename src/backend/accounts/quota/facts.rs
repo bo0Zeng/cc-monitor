@@ -120,6 +120,21 @@ pub(crate) struct Measured<'a> {
     pub(crate) per_pct: &'a dyn Fn(&str) -> Option<u64>,
 }
 
+/// 一个语义位此刻开着的窗口里用得最多的那个的原名（量出来的那几样按它问额度账；同 [`window_fact`] 的取法）。
+pub(crate) fn slot_window(
+    r: Option<&QuotaReading>,
+    slot: &str,
+    now: u64,
+    slot_of: &dyn Fn(&str) -> Option<&'static str>,
+) -> Option<String> {
+    r?.windows
+        .iter()
+        .filter(|x| slot_of(&x.name) == Some(slot))
+        .filter(|x| x.used.is_some() && x.resets_at.is_some_and(|t| t > now))
+        .max_by(|a, b| used_now(a, now).total_cmp(&used_now(b, now)))
+        .map(|x| x.name.clone())
+}
+
 /// 一个语义位此刻的窗口事实（量出来的那两样由调用方按窗口原名问额度账）。
 fn win_of(
     r: Option<&QuotaReading>,
@@ -130,15 +145,7 @@ fn win_of(
     when: &dyn Fn(u64) -> String,
 ) -> WinFact {
     let w = window_fact(r, slot, now, slot_of);
-    // 量出来的那两样取那一位上用得最多的那个窗口（同 window_fact 的取法）。
-    let name = r.and_then(|r| {
-        r.windows
-            .iter()
-            .filter(|x| slot_of(&x.name) == Some(slot))
-            .filter(|x| x.used.is_some() && x.resets_at.is_some_and(|t| t > now))
-            .max_by(|a, b| used_now(a, now).total_cmp(&used_now(b, now)))
-            .map(|x| x.name.clone())
-    });
+    let name = slot_window(r, slot, now, slot_of);
     WinFact {
         open: w.open,
         used: w.used,
@@ -184,6 +191,7 @@ pub(crate) fn fact_of(
         kind,
         w5h: win_of(r, "5h", now, slot_of, m, when),
         w7d: win_of(r, "7d", now, slot_of, m, when),
+        weekly: r.is_some_and(|r| r.windows.iter().any(|x| slot_of(&x.name) == Some("7d"))),
         login,
         seen_at,
         blocked,
