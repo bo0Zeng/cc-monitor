@@ -45,6 +45,8 @@ fn acct(id: &str, used5h: f64) -> Acct {
         barred: None,
         rate: [None, None],
         per_pct: [None, None],
+        weekly: false,
+        others: None,
     }
 }
 
