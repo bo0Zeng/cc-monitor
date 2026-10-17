@@ -43,6 +43,7 @@ import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.db.isKeystoreBacked
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
+import com.ccmonitor.mobile.core.ui.dialog.DangerConfirmDialog
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
 import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.core.ui.feedback.clearOfNotice
@@ -200,17 +201,15 @@ private fun IdentityRow(
 ) {
     var showDeleteConfirm by remember { mutableStateOf(false) } // 删除二次确认（删身份有级联后果）
     if (showDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
+        DangerConfirmDialog(
             title = { Text(copyText("mobIdentity.delete.title")) },
             text = { Text(identityDeleteWarning(identity.label, identity.isKeystoreBacked())) },
-            confirmButton = {
-                SecondaryButton(danger = true, onClick = {
-                    showDeleteConfirm = false
-                    onDelete()
-                }) { Text(copyText("mobIdentity.delete.ok")) }
+            confirm = copyText("mobIdentity.delete.ok"),
+            onConfirm = {
+                showDeleteConfirm = false
+                onDelete()
             },
-            dismissButton = { SecondaryButton(onClick = { showDeleteConfirm = false }) { Text(copyText("kit.dialog.cancel")) } },
+            onDismiss = { showDeleteConfirm = false },
         )
     }
     val tokens = LocalAppTokens.current

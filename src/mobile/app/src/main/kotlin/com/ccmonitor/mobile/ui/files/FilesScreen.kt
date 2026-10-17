@@ -54,6 +54,7 @@ import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Bookmark
 import com.ccmonitor.mobile.core.data.repo.BookmarkRepository
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
+import com.ccmonitor.mobile.core.ui.dialog.DangerConfirmDialog
 import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
 import com.ccmonitor.mobile.core.ui.feedback.clearOfNotice
@@ -488,8 +489,7 @@ private fun DeleteDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
+    DangerConfirmDialog(
         title = { Text(copyText("rsFilewinWriteops.label.delete")) },
         text = {
             Text(
@@ -500,16 +500,12 @@ private fun DeleteDialog(
                 },
             )
         },
-        confirmButton = {
-            SecondaryButton(
-                onClick = {
-                    onConfirm()
-                    onDismiss()
-                },
-                danger = true,
-            ) { Text(copyText("rsFilewinWriteops.label.delete")) }
+        confirm = copyText("rsFilewinWriteops.label.delete"),
+        onConfirm = {
+            onConfirm()
+            onDismiss()
         },
-        dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
+        onDismiss = onDismiss,
     )
 }
 
@@ -592,16 +588,18 @@ private fun ConfirmSaveDialog(
     onBack: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
+    DangerConfirmDialog(
         title = { Text(copyText("mobFiles.overwrite.title")) },
         text = {
             // 写入按字节：字数与 UTF-8 字节数都写（中文时差得多）。
             val bytes = d.text.toByteArray(Charsets.UTF_8).size
             Text(copyText("mobFiles.overwrite.body", "name" to d.edit.entry.name, "chars" to d.text.length, "bytes" to bytes), style = monoSmall)
         },
-        confirmButton = { SecondaryButton(onClick = onConfirm, danger = true) { Text(copyText("mobFiles.overwrite.ok")) } },
-        dismissButton = { SecondaryButton(onClick = onBack) { Text(copyText("mobFiles.overwrite.back")) } },
+        confirm = copyText("mobFiles.overwrite.ok"),
+        onConfirm = onConfirm,
+        onDismiss = onDismiss,
+        cancel = copyText("mobFiles.overwrite.back"),
+        onCancel = onBack,
     )
 }
 
