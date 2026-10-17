@@ -19,7 +19,7 @@
       "lang": "kt"
     }
   ],
-  "ceiling": 172,
+  "ceiling": 171,
   "entries": [
     {
       "file": "src/frontend/ui/account-chip.ts",
@@ -146,13 +146,6 @@
       "n": 2,
       "kind": "留",
       "why": "开发者日志（`[perf]` 行 / console），不上屏"
-    },
-    {
-      "file": "src/frontend/ui/new-session.ts",
-      "rule": "codeWord",
-      "n": 1,
-      "kind": "留",
-      "why": "起会话那一下界面自己等超时（timeout）的那一句，宿主本职"
     },
     {
       "file": "src/frontend/ui/new-session.ts",

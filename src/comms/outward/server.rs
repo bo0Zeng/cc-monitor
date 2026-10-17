@@ -1006,7 +1006,7 @@ fn pump<R: Read, W: Write>(
 /// 1. **配了 key ⇒ 换头**：下游那份 `Authorization` 被**丢掉**，换上**上游选择交下来的那一格头**
 ///    （上游选择按这一行的 key 算好的；本层手里没有 key）。取明文的那一行今天住
 ///    `accounts::upstream_select`（先前住本文件），它是 `expose_for_auth_header` 在**整个后端生产段里唯一**的调用点
-///    （`KS2`，由 `creds_guard::the_plaintext_leaves_the_type_at_exactly_one_place_in_this_crate` 相等断言钉住）。
+///    （`KS2`，由 `creds_store_tests::the_two_plaintext_exits_are_called_from_exactly_one_place_each_across_all_three_trees` 相等断言钉住）。
 /// 2. **这一行没配 key ⇒ 原样转发**（`K-H1` 甲半那个形状，一个字节不动）。
 ///
 ///    ⚠⚠ **订正：这一条先前的理由今天是假的，已收口。**
@@ -1112,10 +1112,8 @@ pub fn render_upstream_request(
     }
     // ★★ **中转只照写。** 头名与**完整**头值都是上游选择算好的（`AuthSwap::write`）——
     //    中转不知道那个串里有没有前缀、是不是一把 key，它只看见一个串。
-    //    ⚠⚠ 把明文取出来的那一句**搬去上游选择了**（`accounts::upstream_select::dispatch_auth`）。
-    //      搬的是住址不是处数：`creds_guard` 那条「恰好 1 处」的相等断言一个字节没动
-    //      （它扫整个 crate，不写死文件名），`PLAINTEXT_EXIT_SITES` 只改了住址栏。
-    //      ⇒ 中转从此**碰不到明文**，这是 `C2` 买到的一格实质东西，不只是类型好看。
+    //    把明文取出来的那一句住上游选择（`accounts::upstream_select::header_value`，`PLAINTEXT_EXIT_SITES` 钉着恰好 1 处）
+    //      ⇒ 中转**碰不到明文**。
     if let Some((name, value)) = auth.and_then(|a| a.write) {
         out.push_str(&format!("{name}: {value}\r\n"));
     }

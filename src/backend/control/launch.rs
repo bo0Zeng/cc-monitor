@@ -537,11 +537,11 @@ pub(crate) enum Delivery {
 
 /// [`run`] 的失败：线上那一份 [`CmdErr`] ＋ 送键没确认时是哪一种、会话是不是本趟新建的。
 /// 线上只看 `fail`（两种同码 `typed_unconfirmed`）；`untyped` 给命令行那一处决定接进去还是收掉（`ccm::execute`）。
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub(crate) struct LaunchFail {
     pub(crate) fail: CmdErr,
-    /// `Some((哪一种, 会话是本趟建的))`：只在送键那一发上有。
-    pub(crate) untyped: Option<(Delivery, bool)>,
+    /// `Some((哪一种, 本趟建的那个会话的令牌))`：只在送键那一发上有。
+    pub(crate) untyped: Option<(Delivery, Option<JustMade>)>,
 }
 
 impl std::ops::Deref for LaunchFail {
@@ -566,25 +566,21 @@ impl From<(&'static str, String)> for LaunchFail {
     }
 }
 
-/// [`reap_if_bare`] 的生产那一口（真 tmux）。
-pub(crate) fn reap(name: &str) -> bool {
-    reap_if_bare(name, &tmux)
+/// 本趟刚建成的会话（精确目标 `=名:`）：字段私有、不能复制，只有建会话那一臂（`new-session` 成功之后）造得出。
+/// 往里送启动命令（[`TypeAt::JustMade`]）与没送进时收掉它（[`super::kill::end`]）都只收它。
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct JustMade(String);
+
+impl JustMade {
+    /// 对它下命令用的精确目标。
+    pub(crate) fn target(&self) -> &str {
+        &self.0
+    }
 }
 
-/// 收掉本趟建的、里面只剩 shell 的那个会话（启动命令明确没送进时用：不留一个只剩 shell 的空会话）。
-/// 判与收在同一发 tmux 里（`if-shell -F`）：只一个窗口、一个窗格、窗格起的是默认 shell（`pane_start_command` 空）、
-/// 没有客户端接着 ⇒ `kill-session`；别的形（窗格起的是别的程序 · 开了别的窗口 · 有人接着）一律不动。
-/// 不看窗格前台是什么：shell 刚起时 rc 里的子进程会短暂占着前台（实测 40 趟里 4 趟），按它判就成了碰运气。
-/// 回「这一趟把它收掉了」（本来就不在 ⇒ `false`）。
-pub(crate) fn reap_if_bare(name: &str, tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>) -> bool {
-    const BARE: &str = "#{&&:#{==:#{session_windows},1},#{&&:#{==:#{window_panes},1},#{&&:#{==:#{pane_start_command},},#{==:#{session_attached},0}}}}";
-    let t = exact_target(name);
-    let there = || matches!(tmux(&["has-session", "-t", &t]), Ok(r) if r.ok);
-    if !there() {
-        return false;
-    }
-    let kill = format!("kill-session -t {t}");
-    matches!(tmux(&["if-shell", "-F", "-t", &t, BARE, &kill]), Ok(r) if r.ok) && !there()
+/// 启动命令明确没送进 ⇒ 收掉本趟建的那个只剩 shell 的会话（真 tmux）。回「这一趟把它收掉了」。
+pub(crate) fn reap(made: JustMade) -> bool {
+    super::kill::end(super::kill::Ending::Bare(made, &tmux)).is_ok()
 }
 
 /// 新建那一下（`create-or-attach` 与开空 shell 同一份）：名字过 J6 新建那一条；会话已在 ⇒ 幂等、什么都不做（回 `false`）；
@@ -672,12 +668,11 @@ fn run_with(
             //   3. 通过则回 `#{session_id}` 句柄 —— **后面一律对句柄下手，不对名字**，
             //      名字在窗口期内被重新绑定也打不到别人身上（见 `gate` 模块头注）。
             //
-            // ⚠ 顺序不可反：`admit` 必须在 `type_payload` **之前**。
-            // 由 `the_send_into_arm_admits_before_it_types` 钉住。
+            //   键入只收门发的令牌（`TypeAt::Admitted`）⇒ 不过门编不过。
             //   带了 `ccm_sid` ⇒ 句柄是挂着它的那个窗格（一个 tmux 会话里可以有几个 claude），身份也按它判。
-            let handle =
+            let at =
                 super::gate::admit(&req.name, &t, req.ccm_sid.as_deref(), req.client.as_deref())?;
-            type_payload(&handle, &req.name, &req.payload, false, tmux)?;
+            type_payload(TypeAt::Admitted(&at), &req.name, &req.payload, tmux)?;
             Ok(LaunchOutcome {
                 created: false,
                 typed: true,
@@ -691,6 +686,8 @@ fn run_with(
                     typed: false,
                 });
             }
+            // 走到这里的只可能是本趟刚建成的会话 ⇒ 发「刚建的」令牌（唯一一处）。
+            let fresh = JustMade(t.clone());
             // 身份标记与标题是**次要**动作：失败绝不阻断主要动作（键入载荷）。
             // 与 `ccm` 容器路字符串形（`control/ccm/plan.rs::render_container`）里 `(… 2>/dev/null || true) &&` 同一条纪律
             // （原来点的是 TS 座 `session-backend.ts` 与后端载荷那一层，两份都删了）。
@@ -752,13 +749,19 @@ fn run_with(
                     &["set-option", "-t", &t, "@ccm_client", client],
                 );
             }
-            type_payload(&t, &req.name, &req.payload, true, tmux)?;
+            type_payload(TypeAt::JustMade(fresh), &req.name, &req.payload, tmux)?;
             Ok(LaunchOutcome {
                 created: true,
                 typed: true,
             })
         }
     }
+}
+
+/// 往哪键入：门发的令牌（`send-into`），或本趟刚建成的那个会话的令牌（`create-or-attach`；没送进时随失败交回去收）。
+enum TypeAt<'a> {
+    Admitted(&'a super::gate::Admitted),
+    JustMade(JustMade),
 }
 
 /// 键入载荷。失败 ⇒ `typed_unconfirmed`：**会话在，载荷未必落**。
@@ -772,42 +775,43 @@ fn run_with(
 /// 那个窗格正翻着屏的话翻屏被退出。不改成「把命令交给 `new-session`」：那会让窗格进程就是 agent、一退窗格就没了，
 /// 空 shell 那一形（`send-into` 往里敲的就是它）跟着没了。
 /// 送键那一发过了期限 ⇒ 也归 `typed_unconfirmed`（会话在，送没送到不知道），期限那句进复制详情。
-/// `name`：说给人听的那个 tmux 会话名（`target` 是精确目标或句柄）。
-/// `created`：会话是本趟新建的（失败时带回去，命令行那一处据此决定收不收）。
+/// `name`：说给人听的那个 tmux 会话名。本趟新建的那一形失败时把令牌带回去，命令行那一处据此决定收不收。
 fn type_payload(
-    target: &str,
+    at: TypeAt<'_>,
     name: &str,
     payload: &str,
-    created: bool,
     tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
 ) -> Result<(), LaunchFail> {
+    let target = match &at {
+        TypeAt::Admitted(a) => a.handle(),
+        TypeAt::JustMade(m) => m.target(),
+    };
     // 一串里先退出窗格模式、再送（见上）。
     #[rustfmt::skip]
     let sent = tmux(&["copy-mode", "-q", "-t", target, ";", "send-keys", "-t", target, payload, "Enter"]);
+    let made = match at {
+        TypeAt::JustMade(m) => Some(m),
+        TypeAt::Admitted(_) => None,
+    };
     match sent {
         Ok(r) if r.ok => Ok(()),
-        Ok(r) => Err(unconfirmed(
-            Delivery::NotDelivered,
-            name,
-            &r.stderr,
-            created,
-        )),
+        Ok(r) => Err(unconfirmed(Delivery::NotDelivered, name, &r.stderr, made)),
         Err(e) if e.code == crate::platform::child::TIMED_OUT => {
-            Err(unconfirmed(Delivery::Unknown, name, &e.message, created))
+            Err(unconfirmed(Delivery::Unknown, name, &e.message, made))
         }
         Err(e) => Err(e.into()),
     }
 }
 
 /// [`type_payload`] 没确认的那一份：同码 `typed_unconfirmed`，句子按哪一种说，tmux 原话进复制详情。
-fn unconfirmed(delivery: Delivery, name: &str, raw: &str, created: bool) -> LaunchFail {
+fn unconfirmed(delivery: Delivery, name: &str, raw: &str, made: Option<JustMade>) -> LaunchFail {
     let said = match delivery {
         Delivery::NotDelivered => copy_text("beLaunch.type.failed", &[("name", name)]),
         Delivery::Unknown => copy_text("beLaunch.type.timedOut", &[("name", name)]),
     };
     LaunchFail {
         fail: CmdErr::new("typed_unconfirmed", said).with_raw(Some(raw)),
-        untyped: Some((delivery, created)),
+        untyped: Some((delivery, made)),
     }
 }
 
@@ -818,13 +822,14 @@ pub(crate) fn check_input_text(text: &str) -> Result<(), CmdErr> {
 
 /// 送一段**字面字**（终端管理 L1 送字那一半）：单行 `send-keys -l`（不解释成键名）；多行按粘贴送
 /// （`paste-buffer -p`：程序开了括号粘贴就带上，用完即删那个缓冲）。`enter` ⇒ 之后再补一个回车键。
-/// `target` 由调用方过完门交来（句柄，不是名字）；`tmux` 同 [`run_with`] 那一口（测试交隔离 socket 上的）。
+/// 只收门发的令牌（[`super::gate::admit`] · [`super::gate::admit_with`]）；`tmux` 同 [`run_with`] 那一口（测试交隔离 socket 上的）。
 pub(crate) fn type_literal(
-    target: &str,
+    at: &super::gate::Admitted,
     text: &str,
     enter: bool,
     tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
 ) -> Result<Ran, CmdErr> {
+    let target = at.handle();
     let sent = if text.contains('\n') {
         static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let buf = format!(
@@ -846,13 +851,13 @@ pub(crate) fn type_literal(
     tmux(&["send-keys", "-t", target, "Enter"])
 }
 
-/// 送一个键（`key` 是 tmux 的键名，来自终端管理那张有限键表；不收任意串）。
+/// 送一个键（`key` 是 tmux 的键名，来自终端管理那张有限键表；不收任意串）。只收门发的令牌。
 pub(crate) fn press_key(
-    target: &str,
+    at: &super::gate::Admitted,
     key: &str,
     tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
 ) -> Result<Ran, CmdErr> {
-    tmux(&["send-keys", "-t", target, key])
+    tmux(&["send-keys", "-t", at.handle(), key])
 }
 
 /// 入方向命令的入口：`args` → 结局 JSON。

@@ -5585,7 +5585,7 @@ describe("起新会话的占位标签页接在标签页栏里", () => {
     tm.switchTo("a");
     const shown: boolean[] = [];
     tm.onSlotShown = (on) => shown.push(on);
-    tm.addLaunchSlot({ origin: "devbox", cwd: "/home/u/srv/billing", tmuxName: "billing-2", agent: "claude", match: { cwd: "/home/u/srv/billing" } });
+    tm.addLaunchSlot({ origin: "devbox", cwd: "/home/u/srv/billing", tmuxName: "billing-2", match: { cwd: "/home/u/srv/billing" } });
     tm.createSkeletonTab("c", "/p/c", LOCAL_ORIGIN, null, null);
     setGroups(tm, [{ id: "g1", name: "组一", tabs: ["b"] }]);
     tm.repaintTabBar();
@@ -5610,12 +5610,12 @@ describe("起新会话的占位标签页接在标签页栏里", () => {
     tm.createSkeletonTab("a", "/p/a", LOCAL_ORIGIN, null, null);
     tm.createSkeletonTab("s1", "/p/s1", LOCAL_ORIGIN, null, null);
     tm.switchTo("a");
-    const taken = tm.addLaunchSlot({ origin: LOCAL_ORIGIN, cwd: "/p", tmuxName: null, agent: "claude", match: { sid: "s1" } });
+    const taken = tm.addLaunchSlot({ origin: LOCAL_ORIGIN, cwd: "/p", tmuxName: null, match: { sid: "s1" } });
     expect(taken, "已有标签页 ⇒ 不接").toBe(false);
     expect(tm.debugSlots().ids, "没长占位页").toEqual([]);
     expect(tm.activeSessionId(), "切到了那个标签页").toBe("s1");
-    expect(tm.addLaunchSlot({ origin: LOCAL_ORIGIN, cwd: "/p", tmuxName: null, agent: "claude", match: { sid: "s9" } }), "没有那个标签页 ⇒ 照旧长").toBe(true);
-    expect(tm.addLaunchSlot({ origin: LOCAL_ORIGIN, cwd: "/p", tmuxName: null, agent: "claude", match: { cwd: "/p" } })).toBe(true);
+    expect(tm.addLaunchSlot({ origin: LOCAL_ORIGIN, cwd: "/p", tmuxName: null, match: { sid: "s9" } }), "没有那个标签页 ⇒ 照旧长").toBe(true);
+    expect(tm.addLaunchSlot({ origin: LOCAL_ORIGIN, cwd: "/p", tmuxName: null, match: { cwd: "/p" } })).toBe(true);
     expect(tm.debugSlots().ids).toEqual([1, 2]);
   });
 
@@ -5625,7 +5625,7 @@ describe("起新会话的占位标签页接在标签页栏里", () => {
     tm.switchTo("a");
     const sessionKeys = ["session.find", "session.toggle-process", "session.prev-turn", "session.next-turn", "session.to-bottom", "tab.close-archived", "tab.open-cwd", "tab.pop-out", "tab.context-menu", "terminal.bring-front"] as const;
     expect(sessionKeys.filter((k) => tm.shadowedBySlot(k)), "没有占位页时都照常").toEqual([]);
-    tm.addLaunchSlot({ origin: "devbox", cwd: "/w/x", tmuxName: null, agent: "claude", match: { cwd: "/w/x" } });
+    tm.addLaunchSlot({ origin: "devbox", cwd: "/w/x", tmuxName: null, match: { cwd: "/w/x" } });
     expect(sessionKeys.filter((k) => !tm.shadowedBySlot(k))).toEqual([]);
     expect(tm.shadowedBySlot("app.open-command-bar"), "全局的照常").toBe(false);
     expect(tm.shadowedBySlot("needs.next")).toBe(false);

@@ -50,7 +50,7 @@ function accountGoneWorld(): World {
 /** 分叉沿用的那个号选不了：那台回 `account_unavailable`、带替代号（不起、不悄悄换号）。 */
 function forkUnavailableWorld(): World {
   const w = defaultWorld();
-  w.ops["session-new"] = () => {
+  w.ops["session-open"] = () => {
     throw new Refuse("account_unavailable", "personal 选不了", {
       field: "account",
       unavailable: { requested: "personal", pinned: true, listKnown: true, alternative: "work" },
@@ -62,7 +62,7 @@ function forkUnavailableWorld(): World {
 /** 起新会话框：目录那一格那台说不在。 */
 function noDirWorld(): World {
   const w = defaultWorld();
-  w.ops["session-new"] = () => {
+  w.ops["session-open"] = () => {
     throw new Refuse("no_dir", "目录不存在", { field: "cwd", unavailable: null });
   };
   return w;
@@ -71,11 +71,11 @@ function noDirWorld(): World {
 /** 起新会话框：点［新建］那一问两次都没等到回话（那台卡住）：「起没起未知」＋［再核一次］（同一张票，不会起第二个）＋［复制详情］。 */
 function noAnswerWorld(): World {
   const w = defaultWorld();
-  w.ops["session-new"] = () => {
+  w.ops["session-open"] = () => {
     throw {
       err: { Hop: { idx: 1, tag: "wait", reach: "Sent", why: "Overrun" } },
       body: [],
-      detail: "机器：devbox\n命令：session-new\n断在：第 1 跳 · 等回话\n码：Overrun",
+      detail: "机器：devbox\n命令：session-open\n断在：第 1 跳 · 等回话\n码：Overrun",
     };
   };
   return w;
@@ -84,7 +84,7 @@ function noAnswerWorld(): World {
 /** 起新会话框：那台说整体不行（不落在哪一格）：按钮行上方一行红字 ＋［复制详情］。 */
 function startFailedWorld(): World {
   const w = defaultWorld();
-  w.ops["session-new"] = () => {
+  w.ops["session-open"] = () => {
     throw new Refuse("start_failed", copyText("beSessionNew.start.failed"), { field: null, unavailable: null }, "exit 1\nccm: launcher exited 1");
   };
   return w;

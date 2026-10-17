@@ -3,7 +3,7 @@
  *
  * - 停（`sessions-stop`）：同一台的那几个一次调用，那台逐个答；单个菜单就是一个 sid 的一批。
  * - 起（`session-open`，与单个恢复同一问）：同一台逐项挨个问，每项只交 sid 与放在哪（号 · 目录 · 哪一家那台从记录里读）；
- *   每项的结局取那台那一句；落在窗口里的那几项逐个开窗（[`ON_LANDED`] 批量那一列）。
+ *   每项的结局取那台那一句；落在窗口里的那几项逐个开窗（[`ON_LANDED`] 后台那一列）。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { machineName, saidOfControl, settleTyped, unavailableSaid, type Refusals } from "./control-said";
@@ -106,7 +106,7 @@ export async function stopMany(tabs: readonly Tab[]): Promise<BatchOutcome[]> {
 }
 
 /** 开终端那一形：后端渲好的那一行，monitor 开窗（本机带起始目录，远端经 `openTerminal`）。开不了 ⇒ 那一句。 */
-export async function openWindow(origin: Origin, cmd: string, cwd: string | null): Promise<string | null> {
+async function openWindow(origin: Origin, cmd: string, cwd: string | null): Promise<string | null> {
   try {
     if (isLocalOrigin(origin)) await openLocalTerminal(cmd, cwd);
     else await openTerminal(origin, cmd);
@@ -120,12 +120,11 @@ export async function openWindow(origin: Origin, cmd: string, cwd: string | null
 async function startOne(origin: Origin, sid: string, run: Run): Promise<BatchOutcome> {
   const end = await askOpen(origin, { what: { kind: "resume", sid }, run, local: isLocalOrigin(origin) });
   if (end.kind !== "opened") {
-    const detail = end.kind === "pending" ? "" : end.detail;
-    return { sid, outcome: "failed", why: end.said, ...(detail !== "" ? { detail } : {}) };
+    return { sid, outcome: "failed", why: end.said, ...(end.detail !== "" ? { detail: end.detail } : {}) };
   }
   const o = end.opened;
   if (o.landed === "running") return { sid, outcome: "skipped", why: copyText("tabBatch.why.running", { name: o.session ?? "" }) };
-  if (ON_LANDED[o.landed].batch && o.line !== null) {
+  if (ON_LANDED[o.landed].background && o.line !== null) {
     const failed = await openWindow(origin, o.line, o.cwd);
     if (failed !== null) return { sid, outcome: "failed", why: failed };
   }

@@ -3,7 +3,7 @@
 //!
 //! # 杀的是句柄不是名字
 //!
-//! `admit_destructive` 回的是 `#{session_id}`（tmux 的 `$N`，server 生命周期内唯一、不复用），之后 `kill-session -t '$3'`：
+//! `admit_destructive` 回的令牌里是 `#{session_id}`（tmux 的 `$N`，server 生命周期内唯一、不复用），之后 `kill-session -t '$3'`：
 //! 名字在窗口期内被重新绑定到别的会话也杀不到别人（同 `super::gate` 头注的 TOCTOU 分析）。
 //!
 //! # 杀成之后顺手从 cc-bus 收掉登记在这个会话上的 id
@@ -158,17 +158,35 @@ fn run_expecting(
     requester: Option<&str>,
 ) -> Result<super::cc_bus::BusCleanup, CmdErr> {
     let target = super::launch::exact_target(name);
-    // Gate 1（`=name:` 精确匹配，`exact_target` 内部）· Gate 2（身份）· Gate 3（windows==1）⇒ 通过后拿到句柄。
-    // 门在 kill 之前（`the_kill_path_admits_before_it_kills` 钉住）。
-    let end = super::gate::admit_destructive(name, &target, sid, requester)?;
-    // 结束整个会话，还是只结束挂着那个 sid 的几个窗格（会话里还跑着别的 claude）。都对放行时拿到的句柄下手。
-    let (handle, only) = match end {
-        super::gate::EndAt::Session(h) => (h, None),
-        super::gate::EndAt::Panes(h, ps) => (h, Some(ps)),
+    // Gate 1（`=name:` 精确匹配，`exact_target` 内部）· Gate 2（身份）· Gate 3（windows==1）⇒ 通过后拿到令牌。
+    let doomed = super::gate::admit_destructive(name, &target, sid, requester)?;
+    end(Ending::Doomed(name, doomed))
+}
+
+/// 一发 tmux（`launch::run_with` 那一口的形状）。
+type Tmux<'a> = dyn Fn(&[&str]) -> Result<super::launch::Ran, CmdErr> + 'a;
+
+/// 结束会话的两种令牌：门放行的（`kill`），或本趟刚建、启动命令没送进的那个空壳（`ccm` 收掉它）。
+pub(crate) enum Ending<'a> {
+    /// `name`：说给人听的会话名（杀成之后按它认 cc-bus 名册）。
+    Doomed(&'a str, super::gate::Doomed),
+    /// 只在仍是空壳时收；`tmux` 同 `launch::run_with` 那一口（判据交隔离 socket 上的）。
+    Bare(super::launch::JustMade, &'a Tmux<'a>),
+}
+
+/// 结束会话的唯一一处：只收令牌（[`Ending`]），对令牌里的目标下手。
+pub(crate) fn end(ending: Ending<'_>) -> Result<super::cc_bus::BusCleanup, CmdErr> {
+    let (name, doomed) = match ending {
+        Ending::Doomed(n, d) => (n, d),
+        Ending::Bare(made, tmux) => return end_bare(made.target(), tmux),
+    };
+    let (handle, only) = match doomed.at() {
+        super::gate::EndAt::Session(h) => (h.as_str(), None),
+        super::gate::EndAt::Panes(h, ps) => (h.as_str(), Some(ps.as_slice())),
     };
     let mut argv: Vec<&str> = Vec::new();
-    match &only {
-        None => argv.extend(["kill-session", "-t", &handle]),
+    match only {
+        None => argv.extend(["kill-session", "-t", handle]),
         Some(ps) => {
             for (i, p) in ps.iter().enumerate() {
                 if i > 0 {
@@ -179,7 +197,7 @@ fn run_expecting(
         }
     }
     // 杀之前记下要走的那几个 pane 的根进程 pid：杀完按它认 cc-bus 名册里登记在这里的 id（不按会话名猜）。
-    let panes = pane_pids(&handle, only.as_deref());
+    let panes = pane_pids(handle, only);
     let out = Child::new("tmux")
         .args(&argv)
         .run(KILL_TMUX_WITHIN)
@@ -189,6 +207,25 @@ fn run_expecting(
         return Ok(bus);
     }
     Err(kill_refused(&out.stderr))
+}
+
+/// [`end`] 的空壳那一臂。判与收在同一发 tmux 里（`if-shell -F`）：只一个窗口、一个窗格、窗格起的是默认 shell
+/// （`pane_start_command` 空）、没有客户端接着 ⇒ `kill-session`；别的形一律不动。不看窗格前台是什么：shell 刚起时
+/// rc 里的子进程会短暂占着前台（实测 40 趟里 4 趟）。收成 ⇒ 空的注销结局（空壳上没有登记）；不在 · 不是空壳 ⇒ `kill_failed`。
+fn end_bare(t: &str, tmux: &Tmux<'_>) -> Result<super::cc_bus::BusCleanup, CmdErr> {
+    const BARE: &str = "#{&&:#{==:#{session_windows},1},#{&&:#{==:#{window_panes},1},#{&&:#{==:#{pane_start_command},},#{==:#{session_attached},0}}}}";
+    let there = || matches!(tmux(&["has-session", "-t", t]), Ok(r) if r.ok);
+    let kill = format!("kill-session -t {t}");
+    if there()
+        && matches!(tmux(&["if-shell", "-F", "-t", t, BARE, &kill]), Ok(r) if r.ok)
+        && !there()
+    {
+        return Ok(Default::default());
+    }
+    Err(CmdErr::new(
+        "kill_failed",
+        copy_text("beKill.run.failed", &[]),
+    ))
 }
 
 /// tmux 这个程序起不来：句子只说原因词（未装 / 无权限 …），系统原话进复制详情；超时那一档照旧。

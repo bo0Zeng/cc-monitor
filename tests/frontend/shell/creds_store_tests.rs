@@ -134,7 +134,7 @@ const PLAINTEXT_SCAN_TREES: &[&str] = &["src/frontend/shell/src", "src/common", 
 ///
 /// 回修前，「取明文恰好 N 处」这条性质由两处判据分管，而它们的人群加起来**盖不住产品**：
 /// · `creds-core/src/lib.rs` 只扫 `include_str!("../../../src/frontend/shell/src/lib.rs")`——**它自己这一个文件**；
-/// · `relay/creds_guard.rs` 扫后端那个 crate；
+/// · 后端那个 crate 另有一条只扫自己的（已删：本条三棵树罩住它）；
 /// ⇒ **`src/frontend/shell` 整个不在任何人的人群里**，而 monitor 恰恰是明文**第一次进程序**的地方
 ///   （`write_apikey_credentials_key(key: String)`）。
 /// D1 审计刀 B 实打：在 monitor 生产段取一次明文 `eprintln!` 出去

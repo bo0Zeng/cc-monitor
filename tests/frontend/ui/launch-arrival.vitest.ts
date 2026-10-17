@@ -197,25 +197,25 @@ describe("主窗口里发起的（恢复 · cc-bus 派生 · 开窗 resume）⇒
   it("★ 带着占位要的两样（目录 · 哪一家）、发起方是主窗口 ⇒ 交占位标签页（同起新会话那一件）、自己不计时；别的窗口发起的照旧", async () => {
     const slot = vi.fn((_spec: unknown) => true);
     setArrivalSlots(slot);
-    watchArrival(spec({ match: { sid: "s1" }, tmuxName: "orders-cc", slot: { cwd: "/w/orders", agent: "claude" } }));
-    watchArrival(spec({ match: { cwd: "/w/x" }, from: "main", slot: { cwd: "/w/x", agent: "codex" } }));
+    watchArrival(spec({ match: { sid: "s1" }, tmuxName: "orders-cc", slot: { cwd: "/w/orders" } }));
+    watchArrival(spec({ match: { cwd: "/w/x" }, from: "main", slot: { cwd: "/w/x" } }));
     expect(slot.mock.calls.map((c) => c[0])).toEqual([
-      { origin: "devbox", cwd: "/w/orders", tmuxName: "orders-cc", agent: "claude", match: { sid: "s1" } },
-      { origin: "devbox", cwd: "/w/x", tmuxName: null, agent: "codex", match: { cwd: "/w/x" } },
+      { origin: "devbox", cwd: "/w/orders", tmuxName: "orders-cc", match: { sid: "s1" } },
+      { origin: "devbox", cwd: "/w/x", tmuxName: null, match: { cwd: "/w/x" } },
     ]);
     await vi.advanceTimersByTimeAsync(ARRIVAL_BUDGET_MS + 1);
     expect(toast, "交给占位标签页了，到点不再说「没看到」").not.toHaveBeenCalled();
-    watchArrival(spec({ match: { sid: "s9" }, from: "settings", slot: { cwd: "/w/s", agent: "claude" } }));
+    watchArrival(spec({ match: { sid: "s9" }, from: "settings", slot: { cwd: "/w/s" } }));
     expect(slot, "设置窗里发起的照旧（主窗口没被看着）").toHaveBeenCalledTimes(2);
     setArrivalSlots(null);
-    watchArrival(spec({ match: { sid: "s8" }, slot: { cwd: "/w/s", agent: "claude" } }));
+    watchArrival(spec({ match: { sid: "s8" }, slot: { cwd: "/w/s" } }));
     expect(slot, "没有占位标签页（不是主窗口）⇒ 照旧").toHaveBeenCalledTimes(2);
   });
 
   it("★ 占位那一件不接（已有那个会话的标签页，切过去了）⇒ 照旧计时：到点没报到说「没看到」", async () => {
     const slot = vi.fn(() => false);
     setArrivalSlots(slot);
-    watchArrival(spec({ match: { sid: "s1" }, tmuxName: null, slot: { cwd: "/w/orders", agent: "claude" } }));
+    watchArrival(spec({ match: { sid: "s1" }, tmuxName: null, slot: { cwd: "/w/orders" } }));
     expect(slot).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(ARRIVAL_BUDGET_MS + 1);
     expect(toast, "没接 ⇒ 到点照常说").toHaveBeenCalledTimes(1);

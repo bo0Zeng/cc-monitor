@@ -395,7 +395,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "forward-stop",
         "停一条转发：后端从账上摘掉 ⇒ 链路被收、本地口放掉（`dial/forwards.rs::stop_with`）",
     ),
-    // 起会话 · 恢复 · 接回：全产品一个请求，判定 · 渲那一行都在那台后端。
+    // 起会话 · 恢复 · 接回（新建框 · 账号页登录同一问）：全产品一个请求，判定 · 渲那一行都在那台后端。
     (
         "session-open",
         "后端出成品 `{landed, session, line, sid, agent, cwd, account, note, prompt}`（`control/session_open.rs`）；前端 `src/frontend/ui/session-open.ts` 问、回包按 typed 的类型收，\
@@ -407,12 +407,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "后端出成品 `{path}`（只收 sid，落点由那台后端按 sid 找）；前端 `src/frontend/ui/session-writes.ts::deleteSession` 问、按恰好的键集合收，\
          monitor 这一侧零发送点（门那一问 `Door::delete_session` 删了）",
     ),
-    // 起新会话：全产品一个框一个请求（分叉随这一个请求写，界面不再单独问 `session-fork`）。
-    (
-        "session-new",
-        "后端出成品 `{outcome, session, sid, cmd, account, agent, cwd}`（`control/session_new.rs`：判目录 · 号 · 终端名 · 分叉只在这一步写）；\
-         前端 `src/frontend/ui/new-session-reads.ts::askNew` 问、回包按 typed 的类型收（形状由握手指纹管），monitor 这一侧零发送点",
-    ),
+    // 起新会话框的两问读数（起的那一问是上面的 `session-open`；分叉随它写，界面不单独问 `session-fork`）。
     (
         "session-new-facts",
         "后端出成品 `{recent, tmux, agents, fork}`（`faces/session_new_face.rs`，只读）；前端 `new-session-reads.ts::askFacts` 问、回包按 typed 的类型收（形状由握手指纹管），monitor 这一侧零发送点",

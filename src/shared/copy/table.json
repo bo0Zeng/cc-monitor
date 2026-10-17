@@ -13903,12 +13903,6 @@
       "zh": "跟随原会话上次的号",
       "args": []
     },
-    "newSession.account.pinned": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "原会话账号 · 不自动换",
-      "args": []
-    },
     "newSession.account.useAlt": {
       "kind": "action",
       "role": "按钮",
@@ -14117,12 +14111,6 @@
       "zh": "{machine} 启动结果未知",
       "args": ["machine"]
     },
-    "newSession.window.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "终端窗口未打开",
-      "args": []
-    },
     "newSession.switch.action": {
       "kind": "action",
       "role": "按钮",
@@ -14147,18 +14135,6 @@
       "zh": "tmux 会话名已占用",
       "args": [],
       "limited": ["tmux"]
-    },
-    "launch.account.unavailable": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{name} 不可用",
-      "args": ["name"]
-    },
-    "launch.timeout.noAnswer": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "启动无应答 · {machine}",
-      "args": ["machine"]
     },
     "launch.fromSettings.done": {
       "kind": "body",

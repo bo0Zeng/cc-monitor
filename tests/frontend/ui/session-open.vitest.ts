@@ -41,7 +41,7 @@ vi.mock("../../../src/frontend/ui/clipboard", () => clip);
 vi.mock("../../../src/frontend/ui/settings/open-settings", () => ({ openSettingsWindow: vi.fn() }));
 const toasts = vi.hoisted(() => ({ toast: vi.fn(), failToast: vi.fn() }));
 vi.mock("../../../src/frontend/ui/kit/toast", () => toasts);
-const arrival = vi.hoisted(() => ({ expectArrival: vi.fn(), arrivedBody: (o: string) => `报出@${o}` }));
+const arrival = vi.hoisted(() => ({ expectArrival: vi.fn(), awaitArrival: vi.fn(), slotsHere: () => true, arrivedBody: (o: string) => `报出@${o}` }));
 vi.mock("../../../src/frontend/ui/launch-arrival", () => arrival);
 const resync = vi.hoisted(() => ({ offerResyncRetry: vi.fn() }));
 vi.mock("../../../src/frontend/ui/resync", () => resync);
@@ -105,16 +105,16 @@ describe("照 landed 开不开 · 等不等（表在 session-open 一处）", ()
     });
   });
 
-  it("★ 批量那一列：只有 window 开", () => {
-    const batch = Object.fromEntries(Object.entries(ON_LANDED).map(([k, v]) => [k, v.batch]));
-    expect(batch).toEqual({ window: true, started: false, in_place: false, running: false, idle: false });
+  it("★ 后台起的那一列（批量 · 新起）：只有 window 开", () => {
+    const background = Object.fromEntries(Object.entries(ON_LANDED).map(([k, v]) => [k, v.background]));
+    expect(background).toEqual({ window: true, started: false, in_place: false, running: false, idle: false });
   });
 
   it("等报到按 sid 认；没有 sid 按起在哪个目录认；本机开窗带起始目录", async () => {
     reply = opened("window");
     await openSession("<local>", { ...RESUME, local: true });
     expect(term.openLocalTerminal).toHaveBeenCalledWith("line:window", "/p");
-    expect(arrival.expectArrival.mock.calls[0][0]).toMatchObject({ origin: "<local>", match: { sid: "s-1" }, tmuxName: "t-1", slot: { cwd: "/p", agent: "claude" } });
+    expect(arrival.expectArrival.mock.calls[0][0]).toMatchObject({ origin: "<local>", match: { sid: "s-1" }, tmuxName: "t-1", slot: { cwd: "/p" } });
     vi.clearAllMocks();
     reply = opened("started", { sid: null });
     await openSession("devbox", RESUME);

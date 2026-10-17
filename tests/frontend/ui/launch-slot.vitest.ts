@@ -37,7 +37,7 @@ function make(): LaunchSlots {
   );
 }
 
-const SPEC: SlotSpec = { origin: "devbox", cwd: "/home/u/srv/billing", tmuxName: "billing-2", agent: "claude", match: { cwd: "/home/u/srv/billing" } };
+const SPEC: SlotSpec = { origin: "devbox", cwd: "/home/u/srv/billing", tmuxName: "billing-2", match: { cwd: "/home/u/srv/billing" } };
 
 const rows = (): HTMLElement[] => [...tail.querySelectorAll<HTMLElement>("[data-slot]")];
 const panelText = (): string => (root.firstElementChild as HTMLElement).textContent ?? "";

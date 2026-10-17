@@ -29,21 +29,33 @@ pub(crate) type CmdErr = (&'static str, String);
 use crate::common::session_snapshot::SessionSnapshot;
 use crate::common::tmux_utf8::{tab_underflow, UTF8_CLIENT_FLAG};
 
-/// 探测回来的两样东西。
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// 探测回来的四格。字段私有、不能复制 ⇒ 只有 [`probe_with`] 造得出，门放不放只按探回来的判。
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Probed {
     /// tmux 的 `#{session_id}`（形如 `$0`）。**后续一律对它下命令**，见模块头注。
-    pub(crate) session_id: String,
+    session_id: String,
     /// `@ccm_sid` 的值。未设置 ⇒ 空串。
     ///
     /// 是 `@ccm_sid`，不是 `@ccm_sid_expect`：通道 A（`shared/ccm`）只写意图，通道 B 才写事实，破坏性动作只认事实。
     /// 通道 B 的写者是后端自己（[`super::identity_tag`]，由 pidfile inotify 驱动，打标前过 `procStart` 冒名检查）。
-    pub(crate) ccm_sid: String,
+    ccm_sid: String,
     /// `#{session_windows}`。**Gate 3 只给破坏性动作用**（见 [`admit_destructive`]）。
     /// 解析不出来 ⇒ `0`，而 Gate 3 要求恰好 `1` ⇒ **fail closed**（不会误杀）。
-    pub(crate) windows: u32,
+    windows: u32,
     /// `@ccm_client`：起这个会话的那一方声明的名字（没设 ⇒ 空串）。「哪个前端的会话」那一维（`gate_rules::gate_client`）。
-    pub(crate) client: String,
+    client: String,
+}
+
+impl Probed {
+    /// `#{session_id}` 句柄。
+    pub(crate) fn session_id(&self) -> &str {
+        &self.session_id
+    }
+
+    /// `@ccm_sid`（没设 ⇒ 空串）。
+    pub(crate) fn ccm_sid(&self) -> &str {
+        &self.ccm_sid
+    }
 }
 
 /// 列出本机所有 tmux 会话的身份二元组：`(会话名, @ccm_sid)`。
@@ -118,19 +130,23 @@ const PANES_FMT: &str = "#{pane_id}\t#{pane_pid}\t#{@ccm_sid}\t#{pane_active}#{w
 
 /// 这个会话（`#{session_id}` 或 `=名:`）的全部窗格。只读 tmux；问不到 ⇒ 空。
 pub(crate) fn panes_on(socket: Option<&str>, session: &str) -> Vec<PaneTag> {
-    tmux_on(socket)
-        .args([
-            UTF8_CLIENT_FLAG,
-            "list-panes",
-            "-F",
-            PANES_FMT,
-            "-s",
-            "-t",
-            session,
-        ])
-        .run(PROBE_TMUX_WITHIN)
-        .map(|o| parse_panes(&String::from_utf8_lossy(&o.stdout)))
-        .unwrap_or_default()
+    panes_with(tmux_on(socket), session)
+}
+
+/// [`panes_on`] 的本体，`tmux` 由调用方造（同 [`probe_with`]）。
+fn panes_with(tmux: Child, session: &str) -> Vec<PaneTag> {
+    tmux.args([
+        UTF8_CLIENT_FLAG,
+        "list-panes",
+        "-F",
+        PANES_FMT,
+        "-s",
+        "-t",
+        session,
+    ])
+    .run(PROBE_TMUX_WITHIN)
+    .map(|o| parse_panes(&String::from_utf8_lossy(&o.stdout)))
+    .unwrap_or_default()
 }
 
 /// [`panes_on`] 的原文 ⇒ 行（纯函数）。读不懂的行丢掉（段数不对 = 打印通道被改写，宁可当它不在）。
@@ -269,21 +285,42 @@ pub(crate) enum Who {
 }
 
 /// 声明了别的前端 ⇒ 只读；声明归这次请求自报的前端 ⇒ 放；没声明 / 用户终端起的 ⇒ 照名字规则（`gate2`）。
-pub(crate) fn identity(name: &str, p: &Probed, requester: Option<&str>) -> Who {
+/// `client` ＝ 会话上的 `@ccm_client`，`ccm_sid` ＝ 按它判身份的那个 `@ccm_sid`（都没设 ⇒ 空串）。只答放不放，不发令牌。
+pub(crate) fn identity(name: &str, client: &str, ccm_sid: &str, requester: Option<&str>) -> Who {
     use crate::control::gate_rules::{gate_client, ClientVerdict};
-    match gate_client(&p.client, requester) {
+    match gate_client(client, requester) {
         ClientVerdict::Own => Who::Pass,
         ClientVerdict::NotYours => Who::OtherClient,
-        ClientVerdict::Open
-            if crate::control::gate_rules::gate2(name, Some(&p.ccm_sid)).allowed() =>
-        {
+        ClientVerdict::Open if crate::control::gate_rules::gate2(name, Some(ccm_sid)).allowed() => {
             Who::Pass
         }
         ClientVerdict::Open => Who::NotOurs,
     }
 }
 
-/// **过门。** 通过则返回后续该用的目标句柄（`#{session_id}`；给了 `sid` ⇒ 挂着它的那个窗格的 `#{pane_id}`）。
+/// 过了门的目标（`#{session_id}` 或 `#{pane_id}` 句柄）：字段私有、不能复制 ⇒ 只有本模块造得出，送键只收它。
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct Admitted(String);
+
+impl Admitted {
+    /// 对它下命令用的 tmux 句柄。
+    pub(crate) fn handle(&self) -> &str {
+        &self.0
+    }
+}
+
+/// 送键那道门不放的几种。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Barred {
+    /// 目标不存在。
+    Gone,
+    /// 给了 `sid`，哪个窗格都不挂它（此刻跑的已经不是那条会话）。
+    OtherSid,
+    /// 身份没过（[`identity`] 的那两种）。
+    Not(Who),
+}
+
+/// **过门。** 通过则返回令牌：后续该用的目标句柄（`#{session_id}`；给了 `sid` ⇒ 挂着它的那个窗格的 `#{pane_id}`）。
 ///
 /// `name` 是用户/调用方给的会话名（Gate 2 的本地半支按它判）；
 /// `target` 是 `launch::exact_target(name)` 产出的精确目标（`=name:`）。
@@ -300,42 +337,50 @@ pub(crate) fn admit(
     target: &str,
     sid: Option<&str>,
     requester: Option<&str>,
-) -> Result<String, CmdErr> {
-    let Some(p) = probe(target)? else {
-        return Err((
-            "no_such_session",
-            copy_text("beGate.admit.noSession", &[("name", name)]),
-        ));
+) -> Result<Admitted, CmdErr> {
+    let said = match admit_with(&|| tmux_on(None), name, target, sid, requester)? {
+        Ok(a) => return Ok(a),
+        Err(Barred::Gone) => {
+            return Err((
+                "no_such_session",
+                copy_text("beGate.admit.noSession", &[("name", name)]),
+            ))
+        }
+        Err(Barred::OtherSid) => copy_text("beGate.admit.otherSession", &[("name", name)]),
+        Err(Barred::Not(Who::OtherClient)) => {
+            copy_text("beGate.admit.otherClient", &[("name", name)])
+        }
+        Err(Barred::Not(_)) => copy_text("beGate.admit.notOurs", &[("name", name)]),
     };
-    // 给了 sid ⇒ 落在挂着它的那个窗格、身份也按它判（活动窗格是谁不算数）；哪个窗格都不挂它 ⇒ 此刻跑的已经不是那条会话。
-    let (who, at) = match sid {
-        None => (p.clone(), None),
+    Err(("wrong_owner", said))
+}
+
+/// [`admit`] 的本体，`tmux` 由调用方造（终端送字那一路问它自己那台 tmux）：探 → 按 `sid` 找窗格 → 判身份 → 令牌。
+/// 给了 sid ⇒ 落在挂着它的那个窗格、身份也按它判（活动窗格是谁不算数）。
+pub(crate) fn admit_with(
+    tmux: &dyn Fn() -> Child,
+    name: &str,
+    target: &str,
+    sid: Option<&str>,
+    requester: Option<&str>,
+) -> Result<Result<Admitted, Barred>, CmdErr> {
+    let Some(p) = probe_with(tmux(), target)? else {
+        return Ok(Err(Barred::Gone));
+    };
+    let (ccm_sid, at) = match sid {
+        None => (p.ccm_sid, p.session_id),
         Some(s) => {
-            let panes = panes_on(None, &p.session_id);
+            let panes = panes_with(tmux(), &p.session_id);
             let Some(c) = carrier(&panes, s) else {
-                return Err((
-                    "wrong_owner",
-                    copy_text("beGate.admit.otherSession", &[("name", name)]),
-                ));
+                return Ok(Err(Barred::OtherSid));
             };
-            let at = Probed {
-                ccm_sid: c.sid.clone(),
-                ..p.clone()
-            };
-            (at, Some(c.pane.clone()))
+            (c.sid.clone(), c.pane.clone())
         }
     };
-    match identity(name, &who, requester) {
-        Who::Pass => Ok(at.unwrap_or(p.session_id)),
-        Who::NotOurs => Err((
-            "wrong_owner",
-            copy_text("beGate.admit.notOurs", &[("name", name)]),
-        )),
-        Who::OtherClient => Err((
-            "wrong_owner",
-            copy_text("beGate.admit.otherClient", &[("name", name)]),
-        )),
-    }
+    Ok(match identity(name, &p.client, &ccm_sid, requester) {
+        Who::Pass => Ok(Admitted(at)),
+        no => Err(Barred::Not(no)),
+    })
 }
 
 /// 破坏性动作的门：Gate 2（身份）再加 Gate 3（`windows == 1`）。
@@ -351,7 +396,7 @@ pub(crate) fn admit_destructive(
     target: &str,
     sid: Option<&str>,
     requester: Option<&str>,
-) -> Result<EndAt, CmdErr> {
+) -> Result<Doomed, CmdErr> {
     let Some(p) = probe(target)? else {
         return Err((
             "no_such_session",
@@ -359,7 +404,7 @@ pub(crate) fn admit_destructive(
         ));
     };
     let (who, only) = match sid {
-        None => (p.clone(), Vec::new()),
+        None => (p.ccm_sid.clone(), Vec::new()),
         Some(s) => {
             let tags = panes_on(None, &p.session_id);
             let carrying: Vec<String> = tags
@@ -374,14 +419,10 @@ pub(crate) fn admit_destructive(
                 ));
             }
             let others = tags.iter().any(|t| !t.sid.is_empty() && t.sid != s);
-            let at = Probed {
-                ccm_sid: s.to_string(),
-                ..p.clone()
-            };
-            (at, if others { carrying } else { Vec::new() })
+            (s.to_string(), if others { carrying } else { Vec::new() })
         }
     };
-    match identity(name, &who, requester) {
+    match identity(name, &p.client, &who, requester) {
         Who::Pass => {}
         Who::NotOurs => {
             return Err((
@@ -397,7 +438,7 @@ pub(crate) fn admit_destructive(
         }
     }
     if !only.is_empty() {
-        return Ok(EndAt::Panes(p.session_id, only));
+        return Ok(Doomed(EndAt::Panes(p.session_id, only)));
     }
     if p.windows != 1 {
         return Err((
@@ -408,11 +449,22 @@ pub(crate) fn admit_destructive(
             ),
         ));
     }
-    Ok(EndAt::Session(p.session_id))
+    Ok(Doomed(EndAt::Session(p.session_id)))
+}
+
+/// 破坏性动作的令牌：字段私有、不能复制 ⇒ 只有本模块造得出，结束会话只收它。
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct Doomed(EndAt);
+
+impl Doomed {
+    /// 放行之后落在哪。
+    pub(crate) fn at(&self) -> &EndAt {
+        &self.0
+    }
 }
 
 /// 破坏性动作放行之后落在哪。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) enum EndAt {
     /// 整个会话（`#{session_id}` 句柄）。
     Session(String),
