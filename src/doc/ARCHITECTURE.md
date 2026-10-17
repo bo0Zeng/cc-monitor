@@ -333,7 +333,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 - 本机：本机后端 `session-open` 回那一行 → monitor 开窗。
 - 界面只经 `src/frontend/ui/terminal-open.ts` 走这条，monitor 只开窗、不拼命令。开窗挑终端：设置里指定的 → 系统出口（`xdg-terminal-exec` · `x-terminal-emulator`）→ 常见终端逐个探；都没有就不开窗、说清楚去设置里指定（`launch_tests.rs::the_terminal_is_picked_by_setting_then_system_exits_then_common_ones` 钉着）。
 
-**在终端里打开**（手机）：手机开自己的终端（`core-terminal` ＋ 自己那条 SSH），在里面附着会话。进哪儿一问那台后端 `session-open`（恢复 · 接回 · 进 / 建一个空会话 · 只进一个目录四形，回那台渲好的那一行），手机原样敲进自己的终端（`src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/Sessions.kt` 的 `SessionOpen`）；列会话 · 结束 · 抓屏 · 送字 · 推公钥也都问那台核心（`terminals-list` · `kill` · `terminal-preview` · `terminal-input` · `authorized-keys-add`）。手机一条 shell 命令都不拼，有没有 tmux 也照那台 `session-new-facts` 说的。
+**在终端里打开**（手机）：手机开自己的终端（`core-terminal` ＋ 自己那条 SSH），在里面附着会话。进哪儿一问那台后端 `session-open`（恢复 · 接回 · 进 / 建一个空会话 · 只进一个目录四形，回那台渲好的那一行），手机原样敲进自己的终端（`src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/Sessions.kt` 的 `SessionOpen`）；列会话 · 结束 · 抓屏 · 送字 · 推公钥也都问那台核心（`terminals-list` · `kill` · `terminal-preview` · `terminal-input` · `authorized-keys-add`）。手机一条 shell 命令都不拼，有没有 tmux 也照那台 `session-open-facts` 说的。
 
 **tmux 这一面**（都在后端）：
 

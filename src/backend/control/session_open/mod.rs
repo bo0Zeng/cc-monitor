@@ -13,28 +13,18 @@ use super::session_batch::{
     carriers, listed, pids_said, pretrust, CmdErr, Deps, NameBase, Standing, TmuxEntry,
 };
 pub(crate) mod new;
-pub(crate) use new::{dir_answer, DirChecked, ForkFrom, ForkWrite, PreRotation, SessionNewDirErr, SessionNewDirReq};
+pub(crate) use new::{dir_answer, DirChecked, ForkFrom, ForkWrite, PreRotation, OpenDirErr, OpenDirReq};
 use new::{
-    expand_home, first_prompt_refused, RotationPick, SessionNewField as Field,
-    SessionNewRefusal as Refusal,
+    expand_home, first_prompt_refused, RotationPick, OpenField as Field,
+    OpenRefusal as Refusal,
 };
-pub use cmd_wire::session::{FirstSay, Landed, Opened};
+pub use cmd_wire::session::{FirstSay, Landed, Opened, Run};
 use crate::platform::child::{Child, Deadline};
 use serde::Deserialize;
 use serde_json::Value;
 
 /// 失败：码 ＋ 那一句 ＋ `data`（[`Refusal`]：哪一格 · 选不了号那一形）＋ 下层原话（不进那一句，进复制详情；没有 ⇒ `None`）。
 pub(crate) type Failed = (&'static str, String, Option<Value>, Option<String>);
-
-/// 放在哪：这台 tmux 里（关终端不断）· 直路（开一个终端直接跑，关了就停）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum Run {
-    Tmux,
-    Direct,
-}
 
 /// `session-open` 的入参（`deny_unknown_fields`：多送一格 ⇒ 拒）。
 #[derive(Debug, Deserialize)]

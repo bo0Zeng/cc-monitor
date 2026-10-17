@@ -9,7 +9,7 @@ export type SessionModelReq = {
  */
 sid: string, 
 /**
- * 要换成的模型（原值；必须是 `session-new-facts` 那一家 `models` 里的一个）。
+ * 要换成的模型（原值；必须是 `session-open-facts` 那一家 `models` 里的一个）。
  */
 model: string, 
 /**

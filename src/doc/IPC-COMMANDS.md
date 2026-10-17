@@ -3182,7 +3182,7 @@ accounts: Array<AccountRow>,
 notice: string | null, };
 type AccountsListReq = { 
 /**
- * 这次起会话的是哪一家（线上的 kind，同 `session-new-facts` 给的那一格；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`）。
+ * 这次起会话的是哪一家（线上的 kind，同 `session-open-facts` 给的那一格；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`）。
  */
 agent: AgentKind, };
 type AgentKind = string;
@@ -9907,7 +9907,7 @@ type SessionModelReq = {
  */
 sid: string, 
 /**
- * 要换成的模型（原值；必须是 `session-new-facts` 那一家 `models` 里的一个）。
+ * 要换成的模型（原值；必须是 `session-open-facts` 那一家 `models` 里的一个）。
  */
 model: string, 
 /**
@@ -9956,7 +9956,7 @@ type SessionPermissionReq = {
  */
 sid: string, 
 /**
- * 要切到的档（原值；必须是 `session-new-facts` 那一家 `permissionModes` 里的一个）。
+ * 要切到的档（原值；必须是 `session-open-facts` 那一家 `permissionModes` 里的一个）。
  */
 mode: string, 
 /**
@@ -10390,6 +10390,16 @@ permissionMode?: string,
  * 轮换：缺 ＝ 用「新会话用」的那份策略 · `{strategy: id}` ＝ 起之前按定好的 sid 写成用那一份。
  */
 rotation?: RotationPick, };
+type OpenField = "agent" | "command" | "cwd" | "account" | "place" | "tmuxName";
+type OpenRefusal = { 
+/**
+ * 不行的那一格；整体的（起不来 · 分叉写不成 · 渲不出）⇒ `null`。
+ */
+field: OpenField | null, 
+/**
+ * 选不了号（码 `account_unavailable`）⇒ 那一形；别的 ⇒ `null`。
+ */
+unavailable: AccountUnavailable | null, };
 type OpenWhat = { "kind": "new" } & NewOpen | { "kind": "resume", sid: string, } | { "kind": "look", sid?: string, session?: string, } | { "kind": "shell", session?: string, cwd?: string, };
 type Opened = { 
 /**
@@ -10434,16 +10444,6 @@ type RotationPick = {
  */
 strategy: string | null, };
 type Run = "tmux" | "direct";
-type SessionNewField = "agent" | "command" | "cwd" | "account" | "place" | "tmuxName";
-type SessionNewRefusal = { 
-/**
- * 不行的那一格；整体的（起不来 · 分叉写不成 · 渲不出）⇒ `null`。
- */
-field: SessionNewField | null, 
-/**
- * 选不了号（码 `account_unavailable`）⇒ 那一形；别的 ⇒ `null`。
- */
-unavailable: AccountUnavailable | null, };
 type SessionOpenReq = { 
 /**
  * 起新的 · 恢复某条 · 接回 · 开一个 shell。
@@ -10473,15 +10473,15 @@ client?: string, };
 
 码：`bad_args` · `unknown_agent` · `bad_command` · `no_dir` · `account_unavailable` · `place_unavailable` · `bad_tmux_name` · `tmux_taken` · `record_gone` · `already_live` · `not_in_tmux` · `wrong_owner` · `unobservable` · `fork_failed` · `refused` · `start_failed` · `child_timed_out` · `launch_pending` · `no_strategy`
 
-失败带 `data` 的码：`bad_args` ⇒ `SessionNewRefusal` · `unknown_agent` ⇒ `SessionNewRefusal` · `bad_command` ⇒ `SessionNewRefusal` · `no_dir` ⇒ `SessionNewRefusal` · `account_unavailable` ⇒ `SessionNewRefusal` · `place_unavailable` ⇒ `SessionNewRefusal` · `bad_tmux_name` ⇒ `SessionNewRefusal` · `tmux_taken` ⇒ `SessionNewRefusal` · `record_gone` ⇒ `SessionNewRefusal` · `already_live` ⇒ `SessionNewRefusal` · `not_in_tmux` ⇒ `SessionNewRefusal` · `wrong_owner` ⇒ `SessionNewRefusal` · `unobservable` ⇒ `SessionNewRefusal` · `fork_failed` ⇒ `SessionNewRefusal` · `refused` ⇒ `SessionNewRefusal` · `start_failed` ⇒ `SessionNewRefusal` · `child_timed_out` ⇒ `SessionNewRefusal` · `launch_pending` ⇒ `SessionNewRefusal` · `no_strategy` ⇒ `SessionNewRefusal`
+失败带 `data` 的码：`bad_args` ⇒ `OpenRefusal` · `unknown_agent` ⇒ `OpenRefusal` · `bad_command` ⇒ `OpenRefusal` · `no_dir` ⇒ `OpenRefusal` · `account_unavailable` ⇒ `OpenRefusal` · `place_unavailable` ⇒ `OpenRefusal` · `bad_tmux_name` ⇒ `OpenRefusal` · `tmux_taken` ⇒ `OpenRefusal` · `record_gone` ⇒ `OpenRefusal` · `already_live` ⇒ `OpenRefusal` · `not_in_tmux` ⇒ `OpenRefusal` · `wrong_owner` ⇒ `OpenRefusal` · `unobservable` ⇒ `OpenRefusal` · `fork_failed` ⇒ `OpenRefusal` · `refused` ⇒ `OpenRefusal` · `start_failed` ⇒ `OpenRefusal` · `child_timed_out` ⇒ `OpenRefusal` · `launch_pending` ⇒ `OpenRefusal` · `no_strategy` ⇒ `OpenRefusal`
 
-#### `session-new-facts`
+#### `session-open-facts`
 
 起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-new-facts`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-open-facts`
 
-入参 `NewFactsReq` · 回包 `NewFacts`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `OpenFactsReq` · 回包 `OpenFacts`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
 type AgentFacts = { 
@@ -10496,12 +10496,12 @@ text: string,
 /**
  * 起会话可选的模型（不选 ＝ 跟着那一家自己的默认）；这一家没声明 ⇒ 空。
  */
-models: Array<NewSessionPick>, 
+models: Array<AgentPick>, 
 /**
  * 换模型抽屉的第一项「默认」：会话开着时交 `session-model` 这个值 ⇒ 回到那一家自己的缺省模型（起会话不交它，不选就是默认）；
  * 这一家没声明 ⇒ `null`。
  */
-modelDefault: NewSessionPick | null, 
+modelDefault: AgentPick | null, 
 /**
  * 抽屉底那一行：换模型的副作用（那一家自己的行为，例如也改这个号以后新会话的默认）；没有 ⇒ `null`。
  */
@@ -10509,7 +10509,16 @@ modelNote: string | null,
 /**
  * 起会话可选的权限档（不给越过批准那一档）；这一家没有 ⇒ 空。
  */
-permissionModes: Array<NewSessionPick>, };
+permissionModes: Array<AgentPick>, };
+type AgentPick = { 
+/**
+ * 原值（`session-new` 的 `model` / `permissionMode` 收的就是它）。
+ */
+value: string, 
+/**
+ * 写给人看的字。
+ */
+text: string, };
 type ForkFacts = { 
 /**
  * 源会话是哪一家（说不出 ⇒ 空串）。
@@ -10538,7 +10547,7 @@ type ForkSlot<T> = { "kind": "known", value: T, from: ForkWhence, } | { "kind": 
 type ForkTerminal = { "host": "tmux", terminal: string, } | { "host": "none" };
 type ForkWhence = "record" | "process" | "terminal_list";
 type ForkWhy = "exited" | "no_cwd" | "live_no_account";
-type NewFacts = { 
+type OpenFacts = { 
 /**
  * 这台最近用过的工作目录（各家记录里的，新的在前、同一个目录一次、最多 8 个）。
  */
@@ -10548,6 +10557,10 @@ recent: Array<RecentDir>,
  */
 tmux: boolean, 
 /**
+ * 新建框默认「运行于」：同 `session-open {what: new}` 不给 `run` 时落的那一形（有 tmux 就 tmux，分叉照源会话那一种）。
+ */
+run: Run, 
+/**
  * 这台能起的几家（注册表里由我们起的、默认启动器在这台 `PATH` 上找得到的；注册表序），各带名字与可选的模型 · 权限档。
  */
 agents: Array<AgentFacts>, 
@@ -10555,7 +10568,7 @@ agents: Array<AgentFacts>,
  * 没给 `forkOf` ⇒ `null`。
  */
 fork: ForkFacts | null, };
-type NewFactsReq = { 
+type OpenFactsReq = { 
 /**
  * 可缺：分叉源会话 sid。
  */
@@ -10564,15 +10577,6 @@ forkOf?: string,
  * 可缺（随 `forkOf`）：从哪条消息处分叉（框顶说第几轮、几点）。
  */
 at?: string, };
-type NewSessionPick = { 
-/**
- * 原值（`session-new` 的 `model` / `permissionMode` 收的就是它）。
- */
-value: string, 
-/**
- * 写给人看的字。
- */
-text: string, };
 type RecentDir = { 
 /**
  * 工作目录。
@@ -10586,17 +10590,18 @@ lastMs: number,
  * 同一刻按请求的 `tz` 写给人看的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年）。
  */
 lastText: string, };
+type Run = "tmux" | "direct";
 ```
 
 码：`bad_args` · `fork_failed`
 
-#### `session-new-dir`
+#### `session-open-dir`
 
 起新会话前核一个目录：在不在 · 会用哪个终端名。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-new-dir`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-open-dir`
 
-入参 `SessionNewDirReq` · 回包 `DirChecked`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `OpenDirReq` · 回包 `DirChecked`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
 type DirChecked = { 
@@ -10608,7 +10613,7 @@ exists: boolean,
  * 这台此刻会给它铸的终端名（没 tmux ⇒ `null`）。
  */
 tmuxName: string | null, };
-type SessionNewDirReq = { 
+type OpenDirReq = { 
 /**
  * 工作目录（开头的 `~` 按这台的家目录读）。
  */
@@ -12609,9 +12614,9 @@ needs: string | null, };
 | `--session-commands` | ＝ 帧命令 `session-commands`：一条会话能用的斜杠命令与 Skill（内置 ＋ 本项目 ＋ 它用的号的配置目录） |
 | `--session-fork` | ＝ 帧命令 `session-fork`：从某条消息处分叉出一个新会话 |
 | `--session-model` | ＝ 帧命令 `session-model`：会话开着时换模型（送那一家的那一行、从记录里读回换成了什么；在等人不送） |
-| `--session-new-dir` | ＝ 帧命令 `session-new-dir`：起新会话前核一个目录：在不在 · 会用哪个终端名 |
-| `--session-new-facts` | ＝ 帧命令 `session-new-facts`：起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法 |
 | `--session-open` | ＝ 帧命令 `session-open`：起会话 · 恢复 · 接回（一个请求：落在哪 ＋ 要开终端就跑的那一行） |
+| `--session-open-dir` | ＝ 帧命令 `session-open-dir`：起新会话前核一个目录：在不在 · 会用哪个终端名 |
+| `--session-open-facts` | ＝ 帧命令 `session-open-facts`：起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法 |
 | `--session-permission` | ＝ 帧命令 `session-permission`：会话开着时切权限档（按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按） |
 | `--session-say` | ＝ 帧命令 `session-say`：往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车；终端没了 ⇒ 按记下的号恢复、那一句当第一句交） |
 | `--sessions-needs` | ＝ 帧命令 `sessions-needs`：这台上需手动的会话清单 |

@@ -1,6 +1,6 @@
 /**
  * 会话头上换模型 · 切权限档那两颗：能换 · 两个菜单 · 正在换 · 换成了 · 没换成 · 不能换（在跑 · 需手动 · 已退出）· 窄窗。
- * 字（`modelText` · `permissionModeText`）· 能不能换（会话帧 `switch`）· 菜单里那一家的清单（`session-new-facts.agents`）都是真后端算的；
+ * 字（`modelText` · `permissionModeText`）· 能不能换（会话帧 `switch`）· 菜单里那一家的清单（`session-open-facts.agents`）都是真后端算的；
  * 换的那两条命令（`session-model` · `session-permission`）台架里没有真的那一家可送，场景只演回包的结局那一形（读回的字取那一家自己写的原样）。
  */
 import type { Scene } from "./index";
@@ -65,7 +65,7 @@ export const SWITCH_SCENES: Scene[] = [
     await hover(chip("model"));
     await sleep(700);
   }),
-  sw("main-switch-model-menu", "会话头 · 换模型的菜单", "点模型那一颗：组名 ·「默认」在前 · 那一家的模型 · 底下那一行（都照那台 session-new-facts）", async () => {
+  sw("main-switch-model-menu", "会话头 · 换模型的菜单", "点模型那一颗：组名 ·「默认」在前 · 那一家的模型 · 底下那一行（都照那台 session-open-facts）", async () => {
     await mainReady(ALL_TABS);
     await chipsReady();
     await openMenuOf("model");

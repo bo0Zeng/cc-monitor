@@ -86,9 +86,9 @@ enum class PushOutcome {
     ALREADY,
 }
 
-@WireOf("NewFacts")
+@WireOf("OpenFacts")
 @JsonClass(generateAdapter = true)
-data class NewFacts(
+data class OpenFacts(
     val recent: List<RecentDir>,
     val tmux: Boolean,
     val agents: List<AgentFacts>,
@@ -99,15 +99,15 @@ data class NewFacts(
 data class AgentFacts(
     val kind: String,
     val text: String,
-    val models: List<NewSessionPick>,
-    val modelDefault: NewSessionPick?,
+    val models: List<AgentPick>,
+    val modelDefault: AgentPick?,
     val modelNote: String?,
-    val permissionModes: List<NewSessionPick>,
+    val permissionModes: List<AgentPick>,
 )
 
-@WireOf("NewSessionPick")
+@WireOf("AgentPick")
 @JsonClass(generateAdapter = true)
-data class NewSessionPick(
+data class AgentPick(
     val value: String,
     val text: String,
 )

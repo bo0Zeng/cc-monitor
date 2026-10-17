@@ -29,9 +29,9 @@ class NewSessionReadsTest {
     }
 
     @Test
-    fun `session-new-facts：最近的目录照那台给的序，带写好的时刻字`() {
+    fun `session-open-facts：最近的目录照那台给的序，带写好的时刻字`() {
         val facts =
-            SessionNewFacts.of(
+            SessionOpenFacts.of(
                 mapOf(
                     "recent" to listOf(mapOf("cwd" to "/h/a", "lastMs" to 2.0, "lastText" to "19:02"), mapOf("cwd" to "/h/b", "lastMs" to 1.0, "lastText" to "昨天")),
                     "tmux" to true,
@@ -40,15 +40,15 @@ class NewSessionReadsTest {
                 ),
             )!!
         assertEquals(listOf("/h/a" to "19:02", "/h/b" to "昨天"), facts.recent.map { it.cwd to it.lastText })
-        assertNull("最近一格缺 lastText ⇒ 解不出", SessionNewFacts.of(mapOf("recent" to listOf(mapOf("cwd" to "/h/a", "lastMs" to 1.0)), "agents" to emptyList<Any>())))
+        assertNull("最近一格缺 lastText ⇒ 解不出", SessionOpenFacts.of(mapOf("recent" to listOf(mapOf("cwd" to "/h/a", "lastMs" to 1.0)), "agents" to emptyList<Any>())))
     }
 
     @Test
-    fun `session-new-dir：只交目录；在不在照回包`() {
-        assertEquals(mapOf("cwd" to "~/x"), SessionNewDir.args("~/x"))
-        assertEquals(false, SessionNewDir.of(mapOf("exists" to false, "tmuxName" to null)))
-        assertEquals(true, SessionNewDir.of(mapOf("exists" to true, "tmuxName" to "x-cc")))
-        assertNull(SessionNewDir.of(mapOf("tmuxName" to null)))
+    fun `session-open-dir：只交目录；在不在照回包`() {
+        assertEquals(mapOf("cwd" to "~/x"), SessionOpenDir.args("~/x"))
+        assertEquals(false, SessionOpenDir.of(mapOf("exists" to false, "tmuxName" to null)))
+        assertEquals(true, SessionOpenDir.of(mapOf("exists" to true, "tmuxName" to "x-cc")))
+        assertNull(SessionOpenDir.of(mapOf("tmuxName" to null)))
     }
 
     @Test

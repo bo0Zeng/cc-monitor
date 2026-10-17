@@ -78,11 +78,11 @@ class NewSessionPickerTest {
     ) = FakeCoreLink().also { l ->
         l.answer = { cmd, args ->
             when (cmd) {
-                "session-new-facts" -> ok(f)
+                "session-open-facts" -> ok(f)
                 "files-home" -> ok(mapOf("path" to "/h/me"))
                 "accounts-list" -> ok(a(args))
                 "rotation-strategies" -> ok(strategies)
-                "session-new-dir" -> ok(mapOf("exists" to (args?.get("cwd") != "/h/gone"), "tmuxName" to null))
+                "session-open-dir" -> ok(mapOf("exists" to (args?.get("cwd") != "/h/gone"), "tmuxName" to null))
                 "accounts-set-default" -> ok(mapOf("applied" to true))
                 else -> Reply.LinkDown
             }

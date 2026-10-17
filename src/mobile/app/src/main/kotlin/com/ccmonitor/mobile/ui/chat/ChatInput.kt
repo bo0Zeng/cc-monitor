@@ -46,7 +46,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
+import com.ccmonitor.mobile.core.claude.link.wire.AgentPick
 import com.ccmonitor.mobile.core.claude.link.wire.SessionAct
 import com.ccmonitor.mobile.core.claude.link.wire.SessionCommand
 import com.ccmonitor.mobile.core.claude.link.wire.SessionCommands
@@ -61,8 +61,8 @@ import com.ccmonitor.mobile.core.ui.theme.Touch
 data class ChatInputActions(
     val send: (String) -> Unit = {},
     val stop: () -> Unit = {},
-    val switchModel: (NewSessionPick) -> Unit = {},
-    val switchPermission: (NewSessionPick) -> Unit = {},
+    val switchModel: (AgentPick) -> Unit = {},
+    val switchPermission: (AgentPick) -> Unit = {},
     val loadPicks: () -> Unit = {},
     val loadCommands: () -> Unit = {},
     val say: (String) -> Unit = {},
@@ -329,11 +329,11 @@ private fun SendButton(
 private fun PickSheet(
     title: String,
     picks: Picks?,
-    of: (Picks) -> List<NewSessionPick>,
+    of: (Picks) -> List<AgentPick>,
     current: String?,
     note: (Picks) -> String?,
     close: () -> Unit,
-    pick: (NewSessionPick) -> Unit,
+    pick: (AgentPick) -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = close, modifier = Modifier.testTag(ChatTestTags.PICK_SHEET)) {
         Column(Modifier.navigationBarsPadding().padding(bottom = LocalAppTokens.current.spacing.lg)) {

@@ -379,7 +379,7 @@ class ChatSessionTest {
                 val link = FakeCoreLink()
                 link.answer = { cmd, _ ->
                     when (cmd) {
-                        "session-new-facts" -> ok(facts)
+                        "session-open-facts" -> ok(facts)
                         "session-open" -> ok(started)
                         else -> Reply.LinkDown
                     }
@@ -398,7 +398,7 @@ class ChatSessionTest {
             var start: Reply = failed("目录不在")
             link.answer = { cmd, _ ->
                 when (cmd) {
-                    "session-new-facts" ->
+                    "session-open-facts" ->
                         ok(
                             mapOf(
                                 "recent" to listOf(mapOf("cwd" to "/h/orders", "lastMs" to 1.0, "lastText" to "19:02")),

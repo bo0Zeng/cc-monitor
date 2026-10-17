@@ -1,7 +1,7 @@
 package com.ccmonitor.mobile.ui.session
 
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
+import com.ccmonitor.mobile.core.claude.link.wire.AgentPick
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import kotlinx.coroutines.test.runTest
@@ -48,7 +48,7 @@ class TerminalOpsAgentTest {
     ) = FakeCoreLink().apply {
         answer = { cmd, _ ->
             when (cmd) {
-                "session-new-facts" -> Reply.Ok(facts + ("tmux" to tmux))
+                "session-open-facts" -> Reply.Ok(facts + ("tmux" to tmux))
                 "terminals-list" -> Reply.Ok(mapOf("terminals" to rows.toList(), "complete" to true))
                 "session-model" -> Reply.Ok(mapOf("result" to "done", "model" to "opus", "said" to "已换成 opus"))
                 "session-open" -> Reply.Ok(opened("idle"))
@@ -122,7 +122,7 @@ class TerminalOpsAgentTest {
         runTest {
             val none = TerminalOps(link(tmux = false), { "box" }).reach()
             assertEquals(Reach(noBackend = null, noTmux = copyText("mobTerm.tmux.none", "host" to "box")), none)
-            val palette = terminalPaletteActions(none, listOf(NewSessionPick("opus", "Opus")), {}, {}, {}, {})
+            val palette = terminalPaletteActions(none, listOf(AgentPick("opus", "Opus")), {}, {}, {}, {})
             assertEquals("没 tmux ⇒ 模型 · 抓屏 · tmux 会话都不出，只剩推公钥（能点）", listOf(copyText("mobPalette.item.key")), palette.map { it.label })
             assertNotNull(palette.single().run)
             assertEquals(Reach(), TerminalOps(link(tmux = true), { "box" }).reach())

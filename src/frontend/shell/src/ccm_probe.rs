@@ -153,7 +153,7 @@ const LOCAL_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(
 ///
 /// 它跑的是 `bash -lic`，也就是**用户自己的交互式 rc**，内容不在本仓控制之下
 /// （联网的 `nvm use`、等 agent 的 `ssh-add`、写错的 `read`……任何一条都能让它永不返回）。
-/// 而调用链是 `resume_history_session`（**同步** `#[tauri::command]`）→ `launch_local`
+/// 而调用方是一次**同步**的起会话命令
 /// ⇒ 没有上限的话，用户点一次「恢复」就是**永远转圈、且不再有任何本机会话拉得起来**。
 ///
 /// `Command::output()` 没有超时形态（std 不提供 `wait_timeout`），所以这里自己拼：

@@ -201,7 +201,7 @@ fixtures:
 **★ 诚实分层**:GUI resume 一键拉起要真开一个终端窗口(`platform/terminal.rs::open_local`),无头门禁里不开窗。因此 argv/孤儿断言的诚实天花板
 = **命令级**:取 `session-open` 本体交出去的那一行(`open-line-emit.sh`,不重写)拿到 app **真正会跑**的命令串,再把该串真跑到真 tmux + fake-claude,
 断言 argv.log(`--resume <sid>` + `CLAUDE_CONFIG_DIR`)与 `tmux ls` 孤儿数。复活(灰→live)的**检测**由
-后端判活边沿断言(后端半场)。本地 resume(`resume_history_session`)同为 Windows-only,Linux 不可执行。
+后端判活边沿断言(后端半场)。
 
 fixtures / 驱动:
 - `open-line-emit.sh`——跑 `#[ignore]` 数据出口 `session_open_tests.rs::emit_open_line_for_e2e`:意图照 `session-open` 的入参

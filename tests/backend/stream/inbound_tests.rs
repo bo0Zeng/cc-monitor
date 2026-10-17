@@ -1354,10 +1354,10 @@ fn the_terminal_trio_refuses_fields_it_does_not_use() {
 fn the_session_family_refuses_what_its_request_types_do_not_have() {
     for (cmd, args) in [
         (
-            "session-new-dir",
+            "session-open-dir",
             serde_json::json!({ "cwd": "/x", "extra": 1 }),
         ),
-        ("session-new-dir", serde_json::json!({ "forkOf": "s-1" })),
+        ("session-open-dir", serde_json::json!({ "forkOf": "s-1" })),
         (
             "sessions-where",
             serde_json::json!({ "sids": ["s-1"], "extra": 1 }),
@@ -1410,10 +1410,10 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
             serde_json::json!({ "what": { "kind": "new", "agent": "claude", "cwd": "/x", "rotation": "c1" }, "local": false }),
         ),
         (
-            "session-new-facts",
+            "session-open-facts",
             serde_json::json!({ "forkOf": "s-1", "extra": 1 }),
         ),
-        ("session-new-facts", serde_json::json!({ "at": 1 })),
+        ("session-open-facts", serde_json::json!({ "at": 1 })),
         (
             "session-fork",
             serde_json::json!({ "sid": "s-1", "uuid": "u-1", "extra": 1 }),

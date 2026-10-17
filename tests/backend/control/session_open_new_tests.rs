@@ -459,7 +459,7 @@ fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint(
                 open_shell: &|_, _| unreachable!("不开空 shell"),
                 prefs: &crate::control::machine_prefs::Prefs::default(),
             };
-            let req: SessionNewDirReq = serde_json::from_value(args).unwrap();
+            let req: OpenDirReq = serde_json::from_value(args).unwrap();
             dir_answer(&req, &deps, Some(std::path::Path::new("/h")))
                 .map(|d| serde_json::to_value(d).unwrap())
         };
@@ -477,10 +477,10 @@ fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint(
     );
     assert!(matches!(
         run(&some, json!({ "cwd": "/x", "forkOf": "not a sid" })),
-        Err(SessionNewDirErr::BadArgs(_))
+        Err(OpenDirErr::BadArgs(_))
     ));
     assert!(
-        serde_json::from_value::<SessionNewDirReq>(json!({ "cwd": "/x", "extra": 1 })).is_err()
+        serde_json::from_value::<OpenDirReq>(json!({ "cwd": "/x", "extra": 1 })).is_err()
     );
 }
 

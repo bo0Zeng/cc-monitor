@@ -21,7 +21,7 @@ import com.ccmonitor.mobile.core.claude.link.SessionSay
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.claude.link.TerminalInput
 import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
-import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
+import com.ccmonitor.mobile.core.claude.link.wire.AgentPick
 import com.ccmonitor.mobile.core.claude.link.wire.RecordKind
 import com.ccmonitor.mobile.core.claude.link.wire.SessionCommands
 import com.ccmonitor.mobile.core.claude.link.wire.TailPlan
@@ -98,17 +98,17 @@ data class SwitchChip(
     /** 上一次换成了的那一项（原值）：抽屉里勾它。 */
     val value: String? = null,
     /** 正在换成的那一项（写它的字、转圈）；不在换 ⇒ `null`。 */
-    val pending: NewSessionPick? = null,
+    val pending: AgentPick? = null,
     /** 此刻不能换：那台写好的那一句（会话帧的 `switch`；那台离线 ⇒ 离线那一句）；能换 ⇒ `null`。 */
     val blocked: String? = null,
 )
 
-/** 两个 chip 抽屉里列的：那台 `session-new-facts` 给这条会话那一家的模型与权限档；问不到 ⇒ [error] 是那一句。 */
+/** 两个 chip 抽屉里列的：那台 `session-open-facts` 给这条会话那一家的模型与权限档；问不到 ⇒ [error] 是那一句。 */
 data class Picks(
-    val models: List<NewSessionPick> = emptyList(),
-    val modes: List<NewSessionPick> = emptyList(),
+    val models: List<AgentPick> = emptyList(),
+    val modes: List<AgentPick> = emptyList(),
     /** 模型抽屉第一项「默认」（那台给的值与字）；那一家没有 ⇒ `null`。 */
-    val modelDefault: NewSessionPick? = null,
+    val modelDefault: AgentPick? = null,
     /** 模型抽屉底那一行灰字（那台写的）；没有 ⇒ `null`。 */
     val modelNote: String? = null,
     val error: String? = null,
@@ -141,7 +141,7 @@ sealed interface ChatTarget {
         val ticket: String,
         /** 从哪进来的那个目录（在一条会话里点「新建会话」⇒ 那条的目录）；没有 ⇒ `null`（那台最近的第一个 · `~`，见 [NewSessionPicker]）。 */
         val cwd: String?,
-        /** 这台存的那一家（线上 kind，主机设置里选的）；没选 ⇒ `null`。起的时候照那台 `session-new-facts` 认：认得 ⇒ 它，否则那台列的第一家。 */
+        /** 这台存的那一家（线上 kind，主机设置里选的）；没选 ⇒ `null`。起的时候照那台 `session-open-facts` 认：认得 ⇒ 它，否则那台列的第一家。 */
         val agent: String?,
     ) : ChatTarget
 }
@@ -303,9 +303,9 @@ class ChatSession(
     }
 
     /** 换模型（见 [ChatChips.switchModel]）。 */
-    fun switchModel(pick: NewSessionPick) = chips.switchModel(pick)
+    fun switchModel(pick: AgentPick) = chips.switchModel(pick)
 
-    fun switchPermission(pick: NewSessionPick) = chips.switchPermission(pick)
+    fun switchPermission(pick: AgentPick) = chips.switchPermission(pick)
 
     fun loadPicks() =
         chips.loadPicks(

@@ -44,7 +44,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
+import com.ccmonitor.mobile.core.claude.link.wire.AgentPick
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.db.KeyBinding
@@ -429,7 +429,7 @@ private fun ConnectedTerminal(
     val currentTmux by vm.tmuxSession.collectAsState()
     val onSwitchModel = rememberModelSwitchAction(vm.terminals) { currentTmux }
     // 面板「模型」组：那个终端里跑着的那一家能换的模型（那台给的）；没跑会话 ⇒ 空、这一组不出。
-    val models by androidx.compose.runtime.produceState(emptyList<NewSessionPick>(), currentTmux) {
+    val models by androidx.compose.runtime.produceState(emptyList<AgentPick>(), currentTmux) {
         value = currentTmux?.let { vm.terminals.modelsIn(it) }.orEmpty()
     }
     val onCapture = rememberCaptureAction(vm.terminals, { currentTmux }, onCaptured)
@@ -629,7 +629,7 @@ private fun CaptureDialog(
 private fun TerminalTab(
     session: TerminalSession,
     onShowTmux: () -> Unit,
-    models: List<NewSessionPick>,
+    models: List<AgentPick>,
     onModel: (String) -> Unit,
     onCapture: () -> Unit,
     onPushKey: () -> Unit,
@@ -688,7 +688,7 @@ private fun TerminalBottomControls(
     showKeyboard: () -> Unit,
     onShowTabs: () -> Unit,
     onShowTmux: () -> Unit,
-    models: List<NewSessionPick>,
+    models: List<AgentPick>,
     onModel: (String) -> Unit,
     onCapture: () -> Unit,
     onPushKey: () -> Unit,
@@ -801,7 +801,7 @@ private fun KeyBar(
  */
 internal fun terminalPaletteActions(
     reach: Reach,
-    models: List<NewSessionPick>,
+    models: List<AgentPick>,
     onModel: (String) -> Unit,
     onCapture: () -> Unit,
     onShowTmux: () -> Unit,

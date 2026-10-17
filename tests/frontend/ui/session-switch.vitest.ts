@@ -28,7 +28,7 @@ import { SwitchChips, afterSwitch, chipFace, type SwitchHost, type SwitchLocal, 
 import { switchModel, switchPermission } from "../../../src/frontend/ui/session-writes";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
-import type { NewFacts } from "../../../src/frontend/ui/generated/NewFacts";
+import type { OpenFacts } from "../../../src/frontend/ui/generated/OpenFacts";
 import type { SwitchCells } from "../../../src/frontend/ui/generated/SwitchCells";
 
 const YES: SwitchCells = { model: { can: "yes" }, permission: { can: "yes" } };
@@ -37,7 +37,7 @@ function tab(over: Partial<Tab> = {}): Tab {
   return { sessionId: "s1", title: "orders", origin: "devbox", agent: "claude", modelText: "核心·Opus 4.5", permissionMode: "acceptEdits", permissionModeText: "核心·自动接受编辑", switch: YES, ...over } as unknown as Tab;
 }
 
-const FACTS: NewFacts = {
+const FACTS: OpenFacts = {
   recent: [],
   tmux: true,
   fork: null,
@@ -58,14 +58,14 @@ const FACTS: NewFacts = {
       ],
     },
   ],
-} as unknown as NewFacts;
+} as unknown as OpenFacts;
 
 const local = (over: Partial<SwitchLocal> = {}): SwitchLocal => ({ pending: null, over: {}, ...over });
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
 };
 
-function rig(t: Tab, opts: { facts?: Promise<NewFacts>; unavailable?: string | null } = {}) {
+function rig(t: Tab, opts: { facts?: Promise<OpenFacts>; unavailable?: string | null } = {}) {
   let release: (r: Switched) => void = () => {};
   const host = {
     active: () => t,

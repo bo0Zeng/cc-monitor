@@ -10,9 +10,9 @@ import com.ccmonitor.mobile.core.claude.link.wire.AccountsList as WireAccounts
  * 新建会话那几屏问那台的几条（`IPC-COMMANDS.md` 各节）：手机只拼入参、解成品，默认值 · 能不能选 · 在不在都是那台的事实。
  */
 
-/** `session-new-dir`：起之前核一个目录在不在（开头的 `~` 那台按它的家目录读）。 */
-object SessionNewDir {
-    const val COMMAND: String = "session-new-dir"
+/** `session-open-dir`：起之前核一个目录在不在（开头的 `~` 那台按它的家目录读）。 */
+object SessionOpenDir {
+    const val COMMAND: String = "session-open-dir"
 
     fun args(cwd: String): Map<String, Any?> = mapOf("cwd" to cwd)
 

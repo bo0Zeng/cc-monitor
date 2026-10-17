@@ -1,4 +1,4 @@
-//! 新起那一支要的几样：分叉自哪 · 轮换用哪一份 · 起之前定 sid 那几下 · 失败信封的 `data` · 目录那一问（`session-new-dir`）。
+//! 新起那一支要的几样：分叉自哪 · 轮换用哪一份 · 起之前定 sid 那几下 · 失败信封的 `data` · 目录那一问（`session-open-dir`）。
 
 use super::super::launch_account as la;
 use super::super::session_batch::{carriers, Deps, NameBase, Standing};
@@ -32,7 +32,7 @@ pub(crate) struct RotationPick {
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase")]
-pub enum SessionNewField {
+pub enum OpenField {
     Agent,
     Command,
     Cwd,
@@ -45,9 +45,9 @@ pub enum SessionNewField {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct SessionNewRefusal {
+pub struct OpenRefusal {
     /// 不行的那一格；整体的（起不来 · 分叉写不成 · 渲不出）⇒ `null`。
-    pub field: Option<SessionNewField>,
+    pub field: Option<OpenField>,
     /// 选不了号（码 `account_unavailable`）⇒ 那一形；别的 ⇒ `null`。
     pub unavailable: Option<la::AccountUnavailable>,
 }
@@ -79,12 +79,12 @@ pub(crate) fn first_prompt_refused(face: &crate::agents::LaunchFace) -> Option<&
     (!face.first_prompt_arg).then_some("this agent cannot take a first prompt at launch")
 }
 
-/// `session-new-dir` 的入参。
+/// `session-open-dir` 的入参。
 #[derive(Debug, Clone, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct SessionNewDirReq {
+pub(crate) struct OpenDirReq {
     /// 工作目录（开头的 `~` 按这台的家目录读）。
     pub(crate) cwd: String,
     /// 分叉出来的那一条：源会话 sid（铸名按它此刻所在的终端名派生 `<…>-fork-cc`）。
@@ -93,7 +93,7 @@ pub(crate) struct SessionNewDirReq {
     pub(crate) fork_of: Option<String>,
 }
 
-/// `session-new-dir` 的应答。
+/// `session-open-dir` 的应答。
 #[derive(Debug, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -106,21 +106,21 @@ pub(crate) struct DirChecked {
 }
 
 crate::wire::typed::codes! {
-    /// `session-new-dir` 自己没有别的码（`forkOf` 不是会话 id ⇒ `bad_args`）。
-    pub(crate) enum SessionNewDirErr {}
+    /// `session-open-dir` 自己没有别的码（`forkOf` 不是会话 id ⇒ `bad_args`）。
+    pub(crate) enum OpenDirErr {}
 }
 
-/// `session-new-dir` 的本体：目录在不在 · 这台此刻会给它铸的终端名（没 tmux ⇒ `null`）。
+/// `session-open-dir` 的本体：目录在不在 · 这台此刻会给它铸的终端名（没 tmux ⇒ `null`）。
 pub(crate) fn dir_answer(
-    req: &SessionNewDirReq,
+    req: &OpenDirReq,
     deps: &Deps,
     home: Option<&std::path::Path>,
-) -> Result<DirChecked, SessionNewDirErr> {
+) -> Result<DirChecked, OpenDirErr> {
     let fork_of = match req.fork_of.as_deref() {
         None => None,
         Some(s) if shell_quote_core::session_id_ok(s) => Some(s),
         Some(_) => {
-            return Err(SessionNewDirErr::BadArgs(
+            return Err(OpenDirErr::BadArgs(
                 crate::common::contract::malformed("`forkOf` must be a session id"),
             ))
         }

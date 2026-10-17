@@ -51,7 +51,7 @@ import com.ccmonitor.mobile.core.claude.link.Deploying
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionDot
-import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
+import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
 import com.ccmonitor.mobile.core.claude.link.wire.AgentFacts
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Endpoint
@@ -402,7 +402,7 @@ fun HostEditorScreen(
     var useTmux by remember { mutableStateOf(false) }
     var autoReconnect by remember { mutableStateOf(true) }
     var group by remember { mutableStateOf("") }
-    // 这台起会话用哪一家：存线上 kind 原值（那台 `session-new-facts` 给的）；没选 ⇒ null。
+    // 这台起会话用哪一家：存线上 kind 原值（那台 `session-open-facts` 给的）；没选 ⇒ null。
     var agentKind by remember { mutableStateOf<String?>(null) }
     var proxyJumpHostId by remember { mutableStateOf<String?>(null) } // 经跳板机（另一台 Host 的 id）
     // 新建直接 Loaded；编辑先 Loading，载入后转 Loaded 或 NotFound（防首帧空表，也防查无时静默新建）。
@@ -497,12 +497,12 @@ fun HostEditorScreen(
             modifier = Modifier.fillMaxWidth(),
         )
         OutlinedTextField(group, { group = it }, label = { Text(copyText("mobHostEdit.field.group")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        // 起会话用哪一家：列那台能起的几家（`session-new-facts`，名字是那台写好的）；那台没连上 ⇒ 列不出，这一行不画。
+        // 起会话用哪一家：列那台能起的几家（`session-open-facts`，名字是那台写好的）；那台没连上 ⇒ 列不出，这一行不画。
         val agents = rememberAgentsOf(hostId)
         if (agents.isNotEmpty()) {
             Text(copyText("mobHostEdit.agent.title"), style = MaterialTheme.typography.labelMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                val picked = SessionNewFacts.pick(agents, agentKind)?.kind
+                val picked = SessionOpenFacts.pick(agents, agentKind)?.kind
                 agents.forEach { a -> ChoiceRow(a.text, a.kind == picked) { agentKind = a.kind } }
             }
         }
@@ -660,14 +660,14 @@ private fun BackendRow(hostId: String) {
     }
 }
 
-/** 那台能起的几家（`session-new-facts`）；还没存的新主机 · 那台没连上 · 问不到 ⇒ 空。 */
+/** 那台能起的几家（`session-open-facts`）；还没存的新主机 · 那台没连上 · 问不到 ⇒ 空。 */
 @Composable
 private fun rememberAgentsOf(hostId: String?): List<AgentFacts> {
     val backends = koinInject<HostBackends>()
     val got by androidx.compose.runtime.produceState(emptyList<AgentFacts>(), hostId) {
         if (hostId == null) return@produceState
-        val r = backends.of(hostId).call(SessionNewFacts.COMMAND, emptyMap(), AGENTS_MS)
-        value = (r as? Reply.Ok)?.let { SessionNewFacts.of(it.data)?.agents }.orEmpty()
+        val r = backends.of(hostId).call(SessionOpenFacts.COMMAND, emptyMap(), AGENTS_MS)
+        value = (r as? Reply.Ok)?.let { SessionOpenFacts.of(it.data)?.agents }.orEmpty()
     }
     return got
 }

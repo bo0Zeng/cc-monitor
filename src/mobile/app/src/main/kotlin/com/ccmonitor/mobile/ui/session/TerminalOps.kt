@@ -6,15 +6,15 @@ import com.ccmonitor.mobile.core.claude.link.Kill
 import com.ccmonitor.mobile.core.claude.link.Profiles
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionModel
-import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
+import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
 import com.ccmonitor.mobile.core.claude.link.SessionOpen
 import com.ccmonitor.mobile.core.claude.link.TerminalInput
 import com.ccmonitor.mobile.core.claude.link.TerminalPreview
 import com.ccmonitor.mobile.core.claude.link.TerminalsList
 import com.ccmonitor.mobile.core.claude.link.wire.AgentFacts
 import com.ccmonitor.mobile.core.claude.link.wire.ModeSwitchResult
-import com.ccmonitor.mobile.core.claude.link.wire.NewFacts
-import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
+import com.ccmonitor.mobile.core.claude.link.wire.OpenFacts
+import com.ccmonitor.mobile.core.claude.link.wire.AgentPick
 import com.ccmonitor.mobile.core.claude.link.wire.PushOutcome
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.MovedLaunch
@@ -27,7 +27,7 @@ import java.util.UUID
  * 终端屏里要那台核心做的几件（列 · 结束 · 进终端那一行 · 建会话 · 后台起 · 送字 · 抓屏 · 推公钥 · 别名），都经这台的常驻流 [feed]。
  * 找哪个窗格、怎么附着、怎么建、shell 方言全在那台；这里只把回话翻成屏上那一句。失败的那一句是那台写好的（[problem]）。
  * [machine] 是这台在手机上的名字（走不通时那一句里用）；[stored] 是这台存的那一家（线上 kind，主机设置里选的；没选 ⇒ `null`）。
- * 哪几家、叫什么、能换哪些模型都问那台（`session-new-facts`），手机一家都不认识。
+ * 哪几家、叫什么、能换哪些模型都问那台（`session-open-facts`），手机一家都不认识。
  */
 class TerminalOps(
     private val feed: CoreLink,
@@ -53,8 +53,8 @@ class TerminalOps(
                 onFailure = { Notice(it.message.orEmpty()) },
             )
 
-    /** 这台的起会话事实（`session-new-facts`：几家 · 名字 · 可选的模型 · 有没有 tmux 都是那台给的）。 */
-    suspend fun facts(): Result<NewFacts> = ask(SessionNewFacts.COMMAND, emptyMap(), SessionNewFacts::of)
+    /** 这台的起会话事实（`session-open-facts`：几家 · 名字 · 可选的模型 · 有没有 tmux 都是那台给的）。 */
+    suspend fun facts(): Result<OpenFacts> = ask(SessionOpenFacts.COMMAND, emptyMap(), SessionOpenFacts::of)
 
     /** 那台能做什么（[Reach]）；问不到 ⇒ 那一句（tmux 也当没有）。 */
     suspend fun reach(): Reach =
@@ -68,7 +68,7 @@ class TerminalOps(
 
     /** 这台起会话用哪一家：存的那一家 · 那台列的第一家（线上 kind）。问不到 ⇒ 失败（那一句）。 */
     private suspend fun agent(): Result<String> =
-        agents().mapCatching { SessionNewFacts.pick(it, stored())?.kind ?: throw Problem(copyText("peerVersion.said.unreadable", "machine" to machine())) }
+        agents().mapCatching { SessionOpenFacts.pick(it, stored())?.kind ?: throw Problem(copyText("peerVersion.said.unreadable", "machine" to machine())) }
 
     /** 在名叫 [name] 的会话里后台起这台那一家（不进入）。失败 ⇒ 那一句。 */
     suspend fun startAgent(name: String): String? =
@@ -109,11 +109,11 @@ class TerminalOps(
         }
 
     /** 名叫 [name] 的那个终端里跑着的那一家能换的模型（那台给的）；里面没跑会话 ⇒ 空。 */
-    suspend fun modelsIn(name: String): List<NewSessionPick> {
+    suspend fun modelsIn(name: String): List<AgentPick> {
         val row = list().getOrNull()?.firstOrNull { it.name == name } ?: return emptyList()
         if (row.sid == null) return emptyList()
         val agents = agents().getOrNull() ?: return emptyList()
-        return SessionNewFacts.pick(agents, row.agent)?.models.orEmpty()
+        return SessionOpenFacts.pick(agents, row.agent)?.models.orEmpty()
     }
 
     /** 给名叫 [name] 的那个终端里跑着的会话换模型（`session-model`）。换成了 ⇒ `Ok(那一句)`；没成 ⇒ 失败（那一句）。 */

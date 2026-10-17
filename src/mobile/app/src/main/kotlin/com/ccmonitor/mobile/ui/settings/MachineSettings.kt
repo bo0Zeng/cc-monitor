@@ -7,7 +7,7 @@ import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.MachinePrefs
 import com.ccmonitor.mobile.core.claude.link.QuotaRead
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
+import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
 import com.ccmonitor.mobile.core.claude.link.TabKind
 import com.ccmonitor.mobile.core.claude.link.wire.AccountRow
 import com.ccmonitor.mobile.core.claude.link.wire.AgentFacts
@@ -154,8 +154,8 @@ class MachineSettings(
     fun loadModels() {
         if (_state.value.agent != null) return
         scope.launch {
-            val facts = (link.call(SessionNewFacts.COMMAND, emptyMap(), READ_MS) as? Reply.Ok)?.let { SessionNewFacts.of(it.data) } ?: return@launch
-            _state.update { it.copy(agent = SessionNewFacts.pick(facts.agents, null)) }
+            val facts = (link.call(SessionOpenFacts.COMMAND, emptyMap(), READ_MS) as? Reply.Ok)?.let { SessionOpenFacts.of(it.data) } ?: return@launch
+            _state.update { it.copy(agent = SessionOpenFacts.pick(facts.agents, null)) }
         }
     }
 

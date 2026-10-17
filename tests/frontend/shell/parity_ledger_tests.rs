@@ -176,7 +176,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     // 接上去拿到的是 `--tmux`，也就是本机旧路结构上产不出来的**会话容器**。
     //
     // 本行仍是 `Side::Remote`，但理由换了：**POSIX 本机不需要一条 IPC 命令** ——
-    // 它的渲染器就住在 Rust 里（本机后端 `control/launch_render/local.rs::plan`），前端不必绕一圈问自己。
+    // 它的渲染器就住在 Rust 里（本机后端 `control/launch_render/mod.rs::line_of`），前端不必绕一圈问自己。
     // ★★ **P3b 结清（08-12）：这一行从 `Remote` 变 `Both`，不再是不对称。**
     //
     // 它原来的注释写「Remote-only 且未裁定 —— 本机该不该也有一个后端进程来收这件事，

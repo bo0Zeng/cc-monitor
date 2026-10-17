@@ -87,8 +87,8 @@ class SentRequestsTest {
                 ),
             SessionCommandList.COMMAND to listOf(SessionCommandList.args("s")),
             SessionModel.COMMAND to listOf(SessionModel.args("s", "opus")),
-            SessionNewDir.COMMAND to listOf(SessionNewDir.args("/w")),
-            SessionNewFacts.COMMAND to listOf(emptyMap()),
+            SessionOpenDir.COMMAND to listOf(SessionOpenDir.args("/w")),
+            SessionOpenFacts.COMMAND to listOf(emptyMap()),
             SessionOpen.COMMAND to
                 listOf(
                     SessionOpen.newIn("/w", "t", "claude", "hi"),

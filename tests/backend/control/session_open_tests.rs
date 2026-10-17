@@ -39,6 +39,8 @@ struct Rig {
     minted: Option<String>,
     /// 给 e2e 出那一行：哪个目录都在、入口是这台装好的那一份。
     e2e: bool,
+    /// 分叉的源会话此刻在不在 tmux 里（宿主读的那一格）。
+    fork_tmux: Option<bool>,
     ccm: RefCell<Vec<Vec<String>>>,
     sent: RefCell<Vec<(String, String)>>,
     marks: RefCell<usize>,
@@ -63,6 +65,7 @@ impl Rig {
             names: vec!["work".into()],
             minted: None,
             e2e: false,
+            fork_tmux: None,
             ccm: RefCell::new(vec![]),
             sent: RefCell::new(vec![]),
             marks: RefCell::new(0),
@@ -85,7 +88,7 @@ impl Rig {
                 model: self.model.clone(),
                 permission_mode: None,
             }),
-            fork_tmux: None,
+            fork_tmux: self.fork_tmux,
         };
         let fork = |_: &str, _: &str| -> Result<String, (&'static str, String)> {
             if self.fork_err {
@@ -877,4 +880,28 @@ fn an_idle_pane_in_a_shared_session_is_typed_into_in_place() {
     assert_eq!((got.landed, got.session.as_deref()), (Landed::InPlace, Some("two-cc")));
     assert_eq!(rig.sent.borrow().len(), 1);
     assert!(rig.ccm.borrow().is_empty(), "不该另建一个会话");
+}
+
+/// ★ **F1** 新建框默认「运行于」只有一处：`session-open-facts` 的 `run` == `session-open {what: new}` 不给 `run` 时真落的那一形。
+/// 全表两向：这台有没有 tmux × 是不是分叉 × 源会话在不在 tmux（说不出也算一格）。
+#[test]
+fn the_facts_run_is_where_a_new_session_without_run_lands() {
+    for tmux in [true, false] {
+        for fork_tmux in [None, Some(true), Some(false)] {
+            for forked in [false, true] {
+                if !forked && fork_tmux.is_some() {
+                    continue;
+                }
+                let mut rig = Rig::new(tmux.then(Vec::new));
+                rig.fork_tmux = fork_tmux;
+                let extra = if forked { json!({ "fork": { "sid": A, "uuid": U } }) } else { json!({}) };
+                let got = rig.open(new(extra)).unwrap_or_else(|e| panic!("没起：{e:?}"));
+                let landed = match crate::faces::session_open_face::facts_run(fork_tmux, tmux) {
+                    Run::Tmux => Landed::Started,
+                    Run::Direct => Landed::Window,
+                };
+                assert_eq!(got.landed, landed, "tmux {tmux} · 分叉 {forked} · 源在 tmux {fork_tmux:?}");
+            }
+        }
+    }
 }

@@ -8,7 +8,7 @@ import com.ccmonitor.mobile.core.claude.link.wire.Landed
 import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
 import com.ccmonitor.mobile.core.claude.link.wire.ModeSwitched
 import com.ccmonitor.mobile.core.claude.link.wire.ModelSwitched
-import com.ccmonitor.mobile.core.claude.link.wire.NewFacts
+import com.ccmonitor.mobile.core.claude.link.wire.OpenFacts
 import com.ccmonitor.mobile.core.claude.link.wire.Opened
 import com.ccmonitor.mobile.core.claude.link.wire.ReadRow
 import com.ccmonitor.mobile.core.claude.link.wire.SentResult
@@ -31,7 +31,7 @@ object SessionOpen {
     const val COMMAND: String = "session-open"
 
     /**
-     * 新起一条会话（[agent] 是哪一家的线上名，照那台 `session-new-facts` 的 `agents[].kind`）。账号 · 模型 · 权限都不带 ⇒ 跟随那台的默认。
+     * 新起一条会话（[agent] 是哪一家的线上名，照那台 `session-open-facts` 的 `agents[].kind`）。账号 · 模型 · 权限都不带 ⇒ 跟随那台的默认。
      * [ticket] 一个草稿一张：期限到了同一张再问，那台认出是同一趟、不起第二个。
      * [prompt] 第一句：随起交（那台作为启动参数交给 agent，结局在回包的 `prompt`）。
      */
@@ -136,13 +136,13 @@ object SessionOpen {
 }
 
 /**
- * `session-new-facts`：这台能起哪几家（注册表序；各带写给人看的名字与可选的模型）。哪几家 · 叫什么 · 有哪些模型都问那台，手机一家都不认识。
+ * `session-open-facts`：这台能起哪几家（注册表序；各带写给人看的名字与可选的模型）。哪几家 · 叫什么 · 有哪些模型都问那台，手机一家都不认识。
  */
-object SessionNewFacts {
-    const val COMMAND: String = "session-new-facts"
+object SessionOpenFacts {
+    const val COMMAND: String = "session-open-facts"
 
-    /** 整份：几家（[NewFacts.agents]）＋ 最近的目录。 */
-    fun of(data: Any?): NewFacts? = Wire.bind<NewFacts>(data)
+    /** 整份：几家（[OpenFacts.agents]）＋ 最近的目录。 */
+    fun of(data: Any?): OpenFacts? = Wire.bind<OpenFacts>(data)
 
     /** 这台存的那一家（线上 kind）；没存 · 那台不认 ⇒ 那台列的第一家；一家都没有 ⇒ `null`。 */
     fun pick(
@@ -177,7 +177,7 @@ object SessionModel {
 object SessionPermission {
     const val COMMAND: String = "session-permission"
 
-    /** [mode] 是那台 `session-new-facts` 那一家 `permissionModes` 里的原值。 */
+    /** [mode] 是那台 `session-open-facts` 那一家 `permissionModes` 里的原值。 */
     fun args(
         sid: String,
         mode: String,

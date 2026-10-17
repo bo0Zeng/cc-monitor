@@ -3,7 +3,7 @@ package com.ccmonitor.mobile.ui.chat
 import com.ccmonitor.mobile.core.claude.link.LiveBlock
 import com.ccmonitor.mobile.core.claude.link.LiveCardState
 import com.ccmonitor.mobile.core.claude.link.wire.CommandScope
-import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
+import com.ccmonitor.mobile.core.claude.link.wire.AgentPick
 import com.ccmonitor.mobile.core.claude.link.wire.SessionAct
 import com.ccmonitor.mobile.core.claude.link.wire.SessionCommand
 import com.ccmonitor.mobile.core.claude.link.wire.SessionCommands
@@ -26,7 +26,7 @@ class ChatInputLogicTest {
     fun `chip：正在换写换成的那一项；读回过写读回的字；都没有写这颗是什么`() {
         assertEquals("模型", chipText(SwitchChip(), "模型"))
         assertEquals("Opus 5.5", chipText(SwitchChip(text = "Opus 5.5"), "模型"))
-        assertEquals("Sonnet", chipText(SwitchChip(text = "Opus 5.5", pending = NewSessionPick("sonnet", "Sonnet")), "模型"))
+        assertEquals("Sonnet", chipText(SwitchChip(text = "Opus 5.5", pending = AgentPick("sonnet", "Sonnet")), "模型"))
     }
 
     @Test

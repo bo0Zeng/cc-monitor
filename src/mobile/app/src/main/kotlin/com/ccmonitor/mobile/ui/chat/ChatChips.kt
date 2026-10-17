@@ -5,10 +5,10 @@ import com.ccmonitor.mobile.core.claude.link.HistoryFacts
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionModel
-import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
+import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
 import com.ccmonitor.mobile.core.claude.link.SessionPermission
 import com.ccmonitor.mobile.core.claude.link.wire.ModeSwitchResult
-import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
+import com.ccmonitor.mobile.core.claude.link.wire.AgentPick
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
@@ -32,7 +32,7 @@ internal class ChatChips(
      * 换模型：那台送命令、从记录里读回换成了什么（`session-model`）。读回 `done` 才换字；没读回（`unsure` · 超时）· 被拒 ⇒ 回原字 ＋ chip 上方那一句。
      * 已经在换（模型或权限档）⇒ 不再起一趟。
      */
-    fun switchModel(pick: NewSessionPick) =
+    fun switchModel(pick: AgentPick) =
         switching(pick, { it.model }, { st, c -> st.copy(model = c) }) { s ->
             val r = link.call(SessionModel.COMMAND, SessionModel.args(s, pick.value), SWITCH_MS)
             when {
@@ -45,7 +45,7 @@ internal class ChatChips(
         }
 
     /** 切权限档（`session-permission`）：同 [switchModel]，读回的字是那一档写给人看的字。 */
-    fun switchPermission(pick: NewSessionPick) =
+    fun switchPermission(pick: AgentPick) =
         switching(pick, { it.permission }, { st, c -> st.copy(permission = c) }) { s ->
             val r = link.call(SessionPermission.COMMAND, SessionPermission.args(s, pick.value), SWITCH_MS)
             when {
@@ -72,7 +72,7 @@ internal class ChatChips(
     }
 
     private fun switching(
-        pick: NewSessionPick,
+        pick: AgentPick,
         chipOf: (ChatUiState) -> SwitchChip,
         put: (ChatUiState, SwitchChip) -> ChatUiState,
         ask: suspend (String) -> Switched,
@@ -94,13 +94,13 @@ internal class ChatChips(
     fun loadPicks(agent: String?) {
         if (state.value.picks?.error == null && state.value.picks != null) return
         scope.launch {
-            val r = link.call(SessionNewFacts.COMMAND, emptyMap(), READ_MS)
+            val r = link.call(SessionOpenFacts.COMMAND, emptyMap(), READ_MS)
             val picks =
                 when (r) {
                     is Reply.Ok ->
-                        SessionNewFacts.of(r.data)?.let { all -> SessionNewFacts.pick(all.agents, agent).let { Picks(it?.models.orEmpty(), it?.permissionModes.orEmpty(), it?.modelDefault, it?.modelNote) } }
-                            ?: Picks(error = unreadableReply(machine, SessionNewFacts.COMMAND, r.data.toString()).text)
-                    else -> Picks(error = r.problem(machine, SessionNewFacts.COMMAND)?.text.orEmpty())
+                        SessionOpenFacts.of(r.data)?.let { all -> SessionOpenFacts.pick(all.agents, agent).let { Picks(it?.models.orEmpty(), it?.permissionModes.orEmpty(), it?.modelDefault, it?.modelNote) } }
+                            ?: Picks(error = unreadableReply(machine, SessionOpenFacts.COMMAND, r.data.toString()).text)
+                    else -> Picks(error = r.problem(machine, SessionOpenFacts.COMMAND)?.text.orEmpty())
                 }
             state.value = state.value.copy(picks = picks)
         }

@@ -18,7 +18,7 @@ use crate::rotation::{
     RotationTryReply, RotationViewReply,
 };
 use crate::session::{
-    Killed, ModeSwitched, ModelSwitched, NewFacts, Opened, Preview, Sent,
+    Killed, ModeSwitched, ModelSwitched, OpenFacts, Opened, Preview, Sent,
     SessionCommands, TailPlan, TerminalsList,
 };
 use serde::Serialize;
@@ -98,7 +98,7 @@ replies! {
     "rotation-view" => RotationViewReply,
     "session-commands" => SessionCommands,
     "session-model" => ModelSwitched,
-    "session-new-facts" => NewFacts,
+    "session-open-facts" => OpenFacts,
     "session-open" => Opened,
     "session-permission" => ModeSwitched,
     "session-say" => Sent,

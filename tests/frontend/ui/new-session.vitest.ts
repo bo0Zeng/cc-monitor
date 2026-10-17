@@ -108,7 +108,7 @@ const newRequests = (): Record<string, unknown>[] => sent.filter((s) => s.op ===
 const whatOf = (r: Record<string, unknown>): Record<string, unknown> => r.what as Record<string, unknown>;
 
 const agentOf = (kind: string) => ({ kind, text: kind === "claude" ? "Claude Code" : "Codex", models: [], modelDefault: null, modelNote: null, permissionModes: [] });
-const FACTS = { recent: [{ cwd: "/home/u/srv/orders", lastMs: 2, lastText: "00:00" }, { cwd: "/home/u/srv/billing", lastMs: 1, lastText: "00:00" }], tmux: true, agents: [agentOf("claude")], fork: null };
+const FACTS = { recent: [{ cwd: "/home/u/srv/orders", lastMs: 2, lastText: "00:00" }, { cwd: "/home/u/srv/billing", lastMs: 1, lastText: "00:00" }], tmux: true, run: "tmux", agents: [agentOf("claude")], fork: null };
 const OK = {
   landed: "started",
   session: "orders-cc",
@@ -131,8 +131,8 @@ beforeEach(() => {
   boom = null;
   vi.mocked(commands.backend_status).mockImplementation(async () => ({ channel: true }) as never);
   vi.mocked(commands.backend_start).mockClear();
-  replies.set("session-new-facts", FACTS);
-  replies.set("session-new-dir", { exists: true, tmuxName: "orders-cc" });
+  replies.set("session-open-facts", FACTS);
+  replies.set("session-open-dir", { exists: true, tmuxName: "orders-cc" });
   replies.set("session-open", OK);
   arrival.awaitArrival.mockClear();
   arrival.expectArrival.mockClear();
@@ -151,11 +151,11 @@ describe("起新会话框：预填与几行出不出（都照那台说的）", (
     expect(acct.querySelector(".acct-avatar"), "框上带头像").not.toBeNull();
     expect(optionsOf(acct), "每项头像在前（▣）· 名字 · 灰字").toEqual([`▣work${copyText("newSession.account.default")}`, `▣personal${copyText("acct.tag.login")}`]);
     expect(input(copyText("newSession.label.tmuxName")).placeholder).toBe("orders-cc");
-    expect(sent.find((s) => s.op === "session-new-facts")!.body).toEqual({});
+    expect(sent.find((s) => s.op === "session-open-facts")!.body).toEqual({});
   });
 
   it("那台能起两家 ⇒ 出 agent 那一行；那台没 tmux ⇒ 只剩终端窗口那一张、灰字说为什么", async () => {
-    replies.set("session-new-facts", { ...FACTS, tmux: false, agents: [agentOf("claude"), agentOf("codex")] });
+    replies.set("session-open-facts", { ...FACTS, tmux: false, run: "direct", agents: [agentOf("claude"), agentOf("codex")] });
     void openNewSession({ origin: "devbox" });
     await flush();
     expect(rowOf(sel(copyText("newSession.label.agent"))).hidden).toBe(false);
@@ -198,7 +198,7 @@ describe("点［新建］：交那台的那一份", () => {
     expect(newRequests()).toEqual([
       { what: { kind: "new", agent: "claude", cwd: "/home/u/srv/orders" }, run: "tmux", local: false, account: { kind: "named", name: "work" }, ticket: expect.any(String) },
     ]);
-    expect(sent.map((x) => x.op).filter((op) => !op.startsWith("session-new-") && op !== "rotation-strategies"), "只这一问").toEqual(["session-open"]);
+    expect(sent.map((x) => x.op).filter((op) => op !== "session-open-facts" && op !== "session-open-dir" && op !== "rotation-strategies"), "只这一问").toEqual(["session-open"]);
     expect(document.querySelector('[role="dialog"]'), "起了框就关").toBeNull();
     await flush();
     expect(arrival.expectArrival).toHaveBeenCalledWith(
@@ -384,7 +384,7 @@ describe("点［新建］：交那台的那一份", () => {
 
 describe("分叉那一形", () => {
   it("★ 顶上说分叉自哪一轮；没有终端名那一格；交的那一份带 fork（只这两个 id）、号跟随源会话", async () => {
-    replies.set("session-new-facts", {
+    replies.set("session-open-facts", {
       ...FACTS,
       fork: {
         agent: "claude",
@@ -395,7 +395,7 @@ describe("分叉那一形", () => {
     });
     void openNewSession({ origin: "devbox", fork: { sid: "src-1", uuid: "msg-9", title: "给订单服务加重试" } });
     await flush();
-    expect(sent.find((s) => s.op === "session-new-facts")!.body).toEqual({ forkOf: "src-1", at: "msg-9" });
+    expect(sent.find((s) => s.op === "session-open-facts")!.body).toEqual({ forkOf: "src-1", at: "msg-9" });
     expect(dialog().textContent, "那一轮的钟面照抄后端写好的字").toContain(copyText("newSession.fork.from", { title: "给订单服务加重试", n: 9, time: "02:05" }));
     expect(dialog().querySelector(`input[aria-label="${copyText("newSession.label.tmuxName")}"]`), "分叉不给终端名那一格").toBeNull();
     expect(input(copyText("newSession.label.cwd")).value).toBe("/home/u/work/orders");
@@ -413,16 +413,16 @@ describe("换机器 · 换一家 · 那台问不到", () => {
   const top = (): string => dialog().querySelector<HTMLElement>("[class*=nsTop]")!.textContent ?? "";
 
   it("换一台 ⇒ 目录清空、照新那台重问、重新预填", async () => {
-    replies.set("session-new-facts", { ...FACTS, recent: [{ cwd: "/srv/a", lastMs: 1, lastText: "00:00" }] });
+    replies.set("session-open-facts", { ...FACTS, recent: [{ cwd: "/srv/a", lastMs: 1, lastText: "00:00" }] });
     void openNewSession({ origin: "<local>" });
     await flush();
     const cwd = input(copyText("newSession.label.cwd"));
     cwd.value = "/typed";
-    replies.set("session-new-facts", { ...FACTS, recent: [{ cwd: "/srv/b", lastMs: 1, lastText: "00:00" }] });
-    const asked = sent.filter((x) => x.op === "session-new-facts").length;
+    replies.set("session-open-facts", { ...FACTS, recent: [{ cwd: "/srv/b", lastMs: 1, lastText: "00:00" }] });
+    const asked = sent.filter((x) => x.op === "session-open-facts").length;
     choose(sel(copyText("newSession.label.machine")), "devbox");
     await flush();
-    expect(sent.filter((x) => x.op === "session-new-facts").length).toBe(asked + 1);
+    expect(sent.filter((x) => x.op === "session-open-facts").length).toBe(asked + 1);
     expect(cwd.value, "换机器没清掉手填的目录").toBe("/srv/b");
   });
 
@@ -438,7 +438,7 @@ describe("换机器 · 换一家 · 那台问不到", () => {
   });
 
   it("那台问不到能起什么 ⇒ 框顶说原因、［新建］灰着说还在读", async () => {
-    refusal = { op: "session-new-facts", code: "boom", message: "读不出", data: null };
+    refusal = { op: "session-open-facts", code: "boom", message: "读不出", data: null };
     void openNewSession({ origin: "devbox" });
     await flush();
     expect(top()).toContain(copyText("newSession.facts.failed", { machine: "devbox", why: "\u0000" }).split("\u0000")[0]);
@@ -446,7 +446,7 @@ describe("换机器 · 换一家 · 那台问不到", () => {
   });
 
   it("目录空着 ⇒ ［新建］灰着说要填；填了就亮", async () => {
-    replies.set("session-new-facts", { ...FACTS, recent: [] });
+    replies.set("session-open-facts", { ...FACTS, recent: [] });
     void openNewSession({ origin: "devbox" });
     await flush();
     expect(createBtn().title).toBe(copyText("newSession.cwd.empty"));
@@ -457,7 +457,7 @@ describe("换机器 · 换一家 · 那台问不到", () => {
   });
 
   it("换一家 ⇒ 启动命令的占位跟着那一家、号那一行照那一家重列", async () => {
-    replies.set("session-new-facts", { ...FACTS, agents: [agentOf("claude"), agentOf("codex")] });
+    replies.set("session-open-facts", { ...FACTS, agents: [agentOf("claude"), agentOf("codex")] });
     void openNewSession({ origin: "devbox" });
     await flush();
     const cmd = input(copyText("newSession.label.command"));
@@ -477,12 +477,12 @@ describe("目录格 · 最近的 · 更多那几格", () => {
   it("离开目录格 ⇒ 问那台在不在：不在 ⇒ 那一格下黄字；终端名占位跟着那台铸的名字", async () => {
     void openNewSession({ origin: "devbox" });
     await flush();
-    replies.set("session-new-dir", { exists: false, tmuxName: "nope-cc" });
+    replies.set("session-open-dir", { exists: false, tmuxName: "nope-cc" });
     const cwd = input(copyText("newSession.label.cwd"));
     cwd.value = "/nope";
     cwd.dispatchEvent(new Event("blur"));
     await flush();
-    expect(sent.filter((x) => x.op === "session-new-dir").at(-1)!.body).toEqual({ cwd: "/nope" });
+    expect(sent.filter((x) => x.op === "session-open-dir").at(-1)!.body).toEqual({ cwd: "/nope" });
     expect(rowOf(cwd).textContent).toContain(copyText("launch.dir.missing", { machine: "devbox" }));
     expect(input(copyText("newSession.label.tmuxName")).placeholder).toBe("nope-cc");
   });
@@ -499,7 +499,7 @@ describe("目录格 · 最近的 · 更多那几格", () => {
     await flush();
     expect(input(copyText("newSession.label.cwd")).value).toBe("/home/u/srv/billing");
     document.body.replaceChildren();
-    replies.set("session-new-facts", { ...FACTS, recent: [] });
+    replies.set("session-open-facts", { ...FACTS, recent: [] });
     void openNewSession({ origin: "devbox" });
     await flush();
     dialog().querySelector<HTMLButtonElement>(`button[aria-label="${copyText("newSession.recent.label")}"]`)!.click();
@@ -579,9 +579,10 @@ describe("那台说不行的其余几形", () => {
 });
 
 describe("分叉：那台说得出源会话的号与终端", () => {
-  it("号说得出 ⇒ 预选那个号、没有「跟随」；源会话在终端窗口里 ⇒ 预选终端窗口；那一家照源会话", async () => {
-    replies.set("session-new-facts", {
+  it("号说得出 ⇒ 预选那个号、没有「跟随」；那台说默认放在终端窗口 ⇒ 预选终端窗口；那一家照源会话", async () => {
+    replies.set("session-open-facts", {
       ...FACTS,
+      run: "direct",
       agents: [agentOf("codex"), agentOf("claude")],
       fork: {
         agent: "claude",

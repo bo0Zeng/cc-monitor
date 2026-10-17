@@ -12,7 +12,7 @@ import java.io.File
  *
  * 判据只看代码：注释里提 tmux 是正常的，所以扫描前先剥注释，剥完还剩 `tmux` 的才算在碰它。
  * 只认小写 `tmux`：`newInTmux` 这类名字是合法的。
- * 放过的只有协议里的线上词（[WIRE_WORDS]）：`session-open` 那一格「起在哪」· 指名的会话名 · `session-new-facts` 的「有没有 tmux」·
+ * 放过的只有协议里的线上词（[WIRE_WORDS]）：`session-open` 那一格「起在哪」· 指名的会话名 · `session-open-facts` 的「有没有 tmux」·
  * `terminals-list` 每行的会话名。那是请那台核心在它的 tmux 里做，手机不碰 tmux。
  */
 class CoreClaudeKnowsNoTmuxTest {

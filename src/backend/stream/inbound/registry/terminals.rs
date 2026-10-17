@@ -66,11 +66,11 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   记录在不在 · 已有进程在写 · 在跑 / 就地 / 新开，回「落在哪 ＋ 要开终端就跑这一行」；每个码的那一句后端写好。
     crate::wire::typed::blocking::<crate::faces::session_open_face::SessionOpen>("起会话 · 恢复 · 接回（一个请求：落在哪 ＋ 要开终端就跑的那一行）"),
     // 起新会话框打开时问一次：这台最近用过的目录 · 有没有 tmux · 能起哪几家 · 分叉源会话的三格（只读，不写分支记录）。
-    crate::wire::typed::blocking::<crate::faces::session_new_face::SessionNewFacts>(
+    crate::wire::typed::blocking::<crate::faces::session_open_face::SessionOpenFacts>(
         "起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法",
     ),
     // 工作目录那一格失焦时问：在不在 · 这台此刻会给它铸的终端名（没 tmux ⇒ `null`）。
-    crate::wire::typed::blocking::<crate::faces::session_new_face::SessionNewDir>(
+    crate::wire::typed::blocking::<crate::faces::session_open_face::SessionOpenDir>(
         "起新会话前核一个目录：在不在 · 会用哪个终端名",
     ),
     // 换号重启（`control/session_restart.rs`）：查号 → 找终端 → 先压缩（可选，等摘要）→ 停旧 → 同一终端名用新号起 → 等报出，全在这台做完。

@@ -33,7 +33,7 @@ import { chosenAccount, type AccountAsk } from "./launch-account";
 import { liveSince } from "./launch-arrival";
 import { askOpen, landOpened, openSession, type OpenEnd, type OpenHow, type Opened, type SessionOpenReq } from "./session-open";
 import { accountsOf } from "./settings-dest";
-import { askDir, askFacts, type NewFacts } from "./new-session-reads";
+import { askDir, askFacts, type OpenFacts } from "./new-session-reads";
 import type { AccountUnavailable } from "./generated/AccountUnavailable";
 import type { NewOpen } from "./generated/NewOpen";
 import type { ForkSlot } from "./generated/ForkSlot";
@@ -324,7 +324,7 @@ const dialogTitle = (spec: NewSessionSpec, origin: Origin): string => {
 export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   const fork = spec.fork ?? null;
   let origin: Origin = spec.origin ?? LOCAL_ORIGIN;
-  let facts: NewFacts | null = null;
+  let facts: OpenFacts | null = null;
   let factsFailed: string | null = null;
   let agent = spec.agent ?? DEFAULT_AGENT;
   let accounts: AccountOpt[] | null = null;
@@ -440,7 +440,9 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   const { tmuxInput, tmuxRow, cmdInput, cmdRow, moreRow } = moreFields(fork !== null);
   form.appendChild(moreRow);
 
-  const place = (): "tmux" | "window" => (tmuxRadio.input.checked && !tmuxRadio.label.hidden ? "tmux" : "window");
+  /** 勾的哪一张；那台的默认还没到、也没人勾 ⇒ `null`（请求不带 `run`，那台照自己的默认）。 */
+  const place = (): "tmux" | "window" | null =>
+    tmuxRadio.input.checked && !tmuxRadio.label.hidden ? "tmux" : windowRadio.input.checked ? "window" : null;
   const up = (): boolean => machines.find((m) => m.origin === origin)?.up ?? false;
   const chosenAccountOpt = (): AccountOpt | null =>
     accounts?.find((a) => a.name === accountSel.value()) ?? null;
@@ -483,8 +485,6 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     const hasTmux = facts?.tmux ?? true;
     tmuxRadio.label.hidden = !hasTmux;
     windowRadio.note.textContent = windowNote(origin, hasTmux);
-    if (!hasTmux) windowRadio.input.checked = true;
-    else if (!tmuxRadio.input.checked && !windowRadio.input.checked) tmuxRadio.input.checked = true;
     tmuxRow.root.hidden = place() !== "tmux";
   };
 
@@ -528,18 +528,16 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   };
 
   /** 分叉照源会话预填：那一家 · 轮次 · 目录 · 终端（那台说得出的才填）。 */
-  const applyForkFacts = (title: string, ff: NonNullable<NewFacts["fork"]>): void => {
+  const applyForkFacts = (title: string, ff: NonNullable<OpenFacts["fork"]>): void => {
     agent = ff.agent || agent;
     if (forkLine && ff.turn !== null) {
       forkLine.textContent = copyText("newSession.fork.from", { title, n: ff.turn, time: ff.startText ?? "" });
     }
     if (cwdInput.value === "" && ff.launch.cwd.kind === "known") cwdInput.value = ff.launch.cwd.value;
-    const t = ff.launch.terminal;
-    if (t.kind === "known") (t.value.host === "none" ? windowRadio : tmuxRadio).input.checked = true;
   };
 
   /** 那台答了能起什么：分叉照源会话预填；否则默认那一家起不了 ⇒ 换成那台能起的第一家。目录空着 ⇒ 最近用过的第一个。 */
-  const applyFacts = (f: NewFacts): void => {
+  const applyFacts = (f: OpenFacts): void => {
     if (fork && f.fork) {
       applyForkFacts(fork.title, f.fork);
     } else {
@@ -547,6 +545,8 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       if (!kinds.includes(agent) && kinds.length > 0 && !kinds.includes(DEFAULT_AGENT)) agent = kinds[0];
     }
     if (cwdInput.value === "" && f.recent.length > 0) cwdInput.value = f.recent[0].cwd;
+    // 默认「运行于」那台定（有 tmux 就 tmux，分叉照源会话那一种）。
+    (f.run === "tmux" ? tmuxRadio : windowRadio).input.checked = true;
   };
 
   const loadMachine = async (): Promise<void> => {
@@ -585,7 +585,13 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     // 新会话用的那份不写（新会话本来就用它）；挑了别的（含「不轮换」）⇒ 起之前写成那一份。
     const rot = rotRow.root.hidden ? forNew : rotSel.value();
     if (rot !== forNew) what.rotation = { strategy: rot === "" ? null : rot };
-    const req: SessionOpenReq = { what: { kind: "new", ...what }, run: place() === "tmux" ? "tmux" : "direct", local: isLocalOrigin(origin), ticket };
+    const p = place();
+    const req: SessionOpenReq = {
+      what: { kind: "new", ...what },
+      ...(p === null ? {} : { run: p === "tmux" ? "tmux" : "direct" }),
+      local: isLocalOrigin(origin),
+      ticket,
+    };
     if (account) req.account = account;
     return req;
   };

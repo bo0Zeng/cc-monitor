@@ -27,7 +27,7 @@ data class Host(
     // 密码认证：CryptoBox 加密后 Base64（TEXT，非明文）；非空 → 用密码认证（优先于 authRef）；null = 不用密码。
     val passwordEnc: String? = null,
     // 这台起会话用哪一家。旧值（`ClaudeCode` / `Codex`）不迁：那台认不出 ⇒ 当没选。
-    // 存那台 `session-new-facts` 给的线上 kind 原值（主机设置里选的那一家）；没选 ⇒ null。
+    // 存那台 `session-open-facts` 给的线上 kind 原值（主机设置里选的那一家）；没选 ⇒ null。
     val agentKind: String? = null,
 )
 

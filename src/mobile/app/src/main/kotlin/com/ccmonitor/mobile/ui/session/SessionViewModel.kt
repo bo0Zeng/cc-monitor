@@ -81,7 +81,7 @@ sealed interface SessionUiState {
 }
 
 /**
- * 那台此刻能做的（连上时问一次那台的 `session-new-facts`）：[noBackend] ＝ 问不到时那一句（后端没连上 ⇒ 推公钥灰着）；
+ * 那台此刻能做的（连上时问一次那台的 `session-open-facts`）：[noBackend] ＝ 问不到时那一句（后端没连上 ⇒ 推公钥灰着）；
  * [noTmux] ＝ 用不了 tmux 时那一句（那台说没有 · 问不到都算）。还没问到 ⇒ 都是 `null`。
  */
 data class Reach(

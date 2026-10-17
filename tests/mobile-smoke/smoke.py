@@ -312,8 +312,8 @@ def add_host(name):
 
 
 def claude_models(cell="models"):
-    """那台给 claude 的模型 · 权限档（session-new-facts 那一家的 `models` / `permissionModes`）。"""
-    facts = json.loads(subprocess.run([sys.executable, os.path.join(here, "frames.py"), "session-new-facts", "{}"],
+    """那台给 claude 的模型 · 权限档（session-open-facts 那一家的 `models` / `permissionModes`）。"""
+    facts = json.loads(subprocess.run([sys.executable, os.path.join(here, "frames.py"), "session-open-facts", "{}"],
                                       capture_output=True, text=True).stdout or "{}")
     agents = (facts.get("data") or {}).get("agents") or []
     got = next((a[cell] for a in agents if a.get("kind") == "claude"), [])
@@ -334,10 +334,10 @@ def pane_has(name, text, secs):
 
 
 def switch_model(name):
-    """终端屏的命令面板里换模型：列的是那台给的那一家的模型（session-new-facts），点一个 ⇒ session-model。
+    """终端屏的命令面板里换模型：列的是那台给的那一家的模型（session-open-facts），点一个 ⇒ session-model。
     替身读到 `/model <值>` 就落那一家的读回 ⇒ 结局「换成了」，那台写好的那一句上屏（Toast，经无障碍事件看）；
     回包解不开 · 没换成 ⇒ 提示条「发送失败」。"""
-    facts = json.loads(subprocess.run([sys.executable, os.path.join(here, "frames.py"), "session-new-facts", "{}"],
+    facts = json.loads(subprocess.run([sys.executable, os.path.join(here, "frames.py"), "session-open-facts", "{}"],
                                       capture_output=True, text=True).stdout or "{}")
     agents = (facts.get("data") or {}).get("agents") or []
     models = next((a["models"] for a in agents if a.get("kind") == "claude"), [])
@@ -915,7 +915,7 @@ def walk():
             raise Step.Fail("chip 上方说换模型结果未知（没读回）")
         if ui.find(pick["value"]) is None:
             raise Step.Fail(f"chip 没换成读回的字「{pick['value']}」")
-        # 权限档 chip：抽屉里列那台给的档（session-new-facts）。替身不画档位那一行、也不认切档键（按下去的键会混进它读的下一行），这里只开抽屉不切。
+        # 权限档 chip：抽屉里列那台给的档（session-open-facts）。替身不画档位那一行、也不认切档键（按下去的键会混进它读的下一行），这里只开抽屉不切。
         tap(t("session.permission.title"))
         modes = claude_models("permissionModes")
         if not wait(modes[0]["text"], 10):
@@ -1297,8 +1297,8 @@ def walk():
 
     with Step("10-Codex"):
         launch()
-        # 哪几家是那台给的（session-new-facts）：新建会话顶栏下那一颗 agent chip 列得出，手机自己不认识 Codex。
-        facts = json.loads(subprocess.run([sys.executable, os.path.join(here, "frames.py"), "session-new-facts", "{}"],
+        # 哪几家是那台给的（session-open-facts）：新建会话顶栏下那一颗 agent chip 列得出，手机自己不认识 Codex。
+        facts = json.loads(subprocess.run([sys.executable, os.path.join(here, "frames.py"), "session-open-facts", "{}"],
                                           capture_output=True, text=True).stdout or "{}")
         names = {a.get("kind"): a.get("text") for a in (facts.get("data") or {}).get("agents") or []}
         if "codex" not in names or "claude" not in names:

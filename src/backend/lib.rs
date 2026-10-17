@@ -1413,8 +1413,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     //   一格都不读本进程的可达表 / 监听状态 / 在飞表 ⇒ 不进 `stream::cli::STREAM_ONLY`，照派生规则上 CLI 面。
     //   登记在本表的理由与上面那几族逐字相同 —— `is_query_mode` 那道闸门读的就是本表，不在表里 ⇒ 当未知 flag 静默进流模式。
     // ⚠ 是新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。
-    "--session-new-dir",
-    "--session-new-facts",
+    "--session-open-dir",
+    "--session-open-facts",
     // 起会话 · 恢复 · 接回一个请求（`session-open`）派生的 CLI 面，理由同上。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
     "--session-open",
     // 往会话说一句（`session-say`）派生的 CLI 面（stdin 一段 JSON 当 `args`）。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。

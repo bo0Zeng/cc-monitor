@@ -321,7 +321,7 @@ fn an_agent_name_left_out_is_the_default_and_a_misspelled_one_is_refused() {
     );
 }
 
-/// ★ 同一家线上只有一个名字：每条命令收的 `agent` 都是 kind（同 `session-new-facts` 给的那一格），路由名只在后端里面。
+/// ★ 同一家线上只有一个名字：每条命令收的 `agent` 都是 kind（同 `session-open-facts` 给的那一格），路由名只在后端里面。
 /// 收的那一头 kind ⇒ 路由名、路由名本身不认；出的那一头路由名 ⇒ kind（账上留着的别家旧条目照原样）。
 #[test]
 fn the_wire_names_an_agent_only_by_its_kind() {
