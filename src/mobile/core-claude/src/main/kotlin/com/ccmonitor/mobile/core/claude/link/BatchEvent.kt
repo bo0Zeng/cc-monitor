@@ -24,6 +24,8 @@ data class BatchEvent(
     val conflicts: List<Clash> = emptyList(),
     val go: String? = null,
     val resume: Boolean = false,
+    /** 落过盘、进程没了再开时接回来的那一组（不是这一屏起的也照画）。 */
+    val kept: Boolean = false,
 ) {
     /**
      * 同名的一项：键 · 名字 · 那一行的说明（核心写好）· 这一项能怎么答（那台给的：`overwrite` · `skip` · `keep_both`）·
@@ -78,6 +80,7 @@ data class BatchEvent(
                 conflicts = m.objs("conflicts").orEmpty().map { Clash.of(it) ?: return null },
                 go = m.str("go"),
                 resume = m.bool("resume") == true,
+                kept = m.bool("kept") == true,
             )
     }
 }

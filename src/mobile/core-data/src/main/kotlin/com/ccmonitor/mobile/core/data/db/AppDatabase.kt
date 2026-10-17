@@ -19,8 +19,9 @@ import androidx.room.TypeConverters
         SyncAnchor::class,
         PendingSend::class,
         Draft::class,
+        PendingBatch::class,
     ],
-    version = 20,
+    version = 22,
     exportSchema = true,
 )
 @TypeConverters(KeyConverters::class)

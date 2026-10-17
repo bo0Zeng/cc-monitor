@@ -3,8 +3,12 @@ package com.ccmonitor.mobile.core.data.db
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
+/** 机器表与身份表的表名：两张表里的密文按「表名 · 行 id」绑在那一行（见 rowBinding）。 */
+const val HOSTS_TABLE = "hosts"
+const val IDENTITIES_TABLE = "identities"
+
 /** SSH 主机：地址与认证、tmux/Claude 面、重连策略。那台是什么系统 · shell 方言 · 有没有 tmux 都问那台，不存。 */
-@Entity(tableName = "hosts")
+@Entity(tableName = HOSTS_TABLE)
 data class Host(
     @PrimaryKey val id: String,
     val label: String,
@@ -35,7 +39,7 @@ data class Host(
  * SSH 身份/密钥。privateKeyEnc 为 CryptoBox 加密后的字节。
  * keystoreAlias 非空表示私钥不可导出（存于 Keystore TEE），此时 privateKeyEnc 可空。
  */
-@Entity(tableName = "identities")
+@Entity(tableName = IDENTITIES_TABLE)
 data class Identity(
     @PrimaryKey val id: String,
     val label: String,

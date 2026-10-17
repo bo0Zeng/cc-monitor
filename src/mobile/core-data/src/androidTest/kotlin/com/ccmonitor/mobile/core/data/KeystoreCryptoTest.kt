@@ -6,14 +6,17 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.ccmonitor.mobile.core.data.crypto.KeystoreCryptoBox
 import com.ccmonitor.mobile.core.data.crypto.SshKeyGenerator
 import com.ccmonitor.mobile.core.data.crypto.SshWire
+import com.ccmonitor.mobile.core.data.crypto.rowBinding
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.security.GeneralSecurityException
 import java.security.KeyStore
 import java.security.Signature
 import java.security.interfaces.ECPublicKey
@@ -36,9 +39,17 @@ class KeystoreCryptoTest {
     fun aeadEncryptDecryptRoundTrip() {
         val box = KeystoreCryptoBox(ctx)
         val plain = "super-secret-private-key-bytes".toByteArray()
-        val enc = box.encrypt(plain)
+        val enc = box.encrypt(plain, rowBinding("identities", "k1"))
         assertFalse("ciphertext must differ from plaintext", enc.contentEquals(plain))
-        assertArrayEquals(plain, box.decrypt(enc))
+        assertArrayEquals(plain, box.decrypt(enc, rowBinding("identities", "k1")))
+    }
+
+    /** 密文挪到别的行（关联数据换成另一行的）就解不开。 */
+    @Test
+    fun ciphertextMovedToAnotherRowDoesNotDecrypt() {
+        val box = KeystoreCryptoBox(ctx)
+        val enc = box.encrypt("k".toByteArray(), rowBinding("identities", "k1"))
+        assertThrows(GeneralSecurityException::class.java) { box.decrypt(enc, rowBinding("identities", "k2")) }
     }
 
     @Test

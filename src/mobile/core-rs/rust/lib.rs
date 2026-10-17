@@ -1044,8 +1044,8 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_transferStop<'l>(
     });
 }
 
-/// `Core.batchStart(handle, want)`：起一组（`batch.rs::plan_of` 那几种「要做什么」，入参由核心拼）；回编号，
-/// 进度 · 同名那一问 · 结局经 `Sink.resident(…, "batch", …)` 回来。这台不在 · 读不动 ⇒ 0。
+/// `Core.batchStart(handle, want)`：起一组（`batch.rs::plan_of` 那几种「要做什么」，入参由核心拼；`{kept}` ⇒ 接回落盘的那一组）；回编号，
+/// 进度 · 同名那一问 · 结局经 `Sink.resident(…, "batch", …)` 回来，落盘那一份经 `"batch_keep"`。这台不在 · 读不动 ⇒ 0。
 #[no_mangle]
 pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_batchStart<'l>(
     mut env: JNIEnv<'l>,

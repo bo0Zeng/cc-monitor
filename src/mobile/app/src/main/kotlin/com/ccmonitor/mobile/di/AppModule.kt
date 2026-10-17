@@ -71,7 +71,8 @@ val appModule =
         single {
             val hosts = get<HostRepository>()
             val files = BackendFiles(androidContext())
-            HostBackends(get(), labelOf = { id -> hosts.get(id)?.label ?: id }, backendSlots = files::slots)
+            val cache = get<LocalCache>()
+            HostBackends(get(), labelOf = { id -> hosts.get(id)?.label ?: id }, keptOf = cache::batches, backendSlots = files::slots)
         }
         // 会话屏：参数 ＝ `parametersOf(当前那台)`；机器表照库里的先后。
         viewModel { params ->
@@ -84,7 +85,7 @@ val appModule =
             val host = HostName(params.get(0), params.get(1))
             RecentChats { scope -> make(host, scope) }
         }
-        // 本地缓存（会话列表 · 记录页 · 续点 · 待发 · 草稿）：那台成品原样落 Room。
+        // 本地缓存（会话列表 · 记录页 · 续点 · 待发 · 草稿 · 在做的一组）：那台成品原样落 Room。
         single { LocalCache(get()) }
         viewModel { IdentityViewModel(get()) }
         viewModel { KeysEditorViewModel(get(), get()) }

@@ -9,7 +9,7 @@ import java.io.File
  * Room schema 只许走迁移：纯 JVM，零设备。
  *
  * 库里有 ssh 身份（私钥）与机器表：破坏性重建（`fallbackToDestructiveMigration…`）等于每次升级把用户的钥匙和机器清空，
- * 所以生产 builder 只接 `.addMigrations(*ALL_MIGRATIONS)`、一处破坏性回退都不许有；迁移链完整到 `version`，
+ * 所以生产 builder 只接 `.addMigrations(*allMigrations(crypto))`、一处破坏性回退都不许有；迁移链完整到 `version`，
  * 设备上的 `MigrationTest` 全链条也指到 `version`、最后那一跳有逐步测（旧行还在）。
  *
  * 迁移真跑一次的是设备上的 `MigrationTest`；没有模拟器时那条不会被跑到，这里只保证「schema 被动过」不会悄悄发生，
@@ -26,7 +26,7 @@ class SchemaDispositionTest {
     fun theDeclaredSchemaVersionIsStillTheOnePinnedHere() {
         assertEquals(
             "`AppDatabase` 的 schema 版本变了（钉着 $PINNED_VERSION，实读 ${declaredVersion()}）。\n" +
-                "   写上那一跳的 `MIGRATION_i_(i+1)` 并进 `ALL_MIGRATIONS`，`MigrationTest` 的全链条与逐步测跟到新版本，再改这里。",
+                "   写上那一跳的迁移（`MIGRATION_i_(i+1)`，要钥匙的写成 `class Migration{i}To{i+1}`）并进 `allMigrations`，`MigrationTest` 的全链条与逐步测跟到新版本，再改这里。",
             PINNED_VERSION,
             declaredVersion(),
         )
@@ -39,7 +39,7 @@ class SchemaDispositionTest {
     @Test
     fun onlyMigrationsAreWiredAndThereIsNoDestructiveFallback() {
         assertTrue(
-            "`$DATA_MODULE` 里没接 `.addMigrations(*ALL_MIGRATIONS)`：版本一变，Room 当场抛异常（用户升级即崩）。",
+            "`$DATA_MODULE` 里没接 `.addMigrations(*allMigrations(…))`：版本一变，Room 当场抛异常（用户升级即崩）。",
             MIGRATE_CALL.containsMatchIn(read(DATA_MODULE)),
         )
         val destructive =
@@ -69,18 +69,18 @@ class SchemaDispositionTest {
         )
     }
 
-    /** 迁移链完整：`MIGRATION_i_(i+1)` 逐版声明齐，`ALL_MIGRATIONS` 不漏不多。 */
+    /** 迁移链完整：每一跳（`MIGRATION_i_(i+1)` 或 `class Migration{i}To{i+1}`）逐版声明齐，`allMigrations` 不漏不多。 */
     @Test
     fun theMigrationChainIsCompleteAndMatchesTheDeclaredVersion() {
         val v = declaredVersion()
         val expected = (1 until v).toList()
         assertEquals(
-            "`MIGRATION_i_(i+1)` 的声明没覆盖到 $v。少一条，升级到那一版就崩（或被清库）。",
+            "迁移的声明没覆盖到 $v。少一条，升级到那一版就崩（或被清库）。",
             expected,
             declaredMigrationSteps(),
         )
         assertEquals(
-            "`ALL_MIGRATIONS` 数组与声明不一致，声明了却没进数组等于没写：\n" +
+            "`allMigrations` 的数组与声明不一致，声明了却没进数组等于没写：\n" +
                 "   Room 只认传进 builder 的那几条。",
             expected,
             migrationsInAllArray(),
@@ -98,7 +98,7 @@ class SchemaDispositionTest {
 
         val fullChain = FULL_CHAIN_TARGET.findAll(src).map { it.groupValues[1].toInt() }.toList()
         assertEquals(
-            "`$MIGRATION_TEST` 的全链条（`runMigrationsAndValidate(dbName, N, true, *ALL_MIGRATIONS)`）\n" +
+            "`$MIGRATION_TEST` 的全链条（`runMigrationsAndValidate(dbName, N, true, *allMigrations(crypto))`）\n" +
                 "   应当恰好一条且指到 $v，实读 $fullChain。\n" +
                 "   它要模拟器才跑得起来；本条只保证它指对了版本，不保证它跑过。",
             listOf(v),
@@ -157,28 +157,34 @@ class SchemaDispositionTest {
     private fun declaredMigrationSteps(): List<Int> =
         MIGRATION_DECL
             .findAll(read(MIGRATIONS))
-            .map { it.groupValues[1].toInt() }
+            .map { firstStep(it) }
             .toList()
             .sorted()
+
+    private fun firstStep(m: MatchResult): Int =
+        m.groupValues
+            .drop(1)
+            .first { it.isNotEmpty() }
+            .toInt()
 
     private fun migrationsInAllArray(): List<Int> {
         val src = read(MIGRATIONS)
         val arrayBody =
             src
-                .substringAfter(ALL_MIGRATIONS_ANCHOR, "")
+                .substringAfter(CHAIN_ANCHOR, "")
                 .substringAfter("arrayOf(", "")
-                .substringBefore(")")
-        assertTrue("`$MIGRATIONS` 里找不到 `$ALL_MIGRATIONS_ANCHOR` 的 `arrayOf(` 块，锚点失效", arrayBody.isNotBlank())
+                .substringBefore(ARRAY_END)
+        assertTrue("`$MIGRATIONS` 里找不到 `$CHAIN_ANCHOR` 的 `arrayOf(` 块，锚点失效", arrayBody.isNotBlank())
         return MIGRATION_REF
             .findAll(arrayBody)
-            .map { it.groupValues[1].toInt() }
+            .map { firstStep(it) }
             .toList()
             .sorted()
     }
 
     private companion object {
         /** 改 schema 版本时同时改这里。 */
-        const val PINNED_VERSION = 20
+        const val PINNED_VERSION = 22
 
         const val APP_DATABASE = "core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/db/AppDatabase.kt"
         const val MIGRATIONS = "core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/db/Migrations.kt"
@@ -186,16 +192,19 @@ class SchemaDispositionTest {
         const val MIGRATION_TEST = "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/MigrationTest.kt"
         const val SCHEMA_DIR = "core-data/schemas/com.ccmonitor.mobile.core.data.db.AppDatabase"
 
-        const val ALL_MIGRATIONS_ANCHOR = "val ALL_MIGRATIONS"
+        const val CHAIN_ANCHOR = "fun allMigrations("
+
+        /** 数组收尾那一行（数组里 `Migration{i}To{i+1}(crypto)` 自带括号，不能拿第一个 `)` 当收尾）。 */
+        const val ARRAY_END = "\n    )"
         const val MAX_WALK_UP = 12
         const val MIN_SOURCE_CHARS = 200
 
         val VERSION_DECL = Regex("^\\s*version = (\\d+),", RegexOption.MULTILINE)
         val EXPORT_SCHEMA_ON = Regex("^\\s*exportSchema = true,", RegexOption.MULTILINE)
-        val MIGRATION_DECL = Regex("^val MIGRATION_(\\d+)_\\d+ =", RegexOption.MULTILINE)
-        val MIGRATION_REF = Regex("^\\s*MIGRATION_(\\d+)_\\d+,", RegexOption.MULTILINE)
+        val MIGRATION_DECL = Regex("^(?:val MIGRATION_(\\d+)_\\d+ =|class Migration(\\d+)To\\d+\\()", RegexOption.MULTILINE)
+        val MIGRATION_REF = Regex("^\\s*(?:MIGRATION_(\\d+)_\\d+|Migration(\\d+)To\\d+\\(crypto\\)),", RegexOption.MULTILINE)
         val MIGRATE_CALL = Regex("^\\s*\\.addMigrations\\(", RegexOption.MULTILINE)
         val DESTRUCTIVE_CALL = Regex("fallbackToDestructiveMigration")
-        val FULL_CHAIN_TARGET = Regex("runMigrationsAndValidate\\(dbName, (\\d+), true, \\*ALL_MIGRATIONS\\)")
+        val FULL_CHAIN_TARGET = Regex("runMigrationsAndValidate\\(dbName, (\\d+), true, \\*allMigrations\\(\\w+\\)\\)")
     }
 }

@@ -1,6 +1,7 @@
 //! **一组一条命令**在手机这一侧的宿主：全过程是 `batch_core::run` 那一份（桌面文件窗口同一份），这里只接三根线 ——
 //! 问那台（常驻流那一条，带票；断了 ⇒ 等流接上、同一张票再问）· 进度（`files_batch` 帧在核心里按票接，不交 Kotlin 的帧流）·
-//! 往 Kotlin 交的事：`batch {id, phase, title, …}`，字全由核心写好（标题 · 断开那一行 · 结局句 · 没成的那几行 · 复制详情）。
+//! 往 Kotlin 交的事：`batch {id, phase, title, …}`，字全由核心写好（标题 · 断开那一行 · 结局句 · 没成的那几行 · 复制详情）；
+//! 落盘那一份 `batch_keep {ticket, plan}`（进程没了再开，Kotlin 原样交回、这里照同一张票再问）。
 //!
 //! Kotlin 交的是「要做什么」（删 · 改权限 · 复制到 · 重试 · 撤销），入参由这里拼；同名那一问的答经 [`answer`]，「停」经 [`stop`]。
 
@@ -22,6 +23,10 @@ pub struct PhoneBoard {
     answer: Mutex<Option<tokio::sync::oneshot::Sender<Option<BTreeMap<String, Decide>>>>>,
     asking: Mutex<Vec<Conflict>>,
     ended: Mutex<Option<BatchReply>>,
+    /// 最后发出去的那一份入参（落盘的就是它）。
+    sent: Mutex<Option<serde_json::Value>>,
+    /// 从落盘那一份接回来的（进程没了再开）：交的每一行带 `kept`，屏上没起过它也照画。
+    kept: bool,
     on_event: OnEvent,
 }
 
@@ -40,8 +45,85 @@ impl PhoneBoard {
             answer: Mutex::default(),
             asking: Mutex::default(),
             ended: Mutex::default(),
+            sent: Mutex::default(),
+            kept: false,
             on_event,
         }
+    }
+
+    /// 落盘那一份（[`Self::keep`] 交的 `plan`）⇒ 接回来的那一组：同一张票、同一份入参、断开时的完成数。认不出 ⇒ `None`。
+    pub fn resumed(id: i64, h: i64, kept: &str, machine: &str, on_event: OnEvent) -> Option<Self> {
+        let v: serde_json::Value = serde_json::from_str(kept).ok()?;
+        let (cmd, verb) = [
+            (
+                <cmd_wire::files::FilesDeleteReq as Call>::NAME,
+                Verb::Delete,
+            ),
+            (<cmd_wire::files::FilesChmodReq as Call>::NAME, Verb::Chmod),
+            (<cmd_wire::files::FilesCopyReq as Call>::NAME, Verb::Copy),
+        ]
+        .into_iter()
+        .find(|(c, _)| v.get("cmd").and_then(|c| c.as_str()) == Some(*c))?;
+        let args = v.get("args")?.clone();
+        let ticket = args.get("ticket")?.as_str()?.to_string();
+        let n = |k: &str| v.get(k).and_then(serde_json::Value::as_u64).unwrap_or(0);
+        let plan = Plan {
+            verb,
+            cmd,
+            args: args.clone(),
+            names: serde_json::from_value(v.get("names")?.clone()).ok()?,
+            into: v.get("into").and_then(|i| i.as_str()).map(str::to_string),
+            machine: machine.to_string(),
+        };
+        let b = Self::new(id, h, plan, ticket, on_event);
+        *lock(&b.sent) = Some(args);
+        lock(&b.tick).0 = Tick {
+            done: n("done"),
+            total: n("total"),
+            bytes: None,
+        };
+        Some(Self { kept: true, ..b })
+    }
+
+    /// 跑这一组（[`batch_core::run`]）：每次发之前入参变了 ⇒ 落盘那一份跟着换；收场 ⇒ 删。接回来的那一组先摆断开那一行。
+    pub async fn go<C, CF, U, UF>(&self, call: C, wait_up: U)
+    where
+        C: Fn(serde_json::Value) -> CF,
+        CF: std::future::Future<Output = Result<serde_json::Value, Rebuff>>,
+        U: Fn() -> UF,
+        UF: std::future::Future<Output = ()>,
+    {
+        if self.kept {
+            self.emit(&Phase::Cut(batch_core::cut_line(&self.plan, &self.tick())));
+        }
+        let sending = |args: serde_json::Value| {
+            let changed = lock(&self.sent).as_ref() != Some(&args);
+            if changed {
+                *lock(&self.sent) = Some(args.clone());
+                self.keep(true);
+            }
+            call(args)
+        };
+        batch_core::run(self, sending, wait_up).await;
+        self.keep(false);
+    }
+
+    /// 交 Kotlin 落盘（`batch_keep {ticket, plan}`）：`plan` 是一串字，原样存、原样交回 [`start`]（`{kept: plan}`）；收场 ⇒ `plan: null`。
+    fn keep(&self, on: bool) {
+        let plan = on.then(|| {
+            let t = self.tick();
+            serde_json::json!({
+                "cmd": self.plan.cmd,
+                "args": lock(&self.sent).clone(),
+                "names": self.plan.names,
+                "into": self.plan.into,
+                "done": t.done,
+                "total": t.total,
+            })
+            .to_string()
+        });
+        let body = serde_json::json!({ "ticket": self.ticket, "plan": plan });
+        (self.on_event)(self.h, "batch_keep", body.to_string());
     }
 
     /// 一格进度（帧那一侧）：`{done, total, current?, bytes_done?, bytes_total?}`。
@@ -106,6 +188,9 @@ impl PhoneBoard {
             Phase::Dropped | Phase::Opened => ("dropped", serde_json::json!({})),
         };
         v["phase"] = name.into();
+        if self.kept {
+            v["kept"] = true.into();
+        }
         if let (Some(o), Some(e)) = (v.as_object_mut(), extra.as_object()) {
             o.extend(e.clone());
         }
@@ -131,6 +216,8 @@ impl Board for PhoneBoard {
             // 同名那一问由 [`Board::ask`] 带着那几项交（这一步先落、那几项还没摆上）。
             Phase::Asking => return,
             Phase::Ended(r) => *lock(&self.ended) = Some(r.clone()),
+            // 断开时的完成数跟着落盘（进程没了再开，那一行照它写）。
+            Phase::Cut(_) => self.keep(true),
             _ => {}
         }
         self.emit(&phase);
@@ -421,66 +508,79 @@ fn rebuff_of(machine: &str, cmd: &str, e: CallError) -> Rebuff {
     }
 }
 
-/// 起一组：回编号（进度 · 同名那一问 · 结局经 `on_event` 的 `batch` 那一种交）；这台不在 · 读不动 ⇒ 0。
+/// 起一组：回编号（进度 · 同名那一问 · 结局经 `on_event` 的 `batch` 那一种交，落盘那一份经 `batch_keep`）；
+/// `{kept: plan}` ⇒ 接回落盘的那一组（同一张票再问）。这台不在 · 读不动 ⇒ 0。
 pub fn start(h: i64, want: &str, on_event: OnEvent) -> i64 {
     let Some(f) = resident::feed(h) else { return 0 };
-    let Some(plans) = serde_json::from_str::<serde_json::Value>(want)
-        .ok()
-        .and_then(|w| plan_of(&w, f.machine()))
-    else {
+    let Ok(want) = serde_json::from_str::<serde_json::Value>(want) else {
+        return 0;
+    };
+    if let Some(kept) = want.get("kept").and_then(|k| k.as_str()) {
+        let id = resident::next_call();
+        return match PhoneBoard::resumed(id, h, kept, f.machine(), on_event) {
+            Some(b) => launch(Arc::new(b)),
+            None => 0,
+        };
+    }
+    let Some(plans) = plan_of(&want, f.machine()) else {
         return 0;
     };
     let mut first = 0;
     for plan in plans {
-        let id = resident::next_call();
-        if first == 0 {
-            first = id;
-        }
         let mut random = [0u8; 16];
         let _ = ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut random);
-        let b = Arc::new(PhoneBoard::new(
-            id,
+        let b = PhoneBoard::new(
+            resident::next_call(),
             h,
             plan,
             chunk_core::key_of(random),
             on_event.clone(),
-        ));
-        {
-            let mut all = lock(boards());
-            if all.len() >= KEPT {
-                if let Some(old) = all.keys().min().copied() {
-                    all.remove(&old);
-                }
-            }
-            all.insert(id, b.clone());
+        );
+        let id = launch(Arc::new(b));
+        if first == 0 {
+            first = id;
         }
-        tokio::spawn(async move {
-            let cmd = b.plan.cmd;
-            batch_core::run(
-                &*b,
-                |args| async move {
-                    let Some(f) = resident::feed(h) else {
-                        return Err(rebuff_of("", cmd, CallError::Cancelled));
-                    };
-                    let deadline = tokio::time::Instant::now() + batch_core::BATCH_BUDGET;
-                    let got = match f.client_by(deadline).await {
-                        Some(c) => c.call_until(cmd, args, deadline).await,
-                        None => Err(CallError::Disconnected),
-                    };
-                    got.map(|v| v.unwrap_or_default())
-                        .map_err(|e| rebuff_of(f.machine(), cmd, e))
-                },
-                || async move {
-                    if let Some(f) = resident::feed(h) {
-                        let far = tokio::time::Instant::now() + batch_core::BATCH_BUDGET;
-                        let _ = f.client_by(far).await;
-                    }
-                },
-            )
-            .await;
-        });
     }
     first
+}
+
+/// 记下这一组（重试 · 撤销照它另起）、在运行时上跑起来（问那台走常驻流那一条）；回编号。
+fn launch(b: Arc<PhoneBoard>) -> i64 {
+    let (id, h) = (b.id, b.h);
+    {
+        let mut all = lock(boards());
+        if all.len() >= KEPT {
+            if let Some(old) = all.keys().min().copied() {
+                all.remove(&old);
+            }
+        }
+        all.insert(id, b.clone());
+    }
+    tokio::spawn(async move {
+        let cmd = b.plan.cmd;
+        b.go(
+            |args| async move {
+                let Some(f) = resident::feed(h) else {
+                    return Err(rebuff_of("", cmd, CallError::Cancelled));
+                };
+                let deadline = tokio::time::Instant::now() + batch_core::BATCH_BUDGET;
+                let got = match f.client_by(deadline).await {
+                    Some(c) => c.call_until(cmd, args, deadline).await,
+                    None => Err(CallError::Disconnected),
+                };
+                got.map(|v| v.unwrap_or_default())
+                    .map_err(|e| rebuff_of(f.machine(), cmd, e))
+            },
+            || async move {
+                if let Some(f) = resident::feed(h) {
+                    let far = tokio::time::Instant::now() + batch_core::BATCH_BUDGET;
+                    let _ = f.client_by(far).await;
+                }
+            },
+        )
+        .await;
+    });
+    id
 }
 
 /// 同名那一问的答 ⇒ 每个键一格（`batch_core::answer_of`）：`{all: "skip"|"keep_both"|"overwrite"}` · `{each: {键: 答}}` · 别的（`null`）⇒ 取消。
@@ -562,8 +662,9 @@ mod tests {
         let seen: Arc<Mutex<Vec<serde_json::Value>>> = Arc::default();
         let s2 = seen.clone();
         let on: OnEvent = Arc::new(move |_, kind, body| {
-            assert_eq!(kind, "batch");
-            lock(&s2).push(serde_json::from_str(&body).unwrap());
+            if kind == "batch" {
+                lock(&s2).push(serde_json::from_str(&body).unwrap());
+            }
         });
         (on, seen)
     }
@@ -921,5 +1022,134 @@ mod tests {
         assert_eq!(seen.len(), 1);
         assert_eq!(seen[0]["current"], "a.txt");
         assert_eq!(seen[0]["frac"], 0.25);
+    }
+
+    /// 两种事都收（`batch` · `batch_keep`），照到达先后。
+    fn kinds() -> (OnEvent, Arc<Mutex<Vec<(String, serde_json::Value)>>>) {
+        let seen: Arc<Mutex<Vec<(String, serde_json::Value)>>> = Arc::default();
+        let s2 = seen.clone();
+        let on: OnEvent = Arc::new(move |_, kind, body| {
+            lock(&s2).push((kind.to_string(), serde_json::from_str(&body).unwrap()));
+        });
+        (on, seen)
+    }
+
+    fn of_kind(seen: &[(String, serde_json::Value)], kind: &str) -> Vec<serde_json::Value> {
+        seen.iter()
+            .filter(|(k, _)| k == kind)
+            .map(|(_, v)| v.clone())
+            .collect()
+    }
+
+    /// 🔴 一组落盘的那一份 ＝ 最后发出去的入参（带票 · 带答过的 `decide`）＋ 断开时的完成数：开始时写、答了重写、断开重写、收场删；
+    /// 进程没了再开 ⇒ 照那一份接回来：先摆「其余待核」那一行（完成数照落盘的），再问的入参逐字节等于落盘那一份，收场删掉。
+    #[tokio::test]
+    async fn a_kept_group_asks_again_with_the_bytes_it_kept() {
+        let (on, seen) = kinds();
+        let b = Arc::new(PhoneBoard::new(7, 1, del("devbox"), "t-1".into(), on));
+        let b2 = b.clone();
+        let run = tokio::spawn(async move {
+            let n = Arc::new(Mutex::new(0usize));
+            let b3 = b2.clone();
+            b2.go(
+                move |_args| {
+                    let k = {
+                        let mut n = lock(&n);
+                        *n += 1;
+                        *n
+                    };
+                    let b4 = b3.clone();
+                    async move {
+                        match k {
+                            1 => Err(Rebuff {
+                                failed: Failed { code: Some("exists".into()), said: "同名 1 项".into(), detail: String::new() },
+                                data: Some(serde_json::json!({"conflicts": [{"key": "0", "name": "a.txt", "kind": "file", "there": "file",
+                                    "answers": ["overwrite", "skip", "keep_both"]}]})),
+                                cut: false,
+                            }),
+                            _ => {
+                                b4.progress(&serde_json::json!({"done": 1, "total": 2}));
+                                Err(rebuff_of("devbox", "files-delete", CallError::Disconnected))
+                            }
+                        }
+                    }
+                },
+                // 那台一直不回来：进程在这里被杀。
+                std::future::pending::<()>,
+            )
+            .await;
+        });
+        for _ in 0..2000 {
+            if lock(&b.answer).is_some() {
+                assert!(b.answer(Some(r#"{"all":"keep_both"}"#)));
+            }
+            if of_kind(&lock(&seen), "batch")
+                .iter()
+                .any(|e| e["phase"] == "cut")
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        run.abort();
+        let keeps = of_kind(&lock(&seen), "batch_keep");
+        assert_eq!(keeps.len(), 3, "开始 · 答了 · 断开各写一次：{keeps:?}");
+        assert!(keeps.iter().all(|k| k["ticket"] == "t-1"));
+        let blob = |k: &serde_json::Value| -> serde_json::Value {
+            serde_json::from_str(k["plan"].as_str().expect("落盘那一份是一串字")).unwrap()
+        };
+        assert_eq!(blob(&keeps[0])["args"].get("decide"), None);
+        assert_eq!(
+            blob(&keeps[1])["args"]["decide"],
+            serde_json::json!({"0": "keep_both"})
+        );
+        let kept = keeps[2]["plan"].as_str().unwrap().to_string();
+
+        // 再开：只有落盘那一份。
+        let (on, seen) = kinds();
+        let r = Arc::new(PhoneBoard::resumed(8, 2, &kept, "devbox", on).expect("落盘那一份读得回"));
+        let sent: Arc<Mutex<Vec<String>>> = Arc::default();
+        let s2 = sent.clone();
+        r.go(
+            move |args| {
+                lock(&s2).push(serde_json::to_string(&args).unwrap());
+                async { Ok(reply("删除 2 项 · 完成 1 · 失败 ×1")) }
+            },
+            || async {},
+        )
+        .await;
+        let sent = lock(&sent).clone();
+        let want =
+            serde_json::to_string(&blob(&serde_json::json!({ "plan": kept }))["args"]).unwrap();
+        assert_eq!(sent, [want], "再问那一问的入参逐字节等于落盘那一份");
+        assert!(kept.contains(&sent[0]), "落盘那一串里原样有这一份：{kept}");
+        let seen = lock(&seen).clone();
+        let shown = of_kind(&seen, "batch");
+        let phases: Vec<&str> = shown.iter().map(|e| e["phase"].as_str().unwrap()).collect();
+        assert_eq!(phases, ["cut", "ended"]);
+        assert_eq!(
+            shown[0]["line"],
+            "devbox 连接已断开 · 删除 2 项 · 完成 1 · 其余待核"
+        );
+        assert!(
+            shown.iter().all(|e| e["kept"] == true && e["id"] == 8),
+            "接回来的那一组带记号：{shown:?}"
+        );
+        assert_eq!(
+            of_kind(&seen, "batch_keep"),
+            [serde_json::json!({"ticket": "t-1", "plan": null})],
+            "入参没变不重写；收场删"
+        );
+        assert!(
+            PhoneBoard::resumed(
+                9,
+                2,
+                "{\"cmd\":\"files-nope\"}",
+                "devbox",
+                Arc::new(|_, _, _| {})
+            )
+            .is_none(),
+            "认不出的那一份不接"
+        );
     }
 }

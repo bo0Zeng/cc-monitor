@@ -79,6 +79,14 @@ object PendingOutcome {
     const val REFUSED = "refused"
 }
 
+/** 在做的一组：核心交的那一串原样（票 · 发出去的那一份入参 · 断开时的完成数）；开始时写、收场删，进程没了再开照它带票再问。 */
+@Entity(tableName = "pending_batches", primaryKeys = ["hostId", "ticket"])
+data class PendingBatch(
+    val hostId: String,
+    val ticket: String,
+    val plan: String,
+)
+
 /** 草稿：一条会话（新建会话 [sid] 为空串）输入框里还没发的字 ＋ 新建会话那几样选项。 */
 @Entity(tableName = "drafts", primaryKeys = ["hostId", "sid"])
 data class Draft(

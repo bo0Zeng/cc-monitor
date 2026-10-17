@@ -3,11 +3,18 @@ package com.ccmonitor.mobile.core.data.db
 import androidx.room.testing.MigrationTestHelper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.ccmonitor.mobile.core.data.crypto.KeystoreCryptoBox
+import com.ccmonitor.mobile.core.data.crypto.rowBinding
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.security.GeneralSecurityException
+import java.util.Base64
 
 /**
  * Room 迁移链：每一跳的 schema 与导出 json 校验，加数据保留。
@@ -16,6 +23,9 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class MigrationTest {
     private val dbName = "migration-test.db"
+
+    /** 与生产同一把：Keystore 主钥包着的 Tink AEAD。 */
+    private val crypto = KeystoreCryptoBox(InstrumentationRegistry.getInstrumentation().targetContext)
 
     @get:Rule
     val helper =
@@ -636,11 +646,94 @@ class MigrationTest {
         }
     }
 
-    /** 全链路 1→20 schema 校验（validateDroppedTables=true 严格比对导出 schema）；一路种过的旧默认键到头成了三组。 */
+    /** 20→21：加「在做的一组」那张表、能写能读；机器 · 草稿一字不动。 */
     @Test
-    fun migrateAll1To20Validates() {
+    fun migrate20To21AddsThePendingBatchesAndKeepsTheRest() {
+        helper.createDatabase(dbName, 20).apply {
+            execSQL(
+                "INSERT INTO hosts (id,label,host,port,username,sortOrder,autoReconnect) VALUES ('h1','pi','example.com',22,'pi',0,1)",
+            )
+            execSQL("INSERT INTO drafts (hostId,sid,text,updatedAt) VALUES ('h1','s1','没发的字',5)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(dbName, 21, true, MIGRATION_20_21)
+        db.execSQL("INSERT INTO pending_batches (hostId,ticket,plan) VALUES ('h1','t-1','{\"cmd\":\"files-delete\"}')")
+        db.query("SELECT plan FROM pending_batches WHERE hostId='h1' AND ticket='t-1'").use { c ->
+            assertTrue(c.moveToFirst())
+            assertEquals("{\"cmd\":\"files-delete\"}", c.getString(0))
+        }
+        db.query("SELECT label FROM hosts WHERE id='h1'").use { c ->
+            assertTrue("机器表应原样还在", c.moveToFirst())
+            assertEquals("pi", c.getString(0))
+        }
+        db.query("SELECT text FROM drafts WHERE hostId='h1' AND sid='s1'").use { c ->
+            assertTrue("草稿应原样还在", c.moveToFirst())
+            assertEquals("没发的字", c.getString(0))
+        }
+    }
+
+    /**
+     * 21→22：机器的密码 · 身份的私钥按「表名 · 行 id」重加一遍，每行原文不变、换到别的行就解不开；
+     * 解不开的旧密文：身份那一行删掉、机器只清掉密码那一格；Keystore 背书的身份不碰。
+     */
+    @Test
+    fun migrate21To22BindsEachSecretToItsRow() {
+        val before22 = "ccm-private-key".toByteArray() // 第 21 版全库共用的那份关联数据
+
+        fun oldPassword(p: String) = Base64.getEncoder().encodeToString(crypto.encrypt(p.toByteArray(), before22))
+        val key1 = "-----BEGIN OPENSSH PRIVATE KEY-----k1".toByteArray()
+        helper.createDatabase(dbName, 21).apply {
+            val hosts = "INSERT INTO hosts (id,label,host,port,username,sortOrder,autoReconnect,passwordEnc) VALUES (?,?,'example.com',22,'pi',0,1,?)"
+            execSQL(hosts, arrayOf("h1", "一号", oldPassword("pw-1")))
+            execSQL(hosts, arrayOf("h2", "二号", oldPassword("pw-2")))
+            execSQL(hosts, arrayOf("h3", "三号", Base64.getEncoder().encodeToString("坏了的".toByteArray())))
+            execSQL(hosts, arrayOf("h4", "四号", null))
+            val ids = "INSERT INTO identities (id,label,keyType,privateKeyEnc,publicKeyOpenSsh,fingerprintSha256,createdAt,keystoreAlias) VALUES (?,?,?,?,'ssh-ed25519 AAAA','SHA256:x',1,?)"
+            execSQL(ids, arrayOf("k1", "导入的", "imported", crypto.encrypt(key1, before22), null))
+            execSQL(ids, arrayOf("k2", "坏了的", "imported", byteArrayOf(1, 2, 3), null))
+            execSQL(ids, arrayOf("k3", "硬件的", "ecdsa-p256", ByteArray(0), "ccm-key-3"))
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(dbName, 22, true, Migration21To22(crypto))
+
+        fun hostPassword(id: String): String? =
+            db.query("SELECT passwordEnc FROM hosts WHERE id='$id'").use { c ->
+                assertTrue("机器 $id 应还在", c.moveToFirst())
+                if (c.isNull(0)) null else c.getString(0)
+            }
+
+        fun open(
+            enc: String,
+            id: String,
+        ) = String(crypto.decrypt(Base64.getDecoder().decode(enc), rowBinding("hosts", id)))
+        val h1 = requireNotNull(hostPassword("h1"))
+        assertEquals("pw-1", open(h1, "h1"))
+        assertEquals("pw-2", open(requireNotNull(hostPassword("h2")), "h2"))
+        assertThrows("密文挪到别的行应解不开", GeneralSecurityException::class.java) { open(h1, "h2") }
+        assertEquals("解不开的密码那一格清掉", null, hostPassword("h3"))
+        assertEquals(null, hostPassword("h4"))
+        db.query("SELECT label FROM hosts WHERE id='h3'").use { c ->
+            assertTrue(c.moveToFirst())
+            assertEquals("机器的别的设置照留", "三号", c.getString(0))
+        }
+
+        db.query("SELECT privateKeyEnc FROM identities WHERE id='k1'").use { c ->
+            assertTrue("身份 k1 应还在", c.moveToFirst())
+            assertArrayEquals(key1, crypto.decrypt(c.getBlob(0), rowBinding("identities", "k1")))
+        }
+        db.query("SELECT id FROM identities WHERE id='k2'").use { c -> assertFalse("解不开的身份那一行删掉", c.moveToFirst()) }
+        db.query("SELECT keystoreAlias, length(privateKeyEnc) FROM identities WHERE id='k3'").use { c ->
+            assertTrue("Keystore 背书的身份应原样还在", c.moveToFirst())
+            assertEquals("ccm-key-3", c.getString(0))
+            assertEquals(0, c.getInt(1))
+        }
+    }
+
+    /** 全链路 1→22 schema 校验（validateDroppedTables=true 严格比对导出 schema）；一路种过的旧默认键到头成了三组。 */
+    @Test
+    fun migrateAll1To22Validates() {
         helper.createDatabase(dbName, 1).close()
-        val db = helper.runMigrationsAndValidate(dbName, 20, true, *ALL_MIGRATIONS)
+        val db = helper.runMigrationsAndValidate(dbName, 22, true, *allMigrations(crypto))
         db.query("SELECT name FROM key_groups ORDER BY sortOrder").use { c ->
             val names = generateSequence { if (c.moveToNext()) c.getString(0) else null }.toList()
             assertEquals(listOf("常用", "shell", "vim"), names)

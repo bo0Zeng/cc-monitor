@@ -3,6 +3,10 @@ package com.ccmonitor.mobile.core.data.db
 import android.view.ViewConfiguration
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.ccmonitor.mobile.core.data.crypto.CryptoBox
+import com.ccmonitor.mobile.core.data.crypto.rowBinding
+import java.security.GeneralSecurityException
+import java.util.Base64
 
 /*
  * Room 迁移链，升级不清库。
@@ -340,7 +344,85 @@ val MIGRATION_19_20 =
         }
     }
 
-val ALL_MIGRATIONS: Array<Migration> =
+// 加「在做的一组」那张表（进程没了再开，带同一张票再问）。别的表一字不动。
+val MIGRATION_20_21 =
+    object : Migration(20, 21) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `pending_batches` (`hostId` TEXT NOT NULL, `ticket` TEXT NOT NULL, `plan` TEXT NOT NULL, " +
+                    "PRIMARY KEY(`hostId`, `ticket`))",
+            )
+        }
+    }
+
+// 密文绑到那一行：机器的密码 · 身份的私钥按「表名 · 行 id」作关联数据重加一遍（原先全库共用一份，两行的密文互换照样解得开）。
+// 表结构一字不动。旧密文解不开（坏了的旧数据）⇒ 身份那一行删掉；机器那一行只清掉密码那一格，机器的别的设置照留。
+// Keystore 背书的身份没有私钥字节（私钥在 Keystore 里），不碰。
+class Migration21To22(
+    private val crypto: CryptoBox,
+) : Migration(21, 22) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        val passwords =
+            db.query("SELECT id, passwordEnc FROM `hosts` WHERE passwordEnc IS NOT NULL").use { c ->
+                generateSequence { if (c.moveToNext()) c.getString(0) to c.getString(1) else null }.toList()
+            }
+        val keys =
+            db.query("SELECT id, privateKeyEnc FROM `identities` WHERE keystoreAlias IS NULL").use { c ->
+                generateSequence { if (c.moveToNext()) c.getString(0) to c.getBlob(1) else null }.toList()
+            }
+        if (passwords.isEmpty() && keys.isEmpty()) return
+        // 先拿到钥匙：拿不到就整趟抛出（这一跳不算迁过，下次开再迁），免得把「拿不到钥匙」当成「这一行坏了」删掉。
+        crypto.encrypt(ByteArray(0), ByteArray(0))
+        for ((id, enc) in passwords) {
+            db.execSQL("UPDATE `hosts` SET passwordEnc = ? WHERE id = ?", arrayOf(resealPassword(crypto, id, enc), id))
+        }
+        for ((id, enc) in keys) {
+            val sealed = reseal(crypto, enc, IDENTITIES_TABLE, id)
+            if (sealed == null) {
+                db.execSQL("DELETE FROM `identities` WHERE id = ?", arrayOf(id))
+            } else {
+                db.execSQL("UPDATE `identities` SET privateKeyEnc = ? WHERE id = ?", arrayOf(sealed, id))
+            }
+        }
+    }
+}
+
+/** 第 21 版及以前全库共用的那一份关联数据：只这一跳解旧密文用。 */
+private val SHARED_BEFORE_22 = "ccm-private-key".toByteArray(Charsets.UTF_8)
+
+/** 一份旧密文按那一行重加；解不开 ⇒ null。 */
+internal fun reseal(
+    crypto: CryptoBox,
+    blob: ByteArray,
+    table: String,
+    rowId: String,
+): ByteArray? {
+    val plain =
+        try {
+            crypto.decrypt(blob, SHARED_BEFORE_22)
+        } catch (_: GeneralSecurityException) {
+            return null
+        }
+    return crypto.encrypt(plain, rowBinding(table, rowId)).also { plain.fill(0) }
+}
+
+/** 机器那一格密码（密文的 Base64）按那一行重加；不是 Base64 · 解不开 ⇒ null（清掉那一格）。 */
+internal fun resealPassword(
+    crypto: CryptoBox,
+    hostId: String,
+    enc: String,
+): String? {
+    val blob =
+        try {
+            Base64.getDecoder().decode(enc)
+        } catch (_: IllegalArgumentException) {
+            return null
+        }
+    return reseal(crypto, blob, HOSTS_TABLE, hostId)?.let { Base64.getEncoder().encodeToString(it) }
+}
+
+/** 整条迁移链。21→22 要那把主钥重加密文 ⇒ 链从依赖注入拿 [CryptoBox]（与仓库读写同一个）。 */
+fun allMigrations(crypto: CryptoBox): Array<Migration> =
     arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -361,4 +443,6 @@ val ALL_MIGRATIONS: Array<Migration> =
         MIGRATION_17_18,
         MIGRATION_18_19,
         MIGRATION_19_20,
+        MIGRATION_20_21,
+        Migration21To22(crypto),
     )

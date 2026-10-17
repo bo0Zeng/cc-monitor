@@ -5,8 +5,8 @@ import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.ccmonitor.mobile.core.data.crypto.CryptoBox
 import com.ccmonitor.mobile.core.data.crypto.KeystoreCryptoBox
-import com.ccmonitor.mobile.core.data.db.ALL_MIGRATIONS
 import com.ccmonitor.mobile.core.data.db.AppDatabase
+import com.ccmonitor.mobile.core.data.db.allMigrations
 import com.ccmonitor.mobile.core.data.db.seedDefaultKeys
 import com.ccmonitor.mobile.core.data.repo.BookmarkRepository
 import com.ccmonitor.mobile.core.data.repo.HostRepository
@@ -21,11 +21,11 @@ import org.koin.dsl.module
  */
 val dataModule =
     module {
-        // 迁移链（升级不丢数据），见 ALL_MIGRATIONS。
+        // 迁移链（升级不丢数据），见 allMigrations；21→22 重加密文用的是下面那一个 CryptoBox。
         single {
             Room
                 .databaseBuilder(androidContext(), AppDatabase::class.java, "ccm.db")
-                .addMigrations(*ALL_MIGRATIONS)
+                .addMigrations(*allMigrations(get()))
                 // 新装也要种默认三组按键：迁移只在升级时跑。
                 .addCallback(
                     object : RoomDatabase.Callback() {

@@ -7,7 +7,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Upsert
 
-/** 缓存五张表的存取（[CachedSession] · [RecordPage] · [SyncAnchor] · [PendingSend] · [Draft]）。只搬原样，不认 JSON 里的格。 */
+/** 缓存六张表的存取（[CachedSession] · [RecordPage] · [SyncAnchor] · [PendingSend] · [Draft] · [PendingBatch]）。只搬原样，不认 JSON 里的格。 */
 @Dao
 abstract class CacheDao {
     // ---- 会话列表 ----------------------------------------------------------
@@ -199,6 +199,20 @@ abstract class CacheDao {
         dropDraft(hostId, draftSid)
         insertPending(p)
     }
+
+    // ---- 在做的一组 ---------------------------------------------------------
+
+    @Query("SELECT * FROM pending_batches WHERE hostId = :hostId")
+    abstract suspend fun batches(hostId: String): List<PendingBatch>
+
+    @Upsert
+    abstract suspend fun putBatch(b: PendingBatch)
+
+    @Query("DELETE FROM pending_batches WHERE hostId = :hostId AND ticket = :ticket")
+    abstract suspend fun dropBatch(
+        hostId: String,
+        ticket: String,
+    )
 
     companion object {
         /** 记录缓存留最近看过的这么多条会话。 */
