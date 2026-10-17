@@ -778,6 +778,12 @@ def seed_rotation():
     sh(f"mkdir -p ~/.cc-monitor/strategies && for n in smoke-a smoke-b; do echo {b} | base64 -d > ~/.cc-monitor/strategies/$n.rhai; done")
 
 
+def plate_of(name):
+    """设置页里 [name] 那一张号牌：认号牌自己的读屏那一句（号名打头、接分隔符，后面是记号与悬停那一句），不认号名文字（模拟里也有同名的号名）。"""
+    head = name + t("kit.text.sep")
+    return next((n for n in ui.nodes() if (n.get("content-desc") or "").startswith(head)), None)
+
+
 def lane_head(text):
     """时间轴里号名那一列的 [text]（同名的号牌在上面，取最靠下、靠左的那一个）。"""
     ns = [n for n in ui.nodes() if n.get("text") == text and ui.center(n)[0] < 300]
@@ -1580,7 +1586,10 @@ def report():
         for_new = (frames("rotation-strategies", {}).get("data") or {}).get("forNew") or ""
         if not for_new:
             raise Step.Fail("台架那台没有新会话用的那份策略")
-        tap("team")
+        card = plate_of("team")
+        if card is None:
+            raise Step.Fail("设置页找不到 team 的号牌")
+        adb("shell", "input", "tap", *map(str, ui.center(card)))
         if not wait(t("rot.acct.remove"), 10):
             raise Step.Fail("点 team 的号牌没拉出编辑小窗")
         tap("强制切入")

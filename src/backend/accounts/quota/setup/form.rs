@@ -523,8 +523,11 @@ pub(crate) fn apply(form: &[Cell], settings: &Value, edit: &RotEdit) -> Result<V
                 now = day_paint(&now, a, b, None);
             }
             if let Some(g) = seg {
-                if g.from >= g.to || g.to > DAY_MIN {
-                    return Err("a segment needs 0 ≤ from < to ≤ 1440".into());
+                if g.from == g.to || g.from > DAY_MIN || g.to > DAY_MIN {
+                    return Err(
+                        "a segment needs from ≠ to, both 0–1440 (from > to crosses midnight)"
+                            .into(),
+                    );
                 }
                 now = day_paint(&now, g.from, g.to, Some(g.v));
             }
@@ -572,7 +575,7 @@ pub(crate) fn apply(form: &[Cell], settings: &Value, edit: &RotEdit) -> Result<V
     Ok(out)
 }
 
-/// 分段上刷一截（[`RotEdit::Seg`] 用）：在 `segs` 上把 `[from, to)`（`from < to`）刷成 `v`（`null` ⇒ 删掉那一截）。
+/// 分段上刷一截（[`RotEdit::Seg`] 用）：在 `segs` 上把 `[from, to)` 刷成 `v`（`null` ⇒ 删掉那一截）；`from > to` ⇒ 跨午夜，刷两截。
 /// 回照先后排好、连着一样的并成一段的新分段。只是分段的算术，不是换号的想法。
 pub(crate) fn day_paint(
     segs: &[(u64, u64, f64)],
@@ -588,7 +591,13 @@ pub(crate) fn day_paint(
         }
     }
     let (from, to) = (from.min(DAY_MIN) as usize, to.min(DAY_MIN) as usize);
-    day[from.min(to)..to].iter_mut().for_each(|m| *m = v);
+    let mut paint = |a: usize, b: usize| day[a..b].iter_mut().for_each(|m| *m = v);
+    if from <= to {
+        paint(from, to);
+    } else {
+        paint(from, n);
+        paint(0, to);
+    }
     let mut out: Vec<(u64, u64, f64)> = Vec::new();
     let mut i = 0;
     while i < n {

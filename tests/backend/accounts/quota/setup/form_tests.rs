@@ -147,9 +147,9 @@ fn second_person_or_structure_words_in_labels_are_flagged() {
     }
 }
 
-/// ★ 分段上刷一截（`seg` 那一意图的算术）：刷进去、`null` 删那一截、连着一样的并成一段。
+/// ★ 分段上刷一截（`seg` 那一意图的算术）：刷进去、跨午夜拆两截、`null` 删那一截、连着一样的并成一段。
 #[test]
-fn painting_a_span_splits_and_merges() {
+fn painting_a_span_splits_merges_and_wraps() {
     assert_eq!(day_paint(&[], 1200, 1380, Some(0.0)), [(1200, 1380, 0.0)]);
     assert_eq!(
         day_paint(&[(0, 1440, 80.0)], 1320, 1440, Some(50.0)),
@@ -162,6 +162,11 @@ fn painting_a_span_splits_and_merges() {
     assert_eq!(
         day_paint(&[(0, 600, 80.0)], 300, 900, None),
         [(0, 300, 80.0)]
+    );
+    assert_eq!(
+        day_paint(&[(0, 1440, 80.0)], 1320, 120, Some(50.0)),
+        [(0, 120, 50.0), (120, 1320, 80.0), (1320, 1440, 50.0)],
+        "from > to ⇒ 跨午夜两截"
     );
 }
 
@@ -477,6 +482,11 @@ fn a_later_window_follows_the_first_and_segments_are_edited_one_by_one() {
         )),
         json!([{"from": 0, "to": 1200, "v": 90}, {"from": 1200, "to": 1380, "v": 0}, {"from": 1380, "to": 1440, "v": 90}]),
         "没设的照声明默认那一整段刷"
+    );
+    assert_eq!(
+        segs(&ap(&s, seg(Some(1), Some((1380, 420, 0.0))))),
+        json!([{"from": 0, "to": 420, "v": 0}, {"from": 420, "to": 600, "v": 50}, {"from": 1380, "to": 1440, "v": 0}]),
+        "跨午夜的一段（23:00 → 07:00）刷两截"
     );
     assert!(apply(&f, &s, &seg(Some(5), None)).is_err());
     assert!(apply(&f, &s, &seg(None, Some((600, 600, 1.0)))).is_err());
