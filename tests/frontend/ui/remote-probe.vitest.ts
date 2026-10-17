@@ -37,7 +37,7 @@ vi.mock("../../../src/comms/inward/chan", async (orig) => {
 import { ChanError } from "../../../src/comms/inward/chan";
 import { decodeCell, decodeProbe, probeMachine, ProbeStalled, PROBE_PROGRESS_KIND } from "../../../src/frontend/ui/remote-probe";
 import type { RemoteHostConfig } from "../../../src/frontend/ui/remote-config";
-import type { ConnectStage } from "../../../src/frontend/ui/generated/ConnectStage";
+import type { ConnectStage } from "../../../src/comms/ui/generated/ConnectStage";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/backend-policy";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
