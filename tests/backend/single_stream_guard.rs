@@ -653,7 +653,9 @@ mod tests {
         //    「只验一个拼法」正是那一版被打回的原因。
         let caught = |probe: &str| {
             (
-                PINS.iter().map(|p| probe.matches(p.1).count()).sum::<usize>(),
+                PINS.iter()
+                    .map(|p| probe.matches(p.1).count())
+                    .sum::<usize>(),
                 probe.matches(BARE_BIRTH).count(),
             )
         };

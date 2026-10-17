@@ -67,10 +67,7 @@ impl FrameSink {
     }
 
     /// 同 [`Self::new`]，那条连接还要了这几个会话的主线外清单（`stream-watch.branch`）。
-    pub(in crate::observe::watcher) fn wanting_branches(
-        tx: FrameTx,
-        sids: &[&str],
-    ) -> Self {
+    pub(in crate::observe::watcher) fn wanting_branches(tx: FrameTx, sids: &[&str]) -> Self {
         let mut s = Self::new(tx);
         s.subs[0]
             .branching

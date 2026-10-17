@@ -9,14 +9,7 @@ use crate::wire::WatchFrom;
 const A: &str = "s-wa";
 const B: &str = "s-wb";
 
-fn rig(
-    tag: &str,
-) -> (
-    PathBuf,
-    ReaderState,
-    FrameSink,
-    FrameRx,
-) {
+fn rig(tag: &str) -> (PathBuf, ReaderState, FrameSink, FrameRx) {
     let dir = std::env::temp_dir().join(format!("ccm-watch-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
