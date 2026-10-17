@@ -836,3 +836,22 @@ fn settle_moves_pending_to_checked_exactly_once() {
     assert!(!n.settle(&ctx), "没装过的不该被 settle 蒙成「复核过」");
     assert_eq!(n, FontState::NotInstalled);
 }
+
+/// 载入那条线程没交回就没了 ⇒ 收到的是 [`Attempt::Lost`]，复核照样出声、说清是载入没交回（不 panic：发布档 panic 即整个窗口进程没了）。
+#[test]
+fn a_loader_that_dies_is_reported_not_a_panic() {
+    let ctx = egui::Context::default();
+    let loading = super::load_with(&ctx, || panic!("载入半路没了（判据造的）"));
+    let mut got = None;
+    for () in guard_core::wall::rounds() {
+        got = loading.poll(&ctx);
+        if got.is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert_eq!(got, Some(Attempt::Lost));
+    ready(&ctx);
+    let note = super::verify(&ctx, &Attempt::Lost).expect("载入没交回，复核居然不出声");
+    assert!(note.contains("font loading stopped"), "{note}");
+}

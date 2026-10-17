@@ -438,6 +438,8 @@ pub enum Attempt {
     NoneFound { tried: Vec<String> },
     /// 文件在，但读不动（权限 / IO）。
     ReadFailed { path: String, err: String },
+    /// 载入的那条线程没交回就没了（起不来 · 半路 panic）。
+    Lost,
 }
 
 /// 候选字体路径，**按优先级**。
@@ -539,13 +541,17 @@ pub fn load_with(
 ) -> Loading {
     let (tx, rx) = std::sync::mpsc::channel();
     let ctx = ctx.clone();
-    std::thread::Builder::new()
+    // 线程起不来 / 半路没了 ⇒ `tx` 随之丢掉，[`Loading::poll`] 交 [`Attempt::Lost`]（照样复核、出声）。
+    let spawned = std::thread::Builder::new()
         .name("filewin-fonts".into())
         .spawn(move || {
-            let _ = tx.send(job());
-            ctx.request_repaint();
-        })
-        .expect("起不了载入字体的线程");
+            if tx.send(job()).is_ok() {
+                ctx.request_repaint();
+            }
+        });
+    if let Err(e) = spawned {
+        tracing::warn!("filewin: font loading thread did not start: {e}");
+    }
     Loading(rx)
 }
 
@@ -558,9 +564,7 @@ impl Loading {
                 Some(attempt)
             }
             Err(std::sync::mpsc::TryRecvError::Empty) => None,
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                panic!("载入字体的线程没交回就退了")
-            }
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => Some(Attempt::Lost),
         }
     }
 }
@@ -710,6 +714,7 @@ pub fn verify(ctx: &egui::Context, attempt: &Attempt) -> Option<String> {
             tried.join(", ")
         ),
         Attempt::ReadFailed { path, err } => format!("failed to read {path}: {err}"),
+        Attempt::Lost => "font loading stopped before handing back".to_string(),
     };
     let detail = worst
         .iter()
