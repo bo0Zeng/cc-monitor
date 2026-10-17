@@ -13,7 +13,7 @@
 import { chan, ChanError, type Item } from "../../comms/inward/chan";
 import { budgetWithin, callTyped, ReplyUnreadable } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./backend-policy";
-import type { ConnectStage } from "./generated/ConnectStage";
+import type { ConnectStage } from "../../comms/ui/generated/ConnectStage";
 import { hostKey, type RemoteHostConfig } from "./remote-config";
 import { exactKeys, isObj } from "./ipc/decode";
 import { saidOf } from "./kit/detail";

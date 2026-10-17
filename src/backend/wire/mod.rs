@@ -675,8 +675,8 @@ pub fn branch_sum(ids: &[String]) -> String {
     s.hex()
 }
 
-/// 链路字节进 JSON 串的编码与它的逆：住拨号核心那一份（`ssh_dial::b64`，只许一份）。
-pub use ssh_dial::b64::{b64_decode, b64_encode};
+pub mod b64;
+pub use b64::{b64_decode, b64_encode};
 
 /// 「这条流在看哪几个会话」那一问（`stream-watch`，attach 行的 `watch` 同形）的入参与应答：住 `cmd-wire`（客户端同一份）。
 pub use cmd_wire::watch::{BranchHeld, WatchAsk, WatchFrom, WatchReply};

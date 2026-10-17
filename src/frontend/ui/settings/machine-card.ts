@@ -16,7 +16,7 @@ import type { MachineFault } from "../generated/MachineFault";
 import { askInterrupts, interruptRows } from "./interrupts";
 import { uninstallBackend, updateBackend } from "../backend-deploy";
 // `ConnectStage` 直接用生成物（绕道 `remote-section` 会成 import 环）。
-import type { ConnectStage } from "../generated/ConnectStage";
+import type { ConnectStage } from "../../../comms/ui/generated/ConnectStage";
 // 起新会话：全产品一个框（机器卡 ⋯「新建会话…」开它，机器锁定）。
 import { openNewSession } from "../new-session";
 import { probeMachine, ProbeStalled, type ConnTestResult, type ProbeStop } from "../remote-probe";
