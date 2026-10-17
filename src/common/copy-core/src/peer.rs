@@ -27,21 +27,6 @@ pub fn backend_differs(machine: &str) -> String {
     copy_text("peerVersion.said.differs", &[("machine", machine)])
 }
 
-/// 见 [`backend_old`]：接上了，那台比这一版新（这一侧不会把它换回去）。
-pub fn backend_newer(machine: &str) -> String {
-    copy_text("peerVersion.said.newer", &[("machine", machine)])
-}
-
-/// 见 [`backend_old`]：接上了，两边的版本比不出先后（任一边的构建标识解不出序 · 手上没带后端字节）。
-pub fn backend_incomparable(machine: &str) -> String {
-    copy_text("peerVersion.said.incomparable", &[("machine", machine)])
-}
-
-/// 见 [`backend_old`]：接上了，那台有几种帧的形状跟这一侧不一样（那几种收不到，别的照常）。
-pub fn backend_frames_differ(machine: &str) -> String {
-    copy_text("peerVersion.said.framesDiffer", &[("machine", machine)])
-}
-
 /// 见 [`backend_old`]。
 pub fn reply_unreadable(machine: &str) -> String {
     copy_text("peerVersion.said.unreadable", &[("machine", machine)])

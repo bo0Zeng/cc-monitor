@@ -375,11 +375,25 @@ pub enum Round {
         relation: crate::attach::Relation,
         differs: Vec<String>,
     },
-    /// 断着：那一句 ＋ 详情 ＋ 原因码与那台出示的指纹；`unsupported` ⇒ 那台不是 Unix。
+    /// 断着：那一句 ＋ 详情 ＋ 原因码与那台出示的指纹；`blocker` ⇒ 断在那台本身（不是路上），是哪一种。
     Down {
         problem: RoundProblem,
-        unsupported: bool,
+        blocker: Option<Blocker>,
     },
+}
+
+/// 一轮断在那台本身的哪一处（闭集）：不是 Unix（怎样都不会好）· 没有我们的后端（没装 · 起不了常驻 · 不是我们的）· 后端旧了（不认这一版的子命令）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, rename = "MachineBlocker", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "snake_case")]
+pub enum Blocker {
+    NotUnix,
+    NoBackend,
+    OldBackend,
 }
 
 /// [`Round::Down`] 那一句。

@@ -137,7 +137,7 @@ class ChatSessionMidTest {
             runCurrent()
             assertNull(s.state.value.model.blocked)
             assertNull(s.state.value.permission.blocked)
-            link.state.value = LinkState.Down(Said("", ""), needsHand = false)
+            link.state.value = LinkState.Down(Said("", ""))
             runCurrent()
             val off = copyText("newSession.machine.offline", "machine" to "box")
             assertEquals(off to off, s.state.value.model.blocked to s.state.value.permission.blocked)

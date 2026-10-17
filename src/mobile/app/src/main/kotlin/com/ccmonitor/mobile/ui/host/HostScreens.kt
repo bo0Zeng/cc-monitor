@@ -48,9 +48,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.Deploying
-import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
+import com.ccmonitor.mobile.core.claude.link.deployFix
 import com.ccmonitor.mobile.core.claude.link.wire.AgentFacts
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Endpoint
@@ -635,7 +635,7 @@ object HostEditTags {
     const val DEPLOY = "host-edit-deploy"
 }
 
-/** 主机设置里那一行：标题 ＋ 一颗按钮（核心点名的那一种：安装 / 更新；没点名 ⇒ 核对版本）＋ 过程与结局（核心写好的话）。 */
+/** 主机设置里那一行：标题 ＋ 一颗按钮（成品给的那一颗：安装 / 更新；没给 ⇒ 核对版本）＋ 过程与结局（核心写好的话）。 */
 @Composable
 private fun BackendRow(hostId: String) {
     val backends = koinInject<HostBackends>()
@@ -644,7 +644,7 @@ private fun BackendRow(hostId: String) {
     val deploying by feed.deploying.collectAsState()
     val deploy = rememberDeployPress(hostId)
     val conn = deploy.held
-    val fix = (link as? LinkState.Down)?.fix ?: (link as? LinkState.Up)?.fix
+    val fix = link.deployFix()
     val step = deploying as? Deploying.Step
     Text(copyText("mobHostEdit.backend.title"), style = MaterialTheme.typography.labelMedium)
     SecondaryButton(

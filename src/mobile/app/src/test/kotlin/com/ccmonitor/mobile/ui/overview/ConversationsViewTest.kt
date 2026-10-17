@@ -1,7 +1,6 @@
 package com.ccmonitor.mobile.ui.overview
 
 import com.ccmonitor.mobile.core.claude.link.Deploying
-import com.ccmonitor.mobile.core.claude.link.Fix
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.LiveSession
 import com.ccmonitor.mobile.core.claude.link.Said
@@ -10,6 +9,8 @@ import com.ccmonitor.mobile.core.claude.link.Toned
 import com.ccmonitor.mobile.core.claude.link.wire.Hidden
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryListPage
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryRow
+import com.ccmonitor.mobile.core.claude.link.wire.MachineFix
+import com.ccmonitor.mobile.core.claude.link.wire.MachineFixButton
 import com.ccmonitor.mobile.core.claude.link.wire.Needs
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsRow
 import com.ccmonitor.mobile.core.claude.link.wire.SessionDot
@@ -57,13 +58,17 @@ class ConversationsViewTest {
         )
 
     @Test
-    fun `装一次会好的那一种照核心点名带上（断着 · 通着旧了）；装到哪一步原样带上，连着的那一会儿也不丢`() {
+    fun `装一次会好的那一颗照成品带上（断着 · 通着旧了），别的修法不挑；装到哪一步原样带上，连着的那一会儿也不丢`() {
         val step = Deploying.Step("安装 cc-monitor → box", bar = true)
-        val down = view("m", LinkState.Down(Said("远端 cc-monitor 未装", ""), needsHand = true, fix = Fix.INSTALL), SessionTable(), list, Fetched.Loading, deploying = step)
-        assertEquals(Fix.INSTALL, down.fix)
+        val install = MachineFixButton(MachineFix.INSTALL, copyText("machineState.fix.install"))
+        val update = MachineFixButton(MachineFix.UPDATE, copyText("machineState.fix.update"))
+        val down = view("m", LinkState.Down(Said("远端 cc-monitor 未装", ""), listOf(install)), SessionTable(), list, Fetched.Loading, deploying = step)
+        assertEquals(install, down.fix)
         assertEquals(step, down.deploying)
-        val old = view("m", LinkState.Up(Said("box 后端要更新", ""), fix = Fix.UPDATE), SessionTable(), list, Fetched.Got(emptyList()))
-        assertEquals(Fix.UPDATE, old.fix)
+        val retry = listOf(MachineFixButton(MachineFix.RETRY, copyText("machineState.fix.retry")), MachineFixButton(MachineFix.CONN_SETTINGS, copyText("machinePage.conn.toggle")))
+        assertNull(view("m", LinkState.Down(Said("m 离线", ""), retry), SessionTable(), list, Fetched.Loading).fix)
+        val old = view("m", LinkState.Up(Said("box 后端要更新", ""), listOf(update)), SessionTable(), list, Fetched.Got(emptyList()))
+        assertEquals(update, old.fix)
         assertEquals(Problem("box 后端要更新", ""), old.linkNotice)
         assertEquals(step, view("m", LinkState.Connecting, SessionTable(), list, Fetched.Loading, deploying = step).deploying)
         assertNull(view("m", LinkState.Up(), SessionTable(), list, Fetched.Got(emptyList())).fix)
@@ -102,7 +107,7 @@ class ConversationsViewTest {
     @Test
     fun `流走不通只说核心那一句；问失败的那一样单独说`() {
         val p = Problem("那一句", "详情")
-        val down = view("m", LinkState.Down(Said("m 离线", "boom"), needsHand = false), SessionTable(), list, Fetched.Got(emptyList()))
+        val down = view("m", LinkState.Down(Said("m 离线", "boom")), SessionTable(), list, Fetched.Got(emptyList()))
         assertEquals(Problem("m 离线", "boom"), down.linkProblem)
         assertTrue(down.sections.isEmpty())
         val failed = view("m", LinkState.Up(), SessionTable(), Fetched.Failed(p), Fetched.Got(emptyList()))
@@ -145,7 +150,7 @@ class ConversationsViewTest {
     @Test
     fun `离线（流走不通 · 还在接）：照画本地缓存里上次那一份，离线那一句照说；连上问到了 ⇒ 换成那台这一份`() {
         val cached = HistoryListPage(listOf(row("1", "昨天"), row("2", "昨天")), emptyList(), null, false)
-        val down = view("m", LinkState.Down(Said("m 离线", "boom"), needsHand = false), SessionTable(), Fetched.Loading, Fetched.Loading, cached = cached)
+        val down = view("m", LinkState.Down(Said("m 离线", "boom")), SessionTable(), Fetched.Loading, Fetched.Loading, cached = cached)
         assertEquals(Problem("m 离线", "boom"), down.linkProblem)
         assertEquals(listOf("1", "2"), down.recent.map { it.sessionId })
         val connecting = view("m", LinkState.Connecting, SessionTable(), Fetched.Loading, Fetched.Loading, cached = cached)
@@ -160,7 +165,7 @@ class ConversationsViewTest {
     fun `断着：那台说看不见时照旧作数的（已结束 · 记录已不在）照画，其余点画说不清、字写那台离线，不照断前那张会话表`() {
         val cached = HistoryListPage(listOf(row("1", "昨天"), row("2", "昨天", face = Faces.of("ended")), row("3", "昨天", face = Faces.of("gone"))), emptyList(), null, false)
         val stale = live("1", "live-working-plain")
-        val down = view("m", LinkState.Down(Said("m 离线", "boom"), needsHand = false), stale, Fetched.Loading, Fetched.Loading, cached = cached)
+        val down = view("m", LinkState.Down(Said("m 离线", "boom")), stale, Fetched.Loading, Fetched.Loading, cached = cached)
         val by = down.recent.associateBy { it.sessionId }
         assertEquals(SessionDot.UNKNOWN, by.getValue("1").dot)
         assertEquals(Toned(copyText("newSession.machine.offline", "machine" to "m"), Tone.PLAIN), by.getValue("1").status)
@@ -185,7 +190,7 @@ class ConversationsViewTest {
         assertEquals(listOf(null, "已隐藏", null), rows.map { it.hidden })
         assertEquals(true, on.showHidden)
         assertEquals("抽屉「最近」不列隐藏的", listOf("1", "3"), on.recent.map { it.sessionId })
-        val down = view("m", LinkState.Down(Said("m 离线", "boom"), needsHand = false), SessionTable(), Fetched.Loading, Fetched.Loading, cached = page, showHidden = true)
+        val down = view("m", LinkState.Down(Said("m 离线", "boom")), SessionTable(), Fetched.Loading, Fetched.Loading, cached = page, showHidden = true)
         assertEquals("离线照缓存画时也照开关", listOf("1", "2", "3"), down.sections.flatMap { it.rows }.map { it.sessionId })
     }
 }

@@ -22,7 +22,7 @@ private fun Said.problem() = Problem(text, detail)
 /** 接一台走不通 ⇒ 核心说的那一句。 */
 fun LinkState.Down.problem(): Problem = said.problem()
 
-/** 通着、但那台后端旧了（手机还装不了后端，照用对得上的那几条）⇒ 那一句「需手动」；不旧 ⇒ `null`。 */
+/** 通着、但那台旧了 · 较新（照用对得上的那几条）⇒ 成品那一句；没有 ⇒ `null`。 */
 fun LinkState.Up.notice(): Problem? = notice?.problem()
 
 /** 一问一答没答成 ⇒ 那一句；答成了 ⇒ `null`。[command] 是问的那条命令（解不出时进详情）。 */

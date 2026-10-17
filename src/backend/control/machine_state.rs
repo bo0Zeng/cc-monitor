@@ -44,7 +44,7 @@ pub(crate) fn note_in(hosts: &[(String, bool)], machine: &str, fact: Fact) -> Ma
         let mut t = TABLE.lock().unwrap_or_else(|e| e.into_inner());
         let e = t.entry(machine.to_string()).or_default();
         fold(e, fact);
-        product(e, machine, enabled)
+        product(e, machine, enabled, true)
     };
     let _ = changes().send((machine.to_string(), p.clone()));
     p
@@ -65,7 +65,7 @@ pub(crate) fn table_moved_in(hosts: &[(String, bool)]) {
             .map(|(n, c)| {
                 (
                     n.clone(),
-                    product(t.get(n).unwrap_or(&Entry::default()), n, *c),
+                    product(t.get(n).unwrap_or(&Entry::default()), n, *c, true),
                 )
             })
             .collect()
@@ -88,7 +88,7 @@ pub(crate) fn read_in(hosts: &[(String, bool)]) -> BTreeMap<String, MachineState
         .map(|(n, c)| {
             (
                 n.clone(),
-                product(t.get(n).unwrap_or(&Entry::default()), n, *c),
+                product(t.get(n).unwrap_or(&Entry::default()), n, *c, true),
             )
         })
         .collect()
@@ -137,7 +137,7 @@ impl crate::wire::typed::Handle for MachineRoundCmd {
                 &req.machine,
                 Fact::Round {
                     round: req.round,
-                    version: req.version,
+                    version: Some(req.version),
                 },
             ))
         }

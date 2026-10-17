@@ -29,9 +29,8 @@ use crate::frames::Admit;
 use crate::line::{read_capped_line, CappedLine, BACKEND_FRAME_LINE_CAP};
 use crate::watch::Desk;
 use cmd_wire::attach::Relation;
-use cmd_wire::machine::Why;
+use cmd_wire::machine::{Blocker, Why};
 use copy_core::copy_text;
-use serde::Serialize;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
@@ -39,14 +38,12 @@ use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{watch as tw, Notify};
 
-/// 给人看的那一句 ＋ 复制详情；拨号拒了时另带原因码与那台出示的指纹（宿主在进程里按它们定那一态与修法，不上线）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+/// 给人看的那一句 ＋ 复制详情；拨号拒了时另带原因码与那台出示的指纹（后端按它们定那一态与修法）。
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Problem {
     pub text: String,
     pub detail: String,
-    #[serde(skip)]
     pub why: Option<Why>,
-    #[serde(skip)]
     pub seen_key: Option<String>,
 }
 
@@ -144,32 +141,22 @@ pub const ENSURE: &str = "--resident-ensure";
 /// 换装：在跑的那一个停掉、换成落点上这一版。
 pub const ENSURE_REPLACE: &str = "--resident-ensure --replace";
 
-/// 一台此刻通不通。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(tag = "state", rename_all = "snake_case")]
+/// 一台此刻通不通（只有控制要的：成品由后端 `deploy::machine` 照它定）。
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum State {
     Connecting,
     /// 通着：第 `epoch` 条流；`relation` = 那台相对手上这一版（那台在 attach 回话里给的）；
-    /// `differs` = 握手那一刻比出形状对不上的那几种帧（这几种的行在帧门上丢）；`notice` = 版本那一句（旧 · 新 · 不可比 · 帧形状对不上，同一版 ⇒ 无）；
-    /// `fix` ⇒ 更新那台会好、而这一侧不自己装（手机）。
+    /// `differs` = 握手那一刻比出形状对不上的那几种帧（这几种的行在帧门上丢）。
     Up {
         epoch: u64,
         relation: Relation,
-        #[serde(skip_serializing_if = "Vec::is_empty")]
         differs: Vec<String>,
-        notice: Option<Problem>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        fix: Option<Fix>,
     },
-    /// 断着：那一句；`needs_hand` ⇒ 不会自己好（要［重试］或人去装 / 起）；`unsupported` ⇒ 那台不是 Unix（常驻脱离不了）；
-    /// `fix` ⇒ 装一次会好、而这一侧不自己装（手机：等人按［装后端］/［更新后端］）—— 装得了的宿主（桌面）下一轮自己装，恒缺。
+    /// 断着：那一句；`needs_hand` ⇒ 不会自己好（要［重试］或人去装 / 起）；`blocker` ⇒ 断在那台本身的哪一处（不是 Unix · 没有后端 · 后端旧了）。
     Down {
         problem: Problem,
         needs_hand: bool,
-        #[serde(skip_serializing_if = "std::ops::Not::not")]
-        unsupported: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        fix: Option<Fix>,
+        blocker: Option<Blocker>,
     },
 }
 
@@ -186,9 +173,7 @@ impl State {
                 differs: differs.clone(),
             },
             State::Down {
-                problem,
-                unsupported,
-                ..
+                problem, blocker, ..
             } => Round::Down {
                 problem: RoundProblem {
                     text: problem.text.clone(),
@@ -196,18 +181,10 @@ impl State {
                     why: problem.why,
                     seen_key: problem.seen_key.clone(),
                 },
-                unsupported: *unsupported,
+                blocker: *blocker,
             },
         }
     }
-}
-
-/// 装一次会好的那一种：那台没有我们的后端（没装 · 起不了 · 不是我们的）· 有、但旧了（不认这一版的子命令）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Fix {
-    Install,
-    Update,
 }
 
 /// 交给宿主的事（按发生的先后、一件一件交：宿主慢了，读流就跟着慢，背压一路回到那台）。
@@ -266,15 +243,6 @@ pub fn sink(f: impl Fn(Event) + Send + Sync + 'static) -> Sink {
     })
 }
 
-/// 更新那台会不会好：那台旧 ⇒ 会；帧形状对不上、那台又不比这一版新 ⇒ 会；那台新 ⇒ 不会（该更新的是这一侧）。
-fn needs_update(relation: Relation, differs: &[String]) -> bool {
-    match relation {
-        Relation::Older => true,
-        Relation::Newer => false,
-        Relation::Same | Relation::Incomparable => !differs.is_empty(),
-    }
-}
-
 /// 走不通的一轮：那一句 ＋ 是哪一类。
 struct Fail {
     problem: Problem,
@@ -285,10 +253,8 @@ struct Fail {
 enum FailKind {
     /// 断在路上（被掐 · 小中继与常驻断开 · 拨不通 · 问不成换不换）：再试会好。
     Transient,
-    /// 没装 · 起不了常驻 · 不是我们的后端 · 太旧：装一次会好 ⇒ 装得了的宿主下一轮再试，装不了的等人（`Fix` 是装还是更新）。
-    Install(Fix),
-    /// 那台不是 Unix：怎样都不会好。
-    Unsupported,
+    /// 断在那台本身：不是 Unix ⇒ 怎样都不会好；没有后端 · 后端旧了 ⇒ 装一次会好（装得了的宿主下一轮再试，装不了的等人）。
+    Blocked(Blocker),
     /// 拨出去到 [`DIAL_WITHIN`] 都没回话：没够到那一台（静默断网）⇒ 再试会好，不涨退避（没有一次登录落到它身上）。
     Unreached,
     /// 拨着的时候宿主报了事（网回来了 · 回前台 · 换了一条 SSH · ［重试］）⇒ 丢下这一拨、马上整份重来。
@@ -498,8 +464,7 @@ impl<T: Transport> Feed<T> {
                 self.set_state(State::Down {
                     problem: self.offline(),
                     needs_hand: false,
-                    unsupported: false,
-                    fix: None,
+                    blocker: None,
                 })
                 .await;
                 if ssh.changed().await.is_err() {
@@ -534,8 +499,6 @@ impl<T: Transport> Feed<T> {
                     self.set_state(State::Up {
                         epoch,
                         relation,
-                        notice: self.notice(&hello.build_id, relation, &differs),
-                        fix: (!installs && needs_update(relation, &differs)).then_some(Fix::Update),
                         differs,
                     })
                     .await;
@@ -550,8 +513,7 @@ impl<T: Transport> Feed<T> {
                     self.set_state(State::Down {
                         problem: self.offline(),
                         needs_hand: false,
-                        unsupported: false,
-                        fix: None,
+                        blocker: None,
                     })
                     .await;
                     (true, false, true)
@@ -567,20 +529,19 @@ impl<T: Transport> Feed<T> {
                     continue;
                 }
                 Err(Fail { problem, kind }) => {
-                    let needs_hand = match kind {
-                        FailKind::Transient | FailKind::Unreached | FailKind::Interrupted => false,
-                        FailKind::Install(_) => !installs,
-                        FailKind::Unsupported => true,
+                    let blocker = match kind {
+                        FailKind::Blocked(b) => Some(b),
+                        FailKind::Transient | FailKind::Unreached | FailKind::Interrupted => None,
                     };
-                    let fix = match kind {
-                        FailKind::Install(f) if !installs => Some(f),
-                        _ => None,
+                    let needs_hand = match blocker {
+                        Some(Blocker::NotUnix) => true,
+                        Some(Blocker::NoBackend | Blocker::OldBackend) => !installs,
+                        None => false,
                     };
                     self.set_state(State::Down {
                         problem,
                         needs_hand,
-                        unsupported: kind == FailKind::Unsupported,
-                        fix,
+                        blocker,
                     })
                     .await;
                     (false, needs_hand, kind != FailKind::Unreached)
@@ -683,27 +644,6 @@ impl<T: Transport> Feed<T> {
             differs,
             carried,
         })
-    }
-
-    /// 版本那一句（写字只在 `copy_core::peer`）：同一版 ⇒ 无；旧 · 新 · 不可比各一句；帧形状对不上 ⇒ 并进同一句（详情添一行），
-    /// 同一版而帧形状对不上 ⇒ 「版本不同 · 需更新」。
-    fn notice(&self, theirs: &str, relation: Relation, differs: &[String]) -> Option<Problem> {
-        let m = &self.cfg.machine;
-        let text = match relation {
-            Relation::Same if differs.is_empty() => return None,
-            Relation::Same => copy_core::backend_frames_differ(m),
-            Relation::Older => copy_core::backend_old(m),
-            Relation::Newer => copy_core::backend_newer(m),
-            Relation::Incomparable => copy_core::backend_incomparable(m),
-        };
-        let mut detail = format!(
-            "theirs: {theirs}\nmine: {}",
-            self.cfg.mine.as_deref().unwrap_or_default()
-        );
-        if !differs.is_empty() {
-            detail.push_str(&format!("\nframes: {}", differs.join(", ")));
-        }
-        Some(Problem::new(text, detail))
     }
 
     /// 开一条 `--resident-attach`、握手（attach 行带手上这一版，那台回新旧）。
@@ -821,20 +761,21 @@ impl<T: Transport> Feed<T> {
             ),
             AttachFail::NotOurs(line) => Fail::new(
                 Problem::new(copy_text("rsRemoteResident.hello.notOurs", &[]), line),
-                FailKind::Install(Fix::Install),
+                FailKind::Blocked(Blocker::NoBackend),
             ),
             AttachFail::Cut { said, raw, .. } => {
                 Fail::new(Problem::new(said, raw), FailKind::Transient)
             }
-            AttachFail::Reply(said) => {
-                Fail::new(Problem::new(said, ""), FailKind::Install(Fix::Install))
-            }
+            AttachFail::Reply(said) => Fail::new(
+                Problem::new(said, ""),
+                FailKind::Blocked(Blocker::NoBackend),
+            ),
             AttachFail::Old => Fail::new(
                 Problem::new(
                     copy_core::backend_old(m),
                     format!("refused: {}", attach::REFUSE_MALFORMED),
                 ),
-                FailKind::Install(Fix::Update),
+                FailKind::Blocked(Blocker::OldBackend),
             ),
         }
     }
@@ -1064,11 +1005,11 @@ fn read_one_shot(exec: &Exec, machine: &str) -> Result<serde_json::Value, Fail> 
     let out = exec.stdout.trim();
     let err = exec.stderr.trim();
     let raw = || format!("exit: {:?}\nstdout: {out}\nstderr: {err}", exec.exit_status);
-    let install = |p: Problem| Err(Fail::new(p, FailKind::Install(Fix::Install)));
+    let install = |p: Problem| Err(Fail::new(p, FailKind::Blocked(Blocker::NoBackend)));
     if out.contains(OLD_BACKEND_MARKER) {
         return Err(Fail::new(
             Problem::new(copy_core::backend_old(machine), raw()),
-            FailKind::Install(Fix::Update),
+            FailKind::Blocked(Blocker::OldBackend),
         ));
     }
     match exec.exit_status {
@@ -1100,7 +1041,7 @@ fn read_one_shot(exec: &Exec, machine: &str) -> Result<serde_json::Value, Fail> 
                             format!("{m}\n{detail}")
                         },
                     ),
-                    FailKind::Unsupported,
+                    FailKind::Blocked(Blocker::NotUnix),
                 )),
                 (Some(_), Some(m)) => install(Problem::new(m, detail)),
                 _ => install(Problem::new(

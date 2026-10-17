@@ -1,11 +1,12 @@
 //! **一台的常驻流**在手机这一侧的宿主：循环本身是 `resident-client` 那一份（[`Feed`]，桌面同一条循环），
 //! 这里只接两根线 —— 下面那条 SSH（[`PhoneLink`]：拨号核心在这台手机上开的链路，拨号请求由 Kotlin 交那一份）· 往 Kotlin 交的事（一个回调，走消息）。
 //!
-//! 往 Kotlin 交的事一律 `(编号, 种类, 一段文本)`：`state`（这台通不通，JSON；SSH 那层跟着它换连接）· `frame`（流上的一帧，原样一行；`line` 帧里解不开的那条记录换成认不出那一条）·
+//! 往 Kotlin 交的事一律 `(编号, 种类, 一段文本)`：`state`（这台通不通 ＋ 那台的状态成品，JSON：[`state_line`]；SSH 那层跟着它换连接）· `frame`（流上的一帧，原样一行；`line` 帧里解不开的那条记录换成认不出那一条）·
 //! `watch_from`（JSON 数组）· `ssh`（SSH 够没够着那一台：`true` / `false`，与流通不通分开；SSH 那层跟它走）· `reply`（一问一答的结局，JSON，带 `call` 编号）·
 //! `moved`（分块传走到哪，`transfer.rs`）。
 
 use cmd_wire::record::OrUnread;
+use deploy::machine::{fold, product, Entry, Fact};
 use resident_client::client::CallError;
 use resident_client::feed::{
     sink, Boxed, Config, Event, Exec, Feed, Problem, Progress, State, Transport,
@@ -250,10 +251,9 @@ pub(crate) fn feed(h: i64) -> Option<Arc<Feed<PhoneLink>>> {
 }
 
 /// 一件事 ⇒ `(种类, 文本)`。帧按 `cmd-wire` 那一份类型解过、再按类型写一行（`line` 帧里解不开的那条记录成认不出那一条：[`OrUnread`]）；
-/// 解不开 ⇒ `unread` 原样那一行。Kotlin 用不着的（接上那一刻的 hello 与客户端：问答经 [`call`] 走 · 超长丢行的缺口）⇒ `None`。
+/// 解不开 ⇒ `unread` 原样那一行；状态那一件经 [`state_line`]（要这台手上的事实）。Kotlin 用不着的（接上那一刻的 hello 与客户端：问答经 [`call`] 走 · 超长丢行的缺口）⇒ `None`。
 pub fn event_of(e: &Event) -> Option<(&'static str, String)> {
     Some(match e {
-        Event::State(s) => ("state", state_json(s)),
         Event::Frame(line) => match cmd_wire::frame::decode::<OrUnread>(line)
             .and_then(|f| serde_json::to_string(&f))
         {
@@ -261,19 +261,34 @@ pub fn event_of(e: &Event) -> Option<(&'static str, String)> {
             Err(_) => ("unread", line.clone()),
         },
         Event::Ssh(reached) => ("ssh", reached.to_string()),
-        Event::Attached { .. } | Event::Gap => return None,
+        Event::State(_) | Event::Attached { .. } | Event::Gap => return None,
     })
 }
 
-/// 状态那一行（要不要「更新后端」由循环定好在 `fix` 里：通着 · 断着同一格）。
-pub fn state_json(s: &State) -> String {
-    serde_json::to_string(s).unwrap_or_else(|_| r#"{"state":"connecting"}"#.to_string())
+/// 状态那一行：`state` 通没通（`connecting` · `up` 带第几条流 `epoch` · `down`）＋ `machine` 那台的状态成品
+/// （收进这台手上的事实 `e`，由 `deploy::machine` 定，同桌面那一份；这一端不自己装后端 ⇒ 没有后端那一轮给［安装］）。
+pub fn state_line(e: &mut Entry, s: &State, machine: &str) -> String {
+    fold(
+        e,
+        Fact::Round {
+            round: s.round(),
+            version: None,
+        },
+    );
+    let mut line = match s {
+        State::Connecting => serde_json::json!({ "state": "connecting" }),
+        State::Up { epoch, .. } => serde_json::json!({ "state": "up", "epoch": epoch }),
+        State::Down { .. } => serde_json::json!({ "state": "down" }),
+    };
+    line["machine"] = serde_json::to_value(product(e, machine, true, false)).unwrap_or_default();
+    line.to_string()
 }
 
 /// 看一台（在当前运行时上起它的循环）。`mine` = 手上这一版的身份（版本门的对照物）。回编号。
 pub fn open(machine: String, mine: Option<String>, tz: Option<String>, on_event: OnEvent) -> i64 {
     static NEXT: AtomicI64 = AtomicI64::new(1);
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
+    let name = machine.clone();
     let cfg = Config {
         machine,
         mine,
@@ -292,12 +307,20 @@ pub fn open(machine: String, mine: Option<String>, tz: Option<String>, on_event:
             );
         },
     );
+    let facts = Mutex::new(Entry::default());
     let feed = Feed::start(
         cfg,
         None,
         Arc::clone(&desk),
         sink(move |e: Event| {
-            if let Some((kind, body)) = event_of(&e) {
+            let got = match &e {
+                Event::State(s) => {
+                    let mut facts = facts.lock().unwrap_or_else(|e| e.into_inner());
+                    Some(("state", state_line(&mut facts, s, &name)))
+                }
+                _ => event_of(&e),
+            };
+            if let Some((kind, body)) = got {
                 on_event(id, kind, body);
             }
         }),
@@ -684,39 +707,13 @@ mod tests {
         );
     }
 
-    /// 交 Kotlin 的几种事：状态是带 `state` 标签的 JSON。
+    /// 交 Kotlin 的几种事：状态那一件走 [`state_line`]（要这台手上的事实）· 帧原样。
     #[test]
     fn events_are_tagged_and_frames_go_through_untouched() {
-        let (k, b) = event_of(&Event::State(State::Up {
-            epoch: 3,
-            relation: cmd_wire::attach::Relation::Newer,
-            differs: vec![],
-            notice: Some(Problem::new("box 后端较新 · 不会换回", "")),
-            fix: None,
-        }))
-        .unwrap();
-        assert_eq!(k, "state");
-        let v: serde_json::Value = serde_json::from_str(&b).unwrap();
-        assert_eq!(v["state"], "up");
-        assert_eq!(v["epoch"], 3);
-        assert_eq!(v["relation"], "newer");
-        assert!(v.get("fix").is_none(), "那台新 ⇒ 不点名「更新」：{v}");
-        let (k, b) = event_of(&Event::State(State::Down {
-            problem: Problem::new("box 离线", ""),
-            needs_hand: true,
-            unsupported: false,
-            fix: None,
-        }))
-        .unwrap();
-        assert_eq!(k, "state");
-        let v: serde_json::Value = serde_json::from_str(&b).unwrap();
         assert_eq!(
-            (
-                v["state"].as_str(),
-                v["needs_hand"].as_bool(),
-                v["problem"]["text"].as_str()
-            ),
-            (Some("down"), Some(true), Some("box 离线"))
+            event_of(&Event::State(State::Connecting)),
+            None,
+            "状态那一件经 state_line"
         );
         assert_eq!(event_of(&Event::Gap), None, "缺口 Kotlin 用不着");
         assert_eq!(
@@ -737,6 +734,83 @@ mod tests {
         assert!(w.release("a"), "最后一处放手 ⇒ 名单变了");
         assert!(w.sids().is_empty());
         assert!(!w.release("a"), "本来就没在看 ⇒ 不变");
+    }
+
+    /// 状态那一行的金样：一串事实由生产函数现产，与 `tests/__fixtures__/mobile-state-line.golden.json` 逐字相等；
+    /// 手机那一侧（`ResidentFeedTest`）读同一份逐行解。只有通没通与成品，画法那几格（修法 · 版本那一句）不另带。
+    #[test]
+    fn the_state_line_matches_the_cross_language_golden() {
+        use cmd_wire::attach::Relation;
+        use cmd_wire::machine::{Blocker, Why};
+        let up = |epoch, relation| State::Up {
+            epoch,
+            relation,
+            differs: vec![],
+        };
+        let down = |problem: Problem, blocker: Option<Blocker>| State::Down {
+            problem,
+            needs_hand: blocker.is_some(),
+            blocker,
+        };
+        let refused = Problem::new("连接失败 · 密钥被拒", "命令：dial\n原话：denied")
+            .because(Some(Why::Auth), None);
+        let cases: Vec<(&str, State)> = vec![
+            ("正在连", State::Connecting),
+            ("连着", up(1, Relation::Same)),
+            ("那台旧", up(2, Relation::Older)),
+            ("那台新", up(3, Relation::Newer)),
+            (
+                "没有后端",
+                down(
+                    Problem::new("远端没有后端", "exit: 127"),
+                    Some(Blocker::NoBackend),
+                ),
+            ),
+            (
+                "后端旧了",
+                down(
+                    Problem::new("后端要更新", "refused: x"),
+                    Some(Blocker::OldBackend),
+                ),
+            ),
+            ("密钥被拒", down(refused, None)),
+            ("离线", down(Problem::new("box 离线", ""), None)),
+            (
+                "不是 Unix",
+                down(
+                    Problem::new("仅支持 Unix", "setsid"),
+                    Some(Blocker::NotUnix),
+                ),
+            ),
+        ];
+        let out: Vec<serde_json::Value> = cases
+            .iter()
+            .map(|(name, s)| {
+                let line: serde_json::Value =
+                    serde_json::from_str(&state_line(&mut Entry::default(), s, "box")).unwrap();
+                serde_json::json!({ "name": name, "line": line })
+            })
+            .collect();
+        let golden = serde_json::json!({
+            "说明": [
+                "手机核心交 Kotlin 的 `state` 那一行（通没通 ＋ 那台的状态成品）的跨语言金样。",
+                "Rust：src/mobile/core-rs/rust/resident.rs 按 name 走生产函数现产，逐字相等。",
+                "Kotlin：core-claude 的 ResidentFeedTest 读同一份逐行解成 LinkState。",
+                "机器名 · 那一句 · 详情是结构夹具，不取自任何真机。"
+            ],
+            "cases": out,
+        });
+        let text = serde_json::to_string_pretty(&golden).unwrap() + "\n";
+        let rel = "tests/__fixtures__/mobile-state-line.golden.json";
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
+        let want = std::fs::read_to_string(root.join(rel)).unwrap_or_default();
+        let fresh = root.join(".build/golden").join(rel);
+        if text != want {
+            let _ = std::fs::create_dir_all(fresh.parent().unwrap());
+            let _ = std::fs::write(&fresh, &text);
+            panic!("{rel} 与现打的不一致：现打的在 .build/golden/{rel}；对过后跑 bash tests/scripts/bless-golden.sh 拷回（手机 ResidentFeedTest 读它）");
+        }
+        let _ = std::fs::remove_file(&fresh);
     }
 
     /// ack 与 capture 那一行的读法。

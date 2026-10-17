@@ -814,11 +814,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   "copy-core": {
     backend_old: "J22",
     backend_differs: NONE,
-    // 帧种形状对不上那一句（`copy-core::backend_frames_differ`）只在通信层：它在握手那一刻比帧表、写好带机器名的那一句。
-    backend_frames_differ: NONE,
-    // 接上时那台较新 · 新旧比不出那两句同上：通信层按那台在 attach 回话里给的新旧写好，界面只照抄。
-    backend_newer: NONE,
-    backend_incomparable: NONE,
     // 测试按文案键断言用（占位处任意值）；TS 那一侧的同形在测试支架 `tests/test-support/copy-pattern.ts`，不是生产判定。
     copy_matches: NONE,
     // 同上，只钉给了值的那几格（TS 那一侧是 `copyPattern(键, 已知值)`）。

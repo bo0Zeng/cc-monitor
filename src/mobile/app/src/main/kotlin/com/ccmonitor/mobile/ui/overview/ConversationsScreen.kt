@@ -36,8 +36,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.Deploying
-import com.ccmonitor.mobile.core.claude.link.Fix
 import com.ccmonitor.mobile.core.claude.link.Toned
+import com.ccmonitor.mobile.core.claude.link.wire.MachineFixButton
 import com.ccmonitor.mobile.core.claude.link.wire.SessionDot
 import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import com.ccmonitor.mobile.core.copy.copyText
@@ -277,15 +277,15 @@ private fun toneColor(t: Tone?): Color {
     }
 }
 
-/** 问题条上的修法：核心点名的那一种（[fix]）· 装到哪一步了（[deploying]）· 按下去做什么。 */
+/** 问题条上的修法：成品给的那一颗（[fix]）· 装到哪一步了（[deploying]）· 按下去做什么。 */
 private class Fixing(
-    val fix: Fix?,
+    val fix: MachineFixButton?,
     val deploying: Deploying?,
     val onDeploy: () -> Unit,
 )
 
 /**
- * 问题条：核心那一句 ＋［重试］［复制详情］；核心点名装一次会好 ⇒ 最前一颗［安装］/［更新］。
+ * 问题条：核心那一句 ＋［重试］［复制详情］；成品给了装一次会好的那一颗 ⇒ 最前一颗［安装］/［更新］。
  * 装的时候同一处换成那一步的话（＋ 进度条），按钮变灰不挪位；没装上 ⇒ 换成失败那一句，按钮可再按。
  */
 @Composable

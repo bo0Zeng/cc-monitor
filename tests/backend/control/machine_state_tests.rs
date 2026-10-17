@@ -3,7 +3,7 @@
 
 use super::*;
 use cmd_wire::attach::Relation;
-use cmd_wire::machine::{MachineFix, MachineStateKind, RoundProblem, Why};
+use cmd_wire::machine::{Blocker, MachineFix, MachineStateKind, RoundProblem, Why};
 
 /// 订那条通道、等到名字是 `machine` 的那一件（别的判据也在往同一条里推）。
 fn next_of(
@@ -32,7 +32,7 @@ async fn a_round_handed_in_is_pushed_as_the_product() {
                 why: Some(Why::Auth),
                 seen_key: None,
             },
-            unsupported: false,
+            blocker: None,
         },
         version: "9.9.9".into(),
     };
@@ -57,12 +57,12 @@ async fn a_round_handed_in_is_pushed_as_the_product() {
                     why: Some(Why::Auth),
                     seen_key: None,
                 },
-                unsupported: false,
+                blocker: None,
             },
-            version: "9.9.9".into(),
+            version: Some("9.9.9".into()),
         },
     );
-    let want = product(&e, "ms-round", true);
+    let want = product(&e, "ms-round", true, true);
     assert_eq!(got, want, "回包不是那一份成品");
     assert_eq!(next_of(&mut rx, "ms-round"), want, "推出去的不是那一份成品");
 }
@@ -78,7 +78,7 @@ fn turning_connect_off_pushes_a_disabled_row_with_connect() {
                 relation: Relation::Same,
                 differs: vec![],
             },
-            version: "9.9.9".into(),
+            version: Some("9.9.9".into()),
         },
     );
     assert_eq!(next_of(&mut rx, "ms-off").state, MachineStateKind::Up);
@@ -97,7 +97,7 @@ fn a_machine_dropped_from_the_table_is_forgotten() {
         "ms-gone",
         Fact::Round {
             round: Round::Connecting,
-            version: "9.9.9".into(),
+            version: Some("9.9.9".into()),
         },
     );
     table_moved_in(&[]);
@@ -120,7 +120,7 @@ fn the_product_matches_the_cross_language_golden() {
     };
     let round = |round| Fact::Round {
         round,
-        version: "<ver>".into(),
+        version: Some("<ver>".into()),
     };
     let up = |relation| {
         round(Round::Up {
@@ -131,7 +131,7 @@ fn the_product_matches_the_cross_language_golden() {
     let down = |why| {
         round(Round::Down {
             problem: problem(why),
-            unsupported: false,
+            blocker: None,
         })
     };
     let cases: Vec<(&str, Option<Fact>, bool)> = vec![
@@ -157,7 +157,7 @@ fn the_product_matches_the_cross_language_golden() {
             "不是 Unix",
             Some(round(Round::Down {
                 problem: problem(None),
-                unsupported: true,
+                blocker: Some(Blocker::NotUnix),
             })),
             true,
         ),
@@ -170,7 +170,9 @@ fn the_product_matches_the_cross_language_golden() {
         if let Some(f) = fact {
             fold(&mut e, f);
         }
-        out.push(serde_json::json!({ "name": name, "machine": product(&e, "gpu-01", enabled) }));
+        out.push(
+            serde_json::json!({ "name": name, "machine": product(&e, "gpu-01", enabled, true) }),
+        );
     }
     let golden = serde_json::json!({
         "说明": [
