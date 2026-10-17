@@ -104,12 +104,12 @@ echo "[4] 重建之后**立刻**写 pidfile（重挂前的窗口期）"
 #   而真实台架/真实用户不会替我们等这一下。
 chk "racy 仍有 session_added" "$(probe racy racy)" "1"
 
-echo "[5] ★ projects/ **被换 inode** 之后，行帧还得来（同族第三个）"
+echo "[5] ★ projects/ **被换 inode** 之后，新 inode 上那份照样读到（同族第三个）"
 # ★ 08-13：`sessions/`（第十拍）· tmux socket 目录（第二十二拍）· 本格 —— 同一个形状踩了三次。
 #   `projects/` 是 **jsonl 的来源**：它被删掉重建之后行帧永远不来，
 #   而症状是「会话还在、内容不动了」，**不报任何错**。
-# ⚠ 判据数的是 **line 帧条数**（≥2），不是「有没有帧」—— 只看「有没有」，换 inode 之前要是来过一条就会读成一切正常。
-#   （10-11 实测：今天没人订阅时，删目录之前那一份记录里的那一行不发行帧 ⇒ 数到的两条都是换 inode 之后写的那两行。）
+# ⚠ 判的是新 inode 上那份**读到了几行**：那份开头与旧的不同 ⇒ 后端从 0 重读、一行不上流，出声的是那一帧
+#   `session_file_reread`（带读到的行数，客户端照它从尾段取）⇒ 等那一帧、核它数到 2 行，不是「有没有帧」。
 _proj_recreate() {
   local F="$W/projre" out="$W/projre.frames"
   rm -rf -- "$F"; mkdir -p "$F/sessions" "$F/projects/p"
@@ -128,17 +128,17 @@ _proj_recreate() {
   # ← 换 inode：等它看见目录没了、再建回来等它重新挂上，之后写的两行走新 inode 上的事件。
   rm -rf -- "$F/projects"; said "$W/projre.err" "目录消失了 $F/projects"
   mkdir -p "$F/projects/p"; said "$W/projre.err" "已（重新）挂上 watch: $F/projects" 2
-  # 新 inode 上那份与旧的开头不同：开头相同的话后端照见证当作同一份接着读（只发新长出来的那行），数不出「两行都来了」。
+  # 新 inode 上那份与旧的开头不同：开头相同的话后端照见证当作同一份接着读（只发新长出来的那行），不走重读。
   printf '{"type":"user","sessionId":"%s","message":{"role":"user","content":"三"}}\n' "$sid" \
     > "$F/projects/p/$sid.jsonl"
   printf '{"type":"user","sessionId":"%s","message":{"role":"user","content":"四"}}\n' "$sid" \
     >> "$F/projects/p/$sid.jsonl"
-  said "$out" '"kind":"line"' 2
+  said "$out" '"kind":"session_file_reread"'
   kill "$dp" "$vpid" 2>/dev/null; wait "$dp" 2>/dev/null
-  grep -c '"kind":"line"' "$out" 2>/dev/null || true
+  grep -F '"kind":"session_file_reread"' "$out" 2>/dev/null | grep -o '"lines":[0-9]*' | tail -n 1 | grep -o '[0-9]*' || true
 }
 _pl="$(_proj_recreate)"
-chk "projects 换 inode 后仍有新行帧（${_pl} ≥ 2）" "$([ "${_pl:-0}" -ge 2 ] && echo yes || echo no)" "yes"
+chk "projects 换 inode 后新 inode 上那份读到 ${_pl:-0} 行（== 2）" "$([ "${_pl:-0}" -eq 2 ] && echo yes || echo no)" "yes"
 
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail ====="
