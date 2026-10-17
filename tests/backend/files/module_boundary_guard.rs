@@ -320,7 +320,12 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
     (
         "platform::fs::Resolved",
         Kind::Platform,
-        "已过路径解析的路径：`files_write` 的路径解析交回它，`Face` 的写方法只收它",
+        "已过路径解析的那一格（已开的父目录句柄 ＋ 名字）：路径解析交回它，`Face` 的写方法只收它",
+    ),
+    (
+        "platform::fs::FaceFile",
+        Kind::Platform,
+        "`Face` 开出来的那一份：换内容那一个原语往里倒内容",
     ),
     (
         "platform::fs::Perms",
@@ -367,6 +372,11 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "common::batch_book::cancel_rest",
         Kind::Common,
         "一组一条那几条共用的票 · 进度 · 撤：撤了 ⇒ 剩下那几项都回 cancelled",
+    ),
+    (
+        "common::batch_book::answers_of",
+        Kind::Common,
+        "一组一条那几条共用的票 · 进度 · 撤：同名的那一项能怎么答（清单里那一格）",
     ),
     (
         "common::batch_book::choice_of",
@@ -440,14 +450,14 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "路径解析①（词法不越根）：写面每一处改动先过它",
     ),
     (
-        "common::root_path::resolve_parent_in_root",
+        "common::root_path::walk_in_root",
         Kind::Common,
-        "路径解析②（父目录解链接后仍在根下）：造 `Resolved` 的那一道",
+        "路径解析②（解成真路径判在根下、从根句柄逐段开到那一层）：造 `Resolved` 的那一道",
     ),
     (
-        "common::root_path::resolve_in_root",
+        "common::root_path::Last",
         Kind::Common,
-        "两道串起来跑一遍",
+        "最后那一段解不解",
     ),
     (
         "common::staging::KEY_LEN",

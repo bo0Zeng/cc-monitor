@@ -990,7 +990,7 @@ data class Conflict(
     @Json(name = "mtime_text") val mtimeText: String?,
     @Json(name = "there_size_text") val thereSizeText: String?,
     @Json(name = "there_mtime_text") val thereMtimeText: String?,
-    @Json(name = "dir_into") val dirInto: Boolean,
+    val answers: List<String>,
 )
 
 // ── 一组的回包（`files-delete` · `files-chmod`：手机一次只交一项）：逐项结局 ＋ 后端拼好的那一句。 ──

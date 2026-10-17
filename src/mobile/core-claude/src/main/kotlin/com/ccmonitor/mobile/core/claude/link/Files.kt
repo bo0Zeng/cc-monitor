@@ -350,9 +350,6 @@ object Batch {
 object FilesCommitUpload {
     const val COMMAND: String = "files-commit-upload"
 
-    /** 上传那一件撞了同名能怎么答（`skip` 那台不收：只有一件，不放就不提交）。 */
-    val ANSWERS: List<String> = listOf("overwrite", "keep_both")
-
     fun args(
         dir: RemotePath,
         name: String,

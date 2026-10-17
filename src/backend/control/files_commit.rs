@@ -29,16 +29,16 @@
 //! 文件窗口存一份装不进一条请求行的文本（入方向一行 1 MiB，`stream/inbound/mod.rs::MAX_LINE_BYTES`）时，
 //! 切成几块逐块送进暂存区（`<key>.<seq>.chunk`，`O_EXCL` 新建：一块只写一次），再由 `files-commit-text` 按块号读回、
 //! 拼起来、核总长，交给写面那一份覆盖写（`files_write::overwrite_text`）—— 同一份文件 1 MiB 上下存出同一种结果
-//! （同目录暂存旁名 ＋ 换名上位：权限位沿用、链接解到底、不跨盘；代价写在 `files_write::overwrite_text` 头注）。
+//! （同目录暂存旁名 ＋ 换名上位：权限位沿用、链接解到底、不跨盘；怎么换住 `files_write::replace_contents`）。
 //! 一块一份文件、不往一份上续写：`Face` 没有续写那几种开法（新建只有 `O_EXCL` 一种）。
 //! 块数没有单独的上限：每块至少 1 字节 ⇒ 块数 ≤ 总长 ≤ `files::READ_TEXT_MAX_BYTES`。
 //! 清理：提交不论成败都删掉这一次的块（窗口手上还有全文，重存换新键）；中途断掉留下的块由 [`sweep_stale`] 收。
 
 use crate::control::files_write::{
-    content_sha256, overwrite_text_expecting, rel_of, resolve_in_root, root_of, wire_of, Act,
-    ManageCommand, WriteFail, WriteRefusal,
+    content_sha256, overwrite_text_expecting, rel_of, replace_contents, root_of, walk_in_root,
+    wire_of, Act, Content, Last, ManageCommand, Was, WriteFail, WriteRefusal,
 };
-use crate::platform::fs::{Face, Resolved, Ro};
+use crate::platform::fs::{Face, Ro};
 use cmd_wire::files as wire;
 use copy_core::{copy_text, io_reason};
 use std::path::{Path, PathBuf};
@@ -112,11 +112,12 @@ pub fn staged_path(home: &Path, key: &str) -> Result<PathBuf, WriteRefusal> {
     Ok(home.join(STAGING_DIR).join(format!("{key}{PART_SUFFIX}")))
 }
 
-/// 提交：暂存件 → 目标。成功回 `(落点, 字节数)`。第一件事是过路径解析（`Face` 只收它交回的 `Resolved`）。
+/// 提交：暂存件 → 目标。成功回 `(落点, 字节数)`。
 ///
-/// 改名上位之前先对整份摘要：暂存件的 SHA-256 必须等于 `expect_sha256`（传输台一边传一边算、窗口原样交来）。
+/// 上位之前先对整份摘要：暂存件的 SHA-256 必须等于 `expect_sha256`（传输台一边传一边算、窗口原样交来）。
 /// 不等 ⇒ 这份暂存件是坏的（失败后晚到的写在中间留了洞之类）⇒ 删掉它、回 `stale`、目标一个字节不动，调用方从 0 重传。
-/// 核与改名之间仍有窗（暂存区是我们自己的目录，窗里没人该碰它）。
+/// 怎么落交 [`replace_contents`]（盖掉已在的沿用它的权限位；`overwrite` 否 ⇒ 不覆盖上位，已在 ⇒ `exists`）。
+/// 核与上位之间仍有窗（暂存区是我们自己的目录，窗里没人该碰它）。
 pub fn commit_upload(
     face: &Face,
     home: &Path,
@@ -126,30 +127,6 @@ pub fn commit_upload(
     overwrite: bool,
     expect_sha256: &str,
 ) -> Result<(PathBuf, u64), WriteRefusal> {
-    commit_upload_in(
-        face,
-        home,
-        key,
-        root,
-        rel.as_ref(),
-        overwrite,
-        expect_sha256,
-        false,
-    )
-}
-
-/// [`commit_upload`] 的本体。`cross_device` ＝ 判据注入「改名上位回 `EXDEV`」（跨盘在测试里造不出来）；生产恒 `false`。
-pub fn commit_upload_in(
-    face: &Face,
-    home: &Path,
-    key: &str,
-    root: &Path,
-    rel: &Path,
-    overwrite: bool,
-    expect_sha256: &str,
-    cross_device: bool,
-) -> Result<(PathBuf, u64), WriteRefusal> {
-    let dest = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     let staged = staged_path(home, key)?;
     // 不跟链接地看暂存件一眼：它必须是一份普通文件（一条链接当「源」＝ 挪走链接指向之外的东西，不许）。
     let meta = Ro::symlink_metadata(&staged).map_err(|e| {
@@ -170,7 +147,9 @@ pub fn commit_upload_in(
             &[("path", &staged.display().to_string())],
         )));
     }
-    let bytes = meta.len();
+    let staging = home.join(STAGING_DIR);
+    let staged_at = walk_in_root(Last::Link, &staging, format!("{key}{PART_SUFFIX}"))
+        .map_err(WriteRefusal::Refused)?;
     let got = crate::files::file_sha256(&staged).map_err(|e| {
         WriteRefusal::io(
             copy_text(
@@ -184,10 +163,7 @@ pub fn commit_upload_in(
         )
     })?;
     if got != expect_sha256 {
-        let staging = home.join(STAGING_DIR);
-        let removed = resolve_in_root(&staging, format!("{key}{PART_SUFFIX}"))
-            .ok()
-            .is_some_and(|at| face.delete_file(&at).is_ok());
+        let removed = face.delete_file(&staged_at).is_ok();
         return Err(WriteRefusal::Stale(copy_text(
             "beFilesCommit.upload.corrupt",
             &[(
@@ -200,155 +176,16 @@ pub fn commit_upload_in(
             )],
         )));
     }
-    if overwrite {
-        land_staged(face, home, key, root, rel, &dest, cross_device).map_err(|e| {
-            WriteRefusal::IoSaid {
-                said: copy_text(
-                    "reason.fs.writeFailed",
-                    &[("path", &dest.display().to_string()), ("why", &e.why)],
-                ),
-                raw: e.raw,
-            }
-        })?;
-        return Ok((dest.into_path_buf(), bytes));
-    }
-    // 不覆盖：先占位（`O_EXCL`，目标已在 ⇒ 当场失败），再改名上位盖掉自己那个占位。
-    face.create_new(&dest)
-        .map_err(|e| placeholder_refused(&dest, &e))?;
-    if let Err(fail) = land_staged(face, home, key, root, rel, &dest, cross_device) {
-        // 撤掉自己那个 0 字节的占位（它是这一次刚建的，不是用户既有数据）；撤不掉要说出来，不然用户目录里留一份 0 字节文件、重试撞「目标已经在了」。
-        let undo = face.delete_file(&dest);
-        return Err(move_failed(&dest, &fail, &undo));
-    }
-    Ok((dest.into_path_buf(), bytes))
-}
-
-/// 不覆盖那一形占位没成：目标已经在了 ⇒ 说已存在、给「先删掉它或换个名字」；别的原因（无权限 · 磁盘满 …）⇒ 只说占不了位 ＋ 原因词，
-/// 不配「已存在」那句建议。系统原话进复制详情。
-fn placeholder_refused(dest: &Path, e: &std::io::Error) -> WriteRefusal {
-    let path = dest.display().to_string();
-    let said = if e.kind() == std::io::ErrorKind::AlreadyExists {
-        copy_text("beFilesCommit.upload.exists", &[("path", &path)])
-    } else {
-        copy_text(
-            "beFilesCommit.upload.cantPlace",
-            &[("path", &path), ("why", &io_reason(e.kind()))],
-        )
-    };
-    WriteRefusal::io(said, e)
-}
-
-/// 把暂存件挪到 `dest`：先改名上位（同盘，原子）；回 `EXDEV` ⇒ 复制 ＋ 删：在目标同目录用 `O_EXCL` 建一个暂存旁名
-/// （过路径解析）→ 从暂存件读、写满 → 旁名改名上位（同目录，原子）→ 删暂存件。任一步失败 ⇒ 删掉旁名，暂存件留着（续传本钱）。
-/// 权限位两支一致（都是进程缺省，受 umask）。不添动词（改名 · `O_EXCL` 新建 · 写 · 删文件，全在闭集里）。
-fn land_staged(
-    face: &Face,
-    home: &Path,
-    key: &str,
-    root: &Path,
-    rel: &Path,
-    dest: &Resolved,
-    cross_device: bool,
-) -> Result<(), LandFail> {
-    let staging = home.join(STAGING_DIR);
-    let staged =
-        resolve_in_root(&staging, format!("{key}{PART_SUFFIX}")).map_err(LandFail::path)?;
-    let side_rel = {
-        let p = rel;
-        let name = p.file_name().ok_or_else(|| {
-            LandFail::path(copy_text(
-                "beFilesCommit.exdev.noName",
-                &[("rel", &rel.display().to_string())],
-            ))
-        })?;
-        let mut side = std::ffi::OsString::from(".");
-        side.push(name);
-        side.push(format!(".ccm-commit-{key}.part"));
-        p.with_file_name(side)
-    };
-    let side = resolve_in_root(root, &side_rel).map_err(LandFail::path)?;
-    let moved = if cross_device {
-        Err(std::io::Error::from(std::io::ErrorKind::CrossesDevices))
-    } else {
-        face.move_file(&staged, dest)
-    };
-    match moved {
-        Ok(()) => return Ok(()),
-        Err(e) if e.kind() != std::io::ErrorKind::CrossesDevices => return Err(LandFail::io(&e)),
-        Err(_) => {}
-    }
-    let copied = (|| -> std::io::Result<()> {
-        let mut reader = Ro::open_nofollow(&staged)?;
-        let mut writer = face.create_new(&side)?;
-        std::io::copy(&mut reader, &mut writer)?;
-        writer.sync_all()?;
-        drop(writer);
-        face.move_file(&side, dest)
-    })();
-    if let Err(e) = copied {
-        let _ = face.delete_file(&side);
-        return Err(LandFail::io(&e));
-    }
-    // 目标已经落好；暂存件删不掉不算这一趟失败（不覆盖那一支失败时会撤占位 —— 那就把刚落好的删了）：
-    // 它是我们自己暂存区里的一份，孤儿扫（`sweep_stale`）按期限收。
-    let _ = face.delete_file(&staged);
-    Ok(())
-}
-
-/// 暂存件挪不上位的那一件：原因词（句子里那一格）＋ 下层原话（进复制详情）。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LandFail {
-    pub why: String,
-    pub raw: String,
-}
-
-impl LandFail {
-    /// 系统那一下没成：原因词按 IO 错的种类说（`copy_core::reason`），原话照抄进详情。
-    fn io(e: &std::io::Error) -> LandFail {
-        LandFail {
-            why: copy_core::reason::io_reason(e.kind()),
-            raw: e.to_string(),
-        }
-    }
-
-    /// 路径解析拒了（越根 · 名字不成立）：原因词「路径不合规」，那句拒绝进详情。
-    fn path(said: String) -> LandFail {
-        LandFail {
-            why: copy_text("beFilesCommit.land.badPath", &[]),
-            raw: said,
-        }
-    }
-}
-
-/// 提交失败那一句（整句由这里写好，不在别处拼碎片）：撤占位撤掉了 ⇒ 只说写入失败；
-/// 撤不掉 ⇒ 换一条整句键，多说一行「删除失败 · 留下的 0 字节空文件」，不然用户目录里留一份 0 字节文件、重试撞「目标已经在了」。
-/// 句子只带原因词；挪不上位与撤不掉的两句系统原话进复制详情（[`WriteRefusal::IoSaid`]）。
-pub(crate) fn move_failed(
-    dest: &Path,
-    fail: &LandFail,
-    undo: &std::io::Result<()>,
-) -> WriteRefusal {
-    let path = dest.display().to_string();
-    match undo {
-        Ok(()) => WriteRefusal::IoSaid {
-            said: copy_text(
-                "reason.fs.writeFailed",
-                &[("path", &path), ("why", &fail.why)],
-            ),
-            raw: fail.raw.clone(),
-        },
-        Err(left) => WriteRefusal::IoSaid {
-            said: copy_text(
-                "beFilesCommit.upload.placeholderLeft",
-                &[
-                    ("path", &path),
-                    ("why", &fail.why),
-                    ("leftWhy", &copy_core::reason::io_reason(left.kind())),
-                ],
-            ),
-            raw: format!("{}\n{left}", fail.raw),
-        },
-    }
+    let was = if overwrite { Was::Either } else { Was::New };
+    replace_contents(
+        face,
+        root,
+        rel.as_ref(),
+        Content::Staged(&staged_at),
+        None,
+        was,
+        &mut || {},
+    )
 }
 
 // ═══════════════ 存盘的块：写一块 · 读回拼起来提交 · 删掉 ═══════════════
@@ -360,7 +197,7 @@ pub(crate) fn move_failed(
 fn ensure_staging(face: &Face, home: &Path) -> Result<PathBuf, WriteRefusal> {
     let mut at = home.to_path_buf();
     for seg in STAGING_DIR.split('/') {
-        let next = resolve_in_root(&at, seg).map_err(WriteRefusal::Refused)?;
+        let next = walk_in_root(Last::Link, &at, seg).map_err(WriteRefusal::Refused)?;
         face.own_dir(&next).map_err(|s| match s.raw {
             Some(raw) => WriteRefusal::IoSaid { said: s.said, raw },
             None => WriteRefusal::Refused(s.said),
@@ -387,7 +224,8 @@ pub fn stage_chunk(
         )));
     }
     let dir = ensure_staging(face, home)?;
-    let at = resolve_in_root(&dir, &chunk_name(key, seq)).map_err(WriteRefusal::Refused)?;
+    let at =
+        walk_in_root(Last::Link, &dir, &chunk_name(key, seq)).map_err(WriteRefusal::Refused)?;
     let mut f = face.create_new(&at).map_err(|e| {
         WriteRefusal::io(
             copy_text(
@@ -509,7 +347,7 @@ pub fn drop_chunks(face: &Face, home: &Path, key: &str) {
         if parse_chunk_name(&name).is_none_or(|(k, _)| k != key) {
             continue;
         }
-        let Ok(at) = resolve_in_root(&dir, &name) else {
+        let Ok(at) = walk_in_root(Last::Link, &dir, &name) else {
             continue;
         };
         if Ro::symlink_metadata(&at).is_ok_and(|m| m.file_type().is_file()) {
@@ -548,7 +386,7 @@ pub const STAGING_STALE_SECS: u64 = 7 * 24 * 3600;
 ///
 /// - 只认我们自己的形状：`<32 位十六进制>.part` 与 `<32 位十六进制>.<块号>.chunk`；别的名字一个不碰。
 /// - `keep` 那一个不碰（调用方此刻手上的那一份）。
-/// - 每一处删之前先过以暂存区为根的路径解析（[`resolve_in_root`]）：暂存区里一条指出去的链接不删。
+/// - 每一处删之前先过以暂存区为根的路径解析（[`walk_in_root`]）：暂存区里一条指出去的链接不删。
 /// - 尽力而为：列不出、删不掉都不挡调用方。只在事件上跑（提交成功那一刻，见 [`answer_commit`]），后端零定时器。
 pub fn sweep_stale(face: &Face, home: &Path, now_secs: u64, keep: &str) -> Vec<String> {
     let dir = home.join(STAGING_DIR);
@@ -570,7 +408,7 @@ pub fn sweep_stale(face: &Face, home: &Path, now_secs: u64, keep: &str) -> Vec<S
         if !is_key(key) || key == keep {
             continue;
         }
-        let Ok(at) = resolve_in_root(&dir, &name) else {
+        let Ok(at) = walk_in_root(Last::Link, &dir, &name) else {
             continue;
         };
         let Ok(meta) = Ro::symlink_metadata(&at) else {
@@ -688,7 +526,7 @@ pub fn commit_upload_at(
         .into());
     }
     let clash = |rel: &Path| {
-        resolve_in_root(&root, rel)
+        walk_in_root(Last::Link, &root, rel)
             .ok()
             .and_then(|d| super::files_batch::look(&d).map(|t| (d, t)))
     };
@@ -703,7 +541,7 @@ pub fn commit_upload_at(
                         plain((
                             super::files_write::EXISTS,
                             copy_text(
-                                "beFilesCommit.upload.exists",
+                                "beFilesWrite.swap.exists",
                                 &[("path", &dest.display().to_string())],
                             ),
                         ))
@@ -779,7 +617,7 @@ fn asked(
                 there_size,
                 there_size_text: there_size.map(copy_core::size_text),
                 there_mtime_text: moment_text(there_mtime, tz),
-                dir_into: there == wire::FileKind::Dir,
+                answers: crate::common::batch_book::answers_of(there == wire::FileKind::Dir, false),
             }],
         },
     )

@@ -88,8 +88,9 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/stream/cli.rs", "let _ = writeln!(out, \"{}\", crate::common::time::fill_at(&line, tz));", Why::Diag, "CLI 面的应答写 stdout（JSON 那一形与 `--text` 那一形同一行）：写不进去 ⇒ 调用方已经走了（管道断），没有第二个地方可以说"),
     ("src/backend/control/launch_account.rs", "let _ = own.delete_file(&f);", Why::CleanupAfterFailure, "清陈旧便条（进程不在 / pid 被复用）：删不掉下次认便条时再清，它对不上进程不会被认"),
     ("src/backend/control/files_commit.rs", "let _ = face.delete_file(&at);", Why::CleanupAfterFailure, "写块失败 / 收拾旧块：主错误已在回；删不掉等孤儿扫（7 天）"),
-    ("src/backend/control/files_commit.rs", "let _ = face.delete_file(&side);", Why::CleanupAfterFailure, "跨盘提交抄写失败后删自己这一趟的旁名；主错误已在回"),
-    ("src/backend/control/files_commit.rs", "let _ = face.delete_file(&staged);", Why::CleanupAfterFailure, "目标已落好之后删暂存件；删不掉由孤儿扫（`sweep_stale`）按期限收（该处注释原话）"),
+    ("src/backend/control/files_write.rs", "face.delete_file(staged).ok();", Why::CleanupAfterFailure, "内容已落进目标之后删暂存件；删不掉由孤儿扫（`sweep_stale`）按期限收（该处注释原话）"),
+    ("src/backend/control/files_write.rs", "face.sync_dir(&dst).ok();", Why::CleanupAfterFailure, "上位之后把目录项落盘：内容已落盘、上位已成，这一步不成只是断电时可能回到旧名；不为它把已成的一趟报成失败"),
+    ("src/backend/platform/fs/face.rs", "at::unlink(&to.dir, &to.name, 0).ok();", Why::CleanupAfterFailure, "`link ＋ unlink` 改名时 `unlink` 失败 ⇒ 撤掉刚建的那个名字；主错误（`unlink` 那一下）已在回"),
     ("src/backend/control/files_write.rs", "face.delete_file(&bak).ok();", Why::CleanupAfterFailure, "写失败之后删自己这一趟建的旁名 / 半成品；主错误已在回"),
     // 解压落一份文件写一半 / 设权限失败 ⇒ 删自己 `O_EXCL` 刚建的那一份；上传块形拼暂存件失败 ⇒ 删自己刚建的 `<key>.part`。
     ("src/backend/control/files_extract.rs", "face.delete_file(&at).ok();", Why::CleanupAfterFailure, "解压写一份失败之后删自己 `O_EXCL` 刚建的那一份；主错误已在回（随后整趟回滚）"),

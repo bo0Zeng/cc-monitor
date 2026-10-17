@@ -19,7 +19,7 @@
 //! 它引 `dial::sftp` 拿会话、搬字节；文件管理那一块（`files/` · `control/files_*.rs`）只管本机的读和写，它一处都不引
 //! （`files/module_boundary_guard.rs` 两个方向都钉）。两块共用的路径解析 · 暂存件命名 · 流式摘要 · 路径字节还原都住 `common/`。
 //! 下载要写本机用户选的落点（`.part` ＋ 改名上位）：写经票表手里那一份 `Face`（帧面分派那一层造台时交来），
-//! 用到的只有 `O_EXCL` 新建 · 接着写 · 改名 · 删文件；每一处改动的路径都是 `common::root_path::resolve_in_root` 交回的 `Resolved`。
+//! 用到的只有 `O_EXCL` 新建 · 接着写 · 改名 · 删文件；每一处改动的路径都是 `common::root_path::walk_in_root` 交回的 `Resolved`。
 //! 远端那一半（暂存区的写）全经 `ssh-dial/sftp.rs` 的写原语（只许两处、先过 `fenced_remote`）。
 //!
 //! # 存亡规矩
@@ -48,7 +48,7 @@ use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::{mpsc, watch, Notify};
 
-use crate::common::root_path::resolve_in_root;
+use crate::common::root_path::{walk_in_root, Last};
 use crate::common::said::Said;
 use crate::common::staging::{KEY_LEN, PART_SUFFIX};
 use crate::dial::sftp::{self, Dial, Session};
@@ -214,14 +214,14 @@ fn land_parts(local_path: &Path) -> Result<(PathBuf, OsString, OsString), Said> 
 pub fn land_check(local_path: impl AsRef<Path>) -> Result<(), String> {
     // 只拆路径、只过路径解析：没有下层原话。
     let (root, name, part) = land_parts(local_path.as_ref()).map_err(|s| s.said)?;
-    resolve_in_root(&root, &name)?;
-    resolve_in_root(&root, &part)?;
+    walk_in_root(Last::Link, &root, &name)?;
+    walk_in_root(Last::Link, &root, &part)?;
     Ok(())
 }
 
 /// 从 0 开一份半成品：旧的在就先删（它的尾块已经对不上了），再 `O_EXCL` 新建。
 fn land_open_fresh(face: &Face, root: &Path, part: &OsStr) -> Result<FaceFile, Said> {
-    let at = resolve_in_root(root, part)?;
+    let at = walk_in_root(Last::Link, root, part)?;
     if Ro::symlink_metadata(&at).is_ok() {
         face.delete_file(&at).map_err(|e| {
             Said::with_raw(
@@ -254,10 +254,10 @@ fn land_open_fresh(face: &Face, root: &Path, part: &OsStr) -> Result<FaceFile, S
 /// 旧半成品改名成 `<名>.old` → `O_EXCL` 新建 `<名>` → 把前 `keep` 字节从旧的抄过来 → 删旧的。
 /// 回来的句柄游标停在 `keep`。代价如实记：前缀在本机盘上多抄一遍（本机盘速，不走网）。
 fn land_carry_over(face: &Face, root: &Path, part: &OsStr, keep: u64) -> Result<FaceFile, Said> {
-    let at = resolve_in_root(root, part)?;
+    let at = walk_in_root(Last::Link, root, part)?;
     let mut old_name = part.to_os_string();
     old_name.push(".old");
-    let old = resolve_in_root(root, &old_name)?;
+    let old = walk_in_root(Last::Link, root, &old_name)?;
     if Ro::symlink_metadata(&old).is_ok() {
         face.delete_file(&old).map_err(|e| {
             Said::with_raw(
@@ -343,8 +343,8 @@ fn land_carry_over(face: &Face, root: &Path, part: &OsStr, keep: u64) -> Result<
 
 /// 传完：半成品改名上位。
 fn land_commit(face: &Face, root: &Path, part: &OsStr, name: &OsStr) -> Result<(), Said> {
-    let from = resolve_in_root(root, part)?;
-    let to = resolve_in_root(root, name)?;
+    let from = walk_in_root(Last::Link, root, part)?;
+    let to = walk_in_root(Last::Link, root, name)?;
     face.move_file(&from, &to).map_err(|e| {
         Said::with_raw(
             copy_text(
@@ -361,7 +361,7 @@ fn land_commit(face: &Face, root: &Path, part: &OsStr, name: &OsStr) -> Result<(
 
 /// 失败（不是撤）：删掉半成品。
 fn land_discard(face: &Face, root: &Path, part: &OsStr) {
-    if let Ok(at) = resolve_in_root(root, part) {
+    if let Ok(at) = walk_in_root(Last::Link, root, part) {
         let _ = face.delete_file(&at);
     }
 }
@@ -913,7 +913,7 @@ impl Desk {
                                 crate::common::batch_book::mtime_secs(m.modified()),
                                 tz,
                             ),
-                            dir_into: m.is_dir(),
+                            answers: crate::common::batch_book::answers_of(m.is_dir(), true),
                         });
                     }
                     choices.push(Some(choice));
@@ -1170,7 +1170,7 @@ async fn upload_fates(
                 there_size: there.size,
                 there_size_text: there.size.map(copy_core::size_text),
                 there_mtime_text: moment_text(there.mtime, tz),
-                dir_into,
+                answers: crate::common::batch_book::answers_of(dir_into, true),
             });
         }
         probed.push(Ok((name, Some((choice, dir_into)))));

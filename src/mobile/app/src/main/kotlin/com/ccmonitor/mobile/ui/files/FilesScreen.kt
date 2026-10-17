@@ -48,7 +48,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.FilesCommitUpload
 import com.ccmonitor.mobile.core.claude.link.FilesLs
 import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.copy.copyText
@@ -179,7 +178,7 @@ fun FilesScreen(
     DialogHost(dialog = dialog, vm = vm, actions = actions, onDialog = { dialog = it })
     val clash by vm.clash.collectAsState()
     clash?.let { (dir, c) ->
-        ConflictSheet(copyText("rsFilewinBatch.verb.upload"), dir, c.said, c.conflicts, FilesCommitUpload.ANSWERS, vm::answer)
+        ConflictSheet(copyText("rsFilewinBatch.verb.upload"), dir, c.said, c.conflicts, vm::answer)
     }
 }
 
