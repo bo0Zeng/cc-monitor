@@ -48,7 +48,7 @@ pub enum Ask {
 /// 主题表（扩展特征：孤儿规则不许在 `cmd-wire` 的类型上加固有方法）。
 pub trait TopicExt {
     /// 全部主题（表的行序）。
-    const ALL: [Topic; 13];
+    const ALL: [Topic; 14];
     /// 这个主题那一行。穷尽 `match`：加主题时编译期就被逼着填完这一行。
     fn spec(self) -> TopicSpec;
     /// 线上名。
@@ -56,7 +56,7 @@ pub trait TopicExt {
 }
 
 impl TopicExt for Topic {
-    const ALL: [Topic; 13] = [
+    const ALL: [Topic; 14] = [
         Topic::Accounts,
         Topic::Profiles,
         Topic::Quota,
@@ -70,6 +70,7 @@ impl TopicExt for Topic {
         Topic::Machines,
         Topic::Machine,
         Topic::SessionHidden,
+        Topic::FilesDir,
     ];
 
     fn spec(self) -> TopicSpec {
@@ -207,6 +208,17 @@ impl TopicExt for Topic {
                 body: true,
                 body_cap: 1024,
                 reask: "history-list",
+                ask: Ask::None,
+            },
+            // 走 tap 那条（可丢：丢了下一次动静或重问就补上）。
+            Topic::FilesDir => TopicSpec {
+                name: "files_dir",
+                lossy: true,
+                key: true,
+                rev: false,
+                body: false,
+                body_cap: 0,
+                reask: "files-ls",
                 ask: Ask::None,
             },
         }

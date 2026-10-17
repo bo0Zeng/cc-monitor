@@ -96,7 +96,7 @@
 //! | **命令面** | [`find`] | 四条线上命令（`files-find` / `files-index-status` / `files-index-rebuild` / `files-browse`）在客户端侧的第一个发送端。照 `backend_route` 那个共用分流器办，**没另造一套**。⚠ 判据喂的是一台合成后端，**真后端上一趟读数都没有** |
 //! | **节奏** | [`find::run_search_at`] | 后端回的 `index_missing` / `stale` / `out_of_index` 任一为真 ⇒ 照它给的 `cover_root` 真的发那条重走命令（同一时刻只发一趟）＋ 阴性对照。**周期那个数不在这一侧**（唯一住址在后端，零命中判据扫 `filewin/` 整棵树） |
 //! | **新鲜度** | [`find::age_line`] ＋ [`find::SearchBoard::status_ui`] | 搜索状态行「文件清单 · 多久前」与清单不全那几句。判据从 egui 这一帧的 galley 里把那几个数读回来，而且喂两组不同的数 |
-//! | **保鲜的另一半** | [`find::CMD_BROWSE`]，发在 [`find::run_search_at`] 里 | 「用户现在在看这个目录」在目录换了时告诉后端一次（不绑在重走那一刻上）。后端收到它会让进程里那一个监听器跟上名单 ⇒ 那几个目录此后一有动静就重列 |
+//! | **保鲜的另一半** | [`find::CMD_BROWSE`]，发在 [`workspace::Workspace::settle_dirs`] 里 | 「此刻每个标签页在看哪几个目录」名单变了就告诉后端一次。后端收到它会让进程里那一个监听器跟上名单 ⇒ 那几个目录此后一有动静就重列 overlay、推 `changed {files_dir}`，正开着那个目录的标签页带记号重问 |
 //! | **命中** | [`rows::show_hit_rows`] | 虚拟滚动、**只读**（一个可点控件都没有）。⚠ 点不开、没有「复制」，理由住那个函数 |
 //!
 //! ## 🔴 这一刀**没**处置的（逐条，别读宽）

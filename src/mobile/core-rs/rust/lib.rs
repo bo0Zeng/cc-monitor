@@ -318,7 +318,7 @@ pub fn ssh_config_json(text: &str) -> String {
     serde_json::to_string(&ssh_dial::config_text::parse(text)).unwrap_or_else(|_| "[]".to_string())
 }
 
-/// 文件页选中这几项（`files-ls` 回包 `entries[]` 里的原行）· 此刻那一台（[`resident::here`]）⇒ 顶栏 · ⋯ · 点一下做什么
+/// 文件页选中这几项（`files-ls` 回包 `up` 里的原行）· 此刻那一台（[`resident::here`]）⇒ 顶栏 · ⋯ · 点一下做什么
 /// （`pick_core::PhoneMenu`）；读不动 ⇒ 什么都不给。
 pub fn pick_menu_json(rows: &str, here: &pick_core::Here) -> String {
     let picks: Vec<pick_core::PickIn> = serde_json::from_str::<Vec<cmd_wire::files::LsEntry>>(rows)

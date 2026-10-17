@@ -30,13 +30,15 @@ pub(crate) fn ours(d: &dyn Door, home: &str) -> Result<Vec<String>, String> {
         limit: None,
         dirs_only: None,
         sort: None,
+        held: None,
+        range: None,
     }) {
         Ok(v) => v,
         Err((code, _)) if code == "not_found" => return Ok(Vec::new()),
         Err((_, said)) => return Err(said),
     };
     let mut out = Vec::new();
-    for e in &listed.entries {
+    for e in listed.up.values() {
         if e.kind != wire::FileKind::Symlink {
             continue;
         }

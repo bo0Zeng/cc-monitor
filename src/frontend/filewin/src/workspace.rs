@@ -114,6 +114,10 @@ pub struct Workspace {
     pub link: super::chrome::LinkState,
     /// 那台的计划变过几次（`changed/plan` 那条流）；变了 ⇒ 每个标签页重问一次归属。
     pub plan_watch: super::plan::PlanWatch,
+    /// 那台哪几个正被浏览的目录动过（`changed/files_dir` 那条流）；动过 ⇒ 正开着那个目录的标签页带记号重问。
+    pub dir_watch: super::source::DirWatch,
+    /// 上一次告诉那台「正在看这几个目录」的那一份名单（`files-browse`；变了才再发，连回来清空重发）。
+    browsed: Vec<super::source::RemotePath>,
     /// 解好的图（每个标签页 · 预览 · 「看一眼」拿同一份，[`super::picture`]）。
     pub pictures: super::picture::Pictures,
     /// 上一次照着「又连上了」重列过的次数（与 `link.ups()` 比）。
@@ -333,6 +337,8 @@ impl Workspace {
             pictures,
             link_ups: 0,
             plan_watch: Default::default(),
+            dir_watch: Default::default(),
+            browsed: Vec::new(),
             plan_ticks: 0,
             closing_ask: false,
             close_after_save: false,
@@ -1130,7 +1136,52 @@ impl Workspace {
         }
     }
 
-    /// 起「那台连没连着」那条订阅（整扇窗一次，拿焦点那一栏的线）；断了又连上 ⇒ 每个标签页重列一遍（过期那一屏换成新的）。
+    /// 正被浏览的目录：名单（每个标签页此刻的目录，去重）变了 ⇒ 告诉那台一次（`files-browse`，那台给它们挂监听）；
+    /// 起「那台哪几个目录动过」那条订阅（整扇窗一次，拿焦点那一栏的线）；动过 ⇒ 只有正开着那个目录的标签页带记号重问。
+    pub fn settle_dirs(&mut self, ctx: Option<egui::Context>) {
+        let f = self.focus;
+        let p = self.pane_on(f);
+        let (rt, line, origin) = (p.rt.clone(), p.line.clone(), p.source.origin());
+        let mut want: Vec<super::source::RemotePath> = Vec::new();
+        for t in self.sides.iter().flat_map(|s| s.tabs.iter()) {
+            let d = t.pane.cwd_path();
+            if !want.contains(&d) {
+                want.push(d);
+            }
+        }
+        if let (Some(rt), Some(line)) = (rt, line) {
+            self.dir_watch.watch(&rt, line.clone(), origin.clone(), ctx);
+            if want != self.browsed {
+                self.browsed = want;
+                let args = super::find::browse_args_at(&self.browsed);
+                rt.spawn(async move {
+                    if let Err(f) = super::source::ask_typed(
+                        &line,
+                        &origin,
+                        &args,
+                        std::time::Duration::from_secs(10),
+                    )
+                    .await
+                    {
+                        // 少的是「外面动了这一屏会不会跟着变」，不是这一屏本身 ⇒ 只进日志。
+                        tracing::warn!("filewin: browse list not delivered: {}", f.said);
+                    }
+                });
+            }
+        }
+        let moved = self.dir_watch.take();
+        if moved == super::source::Moved::default() {
+            return;
+        }
+        for t in self.sides.iter_mut().flat_map(|s| s.tabs.iter_mut()) {
+            if moved.has(&t.pane.cwd_path()) {
+                t.pane.reload();
+            }
+        }
+    }
+
+    /// 起「那台连没连着」那条订阅（整扇窗一次，拿焦点那一栏的线）；断了又连上 ⇒ 每个标签页带着记号重问一遍
+    ///（过期那一屏只换断着那阵变了的那几行；那台重启过 ⇒ 整份）、正在看的目录名单重发一次。
     pub fn settle_link(&mut self, ctx: Option<egui::Context>) {
         let f = self.focus;
         let p = self.pane_on(f);
@@ -1140,6 +1191,7 @@ impl Workspace {
         let ups = self.link.ups();
         if ups != self.link_ups {
             self.link_ups = ups;
+            self.browsed.clear();
             for s in &mut self.sides {
                 for t in &mut s.tabs {
                     t.pane.reload();
@@ -1218,10 +1270,12 @@ impl Workspace {
         self.settle_across(Some(ctx.clone()));
         // ── 「进度」表：新落地的那几趟记下时刻 · 失败就摊开 · 开它的标签页已经不管了的，由这一级重列目录 ──
         self.settle_progress();
-        // ── 那台连没连着：订一次那条流；断了又连上 ⇒ 每个标签页重列一遍 ──
+        // ── 那台连没连着：订一次那条流；断了又连上 ⇒ 每个标签页带着记号重问一遍 ──
         self.settle_link(Some(ctx.clone()));
         // ── 那台的计划变了：订一次那条流；变了 ⇒ 每个标签页重问一次「格」一列 ──
         self.settle_plan(Some(ctx.clone()));
+        // ── 正被浏览的目录：名单变了告诉那台；那台说哪个目录动过 ⇒ 正开着它的标签页带记号重问 ──
+        self.settle_dirs(Some(ctx.clone()));
         // ── 系统字体还在载入：只画底色与转圈（这时画字，中文全是方块）；收下的那一帧起各栏接着复核 ──
         if let Some(fonts) = &self.fonts {
             if let Some(attempt) = fonts.poll(&ctx) {

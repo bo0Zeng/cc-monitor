@@ -113,8 +113,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     typed::blocking::<crate::stream::inbound::files_write_face::FilesCommitUpload>(
         "把暂存区里一份传完的上传件挪进目标",
     ),
-    typed::blocking::<crate::stream::inbound::files_face::FilesBrowse>(
-        "告诉后端「用户现在在看哪几个目录」",
+    // 名单记在本连接名下、连接断了摘掉 ⇒ 要本连接的号 ⇒ 帧面硬臂（只在帧面：一次 exec 的进程交了也随它没了）；改盘上的 watch ⇒ 阻塞池。
+    typed::frame_blocking::<crate::stream::inbound::files_face::FilesBrowse>(
+        "告诉后端「这条连接现在在看哪几个目录」（各条连接的并集被盯着；连接断了摘掉它那份）",
     ),
     typed::blocking::<crate::stream::inbound::files_face::FilesIndexRebuild>(
         "重建常驻文件名索引：走一遍，做完返回",

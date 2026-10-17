@@ -116,24 +116,19 @@ class NewSessionReadsTest {
         assertEquals(mapOf("path" to "/h/work", "dirs_only" to true), FilesLs.dirs("/h/work"))
         val got =
             FilesLs.dirsOf(
-                mapOf(
-                    "entries" to
-                        listOf(
-                            mapOf("path" to "/h/work/billing", "name" to "billing", "kind" to "dir"),
-                            mapOf("path" to mapOf("b16" to "ff"), "name" to mapOf("b16" to "ff"), "kind" to "dir"),
-                            mapOf("path" to "/h/work/notes", "name" to "notes", "kind" to "symlink", "link_dir" to true),
-                        ),
-                    "up" to "/h",
-                    "crumbs" to emptyList<Any>(),
-                    "truncated" to false,
-                    "total" to 3.0,
-                    "unreadable" to 0.0,
+                lsWhole(
+                    listOf(
+                        mapOf("path" to "/h/work/billing", "name" to "billing", "kind" to "dir"),
+                        mapOf("path" to mapOf("b16" to "ff"), "name" to mapOf("b16" to "ff"), "kind" to "dir"),
+                        mapOf("path" to "/h/work/notes", "name" to "notes", "kind" to "symlink", "link_dir" to true),
+                    ),
+                    mapOf("up" to "/h", "crumbs" to emptyList<Any>(), "truncated" to false, "total" to 3.0, "unreadable" to 0.0),
                 ),
             )!!
         assertEquals(listOf("/h/work/billing", "/h/work/notes"), got.dirs.map { it.path })
         assertEquals(listOf("billing", "notes"), got.dirs.map { it.name })
         assertEquals("/h", got.up)
-        assertNull(FilesLs.dirsOf(mapOf("entries" to listOf(mapOf("kind" to "dir")))))
+        assertNull(FilesLs.dirsOf(lsWhole(listOf(mapOf("kind" to "dir")), mapOf("up" to null, "crumbs" to emptyList<Any>(), "truncated" to false, "total" to 1.0))))
     }
 
     @Test

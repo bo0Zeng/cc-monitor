@@ -516,6 +516,21 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "此刻（后端的「现在」只有一处，`one_clock_guard`）：索引建好的时刻 · 查找与状态按它算多久以前",
     ),
     (
+        "common::views::Views",
+        Kind::Common,
+        "带键集合的备忘：`files.ls` 按手上那一份的记号答「没变 / 变了的那几行 / 整份」",
+    ),
+    (
+        "common::views::Views::new",
+        Kind::Common,
+        "同上一格：目录列表那一份备忘（份数同盯着的目录上限）",
+    ),
+    (
+        "common::views::ViewSource",
+        Kind::Common,
+        "同上一格：此刻列好的那一份交给备忘比",
+    ),
+    (
         "common::time::mtime_texts_now",
         Kind::Common,
         "列目录 · 问元数据 · 查找回的修改时间旁边那两格（列里那一格 · 完整那一格）按看的那一台的时区写好，文件窗口照抄",
@@ -576,6 +591,11 @@ const DOORS: &[(&str, &str)] = &[
         "stream/inbound/files_face.rs",
         "files::answer_grep_cancellable",
     ),
+    // 正被浏览的目录有了动静的通道（流的 tap 经 `files_face::dir_changes` 订它推 `changed {files_dir}`）。
+    ("stream/inbound/files_face.rs", "files::dir_changes"),
+    // 浏览名单记在本连接名下（帧面硬臂带本连接的号）· 连接断了摘掉它那一份（`files_face::Browsing` 的 `Drop`）。
+    ("stream/inbound/files_face.rs", "files::browse"),
+    ("stream/inbound/files_face.rs", "files::leave_browsing"),
     // 写的那几条（写面 · 上传提交 · 解压）：同读的那一半，一个入口 ＋ 选本体的那个 trait（入参类型挂在它上面）。
     (
         "stream/inbound/files_write_face.rs",
@@ -696,8 +716,10 @@ fn the_doors_are_the_command_registry() {
         //   ＋ 删会话那一条的本体 `control::files_write::delete_session_of`（它要门递的那两问）。
         // 7 → 9：一组一条（`control::files_batch`）：复制带同名清单的入口 `copy` ＋ 它的拒绝类型 `CopyRefused`（票 · 进度 · 撤住 `common/batch_book.rs`）。
         // 9 → 11：上传提交同名要问那一形带同名清单：`files_commit::commit_upload_of` ＋ 它的拒绝类型 `CommitRefused`。
-        command, 11,
-        "命令注册那一处够到的入口从 11 个变成了 {command} 个 —— \
+        // 11 → 12：正被浏览的目录有了动静的通道 `files::dir_changes`（推 `changed {files_dir}`）。
+        // 12 → 14：浏览名单每条连接一份：`files::browse`（带本连接的号）· `files::leave_browsing`（连接断了摘掉）。
+        command, 14,
+        "命令注册那一处够到的入口从 14 个变成了 {command} 个 —— \
          读（`files::answer` ＋ `files::Ask`）／ 写 · 上传提交 · 解压（`control::files_write::answer` ＋ `control::files_write::Act`）／ 删会话（`control::files_write::delete_session_of`），\
          〔SR1b 09-24 +3，layer11 −3〕传输台归原生那一块，三格出列。\
          〔MOD +1〕删会话那两问的窄口类型 `SessionPort`。〔FILES3 +1〕按内容搜那个可撤的入口 `files::answer_grep_cancellable`。\

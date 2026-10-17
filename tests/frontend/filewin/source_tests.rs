@@ -1,10 +1,34 @@
 use super::*;
 
-/// 一份 `files-ls` 回包（JSON）先按回包类型解（`ask_typed` 那一步），再摊成一屏：两步任一不过都是报错。
+/// 一份 `files-ls` 回包（JSON）先按回包类型解（`ask_typed` 那一步），再换进一份空的手上那一份、摊成一屏：两步任一不过都是报错。
 fn rows_from_ls_data(d: &serde_json::Value) -> Result<(Vec<Listed>, Cut), String> {
     reply_of::<cmd_wire::files::LsReq>(d.clone())
-        .map(super::rows_from_ls_data)
+        .map(|p| {
+            let mut h = Shown::default();
+            h.apply(p);
+            screen_of(&h)
+        })
         .map_err(|_| copy_text("reason.content.unparsable", &[]))
+}
+
+/// 不带记号那一问的回包（整份，JSON）：行按末段名作键（没有名字的那一行按位置），`info` 是头里业务那一格。
+fn whole_json(entries: serde_json::Value, info: serde_json::Value) -> serde_json::Value {
+    let rows = entries.as_array().cloned().unwrap_or_default();
+    let keys: Vec<String> = rows
+        .iter()
+        .enumerate()
+        .map(|(i, e)| {
+            e["name"]
+                .as_str()
+                .map_or_else(|| format!("#{i}"), str::to_string)
+        })
+        .collect();
+    let up: serde_json::Map<String, serde_json::Value> = keys.iter().cloned().zip(rows).collect();
+    serde_json::json!({
+        "held": "h1", "whole": true, "same": false,
+        "order": keys, "up": up,
+        "head": { "total": keys.len(), "info": info },
+    })
 }
 
 /// 造一棵**结构**上像样的临时目录树：名字全合成，不锚在任何活体上。
@@ -437,17 +461,14 @@ fn an_entry_we_cannot_read_is_an_error_not_a_skipped_row() {
 /// 一屏照后端排好的先后摆：窗口不重排（喂一份「不像排过」的序，出来一模一样）。
 #[test]
 fn a_screenful_keeps_the_backends_order() {
-    let d = serde_json::json!({
-        "entries": [
+    let d = whole_json(
+        serde_json::json!([
             { "path": "/a/zebra.txt", "name": "zebra.txt", "kind": "file", "class": "other", "type_text": "" },
             { "path": "/a/Apple", "name": "Apple",     "kind": "dir", "class": "other", "type_text": "" },
             { "path": "/a/beta.txt", "name": "beta.txt",  "kind": "file", "class": "other", "type_text": "" },
-        ],
-        "truncated": false,
-        "crumbs": [],
-        "total": 3,
-        "unreadable": 0,
-    });
+        ]),
+        serde_json::json!({ "up": null, "truncated": false, "crumbs": [], "total": 3, "unreadable": 0 }),
+    );
     let (rows, cut) = rows_from_ls_data(&d).expect("这一份该解得出来");
     let names: Vec<&str> = rows.iter().map(|r| r.name.as_str()).collect();
     assert_eq!(names, ["zebra.txt", "Apple", "beta.txt"]);
@@ -464,33 +485,43 @@ fn a_screenful_keeps_the_backends_order() {
 /// 与「这个文件不存在」分不开。
 #[test]
 fn one_unreadable_entry_fails_the_whole_screen_instead_of_vanishing() {
-    let d = serde_json::json!({
-        "entries": [
+    let info = serde_json::json!({ "up": null, "truncated": false, "crumbs": [], "total": 3, "unreadable": 0 });
+    let d = whole_json(
+        serde_json::json!([
             { "path": "/a/good.txt", "name": "good.txt", "kind": "file", "class": "other", "type_text": "" },
             { "kind": "file" },                       // 没有 path
             { "path": "/a/also-good", "name": "also-good", "kind": "dir", "class": "other", "type_text": "" },
-        ],
-        "truncated": false, "crumbs": [], "total": 3, "unreadable": 0,
-    });
+        ]),
+        info.clone(),
+    );
     let e = rows_from_ls_data(&d).expect_err("有一条解不出来，整趟却成功了 —— 那一行被悄悄吞了");
     assert!(
         copy_core::copy_matches("reason.content.unparsable", &e),
         "报错不是「回包认不出」那一句：{e}"
     );
     // 阴性对照：三条都好的时候它成得了（否则上面可以靠「什么都失败」全绿）。
-    let ok = serde_json::json!({ "entries": [ { "path": "/a/x", "name": "x", "kind": "file", "class": "other", "type_text": "" } ], "truncated": false, "crumbs": [], "total": 1, "unreadable": 0 });
+    let ok = whole_json(
+        serde_json::json!([ { "path": "/a/x", "name": "x", "kind": "file", "class": "other", "type_text": "" } ]),
+        info,
+    );
     assert_eq!(rows_from_ls_data(&ok).unwrap().0.len(), 1);
 }
 
 /// `truncated` 带得回来；缺了这一格 ⇒ 回包认不出（不再悄悄当没截断：形状由两端共用的类型定）。
 #[test]
 fn truncation_is_carried_back_not_dropped() {
-    let d = serde_json::json!({ "entries": [], "crumbs": [], "truncated": true, "total": 9, "unreadable": 0 });
+    let d = whole_json(
+        serde_json::json!([]),
+        serde_json::json!({ "up": null, "crumbs": [], "truncated": true, "total": 9, "unreadable": 0 }),
+    );
     assert!(
         rows_from_ls_data(&d).unwrap().1.truncated,
         "截断那一格被丢了"
     );
-    let d2 = serde_json::json!({ "entries": [] });
+    let d2 = whole_json(
+        serde_json::json!([]),
+        serde_json::json!({ "up": null, "crumbs": [] }),
+    );
     assert!(rows_from_ls_data(&d2).is_err(), "缺了截断那一格却解出来了");
 }
 
@@ -515,9 +546,11 @@ async fn listing_has_no_second_road_when_the_backend_refuses() {
     // 窗口手里的是远端那一形（恒 `/`；Windows 上本机临时目录要换一下，见 `remote_form` 头注）。
     let dir = remote_form(&root.to_string_lossy());
     // ① 后端答得出。
-    let (rows, cut) = list_dir(&wired.line, &src, &dir, Sort::default())
-        .await
-        .expect("后端答得出，窗口这一侧却失败了");
+    let (rows, cut) = screen_of(
+        &list_dir(&wired.line, &src, &dir, Sort::default())
+            .await
+            .expect("后端答得出，窗口这一侧却失败了"),
+    );
     let want = list_local(&root).expect("合成树列得出来");
     let set = |v: &[Listed]| {
         v.iter()
@@ -676,40 +709,52 @@ fn a_modification_time_is_printed_in_local_time_short_this_year() {
     assert_eq!(mtime_text_at(951_782_400, 0, (2000, 3, 1)).short, "02-29");
 }
 
-/// `files-ls` 回包里的字段名 —— 从两端共用的那份线上类型（`cmd_wire::files::LsReply` · `LsEntry`）现取：
-/// 每一格都填上的一份序列化出来，顶层与那一行的键并在一起。
+/// `files-ls` 回包里的字段名 —— 从两端共用的那份线上类型（`cmd_wire::files::LsReply` ＝ `Patch<LsHead, LsEntry>`）现取：
+/// 每一格都填上的一份序列化出来，顶层 · 头 · 头里业务那一格 · 那一行的键并在一起。
 fn backend_ls_fields() -> std::collections::BTreeSet<String> {
-    use cmd_wire::files::{FileKind, LinkTo, LsEntry, LsReply, WirePath};
-    let full = LsReply {
-        entries: vec![LsEntry {
-            path: WirePath::from("/a"),
-            name: WirePath::from("a"),
-            kind: FileKind::Symlink,
-            size: Some(1),
-            size_text: Some(String::new()),
-            mtime_secs: Some(1),
-            mtime_text: Some(String::new()),
-            mtime_full: Some(String::new()),
-            link_dir: Some(true),
-            link_to: Some(LinkTo::Dir),
-            class: cmd_wire::files::FileClass::Folder,
-            type_text: String::new(),
-            gates: Some(cmd_wire::files::Gates {
-                preview: cmd_wire::files::PreviewGate::No(String::new()),
-                view: None,
-                edit: cmd_wire::files::Gate::Cap(1),
-            }),
-        }],
-        up: Some(WirePath::from("/")),
-        crumbs: Vec::new(),
-        truncated: false,
-        total: 1,
-        unreadable: 0,
+    use cmd_wire::files::{FileKind, LinkTo, LsEntry, LsHead, LsReply, WirePath};
+    let row = LsEntry {
+        path: WirePath::from("/a"),
+        name: WirePath::from("a"),
+        kind: FileKind::Symlink,
+        size: Some(1),
+        size_text: Some(String::new()),
+        mtime_secs: Some(1),
+        mtime_text: Some(String::new()),
+        mtime_full: Some(String::new()),
+        link_dir: Some(true),
+        link_to: Some(LinkTo::Dir),
+        class: cmd_wire::files::FileClass::Folder,
+        type_text: String::new(),
+        gates: Some(cmd_wire::files::Gates {
+            preview: cmd_wire::files::PreviewGate::No(String::new()),
+            view: None,
+            edit: cmd_wire::files::Gate::Cap(1),
+        }),
+    };
+    let full: LsReply = cmd_wire::sync::Patch {
+        held: cmd_wire::sync::Held("h".to_string()),
+        whole: true,
+        same: false,
+        order: Some(vec!["a".to_string()]),
+        up: [("a".to_string(), row)].into_iter().collect(),
+        head: Some(cmd_wire::sync::Head {
+            total: 1,
+            info: LsHead {
+                up: Some(WirePath::from("/")),
+                crumbs: Vec::new(),
+                truncated: false,
+                total: 1,
+                unreadable: 0,
+            },
+        }),
     };
     let v = serde_json::to_value(&full).unwrap();
     let mut out: std::collections::BTreeSet<String> =
         v.as_object().unwrap().keys().cloned().collect();
-    out.extend(v["entries"][0].as_object().unwrap().keys().cloned());
+    out.extend(v["head"].as_object().unwrap().keys().cloned());
+    out.extend(v["head"]["info"].as_object().unwrap().keys().cloned());
+    out.extend(v["up"]["a"].as_object().unwrap().keys().cloned());
     out
 }
 
@@ -728,7 +773,12 @@ fn entry(v: &serde_json::Value) -> Result<Listed, String> {
 #[test]
 fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
     const TABLE: &[(&str, &str)] = &[
-        ("entries", "那一屏有几行"),
+        ("held", "Shown::held（原样存着，下一趟交回）"),
+        ("whole", "Shown::apply（换成整份）"),
+        ("same", "Shown::apply（只换记号）"),
+        ("order", "那一屏有几行 · 先后（screen_of 照它摊开）"),
+        ("head", "Shown::head（截断那几格从它来）"),
+        ("info", "LsHead（截断 · 一共几项 · 读不出几项）"),
         ("kind", "is_dir ＋ link"),
         ("link_dir", "link_dir（缺 ＝ 否）"),
         ("link_to", "link_broken（`missing` ⇒ 断了；缺 ＝ 否）"),
@@ -747,7 +797,10 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
             "name",
             "name · lossy_name · raw_name（那台按自己的分隔符切好的末段）",
         ),
-        ("up", "窗口不读（上一级照当前目录切）"),
+        (
+            "up",
+            "变了的那几行（Shown::apply 换进去）；头里那一格（上一级）窗口不读，照当前目录切",
+        ),
         ("crumbs", "窗口不读（面包屑照当前目录切）"),
         ("size", "size（缺 ＝ 0）"),
         ("size_text", "size_text（大小那一格，原样）"),
@@ -832,10 +885,11 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
         "目录不是合法 UTF-8、名字是 —— 这一行被当成了名字有损"
     );
     assert_eq!(file.name, "f");
-    // entries / truncated：由 `rows_from_ls_data` 摊开。
-    let (rows, cut) = rows_from_ls_data(
-        &serde_json::json!({ "entries": [ { "path": "/a/x", "name": "x", "kind": "file", "class": "other", "type_text": "" } ], "crumbs": [], "truncated": true, "unreadable": 3, "total": 9 }),
-    )
+    // order · up · head：换进手上那一份、照先后摊开（截断那几格从头来）。
+    let (rows, cut) = rows_from_ls_data(&whole_json(
+        serde_json::json!([ { "path": "/a/x", "name": "x", "kind": "file", "class": "other", "type_text": "" } ]),
+        serde_json::json!({ "up": null, "crumbs": [], "truncated": true, "unreadable": 3, "total": 9 }),
+    ))
     .unwrap();
     assert_eq!(
         (rows.len(), cut),
@@ -1200,7 +1254,7 @@ async fn the_read_requests_the_window_sends_keep_their_wire_bytes() {
     let plain = RemotePath::plain("/srv/a b");
     let lossy = RemotePath::from_bytes(b"/srv/d\xff");
     for p in [&plain, &lossy] {
-        let _ = list_via_backend_at(&line, &o, p.path(), LS_LIMIT, Sort::default()).await;
+        let _ = list_via_backend_at(&line, &o, p.path(), LS_LIMIT, Sort::default(), None).await;
         let _ = crate::size::size_remote(&line, &o, &p.path(), "n").await;
         let _ = crate::editor::read_text_at(&line, &o, p, 8388608).await;
     }

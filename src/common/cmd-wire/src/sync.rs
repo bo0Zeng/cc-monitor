@@ -98,6 +98,11 @@ impl<H, T> Hand<H, T> {
         let keep: std::collections::HashSet<&String> = self.order.iter().collect();
         self.items.retain(|k, _| keep.contains(k));
     }
+
+    /// 照先后摊开（键在 `order` 里、`items` 里却没有的那几个不出）。
+    pub fn in_order(&self) -> impl Iterator<Item = &T> + '_ {
+        self.order.iter().filter_map(|k| self.items.get(k))
+    }
 }
 
 #[cfg(test)]

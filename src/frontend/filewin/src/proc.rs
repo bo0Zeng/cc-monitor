@@ -6,7 +6,7 @@
 use copy_core::copy_text;
 use copy_core::said::Said;
 
-use super::source::{Listed, Source};
+use super::source::Source;
 use filewin_contract::{decode_request, encode_ready, Ready};
 
 /// 在自己的 stdin / stdout 上起通道的客户端，换一条线：起它的 monitor 在那对管子的另一头（父子管道，没有钥匙）。
@@ -49,14 +49,13 @@ pub async fn first_screen(
     line: &super::source::Line,
     source: &Source,
     cwd: Option<String>,
-) -> Result<(String, Vec<Listed>), String> {
+) -> Result<(String, super::source::Shown), String> {
     let cwd = match cwd {
         Some(d) => d,
         None => super::source::home_of(line, &source.origin(), FIRST_SCREEN_BUDGET).await?,
     };
-    let (rows, _truncated) =
-        super::source::list_dir(line, source, &cwd, super::source::Sort::default()).await?;
-    Ok((cwd, rows))
+    let first = super::source::list_dir(line, source, &cwd, super::source::Sort::default()).await?;
+    Ok((cwd, first))
 }
 
 /// 在 stderr 上说那一行（stdout 是通道）。父进程已经不在了（管子断了）⇒ 没人收，不当成窗口的错。
@@ -151,17 +150,17 @@ fn run_on(rt: &tokio::runtime::Runtime, req: filewin_contract::OpenRequest) -> i
     // 🔴〔09-28 裁 3〕**列不出来就别开窗**（那条纪律从 monitor 那一侧搬到这里，一个字没动）：
     //    先列第一屏，说一行给父进程；列不出来 ⇒ 说原话、退，窗口一个都不开。
     let source = Source::remote(req.origin.clone());
-    let (cwd, rows) = match rt.block_on(first_screen(&line, &source, req.cwd.clone())) {
+    let (cwd, first) = match rt.block_on(first_screen(&line, &source, req.cwd.clone())) {
         Ok(first) => first,
         Err(e) => return refuse(e, EXIT_NOT_LISTED),
     };
-    say(&Ready::Listed(rows.len()));
+    say(&Ready::Listed(first.order.len()));
     let h = super::shell::open_detached_seeded(
         source,
         cwd,
         Some(rt.handle().clone()),
         Some(line),
-        rows,
+        first,
         req.reveal,
         req.bookmarks,
         req.view,

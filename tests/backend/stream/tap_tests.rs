@@ -78,6 +78,38 @@ fn a_plan_change_becomes_one_changed_frame() {
     });
 }
 
+/// ★ 正被浏览的某个目录有了动静 ⇒ 这条流连接推一帧 `changed {files_dir, key: 那个目录}`（不带小成品）；没再动 ⇒ 不再推。
+#[test]
+fn a_moved_directory_becomes_one_changed_frame() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("rt");
+    rt.block_on(async {
+        let mut t = attach_rx(std::sync::Arc::new(TapHub::default()));
+        let tx = tokio::sync::broadcast::channel::<String>(4).0;
+        t.dirs = Some(tx.subscribe());
+        tx.send("/w/src".to_string()).unwrap();
+        let f = tokio::time::timeout(guard_core::wall::CEILING, t.next())
+            .await
+            .expect("该推一帧");
+        match f {
+            Some(Frame::Changed(crate::wire::Changed {
+                topic: Topic::FilesDir,
+                key,
+                rev,
+                body,
+            })) => assert_eq!((key.as_deref(), rev, body), (Some("/w/src"), None, None)),
+            other => panic!("{other:?}"),
+        }
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(50), t.next())
+                .await
+                .is_err()
+        );
+    });
+}
+
 /// ★ 订阅节点：事实那几种 ⇒ 推一帧 `changed {quota}`；带会话的 ⇒ 再推一帧 `changed {rotation, key: sid}`；
 /// 策略那一种 ⇒ `changed {rotation_strategies}`；续令牌没成 ⇒ 再推一帧 `changed {manual}`。没订那条通道的连接永远不推。
 #[test]

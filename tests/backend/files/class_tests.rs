@@ -203,14 +203,18 @@ fn ls_rows_carry_class_type_text_and_gates_and_sort_by_type() {
                 limit: None,
                 dirs_only: None,
                 sort,
+                held: None,
+                range: None,
             },
             &Default::default(),
         )
         .expect("ls")
     };
     let names = |r: &cmd_wire::files::LsReply| -> Vec<String> {
-        r.entries
+        r.order
             .iter()
+            .flatten()
+            .map(|k| &r.up[k])
             .map(|e| String::from_utf8_lossy(&e.name.0).into_owned())
             .collect()
     };
@@ -225,8 +229,8 @@ fn ls_rows_carry_class_type_text_and_gates_and_sort_by_type() {
     );
     let row = |n: &str| {
         by_type
-            .entries
-            .iter()
+            .up
+            .values()
             .find(|e| e.name.0 == n.as_bytes())
             .unwrap()
             .clone()

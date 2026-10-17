@@ -3,9 +3,10 @@ package com.ccmonitor.mobile.core.claude.link
 import com.ccmonitor.mobile.core.claude.link.wire.FileKind
 import com.ccmonitor.mobile.core.claude.link.wire.FilesPathReply
 import com.ccmonitor.mobile.core.claude.link.wire.LsEntry
-import com.ccmonitor.mobile.core.claude.link.wire.LsReply
+import com.ccmonitor.mobile.core.claude.link.wire.LsHead
 import com.ccmonitor.mobile.core.claude.link.wire.ReadTextReply
 import com.ccmonitor.mobile.core.claude.link.wire.StatReply
+import com.ccmonitor.mobile.core.claude.link.wire.SyncPatch
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
@@ -158,16 +159,27 @@ object FilesLs {
             if (bySize) put("sort", mapOf("by" to "size"))
         }
 
-    /** 有一格路径读不出 ⇒ 整份不认（`null`）。 */
+    /**
+     * 不带记号那一问的回包（整份，带键集合那一形：`order` 是那台排好的先后、`up` 按键给每一行、`head.info` 是这一问的头）
+     * ⇒ 那几行照先后摊开。手机不存目录副本，恒问整份；有一格路径读不出 ⇒ 整份不认（`null`）。
+     */
     fun of(data: Any?): Listing? {
-        val r = Wire.bind<LsReply>(data) ?: return null
-        val rows = ((data as? Map<*, *>)?.get("entries") as? List<*>).orEmpty()
-        val entries = r.entries.mapIndexed { i, e -> entryOf(e)?.copy(row = rows.getOrNull(i)) }
-        val crumbs = r.crumbs.map { c -> RemotePath.of(c.name)?.let { n -> RemotePath.of(c.path)?.let { n.shown to it } } }
+        val (rows, head) = whole(data) ?: return null
+        val entries = rows.map { (raw, e) -> entryOf(e)?.copy(row = raw) }
+        val crumbs = head.crumbs.map { c -> RemotePath.of(c.name)?.let { n -> RemotePath.of(c.path)?.let { n.shown to it } } }
         // 上一级缺 ＝ 到顶；给了却读不出 ⇒ 同那几格读不出。
-        val up = r.up?.let { RemotePath.of(it) ?: return null }
+        val up = head.up?.let { RemotePath.of(it) ?: return null }
         if (null in entries || null in crumbs) return null
-        return Listing(entries.filterNotNull(), r.truncated, r.total, up, crumbs.filterNotNull())
+        return Listing(entries.filterNotNull(), head.truncated, head.total, up, crumbs.filterNotNull())
+    }
+
+    /** 整份那一形的回包 ⇒ 照先后的每一行（原行 ＋ 解好的那一份）＋ 头；不是整份 · 有一行解不出 ⇒ `null`。 */
+    private fun whole(data: Any?): Pair<List<Pair<Any?, LsEntry>>, LsHead>? {
+        val p = Wire.bind<SyncPatch>(data)?.takeIf { it.whole && it.order != null } ?: return null
+        val head = Wire.bind<LsHead>(p.head?.info) ?: return null
+        val order = p.order.orEmpty()
+        val rows = order.mapNotNull { k -> p.up[k].let { raw -> Wire.bind<LsEntry>(raw)?.let { raw to it } } }
+        return if (rows.size == order.size) rows to head else null
     }
 
     private fun entryOf(e: LsEntry): Entry? {
@@ -196,9 +208,9 @@ object FilesLs {
 
     /** [dirs] 那一问的回包；路径或名字读不成字（那台用 `b16` 交的）的那一行不列。形状对不上 ⇒ `null`。 */
     fun dirsOf(data: Any?): Dirs? {
-        val r = Wire.bind<LsReply>(data) ?: return null
-        val dirs = r.entries.mapNotNull { e -> (e.path as? String)?.let { p -> (e.name as? String)?.let { Dir(p, it) } } }
-        return Dirs(dirs, r.up as? String)
+        val (rows, head) = whole(data) ?: return null
+        val dirs = rows.mapNotNull { (_, e) -> (e.path as? String)?.let { p -> (e.name as? String)?.let { Dir(p, it) } } }
+        return Dirs(dirs, head.up as? String)
     }
 }
 

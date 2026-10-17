@@ -122,22 +122,61 @@ pub struct Applied {
     pub rejected: usize,
 }
 
-/// 换一批「用户正在浏览的目录」。**差分**：新增的挂上、离开的卸掉。
+/// 每条连接交来的名单（连接号 → 那几个目录）：盯的是它们的并集。一条连接换自己那一份不动别人的；连接断了摘掉它那份（[`leave`]）。
+static LISTS: std::sync::Mutex<std::collections::BTreeMap<u64, Vec<Vec<u8>>>> =
+    std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+/// 一条连接换它那一份「用户正在浏览的目录」（整份；空 ＝ 它什么都不看了）。盯的是各条连接名单的并集，**差分**：新增的挂上、
+/// 谁都不看了的卸掉；回数说的是并集那一份。
 ///
-/// 超过上限的部分**拒掉并报数**（见 [`Applied::rejected`]），不静默丢。
-pub fn set_browsing(dirs: &[PathBuf]) -> Applied {
-    let mut keep: Vec<Vec<u8>> = Vec::new();
-    let mut rejected = 0usize;
+/// 并集超过上限的部分**拒掉并报数**（见 [`Applied::rejected`]），不静默丢。
+pub fn set_browsing(conn: u64, dirs: &[PathBuf]) -> Applied {
+    let mut mine: Vec<Vec<u8>> = Vec::new();
     for d in dirs {
         let bytes = super::raw::path_bytes(d).to_vec();
-        if keep.contains(&bytes) {
+        if !mine.contains(&bytes) {
+            mine.push(bytes);
+        }
+    }
+    let mut lists = LISTS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if mine.is_empty() {
+        lists.remove(&conn);
+    } else {
+        lists.insert(conn, mine);
+    }
+    let all: Vec<Vec<u8>> = lists.values().flatten().cloned().collect();
+    drop(lists);
+    watch_union(&all)
+}
+
+/// 一条连接断了：摘掉它那一份名单（别的连接也交了的目录照旧盯着），让监听器跟上。
+pub fn leave(conn: u64) {
+    let removed = LISTS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .remove(&conn)
+        .is_some();
+    if removed {
+        set_browsing(conn, &[]);
+        keep_watching();
+    }
+}
+
+/// 盯着的那一份换成这几个目录（去重、按先后截到上限）。
+fn watch_union(all: &[Vec<u8>]) -> Applied {
+    let mut keep: Vec<Vec<u8>> = Vec::new();
+    let mut rejected = 0usize;
+    for bytes in all {
+        if keep.contains(bytes) {
             continue;
         }
         if keep.len() >= MAX_BROWSE_WATCHES {
             rejected += 1;
             continue;
         }
-        keep.push(bytes);
+        keep.push(bytes.clone());
     }
 
     let Ok(mut g) = WATCHED.write() else {
@@ -173,7 +212,7 @@ pub fn set_browsing(dirs: &[PathBuf]) -> Applied {
 
 /// 一个被盯着的目录里有动静了 ⇒ **重列那一个**。
 ///
-/// 返回 `true` = 这个目录在名单上、已经重列过。`false` = 不在名单上（事件与我们无关）。
+/// 返回 `true` = 这个目录在名单上、已经重列过（并说一声：[`dir_changes`]）。`false` = 不在名单上（事件与我们无关）。
 pub fn on_change(dir_bytes: &[u8]) -> bool {
     let Ok(mut g) = WATCHED.write() else {
         return false;
@@ -182,7 +221,16 @@ pub fn on_change(dir_bytes: &[u8]) -> bool {
         return false;
     };
     g[i].children = list_dir(&super::raw::to_path_buf(dir_bytes)).unwrap_or_default();
+    drop(g);
+    let _ = dir_changes().send(cmd_wire::files::WirePath(dir_bytes.to_vec()).key());
     true
+}
+
+/// 盯着的某个目录有了动静、重列过 ⇒ 那个目录（[`cmd_wire::files::WirePath::key`]；流的 tap 订它推 `changed {files_dir, key}`）。
+pub(crate) fn dir_changes() -> &'static tokio::sync::broadcast::Sender<String> {
+    static TX: std::sync::OnceLock<tokio::sync::broadcast::Sender<String>> =
+        std::sync::OnceLock::new();
+    TX.get_or_init(|| tokio::sync::broadcast::channel::<String>(64).0)
 }
 
 /// 事件里那个路径属于名单上哪个目录 —— 事件给的可能是**目录本身**，

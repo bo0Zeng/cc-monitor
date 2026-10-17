@@ -378,15 +378,12 @@ async fn a_fresh_index_is_never_rebuilt_behind_the_users_back() {
         wired.count(CMD_INDEX_REBUILD),
         wired.cmds()
     );
-    // 🔴 **但保鲜的另一半照样发了。** `files-browse` 刻意**不**放在重走那一支里面
-    //    （理由住 `find.rs::one_round` 的 ②）：重走难得一次，而「眼前是哪个目录」
-    //    用户每换一次就变一次 —— 放进去等于这条命令只在重走那一刻有效。
-    //    ⇒ 这一条就是那个取舍的判据：**一趟不重走的查询里它仍然恰好发了 1 条**。
+    // 「眼前是哪几个目录」不跟搜索走（窗口那一级在名单变了时交 `files-browse`：`Workspace::settle_dirs`）：
+    //   搜索那一趟一条都不发（发了就会把整扇窗的名单换成只剩这一个目录）。
     assert_eq!(
         wired.count(CMD_BROWSE),
-        1,
-        "这一趟没重走，`{CMD_BROWSE}` 也跟着一条都没发（线上：{:?}）——\n\
-         那等于把「告诉后端用户在看哪个目录」这件事绑在了重走那一刻上。",
+        0,
+        "搜索那一趟自己发了 `{CMD_BROWSE}`（线上：{:?}）—— 名单是整扇窗的，一个标签页的搜索不许换掉它",
         wired.cmds()
     );
 
@@ -462,18 +459,14 @@ async fn many_keystrokes_in_flight_still_only_trigger_one_rebuild() {
     for _ in 0..5 {
         let mine = w.search.start();
         let b = w.search.clone();
-        let (o, r) = (
-            comms_inward::origin::Origin(wired.origin.clone()),
-            root.clone(),
-        );
+        let o = comms_inward::origin::Origin(wired.origin.clone());
         let line = wired.line.clone();
         let asked = Asked {
             query: NEEDLE.to_string(),
             ..Asked::default()
         };
         tokio::spawn(async move {
-            let cwd = crate::source::RemotePath::plain(&r);
-            run_search_at(b, line, o, cwd, asked, mine, false).await;
+            run_search_at(b, line, o, asked, mine, false).await;
         });
     }
     testing::settle(&w.search, 0, "连打那一趟").await;

@@ -824,7 +824,7 @@ pub struct LinkState(Arc<Mutex<LinkInner>>);
 #[derive(Default)]
 struct LinkInner {
     seen: Option<super::source::LinkSeen>,
-    /// 断了之后又连上过几次（窗口据它把每个标签页重列一遍）。
+    /// 断了之后又连上过几次（窗口据它让每个标签页带着记号重问一遍）。
     ups: u64,
     /// 已经起了那条订阅。
     watching: bool,

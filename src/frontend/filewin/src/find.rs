@@ -7,7 +7,7 @@
 //!   丢旧号全在后端。
 //! - 范围：默认这台机器的家目录（后端定）；「只搜当前目录」开着 ⇒ 带 `under` = 当前目录。
 //! - 只要一屏（[`PAGE`]）；命中那一摞滚到底、后端说还有 ⇒ 同号再要下一屏，接在后面（[`fetch_more`]）。
-//! - 一趟里 `files-find` 与 `files-index-status` 并发发（一个往返）；`files-browse` 只在当前目录换了时发。
+//! - 一趟里 `files-find` 与 `files-index-status` 并发发（一个往返）；正在看的目录（`files-browse`）由窗口那一级交，不跟搜索走。
 //!
 //! # 节拍：要不要重走，后端说了算
 //!
@@ -626,8 +626,6 @@ pub struct SearchBoard {
     page_failed: Arc<AtomicBool>,
     /// 整份 [`Shown`] 被克隆过几次（判据数它：画命中那一摞不许每帧整份克隆）。
     full_clones: Arc<AtomicU64>,
-    /// 上一次告诉后端「用户在看哪个目录」时的那个目录（换了才再发）。
-    browsed: Arc<Mutex<Option<super::source::RemotePath>>>,
     /// **冷启动首建正在走**：`Some(后端声明的秒数)`。
     ///
     /// 🔴 它**不跟 `epoch` 走**，跟那一趟重走走：用户在首建期间接着打字，号就换了、
@@ -654,7 +652,6 @@ impl Default for SearchBoard {
             paging: Default::default(),
             page_failed: Default::default(),
             full_clones: Default::default(),
-            browsed: Default::default(),
             first_build: Default::default(),
             ctx: Default::default(),
         }
@@ -803,16 +800,6 @@ impl SearchBoard {
         self.rebuilding.store(false, Ordering::SeqCst);
     }
 
-    /// 要不要再告诉后端「用户在看这个目录」：换了才要（并记下这一次）。
-    fn note_browsing(&self, dir: &super::source::RemotePath) -> bool {
-        let mut g = self.browsed.lock().unwrap();
-        if g.as_ref() == Some(dir) {
-            return false;
-        }
-        *g = Some(dir.clone());
-        true
-    }
-
     /// 该不该往下再要一屏：手上这一问有答案、后端说后面还有、没有一趟翻页在飞。
     /// 抢到 ⇒ 回 `(号, 这一问, 从哪起)`，并把「在飞」那一位按住。
     pub fn claim_more(&self) -> Option<(u64, Asked, usize)> {
@@ -945,9 +932,8 @@ async fn ask_status(line: &Line, origin: &Origin) -> Result<IndexStatus, String>
 /// 🔴 **一趟搜索的全部编排。**
 ///
 /// ```text
-/// ① files-browse          ← 当前目录换了才发（保鲜的另一半：后端给眼前这个目录挂监听）
-/// ② files-find ∥ files-index-status   ← 并发，一个往返
-/// ③ 后端说要重走（没建过 / 该重走了 / 范围不在索引里），或用户按了那颗按钮
+/// ① files-find ∥ files-index-status   ← 并发，一个往返（正在看的目录由窗口那一级交 `files-browse`：`Workspace::settle_dirs`）
+/// ② 后端说要重走（没建过 / 该重走了 / 范围不在索引里），或用户按了那颗按钮
 ///      ├── files-index-rebuild（根 ＝ 后端给的 cover_root）  ← 同一时刻只发一趟
 ///      └── files-find ∥ files-index-status   ← 重走完再问一遍
 /// ```
@@ -955,27 +941,11 @@ async fn one_round(
     board: &SearchBoard,
     line: &Line,
     origin: &Origin,
-    cwd: &super::source::RemotePath,
     asked: &Asked,
     mine: u64,
     force_rebuild: bool,
 ) -> Round {
     let mut round = Round::default();
-
-    if board.note_browsing(cwd) {
-        if let Err(r) = super::source::ask_typed(
-            line,
-            origin,
-            &browse_args_at(std::slice::from_ref(cwd)),
-            call_timeout(),
-        )
-        .await
-        {
-            let r = r.said;
-            // 少的是「这个目录此刻新不新」，不是整趟搜索 ⇒ 只进日志。
-            tracing::warn!("filewin: browse list not delivered: {r}");
-        }
-    }
 
     let args = find_args(asked, mine, board.stream(), 0);
     let (found, status) = tokio::join!(ask_find(line, origin, &args), ask_status(line, origin));
@@ -1047,12 +1017,11 @@ pub async fn run_search_at(
     board: SearchBoard,
     line: Line,
     origin: Origin,
-    cwd: super::source::RemotePath,
     asked: Asked,
     mine: u64,
     force_rebuild: bool,
 ) {
-    let round = one_round(&board, &line, &origin, &cwd, &asked, mine, force_rebuild).await;
+    let round = one_round(&board, &line, &origin, &asked, mine, force_rebuild).await;
     store_if_current(&board, mine, &asked, round);
 }
 

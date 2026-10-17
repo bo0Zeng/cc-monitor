@@ -2932,8 +2932,8 @@ async fn perf_rig_worker() {
     while w.listing.is_loading() {
         tokio::time::sleep(std::time::Duration::from_millis(2)).await;
     }
-    let rows = w.listing.rows.lock().unwrap().clone();
-    println!("perf.list.rows={}", rows.len());
+    let first = w.listing.hand.lock().unwrap().clone();
+    println!("perf.list.rows={}", first.order.len());
     println!("perf.list.ms={}", t_ls.elapsed().as_millis());
     let line = wired.line.clone();
     let h = crate::shell::open_detached_seeded(
@@ -2941,7 +2941,7 @@ async fn perf_rig_worker() {
         bigd.clone(),
         tokio::runtime::Handle::try_current().ok(),
         Some(line),
-        rows,
+        first,
         None,
         None,
         None,
@@ -3065,4 +3065,119 @@ fn the_first_frame_does_not_wait_for_the_system_fonts() {
         "收下之后的那一帧没复核：{:?}",
         ws.pane_on(0).font
     );
+}
+
+/// 线上每一条 `files-ls` 问的是哪个目录 · 带没带记号（按发出的先后）。
+fn ls_asks(wired: &crate::find::testing::Wired) -> Vec<(String, bool)> {
+    wired
+        .log
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|r| r["cmd"] == "files-ls")
+        .map(|r| {
+            (
+                r["args"]["path"].as_str().unwrap_or_default().to_string(),
+                r["args"].get("held").is_some(),
+            )
+        })
+        .collect()
+}
+
+/// 正被浏览的目录：窗口那一级把每个标签页此刻的目录交 `files-browse`（名单变了才发）；那台说某个目录动过
+/// （`changed/files_dir {key}`）⇒ 只有正开着那个目录的标签页重问、带着手上那一份的记号；丢过几格 ⇒ 每个标签页都重问。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_moved_directory_re_asks_only_the_tabs_showing_it_with_their_held() {
+    let root = std::env::temp_dir().join(format!("dk5-dirs-{}", std::process::id()));
+    let (a, b) = (root.join("a"), root.join("b"));
+    for d in [&a, &b] {
+        std::fs::create_dir_all(d).unwrap();
+        std::fs::write(d.join("x.txt"), b"x").unwrap();
+    }
+    let (a, b) = (
+        crate::find::testing::remote_form(&a.to_string_lossy()),
+        crate::find::testing::remote_form(&b.to_string_lossy()),
+    );
+    let mut be = FakeBackend::new(&["files-ls", "files-browse"], Declared::default());
+    be.dir_push = Some(tokio::sync::broadcast::channel(16).0);
+    let (push, subs) = (be.dir_push.clone().unwrap(), be.dir_subs.clone());
+    let wired = wire_up("dk5-dir-moved", be).await;
+    let mut ws = two_sides(window_on(&wired, &a), window_on(&wired, &b));
+    let landed = |ws: &Workspace| (0..2).all(|i| !ws.pane_on(i).listing.is_loading());
+    for i in 0..2 {
+        ws.pane_on(i).reload();
+    }
+    for _ in guard_core::wall::rounds() {
+        ws.settle_dirs(None);
+        if landed(&ws)
+            && wired.count("files-browse") >= 1
+            && subs.load(std::sync::atomic::Ordering::SeqCst) > 0
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert_eq!(
+        ls_asks(&wired),
+        [(a.clone(), false), (b.clone(), false)],
+        "头一趟各自整份问"
+    );
+    assert_eq!(
+        wired
+            .log
+            .lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .find(|r| r["cmd"] == "files-browse")
+            .unwrap()["args"]["dirs"],
+        serde_json::json!([a, b]),
+        "名单不是每个标签页此刻的目录"
+    );
+    // 名单没变 ⇒ 不再发。
+    for _ in 0..3 {
+        ws.settle_dirs(None);
+    }
+    assert_eq!(wired.count("files-browse"), 1, "名单没变又发了一次");
+
+    // a 动过 ⇒ 只有开着 a 的那个标签页带记号重问。
+    push.send(serde_json::json!({ "key": a }).to_string())
+        .unwrap();
+    for _ in guard_core::wall::rounds() {
+        ws.settle_dirs(None);
+        if ls_asks(&wired).len() >= 3 && landed(&ws) {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    for _ in 0..3 {
+        ws.settle_dirs(None);
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert_eq!(
+        ls_asks(&wired)[2..],
+        [(a.clone(), true)],
+        "动过的是 a：只该 a 那一页带着记号重问"
+    );
+    assert_eq!(
+        ws.pane_on(0).listing.rows.lock().unwrap().len(),
+        1,
+        "重问之后那一屏没了"
+    );
+
+    // 说不清是哪个（丢过几格）⇒ 两页都重问。
+    ws.dir_watch.note(None);
+    ws.settle_dirs(None);
+    for _ in guard_core::wall::rounds() {
+        if ls_asks(&wired).len() >= 5 && landed(&ws) {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert_eq!(
+        ls_asks(&wired)[3..].len(),
+        2,
+        "说不清是哪个，却没有每页都重问"
+    );
+    std::fs::remove_dir_all(&root).ok();
 }

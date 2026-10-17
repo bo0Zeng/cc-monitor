@@ -63,6 +63,12 @@ fn scrub(v: &mut Value, root: &str) {
                     m.insert("size".to_string(), json!("<DIRSIZE>"));
                 }
             }
+            // 带键集合那一形的记号（进程号 · 备忘号 · 修订）每个进程不同，不是契约。
+            if let Some(h) = m.get_mut("held") {
+                if h.is_string() {
+                    *h = json!("<HELD>");
+                }
+            }
             if let Some(o) = m.get_mut("owner") {
                 if o.is_string() {
                     *o = json!("<OWNER>");

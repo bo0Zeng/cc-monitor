@@ -135,8 +135,60 @@ const KINDS_BY_CODE: [FileKind; 4] = [
     FileKind::Other,
 ];
 
-/// `files.ls` —— 列一个目录的直接子项。`dirs_only` ⇒ 只列文件夹（含指向目录的链接），截断与计数都只数文件夹。
+/// 一条连接断了：它交的那一份浏览名单摘掉（别的连接也在看的目录照旧盯着）。
+pub fn leave_browsing(conn: u64) {
+    browse_watch::leave(conn);
+}
+
+/// 正被浏览的某个目录有了动静、重列过 ⇒ 那个目录（[`browse_watch::dir_changes`]；推 `changed {files_dir}` 的那一头订它）。
+pub fn dir_changes() -> tokio::sync::broadcast::Receiver<String> {
+    browse_watch::dir_changes().subscribe()
+}
+
+/// 目录列表的备忘：一种问法（目录 · 排法 · 只列文件夹 · 上限）一份，份数同盯着的目录上限。
+static LS_VIEWS: std::sync::LazyLock<crate::common::views::Views> =
+    std::sync::LazyLock::new(|| crate::common::views::Views::new(browse_watch::MAX_BROWSE_WATCHES));
+
+/// 此刻列好的那一份（交给备忘比：问一次只取一次）。
+struct LsNow {
+    key: String,
+    now: std::cell::Cell<Option<(wire::LsHead, Vec<(String, wire::LsEntry)>)>>,
+}
+
+impl crate::common::views::ViewSource for LsNow {
+    type Head = wire::LsHead;
+    type Item = wire::LsEntry;
+    fn ask_key(&self) -> String {
+        self.key.clone()
+    }
+    fn now(&self) -> (wire::LsHead, Vec<(String, wire::LsEntry)>) {
+        self.now.take().expect("一问只比一次")
+    }
+}
+
+/// `files.ls` —— 列一个目录的直接子项，按手上那一份的记号答「没变 / 变了的那几行 / 整份」（[`crate::common::views`]）。
 fn ls(req: wire::LsReq, tz: &crate::common::time::Tz) -> Answer<wire::LsReply> {
+    let key = format!(
+        "{}\0{}\0{}\0{}",
+        req.path.key(),
+        serde_json::to_string(&req.sort.unwrap_or_default()).unwrap_or_default(),
+        req.dirs_only.unwrap_or(false),
+        limit_of(req.limit),
+    );
+    let (held, range) = (req.held.clone(), req.range);
+    let now = ls_now(req, tz)?;
+    let src = LsNow {
+        key,
+        now: std::cell::Cell::new(Some(now)),
+    };
+    Ok(LS_VIEWS.answer(&src, held.as_ref(), range))
+}
+
+/// 此刻那一份：排好、截好的每一行（键 ＝ 末段名）＋ 头。`dirs_only` ⇒ 只列文件夹（含指向目录的链接），截断与计数都只数文件夹。
+fn ls_now(
+    req: wire::LsReq,
+    tz: &crate::common::time::Tz,
+) -> Answer<(wire::LsHead, Vec<(String, wire::LsEntry)>)> {
     let dir = path_of(&req.path, "path")?;
     let limit = limit_of(req.limit);
     let dirs_only = req.dirs_only.unwrap_or(false);
@@ -199,15 +251,16 @@ fn ls(req: wire::LsReq, tz: &crate::common::time::Tz) -> Answer<wire::LsReply> {
     let entries = picked
         .into_iter()
         .map(|p| ls_row(p, tz))
+        .map(|e| (e.name.key(), e))
         .collect::<Vec<_>>();
-    Ok(wire::LsReply {
+    let head = wire::LsHead {
         truncated: total > entries.len() as u64,
-        entries,
         up: dir.parent().map(|u| wire_path(raw::path_bytes(u))),
         crumbs: crumbs_of(&dir),
         total,
         unreadable: unreadable as u64,
-    })
+    };
+    Ok((head, entries))
 }
 
 /// 列出来、还没排的一项（`num` ＝ 按大小 / 时间排时那一格，按名称 / 类型排时不读、恒 0）。
@@ -598,15 +651,16 @@ fn unreadable_paths() -> Vec<WirePath> {
         .collect()
 }
 
-/// `files.browse` —— 告诉后端「用户现在在看哪几个目录」。
+/// `files.browse` —— 这条连接（`conn`）此刻在看哪几个目录（整份）：每条连接各一份，盯的是并集。
+/// 名单跟着连接走 ⇒ 只在帧面（一次 exec 的进程交了也随它没了）；连接断了调 [`leave_browsing`]。
 ///
 /// [`browse_watch::set_browsing`] 登记名单 ＋ 当场把那几个目录各重列一遍（结果进 overlay，查询时盖掉大索引里的对应条目）；
 /// [`browse_watch::keep_watching`] 让进程里那一个监听器跟上名单 ⇒ 浏览的目录此后一有动静 overlay 就跟着重列。
-/// 买不到：watch 绑 inode 不绑路径 · 内核队列溢出 · 窗口关了没人发空名单（最后那份名单的 watch 留到下一次）。
+/// 买不到：watch 绑 inode 不绑路径 · 内核队列溢出。
 /// `rejected` 必须跟着回去，并同拍带上 `browse_watch_cap`：只回一个数、不说上限，调用方没法判该少送几个。
-fn browse(req: wire::BrowseReq) -> Answer<wire::BrowseReply> {
+pub fn browse(conn: u64, req: wire::BrowseReq) -> Answer<wire::BrowseReply> {
     let dirs = dirs_of(&req.dirs)?;
-    let applied = browse_watch::set_browsing(&dirs);
+    let applied = browse_watch::set_browsing(conn, &dirs);
     let w = browse_watch::keep_watching();
     Ok(wire::BrowseReply {
         added: applied.added as u64,
@@ -1037,14 +1091,6 @@ impl Ask for wire::RebuildReq {
     type Reply = wire::RebuildReply;
     fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::RebuildReply> {
         index_rebuild(self)
-    }
-}
-
-impl Ask for wire::BrowseReq {
-    const CAPABILITY: &'static str = "files.browse";
-    type Reply = wire::BrowseReply;
-    fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::BrowseReply> {
-        browse(self)
     }
 }
 

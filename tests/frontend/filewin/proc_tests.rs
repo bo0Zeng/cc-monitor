@@ -56,13 +56,13 @@ fn the_seed_is_exactly_the_first_line_and_the_channel_follows_on_the_same_pipes(
     .expect("child_main 里没有列第一屏那一下");
     let at_refuse = guard_core::find_pinned(&prod, "Err(e) => return refuse(e, EXIT_NOT_LISTED),")
         .expect("第一屏列不出来那一支不是「说原话、退」");
-    let at_ready = guard_core::find_pinned(&prod, "say(&Ready::Listed(rows.len()));")
+    let at_ready = guard_core::find_pinned(&prod, "say(&Ready::Listed(first.order.len()));")
         .expect("列出来之后没说就绪那一行");
     assert!(
         at_dial < at_first && at_first < at_refuse && at_refuse < at_ready && at_ready < at_open,
         "行序不是「拨 → 列 → 列不出来就退 → 说就绪 → 开窗」"
     );
-    for f in ["cwd", "rows"] {
+    for f in ["cwd", "first"] {
         let at = guard_core::find_pinned(&prod, &format!("        {f},\n"))
             .unwrap_or_else(|e| panic!("开窗那一下没收列出来的 `{f}`：{e}"));
         assert!(at > at_open, "列出来的 `{f}` 不在开窗那一下的实参里");
@@ -161,14 +161,13 @@ impl comms_inward::chan::router::Backends for ScreenHost {
                         .unwrap_or("?")
                         .to_string();
                     json(serde_json::json!({
-                        "entries": [
-                            { "path": format!("{dir}/甲"), "name": "甲", "kind": "dir", "class": "folder", "type_text": "" },
-                            { "path": format!("{dir}/乙.txt"), "name": "乙.txt", "kind": "file", "size": 3, "class": "text", "type_text": "" },
-                        ],
-                        "crumbs": [],
-                        "truncated": false,
-                        "total": 2,
-                        "unreadable": 0,
+                        "held": "h1", "whole": true, "same": false,
+                        "order": ["甲", "乙.txt"],
+                        "up": {
+                            "甲": { "path": format!("{dir}/甲"), "name": "甲", "kind": "dir", "class": "folder", "type_text": "" },
+                            "乙.txt": { "path": format!("{dir}/乙.txt"), "name": "乙.txt", "kind": "file", "size": 3, "class": "text", "type_text": "" },
+                        },
+                        "head": { "total": 2, "info": { "up": null, "crumbs": [], "truncated": false, "total": 2, "unreadable": 0 } },
                     }))
                 }
                 _ => Err(comms_inward::chan::wire::CallError::Peer {
@@ -204,7 +203,16 @@ async fn the_first_screen_asks_home_only_when_told_nothing() {
         let line = crate::find::testing::wire(be.clone(), 1 << 20);
         let got = first_screen(&line, &Source::remote(synthetic_cfg()), cwd)
             .await
-            .map(|(d, rows)| (d, rows.into_iter().map(|l| l.row.name).collect()));
+            .map(|(d, first)| {
+                (
+                    d,
+                    crate::source::screen_of(&first)
+                        .0
+                        .into_iter()
+                        .map(|l| l.row.name)
+                        .collect(),
+                )
+            });
         let asked = be.asked.lock().unwrap().clone();
         (got, asked)
     }
