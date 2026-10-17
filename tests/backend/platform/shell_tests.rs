@@ -143,16 +143,20 @@ fn the_session_shell_path_is_read_between_its_markers() {
 /// 沙箱家目录（`sh` 代替用户的 shell；登录时读的那份文件由各条自己写）。
 #[cfg(unix)]
 fn login_box(tag: &str, profile: &str) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
     let home = std::env::temp_dir().join(format!("ccm-session-path-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&home);
     std::fs::create_dir_all(&home).unwrap();
     std::fs::write(home.join(".profile"), profile).unwrap();
+    let sh = home.join("sh");
+    std::fs::write(&sh, "#!/bin/sh\nexec /bin/sh +m \"$@\"\n").unwrap();
+    std::fs::set_permissions(&sh, std::fs::Permissions::from_mode(0o755)).unwrap();
     home
 }
 
 #[cfg(unix)]
 fn sandboxed(home: &std::path::Path) -> crate::platform::child::Child {
-    super::login_shell_asking_path("sh")
+    super::login_shell_asking_path(home.join("sh").to_str().unwrap())
         .env("HOME", home)
         .env("PATH", "/usr/bin:/bin")
         .env_remove("ENV")
