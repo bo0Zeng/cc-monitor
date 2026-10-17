@@ -1037,17 +1037,16 @@ data class RotationViewReply(
     val nowText: String,
     val title: String?,
     val strategy: RotStrategyItem?,
-    val settings: Any?,
     val board: RotBoard,
-    val dirty: Boolean,
     val start: String,
     val current: String,
+    val lineup: List<String>,
+    val off: List<String>,
     val accounts: List<RotAccount>,
     val listed: Int,
     val decision: RotTryDecision?,
     val timeline: RotTryTimeline?,
     val past: RotPast?,
-    val baseRev: String,
     val hints: List<RotNote>,
 )
 
@@ -1109,6 +1108,7 @@ data class RotDaySeg(
     val to: Long,
     val v: Double,
     val text: String,
+    val tip: String,
 )
 
 @JsonClass(generateAdapter = false)
@@ -1164,6 +1164,15 @@ data class FactBlocked(
 @JsonClass(generateAdapter = true)
 data class RotTryDecision(
     val temp: List<String>,
+    /** 策略交的每号一句（顺序那一行「此刻怎样」）。 */
+    val why: List<RotTryRow>,
+)
+
+@WireOf("RotTryRow")
+@JsonClass(generateAdapter = true)
+data class RotTryRow(
+    val account: String,
+    val why: String,
 )
 
 @WireOf("RotTryTimeline")
@@ -1289,6 +1298,9 @@ enum class RotHintKind {
     @Json(name = "newer")
     NEWER,
 
+    @Json(name = "older")
+    OLDER,
+
     @Json(name = "wordsBad")
     WORDS_BAD,
 
@@ -1301,19 +1313,6 @@ enum class RotHintKind {
 data class RotOldFile(
     val name: String,
     val path: String,
-)
-
-@WireOf("RotationSettingsReply")
-@JsonClass(generateAdapter = true)
-data class RotationSettingsReply(
-    val settings: Any?,
-)
-
-@WireOf("RotationSaveReply")
-@JsonClass(generateAdapter = true)
-data class RotationSaveReply(
-    val id: String,
-    val rev: String,
 )
 
 @WireOf("ProfilesBook")

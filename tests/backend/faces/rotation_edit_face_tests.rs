@@ -79,7 +79,17 @@ fn settings_edits_are_saved_into_the_file_as_a_new_version() {
         Err(RotationSettingsErr::BadArgs(_))
     ));
     assert_eq!(file(&home, "by-list"), saved, "没收下的不动文件");
-    assert_eq!(edit(RotEdit::Keep).expect("ok").rev, shelf::rev_of(&saved));
+    let again = settings();
+    assert_eq!(
+        edit(RotEdit::Set {
+            key: "delay".into(),
+            row: Some(1),
+            v: again["accounts"][1]["delay"].clone(),
+        })
+        .expect("ok")
+        .rev,
+        shelf::rev_of(&saved)
+    );
     assert_eq!(file(&home, "by-list"), saved, "没变不写");
     match settings_with(
         &ctx,

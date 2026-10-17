@@ -3,4 +3,4 @@
 /**
  * 改设置的一个意图（`rotation-settings` 的 `edit`）：设一格 · 24 小时条上刷一段 · 拖号牌 · 加号 · 移出 · 只把基于的版本跟上。
  */
-export type RotEdit = { "set": { key: string, row?: number, v: unknown, } } | { "day": { key: string, row?: number, window: string, from: number, to: number, v: number | null, } } | { "move": { from: number, to: number, } } | { "add": { account: string, } } | { "remove": { row: number, } } | "keep";
+export type RotEdit = { "set": { key: string, row?: number, v: unknown, } } | { "day": { key: string, row?: number, window: string, from: number, to: number, v: number | null, } } | { "move": { from: number, to: number, } } | { "add": { account: string, } } | { "remove": { row: number, } };

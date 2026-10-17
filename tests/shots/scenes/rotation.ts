@@ -1,6 +1,6 @@
 /**
- * 轮换第五版：会话面板的四块（平时 · 点开一个号 · 24 小时条上刷一段 · 临时条目 · 停发 · 策略出错 · 不轮换）· 拖号牌改默认优先级 ·
- * 设置 → 机器 → 轮换。
+ * 轮换第五版：会话面板（平时 · 点一行看这个号 · 临时条目 · 先不用一个号 · 停发 · 策略出错 · 策略改过了 · 不轮换 · 拖一行改本会话先后）·
+ * 设置 → 机器 → 轮换（号牌 · 24 小时条上刷一段）。
  *
  * 账号库 · 额度账 · 轮换账本（第三版）· 策略文件落成本机家目录里的原始文件，`rotation-strategies` · `rotation-view` 全由真后端答
  * （真跑那份策略、真推演）。策略取 `rotation-weight.rhai`（号名换成合成的）。
@@ -65,7 +65,7 @@ function rotWorld(build: (rw: RotWorld) => void = () => {}): () => World {
       const sid = w.sessions[Number(k)]?.sid ?? sidOf(Number(k) + 1);
       sessions[sid] = { ...s, since: s.since ?? t - 83 * M };
     }
-    putRotation(d, { forNew: rw.forNew, sessions });
+    putRotation(d, { forNew: rw.forNew, sessions, strategies: rw.strategies });
     for (const [id, src] of Object.entries(rw.strategies)) putStrategy(d, id, src);
     for (const [f, src] of Object.entries(rw.old ?? {})) putOldScript(d, f, src);
     return w;
@@ -87,21 +87,29 @@ async function openPanel(): Promise<void> {
   await sleep(900);
 }
 
-async function card(account: string): Promise<HTMLElement> {
-  return waitFor(`${PANEL} button[data-account="${account}"]`);
-}
+const SECTION = "[data-rot-section]";
 
-/** 点一张号牌（指针按下 ＋ 松开，没拖开 ⇒ 展开）。 */
-async function openCard(account: string): Promise<void> {
-  const c = await card(account);
+/** 点一下（指针按下 ＋ 松开，没拖开）：会话顺序的一行 ⇒ 小窗；设置页的号牌 ⇒ 展开。 */
+async function tap(sel: string, then: string): Promise<void> {
+  const c = await waitFor(sel);
   c.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
   document.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, button: 0 }));
-  await waitFor(`${PANEL} div[data-account="${account}"]`);
+  await waitFor(then);
   await sleep(400);
 }
 
-/** 号牌此刻的先后。 */
-const order = (): string[] => [...document.querySelectorAll<HTMLElement>(`${PANEL} button[data-account]`)].map((e) => e.dataset.account ?? "");
+/** 会话顺序此刻的先后。 */
+const order = (): string[] => [...document.querySelectorAll<HTMLElement>(`${PANEL} [data-rot-row]`)].map((e) => e.dataset.account ?? "");
+
+/** 设置窗跳到本机「轮换」栏。 */
+async function openSettingsRot(): Promise<void> {
+  await waitFor(".settings-nav");
+  await sleep(1500);
+  await emit("settings-target", JSON.stringify({ machine: "<local>", tab: "rot" }));
+  await waitFor(`${SECTION} button[data-account]`, 10_000).catch(() => null);
+  await byText(`${SECTION} span`, /设置 ·/).catch(() => null);
+  await sleep(1200);
+}
 
 let dragFrom: string[] = [];
 
@@ -117,20 +125,39 @@ const NIGHT_BROKEN = `fn decide(ctx) {
 }
 `;
 export const ROTATION_SCENES: Scene[] = [
-  panelScene("rot-panel", "面板 · 平时", "按权重轮换（照「我们的轮换」写法的策略）：第一行下拉 ＋ 说明 · 号牌（在用 team 带绿点，work 到上限变淡）· 总体设置照策略声明的 scope: all 那几格 · 模拟照真推演", openPanel),
-  panelScene("rot-open", "面板 · 点开一个号", "点号牌 lab：头一行此刻用量 · 重置 · 立即用 · 移出；下面是声明里 scope: each 的格（用量上限另设了 5h 分段，7d 跟总体画虚线 · 耗尽后启用 · 启用延迟 · 单次用量上限）", async () => {
+  panelScene("rot-panel", "面板 · 平时", "按权重轮换（照「我们的轮换」写法的策略）：第一行下拉 ＋ ⋯ ＋ 编辑策略 · 说明 · 顺序（第一格在用的 team，每行一个勾 · 用量 · 此刻怎样，用不了的沉底）· 模拟照真推演", openPanel),
+  panelScene("rot-open", "面板 · 点一行看这个号", "点顺序里 lab 那一行：小窗贴着那一行，只看 —— 此刻怎样 · 用量与重置 · 它在这份策略里的规则 · 立即用 lab · 编辑策略", async () => {
     await openPanel();
-    await openCard("lab");
+    await tap(`${PANEL} [data-rot-row][data-account="lab"]`, "[data-rot-pop]");
   }),
-  panelScene("rot-day", "面板 · 24 小时条上刷一段", "team 的 5h 条上点一下：点中的那一段整段弹出 `00:00–24:00 · 上限 [  ] %` · 0% · 50% · 100% · 删这段", async () => {
-    await openPanel();
-    await openCard("team");
-    const el = await waitFor(`${PANEL} div[data-account="team"] [data-day-bar]`);
-    const r = el.getBoundingClientRect();
-    el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, clientX: r.left + 2 }));
-    el.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, clientX: r.left + 2 }));
-    await sleep(700);
-  }),
+  panelScene(
+    "rot-off",
+    "面板 · 本会话先不用一个号",
+    "personal 那一行的勾去掉：顺序里沉到最下、模拟里那一行整行「不用」；策略不变",
+    openPanel,
+    rotWorld((rw) => {
+      rw.sessions[0] = { ...rw.sessions[0], off: ["personal"] };
+    }),
+  ),
+  {
+    id: "rot-day",
+    page: "settings",
+    dir: "轮换",
+    title: "设置 · 24 小时条上刷一段",
+    desc: "设置页点号牌 team、在它的 5h 条上点一下：点中的那一段整段弹出 `00:00–24:00 · 上限 [  ] %` · 0% · 50% · 100% · 删这段",
+    width: 1280,
+    height: 1000,
+    world: rotWorld(),
+    act: async () => {
+      await openSettingsRot();
+      await tap(`${SECTION} button[data-account="team"]`, `${SECTION} div[data-account="team"]`);
+      const el = await waitFor(`${SECTION} div[data-account="team"] [data-day-bar]`);
+      const r = el.getBoundingClientRect();
+      el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, clientX: r.left + 2 }));
+      el.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, clientX: r.left + 2 }));
+      await sleep(700);
+    },
+  },
   panelScene(
     "rot-temp",
     "面板 · 拖出来的临时条目",
@@ -200,18 +227,20 @@ export const ROTATION_SCENES: Scene[] = [
   },
   panelScene(
     "rot-newer",
-    "面板 · 这份策略在别处被改了",
-    "会话里有没存的改动、而策略文件在别处被改过：蓝条「这份策略在别处被改了」［载入新的］［留着这边的］；第一行照旧 没存 · 还原 · 存成这份策略",
+    "面板 · 策略改过了",
+    "设置页里改过这份策略（存成新版）、这个会话还在用它载入的那一版：蓝条「策略「按权重轮换」改过了 · 这个会话还在用旧版」［载入新版］",
     openPanel,
     rotWorld((rw) => {
       rw.sessions[0] = {
         ...rw.sessions[0],
-        rev: "h:000000000000",
-        draft: {
-          accounts: [{ id: "work" }, { id: "team" }, { id: "lab" }, { id: "personal" }, { id: "api", fallback: true, delay: 30, stint: 20 }],
-          caps: { "5h": [{ from: 0, to: 1440, v: 90 }], "7d": [{ from: 0, to: 1440, v: 90 }] },
-          close: 30,
-          force: 25,
+        stale: {
+          rev: "h:000000000000",
+          settings: {
+            accounts: [{ id: "work" }, { id: "team" }, { id: "lab" }, { id: "personal" }, { id: "api", fallback: true, delay: 30, stint: 20 }],
+            caps: { "5h": [{ from: 0, to: 1440, v: 90 }], "7d": [{ from: 0, to: 1440, v: 90 }] },
+            close: 30,
+            force: 25,
+          },
         },
       };
     }),
@@ -226,23 +255,23 @@ export const ROTATION_SCENES: Scene[] = [
     }),
   ),
   {
-    ...panelScene("rot-drag", "面板 · 拖号牌改默认优先级", "真鼠标拖第 1 张号牌（work）松在第 3 张（lab）上 ⇒ 整份设置交后端，回来的号牌排成 team · work · lab · …", async () => {
+    ...panelScene("rot-drag", "面板 · 拖一行改本会话先后", "真鼠标拖顺序第 3 行松在第 2 行上 ⇒ 拖完的那一串交后端（本会话先后），回来的顺序照它排、模拟照它推演", async () => {
       await openPanel();
       dragFrom = order();
     }),
     drag: () => {
       const want = [...dragFrom];
-      const [moved] = want.splice(0, 1);
+      const [moved] = want.splice(2, 1);
       want.splice(1, 0, moved);
       return {
-        from: document.querySelector<HTMLElement>(`${PANEL} button[data-account="${dragFrom[0]}"]`)!,
-        to: document.querySelector<HTMLElement>(`${PANEL} button[data-account="${dragFrom[2]}"]`)!,
+        from: document.querySelector<HTMLElement>(`${PANEL} [data-rot-row][data-account="${dragFrom[2]}"]`)!,
+        to: document.querySelector<HTMLElement>(`${PANEL} [data-rot-row][data-account="${dragFrom[1]}"]`)!,
         check: async () => {
           for (let i = 0; i < 40; i++) {
             if (order().join() === want.join()) return null;
             await sleep(150);
           }
-          return `号牌没排成 ${want.join(" · ")}：此刻 ${order().join(" · ")}`;
+          return `顺序没排成 ${want.join(" · ")}：此刻 ${order().join(" · ")}`;
         },
       };
     },
@@ -252,17 +281,10 @@ export const ROTATION_SCENES: Scene[] = [
     page: "settings",
     dir: "轮换",
     title: "设置 · 机器 · 轮换",
-    desc: "本机的「轮换」栏：第一行下拉选中的就是新会话用的，右边写「设置 · 本机」；下面同一个四块（没有会话 ⇒ 没有「立即用」与拖时间轴）",
+    desc: "本机的「轮换」栏：第一行下拉选中的就是新会话用的，右边写「设置 · 本机」；下面号牌 · 总体设置 · 模拟（改一格当场存成新版）",
     width: 1280,
     height: 1000,
     world: rotWorld(),
-    act: async () => {
-      await waitFor(".settings-nav");
-      await sleep(1500);
-      await emit("settings-target", JSON.stringify({ machine: "<local>", tab: "rot" }));
-      await waitFor("[data-rot-section] button[data-account]", 10_000).catch(() => null);
-      await byText("[data-rot-section] span", /设置 ·/).catch(() => null);
-      await sleep(1200);
-    },
+    act: openSettingsRot,
   },
 ];

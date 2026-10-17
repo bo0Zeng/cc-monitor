@@ -337,7 +337,6 @@ fn an_edit_is_applied_where_the_form_says() {
         ids(ap(RotEdit::Remove { row: 0 }).expect("ok")),
         [json!("a"), json!("b")]
     );
-    assert_eq!(ap(RotEdit::Keep).expect("ok"), s);
     for bad in [
         RotEdit::Remove { row: 3 },
         RotEdit::Move { from: 0, to: 3 },

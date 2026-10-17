@@ -1,7 +1,7 @@
 /**
- * 轮换四块的接线：读（`rotation-strategies` · `rotation-view`）→ 画（`rot-board.ts`）→ 手势翻成命令 → 重读重画。
- * 会话面板（目标 `{sid}`：改动先成这个会话的草稿，存在后端）与设置窗「轮换」栏（目标 `{strategy, settings}`：草稿在界面手上，
- * 选中的那份 ＝ 新会话用的）共用这一处；两边只差这几条命令发给谁。界面不判：收不下的照后端的码说。
+ * 轮换的接线：读（`rotation-strategies` · `rotation-view`）→ 画（`rot-board.ts`）→ 手势翻成命令 → 重读重画。
+ * 会话面板（目标 `{sid}`：照它载入的那份副本；只做这个会话的临时动作）与设置窗「轮换」栏（目标 `{strategy}`：选中的那份 ＝ 新会话用的；
+ * 改一格当场存成那份的新版）共用这一处。界面不判：收不下的照后端的码说。
  */
 import { accountLabel } from "./acct-words";
 import { board, type BoardActs, type BoardState } from "./rot-board";
@@ -10,6 +10,7 @@ import { callTyped } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import { banner } from "./kit/banner";
 import { openOnMachine } from "./file-window";
+import { openSettingsWindow } from "./open-settings";
 import { button } from "./kit/button";
 import { askText, confirmDialog, type ConfirmFn } from "./kit/dialog";
 import { failToast } from "./kit/toast";
@@ -62,9 +63,6 @@ export function mountRotation(spec: RotMountSpec): RotMount {
   const state: BoardState = { hours: 12, open: null, refused: null };
   let view: RotationViewReply | null = null;
   let list: RotationStrategiesReply | null = null;
-  let draft: unknown = undefined;
-  /** 设置页的草稿照哪个版本改出来的（随读交给后端，跟文件此刻的不同 ⇒ 后端提示「别处被改了」）。 */
-  let draftRev: string | undefined = undefined;
   let readErr: string | null = null;
   let seq = 0;
   const confirmFn = spec.confirm ?? confirmDialog;
@@ -112,14 +110,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
       const l = await readStrategies(origin);
       let v: RotationViewReply | null = null;
       if (sid !== null) v = await readView(origin, { sid }, state.hours);
-      else if (l.forNew !== "")
-        v = await readView(
-          origin,
-          draft === undefined
-            ? { strategy: l.forNew }
-            : { strategy: l.forNew, settings: draft, rev: draftRev },
-          state.hours,
-        );
+      else if (l.forNew !== "") v = await readView(origin, { strategy: l.forNew }, state.hours);
       if (my !== seq) return;
       list = l;
       view = v;
@@ -150,47 +141,15 @@ export function mountRotation(spec: RotMountSpec): RotMount {
     return true;
   };
 
-  /** 写的时候当 `ifRev` 的：显示的这份设置照哪个版本（后端给）。 */
-  const rev = (): string => view?.baseRev ?? "";
-
   const acts: BoardActs = {
     pick: (id) =>
-      void (async () => {
-        if (sid === null) {
-          draft = undefined;
-          await write(copyText("rot.fail.forNew"), () =>
+      void (sid === null
+        ? write(copyText("rot.fail.forNew"), () =>
             callTyped(origin, "rotation-for-new", { strategy: id }, rotBudget()),
-          );
-          return;
-        }
-        try {
-          await callTyped(origin, "rotation-use", {
-            sid,
-            strategy: id,
-            discard: false,
-          }, rotBudget());
-        } catch (e) {
-          if (refusedCode(e)?.code !== "dirty")
-            return void failToast(copyText("rot.fail.use"), e);
-          const ok = await confirmFn({
-            title: copyText("rot.ask.discardTitle"),
-            action: copyText("rot.ask.discardGo"),
-            body: copyText("rot.ask.discardBody"),
-          });
-          if (!ok) return paint();
-          if (
-            !(await write(copyText("rot.fail.use"), () =>
-              callTyped(origin, "rotation-use", {
-                sid,
-                strategy: id,
-                discard: true,
-              }, rotBudget()),
-            ))
           )
-            return;
-        }
-        await refresh();
-      })(),
+        : write(copyText("rot.fail.use"), () =>
+            callTyped(origin, "rotation-use", { sid, strategy: id }, rotBudget()),
+          )),
     copy: (id) =>
       void (async () => {
         const name = await ask(copyText("rot.ask.copyTitle", { name: id }), "");
@@ -237,52 +196,13 @@ export function mountRotation(spec: RotMountSpec): RotMount {
             callTyped(origin, "rotation-strategy-add", { source: f.text, name }, rotBudget()),
           );
       })(),
-    // 会话 ⇒ 草稿在后端；设置页 ⇒ 后端照交来的草稿改、回改完的那份，界面原样存着随读带回。
+    // 设置页：改一格当场存成那份的新版（版本对不上 ⇒ 重读，照此刻的再改）。
     edit: (edit) => {
-      const id = view?.strategy?.id;
-      if (sid !== null)
+      const st = view?.strategy;
+      if (st)
         void write(copyText("rot.fail.settings"), () =>
-          callTyped(origin, "rotation-settings", { target: { sid }, edit, ifRev: rev() }, rotBudget()),
+          callTyped(origin, "rotation-settings", { strategy: st.id, edit, ifRev: st.rev }, rotBudget()),
         );
-      else if (id !== undefined)
-        void write(copyText("rot.fail.settings"), async () => {
-          const r = await callTyped(origin, "rotation-settings", { target: { strategy: id }, settings: draft, edit }, rotBudget());
-          if (draft === undefined) draftRev = view?.strategy?.rev;
-          draft = r.settings;
-        });
-    },
-    save: () =>
-      void (async () => {
-        const id = view?.strategy?.id;
-        if (sid !== null) {
-          await write(copyText("rot.fail.save"), () =>
-            callTyped(origin, "rotation-save", { target: { sid }, ifRev: rev() }, rotBudget()),
-          );
-        } else if (id) {
-          const ok = await write(copyText("rot.fail.save"), () =>
-            callTyped(origin, "rotation-save", {
-              target: { strategy: id },
-              settings: draft,
-              ifRev: rev(),
-            }, rotBudget()),
-          );
-          if (ok) {
-            draft = undefined;
-            draftRev = undefined;
-            await refresh();
-          }
-        }
-      })(),
-    revert: () => {
-      if (sid !== null)
-        void write(copyText("rot.fail.revert"), () =>
-          callTyped(origin, "rotation-revert", { sid }, rotBudget()),
-        );
-      else {
-        draft = undefined;
-        draftRev = undefined;
-        void refresh();
-      }
     },
     hours: (h) => {
       state.hours = h;
@@ -305,30 +225,13 @@ export function mountRotation(spec: RotMountSpec): RotMount {
         callTyped(origin, "rotation-strategy-tz", { id, tz: zone, ifRev }, rotBudget()),
       );
     },
-    // 别处改了 · 载入新的：丢掉这边的草稿，照文件此刻的。
+    // 会话：载入它那份此刻的版本（同下拉选它）。设置页：在用旧版的会话都载入新版。
     loadNew: () => {
-      if (sid !== null)
-        void write(copyText("rot.fail.revert"), () =>
-          callTyped(origin, "rotation-revert", { sid }, rotBudget()),
-        );
-      else {
-        draft = undefined;
-        draftRev = undefined;
-        void refresh();
-      }
-    },
-    // 别处改了 · 留着这边的：草稿照旧，基于的版本跟上文件此刻的（提示随之消失）。
-    keepMine: () => {
-      const now = view?.strategy?.rev;
-      if (now === undefined) return;
-      if (sid !== null)
-        void write(copyText("rot.fail.settings"), () =>
-          callTyped(origin, "rotation-settings", { target: { sid }, edit: "keep", ifRev: now }, rotBudget()),
-        );
-      else {
-        draftRev = now;
-        void refresh();
-      }
+      const id = view?.strategy?.id;
+      if (id === undefined) return;
+      void (sid !== null
+        ? write(copyText("rot.fail.reload"), () => callTyped(origin, "rotation-use", { sid, strategy: id }, rotBudget()))
+        : write(copyText("rot.fail.reload"), () => callTyped(origin, "rotation-reload", { strategy: id }, rotBudget())));
     },
     toggleOld: () => {
       state.oldOpen = !state.oldOpen;
@@ -361,6 +264,8 @@ export function mountRotation(spec: RotMountSpec): RotMount {
       void write(copyText("rot.fail.temp"), () =>
         callTyped(origin, "rotation-temp", { sid, op }, rotBudget()),
       );
+    // 编辑策略：开设置窗那台的「轮换」栏（策略只在那里改）。
+    acts.editStrategy = () => void openSettingsWindow(null, { machine: origin, tab: "rot" });
   }
   paint();
   return { root, refresh };

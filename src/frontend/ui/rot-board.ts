@@ -1,6 +1,6 @@
 /**
- * 轮换（第五版）的四块：第一行（选策略 · ⋯ · 没存的改动）＋ 说明 · 提示 · 轮换账号（号牌 ＋ 点开一个号）· 总体设置 · 模拟（时间轴）。
- * 会话面板与设置窗「轮换」栏画的是同一个，只是目标不同（`{sid}` · `{strategy, settings}`）。
+ * 轮换（第五版）：第一行（选策略 · ⋯ · 编辑策略）＋ 说明 · 提示，下面会话面板是顺序（本会话的临时动作）· 模拟；
+ * 设置窗「轮换」栏是轮换账号（号牌 ＋ 点开一个号）· 总体设置 · 模拟。目标不同（`{sid}` · `{strategy}`），第一行与模拟同一处。
  *
  * - 全照 `rotation-view` 与 `rotation-strategies` 的回包画：标题 ＝ 文件名、说明 ＝ 文件开头的注释、格照策略的 `form`
  *   （名字 `label`，悬停 `help`）、先后 · 换号时刻 · 停到几点 · 跳过哪段照 `decision` · `timeline`，时刻的字照回包里写好的 `…Text`。
@@ -41,7 +41,7 @@ export interface BoardState {
   oldOpen?: boolean;
 }
 
-/** 手势 ⇒ 命令（调用方发、发完重读重画）。会话才有的几样（现在用 · 时间轴拖动 · 还原）在设置页缺。 */
+/** 手势 ⇒ 命令（调用方发、发完重读重画）。会话才有的几样（现在用 · 临时动作 · 编辑策略）在设置页缺。 */
 export interface BoardActs {
   /** 下拉选了一份（`null` ＝ 不轮换）。 */
   pick(id: string | null): void;
@@ -52,19 +52,18 @@ export interface BoardActs {
   add(): void;
   /** 改了一格 / 刷了一段 / 拖了号牌 / 移出 / 加号：一个意图（后端照声明改）。 */
   edit(e: RotEdit): void;
-  save(): void;
-  revert(): void;
   useNow?: (account: string) => void;
   temp?: (op: RotTempOp) => void;
+  /** 开设置窗那台的「轮换」栏。 */
+  editStrategy?: () => void;
   hours(h: 12 | 24): void;
   open(account: string | null): void;
   /** 提示里的按钮：照「在文件窗口打开」那一路开一份文件（看代码 · 旧格式那几份）。 */
   showFile(path: string): void;
   /** 设时区（设成提示里后端给的那个）。 */
   setTz(zone: string): void;
-  /** 别处改了：载入新的 · 留着这边的。 */
+  /** 策略改过了：会话 ⇒ 载入新版；设置页 ⇒ 在用旧版的会话都载入新版。 */
   loadNew(): void;
-  keepMine(): void;
   /** 旧格式那几份展开 / 收起。 */
   toggleOld(): void;
 }
@@ -198,21 +197,10 @@ function firstRow(spec: BoardSpec): HTMLElement {
   });
   row.appendChild(more);
   row.appendChild(el("span", (e) => (e.className = s.rotSpacer)));
-  if (view?.dirty) {
-    row.append(
-      el("span", (e) => (e.className = s.rotDirty), copyText("rot.top.dirty")),
-      button({
-        label: copyText("rot.top.revert"),
-        kind: "ghost",
-        size: "compact",
-        onClick: () => acts.revert(),
-      }),
-      button({
-        label: copyText("rot.top.save"),
-        kind: "primary",
-        size: "compact",
-        onClick: () => acts.save(),
-      }),
+  if (acts.editStrategy && view?.strategy) {
+    const go = acts.editStrategy;
+    row.appendChild(
+      button({ label: copyText("rot.top.edit"), kind: "secondary", size: "compact", onClick: () => go() }),
     );
   } else if (spec.where === "settings") {
     row.appendChild(
@@ -284,10 +272,9 @@ function hints(spec: BoardSpec): HTMLElement[] {
         }
       }
     } else if (h.k === "newer") {
-      btns.push(
-        hintButton(copyText("rot.hint.loadNew"), () => acts.loadNew(), { act: "loadNew" }),
-        hintButton(copyText("rot.hint.keepMine"), () => acts.keepMine(), { ghost: true, act: "keepMine" }),
-      );
+      btns.push(hintButton(copyText("rot.hint.loadNew"), () => acts.loadNew(), { act: "loadNew" }));
+    } else if (h.k === "older") {
+      btns.push(hintButton(copyText("rot.hint.loadAll"), () => acts.loadNew(), { act: "loadAll" }));
     }
     const b = banner(t.tone, t.text, btns, n.detail ?? "");
     b.dataset.rotHint = h.k;
@@ -405,7 +392,7 @@ function cards(spec: BoardSpec, view: RotationViewReply): HTMLElement {
   return wrap;
 }
 
-/** 点开的那个号：头一行（名 · 此刻用量 · 重置）＋ 现在用 · 移出 ＋ `scope: each` 那几格。 */
+/** 设置页点开的那个号：头一行（名 · 此刻用量 · 重置）＋ 移出 ＋ `scope: each` 那几格。 */
 function accountPane(
   spec: BoardSpec,
   view: RotationViewReply,
@@ -423,17 +410,6 @@ function accountPane(
   );
   top.appendChild(el("span", (e) => (e.className = s.rotPaneLine), row?.line ?? ""));
   top.appendChild(el("span", (e) => (e.className = s.rotSpacer)));
-  if (spec.acts.useNow && account !== view.current) {
-    const use = spec.acts.useNow;
-    top.appendChild(
-      button({
-        label: copyText("rot.acct.useNow", { account: nameIn(view, account) }),
-        kind: "secondary",
-        size: "compact",
-        onClick: () => use(account),
-      }),
-    );
-  }
   top.appendChild(
     button({
       label: copyText("rot.acct.remove"),
@@ -443,15 +419,154 @@ function accountPane(
     }),
   );
   pane.appendChild(top);
-  if (spec.state.refused?.account === account) {
-    const why = el("div", (e) => (e.className = s.rotRefused), spec.state.refused.text);
-    why.setAttribute("role", "status");
-    pane.appendChild(why);
-  }
   const grid = el("div", (e) => (e.className = s.rotCells));
   for (const cell of row?.cells ?? []) grid.append(...cellRows(spec, cell, i));
   pane.appendChild(grid);
   return pane;
+}
+
+// ─────────────────────────────── 会话的顺序
+
+/** 这个号此刻怎样：策略交的理由；没有 ⇒ 用不了的原因（后端写好的字）。 */
+function nowOf(view: RotationViewReply, account: string): string {
+  const why = view.decision?.why.find((r) => r.account === account)?.why;
+  return why ?? view.accounts.find((f) => f.account === account)?.blocked?.text ?? "";
+}
+
+/** 一格设置写成一句（只看不改）：值的字照回包（选项名 · 可空的说法 · 24 小时条每段的悬停句）。 */
+function ruleLine(cell: RotCell): string {
+  const v = (() => {
+    switch (cell.kind) {
+      case "toggle":
+        return copyText(cell.v === true ? "rot.order.on" : "rot.order.off");
+      case "choice":
+        return cell.choices?.find((c) => c.v === cell.v)?.label ?? "";
+      case "daySegments":
+        return (cell.segs ?? []).map((g) => g.tip).join(copyText("kit.text.sep"));
+      case "percent":
+      case "minutes":
+        return cell.v === null && cell.nullable !== undefined
+          ? cell.nullable
+          : `${cell.num ?? 0}${copyText(cell.kind === "percent" ? "rot.unit.percent" : "rot.unit.minutes")}`;
+    }
+  })();
+  return `${cell.label}${copyText("kit.text.sep")}${v}`;
+}
+
+/** 点一行出的小窗：只看（此刻 · 它在这份策略里的规则）＋ 现在用 · 编辑策略。 */
+function orderPop(spec: BoardSpec, view: RotationViewReply, account: string, anchor: HTMLElement): void {
+  const pop = el("div", (e) => (e.className = s.rotPane));
+  pop.dataset.rotPop = "";
+  const top = el("div", (e) => (e.className = s.rotPaneTop));
+  top.append(avatar(view, account, spec.origin), el("b", (e) => (e.className = s.rotPaneName), nameIn(view, account)));
+  pop.appendChild(top);
+  const now = nowOf(view, account);
+  if (now !== "") pop.appendChild(el("div", (e) => (e.className = s.rotPaneLine), copyText("rot.order.now", { why: now })));
+  const i = view.accounts.findIndex((f) => f.account === account);
+  const row = i >= 0 && i < view.listed ? view.board.rows[i] : undefined;
+  if (row) pop.appendChild(el("div", (e) => (e.className = s.rotPaneLine), row.line));
+  for (const c of row?.cells ?? []) pop.appendChild(el("div", (e) => (e.className = s.rotPaneLine), ruleLine(c)));
+  const btns = el("div", (e) => (e.className = s.rotPaneTop));
+  if (spec.acts.useNow && account !== view.current) {
+    const use = spec.acts.useNow;
+    btns.appendChild(
+      button({
+        label: copyText("rot.acct.useNow", { account: nameIn(view, account) }),
+        kind: "secondary",
+        size: "compact",
+        onClick: () => {
+          closePopover();
+          use(account);
+        },
+      }),
+    );
+  }
+  if (spec.acts.editStrategy) {
+    const go = spec.acts.editStrategy;
+    btns.appendChild(
+      button({
+        label: copyText("rot.top.edit"),
+        kind: "ghost",
+        size: "compact",
+        onClick: () => {
+          closePopover();
+          go();
+        },
+      }),
+    );
+  }
+  pop.appendChild(btns);
+  openPopover(anchor, pop, { label: nameIn(view, account) });
+}
+
+/** 会话的顺序：第一格 ＝ 在用的号（后端排好）；每行一个勾（去掉 ＝ 本会话先不用）；拖一行改本会话先后，拖到第一格 ＝ 现在用；点一行出小窗。 */
+function order(spec: BoardSpec, view: RotationViewReply): HTMLElement {
+  const wrap = el("div", (e) => (e.className = s.rotCards));
+  wrap.dataset.rotOrder = "";
+  const line = view.lineup;
+  if (spec.state.refused) {
+    const why = el("div", (e) => (e.className = s.rotRefused), spec.state.refused.text);
+    why.setAttribute("role", "status");
+    wrap.appendChild(why);
+  }
+  line.forEach((account, i) => {
+    const f = view.accounts.find((x) => x.account === account);
+    const r = el("div", (e) => (e.className = s.rotCard));
+    r.dataset.account = account;
+    r.dataset.rotRow = "";
+    if (i === 0) r.dataset.inUse = "true";
+    if (f?.blocked) r.dataset.blocked = "true";
+    const off = view.off.includes(account);
+    if (off) r.dataset.off = "true";
+    const tick = document.createElement("input");
+    tick.type = "checkbox";
+    tick.checked = !off;
+    tick.setAttribute("aria-label", copyText("rot.order.use", { account: nameIn(view, account) }));
+    tick.addEventListener("pointerdown", (e) => e.stopPropagation());
+    tick.addEventListener("change", () => spec.acts.temp?.({ off: { account, off: !tick.checked } }));
+    r.append(
+      tick,
+      icon("drag", "compact"),
+      el("span", (e) => (e.className = s.rotCardIx), String(i + 1)),
+      avatar(view, account, spec.origin),
+      el("span", (e) => (e.className = s.rotCardName), nameIn(view, account)),
+    );
+    if (f) r.appendChild(meters(f, undefined));
+    r.appendChild(el("span", (e) => (e.className = s.rotPaneLine), nowOf(view, account)));
+    // 按下拖过 4px ⇒ 拖这一行（松在第一格 ⇒ 现在用；别的行 ⇒ 本会话先后照拖完的那一串）；没拖开 ⇒ 点：出小窗。
+    r.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      const x0 = e.clientX;
+      const y0 = e.clientY;
+      let moving = false;
+      const move = (m: PointerEvent): void => {
+        if (!moving && Math.hypot(m.clientX - x0, m.clientY - y0) > 4) {
+          moving = true;
+          r.dataset.lifted = "true";
+        }
+      };
+      const up = (u: PointerEvent): void => {
+        document.removeEventListener("pointermove", move);
+        document.removeEventListener("pointerup", up);
+        delete r.dataset.lifted;
+        if (!moving) return orderPop(spec, view, account, r);
+        const hit = [...document.querySelectorAll<HTMLElement>("[data-rot-row]")].find((k) => {
+          const b = k.getBoundingClientRect();
+          return u.clientX >= b.left && u.clientX <= b.right && u.clientY >= b.top && u.clientY <= b.bottom;
+        });
+        const to = hit ? line.indexOf(hit.dataset.account ?? "") : -1;
+        if (to < 0 || to === i) return;
+        if (to === 0) return spec.acts.useNow?.(account);
+        const next = line.filter((a) => a !== account);
+        next.splice(to, 0, account);
+        spec.acts.temp?.({ set: next.slice(1, Math.max(i, to) + 1) });
+      };
+      document.addEventListener("pointermove", move);
+      document.addEventListener("pointerup", up);
+    });
+    wrap.appendChild(r);
+  });
+  return wrap;
 }
 
 // ─────────────────────────────── 格
@@ -901,6 +1016,15 @@ export function board(spec: BoardSpec): HTMLElement {
   root.append(...hints(spec));
   const view = spec.view;
   if (!view?.strategy) return root;
+  if (spec.where === "session") {
+    root.appendChild(header(copyText("rot.h.order"), copyText("rot.h.orderHint")));
+    root.appendChild(order(spec, view));
+    if (view.timeline) {
+      root.appendChild(simHeader(spec, view));
+      root.appendChild(simulation(spec, view));
+    }
+    return root;
+  }
   root.appendChild(
     header(copyText("rot.h.cards"), copyText("rot.h.cardsHint")),
   );

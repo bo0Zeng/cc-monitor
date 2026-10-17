@@ -1,7 +1,6 @@
 package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.claude.link.wire.ChangedFrame
-import com.ccmonitor.mobile.core.claude.link.wire.RotationSettingsReply
 import com.ccmonitor.mobile.core.claude.link.wire.RotationViewReply
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
 
@@ -10,7 +9,7 @@ import com.ccmonitor.mobile.core.claude.link.wire.Wire
  * 判（能不能用 · 跳不跳 · 先后 · 停到几点）· 算时刻 · 写句子全在那台；这里一条判定都没有。
  */
 
-/** 看的是哪一处：一个会话（改动先成它的草稿，草稿在那台）· 一份策略（设置页：草稿在手上，随读交给那台）。 */
+/** 看的是哪一处：一个会话（照它载入的副本）· 一份策略（设置页：照文件此刻的）。 */
 sealed interface RotWhere {
     data class Session(
         val sid: String,
@@ -20,7 +19,7 @@ sealed interface RotWhere {
         val id: String,
     ) : RotWhere
 
-    /** 线上 `RotWhere`（写那几条的 `target`）。 */
+    /** 线上 `RotTarget`（`rotation-view` 的 `target`）。 */
     fun wire(): Map<String, Any?> =
         when (this) {
             is Session -> mapOf("sid" to sid)
@@ -32,9 +31,8 @@ object Rotation {
     const val VIEW = "rotation-view"
     const val STRATEGIES = "rotation-strategies"
     const val SETTINGS = "rotation-settings"
-    const val SAVE = "rotation-save"
-    const val REVERT = "rotation-revert"
     const val USE = "rotation-use"
+    const val RELOAD = "rotation-reload"
     const val FOR_NEW = "rotation-for-new"
     const val TEMP = "rotation-temp"
     const val USE_NOW = "rotation-use-now"
@@ -48,70 +46,28 @@ object Rotation {
     const val TOPIC = "rotation"
     const val TOPIC_STRATEGIES = "rotation_strategies"
 
-    /**
-     * `rotation-view` 的目标：会话 ⇒ `{sid}`；策略 ⇒ `{strategy}`，手上有草稿 ⇒ 连同 `settings` 与它照哪个版本改的（`rev`）一起交
-     * （跟文件此刻的不同 ⇒ 那台出「别处被改了」那一条提示）。
-     */
     fun view(
         where: RotWhere,
         hours: Int,
-        draft: Any? = null,
-        draftRev: String? = null,
-    ): Map<String, Any?> {
-        val target =
-            when (where) {
-                is RotWhere.Session -> where.wire()
-                is RotWhere.Strategy ->
-                    buildMap {
-                        put("strategy", where.id)
-                        if (draft != null) {
-                            put("settings", draft)
-                            draftRev?.let { put("rev", it) }
-                        }
-                    }
-            }
-        return mapOf("target" to target, "hours" to hours)
-    }
+    ): Map<String, Any?> = mapOf("target" to where.wire(), "hours" to hours)
 
     fun ofView(data: Any?): RotationViewReply? = Wire.bind<RotationViewReply>(data)
 
-    /** 改设置交一个意图（[RotEdit]）：会话 ⇒ 带 `ifRev`；设置页 ⇒ 带手上那份草稿（上一次回的，没有 ⇒ 不带）。 */
+    /** 设置页改一格：一个意图（[RotEdit]）＋ 读到的那一版；那台当场存成新版。 */
     fun settings(
-        where: RotWhere,
+        strategy: String,
         edit: Any,
-        ifRev: String? = null,
-        draft: Any? = null,
-    ): Map<String, Any?> =
-        buildMap {
-            put("target", where.wire())
-            put("edit", edit)
-            ifRev?.let { put("ifRev", it) }
-            draft?.let { put("settings", it) }
-        }
-
-    /** 改完的那一份（设置页当新的草稿存着）。 */
-    fun ofSettings(data: Any?): RotationSettingsReply? = Wire.bind<RotationSettingsReply>(data)
-
-    /** 存：会话 ⇒ 存它的草稿（不带 `settings`）；策略 ⇒ 手上那份草稿。 */
-    fun save(
-        where: RotWhere,
         ifRev: String,
-        draft: Any? = null,
-    ): Map<String, Any?> =
-        buildMap {
-            put("target", where.wire())
-            put("ifRev", ifRev)
-            if (where is RotWhere.Strategy) put("settings", draft)
-        }
+    ): Map<String, Any?> = mapOf("strategy" to strategy, "edit" to edit, "ifRev" to ifRev)
 
-    fun revert(sid: String): Map<String, Any?> = mapOf("sid" to sid)
-
-    /** 会话换一份策略（`null` ＝ 不轮换）；[discard] ＝ 有没存的改动也换。 */
+    /** 会话载入一份此刻的版本（`null` ＝ 不轮换；选它在用的那份 ＝ 载入新版）。 */
     fun use(
         sid: String,
         strategy: String?,
-        discard: Boolean,
-    ): Map<String, Any?> = mapOf("sid" to sid, "strategy" to strategy, "discard" to discard)
+    ): Map<String, Any?> = mapOf("sid" to sid, "strategy" to strategy)
+
+    /** 在用这份旧版的活会话都载入新版。 */
+    fun reload(strategy: String): Map<String, Any?> = mapOf("strategy" to strategy)
 
     fun forNew(strategy: String?): Map<String, Any?> = mapOf("strategy" to strategy)
 
@@ -123,6 +79,13 @@ object Rotation {
     ): Map<String, Any?> = mapOf("sid" to sid, "op" to mapOf("place" to mapOf("account" to account, "at" to at)))
 
     fun clearTemp(sid: String): Map<String, Any?> = mapOf("sid" to sid, "op" to "clear")
+
+    /** 这个会话先不用（[off]）/ 再用 [account]。 */
+    fun off(
+        sid: String,
+        account: String,
+        off: Boolean,
+    ): Map<String, Any?> = mapOf("sid" to sid, "op" to mapOf("off" to mapOf("account" to account, "off" to off)))
 
     fun useNow(
         sid: String,
@@ -156,8 +119,6 @@ object Rotation {
 
 /** 改设置的一个意图（线上 `RotEdit`）：那台照声明改完、校验；`row` ＝ 号列表第几行（缺 ⇒ 总体那一格）。 */
 object RotEdit {
-    const val KEEP = "keep"
-
     fun set(
         key: String,
         row: Int?,

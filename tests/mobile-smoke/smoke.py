@@ -1477,8 +1477,8 @@ def report():
         tap(t("mobChat.more.rotation"))
         if not wait("smoke-a", 20):
             raise Step.Fail("轮换屏没画出那条会话用的策略")
-        if not wait(t("rot.h.cards"), 10) or ui.find(t("mobRot.cards.hint")) is None:
-            raise Step.Fail("轮换屏没画出轮换账号那一块")
+        if not wait(t("rot.h.order"), 10) or ui.find(t("rot.top.edit")) is None:
+            raise Step.Fail("轮换屏没画出本会话的顺序与［编辑策略］")
         shot("12a-轮换屏")
         tap("smoke-a")
         if not wait("smoke-b", 10):
@@ -1507,26 +1507,6 @@ def report():
         if not wait(t("rot.sim.manual", n=1), 10):
             raise Step.Fail("排了临时条目，模拟的小标题没出「手动 1 段」")
         shot("12b-临时条目")
-        adb("shell", "input", "swipe", "540", "700", "540", "1600", "200")
-        time.sleep(1)
-        box = ui.find("25")
-        if box is None:
-            raise Step.Fail("找不到「权重容差」那一格的数")
-        adb("shell", "input", "tap", *map(str, ui.center(box)))
-        type_in("30")
-        adb("shell", "input", "keyevent", "66")
-        if not wait(t("rot.top.save"), 15):
-            raise Step.Fail("改了一格，底部没出没存条")
-        shot("12c-没存")
-        tap(t("rot.top.save"))
-        end = ui.within(20)
-        while time.time() < end and not re.search(r'"close":\s*30(\.0)?\b', sh("cat ~/.cc-monitor/strategies/smoke-b.rhai")):
-            time.sleep(1)
-        if time.time() >= end:
-            raise Step.Fail("点了存，smoke-b 那份文件里没写进 30")
-        hide_keyboard()
-        if wait(t("rot.top.save"), 3):
-            raise Step.Fail("存完没存条还在")
         # 另一个进口：设置 → 机器与账号 → 轮换（这台新会话用的那份），点得到。
         adb("shell", "input", "keyevent", "4")
         time.sleep(1)
@@ -1536,6 +1516,23 @@ def report():
         tap(t("mobSettings.entry.rotation"))
         if not wait(t("rot.top.here", machine="smokebox"), 15):
             raise Step.Fail("设置进的轮换屏顶栏不是「设置 · 那台」")
+        # 设置页改一格：当场存成那份的新版（没有「存成这份策略」那一步）。
+        for_new = (frames("rotation-strategies", {}).get("data") or {}).get("forNew") or ""
+        if not for_new:
+            raise Step.Fail("台架那台没有新会话用的那份策略")
+        box = ui.find("25")
+        if box is None:
+            raise Step.Fail("找不到「权重容差」那一格的数")
+        adb("shell", "input", "tap", *map(str, ui.center(box)))
+        type_in("30")
+        adb("shell", "input", "keyevent", "66")
+        end = ui.within(20)
+        while time.time() < end and not re.search(r'"close":\s*30(\.0)?\b', sh(f"cat ~/.cc-monitor/strategies/{for_new}.rhai")):
+            time.sleep(1)
+        if time.time() >= end:
+            raise Step.Fail(f"设置页改了一格，{for_new} 那份文件里没写进 30")
+        hide_keyboard()
+        shot("12c-设置页改一格")
 
     with Step("13-设置改一项"):
         # 设置 → 那台上的偏好：子会话拨到另一段，马上存进那台（prefs-read 读回）；退出设置再进，那一段还亮着。

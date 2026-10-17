@@ -355,8 +355,6 @@ pub(crate) enum RotEdit {
     Add { account: String },
     /// 移出一行。
     Remove { row: usize },
-    /// 设置不动（「留着这边的」：只把基于的版本跟上）。
-    Keep,
 }
 
 /// 数照它的样子落盘：整数写成整数（同界面交来的、文件里写的那一形）。
@@ -396,7 +394,6 @@ pub(crate) fn apply(form: &[Cell], settings: &Value, edit: &RotEdit) -> Result<V
             .ok_or_else(|| no_row(i))
     }
     match edit {
-        RotEdit::Keep => {}
         RotEdit::Set { key, row: None, v } => {
             top.insert(key.clone(), v.clone());
         }

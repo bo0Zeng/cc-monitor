@@ -13,37 +13,33 @@ class RotationTest {
     }
 
     @Test
-    fun `rotation-view：不轮换（strategy · decision · timeline 为 null）照样解得开；缺必有的 baseRev ⇒ 解不出`() {
+    fun `rotation-view：不轮换（strategy · decision · timeline 为 null）照样解得开；缺必有的 lineup ⇒ 解不出`() {
         val none =
             mapOf(
                 "now" to 1.0,
                 "nowText" to "14:30",
                 "strategy" to null,
-                "settings" to null,
                 "board" to mapOf("all" to emptyList<Any>(), "rows" to emptyList<Any>()),
-                "dirty" to false,
                 "start" to "work",
                 "current" to "work",
+                "lineup" to emptyList<String>(),
+                "off" to emptyList<String>(),
                 "accounts" to emptyList<Any>(),
                 "listed" to 0.0,
                 "decision" to null,
                 "timeline" to null,
                 "past" to null,
-                "baseRev" to "",
                 "log" to emptyList<Any>(),
                 "hints" to emptyList<Any>(),
             )
         assertEquals("work", Rotation.ofView(none)?.start)
-        assertNull(Rotation.ofView(none - "baseRev"))
+        assertNull(Rotation.ofView(none - "lineup"))
     }
 
     @Test
-    fun `入参：设置页的目标带手上的草稿与它照哪版改的；没草稿只带 id；存会话不带 settings`() {
+    fun `入参：设置页的目标只带 id；改一格带那份的版本；会话载入一份不带别的`() {
         assertEquals(mapOf("target" to mapOf("strategy" to "a"), "hours" to 24), Rotation.view(RotWhere.Strategy("a"), 24))
-        assertEquals(
-            mapOf("target" to mapOf("strategy" to "a", "settings" to mapOf("x" to 1), "rev" to "r"), "hours" to 12),
-            Rotation.view(RotWhere.Strategy("a"), 12, mapOf("x" to 1), "r"),
-        )
-        assertEquals(mapOf("target" to mapOf("sid" to "s"), "ifRev" to "r"), Rotation.save(RotWhere.Session("s"), "r", mapOf("x" to 1)))
+        assertEquals(mapOf("strategy" to "a", "edit" to RotEdit.add("x"), "ifRev" to "r"), Rotation.settings("a", RotEdit.add("x"), "r"))
+        assertEquals(mapOf("sid" to "s", "strategy" to "a"), Rotation.use("s", "a"))
     }
 }

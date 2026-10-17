@@ -3,7 +3,6 @@ package com.ccmonitor.mobile.ui.rotation
 import com.ccmonitor.mobile.core.claude.link.Changed
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.RotEdit
 import com.ccmonitor.mobile.core.claude.link.RotWhere
 import com.ccmonitor.mobile.core.claude.link.Rotation
 import com.ccmonitor.mobile.core.claude.link.RotationStrategies
@@ -39,11 +38,6 @@ data class CellFailure(
 
 /** 等人点头的那一件（确认抽屉）。 */
 sealed interface RotAsk {
-    /** 有没存的改动时换策略：丢掉没存的改动并换。 */
-    data class Discard(
-        val strategy: String?,
-    ) : RotAsk
-
     /** 删一份策略（撤不回）。 */
     data class Delete(
         val id: String,
@@ -66,13 +60,11 @@ data class RotationUi(
     /** 头一回读完了没有（没读完 ⇒ 骨架）。 */
     val loaded: Boolean = false,
     val hours: Int = HOURS_12,
-    /** 点开了哪个号。 */
+    /** 点开了哪个号（设置页 ⇒ 号牌展开；会话 ⇒ 底下拉出那一份）。 */
     val open: String? = null,
     /** ［立即用］被拦下那一句（那个号 · 那一句）。 */
     val refused: Pair<String, String>? = null,
     val cellFailed: CellFailure? = null,
-    /** 存着（［存成这份策略］转圈、［还原］灰）。 */
-    val saving: Boolean = false,
     /** 旧格式那几份的抽屉开着。 */
     val oldOpen: Boolean = false,
     val ask: RotAsk? = null,
@@ -90,8 +82,8 @@ data class RotationUi(
 
 /**
  * 轮换屏的接线（桌面 `rot-mount.ts` 同一套）：读 `rotation-strategies` · `rotation-view` → 画 → 手势翻成命令 → 照回包再读。
- * 会话（[RotWhere.Session]）改动先成它的草稿（在那台）；设置页（[RotWhere.Strategy] 之外由 `forNew` 定）草稿在手上，随读交给那台、存时交。
- * 判 · 排 · 算时刻 · 写句子全是那台的：这里只拼入参、照码分流（`conflict` 重读 · `dirty` 问一句 · `unusable` 写那一句）。
+ * 会话（[RotWhere.Session]）照它载入的副本，只做这个会话的临时动作；设置页（新会话用的那份）改一格当场存成那份的新版。
+ * 判 · 排 · 算时刻 · 写句子全是那台的：这里只拼入参、照码分流（`conflict` 重读 · `unusable` 写那一句）。
  */
 class RotationBoard(
     private val link: CoreLink,
@@ -105,9 +97,6 @@ class RotationBoard(
     private val _state = MutableStateFlow(RotationUi())
     val state: StateFlow<RotationUi> = _state.asStateFlow()
 
-    /** 设置页手上的草稿与它照哪个版本改出来的。 */
-    private var draft: Any? = null
-    private var draftRev: String? = null
     private val reading = Mutex()
 
     val inSession: Boolean get() = sid != null
@@ -135,7 +124,7 @@ class RotationBoard(
                 _state.update { it.copy(list = list, view = null, readFailed = null, loaded = true) }
                 return@withLock
             }
-            val v = link.call(Rotation.VIEW, Rotation.view(where, _state.value.hours, draft, draftRev), READ_MS)
+            val v = link.call(Rotation.VIEW, Rotation.view(where, _state.value.hours), READ_MS)
             val view = (v as? Reply.Ok)?.let { Rotation.ofView(it.data) } ?: return@withLock failRead(v, Rotation.VIEW)
             _state.update { it.copy(list = list, view = view, readFailed = null, loaded = true) }
         }
@@ -148,12 +137,6 @@ class RotationBoard(
     /** 看哪一处：会话 ⇒ 它；设置页 ⇒ 新会话用的那份（没有 ⇒ `null`，只画第一行）。 */
     private fun where(list: RotationStrategiesReply): RotWhere? = sid?.let { RotWhere.Session(it) } ?: list.forNew.takeIf { it.isNotEmpty() }?.let { RotWhere.Strategy(it) }
 
-    /** 显示的这份设置照哪个版本（那台给的）：写的时候当 `ifRev`。 */
-    private fun rev(): String =
-        _state.value.view
-            ?.baseRev
-            .orEmpty()
-
     /**
      * 发一条写：成了 ⇒ 再读；`conflict`（别处改过）⇒ 不报、再读（提示由那台出）；别的 ⇒ [onFail]（缺省：底部一句「做什么失败 · 那台的话」）。
      * 回「成没成」。
@@ -163,11 +146,9 @@ class RotationBoard(
         command: String,
         args: Map<String, Any?>,
         onFail: (Problem) -> Unit = { p -> fail(what, p) },
-        onOk: (Any?) -> Unit = {},
     ): Boolean {
         val r = link.call(command, args, WRITE_MS)
         if (r is Reply.Ok) {
-            onOk(r.data)
             refresh()
             return true
         }
@@ -188,23 +169,13 @@ class RotationBoard(
 
     // ── 第一行
 
-    /** 下拉选了一份（`null` ＝ 不轮换）。会话 ⇒ `rotation-use`（有没存的改动 ⇒ 先问）；设置页 ⇒ `rotation-for-new`。 */
-    fun pick(id: String?) {
-        scope.launch {
-            if (sid == null) {
-                draft = null
-                draftRev = null
-                write(copyText("rot.fail.forNew"), Rotation.FOR_NEW, Rotation.forNew(id))
-                return@launch
-            }
-            val r = link.call(Rotation.USE, Rotation.use(sid, id, discard = false), WRITE_MS)
-            when {
-                r is Reply.Ok -> refresh()
-                (r as? Reply.Failed)?.failure?.code == DIRTY -> _state.update { it.copy(ask = RotAsk.Discard(id)) }
-                else -> fail(copyText("rot.fail.use"), problemOf(r, Rotation.USE))
-            }
+    /** 下拉选了一份（`null` ＝ 不轮换）。会话 ⇒ `rotation-use`（载入它此刻的版本）；设置页 ⇒ `rotation-for-new`。 */
+    fun pick(id: String?) =
+        if (sid == null) {
+            launchWrite(copyText("rot.fail.forNew"), Rotation.FOR_NEW, Rotation.forNew(id))
+        } else {
+            launchWrite(copyText("rot.fail.use"), Rotation.USE, Rotation.use(sid, id))
         }
-    }
 
     fun answer(yes: Boolean) {
         val ask = _state.value.ask ?: return
@@ -212,7 +183,6 @@ class RotationBoard(
         if (!yes) return
         scope.launch {
             when (ask) {
-                is RotAsk.Discard -> sid?.let { write(copyText("rot.fail.use"), Rotation.USE, Rotation.use(it, ask.strategy, discard = true)) }
                 is RotAsk.Delete -> write(copyText("rot.fail.delete"), Rotation.DELETE, Rotation.delete(ask.id))
                 is RotAsk.Name -> Unit
             }
@@ -266,61 +236,19 @@ class RotationBoard(
     // ── 设置
 
     /**
-     * 改了一格（[cell] ＝ 哪一格，没收下时那一行底下写那一句）· 刷了一段 · 拖了号牌 · 移出 · 加号：一个意图（[RotEdit]），那台照声明改。
-     * 会话 ⇒ 草稿在那台（`ifRev` ＝ 那台给的 `baseRev`）；设置页 ⇒ 那台照手上的草稿改、回改完的那份，原样存着随读交回。
+     * 设置页改了一格（[cell] ＝ 哪一格，没收下时那一行底下写那一句）· 刷了一段 · 拖了号牌 · 移出 · 加号：一个意图（[RotEdit]），
+     * 那台照声明改完、当场存成那份的新版（`ifRev` ＝ 读到的那一版；对不上 ⇒ 重读）。
      */
     fun edit(
         edit: Any,
         cell: String = "",
     ) {
-        val args =
-            if (sid != null) {
-                Rotation.settings(RotWhere.Session(sid), edit, ifRev = rev())
-            } else {
-                val view = _state.value.view
-                val id = view?.strategy?.id ?: return
-                Rotation.settings(RotWhere.Strategy(id), edit, draft = draft)
-            }
+        val st = _state.value.view?.strategy ?: return
         val failed = { p: Problem ->
             _state.update { it.copy(cellFailed = CellFailure(cell, listOf(copyText("rot.fail.settings"), p.text).filter(String::isNotEmpty).joinToString(copyText("kit.text.sep")))) }
         }
-        val took = { data: Any? ->
-            if (sid == null) {
-                val view = _state.value.view
-                if (draft == null) draftRev = view?.strategy?.rev
-                draft = Rotation.ofSettings(data)?.settings
-            }
-        }
         scope.launch {
-            if (write(copyText("rot.fail.settings"), Rotation.SETTINGS, args, failed, took)) _state.update { it.copy(cellFailed = null) }
-        }
-    }
-
-    fun save() {
-        val view = _state.value.view ?: return
-        scope.launch {
-            _state.update { it.copy(saving = true) }
-            if (sid != null) {
-                write(copyText("rot.fail.save"), Rotation.SAVE, Rotation.save(RotWhere.Session(sid), rev()))
-            } else {
-                val id = view.strategy?.id
-                if (id != null && write(copyText("rot.fail.save"), Rotation.SAVE, Rotation.save(RotWhere.Strategy(id), rev(), draft))) {
-                    draft = null
-                    draftRev = null
-                    refresh()
-                }
-            }
-            _state.update { it.copy(saving = false) }
-        }
-    }
-
-    fun revert() {
-        if (sid != null) {
-            launchWrite(copyText("rot.fail.revert"), Rotation.REVERT, Rotation.revert(sid))
-        } else {
-            draft = null
-            draftRev = null
-            scope.launch { refresh() }
+            if (write(copyText("rot.fail.settings"), Rotation.SETTINGS, Rotation.settings(st.id, edit, st.rev), failed)) _state.update { it.copy(cellFailed = null) }
         }
     }
 
@@ -372,6 +300,15 @@ class RotationBoard(
         launchWrite(copyText("rot.fail.temp"), Rotation.TEMP, Rotation.clearTemp(s))
     }
 
+    /** 顺序里一行的勾：去掉 ＝ 这个会话先不用 [account]（不改策略）。 */
+    fun off(
+        account: String,
+        off: Boolean,
+    ) {
+        val s = sid ?: return
+        launchWrite(copyText("rot.fail.temp"), Rotation.TEMP, Rotation.off(s, account, off))
+    }
+
     // ── 提示
 
     fun setTz(zone: String) {
@@ -379,20 +316,13 @@ class RotationBoard(
         launchWrite(copyText("rot.fail.tz"), Rotation.TZ, Rotation.tz(st.id, zone, st.rev))
     }
 
-    /** 别处改了 · 载入新的：丢掉这边的草稿，照文件此刻的。 */
-    fun loadNew() = revert()
-
-    /** 别处改了 · 留着这边的：草稿照旧，基于的版本跟上文件此刻的（提示随之消失）。 */
-    fun keepMine() {
-        val now =
-            _state.value.view
-                ?.strategy
-                ?.rev ?: return
+    /** 策略改过了：会话 ⇒ 载入它那份此刻的版本；设置页 ⇒ 在用旧版的会话都载入新版。 */
+    fun loadNew() {
+        val id = _state.value.view?.strategy?.id ?: return
         if (sid != null) {
-            launchWrite(copyText("rot.fail.settings"), Rotation.SETTINGS, Rotation.settings(RotWhere.Session(sid), RotEdit.KEEP, ifRev = now))
+            launchWrite(copyText("rot.fail.reload"), Rotation.USE, Rotation.use(sid, id))
         } else {
-            draftRev = now
-            scope.launch { refresh() }
+            launchWrite(copyText("rot.fail.reload"), Rotation.RELOAD, Rotation.reload(id))
         }
     }
 
@@ -410,7 +340,6 @@ class RotationBoard(
         const val READ_MS = 15_000L
         const val WRITE_MS = 15_000L
         const val CONFLICT = "conflict"
-        const val DIRTY = "dirty"
         const val UNUSABLE = "unusable"
     }
 }

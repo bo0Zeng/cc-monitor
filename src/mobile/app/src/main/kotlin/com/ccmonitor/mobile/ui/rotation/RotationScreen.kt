@@ -10,19 +10,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -55,7 +50,7 @@ import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
 /**
- * 轮换屏：四块竖着排，顺序同桌面——第一行（策略下拉 ·「⋯」· 说明）· 提示 · 轮换账号 · 总体设置 · 模拟；没存的改动在底部常驻。
+ * 轮换屏：竖着排，顺序同桌面——第一行（策略下拉 ·「⋯」· 说明）· 提示，会话里接着顺序 · 模拟，设置页接着轮换账号 · 总体设置 · 模拟。
  * 两处进来是同一屏：聊天屏「⋯」→ 轮换（[sid]，那条会话）· 设置 → 机器与账号 → 轮换（[sid] 为 `null`：新会话用的那份）。
  * 画的全是那台的回包（[RotationBoard]）；这里只排版、把手势交给它。
  */
@@ -67,6 +62,8 @@ fun RotationScreen(
     onBack: () -> Unit,
     /** 提示里的［看代码］· 旧格式那几份：用文件屏开（[path] 是那台上的全路径）。 */
     onOpenFile: (String) -> Unit,
+    /** 会话里的［编辑策略］：开这台的设置页那一屏（策略只在那里改）。 */
+    onEditStrategy: () -> Unit,
 ) {
     rememberHostLink(hostId, "rotation-$hostId")
     val backends = koinInject<HostBackends>()
@@ -87,7 +84,6 @@ fun RotationScreen(
     }
     Scaffold(
         topBar = { RotTopBar(if (sid == null) copyText("rot.top.here", "machine" to machine) else title, onBack) },
-        bottomBar = { if (ui.view?.dirty == true && linkState !is LinkState.Down) DirtyBar(ui.saving, board) },
     ) { inner ->
         Column(
             Modifier
@@ -104,7 +100,7 @@ fun RotationScreen(
                 !ui.loaded -> Skeleton()
                 else -> {
                     ui.readFailed?.let { ReadFailed(it.text, it.detail) { scope.launch { board.refresh() } } }
-                    BoardBody(ui, board, sid, table.sessions.mapValues { it.value.name.orEmpty() }, onOpenFile)
+                    BoardBody(ui, board, sid, table.sessions.mapValues { it.value.name.orEmpty() }, onOpenFile, onEditStrategy)
                 }
             }
         }
@@ -112,7 +108,7 @@ fun RotationScreen(
     RotAsks(ui, board)
 }
 
-/** 四块（读到了才画；不轮换 ⇒ 只剩第一行和一行灰字）。 */
+/** 读到了才画；不轮换 ⇒ 只剩第一行和一行灰字。会话 ⇒ 顺序；设置页 ⇒ 号牌 · 总体设置。 */
 @Composable
 private fun BoardBody(
     ui: RotationUi,
@@ -120,16 +116,21 @@ private fun BoardBody(
     sid: String?,
     titles: Map<String, String>,
     onOpenFile: (String) -> Unit,
+    onEditStrategy: () -> Unit,
 ) {
-    FirstRow(ui, board, sid, titles)
+    FirstRow(ui, board, sid, titles, onEditStrategy)
     val view = ui.view ?: return
     Hints(ui, view, board, onOpenFile)
     if (view.strategy == null) return
-    Cards(ui, view, board)
-    val all = view.board.all
-    if (all.isNotEmpty()) {
-        RotHeader(copyText("rot.h.all"))
-        all.forEach { CellRows(ui, board, it, null) }
+    if (sid != null) {
+        Order(ui, view, board, onEditStrategy)
+    } else {
+        Cards(ui, view, board)
+        val all = view.board.all
+        if (all.isNotEmpty()) {
+            RotHeader(copyText("rot.h.all"))
+            all.forEach { CellRows(ui, board, it, null) }
+        }
     }
     if (view.timeline != null) Simulation(ui, view, board)
     Spacer(Modifier.height(24.dp))
@@ -156,34 +157,6 @@ private fun RotTopBar(
             }
         },
     )
-}
-
-/** 底部常驻：「未保存 ·［还原］·［存成这份策略］」（桌面放在第一行右边；手机页长，放底部滚到哪都够得着）。存着 ⇒ 转圈、［还原］灰。 */
-@Composable
-private fun DirtyBar(
-    saving: Boolean,
-    board: RotationBoard,
-) {
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 3.dp) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-                .testTag(RotTags.DIRTY),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(copyText("rot.top.dirty"), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            SecondaryButton(onClick = board::revert, enabled = !saving) { Text(copyText("rot.top.revert")) }
-            Button(onClick = board::save, enabled = !saving) {
-                if (saving) {
-                    CircularProgressIndicator(Modifier.width(16.dp).height(16.dp), strokeWidth = 2.dp)
-                    Spacer(Modifier.width(8.dp))
-                }
-                Text(copyText("rot.top.save"))
-            }
-        }
-    }
 }
 
 /** 头一回读：四块骨架占位，不转圈。 */
@@ -276,7 +249,8 @@ object RotTags {
     const val SCREEN = "rot-screen"
     const val PICK = "rot-pick"
     const val MORE = "rot-more"
-    const val DIRTY = "rot-dirty"
+    const val EDIT = "rot-edit"
+    const val ROW = "rot-row"
     const val READ_FAILED = "rot-read-failed"
     const val CARD = "rot-card"
     const val LANE = "rot-lane"
