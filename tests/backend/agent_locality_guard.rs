@@ -816,8 +816,15 @@ mod tests {
     ];
 
     /// 按键比的那几形：闭包里有其一 ⇒ 是「问那一家」，不是「取第一家」。
-    /// `== mode`：`PermissionFace::text_of` 在那一家自己的档表里按入参那一档找字（不在注册表上取）。
-    const KEYED: &[&str] = &["== kind", ".kind ==", "== route_id", "== name", "== mode"];
+    /// `== mode` · `== model`：`PermissionFace::text_of` · `LaunchFace::model_choice` 在那一家自己的档表 · 模型清单里按入参找那一项（不在注册表上取）。
+    const KEYED: &[&str] = &[
+        "== kind",
+        ".kind ==",
+        "== route_id",
+        "== name",
+        "== mode",
+        "== model",
+    ];
 
     /// `src` 里每一次 `.find(` / `.find_map(` 的整个实参（括号配平）。
     fn find_calls(src: &str) -> Vec<String> {

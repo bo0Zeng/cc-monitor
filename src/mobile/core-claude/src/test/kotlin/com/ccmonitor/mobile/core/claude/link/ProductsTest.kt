@@ -103,8 +103,8 @@ class ProductsTest {
                 .blocked(),
         )
         t = t.step(golden("session_state")[0], breaks::add)
-        assertEquals(
-            "会话已退出",
+        assertNull(
+            "离开「活」两样都能换（记在注解上、下次恢复用上）",
             t.faces
                 .getValue("s1")
                 .can.model

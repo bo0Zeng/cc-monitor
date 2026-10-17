@@ -4375,6 +4375,7 @@ origin?: string, };
 type HistoryRowLife = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended" };
 type HistorySort = "activity" | "created";
 type LaunchTab = { tab: Tab, alias?: string, };
+type ResumeWith = { model?: string, permissionMode?: string, end: number, };
 type Rules = { childTab: Tab, bgTab: Tab, };
 type SessionCan = { 
 /**
@@ -7204,6 +7205,11 @@ usage: UsageFact | null,
  * （界面照抄，不自己拼）。每次现给，不累加。
  */
 modelText: Words | null, 
+/**
+ * 此刻是换模型清单里哪一项（原值，抽屉勾它）：终端没了时记下的那一项；否则那一家把 `usage.model` 认成清单里唯一对得上的那一项
+ * （`agents::model_pick`）；认不出 · 对上不止一项 ⇒ `null`。每次现给，不进续算表。
+ */
+modelPick: string | null, 
 /**
  * 会话的项目目录（会话起在哪个目录）：适配层读记录开头给（`agents::project_dir_of`），读到即锁定；
  * 开头里还没有 ⇒ `null`，下一次再读。与会话宣告那一帧的 `project_dir` 同一个函数。
@@ -11116,7 +11122,7 @@ say: string, };
 
 #### `session-model`
 
-会话开着时换模型（送那一家的那一行、从记录里读回换成了什么；在等人不送）。
+换模型（开着 ⇒ 送那一家的那一行、从记录里读回换成了什么；在等人不送；终端没了 ⇒ 记下、下次恢复照它起）。
 
 收 `args` · 可撤 · CLI：`ccm -- --session-model` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
 
@@ -11165,7 +11171,7 @@ client?: string, };
 
 #### `session-permission`
 
-会话开着时切权限档（按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按）。
+切权限档（开着 ⇒ 按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按；终端没了 ⇒ 记下、下次恢复照它起）。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-permission` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
 
@@ -14535,12 +14541,12 @@ type Words = string;
 | `--rotation-view` | ＝ 帧命令 `rotation-view`：一个会话或一份策略此刻的轮换 |
 | `--session-commands` | ＝ 帧命令 `session-commands`：一条会话能用的斜杠命令与 Skill（内置 ＋ 本项目 ＋ 它用的号的配置目录） |
 | `--session-fork` | ＝ 帧命令 `session-fork`：从某条消息处分叉出一个新会话 |
-| `--session-model` | ＝ 帧命令 `session-model`：会话开着时换模型（送那一家的那一行、从记录里读回换成了什么；在等人不送） |
+| `--session-model` | ＝ 帧命令 `session-model`：换模型（开着 ⇒ 送那一家的那一行、从记录里读回换成了什么；在等人不送；终端没了 ⇒ 记下、下次恢复照它起） |
 | `--session-new` | ＝ 帧命令 `session-new`：起一个新会话（全产品一个框、一个请求） |
 | `--session-new-dir` | ＝ 帧命令 `session-new-dir`：起新会话前核一个目录：在不在 · 会用哪个终端名 |
 | `--session-new-facts` | ＝ 帧命令 `session-new-facts`：起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法 |
 | `--session-open` | ＝ 帧命令 `session-open`：起会话 · 恢复 · 接回（一个请求：落在哪 ＋ 要开终端就跑的那一行） |
-| `--session-permission` | ＝ 帧命令 `session-permission`：会话开着时切权限档（按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按） |
+| `--session-permission` | ＝ 帧命令 `session-permission`：切权限档（开着 ⇒ 按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按；终端没了 ⇒ 记下、下次恢复照它起） |
 | `--session-resume` | ＝ 帧命令 `session-resume`：终端没了的会话先在这台恢复（同说一句里恢复那一支，不带那一句），回它落在哪个 tmux 会话 |
 | `--session-say` | ＝ 帧命令 `session-say`：往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车；终端没了 ⇒ 按记下的号恢复、那一句当第一句交） |
 | `--sessions-needs` | ＝ 帧命令 `sessions-needs`：这台上需手动的会话清单 |

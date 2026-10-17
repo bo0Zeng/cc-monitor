@@ -517,3 +517,49 @@ fn the_first_write_on_an_old_file_upgrades_it_too() {
     );
     let _ = std::fs::remove_dir_all(p.parent().unwrap());
 }
+
+/// ★ 「下次恢复用」那一格：记下的模型 · 权限档读得回；同一个 `end` 上先后记的两样并成一份；记录长过了再记 ⇒ 换掉旧那一份；
+/// 改星标那一类写不碰它，别的条目原样。
+#[test]
+fn the_resume_pick_is_kept_merged_on_one_end_and_replaced_past_it() {
+    let p = temp_copy("resume-with");
+    let own = own_of(&p);
+    let sid = "0000aaaa-0000-4000-8000-0000000000aa";
+    let pick = |model: Option<&str>, mode: Option<&str>, end: u64| ResumeWith {
+        model: model.map(str::to_string),
+        permission_mode: mode.map(str::to_string),
+        end,
+    };
+    let others = |p: &Path| {
+        let mut t = read_table(p);
+        t.remove(sid);
+        t
+    };
+    let before = others(&p);
+    keep_resume_at(&own, sid, pick(Some("sonnet"), None, 40), 1).unwrap();
+    assert_eq!(
+        resume_with_at(&p, sid),
+        Some(pick(Some("sonnet"), None, 40))
+    );
+    keep_resume_at(&own, sid, pick(None, Some("plan"), 40), 2).unwrap();
+    assert_eq!(
+        resume_with_at(&p, sid),
+        Some(pick(Some("sonnet"), Some("plan"), 40))
+    );
+    keep_resume_at(&own, sid, pick(None, Some("acceptEdits"), 90), 3).unwrap();
+    assert_eq!(
+        resume_with_at(&p, sid),
+        Some(pick(None, Some("acceptEdits"), 90))
+    );
+    answer_annotate_at(&own, &json!({"sid": sid, "patch": {"starred": true}}), 4).unwrap();
+    assert_eq!(
+        resume_with_at(&p, sid),
+        Some(pick(None, Some("acceptEdits"), 90))
+    );
+    assert_eq!(others(&p), before, "别的条目跟着变了");
+    assert_eq!(
+        resume_with_at(&p, "0000aaaa-0000-4000-8000-000000000002"),
+        None
+    );
+    let _ = std::fs::remove_dir_all(p.parent().unwrap());
+}

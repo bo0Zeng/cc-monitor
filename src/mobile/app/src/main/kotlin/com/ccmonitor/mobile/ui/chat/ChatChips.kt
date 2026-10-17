@@ -129,13 +129,13 @@ internal class ChatChips(
         }
     }
 
-    /** chip 上的两个字（那台从记录里读的此刻的模型 · 权限档）：还没换过（没有读回的字）才用它；问不到就算了，chip 写这颗是什么。 */
+    /** chip 上的两个字（那台从记录里读的此刻的模型 · 权限档）与模型抽屉勾哪一项（`modelPick`）：还没换过才用它；问不到就算了，chip 写这颗是什么。 */
     suspend fun readFacts(p: String) {
         val f = (link.call(HistoryFacts.COMMAND, HistoryFacts.args(p), READ_MS) as? Reply.Ok)?.let { HistoryFacts.of(it.data) } ?: return
         val now = state.value
         state.value =
             now.copy(
-                model = if (now.model.text == null) now.model.copy(text = f.modelText) else now.model,
+                model = now.model.copy(text = now.model.text ?: f.modelText, value = now.model.value ?: f.modelPick),
                 permission = if (now.permission.text == null) now.permission.copy(text = f.permissionModeText) else now.permission,
             )
     }

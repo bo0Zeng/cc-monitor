@@ -781,6 +781,7 @@ export class TabManager {
       touchedFiles: new Set(), // 会话改动集
       usage: null, // HUD 与监控板的上下文那一格
       modelText: null,
+      modelPick: null,
       permissionMode: null,
       permissionModeText: null,
       needs: null,

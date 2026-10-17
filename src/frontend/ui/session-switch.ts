@@ -102,11 +102,11 @@ export function picksOf(agent: AgentFacts, kind: SwitchKind): { picks: NewSessio
   return { picks: agent.modelDefault ? [agent.modelDefault, ...agent.models] : agent.models, note: agent.modelNote };
 }
 
-/** 勾哪一项（原值）：权限档 ＝ 此刻那一档；模型 ＝ 上次在这里换成了的那一项（会话事实只给原值，对不上清单）。 */
+/** 勾哪一项（原值）：上次在这里换成了的那一项 ＞ 会话事实说的此刻那一项（权限档 `permissionMode` · 模型 `modelPick`）。 */
 export function checkedValue(tab: Tab, kind: SwitchKind, local: SwitchLocal): string | null {
   const o = overOf(tab, kind, local);
   if (o) return o.value;
-  return kind === "permission" ? tab.permissionMode : null;
+  return kind === "permission" ? tab.permissionMode : tab.modelPick;
 }
 
 /** 换完之后：chip 换成哪个字（`null` ＝ 不换）· 要不要 toast（标题是那台那一句；没成又没那一句 ⇒「结果未知」）。 */

@@ -316,9 +316,34 @@ pub struct Entry {
     )]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub auto_answer: Option<crate::needs::AutoAnswer>,
+    /// 终端没了时换的模型 / 权限档，下次恢复照它起（只由那两条换的命令写）；缺 ＝ 没记。
+    #[serde(
+        default,
+        rename = "resumeWith",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub resume_with: Option<ResumeWith>,
     #[serde(default, rename = "updatedAt", alias = "updated_at")]
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub updated_at: i64,
+}
+
+/// 下次恢复用的那一项（[`Entry::resume_with`]）：原值同 `session-model` · `session-permission` 交的那一格。
+/// `end` ＝ 记下那一刻记录的字节长度：记录长过它（恢复过 · 又写过）⇒ 这一份作废，照记录。
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(rename_all = "camelCase")]
+pub struct ResumeWith {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub permission_mode: Option<String>,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub end: u64,
 }
 
 /// sid → 注解。

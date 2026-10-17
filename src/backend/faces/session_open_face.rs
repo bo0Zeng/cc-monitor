@@ -3,6 +3,7 @@
 
 use crate::control::session_new::{ForkWrite, PreRotation};
 use crate::control::session_open::{self as open, Facts, ResumeOf};
+use cmd_wire::listing::ResumeWith;
 use cmd_wire::session::{ForkSlot, ForkTerminal};
 
 /// `session-open`：起新的 · 恢复某条 · 接回，一个请求。阻塞档；写自家状态（起之前写好打开哪一份轮换配置）⇒ 写句柄由分派那一层递。
@@ -126,12 +127,33 @@ pub(crate) fn resume_of(sid: &str) -> Option<ResumeOf> {
     let agent = hq::facts_agent(&home, path)?;
     let cwd = hq::facts_project_dir(&home, path)?;
     let facts = hq::facts(&home, path, &Vec::new(), None).ok()?;
-    Some(ResumeOf {
-        agent,
-        cwd,
-        model: facts.usage.and_then(|u| u.model),
-        permission_mode: facts.permission_mode,
-    })
+    use crate::history::history_annotations as ha;
+    let kept = ha::kept_for_resume(ha::resume_with_of(sid), std::path::Path::new(path));
+    Some(with_kept(
+        ResumeOf {
+            agent,
+            cwd,
+            model: facts.usage.and_then(|u| u.model),
+            permission_mode: facts.permission_mode,
+        },
+        kept,
+    ))
+}
+
+/// 记下了的那两格盖过记录里的；模型记的是「默认」那一项 ⇒ 不带模型（不写就是那一家自己的默认）。
+pub(crate) fn with_kept(r: ResumeOf, kept: Option<ResumeWith>) -> ResumeOf {
+    let Some(k) = kept else { return r };
+    let default = crate::agents::launch_face_among(crate::agents::REGISTRY, &r.agent)
+        .and_then(|f| f.model_default)
+        .map(|c| c.value);
+    ResumeOf {
+        model: match k.model {
+            Some(m) => (Some(m.as_str()) != default).then_some(m),
+            None => r.model,
+        },
+        permission_mode: k.permission_mode.or(r.permission_mode),
+        ..r
+    }
 }
 
 /// 分叉的源会话此刻在不在 tmux 里（同 `session-new-facts` 那一格 `fork.launch.terminal`）；说不出 ⇒ `None`。
@@ -144,3 +166,7 @@ fn fork_in_tmux(sid: &str) -> Option<bool> {
         ForkSlot::Unknown { .. } => None,
     }
 }
+
+#[cfg(test)]
+#[path = "../../../tests/backend/faces/session_open_face_tests.rs"]
+mod tests;

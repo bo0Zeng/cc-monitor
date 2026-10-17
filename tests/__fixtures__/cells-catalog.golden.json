@@ -1029,6 +1029,12 @@
         },
         {
           "frozen": false,
+          "kind": "value",
+          "path": "modelPick",
+          "type": "string"
+        },
+        {
+          "frozen": false,
           "kind": "text",
           "path": "modelText",
           "type": "string"

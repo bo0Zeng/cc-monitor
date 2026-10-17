@@ -333,8 +333,22 @@ pub(crate) struct LaunchFace {
     pub(crate) model_default: Option<Choice>,
     /// 记录里写的模型原值 ⇒ 写给人看的名字（会话事实 `modelText`）；认不出 ⇒ `None`。这一家没考据过 ⇒ `None`。
     pub(crate) model_text: Option<fn(&str) -> Option<String>>,
+    /// 记录里写的模型原值 ⇒ 换模型清单里**唯一**对得上的那一项的原值（会话事实 `modelPick`，抽屉勾它）；对不上 · 不止一项 ⇒ `None`。没考据过 ⇒ `None`。
+    pub(crate) model_pick: Option<fn(&str) -> Option<&'static str>>,
     /// 会话开着时怎么换模型；这一家换不了 ⇒ `None`。
     pub(crate) model_switch: Option<ModelSwitch>,
+}
+
+impl LaunchFace {
+    /// 换模型清单里 `model` 那一项（可选的模型 ＋「默认」那一项）；不在清单里 ⇒ `None`。
+    pub(crate) fn model_choice(&self, model: &str) -> Option<Choice> {
+        self.models
+            .into_iter()
+            .flatten()
+            .chain(self.model_default.as_ref())
+            .find(|c| c.value == model)
+            .copied()
+    }
 }
 
 /// 会话开着时换模型的说法（[`LaunchFace::model_switch`]）：往会话里送一行，再从记录里此后长出的那一条读回换成了什么。
@@ -411,6 +425,18 @@ pub(crate) fn permission_mode_text(kind: &str, mode: &str) -> Option<String> {
 /// `kind` 那一家记录里的模型原值 `raw` 写给人看的名字（[`LaunchFace::model_text`]）。认不出这一家 · 这一家没有这一格 · 认不出这个值 ⇒ `None`。
 pub(crate) fn model_text(kind: &str, raw: &str) -> Option<String> {
     launch_face_among(REGISTRY, kind)?.model_text?(raw)
+}
+
+/// `kind` 那一家记录里的模型原值 `raw` 是换模型清单里哪一项（[`LaunchFace::model_pick`]）。认不出 ⇒ `None`。
+pub(crate) fn model_pick(kind: &str, raw: &str) -> Option<&'static str> {
+    launch_face_among(REGISTRY, kind)?.model_pick?(raw)
+}
+
+/// `kind` 那一家换模型清单里 `value` 那一项的字（[`LaunchFace::model_choice`]）。认不出这一家 · 不在清单里 ⇒ `None`。
+pub(crate) fn model_choice_text(kind: &str, value: &str) -> Option<String> {
+    launch_face_among(REGISTRY, kind)?
+        .model_choice(value)
+        .map(|c| (c.text)())
 }
 
 /// 某一家（wire 上的 kind）在给定注册表里的起会话事实。认不出 ⇒ `None`。

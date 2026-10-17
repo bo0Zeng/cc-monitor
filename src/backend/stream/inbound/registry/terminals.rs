@@ -38,10 +38,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         "一条会话能用的斜杠命令与 Skill（内置 ＋ 本项目 ＋ 它用的号的配置目录）",
     ),
     crate::wire::typed::asynchronous::<crate::faces::session_model_face::SessionModel>(
-        "会话开着时换模型（送那一家的那一行、从记录里读回换成了什么；在等人不送）",
+        "换模型（开着 ⇒ 送那一家的那一行、从记录里读回换成了什么；在等人不送；终端没了 ⇒ 记下、下次恢复照它起）",
     ),
     crate::wire::typed::blocking::<crate::faces::session_mode_face::SessionPermission>(
-        "会话开着时切权限档（按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按）",
+        "切权限档（开着 ⇒ 按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按；终端没了 ⇒ 记下、下次恢复照它起）",
     ),
     crate::wire::typed::blocking::<crate::faces::session_say_face::SessionSay>("往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车；终端没了 ⇒ 按记下的号恢复、那一句当第一句交）"),
     crate::wire::typed::blocking::<crate::faces::session_say_face::SessionResume>(

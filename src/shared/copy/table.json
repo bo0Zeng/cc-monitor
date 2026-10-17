@@ -1798,12 +1798,6 @@
       "zh": "先答完需手动",
       "args": []
     },
-    "beSessionSwitch.why.ended": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "会话已退出",
-      "args": []
-    },
     "beSessionModel.name.versioned": {
       "kind": "body",
       "role": "片段",

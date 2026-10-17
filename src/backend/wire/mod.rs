@@ -131,14 +131,9 @@ impl SessionFaceExt for SessionFace {
                         resume: no(running()),
                         term: CanTerm::Yes { tmux: true },
                         reattach: Allow::Yes,
-                        model: no(Words(copy_core::copy_text(
-                            "beSessionSwitch.why.ended",
-                            &[],
-                        ))),
-                        permission: no(Words(copy_core::copy_text(
-                            "beSessionSwitch.why.ended",
-                            &[],
-                        ))),
+                        // 离开「活」两样都能换：记在注解上、下次恢复用上（没有终端也收）。
+                        model: Allow::Yes,
+                        permission: Allow::Yes,
                     },
                 }
             }
@@ -168,14 +163,9 @@ impl SessionFaceExt for SessionFace {
                         resume: if gone { no(tip.clone()) } else { Allow::Yes },
                         term: CanTerm::No { why: why.clone() },
                         reattach: no(why),
-                        model: no(Words(copy_core::copy_text(
-                            "beSessionSwitch.why.ended",
-                            &[],
-                        ))),
-                        permission: no(Words(copy_core::copy_text(
-                            "beSessionSwitch.why.ended",
-                            &[],
-                        ))),
+                        // 已结束：记在注解上、下次恢复用上；记录已不在 ⇒ 恢复不了，换了也用不上（同恢复那一句）。
+                        model: if gone { no(tip.clone()) } else { Allow::Yes },
+                        permission: if gone { no(tip.clone()) } else { Allow::Yes },
                     },
                     name,
                     tip,

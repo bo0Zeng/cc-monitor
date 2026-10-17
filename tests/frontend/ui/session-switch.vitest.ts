@@ -43,7 +43,7 @@ const switchFace = (sw: { model: Allow; permission: Allow }): SessionFace => {
 };
 
 function tab(over: Partial<Tab> = {}): Tab {
-  return { sessionId: "s1", title: "orders", origin: "devbox", agent: "claude", modelText: "核心·Opus 4.5", permissionMode: "acceptEdits", permissionModeText: "核心·自动接受编辑", face: switchFace(YES), ...over } as unknown as Tab;
+  return { sessionId: "s1", title: "orders", origin: "devbox", agent: "claude", modelText: "核心·Opus 4.5", modelPick: null, permissionMode: "acceptEdits", permissionModeText: "核心·自动接受编辑", face: switchFace(YES), ...over } as unknown as Tab;
 }
 
 const FACTS: NewFacts = {
@@ -146,6 +146,14 @@ describe("清单与交的那条命令", () => {
     expect(menuItems()).toEqual([copyText("session.model.title"), "核心·默认", "核心·Sonnet", "核心·Opus", "核心·换模型也改此号以后新会话的默认"]);
     choose("核心·Sonnet");
     expect(host.send).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "s1" }), "model", "sonnet");
+  });
+
+  it("★ 模型：没在这里换过 ⇒ 勾会话事实说的那一项（modelPick）；认不出 ⇒ 一项都不勾", async () => {
+    const { chip } = rig(tab({ modelPick: "opus" }));
+    await flush();
+    chip("model").click();
+    await flush();
+    expect(menuItems()).toEqual([copyText("session.model.title"), "核心·默认", "核心·Sonnet", "✓核心·Opus", "核心·换模型也改此号以后新会话的默认"]);
   });
 
   it("★ 权限档：勾此刻那一档（原值相等）；选了交 session-permission", async () => {

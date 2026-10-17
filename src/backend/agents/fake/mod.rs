@@ -137,6 +137,7 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     models: None,
     model_default: None,
     model_text: None,
+    model_pick: None,
     model_switch: None,
 };
 

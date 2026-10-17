@@ -200,6 +200,7 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     models: Some(resume::MODEL_ALIASES),
     model_default: Some(resume::MODEL_DEFAULT),
     model_text: Some(resume::model_text),
+    model_pick: Some(resume::model_pick),
     model_switch: Some(super::ModelSwitch {
         command: resume::model_command,
         read: resume::model_said,

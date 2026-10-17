@@ -1715,7 +1715,8 @@ fn a_long_branch_list_goes_out_in_page_sized_frames_that_add_up() {
 }
 
 /// 整份脸上能不能换模型 · 权限档（`can.model` · `can.permission`）由核心判、随那一态带：
-/// 在跑 ⇒ 模型灰、权限档可换；需手动 ⇒ 都灰；闲着 · 后台命令在跑 · 说不清 · 读记录中 ⇒ 都可换；离开「活」（可重连 · 已结束）⇒ 都灰。
+/// 在跑 ⇒ 模型灰、权限档可换；需手动 ⇒ 都灰；闲着 · 后台命令在跑 · 说不清 · 读记录中 ⇒ 都可换；
+/// 离开「活」（可重连 · 已结束）⇒ 都可换（记在注解上、下次恢复用上）；记录已不在 ⇒ 都灰（恢复不了，那一句同恢复）。
 /// 灰的那一格（`can: no`）带写好的那一句，可换的（`can: yes`）不带。
 #[test]
 fn session_frames_say_whether_model_and_permission_can_switch_now() {
@@ -1753,10 +1754,14 @@ fn session_frames_say_whether_model_and_permission_can_switch_now() {
     for life in [Life::Reconnectable, Life::Ended] {
         assert_eq!(
             switch(life),
-            serde_json::json!({"model": no("beSessionSwitch.why.ended"), "permission": no("beSessionSwitch.why.ended")}),
+            serde_json::json!({"model": yes, "permission": yes}),
             "{life:?}"
         );
     }
+    assert_eq!(
+        switch(Life::Gone),
+        serde_json::json!({"model": no("sessionState.gone.tooltip"), "permission": no("sessionState.gone.tooltip")})
+    );
 }
 
 /// 会话整份脸的金样住址（仓根相对）：桌面与手机读同一份，各自对它画点。

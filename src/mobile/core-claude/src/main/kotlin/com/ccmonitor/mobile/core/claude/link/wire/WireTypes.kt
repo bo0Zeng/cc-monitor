@@ -690,6 +690,7 @@ data class ToolStep(
 @JsonClass(generateAdapter = true)
 data class SessionFacts(
     val modelText: String?,
+    val modelPick: String?,
     val permissionModeText: String?,
 )
 
