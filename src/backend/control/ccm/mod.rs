@@ -589,92 +589,15 @@ pub(crate) fn preview_resolved(
     ))
 }
 
-/// 帧命令 `terminal-name-mint`：**起会话要一个终端名 —— 问这台**（这一版宿主只有 tmux，铸的是 tmux 会话名）。
-///
-/// 入：`{"cwd": "<目录>"}`（起新会话 / 全新 resume：基名 `<项目名>-cc`）或 `{"forkOf": "<源会话的 tmux 名，或它的 cwd>"}`
-/// （分叉：基名 `<…>-fork-cc`），二者恰给一个。出：`{"name": "<最终名>"}`。
-/// 避让问的是**这台**那张唯一的会话快照（[`crate::common::session_snapshot`]，问一次更新一次），与 `ccm` 起会话、
-/// `--ccm-print` 同一份 [`plan::mint_tmux_name`] ⇒ 界面铸出来的名字与终端里敲 `ccm` 在同一目录铸的**同一个**。
+/// **起会话要一个终端名 —— 这台铸**（这一版宿主只有 tmux，铸的是 tmux 会话名）：工作目录 ⇒ `<项目名>-cc`，
+/// 分叉 ⇒ `<…>-fork-cc`。避让问的是**这台**那张唯一的会话快照（[`crate::common::session_snapshot`]，问一次更新一次），
+/// 与 `ccm` 起会话、`--ccm-print` 同一份 [`plan::mint_tmux_name`] ⇒ `session-open` 铸出来的名字与终端里敲 `ccm` 在同一目录铸的**同一个**。
 /// 这台没装 tmux ⇒ 一个名字都没占 ⇒ 交基名（起不起得来归起会话那一步说）。
-///
-/// 码：`bad_args`（两格都没给 / 都给了 / 不是字符串）。前端问不到（链路断 · 那台后端比这一问老）⇒ 不铸名、不起、说清
-/// （`src/frontend/ui/terminal-name-mint.ts`：空集铸名就是「不避让」，issue #76 的形状）。
-/// `terminal-name-mint` 的入参：工作目录 · 分叉的源，恰好给一个。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct TerminalNameMintReq {
-    /// 工作目录 ⇒ `<项目名>-cc`。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) cwd: Option<String>,
-    /// 分叉出来的那一条：源会话的终端名或工作目录 ⇒ `<…>-fork-cc`。
-    #[serde(default, rename = "forkOf")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) fork_of: Option<String>,
-}
-
-/// `terminal-name-mint` 的应答：铸出来的那个名字。
-#[derive(Debug, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Minted {
-    /// 铸出来的终端名（这台避让过）。
-    pub(crate) name: String,
-}
-
-crate::wire::typed::codes! {
-    /// `terminal-name-mint` 自己的码。
-    pub(crate) enum TerminalNameMintErr {
-        /// 问会话快照那一次 `tmux` 过了期限。
-        ChildTimedOut = "child_timed_out",
-    }
-}
-
-/// `terminal-name-mint`：起会话要的终端名（这台派生基名、按它的会话快照避让）。阻塞档：快照问一次就起一次 `tmux`。
-pub(crate) struct TerminalNameMint;
-
-impl crate::wire::typed::Command for TerminalNameMint {
-    const NAME: &'static str = "terminal-name-mint";
-    type Req = TerminalNameMintReq;
-    type Reply = Minted;
-    type Err = TerminalNameMintErr;
-}
-
-impl crate::wire::typed::Handle for TerminalNameMint {
-    type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
-        req: TerminalNameMintReq,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<Minted, TerminalNameMintErr>> + Send + 'static
-    {
-        async move {
-            let base = match (req.cwd.as_deref(), req.fork_of.as_deref()) {
-                (Some(cwd), None) => crate::control::session_batch::NameBase::Cwd(cwd),
-                (None, Some(source)) => crate::control::session_batch::NameBase::ForkOf(source),
-                _ => {
-                    return Err(TerminalNameMintErr::BadArgs(
-                        crate::common::contract::malformed("give exactly one of `cwd` / `forkOf`"),
-                    ))
-                }
-            };
-            // 快照那一层只回 `no_tmux`（下面那层接住了，不算失败）与 `child_timed_out` 两个码 ⇒ 到这里的只有后者。
-            terminal_name_mint_with(base, crate::common::session_snapshot::global()).map_err(
-                |(code, said)| {
-                    debug_assert_eq!(code, crate::platform::child::TIMED_OUT);
-                    TerminalNameMintErr::ChildTimedOut(said)
-                },
-            )
-        }
-    }
-}
-
 /// 铸名的内核（快照是入参：测试拿脚本化探测器造一份）。快照那一层的失败原样交回（码只有 `child_timed_out`；没 tmux 不算失败）。
 pub(crate) fn terminal_name_mint_with(
     base: crate::control::session_batch::NameBase<'_>,
     snap: &crate::common::session_snapshot::SessionSnapshot,
-) -> Result<Minted, (&'static str, String)> {
+) -> Result<String, (&'static str, String)> {
     let base = match base {
         crate::control::session_batch::NameBase::Cwd(cwd) => plan::derive_tmux_name(cwd),
         crate::control::session_batch::NameBase::ForkOf(source) => plan::fork_tmux_base(source),
@@ -685,7 +608,7 @@ pub(crate) fn terminal_name_mint_with(
         Err(("no_tmux", _)) => base,
         Err(e) => return Err(e),
     };
-    Ok(Minted { name })
+    Ok(name)
 }
 
 /// `--base` 与「已继承 `CLAUDE_CONFIG_DIR`」这两条路**不需要账号表** ——

@@ -50,7 +50,7 @@ pub(crate) struct Deps<'a> {
     pub(crate) send_into: &'a dyn Fn(&str, &str, &str) -> Result<(), crate::wire::spec::Fail>,
     /// 交一行 ccm（argv，`argv[0]` 是 `ccm`）⇒ `(退出码, stdout, stderr)`。生产那一份起这台后端自己（它就是 ccm）。
     pub(crate) run_ccm: &'a dyn Fn(&[String]) -> Result<(i32, String, String), CmdErr>,
-    /// 基名从哪来 ⇒ 这台铸的新会话名（同 `terminal-name-mint`：按这台此刻的会话名避让）。
+    /// 基名从哪来 ⇒ 这台铸的新会话名（`control::ccm::terminal_name_mint_with`：按这台此刻的会话名避让）。
     pub(crate) mint: &'a dyn Fn(NameBase) -> Result<String, CmdErr>,
     /// 这台 ccm 会哪些（渲那一行用）。
     pub(crate) caps: &'a BTreeSet<String>,
@@ -98,7 +98,7 @@ pub(crate) fn pids_said(pids: &[u32]) -> String {
         .join(", ")
 }
 
-/// 铸名的基名从哪来（同 `terminal-name-mint` 的 `cwd` / `forkOf`）。
+/// 铸名的基名从哪来：工作目录 · 分叉的源。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NameBase<'a> {
     /// 工作目录 ⇒ `<项目名>-cc`。

@@ -51,11 +51,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::frame::<crate::control::terminal_follow::TerminalUnfollow>(
         "退订一个终端的画面（幂等，不发收尾帧）",
     ),
-    // **起会话要一个终端名 —— 问这台**：`{cwd}`（`<项目名>-cc`）或 `{forkOf}`（`<…>-fork-cc`）⇒ `{name}`（按这台那张会话快照避让）。
-    //   本体 `control/ccm/mod.rs::TerminalNameMint`（这一版宿主只有 tmux）；阻塞档（快照问一次就起一次 `tmux`）。
-    crate::wire::typed::blocking::<crate::control::ccm::TerminalNameMint>(
-        "起会话要的终端名",
-    ),
     // F04a：**第一条破坏性命令。** 三道门在 `control/gate::admit_destructive`，
     // 对句柄下手不对名字。⚠ monitor 侧改走这条路是 **F04b**（定框 C6 的顺序）。
     crate::wire::typed::blocking::<crate::control::kill::Kill>("杀一个 tmux 会话"),

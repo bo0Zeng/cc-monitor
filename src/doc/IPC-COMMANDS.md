@@ -10087,33 +10087,6 @@ ticket: string, };
 
 码：`bad_args`
 
-#### `terminal-name-mint`
-
-起会话要的终端名。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --terminal-name-mint`
-
-入参 `TerminalNameMintReq` · 回包 `Minted`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type Minted = { 
-/**
- * 铸出来的终端名（这台避让过）。
- */
-name: string, };
-type TerminalNameMintReq = { 
-/**
- * 工作目录 ⇒ `<项目名>-cc`。
- */
-cwd?: string, 
-/**
- * 分叉出来的那一条：源会话的终端名或工作目录 ⇒ `<…>-fork-cc`。
- */
-forkOf?: string, };
-```
-
-码：`bad_args` · `child_timed_out`
-
 #### `kill`
 
 杀一个 tmux 会话。
@@ -12651,7 +12624,6 @@ needs: string | null, };
 | `--ssh-config-import` | ＝ 帧命令 `ssh-config-import`：批量导入预览 |
 | `--tasks-list` | ＝ 帧命令 `tasks-list`：一个会话的任务列表 |
 | `--terminal-input` | ＝ 帧命令 `terminal-input`：往一个终端送字或送键（过身份门） |
-| `--terminal-name-mint` | ＝ 帧命令 `terminal-name-mint`：起会话要的终端名 |
 | `--terminal-preview` | ＝ 帧命令 `terminal-preview`：抓一个终端的一屏（只抓一次，轮询归调用方） |
 | `--terminal-ssh` | ＝ 帧命令 `terminal-ssh`：给一台远端开终端要跑的那一串 |
 | `--terminals-list` | ＝ 帧命令 `terminals-list`：这台的终端名单（形状与宿主无关；这一版宿主是 tmux） |

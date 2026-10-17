@@ -958,7 +958,6 @@ fn the_commands_released_from_ui_only_are_on_the_cli() {
         "session-new-dir",
         "sessions-stop",
         "sessions-where",
-        "terminal-name-mint",
         "terminal-ssh",
         "history-search-merge",
     ] {
