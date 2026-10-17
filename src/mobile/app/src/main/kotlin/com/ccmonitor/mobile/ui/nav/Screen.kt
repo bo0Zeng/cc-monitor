@@ -63,6 +63,11 @@ sealed class Screen(
         const val ARG_CWD = "cwd"
     }
 
+    /** 跨会话的需手动 ＋ 在跑（聊天屏右上那颗入口进）：[hostId] 是进来时的那台（排在最前）。 */
+    data object Overview : Screen("overview/{hostId}") {
+        fun of(hostId: String): String = "overview/$hostId"
+    }
+
     // 「新建会话 · 选主机」：复用 HostListScreen，但连接一律 forceNew=true；
     // 选中即 popUpTo 弹出本页，返回键即取消，不留 force-new 状态。
     data object NewSessionHostPicker : Screen("sessions/new")

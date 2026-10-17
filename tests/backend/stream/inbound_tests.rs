@@ -1475,7 +1475,7 @@ fn the_account_library_refuses_what_its_request_types_do_not_have() {
             serde_json::json!({ "job": "j", "pasted": "x", "extra": 1 }),
         ),
         ("login-cancel", serde_json::json!({})),
-        ("manual-list", serde_json::json!({ "x": 1 })),
+        ("sessions-needs", serde_json::json!({ "x": 1 })),
     ] {
         let got = run_registered(cmd, args.clone()).expect_err(&format!("{cmd} {args} 本该被拒"));
         assert_eq!(got.code, "bad_args", "{cmd} {args}：{got:?}");

@@ -23,7 +23,7 @@
   "kill": [{"name":"demo","client":"mobile"}],
   "login-cancel": [{"job":"j"}],
   "login-finish": [{"job":"j","pasted":"code"}],
-  "login-start": [{"kind":"account","agent":"claude","account":"a"}],
+  "login-start": [{"kind":"account","agent":"claude","account":"a"},{"kind":"mcp","agent":"claude","account":"a","server":"notes"},{"kind":"mcp","agent":"claude","server":"notes","projectDir":"/w"}],
   "needs-answer": [{"sid":"s","ask":"q","choice":"allow"},{"sid":"s","ask":"q","choice":"answer","note":"n","picks":{"0":{"options":["A"],"text":"t"}}}],
   "prefs-read": [null],
   "prefs-set": [{"childTab":"show"},{"bgTab":"hide"},{"models":{"work":"opus"}},{"models":{"work":null}}],

@@ -668,7 +668,7 @@ codes! {
     pub(crate) enum SessionsNeedsErr {}
 }
 
-/// `sessions-needs`：这台上需手动的会话清单（一次问一台）。
+/// `sessions-needs`：这台上需手动的整份（在等的会话 · 计划格 · 会话外的，一次问一台）。
 pub(crate) struct SessionsNeedsCmd;
 
 impl Command for SessionsNeedsCmd {
@@ -683,15 +683,25 @@ impl crate::wire::typed::Handle for SessionsNeedsCmd {
     type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         _req: NoArgs,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
+        cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<NeedsList, SessionsNeedsErr>> + Send + 'static
     {
-        async move { Ok(needs_at(&home())) }
+        async move {
+            Ok(needs_at(
+                &home(),
+                &crate::faces::plan_face::need_slices(&cx.tz),
+                crate::faces::login_face::manual_here(),
+            ))
+        }
     }
 }
 
-/// [`SessionsNeedsCmd`] 的本体，家目录是参数。
-pub(crate) fn needs_at(home: &Path) -> NeedsList {
+/// [`SessionsNeedsCmd`] 的本体：家目录 · 这台计划里要人看的那几片（工作区 · 片名 · 几格）· 会话外的清单（读不出 ⇒ 那一句）是参数。
+pub(crate) fn needs_at(
+    home: &Path,
+    plan: &[(String, String, u32)],
+    manual: Result<Vec<cmd_wire::needs::ManualItem>, String>,
+) -> NeedsList {
     let annotations = match crate::history::history_annotations::load() {
         crate::history::history_annotations::Loaded::Read(t) => t,
         _ => Default::default(),
@@ -700,6 +710,8 @@ pub(crate) fn needs_at(home: &Path) -> NeedsList {
         home,
         &crate::control::session_hidden::Here::read_now(),
         &annotations,
+        plan,
+        manual,
     )
 }
 
@@ -708,9 +720,11 @@ pub(crate) fn needs_with(
     home: &Path,
     here: &crate::control::session_hidden::Here,
     annotations: &crate::history::history_annotations::Table,
+    plan: &[(String, String, u32)],
+    manual: Result<Vec<cmd_wire::needs::ManualItem>, String>,
 ) -> NeedsList {
-    NeedsList {
-        waiting: crate::observe::accounts_query::live_needs(
+    crate::observe::recognize::facts::needs_list(
+        crate::observe::accounts_query::live_needs(
             home,
             &crate::control::asks::sids(),
             &|n, sid| {
@@ -731,12 +745,14 @@ pub(crate) fn needs_with(
                 })
             },
         ),
+        plan,
+        manual,
         // 这台家里的会话才列（登记表是进程里一份）。
-        answered: crate::control::asks::answered_rows()
+        crate::control::asks::answered_rows()
             .into_iter()
             .filter(|r| locate::session_record(home, &r.sid).is_ok())
             .collect(),
-    }
+    )
 }
 
 // ───────────────────────── sessions-needs-merge ─────────────────────────
@@ -755,7 +771,7 @@ codes! {
     pub(crate) enum NeedsMergeErr {}
 }
 
-/// `sessions-needs-merge`：把各台的需手动清单合成一个先后（桌面 `Ctrl+J` 走它；纯计算，不读盘 ⇒ 不进阻塞档）。
+/// `sessions-needs-merge`：把各台的需手动整份合成一份 ＋ 总数（桌面入口 · 浮层 · `Ctrl+J` · 窗口标题走它；纯计算，不读盘 ⇒ 不进阻塞档）。
 pub(crate) struct NeedsMergeCmd;
 
 impl Command for NeedsMergeCmd {

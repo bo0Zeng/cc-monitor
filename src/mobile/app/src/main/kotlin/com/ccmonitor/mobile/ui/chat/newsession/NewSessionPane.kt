@@ -12,8 +12,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ccmonitor.mobile.core.claude.link.LinkState
+import com.ccmonitor.mobile.core.claude.link.Login
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.link.HostBackends
+import com.ccmonitor.mobile.ui.login.LoginFlow
+import com.ccmonitor.mobile.ui.login.LoginSheet
 import org.koin.compose.koinInject
 
 /**
@@ -56,7 +59,7 @@ fun NewSessionPane(
         NewSessionSheet.Account ->
             AccountSheet(ui, machine, picker, onLogin = { name ->
                 close()
-                login = LoginFlow(backends.of(hostId), machine, ui.agent.orEmpty(), name, scope).also { it.start() }
+                login = LoginFlow(backends.of(hostId), machine, Login.account(ui.agent.orEmpty(), name), scope).also { it.start() }
             }, onDismiss = close)
         NewSessionSheet.Cwd ->
             CwdSheet(ui, machine, onPick = { picker.pickRecent(it) { picked -> if (picked) close() } }, onBrowse = {
@@ -74,7 +77,7 @@ fun NewSessionPane(
     }
     login?.let { f ->
         val target by f.state.collectAsStateWithLifecycle()
-        val row = ui.accounts.firstOrNull { it.name == target.account }
+        val row = ui.accounts.firstOrNull { it.name == target.target.account }
         LoginSheet(f, row?.plate, row?.color, machine, onClosed = {
             login = null
             picker.openAccounts()

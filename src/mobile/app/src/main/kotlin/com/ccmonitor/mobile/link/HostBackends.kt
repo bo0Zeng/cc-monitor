@@ -9,6 +9,10 @@ import com.ccmonitor.mobile.ssh.HostConnector
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.ZoneId
@@ -33,6 +37,10 @@ class HostBackends(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val byHost = ConcurrentHashMap<String, ResidentFeed>()
+    private val feedsFlow = MutableStateFlow<Map<String, ResidentFeed>>(emptyMap())
+
+    /** 此刻起着的那几条（按台；跨会话的需手动板对每一条各问一份，不为它另连）。 */
+    val feeds: StateFlow<Map<String, ResidentFeed>> = feedsFlow.asStateFlow()
 
     init {
         scope.launch { connector.dialing.collect { ids -> ids.forEach { of(it).ensure() } } }
@@ -41,7 +49,8 @@ class HostBackends(
     }
 
     // computeIfAbsent：原子，一台只起一条（多起一条的那份也会往 SSH 那层报「没够着」）。
-    fun of(hostId: String): ResidentFeed = byHost.computeIfAbsent(hostId) { feed(it) }
+    fun of(hostId: String): ResidentFeed =
+        byHost.computeIfAbsent(hostId) { feed(it) }.also { f -> if (feedsFlow.value[hostId] !== f) feedsFlow.update { it + (hostId to f) } }
 
     /** 给这台装 / 更新后端（判定与做法在核心；走到哪在那台的状态成品里，结局经 [ResidentFeed.deploying]）。 */
     fun deploy(hostId: String) = of(hostId).deploy { withContext(Dispatchers.IO) { backendSlots() } }

@@ -269,8 +269,52 @@ enum class Tone {
 @WireOf("NeedsList")
 @JsonClass(generateAdapter = true)
 data class NeedsList(
-    val waiting: List<NeedsRow>,
+    val items: List<NeedsItem>,
     val answered: List<AnsweredRow>,
+    val manualUnreadable: String?,
+)
+
+/** 需手动的一项（按 `kind` 三臂平铺：会话那一臂只有 [session]，计划那一臂只有 [workspace] · [slice] · [k]，会话外那一臂只有 [manual]）。 */
+@WireOf("NeedsItem")
+@JsonClass(generateAdapter = true)
+data class NeedsItem(
+    val kind: String,
+    val rank: Long,
+    val session: NeedsRow?,
+    val workspace: String?,
+    val slice: String?,
+    val k: Long?,
+    val manual: ManualItem?,
+)
+
+/** 会话外的一项（`accountLogin` · `mcpLogin` 两臂平铺）。 */
+@WireOf("ManualItem")
+@JsonClass(generateAdapter = true)
+data class ManualItem(
+    val kind: String,
+    val account: String?,
+    val server: String?,
+    val said: String,
+    val fix: ManualFix?,
+    val why: String?,
+)
+
+@WireOf("ManualFix")
+@JsonClass(generateAdapter = true)
+data class ManualFix(
+    val command: String,
+    val args: LoginStartReq,
+)
+
+/** `login-start` 的目标（`account` · `mcp` 两臂平铺；号那一臂 [account] 必有，MCP 那一臂 [account] 缺 ＝ 没设账号那一份）。 */
+@WireOf("LoginStartReq")
+@JsonClass(generateAdapter = true)
+data class LoginStartReq(
+    val kind: LoginTarget,
+    val agent: String,
+    val account: String?,
+    val server: String?,
+    val projectDir: String?,
 )
 
 @WireOf("AnsweredRow")
@@ -904,6 +948,16 @@ data class RotStrategyError(
     val line: Long?,
     val msg: String,
 )
+
+/** 登录什么：一个号 · 号里的一个 MCP 服务器。 */
+@JsonClass(generateAdapter = false)
+enum class LoginTarget {
+    @Json(name = "account")
+    ACCOUNT,
+
+    @Json(name = "mcp")
+    MCP,
+}
 
 @WireOf("LoginStarted")
 @JsonClass(generateAdapter = true)

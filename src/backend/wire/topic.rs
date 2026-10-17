@@ -162,7 +162,7 @@ impl TopicExt for Topic {
                 rev: false,
                 body: true,
                 body_cap: 8192,
-                reask: "manual-list",
+                reask: "sessions-needs",
                 ask: Ask::None,
             },
             // 走 tap 那条（可丢：丢了下一次变化或重问就补上）。
@@ -173,7 +173,7 @@ impl TopicExt for Topic {
                 rev: false,
                 body: false,
                 body_cap: 0,
-                reask: "manual-list",
+                reask: "sessions-needs",
                 ask: Ask::None,
             },
             // 走 tap 那条（可丢：丢了下一次变化或重问就补上）。

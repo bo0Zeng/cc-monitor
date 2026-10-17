@@ -43,6 +43,7 @@ import com.ccmonitor.mobile.ui.files.FilesScreen
 import com.ccmonitor.mobile.ui.host.HostEditorScreen
 import com.ccmonitor.mobile.ui.host.HostListScreen
 import com.ccmonitor.mobile.ui.identity.IdentityScreen
+import com.ccmonitor.mobile.ui.needs.OverviewScreen
 import com.ccmonitor.mobile.ui.rotation.RotFocus
 import com.ccmonitor.mobile.ui.rotation.RotationScreen
 import com.ccmonitor.mobile.ui.session.SessionScreen
@@ -508,6 +509,14 @@ private fun NavGraphBuilder.chatRoutes(
             onDrawerAction = { action -> nav.followDrawer(action, hostId, tabManager) },
             onOpenRotation = { s -> nav.navigate(Screen.Rotation.of(hostId, s)) },
             onOpenTerminal = { to -> nav.navigate("session/${tabManager.open(hostId, to)}") },
+            onOpenOverview = { nav.navigate(Screen.Overview.of(hostId)) },
+        )
+    }
+    composable(Screen.Overview.route) { entry ->
+        OverviewScreen(
+            current = entry.arguments?.getString("hostId").orEmpty(),
+            onOpen = { host, sid -> nav.navigate(Screen.Chat.of(host, sid)) },
+            onBack = { nav.popBackStack() },
         )
     }
 }

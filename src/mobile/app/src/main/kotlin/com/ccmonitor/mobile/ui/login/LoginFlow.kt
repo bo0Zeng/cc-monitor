@@ -1,10 +1,11 @@
-package com.ccmonitor.mobile.ui.chat.newsession
+package com.ccmonitor.mobile.ui.login
 
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Login
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.wire.LoginAgain
 import com.ccmonitor.mobile.core.claude.link.wire.LoginAgainHow
+import com.ccmonitor.mobile.core.claude.link.wire.LoginStartReq
 import com.ccmonitor.mobile.core.claude.link.wire.LoginStarted
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
 import com.ccmonitor.mobile.link.problem
@@ -18,8 +19,8 @@ import kotlinx.coroutines.launch
 
 /** 登录抽屉此刻。 */
 data class LoginUi(
-    /** 登录的是哪个号（目标行）。 */
-    val account: String,
+    /** 登录什么（`login-start` 的入参原样：号 · 号里的一个 MCP 服务器）。 */
+    val target: LoginStartReq,
     /** `login-start` 交回来的那一份；还在起 · 没起成 ⇒ `null`。 */
     val started: LoginStarted? = null,
     /** 没起成 · 作业没了那一句（那台写的）；有它 ⇒ 粘贴区收起。 */
@@ -34,7 +35,8 @@ data class LoginUi(
 )
 
 /**
- * 在 app 里登录一个号：`login-start` 起那一家的登录、交回链接 ⇒ 系统浏览器开；粘回来的那一段经 `login-finish` 交给它；
+ * 在 app 里登录一个号 · 号里的一个 MCP 服务器（三处入口共用：新建会话 · 设置账号 · 总览）：目标是 `login-start` 的入参原样
+ * （总览那一项的 `fix.args`，或新建会话 / 设置账号那边照同一形拼的 `Login.account`），起那一家的登录、交回链接 ⇒ 系统浏览器开；粘回来的那一段经 `login-finish` 交给它；
  * 取消 · 收起 ⇒ `login-cancel`。令牌由那一家自己换、自己写，手机只转链接与那一段。
  * 失败之后怎么办照那台的 `again`（[LoginAgain]）：接着粘 ⇒ 那一格下面一行、改了再交；重新开始 ⇒ 红字 ＋［重新开始］；没法再来 ⇒ 只红字。
  * 没起成就没有作业，接着粘无从谈起 ⇒ 当重新开始；回包里没有 `again`（超时 · 断线）⇒ 也当重新开始（同桌面）。
@@ -42,17 +44,16 @@ data class LoginUi(
 class LoginFlow(
     private val link: CoreLink,
     private val machine: String,
-    private val agent: String,
-    account: String,
+    target: LoginStartReq,
     private val scope: CoroutineScope,
 ) {
-    private val _state = MutableStateFlow(LoginUi(account))
+    private val _state = MutableStateFlow(LoginUi(target))
     val state: StateFlow<LoginUi> = _state.asStateFlow()
 
     fun start() {
-        _state.update { LoginUi(it.account) }
+        _state.update { LoginUi(it.target) }
         scope.launch {
-            val r = link.call(Login.START, Login.startAccount(agent, _state.value.account), CALL_MS)
+            val r = link.call(Login.START, Login.start(_state.value.target), CALL_MS)
             val s = (r as? Reply.Ok)?.let { Login.started(it.data) }
             _state.update { if (s != null) it.copy(started = s) else it.copy(failed = said(r, Login.START), canRestart = again(r) != LoginAgainHow.NONE) }
         }

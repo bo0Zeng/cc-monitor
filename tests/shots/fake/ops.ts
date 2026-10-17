@@ -11,8 +11,6 @@ export const ACCOUNTS = [
 
 export function defaultOps(): Record<string, OpHandler> {
   return {
-    // 会话外的需手动清单：默认世界里没有（「需手动」浮层与登录抽屉那几张的世界 `scenes/login.ts` 换掉这一条）。
-    "manual-list": () => ({ items: [] }),
     "accounts-trust": () => ({ known: true, trusted: true }),
     // 账号页打开时顺手核一次：缺省世界里都对得上。
     "accounts-verify": () => ({ pass: true, fails: 0, warns: 0, checks: [] }),

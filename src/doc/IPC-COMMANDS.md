@@ -419,7 +419,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 - `tasks` —— 这台某个会话的任务清单（`key` ＝ sid）
 - `needs` —— 这台某个会话挂着的待答请求（`key` ＝ sid：挂上 · 撤掉 · 答掉 · 「没人答时自动答」那一格改了；重问 `sessions-needs` 或那个会话的 `history-facts`）
 - `login` —— 一份登录作业自己收了（`key` ＝ 作业号；`body` ＝ `{state: done \| failed, said?, detail?}`）
-- `manual` —— 这台会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了 · 某个号记「MCP 要登录」的那份文件翻了；重问 `manual-list`）
+- `manual` —— 这台会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了 · 某个号记「MCP 要登录」的那份文件翻了；重问 `sessions-needs`）
 - `machines` —— 这一端的机器表（`machines.json` 被改写；重问 `machines-read`）
 - `machine` —— 这一端连的某台远端此刻的状态（`key` ＝ 那台的名字；`body` ＝ 那台的成品 `MachineState`；丢了重问 `machine-read`）
 - `session_hidden` —— 这台某个活会话隐不隐藏变了（`key` ＝ sid；`body` ＝ `{hidden}`：那一格，不隐藏 ⇒ `null`）：注解 · 这台偏好 · 会话血缘动了之后判出来的
@@ -3996,32 +3996,6 @@ type LoginCancelled = { was: boolean, };
 
 码：`bad_args`
 
-#### `manual-list`
-
-会话外的需手动清单：需登录的号 · 需登录的 MCP。
-
-不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --manual-list`
-
-入参 `NoArgs` · 回包 `ManualList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type LoginStartReq = { "kind": "account", agent: string, account: string, } | { "kind": "mcp", agent: string, account: string | null, server: string, projectDir: string | null, };
-type ManualFix = { command: string, args: LoginStartReq, };
-type ManualItem = { "kind": "accountLogin", agent: string, account: string, said: string, fix: ManualFix, } | { "kind": "mcpLogin", 
-/**
- * 在哪个号里；没设账号的那一份 ⇒ `null`。
- */
-account: string | null, server: string, scope: string, said: string, fix: ManualFix | null, 
-/**
- * `fix` 为 `null` 时必有：为什么没有解法（写好的那一句）；有 `fix` ⇒ 缺。
- */
-why?: string, };
-type ManualList = { items: Array<ManualItem>, };
-type NoArgs = Record<symbol, never>;
-```
-
-码：`bad_args` · `unreadable`
-
 ### 4.4 历史会话与它的读面
 
 #### `history-annotate`
@@ -6344,6 +6318,17 @@ type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
 type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
+type LoginStartReq = { "kind": "account", agent: string, account: string, } | { "kind": "mcp", agent: string, account: string | null, server: string, projectDir: string | null, };
+type ManualFix = { command: string, args: LoginStartReq, };
+type ManualItem = { "kind": "accountLogin", agent: string, account: string, said: string, fix: ManualFix, } | { "kind": "mcpLogin", 
+/**
+ * 在哪个号里；没设账号的那一份 ⇒ `null`。
+ */
+account: string | null, server: string, scope: string, said: string, fix: ManualFix | null, 
+/**
+ * `fix` 为 `null` 时必有：为什么没有解法（写好的那一句）；有 `fix` ⇒ 缺。
+ */
+why?: string, };
 type Needs = { kind: NeedsKind, 
 /**
  * 等的是哪个工具调用（工具名原样）；判不出 ⇒ `null`。
@@ -6455,16 +6440,21 @@ note: NeedsNote,
  */
 row: NeedsChoiceRow, };
 type NeedsChoiceRow = "main" | "hold" | "release";
+type NeedsItem = { "kind": "session", rank: number, session: NeedsRow, } | { "kind": "plan", rank: number, workspace: string, slice: string, k: number, } | { "kind": "manual", rank: number, manual: ManualItem, };
 type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
 type NeedsList = { 
 /**
- * 此刻活着、那台说在等人的会话（`needs.rank` 小的在前）；一个都没有 ⇒ 空。
+ * 依次：此刻活着、那台说在等人的会话 · 计划里要人看的格 · 会话外的（需登录的号 · MCP）；一项都没有 ⇒ 空。
  */
-waiting: Array<NeedsRow>, 
+items: Array<NeedsItem>, 
 /**
  * 提问没人答、已替人答过的会话（各留最近一次，那条会话下一次挂上提问才换掉），按会话 id 排。
  */
-answered: Array<AnsweredRow>, };
+answered: Array<AnsweredRow>, 
+/**
+ * 会话外那一截读不出（账号库清单在、却读不懂）⇒ 那一句；那一截这时不列（空清单看起来像「没事」）。读得出 ⇒ 缺。
+ */
+manualUnreadable?: Words, };
 type NeedsNote = "none" | "optional" | "required";
 type NeedsQuestion = { 
 /**
@@ -6567,12 +6557,24 @@ type Words = string;
 
 ```ts
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
+type AnsweredRow = { sid: string, said: Words, };
 type AskKind = "approve" | "answer" | "plan";
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
 type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
+type LoginStartReq = { "kind": "account", agent: string, account: string, } | { "kind": "mcp", agent: string, account: string | null, server: string, projectDir: string | null, };
+type ManualFix = { command: string, args: LoginStartReq, };
+type ManualItem = { "kind": "accountLogin", agent: string, account: string, said: string, fix: ManualFix, } | { "kind": "mcpLogin", 
+/**
+ * 在哪个号里；没设账号的那一份 ⇒ `null`。
+ */
+account: string | null, server: string, scope: string, said: string, fix: ManualFix | null, 
+/**
+ * `fix` 为 `null` 时必有：为什么没有解法（写好的那一句）；有 `fix` ⇒ 缺。
+ */
+why?: string, };
 type Needs = { kind: NeedsKind, 
 /**
  * 等的是哪个工具调用（工具名原样）；判不出 ⇒ `null`。
@@ -6670,7 +6672,7 @@ type NeedsAskRun = { id: string,
  * 它是哪一种（那一家原样，如 `general-purpose`）；没说 ⇒ `null`。
  */
 kind: string | null, };
-type NeedsAt = { origin: Origin, sid: string, };
+type NeedsAt = { origin: Origin, item: NeedsItem, };
 type NeedsChoice = { 
 /**
  * 答的时候交回的那个词（闭集见 `control::asks::verdict_of`）。
@@ -6685,10 +6687,24 @@ note: NeedsNote,
  */
 row: NeedsChoiceRow, };
 type NeedsChoiceRow = "main" | "hold" | "release";
+type NeedsItem = { "kind": "session", rank: number, session: NeedsRow, } | { "kind": "plan", rank: number, workspace: string, slice: string, k: number, } | { "kind": "manual", rank: number, manual: ManualItem, };
 type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
-type NeedsMachine = { origin: Origin, waiting: Array<NeedsRow>, };
+type NeedsList = { 
+/**
+ * 依次：此刻活着、那台说在等人的会话 · 计划里要人看的格 · 会话外的（需登录的号 · MCP）；一项都没有 ⇒ 空。
+ */
+items: Array<NeedsItem>, 
+/**
+ * 提问没人答、已替人答过的会话（各留最近一次，那条会话下一次挂上提问才换掉），按会话 id 排。
+ */
+answered: Array<AnsweredRow>, 
+/**
+ * 会话外那一截读不出（账号库清单在、却读不懂）⇒ 那一句；那一截这时不列（空清单看起来像「没事」）。读得出 ⇒ 缺。
+ */
+manualUnreadable?: Words, };
+type NeedsMachine = { origin: Origin, list: NeedsList, };
 type NeedsMergeReq = { machines: Array<NeedsMachine>, };
-type NeedsMerged = { order: Array<NeedsAt>, };
+type NeedsMerged = { items: Array<NeedsAt>, total: number, unreadable: Array<NeedsUnreadable>, };
 type NeedsNote = "none" | "optional" | "required";
 type NeedsQuestion = { 
 /**
@@ -6717,6 +6733,7 @@ face: SessionFace, needs: Needs,
  * 隐藏那一格（照常列在这里：隐藏不影响需手动）；不隐藏 ⇒ `null`（格恒在）。
  */
 hidden: Hidden | null, };
+type NeedsUnreadable = { origin: Origin, said: Words, };
 type Origin = string;
 type SessionCan = { 
 /**
@@ -14081,7 +14098,6 @@ type Words = string;
 | `--machines-read` | ＝ 帧命令 `machines-read`：读这一端的机器表 |
 | `--machines-set` | ＝ 帧命令 `machines-set`：改机器表（按键认那一台），写完读回、推 `changed {machines}` |
 | `--machines-try` | ＝ 帧命令 `machines-try`：这串补丁若现在落盘，机器表那一道过不过（盘上不动） |
-| `--manual-list` | ＝ 帧命令 `manual-list`：会话外的需手动清单：需登录的号 · 需登录的 MCP |
 | `--mcp-read` | ＝ 帧命令 `mcp-read`：这台机器的 MCP 列表成品 |
 | `--mcp-sync-apply` | ＝ 帧命令 `mcp-sync-apply`：在要被写的那一台把那一条写进去 |
 | `--mcp-sync-preview` | ＝ 帧命令 `mcp-sync-preview`：在要被写的那一台看装上之后那一条 |

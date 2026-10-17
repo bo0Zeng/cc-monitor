@@ -275,8 +275,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ("mcp-read", "帧命令：一台的 MCP 列表 ＋ 每条写好的字（需登录那一句 · 最近连接失败那一条 · 小标画哪一种），判定只在后端 `mcp-read` 一处；扩展页按台问、只排版"),
     ("plan-command", "新帧命令：以人的身份代敲 pb 的 continue · pause · take · view（退出码与 pb 那一句在后端认）；计划页开关 ·［接过仓库…］·［整张图］只排版"),
     ("plan-pb-check", "新帧命令：一个路径能不能当 pb 用（起 pb 看在后端，那一句后端写）；设置里 pb 路径那一行只排版"),
-    // 「需手动」浮层与登录抽屉（`src/frontend/ui/login-reads.ts`）：会话外的需手动清单 · 在 app 里登录，判 · 拼句 · 还能怎么办（`again`）都在那台后端。
-    ("manual-list", "帧命令：一台会话外的需手动（每项带写好的那一句与解法 `fix`）；侧栏「需手动」浮层与扩展页 MCP 那一行只排版"),
+    // 登录抽屉（`src/frontend/ui/login-reads.ts`）：在 app 里登录，判 · 拼句 · 还能怎么办（`again`）都在那台后端。
     ("login-start", "帧命令（内建档，跟着发起它的那条连接走）：起一趟登录，回登录链接 · 粘什么 · 会不会自己登完；登录抽屉只排版"),
     ("login-finish", "帧命令：把登录页给的那一段交给那份作业；失败的 `data.again` 由后端定，登录抽屉照它画"),
     ("login-cancel", "帧命令：撤掉那一趟登录（抽屉关的那一下）"),
@@ -515,13 +514,13 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ),
     (
         "sessions-needs",
-        "`BORN_ON_FRAME` 那一条：后端出成品（这台需手动的会话，`needs_first` 排好）；前端 `src/frontend/ui/needs-order.ts::askNeedsOrder` 逐台问，\
-         monitor 这一侧零发送点",
+        "`BORN_ON_FRAME` 那一条：后端出成品（这台需手动的整份：在等的会话 · 计划格 · 会话外的，`recognize::facts::needs_list` 排好）；\
+         前端 `src/frontend/ui/needs-book.ts` 逐台问，monitor 这一侧零发送点",
     ),
     (
         "sessions-needs-merge",
-        "`BORN_ON_FRAME` 那一条：各台的需手动清单合成一个先后（`recognize::facts::merge_needs`，照各行的 `rank`）；\
-         前端 `needs-order.ts::askNeedsOrder` 问本机后端（`Ctrl+J` 走它），monitor 这一侧零发送点",
+        "`BORN_ON_FRAME` 那一条：各台的需手动整份合成一份 ＋ 总数（`recognize::facts::merge_needs`，照各项的 `rank`）；\
+         前端 `needs-book.ts` 问本机后端（入口 · 浮层 · `Ctrl+J` · 窗口标题走它），monitor 这一侧零发送点",
     ),
     (
         "machine-interrupts",

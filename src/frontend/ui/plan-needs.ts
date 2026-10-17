@@ -1,21 +1,13 @@
 /**
- * 计划这一侧「需手动」的账：每台最后一次 `plan-list` 里每个工作区每一片的 `needCount`（后端判、后端数，不含 agent 提问那一种 ——
- * 那一条算在会话上，只算一次）· 每个会话接手的那一块（`bySession`，会话头那一枚标读它）。
+ * 计划这一侧的账：每台最后一次 `plan-list`（计划页开页先拿它画）· 每个会话接手的那一块（`bySession`，会话头那一枚标读它）。
+ * 「需手动」里的计划项不在这里数：各台 `sessions-needs` 那一份里有（`needs-book.ts`）。
  *
  * 计划页开着时它问的 `plan-list` 也交进来（同一份）；计划页关着时：起来问一次、那台推「计划变了」且数变了再问、会话结束再问一次。
  * 这里不判任何东西，只记、只数。
  */
-import { isLocalOrigin, type Origin } from "./ipc/origin";
+import type { Origin } from "./ipc/origin";
 import { fetchPlanList, type PlanList, type PlanSessionBlock } from "./plan-reads";
 import type { PlanMoved } from "./changed-stream";
-
-/** 一条计划项：哪台 · 哪个工作区 · 哪一片 · 那一片里第几条。 */
-export interface PlanNeedItem {
-  origin: Origin;
-  workspace: string;
-  slice: string;
-  k: number;
-}
 
 export class PlanNeedsBook {
   private readonly lists = new Map<Origin, PlanList>();
@@ -47,23 +39,9 @@ export class PlanNeedsBook {
     if (change.all || change.moved.some(differs)) void this.refresh(origin);
   }
 
-  /** 全部计划项，次序：本机在前、别的机器照交进来的先后；工作区 · 片照 `plan-list` 的先后。 */
-  items(): PlanNeedItem[] {
-    const origins = [...this.lists.keys()].sort((a, b) => Number(isLocalOrigin(b)) - Number(isLocalOrigin(a)));
-    const out: PlanNeedItem[] = [];
-    for (const origin of origins)
-      for (const ws of this.lists.get(origin)?.workspaces ?? [])
-        for (const sl of ws.slices) for (let k = 0; k < sl.needCount; k++) out.push({ origin, workspace: ws.workspace, slice: sl.name, k });
-    return out;
-  }
-
   /** 那台最后一次答的 `plan-list`（计划页开页时先拿它画，问回来再换）。 */
   list(origin: Origin): PlanList | null {
     return this.lists.get(origin) ?? null;
-  }
-
-  total(): number {
-    return this.items().length;
   }
 
   /** 这个会话接手的那一块（会话头那一枚标）；不是哪一块的接手 ⇒ `null`。 */

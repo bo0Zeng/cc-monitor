@@ -1,34 +1,13 @@
 //! 帧面宿主：在 app 里登录一个号 · 一个号里的一个 MCP 服务器（`login-start` · `login-finish` · `login-cancel`，本体 `accounts::sign_in`）
-//! ＋ 会话外的需手动清单（`manual-list`：需登录的号 · 需登录的 MCP，每一项带写好的那一句和怎么解）。
+//! ＋ 会话外的需手动清单（需登录的号 · 需登录的 MCP，每一项带写好的那一句和怎么解；进 `sessions-needs` 那一份）。
 //! `login-start` 要跟着发起它的那条连接走（连接断了作业就收）⇒ 在分派的硬臂里（内建档），入参 · 回包 · 码表照样从这里的类型来。
 
 use crate::accounts::sign_in::{self, FinishFail, SignInEnd};
 use crate::wire::spec::Fail;
-use crate::wire::typed::{self, Command, NoArgs};
+use crate::wire::typed::{self, Command};
 use copy_core::copy_text;
 
-/// `login-start` 的入参：登录什么（同一个目标新开一份就替掉旧的；`login-finish` 成了原样交回）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(
-    tag = "kind",
-    rename_all = "camelCase",
-    rename_all_fields = "camelCase",
-    deny_unknown_fields
-)]
-pub(crate) enum LoginStartReq {
-    /// 一个号：哪一家（`accounts-list` 的 `agent`）· 账号库里的哪个号（账号 0 是 `0`）。
-    Account { agent: String, account: String },
-    /// 一个号里的一个 MCP 服务器：哪一家 · 哪个号（没设账号 ⇒ `null`：那一家的默认配置目录）· 服务器名（`mcp-read` 里那一条）·
-    /// 那一条配置所属的项目目录（项目级 · 本地级要它；用户级 ⇒ `null`）。
-    Mcp {
-        agent: String,
-        account: Option<String>,
-        server: String,
-        project_dir: Option<String>,
-    },
-}
+pub(crate) use cmd_wire::needs::{LoginStartReq, ManualFix, ManualItem};
 
 /// `login-start` 的整份入参：登录什么（[`LoginStartReq`]，与它同一层）＋ 发起这一趟的浏览器在不在后端这台（`browserHere`）。
 /// 那一格不进目标：同一个目标从哪台浏览器发起都是同一份作业（新开就替掉旧的），`login-finish` 交回的目标也不带它。
@@ -434,119 +413,44 @@ impl crate::wire::typed::Handle for LoginCancel {
     }
 }
 
-/// 一项需手动怎么解：问哪条命令、交什么入参。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct ManualFix {
-    pub(crate) command: &'static str,
-    pub(crate) args: LoginStartReq,
+/// 这台此刻会话外的需手动清单（[`manual_of`] 喂这台的账号库 · 换号那一侧记的 · MCP 读面）；`sessions-needs` 那一截。
+pub(crate) fn manual_here() -> Result<Vec<ManualItem>, String> {
+    let Some(agent) = crate::agents::sole_kind(|a| a.accounts.is_some()) else {
+        return Ok(Vec::new());
+    };
+    let mcp = crate::agents::sole_kind(|a| a.mcp.is_some()).map(|kind| {
+        let look = crate::accounts::manage::mcp_share_exec::mcp_look(kind);
+        (
+            kind,
+            crate::agents::mcp_read(kind, None, &look).unwrap_or_default(),
+        )
+    });
+    let relogin = crate::faces::rotation_face::Ctx::here().hop.needs_relogin(
+        crate::faces::rotation_face::LIBRARY_AGENT,
+        crate::accounts::quota::now_unix(),
+    );
+    manual_of(
+        agent,
+        &accounts_product(agent),
+        crate::observe::accounts_query::library_unreadable_here(),
+        &relogin,
+        mcp.as_ref().map(|(k, r)| (*k, r)),
+    )
 }
 
-/// 会话外的一项需手动（每一项带写好的那一句）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(
-    tag = "kind",
-    rename_all = "camelCase",
-    rename_all_fields = "camelCase"
-)]
-pub(crate) enum ManualItem {
-    /// 一个订阅号还没登录（`fix` ＝ 在 app 里登：`login-start`）。
-    AccountLogin {
-        agent: String,
-        account: String,
-        said: String,
-        fix: ManualFix,
-    },
-    /// 一个 MCP 服务器要登录（那一家最近一次连它时记下的、还在有效期内）。`fix` ＝ 在 app 里登：`login-start {kind: mcp}`；
-    /// 那一家不在 app 里登 MCP ⇒ `null`（只能在会话里登），这时 `why` 说为什么没有解法。
-    McpLogin {
-        /// 在哪个号里；没设账号的那一份 ⇒ `null`。
-        account: Option<String>,
-        server: String,
-        scope: String,
-        said: String,
-        fix: Option<ManualFix>,
-        /// `fix` 为 `null` 时必有：为什么没有解法（写好的那一句）；有 `fix` ⇒ 缺。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(test, ts(optional))]
-        why: Option<String>,
-    },
-}
-
-/// `manual-list` 的成品。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct ManualList {
-    pub(crate) items: Vec<ManualItem>,
-}
-
-/// `manual-list`：会话外的需手动清单（需登录的号 · 需登录的 MCP）。只读。
-pub(crate) struct ManualListCmd;
-
-typed::codes! {
-    /// `manual-list` 可能回的码。MCP 的缓存读不到按「没有」答（那一项本来就是「最近一次连它时记下的」）。
-    pub(crate) enum ManualListErr {
-        /// 账号库清单在、却读不懂：说不出哪些号需登录，不回空清单（空清单看起来像「没事」）。那一句是为什么。
-        Unreadable = "unreadable",
-    }
-}
-
-impl Command for ManualListCmd {
-    const NAME: &'static str = "manual-list";
-    const TAKES_INPUT: bool = false;
-    type Req = NoArgs;
-    type Reply = ManualList;
-    type Err = ManualListErr;
-}
-
-impl crate::wire::typed::Handle for ManualListCmd {
-    type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
-        _req: NoArgs,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<ManualList, ManualListErr>> + Send + 'static {
-        async move {
-            let Some(agent) = crate::agents::sole_kind(|a| a.accounts.is_some()) else {
-                return Ok(ManualList { items: Vec::new() });
-            };
-            let mcp = crate::agents::sole_kind(|a| a.mcp.is_some()).map(|kind| {
-                let look = crate::accounts::manage::mcp_share_exec::mcp_look(kind);
-                (
-                    kind,
-                    crate::agents::mcp_read(kind, None, &look).unwrap_or_default(),
-                )
-            });
-            let relogin = crate::faces::rotation_face::Ctx::here().hop.needs_relogin(
-                crate::faces::rotation_face::LIBRARY_AGENT,
-                crate::accounts::quota::now_unix(),
-            );
-            manual_of(
-                agent,
-                &accounts_product(agent),
-                crate::observe::accounts_query::library_unreadable_here(),
-                &relogin,
-                mcp.as_ref().map(|(k, r)| (*k, r)),
-            )
-        }
-    }
-}
-
-/// [`ManualListCmd`] 的纯构造器：账号清单成品（`accounts-list` 那一份）· 续令牌被拒的号（`relogin`，换号那一侧记的）·
-/// MCP 读面（哪一家的 · 用户级那一份）⇒ 清单。判据拿夹具喂它。
-/// `unreadable` ＝ 账号库清单在、却读不懂的那一句（`accounts_query::library_unreadable`）：给了 ⇒ 回 `unreadable`，不列。
+/// 会话外的需手动清单（需登录的号 · 需登录的 MCP，`sessions-needs` 里会外那一截）的纯构造器：账号清单成品（`accounts-list` 那一份）·
+/// 续令牌被拒的号（`relogin`，换号那一侧记的）· MCP 读面（哪一家的 · 用户级那一份）⇒ 清单。判据拿夹具喂它。
+/// `unreadable` ＝ 账号库清单在、却读不懂的那一句（`accounts_query::library_unreadable`）：给了 ⇒ 原样回 `Err`，不列
+/// （说不出哪些号需登录，不回空清单：空清单看起来像「没事」）。
 pub(crate) fn manual_of(
     agent: &str,
     accounts: &crate::observe::accounts_query::AccountsList,
     unreadable: Option<String>,
     relogin: &[String],
     mcp: Option<(&str, &crate::agents::McpRead)>,
-) -> Result<ManualList, ManualListErr> {
+) -> Result<Vec<ManualItem>, String> {
     if let Some(why) = unreadable {
-        return Err(ManualListErr::Unreadable(why));
+        return Err(why);
     }
     let signs_in = crate::agents::accounts_face(agent).is_some_and(|f| f.sign_in.is_some());
     let mut items: Vec<ManualItem> = accounts
@@ -571,7 +475,7 @@ pub(crate) fn manual_of(
                     copy_text("beManual.list.accountLogin", &[("account", &who)])
                 },
                 fix: ManualFix {
-                    command: "login-start",
+                    command: "login-start".into(),
                     args: LoginStartReq::Account {
                         agent: agent.to_string(),
                         account: a.name.clone(),
@@ -618,10 +522,10 @@ pub(crate) fn manual_of(
             });
         }
     }
-    Ok(ManualList { items })
+    Ok(items)
 }
 
-/// 一个 MCP 服务器在一个号里要登录时怎么解（`manual-list` 那一项 · `mcp-read` 需登录那一格同一处写）。
+/// 一个 MCP 服务器在一个号里要登录时怎么解（`sessions-needs` 会外那一项 · `mcp-read` 需登录那一格同一处写）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -646,7 +550,7 @@ pub(crate) fn mcp_fix(
     let signs_in = crate::agents::mcp_face(kind).is_some_and(|f| f.sign_in.is_some());
     McpLoginFix {
         fix: signs_in.then(|| ManualFix {
-            command: "login-start",
+            command: "login-start".into(),
             args: LoginStartReq::Mcp {
                 agent: kind.to_string(),
                 account: account.clone(),

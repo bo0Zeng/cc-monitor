@@ -56,6 +56,14 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "**散列的起点**不是体量：`cmd-wire/src/fnv.rs` FNV-1a 64 从这个数开始喂字节。",
     ),
     (
+        "PLAN_RANK",
+        "**先后的一档**不是字节：`backend/observe/recognize/facts.rs` 计划里要人看的格在需手动整份里排在哪一档（会话那几档之后）。",
+    ),
+    (
+        "MANUAL_RANK",
+        "**先后的一档**不是字节：`backend/observe/recognize/facts.rs` 会话外的需手动在整份里排在哪一档（计划格之后）。",
+    ),
+    (
         "NEEDS_TIER_SPAN",
         "**毫秒**不是字节：`backend/observe/recognize/facts.rs` 先答序里一档危险度占多宽，同一档里已等多久只在这一格里动。",
     ),

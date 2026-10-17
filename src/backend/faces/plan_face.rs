@@ -257,12 +257,9 @@ fn files(dir: &str, tz: &crate::Tz) -> Result<wire::PlanFiles, Fail> {
 }
 
 fn list(req: &PlanListReq, tz: &crate::Tz) -> Result<wire::PlanList, Fail> {
-    let fresh = req.fresh.unwrap_or(false);
     let mut dirs: Vec<String> =
         crate::observe::accounts_query::live_cwds(&crate::history::listing::agent_home());
     dirs.extend(req.dirs.iter().flatten().cloned());
-    dirs.sort();
-    dirs.dedup();
     let entry = match entry() {
         Ok(e) => e,
         Err(f) => {
@@ -271,12 +268,33 @@ fn list(req: &PlanListReq, tz: &crate::Tz) -> Result<wire::PlanList, Fail> {
             )
         }
     };
-    let b = book::book();
+    list_in(
+        book::book(),
+        dirs,
+        req.fresh.unwrap_or(false),
+        &|dir| read_dir(&entry, dir),
+        tz,
+    )
+}
+
+/// [`list`] 的本体：本子 · 要问的目录 · 认过的也重问不重问 · 起 pb 读一个目录的那一下（判据换成替身数次数）。
+/// 不重问时：认过的目录照本子里那一份；认不出的（不是工作区 · 读不成）也照本子里记的那一个结局，不再起 pb。
+pub(crate) fn list_in(
+    b: &book::Book,
+    mut dirs: Vec<String>,
+    fresh: bool,
+    read: &dyn Fn(&Path) -> Result<Value, book::Miss>,
+    tz: &crate::Tz,
+) -> Result<wire::PlanList, Fail> {
+    dirs.sort();
+    dirs.dedup();
     let mut seen: BTreeMap<String, Value> = BTreeMap::new();
     let mut pb = json!({ "state": "ok", "said": null });
     for d in &dirs {
         let dir = Path::new(d);
+        let unread = (!fresh).then(|| b.unread(dir)).flatten();
         let cached = match b.known_dir(dir) {
+            _ if unread.is_some() => None,
             Some(None) if !fresh => continue,
             Some(Some(ws)) if !fresh => {
                 if seen.contains_key(&ws) {
@@ -286,9 +304,10 @@ fn list(req: &PlanListReq, tz: &crate::Tz) -> Result<wire::PlanList, Fail> {
             }
             _ => None,
         };
-        let got = match cached {
-            Some(v) => Ok(v),
-            None => read_dir(&entry, dir),
+        let got = match (cached, unread) {
+            (Some(v), _) => Ok(v),
+            (None, Some(m)) => Err(m),
+            (None, None) => read(dir),
         };
         match got.map(|d| annotated(d, tz)) {
             Ok(v) => {
@@ -311,6 +330,23 @@ fn list(req: &PlanListReq, tz: &crate::Tz) -> Result<wire::PlanList, Fail> {
         pb["version"] = v["pb"].clone();
     }
     wired::<wire::PlanList>(json!({ "pb": pb, "workspaces": workspaces }))
+}
+
+/// 这台计划里要人看的那几片（工作区 · 片名 · 几格，照 `plan-list` 的先后）：同 `plan-list {}` 那一路取（认过的目录照本子里那一份，不重问 pb）。
+/// 读不出 ⇒ 没有（计划那一截空着，不挡会话那几项）。
+pub(crate) fn need_slices(tz: &crate::Tz) -> Vec<(String, String, u32)> {
+    let Ok(list) = list(&PlanListReq::default(), tz) else {
+        return Vec::new();
+    };
+    list.workspaces
+        .iter()
+        .flat_map(|ws| {
+            ws.slices
+                .iter()
+                .filter(|sl| sl.need_count > 0)
+                .map(|sl| (ws.workspace.clone(), sl.name.clone(), sl.need_count))
+        })
+        .collect()
 }
 
 /// `plan-list` 的入参。

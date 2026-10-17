@@ -20,9 +20,14 @@ import com.ccmonitor.mobile.ui.chats.hostChats
 import com.ccmonitor.mobile.ui.files.FilesViewModel
 import com.ccmonitor.mobile.ui.host.HostViewModel
 import com.ccmonitor.mobile.ui.identity.IdentityViewModel
+import com.ccmonitor.mobile.ui.needs.NeedsBoard
+import com.ccmonitor.mobile.ui.needs.NeedsSource
 import com.ccmonitor.mobile.ui.session.SessionTabManager
 import com.ccmonitor.mobile.ui.session.SessionViewModel
 import com.ccmonitor.mobile.ui.session.keys.KeysEditorViewModel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.map
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.viewmodel.dsl.viewModel
@@ -73,6 +78,13 @@ val appModule =
             val files = BackendFiles(androidContext())
             val cache = get<LocalCache>()
             HostBackends(get(), labelOf = { id -> hosts.get(id)?.label ?: id }, keptOf = cache::batches, backendSlots = files::slots)
+        }
+        // 跨会话的需手动板（进程级）：对起着的每条常驻流各问一份，总览 · 聊天屏入口 · 聊天屏那一块都读它。
+        single {
+            NeedsBoard(
+                get<HostBackends>().feeds.map { m -> m.mapValues { (_, f) -> NeedsSource(f, f.changed) } },
+                CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            )
         }
         // 会话屏：参数 ＝ `parametersOf(当前那台)`；机器表照库里的先后。
         viewModel { params ->

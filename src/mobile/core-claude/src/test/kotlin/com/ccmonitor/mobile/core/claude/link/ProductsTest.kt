@@ -207,10 +207,12 @@ class ProductsTest {
         val data =
             mapOf(
                 "answered" to emptyList<Any>(),
-                "waiting" to
-                    listOf(
-                        mapOf("sid" to "b", "label" to "标题 b", "face" to Fixtures.face("live-needs-you-tmux"), "needs" to mapOf("kind" to "approve", "text" to "等批准 · Bash", "head" to "等批准 · Bash", "tone" to "need", "rank" to 0.0, "waitedMs" to 180000.0, "waitedText" to "3m")),
-                        mapOf("sid" to "a", "label" to "标题 a", "face" to Fixtures.face("live-needs-you-tmux"), "needs" to mapOf("kind" to "answer", "text" to "等回答", "head" to "等回答", "tone" to "need", "rank" to 1.0, "waitedMs" to null, "waitedText" to null)),
+                "items" to
+                    sessionItems(
+                        listOf(
+                            mapOf("sid" to "b", "label" to "标题 b", "face" to Fixtures.face("live-needs-you-tmux"), "needs" to mapOf("kind" to "approve", "text" to "等批准 · Bash", "head" to "等批准 · Bash", "tone" to "need", "rank" to 0.0, "waitedMs" to 180000.0, "waitedText" to "3m")),
+                            mapOf("sid" to "a", "label" to "标题 a", "face" to Fixtures.face("live-needs-you-tmux"), "needs" to mapOf("kind" to "answer", "text" to "等回答", "head" to "等回答", "tone" to "need", "rank" to 1.0, "waitedMs" to null, "waitedText" to null)),
+                        ),
                     ),
             )
         val rows = SessionsNeeds.of(data)!!
@@ -218,8 +220,8 @@ class ProductsTest {
         assertEquals("等批准 · Bash", rows[0].needs.text)
         assertEquals("已等那一格读毫秒（手机按此刻走表），不抄收到那一刻写好的字", 180_000L, rows[0].needs.waitedMs)
         assertEquals(null, rows[1].needs.waitedMs)
-        assertEquals(emptyList<NeedsRow>(), SessionsNeeds.of(mapOf("waiting" to emptyList<Any>(), "answered" to emptyList<Any>())))
-        assertNull("缺 text ⇒ 契约对不上", SessionsNeeds.of(mapOf("waiting" to listOf(mapOf("sid" to "a", "label" to "标题 a", "face" to Fixtures.face("live-needs-you-tmux"), "needs" to mapOf("kind" to "x", "head" to "需手动", "tone" to "need", "rank" to 0.0))))))
-        assertNull("缺 head（钉条第一行）⇒ 契约对不上", SessionsNeeds.of(mapOf("waiting" to listOf(mapOf("sid" to "a", "label" to "标题 a", "face" to Fixtures.face("live-needs-you-tmux"), "needs" to mapOf("kind" to "x", "text" to "需手动", "tone" to "need", "rank" to 0.0))))))
+        assertEquals(emptyList<NeedsRow>(), SessionsNeeds.of(mapOf("items" to sessionItems(emptyList()), "answered" to emptyList<Any>())))
+        assertNull("缺 text ⇒ 契约对不上", SessionsNeeds.of(mapOf("items" to sessionItems(listOf(mapOf("sid" to "a", "label" to "标题 a", "face" to Fixtures.face("live-needs-you-tmux"), "needs" to mapOf("kind" to "x", "head" to "需手动", "tone" to "need", "rank" to 0.0)))))))
+        assertNull("缺 head（钉条第一行）⇒ 契约对不上", SessionsNeeds.of(mapOf("items" to sessionItems(listOf(mapOf("sid" to "a", "label" to "标题 a", "face" to Fixtures.face("live-needs-you-tmux"), "needs" to mapOf("kind" to "x", "text" to "需手动", "tone" to "need", "rank" to 0.0)))))))
     }
 }

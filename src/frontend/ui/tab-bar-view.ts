@@ -34,13 +34,12 @@ import { attachTooltip, delegateTooltip } from "./kit/tooltip";
 import { openMenu, type MenuAnchor, type MenuItem } from "./kit/menu";
 import { closePopover, openPopover, popoverOpenOn, swapPopoverContent } from "./kit/popover";
 import { renderNeedsPanel, type PanelFacts, type PanelPlan } from "./needs-panel";
-import type { ManualBook } from "./manual-book";
+import type { NeedsBook, PlanNeedItem } from "./needs-book";
 import type { ManualItem } from "./login-reads";
 import type { Origin } from "./ipc/origin";
 import { foldCaret } from "./kit/fold";
 import { fmtDur } from "./duration-format";
 import { abbrOf, dotOf, fullTitle, groupSummary, needsOf, nextNeedsStep, peekLine, stateLine, stateWord, titleParts, sinceText } from "./session-face";
-import { orderNeeds } from "./needs-order";
 
 /** TabButton 的 DOM 引用：refreshTabBar 局部更新依赖这些 ref 避免重新创建 button */
 export interface TabButtonRefs {
@@ -123,8 +122,6 @@ export interface TabBarViewHost {
   toggleSelect(sid: string): void;
   /** 栏顶「刷新」：有打开 tab 的每台对齐 ＋ 补读一次；做完才 resolve。 */
   rereadAll(): Promise<void>;
-  /** 「需手动」那几个会话的先后：问后端（各台排好的、跨台本机合；`needs-order.ts::askNeedsOrder`）。 */
-  needsOrder(origins: readonly Origin[]): Promise<string[]>;
   /** 行尾「更多」：开这个 tab 的菜单（锚在那颗按钮上）。 */
   openMenuAt(anchor: HTMLElement, sid: string): void;
   /** 离线条的［重新连接］：那台断着在退避里等 ⇒ 立刻重拨。 */
@@ -145,12 +142,21 @@ interface GroupEls {
 }
 
 /** 栏里的一行（键盘焦点落在哪）：标签页 · 组头。 */
-/** 计划那一侧的「需手动」：几条 · 此刻站在第几条（计划页开着且选着那一条；否则 `null`）· 去第几条 · 按片列出（浮层用）。 */
+/** 计划那一侧的「需手动」：此刻站在第几条（`NeedsBook.plans()` 的下标；计划页开着且选着那一条，否则 `null`）· 去第几条。 */
 export interface PlanNeeds {
-  count: () => number;
   at: () => number | null;
   open: (i: number) => void;
-  slices: () => PanelPlan[];
+}
+
+/** 计划项按片收成浮层那几行（同一片的几条一行、带条数；点它去那一片的第一条）。 */
+export function planSlices(items: readonly PlanNeedItem[]): PanelPlan[] {
+  const out: PanelPlan[] = [];
+  items.forEach((it, i) => {
+    const last = out[out.length - 1];
+    if (last && last.origin === it.origin && last.workspace === it.workspace && last.slice === it.slice) last.n++;
+    else out.push({ origin: it.origin, workspace: it.workspace, slice: it.slice, n: 1, first: i });
+  });
+  return out;
 }
 
 export type FocusRow = { kind: "tab"; sid: string } | { kind: "head"; gid: string };
@@ -277,54 +283,31 @@ export class TabBarView {
   }
 
   /**
-   * 计划那一侧的「需手动」（计划页挂进来）：几条 · 此刻站在第几条（计划页开着且选着那一条；否则 `null`）· 去第几条。
-   * 会话在前、计划项在后；计划项的数进「需手动 N」与窗口标题。
+   * 计划那一侧的「需手动」（计划页挂进来）：此刻站在第几条 · 去第几条。
    */
-  plan: PlanNeeds = { count: () => 0, at: () => null, open: () => {}, slices: () => [] };
+  plan: PlanNeeds = { at: () => null, open: () => {} };
 
   /**
-   * 会话外的「需手动」（宿主挂进来）：每台 `manual-list` 的账 · 点那一行开登录抽屉。条数进「需手动 N」与窗口标题，不进 `Ctrl+J`。
+   * 「需手动」的账（宿主挂进来，`needs-book.ts`：各台整份、本机合好）· 点会话外那一行开登录抽屉。数进「需手动 N」与窗口标题；会话外那几项不进 `Ctrl+J`。
    */
-  manual: { book: ManualBook | null; login: (origin: Origin, item: ManualItem) => void } = { book: null, login: () => {} };
+  needs: { book: NeedsBook | null; login: (origin: Origin, item: ManualItem) => void } = { book: null, login: () => {} };
 
-  /** 「需手动」的下一站（`Ctrl+J` · 点「需手动」那一条）：会话在前（先后先问后端）、计划项在后。没有 ⇒ 什么都不做。 */
+  /** 「需手动」的下一站（`Ctrl+J` · 点「需手动」那一条）：照合好的那一份走，会话在前、计划项在后（先问一回各台）。没有 ⇒ 什么都不做。 */
   async nextNeeds(): Promise<void> {
-    const order = await this.rankNeeds();
+    const book = this.needs.book;
+    if (!book) return;
+    await book.again();
+    const order = book.sessions().map((x) => x.session.sid);
     const at = this.plan.at();
-    const step = nextNeedsStep(order, at === null ? this.store.activeId : null, at, this.plan.count());
+    const step = nextNeedsStep(order, at === null ? this.store.activeId : null, at, book.plans().length);
     if (step === null) return;
     if ("sid" in step) this.host.answerAt(step.sid);
     else this.plan.open(step.plan);
   }
 
-  /** 后端上一回排好的「需手动」先后（`Ctrl+J` · 浮层开的那一下重问；问不到 ⇒ 照上一回的）。 */
-  private needsRanked: string[] = [];
-
-  /** 条上在等的那几个，按条上的顺序。 */
-  private needingTabs(): Tab[] {
-    return this.visibleOrder()
-      .map((sid) => this.store.tabs.get(sid))
-      .filter((t): t is Tab => t !== undefined && needsOf(t) !== null);
-  }
-
-  /** 问一回后端那份先后（只问有人在等的那几台），回条上在等的那几个照它排好的。 */
-  private async rankNeeds(): Promise<string[]> {
-    const origins = [...new Set(this.needingTabs().map((t) => t.origin))];
-    if (origins.length > 0) {
-      try {
-        this.needsRanked = await this.host.needsOrder(origins);
-      } catch (e) {
-        console.warn("[needs] 需手动的先后问不到，照上一回的：", e);
-      }
-    }
-    return orderNeeds(this.needingTabs(), this.needsRanked);
-  }
-
-  /** 此刻「需手动」的数：需要处理的会话 ＋ 计划项 ＋ 会话外的每一项（窗口标题用，与入口同一个数）。 */
+  /** 此刻「需手动」的数：后端合好的总数（会话 ＋ 计划项 ＋ 会话外的每一项；窗口标题用，与入口同一个数）。 */
   needsCountNow(): number {
-    let n = this.plan.count() + (this.manual.book?.count() ?? 0);
-    for (const t of this.store.tabs.values()) if (needsOf(t)) n++;
-    return n;
+    return this.needs.book?.total() ?? 0;
   }
 
   /** 计划那一侧 · 会话外那一份的数变了 ⇒ 重画「需手动 N」（浮层开着 ⇒ 原地换内容）。 */
@@ -350,8 +333,7 @@ export class TabBarView {
     });
     this.needsEl.classList.add("is-open");
     content.focus();
-    void this.manual.book?.again();
-    void this.rankNeeds().then(() => this.repaintNeedsPanel());
+    void this.needs.book?.again();
   }
 
   /** 浮层那一份内容（`at` ＝ 键盘选着第几行）。 */
@@ -369,11 +351,25 @@ export class TabBarView {
 
   private needsFacts(): PanelFacts {
     const now = Date.now();
-    const sessions = orderNeeds(this.needingTabs(), this.needsRanked).map((sid) => {
-      const t = this.store.tabs.get(sid)!;
-      return { sid, origin: t.origin, title: fullTitle(t), state: stateLine(t, now).text, what: needsOf(t)?.what ?? null };
+    const book = this.needs.book;
+    // 条上有它 ⇒ 字照条上那一份（会走的钟）；没有 ⇒ 那台写好的标题与那一句。
+    const sessions = (book?.sessions() ?? []).map(({ origin, session }) => {
+      const t = this.store.tabs.get(session.sid);
+      return {
+        sid: session.sid,
+        origin,
+        title: t ? fullTitle(t) : session.label,
+        state: t ? stateLine(t, now).text : session.needs.text,
+        what: session.needs.what,
+      };
     });
-    return { sessions, plans: this.plan.slices(), manual: this.manual.book?.states() ?? [] };
+    return {
+      sessions,
+      plans: planSlices(book?.plans() ?? []),
+      manual: book?.manual() ?? [],
+      offline: book?.offline() ?? [],
+      unreadable: book?.unreadable() ?? [],
+    };
   }
 
   private buildNeedsPanel(facts: PanelFacts, at: number): HTMLElement {
@@ -391,7 +387,7 @@ export class TabBarView {
         },
         login: (origin, item) => {
           close();
-          this.manual.login(origin, item);
+          this.needs.login(origin, item);
         },
       },
       at,
@@ -804,7 +800,7 @@ export class TabBarView {
   private updateNeedsStrip(): void {
     const n = this.needsCountNow();
     const open = popoverOpenOn(this.needsEl);
-    const unreadable = this.manual.book?.anyUnreadable() ?? false;
+    const unreadable = (this.needs.book?.unreadable().length ?? 0) > 0;
     this.needsEl.style.display = n === 0 && !open && !unreadable ? "none" : "";
     if (this.needsEl.classList.contains("is-unknown") !== unreadable) this.needsEl.classList.toggle("is-unknown", unreadable);
     if (n === 0 && !open && !unreadable) return;

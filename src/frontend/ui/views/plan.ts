@@ -52,6 +52,7 @@ import {
 import { CellDetail } from "./plan-cell";
 import { cellTarget, needBar, openNeeds, openReturn, returnedBar, type ReviewHost } from "./plan-review";
 import type { PlanNeedsBook } from "../plan-needs";
+import type { PlanNeedItem } from "../needs-book";
 import { freshPane, phaseBadge, setKindColor, STATUS_ICON } from "./plan-bits";
 import { openNewSession } from "../new-session";
 import { openSettingsWindow } from "../open-settings";
@@ -99,9 +100,11 @@ export class PlanView {
   reconnect: (origin: Origin) => void = () => {};
   /** 会话的［恢复 ▾］菜单（接手的会话停了那一条）。 */
   resume: (anchor: HTMLElement, sid: string) => void = () => {};
-  /** 「需手动」的账（标签栏的数与 Ctrl J 读它）；问到的 `plan-list` 交给它。 */
+  /** 计划的账（开页先拿上一份画 · 会话头那一枚标）；问到的 `plan-list` 交给它。 */
   book: PlanNeedsBook | null = null;
-  /** 经 Ctrl J 打开时站在第几条计划项（`book.items()` 的下标）；用户自己点别处 ⇒ 清掉。 */
+  /** 「需手动」里的计划项（各台 `sessions-needs` 合好的那一份，`NeedsBook.plans()`）。 */
+  needItems: () => readonly PlanNeedItem[] = () => [];
+  /** 经 Ctrl J 打开时站在第几条计划项（`needItems()` 的下标）；用户自己点别处 ⇒ 清掉。 */
   private atItem: number | null = null;
   /** 打开某一条计划项之后、读回来之前：要选中那一片里第几条需手动。 */
   private pendingNeed: number | null = null;
@@ -198,7 +201,7 @@ export class PlanView {
 
   /** 去第 `i` 条计划项（`Ctrl J`）：开那一片、选中那一条所在的格。 */
   async openNeedItem(i: number): Promise<void> {
-    const it = this.book?.items()[i];
+    const it = this.needItems()[i];
     if (!it) return;
     this.atItem = i;
     this.pendingNeed = it.k;

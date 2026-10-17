@@ -4,6 +4,8 @@ import com.ccmonitor.mobile.core.claude.link.wire.ArriveAsk
 import com.ccmonitor.mobile.core.claude.link.wire.ArriveBy
 import com.ccmonitor.mobile.core.claude.link.wire.Held
 import com.ccmonitor.mobile.core.claude.link.wire.Hide
+import com.ccmonitor.mobile.core.claude.link.wire.LoginStartReq
+import com.ccmonitor.mobile.core.claude.link.wire.LoginTarget
 import com.ccmonitor.mobile.core.claude.link.wire.TabPref
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -59,7 +61,12 @@ class SentRequestsTest {
             KeyAdd.COMMAND to listOf(KeyAdd.args("ssh-ed25519 AAAA k")),
             Login.CANCEL to listOf(Login.cancel("j")),
             Login.FINISH to listOf(Login.finish("j", "code")),
-            Login.START to listOf(Login.startAccount("claude", "a")),
+            Login.START to
+                listOf(
+                    Login.start(Login.account("claude", "a")),
+                    Login.start(LoginStartReq(LoginTarget.MCP, "claude", "a", "notes", null)),
+                    Login.start(LoginStartReq(LoginTarget.MCP, "claude", null, "notes", "/w")),
+                ),
             NeedsAnswer.COMMAND to
                 listOf(
                     NeedsAnswer.args("s", "q", "allow"),

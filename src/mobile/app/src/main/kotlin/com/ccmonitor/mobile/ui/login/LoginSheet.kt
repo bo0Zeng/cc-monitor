@@ -1,4 +1,4 @@
-package com.ccmonitor.mobile.ui.chat.newsession
+package com.ccmonitor.mobile.ui.login
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -28,12 +28,17 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ccmonitor.mobile.core.claude.link.wire.LoginStartReq
+import com.ccmonitor.mobile.core.claude.link.wire.LoginTarget
 import com.ccmonitor.mobile.core.claude.link.wire.PasteKind
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
+import com.ccmonitor.mobile.ui.chat.newsession.AccountBadge
+import com.ccmonitor.mobile.ui.chat.newsession.Sheet
+import com.ccmonitor.mobile.ui.chat.newsession.SheetHead
 
 /**
- * 登录抽屉（底部抽屉，桌面是靠右的抽屉，里面同一套）：标题 · 目标行（号牌 ＋ 号名 · 机器）·［打开登录页］·［复制链接］·
+ * 登录抽屉（底部抽屉，桌面是靠右的抽屉，里面同一套）：标题照目标（号 · MCP）· 目标行（号牌 ＋ 号名 · 机器；MCP 那一形前面多服务器名）·［打开登录页］·［复制链接］·
  * 粘贴那一格（名字照 `paste`，定义在下面一行灰字）·［粘贴］·［提交］· 底部［取消］（作业没了是［关闭］）。
  * 打开登录页用系统浏览器，不内嵌网页（密码不经界面）。收起一律交 `login-cancel`（[LoginFlow.cancel]）。
  */
@@ -53,10 +58,13 @@ fun LoginSheet(
         onClosed()
     }
     Sheet(onDismiss = close) {
-        SheetHead(copyText("login.sheet.account"), null)
+        SheetHead(titleOf(s.target), null)
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AccountBadge(plate, color)
-            Text(s.account, style = MaterialTheme.typography.bodyLarge)
+            s.target.server?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
+            s.target.account?.let {
+                AccountBadge(plate, color)
+                Text(it, style = MaterialTheme.typography.bodyLarge)
+            }
             Text(machine, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         s.failed?.let { Failed(it, onRestart = flow::start.takeIf { s.canRestart }) } ?: Body(flow, s)
@@ -65,6 +73,13 @@ fun LoginSheet(
         }
     }
 }
+
+/** 抽屉标题照目标的 `kind`（号 · MCP 服务器）。 */
+internal fun titleOf(target: LoginStartReq): String =
+    when (target.kind) {
+        LoginTarget.ACCOUNT -> copyText("login.sheet.account")
+        LoginTarget.MCP -> copyText("login.sheet.mcp")
+    }
 
 @Suppress("DEPRECATION")
 @Composable

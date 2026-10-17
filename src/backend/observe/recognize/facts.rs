@@ -783,49 +783,134 @@ pub(crate) fn needs_rank(kind: NeedsKind, waited_ms: Option<u64>) -> u64 {
     tier * NEEDS_TIER_SPAN + waited_ms.map_or(last, |w| last - 1 - w.min(last - 1))
 }
 
-/// `sessions-needs-merge` 入参里的一台：它的名字（本机逐字 `"<local>"`）＋ 它答回来的 `sessions-needs` 那几行原样。
+/// 计划里要人看的格排在哪一档：会话那几档之后（判不出种类的那一档也在它前面）。
+const PLAN_RANK: u64 = (NEEDS_BY_DANGER.len() as u64 + 1) * NEEDS_TIER_SPAN;
+/// 会话外的（需登录的号 · MCP）排在计划格之后那一档。
+const MANUAL_RANK: u64 = (NEEDS_BY_DANGER.len() as u64 + 2) * NEEDS_TIER_SPAN;
+
+/// **一台的需手动整份**（`sessions-needs` 的回包，唯一一处拼）：在等的会话（各带 `needs.rank`）· 计划里每一片要人看的那几格
+/// （`plan` ＝ 工作区 · 片名 · 要人看几格，照 `plan-list` 的先后）· 会话外的（`manual`：读不出 ⇒ 那一句，那一截不列）。
+/// 排好：照 `rank`，并列照交进来的先后。纯计算。
+pub(crate) fn needs_list(
+    sessions: Vec<cmd_wire::needs::NeedsRow>,
+    plan: &[(String, String, u32)],
+    manual: Result<Vec<cmd_wire::needs::ManualItem>, String>,
+    answered: Vec<cmd_wire::needs::AnsweredRow>,
+) -> cmd_wire::needs::NeedsList {
+    use cmd_wire::needs::NeedsItem;
+    let mut items: Vec<NeedsItem> = sessions
+        .into_iter()
+        .map(|r| NeedsItem::Session {
+            rank: r.needs.rank,
+            session: r,
+        })
+        .collect();
+    for (workspace, slice, n) in plan {
+        items.extend((0..*n).map(|k| NeedsItem::Plan {
+            rank: PLAN_RANK,
+            workspace: workspace.clone(),
+            slice: slice.clone(),
+            k,
+        }));
+    }
+    let manual_unreadable = match manual {
+        Ok(list) => {
+            items.extend(list.into_iter().map(|m| NeedsItem::Manual {
+                rank: MANUAL_RANK,
+                manual: m,
+            }));
+            None
+        }
+        Err(why) => Some(Words(why)),
+    };
+    items.sort_by_key(rank_of);
+    cmd_wire::needs::NeedsList {
+        items,
+        answered,
+        manual_unreadable,
+    }
+}
+
+/// 一项的先后（三臂各带的那一格）。
+pub(crate) fn rank_of(item: &cmd_wire::needs::NeedsItem) -> u64 {
+    use cmd_wire::needs::NeedsItem;
+    match item {
+        NeedsItem::Session { rank, .. }
+        | NeedsItem::Plan { rank, .. }
+        | NeedsItem::Manual { rank, .. } => *rank,
+    }
+}
+
+/// `sessions-needs-merge` 入参里的一台：它的名字（本机逐字 `"<local>"`）＋ 它答回来的 `sessions-needs` 原样。
 #[derive(Debug, Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct NeedsMachine {
     pub(crate) origin: cmd_wire::Machine,
-    pub(crate) waiting: Vec<cmd_wire::needs::NeedsRow>,
+    pub(crate) list: cmd_wire::needs::NeedsList,
 }
 
-/// `sessions-needs-merge` 的回包：各台需手动的会话，先答的在前。
+/// `sessions-needs-merge` 的回包：各台需手动的每一项，先答的在前；`total` 是各台加起来几项（入口 · 窗口标题照它写）；
+/// 会话外那一截读不出的那几台（各带那一句，那几台的会外项这时不在 `items` 里）。
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct NeedsMerged {
-    pub(crate) order: Vec<NeedsAt>,
+    pub(crate) items: Vec<NeedsAt>,
+    pub(crate) total: u32,
+    pub(crate) unreadable: Vec<NeedsUnreadable>,
 }
 
-/// 合好的一条：哪台 · 哪个会话。
+/// 合好的一项：哪台 · 那一项原样。
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct NeedsAt {
     pub(crate) origin: cmd_wire::Machine,
-    pub(crate) sid: String,
+    pub(crate) item: cmd_wire::needs::NeedsItem,
 }
 
-/// **各台的「需手动」合成一个先后**（`sessions-needs-merge`）：照各行的 `rank`（[`needs_rank`]）排；并列 ⇒ 给的台序、台内原来的先后。
-/// 各台的 `rank` 是同一回问回来的、已等多久各在那台的钟上量，跨台照样比。纯计算。
-pub(crate) fn merge_needs(machines: Vec<NeedsMachine>) -> NeedsMerged {
-    let mut all: Vec<(cmd_wire::Machine, cmd_wire::needs::NeedsRow)> = machines
+/// 会话外那一截读不出的一台：哪台 · 那台写的那一句。
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct NeedsUnreadable {
+    pub(crate) origin: cmd_wire::Machine,
+    pub(crate) said: Words,
+}
+
+/// **各台的「需手动」合成一份**（`sessions-needs-merge`）：照各项的 `rank`（[`needs_rank`] · 计划 · 会外两档）排；
+/// 并列 ⇒ 本机在前、再照给的台序、台内原来的先后。各台的 `rank` 是同一回问回来的、已等多久各在那台的钟上量，跨台照样比。纯计算。
+pub(crate) fn merge_needs(mut machines: Vec<NeedsMachine>) -> NeedsMerged {
+    machines.sort_by_key(|m| !m.origin.is_local());
+    let unreadable = machines
+        .iter()
+        .filter_map(|m| {
+            m.list
+                .manual_unreadable
+                .clone()
+                .map(|said| NeedsUnreadable {
+                    origin: m.origin.clone(),
+                    said,
+                })
+        })
+        .collect();
+    let mut items: Vec<NeedsAt> = machines
         .into_iter()
         .flat_map(|m| {
             let origin = m.origin;
-            m.waiting.into_iter().map(move |r| (origin.clone(), r))
+            m.list.items.into_iter().map(move |item| NeedsAt {
+                origin: origin.clone(),
+                item,
+            })
         })
         .collect();
-    all.sort_by_key(|(_, r)| r.needs.rank);
+    items.sort_by_key(|x| rank_of(&x.item));
     NeedsMerged {
-        order: all
-            .into_iter()
-            .map(|(origin, r)| NeedsAt { origin, sid: r.sid })
-            .collect(),
+        total: items.len() as u32,
+        items,
+        unreadable,
     }
 }
 

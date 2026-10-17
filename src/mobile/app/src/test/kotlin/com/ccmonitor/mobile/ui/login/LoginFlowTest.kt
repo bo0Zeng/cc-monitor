@@ -1,8 +1,12 @@
-package com.ccmonitor.mobile.ui.chat.newsession
+package com.ccmonitor.mobile.ui.login
 
 import com.ccmonitor.mobile.core.claude.link.CoreFailure
+import com.ccmonitor.mobile.core.claude.link.Login
 import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.claude.link.wire.ManualItem
 import com.ccmonitor.mobile.core.claude.link.wire.PasteKind
+import com.ccmonitor.mobile.core.claude.link.wire.Wire
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runCurrent
@@ -29,7 +33,7 @@ class LoginFlowTest {
                     else -> Reply.Ok(mapOf("was" to true))
                 }
             }
-            val f = LoginFlow(l, "smokebox", "claude", "team", backgroundScope)
+            val f = LoginFlow(l, "smokebox", Login.account("claude", "team"), backgroundScope)
             f.start()
             runCurrent()
             assertEquals(listOf(mapOf("kind" to "account", "agent" to "claude", "account" to "team")), l.calls("login-start"))
@@ -56,7 +60,7 @@ class LoginFlowTest {
     fun `没起成 ⇒ 那台那一句、没有作业；收起不发撤单`() =
         runTest {
             val l = FakeCoreLink().also { it.answer = { _, _ -> Reply.Failed(CoreFailure("unsupported", "codex · 不支持在 app 里登录", "d")) } }
-            val f = LoginFlow(l, "smokebox", "codex", "cx", backgroundScope)
+            val f = LoginFlow(l, "smokebox", Login.account("codex", "cx"), backgroundScope)
             f.start()
             runCurrent()
             assertEquals("codex · 不支持在 app 里登录", f.state.value.failed)
@@ -70,7 +74,7 @@ class LoginFlowTest {
     fun `起好了中途收起 ⇒ login-cancel 交那份作业`() =
         runTest {
             val l = FakeCoreLink().also { it.answer = { cmd, _ -> if (cmd == "login-start") Reply.Ok(started) else Reply.Ok(mapOf("was" to true)) } }
-            val f = LoginFlow(l, "smokebox", "claude", "team", backgroundScope)
+            val f = LoginFlow(l, "smokebox", Login.account("claude", "team"), backgroundScope)
             f.start()
             runCurrent()
             f.cancel()
@@ -91,7 +95,7 @@ class LoginFlowTest {
                         else -> Reply.Ok(mapOf("was" to true))
                     }
                 }
-                val f = LoginFlow(l, "smokebox", "claude", "team", backgroundScope)
+                val f = LoginFlow(l, "smokebox", Login.account("claude", "team"), backgroundScope)
                 f.start()
                 runCurrent()
                 f.submit("abc")
@@ -113,10 +117,36 @@ class LoginFlowTest {
                 Reply.TimedOut to true,
             )) {
                 val l = FakeCoreLink().also { it.answer = { _, _ -> reply } }
-                val f = LoginFlow(l, "smokebox", "codex", "cx", backgroundScope)
+                val f = LoginFlow(l, "smokebox", Login.account("codex", "cx"), backgroundScope)
                 f.start()
                 runCurrent()
                 assertEquals(reply.toString(), can, f.state.value.canRestart)
             }
+        }
+
+    /** 会话外那一项（MCP 那一形），照那台回包原样。 */
+    private val mcpItem: Map<String, Any?> =
+        mapOf(
+            "kind" to "mcpLogin",
+            "account" to null,
+            "server" to "notes",
+            "scope" to "user",
+            "said" to "MCP notes 需登录",
+            "fix" to mapOf("command" to "login-start", "args" to mapOf("kind" to "mcp", "agent" to "claude", "account" to null, "server" to "notes", "projectDir" to null)),
+        )
+
+    @Test
+    fun `MCP 那一项：目标就是那一项的 fix args，login-start 入参与它逐格相等（缺的那几格不交，后端照缺省收）；抽屉标题照目标取 MCP 那一句`() =
+        runTest {
+            val l = FakeCoreLink().also { it.answer = { _, _ -> Reply.Ok(started) } }
+            val item = Wire.bind<ManualItem>(mcpItem)!!
+            val f = LoginFlow(l, "smokebox", item.fix!!.args, backgroundScope)
+            f.start()
+            runCurrent()
+            @Suppress("UNCHECKED_CAST")
+            val want = ((mcpItem["fix"] as Map<String, Any?>)["args"] as Map<String, Any?>).filterValues { it != null }
+            assertEquals(listOf(want), l.calls("login-start"))
+            assertEquals(copyText("login.sheet.mcp"), titleOf(f.state.value.target))
+            assertEquals(copyText("login.sheet.account"), titleOf(Login.account("claude", "team")))
         }
 }

@@ -144,7 +144,7 @@ class NewSessionReadsTest {
 
     @Test
     fun `login-start · finish · cancel：账号那一形的入参；回包照 LoginStarted 解（粘回来的是什么照线上字认）`() {
-        assertEquals(mapOf("kind" to "account", "agent" to "claude", "account" to "team"), Login.startAccount("claude", "team"))
+        assertEquals(mapOf("kind" to "account", "agent" to "claude", "account" to "team"), Login.start(Login.account("claude", "team")))
         assertEquals(mapOf("job" to "j1", "pasted" to "abc"), Login.finish("j1", "abc"))
         assertEquals(mapOf("job" to "j1"), Login.cancel("j1"))
         val s = Login.started(mapOf("job" to "j1", "url" to "https://example.com/x", "paste" to "redirectUrl", "auto" to false))!!
