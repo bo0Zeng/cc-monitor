@@ -217,8 +217,8 @@ const PENDING: &[(&str, &str)] = &[
     // 测试连接迁走了：界面把表单那一台交给本机后端（`remote-probe`），后端组请求、拨一次、回结局。
     // 本机活会话表那两条（红绿灯快照 · 骨架清单）迁走了：会话账本进后端，骨架与灯是会话流里的 `live` / `activity` 成品（⑬）。
     // 列 tmux 会话两条（本机 · 远端）迁走了：那台后端的 `tmux-list` 出成品，界面经通道直问（`src/frontend/ui/tmux-reads.ts`）。
-    // MIG-2：本机起会话 ＋ 载荷渲染 ＋ 历史查看器。迁走七条：`new_local_session` · `resume_history_session` ·
-    //   `render_local_attach` · `render_ccm_launch` · `render_launch_payload` · `relay_endpoint_for_launch` · 远端 `ccm` 探针。
+    // MIG-2：本机起会话 ＋ 载荷渲染 ＋ 历史查看器。迁走七条：本机起会话三条（新起 · 恢复 · 接回）·
+    //   `render_ccm_launch` · `render_launch_payload` · `relay_endpoint_for_launch` · 远端 `ccm` 探针。
     // MIG-3a：资产与 D 组。
     // 别名六条（`aliases_*`）已迁：规则 · 方言 · 围栏进了那台后端（`aliases-*`），从本表删。
     // cc-bus 装 · 三态那两条 Tauri 命令已迁：进了那台后端（`cc-bus-install` / `-state`，今天只经扩展页的枢纽问）。

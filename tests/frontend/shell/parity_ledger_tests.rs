@@ -624,7 +624,7 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     //   是同一条命令的两侧收成了一条路（远端那半改走 `bus-send`，不再拼 shell 串）。
     //   ⇒ 命令总数与能力总数都不动，只有这个数 +1；`cc-bus.cockpit` 仍不对称
     //   （spawn / 广播 / 收掉三条还是 `Remote`），所以不对称条数也不动。
-    // - K-R109 **+1**（`render_local_attach`，`Local`）—— 本机后端产 attach 那一句。
+    // - K-R109 **+1**（本机接回那一条，`Local`）—— 本机后端产 attach 那一句。
     //   归**已有**能力 `session.launch`（理由逐条写在 `LEDGER` 那一行旁边）⇒
     //   命令总数 +1、能力总数不动、不对称数不动，**只有这个数跟着 +1**。
     //   ⚠ 派工单点名的是「`commands.vitest.ts` 两个 147 ＋ `LEDGER` 一行」三处，
