@@ -22346,18 +22346,6 @@
       "zh": "需手动",
       "args": []
     },
-    "needs.bar.sub": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{waited} · 在终端里答",
-      "args": ["waited"]
-    },
-    "needs.bar.subBare": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "在终端里答",
-      "args": []
-    },
     "needs.windowTitle.base": {
       "kind": "title",
       "role": "标题",
@@ -28399,13 +28387,13 @@
     "mobDrawer.item.newChat": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "新对话",
+      "zh": "新建会话",
       "args": []
     },
     "mobDrawer.item.chats": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "对话",
+      "zh": "会话",
       "args": []
     },
     "mobDrawer.item.files": {
@@ -28559,6 +28547,36 @@
       "role": "片段",
       "zh": "cc-monitor {version}",
       "args": ["version"]
+    },
+    "mobUsage.page.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "用量",
+      "args": []
+    },
+    "mobChats.search.open": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "搜索",
+      "args": []
+    },
+    "mobChats.search.placeholder": {
+      "kind": "control",
+      "role": "占位",
+      "zh": "搜标题、项目",
+      "args": []
+    },
+    "mobChats.search.content": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "搜内容「{q}」",
+      "args": ["q"]
+    },
+    "mobChats.fork.from": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "分叉自「{label}」",
+      "args": ["label"]
     },
     "mobAccounts.list.section": {
       "kind": "title",

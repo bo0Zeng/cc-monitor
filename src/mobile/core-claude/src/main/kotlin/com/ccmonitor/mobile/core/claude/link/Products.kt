@@ -5,6 +5,8 @@ import com.ccmonitor.mobile.core.claude.link.wire.Annotated
 import com.ccmonitor.mobile.core.claude.link.wire.CanWord
 import com.ccmonitor.mobile.core.claude.link.wire.Hide
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryListPage
+import com.ccmonitor.mobile.core.claude.link.wire.HistorySearchReply
+import com.ccmonitor.mobile.core.claude.link.wire.Merged
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsList
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsRow
 import com.ccmonitor.mobile.core.claude.link.wire.SessionActivityWord
@@ -123,8 +125,30 @@ object HistoryList {
     fun ofRows(rows: List<Any?>): HistoryListPage? =
         of(mapOf("rows" to rows, "groups" to emptyList<Any?>(), "notice" to null, "truncated" to false))
 
-    /** 入参：「显示已隐藏」开着 ⇒ `hidden: true`（隐藏的也出，与桌面历史同一个参数）；关着不带（那台缺省不出）。 */
-    fun args(showHidden: Boolean): Map<String, Any?>? = if (showHidden) mapOf("hidden" to true) else null
+    /** 入参：设了的筛选各带一格（与桌面历史同几个参数），没设的不带（那台照缺省）；全没设 ⇒ `null`。 */
+    fun args(ask: ListAsk): Map<String, Any?>? =
+        buildMap {
+            ask.query?.let { put("query", it) }
+            ask.withinDays?.let { put("within_days", it) }
+            ask.sort?.let { put("sort", it.wire) }
+            if (ask.hidden) put("hidden", true)
+        }.ifEmpty { null }
+}
+
+/** 问 `history-list` 带的筛选：标题里的字 · 最近几天 · 排序 · 隐藏的也出。 */
+data class ListAsk(
+    val query: String? = null,
+    val withinDays: Int? = null,
+    val sort: ListSort? = null,
+    val hidden: Boolean = false,
+)
+
+/** 清单按什么排：最后活动 · 开始时刻。 */
+enum class ListSort(
+    val wire: String,
+) {
+    ACTIVITY("activity"),
+    CREATED("created"),
 }
 
 /** `history-annotate`：改那台注解里单个隐藏那一格（与桌面历史 · 标签栏同一条命令）。 */
@@ -149,6 +173,43 @@ object HistoryAnnotate {
                 ),
         )
 
+    /** 标星 / 取消标星。 */
+    fun star(
+        sid: String,
+        on: Boolean,
+    ): Map<String, Any?> = mapOf("sid" to sid, "patch" to mapOf("starred" to on))
+
+    /** 改标题（去掉首尾空白）；留空 ⇒ 清掉、回到那台算的标题（`null` 在那台是「不改」，不交它）。 */
+    fun rename(
+        sid: String,
+        title: String,
+    ): Map<String, Any?> = mapOf("sid" to sid, "patch" to mapOf("customTitle" to title.trim()))
+
     /** 回包：改之前那一格（`prev`）；撤销「隐藏」原样交回 [hide]（`null` ⇒ 回到规则，不把照规则显示的钉成单独显示）。 */
     fun of(data: Any?): Annotated? = Wire.bind<Annotated>(data)
+}
+
+/** `history-search`：这台的会话内容里搜一个词（不分大小写，子串）。回包里的 `sessions` 原样交 [HistorySearchMerge]。 */
+object HistorySearch {
+    const val COMMAND: String = "history-search"
+
+    fun args(query: String): Map<String, Any?> = mapOf("query" to query)
+
+    fun of(data: Any?): HistorySearchReply? = Wire.bind<HistorySearchReply>(data)
+
+    /** 回包里的 `sessions[]` 原样（交合并那一问，不经这里的类重新序列化：这里只写手机读的几格，重写会丢格）。 */
+    fun rawSessions(data: Any?): List<Any?>? = ((data as? Map<*, *>)?.get("sessions") as? List<*>)?.toList()
+}
+
+/** `history-search-merge`：几台的搜索结果交一台合成一份（排序 · 时刻字都在那台）。 */
+object HistorySearchMerge {
+    const val COMMAND: String = "history-search-merge"
+
+    /** 合并的那一台自己 ⇒ 这个名字（线上逐字）。 */
+    const val LOCAL: String = "<local>"
+
+    /** [machines]：每台 `(名字, 它答回来的 sessions 原样)`。 */
+    fun args(machines: List<Pair<String, List<Any?>>>): Map<String, Any?> = mapOf("machines" to machines.map { (origin, sessions) -> mapOf("origin" to origin, "sessions" to sessions) })
+
+    fun of(data: Any?): Merged? = Wire.bind<Merged>(data)
 }

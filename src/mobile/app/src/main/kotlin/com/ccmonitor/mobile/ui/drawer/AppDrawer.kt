@@ -36,7 +36,7 @@ import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.ThemeTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
-import com.ccmonitor.mobile.ui.overview.rememberRecent
+import com.ccmonitor.mobile.ui.chats.rememberRecent
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 

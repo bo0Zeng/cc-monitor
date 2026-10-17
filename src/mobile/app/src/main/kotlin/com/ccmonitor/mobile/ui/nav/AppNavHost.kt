@@ -35,6 +35,7 @@ import com.ccmonitor.mobile.ui.chat.ChatController
 import com.ccmonitor.mobile.ui.chat.ChatRoute
 import com.ccmonitor.mobile.ui.chat.chatKey
 import com.ccmonitor.mobile.ui.chat.newConversationId
+import com.ccmonitor.mobile.ui.chats.ChatsRoute
 import com.ccmonitor.mobile.ui.common.UnmigratedHostKeys
 import com.ccmonitor.mobile.ui.drawer.DrawerAction
 import com.ccmonitor.mobile.ui.drawer.DrawerNav
@@ -42,7 +43,6 @@ import com.ccmonitor.mobile.ui.files.FilesScreen
 import com.ccmonitor.mobile.ui.host.HostEditorScreen
 import com.ccmonitor.mobile.ui.host.HostListScreen
 import com.ccmonitor.mobile.ui.identity.IdentityScreen
-import com.ccmonitor.mobile.ui.overview.ConversationsRoute
 import com.ccmonitor.mobile.ui.rotation.RotationScreen
 import com.ccmonitor.mobile.ui.session.SessionScreen
 import com.ccmonitor.mobile.ui.session.SessionTabManager
@@ -52,6 +52,7 @@ import com.ccmonitor.mobile.ui.session.keys.KeysEditorScreen
 import com.ccmonitor.mobile.ui.settings.AccountsScreen
 import com.ccmonitor.mobile.ui.settings.Here
 import com.ccmonitor.mobile.ui.settings.SettingsScreen
+import com.ccmonitor.mobile.ui.usage.UsageScreen
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
@@ -102,14 +103,23 @@ private fun AppNavGraph(
         }
         composable(Screen.Settings.route) {
             // 设置面上的去处住 `settingsEntries()`，这里只把路由交给 nav。
-            HereOrNone { here -> SettingsScreen(here, onBack = { nav.popBackStack() }, onNavigate = { route -> nav.navigate(route) }) }
+            HereOrNone { here -> SettingsScreen(here, onBack = { nav.popBackStack() }, onNavigate = { route -> nav.navigate(route) }, onUsage = { nav.navigate(Screen.Usage.route) }) }
         }
         composable(Screen.Accounts.route) {
             HereOrNone { here ->
                 if (here == null) {
                     LaunchedEffect(Unit) { nav.navigate(Screen.Hosts.route) { popUpTo(Screen.Accounts.route) { inclusive = true } } }
                 } else {
-                    AccountsScreen(here, onBack = { nav.popBackStack() })
+                    AccountsScreen(here, onBack = { nav.popBackStack() }, onUsage = { nav.navigate(Screen.Usage.route) })
+                }
+            }
+        }
+        composable(Screen.Usage.route) {
+            HereOrNone { here ->
+                if (here == null) {
+                    LaunchedEffect(Unit) { nav.navigate(Screen.Hosts.route) { popUpTo(Screen.Usage.route) { inclusive = true } } }
+                } else {
+                    UsageScreen(here, onBack = { nav.popBackStack() })
                 }
             }
         }
@@ -437,9 +447,10 @@ private fun NavGraphBuilder.chatRoutes(
     // Claude 对话总览，从抽屉「对话」进。注意：与 `sessions`（终端 tab 总览）是两件事。
     composable(Screen.Conversations.route) { entry ->
         val hostId = entry.arguments?.getString("hostId").orEmpty()
-        ConversationsRoute(
+        ChatsRoute(
             hostId = hostId,
-            onOpen = { sid -> nav.navigate(Screen.Chat.of(hostId, sid)) },
+            onOpen = { host, sid -> nav.navigate(Screen.Chat.of(host, sid)) },
+            onNewInDir = { host, cwd -> nav.navigate(Screen.Chat.of(host, newConversationId(), isNew = true, cwd = cwd)) },
             onDrawerAction = { action -> nav.followDrawer(action, hostId, tabManager) },
         )
     }

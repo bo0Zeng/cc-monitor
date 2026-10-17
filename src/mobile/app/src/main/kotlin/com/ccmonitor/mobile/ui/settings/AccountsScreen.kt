@@ -54,6 +54,7 @@ import org.koin.compose.koinInject
 fun AccountsScreen(
     here: Here,
     onBack: () -> Unit,
+    onUsage: () -> Unit,
 ) {
     rememberHostLink(here.hostId, "accounts-${here.hostId}")
     val backends = koinInject<HostBackends>()
@@ -98,6 +99,9 @@ fun AccountsScreen(
             open = null
             board.loadModels()
             model = a.name
+        }, onUsage = {
+            open = null
+            onUsage()
         })
     }
     ui.accounts.firstOrNull { it.name == model }?.let { a ->
@@ -106,11 +110,20 @@ fun AccountsScreen(
             board.setModel(a.name, v)
         }
     }
-    login?.let { f ->
-        val step by f.state.collectAsState()
-        val row = ui.accounts.firstOrNull { it.name == step.account }
-        LoginSheet(f, row?.plate, row?.color, here.machine, onClosed = { login = null })
-    }
+    login?.let { f -> LoginFor(f, ui, here.machine) { login = null } }
+}
+
+/** 登录那一张：号牌与色照此刻在登的那一号（登录流里换了号就跟着换）。 */
+@Composable
+private fun LoginFor(
+    f: LoginFlow,
+    ui: MachineSettingsUi,
+    machine: String,
+    onClosed: () -> Unit,
+) {
+    val step by f.state.collectAsState()
+    val row = ui.accounts.firstOrNull { it.name == step.account }
+    LoginSheet(f, row?.plate, row?.color, machine, onClosed = onClosed)
 }
 
 /** 一个号一行：号牌 · 名 ·「默认」/ 要人动手的那一枚 · 类型；右边用量那一格（色照语气）。 */
@@ -140,7 +153,7 @@ private fun AccountLine(
             }
             Text(kindText(a.authKind), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        ui.usage[a.name]?.let { UsageText(it.text, it.tone) }
+        ui.usage(a.name)?.let { UsageText(it.text, it.tone) }
     }
 }
 
@@ -168,6 +181,7 @@ private fun AccountSheet(
     onLogin: () -> Unit,
     onSetDefault: () -> Unit,
     onModel: () -> Unit,
+    onUsage: () -> Unit,
 ) {
     Sheet(onDismiss = onDismiss) {
         Row(
@@ -189,6 +203,7 @@ private fun AccountSheet(
             )
         }
         PickRow(copyText("acctPage.detail.model"), AccountsTags.MODEL, second = modelText(ui, ui.model(a.name)), onClick = onModel)
+        PickRow(copyText("mobUsage.page.title"), AccountsTags.USAGE, second = ui.usage(a.name)?.text, onClick = onUsage)
     }
 }
 
@@ -233,6 +248,7 @@ object AccountsTags {
     const val SET_DEFAULT = "accounts-set-default"
     const val MODEL = "accounts-model"
     const val MODEL_PICK = "accounts-model-pick"
+    const val USAGE = "accounts-usage"
 }
 
 private const val API_KEY = "api-key"

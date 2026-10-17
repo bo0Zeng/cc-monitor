@@ -346,6 +346,21 @@ def tap_in_row(label, button):
     raise Step.Fail(f"「{label}」那一行上没有「{button}」")
 
 
+def row_text(label, texts):
+    """[label]（含这几个字）那一行上（纵向范围重叠）出现的 [texts] 之一；没有 ⇒ None。"""
+    ns = ui.nodes()
+    row = next((n for n in ns if label in (n.get("text") or "")), None)
+    if row is None:
+        return None
+    y1, y2 = ui.bounds(row)[1], ui.bounds(row)[3]
+    for n in ns:
+        if n.get("text") in texts:
+            b = ui.bounds(n)
+            if b[1] - 120 <= y2 and b[3] + 120 >= y1:
+                return n.get("text")
+    return None
+
+
 def open_import():
     """钥匙页点悬浮的「+」（按无障碍名找）开「添一把钥匙」那一张、点「搬进来」（提示条收起时「+」在往回落，那一下可能点空）。"""
     tap_until(t("mobIdentity.fab.aria"), t("mobIdentity.add.import"))
@@ -956,22 +971,18 @@ def walk():
     deploy_steps()
 
     with Step("2-对话列表"):
+        # 台架只有一台：几台并成一列、机器小标签没在模拟器上跑过（JVM 单测钉着）。这里看一台的两层行：
+        # 停在批准框上的那一条在列表里，第二层状态字是需手动那一类（那台写的字）。
         sh(f'tmux new -d -s seed{T} -c ~/work claude; sleep 3; tmux send-keys -t seed{T} "{T} seed" Enter; '
            f'tmux new -d -s needs{T} -c ~/work claude; sleep 3; tmux send-keys -t needs{T} "ask {T} needs" Enter')
         if not wait(f"{T} seed", 30):
             raise Step.Fail("历史清单没出新会话")
-        if not wait(t("needs.bar.unknown"), 20):
-            raise Step.Fail("需手动没出来")
-        # 台架跨趟留着旧会话（上一趟中途停下的那条也还在等），它们按分钟走、几秒里不变：
-        # 看的是「有没有一行在走表」，这一趟刚起的那条按秒走，一定在里面。
-        def waits():
-            return [n.get("text") for n in ui.nodes() if t("needs.bar.subBare") in (n.get("text") or "")]
-
-        first = waits()
-        time.sleep(4)
-        later = waits()
-        if not first or first == later:
-            raise Step.Fail(f"已等没走表（{first!r} → {later!r}）")
+        needs = [t("beSession.activity.needsYou")] + [t(f"beSession.needs.{k}") for k in ("approve", "answer", "plan", "network", "worker", "goal", "choose", "unknown")]
+        end = time.time() + 20
+        while time.time() < end and row_text(f"{T} needs", needs) is None:
+            time.sleep(1)
+        if row_text(f"{T} needs", needs) is None:
+            raise Step.Fail("停在批准框上的那一条，第二层不是需手动")
         rig("tmux", "send-keys", "-t", f"needs{T}", "y", "Enter")
 
     with Step("3-新建会话"):
@@ -1561,6 +1572,71 @@ def report():
             raise Step.Fail(f"再进设置，子会话那一行亮着的不是「{seg}」")
         # 拨回去，台架那台的偏好留成进来时那样。
         tap_in_row(t("settings.machine.childTab"), t("settings.machine.tabShow" if was == "show" else "settings.machine.tabHide"))
+
+    with Step("14-用量屏"):
+        # 设置 → 点账号卡 ⇒ 用量屏：结论那一行 ＝ 台架那台 quota-read 的 verdict.text（没有结论 ⇒ 那台那一句）；
+        # 点第一张卡 ⇒ 展开那几行的字 ＝ 回包那一号 rows[1..]。
+        q = frames("quota-read", {}).get("data") or {}
+        adb("shell", "input", "keyevent", "4")
+        time.sleep(1)
+        drawer(t("mobDrawer.settings.aria"))
+        if not wait(t("mobSettings.section.machine"), 15):
+            raise Step.Fail("没进设置屏")
+        tap("smokebox")  # 账号卡头那一行是那台的名字
+        if not wait(t("mobUsage.page.title"), 15):
+            raise Step.Fail("点账号卡没进用量屏")
+        head = (q.get("verdict") or {}).get("text") or q.get("text")
+        if head and not wait(head, 15):
+            raise Step.Fail(f"用量屏结论那一行不是回包的「{head}」")
+        shot("14-用量屏")
+        first = (q.get("accounts") or [None])[0]
+        if first:
+            tap(first["rows"][0][0]["text"])
+            time.sleep(1)
+            texts = {n.get("text") for n in ui.nodes()}
+            missing = [c["text"] for r in first["rows"][1:] for c in r if c["text"] not in texts]
+            if missing:
+                raise Step.Fail(f"展开那一块少了回包那几格：{missing}")
+            shot("14-点开")
+
+    with Step("15-长按改标题"):
+        # 会话屏长按一行 ⇒ 改标题 ⇒ 列表那一行换字、台架 history-list 那一行 customTitle 是新字；再改回空（回到那台算的标题）。
+        def custom(sid):
+            rows = (frames("history-list", {}).get("data") or {}).get("rows") or []
+            return next((r.get("customTitle") for r in rows if r.get("sessionId") == sid), "缺")
+
+        def rename(to):
+            tap(t("history.menu.rename"))
+            if not wait(t("history.rename.title"), 10):
+                raise Step.Fail("改标题框没出来")
+            adb("shell", "input", "keycombination", "113", "29")  # 框一出来就有焦点：Ctrl+A 全选、删掉
+            adb("shell", "input", "keyevent", "67")
+            if to:
+                typed(to)
+            hide_keyboard()
+            tap(t("history.rename.action"))
+
+        adb("shell", "input", "keyevent", "4")
+        time.sleep(1)
+        drawer(t("mobDrawer.item.chats"))
+        if not wait(f"{T} seed", 30):
+            raise Step.Fail("会话屏里没有那一行")
+        sid = next((r.get("sessionId") for r in (frames("history-list", {}).get("data") or {}).get("rows") or [] if f"{T} seed" in (r.get("label") or "")), None)
+        if sid is None:
+            raise Step.Fail("台架 history-list 里找不到那一行")
+        long_press(f"{T} seed")
+        shot("15-长按抽屉")
+        rename(f"{T} renamed")
+        if not wait(f"{T} renamed", 20):
+            raise Step.Fail("列表那一行没换成新标题")
+        if custom(sid) != f"{T} renamed":
+            raise Step.Fail(f"台架那一行 customTitle 不是新字：{custom(sid)!r}")
+        long_press(f"{T} renamed")
+        rename("")
+        if not wait(f"{T} seed", 20):
+            raise Step.Fail("改回空，列表那一行没回到原标题")
+        if custom(sid) is not None:
+            raise Step.Fail(f"改回空，台架那一行 customTitle 还在：{custom(sid)!r}")
 
     summary()
 

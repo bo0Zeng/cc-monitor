@@ -2,7 +2,7 @@ package com.ccmonitor.mobile.ui.drawer
 
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.icon.Ph
-import com.ccmonitor.mobile.ui.overview.HistoryItem
+import com.ccmonitor.mobile.ui.chats.ChatRow
 
 /** 抽屉里有什么：项、顺序、文案都住这里，[ChatDrawer] 只负责画。没路可走的项不列。 */
 enum class DrawerItem {
@@ -82,7 +82,7 @@ data class RecentEntry(
  *
  * @return null = 整段不出（列表还没拿到，或拿到了一条都没有）。
  */
-fun recentEntries(history: List<HistoryItem>?): List<RecentEntry>? =
+fun recentEntries(history: List<ChatRow>?): List<RecentEntry>? =
     history
         ?.map { RecentEntry(it.sessionId, it.label) }
         ?.takeIf { it.isNotEmpty() }

@@ -2,7 +2,6 @@ package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.claude.link.wire.PrefsState
 import com.ccmonitor.mobile.core.claude.link.wire.TabPref
-import com.ccmonitor.mobile.core.claude.link.wire.UsageTone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -48,19 +47,5 @@ class MachinePrefsTest {
         assertEquals(mapOf("bgTab" to "hide"), MachinePrefs.tab(TabKind.BG, TabPref.HIDE))
         assertEquals(mapOf("models" to mapOf("team" to "opus")), MachinePrefs.model("team", "opus"))
         assertEquals(mapOf("models" to mapOf("team" to null)), MachinePrefs.model("team", null))
-    }
-
-    @Test
-    fun `quota-read：每号用量那一格照那台写的字与语气，没出过数的号也在`() {
-        val usage = { text: String, tone: String -> mapOf("value" to text, "text" to text, "tone" to tone) }
-        val data =
-            mapOf(
-                "accounts" to listOf(mapOf("account" to "work", "usage" to usage("5h 63%", "plain")), mapOf("account" to "personal", "usage" to usage("5h ✕ ↻19:00", "fail"))),
-                "unseen" to listOf(mapOf("account" to "lab", "usage" to usage("5h —", "plain"))),
-            )
-        val u = QuotaRead.usage(data)!!
-        assertEquals(mapOf("work" to "5h 63%", "personal" to "5h ✕ ↻19:00", "lab" to "5h —"), u.mapValues { it.value.text })
-        assertEquals(UsageTone.FAIL, u["personal"]?.tone)
-        assertNull("缺 unseen ⇒ 解不出", QuotaRead.usage(data - "unseen"))
     }
 }

@@ -79,7 +79,7 @@ data class Here(
 )
 
 /**
- * 设置屏：账号卡 ＋ 机器与账号 · 那台上的偏好 · 外观 · 关于。读那台的几格全是回包（[MachineSettings]），手机只数自己的机器表与保险箱。
+ * 设置屏：账号卡（点开 ⇒ 用量屏）＋ 机器与账号 · 那台上的偏好 · 外观 · 关于。读那台的几格全是回包（[MachineSettings]），手机只数自己的机器表与保险箱。
  * 「机器与账号」那几条住 [settingsEntries]，本屏只渲染。没有当前那台（还没连过）⇒ 账号卡与读那台的几行不画。
  */
 @Composable
@@ -87,6 +87,7 @@ fun SettingsScreen(
     here: Here?,
     onBack: () -> Unit,
     onNavigate: (String) -> Unit,
+    onUsage: () -> Unit,
 ) {
     Box(Modifier.fillMaxSize().settingsGroupScreenInsets()) {
         Column(Modifier.fillMaxSize()) {
@@ -95,7 +96,7 @@ fun SettingsScreen(
                 Text(copyText("rsLib.settings.windowTitle"), style = MaterialTheme.typography.titleLarge)
             }
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
-                if (here == null) Body(null, null, null, onNavigate) else MachineBody(here, onNavigate)
+                if (here == null) Body(null, null, null, onNavigate) else MachineBody(here, onNavigate, onUsage)
             }
         }
     }
@@ -105,6 +106,7 @@ fun SettingsScreen(
 private fun MachineBody(
     here: Here,
     onNavigate: (String) -> Unit,
+    onUsage: () -> Unit,
 ) {
     rememberHostLink(here.hostId, "settings-${here.hostId}")
     val backends = koinInject<HostBackends>()
@@ -113,7 +115,7 @@ private fun MachineBody(
     val board = remember(here.hostId) { MachineSettings(feed, here.machine, feed.changed, scope) }
     val link by feed.state.collectAsState()
     val deploying by feed.deploying.collectAsState()
-    AccountCard(here, board, link, deploying, onReconnect = feed::reconnect)
+    AccountCard(here, board, link, deploying, onReconnect = feed::reconnect, onOpen = onUsage)
     Body(here, board, readable(link, deploying), onNavigate)
 }
 
@@ -173,6 +175,7 @@ private fun AccountCard(
     link: LinkState,
     deploying: Deploying?,
     onReconnect: () -> Unit,
+    onOpen: () -> Unit,
 ) {
     val tokens = LocalAppTokens.current
     val ui by board.state.collectAsState()
@@ -195,6 +198,7 @@ private fun AccountCard(
             .fillMaxWidth()
             .padding(vertical = 8.dp)
             .then(frame)
+            .clickable(role = Role.Button, onClick = onOpen)
             .padding(16.dp)
             .testTag(SettingsTags.CARD),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -255,7 +259,7 @@ private fun DefaultAccount(ui: MachineSettingsUi) {
         Text(a.label, style = MaterialTheme.typography.bodyMedium)
         DefaultTag()
         Box(Modifier.weight(1f))
-        ui.usage[a.name]?.let { UsageText(it.text, it.tone) }
+        ui.usage(a.name)?.let { UsageText(it.text, it.tone) }
     }
 }
 

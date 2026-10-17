@@ -307,6 +307,13 @@ object FilesDelete {
         )
 }
 
+/** `files-delete-session`：删一份历史会话（记录文件连同它的附属）；能不能删那台照行上 `can.delete` 判过。 */
+object FilesDeleteSession {
+    const val COMMAND: String = "files-delete-session"
+
+    fun args(sid: String): Map<String, Any?> = mapOf("sid" to sid)
+}
+
 /** `files-chmod`：改 unix 权限位（交成一组里的一项）。[mode] 是框里敲的八进制原样，那台解、那台拒。回包是一组的结局（[Batch]）。 */
 object FilesChmod {
     const val COMMAND: String = "files-chmod"
