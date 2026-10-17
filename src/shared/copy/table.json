@@ -16681,42 +16681,6 @@
       "zh": "base_url 是明文 http 且主机非本机 · key 会明文上网\n改用 https 或把上游放到本机",
       "args": []
     },
-    "beUpstreamEndpoint.optin.notFile": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "不是普通文件",
-      "args": []
-    },
-    "beUpstreamEndpoint.optin.tooLarge": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "文件超过 {cap} 字节",
-      "args": ["cap"]
-    },
-    "beUpstreamEndpoint.optin.unreadable": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "读取文件失败 · {why} · 装没装未知",
-      "args": ["why"]
-    },
-    "beUpstreamEndpoint.optin.badShape": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "文件格式不对 · 装没装未知\n须是 JSON 对象 · env 段也须是对象",
-      "args": []
-    },
-    "beUpstreamEndpoint.optin.noKey": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "该机中转未起过 · 无钥匙\n无法生成要贴的内容 · 后端起来后再看",
-      "args": []
-    },
-    "beUpstreamEndpoint.optin.noRoute": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "该机中转不收不带账号的 claude 请求 · 无法生成要贴的内容",
-      "args": []
-    },
     "beUpstreamEndpoint.relay.thisMachine": {
       "kind": "body",
       "role": "片段",

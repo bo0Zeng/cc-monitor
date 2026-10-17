@@ -329,7 +329,7 @@ impl Posix {
     ///
     /// ⚠ 反斜杠**只**在 `'\''`（关引号 + 转义的引号 + 开引号）这一形里放行 ——
     /// 它是 `shell_quote_core::posix_quote` 唯一会产出的反斜杠；别处出现一律拒。
-    fn split_words(mid: &str) -> Result<Vec<String>, String> {
+    pub(crate) fn split_words(mid: &str) -> Result<Vec<String>, String> {
         let mut words: Vec<String> = Vec::new();
         let mut cur = String::new();
         let mut started = false;

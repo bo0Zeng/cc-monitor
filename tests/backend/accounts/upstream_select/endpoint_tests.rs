@@ -313,8 +313,6 @@ fn optin(home: &std::path::Path, routed: &[String], registered: bool) -> Value {
     );
     serde_json::json!({
         "state": r.state.name(),
-        "note": r.note,
-        "missing": r.missing,
         "source": r.source.display().to_string(),
         "url": r.url,
     })
@@ -345,8 +343,6 @@ fn optin_judges_the_pasted_address_against_the_relay_port_and_key_on_disk() {
         want1,
         "地址的口要等于这台中转的口、钥匙段要是只许直通那一把"
     );
-    assert_eq!(v["note"], "");
-    assert_eq!(v["missing"], "");
     assert!(
         v["source"]
             .as_str()
@@ -368,7 +364,6 @@ fn optin_judges_the_pasted_address_against_the_relay_port_and_key_on_disk() {
     let v = optin(&home, &[], true);
     assert_eq!(v["state"], "installed", "{v}");
     assert_eq!(v["url"], Value::Null, "已装 ⇒ 钥匙不再出这台");
-    assert_eq!(v["missing"], "");
 
     // 中转换了钥匙 ⇒ 过期 ＋ 新地址带新钥匙。
     put_key(&home, OPTIN_K2);
@@ -424,7 +419,6 @@ fn optin_judges_the_pasted_address_against_the_relay_port_and_key_on_disk() {
         put_settings(&home, bad);
         let v = optin(&home, &[], true);
         assert_eq!(v["state"], "unreadable", "{bad} ⇒ {v}");
-        assert_ne!(v["note"], "", "读不了要说为什么：{bad}");
         assert!(v["url"].is_string());
     }
     // 读不了：那是个目录。
@@ -432,19 +426,17 @@ fn optin_judges_the_pasted_address_against_the_relay_port_and_key_on_disk() {
     std::fs::create_dir_all(home.join(".claude/settings.json")).unwrap();
     let v = optin(&home, &[], true);
     assert_eq!(v["state"], "unreadable", "{v}");
-    assert_ne!(v["note"], "");
     let _ = std::fs::remove_dir_all(&home);
 }
 
 /// 生成不了的两种：中转还没起来过（没有钥匙文件）· 决策表不给这一条（这一家没登记默认上游 / 表里有个号就叫 `_`）⇒
-/// 不给地址、说为什么；文件里有我们那一形的地址仍判得出「不是现在那一条」。
+/// 不给地址；文件里有我们那一形的地址仍判得出「不是现在那一条」。
 #[test]
-fn optin_without_a_key_or_a_route_gives_no_snippet_and_says_why() {
+fn optin_without_a_key_or_a_route_gives_no_snippet() {
     let home = optin_home("nokey");
     let v = optin(&home, &[], true);
     assert_eq!(v["state"], "absent");
     assert_eq!(v["url"], Value::Null);
-    assert_ne!(v["missing"], "", "没钥匙要说为什么生成不了");
     put_settings(
         &home,
         &format!(
@@ -461,7 +453,6 @@ fn optin_without_a_key_or_a_route_gives_no_snippet_and_says_why() {
     for (routed, registered) in [(vec![], false), (vec!["_".to_string()], true)] {
         let v = optin(&home, &routed, registered);
         assert_eq!(v["url"], Value::Null, "{routed:?} {registered}");
-        assert_ne!(v["missing"], "");
     }
     let _ = std::fs::remove_dir_all(&home);
 }

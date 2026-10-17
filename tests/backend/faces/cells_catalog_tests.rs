@@ -406,14 +406,14 @@ fn corpus(name: &str) -> Vec<Value> {
             ]
             .iter()
             .map(|l| {
-                serde_json::to_value(crate::observe::history_query::index_row(crate::agents::record_tree_kind().unwrap_or_default(), l.as_bytes(), 0, l.len() as u64)).unwrap()
+                serde_json::to_value(crate::observe::history_query::index_row_of(crate::agents::record_tree_kind().unwrap_or_default(), crate::observe::lines::parse(l.as_bytes()).as_ref(), 0, l.len() as u64)).unwrap()
             })
             .collect();
             let line = r#"{"type":"assistant","uuid":"a-1","isSidechain":true,"agentId":"ag","message":{"content":[{"type":"text","text":"\u4e2d\n```\nx\n```"}]}}"#.as_bytes();
             rows.push(
-                serde_json::to_value(crate::observe::history_query::index_row(
+                serde_json::to_value(crate::observe::history_query::index_row_of(
                     crate::agents::record_tree_kind().unwrap_or_default(),
-                    line,
+                    crate::observe::lines::parse(line).as_ref(),
                     0,
                     line.len() as u64,
                 ))

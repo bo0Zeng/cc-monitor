@@ -114,17 +114,6 @@ pub(crate) fn plan(
     super::line_of(&l, account, here(facts), &super::own_caps(), &entry)
 }
 
-/// 本机那一行的 argv 形（同 [`plan`]），`detach` ⇒ 建进 tmux 之后不接进去。名字是调用方铸好的。
-pub(crate) fn plan_argv(
-    req: &LocalLaunchRequest,
-    account: &Settled,
-    facts: &Facts,
-    detach: bool,
-) -> Result<Vec<String>, String> {
-    let (l, entry) = launch_of(req, facts)?;
-    super::argv_of(&l, account, here(facts), detach, &super::own_caps(), &entry)
-}
-
 fn here(facts: &Facts) -> super::Here {
     super::Here::Local {
         windows: facts.windows,

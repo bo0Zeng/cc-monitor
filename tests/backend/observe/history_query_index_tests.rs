@@ -124,7 +124,12 @@ fn facts_count_prose_code_and_folded_units_separately() {
         ]}
     })
     .to_string();
-    let r = index_row(tree(), line.as_bytes(), 10, line.len() as u64 + 1);
+    let r = index_row_of(
+        tree(),
+        crate::observe::lines::parse(line.as_bytes()).as_ref(),
+        10,
+        line.len() as u64 + 1,
+    );
     assert_eq!(r.o, 10);
     assert_eq!(
         r.t,
@@ -146,26 +151,55 @@ fn facts_count_prose_code_and_folded_units_separately() {
 #[test]
 fn facts_for_user_string_meta_sidechain_system_and_garbage() {
     let u = r#"{"type":"user","isMeta":true,"isSidechain":true,"agentId":"a1","message":{"role":"user","content":"两行\n第二行"}}"#;
-    let r = index_row(tree(), u.as_bytes(), 0, 0);
+    let r = index_row_of(
+        tree(),
+        crate::observe::lines::parse(u.as_bytes()).as_ref(),
+        0,
+        0,
+    );
     assert!(r.sc);
     assert_eq!(r.sp, Some("system"), "isMeta ⇒ 系统注入");
     assert_eq!((r.pl, r.ch, r.cj), (2, 5, 5));
     // tool_result 数组：只算折叠单元，正文 0
     let tr = r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t","content":"大段输出"}]}}"#;
-    let r = index_row(tree(), tr.as_bytes(), 0, 0);
+    let r = index_row_of(
+        tree(),
+        crate::observe::lines::parse(tr.as_bytes()).as_ref(),
+        0,
+        0,
+    );
     assert_eq!((r.fd, r.ch, r.pl), (1, 0, 0));
     // system：正文在顶层 content
     let sys = r#"{"type":"system","content":"API Error"}"#;
-    assert_eq!(index_row(tree(), sys.as_bytes(), 0, 0).ch, 9);
+    assert_eq!(
+        index_row_of(
+            tree(),
+            crate::observe::lines::parse(sys.as_bytes()).as_ref(),
+            0,
+            0
+        )
+        .ch,
+        9
+    );
     // 🔴 非 JSON：**行仍在**（占一个 seq），只是没有料 —— 丢了它后面全错一位
-    let bad = index_row(tree(), b"{\"type\":\"user\"", 5, 15);
+    let bad = index_row_of(
+        tree(),
+        crate::observe::lines::parse(b"{\"type\":\"user\"").as_ref(),
+        5,
+        15,
+    );
     assert_eq!((bad.o, bad.n, bad.t), (5, 15, None));
 }
 
 /// 零值不上线：索引每条一行，省下来的是乘以条数的字节。
 #[test]
 fn zero_facts_are_not_serialized() {
-    let r = index_row(tree(), br#"{"type":"attachment"}"#, 0, 22);
+    let r = index_row_of(
+        tree(),
+        crate::observe::lines::parse(br#"{"type":"attachment"}"#).as_ref(),
+        0,
+        22,
+    );
     let s = serde_json::to_string(&r).unwrap();
     assert_eq!(s, r#"{"o":0,"n":22}"#, "不进界面的行连类都不带");
 }
