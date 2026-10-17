@@ -1,10 +1,9 @@
 //! 一台机器的配置 → 一份拨号请求，在本机常驻后端里组。
 //!
-//! 界面交来的是它手里那台机器的配置（设置页表单里可能还没保存的那一份 · 已保存的那一份 · 跳板那一台），形状就是界面
-//! `remote-config.ts` 的那一格（camelCase：`host` · `label` · `port` · `user` · `keyPath` · `hostKeyFingerprint` · `addresses` · `jump`）。
+//! 界面交来的是它手里那台机器的配置（设置页表单里可能还没保存的那一份 · 跳板那一台），形状就是界面
+//! `remote-config.ts` 的那一格（camelCase：`host` · `label` · `port` · `user` · `keyPath` · `addresses` · `jump`）。
 //!
 //! - 地址：`host` 排首，`addresses` 依次追加（`host` / `host:port` / `[v6]:port` / 裸 v6），按 `(host, port)` 去重保序；
-//! - 指纹：表单那一格有 ⇒ 用它；没有 ⇒ 已保存那一份、且同一个 host 的那一格（换了 host 不许继承）；
 //! - 跳板：`jump` 指另一台的名字 ⇒ 那一台的配置由界面一并交来；指自己 ⇒ 环（拒）；交不来 ⇒ 拒（fail-closed，不回落直连）；单跳。
 //!
 //! 只放路径，不放私钥本体。ssh-agent 套接字不交 ⇒ 用本进程自己的（`DialRequest::agent_sock` 缺席那一格）。
@@ -25,7 +24,6 @@ pub struct Machine {
     pub port: u16,
     pub user: String,
     pub key_path: Option<String>,
-    pub fingerprint: Option<String>,
     pub addresses: Vec<String>,
     pub jump: Option<String>,
 }
@@ -38,7 +36,6 @@ pub struct Fields<'a> {
     pub label: Option<&'a str>,
     pub port: Option<u16>,
     pub key_path: Option<&'a str>,
-    pub fingerprint: Option<&'a str>,
     pub addresses: Vec<String>,
     pub jump: Option<&'a str>,
 }
@@ -72,7 +69,6 @@ impl Machine {
             label: s("label"),
             port,
             key_path: s("keyPath"),
-            fingerprint: s("hostKeyFingerprint"),
             addresses,
             jump: s("jump"),
         })
@@ -94,7 +90,6 @@ impl Machine {
             port: f.port.unwrap_or(22),
             user,
             key_path: nonempty(f.key_path),
-            fingerprint: nonempty(f.fingerprint),
             addresses: f.addresses,
             jump: nonempty(f.jump),
             host,
@@ -158,27 +153,19 @@ fn hop(m: &Machine) -> Value {
         "port": m.port,
         "user": m.user,
         "key_path": m.key_path,
-        "host_key_fingerprint": m.fingerprint,
         "label": m.name(),
     })
 }
 
-/// 界面交来的那几样（`machine` 必有；`saved` = 已保存的那一份；`jump` = 跳板那一台）→ 拨号请求（蛇形键，`dial::DialRequest` 的形状）。
+/// 界面交来的那几样（`machine` 必有；`jump` = 跳板那一台）→ 拨号请求（蛇形键，`dial::DialRequest` 的形状）。
 /// `use_` 与 `extra` 由调用方补（`forward` 的规格 · 探针的命令与阶段行）。
 pub fn request(
     machine: &Machine,
-    saved: Option<&Machine>,
     jump: Option<&Machine>,
     prefer: Option<&(String, u16)>,
     use_: &str,
     extra: Value,
 ) -> Result<Value, (&'static str, String)> {
-    // 指纹：表单那一格优先；没有 ⇒ 已保存那一份、且同一个 host（换了 host 不许继承旧指纹）。
-    let fingerprint = machine.fingerprint.clone().or_else(|| {
-        saved
-            .filter(|s| s.host == machine.host)
-            .and_then(|s| s.fingerprint.clone())
-    });
     let mut order = machine.endpoints();
     // 上次赢的那条排首（它仍在这台的地址里才算；配置改过就失效）。
     if let Some(i) = prefer.and_then(|p| order.iter().position(|e| e == p)) {
@@ -194,7 +181,6 @@ pub fn request(
         "port": machine.port,
         "user": machine.user,
         "key_path": machine.key_path,
-        "host_key_fingerprint": fingerprint,
         "endpoints": endpoints,
         "use": use_,
     });
@@ -217,12 +203,12 @@ pub fn request(
     Ok(req)
 }
 
-/// 线上交来的一份拨号 ⇒ 拨号请求：`{machine, saved?, jump?, prefer?: {host, port}, use?, …}`，其余格（`command` · `capture` ·
+/// 线上交来的一份拨号 ⇒ 拨号请求：`{machine, jump?, prefer?: {host, port}, use?, …}`，其余格（`command` · `capture` ·
 /// `forward` · `stages` · `probe` · `agent_sock`）原样进请求。`use` 缺席 ⇒ `stream`。
 pub fn resolve(v: &Value) -> Result<crate::DialRequest, (&'static str, String)> {
     let bad = |d: &str| ("bad_args", crate::malformed(d));
     let obj = v.as_object().ok_or_else(|| bad("dial is not an object"))?;
-    let (machine, saved, jump) = from_args(v)?;
+    let (machine, jump) = from_args(v)?;
     let prefer = match obj.get("prefer") {
         None | Some(Value::Null) => None,
         Some(p) => Some((
@@ -238,12 +224,11 @@ pub fn resolve(v: &Value) -> Result<crate::DialRequest, (&'static str, String)> 
     };
     let use_ = obj.get("use").and_then(Value::as_str).unwrap_or("stream");
     let mut extra = obj.clone();
-    for k in ["machine", "saved", "jump", "prefer", "use"] {
+    for k in ["machine", "jump", "prefer", "use"] {
         extra.remove(k);
     }
     dial_request(
         &machine,
-        saved.as_ref(),
         jump.as_ref(),
         prefer.as_ref(),
         use_,
@@ -254,13 +239,12 @@ pub fn resolve(v: &Value) -> Result<crate::DialRequest, (&'static str, String)> 
 /// 同 [`request`]，组好之后读成拨号请求（线上那一份 [`resolve`] 与按类型收的帧命令入参都经这里）。
 pub fn dial_request(
     machine: &Machine,
-    saved: Option<&Machine>,
     jump: Option<&Machine>,
     prefer: Option<&(String, u16)>,
     use_: &str,
     extra: Value,
 ) -> Result<crate::DialRequest, (&'static str, String)> {
-    let req = request(machine, saved, jump, prefer, use_, extra)?;
+    let req = request(machine, jump, prefer, use_, extra)?;
     <crate::DialRequest as serde::Deserialize>::deserialize(&req).map_err(|e| {
         (
             "bad_args",
@@ -269,10 +253,8 @@ pub fn dial_request(
     })
 }
 
-/// 帧命令入参里那三格（`machine` · `saved?` · `jump?`）一次读齐。
-pub fn from_args(
-    args: &Value,
-) -> Result<(Machine, Option<Machine>, Option<Machine>), (&'static str, String)> {
+/// 帧命令入参里那两格（`machine` · `jump?`）一次读齐。
+pub fn from_args(args: &Value) -> Result<(Machine, Option<Machine>), (&'static str, String)> {
     let m = args
         .get("machine")
         .ok_or_else(|| ("bad_args", crate::malformed("missing `machine`")))?;
@@ -282,7 +264,7 @@ pub fn from_args(
             Some(v) => Machine::parse(v).map(Some),
         }
     };
-    Ok((Machine::parse(m)?, opt("saved")?, opt("jump")?))
+    Ok((Machine::parse(m)?, opt("jump")?))
 }
 
 #[cfg(test)]

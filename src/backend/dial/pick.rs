@@ -11,7 +11,7 @@ type CmdErr = (&'static str, String);
 
 /// 一台机器的配置（配置文件里那台原样的一条；界面 `remote-config.ts` 那一格，camelCase）里拨号读的那几格。
 ///
-/// **这一格不拒多出来的键**：它是配置文件里的一条，界面那份多带 `resumeCommand` · `connect` · `hostKeyPinnedAt`，壳那份不带，
+/// **这一格不拒多出来的键**：它是配置文件里的一条，界面那份多带 `resumeCommand` · `connect`，壳那份不带，
 /// 拨号只读下面这几格。外面那一层入参照拒多出来的键。空白当没给；缺 `host` / `user` ⇒ `bad_args`。
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -34,10 +34,6 @@ pub(crate) struct MachineConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub(crate) key_path: Option<String>,
-    /// 记下的主机指纹（`SHA256:…`）。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) host_key_fingerprint: Option<String>,
     /// 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
     #[serde(default)]
     pub(crate) addresses: Vec<String>,
@@ -56,7 +52,6 @@ impl MachineConfig {
             label: self.label.as_deref(),
             port: self.port,
             key_path: self.key_path.as_deref(),
-            fingerprint: self.host_key_fingerprint.as_deref(),
             addresses: self.addresses.clone(),
             jump: self.jump.as_deref(),
         })
@@ -73,40 +68,31 @@ pub(crate) struct Prefer {
     pub(crate) port: u16,
 }
 
-/// 「拨哪台」那几格（入参里各自平铺：`machine` 必有，`saved` · `jump` · `prefer` 可缺）。
+/// 「拨哪台」那几格（入参里各自平铺：`machine` 必有，`jump` · `prefer` 可缺）。
 pub(crate) struct Pick<'a> {
     pub(crate) machine: &'a MachineConfig,
-    pub(crate) saved: Option<&'a MachineConfig>,
     pub(crate) jump: Option<&'a MachineConfig>,
     pub(crate) prefer: Option<&'a Prefer>,
 }
 
 impl Pick<'_> {
-    /// 三台都读成 [`Machine`]（哪一台坏了 ⇒ `bad_args`）。
-    pub(crate) fn machines(&self) -> Result<(Machine, Option<Machine>, Option<Machine>), CmdErr> {
+    /// 两台都读成 [`Machine`]（哪一台坏了 ⇒ `bad_args`）。
+    pub(crate) fn machines(&self) -> Result<(Machine, Option<Machine>), CmdErr> {
         let opt = |m: Option<&MachineConfig>| m.map(MachineConfig::machine).transpose();
-        Ok((self.machine.machine()?, opt(self.saved)?, opt(self.jump)?))
+        Ok((self.machine.machine()?, opt(self.jump)?))
     }
 
     /// 组好的拨号请求（`use_` · `extra` 由调用方补，同 `ssh_dial::machine::request`）。
     pub(crate) fn request(&self, use_: &str, extra: Value) -> Result<super::DialRequest, CmdErr> {
-        let (m, saved, jump) = self.machines()?;
+        let (m, jump) = self.machines()?;
         let prefer = self.prefer.map(|p| (p.host.clone(), p.port));
-        super::machine::dial_request(
-            &m,
-            saved.as_ref(),
-            jump.as_ref(),
-            prefer.as_ref(),
-            use_,
-            extra,
-        )
+        super::machine::dial_request(&m, jump.as_ref(), prefer.as_ref(), use_, extra)
     }
 
-    /// 线上那一份拨号（`{machine, saved, jump, prefer}`）：存进可达表 · 交给还收原样拨号的那几处（它们经 `resolve` 读）。
+    /// 线上那一份拨号（`{machine, jump, prefer}`）：存进可达表 · 交给还收原样拨号的那几处（它们经 `resolve` 读）。
     pub(crate) fn dial_value(&self) -> Value {
         json!({
             "machine": self.machine,
-            "saved": self.saved,
             "jump": self.jump,
             "prefer": self.prefer,
         })
@@ -120,9 +106,6 @@ impl Pick<'_> {
 #[serde(deny_unknown_fields)]
 pub(crate) struct MachineDial {
     pub(crate) machine: MachineConfig,
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) saved: Option<MachineConfig>,
     #[serde(default)]
     #[cfg_attr(test, ts(optional = nullable))]
     pub(crate) jump: Option<MachineConfig>,
@@ -144,7 +127,6 @@ impl MachineDial {
     pub(crate) fn stored(&self) -> Result<Value, (&'static str, String)> {
         let pick = Pick {
             machine: &self.machine,
-            saved: self.saved.as_ref(),
             jump: self.jump.as_ref(),
             prefer: self.prefer.as_ref(),
         };

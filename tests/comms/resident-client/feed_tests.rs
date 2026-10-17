@@ -890,13 +890,13 @@ async fn a_remote_that_is_not_unix_waits_for_a_hand() {
     waits(&feed, &f).await;
 }
 
-/// 拨号拒了：原因码与那台出示的指纹随断开那一句走到 `Down`（后端按它定那一态与修法）。
+/// 拨号拒了：原因码 · 那台出示的指纹与库里记下的那一枚随断开那一句走到 `Down`（后端按它定那一态与修法）。
 #[tokio::test(start_paused = true)]
 async fn a_refused_dial_carries_its_reason_and_the_seen_key_into_down() {
     let f = Arc::new(Fake::default());
     let refused = Problem::new("密钥被拒", "命令：dial").because(
         Some(cmd_wire::machine::Why::Auth),
-        Some("SHA256:seen".into()),
+        (Some("SHA256:seen".into()), Some("SHA256:kept".into())),
     );
     f.attaches.lock().unwrap().push_back(Peer::Refused(refused));
     let (feed, _) = start(&f);
@@ -906,8 +906,16 @@ async fn a_refused_dial_carries_its_reason_and_the_seen_key_into_down() {
         unreachable!()
     };
     assert_eq!(
-        (problem.why, problem.seen_key.as_deref()),
-        (Some(cmd_wire::machine::Why::Auth), Some("SHA256:seen"))
+        (
+            problem.why,
+            problem.seen_key.as_deref(),
+            problem.expected_key.as_deref()
+        ),
+        (
+            Some(cmd_wire::machine::Why::Auth),
+            Some("SHA256:seen"),
+            Some("SHA256:kept")
+        )
     );
 }
 

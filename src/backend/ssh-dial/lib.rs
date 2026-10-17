@@ -1,9 +1,9 @@
 //! **拨号核心**：到一台远端的 SSH 的全部活 —— 后端（本机常驻那一个）与手机（`src/mobile/core-rs`）同一份。
 //!
-//! 多地址竞速 · 跳板（可多跳）· host key 校验（严格 / TOFU，回报实得指纹）· 鉴权（钥匙 · ssh-agent · 外部签名器 · 密码）·
+//! 多地址竞速 · 跳板（可多跳）· host key 校验（按一份库，[`known_hosts`]）· 鉴权（钥匙 · ssh-agent · 外部签名器 · 密码）·
 //! keepalive · 按拨号身份复用（[`pool`]）· 开 channel 之后的几种用法（[`Use`]，含 PTY）· SFTP 客户端（[`sftp`]，写的规矩是参数）。
 //!
-//! 平台的事从 [`env`] 的几个口进：钥匙从哪来（[`env::KeySource`]）· 认下的 host key 记到哪（[`env::HostKeys`]）·
+//! 平台的事从 [`env`] 的几个口进：钥匙从哪来（[`env::KeySource`]）· 主机钥匙那份库（[`env::HostKeys`]）·
 //! ssh-agent（[`env::Agent`]，只桌面有）· 复制详情那几行事实（[`env::Facts`]）。本 crate 不碰家目录、不读环境变量。
 //!
 //! # 一条链路上的字节（[`uses::run`]）
@@ -121,16 +121,12 @@ pub struct JumpHop {
     pub port: u16,
     pub user: String,
     pub key_path: Option<String>,
-    pub host_key_fingerprint: Option<String>,
     /// 报错与阶段行里称呼它用的名字（界面那边的配置标签）。
     #[serde(default)]
     pub label: String,
     /// 这一台自己经哪台跳板到（再外一台；`None` = 本机直连它）。
     #[serde(default)]
     pub jump: Option<Box<JumpHop>>,
-    /// 这一台记过的 host key（同 [`DialRequest::known_keys`]）。
-    #[serde(default)]
-    pub known_keys: Vec<String>,
 }
 
 /// 开出 channel 之后怎么用。
@@ -211,8 +207,6 @@ pub struct DialRequest {
     /// 钥匙那一格（不是私钥本体）：桌面是 OpenSSH 格式私钥的**路径**，手机是那台机器的钥匙编号；
     /// 由宿主的 [`env::KeySource`] 换成能鉴权的东西（钥匙 · 外部签名器 · 密码）。缺席 = 走 ssh-agent。
     pub key_path: Option<String>,
-    /// 期望的 host key 指纹（`SHA256:…`）。`None` = TOFU 接受并 `warn`。
-    pub host_key_fingerprint: Option<String>,
     /// 要 exec 的命令行（`stream` / `capture`；界面已 `shell_quote` 过；`forward` 不用它）。
     #[serde(default)]
     pub command: String,
@@ -234,10 +228,6 @@ pub struct DialRequest {
     /// ack 之前逐行报阶段（测试连接那六格）。
     #[serde(default)]
     pub stages: bool,
-    /// 这一台记过的 host key（OpenSSH 那一行的前两段：`算法 base64`，可多种类型；手机从 Room 交来）。非空 ⇒ 同 OpenSSH：
-    /// 协商时这几种类型排前、按协商出的那一种严格比；那一种没记过 ⇒ 拒（同「钥匙变了」）。空 ⇒ 看 `host_key_fingerprint`。
-    #[serde(default)]
-    pub known_keys: Vec<String>,
     /// 短命探活（inactivity 拆链）而不是长连接（keepalive 保活）。
     #[serde(default)]
     pub probe: bool,
@@ -274,28 +264,21 @@ pub struct DialAck {
     /// `ok=false` 时的复制详情（时刻 · 机器 · 命令 · 下层原话，后端这一端写好；排法同失败应答那一格）。成功 ⇒ 不出这一格。additive。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
-    /// 实际观察到的 host key 指纹 —— 界面侧 TOFU 固化要它（失败时也尽量带上）。
+    /// 实际观察到的 host key 指纹（展示用；失败时也尽量带上）。
     pub fingerprint: Option<String>,
-    /// 〔「保住多地址那一格」〕这一趟报过指纹的每条地址 → 指纹。additive（`ACK_V` 不动）；
-    /// 界面只在各地址一致时自动固化。失败的 ack 恒空（指纹照旧在 `fingerprint`）。
-    pub fingerprints: std::collections::BTreeMap<String, String>,
-    /// 〔第二问〕经跳板时**跳板那一台**报过的指纹（地址 → 指纹）：它是另一台机器，界面按它自己那一格固化
-    /// （同 `fingerprints` 的判定）。直连 / 失败 ⇒ 空。additive。
-    pub jump_fingerprints: std::collections::BTreeMap<String, String>,
     /// 竞速胜出的地址（`host:port`）—— 测试连接展示「你正连着哪条路」。
     pub endpoint: Option<String>,
     /// 同一条胜者，结构化（`{host, port}`）—— 界面记 last-good、下一趟当 `prefer` 交回来、起终端时拼 ssh 命令用它；
     /// 界面因此不必再解析 `host:port`（地址解析只在 `machine.rs`）。失败 ⇒ `None`。additive。
     pub winner: Option<Endpoint>,
-    /// 这一趟请求里目标那台**带了**期望指纹（严格校验）—— 界面判「要不要自动固化」用它，不再自己重推一遍指纹继承规则。
-    pub strict: bool,
-    /// 同上，跳板那一台（直连 ⇒ `false`）。
-    pub jump_strict: bool,
     /// 没拨成时的原因码（[`Why`]）：接这台的宿主按它定那一态与修法。拨成了 / 说不清 ⇒ `None`。additive。
     pub reason: Option<Why>,
     /// 目标那一台握手时给的 host key 是什么类型（「钥匙变了」那一句要说是哪一种）。没握到那一步 ⇒ 不出这一格。additive。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_type: Option<String>,
+    /// 「钥匙变了」时库里同类型那一把的指纹（没有 ⇒ 空串）：桌面与手机都照它说，不各自算。没因钥匙被拒 ⇒ 不出这一格。additive。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_fingerprint: Option<String>,
     /// 协议版本（[`ACK_V`]）。
     pub v: u32,
     /// 本代理认得的用法（[`USES`]）。
@@ -310,14 +293,11 @@ impl DialAck {
             detail: Some(env::get().facts.detail("dial", None, error.raw.as_deref())),
             error: Some(error.said),
             fingerprint,
-            fingerprints: Default::default(),
-            jump_fingerprints: Default::default(),
             endpoint: None,
             winner: None,
-            strict: false,
-            jump_strict: false,
             reason: None,
             key_type: None,
+            expected_fingerprint: None,
             v: ACK_V,
             uses: USES,
         }
@@ -331,10 +311,11 @@ impl DialAck {
         }
     }
 
-    /// 带上这一趟握手时看到的 host key 类型（[`StageSink::key_type`]）。
+    /// 带上这一趟握手时看到的 host key 类型与（钥匙被拒时）库里那一把的指纹（[`StageSink`]）。
     pub fn seen(self, stages: &StageSink) -> Self {
         DialAck {
             key_type: stages.key_type(),
+            expected_fingerprint: stages.expected(),
             ..self
         }
     }
@@ -419,6 +400,8 @@ pub struct StageSink {
     why: Arc<Mutex<Option<Why>>>,
     /// 这一趟最后一次握手时服务端给的 host key 类型。
     key_type: Arc<Mutex<Option<String>>>,
+    /// 钥匙被拒时库里那一把的指纹（[`DialAck::expected_fingerprint`]）。
+    expected: Arc<Mutex<Option<String>>>,
     /// 进展往哪报（请求带 `progress` 时 [`uses::run_with`] 接上；没有 ⇒ 不报）。
     steps: Option<tokio::sync::mpsc::UnboundedSender<&'static str>>,
 }
@@ -430,6 +413,7 @@ impl StageSink {
             buf: Arc::default(),
             why: Arc::default(),
             key_type: Arc::default(),
+            expected: Arc::default(),
             steps: None,
         }
     }
@@ -474,6 +458,18 @@ impl StageSink {
     /// 记下握手时服务端给的 host key 类型。
     pub fn note_key_type(&self, t: &str) {
         *self.key_type.lock().unwrap_or_else(|e| e.into_inner()) = Some(t.to_string());
+    }
+
+    /// 记下钥匙被拒时库里那一把的指纹（空串 = 库里没有同类型的）。
+    pub fn note_expected(&self, fp: &str) {
+        *self.expected.lock().unwrap_or_else(|e| e.into_inner()) = Some(fp.to_string());
+    }
+
+    pub fn expected(&self) -> Option<String> {
+        self.expected
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     pub fn key_type(&self) -> Option<String> {

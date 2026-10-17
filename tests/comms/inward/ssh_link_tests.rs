@@ -92,6 +92,7 @@ async fn a_refusal_comes_back_with_the_fingerprint_it_saw() {
             why: "所有地址连接失败: 127.0.0.1:22422 Unknown server key（竞速：127.0.0.1:22422）"
                 .into(),
             fingerprint: Some("SHA256:t3uliopxPzh9UPGAywEklG+BprfkJP07toWVhzBCwB4".into()),
+            expected: None,
             reason: None,
             detail: None,
         }

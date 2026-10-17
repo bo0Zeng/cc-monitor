@@ -3,6 +3,7 @@
     {
       "machine": {
         "detail": null,
+        "expectedHostKey": null,
         "fixes": [],
         "next": null,
         "os": null,
@@ -20,6 +21,7 @@
     {
       "machine": {
         "detail": null,
+        "expectedHostKey": null,
         "fixes": [],
         "next": null,
         "os": null,
@@ -37,6 +39,7 @@
     {
       "machine": {
         "detail": null,
+        "expectedHostKey": null,
         "fixes": [],
         "next": null,
         "os": null,
@@ -54,6 +57,7 @@
     {
       "machine": {
         "detail": null,
+        "expectedHostKey": null,
         "fixes": [],
         "next": null,
         "os": null,
@@ -71,6 +75,7 @@
     {
       "machine": {
         "detail": "命令：dial\n对象：gpu-01\n断在：拨号没成\n码：auth\n原话：raw words",
+        "expectedHostKey": null,
         "fixes": [
           {
             "fix": "push_key",
@@ -97,6 +102,7 @@
     {
       "machine": {
         "detail": "命令：dial\n对象：gpu-01\n断在：拨号没成\n码：timeout\n原话：raw words",
+        "expectedHostKey": null,
         "fixes": [
           {
             "fix": "retry",
@@ -123,6 +129,7 @@
     {
       "machine": {
         "detail": "命令：dial\n对象：gpu-01\n断在：拨号没成\n码：host_key\n原话：raw words",
+        "expectedHostKey": "SHA256:old",
         "fixes": [
           {
             "fix": "compare_fingerprint",
@@ -145,6 +152,7 @@
     {
       "machine": {
         "detail": null,
+        "expectedHostKey": null,
         "fixes": [
           {
             "fix": "update",
@@ -167,6 +175,7 @@
     {
       "machine": {
         "detail": null,
+        "expectedHostKey": null,
         "fixes": [],
         "next": null,
         "os": null,
@@ -184,6 +193,7 @@
     {
       "machine": {
         "detail": null,
+        "expectedHostKey": null,
         "fixes": [],
         "next": null,
         "os": null,
@@ -201,6 +211,7 @@
     {
       "machine": {
         "detail": "命令：dial\n对象：gpu-01\n断在：拨号没成\n码：not_unix\n原话：raw words",
+        "expectedHostKey": null,
         "fixes": [],
         "next": null,
         "os": null,
@@ -218,6 +229,7 @@
     {
       "machine": {
         "detail": "命令：dial\n对象：gpu-01\n断在：拨号没成\n码：password\n原话：raw words",
+        "expectedHostKey": null,
         "fixes": [
           {
             "fix": "push_key",
@@ -240,6 +252,7 @@
     {
       "machine": {
         "detail": null,
+        "expectedHostKey": null,
         "fixes": [
           {
             "fix": "connect",
@@ -262,6 +275,7 @@
     {
       "machine": {
         "detail": null,
+        "expectedHostKey": null,
         "fixes": [
           {
             "fix": "retry",
@@ -284,6 +298,7 @@
     {
       "machine": {
         "detail": null,
+        "expectedHostKey": null,
         "fixes": [
           {
             "fix": "retry",

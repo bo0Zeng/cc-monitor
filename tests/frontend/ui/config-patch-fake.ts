@@ -109,30 +109,6 @@ export function applyConfigEdits(text: string, edits: readonly Edit[]): string {
   return JSON.stringify(obj);
 }
 
-/** 替身盖的「指纹记于哪一天」（壳 `config.rs::stamp_pinned_day` 盖写的那一天；替身用一个定死的日子）。 */
-export const FAKE_PINNED_DAY = "2026-03-04";
-
-/**
- * 同壳的补丁口：写进了指纹（改那一格 · 新增一台带指纹）⇒ 那台的 `hostKeyPinnedAt` 跟着盖上（指纹清空 ⇒ 清空），回话里说盖成了什么。
- * 回 [补上盖日子那几条之后的补丁, 回话]。
- */
-export function withPinnedDays(edits: readonly Edit[]): [Edit[], { pinned: { origin: string; day: string }[] }] {
-  const out: Edit[] = [];
-  const pinned: { origin: string; day: string }[] = [];
-  const hosts = (p: string[]) => p.length === 2 && p[0] === "remote" && p[1] === "hosts";
-  for (const e of edits) {
-    out.push(e);
-    const fp = e.op === "setin" && hosts(e.path) && e.field === "hostKeyFingerprint" ? e.value : e.op === "insertin" && hosts(e.path) ? (e.value as Record<string, unknown>).hostKeyFingerprint : undefined;
-    if (fp === undefined || !("where" in e)) continue;
-    const given = typeof fp === "string" && fp.trim() !== "";
-    if (!given && e.op === "insertin") continue;
-    const day = given ? FAKE_PINNED_DAY : "";
-    out.push({ op: "setin", path: e.path, where: e.where, field: "hostKeyPinnedAt", value: day, ifEmpty: false });
-    pinned.push({ origin: e.where[0]!.equals, day });
-  }
-  return [out, { pinned }];
-}
-
 /**
  * 一块假盘 ＋ 它的两条命令。`patches` 记下每一次 `patch_config` 收到的补丁（判「写者只交自己的键」用）。
  * `saved` 是每次写完之后的整份（给「写完盘上是什么」那一类旧断言用）。
@@ -151,12 +127,11 @@ export function makeFakeConfigDisk(initial: Record<string, unknown> = {}) {
       return JSON.parse(disk.text) as Record<string, unknown>;
     },
     load_config: async (): Promise<Record<string, unknown>> => JSON.parse(disk.text),
-    patch_config: async ({ edits }: { edits: Edit[] }): Promise<{ pinned: { origin: string; day: string }[] }> => {
+    patch_config: async ({ edits }: { edits: Edit[] }): Promise<Record<string, never>> => {
       disk.patches.push(edits);
-      const [all, reply] = withPinnedDays(edits);
-      disk.text = applyConfigEdits(disk.text, all);
+      disk.text = applyConfigEdits(disk.text, edits);
       disk.saved.push(JSON.parse(disk.text) as Record<string, unknown>);
-      return reply;
+      return {};
     },
   };
   return disk;
@@ -185,17 +160,16 @@ export async function mockedConfigModule(
 }
 
 /** 假盘的写口（`patchConfig` 的替身本体；机器表那一条也落在这块盘上）。 */
-async function fakePatch(edits: readonly Edit[]): Promise<{ pinned: { origin: string; day: string }[] }> {
+async function fakePatch(edits: readonly Edit[]): Promise<Record<string, never>> {
   {
     fakeCfg.patches([...edits]);
     const base = ((await fakeCfg.load()) ?? {}) as Record<string, unknown>;
-    const [all, reply] = withPinnedDays(edits);
-    const doc = JSON.parse(applyConfigEdits(JSON.stringify(base), all)) as Record<string, unknown>;
+    const doc = JSON.parse(applyConfigEdits(JSON.stringify(base), edits)) as Record<string, unknown>;
     // 写完之后再读，读到的是写完的那份（真盘就是这样）。从前旧测试靠的是生产代码**原地改了**
     // `loadConfig` 摆出来的那个对象 —— 那是替身的巧合，不是盘的语义。
     fakeCfg.load.mockResolvedValue(JSON.parse(JSON.stringify(doc)));
     fakeCfg.saved(doc);
-    return reply;
+    return {};
   }
 }
 
@@ -215,12 +189,12 @@ function onTable(edits: readonly MachineEditLike[]): Edit[] {
  * `machines-read` 那一答（纯函数）：机器表摆在一份假 `config.json` 的 `remote.hosts` 里。没有 `remote` ⇒ `absent`；
  * 不是数组 ⇒ `unreadable`。自己桩 `chan.call` 的测试照它答 `machines-read`（表照旧摆在它们那块盘上）。
  */
-export function machinesReadOf(cfg: unknown): { state: string; reason: string | null; detail: null; path: null; hosts: unknown[] } {
+export function machinesReadOf(cfg: unknown): { state: string; reason: string | null; detail: null; path: null; hosts: unknown[]; hostKeys: Record<string, string[]> } {
   const remote = (cfg as { remote?: { hosts?: unknown } } | null)?.remote;
-  if (remote === undefined) return { state: "absent", reason: null, detail: null, path: null, hosts: [] };
+  if (remote === undefined) return { state: "absent", reason: null, detail: null, path: null, hosts: [], hostKeys: {} };
   return Array.isArray(remote.hosts)
-    ? { state: "ok", reason: null, detail: null, path: null, hosts: remote.hosts as unknown[] }
-    : { state: "unreadable", reason: "读不懂", detail: null, path: null, hosts: [] };
+    ? { state: "ok", reason: null, detail: null, path: null, hosts: remote.hosts as unknown[], hostKeys: {} }
+    : { state: "unreadable", reason: "读不懂", detail: null, path: null, hosts: [], hostKeys: {} };
 }
 
 export async function fakeMachinesCall(cmd: unknown, req: unknown): Promise<unknown> {
@@ -230,11 +204,11 @@ export async function fakeMachinesCall(cmd: unknown, req: unknown): Promise<unkn
   if (cmd === "machines-try") return { fault: await fakeMachineTableTry(onTable(edits)) };
   if (cmd === "machines-set") {
     const all = onTable(edits);
-    const identity = edits.some((e) => e.op === "insertin" || (e.op === "setin" && ["label", "host", "port", "user"].includes(e.field)));
+    const identity = edits.some((e) => e.op === "insertin" || (e.op === "setin" && ["label", "host", "port", "user", "addresses"].includes(e.field)));
     const fault = identity ? await fakeMachineTableTry(all) : null;
     if (fault) throw new Error(fault.said);
-    const r = await fakePatch(all);
-    return { machines: await read(), pinned: r.pinned, kept: 0 };
+    await fakePatch(all);
+    return { machines: await read() };
   }
   return undefined;
 }

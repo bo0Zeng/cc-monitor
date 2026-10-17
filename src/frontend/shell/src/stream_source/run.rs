@@ -33,7 +33,7 @@ fn said_of(p: &Problem) -> crate::detail::Said {
 
 /// 链路没开成 ⇒ 交给循环的那一份（原因码与那台出示的指纹随它走）。
 fn problem_of(u: crate::dial_host::Unopened) -> Problem {
-    Problem::new(u.said.said, u.said.detail).because(u.why, u.seen_key)
+    Problem::new(u.said.said, u.said.detail).because(u.why, (u.seen_key, u.expected_key))
 }
 
 /// 远端那台的链路：本机常驻后端开的（`dial_host`）。monitor 装得了后端 ⇒ 每一轮先部署预检、版本门问本机常驻后端。

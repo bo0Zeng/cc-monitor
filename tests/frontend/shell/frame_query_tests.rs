@@ -292,7 +292,8 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ("machines-read", "帧命令：这一端的机器表住本机后端（machines.json），壳照它起停远端流、设置页只读它"),
     ("machine-read", "帧命令：远端各台的状态成品住本机后端（`deploy::machine` 判），设置页 · 主窗口接上时整份问一次、之后照 `changed {machine}` 换"),
     ("machines-try", "帧命令：机器表那一道过不过（判准只在本机后端），添加机器框 · 机器卡边打边问"),
-    ("machines-set", "帧命令：改机器表（按键认那一台、指纹记于哪天由写口盖），设置页存 · 拨号固化指纹经它"),
+    ("machines-set", "帧命令：改机器表（按键认那一台），设置页存"),
+    ("host-keys-forget", "帧命令：忘掉一台记下的主机指纹（拨号核心那份库住本机后端），机器卡［忘记…］· 比对框里信那一枚"),
     ("rotation-view", "typed 帧命令：一个会话此刻的轮换（开会话的号 · 在用的号 · 这一判 · 推演，都由后端跑策略）；标签页与状态栏的账号格只排版"),
     ("rotation-strategies", "typed 帧命令：那台的策略目录（标题 ＝ 文件名 · 说明 · 谁在用 · 新会话用哪份），下拉只排版"),
     ("rotation-settings", "typed 帧命令：改一份设置（会话 ⇒ 草稿；照策略的声明校验由后端做）"),
@@ -797,12 +798,6 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
         "machine-read",
         1,
         "诊断信息（`diagnostics_report.rs::remote_machines`）：远端各台此刻的状态与原因码写进那段文本 —— 壳自己写诊断，答案不给界面",
-    ),
-    (
-        "machines-set",
-        1,
-        "拨号固化指纹（`dial_host.rs::pin_host_key`）：握手见到那台头一回报来的指纹 ⇒ 交本机后端写进机器表那一台（`ifEmpty`）—— \
-         壳拨号自己的事，答案只看「写了没有」，不给界面",
     ),
     // `skill-uninstall-plan` 那一行退役：卸那一趟的删与摘记录进了被卸那台后端（`skill-uninstall-apply`），monitor 零处问它。
     // `tasks-list` 那一行退役：本机任务 notify 删了（监视进后端，`changed {tasks}` 帧 ⇒ 通道 `changed/tasks`），
@@ -1435,12 +1430,6 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
         "refresh",
         1,
         "本机通道登记上那一刻 · 本机流每来一帧 `changed {machines}`：问一次本机的机器表（一问，10 秒）",
-    ),
-    (
-        "dial_host.rs",
-        "pin_host_key",
-        1,
-        "拨号成了、要固化指纹：交本机后端一条 `machines-set`（一问，10 秒）",
     ),
     // LOC1a / LOC1b 新长的四个发起点（各自带着自己的值，DL1 只把形状换成 `Deadline`）：
     // acct-iso 两问那两个发起点摘了：界面经通道直问（`src/frontend/ui/acct-iso-reads.ts`），期限在那边造。

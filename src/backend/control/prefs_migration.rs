@@ -273,8 +273,6 @@ pub(crate) fn host_of(v: &Value) -> Option<machines::Host> {
         port: o.get("port").and_then(Value::as_u64).unwrap_or(22),
         user: s("user"),
         key_path: s("keyPath"),
-        host_key_fingerprint: s("hostKeyFingerprint"),
-        host_key_pinned_at: s("hostKeyPinnedAt"),
         addresses,
         jump: s("jump"),
         connect: o.get("connect").and_then(Value::as_bool) != Some(false),

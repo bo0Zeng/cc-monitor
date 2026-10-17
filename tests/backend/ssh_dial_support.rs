@@ -6,7 +6,7 @@ pub(crate) const TEST_DIR_MODE: u32 = 0o700;
 
 /// 装上测试档那一套：同 [`crate::env::Env::bare`]，只是远端写按部署那两处（判据要写 `staging` / `bin`）、
 /// 钥匙那一格先查判据登记的几样（[`register`]：密码 · 外部签名器），不在表里才按路径读文件、
-/// 交宿主记的 host key 记进一本账（[`remembered`]）。一个进程一次。
+/// 主机钥匙库是进程里一份文本（[`remembered`] · [`seed_library`]）。一个进程一次。
 pub(crate) fn test_host() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
@@ -61,31 +61,47 @@ impl crate::env::KeySource for TestKeys {
     }
 }
 
-/// 拨号核心交宿主记的每一把 host key（主机 · 口 · 算法 ＋ base64），按交的先后。
-fn host_key_book() -> &'static std::sync::Mutex<Vec<(String, u16, String)>> {
-    static B: std::sync::OnceLock<std::sync::Mutex<Vec<(String, u16, String)>>> =
-        std::sync::OnceLock::new();
-    B.get_or_init(Default::default)
+/// 测试档那份主机钥匙库（整个进程一份文本；各判据的服务端各占一个口，按口认自己那几行）。
+fn library() -> &'static std::sync::Mutex<String> {
+    static L: std::sync::OnceLock<std::sync::Mutex<String>> = std::sync::OnceLock::new();
+    L.get_or_init(Default::default)
 }
 
-/// 交宿主记过的、口是 `port` 的那几笔（各判据的服务端各占一个口，互不串）。
-pub(crate) fn remembered(port: u16) -> Vec<(String, u16, String)> {
-    host_key_book()
+/// 库里主机名段含 `[127.0.0.1]:port` 的那几行（`主机名段 算法 base64`）。
+pub(crate) fn remembered(port: u16) -> Vec<String> {
+    let me = crate::known_hosts::host_pattern("127.0.0.1", port);
+    library()
         .lock()
         .unwrap_or_else(|e| e.into_inner())
-        .iter()
-        .filter(|(_, p, _)| *p == port)
-        .cloned()
+        .lines()
+        .filter(|l| {
+            l.split_whitespace()
+                .next()
+                .is_some_and(|n| n.split(',').any(|x| x == me))
+        })
+        .map(str::to_string)
         .collect()
+}
+
+/// 判据往库里预先写一行（`[127.0.0.1]:port 算法 base64`，或待核的那一形）。
+pub(crate) fn seed_library(line: &str) {
+    test_host();
+    let mut l = library().lock().unwrap_or_else(|e| e.into_inner());
+    l.push_str(line);
+    l.push('\n');
 }
 
 struct TestHostKeys;
 
 impl crate::env::HostKeys for TestHostKeys {
-    fn remember(&self, host: &str, port: u16, key: &str) {
-        host_key_book()
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push((host.to_string(), port, key.to_string()));
+    fn read(&self) -> Result<String, crate::Said> {
+        Ok(library().lock().unwrap_or_else(|e| e.into_inner()).clone())
+    }
+    fn rewrite(&self, edit: &mut dyn FnMut(&str) -> Option<String>) -> Result<(), crate::Said> {
+        let mut l = library().lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(next) = edit(&l) {
+            *l = next;
+        }
+        Ok(())
     }
 }

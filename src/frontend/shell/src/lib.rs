@@ -630,21 +630,6 @@ pub fn run() {
             // 重放缓冲那几个出口（会话成品 · tap · 测试连接进度 · 终端画面）：与截图台架的无头壳（`shots_shell`）同一份接线。
             wire_replay_outlets(&replay);
 
-            // host key 自动固化 / 各地址不一 ⇒ 经既有的 `remote-health` 告知（机器页据此刷新）。
-            {
-                let handle = app.handle().clone();
-                crate::dial_host::install_host_key_notice(move |n| {
-                    let payload = ui_contract::RemoteHealthPayload {
-                        origin: n.origin,
-                        kind: n.kind.to_string(),
-                        message: n.message,
-                        detail: String::new(),
-                    };
-                    if let Err(e) = handle.emit(ui_contract::events::REMOTE_HEALTH, payload) {
-                        tracing::warn!("emit remote-health(host key) failed: {e}");
-                    }
-                });
-            }
             // 本机那一台的状态成品一变就推一帧（`machine-state`：`{origin, machine}`，与 `backend_status` 那一格同形）；远端各台走本机后端的 `changed {machine}`。
             {
                 let handle = app.handle().clone();
@@ -882,8 +867,7 @@ pub fn run() {
 ///   "hosts": [
 ///     { "label": "pi", "host": "raspberrypi.local", "port": 22, "user": "pi",
 ///       "keyPath": "C:\\Users\\me\\.ssh\\id_ed25519",
-///       "backendPath": "/home/pi/cc-monitor-backend",
-///       "hostKeyFingerprint": "SHA256:..." }
+///       "backendPath": "/home/pi/cc-monitor-backend" }
 ///   ]
 /// }
 /// ```
@@ -1081,7 +1065,6 @@ fn parse_host_obj(
         .and_then(|p| u16::try_from(p).ok())
         .unwrap_or(22);
     let key_path = str_field("keyPath").map(str::to_string);
-    let host_key_fingerprint = str_field("hostKeyFingerprint").map(str::to_string);
     // Batch14-F56：跳板 label（指向另一台已配置主机的 origin_label）。
     let jump = str_field("jump").map(str::to_string);
     // 🔴 `K-R59`（定框 `K35`）：这里原来读 `daemonless`（per-host 降级开关）。
@@ -1112,7 +1095,6 @@ fn parse_host_obj(
         port,
         user,
         key_path,
-        host_key_fingerprint,
         addresses,
         jump,
     })

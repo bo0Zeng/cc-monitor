@@ -276,13 +276,12 @@ fn the_corpus_floor_is_not_far_below_the_real_corpus() {
 /// **两侧各钉一半** —— 与 `build_id_guard` / `protocol_doc_guard` 的分工同形。
 #[test]
 fn the_request_line_is_read_with_snake_case_keys() {
-    let raw = r#"{"host":"h","port":22,"user":"u","key_path":"/k","host_key_fingerprint":"SHA256:x","command":"c"}"#;
+    let raw = r#"{"host":"h","port":22,"user":"u","key_path":"/k","command":"c"}"#;
     let req: DialRequest = serde_json::from_str(raw).expect("蛇形键的请求行读不动");
     assert_eq!(req.host, "h");
     assert_eq!(req.port, 22);
     assert_eq!(req.user, "u");
     assert_eq!(req.key_path.as_deref(), Some("/k"));
-    assert_eq!(req.host_key_fingerprint.as_deref(), Some("SHA256:x"));
     assert_eq!(req.command, "c");
     // 反向：camelCase 读不动 —— 免得哪天有人「顺手」改成 camelCase 而两端悄悄漂开。
     let camel = r#"{"host":"h","port":22,"user":"u","keyPath":"/k","command":"c"}"#;
@@ -304,21 +303,14 @@ async fn the_ack_is_exactly_one_newline_terminated_line() {
             error: None,
             detail: None,
             fingerprint: Some("SHA256:x".into()),
-            fingerprints: [("a:22", "SHA256:x"), ("b:22", "SHA256:y")]
-                .map(|(k, v)| (k.to_string(), v.to_string()))
-                .into(),
-            jump_fingerprints: [("j:22", "SHA256:j")]
-                .map(|(k, v)| (k.to_string(), v.to_string()))
-                .into(),
             endpoint: Some("h:22".into()),
             winner: Some(Endpoint {
                 host: "h".into(),
                 port: 22,
             }),
-            strict: true,
-            jump_strict: false,
             reason: Some(super::Why::Auth),
             key_type: None,
+            expected_fingerprint: None,
             v: ACK_V,
             uses: USES,
         },
@@ -330,22 +322,18 @@ async fn the_ack_is_exactly_one_newline_terminated_line() {
     assert!(s.ends_with('\n'), "ack 没有以换行收尾：{s:?}");
     let v: serde_json::Value = serde_json::from_str(s.trim()).expect("ack 不是合法 JSON");
     assert_eq!(v["ok"], serde_json::Value::Bool(true));
-    // 逐地址指纹那一格（additive）。
-    assert_eq!(
-        v["fingerprints"],
-        serde_json::json!({"a:22": "SHA256:x", "b:22": "SHA256:y"})
-    );
-    // 结构化的胜者与「这一趟是否严格校验」（界面据它记 last-good、判要不要自动固化，不再自己解析地址 / 重推指纹规则）。
+    // 结构化的胜者（界面据它记 last-good，不再自己解析地址）。
     assert_eq!(v["winner"], serde_json::json!({"host": "h", "port": 22}));
-    assert_eq!(
-        (v["strict"].as_bool(), v["jump_strict"].as_bool()),
-        (Some(true), Some(false))
-    );
-    // 跳板那一台自己那一格（additive）。
-    assert_eq!(
-        v["jump_fingerprints"],
-        serde_json::json!({"j:22": "SHA256:j"})
-    );
+    // 固化指纹那几格（逐地址指纹 · 严格与否）删了：信哪把钥匙只在拨号核心那份库里判。
+    for gone in [
+        "fingerprints",
+        "jump_fingerprints",
+        "strict",
+        "jump_strict",
+        "expected_fingerprint",
+    ] {
+        assert!(v.get(gone).is_none(), "{gone} 还在 ack 里：{v}");
+    }
     // 开通道被回拒那一格（从前只给隧道用）删了：ack 里不再有它。
     assert!(v.get("open_refused").is_none());
     // 没拨成的原因码（additive；界面按码说那一句、给修法）。
@@ -374,7 +362,7 @@ fn stage_labels_map_to_the_closed_reason_set() {
 /// 新字段按蛇形键读：`use` / `endpoints` / `jump` / `capture` / `forward` / `stages` / `probe`。
 #[test]
 fn a_v2_request_reads_and_a_v1_request_still_reads() {
-    let v1 = r#"{"host":"h","port":22,"user":"u","key_path":"/k","host_key_fingerprint":null,"command":"c"}"#;
+    let v1 = r#"{"host":"h","port":22,"user":"u","key_path":"/k","command":"c"}"#;
     let r = parse_request(v1).expect("v1 请求读不动了");
     assert_eq!(r.use_, Use::Stream);
     assert_eq!(
@@ -385,10 +373,10 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
         }]
     );
     assert!(!r.stages && !r.probe && r.jump.is_none());
-    let v2 = r#"{"host":"h","port":22,"user":"u","key_path":null,"host_key_fingerprint":null,
+    let v2 = r#"{"host":"h","port":22,"user":"u","key_path":null,
         "use":"capture","capture":{"max_bytes":7,"abort_marker":"M"},
         "endpoints":[{"host":"a","port":1},{"host":"b","port":2}],
-        "jump":{"host":"j","port":2222,"user":"ju","key_path":"/jk","host_key_fingerprint":"SHA256:j","label":"跳"},
+        "jump":{"host":"j","port":2222,"user":"ju","key_path":"/jk","label":"跳"},
         "stages":true,"probe":true}"#;
     let r = parse_request(v2).expect("v2 请求读不动");
     assert_eq!(r.use_, Use::Capture);
@@ -433,9 +421,7 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
         // 只握着连接（手机「连上一台」那一形）。
         ("hold", Use::Hold),
     ] {
-        let raw = format!(
-            r#"{{"host":"h","port":1,"user":"u","key_path":null,"host_key_fingerprint":null,"use":"{word}"}}"#
-        );
+        let raw = format!(r#"{{"host":"h","port":1,"user":"u","key_path":null,"use":"{word}"}}"#);
         assert_eq!(parse_request(&raw).unwrap().use_, want);
         assert!(
             USES.contains(&word),
@@ -455,7 +441,7 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
     );
     // 原始子系统字节流刻意不认（SFTP 住本机后端，界面只拿 `files` 的一问一答与 `transfer-*`，
     // 见 `dial/mod.rs` 头注）：读到它就是请求坏了。
-    let sub = r#"{"host":"h","port":1,"user":"u","key_path":null,"host_key_fingerprint":null,"use":"subsystem"}"#;
+    let sub = r#"{"host":"h","port":1,"user":"u","key_path":null,"use":"subsystem"}"#;
     assert!(
         parse_request(sub).is_err(),
         "代理认了 subsystem —— SFTP 的协议字节会回到界面进程"
@@ -516,11 +502,6 @@ async fn the_ack_and_the_stage_lines_have_the_shape_the_monitor_reads() {
     assert_eq!(
         ack["fingerprint"], "SHA256:x",
         "失败的 ack 也带上看到过的指纹（TOFU 展示要它）"
-    );
-    assert_eq!(
-        ack["fingerprints"],
-        serde_json::json!({}),
-        "失败的 ack 逐地址那一格恒空"
     );
     // 不要阶段 ⇒ 一个字节的阶段都不出
     let mut quiet: Vec<u8> = Vec::new();

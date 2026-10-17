@@ -6968,24 +6968,6 @@
       "zh": "打开设置失败",
       "args": []
     },
-    "machineCard.test.pinned": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已记录",
-      "args": []
-    },
-    "machineCard.test.pinSave": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "记录",
-      "args": []
-    },
-    "machineCard.test.pinUpdate": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "改记此指纹",
-      "args": []
-    },
     "machineCard.uninstall.running": {
       "kind": "body",
       "role": "进度",
@@ -8478,13 +8460,6 @@
       "role": "toast",
       "zh": "已保存",
       "args": []
-    },
-    "remote.save.fingerprintShape": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "已保存 · 有主机指纹不以 SHA256: 开头 · 核对是否粘错",
-      "args": [],
-      "limited": ["SSH 主机指纹"]
     },
     "remote.save.incomplete": {
       "kind": "body",
@@ -16118,26 +16093,6 @@
       "zh": "base_url 含空白字符（空格、制表符或换行） · 去掉它",
       "args": []
     },
-    "rsDialHost.hostKey.pinned": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "已记下 {origin} 的 SSH 主机指纹 · 之后只认它 · {fingerprint}",
-      "args": ["origin", "fingerprint"],
-      "limited": ["SSH", "SSH 主机指纹"]
-    },
-    "rsDialHost.hostKey.differs": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{origin} 各地址的 SSH 主机指纹不一 · 未记下 · {list}\n在设置里该机器上选一个填入",
-      "args": ["origin", "list"],
-      "limited": ["SSH", "SSH 主机指纹"]
-    },
-    "rsDialHost.hostKey.listSep": {
-      "kind": "body",
-      "role": "片段",
-      "zh": " · ",
-      "args": []
-    },
     "beFilesLink.land.unsupported": {
       "kind": "error",
       "role": "报错",
@@ -20765,7 +20720,14 @@
     "rsDataPaths.backend.knownHosts": {
       "kind": "body",
       "role": "说明",
-      "zh": "主机指纹 · 拨号时记下的各台主机指纹 · 开终端时 ssh 按它核对",
+      "zh": "主机指纹 · 各台的主机密钥 · 拨号和开终端按它核对",
+      "args": [],
+      "limited": ["SSH 主机指纹"]
+    },
+    "rsDataPaths.backend.sshConfig": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "终端用的 SSH 配置 · 指向主机指纹文件 · 由后端生成",
       "args": [],
       "limited": ["SSH", "SSH 主机指纹"]
     },
@@ -23453,6 +23415,12 @@
       "zh": "端口 1–65535",
       "args": []
     },
+    "addMachine.err.dash": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "地址与用户不能以 - 开头",
+      "args": []
+    },
     "addMachine.err.taken": {
       "kind": "error",
       "role": "报错",
@@ -23605,12 +23573,6 @@
       "args": [],
       "limited": ["连接"]
     },
-    "machineCard.fp.line": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{fp} · 记于 {date}",
-      "args": ["fp", "date"]
-    },
     "hostKey.compare.title": {
       "kind": "title",
       "role": "标题",
@@ -23642,12 +23604,6 @@
       "role": "片段",
       "zh": "记下的",
       "args": []
-    },
-    "hostKey.compare.pinnedAt": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "记于 {date}",
-      "args": ["date"]
     },
     "hostKey.compare.seen": {
       "kind": "body",
@@ -23693,20 +23649,6 @@
       "role": "说明",
       "zh": "仅 {machine}",
       "args": ["machine"]
-    },
-    "machineCard.test.fpChanged": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "主机指纹与记录的不同：{fingerprint}",
-      "args": ["fingerprint"],
-      "limited": ["SSH 主机指纹"]
-    },
-    "machineCard.test.fpUnpinned": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "主机指纹未记录：{fingerprint}",
-      "args": ["fingerprint"],
-      "limited": ["SSH 主机指纹"]
     },
     "machinePage.meta.version": {
       "kind": "body",
@@ -24131,6 +24073,12 @@
       "kind": "error",
       "role": "报错",
       "zh": "{name} · 端口 1–65535 · 未保存",
+      "args": ["name"]
+    },
+    "rsConfig.machine.dash": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{name} · 地址与用户不能以 - 开头 · 未保存",
       "args": ["name"]
     },
     "rsConfig.machine.nameTaken": {
@@ -28696,6 +28644,46 @@
       "zh": "主机指纹已变更 · {target} · 已拒绝连接",
       "args": ["target"],
       "limited": ["连接", "SSH 主机指纹"]
+    },
+    "mobSsh.hostKey.unmigrated": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "主机指纹迁移不一致 · 旧表 {n} 条、读回 {m} 条 · 下次启动重迁",
+      "args": ["n", "m"],
+      "limited": ["SSH 主机指纹"]
+    },
+    "mobSsh.forgetAll.action": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "忘记全部…",
+      "args": []
+    },
+    "mobSsh.forgetAll.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "忘记全部主机指纹",
+      "args": [],
+      "limited": ["SSH 主机指纹"]
+    },
+    "mobSsh.forgetAll.body": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "删除  旧表与已迁入的主机指纹\n之后  每台下次连接时重新记录 · 不可撤销",
+      "args": [],
+      "limited": ["SSH 主机指纹", "连接"]
+    },
+    "mobSsh.forgetAll.ok": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "忘记",
+      "args": []
+    },
+    "mobSsh.forgetAll.done": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已忘记全部主机指纹 · 下次连接时重新记录",
+      "args": [],
+      "limited": ["SSH 主机指纹", "连接"]
     },
     "mobDefaultButtons.label.command": {
       "kind": "action",

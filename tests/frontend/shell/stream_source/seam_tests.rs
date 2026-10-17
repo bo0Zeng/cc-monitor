@@ -93,14 +93,15 @@ async fn an_overflow_on_the_local_stream_is_said() {
     );
 }
 
-/// 链路没开成交给循环的那一份：后端给的原因码与那台出示的指纹随那一句走（断开时机器状态按它定那一态与修法）；
-/// 读应答这一跳坏了 ⇒ 两格空。
+/// 链路没开成交给循环的那一份：后端给的原因码 · 那台出示的指纹与库里记下的那一枚随那一句走（断开时机器状态按它定那一态与修法）；
+/// 读应答这一跳坏了 ⇒ 三格空。
 #[test]
 fn a_refused_link_hands_its_reason_and_seen_key_to_the_loop() {
     let refused = crate::dial_host::Unopened {
         said: crate::dial_host::refused_said("指纹变了".into(), Some("命令：dial")),
         why: Some(cmd_wire::machine::Why::HostKey),
         seen_key: Some("SHA256:seen".into()),
+        expected_key: Some("SHA256:kept".into()),
     };
     let p = super::problem_of(refused);
     assert_eq!(
@@ -108,9 +109,20 @@ fn a_refused_link_hands_its_reason_and_seen_key_to_the_loop() {
         ("指纹变了", "命令：dial")
     );
     assert_eq!(
-        (p.why, p.seen_key.as_deref()),
-        (Some(cmd_wire::machine::Why::HostKey), Some("SHA256:seen"))
+        (
+            p.why,
+            p.seen_key.as_deref(),
+            p.expected_key.as_deref()
+        ),
+        (
+            Some(cmd_wire::machine::Why::HostKey),
+            Some("SHA256:seen"),
+            Some("SHA256:kept")
+        )
     );
     let broken = super::problem_of(crate::detail::Said::written("读不动".to_string()).into());
-    assert_eq!((broken.why, broken.seen_key), (None, None));
+    assert_eq!(
+        (broken.why, broken.seen_key, broken.expected_key),
+        (None, None, None)
+    );
 }

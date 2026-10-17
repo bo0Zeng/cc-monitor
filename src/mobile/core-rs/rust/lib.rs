@@ -1,7 +1,7 @@
 //! **手机嵌的 Rust 核心**（`libmobcore.so`）：只有 FFI 外壳。拨号 · 鉴权 · 复用 · 用法是后端同一份拨号核心（`ssh-dial`）。
 //!
 //! 边界是**手写 JNI、窄口、走消息**：一条链路就是拨号核心那一条（上行字节 → 下行阶段行 ＋ ack ＋ 字节），
-//! Kotlin 只开 · 送 · 改窗口 · 关；分块传（`transfer.rs`）交的是文件描述符；回调四个：下行字节 · Keystore 签名 · 认下的 host key · 常驻流交的事（`Core.Sink`）。
+//! Kotlin 只开 · 送 · 改窗口 · 关；分块传（`transfer.rs`）交的是文件描述符；回调三个：下行字节 · Keystore 签名 · 常驻流交的事（`Core.Sink`）。
 //! 常驻流（重连 · 握手 · 版本门 · 在看名单 · 一问一答）整条在 `resident-client`（桌面同一份），宿主住 [`resident`]。
 //! 不用 UniFFI / JNA（运行时多一份 JNA、两 ABI 多 2.2 MB，量过）。
 //!
@@ -14,7 +14,7 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
-use jni::objects::{GlobalRef, JByteArray, JClass, JObject, JString, JValue};
+use jni::objects::{GlobalRef, JByteArray, JClass, JObject, JObjectArray, JString, JValue};
 use jni::sys::{jboolean, jint, jlong, jstring, JNI_FALSE, JNI_TRUE};
 use jni::{JNIEnv, JavaVM};
 use ssh_dial::env::{Credential, Env, ExternalSigner, Facts, HostKeys, KeySource};
@@ -24,6 +24,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 
 mod copy;
+mod host_keys;
 pub mod install;
 pub mod resident;
 pub mod transfer;
@@ -232,28 +233,20 @@ impl ExternalSigner for KeystoreSigner {
     }
 }
 
-/// 鉴权过了的那一把 host key 交回 Kotlin（那边等 ack 成功才落 Room）。
-struct PhoneHostKeys;
+/// 主机钥匙那份库（[`host_keys`]）：装核心时 Kotlin 交的那个路径，一个进程一份。
+static BOOK: OnceLock<host_keys::PhoneHostKeys> = OnceLock::new();
 
-impl HostKeys for PhoneHostKeys {
-    fn remember(&self, host: &str, port: u16, key: &str) {
-        if let Some(s) = sink() {
-            s.call(|env, obj| {
-                let h = env.new_string(host)?;
-                let k = env.new_string(key)?;
-                env.call_method(
-                    obj,
-                    "hostKey",
-                    "(Ljava/lang/String;ILjava/lang/String;)V",
-                    &[
-                        JValue::Object(&h),
-                        JValue::Int(i32::from(port)),
-                        JValue::Object(&k),
-                    ],
-                )?;
-                Ok(())
-            });
-        }
+/// 拨号核心认的那一口：转给 [`BOOK`]（还没装 ⇒ 一把都没有、记了也不留）。
+struct Book;
+
+impl HostKeys for Book {
+    fn read(&self) -> Result<String, Said> {
+        BOOK.get()
+            .map_or(Ok(String::new()), host_keys::PhoneHostKeys::read)
+    }
+
+    fn rewrite(&self, edit: &mut dyn FnMut(&str) -> Option<String>) -> Result<(), Said> {
+        BOOK.get().map_or(Ok(()), |b| b.rewrite(edit))
     }
 }
 
@@ -273,14 +266,15 @@ impl Facts for PhoneFacts {
 /// 部署建目录收成的权限位：与后端交的 `own_dir::PRIVATE_DIR_MODE` 同值（本 crate 够不着后端，后端那边有一条判据钉相等）。
 const DEPLOY_DIR_MODE: u32 = 0o700;
 
-/// 装上手机那一套（一个进程一次）：钥匙在本表 · host key 回调进 Kotlin · 没有 agent ·
+/// 装上手机那一套（一个进程一次）：钥匙在本表 · 主机钥匙那份库在 `known_hosts`（App 私有目录）· 没有 agent ·
 /// 远端写只许部署那两处（文件屏走那台后端的 `files-*`，不经手机的 SFTP 写）。
-fn install_env() {
+fn install_env(known_hosts: std::path::PathBuf) {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
+        let _ = BOOK.set(host_keys::PhoneHostKeys::new(known_hosts));
         let _ = ssh_dial::env::install(Env {
             keys: Box::new(PhoneKeys),
-            host_keys: Box::new(PhoneHostKeys),
+            host_keys: Box::new(Book),
             agent: None,
             facts: Box::new(PhoneFacts),
             files: WriteRules::Deploy {
@@ -510,12 +504,13 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_version<'l>(
     new_jstring(&env, guarded("{}".to_string(), version_json))
 }
 
-/// `Core.init(sink)`：记下 Kotlin 那一侧、装上手机那一套。只认第一次。
+/// `Core.init(sink, knownHosts)`：记下 Kotlin 那一侧、装上手机那一套（主机钥匙那份库在 `knownHosts`）。只认第一次。
 #[no_mangle]
 pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_init<'l>(
-    env: JNIEnv<'l>,
+    mut env: JNIEnv<'l>,
     _class: JClass<'l>,
     sink_obj: JObject<'l>,
+    known_hosts: JString<'l>,
 ) {
     guarded((), || {
         if SINK.get().is_none() {
@@ -523,8 +518,55 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_init<'l>(
                 let _ = SINK.set(Sink { vm, obj });
             }
         }
-        install_env();
+        if let Some(p) = string(&mut env, &known_hosts) {
+            install_env(p.into());
+        }
     });
+}
+
+/// `Core.migrateHostKeys(rows)`：Room 旧表（平铺：主机 · 口 · 类型 · base64 四个一行）迁进库、读回比；对上 ⇒ `null`（Kotlin 清空旧表），
+/// 对不上 ⇒ 那一句（之后拨号一律拒，下次启动再迁）。只活这一版。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_migrateHostKeys<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    rows: JObjectArray<'l>,
+) -> jstring {
+    guarded(std::ptr::null_mut(), || {
+        let rows = host_keys::OldRow::flat(&copy::strings(&mut env, &rows));
+        match BOOK.get().and_then(|b| b.migrate(&rows)) {
+            Some(said) => new_jstring(&env, said),
+            None => std::ptr::null_mut(),
+        }
+    })
+}
+
+/// `Core.forgetAllHostKeys()`：迁移对不上那一句的出路（点了、确认过才调）：清空库、开闸；`true` ⇒ Kotlin 删旧表。没对不上 · 写不成 ⇒ `false`。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_forgetAllHostKeys<'l>(_env: JNIEnv<'l>, _class: JClass<'l>) -> jboolean {
+    guarded(JNI_FALSE, || match BOOK.get().map(|b| b.forget_all()) {
+        Some(true) => JNI_TRUE,
+        _ => JNI_FALSE,
+    })
+}
+
+/// `Core.forgetHost(host, port)`：忘掉这台的主机钥匙（「钥匙变了」页上点了才调）。写不成 ⇒ `false`。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_forgetHost<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    host: JString<'l>,
+    port: jint,
+) -> jboolean {
+    guarded(JNI_FALSE, || {
+        let (Some(h), Ok(p)) = (string(&mut env, &host), u16::try_from(port)) else {
+            return JNI_FALSE;
+        };
+        match BOOK.get().map(|b| b.forget(&h, p)) {
+            Some(Ok(())) => JNI_TRUE,
+            _ => JNI_FALSE,
+        }
+    })
 }
 
 /// `Core.putPassword(password)`：握一份，回编号；读不动 ⇒ `null`。
@@ -1062,7 +1104,7 @@ mod tests {
     /// 手机自己经 SFTP 只剩部署要写的那两处。
     #[test]
     fn the_phone_installs_the_deploy_write_rule() {
-        super::install_env();
+        super::install_env(std::env::temp_dir().join(format!("mobcore-env-{}", std::process::id())).join("known_hosts"));
         assert!(ssh_dial::env::installed());
         assert_eq!(
             ssh_dial::env::get().files,

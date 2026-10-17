@@ -3,7 +3,7 @@
 /**
  * 一台机器的配置（配置文件里那台原样的一条；界面 `remote-config.ts` 那一格，camelCase）里拨号读的那几格。
  *
- * **这一格不拒多出来的键**：它是配置文件里的一条，界面那份多带 `resumeCommand` · `connect` · `hostKeyPinnedAt`，壳那份不带，
+ * **这一格不拒多出来的键**：它是配置文件里的一条，界面那份多带 `resumeCommand` · `connect`，壳那份不带，
  * 拨号只读下面这几格。外面那一层入参照拒多出来的键。空白当没给；缺 `host` / `user` ⇒ `bad_args`。
  */
 export type MachineConfig = { 
@@ -27,10 +27,6 @@ port?: number,
  * 私钥路径（缺 / 空 ⇒ 走 ssh-agent）。
  */
 keyPath?: string, 
-/**
- * 记下的主机指纹（`SHA256:…`）。
- */
-hostKeyFingerprint?: string, 
 /**
  * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
  */

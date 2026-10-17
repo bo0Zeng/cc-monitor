@@ -24,14 +24,12 @@
 //! # 买不到的
 //!
 //! - 判定与放字节之间有窗（TOCTOU）：计划出来之后那台上的文件被人换了，照计划放。
-//! - 第一次连一台没钉过指纹的机器：这一趟在本机后端里拨，ack 交 monitor 去钉（`dial_host::settle_host_key`）。
 
 use crate::platform::fs::Ro;
 
 use copy_core::copy_text;
 use deploy_contract::{DeployAction, Key, Refusal, RemoteIdentity, Route};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 /// 判定与计划的本体住 `deploy` crate（桌面与手机同一份）；本文件只是帧面那一层（入参 · 回包形状 · 码）。
 pub use deploy::{
@@ -112,7 +110,7 @@ pub(crate) struct DeployInstallReq {
     pub(crate) machine: String,
 }
 
-/// `deploy-install` 的应答：这一趟做了什么 · 那一句 · 落点上现在是哪一版 · 那台是什么 OS · 问 `uname` 那一趟拨号的 ack。
+/// `deploy-install` 的应答：这一趟做了什么 · 那一句 · 落点上现在是哪一版 · 那台是什么 OS。
 #[derive(Debug, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -126,9 +124,6 @@ pub(crate) struct Installed {
     pub(crate) build: String,
     /// 那台的 OS（表 A 的词）。
     pub(crate) os: &'static str,
-    /// 问 `uname` 那一趟拨号的 ack 原样（逐地址指纹 · 严格与否，拨号核心 `DialAck` 那一形）：monitor 按它固化指纹。
-    #[cfg_attr(test, ts(type = "unknown"))]
-    pub(crate) ack: Value,
 }
 
 /// 装完的那份计划 → 应答。
@@ -143,7 +138,6 @@ pub(crate) fn installed_of(p: &Plan) -> Installed {
         said: p.said(),
         build,
         os: p.key.os.label(),
-        ack: p.ack.clone(),
     }
 }
 

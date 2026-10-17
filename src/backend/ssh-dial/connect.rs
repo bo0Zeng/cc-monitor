@@ -6,7 +6,6 @@
 //! 跳板可以多跳（`JumpHop::jump` 一层套一层，同 `ssh -J a,b`）：从最外一台起逐台经上一台的 direct-tcpip 开到下一台。
 
 use copy_core::copy_text;
-use std::collections::BTreeMap;
 use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -50,10 +49,6 @@ const PROBE_INACTIVITY: Duration = Duration::from_millis(30_000);
 pub struct Linked {
     pub session: client::Handle<Checker>,
     pub fingerprint: Option<String>,
-    /// 建这条连接那一趟里**报过指纹的每条地址** → 它报的指纹（竞速的输家也在；跳板那台不在）。
-    pub fingerprints: BTreeMap<String, String>,
-    /// 经跳板时跳板那一趟报过的「地址 → 指纹」（另一格；直连 ⇒ 空）。
-    pub jump_fingerprints: BTreeMap<String, String>,
     pub endpoint: String,
     /// 同一条胜者，结构化（ack 的 `winner`）。
     pub winner: Endpoint,
@@ -149,25 +144,34 @@ impl<S: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for Hearing<S> {
     }
 }
 
-/// 一台的信任锚：期望指纹（桌面：机器表里固化的那一格）· 记过的钥匙（手机：Room 里那几把，OpenSSH 的做法）。
+/// 一台的信任锚：库里这台记过的钥匙（[`crate::known_hosts`]）。
 #[derive(Clone, Default)]
 pub struct Trust {
-    pub expected: Option<String>,
     /// 这台记过的 host key（可多种类型）。非空 ⇒ 协商时这几种类型排前，握手时按协商出的类型严格比；
     /// 那一种没记过（而别的记过）⇒ 拒，同「钥匙变了」。
     pub known: Vec<PublicKey>,
+    /// 待核的指纹（桌面机器表那一格换形来的，只活这一版）：没记过钥匙时按它严格比。
+    pub pending: Option<String>,
 }
 
 impl Trust {
-    /// 期望指纹 ＋ 记过的钥匙那几行（`算法 base64`，认不出的行丢掉）。
-    pub fn of(expected: Option<String>, known: &[String]) -> Trust {
-        Trust {
-            expected,
-            known: known
-                .iter()
-                .filter_map(|l| PublicKey::from_openssh(l.trim()).ok())
-                .collect(),
-        }
+    /// 现读库里这台（`addrs` = 它的全部地址）。库读不出来 ⇒ 那一句（这一趟拒，不当首见）。
+    pub fn of(addrs: &[Endpoint]) -> Result<Trust, Said> {
+        let text = env::get().host_keys.read()?;
+        Ok(Trust {
+            known: crate::known_hosts::known(&text, addrs),
+            pending: crate::known_hosts::pending(&text, addrs),
+        })
+    }
+
+    /// 拒了这一把时「钥匙变了」那一句要说的期望指纹：库里同类型那一把（没有 ⇒ 待核的那一个，再没有 ⇒ 空串）。
+    fn expected_for(&self, offered: &PublicKey) -> String {
+        self.known
+            .iter()
+            .find(|k| k.algorithm() == offered.algorithm())
+            .map(crate::known_hosts::fingerprint)
+            .or_else(|| self.pending.clone())
+            .unwrap_or_default()
     }
 
     /// 协商 host key 算法的偏好序：记过的那几种类型排前（按缺省序里的先后），其余照缺省序。没记过 ⇒ 缺省序。
@@ -224,21 +228,28 @@ fn fingerprint_in(seen: &Seen) -> Option<String> {
     seen.lock().ok()?.as_ref().map(|o| o.fingerprint.clone())
 }
 
-/// 鉴权过了：这台握手时给的那一把交宿主记（首见只在这里落 ⇒ 鉴权不过的对端写不进信任库）。
-fn remember(host: &str, port: u16, seen: &Seen) {
-    let line = seen.lock().ok().and_then(|g| g.as_ref()?.line.clone());
-    if let Some(line) = line {
-        env::get().host_keys.remember(host, port, &line);
+/// 鉴权过了：这台握手时给的那一把记进库（首见才追加；鉴权不过的对端写不进信任库）。写不了只记日志，不拦这条连接。
+fn remember(addrs: &[Endpoint], seen: &Seen) {
+    let Some(line) = seen.lock().ok().and_then(|g| g.as_ref()?.line.clone()) else {
+        return;
+    };
+    if let Err(e) = env::get()
+        .host_keys
+        .rewrite(&mut |text| crate::known_hosts::remembered(text, addrs, &line))
+    {
+        tracing::warn!(
+            "known_hosts：{} 没记下：{}",
+            crate::known_hosts::names(addrs),
+            e.logged()
+        );
     }
 }
 
-/// host key 校验：给了期望值就严格比（比之前 `trim`），没给就 TOFU 接受并显眼 `warn`。
-/// **无论接受与否**都把实得那一把写回共享格 —— 界面要拿指纹做 TOFU 固化与展示，鉴权过了按它记（[`remember`]）。
+/// host key 校验：库里记过就严格比，没记过（首见）接受并 `warn`。
+/// **无论接受与否**都把实得那一把写回共享格：报给界面展示，鉴权过了按它记（[`remember`]）。
 pub struct Checker {
     trust: Trust,
     observed: Seen,
-    /// 这一趟共用的「地址 → 指纹」格：校验那一刻就记（接受 / 拒绝都记），之后任务被 abort 也不丢。
-    reported: Arc<Mutex<BTreeMap<String, String>>>,
     stages: StageSink,
     endpoint: String,
     /// 这条连接的收包记账；连接没了在这里记一笔（[`crate::pool::Heard::mark_gone`]）。
@@ -277,9 +288,6 @@ impl client::Handler for Checker {
                 line,
             });
         }
-        if let Ok(mut all) = self.reported.lock() {
-            all.insert(self.endpoint.clone(), actual.clone());
-        }
         // 到 host key 校验 = 该地址 TCP ＋ KEX 已过。
         self.stages.step(crate::step::HOSTKEY);
         self.stages.emit(Stage::HostKey {
@@ -289,43 +297,25 @@ impl client::Handler for Checker {
         // 协商出的这一把是什么类型（报错时带上：「钥匙变了」那一句要说是哪一种）。
         self.stages
             .note_key_type(server_public_key.algorithm().as_str());
-        if !self.trust.known.is_empty() {
-            return match self.trust.judge_known(server_public_key) {
-                Ok(()) => {
-                    tracing::info!("dial: host key 与记过的那一把相同：{actual}");
-                    Ok(true)
-                }
-                Err(()) => {
-                    tracing::error!(
-                        "dial: host key 对不上记过的（实得 {actual}，alg={}）—— 拒绝这条连接",
-                        server_public_key.algorithm()
-                    );
-                    Ok(false)
-                }
-            };
+        let pass = if !self.trust.known.is_empty() {
+            self.trust.judge_known(server_public_key).is_ok()
+        } else if let Some(fp) = &self.trust.pending {
+            actual == fp.trim()
+        } else {
+            tracing::warn!("dial: 首见的 host key {actual}：鉴权过了记进库");
+            return Ok(true);
+        };
+        if pass {
+            tracing::info!("dial: host key 与记过的那一把相同：{actual}");
+        } else {
+            tracing::error!(
+                "dial: host key 对不上记过的（实得 {actual}，alg={}）—— 拒绝这条连接",
+                server_public_key.algorithm()
+            );
+            self.stages
+                .note_expected(&self.trust.expected_for(server_public_key));
         }
-        match &self.trust.expected {
-            Some(expected) => {
-                if actual == expected.trim() {
-                    tracing::info!("dial: host key 指纹校验通过：{actual}");
-                    Ok(true)
-                } else {
-                    // 失配时附上实际 key 的算法：分得开「合法换 key 类型」与「同类型 key 被换」。
-                    let alg = server_public_key.algorithm();
-                    tracing::error!(
-                        "dial: host key 失配：期望 {expected}，实得 {actual}（alg={alg}）—— 拒绝这条连接。\
-                         若服务器确系合法轮换过 host key，请在设置里「重置为 TOFU」后重连；否则可能是中间人攻击。"
-                    );
-                    Ok(false)
-                }
-            }
-            None => {
-                tracing::warn!(
-                    "dial: **未经校验**接受 host key {actual}（TOFU）—— 界面侧应当把它固化回配置，之后转严格校验。"
-                );
-                Ok(true)
-            }
-        }
+        Ok(pass)
     }
 }
 
@@ -483,14 +473,13 @@ async fn tcp_hop(
 /// TCP 由这里自己拨（不再交给 `client::connect`）：拨通之后问内核这一跳的往返时间、过压缩判准
 /// （[`compression_for`]），再在这条 socket 上跑 SSH 握手。`apply = false` ⇒ 判准照问、答案**不用在这一条上**
 /// 而是回给调用方（跳板那一形：跳板自己只运隧道、里面是已加密的字节，压不动；该压的是隧道里的目标那条）。
-/// 回 `(句柄, 指纹格, 胜者, 跨这一跳的字节该不该压)`；`reported` 由调用方给，每个地址的校验器都记进它。
+/// 回 `(句柄, 指纹格, 胜者, 跨这一跳的字节该不该压)`。
 async fn race(
     probe: bool,
     apply: bool,
     trust: Trust,
     order: Vec<Endpoint>,
     stages: &StageSink,
-    reported: &Arc<Mutex<BTreeMap<String, String>>>,
 ) -> Result<
     (
         client::Handle<Checker>,
@@ -513,7 +502,6 @@ async fn race(
             let observed: Seen = Arc::default();
             let trust = trust.clone();
             let seen = Arc::clone(&seen_for_race);
-            let reported = Arc::clone(reported);
             set.spawn(async move {
                 let ep_label = label(&ep);
                 stages.emit(Stage::Dialing {
@@ -524,7 +512,6 @@ async fn race(
                 let checker = Checker {
                     trust: trust.clone(),
                     observed: Arc::clone(&observed),
-                    reported,
                     stages: stages.clone(),
                     endpoint: ep_label.clone(),
                     heard: Arc::clone(&heard),
@@ -946,7 +933,6 @@ fn hop_dial_failed(hop: &str) -> String {
 async fn through_hops(
     req: &DialRequest,
     stages: &StageSink,
-    jump_reported: &Arc<Mutex<BTreeMap<String, String>>>,
 ) -> Result<
     (
         russh::ChannelStream<client::Msg>,
@@ -963,21 +949,17 @@ async fn through_hops(
         stages.emit(Stage::Dialing {
             endpoint: copy_text("beConnect.jump.label", &[("hop", &name)]),
         });
+        let hop_addrs = [Endpoint {
+            host: hop.host.clone(),
+            port: hop.port,
+        }];
+        let hop_trust = Trust::of(&hop_addrs).map_err(|e| unreadable(stages, e))?;
         let (mut session, seen) = match held.last() {
             None => {
-                let (s, o, _w, c, _h) = race(
-                    req.probe,
-                    false,
-                    Trust::of(hop.host_key_fingerprint.clone(), &hop.known_keys),
-                    vec![Endpoint {
-                        host: hop.host.clone(),
-                        port: hop.port,
-                    }],
-                    stages,
-                    jump_reported,
-                )
-                .await
-                .map_err(|(e, fp)| jump_failed(stages, hop_dial_failed(&name), e, fp))?;
+                let (s, o, _w, c, _h) =
+                    race(req.probe, false, hop_trust, hop_addrs.to_vec(), stages)
+                        .await
+                        .map_err(|(e, fp)| jump_failed(stages, hop_dial_failed(&name), e, fp))?;
                 compress = c;
                 (s, o)
             }
@@ -986,11 +968,9 @@ async fn through_hops(
                     .await
                     .map_err(|e| jump_failed(stages, hop_dial_failed(&name), e, None))?;
                 let observed: Seen = Arc::default();
-                let hop_trust = Trust::of(hop.host_key_fingerprint.clone(), &hop.known_keys);
                 let checker = Checker {
                     trust: hop_trust.clone(),
                     observed: Arc::clone(&observed),
-                    reported: Arc::clone(jump_reported),
                     stages: stages.clone(),
                     endpoint: copy_text("beConnect.jump.label", &[("hop", &name)]),
                     // 跳板那几台：断了 ⇒ 隧道跟着断 ⇒ 目标那条自己报断开；这一份没人等。
@@ -1030,7 +1010,7 @@ async fn through_hops(
                 None,
             )
         })?;
-        remember(&hop.host, hop.port, &seen);
+        remember(&hop_addrs, &seen);
         stages.step(crate::step::AUTH);
         held.push(session);
     }
@@ -1075,29 +1055,26 @@ async fn open_tunnel(
     opened
 }
 
+/// 库读不出来：这一趟按「钥匙」拒（不当首见）。
+fn unreadable(stages: &StageSink, e: Said) -> (Said, Option<String>) {
+    stages.note_why(Why::HostKey);
+    (e, None)
+}
+
 /// 连 ＋ 鉴权。`jump` 在就先连跳板链（[`through_hops`]）、经最后一台开 direct-tcpip 到目标主地址、在隧道上跑目标的握手
 /// （fail-closed：跳板任一步失败就报错，**绝不**回落直连目标）。
 pub async fn establish(
     req: &DialRequest,
     stages: &StageSink,
 ) -> Result<Linked, (Said, Option<String>)> {
-    // 目标那一趟（直连竞速 / 经跳板那一次握手）报过的逐地址指纹；跳板自己那一趟另开一格、不进来。
-    let reported: Arc<Mutex<BTreeMap<String, String>>> = Arc::default();
-    // 〔第二问〕跳板那一趟自己的一格：跳板是另一台机器，界面按它自己那一台固化（不再一直 TOFU）。
-    let jump_reported: Arc<Mutex<BTreeMap<String, String>>> = Arc::default();
+    // 目标那一台的全部地址：库里按它们认这台、记也写它们（经跳板时也一样，同一台机器）。
+    let addrs = req.race_order();
+    let target_trust = Trust::of(&addrs).map_err(|e| unreadable(stages, e))?;
     let (mut session, observed, winner, jumps, heard) = if req.jump.is_none() {
-        let (s, o, w, _, h) = race(
-            req.probe,
-            true,
-            Trust::of(req.host_key_fingerprint.clone(), &req.known_keys),
-            req.race_order(),
-            stages,
-            &reported,
-        )
-        .await?;
+        let (s, o, w, _, h) = race(req.probe, true, target_trust, addrs.clone(), stages).await?;
         (s, o, w, Vec::new(), h)
     } else {
-        let (tunnel, compress_inner, jumps) = through_hops(req, stages, &jump_reported).await?;
+        let (tunnel, compress_inner, jumps) = through_hops(req, stages).await?;
         let observed: Seen = Arc::default();
         let ep_label = copy_text(
             "beConnect.jump.target",
@@ -1105,11 +1082,9 @@ pub async fn establish(
         );
         // 目标那条的字节经隧道到：收包时刻记在隧道这一层（跳板那条 TCP 上的字节不全是它的）。
         let heard = Arc::new(crate::pool::Heard::new());
-        let target_trust = Trust::of(req.host_key_fingerprint.clone(), &req.known_keys);
         let checker = Checker {
             trust: target_trust.clone(),
             observed: Arc::clone(&observed),
-            reported: Arc::clone(&reported),
             stages: stages.clone(),
             endpoint: ep_label,
             heard: Arc::clone(&heard),
@@ -1150,20 +1125,16 @@ pub async fn establish(
         });
         return Err((e, fingerprint));
     }
-    remember(&winner.host, winner.port, &observed);
+    remember(&addrs, &observed);
     stages.step(crate::step::AUTH);
     stages.emit(Stage::Auth {
         ok: true,
         detail: None,
     });
     stages.emit(Stage::Established);
-    let fingerprints = reported.lock().map(|g| g.clone()).unwrap_or_default();
-    let jump_fingerprints = jump_reported.lock().map(|g| g.clone()).unwrap_or_default();
     Ok(Linked {
         session,
         fingerprint,
-        fingerprints,
-        jump_fingerprints,
         endpoint: label(&winner),
         winner,
         _jumps: jumps,

@@ -28,6 +28,7 @@ fn down_(why: Option<Why>) -> Fact {
             detail: "命令：dial\n原话：raw words".into(),
             why,
             seen_key: Some("SHA256:new".into()),
+            expected_key: Some("SHA256:old".into()),
         },
         blocker: None,
     })
@@ -45,6 +46,7 @@ fn blocked(b: Blocker) -> Fact {
             detail: String::new(),
             why: None,
             seen_key: None,
+            expected_key: None,
         },
         blocker: Some(b),
     })
@@ -505,16 +507,21 @@ fn the_os_from_the_deploy_stays_across_rounds() {
     assert_eq!(p.os.as_deref(), Some("Linux"));
 }
 
-/// 指纹只在「指纹变了」那一态带；下一轮换成别的原因就不挂着。
+/// 两枚指纹（那台出示的 · 库里记下的）只在「指纹变了」那一态带；下一轮换成别的原因就不挂着。
 #[test]
-fn the_seen_key_rides_only_the_host_key_state() {
+fn the_two_keys_ride_only_the_host_key_state() {
     let p = of(vec![down_(Some(Why::HostKey))], true);
     assert_eq!(p.seen_host_key.as_deref(), Some("SHA256:new"));
+    assert_eq!(
+        p.expected_host_key.as_deref(),
+        Some("SHA256:old"),
+        "库里记下的那枚照拨号核心说的带进状态"
+    );
     let p = of(
         vec![down_(Some(Why::HostKey)), down_(Some(Why::Timeout))],
         true,
     );
-    assert_eq!(p.seen_host_key, None);
+    assert_eq!((p.seen_host_key, p.expected_host_key), (None, None));
 }
 
 /// 没连上那一轮带复制详情：那一句进「断在」、连的是哪台进「对象」、码是这一轮的原因码，原话照那一句带的那份；

@@ -137,10 +137,6 @@ pub(crate) struct ProbeReq {
     pub(crate) ticket: String,
     /// 那台的配置。
     pub(crate) machine: super::pick::MachineConfig,
-    /// 已保存的那一份（可缺）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) saved: Option<super::pick::MachineConfig>,
     /// 跳板那一台的配置（可缺）。
     #[serde(default)]
     #[cfg_attr(test, ts(optional = nullable))]
@@ -198,7 +194,6 @@ where
     };
     let pick = super::pick::Pick {
         machine: &req.machine,
-        saved: req.saved.as_ref(),
         jump: req.jump.as_ref(),
         prefer: None,
     };
@@ -215,7 +210,7 @@ where
     F: FnOnce(crate::dial::DialRequest, tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
     Fut: std::future::Future<Output = ()> + Send + 'static,
 {
-    let (machine, _, _) = pick.machines()?;
+    let (machine, _) = pick.machines()?;
     let command = format!(
         "{} -- {}",
         relay_route_core::BACKEND_LANDING_SHELL,
@@ -262,8 +257,7 @@ where
         }
     };
     if ack.get("ok").and_then(Value::as_bool) != Some(true) {
-        // 握手失败（含 host key 不匹配被拒）：看到过的指纹**刻意不回**（失败时给一个指纹，界面那条「固化指纹」的路
-        // 就可能把一把失配的 key 固化进去）。
+        // 握手失败（含 host key 不匹配被拒）：看到过的指纹不回（信哪一把只在拨号核心那份库里判，比对走机器状态那一格）。
         // 那一句（原因词，拨号那一侧写好的）进句子；那一侧的复制详情原样带上（原话在那里）。
         let why = ack
             .get("error")

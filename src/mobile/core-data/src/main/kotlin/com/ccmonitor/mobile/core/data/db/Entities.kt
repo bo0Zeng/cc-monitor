@@ -74,7 +74,7 @@ data class Identity(
  */
 fun Identity.isKeystoreBacked(): Boolean = keystoreAlias != null
 
-/** TOFU 已知主机公钥（首次连接记录，后续校验）。 */
+/** 旧表的一行（主机钥匙原先住这里；迁进核心那份库之后清空，下一版删表）。 */
 @Entity(tableName = "known_hosts", primaryKeys = ["host", "port", "keyType"])
 data class KnownHost(
     val host: String,

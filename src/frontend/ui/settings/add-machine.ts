@@ -32,8 +32,6 @@ const blank = (): RemoteHostConfig => ({
   port: 22,
   user: "",
   keyPath: "",
-  hostKeyFingerprint: "",
-  hostKeyPinnedAt: "",
   addresses: [],
   jump: "",
   connect: true,

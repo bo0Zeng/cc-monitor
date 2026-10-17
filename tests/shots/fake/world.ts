@@ -313,14 +313,12 @@ export function defaultDisk(machines: string[]): Record<string, MachineDisk> {
 export function defaultConfig(): Record<string, unknown> {
   return {
     remote: {
-      hosts: REMOTES.map((label, i) => ({
+      hosts: REMOTES.map((label) => ({
         label,
         host: hostOf(label),
         port: 22,
         user: "user",
         keyPath: "~/.ssh/id_ed25519",
-        hostKeyFingerprint: `SHA256:Aa3x${"Q".repeat(16)}Q${i}`,
-        hostKeyPinnedAt: "2026-09-30",
         addresses: [],
         jump: "",
         connect: true,

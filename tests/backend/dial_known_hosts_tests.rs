@@ -1,29 +1,15 @@
-//! cc-monitor 自己那份 known_hosts：一个「主机 ＋ 口」一行，换了钥匙换那一行，内容没变不写；主机名照 OpenSSH 的写法。
+//! 开终端那一行 `ssh -F` 用的那份配置的全文：主机钥匙那一格在前，之后照读用户与系统的 ssh 配置；路径照 ssh 配置的切词规矩写。
 
 use super::*;
 
 #[test]
-fn one_line_per_host_and_port_replaced_in_place_and_unchanged_means_no_write() {
-    assert_eq!(host_pattern("pi.local", 22), "pi.local");
-    assert_eq!(host_pattern("192.0.2.1", 2222), "[192.0.2.1]:2222");
-    assert_eq!(host_pattern("[::1]", 2200), "[::1]:2200");
-    let a = merged("", "[h]:2222", "ssh-ed25519 AAAA1").unwrap();
-    assert_eq!(a, "[h]:2222 ssh-ed25519 AAAA1\n");
+fn the_terminal_config_names_our_known_hosts_first_then_includes_both_ssh_configs() {
     assert_eq!(
-        merged(&a, "[h]:2222", "ssh-ed25519 AAAA1"),
-        None,
-        "同一把不写"
+        config_text("/h/.cc-monitor/known_hosts", "~/.ssh/config", "/etc/ssh/ssh_config"),
+        "UserKnownHostsFile /h/.cc-monitor/known_hosts\nInclude ~/.ssh/config\nInclude /etc/ssh/ssh_config\n"
     );
-    let b = merged(&a, "other", "ssh-rsa BBBB").unwrap();
-    assert_eq!(b, "[h]:2222 ssh-ed25519 AAAA1\nother ssh-rsa BBBB\n");
-    // 换钥匙 ⇒ 那一行原地换掉，别的行不动。
     assert_eq!(
-        merged(&b, "[h]:2222", "ssh-ed25519 AAAA2").unwrap(),
-        "[h]:2222 ssh-ed25519 AAAA2\nother ssh-rsa BBBB\n"
-    );
-    // 「[h]:2222」与「h」是两台。
-    assert_eq!(
-        merged(&b, "h", "ssh-ed25519 CCCC").unwrap(),
-        "[h]:2222 ssh-ed25519 AAAA1\nother ssh-rsa BBBB\nh ssh-ed25519 CCCC\n"
+        config_text(r"C:\Users\O Neil\100%\known_hosts", "~/.ssh/config", r"C:\ProgramData\ssh\ssh_config"),
+        "UserKnownHostsFile \"C:\\Users\\O Neil\\100%%\\known_hosts\"\nInclude ~/.ssh/config\nInclude C:\\ProgramData\\ssh\\ssh_config\n"
     );
 }

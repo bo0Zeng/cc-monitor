@@ -4,4 +4,4 @@ import type { ElemKey } from "./ElemKey";
 /**
  * 一条补丁：全按键认一台（`where` 每一条都对得上的**恰好一台**），锁内现读现判。
  */
-export type MachineEdit = { "op": "setin", where: Array<ElemKey>, field: string, value: unknown, ifEmpty?: boolean, } | { "op": "insertin", where: Array<ElemKey>, value: unknown, } | { "op": "removein", where: Array<ElemKey>, };
+export type MachineEdit = { "op": "setin", where: Array<ElemKey>, field: string, value: unknown, } | { "op": "insertin", where: Array<ElemKey>, value: unknown, } | { "op": "removein", where: Array<ElemKey>, };

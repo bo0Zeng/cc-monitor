@@ -51,17 +51,6 @@ fn said(exit: u32, stdout: &str) -> Result<crate::dial::Captured, String> {
     })
 }
 
-/// 替身的 ack：第 `nth` 趟报的逐地址指纹（形状同后端 `DialAck` 那几格）。
-fn fake_ack(nth: usize) -> Value {
-    serde_json::json!({
-        "ok": true,
-        "fingerprints": { "192.0.2.2:22": format!("SHA256:trip{nth}") },
-        "jump_fingerprints": {},
-        "strict": false,
-        "jump_strict": false,
-    })
-}
-
 fn stamp(id: &str) -> String {
     format!(
         "{}{id}{}\n",
@@ -100,16 +89,13 @@ impl Fake {
 }
 
 impl Facing for Fake {
-    fn exec(&self, command: String) -> Fut<'_, Result<(crate::dial::Captured, Value), String>> {
+    fn exec(&self, command: String) -> Fut<'_, Result<crate::dial::Captured, String>> {
         self.asked.lock().unwrap().push(command.clone());
-        // 每一趟的 ack 带上它是第几趟（判据据此认「计划里交回的是问 `uname` 那一趟的」）。
-        let nth = self.asked.lock().unwrap().len();
         let got = self
             .exec
             .get(&command)
             .cloned()
-            .unwrap_or_else(|| Err(format!("替身没登记这条命令：{command}")))
-            .map(|c| (c, fake_ack(nth)));
+            .unwrap_or_else(|| Err(format!("替身没登记这条命令：{command}")));
         Box::pin(async move { got })
     }
 
@@ -347,7 +333,6 @@ fn the_install_reply_has_exactly_the_golden_keys() {
             why: "w".into(),
         },
         leftovers: vec![],
-        ack: fake_ack(1),
     };
     let got = installed_json(&p);
     assert_eq!(keys(&got), keys(&golden["product"]));
@@ -359,7 +344,6 @@ fn the_install_reply_has_exactly_the_golden_keys() {
         ),
         (Some("keep"), Some("p9b"), Some("w"))
     );
-    assert_eq!(got["ack"], fake_ack(1));
     let un = serde_json::to_value(Uninstalled {
         removed: true,
         said: "s".into(),
@@ -421,16 +405,6 @@ fn hx2_every_build_id_ever_shipped_has_an_order_and_the_history_climbs() {
         o >= prev.unwrap(),
         "现在的 BUILD_ID {now:?} 比历史表最后一行还低"
     );
-}
-
-/// 🔴本机后端里拨的号，逐地址指纹要交回 monitor 固化：计划里原样带着**问 `uname` 那一趟**的 ack
-/// （那一趟就是第一次连上的那一趟；后面几趟走池里同一条连接）。帧面那一格也带着它。
-#[tokio::test]
-async fn the_plan_hands_back_the_ack_of_the_first_trip_for_pinning() {
-    let f = Fake::linux(Some("p9a-mine"));
-    let p = plan(&f, &carried("p9a-mine"), "box", NOW).await.unwrap();
-    assert_eq!(p.ack, fake_ack(1), "交回的不是第一趟（问 uname）的 ack");
-    assert_eq!(installed_json(&p)["ack"], fake_ack(1));
 }
 
 // ═══ 随判定从共享 crate `deploy-core` 搬来的逐格判据（判定只在后端；期望一字未改）══════════════

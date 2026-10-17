@@ -38,13 +38,14 @@ use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{watch as tw, Notify};
 
-/// 给人看的那一句 ＋ 复制详情；拨号拒了时另带原因码与那台出示的指纹（后端按它们定那一态与修法）。
+/// 给人看的那一句 ＋ 复制详情；拨号拒了时另带原因码 · 那台出示的指纹与库里记下的那一枚（后端按它们定那一态与修法）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Problem {
     pub text: String,
     pub detail: String,
     pub why: Option<Why>,
     pub seen_key: Option<String>,
+    pub expected_key: Option<String>,
 }
 
 impl Problem {
@@ -54,14 +55,20 @@ impl Problem {
             detail: detail.into(),
             why: None,
             seen_key: None,
+            expected_key: None,
         }
     }
 
-    /// 拨号核心说没拨成的原因码 ＋ 那台出示的指纹。
-    pub fn because(self, why: Option<Why>, seen_key: Option<String>) -> Self {
+    /// 拨号核心说没拨成的原因码 ＋ 那台出示的指纹与库里记下的那一枚。
+    pub fn because(
+        self,
+        why: Option<Why>,
+        (seen_key, expected_key): (Option<String>, Option<String>),
+    ) -> Self {
         Problem {
             why,
             seen_key,
+            expected_key,
             ..self
         }
     }
@@ -180,6 +187,7 @@ impl State {
                     detail: problem.detail.clone(),
                     why: problem.why,
                     seen_key: problem.seen_key.clone(),
+                    expected_key: problem.expected_key.clone(),
                 },
                 blocker: *blocker,
             },

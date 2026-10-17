@@ -4,4 +4,8 @@ import type { DialWhy } from "./DialWhy";
 /**
  * [`Round::Down`] 那一句。
  */
-export type MachineRoundProblem = { text: string, detail: string, why: DialWhy | null, seen_key: string | null, };
+export type MachineRoundProblem = { text: string, detail: string, why: DialWhy | null, seen_key: string | null, 
+/**
+ * 因主机指纹被拒时库里记下的那一枚（库里没有同类型的 ⇒ 空串；别的原因 ⇒ `None`）。
+ */
+expected_key: string | null, };

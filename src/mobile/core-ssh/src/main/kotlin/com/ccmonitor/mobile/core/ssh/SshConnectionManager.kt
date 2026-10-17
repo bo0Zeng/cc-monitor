@@ -33,9 +33,8 @@ import java.util.concurrent.ConcurrentHashMap
  * [connect] / [retain] / [release] / [disconnect] / [disconnectAll] / [connection]。
  */
 class SshConnectionManager(
-    private val knownHostStore: KnownHostStore? = null,
     // 传输工厂：走手机嵌的 Rust 核心（[RustTransport]，拨号核心与后端同一份）；测试注入假实现。
-    private val transportFactory: (KnownHostStore?) -> SshTransport = { RustTransport(it) },
+    private val transportFactory: () -> SshTransport = { RustTransport() },
     // 跟着共用循环换连接 · 后台关连接的协程跑在哪；测试注入 TestDispatcher。
     reconnectDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
@@ -119,7 +118,7 @@ class SshConnectionManager(
             throwIfEpochExpired(id, expectedGen) // 代号已变说明已被 disconnect：弃用
             myGen = st.generation // 之后 disconnect 自增代号即作废本次
             // 同一份配置上那条死了 ⇒ 同一份拨号身份上再来一条（常驻流照的那份拨号请求不变）；否则造一条新的。
-            conn = st.connection?.takeIf { st.configs == addressConfigs }?.again() ?: transportFactory(knownHostStore)
+            conn = st.connection?.takeIf { st.configs == addressConfigs }?.again() ?: transportFactory()
             put(SessionState(id, hostId, label, SessionStatus.CONNECTING))
             st.configs = addressConfigs
             st.connecting = conn // disconnect 靠它关掉在飞的那一条

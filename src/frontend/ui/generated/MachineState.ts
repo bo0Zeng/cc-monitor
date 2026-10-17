@@ -42,6 +42,10 @@ said: string, fixes: Array<MachineFixButton>,
  */
 seenHostKey: string | null, 
 /**
+ * 指纹不对时库里记下的那一枚（`host_key_changed` 才有；库里没有同类型的 ⇒ 空串）。拨号核心说的，不在这里算。
+ */
+expectedHostKey: string | null, 
+/**
  * 这一轮没连上 / 做不了时的复制详情（界面照原样跟在问题行那句后面）。
  */
 detail: string | null, 

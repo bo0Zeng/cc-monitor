@@ -411,7 +411,6 @@ fn the_reply_decoder_reads_the_golden() {
         extra,
         with("action", serde_json::json!("overwrite")),
         with("build", serde_json::json!("")),
-        with("ack", serde_json::json!("x")),
     ] {
         assert!(decode_installed(&bad).is_err(), "该拒却收了：{bad}");
     }
@@ -419,32 +418,6 @@ fn the_reply_decoder_reads_the_golden() {
         decode_installed(&with("action", serde_json::json!("skip"))).map(|i| i.did),
         Ok(Did::Skip)
     );
-}
-
-/// 🔴装那一趟在本机后端里拨号 ⇒ 它的逐地址指纹随应答交回、由 monitor 按**同一个**判定固化
-/// （`dial_host::settle_host_key`，monitor 自己开链路那几条也走它），不另写一份。两向：解码器把金样里的 `ack` 原样收进来；
-/// 装那一口恰好一处把它交给 `settle_host_key`。
-#[test]
-fn the_install_ack_is_pinned_by_the_same_judgement_as_every_other_dial() {
-    let golden: serde_json::Value = serde_json::from_str(include_str!(
-        "../../__fixtures__/deploy-install.golden.json"
-    ))
-    .unwrap();
-    let got = decode_installed(&golden["product"]).expect("金样解不开");
-    assert_eq!(
-        got.ack.fingerprints.get("192.0.2.2:22").map(String::as_str),
-        Some("SHA256:placeholder"),
-        "解码器没把 ack 的逐地址指纹收进来：{:?}",
-        got.ack
-    );
-    let prod =
-        guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
-    let body = dp1_body(&prod, "async fn install_for(");
-    guard_core::find_pinned(
-        &body,
-        "crate::dial_host::settle_host_key(cfg, &dial, &got.ack)",
-    )
-    .unwrap_or_else(|e| panic!("装那一口没把 ack 交给固化判定（{e}）：\n{body}"));
 }
 
 // `the_sftp_dependency_is_really_on_russh_sftp_three` 搬去了后端（`tests/backend/dial_sftp_tests.rs`）：
@@ -534,7 +507,6 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         port: v["port"].as_u64().unwrap() as u16,
         user: s("user"),
         key_path: Some(s("key_path")),
-        host_key_fingerprint: None,
         addresses: vec![],
         jump: None,
     };

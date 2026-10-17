@@ -244,6 +244,7 @@ fn own_what(id: &str) -> String {
         "launchNotes" => copy_text("rsDataPaths.backend.launchNotes", &[]),
         "answerPlugin" => copy_text("rsDataPaths.backend.answerPlugin", &[]),
         "knownHosts" => copy_text("rsDataPaths.backend.knownHosts", &[]),
+        "sshConfig" => copy_text("rsDataPaths.backend.sshConfig", &[]),
         "accounts" => copy_text("rsDataPaths.backend.accounts", &[]),
         "accountsMcp" => copy_text("rsDataPaths.backend.accountsMcp", &[]),
         "extBackups" => copy_text("rsDataPaths.backend.extBackups", &[]),

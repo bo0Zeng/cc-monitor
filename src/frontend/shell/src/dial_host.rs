@@ -112,11 +112,10 @@ fn agent_sock() -> Option<String> {
 }
 
 /// 〔「一个判定一个家」〕把一台远端**原样的配置**交给本机常驻后端，拨号请求由它组
-/// （`src/backend/ssh-dial/machine.rs::resolve`：地址解析 · 指纹继承 · 跳板查无 / 环都在那里）。**只放路径，不放私钥本体**（`K11`）。
+/// （`src/backend/ssh-dial/machine.rs::resolve`：地址解析 · 跳板查无 / 环都在那里）。**只放路径，不放私钥本体**（`K11`）。
 ///
 /// 这里只交宿主手里的几样事实（`C4`：读配置是宿主的事）：
 /// - `machine`：这一台（`RemoteConfig` 的 camelCase 形状，与界面那一格同形）；
-/// - `saved`：盘上同名的那一份（`stream_source::run` 手里那份是起来时读的 —— 固化指纹之后，靠它让之后的重连转严格）；
 /// - `jump`：跳板那一台的配置（查不到 ⇒ `null`，后端照 fail-closed 拒）；
 /// - `prefer`：上次赢的那条（结构化，[`crate::stream_source::last_good_for`]；配置改过就失效）；
 /// - `agent_sock`：界面进程此刻的 ssh-agent（常驻后端活得比界面长）。
@@ -136,7 +135,7 @@ pub(crate) fn request(
     req
 }
 
-/// 一台远端**原样的配置**那几格：`{machine, saved, jump, prefer}`（[`request`] 头注逐格）。
+/// 一台远端**原样的配置**那几格：`{machine, jump, prefer}`（[`request`] 头注逐格）。
 ///
 /// 拆出来是给「开终端」那一问（本机后端帧命令 `terminal-ssh`）：它要同一份机器事实，但不开链路 ⇒ 不要 `use` / `agent_sock`。
 /// 界面经 Tauri 命令 [`crate::launch::terminal_dial`] 拿，文件窗口在进程内直接拿；组请求与渲染都在本机后端（`ssh-dial/machine.rs::resolve`）。
@@ -151,7 +150,6 @@ pub(crate) fn machine_facts(cfg: &RemoteConfig) -> serde_json::Value {
         .and_then(|jump_label| crate::load_remote_config_by_label(jump_label));
     serde_json::json!({
         "machine": cfg,
-        "saved": crate::load_remote_config_by_label(&origin),
         "jump": jump,
         "prefer": crate::stream_source::last_good_for(cfg).map(|e| serde_json::json!({ "host": e.host, "port": e.port })),
     })
@@ -339,12 +337,13 @@ impl tokio::io::AsyncWrite for DialStream {
     }
 }
 
-/// 链路没开成：那一句 ＋ 详情；后端说没拨成时另带它给的原因码与那台出示的指纹（重连循环随断开那一句交出去）。
+/// 链路没开成：那一句 ＋ 详情；后端说没拨成时另带它给的原因码 · 那台出示的指纹与库里记下的那一枚（重连循环随断开那一句交出去）。
 #[derive(Debug)]
 pub(crate) struct Unopened {
     pub(crate) said: Said,
     pub(crate) why: Option<cmd_wire::machine::Why>,
     pub(crate) seen_key: Option<String>,
+    pub(crate) expected_key: Option<String>,
 }
 
 impl From<Said> for Unopened {
@@ -353,6 +352,7 @@ impl From<Said> for Unopened {
             said,
             why: None,
             seen_key: None,
+            expected_key: None,
         }
     }
 }
@@ -390,12 +390,14 @@ async fn open(
             why,
             reason,
             fingerprint,
+            expected,
             detail,
         })) => {
             return Err(Unopened {
                 said: refused_said(why, detail.as_deref()),
                 why: reason,
                 seen_key: fingerprint,
+                expected_key: expected,
             })
         }
         Ok(Err(e)) => return Err(link_said(e).into()),
@@ -424,8 +426,6 @@ async fn open(
     };
     // 握手做完了 ⇒ 记下这一刻：之后若总时限到点，那句话说得出「握手用了多久、远端跑了多久」。
     r.get_mut().mark_shaken();
-    // ack 成功 = 后端那边鉴权已过 ⇒ 判要不要自动固化。
-    settle_host_key(cfg, req, &ack);
     // 竞速胜者记成 last-good（下次当 `prefer` 交回去排首）—— 后端交的是结构化的 `winner`，这里不解析地址。
     if let Some(won) = &ack.winner {
         crate::stream_source::record_last_good(cfg, won);
@@ -455,225 +455,6 @@ pub(crate) fn link_said(e: LinkError) -> Said {
     match &e {
         LinkError::Io(raw) | LinkError::Garbled(raw) => Said::with_raw(e.to_string(), raw),
         _ => Said::written(e.to_string()),
-    }
-}
-
-// ═══ 〔「自动固化 ＋ 默认转严格 ＋ 保住多地址那一格」〕host key 自动固化 ═══════════════
-
-/// 一次成功拨号之后，host key 这一格怎么办。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum PinVerdict {
-    /// 测试连接（`probe`）：不自动固化，机器页那颗按钮照旧。
-    NotAsked,
-    /// 配置里已有指纹：这一趟已是严格校验。
-    AlreadyStrict,
-    /// ack 里没有逐地址指纹（老后端）：判不了「各地址一致」⇒ 不固化。
-    NoneReported,
-    /// 报过指纹的每条地址都是这一个 ⇒ 固化它。
-    Pin(String),
-    /// 各地址报的不一样 ⇒ 不固化，说出来让人选。
-    Differs(std::collections::BTreeMap<String, String>),
-}
-
-/// 🔴 判定只此一处。`strict` = 这一趟是不是已经严格校验（后端在 ack 里说）。
-pub(crate) fn pin_verdict(
-    probe: bool,
-    strict: bool,
-    reported: &std::collections::BTreeMap<String, String>,
-) -> PinVerdict {
-    if probe {
-        return PinVerdict::NotAsked;
-    }
-    if strict {
-        return PinVerdict::AlreadyStrict;
-    }
-    let mut fps = reported.values();
-    let Some(first) = fps.next() else {
-        return PinVerdict::NoneReported;
-    };
-    if fps.all(|f| f == first) {
-        PinVerdict::Pin(first.clone())
-    } else {
-        PinVerdict::Differs(reported.clone())
-    }
-}
-
-/// 固化那一次写的结局。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PinWrite {
-    Written,
-    /// 盘上那一台已有指纹（别人刚设过）⇒ 没写。
-    AlreadySet,
-}
-
-/// 往机器表里那一台写指纹的那一问（本机后端 `machines-set` 的入参）：一条**按键认那一台**的 `setin`（认名字 `name`（`label` 非空取它、
-/// 否则 `host`）与 `host` 都相等的恰好一台，只改它的 `hostKeyFingerprint`，已有值不动 —— `ifEmpty`）。锁内现读现判在后端那一处，
-/// 别的机器、别的格与设置页同时写的改动都不会被盖掉；「记于哪一天」由那个写口一并盖上。**纯函数**。
-pub(crate) fn pin_request(name: &str, host: &str, fp: &str) -> serde_json::Value {
-    serde_json::json!({ "edits": [{
-        "op": "setin",
-        "where": [
-            { "fields": ["label", "host"], "equals": name },
-            { "fields": ["host"], "equals": host },
-        ],
-        "field": "hostKeyFingerprint",
-        "value": fp,
-        "ifEmpty": true,
-    }] })
-}
-
-/// `machines-set` 那一答 ⇒ 结局（`kept` ＞ 0 ＝ 那一格已有值）。**纯函数**。
-pub(crate) fn pin_outcome(r: &serde_json::Value) -> PinWrite {
-    if r.get("kept")
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(0)
-        > 0
-    {
-        PinWrite::AlreadySet
-    } else {
-        PinWrite::Written
-    }
-}
-
-/// 问本机后端写那一台的指纹。
-async fn pin_host_key(origin: &str, host: &str, fp: &str) -> Result<PinWrite, Said> {
-    let deadline = crate::frame_query::Deadline::within(std::time::Duration::from_secs(10));
-    crate::frame_query::call(
-        &crate::origin::Origin::local(),
-        "machines-set",
-        pin_request(origin, host, fp),
-        None,
-        deadline,
-    )
-    .await
-    .map(|r| pin_outcome(&r))
-}
-
-// 「这一趟交给后端的指纹」（`cfg` 里有就用，没有 ⇒ 盘上同一台的）那条继承规则搬进后端 `ssh-dial/machine.rs::request`
-//   （宿主把盘上那一份当 `saved` 交过去）；这一趟是不是严格校验，由后端在 ack 里说（`strict` / `jump_strict`）。
-
-/// 告知界面的那一件（经 `lib.rs` 装的出口发 `remote-health`，kind 见下面两个常量）。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HostKeyNotice {
-    pub origin: String,
-    pub kind: &'static str,
-    pub message: String,
-}
-pub const HOST_KEY_PINNED: &str = "host_key_pinned";
-pub const HOST_KEY_DIFFERS: &str = "host_key_differs";
-
-type NoticeSink = Box<dyn Fn(HostKeyNotice) + Send + Sync>;
-static NOTICE_SINK: std::sync::OnceLock<NoticeSink> = std::sync::OnceLock::new();
-
-/// 装出口（`lib.rs` setup 装一次；同 `session_facts::install_sink`）。
-pub fn install_host_key_notice(f: impl Fn(HostKeyNotice) + Send + Sync + 'static) {
-    if NOTICE_SINK.set(Box::new(f)).is_err() {
-        tracing::warn!("host key 告知的出口装了第二次 —— 忽略");
-    }
-}
-
-/// 同一句话本进程只说一次（每条一次性查询都开链路，不去重就刷屏）。
-fn notice(origin: String, kind: &'static str, message: String) {
-    static SAID: std::sync::Mutex<Vec<(String, &str, String)>> = std::sync::Mutex::new(Vec::new());
-    let key = (origin.clone(), kind, message.clone());
-    {
-        let mut said = SAID.lock().unwrap_or_else(|e| e.into_inner());
-        if said.contains(&key) {
-            return;
-        }
-        said.push(key);
-    }
-    tracing::warn!("[{origin}] {message}");
-    if let Some(f) = NOTICE_SINK.get() {
-        f(HostKeyNotice {
-            origin,
-            kind,
-            message,
-        });
-    }
-}
-
-/// 成功拨号之后：判 → 固化 / 说出来。目标那一台一格；经跳板时跳板那一台另一格（〔第二问〕它是另一台机器，
-/// 按它自己在机器表里那一条固化 —— 只当跳板用、从不直连的那台也不再一直 TOFU）。两格同一个判定（[`pin_verdict`]）。
-pub(crate) fn settle_host_key(cfg: &RemoteConfig, req: &serde_json::Value, ack: &Ack) {
-    let probe = req.get("probe").and_then(serde_json::Value::as_bool) == Some(true);
-    for (origin, host, strict, reported) in pin_targets(cfg, req, ack) {
-        settle_one(&origin, &host, pin_verdict(probe, strict, reported));
-    }
-}
-
-/// 这一趟要判的几台：`(origin, host, 这一趟是否已严格校验, 它报过的逐地址指纹)` —— 目标一台，经跳板再加跳板那一台
-/// （跳板的 origin / host 取请求里 `jump` 那一格：宿主按配置现查填的那一台原样配置；严格与否取 ack 的 `jump_strict`）。纯函数。
-pub(crate) fn pin_targets<'a>(
-    cfg: &RemoteConfig,
-    req: &serde_json::Value,
-    ack: &'a Ack,
-) -> Vec<(
-    String,
-    String,
-    bool,
-    &'a std::collections::BTreeMap<String, String>,
-)> {
-    let text = |v: &serde_json::Value, k: &str| {
-        v.get(k)
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_string)
-    };
-    let mut out = vec![(
-        cfg.origin_label(),
-        cfg.host.clone(),
-        ack.strict,
-        &ack.fingerprints,
-    )];
-    if let Some(hop) = req.get("jump").filter(|j| j.is_object()) {
-        let host = text(hop, "host").unwrap_or_default();
-        let origin = text(hop, "label")
-            .filter(|l| !l.is_empty())
-            .unwrap_or_else(|| host.clone());
-        out.push((origin, host, ack.jump_strict, &ack.jump_fingerprints));
-    }
-    out
-}
-
-fn settle_one(origin: &str, host: &str, verdict: PinVerdict) {
-    let origin = origin.to_string();
-    match verdict {
-        PinVerdict::Pin(fp) => {
-            let host = host.to_string();
-            tauri::async_runtime::spawn(async move {
-                match pin_host_key(&origin, &host, &fp).await {
-                    Ok(PinWrite::Written) => notice(
-                        origin.clone(),
-                        HOST_KEY_PINNED,
-                        copy_text(
-                            "rsDialHost.hostKey.pinned",
-                            &[("origin", &origin), ("fingerprint", &fp)],
-                        ),
-                    ),
-                    Ok(other) => tracing::info!("[{origin}] 没有自动固化 host key：{other:?}"),
-                    Err(e) => tracing::warn!("[{origin}] 自动固化 host key 没写成：{e}"),
-                }
-            });
-        }
-        PinVerdict::Differs(all) => {
-            let list = all
-                .iter()
-                .map(|(ep, fp)| format!("{ep} {fp}"))
-                .collect::<Vec<_>>()
-                .join(copy_text("rsDialHost.hostKey.listSep", &[]).as_str());
-            notice(
-                origin.clone(),
-                HOST_KEY_DIFFERS,
-                copy_text(
-                    "rsDialHost.hostKey.differs",
-                    &[("origin", &origin), ("list", &list)],
-                ),
-            );
-        }
-        PinVerdict::NoneReported => {
-            tracing::info!("[{origin}] 本机后端没报逐地址指纹（旧版？）⇒ 不自动固化")
-        }
-        PinVerdict::NotAsked | PinVerdict::AlreadyStrict => {}
     }
 }
 

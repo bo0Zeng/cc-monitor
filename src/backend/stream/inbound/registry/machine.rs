@@ -62,13 +62,16 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::control::machine_prefs::PrefsSetCmd>(
         "改这台的偏好，写完读回",
     ),
-    // 这一端的机器表（`~/.cc-monitor/machines.json`：连各台用的名字 · 地址 · 钥匙 · 指纹 · 跳板 · 连不连）：住拨号那一端，monitor 只经这三条读写。
+    // 这一端的机器表（`~/.cc-monitor/machines.json`：连各台用的名字 · 地址 · 钥匙 · 跳板 · 连不连）：住拨号那一端，monitor 只经这几条读写。
     crate::wire::typed::blocking::<crate::control::machines::MachinesRead>("读这一端的机器表"),
     crate::wire::typed::blocking::<crate::control::machines::MachinesTry>(
         "这串补丁若现在落盘，机器表那一道过不过（盘上不动）",
     ),
     crate::wire::typed::blocking::<crate::control::machines::MachinesSetCmd>(
         "改机器表（按键认那一台），写完读回、推 `changed {machines}`",
+    ),
+    crate::wire::typed::blocking::<crate::control::machines::HostKeysForget>(
+        "忘掉一台记下的主机指纹，读回机器表、推 `changed {machines}`",
     ),
     // 这里原是 `relay-status` / `relay-ensure`（这台机器上脱离的 `--relay` 在不在 · 起一个）：
     //   中转只住常驻后端进程里（本机远端同形），那一族随回落一形删了。

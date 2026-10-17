@@ -1066,8 +1066,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     LAUNCH_NOTES_DIR_REL: NONE,
     // 答题插件目录（ccm 换了启动器起会话时写；数据位置页按它列）。
     ANSWER_PLUGIN_DIR_REL: NONE,
-    // 主机钥匙（后端拨号侧写；开终端那一行交给 ssh；数据位置页按它列）。
+    // 主机钥匙（拨号核心那份库，后端写；开终端那一行经 ssh 配置认它；数据位置页按它列）。
     KNOWN_HOSTS_REL: NONE,
+    // 开终端那一行的 ssh 配置（后端写；数据位置页按它列）。
+    SSH_CONFIG_REL: NONE,
     // 记录骨架目录（后端冷开扫描图落的缓存；数据位置页按它列）。
     SKELETON_DIR_REL: NONE,
     // 历史清单缓存（后端清单那一族落的缓存；数据位置页按它列）。

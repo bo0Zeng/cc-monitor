@@ -3,7 +3,7 @@
 //!
 //! # 两条帧命令，两台各一条
 //!
-//! - **`pubkey-push {machine, saved?, jump?, pubKeyPath?}`**（本机常驻后端答）：读本机那份 `.pub`（显式给的 · 否则私钥同名 `.pub`）→
+//! - **`pubkey-push {machine, jump?, pubKeyPath?}`**（本机常驻后端答）：读本机那份 `.pub`（显式给的 · 否则私钥同名 `.pub`）→
 //!   [`sanitize_public_key`] → 那台此刻在可达表里（它的长连接握过手，`remote-reach`）⇒ 问**那台后端** `authorized-keys-add {key}`；
 //!   不在（密钥登录建立之前 · 后端还没装）⇒ 沿池里那条 SSH **一次** exec（[`posix::add_line_once`]，只写这一件）。
 //!   ⚠ 按**此刻的状态**分支，不是「后端失败了再退回 shell」（`D11`）。
@@ -283,7 +283,7 @@ impl Reach for Wire {
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send + 'a>>
     {
         Box::pin(async move {
-            let (got, _ack) = crate::dial::remote_ask::capture_full(dial, command).await?;
+            let got = crate::dial::remote_ask::capture_full(dial, command).await?;
             match got.exit_status {
                 Some(0) => Ok(got.stdout),
                 // 那台 shell 的 stderr 是原话：记一行日志，句子只说没成（这一跳的失败形没有原话位）。
@@ -306,10 +306,6 @@ impl Reach for Wire {
 pub(crate) struct PubkeyPushReq {
     /// 那台的配置（设置页表单里那台，可能还没保存）。
     pub(crate) machine: crate::dial::pick::MachineConfig,
-    /// 已保存的那一份。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) saved: Option<crate::dial::pick::MachineConfig>,
     /// 跳板那一台。
     #[serde(default)]
     #[cfg_attr(test, ts(optional = nullable))]
@@ -385,11 +381,10 @@ pub(crate) async fn answer_push(
 ) -> Result<PubkeyPushed, (&'static str, String)> {
     let pick = crate::dial::pick::Pick {
         machine: &req.machine,
-        saved: req.saved.as_ref(),
         jump: req.jump.as_ref(),
         prefer: None,
     };
-    let (machine, _saved, _jump) = pick.machines()?;
+    let (machine, _jump) = pick.machines()?;
     let path = pub_key_path(req.pub_key_path.as_deref(), machine.key_path.as_deref())
         .map_err(|e| ("refused", e))?;
     let key = sanitize_public_key(&read_pub(&path)?).map_err(|e| ("refused", e))?;

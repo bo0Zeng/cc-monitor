@@ -7,7 +7,7 @@ use std::sync::Mutex;
 /// Tier 1（issue #15）的「测试连接」命令直接收前端传来的同形对象（camelCase）。
 ///
 /// **serde camelCase 必须与前端 RemoteHostConfig / lib.rs::load_remote_configs 严格一致**：
-/// host / port / user / keyPath / hostKeyFingerprint / label（多机 #30，
+/// host / port / user / keyPath / label（多机 #30，
 /// 可选，缺省回退 host）。前端多发的 `enabled`
 /// 字段被忽略（serde 默认丢弃未知字段，测试连接不关心 enabled）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,10 +24,6 @@ pub struct RemoteConfig {
     /// 私钥文件路径（OpenSSH 格式）。None / 空 = 走 ssh-agent（见 connect_session）。
     #[serde(default, deserialize_with = "empty_string_as_none")]
     pub key_path: Option<String>,
-    /// 期望的 server host key 指纹（`SHA256:...` 形式）。
-    /// Some = 严格校验（TOFU 之后固化）；None = 首次连接 TOFU 接受并 LOUD warn。
-    #[serde(default, deserialize_with = "empty_string_as_none")]
-    pub host_key_fingerprint: Option<String>,
     /// Batch14-F45：备用地址（happy-eyeballs 竞发）。每项 `host` / `host:port` /
     /// `[IPv6]:port` / 裸 IPv6。空 = 仅用 `host`（老配置零迁移）。首选地址仍是 `host`
     /// 字段（见 [`RemoteConfig::endpoints`]，host 排首）。

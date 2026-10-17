@@ -21,7 +21,7 @@ async fn a_fresh_local_channel_gets_every_machines_latest_round() {
     let _g = crate::inbound_client::local_origin_test_lock();
     let a: Arc<dyn Looped> = Arc::new(Still(State::Connecting));
     let b: Arc<dyn Looped> = Arc::new(Still(State::Down {
-        problem: Problem::new("拨号没成", "").because(Some(Why::Auth), None),
+        problem: Problem::new("拨号没成", "").because(Some(Why::Auth), (None, None)),
         needs_hand: false,
         blocker: None,
     }));

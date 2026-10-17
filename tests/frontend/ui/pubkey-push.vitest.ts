@@ -2,7 +2,7 @@
  * 要求：推送公钥是本机后端帧命令 `pubkey-push {machine}`，与 `remote-probe` 同形。
  *
  * ① 应答：后端判据核金样 `tests/__fixtures__/pubkey-push.golden.json`，这里原样交到调用方（形状由握手时的形状指纹管，不逐格判）；
- * ② 请求发给本机那一台、op 是 `pubkey-push`、体恰是金样那四格（已保存的同名那一份 · 跳板那一台从 `saved` 里找）、带期限。
+ * ② 请求发给本机那一台、op 是 `pubkey-push`、体恰是金样那三格（跳板那一台从 `saved` 里找）、带期限。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -28,9 +28,9 @@ beforeEach(() => {
 });
 
 describe("MIG-3b 续 公钥推送走通道、本机后端办", () => {
-  it("发给本机那一台的 `pubkey-push`，体恰是金样那四格、带期限", async () => {
+  it("发给本机那一台的 `pubkey-push`，体恰是金样那三格、带期限", async () => {
     reply = golden.product;
-    const machine = { ...golden.request.machine, port: 22, addresses: [], jump: "", hostKeyFingerprint: null } as unknown as RemoteHostConfig;
+    const machine = { ...golden.request.machine, port: 22, addresses: [], jump: "" } as unknown as RemoteHostConfig;
     const r = await pushPublicKey(machine, [], null);
     expect(r).toEqual(golden.product);
     expect(sent).toHaveLength(1);

@@ -1698,6 +1698,7 @@ pub(crate) fn local_product(channel: bool, mine: Option<&str>) -> MachineState {
         said,
         fixes,
         seen_host_key: None,
+        expected_host_key: None,
         detail: None,
         next: if channel {
             None

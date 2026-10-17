@@ -1,5 +1,5 @@
-// F43：指纹重置按钮显隐纯逻辑。remote-section 的 DOM 主体重(拉整卡),这里只钉住
-// 「有固化指纹才显示重置按钮」这条判定,防未来误改成空指纹也显示(重置无意义)。
+// F43：［忘记…］显隐纯逻辑。remote-section 的 DOM 主体重(拉整卡),这里只钉住
+// 「库里记着这台的指纹才显示」这条判定,防未来误改成没记也显示(忘掉无意义)。
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // F56：写入/读取都走 config.ts；mock 掉以测 jump write→read 往返。
 // config 写只交补丁；替身把补丁应用到 `loadConfig` 摆的那份上，写完的整份交 `fakeCfg.saved`。
@@ -156,13 +156,11 @@ async function removeAt(sec: RemoteSection, i: number, commit = true): Promise<v
 }
 
 describe("F43 shouldShowResetFingerprint", () => {
-  it("已固化非空指纹 → 显示", () => {
-    expect(shouldShowResetFingerprint("SHA256:abc")).toBe(true);
+  it("库里记着 → 显示", () => {
+    expect(shouldShowResetFingerprint(["SHA256:abc"])).toBe(true);
   });
-  it("空 / 纯空白 → 不显示(重置无意义)", () => {
-    expect(shouldShowResetFingerprint("")).toBe(false);
-    expect(shouldShowResetFingerprint("   ")).toBe(false);
-    expect(shouldShowResetFingerprint("\n\t")).toBe(false);
+  it("库里没记 → 不显示(忘掉无意义)", () => {
+    expect(shouldShowResetFingerprint([])).toBe(false);
   });
 });
 
@@ -191,7 +189,6 @@ describe("F54 findHostByOrigin", () => {
     port: 22,
     user: "u",
     keyPath: "",
-    hostKeyFingerprint: "",
     addresses: [],
     jump: "",
     connect: true,
@@ -231,7 +228,6 @@ describe("F56 jump write→read 往返（D-B1 回归）", () => {
     port: 22,
     user: "u",
     keyPath: "",
-    hostKeyFingerprint: "",
     addresses: [],
     jump,
     connect: true,
@@ -284,7 +280,6 @@ describe("F83 sftpEligibleHosts", () => {
     port: 22,
     user: "",
     keyPath: "",
-    hostKeyFingerprint: "",
     addresses: [],
     jump: "",
     connect: true,
@@ -331,7 +326,6 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     port: 22,
     user: "u",
     keyPath: "",
-    hostKeyFingerprint: "",
     addresses: [],
     jump: "",
     connect: true,
@@ -454,38 +448,22 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(got.map((h) => h.label)).toEqual(["a-renamed", "b"]);
   });
 
-  it("★ 〔FIX〕加载之后后端固化了指纹、再在页上改一格 ⇒ 盘上那份指纹不被整台盖掉", async () => {
+  it("★ 〔FIX〕加载之后别处改了一格、再在页上改另一格 ⇒ 盘上那一格不被整台盖掉", async () => {
     const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")]);
-    // 加载之后，后端那一侧往盘上写了 a 的指纹（`setin` · ifEmpty）。
+    // 加载之后，别处往盘上改了 a 的钥匙路径。
     const disk = (await vi.mocked(loadConfig)()) as unknown as { remote: RemoteConfig };
-    disk.remote.hosts[0]!.hostKeyFingerprint = "SHA256:pinned";
+    disk.remote.hosts[0]!.keyPath = "/k/disk";
     vi.mocked(loadConfig).mockResolvedValue(disk as unknown as Awaited<ReturnType<typeof loadConfig>>);
     const first = sec.element.querySelectorAll<HTMLInputElement>('input[type="text"]')[0]!;
     first.value = "a-renamed";
     first.dispatchEvent(new Event("change"));
     await new Promise((r) => setTimeout(r, 0));
     const got = writtenHosts();
-    expect(got.map((h) => [h.label, h.hostKeyFingerprint])).toEqual([
-      ["a-renamed", "SHA256:pinned"],
+    expect(got.map((h) => [h.label, h.keyPath])).toEqual([
+      ["a-renamed", "/k/disk"],
       ["b", ""],
     ]);
   });
-
-  it("★ 手动「记录」指纹 ⇒ 卡上当场就是壳盖的那一天（照补丁口的回话，不另读盘、不自己取今天）", async () => {
-    const sec = await mount([mkH("a", "1.1.1.1")]);
-    const card = (sec as unknown as { cards: { onSaveFingerprint(fp: string): Promise<void>; element: HTMLElement }[] }).cards[0]!;
-    await card.onSaveFingerprint("SHA256:abcdefghijklmnop");
-    for (let k = 0; k < 4; k++) await new Promise((r) => setTimeout(r, 0));
-    const fp = document.querySelector<HTMLElement>(".machine-fp") ?? sec.element.querySelector<HTMLElement>(".machine-fp");
-    expect(fp?.textContent).toBe(copyText("machineCard.fp.line", { fp: "SHA256:abcd…op", date: "03-04" }));
-  });
-
-  // ── Phase G：页 id 从「每次现算」改成「创建时定死」——两条实测复现的缺陷 ──
-  //
-  // 这两条在修之前**各自都有绿测试**（改名一条、删除一条），只是从没人把它们串起来
-  // ——「组合未覆盖」，不是断言造假。所以这里刻意写成**两步串一起**的场景。
-
-
 
   it("★ 改名之后再删：列表行 / 导航项 / 盘上那条**三者一起**消失", async () => {
     const p = fakePages();

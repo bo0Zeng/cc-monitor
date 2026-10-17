@@ -588,7 +588,6 @@ async fn zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced() {
             let checker = Checker {
                 trust: Default::default(),
                 observed: Default::default(),
-                reported: Default::default(),
                 stages: StageSink::new(false),
                 endpoint: format!("{host}:{port}"),
                 heard: Default::default(),
@@ -729,7 +728,6 @@ async fn zr_real_sshd_takes_incompressible_puts_when_forced() {
         let checker = Checker {
             trust: Default::default(),
             observed: Default::default(),
-            reported: Default::default(),
             stages: StageSink::new(false),
             endpoint: format!("{host}:{port}"),
             heard: Default::default(),
@@ -825,10 +823,10 @@ impl tokio::io::AsyncWrite for Counting {
     }
 }
 
-/// 〔「保住多地址那一格」〕一趟里每个地址的校验器都把「地址 → 实得指纹」记进同一格：
-/// 接受支与拒绝支都记；两把钥匙 ⇒ 两格不同，同一把 ⇒ 两格相同（期望手写，指纹取钥匙本身）。
+/// 校验器怎么判一把钥匙（期望手写，指纹取钥匙本身）：库里没记过、也没有待核的 ⇒ 首见收下；记过同类型的 ⇒ 只认那一把；
+/// 记过别的类型 ⇒ 拒；只有待核的指纹 ⇒ 按它比。拒的那一下把库里同类型那一把（没有 ⇒ 待核的，再没有 ⇒ 空串）记进这一趟。
 #[tokio::test]
-async fn vis2_every_checker_of_one_run_writes_its_address_into_the_shared_book() {
+async fn the_checker_trusts_only_what_the_library_holds() {
     use russh::client::Handler as _;
     let key = |n: u8| {
         russh::keys::PrivateKey::from(russh::keys::ssh_key::private::Ed25519Keypair::from_seed(
@@ -837,108 +835,51 @@ async fn vis2_every_checker_of_one_run_writes_its_address_into_the_shared_book()
         .public_key()
         .clone()
     };
+    let ec = russh::keys::PrivateKey::random(
+        &mut rand::rng(),
+        russh::keys::Algorithm::Ecdsa {
+            curve: russh::keys::EcdsaCurve::NistP256,
+        },
+    )
+    .unwrap()
+    .public_key()
+    .clone();
     let fp = |k: &PublicKey| k.fingerprint(HashAlg::Sha256).to_string();
-    async fn one_run(
-        legs: Vec<(&'static str, PublicKey, Option<String>)>,
-    ) -> (BTreeMap<String, String>, Vec<bool>) {
-        let book: Arc<Mutex<BTreeMap<String, String>>> = Arc::default();
-        let mut verdicts = Vec::new();
-        for (ep, k, expected) in legs {
-            let mut c = Checker {
-                trust: Trust {
-                    expected,
-                    ..Default::default()
-                },
-                observed: Arc::default(),
-                reported: Arc::clone(&book),
-                stages: StageSink::new(false),
-                endpoint: ep.to_string(),
-                heard: Default::default(),
-            };
-            verdicts.push(c.check_server_key(&k).await.unwrap());
-        }
-        let got = book.lock().unwrap().clone();
-        (got, verdicts)
+    async fn judge(trust: Trust, offered: &PublicKey) -> (bool, Option<String>) {
+        let stages = StageSink::new(false);
+        let mut c = Checker {
+            trust,
+            observed: Arc::default(),
+            stages: stages.clone(),
+            endpoint: "a:22".to_string(),
+            heard: Default::default(),
+        };
+        (
+            c.check_server_key(offered).await.unwrap(),
+            stages.expected(),
+        )
     }
     let (a, b) = (key(1), key(2));
-    assert_ne!(fp(&a), fp(&b), "夹具坏了：两把钥匙同一个指纹");
-    let (got, verdicts) = one_run(vec![
-        ("a:22", a.clone(), None),
-        ("b:22", b.clone(), Some(fp(&a))),
-    ])
-    .await;
+    let known = |ks: Vec<PublicKey>| Trust {
+        known: ks,
+        pending: None,
+    };
+    assert_eq!(judge(Trust::default(), &a).await, (true, None), "首见收下");
+    assert_eq!(judge(known(vec![a.clone()]), &a).await, (true, None));
     assert_eq!(
-        verdicts,
-        vec![true, false],
-        "b 那一支配了对不上的期望，该拒"
-    );
-    assert_eq!(
-        got,
-        BTreeMap::from([("a:22".to_string(), fp(&a)), ("b:22".to_string(), fp(&b))]),
-        "拒掉的那一支也要记下它报的指纹"
-    );
-    let (got, _) = one_run(vec![("a:22", a.clone(), None), ("b:2222", a.clone(), None)]).await;
-    assert_eq!(
-        got,
-        BTreeMap::from([("a:22".to_string(), fp(&a)), ("b:2222".to_string(), fp(&a))])
-    );
-}
-
-/// 接线：目标那一趟的竞速与经跳板那一次握手都记进同一格、那一格进 `Linked`；跳板自己那一趟另开一格。带正控。
-/// 〔第二问「只当跳板用的机器一直 TOFU（设计没写）」〕跳板那一格也进 `Linked`（`jump_fingerprints`），界面按那一台自己固化。
-#[test]
-fn vis2_the_target_run_and_only_it_feeds_the_linked_book() {
-    let prod = guard_core::production_code(include_str!("../../src/backend/ssh-dial/connect.rs"));
-    // 跳板链那一段（`through_hops`）紧挨在 `establish` 前面：两段一起看（目标那一趟在后者、跳板那几趟在前者）。
-    let at = prod
-        .find("async fn through_hops(")
-        .expect("through_hops 不在了");
-    assert!(
-        prod[at..].contains("pub async fn establish("),
-        "establish 不在了"
-    );
-    let body = &prod[at..];
-    let n = |t: &str, needle: &str| t.matches(needle).count();
-    // 按去掉缩进的整行数（缩进随嵌套层数变，不是要钉的事）。
-    let lines = |t: &str, line: &str| t.lines().filter(|l| l.trim() == line).count();
-    assert_eq!(lines(body, "&reported,"), 1, "目标那一趟的竞速没拿到那一格");
-    assert_eq!(lines(body, "jump_reported,"), 1, "跳板那一趟该另开一格");
-    assert_eq!(
-        n(body, "&Arc::default(),"),
-        0,
-        "跳板那一趟的指纹又被丢进一格没人读的临时格"
+        judge(known(vec![a.clone()]), &b).await,
+        (false, Some(fp(&a)))
     );
     assert_eq!(
-        n(body, "let jump_fingerprints = jump_reported.lock()"),
-        1,
-        "跳板那一格没交进 `Linked`"
+        judge(known(vec![ec.clone()]), &a).await,
+        (false, Some(String::new()))
     );
-    assert_eq!(
-        n(body, "reported: Arc::clone(&reported),"),
-        1,
-        "经跳板那一次握手没记进那一格"
-    );
-    assert_eq!(
-        n(body, "reported: Arc::clone(jump_reported),"),
-        1,
-        "多跳里经上一台握手的那几台跳板没记进跳板那一格"
-    );
-    assert_eq!(
-        n(body, "let fingerprints = reported.lock()"),
-        1,
-        "那一格没交进 `Linked`"
-    );
-    let race_at = prod.find("async fn race(").expect("race 不在了");
-    assert_eq!(
-        n(&prod[race_at..at], "let reported = Arc::clone(reported);"),
-        1,
-        "竞速里每个地址的校验器没拿同一格"
-    );
-    assert_eq!(
-        n(&format!("{body}\n&Arc::default(),"), "&Arc::default(),"),
-        1,
-        "量具正控"
-    );
+    let pending = |f: String| Trust {
+        known: vec![],
+        pending: Some(f),
+    };
+    assert_eq!(judge(pending(fp(&a)), &a).await, (true, None));
+    assert_eq!(judge(pending(fp(&a)), &b).await, (false, Some(fp(&a))));
 }
 
 /// 竞速全输了：那一句只带原因词（拨不通 ⇒「端口不通」）与试过的地址，各地址的系统原话进详情、不上句子。
@@ -950,17 +891,7 @@ async fn a_lost_race_says_the_reason_word_and_keeps_the_os_words_for_the_detail(
         port,
     };
     let stages = StageSink::new(false);
-    let reported: Arc<Mutex<BTreeMap<String, String>>> = Arc::default();
-    let Err((said, _)) = race(
-        true,
-        true,
-        Trust::default(),
-        vec![ep.clone()],
-        &stages,
-        &reported,
-    )
-    .await
-    else {
+    let Err((said, _)) = race(true, true, Trust::default(), vec![ep.clone()], &stages).await else {
         panic!("关着的口居然拨通了");
     };
     let addr = format!("127.0.0.1:{port}");
@@ -1097,7 +1028,6 @@ async fn a_tunnelled_connection_is_marked_gone_when_its_carrier_dies() {
     let checker = Checker {
         trust: Trust::default(),
         observed: Arc::default(),
-        reported: Arc::default(),
         stages: StageSink::new(false),
         endpoint: "t:22".to_string(),
         heard: Arc::clone(&heard),

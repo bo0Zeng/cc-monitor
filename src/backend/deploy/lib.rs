@@ -22,7 +22,6 @@ use deploy_contract::{
     build_relation, Arch, DeployAction, Key, Marks, Os, Refusal, Relation, RemoteIdentity, Route,
     LINES,
 };
-use serde_json::Value;
 use ssh_dial::{Captured, DialRequest};
 
 mod install;
@@ -65,8 +64,8 @@ impl Fail {
 
 /// 对面：在那台上跑一条一次性命令（收全三样）· 问那台落点上一个文件（SFTP）。生产 = [`DialFacing`]；判据用替身。
 pub trait Facing: Send + Sync {
-    /// 收全三样 ＋ 那一趟拨号的 ack（`DialAck` 原样；桌面那一侧逐地址指纹要交 monitor 固化）。
-    fn exec(&self, command: String) -> Fut<'_, Result<(Captured, Value), String>>;
+    /// 收全三样（退出码 · stdout · stderr）。
+    fn exec(&self, command: String) -> Fut<'_, Result<Captured, String>>;
     /// `(metadata 的 size, 补问的 exists)` —— 与 [`interpret_target_probe`] 入参同形。
     fn stat<'a>(
         &'a self,
@@ -247,8 +246,6 @@ pub struct Plan {
     pub action: DeployAction,
     /// 暂存区里上一趟部署没人要的件（家目录相对）；照删。列不出那个目录 ⇒ 空（下次再问）。
     pub leftovers: Vec<String>,
-    /// 问 `uname` 那一趟的 ack：桌面那一侧原样交回 monitor，按它固化指纹（`dial_host::settle_host_key`）；手机不用（拨号时已经回调落进 Room）。
-    pub ack: Value,
 }
 
 /// 落点那一份是谁：先 stat（没有 / 0 字节就不必再问），在就扫它字节里的身份戳。
@@ -262,7 +259,7 @@ async fn identity_at(facing: &dyn Facing, rel: &str, word: &str) -> Result<Remot
                 .exec(deploy_contract::stamp_scan_cmd(word, MARKS))
                 .await
             {
-                Ok((r, _)) => deploy_contract::interpret_stamp_scan(
+                Ok(r) => deploy_contract::interpret_stamp_scan(
                     r.exit_status,
                     &r.stdout,
                     &r.stderr,
@@ -277,14 +274,10 @@ async fn identity_at(facing: &dyn Facing, rel: &str, word: &str) -> Result<Remot
 /// **那台要哪一格字节** —— 部署计划的第 ① 步。
 ///
 /// 问 `uname -s -m`（[`deploy_contract::key_from_uname`]）→ 表 A / 表 B（[`judge`]）→ 这一版带没带那一格（`carried`）。
-/// 拒绝点在写第一个字节之前；回那一格与问 `uname` 那一趟拨号的 ack。
-async fn slot_of(
-    facing: &dyn Facing,
-    carried: &[Key],
-    machine: &str,
-) -> Result<(Key, Value), Fail> {
+/// 拒绝点在写第一个字节之前。
+async fn slot_of(facing: &dyn Facing, carried: &[Key], machine: &str) -> Result<Key, Fail> {
     let said = |r: Refusal| refused(&r, machine);
-    let (got, ack) = facing
+    let got = facing
         .exec(deploy_contract::UNAME_CMD.to_string())
         .await
         .map_err(|e| {
@@ -304,7 +297,7 @@ async fn slot_of(
             arch: key.arch.label().to_string(),
         }));
     }
-    Ok((key, ack))
+    Ok(key)
 }
 
 /// 一形拒绝 ⇒ `refused`：句子是 [`Refusal::say`]，那台答的原话（[`Refusal::raw`]）随失败交出去。
@@ -332,7 +325,7 @@ pub(crate) async fn plan_and_landing(
     now_secs: u64,
 ) -> Result<(Plan, bool), Fail> {
     let keys: Vec<Key> = carried.iter().map(|(k, _)| *k).collect();
-    let (key, ack) = slot_of(facing, &keys, machine).await?;
+    let key = slot_of(facing, &keys, machine).await?;
     let expected = carried
         .iter()
         .find(|(k, _)| *k == key)
@@ -357,7 +350,6 @@ pub(crate) async fn plan_and_landing(
             expected,
             action,
             leftovers,
-            ack,
         },
         had_one,
     ))
@@ -372,10 +364,9 @@ pub fn landing_dir() -> &'static str {
 
 // ═══ 生产那一个对面 ═══════════════════════════════════════════════════════════════
 
-/// 在那台上跑一条一次性命令、收全三样（退出码 · stdout · stderr，不替调用方判退出码：`grep` 退出 1 是「一个都没有」）＋ 那一趟拨号的 ack。
-/// 宿主给（池里那条连接上多开一个 exec，全后端只在 `dial/remote_ask.rs` 一处）：后端 = `remote_ask::capture_full` · 手机 = 常驻流那条链路的 capture（ack 交 `null`）。
-pub type Exec =
-    Box<dyn Fn(String) -> Fut<'static, Result<(Captured, Value), String>> + Send + Sync>;
+/// 在那台上跑一条一次性命令、收全三样（退出码 · stdout · stderr，不替调用方判退出码：`grep` 退出 1 是「一个都没有」）。
+/// 宿主给（池里那条连接上多开一个 exec，全后端只在 `dial/remote_ask.rs` 一处）：后端 = `remote_ask::capture_full` · 手机 = 常驻流那条链路的 capture。
+pub type Exec = Box<dyn Fn(String) -> Fut<'static, Result<Captured, String>> + Send + Sync>;
 
 /// 生产那一个对面：一次性命令走宿主给的 [`Exec`] · 文件走池里那条连接上的一条 SFTP 会话（第一问时才开）。
 /// 拨号请求是组好的那一形（后端 `ssh_dial::machine::resolve` 出 · 手机 Kotlin 交）；宿主那一套（钥匙 · host key · 写规矩）由宿主先装好。
@@ -407,7 +398,7 @@ impl DialFacing {
 }
 
 impl Facing for DialFacing {
-    fn exec(&self, command: String) -> Fut<'_, Result<(Captured, Value), String>> {
+    fn exec(&self, command: String) -> Fut<'_, Result<Captured, String>> {
         (self.exec)(command)
     }
 

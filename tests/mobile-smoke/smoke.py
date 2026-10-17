@@ -509,7 +509,8 @@ def tap_last(text):
 def files_page():
     """文件页那几步：列目录 · 进一层 · 预览 · 新建 · 改名 · 删除 · 上传 · 下载；读写都问那台后端（台架盘上看结果）。"""
     d = f"files{T}"
-    sh(f"mkdir -p ~/work/{d} && printf 'hello {T}\\n' > ~/work/{d}/a.txt")
+    # 上几趟留下的先清掉（台架家里的），这一趟那一份要在第一屏里。
+    sh(f"rm -rf ~/work/files* && mkdir -p ~/work/{d} && printf 'hello {T}\\n' > ~/work/{d}/a.txt")
     # 11b 量大文本编辑用的那一份：接近编辑上限（8 MB），一行 80 字。
     sh(f"yes 'line of text 0123456789 abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123' | head -c 7900000 > ~/work/{d}/big.txt")
     drawer(t("mobDrawer.item.files"))

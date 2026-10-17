@@ -6,7 +6,6 @@
 use std::sync::{Arc, Mutex};
 
 use deploy_contract::DeployAction;
-use serde_json::Value;
 use ssh_dial::sftp::rig;
 use ssh_dial::sftp::Session;
 use ssh_dial::Captured;
@@ -76,7 +75,7 @@ impl Rig {
 }
 
 impl Facing for Rig {
-    fn exec(&self, command: String) -> Fut<'_, Result<(Captured, Value), String>> {
+    fn exec(&self, command: String) -> Fut<'_, Result<Captured, String>> {
         self.asked.lock().unwrap().push(command.clone());
         let out = if command == deploy_contract::UNAME_CMD {
             Captured {
@@ -163,7 +162,7 @@ impl Facing for Rig {
         } else {
             return Box::pin(async move { Err(format!("替身没登记这条命令：{command}")) });
         };
-        Box::pin(async move { Ok((out, serde_json::json!({"ok": true}))) })
+        Box::pin(async move { Ok(out) })
     }
 
     fn stat<'a>(

@@ -354,6 +354,8 @@ pub struct MachineState {
     pub fixes: Vec<FixButton>,
     /// 指纹不对时那台这一次出示的主机指纹（`host_key_changed` 才有）。
     pub seen_host_key: Option<String>,
+    /// 指纹不对时库里记下的那一枚（`host_key_changed` 才有；库里没有同类型的 ⇒ 空串）。拨号核心说的，不在这里算。
+    pub expected_host_key: Option<String>,
     /// 这一轮没连上 / 做不了时的复制详情（界面照原样跟在问题行那句后面）。
     pub detail: Option<String>,
     /// 下一步那一句（壳写好的；只有本机起后端被拒时有）。界面照原样画在问题行下面。
@@ -409,4 +411,6 @@ pub struct RoundProblem {
     pub detail: String,
     pub why: Option<Why>,
     pub seen_key: Option<String>,
+    /// 因主机指纹被拒时库里记下的那一枚（库里没有同类型的 ⇒ 空串；别的原因 ⇒ `None`）。
+    pub expected_key: Option<String>,
 }

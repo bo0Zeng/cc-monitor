@@ -3,7 +3,7 @@
  * 机器表住本机后端（`machines.json`，`machines-read` / `-try` / `-set`）；壳按 `changed {machines}` 重问、对齐远端流。
  *
  * camelCase key 必须与 Rust reader 一致（否则后端读不到）：
- *   enabled (bool) / hosts[] 内每台：label (可选，默认 host) / host / port (默认 22) / user / keyPath (可选) / hostKeyFingerprint (可选)。
+ *   enabled (bool) / hosts[] 内每台：label (可选，默认 host) / host / port (默认 22) / user / keyPath (可选)。
  *   落点恒是那台的 `~/.cc-monitor/bin/ccm`。
  *
  * 没有 `hosts` 键的单对象形状不认：一台都不显示，机器列表顶上说「远端配置认不出：…」（`remote-config.ts::REMOTE_CONFIG_UNRECOGNIZED`）。
@@ -438,7 +438,8 @@ export class RemoteSection {
 
   /** 问题行［比对指纹…］：记下的那枚与那台这一次出示的那枚并排，信任与否在机器卡。 */
   async compareFingerprint(pageId: string): Promise<void> {
-    await this.cardOfPage(pageId)?.compareFingerprint(this.states.get(pageId)?.seenHostKey ?? null);
+    const st = this.states.get(pageId);
+    await this.cardOfPage(pageId)?.compareFingerprint(st?.expectedHostKey ?? null, st?.seenHostKey ?? null);
   }
 
   /** 问题行［更新］：把这一版换到那台上（那一颗住机器卡）。 */
@@ -611,6 +612,7 @@ export class RemoteSection {
       collapsed,
       persistedKey,
     );
+    if (persistedKey !== null) card.setHostKeys(this.original.hostKeys?.[persistedKey] ?? []);
     this.cards.push(card);
     if (this.pages) {
       // 表单在这台机器自己那一页；列表里只留一行（名字 ＋ 状态 ＋ 点进去）。
@@ -870,19 +872,10 @@ export class RemoteSection {
     const next: RemoteConfig = { hosts: saving.map((c) => c.collect()) };
     // best-effort UI 校验：某台缺必填字段 → 软提示（不拦保存，后端会跳过该台）。
     const incompleteCount = next.hosts.filter((h) => !h.host || !h.user).length;
-    // 指纹格式软校验：非空且不以 SHA256: 开头 → 大概率粘错字段。
-    const fingerprintLooksOff = next.hosts.some(
-      (h) =>
-        !!h.hostKeyFingerprint && !h.hostKeyFingerprint.startsWith("SHA256:"),
-    );
 
     if (incompleteCount > 0) {
       this.showBanner(
         copyText("remote.save.incomplete", { n: incompleteCount }),
-      );
-    } else if (fingerprintLooksOff) {
-      this.showBanner(
-        copyText("remote.save.fingerprintShape"),
       );
     }
 
@@ -901,7 +894,7 @@ export class RemoteSection {
       const loadedCount = countBy(this.loadedKeys);
       const wasOf = (k: string | null): RemoteHostConfig | undefined =>
         k !== null && loadedCount.get(k) === 1 ? findHostByOrigin(this.original.hosts, k) ?? undefined : undefined;
-      const patched = await patchRemoteConfig({
+      await patchRemoteConfig({
         upsert: saving.map((c) => ({
           key: c.persistedKey,
           value: c.collect(),
@@ -917,12 +910,10 @@ export class RemoteSection {
         c.renderStatusStrip();
       }
       this.loadedKeys = saving.map((c) => c.persistedKey!);
-      // 壳替那几台盖上的「指纹记于哪一天」照回话当场显示（不另读盘、不自己取今天）。
-      for (const p of patched.pinned) saving.find((c) => c.persistedKey === p.origin)?.pinnedOn(p.day);
 
       const changed = !sameRemote(next, this.original);
       this.original = next;
-      if (changed && incompleteCount === 0 && !fingerprintLooksOff) {
+      if (changed && incompleteCount === 0) {
         this.showBanner(copyText("remote.save.done"));
       }
       // 机器表改了 ⇒ 本机后端推 `changed {machines}`，壳照它当场对齐那几条流（加的去连、删的 · 停用的断开、改了连接参数的重连）。
@@ -978,7 +969,6 @@ function sameHost(a: RemoteHostConfig, b: RemoteHostConfig): boolean {
     a.port === b.port &&
     a.user === b.user &&
     a.keyPath === b.keyPath &&
-    a.hostKeyFingerprint === b.hostKeyFingerprint &&
     a.jump === b.jump &&
     a.connect === b.connect &&
     // 只改「备用地址」也算变更：漏了它，「需重启生效」横幅不出，新地址不生效。

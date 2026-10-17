@@ -6,7 +6,8 @@ import type { MachineFaultCode } from "./MachineFaultCode";
  */
 export type MachineFault = { 
 /**
- * `no_host` 地址空 · `no_user` 用户空 · `port` 端口不在 1–65535 · `name_taken` 与另一台同名。
+ * `no_host` 地址空 · `no_user` 用户空 · `port` 端口不在 1–65535 · `name_taken` 与另一台同名 ·
+ * `leading_dash` 地址 / 用户以 `-` 打头（开终端时会被 ssh 当成选项）。
  */
 code: MachineFaultCode, 
 /**

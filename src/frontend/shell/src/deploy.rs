@@ -43,13 +43,11 @@ pub(crate) struct Installed {
     /// 落点上现在那一份自报的身份。
     pub(crate) build: String,
     pub(crate) os: String,
-    /// 问 `uname` 那一趟拨号的 ack：逐地址指纹交 `dial_host::settle_host_key` 固化（与 monitor 自己开链路那几条同一个判定）。
-    pub(crate) ack: crate::ssh_link::Ack,
 }
 
 /// `deploy-install` 的应答 → [`Installed`]（**严格收**：少一格、多一格、认不出的值都是错 —— 两侧漂了要当场说出来）。
 pub(crate) fn decode_installed(v: &serde_json::Value) -> Result<Installed, String> {
-    const KEYS: [&str; 5] = ["ack", "action", "build", "os", "said"];
+    const KEYS: [&str; 4] = ["action", "build", "os", "said"];
     let bad = || copy_text("rsSftp.plan.badProduct", &[("v", &v.to_string())]);
     let obj = v.as_object().ok_or_else(bad)?;
     let mut keys: Vec<&str> = obj.keys().map(String::as_str).collect();
@@ -69,11 +67,6 @@ pub(crate) fn decode_installed(v: &serde_json::Value) -> Result<Installed, Strin
         "keep" => Did::Keep,
         _ => return Err(bad()),
     };
-    let ack: crate::ssh_link::Ack = obj
-        .get("ack")
-        .cloned()
-        .and_then(|a| serde_json::from_value(a).ok())
-        .ok_or_else(bad)?;
     Ok(Installed {
         did,
         said: text("said")?,
@@ -81,7 +74,6 @@ pub(crate) fn decode_installed(v: &serde_json::Value) -> Result<Installed, Strin
             .filter(|b| !b.is_empty())
             .ok_or_else(bad)?,
         os: text("os")?,
-        ack,
     })
 }
 
@@ -166,10 +158,7 @@ async fn ask_backend(
 async fn install_for(cfg: &RemoteConfig, slots: Vec<serde_json::Value>) -> Result<Installed, Said> {
     let dial = crate::dial_host::transfer_dial(cfg);
     let data = ask_backend(cfg, INSTALL_CMD, slots, &dial).await?;
-    let got = decode_installed(&data).map_err(|said| Said::new(said, INSTALL_CMD, None))?;
-    // 第一次连一台没钉过指纹的机器就在这一跳 ⇒ 照 monitor 自己开链路那几条同一个判定固化。
-    crate::dial_host::settle_host_key(cfg, &dial, &got.ack);
-    Ok(got)
+    decode_installed(&data).map_err(|said| Said::new(said, INSTALL_CMD, None))
 }
 
 /// 连接前确保远端后端已（自动）部署到固定落点 `~/.cc-monitor/bin/ccm`（issue #29；那个文件就是后端本身）。

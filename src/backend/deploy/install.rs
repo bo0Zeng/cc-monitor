@@ -142,7 +142,7 @@ async fn run_staged(
             copy_text("deploy.place.failed", &[("machine", machine), ("why", why)]),
         )
     };
-    let (got, _) = host
+    let got = host
         .exec(format!(
             "{} -- --{sub}",
             relay_route_core::home_shell(staged)
@@ -263,7 +263,7 @@ pub async fn uninstall(
     machine: &str,
 ) -> Result<Removed, Fail> {
     let keys: Vec<Key> = slots.iter().map(|s| s.key).collect();
-    let (key, _) = crate::slot_of(host, &keys, machine).await?;
+    let key = crate::slot_of(host, &keys, machine).await?;
     let slot = slots
         .iter()
         .find(|s| s.key == key)

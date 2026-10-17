@@ -14,10 +14,6 @@ ticket: string,
  */
 machine: MachineConfig, 
 /**
- * 已保存的那一份（可缺）。
- */
-saved?: MachineConfig | null, 
-/**
  * 跳板那一台的配置（可缺）。
  */
 jump?: MachineConfig | null, };

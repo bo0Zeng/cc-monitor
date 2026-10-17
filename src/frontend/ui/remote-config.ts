@@ -5,7 +5,6 @@ import { LOCAL_ORIGIN } from "./ipc/origin";
 import type { MachineEdit } from "./generated/MachineEdit";
 import type { MachineFault } from "./generated/MachineFault";
 import type { MachinesReply } from "./generated/MachinesReply";
-import type { PinnedDay } from "./generated/PinnedDay";
 
 /** 一问的期限：读写一份小文件 ＋ 回程。 */
 const MACHINES_BUDGET_MS = 10_000;
@@ -13,7 +12,7 @@ const MACHINES_BUDGET_MS = 10_000;
 /**
  * 单台远端机器配置（config.json `remote.hosts[]` 的元素）。**key 必须与 Rust reader 一致**。
  * `label` 是该台的稳定身份（origin tag，多机 #30）：Tab 前缀 / 历史分组 / 选台 key。
- * 留空时后端回退用 host。port 缺省 22；keyPath / hostKeyFingerprint 可选。
+ * 留空时后端回退用 host。port 缺省 22；keyPath 可选。主机指纹不在这张表里（拨号核心那份库，`machines-read` 的 `hostKeys` 只读给出）。
  */
 export interface RemoteHostConfig {
   label: string;
@@ -21,9 +20,6 @@ export interface RemoteHostConfig {
   port: number;
   user: string;
   keyPath: string;
-  hostKeyFingerprint: string;
-  /** 指纹记下的那一天（`YYYY-MM-DD`；没记过 / 不知道 ⇒ 空）。只给人看，拨号不读它。 */
-  hostKeyPinnedAt?: string;
   /**
    * 备用地址（happy-eyeballs 竞发）。每项 `host` / `host:port` /
    * `[IPv6]:port` / 裸 IPv6。首选地址仍是 `host` 字段。空数组 = 仅用 host。
@@ -54,6 +50,8 @@ export interface RemoteConfig {
    * 设置页把这一句说在机器列表顶上，壳那一侧一台都不连。
    */
   unrecognized?: string;
+  /** 每台记下的主机指纹（名字 → 指纹；库里没有的那台不出现）。只读，拨号核心那份库现读。 */
+  hostKeys?: Record<string, string[]>;
 }
 
 /**
@@ -70,8 +68,6 @@ export const HOST_DEFAULTS: RemoteHostConfig = {
   port: 22,
   user: "",
   keyPath: "",
-  hostKeyFingerprint: "",
-  hostKeyPinnedAt: "",
   addresses: [],
   jump: "",
   connect: true,
@@ -102,8 +98,6 @@ function coerceHost(obj: Record<string, unknown>): RemoteHostConfig {
         : HOST_DEFAULTS.port,
     user: str("user", HOST_DEFAULTS.user),
     keyPath: str("keyPath", HOST_DEFAULTS.keyPath),
-    hostKeyFingerprint: str("hostKeyFingerprint", HOST_DEFAULTS.hostKeyFingerprint),
-    hostKeyPinnedAt: str("hostKeyPinnedAt", ""),
     addresses: coerceAddresses(obj.addresses),
     jump: str("jump", HOST_DEFAULTS.jump),
     connect: obj.connect !== false,
@@ -123,7 +117,7 @@ export async function readRemoteConfig(): Promise<RemoteConfig> {
 /** 那一答 → `RemoteConfig`（纯函数）。 */
 export function remoteConfigOf(r: MachinesReply): RemoteConfig {
   if (r.state === "unreadable") return { hosts: [], unrecognized: r.reason ?? "" };
-  return { hosts: r.hosts.map((h) => coerceHost(h as unknown as Record<string, unknown>)) };
+  return { hosts: r.hosts.map((h) => coerceHost(h as unknown as Record<string, unknown>)), hostKeys: r.hostKeys };
 }
 
 /**
@@ -154,19 +148,15 @@ const REMOTE_HOST_FIELDS = [
   "port",
   "user",
   "keyPath",
-  "hostKeyFingerprint",
   "addresses",
   "jump",
   "connect",
 ] as const satisfies readonly (keyof RemoteHostConfig)[];
 
 /**
- * 上面清单**漏掉**的字段（应为 `never`）。`hostKeyPinnedAt` 不由界面写：后端写口跟着指纹盖上（`control/machines.rs::stamp_pinned_day`），界面只读。
+ * 上面清单**漏掉**的字段（应为 `never`）。
  */
-type MissingField = Exclude<
-  keyof RemoteHostConfig,
-  (typeof REMOTE_HOST_FIELDS)[number] | "hostKeyPinnedAt"
->;
+type MissingField = Exclude<keyof RemoteHostConfig, (typeof REMOTE_HOST_FIELDS)[number]>;
 // 漏了字段这一行就红，且 TS 的错误信息会把缺的字段名打出来。
 const _noMissingField: MissingField extends never ? true : MissingField = true;
 void _noMissingField;
@@ -194,20 +184,19 @@ export interface RemoteHostsPatch {
   remove?: string[];
 }
 
-/** 存完那一答里界面要的：写口替那几台盖上的「指纹记于哪一天」。 */
-export interface RemotePatched {
-  pinned: PinnedDay[];
-}
-
 /**
  * 界面写机器表的唯一入口。补丁全按键认那一台（[`remoteHostsEdits`]），不读、不整张写 ——
  * 认那一台在本机后端写口锁内现读现判（`machines-set`）。拒 / 问不到 ⇒ 抛。
  */
-export async function patchRemoteConfig(patch: RemoteHostsPatch): Promise<RemotePatched> {
+export async function patchRemoteConfig(patch: RemoteHostsPatch): Promise<void> {
   const edits = remoteHostsEdits(patch);
-  if (edits.length === 0) return { pinned: [] };
-  const r = await callTyped(LOCAL_ORIGIN, "machines-set", { edits }, budgetWithin(MACHINES_BUDGET_MS));
-  return { pinned: r.pinned };
+  if (edits.length === 0) return;
+  await callTyped(LOCAL_ORIGIN, "machines-set", { edits }, budgetWithin(MACHINES_BUDGET_MS));
+}
+
+/** 忘掉这台记下的主机指纹（拨号核心那份库里删这台的行；下回连上照首见记）。拒 / 问不到 ⇒ 抛。 */
+export async function forgetHostKeys(origin: string): Promise<void> {
+  await callTyped(LOCAL_ORIGIN, "host-keys-forget", { machine: origin }, budgetWithin(MACHINES_BUDGET_MS));
 }
 
 /**
@@ -227,7 +216,7 @@ export async function tryRemoteConfig(patch: RemoteHostsPatch): Promise<MachineF
  * - 增（`key = null`）⇒ 一条 `insertin`：那个 origin 盘上已有 ⇒ 整批拒；
  * - `key` 在、`was` 缺（加载时那个 origin 不止一台）⇒ 按那个 origin 删了再插 —— 认出多台 ⇒ `removein` 整批拒，不猜是哪台。
  *
- * 先删后改再增（写口锁内按序应用）⇒「删掉 A、同时新增一台也叫 A」是替换；刚自动固化的指纹、别的窗口改的格都不会被盖掉。
+ * 先删后改再增（写口锁内按序应用）⇒「删掉 A、同时新增一台也叫 A」是替换；别的窗口改的格不会被盖掉。
  */
 export function remoteHostsEdits(patch: RemoteHostsPatch): MachineEdit[] {
   const edits: MachineEdit[] = [];

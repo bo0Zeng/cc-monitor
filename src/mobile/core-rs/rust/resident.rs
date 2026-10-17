@@ -195,9 +195,14 @@ pub fn ack_problem(ack: &serde_json::Value) -> Problem {
     )
     .because(
         serde_json::from_value(ack["reason"].clone()).ok(),
-        ack.get("fingerprint")
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_string),
+        (
+            ack.get("fingerprint")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string),
+            ack.get("expected_fingerprint")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string),
+        ),
     )
 }
 
@@ -615,14 +620,14 @@ mod tests {
         let short = serde_json::json!({"agent": "claude", "id": "@2", "t": "reply", "model": "m"});
         let novel = serde_json::json!({"agent": "claude", "id": "@3", "t": "brandNew", "x": 1});
         let card = |raw: &serde_json::Value, why: &str, kind: &str, id: &str| {
-            let key = if why == "parseFailed" {
-                "record.unread.parseFailed"
+            let text = if why == "parseFailed" {
+                copy_text("record.unread.parseFailed", &[("type", kind)])
             } else {
-                "record.unread.unknownType"
+                copy_text("record.unread.unknownType", &[("type", kind)])
             };
             serde_json::json!({
                 "agent": "claude", "id": id, "t": "unread", "why": why, "type": kind,
-                "text": copy_text(key, &[("type", kind)]), "tone": "warn",
+                "text": text, "tone": "warn",
                 "excerpt": raw.to_string(), "count": 1,
             })
         };
@@ -753,7 +758,7 @@ mod tests {
             blocker,
         };
         let refused = Problem::new("连接失败 · 密钥被拒", "命令：dial\n原话：denied")
-            .because(Some(Why::Auth), None);
+            .because(Some(Why::Auth), (None, None));
         let cases: Vec<(&str, State)> = vec![
             ("正在连", State::Connecting),
             ("连着", up(1, Relation::Same)),

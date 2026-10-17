@@ -149,6 +149,7 @@ describe("机器单页问题行的修法接到真流程", () => {
       said: copyText("machineState.problem.hostKey"),
       fixes: [{ fix: "compare_fingerprint", label: copyText("machineState.fix.compareFingerprint") }],
       seenHostKey: "SHA256:new",
+      expectedHostKey: "SHA256:old",
       detail: null,
       next: null,
     });

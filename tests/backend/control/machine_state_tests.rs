@@ -31,6 +31,7 @@ async fn a_round_handed_in_is_pushed_as_the_product() {
                 detail: String::new(),
                 why: Some(Why::Auth),
                 seen_key: None,
+                expected_key: None,
             },
             blocker: None,
         },
@@ -56,6 +57,7 @@ async fn a_round_handed_in_is_pushed_as_the_product() {
                     detail: String::new(),
                     why: Some(Why::Auth),
                     seen_key: None,
+                    expected_key: None,
                 },
                 blocker: None,
             },
@@ -117,6 +119,7 @@ fn the_product_matches_the_cross_language_golden() {
         detail: "命令：dial\n原话：raw words".into(),
         why,
         seen_key: Some("SHA256:new".into()),
+        expected_key: Some("SHA256:old".into()),
     };
     let round = |round| Fact::Round {
         round,

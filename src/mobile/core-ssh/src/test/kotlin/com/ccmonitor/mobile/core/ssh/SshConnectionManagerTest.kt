@@ -70,7 +70,6 @@ class SshConnectionManagerTest {
         behavior: suspend FakeTransport.(ConnectionConfig) -> Unit = {},
     ): SshConnectionManager =
         SshConnectionManager(
-            knownHostStore = null,
             transportFactory = { FakeTransport(behavior).also { produced?.add(it) } },
             reconnectDispatcher = StandardTestDispatcher(testScheduler),
         )

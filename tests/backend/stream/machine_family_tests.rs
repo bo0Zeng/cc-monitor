@@ -9,9 +9,12 @@ fn wire_of(v: &impl serde::Serialize) -> String {
     serde_json::to_string(&serde_json::to_value(v).unwrap()).unwrap()
 }
 
-/// 开终端那一行里认 cc-monitor 那份 known_hosts 的那一段（测试进程的家目录下，POSIX 那一形）。
+/// 开终端那一行里 `-F` 那一段（测试档没装写句柄 ⇒ 不带，POSIX 那一形）。
 fn known_hosts_posix() -> String {
-    crate::dial::terminal::known_hosts_arg(crate::dial::known_hosts::path().as_deref(), false)
+    crate::dial::terminal::config_arg(
+        crate::dial::known_hosts::terminal_config().as_deref(),
+        false,
+    )
 }
 
 /// `terminal-ssh`（壳的「在此打开终端」与主界面都读 `command` 那一格）：带跳板 · 上次赢的那条 · 钥匙。
@@ -20,7 +23,7 @@ fn the_terminal_line_the_shell_reads_keeps_its_wire_bytes() {
     let args = json!({
         "machine": { "host": "192.0.2.5", "user": "dev", "port": 2222, "keyPath": "/k/id", "label": "box",
                      "addresses": ["192.0.2.6:2200"], "jump": "hop", "resumeCommand": "", "connect": true },
-        "saved": null,
+
         "jump": { "host": "hop.example", "user": "j", "port": 22, "label": "hop" },
         "prefer": { "host": "192.0.2.6", "port": 2200 },
         "command": "claude --resume abc",
@@ -47,7 +50,7 @@ fn the_terminal_line_the_shell_reads_keeps_its_wire_bytes() {
 #[test]
 fn the_reach_table_the_shell_reads_keeps_its_wire_bytes() {
     let table = crate::dial::remote_ask::Table::default();
-    let dial = json!({ "machine": { "host": "h", "user": "u", "label": "m1" }, "saved": null, "jump": null,
+    let dial = json!({ "machine": { "host": "h", "user": "u", "label": "m1" }, "jump": null,
                        "prefer": null, "use": "capture", "agent_sock": null });
     let got = crate::dial::remote_ask::answer_reach_with(
         &crate::wire::typed::take(&json!({ "origin": "m1", "dial": dial })).unwrap(),
@@ -205,7 +208,6 @@ fn the_deploy_replies_the_shell_reads_keep_their_wire_bytes() {
         expected: "p9a-mine".into(),
         action,
         leftovers: vec![],
-        ack: json!({ "ok": true, "fingerprints": { "192.0.2.2:22": "SHA256:t" }, "jump_fingerprints": {}, "strict": false, "jump_strict": false }),
     };
     assert_eq!(
         wire_of(&dp::installed_of(&plan(
@@ -214,7 +216,7 @@ fn the_deploy_replies_the_shell_reads_keep_their_wire_bytes() {
                 why: "w".into()
             }
         ))),
-        r#"{"ack":{"fingerprints":{"192.0.2.2:22":"SHA256:t"},"jump_fingerprints":{},"jump_strict":false,"ok":true,"strict":false},"action":"keep","build":"p9b","os":"Linux","said":"w"}"#
+        r#"{"action":"keep","build":"p9b","os":"Linux","said":"w"}"#
     );
     // 本机那一份放不放：落点不在 ⇒ 放。
     let got = run_any(

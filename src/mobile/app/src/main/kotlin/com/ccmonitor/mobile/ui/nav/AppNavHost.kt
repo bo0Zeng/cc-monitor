@@ -35,6 +35,7 @@ import com.ccmonitor.mobile.ui.chat.ChatController
 import com.ccmonitor.mobile.ui.chat.ChatRoute
 import com.ccmonitor.mobile.ui.chat.chatKey
 import com.ccmonitor.mobile.ui.chat.newConversationId
+import com.ccmonitor.mobile.ui.common.UnmigratedHostKeys
 import com.ccmonitor.mobile.ui.drawer.DrawerAction
 import com.ccmonitor.mobile.ui.drawer.DrawerNav
 import com.ccmonitor.mobile.ui.files.FilesScreen
@@ -70,6 +71,7 @@ fun AppNavHost() {
         // 全应用的操作反馈与撤销宿主。装在根部：撤销要跨屏活着。
         AppSnackbarHostScaffold {
             AppNavGraph(nav, tabManager, chatController)
+            UnmigratedHostKeys()
         }
     }
 }

@@ -13,32 +13,17 @@ use crate::{
     StageSink, Use, ACK_V, USES,
 };
 
-/// 这一趟目标那台 / 跳板那台是不是严格校验指纹（请求里带了非空的期望指纹）—— ack 的 `strict` / `jump_strict`。
-pub fn strictness(req: &DialRequest) -> (bool, bool) {
-    let set = |f: &Option<String>| f.as_deref().is_some_and(|s| !s.trim().is_empty());
-    (
-        set(&req.host_key_fingerprint),
-        req.jump
-            .as_ref()
-            .is_some_and(|j| set(&j.host_key_fingerprint)),
-    )
-}
-
-fn ok_ack(l: &Linked, req: &DialRequest) -> DialAck {
-    let (strict, jump_strict) = strictness(req);
+fn ok_ack(l: &Linked) -> DialAck {
     DialAck {
         ok: true,
         error: None,
         detail: None,
         fingerprint: l.fingerprint.clone(),
-        fingerprints: l.fingerprints.clone(),
-        jump_fingerprints: l.jump_fingerprints.clone(),
         endpoint: Some(l.endpoint.clone()),
         winner: Some(l.winner.clone()),
-        strict,
-        jump_strict,
         reason: None,
         key_type: None,
+        expected_fingerprint: None,
         v: ACK_V,
         uses: USES,
     }
@@ -535,7 +520,7 @@ async fn serve<R, W>(
                 let _ = write_stages_then_ack(out, stages, &fail(e)).await;
                 return;
             }
-            if write_stages_then_ack(out, stages, &ok_ack(&lease.linked, req))
+            if write_stages_then_ack(out, stages, &ok_ack(&lease.linked))
                 .await
                 .is_err()
             {
@@ -600,7 +585,7 @@ async fn serve<R, W>(
                     return;
                 }
             }
-            if write_stages_then_ack(out, stages, &ok_ack(&lease.linked, req))
+            if write_stages_then_ack(out, stages, &ok_ack(&lease.linked))
                 .await
                 .is_err()
             {
@@ -646,7 +631,7 @@ async fn serve<R, W>(
                     return;
                 }
             };
-            if write_stages_then_ack(out, stages, &ok_ack(&lease.linked, req))
+            if write_stages_then_ack(out, stages, &ok_ack(&lease.linked))
                 .await
                 .is_err()
             {
@@ -665,7 +650,7 @@ async fn serve<R, W>(
                     return;
                 }
             };
-            if write_stages_then_ack(out, stages, &ok_ack(&lease.linked, req))
+            if write_stages_then_ack(out, stages, &ok_ack(&lease.linked))
                 .await
                 .is_err()
             {
@@ -674,7 +659,7 @@ async fn serve<R, W>(
             crate::sftp::serve_files(&session, &mut input, out).await;
         }
         Use::Hold => {
-            if write_stages_then_ack(out, stages, &ok_ack(&lease.linked, req))
+            if write_stages_then_ack(out, stages, &ok_ack(&lease.linked))
                 .await
                 .is_err()
             {
@@ -717,7 +702,7 @@ async fn serve<R, W>(
                 let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
                 return;
             }
-            if write_stages_then_ack(out, stages, &ok_ack(&lease.linked, req))
+            if write_stages_then_ack(out, stages, &ok_ack(&lease.linked))
                 .await
                 .is_err()
             {

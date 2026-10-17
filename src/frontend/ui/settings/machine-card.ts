@@ -6,12 +6,11 @@
  * 2. `parts()` —— 交出「连接 / 组件」两块（详情页据此分栏），外加「终端」栏那一块（别名）；
  * 3. `setPageMode()` —— 进入独占一页的形态（去折叠箭头与删除按钮）。
  */
-import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { homeDir, join } from "@tauri-apps/api/path";
 import { openFileWindow } from "../file-window";
 import { buildConfigPage } from "./config-page"; // 别名与配置文件：远端卡与本机同一个组件（`origin` = 这台）
-import { hostKey, readRemoteConfig, resolveRemoteConfigByOrigin, type RemoteHostConfig } from "../remote-config";
+import { forgetHostKeys, hostKey, readRemoteConfig, type RemoteHostConfig } from "../remote-config";
 import { parseAddressLines } from "../remote-config";
 import type { MachineFault } from "../generated/MachineFault";
 import { askInterrupts, interruptRows } from "./interrupts";
@@ -166,9 +165,9 @@ export interface MachineCardHooks {
   tryCells?: (card: MachineCard, next: RemoteHostConfig) => Promise<MachineFault | null>;
 }
 // 没有「后端路径」那一格：落点恒是那台的 `~/.cc-monitor/bin/ccm`（它就是后端本身）。
-/** 是否显示「重置为 TOFU」按钮：当且仅当已固化了非空指纹（trim 后非空）。 */
-export function shouldShowResetFingerprint(current: string): boolean {
-  return current.trim().length > 0;
+/** 是否显示［忘记…］：当且仅当库里记着这台的主机指纹。 */
+export function shouldShowResetFingerprint(known: readonly string[]): boolean {
+  return known.length > 0;
 }
 
 /** 一张机器卡交给详情页的三块：连接 / 组件 / 终端（别名）。 */
@@ -184,24 +183,6 @@ export interface MachineCardParts {
 /** 按钮结果写在哪一栏。 */
 type ResultArea = "conn" | "comp";
 
-/** 后端那边自动固化 / 各地址指纹不一 ⇒ 既有的 `remote-health` 上这两个 kind（`dial_host.rs`）。 */
-export const HOST_KEY_NOTICE_KINDS: readonly string[] = ["host_key_pinned", "host_key_differs"];
-export interface HostKeyNotice {
-  origin: string;
-  kind: string;
-  message: string;
-}
-const liveCards = new Set<MachineCard>();
-let hostKeyNoticesBound = false;
-/** 整个设置窗只订一次，按 origin 分给各张卡。 */
-function bindHostKeyNotices(): void {
-  if (hostKeyNoticesBound) return;
-  hostKeyNoticesBound = true;
-  listen<HostKeyNotice>("remote-health", (e) => {
-    for (const c of liveCards) void c.onHostKeyNotice(e.payload);
-  }).catch((e: unknown) => console.warn("订不上 remote-health（host key 告知）", e));
-}
-
 export class MachineCard {
   readonly element: HTMLElement;
   private legend!: HTMLElement;
@@ -210,11 +191,12 @@ export class MachineCard {
   private portInput!: HTMLInputElement;
   private userInput!: HTMLInputElement;
   private keyPathInput!: HTMLInputElement;
-  private fingerprintInput!: HTMLInputElement;
   private addressesInput!: HTMLTextAreaElement;
   private jumpInput!: HTMLInputElement;
-  /** 指纹记下的那一天（盘上 `hostKeyPinnedAt`；空 ＝ 不知道）。 */
-  private pinnedAt = "";
+  /** 库里记着这台的主机指纹（`machines-read` 的 `hostKeys`；只读）。 */
+  private hostKeys: string[] = [];
+  /** 主机指纹那一行（与钥匙路径一起排成宽的那两格）。 */
+  private fpRow!: HTMLElement;
   /** 名字 / 地址 / 端口最后一次被接受的值：输入框里不合法的那一格不存，交出去的是这一份。 */
   private accepted = { label: "", host: "", port: 22 };
   /** 连接这台（开关那一格的当前值）。 */
@@ -222,7 +204,7 @@ export class MachineCard {
   private connectSwitch!: { root: HTMLLabelElement; set(on: boolean): void };
   /** 「更多：备用地址 · 跳板机」那一折（标题行右侧写现值）。 */
   private moreFold: HTMLElement | null = null;
-  /** 依当前指纹值显隐「重置为 TOFU」按钮（load / 重置后调用）。 */
+  /** 依库里记着的指纹画那一行、显隐［忘记…］（读到 / 忘掉之后调用）。 */
   private syncResetFpVisibility!: () => void;
   private testButton!: HTMLButtonElement;
   private backendUninstallButton!: HTMLButtonElement;
@@ -261,35 +243,15 @@ export class MachineCard {
     this.syncInputs(initial);
     this.updateLegend();
     this.setCollapsed(collapsed);
-    liveCards.add(this);
-    bindHostKeyNotices();
   }
 
   /** 这张卡作废了（机器表重读 · 删掉且没撤销）：退出全窗那张名单，不再收告知、不再被名单拽着（不然每次重读机器表都留下一整批卡和它们的 DOM）。 */
-  dispose(): void {
-    liveCards.delete(this);
-  }
+  dispose(): void {}
 
-  /**
-   * 只认自己那台：固化了 ⇒ 从盘上把指纹同步进输入框（机器页保存是整台 upsert，不同步会用空值盖回去）；
-   * 各地址不一 ⇒ 把那句话（带逐地址指纹）说在结果区，让人在指纹那一栏选一个填上。
-   */
-  async onHostKeyNotice(n: HostKeyNotice): Promise<void> {
-    if (!HOST_KEY_NOTICE_KINDS.includes(n.kind)) return;
-    if (n.origin !== (this.persistedKey ?? hostKey(this.collect()))) return;
-    if (n.kind === "host_key_pinned") {
-      const disk = await resolveRemoteConfigByOrigin(n.origin);
-      if (disk?.hostKeyFingerprint) {
-        this.fingerprintInput.value = disk.hostKeyFingerprint;
-        this.pinnedAt = disk.hostKeyPinnedAt ?? "";
-        this.syncResetFpVisibility();
-      }
-    }
-    this.testResult.style.display = "block";
-    const line = document.createElement("div");
-    line.className = `remote-test-line ${n.kind === "host_key_pinned" ? "remote-test-ok" : "remote-test-caution"}`;
-    line.textContent = n.message;
-    this.testResult.appendChild(line);
+  /** 库里记着这台的主机指纹（设置页读机器表时交来）。 */
+  setHostKeys(fps: readonly string[]): void {
+    this.hostKeys = [...fps];
+    this.syncResetFpVisibility();
   }
 
   /** 读出本卡片的 RemoteHostConfig（trim）。名字 / 地址 / 端口取最后一次被接受的值（不合法的那一格不交）。 */
@@ -300,8 +262,6 @@ export class MachineCard {
       port: this.accepted.port,
       user: this.userInput.value.trim(),
       keyPath: this.keyPathInput.value.trim(),
-      hostKeyFingerprint: this.fingerprintInput.value.trim(),
-      hostKeyPinnedAt: this.fingerprintInput.value.trim() ? this.pinnedAt : "",
       addresses: parseAddressLines(this.addressesInput.value),
       jump: this.jumpInput.value.trim(),
       connect: this.connect,
@@ -455,10 +415,9 @@ export class MachineCard {
     });
     this.keyPathInput.parentElement?.appendChild(pickKey);
 
-    // 主机指纹：只读一行（`SHA256:… · 记于 {date}`）＋［忘记…］；值本身住在一格隐藏框里随整台存。
-    this.fingerprintInput = document.createElement("input");
-    this.fingerprintInput.type = "hidden";
+    // 主机指纹：只读一行（库里记着的那几枚）＋［忘记…］；值住拨号核心那份库，不随整台存。
     const fpRow = document.createElement("div");
+    this.fpRow = fpRow;
     fpRow.className = "machine-conn-field machine-conn-fp";
     const fpLabel = document.createElement("span");
     fpLabel.className = "settings-label";
@@ -474,18 +433,15 @@ export class MachineCard {
     resetFpBtn.title = copyText("machineCard.field.resetFingerprintHint");
     resetFpBtn.addEventListener("click", () => void this.onResetFingerprint());
     fpLine.append(fpText, resetFpBtn);
-    fpRow.append(fpLabel, fpLine, this.fingerprintInput);
+    fpRow.append(fpLabel, fpLine);
     body.appendChild(fpRow);
     const syncResetVisibility = (): void => {
-      const fp = this.fingerprintInput.value.trim();
-      const shown = shouldShowResetFingerprint(fp);
-      resetFpBtn.hidden = !shown;
-      fpText.title = fp;
-      fpText.textContent = !fp
-        ? copyText("machineCard.fp.none")
-        : this.pinnedAt
-          ? copyText("machineCard.fp.line", { fp: shortFingerprint(fp), date: this.pinnedAt.slice(5) })
-          : shortFingerprint(fp);
+      resetFpBtn.hidden = !shouldShowResetFingerprint(this.hostKeys);
+      fpText.title = this.hostKeys.join("\n");
+      fpText.textContent =
+        this.hostKeys.length === 0
+          ? copyText("machineCard.fp.none")
+          : this.hostKeys.map(shortFingerprint).join(copyText("kit.text.sep"));
     };
     this.syncResetFpVisibility = syncResetVisibility;
     syncResetVisibility();
@@ -585,7 +541,7 @@ export class MachineCard {
     const grid = document.createElement("div");
     grid.className = "machine-conn-grid";
     grid.append(fieldOf(this.labelInput), fieldOf(this.hostInput), fieldOf(this.userInput), fieldOf(this.portInput));
-    const wide = [fieldOf(this.keyPathInput), fieldOf(this.fingerprintInput)];
+    const wide = [fieldOf(this.keyPathInput), this.fpRow];
     for (const w of wide) w.classList.add("machine-conn-wide");
     grid.append(...wide);
     const moreBody = document.createElement("div");
@@ -643,8 +599,6 @@ export class MachineCard {
     this.portInput.value = cfg.port ? String(cfg.port) : "";
     this.userInput.value = cfg.user;
     this.keyPathInput.value = cfg.keyPath;
-    this.fingerprintInput.value = cfg.hostKeyFingerprint;
-    this.pinnedAt = cfg.hostKeyPinnedAt ?? "";
     this.addressesInput.value = cfg.addresses.join("\n");
     this.jumpInput.value = cfg.jump ?? "";
     this.connect = cfg.connect;
@@ -655,8 +609,8 @@ export class MachineCard {
   }
 
   /**
-   * 重置主机指纹 → 回到 TOFU（清空固化指纹）。醒目的二次确认：清除后下次连接会接受新主机密钥，
-   * 此刻若正被中间人攻击就信了攻击者的密钥 —— 只在确知服务器合法换过 host key 时才该重置。
+   * 忘掉这台的主机指纹（拨号核心那份库里删这台的行，`host-keys-forget`）。醒目的二次确认：忘掉后下次连接会接受新主机密钥，
+   * 此刻若正被中间人攻击就信了攻击者的密钥 —— 只在确知服务器合法换过 host key 时才该忘掉。
    */
   private async onResetFingerprint(): Promise<void> {
     const host =
@@ -671,21 +625,19 @@ export class MachineCard {
     ) {
       return;
     }
-    this.fingerprintInput.value = "";
-    this.pinnedAt = "";
-    this.syncResetFpVisibility();
-    this.hooks.onChange(); // 触发 section 保存（写回 config，指纹置空 = 严格校验解除）
-    this.showResetFeedback();
-  }
-
-  /** 重置后就地反馈（复用测试结果区显示一行提示）。 */
-  private showResetFeedback(): void {
+    let said: string;
+    try {
+      await forgetHostKeys(this.persistedKey ?? hostKey(this.collect()));
+      this.setHostKeys([]);
+      said = copyText("machineCard.resetFingerprint.done");
+    } catch (e) {
+      said = e instanceof Error ? e.message : String(e);
+    }
     this.testResult.innerHTML = "";
     this.testResult.style.display = "block";
     const line = document.createElement("div");
     line.className = "remote-test-line remote-test-caution";
-    line.textContent =
-      copyText("machineCard.resetFingerprint.done");
+    line.textContent = said;
     this.testResult.appendChild(line);
   }
 
@@ -993,26 +945,7 @@ export class MachineCard {
       this.testResult.appendChild(msg);
     }
 
-    const current = this.fingerprintInput.value.trim();
-    if (res.fingerprint && current !== res.fingerprint) {
-      const fpLine = document.createElement("div");
-      fpLine.className = "remote-test-line";
-      const fpText = document.createElement("span");
-      fpText.className = "remote-test-fp";
-      fpText.textContent = current
-        ? copyText("machineCard.test.fpChanged", { fingerprint: res.fingerprint })
-        : copyText("machineCard.test.fpUnpinned", { fingerprint: res.fingerprint });
-      const fp = res.fingerprint;
-      const saveBtn = button({
-        label: current ? copyText("machineCard.test.pinUpdate") : copyText("machineCard.test.pinSave"),
-        size: "compact",
-        onClick: () => void this.onSaveFingerprint(fp),
-      });
-      fpLine.append(fpText, saveBtn);
-      this.testResult.appendChild(fpLine);
-    }
-
-    // 这台说做不到的那几类：点开看全表（一类一句，后端写好；与置灰那一句同一个家）。
+    // 这台说做不到的那几类：点开看全表（一类一句；码的人话与置灰那一句同一个家）。
     if (res.backendGaps.length > 0) {
       const gaps = document.createElement("details");
       gaps.className = "remote-test-line";
@@ -1049,8 +982,7 @@ export class MachineCard {
    * 指纹变了：两枚并排（记下的 · 现在的 · 记于何时）。［信任新的指纹］⇒ 记下现在那一枚并存盘（重连跟着走）；
    * ［不连接］⇒ 什么都不写。`seen` 是那台这一次出示的那一枚（状态成品带来；没带 ⇒ 不给信任）。
    */
-  async compareFingerprint(seen: string | null): Promise<void> {
-    const pinned = this.fingerprintInput.value.trim();
+  async compareFingerprint(expected: string | null, seen: string | null): Promise<void> {
     const ok = await confirmDialog({
       title: copyText("hostKey.compare.title", { machine: this.displayName() }),
       action: copyText("hostKey.compare.trust"),
@@ -1058,34 +990,22 @@ export class MachineCard {
       danger: true,
       body: copyText("hostKey.compare.caution"),
       rows: [
-        {
-          label: copyText("hostKey.compare.pinned"),
-          items: pinned ? [pinned, ...(this.pinnedAt ? [copyText("hostKey.compare.pinnedAt", { date: this.pinnedAt })] : [])] : [copyText("hostKey.compare.none")],
-        },
+        { label: copyText("hostKey.compare.pinned"), items: [expected || copyText("hostKey.compare.none")] },
         { label: copyText("hostKey.compare.seen"), items: [seen ?? copyText("hostKey.compare.none")] },
       ],
     });
     if (!ok || seen === null) return;
-    await this.onSaveFingerprint(seen);
+    // 信这一枚 = 忘掉库里那一枚：下回连上鉴权过了照首见记下这一枚（记在拨号核心那一处，界面不写指纹）。
+    await this.forgetNow();
   }
 
-  /** 存完之后壳回话里这台「指纹记于哪一天」盖成了什么（`patch_config` 的回话）⇒ 当场显示。 */
-  pinnedOn(day: string): void {
-    this.pinnedAt = day;
-    this.syncResetFpVisibility();
-  }
-
-  /** 把测出的指纹写进字段并保存（TOFU→strict 固化）。 */
-  private async onSaveFingerprint(fingerprint: string): Promise<void> {
-    this.fingerprintInput.value = fingerprint;
-    this.pinnedAt = ""; // 记于哪一天由壳写配置时盖上，存完照回话显示（`pinnedOn`）
-    this.syncResetFpVisibility(); // 程序化赋值不触发 input 事件，手动同步重置按钮显隐
-    this.hooks.onChange(); // 触发 section 保存
-    // 就地把［记录］那一行换成「已记录」（不重连）。
-    const fpLine = this.testResult.querySelector(".remote-test-fp");
-    if (fpLine && fpLine.parentElement) {
-      fpLine.parentElement.querySelector("button")?.remove();
-      fpLine.textContent = copyText("machineCard.test.pinned");
+  /** 不再问一遍地忘掉（比对框里已经确认过）。 */
+  private async forgetNow(): Promise<void> {
+    try {
+      await forgetHostKeys(this.persistedKey ?? hostKey(this.collect()));
+      this.setHostKeys([]);
+    } catch (e) {
+      console.warn("忘掉主机指纹没成", e);
     }
   }
 }

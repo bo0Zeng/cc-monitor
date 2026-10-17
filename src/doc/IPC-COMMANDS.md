@@ -8881,10 +8881,6 @@ port?: number,
  */
 keyPath?: string, 
 /**
- * 记下的主机指纹（`SHA256:…`）。
- */
-hostKeyFingerprint?: string, 
-/**
  * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
  */
 addresses: Array<string>, 
@@ -8892,7 +8888,7 @@ addresses: Array<string>,
  * 跳板那一台的名字（空 ⇒ 直连）。
  */
 jump?: string, };
-type MachineDial = { machine: MachineConfig, saved?: MachineConfig | null, jump?: MachineConfig | null, prefer?: Prefer | null, 
+type MachineDial = { machine: MachineConfig, jump?: MachineConfig | null, prefer?: Prefer | null, 
 /**
  * 用法（存着不读：问那台的每一趟按自己的用法改，`capture` · `forward`）。
  */
@@ -10547,10 +10543,6 @@ port?: number,
  */
 keyPath?: string, 
 /**
- * 记下的主机指纹（`SHA256:…`）。
- */
-hostKeyFingerprint?: string, 
-/**
  * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
  */
 addresses: Array<string>, 
@@ -10569,10 +10561,6 @@ type TerminalSshReq = {
  * 那台的配置（可能还没保存）。
  */
 machine: MachineConfig, 
-/**
- * 已保存的那一份（指纹只从同一个 host 的那一份继承）。
- */
-saved?: MachineConfig | null, 
 /**
  * 跳板那一台的配置（`machine.jump` 指它时必给）。
  */
@@ -12647,10 +12635,6 @@ port?: number,
  */
 keyPath?: string, 
 /**
- * 记下的主机指纹（`SHA256:…`）。
- */
-hostKeyFingerprint?: string, 
-/**
  * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
  */
 addresses: Array<string>, 
@@ -12658,7 +12642,7 @@ addresses: Array<string>,
  * 跳板那一台的名字（空 ⇒ 直连）。
  */
 jump?: string, };
-type MachineDial = { machine: MachineConfig, saved?: MachineConfig | null, jump?: MachineConfig | null, prefer?: Prefer | null, 
+type MachineDial = { machine: MachineConfig, jump?: MachineConfig | null, prefer?: Prefer | null, 
 /**
  * 用法（存着不读：问那台的每一趟按自己的用法改，`capture` · `forward`）。
  */
@@ -12866,10 +12850,6 @@ port?: number,
  */
 keyPath?: string, 
 /**
- * 记下的主机指纹（`SHA256:…`）。
- */
-hostKeyFingerprint?: string, 
-/**
  * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
  */
 addresses: Array<string>, 
@@ -12882,10 +12862,6 @@ type PubkeyPushReq = {
  * 那台的配置（设置页表单里那台，可能还没保存）。
  */
 machine: MachineConfig, 
-/**
- * 已保存的那一份。
- */
-saved?: MachineConfig | null, 
 /**
  * 跳板那一台。
  */
@@ -13202,14 +13178,6 @@ port: number, user: string,
  */
 keyPath: string, 
 /**
- * 固化的主机指纹（空 ＝ 没固化）。
- */
-hostKeyFingerprint: string, 
-/**
- * 指纹记下的那一天（`YYYY-MM-DD`，写口盖；空 ＝ 没记过）。
- */
-hostKeyPinnedAt: string, 
-/**
  * 备用地址（竞发）。
  */
 addresses: Array<string>, 
@@ -13241,7 +13209,11 @@ path: string | null,
 /**
  * 照用的那一张。
  */
-hosts: Array<Host>, };
+hosts: Array<Host>, 
+/**
+ * 每台记下的主机指纹（名字 → 指纹，库里没有的那台不出现；拨号核心那份库现读）。
+ */
+hostKeys: { [key in string]: Array<string> }, };
 type NoArgs = Record<symbol, never>;
 ```
 
@@ -13257,10 +13229,11 @@ type NoArgs = Record<symbol, never>;
 
 ```ts
 type ElemKey = { fields: Array<string>, equals: string, };
-type MachineEdit = { "op": "setin", where: Array<ElemKey>, field: string, value: unknown, ifEmpty?: boolean, } | { "op": "insertin", where: Array<ElemKey>, value: unknown, } | { "op": "removein", where: Array<ElemKey>, };
+type MachineEdit = { "op": "setin", where: Array<ElemKey>, field: string, value: unknown, } | { "op": "insertin", where: Array<ElemKey>, value: unknown, } | { "op": "removein", where: Array<ElemKey>, };
 type MachineFault = { 
 /**
- * `no_host` 地址空 · `no_user` 用户空 · `port` 端口不在 1–65535 · `name_taken` 与另一台同名。
+ * `no_host` 地址空 · `no_user` 用户空 · `port` 端口不在 1–65535 · `name_taken` 与另一台同名 ·
+ * `leading_dash` 地址 / 用户以 `-` 打头（开终端时会被 ssh 当成选项）。
  */
 code: MachineFaultCode, 
 /**
@@ -13271,7 +13244,7 @@ name: string,
  * 那一格下面的那一句（添加机器框 · 机器卡同读）。
  */
 said: string, };
-type MachineFaultCode = "no_host" | "no_user" | "port" | "name_taken";
+type MachineFaultCode = "no_host" | "no_user" | "port" | "name_taken" | "leading_dash";
 type MachinesEdits = { edits: Array<MachineEdit>, };
 type MachinesTried = { 
 /**
@@ -13315,14 +13288,6 @@ port: number, user: string,
  */
 keyPath: string, 
 /**
- * 固化的主机指纹（空 ＝ 没固化）。
- */
-hostKeyFingerprint: string, 
-/**
- * 指纹记下的那一天（`YYYY-MM-DD`，写口盖；空 ＝ 没记过）。
- */
-hostKeyPinnedAt: string, 
-/**
  * 备用地址（竞发）。
  */
 addresses: Array<string>, 
@@ -13334,10 +13299,11 @@ jump: string,
  * 连不连这台。
  */
 connect: boolean, };
-type MachineEdit = { "op": "setin", where: Array<ElemKey>, field: string, value: unknown, ifEmpty?: boolean, } | { "op": "insertin", where: Array<ElemKey>, value: unknown, } | { "op": "removein", where: Array<ElemKey>, };
+type MachineEdit = { "op": "setin", where: Array<ElemKey>, field: string, value: unknown, } | { "op": "insertin", where: Array<ElemKey>, value: unknown, } | { "op": "removein", where: Array<ElemKey>, };
 type MachineFault = { 
 /**
- * `no_host` 地址空 · `no_user` 用户空 · `port` 端口不在 1–65535 · `name_taken` 与另一台同名。
+ * `no_host` 地址空 · `no_user` 用户空 · `port` 端口不在 1–65535 · `name_taken` 与另一台同名 ·
+ * `leading_dash` 地址 / 用户以 `-` 打头（开终端时会被 ssh 当成选项）。
  */
 code: MachineFaultCode, 
 /**
@@ -13348,7 +13314,7 @@ name: string,
  * 那一格下面的那一句（添加机器框 · 机器卡同读）。
  */
 said: string, };
-type MachineFaultCode = "no_host" | "no_user" | "port" | "name_taken";
+type MachineFaultCode = "no_host" | "no_user" | "port" | "name_taken" | "leading_dash";
 type MachinesEdits = { edits: Array<MachineEdit>, };
 type MachinesReply = { 
 /**
@@ -13370,15 +13336,86 @@ path: string | null,
 /**
  * 照用的那一张。
  */
-hosts: Array<Host>, };
-type MachinesSet = { machines: MachinesReply, pinned: Array<PinnedDay>, kept: number, };
-type Origin = string;
-type PinnedDay = { origin: Origin, day: string, };
+hosts: Array<Host>, 
+/**
+ * 每台记下的主机指纹（名字 → 指纹，库里没有的那台不出现；拨号核心那份库现读）。
+ */
+hostKeys: { [key in string]: Array<string> }, };
+type MachinesSet = { machines: MachinesReply, };
 ```
 
 码：`bad_args` · `unreadable` · `element_gone` · `element_exists` · `bad_machine` · `io_failed`
 
 失败带 `data` 的码：`element_gone` ⇒ `Gone` · `bad_machine` ⇒ `MachineFault`
+
+#### `host-keys-forget`
+
+忘掉一台记下的主机指纹，读回机器表、推 `changed {machines}`。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --host-keys-forget`
+
+入参 `HostKeysForgetReq` · 回包 `MachinesReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Host = { 
+/**
+ * 这台的名字（origin）；空 ⇒ 用 `host`。
+ */
+label: string, 
+/**
+ * 首选地址。
+ */
+host: string, 
+/**
+ * 端口（缺 ＝ 22）。
+ */
+port: number, user: string, 
+/**
+ * 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
+ */
+keyPath: string, 
+/**
+ * 备用地址（竞发）。
+ */
+addresses: Array<string>, 
+/**
+ * 跳板：另一台的名字（空 ＝ 直连）。
+ */
+jump: string, 
+/**
+ * 连不连这台。
+ */
+connect: boolean, };
+type HostKeysForgetReq = { machine: Origin, };
+type MachinesReply = { 
+/**
+ * `absent`（没有这份）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
+ */
+state: "absent" | "ok" | "unreadable", 
+/**
+ * `unreadable` 时的原因（那一句不带原话）。
+ */
+reason: string | null, 
+/**
+ * `unreadable` 时的复制详情。
+ */
+detail: string | null, 
+/**
+ * 那份文件的路径（家目录说不出 ⇒ `null`）。
+ */
+path: string | null, 
+/**
+ * 照用的那一张。
+ */
+hosts: Array<Host>, 
+/**
+ * 每台记下的主机指纹（名字 → 指纹，库里没有的那台不出现；拨号核心那份库现读）。
+ */
+hostKeys: { [key in string]: Array<string> }, };
+type Origin = string;
+```
+
+码：`bad_args` · `unreadable` · `element_gone` · `io_failed`
 
 #### `drift-report`
 
@@ -13452,10 +13489,6 @@ remoteHost: string, remotePort: number,
  */
 machine?: MachineConfig | null, 
 /**
- * 已保存的那一份。
- */
-saved?: MachineConfig | null, 
-/**
  * 跳板那一台。
  */
 jump?: MachineConfig | null, };
@@ -13485,10 +13518,6 @@ port?: number,
  * 私钥路径（缺 / 空 ⇒ 走 ssh-agent）。
  */
 keyPath?: string, 
-/**
- * 记下的主机指纹（`SHA256:…`）。
- */
-hostKeyFingerprint?: string, 
 /**
  * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
  */
@@ -13533,10 +13562,6 @@ port?: number,
  */
 keyPath?: string, 
 /**
- * 记下的主机指纹（`SHA256:…`）。
- */
-hostKeyFingerprint?: string, 
-/**
  * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
  */
 addresses: Array<string>, 
@@ -13553,10 +13578,6 @@ ticket: string,
  * 那台的配置。
  */
 machine: MachineConfig, 
-/**
- * 已保存的那一份（可缺）。
- */
-saved?: MachineConfig | null, 
 /**
  * 跳板那一台的配置（可缺）。
  */
@@ -13643,10 +13664,6 @@ port?: number,
  */
 keyPath?: string, 
 /**
- * 记下的主机指纹（`SHA256:…`）。
- */
-hostKeyFingerprint?: string, 
-/**
  * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
  */
 addresses: Array<string>, 
@@ -13654,7 +13671,7 @@ addresses: Array<string>,
  * 跳板那一台的名字（空 ⇒ 直连）。
  */
 jump?: string, };
-type MachineDial = { machine: MachineConfig, saved?: MachineConfig | null, jump?: MachineConfig | null, prefer?: Prefer | null, 
+type MachineDial = { machine: MachineConfig, jump?: MachineConfig | null, prefer?: Prefer | null, 
 /**
  * 用法（存着不读：问那台的每一趟按自己的用法改，`capture` · `forward`）。
  */
@@ -14494,6 +14511,7 @@ type Words = string;
 | `--history-turns` | ＝ 帧命令 `history-turns`：一轮的摘要 |
 | `--history-user-inputs` | ＝ 帧命令 `history-user-inputs`：「人说过的话」清单 |
 | `--hooks-diag` | ＝ 帧命令 `hooks-diag`：cc-bus 钩子诊断 |
+| `--host-keys-forget` | ＝ 帧命令 `host-keys-forget`：忘掉一台记下的主机指纹，读回机器表、推 `changed {machines}` |
 | `--kill` | ＝ 帧命令 `kill`：杀一个 tmux 会话 |
 | `--last-seen-read` | ＝ 帧命令 `last-seen-read`：读离线那台的上次值 |
 | `--last-seen-write` | ＝ 帧命令 `last-seen-write`：记下一台这一次读成的那一份（或清掉那台） |

@@ -26,7 +26,7 @@ fn out(env: &JNIEnv, s: Option<String>) -> jstring {
         .unwrap_or(std::ptr::null_mut())
 }
 
-fn strings(env: &mut JNIEnv, arr: &JObjectArray) -> Vec<String> {
+pub(crate) fn strings(env: &mut JNIEnv, arr: &JObjectArray) -> Vec<String> {
     let n = env.get_array_length(arr).unwrap_or(0);
     (0..n)
         .map(|i| {

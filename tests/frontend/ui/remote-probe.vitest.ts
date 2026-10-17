@@ -47,7 +47,6 @@ const host = (over: Partial<RemoteHostConfig>): RemoteHostConfig => ({
   port: 22,
   user: "u",
   keyPath: "",
-  hostKeyFingerprint: "",
   addresses: [],
   jump: "",
   connect: true,
@@ -90,7 +89,7 @@ describe("请求与进度", () => {
       return Promise.resolve(new TextEncoder().encode("null"));
     };
     const form = host({ host: "192.0.2.3", jump: "bastion" });
-    const saved = [host({ label: "other" }), host({ label: "bastion", host: "b.example" }), host({ hostKeyFingerprint: "SHA256:old" })];
+    const saved = [host({ label: "other" }), host({ label: "bastion", host: "b.example" }), host({ keyPath: "/k/old" })];
     const r = await probeMachine(form, saved, (st) => drawn.push(st));
     expect(fake.order).toEqual(["subscribe", "call"]);
     const sub = fake.subs[0]!;
@@ -100,7 +99,7 @@ describe("请求与进度", () => {
     expect(body).toEqual({
       origin: LOCAL_ORIGIN,
       op: "remote-probe",
-      args: { ticket, machine: form, saved: saved[2], jump: saved[1] },
+      args: { ticket, machine: form, jump: saved[1] },
     });
     expect(r).toEqual(ok);
     expect(sub.stopped, "结局到了就撤订").toBe(true);

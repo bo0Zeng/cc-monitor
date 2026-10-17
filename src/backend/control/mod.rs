@@ -34,6 +34,7 @@ pub use machine_prefs::apply_agent_homes;
 pub(crate) mod machine_state;
 pub(crate) mod machines;
 // 第 7 批那一次换形（`config.json` 那几格 ⇒ 各台 `prefs.json`；下一版删）。
+pub mod host_key_migration;
 pub mod prefs_migration;
 // 解压（`files-extract`）＋ 「建链接」那一个动词的调用方（复制链接本身 · 解压包里的链接）。
 pub mod files_extract;

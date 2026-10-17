@@ -30,7 +30,6 @@ class SshConnectionCloseThreadTest {
     /** 用真默认的 `reconnectDispatcher` 造 manager；在这里注入 dispatcher 会让本文件失去意义。 */
     private fun realDispatcherManager(behavior: suspend FakeTransport.(ConnectionConfig) -> Unit = {}) =
         SshConnectionManager(
-            knownHostStore = null,
             transportFactory = { FakeTransport(behavior).also { produced += it } },
         )
 

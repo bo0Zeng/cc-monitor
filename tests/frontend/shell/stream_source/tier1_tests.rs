@@ -114,8 +114,7 @@ fn remote_config_deserializes_frontend_shape() {
     assert_eq!(cfg.port, 2200);
     assert_eq!(cfg.user, "pi");
     assert_eq!(cfg.key_path, None, "空串 keyPath → None");
-    // 盘上旧的 `backendPath` 不读、不报错（那一格删了）。
-    assert_eq!(cfg.host_key_fingerprint, None, "空串指纹 → None");
+    // 盘上旧的 `backendPath` · `hostKeyFingerprint` 不读、不报错（那两格删了）。
 }
 
 /// RemoteConfig：缺 port 时默认 22，非空可选字段保留为 Some。
@@ -131,7 +130,6 @@ fn remote_config_defaults_and_some() {
     let cfg: RemoteConfig = serde_json::from_str(json).expect("must deserialize");
     assert_eq!(cfg.port, 22, "缺 port → 默认 22");
     assert_eq!(cfg.key_path.as_deref(), Some("C:\\k"));
-    assert_eq!(cfg.host_key_fingerprint.as_deref(), Some("SHA256:abc"));
 }
 
 // 退避那几条（hello-then-die 不许把退避按在下界 · 翻倍封顶）随退避本体住 `resident-client`：`tests/comms/resident-client/backoff_tests.rs`；

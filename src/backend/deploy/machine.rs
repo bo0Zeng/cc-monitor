@@ -147,6 +147,9 @@ pub fn product(e: &Entry, machine: &str, enabled: bool, installs: bool) -> Machi
         seen_host_key: problem
             .filter(|_| state == K::HostKeyChanged)
             .and_then(|p| p.seen_key.clone()),
+        expected_host_key: problem
+            .filter(|_| state == K::HostKeyChanged)
+            .and_then(|p| p.expected_key.clone()),
         detail: problem.map(|p| detail(machine, p, &code(why, blocker))),
         next: None,
     }

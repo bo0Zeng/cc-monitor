@@ -30,7 +30,7 @@ const RELATIONS: readonly VersionRelation[] = ["same", "older", "newer", "incomp
 const FIXES: readonly MachineFix[] = ["retry", "conn_settings", "push_key", "compare_fingerprint", "update", "connect", "install"];
 const STAGES: readonly MachineStage[] = ["deploy", "attach"];
 const WHYS: readonly DialWhy[] = ["resolve", "unreachable", "timeout", "host_key", "auth", "password", "key_unreadable", "jump", "other"];
-const KEYS = ["detail", "fixes", "next", "os", "reason", "said", "seenHostKey", "stage", "state", "version", "versionRelation", "word"];
+const KEYS = ["detail", "expectedHostKey", "fixes", "next", "os", "reason", "said", "seenHostKey", "stage", "state", "version", "versionRelation", "word"];
 
 const strOrNull = (v: unknown): v is string | null => v === null || (typeof v === "string" && v !== "");
 const oneOf = <T>(all: readonly T[], v: unknown): boolean => v === null || all.includes(v as T);
@@ -43,7 +43,8 @@ export function decodeMachineState(raw: unknown): MachineState | null {
   const v = raw;
   if (!KINDS.includes(v.state as MachineStateKind)) return null;
   if (!oneOf(WHYS, v.reason) || !oneOf(STAGES, v.stage) || !oneOf(RELATIONS, v.versionRelation)) return null;
-  if (!strOrNull(v.version) || !strOrNull(v.os) || !strOrNull(v.seenHostKey) || !strOrNull(v.detail) || !strOrNull(v.next)) return null;
+  // 库里记下的那一枚：库里没有同类型的 ⇒ 空串（后端照实说「没有」）。
+  if (!strOrNull(v.version) || !strOrNull(v.os) || !strOrNull(v.seenHostKey) || !strOrNull(v.expectedHostKey) || !strOrNull(v.detail) || !strOrNull(v.next)) return null;
   if (typeof v.word !== "string" || typeof v.said !== "string") return null;
   if (!Array.isArray(v.fixes) || !v.fixes.every(fixButton)) return null;
   return v as unknown as MachineState;
