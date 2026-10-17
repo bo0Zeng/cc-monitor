@@ -334,16 +334,18 @@ fn the_pin_names_the_main_argument_of_every_tool_the_step_line_knows() {
     }
 }
 
-/// 提问 / 计划的工具名只由 `asks` 一处定义，`cards.rs` 与 `steps.rs` 不再出现这两字面量。
+/// 提问 / 计划的工具名只由 `asks` 一处定义，`cards.rs` 与 `steps.rs` 不再出现这两个串字面量。
 #[test]
 fn ask_and_plan_tool_literals_live_only_in_asks() {
     let cards = include_str!("../../../../src/backend/agents/claudecode/cards.rs");
     let steps = include_str!("../../../../src/backend/agents/claudecode/steps.rs");
     let asks = include_str!("../../../../src/backend/agents/claudecode/asks.rs");
 
+    // 量的是串字面量（带引号那一形）：头注里点名工具说明形状不算。
     for tool in [ASK_TOOL, PLAN_TOOL] {
-        assert!(asks.contains(tool), "正控：asks 必含 {tool}");
-        assert!(!cards.contains(tool), "cards.rs 不应出现 {tool} 字面量");
-        assert!(!steps.contains(tool), "steps.rs 不应出现 {tool} 字面量");
+        let lit = format!("\"{tool}\"");
+        assert!(asks.contains(&lit), "正控：asks 必含 {lit}");
+        assert!(!cards.contains(&lit), "cards.rs 不应出现 {lit} 字面量");
+        assert!(!steps.contains(&lit), "steps.rs 不应出现 {lit} 字面量");
     }
 }
