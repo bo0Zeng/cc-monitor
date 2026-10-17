@@ -135,6 +135,7 @@ const pushed = (state: string, extra: Record<string, unknown> = {}): Record<stri
   said: "",
   fixes: [],
   seenHostKey: null,
+  expectedHostKey: null,
   detail: null,
   next: null,
   ...extra,
@@ -146,7 +147,7 @@ const localRefused = pushed("needs_update", {
   version: null,
   versionRelation: "older",
   os: null,
-  fixes: ["retry"],
+  fixes: [{ fix: "retry", label: copyText("machineState.fix.retry") }],
   next: copyText("rsLocalBackendHost.start.refusedNext", {
     why: copyText("rsLocalBackendHost.hello.buildMismatch", { theirs: "p7a-4.1.0", ours: "p8c-4.1.1" }),
     pid: "4242",
@@ -191,16 +192,10 @@ export const SETTINGS_SCENES: Scene[] = [
   settings("settings-machines-installing", "设置 · 机器 · 正在装", "gpu-01 正在装 cc-monitor：虚线点 ＋「安装中」＋ 进度条", async () => {
     await go("machines");
   }, installingWorld),
-  settings("settings-machines-pushed", "设置 · 机器 · 状态推送", "页面开着时本机后端推来两帧：devbox 正在连（启动 cc-monitor）、gpu-01 正在更新 —— 那两行原位换", async (ctx) => {
+  settings("settings-machines-pushed", "设置 · 机器 · 状态推送", "页面开着时又来两轮结论、本机后端推来两帧：devbox 正在连（启动 cc-monitor）、gpu-01 比这一版旧 —— 那两行原位换", async (ctx) => {
     await go("machines");
-    ctx.backend.pushChanged(LOCAL, "machine", {
-      key: "devbox",
-      body: pushed("connecting", { stage: "attach", word: copyText("machineState.word.connecting"), said: "连接 devbox · 启动 cc-monitor" }),
-    });
-    ctx.backend.pushChanged(LOCAL, "machine", {
-      key: "gpu-01",
-      body: pushed("updating", { word: copyText("machineState.word.updating"), said: "更新 gpu-01 · cc-monitor" }),
-    });
+    await ctx.backend.round("devbox", { state: "connecting" });
+    await ctx.backend.round("gpu-01", { state: "up", relation: "older", differs: [] });
     await sleep(800);
   }),
 

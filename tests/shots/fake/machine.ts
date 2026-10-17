@@ -2,7 +2,9 @@
  * 机器与设置那一族的合成答法：后端状态、ccm 入口、ssh 配置、tmux、足迹、数据位置、日志 …
  * 后端说的那几句话一律取文案表（与真后端出的成品同一份字），形状照各跨语言金样。
  */
-import { copyText, type CopyKey } from "../../../src/frontend/ui/copy-table";
+import { copyText } from "../../../src/frontend/ui/copy-table";
+import type { MachineRound } from "../../../src/frontend/ui/generated/MachineRound";
+import type { MachineRoundReq } from "../../../src/frontend/ui/generated/MachineRoundReq";
 import EXT_GOLDEN from "../../__fixtures__/ext-flow.golden.json";
 import type { CommandHandler } from "./commands";
 import type { OpHandler, World } from "./types";
@@ -177,21 +179,6 @@ export function machineOps(): Record<string, OpHandler> {
             }
           : null,
     }),
-    // 远端各台的状态成品（本机后端那张表）：照场景的世界答。
-    "machine-read": (_o, _r, w) => ({ machines: Object.fromEntries(w.machines.slice(1).map((m) => [m, machineOf(m, w)])) }),
-    // 机器表住本机后端（`machines.json`）：照场景那份 `config.remote.hosts` 答。
-    "machines-read": (o, _r, w) => {
-      if (o !== "<local>") throw new Error("机器表只问本机后端");
-      const hosts = ((w.config.remote ?? {}) as { hosts?: Record<string, unknown>[] }).hosts ?? [];
-      // 每台记着一枚台架编的主机指纹（真后端从拨号核心那份库读）。
-      const hostKeys = Object.fromEntries(hosts.map((h, i) => [String(h.label || h.host), [`SHA256:Aa3x${"Q".repeat(16)}Q${i}`]]));
-      return { state: "ok", reason: null, detail: null, path: `${HOME}/.cc-monitor/machines.json`, hosts, hostKeys };
-    },
-    // 机器表试算口：同名 · 端口 · 地址 / 用户空（与真写口同一张规则的合成版，按盘上那张表 ＋ 这一批新增的算）。
-    "machines-try": (o, r, w) => {
-      if (o !== "<local>") throw new Error("机器表只问本机后端");
-      return { fault: tryMachineTable(r.edits as Record<string, unknown>[], w) };
-    },
     "data-report": (o, _r, w) => {
       if (w.unseenMachines.includes(o)) throw new Error(`${o} unreachable`);
       const todo = o === "devbox" ? DEVBOX_CHORES : o === "<local>" ? LOCAL_CHORES : [];
@@ -238,48 +225,40 @@ function choreCounts(todo: readonly { kind: string; state: string }[]): Record<s
 /** 「改过你的文件」里那一行 ~/.bashrc（data-report 与离线那台的上次值共用）。 */
 const BASHRC_CHANGED = { path: "~/.bashrc", what: copyText("rsToolRegistry.tools.ccmName"), undo: { page: "machine", tab: "config", anchor: "connect-terminal" } };
 
-/** 一颗修法按钮（字照后端那一批键）。 */
-const fixOf = (fix: string, key: CopyKey) => ({ fix, label: copyText(key) });
+/**
+ * 本机后端那份主机钥匙库里每台记下的那一把（`.cc-monitor/known_hosts`，`world.ts::diskOf` 写；机器表的指纹格由真后端从它现算）
+ * 与它的指纹（指纹变了的那台那一轮带的「库里记下的那一枚」）。
+ */
+export const HOST_KEYS: Record<string, { key: string; fingerprint: string }> = {
+  devbox: { key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpa", fingerprint: "SHA256:jysidH8sUN9+mB/5Wx25m7gT4aa66R2kbn4o2cy0Vio" },
+  "gpu-01": { key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tb", fingerprint: "SHA256:5aZuCW8wYjCRfhDeCMdhjgQfFrWpWCmOoF8dWVzJ1pI" },
+  "win-laptop": { key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxc", fingerprint: "SHA256:yj4Kqj4VGoZpFeQmmY0rmphvdZDJOAFJ1pYW3ezkwPc" },
+};
 
-/** 那台的状态成品（形状同 `tests/__fixtures__/machine-state.golden.json`）：看不见的那台 ＝ 密钥被拒。 */
-function machineOf(origin: string, w: World): Record<string, unknown> {
-  const base = { reason: null, stage: null, os: origin === "win-laptop" ? "Windows" : "Linux", version: "4.1.1" as string | null, versionRelation: "same" as string | null, word: "", said: "", fixes: [] as unknown[], seenHostKey: null as string | null, detail: null as string | null, next: null as string | null };
-  if (w.installingMachines?.includes(origin))
-    return { ...base, state: "installing", word: copyText("machineState.word.installing"), said: `安装 cc-monitor → ${origin}`, version: null, versionRelation: null };
-  if (w.hostKeyChanged?.includes(origin))
-    return {
-      ...base,
-      state: "host_key_changed",
-      reason: "host_key",
-      word: copyText("machineState.word.hostKey"),
-      said: copyText("machineState.problem.hostKey"),
-      version: null,
-      versionRelation: null,
-      fixes: [fixOf("compare_fingerprint", "machineState.fix.compareFingerprint")],
-      seenHostKey: "SHA256:Zq81nVb0cR2yT6wXe4uLm9kPp3sHd7fJg5aQiO1tYw8",
-    };
-  if (w.staleMachines.includes(origin))
-    return {
-      ...base,
-      state: "needs_update",
-      word: copyText("machineState.word.needsUpdate"),
-      said: copyText("machineState.problem.needsUpdate", { machine: origin }),
-      version: null,
-      versionRelation: "older",
-      fixes: [fixOf("update", "machineState.fix.update")],
-    };
-  if (!w.unseenMachines.includes(origin)) return { ...base, state: "up" };
-  return {
-    ...base,
-    state: "down",
-    reason: "auth",
-    word: copyText("machinePage.state.down"),
-    said: copyText("machineState.down.auth"),
-    version: null,
-    versionRelation: null,
-    fixes: [fixOf("push_key", "machineCard.build.pushKey"), fixOf("conn_settings", "machinePage.conn.toggle")],
-    detail: `时刻：2026-10-08 21:04:11 +08:00\n机器：Linux x86_64 · 后端 p9z-fixture\n命令：dial\n对象：${origin}\n断在：私钥登录失败\n码：auth\n原话：Authentication failed (publickey)`,
+/** 本侧的产品版本号（交 `machine-round` 那一格；与这一版同一份字节的那台就是这个号）。 */
+export const VERSION = "4.1.1";
+
+/**
+ * 每台接常驻那一轮的结论（壳交本机后端 `machine-round` 的那一形，只有事实；成品由本机后端算）：
+ * 看不见的那台 ＝ 密钥被拒 · 指纹变了的那台 ＝ 出示了另一枚 · 旧了的那台 ＝ 比这一版旧。正在装的那几台没有这一轮（部署那一侧的事实在盘上，`world.ts::diskOf`）。
+ */
+export function roundsOf(w: World): MachineRoundReq[] {
+  const round = (m: string): MachineRound | null => {
+    if (w.installingMachines?.includes(m)) return null;
+    if (w.hostKeyChanged?.includes(m))
+      return { state: "down", blocker: null, problem: { text: "主机指纹与记下的不一样", detail: "", why: "host_key", seen_key: "SHA256:Zq81nVb0cR2yT6wXe4uLm9kPp3sHd7fJg5aQiO1tYw8", expected_key: HOST_KEYS[m]?.fingerprint ?? "" } };
+    if (w.unseenMachines.includes(m))
+      return {
+        state: "down",
+        blocker: null,
+        problem: { text: "私钥登录失败", detail: "时刻：2026-10-08 21:04:11 +08:00\n机器：Linux x86_64 · 后端 p9z-fixture\n命令：dial\n原话：Authentication failed (publickey)", why: "auth", seen_key: null, expected_key: null },
+      };
+    return { state: "up", relation: w.staleMachines.includes(m) ? "older" : "same", differs: [] };
   };
+  return w.machines.slice(1).flatMap((machine) => {
+    const r = round(machine);
+    return r ? [{ machine, round: r, version: VERSION }] : [];
+  });
 }
 
 export function machineCommands(): Record<string, CommandHandler> {
@@ -288,8 +267,11 @@ export function machineCommands(): Record<string, CommandHandler> {
     backend_status: (a, w) => ({
       channel: !w.unseenMachines.includes(String(a.origin)),
       pid: pidOf(String(a.origin), w),
-      // 本机那一行壳出；远端各台走本机后端的 `machine-read` · `changed {machine}`。
-      machine: a.origin === "<local>" ? machineOf(String(a.origin), w) : null,
+      // 本机那一行壳出（连着）；远端各台走本机后端的 `machine-read` · `changed {machine}`。
+      machine:
+        a.origin === "<local>"
+          ? { state: "up", reason: null, stage: null, os: "Linux", version: VERSION, versionRelation: "same", word: "", said: "", fixes: [], seenHostKey: null, detail: null }
+          : null,
       health: {
         state: "clean",
         summary: copyText("rsBackendPolicy.health.clean"),
@@ -333,32 +315,6 @@ export function machineCommands(): Record<string, CommandHandler> {
     },
     footprint_client_facts: () => ({}),
   };
-}
-
-/** 合成的机器表试算：只认新增（`insertin`）与改名 / 改端口（`setin`），够场景用。 */
-function tryMachineTable(edits: Record<string, unknown>[], w: World): Record<string, unknown> | null {
-  const remote = (w.config.remote ?? {}) as { hosts?: Record<string, unknown>[] };
-  const hosts = (remote.hosts ?? []).map((h) => ({ ...h }));
-  const keyOf = (h: Record<string, unknown>): string => String(h.label ?? "").trim() || String(h.host ?? "").trim();
-  for (const e of edits) {
-    if (e.op === "insertin") hosts.push({ ...(e.value as Record<string, unknown>) });
-    if (e.op === "setin") {
-      const where = (e.where as { equals: string }[])[0]?.equals;
-      const h = hosts.find((x) => keyOf(x) === where);
-      if (h) h[String(e.field)] = e.value;
-    }
-  }
-  const seen = new Set<string>();
-  for (const h of hosts) {
-    const name = keyOf(h);
-    if (String(h.host ?? "").trim() === "") return { code: "no_host", name };
-    if (String(h.user ?? "").trim() === "") return { code: "no_user", name };
-    const port = h.port === undefined || h.port === null ? 22 : Number(h.port);
-    if (!Number.isInteger(port) || port < 1 || port > 65535) return { code: "port", name };
-    if (seen.has(name)) return { code: "name_taken", name };
-    seen.add(name);
-  }
-  return null;
 }
 
 /** 「待办」一件（假后端照 `footprint/chores` 的成品形状）。 */

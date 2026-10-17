@@ -67,11 +67,11 @@ export interface World {
   older?: Record<string, string[]>;
   /** 会话流被那台后端关掉的那几台（流里第一格 `closed`）。 */
   closedMachines: string[];
-  /** 那台的 cc-monitor 比这一版旧（状态成品 `needs_update`）。 */
+  /** 那台的 cc-monitor 比这一版旧（那一轮 `up` · `older`，`machine.ts::roundsOf`）。 */
   staleMachines: string[];
-  /** 主机指纹与记下的不一样的那几台（状态成品 `host_key_changed`，带那台出示的那一枚）。 */
+  /** 主机指纹与记下的不一样的那几台（那一轮 `down` · `host_key`，带那台出示的那一枚）。 */
   hostKeyChanged?: string[];
-  /** 正在把 cc-monitor 装上去的那几台（状态成品 `installing`）。 */
+  /** 正在把 cc-monitor 装上去的那几台（部署那一侧的事实，`MachineDisk.deploy`）。 */
   installingMachines?: string[];
   /** 订阅时看得见、交完会话之后断了的那几台（交完清单一会儿之后那台后端被杀：壳那一侧照真的那一套作废它的成品、通道说断了）。 */
   droppedMachines?: string[];

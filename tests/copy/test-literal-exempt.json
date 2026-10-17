@@ -293,7 +293,8 @@
     ],
     "tests/shots/fake/machine.ts": [
       { "text": "日志", "use": "回显" },
-      { "text": "本机", "use": "输入" }
+      { "text": "本机", "use": "输入" },
+      { "text": "私钥登录失败", "use": "输入" }
     ],
     "tests/test-support/session-viewer-rig.ts": [
       { "text": "加载失败", "use": "词义" }

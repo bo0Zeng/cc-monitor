@@ -1,6 +1,6 @@
 /**
  * 每台机器状态成品的推送：本机那一行是壳的 `machine-state` 事件（`{origin, machine}`，与 `backend_status` 那一格同形）；
- * 远端各台是本机后端的 `changed {machine, key: 那台, body: 成品}`（接上 · 漏了几格 ⇒ 整份重问 `machine-read`）。
+ * 远端各台是本机后端的 `changed {machine, key: 那台, body: 成品}`（订上 · 又接上 · 漏了几格 ⇒ 整份重问 `machine-read`）。
  * 那台一变就来一帧，界面不轮询；设置窗与主窗口都从这里订。
  */
 import { listen } from "@tauri-apps/api/event";
@@ -54,8 +54,10 @@ export function onMachineState(cb: (origin: string, machine: MachineState | null
     })
     .then(
       (s) => {
-        if (dropped) s.stop();
-        else sub = s;
+        if (dropped) return s.stop();
+        sub = s;
+        // 订上之后问一次：那台早已接着时壳不再交 `seen`（只在接没接着变了时说），等它就一台都拿不到。
+        void readAll();
       },
       (e: unknown) => console.warn("[machine-state] 订不上远端各台：", e),
     );

@@ -6,7 +6,7 @@ import type { SessionSpec, World } from "./types";
 import { defaultOps } from "./ops";
 import { defaultCommands } from "./commands";
 import { putHistory } from "./history";
-import { machineCommands, machineOps } from "./machine";
+import { HOST_KEYS, machineCommands, machineOps } from "./machine";
 import { ACCOUNTS } from "./ops";
 import { blankDisk, putAccounts, putMcp, type LiveSession, type MachineDisk } from "../disk";
 import { putProfiles } from "../disk/profiles";
@@ -262,7 +262,16 @@ export function diskOf(w: World): Record<string, MachineDisk> {
       const live = mine.map((s, i) => ({ ...liveOf(s), account: ACCOUNTS[i % 2].name }));
       const shown = live.find((l) => l.tmux !== false && l.fate !== "ended");
       if (shown) shown.windows = 1;
-      return [m, { ...d, files, mtimes, live: [...d.live, ...live] }];
+      if (m !== LOCAL) return [m, { ...d, files, mtimes, live: [...d.live, ...live] }];
+      // 本机后端那张机器表（场景那份 `config.remote.hosts`）与每台部署那一侧的事实（系统 · 正在装的那几台）。
+      const hosts = ((w.config.remote ?? {}) as { hosts?: { label: string; host: string }[] }).hosts ?? [];
+      if (hosts.length > 0) files[".cc-monitor/machines.json"] = JSON.stringify({ version: 1, hosts }, null, 2) + "\n";
+      const known = hosts.flatMap((h) => (HOST_KEYS[h.label] ? [`${h.host} ${HOST_KEYS[h.label].key}`] : []));
+      if (known.length > 0) files[".cc-monitor/known_hosts"] = known.join("\n") + "\n";
+      const deploy = Object.fromEntries(
+        hosts.map((h) => [h.label, { os: h.label === "win-laptop" ? "Windows" : "Linux", ...(w.installingMachines?.includes(h.label) ? { step: "install" as const } : {}) }]),
+      );
+      return [m, { ...d, files, mtimes, live: [...d.live, ...live], deploy }];
     }),
   );
 }
