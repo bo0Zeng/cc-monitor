@@ -34,14 +34,14 @@ pub enum Step {
 
 /// 一步 ⇒ 交 Kotlin 的那一行（话同桌面机器页那几句）。
 pub fn step_json(s: Step, machine: &str) -> String {
-    let connecting = |stage: &str| {
+    let connecting = |stage: String| {
         copy_text(
             "machineState.busy.connecting",
-            &[("machine", machine), ("stage", &copy_text(stage, &[]))],
+            &[("machine", machine), ("stage", &stage)],
         )
     };
     let (step, text, bar) = match s {
-        Step::Plan => ("plan", connecting("machineState.stage.deploy"), false),
+        Step::Plan => ("plan", connecting(copy_text("machineState.stage.deploy", &[])), false),
         Step::Place { updating: true } => (
             "place",
             copy_text("machineState.busy.updating", &[("machine", machine)]),
@@ -52,7 +52,7 @@ pub fn step_json(s: Step, machine: &str) -> String {
             copy_text("machineState.busy.installing", &[("machine", machine)]),
             true,
         ),
-        Step::Restart => ("restart", connecting("machineState.stage.attach"), false),
+        Step::Restart => ("restart", connecting(copy_text("machineState.stage.attach", &[])), false),
     };
     serde_json::json!({ "step": step, "text": text, "bar": bar }).to_string()
 }

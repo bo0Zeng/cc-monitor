@@ -29229,7 +29229,7 @@
     "mobSsh.hostKey.unmigrated": {
       "kind": "error",
       "role": "原因格",
-      "zh": "主机指纹没迁完 · 旧表 {n} 条、读回 {m} 条 · 旧表留着，下次启动再迁",
+      "zh": "主机指纹迁移不一致 · 旧表 {n} 条、读回 {m} 条 · 下次启动重迁",
       "args": ["n", "m"],
       "limited": ["SSH 主机指纹"]
     },

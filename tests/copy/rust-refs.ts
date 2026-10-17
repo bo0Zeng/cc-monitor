@@ -33,7 +33,9 @@ const RS_STATIC = "copy_static";
  * 取文口的**定义**住的两份文件：`copy-core` 的实现，与 monitor 那一层转发（`copy_core::copy_text(key, args)`，
  * key 不是字面量 —— 它是转发，不是引用）。它们不进「引用」一侧。
  */
-export const RS_DEFINITIONS = new Set([RS_HOME, "src/common/copy-core/src/lib.rs"]);
+/** 手机核心交 Kotlin 的取文 JNI 口：key 由 Kotlin 交（Kotlin 那一侧的调用点另算），不进 Rust 人群。 */
+const MOBILE_COPY_JNI = "src/mobile/core-rs/rust/copy.rs";
+export const RS_DEFINITIONS = new Set([RS_HOME, "src/common/copy-core/src/lib.rs", MOBILE_COPY_JNI]);
 
 /** 剥掉 `//` 行注释（字符串里的 `//` 不算）。块注释本仓生产段不用来写代码，按行注释剥足够。 */
 function stripRustLineComments(text: string): string {
@@ -148,7 +150,7 @@ export function rustRefsIn(file: string, text: string): { refs: Ref[]; problems:
   return { refs, problems };
 }
 
-/** 扫的那几棵树（常驻后端 · 两个前端 · 子 crate · 通信层）：文件 · 调用点 · 读不了的写法。取文口的定义那两份不进人群。 */
+/** 扫的那几棵树（常驻后端 · 两个前端 · 子 crate · 通信层 · 手机核心）：文件 · 调用点 · 读不了的写法。取文口的定义那两份不进人群。 */
 export function rustRefsOfTree(): { files: { file: string; text: string }[]; refs: Ref[]; problems: string[] } {
   const files = [
     ...productionRsFiles("src/frontend/shell/src"),
@@ -156,6 +158,7 @@ export function rustRefsOfTree(): { files: { file: string; text: string }[]; ref
     ...productionRsFiles("src/backend"),
     ...productionRsFiles("src/common"),
     ...productionRsFiles("src/comms"), // 通信层那两个 crate（面 A · 面 B）
+    ...productionRsFiles("src/mobile/core-rs"), // 手机核心（JNI 那一层，自己也说话）
   ];
   const all = files
     .filter((f) => !RS_DEFINITIONS.has(f.file))
