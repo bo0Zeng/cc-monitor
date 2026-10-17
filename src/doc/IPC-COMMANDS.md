@@ -4444,7 +4444,11 @@ tool?: string,
 /**
  * 这条记录那一行在记录文件里的起点（字节；交给 `history-read` 的 `offset` 就从它读起）。
  */
-offset: number, };
+offset: number, 
+/**
+ * 这条记录的行号（与实时行的 `seq` 同一个空间；打开查看器后按它物化、按 `uuid` 找卡）。
+ */
+line: number, };
 type SearchScope = "user" | "assistant" | "report";
 type SessionHits = { 
 /**
@@ -4598,7 +4602,11 @@ tool?: string,
 /**
  * 这条记录那一行在记录文件里的起点（字节；交给 `history-read` 的 `offset` 就从它读起）。
  */
-offset: number, };
+offset: number, 
+/**
+ * 这条记录的行号（与实时行的 `seq` 同一个空间；打开查看器后按它物化、按 `uuid` 找卡）。
+ */
+line: number, };
 type SessionHits = { 
 /**
  * 这个会话是哪一家（线上的 kind）：恢复按它起。全文搜索只扫记录树 ⇒ 都是记录树那一家。
@@ -5994,6 +6002,10 @@ type FoldSegment = {
  */
 after: string, 
 /**
+ * `after` 那一条的行号（界面按它与 `untilLine` 在骨架账本里取这一段的那几行）。
+ */
+afterLine: number, 
+/**
  * 那一行的字（后端写好，界面按语气排版、段间加分隔）。
  */
 parts: Array<TurnPart>, 
@@ -6004,9 +6016,12 @@ span: TurnSpan,
 /**
  * 这一段管到哪一条为止（不含）：段后面紧跟的那一条 —— 这一轮下一条露着的，或下一轮你那句（那一轮在不在主线上都一样：
  * 回退掉的那一轮不归上一轮的段）；还开着的最后一轮的尾巴那一段 ⇒ 没有（到记录尾）。
- * 界面按 `after` 与它在账本里取这一段的那几行，不自己找下一个边界。
  */
 until: string | null, 
+/**
+ * `until` 那一条的行号（没有 ⇒ 没有）。
+ */
+untilLine: number | null, 
 /**
  * 此刻：只有还没收尾的那一轮的尾巴那一段会是在跑 / 在等你（[`dress_live`]）。
  */
@@ -6050,7 +6065,11 @@ type TurnRow = {
  */
 at: number, 
 /**
- * 你那句的 uuid（跳过去用）。
+ * 你那句的行号（与实时行的 `seq` 同一个空间；跳过去时按它物化）。
+ */
+line: number, 
+/**
+ * 你那句的 uuid（跳过去时按它找卡）。
  */
 uuid: string, 
 /**
@@ -6820,9 +6839,13 @@ limit?: number | null, };
 ```ts
 type FindHit = { 
 /**
- * 命中的那条记录的 uuid（界面按骨架索引 `uuid → seq` 跳过去）。
+ * 命中的那条记录的 uuid（界面按它找卡）。
  */
 uuid: string, 
+/**
+ * 它的行号（与实时行的 `seq` 同一个空间；界面按它物化那一段）。
+ */
+line: number, 
 /**
  * `user` · `assistant` · `report`（agent 回报）· `tool`。
  */
@@ -6915,7 +6938,7 @@ count: number,
 /**
  * 本份里出现过的记录类（`t` 列的号从 1 起指它）。
  */
-classes: Array<RecordClass>, o: Array<number>, n: Array<number>, t: Array<number>, fd: Array<number>, u: Array<string | null>, body: IndexBody, sp: IndexSpeaker, inputs: IndexInputs, };
+classes: Array<RecordClass>, o: Array<number>, n: Array<number>, t: Array<number>, fd: Array<number>, body: IndexBody, sp: IndexSpeaker, inputs: IndexInputs, };
 type HistoryIndexReq = { 
 /**
  * jsonl 路径（围栏同 `history-read`）。
@@ -6942,7 +6965,7 @@ type IndexInputs = {
 /**
  * 行号差。
  */
-at: Array<number>, x: Array<string>, ts: Array<string>, };
+at: Array<number>, u: Array<string>, x: Array<string>, ts: Array<string>, };
 type IndexSpeaker = { 
 /**
  * 行号差。
@@ -6966,7 +6989,11 @@ type UserInputRow = {
 /**
  * 这一句那一行在记录里的字节起点（分页的续点按它给；逐条认的那一处不知道位置时是 0，由扫的那一处填）。
  */
-at: number, uuid: string, 
+at: number, 
+/**
+ * 这一句的行号（与实时行的 `seq` 同一个空间；跳过去时按它物化）。同 `at`，由扫的那一处填。
+ */
+line: number, uuid: string, 
 /**
  * 记录的 `timestamp`；没有 ⇒ 空串。
  */
@@ -13044,7 +13071,7 @@ needs: string | null, };
 | `o` | number | 行起点字节偏移（绝对，0-based）—— 按需取正文就是 `[o, o+n)` |
 | `n` | number | 行字节长（**含**结尾 `\n`） |
 | `t` | RecordClass? | 这一行会翻成哪一类通用记录（`said` · `reply` · `retry` · `title` · `queued`，与读正文时那条记录的 `t` 同一个词）；不进界面（元数据 · 解析不出 · 认不出）⇒ 省略 |
-| `u` | string? | `uuid`（前端 `uuidToIdx` —— 跳转与对账的锚） |
+| `u` | string? | 只在用户输入那张小表里带；扫描图按它认一条记录在第几轮） |
 | `sc` | bool? | 这条记录属于某个子运行（适配层 `RecordFace::run_of` 答得出） |
 | `sp` | string? | user 记录是谁说的（`Speaker` 的 `kind`），人说的与工具结果省略（那两种按正文 / 折叠单元就分得清） |
 | `ch` | number? | 正文字符数（**代码块之外**；Unicode 标量计，不含换行） |
