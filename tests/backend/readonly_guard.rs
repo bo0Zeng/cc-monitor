@@ -671,7 +671,7 @@ mod tests {
         "FaceAsyncFile(tokio::fs::File)",
         "tokio::fs::File::from_std(",
     ];
-    /// `platform/fs/own.rs`（自家状态写句柄 `Own`）点名的标准库条目：它的写只有这几样（删文件 · 改名 · 带权限位建一层目录）；
+    /// `platform/fs/own.rs`（自家状态写句柄 `Own`）点名的标准库条目：它的写只有这几样（删文件 · 改名 · 带权限位建一层目录 · 自家目录收回 0700）；
     /// 原子写的旁名经 `creds_core::perm::create_private` 建（依赖签字那一侧管）。谁能调由类型管：方法都在 `Own` 上，`Own` 只在启动时造。
     const OWN_NAMES: &[&str] = &[
         "std::fs::remove_file(",
@@ -685,6 +685,8 @@ mod tests {
         "std::fs::OpenOptions::new()",
         "std::os::unix::fs::OpenOptionsExt",
         "DiagFile(std::fs::File)",
+        // 后端自家目录（`own_dir`）组 / 他人有权 ⇒ 收回 0700 那一下。
+        "std::fs::set_permissions(",
     ];
 
     #[test]

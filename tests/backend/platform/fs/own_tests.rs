@@ -7,7 +7,7 @@
 //! | W3 | 原子写要那个目录的锁：写完读回逐字同、0600；拿的是别的目录的锁 ⇒ 拒、一个字节不落 | 真文件 |
 //! | W4 | 删文件 · 改名都只在根底下 | 真文件 |
 //! | W5 | 家目录那一根只给 `.cc-monitor` 底下：别的打头 · 家目录本身 · 往上跳都拒 | 纯函数 |
-//! | D1 | 自家目录（`own_dir`）：新建 0700；已在且是本人的 0700 真目录 ⇒ 过；链接 · 不是目录 · 组 / 他人有权 ⇒ 拒、出声、一个字节不改 | 真目录 |
+//! | D1 | 自家目录（`own_dir`）：新建 0700；已在且是本人的 0700 真目录 ⇒ 过；组 / 他人有权 ⇒ 收回 0700；链接 · 不是目录 ⇒ 拒、出声、一个字节不改 | 真目录 |
 
 use super::*;
 use std::path::{Path, PathBuf};
@@ -389,7 +389,7 @@ fn d1_an_own_dir_is_a_private_real_dir_of_mine_or_it_is_refused() {
     own_dir(&fresh).expect("建");
     assert_eq!(mode(&fresh), PRIVATE_DIR_MODE);
     own_dir(&fresh).expect("已在、本人、0700 ⇒ 过");
-    // 不合的三形：各拒、各说清是哪一形，盘上一个字节不改。
+    // 不合的两形：各拒、各说清是哪一形，盘上一个字节不改。
     let real = base.join("real");
     std::fs::create_dir(&real).unwrap();
     std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o700)).unwrap();
@@ -397,13 +397,9 @@ fn d1_an_own_dir_is_a_private_real_dir_of_mine_or_it_is_refused() {
     std::os::unix::fs::symlink(&real, &link).unwrap();
     let file = base.join("file");
     std::fs::write(&file, b"x").unwrap();
-    let wide = base.join("wide");
-    std::fs::create_dir(&wide).unwrap();
-    std::fs::set_permissions(&wide, std::fs::Permissions::from_mode(0o755)).unwrap();
     for (p, key) in [
         (&link, "beOwnState.dir.link"),
         (&file, "beOwnState.dir.notDir"),
-        (&wide, "beOwnState.dir.tooWide"),
     ] {
         let e = own_dir(p).expect_err(&format!("{} 该拒", p.display()));
         assert!(
@@ -413,7 +409,13 @@ fn d1_an_own_dir_is_a_private_real_dir_of_mine_or_it_is_refused() {
         );
     }
     assert!(std::fs::symlink_metadata(&link).unwrap().is_symlink());
-    assert_eq!(mode(&wide), 0o755, "不合的那一层被改了权限");
+    assert_eq!(mode(&real), 0o700, "链接那头被改了");
+    // 放宽了的本人目录 ⇒ 收回 0700、过。
+    let wide = base.join("wide");
+    std::fs::create_dir(&wide).unwrap();
+    std::fs::set_permissions(&wide, std::fs::Permissions::from_mode(0o755)).unwrap();
+    own_dir(&wide).expect("放宽了的本人目录该收回、过");
+    assert_eq!(mode(&wide), PRIVATE_DIR_MODE, "放宽着没收回");
     assert!(
         own_dir(&base.join("no/such")).is_err(),
         "父目录不在也建出来了（只建一层）"

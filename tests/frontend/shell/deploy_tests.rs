@@ -685,7 +685,7 @@ fn dp1_silent_forms(body: &str) -> Vec<&'static str> {
     out
 }
 
-/// D1：`ensure_backend_deployed` 的返回类型是 `Result<Installed, Said>`（没有「没部署也算成功」那一支），
+/// D1：`ensure_backend_deployed` 的返回类型是 `Result<String, Said>`（没有「没部署也算成功」那一支），
 /// 体内零 `Ok(None)` · 零 `debug!`；后端的失败原样往上交（`?`）。
 #[test]
 fn the_auto_deploy_never_refuses_silently() {
@@ -694,7 +694,7 @@ fn the_auto_deploy_never_refuses_silently() {
     let body = dp1_body(&prod, "pub async fn ensure_backend_deployed(");
     let sig = body.lines().next().unwrap_or_default();
     assert!(
-        sig.contains("-> Result<Installed, Said>"),
+        sig.contains("-> Result<String, Said>"),
         "返回类型变了：{sig} —— `Option` 回来就是「没部署也算成功」那一支回来了"
     );
     assert_eq!(

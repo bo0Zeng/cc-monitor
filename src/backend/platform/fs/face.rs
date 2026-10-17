@@ -110,7 +110,7 @@ impl Face {
         std::fs::create_dir(at.as_path())
     }
 
-    /// 上传暂存区那两层：后端自家目录（[`super::own::own_dir`]，同 `Own` 那一份规矩：建的那一下 0700；已在必须是本人的、只给本人的真目录）。
+    /// 上传暂存区那两层：后端自家目录（[`super::own::own_dir`]，同 `Own` 那一份规矩：建的那一下 0700；已在必须是本人的真目录，放宽了收回 0700）。
     pub(crate) fn own_dir(&self, at: &Resolved) -> Result<(), copy_core::said::Said> {
         super::own::own_dir(at.as_path())
     }

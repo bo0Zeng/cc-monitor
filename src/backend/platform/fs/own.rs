@@ -8,6 +8,7 @@
 //!   原子写：旁名出生即只给本人（`O_EXCL` ＋ 0600）→ 写满 → `sync_all` → 原子挪过去；挪不过去就删掉自己建的旁名。
 //!   旁名带 pid ＋ 线程 ＋ 进程内序号，同一进程几个线程同时写同一份也不撞。
 
+use super::Ro;
 use copy_core::copy_text;
 use copy_core::said::Said;
 use std::io::Write as _;
@@ -125,7 +126,7 @@ impl Own {
         create_dir_private(dir.as_path())
     }
 
-    /// 后端自家目录那一层（[`own_dir`]：建的那一下 0700；已在 ⇒ 必须是本人的、只给本人的真目录，不合 ⇒ 拒、出声）。
+    /// 后端自家目录那一层（[`own_dir`]：建的那一下 0700；已在 ⇒ 必须是本人的真目录，放宽了收回 0700，不合 ⇒ 拒、出声）。
     pub(crate) fn own_dir(&self, dir: &OwnPath) -> Result<(), Said> {
         own_dir(dir.as_path())
     }
@@ -454,7 +455,8 @@ fn create_dir_private(dir: &Path) -> std::io::Result<()> {
 }
 
 /// **后端自家目录**（一处实现）：建一层，建的那一下 0700；已在 ⇒ 核它是本人的真目录：`lstat` 不是链接（定死这一条：
-/// 不认「解开后仍在家下」）· 是目录 · 属主是本人 · 组 / 他人无权。不合 ⇒ 拒、出声（那一句说清是哪一形、怎么修），盘上一个字节不改。
+/// 不认「解开后仍在家下」）· 是目录 · 属主是本人；组 / 他人有权 ⇒ 当场收回 0700（自家目录，收紧不丢东西）。
+/// 链接 · 不是目录 · 不是本人的 ⇒ 拒、出声，盘上一个字节不改。
 /// 两种写句柄都经这里：`Own` 发的路径（[`Own::own_dir`]：门牌那一层 · 换装锁）· 文件管理面的暂存区（`Face::own_dir`）——
 /// 收在两者共用的这一层，不收进哪一个句柄。远端那一份（`ssh-dial/sftp.rs::own_root`）是同一条规矩的 SFTP 版（不是链接 · 解开仍在家下）。
 /// 非 unix：只核链接与目录（属主 · 权限位那两问在 Windows 上是 ACL，这里不量）。
@@ -470,7 +472,7 @@ pub(crate) fn own_dir(dir: &Path) -> Result<(), Said> {
         )
     };
     create_dir_private(dir).map_err(io)?;
-    let md = std::fs::symlink_metadata(dir).map_err(io)?;
+    let md = Ro::symlink_metadata(dir).map_err(io)?;
     if md.file_type().is_symlink() {
         return Err(copy_text("beOwnState.dir.link", &[("dir", &shown)]).into());
     }
@@ -479,37 +481,44 @@ pub(crate) fn own_dir(dir: &Path) -> Result<(), Said> {
     }
     #[cfg(unix)]
     {
-        use std::os::unix::fs::MetadataExt as _;
         // SAFETY：`geteuid` 没有参数、不会失败。
-        if md.uid() != unsafe { libc::geteuid() } {
+        if Ro::uid(&md) != Some(unsafe { libc::geteuid() }) {
             return Err(copy_text("beOwnState.dir.notMine", &[("dir", &shown)]).into());
         }
-        if md.mode() & 0o077 != 0 {
-            return Err(copy_text(
-                "beOwnState.dir.tooWide",
-                &[
-                    ("dir", &shown),
-                    ("mode", &format!("{:04o}", md.mode() & 0o7777)),
-                ],
-            )
-            .into());
+        let mode = Ro::mode(&md).unwrap_or(0);
+        if mode & 0o077 != 0 {
+            let private = Ro::perms_from_mode(PRIVATE_DIR_MODE).expect("unix 有权限位");
+            std::fs::set_permissions(dir, private).map_err(
+                |e| {
+                    Said::with_raw(
+                        copy_text(
+                            "beOwnState.dir.tooWide",
+                            &[
+                                ("dir", &shown),
+                                ("mode", &format!("{:04o}", mode & 0o7777)),
+                                ("why", &copy_core::io_reason(e.kind())),
+                            ],
+                        ),
+                        &e,
+                    )
+                },
+            )?;
+            tracing::info!("后端自家目录 {shown} 权限 {:04o} ⇒ 收回 0700", mode & 0o7777);
         }
     }
     Ok(())
 }
 
-/// `at` 在不在这台的后端自家目录（`<家>/.cc-monitor`，家解开再比；`at` 由调用方解开）底下、且那个目录是 [`own_dir`] 认的那一形
-/// （本人的真目录，不改它）。答不出家在哪 · 那一层不在 / 不合 ⇒ `false`。文件管理面新建的东西收不收紧按它判。
+/// `at` 在不在这台的后端自家目录（`<家>/.cc-monitor`，家解开再比；`at` 由调用方解开）底下、且那个目录是本人的真目录（不是链接）。
+/// 答不出家在哪 · 那一层不在 / 是链接 ⇒ `false`。文件管理面新建的东西收不收紧按它判。
 pub(crate) fn inside_own_dir(at: &Path) -> bool {
     let Some(home) = crate::platform::paths::home_dir() else {
         return false;
     };
-    let home = std::fs::canonicalize(&home).unwrap_or(home);
+    let home = Ro::canonicalize(&home).unwrap_or(home);
     let dir = home.join(HOME_DIR_NAME);
-    if !at.starts_with(&dir) {
-        return false;
-    }
-    std::fs::symlink_metadata(&dir).is_ok_and(|m| m.is_dir() && !m.file_type().is_symlink())
+    at.starts_with(&dir)
+        && Ro::symlink_metadata(&dir).is_ok_and(|m| m.is_dir() && !m.file_type().is_symlink())
 }
 
 /// 拿一个目录的跨进程锁（阻塞到拿到为止）：本文件里两种句柄（[`Own::lock`] · [`AccountCreds::lock`]）都经这一处。

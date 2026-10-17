@@ -84,12 +84,6 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "申报的本机 `ccm` 落点末段要盖得住 monitor 真放下去的那个名字（`CCM_ENTRY_WORD` ＋ 可执行后缀），\
          词住 monitor（本机那份由它释放）⇒ 读它的源码现抠（本侧抄一份就成了两侧同源的恒等）",
     ),
-    (
-        "backend→monitor",
-        "tests/backend/footprint/rows_tests.rs",
-        "src/frontend/shell/src/deploy.rs",
-        "足迹里远端落点那几行必须钉在 monitor 真写的那一处（`declared_destinations_are_pinned_to_the_real_writers`），随判据从 monitor 搬来",
-    ),
     // `tests/backend/footprint/rows_tests.rs` → `relay-route-core` 那一条删了：共享 crate 搬出 monitor 包、住 `src/common/`，
     //   不再是「两半之间」的边（共享 crate 两侧都依赖，本表只登记半边对半边）。
     (

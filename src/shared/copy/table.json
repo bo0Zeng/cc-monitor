@@ -73,14 +73,14 @@
     "beOwnState.dir.notMine": {
       "kind": "error",
       "role": "报错",
-      "zh": "未使用 · 后端自家目录 {dir} 属主不是本人",
+      "zh": "未使用 · 后端自家目录 {dir} 属主不是本人 · 需手动改回本人",
       "args": ["dir"]
     },
     "beOwnState.dir.tooWide": {
       "kind": "error",
       "role": "报错",
-      "zh": "未使用 · 后端自家目录 {dir} 同机他人可进 · 权限 {mode} · 跑 chmod 700 {dir}",
-      "args": ["dir", "mode"]
+      "zh": "未使用 · 后端自家目录 {dir} 同机他人可进 · 权限 {mode} · 收回 700 失败 · {why}",
+      "args": ["dir", "mode", "why"]
     },
     "beOwnState.dir.unreadable": {
       "kind": "error",

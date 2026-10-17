@@ -15,7 +15,7 @@
 //!
 //! # 线上形状（与后端 `dial/mod.rs` 头注同一份，住那边，这里不抄第二份）
 //!
-//! ack 之前零到多行 `{"stage":{…}}` · `{"progress":…}`（后者只在请求带 `progress` 时有，[`handshake`] 交 `on_step`）→ 恰好一行 ack → 之后按用法（`files` 是一问一答，读应答那一行用 [`reply_line`]）。
+//! ack 之前零到多行 `{"stage":{…}}` · `{"progress":…}`（后者只在请求带 `progress` 时有，[`handshake`] 交 `on_step`）→ 恰好一行 ack → 之后按用法。
 //! 🔴 **老代理出声**：ack 的 `uses` 不含所请求的用法 ⇒ [`LinkError::TooOld`]，不去解后面那些字节。
 
 use copy_core::copy_text;
@@ -226,17 +226,6 @@ pub async fn handshake<R: AsyncBufRead + Unpin>(
 
 /// `capture` 用法：ack 之后那一行。
 pub async fn captured<R: AsyncBufRead + Unpin>(r: &mut R, cap: u64) -> Result<Captured, LinkError> {
-    let Some(line) = read_line_capped(r, cap).await? else {
-        return Err(LinkError::Silent);
-    };
-    serde_json::from_str(&line).map_err(|e| LinkError::Garbled(format!("{e}: {line:?}")))
-}
-
-/// `files` 用法：ack 之后一问一答，这里读**一行应答**（JSON 对象）。管子关了 ⇒ [`LinkError::Silent`]。
-pub async fn reply_line<R: AsyncBufRead + Unpin>(
-    r: &mut R,
-    cap: u64,
-) -> Result<serde_json::Value, LinkError> {
     let Some(line) = read_line_capped(r, cap).await? else {
         return Err(LinkError::Silent);
     };

@@ -355,8 +355,8 @@ pub(crate) fn move_failed(
 
 /// 暂存区在盘上的位置；不在就建（两层：`~/.cc-monitor` 与它底下的 `staging`）。
 ///
-/// 每一层**先过路径解析**（以上一层为根）再问后端自家目录那一判（`Face::own_dir`：建的那一下 0700；已在必须是本人的、
-/// 只给本人的真目录 —— `~/.cc-monitor` 是链接 · 被放宽了 ⇒ 拒、出声，不往里写正文）。
+/// 每一层**先过路径解析**（以上一层为根）再问后端自家目录那一判（`Face::own_dir`：建的那一下 0700；已在必须是本人的真目录，
+/// 放宽了 ⇒ 收回 0700；`~/.cc-monitor` 是链接 ⇒ 拒、出声，不往里写正文）。
 fn ensure_staging(face: &Face, home: &Path) -> Result<PathBuf, WriteRefusal> {
     let mut at = home.to_path_buf();
     for seg in STAGING_DIR.split('/') {
