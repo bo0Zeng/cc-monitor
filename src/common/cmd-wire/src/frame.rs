@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-/// 后端发给客户端的一帧；`kind` 是标签，例如 `{"kind":"hello","v":1,...}`。
+/// 后端发给客户端的一帧；`kind` 是标签，例如 `{"kind":"hello","build_id":…,...}`。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Frame<R = Record> {
