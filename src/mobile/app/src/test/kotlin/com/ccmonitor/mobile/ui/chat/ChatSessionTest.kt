@@ -329,6 +329,61 @@ class ChatSessionTest {
         }
 
     @Test
+    fun `来一行只排那一行：已有的单元原样留着，工具结果到了只换它配上的那一张调用卡`() =
+        runTest {
+            val call = mapOf("agent" to "claude", "id" to "a1", "t" to "reply", "autoReply" to false, "blocks" to listOf(mapOf("type" to "text", "text" to "看看"), mapOf("type" to "tool_use", "id" to "c1", "name" to "Read", "input" to emptyMap<String, Any>())))
+            val result = mapOf("agent" to "claude", "id" to "u2", "t" to "said", "blocks" to listOf(mapOf("type" to "tool_result", "for" to "c1", "content" to listOf(mapOf("type" to "text", "text" to "ok")))))
+            val link = FakeCoreLink()
+            val file = FakeCoreLink.File(mutableListOf(human("u0", "问"), call))
+            link.answer = { cmd, args -> file.answer(cmd, args) ?: Reply.LinkDown }
+            link.report("s1", "/w")
+            val s = existing(link)
+            runCurrent()
+
+            fun fresh(
+                before: List<RenderUnit>,
+                after: List<RenderUnit>,
+            ) = after.filter { u -> before.none { it === u } }.map { it.key }
+
+            var before = s.state.value.units
+            file.records += result
+            link.line("s1", 2, result)
+            runCurrent()
+            assertEquals("结果配上的那一张换掉，别的不重排", listOf("a1#1"), fresh(before, s.state.value.units))
+            assertEquals(false, (s.state.value.units[2] as RenderUnit.ToolCall).pending)
+
+            before = s.state.value.units
+            file.records += human("u3", "再问")
+            link.line("s1", 3, file.records.last())
+            runCurrent()
+            assertEquals(listOf("u3"), fresh(before, s.state.value.units))
+            assertEquals(RecordUnits.of(file.records.mapNotNull { Wire.bind<LineRecord>(it) }), s.state.value.units)
+        }
+
+    @Test
+    fun `同一句发了两回：记录里出现一回只消掉一句，另一句等它自己那一行`() =
+        runTest {
+            val link = FakeCoreLink()
+            val file = FakeCoreLink.File(mutableListOf(human("u0", "问")))
+            link.answer = { cmd, args -> if (cmd == "session-say") ok(mapOf("result" to "delivered")) else file.answer(cmd, args) ?: Reply.LinkDown }
+            link.report("s1", "/w")
+            val s = existing(link)
+            runCurrent()
+            s.send("继续")
+            s.send("继续")
+            runCurrent()
+            assertEquals(2, s.local().size)
+            link.line("s1", 1, human("u1", "继续"))
+            runCurrent()
+            link.line("s1", 2, reply("a2", "好"))
+            runCurrent()
+            assertEquals("第二句的那一行还没来", 1, s.local().size)
+            link.line("s1", 3, human("u3", "继续"))
+            runCurrent()
+            assertEquals(emptyList<RenderUnit.UserText>(), s.local())
+        }
+
+    @Test
     fun `那份记录被那台从头重读了：读过的那一代作废，不交续点、照最后一屏整份重来`() =
         runTest {
             val link = FakeCoreLink()

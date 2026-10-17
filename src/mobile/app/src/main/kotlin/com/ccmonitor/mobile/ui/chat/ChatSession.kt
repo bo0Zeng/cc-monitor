@@ -180,7 +180,10 @@ class ChatSession(
 
     /** 新建会话那一张的选项（机器以外的那几样：agent · 账号 · 轮换 · 目录）；已有的那条 ⇒ `null`。 */
     val picker: NewSessionPicker? = draft?.let { NewSessionPicker(link, machine, it.cwd, it.agent, scope) }
-    private val records = mutableListOf<LineRecord>()
+    private val body = RecordUnits()
+
+    /** 上次上屏以后新排进来的那几条里人说的话（只拿它们消本地那几句的标）。 */
+    private val heard = mutableListOf<String>()
     private val outgoing = mutableListOf<Outgoing>()
     private val lock = Mutex()
 
@@ -253,7 +256,7 @@ class ChatSession(
             tailLines = PAGE_LINES
             anchorOffset = null
             anchorPath = null
-            records.clear()
+            body.reset(emptyList())
             board.clear()
             _state.value = _state.value.copy(sid = by, live = emptyList(), canLoadOlder = false, historyError = null, failedWhy = null)
             publishLocked()
@@ -371,7 +374,7 @@ class ChatSession(
                 val (t, read) = got
                 tailLines = want
                 head = t.splitAt
-                records.addAll(0, read.records)
+                take(read.records) { body.prepend(it) }
                 cache.prepend(s, read.pages)
                 _state.value = _state.value.copy(loadingOlder = false, canLoadOlder = head > 0L)
                 publishLocked()
@@ -647,8 +650,7 @@ class ChatSession(
         restorePendingLocked(s)
         val cached = cache.load(s) ?: return publishLocked()
         val got = cached.pages.map { HistoryRead.decodeRows(it.rows) ?: return publishLocked() }.flatten()
-        records.clear()
-        records.addAll(got)
+        take(got) { body.reset(it) }
         head = cached.pages.first().start
         cached.anchor?.let {
             anchorPath = it.path
@@ -682,7 +684,7 @@ class ChatSession(
     ): Boolean {
         if (line.seq > nextSeq && !fillLocked(p, line.seq)) return false
         if (line.seq < nextSeq) return false
-        line.record?.let { records += it }
+        line.record?.let { take(listOf(it)) { rs -> body.append(rs) } }
         nextSeq = line.seq + 1
         anchorOffset = line.byteOffset
         sid?.let { s -> cache.append(s, listOf(HistoryRead.row(line.byteOffset, line.raw)), line.byteOffset?.let { Anchor(p, it, nextSeq, anchorMark) }) }
@@ -696,7 +698,7 @@ class ChatSession(
      */
     private suspend fun reloadLocked(p: String): Boolean {
         val s = sid ?: return false
-        val held = anchorOffset?.takeIf { records.isNotEmpty() }?.let { o -> anchorPath?.let { Held(it, nextSeq, o, anchorMark) } }
+        val held = anchorOffset?.takeIf { !body.isEmpty() }?.let { o -> anchorPath?.let { Held(it, nextSeq, o, anchorMark) } }
         val data = ask(HistoryTail.COMMAND, HistoryTail.args(p, tailLines, held)) ?: return false
         val t = HistoryTail.of(data) ?: return false.also { readFailed(unreadableReply(machine, HistoryTail.COMMAND, data.toString()).text) }
         val anchor = Anchor(t.held.path, t.held.nextByte, t.held.next, t.held.mark)
@@ -704,15 +706,14 @@ class ChatSession(
             when {
                 t.how == TailHow.RESUME && held != null ->
                     readRange(p, held.nextByte, t.end, data)?.also { read ->
-                        records.addAll(read.records)
+                        take(read.records) { body.append(it) }
                         cache.append(s, read.pages.flatMap { it.rows }, anchor)
                     } != null
                 // 缺得多那一形那台没读那一截：最后一屏这里自己读。
                 else ->
                     readRange(p, t.splitAt, t.end, data.takeIf { t.how != TailHow.HANDOFF })?.also { read ->
                         head = t.splitAt
-                        records.clear()
-                        records.addAll(read.records)
+                        take(read.records) { body.reset(it) }
                         // 一页都没有（尾段是空的）也记一页空的：页锚留着，下次先上缓存时「还能往上翻」照样对。
                         cache.replace(s, read.pages.ifEmpty { listOf(RawPage(t.splitAt, t.end, emptyList())) }, anchor)
                     } != null
@@ -746,7 +747,7 @@ class ChatSession(
             val page =
                 (r as? Reply.Ok)?.let { HistoryLines.of(it.data) }
                     ?: return false.also { readFailed(r.problem(machine, HistoryLines.COMMAND)?.text ?: unreadableReply(machine, HistoryLines.COMMAND, r.toString()).text) }
-            records += page.records
+            take(page.records) { body.append(it) }
             more = page.next > nextSeq && !page.eof
             nextSeq = maxOf(nextSeq, page.next)
             // 续点跟到这一段最后一个可计行之后；每格带它那一行之后的字节落末页。
@@ -868,23 +869,32 @@ class ChatSession(
     }
 
     private fun readFailed(text: String?) {
-        if (records.isEmpty()) failSession(text) else _state.value = _state.value.copy(historyError = text)
+        if (body.isEmpty()) failSession(text) else _state.value = _state.value.copy(historyError = text)
     }
 
     private fun publish() {
         scope.launch { lock.withLock { publishLocked() } }
     }
 
-    /** 记录里出现了同一句人话 ⇒ 那一句的本地标消失；其余的接在记录后面。 */
+    /** 排进 [body]（[put] 是接后 · 接前 · 整份换哪一样），其中人说的话记进 [heard]。 */
+    private inline fun take(
+        rs: List<LineRecord>,
+        put: (List<LineRecord>) -> Unit,
+    ) {
+        put(rs)
+        rs.filter { it.t == RecordKind.SAID || it.t == RecordKind.QUEUED }.mapNotNullTo(heard) { it.who?.text }
+    }
+
+    /** 新排进来的记录里出现了同一句人话 ⇒ 那一句的本地标消失（一行只消一句）；其余的接在记录后面。 */
     private fun publishLocked() {
-        val said = records.filter { it.t == RecordKind.SAID || it.t == RecordKind.QUEUED }.mapNotNull { it.who?.text }.toMutableList()
-        val seen = outgoing.filter { o -> o.delivery != DeliveryState.FAILED && o.delivery != DeliveryState.FAILED_PERMANENT && said.remove(o.text) }
+        val seen = outgoing.filter { o -> o.delivery != DeliveryState.FAILED && o.delivery != DeliveryState.FAILED_PERMANENT && heard.remove(o.text) }
+        heard.clear()
         if (seen.isNotEmpty()) {
             outgoing.removeAll(seen)
             scope.launch { cache.forget(seen.map { it.localId }) }
         }
         val local = outgoing.map { RenderUnit.UserText(it.localId, it.text, null, it.delivery, it.deliveryText) }
-        _state.value = _state.value.copy(units = RecordUnits.of(records) + local)
+        _state.value = _state.value.copy(units = body.units() + local)
     }
 
     companion object {
