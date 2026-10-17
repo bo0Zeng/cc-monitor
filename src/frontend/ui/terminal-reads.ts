@@ -1,8 +1,7 @@
 /**
  * **界面说终端管理那几条命令**：终端名单（`terminals-list`）· 抓一屏（`terminal-preview`）· 送字送键（`terminal-input`）。经通道直接问那台后端，本机远端同一条路。
  *
- * 目标只认名单里的终端（`terminal` 句柄）或会话 ID（`sid`），不收 tmux 目标串。只有 tmux 会话名在手的（起会话之后等它报出来的那一方）
- * 先在名单里按名字认出那一行，再按句柄抓。
+ * 目标只认名单里的终端（`terminal` 句柄）或会话 ID（`sid`），不收 tmux 目标串。
  *
  * 收法：三条都是 typed 命令（入参 · 回包从 Rust 类型生成，`generated/TypedCommands.ts`）⇒ 形状由握手指纹管，这边只挑要用的那几格。
  * 实时预览的帧（`terminal_screen`）的 `view` 就是 `terminal-preview` 的回包类型（帧的形状指纹核过），同一个 [`shotOf`] 收。
@@ -54,12 +53,7 @@ export interface TerminalShot {
 /** 怎么指一个终端：名单里的句柄，或挂在它上面的会话 ID。 */
 export type TerminalTarget = { terminal: string } | { sid: string };
 
-/** 抓一次那个终端此刻的一屏（只读快照，不过身份门）。失败 ⇒ 抛 `ControlError`（那一句已经说好）。 */
-export async function previewText(origin: Origin, target: TerminalTarget): Promise<string> {
-  return (await previewShot(origin, target)).text;
-}
-
-/** 同上，连指纹与抓的时刻一起（终端页要拿指纹送字）。 */
+/** 抓一次那个终端此刻的一屏（只读快照，不过身份门），连指纹与抓的时刻一起（终端页要拿指纹送字）。失败 ⇒ 抛 `ControlError`（那一句已经说好）。 */
 export async function previewShot(origin: Origin, target: TerminalTarget): Promise<TerminalShot> {
   const budget = budgetWithin(PREVIEW_BUDGET_MS);
   const v = await settleTyped(origin, "terminal-preview", callTyped(origin, "terminal-preview", { ...target, color: true }, budget));
@@ -92,13 +86,6 @@ export function rowsOf(v: TerminalsList): TerminalRow[] {
 export async function listTerminals(origin: Origin): Promise<TerminalRow[]> {
   const budget = budgetWithin(LIST_BUDGET_MS);
   return rowsOf(await settleTyped(origin, "terminals-list", callTyped(origin, "terminals-list", {}, budget)));
-}
-
-/** 按 tmux 会话名抓一屏：先在名单里认出那一行（第一个同名的），再按句柄抓。名单里没有 ⇒ 抛那句「不在名单」。 */
-export async function previewByTmuxName(origin: Origin, tmuxName: string): Promise<string> {
-  const row = (await listTerminals(origin)).find((r) => r.tmuxName === tmuxName);
-  if (row === undefined) throw new Error(copyText("terminalReads.preview.notKnown"));
-  return previewText(origin, { terminal: row.terminal });
 }
 
 /** 送什么：一段字（`enter` ＝ 之后补一个回车）或一颗键（有限键表，后端定）。 */

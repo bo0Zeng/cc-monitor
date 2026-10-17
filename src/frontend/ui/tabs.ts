@@ -554,6 +554,7 @@ export class TabManager {
     else this.store.notAttachableSids.delete(sessionId);
     this.ensureTab(sessionId, projectDir, "", origin, background, name);
     if (hidden !== undefined) this.hider.land(sessionId, hidden);
+    this.slots.tabAppeared(sessionId);
   }
 
   /**
@@ -1610,8 +1611,9 @@ export class TabManager {
    * 长一行占位标签页；认的是 sid、而那个会话已有标签页（恢复一条已结束的）⇒ 不长，直接切过去，回 `false`（没接）。
    */
   addLaunchSlot(spec: SlotSpec): boolean {
-    if ("sid" in spec.match && this.store.tabs.has(spec.match.sid)) {
-      this.switchTo(spec.match.sid);
+    const by = spec.arrival.by;
+    if (by.kind === "sid" && this.store.tabs.has(by.sid)) {
+      this.switchTo(by.sid);
       return false;
     }
     this.slots.add(spec);

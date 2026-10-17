@@ -45,6 +45,7 @@
   "rotation-use": [{"sid":"s","strategy":"x","discard":false},{"sid":"s","strategy":null,"discard":true}],
   "rotation-use-now": [{"sid":"s","account":"a"}],
   "rotation-view": [{"target":{"sid":"s"},"hours":12},{"target":{"strategy":"x","settings":{"k":1},"rev":"r"},"hours":12}],
+  "session-arrive": [{"by":{"kind":"cwd","cwd":"/w"},"since":3,"session":"w-cc"},{"by":{"kind":"sid","sid":"s"},"since":3}],
   "session-commands": [{"sid":"s"}],
   "session-model": [{"sid":"s","model":"opus","client":"mobile"}],
   "session-open": [{"what":{"kind":"new","agent":"claude","cwd":"/w","prompt":"hi"},"run":"tmux","local":false,"ticket":"t","client":"mobile"},{"what":{"kind":"new","agent":"claude","cwd":"/w","prompt":"hi","rotation":{"strategy":"x"}},"account":{"kind":"named","name":"a"},"run":"tmux","local":false,"ticket":"t","client":"mobile"},{"what":{"kind":"new","agent":"claude","cwd":"/w","prompt":"hi","rotation":{"strategy":null}},"run":"tmux","local":false,"ticket":"t","client":"mobile"},{"what":{"kind":"new","agent":"claude","cwd":"~","tmuxName":"demo"},"run":"tmux","local":false,"ticket":"t","client":"mobile"},{"what":{"kind":"resume","sid":"s"},"run":"tmux","local":false,"client":"mobile"},{"what":{"kind":"look","session":"demo"},"local":false,"client":"mobile"},{"what":{"kind":"shell","session":"main","cwd":"~/w"},"local":false,"client":"mobile"},{"what":{"kind":"shell","cwd":"/w"},"local":false,"client":"mobile"}],

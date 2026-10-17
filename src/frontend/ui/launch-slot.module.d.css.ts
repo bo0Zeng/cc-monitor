@@ -7,7 +7,6 @@ declare const classes: {
   readonly slotOut: string;
   readonly slotPanel: string;
   readonly slotSp: string;
-  readonly slotState: string;
   readonly slotSub: string;
   readonly slotTail: string;
   readonly slotTitle: string;

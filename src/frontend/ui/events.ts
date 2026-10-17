@@ -36,8 +36,6 @@ export interface EventHandlers {
   onSessionStarted?: (
     sessionId: string,
     meta: {
-      /** pidfile 记的起会话目录（认「我刚起的那条」用）。 */
-      cwd: string | null;
       /** 会话的项目目录（后端给的那一格；标题只认它）。 */
       projectDir: string | null;
       background: boolean;
@@ -54,8 +52,6 @@ export interface EventHandlers {
       background: boolean;
       /** `null` = 没说 = 视为可以 attach。 */
       attachable: boolean | null;
-      /** pidfile 记的起会话目录（认「我刚起的那条」用）。 */
-      cwd: string | null;
       /** 会话的项目目录（后端给的那一格；标题只认它）。 */
       projectDir: string | null;
       name: string | null;
@@ -163,7 +159,6 @@ type Queued =
   | {
       kind: "started";
       sessionId: string;
-      cwd: string | null;
       projectDir: string | null;
       background: boolean;
       name: string | null;
@@ -177,7 +172,6 @@ type Queued =
       background: boolean;
       /** attach 进去对人有没有意义。`null` = 没说 = 视为可以。 */
       attachable: boolean | null;
-      cwd: string | null;
       projectDir: string | null;
       name: string | null;
       hidden: SessionHidden | null;
@@ -441,7 +435,6 @@ export async function bindEvents(
         handlers.onSessionFace(item.sessionId, item.face);
       } else if (item.kind === "started") {
         handlers.onSessionStarted?.(item.sessionId, {
-          cwd: item.cwd,
           projectDir: item.projectDir,
           background: item.background,
           name: item.name,
@@ -451,7 +444,6 @@ export async function bindEvents(
         handlers.onRemoteSessionAdded?.(item.sessionId, item.origin, {
           background: item.background,
           attachable: item.attachable,
-          cwd: item.cwd,
           projectDir: item.projectDir,
           name: item.name,
           hidden: item.hidden,
@@ -594,7 +586,6 @@ export async function bindEvents(
             take({
               kind: "started",
               sessionId: p.sid,
-              cwd: p.cwd ?? null,
               projectDir: p.project_dir ?? null,
               background: p.background ?? false,
               name: p.name ?? null,
@@ -607,7 +598,6 @@ export async function bindEvents(
               origin,
               background: p.background ?? false,
               attachable: p.attachable ?? null,
-              cwd: p.cwd ?? null,
               projectDir: p.project_dir ?? null,
               name: p.name ?? null,
               hidden: p.hidden ?? null,

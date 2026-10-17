@@ -38,7 +38,7 @@
     "request": { "tool": "claude", "dir": "/w/proj", "task": "t", "base": true },
     "requestAccount": { "tool": "claude", "dir": "/w/proj", "task": "t", "account": "z" },
     "said": "已 spawn: proj_cc   (目录: /w/proj)",
-    "reply": { "spawned": true, "id": "proj_cc", "said": "已 spawn: proj_cc   (目录: /w/proj)" },
+    "reply": { "spawned": true, "id": "proj_cc", "said": "已 spawn: proj_cc   (目录: /w/proj)", "arrival": { "by": { "kind": "cwd", "cwd": "/w/proj" }, "since": 0, "session": "proj_cc" } },
     "codes": ["bad_args", "bad_id", "not_installed", "child_timed_out", "failed"]
   },
   "bus-broadcast": {

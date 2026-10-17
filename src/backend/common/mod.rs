@@ -9,6 +9,8 @@
 /// 与 history（历史清单的缓存）都用 · ② 读盘经 `platform::fs::Ro` · ③ 只认「一份只往后长的文件读到了哪」，不认里面是什么（原 `observe/fs.rs`）。
 pub(crate) mod append_read;
 // 一组一条那几条命令共用的票 · 进度 · 撤 · 同名怎么答 · 结局那一行（同台三条与两台之间的复制各引各的）。
+/// 报到序号。① control（起会话之前记下）与 observe（见到会话报到时加一）都用 · ② 一个进程内的计数 · ③ 只认「第几条报到」。
+pub(crate) mod arrival_seq;
 pub(crate) mod batch_book;
 /// 成品格的两种标记类型（写好的字 · 语气）。① observe（会话事实 · 过程行）· agents（通用记录）· stream（会话帧）都用 · ② 纯数据 ·
 /// ③ 只认「这一格是写好的字 / 语气」。

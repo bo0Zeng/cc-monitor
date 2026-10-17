@@ -647,6 +647,10 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
         "起会话 · 恢复 · 接回：要 tmux 而这台没有 ⇒ `place_unavailable`（不改道），直路本来用不着 tmux（Windows 本机照做）",
     ),
     (
+        "session-arrive",
+        "等起好的会话报到：认报到不碰 tmux；没见到时才抓起在的那个 tmux 会话的一屏当原话，没 tmux ⇒ 那一句只说没见到（读不到画面）",
+    ),
+    (
         "session-open-facts",
         "起新会话框的这台事实：没 tmux ⇒ `tmux: false`、只剩开终端那一形，别的几格照答",
     ),

@@ -9,6 +9,8 @@
 //!   停完旧的再核一次，除了停掉的那个还有 ⇒ 旧的已停、新的不起。
 //! - 压缩：问适配层「请求压缩那一句」；不支持 ⇒ `unsupported` 照常往下；到期限没见摘要 ⇒ `timed_out` 照常往下。
 //!
+//! - 报出：停旧之前记下报到序号，之后这个 sid 报到的那一次才算（`observe::arrivals`，同 `session-arrive`）；旧进程那一次不算。
+//!
 //! 要动 tmux / 读观测的几样由入口经 [`Host`] 交进来（control 不引用 observe），判据交替身。
 
 use super::launch::LAUNCH_CAP;
@@ -58,8 +60,8 @@ pub(crate) trait Host: Send + Sync + 'static {
     fn compact_request(&self, agent: &str) -> Option<&'static str>;
     /// 装好「等这条会话的记录里出现压缩摘要」（送那一句之前装）。
     fn watch_compact(&self, sid: &str) -> impl Future<Output = Result<Self::Ears, String>> + Send;
-    /// 装好「等这条会话由一个新进程报出」（停旧之前装）。
-    fn watch_arrival(&self, sid: &str) -> impl Future<Output = Result<Self::Ears, String>> + Send;
+    /// `ms` 毫秒内这条会话在报到序号 `since` 之后报到了。
+    fn arrival(&self, sid: &str, since: u64, ms: u64) -> impl Future<Output = bool> + Send;
 }
 
 /// 已过形状关的一次请求。
@@ -367,8 +369,8 @@ pub(crate) async fn run<H: Host>(
         .blocking(move |d| prepare(&r, d).map_err(owned))
         .await?;
     let compact = compact(&req, &name, &host).await;
-    // 停之前装好「等它报出」：此刻在跑的那个进程不算。
-    let arrival = host.watch_arrival(&req.item.sid).await;
+    // 停之前记下报到序号：此刻在跑的那个进程不算。
+    let since = crate::common::arrival_seq::mark();
     let (r, a, n) = (req.clone(), account.clone(), name.clone());
     match host
         .critical(move |d| swap(&r, &a, &n, &mine, d).map_err(owned))
@@ -383,10 +385,9 @@ pub(crate) async fn run<H: Host>(
         }
         Some(done) => done?,
     }
-    let started = match arrival {
-        Ok(ears) => ears.within(req.arrive_within_ms).await,
-        Err(_) => false,
-    };
+    let started = host
+        .arrival(&req.item.sid, since, req.arrive_within_ms)
+        .await;
     Ok(Restarted {
         compact,
         started: if started {

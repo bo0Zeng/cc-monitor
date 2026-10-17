@@ -45,18 +45,6 @@
     white-space: nowrap;
   }
 
-  .slotState {
-    color: var(--error);
-    font-size: var(--font-size-small);
-    white-space: nowrap;
-  }
-
-  .slotState::before {
-    margin-right: var(--space-3);
-    color: var(--text-faint);
-    content: var(--mark-sep);
-  }
-
   .slotCard {
     display: flex;
     gap: var(--space-4);

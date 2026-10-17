@@ -14,7 +14,7 @@ use super::session_batch::{
 };
 pub(crate) mod new;
 use crate::platform::child::{Child, Deadline};
-pub use cmd_wire::session::{FirstSay, Landed, Opened, Run};
+pub use cmd_wire::session::{ArriveAsk, ArriveBy, FirstSay, Landed, Opened, Run};
 pub(crate) use new::{
     dir_answer, DirChecked, ForkFrom, ForkWrite, OpenDirErr, OpenDirReq, PreRotation,
 };
@@ -258,10 +258,12 @@ pub(crate) struct ResumeOf {
     pub(crate) permission_mode: Option<String>,
 }
 
-/// 宿主交进来的事实：恢复那一条读出来的记录（`None` ＝ 读不到 ⇒ `record_gone`）· 分叉源会话此刻在不在 tmux 里。
+/// 宿主交进来的事实：恢复那一条读出来的记录（`None` ＝ 读不到 ⇒ `record_gone`）· 分叉源会话此刻在不在 tmux 里 ·
+/// 起之前这台报到的序号（回包的 `arrival.since`）。
 pub(crate) struct Facts {
     pub(crate) resume: Option<ResumeOf>,
     pub(crate) fork_tmux: Option<bool>,
+    pub(crate) since: u64,
 }
 
 /// 那一家的几样（启动命令 · 模型表 · 起会话的说法）。
@@ -324,8 +326,28 @@ pub(crate) fn answer(
                 None,
             )
         },
-        || dispatch(req, facts, deps, fork, pre, home),
+        || {
+            let since = facts.since;
+            dispatch(req, facts, deps, fork, pre, home).map(|o| with_arrival(o, since))
+        },
     )
+}
+
+/// 起了一家 ⇒ 带上等它报到那一问：有 sid（恢复 · 先定好的新起）按 sid，否则按目录。在跑 · 只剩空 shell · 没起 agent 的 ⇒ 不等。
+pub(crate) fn with_arrival(o: Opened, since: u64) -> Opened {
+    let starts =
+        matches!(o.landed, Landed::Started | Landed::InPlace | Landed::Window) && o.agent.is_some();
+    let by = match (&o.sid, &o.cwd) {
+        (Some(sid), _) => Some(ArriveBy::Sid { sid: sid.clone() }),
+        (None, Some(cwd)) => Some(ArriveBy::Cwd { cwd: cwd.clone() }),
+        (None, None) => None,
+    };
+    let arrival = by.filter(|_| starts).map(|by| ArriveAsk {
+        by,
+        since,
+        session: o.session.clone(),
+    });
+    Opened { arrival, ..o }
 }
 
 fn dispatch(
@@ -437,6 +459,7 @@ fn opened(landed: Landed, session: Option<String>, line: Option<String>) -> Open
         account: None,
         note: None,
         prompt: None,
+        arrival: None,
     }
 }
 

@@ -18,6 +18,8 @@ pub(crate) mod cc_bus_hooks;
 // 续算会话事实的那份累加器表（`history-facts` 的续点令牌）。
 // 读行：一行行读到最后一个完整行 · 算不算一行 · 一行怎么解析（读记录的各处都经它）。
 pub(crate) mod lines;
+// 起好的会话报到没有（`session-arrive` 用）：挂在 watcher 发帧的出口上，认 `session_added`。
+pub(crate) mod arrivals;
 // 一次性等待（记录里长出某一条 · 会话由新进程报出）：换号重启那条命令用，期限由发起方给。
 pub(crate) mod one_wait;
 // 查询：每条帧命令的本体，只读扫描图切页、拼成品；找记录与过围栏 · 尾段 · 正文。

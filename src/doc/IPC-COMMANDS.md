@@ -10269,6 +10269,20 @@ from: string | null, };
 入参 `BusSpawnReq` · 回包 `BusSpawnedNow`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type ArriveAsk = { 
+/**
+ * 认它用的那一格。
+ */
+by: ArriveBy, 
+/**
+ * 起之前这台报到的序号：只认这之后报到的。
+ */
+since: number, 
+/**
+ * 起在哪个 tmux 会话里（没见到时抓那一屏当原话）；开窗起的 ⇒ `null`。
+ */
+session: string | null, };
+type ArriveBy = { "kind": "sid", sid: string, } | { "kind": "cwd", cwd: string, };
 type BusSpawnReq = { 
 /**
  * 哪一家（缺 / 空 ⇒ 默认那一家）。
@@ -10302,7 +10316,11 @@ id: string | null,
 /**
  * `cc-spawn` 的原始回显，给人看。
  */
-said: string, };
+said: string, 
+/**
+ * 等它报到那一问（`session-arrive` 的入参，原样交回）。
+ */
+arrival: ArriveAsk, };
 ```
 
 码：`bad_args` · `bad_id` · `not_installed` · `child_timed_out` · `failed`
@@ -11467,6 +11485,20 @@ listKnown: boolean,
  */
 alternative: string | null, };
 type AgentKind = string;
+type ArriveAsk = { 
+/**
+ * 认它用的那一格。
+ */
+by: ArriveBy, 
+/**
+ * 起之前这台报到的序号：只认这之后报到的。
+ */
+since: number, 
+/**
+ * 起在哪个 tmux 会话里（没见到时抓那一屏当原话）；开窗起的 ⇒ `null`。
+ */
+session: string | null, };
+type ArriveBy = { "kind": "sid", sid: string, } | { "kind": "cwd", cwd: string, };
 type FirstSay = { 
 /**
  * `delivered` · `unsure`（不知道送没送到，别重发）· `refused`。
@@ -11579,7 +11611,11 @@ note: string | null,
 /**
  * 第一句交进去的结局；没给第一句 ⇒ `null`。
  */
-prompt: FirstSay | null, };
+prompt: FirstSay | null, 
+/**
+ * 起了一家（或开窗那一行跑起来就起）⇒ 等它报到那一问（`session-arrive` 的入参，原样交回）；没起 ⇒ `null`。
+ */
+arrival: ArriveAsk | null, };
 type RotationPick = { 
 /**
  * 策略的 id（策略目录里的文件名去掉 `.rhai`，非空）；`null` ⇒ 这个会话不轮换（新会话用的那份不管它）。
@@ -11616,6 +11652,42 @@ client?: string, };
 码：`bad_args` · `unknown_agent` · `bad_command` · `no_dir` · `account_unavailable` · `place_unavailable` · `bad_tmux_name` · `tmux_taken` · `record_gone` · `already_live` · `not_in_tmux` · `wrong_owner` · `unobservable` · `fork_failed` · `refused` · `start_failed` · `child_timed_out` · `launch_pending` · `no_strategy`
 
 失败带 `data` 的码：`bad_args` ⇒ `OpenRefusal` · `unknown_agent` ⇒ `OpenRefusal` · `bad_command` ⇒ `OpenRefusal` · `no_dir` ⇒ `OpenRefusal` · `account_unavailable` ⇒ `OpenRefusal` · `place_unavailable` ⇒ `OpenRefusal` · `bad_tmux_name` ⇒ `OpenRefusal` · `tmux_taken` ⇒ `OpenRefusal` · `record_gone` ⇒ `OpenRefusal` · `already_live` ⇒ `OpenRefusal` · `not_in_tmux` ⇒ `OpenRefusal` · `wrong_owner` ⇒ `OpenRefusal` · `unobservable` ⇒ `OpenRefusal` · `fork_failed` ⇒ `OpenRefusal` · `refused` ⇒ `OpenRefusal` · `start_failed` ⇒ `OpenRefusal` · `child_timed_out` ⇒ `OpenRefusal` · `launch_pending` ⇒ `OpenRefusal` · `no_strategy` ⇒ `OpenRefusal`
+
+#### `session-arrive`
+
+等起好的会话报到。
+
+收 `args` · 可撤 · 只在流上
+
+入参 `ArriveAsk` · 回包 `ArriveEnd`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ArriveAsk = { 
+/**
+ * 认它用的那一格。
+ */
+by: ArriveBy, 
+/**
+ * 起之前这台报到的序号：只认这之后报到的。
+ */
+since: number, 
+/**
+ * 起在哪个 tmux 会话里（没见到时抓那一屏当原话）；开窗起的 ⇒ `null`。
+ */
+session: string | null, };
+type ArriveBy = { "kind": "sid", sid: string, } | { "kind": "cwd", cwd: string, };
+type ArriveEnd = { "kind": "arrived", sid: string, } | { "kind": "missed", 
+/**
+ * 第一行是标题，其余是正文（含那一屏末几行）。
+ */
+said: string, 
+/**
+ * 起在的那个 tmux 会话此刻还在 ⇒ 它在终端名单里的句柄；不在 · 读不到 · 开窗起的 ⇒ `null`。
+ */
+terminal: string | null, };
+```
+
+码：`bad_args`
 
 #### `session-open-facts`
 

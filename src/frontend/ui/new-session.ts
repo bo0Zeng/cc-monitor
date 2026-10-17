@@ -30,7 +30,6 @@ import { accountAvatarEl } from "./account-color";
 import { accountLabel } from "./acct-words";
 import { readPrefs } from "./machine-prefs";
 import { chosenAccount, type AccountAsk } from "./launch-account";
-import { liveSince } from "./launch-arrival";
 import { askOpen, landOpened, openSession, type OpenEnd, type OpenHow, type Opened, type SessionOpenReq } from "./session-open";
 import { accountsOf } from "./settings-dest";
 import { askDir, askFacts, type OpenFacts } from "./new-session-reads";
@@ -337,8 +336,6 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   let ticket = crypto.randomUUID();
   /** 上一次交出去的那一份（不含票）：比它就知道表单改没改。 */
   let lastAsked: string | null = null;
-  /** 这张票头一次发出去那一刻（[`liveSince`]）；换票时清掉。 */
-  let since: ReadonlySet<string> | null = null;
 
   const form = el("div");
   form.className = s.nsForm;
@@ -605,11 +602,8 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     if (lastAsked !== null && asked !== lastAsked) {
       ticket = crypto.randomUUID();
       req.ticket = ticket;
-      since = null;
     }
     lastAsked = asked;
-    // 这张票头一次发出去那一刻这台已经报过的会话：回话晚到时，那之后先报到的那个才认得出是它。
-    since ??= liveSince(origin);
     let res = await askOpen(origin, req);
     if (res.kind === "timeout") {
       // 结果未知：同一张票自己再核一次（那台认得出是不是同一趟 —— 起好了回原样那一份，落过去；不起第二个）。
@@ -618,7 +612,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       res = await askOpen(origin, req);
     }
     if (res.kind === "opened") {
-      void landOpened(origin, req, res.opened, { ...landing(origin), ...(since ? { before: since } : {}) });
+      void landOpened(origin, req, res.opened, landing(origin));
       return null;
     }
     return showFailure(res);

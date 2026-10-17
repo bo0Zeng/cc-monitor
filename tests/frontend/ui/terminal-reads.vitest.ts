@@ -18,14 +18,13 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { ChanError } from "../../../src/comms/inward/chan";
-import { previewByTmuxName, previewText, rowsOf, sendToTerminal, sentOf, shotOf } from "../../../src/frontend/ui/terminal-reads";
+import { previewShot, rowsOf, sendToTerminal, sentOf, shotOf } from "../../../src/frontend/ui/terminal-reads";
 import type { Preview } from "../../../src/frontend/ui/generated/Preview";
 import type { Sent } from "../../../src/frontend/ui/generated/Sent";
 import type { TerminalsList } from "../../../src/frontend/ui/generated/TerminalsList";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, refusedReply, UNSUPPORTED, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import { copyPattern } from "../../test-support/copy-pattern";
 import { nonEmpty } from "../../test-support/non-empty";
 import { WALL_CEILING_MS } from "../../test-support/wall-ceiling";
 
@@ -71,7 +70,7 @@ async function failureOf(act: () => Promise<unknown>): Promise<ChanError> {
   }
   throw new Error("本该失败却成功了");
 }
-const saidBy = async (origin: string): Promise<string> => (await failureOf(() => previewText(origin, { sid: "sid-a" }))).message;
+const saidBy = async (origin: string): Promise<string> => (await failureOf(() => previewShot(origin, { sid: "sid-a" }))).message;
 
 describe("抓一屏：金样与形状", () => {
   it("★★ 金样：后端真出的成品读得出（每行 `text` 用换行接起来，颜色段原样）", () => {
@@ -123,23 +122,12 @@ describe("抓一屏：金样与形状", () => {
 describe("抓一屏：发出去", () => {
   it("★ 按句柄 / 会话 ID 指、要带颜色的成品；本机照样经通道问", async () => {
     answer({ "terminal-preview": { ok: PREVIEW.reply } });
-    await previewText("devbox", { sid: "sid-a" });
-    await previewText(LOCAL_ORIGIN, { terminal: "tmux-1" });
+    await previewShot("devbox", { sid: "sid-a" });
+    await previewShot(LOCAL_ORIGIN, { terminal: "tmux-1" });
     expect(sentCalls()).toEqual([
       ["devbox", "terminal-preview", { sid: "sid-a", color: true }],
       [LOCAL_ORIGIN, "terminal-preview", { terminal: "tmux-1", color: true }],
     ]);
-  });
-
-  it("★ 只有 tmux 名 ⇒ 先问名单认出那一行，再按句柄抓；名单里没有 ⇒ 说不在名单", async () => {
-    const terminals = LIST.reply.terminals as { terminal: string; tmux_name: string }[];
-    answer({ "terminals-list": { ok: LIST.reply }, "terminal-preview": { ok: PREVIEW.reply } });
-    await previewByTmuxName("devbox", terminals[0].tmux_name);
-    expect(sentCalls()).toEqual([
-      ["devbox", "terminals-list", {}],
-      ["devbox", "terminal-preview", { terminal: terminals[0].terminal, color: true }],
-    ]);
-    await expect(previewByTmuxName("devbox", "no-such-cc")).rejects.toThrow(copyPattern("terminalReads.preview.notKnown"));
   });
 });
 
@@ -159,7 +147,7 @@ describe("抓一屏：失败怎么说", () => {
   it("★ 结果未知那一句带［刷新］：点了问那台对齐一次（`resync`）；别的几层不带", async () => {
     type Fixable = ChanError & { action?: { label: string; run: () => void } };
     answer({ "terminal-preview": { fail: { err: { Hop: { idx: 1, tag: "wait", reach: "Unknown", why: "Overrun" } }, body: [] } } });
-    const e: Fixable = await failureOf(() => previewText("devbox", { sid: "sid-a" }));
+    const e: Fixable = await failureOf(() => previewShot("devbox", { sid: "sid-a" }));
     expect(e.action?.label).toBe(copyText("control.channel.refresh"));
     const asked: string[] = [];
     invokeMock.mockImplementation(async (_cmd: string, a: ChanCallArgs) => {
@@ -169,14 +157,14 @@ describe("抓一屏：失败怎么说", () => {
     e.action!.run();
     await vi.waitFor(() => expect(asked).toEqual(["devbox:resync"]), { timeout: WALL_CEILING_MS });
     answer({ "terminal-preview": { fail: UNSUPPORTED } });
-    expect(((await failureOf(() => previewText("devbox", { sid: "sid-a" }))) as Fixable).action).toBeUndefined();
+    expect(((await failureOf(() => previewShot("devbox", { sid: "sid-a" }))) as Fixable).action).toBeUndefined();
   });
 
   it("★★ 拒绝码（取自金样）：那台写好的那一句原样上屏、复制详情带码（逐码一句由后端判：`said_tests.rs`）", async () => {
     nonEmpty(PREVIEW.codes);
     for (const code of PREVIEW.codes) {
       answer({ "terminal-preview": { fail: refusedReply(code, `S-${code}`) } });
-      const e = await failureOf(() => previewText("devbox", { sid: "sid-a" }));
+      const e = await failureOf(() => previewShot("devbox", { sid: "sid-a" }));
       expect(e.message).toBe(`S-${code}`);
       expect(e.detail, "复制详情里没有码").toContain(code);
     }

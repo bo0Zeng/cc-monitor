@@ -13,6 +13,7 @@ import com.ccmonitor.mobile.core.claude.link.LiveBoard
 import com.ccmonitor.mobile.core.claude.link.LiveCardState
 import com.ccmonitor.mobile.core.claude.link.RecordLine
 import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.claude.link.SessionArrive
 import com.ccmonitor.mobile.core.claude.link.SessionCommandList
 import com.ccmonitor.mobile.core.claude.link.SessionOpen
 import com.ccmonitor.mobile.core.claude.link.SessionSay
@@ -52,7 +53,6 @@ import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 
 /** 聊天面的一帧 UI 状态。 */
@@ -476,7 +476,6 @@ class ChatSession(
         first: Outgoing,
     ) {
         _state.value = _state.value.copy(failedWhy = null, drafting = false)
-        val before = link.table.value.sessions.keys
         // 选项打开时问过那台（起哪一家 · 默认号 · 最近的目录）；问不到 ⇒ 照存的那一家、从哪进来的目录交，认不出由那台那一句说。
         val p = picker ?: return
         p.settled()
@@ -489,10 +488,7 @@ class ChatSession(
                         ?: return failSession(unreadableReply(machine, SessionOpen.COMMAND, r.data.toString()).text)
                 else -> return failSession(r.problem(machine, SessionOpen.COMMAND)?.text)
             }
-        val arrived =
-            answer.sid ?: withTimeoutOrNull(arrivalMs) {
-                link.table.mapNotNull { SessionOpen.arrived(it, cwd, before)?.sid }.first()
-            } ?: return failSession(copyText("launchArrival.missed.title"))
+        val arrived = arrivedSid(answer) ?: return
         answer.prompt?.let { said ->
             first.handed = true
             val (delivery, text) = outcomeOf(said)
@@ -503,6 +499,29 @@ class ChatSession(
         _state.value = _state.value.copy(sid = arrived, cwd = cwd)
         syncHold()
         follow = scope.launch { attach(arrived, fresh = true) }
+    }
+
+    /**
+     * 新起的那一条报到了 ⇒ 它的 sid；没报到 ⇒ `null`（那一句已上屏）。报到没有由那台等、那台说（`session-arrive`，回包里那一问原样交回）；
+     * 那台说不用等 ⇒ 照回包里的 sid。
+     */
+    private suspend fun arrivedSid(answer: SessionOpen.Answer): String? {
+        val ask =
+            answer.arrival ?: return answer.sid.also {
+                if (it == null) failSession(unreadableReply(machine, SessionOpen.COMMAND, answer.toString()).text)
+            }
+        val r = link.call(SessionArrive.COMMAND, SessionArrive.args(ask), arrivalMs)
+        val end = (r as? Reply.Ok)?.let { SessionArrive.of(it.data) }
+        if (end?.sid == null) {
+            failSession(
+                when {
+                    r !is Reply.Ok -> r.problem(machine, SessionArrive.COMMAND)?.text
+                    end == null -> unreadableReply(machine, SessionArrive.COMMAND, r.data.toString()).text
+                    else -> end.said
+                },
+            )
+        }
+        return end?.sid
     }
 
     /** 会话那一层没成：那一句上屏；新建会话还没起成 ⇒ 回到草稿（选项回来，改了再发）。 */
@@ -875,7 +894,7 @@ class ChatSession(
         /** 输入框停手这么久才存草稿。 */
         private const val DRAFT_SAVE_MS = 500L
 
-        /** 等新起的会话报到多久（同桌面 `ARRIVAL_BUDGET_MS`）。 */
+        /** 愿意等新起的会话报到多久（`session-arrive` 的期限，那台照它减余量等）。 */
         const val ARRIVAL_MS = 45_000L
 
         /** 这边等起会话多久（`session-open` 是阻塞档：不交 `within_ms`、到点不撤单；第一句作为启动参数交，起好就回）。 */

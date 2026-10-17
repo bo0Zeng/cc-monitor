@@ -423,7 +423,12 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "session-open",
         "后端出成品 `{landed, session, line, sid, agent, cwd, account, note, prompt}`（`control/session_open.rs`）；前端 `src/frontend/ui/session-open.ts` 问、回包按 typed 的类型收，\
-         照 `landed` 开那一行、等报到；monitor 这一侧零发送点",
+         照 `landed` 开那一行；monitor 这一侧零发送点",
+    ),
+    (
+        "session-arrive",
+        "等起好的会话报到：后端认（`observe/arrivals.rs`，认的是会话流那一帧 `session_added`）、没见到那一句与那一屏原话后端写（`control/session_arrive.rs`）；\
+         前端 `session-open.ts` · 占位标签页 `launch-slot.ts` 把回包里那一问原样交回；monitor 这一侧零发送点",
     ),
     // 删会话 · 分叉：两件改世界的事本来就在那台后端，monitor 只剩转交 ⇒ 转交删了，界面直接说。
     (
@@ -636,7 +641,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "terminal-preview",
         "后端应答就是成品（逐行文本 ＋ 尺寸光标），按名单里的句柄 / 会话 ID 指；拒绝码说成人话那一份住唯一的消费者那一侧\
-         `src/frontend/ui/terminal-reads.ts`（终端页 `terminal-page.ts` · 起会话没报出来时抓原话 `launch-arrival.ts` 调它）",
+         `src/frontend/ui/terminal-reads.ts`（终端页 `terminal-page.ts` 调它）",
     ),
     (
         "kill",

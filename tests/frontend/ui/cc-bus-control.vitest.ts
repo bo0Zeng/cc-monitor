@@ -153,11 +153,14 @@ describe("〔C4e〕金样：请求体 == 金样、解码器读得懂后端真出
     await expect(spawnAgent("devbox", { tool: "claude", dir: "/w/proj", task: "t" })).resolves.toMatch(copyPattern("ccBus.spawn.done", { id: "proj_cc" }));
     await spawnAgent("devbox", { tool: "claude", dir: "/w/proj", task: "t", account: "" });
     await spawnAgent("devbox", { tool: "claude", dir: "/w/proj", task: "t", account: "z" });
-    expect(sentCalls()).toEqual([
+    const spawned = sentCalls().filter((c) => c[1] === "bus-spawn");
+    expect(spawned).toEqual([
       ["devbox", "bus-spawn", SPAWN.request],
       ["devbox", "bus-spawn", SPAWN.request],
       ["devbox", "bus-spawn", SPAWN.requestAccount],
     ]);
+    // 起了之后问那台等它报到：回包里那一问原样交回（认法 · 没见到那一句都是那台的）。
+    expect(sentCalls().filter((c) => c[1] === "session-arrive").map((c) => c[2])).toEqual([SPAWN.reply.arrival, SPAWN.reply.arrival, SPAWN.reply.arrival]);
   });
 
   it("★★ 广播（bus-broadcast）", async () => {
@@ -198,7 +201,7 @@ describe("〔C4e〕发出去之前：调用方不能靠对端校验", () => {
     expect(() => checkSpawnShape({ tool: "", dir: "/w", task: "" })).not.toThrow();
     expect(() => checkSpawnShape({ tool: "some-future-agent", dir: "/w", task: "" })).not.toThrow();
     await spawnAgent("devbox", { tool: "some-future-agent", dir: "/w", task: "", account: "z" });
-    expect(sentCalls().length).toBe(1);
+    expect(sentCalls().filter((c) => c[1] === "bus-spawn").length).toBe(1);
     // 坏账号名原样交给后端（界面不判），后端回 `bad_id` ⇒ 照它写好的那一句说。
     answer({ fail: refusedReply("bad_id", "BACKEND-SAYS") });
     const said = await saidOf(() => spawnAgent("devbox", { tool: "claude", dir: "/w", task: "", account: "--help" }));

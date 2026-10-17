@@ -1,5 +1,7 @@
 package com.ccmonitor.mobile.core.claude.link
 
+import com.ccmonitor.mobile.core.claude.link.wire.ArriveAsk
+import com.ccmonitor.mobile.core.claude.link.wire.ArriveBy
 import com.ccmonitor.mobile.core.claude.link.wire.Held
 import com.ccmonitor.mobile.core.claude.link.wire.Hide
 import com.ccmonitor.mobile.core.claude.link.wire.TabPref
@@ -102,6 +104,11 @@ class SentRequestsTest {
                 listOf(
                     Rotation.view(RotWhere.Session("s"), 12),
                     Rotation.view(RotWhere.Strategy("x"), 12, mapOf("k" to 1L), "r"),
+                ),
+            SessionArrive.COMMAND to
+                listOf(
+                    SessionArrive.args(ArriveAsk(ArriveBy("cwd", null, "/w"), 3L, "w-cc")),
+                    SessionArrive.args(ArriveAsk(ArriveBy("sid", "s", null), 3L, null)),
                 ),
             SessionCommandList.COMMAND to listOf(SessionCommandList.args("s")),
             SessionModel.COMMAND to listOf(SessionModel.args("s", "opus")),

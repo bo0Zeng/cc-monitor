@@ -1290,18 +1290,28 @@ pub(crate) fn spawn_for_inbound(req: &BusSpawnReq) -> Result<BusSpawnedNow, (Str
     let a = parse_spawn(req).map_err(|(c, m)| (c.to_string(), m))?;
     let argv = spawn_argv(&a);
     let refs: Vec<&str> = argv.iter().map(String::as_str).collect();
+    // 起之前记下这台的报到序号：之后在这个目录里报到的那一条才是它。
+    let since = crate::common::arrival_seq::mark();
     let out = run_as("cc-spawn", &refs, None).map_err(|(c, m)| (c.to_string(), m))?;
     classify_spawn(out.code, &out.diagnosis(), waited_secs(&out))?;
     let said = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    Ok(spawn_reply(&said))
+    Ok(spawn_reply(&said, &a.dir, since))
 }
 
-/// `bus-spawn` 的成品 `{spawned, id, said}` —— 从 [`spawn_for_inbound`] 里原样抽出来（逻辑不动），
-/// 理由同 [`list_reply`]。
-pub(crate) fn spawn_reply(said: &str) -> BusSpawnedNow {
+/// `bus-spawn` 的成品 `{spawned, id, said, arrival}` —— 从 [`spawn_for_inbound`] 里原样抽出来，理由同 [`list_reply`]。
+/// `arrival`：等它报到那一问（按目录认；认出了名字 ⇒ 没见到时抓那个 tmux 会话的一屏）。
+pub(crate) fn spawn_reply(said: &str, dir: &str, since: u64) -> BusSpawnedNow {
+    let id = spawned_id_of(said);
     BusSpawnedNow {
         spawned: true,
-        id: spawned_id_of(said),
+        arrival: cmd_wire::session::ArriveAsk {
+            by: cmd_wire::session::ArriveBy::Cwd {
+                cwd: dir.to_string(),
+            },
+            since,
+            session: id.clone(),
+        },
+        id,
         said: said.to_string(),
     }
 }

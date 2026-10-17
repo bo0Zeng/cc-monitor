@@ -163,6 +163,7 @@ impl Rig {
         let facts = Facts {
             resume: None,
             fork_tmux: None,
+            since: 0,
         };
         answer(
             req,

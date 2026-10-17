@@ -71,6 +71,7 @@ impl FrameSink {
             subs: vec![Sub::new(0, tx, crate::Tz::default())],
             ledger: None,
             priming: HashSet::new(),
+            arrivals: crate::observe::arrivals::Arrivals::default(),
         }
     }
 
@@ -2876,6 +2877,54 @@ fn one_sid_in_two_pidfiles_is_announced_once() {
         got,
         vec!["session_added", "session_primed", "sessions_replayed"],
         "同一个会话宣告了两次，或先退的那份 pidfile 把还活着的会话摘了"
+    );
+}
+
+/// 换号重启那一形：同一个 sid 由一个新进程报出、旧进程还没走（那一帧 `session_added` 不重发）也算报到；
+/// 旧进程那一次 · 同一个进程的第二份 pidfile 不算。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_new_process_taking_a_live_sid_counts_as_its_arrival() {
+    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
+    let dir = std::env::temp_dir().join(format!("ccm-arrive-again-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let sessions = dir.join("sessions");
+    std::fs::create_dir_all(sessions.join("dup")).unwrap();
+    let mut kids = vec![vis2_sleeper(), vis2_sleeper()];
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(dir.join("projects"));
+    let old = vis2_pidfile(&sessions, kids[0].id(), "again-sid");
+    process_session_added(&old, &mut state, &mut sink);
+    let since = crate::common::arrival_seq::mark();
+    let (tell, mut heard) = tokio::sync::oneshot::channel::<String>();
+    sink.arrivals.expect(
+        cmd_wire::session::ArriveBy::Sid {
+            sid: "again-sid".into(),
+        },
+        since,
+        std::sync::Arc::new(std::sync::Mutex::new(Some(tell))),
+    );
+    let stale = heard.try_recv().is_err();
+    // 同一个旧进程的第二份 pidfile：不是新进程。
+    let twin = vis2_pidfile(&sessions.join("dup"), kids[0].id(), "again-sid");
+    process_session_added(&twin, &mut state, &mut sink);
+    let twin_quiet = heard.try_recv().is_err();
+    let new = vis2_pidfile(&sessions, kids[1].id(), "again-sid");
+    process_session_added(&new, &mut state, &mut sink);
+    let got = heard.try_recv().ok();
+    while rx.try_recv().is_ok() {}
+    for k in kids.iter_mut() {
+        let _ = k.kill();
+        let _ = k.wait();
+    }
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(stale, "旧进程那一次报到被当成了新的");
+    assert!(twin_quiet, "同一个进程的第二份 pidfile 被当成了新进程");
+    assert_eq!(
+        got.as_deref(),
+        Some("again-sid"),
+        "新进程接上了这个 sid 却没认出报到"
     );
 }
 

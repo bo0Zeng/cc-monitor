@@ -36,7 +36,9 @@ class ChatSessionTest {
 
     private fun ok(data: Any?) = Reply.Ok(data)
 
-    private val started = mapOf("landed" to "started", "session" to "proj-cc", "line" to "ccm -- --attach proj-cc", "sid" to null, "agent" to "claude", "cwd" to "/h/proj")
+    private val arrival = mapOf("by" to mapOf("kind" to "cwd", "cwd" to "/h/proj"), "since" to 2, "session" to "proj-cc")
+    private val started =
+        mapOf("landed" to "started", "session" to "proj-cc", "line" to "ccm -- --attach proj-cc", "sid" to null, "agent" to "claude", "cwd" to "/h/proj", "arrival" to arrival)
 
     /** 新起那一问里 `what` 那一格。 */
     private fun Map<String, Any?>?.what(): Map<*, *>? = this?.get("what") as? Map<*, *>
@@ -47,10 +49,9 @@ class ChatSessionTest {
             .filter { it.sourceUuid == null }
 
     @Test
-    fun `新建会话：第一句 ⇒ 请那台在 tmux 里起（带票）⇒ 认出报到的那条 ⇒ 字经 session-say 进那条会话`() =
+    fun `新建会话：第一句 ⇒ 请那台在 tmux 里起（带票）⇒ 回包那一问原样交那台等报到 ⇒ 字经 session-say 进那条会话`() =
         runTest {
             val link = FakeCoreLink()
-            link.report("old", "/h/proj") // 起之前就在的同目录会话不算
             link.answer = { cmd, _ ->
                 when (cmd) {
                     "session-open" -> ok(started)
@@ -74,10 +75,12 @@ class ChatSessionTest {
                 ),
                 link.calls("session-open"),
             )
+            assertEquals(listOf(mapOf("by" to mapOf("kind" to "cwd", "cwd" to "/h/proj"), "since" to 2L, "session" to "proj-cc")), link.calls("session-arrive"))
             assertTrue("报到之前不送字", link.calls("session-say").isEmpty())
             assertEquals(DeliveryState.SENDING, s.local().single().delivery)
 
             link.report("new", "/h/proj")
+            link.arrive("new")
             runCurrent()
             assertEquals("new", s.state.value.sid)
             assertEquals(listOf(mapOf("sid" to "new", "text" to "你好", "client" to "mobile")), link.calls("session-say"))
@@ -94,7 +97,8 @@ class ChatSessionTest {
         }
 
     /** 那台先定好 sid、第一句随起交进去了（`session-open` 的 `prompt`）。 */
-    private fun said(prompt: Map<String, Any?>) = started + mapOf("sid" to "pre", "prompt" to prompt)
+    private fun said(prompt: Map<String, Any?>) =
+        started + mapOf("sid" to "pre", "prompt" to prompt, "arrival" to arrival + ("by" to mapOf("kind" to "sid", "sid" to "pre")))
 
     @Test
     fun `新建会话：第一句随 session-open 交（那台作为启动参数交），送没送到照回包里的 prompt；不另走 session-say`() =
@@ -108,6 +112,7 @@ class ChatSessionTest {
             }
             val s = draft(link)
             s.send("你好")
+            link.arrive("pre")
             runCurrent()
             val opened = link.calls("session-open").single().what()
             assertEquals("你好", opened?.get("prompt"))
@@ -129,6 +134,7 @@ class ChatSessionTest {
             }
             val s = draft(link)
             s.send("你好")
+            link.arrive("pre")
             runCurrent()
             val o = s.local().single()
             assertEquals(DeliveryState.FAILED, o.delivery)
@@ -154,6 +160,7 @@ class ChatSessionTest {
             s.visible(true)
             s.send("你好")
             link.report("pre", "/h/proj", path = null) // 那台宣告这条会话时记录还没有
+            link.arrive("pre")
             advanceTimeBy(ChatSession.ARRIVAL_MS * 3)
             runCurrent()
             assertNull("记录还没有不是「找不到」", s.state.value.failedWhy)
@@ -193,6 +200,7 @@ class ChatSessionTest {
             val opened = link.calls("session-open").single().what()
             assertEquals("codex", opened?.get("agent"))
             link.report("cx", "/h/proj")
+            link.arrive("cx")
             runCurrent()
             assertEquals(listOf(mapOf("sid" to "cx", "text" to "看一下", "client" to "mobile")), link.calls("session-say"))
             assertNull("送到了的不挂标", s.local().single().delivery)
@@ -208,6 +216,7 @@ class ChatSessionTest {
             s.send("二")
             runCurrent()
             link.report("new", "/h/proj")
+            link.arrive("new")
             runCurrent()
             assertEquals(1, link.calls("session-open").size)
             assertEquals(listOf("一", "二"), link.calls("session-say").map { it?.get("text") })
@@ -226,15 +235,16 @@ class ChatSessionTest {
         }
 
     @Test
-    fun `报到等不到：说「会话未报到」，不送字`() =
+    fun `报到等不到：照那台那一句说，不送字`() =
         runTest {
             val link = FakeCoreLink()
             link.answer = { _, _ -> ok(started) }
             val s = draft(link)
             s.send("你好")
-            advanceTimeBy(ChatSession.ARRIVAL_MS + 1)
             runCurrent()
-            assertEquals(copyText("launchArrival.missed.title"), s.state.value.failedWhy)
+            link.miss("命令已发出 · 会话未报到\n已等 43s 未报到")
+            runCurrent()
+            assertEquals("命令已发出 · 会话未报到\n已等 43s 未报到", s.state.value.failedWhy)
             assertTrue(link.calls("session-say").isEmpty())
         }
 
@@ -453,6 +463,7 @@ class ChatSessionTest {
             assertTrue("起不来 ⇒ 选项回来", s.state.value.drafting)
             start = ok(started + ("sid" to "pre"))
             s.retry(s.local().single().key)
+            link.arrive("pre")
             runCurrent()
             assertEquals("pre", s.state.value.sid)
             assertEquals(false, s.state.value.drafting)

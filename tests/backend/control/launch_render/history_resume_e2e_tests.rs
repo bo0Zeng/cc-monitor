@@ -153,6 +153,7 @@ fn history_resume_child_entry_point() {
     let facts = crate::control::session_open::Facts {
         resume,
         fork_tmux: None,
+        since: 0,
     };
     let (own, nf) = (
         crate::platform::fs::Own::issue(),

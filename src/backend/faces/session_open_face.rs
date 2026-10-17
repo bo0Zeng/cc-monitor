@@ -43,6 +43,8 @@ fn answer(
 ) -> Result<open::Opened, open::Failed> {
     let client = crate::control::gate::requester(req.client.as_deref())
         .map_err(|(c, m)| open::fail(c, m, None))?;
+    // 起之前记下这台的报到序号：之后报到的那一条才是它（回包的 `arrival.since`）。
+    let since = crate::common::arrival_seq::mark();
     let (agent, facts) = match &req.what {
         open::Open::New(n) => {
             let fork_tmux = n
@@ -55,6 +57,7 @@ fn answer(
                 Facts {
                     resume: None,
                     fork_tmux,
+                    since,
                 },
             )
         }
@@ -68,6 +71,7 @@ fn answer(
                 Facts {
                     resume,
                     fork_tmux: None,
+                    since,
                 },
             )
         }
@@ -76,6 +80,7 @@ fn answer(
             Facts {
                 resume: None,
                 fork_tmux: None,
+                since,
             },
         ),
     };

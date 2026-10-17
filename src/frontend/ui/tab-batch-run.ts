@@ -3,7 +3,7 @@
  *
  * - 停（`sessions-stop`）：同一台的那几个一次调用，那台逐个答；单个菜单就是一个 sid 的一批。
  * - 起（`session-open`，与单个恢复同一问）：同一台逐项挨个问，每项只交 sid 与放在哪（号 · 目录 · 哪一家那台从记录里读）；
- *   每项的结局取那台那一句；落在窗口里的那几项逐个开窗（[`ON_LANDED`] 后台那一列）。
+ *   每项的结局取那台那一句；落在窗口里的那几项逐个开窗（[`BACKGROUND_OPENS`]）。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { settleTyped, unavailableSaid } from "./control-said";
@@ -12,7 +12,7 @@ import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import type { Tab } from "./tab-model";
 import type { Run } from "./generated/Run";
-import { askOpen, ON_LANDED } from "./session-open";
+import { askOpen, BACKGROUND_OPENS } from "./session-open";
 import type { Outcome } from "./generated/Outcome";
 import { openLocalTerminal, openTerminal } from "./terminal-open";
 import { failSaid, saidOf } from "./kit/detail";
@@ -98,7 +98,7 @@ async function startOne(origin: Origin, sid: string, run: Run): Promise<BatchOut
   }
   const o = end.opened;
   if (o.landed === "running") return { sid, outcome: "skipped", why: copyText("tabBatch.why.running", { name: o.session ?? "" }) };
-  if (ON_LANDED[o.landed].background && o.line !== null) {
+  if (BACKGROUND_OPENS.has(o.landed) && o.line !== null) {
     const failed = await openWindow(origin, o.line, o.cwd);
     if (failed !== null) return { sid, outcome: "failed", why: failed };
   }

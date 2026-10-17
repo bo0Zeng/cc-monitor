@@ -58,6 +58,7 @@ pub mod launch_render;
 pub mod place_self;
 pub mod resident;
 pub mod resolve_query;
+pub(crate) mod session_arrive; // 帧命令 `session-arrive`：等起好的会话报到（认法住观测层，抓屏住 terminals）
 pub(crate) mod session_batch;
 pub(crate) mod session_open;
 pub(crate) mod ship_text; // CLI `--text`：回包里写好的格（顶上 `text` · 每一处 `rows`）拼成字，所有命令通用

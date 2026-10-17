@@ -19,7 +19,7 @@
       "lang": "kt"
     }
   ],
-  "ceiling": 123,
+  "ceiling": 121,
   "entries": [
     {
       "file": "src/frontend/ui/account-chip.ts",
@@ -111,13 +111,6 @@
       "n": 2,
       "kind": "留",
       "why": "［复制详情］按钮自己的状态（已复制 · 复制失败），骨架词"
-    },
-    {
-      "file": "src/frontend/ui/launch-slot.ts",
-      "rule": "codeWord",
-      "n": 2,
-      "kind": "第 1 批",
-      "why": "终端预览结果码（gone · unread）⇒ 字：预览成品带写好的那一句"
     },
     {
       "file": "src/frontend/ui/main.ts",

@@ -1,7 +1,7 @@
 //! 帧面 `session-restart` 的宿主壳：把本体（`control/session_restart.rs`）要的几样拼成生产那一份。
 //!
 //! 每一步在自己的阻塞线程上拼一份与批量停 / 起同一份的事实（`session_batch_face`）；停旧 ＋ 起新那一步拿退出排空的票。
-//! 两种等待住观测层（`observe/one_wait.rs`）：等压缩摘要 · 等会话由新进程报出。
+//! 等压缩摘要住观测层（`observe/one_wait.rs`），等报出交报到那一本（`observe/arrivals.rs`，同 `session-arrive`）。
 
 use crate::control::session_batch::Deps;
 use crate::control::session_restart::{self as restart, Host, Wait};
@@ -81,11 +81,12 @@ impl Host for Prod {
         }))
     }
 
-    fn watch_arrival(&self, sid: &str) -> impl Future<Output = Result<Armed, String>> + Send {
-        let sid = sid.to_string();
-        joined(tokio::task::spawn_blocking(move || {
-            one_wait::session_arrival(&crate::history::listing::agent_home(), &sid)
-        }))
+    fn arrival(&self, sid: &str, since: u64, ms: u64) -> impl Future<Output = bool> + Send {
+        let by = cmd_wire::session::ArriveBy::Sid {
+            sid: sid.to_string(),
+        };
+        let heard = crate::observe::arrivals::expect(by, since);
+        async move { one_wait::bounded(heard, ms).await.is_some() }
     }
 }
 

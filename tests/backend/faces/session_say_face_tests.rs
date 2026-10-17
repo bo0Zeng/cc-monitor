@@ -44,6 +44,7 @@ fn at(landed: Landed, session: Option<&str>) -> Reopened {
         account: None,
         note: None,
         prompt: None,
+        arrival: None,
     })
 }
 

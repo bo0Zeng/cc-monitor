@@ -81,6 +81,7 @@ pub(crate) const STREAM_ONLY: &[&str] = &[
     "login-cancel",
     "machine-round",
     "machine-read",
+    "session-arrive",
 ];
 
 /// **答得出真话、只是除了界面没人用得着**的命令。这是关于「调用方是谁」的产品判断，不是结构限制 ——

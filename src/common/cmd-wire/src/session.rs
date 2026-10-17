@@ -556,6 +556,60 @@ pub struct Opened {
     pub note: Option<String>,
     /// 第一句交进去的结局；没给第一句 ⇒ `null`。
     pub prompt: Option<FirstSay>,
+    /// 起了一家（或开窗那一行跑起来就起）⇒ 等它报到那一问（`session-arrive` 的入参，原样交回）；没起 ⇒ `null`。
+    pub arrival: Option<ArriveAsk>,
+}
+
+/// `session-arrive` 的入参（`session-open` · `bus-spawn` 的回包里那一格，原样交回）：等那一条起好的会话在这台报到。
+/// 等多久 ＝ 请求信封的期限（减余量）；到了没见到 ⇒ `missed`。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct ArriveAsk {
+    /// 认它用的那一格。
+    pub by: ArriveBy,
+    /// 起之前这台报到的序号：只认这之后报到的。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub since: u64,
+    /// 起在哪个 tmux 会话里（没见到时抓那一屏当原话）；开窗起的 ⇒ `null`。
+    pub session: Option<String>,
+}
+
+/// 认报到：按 sid（恢复 · 先定好 sid 的新起）· 按目录（那之后头一个在这个目录里报到的）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ArriveBy {
+    Sid { sid: String },
+    Cwd { cwd: String },
+}
+
+/// `session-arrive` 的应答：报到了（那个 sid）· 期限内没见到（那一句 ＋ 起在的那个终端还在 ⇒ 它的句柄）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ArriveEnd {
+    Arrived {
+        sid: String,
+    },
+    Missed {
+        /// 第一行是标题，其余是正文（含那一屏末几行）。
+        said: String,
+        /// 起在的那个 tmux 会话此刻还在 ⇒ 它在终端名单里的句柄；不在 · 读不到 · 开窗起的 ⇒ `null`。
+        terminal: Option<String>,
+    },
 }
 
 /// 放在哪：这台 tmux 里（关终端不断）· 直路（开一个终端直接跑，关了就停）。
