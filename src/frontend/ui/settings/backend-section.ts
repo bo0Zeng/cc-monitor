@@ -9,9 +9,10 @@
  */
 
 import { commands, type StopAnswer } from "../ipc/commands";
-import { budgetWithin, callTyped, unreadableSaid } from "../ipc/chan-caller";
+import { budgetWithin, callTyped } from "../ipc/chan-caller";
 import type { ExitPolicy } from "../generated/ExitPolicy";
 import type { LogTail } from "../generated/LogTail";
+import type { HealthFace } from "../generated/HealthFace";
 import { isLocalOrigin, type Origin } from "../ipc/origin";
 
 /** 起/停之后轮询状态的次数与间隔 —— 命令是「发出去就返回」的，不轮询看到的是操作前的状态。 */
@@ -34,7 +35,6 @@ import { toggleSwitch } from "../kit/switch";
 import { readRecordDrift } from "../record-reads";
 import { ccRow } from "./cc-row";
 import type { MachineState } from "./machine-state";
-import { exactKeys, isObj } from "../ipc/decode";
 import { sayFailure, sayWithDetail, saidOf } from "../kit/detail";
 
 /** 「停」的结局说一句（三个词各一句，穷举 —— 多一个词 tsc 就红）；机器页那一行照它说。 */
@@ -105,34 +105,6 @@ export function backendLogLines(log: BackendLog): { head: string; body: string }
     head: log.truncated ? `${head} ${copyText("backend.log.truncated")}` : head,
     body: log.text === "" ? copyText("backend.log.empty") : log.text,
   };
-}
-
-/**
- * 「健康」那一格的成品（后端 `backend_policy.rs::health_face` 出，经 `backend_status` 的 `health`）。
- * 本文件只排版：`summary` 进格子 · `state` 原样挂 `data-health` · `why` 在就摆 ⓘ · `detail` 在就摆［详情］；哪一档一处都不在前端判。
- * 形状由金样 `tests/__fixtures__/backend-health.golden.json` 两侧同读钉住。
- */
-export interface HealthFace {
-  state: string;
-  summary: string;
-  why: string | null;
-  detail: string | null;
-}
-
-/** 成品的键集（排好序）。多一格 / 少一格都收不下。 */
-const HEALTH_FACE_KEYS = ["detail", "state", "summary", "why"] as const;
-
-/**
- * 按形状严格收：键集恰好那四个 · `state` / `summary` 非空串 · `why` / `detail` 非空串或 `null`。收不下 ⇒ `null`，那一格说「格式不对」。
- * 不回落成「无记录」：`backend_status` 与界面同一个构建，缺格只能是程序错 ⇒ 说出来，不替后端编一档。
- */
-export function decodeHealthFace(raw: unknown): HealthFace | null {
-  if (!isObj(raw) || !exactKeys(raw, HEALTH_FACE_KEYS)) return null;
-  const v = raw;
-  const text = (x: unknown): x is string => typeof x === "string" && x !== "";
-  const textOrNull = (x: unknown): x is string | null => x === null || text(x);
-  if (!text(v.state) || !text(v.summary) || !textOrNull(v.why) || !textOrNull(v.detail)) return null;
-  return { state: v.state, summary: v.summary, why: v.why, detail: v.detail };
 }
 
 /** 一台机那一行的四栏：栏名只在这里写一次，表头与每一格的 `data-col` 都从这张表来。 */
@@ -473,22 +445,14 @@ export class BackendSection {
   }
 
   /**
-   * 重画一行的「上次崩没崩」：排版后端给的成品（[`decodeHealthFace`]）。长的那一半不进格子：
+   * 重画一行的「上次崩没崩」：排版后端给的成品（`backend_status` 的 `health`，壳导出的类型；与界面同一个构建，不手核）。长的那一半不进格子：
    * 无记录 ⇒ ⓘ 里说为什么这不等于没崩过；记到过事 ⇒［详情］展开。重画会跑很多遍（`settleStatus`），先摘上一次的附件再挂。
-   * 收不下 ⇒ 只在这一格说「格式不对」，状态那一格照旧。
    */
-  private paintHealth(origin: string, raw: unknown): void {
+  private paintHealth(origin: string, face: HealthFace): void {
     const col = this.cellHosts.get(origin)?.querySelector<HTMLElement>('[data-col="health"]');
     const el = col?.querySelector<HTMLElement>(".backend-row-health");
     if (!col || !el) return;
     for (const extra of col.querySelectorAll("[data-health-extra]")) extra.remove();
-    const face = decodeHealthFace(raw);
-    if (face === null) {
-      el.textContent = unreadableSaid(origin);
-      delete el.dataset.health;
-      console.warn(`[PB1] ${origin} 的健康读数形状不对：${JSON.stringify(raw)}`);
-      return;
-    }
     el.textContent = face.summary;
     el.dataset.health = face.state;
     if (face.why !== null) {

@@ -49,8 +49,9 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
       calls.push({ name: "backend_status", args: a });
       // ⚠ 支持「前几次还没落定」：A4 那条判据要证明它**轮询到落定**，
       // 而不是命令一返回就画一张操作前的快照。
+      // 回包照壳导出的类型总带 `health`；没写的用例当「无记录」那一形。
       const next = statusQueue.shift();
-      return Promise.resolve(next ?? status);
+      return Promise.resolve({ health: FACE["无记录"], ...(next ?? status) });
     },
     backend_start: (a: unknown) => {
       calls.push({ name: "backend_start", args: a });
@@ -113,7 +114,7 @@ vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: () => {} }));
 // 「重新对齐」做完经 Tauri 事件通知主窗口；这里没有 Tauri 运行时 ⇒ 换成空的 emit。
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(async () => {}), listen: vi.fn(async () => () => {}) }));
 
-import { BACKEND_COLUMNS, BackendSection, decodeHealthFace, stopSaid } from "../../../../src/frontend/ui/settings/backend-section";
+import { BACKEND_COLUMNS, BackendSection, stopSaid } from "../../../../src/frontend/ui/settings/backend-section";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { interruptRows, type Interrupts } from "../../../../src/frontend/ui/settings/interrupts";
 import type { DialogRow } from "../../../../src/frontend/ui/kit/dialog";
@@ -322,40 +323,6 @@ describe("P2s backend 开关区", () => {
     ).toBe(EXIT_UNATTENDED);
   });
 
-  it("★★ 〔PB1 · P5〕`health` 缺席 / 形状不对 ⇒ 只在那一格说「格式不对」，不替后端编一档，状态格照画", async () => {
-    // ⚠ 原来缺席 ⇒ 画「— 无记录」—— 那是一条**前端的回落判定**（缺格当无记录）。
-    //   `backend_status` 是 monitor 自己的命令、与界面同一个构建，缺格只能是程序错 ⇒ 说出来（D7 / D11），
-    //   更不许补一个「四个 0」去让谁判出「没崩过」（「答不出来」与「没崩过」不许混用）。
-    const badShape = copyText("peerVersion.said.unreadable", { machine: copyText("control.machine.local") });
-    const unknown = FACE["无记录"]!;
-    for (const [what, health] of [
-      ["缺席", undefined],
-      ["旧形状（四个计数）", { crashed: 0, refused: 0, neverStarted: 0, misread: 0, last: null }],
-      ["多一格", { ...unknown, crashed: 0 }],
-      ["少一格", { state: unknown.state, summary: unknown.summary, why: unknown.why }],
-      ["summary 不是串", { ...unknown, summary: 3 }],
-      ["summary 是空串", { ...unknown, summary: "" }],
-      ["why 是空串", { ...unknown, why: "" }],
-      ["detail 不是串也不是 null", { ...unknown, detail: false }],
-      ["state 是空串", { ...unknown, state: "" }],
-    ] as const) {
-      status = health === undefined ? { channel: true, pid: 42 } : { channel: true, pid: 42, health };
-      const s = new BackendSection({ headless: true });
-      await flush();
-      await flush();
-      const col = s.element.querySelector<HTMLElement>('.backend-row [data-col="health"]')!;
-      const el = col.querySelector<HTMLElement>(".backend-row-health")!;
-      expect(el.textContent, `「${what}」没说格式不对`).toBe(badShape);
-      expect(el.dataset.health, `「${what}」还挂着一档状态`).toBeUndefined();
-      expect(col.querySelectorAll("[data-health-extra]").length, `「${what}」还挂着 ⓘ / [详情]`).toBe(0);
-      expect(
-        s.element.querySelector(".backend-row-state")?.textContent,
-        `「${what}」把状态那一格也带走了 —— 失败该落在健康那一格上`,
-      ).toBe(copyText("backend.status.connected"));
-      expect(decodeHealthFace(health), `解码器收下了「${what}」`).toBeNull();
-    }
-  });
-
   it("★ 存不下就把勾回退——屏上写着 A 而实际是 B 比报错更坏", async () => {
     const s = new BackendSection({ headless: true });
     await flush();
@@ -559,7 +526,6 @@ describe("〔ST2 · 第二刀 步 6〕后端开关表格式四栏：长文案进
     expect(cases.length, "金样不是四形 —— 下面的逐形比在缩水的人群上成立").toBe(4);
     expect(new Set(cases.map((c) => c.face.state)).size, "金样没盖全三档").toBe(3);
     for (const { name, face } of cases) {
-      expect(decodeHealthFace(face), `解码器收不下金样「${name}」`).toEqual(face);
       status = { channel: true, pid: 42, health: face };
       const s = new BackendSection({ headless: true });
       await flush();

@@ -443,7 +443,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     // 判准是「账上一条记录都没有」不是 `crashed === 0`。原来两份：
     //   TS `backend-policy.ts::describeBackendHealth` ＋ `describeHealthDetail`（界面）与 monitor `backend_policy.rs::describe_health`
     //   （同逻辑，只有测试读）。收成后端一份 `health_face`：`backend_status` 交成品（状态 ＋ 一句 ＋ ⓘ ＋ [详情]），
-    //   界面只排版（`settings/backend-section.ts::decodeHealthFace` 按形状收、不判）。TS 那两个判定 · 取文口 · 缺格当无记录的
+    //   界面照壳导出的 `HealthFace` 类型只排版、不判。TS 那两个判定 · 取文口 · 缺格当无记录的
     //   `readHealth` 一起删；Rust 那份并进来（`rustGone`）。形状两侧同读金样 `tests/__fixtures__/backend-health.golden.json`。
     homes: ["src/frontend/shell/src/backend_policy.rs::health_face"],
     status: "zero",
