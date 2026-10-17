@@ -50,7 +50,6 @@ import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.Deploying
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.SessionDot
 import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
 import com.ccmonitor.mobile.core.claude.link.wire.AgentFacts
 import com.ccmonitor.mobile.core.copy.copyText
@@ -73,6 +72,7 @@ import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import com.ccmonitor.mobile.ui.common.DeployStepLine
 import com.ccmonitor.mobile.ui.common.HostLink
+import com.ccmonitor.mobile.ui.common.MachineDot
 import com.ccmonitor.mobile.ui.common.StatusDot
 import com.ccmonitor.mobile.ui.common.deployLabel
 import com.ccmonitor.mobile.ui.common.rememberDeployPress
@@ -284,13 +284,13 @@ private fun HostListActions(
 }
 
 /** 行首那颗点的读屏名：已连接 ⇒ 在线，连接失败 ⇒ 离线（与桌面机器页同一句）。 */
-private fun hostDotLabel(dot: SessionDot): String = if (dot == SessionDot.FAILED) copyText("machinePage.state.down") else copyText("machinePage.state.up")
+private fun hostDotLabel(dot: MachineDot): String = if (dot == MachineDot.FAILED) copyText("machinePage.state.down") else copyText("machinePage.state.up")
 
 @OptIn(ExperimentalFoundationApi::class) // combinedClickable：点行连接，长按 ＝ ⋯（手机的右键菜单）
 @Composable
 private fun HostRow(
     host: Host,
-    dot: SessionDot?,
+    dot: MachineDot?,
     onClick: () -> Unit,
     onFiles: () -> Unit,
     onEdit: () -> Unit,
@@ -326,7 +326,7 @@ private fun HostRow(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false),
                     )
-                    if (dot == SessionDot.FAILED) {
+                    if (dot == MachineDot.FAILED) {
                         Text(" · " + hostDotLabel(dot), style = MaterialTheme.typography.bodySmall, color = LocalAppTokens.current.errorText)
                     }
                 }

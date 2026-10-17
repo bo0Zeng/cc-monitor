@@ -2823,12 +2823,6 @@
       "zh": "{activityStatus} · {needs}",
       "args": ["activityStatus", "needs"]
     },
-    "gridMonitor.renderPeek.unknown": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "未知",
-      "args": []
-    },
     "gridMonitor.fact.dir": {
       "kind": "title",
       "role": "标题",
@@ -22185,24 +22179,6 @@
       "zh": "需手动",
       "args": []
     },
-    "sessionFace.dot.background": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "后台任务运行中",
-      "args": []
-    },
-    "sessionFace.dot.idle": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "空闲",
-      "args": []
-    },
-    "sessionFace.dot.failed": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "出错",
-      "args": []
-    },
     "sessionFace.machine.local": {
       "kind": "body",
       "role": "片段",
@@ -22231,12 +22207,6 @@
       "kind": "body",
       "role": "状态",
       "zh": "空闲 · 完成 {ago} 前",
-      "args": ["ago"]
-    },
-    "sessionFace.state.idleUnseen": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "空闲 · 完成 {ago} 前 · 未看",
       "args": ["ago"]
     },
     "sessionFace.state.unseen": {

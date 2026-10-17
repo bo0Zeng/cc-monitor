@@ -9,6 +9,7 @@
  * 6. 删除只问一次（R2-2-2）；在跑的不问、直接说「运行中 · 先结束」。
  * 7. 分叉挂在父会话下（默认收起，「1 个分叉 ▸」）；父会话被筛掉 ⇒ 后端带来的 `context` 行淡显（R5W-H05）。
  */
+import { goldenFace, liveFace } from "../../../test-support/session-faces";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -108,7 +109,7 @@ function row(over: Record<string, unknown>): Record<string, unknown> {
     starred: false,
     customTitle: null,
     hidden: null,
-    status: "ended",
+    face: goldenFace("ended"),
     can: { resume: "yes", accounts: true, fork: true, delete: "yes" },
     ...over,
   };
@@ -180,7 +181,7 @@ beforeEach(() => {
     if (c.op === "history-search") {
       if (world.search === "fail") return Promise.reject(new Error("搜不动"));
       return chanReply({
-        sessions: [{ agent: "claude", sessionId: "a", projectPath: "/w/p", projectName: "p", jsonlPath: "/x/a.jsonl", title: "标题 a", updatedAt: NOW, hitCount: 1, hits: [{ uuid: "u1", tsMs: NOW, kind: "user", before: "**前", matched: "词", after: "`后`" }], hitsTruncated: false, isBg: false, status: "ended", can: { resume: "yes", accounts: true, fork: true, delete: "yes" } }],
+        sessions: [{ agent: "claude", sessionId: "a", projectPath: "/w/p", projectName: "p", jsonlPath: "/x/a.jsonl", title: "标题 a", updatedAt: NOW, hitCount: 1, hits: [{ uuid: "u1", tsMs: NOW, kind: "user", before: "**前", matched: "词", after: "`后`" }], hitsTruncated: false, isBg: false, face: goldenFace("ended"), can: { resume: "yes", accounts: true, fork: true, delete: "yes" } }],
         unreadable: 0,
         skipped: [],
       });
@@ -286,7 +287,7 @@ describe("内容搜索", () => {
 
 describe("行上的动作照 can 画", () => {
   it("在跑的 ⇒「切过去」，点了切主窗口、不起第二份", async () => {
-    world.local = [row({ sessionId: "a", status: "live", can: { resume: "switch", accounts: true, fork: true, delete: "live" } })];
+    world.local = [row({ sessionId: "a", face: liveFace("working"), can: { resume: "switch", accounts: true, fork: true, delete: "live" } })];
     const v = await opened();
     const went: string[] = [];
     v.switchTo = (sid) => went.push(sid);
@@ -298,7 +299,7 @@ describe("行上的动作照 can 画", () => {
   });
 
   it("Codex 行恢复 ⇒ 交那台的只有那一条（哪一家那台从记录里读）", async () => {
-    world.local = [row({ sessionId: "cx", agent: "codex", agentTag: "Codex", status: "unknown", can: { resume: "yes", accounts: false, fork: false, delete: "unsure" } })];
+    world.local = [row({ sessionId: "cx", agent: "codex", agentTag: "Codex", face: goldenFace("unclear"), can: { resume: "yes", accounts: false, fork: false, delete: "unsure" } })];
     const v = await opened();
     expect(byText('[role="option"]', "Codex")).toBeTruthy();
     byText("button", copyText("history.row.resume"))!.click();
@@ -310,7 +311,7 @@ describe("行上的动作照 can 画", () => {
 
 describe("删除", () => {
   it("只问一次；在跑的不问、说「运行中 · 先结束」", async () => {
-    world.local = [row({ sessionId: "a" }), row({ sessionId: "l", status: "live", can: { resume: "switch", accounts: true, fork: true, delete: "live" } })];
+    world.local = [row({ sessionId: "a" }), row({ sessionId: "l", face: liveFace("working"), can: { resume: "switch", accounts: true, fork: true, delete: "live" } })];
     const v = await opened();
     const key = (sid: string) => rows().find((r) => r.dataset.key?.endsWith(sid))!;
     key("l").click();
@@ -560,7 +561,7 @@ describe("内容头 · 恢复 ▾（乙4-④⑤）", () => {
   it("Codex 行：▾ 不问账号，灰一行「Codex · 无账号维」；在跑的 ⇒［切过去］；分身 ⇒ 恢复灰着说为什么", async () => {
     world.local = [
       row({ sessionId: "cx", agent: "codex", agentTag: "Codex", can: { resume: "yes", accounts: false, fork: false, delete: "yes" } }),
-      row({ sessionId: "l", status: "live", can: { resume: "switch", accounts: true, fork: true, delete: "live" } }),
+      row({ sessionId: "l", face: liveFace("working"), can: { resume: "switch", accounts: true, fork: true, delete: "live" } }),
       row({ sessionId: "bg", isBg: true, can: { resume: "bg", accounts: true, fork: false, delete: "yes" } }),
     ];
     const v = await opened();

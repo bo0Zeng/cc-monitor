@@ -8,6 +8,7 @@ import com.ccmonitor.mobile.core.claude.link.wire.NeedsChoiceRow
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
 import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.ui.Faces
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import com.squareup.moshi.Moshi
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -77,8 +78,8 @@ class NeedsDeskTest {
                         ),
                     "waiting" to
                         listOfNotNull(
-                            mine?.let { mapOf("sid" to "s1", "needs" to it) },
-                            mapOf("sid" to "other", "needs" to mapOf("kind" to "answer", "text" to "等回答", "head" to "等回答", "tone" to "need", "rank" to 1.0)),
+                            mine?.let { mapOf("sid" to "s1", "label" to "标题 s1", "face" to Faces.raw["live-needs-you-tmux"], "needs" to it) },
+                            mapOf("sid" to "other", "label" to "标题 other", "face" to Faces.raw["live-needs-you-tmux"], "needs" to mapOf("kind" to "answer", "text" to "等回答", "head" to "等回答", "tone" to "need", "rank" to 1.0)),
                         ),
                 ),
             )

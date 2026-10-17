@@ -249,7 +249,8 @@ pub(crate) fn session_record(agent_home: &Path, sid: &str) -> Result<std::path::
 /// - `None` ⇒ 这台的家目录（与改之前逐字同一问）；
 /// - `Some(d)` ⇒ 先过账号库那一个形状关（`accounts_query::is_safe_config_dir`：绝对 · 不上跳 · 无 shell 元字符与
 ///   欺骗字符），不过 ⇒ `Err`，**一次 IO 都不做**；过了 ⇒ 查 `<d>/projects`。
-/// 只答在不在、查的是哪棵树 —— 不回内容，不收别的路径。
+/// 只答在不在、查的是哪棵树 —— 不回内容，不收别的路径。答了的「在 / 不在」交这台的会话账本（[`super::super::record_hook::seen`]：
+/// 说过已结束的那条随之在「已结束 ⇄ 记录已不在」之间翻）。
 pub(crate) fn record_for(
     agent_home: &Path,
     config_dir: Option<&str>,
@@ -267,7 +268,9 @@ pub(crate) fn record_for(
             )))
         }
     };
-    record_in(&tree, sid)
+    let probe = record_in(&tree, sid)?;
+    super::super::record_hook::seen(sid, probe.present);
+    Ok(probe)
 }
 
 /// [`record_in`] 的答案。

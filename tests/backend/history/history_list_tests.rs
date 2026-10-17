@@ -206,7 +206,14 @@ fn listing() -> Value {
         }],
         no_excerpt as fn(&std::path::Path) -> String,
     )];
-    let live = LiveSet([S1.to_string()].into_iter().collect());
+    let live = LiveSet(
+        [(
+            S1.to_string(),
+            Some(crate::agents::SessionActivity::Working),
+        )]
+        .into_iter()
+        .collect(),
+    );
     listing_from(tree, &synth, &live, &json!({ S1: "work", S3: "home" }))
 }
 
@@ -268,14 +275,14 @@ fn the_machine_listing_carries_group_dir_failures_synth_and_last_accounts() {
     let cx = rows.iter().find(|r| r["agent"] == "codex").unwrap();
     assert_eq!(cx["projectDir"], "codex:/w/delta");
     assert_eq!(
-        cx["isLive"],
+        cx["life"],
         Value::Null,
         "合成历史判不了活 ⇒ null，不是 false"
     );
     assert_eq!(
-        answer(json!({}))["rows"][0].get("isLive"),
+        answer(json!({}))["rows"][0].get("life"),
         None,
-        "成品里活不活只出 status 一格"
+        "成品里活不活只在整份脸里"
     );
     assert_eq!(
         l["failed"],
@@ -290,7 +297,7 @@ fn rows_carry_annotations_label_and_what_can_be_done() {
     let s1 = find(&v, S1);
     assert_eq!(s1["starred"], true);
     assert_eq!(s1["label"], "支付回调验签");
-    assert_eq!(s1["status"], "live");
+    assert_eq!(s1["face"]["live"]["is"], "yes");
     assert_eq!(
         s1["can"],
         json!({"resume": "switch", "accounts": true, "fork": true, "delete": "live"})
@@ -313,7 +320,7 @@ fn rows_carry_annotations_label_and_what_can_be_done() {
         .iter()
         .find(|r| r["agent"] == "codex")
         .unwrap();
-    assert_eq!(cx["status"], "unknown");
+    assert_eq!(cx["face"]["dot"], "unknown", "合成历史判不了活 ⇒ 状态不明");
     assert_eq!(cx["agentTag"], "Codex", "不是默认那一家 ⇒ 行上画它的叫法");
     assert_eq!(s1["agentTag"], Value::Null, "默认那一家不画");
     assert_eq!(
@@ -640,7 +647,7 @@ fn a_real_record_tree_becomes_the_machine_listing() {
     let tree = crate::history::listing::sessions_by_dir(&home)
         .expect("读得了")
         .expect("记录树在");
-    let live = LiveSet([S4.to_string()].into_iter().collect());
+    let live = LiveSet([(S4.to_string(), None)].into_iter().collect());
     let v = listing_from(tree, &[], &live, &json!({}));
     let _ = std::fs::remove_dir_all(&home);
     let agent = crate::agents::record_tree_kind().unwrap_or_default();
@@ -654,7 +661,7 @@ fn a_real_record_tree_becomes_the_machine_listing() {
                 r["sessionId"].as_str().unwrap_or_default().to_string(),
                 r["projectDir"].as_str().unwrap_or_default().to_string(),
                 r["projectPath"].as_str().unwrap_or_default().to_string(),
-                r["isLive"].as_bool().unwrap_or_default(),
+                r["life"]["is"] == "live",
             )
         })
         .collect();
@@ -693,7 +700,7 @@ fn asking_by_sid_scans_one_session_and_answers_the_same() {
     let locked = home.join("projects").join("-w-locked");
     std::fs::create_dir_all(&locked).unwrap();
     std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
-    let live = LiveSet([S4.to_string()].into_iter().collect());
+    let live = LiveSet([(S4.to_string(), None)].into_iter().collect());
     let listing = |only: Option<&str>| {
         let tree = tree_for(&home, only).expect("读得了").expect("记录树在");
         listing_from(tree, &[], &live, &json!({ S1: "work" }))
@@ -944,14 +951,17 @@ fn a_session_the_ledger_calls_reconnectable_is_listed_as_reconnectable() {
     let live = session_row(
         &v(sid),
         "-w-a",
-        &LiveSet([sid.to_string()].into_iter().collect()),
+        &LiveSet([(sid.to_string(), None)].into_iter().collect()),
     )
     .unwrap();
     crate::history::live::set_reconnectable(&Default::default());
-    assert!(r.reconnectable && !o.reconnectable && !live.reconnectable);
     assert_eq!(
-        [&r, &o, &live].map(|x| crate::history::listing::status_of(x.is_live, x.reconnectable)),
-        ["reconnectable", "ended", "live"]
+        [&r, &o, &live].map(|x| x.life),
+        [
+            Some(RowLife::Reconnectable),
+            Some(RowLife::Ended),
+            Some(RowLife::Live { activity: None })
+        ]
     );
 }
 

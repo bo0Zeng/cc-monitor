@@ -91,22 +91,16 @@ describe("〔RESYNC〕手动对齐", () => {
     expect(order).toEqual(['resync {"sid":"sid-7"}', "again"]);
   });
 
-  it("★ 〔㉟①〕固定条记录没了 ⇒ 标出来、说一句、不自动摘；点那条才摘；问不到的不标", async () => {
+  it("★ 〔㉟①〕固定条记录没了 ⇒ 说一句（点名没了的那几条）、不自动摘；点那条才摘；问不到的不算", async () => {
     records.clear();
     records.set("s-gone", false).set("s-here", true).set("s-dunno", "throw");
-    const marked: [string, boolean][] = [];
     const unpinned: string[] = [];
     const actions = new TabSessionActions({
       tab: () => undefined,
       isAttachable: () => false,
-      markRecord: (sid, present) => marked.push([sid, present]),
     });
     const tab = (sid: string) => ({ sessionId: sid, origin: "devbox", title: sid, pinned: true }) as unknown as Tab;
     await actions.flagPinsWithoutRecord("devbox", [tab("s-gone"), tab("s-here"), tab("s-dunno")], (sid) => unpinned.push(sid));
-    expect(marked).toEqual([
-      ["s-gone", false],
-      ["s-here", true],
-    ]);
     expect([toasts.length, unpinned]).toEqual([1, []]);
     toasts[0].onClick!();
     expect(unpinned).toEqual(["s-gone"]);

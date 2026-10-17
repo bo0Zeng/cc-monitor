@@ -841,7 +841,7 @@ export class HistoryView {
       ...(jumpTo?.tool !== undefined ? { scrollToTool: jumpTo.tool } : {}),
       suppressBranch: !r.can.fork,
       // 在跑的跟着长（与独立查看窗同一条订阅）；起了 / 结束了 ⇒ 重问那一台的清单（头上［切过去］／［恢复］跟着那台的判定换）。
-      follow: r.status === "live" ? { sid: r.sessionId, live: true, onLive: () => this.refresh(r.origin !== undefined, r.origin ?? "") } : undefined,
+      follow: r.face.live.is === "yes" ? { sid: r.sessionId, live: true, onLive: () => this.refresh(r.origin !== undefined, r.origin ?? "") } : undefined,
     });
   }
 
@@ -1246,7 +1246,7 @@ function rowFromHits(sh: SessionHits): HistoryRow {
     customTitle: null,
     // 命中那一行不带隐藏那一格（全文搜索不判它）⇒ 按没隐藏画；它在清单里那一行到了照那一行。
     hidden: null,
-    status: sh.status,
+    face: sh.face,
     can: sh.can,
     ...(sh.origin ? { origin: sh.origin } : {}),
   };

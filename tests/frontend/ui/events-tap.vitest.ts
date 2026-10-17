@@ -43,7 +43,7 @@ describe("〔TAP〕session-live-card 走 subscribe（不是裸事件）", () => 
     const got: unknown[] = [];
     const lost: string[] = [];
     await bindEvents(
-      { onLine: () => {}, onSessionEnded: () => {}, onLiveCard: (p) => got.push(p), onLiveCardsLost: (o) => lost.push(o) },
+      { onLine: () => {}, onSessionFace: () => {}, onLiveCard: (p) => got.push(p), onLiveCardsLost: (o) => lost.push(o) },
       { liveCards: ["<local>"] },
     );
     expect(streamFake.subscriptions.map((s) => [s.origin, s.kind])).toEqual([["<local>", "session-live-card"]]);
@@ -89,7 +89,7 @@ describe("〔DL1 · MIG-3b〕changed/<topic> 走 subscribe（不是裸事件）"
   it("每项一条 (机器, changed/<topic>)、窗口 CHANGED_WINDOW；按主题交处理器、一批一次；unseen 不交", async () => {
     const got: [string, Topic, Changed][] = [];
     await bindEvents(
-      { onLine: () => {}, onSessionEnded: () => {}, onChanged: (o, t, c) => got.push([o, t, c]) },
+      { onLine: () => {}, onSessionFace: () => {}, onChanged: (o, t, c) => got.push([o, t, c]) },
       {
         changed: [
           { origin: "<local>", topic: "accounts" },

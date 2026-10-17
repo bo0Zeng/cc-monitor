@@ -50,7 +50,7 @@ A new session file appeared。
 | `project_dir` | string? | 会话的项目目录：会话起在哪个目录（tab 标题 · 打开工作目录 · 分组都用它） |
 | `name` | string? | pidfile 里的会话名 |
 | `path` | string? | 该会话 jsonl 的远端绝对路径（同 sid 多文件时取 mtime 最新者）；宣告时还没写首行 ⇒ 缺 |
-| `face` | ActivityFace | 宣告时此刻在干什么（`ActivityFace`，平铺在帧上） |
+| `face` | SessionFace | 宣告时这条会话的整份脸 |
 | `name_face` | NameFace | 叫这条会话什么（`NameFace`，平铺在帧上） |
 | `waiting_for` | string? | 宣告时在等什么（同 `session_status`） |
 | `hidden` | Hidden? | 隐藏那一格（不占标签页）；不隐藏 ⇒ 不上线 |
@@ -74,7 +74,7 @@ A new session file appeared。
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `sid` | string | 会话 id |
-| `face` | ActivityFace | 此刻在干什么（同 `session_added` 那几格，`ActivityFace`） |
+| `face` | SessionFace | 此刻这条会话的整份脸 |
 | `name_face` | NameFace | 叫这条会话什么（同 `session_added` 那两格；改了名、来了标题 / 第一句也发这一帧） |
 | `waiting_for` | string? | 在等什么（pidfile 里的 `waitingFor`） |
 | `path` | string? | 这条会话的记录路径（同 `session_added` 那一格）：宣告之后才定下来 · 换了一份 ⇒ 带上最新的；没变 ⇒ 不上线 |
@@ -87,11 +87,7 @@ A new session file appeared。
 |---|---|---|
 | `sid` | string | 会话 id |
 | `state` | SessionFate | 离开「活」之后的去向 |
-| `state_text` | Words | 那一种写好的短名 |
-| `state_hint` | Words | 悬停那一句 |
-| `state_tone` | Tone | 语气 |
-| `state_order` | number | 监控板组内的序（与活会话的 `activity_order` 同一把尺、排在它们之后；小的在前） |
-| `switch` | Switch | 此刻能不能换模型 · 权限档（离开「活」那一形） |
+| `face` | SessionFace | 离开「活」之后这条会话的整份脸（可重连 · 已结束 · 记录已不在） |
 
 ### `session_removed`
 
@@ -293,33 +289,76 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 - `idle` —— 闲着，等下一句输入
 - `background_work` —— 一轮停了，它在后台起的命令还在跑（跑完多半会接着干）
 
-#### `ActivityFace`
+#### `SessionFace`
 
-**活会话此刻在干什么的那几格**（`session_added` · `session_status` 都带它，平铺在帧上）：那一态（`activity`，说不清 ⇒ 不上线）· 写好的字 · 语气 · 监控板组内的序（`activity_order`，小的在前）· 能不能换。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `activity` | SessionActivity? |  |
-| `activity_text` | Words |  |
-| `activity_tone` | Tone |  |
-| `activity_order` | number |  |
-| `switch` | Switch | 此刻能不能换模型 · 权限档（随那一态判） |
-
-#### `Switch`
-
-**此刻能不能换模型 · 权限档**（会话帧上的 `switch`）。
+**一条会话此刻的整份脸**（会话三帧 · 清单行 · 需手动行 · 计划 · 血缘都带它，嵌一格 `face`）：点 · 短名 · 悬停句 · 状态一句 · 序 · 能做什么。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `model` | CanSwitch | 换模型（`session-model`） |
-| `permission` | CanSwitch | 切权限档（`session-permission`） |
+| `dot` | SessionDot |  |
+| `live` | FaceLive | 进程在不在；在干什么只住在「在」那一支里 |
+| `settled` | bool | 那台看不见时照旧作数（已结束 · 记录已不在） |
+| `name` | Words | 短名（运行中 · 需手动 · 已结束 …） |
+| `tip` | Words | 悬停那一句 |
+| `line` | Words | 没有会话事实时的状态一句 |
+| `tone` | Tone |  |
+| `order` | number | 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5 |
+| `can` | SessionCan |  |
 
-#### `CanSwitch`
+#### `FaceLive`
 
-一样此刻能不能换：`{can: "yes"}` · `{can: "no", why: 写好的那一句}`。
+进程在不在：`{is: "yes", activity?}`（判得出在干什么才带 `activity`）· `{is: "no"}`。
 
-- `can: "yes"` —— 能换
-- `can: "no"`，带 `why` Words —— 此刻不能（chip 灰着，上方写这一句）
+- `is: "yes"`，带 `activity` SessionActivity?
+- `is: "no"`
+
+#### `SessionDot`
+
+会话那颗点（线上名与界面状态点同一套）。
+
+- `running`
+- `needs-you`
+- `background`
+- `idle`
+- `exited`
+- `ended`
+- `gone`
+- `unknown`
+
+#### `SessionCan`
+
+这条会话此刻能做什么（界面照 `can` 灰不灰、照 `why` 写跳过的理由，不自己判）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `close` | CanClose | 关掉它的标签页 |
+| `resume` | Allow | 恢复（起一个新进程接着那份记录） |
+| `term` | CanTerm | 还有终端可去（拉前 · 停 · 杀 · 终端页） |
+| `reattach` | Allow | 程序退了、tmux 会话还在 ⇒ 接回 |
+| `model` | Allow | 换模型（`session-model`） |
+| `permission` | Allow | 切权限档（`session-permission`） |
+
+#### `Allow`
+
+一样此刻能不能做：`{can: "yes"}` · `{can: "no", why: 写好的那一句}`。
+
+- `can: "yes"`
+- `can: "no"`，带 `why` Words
+
+#### `CanClose`
+
+关不关得掉：`quiet` × · 中键 · W · 批量都关得掉 · `menu` 只在右键菜单里关（那台看不见时界面自己给的那一形）· `no`。
+
+- `can: "quiet"`
+- `can: "menu"`
+- `can: "no"`，带 `why` Words
+
+#### `CanTerm`
+
+还有没有终端可去：`yes` 带它在不在 tmux 里（终端窗口关了也能「在终端里打开」）。
+
+- `can: "yes"`，带 `tmux` bool
+- `can: "no"`，带 `why` Words
 
 #### `NameFace`
 
@@ -4176,8 +4215,10 @@ fork: boolean,
  * `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑。
  */
 delete: CanDelete, };
+type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
+type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
 type Entry = { starred: boolean, customTitle: string | null, 
 /**
  * 单个那一格：`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则。
@@ -4273,13 +4314,9 @@ type HistoryRawRow = { agent: string, sessionId: string, projectPath: string, pr
  */
 title: string, startedAt: number, updatedAt: number, jsonlPath: string, 
 /**
- * 判不了活（合成历史没有 pidfile）⇒ `null`。
+ * 这台判的活不活（判不了：合成历史没有 pidfile ⇒ `null`）。
  */
-isLive: boolean | null, 
-/**
- * 不在跑、claude 退了而 tmux 里还挂着它（那台的会话账本说的）；否 ⇒ 缺。
- */
-reconnectable?: boolean, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
+life: HistoryRowLife | null, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
 /**
  * 起会话时给了 `--tab` 的那一格（那台的启动台账）；没给 ⇒ 缺。
  */
@@ -4314,9 +4351,9 @@ label: Words,
  */
 untitled: boolean, 
 /**
- * `live` 在跑 · `reconnectable` claude 退了、tmux 里还挂着它 · `ended` 已结束 · `unknown` 说不清（活不活只出这一格）。
+ * 那台此刻对这一行的说法（活着的照它的进程状态文件判在干什么；判不了活 ⇒ 状态不明）。
  */
-status: "live" | "reconnectable" | "ended" | "unknown", can: Can, 
+face: SessionFace, can: Can, 
 /**
  * 行上那一家的小牌（对用户的叫法）；默认那一家 ⇒ `null`。
  */
@@ -4333,10 +4370,64 @@ at: number, atText: Words, sectionText: Words, spanText: Words,
  * 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
  */
 origin?: string, };
+type HistoryRowLife = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended" };
 type HistorySort = "activity" | "created";
 type LaunchTab = { tab: Tab, alias?: string, };
 type Rules = { childTab: Tab, bgTab: Tab, };
+type SessionCan = { 
+/**
+ * 关掉它的标签页。
+ */
+close: CanClose, 
+/**
+ * 恢复（起一个新进程接着那份记录）。
+ */
+resume: Allow, 
+/**
+ * 还有终端可去（拉前 · 停 · 杀 · 终端页）。
+ */
+term: CanTerm, 
+/**
+ * 程序退了、tmux 会话还在 ⇒ 接回。
+ */
+reattach: Allow, 
+/**
+ * 换模型（`session-model`）。
+ */
+model: Allow, 
+/**
+ * 切权限档（`session-permission`）。
+ */
+permission: Allow, };
+type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
+type SessionFace = { dot: SessionDot, 
+/**
+ * 进程在不在；在干什么只住在「在」那一支里。
+ */
+live: FaceLive, 
+/**
+ * 那台看不见时照旧作数（已结束 · 记录已不在）。
+ */
+settled: boolean, 
+/**
+ * 短名（运行中 · 需手动 · 已结束 …）。
+ */
+name: Words, 
+/**
+ * 悬停那一句。
+ */
+tip: Words, 
+/**
+ * 没有会话事实时的状态一句。
+ */
+line: Words, tone: Tone, 
+/**
+ * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
+ */
+order: number, can: SessionCan, };
 type Tab = "show" | "hide";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
 
@@ -4351,6 +4442,7 @@ type Words = string;
 入参 `HistorySearchReq` · 回包 `HistorySearchReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type Can = { 
 /**
  * `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
@@ -4368,6 +4460,7 @@ fork: boolean,
  * `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑。
  */
 delete: CanDelete, };
+type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
 type ForkedFrom = { label: string, };
@@ -4409,7 +4502,6 @@ limit?: number,
  * 只比会话标题与第一句（不搜内容）。
  */
 titles?: boolean, };
-type Liveness = "live" | "ended";
 type SearchHit = { 
 /**
  * 消息 uuid：打开查看器后据此滚动定位、高亮。
@@ -4428,6 +4520,57 @@ tool?: string,
  */
 offset: number, };
 type SearchScope = "user" | "assistant" | "report";
+type SessionCan = { 
+/**
+ * 关掉它的标签页。
+ */
+close: CanClose, 
+/**
+ * 恢复（起一个新进程接着那份记录）。
+ */
+resume: Allow, 
+/**
+ * 还有终端可去（拉前 · 停 · 杀 · 终端页）。
+ */
+term: CanTerm, 
+/**
+ * 程序退了、tmux 会话还在 ⇒ 接回。
+ */
+reattach: Allow, 
+/**
+ * 换模型（`session-model`）。
+ */
+model: Allow, 
+/**
+ * 切权限档（`session-permission`）。
+ */
+permission: Allow, };
+type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
+type SessionFace = { dot: SessionDot, 
+/**
+ * 进程在不在；在干什么只住在「在」那一支里。
+ */
+live: FaceLive, 
+/**
+ * 那台看不见时照旧作数（已结束 · 记录已不在）。
+ */
+settled: boolean, 
+/**
+ * 短名（运行中 · 需手动 · 已结束 …）。
+ */
+name: Words, 
+/**
+ * 悬停那一句。
+ */
+tip: Words, 
+/**
+ * 没有会话事实时的状态一句。
+ */
+line: Words, tone: Tone, 
+/**
+ * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
+ */
+order: number, can: SessionCan, };
 type SessionHits = { 
 /**
  * 这个会话是哪一家（线上的 kind）：恢复按它起。全文搜索只扫记录树 ⇒ 都是记录树那一家。
@@ -4454,10 +4597,6 @@ hitsTruncated: boolean,
  */
 isBg: boolean, 
 /**
- * 那台判的：在跑 · 已结束（全文搜索只扫记录树，判得了活）。
- */
-status: Liveness, 
-/**
  * 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
  */
 can: Can, 
@@ -4478,6 +4617,7 @@ forkedFrom?: ForkedFrom, };
 入参 `HistorySearchMergeReq` · 回包 `Merged`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type Can = { 
 /**
  * `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
@@ -4495,11 +4635,11 @@ fork: boolean,
  * `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑。
  */
 delete: CanDelete, };
+type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
 type ForkedFrom = { label: string, };
 type HistorySearchMergeReq = { machines: Array<MachineHits>, };
-type Liveness = "live" | "ended";
 type MachineHits = { origin: Origin, sessions: Array<SessionHits>, };
 type Merged = { 
 /**
@@ -4552,10 +4692,6 @@ hitsTruncated: boolean,
  */
 isBg: boolean, 
 /**
- * 那台判的：在跑 · 已结束（全文搜索只扫记录树，判得了活）。
- */
-status: Liveness, 
-/**
  * 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
  */
 can: Can, 
@@ -4606,10 +4742,6 @@ hitsTruncated: boolean,
  * 后台分身会话。
  */
 isBg: boolean, 
-/**
- * 那台判的：在跑 · 已结束（全文搜索只扫记录树，判得了活）。
- */
-status: Liveness, 
 /**
  * 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
  */
@@ -6137,6 +6269,9 @@ type TurnSpan = { text: string, from: number | null, to: number | null, };
 ```ts
 type AnsweredRow = { sid: string, said: Words, };
 type AskKind = "approve" | "answer" | "plan";
+type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
+type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type Needs = { kind: NeedsKind, 
@@ -6275,13 +6410,73 @@ type NeedsQuestionOption = {
  * `q0o0` …
  */
 id: string, text: string, detail: string | null, };
-type NeedsRow = { sid: string, needs: Needs, 
+type NeedsRow = { sid: string, 
+/**
+ * 叫这条会话什么（同清单那一行的标题）。
+ */
+label: Words, 
+/**
+ * 此刻这条会话的整份脸。
+ */
+face: SessionFace, needs: Needs, 
 /**
  * 隐藏那一格（照常列在这里：隐藏不影响需手动）；不隐藏 ⇒ `null`（格恒在）。
  */
 hidden: Hidden | null, };
 type NoArgs = Record<symbol, never>;
+type SessionCan = { 
+/**
+ * 关掉它的标签页。
+ */
+close: CanClose, 
+/**
+ * 恢复（起一个新进程接着那份记录）。
+ */
+resume: Allow, 
+/**
+ * 还有终端可去（拉前 · 停 · 杀 · 终端页）。
+ */
+term: CanTerm, 
+/**
+ * 程序退了、tmux 会话还在 ⇒ 接回。
+ */
+reattach: Allow, 
+/**
+ * 换模型（`session-model`）。
+ */
+model: Allow, 
+/**
+ * 切权限档（`session-permission`）。
+ */
+permission: Allow, };
+type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
+type SessionFace = { dot: SessionDot, 
+/**
+ * 进程在不在；在干什么只住在「在」那一支里。
+ */
+live: FaceLive, 
+/**
+ * 那台看不见时照旧作数（已结束 · 记录已不在）。
+ */
+settled: boolean, 
+/**
+ * 短名（运行中 · 需手动 · 已结束 …）。
+ */
+name: Words, 
+/**
+ * 悬停那一句。
+ */
+tip: Words, 
+/**
+ * 没有会话事实时的状态一句。
+ */
+line: Words, tone: Tone, 
+/**
+ * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
+ */
+order: number, can: SessionCan, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
 
@@ -6515,6 +6710,7 @@ text?: string | null, };
 入参 `HistoryFactsReq` · 回包 `SessionFacts`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type AskKind = "approve" | "answer" | "plan";
 type BgTask = { 
 /**
@@ -6533,6 +6729,9 @@ cmd: string | null,
  * 起它的那条记录的 `timestamp` 原样；没有 ⇒ `null`。
  */
 at: string | null, };
+type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
+type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type FactsBackground = { 
 /**
  * 「后台任务运行中 · make test-all · 12m」；命令拿不到 ⇒ 「后台任务运行中」。手机与 CLI 照抄、按节拍重问。
@@ -6566,9 +6765,9 @@ type HistoryFactsReq = {
 path: string, };
 type Kin = { sid: string, title: string, 
 /**
- * 此刻活着（这台 pidfile 说的）。
+ * 此刻这条会话的整份脸。
  */
-live: boolean, 
+face: SessionFace, 
 /**
  * 隐藏那一格；不隐藏 ⇒ `null`（格恒在）。
  */
@@ -6780,6 +6979,57 @@ type RetryRun = {
  * 这一串首条重试记录的 `uuid`（界面那条细条就挂在它上面）。
  */
 id: string, outcome: RetryOutcome, };
+type SessionCan = { 
+/**
+ * 关掉它的标签页。
+ */
+close: CanClose, 
+/**
+ * 恢复（起一个新进程接着那份记录）。
+ */
+resume: Allow, 
+/**
+ * 还有终端可去（拉前 · 停 · 杀 · 终端页）。
+ */
+term: CanTerm, 
+/**
+ * 程序退了、tmux 会话还在 ⇒ 接回。
+ */
+reattach: Allow, 
+/**
+ * 换模型（`session-model`）。
+ */
+model: Allow, 
+/**
+ * 切权限档（`session-permission`）。
+ */
+permission: Allow, };
+type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
+type SessionFace = { dot: SessionDot, 
+/**
+ * 进程在不在；在干什么只住在「在」那一支里。
+ */
+live: FaceLive, 
+/**
+ * 那台看不见时照旧作数（已结束 · 记录已不在）。
+ */
+settled: boolean, 
+/**
+ * 短名（运行中 · 需手动 · 已结束 …）。
+ */
+name: Words, 
+/**
+ * 悬停那一句。
+ */
+tip: Words, 
+/**
+ * 没有会话事实时的状态一句。
+ */
+line: Words, tone: Tone, 
+/**
+ * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
+ */
+order: number, can: SessionCan, };
 type SessionFacts = { 
 /**
  * 源会话 sid；不是分叉来的 ⇒ `null`。
@@ -6883,6 +7133,11 @@ startedBy: Kin | null,
  */
 children: Array<Kin>, 
 /**
+ * **状态一句里会走的那一截**：pidfile 此刻说的那一态 ＋ 记录里的事实（在跑的那一步 · 等的种类与起点 · 最后一句的时刻），[`line_of`] 写。
+ * 不活 ⇒ `null`。不累加，每次现查。
+ */
+line: FactsLine | null, 
+/**
  * 认不出、又不成卡的行（那一家的簿记行：没见过的类型、没有链上身份）：不在消息流里画，在这里照实说几行、哪几种。一行都没有 ⇒ `null`。
  */
 quietUnread: QuietUnread | null, };
@@ -6935,6 +7190,7 @@ limitText: Words,
  * 上限从哪来的字（中转请求 · 设置 · 模型名 · 用量超过 200k）；判不出 ⇒ `null`。
  */
 limitFromText: Words | null, };
+type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
 
@@ -13410,6 +13666,10 @@ type PlanStale = { said: string | null, raw: string | null, since: number, since
 入参 `PlanReadReq` · 回包 `PlanRead`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type Allow = { "can": "yes" } | { "can": "no", why: Words, };
+type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
+type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type PlanArchived = { id: string, title: string | null, kind: string | null, replacedBy: string | null, };
 type PlanBlock = { id: string, cells: Array<string>, 
 /**
@@ -13555,11 +13815,15 @@ type PlanWho = { id: string, kind: "session" | "subagent" | "unknown",
 /**
  * 主会话 ⇒ 它自己；子 agent ⇒ 父会话；认不出 ⇒ `null`。
  */
-sid: string | null, alive: boolean, activity: "working" | "needs_you" | "idle" | null, 
+sid: string | null, 
 /**
  * 在等你时等的是哪一类（批准 · 回答 · 计划 · 说不清）。
  */
-needs: string | null, };
+needs: string | null, 
+/**
+ * 此刻那条会话的整份脸（认不出 ⇒ 状态不明）。
+ */
+face: SessionFace, };
 type PlanWhyCode = { "kind": "nosign" } | { "kind": "inside", done: number, of: number, } | { "kind": "upper" };
 type PlanWhyShort = { text: string, wait: boolean, };
 ```
@@ -13776,6 +14040,10 @@ key: string, };
 入参 `PlanReturnReq` · 回包 `PlanReturnReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type Allow = { "can": "yes" } | { "can": "no", why: Words, };
+type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
+type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type PlanReturnReply = { line: string, to: PlanWho | null, 
 /**
  * `delivered` · `unsure`（送达未知，别重发）· `refused` · `copy`（送不了，只给这一行去复制）。
@@ -13822,11 +14090,69 @@ type PlanWho = { id: string, kind: "session" | "subagent" | "unknown",
 /**
  * 主会话 ⇒ 它自己；子 agent ⇒ 父会话；认不出 ⇒ `null`。
  */
-sid: string | null, alive: boolean, activity: "working" | "needs_you" | "idle" | null, 
+sid: string | null, 
 /**
  * 在等你时等的是哪一类（批准 · 回答 · 计划 · 说不清）。
  */
-needs: string | null, };
+needs: string | null, 
+/**
+ * 此刻那条会话的整份脸（认不出 ⇒ 状态不明）。
+ */
+face: SessionFace, };
+type SessionCan = { 
+/**
+ * 关掉它的标签页。
+ */
+close: CanClose, 
+/**
+ * 恢复（起一个新进程接着那份记录）。
+ */
+resume: Allow, 
+/**
+ * 还有终端可去（拉前 · 停 · 杀 · 终端页）。
+ */
+term: CanTerm, 
+/**
+ * 程序退了、tmux 会话还在 ⇒ 接回。
+ */
+reattach: Allow, 
+/**
+ * 换模型（`session-model`）。
+ */
+model: Allow, 
+/**
+ * 切权限档（`session-permission`）。
+ */
+permission: Allow, };
+type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
+type SessionFace = { dot: SessionDot, 
+/**
+ * 进程在不在；在干什么只住在「在」那一支里。
+ */
+live: FaceLive, 
+/**
+ * 那台看不见时照旧作数（已结束 · 记录已不在）。
+ */
+settled: boolean, 
+/**
+ * 短名（运行中 · 需手动 · 已结束 …）。
+ */
+name: Words, 
+/**
+ * 悬停那一句。
+ */
+tip: Words, 
+/**
+ * 没有会话事实时的状态一句。
+ */
+line: Words, tone: Tone, 
+/**
+ * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
+ */
+order: number, can: SessionCan, };
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
+type Words = string;
 ```
 
 码：`bad_args` · `bad_target` · `capture_failed` · `child_timed_out` · `failed` · `io_failed` · `no_pb` · `no_server` · `no_such_cell` · `no_such_session` · `no_target` · `no_tmux` · `not_workspace` · `pb_unsupported` · `review_unreadable` · `unobservable`

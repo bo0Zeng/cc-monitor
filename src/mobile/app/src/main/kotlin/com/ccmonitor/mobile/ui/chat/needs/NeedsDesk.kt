@@ -199,7 +199,7 @@ class NeedsDesk(
                 merge(
                     pushes.map { if (it.topic == NeedsAnswer.TOPIC && it.key == s) Unit else null }.filterNotNull(),
                     link.table
-                        .map { it.sessions[s]?.activity }
+                        .map { it.faces[s]?.dot }
                         .distinctUntilChanged()
                         .drop(1)
                         .map { },

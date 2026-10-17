@@ -23,7 +23,9 @@ import type { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 import type { Needs } from "../../../src/frontend/ui/session-reads";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
-import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, RECONNECTABLE, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
+import type { FactsLine } from "../../../src/frontend/ui/generated/FactsLine";
+import type { WireSessionActivity } from "../../../src/frontend/ui/generated/WireSessionActivity";
+import { goldenFace, liveFace } from "../../test-support/session-faces";
 import { abbrOf, dotOf, fullTitle, groupSummary, needsOf, nextNeedsStep, peekLine, stateLine, stateWord, titleParts } from "../../../src/frontend/ui/session-face";
 import { askNeedsOrder, orderNeeds } from "../../../src/frontend/ui/needs-order";
 import { NeedsTitle } from "../../../src/frontend/ui/needs-bar";
@@ -51,11 +53,11 @@ function tab(sid: string, over: Partial<Tab> = {}): Tab {
     label: null,
     labelProject: null,
     projectDir: `/w/${sid}`,
-    state: LIVE,
+    face: liveFace("working", true),
+    line: null,
     pinned: false,
     group: null,
     origin: LOCAL_ORIGIN,
-    activity: null,
     forkedFromSessionId: null,
     writers: [],
     unread: 0,
@@ -69,8 +71,10 @@ function tab(sid: string, over: Partial<Tab> = {}): Tab {
   } as unknown as Tab;
 }
 
-const bgAct = { doing: "background_work" as const, waitingFor: null, text: copyText("beSession.activity.backgroundWork"), tone: "busy", order: 1 };
-const waiting = { doing: "needs_you" as const, waitingFor: "permission prompt", text: copyText("beSession.activity.needsYou"), tone: "need", order: 1 };
+/** 会话事实那一句（写它时那一态是 `doing`）。 */
+const lineFor = (doing: WireSessionActivity): FactsLine => ({ for: doing, text: `${doing}·核心`, clock: null, peek: null });
+/** 在等人：脸 ＋ 同一刻的那一句。 */
+const waiting = { face: liveFace("needs_you"), line: lineFor("needs_you") };
 /** 那台在 `NOW` 答出、本机同一刻收到（两台钟一样快）；已等多久由那台算好。 */
 const approve = (sinceMs: number | null = NOW - 120_000): Needs => {
   const waitedMs = sinceMs === null ? null : NOW - sinceMs;
@@ -82,104 +86,55 @@ beforeEach(() => {
   vi.mocked(terminalFrontAvailable).mockReturnValue(false);
 });
 
-describe("状态的字照抄核心写好的（G2：界面不按码取字）", () => {
-  const act = (doing: "working" | "needs_you" | "idle", text: string) => ({ doing, waitingFor: null, text, tone: doing === "working" ? "now" : doing === "needs_you" ? "need" : "plain", order: 1 });
-  it("活着的三态：点的名字与状态句里那个词 ＝ 活动信号带来的字", () => {
-    expect(stateWord(tab("a", { activity: act("working", "W·核心") }))).toBe("W·核心");
-    expect(stateLine(tab("a", { activity: act("working", "W·核心") }), NOW).text).toBe("W·核心");
-    expect(stateLine(tab("b", { activity: act("idle", "I·核心") }), NOW).text).toBe("I·核心");
-    expect(stateWord(tab("c", { activity: act("needs_you", "N·核心") }))).toBe("N·核心");
-  });
-  it("在等人：种类的字 ＝ 会话事实带来的；事实还没到 ⇒ 活动信号带来的那个字", () => {
-    const n: Needs = { ...approve(), text: "批·核心", tone: "need" };
-    expect(stateLine(tab("a", { activity: act("needs_you", "N·核心"), needs: n }), NOW).text).toBe(copyText("sessionFace.state.waiting", { kind: "批·核心", waited: fmtDur(120) }));
-    expect(stateLine(tab("b", { activity: act("needs_you", "N·核心") }), NOW).text).toBe("N·核心");
-    expect(needsOf(tab("b", { activity: act("needs_you", "N·核心") }))?.text).toBe("N·核心");
-  });
-});
-
-describe("一个会话读成什么（session-face）", () => {
-  it("★ 需手动：活着 ＋ 活动信号说在等才算；种类没到 ⇒「需手动」（不猜）；活动信号说不在等了 ⇒ 手上那份不认；死了 ⇒ 不算", () => {
-    expect(needsOf(tab("a", { activity: waiting }))).toEqual({ kind: "unknown", tool: null, call: null, what: null, sinceMs: null, text: copyText("beSession.needs.unknown"), head: copyText("beSession.needs.unknown"), headCode: null, tone: "need", rank: Number.MAX_SAFE_INTEGER, waitedMs: null, waitedText: null, ask: null, manualText: null, receivedAt: 0 });
-    expect(needsOf(tab("a", { activity: waiting, needs: approve() }))?.kind).toBe("approve");
-    expect(needsOf(tab("a", { activity: { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now", order: 1 }, needs: approve() })), "已经答完：不留一条需手动").toBeNull();
-    expect(needsOf(tab("a", { state: RECONNECTABLE, activity: waiting, needs: approve() })), "Claude 已退出：陈旧的在等不算").toBeNull();
+describe("一个会话读成什么（session-face）：点 · 字照抄那台的脸，会话事实那一句与脸同一刻才用", () => {
+  it("★ 点 · 短名 ＝ 脸上那两格；还没收到 / 那台看不见 ⇒ 说不清那一张（带机器名）", () => {
+    for (const k of ["live-working-plain", "live-idle", "reconnectable", "ended", "gone"] as const) {
+      const f = goldenFace(k);
+      expect([dotOf(tab("a", { face: f })), stateWord(tab("a", { face: f }))], k).toEqual([f.dot, f.name]);
+    }
+    const u = tab("u", { face: null, origin: "gpu-01" as never });
+    expect([dotOf(u), stateWord(u), stateLine(u, NOW).text]).toEqual(["unknown", copyText("sessionState.unseen.name"), copyText("sessionFace.state.unseen", { machine: "gpu-01" })]);
   });
 
-  it("★ 状态点：颜色 ＝ 在干什么，形状 ＝ 进程在不在（状态不明不当已结束画）", () => {
-    const got = [
-      tab("a", { activity: { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now", order: 1 } }),
-      tab("b", { activity: waiting }),
-      tab("c", { activity: { doing: "idle", waitingFor: null, text: copyText("beSession.activity.idle"), tone: "plain", order: 1 } }),
-      tab("d", { state: RECONNECTABLE }),
-      tab("e", { state: ENDED }),
-      tab("f", { state: GONE }),
-      tab("g", { state: UNSEEN }),
-      tab("h", { activity: null }),
-    ].map(dotOf);
-    expect(got).toEqual(["running", "needs-you", "idle", "exited", "ended", "gone", "unknown", "running"]);
+  it("★ 需手动：脸说在等、会话事实那一句也是在等那一刻 ⇒ 认事实里那一份；对不上（事实还没到 · 已经答完 · 进程不在）⇒ 不算", () => {
+    expect(needsOf(tab("a", { ...waiting, needs: approve() }))?.kind).toBe("approve");
+    expect(needsOf(tab("a", { face: liveFace("needs_you"), line: null, needs: approve() })), "事实还没到：不猜").toBeNull();
+    expect(needsOf(tab("a", { face: liveFace("working"), line: lineFor("needs_you"), needs: approve() })), "已经答完：不留一条需手动").toBeNull();
+    expect(needsOf(tab("a", { face: goldenFace("reconnectable"), line: lineFor("needs_you"), needs: approve() })), "Claude 已退出：陈旧的在等不算").toBeNull();
   });
 
-  it("收着的组头汇总：等你 · 在跑各数一遍（空闲 · 已结束 · 状态不明 · Claude 已退出不算）", () => {
+  it("收着的组头汇总：等你 · 在跑 · 后台各数一遍（空闲 · 已结束 · 状态不明 · Claude 已退出不算），字照抄脸上的短名", () => {
     const members = [
-      tab("a", { activity: waiting }),
-      tab("b", { activity: { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now", order: 1 } }),
-      tab("c", { activity: { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now", order: 1 } }),
-      tab("d", { activity: { doing: "idle", waitingFor: null, text: copyText("beSession.activity.idle"), tone: "plain", order: 1 } }),
-      tab("e", { state: ENDED }),
-      tab("f", { state: UNSEEN }),
-      tab("g", { state: RECONNECTABLE, activity: waiting }),
-      tab("h", { activity: bgAct }),
-      tab("i", { state: RECONNECTABLE, activity: bgAct }),
+      tab("a", waiting),
+      tab("b", { face: liveFace("working") }),
+      tab("c", { face: liveFace("working") }),
+      tab("d", { face: liveFace("idle") }),
+      tab("e", { face: goldenFace("ended") }),
+      tab("f", { face: null }),
+      tab("g", { face: goldenFace("reconnectable") }),
+      tab("h", { face: liveFace("background_work") }),
     ];
-    // 几颗点的名字照抄组员身上核心写的字。
-    expect(groupSummary(members)).toEqual({ needs: 1, running: 2, background: 1, needsWord: copyText("beSession.activity.needsYou"), runningWord: copyText("beSession.activity.working"), backgroundWord: bgAct.text });
-    expect(groupSummary([]), "空组").toEqual({ needs: 0, running: 0, background: 0, needsWord: "", runningWord: "", backgroundWord: "" });
+    expect(groupSummary(members)).toEqual({ needs: 1, running: 2, background: 1, needsWord: goldenFace("live-needs-you-tmux").name, runningWord: goldenFace("live-working-plain").name, backgroundWord: goldenFace("live-background").name });
   });
 
-  it("后台任务运行中：点单独一档 · 状态一句照抄核心、时长那一截按此刻走 · 拿不到 ⇒ 核心写的那个字 · peek 照空闲（它最后一句）", () => {
-    const from = NOW - 64 * 60_000;
-    const bw = { text: "写好的一句", clock: { text: "L · {dur}", from }, what: "make", count: 1, tone: "busy" as const };
-    const t = tab("a", { activity: bgAct, backgroundWork: bw, lastSay: { text: "最后一句", at: null, atMs: null } });
-    expect(dotOf(t)).toBe("background");
-    expect(stateWord(t)).toBe(bgAct.text);
-    expect(stateLine(t, NOW)).toEqual({ text: "L · 1h4m", needs: false });
-    expect(stateLine(t, NOW + 60_000).text, "钟在走").toBe("L · 1h5m");
-    expect(stateLine(tab("b", { activity: bgAct, backgroundWork: { ...bw, clock: null } }), NOW).text).toBe("写好的一句");
-    expect(stateLine(tab("c", { activity: bgAct }), NOW).text).toBe(bgAct.text);
-    expect(peekLine(t)).toBe("最后一句");
+  it("★ 状态一句：会话事实那一句与脸同一刻 ⇒ 用它（会走的那一截按此刻填、钟在走）；不同刻 ⇒ 脸上那一句；在等 ⇒ 琥珀", () => {
+    const t = tab("a", { face: liveFace("working"), line: { for: "working", text: "L·核心", clock: { text: "L · {dur}", from: NOW - 65_000 }, peek: "pytest" } });
+    expect(stateLine(t, NOW)).toEqual({ text: "L · 1m", needs: false });
+    expect(stateLine(t, NOW + 60_000).text, "钟在走").toBe("L · 2m");
+    expect(stateLine(tab("b", { face: liveFace("working"), line: { for: "working", text: "L·核心", clock: null, peek: null } }), NOW).text).toBe("L·核心");
+    expect(stateLine(tab("c", { face: liveFace("idle"), line: lineFor("working") }), NOW).text, "两份不是同一刻").toBe(goldenFace("live-idle").line);
+    expect(stateLine(tab("d", { face: goldenFace("ended"), line: lineFor("idle") }), NOW).text).toBe(goldenFace("ended").line);
+    expect(stateLine(tab("e", waiting), NOW).needs).toBe(true);
   });
 
-  it("★ 已等多久不拿本机钟减那台的起点：那台算好的已等多久 ＋ 本机从收到起走过的时间（两台钟差一小时也不变）", () => {
-    // 那台的钟比本机快一小时：起点按那台的钟写，比本机此刻还晚；那台答出时已等了 2 分钟。
-    const n: Needs = { ...approve(), sinceMs: NOW + 3_600_000, waitedMs: 120_000, waitedText: fmtDur(120), receivedAt: NOW };
-    const t = tab("a", { activity: waiting, needs: n });
-    expect(stateLine(t, NOW).text, "收到那一刻 ＝ 那台写好的字").toBe(copyText("sessionFace.state.waiting", { kind: copyText("beSession.needs.approve"), waited: n.waitedText! }));
-    expect(stateLine(t, NOW + 30_000).text, "之后按本机走过的时间接着加").toBe(copyText("sessionFace.state.waiting", { kind: copyText("beSession.needs.approve"), waited: fmtDur(150) }));
-    // 没有起点 ⇒ 不写已等多久。
-    expect(stateLine(tab("b", { activity: waiting, needs: approve(null) }), NOW).text).toBe(copyText("beSession.needs.approve"));
-  });
-
-  it("★ 状态句：等批准 · 等了多久 / 运行中 · 调用哪个工具 · 多久 / 空闲 · 完成多久前（没看 ⇒ 多说一个「未看」）/ 状态不明 · 哪台", () => {
-    expect(stateLine(tab("a", { activity: waiting, needs: approve() }), NOW)).toEqual({ text: copyText("sessionFace.state.waiting", { kind: copyText("beSession.needs.approve"), waited: fmtDur(120) }), needs: true });
-    const running = tab("b", { activity: { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now", order: 1 }, pending: [{ id: "x", name: "Bash", what: "pytest", at: new Date(NOW - 65_000).toISOString(), atMs: NOW - 65_000, state: "running", why: null, text: null, whyText: null }] });
-    expect(stateLine(running, NOW).text).toBe(copyText("sessionFace.state.runningFor", { tool: "Bash", dur: "1m" }));
-    const idle = (unread: number) => tab("c", { unread, activity: { doing: "idle", waitingFor: null, text: copyText("beSession.activity.idle"), tone: "plain", order: 1 }, lastSay: { text: "改好了", at: new Date(NOW - 240_000).toISOString(), atMs: NOW - 240_000 } });
-    expect(stateLine(idle(0), NOW).text).toBe(copyText("sessionFace.state.idleSeen", { ago: "4m" }));
-    expect(stateLine(idle(2), NOW).text).toBe(copyText("sessionFace.state.idleUnseen", { ago: "4m" }));
-    expect(stateLine(tab("d", { state: UNSEEN, origin: "gpu-01" as never }), NOW).text).toBe(copyText("sessionFace.state.unseen", { machine: "gpu-01" }));
-    expect(stateLine(tab("e", { state: ENDED }), NOW).text).not.toContain(copyText("sessionState.unseen.name"));
-  });
-
-  it("peek：在等你 ⇒ 等的那一句；在跑 ⇒ 正在做的那一步；空闲 ⇒ 最后一句；拿不到 ⇒ 不出", () => {
-    expect(peekLine(tab("a", { activity: waiting, needs: approve() }))).toBe("rm -rf build/");
-    expect(peekLine(tab("b", { pending: [{ id: "x", name: "Read", what: "src/a.ts", at: null, state: "running", why: null, text: null, whyText: null, atMs: null }] }))).toBe("src/a.ts");
-    expect(peekLine(tab("c", { activity: { doing: "idle", waitingFor: null, text: copyText("beSession.activity.idle"), tone: "plain", order: 1 }, lastSay: { text: "结论", at: null, atMs: null } }))).toBe("结论");
-    expect(peekLine(tab("d", { state: ENDED, lastSay: { text: "结论", at: null, atMs: null } }))).toBeNull();
+  it("peek：会话事实写的那一句（同一刻才认）；拿不到 ⇒ 不出", () => {
+    expect(peekLine(tab("a", { face: liveFace("working"), line: { ...lineFor("working"), peek: "src/a.ts" } }))).toBe("src/a.ts");
+    expect(peekLine(tab("b", { face: liveFace("idle"), line: { ...lineFor("working"), peek: "src/a.ts" } }))).toBeNull();
+    expect(peekLine(tab("c", { face: goldenFace("ended") }))).toBeNull();
   });
 
   it("★ `Ctrl+J` 的先后照后端排好的那一份；后端没列到的（那台问不到 · 活动信号先到）排在后面、照条上顺序；当前就是 ⇒ 下一个、转回头", () => {
-    const tabs = [tab("a"), tab("b", { activity: waiting }), tab("c", { activity: waiting }), tab("d", { activity: waiting }), tab("e", { activity: waiting })];
+    const tabs = [tab("a"), tab("b", { ...waiting }), tab("c", { ...waiting }), tab("d", { ...waiting }), tab("e", { ...waiting })];
     const needing = tabs.filter((t) => needsOf(t) !== null);
     // 后端说 e · b · x（x 不在条上 / 不在等 ⇒ 不要）；c · d 后端没列 ⇒ 照条上顺序跟在后面。
     const order = orderNeeds(needing, ["e", "b", "x", "a"]);
@@ -262,7 +217,7 @@ function bar(tabs: Tab[], ranked: string[] = []): { view: TabBarView; host: TabB
 
 describe("标签页栏：「需手动 N」与机器离线条", () => {
   it("★ 「需手动」只在有人等你时出、写数；点它开浮层、点那一行跳过去；行尾「等批准」换掉未读数", () => {
-    const r = bar([tab("a"), tab("b", { activity: waiting, needs: approve(NOW - 10_000), unread: 3 }), tab("c")]);
+    const r = bar([tab("a"), tab("b", { ...waiting, needs: approve(NOW - 10_000), unread: 3 }), tab("c")]);
     const strip = r.el.querySelector<HTMLElement>(".tab-needs")!;
     expect(strip.style.display).toBe("");
     expect(strip.querySelector(".tab-needs-count")?.textContent).toBe("1");
@@ -273,7 +228,7 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
     expect(r.host.answerAt, "浮层里那一行 ⇒ 跳过去、焦点进答题块").toHaveBeenCalledWith("b");
     expect(r.host.switchTo).not.toHaveBeenCalled();
     // 答完了（活动信号说不在等）⇒ 那一条收起，未读数回来。
-    (r.store.tabs.get("b") as Tab).activity = { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now", order: 1 };
+    (r.store.tabs.get("b") as Tab).face = liveFace("working");
     r.view.refresh();
     expect(strip.style.display).toBe("none");
     expect(b.badge.textContent).toBe("3");
@@ -282,7 +237,7 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
   it("★ 悬停「需手动」不再开菜单（并进点开的那个浮层）；`Ctrl+J` 照旧直接跳后端排在最前的、不开浮层", async () => {
     vi.useFakeTimers();
     try {
-      const r = bar([tab("a", { activity: waiting, needs: approve(NOW - 10_000) }), tab("b", { activity: waiting, needs: approve(NOW - 60_000) })], ["b", "a"]);
+      const r = bar([tab("a", { ...waiting, needs: approve(NOW - 10_000) }), tab("b", { ...waiting, needs: approve(NOW - 60_000) })], ["b", "a"]);
       const strip = r.el.querySelector<HTMLElement>(".tab-needs")!;
       strip.dispatchEvent(new Event("mouseenter"));
       vi.advanceTimersByTime(2_000);
@@ -298,7 +253,7 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
   });
 
   it("★ 点标签上那颗「需手动」的点 ⇒ 跳过去、焦点进答题块；点标签别处 / 不在等的点 ⇒ 照常切", () => {
-    const r = bar([tab("a"), tab("b", { activity: waiting, needs: approve(NOW - 10_000) })]);
+    const r = bar([tab("a"), tab("b", { ...waiting, needs: approve(NOW - 10_000) })]);
     r.view.tabButtons.get("b")!.root.querySelector<HTMLElement>(".tab-dot")!.click();
     expect(r.host.answerAt).toHaveBeenCalledWith("b");
     r.view.tabButtons.get("a")!.root.querySelector<HTMLElement>(".tab-dot")!.click();
@@ -307,7 +262,7 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
   });
 
   it("★ 挂着的请求换了（挂上 · 答掉 · 只能在终端里答那一句变了）⇒ 摘要变、订阅者（答题块 · 窗口标题）重画；种类没变也算", () => {
-    const r = bar([tab("a", { activity: waiting, needs: approve(NOW - 10_000) })]);
+    const r = bar([tab("a", { ...waiting, needs: approve(NOW - 10_000) })]);
     const seen: unknown[] = [];
     r.store.subscribe((x) => seen.push(x));
     const n0 = seen.length;
@@ -321,7 +276,7 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
   });
 
   it("★ 机器离线：那台看不见、还有状态不明的会话 ⇒ 一条（离线 · 几个状态不明 · 采样多久前）＋［重新连接］；连上了自己消失", () => {
-    const r = bar([tab("a"), tab("g1", { origin: "gpu-01" as never, state: UNSEEN }), tab("g2", { origin: "gpu-01" as never, state: UNSEEN })]);
+    const r = bar([tab("a"), tab("g1", { origin: "gpu-01" as never, face: null }), tab("g2", { origin: "gpu-01" as never, face: null })]);
     r.view.markOriginDown("gpu-01", true, Date.now() - 180_000);
     r.view.refresh();
     const row = r.el.querySelector<HTMLElement>(".tab-machine-down-row")!;
@@ -335,13 +290,13 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
     expect(r.el.querySelector(".tab-machine-down-row")).toBeNull();
     // 看不见、但那台一个状态不明的会话都没有（全是已结束的）⇒ 不出条。
     r.view.markOriginDown("gpu-01", true);
-    for (const sid of ["g1", "g2"]) (r.store.tabs.get(sid) as Tab).state = ENDED;
+    for (const sid of ["g1", "g2"]) (r.store.tabs.get(sid) as Tab).face = goldenFace("ended");
     r.view.refresh();
     expect(r.el.querySelector(".tab-machine-down-row")).toBeNull();
   });
 
   it("状态不明的行不当已结束画：虚线环、标题常色、行尾没有 ×（只右键能关）", () => {
-    const r = bar([tab("g1", { origin: "gpu-01" as never, state: UNSEEN })]);
+    const r = bar([tab("g1", { origin: "gpu-01" as never, face: null })]);
     const b = r.view.tabButtons.get("g1")!;
     expect(b.dot.dataset.state).toBe("unknown");
     expect([b.root.classList.contains("unseen"), b.root.classList.contains("ended")]).toEqual([true, false]);
@@ -374,7 +329,7 @@ describe("会话头", () => {
   const labels = (el: HTMLElement): string[] => [...el.querySelectorAll("button:not([data-switch])")].map((b) => b.getAttribute("aria-label") ?? b.textContent ?? "");
 
   it("★ 标题全名 · 机器 · 目录 · 状态一句；在等你时状态那一句琥珀；右边：目录（本机）· 看它的终端 · 显示 · 查找 · 更多", () => {
-    const { h, host } = head(tab("a", { label: "加重试", labelProject: "orders", projectDir: "/w/orders", activity: waiting, needs: approve() }));
+    const { h, host } = head(tab("a", { label: "加重试", labelProject: "orders", projectDir: "/w/orders", ...waiting, needs: approve() }));
     expect(h.el.textContent).toContain("orders 加重试");
     expect(h.el.textContent).toContain(copyText("sessionFace.machine.local"));
     expect(h.el.textContent).toContain("/w/orders");
@@ -387,15 +342,15 @@ describe("会话头", () => {
   });
 
   it("★ 按状态多一颗：已结束［恢复］· Claude 已退出（远端）［在终端里打开］· 状态不明［重新连接］；活着不多", () => {
-    expect(labels(head(tab("a", { state: ENDED })).h.el)).toContain(copyText("sessionHead.act.resume"));
-    const exited = head(tab("b", { origin: "devbox" as never, state: RECONNECTABLE }));
+    expect(labels(head(tab("a", { face: goldenFace("ended") })).h.el)).toContain(copyText("sessionHead.act.resume"));
+    const exited = head(tab("b", { origin: "devbox" as never, face: goldenFace("reconnectable") }));
     expect(labels(exited.h.el)).toContain(copyText("sessionHead.act.openTerm"));
-    expect(labels(head(tab("b2", { state: RECONNECTABLE })).h.el), "本机：没有接回终端的那条路，不画点了没反应的按钮").not.toContain(copyText("sessionHead.act.openTerm"));
-    const unseen = head(tab("c", { origin: "gpu-01" as never, state: UNSEEN }));
+    expect(labels(head(tab("b2", { face: goldenFace("reconnectable") })).h.el), "本机：没有接回终端的那条路，不画点了没反应的按钮").not.toContain(copyText("sessionHead.act.openTerm"));
+    const unseen = head(tab("c", { origin: "gpu-01" as never, face: null }));
     const re = [...unseen.h.el.querySelectorAll("button")].find((b) => b.textContent === copyText("sessionHead.act.reconnect"))!;
     re.click();
     expect(unseen.host.reconnect).toHaveBeenCalledWith("gpu-01");
-    expect(labels(head(tab("e", { state: ENDED })).h.el), "已结束：没有终端可去，不出「看它的终端」").not.toContain(copyText("sessionHead.act.terminal"));
+    expect(labels(head(tab("e", { face: goldenFace("ended") })).h.el), "已结束：没有终端可去，不出「看它的终端」").not.toContain(copyText("sessionHead.act.terminal"));
     const live = labels(head(tab("d")).h.el);
     for (const x of ["sessionHead.act.resume", "sessionHead.act.openTerm", "sessionHead.act.reconnect"] as const) expect(live).not.toContain(copyText(x));
   });
@@ -475,7 +430,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     await flush();
     expect(b.page.el.textContent).toContain(copyText("terminal.empty.notOurs"));
     expect(vi.mocked(b.reads.shot)).not.toHaveBeenCalled();
-    const c = rig([], { t: tab("c", { state: ENDED }) });
+    const c = rig([], { t: tab("c", { face: goldenFace("ended") }) });
     c.page.setVisible(true);
     await flush();
     expect(c.page.el.textContent).toContain(copyText("terminal.empty.ended", { state: copyText("sessionState.ended.name") }));
@@ -484,7 +439,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
   it("★ 活着、不在 tmux 里（容器 none）⇒ 照实说「不在 tmux 里」，不说「非 cc-monitor 启动」；↗ 真能用时给［切到终端］", async () => {
     vi.mocked(terminalFrontAvailable).mockReturnValue(true);
     try {
-      const d = rig([], { t: tab("d", { state: LIVE_RESUMABLE }) });
+      const d = rig([], { t: tab("d", { face: liveFace("working", false) }) });
       d.page.setVisible(true);
       await flush();
       expect(d.page.el.textContent).toContain(copyText("terminal.empty.notInTmux"));
@@ -495,11 +450,11 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
       front!.click();
       expect(d.host.front).toHaveBeenCalledWith("d");
       vi.mocked(terminalFrontAvailable).mockReturnValue(false);
-      const e = rig([], { t: tab("e", { state: LIVE_RESUMABLE }) });
+      const e = rig([], { t: tab("e", { face: liveFace("working", false) }) });
       e.page.setVisible(true);
       await flush();
       expect([...e.page.el.querySelectorAll("button")].some((x) => x.textContent?.includes(copyText("terminal.head.front")))).toBe(false);
-      const f = rig([], { t: tab("f", { state: LIVE_ATTACHABLE }) });
+      const f = rig([], { t: tab("f", { face: liveFace("working", true) }) });
       f.page.setVisible(true);
       await flush();
       expect(f.page.el.textContent, "在 tmux 里、名单却认不出的才是「非 cc-monitor 启动」").toContain(copyText("terminal.empty.notOurs"));
@@ -805,11 +760,11 @@ describe("报错卡上去它的终端那两颗（与会话头同一道）", () =
   it("★ 切到终端：↗ 真能用且还有终端可去；在终端里打开：远端、Claude 已退出；别的都不出", () => {
     vi.mocked(terminalFrontAvailable).mockReturnValue(true);
     expect(terminalActsOf(tab("a"))).toEqual({ front: true, attach: false });
-    expect(terminalActsOf(tab("b", { state: ENDED })).front).toBe(false);
+    expect(terminalActsOf(tab("b", { face: goldenFace("ended") })).front).toBe(false);
     vi.mocked(terminalFrontAvailable).mockReturnValue(false);
     expect(terminalActsOf(tab("a"))).toEqual({ front: false, attach: false });
-    expect(terminalActsOf(tab("c", { origin: "devbox" as never, state: RECONNECTABLE }))).toEqual({ front: false, attach: true });
-    expect(terminalActsOf(tab("d", { state: RECONNECTABLE })).attach, "本机：没有接回终端的那条路").toBe(false);
+    expect(terminalActsOf(tab("c", { origin: "devbox" as never, face: goldenFace("reconnectable") }))).toEqual({ front: false, attach: true });
+    expect(terminalActsOf(tab("d", { face: goldenFace("reconnectable") })).attach, "本机：没有接回终端的那条路").toBe(false);
   });
 
   it("报错卡摆出两颗（看不看得见由消息流根上的标记管），点了的那颗带着它是哪条路", () => {

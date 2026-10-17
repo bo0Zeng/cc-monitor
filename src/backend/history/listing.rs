@@ -12,31 +12,22 @@ use super::listing_scan::SessionScan;
 use crate::common::append_read::{Blocks, Step, Tailed};
 use crate::common::fence::Fence;
 use crate::platform::fs::{Own, OwnPath, Ro};
-pub(crate) use cmd_wire::listing::{Can, CanDelete, CanResume};
+pub(crate) use cmd_wire::listing::{Can, CanDelete, CanResume, RowLife};
 use copy_core::copy_text;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::UNIX_EPOCH;
 
-/// 一条会话的状态：`live` 在跑 · `reconnectable` 不在跑、tmux 里还挂着它（会话账本说的）· `ended` 已结束 ·
-/// `unknown` 这条路上答不了（合成历史没有 pidfile）。历史清单的行与全文搜索的命中同一个函数。
-pub(crate) fn status_of(is_live: Option<bool>, reconnectable: bool) -> &'static str {
-    match is_live {
-        Some(true) => "live",
-        Some(false) if reconnectable => "reconnectable",
-        Some(false) => "ended",
-        None => "unknown",
-    }
-}
-
 /// **这条会话能做什么**（`can`）——界面按它画，不另判：
 /// - `resume`：`yes` 能恢复 · `switch` 在跑（切过去，不再起第二份）· `bg` 分身会话（要接着聊得恢复主会话）；
 /// - `accounts`：恢复时能不能选号（那一家有没有账号这一维）· `fork`：能不能从某一轮分叉；
-/// - `delete`：`yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑（确认框里多说一句）。
-pub(crate) fn can_of(kind: &str, status: &str, bg: bool) -> Can {
+/// - `delete`：`yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑（`life` 判不了 ⇒ 确认框里多说一句）。
+/// 历史清单的行与全文搜索的命中同一个函数。
+pub(crate) fn can_of(kind: &str, life: Option<RowLife>, bg: bool) -> Can {
+    let live = matches!(life, Some(RowLife::Live { .. }));
     Can {
-        resume: if status == "live" {
+        resume: if live {
             CanResume::Switch
         } else if bg {
             CanResume::Bg
@@ -45,10 +36,10 @@ pub(crate) fn can_of(kind: &str, status: &str, bg: bool) -> Can {
         },
         accounts: crate::agents::account_env_of(kind).is_some(),
         fork: crate::agents::record_face(kind).is_some_and(|r| r.branch.is_some()) && !bg,
-        delete: match status {
-            "live" => CanDelete::Live,
-            "unknown" => CanDelete::Unsure,
-            _ => CanDelete::Yes,
+        delete: match life {
+            Some(RowLife::Live { .. }) => CanDelete::Live,
+            None => CanDelete::Unsure,
+            Some(_) => CanDelete::Yes,
         },
     }
 }

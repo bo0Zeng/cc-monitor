@@ -91,6 +91,42 @@
         "resume": "bg"
       },
       "customTitle": null,
+      "face": {
+        "can": {
+          "close": {
+            "can": "quiet"
+          },
+          "model": {
+            "can": "no",
+            "why": "会话已退出"
+          },
+          "permission": {
+            "can": "no",
+            "why": "会话已退出"
+          },
+          "reattach": {
+            "can": "no",
+            "why": "会话已结束"
+          },
+          "resume": {
+            "can": "yes"
+          },
+          "term": {
+            "can": "no",
+            "why": "会话已结束"
+          }
+        },
+        "dot": "ended",
+        "line": "已结束 · 可恢复",
+        "live": {
+          "is": "no"
+        },
+        "name": "已结束",
+        "order": 5,
+        "settled": true,
+        "tip": "已结束 · 可恢复",
+        "tone": "plain"
+      },
       "firstUserExcerpt": "子",
       "forkedFrom": {
         "label": "分叉的父会话"
@@ -112,7 +148,6 @@
       "spanText": "00:00–00:00",
       "starred": false,
       "startedAt": 500,
-      "status": "ended",
       "title": "从父会话分出来的",
       "untitled": false,
       "updatedAt": 1000
@@ -130,6 +165,44 @@
         "resume": "switch"
       },
       "customTitle": null,
+      "face": {
+        "can": {
+          "close": {
+            "can": "no",
+            "why": "运行中"
+          },
+          "model": {
+            "can": "no",
+            "why": "本轮结束后可换模型"
+          },
+          "permission": {
+            "can": "yes"
+          },
+          "reattach": {
+            "can": "no",
+            "why": "运行中"
+          },
+          "resume": {
+            "can": "no",
+            "why": "运行中"
+          },
+          "term": {
+            "can": "yes",
+            "tmux": false
+          }
+        },
+        "dot": "running",
+        "line": "运行中",
+        "live": {
+          "activity": "working",
+          "is": "yes"
+        },
+        "name": "运行中",
+        "order": 1,
+        "settled": false,
+        "tip": "运行中",
+        "tone": "now"
+      },
       "firstUserExcerpt": "看一下回调",
       "group": "claude:/w/alpha",
       "hidden": null,
@@ -147,7 +220,6 @@
       "spanText": "00:00–00:00",
       "starred": true,
       "startedAt": 100,
-      "status": "live",
       "title": "支付回调验签",
       "untitled": false,
       "updatedAt": 900
@@ -165,6 +237,42 @@
         "resume": "yes"
       },
       "customTitle": null,
+      "face": {
+        "can": {
+          "close": {
+            "can": "quiet"
+          },
+          "model": {
+            "can": "no",
+            "why": "会话已退出"
+          },
+          "permission": {
+            "can": "no",
+            "why": "会话已退出"
+          },
+          "reattach": {
+            "can": "no",
+            "why": "会话已结束"
+          },
+          "resume": {
+            "can": "yes"
+          },
+          "term": {
+            "can": "no",
+            "why": "会话已结束"
+          }
+        },
+        "dot": "ended",
+        "line": "已结束 · 可恢复",
+        "live": {
+          "is": "no"
+        },
+        "name": "已结束",
+        "order": 5,
+        "settled": true,
+        "tip": "已结束 · 可恢复",
+        "tone": "plain"
+      },
       "firstUserExcerpt": "",
       "group": "claude:/w/alpha-二",
       "hidden": null,
@@ -182,7 +290,6 @@
       "spanText": "00:00–00:00",
       "starred": false,
       "startedAt": 300,
-      "status": "ended",
       "title": "没有说过话的会话",
       "untitled": true,
       "updatedAt": 700
@@ -200,6 +307,44 @@
         "resume": "yes"
       },
       "customTitle": null,
+      "face": {
+        "can": {
+          "close": {
+            "can": "no",
+            "why": "状态不明"
+          },
+          "model": {
+            "can": "no",
+            "why": "状态不明"
+          },
+          "permission": {
+            "can": "no",
+            "why": "状态不明"
+          },
+          "reattach": {
+            "can": "no",
+            "why": "状态不明"
+          },
+          "resume": {
+            "can": "no",
+            "why": "暂不恢复"
+          },
+          "term": {
+            "can": "no",
+            "why": "状态不明"
+          }
+        },
+        "dot": "unknown",
+        "line": "状态不明",
+        "live": {
+          "is": "no"
+        },
+        "name": "状态不明",
+        "order": 3,
+        "settled": false,
+        "tip": "状态不明",
+        "tone": "plain"
+      },
       "firstUserExcerpt": "列出 Codex 的会话",
       "group": "codex:/w/delta",
       "hidden": null,
@@ -216,7 +361,6 @@
       "spanText": "00:00–00:00",
       "starred": false,
       "startedAt": 650,
-      "status": "unknown",
       "title": "列出 Codex 的会话",
       "untitled": false,
       "updatedAt": 650
@@ -235,6 +379,42 @@
       },
       "context": true,
       "customTitle": null,
+      "face": {
+        "can": {
+          "close": {
+            "can": "quiet"
+          },
+          "model": {
+            "can": "no",
+            "why": "会话已退出"
+          },
+          "permission": {
+            "can": "no",
+            "why": "会话已退出"
+          },
+          "reattach": {
+            "can": "no",
+            "why": "会话已结束"
+          },
+          "resume": {
+            "can": "yes"
+          },
+          "term": {
+            "can": "no",
+            "why": "会话已结束"
+          }
+        },
+        "dot": "ended",
+        "line": "已结束 · 可恢复",
+        "live": {
+          "is": "no"
+        },
+        "name": "已结束",
+        "order": 5,
+        "settled": true,
+        "tip": "已结束 · 可恢复",
+        "tone": "plain"
+      },
       "firstUserExcerpt": "父",
       "group": "claude:/w/beta",
       "hidden": {
@@ -254,7 +434,6 @@
       "spanText": "00:00–00:00",
       "starred": true,
       "startedAt": 400,
-      "status": "ended",
       "title": "分叉的父会话",
       "untitled": false,
       "updatedAt": 600

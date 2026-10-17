@@ -3,7 +3,7 @@
 //! 一张真值表钉 `observe::session_ledger` 的全部裁决：摘除按 cause ＋ 摘除之后才起的快照 · 只收割可重连的（活的只认 pidfile）·
 //! 按会话句柄认会话（改名不算关）· 一个会话里几个窗格各挂各的 · 不可观测不收割 · 每一份快照推出（没报过的）可重连 · 清单压到快照之后。
 use super::*;
-use crate::wire::ActivityFaceExt as _;
+use crate::wire::SessionFaceExt as _;
 use crate::wire::{Frame, RemovalCause, SessionFate};
 
 /// 账本的一格输入：一帧（要发出去的）或一份 tmux 观测（观测不再是帧）。
@@ -33,7 +33,10 @@ fn added(sid: &str) -> Ev {
         project_dir: None,
         name: None,
         path: None,
-        face: crate::wire::ActivityFace::of(None),
+        face: crate::wire::SessionFace::of(crate::wire::Life::Live {
+            activity: None,
+            tmux: None,
+        }),
         name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
         hidden: None,
@@ -153,7 +156,10 @@ fn a_removal_waits_for_an_observation_and_asks_for_one() {
         project_dir: None,
         name: None,
         path: None,
-        face: crate::wire::ActivityFace::of(None),
+        face: crate::wire::SessionFace::of(crate::wire::Life::Live {
+            activity: None,
+            tmux: None,
+        }),
         name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
         hidden: None,
@@ -354,4 +360,120 @@ fn a_session_that_comes_back_leaves_reconnectable_and_the_list_passes_once_tmux_
     assert_eq!(passed[2], true, "快照已经到过 ⇒ 清单不压");
     // 起初 `a` 不活 ⇒ 推导为可重连；又活了 ⇒ 摘掉；离开 ⇒ 可重连；又活了；离开时 tmux 已关 ⇒ 已结束。
     assert_eq!(out, fates(&[("a", R), ("a", R), ("a", E)]));
+}
+
+fn status(sid: &str) -> Frame {
+    Frame::SessionStatus(crate::wire::SessionStatus {
+        sid: sid.into(),
+        face: crate::wire::SessionFace::of(crate::wire::Life::Live {
+            activity: None,
+            tmux: None,
+        }),
+        name_face: crate::history::search_rules::name_face(&Default::default()),
+        waiting_for: None,
+        path: None,
+    })
+}
+
+/// 一帧 `session_state` 的那颗点。
+fn dot_of(f: &Frame) -> (String, crate::wire::SessionDot) {
+    match f {
+        Frame::SessionState(crate::wire::SessionState { sid, face, .. }) => (sid.clone(), face.dot),
+        other => panic!("该是 session_state，却是 {other:?}"),
+    }
+}
+
+/// 进程状态文件被重扫推来一帧陈旧的 `session_status`：那条已经不活了 ⇒ 不发（「已结束」不会被它改回活的）。
+#[test]
+fn a_status_for_a_session_that_is_not_live_is_not_sent() {
+    let mut l = SessionLedger::new();
+    let Ev::F(a) = added("a") else { unreachable!() };
+    l.on_frame(&a);
+    assert!(l.on_frame(&status("a")).0, "活着的照发");
+    let Ev::F(r) = removed("a", RemovalCause::Superseded) else {
+        unreachable!()
+    };
+    l.on_frame(&r);
+    assert_eq!(
+        l.on_frame(&status("a")),
+        (false, Vec::new()),
+        "已结束的不发"
+    );
+    assert!(!l.on_frame(&status("never")).0, "从没活过的不发");
+}
+
+/// 记录在不在由账本管：已结束的那条，问过说记录不在 ⇒ 每条连接一帧「记录已不在」；又在了 ⇒ 回已结束；活的 · 可重连的不动。
+#[test]
+fn a_record_seen_flips_an_ended_session_between_ended_and_gone() {
+    use crate::wire::SessionDot as D;
+    let mut l = SessionLedger::new();
+    for f in [added("x"), added("y"), added("z")] {
+        let Ev::F(f) = f else { unreachable!() };
+        l.on_frame(&f);
+    }
+    let Ev::F(r) = removed("x", RemovalCause::Superseded) else {
+        unreachable!()
+    };
+    let (_, said) = l.on_frame(&r);
+    assert_eq!(
+        said.iter().map(dot_of).collect::<Vec<_>>(),
+        [("x".into(), D::Ended)]
+    );
+    assert_eq!(
+        l.on_record("x", false)
+            .iter()
+            .map(dot_of)
+            .collect::<Vec<_>>(),
+        [("x".into(), D::Gone)]
+    );
+    assert!(l.on_record("x", false).is_empty(), "没翻不重发");
+    assert_eq!(
+        l.on_record("x", true)
+            .iter()
+            .map(dot_of)
+            .collect::<Vec<_>>(),
+        [("x".into(), D::Ended)]
+    );
+    assert!(l.on_record("y", false).is_empty(), "活的不动");
+    // z 退了、tmux 里还挂着 ⇒ 可重连；记录不在也不动它（接得回去）。
+    let Ev::F(r) = removed("z", RemovalCause::Gone) else {
+        unreachable!()
+    };
+    l.on_frame(&r);
+    l.observing();
+    let said = l.on_tmux(&row("$1", "tz", &["z"]), None);
+    assert_eq!(
+        said.iter().map(dot_of).collect::<Vec<_>>(),
+        [("z".into(), D::Exited)]
+    );
+    assert!(l.on_record("z", false).is_empty(), "可重连的不动");
+    // 手上留着、从没说过的那条（只给那条连接答过已结束）也认。
+    l.said_ended("k");
+    assert_eq!(
+        l.on_record("k", false)
+            .iter()
+            .map(dot_of)
+            .collect::<Vec<_>>(),
+        [("k".into(), D::Gone)]
+    );
+}
+
+/// 出已结束那一刻，记录路径知道、而那份记录已经不在了 ⇒ 直接出「记录已不在」。
+#[test]
+fn an_ending_whose_record_is_already_missing_is_said_gone() {
+    let mut l = SessionLedger::new();
+    let missing = std::env::temp_dir().join("ccm-ledger-no-such-record.jsonl");
+    let Ev::F(Frame::SessionAdded(mut a)) = added("x") else {
+        unreachable!()
+    };
+    a.path = Some(missing.to_string_lossy().into_owned());
+    l.on_frame(&Frame::SessionAdded(a));
+    let Ev::F(r) = removed("x", RemovalCause::Superseded) else {
+        unreachable!()
+    };
+    let (_, said) = l.on_frame(&r);
+    assert_eq!(
+        said.iter().map(dot_of).collect::<Vec<_>>(),
+        [("x".into(), crate::wire::SessionDot::Gone)]
+    );
 }

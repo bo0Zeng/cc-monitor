@@ -96,7 +96,7 @@
 
 ## 5. 会话流：帧的先后与续传
 
-1. 连上：`hello` → 每个活会话一帧 `session_added`（宣告时带初始 `activity` / `waiting_for`；后台会话带 `background: true`）→ `sessions_replayed`（「清单报完了」：分清「还没说完」与「说完了、里面没有它」）。
+1. 连上：`hello` → 每个活会话一帧 `session_added`（宣告时带那条会话的整份脸 `face` 与 `waiting_for`；后台会话带 `background: true`）→ `sessions_replayed`（「清单报完了」：分清「还没说完」与「说完了、里面没有它」）。
    `session_added.agent_kind` 每条都带（那一家的 kind）。哪几家进流、各自怎么判活由适配层在注册表那一行声明（`Adapter::live`：认 pidfile · 认开着写 · 判不了），
    冷读（`history-facts` 的 `writers` 与「状态不明」的原因 · `history-turns` 还在跑那一轮）问同一个声明（`accounts_query::session_holders`）：
    - 有 pidfile 的那一家（Claude Code）：活会话 ＝ pidfile 在、进程在。
@@ -110,8 +110,8 @@
      只在 Linux 上判得了；别的平台照实判不了，这一家的会话不宣告。
 2. 内容：每条记录一帧 `line`，带成品 `record`（通用记录，见下面「通用记录」一节；缺 ＝ 不进界面、照占号）、`seq`（本条流里按文件单调递增）与 `byte_offset`（这一行末尾在文件里的累计字节）。
    **续传用 `byte_offset`，不用 `seq`**：断线重连后拿它当偏移再读（`history-read`）。
-3. 状态：`session_status`（红绿灯变了才发，天然稀疏；`activity` ＝ `working` · `needs_you` · `idle` · `background_work`（一轮停了、它在后台起的命令还在跑），后端适配层从那一家的进程状态翻过来；没有进程状态文件的那一家照它记录里的事件翻（一轮开始 ⇒ `working`，一轮完了 / 中止 ⇒ `idle`），翻不出就不带）· `session_runs`（子运行表，整份）· `changed`（「这台的某样东西变了」，下面「`changed` 主题表」）。
-4. 离开：`session_removed`（`cause`：`gone` 真没了 · `superseded` 同一个 pidfile 原地换了 sid，后者客户端直接归档、别去查 tmux）→ `session_state`（这台后端自己裁：`reconnectable` 容器还在、接得回去 · `ended` 只能 resume）。
+3. 状态：`session_status`（红绿灯变了才发，天然稀疏；带整份脸 `face`：点 · 短名 · 悬停句 · 状态一句 · 序 · 能做什么，在干什么在 `face.live.activity` ＝ `working` · `needs_you` · `idle` · `background_work`（一轮停了、它在后台起的命令还在跑），后端适配层从那一家的进程状态翻过来；没有进程状态文件的那一家照它记录里的事件翻（一轮开始 ⇒ `working`，一轮完了 / 中止 ⇒ `idle`），翻不出就不带）· `session_runs`（子运行表，整份）· `changed`（「这台的某样东西变了」，下面「`changed` 主题表」）。
+4. 离开：`session_removed`（`cause`：`gone` 真没了 · `superseded` 同一个 pidfile 原地换了 sid，后者客户端直接归档、别去查 tmux）→ `session_state`（这台后端自己裁：`reconnectable` 容器还在、接得回去 · `ended` 只能 resume；带离开「活」之后那份 `face`）。
 5. 记录文件被动过：`session_file_gone`（不见了，不误判结束）· `session_file_reread`（被截短 / 改写过、已从头重读；重读的行不逐行上流，帧带读完的行数，客户端照宣告那样从尾段取）。
 6. 背压：实时通道满时丢帧，排空后发一帧 `overflow`（丢了几帧 ＋ 不可恢复的那些帧的身份 `lost`）。`line` 丢了可以从记录文件补；`session_added` / `session_removed` / `session_status` / `session_state` / 不可丢主题的 `changed`（`lost` 里 `kind: "changed"`、`subject` ＝ `主题` 或 `主题/key`）这类一次性结论丢了别处没有，客户端按 `lost` 重同步。
 
@@ -169,15 +169,15 @@
 - 帧：`hello` `v` `build_id` `host_arch` `claude_dir` `emits` · `line` `session_id` `path` `seq` `byte_offset` `record` ·
   `overflow` `said` · `live` `sid` `run` `card` `n` `op` `rid` `phase` `clipped` `blocks` ·
   `reply` `id` `ok` `code` `message` `detail` `data` · `cancelled` `id` · 请求信封 `id` `cmd` `args` `within_ms`（可缺）`tz`（可缺）`view`（可缺）。
-- 会话三帧与成品面在格目录里：每格带 `frozen`。`session_added`（`sid` `path` `cwd` `name` `waiting_for` `agent_kind` `attachable` `activity` `activity_text` `activity_tone` `background`）·
-  `session_status`（`sid` `waiting_for` `activity` `activity_text` `activity_tone`）· `session_removed`（`sid` `cause`）只冻这几格；
+- 会话三帧与成品面在格目录里：每格带 `frozen`。`session_added`（`sid` `path` `cwd` `name` `waiting_for` `agent_kind` `attachable` `background` 与整份脸 `face` 里手机读的那几格）·
+  `session_status`（`sid` `waiting_for` 与 `face` 那几格）· `session_state`（`sid` 与 `face` 那几格）· `session_removed`（`sid` `cause`）只冻这几格；
   `line.record` 与 `history-read` 的 `rows`（`end` `hash` `record` `cwd`）整件冻结 —— 通用记录的公共格、六类各自的格、`who`、`error`、各种内容块逐格冻结（见下面「通用记录」一节）；
   `history-page` / `history-lines` / `history-run` 的 `record` 是同一形；
-  `quota-read`（`quota_read`：每号的 `rows` · `fiveHour` · `warm` 与号名表 `names` 等）· `history-list`（`history_list`：每行的标题 · 时刻 · 段头 · 注解三格等）只冻手机读的那几格。新加一格随格目录金样重写（`cells_catalog_tests::the_golden_is_what_the_command_writes`，删 / 改名 / 换类型 / 解冻重写也不放行）。
+  `quota-read`（`quota_read`：每号的 `rows` · `fiveHour` · `warm` 与号名表 `names` 等）· `history-list`（`history_list`：每行的标题 · 时刻 · 段头 · 注解三格 · 整份脸那几格等）只冻手机读的那几格。新加一格随格目录金样重写（`cells_catalog_tests::the_golden_is_what_the_command_writes`，删 / 改名 / 换类型 / 解冻重写也不放行）。
   `line.raw` 逐字节等于记录文件里那一行，去掉行尾（`\n`；CRLF 行连 `\r` 一起去）。
 - **改了冻结的格就得打版本号**（同加子命令）：`build_id_guard` 的指纹带一行冻结格的摘要 ⇒ 第二个前端连上只核 `BUILD_ID` 这一处，不用逐格核。
 - 一次性子命令：第二个前端只调 `--backend-probe` · `--resident-ensure`（可带 `--replace`）· `--resident-attach`，其余都走常驻流上的帧命令。
-- 会话是不是后台、此刻在干什么只看后端判好的 `background` · `activity`；那一家的原词不上线。
+- 会话是不是后台、此刻在干什么只看后端判好的 `background` · `face`；那一家的原词不上线。
 - 判据：`wire_tests::the_shapes_the_second_frontend_reads_stay_put`（帧那张表，类型逐格对）· `cells_catalog_tests::the_golden_is_what_the_command_writes`（格目录里冻结的格）· `build_id_guard::tests::adding_a_subcommand_forces_a_build_id_bump`（子命令集或冻结格变了 ⇒ 打版本号）· `wire_tests::the_subcommands_the_second_frontend_calls_stay_put`（子命令那三条）。
 - 跨语言金样：`tests/__fixtures__/session-stream.golden.jsonl`，每种帧两行（「全格」与「最少格」），由后端真序列化器写；最少格里的格就是必填格。
   终端管理 `tests/__fixtures__/terminals.golden.json` · `resolve` `tests/__fixtures__/resolve-contract.golden.json`。

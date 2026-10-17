@@ -30,14 +30,14 @@ import type { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 import type { TabCollection } from "../../../src/frontend/ui/tab-collections";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
-import { ENDED, LIVE } from "../../../src/frontend/ui/tab-session-state";
+import { goldenFace, liveFace } from "../../test-support/session-faces";
 
 /** tab 栏视图只读 `Tab` 的这几格；其余字段它不碰（`tab-bar-view.ts::updateTabButton` / `updateAccountBadge`）。 */
 function fakeTab(sid: string, over: Partial<Tab> = {}): Tab {
   return {
     sessionId: sid,
     title: `标题-${sid}`,
-    state: LIVE,
+    face: liveFace("working"), line: null,
     pinned: false,
     group: null, // 组员关系是 tab 自己的属性
     cwd: "/w",
@@ -202,7 +202,7 @@ describe("P2 ＋ P7 ＋ P1：整刷改成差量刷", () => {
   it("一个 tab 的红绿灯变了 ⇒ 恰好 3 条记录、全落在那颗按钮上（灯那一档的钩子 · 状态点的样子 · 状态点的读屏名；两向：别的按钮 0 条）", () => {
     const r = make(20, 4);
     r.take();
-    (r.store.tabs.get("s7") as { activity: unknown }).activity = { doing: "idle", waitingFor: null, text: "核心·空闲", tone: "plain" };
+    r.store.tabs.get("s7")!.face = liveFace("idle");
     r.view.refresh();
     const recs = r.take();
     expect(recs.map((x) => ownerSid(r, x))).toEqual(["s7", "s7", "s7"]);
@@ -225,12 +225,12 @@ describe("P2 ＋ P7 ＋ P1：整刷改成差量刷", () => {
 });
 
 describe("P4：启动 N 个会话各报一次红绿灯 ⇒ DOM 写总数是 3N，不是 N²（每颗：类 · 状态点 · 读屏名）", () => {
-  /** 照 `tabs.ts::syncActivitySnapshot`：每个会话一次 `updateActivity` ⇒ 每次一次整刷。 */
+  /** 每个会话来一张脸（`tabs.ts::onFace`）⇒ 每次一次整刷。 */
   const startupWrites = (n: number): number => {
     const r = make(n);
     r.take();
     for (const sid of r.store.orderedIds) {
-      (r.store.tabs.get(sid) as { activity: unknown }).activity = { doing: "idle", waitingFor: null, text: "核心·空闲", tone: "plain" };
+      r.store.tabs.get(sid)!.face = liveFace("idle");
       r.view.refresh();
     }
     return r.take().length;
@@ -457,7 +457,7 @@ describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒定那�
 
     it("↗ 在已结束的 tab 上 ⇒ 什么都不做", () => {
       const r = make(2);
-      r.store.tabs.get("s0")!.state = ENDED;
+      r.store.tabs.get("s0")!.face = goldenFace("ended");
       sub(r, "s0", "tab-focus").click();
       expect(r.host.bringTerminalToFront).not.toHaveBeenCalled();
       expect(r.host.bringRemoteTerminalToFront).not.toHaveBeenCalled();
@@ -483,8 +483,8 @@ describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒定那�
 
     it("中键：已结束的 ⇒ 关掉并 preventDefault；活着的 ⇒ 不关；按在 × 上 ⇒ 不关（原先 × 吞掉了 mousedown）", () => {
       const r = make(3);
-      r.store.tabs.get("s0")!.state = ENDED;
-      r.store.tabs.get("s2")!.state = ENDED;
+      r.store.tabs.get("s0")!.face = goldenFace("ended");
+      r.store.tabs.get("s2")!.face = goldenFace("ended");
       const e = new MouseEvent("mousedown", { button: 1, bubbles: true, cancelable: true });
       btn(r, "s0").dispatchEvent(e);
       expect(r.host.closeTab).toHaveBeenCalledWith("s0");

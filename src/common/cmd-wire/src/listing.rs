@@ -74,12 +74,8 @@ pub struct HistoryRow {
     pub label: Words,
     /// 改过的标题 · 标题 · 第一句都没有（界面写「没有说过话的会话」）。
     pub untitled: bool,
-    /// `live` 在跑 · `reconnectable` claude 退了、tmux 里还挂着它 · `ended` 已结束 · `unknown` 说不清（活不活只出这一格）。
-    #[cfg_attr(
-        any(test, feature = "ts"),
-        ts(type = "\"live\" | \"reconnectable\" | \"ended\" | \"unknown\"")
-    )]
-    pub status: String,
+    /// 那台此刻对这一行的说法（活着的照它的进程状态文件判在干什么；判不了活 ⇒ 状态不明）。
+    pub face: crate::frame::SessionFace,
     pub can: Can,
     /// 行上那一家的小牌（对用户的叫法）；默认那一家 ⇒ `null`。
     pub agent_tag: Option<Words>,
@@ -184,6 +180,28 @@ pub struct FailedDir {
     pub error: String,
 }
 
+/// 清单那一行这台判的活不活：在跑（那一家说在干什么，判不出 ⇒ 缺）· 可重连（claude 退了、tmux 里还挂着它，会话账本说的）· 已结束。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(
+        export,
+        rename = "HistoryRowLife",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
+    )
+)]
+#[serde(tag = "is", rename_all = "snake_case")]
+pub enum RowLife {
+    Live {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        activity: Option<crate::frame::SessionActivity>,
+    },
+    Reconnectable,
+    Ended,
+}
+
 /// 清单里的一行（这台判过活、注解格先按没有填）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -210,12 +228,8 @@ pub struct RawRow {
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub updated_at: i64,
     pub jsonl_path: String,
-    /// 判不了活（合成历史没有 pidfile）⇒ `null`。
-    pub is_live: Option<bool>,
-    /// 不在跑、claude 退了而 tmux 里还挂着它（那台的会话账本说的）；否 ⇒ 缺。
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
-    pub reconnectable: bool,
+    /// 这台判的活不活（判不了：合成历史没有 pidfile ⇒ `null`）。
+    pub life: Option<RowLife>,
     pub message_count_approx: u32,
     pub is_bg: bool,
     pub starred: bool,

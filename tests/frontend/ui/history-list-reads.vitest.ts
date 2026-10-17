@@ -34,7 +34,7 @@ describe("跨语言金样（后端出、这里读）", () => {
     const v = golden as unknown as HistoryList;
     expect(v.rows.length).toBe(golden.rows.length);
     expect(v.rows.some((r) => r.context === true)).toBe(true);
-    expect(v.rows.some((r) => r.status === "unknown" && r.can.delete === "unsure")).toBe(true);
+    expect(v.rows.some((r) => r.face.dot === "unknown" && r.can.delete === "unsure")).toBe(true);
     expect(v.groups.some((g) => g.failed !== null)).toBe(true);
     expect(v.rows.every((r) => r.origin === "dev")).toBe(true);
   });

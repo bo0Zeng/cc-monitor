@@ -5,6 +5,7 @@
  *
  * 真 `AgentWindow` ＋ 真卡；替身只在边上：会话那一行（`fetchList`）· 按运行读（`loadRunPage`）· 会话流（`followSession` 交来的运行表）· 窗口与事件。
  */
+import { liveFace } from "../../test-support/session-faces";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { FollowEvent } from "../../../src/frontend/ui/events";
 import type { RunInfo } from "../../../src/frontend/ui/generated/RunInfo";
@@ -46,7 +47,7 @@ vi.mock("../../../src/frontend/ui/ipc/commands", () => ({
 vi.mock("../../../src/frontend/ui/history-list-reads", () => ({
   fetchList: () =>
     Promise.resolve({
-      rows: [{ sessionId: "s1", status: "live", jsonlPath: "/p/s1.jsonl", label: "主会话", untitled: false, agent: "claude", projectName: "proj" }],
+      rows: [{ sessionId: "s1", face: liveFace("working"), jsonlPath: "/p/s1.jsonl", label: "主会话", untitled: false, agent: "claude", projectName: "proj" }],
     }),
 }));
 vi.mock("../../../src/frontend/ui/record-reads", () => ({

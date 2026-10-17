@@ -29,6 +29,7 @@
  */
 import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 import { owned } from "../../../test-support/owned-tab-manager.ts";
+import { announced, goldenFace } from "../../../test-support/session-faces";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { resolve, join, sep } from "node:path";
 import ts from "typescript";
@@ -345,7 +346,7 @@ describe("本机恢复的主路：人没动过 ⇒ 不带号 · 不带放在哪�
       agent: "claude", agentTag: null, sessionId: "s1", projectDir: "pd", projectPath: "/p", projectName: "P", group: "claude:/p",
       aiTitle: "T", firstUserExcerpt: "x", title: "T", label: "T", untitled: false, startedAt: 1, updatedAt: 1, at: 1,
       jsonlPath: "/p/s1.jsonl", messageCountApprox: 1, isBg: false, starred: false, customTitle: null, hidden: null,
-      status: "ended", can: { resume: "yes", accounts: true, fork: true, delete: "yes" },
+      can: { resume: "yes", accounts: true, fork: true, delete: "yes" },
     };
   }
 
@@ -367,10 +368,10 @@ describe("本机恢复的主路：人没动过 ⇒ 不带号 · 不带放在哪�
     const bar = document.createElement("div");
     const root = document.createElement("div");
     document.body.append(bar, root);
-    const tm = owned(new TabManager(bar, root));
+    const tm = owned(announced(new TabManager(bar, root)));
     const t = tm.ensureTab(sid, "/home/u/p", `/p/${sid}.jsonl`, LOCAL_ORIGIN);
     t.agent = "claude"; // 会话事实到了（是哪一家由后端说）
-    tm.archiveTab(sid);
+    tm.onFace(sid, goldenFace("ended"));
     await (tm as unknown as { actions: TabSessionActions }).actions.resume(sid);
     await new Promise((r) => setTimeout(r, 0));
   }

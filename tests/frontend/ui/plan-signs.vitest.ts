@@ -9,7 +9,7 @@ import { recentSigns } from "../../../src/frontend/ui/views/plan-model.ts";
 import { topTarget, cellTarget } from "../../../src/frontend/ui/views/plan-review.ts";
 import type { PlanCell, PlanNeed, PlanSlice, PlanWho } from "../../../src/frontend/ui/plan-reads.ts";
 
-const who = (sid: string): PlanWho => ({ id: sid, kind: "session", sid, alive: true, activity: "idle", needs: null }) as PlanWho;
+const who = (sid: string): PlanWho => ({ id: sid, kind: "session", sid, needs: null }) as unknown as PlanWho;
 const sign = (at: string, reason: string) => ({ at, atText: at, by: who("s1"), reason, refs: [] });
 const cell = (id: string, title: string, signs: ReturnType<typeof sign>[], extra: Partial<PlanCell> = {}): PlanCell =>
   ({ id, title, kind: "模块", parent: null, children: [], signs, statusCode: "done", owner: who("s2"), signer: null, ...extra }) as unknown as PlanCell;

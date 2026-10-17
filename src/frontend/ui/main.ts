@@ -451,7 +451,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     accountsRefresher.request();
     void accountChip.refresh();
   };
-  // 会话起停：下面 `bindEvents` 的 `onRemoteSessionAdded` / `onSessionEnded` 里各请一次。
+  // 会话起停：下面 `bindEvents` 的 `onRemoteSessionAdded` / `onSessionFace` 里各请一次。
 
   // 用户手动切过 tab 后，迟到的宣告不补切抢焦点（用户的选择优先，记下此刻所在那一格）
   tabs.onManualSwitch = () => {
@@ -857,16 +857,17 @@ window.addEventListener("DOMContentLoaded", async () => {
       tabs.onLine(e);
       recordFile.afterLine(e.session_id); // 又来了一行 ⇒ 「记录文件不见了」那一句收掉
     },
-    onSessionEnded: (sessionId, sw, order) => {
-      const origin = tabs.tabsInOrder().find((t) => t.sessionId === sessionId)?.origin ?? null;
-      tabs.archiveTab(sessionId, sw ?? null, order ?? null);
+    // 那台说的整份脸（宣告 · 活动 · 去向三帧都带）。
+    onSessionFace: (sessionId, face) => {
+      const tab = tabs.tabsInOrder().find((t) => t.sessionId === sessionId);
+      const ended = face.dot === "ended" && tab?.face?.dot !== "ended";
+      tabs.onFace(sessionId, face);
+      if (!ended) return;
       accountsRefresher.request(); // 会话结束了
-      if (origin !== null) void planNeeds.refresh(origin); // 接手的会话停了 ⇒ 那台的「需手动」可能多一条
+      if (tab) void planNeeds.refresh(tab.origin); // 接手的会话停了 ⇒ 那台的「需手动」可能多一条
     },
-    // 远端 claude 退了但 tmux 会话仍在 → 灰灯（idle-tmux，不归档）。
-    onSessionIdle: (sessionId, sw, order) => tabs.markTmuxIdle(sessionId, sw ?? null, order ?? null),
-    // 活会话的容器 · 某台机器的活会话清单报完了（说不清 → 已结束）。
-    onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container),
+    onSessionName: (sessionId, label, labelProject) => tabs.updateName(sessionId, label, labelProject),
+    // 某台机器的活会话清单报完了。
     onOriginSessionsListed: (origin, all) => {
       tabs.markOriginSeen(origin);
       if (!all) return;
@@ -888,13 +889,10 @@ window.addEventListener("DOMContentLoaded", async () => {
     onOriginUnseen: (origin) => tabs.markOriginUnseen(origin),
     // 一台机器一直看不见 ⇒ 提示里「打开设置」（那台连不连得上在机器页里看得到）。
     openMachineSettings: (origin) => void openSettingsWindow(undefined, dest.machineOf(origin)),
-    // 会话复活（resume）：后端 liveness 门控后才发，复活已归档的本地 Tab，免 F5。
-    // 没有 Tab（运行中途新出现的本地会话）→ 建骨架：bg 会话的 kind / name 只从这里来（首行建的 tab 不带 kind）。
+    // 本机会话宣告：没有 Tab（运行中途新出现的本地会话）→ 建骨架：bg 会话的 kind / name 只从这里来（首行建的 tab 不带 kind）。
     onSessionStarted: (sessionId, meta) => {
-      const had = tabs.hasTab(sessionId);
-      // 没有就建骨架；已有（固定的 / 归档的）就对齐后端给的项目目录，再复活。
+      // 没有就建骨架；已有（固定的 / 已结束的）就对齐后端给的项目目录（又活了那张脸随宣告当场到）。
       tabs.createSkeletonTab(sessionId, meta.projectDir || null, LOCAL_ORIGIN, meta.background, meta.name, null, meta.hidden);
-      if (had) tabs.reviveTab(sessionId);
       // 本机骨架也在就绪点才到（与远端同一条路）⇒ 上次所在 tab 是本机会话时同样在这里补切。
       startup?.onAppeared(sessionId);
       noteLive(LOCAL_ORIGIN, sessionId, { cwd: meta.cwd }); // 起会话的真成功正信号
@@ -954,11 +952,6 @@ window.addEventListener("DOMContentLoaded", async () => {
           for (const [sid, h] of hiddenPushed(change)) tabs.setHidden(sid, h);
           break;
       }
-    },
-    // 会话红绿灯（后端翻好的活动态）
-    onSessionActivity: (e) => {
-      tabs.updateName(e.sid, e.label, e.label_project ?? null);
-      tabs.updateActivity(e.sid, e.activity ?? null, e.waiting_for ?? null, e.activity_text, e.activity_tone, e.activity_order, e.switch);
     },
     // 远端会话宣告 → 骨架 Tab，附项目目录 / kind / name：骨架标题当场完整（bg → ⚙ ＋ 任务名）；没给项目目录 ⇒ 标题退到 aiTitle / sid。
     onRemoteSessionAdded: (sessionId, origin, meta) => {

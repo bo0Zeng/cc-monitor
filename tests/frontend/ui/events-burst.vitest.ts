@@ -86,7 +86,7 @@ describe("events.ts 的突发哨兵（audit-0805 F17：这 135 条语句此前 0
     const onLine = vi.fn();
     await bindEvents({
       onLine,
-      onSessionEnded: vi.fn(),
+      onSessionFace: vi.fn(),
       onBatchStart,
       onBatchEnd: vi.fn(),
     } as never, STREAMS);
@@ -117,7 +117,7 @@ describe("events.ts 的突发哨兵（audit-0805 F17：这 135 条语句此前 0
   it("300ms grace 定时器在桩还装着的时候跑完 —— 遥测那一跳只许出声，不许炸", async () => {
     await bindEvents({
       onLine: vi.fn(),
-      onSessionEnded: vi.fn(),
+      onSessionFace: vi.fn(),
       onBatchStart: vi.fn(),
       onBatchEnd: vi.fn(),
     } as never, STREAMS);
@@ -159,7 +159,7 @@ describe("〔GP1〕unseen 格进 queue、交给 onOriginUnseen", () => {
     const order: string[] = [];
     await bindEvents({
       onLine: (e: { seq: number }) => order.push(`line-${e.seq}`),
-      onSessionEnded: vi.fn(),
+      onSessionFace: vi.fn(),
       onOriginUnseen: (origin: string) => order.push(`unseen-${origin}`),
       onBatchStart: vi.fn(),
       onBatchEnd: vi.fn(),
@@ -175,7 +175,7 @@ describe("〔GP1〕unseen 格进 queue、交给 onOriginUnseen", () => {
     const got: [string, boolean][] = [];
     await bindEvents({
       onLine: vi.fn(),
-      onSessionEnded: vi.fn(),
+      onSessionFace: vi.fn(),
       onOriginSessionsListed: (origin: string, all: boolean) => got.push([origin, all]),
       onBatchStart: vi.fn(),
       onBatchEnd: vi.fn(),
@@ -207,7 +207,7 @@ describe("live 格的项目目录交到处理器", () => {
     const added = vi.fn();
     await bindEvents({
       onLine: vi.fn(),
-      onSessionEnded: vi.fn(),
+      onSessionFace: vi.fn(),
       onSessionStarted: started,
       onRemoteSessionAdded: added,
       onBatchStart: vi.fn(),
@@ -224,7 +224,7 @@ describe("live 格的项目目录交到处理器", () => {
   it("★ 隐藏那一格（后端判好、壳原样转的 `{by, said} | null`）原样交给处理器：哪一档都认（含命令行当场写的 `launch`）", async () => {
     const started = vi.fn();
     const added = vi.fn();
-    await bindEvents({ onLine: vi.fn(), onSessionEnded: vi.fn(), onSessionStarted: started, onRemoteSessionAdded: added, onBatchStart: vi.fn(), onBatchEnd: vi.fn() } as never, TWO);
+    await bindEvents({ onLine: vi.fn(), onSessionFace: vi.fn(), onSessionStarted: started, onRemoteSessionAdded: added, onBatchStart: vi.fn(), onBatchEnd: vi.fn() } as never, TWO);
     const live = (sid: string, hidden?: unknown) => ({ added: { sid, agent_kind: "claude", pid: 1, background: true, hidden } });
     streamFake.lifecycle([live("a", { by: "bg", said: "占位·分身" }), live("c")], 0);
     streamFake.lifecycle([live("b", { by: "child", said: "占位·子" }), live("d", { by: "launch", said: "占位·命令行" })], 1);

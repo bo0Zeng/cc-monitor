@@ -10,6 +10,7 @@
 
 use super::{Live, WhoPort, Whose};
 use copy_core::copy_text;
+use crate::wire::SessionFaceExt as _;
 use serde_json::{json, Map, Value};
 use std::collections::BTreeMap;
 
@@ -116,26 +117,37 @@ pub(crate) fn who_json(id: Option<&str>, who: WhoPort) -> Value {
     let Some(id) = id.filter(|i| !i.is_empty()) else {
         return Value::Null;
     };
-    let live_json = |l: &Option<Live>| match l {
-        Some(l) => (
-            true,
-            serde_json::to_value(l.activity).unwrap_or(Value::Null),
-            serde_json::to_value(l.needs).unwrap_or(Value::Null),
-        ),
-        None => (false, Value::Null, Value::Null),
+    let needs_json = |l: &Option<Live>| match l {
+        Some(l) => serde_json::to_value(l.needs).unwrap_or(Value::Null),
+        None => Value::Null,
     };
-    let (kind, sid, live) = match who(id) {
-        Whose::Session { sid, live } => ("session", Some(sid), live_json(&live)),
-        Whose::Subagent { parent, live } => ("subagent", Some(parent), live_json(&live)),
-        Whose::Unknown => ("unknown", None, (false, Value::Null, Value::Null)),
+    let face_of = |l: &Option<Live>| {
+        crate::wire::SessionFace::of(match l {
+            Some(l) => crate::wire::Life::Live {
+                activity: l.activity,
+                tmux: None,
+            },
+            None => crate::wire::Life::Ended,
+        })
+    };
+    let (kind, sid, needs, face) = match who(id) {
+        Whose::Session { sid, live } => ("session", Some(sid), needs_json(&live), face_of(&live)),
+        Whose::Subagent { parent, live } => {
+            ("subagent", Some(parent), needs_json(&live), face_of(&live))
+        }
+        Whose::Unknown => (
+            "unknown",
+            None,
+            Value::Null,
+            crate::wire::SessionFace::of(crate::wire::Life::Unclear),
+        ),
     };
     json!({
         "id": id,
         "kind": kind,
         "sid": sid,
-        "alive": live.0,
-        "activity": live.1,
-        "needs": live.2,
+        "needs": needs,
+        "face": face,
     })
 }
 

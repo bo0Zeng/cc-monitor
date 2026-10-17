@@ -46,10 +46,10 @@ function badge(text: string, tone?: "live" | "need"): HTMLElement {
   return b;
 }
 
-/** 状态点：只画在跑与需手动。 */
+/** 状态点：只画进程在的（那台给这一行的脸）与需手动。 */
 function dotOf(r: HistoryRow, needs: string | null): HTMLElement | null {
   if (needs) return statusDot("needs-you", needs, "compact");
-  if (r.status === "live") return statusDot("running", copyText("history.row.live"), "compact");
+  if (r.face.live.is === "yes") return statusDot(r.face.dot, r.face.name, "compact");
   return null;
 }
 
@@ -63,7 +63,7 @@ export function rowBadges(r: HistoryRow, needs: string | null, live = true): HTM
   if (r.isBg) badges.push(badge(copyText("history.row.bg")));
   if (r.hidden) badges.push(badge(copyText("history.row.hidden")));
   if (needs) badges.push(badge(needs, "need"));
-  else if (live && r.status === "live") badges.push(badge(copyText("history.row.live"), "live"));
+  else if (live && r.face.live.is === "yes") badges.push(badge(copyText("history.row.live"), "live"));
   return badges;
 }
 

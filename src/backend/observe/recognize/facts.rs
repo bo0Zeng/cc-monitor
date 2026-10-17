@@ -125,11 +125,118 @@ pub(crate) struct SessionFacts {
     /// 它起的子会话（按起的先后）；不累加，每次现查。
     #[serde(default)]
     pub(crate) children: Vec<Kin>,
+    /// **状态一句里会走的那一截**：pidfile 此刻说的那一态 ＋ 记录里的事实（在跑的那一步 · 等的种类与起点 · 最后一句的时刻），[`line_of`] 写。
+    /// 不活 ⇒ `null`。不累加，每次现查。
+    #[serde(default)]
+    pub(crate) line: Option<FactsLine>,
     /// 认不出、又不成卡的行（那一家的簿记行：没见过的类型、没有链上身份）：不在消息流里画，在这里照实说几行、哪几种。一行都没有 ⇒ `null`。
     pub(crate) quiet_unread: Option<QuietUnread>,
 }
 
-/// 会话血缘里的另一条会话（会话头「由 … 启动」· 「子会话 N」那一列）：编号 · 叫它什么 · 活不活 · 隐不隐藏（判定住 `control/session_hidden.rs`）。
+/// 状态一句（[`SessionFacts::line`]）：写它时 pidfile 说的那一态（`for`）· 此刻的字 · 会走的那一句（`{dur}` 由出口填）· 悬停卡那一句。
+/// 界面只在 `for` 与会话帧上那一态相同时用它（两份是同一刻的），否则用会话帧上那一句。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct FactsLine {
+    #[serde(rename = "for")]
+    pub(crate) of: crate::agents::SessionActivity,
+    pub(crate) text: Words,
+    pub(crate) clock: Option<Clock>,
+    pub(crate) peek: Option<Words>,
+}
+
+/// **状态一句会走的那一截的唯一一处**：`activity` ＝ pidfile 此刻说的那一态（不活 ⇒ `None` ⇒ 没有这一句）。
+/// 在等 ⇒ 等的种类 · 已等多久（悬停卡：等的那一句）；在跑 ⇒ 调用的那一步 · 跑了多久（那一步）；闲着 ⇒ 完成多久前（最后一句）；
+/// 后台 ⇒ 后台那一句（最后一句）。拿不到时刻 ⇒ 不带钟。
+pub(crate) fn line_of(
+    activity: Option<crate::agents::SessionActivity>,
+    f: &SessionFacts,
+    now_ms: u64,
+) -> Option<FactsLine> {
+    use crate::agents::SessionActivity as A;
+    let a = activity?;
+    let since = |ms: Option<i64>| ms.and_then(|m| u64::try_from(m).ok());
+    let ticking = |from: Option<u64>, line: &dyn Fn(&str) -> String, still: String| match from {
+        Some(from) => (
+            Words(line(&copy_core::short_duration(
+                now_ms.saturating_sub(from),
+            ))),
+            Some(Clock {
+                text: Words(line(DUR_SLOT)),
+                from,
+            }),
+        ),
+        None => (Words(still), None),
+    };
+    let last = || f.last_say.as_ref().map(|l| Words(l.text.clone()));
+    let (text, clock, peek) = match a {
+        A::NeedsYou => {
+            let n = f.needs.as_ref();
+            let kind = n.map_or_else(
+                || copy_core::copy_text("beSession.activity.needsYou", &[]),
+                |n| n.text.0.clone(),
+            );
+            let line = |w: &str| {
+                copy_core::copy_text(
+                    "sessionFace.state.waiting",
+                    &[("kind", &kind), ("waited", w)],
+                )
+            };
+            let (t, c) = ticking(n.and_then(|n| n.since_ms), &line, kind.clone());
+            (t, c, n.and_then(|n| n.what.clone()).map(Words))
+        }
+        A::Working => match f.pending.first() {
+            Some(p) => {
+                let line = |d: &str| {
+                    copy_core::copy_text(
+                        "sessionFace.state.runningFor",
+                        &[("tool", &p.name), ("dur", d)],
+                    )
+                };
+                let still = copy_core::copy_text("sessionFace.state.running", &[("tool", &p.name)]);
+                let (t, c) = ticking(since(p.at_ms), &line, still);
+                (t, c, p.what.clone().map(Words))
+            }
+            None => (
+                Words(copy_core::copy_text("beSession.activity.working", &[])),
+                None,
+                None,
+            ),
+        },
+        A::Idle => {
+            let line =
+                |ago: &str| copy_core::copy_text("sessionFace.state.idleSeen", &[("ago", ago)]);
+            let still = copy_core::copy_text("beSession.activity.idle", &[]);
+            let (t, c) = ticking(
+                f.last_say.as_ref().and_then(|l| since(l.at_ms)),
+                &line,
+                still,
+            );
+            (t, c, last())
+        }
+        A::BackgroundWork => match &f.background {
+            Some(b) => (b.text.clone(), b.clock.clone(), last()),
+            None => (
+                Words(copy_core::copy_text(
+                    "beSession.activity.backgroundWork",
+                    &[],
+                )),
+                None,
+                last(),
+            ),
+        },
+    };
+    Some(FactsLine {
+        of: a,
+        text,
+        clock,
+        peek,
+    })
+}
+
+/// 会话血缘里的另一条会话（会话头「由 … 启动」· 「子会话 N」那一列）：编号 · 叫它什么 · 此刻的整份脸 · 隐不隐藏（判定住 `control/session_hidden.rs`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -137,8 +244,8 @@ pub(crate) struct SessionFacts {
 pub(crate) struct Kin {
     pub(crate) sid: String,
     pub(crate) title: String,
-    /// 此刻活着（这台 pidfile 说的）。
-    pub(crate) live: bool,
+    /// 此刻这条会话的整份脸。
+    pub(crate) face: crate::wire::SessionFace,
     /// 隐藏那一格；不隐藏 ⇒ `null`（格恒在）。
     pub(crate) hidden: Option<cmd_wire::session::Hidden>,
 }

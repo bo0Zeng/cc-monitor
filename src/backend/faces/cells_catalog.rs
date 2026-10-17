@@ -577,9 +577,6 @@ fn put(
     }
 }
 
-/// 会话帧上 `switch` 那两格（[`crate::wire::Switch`]）按 `can` 分能换 · 不能换两种。
-const SWITCH_TAGS: &[(&str, &str)] = &[("model", "can"), ("permission", "can")];
-
 /// 一件成品。
 pub(crate) struct Product {
     /// 成品名（声明里 `cells` 的键）。帧是帧的 `kind`。
@@ -642,17 +639,17 @@ pub(crate) const PRODUCTS: &[Product] = &[
     // `lines` 10-12 挪出这一帧（read8a：宣告不等预读，行数改由读完那一帧 `session_primed` 带）：手机从来没读过它，只有桌面壳在读、同一刀跟上。
     Product {
         name: "session_added",
-        tags: SWITCH_TAGS,
+        tags: &[],
         specimens: specimens::session_added,
     },
     Product {
         name: "session_status",
-        tags: SWITCH_TAGS,
+        tags: &[],
         specimens: specimens::session_status,
     },
     Product {
         name: "session_state",
-        tags: SWITCH_TAGS,
+        tags: &[],
         specimens: specimens::session_state,
     },
     Product {
@@ -690,8 +687,8 @@ mod specimens {
         RetryRun, SessionFacts, StepWait, TokenUse, UnclearWhy, UsageFact,
     };
     use crate::observe::recognize::index_row::IndexRow;
-    use crate::wire::{ActivityFace, Frame, RemovalCause, SessionContainer, SessionFate};
-    use crate::wire::{ActivityFaceExt as _, FrameMake as _};
+    use crate::wire::{Frame, Life, RemovalCause, SessionContainer, SessionFace, SessionFate};
+    use crate::wire::{FrameMake as _, SessionFaceExt as _};
     use std::collections::BTreeMap;
 
     fn s(v: &str) -> String {
@@ -1042,7 +1039,10 @@ mod specimens {
                     started_by: Some(crate::observe::recognize::facts::Kin {
                         sid: s("k"),
                         title: s("t"),
-                        live: true,
+                        face: SessionFace::of(Life::Live {
+                            activity: Some(SessionActivity::Working),
+                            tmux: None,
+                        }),
                         hidden: crate::control::session_hidden::judge(
                             &crate::control::session_hidden::Facts {
                                 pin: Some(crate::history::history_annotations::Hide::On),
@@ -1053,7 +1053,10 @@ mod specimens {
                     children: vec![crate::observe::recognize::facts::Kin {
                         sid: s("k"),
                         title: s("t"),
-                        live: true,
+                        face: SessionFace::of(Life::Live {
+                            activity: Some(SessionActivity::Working),
+                            tmux: None,
+                        }),
                         hidden: crate::control::session_hidden::judge(
                             &crate::control::session_hidden::Facts {
                                 pin: Some(crate::history::history_annotations::Hide::On),
@@ -1061,6 +1064,15 @@ mod specimens {
                             },
                         ),
                     }],
+                    line: Some(crate::observe::recognize::facts::FactsLine {
+                        of: SessionActivity::Working,
+                        text: Words(s("t")),
+                        clock: Some(crate::observe::recognize::facts::Clock {
+                            text: Words(s("t {dur}")),
+                            from: 1,
+                        }),
+                        peek: Some(Words(s("p"))),
+                    }),
                     quiet_unread: Some(crate::observe::recognize::facts::QuietUnread {
                         text: Words(s("q")),
                         count: 1,
@@ -1093,6 +1105,11 @@ mod specimens {
     pub(super) fn needs_row() -> Vec<Specimen> {
         vec![node_of(&crate::observe::accounts_query::NeedsRow {
             sid: s("s"),
+            label: crate::common::cells::Words("t".into()),
+            face: crate::wire::SessionFace::of(crate::wire::Life::Live {
+                activity: Some(crate::agents::SessionActivity::NeedsYou),
+                tmux: None,
+            }),
             needs: Needs {
                 kind: NeedsKind::Approve,
                 tool: some("Bash"),
@@ -1155,7 +1172,10 @@ mod specimens {
             project_dir: some("/w"),
             name: some("n"),
             path: some("/p"),
-            face: ActivityFace::of(Some(activity)),
+            face: crate::wire::SessionFace::of(crate::wire::Life::Live {
+                activity: Some(activity),
+                tmux: None,
+            }),
             name_face: named(),
             waiting_for: some("w"),
             hidden: crate::control::session_hidden::judge(&crate::control::session_hidden::Facts {
@@ -1186,7 +1206,10 @@ mod specimens {
             .map(|a| {
                 node_of::<Frame>(&Frame::SessionStatus(crate::wire::SessionStatus {
                     sid: s("s"),
-                    face: ActivityFace::of(Some(a)),
+                    face: crate::wire::SessionFace::of(crate::wire::Life::Live {
+                        activity: Some(a),
+                        tmux: None,
+                    }),
                     name_face: named(),
                     waiting_for: some("w"),
                     path: some("p"),
@@ -1196,9 +1219,9 @@ mod specimens {
     }
 
     pub(super) fn session_state() -> Vec<Specimen> {
-        [SessionFate::Reconnectable, SessionFate::Ended]
+        [Life::Reconnectable, Life::Ended, Life::Gone]
             .into_iter()
-            .map(|f| node_of(&Frame::session_state(s("s"), f)))
+            .map(|l| node_of(&Frame::session_left(s("s"), l)))
             .collect()
     }
 

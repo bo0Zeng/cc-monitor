@@ -18,30 +18,32 @@ pub(crate) fn our_hello(commands: &[&str]) -> crate::stream_source::Frame {
     })
 }
 
+/// 判据用的一份整脸（点与短名由调用方给，别的格取最少那一形）。
+fn face(dot: &str, name: &str) -> serde_json::Value {
+    let yes = serde_json::json!({"can": "yes"});
+    serde_json::json!({
+        "dot": dot, "live": {"is": "no"}, "settled": false, "name": name, "tip": "T", "line": "L", "tone": "plain", "order": 5,
+        "can": {"close": {"can": "quiet"}, "resume": yes, "term": {"can": "yes", "tmux": false}, "reattach": yes, "model": yes, "permission": yes},
+    })
+}
+
 /// 判据用的一帧去向（`state` 取线上那一形：`reconnectable` / `ended`），`text` 是那台写的短名。
 pub(crate) fn session_state(sid: &str, state: &str, text: &str) -> cmd_wire::frame::SessionState {
     serde_json::from_value(serde_json::json!({
         "sid": sid,
         "state": state,
-        "state_text": text,
-        "state_hint": "H",
-        "state_tone": "plain",
-        "state_order": 5,
-        "switch": {"model": {"can": "yes"}, "permission": {"can": "yes"}},
+        "face": face("ended", text),
     }))
     .expect("判据造的去向解不开")
 }
 
-/// 判据用的一条活会话宣告：后端会写的最少那几格（字 · 语气 · 序 · 能不能换 · 名字 · pid），`extra` 里的格盖上去。
+/// 判据用的一条活会话宣告：后端会写的最少那几格（整份脸 · 名字 · pid），`extra` 里的格盖上去。
 pub(crate) fn session_added(sid: &str, extra: serde_json::Value) -> cmd_wire::frame::SessionAdded {
     let mut v = serde_json::json!({
         "sid": sid,
         "agent_kind": "claude",
-        "activity_text": "T",
-        "activity_tone": "now",
-        "activity_order": 1,
-        "switch": {"model": {"can": "yes"}, "permission": {"can": "yes"}},
         "label": "L",
+        "face": face("running", "T"),
         "pid": 1,
     });
     if let (Some(o), serde_json::Value::Object(e)) = (v.as_object_mut(), extra) {

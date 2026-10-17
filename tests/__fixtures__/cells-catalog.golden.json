@@ -784,6 +784,126 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "children[].face.can.close.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "children[].face.can.close.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "children[].face.can.model.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "children[].face.can.model.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "children[].face.can.permission.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "children[].face.can.reattach.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "children[].face.can.reattach.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "children[].face.can.resume.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "children[].face.can.resume.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "children[].face.can.term.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "children[].face.can.term.tmux",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "children[].face.dot",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "children[].face.line",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "children[].face.live.activity",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "children[].face.live.is",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "children[].face.name",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "children[].face.order",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "children[].face.settled",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "children[].face.tip",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "tone",
+          "path": "children[].face.tone",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "children[].hidden.by",
           "type": "enum"
         },
@@ -792,12 +912,6 @@
           "kind": "value",
           "path": "children[].hidden.said",
           "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "children[].live",
-          "type": "bool"
         },
         {
           "frozen": false,
@@ -857,6 +971,36 @@
           "frozen": false,
           "kind": "value",
           "path": "lastSay.text",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "line.clock.from",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "line.clock.text",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "line.for",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "line.peek",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "line.text",
           "type": "string"
         },
         {
@@ -1198,6 +1342,132 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "rev",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "startedBy.face.can.close.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "startedBy.face.can.close.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "startedBy.face.can.model.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "startedBy.face.can.model.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "startedBy.face.can.permission.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "startedBy.face.can.reattach.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "startedBy.face.can.reattach.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "startedBy.face.can.resume.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "startedBy.face.can.resume.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "startedBy.face.can.term.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "startedBy.face.can.term.tmux",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "startedBy.face.dot",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "startedBy.face.line",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "startedBy.face.live.activity",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "startedBy.face.live.is",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "startedBy.face.name",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "startedBy.face.order",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "startedBy.face.settled",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "startedBy.face.tip",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "tone",
+          "path": "startedBy.face.tone",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "startedBy.hidden.by",
           "type": "enum"
         },
@@ -1206,12 +1476,6 @@
           "kind": "value",
           "path": "startedBy.hidden.said",
           "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "startedBy.live",
-          "type": "bool"
         },
         {
           "frozen": false,
@@ -1353,6 +1617,132 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "face.can.close.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.close.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.model.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.model.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.permission.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.permission.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.reattach.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.reattach.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.resume.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.resume.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.term.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.term.tmux",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.dot",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.line",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.live.activity",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.live.is",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.name",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.order",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.settled",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.tip",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "tone",
+          "path": "face.tone",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "hidden.by",
           "type": "enum"
         },
@@ -1360,6 +1750,12 @@
           "frozen": false,
           "kind": "value",
           "path": "hidden.said",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "label",
           "type": "string"
         },
         {
@@ -1698,30 +2094,6 @@
         {
           "frozen": true,
           "kind": "value",
-          "path": "activity",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "activity_order",
-          "type": "number"
-        },
-        {
-          "frozen": true,
-          "kind": "text",
-          "path": "activity_text",
-          "type": "string"
-        },
-        {
-          "frozen": true,
-          "kind": "tone",
-          "path": "activity_tone",
-          "type": "enum"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
           "path": "agent_kind",
           "type": "string"
         },
@@ -1754,6 +2126,132 @@
           "kind": "value",
           "path": "cwd",
           "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.close.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.close.why",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "face.can.model.can",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "face.can.model.why",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "face.can.permission.can",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "face.can.permission.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.reattach.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.reattach.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.resume.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.resume.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.term.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.term.tmux",
+          "type": "bool"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "face.dot",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.line",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "face.live.activity",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.live.is",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "face.name",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.order",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "face.settled",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.tip",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "tone",
+          "path": "face.tone",
+          "type": "enum"
         },
         {
           "frozen": false,
@@ -1816,30 +2314,6 @@
           "type": "string"
         },
         {
-          "frozen": false,
-          "kind": "value",
-          "path": "switch.model.can",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "switch.model{can=no}.why",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "switch.permission.can",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "switch.permission{can=no}.why",
-          "type": "string"
-        },
-        {
           "frozen": true,
           "kind": "value",
           "path": "waiting_for",
@@ -1851,27 +2325,129 @@
     {
       "cells": [
         {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.close.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.close.why",
+          "type": "string"
+        },
+        {
           "frozen": true,
           "kind": "value",
-          "path": "activity",
+          "path": "face.can.model.can",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "face.can.model.why",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "face.can.permission.can",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "face.can.permission.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.reattach.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.reattach.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.resume.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.resume.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.term.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.term.tmux",
+          "type": "bool"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "face.dot",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.line",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "face.live.activity",
           "type": "enum"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "activity_order",
-          "type": "number"
+          "path": "face.live.is",
+          "type": "string"
         },
         {
           "frozen": true,
           "kind": "text",
-          "path": "activity_text",
+          "path": "face.name",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.order",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "face.settled",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.tip",
           "type": "string"
         },
         {
           "frozen": true,
           "kind": "tone",
-          "path": "activity_tone",
+          "path": "face.tone",
           "type": "enum"
         },
         {
@@ -1905,30 +2481,6 @@
           "type": "string"
         },
         {
-          "frozen": false,
-          "kind": "value",
-          "path": "switch.model.can",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "switch.model{can=no}.why",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "switch.permission.can",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "switch.permission{can=no}.why",
-          "type": "string"
-        },
-        {
           "frozen": true,
           "kind": "value",
           "path": "waiting_for",
@@ -1942,11 +2494,137 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "kind",
+          "path": "face.can.close.can",
           "type": "string"
         },
         {
           "frozen": false,
+          "kind": "text",
+          "path": "face.can.close.why",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "face.can.model.can",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "face.can.model.why",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "face.can.permission.can",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "face.can.permission.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.reattach.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.reattach.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.resume.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.resume.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.term.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.term.tmux",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.term.why",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "face.dot",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.line",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.live.is",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "face.name",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.order",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "face.settled",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.tip",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "tone",
+          "path": "face.tone",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "kind",
+          "type": "string"
+        },
+        {
+          "frozen": true,
           "kind": "value",
           "path": "sid",
           "type": "string"
@@ -1956,54 +2634,6 @@
           "kind": "value",
           "path": "state",
           "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "state_hint",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "state_order",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "state_text",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "tone",
-          "path": "state_tone",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "switch.model.can",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "switch.model{can=no}.why",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "switch.permission.can",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "switch.permission{can=no}.why",
-          "type": "string"
         }
       ],
       "name": "session_state"
@@ -2851,6 +3481,138 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "rows[].face.can.close.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "rows[].face.can.close.why",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "rows[].face.can.model.can",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "rows[].face.can.model.why",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "rows[].face.can.permission.can",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "rows[].face.can.permission.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].face.can.reattach.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "rows[].face.can.reattach.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].face.can.resume.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "rows[].face.can.resume.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].face.can.term.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].face.can.term.tmux",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "rows[].face.can.term.why",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "rows[].face.dot",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "rows[].face.line",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "rows[].face.live.activity",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].face.live.is",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "rows[].face.name",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].face.order",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "rows[].face.settled",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "rows[].face.tip",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "tone",
+          "path": "rows[].face.tone",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "rows[].firstUserExcerpt",
           "type": "string"
         },
@@ -2973,12 +3735,6 @@
           "kind": "value",
           "path": "rows[].startedAt",
           "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "rows[].status",
-          "type": "string"
         },
         {
           "frozen": false,

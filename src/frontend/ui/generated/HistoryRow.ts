@@ -2,6 +2,7 @@
 import type { Can } from "./Can";
 import type { ForkedFrom } from "./ForkedFrom";
 import type { Hidden } from "./Hidden";
+import type { SessionFace } from "./SessionFace";
 import type { Words } from "./Words";
 
 /**
@@ -25,9 +26,9 @@ label: Words,
  */
 untitled: boolean, 
 /**
- * `live` 在跑 · `reconnectable` claude 退了、tmux 里还挂着它 · `ended` 已结束 · `unknown` 说不清（活不活只出这一格）。
+ * 那台此刻对这一行的说法（活着的照它的进程状态文件判在干什么；判不了活 ⇒ 状态不明）。
  */
-status: "live" | "reconnectable" | "ended" | "unknown", can: Can, 
+face: SessionFace, can: Can, 
 /**
  * 行上那一家的小牌（对用户的叫法）；默认那一家 ⇒ `null`。
  */

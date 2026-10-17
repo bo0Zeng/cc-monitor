@@ -89,7 +89,7 @@ async function bind(): Promise<{ onLine: ReturnType<typeof vi.fn> }> {
   const onLine = vi.fn();
   await bindEvents({
     onLine,
-    onSessionEnded: vi.fn(),
+    onSessionFace: vi.fn(),
     onBatchStart: vi.fn(),
     onBatchEnd: vi.fn(),
   } as never, { streams: [{ origin: "<local>", kind: "session-lines" }] });

@@ -7,8 +7,10 @@
  * 判据：`tests/frontend/ui/kit/components.vitest.ts`「转圈 · 计量条 · 徽标 · 键帽 · 骨架 · 状态点」那一节 · `status-dot-rest.vitest.ts`。
  */
 import s from "./status-dot.module.css";
+import type { SessionDot } from "../generated/SessionDot";
 
-export type DotState = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "unknown" | "gone" | "failed";
+/** 会话那几颗是后端的 `SessionDot`（同一套线上名）；`failed` 给 agent · 任务出错那一颗。 */
+export type DotState = SessionDot | "failed";
 
 /** 机器的点：`up` 已连接 · `failed` 离线 · `needs-you` 要你处理 · `exited` 已停用 · `unknown` 连接中 / 状态不明。 */
 export type MachineDotState = "up" | "failed" | "needs-you" | "exited" | "unknown";

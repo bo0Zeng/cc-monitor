@@ -17,10 +17,10 @@ import { appStore } from "./app-store";
 import { accountAvatarEl, accountColorOf } from "./account-color";
 import type { TabCollection } from "./tab-collections";
 import { barRows, type BarRow, type RowRect } from "./tab-drop";
-import { activityFace } from "./session-status";
+import { lightOf } from "./session-status";
 import { terminalFrontAvailable } from "./terminal-front";
 import { isRemoteOrigin } from "./ipc/origin";
-import { closesWithoutMenu, hasTerminal, isLive, stateView } from "./tab-session-state";
+import { closesQuietly, faceOf, hasTerminal, isEnded, isLive, machineOf } from "./face-can";
 import type { Tab } from "./tab-model";
 import type { TabStore } from "./tab-store";
 import type { TabBarPrefs } from "./tab-bar-prefs";
@@ -39,7 +39,7 @@ import type { ManualItem } from "./login-reads";
 import type { Origin } from "./ipc/origin";
 import { foldCaret } from "./kit/fold";
 import { fmtDur } from "./duration-format";
-import { abbrOf, dotOf, fullTitle, groupSummary, machineOf, needsOf, nextNeedsStep, peekLine, stateLine, stateWord, titleParts, sinceText } from "./session-face";
+import { abbrOf, dotOf, fullTitle, groupSummary, needsOf, nextNeedsStep, peekLine, stateLine, stateWord, titleParts, sinceText } from "./session-face";
 import { orderNeeds } from "./needs-order";
 
 /** TabButton 的 DOM 引用：refreshTabBar 局部更新依赖这些 ref 避免重新创建 button */
@@ -172,7 +172,7 @@ export class TabBarView {
   private readonly groupEls = new Map<string, GroupEls>();
   /** 组头 → 组 id（按下组头起拖时从事件找回是哪个组）。 */
   private readonly headGid = new WeakMap<Element, string>();
-  // 没有归档抽屉：已结束的 tab（`isResumeOnly(tab.state)`）留在原位变淡（`.tab.ended`）。
+  // 没有归档抽屉：已结束的 tab（`isEnded`）留在原位变淡（`.tab.ended`）。
 
   /**
    * 按钮根 → sid。事件委托靠它从 `closest(".tab")` 找回 sid（不往 DOM 上加属性）。
@@ -477,7 +477,7 @@ export class TabBarView {
       } else if (sub.classList.contains("tab-focus")) {
         // ↗ 拉对应终端窗口。非 Windows 不渲（`terminal-front.ts`）——不渲就点不到。
         const t = this.store.tabs.get(sid);
-        if (!t || !hasTerminal(t.state)) return; // 活着，或可重连（ssh 窗还在）才拉
+        if (!t || !hasTerminal(faceOf(t))) return; // 活着，或可重连（ssh 窗还在）才拉
         // 远端 Tab → 点那一刻现查此刻显示它的本机终端；
         // 本地 Tab → 走原 sid_hwnd_cache 路径。
         if (isRemoteOrigin(t.origin)) {
@@ -679,7 +679,7 @@ export class TabBarView {
     // 中键点击已结束的 Tab 也关闭（常见 UX）；说不清的只在右键菜单里关
     if (e.button === 1) {
       const t = this.store.tabs.get(hit.sid);
-      if (t && closesWithoutMenu(t.state)) {
+      if (t && closesQuietly(faceOf(t))) {
         e.preventDefault();
         this.host.closeTab(hit.sid);
       }
@@ -828,7 +828,7 @@ export class TabBarView {
     const rows: { origin: string; n: number; since: number }[] = [];
     for (const [origin, since] of this.downSince) {
       let n = 0;
-      for (const t of this.store.tabs.values()) if (t.origin === origin && t.state.liveness === "unseen") n++;
+      for (const t of this.store.tabs.values()) if (t.origin === origin && faceOf(t).dot === "unknown") n++;
       if (n > 0) rows.push({ origin, n, since });
     }
     const drawn = rows.map((r) => `${r.origin}\u0000${r.n}\u0000${sinceText(r.since, now)}`).join("\u0001");
@@ -1019,7 +1019,7 @@ export class TabBarView {
     const col = this.prefs.collections.find((c) => c.id === gid);
     if (!col) return;
     const all = this.prefs.collections.map((c) => c.id);
-    const ended = [...this.store.tabs.values()].filter((t) => t.group === gid && closesWithoutMenu(t.state)).length;
+    const ended = [...this.store.tabs.values()].filter((t) => t.group === gid && closesQuietly(faceOf(t))).length;
     const nameEl = this.groupEls.get(gid)?.name;
     const items: MenuItem[] = [
       { label: copyText("tabMenu.group.rename"), onClick: () => nameEl && this.beginGroupRename(gid, nameEl) },
@@ -1259,7 +1259,7 @@ export class TabBarView {
     const held = holdOf(rot);
     if (held !== null) card.appendChild(line("tab-hover-row", held));
     if (tab.forkedFromSessionId) card.appendChild(line("tab-hover-row", copyText("tabBar.hover.forked", { id: tab.forkedFromSessionId.slice(0, 8) })));
-    if (isLive(tab.state) && tab.writers.length > 1) card.appendChild(line("tab-hover-row", copyText("tabBarView.tab.writers", { n: tab.writers.length })));
+    if (isLive(faceOf(tab)) && tab.writers.length > 1) card.appendChild(line("tab-hover-row", copyText("tabBarView.tab.writers", { n: tab.writers.length })));
     const pos = this.visibleOrder().indexOf(sid);
     if (pos >= 0 && pos < 9) card.appendChild(line("tab-hover-foot", copyText("tabBar.hover.key", { key: String(pos + 1) })));
     return card;
@@ -1270,16 +1270,15 @@ export class TabBarView {
     const active = sid === this.store.activeId;
     // 多选里的样子（`.selected`）与「当前 tab」（`.active`）是两件事，两个类各画各的。
     const selected = this.host.isSelected(sid);
-    // 两轴怎么画（类）只从 `stateView` 取：已结束（只能 resume）· 状态不明（那台看不见）· Claude 已退出（死了、容器还在）。
-    const view = stateView(tab.state);
-    const ended = view.ended;
-    const unseen = view.unseen;
+    // 类照那颗点：已结束（已结束 · 记录已不在）· 状态不明（那台看不见）· Claude 已退出（tmux 会话还在）。
+    const dot = dotOf(tab);
+    const ended = isEnded(faceOf(tab));
+    const unseen = dot === "unknown";
     const pinned = tab.pinned;
     const hasCwd = !!tab.projectDir;
     const remote = isRemoteOrigin(tab.origin);
-    const lightClass = isLive(tab.state) ? activityFace(tab.activity?.tone ?? null).light : "";
-    const reconnectable = view.reconnectable;
-    const dot = dotOf(tab);
+    const lightClass = lightOf(dot);
+    const reconnectable = dot === "exited";
     const n = needsOf(tab);
     const needsText = n ? n.text : "";
     const parts = titleParts(tab);

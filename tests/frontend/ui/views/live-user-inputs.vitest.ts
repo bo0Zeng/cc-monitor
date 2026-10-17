@@ -20,6 +20,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { owned } from "../../../test-support/owned-tab-manager.ts";
+import { announced, goldenFace } from "../../../test-support/session-faces";
 import { readFileSync } from "node:fs";
 
 /**
@@ -109,7 +110,7 @@ beforeEach(() => {
   const barEl = document.createElement("div");
   streamRootEl = document.createElement("div");
   document.body.append(barEl, streamRootEl);
-  tm = owned(new TabManager(barEl, streamRootEl));
+  tm = owned(announced(new TabManager(barEl, streamRootEl)));
 });
 
 afterEach(() => {
@@ -476,7 +477,7 @@ describe("KR45D2 清单跟着 tab 走", () => {
     feed(userLine(1, "u1", "第一句"));
     const overlay = overlayOf("s1");
     expect(streamRootEl.contains(overlay)).toBe(true);
-    tm.archiveTab("s1"); // 只有 archived 的 tab 关得掉
+    tm.onFace("s1", goldenFace("ended")); // 只有 archived 的 tab 关得掉
     tm.closeTab("s1"); // 此刻 list_user_inputs 还在途
     await settleOutline();
     expect(streamRootEl.querySelectorAll(".session-find").length).toBe(0);

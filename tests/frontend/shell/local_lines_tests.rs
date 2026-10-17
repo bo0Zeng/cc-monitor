@@ -305,36 +305,6 @@ fn every_line_leaves_through_the_one_intake_both_sources_share() {
     }
 }
 
-// ─── F6 ────────────────────────────────────────────────────────────────────
-
-#[test]
-fn only_remote_snapshots_compensate_with_a_session_ended() {
-    use crate::origin::Origin;
-    use crate::stream_source::compensates_on_cancel;
-    assert!(
-        !compensates_on_cancel(&Origin::local()),
-        "本机快照被撤时补发 session-ended ⇒ 会把本机那边判成「可重连」的会话压成「已结束」\
-         （本机行不复活 tab，没有要治的病）"
-    );
-    assert!(
-        compensates_on_cancel(&Origin("devbox".into())),
-        "远端快照被撤时不补 ⇒ 已 flush 的那一块把刚归档的远端 tab 见行复活（D-B1 僵尸）"
-    );
-    // 产品起本机消费者时给的收口名字就是本机那个 origin（否则上面那一格判的不是它）。
-    let prod: String = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/local_lines.rs"
-    ))
-    .chars()
-    .filter(|c| !c.is_whitespace())
-    .collect();
-    assert_eq!(
-        prod.matches("crate::stream_source::consume_local(crate::origin::LOCAL.to_string(),")
-            .count(),
-        1,
-        "本机消费者的收口名字不是 `origin::LOCAL`"
-    );
-}
-
 // ─── F7 ────────────────────────────────────────────────────────────────────
 
 /// 那套 watcher 退场之后不许再出现的名字（生产段）。

@@ -1472,6 +1472,11 @@ fn needs_merge_orders_across_machines_by_the_one_rule() {
         for (m, sid, tier, waited) in *rows {
             let row = cmd_wire::needs::NeedsRow {
                 sid: sid.to_string(),
+                label: crate::common::cells::Words("t".into()),
+                face: <crate::wire::SessionFace as crate::wire::SessionFaceExt>::of(crate::wire::Life::Live {
+                    activity: Some(crate::agents::SessionActivity::NeedsYou),
+                    tmux: None,
+                }),
                 needs: ranked(*tier, *waited),
                 hidden: None,
             };
@@ -1602,4 +1607,76 @@ fn bookkeeping_lines_nobody_reads_are_counted_in_the_facts() {
         let resumed = scan_facts(&text.as_bytes()[cut..], head, &Vec::new(), None).unwrap();
         assert_eq!(resumed, whole, "在字节 {cut} 处接力");
     }
+}
+
+/// 状态一句里会走的那一截（`line`）：pidfile 说的那一态 ＋ 记录里的事实。在跑 ⇒ 那一步与它跑了多久；在等 ⇒ 等的种类与已等多久；
+/// 闲着 ⇒ 最后一句多久前；不活 ⇒ 没有这一句。
+#[test]
+fn the_state_line_follows_the_pidfile_state_and_the_record_facts() {
+    use crate::agents::SessionActivity as A;
+    let t0: u64 = 1_700_000_000_000;
+    let now = t0 + 2 * 60_000;
+    let d = copy_core::short_duration(2 * 60_000);
+    let mut f = SessionFacts {
+        pending: vec![PendingCall {
+            id: "c1".into(),
+            name: "Bash".into(),
+            what: Some("make test".into()),
+            at: None,
+            at_ms: Some(t0 as i64),
+            state: StepWait::Running,
+            why: None,
+            text: None,
+            why_text: None,
+        }],
+        last_say: Some(LastSay {
+            text: "好了".into(),
+            at: None,
+            at_ms: Some(t0 as i64),
+        }),
+        ..Default::default()
+    };
+    let w = line_of(Some(A::Working), &f, now).unwrap();
+    assert_eq!(w.of, A::Working);
+    assert_eq!(
+        w.text.0,
+        copy_core::copy_text(
+            "sessionFace.state.runningFor",
+            &[("tool", "Bash"), ("dur", &d)]
+        )
+    );
+    let clock = w.clock.unwrap();
+    assert!(clock.text.0.contains("{dur}"), "{}", clock.text.0);
+    assert_eq!(clock.from, t0);
+    assert_eq!(w.peek.unwrap().0, "make test");
+
+    let i = line_of(Some(A::Idle), &f, now).unwrap();
+    assert_eq!(
+        i.text.0,
+        copy_core::copy_text("sessionFace.state.idleSeen", &[("ago", &d)])
+    );
+    assert_eq!(i.clock.unwrap().from, t0);
+    assert_eq!(i.peek.unwrap().0, "好了");
+
+    f.needs = needs_of(
+        tree(),
+        &f.pending,
+        Some(&PidWait {
+            waiting_for: Some(crate::agents::WaitOn::Permission),
+            since_ms: Some(t0),
+            read_at_ms: now,
+        }),
+    );
+    let n = line_of(Some(A::NeedsYou), &f, now).unwrap();
+    let kind = f.needs.as_ref().unwrap().text.0.clone();
+    assert_eq!(
+        n.text.0,
+        copy_core::copy_text(
+            "sessionFace.state.waiting",
+            &[("kind", &kind), ("waited", &d)]
+        )
+    );
+    assert_eq!(n.clock.unwrap().from, t0);
+
+    assert!(line_of(None, &f, now).is_none(), "不活 ⇒ 没有这一句");
 }

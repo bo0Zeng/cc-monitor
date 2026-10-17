@@ -268,9 +268,7 @@ enum FetchOutcome {
 /// 走已有长连接：一问 `history-tail`（交 `held`）拿回那张图 · 怎么接（后端判：续传 · 尾段 · 变短 / 被改写之后的尾段 · 缺得多不读）·
 /// 第一页正文；一页装不下的照 `next` 用 `history-read` 分页接着拉到 `end`。头段 `[0, split_at)` 不读，界面往上翻时按行号 / 按偏移取回。
 ///
-/// 每个 chunk 边界查取消（会话 removed / 连接断）——中止并**补偿 emit 一次
-/// ended 格**：若某个已 flush 的 chunk 恰把归档 tab"见行复活"，这里把它
-/// 压回 archived（审计 D-B1 僵尸复活的封口；archiveTab 幂等，重复无害）。
+/// 每个 chunk 边界查取消（会话 removed / 连接断）——中止、丢弃未 flush 的那一块（已 flush 的行不改那条会话的状态）。
 ///
 /// 完整性校验（审计 D-I2）：到达的可计行数必须**恰好等于** `total - from`。
 async fn fetch_snapshot(
@@ -384,16 +382,6 @@ async fn fetch_snapshot(
         }
     }
     if cancelled || q.is_cancelled(sid) {
-        // 补偿（见 doc comment）；丢弃未 flush 的 chunk。只对远端补（[`compensates_on_cancel`]）。
-        // 补的是那条会话**此刻**的终局（成品缓存里后端说过的 · 连接断了 ⇒ 说不清），不再由 monitor 恒判「已结束」。
-        if compensates_on_cancel(&origin) {
-            let again = crate::session_book::book()
-                .read()
-                .settle_again(origin.as_wire_str(), sid);
-            for out in again {
-                replay.on_lifecycle(out.origin(), vec![out.frame()]);
-            }
-        }
         return Ok(FetchOutcome::Cancelled);
     }
     if !chunk.is_empty() {
@@ -431,15 +419,6 @@ async fn fetch_snapshot(
 /// 快照读到它以后的是宣告之后才写进来的（实时那条流也交它，谁先到算谁）⇒ 不是。行数不知道 ⇒ 快照里的都算补历史。
 pub(crate) fn catch_up_at(announced: Option<u64>, seq: u64) -> bool {
     announced.is_none_or(|l| seq < l)
-}
-
-/// 快照中途被撤时要不要补一个 `ended` 格：**远端补、本机不补。**
-///
-/// 补偿治的是「已 flush 的那一块把刚归档的 tab 见行复活」—— 而**只有远端的行会复活 tab**
-/// （前端 `tabs.ts` 只有 `remote-line` 那一格；本机 tab 的活与死只由 PID 探活那一路翻）。
-/// 本机再补一个 `ended` 格，没有要治的病，反倒会把本机那边刚判成「可重连」的会话压成「已结束」。
-pub(crate) fn compensates_on_cancel(origin: &crate::origin::Origin) -> bool {
-    !origin.is_local()
 }
 
 #[cfg(test)]

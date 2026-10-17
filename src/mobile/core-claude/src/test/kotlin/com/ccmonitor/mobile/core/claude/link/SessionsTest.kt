@@ -47,9 +47,9 @@ class SessionsTest {
             SessionTable(
                 sessions =
                     mapOf(
-                        "old" to LiveSession("old", cwd = "/h/proj", activity = Toned("空闲", null)),
-                        "other" to LiveSession("other", cwd = "/h/else", activity = Toned("空闲", null)),
-                        "new" to LiveSession("new", path = "/p/new.jsonl", cwd = "/h/proj", activity = Toned("运行中", null)),
+                        "old" to LiveSession("old", cwd = "/h/proj"),
+                        "other" to LiveSession("other", cwd = "/h/else"),
+                        "new" to LiveSession("new", path = "/p/new.jsonl", cwd = "/h/proj"),
                     ),
             )
         assertEquals("new", SessionNew.arrived(table, "/h/proj", before)?.sid)

@@ -229,7 +229,7 @@ async function runReplay(total: number, ticksPerGap: number): Promise<ReplayResu
   const onBatchEnd = vi.fn();
   await bindEvents({
     onLine,
-    onSessionEnded: vi.fn(),
+    onSessionFace: vi.fn(),
     onBatchStart,
     onBatchEnd,
   } as never, { streams: [{ origin: "<local>", kind: "session-lines" }] });

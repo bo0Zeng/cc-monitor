@@ -85,12 +85,45 @@ pub(crate) fn live_session_ids(agent_home: &Path) -> std::collections::BTreeSet<
         .collect()
 }
 
+/// 这台此刻活着的每个会话的活动态（同一会话几个进程持着 ⇒ 取最要紧的那一个：等人 ＞ 在跑 ＞ 后台 ＞ 闲着 ＞ 说不清）；判活同 [`live_session_ids`]。
+pub(crate) fn live_activity(
+    agent_home: &Path,
+) -> std::collections::BTreeMap<String, Option<crate::agents::SessionActivity>> {
+    use crate::agents::SessionActivity as A;
+    let rank = |a: Option<A>| match a {
+        Some(A::NeedsYou) => 4,
+        Some(A::Working) => 3,
+        Some(A::BackgroundWork) => 2,
+        Some(A::Idle) => 1,
+        None => 0,
+    };
+    let mut out: std::collections::BTreeMap<String, Option<A>> = std::collections::BTreeMap::new();
+    for (pid, v) in pidfiles(agent_home) {
+        if !crate::platform::proc::session_alive(pid, parse_procstart_ticks(&v)) {
+            continue;
+        }
+        let Some(sid) = v
+            .get("sessionId")
+            .and_then(|x| x.as_str())
+            .filter(|s| !s.is_empty())
+        else {
+            continue;
+        };
+        let activity = crate::agents::pidfile_activity(&v);
+        let cell = out.entry(sid.to_string()).or_default();
+        if rank(activity) > rank(*cell) {
+            *cell = activity;
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 #[path = "../../../tests/backend/history/live_tests.rs"]
 mod tests;
 
 /// 此刻可重连的那几条（claude 退了、tmux 里还挂着它）：会话账本（`observe::session_ledger`，整台一份）每变一次交一份来，
-/// 历史清单那一行的 `status` 照它分出 `reconnectable`。没有在跑的流（一次性子命令）⇒ 空：那几条照「已结束」。
+/// 清单行 · 搜索命中 · 血缘的活不活照它分出可重连（[`life_of`]）。没有在跑的流（一次性子命令）⇒ 空：那几条照「已结束」。
 static RECONNECTABLE: std::sync::Mutex<std::collections::BTreeSet<String>> =
     std::sync::Mutex::new(std::collections::BTreeSet::new());
 
@@ -108,4 +141,17 @@ pub(crate) fn reconnectable(sid: &str) -> bool {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .contains(sid)
+}
+
+/// 这台判的这一条活不活：活着照 [`live_activity`] 那一份，否则可重连 · 已结束。
+pub(crate) fn life_of(
+    live: &std::collections::BTreeMap<String, Option<crate::agents::SessionActivity>>,
+    sid: &str,
+) -> cmd_wire::listing::RowLife {
+    use cmd_wire::listing::RowLife;
+    match live.get(sid) {
+        Some(&activity) => RowLife::Live { activity },
+        None if reconnectable(sid) => RowLife::Reconnectable,
+        None => RowLife::Ended,
+    }
 }

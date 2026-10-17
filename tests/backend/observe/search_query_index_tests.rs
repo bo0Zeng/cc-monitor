@@ -53,7 +53,7 @@ fn ask_all(
                     &fence,
                     &q.trim().to_lowercase(),
                     &opts_from_words(&rest),
-                    &crate::history::live::live_session_ids(home),
+                    &crate::history::live::live_activity(home),
                     &mut lines_into(&mut buf),
                 )
                 .expect("search ok");
@@ -439,7 +439,7 @@ fn a_tools_question_does_not_push_plain_text_out_of_the_index() {
         touch(&f, 1_800_000_000_000 + i64::from(i) * 1_000);
     }
     let fence = Fence::at(&projects_root(&home)).expect("围栏");
-    let live = crate::history::live::live_session_ids(&home);
+    let live = crate::history::live::live_activity(&home);
     let ask = |index: &mut SearchIndex, q: &str, tools: bool| {
         let rest: Vec<String> = if tools {
             vec!["--include-tools".into()]
@@ -518,7 +518,7 @@ fn many_batches_still_answer_most_recent_first() {
             &fence,
             "cursor",
             &opts_from_words(&[]),
-            &crate::history::live::live_session_ids(&home),
+            &crate::history::live::live_activity(&home),
             &mut lines_into(&mut buf),
         )
         .expect("search ok");

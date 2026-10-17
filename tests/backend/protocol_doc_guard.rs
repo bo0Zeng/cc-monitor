@@ -711,11 +711,6 @@ mod tests {
                 "同上，`SessionHits.hits` 的一条",
             ),
             (
-                "observe/search_query.rs",
-                "Liveness",
-                "同上，`SessionHits.status`（全文搜索只扫记录树 ⇒ 只有在跑 · 已结束两态）",
-            ),
-            (
                 "observe/tasks_query.rs",
                 "Task",
                 "typed 帧命令 `tasks-list` 回包 `tasks[]` 的一格（`faces/feature_face.rs`；生成类型从它来）",

@@ -1,7 +1,7 @@
 package com.ccmonitor.mobile.ui.chat
 
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.wire.Tone
+import com.ccmonitor.mobile.ui.Faces
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -87,7 +87,7 @@ class ChatControllerTest {
         runTest {
             val h = Log()
             val c = controller(h)
-            link.report("busy", "/w", Tone.NOW)
+            link.report("busy", "/w", Faces.of("live-working-plain"))
             link.answer = { _, _ -> Reply.LinkDown }
             val busy = c.open("busy", "h")
             runCurrent()
@@ -97,7 +97,7 @@ class ChatControllerTest {
             assertTrue("前提：确实逐出过", c.evictedCount > 0)
             assertSame("在跑的不逐", busy, c.open("busy", "h"))
             assertEquals("持有数与还活着的对话数一致", ChatController.MAX_SESSIONS, h.log.count { it.startsWith("retain") } - h.log.count { it.startsWith("release") })
-            link.report("busy", "/w", Tone.PLAIN)
+            link.report("busy", "/w", Faces.of("live-idle"))
             runCurrent()
             assertFalse("那台说停了 ⇒ 没有在飞的", c.hasInFlightTurn.value)
         }

@@ -19,7 +19,7 @@
  */
 import type { Tab } from "./tab-model";
 import { isRemoteOrigin } from "./ipc/origin";
-import { canResume, hasTerminal } from "./tab-session-state";
+import { canResume, faceOf, hasTerminal, machineOf } from "./face-can";
 import { terminalFrontAvailable } from "./terminal-front";
 import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import { copyText } from "./copy-table";
@@ -27,7 +27,7 @@ import { icon, type IconName } from "./kit/icon";
 import { statusDot, setDot } from "./kit/status-dot";
 import { attachTooltip } from "./kit/tooltip";
 import { button } from "./kit/button";
-import { dotOf, fullTitle, machineOf, stateLine, stateWord } from "./session-face";
+import { dotOf, fullTitle, stateLine, stateWord } from "./session-face";
 import { tag } from "./kit/badge";
 import { openMenu, type MenuItem } from "./kit/menu";
 import { closePopover, openPopover, popoverOpenOn } from "./kit/popover";
@@ -82,7 +82,7 @@ export interface SessionHeadHost {
  * 在终端里打开（远端、Claude 已退出）。
  */
 export function terminalActsOf(tab: Tab): { front: boolean; attach: boolean } {
-  return { front: terminalFrontAvailable() && hasTerminal(tab.state), attach: dotOf(tab) === "exited" && isRemoteOrigin(tab.origin) };
+  return { front: terminalFrontAvailable() && hasTerminal(faceOf(tab)), attach: dotOf(tab) === "exited" && isRemoteOrigin(tab.origin) };
 }
 
 type Chorded = Parameters<typeof dispatcher.effectiveChord>[0];
@@ -300,7 +300,7 @@ export class SessionHead {
         return b;
       }
       case "terminal":
-        return hasTerminal(tab.state) ? plain(copyText("sessionHead.act.terminal"), "panel.toggle-terminal", () => this.host.viewTerminal()) : null;
+        return hasTerminal(faceOf(tab)) ? plain(copyText("sessionHead.act.terminal"), "panel.toggle-terminal", () => this.host.viewTerminal()) : null;
       case "find":
         return plain(copyText("sessionHead.act.find"), "session.find", () => this.host.find());
       case "display": {
@@ -341,11 +341,11 @@ export class SessionHead {
     const acts = terminalActsOf(tab);
     const front = acts.front;
     // 看它的终端：会话还有终端可去才出（已结束的没有）。
-    const term = hasTerminal(tab.state);
-    const extra = canResume(tab.state) ? "resume" : acts.attach ? "attach" : d === "unknown" ? "reconnect" : "";
+    const term = hasTerminal(faceOf(tab));
+    const extra = canResume(faceOf(tab)) ? "resume" : acts.attach ? "attach" : d === "unknown" ? "reconnect" : "";
     const mark = this.host.planMark(tab);
     const kin = this.kinKey(tab);
-    const drawn = [tab.sessionId, d, fullTitle(tab), machineOf(tab), tab.projectDir ?? "", st.text, st.needs ? 1 : 0, remote ? 1 : 0, front ? 1 : 0, term ? 1 : 0, extra, mark?.label ?? "", tab.pinned ? 1 : 0, tab.state.liveness, kin].join("\u0000");
+    const drawn = [tab.sessionId, d, fullTitle(tab), machineOf(tab), tab.projectDir ?? "", st.text, st.needs ? 1 : 0, remote ? 1 : 0, front ? 1 : 0, term ? 1 : 0, extra, mark?.label ?? "", tab.pinned ? 1 : 0, kin].join("\u0000");
     if (drawn === this.drawn) return;
     this.drawn = drawn;
     this.el.style.display = "";
@@ -392,7 +392,7 @@ export class SessionHead {
   private kinKey(tab: Tab): string {
     const lin = tab.lineage;
     const p = lin?.startedBy ?? null;
-    const kids = (lin?.children ?? []).map((c) => `${c.sid}:${c.title}:${c.live ? 1 : 0}:${c.hidden?.said ?? ""}:${this.host.tabOf(c.sid) ? 1 : 0}`).join(",");
+    const kids = (lin?.children ?? []).map((c) => `${c.sid}:${c.title}:${c.face.dot}:${c.hidden?.said ?? ""}:${this.host.tabOf(c.sid) ? 1 : 0}`).join(",");
     return [tab.hidden?.said ?? "", p ? `${p.sid}:${p.title}:${this.host.tabOf(p.sid) ? 1 : 0}` : "", kids].join("\u0001");
   }
 
@@ -432,7 +432,7 @@ export class SessionHead {
       return {
         id: c.sid,
         label: c.title,
-        avatar: t ? statusDot(dotOf(t), stateWord(t), "compact") : statusDot(c.live ? "running" : "ended", c.live ? copyText("sessionFace.dot.running") : copyText("sessionState.ended.name"), "compact"),
+        avatar: t ? statusDot(dotOf(t), stateWord(t), "compact") : statusDot(c.face.dot, c.face.name, "compact"),
         detail: c.hidden ? copyText("sessionHead.kin.hidden") : undefined,
         enabled: t !== null,
         onClick: () => this.host.switchTo(c.sid),

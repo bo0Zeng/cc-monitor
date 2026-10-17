@@ -1557,8 +1557,10 @@ fn status_diff_emits_session_status_frame() {
         })) => {
             assert_eq!(sid, "st-sid");
             assert_eq!(
-                face,
-                crate::wire::ActivityFace::of(Some(SessionActivity::Working)),
+                face.live,
+                crate::wire::FaceLive::Yes {
+                    activity: Some(SessionActivity::Working)
+                },
                 "适配层翻好的活动态"
             );
             assert!(!background, "不写 kind ⇒ 交互");
@@ -1584,8 +1586,10 @@ fn status_diff_emits_session_status_frame() {
         })) => {
             assert_eq!(sid, "st-sid");
             assert_eq!(
-                face,
-                crate::wire::ActivityFace::of(Some(SessionActivity::NeedsYou))
+                face.live,
+                crate::wire::FaceLive::Yes {
+                    activity: Some(SessionActivity::NeedsYou)
+                }
             );
             assert_eq!(waiting_for.as_deref(), Some("permission prompt"));
         }
@@ -1600,7 +1604,7 @@ fn status_diff_emits_session_status_frame() {
             face,
             waiting_for: None,
             ..
-        })) if face == crate::wire::ActivityFace::of(Some(SessionActivity::Idle))
+        })) if face.live == crate::wire::FaceLive::Yes { activity: Some(SessionActivity::Idle) }
     ));
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -1657,9 +1661,11 @@ fn a_custom_title_in_the_annotations_renames_a_live_session() {
         })) => {
             assert_eq!(name_face.label.0, "乙");
             assert_eq!(
-                face,
-                crate::wire::ActivityFace::of(Some(crate::agents::SessionActivity::Working)),
-                "活动那几格照记着的带全"
+                face.live,
+                crate::wire::FaceLive::Yes {
+                    activity: Some(crate::agents::SessionActivity::Working)
+                },
+                "整份脸照记着的那一态带全"
             );
         }
         other => panic!("expected SessionStatus, got {other:?}"),

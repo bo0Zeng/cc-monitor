@@ -9,6 +9,8 @@
  *
  * 夹具只造结构（sid · 路径 · 后端那一句的占位），不采会话正文。
  */
+import faces from "../../__fixtures__/session-face.golden.json";
+import type { SessionFace } from "../../../src/frontend/ui/generated/SessionFace";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -23,7 +25,7 @@ import type { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 import type { Needs, SessionFacts } from "../../../src/frontend/ui/session-reads";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
-import { ENDED, LIVE } from "../../../src/frontend/ui/tab-session-state";
+import { goldenFace, liveFace } from "../../test-support/session-faces";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { hiddenPushed, undoHide, lineageOf, NO_LINEAGE, type HideSet, type SessionHidden } from "../../../src/frontend/ui/session-hidden";
 import { setHide } from "../../../src/frontend/ui/session-hidden-cmds";
@@ -44,13 +46,16 @@ import { TabMenu, type TabMenuHost } from "../../../src/frontend/ui/tab-menu";
 import type { TabSessionActions } from "../../../src/frontend/ui/tab-session-actions";
 import TABLE from "../../../src/shared/copy/table.json";
 
+const LIVE_FACE = faces["live-idle"] as SessionFace;
+const ENDED_FACE = faces.ended as SessionFace;
+
 /** 会话头那两颗（换模型 · 切权限档）这里不看：什么都不做的那一份。 */
 const NO_SWITCHING = { active: () => null, facts: () => new Promise<never>(() => {}), send: vi.fn(), unavailable: () => null, reread: vi.fn(), toast: vi.fn() };
 
 const NOW = Date.parse("2026-10-14T12:00:00Z");
 const BG: SessionHidden = { by: "bg", said: "后端那一句·分身" };
 const SELF: SessionHidden = { by: "self", said: "后端那一句·单个" };
-const waiting = { doing: "needs_you" as const, waitingFor: "permission prompt", text: copyText("beSession.activity.needsYou"), tone: "need", order: 1 };
+const waiting = { face: liveFace("needs_you"), line: { for: "needs_you" as const, text: "", clock: null, peek: null } };
 const approve = (): Needs => ({ kind: "approve", tool: "Bash", call: "toolu_b", what: "占位命令", sinceMs: NOW - 60_000, text: copyText("beSession.needs.approve"), head: "核心·等批准", headCode: null, tone: "need", rank: 1, waitedMs: 60_000, waitedText: "1m", ask: null, manualText: null, receivedAt: NOW });
 
 function tab(sid: string, over: Partial<Tab> = {}): Tab {
@@ -62,13 +67,12 @@ function tab(sid: string, over: Partial<Tab> = {}): Tab {
     label: `名-${sid}`,
     labelProject: null,
     projectDir: `/w/${sid}`,
-    state: LIVE,
+    face: liveFace("working"), line: null,
     pinned: false,
     group: null,
     hidden: null,
     lineage: NO_LINEAGE,
     origin: LOCAL_ORIGIN,
-    activity: null,
     forkedFromSessionId: null,
     writers: [],
     unread: 0,
@@ -164,7 +168,7 @@ describe("推帧主题「会话隐藏」：那一格到了就挪", () => {
 
 describe("标签栏：栏底「已隐藏 N」那一行照 hidden 格画", () => {
   it("★ 隐藏的不占标签页、进栏底那一行；数只数活的（隐藏了又结束的不列）；没有 ⇒ 不画；格去掉了 ⇒ 回到栏上", () => {
-    const r = bar([tab("a"), tab("b", { hidden: BG }), tab("c", { hidden: SELF }), tab("d", { hidden: SELF, state: ENDED })]);
+    const r = bar([tab("a"), tab("b", { hidden: BG }), tab("c", { hidden: SELF }), tab("d", { hidden: SELF, face: goldenFace("ended") })]);
     const row = hiddenRow(r.el)!;
     expect(row, "有活的隐藏会话 ⇒ 栏底一行").not.toBeNull();
     expect(row.querySelector(".tab-group-name")?.textContent).toBe(copyText("tabBar.hidden.row", { n: 2 }));
@@ -180,7 +184,7 @@ describe("标签栏：栏底「已隐藏 N」那一行照 hidden 格画", () => 
   });
 
   it("★ 隐藏的会话在等人：「需手动」照样数它、`Ctrl+J` 照样跳过去；收着的那一行汇总那颗需手动的点", async () => {
-    const r = bar([tab("a"), tab("b", { hidden: BG, activity: waiting, needs: approve() })]);
+    const r = bar([tab("a"), tab("b", { hidden: BG, ...waiting, needs: approve() })]);
     const strip = r.el.querySelector<HTMLElement>(".tab-needs")!;
     expect(strip.style.display).toBe("");
     expect(strip.querySelector(".tab-needs-count")?.textContent).toBe("1");
@@ -288,7 +292,7 @@ describe("隐藏 / 取消隐藏：交的命令 · 撤销 · 推帧到了才挪",
   });
 
   it("隐藏了又结束的：不是正看着的就收走；正看着的切走再收", () => {
-    const r = rig([tab("a", { hidden: SELF, state: ENDED }), tab("b", { hidden: SELF, state: ENDED })]);
+    const r = rig([tab("a", { hidden: SELF, face: goldenFace("ended") }), tab("b", { hidden: SELF, face: goldenFace("ended") })]);
     r.h.reap();
     expect(r.host.close.mock.calls).toEqual([["b"]]);
   });
@@ -363,7 +367,7 @@ describe("会话头：「由 X 启动」「子会话 N」读会话事实那两�
 
   it("★ 会话事实带的 `startedBy` · `children` 落到 tab 上；没带 ⇒ 没有；变了才报变", () => {
     const t = tab("a");
-    const kin = { startedBy: { sid: "p", title: "主·名", live: true, hidden: null }, children: [{ sid: "k1", title: "子·一", live: true, hidden: { by: "child" as const, said: "s" } }, { sid: "k2", title: "子·二", live: false, hidden: null }] };
+    const kin = { startedBy: { sid: "p", title: "主·名", face: LIVE_FACE, hidden: null }, children: [{ sid: "k1", title: "子·一", live: true, hidden: { by: "child" as const, said: "s" } }, { sid: "k2", title: "子·二", live: false, hidden: null }] };
     const ch = applyFacts(t, facts(kin));
     expect(ch.lineage).toBe(true);
     expect(t.lineage).toEqual(kin);
@@ -376,7 +380,7 @@ describe("会话头：「由 X 启动」「子会话 N」读会话事实那两�
   it("★ 会话头：已隐藏标（悬停是那一句）· 由 X 启动（点了切回主会话）· 子会话 N（点开列子会话、点一行切过去）", () => {
     const parent = tab("p");
     const kid = tab("k1");
-    const t = tab("a", { hidden: SELF, lineage: { startedBy: { sid: "p", title: "主·名", live: true, hidden: null }, children: [{ sid: "k1", title: "子·一", live: true, hidden: BG }, { sid: "gone", title: "子·二", live: false, hidden: null }] } });
+    const t = tab("a", { hidden: SELF, lineage: { startedBy: { sid: "p", title: "主·名", face: LIVE_FACE, hidden: null }, children: [{ sid: "k1", title: "子·一", face: LIVE_FACE, hidden: BG }, { sid: "gone", title: "子·二", face: ENDED_FACE, hidden: null }] } });
     const host = { active: () => t, viewTerminal: vi.fn(), openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), reconnect: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: (sid: string) => (sid === "p" ? parent : sid === "k1" ? kid : null), switchTo: vi.fn(), switching: NO_SWITCHING };
     const h = new SessionHead(host);
     document.body.appendChild(h.el);

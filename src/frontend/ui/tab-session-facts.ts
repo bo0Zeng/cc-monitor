@@ -23,7 +23,7 @@ export interface FactsChange {
   writers: boolean;
   /** 需手动那一格变了。 */
   needs: boolean;
-  /** 悬停卡的那两样（没结果的调用 · 最后一句）变了。 */
+  /** 悬停卡与状态一句那几样（没结果的调用 · 最后一句 · 状态一句）变了。 */
   peek: boolean;
   /** 血缘（由谁启动 · 子会话）变了。 */
   lineage: boolean;
@@ -56,7 +56,8 @@ export function applyFacts(tab: Tab, f: SessionFacts): FactsChange {
   tab.needs = f.needs;
   tab.autoAnswer = f.autoAnswer;
   tab.autoAnswered = f.autoAnswered;
-  const peek = JSON.stringify([tab.pending, tab.lastSay, tab.backgroundWork]) !== JSON.stringify([f.pending, f.lastSay, f.background]);
+  const peek = JSON.stringify([tab.pending, tab.lastSay, tab.backgroundWork, tab.line]) !== JSON.stringify([f.pending, f.lastSay, f.background, f.line ?? null]);
+  tab.line = f.line ?? null;
   tab.backgroundWork = f.background;
   tab.pending = f.pending;
   tab.lastSay = f.lastSay;

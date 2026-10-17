@@ -121,11 +121,9 @@ describe("照 landed 开不开 · 等不等（表在 session-open 一处）", ()
     expect(arrival.expectArrival.mock.calls[0][0]).toMatchObject({ match: { cwd: "/p" } });
   });
 
-  it("恢复成了 ⇒ 记录在；那台附带的一句照说", async () => {
+  it("恢复成了 ⇒ 那台附带的一句照说", async () => {
     reply = opened("running", { note: "附带的一句" });
-    const onRecord = vi.fn();
-    await openSession("devbox", RESUME, { onRecord });
-    expect(onRecord).toHaveBeenCalledWith(true);
+    await openSession("devbox", RESUME);
     expect(toasts.toast.mock.calls.map((c) => c[0])).toContain("附带的一句");
   });
 });
@@ -136,7 +134,7 @@ describe("失败按码挑按钮，那一句是那台的原话", () => {
     for (const code of openCodes()) {
       vi.clearAllMocks();
       refusal = { code, message: `第一行 ${code}\n第二行`, data: { field: null, unavailable: code === "account_unavailable" ? { requested: "z", pinned: false, listKnown: true, alternative: "b" } : null } };
-      expect(await openSession("devbox", RESUME, { onRecord: () => {} })).toBe(false);
+      expect(await openSession("devbox", RESUME)).toBe(false);
       expect(term.openTerminal).not.toHaveBeenCalled();
       const t = toasts.toast.mock.calls[0] ?? resync.offerResyncRetry.mock.calls[0]?.slice(2);
       if (code === "wrong_owner") {
@@ -168,11 +166,9 @@ describe("失败按码挑按钮，那一句是那台的原话", () => {
     }
   });
 
-  it("记录已不在 ⇒ 标签页落「记录已不在」、零次开窗", async () => {
+  it("记录已不在 ⇒ 零次开窗（标签页的「记录已不在」由那台账本重发一帧脸）", async () => {
     refusal = { code: "record_gone", message: "不在", data: { field: null, unavailable: null } };
-    const onRecord = vi.fn();
-    await openSession("devbox", RESUME, { onRecord });
-    expect(onRecord).toHaveBeenCalledWith(false);
+    await openSession("devbox", RESUME);
     expect(term.openTerminal).not.toHaveBeenCalled();
   });
 });

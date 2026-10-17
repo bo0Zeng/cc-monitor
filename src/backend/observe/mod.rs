@@ -32,6 +32,7 @@ pub(crate) mod relay_marks;
 pub mod runs;
 pub mod search_query;
 // 会话账本：可重连 / 已结束由这台后端裁、发成品帧（挂在 watcher 发帧的出口上）。
+pub(crate) mod record_hook; // 问过记录在不在之后交给会话账本的那一口（不经 watcher）
 pub(crate) mod session_ledger;
 // `session-terminals`：此刻是哪个终端在显示这个会话（点 ↗ 时问一次）。
 pub(crate) mod session_terminals;

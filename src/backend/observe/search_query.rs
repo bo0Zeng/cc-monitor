@@ -24,6 +24,7 @@ use crate::common::append_read::{Blocks, Step, Tailed};
 use crate::common::fence::Fence;
 use crate::history::search_rules::{self, SnippetBudget, SnippetVerdict, MAIN_CAP, TOOL_CAP};
 use crate::platform::fs::Ro;
+use crate::wire::SessionFaceExt as _;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -78,8 +79,6 @@ pub(crate) struct SessionHits {
     pub(crate) hits_truncated: bool,
     /// 后台分身会话。
     pub(crate) is_bg: bool,
-    /// 那台判的：在跑 · 已结束（全文搜索只扫记录树，判得了活）。
-    pub(crate) status: Liveness,
     /// 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
     pub(crate) can: crate::history::listing::Can,
     /// 分叉来的：父会话的显示标题（同历史清单那一格）；不是分叉来的 · 父会话这一趟没走到 ⇒ 缺。
@@ -90,6 +89,8 @@ pub(crate) struct SessionHits {
     #[serde(skip)]
     #[cfg_attr(test, ts(skip))]
     pub(crate) parent: Option<String>,
+    /// 那台此刻对这个会话的说法（同历史清单那一行的 `face`）。
+    pub(crate) face: crate::wire::SessionFace,
 }
 
 /// 一条命中。
@@ -114,31 +115,6 @@ pub(crate) struct SearchHit {
     /// 这条记录那一行在记录文件里的起点（字节；交给 `history-read` 的 `offset` 就从它读起）。
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) offset: u64,
-}
-
-/// 全文搜索那一行的活不活：只扫记录树、看得到这台的 pidfile ⇒ 只有两态。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum Liveness {
-    Live,
-    Ended,
-}
-
-impl Liveness {
-    fn of(live: bool) -> Liveness {
-        if live {
-            Liveness::Live
-        } else {
-            Liveness::Ended
-        }
-    }
-
-    /// 同历史清单那一格的词（`history::listing::status_of`，`can_of` 按它判）。
-    fn word(self) -> &'static str {
-        crate::history::listing::status_of(Some(self == Liveness::Live), false)
-    }
 }
 
 /// 帧面那条（`history-search`）的入口：每命中会话一行交给 `push`。回「读不动、没搜到」的会话数（帧面那条把它交给界面说出来）。
@@ -182,7 +158,7 @@ pub(crate) fn search_counting(
     let fence = Fence::at(&root)?;
     let mut resident = resident();
     let index = resident.entry(fence.root().to_path_buf()).or_default();
-    let live = crate::history::live::live_session_ids(agent_home);
+    let live = crate::history::live::live_activity(agent_home);
     let unreadable = index.search(&fence, &q, opts, &live, push)?;
     let r = index.last;
     // 〔perfC2〕这一问整份重读过一大批（含工具时常驻装不下的那几份）⇒ 读完放掉的那些空洞还给系统，常驻不停在这一问的高水位。
@@ -664,7 +640,7 @@ impl SearchIndex {
         fence: &Fence,
         q: &str,
         opts: &SearchOpts,
-        live: &std::collections::BTreeSet<String>,
+        live: &std::collections::BTreeMap<String, Option<crate::agents::SessionActivity>>,
         push: &mut dyn FnMut(SessionHits) -> Result<(), String>,
     ) -> Result<usize, String> {
         let files = session_files(fence);
@@ -727,10 +703,11 @@ impl SearchIndex {
                 }
                 if let Some(mut session) = session {
                     // 能不能恢复由这台判（活不活看这台的 pidfile），与历史清单的行同一个函数。
-                    session.status = Liveness::of(live.contains(&session.session_id));
+                    let life = crate::history::live::life_of(&live, &session.session_id);
+                    session.face =
+                        crate::wire::SessionFace::of(crate::wire::Life::of_row(Some(life)));
                     session.is_bg = bg;
-                    session.can =
-                        crate::history::listing::can_of(&session.agent, session.status.word(), bg);
+                    session.can = crate::history::listing::can_of(&session.agent, Some(life), bg);
                     found.push(session);
                 }
             }
@@ -946,7 +923,12 @@ fn session_row(
         .to_string();
     SessionHits {
         // 活不活 · 分身 · 能做什么由扫的那一层按这台的 pidfile 补（[`SearchIndex::search`]）；这里先按「已结束、不是分身」占位。
-        can: crate::history::listing::can_of(&agent, Liveness::Ended.word(), false),
+        can: crate::history::listing::can_of(
+            &agent,
+            Some(crate::history::listing::RowLife::Ended),
+            false,
+        ),
+        face: crate::wire::SessionFace::of(crate::wire::Life::Ended),
         agent,
         session_id,
         project_path,
@@ -958,7 +940,6 @@ fn session_row(
         hits,
         hits_truncated: session_starved,
         is_bg: false,
-        status: Liveness::Ended,
         forked_from: None,
         parent: entry
             .done

@@ -58,7 +58,7 @@ export class RotationSection {
       await bindEvents(
         {
           onLine: () => {},
-          onSessionEnded: () => {},
+          onSessionFace: () => {},
           onChanged: (origin) => {
             if (origin === this.origin) void this.mount?.refresh();
           },

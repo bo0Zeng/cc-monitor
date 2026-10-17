@@ -165,8 +165,7 @@ CI 的 e2e job 就是调门禁（`GATE_ONLY=e2e`），不另记一份名单。
 
 跨进程整链(后端→帧→emitter→前端灯)的 `[e2e] tab-state` 断言,单测碰不到。**红线:后端
 零行为改动**——只加下列 `tests/e2e/` fixture(外部 wrapper/shim)+ 前端 DEV 探针(`import.meta.env.DEV`
-门控,生产零包含)。探针出口:`tabs.emitTabStateProbe`(markTmuxIdle/archiveTab/reviveTab/ensureTab
-清灰四真值点)+ `tabs.debugSessionsSnapshot()`(Ctrl+Alt+F10 / 中键账号 chip → `[e2e] sessions`)。
+门控,生产零包含)。探针出口:`tabs.emitTabStateProbe`(`onFace` 里点变了的那一刻)+ `tabs.debugSessionsSnapshot()`(Ctrl+Alt+F10 / 中键账号 chip → `[e2e] sessions`)。
 
 fixtures:
 - `fake-claude`——确定性 claude shim:记 argv+env → `$CLAUDE_CONFIG_DIR/argv.log`;写自身
@@ -187,8 +186,8 @@ fixtures:
 
 2. **全链级(GUI + loopback SSH)**:前置同 f40(Xvfb + dev 实例)+ config.json 配一个 loopback 远端,
    `backendPath` 指向 `backend-wrapper.sh`。然后 `E2E_DISPLAY=:80 bash tests/e2e/graylight-suite.sh`。断言 monitor
-   日志:`[e2e] tab-state … liveness=dead recoverability=attachable`(可重连;原先是 `status=live tmuxIdle=1`)→
-   `… liveness=dead recoverability=resumable`(已结束)。**★ app 会自动部署后端**:backendPath 同目录须放一个 `.build_id`(内容=app
+   日志:`[e2e] tab-state … dot=exited`(Claude 已退出)→
+   `… dot=ended`(已结束)。**★ app 会自动部署后端**:backendPath 同目录须放一个 `.build_id`(内容=app
    **内嵌** 后端的 build_id;那条按旁挂标记判的路已删,今天后端读字节自报的身份戳,见后端 `deploy` crate 的 `identity_decision`——不是 monitor 的「我这一版」),否则
    app 会用内嵌二进制覆盖写 backendPath(把 wrapper 冲掉)。杀 fake-claude **前须等 > 一个 8s 发帧周期**,
    让 app 先收到含 @ccm_sid 的 `TmuxSessions` 帧,否则 removed 到达时 tmux 账本无此 sid → 判 Archive 丢灰。

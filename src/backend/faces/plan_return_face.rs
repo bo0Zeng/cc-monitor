@@ -83,7 +83,8 @@ pub(crate) fn return_with(
         ));
     };
     let resume = req.resume == Some(true);
-    let alive = to.get("alive").and_then(Value::as_bool) == Some(true);
+    let live = needs::live_of(&to);
+    let alive = live.is_some();
     if !alive && !resume {
         return Ok(reply(
             &line,
@@ -93,7 +94,7 @@ pub(crate) fn return_with(
             Some(copy_text("sessionState.planReturn.ended", &[])),
         ));
     }
-    if to.get("activity").and_then(Value::as_str) == Some("needs_you") {
+    if live == Some(Some(crate::agents::SessionActivity::NeedsYou)) {
         return Ok(reply(
             &line,
             &to,

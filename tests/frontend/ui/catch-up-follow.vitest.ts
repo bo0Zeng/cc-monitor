@@ -6,6 +6,7 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import { owned } from "../../test-support/owned-tab-manager.ts";
+import { announced } from "../../test-support/session-faces";
 
 vi.mock("@tauri-apps/api/core", async () => {
   const rig = await import("../../test-support/session-viewer-rig");
@@ -33,7 +34,7 @@ function rig(): TabManager {
   const barEl = document.createElement("div");
   const streamRootEl = document.createElement("div");
   document.body.replaceChildren(barEl, streamRootEl);
-  return owned(new TabManager(barEl, streamRootEl));
+  return owned(announced(new TabManager(barEl, streamRootEl)));
 }
 
 const said = (sid: string, seq: number, catchUp: boolean): RigPayload =>

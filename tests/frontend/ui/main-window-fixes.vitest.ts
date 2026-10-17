@@ -70,7 +70,7 @@ import { dispatcher, type OverlayHandle } from "../../../src/frontend/ui/keybind
 import { confirmDialog } from "../../../src/frontend/ui/kit/dialog";
 import { TabManager, type Tab } from "../../../src/frontend/ui/tabs";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
-import { ENDED, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
+import { announced, goldenFace } from "../../test-support/session-faces";
 import { invoke } from "@tauri-apps/api/core";
 import type { TabStore } from "../../../src/frontend/ui/tab-store";
 import type { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
@@ -92,7 +92,7 @@ function makeTabs(sids: readonly string[]): TabManager {
   const bar = document.createElement("div");
   const root = document.createElement("div");
   document.body.append(bar, root);
-  const tm = owned(new TabManager(bar, root));
+  const tm = owned(announced(new TabManager(bar, root)));
   for (const sid of sids) tm.ensureTab(sid, `/w/${sid}`, `/p/${sid}.jsonl`, LOCAL_ORIGIN);
   return tm;
 }
@@ -206,7 +206,7 @@ describe("W 关掉已结束的当前 tab：给 8 秒撤销，撤销 ⇒ 原位 �
       const tm = makeTabs(["a", "b", "c"]);
       const st = inside(tm).store;
       const b = st.tabs.get("b") as Tab;
-      b.state = ENDED;
+      b.face = goldenFace("ended");
       b.pinned = true;
       tm.switchTo("b");
       tm.closeActiveIfArchived();
@@ -262,7 +262,7 @@ describe("有分组时数字键 / ] [ / 关掉当前 tab 后的落点都按条�
     const tm = grouped();
     const st = inside(tm).store;
     tm.switchTo("a");
-    (st.tabs.get("a") as Tab).state = ENDED;
+    (st.tabs.get("a") as Tab).face = goldenFace("ended");
     tm.closeTab("a");
     expect(st.activeId).toBe("e");
   });
@@ -276,7 +276,7 @@ describe("远端还没到时拖动顺序，没到的 tab 在盘上的位置留�
     store.orderedIds = ["b", "a", "c"];
     await prefs.persistOrder();
     expect(store.savedOrder).toEqual(["x", "b", "a", "y", "c"]);
-    (store.tabs.get("a") as Tab).state = ENDED;
+    (store.tabs.get("a") as Tab).face = goldenFace("ended");
     tm.closeTab("a");
     await prefs.persistOrder();
     expect(store.savedOrder).toEqual(["x", "b", "y", "c"]);
@@ -287,7 +287,7 @@ describe("说不清（那台暂时看不见）的 tab 不给恢复", () => {
   it("右键菜单里恢复置灰并说为什么；直接调恢复也不起，说一句", async () => {
     const tm = makeTabs(["u"]);
     const st = inside(tm).store;
-    (st.tabs.get("u") as Tab).state = UNSEEN;
+    (st.tabs.get("u") as Tab).face = null;
     (tm as unknown as { menu: { open(e: MouseEvent, sid: string): void } }).menu.open(
       new MouseEvent("contextmenu", { clientX: 1, clientY: 1 }),
       "u",
@@ -372,7 +372,7 @@ describe("tab 的悬停卡第一行是标题全名", () => {
   it("活着的普通 tab 也有卡（标题全名在第一行），已结束的状态句说已结束", () => {
     const tm = makeTabs(["a", "b"]);
     const st = inside(tm).store;
-    (st.tabs.get("b") as Tab).state = ENDED;
+    (st.tabs.get("b") as Tab).face = goldenFace("ended");
     tm.switchTo("b");
     tm.switchTo("a");
     const bar = (tm as unknown as { bar: { hoverCard(sid: string): HTMLElement | null } }).bar;
@@ -519,6 +519,7 @@ describe("上下文那一格：状态栏与监控板照抄同一份核心成品"
     agent: "claude",
     startedBy: null,
     children: [],
+    line: null,
     forkedFrom: null,
     touchedFiles: [],
     projectDir: null,

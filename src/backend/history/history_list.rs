@@ -31,7 +31,8 @@ use serde_json::Value;
 
 use crate::common::cells::Words;
 use crate::history::history_annotations::{Loaded, Table};
-use crate::history::listing::{can_of, status_of};
+use crate::history::listing::{can_of, RowLife};
+use crate::wire::SessionFaceExt as _;
 
 /// 默认最多回多少行（按时间看时超过它只列最近这些、底部「更早的用搜索找」）。
 const DEFAULT_LIMIT: usize = 2000;
@@ -44,7 +45,7 @@ static REMOTE_CACHE: std::sync::Mutex<BTreeMap<String, Listing>> =
 // ───────────────────────── 这台自己的清单（`raw`）─────────────────────────
 
 /// 这台此刻活着的会话（pidfile 源头）。
-pub(crate) struct LiveSet(pub(crate) BTreeSet<String>);
+pub(crate) struct LiveSet(pub(crate) BTreeMap<String, Option<crate::agents::SessionActivity>>);
 
 /// 注解这一维：读到了 ⇒ 那张表；读不到 ⇒ 为什么（给 `notice`）。
 pub(crate) fn annotations(loaded: &Loaded) -> Result<&Table, String> {
@@ -109,8 +110,7 @@ fn session_row(v: &Value, project_dir: &str, live: &LiveSet) -> Option<RawRow> {
         started_at: v["startedAtMs"].as_i64().unwrap_or(0),
         updated_at: v["updatedAtMs"].as_i64().unwrap_or(0),
         jsonl_path: v["jsonlPath"].as_str().unwrap_or_default().to_string(),
-        is_live: Some(live.0.contains(sid)),
-        reconnectable: !live.0.contains(sid) && crate::history::live::reconnectable(sid),
+        life: Some(crate::history::live::life_of(&live.0, sid)),
         message_count_approx: v["messageCountApprox"].as_u64().unwrap_or(0) as u32,
         is_bg: v["isBg"].as_bool().unwrap_or(false),
         starred: false,
@@ -139,8 +139,7 @@ fn synth_row(kind: &str, s: &crate::agents::SynthSession, excerpt: String) -> Ra
         started_at: s.mtime_ms,
         updated_at: s.mtime_ms,
         jsonl_path: s.path.to_string_lossy().into_owned(),
-        is_live: None,
-        reconnectable: false,
+        life: None,
         message_count_approx: 0,
         is_bg: false,
         starred: false,
@@ -187,7 +186,7 @@ pub(crate) fn machine_listing() -> Result<Listing, (&'static str, String)> {
 /// [`answer_from`] 按 sid 滤掉）⇒ 答案与整台扫逐字相同，不必把整台每份会话从头扫一遍。
 fn machine_listing_for(only: Option<&str>) -> Result<Listing, (&'static str, String)> {
     let home = crate::history::listing::agent_home();
-    let live = LiveSet(crate::history::live::live_session_ids(&home));
+    let live = LiveSet(crate::history::live::live_activity(&home));
     let tree = tree_for(&home, only).map_err(|e| ("failed", e))?;
     let synth: Vec<(
         &'static str,
@@ -467,13 +466,13 @@ struct Finished {
     raw: RawRow,
     label: String,
     untitled: bool,
-    status: &'static str,
+    face: crate::wire::SessionFace,
     /// 单个那一格（注解）：隐藏的判定在所有行都叫得出名字之后（[`answer_from`]），主会话的名字从同一份清单里取。
     pin: Option<crate::history::history_annotations::Hide>,
     hidden: Option<cmd_wire::session::Hidden>,
 }
 
-/// 并上这台的注解（那一台的行也并这台的：注解只住本机），判 `status` · `label` · `untitled`。
+/// 并上这台的注解（那一台的行也并这台的：注解只住本机），判 `face` · `label` · `untitled`。
 fn finish_row(mut raw: RawRow, ann: Option<&Table>) -> Finished {
     let meta = ann
         .and_then(|t| t.get(&raw.session_id))
@@ -492,12 +491,12 @@ fn finish_row(mut raw: RawRow, ann: Option<&Table>) -> Finished {
         &raw.project_path,
         &raw.session_id,
     );
-    let status = status_of(raw.is_live, raw.reconnectable);
+    let face = crate::wire::SessionFace::of(crate::wire::Life::of_row(raw.life));
     Finished {
         raw,
         label,
         untitled,
-        status,
+        face,
         pin: meta.hide,
         hidden: None,
     }
@@ -510,7 +509,7 @@ fn hits(f: &Finished, q: &str) -> bool {
         .any(|s| s.to_lowercase().contains(q))
 }
 
-/// 一行成品（活不活只出 `status` 一格：`isLive` 是它的来路，两格并存读的人就得猜听哪一格）。
+/// 一行成品（活不活只在 `face` 里）。
 fn row_of(
     f: Finished,
     at: i64,
@@ -530,11 +529,11 @@ fn row_of(
     let (at_text, section_text, span_text) =
         crate::common::time::history_times(at, r.started_at, r.updated_at, now_ms, tz);
     HistoryRow {
-        can: can_of(&r.agent, f.status, r.is_bg),
+        can: can_of(&r.agent, r.life, r.is_bg),
         agent_tag: agent_tag(&r.agent).map(Words::from),
         label: Words(f.label),
         untitled: f.untitled,
-        status: f.status.to_string(),
+        face: f.face,
         context: context.then_some(true),
         at,
         at_text,
@@ -705,9 +704,9 @@ fn groups_of(
         });
         g.count += 1;
         // 有在跑的：确定有一个就够；有答不了的就不许说「都没在跑」（同项目清单）。
-        match v.status.as_str() {
-            "live" => g.has_live = Some(true),
-            "unknown" if g.has_live != Some(true) => g.has_live = None,
+        match (&v.face.live, v.face.dot) {
+            (crate::wire::FaceLive::Yes { .. }, _) => g.has_live = Some(true),
+            (_, crate::wire::SessionDot::Unknown) if g.has_live != Some(true) => g.has_live = None,
             _ => {}
         }
         g.starred |= v.starred;
@@ -757,7 +756,7 @@ fn groups_of(
 pub(crate) fn specimen() -> HistoryList {
     let s = |v: &str| v.to_string();
     let w = |v: &str| Words(v.to_string());
-    HistoryList {
+    let mut l = HistoryList {
         rows: vec![HistoryRow {
             agent: s("agent"),
             session_id: s("s"),
@@ -785,8 +784,11 @@ pub(crate) fn specimen() -> HistoryList {
             last_account: Some(s("a")),
             label: w("c"),
             untitled: false,
-            status: "ended".to_string(),
-            can: can_of("agent", "ended", false),
+            face: crate::wire::SessionFace::of(crate::wire::Life::Live {
+                activity: Some(crate::agents::SessionActivity::Working),
+                tmux: None,
+            }),
+            can: can_of("agent", Some(RowLife::Ended), false),
             agent_tag: Some(w("g")),
             context: Some(true),
             at: 2,
@@ -813,7 +815,12 @@ pub(crate) fn specimen() -> HistoryList {
         total: 1,
         truncated: false,
         notice: Some(s("n")),
-    }
+    };
+    // 离开活的那一形也露一行（能做什么那几格的「不能」与为什么）。
+    let mut ended = l.rows[0].clone();
+    ended.face = crate::wire::SessionFace::of(crate::wire::Life::Ended);
+    l.rows.push(ended);
+    l
 }
 
 // ───────────────────────── 帧面 ─────────────────────────

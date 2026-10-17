@@ -19,7 +19,7 @@
       "lang": "kt"
     }
   ],
-  "ceiling": 146,
+  "ceiling": 132,
   "entries": [
     {
       "file": "src/frontend/ui/account-chip.ts",
@@ -169,20 +169,6 @@
       "why": "子运行状态码 ⇒ 字（running · done · failed · stopped · unknown）：子运行成品带写好的状态字"
     },
     {
-      "file": "src/frontend/ui/session-face.ts",
-      "rule": "caseWord",
-      "n": 4,
-      "kind": "第 1 批",
-      "why": "V7：状态一句自己拼（核心写这一句，会走的那一截走 `{dur}`）"
-    },
-    {
-      "file": "src/frontend/ui/session-words.ts",
-      "rule": "caseWord",
-      "n": 9,
-      "kind": "第 1 批",
-      "why": "V11：不活着的那几档状态点 ⇒ 字（会话帧对所有状态都带 state_text）"
-    },
-    {
       "file": "src/frontend/ui/settings/account-new-form.ts",
       "rule": "caseWord",
       "n": 2,
@@ -237,13 +223,6 @@
       "n": 9,
       "kind": "第 7 批",
       "why": "测试连接停在哪一步 / 拨号阶段码 ⇒ 字（start · handshake … · dialing · hostKey …）：机器状态成品带 said（V12 同批）"
-    },
-    {
-      "file": "src/frontend/ui/tab-batch-menu.ts",
-      "rule": "codeWord",
-      "n": 1,
-      "kind": "第 1 批",
-      "why": "会话在不在码 `liveness === \"unseen\"` ⇒ 字：会话帧带写好的状态字（V11 同批）"
     },
     {
       "file": "src/frontend/ui/tab-stream-view.ts",

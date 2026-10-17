@@ -29,8 +29,8 @@ import { commands } from "../ipc/commands";
 import { LOCAL_ORIGIN, isRemoteOrigin, type Origin } from "../ipc/origin";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import type { Tab } from "../tab-model";
-import { dotOf, titleParts } from "../session-face";
-import { dotLabel } from "../session-words";
+import { titleParts } from "../session-face";
+import { faceOf } from "../face-can";
 import { ackNeed, fetchPlanList, fetchPlanRead, planCommand, PlanMiss, takeRepo, type PlanCell, type PlanNeed, type PlanList, type PlanRead, type PlanSlice, type PlanWho } from "../plan-reads";
 import type { PlanMoved } from "../changed-stream";
 import {
@@ -1101,8 +1101,8 @@ export class PlanView {
       return b;
     }
     const tab = this.tabOf(w.sid);
-    const dot = tab ? dotOf(tab) : w.alive ? (w.activity === "needs_you" ? "needs-you" : w.activity === "working" ? "running" : "idle") : "ended";
-    b.appendChild(statusDot(dot, dotLabel(dot), "compact"));
+    const face = tab ? faceOf(tab) : w.face;
+    b.appendChild(statusDot(face.dot, face.name, "compact"));
     const name = tab ? titleParts(tab).title : shortId(w.sid);
     txt.textContent = w.kind === "subagent" && signer ? copyText("plan.who.sub", { session: name }) : name;
     b.appendChild(txt);

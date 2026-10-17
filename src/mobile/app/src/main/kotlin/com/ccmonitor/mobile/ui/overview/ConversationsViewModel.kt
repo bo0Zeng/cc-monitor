@@ -10,7 +10,6 @@ import com.ccmonitor.mobile.core.claude.link.HistoryList
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.ResidentFeed
-import com.ccmonitor.mobile.core.claude.link.SessionDot
 import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.SessionsNeeds
 import com.ccmonitor.mobile.core.claude.link.Toned
@@ -18,6 +17,7 @@ import com.ccmonitor.mobile.core.claude.link.wire.Annotated
 import com.ccmonitor.mobile.core.claude.link.wire.Hide
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryListPage
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsRow
+import com.ccmonitor.mobile.core.claude.link.wire.SessionDot
 import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.copy.copyText
@@ -40,8 +40,8 @@ import kotlinx.coroutines.launch
 
 /**
  * 「对话」这一屏与抽屉「最近」：一台机器上的会话清单 ＋ 需手动的那几条 ＋ 每条此刻的状态字。
- * 全是核心的成品：清单与段头 · 时刻读 `history-list`，需手动读 `sessions-needs`（已排好），状态读会话帧的
- * `activity_text` / `activity_tone`。这里只挑格、按段头连着的几行归成一段（不判天、不排序）。
+ * 全是核心的成品：清单与段头 · 时刻读 `history-list`，需手动读 `sessions-needs`（已排好），状态读那台给的整份脸
+ * （`face`：会话帧上最新那一份，没有就清单那一行的）。这里只挑格、按段头连着的几行归成一段（不判天、不排序）。
  * 清单先上本地缓存（上次那一份 `rows[]` 原样，离线也看得到），连上以后照那台给的新的那一份覆盖、再存下。
  * 隐藏谁由那台判（行上 `hidden` 那一格）：「显示已隐藏」只换问 `history-list` 的那个参数；改单个那一格走 `history-annotate`。
  */
@@ -215,15 +215,15 @@ data class ConversationsUiState(
 /** 需手动的一条。 */
 data class NeedsItem(
     val sessionId: String,
-    /** 清单里那一行的标题；清单里还没有它 ⇒ `null`（屏上不画标题，不拿 sid 顶）。 */
-    val label: String?,
+    /** 那台写好的标题（同清单那一行）。 */
+    val label: String,
     /** 「等批准 · Bash」。 */
     val text: String,
     /** 那台答出那一刻已等了多久（毫秒）；没有起点 ⇒ `null`。 */
     val waitedMs: Long?,
     /** 收到那份的本机时刻（[monoNow] 那一种钟）。 */
     val receivedAt: Long,
-    /** 状态点（照核心给的语气）。 */
+    /** 状态点（那台给的脸）。 */
     val dot: SessionDot = SessionDot.NEEDS_YOU,
 ) {
     /** 此刻（[now]，同一种钟）已等多久：那台给的 ＋ 本机从收到起走过的（屏上每秒重画这一格，不重问那台）。 */
@@ -246,13 +246,9 @@ data class HistoryItem(
     val label: String,
     val atText: String?,
     val agentTag: String?,
-    /**
-     * 状态字与语气：活着 ⇒ 会话帧那一句；离开活了 ⇒ `session_state` 那一句；流上没有 ⇒ 清单 `status` 那一格的名字（已结束 · 状态不明）；
-     * 清单说活着、流上还没报到 · 认不出 ⇒ `null`（不画）。
-     */
-    val status: Toned?,
-    /** 状态点（[SessionDot.of]，只照格选）；认不出 ⇒ `null`（不画、占位照留）。 */
-    val dot: SessionDot? = null,
+    /** 状态字与语气：那台给的脸的短名（流上有它 ⇒ 流上最新那一份，否则清单那一行的）；那台断着 ⇒ 离线那一句。 */
+    val status: Toned,
+    val dot: SessionDot,
     /** 隐藏 ⇒ 那台写好的那一句（为什么隐藏）；不隐藏 ⇒ `null`。 */
     val hidden: String? = null,
 )
@@ -286,13 +282,12 @@ internal fun view(
     if (link == LinkState.Connecting) {
         return ConversationsUiState(deploying = deploying, sections = sectionsOf(cached, table, machine, showHidden), showHidden = showHidden)
     }
-    val labels = answer?.rows?.associate { it.sessionId to it.label }.orEmpty()
     return ConversationsUiState(
         connecting = false,
         linkNotice = (link as? LinkState.Up)?.notice(),
         fix = (link as? LinkState.Up)?.fix,
         deploying = deploying,
-        needs = (needs as? Fetched.Got)?.value.orEmpty().map { NeedsItem(it.sid, labels[it.sid], it.needs.text, it.needs.waitedMs, needsAt, SessionDot.live(it.needs.tone)) },
+        needs = (needs as? Fetched.Got)?.value.orEmpty().map { NeedsItem(it.sid, it.label, it.needs.text, it.needs.waitedMs, needsAt, it.face.dot) },
         needsProblem = (needs as? Fetched.Failed)?.problem,
         sections = sectionsOf(answer, table, machine, showHidden),
         listLoading = list is Fetched.Loading,
@@ -305,7 +300,8 @@ internal fun view(
 
 /**
  * 清单 ⇒ 几段：段头是核心写好的；连着同一个段头的几行归一段（核心已按时间排好，这里不重排）。
- * [table] 为 `null` ＝ 那台断着：此刻的状态谁都说不清 ⇒ 每行点画说不清、字写那台离线（断前的会话表与缓存里的状态都可能过时）。
+ * 每行的脸：流上有它 ⇒ 流上最新那一份，否则清单那一行的。[table] 为 `null` ＝ 那台断着：那台说「看不见时照旧作数」的（已结束 · 记录已不在）照画，
+ * 其余点画说不清、字写那台离线（断前的会话表与缓存里的状态都可能过时）。
  */
 private fun sectionsOf(
     answer: HistoryListPage?,
@@ -317,9 +313,8 @@ private fun sectionsOf(
     val offline = Toned(copyText("newSession.machine.offline", "machine" to machine), Tone.PLAIN)
     for (r in answer?.rows.orEmpty()) {
         if (r.hidden != null && !showHidden) continue
-        val live = table?.sessions?.get(r.sessionId)
-        val fate = table?.fates?.get(r.sessionId)
-        val (status, dot) = if (table == null) offline to SessionDot.UNKNOWN else statusOf(live?.activity, fate?.text, r.status) to SessionDot.of(live, fate, r.status)
+        val face = if (table == null) r.face.takeIf { it.settled } else table.faces[r.sessionId] ?: r.face
+        val (status, dot) = if (face == null) offline to SessionDot.UNKNOWN else Toned(face.name, face.tone) to face.dot
         val item = HistoryItem(r.sessionId, r.label, r.atText, r.agentTag, status, dot, r.hidden?.said)
         val last = sections.lastOrNull()
         if (last != null && last.title == r.sectionText) {
@@ -330,15 +325,3 @@ private fun sectionsOf(
     }
     return sections
 }
-
-/** 一行的状态字：先会话帧、再去向那一句、再清单那一格的名字（文案表 `sessionState.*`，与桌面同一句）。 */
-private fun statusOf(
-    live: Toned?,
-    fate: String?,
-    listed: String?,
-): Toned? =
-    live ?: fate?.let { Toned(it, Tone.PLAIN) } ?: when (listed) {
-        "ended" -> Toned(copyText("sessionState.ended.name"), Tone.PLAIN)
-        "unknown" -> Toned(copyText("sessionState.unseen.name"), Tone.PLAIN)
-        else -> null
-    }

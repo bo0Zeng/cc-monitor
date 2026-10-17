@@ -118,7 +118,10 @@ pub(crate) fn with_launch_ctx<T>(
 pub(crate) fn resume_of(sid: &str) -> Option<ResumeOf> {
     use crate::observe::query::locate as hq;
     let home = crate::history::listing::agent_home();
-    let path = hq::session_record(&home, sid).ok()?;
+    // 记录在不在交这台的会话账本（同 `history-record`：说过已结束的那条随之在「已结束 ⇄ 记录已不在」之间翻）。
+    let path = hq::session_record(&home, sid);
+    crate::observe::record_hook::seen(sid, path.is_ok());
+    let path = path.ok()?;
     let path = path.to_str()?;
     let agent = hq::facts_agent(&home, path)?;
     let cwd = hq::facts_project_dir(&home, path)?;

@@ -1,5 +1,8 @@
 package com.ccmonitor.mobile.ui.drawer
 
+import com.ccmonitor.mobile.core.claude.link.Toned
+import com.ccmonitor.mobile.core.claude.link.wire.SessionDot
+import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.testing.KotlinSourceScanner
 import com.ccmonitor.mobile.ui.chat.CHAT_MENU_BANNED_WORDS
@@ -181,7 +184,7 @@ class DrawerTest {
     private fun row(
         id: String,
         title: String,
-    ) = HistoryItem(sessionId = id, label = title, atText = "09:00", agentTag = null, status = null)
+    ) = HistoryItem(sessionId = id, label = title, atText = "09:00", agentTag = null, status = Toned("空闲", Tone.PLAIN), dot = SessionDot.IDLE)
 
     private fun codeOnly(text: String): String = KotlinSourceScanner.codeOnlyKeepingLiterals(text)
 

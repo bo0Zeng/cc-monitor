@@ -123,7 +123,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/session-hidden.ts", // 新建的 tab 血缘那一格的空值（`NO_LINEAGE`）
     "src/frontend/ui/session-hidden-cmds.ts", // 隐藏那几件交的命令（`history-annotate {hide}`）由组装根接给 `tab-hide`；「没人答时自动答」那一格同一条命令
     "src/frontend/ui/session-face.ts", // 历史页那一行的「需手动」徽标问它（`needsWordOf`：与标签页行同一份 `needsOf`，字照抄核心写的）
-    "src/frontend/ui/tab-session-state.ts", // 会话状态只经 `nextState` 改（转移表）＋ 关 / 拉前两道谓词
+    "src/frontend/ui/face-can.ts", // 那台的脸上能做什么（关 / 拉前 · 说不清那一张）
     "src/frontend/ui/tab-store.ts",
     "src/frontend/ui/tab-stream-view.ts",
     "src/frontend/ui/tasks-panel.ts", // ensureTab：初始 task 快照
@@ -138,22 +138,20 @@ const DEPS: Record<string, readonly string[]> = {
   // 默认组名「组 N」进了文案表 ⇒ 取文口。
   // 组员是 `Tab.group` ⇒ 不再改组表，只回「怎么动」。
   "src/frontend/ui/tab-drop.ts": ["src/frontend/ui/copy-table.ts"],
-  // ① store：只存东西、只做顺序运算、只有一份订阅。摘要按活性分 ⇒ 要 `isLive` 那一个谓词。
+  // ① store：只存东西、只做顺序运算、只有一份订阅。摘要按进程在不在分 ⇒ 要 `face-can` 的 `isLive`。
   // 「只有一份订阅」建在唯一的 pub-sub 原语上（`app-store.ts::Slice`）。
   // 摘要也比每个 tab 的点 · 在等什么（运行中 → 空闲数量不变，会话头也得重画）⇒ 要 `session-face` 的 `dotOf` · `needsOf`。
   // 「看到的顺序」＝ 组员聚到第一个组员那一格（`tab-drop.ts::barRows`，与栏里的排版同一份）。
-  "src/frontend/ui/tab-store.ts": ["src/frontend/ui/app-store.ts", "src/frontend/ui/session-face.ts", "src/frontend/ui/tab-drop.ts", "src/frontend/ui/tab-session-state.ts"],
-  // ① 会话状态的两个轴：形状 ＋ 转移 ＋ 谓词 ＋ 呈现。呈现的字只经文案表取（`sessionState.*`）。
-  "src/frontend/ui/tab-session-state.ts": ["src/frontend/ui/copy-table.ts"],
-  // ② 路由：只写「上次的 tab」那一格 localStorage。已结束的不自动跟随 ⇒ `isResumeOnly`。
-  "src/frontend/ui/tab-router.ts": ["src/frontend/ui/local-storage.ts", "src/frontend/ui/tab-session-state.ts"],
+  "src/frontend/ui/tab-store.ts": ["src/frontend/ui/app-store.ts", "src/frontend/ui/session-face.ts", "src/frontend/ui/tab-drop.ts", "src/frontend/ui/face-can.ts"],
+  // ② 路由：只写「上次的 tab」那一格 localStorage。没有终端可去的不自动跟随 ⇒ `hasTerminal`。
+  "src/frontend/ui/tab-router.ts": ["src/frontend/ui/local-storage.ts", "src/frontend/ui/face-can.ts"],
   // ① 会话事实的投影（后端出成品 ⇒ tab 上的 Map / Set / 两格）：只有类型依赖。
   //   原先的两条（agent 工具名判定 `cards/subagent.ts` · 写类工具表 `panorama/session-files.ts`）随抽取器一起搬进了后端。
   // 血缘那两格（`startedBy` · `children`）的解码与比较住 `session-hidden.ts`（纯函数，零 IPC）。
   "src/frontend/ui/tab-session-facts.ts": ["src/frontend/ui/session-hidden.ts"],
   // ② 隐藏那几件：帧上那一格落到 tab 上、摘 / 放回固定与分组、撤销 toast；命令与 toast 经宿主。
-  //   一格比一格（`sameHidden`）· toast 的字（文案表）· 标题（`fullTitle`）· 已结束的收走（`isResumeOnly`）。
-  "src/frontend/ui/tab-hide.ts": ["src/frontend/ui/copy-table.ts", "src/frontend/ui/session-face.ts", "src/frontend/ui/session-hidden.ts", "src/frontend/ui/tab-session-state.ts"],
+  //   一格比一格（`sameHidden`）· toast 的字（文案表）· 标题（`fullTitle`）· 已结束的收走（`isEnded`）。
+  "src/frontend/ui/tab-hide.ts": ["src/frontend/ui/copy-table.ts", "src/frontend/ui/session-face.ts", "src/frontend/ui/session-hidden.ts", "src/frontend/ui/face-can.ts"],
   // ③ 实时流视图：渲染栈 ＋ 骨架 ＋ 大纲 ＋ 分叉按钮，骨架索引与正文都经通道问那台后端。
   // 大纲的界面从直接建 `UserInputPanel` 换成建查找面板（它里面挂着大纲）⇒ `user-input-panel` 只剩类型依赖。
   "src/frontend/ui/tab-stream-view.ts": [
@@ -182,7 +180,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/session-reads.ts", // 会话读面三问改走通道：骨架索引 ＋ 会话内查找经它问那台后端（替掉包装层那两条）
     "src/frontend/ui/skeleton-view.ts",
     "src/frontend/ui/stream.ts",
-    "src/frontend/ui/tab-session-state.ts", // 已结束的不进后台物化队列
+    "src/frontend/ui/face-can.ts", // 已结束的不进后台物化队列
     "src/frontend/ui/turn-rail.ts", // 轮次刻度：每个 tab 一份（同一份轮），挂在流外、随 tab 同进同出
     "src/frontend/ui/turn-fold.ts", // 按轮折叠：每个 tab 一份（问后端 `history-turns`），开关「过程默认展开」
     "src/frontend/ui/keybindings/registry.ts", // 会话头「⋯」里那个开关右侧灰字：`Ctrl+O` 此刻绑的键
@@ -212,7 +210,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/tab-drop.ts", // 照 `barRows` 一趟摆组与散的（组员聚在第一个组员那一格）
     "src/frontend/ui/tab-group-rename.module.css", // 组头就地改名那个输入框的样式（UC2：新样式一律 module）
     "src/frontend/ui/session-status.ts",
-    "src/frontend/ui/tab-session-state.ts", // 按钮上的两个状态类 · ↗ / 中键的两道门
+    "src/frontend/ui/face-can.ts", // 按钮上的两个状态类 · ↗ / 中键的两道门
     "src/frontend/ui/terminal-front.ts",
     "src/frontend/ui/acct-words.ts", // 悬停卡「从 work 换过来」里号的显示名
     "src/frontend/ui/rot-words.ts", // 停发标与悬停那一句（后端写好的停发提示，填「还有多久」）
@@ -241,7 +239,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/kit/toast.ts", // 分组 / 固定 / 顺序落盘失败出声（INVARIANTS §12）·集合到上界那一句
     "src/frontend/ui/tab-bar-state.ts",
     "src/frontend/ui/tab-collections.ts",
-    "src/frontend/ui/tab-session-state.ts",
+    "src/frontend/ui/face-can.ts",
   ],
   // ⑤ 菜单放哪几项：账号 flyout · tmux 判据 · attach / 预览 · 菜单控件 · 会话动作。
   "src/frontend/ui/tab-menu.ts": [
@@ -254,7 +252,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/session-open.ts", // 在终端里打开 · 就地恢复 · 恢复 ▸ 交那台（`session-open`） // 「恢复 ▸」那一组选项怎么摆（历史页「恢复 ▾」同一个组件）
     "src/frontend/ui/new-session.ts", // 「恢复 ▸」最底下「在此目录新建会话」：开起新会话框（历史页同一个）
     "src/frontend/ui/kit/menu.ts",
-    "src/frontend/ui/tab-session-state.ts", // 给 Resume 还是给换号重启 · 本机「杀死会话」占位
+    "src/frontend/ui/face-can.ts", // 给 Resume 还是给换号重启 · 本机「杀死会话」占位
     "src/frontend/ui/sessions-where.ts", // 在 tmux 里那几项亮不亮、写哪个名字：问那台（`sessions-where`）
     "src/frontend/ui/keybindings/registry.ts", // 菜单项右侧现拼当前键位（在新窗口打开 N · 打开工作目录 E …）
     "src/frontend/ui/session-face.ts", // 结束确认框标题里那个会话的名字（`fullTitle`，与会话头同一份）
@@ -267,13 +265,14 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/kit/dialog.ts", // 杀会话的确认（原 `window.confirm`：真 app 里恒真值，等于没问）
     "src/frontend/ui/copy-table.ts", // 杀空 tmux / 杀会话的确认与回执（说到会话状态）住文案表
     "src/frontend/ui/kit/toast.ts",
+    "src/frontend/ui/face-can.ts", // 那台看不见的不恢复（说不清那一张）
     "src/frontend/ui/file-window.ts", // F78：远端会话「打开工作目录」（老 SFTP 面板删了，改开文件窗口）
     "src/frontend/ui/ipc/commands.ts",
     "src/frontend/ui/ipc/origin.ts", // 本机 / 远端各走哪条动作
     "src/frontend/ui/remote-config.ts",
     "src/frontend/ui/remote-terminal-front.ts", // 远端 ↗ 的前两问（那台谁在显示它 · 本机哪串进程开着那条连接）
     "src/frontend/ui/resync.ts", // 关卡 2 拒了结束会话 ⇒ 提示带「对齐后重试」（认拒绝码 ＋ 对齐 ＋ 再做一次，都在那一个口）
-    "src/frontend/ui/session-open.ts", // 恢复交那台（`session-open`：判号 · 放在哪 · 问记录都在那台）；这里只把「记录在不在」落进 tab
+    "src/frontend/ui/session-open.ts", // 恢复交那台（`session-open`：判号 · 放在哪 · 问记录都在那台，记录在不在随整份脸回来）
     "src/frontend/ui/session-reads.ts", // 那台重新对齐过 ⇒ 固定条逐条问记录还在不在（经通道问 `history-record`）
     "src/frontend/ui/tab-batch-run.ts", // 杀交那台（`sessions-stop`，与批量同一条）
   ],
@@ -297,7 +296,6 @@ const PURE = [
   "src/frontend/ui/tab-store.ts",
   "src/frontend/ui/tab-router.ts",
   "src/frontend/ui/tab-session-facts.ts",
-  "src/frontend/ui/tab-session-state.ts",
 ];
 
 describe("〔U2〕拆 tabs.ts：每一份的直接运行期依赖 == 登记（两向）", () => {
@@ -399,8 +397,6 @@ describe("〔U2〕tabs.ts 只剩组装根", () => {
         "TabManager",
         // tab-model.ts
         "Tab",
-        // `TabStatus` 退役：会话状态换成两轴（`tab-session-state.ts::SessionState`），唯一的外部使用者
-        //   `tab-menu.ts` 改从新家拿 ⇒ 旧 import 面少这一个名字。
         "TabsSummary",
         // tab-drop.ts 那几个落点算术不再经这里转：分组重做换了整套落点，判据直接从 `tab-drop.ts` 取。
       ].sort(),

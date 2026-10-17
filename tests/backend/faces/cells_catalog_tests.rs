@@ -5,6 +5,7 @@
 //! 原先的帧命令 `cells-catalog` 没有调用方，第 8 批删了。
 
 use super::*;
+use crate::wire::SessionFaceExt as _;
 use serde_json::Value;
 use std::collections::BTreeSet;
 
@@ -65,9 +66,15 @@ pub(crate) const FROZEN: &[(&str, Frozen)] = &[
             "waiting_for",
             "agent_kind",
             "attachable",
-            "activity",
-            "activity_text",
-            "activity_tone",
+            "face.dot",
+            "face.live.activity",
+            "face.settled",
+            "face.name",
+            "face.tone",
+            "face.can.model.can",
+            "face.can.model.why",
+            "face.can.permission.can",
+            "face.can.permission.why",
             "background",
         ]),
     ),
@@ -76,12 +83,31 @@ pub(crate) const FROZEN: &[(&str, Frozen)] = &[
         Frozen::Cells(&[
             "sid",
             "waiting_for",
-            "activity",
-            "activity_text",
-            "activity_tone",
+            "face.dot",
+            "face.live.activity",
+            "face.settled",
+            "face.name",
+            "face.tone",
+            "face.can.model.can",
+            "face.can.model.why",
+            "face.can.permission.can",
+            "face.can.permission.why",
         ]),
     ),
-    ("session_state", Frozen::No),
+    (
+        "session_state",
+        Frozen::Cells(&[
+            "sid",
+            "face.dot",
+            "face.settled",
+            "face.name",
+            "face.tone",
+            "face.can.model.can",
+            "face.can.model.why",
+            "face.can.permission.can",
+            "face.can.permission.why",
+        ]),
+    ),
     ("session_removed", Frozen::Cells(&["sid", "cause"])),
     (
         "quota_read",
@@ -119,6 +145,15 @@ pub(crate) const FROZEN: &[(&str, Frozen)] = &[
             "rows[].jsonlPath",
             "rows[].agent",
             "rows[].agentTag",
+            "rows[].face.dot",
+            "rows[].face.live.activity",
+            "rows[].face.settled",
+            "rows[].face.name",
+            "rows[].face.tone",
+            "rows[].face.can.model.can",
+            "rows[].face.can.model.why",
+            "rows[].face.can.permission.can",
+            "rows[].face.can.permission.why",
             "rows[].starred",
             "rows[].customTitle",
             "rows[].hidden.by",
@@ -332,6 +367,25 @@ fn corpus(name: &str) -> Vec<Value> {
             );
             f["startedBy"] = serde_json::to_value(parent).unwrap();
             f["children"] = serde_json::to_value(children).unwrap();
+            // 夹具里血缘那两条都不活 ⇒ 脸照活着在跑的那一形现造（活着那几格才露得出来）。
+            let live =
+                serde_json::to_value(crate::wire::SessionFace::of(crate::wire::Life::Live {
+                    activity: Some(crate::agents::SessionActivity::Working),
+                    tmux: None,
+                }))
+                .unwrap();
+            f["startedBy"]["face"] = live.clone();
+            f["children"][0]["face"] = live;
+            // 金样那份会话不活（`line` 是 null）⇒ 用真判定现造一份（在跑、那一步没收场）。
+            let mut facts: crate::observe::recognize::facts::SessionFacts = Default::default();
+            facts.pending = pending.clone();
+            facts.pending[0].at_ms = Some(1);
+            f["line"] = serde_json::to_value(crate::observe::recognize::facts::line_of(
+                Some(crate::agents::SessionActivity::Working),
+                &facts,
+                60_000,
+            ))
+            .unwrap();
             let base: Option<crate::observe::recognize::facts::Needs> =
                 serde_json::from_value(f["needs"].clone()).unwrap();
             let mut out = vec![f.clone()];
@@ -382,6 +436,11 @@ fn corpus(name: &str) -> Vec<Value> {
             let mut rows = vec![
                 serde_json::to_value(crate::observe::accounts_query::NeedsRow {
                     sid: "s".into(),
+                    label: crate::common::cells::Words("t".into()),
+                    face: crate::wire::SessionFace::of(crate::wire::Life::Live {
+                        activity: Some(crate::agents::SessionActivity::NeedsYou),
+                        tmux: None,
+                    }),
                     needs: needs.clone(),
                     // 隐藏的会话照样在需手动清单里、带着那一格（真判定现造）。
                     hidden: crate::control::session_hidden::judge(

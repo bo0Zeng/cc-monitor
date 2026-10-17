@@ -79,8 +79,6 @@ export const ON_LANDED: Record<Landed, { background: boolean; wait: boolean }> =
 };
 
 export interface OpenHow {
-  /** 那台说了记录在不在（恢复那一形；标签页据此画「记录已不在」）。 */
-  onRecord?(present: boolean): void;
   /** 头一次发出去那一刻这台已经报过的会话（[`liveSince`]）：回话晚到时，那之后先报到的那个才认得出是它。只主窗口有。 */
   before?: ReadonlySet<string>;
   /** 不在主窗口时报到了交给发起方自己说（新起会话给［切过去］）；缺 ⇒ 主窗口说「已启动」。 */
@@ -123,7 +121,6 @@ export async function openSession(origin: Origin, req: SessionOpenReq, how: Open
 
 /** 那台答了「成了」之后：说附带的那一句 · 照 `landed` 开那一行 · 交等报到。回「成了没有」（要开的那一行开不出 ⇒ 已说过、`false`）。 */
 export async function landOpened(origin: Origin, req: SessionOpenReq, o: Opened, how: OpenHow = {}): Promise<boolean> {
-  if (req.what.kind === "resume") how.onRecord?.(true);
   if (o.note !== null) toast(o.note, "", { level: "info" });
   const open = o.line !== null && (req.what.kind !== "new" || ON_LANDED[o.landed].background);
   if (open && !(await openLine(origin, o.line!, o.cwd))) return false;
@@ -178,9 +175,6 @@ function sayEnd(origin: Origin, req: SessionOpenReq, how: OpenHow, end: Exclude<
       offerResyncRetry(origin, sid, title, body, () => again(req));
       return;
     }
-    case "record_gone":
-      how.onRecord?.(false);
-      break;
   }
   toast(title, body, { detail: end.detail });
 }

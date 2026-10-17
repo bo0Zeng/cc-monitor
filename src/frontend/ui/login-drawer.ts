@@ -57,7 +57,7 @@ function feed(origin: Origin): Promise<void> {
       await bindEvents(
         {
           onLine: () => {},
-          onSessionEnded: () => {},
+          onSessionFace: () => {},
           onChanged: (_o, topic, change) => {
             if (topic !== "login") return;
             for (const c of change.cells) {

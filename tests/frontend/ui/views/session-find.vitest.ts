@@ -19,6 +19,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { owned } from "../../../test-support/owned-tab-manager.ts";
+import { announced } from "../../../test-support/session-faces";
 
 const stub = vi.hoisted(() => ({
   /** `find_in_session` 回什么（按调用顺序一份一份给；给的是 Promise 就原样回）。 */
@@ -337,7 +338,7 @@ function liveSetup(): void {
   const barEl = document.createElement("div");
   streamRootEl = document.createElement("div");
   document.body.append(barEl, streamRootEl);
-  tm = owned(new TabManager(barEl, streamRootEl));
+  tm = owned(announced(new TabManager(barEl, streamRootEl)));
 }
 
 describe("SE2 · 实时 tab 上的查找面板", () => {

@@ -5,8 +5,6 @@ import com.ccmonitor.mobile.core.claude.link.Fix
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.LiveSession
 import com.ccmonitor.mobile.core.claude.link.Said
-import com.ccmonitor.mobile.core.claude.link.SessionDot
-import com.ccmonitor.mobile.core.claude.link.SessionFate
 import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.Toned
 import com.ccmonitor.mobile.core.claude.link.wire.Hidden
@@ -14,10 +12,13 @@ import com.ccmonitor.mobile.core.claude.link.wire.HistoryListPage
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryRow
 import com.ccmonitor.mobile.core.claude.link.wire.Needs
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsRow
+import com.ccmonitor.mobile.core.claude.link.wire.SessionDot
+import com.ccmonitor.mobile.core.claude.link.wire.SessionFace
 import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.link.Problem
+import com.ccmonitor.mobile.ui.Faces
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -29,7 +30,21 @@ class ConversationsViewTest {
         sid: String,
         section: String,
         hidden: Hidden? = null,
-    ) = HistoryRow(sid, "标题 $sid", "09:0$sid", section, "/w", "/w/$sid.jsonl", "claude", null, "live", hidden, null, null)
+        face: SessionFace = Faces.of("live-idle"),
+    ) = HistoryRow(sid, "标题 $sid", "09:0$sid", section, "/w", "/w/$sid.jsonl", "claude", null, face, hidden, null, null)
+
+    private fun needs(
+        sid: String,
+        label: String,
+        text: String,
+        rank: Long,
+        waitedMs: Long?,
+    ) = NeedsRow(sid, label, Faces.of("live-needs-you-tmux"), Needs("approve", null, text, text, null, Tone.NEED, rank, waitedMs, null, null))
+
+    private fun live(
+        sid: String,
+        face: String,
+    ) = SessionTable(sessions = mapOf(sid to LiveSession(sid)), faces = mapOf(sid to Faces.of(face)))
 
     private val list =
         Fetched.Got(
@@ -64,26 +79,22 @@ class ConversationsViewTest {
     }
 
     @Test
-    fun `状态字与语气照抄会话帧；不在流上的不画`() {
-        val table = SessionTable(sessions = mapOf("2" to LiveSession(sid = "2", activity = Toned("后台任务运行中", Tone.BUSY))))
-        val v = view("m", LinkState.Up(), table, list, Fetched.Got(emptyList()))
+    fun `状态字与语气照抄那台给的脸：流上有它照流上的，没有照清单那一行的`() {
+        val v = view("m", LinkState.Up(), live("2", "live-background"), list, Fetched.Got(emptyList()))
         val rows = v.sections.flatMap { it.rows }.associateBy { it.sessionId }
         assertEquals(Toned("后台任务运行中", Tone.BUSY), rows.getValue("2").status)
-        assertNull(rows.getValue("1").status)
+        assertEquals(SessionDot.BACKGROUND, rows.getValue("2").dot)
+        assertEquals("流上没有 ⇒ 清单那一行的脸", Toned("空闲", Tone.PLAIN), rows.getValue("1").status)
     }
 
     @Test
-    fun `需手动照核心的先后、字照抄；清单里没有的不拿 sid 顶标题`() {
-        val needs =
-            listOf(
-                NeedsRow("3", Needs("approve", null, "等批准 · Bash", "等批准 · Bash", null, Tone.NEED, 0, 180_000L, null, null)),
-                NeedsRow("9", Needs("answer", null, "等回答", "等回答", null, Tone.NEED, 1, null, null, null)),
-            )
+    fun `需手动照核心的先后、字与标题照抄那一行（清单里没有的也有标题）`() {
+        val needs = listOf(needs("3", "那台写的 3", "等批准 · Bash", 0, 180_000L), needs("9", "那台写的 9", "等回答", 1, null))
         val v = view("m", LinkState.Up(), SessionTable(), list, Fetched.Got(needs), needsAt = 1_000)
         assertEquals(listOf("3", "9"), v.needs.map { it.sessionId })
-        assertEquals("标题 3", v.needs[0].label)
+        assertEquals("那台写的 3", v.needs[0].label)
         assertEquals("等批准 · Bash", v.needs[0].text)
-        assertNull(v.needs[1].label)
+        assertEquals("清单里没有它也照那一行的标题", "那台写的 9", v.needs[1].label)
         assertEquals("已等在屏上接着走：收到时 3m、过了一分钟是 4m（不重问那台）", DurationFormat.short(240_000), v.needs[0].waitedAt(61_000))
         assertNull("没有起点 ⇒ 不画时长", v.needs[1].waitedAt(61_000))
     }
@@ -108,35 +119,26 @@ class ConversationsViewTest {
     }
 
     @Test
-    fun `每行一颗状态点：活的照语气、离开活的照去向、流上没有的照清单那一格；字跟着那一格`() {
-        val rows =
-            listOf("a" to "live", "b" to "ended", "c" to "ended", "d" to "unknown", "e" to "live", "f" to "别的词")
-                .map { (sid, st) -> HistoryRow(sid, "标题 $sid", "09:00", "今天", "/w", "/w/$sid.jsonl", "claude", null, st, null, null, null) }
+    fun `每行一颗状态点 ⑬：流上有它的脸 ⇒ 取流上的（离开活了是那一帧的），流上没有 ⇒ 清单那一行的；字跟着那一份`() {
+        val rows = listOf(row("a", "今天", face = Faces.of("live-idle")), row("b", "今天", face = Faces.of("live-idle")), row("c", "今天", face = Faces.of("unclear")))
         val table =
             SessionTable(
-                sessions = mapOf("a" to LiveSession(sid = "a", activity = Toned("需手动", Tone.NEED))),
-                fates = mapOf("b" to SessionFate(SessionFate.State.RECONNECTABLE, "Claude 已退出")),
+                sessions = mapOf("a" to LiveSession("a")),
+                faces = mapOf("a" to Faces.of("live-needs-you-tmux"), "b" to Faces.of("reconnectable")),
             )
         val v = view("m", LinkState.Up(), table, Fetched.Got(HistoryListPage(rows, emptyList(), null, false)), Fetched.Got(emptyList()))
         val by = v.sections.flatMap { it.rows }.associateBy { it.sessionId }
         assertEquals(SessionDot.NEEDS_YOU, by.getValue("a").dot)
         assertEquals(Toned("需手动", Tone.NEED), by.getValue("a").status)
         assertEquals(SessionDot.EXITED, by.getValue("b").dot)
-        assertEquals("去向那一句照抄", "Claude 已退出", by.getValue("b").status?.text)
-        assertEquals(SessionDot.ENDED, by.getValue("c").dot)
-        assertEquals(copyText("sessionState.ended.name"), by.getValue("c").status?.text)
-        assertEquals(SessionDot.UNKNOWN, by.getValue("d").dot)
-        assertEquals(copyText("sessionState.unseen.name"), by.getValue("d").status?.text)
-        assertEquals(SessionDot.RUNNING, by.getValue("e").dot)
-        assertNull("还没报到 ⇒ 不写字", by.getValue("e").status)
-        assertNull("认不出 ⇒ 不画", by.getValue("f").dot)
-        assertNull(by.getValue("f").status)
+        assertEquals("离开活那一帧的短名照抄", "Claude 已退出", by.getValue("b").status.text)
+        assertEquals(SessionDot.UNKNOWN, by.getValue("c").dot)
+        assertEquals("状态不明", by.getValue("c").status.text)
     }
 
     @Test
-    fun `需手动那几条的点照核心给的语气`() {
-        val needs = listOf(NeedsRow("3", Needs("approve", null, "等批准 · Bash", "等批准 · Bash", null, Tone.NEED, 0, null, null, null)))
-        val v = view("m", LinkState.Up(), SessionTable(), list, Fetched.Got(needs))
+    fun `需手动那几条的点照那一行的脸`() {
+        val v = view("m", LinkState.Up(), SessionTable(), list, Fetched.Got(listOf(needs("3", "t", "等批准 · Bash", 0, null))))
         assertEquals(SessionDot.NEEDS_YOU, v.needs.single().dot)
     }
 
@@ -155,15 +157,18 @@ class ConversationsViewTest {
     }
 
     @Test
-    fun `断着：每行的点画说不清、字写那台离线，不照断前那张会话表与缓存里的状态`() {
-        val cached = HistoryListPage(listOf(row("1", "昨天")), emptyList(), null, false)
-        val stale = SessionTable(sessions = mapOf("1" to LiveSession(sid = "1", activity = Toned("运行中", Tone.NOW))))
+    fun `断着：那台说看不见时照旧作数的（已结束 · 记录已不在）照画，其余点画说不清、字写那台离线，不照断前那张会话表`() {
+        val cached = HistoryListPage(listOf(row("1", "昨天"), row("2", "昨天", face = Faces.of("ended")), row("3", "昨天", face = Faces.of("gone"))), emptyList(), null, false)
+        val stale = live("1", "live-working-plain")
         val down = view("m", LinkState.Down(Said("m 离线", "boom"), needsHand = false), stale, Fetched.Loading, Fetched.Loading, cached = cached)
-        val r = down.recent.single()
-        assertEquals(SessionDot.UNKNOWN, r.dot)
-        assertEquals(Toned(copyText("newSession.machine.offline", "machine" to "m"), Tone.PLAIN), r.status)
+        val by = down.recent.associateBy { it.sessionId }
+        assertEquals(SessionDot.UNKNOWN, by.getValue("1").dot)
+        assertEquals(Toned(copyText("newSession.machine.offline", "machine" to "m"), Tone.PLAIN), by.getValue("1").status)
+        assertEquals(SessionDot.ENDED, by.getValue("2").dot)
+        assertEquals("已结束", by.getValue("2").status.text)
+        assertEquals(SessionDot.GONE, by.getValue("3").dot)
         val up = view("m", LinkState.Up(), stale, Fetched.Loading, Fetched.Loading, cached = cached)
-        assertEquals("通着 ⇒ 照会话帧", SessionDot.RUNNING, up.recent.single().dot)
+        assertEquals("通着 ⇒ 照会话帧", SessionDot.RUNNING, up.recent.first().dot)
     }
 
     @Test
