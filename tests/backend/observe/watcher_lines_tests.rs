@@ -7,19 +7,11 @@ use super::*;
 
 const SID: &str = "s-r2";
 
-fn rig(
-    tag: &str,
-) -> (
-    PathBuf,
-    PathBuf,
-    ReaderState,
-    FrameSink,
-    tokio::sync::mpsc::Receiver<Frame>,
-) {
+fn rig(tag: &str) -> (PathBuf, PathBuf, ReaderState, FrameSink, FrameRx) {
     let dir = std::env::temp_dir().join(format!("ccm-r2-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let (tx, rx) = tokio::sync::mpsc::channel::<Frame>(256);
+    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES);
     let mut state = ReaderState::new(dir.clone());
     state.active_sids.insert(SID.to_string());
     let path = dir.join(format!("{SID}.jsonl"));
@@ -28,7 +20,7 @@ fn rig(
 
 /// 这一趟收到的行帧：`(seq, byte_offset)`。帧上不再带原文（带的是成品；这里的假行没有读者 ⇒ 不带成品），
 /// 哪一行由行号与它的末端字节认。
-fn lines(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<(u64, u64)> {
+fn lines(rx: &mut FrameRx) -> Vec<(u64, u64)> {
     let mut out = Vec::new();
     while let Ok(f) = rx.try_recv() {
         if let Frame::Line(crate::wire::Line {
@@ -75,7 +67,7 @@ fn a_complete_final_line_without_newline_is_handed_out_once_the_writer_is_dead()
 }
 
 /// 这一趟的帧摊平：重读出声给 `reread`，行帧给 `seq`。
-fn frames(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<String> {
+fn frames(rx: &mut FrameRx) -> Vec<String> {
     let mut out = Vec::new();
     while let Ok(f) = rx.try_recv() {
         match f {

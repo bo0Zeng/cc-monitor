@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # ruff: noqa: E501
-"""SR1b：**SFTP 住本机常驻后端**（传输四条 ＋ `files` 链路）—— 对着一台真 sshd 的现打。
+"""SR1b：**SFTP 住本机常驻后端**（传输四条 ＋ 部署 `deploy-*`）—— 对着一台真 sshd 的现打。
 
 跑法（仓根下，先 `cd src/backend && cargo build`）：
     python3 tests/evidence/SR1b-sftp-loopback.py [--monitor] [后端二进制路径]
 
 `--monitor`：后端那几项之后再跑一趟**界面那一侧**（`sftp_tests::sr1b_loopback_deploy_and_transfer_through_the_resident_backend`，
-平时 `#[ignore]`）—— 起一个真后端、用生产那个本机吸收点接上它，部署那几问经 `RemoteFs`、传输经中继。
+平时 `#[ignore]`）—— 起一个真后端、用生产那个本机吸收点接上它，装 · 卸经 `deploy-install` · `deploy-uninstall`、传输经中继。
 
 它起一台**临时的回环 sshd**（本用户身份、随机端口、临时 host key 与客户端钥匙、`UsePAM no`、`LogLevel VERBOSE`），
 🔴 **sftp 子系统的起始目录钉在一个临时目录**（`sftp-server -d <rhome>`，日志 `-e` 接进临时文件）⇒ 后端眼里的远端 home 是 `rhome`，
@@ -14,14 +14,14 @@
 **不进门禁**（门禁的沙箱里没有 sshd 可起）—— 它是一份读数，不是判据；交付报告里贴的是它的输出。
 
 覆盖（每条都是「真 TCP ＋ 真 SSH 握手 ＋ 真鉴权 ＋ 真 sftp 子系统」）：
-  ① files 链路：ack 的 uses 含 files；home == sshd 给的起始目录
-  ② 部署那几问：建目录 · 原子上传 ＋ 读回比对 · stat · read · remove（两次，第二次 removed=false）；盘上逐字节对（sshd 那侧的文件系统，异源）
-  ③ 远端写围栏：两个根之外 / 绝对路径出 home / `..` / 根里一条指向外面的链接 ⇒ fenced，盘上零改动（整棵 rhome 前后快照相等）
+  ① 链路：ack 的 uses 里没有文件那一种用法（SFTP 只经帧命令用）；use=files ⇒ bad_args
+  ② 落点上摆一份无身份戳的字节（给 ⑩ 用：部署要显式失败、不覆盖它）
+  ③ 远端写围栏只在合成服务端上判（`dial_sftp_tests`）：这里的上传键由后端起，够不着暂存区外
   ④ 上传：只写 `~/.cc-monitor/staging/<key>.part`，逐字节等于本机那份；帧序 got 单调、最后一帧 done
   ⑤ 续传：暂存件先放前 N 字节 ⇒ sftp-server 记下的这一趟写入字节数 == 总长 − N
   ⑥ 撤：上传撤 ⇒ 暂存件删；下载撤 ⇒ `.part` 留
   ⑦ 下载：落地逐字节对、`.part` 不留；远端不存在 ⇒ failed、`.part` 不留；本机落点是会话文件 ⇒ 照样开单（没有数据围栏）
-  ⑧ 长流 ＋ files 链路一条、全部传输分道一条：sshd **恰好两次**鉴权、**恰好两条** TCP
+  ⑧ 长流一条、全部传输分道一条：sshd **恰好两次**鉴权、**恰好两条** TCP
   ⑨ 子系统留口仍不开：use=subsystem ⇒ unsupported_use
 
 退出码：0 = 全过 · 1 = 有一条不对 · 3 = 起不来 sshd / 找不到二进制（环境不满足，不是被测对象坏了）
@@ -54,23 +54,6 @@ def free_port():
 def established(port):
     out = subprocess.run(["ss", "-Htn", "state", "established", f"( dport = :{port} )"], capture_output=True, text=True).stdout
     return len([ln for ln in out.splitlines() if ln.strip()])
-
-
-def tree(root):
-    """整棵目录此刻的样子：{相对路径: (类型, sha256 或链接目标)}。"""
-    out = {}
-    for dp, dns, fns in os.walk(root, followlinks=False):
-        for n in dns + fns:
-            p = os.path.join(dp, n)
-            rel = os.path.relpath(p, root)
-            if os.path.islink(p):
-                out[rel] = ("link", os.readlink(p))
-            elif os.path.isdir(p):
-                out[rel] = ("dir", None)
-            else:
-                with open(p, "rb") as fh:
-                    out[rel] = ("file", hashlib.sha256(fh.read()).hexdigest())
-    return out
 
 
 class Backend:
@@ -146,26 +129,6 @@ class Backend:
         self.log.close()
 
 
-class Files:
-    """一条 files 链路：上行一行请求（put 后跟原始字节，按 32 KiB 一块 link-data 送），下行一行应答。"""
-
-    def __init__(self, be, link):
-        self.be, self.link, self.seen = be, link, 1  # 第 0 行是 ack
-
-    def _up(self, raw):
-        for i in range(0, len(raw), 32768):
-            r = self.be.call("link-data", {"link": self.link, "data": base64.b64encode(raw[i:i + 32768]).decode()})
-            assert r and r["ok"], r
-
-    def ask(self, req, body=b""):
-        self._up((json.dumps(req) + "\n").encode() + body)
-        want = self.seen + 1
-        self.be.wait(lambda: len(self.be.lines(self.link)) >= want or None, 60)
-        ls = self.be.lines(self.link)
-        self.seen = want
-        return json.loads(ls[want - 1]) if len(ls) >= want else {"code": "timeout", "message": str(ls[-2:])}
-
-
 def main():
     args = [a for a in sys.argv[1:] if a != "--monitor"]
     with_monitor = "--monitor" in sys.argv[1:]
@@ -179,8 +142,7 @@ def main():
     d = os.path.realpath(tempfile.mkdtemp(prefix="sr1b."))
     home = os.path.join(d, "home")  # 后端自己的 HOME（本机那一侧）
     rhome = os.path.join(d, "rhome")  # sshd 给 sftp 的起始目录（远端那一侧）
-    outside = os.path.join(d, "outside")  # 链接逃逸的目标
-    for p in (home, rhome, outside, os.path.join(home, ".claude", "projects", "p"), os.path.join(home, ".claude-alt")):
+    for p in (home, rhome, os.path.join(home, ".claude", "projects", "p"), os.path.join(home, ".claude-alt")):
         os.makedirs(p)
     with open(os.path.join(home, ".claude-alt", "accounts.json"), "w") as fh:
         fh.write('{"version":1,"accounts":[]}\n')
@@ -247,62 +209,16 @@ def main():
         be.wait(lambda: be.lines("s") or None, 15)
         check("长流 ack ok", bool(be.lines("s")) and json.loads(be.lines("s")[0]).get("ok"), be.lines("s"))
 
-        print("① files 链路")
+        print("① 链路上没有文件那一种用法")
+        ack = json.loads(be.lines("s")[0]) if be.lines("s") else {}
+        check("ack 的 uses == stream · capture · forward · shell · hold", ack.get("uses") == ["stream", "capture", "forward", "shell", "hold"], ack)
         r = be.open("f", {**base, "use": "files"})
-        be.wait(lambda: be.lines("f") or None, 15)
-        ack = json.loads(be.lines("f")[0]) if be.lines("f") else {}
-        check("link-open ok、ack ok、uses 含 files", bool(r and r["ok"]) and ack.get("ok") and "files" in (ack.get("uses") or []), (r, ack))
-        fs = Files(be, "f")
-        h = fs.ask({"op": "home"})
-        check("home == sshd 给的起始目录", h.get("home") == rhome, (h, rhome))
+        check("use=files ⇒ bad_args（拨号核心不认这种用法）", bool(r) and not r["ok"] and r.get("code") == "bad_args", r)
 
-        print("② 部署那几问")
-        blob = os.urandom(3 * 1024 * 1024 + 17)
-        bp = f"{rhome}/.cc-monitor/bin/ccm"
-        st0 = fs.ask({"op": "stat", "path": bp})
-        check("stat 那一问删了 ⇒ unknown_op", st0.get("code") == "unknown_op", st0)
-        r = fs.ask({"op": "mkdirs", "path": f"{rhome}/.cc-monitor/bin"})
-        check("mkdirs ok", r == {}, r)
-        r = fs.ask({"op": "put", "path": bp, "size": len(blob), "mode": 0o700, "verify": True}, blob)
-        check("put ＋ 读回：len 相等、first_diff=null", r == {"readback": {"len": len(blob), "first_diff": None}}, r)
-        with open(bp, "rb") as fh:
-            on_disk = fh.read()
-        check("sshd 那侧盘上逐字节等于送去的（异源）", on_disk == blob, len(on_disk))
-        check("权限 0700", (os.stat(bp).st_mode & 0o777) == 0o700, oct(os.stat(bp).st_mode))
-        check("没留临时件 / .bak", sorted(os.listdir(f"{rhome}/.cc-monitor/bin")) == ["ccm"], os.listdir(f"{rhome}/.cc-monitor/bin"))
-        fs.ask({"op": "put", "path": f"{rhome}/.cc-monitor/bin/.build_id", "size": 6, "mode": 0o600, "verify": False}, b"sr1b-x")
-        rd = fs.ask({"op": "read", "path": f"{rhome}/.cc-monitor/bin/.build_id", "max": 65536})
-        check("read 回 base64 原文", base64.b64decode(rd.get("data") or "") == b"sr1b-x", rd)
-        big = fs.ask({"op": "read", "path": bp, "max": 1024})
-        check("read 超过这一问的上限 ⇒ too_big", big.get("code") == "too_big", big)
-        r1 = fs.ask({"op": "remove", "path": f"{rhome}/.cc-monitor/bin/.build_id"})
-        r2 = fs.ask({"op": "remove", "path": f"{rhome}/.cc-monitor/bin/.build_id"})
-        check("remove：第一次 true、第二次 false", (r1, r2) == ({"removed": True}, {"removed": False}), (r1, r2))
-
-        print("③ 远端写围栏")
-        os.symlink(outside, f"{rhome}/.cc-monitor/bin/esc")
-        os.makedirs(f"{rhome}/.ssh")
-        before, before_out = tree(rhome), tree(outside)
-        tries = [
-            ("put", f"{rhome}/.ssh/authorized_keys"),
-            ("put", f"{rhome}/.cc-monitor/other/x"),
-            ("put", f"{outside}/x"),
-            ("put", f"{rhome}/.cc-monitor/bin/../../.bashrc"),
-            ("put", f"{rhome}/.cc-monitor/bin/esc/x"),
-            ("put", ".bashrc"),
-            ("mkdirs", f"{rhome}/.cc-monitor/other"),
-            ("remove", f"{rhome}/.ssh/authorized_keys"),
-        ]
-        codes = []
-        for op, path in tries:
-            req = {"op": op, "path": path}
-            if op == "put":
-                req.update({"size": 3, "mode": 0o600, "verify": False})
-            codes.append(fs.ask(req, b"bad" if op == "put" else b"").get("code"))
-        check(f"{len(tries)} 形越界全部 fenced", codes == ["fenced"] * len(tries), list(zip([t[1] for t in tries], codes)))
-        check("rhome 整棵前后相等（零改动）", tree(rhome) == before, set(tree(rhome)) ^ set(before))
-        check("链接逃逸的目标目录零改动", tree(outside) == before_out, tree(outside))
-        os.unlink(f"{rhome}/.cc-monitor/bin/esc")
+        print("② 落点上摆一份无身份戳的字节（⑩ 用）")
+        os.makedirs(f"{rhome}/.cc-monitor/bin")
+        with open(f"{rhome}/.cc-monitor/bin/ccm", "wb") as fh:
+            fh.write(os.urandom(3 * 1024 * 1024 + 17))
 
         print("④ 上传")
         up = os.path.join(d, "up.bin")
@@ -397,10 +313,10 @@ def main():
         check("本机落点是会话文件 ⇒ 照样开单（没有数据围栏）", bool(r) and r["ok"], r)
 
         # 长流在时传输分道（`ssh-dial/pool.rs`：主连接上有长流 ⇒ 传输另开一条批量连接，
-        #   被主连接托着、之后的传输都复用它）⇒ 长流 ＋ files 一条、六趟传输一条：恰好两次鉴权、两条 TCP。
+        #   被主连接托着、之后的传输都复用它）⇒ 长流一条、六趟传输一条：恰好两次鉴权、两条 TCP。
         #   分道本身的读数（下载期间长流回声 314 → 116 ms）住 `NT1-net-loopback.py` ①⑤。
-        print("⑧ 两条连接（长流 ＋ files 一条 · 传输分道一条）")
-        check("sshd 鉴权恰好两次（长流 ＋ files ＋ 六趟起跑的传输；传输那条只握一次手）", auths() - a0 == 2, auths() - a0)
+        print("⑧ 两条连接（长流一条 · 传输分道一条）")
+        check("sshd 鉴权恰好两次（长流 ＋ 六趟起跑的传输；传输那条只握一次手）", auths() - a0 == 2, auths() - a0)
         check("恰好两条 TCP", established(port) == 2, established(port))
 
         print("⑨ 子系统留口不开")
@@ -408,7 +324,7 @@ def main():
         check("use=subsystem ⇒ unsupported_use", bool(r) and not r["ok"] and r.get("code") == "unsupported_use", r)
 
         if with_monitor:
-            print("⑩ 界面那一侧（RemoteFs · 中继 → 真后端 → 真 sshd）")
+            print("⑩ 界面那一侧（deploy-* · 中继 → 真后端 → 真 sshd）")
             up_m = os.path.join(d, "up-monitor.bin")
             with open(up_m, "wb") as fh:
                 fh.write(os.urandom(1024 * 1024 + 9))

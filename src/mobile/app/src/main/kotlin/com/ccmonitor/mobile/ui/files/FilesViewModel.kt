@@ -2,8 +2,12 @@ package com.ccmonitor.mobile.ui.files
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ccmonitor.mobile.core.claude.link.BatchAnswer
+import com.ccmonitor.mobile.core.claude.link.BatchEvent
 import com.ccmonitor.mobile.core.claude.link.FilesLs
 import com.ccmonitor.mobile.core.claude.link.FilesReadText
+import com.ccmonitor.mobile.core.claude.link.LinkState
+import com.ccmonitor.mobile.core.claude.link.PickMenu
 import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
@@ -12,20 +16,24 @@ import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.ssh.HostConnector
 import com.ccmonitor.mobile.ssh.JumpBroken
+import com.ccmonitor.mobile.ui.chat.newsession.DirBrowser
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 import java.util.UUID
 
 /** 文件屏此刻（在接 / 那台说打不开 / 列出来了）。 */
@@ -54,7 +62,7 @@ class FilesViewModel(
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
     private val feed = backends.of(hostId)
-    private val ops = FileOps(feed) { hostRepo.get(hostId)?.label ?: hostId }
+    private val ops = FileOps(feed, ::machine)
 
     private val _ui = MutableStateFlow<FilesUi>(FilesUi.Connecting)
     val ui: StateFlow<FilesUi> = _ui.asStateFlow()
@@ -65,10 +73,54 @@ class FilesViewModel(
     private val _listing = MutableStateFlow(FilesLs.Listing(emptyList(), truncated = false, total = 0))
     val listing: StateFlow<FilesLs.Listing> = _listing.asStateFlow()
 
+    private val _selection = MutableStateFlow(Selection())
+
+    /** 选择模式里选中的那几项（空 ⇒ 不在选择模式）。 */
+    val selection: StateFlow<Selection> = _selection.asStateFlow()
+
+    /** 那台此刻通着（断着 ⇒ 选中照留、能做的那几件由核心灰掉，列表顶一条说离线）。 */
+    val online: StateFlow<Boolean> = feed.state.map { it is LinkState.Up }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    /** 选中那几项此刻能做什么（核心照那几行与此刻那一台判；不在选择模式 ⇒ 空）。 */
+    val menu: StateFlow<PickMenu> =
+        combine(_selection, _listing, feed.state) { sel, l, _ ->
+            if (sel.active) feed.picks(sel.of(l.entries).map { it.row }) else PickMenu()
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, PickMenu())
+
+    /** 这一屏的那一层（[dir] 换了 ⇒ 选中清空；同一层重列 ⇒ 只留还在的）。 */
+    private fun shown(
+        dir: RemotePath,
+        listed: FilesLs.Listing,
+    ) {
+        _selection.value = if (dir == _cwd.value) _selection.value.kept(listed.entries) else Selection()
+        _listing.value = listed
+        _cwd.value = dir
+    }
+
+    /** 长按 / 选择模式里点一下：切换这一项。 */
+    fun pick(e: FilesLs.Entry) {
+        _selection.value = _selection.value.toggle(e)
+    }
+
+    fun pickAll() {
+        _selection.value = _selection.value.all(_listing.value.entries)
+    }
+
+    /** ✕ · 返回键：退出选择模式。 */
+    fun unpick() {
+        _selection.value = Selection()
+    }
+
+    /** 选中的那几行（照列表的先后）。 */
+    fun picked(): List<FilesLs.Entry> = _selection.value.of(_listing.value.entries)
+
+    /** 不在选择模式时点一下这一行做什么（核心照表给：`open` · `preview` · `download`；什么都不做 ⇒ `null`）。 */
+    fun tapOf(e: FilesLs.Entry): String? = feed.picks(listOf(e.row)).tap
+
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy.asStateFlow()
 
-    /** 上传 · 下载在走时的进度（0..1）；不知道总数 · 不在传 ⇒ `null`。 */
+    /** 上传在走时的进度（0..1）；不知道总数 · 不在传 ⇒ `null`。 */
     private val _progress = MutableStateFlow<Float?>(null)
     val progress: StateFlow<Float?> = _progress.asStateFlow()
 
@@ -84,6 +136,7 @@ class FilesViewModel(
     init {
         hostConnector.retain(hostId, holderToken)
         connect()
+        viewModelScope.launch { feed.batches.collect(::onBatch) }
         // 换了一条流（`epoch` 变了）：之前在路上的问答作废了 ⇒ 打不开的那一屏再问一次，列着的那一屏重列。
         viewModelScope.launch {
             feed.epoch.drop(1).collect {
@@ -113,8 +166,7 @@ class FilesViewModel(
                 try {
                     withContext(io) { ensureSsh() }
                     val dir = _cwd.value ?: ops.home().getOrThrow()
-                    _listing.value = ops.list(dir).getOrThrow()
-                    _cwd.value = dir
+                    shown(dir, ops.list(dir).getOrThrow())
                     FilesUi.Ready
                 } catch (ce: CancellationException) {
                     throw ce
@@ -159,17 +211,15 @@ class FilesViewModel(
         val r =
             ops
                 .list(dir, _sortBySize.value)
-                .onSuccess {
-                    _listing.value = it
-                    _cwd.value = dir
-                }.onFailure(::say)
+                .onSuccess { shown(dir, it) }
+                .onFailure(::say)
         _busy.value = false
         return r.getOrNull()
     }
 
     private suspend fun refresh() {
         val dir = _cwd.value ?: return
-        ops.list(dir, _sortBySize.value).onSuccess { _listing.value = it }.onFailure(::say)
+        ops.list(dir, _sortBySize.value).onSuccess { shown(dir, it) }.onFailure(::say)
     }
 
     /** 名称 ⇄ 大小：那台照它重排一遍。 */
@@ -177,6 +227,14 @@ class FilesViewModel(
         _sortBySize.value = !_sortBySize.value
         viewModelScope.launch { refresh() }
     }
+
+    /** 底部说一句（点了灰着的那一项：核心写好的为什么）。 */
+    fun say(said: String) {
+        _events.tryEmit(Notice(said))
+    }
+
+    /** 这台在屏上的名字。 */
+    suspend fun machine(): String = hostRepo.get(hostId)?.label ?: hostId
 
     private fun say(e: Throwable) {
         if (e is CancellationException) throw e
@@ -210,35 +268,113 @@ class FilesViewModel(
         typed: String,
     ) = write { ops.rename(it, entry.rel, typed) }
 
-    fun delete(entry: FilesLs.Entry) = write { ops.delete(it, entry.rel, entry.isDir) }
+    private val _batch = MutableStateFlow<BatchEvent?>(null)
+
+    /** 底部浮卡画的那一组（在做 · 在问同名 · 断开 · 收场了还有没成的）；全成了 ⇒ `null`（结局句走 toast）。 */
+    val batch: StateFlow<BatchEvent?> = _batch.asStateFlow()
+
+    private val _undos = MutableSharedFlow<Pair<String, Long>>(extraBufferCapacity = 4)
+
+    /** 全成了、撤得了（改权限）：那一句 ＋ 那一组的编号（屏上 toast［撤销］）。 */
+    val undos: SharedFlow<Pair<String, Long>> = _undos.asSharedFlow()
+
+    /** 这一屏起的那几组（别处起的不画）。 */
+    private val mine = mutableSetOf<Long>()
+
+    /** 编号还没回到这里、核心已经交来的那一格（每组只留最后一格；编号一回来照它画）。 */
+    private val early = LinkedHashMap<Long, BatchEvent>()
+
+    private fun onBatch(e: BatchEvent) {
+        if (e.id !in mine) {
+            early[e.id] = e
+            if (early.size > EARLY_KEPT) early.remove(early.keys.first())
+            return
+        }
+        show(e)
+        if (e.over) viewModelScope.launch { refresh() }
+    }
+
+    /** 浮卡照这一格画（核心跑的那几组与这台下载那几组同一张）；全成了 ⇒ 结局句走 toast（撤得了带［撤销］）。 */
+    private fun show(e: BatchEvent) {
+        when {
+            e.phase == BatchEvent.ENDED && e.failed.isEmpty() -> {
+                _batch.value = null
+                if (e.undo) _undos.tryEmit(e.said.orEmpty() to e.id) else _events.tryEmit(Notice(e.said.orEmpty()))
+            }
+            e.phase == BatchEvent.DROPPED -> _batch.value = null
+            else -> _batch.value = e
+        }
+    }
+
+    private val downloads = Downloads(feed, ops, viewModelScope, io, ::machine, ::show)
+
+    /** 把选中的那几项（或点的那一份）下到本机 [folder]（系统「选文件夹」给的那一棵）：一组，见 [Downloads]。 */
+    fun download(
+        entries: List<FilesLs.Entry>,
+        folder: LocalFolder,
+    ) {
+        unpick()
+        downloads.start(entries, folder)
+    }
+
+    /** 起一组（[start] 回编号；0 ＝ 这台不在 ⇒ 那一句）；起了就退出选择模式。 */
+    private fun group(start: suspend (RemotePath) -> Long) {
+        val dir = _cwd.value ?: return
+        unpick()
+        viewModelScope.launch {
+            val id = start(dir)
+            if (id == 0L) {
+                _events.tryEmit(Notice(copyText("front.body.offline", "machine" to machine())))
+            } else {
+                mine += id
+                early.remove(id)?.let(::onBatch)
+            }
+        }
+    }
+
+    fun delete(entries: List<FilesLs.Entry>) = group { ops.delete(it, entries) }
 
     fun chmod(
-        entry: FilesLs.Entry,
+        entries: List<FilesLs.Entry>,
         mode: String,
-    ) = write { ops.chmod(it, entry.rel, mode) }
+    ) = group { ops.chmod(it, entries, mode) }
+
+    fun copyTo(
+        entries: List<FilesLs.Entry>,
+        to: RemotePath,
+    ) = group { ops.copy(it, entries, to) }
+
+    /** 复制到… 那一屏的目录浏览（同一台、只列文件夹；与新建会话选目录同一个浏览器）。 */
+    suspend fun browser(): DirBrowser = DirBrowser(feed, machine(), viewModelScope)
+
+    /** ［重试失败的］（[undo] ⇒ ［撤销］）：照那一组另起。 */
+    fun again(
+        id: Long,
+        undo: Boolean,
+    ) {
+        if (!downloads.again(id)) group { ops.again(id, undo) }
+    }
+
+    /** 同名那一问的答（`null` ＝ 取消）。 */
+    fun answerBatch(
+        id: Long,
+        answer: BatchAnswer?,
+    ) {
+        if (!downloads.answer(id, answer)) feed.batchAnswer(id, answer)
+    }
+
+    /** 浮卡上的［停］。 */
+    fun stopBatch(id: Long) {
+        if (!downloads.stop(id)) feed.batchStop(id)
+    }
+
+    /** 收场了还留着的那张卡收起。 */
+    fun dismissBatch() {
+        _batch.value = null
+    }
 
     /** 改权限那一框的起点：此刻的权限位（八进制）；那台没有这一说 · 读不到 ⇒ `null`。 */
     suspend fun modeText(entry: FilesLs.Entry): String? = ops.mode(entry.path).getOrNull()?.toString(OCTAL)
-
-    /** 下载到 [destDir]（Composable 传 App 自己的外部文件目录）：[open] 开本机那一份、交出描述符。 */
-    fun download(
-        entry: FilesLs.Entry,
-        destDir: File?,
-        open: (File) -> Int,
-    ) {
-        viewModelScope.launch {
-            _busy.value = true
-            val local = File(destDir, entry.name)
-            withContext(io) { ops.download(entry.path, { open(local) }, local.absolutePath, ::track) }
-                .onSuccess { _events.tryEmit(Notice(copyText("mobFiles.download.done", "path" to local.absolutePath))) }
-                .onFailure {
-                    local.delete()
-                    say(it)
-                }
-            _progress.value = null
-            _busy.value = false
-        }
-    }
 
     /** 上传撞了同名、在问（[FileOps.Upload.Clash]：那台的同名清单与那一句；在哪个目录）；没在问 ⇒ `null`。 */
     private val _clash = MutableStateFlow<Pair<RemotePath, FileOps.Upload.Clash>?>(null)
@@ -250,11 +386,12 @@ class FilesViewModel(
         fd: () -> Int,
     ) = landed(name) { dir -> withContext(io) { ops.upload(dir, name, fd, ::track) }.also { _progress.value = null } }
 
-    /** 同名那一问的答：`null` ⇒ 不传了（暂存件交那台的孤儿扫）；否则同一份暂存件带这个答再交一次。 */
-    fun answer(onExists: String?) {
+    /** 同名那一问的答（核心认）：取消 · 跳过 ⇒ 不传了（暂存件交那台的孤儿扫）；否则同一份暂存件带这一项的答再交一次。 */
+    fun answer(a: BatchAnswer?) {
         val (dir, c) = _clash.value ?: return
         _clash.value = null
-        if (onExists == null) return
+        val key = c.rows.firstOrNull()?.key ?: return
+        val onExists = feed.decided(listOf(key), a)?.get(key)?.takeIf { it != SKIP } ?: return
         landed(c.name, dir) { ops.commit(it, c.name, c.staged, onExists) }
     }
 
@@ -330,5 +467,11 @@ class FilesViewModel(
 
     private companion object {
         const val OCTAL = 8
+
+        /** 编号还没回来时先收着几组的那一格。 */
+        const val EARLY_KEPT = 16
+
+        /** 那一项答了跳过（提交不收这个答）。 */
+        const val SKIP = "skip"
     }
 }

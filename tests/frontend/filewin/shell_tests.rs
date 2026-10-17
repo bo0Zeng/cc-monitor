@@ -3672,8 +3672,8 @@ fn an_edit_page_that_was_refused_says_why_where_the_text_would_be() {
 fn a_group_that_fully_succeeds_says_so_in_a_toast() {
     use cmd_wire::batch::{BatchOutcome, BatchReply, ItemState};
     let mut w = remote_window_with_rows("/srv/data", Vec::new());
-    let plan = crate::batch::Plan {
-        verb: crate::batch::Verb::Copy,
+    let plan = batch_core::Plan {
+        verb: batch_core::Verb::Copy,
         cmd: "files-copy",
         args: serde_json::json!({"root": "/srv", "items": [{}, {}]}),
         names: vec!["a".into(), "b".into()],
@@ -3683,7 +3683,7 @@ fn a_group_that_fully_succeeds_says_so_in_a_toast() {
     let landed = |w: &mut FileWindow, states: &[ItemState], said: &str| {
         let b = crate::batch::BatchBoard::new(plan.clone());
         w.batches.push(b.clone());
-        b.set(crate::batch::Phase::Ended(BatchReply {
+        b.set(batch_core::Phase::Ended(BatchReply {
             outcomes: states
                 .iter()
                 .enumerate()

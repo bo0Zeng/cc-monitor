@@ -14,8 +14,7 @@
 //!       progress=true 时每过一步当场一行 {"progress":"tcp|banner|hostkey|auth|tunnel|channel"}（[`step`]；与阶段行交错，不攒）
 //!       然后恰好一行 ack（DialAck，`\n` 结尾）
 //!       其后按用法：stream / shell 原样字节 · capture 一行 Captured 后结束 ·
-//!       forward 每接进一条连接一行 {"accepted":n} ·
-//!       files 之后一问一答（上行一行请求、下行一行应答，`sftp.rs` 头注）
+//!       forward 每接进一条连接一行 {"accepted":n}
 //! ```
 //!
 //! ack 把「断开」与「连上了但远端还没说话」分开；ack 带 `v` 与 `uses`，对面据 `uses` 当场认出这一份不认哪种用法。
@@ -105,7 +104,7 @@ pub fn joined(said: String, raw: Option<String>) -> String {
 pub const ACK_V: u32 = 2;
 
 /// 本代理认得的用法 —— ack 的 `uses` 字段原样回这张表，界面据它判「代理够不够新」。
-pub const USES: &[&str] = &["stream", "capture", "forward", "files", "shell", "hold"];
+pub const USES: &[&str] = &["stream", "capture", "forward", "shell", "hold"];
 
 /// 一个拨号地址。
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -140,8 +139,6 @@ pub enum Use {
     Capture,
     /// 本进程绑本机回环口、每接进一条连接开一条 direct-tcpip（端口转发）。
     Forward,
-    /// 开 sftp 子系统，之后在链路上一问一答（远端文件操作：写的规矩由宿主定，[`sftp::WriteRules`]）。
-    Files,
     /// 要一个 PTY（[`PtyOpts`]）开交互 shell，之后同 `stream` 原样对拷；改窗口大小走 [`uses::Control`]。
     Shell,
     /// 只握着这条连接（不开通道）：ack 之后链路不收工，同一身份的别的链路都复用它；对面走了（上行 EOF）

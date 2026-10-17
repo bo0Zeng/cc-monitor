@@ -400,7 +400,7 @@ impl FileWindow {
             return Some(super::select::refusal(a, idx.len()));
         }
         drop(rows);
-        self.unavailable_here(a).or_else(|| self.offline_refusal(a))
+        self.refused_here(a)
     }
 
     /// 命令栏「⋯」里「选中的」那几件：照菜单那张表（这一种选中的那几组，去掉 `skip` 那几件），每一项灰不灰问 [`Self::command_blocked`]。

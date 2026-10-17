@@ -99,8 +99,23 @@ object Core {
     /** 一段 `~/.ssh/config` 文本 ⇒ 可导入主机的 JSON 数组（`alias` · `host_name` · `port` · `user` · `identity_file`）。 */
     external fun parseSshConfig(text: String): String
 
-    /** 文件页选中这几项（JSON 数组，每项 `name` · `isDir` · `class` …）⇒ 顶栏与 ⋯ 两组（[FilePicks]）。 */
-    external fun pickMenu(picks: String): String
+    /** 文件页选中这几项（`files-ls` 的原行，JSON 数组）· 此刻那一台（[residentOpen] 的编号）⇒ `{bar, more, tap}`。 */
+    external fun pickMenu(
+        handle: Long,
+        rows: String,
+    ): String
+
+    /** 同名清单（码 `exists` 的 `data`）⇒ 抽屉那几行 `[{key, name, meta, answers}]`。 */
+    external fun clashRows(data: String): String
+
+    /** 下载一组那几格（`{id, machine, names, phase, …}` JSON）⇒ `batch` 那一形的一行；读不动 ⇒ 空串。 */
+    external fun downloadEvent(want: String): String
+
+    /** 手机这一侧问的同名（下载 · 上传）那一答（`{all}` · `{each}`；`null` ⇒ 取消）⇒ [keys] 那几行每个键一格（JSON）；取消 ⇒ `null`。 */
+    external fun answerOf(
+        keys: String,
+        answer: String?,
+    ): String
 
     /** 开一条链路，回编号；请求读不动 ⇒ 0。 */
     external fun open(request: String): Long
@@ -173,6 +188,27 @@ object Core {
         shown: String,
         withinMs: Long,
     ): Long
+
+    /** 撤问答编号 [id] 那一趟（［停］）：在问的那一块当场丢下，本机那一份不再写；之后不回结局。 */
+    external fun transferStop(id: Long)
+
+    /**
+     * 起一组一条命令（[want]：删 · 改权限 · 复制到 · 重试 · 撤销，JSON；入参由核心拼）。回编号，
+     * 走到哪 · 同名那一问 · 结局经 [Sink.resident] 的 `batch` 那一种回来（字是核心写好的）。这台不在 · 读不动 ⇒ 0。
+     */
+    external fun batchStart(
+        handle: Long,
+        want: String,
+    ): Long
+
+    /** 同名那一问的答（`{all}` · `{each}`；`null` ⇒ 取消）。没人在等 ⇒ `false`。 */
+    external fun batchAnswer(
+        id: Long,
+        answer: String?,
+    ): Boolean
+
+    /** 撤那一组（同一张票发 `files-batch-stop`）。 */
+    external fun batchStop(id: Long): Boolean
 
     /**
      * 给那台装 / 更新后端（判定与做法是桌面后端同一份 `deploy`）：[slots] = 包里那几格解到的文件

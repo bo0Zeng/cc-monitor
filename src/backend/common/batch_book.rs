@@ -285,49 +285,6 @@ pub(crate) fn key_of(i: usize) -> String {
     i.to_string()
 }
 
-/// 后端拼好的那一行：全成 ⇒ `已复制 5 项`（落在同一个目录 ⇒ `→ 目录`）；别的 ⇒ `删除 5 项 · 完成 3 · 失败 ×2`，是 0 的那一段不写。
-pub(crate) fn said_of(verb: &str, outcomes: &[BatchOutcome], into: Option<&str>) -> String {
-    let count = |s: &[ItemState]| outcomes.iter().filter(|o| s.contains(&o.state)).count();
-    let n = outcomes.len().to_string();
-    let ok = count(&[ItemState::Done]);
-    if ok == outcomes.len() {
-        return match into {
-            Some(dir) => copy_text(
-                "beFiles.batch.doneInto",
-                &[("action", verb), ("n", &n), ("dir", dir)],
-            ),
-            None => copy_text("beFiles.batch.done", &[("action", verb), ("n", &n)]),
-        };
-    }
-    let skip = count(&[ItemState::Skipped]);
-    let bad = count(&[ItemState::Failed, ItemState::Exists]);
-    let left = count(&[ItemState::Cancelled]);
-    let mut parts = vec![copy_text(
-        "beFiles.batch.head",
-        &[("action", verb), ("n", &n)],
-    )];
-    let segs = [
-        (
-            ok,
-            copy_text("beFiles.batch.segOk", &[("ok", &ok.to_string())]),
-        ),
-        (
-            skip,
-            copy_text("beFiles.batch.segSkip", &[("skip", &skip.to_string())]),
-        ),
-        (
-            bad,
-            copy_text("beFiles.batch.segBad", &[("bad", &bad.to_string())]),
-        ),
-        (
-            left,
-            copy_text("beFiles.batch.segLeft", &[("left", &left.to_string())]),
-        ),
-    ];
-    parts.extend(segs.into_iter().filter(|(k, _)| *k > 0).map(|(_, t)| t));
-    parts.join(&copy_text("kit.text.sep", &[]))
-}
-
 /// 撤了 ⇒ 剩下那几项都回 `cancelled`。
 pub(crate) fn cancel_rest(out: &mut Vec<BatchOutcome>, from: usize, total: usize) {
     out.extend((from..total).map(|i| BatchOutcome::bare(key_of(i), ItemState::Cancelled)));
@@ -348,7 +305,3 @@ pub(crate) fn minted(to: &Path, k: u32) -> PathBuf {
     };
     to.with_file_name(format!("{stem} ({k}){ext}"))
 }
-
-#[cfg(test)]
-#[path = "../../../tests/backend/common/batch_book_tests.rs"]
-mod tests;

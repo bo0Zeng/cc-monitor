@@ -138,6 +138,8 @@ own-chan = { path = "../common/own-chan" }
 # 后端自己出句子、读的是与前端 / monitor 同一份 `src/shared/copy/table.json`。
 # 依赖只有 `serde_json`（本 crate 早就有）⇒ 不引新的第三方包。
 copy-core = { path = "../common/copy-core" }
+# 一组一条命令的结局那一句（`said_of`）：与文件窗口 · 手机嵌的核心同一份。
+batch-core = { path = "../common/batch-core" }
 # 轮换的策略文件（`accounts/quota/strategy/`）跑在它的沙箱里：纯 Rust、零 C 依赖、按操作数掐、表有序。
 # `sync` ⇒ 编好的策略能放进进程里的缓存跨线程用；`serde` ⇒ 上下文与回值经 serde 进出；`no_time` ⇒ 脚本里没有取时间的函数。
 rhai = { version = "1.26.1", default-features = false, features = ["std", "sync", "serde", "no_time"] }

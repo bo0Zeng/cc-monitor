@@ -179,12 +179,12 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     (
         "deploy_remote_backend",
         Own::Place,
-        "照本机后端 `deploy-plan` 的计划放 monitor 带着的那一格后端字节（经 `files` 链路），并照计划删旧落点那一份",
+        "把 monitor 带着的那几格后端字节交本机后端 `deploy-install`（判定 · 放字节 · 换进落点都在后端）",
     ),
     (
         "uninstall_remote_backend",
         Own::Place,
-        "删落点那一份后端字节（固定落点，没有判定；经 `files` 链路）",
+        "删落点那一份后端字节（交本机后端 `deploy-uninstall`）",
     ),
     (
         "footprint_client_facts",

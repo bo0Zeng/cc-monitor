@@ -75,6 +75,55 @@ class ResidentFeedTest {
         }
 
         val transfers = mutableListOf<List<Any>>()
+        val batches = mutableListOf<String>()
+        val answers = mutableListOf<Pair<Long, String?>>()
+
+        override fun batchStart(
+            handle: Long,
+            want: String,
+        ): Long {
+            batches += want
+            return 40L + batches.size
+        }
+
+        override fun batchAnswer(
+            id: Long,
+            answer: String?,
+        ) {
+            answers += id to answer
+        }
+
+        val picks = mutableListOf<Pair<Long, String>>()
+
+        override fun clashRows(data: String): String = """[{"key":"0","name":"a","meta":"m","answers":["skip"]}]"""
+
+        override fun downloadEvent(want: String): String = """{"id":-1,"phase":"cut","title":"t","line":"l","resume":true}"""
+
+        override fun answerOf(
+            keys: String,
+            answer: String?,
+        ): String {
+            answered += keys to answer
+            return """{"0":"skip","1":"overwrite"}"""
+        }
+
+        val answered = mutableListOf<Pair<String, String?>>()
+
+        override fun transferStop(id: Long) {
+            transfers += listOf("stop", id)
+        }
+
+        override fun pickMenu(
+            handle: Long,
+            rows: String,
+        ): String {
+            picks += handle to rows
+            return """{"bar":[{"id":"download","text":"下载","enabled":false,"why":"docs"}],"more":[],"tap":"open"}"""
+        }
+
+        override fun batchStop(id: Long) {
+            answers += id to "stop"
+        }
 
         override fun stage(
             handle: Long,
@@ -293,6 +342,28 @@ class ResidentFeedTest {
         }
 
     @Test
+    fun `那一趟不等了（停）⇒ 按编号叫核心撤，不另起结局`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val core = FakeCore()
+            val f = feed(core)
+            val down = async { f.transfer(Transfer.Pull(RemotePath.of("/w/f"), "/sd/f"), { 18 }, 9_000) { _, _ -> } }
+            down.cancel()
+            assertEquals(listOf<Any>("stop", 41L), core.transfers.last())
+            assertEquals(2, core.transfers.size)
+        }
+
+    @Test
+    fun `同名那一答交核心认：那几行的键与交核心那一形进去，每个键一格出来`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val core = FakeCore()
+            val f = feed(core)
+            assertEquals(mapOf("0" to "skip", "1" to "overwrite"), f.decided(listOf("0", "1"), BatchAnswer.Each(mapOf("1" to "overwrite"))))
+            assertEquals(listOf("""["0","1"]""" to """{"each":{"1":"overwrite"}}"""), core.answered)
+            f.decided(listOf("0"), null)
+            assertEquals("""["0"]""" to null, core.answered.last())
+        }
+
+    @Test
     fun `流上的帧折成会话表与几条流；拥塞那一句不叫重接（那台就地重报）`() =
         runTest(UnconfinedTestDispatcher()) {
             val core = FakeCore()
@@ -304,6 +375,23 @@ class ResidentFeedTest {
             core.emit("frame", """{"kind":"overflow","said":"连接拥塞 · 会话状态已重新对齐"}""")
             assertEquals(listOf("sessions_replayed", "overflow"), kinds)
             assertFalse("拥塞不重接：那台在原连接上整份重报", core.kicks.contains(true))
+        }
+
+    @Test
+    fun `能做什么：列表那一行原样交核心（整数照整数写），核心那一行解成菜单`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val core = FakeCore()
+            val f = feed(core)
+            val reply =
+                """{"entries":[{"path":"/h/docs","name":"docs","kind":"dir","class":"folder","type_text":"",""" +
+                    """"mtime_secs":1700000000,"size":12}],"up":null,"crumbs":[],"truncated":false,"total":1}"""
+            val listing = FilesLs.of(Json.obj(reply))!!
+            val menu = f.picks(listing.entries.map { it.row })
+            assertEquals(
+                """[{"path":"/h/docs","name":"docs","kind":"dir","class":"folder","type_text":"","mtime_secs":1700000000,"size":12}]""",
+                core.picks.single().second,
+            )
+            assertEquals(PickMenu(listOf(PickMenu.Entry("download", "下载", false, "docs")), emptyList(), "open"), menu)
         }
 
     @Test

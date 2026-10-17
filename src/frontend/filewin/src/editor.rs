@@ -694,7 +694,7 @@ pub fn opened_from_reply(
         return Ok(None);
     };
     if !is_sha256_hex(&got.sha256) {
-        return Err(super::source::Failed::here(
+        return Err(super::source::failed_here(
             copy_core::backend_old(&origin.0),
             origin,
             CMD_READ_TEXT,

@@ -2,6 +2,8 @@
 //! 后端那一半是替身（按剧本回），真后端那一半的判据住 `tests/backend/control/files_batch_tests.rs`。
 
 use super::*;
+use batch_core::{copy_details, run, Failed, Rebuff, Verb, EXISTS};
+use cmd_wire::batch::ItemState;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 fn plan() -> Plan {
@@ -17,7 +19,7 @@ fn plan() -> Plan {
 
 fn clash() -> Rebuff {
     Rebuff {
-        failed: super::super::source::Failed {
+        failed: Failed {
             code: Some(EXISTS.into()),
             said: "同名 2 项".into(),
             detail: String::new(),
@@ -250,20 +252,6 @@ async fn a_cut_waits_for_the_link_and_asks_again_with_the_same_ticket() {
 }
 
 #[test]
-fn the_cut_line_says_the_rest_is_unknown() {
-    let s = cut_line(
-        &plan(),
-        &Tick {
-            done: 1,
-            total: 2,
-            bytes: None,
-        },
-    );
-    assert!(s.starts_with("devbox"), "{s}");
-    assert!(s.contains("其余待核"), "{s}");
-}
-
-#[test]
 fn stopping_goes_through_the_stopper_once() {
     let board = BatchBoard::new(plan());
     let n = Arc::new(AtomicUsize::new(0));
@@ -274,18 +262,6 @@ fn stopping_goes_through_the_stopper_once() {
     assert!(board.stop());
     assert!(!board.stop(), "第二下不再发");
     assert_eq!(n.load(Ordering::SeqCst), 1);
-}
-
-#[test]
-fn progress_goes_by_bytes_when_the_backend_reports_them() {
-    let t = Tick::of_cell(
-        &serde_json::json!({"done": 0, "total": 1, "bytes_done": 512, "bytes_total": 2048}),
-    )
-    .unwrap();
-    assert_eq!(t.frac(), Some(0.25), "一份大文件传到四分之一：照字节画");
-    let t = Tick::of_cell(&serde_json::json!({"done": 1, "total": 4})).unwrap();
-    assert_eq!(t.frac(), Some(0.25));
-    assert!(Tick::of_cell(&serde_json::json!({"done": 1})).is_none());
 }
 
 // ════════════════════════════════════════════════════════════════════════

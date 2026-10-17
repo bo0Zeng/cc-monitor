@@ -123,8 +123,8 @@ fn a_failed_upload_offers_to_retry_exactly_the_ones_that_failed() {
 fn a_partly_failed_group_offers_to_retry_only_the_failed_items_under_a_new_ticket() {
     use cmd_wire::batch::{BatchOutcome, BatchReply, ItemState};
     let p = Progress::default();
-    let b = crate::batch::BatchBoard::new(crate::batch::Plan {
-        verb: crate::batch::Verb::Copy,
+    let b = crate::batch::BatchBoard::new(batch_core::Plan {
+        verb: batch_core::Verb::Copy,
         cmd: "files-copy",
         args: serde_json::json!({"root": "/srv", "items": [
             {"from": "a", "to": "b/a"}, {"from": "c", "to": "b/c"}, {"from": "d", "to": "b/d"}]}),
@@ -140,7 +140,7 @@ fn a_partly_failed_group_offers_to_retry_only_the_failed_items_under_a_new_ticke
         Some("/srv/b".into()),
         None,
     );
-    b.set(crate::batch::Phase::Ended(BatchReply {
+    b.set(batch_core::Phase::Ended(BatchReply {
         outcomes: vec![
             BatchOutcome::bare("0", ItemState::Done),
             BatchOutcome {
@@ -192,7 +192,7 @@ fn a_partly_failed_group_offers_to_retry_only_the_failed_items_under_a_new_ticke
         None,
         None,
     );
-    ok.set(crate::batch::Phase::Ended(BatchReply {
+    ok.set(batch_core::Phase::Ended(BatchReply {
         outcomes: (0..3)
             .map(|i| BatchOutcome::bare(i.to_string(), ItemState::Done))
             .collect(),
@@ -202,8 +202,8 @@ fn a_partly_failed_group_offers_to_retry_only_the_failed_items_under_a_new_ticke
 }
 
 fn delete_board() -> crate::batch::BatchBoard {
-    crate::batch::BatchBoard::new(crate::batch::Plan {
-        verb: crate::batch::Verb::Delete,
+    crate::batch::BatchBoard::new(batch_core::Plan {
+        verb: batch_core::Verb::Delete,
         cmd: "files-delete",
         args: serde_json::json!({"root": "/srv", "items": [{"rel": "node_modules", "recursive": true}]}),
         names: vec!["node_modules".into()],
@@ -283,10 +283,10 @@ async fn a_batch_the_user_cancelled_never_shows_up() {
     );
     let b2 = b.clone();
     let task = tokio::spawn(async move {
-        crate::batch::run(
+        batch_core::run(
             &b2,
             |_| async {
-                Err(crate::batch::Rebuff {
+                Err(batch_core::Rebuff {
                     failed: crate::source::Failed {
                         code: Some("exists".into()),
                         said: String::new(),

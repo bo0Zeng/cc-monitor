@@ -238,6 +238,25 @@ fn bases() -> &'static Mutex<HashMap<i64, serde_json::Value>> {
     B.get_or_init(Default::default)
 }
 
+/// 每台最近一次 hello 说做不到的那几条命令（`hello.unavailable`；读法同通信层那一份 `Offer::facts_of`）。
+fn unavailables() -> &'static Mutex<HashMap<i64, Vec<String>>> {
+    static U: OnceLock<Mutex<HashMap<i64, Vec<String>>>> = OnceLock::new();
+    U.get_or_init(Default::default)
+}
+
+/// 此刻那一台的样子（文件页「能做什么」那一张要它）：断没断着 · 那台说做不到的那几条命令。这台不在 ⇒ 断着。
+pub fn here(h: i64) -> pick_core::Here {
+    pick_core::Here {
+        offline: !feed(h).is_some_and(|f| matches!(f.state(), State::Up { .. })),
+        unavailable: unavailables()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&h)
+            .cloned()
+            .unwrap_or_default(),
+    }
+}
+
 /// 这台此刻的拨号请求（SSH 那层没通 ⇒ `None`）。
 pub(crate) fn base(h: i64) -> Option<serde_json::Value> {
     bases()
@@ -318,6 +337,21 @@ pub fn open(machine: String, mine: Option<String>, tz: Option<String>, on_event:
         None,
         Arc::clone(&desk),
         sink(move |e: Event| {
+            // 一组的进度按票在核心里接（`batch.rs`），不进 Kotlin 的帧流。
+            if matches!(&e, Event::Frame(line) if crate::batch::took(line)) {
+                return;
+            }
+            if let Event::Attached { hello, .. } = &e {
+                // 这台说做不到的那几条（hello 按帧类型解，同通信层收 `Offer` 那一处）；解不开 ⇒ 空（没把握）。
+                let ops = resident_client::attach::Hello::parse(hello)
+                    .and_then(|h| h.frame)
+                    .map(|h| comms_inward::chan::wire::Offer::of(&h).unavailable_ops())
+                    .unwrap_or_default();
+                unavailables()
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .insert(id, ops);
+            }
             let got = match &e {
                 Event::State(s) => {
                     let mut facts = facts.lock().unwrap_or_else(|e| e.into_inner());
@@ -453,6 +487,10 @@ pub fn kick(h: i64, retry: bool) {
 pub fn close(h: i64) {
     bases().lock().unwrap_or_else(|e| e.into_inner()).remove(&h);
     watching()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&h);
+    unavailables()
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .remove(&h);

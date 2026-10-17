@@ -2267,65 +2267,9 @@ mod g6_scope_pins {
     }
 }
 
-/// **CLI 错误信封：那几份实现是有意共存的，而它们的形状从今天起有人钉着。**
-///
-/// # 10-09 现状（下面 09-13 那段是当时的读数）
-///
-/// CLI 控制面 · `--list-projects` · `--fork-session` · `--account-trust*` 的失败都经 `wire::detail::Failed::emit_to` **一处**投出
-/// （`{code, message, detail, data?}`，与帧面失败应答同一份）；这张表只剩不走它的两份：`--resolve`（与手机端仓冻结着同一份金样）·
-/// 部署链路那一行应答（不是 CLI 出口）。
-///
-/// # 它从哪来：`K-R87` 交回时问的是「本 crate 第 4 份同形 `emit_err` 要不要收成一份」
-///
-/// 🔴 **答案是不收** —— 而理由不是「懒得动」，是三条现打的读数（09-13，量于本 crate `src/` 生产段）：
-///
-/// 1. **零不同步事故。** 四份 `emit_err` 每一份都只有**一个** commit（引入它的那一个），
-///    引入之后一个字都没改过（`git log -L :emit_err:<文件>` 逐份现打）
-///    ⇒ 盘上从来没发生过「改了一处、忘了另一处」。**收它是为了防一件没发生过的事。**
-/// 2. **收了也买不到「一处改、全体跟」。** 按**名字**数是 4 份；按**行为**
-///    （往 stderr 打一个 `{code,message}` 信封）数是 **12 处 / 7 份文件**：
-///    `control/fork_write.rs` 那份叫 `fail`，`observe/accounts_query.rs` 与
-///    `observe/history_query.rs` 那 7 处**根本没有函数包着**。
-///    把 4 份收成 1 份之后，「一处改、全体跟」这句话**仍然是假的**
-///    〔`split-by-defect-not-size`：拆/合由具体缺陷证成，不由份数证成〕。
-/// 3. **「4 份同形」这个说法按逐字比就不成立。** 规范化函数体之后：`control/capture_pane.rs`
-///    与 `control/oneshot_session.rs` **逐字同形**；`stream/cli.rs` 多一格可缺的 `raw`（下层原话）；
-///    `control/resolve_query.rs` **结构性不同**（走 typed `ResolveError` ＋ 一条序列化失败的兜底）。
-///    强行收成一份，要么砍掉那条兜底，要么把它摊给另三份 —— 净增复杂度。
-///
-/// # 🔴 那真缺陷在哪：**这个信封是契约，而在本模块之前没有一条判据在守它**
-///
-/// `src/doc/IPC-PROTOCOL.md` 与两处头注逐字把它写成约定
-/// （`control/fork_write.rs`「与 `--resolve` 同一个错误信封约定」·
-/// `control/capture_pane.rs`「形状与 `--resolve` 逐字相同」）——
-/// 而那 12 处里**任何一处**把 `code` 那个键改个名，门禁全绿。
-/// ⇒ 本模块立的是**那一条**，不是一次合并。
-///
-/// # 它买到什么 / 买不到什么（两侧都写出来）
-///
-/// - **买到**：① 每一处信封都有一行签字，**默认拒绝** —— 新长出来一处而没签字 ⇒ 当场红；
-///   ② 每一处 `code` 旁边都得有 `message`（键集不许分叉）；
-///   ③ **过期条目也红** —— 登记了而今天一处都匹配不上，说明这张表在变松。
-/// - **买不到**：它按**文本**认，不跑那几条命令 ⇒ 「真打出去的那一行长这样」要 e2e 去证；
-///   它也不检查那行签字说得对不对（同 [`spawn_registry`] 那条登记过的边界）。
-/// - ⚠ **退出码那一半刻意不在射程里**：`2` 是个裸字面量、散在各处，
-///   按文本钉它真阳率压不住噪声 ⇒ **如实登记为没做**，不是「顺便也守住了」。
-///
-/// # ⚠ 住址是当时改动范围限制的结果，不是设计
-///
-/// 正确落点是新立一份 `error_envelope_guard.rs`；`K-R103` 的改动范围里没有「新建文件」这一项
-/// ⇒ 暂住这里（同本文件头注里那三个 `g6_*` 模块的处境），**已上报 PM**。搬家那天把这段一起删掉。
-///
-/// 🔴 **搬家欠账登记之一〔`K-R110` `KR110D3`，09-13 复核：今天仍然没搬〕**
-///
-/// - **欠的是什么**：本模块（`mod error_envelope_registry`）该住 `src/backend/error_envelope_guard.rs`。
-/// - **今天为什么没搬**：`K-R110` 的改动范围里同样没有「新建文件」这一项 ——
-///   件文件 `features/K-R110-量具自己的人群是错的（提前收尾＋47处按行匹配）.md` 的 `§2`
-///   逐字把「**新建 guard 文件**」列进了「明令不改」。⇒ **只登记、不搬**。
-/// - **搬家时要做的三件事**（写在这儿，省得下一个人重新推）：
-///   ① 新建那份文件、整段搬过去；② `main.rs` 加一行 `mod` 声明；③ 回来把本节连同这条登记一起删掉。
-/// - **别零敲**：它与本文件头注点名的 `g6_doctrine` / `g6_staged_zero` / `g6_scope_pins`
-///   等着**同一趟**搬家 —— 一件专门做，比四次各搬一个便宜。
+/// **失败信封只有一份**：CLI 面与帧面的失败都经 `wire::detail::Failed` 序列化（`{code, message, detail, data?}`）；
+/// 后端生产段里手拼 `{"code": …, "message": …}` 的地方 == 零处。键名是契约（`src/doc/IPC-PROTOCOL.md`），
+/// 手拼的一份改了键名门禁看不见 ⇒ 不许再长出来。按文本认，不跑命令；退出码不在射程里。
 #[cfg(test)]
 mod error_envelope_registry {
     /// 信封那两个键。运行时拼进两种写法，见 [`key_forms`]。
@@ -2333,43 +2277,12 @@ mod error_envelope_registry {
     /// 见 [`CODE_KEY`]。
     const MESSAGE_KEY: &str = "message";
 
-    /// 一个键的两种写法：普通字面量，与**转义进另一层串**里的那一形。
-    ///
-    /// 🔴 第二形不是凑数：`control/resolve_query.rs` 的序列化兜底分支就是那么写的
-    /// （`eprintln!("{{\"code\":\"{code}\"…")`）。只认第一形会把它整处漏掉 ——
-    /// 而那一处恰恰是四份里**最不同形**的那一份。
+    /// 一个键的两种写法：普通字面量，与**转义进另一层串**里的那一形（`eprintln!("{{\"code\":…")`）。
     fn key_forms(name: &str) -> [String; 2] {
         [format!("\"{name}\""), format!("\\\"{name}\\\"")]
     }
 
-    /// `(文件相对路径, 那一行的逐字锚点, 这一份是谁的出口, 为什么它是独立的一份)`
-    ///
-    /// 🔴 **不是免检名单**：没签字的当场红，签了字而今天匹配不上的也当场红。
-    const SIGNED: &[(&str, &str, &str, &str)] = &[
-        // `control/resolve_query.rs` 那一行（`--resolve` 手写臂的 `emit_err` 兜底）删了：第 7 批第二题删了那条手写臂，
-        //   `--resolve` 照派生规则走 CLI 面，失败经 `wire::detail::Failed` 投出，与别的命令同一份。
-        // `stream/cli.rs` 那一行（一次性 CLI 入口的 `emit_err`）删了：信封改由 `wire::detail::Failed` 序列化，
-        //   与帧面失败应答同一份（`{code, message, detail, data?}`），不再手拼键。
-        // `control/fork_write.rs`（`--fork-session` 的 `fail`）与 `observe/accounts_query.rs` 两行（`--account-trust*` 的内联信封 ·
-        //   用法错那一档）删了：10-09 改由 `wire::detail::Failed::emit` 投出，与帧面失败应答同一份；
-        //   观测层引 `stream::` 不是反向边（`--list-projects` 早就这么走），当初「要先动分层」那条理由不成立。
-        // `accounts/iso.rs` 那一行（本机 `cc-acct-iso` 两问的 argv 形失败信封）删了：
-        //   两问上了帧面，失败走帧面的 `(code, message)` 应答，iso.rs 里不再自己拼信封。
-        (
-            "ssh-dial/sftp.rs",
-            "serde_json::json!({ \"code\": code, \"message\": message, \"detail\": detail })",
-            "部署链路（`use:\"files\"`）一问一答的失败应答",
-            "它**不是 CLI 出口**，是一条链路上的一行应答（monitor 那侧 `dial_host::RemoteFs` 读它）；\
-             与 CLI 信封同一对键是刻意的（读的人少记一种形状），但它住 `dial/`、成功那一形是别的键 \
-             ⇒ 收进 `control/` 那几份出口要先让 `dial/` 反向引 `control/`，不划算。",
-        ),
-        // `observe/history_query.rs` 那一行（`--list-projects` 那份带码的信封）删了：同上，改由 `Failed` 序列化（那条子命令 10-11 也删了）。
-    ];
-
-    /// 一行里 `code` 这个键出现几次（两种写法都算）—— [`envelope_sites`] 的**纯函数那一半**。
-    ///
-    /// 抬出来是为了让 [`the_needle_bites_on_both_writings_and_not_on_the_bare_word`]
-    /// 量**同一把尺子**：副本一分叉，红灯就开始骗人。
+    /// 一行里 `code` 这个键出现几次（两种写法都算）—— [`envelope_sites`] 的纯函数那一半，正控量的是同一把尺子。
     fn code_key_hits(line: &str) -> usize {
         key_forms(CODE_KEY)
             .iter()
@@ -2377,151 +2290,41 @@ mod error_envelope_registry {
             .sum()
     }
 
-    fn src_root() -> std::path::PathBuf {
-        guard_core::addr::backend_src_root()
-    }
-
-    /// 全树一趟：每一处信封的 `(文件相对路径, 那一行逐字, 该行起三行的窗口)`。
-    ///
-    /// ⚠ 刻意不报行号：生产文本剥过测试段，行号与文件对不上；
-    /// 报**逐字那一行**既是住址也是校验位。
-    fn envelope_sites() -> Vec<(String, String, String)> {
-        let root = src_root();
-        let mut out = Vec::new();
+    /// 全树一趟：扫了几份文件，与每一处信封的 `(文件相对路径, 那一行逐字)`。
+    fn envelope_sites() -> (usize, Vec<(String, String)>) {
+        let root = guard_core::addr::backend_src_root();
+        let (mut scanned, mut out) = (0, Vec::new());
         for (f, src) in guard_core::scan_tree!(&root, &["rs"]) {
+            scanned += 1;
             let rel = f
                 .strip_prefix(&root)
                 .unwrap_or(&f)
                 .to_string_lossy()
                 .replace('\\', "/");
-            let prod = guard_core::production_code(&src);
-            let lines: Vec<&str> = prod.lines().collect();
-            for i in 0..lines.len() {
-                if code_key_hits(lines[i]) == 0 {
-                    continue;
+            for line in guard_core::production_code(&src).lines() {
+                if code_key_hits(line) > 0 {
+                    out.push((rel.clone(), line.trim().to_string()));
                 }
-                let window = lines[i..(i + 3).min(lines.len())].join("\n");
-                out.push((rel.clone(), lines[i].trim().to_string(), window));
             }
         }
-        out
+        (scanned, out)
     }
 
-    /// ★ 反空真：人群不许静默塌掉（现打 09-13：12 处 / 7 份文件；10-09 CLI 控制面 · `--list-projects` · `--fork-session` · `--account-trust*`
-    /// 收进同一份失败载体后 2 处 / 2 份文件；10-11 `--resolve` 手写臂删了 ⇒ 1 处 / 1 份文件，地板贴着现数）。
+    /// ★★ 正题：后端生产段里手拼的失败信封 == 零处（人群非空）。
     #[test]
-    fn the_envelope_scan_is_not_silently_empty() {
-        let sites = envelope_sites();
-        // 10-11 `--resolve` 那份兜底随手写臂删了 ⇒ 只剩部署链路那一行：1 处 / 1 份文件。
-        assert!(
-            sites.len() >= 1,
-            "全树只扫到 {} 处错误信封 —— 扫坏了，下面几条此刻在空转",
-            sites.len()
-        );
-        let mut files: Vec<&str> = sites.iter().map(|(f, _, _)| f.as_str()).collect();
-        files.sort_unstable();
-        files.dedup();
-        assert!(
-            files.len() >= 1,
-            "这些信封只来自 {} 份文件 —— 遍历塌了",
-            files.len()
-        );
-    }
-
-    /// ★★ 正题：**每一处信封都签过字**。两个方向都断，缺一不可。
-    #[test]
-    fn every_error_envelope_site_is_signed_for() {
-        let sites = envelope_sites();
-        let unsigned: Vec<String> = sites
-            .iter()
-            .filter(|(f, line, _)| {
-                !SIGNED
-                    .iter()
-                    .any(|(p, anchor, _, _)| *p == f.as_str() && line.contains(*anchor))
-            })
-            .map(|(f, line, _)| format!("  {f}: {line}"))
-            .collect();
+    fn no_hand_built_error_envelope_is_left_in_backend_production() {
+        let (scanned, sites) = envelope_sites();
+        assert!(scanned > 0, "一份 `.rs` 都没扫到 —— 遍历塌了，零命中在空转");
+        let hits: Vec<String> = sites.iter().map(|(f, l)| format!("  {f}: {l}")).collect();
         assert_eq!(
-            unsigned,
+            hits,
             Vec::<String>::new(),
-            "这几处 CLI 错误信封在 `SIGNED` 里没有签字：\n{}\n\
-             它不是「多写了一份就红」——是要你回答一句：**这一份为什么是独立的一份**。\n\
-             （`K-R103` 判过一次「不收」，理由逐条在本模块头注；\n\
-             要改判就把那三条读数重打一遍，别只加一行。）",
-            unsigned.join("\n")
-        );
-        let stale: Vec<String> = SIGNED
-            .iter()
-            .filter(|(p, anchor, _, _)| {
-                !sites
-                    .iter()
-                    .any(|(f, line, _)| f.as_str() == *p && line.contains(*anchor))
-            })
-            .map(|(p, anchor, ..)| format!("  {p} :: {anchor}"))
-            .collect();
-        assert_eq!(
-            stale,
-            Vec::<String>::new(),
-            "`SIGNED` 里这几条今天一处都匹配不上：\n{}\n\
-             多半是那一处收掉了 / 换了写法 ⇒ 把这一行删掉。\n\
-             留着它这张表会越长越松，而每一行都说得出理由的表才拦得住人。",
-            stale.join("\n")
+            "这几处手拼了失败信封 —— 改由 `wire::detail::Failed` 序列化，键只许一份：\n{}",
+            hits.join("\n")
         );
     }
 
-    /// ★★ 键集不许分叉：每一处 `code` 的**三行窗口**里都得有 `message`。
-    ///
-    /// ⚠ 窗口是三行，不是一行 —— `observe/accounts_query.rs` 那两处把两个键写在两行上。
-    /// 这条边界写出来：一个把 `message` 推到第四行的写法，本条**看不见**。
-    #[test]
-    fn every_envelope_carries_both_keys() {
-        let bad: Vec<String> = envelope_sites()
-            .into_iter()
-            .filter(|(_, _, window)| {
-                !key_forms(MESSAGE_KEY)
-                    .iter()
-                    .any(|k| window.contains(k.as_str()))
-            })
-            .map(|(f, line, _)| format!("  {f}: {line}"))
-            .collect();
-        assert_eq!(
-            bad,
-            Vec::<String>::new(),
-            "这几处信封只有 `{CODE_KEY}` 没有 `{MESSAGE_KEY}` —— 键集分叉了：\n{}\n\
-             `src/doc/IPC-PROTOCOL.md` 与两处头注逐字把这个信封写成**约定**\
-             （「与 `--resolve` 同一个错误信封约定」）；\n\
-             约定分叉的那一刻，客户端整段 parse 的那条路就断了。",
-            bad.join("\n")
-        );
-    }
-
-    /// ★ 表本身：每一行都说得出「它为什么是独立的一份」。
-    ///
-    /// 一条说不出理由的签字就是一条免检，而这张表存在的全部意义是逼人回答那一问。
-    #[test]
-    fn every_signed_row_says_why_it_is_its_own_copy() {
-        // 8 → 7：抓屏那条 CLI 面（`--capture-pane`）删了，它的 `emit_err` 随之没了。
-        // 7 → 5：CLI 控制面与 `--list-projects` 那两份收进同一份失败载体（`wire::detail::Failed`，与帧面同一份）。
-        // 5 → 2：`--fork-session` 与 `--account-trust*`（两行）也收进去了。
-        // 2 → 1：`--resolve` 的手写臂删了（10-11），它那份兜底随之没了。
-        assert!(
-            SIGNED.len() >= 1,
-            "`SIGNED` 只剩 {} 行 —— 它在缩水",
-            SIGNED.len()
-        );
-        for (p, anchor, whose, _) in SIGNED {
-            assert!(!anchor.is_empty(), "{p} 的锚点是空串 —— 那会匹配到任何地方");
-            assert!(
-                whose.chars().count() >= 5,
-                "{p} :: {anchor} 说不出这一份是谁的出口"
-            );
-        }
-    }
-
-    /// ★★ 反空真②：**两种写法都认得出，而 `code` 这个词本身不算。**
-    ///
-    /// 三刀。第三刀是这条判据最容易坏的地方：把 needle 写成裸 `code`，
-    /// 于是 `let code = …` / `status.code()` 全被数进来 ⇒ 这张表当场变成噪声。
+    /// ★ 正控：两种写法都认得出，而 `code` 这个词本身不算（裸词会把 `let code = …` 全数进来）。
     #[test]
     fn the_needle_bites_on_both_writings_and_not_on_the_bare_word() {
         let plain = format!("json!({{{CODE_KEY:?}: c, {MESSAGE_KEY:?}: m}})");
@@ -2532,7 +2335,7 @@ mod error_envelope_registry {
         assert_eq!(
             code_key_hits(&bare),
             0,
-            "裸词 `{CODE_KEY}` 被数进来了 —— 这张表会当场变成噪声：{bare}"
+            "裸词 `{CODE_KEY}` 被数进来了：{bare}"
         );
     }
 }
@@ -2760,6 +2563,13 @@ mod g6_dependency_signoff {
             MEASURED_CLEAN,
             "对外文案表的 Rust 取文口（编译期内嵌 `src/shared/copy/table.json` ＋ 具名占位符替换，纯字符串变换）；\
              与 monitor、creds-core 共用同一份；仓内 crate，现打 0 处写面",
+        ),
+        (
+            "batch-core",
+            DEPS,
+            MEASURED_CLEAN,
+            "一组一条命令的全过程与它的字（结局那一句 `said_of` · 标题 · 没成的那几行 · 同名那一行的说明）：\
+             与文件窗口、手机嵌的核心共用同一份；纯计算 ＋ 问法由调用方给，仓内 crate，现打 0 处写面",
         ),
         // `gate-core` 那一行摘了：它收成本 crate 的模块 `control/gate_rules.rs`（命名空间那一条那条判据数它的写面）。
         (
