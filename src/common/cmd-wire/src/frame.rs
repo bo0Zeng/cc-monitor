@@ -532,14 +532,14 @@ pub struct FilesBatch {
 
 /// 〔「测试连接的进度不许倒退」〕**测试连接那一趟的一格进度**（`remote-probe` 在跑时才出现）。
 ///
-/// `cell` 恰好一个键：`stage`（握手那几行）· `reached`（`ssh` / `hello` / `control` 走完了那一段）· `end`（结局，最后一格）。
+/// `cell` 是后端 `dial::probe::ProbeCell`：写好的那一句 · 语气 · 四段；最后一格带结局（`end`）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct Probe {
     /// 测试连接那一趟的票（`remote-probe` 交来的）。
     pub ticket: String,
-    /// 一格进度，恰好一个键：`stage` · `reached` · `end`。
+    /// 一格进度：`said` · `tone` · `segs` · `end`（只最后一格有）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "unknown"))]
     pub cell: Value,
 }

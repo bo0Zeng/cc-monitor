@@ -15,11 +15,10 @@ import { parseAddressLines } from "../remote-config";
 import type { MachineFault } from "../generated/MachineFault";
 import { askInterrupts, interruptRows } from "./interrupts";
 import { uninstallBackend, updateBackend } from "../backend-deploy";
-// `ConnectStage` 直接用生成物（绕道 `remote-section` 会成 import 环）。
-import type { ConnectStage } from "../generated/ConnectStage";
 // 起新会话：全产品一个框（机器卡 ⋯「新建会话…」开它，机器锁定）。
 import { openNewSession } from "../new-session";
-import { probeMachine, ProbeStalled, type ConnTestResult, type ProbeStop } from "../remote-probe";
+import { probeMachine, type ProbeCell } from "../remote-probe";
+import type { Segs } from "../generated/Segs";
 import { pushPublicKey } from "../pubkey-push";
 import { confirmDialog } from "../kit/dialog";
 import { copyText } from "../copy-table";
@@ -113,46 +112,6 @@ const SEG_LABEL: Record<ConnSeg, () => string> = {
   auth: () => copyText("machineCard.seg.auth"),
   ready: () => copyText("machineCard.seg.ready"),
 };
-
-/**
- * 阶段事件 → 泳道行的图标 ＋ 文案。纯函数。
- * `ConnectStage` 用生成物：下面 `const _never: never = st` 的穷尽性兜底才真对 Rust 新增的 variant 有牙。
- */
-/** 测试连接到点没等到结局时「停在哪一段」的那句话（最后收到的那一格；握手中那一段带上最后一行阶段）。 */
-export function describeStop(stop: ProbeStop): string {
-  switch (stop.at) {
-    case "start":
-      return copyText("machineCard.stall.start");
-    case "handshake":
-      return copyText("machineCard.stall.handshake", { step: describeStage(stop.last).text });
-    case "hello":
-      return copyText("machineCard.stall.hello");
-    case "control":
-      return copyText("machineCard.stall.control");
-  }
-}
-
-export function describeStage(st: ConnectStage): { text: string } {
-  switch (st.kind) {
-    case "dialing":
-      return { text: copyText("machineCard.stage.dial", { endpoint: st.endpoint }) };
-    case "hostKey":
-      return { text: copyText("machineCard.stage.fingerprint", { endpoint: st.endpoint, fingerprint: st.fingerprint }) };
-    case "failed":
-      return { text: copyText("machineCard.stage.failed", { endpoint: st.endpoint, reason: st.reason }) };
-    case "won":
-      return { text: copyText("machineCard.stage.won", { endpoint: st.endpoint }) };
-    case "auth":
-      return st.ok ? { text: copyText("machineCard.stage.authOk") } : { text: copyText("machineCard.stage.authFailed", { said: st.detail ?? copyText("reason.io.unknown") }) };
-    case "established":
-      return { text: copyText("machineCard.stage.ready") };
-    default: {
-      // 穷尽性兜底：新增 ConnectStage 变体时编译期（never）报错。
-      const _never: never = st;
-      return { text: String((_never as { kind?: string }).kind ?? "") };
-    }
-  }
-}
 
 export interface MachineCardHooks {
   /** 任一字段变化 → 让 section 保存全部。 */
@@ -728,7 +687,7 @@ export class MachineCard {
     }
     this.testButton.disabled = true;
     setButtonLabel(this.testButton, copyText("machineCard.test.running"));
-    // 本机后端边拨边推（进度流 `probe-progress/<票>`）：几段逐格亮起来。
+    // 本机后端边拨边推（进度流 `probe-progress/<票>`）：每一格照画（那一句与四段都是后端写好的）。
     this.testResult.replaceChildren();
     this.testResult.style.display = "block";
     this.testResult.dataset.tested = "true";
@@ -736,90 +695,41 @@ export class MachineCard {
     this.testResult.appendChild(segs.el);
     try {
       // 表单里这一台（可能没保存）＋ 已保存的那几台（同名那一份的指纹 · 跳板）交给本机后端，它组请求、拨一次。
-      const res = await probeMachine(cfg, (await readRemoteConfig()).hosts, (st) => segs.stage(st));
-      segs.end(res);
+      const res = await probeMachine(cfg, (await readRemoteConfig()).hosts, (c) => segs.paint(c.segs, c.said));
+      segs.paint(res.segs, res.end?.backendHello ?? "");
       this.renderTestResult(res, null, segs.el);
     } catch (e) {
       console.warn("remote-probe failed:", e);
-      // 到点没等到结局 ⇒ 说出停在哪一段（最后收到的那一格）。
-      const said =
-        e instanceof ProbeStalled
-          ? copyText("machineCard.test.stalled", { said: e.message, where: describeStop(e.stop) })
-          : failSaid(copyText("machineCard.test.failed"), e);
-      segs.stop();
-      this.renderTestResult(null, said, segs.el, e instanceof ProbeStalled ? "" : detailOf(e));
+      this.renderTestResult(null, failSaid(copyText("machineCard.test.failed"), e), segs.el, detailOf(e));
     } finally {
       this.testButton.disabled = false;
       setButtonLabel(this.testButton, copyText("machineCard.build.test"));
     }
   }
 
-  /**
-   * 测试连接下面那一行：`✓ 解析 ✓ 连接 ✓ 认证 ✓ 就绪 38ms · 版本 · 功能完整`。
-   * 按收到的阶段逐格亮；结局到了再定没亮的那几格（第一处没过的打 ✗，后面的留灰）。
-   */
-  private segLine(): {
-    el: HTMLElement;
-    stage(st: ConnectStage): void;
-    end(res: ConnTestResult): void;
-    stop(): void;
-  } {
+  /** 测试连接下面那一行：`✓ 解析 ✓ 连接 ✓ 认证 ✓ 就绪 版本 · 功能完整 · 往返 38ms`（四段与尾巴那一句照后端那一格画）。 */
+  private segLine(): { el: HTMLElement; paint(segs: Segs, tail: string): void } {
     const el = document.createElement("div");
     el.className = "machine-conn-segs";
-    const state = new Map<ConnSeg, "ok" | "fail" | "wait">(CONN_SEGS.map((k) => [k, "wait"]));
-    const cells = new Map<ConnSeg, HTMLElement>();
-    for (const k of CONN_SEGS) {
+    const cells = CONN_SEGS.map(() => {
       const c = document.createElement("span");
       c.className = "machine-conn-seg";
-      cells.set(k, c);
-      el.appendChild(c);
-    }
-    const tail = document.createElement("span");
+      return el.appendChild(c);
+    });
+    const tail = el.appendChild(document.createElement("span"));
     tail.className = "machine-conn-seg-tail";
-    el.appendChild(tail);
-    const paint = (): void => {
-      for (const k of CONN_SEGS) {
-        const c = cells.get(k)!;
-        const st = state.get(k)!;
-        c.dataset.state = st;
+    const paint = (segs: Segs, said: string): void => {
+      CONN_SEGS.forEach((k, i) => {
+        const st = segs[k];
         const label = document.createElement("span");
         label.textContent = SEG_LABEL[k]();
-        c.replaceChildren(...(st === "wait" ? [] : [icon(st === "ok" ? "check" : "failed", "compact")]), label);
-      }
+        cells[i]!.dataset.state = st;
+        cells[i]!.replaceChildren(...(st === "wait" ? [] : [icon(st === "ok" ? "check" : "failed", "compact")]), label);
+      });
+      tail.textContent = said;
     };
-    const ok = (...ks: ConnSeg[]): void => {
-      for (const k of ks) state.set(k, "ok");
-      paint();
-    };
-    /** 第一处还没过的那一格打 ✗。 */
-    const failFirst = (): void => {
-      const k = CONN_SEGS.find((x) => state.get(x) !== "ok");
-      if (k) state.set(k, "fail");
-      paint();
-    };
-    paint();
-    return {
-      el,
-      stage(st) {
-        if (st.kind === "hostKey" || st.kind === "won") ok("resolve", "connect");
-        else if (st.kind === "auth" && st.ok) ok("resolve", "connect", "auth");
-        else if (st.kind === "auth") {
-          ok("resolve", "connect");
-          state.set("auth", "fail");
-          paint();
-        }
-      },
-      end(res) {
-        if (res.sshOk) ok("resolve", "connect", "auth");
-        if (res.sshOk && res.backendOk) {
-          ok("ready");
-          tail.textContent = res.backendHello ?? "";
-        } else if (![...state.values()].includes("fail")) failFirst();
-      },
-      stop() {
-        if (![...state.values()].includes("fail")) failFirst();
-      },
-    };
+    paint({ resolve: "wait", connect: "wait", auth: "wait", ready: "wait" }, "");
+    return { el, paint };
   }
 
   /** 一键推送本地公钥到远端 authorized_keys。已填私钥 → 取同名 .pub；否则弹框选 .pub。 */
@@ -919,7 +829,7 @@ export class MachineCard {
    * `keep` 传入时保留那一行逐段（清空其余旧结果）。
    */
   private renderTestResult(
-    res: ConnTestResult | null,
+    res: ProbeCell | null,
     hardError: string | null,
     keep?: HTMLElement,
     hardDetail = "",
@@ -938,21 +848,22 @@ export class MachineCard {
     }
     if (res === null) return;
 
-    if (!res.sshOk || !res.backendOk) {
+    if (res.tone === "fail") {
       const msg = document.createElement("div");
       msg.className = "remote-test-line remote-test-msg";
-      sayWithDetail(msg, res.message, res.detail ?? "");
+      sayWithDetail(msg, res.said, res.end?.detail ?? "");
       this.testResult.appendChild(msg);
     }
 
     // 这台说做不到的那几类：点开看全表（一类一句；码的人话与置灰那一句同一个家）。
-    if (res.backendGaps.length > 0) {
+    const gapList = res.end?.backendGaps ?? [];
+    if (gapList.length > 0) {
       const gaps = document.createElement("details");
       gaps.className = "remote-test-line";
       const summary = document.createElement("summary");
       summary.textContent = copyText("machineCard.test.gapsSummary");
       gaps.appendChild(summary);
-      for (const g of res.backendGaps) {
+      for (const g of gapList) {
         const row = document.createElement("div");
         row.textContent = copyText("machineCard.test.gapRow", {
           reason: g.said,
@@ -973,7 +884,7 @@ export class MachineCard {
       return;
     }
     const segs = this.segLine();
-    segs.end({ sshOk: true, backendOk: true, backendHello: "", fingerprint: null, endpoint: null, backendGaps: [], message: "", detail: null });
+    segs.paint({ resolve: "ok", connect: "ok", auth: "ok", ready: "ok" }, "");
     this.testResult.replaceChildren(segs.el);
     this.testResult.style.display = "block";
   }

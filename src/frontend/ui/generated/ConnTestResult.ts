@@ -2,37 +2,17 @@
 import type { GapCount } from "./GapCount";
 
 /**
- * 测试连接的结局（进度流最后那一格 `{end}`）。
+ * 测试连接的结局（进度流最后那一格的 `end`）。
  */
 export type ConnTestResult = { 
 /**
- * SSH 连接 ＋ 鉴权成没成。
- */
-sshOk: boolean, 
-/**
- * 握手时看到的那台的 host key 指纹（`SHA256:...`）；没过 ⇒ `null`（免得把失配的那把固化）。
- */
-fingerprint: string | null, 
-/**
- * 竞速胜出的地址（`host:port`）。
- */
-endpoint: string | null, 
-/**
- * 那台后端回了 hello 没有。
- */
-backendOk: boolean, 
-/**
- * 那台后端的三格（版本 · 能用几项 / 做不到几项 · 往返毫秒），按文案表拼好的一句。
+ * 那台后端的三格（版本 · 能用几项 / 做不到几项 · 往返毫秒），按文案表拼好的一句；没回 hello ⇒ `null`。
  */
 backendHello: string | null, 
 /**
  * 这台说做不到的那几类（空 = 没有 / 没回 hello）。
  */
 backendGaps: Array<GapCount>, 
-/**
- * 总体那一句（不接下层原话）。
- */
-message: string, 
 /**
  * 没过时的复制详情；都过了 ⇒ `null`。
  */

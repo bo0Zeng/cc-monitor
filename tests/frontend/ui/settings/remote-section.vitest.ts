@@ -72,14 +72,15 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
     },
   ),
 }));
-// 测试连接改问本机后端（`remote-probe.ts` 经通道）⇒ 替身同一本账：记帧命令名、按名回（缺的格补成结局的空形）。
-//   解码器本身由 `tests/frontend/ui/remote-probe.vitest.ts` 钉。
+// 测试连接改问本机后端（`remote-probe.ts` 经通道）⇒ 替身同一本账：记帧命令名、按名回结局那一格；
+//   `remote-probe:cells` 设了 ⇒ 结局之前先逐格交 `onCell`。收进度流本身由 `tests/frontend/ui/remote-probe.vitest.ts` 钉。
 vi.mock("../../../../src/frontend/ui/remote-probe", () => ({
-  probeMachine: () => {
+  probeMachine: (_m: unknown, _s: unknown, onCell: (c: unknown) => void) => {
     ipcCalls.push("remote-probe");
+    for (const c of (ipcReplies.get("remote-probe:cells") as unknown[] | undefined) ?? []) onCell(c);
     const reply = ipcReplies.get("remote-probe");
     if (reply instanceof Error) return Promise.reject(reply);
-    return Promise.resolve({ message: "", stages: [], backendGaps: [], ...(reply as object) });
+    return Promise.resolve(reply);
   },
 }));
 // 「从 ~/.ssh/config 导入」那一问问本机常驻后端（`ssh-config-reads.ts` 经通道）⇒ 替身同一本账：
@@ -203,21 +204,6 @@ describe("F54 findHostByOrigin", () => {
   it("找不到 / 空列表 → null", () => {
     expect(findHostByOrigin(hosts, "nope")).toBeNull();
     expect(findHostByOrigin([], "devbox")).toBeNull();
-  });
-});
-
-// E80：`describeStage` 搬去了 `machine-card.ts`（它唯一的消费者），本组从那边 import。
-import { describeStage } from "../../../../src/frontend/ui/settings/machine-card";
-
-describe("F46 describeStage", () => {
-  it("各阶段 kind 有文案", () => {
-    expect(describeStage({ kind: "dialing", endpoint: "h:22" }).text).toContain(copyText("machineCard.stage.dial", { endpoint: "h:22" }));
-    expect(describeStage({ kind: "won", endpoint: "h:22" }), "只给一句话，图标不归它（C-W1）").toEqual({ text: copyText("machineCard.stage.won", { endpoint: "h:22" }) });
-    expect(describeStage({ kind: "failed", endpoint: "h:22", reason: "x" }).text).toBe(copyText("machineCard.stage.failed", { endpoint: "h:22", reason: "x" }));
-    expect(describeStage({ kind: "auth", ok: false, detail: copyText("reason.code.refused") }).text).toContain(copyText("reason.code.refused"));
-    expect(describeStage({ kind: "auth", ok: true, detail: null }).text).toContain(copyText("machineCard.stage.authOk"));
-    expect(describeStage({ kind: "established" }).text).toContain(copyText("machineCard.seg.ready"));
-    expect(describeStage({ kind: "hostKey", endpoint: "h:22", fingerprint: "SHA256:x" }).text).toContain("SHA256:x");
   });
 });
 
@@ -799,12 +785,14 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     // 每类那一句后端写好（`probe.rs` 取置灰那一句同一个家），界面原样放进那一行。
     const noTmux = copyText("machineCard.test.gapRow", { reason: "后端·a 无 tmux", n: "3" });
     ipcReplies.set("remote-probe", {
-      sshOk: true,
-      backendOk: true,
-      fingerprint: null,
-      endpoint: null,
-      backendHello: copyText("beProbe.hello.okGaps", { build: "p5o", gaps: "3", dur: "12 ms" }),
-      backendGaps: [{ code: "no_tmux", count: 3, said: "后端·a 无 tmux" }],
+      said: copyText("beProbe.test.ok"),
+      tone: "plain",
+      segs: { resolve: "ok", connect: "ok", auth: "ok", ready: "ok" },
+      end: {
+        backendHello: copyText("beProbe.hello.okGaps", { build: "p5o", gaps: "3", dur: "12 ms" }),
+        backendGaps: [{ code: "no_tmux", count: 3, said: "后端·a 无 tmux" }],
+        detail: null,
+      },
     });
     const sec = await mount([mkH("a", "1.1.1.1")]);
     [...sec.element.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.includes(copyText("machineCard.build.test")))!.click();
@@ -826,13 +814,10 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   it("★ 测试连接没过 ⇒ 那一行是人话那一句 ＋［复制详情］，复制的是那句 ＋ 详情", async () => {
     localStorage.clear();
     ipcReplies.set("remote-probe", {
-      sshOk: false,
-      backendOk: false,
-      fingerprint: null,
-      endpoint: null,
-      backendHello: null,
-      message: "断开-甲",
-      detail: "命令：dial\n原话：夹具原话-乙",
+      said: "断开-甲",
+      tone: "fail",
+      segs: { resolve: "fail", connect: "wait", auth: "wait", ready: "wait" },
+      end: { backendHello: null, backendGaps: [], detail: "命令：dial\n原话：夹具原话-乙" },
     });
     const sec = await mount([mkH("a", "1.1.1.1")]);
     [...sec.element.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.includes(copyText("machineCard.build.test")))!.click();
@@ -842,6 +827,40 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(box.textContent).not.toContain("夹具原话-乙");
     expect([...box.querySelectorAll("button")].map((b) => b.textContent)).toContain(copyText("detail.act.copy"));
     ipcReplies.clear();
+  });
+
+  // 四段与那一句照后端那一格画：收到一格就换（进度那几格的那一句在尾巴上），结局那一格定四段。
+  it("★ 测试连接那一行照每一格画：四段的 ✓ ✗ 与尾巴那一句都是后端写好的", async () => {
+    localStorage.clear();
+    const marks = (box: HTMLElement): string[] =>
+      [...box.querySelectorAll<HTMLElement>(".machine-conn-seg")].map((c) => c.dataset.state ?? "");
+    let seen: { marks: string[]; tail: string } | null = null;
+    const watch = new MutationObserver(() => {
+      const box = document.querySelector<HTMLElement>(".machine-conn-segs");
+      const tail = box?.querySelector(".machine-conn-seg-tail")?.textContent ?? "";
+      if (box && tail === "进度-丙") seen ??= { marks: marks(box), tail };
+    });
+    watch.observe(document.body, { subtree: true, childList: true, characterData: true });
+    ipcReplies.set("remote-probe:cells", [
+      { said: "进度-丙", tone: "now", segs: { resolve: "ok", connect: "ok", auth: "ok", ready: "wait" }, end: null },
+    ]);
+    ipcReplies.set("remote-probe", {
+      said: "没等到-丁",
+      tone: "fail",
+      segs: { resolve: "ok", connect: "ok", auth: "ok", ready: "fail" },
+      end: { backendHello: null, backendGaps: [], detail: null },
+    });
+    const sec = await mount([mkH("a", "1.1.1.1")]);
+    document.body.appendChild(sec.element);
+    [...sec.element.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.includes(copyText("machineCard.build.test")))!.click();
+    for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
+    watch.disconnect();
+    expect(seen, "进度那一格没画在尾巴上").toEqual({ marks: ["ok", "ok", "ok", "wait"], tail: "进度-丙" });
+    const box = sec.element.querySelector<HTMLElement>(".remote-test-result")!;
+    expect(marks(box)).toEqual(["ok", "ok", "ok", "fail"]);
+    expect(box.textContent).toContain("没等到-丁");
+    ipcReplies.clear();
+    sec.element.remove();
   });
 
   // ── 机器表的几条写盘缺陷：回填漏一格、重名、空白卡、端口越界、卸载失败照记成功 ──

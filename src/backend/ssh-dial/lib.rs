@@ -335,9 +335,9 @@ pub fn why_of_stage(stage: &str) -> Why {
     }
 }
 
-/// 一行阶段（`stages=true` 时在 ack 之前出）。**形状与界面 `stream_source::ConnectStage` 逐字段相同** ——
-/// 界面那一侧原样反序列化进它自己的类型，对拍判据住界面那侧。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+/// 一行阶段（`stages=true` 时在 ack 之前出）。**形状与壳 `ssh_link::ConnectStage` 逐字段相同** ——
+/// 壳那一侧原样反序列化进它自己的类型，对拍判据住壳那侧；测试连接（`dial/probe.rs`）读回这个类型、写成那一句。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Stage {
     Dialing {

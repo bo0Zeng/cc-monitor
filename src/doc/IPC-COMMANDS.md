@@ -214,7 +214,7 @@ A session file went away。
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `ticket` | string | 测试连接那一趟的票（`remote-probe` 交来的） |
-| `cell` | JSON | 一格进度，恰好一个键：`stage` · `reached` · `end` |
+| `cell` | JSON | 一格进度：`said` · `tone` · `segs` · `end`（只最后一格有） |
 
 ### `live_card`
 

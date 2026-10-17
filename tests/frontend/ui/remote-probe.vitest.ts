@@ -1,8 +1,8 @@
 /**
  * 「测试连接：界面把表单里（未保存的）那台配置交给本机后端，后端组拨号请求、拨一次」——
  * 界面那一侧：交过去的是表单那一台 ＋ 已保存的同名那一份 ＋ 跳板那一台（问 `<local>` 的 `remote-probe`）。
- * 〔「进度不许倒退」〕进度边拨边推：先订 `probe-progress/<票>` 再问；握手那几行边收边交 `onStage`；
- * 结局是进度流的最后一格（可以晚于应答到）；到点没等到结局 ⇒ `ProbeStalled` 说出停在哪一段（最后收到的那一格）。
+ * 〔「进度不许倒退」〕进度边拨边推：先订 `probe-progress/<票>` 再问；每一格（后端写好的那一句 ＋ 四段）边收边交 `onCell`；
+ * 结局是进度流的最后一格（可以晚于应答到）。停在哪一步、等多久算没结果由后端判（结局那一格说）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
@@ -35,9 +35,9 @@ vi.mock("../../../src/comms/inward/chan", async (orig) => {
 });
 
 import { ChanError } from "../../../src/comms/inward/chan";
-import { probeMachine, ProbeStalled, PROBE_PROGRESS_KIND } from "../../../src/frontend/ui/remote-probe";
+import { probeMachine, PROBE_PROGRESS_KIND } from "../../../src/frontend/ui/remote-probe";
 import type { RemoteHostConfig } from "../../../src/frontend/ui/remote-config";
-import type { ConnectStage } from "../../../src/frontend/ui/generated/ConnectStage";
+import type { ProbeCell } from "../../../src/frontend/ui/generated/ProbeCell";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/backend-policy";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
@@ -52,17 +52,14 @@ const host = (over: Partial<RemoteHostConfig>): RemoteHostConfig => ({
   connect: true,
   ...over,
 });
-const ok = {
-  sshOk: true,
-  fingerprint: "SHA256:k",
-  endpoint: "192.0.2.2:22",
-  backendOk: true,
-  backendHello: "版本 p5o · 能用 40 项、这台做不到 0 项 · 往返 3 毫秒",
-  backendGaps: [],
-  message: copyText("beProbe.test.ok"),
-  detail: null,
+const segs = { resolve: "ok", connect: "ok", auth: "ok", ready: "ok" } as const;
+const ok: ProbeCell = {
+  said: copyText("beProbe.test.ok"),
+  tone: "plain",
+  segs,
+  end: { backendHello: "版本 p5o · 能用 40 项、这台做不到 0 项 · 往返 3 毫秒", backendGaps: [], detail: null },
 };
-const dialing = { kind: "dialing", endpoint: "192.0.2.2:22" };
+const dialing: ProbeCell = { said: "连接-甲", tone: "now", segs: { ...segs, resolve: "wait", connect: "wait", auth: "wait", ready: "wait" }, end: null };
 let seq = 0;
 const cell = (c: unknown): unknown => ({ t: "frame", seq: seq++, body: JSON.stringify(c) });
 const push = (...cells: unknown[]): void => fake.subs[0]!.sink(cells.map(cell));
@@ -77,20 +74,20 @@ beforeEach(() => {
 });
 
 describe("请求与进度", () => {
-  it("先订 `<local>` 的进度流再问 remote-probe：表单那一台 ＋ 已保存的同名那一份 ＋ 跳板那一台 ＋ 同一张票；阶段行边收边交", async () => {
+  it("先订 `<local>` 的进度流再问 remote-probe：表单那一台 ＋ 已保存的同名那一份 ＋ 跳板那一台 ＋ 同一张票；每一格边收边交", async () => {
     let body: unknown = null;
-    const drawn: ConnectStage[] = [];
+    const drawn: ProbeCell[] = [];
     fake.call = (origin, op, b) => {
       body = { origin, op, args: JSON.parse(new TextDecoder().decode(b)) };
-      expect(drawn, "应答之前的阶段行此刻就该画出来了").toEqual([]);
-      push({ stage: dialing });
+      expect(drawn, "应答之前的那几格此刻就该画出来了").toEqual([]);
+      push(dialing);
       expect(drawn).toEqual([dialing]);
-      push({ reached: "ssh" }, { reached: "hello" }, { reached: "control" }, { end: ok });
+      push(ok);
       return Promise.resolve(new TextEncoder().encode("null"));
     };
     const form = host({ host: "192.0.2.3", jump: "bastion" });
     const saved = [host({ label: "other" }), host({ label: "bastion", host: "b.example" }), host({ keyPath: "/k/old" })];
-    const r = await probeMachine(form, saved, (st) => drawn.push(st));
+    const r = await probeMachine(form, saved, (c) => drawn.push(c));
     expect(fake.order).toEqual(["subscribe", "call"]);
     const sub = fake.subs[0]!;
     expect(sub.origin).toBe(LOCAL_ORIGIN);
@@ -107,34 +104,20 @@ describe("请求与进度", () => {
 
   it("结局那一格晚于应答到 ⇒ 等它", async () => {
     fake.call = () => {
-      setTimeout(() => push({ end: ok }), 0);
+      setTimeout(() => push(ok), 0);
       return Promise.resolve(new TextEncoder().encode("null"));
     };
     await expect(probeMachine(host({}), [], () => {})).resolves.toEqual(ok);
   });
 
-  it.each([
-    ["一格都没收到", [] as unknown[], { at: "start" }],
-    ["握手中", [{ stage: dialing }], { at: "handshake", last: dialing }],
-    ["握手过了、等 hello", [{ stage: dialing }, { reached: "ssh" }], { at: "hello" }],
-    ["hello 到了、等 ping", [{ reached: "ssh" }, { reached: "hello" }], { at: "control" }],
-  ])("到点没等到结局（%s）⇒ ProbeStalled 说出停在哪一段", async (_n, cells, stop) => {
+  it("通道没成（本机后端不在 · 到点没回）⇒ 抛那一句人话", async () => {
     fake.call = () => {
-      if (cells.length) push(...cells);
+      push(dialing);
       return Promise.reject(overrun());
     };
     const err = await probeMachine(host({}), [], () => {}).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(ProbeStalled);
-    expect((err as ProbeStalled).stop).toEqual(stop);
-    expect(fake.subs[0]!.stopped).toBe(true);
-  });
-
-  it("本机后端不在 ⇒ 抛一句人话（不是 ProbeStalled）", async () => {
-    fake.call = () =>
-      Promise.reject(new ChanError({ layer: "hop", at: { idx: 0, tag: "open" }, reach: "NotSent", why: "Unreachable" }));
-    const err = await probeMachine(host({}), [], () => {}).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(Error);
-    expect(err).not.toBeInstanceOf(ProbeStalled);
+    expect(fake.subs[0]!.stopped).toBe(true);
   });
 
   it("流在结局之前关了 / 丢了格 ⇒ 抛（说不清停在哪）", async () => {
