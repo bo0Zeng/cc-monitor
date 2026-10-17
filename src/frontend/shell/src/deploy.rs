@@ -16,7 +16,7 @@ use crate::detail::Said;
 
 use crate::stream_source::RemoteConfig;
 
-/// 本机常驻后端那两条命令的名字（装：`src/backend/stream/inbound/mod.rs` 那条硬臂；卸：命令表里那一行）。
+/// 本机常驻后端那两条命令的名字（命令表 `src/backend/stream/inbound/registry/machine.rs` 里那两行）。
 pub(crate) const INSTALL_CMD: &str = "deploy-install";
 pub(crate) const UNINSTALL_CMD: &str = "deploy-uninstall";
 
@@ -25,7 +25,7 @@ const INSTALL_BUDGET: std::time::Duration = std::time::Duration::from_secs(600);
 
 /// 这一趟做了什么（应答的 `action`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Did {
+pub(crate) enum Did {
     /// 已是这一版。
     Skip,
     /// 放上了这一版。
@@ -36,12 +36,10 @@ pub enum Did {
 
 /// `deploy-install` 的应答（线上形状 `tests/__fixtures__/deploy-install.golden.json`）。
 #[derive(Debug, PartialEq, Eq)]
-pub struct Installed {
+pub(crate) struct Installed {
     pub(crate) did: Did,
     /// 后端写好的那一句。
     pub(crate) said: String,
-    /// 接下来接那台常驻后端那一步那一句（后端写好的；机器状态照画）。
-    pub(crate) attaching: String,
     /// 落点上现在那一份自报的身份。
     pub(crate) build: String,
     pub(crate) os: String,
@@ -51,7 +49,7 @@ pub struct Installed {
 
 /// `deploy-install` 的应答 → [`Installed`]（**严格收**：少一格、多一格、认不出的值都是错 —— 两侧漂了要当场说出来）。
 pub(crate) fn decode_installed(v: &serde_json::Value) -> Result<Installed, String> {
-    const KEYS: [&str; 6] = ["ack", "action", "attaching", "build", "os", "said"];
+    const KEYS: [&str; 5] = ["ack", "action", "build", "os", "said"];
     let bad = || copy_text("rsSftp.plan.badProduct", &[("v", &v.to_string())]);
     let obj = v.as_object().ok_or_else(bad)?;
     let mut keys: Vec<&str> = obj.keys().map(String::as_str).collect();
@@ -79,7 +77,6 @@ pub(crate) fn decode_installed(v: &serde_json::Value) -> Result<Installed, Strin
     Ok(Installed {
         did,
         said: text("said")?,
-        attaching: text("attaching")?,
         build: Some(text("build")?)
             .filter(|b| !b.is_empty())
             .ok_or_else(bad)?,
@@ -132,7 +129,7 @@ fn slots_dir() -> Option<std::path::PathBuf> {
         .map(|h| rel.split('/').fold(h, |p, seg| p.join(seg)).join("slots"))
 }
 
-/// 请本机常驻后端给那台装一趟：入参只有事实；后端每走一步推一帧 `deploy`（`local_backend` 交 `machine_state::deploy_step`）。
+/// 请本机常驻后端给那台装一趟：入参只有事实；每走一步记进那台的状态成品（后端推 `changed {machine}`）。
 async fn install(cfg: &RemoteConfig) -> Result<Installed, Said> {
     install_for(cfg, slot_rows()?).await
 }
@@ -170,7 +167,6 @@ async fn install_for(cfg: &RemoteConfig, slots: Vec<serde_json::Value>) -> Resul
     let dial = crate::dial_host::transfer_dial(cfg);
     let data = ask_backend(cfg, INSTALL_CMD, slots, &dial).await?;
     let got = decode_installed(&data).map_err(|said| Said::new(said, INSTALL_CMD, None))?;
-    crate::machine_state::note_os(&cfg.origin_label(), &got.os);
     // 第一次连一台没钉过指纹的机器就在这一跳 ⇒ 照 monitor 自己开链路那几条同一个判定固化。
     crate::dial_host::settle_host_key(cfg, &dial, &got.ack);
     Ok(got)
@@ -180,12 +176,12 @@ async fn install_for(cfg: &RemoteConfig, slots: Vec<serde_json::Value>) -> Resul
 ///
 /// **不阻断**：调用方（stream_source::run）拿到 `Err` 仍接着试连已有后端（手动部署的后端照样能连），
 /// 但那句话经远端健康通道（`kind = "deploy"`）发到界面上，不再只是一行日志。
-/// 返回值：`Ok(got)`：`build` = 已**确认**落点上那一份自报的身份（装上了这一版 · 已是这一版 · 那台不比这一版旧时是那台的）·
-/// `attaching` = 接下来接常驻那一步那一句。
-pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<Installed, Said> {
+/// 返回值：`Ok(build)` = 已**确认**落点上那一份自报的身份（装上了这一版 · 已是这一版 · 那台不比这一版旧时是那台的）。
+/// 调用方据此决定是否传新版才认识的流模式参数 —— `Err` 一律降级不传。
+pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, Said> {
     let got = install(cfg).await?;
     tracing::info!("远端 [{}] 部署：{}", cfg.origin_label(), got.said);
-    Ok(got)
+    Ok(got.build)
 }
 
 // ============================================================================

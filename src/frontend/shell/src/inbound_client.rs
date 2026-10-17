@@ -6,7 +6,6 @@ pub use resident_client::client::*;
 // 判据（`inbound_client_tests.rs`，与本体同一份行为）沿用本体那几样词。
 #[cfg(test)]
 use crate::chan::wire::Withdraw;
-use crate::stream_source::InboundFrame;
 #[cfg(test)]
 use serde_json::Value;
 use std::collections::HashMap;
@@ -14,21 +13,11 @@ use std::sync::{Arc, Mutex};
 #[cfg(test)]
 use std::time::Duration;
 
-/// monitor 的帧类型是不是 hello：只有 `InboundFrame::Hello` 交得出能力事实（见证只经它换得出）。
-impl HelloFrame for InboundFrame {
-    fn hello_offer(&self) -> Option<crate::chan::wire::Offer> {
-        match self {
-            InboundFrame::Hello {
-                commands,
-                unavailable,
-                shapes,
-                ..
-            } => Some(
-                crate::chan::wire::Offer::new(commands.clone(), unavailable.clone())
-                    .with_shapes(shapes.clone()),
-            ),
-            _ => None,
-        }
+/// 这一帧是 hello ⇒ 见证（[`BackendHello::of`]）；别的帧 ⇒ `None`。
+pub fn witness_of(frame: &crate::stream_source::Frame) -> Option<BackendHello> {
+    match frame {
+        cmd_wire::frame::Frame::Hello(h) => Some(BackendHello::of(h)),
+        _ => None,
     }
 }
 
@@ -63,9 +52,10 @@ pub fn register(origin: &str, client: Arc<InboundClient>) {
     // 换了一条新连接 ⇒ 不论那台原先是不是 `Up`（新的先登记、旧的后摘时一直是）都醒一次订阅者：
     //   `stream_watch` 据它给新连接重报「在看」名单（新连接 ＝ 没报过）。
     lock(link_book()).tick.send_modify(|t| *t += 1);
-    // 本机那一台的状态成品看的就是这条通道在不在。
+    // 本机那一台的状态成品看的就是这条通道在不在；本机后端可能刚重启、远端各台的状态表是空的 ⇒ 每台最新那一轮重交。
     if origin == LOCAL_ORIGIN {
-        crate::machine_state::notify(origin);
+        crate::local_backend_host::machine_changed();
+        crate::stream_source::rehand_rounds();
     }
 }
 
@@ -82,7 +72,7 @@ pub fn unregister(origin: &str, mine: &Arc<InboundClient>) {
     if is_mine {
         set_link(origin, Link::Reconnecting);
         if origin == LOCAL_ORIGIN {
-            crate::machine_state::notify(origin);
+            crate::local_backend_host::machine_changed();
         }
     }
 }

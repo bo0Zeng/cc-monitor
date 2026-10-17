@@ -5,17 +5,12 @@
 //! monitor 交三样事实：怎么够到那台（`dial`）· 自己带着哪几格后端字节（`slots`，`[{os, arch, id, path}]`：那一格自报的身份 ·
 //! 落在本机哪个文件，本后端从文件读，不经帧传字节）· 那台叫什么。`deploy::install` 沿池里那条 SSH 走完 ①–④
 //! （计划 · 取字节 ＋ 自检 · 放进暂存区 ＋ 读回 · 那一份自己换进落点 · 收拾残件），同手机那一趟。
-//! 每走一步往本连接的应答通道推一帧 `deploy {machine, step, said}`（那一句是 `deploy::Step::said`），结局是应答。
+//! 每走一步、收尾那一下都记进那台的状态成品（`control/machine_state.rs`，推 `changed {machine}`），结局是应答。
 //! ⑤ 换常驻不在这里：monitor 接那台时 `--resident-ensure --replace`，那台自己判换不换。
 //!
 //! # 帧命令 `deploy-uninstall`（同一家）
 //!
 //! 入参同上；SFTP 只写暂存区 ⇒ 传一份暂存件上去、由它删落点那一份（`deploy::uninstall`），回 `{removed, said}`。
-//!
-//! # 帧命令 `resident-verdict`（同一家）
-//!
-//! 接上的这一台 hello 报的 build 比问的那一端手上这一版旧没有（[`resident_verdict`]）：版本门那一句按 `older` 挑（`resident_client::gate`）。
-//! 换不换常驻不在这里：`--resident-ensure --replace` 自己比（`control/resident.rs::swap_out`，同一个纯函数）。
 //!
 //! # 帧命令 `place-verdict`（同一家：本机那一份放不放）
 //!
@@ -40,8 +35,8 @@ use serde_json::Value;
 
 /// 判定与计划的本体住 `deploy` crate（桌面与手机同一份）；本文件只是帧面那一层（入参 · 回包形状 · 码）。
 pub use deploy::{
-    identity_decision, interpret_target_probe, judge, promised, resident_verdict, stale_leftovers,
-    DialFacing, Facing, Fut, Plan, TargetBinary, Verdict, LEFTOVER_STALE_SECS, MARKS,
+    identity_decision, interpret_target_probe, judge, promised, stale_leftovers, DialFacing,
+    Facing, Fut, Plan, TargetBinary, LEFTOVER_STALE_SECS, MARKS,
 };
 
 /// 这一串的失败：码 ＋ 那一句 ＋ 下层原话（那台答 `uname` 的原话进复制详情，不上句子）。
@@ -127,8 +122,6 @@ pub(crate) struct Installed {
     pub(crate) action: &'static str,
     /// 这一趟做了什么那一句（`deploy::Plan::said`）。
     pub(crate) said: String,
-    /// 接下来接那台常驻后端那一步那一句（`deploy::Step::Restart`）：monitor 接那台时照画，自己不拼。
-    pub(crate) attaching: String,
     /// 落点上现在那一份自报的身份（`keep` ⇒ 那台上那一份的；否则这一版的）。
     pub(crate) build: String,
     /// 那台的 OS（表 A 的词）。
@@ -138,8 +131,8 @@ pub(crate) struct Installed {
     pub(crate) ack: Value,
 }
 
-/// 装完的那份计划 → 应答（`machine` = 那台的名字）。
-pub(crate) fn installed_of(p: &Plan, machine: &str) -> Installed {
+/// 装完的那份计划 → 应答。
+pub(crate) fn installed_of(p: &Plan) -> Installed {
     let (action, build) = match &p.action {
         DeployAction::Skip => ("skip", p.expected.clone()),
         DeployAction::Deploy(_) => ("deploy", p.expected.clone()),
@@ -148,27 +141,10 @@ pub(crate) fn installed_of(p: &Plan, machine: &str) -> Installed {
     Installed {
         action,
         said: p.said(),
-        attaching: deploy::Step::Restart.said(machine),
         build,
         os: p.key.os.label(),
         ack: p.ack.clone(),
     }
-}
-
-/// 一步 ⇒ 进度帧（那一句是 `deploy::Step::said`）。换常驻那一步不在这一趟里（宿主接那台时自己走）。
-pub(crate) fn step_frame(machine: &str, s: deploy::Step) -> Option<crate::wire::Deploy> {
-    use crate::wire::DeployStep;
-    let step = match s {
-        deploy::Step::Plan => DeployStep::Plan,
-        deploy::Step::Place { updating: false } => DeployStep::Install,
-        deploy::Step::Place { updating: true } => DeployStep::Update,
-        deploy::Step::Restart => return None,
-    };
-    Some(crate::wire::Deploy {
-        machine: machine.to_string(),
-        step,
-        said: s.said(machine),
-    })
 }
 
 /// 入参那几行 ⇒ `deploy::Slot`；`machine` 空 ⇒ `bad_args`。
@@ -188,26 +164,20 @@ fn load(p: &std::path::Path) -> std::io::Result<Vec<u8>> {
     Ro::read(p)
 }
 
-/// `deploy-install` 的本体（对面由调用方给）：每走一步交 `on` 一帧，结局是应答。
+/// `deploy-install` 的本体（对面由调用方给）：每走一步交 `on`，结局是应答。
 pub async fn install(
     req: &DeployInstallReq,
     host: &dyn deploy::Place,
-    on: &(dyn Fn(crate::wire::Deploy) + Send + Sync),
+    on: &(dyn Fn(deploy::Step) + Send + Sync),
 ) -> Result<Installed, Fail> {
     let slots = checked(req)?;
     let now = crate::common::time::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let machine = req.machine.as_str();
-    let step = |s: deploy::Step| {
-        if let Some(f) = step_frame(machine, s) {
-            on(f);
-        }
-    };
-    deploy::install(host, &slots, &load, machine, now, &step)
+    deploy::install(host, &slots, &load, &req.machine, now, on)
         .await
-        .map(|p| installed_of(&p, machine))
+        .map(|p| installed_of(&p))
         .map_err(fail_of)
 }
 
@@ -225,7 +195,7 @@ crate::wire::typed::codes! {
     }
 }
 
-/// `deploy-install`：给那台装 / 升级后端（帧面硬臂：进度帧走本连接的应答通道）。真异步（拨号 / 等远端）。
+/// `deploy-install`：给那台装 / 升级后端。真异步（拨号 / 等远端）。
 pub(crate) struct DeployInstall;
 
 impl crate::wire::typed::Command for DeployInstall {
@@ -233,6 +203,17 @@ impl crate::wire::typed::Command for DeployInstall {
     type Req = DeployInstallReq;
     type Reply = Installed;
     type Err = DeployInstallErr;
+}
+
+impl crate::wire::typed::Handle for DeployInstall {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: DeployInstallReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<Installed, DeployInstallErr>> + Send + 'static
+    {
+        answer_install(req)
+    }
 }
 
 /// 真拨那台的对面（装 · 卸同一个）：拨号核心那一套（钥匙 · known_hosts · 写规矩）先装上；一次性命令走全后端那一处
@@ -248,28 +229,18 @@ fn facing_of(req: &DeployInstallReq) -> Result<DialFacing, String> {
     Ok(DialFacing::new(to, exec))
 }
 
-/// 生产的 `deploy-install`：真拨号；进度帧进本连接的应答通道（不丢、与应答同序）。
-pub(crate) async fn answer_install(
-    req: DeployInstallReq,
-    replies: &tokio::sync::mpsc::Sender<crate::wire::Frame>,
-) -> Result<Installed, DeployInstallErr> {
+/// 生产的 `deploy-install`：真拨号；每一步与收尾记进那台的状态成品。
+pub(crate) async fn answer_install(req: DeployInstallReq) -> Result<Installed, DeployInstallErr> {
     let facing = facing_of(&req).map_err(DeployInstallErr::BadArgs)?;
-    // 进度帧先进一条不封顶的队，由一个任务按序送进应答通道（`on` 是同步回调，送不了 `await`）。
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<crate::wire::Deploy>();
-    let out = replies.clone();
-    let pump = tokio::spawn(async move {
-        while let Some(f) = rx.recv().await {
-            if out.send(crate::wire::Frame::Deploy(f)).await.is_err() {
-                break;
-            }
-        }
-    });
-    let got = install(&req, &facing, &move |f: crate::wire::Deploy| {
-        let _ = tx.send(f);
+    let machine = req.machine.clone();
+    let got = install(&req, &facing, &move |s| {
+        crate::control::machine_state::note(&machine, deploy::machine::Fact::Step(s));
     })
     .await;
-    // 进度帧排在应答之前：等那条队送完。
-    let _ = pump.await;
+    if !req.machine.trim().is_empty() {
+        let os = got.as_ref().ok().map(|i| i.os.to_string());
+        crate::control::machine_state::note(&req.machine, deploy::machine::Fact::Deployed { os });
+    }
     got.map_err(|f| crate::wire::typed::of_fail(f, DeployInstallErr::IoFailed))
 }
 
@@ -338,88 +309,6 @@ impl crate::wire::typed::Handle for DeployUninstall {
                 .map_err(|f| crate::wire::typed::of_fail(f, DeployUninstallErr::IoFailed))
         }
     }
-}
-
-// ═══ 远端常驻后端 hello 的新旧（帧命令 `resident-verdict`）═══════════════════════════
-//
-// 两端接上一台时问它自己「我手上这一版比你新吗」（版本门那一句）。
-
-/// `resident-verdict` 的入参：手上这一版 · 那台 hello 报的 · 这一趟换过没有（只有事实）。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct VerdictReq {
-    /// monitor 手上这一版后端自报的身份（非空）。
-    pub(crate) mine: String,
-    /// 那台 hello 报的 `build_id`（缺 ⇒ 空串）。
-    pub(crate) theirs: String,
-    /// 这一趟是不是已经换过一次。
-    pub(crate) replaced: bool,
-}
-
-/// `resident-verdict` 的回包。
-#[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct VerdictReply {
-    /// 换掉再接 · 接上它。
-    pub(crate) action: VerdictAction,
-    /// 那台是不是比手上这一版旧（与 `replaced` 无关；版本提示那句话按它挑「会换掉」还是「不会换回去」）。
-    pub(crate) older: bool,
-}
-
-/// [`VerdictReply::action`]。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum VerdictAction {
-    Replace,
-    Attach,
-}
-
-crate::wire::typed::codes! {
-    /// `resident-verdict` 的码：`mine` 是空串。
-    pub(crate) enum VerdictErr {}
-}
-
-/// `resident-verdict`：远端常驻后端 hello 的新旧（纯判定，不碰盘不拨号 ⇒ 不进阻塞档）。
-pub(crate) struct ResidentVerdict;
-
-impl crate::wire::typed::Command for ResidentVerdict {
-    const NAME: &'static str = "resident-verdict";
-    type Req = VerdictReq;
-    type Reply = VerdictReply;
-    type Err = VerdictErr;
-}
-
-impl crate::wire::typed::Handle for ResidentVerdict {
-    type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
-        req: VerdictReq,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<VerdictReply, VerdictErr>> + Send + 'static {
-        std::future::ready(answer_resident_verdict(&req))
-    }
-}
-
-/// [`ResidentVerdict`] 的本体：`mine` 空 ⇒ `bad_args`。
-pub(crate) fn answer_resident_verdict(req: &VerdictReq) -> Result<VerdictReply, VerdictErr> {
-    if req.mine.is_empty() {
-        return Err(VerdictErr::BadArgs(crate::common::contract::malformed(
-            "missing `mine` (non-empty string)",
-        )));
-    }
-    let v = resident_verdict(&req.mine, &req.theirs, req.replaced);
-    Ok(VerdictReply {
-        action: if v.replace {
-            VerdictAction::Replace
-        } else {
-            VerdictAction::Attach
-        },
-        older: v.older,
-    })
 }
 
 // ═══ 本机那一份放不放（帧命令 `place-verdict`）═══════════════════════════════════════════

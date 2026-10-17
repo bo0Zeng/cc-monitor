@@ -28,24 +28,22 @@ pub use topic::TopicExt;
 /// （扩展特征：孤儿规则不许在那边的类型上加固有方法）。
 pub use cmd_wire::frame::{decode, Frame, Hello, Line, SessionAdded, SessionPrimed, SessionStatus};
 pub use cmd_wire::frame::{ActivityFace, CanSwitch, NameFace, SessionActivity, Switch};
-pub use cmd_wire::frame::{AgentHome, LostFrame, RemovalCause, SessionFate, Topic, Unavailable};
 pub use cmd_wire::frame::{Cancelled, Changed, Overflow, Reply, SessionRemoved, SessionState};
-pub use cmd_wire::frame::{
-    Deploy, DeployStep, FilesBatch, LinkData, LinkEnd, Probe, SessionsReplayed, Transfer,
-};
+pub use cmd_wire::frame::{FilesBatch, LinkData, LinkEnd, Probe, SessionsReplayed, Transfer};
 pub use cmd_wire::frame::{FollowEnd, RereadWhy, SessionContainer, TerminalHost, TransferEnd};
+pub use cmd_wire::frame::{LostFrame, RemovalCause, SessionFate, Topic, Unavailable};
 pub use cmd_wire::frame::{RunDid, RunEnded, RunInfo, RunState, RunWhy};
 pub use cmd_wire::frame::{SessionBranch, SessionRuns, TerminalFollowEnd, TerminalScreen};
 pub use cmd_wire::frame::{SessionFileGone, SessionFileReread};
 
-/// 写好的字与语气（短名 · 悬停那一句 · 语气）：`session_state` 帧上带着，出口照抄。
+/// 写好的字与语气（短名 · 悬停那一句 · 语气）与监控板的序：`session_state` 帧上带着，出口照抄。
 pub(crate) trait SessionFateExt {
-    fn cells(self) -> (Words, Words, Tone);
+    fn cells(self) -> (Words, Words, Tone, u8);
 }
 
 impl SessionFateExt for SessionFate {
-    /// 写好的字与语气（短名 · 悬停那一句 · 语气）：`session_state` 帧上带着，出口照抄。
-    fn cells(self) -> (Words, Words, Tone) {
+    /// 写好的字与语气 ＋ 序：接在活会话（[`ActivityFaceExt::of`] 的 0–3）之后，可重连 4 · 已结束 5。
+    fn cells(self) -> (Words, Words, Tone, u8) {
         match self {
             SessionFate::Reconnectable => (
                 Words(copy_core::copy_text("sessionState.reconnectable.name", &[])),
@@ -54,11 +52,13 @@ impl SessionFateExt for SessionFate {
                     &[],
                 )),
                 Tone::Plain,
+                4,
             ),
             SessionFate::Ended => (
                 Words(copy_core::copy_text("sessionState.ended.name", &[])),
                 Words(copy_core::copy_text("sessionState.ended.tooltip", &[])),
                 Tone::Plain,
+                5,
             ),
         }
     }
@@ -296,13 +296,14 @@ impl FrameMake for Frame {
     }
 
     fn session_state(sid: String, state: SessionFate) -> Frame {
-        let (state_text, state_hint, state_tone) = state.cells();
+        let (state_text, state_hint, state_tone, state_order) = state.cells();
         Frame::SessionState(SessionState {
             sid,
             state,
             state_text,
             state_hint,
             state_tone,
+            state_order,
             switch: Switch::gone(),
         })
     }
@@ -399,8 +400,6 @@ impl FrameRules for Frame {
             Frame::Transfer(_) => false,
             // 测试连接的进度 / 结局：同上（走应答通道）。
             Frame::Probe(_) => false,
-            // 装后端那一趟走到哪一步：同上（走应答通道）。
-            Frame::Deploy(_) => false,
             // 一组的进度：只是快照（结局在应答里），但走应答通道、不丢。
             Frame::FilesBatch(_) => false,
             // SSE 只保快：它说的事 jsonl 那一侧都有（落盘保对），丢了由位置号 `n` 原位说出来。
@@ -439,7 +438,6 @@ impl FrameRules for Frame {
             | Frame::LinkEnd(_)
             | Frame::Transfer(_)
             | Frame::Probe(_)
-            | Frame::Deploy(_)
             | Frame::FilesBatch(_)
             | Frame::TerminalScreen(_)
             | Frame::TerminalFollowEnd(_) => None,
@@ -482,7 +480,6 @@ impl FrameRules for Frame {
             Frame::LinkEnd(LinkEnd { link, .. }) => ("link_end", Some(link.clone())),
             Frame::Transfer(Transfer { id, .. }) => ("transfer", Some(id.clone())),
             Frame::Probe(Probe { ticket, .. }) => ("probe", Some(ticket.clone())),
-            Frame::Deploy(Deploy { machine, .. }) => ("deploy", Some(machine.clone())),
             Frame::FilesBatch(FilesBatch { ticket, .. }) => ("files_batch", Some(ticket.clone())),
             Frame::LiveCard(l) => ("live_card", Some(l.sid.clone())),
             Frame::SessionRuns(SessionRuns { sid, .. }) => ("session_runs", Some(sid.clone())),
@@ -808,36 +805,19 @@ impl Default for SeqCounter {
     }
 }
 
-/// 读一份 hello 帧成人读摘要（`v=.. build=.. arch=.. home=.. caps=.. cmds=..`）。
-/// `home`：`homes` 里第一项，缺 ⇒ 那个冻结字段（`S4` 的消费侧口径；通用层不认 agent 名字，只拿值）。
-/// 住 hello 的家：测试连接（`dial/probe.rs`）读**那台**后端的 hello 时用（原 monitor 那一份人读摘要）。
+/// 读一份 hello 帧成人读摘要（`build=.. arch=.. cmds=..`）：测试连接（`dial/probe.rs`）读**那台**后端的 hello 时进日志。
 pub(crate) fn hello_summary(h: &serde_json::Value) -> String {
     use serde_json::Value;
     let s = |k: &str| h.get(k).and_then(Value::as_str).unwrap_or("?").to_string();
-    let home = h
-        .get("homes")
+    let cmds: Vec<&str> = h
+        .get("commands")
         .and_then(Value::as_array)
-        .and_then(|a| a.first())
-        .and_then(|e| e.get("path").and_then(Value::as_str))
-        .map(str::to_string)
-        .unwrap_or_else(|| s("claude_dir"));
-    let list = |k: &str| -> Vec<String> {
-        h.get(k)
-            .and_then(Value::as_array)
-            .map(|a| {
-                a.iter()
-                    .filter_map(Value::as_str)
-                    .map(str::to_string)
-                    .collect()
-            })
-            .unwrap_or_default()
-    };
+        .map(|a| a.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
     format!(
-        "v={} build={} arch={} home={home} cmds={:?}",
-        h.get("v").and_then(Value::as_u64).unwrap_or(0),
+        "build={} arch={} cmds={cmds:?}",
         s("build_id"),
-        s("host_arch"),
-        list("commands"),
+        s("host_arch")
     )
 }
 

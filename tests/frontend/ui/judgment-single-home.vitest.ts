@@ -67,7 +67,7 @@ import { stripComments } from "../../test-support/strip-comments.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36" | "J37";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -650,6 +650,18 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     },
     why: "INVARIANTS §40「本地 ＝ 不走 ssh 的远端」：两侧都要在读进来之后分本机与远端；线上同一个串，判法各在本侧唯一一处",
   },
+  J37: {
+    what: "每台机器此刻是什么样 · 名字旁那个词 · 问题行那一句 · 给哪几颗修法",
+    // 远端各台在后端（本机后端跑它、手机 mobcore 跑同一份）；本机那一行在壳（本机后端没起时没人替它说），照同一个类型、同一批文案键。
+    //   界面只按那一态挑样子，字照成品的 `word` · `said` · `fixes[].label`。壳里造成品只许本机那一处（`local_backend_host_tests.rs` 钉）。
+    homes: ["src/backend/deploy/machine.rs::product", "src/frontend/shell/src/local_backend_host.rs::local_product"],
+    status: "zero",
+    defs: ["downSaid", "fixLabel"],
+    needles: [
+      { text: 'copyText("machineState.down.', count: 0 },
+      { text: 'copyText("machineState.problem.', count: 0 },
+    ],
+  },
   J29: {
     what: "这个号能不能选 · 这台的默认号是谁（标了的第一个，没标 ⇒ 第一个）",
     homes: ["acct-core::account_selectable", "acct-core::effective_default"],
@@ -753,7 +765,16 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 帧的线上形（`frame`）：一行解一帧 · 宿主那个词（`terminals-list` 的 `host` 与容器那一格同一套）。
     //   解帧的是 Rust 那几端（壳 · 通信层 · 手机核心）；界面读壳转过的载荷，TS 侧没有孪生。
     decode: NONE,
+    // 一行的 `kind`（帧门与解帧共用）：界面不解线上帧，TS 侧没有孪生。
+    kind_of: NONE,
+    // 接常驻流那两行（`attach`）的一整行写法：握手只在 Rust 那几端（后端 · 通信层 · 本机宿主），界面不握手，TS 侧没有孪生。
+    line: NONE,
     as_wire: NONE,
+    // 帧表（`frame_shapes` · `frame::gated_tys`）与指纹算法（`fingerprint`，测试档）：两端比的那一张由类型现算；界面不比，TS 侧没有孪生。
+    FRAMES: NONE,
+    gated_tys: NONE,
+    ty_of: NONE,
+    fnv32: NONE,
     // 传输台开单那两条：窗口那一份补上拨号成后端那一份（monitor 的 `sftp_pool::transfer_call` 用）。界面不开单，TS 侧没有孪生。
     dialed: NONE,
     // 线上一家 agent 的名字（`AgentKind`）：收下 · 取串。不是判定（kind ⇄ 路由名那一换住后端 `agents`）；界面拿生成的类型当串用，没有孪生。
@@ -763,6 +784,11 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   "copy-core": {
     backend_old: "J22",
     backend_differs: NONE,
+    // 帧种形状对不上那一句（`copy-core::backend_frames_differ`）只在通信层：它在握手那一刻比帧表、写好带机器名的那一句。
+    backend_frames_differ: NONE,
+    // 接上时那台较新 · 新旧比不出那两句同上：通信层按那台在 attach 回话里给的新旧写好，界面只照抄。
+    backend_newer: NONE,
+    backend_incomparable: NONE,
     // 测试按文案键断言用（占位处任意值）；TS 那一侧的同形在测试支架 `tests/test-support/copy-pattern.ts`，不是生产判定。
     copy_matches: NONE,
     // 同上，只钉给了值的那几格（TS 那一侧是 `copyPattern(键, 已知值)`）。

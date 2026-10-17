@@ -411,7 +411,7 @@ export class RemoteSection {
     const row = this.findMachineRow(pageId);
     if (!row) return;
     const name = row.querySelector<HTMLElement>(".remote-machine-open")?.textContent ?? "";
-    const face = machineFace(m, name);
+    const face = machineFace(m);
     const dot = row.querySelector<HTMLElement>(".remote-machine-dot");
     if (dot) setDot(dot, face.dot, face.word ? `${name} · ${face.word}` : copyText("settingsNav.dot.up", { machine: name }));
     const word = row.querySelector<HTMLElement>(".remote-machine-word");

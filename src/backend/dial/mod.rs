@@ -39,8 +39,8 @@ pub(crate) use ssh_dial::machine;
 #[cfg(test)]
 pub(crate) use ssh_dial::pool;
 pub use ssh_dial::{
-    why, why_of_stage, CaptureOpts, Captured, DialAck, DialRequest, Endpoint, ForwardSpec, JumpHop,
-    Stage, StageSink, Use, ACK_V, USES,
+    why_of_stage, CaptureOpts, Captured, DialAck, DialRequest, Endpoint, ForwardSpec, JumpHop,
+    Stage, StageSink, Use, Why, ACK_V, USES,
 };
 
 pub(crate) mod forwards; // 端口转发的账（起 · 停 · 列三条帧命令）

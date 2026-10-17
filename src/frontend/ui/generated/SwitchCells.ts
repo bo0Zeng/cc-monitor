@@ -2,8 +2,7 @@
 import type { CanSwitch } from "./CanSwitch";
 
 /**
- * 此刻能不能换模型 · 权限档那一格（那台核心的 `wire::Switch`，原样转交；界面照 `can` 灰不灰、照 `why` 写悬停）。
- * 解码只一处（`stream_source::frame` 的 `switch_cells`）。
+ * 此刻能不能换模型 · 权限档那一格（那台核心的 `Switch`，原样转交；界面照 `can` 灰不灰、照 `why` 写悬停）。
  */
 export type SwitchCells = { 
 /**

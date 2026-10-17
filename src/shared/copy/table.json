@@ -244,6 +244,24 @@
       "zh": "{machine} 后端版本不同",
       "args": ["machine"]
     },
+    "peerVersion.said.framesDiffer": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} 后端版本不同 · 需更新",
+      "args": ["machine"]
+    },
+    "peerVersion.said.newer": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} 后端较新 · 不会换回",
+      "args": ["machine"]
+    },
+    "peerVersion.said.incomparable": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} 后端版本不可比",
+      "args": ["machine"]
+    },
     "peerVersion.said.unreadable": {
       "kind": "error",
       "role": "报错",
@@ -5816,24 +5834,6 @@
       "kind": "body",
       "role": "片段",
       "zh": "读取远端历史失败",
-      "args": []
-    },
-    "remoteHealth.head.backendOld": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "远端后端要更新",
-      "args": []
-    },
-    "remoteHealth.head.backendNewer": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "远端后端版本较新",
-      "args": []
-    },
-    "remoteHealth.head.versionIncomparable": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "远端后端版本不可比",
       "args": []
     },
     "remoteHealth.head.congested": {
@@ -13573,30 +13573,6 @@
       "zh": "host 别名含不安全字符 · {alias}",
       "args": ["alias"]
     },
-    "rsSshSource.version.protoMismatch": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{label} 后端要更新\n版本不兼容 · 到设置里更新",
-      "args": ["label"]
-    },
-    "rsSshSource.version.remoteOlder": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{label} 后端要更新\n现为 {reported} · 下次连上自动换成 {mine}",
-      "args": ["label", "reported", "mine"]
-    },
-    "rsSshSource.version.remoteNotOlder": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{label} 后端 {reported} 不旧于本机 {mine} · 不会换回 · 要一致就升级本机 cc-monitor",
-      "args": ["label", "reported", "mine"]
-    },
-    "rsSshSource.version.noOwnBytes": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{label} 后端版本不可比\n现为 {reported} · 未带后端字节",
-      "args": ["label", "reported"]
-    },
     "rsSshSource.health.overflowLost": {
       "kind": "body",
       "role": "说明",
@@ -13616,12 +13592,6 @@
       "zh": "{host} 连接拥塞 · 可能丢失实时消息约 {dropped} 条\n重开该会话可看完整历史",
       "args": ["host", "dropped"],
       "limited": ["连接"]
-    },
-    "rsSshSource.health.unknownFrame": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{host} · 未识别内容 · {kind} · 后端较新",
-      "args": ["host", "kind"]
     },
     "rsSshSource.health.badFrame": {
       "kind": "body",
@@ -15155,12 +15125,6 @@
       "zh": "后端拒绝连接 · {reason}",
       "args": ["reason"],
       "limited": ["连接"]
-    },
-    "rsLocalBackendHost.attach.notJson": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "后端的回答不是 JSON",
-      "args": []
     },
     "rsLocalBackendHost.attach.sendFailed": {
       "kind": "error",

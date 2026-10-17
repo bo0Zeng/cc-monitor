@@ -1354,117 +1354,6 @@ pub(crate) const STREAM_WORD: &str = "--stream";
 /// 打头的 `--` 紧跟后端的词（子命令 / 流模式旗标）才当后端用，没有它整行交给 claude。monitor 叫后端的每一发都带它。
 pub(crate) const BACKEND_SEP: &str = "--";
 
-/// P3 刀 1 的**唯一**吸收点：本机后端推来的帧里，哪些要进账本。
-///
-/// # 为什么抽成函数
-///
-/// 原来这三行**长在读行循环里**，而那个循环要有一个**真的在跑的 backend** 才进得去
-/// ⇒ `P3-Y1`（acceptor: **实测**）唯一的证据只能是一条会起真 tmux 的测试，而那条
-/// 08-11 出过**误伤用户 9 个真实会话**的事故后被 `#[ignore]` 了 ——
-/// 于是这条 DoD **至今没有兑现证据**（如实登记在件的 `§0h`：「不是『测试暂时关着』，
-/// 是这条 DoD 今天没有兑现」）。
-///
-/// 抽出来之后，「帧 → 账本」这一跳**不需要后端、不需要 tmux** 就能验 ——
-/// 与 `P5L` 把终端出口做成入参是同一手：**把够得到的那半做成可测，别拿够不到的当借口**。
-///
-/// ⚠ **射程如实登记**：本函数可测的是「**收到帧之后**账本里有」。
-/// 「backend **真的会发**这个帧」仍归后端侧 `EMITS` 的登记
-/// （逐字「登记 = 承诺真发」）与协议文档守卫 —— 那一跳本判据**够不到**，
-/// 那条会起真 tmux 的实测因此**留着**（仍 `#[ignore]`），不是删掉了事。
-///
-/// 它从此是本机那条流上**所有**非 hello 帧的吸收点（两条读循环各调一次：
-/// 本文件的 [`local_stdio_consumer`] 与宿主的 `local_backend_host::attach_stream`）：
-/// - `reply` / `cancelled` ⇒ 交本机那条入方向客户端按 `id` 路由回请求方。
-///   ⚠ **此前本机两条读循环一条都不路由应答**（现打逐行读过）⇒ 在本机那条通道上发出去的入方向命令
-///   **只会等到超时**。开链路（`link-open`）要这条应答，所以这一格补上了。
-/// - `link_data` / `link_end` ⇒ 交 [`crate::link_mux`]（链路的 monitor 这一侧）。
-/// - `transfer` ⇒ 交 [`crate::sftp_pool::deliver`]（传输台的中继）。
-///
-/// **内容三种（`line` · `session_added` · `session_removed`）原样交回调用方**
-/// （返回 `Some`），由读循环送进 `crate::local_lines`（再进与远端同一个 `LineIntake`）。
-/// 此前这三种落在最后那个 `_ => {}` 里整个丢掉（注释逐字「本机会话走本地 watcher」）——
-/// 那是「同一批 jsonl 同机读两遍、第二遍扔掉」的那一半。
-/// ⚠ 交回而不是在这里就地送：两条读循环一条是 tokio 任务、一条是裸线程，送法不同（`local_lines` 头注）。
-/// 其余帧仍就地吸收，返回 `None`。
-pub(crate) fn absorb_local_frame(
-    frame: crate::stream_source::InboundFrame,
-    client: Option<&std::sync::Arc<crate::inbound_client::InboundClient>>,
-    origin: &crate::origin::Origin,
-) -> Option<crate::stream_source::InboundFrame> {
-    use crate::stream_source::InboundFrame;
-    match frame {
-        InboundFrame::Reply {
-            id,
-            ok,
-            code,
-            message,
-            detail,
-            data,
-        } => match client {
-            Some(c) => {
-                c.route_reply(&id, ok, code, message, detail, data);
-            }
-            None => tracing::warn!("本机后端在 hello 之前就回了应答（id={id}）—— 协议倒错，丢掉"),
-        },
-        InboundFrame::Cancelled { id } => match client {
-            Some(c) => {
-                c.route_cancelled(&id);
-            }
-            None => tracing::warn!("本机后端在 hello 之前就回了 cancelled（id={id}）—— 丢掉"),
-        },
-        InboundFrame::LinkData { link, data } => crate::link_mux::deliver_data(&link, data),
-        InboundFrame::LinkEnd { link, error } => crate::link_mux::deliver_end(&link, error),
-        // 传输台住本机后端：进度 / 终局交中继（`sftp_pool::deliver`，从不阻塞）。
-        InboundFrame::Transfer {
-            id,
-            got,
-            total,
-            end,
-        } => crate::sftp_pool::deliver(&id, got, total, end),
-        // 测试连接在本机常驻后端里跑：进度格原样交中继（`probe_relay::deliver`，从不阻塞），进界面订的 `probe-progress/<票>`。
-        InboundFrame::Probe { ticket, cell } => crate::probe_relay::deliver(&ticket, cell),
-        // 装远端后端那一趟在本机常驻后端里跑：走到哪一步 ＋ 那一句进机器状态（从不阻塞）。
-        InboundFrame::Deploy { machine, step, said } => {
-            crate::machine_state::deploy_step(&machine, step, said)
-        }
-        // 一组的进度（本机上的复制 · 删除 · 改权限，两台之间的复制）：按票交给订了它的那扇文件窗口（从不阻塞；没人订就丢）。
-        InboundFrame::FilesBatch { ticket, cell } => crate::files_batch_relay::deliver(&ticket, cell),
-        // 终端实时预览：本机后端推来的一屏 / 收尾 ⇒ 交订了 `<local>` 上 `terminal-screen/<票>` 的那条订阅（从不阻塞、不进内容通道）。
-        InboundFrame::TerminalScreen { ticket, cell }
-        | InboundFrame::TerminalFollowEnd { ticket, cell } => crate::terminal_screen_relay::deliver(
-            origin,
-            &ticket,
-            cell,
-        ),
-        // 活卡（后端拼好的成品）原样转前端（`live_card::deliver`，从不阻塞、不进内容通道）。
-        InboundFrame::LiveCard(l) => crate::live_card::deliver(origin.as_wire_str(), l),
-        // 内容三种（`session_added` 在上面那一臂记完容器也交回）：交回读循环，送进本机内容通道。
-        // 起停另两种（`session_status` 红绿灯 · `sessions_replayed` 清单报完了）也交回：
-        //   本机会话的起停改由本机后端的帧来（`session_map` 的本机活会话表），与内容走同一条有序通道 ——
-        //   「清单报完了」必须排在它前面那些宣告之后才有意义。此前这两种落在最后那个 `_ => {}` 里丢掉。
-        // 记录文件不见了 / 被改过 ⇒ 同一条内容通道（与行同序）。
-        // 会话成品 `session_added` · `session_state` 同一条有序通道（去向必须排在那个会话的行之后）。
-        f @ (InboundFrame::Line { .. }
-        | InboundFrame::SessionAdded { .. }
-        // 读完了、从第几行起 ⇒ 同一条有序通道（排在宣告之后、它的第一行之前）。
-        | InboundFrame::SessionPrimed { .. }
-        | InboundFrame::SessionRemoved { .. }
-        | InboundFrame::SessionState { .. }
-        | InboundFrame::SessionStatus { .. }
-        // 「X 变了」（全部主题）⇒ 交回读循环（`consume_local` 交 `changed/<topic>` 订阅，与远端同一个口）。
-        | InboundFrame::Changed { .. }
-        | InboundFrame::SessionsReplayed
-        | InboundFrame::SessionFileNotice { .. }
-        // 一个会话的运行表 ⇒ 同一条有序通道（排在那个会话的宣告之后；`consume_local` 交会话账）。
-        | InboundFrame::SessionRuns { .. }
-        // 主线外清单 ⇒ 同上（排在那个会话的宣告之后；交会话账）。
-        | InboundFrame::SessionBranch { .. }) => return Some(f),
-        // 其余帧（hello · 溢出 …）本机这条流今天不消费。
-        _ => {}
-    }
-    None
-}
-
 /// stdio 读循环这一条是哪台、交到哪。产品只有 [`StdioRoute::local`]（本机后端 ⇒ `local_lines` 那一个消费者）；
 /// 截图台架的无头壳（`shots_shell`）每台机器一条，各带自己的通道。
 pub(crate) struct StdioRoute {
@@ -1500,7 +1389,7 @@ impl StdioRoute {
 ///
 /// # 它做的事只有一点胶水
 ///
-/// 按行读 stdout → `parse_frame` → **首帧是 hello** 就 `park_owned_writer(stdin).into_client(见证)`
+/// 按行读 stdout → `UnreadNotes::take`（帧门 ＋ 按类型解）→ **首帧是 hello** 就 `park_owned_writer(stdin).into_client(见证)`
 /// + `register(LOCAL_ORIGIN, …)`；其余帧丢弃；读到 EOF 返回 ——
 /// **返回就等于流结束，也就是 `supervise` 的判死信号**（与缺省那支 `io::copy → sink` 同一个事件）。
 ///
@@ -1509,7 +1398,7 @@ impl StdioRoute {
 /// 远端那一条（重连循环 `resident_client::feed` ＋ 收事那一头 `stream_source::consume_remote`）管 ensure / 换装 / 退避 /
 /// 连接状态 / hello 确认。本机没有那些。
 /// 但它下面那三个零件**是纯的**，本函数复用的正是它们：
-/// `parse_frame(&str) -> Result<InboundFrame, Unread>` · `BackendHello::from_hello_frame(&InboundFrame)` ·
+/// `stream_source::decode` · `inbound_client::witness_of` · `stream_source::route` ·
 /// `ParkedWriter::into_client(BackendHello)`。
 /// ⇒ 复用**纯零件**，不把一个绑传输的循环硬掰成泛型。
 ///
@@ -1600,32 +1489,34 @@ pub(crate) fn local_stdio_consumer(
         if line.is_empty() {
             continue; // 空行
         }
-        let Some(frame) = unread.take(&line, &mut tally, &crate::stream_source::local_health)
-        else {
+        let Some(frame) = unread.take(
+            &line,
+            registered.as_deref(),
+            &mut tally,
+            &crate::stream_source::local_health,
+        ) else {
             continue;
         };
-        // 还没登记时先看它是不是 hello；不是 hello（或已经登记过了）⇒ 交吸收点。
-        // P3 刀 1 ＋应答与链路帧：**理由与前置条件写在 `absorb_local_frame` 的头注上**
-        // ——抽函数时这段散文一度**两处各一份**，那是第二份源头，收敛掉。
+        // 还没登记时先看它是不是 hello；别的（或已经登记过了）⇒ 分派第一层，有序的那几种送进本机内容通道（裸线程 ⇒ `_blocking` 那一形）。
         let witness = if parked.is_some() {
-            crate::inbound_client::BackendHello::from_hello_frame(&frame)
+            crate::inbound_client::witness_of(&frame)
         } else {
             None
         };
         let Some(witness) = witness else {
-            // 交回来的内容帧送进本机内容通道 —— 这是裸线程 ⇒ `_blocking` 那一形。
-            if let Some(f) = absorb_local_frame(frame, registered.as_ref(), &route.origin) {
+            if let Some(f) = crate::stream_source::route(
+                crate::stream_source::Via::Local,
+                &route.origin,
+                registered.as_deref(),
+                frame,
+            ) {
                 route.out.deliver(f);
             }
             continue;
         };
-        // 日志取自**帧**而不是 client —— `InboundClient` 的 `commands` 是私有的，
-        // 为了打一行日志去开访问器是把封装换成方便。帧的字段本来就是公开的。
         let (build_id, commands) = match &frame {
-            crate::stream_source::InboundFrame::Hello {
-                build_id, commands, ..
-            } => (build_id.clone(), commands.clone()),
-            // `from_hello_frame` 只对 `Hello` 返回 `Some` ⇒ 走不到这里。
+            cmd_wire::frame::Frame::Hello(h) => (h.build_id.clone(), h.commands.clone()),
+            // `witness_of` 只对 `Hello` 返回 `Some` ⇒ 走不到这里。
             _ => (String::new(), Vec::new()),
         };
         let client = parked
@@ -1651,7 +1542,7 @@ pub(crate) fn local_stdio_consumer(
     // 告诉本机内容消费者这条流结束了（冲掉残批、下一条流换新的收口）。
     route.out.stream_ended();
     // ★ `K-P3b`：**「它跟我们说过话没有」的唯一变真处就是上面那一行 `registered = Some(client)`**
-    //   —— 而那一行只在 `BackendHello::from_hello_frame` 给出见证之后才跑得到。
+    //   —— 而那一行只在 `inbound_client::witness_of` 给出见证之后才跑得到。
     //   ⇒ 这一维是**观测**，不是默认值：把它在这里读一次，别在别处猜。
     let handshake = if registered.is_some() {
         crate::backend_policy::Handshake::Spoke

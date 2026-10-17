@@ -66,12 +66,26 @@ impl Remote {
         let ends = self.ends();
         let start = |i: usize| if i == 0 { 0 } else { ends[i - 1] };
         match cmd {
+            // 那台的判法只取这里用得到的那一支：交来的那一份同一路径、没越过 ⇒ 从它接着；否则尾段。第一页就是整段。
             "history-tail" => {
                 let total = ends.len();
+                let end = ends.last().copied().unwrap_or(0);
                 let n = args["n"].as_u64().unwrap() as usize;
                 let tail_from = total.saturating_sub(n);
-                serde_json::json!({"total": total, "tail_from": tail_from,
-                    "split_at": start(tail_from), "end": ends.last().copied().unwrap_or(0)})
+                let held = &args["held"];
+                let resume = held["path"] == PATH
+                    && held["next"].as_u64().is_some_and(|k| k as usize <= total);
+                let (how, from) = if resume {
+                    ("resume", held["next"].as_u64().unwrap() as usize)
+                } else {
+                    ("tail", tail_from)
+                };
+                let rows: Vec<serde_json::Value> = (from..total)
+                    .map(|i| serde_json::json!({"end": ends[i], "hash": i, "record": {"t": format!("r{i}")}, "cwd": "/w"}))
+                    .collect();
+                serde_json::json!({"total": total, "tail_from": tail_from, "split_at": start(tail_from), "end": end,
+                    "how": how, "from": from, "rows": rows, "next": end, "eof": true,
+                    "held": {"path": PATH, "next": total, "next_byte": end, "mark": ""}})
             }
             "history-read" => {
                 let offset = args["offset"].as_u64().unwrap();
@@ -89,15 +103,19 @@ impl Remote {
     }
 }
 
-/// 替身的握手：typed 那两条（`history-tail` · `history-read`）照这一版的形状指纹交（对不上 monitor 事前就拒、一个字节不发）。
+/// 替身的握手：typed 那两条（`history-tail` · `history-read`）与帧表照这一版的形状指纹交（对不上的 monitor 事前就拒 / 不解）。
 fn hello() -> String {
     let commands = ["ping", "cancel", "history-tail", "history-read"];
     let shapes: serde_json::Map<String, serde_json::Value> = commands
         .iter()
         .filter_map(|c| cmd_wire::shapes::shape_of(c).map(|h| (c.to_string(), h.into())))
         .collect();
-    serde_json::json!({"kind": "hello", "v": 1, "build_id": "rc-build", "host_arch": "x86_64",
-        "claude_dir": "/c", "commands": commands, "shapes": shapes})
+    let frames: serde_json::Map<String, serde_json::Value> = cmd_wire::frame_shapes::FRAMES
+        .iter()
+        .map(|(k, h)| (k.to_string(), (*h).into()))
+        .collect();
+    serde_json::json!({"kind": "hello", "build_id": "rc-build", "host_arch": "x86_64",
+        "commands": commands, "shapes": shapes, "frames": frames})
     .to_string()
 }
 
@@ -137,7 +155,7 @@ async fn serve(s: tokio::io::DuplexStream, remote: Arc<Remote>) {
     }
 }
 
-/// 那台远端的替身：链路是一条内存里的流；装得了后端（版本门问「本机」：恒接）。
+/// 那台远端的替身：链路是一条内存里的流；装得了后端（回话不带新旧 ⇒ 不换）。
 struct Fake(Arc<Remote>);
 
 impl Transport for Fake {

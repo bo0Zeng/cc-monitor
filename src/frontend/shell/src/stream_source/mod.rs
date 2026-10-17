@@ -1,7 +1,7 @@
 //! 会话流从哪来：远端那台后端的流（经本机常驻后端的链路）与本机后端的流，进同一条收口。
 //!
 //! 各份分工：`config` 远端配置 · `version` 能力与版本 · `snapshot` 旁路快照 ·
-//! `exec` 一次性远端 exec 与限长读行 · `frame` 帧类型与解析 · `batch` 攒批与收行 ·
+//! `exec` 一次性远端 exec 与限长读行 · `frame` 按类型解帧 · `dispatch` 一帧落到哪（本机远端同一处）· `batch` 攒批与收行 ·
 //! `local` 本机那条流 · `run` 远端那台的宿主（重连循环本身住 `resident-client`）。外面一律写 `crate::stream_source::X`。
 //!
 //! 本模块不拨 SSH：链路只经宿主 `dial_host`，读代理应答的是通信层成员 `ssh_link`
@@ -9,21 +9,21 @@
 
 mod batch;
 mod config;
+mod dispatch;
 mod exec;
 mod frame;
 mod local;
 mod run;
 mod snapshot;
-mod version;
 
 pub(crate) use batch::*;
 pub(crate) use config::*;
+pub(crate) use dispatch::*;
 pub(crate) use exec::*;
 pub(crate) use frame::*;
 pub(crate) use local::*;
 pub(crate) use run::*;
 pub(crate) use snapshot::*;
-pub(crate) use version::*;
 
 // 🔴 **这个模块的 `pub(crate)` 是 `K-R74` 的承重件，别顺手收回私有**：
 // `dial_home_registry`（另一份文件）那条递减棘轮拿 `DIAL_SITES` 里 `moved == false` 的

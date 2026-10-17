@@ -15,6 +15,10 @@
     "tests/backend/control/ccm/plan_tests.rs": [
       { "text": "项目", "use": "输入" }
     ],
+    "tests/backend/control/machine_state_tests.rs": [
+      { "text": "要更新", "use": "用例名" },
+      { "text": "无应答", "use": "用例名" }
+    ],
     "tests/backend/control/deploy_plan_tests.rs": [
       { "text": "本机", "use": "输入" }
     ],
@@ -98,10 +102,6 @@
     ],
     "tests/frontend/shell/diagnostics_report_tests.rs": [
       { "text": "本机", "use": "输入" }
-    ],
-    "tests/frontend/shell/machine_state_tests.rs": [
-      { "text": "要更新", "use": "用例名" },
-      { "text": "无应答", "use": "用例名" }
     ],
     "tests/frontend/shell/scanning_guard_registry_tests.rs": [
       { "text": "自己", "use": "非文案" }
@@ -203,8 +203,7 @@
       { "text": "本机", "use": "输入" }
     ],
     "tests/frontend/ui/settings/machine-state.vitest.ts": [
-      { "text": "要更新", "use": "用例名" },
-      { "text": "无应答", "use": "用例名" }
+      { "text": "要更新", "use": "用例名" }
     ],
     "tests/frontend/ui/settings/panel-block-isolation.vitest.ts": [
       { "text": "本机", "use": "输入" }

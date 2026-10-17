@@ -2,15 +2,14 @@
 //! 后端推上来的 `transfer` 帧翻成窗口认的那几格。
 //!
 //! 台架：一条内存管道两头 —— monitor 这头是**真的** `InboundClient` ＋ **真的**本机吸收点
-//! （`local_backend::absorb_local_frame`），登记成本机那条流；对面是一个会说传输四条的小假后端
+//! （`stream_source::route`），登记成本机那条流；对面是一个会说传输四条的小假后端
 //! （记下每条请求，按用例的剧本回应答、塞帧）。后端那一半的真实现另有 `tests/backend/control/transfer_tests.rs`，
 //! 两半接在一起的真进程读数见 `tests/evidence/SR1b-sftp-loopback.py`。
 //!
 //! ⚠ 本机那条流是进程内全局登记 ⇒ 本文件的用例一律先拿 `local_origin_test_lock`。
 
 use super::*;
-use crate::inbound_client::{park, register, unregister, BackendHello, LOCAL_ORIGIN};
-use crate::stream_source::{parse_frame, InboundFrame};
+use crate::inbound_client::{park, register, unregister, LOCAL_ORIGIN};
 use futures::stream::StreamExt;
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
@@ -35,32 +34,20 @@ impl Drop for Rig {
 pub(crate) fn rig(commands: &[&str]) -> Rig {
     let (mon_w, be_r) = tokio::io::duplex(1 << 20);
     let (be_w, mon_r) = tokio::io::duplex(1 << 20);
-    let hello = InboundFrame::Hello {
-        v: 1,
-        build_id: "t".into(),
-        host_arch: "x86_64".into(),
-        claude_dir: "/tmp".into(),
-        homes: vec![],
-        commands: commands.iter().map(|s| s.to_string()).collect(),
-        unavailable: vec![],
-        // 同一版的后端：typed 那几条（开单两条）的形状指纹照本侧编进来的那一份交。
-        shapes: cmd_wire::shapes::SHAPES
-            .iter()
-            .map(|(c, h)| (c.to_string(), h.to_string()))
-            .collect(),
-    };
-    let witness = BackendHello::from_hello_frame(&hello).expect("是 hello");
+    let hello = crate::guard_support::our_hello(commands);
+    let witness = crate::inbound_client::witness_of(&hello).expect("是 hello");
     let client = park(mon_w).into_client(witness);
     register(LOCAL_ORIGIN, Arc::clone(&client));
     let c2 = Arc::clone(&client);
     tokio::spawn(async move {
         let mut lines = tokio::io::BufReader::new(mon_r).lines();
         while let Ok(Some(l)) = lines.next_line().await {
-            if let Ok(f) = parse_frame(&l) {
-                crate::local_backend::absorb_local_frame(
-                    f,
-                    Some(&c2),
+            if let Ok(f) = crate::stream_source::decode(&l) {
+                crate::stream_source::route(
+                    crate::stream_source::Via::Local,
                     &crate::origin::Origin::local(),
+                    Some(&c2),
+                    f,
                 );
             }
         }
@@ -311,7 +298,9 @@ async fn a_dead_local_stream_ends_every_relay_it_opened() {
     let snaps = drain(s).await;
     assert_eq!(
         snaps.last().and_then(|x| x.end.clone()),
-        Some(End::failed("本机后端的流断了（判据）".to_string()))
+        Some(crate::sftp_pool::failed(
+            "本机后端的流断了（判据）".to_string()
+        ))
     );
 }
 
@@ -415,70 +404,6 @@ async fn a_download_onto_a_session_file_is_forwarded_like_any_other() {
     .expect("🔴 往会话文件那个位置上下载，开不出单");
     let sent = rig.next("transfer-download").await;
     assert_eq!(sent["args"]["local_dir"], session, "落点没有原样转给后端");
-}
-
-/// 解帧：后端 `wire_tests::transfer_frames_have_exactly_these_bytes` 那几形**逐字节**的线上串（异源：后端金标准）
-/// 都认得出；`end` 认不出 ⇒ 整帧 `None`（不猜一个结局）。
-#[test]
-fn transfer_frames_parse_exactly_as_the_backend_writes_them() {
-    let cases: [(&str, Option<End>); 6] = [
-        (
-            r#"{"kind":"transfer","id":"xfer-7","got":262144,"total":1000000}"#,
-            None,
-        ),
-        (
-            r#"{"kind":"transfer","id":"xfer-7","got":262144,"total":1000000,"end":{"state":"done","bytes":1000000}}"#,
-            Some(End::Done {
-                bytes: 1_000_000,
-                sha256: None,
-            }),
-        ),
-        (
-            r#"{"kind":"transfer","id":"xfer-7","got":262144,"total":1000000,"end":{"state":"failed","why":"写暂存件失败"}}"#,
-            Some(End::failed("写暂存件失败".into())),
-        ),
-        // 带码的那一形（后端 `wire_tests` 同一行逐字节）⇒ 单列一形，码原样带着。
-        (
-            r#"{"kind":"transfer","id":"xfer-7","got":262144,"total":1000000,"end":{"state":"failed","why":"w","code":"sftp_home_mismatch"}}"#,
-            Some(End::Failed {
-                why: "w".into(),
-                code: Some("sftp_home_mismatch".into()),
-                detail: String::new(),
-            }),
-        ),
-        // 带复制详情的那一形（后端 `wire_tests` 同一行逐字节）⇒ 详情原样带着。
-        (
-            r#"{"kind":"transfer","id":"xfer-7","got":262144,"total":1000000,"end":{"state":"failed","why":"w","detail":"d"}}"#,
-            Some(End::Failed {
-                why: "w".into(),
-                code: None,
-                detail: "d".into(),
-            }),
-        ),
-        (
-            r#"{"kind":"transfer","id":"xfer-7","got":262144,"total":1000000,"end":{"state":"cancelled"}}"#,
-            Some(End::Cancelled),
-        ),
-    ];
-    for (line, want) in cases {
-        match parse_frame(line) {
-            Ok(InboundFrame::Transfer {
-                id,
-                got,
-                total,
-                end,
-            }) => {
-                assert_eq!((id.as_str(), got, total), ("xfer-7", 262_144, 1_000_000));
-                assert_eq!(end, want, "{line}");
-            }
-            other => panic!("没认出传输帧：{line} ⇒ {other:?}"),
-        }
-    }
-    assert!(parse_frame(
-        r#"{"kind":"transfer","id":"x","got":1,"total":1,"end":{"state":"maybe"}}"#
-    )
-    .is_err());
-    assert!(parse_frame(r#"{"kind":"transfer","id":"x","got":"1","total":1}"#).is_err());
 }
 
 /// 开单两条在中继这一层的字节（换形之前用旧代码跑出来钉的）：窗口那一份 ⇒ 补上 `dial` 转给本机后端的那一行

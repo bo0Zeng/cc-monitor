@@ -2,7 +2,7 @@
 //! （`src/backend/control/terminal_follow.rs`），原样交给会话流的句柄（`event_replay::EventReplay::on_terminal_screen`），
 //! 界面经通道 `subscribe(<那台>, "terminal-screen/<票>")` 收（`src/frontend/ui/terminal-follow.ts`）。
 //!
-//! 与 [`crate::probe_relay`] 同形，多一格「哪台」：读循环（本机 `local_backend::absorb_local_frame` · 远端 `stream_source::run`）手里没有
+//! 与 [`crate::probe_relay`] 同形，多一格「哪台」：读循环（分派第一层 `stream_source::route`，本机远端同一处）手里没有
 //! 那本订阅表 ⇒ 出口由 `lib.rs` 的 setup 装一次（[`install_sink`]）；装之前来的直接丢（界面那时也还没在订）。**零解释**：那一格是什么由界面严格收。
 
 use std::sync::OnceLock;

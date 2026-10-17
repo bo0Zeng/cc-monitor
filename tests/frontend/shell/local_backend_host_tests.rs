@@ -3162,14 +3162,14 @@ fn the_host_never_writes_the_resident_dir_and_carries_no_key() {
     assert_eq!(
         crate::local_backend_host::attach_line(Some("Asia/Shanghai"), None),
         "{\"attach\":true,\"tz\":\"Asia/Shanghai\"}\n",
-        "看的这一台的时区跟在旁边一格（后端 `listen::attach_flags` 读 `tz`）"
+        "看的这一台的时区跟在旁边一格（后端按 `cmd_wire::attach::AttachLine` 读 `tz`）"
     );
-    // 本机这条要全量（`session_added.pid` 给 ↗ 绑窗口）⇒ 不交声明。
+    // 本机换装只认同一版（`hello_verdict`）⇒ 不带这一版、不问新旧。
     guard_core::find_pinned(
         &host,
         "attach_line(host_core::viewer_tz().as_deref(), None)",
     )
-    .expect("本机常驻那条 attach 行带了声明");
+    .expect("本机常驻那条 attach 行带了这一版");
     for w in ["token", "LISTEN_TOKEN"] {
         assert!(
             !guard_core::contains_word(&host, w),
@@ -3930,7 +3930,7 @@ fn local_health() -> crate::backend_policy::Health {
 ///
 /// 两半缺一不可：
 /// ① **纯函数**那一半 —— 拿一份**真的**见证进去得到「说过话」。
-///    见证只有一个构造入口（`BackendHello::from_hello_frame`，由 `inbound_client`
+///    见证只有一个构造入口（`BackendHello::of`，由 `inbound_client`
 ///    那条「见证不许凭空造」的判据钉着）⇒ 这一格拿不到假见证，
 ///    而那正是这条推理**在类型上**成立的地方。
 ///    死值验：把 `handshake_from_hello` 的返回改成 `NeverSpoke` ⇒ 本格当场红。
@@ -3938,11 +3938,11 @@ fn local_health() -> crate::backend_policy::Health {
 #[test]
 fn the_detached_handshake_is_derived_from_the_hello_gate() {
     let line = concat!(
-        r#"{"kind":"hello","v":1,"build_id":"kp3b-jia","host_arch":"x86_64","#,
-        r#""claude_dir":"/dev/null","commands":["ping"]}"#
+        r#"{"kind":"hello","build_id":"kp3b-jia","host_arch":"x86_64","#,
+        r#""commands":["ping"]}"#
     );
-    let frame = crate::stream_source::parse_frame(line).expect("这一行该解析成 hello 帧");
-    let witness = crate::inbound_client::BackendHello::from_hello_frame(&frame)
+    let frame = crate::stream_source::decode(line).expect("这一行该解析成 hello 帧");
+    let witness = crate::inbound_client::witness_of(&frame)
         .expect("hello 帧该给得出见证 —— 给不出的话下面那一格是空转的");
     assert_eq!(
         handshake_from_hello(&witness),
@@ -3962,7 +3962,7 @@ fn the_detached_handshake_is_derived_from_the_hello_gate() {
         prod.len()
     );
     // 那道门本身（`attach_stream` 的前两行之一）：它没了，上面那条推理就没了前提。
-    guard_core::find_pinned(&prod, "BackendHello::from_hello_frame(&frame)").unwrap_or_else(|e| {
+    guard_core::find_pinned(&prod, "inbound_client::witness_of(&frame)").unwrap_or_else(|e| {
         panic!(
             "`attach_stream` 那道 hello 门不是恰好一处（{e}）——\n\
                      ⇒ 「进得了流循环 = 一帧合法 hello 已经到手」这条推理没有前提了，\n\
@@ -4717,4 +4717,59 @@ fn the_path_line_points_at_the_directory_we_really_install_ccm_into() {
                  ⚠ 指错目录与根本没补 PATH，在用户终端上是**同一个结果**（命令找不到）。"
         );
     }
+}
+
+/// 本机那一行的成品与跨语言金样「本机没连上」那一形逐格相等（远端那几形由后端现产，`tests/backend/control/machine_state_tests.rs`）。
+#[test]
+fn the_local_row_matches_the_cross_language_golden() {
+    let golden: serde_json::Value =
+        serde_json::from_str(include_str!("../../__fixtures__/machine-state.golden.json"))
+            .expect("金样不是 JSON");
+    let want = golden["cases"]
+        .as_array()
+        .and_then(|c| c.iter().find(|c| c["name"] == "本机没连上"))
+        .expect("金样里没有本机那一形")["machine"]
+        .clone();
+    let got = {
+        let _g = crate::inbound_client::local_origin_test_lock();
+        note_local_foreign(None);
+        local_product(false, Some("p7z"))
+    };
+    let got = serde_json::to_value(got)
+        .unwrap()
+        .to_string()
+        .replace(&format!("\"{}\"", crate::PRODUCT_VERSION), "\"<ver>\"");
+    let got: serde_json::Value = serde_json::from_str(&got).unwrap();
+    assert_eq!(got, want, "本机那一形与金样对不上\n现产：{got}");
+}
+
+/// 壳里造机器状态成品只许本机那一处（远端各台的成品在后端定）：壳生产段里写 `MachineState {` 字面构造的文件恰好是这一份。
+#[test]
+fn only_the_local_row_is_built_in_the_shell() {
+    let files: Vec<(std::path::PathBuf, String)> = guard_core::addr::shell_population_roots()
+        .iter()
+        .flat_map(|root| guard_core::scan_tree!(root, &["rs"]))
+        .collect();
+    assert!(
+        files.len() > 50,
+        "壳的人群只扫到 {} 份 —— 走法坏了",
+        files.len()
+    );
+    let builds: std::collections::BTreeSet<String> = files
+        .iter()
+        .filter(|(_, src)| {
+            guard_core::production_code(src).lines().any(|l| {
+                let l = l.trim();
+                l.contains("MachineState {") && !l.contains("-> MachineState {")
+            })
+        })
+        .map(|(p, _)| guard_core::addr::rel_of(p))
+        .collect();
+    assert_eq!(
+        builds,
+        ["src/frontend/shell/src/local_backend_host.rs".to_string()]
+            .into_iter()
+            .collect(),
+        "壳里另有一处在造机器状态成品"
+    );
 }

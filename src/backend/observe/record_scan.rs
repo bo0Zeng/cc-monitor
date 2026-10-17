@@ -273,16 +273,18 @@ impl ScanMap {
         }
     }
 
-    /// 尾段那张图：最后 `n` 个可计行从哪开始（同 [`super::history_query::tail_plan_of`]）；`file` 是那份文件的身份（调用方读）。
-    pub(crate) fn tail(&self, n: usize, file: String) -> TailPlan {
+    /// 尾段那张图：最后 `n` 个可计行从哪开始（同 [`super::history_query::tail_plan_of`]）。
+    pub(crate) fn tail(&self, n: usize) -> super::history_query::Tail {
         let total = self.starts.len();
         let from = total - n.max(1).min(total);
-        TailPlan {
-            total: total as u64,
-            tail_from: from as u64,
-            split_at: self.starts.get(from).copied().unwrap_or(self.end),
-            end: self.end,
-            file,
+        super::history_query::Tail {
+            plan: TailPlan {
+                total: total as u64,
+                tail_from: from as u64,
+                split_at: self.starts.get(from).copied().unwrap_or(self.end),
+                end: self.end,
+            },
+            last: self.starts.last().copied(),
         }
     }
 

@@ -475,10 +475,9 @@ pub(crate) fn swap_out(own: &Own, mine: &str, grace_ms: u32) -> Result<Swap, Sai
     let Some(l) = who_listens(root.as_path())? else {
         return Ok(Swap::Cleared(Stopped::NotRunning));
     };
-    let older = l
-        .build
-        .as_deref()
-        .is_none_or(|theirs| deploy::resident_verdict(mine, theirs, false).replace);
+    let older = l.build.as_deref().is_none_or(|theirs| {
+        deploy_contract::build_relation(theirs, mine) == deploy_contract::Relation::Older
+    });
     if !older {
         return Ok(Swap::Kept(l.pid));
     }

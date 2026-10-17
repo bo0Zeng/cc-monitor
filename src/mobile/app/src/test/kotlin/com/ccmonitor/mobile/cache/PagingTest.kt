@@ -3,31 +3,8 @@ package com.ccmonitor.mobile.cache
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** 续读先比那台文件的大小：变短就从头读；末页满了另起一页。 */
+/** 末页满了另起一页。 */
 class PagingTest {
-    private val anchor = Anchor("/p/s.jsonl", offset = 50, seq = 5, file = "f1")
-
-    @Test
-    fun `那台的文件比续点短了（被截过 · 换过）⇒ 从头读，不从已经不在的位置往后读`() {
-        assertEquals(Resume.FromScratch, resumeOf(anchor, true, "/p/s.jsonl", "f1", end = 30, total = 3, maxGap = 60))
-        assertEquals("行数没少、字节短了也算变短", Resume.FromScratch, resumeOf(anchor, true, "/p/s.jsonl", "f1", end = 30, total = 6, maxGap = 60))
-    }
-
-    @Test
-    fun `没变短、缺得不多 ⇒ 从续点往下读；一样长 ⇒ 也从续点（读到的是空的）`() {
-        assertEquals(Resume.Continue(50), resumeOf(anchor, true, "/p/s.jsonl", "f1", end = 80, total = 8, maxGap = 60))
-        assertEquals(Resume.Continue(50), resumeOf(anchor, true, "/p/s.jsonl", "f1", end = 50, total = 5, maxGap = 60))
-    }
-
-    @Test
-    fun `换了文件 · 没续点 · 手上一行都没有 · 缺得太多 ⇒ 从头读`() {
-        assertEquals(Resume.FromScratch, resumeOf(anchor, true, "/p/other.jsonl", "f1", end = 80, total = 8, maxGap = 60))
-        assertEquals("同一路径、换了一份", Resume.FromScratch, resumeOf(anchor, true, "/p/s.jsonl", "f2", end = 80, total = 8, maxGap = 60))
-        assertEquals(Resume.FromScratch, resumeOf(null, true, "/p/s.jsonl", "f1", end = 80, total = 8, maxGap = 60))
-        assertEquals(Resume.FromScratch, resumeOf(anchor, false, "/p/s.jsonl", "f1", end = 80, total = 8, maxGap = 60))
-        assertEquals(Resume.FromScratch, resumeOf(anchor, true, "/p/s.jsonl", "f1", end = 900, total = 90, maxGap = 60))
-    }
-
     private fun row(end: Long) = mapOf("end" to end, "record" to mapOf("id" to "r$end"))
 
     @Test

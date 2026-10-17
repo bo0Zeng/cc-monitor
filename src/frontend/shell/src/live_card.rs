@@ -3,7 +3,7 @@
 //!
 //! # 它只做一件事：转交，零解释
 //!
-//! - 读循环（`local_backend::absorb_local_frame`）手里没有 `AppHandle` ⇒ 与 [`crate::session_facts`] 同形：
+//! - 读循环（`stream_source::route`）手里没有 `AppHandle` ⇒ 与 [`crate::session_facts`] 同形：
 //!   出口由 `lib.rs` 的 setup 装一次（[`install_sink`]），交来的每一帧交给出口；装之前来的直接丢（前端那时也还没在听）。
 //! - **不进任何缓冲**：不进 `local_lines`（内容通道）、不进重放缓冲 —— 收一帧，交给此刻订了 `session-live-card` 的订阅
 //!   （有 credit 当场交，没 credit 丢、位置照占、原位 `Gap`：级 2）。⇒ 活卡那一路断 / 丢 / 挤都碰不到记录那条对的路。
@@ -11,13 +11,8 @@
 //!   前端只照画。
 //! - 本机那条流与远端那条流都有它，origin 各是各的。
 
+use cmd_wire::live::LiveCard;
 use std::sync::OnceLock;
-
-/// 一个 `live` 帧（`stream_source::InboundFrame::LiveCard` 的载荷）：帧体去掉 `kind` 原样（JSON 对象原文，不解释）。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LiveCard {
-    pub body: crate::ui_contract::RecordBody,
-}
 
 type Sink = Box<dyn Fn(crate::ui_contract::SessionLiveCardPayload) + Send + Sync>;
 
@@ -39,7 +34,12 @@ pub fn install_sink(
 pub fn to_payload(origin: &str, l: LiveCard) -> crate::ui_contract::SessionLiveCardPayload {
     crate::ui_contract::SessionLiveCardPayload {
         origin: crate::origin::Origin(origin.to_string()),
-        card: l.body,
+        card: crate::ui_contract::RecordBody::from_json(
+            serde_json::to_string(&l).unwrap_or_default(),
+        )
+        .unwrap_or_else(|| {
+            crate::ui_contract::RecordBody::from_json("{}".to_string()).expect("{} is JSON")
+        }),
     }
 }
 

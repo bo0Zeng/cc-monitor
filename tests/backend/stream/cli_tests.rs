@@ -66,12 +66,6 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
          一次性进程「1 请求 1 响应 1 退出」里那张表只有它自己、没有任何出口答得到它 ⇒ 结构上答不了。\
          hook 那一侧要的是 `--answer-hook`（它自己连常驻套接字发这一条）。",
     ),
-    // 装后端那一趟边走边推进度：那几帧走**本连接的应答通道**（`deploy` 帧）。
-    (
-        "deploy-install",
-        "装那一趟每走一步推一帧进度到**发起它的那条流连接**的应答通道（壳照它画机器状态）；一次性进程没有那条通道。\
-         它只有帧面一个调用方（壳经本机常驻后端），手机直接调同一份 `deploy::install`。",
-    ),
     // 测试连接边拨边推进度：那几格走**本连接的应答通道**（`probe` 帧，界面订 `probe-progress/<票>`）。
     (
         "remote-probe",
@@ -148,6 +142,14 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
 /// [`STREAM_ONLY`] 每一条的理由（一次性进程里结构上答不了）。与生产那张表两向相等（`the_withheld_tables_…`）。
 const STREAM_ONLY_WHY: &[(&str, &str)] = &[
     (
+        "machine-round",
+        "它收进的是常驻进程那一张机器状态表、推给连着的界面；一次性进程收了就随进程丢了，回的成品没人看得见、也不是那台此刻的样子。",
+    ),
+    (
+        "machine-read",
+        "它读的是常驻进程那一张机器状态表；一次性进程里那张表是空的，只能答每台「还没有结论」—— 那是假话。",
+    ),
+    (
         "login-finish",
         "它找的登录作业住常驻进程那一份作业表里；一次性进程里那张表是空的，只能答「没有这份作业」—— 那是假话。",
     ),
@@ -218,6 +220,9 @@ const UI_ONLY_WHY: &[(&str, &str)] = &[
         "terminal-processes",
         "它答「那台报来的终端连接是这台电脑上哪个进程开的、往上是谁」，是 ↗ 那一问的本机一半，只给界面接着找窗口、拉前用；\
          同 `session-terminals`，只有能拉前桌面窗口的那一方用得着。",
+    ),    (
+        "deploy-install",
+        "给远端装后端是 monitor 部署预检与机器页［更新］那一步；手机直接调 `deploy` crate、不经命令，终端里敲 `ccm` 的人不在这条路上。",
     ),
 ];
 
@@ -397,6 +402,7 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "exit-policy-read",
         "prefs-read",    // 这台的偏好（纯读、不收输入）
         "machines-read", // 本机的机器表（纯读、不收输入）
+        "machine-read",  // 机器表里每台此刻的状态（纯读、不收输入）
         "quota-read",    // 这台的额度账（纯读、不收输入）
         // `ccm-probe`：无入参（CLI 面没有，但「收不收输入」按帧面声明判）。
         "ccm-probe",

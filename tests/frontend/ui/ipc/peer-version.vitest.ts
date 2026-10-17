@@ -61,10 +61,7 @@ describe("文案表里这一族只剩两句", () => {
   });
 });
 
-/** 状态词：那台处在「要更新」状态时的标签（账号徽标 · 远端健康 · 连上时的版本判定），不是命令被拒；机器状态成品那一刀统一。 */
+/** 状态词：那台处在「要更新」状态时的标签（账号徽标 · 远端健康），不是命令被拒；机器状态成品那一刀统一。 */
 const EXPECTED_REMAINING: string[] = [
   "accountChip.label.backendOld",
-  "remoteHealth.head.backendOld",
-  "rsSshSource.version.protoMismatch",
-  "rsSshSource.version.remoteOlder",
 ];

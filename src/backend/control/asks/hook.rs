@@ -88,9 +88,12 @@ async fn ask_resident(
     if hello.get("kind").and_then(Value::as_str) != Some("hello") {
         return None;
     }
-    wr.write_all(b"{\"attach\":true}\n").await.ok()?;
-    let ack: Value = serde_json::from_str(&lines.next_line().await.ok()??).ok()?;
-    if ack.get("attach").and_then(Value::as_str) != Some("ok") {
+    use cmd_wire::attach::{AttachLine, AttachReply};
+    wr.write_all(AttachLine::default().line().as_bytes())
+        .await
+        .ok()?;
+    let ack = AttachReply::of(&lines.next_line().await.ok()??)?;
+    if !matches!(ack, AttachReply::Ok { .. }) {
         return None;
     }
     let req = json!({ "id": REQ_ID, "cmd": "needs-ask", "args": { "agent": agent, "hook": hook } });

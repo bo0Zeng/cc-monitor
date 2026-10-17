@@ -1235,6 +1235,7 @@ dependencies = [
 name = "deploy-contract"
 version = "0.1.0"
 dependencies = [
+ "cmd-wire",
  "copy-core",
  "shell-quote-core",
  "test-home",
@@ -4784,6 +4785,7 @@ dependencies = [
  "cmd-wire",
  "comms-inward",
  "copy-core",
+ "deploy-contract",
  "guard-core",
  "relay-route-core",
  "serde",

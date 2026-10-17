@@ -13,7 +13,7 @@ use std::sync::Mutex;
 
 // 回包写成线上那一份、入参经 typed 那一处收（同分派）：判据照线上形比。
 fn installed_json(p: &Plan) -> Value {
-    serde_json::to_value(super::installed_of(p, "box")).unwrap()
+    serde_json::to_value(super::installed_of(p)).unwrap()
 }
 
 fn slots_of(args: &Value) -> Result<Vec<deploy::Slot>, Fail> {
@@ -326,10 +326,10 @@ async fn stale_deploy_leftovers_in_staging_are_handed_over_and_nothing_else() {
     );
 }
 
-/// 键集合 == 金样 `tests/__fixtures__/deploy-install.golden.json` 的键（monitor 的解码器读同一份金样）：应答 · 进度帧各一份。
-/// 应答那两句（这一趟做了什么 · 接下来接常驻那一步）是 `deploy` crate 写的；`build` 是落点上现在那一份（`keep` ⇒ 那台的）。
+/// 键集合 == 金样 `tests/__fixtures__/deploy-install.golden.json` 的键（monitor 的解码器读同一份金样）：装 · 卸的应答各一份。
+/// 应答那一句是 `deploy` crate 写的那一句；`build` 是落点上现在那一份（`keep` ⇒ 那台的）。
 #[test]
-fn the_install_reply_and_the_step_frame_have_exactly_the_golden_keys() {
+fn the_install_reply_has_exactly_the_golden_keys() {
     let golden: serde_json::Value = serde_json::from_str(include_str!(
         "../../__fixtures__/deploy-install.golden.json"
     ))
@@ -360,18 +360,6 @@ fn the_install_reply_and_the_step_frame_have_exactly_the_golden_keys() {
         (Some("keep"), Some("p9b"), Some("w"))
     );
     assert_eq!(got["ack"], fake_ack(1));
-    // 接常驻那一步那一句也是 `deploy` crate 写的（宿主接那台时照画，自己不拼）。
-    assert_eq!(got["attaching"], deploy::Step::Restart.said("box"));
-    let step = step_frame("box", deploy::Step::Place { updating: true }).unwrap();
-    let wire =
-        serde_json::to_value(crate::wire::Frame::<cmd_wire::record::Record>::Deploy(step)).unwrap();
-    assert_eq!(keys(&wire), keys(&golden["step"]));
-    assert_eq!(wire["step"], "update");
-    assert_eq!(
-        wire["said"],
-        deploy::Step::Place { updating: true }.said("box")
-    );
-    assert!(step_frame("box", deploy::Step::Restart).is_none());
     let un = serde_json::to_value(Uninstalled {
         removed: true,
         said: "s".into(),
@@ -443,64 +431,6 @@ async fn the_plan_hands_back_the_ack_of_the_first_trip_for_pinning() {
     let p = plan(&f, &carried("p9a-mine"), "box", NOW).await.unwrap();
     assert_eq!(p.ack, fake_ack(1), "交回的不是第一趟（问 uname）的 ack");
     assert_eq!(installed_json(&p)["ack"], fake_ack(1));
-}
-
-// ═══ `resident-verdict`：远端常驻后端 hello 的新旧 ═══════════════════════════════════
-// 要求：「共享 crate 只放契约，判定只在后端」（monitor 里的共享判定残留：远端常驻换不换）。
-// 从 monitor `remote_resident_tests.rs` 那一条（`hello_decision` 的真值表）搬来：判定进了本机常驻后端，真值表跟着判定走。
-
-/// 只升不降、只换一次：那台旧 ⇒ 换（换过一次就接）；同一版 · 更新 · 序解不出 ⇒ 接。`older` 与 `replaced` 无关。
-#[test]
-fn the_verdict_replaces_only_upward_and_only_once() {
-    // (那台报的, 换过没有) ⇒ (换, 那台旧)
-    for (theirs, replaced, want) in [
-        ("p4a-x", false, (true, true)),
-        ("p4a-x", true, (false, true)),
-        ("p4j-y", false, (false, false)),
-        ("p5a-z", false, (false, false)),
-        ("dev", false, (false, false)),
-        ("", false, (false, false)),
-    ] {
-        let v = resident_verdict("p4j-y", theirs, replaced);
-        assert_eq!((v.replace, v.older), want, "{theirs} replaced={replaced}");
-    }
-}
-
-/// 照线上那一份喂（JSON 入参经 typed 那一处收成类型，同生产），回包回成 `Value`、失败回成码；盖住 `super::*` 里的同名口。
-fn answer_resident_verdict(args: &Value) -> Result<Value, (String, String)> {
-    use crate::wire::typed::Codes as _;
-    let req: VerdictReq = crate::wire::typed::take(args).map_err(|f| (f.code, f.message))?;
-    super::answer_resident_verdict(&req)
-        .map(|v| serde_json::to_value(v).unwrap())
-        .map_err(|e| {
-            let f = e.into_fail();
-            (f.code, f.message)
-        })
-}
-
-/// 帧面那一格：`{action, older}` 恰这两个键；缺 `mine`（或空）· `theirs` · `replaced` ⇒ `bad_args`。
-#[test]
-fn the_verdict_frame_has_exactly_two_keys_and_refuses_missing_args() {
-    let got =
-        answer_resident_verdict(&json!({"mine": "p4j-y", "theirs": "p4a-x", "replaced": false}))
-            .expect("答得出");
-    assert_eq!(got, json!({"action": "replace", "older": true}));
-    let got =
-        answer_resident_verdict(&json!({"mine": "p4j-y", "theirs": "p4a-x", "replaced": true}))
-            .expect("答得出");
-    assert_eq!(got, json!({"action": "attach", "older": true}));
-    for bad in [
-        json!({"theirs": "p4a-x", "replaced": false}),
-        json!({"mine": "", "theirs": "p4a-x", "replaced": false}),
-        json!({"mine": "p4j-y", "replaced": false}),
-        json!({"mine": "p4j-y", "theirs": "p4a-x"}),
-    ] {
-        assert_eq!(
-            answer_resident_verdict(&bad).map_err(|(c, _)| c),
-            Err("bad_args".to_string()),
-            "{bad}"
-        );
-    }
 }
 
 // ═══ 随判定从共享 crate `deploy-core` 搬来的逐格判据（判定只在后端；期望一字未改）══════════════

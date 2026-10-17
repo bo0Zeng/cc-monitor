@@ -393,16 +393,9 @@ fn the_reply_decoder_reads_the_golden() {
             got.did,
             got.build.as_str(),
             got.os.as_str(),
-            got.said.as_str(),
-            got.attaching.as_str()
+            got.said.as_str()
         ),
-        (
-            Did::Keep,
-            "p0b-placeholder",
-            "Linux",
-            "placeholder",
-            "placeholder-attach"
-        )
+        (Did::Keep, "p0b-placeholder", "Linux", "placeholder")
     );
     let with = |k: &str, v: serde_json::Value| {
         let mut x = product.clone();
@@ -411,13 +404,10 @@ fn the_reply_decoder_reads_the_golden() {
     };
     let mut missing = product.clone();
     missing.as_object_mut().unwrap().remove("said");
-    let mut no_attaching = product.clone();
-    no_attaching.as_object_mut().unwrap().remove("attaching");
     let mut extra = product.clone();
     extra["surprise"] = serde_json::json!(1);
     for bad in [
         missing,
-        no_attaching,
         extra,
         with("action", serde_json::json!("overwrite")),
         with("build", serde_json::json!("")),
@@ -429,41 +419,6 @@ fn the_reply_decoder_reads_the_golden() {
         decode_installed(&with("action", serde_json::json!("skip"))).map(|i| i.did),
         Ok(Did::Skip)
     );
-}
-
-/// 进度帧解码读同一份金样里的 `step`：那台 · 哪一步 · 那一句（后端写好的）原样进机器状态那一格。
-#[test]
-fn the_step_frame_reads_the_golden() {
-    let golden: serde_json::Value = serde_json::from_str(include_str!(
-        "../../__fixtures__/deploy-install.golden.json"
-    ))
-    .unwrap();
-    let got = crate::stream_source::parse_frame(&golden["step"].to_string());
-    assert_eq!(
-        got,
-        Ok(crate::stream_source::InboundFrame::Deploy {
-            machine: "placeholder".into(),
-            step: crate::machine_state::DeployStep::Update,
-            said: "placeholder".into(),
-        })
-    );
-    // 本机后端那条流上来的这一帧就地进机器状态（不进内容通道）：那台正在更新、那一句是后端写的那一句。
-    crate::machine_state::forget("placeholder");
-    let back = crate::local_backend::absorb_local_frame(
-        got.unwrap(),
-        None,
-        &crate::origin::Origin::local(),
-    );
-    assert!(back.is_none(), "进度帧被交回了内容通道：{back:?}");
-    let m = crate::machine_state::product("placeholder", true);
-    assert_eq!(
-        (m.state, m.said.as_deref()),
-        (
-            crate::machine_state::MachineStateKind::Updating,
-            Some("placeholder")
-        )
-    );
-    crate::machine_state::forget("placeholder");
 }
 
 /// 🔴装那一趟在本机后端里拨号 ⇒ 它的逐地址指纹随应答交回、由 monitor 按**同一个**判定固化

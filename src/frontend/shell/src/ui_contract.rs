@@ -26,8 +26,8 @@ pub mod events {
     /// 弹 toast。`kind` 区分类别（"overflow" / "version" / …），payload 见
     /// [`RemoteHealthPayload`]。#33 版本协商复用同通道、只换 kind/message，不另造。
     pub const REMOTE_HEALTH: &str = "remote-health";
-    /// **某台机器的状态成品变了**：`{origin, machine}`（`machine` 与 `backend_status` 那一格同形，
-    /// `machine_state.rs`）。正在连 / 装 / 更新、连上、没连上、指纹不对 …… 一变就推一帧，界面不轮询。
+    /// **本机那一台的状态成品变了**：`{origin, machine}`（`machine` 与 `backend_status` 那一格同形，
+    /// `local_backend_host::local_product`）。通道接上 / 断了 · 口上换了人就推一帧；远端各台走本机后端的 `changed {machine}`。
     pub const MACHINE_STATE: &str = "machine-state";
     /// **要让用户知道的出错**（`ui_error::UiErrorPayload`：码 ＋ 文案键 ＋ 那句话 ＋ 复制详情）。
     /// 壳推给界面的出错只这一种；日志行不上屏。
@@ -95,7 +95,7 @@ pub struct JsonlLinePayload {
 }
 
 /// 后端给的一条记录成品（JSON 原文）。monitor 只搬：不解析、不读字段，序列化时原样嵌进去。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
 #[serde(transparent)]
 pub struct RecordBody(pub Box<serde_json::value::RawValue>);
 
@@ -301,8 +301,11 @@ pub struct SessionEndedPayload {
     pub text: Option<String>,
     pub hint: Option<String>,
     pub tone: Option<String>,
+    /// 监控板组内的序（`session_state.state_order`，与活会话的序同一把尺）；壳自己补的「已结束」没有 ⇒ `None`（排在那台最后）。
+    pub order: Option<u8>,
     /// 此刻能不能换模型 · 权限档（`session_state.switch`）；壳自己补的「已结束」没有 ⇒ `None`。
-    pub switch: Option<crate::session_book::SwitchCells>,
+    #[cfg_attr(test, ts(as = "Option<SwitchCells>"))]
+    pub switch: Option<cmd_wire::frame::Switch>,
 }
 
 /// audit-fixes F03.2：可重连（idle-tmux 灰灯）的 payload（会话流 `idle` 那一格）。独立命名（非复用
@@ -312,11 +315,13 @@ pub struct SessionEndedPayload {
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SessionIdlePayload {
     pub session_id: String,
-    /// 同 [`SessionEndedPayload`] 那四格。
+    /// 同 [`SessionEndedPayload`] 那五格。
     pub text: Option<String>,
     pub hint: Option<String>,
     pub tone: Option<String>,
-    pub switch: Option<crate::session_book::SwitchCells>,
+    pub order: Option<u8>,
+    #[cfg_attr(test, ts(as = "Option<SwitchCells>"))]
+    pub switch: Option<cmd_wire::frame::Switch>,
 }
 
 /// 「说不清」的 payload（会话流 `unseen` 那一格）。独立命名，理由同 [`SessionIdlePayload`]：unseen ≠ ended。
@@ -364,7 +369,54 @@ pub struct SessionLivePayload {
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SessionContainerPayload {
     pub session_id: String,
-    pub container: crate::session_book::SessionContainer,
+    #[serde(serialize_with = "container_form")]
+    #[cfg_attr(test, ts(as = "SessionContainer"))]
+    pub container: cmd_wire::frame::SessionContainer,
+}
+
+/// 容器那一格交界面的形状（界面按 `form` 分：认得的宿主 · 不在任何宿主里）。
+fn container_form<S: serde::Serializer>(
+    c: &cmd_wire::frame::SessionContainer,
+    s: S,
+) -> Result<S::Ok, S::Error> {
+    use cmd_wire::frame::{SessionContainer as C, TerminalHost};
+    match c {
+        C::Tmux { terminal } => serde_json::json!({
+            "form": "hosted",
+            "host": TerminalHost::Tmux.as_wire(),
+            "terminal": terminal,
+        }),
+        C::None => serde_json::json!({ "form": "none" }),
+    }
+    .serialize(s)
+}
+
+/// 终端宿主（界面那一形的 `host`）。
+#[cfg(test)]
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../ui/generated/")]
+#[allow(dead_code)]
+pub enum TerminalHost {
+    #[ts(rename = "tmux")]
+    Tmux,
+}
+
+/// 一条活会话住在什么容器里（界面那一形）：在某个认得的宿主的终端里（`terminal` 是 `terminals-list` 那一行的句柄，算不出就没有）·
+/// 不在任何宿主里 · 这边不认识的宿主。
+#[cfg(test)]
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../ui/generated/")]
+#[ts(tag = "form", rename_all = "snake_case")]
+#[allow(dead_code)]
+pub enum SessionContainer {
+    Hosted {
+        host: TerminalHost,
+        terminal: Option<String>,
+    },
+    None,
+    Other {
+        host: String,
+    },
 }
 
 /// 会话流 `session-live-card`（通道 `subscribe`）里一格的体：后端 `live` 帧的帧体原样（核心拼好的活卡，见后端 `wire::LiveCard`）＋ 哪台机器。
@@ -416,7 +468,7 @@ pub struct RemoteHealthPayload {
     pub detail: String,
 }
 
-/// 会话红绿灯：此刻在干什么（那台后端翻好的 [`crate::session_book::SessionActivity`]；`None` ＝ 说不清）；
+/// 会话红绿灯：此刻在干什么（那台后端翻好的 [`SessionActivity`]；`None` ＝ 说不清）；
 /// `waiting_for` 是在等人时那一家给的细分（原样）。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -425,9 +477,110 @@ pub struct SessionActivityPayload {
     pub session_id: String,
     /// 那一态 · 写好的字与语气 · 监控板组内的序（那台核心写的，平铺在载荷上）。
     #[serde(flatten)]
-    pub activity: crate::session_book::ActivityCells,
+    pub activity: ActivityCells,
     /// 叫这条会话什么（那台核心写的，平铺在载荷上；标签页照抄）。
     #[serde(flatten)]
-    pub naming: crate::session_book::NameCells,
+    pub naming: NameCells,
     pub waiting_for: Option<String>,
+}
+
+/// 一条活会话此刻在干什么（界面那一形；那台核心的 `session_added.activity` · `session_status.activity`）。缺席 ＝ 说不清。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+#[serde(rename_all = "snake_case")]
+pub enum SessionActivity {
+    /// 一轮在跑。
+    Working,
+    /// 在等人。
+    NeedsYou,
+    /// 闲着，等下一句输入。
+    Idle,
+    /// 一轮停了，它在后台起的命令还在跑。
+    BackgroundWork,
+}
+
+/// 一条活会话此刻在干什么那几格（那台核心的 `ActivityFace`，界面那一形）：那一态（`None` ＝ 说不清）·
+/// 写好的字与语气 · 监控板组内的序（`activity_order`，小的在前，核心排的）· 能不能换。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+pub struct ActivityCells {
+    pub activity: Option<SessionActivity>,
+    pub activity_text: String,
+    pub activity_tone: String,
+    pub activity_order: u8,
+    /// 此刻能不能换模型 · 权限档（那台核心判的，随那一态带）。
+    #[cfg_attr(test, ts(as = "SwitchCells"))]
+    pub switch: cmd_wire::frame::Switch,
+}
+
+impl ActivityCells {
+    pub fn of(f: &cmd_wire::frame::ActivityFace) -> Self {
+        use cmd_wire::frame::SessionActivity as A;
+        ActivityCells {
+            activity: f.activity.map(|a| match a {
+                A::Working => SessionActivity::Working,
+                A::NeedsYou => SessionActivity::NeedsYou,
+                A::Idle => SessionActivity::Idle,
+                A::BackgroundWork => SessionActivity::BackgroundWork,
+            }),
+            activity_text: f.activity_text.0.clone(),
+            activity_tone: tone_word(f.activity_tone),
+            activity_order: f.activity_order,
+            switch: f.switch.clone(),
+        }
+    }
+}
+
+/// 语气那一格的线上词（`plain` · `now` …）。
+pub fn tone_word(t: cmd_wire::cells::Tone) -> String {
+    serde_json::to_value(t)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_default()
+}
+
+/// 此刻能不能换模型 · 权限档那一格（那台核心的 `Switch`，原样转交；界面照 `can` 灰不灰、照 `why` 写悬停）。
+#[cfg(test)]
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../ui/generated/")]
+#[allow(dead_code)]
+pub struct SwitchCells {
+    /// 换模型（`session-model`）。
+    pub model: CanSwitch,
+    /// 切权限档（`session-permission`）。
+    pub permission: CanSwitch,
+}
+
+/// 一样此刻能不能换：`{can: "yes"}` · `{can: "no", why: 那台写好的那一句}`。
+#[cfg(test)]
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../ui/generated/")]
+#[ts(tag = "can", rename_all = "snake_case")]
+#[allow(dead_code)]
+pub enum CanSwitch {
+    /// 能换。
+    Yes,
+    /// 此刻不能。
+    No { why: String },
+}
+
+/// 叫这条会话什么那两格（那台核心的 `NameFace`，界面那一形）：名字（标签页 · 历史清单 · 通知同一个）·
+/// 项目那一格（名字是起出来的才有；界面拼「[项目] 名字」）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+pub struct NameCells {
+    pub label: String,
+    pub label_project: Option<String>,
+}
+
+impl NameCells {
+    pub fn of(f: &cmd_wire::frame::NameFace) -> Self {
+        NameCells {
+            label: f.label.0.clone(),
+            label_project: f.label_project.as_ref().map(|w| w.0.clone()),
+        }
+    }
 }

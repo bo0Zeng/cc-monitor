@@ -853,14 +853,14 @@ window.addEventListener("DOMContentLoaded", async () => {
       tabs.onLine(e);
       recordFile.afterLine(e.session_id); // 又来了一行 ⇒ 「记录文件不见了」那一句收掉
     },
-    onSessionEnded: (sessionId, sw) => {
+    onSessionEnded: (sessionId, sw, order) => {
       const origin = tabs.tabsInOrder().find((t) => t.sessionId === sessionId)?.origin ?? null;
-      tabs.archiveTab(sessionId, sw ?? null);
+      tabs.archiveTab(sessionId, sw ?? null, order ?? null);
       accountsRefresher.request(); // 会话结束了
       if (origin !== null) void planNeeds.refresh(origin); // 接手的会话停了 ⇒ 那台的「需手动」可能多一条
     },
     // 远端 claude 退了但 tmux 会话仍在 → 灰灯（idle-tmux，不归档）。
-    onSessionIdle: (sessionId, sw) => tabs.markTmuxIdle(sessionId, sw ?? null),
+    onSessionIdle: (sessionId, sw, order) => tabs.markTmuxIdle(sessionId, sw ?? null, order ?? null),
     // 活会话的容器 · 某台机器的活会话清单报完了（说不清 → 已结束）。
     onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container),
     onOriginSessionsListed: (origin, all) => {

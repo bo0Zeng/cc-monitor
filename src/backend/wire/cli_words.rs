@@ -9,7 +9,7 @@ pub const STREAM_FLAG_EXPLICIT: &str = "--stream";
 
 /// **看的人那一台的时区**：`--tz <IANA 名>`（任意位置；流模式与一次性 CLI 面同一个旗标）与帧面请求信封的 `tz` 同名同义：
 /// 回包与推送里「几点」「今天 / 昨天」按它写，不按这台后端的钟。缺 · 缺值 · 认不得 ⇒ UTC（不拒）。
-/// 常驻那条连接的 attach 行带同名一格 `tz`（`stream::inbound::views::attach_flags`）。
+/// 常驻那条连接的 attach 行带同名一格 `tz`（`cmd_wire::attach::AttachLine`）。
 pub const TZ_FLAG: &str = "--tz";
 
 /// **「只读一行 stdin」的入口**：跟在子命令后面（`--assets-catalog-merge --stdin-line`）。

@@ -12,12 +12,12 @@ data class RawPage(
     val rows: List<Any?>,
 )
 
-/** 续点：那台的记录文件 [path]（身份 [file]，`history-tail` 给的），已有最后一行之后的字节 [offset]，下一行的行号 [seq]。 */
+/** 续点：那台的记录文件 [path]，已有最后一行之后的字节 [offset]，下一行的行号 [seq]，那台给的记号 [mark]（`history-tail` 的 `held`，原样交回）。 */
 data class Anchor(
     val path: String,
     val offset: Long,
     val seq: Long,
-    val file: String,
+    val mark: String,
 )
 
 /** 一条会话上次读到的：几页记录 ＋ 续点（不知道接在哪 ⇒ `null`，下次从头读）。 */

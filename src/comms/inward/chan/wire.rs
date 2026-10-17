@@ -381,6 +381,10 @@ pub struct Offer {
     /// typed 命令的形状指纹 `(op, 指纹)`（`hello.shapes`）：跟本侧编进来的那一张（`cmd_wire::SHAPES`）比，对不上的 op 不发（[`Offer::shape_differs`]）。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     shapes: Vec<(String, String)>,
+    /// 帧种里形状跟本侧编进来的那一张（`cmd_wire::frame_shapes::FRAMES`）对不上的那几种（对端没交 ⇒ 全部）：这几种的帧不解、不交。
+    /// 只住本连接，不进拷贝（外部前端不读帧门）。
+    #[serde(skip)]
+    frames_differ: Vec<String>,
 }
 
 /// 本地撤单之后，对端那一半怎样了（本地照撤；对端不认要说出来）。
@@ -401,7 +405,38 @@ impl Offer {
             ops,
             unavailable,
             shapes: Vec::new(),
+            frames_differ: Vec::new(),
         }
+    }
+
+    /// 对端那一帧 hello 交的全部能力事实：接哪些命令 · 做不到的 · 命令与帧两张形状表（帧那一张当场跟本侧比出对不上的那几种）。
+    pub fn of(hello: &cmd_wire::frame::Hello) -> Self {
+        let mut o = Self::new(hello.commands.clone(), facts(&hello.unavailable)).with_shapes(
+            hello
+                .shapes
+                .iter()
+                .map(|(op, h)| (op.clone(), h.clone()))
+                .collect(),
+        );
+        o.frames_differ = cmd_wire::frame_shapes::FRAMES
+            .iter()
+            .filter(|(kind, mine)| hello.frames.get(*kind).map(String::as_str) != Some(*mine))
+            .map(|(kind, _)| kind.to_string())
+            .collect();
+        o
+    }
+
+    /// 这种帧形状对不上（对端那一张里它的指纹跟本侧不同 / 没有），或本侧根本不认这种 ⇒ 不解、不交。`hello` 不过这道门。
+    pub fn frame_differs(&self, kind: &str) -> bool {
+        self.frames_differ.iter().any(|k| k == kind)
+            || !cmd_wire::frame_shapes::FRAMES
+                .iter()
+                .any(|(k, _)| *k == kind)
+    }
+
+    /// 握手那一刻就知道对不上的那几种帧（按 kind 排）。
+    pub fn frames_differ(&self) -> &[String] {
+        &self.frames_differ
     }
 
     /// 带上对端握手时交的形状指纹（`hello.shapes`）。
@@ -453,40 +488,19 @@ impl Offer {
         }
     }
 
-    /// hello 里 `shapes`（`{op: 指纹}`）那一格。缺 / 不是对象 ⇒ 空（旧后端：typed 命令一律当形状对不上）；值不是串的那一项丢掉。
-    pub fn shapes_of(obj: &serde_json::Map<String, serde_json::Value>) -> Vec<(String, String)> {
-        obj.get("shapes")
-            .and_then(|v| v.as_object())
-            .map(|m| {
-                m.iter()
-                    .filter_map(|(op, h)| Some((op.clone(), h.as_str()?.to_string())))
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
-
-    /// JSON 对象里 `unavailable`（`[{command, code}]`）那一格 —— hello 与 `resync` 应答同形，读法只此一份。
-    /// 缺格 ⇒ 空（没把握）；坏项逐项丢，不丢整份。
-    pub fn facts_of(obj: &serde_json::Map<String, serde_json::Value>) -> Vec<(String, String)> {
-        obj.get("unavailable")
-            .and_then(|c| c.as_array())
-            .into_iter()
-            .flatten()
-            .filter_map(|x| {
-                let o = x.as_object()?;
-                Some((
-                    o.get("command")?.as_str()?.to_string(),
-                    o.get("code")?.as_str()?.to_string(),
-                ))
-            })
-            .collect()
-    }
-
     /// 「重新对齐」时那台交回的**当下**能力事实换掉握手那一刻的（例：握手后才装上 tmux）。
     /// 接哪些 op 不变（还是同一个二进制、同一条连接）。
-    pub fn refresh_facts(&mut self, unavailable: Vec<(String, String)>) {
-        self.unavailable = unavailable;
+    pub fn refresh_facts(&mut self, unavailable: &[cmd_wire::frame::Unavailable]) {
+        self.unavailable = facts(unavailable);
     }
+}
+
+/// `unavailable` 那一格（hello 与 `resync` 应答同形）⇒ `(命令, 码)`。
+fn facts(unavailable: &[cmd_wire::frame::Unavailable]) -> Vec<(String, String)> {
+    unavailable
+        .iter()
+        .map(|u| (u.command.clone(), u.code.clone()))
+        .collect()
 }
 
 // ════════════════════════════════════════════════════════════════════════════

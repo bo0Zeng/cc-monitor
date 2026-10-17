@@ -662,6 +662,7 @@ dependencies = [
 name = "deploy"
 version = "0.1.0"
 dependencies = [
+ "cmd-wire",
  "copy-core",
  "deploy-contract",
  "relay-route-core",
@@ -676,6 +677,7 @@ dependencies = [
 name = "deploy-contract"
 version = "0.1.0"
 dependencies = [
+ "cmd-wire",
  "copy-core",
  "shell-quote-core",
 ]
@@ -1979,6 +1981,7 @@ version = "0.1.0"
 name = "resident-client"
 version = "0.1.0"
 dependencies = [
+ "cmd-wire",
  "comms-inward",
  "copy-core",
  "relay-route-core",
@@ -2547,6 +2550,7 @@ dependencies = [
 name = "ssh-dial"
 version = "0.1.0"
 dependencies = [
+ "cmd-wire",
  "copy-core",
  "flate2",
  "guard-core",

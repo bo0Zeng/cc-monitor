@@ -212,49 +212,54 @@ pub(crate) fn who(origin: &Origin) -> String {
     }
 }
 
-/// `history-tail` 那张图（字段同后端 `history_query::TailPlan`）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TailPlan {
-    pub total: u64,
-    pub tail_from: u64,
-    pub split_at: u64,
-    pub end: u64,
+/// `history-tail` 的一问（[`tail`]）：那张图 · 怎么接 · `rows` 第一行的行号 · 第一页 · 读到头之后要存的那一份。
+#[derive(Debug)]
+pub(crate) struct Tail {
+    pub plan: cmd_wire::session::TailPlan,
+    pub how: cmd_wire::session::TailHow,
+    pub from: u64,
+    pub page: Page,
+    pub held: cmd_wire::session::Held,
 }
 
-/// 问尾段在哪（一问；期限由发起方给，值是 [`PAGE_BUDGET`]）。
+/// 问尾段在哪、手上那一份续不续得上，连第一页正文一起拿回来（一问；期限由发起方给，值是 [`PAGE_BUDGET`]）。
 pub(crate) async fn tail(
     origin: &Origin,
     path: &str,
     n: u64,
+    held: Option<&cmd_wire::session::Held>,
     deadline: Deadline,
-) -> Result<TailPlan, String> {
+) -> Result<Tail, String> {
     let data = call(
         origin,
         "history-tail",
-        json!({"path": path, "n": n}),
-        None,
+        json!({"path": path, "n": n, "held": held}),
+        Some(folded_view()),
         deadline,
     )
     .await?;
     let who = who(origin);
-    let num = |k: &str| {
-        data.get(k)
-            .and_then(Value::as_u64)
-            .ok_or_else(|| copy_core::reply_unreadable(&who))
-    };
-    let plan = TailPlan {
-        total: num("total")?,
-        tail_from: num("tail_from")?,
-        split_at: num("split_at")?,
-        end: num("end")?,
-    };
-    if plan.tail_from > plan.total || plan.split_at > plan.end {
+    let reply: cmd_wire::session::HistoryTail =
+        serde_json::from_value(data).map_err(|_| copy_core::reply_unreadable(&who))?;
+    let plan = reply.plan;
+    if plan.tail_from > plan.total || plan.split_at > plan.end || reply.from > plan.total {
         return Err(copy_text(
             "rsFrameQuery.reply.inconsistent",
             &[("who", &who), ("plan", &format!("{:?}", plan))],
         ));
     }
-    Ok(plan)
+    let rows = rows_of(reply.rows).ok_or_else(|| copy_core::reply_unreadable(&who))?;
+    Ok(Tail {
+        plan,
+        how: reply.how,
+        from: reply.from,
+        page: Page {
+            rows,
+            next: reply.next,
+            eof: reply.eof,
+        },
+        held: reply.held,
+    })
 }
 
 /// `history-read` 那一页里的一个可计行（后端出的成品：monitor 不解析记录，只搬）。
@@ -262,8 +267,6 @@ pub(crate) async fn tail(
 pub(crate) struct Row {
     /// 这一行（含 `\n`）之后那个字节的偏移（后端按原始字节算，说得准）；残尾 ⇒ `None`。
     pub end: Option<u64>,
-    /// 这一行正文的摘要（后端算，跨进程稳定）—— 续传前核「还是不是那一行」。
-    pub hash: u64,
     /// 这一行在渲染模型里的样子；`None` ＝ 不进界面（照占号）。
     pub record: Option<crate::ui_contract::RecordBody>,
     /// 这条记录自己的 `cwd`。
@@ -271,6 +274,7 @@ pub(crate) struct Row {
 }
 
 /// `history-read` 的一页。
+#[derive(Debug)]
 pub(crate) struct Page {
     /// 这一页里的可计行（次序同文件）。
     pub rows: Vec<Row>,
@@ -280,27 +284,24 @@ pub(crate) struct Page {
     pub eof: bool,
 }
 
-/// 一行成品的形状（后端 `observe/record_page.rs::rows_of`）；不对 ⇒ `None`（整页当形状对不上）。
-pub(crate) fn row_of(v: &Value) -> Option<Row> {
-    let end = match v.get("end")? {
-        Value::Null => None,
-        e => Some(e.as_u64()?),
-    };
-    let record = match v.get("record") {
-        None => None,
-        Some(m) if m.is_object() => Some(crate::ui_contract::RecordBody::from_json(m.to_string())?),
-        Some(_) => return None,
-    };
-    let cwd = match v.get("cwd") {
-        None => None,
-        Some(c) => Some(c.as_str()?.to_string()),
-    };
-    Some(Row {
-        end,
-        hash: v.get("hash")?.as_u64()?,
-        record,
-        cwd,
-    })
+/// 一页的逐行成品（后端 `observe/record_page.rs::rows_of`）⇒ 搬运的那一形；有一行的记录不是一团 ⇒ `None`（整页当形状对不上）。
+pub(crate) fn rows_of(rows: Vec<cmd_wire::record::ReadRow>) -> Option<Vec<Row>> {
+    rows.into_iter()
+        .map(|r| {
+            let record = match r.record {
+                None => None,
+                Some(m) if m.is_object() => {
+                    Some(crate::ui_contract::RecordBody::from_json(m.to_string())?)
+                }
+                Some(_) => return None,
+            };
+            Some(Row {
+                end: r.end,
+                record,
+                cwd: r.cwd,
+            })
+        })
+        .collect()
 }
 
 /// 「折起那一行」那份声明（省掉工具入参 · 结果正文 · 逐段改动）：只住 `src/shared/views/folded-record.json` 一处，
@@ -330,13 +331,11 @@ pub(crate) async fn read_page(
     }
     let data = call(origin, "history-read", args, Some(folded_view()), deadline).await?;
     let who = who(origin);
-    let rows = data
-        .get("rows")
-        .and_then(Value::as_array)
-        .and_then(|rs| rs.iter().map(row_of).collect::<Option<Vec<Row>>>());
-    let next = data.get("next").and_then(Value::as_u64);
-    let eof = data.get("eof").and_then(Value::as_bool);
-    let (Some(rows), Some(next), Some(eof)) = (rows, next, eof) else {
+    let page: Option<(Vec<Row>, u64, bool)> =
+        serde_json::from_value::<cmd_wire::record::HistoryRead>(data)
+            .ok()
+            .and_then(|p| Some((rows_of(p.rows)?, p.next, p.eof)));
+    let Some((rows, next, eof)) = page else {
         return Err(copy_core::reply_unreadable(&who));
     };
     if !eof && next <= offset {

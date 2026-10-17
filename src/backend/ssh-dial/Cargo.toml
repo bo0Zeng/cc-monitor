@@ -13,6 +13,8 @@ path = "lib.rs"
 
 [dependencies]
 copy-core = { path = "../../common/copy-core" }
+# 没拨成的原因码（`Why`）：接这台的宿主按它定那一态与修法，类型两头同一份。
+cmd-wire = { path = "../../common/cmd-wire" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt", "macros", "io-util", "net", "sync", "time"] }

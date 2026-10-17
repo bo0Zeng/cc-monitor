@@ -115,3 +115,55 @@ fn the_kind_need_not_come_first() {
         Frame::Cancelled(_)
     ));
 }
+
+/// 帧表就是类型说的：每种帧结构现算指纹，跟 `frame_shapes.rs` 比；不一样 ⇒ 重写那份、红（提交新的那一份）。
+/// 表里的 kind 与金样里出现的 kind（后端序列化器写的，异源）两向相等。
+#[test]
+fn the_frames_table_is_what_the_types_say() {
+    let mut rows: Vec<(&str, String)> = gated_tys()
+        .iter()
+        .map(|(k, ty)| (*k, crate::fingerprint::of_ty(ty)))
+        .collect();
+    rows.sort();
+    let table: std::collections::BTreeSet<String> =
+        rows.iter().map(|(k, _)| k.to_string()).collect();
+    let mut seen: std::collections::BTreeSet<String> = lines()
+        .iter()
+        .map(|(_, l)| {
+            serde_json::from_str::<serde_json::Value>(l).unwrap()["kind"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        })
+        .collect();
+    assert!(seen.remove("hello"), "金样里没有 hello —— 本条在空转");
+    assert_eq!(table, seen, "帧表的 kind 与金样里的 kind 对不上");
+    let body: String = rows
+        .iter()
+        .map(|(k, h)| format!("    (\"{k}\", \"{h}\"),\n"))
+        .collect();
+    let want = format!(
+        "//! 每种帧（`hello` 除外）的形状指纹：那种帧结构的 TS 声明连同它引到的每个类型，FNV-1a 32 位，8 位十六进制（[`crate::fingerprint`]）。\n\
+//! 🔴 由判据 `frame::tests::the_frames_table_is_what_the_types_say` 从类型现算写出（不一致就重写这份并红）：别手改。\n\
+\n\
+/// `(kind, 形状指纹)`，按 kind 排。\n\
+pub const FRAMES: &[(&str, &str)] = &[\n{body}];\n"
+    );
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/frame_shapes.rs");
+    let got = std::fs::read_to_string(&path).unwrap_or_default();
+    if got != want {
+        std::fs::write(&path, &want).unwrap();
+        panic!(
+            "`src/common/cmd-wire/src/frame_shapes.rs` 跟类型对不上，已按类型重写：提交新的那一份"
+        );
+    }
+}
+
+/// 记录那一格不进 `line` 的指纹：换一种记录读法（原文 · 认不出那一条）指纹不变。
+#[test]
+fn the_line_fingerprint_does_not_cover_the_record() {
+    let line = crate::fingerprint::of_ty(&crate::fingerprint::ty_of::<Line<OpaqueRecord>>());
+    let with_record = crate::fingerprint::of_ty(&crate::fingerprint::ty_of::<Line<Record>>());
+    assert_ne!(line, with_record, "正控：带记录算出来该不一样");
+    assert!(crate::frame_shapes::FRAMES.contains(&("line", line.as_str())));
+}

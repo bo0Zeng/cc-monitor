@@ -142,12 +142,34 @@ pub(crate) fn records_in(v: &serde_json::Value) -> Option<u64> {
     Some(n)
 }
 
-/// 一台的状态码（与机器列表同一份成品，按 serde 的名字写进文本）。
-fn state_word(m: &crate::machine_state::MachineState) -> String {
-    serde_json::to_value(m.state)
+/// 一个码按 serde 的名字写进文本（状态 · 原因码与机器列表同一份成品）。
+fn wire_word(v: impl serde::Serialize) -> Option<String> {
+    serde_json::to_value(v)
         .ok()
         .and_then(|v| v.as_str().map(str::to_string))
-        .unwrap_or_default()
+}
+
+/// 远端各台此刻的成品（本机后端 `machine-read`）；问不到 ⇒ 空表（那几台照「说不出」写）。
+async fn remote_machines() -> std::collections::BTreeMap<String, cmd_wire::machine::MachineState> {
+    const CMD: &str = "machine-read";
+    let Some(c) = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN) else {
+        return Default::default();
+    };
+    match c
+        .call(
+            CMD,
+            serde_json::json!({}),
+            std::time::Duration::from_secs(5),
+        )
+        .await
+    {
+        Ok(Some(v)) => serde_json::from_value(v["machines"].clone()).unwrap_or_default(),
+        Ok(None) => Default::default(),
+        Err(e) => {
+            tracing::warn!("[diag] 问不到远端各台的状态：{e:?}");
+            Default::default()
+        }
+    }
 }
 
 /// 日志页「复制诊断信息」：整段文本 ＋ 那一行用的数。`config_unknown` 是界面那份键表认不出的顶层键；
@@ -168,14 +190,20 @@ pub async fn diagnostics_report(
             origins.push((label.clone(), label));
         }
         let mine = crate::byte_table::my_backend_id();
+        let remote = remote_machines().await;
         let machines: Vec<MachineLine> = origins
             .into_iter()
             .map(|(origin, name)| {
-                let m = crate::backend_control::machine_now(&origin);
-                let build = if origin == local {
-                    mine.map(str::to_string)
+                let (m, build) = if origin == local {
+                    (
+                        Some(crate::local_backend_host::local_machine_now()),
+                        mine.map(str::to_string),
+                    )
                 } else {
-                    crate::machine_state::build_of(&origin)
+                    (
+                        remote.get(&origin).cloned(),
+                        crate::stream_source::theirs_of(&origin),
+                    )
                 };
                 let records = drift
                     .iter()
@@ -184,17 +212,20 @@ pub async fn diagnostics_report(
                     .and_then(records_in);
                 MachineLine {
                     name,
-                    os: m.os.clone(),
-                    state: state_word(&m),
-                    reason: m.reason.clone(),
-                    version: m.version.clone(),
+                    os: m.as_ref().and_then(|m| m.os.clone()),
+                    state: m
+                        .as_ref()
+                        .and_then(|m| wire_word(m.state))
+                        .unwrap_or_default(),
+                    reason: m.as_ref().and_then(|m| m.reason).and_then(wire_word),
+                    version: m.as_ref().and_then(|m| m.version.clone()),
                     build,
                     records,
                 }
             })
             .collect();
         Ok(render(
-            crate::machine_state::PRODUCT_VERSION,
+            crate::PRODUCT_VERSION,
             mine,
             &machines,
             &config_unknown,

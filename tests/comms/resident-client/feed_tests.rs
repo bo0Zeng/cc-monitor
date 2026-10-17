@@ -1,4 +1,5 @@
-//! 一台的常驻流（两端同一条循环）：直接接 · 不在就 ensure 再接 · 那台旧：装不了的照接并说要更新、装得了的换一次再接 ·
+//! 一台的常驻流（两端同一条循环）：直接接 · 不在就 ensure 再接 · 那台旧（回话说旧 · 认不得新一形 attach 行）：装不了的照接 / 断着并说要更新、装得了的换一次再接 ·
+//! 那台新不点名「更新」· 开出链路到通着一个来回 ·
 //! 发完 hello 就死退避照样涨 · 问答等它接上 · 新连接整份重报在看名单 · 没装：装不了的要人动手、装得了的自己再试 ·
 //! 不是 Unix 两端都等人 · ［重新连接］在拨的时候按也算数、接上那一刻作废 · 断线重连续上之后数格。全部虚拟时钟。
 use super::*;
@@ -23,31 +24,42 @@ async fn ask(
 
 const MINE: &str = "p10g-mine";
 
-/// 那台握手那一行：交它认的命令与那几条的形状指纹（跟本侧编进来的同一份）。
-/// `p0a-ancient` 比版本门那一问还早（不认 `resident-verdict`）；`p9b-reshaped` 认它、可那一条的形状与本侧对不上（比形状改过之前的那一版）。
+/// 那台握手那一行：交它认的命令与那几条的形状指纹 ＋ 帧表（跟本侧编进来的同一份）。
+/// [`ANCIENT`] 比 attach 行带 `mine` 那一形还早（见了就拒）；[`SKEWED`] 的 `session_status` 帧形状不同；[`HEAD_ONLY`] 的 hello 只解得出头。
 fn hello(build: &str) -> String {
-    let cmds: &[&str] = if build == "p0a-ancient" {
-        &["ping", "cancel", "stream-watch"]
-    } else {
-        &["ping", "cancel", "stream-watch", "resident-verdict"]
-    };
+    if build == HEAD_ONLY {
+        return format!(r#"{{"kind":"hello","build_id":"{build}"}}"#);
+    }
+    let cmds: &[&str] = &["ping", "cancel", "stream-watch"];
     let shapes: serde_json::Map<String, serde_json::Value> = cmds
         .iter()
         .filter_map(|c| {
-            let fp = if build == "p9b-reshaped" && *c == crate::gate::VERDICT_CMD {
-                "00000000"
-            } else {
-                cmd_wire::shapes::shape_of(c)?
-            };
+            let fp = cmd_wire::shapes::shape_of(c)?;
             Some((c.to_string(), serde_json::Value::String(fp.into())))
         })
         .collect();
+    let frames: serde_json::Map<String, serde_json::Value> = cmd_wire::frame_shapes::FRAMES
+        .iter()
+        .map(|(k, h)| {
+            let h = if build == SKEWED && *k == "session_status" {
+                "00000000"
+            } else {
+                h
+            };
+            (k.to_string(), serde_json::Value::String(h.into()))
+        })
+        .collect();
     format!(
-        r#"{{"kind":"hello","v":1,"build_id":"{build}","host_arch":"x86_64","claude_dir":"/c","commands":{cmds},"shapes":{shapes}}}"#,
+        r#"{{"kind":"hello","build_id":"{build}","host_arch":"x86_64","commands":{cmds},"shapes":{shapes},"frames":{frames}}}"#,
         cmds = serde_json::to_string(cmds).unwrap(),
         shapes = serde_json::Value::Object(shapes),
+        frames = serde_json::Value::Object(frames),
     )
 }
+
+const SKEWED: &str = "p10h-skewed";
+const ANCIENT: &str = "p0a-ancient";
+const HEAD_ONLY: &str = "p10h-head-only";
 
 /// 对端那一台怎么回一条 `--resident-attach`。
 #[derive(Clone)]
@@ -62,6 +74,10 @@ enum Peer {
     Mute { build: String },
     /// 慢链路：开链路那一步隔 `gaps`（秒）报一步进展（拨号核心那几行 `progress`），报完照 `then` 回。
     Slow { gaps: Vec<u64>, then: Box<Peer> },
+    /// 链路通了、每个方向的字节各晚 `lag` 到（握手成，之后照答）。
+    Laggy { build: String, lag: Duration },
+    /// 拨号核心说没拨成（那一句 ＋ 原因码 ＋ 那台出示的指纹）。
+    Refused(Problem),
 }
 
 #[derive(Default)]
@@ -70,7 +86,8 @@ struct Fake {
     ensures: Mutex<VecDeque<Exec>>,
     attach_at: Mutex<Vec<tokio::time::Instant>>,
     ensured: AtomicUsize,
-    verdicts: AtomicUsize,
+    /// 那台收到的 attach 行（原样）。
+    attach_lines: Mutex<Vec<String>>,
     watches: Mutex<Vec<serde_json::Value>>,
     /// 一次性 exec 的那几条命令（看换装那一条发没发）。
     captured: Mutex<Vec<String>>,
@@ -84,6 +101,8 @@ struct Fake {
     drop_link: tokio::sync::Notify,
     /// 那台收到的 `ping`（问活）条数。
     pings: AtomicUsize,
+    /// 置位 ⇒ 应答缺 `ok` 那一格（两端契约对不上）。
+    reply_without_ok: std::sync::atomic::AtomicBool,
 }
 
 struct T(Arc<Fake>);
@@ -118,7 +137,13 @@ impl Transport for T {
             if matches!(peer, Peer::Hang) {
                 return std::future::pending().await;
             }
-            let (mine, theirs) = tokio::io::duplex(64 * 1024);
+            if let Peer::Refused(p) = peer {
+                return Err(p);
+            }
+            let (mine, theirs) = match &peer {
+                Peer::Laggy { lag, .. } => laggy(*lag),
+                _ => tokio::io::duplex(64 * 1024),
+            };
             tokio::spawn(serve(peer, theirs, Arc::clone(&f)));
             Ok(mine)
         })
@@ -202,8 +227,10 @@ async fn serve(peer: Peer, s: tokio::io::DuplexStream, f: Arc<Fake>) {
             return;
         }
         Peer::Up { build, die_now } => (build, die_now),
-        Peer::Mute { build } => (build, false),
-        Peer::Hang | Peer::Slow { .. } => unreachable!("没人回话 / 还在拨的那一拨开不出链路"),
+        Peer::Mute { build } | Peer::Laggy { build, .. } => (build, false),
+        Peer::Hang | Peer::Slow { .. } | Peer::Refused(_) => {
+            unreachable!("没人回话 / 还在拨 / 拨号拒了的那一拨开不出链路")
+        }
     };
     let _ = r
         .get_mut()
@@ -213,13 +240,47 @@ async fn serve(peer: Peer, s: tokio::io::DuplexStream, f: Arc<Fake>) {
     if r.read_line(&mut line).await.unwrap_or(0) == 0 {
         return;
     }
-    let _ = r.get_mut().write_all(b"{\"attach\":\"ok\"}\n").await;
+    f.attach_lines
+        .lock()
+        .unwrap()
+        .push(line.trim_end().to_string());
+    // 新旧照后端同一个函数算；比带 `mine` 那一形还早的那台认不得这一格 ⇒ 拒（同它当年的 `attach_flags`）。
+    let attach: serde_json::Value = serde_json::from_str(&line).unwrap();
+    let reply = match attach["mine"].as_str() {
+        Some(_) if build == ANCIENT => {
+            let _ = r
+                .get_mut()
+                .write_all(b"{\"attach\":\"refused\",\"reason\":\"malformed-attach\"}\n")
+                .await;
+            return;
+        }
+        Some(mine) => serde_json::json!({
+            "attach": "ok",
+            "relation": deploy_contract::build_relation(&build, mine),
+        }),
+        None => serde_json::json!({"attach": "ok"}),
+    };
+    let _ = r.get_mut().write_all(format!("{reply}\n").as_bytes()).await;
     if die_now {
         return;
     }
     let _ = r
         .get_mut()
         .write_all(b"{\"kind\":\"sessions_replayed\"}\n")
+        .await;
+    // 帧门那两条：会话状态 ＋ 一行（别的替身只发上面那一帧）。
+    let gated = build == SKEWED || build == HEAD_ONLY;
+    let _ = r
+        .get_mut()
+        .write_all(if !gated { &b""[..] } else {
+            concat!(
+                r#"{"kind":"session_status","sid":"s","activity":"idle","said":"闲着","tone":"neutral","activity_order":2,"name":"n"}"#,
+                "\n",
+                r#"{"kind":"line","session_id":"s","path":"/p","seq":0,"byte_offset":3}"#,
+                "\n"
+            )
+            .as_bytes()
+        })
         .await;
     loop {
         line.clear();
@@ -240,18 +301,16 @@ async fn serve(peer: Peer, s: tokio::io::DuplexStream, f: Arc<Fake>) {
         if v["cmd"] == "stream-watch" {
             f.watches.lock().unwrap().push(v["args"].clone());
         }
-        // 后端判新旧（这台替身：`p9…` 比手上这一版旧，别的不旧）。
-        let data = if v["cmd"] == "resident-verdict" {
-            f.verdicts.fetch_add(1, Ordering::SeqCst);
-            let older = v["args"]["theirs"].as_str().unwrap_or("").starts_with("p9");
-            serde_json::json!({"action": if older { "replace" } else { "attach" }, "older": older})
-        } else if v["cmd"] == "stream-watch" {
+        let data = if v["cmd"] == "stream-watch" {
             let from = f.froms.lock().unwrap().pop_front();
             serde_json::json!({"from": from.unwrap_or_else(|| serde_json::json!([]))})
         } else {
             serde_json::json!({"from":[]})
         };
-        let reply = serde_json::json!({"kind":"reply","id":v["id"],"ok":true,"data":data});
+        let mut reply = serde_json::json!({"kind":"reply","id":v["id"],"ok":true,"data":data});
+        if f.reply_without_ok.load(Ordering::SeqCst) {
+            reply.as_object_mut().unwrap().remove("ok");
+        }
         let _ = r.get_mut().write_all(format!("{reply}\n").as_bytes()).await;
     }
 }
@@ -312,7 +371,10 @@ async fn a_running_resident_is_attached_with_one_exec() {
         feed.state(),
         State::Up {
             epoch: 1,
-            notice: None
+            relation: Relation::Same,
+            differs: vec![],
+            notice: None,
+            fix: None,
         }
     );
     assert_eq!(
@@ -350,86 +412,188 @@ async fn a_resident_that_is_not_running_is_ensured_then_attached() {
     assert_eq!(f.ensured.load(Ordering::SeqCst), 1);
 }
 
+/// 新旧是那台在 attach 回话里给的（attach 行带手上这一版）：装不了后端的（手机）那台旧 ⇒ 照接、说要更新、点名「更新」；
+/// 那台新 ⇒ 照接、说较新、不点名「更新」（该更新的是这一侧）；同一版 ⇒ 不说。不另问一趟。
 #[tokio::test(start_paused = true)]
-async fn an_older_backend_is_used_and_said_to_need_an_update() {
-    let f = Arc::new(Fake::default());
-    f.attaches.lock().unwrap().push_back(upp("p9a-old"));
-    let (feed, _) = start(&f);
-    until("接上、说了要更新", || {
-        matches!(
-            feed.state(),
-            State::Up {
-                notice: Some(_),
-                ..
-            }
-        )
-    })
-    .await;
-    match feed.state() {
-        State::Up {
-            notice: Some(p), ..
-        } => {
-            assert_eq!(p.text, copy_core::backend_old("box"));
-            assert!(p.detail.contains("p9a-old"), "{}", p.detail);
+async fn the_relation_comes_back_in_the_attach_reply_and_only_an_older_one_asks_for_an_update() {
+    for (theirs, relation, text, fix) in [
+        (
+            "p9a-old",
+            Relation::Older,
+            Some(copy_core::backend_old("box")),
+            Some(Fix::Update),
+        ),
+        (
+            "p11a-next",
+            Relation::Newer,
+            Some(copy_core::backend_newer("box")),
+            None,
+        ),
+        (MINE, Relation::Same, None, None),
+    ] {
+        let f = Arc::new(Fake::default());
+        f.attaches.lock().unwrap().push_back(upp(theirs));
+        let (feed, _) = start(&f);
+        until("流接上了", || up(&feed)).await;
+        let State::Up {
+            relation: r,
+            notice,
+            fix: x,
+            ..
+        } = feed.state()
+        else {
+            unreachable!()
+        };
+        assert_eq!(
+            (r, notice.as_ref().map(|p| p.text.clone()), x),
+            (relation, text, fix),
+            "{theirs}"
+        );
+        if let Some(p) = notice {
+            assert!(p.detail.contains(theirs), "{}", p.detail);
         }
-        other => panic!("那台旧了照接、带一句要更新：{other:?}"),
+        assert_eq!(
+            *f.attach_lines.lock().unwrap(),
+            [format!(
+                r#"{{"attach":true,"tz":"Asia/Shanghai","mine":"{MINE}"}}"#
+            )],
+            "attach 行带手上这一版"
+        );
+        assert!(
+            ask(&feed, "ping", Duration::from_secs(5)).await.is_ok(),
+            "{theirs}：照用对得上的那几条"
+        );
     }
-    assert!(
-        ask(&feed, "ping", Duration::from_secs(5)).await.is_ok(),
-        "旧的照用对得上的那几条"
+}
+
+/// 手上没带这一版的身份 ⇒ attach 行不带 `mine`、新旧记不可比（不看回话）。
+#[tokio::test(start_paused = true)]
+async fn without_its_own_build_the_relation_is_incomparable() {
+    let f = Arc::new(Fake::default());
+    f.attaches.lock().unwrap().push_back(upp(MINE));
+    let seen: Seen = Arc::default();
+    let s = Arc::clone(&seen);
+    let feed = Feed::start(
+        Config {
+            mine: None,
+            ..cfg()
+        },
+        None,
+        sink(move |e| s.lock().unwrap().push(e)),
     );
-    // 那台不认这一问 ⇒ 比这一问还早 ⇒ 当旧。
+    feed.set_transport(Some(Arc::new(T(Arc::clone(&f)))));
+    until("流接上了", || up(&feed)).await;
+    assert!(matches!(
+        feed.state(),
+        State::Up {
+            relation: Relation::Incomparable,
+            fix: None,
+            ..
+        }
+    ));
+    assert_eq!(
+        *f.attach_lines.lock().unwrap(),
+        [r#"{"attach":true,"tz":"Asia/Shanghai"}"#]
+    );
+}
+
+/// 那台认不得带 `mine` 的 attach 行（比这一形早）⇒ 当旧：手机接不上、断着、点名「更新」，不自己反复试。
+#[tokio::test(start_paused = true)]
+async fn a_backend_that_refuses_the_new_attach_line_is_old() {
     let f = Arc::new(Fake::default());
-    f.attaches.lock().unwrap().push_back(upp("p0a-ancient"));
+    f.attaches.lock().unwrap().push_back(upp(ANCIENT));
     let (feed, _) = start(&f);
-    until("不认 resident-verdict ⇒ 当旧", || {
+    until("断在要人动手的那一步", || {
         matches!(
             feed.state(),
-            State::Up {
-                notice: Some(_),
-                ..
-            }
-        )
-    })
-    .await;
-    // 那台认这一问、可这一问的形状与本侧对不上（版本门这一条改过形之前的那一版）⇒ 问不成 ⇒ 当旧、照实说要更新（一问都不发）。
-    let f = Arc::new(Fake::default());
-    f.attaches.lock().unwrap().push_back(upp("p9b-reshaped"));
-    let (feed, _) = start(&f);
-    until("版本门那一问形状对不上 ⇒ 当旧", || {
-        matches!(
-            feed.state(),
-            State::Up {
-                notice: Some(_),
+            State::Down {
+                needs_hand: true,
                 ..
             }
         )
     })
     .await;
     match feed.state() {
-        State::Up {
-            notice: Some(p), ..
-        } => assert_eq!(p.text, copy_core::backend_old("box")),
-        other => panic!("形状对不上的那台照接、带一句要更新：{other:?}"),
+        State::Down { problem, fix, .. } => {
+            assert_eq!(fix, Some(Fix::Update));
+            assert_eq!(problem.text, copy_core::backend_old("box"));
+        }
+        other => panic!("{other:?}"),
     }
     assert_eq!(
-        f.verdicts.load(Ordering::SeqCst),
+        f.ensured.load(Ordering::SeqCst),
         0,
-        "形状对不上的那一问不该发出去"
+        "旧的不是没起来：不 ensure"
     );
-    for newer in ["p11a-next", MINE] {
+}
+
+/// 往返数：每个方向的字节各晚 1 s 到（暂停时钟），从开出链路到 `Up` 恰一个来回 —— attach 行不等 hello 就发；
+/// 桌面也一样（不另问本机后端）。
+#[tokio::test(start_paused = true)]
+async fn from_link_open_to_up_takes_one_round_trip() {
+    for desk in [false, true] {
+        let lag = Duration::from_secs(1);
         let f = Arc::new(Fake::default());
-        f.attaches.lock().unwrap().push_back(upp(newer));
-        let (feed, _) = start(&f);
-        until("接上、问过新旧", || {
-            up(&feed) && f.verdicts.load(Ordering::SeqCst) == 1
-        })
-        .await;
-        tokio::task::yield_now().await;
-        assert!(
-            matches!(feed.state(), State::Up { notice: None, .. }),
-            "{newer}：同或新 ⇒ 接、不说"
+        f.attaches.lock().unwrap().push_back(Peer::Laggy {
+            build: MINE.into(),
+            lag,
+        });
+        let up_at: Arc<Mutex<Option<tokio::time::Instant>>> = Arc::default();
+        let u = Arc::clone(&up_at);
+        let events = sink(move |e| {
+            if let Event::State(State::Up { .. }) = e {
+                u.lock().unwrap().get_or_insert(tokio::time::Instant::now());
+            }
+        });
+        if desk {
+            Feed::start(cfg(), Some(Arc::new(D(Arc::clone(&f)))), events);
+        } else {
+            Feed::start(cfg(), Some(Arc::new(T(Arc::clone(&f)))), events);
+        }
+        until("流接上了", || up_at.lock().unwrap().is_some()).await;
+        let opened = f.attach_at.lock().unwrap()[0];
+        assert_eq!(
+            up_at.lock().unwrap().unwrap() - opened,
+            2 * lag,
+            "桌面 {desk}：开出链路到通着该是一个来回"
         );
+    }
+}
+
+/// 每个方向各晚 `lag` 的一对双工流（客户端那头 · 替身后端那头）：一边读进来的每一块，`lag` 之后才在另一边读得到，先后不变；一边关了另一边读到头。
+fn laggy(lag: Duration) -> (tokio::io::DuplexStream, tokio::io::DuplexStream) {
+    let (client, a) = tokio::io::duplex(64 * 1024);
+    let (b, server) = tokio::io::duplex(64 * 1024);
+    let (ar, aw) = tokio::io::split(a);
+    let (br, bw) = tokio::io::split(b);
+    tokio::spawn(lag_pipe(ar, bw, lag));
+    tokio::spawn(lag_pipe(br, aw, lag));
+    (client, server)
+}
+
+async fn lag_pipe<R, W>(mut r: R, mut w: W, lag: Duration)
+where
+    R: tokio::io::AsyncRead + Unpin + Send + 'static,
+    W: tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    use tokio::io::AsyncReadExt;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(tokio::time::Instant, Vec<u8>)>();
+    tokio::spawn(async move {
+        while let Some((at, bytes)) = rx.recv().await {
+            tokio::time::sleep_until(at).await;
+            if w.write_all(&bytes).await.is_err() {
+                return;
+            }
+        }
+    });
+    let mut buf = [0u8; 4096];
+    loop {
+        match r.read(&mut buf).await {
+            Ok(0) | Err(_) => return,
+            Ok(n) => {
+                let _ = tx.send((tokio::time::Instant::now() + lag, buf[..n].to_vec()));
+            }
+        }
     }
 }
 
@@ -556,44 +720,49 @@ async fn every_new_link_gets_the_whole_watch_list_again() {
     assert!(matches!(feed.state(), State::Up { epoch: 2, .. }));
 }
 
-/// 每一轮自己装后端的宿主（桌面那一形）：接上的不是这一版 ⇒ `--resident-ensure --replace` 一次；那台换了 ⇒ 再接；换上的是这一版 ⇒ 不说。
-/// 每一轮开拨之前那一步先跑；接上先交 hello 与客户端，再交 `Up`。
+/// 每一轮自己装后端的宿主（桌面那一形）：接上的不是这一版（回话说旧 · 认不得新一形 attach 行）⇒ `--resident-ensure --replace` 一次；
+/// 那台换了 ⇒ 再接；换上的是这一版 ⇒ 不说。每一轮开拨之前那一步先跑；接上先交 hello 与客户端，再交 `Up`；桌面从不点名「更新」（自己装）。
 #[tokio::test(start_paused = true)]
 async fn a_host_that_installs_replaces_an_older_backend_once_then_attaches() {
-    let f = Arc::new(Fake::default());
-    f.ensures.lock().unwrap().push_back(swapped(true));
-    {
-        let mut a = f.attaches.lock().unwrap();
-        a.push_back(upp("p9a-old"));
-        a.push_back(upp(MINE)); // 换上的这一版
-    }
-    let (feed, seen) = start_desk(&f);
-    until("换过之后接上", || up(&feed)).await;
-    assert_eq!(
-        *f.captured.lock().unwrap(),
-        vec![backend_command(ENSURE_REPLACE)],
-        "旧了 ⇒ 恰好换一次（常驻在跑，不必先 ensure）"
-    );
-    assert_eq!(
-        feed.state(),
-        State::Up {
-            epoch: 1,
-            notice: None
+    for old in ["p9a-old", ANCIENT] {
+        let f = Arc::new(Fake::default());
+        f.ensures.lock().unwrap().push_back(swapped(true));
+        {
+            let mut a = f.attaches.lock().unwrap();
+            a.push_back(upp(old));
+            a.push_back(upp(MINE)); // 换上的这一版
         }
-    );
-    assert_eq!(f.rounds.load(Ordering::SeqCst), 1, "开拨之前那一步跑一回");
-    let seen = seen.lock().unwrap();
-    let at = seen
-        .iter()
-        .position(|e| matches!(e, Event::Attached { hello, .. } if hello.contains(MINE)))
-        .expect("接上要交 hello 与客户端");
-    let up_at = seen
-        .iter()
-        .position(|e| matches!(e, Event::State(State::Up { .. })))
-        .unwrap();
-    assert!(at < up_at, "hello 先于 Up：{seen:?}");
+        let (feed, seen) = start_desk(&f);
+        until("换过之后接上", || up(&feed)).await;
+        assert_eq!(
+            *f.captured.lock().unwrap(),
+            vec![backend_command(ENSURE_REPLACE)],
+            "{old}：旧了 ⇒ 恰好换一次（常驻在跑，不必先 ensure）"
+        );
+        assert_eq!(
+            feed.state(),
+            State::Up {
+                epoch: 1,
+                relation: Relation::Same,
+                differs: vec![],
+                notice: None,
+                fix: None,
+            }
+        );
+        assert_eq!(f.rounds.load(Ordering::SeqCst), 1, "开拨之前那一步跑一回");
+        let seen = seen.lock().unwrap();
+        let at = seen
+            .iter()
+            .position(|e| matches!(e, Event::Attached { hello, .. } if hello.contains(MINE)))
+            .expect("接上要交 hello 与客户端");
+        let up_at = seen
+            .iter()
+            .position(|e| matches!(e, Event::State(State::Up { .. })))
+            .unwrap();
+        assert!(at < up_at, "hello 先于 Up：{seen:?}");
+    }
 
-    // 换过还旧（落点上那份也旧）⇒ 照接、版本门说要更新，不再换第二次。
+    // 换过还旧（落点上那份也旧）⇒ 照接、说要更新，不再换第二次，不点名「更新」。
     let f = Arc::new(Fake::default());
     f.ensures.lock().unwrap().push_back(swapped(true));
     {
@@ -615,7 +784,10 @@ async fn a_host_that_installs_replaces_an_older_backend_once_then_attaches() {
     assert_eq!(f.captured.lock().unwrap().len(), 1, "只换一次");
     match feed.state() {
         State::Up {
-            notice: Some(p), ..
+            notice: Some(p),
+            relation: Relation::Older,
+            fix: None,
+            ..
         } => assert!(p.detail.contains("p9b-still-old"), "{}", p.detail),
         other => panic!("换过还旧 ⇒ 接上、带那一句：{other:?}"),
     }
@@ -703,6 +875,32 @@ async fn a_remote_that_is_not_unix_waits_for_a_hand() {
     f.ensures.lock().unwrap().push_back(unsupported());
     let (feed, _) = start_desk(&f);
     waits(&feed, &f).await;
+}
+
+/// 拨号拒了：原因码与那台出示的指纹随断开那一句走到 `Down`（宿主按它定那一态与修法）；交给手机的 JSON 里不出这两格。
+#[tokio::test(start_paused = true)]
+async fn a_refused_dial_carries_its_reason_and_the_seen_key_into_down() {
+    let f = Arc::new(Fake::default());
+    let refused = Problem::new("密钥被拒", "命令：dial").because(
+        Some(cmd_wire::machine::Why::Auth),
+        Some("SHA256:seen".into()),
+    );
+    f.attaches.lock().unwrap().push_back(Peer::Refused(refused));
+    let (feed, _) = start(&f);
+    until("断开", || matches!(feed.state(), State::Down { .. })).await;
+    let state = feed.state();
+    let State::Down { problem, .. } = &state else {
+        unreachable!()
+    };
+    assert_eq!(
+        (problem.why, problem.seen_key.as_deref()),
+        (Some(cmd_wire::machine::Why::Auth), Some("SHA256:seen"))
+    );
+    assert_eq!(
+        serde_json::to_value(&state).unwrap()["problem"],
+        serde_json::json!({"text": "密钥被拒", "detail": "命令：dial"}),
+        "交出去的那一份多了格"
+    );
 }
 
 /// ［重新连接］在拨的时候按也算数：这一轮没成就不睡；接上那一刻之前按的作废（下一次断线照样按退避等）。
@@ -1240,4 +1438,79 @@ async fn replacing_the_resident_runs_ensure_replace_then_reconnects() {
         copy_core::copy_text("front.body.offline", &[("machine", "box")])
     );
     assert_eq!(none.theirs(), None);
+}
+
+fn frames_seen(seen: &Seen) -> Vec<String> {
+    seen.lock()
+        .unwrap()
+        .iter()
+        .filter_map(|e| match e {
+            Event::Frame(l) => Some(cmd_wire::frame::kind_of(l).unwrap()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// 那台有一种帧形状不同：握手那一刻就点名（`differs` ＋ 那一句），那一种的行一条不交，别的照交。
+#[tokio::test(start_paused = true)]
+async fn a_frame_kind_whose_shape_differs_is_named_at_hello_and_never_handed_over() {
+    let f = Arc::new(Fake::default());
+    f.attaches.lock().unwrap().push_back(upp(SKEWED));
+    let (feed, seen) = start(&f);
+    until("流接上了", || up(&feed)).await;
+    match feed.state() {
+        State::Up {
+            differs,
+            notice: Some(p),
+            ..
+        } => {
+            assert_eq!(differs, ["session_status"]);
+            // 那台（p10h）比这一版（p10g）新：那一句说较新，对不上的帧种进详情。
+            assert_eq!(p.text, copy_core::backend_newer("box"));
+            assert!(p.detail.contains("session_status"), "{}", p.detail);
+        }
+        other => panic!("形状不同的那一种要在接上那一刻点名：{other:?}"),
+    }
+    until("line 照交", || {
+        frames_seen(&seen).iter().any(|k| k == "line")
+    })
+    .await;
+    assert_eq!(frames_seen(&seen), ["sessions_replayed", "line"]);
+}
+
+/// hello 只解得出头：照接（认得出是我们的后端），帧种全部当对不上、一帧不交，一条命令不发。
+#[tokio::test(start_paused = true)]
+async fn a_hello_whose_body_does_not_parse_attaches_and_hands_over_nothing() {
+    let f = Arc::new(Fake::default());
+    f.attaches.lock().unwrap().push_back(upp(HEAD_ONLY));
+    let (feed, seen) = start(&f);
+    until("流接上了", || up(&feed)).await;
+    let State::Up {
+        differs, notice, ..
+    } = feed.state()
+    else {
+        unreachable!()
+    };
+    assert_eq!(differs.len(), cmd_wire::frame_shapes::FRAMES.len());
+    assert!(notice.is_some());
+    // 那台照发了三行；读完它们（再等一会儿）也一行不交。
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    assert!(frames_seen(&seen).is_empty(), "{:?}", frames_seen(&seen));
+    assert_eq!(f.ensured.load(Ordering::SeqCst), 0);
+}
+
+/// 应答解不开（缺 `ok`）：当一条失败交回请求方，码是「认不出」、原文进详情。
+#[tokio::test(start_paused = true)]
+async fn an_answer_that_does_not_parse_comes_back_as_unreadable() {
+    let f = Arc::new(Fake::default());
+    f.attaches.lock().unwrap().push_back(upp(MINE));
+    f.reply_without_ok.store(true, Ordering::SeqCst);
+    let (feed, _seen) = start(&f);
+    match ask(&feed, "ping", Duration::from_secs(5)).await {
+        Err(CallError::Remote { code, detail, .. }) => {
+            assert_eq!(code, "unreadable");
+            assert!(detail.contains("\"reply\""), "{detail}");
+        }
+        other => panic!("缺 `ok` 的应答该交回「认不出」：{other:?}"),
+    }
 }

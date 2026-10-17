@@ -226,26 +226,7 @@ mod tests {
     /// 是本判据把它逼出来的 —— 两张表的作用域确实不一样。
     ///
     /// 两条纪律同 `FROZEN_COMPAT`：① 每条必须有非空解锁条件；② 条数有天花板且只许降。
-    const AGENT_NAMED_WIRE_FIELDS: &[(&str, &str, &str, &str)] = &[
-        (
-            "wire/mod.rs",
-            "claude_dir",
-            "`Hello` 帧里今天**真在线上**的目录字段。`S4` 走 additive 迁移（新字段 `homes` \
-             承载 agent 维度），这个字段原地冻结 ⇒ 线上字节零变化。",
-            "monitor 与手机端 **都**改读 `homes` 之后删掉它。monitor 那半 `S4` 已做完，\
-             只剩手机端。删的那天本条同轮摘登记（下面的幽灵检查会逼着摘）。",
-        ),
-        // `control/resolve_query.rs` 那一行（`ResumeSpec.claudeDir`）摘了：10-11 手写的 `--resolve` 臂删了、契约解冻（解锁条件满足），
-        //   那一格从没用过，随 `fallbackCwd` · `alreadyInTmux` 一起删了。
-        (
-            "main.rs",
-            "claude_dir",
-            "上面那个 `Hello.claude_dir` 的**构造点**（`claude_dir: agent_home.to_string_lossy()…`）——\
-             左边是冻结的字段名、右边已经是 `S4b` 改过的 `agent_home`。\
-             ⚠ 这一行左右刻意不一致，**不是笔误**：字段名归契约，变量名归架构。",
-            "随 `wire.rs` 那条一起走：字段删了，这一行自然没了。",
-        ),
-    ];
+    const AGENT_NAMED_WIRE_FIELDS: &[(&str, &str, &str, &str)] = &[];
 
     /// **适配层注册表**住哪几个文件（`文件`, 为什么它不该被压到零）。
     ///

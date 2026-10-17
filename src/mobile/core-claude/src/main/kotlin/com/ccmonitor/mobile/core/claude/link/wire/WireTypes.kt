@@ -156,14 +156,41 @@ data class Killed(
     val killed: Boolean,
 )
 
-@WireOf("TailPlan")
+@WireOf("HistoryTail")
 @JsonClass(generateAdapter = true)
-data class TailPlan(
+data class HistoryTailReply(
     val end: Long,
     @Json(name = "split_at") val splitAt: Long,
-    @Json(name = "tail_from") val tailFrom: Long,
     val total: Long,
-    val file: String,
+    val how: TailHow,
+    val held: Held,
+)
+
+@JsonClass(generateAdapter = false)
+enum class TailHow {
+    @Json(name = "tail")
+    TAIL,
+
+    @Json(name = "resume")
+    RESUME,
+
+    @Json(name = "handoff")
+    HANDOFF,
+
+    @Json(name = "truncated")
+    TRUNCATED,
+
+    @Json(name = "rewritten")
+    REWRITTEN,
+}
+
+@WireOf("Held")
+@JsonClass(generateAdapter = true)
+data class Held(
+    val path: String,
+    val next: Long,
+    @Json(name = "next_byte") val nextByte: Long,
+    val mark: String,
 )
 
 @JsonClass(generateAdapter = false)

@@ -1,7 +1,7 @@
 //! **装 / 升级远端后端的判定与编排**：桌面与手机同一份。
 //!
 //! 照桌面五步走：① 出计划（[`plan`]）· ② 取字节 ＋ 自检 · ③ 放进暂存区 ＋ 读回（`ssh_dial::sftp::put_verified`）→ 那一份自己换进落点（`--place-self`）· ④ 判读回 ＋ 收拾残件 ·
-//! ⑤ 起常驻 / 换旧的（远端 ccm 自己的 `--resident-ensure [--replace]`，[`resident_verdict`] 判换不换）。
+//! ⑤ 起常驻 / 换旧的（远端 ccm 自己的 `--resident-ensure [--replace]`；新旧由那台常驻后端回 attach 行时判）。
 //!
 //! 两端都调 [`install`]（①–④ 一趟，字节是宿主交来的一份文件，每一步那一句是 [`Step::said`]、结局那一句是 [`Plan::said`]）；⑤ 由宿主跑 `--resident-ensure --replace`
 //! （那一步那一句也是 [`Step::said`]）。卸载是 [`uninstall`]：同样只写暂存区，由传上去的那一份删落点那一份。
@@ -19,13 +19,14 @@ use std::pin::Pin;
 
 use copy_core::copy_text;
 use deploy_contract::{
-    build_relation, Arch, BuildRelation, DeployAction, Key, Marks, Os, Refusal, RemoteIdentity,
-    Route, LINES,
+    build_relation, Arch, DeployAction, Key, Marks, Os, Refusal, Relation, RemoteIdentity, Route,
+    LINES,
 };
 use serde_json::Value;
 use ssh_dial::{Captured, DialRequest};
 
 mod install;
+pub mod machine;
 pub use install::{install, uninstall, Load, Place, Removed, Slot, Step, STAGED_STEM};
 
 /// 身份戳的两个界标（住契约 crate）。
@@ -173,7 +174,7 @@ pub fn identity_decision(
             &[],
         ))),
         RemoteIdentity::Stamp(s) if s == expected => Ok(DeployAction::Skip),
-        RemoteIdentity::Stamp(s) if build_relation(s, expected) == BuildRelation::Older => {
+        RemoteIdentity::Stamp(s) if build_relation(s, expected) == Relation::Older => {
             Ok(DeployAction::Deploy(copy_text(
                 "rsSftp.identity.other",
                 &[("s", &s.to_string()), ("expected", &expected.to_string())],
@@ -436,24 +437,6 @@ impl Facing for DialFacing {
             let s = self.session().await.ok()?;
             ssh_dial::sftp::list_dir(s, rel).await
         })
-    }
-}
-
-// ═══ 远端常驻后端 hello 的新旧 ═══════════════════════════
-
-/// hello 那一问的答：`replace` = 换掉再接（只升不降，且只换一次）；`older` = 那台比手上这一版旧（版本那句话按它挑）。
-#[derive(Debug, PartialEq, Eq)]
-pub struct Verdict {
-    pub replace: bool,
-    pub older: bool,
-}
-
-/// **纯函数**：`mine` = 手上这一版自报的身份 · `theirs` = 那台 hello 报的 · `replaced` = 这一趟已经换过一次。
-pub fn resident_verdict(mine: &str, theirs: &str, replaced: bool) -> Verdict {
-    let older = build_relation(theirs, mine) == BuildRelation::Older;
-    Verdict {
-        replace: older && !replaced,
-        older,
     }
 }
 

@@ -178,18 +178,19 @@ pub(crate) fn hello_verdict(
     want_build: Option<&str>,
     want_env: &[(String, String)],
 ) -> HelloVerdict {
-    let Ok(frame) = crate::stream_source::parse_frame(line) else {
+    if cmd_wire::frame::kind_of(line).is_err() {
         return HelloVerdict::Stranger(copy_text(
             "rsLocalBackendHost.hello.notBackendLine",
             &[("bytes", &(line.len()).to_string())],
         ));
-    };
-    let crate::stream_source::InboundFrame::Hello { build_id, .. } = &frame else {
+    }
+    let Some(cmd_wire::frame::HelloHead { build_id, .. }) = cmd_wire::frame::HelloHead::of(line)
+    else {
         return HelloVerdict::Stranger(
             copy_text("rsLocalBackendHost.hello.notBackend", &[]).into(),
         );
     };
-    if let Some(ours) = want_build.filter(|w| build_id != w) {
+    if let Some(ours) = want_build.filter(|w| build_id != *w) {
         return HelloVerdict::Stranger(copy_text(
             "rsLocalBackendHost.hello.buildMismatch",
             &[
@@ -331,16 +332,16 @@ fn probe_listen_socket(sock_path: &std::path::Path, want_env: &[(String, String)
     let mine = crate::byte_table::my_backend_id();
     match hello_verdict(&line, mine, want_env) {
         HelloVerdict::Ours => {
-            crate::machine_state::note_local_foreign(None);
+            note_local_foreign(None);
             Probe::Ours(sock, line)
         }
         HelloVerdict::Stranger(why) => {
             // 在听的是另一份构建（终端里先起的那一份）⇒ 本机那一台的状态成品按两边构建的序说。
-            if let Ok(crate::stream_source::InboundFrame::Hello { build_id, .. }) =
-                crate::stream_source::parse_frame(&line)
+            if let Some(cmd_wire::frame::HelloHead { build_id, .. }) =
+                cmd_wire::frame::HelloHead::of(&line)
             {
                 if mine.is_some_and(|m| m != build_id) {
-                    crate::machine_state::note_local_foreign(Some(&build_id));
+                    note_local_foreign(Some(&build_id));
                 }
             }
             Probe::Stranger(Said::written(why))
@@ -391,7 +392,7 @@ fn read_handshake_line(mut sock: &own_chan::BlockingStream) -> Result<String, Sa
     }
 }
 
-// attach 行（「我要流」＋ 时区 ＋ 出口声明）住 `resident-client`（本机 · 远端 · 手机同一处拼）。
+// attach 行（「我要流」＋ 时区 ＋ 手上这一版）住 `resident-client`（本机 · 远端 · 手机同一处拼）；本机不带这一版（换装只认同一版，`hello_verdict`）。
 pub(crate) use resident_client::attach::attach_line;
 
 /// 交 attach 行，换一句「可以」。门在连上那一刻（套接字只给本人 ＋ 对端 uid），这一行只是「我要流」。
@@ -410,24 +411,13 @@ fn send_attach(sock: &own_chan::BlockingStream) -> Result<(), Said> {
             )
         })?;
     let line = read_handshake_line(sock)?;
-    let v: serde_json::Value = serde_json::from_str(line.trim()).map_err(|e| {
-        Said::with_raw(
-            copy_text("rsLocalBackendHost.attach.notJson", &[]),
-            format!("{e}\n{line}"),
-        )
-    })?;
-    match v.get("attach").and_then(|x| x.as_str()) {
-        Some("ok") => Ok(()),
+    match cmd_wire::attach::AttachReply::of(&line) {
+        Some(cmd_wire::attach::AttachReply::Ok { .. }) => Ok(()),
         // 对面**出声地**拒了 —— 把它的理由原样带上来，别翻译成一句更含糊的话。
-        Some("refused") => {
-            let reason = v.get("reason").and_then(|x| x.as_str()).unwrap_or("?");
-            Err(Said::of(
-                "rsLocalBackendHost.attach.refused",
-                &[("reason", &reason.to_string())],
-            )
-            .into())
+        Some(cmd_wire::attach::AttachReply::Refused { reason }) => {
+            Err(Said::of("rsLocalBackendHost.attach.refused", &[("reason", &reason)]).into())
         }
-        _ => Err(Said::of(
+        None => Err(Said::of(
             "rsLocalBackendHost.attach.unreadable",
             &[("line", &line.to_string())],
         )
@@ -717,11 +707,11 @@ fn outcome_of_status(status: std::process::ExitStatus) -> Option<crate::backend_
 /// 脱离那条路上「它跟我们说过话没有」这一维。
 ///
 /// ★ **它是从一个事实推出来的，不是一个孤零零的字面量**：入参就是那道门的产物。
-/// [`attach_stream`] 开头两行是 `parse_frame` + `BackendHello::from_hello_frame`，
+/// [`attach_stream`] 开头两行是 `stream_source::decode` + `inbound_client::witness_of`，
 /// 任一给不出东西就 `Err` 返回、**根本进不到流循环**，也就没有人调得到 [`reap_detached`]。
 /// ⇒ **拿得出一份 [`crate::inbound_client::BackendHello`] = 一帧合法 hello 已经到手**，
 /// 而那正是「它说过话」的定义。要这个参数是为了让这条推理**在类型上**成立：
-/// 没有见证就调不出这个函数（见证的构造入口只有 `from_hello_frame` 一个，
+/// 没有见证就调不出这个函数（见证的构造入口只有 `BackendHello::of` 一个，
 /// 由 `inbound_client` 那条「见证不许凭空造」的判据钉着）。
 ///
 /// ⚠ 前提哪天变了（有人让 `attach_stream` 不带 hello 也能进流循环），
@@ -801,13 +791,13 @@ fn shout_if_the_ledger_refused(rec: Option<crate::backend_policy::Recorded>) {
 /// # 它与 `local_backend::local_stdio_consumer` 是同一件事的两种载体
 ///
 /// 那一份吃 `ChildStdin`/`ChildStdout`，这一份吃一条套接字的两半。
-/// **复用的是纯零件**（`parse_frame` · `BackendHello::from_hello_frame` ·
+/// **复用的是纯零件**（`stream_source::decode` · `inbound_client::witness_of` ·
 /// `park_owned_writer` · `read_capped_line`），没有把一个绑传输的循环硬掰成泛型 ——
 /// 那是 `local_stdio_consumer` 头注自己给的分寸。
 fn attach_stream(sock: own_chan::BlockingStream, hello_line: &str) -> Result<(), Said> {
-    let frame = crate::stream_source::parse_frame(hello_line)
+    let frame = crate::stream_source::decode(hello_line)
         .map_err(|_| Said::of("rsLocalBackendHost.stream.badFirstLine", &[]))?;
-    let witness = crate::inbound_client::BackendHello::from_hello_frame(&frame)
+    let witness = crate::inbound_client::witness_of(&frame)
         .ok_or_else(|| Said::of("rsLocalBackendHost.stream.notHello", &[]))?;
     // ★ `K-P3b`：**「它说过话没有」这一维就在这一行变真的** —— 上面那道门给出见证的那一刻。
     //   下面把它一路带到收尸那一刻，而不是在那边写一个 `Handshake::Spoke` 字面量。
@@ -870,16 +860,20 @@ fn attach_stream(sock: own_chan::BlockingStream, hello_line: &str) -> Result<(),
                 }
                 continue;
             };
-            let Some(f) = unread.take(line, &mut tally, &crate::stream_source::local_health) else {
+            let Some(f) = unread.take(
+                line,
+                Some(&client),
+                &mut tally,
+                &crate::stream_source::local_health,
+            ) else {
                 continue;
             };
-            // 本机的 tmux 帧（`P3` 刀 1）·应答 · 链路帧 —— 与 stdio 那条载体**同一个吸收点**，
-            // 理由与前置条件写在 `local_backend::absorb_local_frame` 的头注上，这里不再抄一份散文。
-            // 交回来的内容帧送进本机内容通道 —— 这是 tokio 任务 ⇒ `.await` 那一形（满了就停读：级 1 回推）。
-            if let Some(f) = crate::local_backend::absorb_local_frame(
-                f,
-                Some(&client),
+            // 与 stdio 那条载体同一处分派；有序的那几种送进本机内容通道 —— 这是 tokio 任务 ⇒ `.await` 那一形（满了就停读：级 1 回推）。
+            if let Some(f) = crate::stream_source::route(
+                crate::stream_source::Via::Local,
                 &crate::origin::Origin::local(),
+                Some(&client),
+                f,
             ) {
                 crate::local_lines::deliver(f).await;
             }
@@ -1649,6 +1643,110 @@ pub fn stop_local_backend() -> Result<crate::remote_resident::StopAnswer, Said> 
 //   `src/common/guard-core/src/lib.rs` 的 `test_module_ranges`；校验位（那一行的原文）
 //   **只有一个家** —— 下面 [`tests::the_strip_rule_this_file_leans_on_is_still_on_disk`]
 //   里那个 `PIN`，它在盘上找不着就当场红。
+// ─── 本机那一台的状态成品 ───────────────────────────────────────────────────────
+// 远端各台的成品由本机后端定（`deploy::machine`）；本机后端没起来时没人能替它说话（起没起 · 口上占着谁是宿主的事实），
+// 本机那一行由这里照同一个类型、同一批文案键出。
+
+use cmd_wire::attach::Relation;
+use cmd_wire::machine::{FixButton, MachineFix, MachineState, MachineStateKind};
+
+/// 本机那个口上占着的、构建与这一版不同的后端（终端里先敲 `ccm` 起的旧 / 新那一份）：它的构建标识。
+/// 起本机后端那一趟探口时记（[`probe_listen_socket`]）；是我们这一版 / 没人 ⇒ 清掉。
+static LOCAL_FOREIGN: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// 本机那一行变了之后往外推一帧的出口（壳起来时装上：发 `machine-state` 事件）。没装 ⇒ 不推。
+type MachineOut = Box<dyn Fn(MachineState) + Send + Sync>;
+static MACHINE_OUT: std::sync::OnceLock<MachineOut> = std::sync::OnceLock::new();
+
+/// 装推送出口（只装一次）。
+pub(crate) fn install_machine_out(out: impl Fn(MachineState) + Send + Sync + 'static) {
+    if MACHINE_OUT.set(Box::new(out)).is_err() {
+        tracing::warn!("[machine] 本机那一行的推送出口装了第二次，沿用第一次那个");
+    }
+}
+
+/// 本机那一行可能变了（通道接上 / 断了 · 口上换了人）⇒ 推一帧。
+pub(crate) fn machine_changed() {
+    if let Some(out) = MACHINE_OUT.get() {
+        out(local_machine_now());
+    }
+}
+
+/// 记下（或清掉）本机口上那一份别的构建。
+fn note_local_foreign(build: Option<&str>) {
+    *LOCAL_FOREIGN.lock().unwrap_or_else(|e| e.into_inner()) = build.map(str::to_string);
+    machine_changed();
+}
+
+/// 本机那一行此刻的成品（通道在不在现看）。
+pub(crate) fn local_machine_now() -> MachineState {
+    let channel = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN).is_some();
+    local_product(channel, crate::byte_table::my_backend_id())
+}
+
+/// 本机那一台的成品：版本就是手上这一版（本机后端换装只认同一版，[`hello_verdict`]；没带后端字节 ⇒ 开发构建、不可比）；
+/// 通道在 ⇒ 连着；不在而口上占着别的构建 ⇒ 按两边构建的序说「要更新」/「较新」（解不出序 ⇒ 照没连上说）；
+/// 别的不在 ⇒ 没连上。没连上的修法只给［重试］。
+pub(crate) fn local_product(channel: bool, mine: Option<&str>) -> MachineState {
+    let foreign = LOCAL_FOREIGN
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    let relation = match (channel, mine, foreign.as_deref()) {
+        (true, Some(_), _) => Relation::Same,
+        (false, Some(m), Some(theirs)) => deploy_contract::build_relation(theirs, m),
+        (false, Some(_), None) => Relation::Same,
+        (_, None, _) => Relation::Incomparable,
+    };
+    let state = match (channel, relation) {
+        (true, _) => MachineStateKind::Up,
+        (false, Relation::Older) => MachineStateKind::NeedsUpdate,
+        (false, Relation::Newer) => MachineStateKind::Newer,
+        (false, _) => MachineStateKind::Down,
+    };
+    let name = copy_text("remote.cards.local", &[]);
+    let (word, said) = match state {
+        MachineStateKind::Up if relation == Relation::Incomparable => (
+            copy_text("machineState.word.incomparable", &[]),
+            String::new(),
+        ),
+        MachineStateKind::NeedsUpdate => (
+            copy_text("machineState.word.needsUpdate", &[]),
+            copy_text("machineState.problem.needsUpdate", &[("machine", &name)]),
+        ),
+        MachineStateKind::Newer => (
+            copy_text("machineState.word.newer", &[]),
+            copy_text("machineState.problem.newer", &[("machine", &name)]),
+        ),
+        MachineStateKind::Down => (
+            copy_text("machinePage.state.down", &[]),
+            copy_text("machineState.down.local", &[]),
+        ),
+        _ => (String::new(), String::new()),
+    };
+    let fixes = if channel {
+        Vec::new()
+    } else {
+        vec![FixButton {
+            fix: MachineFix::Retry,
+            label: copy_text("machineState.fix.retry", &[]),
+        }]
+    };
+    MachineState {
+        state,
+        reason: None,
+        stage: None,
+        version: (relation == Relation::Same).then(|| crate::PRODUCT_VERSION.to_string()),
+        version_relation: Some(relation),
+        os: None,
+        word,
+        said,
+        fixes,
+        seen_host_key: None,
+        detail: None,
+    }
+}
+
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/local_backend_host_tests.rs"]
 pub(crate) mod tests;

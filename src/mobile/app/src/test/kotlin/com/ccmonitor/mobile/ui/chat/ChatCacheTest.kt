@@ -160,7 +160,8 @@ class ChatCacheTest {
             val cache = MemCache().apply { seed(human("u1", "你好"), reply("a1", "在")) }
             val s = open(link, cache)
             runCurrent()
-            assertEquals(listOf(20L), link.calls("history-read").map { it!!["offset"] })
+            assertEquals("交回手上那一份、那台从续点那一行起回", 2L, link.calls("history-tail").single()!!.let { (it["held"] as Map<*, *>)["next"] })
+            assertTrue("第一页随 history-tail 来", link.calls("history-read").isEmpty())
             assertEquals(listOf("u1", "a1#0", "u2"), s.keys())
             assertEquals(Anchor("/p/s1.jsonl", 30, 3, "f1"), cache.anchors["s1"])
         }
@@ -174,13 +175,12 @@ class ChatCacheTest {
             val cache = MemCache().apply { seed(human("u1", "旧"), reply("a1", "旧"), human("u2", "旧"), reply("a2", "旧"), human("u3", "旧")) }
             val s = open(link, cache)
             runCurrent()
-            assertEquals("从尾段起点（0）读，不从续点 50 往后读", listOf(0L), link.calls("history-read").map { it!!["offset"] })
             assertEquals(listOf("n1", "n2#0"), s.keys())
             assertEquals(Anchor("/p/s1.jsonl", 20, 2, "f1"), cache.anchors["s1"])
         }
 
     @Test
-    fun `同一路径换了一份（身份对不上、长度够）⇒ 从头读最后一屏，不从旧续点往后读`() =
+    fun `同一路径换了一份（记号对不上、长度够）⇒ 从头读最后一屏，不从旧续点往后读`() =
         runTest {
             val link = FakeCoreLink()
             val file = FakeCoreLink.File(mutableListOf(human("n1", "新"), reply("n2", "新"), human("n3", "新")), id = "f2")
@@ -188,7 +188,6 @@ class ChatCacheTest {
             val cache = MemCache().apply { seed(human("u1", "旧"), reply("a1", "旧")) }
             val s = open(link, cache)
             runCurrent()
-            assertEquals("从尾段起点（0）读，不从续点 20 往后读", listOf(0L), link.calls("history-read").map { it!!["offset"] })
             assertEquals(listOf("n1", "n2#0", "n3"), s.keys())
             assertEquals(Anchor("/p/s1.jsonl", 30, 3, "f2"), cache.anchors["s1"])
         }
@@ -218,7 +217,7 @@ class ChatCacheTest {
             val link = FakeCoreLink()
             val file = FakeCoreLink.File(mutableListOf(human("u1", "你好")))
             var replied: Any? = null
-            link.answer = { cmd, args -> (file.answer(cmd, args) ?: Reply.LinkDown).also { if (cmd == "history-read") replied = (it as Reply.Ok).data } }
+            link.answer = { cmd, args -> (file.answer(cmd, args) ?: Reply.LinkDown).also { if (cmd == "history-tail") replied = (it as Reply.Ok).data } }
             link.report("s1", "/w")
             val cache = MemCache()
             open(link, cache)

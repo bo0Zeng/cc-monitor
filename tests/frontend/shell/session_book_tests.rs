@@ -4,11 +4,8 @@
 //! ② F5 重放计划：骨架在前、终局在后，有行却没成品的按「那台报完清单没有」分已结束 / 说不清。
 use super::*;
 
-fn meta(cwd: &str) -> LiveMeta {
-    LiveMeta {
-        cwd: Some(cwd.into()),
-        ..Default::default()
-    }
+fn meta(cwd: &str) -> cmd_wire::frame::SessionAdded {
+    crate::guard_support::session_added("x", serde_json::json!({ "cwd": cwd }))
 }
 
 fn live(o: &str, s: &str) -> In {
@@ -19,7 +16,7 @@ fn live(o: &str, s: &str) -> In {
     }
 }
 
-fn left(o: &str, s: &str, fate: Fate) -> In {
+fn left(o: &str, s: &str, fate: SessionFate) -> In {
     In::Left {
         origin: o.into(),
         sid: s.into(),
@@ -36,8 +33,8 @@ fn products_pass_through_in_order_and_only_a_lost_link_is_the_monitors_own_word(
         live("pi", "a"),
         live("pi", "b"),
         live("pi", "c"),
-        left("pi", "b", Fate::Reconnectable),
-        left("pi", "c", Fate::Ended),
+        left("pi", "b", SessionFate::Reconnectable),
+        left("pi", "c", SessionFate::Ended),
         In::Listed {
             origin: "pi".into(),
         },
@@ -55,7 +52,7 @@ fn products_pass_through_in_order_and_only_a_lost_link_is_the_monitors_own_word(
         .iter()
         .map(|o| match o {
             Out::Live { sid, .. } => format!("live {sid}"),
-            Out::Status { sid, .. } => format!("status {sid}"),
+            Out::Status { status, .. } => format!("status {}", status.sid),
             Out::Left { sid, fate, .. } => format!("left {sid} {fate:?}"),
             Out::Listed { origin, all } => {
                 format!("listed {origin}{}", if *all { " all" } else { "" })
@@ -86,8 +83,8 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
     let mut b = Book::default();
     for ev in [
         live("pi", "a"),
-        left("pi", "r", Fate::Reconnectable),
-        left("pi", "e", Fate::Ended),
+        left("pi", "r", SessionFate::Reconnectable),
+        left("pi", "e", SessionFate::Ended),
         In::Listed {
             origin: "pi".into(),
         },
@@ -118,7 +115,7 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
                     format!("listed {origin}{}", if *all { " all" } else { "" })
                 }
                 Out::Unseen { origin, sids } => format!("unseen {origin} {sids:?}"),
-                Out::Status { sid, .. } => format!("status {sid}"),
+                Out::Status { status, .. } => format!("status {}", status.sid),
                 Out::Runs { origin, sid, .. } => format!("runs {origin}/{sid}"),
                 Out::Branch { origin, sid, .. } => format!("branch {}/{sid}", origin.as_wire_str()),
             })
@@ -148,7 +145,7 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
 fn unseen_is_one_machine_level_cell_and_settle_again_follows_the_list() {
     let mut b = Book::default();
     b.step(live("pi", "a"));
-    b.step(left("pi", "r", Fate::Reconnectable));
+    b.step(left("pi", "r", SessionFate::Reconnectable));
     let lost = b.step(In::LinkLost {
         origin: "pi".into(),
     });
@@ -184,10 +181,10 @@ fn the_live_cell_carries_the_project_dir() {
     let with = Out::Live {
         origin: "pi".into(),
         sid: "a".into(),
-        meta: LiveMeta {
-            project_dir: Some("/a/proj".into()),
-            ..Default::default()
-        },
+        meta: crate::guard_support::session_added(
+            "a",
+            serde_json::json!({"project_dir": "/a/proj"}),
+        ),
     };
     let first = |o: &Out| serde_json::to_string(&o.frames()[0]).unwrap();
     assert_eq!(
@@ -202,14 +199,10 @@ fn the_live_cell_carries_the_hidden_cell_verbatim() {
     let o = Out::Live {
         origin: "pi".into(),
         sid: "a".into(),
-        meta: LiveMeta {
-            background: true,
-            hidden: Some(cmd_wire::session::Hidden {
-                by: cmd_wire::session::HiddenBy::Bg,
-                said: "后端那一句".into(),
-            }),
-            ..Default::default()
-        },
+        meta: crate::guard_support::session_added(
+            "a",
+            serde_json::json!({"background": true, "hidden": {"by": "bg", "said": "后端那一句"}}),
+        ),
     };
     assert_eq!(
         serde_json::to_string(&o.frames()[0]).unwrap(),
@@ -320,7 +313,7 @@ fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
         matches!(&got[..], [Out::Branch { off: o, .. }] if o.0.get() == r#"["y"]"#),
         "{got:?}"
     );
-    b.step(left("pi", "b", Fate::Ended));
+    b.step(left("pi", "b", SessionFate::Ended));
     // 同一个 sid 又活了（续接）：它离开前那份清单不算数，等那台再说。
     b.step(live("pi", "b"));
     let r = b.replay(&[]);

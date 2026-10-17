@@ -10,20 +10,17 @@
 
 ### `hello`
 
-Handshake sent once when a client connects。
+握手：连上之后那台发的第一帧。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `v` | number | 协议版本号 |
 | `build_id` | string | 这份后端二进制的身份（`BUILD_ID`）；换不换后端按它判 |
 | `host_arch` | string | 这台机器的架构（`x86_64` / `aarch64` …） |
-| `claude_dir` | string | ⚠ **冻结兼容字段，不是欠账** |
-| `homes` | [AgentHome]? | 本机上**各 agent 的 home 目录**（`[{agent_kind, path}]`） |
-| `emits` | [string]? | 本 backend **会发射的帧 kind 集**（snake_case） |
-| `commands` | [string]? | 本 backend **接受的入方向命令集** |
-| `unavailable` | [Unavailable]? | 本 backend **接得下、但在这台机器上做不到**的命令，以及原因（`[{command, code}]`，见 `Unavailable`） |
-| `host_env` | {string: string}? | **起我的宿主交给我的那几格环境，原样回显**（`{名: 值}`，名单住后端 `wire::HOST_ECHO_ENVS`） |
+| `commands` | [string]? | 这台后端接受的入方向命令；空 ⇒ 它不读命令 |
+| `unavailable` | [Unavailable]? | 接得下、但这台做不到的命令与原因（见 `Unavailable`）；空 ＝ 没有「做不到」的把握 |
+| `host_env` | {string: string}? | 起它的宿主交给它的那几格环境，原样回显（`{名: 值}`，名单住后端 `wire::HOST_ECHO_ENVS`） |
 | `shapes` | {string: string}? | typed 命令的形状指纹 `{命令: 8 位十六进制}`（`crate::shapes::SHAPES`） |
+| `frames` | {string: string}? | 每种帧（`hello` 除外）的形状指纹 `{kind: 8 位十六进制}`（`crate::frame_shapes::FRAMES`） |
 
 ### `line`
 
@@ -93,6 +90,7 @@ A new session file appeared。
 | `state_text` | Words | 那一种写好的短名 |
 | `state_hint` | Words | 悬停那一句 |
 | `state_tone` | Tone | 语气 |
+| `state_order` | number | 监控板组内的序（与活会话的 `activity_order` 同一把尺、排在它们之后；小的在前） |
 | `switch` | Switch | 此刻能不能换模型 · 权限档（离开「活」那一形） |
 
 ### `session_removed`
@@ -223,16 +221,6 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `ticket` | string | 测试连接那一趟的票（`remote-probe` 交来的） |
 | `cell` | JSON | 一格进度，恰好一个键：`stage` · `reached` · `end` |
 
-### `deploy`
-
-**装 / 升级远端后端那一趟走到哪一步**（`deploy-install` 在跑时才出现，只推给发起它的那条连接）。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `machine` | string | 那台的名字（发起时交的 `machine`） |
-| `step` | DeployStep |  |
-| `said` | string |  |
-
 ### `live_card`
 
 `live_card` 帧的体：哪个会话哪个运行的哪张卡、这条连接上它的第几帧、这一帧做什么。
@@ -289,13 +277,13 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 ## 2. 信封与帧里用到的类型
 
-#### `DeployStep`
+#### `HelloHead`
 
-`Deploy::step`：问那台 · 放字节（落点上原来没有 ⇒ 装；有 ⇒ 更新）。
+hello 的头：版本门第一步只解它（全形解不开时也认得出是不是我们的后端、是哪一版）。
 
-- `plan`
-- `install`
-- `update`
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `build_id` | string | 这份后端二进制的身份（`BUILD_ID`） |
 
 #### `SessionActivity`
 
@@ -379,15 +367,6 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `kind` | string | 帧种（与 `kind` tag 同一套 snake_case 名字） |
 | `subject` | string? | 主体：会话 sid / tmux 会话名 |
 
-#### `AgentHome`
-
-`hello.homes` 的一项 —— **某个 agent 在这台机器上的 home 目录**：agent 维度只在值里（`agent_kind`），不在字段名里。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `agent_kind` | string | 哪个 agent —— **值**，与 `session_added.agent_kind` 同一套取值空间 |
-| `path` | string | 该 agent 在这台机器上的 home 目录（绝对路径） |
-
 #### `Unavailable`
 
 `hello.unavailable` 的一项 —— **这条命令我接得下，但在这台机器上做不到，以及为什么**。
@@ -412,6 +391,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 - `login` —— 一份登录作业自己收了（`key` ＝ 作业号；`body` ＝ `{state: done \| failed, said?, detail?}`）
 - `manual` —— 这台会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了 · 某个号记「MCP 要登录」的那份文件翻了；重问 `manual-list`）
 - `machines` —— 这一端的机器表（`machines.json` 被改写；重问 `machines-read`）
+- `machine` —— 这一端连的某台远端此刻的状态（`key` ＝ 那台的名字；`body` ＝ 那台的成品 `MachineState`；丢了重问 `machine-read`）
 - `session_hidden` —— 这台某个活会话隐不隐藏变了（`key` ＝ sid；`body` ＝ `{hidden}`：那一格，不隐藏 ⇒ `null`）：注解 · 这台偏好 · 会话血缘动了之后判出来的
 
 #### `RereadWhy`
@@ -7043,23 +7023,85 @@ limit?: number | null, };
 
 #### `history-tail`
 
-一份会话的尾段从哪个字节起。
+一份会话的尾段：手上那一份怎么接，连第一页正文。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-tail`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 收 `view`（`rows[]` 是 `read_row`，`rows[].record` 是 `record`） · CLI：`ccm -- --history-tail`
 
-入参 `HistoryTailReq` · 回包 `TailPlan`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `HistoryTailReq` · 回包 `HistoryTail`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type HistoryTailReq = { 
+type Answer = { "kind": "approved" } | { "kind": "picked", options: Array<string>, };
+type ApiReason = "overloaded" | "quota" | "network" | "auth" | "context" | "unknown";
+type AskOption = { label: string, description?: string, };
+type AskQuestion = { 
 /**
- * jsonl 路径（围栏同 `history-read`）。
+ * 题前那一小格（原文）。没有 ⇒ 缺。
+ */
+header?: string, 
+/**
+ * 题目（原文）。
+ */
+question: string, 
+/**
+ * 可以选几项（`true` ＝ 多选）。
+ */
+multi: boolean, options: Array<AskOption>, };
+type Block = { "type": "text", text: string, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
+/**
+ * 对的是哪次工具调用。
+ */
+for: string, 
+/**
+ * 结果内容（正文 / 图片块；原文是一个字符串时已归成一个正文块）。
+ */
+content: Array<Block>, isError: boolean, } | { "type": "image", 
+/**
+ * 图片来源原样（形状照那一家的写法透传）。
+ */
+source: unknown, };
+type ChildRunTag = { label: string, kind?: string, };
+type Held = { 
+/**
+ * 那份记录的路径（换了路径 ⇒ 续不上）。
  */
 path: string, 
 /**
- * 要最新几行。
+ * 客户端缺的第一行的行号。
  */
-n: number, };
-type TailPlan = { 
+next: number, 
+/**
+ * 第 `next` 行从哪个字节起。
+ */
+next_byte: number, 
+/**
+ * 后端自己核的记号（那一刻文件最后一行的位置与摘要）：客户端只存、原样交回，不解。空串 ＝ 那一刻一行都没有。
+ */
+mark: string, };
+type HistoryTail = { 
+/**
+ * 怎么接。
+ */
+how: TailHow, 
+/**
+ * `rows` 第一行的行号（续传 ＝ 交来的 `held.next`；`handoff` ＝ `total`；其余 ＝ `tail_from`）。
+ */
+from: number, 
+/**
+ * 第一页里每个可计行一条（同 `history-read.rows[]`）。
+ */
+rows: Array<ReadRow>, 
+/**
+ * 下一页从这里起（同 `history-read.next`）。
+ */
+next: number, 
+/**
+ * 这一段读完了。
+ */
+eof: boolean, 
+/**
+ * 读到 `end` 之后存的那一份（下一次原样交回）。
+ */
+held: Held, 
 /**
  * 可计行总数（`line_counts` 口径）。
  */
@@ -7075,11 +7117,270 @@ split_at: number,
 /**
  * 最后一个完整行（`\n` 收尾）之后的字节位置；torn 残尾不在任何一段里。
  */
-end: number, 
+end: number, };
+type HistoryTailReq = { 
 /**
- * 这份文件的身份：第一个可计行的摘要（16 位十六进制）；一行都没有 ⇒ 空串。同一路径换了一份 ⇒ 变；只往后长 ⇒ 不变。
+ * jsonl 路径（围栏同 `history-read`）。
  */
-file: string, };
+path: string, 
+/**
+ * 要最新几行（也是「缺得比这还多就不读那一截」的那条线）。
+ */
+n: number, 
+/**
+ * 上一次回的那一份（缺 ⇒ 手上什么都没有）。
+ */
+held?: Held, };
+type LineRecord = { 
+/**
+ * 哪一家（注册表里那一家的 `kind`）。
+ */
+agent: string, 
+/**
+ * 这条记录在本会话里的身份：非空、会话内唯一（主线外清单、分叉、跳转都按它认）。
+ */
+id: string, 
+/**
+ * 记录时刻（ISO-8601 原样）；记录里没有 ⇒ 缺。
+ */
+at?: string, 
+/**
+ * `at` 在看的那一台钟上的钟面 `HH:MM`（出口那一下按请求 / 流带来的时区写，[`Record::stamp`]；界面照抄、不换算）；没有时刻 / 解不出 ⇒ 缺。
+ */
+timeText?: string, 
+/**
+ * `at` 的毫秒（自 1970；出口那一下随钟面一起写）：界面算「两条记录之间多久」只用这一格（交那一个读口），不自己解析 `at`；解不出 ⇒ 缺。
+ */
+atMs?: number, } & ({ "t": "said", 
+/**
+ * 谁说的、要显示的正文（判定只在适配层）。
+ */
+who: UserText, blocks: Array<Block>, 
+/**
+ * 这条里每个工具结果的一句（工具调用 id ⇒ [`StepResult`]）。没有 ⇒ 缺。
+ */
+results?: { [key in string]: StepResult }, 
+/**
+ * 这条记录自己的工作目录。
+ */
+cwd?: string, } | { "t": "reply", blocks: Array<Block>, 
+/**
+ * 型号名原样。
+ */
+model?: string, 
+/**
+ * 代理那一侧自动写的应答（不是模型说的，不建卡）。
+ */
+autoReply: boolean, 
+/**
+ * 工具调用 id ⇒ 卡型（普通工具卡不列）。
+ */
+cards?: { [key in string]: ToolCard }, 
+/**
+ * 工具调用 id ⇒ 一行人话。
+ */
+steps?: { [key in string]: ToolStep }, 
+/**
+ * 派出子运行的那几次工具调用 ⇒ 标签与类别。
+ */
+runs?: { [key in string]: ChildRunTag }, 
+/**
+ * 这条是上游最终失败写的报错（报错正文在 `blocks` 的正文里）。不是 ⇒ 缺。
+ */
+error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "queued", who: UserText, } | { "t": "unread", why: UnreadWhy, 
+/**
+ * 那一行自己说的类型原样（标签，出口不许按它取字）；没有 ⇒ `null`。
+ */
+type: string | null, 
+/**
+ * 写好的一句（[`unread_text`]）。
+ */
+text: string, 
+/**
+ * 恒 `warn`。
+ */
+tone: "warn", 
+/**
+ * 原文截到 [`EXCERPT_BYTES`]（按字符截，不截半个字）：给［复制详情］，出口照抄、不解析。
+ */
+excerpt: string, 
+/**
+ * 并了几条（适配层每行给 1）。
+ */
+count: number, });
+type Pasted = { id?: string, start: number, end: number, bodyStart: number, bodyEnd: number, 
+/**
+ * 正文的行数（两头的空行不算）。
+ */
+lines: number, };
+type PatchHunk = { 
+/**
+ * 改之前这段从第几行起（1 起）· 占几行；改之后同。
+ */
+oldStart: number, oldLines: number, newStart: number, newLines: number, lines: Array<string>, };
+type PlanTitle = { 
+/**
+ * 等着批。
+ */
+waiting: string, 
+/**
+ * 批了。
+ */
+approved: string, 
+/**
+ * 没批（接着规划）。
+ */
+kept: string, };
+type ReadRow = { 
+/**
+ * 这一行（含 `\n`）之后那个字节的偏移；没 `\n` 收尾的残尾 ⇒ `null`。
+ */
+end: number | null, 
+/**
+ * 这一行正文的摘要（[`line_hash`]；64 位，过 JSON 数会失精度，只拿来比相等）。
+ */
+hash: number, 
+/**
+ * 通用记录（缺 ＝ 不进界面，照占号）。出口的声明可能去过格（`faces/project.rs`），所以是原样的一团。
+ */
+record?: LineRecord, 
+/**
+ * 那一行记的工作目录（只在有记录时带）。
+ */
+cwd?: string, };
+type ReplyError = { reason: ApiReason, 
+/**
+ * HTTP 状态码（只有 HTTP 类错误有）。
+ */
+status?: number, };
+type ResultKind = "launched" | "handback";
+type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
+/**
+ * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ */
+body?: string, } | { "kind": "peerSession", from?: string, 
+/**
+ * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ */
+body?: string, } | { "kind": "coordinator", 
+/**
+ * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ */
+body?: string, } | { "kind": "agentTask" } | { "kind": "system", 
+/**
+ * 注入的原文（剥过两头空白）；这一家给不出 ⇒ 缺。只随记录成品给界面，不进日志。
+ */
+body?: string, } | { "kind": "compactSummary", 
+/**
+ * 摘要有多少字（写好的数，`copy_core::count_text`；界面拼进「摘要 {n} 字」）。
+ */
+charsText: string, } | { "kind": "interrupt" } | { "kind": "toolResult" };
+type StepAsk = { "kind": "questions", questions: Array<AskQuestion>, } | { "kind": "plan", text: string, title: PlanTitle, };
+type StepResult = { 
+/**
+ * 成功（`false` ＝ 失败或被拒）。
+ */
+ok: boolean, 
+/**
+ * 人没批准这一步（批准框里选了「不」/ 计划没批）。只在 `ok == false` 时可能为真。
+ */
+rejected?: boolean, 
+/**
+ * 读了几行（读文件）/ 输出几行（命令）/ 命中几行（搜索）。
+ */
+lines?: number, 
+/**
+ * 改动：加了几行 · 删了几行。
+ */
+added?: number, removed?: number, 
+/**
+ * 命中几个文件（搜索 / 列文件）。
+ */
+files?: number, 
+/**
+ * 提问 / 计划的结果（B7）：批准了 · 选了哪几项。没批准走 `rejected`。
+ */
+answer?: Answer, 
+/**
+ * 命令失败时的退出码（结果里写着才有）。
+ */
+exitCode?: number, 
+/**
+ * 这次改动说的是哪个文件（结果里写着的路径，原样）。只有改文件那几类结果有。
+ */
+file?: string, 
+/**
+ * 逐段的改动本身（[`PatchHunk`]）。新建整份文件 / 没有改动 ⇒ 缺。
+ */
+patch?: Array<PatchHunk>, 
+/**
+ * diff 太大、只给了前几段（`added` / `removed` 仍是整份的数）。
+ */
+patchTruncated?: boolean, 
+/**
+ * 过程那一行右侧那一句（[`StepResult::written`] 写）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
+ * 失败 · 未批准 · 提问 / 计划答了什么（已选「…」· 已批准）；都说不上 ⇒ 空串（出口写耗时）。
+ */
+text: string, 
+/**
+ * 同一句带耗时的那一形（耗时那一截留 `{dur}`，出口填两条记录之间的用时）：失败 · 都说不上的那一步才有；没有 ⇒ 缺（照 `text`）。
+ */
+timed?: string, 
+/**
+ * 结果的首行预览：第一条非空行、去掉两头空白、至多 60 字（按字符），截了以「…」收尾；界面不再截。结果是空的 ⇒ 缺。
+ */
+preview?: string, 
+/**
+ * 结果正文多少字（按字符，与预览同一份正文）：派出子运行那张卡写「交回结果 · N 字」读它（出口省掉正文之后照样有）。结果是空的 ⇒ 缺。
+ */
+chars?: number, 
+/**
+ * 派出子运行那次调用的结果是哪一种（[`ResultKind`]）：派出卡照它画（回执不画「交回结果」）。不是派出子运行的结果 ⇒ 缺。
+ */
+kind?: ResultKind, };
+type TailHow = "tail" | "resume" | "handoff" | "truncated" | "rewritten";
+type TitleBy = "agent" | "user";
+type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
+type ToolStep = { 
+/**
+ * 工具名（原样）。
+ */
+tool: string, 
+/**
+ * 主参数（命令 · 路径 · 搜索词 · 网址 · 任务说明）：一行（换行压成空格），至多 200 字（按字符），截了以「…」收尾；界面不再截。认不出主参数 ⇒ 缺。
+ */
+arg?: string, 
+/**
+ * 主参数是不是路径（界面「中间省略」与「打开文件」按它）。
+ */
+path?: boolean, 
+/**
+ * 说明（Bash 的 `description` 那一类）。
+ */
+note?: string, 
+/**
+ * 这一家认不认得这个工具（`false` ⇒ 界面画问号、给原文）。
+ */
+known: boolean, 
+/**
+ * 认不出的工具：结果到了之后右侧那一句（「未识别结果」）；认得的 ⇒ 缺（照结果那一句）。
+ */
+text?: string, 
+/**
+ * 提问 / 计划那几张卡要画的东西（从入参里读出来的，各家的格式知识）：界面只按这一格建卡，不认入参结构。
+ * 不是这两类、或入参形状不对 ⇒ 缺（界面画普通工具卡）。
+ */
+ask?: StepAsk, };
+type UnreadWhy = "unknownType" | "parseFailed";
+type UserText = { speaker: Speaker, 
+/**
+ * 要显示的正文（剥过注入、trim 过）：人说的话 · 压缩摘要 · 派给子 agent 的活；别的来源是空串。
+ */
+text: string, 
+/**
+ * `text` 里人粘贴进来的块（UTF-16 下标，含两头的标记）。
+ */
+pasted?: Array<Pasted>, };
 ```
 
 码：`bad_args` · `failed`
@@ -11301,7 +11602,7 @@ type UserPathState = "on" | "off" | "unknown" | "not_windows";
 
 给那台装 / 升级后端。
 
-收 `args` · 连接内就地做完 · 只在流上
+收 `args` · 可撤 · 只在流上
 
 入参 `DeployInstallReq` · 回包 `Installed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
@@ -11384,38 +11685,119 @@ path: string, };
 
 码：`bad_args` · `io_failed` · `refused` · `unreachable` · `undecidable` · `not_carried` · `fenced` · `place_failed`
 
-#### `resident-verdict`
+#### `machine-round`
 
-远端常驻后端要不要换一次。
+交那台接常驻这一轮的结论。
 
-收 `args` · 可撤 · CLI：`ccm -- --resident-verdict`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
 
-入参 `VerdictReq` · 回包 `VerdictReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `MachineRoundReq` · 回包 `MachineState`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type VerdictAction = "replace" | "attach";
-type VerdictReply = { 
+type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "other";
+type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
+type MachineFixButton = { fix: MachineFix, label: string, };
+type MachineRound = { "state": "connecting" } | { "state": "up", relation: VersionRelation, differs: Array<string>, } | { "state": "down", problem: MachineRoundProblem, unsupported: boolean, };
+type MachineRoundProblem = { text: string, detail: string, why: DialWhy | null, seen_key: string | null, };
+type MachineRoundReq = { machine: string, round: MachineRound, version: string, };
+type MachineStage = "deploy" | "attach";
+type MachineState = { state: MachineStateKind, 
 /**
- * 换掉再接 · 接上它。
+ * 没连上的原因码（`down` · `host_key_changed` 才有）。
  */
-action: VerdictAction, 
+reason: DialWhy | null, 
 /**
- * 那台是不是比手上这一版旧（与 `replaced` 无关；版本提示那句话按它挑「会换掉」还是「不会换回去」）。
+ * 正在连时到哪一步。
  */
-older: boolean, };
-type VerdictReq = { 
+stage: MachineStage | null, 
 /**
- * monitor 手上这一版后端自报的身份（非空）。
+ * 那台 cc-monitor 的产品版本号：与这一版同一份字节时就是这一版的号；别的报不出 ⇒ 空。
  */
-mine: string, 
+version: string | null, 
 /**
- * 那台 hello 报的 `build_id`（缺 ⇒ 空串）。
+ * 与这一版的版本关系（握手过才有）。
  */
-theirs: string, 
+versionRelation: VersionRelation | null, 
 /**
- * 这一趟是不是已经换过一次。
+ * 那台的系统（部署问到过才有）。
  */
-replaced: boolean, };
+os: string | null, 
+/**
+ * 名字旁那个词（连着时空）。
+ */
+word: string, 
+/**
+ * 问题行那一句（空 ⇒ 不出问题行）。
+ */
+said: string, fixes: Array<MachineFixButton>, 
+/**
+ * 指纹不对时那台这一次出示的主机指纹（`host_key_changed` 才有）。
+ */
+seenHostKey: string | null, 
+/**
+ * 这一轮没连上 / 做不了时的复制详情（界面照原样跟在问题行那句后面）。
+ */
+detail: string | null, };
+type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
+type VersionRelation = "same" | "older" | "newer" | "incomparable";
+```
+
+码：`bad_args`
+
+#### `machine-read`
+
+机器表里每台此刻的状态。
+
+不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+
+入参 `NoArgs` · 回包 `MachineRead`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "other";
+type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
+type MachineFixButton = { fix: MachineFix, label: string, };
+type MachineRead = { machines: { [key in string]: MachineState }, };
+type MachineStage = "deploy" | "attach";
+type MachineState = { state: MachineStateKind, 
+/**
+ * 没连上的原因码（`down` · `host_key_changed` 才有）。
+ */
+reason: DialWhy | null, 
+/**
+ * 正在连时到哪一步。
+ */
+stage: MachineStage | null, 
+/**
+ * 那台 cc-monitor 的产品版本号：与这一版同一份字节时就是这一版的号；别的报不出 ⇒ 空。
+ */
+version: string | null, 
+/**
+ * 与这一版的版本关系（握手过才有）。
+ */
+versionRelation: VersionRelation | null, 
+/**
+ * 那台的系统（部署问到过才有）。
+ */
+os: string | null, 
+/**
+ * 名字旁那个词（连着时空）。
+ */
+word: string, 
+/**
+ * 问题行那一句（空 ⇒ 不出问题行）。
+ */
+said: string, fixes: Array<MachineFixButton>, 
+/**
+ * 指纹不对时那台这一次出示的主机指纹（`host_key_changed` 才有）。
+ */
+seenHostKey: string | null, 
+/**
+ * 这一轮没连上 / 做不了时的复制详情（界面照原样跟在问题行那句后面）。
+ */
+detail: string | null, };
+type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
+type NoArgs = Record<symbol, never>;
+type VersionRelation = "same" | "older" | "newer" | "incomparable";
 ```
 
 码：`bad_args`
@@ -12962,7 +13344,7 @@ needs: string | null, };
 | `--history-run` | ＝ 帧命令 `history-run`：一个子运行的记录 |
 | `--history-search` | ＝ 帧命令 `history-search`：全文搜索 |
 | `--history-search-merge` | ＝ 帧命令 `history-search-merge`：把各台的搜索结果合成一份 |
-| `--history-tail` | ＝ 帧命令 `history-tail`：一份会话的尾段从哪个字节起 |
+| `--history-tail` | ＝ 帧命令 `history-tail`：一份会话的尾段：手上那一份怎么接，连第一页正文 |
 | `--history-turns` | ＝ 帧命令 `history-turns`：一轮的摘要 |
 | `--history-user-inputs` | ＝ 帧命令 `history-user-inputs`：「人说过的话」清单 |
 | `--hooks-diag` | ＝ 帧命令 `hooks-diag`：cc-bus 钩子诊断 |
@@ -13008,7 +13390,6 @@ needs: string | null, };
 | `--resident-attach` | 小中继：连这台家里常驻后端的套接字，stdin → 套接字、套接字 → stdout 原样对拷，任一边断就退；断开 ⇒ stdout 一行 `{attach:"refused", reason: absent\|unreachable}`、退出 2 |
 | `--resident-ensure` `[--replace]` | 确保这台的常驻后端在听：已在 ⇒ `{pid, replaced: false}`（pid 是套接字对端）；没在 ⇒ 起一个脱离的自己、回 `{pid, replaced}`；`--replace` 在听那一位比自己旧才停掉再起（只升不降） |
 | `--resident-stop` `[--grace <秒>]` | 停这台的常驻后端：问套接字在听的是谁 → SIGTERM → 宽限（缺省 35 秒）→ SIGKILL；回 `{stopped: graceful\|killed\|not_running, pid}` |
-| `--resident-verdict` | ＝ 帧命令 `resident-verdict`：远端常驻后端要不要换一次 |
 | `--resolve` | ＝ 帧命令 `resolve`：按 `ResumeSpec` 推出恢复命令 `CommandPlan` |
 | `--rotation-day-paint` | ＝ 帧命令 `rotation-day-paint`：在 24 小时条上刷一段 |
 | `--rotation-facts` | ＝ 帧命令 `rotation-facts`：每个号此刻的事实 |

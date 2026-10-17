@@ -476,18 +476,6 @@ fn dispatch(
                 ),
             )
         }
-        // 给那台装后端：进度帧走**本连接的应答通道**（不丢、排在应答之前）⇒ 与测试连接同一档硬臂。
-        "deploy-install" => {
-            let tx = replies.clone();
-            Disposition::SpawnData(
-                req,
-                crate::wire::typed::answer_async::<crate::control::deploy_plan::DeployInstall, _, _>(
-                    move |r, _cx| async move {
-                        crate::control::deploy_plan::answer_install(r, &tx).await
-                    },
-                ),
-            )
-        }
         // 上传开单先去远端落点探整组同名（要等那台）⇒ 起一个异步任务；别的三条就地做完。
         "transfer-upload" => {
             let run = xfers.upload_wire_for();

@@ -20,7 +20,7 @@ use crate::structural_scan::ScanReport;
 /// 生产段。**用共享的 `guard_core::production_code`，不自己写便宜近似。**
 ///
 /// 这不是洁癖：本文件第一个 `#[cfg(test)]` 模块在 800 行附近，而本护栏要扫的
-/// `parse_frame` / `consume_remote` 全在它**后面**。
+/// `route` / `consume_remote` 全在它**后面**。
 /// monitor 侧此前流行的那个近似（`split("\n#[cfg(test)]").next()`）会把扫描面
 /// 砍掉三分之二 —— 下面第一条测试把这个差距**实测**出来，免得它变成一句口号。
 fn prod() -> String {
@@ -35,7 +35,7 @@ fn the_shared_stripper_keeps_the_part_this_guard_must_scan() {
     let me = guard_core::addr::stream_source_raw();
     let cheap = me.split("\n#[cfg(test)]").next().unwrap_or(&me);
     let good = prod();
-    for anchor in ["fn parse_frame", "async fn consume_remote"] {
+    for anchor in ["fn route(", "async fn consume_remote"] {
         assert!(
             good.contains(anchor),
             "共享剥法把 `{anchor}` 剥掉了 —— 本护栏此刻扫不到它"

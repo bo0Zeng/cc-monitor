@@ -317,7 +317,7 @@ async fn the_ack_is_exactly_one_newline_terminated_line() {
             }),
             strict: true,
             jump_strict: false,
-            reason: Some(super::why::AUTH),
+            reason: Some(super::Why::Auth),
             key_type: None,
             v: ACK_V,
             uses: USES,
@@ -352,40 +352,21 @@ async fn the_ack_is_exactly_one_newline_terminated_line() {
     assert_eq!(v["reason"], "auth");
 }
 
-/// 竞速那一格的阶段标签 → 原因码：每个标签各落一格，认不出的落「别的」；全集与线上那张表两向相等。
+/// 竞速那一格的阶段标签 → 原因码：每个标签各落一格，认不出的落「别的」。
 #[test]
 fn stage_labels_map_to_the_closed_reason_set() {
-    use super::{why, why_of_stage};
+    use super::{why_of_stage, Why};
     let rows = [
-        ("resolve", why::RESOLVE),
-        ("tcp", why::UNREACHABLE),
-        ("timeout", why::TIMEOUT),
-        ("hostkey", why::HOST_KEY),
-        ("other", why::OTHER),
-        ("认不出的标签", why::OTHER),
+        ("resolve", Why::Resolve),
+        ("tcp", Why::Unreachable),
+        ("timeout", Why::Timeout),
+        ("hostkey", Why::HostKey),
+        ("other", Why::Other),
+        ("认不出的标签", Why::Other),
     ];
     for (stage, want) in rows {
         assert_eq!(why_of_stage(stage), want, "{stage}");
     }
-    let wire: std::collections::BTreeSet<&str> = why::ALL.into_iter().collect();
-    assert_eq!(wire.len(), why::ALL.len(), "原因码有重名");
-    assert_eq!(
-        wire,
-        [
-            "auth",
-            "host_key",
-            "jump",
-            "key_unreadable",
-            "other",
-            "password",
-            "resolve",
-            "timeout",
-            "unreachable"
-        ]
-        .into_iter()
-        .collect(),
-        "原因码那张表变了 —— 协议文档与界面那一侧（machine-state 解码）要一起改"
-    );
 }
 
 /// （`AllowTcpForwarding no` ⇒ 控制隧道被拒、界面每分钟新拨 33 条）。
@@ -720,16 +701,16 @@ fn a_password_only_server_is_its_own_reason() {
         remaining_methods: MethodSet::from(m),
         partial_success: false,
     };
-    assert_eq!(connect::rejected_why(&fail(&[M::Password])), why::PASSWORD);
+    assert_eq!(connect::rejected_why(&fail(&[M::Password])), Why::Password);
     assert_eq!(
         connect::rejected_why(&fail(&[M::KeyboardInteractive])),
-        why::PASSWORD
+        Why::Password
     );
     assert_eq!(
         connect::rejected_why(&fail(&[M::PublicKey, M::Password])),
-        why::AUTH
+        Why::Auth
     );
-    assert_eq!(connect::rejected_why(&fail(&[])), why::AUTH);
+    assert_eq!(connect::rejected_why(&fail(&[])), Why::Auth);
 }
 
 /// 没拨成的 ack：`error` 只是那一句，下层原话进 `detail`（复制详情那几行：命令 · 原话）；成功的 ack 不出 `detail` 这一格。

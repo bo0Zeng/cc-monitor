@@ -246,42 +246,33 @@ const SESSION_STREAM_GOLDEN: &str = "tests/__fixtures__/session-stream.golden.js
 fn golden_pairs() -> Vec<[Frame; 2]> {
     use crate::agents::{BlockKind, RunDid};
     use crate::wire::{
-        AgentHome, LiveBlock, LiveCard, LiveOp, LivePhase, LostFrame, RereadWhy, RunEnded, RunInfo,
-        RunState, RunWhy, SessionContainer, SessionFate, TransferEnd, Unavailable,
+        LiveBlock, LiveCard, LiveOp, LivePhase, LostFrame, RereadWhy, RunEnded, RunInfo, RunState,
+        RunWhy, SessionContainer, SessionFate, TransferEnd, Unavailable,
     };
     let s = |v: &str| v.to_string();
     let both = |f: Frame| [f.clone(), f];
     vec![
         [
             Frame::Hello(crate::wire::Hello {
-                v: 1,
                 build_id: s("b1"),
                 host_arch: s("x86_64"),
-                claude_dir: s("/home/u/.claude"),
-                homes: vec![AgentHome {
-                    agent_kind: s("claude"),
-                    path: s("/home/u/.claude"),
-                }],
-                emits: vec![s("line")],
                 commands: vec![s("ping")],
                 unavailable: vec![Unavailable {
                     command: s("tmux-list"),
                     code: s("no_tmux"),
                 }],
                 host_env: [(s("CCM_RELAY_PORT"), s("47001"))].into_iter().collect(),
-                shapes: Default::default(),
+                shapes: [(s("ping"), s("0000abcd"))].into_iter().collect(),
+                frames: [(s("line"), s("0000abcd"))].into_iter().collect(),
             }),
             Frame::Hello(crate::wire::Hello {
-                v: 1,
                 build_id: s("b1"),
                 host_arch: s("x86_64"),
-                claude_dir: s("/home/u/.claude"),
-                homes: vec![],
-                emits: vec![],
                 commands: vec![],
                 unavailable: vec![],
                 host_env: Default::default(),
                 shapes: Default::default(),
+                frames: Default::default(),
             }),
         ],
         [
@@ -494,11 +485,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
         both(Frame::Probe(crate::wire::Probe {
             ticket: s("t1"),
             cell: serde_json::json!({"reached": "ssh"}),
-        })),
-        both(Frame::Deploy(crate::wire::Deploy {
-            machine: s("box"),
-            step: crate::wire::DeployStep::Update,
-            said: s("更新 box · cc-monitor"),
         })),
         [
             Frame::FilesBatch(crate::wire::FilesBatch {
@@ -839,7 +825,7 @@ fn transfer_frames_have_exactly_these_bytes() {
     }
 }
 
-/// `live` 的逐字节线上形状（期望是手写字面量；monitor 侧 `parse_frame` 拿同样的串核自己）。
+/// `live` 的逐字节线上形状（期望是手写字面量；客户端按 `cmd-wire` 的类型解同样的串）。
 /// 一张卡五种 `op`：整卡 · 加块 · 加字 · 说完了 · 撤卡；`run` 缺 ＝ 主运行。可丢（SSE 只保快，写者最低优先）。
 #[test]
 fn live_frames_have_exactly_these_bytes() {
@@ -912,7 +898,7 @@ fn live_frames_have_exactly_these_bytes() {
     }
 }
 
-/// 运行表那一帧的逐字节线上形状（monitor 侧 `parse_frame` 拿同样的串核自己）。
+/// 运行表那一帧的逐字节线上形状（客户端按 `cmd-wire` 的类型解同样的串）。
 #[test]
 fn session_runs_frames_have_exactly_these_bytes() {
     use crate::agents::RunDid;
@@ -1052,34 +1038,6 @@ fn overflow_frame_serializes_with_dropped_count() {
 
 // `tmux_sessions` 帧单行转义那条随帧删了（tmux 原文只在进程内喂会话账本）。
 
-fn hello_with(emits: Vec<String>) -> Frame {
-    Frame::Hello(crate::wire::Hello {
-        v: 1,
-        build_id: "b".into(),
-        host_arch: "x86_64".into(),
-        claude_dir: "/c".into(),
-        homes: vec![],
-        emits,
-        commands: vec![],
-        unavailable: vec![],
-        host_env: Default::default(),
-        shapes: Default::default(),
-    })
-}
-
-/// phase②：Hello.emits 加法式：非空 ⇒ 数组在线上；空 ⇒ 省略。手机端门控读 emits 判「backend 发不发某帧」。
-#[test]
-fn hello_emits_serializes_when_present_and_omits_when_empty() {
-    let line =
-        to_line(&hello_with(vec!["session_status".into(), "line".into()])).expect("serialize");
-    let v: Value = serde_json::from_str(line.strip_suffix('\n').unwrap()).expect("json");
-    assert_eq!(v["kind"], "hello");
-    assert_eq!(v["emits"], serde_json::json!(["session_status", "line"]));
-    let line = to_line(&hello_with(vec![])).expect("serialize");
-    let v: Value = serde_json::from_str(line.strip_suffix('\n').unwrap()).expect("json");
-    assert!(v.get("emits").is_none(), "空 emits 必须被 skip（additive）");
-}
-
 #[test]
 fn seq_counter_is_monotonic_per_path_and_independent_across_paths() {
     let mut c = SeqCounter::new();
@@ -1151,347 +1109,6 @@ fn line_with_quotes_backslashes_and_newline_roundtrips() {
     assert_eq!(v["kind"], "line");
     assert_eq!(v["record"]["blocks"][0]["text"], raw);
     assert_eq!(v["seq"], 42);
-}
-
-/// ★ `S4` 的红线**落到生产路径上**：`main.rs` 今天必须给 `homes` 传空表。
-///
-/// 下面那条 `dg3_codex_fields_skipped_when_absent_claude_byte_equivalent` 钉的是
-/// 「**给**空表就得到旧字节」—— 它管不了「生产那边到底给没给空表」。
-/// 有人在 `main.rs` 里往 `homes` 填一项，那条照样全绿，而线上字节已经变了。
-/// 本条补的正是那半：**谁在调它、生产路径上有没有第二条绕过去的路**。
-///
-/// 它会在 `S5`/DG1 接线那天**故意变红**，那是设计出来的：填 `homes` 是一次
-/// 与手机端的契约变更（它的 hello fixture 按精确字节对），
-/// 必须有人当场重新裁一次，而不是顺手改过去。
-#[test]
-fn production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen() {
-    let prod = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
-    let sites: Vec<&str> = prod
-        .lines()
-        .map(str::trim)
-        .filter(|l| l.starts_with("homes:"))
-        .collect();
-    assert_eq!(
-        sites.len(),
-        1,
-        "`main.rs` 生产段里给 `homes` 赋值的地方有 {} 处（应当恰好 1 处）——\n\
-             0 处 ⇒ 抽取坏了（本断言此刻在空转）；≥2 处 ⇒ 有第二条路，红线只守住一条。\n\
-             实得：{sites:?}",
-        sites.len()
-    );
-    assert_eq!(
-        sites[0], "homes: Vec::new(),",
-        "`main.rs` 开始往 `homes` 里填东西了 ⇒ hello 帧对 Claude 的线上字节**变了**。\n\
-             这不是 bug，是 `S5`/DG1 该做的事 —— 但它是一次**与手机端的契约变更**：\n\
-             手机端的 hello fixture 按精确字节对（契约冻结 2026-07-18）。\n\
-             正确动作：与手机端同轮改，并同轮更新\n\
-             `dg3_codex_fields_skipped_when_absent_claude_byte_equivalent` 的期望串。"
-    );
-}
-
-/// ★ `S5` 的另一半，**刻意贴着上面那条放**：上面钉的是「生产路径给空表」，
-/// 本条钉的是「**给空表不是因为后端不会发现**」。两条合起来才是 `S5` 的口径 ——
-/// **能填不真填**。
-///
-/// # 少了本条会怎样
-///
-/// 只有上面那条的话，「`homes` 恒空」与「backend 根本没有发现能力」在判据眼里**一模一样**。
-/// 于是有人在清理死代码时把 `agents::visible_homes` 整个删掉 —— 上面那条照样绿，
-/// 而 `S5` 交付的东西没了、`S6` 的地基也没了，**没有任何东西会说**。
-///
-/// # 它为什么要真的构造一个 `Hello` 帧
-///
-/// 「能填」不只是"有个函数能列目录"，是「**填进去就能发**」：类型要正好是
-/// `Hello.homes` 的元素类型，序列化出来要是合法的一行。否则真填那天还得再改一次形状，
-/// 而那时改的是**跨仓契约**那一侧的东西 —— 最不该临时改形状的地方。
-/// ⇒ 本条按生产路径**唯一**要改的那一行（`homes: Vec::new()` → `homes: visible_homes()`）
-/// 原样搭一遍，证明那一行换过去**编得过、发得出**。
-#[test]
-fn the_backend_can_already_discover_homes_it_just_does_not_send_them() {
-    // ─── ① 夹具那一半：**不依赖这台机器上装了什么**，所以能断言精确字节 ───
-    //
-    // 合成一家 agent（一个 `mkdir` 出来的 home）走一遍真正的发现路，
-    // 把结果按生产路径**唯一**要改的那一行（`homes: …`）填进 Hello。
-    // ⇒ 「能填」在这里不是"有个函数能列目录"，是**填进去就发得出、且字节是这个样子**。
-    let root = std::env::temp_dir().join(format!("ccm-s5-wire-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
-    let home = root.join("synthetic-home");
-    std::fs::create_dir_all(&home).expect("建夹具 home");
-    fn synth_present() -> Option<std::path::PathBuf> {
-        Some(
-            std::env::temp_dir()
-                .join(format!("ccm-s5-wire-{}", std::process::id()))
-                .join("synthetic-home"),
-        )
-    }
-    fn synth_absent() -> Option<std::path::PathBuf> {
-        Some(
-            std::env::temp_dir()
-                .join(format!("ccm-s5-wire-{}", std::process::id()))
-                .join("no-such-home"),
-        )
-    }
-    #[rustfmt::skip]
-    let synth: &[crate::agents::Adapter] = &[
-        crate::agents::Adapter { kind: "synthetic", home: synth_present, account_env: None, old_home_pref: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, clear_request: None, local: None, live: crate::agents::LiveBy::Unknown, asks: None },
-        crate::agents::Adapter { kind: "ghost",     home: synth_absent, account_env: None, old_home_pref: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, clear_request: None, local: None, live: crate::agents::LiveBy::Unknown, asks: None },
-    ];
-    let discovered = crate::agents::visible_among(synth);
-    assert_eq!(
-        discovered.len(),
-        1,
-        "发现能力被掏空了（或判准放行了缺席的那家）—— 实得 {discovered:?}"
-    );
-
-    let line = to_line(&Frame::Hello(crate::wire::Hello {
-        v: 1,
-        build_id: "b".into(),
-        host_arch: "x86_64".into(),
-        claude_dir: "/c".into(),
-        homes: discovered,
-        emits: vec![],
-        commands: vec![],
-        unavailable: vec![],
-        host_env: Default::default(),
-        shapes: Default::default(),
-    }))
-    .expect("填了 homes 的 hello 必须序列化得出来");
-    assert_eq!(
-        line,
-        format!(
-            "{{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b\",\"host_arch\":\"x86_64\",\
-                 \"claude_dir\":\"/c\",\"homes\":[{{\"agent_kind\":\"synthetic\",\"path\":{}}}]}}\n",
-            serde_json::to_string(&home.to_string_lossy().into_owned()).unwrap()
-        ),
-        "发现出来的东西**塞不进** `Hello.homes`，或塞进去之后字节形状不对。\n\
-             ⇒ 真填那天还得再改一次形状 —— 而那时改的是跨仓契约那一侧，最不该临时改形状的地方。"
-    );
-    let _ = std::fs::remove_dir_all(&root);
-
-    // ─── ② 真机那一半：跑一遍**生产入口**，只断言与世界无关的性质 ───
-    //
-    // 不断言条数 —— 那会变成"跑测试这台机器上装了几个 agent"，是世界的事实不是代码的。
-    for h in &crate::agents::visible_homes() {
-        assert!(
-            !h.agent_kind.trim().is_empty(),
-            "发现出来的项没有 agent_kind：{h:?}"
-        );
-        assert!(
-            std::path::Path::new(&h.path).is_dir(),
-            "发现出来的 {} 报了一个不是目录的 path：{}\n\
-                 ⇒ 判准（home 目录存在）与产出对不上，消费方会拿它去拼子路径",
-            h.agent_kind,
-            h.path
-        );
-    }
-}
-
-// ─── DG3（#2D）：Codex wire additive 面 · 序列化 parity（手机端消费侧 fixture 交叉核点）───
-
-/// **present 形**（多 agent 的后端）：新字段在线上、snake_case、值域正确。
-///
-/// ⚠ **测试名刻意不改**：`src/doc/IPC-PROTOCOL.md` 与**手机端** 都按这个名字
-/// 引用它当 fixture 真值，改名等于在跨仓契约上制造一处找不着。
-/// 它钉的东西没变（「present 形的精确字节」），变的只是承载 agent 维度的字段 ——
-/// `S4` 把 `codex_dir` + `kinds` 换成了通用的 `homes`（`D3`：agent 名只许在值里）。
-#[test]
-fn dg3_codex_fields_serialize_when_present() {
-    let hello = to_line(&Frame::Hello(crate::wire::Hello {
-        v: 1,
-        build_id: "b".into(),
-        host_arch: "x86_64".into(),
-        claude_dir: "/c".into(),
-        homes: vec![
-            AgentHome {
-                agent_kind: "claude".into(),
-                path: "/c".into(),
-            },
-            AgentHome {
-                agent_kind: "codex".into(),
-                path: "/home/u/.codex".into(),
-            },
-        ],
-        emits: vec![],
-        commands: vec![],
-        unavailable: vec![],
-        host_env: Default::default(),
-        shapes: Default::default(),
-    }))
-    .unwrap();
-    // ★ 精确字节（手机端 fixture 交叉核真值）：字段按声明序，`homes` 在 `claude_dir` 之后；
-    //   表内每项按 `AgentHome` 声明序 `agent_kind` → `path`。
-    assert_eq!(
-        hello,
-        "{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b\",\"host_arch\":\"x86_64\",\"claude_dir\":\"/c\",\"homes\":[{\"agent_kind\":\"claude\",\"path\":\"/c\"},{\"agent_kind\":\"codex\",\"path\":\"/home/u/.codex\"}]}\n"
-    );
-
-    let sa = to_line(&Frame::SessionAdded(crate::wire::SessionAdded {
-        sid: "s".into(),
-        agent_kind: "codex".to_string(),
-        background: false,
-        attachable: None,
-        cwd: None,
-        project_dir: None,
-        name: None,
-        path: None,
-        face: crate::wire::ActivityFace::of(None),
-        name_face: crate::history::search_rules::name_face(&Default::default()),
-        waiting_for: None,
-        hidden: None,
-        container: None,
-        pid: 0,
-    }))
-    .unwrap();
-    assert_eq!(
-        sa,
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"label\":\"没有说过话的会话\",\"pid\":0}\n"
-    );
-
-    let ss = to_line(&Frame::SessionStatus(crate::wire::SessionStatus {
-        sid: "s".into(),
-        face: crate::wire::ActivityFace::of(None),
-        name_face: crate::history::search_rules::name_face(&Default::default()),
-        waiting_for: None,
-        path: None,
-    }))
-    .unwrap();
-    assert_eq!(
-        ss,
-        "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"label\":\"没有说过话的会话\"}\n"
-    );
-}
-
-/// **absent 形**（Claude 会话 / 旧后端）：skip_if_none/empty → 字段**完全省略**，帧对 Claude
-/// **字节等价旧形**（向后兼容红线）。手机端消费侧「省=null→缺省 claude/authoritative」据此对齐。
-/// ★ 精确字节串 = 手机端 fixture 交叉核的真值。
-#[test]
-fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
-    let hello = to_line(&Frame::Hello(crate::wire::Hello {
-        v: 1,
-        build_id: "b".into(),
-        host_arch: "x86_64".into(),
-        claude_dir: "/c".into(),
-        homes: vec![],
-        emits: vec![],
-        commands: vec![],
-        unavailable: vec![],
-        host_env: Default::default(),
-        shapes: Default::default(),
-    }))
-    .unwrap();
-    assert_eq!(
-        hello,
-        "{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b\",\"host_arch\":\"x86_64\",\"claude_dir\":\"/c\"}\n",
-        "`homes` 空 → 省略，Hello 字节等价旧形。\n\
-             ★ 这条同时是 `S4` 的红线：换掉 `codex_dir`/`kinds` 之后，\n\
-             **Claude 那条线上的字节必须一个都没动**（右边这串是 `S4` 之前的原样）。"
-    );
-
-    let sa = to_line(&Frame::SessionAdded(crate::wire::SessionAdded {
-        sid: "s".into(),
-        agent_kind: "claude".to_string(),
-        background: false,
-        attachable: None,
-        cwd: None,
-        project_dir: None,
-        name: None,
-        path: None,
-        face: crate::wire::ActivityFace::of(None),
-        name_face: crate::history::search_rules::name_face(&Default::default()),
-        waiting_for: None,
-        hidden: None,
-        container: None,
-        pid: 0,
-    }))
-    .unwrap();
-    assert_eq!(
-        sa, "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"label\":\"没有说过话的会话\",\"pid\":0}\n",
-        "agent_kind 每条都带"
-    );
-
-    let ss = to_line(&Frame::SessionStatus(crate::wire::SessionStatus {
-        sid: "s".into(),
-        face: crate::wire::ActivityFace::of(None),
-        name_face: crate::history::search_rules::name_face(&Default::default()),
-        waiting_for: None,
-        path: None,
-    }))
-    .unwrap();
-    assert_eq!(
-        ss, "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"label\":\"没有说过话的会话\"}\n",
-        "缺的格不上线"
-    );
-}
-
-/// ★ `K-P4`（09-04）握手帧**第四条面**的线上形状：absent 形字节等价 + present 形精确字节。
-///
-/// # 两半为什么在同一条测试里
-///
-/// 分开写的话，「省略时字节不变」那半在**真填那天照样绿** —— 它构造的是自己那张空表，
-/// 不是生产那张。⇒ 本条钉的是「**这个字段**的两种形状各自长什么样」；
-/// 「**生产给的是哪一种**」由 `main.rs` 那条抽取式判据钉，两条合起来才是「今天不变」。
-/// 同 `homes` 的两条（`production_hello_leaves_homes_empty…` + `dg3_…_byte_equivalent`）
-/// 的分工，缺任一条那句话都不成立。
-#[test]
-fn hello_unavailable_is_additive_present_and_absent() {
-    // ① absent：空表省略 ⇒ 与第四条面加进来**之前**逐字节相同。
-    //    ★ 右边这串与 `dg3_codex_fields_skipped_when_absent_claude_byte_equivalent`
-    //      里那串**刻意逐字重复**：那条守 `S4` 的红线，本条守 `K-P4` 的。
-    //      同一串钉在两处，任何一处被改掉都还有另一处会红。
-    let absent = to_line(&Frame::Hello(crate::wire::Hello {
-        v: 1,
-        build_id: "b".into(),
-        host_arch: "x86_64".into(),
-        claude_dir: "/c".into(),
-        homes: vec![],
-        emits: vec![],
-        commands: vec![],
-        unavailable: vec![],
-        host_env: Default::default(),
-        shapes: Default::default(),
-    }))
-    .unwrap();
-    assert_eq!(
-        absent,
-        "{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b\",\"host_arch\":\"x86_64\",\"claude_dir\":\"/c\"}\n",
-        "空表没被省略 ⇒ hello 的线上字节变了 ⇒ 手机端那份按精确字节对的 fixture 当场对不上\n\
-             （契约冻结 2026-07-18）。additive 的全部意义就在这一格。"
-    );
-
-    // ② present：字段落在 `commands` **之后**（serde 按声明序），
-    //    表内每项按 `Unavailable` 的声明序 `command` → `code`。
-    //    ★ 这一串是**真填那天**给手机端的 fixture 真值（同 `dg3_…_serialize_when_present` 的地位）。
-    let present = to_line(&Frame::Hello(crate::wire::Hello {
-        v: 1,
-        build_id: "b".into(),
-        host_arch: "x86_64".into(),
-        claude_dir: "/c".into(),
-        homes: vec![],
-        emits: vec![],
-        commands: vec!["kill".into(), "ping".into()],
-        unavailable: vec![Unavailable {
-            command: "kill".into(),
-            code: "no_tmux".into(),
-        }],
-        host_env: Default::default(),
-        shapes: Default::default(),
-    }))
-    .unwrap();
-    assert_eq!(
-        present,
-        "{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b\",\"host_arch\":\"x86_64\",\"claude_dir\":\"/c\",\
-             \"commands\":[\"kill\",\"ping\"],\"unavailable\":[{\"command\":\"kill\",\"code\":\"no_tmux\"}]}\n"
-    );
-
-    // ③ **`kill` 同时在两张表里**，这不是笔误 —— 本字段说的是「接得下但做不到」。
-    //    从 `commands` 里摘掉才是错的：那样客户端 `accepts()` 会直接拒发，
-    //    连「点了告诉你为什么」这条兜底路都没了。
-    assert!(
-        present.contains("\"commands\":[\"kill\""),
-        "present 形里 `kill` 必须仍留在 `commands` 里：{present}"
-    );
-    // ④ 反向自检：两串不同（否则上面两条可能被同一个退化实现一起满足）。
-    assert_ne!(absent, present);
 }
 
 /// ★ S0：`cause` 的线上表现 —— `Gone` **不写字段**（additive，旧 monitor 原样工作），
@@ -1574,22 +1191,24 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
 }
 
 /// `session_state` 的**逐字节**金标准：两个取值、字段顺序 `sid` 在前；写好的字与语气跟在 `state` 后面。
-/// monitor `stream_source::parse_frame` 照这两个字面量认它。
+/// 客户端按 `cmd-wire` 的类型认这两个字面量。
 #[test]
 fn mig1_session_state_has_exactly_these_bytes() {
     use crate::wire::SessionFate;
-    for (state, word, name, hint) in [
+    for (state, word, name, hint, order) in [
         (
             SessionFate::Reconnectable,
             "reconnectable",
             "sessionState.reconnectable.name",
             "sessionState.reconnectable.tooltip",
+            4,
         ),
         (
             SessionFate::Ended,
             "ended",
             "sessionState.ended.name",
             "sessionState.ended.tooltip",
+            5,
         ),
     ] {
         let (name, hint) = (
@@ -1599,13 +1218,13 @@ fn mig1_session_state_has_exactly_these_bytes() {
         let ended = copy_core::copy_text("beSessionSwitch.why.ended", &[]);
         assert_eq!(
             to_line(&Frame::session_state("abc".into(), state)).unwrap(),
-            format!("{{\"kind\":\"session_state\",\"sid\":\"abc\",\"state\":\"{word}\",\"state_text\":\"{name}\",\"state_hint\":\"{hint}\",\"state_tone\":\"plain\",\"switch\":{{\"model\":{{\"can\":\"no\",\"why\":\"{ended}\"}},\"permission\":{{\"can\":\"no\",\"why\":\"{ended}\"}}}}}}\n")
+            format!("{{\"kind\":\"session_state\",\"sid\":\"abc\",\"state\":\"{word}\",\"state_text\":\"{name}\",\"state_hint\":\"{hint}\",\"state_tone\":\"plain\",\"state_order\":{order},\"switch\":{{\"model\":{{\"can\":\"no\",\"why\":\"{ended}\"}},\"permission\":{{\"can\":\"no\",\"why\":\"{ended}\"}}}}}}\n")
         );
     }
 }
 
 /// `sessions_replayed` 的**逐字节**金标准：无载荷，只有 kind。
-/// monitor `stream_source::parse_frame` 照这个字面量认它。
+/// 客户端按 `cmd-wire` 的类型认这个字面量。
 #[test]
 fn sessions_replayed_has_exactly_these_bytes() {
     assert_eq!(
@@ -1683,22 +1302,19 @@ fn hx2_the_echo_list_is_exactly_the_two_handed_names() {
 fn hx2_production_hello_bytes_do_not_change_when_nothing_was_handed() {
     let hello = |host_env: std::collections::BTreeMap<String, String>| {
         to_line(&Frame::Hello(crate::wire::Hello {
-            v: 1,
             build_id: "b".into(),
             host_arch: "x86_64".into(),
-            claude_dir: "/c".into(),
-            homes: vec![],
-            emits: vec![],
             commands: vec![],
             unavailable: vec![],
             host_env,
             shapes: Default::default(),
+            frames: Default::default(),
         }))
         .unwrap()
     };
     assert_eq!(
         hello(Default::default()),
-        "{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b\",\"host_arch\":\"x86_64\",\"claude_dir\":\"/c\"}\n"
+        "{\"kind\":\"hello\",\"build_id\":\"b\",\"host_arch\":\"x86_64\"}\n"
     );
     let present = hello(
         [
@@ -1710,7 +1326,7 @@ fn hx2_production_hello_bytes_do_not_change_when_nothing_was_handed() {
     );
     assert_eq!(
         present,
-        "{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b\",\"host_arch\":\"x86_64\",\"claude_dir\":\"/c\",\
+        "{\"kind\":\"hello\",\"build_id\":\"b\",\"host_arch\":\"x86_64\",\
          \"host_env\":{\"CCM_DATA_DIR\":\"/d\",\"CCM_RELAY_PORT\":\"8788\"}}\n"
     );
     let main = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
@@ -1730,11 +1346,8 @@ fn hx2_production_hello_bytes_do_not_change_when_nothing_was_handed() {
 
 /// （帧 kind 或 `request`, 字段, JSON 类型）。`request` 是入方向请求信封。
 pub(crate) const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
-    ("hello", "v", "number"),
     ("hello", "build_id", "string"),
     ("hello", "host_arch", "string"),
-    ("hello", "claude_dir", "string"),
-    ("hello", "emits", "array"),
     ("line", "session_id", "string"),
     ("line", "path", "string"),
     ("line", "seq", "number"),
@@ -1775,7 +1388,15 @@ pub(crate) const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
 fn every_frame_the_second_frontend_reads() -> Vec<Value> {
     let s = Some("x".to_string());
     let frames = vec![
-        hello_with(vec!["line".into()]),
+        Frame::Hello(crate::wire::Hello {
+            build_id: "b".into(),
+            host_arch: "x86_64".into(),
+            commands: vec![],
+            unavailable: vec![],
+            host_env: Default::default(),
+            shapes: Default::default(),
+            frames: Default::default(),
+        }),
         Frame::Line(crate::wire::Line {
             session_id: "s".into(),
             path: "/p".into(),
@@ -2218,14 +1839,37 @@ fn the_written_faces_are_built_in_one_place_only() {
     ]
     .iter()
     .map(|s| format!("src/backend/wire/mod.rs · {s}"))
-    // 壳解帧落进自己那份同名的 `session_book::CanSwitch`（另一个类型，字取自帧上）：解码口与它的判据。
-    .chain([
-        "src/frontend/shell/src/stream_source/frame.rs · switch_cells · CanSwitch::No".to_string(),
-        "tests/frontend/shell/stream_source/parse_frame_tests.rs · session_status_carries_the_switch_cells_as_the_core_wrote_them · CanSwitch::No".to_string(),
-    ])
     .collect();
     assert_eq!(
         seen, want,
         "会话帧那几格写好的字只许经后端 `wire` 的构造口造（`ActivityFace::of` · `Switch::live` / `gone` · `NameFace::of_parts`）"
+    );
+}
+
+/// 监控板组内一把尺：可重连 · 已结束的 `session_state` 带序，都排在任何活会话的序（`activity_order`）之后；
+/// 界面只按这一格排、不再自己按状态分段。
+#[test]
+fn the_fates_sort_after_every_live_session_on_one_ruler() {
+    use crate::agents::SessionActivity as A;
+    let live: std::collections::BTreeSet<u64> = [
+        None,
+        Some(A::NeedsYou),
+        Some(A::Working),
+        Some(A::BackgroundWork),
+        Some(A::Idle),
+    ]
+    .into_iter()
+    .map(|a| u64::from(crate::wire::ActivityFace::of(a).activity_order))
+    .collect();
+    let fate = |f| {
+        serde_json::to_value(Frame::session_state("s".into(), f)).unwrap()["state_order"].as_u64()
+    };
+    assert_eq!(live, [0, 1, 2, 3].into());
+    assert_eq!(
+        (
+            fate(crate::wire::SessionFate::Reconnectable),
+            fate(crate::wire::SessionFate::Ended)
+        ),
+        (Some(4), Some(5))
     );
 }
