@@ -75,14 +75,6 @@ impl Launch {
     }
 }
 
-/// 这台 ccm 会的那几样（渲染就在这台后端里）。
-pub(crate) fn own_caps() -> std::collections::BTreeSet<String> {
-    crate::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
-        .into_iter()
-        .map(str::to_string)
-        .collect()
-}
-
 /// 那一行（号已经判好）：本机 Windows ⇒ PowerShell 方言，别处 POSIX。拒 ⇒ 那一句。
 pub(crate) fn line_of(
     l: &Launch,
