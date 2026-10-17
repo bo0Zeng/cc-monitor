@@ -19,7 +19,7 @@ impl Default for ListNode {
     fn default() -> Self {
         Self {
             rung: Mutex::new(HashSet::new()),
-            tx: tokio::sync::watch::channel(0).0,
+            tx: tokio::sync::watch::channel::<u64>(0).0,
         }
     }
 }
