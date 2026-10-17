@@ -1616,6 +1616,46 @@
       "zh": "未新建 · 路径不存在 · {cwd}",
       "args": ["cwd"]
     },
+    "beSessionArrive.missed.title": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "命令已发出 · 会话未报到",
+      "args": []
+    },
+    "beSessionArrive.missed.inWindow": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "已等 {dur} 未报到 · 详情在终端窗口",
+      "args": ["dur"]
+    },
+    "beSessionArrive.missed.words": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "已等 {dur} 未报到 · tmux 会话「{name}」末几行\n{words}",
+      "args": ["dur", "name", "words"],
+      "limited": ["tmux"]
+    },
+    "beSessionArrive.missed.emptyScreen": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "已等 {dur} 未报到 · tmux 会话「{name}」画面为空",
+      "args": ["dur", "name"],
+      "limited": ["tmux"]
+    },
+    "beSessionArrive.missed.gone": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "已等 {dur} 未报到 · tmux 会话「{name}」已不在",
+      "args": ["dur", "name"],
+      "limited": ["tmux"]
+    },
+    "beSessionArrive.missed.noScreen": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "已等 {dur} 未报到 · 读取 tmux 会话「{name}」画面失败 · {why}",
+      "args": ["dur", "name", "why"],
+      "limited": ["tmux"]
+    },
     "beSessionOpen.record.gone": {
       "kind": "error",
       "role": "报错",
@@ -13368,44 +13408,11 @@
       "zh": "未报到",
       "args": []
     },
-    "launch.slot.missedState": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "未报到 · {dur}",
-      "args": ["dur"]
-    },
-    "launch.slot.missedCard": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "已发启动命令 · {dur} 未报到",
-      "args": ["dur"]
-    },
-    "launch.slot.tmuxThere": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{machine} · tmux 会话 {name} 在 · 画面末几行：",
-      "args": ["machine", "name"],
-      "limited": ["tmux"]
-    },
-    "launch.slot.tmuxEmpty": {
-      "kind": "body",
-      "role": "空态",
-      "zh": "{machine} · tmux 会话 {name} 在 · 画面为空",
-      "args": ["machine", "name"],
-      "limited": ["tmux"]
-    },
     "launch.slot.tmuxGone": {
       "kind": "body",
       "role": "说明",
       "zh": "{machine} · tmux 会话 {name} 不在",
       "args": ["machine", "name"],
-      "limited": ["tmux"]
-    },
-    "launch.slot.noScreen": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{machine} · tmux 会话 {name} · 画面无法读取：{why}",
-      "args": ["machine", "name", "why"],
       "limited": ["tmux"]
     },
     "launch.slot.screen": {
@@ -13427,44 +13434,11 @@
       "args": ["machine", "name"],
       "limited": ["tmux"]
     },
-    "launchArrival.arrived.body": {
+    "sessionOpen.arrived.body": {
       "kind": "body",
       "role": "说明",
       "zh": "{machine}已报出此会话",
       "args": ["machine"]
-    },
-    "launchArrival.missed.title": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "命令已发出 · 会话未报到",
-      "args": []
-    },
-    "launchArrival.missed.inWindow": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 未报到 · 已等 {dur} · 详情在终端窗口",
-      "args": ["machine", "dur"]
-    },
-    "launchArrival.missed.words": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 未报到 · 已等 {dur} · tmux 会话「{name}」末几行\n{words}",
-      "args": ["machine", "name", "words", "dur"],
-      "limited": ["tmux"]
-    },
-    "launchArrival.missed.emptyScreen": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 未报到 · 已等 {dur} · tmux 会话「{name}」画面为空",
-      "args": ["machine", "name", "dur"],
-      "limited": ["tmux"]
-    },
-    "launchArrival.missed.noScreen": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 未报到 · 已等 {dur} · 读取 tmux 会话「{name}」画面失败 · {why}",
-      "args": ["machine", "name", "why", "dur"],
-      "limited": ["tmux"]
     },
     "ccBus.spawn.arrived": {
       "kind": "body",

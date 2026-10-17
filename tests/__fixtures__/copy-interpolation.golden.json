@@ -44,14 +44,14 @@
     },
     {
       "_": "〔rules.json C-L5〕值与相邻汉字之间的空格随值定：模板紧贴着写、值以字母数字收尾 ⇒ 补一个空格。",
-      "key": "launchArrival.arrived.body",
+      "key": "sessionOpen.arrived.body",
       "zh": "{machine}已报出此会话",
       "args": { "machine": "lx" },
       "want": "lx 已报出此会话"
     },
     {
       "_": "同一句，值是汉字 ⇒ 不补。",
-      "key": "launchArrival.arrived.body",
+      "key": "sessionOpen.arrived.body",
       "zh": "{machine}已报出此会话",
       "args": { "machine": "本机" },
       "want": "本机已报出此会话"

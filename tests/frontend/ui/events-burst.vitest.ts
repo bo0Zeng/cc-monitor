@@ -202,7 +202,7 @@ describe("live 格的项目目录交到处理器", () => {
     vi.restoreAllMocks();
   });
 
-  it("本机 → onSessionStarted、远端 → onRemoteSessionAdded，都带 projectDir 与 cwd", async () => {
+  it("本机 → onSessionStarted、远端 → onRemoteSessionAdded，都带 projectDir", async () => {
     const started = vi.fn();
     const added = vi.fn();
     await bindEvents({
@@ -217,8 +217,8 @@ describe("live 格的项目目录交到处理器", () => {
     streamFake.lifecycle([cell("s-<local>", "/a/proj")], 0);
     streamFake.lifecycle([cell("s-pi")], 1);
     await vi.runAllTimersAsync();
-    expect(started).toHaveBeenCalledWith("s-<local>", expect.objectContaining({ projectDir: "/a/proj", cwd: "/launched" }));
-    expect(added).toHaveBeenCalledWith("s-pi", "pi", expect.objectContaining({ projectDir: null, cwd: "/launched" }));
+    expect(started).toHaveBeenCalledWith("s-<local>", expect.objectContaining({ projectDir: "/a/proj"}));
+    expect(added).toHaveBeenCalledWith("s-pi", "pi", expect.objectContaining({ projectDir: null}));
   });
 
   it("★ 隐藏那一格（后端判好、壳原样转的 `{by, said} | null`）原样交给处理器：哪一档都认（含命令行当场写的 `launch`）", async () => {

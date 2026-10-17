@@ -1,6 +1,7 @@
 //! **一次性等待**：盯一个目录的文件事件，每来一批问一次「到了没有」；到了立刻回，到期限回「没等到」。
 //!
 //! 两种用法（换号重启那条命令用）：等某条会话的记录里长出满足判定的一条（压缩摘要）· 等某条会话由一个新进程报出（pidfile）。
+//! 那一次有界等待（[`bounded`]）`session-arrive` 也用。
 //! 事件由内核推（经盯盘原语 [`crate::platform::watch_file`]，不传时间窗），检查跑在它收的那条线程上；等的那一侧只有**一次**有界等待，期限由发起方给。
 //! 先装耳朵、再看一眼：装好之前已经到了的也认得出。
 
@@ -16,18 +17,26 @@ pub(crate) struct Armed<T = ()> {
 
 impl<T> Armed<T> {
     /// 等到 ⇒ 等到的那一份；`ms` 毫秒内没等到 ⇒ `None`。
+    pub(crate) async fn fetch(self, ms: u64) -> Option<T> {
+        let Armed { _ears: ears, hit } = self;
+        let got = bounded(hit, ms).await;
+        drop(ears);
+        got
+    }
+}
+
+/// 一次有界等待：那一声 `ms` 毫秒内到了 ⇒ 它；没到 · 发声的那一头走了 ⇒ `None`。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "换号重启等压缩摘要 / 等会话报出 · 起会话等报到的一次有界等待：到了由事件（inotify · 那一帧 `session_added`）当场叫醒，没到就等到发起方给的期限、回「没等到」"
+)]
+pub(crate) async fn bounded<T>(hit: tokio::sync::oneshot::Receiver<T>, ms: u64) -> Option<T> {
     #[allow(
         clippy::disallowed_methods,
-        reason = "换号重启等压缩摘要 / 等会话报出的一次有界等待：到了由文件事件（inotify）当场叫醒，没到就等到发起方给的期限、回「没等到」"
+        reason = "一次性等待的期限：值由发起方给（换号重启的界面交下来的等压缩 / 等会话报出的期限 · `session-arrive` 请求信封的期限），只交给那一次有界等待"
     )]
-    pub(crate) async fn fetch(self, ms: u64) -> Option<T> {
-        #[allow(
-            clippy::disallowed_methods,
-            reason = "一次性等待（`observe::one_wait::Armed::within`）的期限：值由发起方给（换号重启的界面把等压缩 / 等会话报出的期限交下来），只交给那一次有界等待（登记在 `REGISTERED_DEAD…"
-        )]
-        let wait = std::time::Duration::from_millis(ms);
-        tokio::time::timeout(wait, self.hit).await.ok()?.ok()
-    }
+    let wait = std::time::Duration::from_millis(ms);
+    tokio::time::timeout(wait, hit).await.ok()?.ok()
 }
 
 impl Armed {

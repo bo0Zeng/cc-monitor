@@ -1,6 +1,6 @@
 /**
  * 起新会话框（`new-session.ts`）：那台说什么就画什么 —— 预填 · 几行出不出 · 点［新建］交的那一份 · 某一格不行落在那一格下。
- * 替身：通道（三问）· 机器清单 · 账号 · 额度 · 等报到 · 开终端。夹具只造结构。
+ * 替身：通道（几问，等报到那一问 `session-arrive` 也在里面）· 机器清单 · 账号 · 额度 · 开终端。夹具只造结构。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -59,20 +59,12 @@ vi.mock("../../../src/frontend/ui/account-reads", async () => {
 vi.mock("../../../src/frontend/ui/acct-center", () => ({ refreshQuota: vi.fn(async () => {}) }));
 vi.mock("../../../src/frontend/ui/behavior", () => ({ getBehavior: vi.fn(async () => ({ resumeCommand: "" })) }));
 vi.mock("../../../src/frontend/ui/machine-prefs", () => ({ readPrefs: vi.fn(async () => ({ state: "absent", prefs: { launchers: {}, resumeInTmux: false, models: {}, permissionModes: {}, contextLimits: {} } })) }));
-const arrival = vi.hoisted(() => ({
-  awaitArrival: vi.fn(async () => "new-sid"),
-  expectArrival: vi.fn(),
-  liveSince: vi.fn(() => new Set<string>(["seen-0"])),
-  /** 这扇窗长不长得出占位标签页（主窗口 ⇒ 长得出）。 */
-  slotsHere: vi.fn(() => false),
-  arrivedBody: vi.fn(() => ""),
-}));
-vi.mock("../../../src/frontend/ui/launch-arrival", () => arrival);
 const term = vi.hoisted(() => ({ openTerminal: vi.fn(async () => {}), openLocalTerminal: vi.fn(async () => {}) }));
 vi.mock("../../../src/frontend/ui/terminal-open", async (importOriginal) => ({ ...(await importOriginal<object>()), ...term }));
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(async () => {}), listen: vi.fn(async () => () => {}) }));
 
 import { openNewSession } from "../../../src/frontend/ui/new-session";
+import { setLaunchSlots } from "../../../src/frontend/ui/session-open";
 import { loginInTmux } from "../../../src/frontend/ui/settings/account-login";
 import { commands } from "../../../src/frontend/ui/ipc/commands";
 import { fetchAccounts } from "../../../src/frontend/ui/account-reads";
@@ -119,7 +111,10 @@ const OK = {
   account: { name: "work", configDir: "/h/.cc/work", model: null },
   note: null,
   prompt: null,
+  arrival: { by: { kind: "cwd", cwd: "/home/u/srv/orders" }, since: 5, session: "orders-cc" },
 };
+/** 等报到那几问（`session-arrive` 的入参）。 */
+const arriveAsks = (): Record<string, unknown>[] => sent.filter((s) => s.op === "session-arrive").map((s) => s.body);
 
 beforeEach(() => {
   document.body.replaceChildren();
@@ -134,9 +129,8 @@ beforeEach(() => {
   replies.set("session-open-facts", FACTS);
   replies.set("session-open-dir", { exists: true, tmuxName: "orders-cc" });
   replies.set("session-open", OK);
-  arrival.awaitArrival.mockClear();
-  arrival.expectArrival.mockClear();
-  arrival.slotsHere.mockReturnValue(false);
+  replies.set("session-arrive", { kind: "arrived", sid: "new-sid" });
+  setLaunchSlots(null);
   term.openTerminal.mockClear();
 });
 
@@ -189,7 +183,8 @@ describe("起新会话框：预填与几行出不出（都照那台说的）", (
 
 describe("点［新建］：交那台的那一份", () => {
   it("★ 一问 `session-open`：哪一家 · 目录 · 点名的号 · 放在哪；没改终端名就不带（那台铸）；主窗口里起好了 ⇒ 交占位标签页（按展开过的目录认、带终端名），不接进终端、不再另等", async () => {
-    arrival.slotsHere.mockReturnValue(true);
+    const slot = vi.fn(() => true);
+    setLaunchSlots(slot);
     const done = openNewSession({ origin: "devbox" });
     await flush();
     createBtn().click();
@@ -201,10 +196,8 @@ describe("点［新建］：交那台的那一份", () => {
     expect(sent.map((x) => x.op).filter((op) => op !== "session-open-facts" && op !== "session-open-dir" && op !== "rotation-strategies"), "只这一问").toEqual(["session-open"]);
     expect(document.querySelector('[role="dialog"]'), "起了框就关").toBeNull();
     await flush();
-    expect(arrival.expectArrival).toHaveBeenCalledWith(
-      expect.objectContaining({ origin: "devbox", match: { cwd: "/home/u/srv/orders" }, tmuxName: "orders-cc", slot: { cwd: "/home/u/srv/orders" }, before: ["seen-0"] }),
-    );
-    expect(arrival.awaitArrival, "主窗口里起的不再等着说「已启动 / 没看到」").not.toHaveBeenCalled();
+    expect(slot.mock.calls).toEqual([[{ origin: "devbox", cwd: "/home/u/srv/orders", tmuxName: "orders-cc", arrival: OK.arrival }]]);
+    expect(arriveAsks(), "主窗口里起的由占位标签页去问，这里不问").toEqual([]);
     expect(term.openTerminal, "后台起的不接进终端").not.toHaveBeenCalled();
   });
 
@@ -228,7 +221,8 @@ describe("点［新建］：交那台的那一份", () => {
   });
 
   it("开窗那一形：那台给那一行 ⇒ 开终端跑它，按展开过的目录认报到的会话", async () => {
-    replies.set("session-open", { ...OK, landed: "window", session: null, line: "ccm -- new", cwd: "/home/u/x" });
+    const arrival = { by: { kind: "cwd", cwd: "/home/u/x" }, since: 5, session: null };
+    replies.set("session-open", { ...OK, landed: "window", session: null, line: "ccm -- new", cwd: "/home/u/x", arrival });
     void openNewSession({ origin: "devbox" });
     await flush();
     dialog().querySelector<HTMLInputElement>('input[value="window"]')!.click();
@@ -236,7 +230,7 @@ describe("点［新建］：交那台的那一份", () => {
     await flush();
     expect(newRequests()[0].run).toBe("direct");
     expect(term.openTerminal).toHaveBeenCalledWith("devbox", "ccm -- new");
-    expect(arrival.awaitArrival).toHaveBeenCalledWith(expect.objectContaining({ match: { cwd: "/home/u/x" }, tmuxName: null }));
+    expect(arriveAsks()).toEqual([arrival]);
   });
 
   it("★ 在别的窗口（设置 · 查看）里起的：没有占位标签页 ⇒ 等那台报到，报到了说「已启动」＋［切过去］", async () => {
@@ -245,8 +239,7 @@ describe("点［新建］：交那台的那一份", () => {
     createBtn().click();
     await flush();
     await flush();
-    expect(arrival.expectArrival, "等报到只交一份").not.toHaveBeenCalled();
-    expect(arrival.awaitArrival).toHaveBeenCalledWith(expect.objectContaining({ origin: "devbox", match: { cwd: "/home/u/srv/orders" }, tmuxName: "orders-cc" }));
+    expect(arriveAsks(), "等报到只问一次、回包那一问原样").toEqual([OK.arrival]);
     expect(document.body.textContent).toContain(copyText("launch.fromSettings.done", { name: "orders-cc", machine: "devbox" }));
   });
 
@@ -258,7 +251,7 @@ describe("点［新建］：交那台的那一份", () => {
     await flush();
     expect(dialog(), "框不关").toBeTruthy();
     expect(rowOf(input(copyText("newSession.label.cwd"))).textContent).toContain(copyText("launch.dir.missing", { machine: "devbox" }));
-    expect(arrival.awaitArrival).not.toHaveBeenCalled();
+    expect(arriveAsks()).toEqual([]);
   });
 
   it("★ 号选不了 ⇒ 不悄悄换号：那一格下给［改用 {替代}］，点了以那个号再交一次", async () => {
@@ -293,7 +286,7 @@ describe("点［新建］：交那台的那一份", () => {
     expect(b.ticket, "再核那一次带的是同一张票").toBe(a.ticket);
     expect(newRequests()).toHaveLength(2);
     expect(document.querySelector('[role="dialog"]'), "起好了 ⇒ 框关上").toBeNull();
-    expect(arrival.awaitArrival).toHaveBeenCalledWith(expect.objectContaining({ origin: "devbox", tmuxName: "orders-cc" }));
+    expect(arriveAsks()).toEqual([OK.arrival]);
   });
 
   it("期限到、正在再核那一拍 ⇒ 框顶那一条是中性的（没出错：不用错误色、不当警报念）", async () => {
@@ -325,7 +318,7 @@ describe("点［新建］：交那台的那一份", () => {
     expect(tickets).toHaveLength(3);
     expect(new Set(tickets).size, "三次都是同一张票").toBe(1);
     expect(document.querySelector('[role="dialog"]')).toBeNull();
-    expect(arrival.awaitArrival).toHaveBeenCalled();
+    expect(arriveAsks()).toEqual([OK.arrival]);
   });
 
   it("★ 起没起未知时：表单一格没改就点［新建］⇒ 还是那张票（等于再核一次，不起第二个）；改过任一格再点 ⇒ 换一张新票", async () => {
@@ -348,22 +341,6 @@ describe("点［新建］：交那台的那一份", () => {
     const last = newRequests().at(-1)!;
     expect(whatOf(last).cwd).toBe("/home/u/srv/billing");
     expect(last.ticket, "改过一格 ⇒ 新票").not.toBe(t[0]);
-  });
-
-  it("★ 起没起未知之后再点［新建］拿到了「起好了」⇒ 占位标签页从第一次发请求那一刻算新会话（那之间已经报到的那个当场认出，不显示未报到）", async () => {
-    arrival.slotsHere.mockReturnValue(true);
-    arrival.liveSince.mockReturnValueOnce(new Set(["first-ask"])).mockReturnValue(new Set(["first-ask", "landed-meanwhile"]));
-    hang = 2;
-    void openNewSession({ origin: "devbox" });
-    await flush();
-    createBtn().click();
-    await flush();
-    createBtn().click();
-    await flush();
-    await flush();
-    expect(arrival.expectArrival).toHaveBeenCalledTimes(1);
-    expect(arrival.expectArrival.mock.calls[0][0].before).toEqual(["first-ask"]);
-    arrival.liveSince.mockReset().mockReturnValue(new Set(["seen-0"]));
   });
 
   it("那台说这一趟还在起 ⇒ 框顶那一句 ＋［再核一次］＋［复制详情］，不重起", async () => {
@@ -608,9 +585,9 @@ describe("账号页［在 tmux 里登录］：不开框，同一个请求", () =
     await loginInTmux("devbox", "team", "/h/.cc/team");
     await flush();
     expect(newRequests()).toEqual([{ what: { kind: "new", agent: "claude", cwd: "/h/.cc/team" }, run: "tmux", local: false, account: { kind: "named", name: "team" } }]);
-    expect(sent.map((x) => x.op), "只这一问").toEqual(["session-open"]);
+    expect(sent.map((x) => x.op), "起那一问 ＋ 等报到那一问").toEqual(["session-open", "session-arrive"]);
     expect(term.openTerminal).not.toHaveBeenCalled();
-    expect(arrival.awaitArrival).toHaveBeenCalledWith(expect.objectContaining({ origin: "devbox", match: { cwd: "/home/u/srv/orders" }, tmuxName: "orders-cc" }));
+    expect(arriveAsks()).toEqual([OK.arrival]);
     expect(document.body.textContent).toContain(copyText("launch.fromSettings.done", { name: "orders-cc", machine: "devbox" }));
     expect(document.body.textContent).toContain(copyText("newSession.switch.action"));
   });
@@ -620,6 +597,6 @@ describe("账号页［在 tmux 里登录］：不开框，同一个请求", () =
     await loginInTmux("devbox", "team", "/h/.cc/team");
     await flush();
     expect(document.body.textContent).toContain("那台没 tmux-甲");
-    expect(arrival.awaitArrival).not.toHaveBeenCalled();
+    expect(arriveAsks()).toEqual([]);
   });
 });

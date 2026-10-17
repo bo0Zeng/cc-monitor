@@ -321,6 +321,8 @@ pub(crate) struct BusSpawnedNow {
     pub(crate) id: Option<String>,
     /// `cc-spawn` 的原始回显，给人看。
     pub(crate) said: String,
+    /// 等它报到那一问（`session-arrive` 的入参，原样交回）。
+    pub(crate) arrival: cmd_wire::session::ArriveAsk,
 }
 
 typed::codes! {

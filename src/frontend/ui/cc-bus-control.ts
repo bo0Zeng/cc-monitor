@@ -26,7 +26,7 @@
  * 查在线 15 秒 · 发消息 / 收掉 / 广播 30 秒 · 派生 90 秒。
  */
 import { copyText } from "./copy-table";
-import { arrivedBody, expectArrival } from "./launch-arrival";
+import { awaitArrival } from "./session-open";
 import { ControlError, machineName, settleTyped } from "./control-said";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
@@ -133,16 +133,8 @@ export async function spawnAgent(origin: Origin, req: SpawnRequest): Promise<str
   const sent = callTyped(origin, "bus-spawn", { tool: req.tool, dir: req.dir, task: req.task, ...account }, budgetWithin(SPAWN_BUDGET_MS));
   const v = await settleTyped(origin, "bus-spawn", sent);
   const said = saidOfSpawn(v);
-  // cc-spawn 回了不等于 agent 起来了（pane 里当场退回 shell 那一形它照样回 0）：
-  //   等那台报出一条在这个目录里新起的会话再说；没见到就抓那个 tmux 会话的一屏当原话。
-  const id = v.id;
-  expectArrival({
-    origin,
-    match: { cwd: req.dir },
-    tmuxName: id,
-    arrived: { title: copyText("ccBus.spawn.arrived"), body: arrivedBody(origin) },
-    slot: { cwd: req.dir },
-  });
+  // cc-spawn 回了不等于 agent 起来了（pane 里当场退回 shell 那一形它照样回 0）：问那台等它报到（没见到那一句 · 那一屏原话那台写）。
+  awaitArrival(origin, v.arrival, req.dir, copyText("ccBus.spawn.arrived"));
   return said;
 }
 

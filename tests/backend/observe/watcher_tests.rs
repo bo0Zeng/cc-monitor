@@ -71,6 +71,7 @@ impl FrameSink {
             subs: vec![Sub::new(0, tx, crate::Tz::default())],
             ledger: None,
             priming: HashSet::new(),
+            arrivals: crate::observe::arrivals::Arrivals::default(),
         }
     }
 

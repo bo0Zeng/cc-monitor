@@ -39,12 +39,20 @@ internal class FakeCoreLink :
 
     var answer: (String, Map<String, Any?>?) -> Reply = { _, _ -> Reply.LinkDown }
 
+    /** `session-arrive` 那一问挂着、直到判据说报到了（[arrive]）或没见到（[miss]）。 */
+    private val arrival = kotlinx.coroutines.CompletableDeferred<Reply>()
+
+    fun arrive(sid: String) = arrival.complete(Reply.Ok(mapOf("kind" to "arrived", "sid" to sid)))
+
+    fun miss(said: String) = arrival.complete(Reply.Ok(mapOf("kind" to "missed", "said" to said, "terminal" to null)))
+
     override suspend fun call(
         cmd: String,
         args: Map<String, Any?>?,
         withinMs: Long,
     ): Reply {
         calls += cmd to args
+        if (cmd == "session-arrive") return arrival.await()
         return answer(cmd, args)
     }
 

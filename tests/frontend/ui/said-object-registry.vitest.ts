@@ -9,16 +9,14 @@ import { join, resolve, sep } from "node:path";
 import { nonEmpty } from "../../test-support/non-empty";
 
 const ROOT = resolve(__dirname, "../../..");
-const CALLS = ["previewText", "previewShot", "previewByTmuxName", "sendToTerminal", "agentOnline", "readState", "readInbox", "spawnAgent", "broadcast"];
+const CALLS = ["previewShot", "sendToTerminal", "agentOnline", "readState", "readInbox", "spawnAgent", "broadcast"];
 /** 不算调用点的家：定义它们的那两份。 */
 const HOMES = new Set(["src/frontend/ui/terminal-reads.ts", "src/frontend/ui/cc-bus-control.ts"]);
 
 /** `文件::函数` ⇒ 对象在哪（失败那一句旁边看得见的那个对象）。 */
 const WHERE: Record<string, string> = {
-  "src/frontend/ui/launch-arrival.ts::previewByTmuxName": "起会话之后的占位页：那一行写着 tmux 会话名（launch.slot.noScreen 带 {name}）",
   "src/frontend/ui/terminal-page.ts::previewShot": "终端页：错误条就在页头下面，页头写着会话 · 目录 · 机器",
   "src/frontend/ui/terminal-page.ts::sendToTerminal": "终端页：送字那一行写着「送往 {会话} · {机器}」",
-  "src/frontend/ui/launch-slot.ts::previewText": "起会话之后的占位页：launch.slot.noScreen 带 {machine} · {name}",
   "src/frontend/ui/views/cc-bus-section.ts::readState": "设置 → cc-bus：说的是这台的名册（区块头选着这台），没有单个对象",
   "src/frontend/ui/views/cc-bus-section.ts::agentOnline": "设置 → cc-bus：结果写在那个 agent 那一行里（行首是它的 id）",
   "src/frontend/ui/views/cc-bus-section.ts::readInbox": "设置 → cc-bus：结果写在那个 agent 那一行展开的收件箱里",

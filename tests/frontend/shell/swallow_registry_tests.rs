@@ -156,6 +156,8 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     // +1：SIGUSR1 戳名单上的每一份（`PokeSlot` 并进来；那一份可能正在退出）。
     ("src/backend/observe/watcher.rs", "let _ = w.send(WatchEvent::Poke);", Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = w.send(WatchEvent::RecordSeen { sid: sid.to_string(), present, });", Why::PeerGone, ""),
+    ("src/backend/observe/watcher.rs", "let _ = w.send(WatchEvent::Arrive { by: by.clone(), since, tell: tell.clone(), });", Why::PeerGone, ""),
+    ("src/backend/observe/arrivals.rs", "let _ = tx.send(sid.to_string());", Why::PeerGone, "报到了：等的那一侧可能已经到期限撤了，没人要这一声"),
     ("src/backend/observe/watcher.rs", "let _ = w.send(WatchEvent::Resync { only: only.map(str::to_string), done: tx.clone(), });", Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = tx.send(WatchEvent::TmuxProbeDue);", Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = tx.send(target.death_event(pid));", Why::PeerGone, ""),

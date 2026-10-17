@@ -65,6 +65,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // **起会话 · 恢复 · 接回 —— 一个请求**（`control/session_open/`，宿主 `faces/session_open_face.rs`）：意图进去，这台判号 · 放在哪 ·
     //   记录在不在 · 已有进程在写 · 在跑 / 就地 / 新开，回「落在哪 ＋ 要开终端就跑这一行」；每个码的那一句后端写好。
     crate::wire::typed::blocking::<crate::faces::session_open_face::SessionOpen>("起会话 · 恢复 · 接回（一个请求：落在哪 ＋ 要开终端就跑的那一行）"),
+    // 等起好的会话报到（`control/session_arrive.rs`）：`session-open` · `bus-spawn` 回包的 `arrival` 原样交回，期限 ＝ 请求信封的期限；
+    //   没见到 ⇒ 那一句（起在 tmux 里的带那一屏末几行）。
+    crate::wire::typed::asynchronous::<crate::faces::session_arrive_face::SessionArrive>("等起好的会话报到"),
     // 起新会话框打开时问一次：这台最近用过的目录 · 有没有 tmux · 能起哪几家 · 分叉源会话的三格（只读，不写分支记录）。
     crate::wire::typed::blocking::<crate::faces::session_open_face::SessionOpenFacts>(
         "起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法",

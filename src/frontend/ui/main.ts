@@ -98,7 +98,7 @@ import { sessionCommands } from "./session-commands";
 import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";
 import { currentAccountForBadge } from "./accounts";
 import { fetchSessionAccounts, fetchAccounts } from "./account-reads";
-import { bindLaunchArrivals, noteLive, setArrivalSlots } from "./launch-arrival";
+import { setLaunchSlots } from "./session-open";
 import { FOCUS_SESSION_EVENT, openNewSession } from "./new-session";
 import { copyText } from "./copy-table";
 import { appStore } from "./app-store";
@@ -378,7 +378,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   };
   // 起新会话：在主窗口里起的先长出占位标签页、报到了换成真的；在设置 / 查看窗里起的点了［切过去］再切，先把主窗口拉到前面。
   // 别的起会话路（恢复 · cc-bus 派生 · 开窗 resume）在主窗口里发起的也走同一件占位标签页。
-  setArrivalSlots((spec) => tabs.addLaunchSlot(spec));
+  setLaunchSlots((spec) => tabs.addLaunchSlot(spec));
   // 占位标签页那一页显着：会话头与真标签页的选中样子让开。
   tabs.onSlotShown = (on) => {
     sessionHead.el.toggleAttribute("data-slot-over", on);
@@ -511,8 +511,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   let refreshCmdkChord: () => void = () => {};
   // 设置窗「重新对齐」做完 ⇒ 标出那台上记录没了的固定条（不自动摘）。
   void listen<{ origin: string }>(RESYNC_DONE_EVENT, (e) => void tabs.flagPinsWithoutRecord(e.payload.origin));
-  // 任何窗口起会话之后交过来的「等它」都在这里收（主窗口订着每台的会话流）。
-  bindLaunchArrivals();
   // 独立查看窗里点［切过去］· agent 窗口路径上点会话那一段 ⇒ 主窗口拉到前面、切到那个会话的标签页。
   void listen<SwitchToSession>(SWITCH_TO_SESSION_EVENT, (e) => {
     tabs.switchTo(e.payload.sessionId);
@@ -895,7 +893,6 @@ window.addEventListener("DOMContentLoaded", async () => {
       tabs.createSkeletonTab(sessionId, meta.projectDir || null, LOCAL_ORIGIN, meta.background, meta.name, null, meta.hidden);
       // 本机骨架也在就绪点才到（与远端同一条路）⇒ 上次所在 tab 是本机会话时同样在这里补切。
       startup?.onAppeared(sessionId);
-      noteLive(LOCAL_ORIGIN, sessionId, { cwd: meta.cwd }); // 起会话的真成功正信号
     },
     // 启动重放期间走批模式（惰性高亮），结束时 flush。
     // DEV 抖动探针跨在批窗口上（生产 probe 恒 null）。
@@ -955,7 +952,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     },
     // 远端会话宣告 → 骨架 Tab，附项目目录 / kind / name：骨架标题当场完整（bg → ⚙ ＋ 任务名）；没给项目目录 ⇒ 标题退到 aiTitle / sid。
     onRemoteSessionAdded: (sessionId, origin, meta) => {
-      noteLive(origin, sessionId, { cwd: meta.cwd }); // 起会话的真成功正信号
       tabs.createSkeletonTab(
         sessionId,
         meta.projectDir || null,

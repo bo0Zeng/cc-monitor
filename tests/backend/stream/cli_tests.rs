@@ -142,6 +142,10 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
 /// [`STREAM_ONLY`] 每一条的理由（一次性进程里结构上答不了）。与生产那张表两向相等（`the_withheld_tables_…`）。
 const STREAM_ONLY_WHY: &[(&str, &str)] = &[
     (
+        "session-arrive",
+        "它等的是常驻进程那份 watcher 报出来的会话；一次性进程里没有 watcher，只能当场答「没见到」—— 那是假话。",
+    ),
+    (
         "machine-round",
         "它收进的是常驻进程那一张机器状态表、推给连着的界面；一次性进程收了就随进程丢了，回的成品没人看得见、也不是那台此刻的样子。",
     ),

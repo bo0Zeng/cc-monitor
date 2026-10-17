@@ -162,6 +162,12 @@ enum WatchEvent {
     Join(Sub, Option<crate::wire::WatchAsk>),
     /// 那条流连接走了（[`Attachment`] 丢了）。
     Leave(u64),
+    /// 等一条起好的会话报到（[`expect_arrival`]，`session-arrive` 交的）：`since` 之后报到、`by` 认得出的那一条 ⇒ 交 `tell`。
+    Arrive {
+        by: cmd_wire::session::ArriveBy,
+        since: u64,
+        tell: crate::observe::arrivals::Tell,
+    },
     /// 一条会话的后台预读做完了（线程池交回，[`primed`] 装回）。
     Primed(PrimeDone),
 }
@@ -965,6 +971,21 @@ pub(crate) fn record_seen(sid: &str, present: bool) {
     }
 }
 
+/// 等一条起好的会话报到：交每一份在跑的 watcher 的报到那一本（头一个见到的交 `tell`）；一份都没在跑 ⇒ `tell` 随之丢掉、等的那一头当场断。
+pub(crate) fn expect_arrival(
+    by: &cmd_wire::session::ArriveBy,
+    since: u64,
+    tell: &crate::observe::arrivals::Tell,
+) {
+    for (_, w) in LIVE.lock().unwrap_or_else(|e| e.into_inner()).iter() {
+        let _ = w.send(WatchEvent::Arrive {
+            by: by.clone(),
+            since,
+            tell: tell.clone(),
+        });
+    }
+}
+
 /// **手动对齐**：每一份在跑的 watcher 都做一次与起步同一套的对齐，等它们都做完。
 /// 回（差异，几份 watcher 答了）。增删取各份最大（每份看的是同一台机器），标签写入相加（只有第一份真写），补读行数相加（各份交的是各自的帧）。
 /// 中途退掉的那份丢了 `done` ⇒ 这里不会挂住。
@@ -1489,6 +1510,7 @@ fn watch_loop(
             }
             WatchEvent::Join(sub, watch) => join(sub, watch, &mut state, &mut sink),
             WatchEvent::Leave(id) => sink.leave(id),
+            WatchEvent::Arrive { by, since, tell } => sink.arrivals.expect(by, since, tell),
             WatchEvent::RecordSeen { sid, present } => sink.record_seen(&sid, present),
             WatchEvent::Primed(done) => primed(done, &mut state, &mut sink),
             WatchEvent::Resync { only, done } => {
@@ -4435,6 +4457,8 @@ struct FrameSink {
     ledger: Option<crate::observe::session_ledger::SessionLedger>,
     /// 预读还没交回的会话：它们的整行帧（[`Frame::content_of`]）一帧不发（[`start_prime`] 加、[`primed`] 摘）。
     priming: HashSet<String>,
+    /// 起好的会话报到没有（`observe::arrivals`）：每一帧发出去之前过它。
+    arrivals: crate::observe::arrivals::Arrivals,
 }
 
 /// 一条流连接在这台 watcher 上的投影：它的有界通道 · 它的名单 · 它欠的丢帧账。
@@ -4477,6 +4501,7 @@ impl FrameSink {
             subs: Vec::new(),
             ledger: Some(crate::observe::session_ledger::SessionLedger::new()),
             priming: HashSet::new(),
+            arrivals: crate::observe::arrivals::Arrivals::default(),
         }
     }
 
@@ -4554,6 +4579,7 @@ impl FrameSink {
         {
             return;
         }
+        self.arrivals.on_frame(&frame);
         let (pass, extra) = match self.ledger.as_mut() {
             Some(l) => {
                 let got = l.on_frame(&frame);

@@ -23,6 +23,8 @@ import type { AnnotateReq } from "./AnnotateReq";
 import type { Annotated } from "./Annotated";
 import type { AnswerReq } from "./AnswerReq";
 import type { Answered } from "./Answered";
+import type { ArriveAsk } from "./ArriveAsk";
+import type { ArriveEnd } from "./ArriveEnd";
 import type { AskReply } from "./AskReply";
 import type { AskReq } from "./AskReq";
 import type { AssetsSyncReq } from "./AssetsSyncReq";
@@ -506,6 +508,7 @@ export interface TypedCommands {
   "rotation-use": { req: RotationUseReq; reply: RotDone; code: "bad_args" | "no_session" | "no_strategy" | "dirty" | "io_failed" };
   "rotation-use-now": { req: RotationUseNowReq; reply: RotDone; code: "bad_args" | "no_session" | "not_listed" | "unusable" | "io_failed" };
   "rotation-view": { req: RotationViewReq; reply: RotationViewReply; code: "bad_args" | "no_session" | "no_strategy" | "refused" };
+  "session-arrive": { req: ArriveAsk; reply: ArriveEnd; code: "bad_args" };
   "session-commands": { req: SessionCommandsReq; reply: SessionCommands; code: "bad_args" | "no_such_session" };
   "session-fork": { req: ForkReq; reply: Forked; code: "bad_args" | "fork_failed" };
   "session-model": { req: SessionModelReq; reply: ModelSwitched; code: "bad_args" | "unsupported" | "no_such_session" | "no_tmux" | "unobservable" | "child_timed_out" };

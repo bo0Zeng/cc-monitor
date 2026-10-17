@@ -89,6 +89,7 @@ impl Rig {
                 permission_mode: None,
             }),
             fork_tmux: self.fork_tmux,
+            since: 0,
         };
         let fork = |_: &str, _: &str| -> Result<String, (&'static str, String)> {
             if self.fork_err {
@@ -979,4 +980,62 @@ fn a_new_session_takes_this_machines_permission_mode_unless_asked_and_resume_nev
 
 fn resume_req_tmux() -> Value {
     resume(Some("tmux"))
+}
+
+/// ★ 起了一家 ⇒ 回包带等它报到那一问（有 sid 按 sid，没有按目录；抓屏按落在的那个 tmux 会话）；在跑 · 接回 · 进目录 ⇒ 不等。
+#[test]
+fn what_was_started_comes_back_with_its_arrival_and_nothing_else_does() {
+    let by_sid = |s: &str| Some(ArriveBy::Sid { sid: s.into() });
+    let rig = Rig::new(Some(vec![]));
+    let o = rig.open(resume(Some("tmux"))).unwrap();
+    let a = o.arrival.expect("恢复进 tmux ⇒ 等它报到");
+    assert_eq!(
+        (Some(a.by), a.since, a.session.as_deref()),
+        (by_sid(A), 0, Some("p-cc"))
+    );
+    let o = rig.open(resume(Some("direct"))).unwrap();
+    let a = o.arrival.expect("直路恢复：开窗那一行跑起来才起，照样等");
+    assert_eq!((Some(a.by), a.session), (by_sid(A), None));
+    let o = rig.open(new(json!({}))).unwrap();
+    assert_eq!(
+        o.arrival.map(|a| a.by),
+        by_sid(U),
+        "先定好 sid 的新起按 sid"
+    );
+
+    let rig = Rig::new(Some(vec![
+        row("live", Some(A), true),
+        row("idle", None, false),
+    ]));
+    assert_eq!(
+        rig.open(resume(Some("tmux"))).unwrap().arrival,
+        None,
+        "在跑 ⇒ 不等"
+    );
+    let looked = rig
+        .open(json!({ "what": { "kind": "look", "session": "idle" } }))
+        .unwrap();
+    assert_eq!(looked.arrival, None, "接回 ⇒ 不等");
+
+    let by_cwd = with_arrival(
+        Opened {
+            sid: None,
+            cwd: Some("/w".into()),
+            agent: Some(crate::agents::AgentKind::new("codex")),
+            ..opened(Landed::Started, Some("w".into()), None)
+        },
+        3,
+    );
+    assert_eq!(
+        by_cwd.arrival.map(|a| (a.by, a.since)),
+        Some((ArriveBy::Cwd { cwd: "/w".into() }, 3))
+    );
+    let shell = with_arrival(
+        Opened {
+            cwd: Some("/w".into()),
+            ..opened(Landed::Window, None, Some("cd /w".into()))
+        },
+        3,
+    );
+    assert_eq!(shell.arrival, None, "进目录那一行没起 agent ⇒ 不等");
 }

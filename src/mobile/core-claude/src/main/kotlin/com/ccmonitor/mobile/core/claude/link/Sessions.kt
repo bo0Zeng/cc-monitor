@@ -1,6 +1,8 @@
 package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.claude.link.wire.AgentFacts
+import com.ccmonitor.mobile.core.claude.link.wire.ArriveAsk
+import com.ccmonitor.mobile.core.claude.link.wire.ArriveEnd
 import com.ccmonitor.mobile.core.claude.link.wire.FirstSay
 import com.ccmonitor.mobile.core.claude.link.wire.Held
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryLinesPage
@@ -114,27 +116,35 @@ object SessionOpen {
         val line: String?,
         /** 那台先定好的 sid；那一家不认先定 ⇒ `null`（报到之前说不出）。 */
         val sid: String?,
-        /** 展开之后的目录：认报到的会话按它；接回 ⇒ `null`。 */
+        /** 展开之后的目录；接回 ⇒ `null`。 */
         val cwd: String?,
         /** 那台要附带说的一句；没有 ⇒ `null`。 */
         val note: String?,
         /** 第一句交进去的结局（同 `terminal-input` 的回话）；没给第一句 ⇒ `null`。 */
         val prompt: TerminalInput.Result?,
+        /** 起了一家 ⇒ 等它报到那一问（原样交 [SessionArrive]）；没起 ⇒ `null`。 */
+        val arrival: ArriveAsk?,
     )
 
     /** 核心按 `cmd-wire` 那一份解过的回包 ⇒ 这一份（第一句的结局折成 [TerminalInput.Result]）。 */
     fun of(data: Any?): Answer? {
         val r = Wire.bind<Opened>(data) ?: return null
         val prompt = r.prompt?.let { TerminalInput.of(it) ?: return null }
-        return Answer(r.landed, r.session, r.line, r.sid, r.cwd, r.note, prompt)
+        return Answer(r.landed, r.session, r.line, r.sid, r.cwd, r.note, prompt, r.arrival)
     }
+}
 
-    /** 起好之后报到的那一条：会话表里目录是 [cwd]、起之前（[before]）还没有的。和桌面认法一样（`awaitArrival` 的 `{cwd}`）。 */
-    fun arrived(
-        table: SessionTable,
-        cwd: String,
-        before: Set<String>,
-    ): LiveSession? = table.sessions.values.firstOrNull { it.cwd == cwd && it.sid !in before }
+/**
+ * `session-arrive`：等起好的那一条在那台报到（`session-open` 回包里的 `arrival` 原样交回；等多久 ＝ 这一问的期限）。
+ * 认法 · 没见到那一句 · 那一屏原话都是那台的，手机只照回包说。
+ */
+object SessionArrive {
+    const val COMMAND: String = "session-arrive"
+
+    fun args(ask: ArriveAsk): Map<String, Any?> = Wire.args(ask)
+
+    /** 报到了 ⇒ `sid`；没见到 ⇒ `said`（那台写好的那一句）。 */
+    fun of(data: Any?): ArriveEnd? = Wire.bind<ArriveEnd>(data)
 }
 
 /**

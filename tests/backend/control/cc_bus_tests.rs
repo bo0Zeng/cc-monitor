@@ -69,8 +69,8 @@ fn send_reply(
 fn kill_reply(id: &str, killed: bool, stale_only: bool) -> serde_json::Value {
     val(super::kill_reply(id, killed, stale_only))
 }
-fn spawn_reply(said: &str) -> serde_json::Value {
-    val(super::spawn_reply(said))
+fn spawn_reply(said: &str, dir: &str) -> serde_json::Value {
+    val(super::spawn_reply(said, dir, 0))
 }
 fn broadcast_reply(
     plan: &BroadcastPlan,
@@ -761,7 +761,7 @@ fn the_bus_products_match_the_cross_language_golden() {
     let named = parse_spawn(&sp["requestAccount"]).expect("金样的派生请求（账号）过不了生产解析器");
     assert_eq!(named.account.as_deref(), Some("z"));
     assert_eq!(
-        spawn_reply(sp["said"].as_str().expect("金样缺 `said`")),
+        spawn_reply(sp["said"].as_str().expect("金样缺 `said`"), &base.dir),
         sp["reply"],
         "`bus-spawn` 成品与金样不相等"
     );

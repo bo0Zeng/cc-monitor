@@ -31,6 +31,7 @@ pub(crate) mod rotation_facts_face; // 帧面 `rotation-facts`（typed）：每�
 pub(crate) mod rotation_try_face; // 帧面 `rotation-try`（typed）：拿一份策略原文判一次、推演，不写盘
 pub(crate) mod rotation_view_face; // 帧面：轮换的读（typed）：策略目录 · 界面四块要的全部
 pub(crate) mod search_face; // 全文搜索那两条（typed）：`history-search` · `history-search-merge`；本体在 observe/search_query.rs
+pub(crate) mod session_arrive_face; // 帧面 `session-arrive`：等起好的会话报到（认法住观测层）
 pub mod session_batch_face;
 pub(crate) mod session_commands_face; // 帧面 `session-commands`（typed）：一条会话能用的斜杠命令与 Skill
 pub(crate) mod session_mode_face;

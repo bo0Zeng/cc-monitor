@@ -1,6 +1,6 @@
 /**
- * 起会话一个家（`session-open.ts`）：照 `landed` 开不开那一行 · 等不等报到；失败按码挑按钮、那台那一句原样上屏；
- * 开窗失败 ⇒ 那一行进剪贴板；同一条在飞再点不重发。替身：通道 · 开窗 · 剪贴板 · 提示 · 等报到 · 对齐重试。
+ * 起会话一个家（`session-open.ts`）：照 `landed` 开不开那一行；回包带 `arrival` ⇒ 问那台等报到（`session-arrive`），界面不自己认、不计时；
+ * 失败按码挑按钮、那台那一句原样上屏；开窗失败 ⇒ 那一行进剪贴板；同一条在飞再点不重发。替身：通道 · 开窗 · 剪贴板 · 提示 · 对齐重试。
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -9,6 +9,8 @@ import { REPO_ROOT } from "../../test-support/repo-root";
 
 const sent: { origin: string; op: string; body: Record<string, unknown> }[] = [];
 let reply: unknown = null;
+/** `session-arrive` 的回话。 */
+let arriveReply: unknown = { kind: "arrived", sid: "s-1" };
 let refusal: { code: string; message: string; data: unknown } | null = null;
 /** 有值 ⇒ 那一问挂着、直到判据放行。 */
 let gate: Promise<void> | null = null;
@@ -25,7 +27,7 @@ vi.mock("../../../src/comms/inward/chan", async (importOriginal) => {
           const r = refusal;
           throw new real.ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify(r)) }, r.message, "detail-x");
         }
-        return new TextEncoder().encode(JSON.stringify(reply));
+        return new TextEncoder().encode(JSON.stringify(op === "session-arrive" ? arriveReply : reply));
       },
     },
   };
@@ -41,12 +43,11 @@ vi.mock("../../../src/frontend/ui/clipboard", () => clip);
 vi.mock("../../../src/frontend/ui/settings/open-settings", () => ({ openSettingsWindow: vi.fn() }));
 const toasts = vi.hoisted(() => ({ toast: vi.fn(), failToast: vi.fn() }));
 vi.mock("../../../src/frontend/ui/kit/toast", () => toasts);
-const arrival = vi.hoisted(() => ({ expectArrival: vi.fn(), awaitArrival: vi.fn(), slotsHere: () => true, arrivedBody: (o: string) => `报出@${o}` }));
-vi.mock("../../../src/frontend/ui/launch-arrival", () => arrival);
 const resync = vi.hoisted(() => ({ offerResyncRetry: vi.fn() }));
 vi.mock("../../../src/frontend/ui/resync", () => resync);
 
-import { ON_LANDED, openSession } from "../../../src/frontend/ui/session-open";
+import { openSession, setLaunchSlots } from "../../../src/frontend/ui/session-open";
+import type { ArriveAsk } from "../../../src/frontend/ui/generated/ArriveAsk";
 import { NoTerminalWindow } from "../../../src/frontend/ui/terminal-open";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { Landed } from "../../../src/frontend/ui/generated/Landed";
@@ -55,9 +56,16 @@ import type { SessionOpenReq } from "../../../src/frontend/ui/generated/SessionO
 
 const RESUME: SessionOpenReq = { what: { kind: "resume", sid: "s-1" }, local: false };
 
+const ASK: ArriveAsk = { by: { kind: "sid", sid: "s-1" }, since: 4, session: "t-1" };
+const LANDS: Landed[] = ["window", "started", "in_place", "running", "idle"];
+
+/** 那台的成品：起了一家的（window · started · in_place）带等报到那一问，接上已有的不带（那台定，见 `session_open_tests.rs`）。 */
 function opened(landed: Landed, over: Partial<Opened> = {}): Opened {
-  return { landed, session: "t-1", line: `line:${landed}`, sid: "s-1", agent: "claude", cwd: "/p", account: null, note: null, prompt: null, ...over };
+  const starts = landed === "window" || landed === "started" || landed === "in_place";
+  return { landed, session: "t-1", line: `line:${landed}`, sid: "s-1", agent: "claude", cwd: "/p", account: null, note: null, prompt: null, arrival: starts ? ASK : null, ...over };
 }
+
+const arrives = (): Record<string, unknown>[] => sent.filter((s) => s.op === "session-arrive").map((s) => s.body);
 
 /** 那台码表（生成的命令表里 `session-open` 那一行的 `code`）。 */
 function openCodes(): string[] {
@@ -74,8 +82,10 @@ const flush = async (): Promise<void> => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  setLaunchSlots(null);
   sent.length = 0;
   reply = null;
+  arriveReply = { kind: "arrived", sid: "s-1" };
   refusal = null;
   gate = null;
   term.openTerminal.mockResolvedValue(undefined);
@@ -83,42 +93,81 @@ beforeEach(() => {
   clip.writeClipboard.mockResolvedValue(undefined);
 });
 
-describe("照 landed 开不开 · 等不等（表在 session-open 一处）", () => {
-  it("★ 单个：每一种都开那一行；起了 agent 的等报到，接上已有的当场说接上（整表两向相等）", async () => {
-    const got: Record<string, { opened: boolean; waited: boolean; said: boolean }> = {};
-    for (const landed of Object.keys(ON_LANDED) as Landed[]) {
+describe("照 landed 开不开 · 报到交那台等", () => {
+  it("★ 单个：每一种都开那一行；带等报到那一问的原样交 `session-arrive`，接上已有的当场说接上（整表两向相等）", async () => {
+    const got: Record<string, { opened: boolean; asked: boolean; said: boolean }> = {};
+    for (const landed of LANDS) {
       vi.clearAllMocks();
+      sent.length = 0;
       reply = opened(landed);
       expect(await openSession("devbox", RESUME)).toBe(true);
+      await flush();
       got[landed] = {
         opened: term.openTerminal.mock.calls.length === 1 && term.openTerminal.mock.calls[0][1] === `line:${landed}`,
-        waited: arrival.expectArrival.mock.calls.length === 1,
+        asked: JSON.stringify(arrives()) === JSON.stringify([ASK]),
         said: toasts.toast.mock.calls.length === 1,
       };
     }
     expect(got).toEqual({
-      window: { opened: true, waited: true, said: false },
-      started: { opened: true, waited: true, said: false },
-      in_place: { opened: true, waited: true, said: false },
-      running: { opened: true, waited: false, said: true },
-      idle: { opened: true, waited: false, said: true },
+      window: { opened: true, asked: true, said: true },
+      started: { opened: true, asked: true, said: true },
+      in_place: { opened: true, asked: true, said: true },
+      running: { opened: true, asked: false, said: true },
+      idle: { opened: true, asked: false, said: true },
     });
   });
 
-  it("★ 后台起的那一列（批量 · 新起）：只有 window 开", () => {
-    const background = Object.fromEntries(Object.entries(ON_LANDED).map(([k, v]) => [k, v.background]));
-    expect(background).toEqual({ window: true, started: false, in_place: false, running: false, idle: false });
+  it("★ 后台起的（新起）：只有 window 开", async () => {
+    const opens: Record<string, boolean> = {};
+    for (const landed of LANDS) {
+      vi.clearAllMocks();
+      reply = opened(landed);
+      await openSession("devbox", { what: { kind: "new", agent: "claude", cwd: "/p" }, local: false });
+      opens[landed] = term.openTerminal.mock.calls.length === 1;
+    }
+    expect(opens).toEqual({ window: true, started: false, in_place: false, running: false, idle: false });
   });
 
-  it("等报到按 sid 认；没有 sid 按起在哪个目录认；本机开窗带起始目录", async () => {
+  it("★ 那台说没见到 ⇒ 那一句原样上屏（标题 ＋ 正文）；界面不认、不计时：起了之后零个定时器", async () => {
+    vi.useFakeTimers();
+    try {
+      arriveReply = { kind: "missed", said: "命令已发出\n已等 45s 未报到 · 末几行\nError: x", terminal: "h-1" };
+      reply = opened("started");
+      const done = openSession("devbox", RESUME);
+      await vi.advanceTimersByTimeAsync(0);
+      await done;
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(0);
+      const t = toasts.toast.mock.calls.at(-1)!;
+      expect([t[0], t[1], t[2]?.level]).toEqual(["命令已发出", "已等 45s 未报到 · 末几行\nError: x", "error"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("报到了 ⇒ 说已启动；发起方要自己说的交它那个 sid", async () => {
+    reply = opened("started");
+    await openSession("devbox", RESUME);
+    await flush();
+    expect(toasts.toast.mock.calls.at(-1)?.[0]).toBe(copyText("sessionOpen.arrived.title"));
+    vi.clearAllMocks();
+    const onArrived = vi.fn();
+    arriveReply = { kind: "arrived", sid: "s-9" };
+    await openSession("devbox", RESUME, { onArrived });
+    await flush();
+    expect(onArrived.mock.calls[0][0]).toBe("s-9");
+    expect(toasts.toast).not.toHaveBeenCalled();
+  });
+
+  it("主窗口里起的（长得出占位标签页）⇒ 交它（起在哪个目录 · 那一问原样），这里不问；本机开窗带起始目录", async () => {
+    const slot = vi.fn(() => true);
+    setLaunchSlots(slot);
     reply = opened("window");
     await openSession("<local>", { ...RESUME, local: true });
+    await flush();
     expect(term.openLocalTerminal).toHaveBeenCalledWith("line:window", "/p");
-    expect(arrival.expectArrival.mock.calls[0][0]).toMatchObject({ origin: "<local>", match: { sid: "s-1" }, tmuxName: "t-1", slot: { cwd: "/p" } });
-    vi.clearAllMocks();
-    reply = opened("started", { sid: null });
-    await openSession("devbox", RESUME);
-    expect(arrival.expectArrival.mock.calls[0][0]).toMatchObject({ match: { cwd: "/p" } });
+    expect(slot.mock.calls[0]).toEqual([{ origin: "<local>", cwd: "/p", tmuxName: "t-1", arrival: ASK }]);
+    expect(arrives()).toEqual([]);
   });
 
   it("恢复成了 ⇒ 那台附带的一句照说", async () => {
@@ -179,7 +228,7 @@ describe("开窗失败 · 在飞", () => {
     term.openTerminal.mockRejectedValue(new Error("拉不起"));
     expect(await openSession("devbox", RESUME)).toBe(false);
     expect(clip.writeClipboard).toHaveBeenCalledWith("line:started");
-    expect(arrival.expectArrival).not.toHaveBeenCalled();
+    expect(arrives()).toEqual([]);
   });
 
   it("这台找不到终端（按壳回的结局判）⇒ 照实说 ＋［设置］［复制命令］，不自动写剪贴板；只是话里带着那一句的真失败 ⇒ 照样复制", async () => {
@@ -208,6 +257,6 @@ describe("开窗失败 · 在飞", () => {
     open();
     expect(await again).toBe(false);
     await Promise.all([first, other]);
-    expect(sent.map((s) => s.origin)).toEqual(["devbox", "lab"]);
+    expect(sent.filter((s) => s.op === "session-open").map((s) => s.origin)).toEqual(["devbox", "lab"]);
   });
 });

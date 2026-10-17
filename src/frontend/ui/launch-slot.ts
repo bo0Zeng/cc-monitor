@@ -2,14 +2,13 @@
  * **起新会话之后的占位标签页**（主窗口里起的那几条：命令面板 · 历史 / 标签页「在此目录新建」· 消息流「从这里分叉」）。
  *
  * 那台回了「起好了 / 开窗」⇒ 标签页栏末尾长出一行「正在启动」（转圈、机器 ＋ 项目名），主区换成它那一页；
- * 那台报出这个会话 ⇒ 这一行摘掉、换成真的标签页（还看着它 ⇒ 切过去）。20 s 没报到 ⇒ 红点「未报到」，那一页是一张报错卡：
- * 在 tmux 里起的 ⇒ 那个 tmux 会话在不在 ＋ 画面末几行 ＋［终端画面］（开抽屉的终端页看那个终端）［在终端里打开］（远端）［结束 tmux 会话］·［关闭标签页］；
- * 开窗起的 ⇒ 只有一句 ＋［关闭标签页］。到点不放弃：之后又报到了照样换成真的。
+ * 问那台等它报到（`session-arrive`，期限 [`SLOT_MISS_MS`]）：报到了 ⇒ 这一行摘掉、换成真的标签页（还看着它 ⇒ 切过去）；
+ * 没见到 ⇒ 红点「未报到」，那一页是一张报错卡：那台写的那一句（起在 tmux 里的带画面末几行）＋ 那个终端还在 ⇒
+ *［终端画面］（开抽屉的终端页看那个终端）［在终端里打开］（远端）［结束 tmux 会话］·［关闭标签页］。
  *
- * 是不是那一个由 `launch-arrival.ts` 认（同一份比对）；tmux 会话在不在、画面是什么问那台（`terminal-reads.ts`）。这里只排版。
+ * 认不认得出 · 那一句 · 那一屏都是那台的；这里只照回包排版。
  */
 import { copyText } from "./copy-table";
-import { fmtDur } from "./duration-format";
 import { machineName } from "./control-said";
 import { isLocalOrigin, isRemoteOrigin, type Origin } from "./ipc/origin";
 import { button } from "./kit/button";
@@ -19,23 +18,19 @@ import { spinner } from "./kit/progress";
 import { statusDot } from "./kit/status-dot";
 import { confirmDialog, type ConfirmFn } from "./kit/dialog";
 import { toast, failToast } from "./kit/toast";
-import { lastWords, watchUntilArrived, type SlotSpec } from "./launch-arrival";
-import { listTerminals, previewText } from "./terminal-reads";
-import { openSession } from "./session-open";
+import { askArrive, openSession, type ArriveSaid, type SlotSpec } from "./session-open";
+import type { ArriveAsk } from "./generated/ArriveAsk";
 import { killSession } from "./tmux-control";
 import s from "./launch-slot.module.css";
 
-/** 多久没报到算「未报到」（到点只换样子，不放弃等）。 */
+/** 等多久没报到算「未报到」（那台照它等，到了答那一句）。 */
 export const SLOT_MISS_MS = 20_000;
 
 export type { SlotSpec };
 
-/** 没报到时那个 tmux 会话的样子：在（画面是这几行）· 不在 · 读不到（那一句）。 */
-export type SlotScreen = { kind: "there"; terminal: string; words: string } | { kind: "gone" } | { kind: "unread"; why: string };
-
 /** 问那台的一件事与动手的两件（缺省走通道；测试换成假的）。 */
 export interface SlotActs {
-  screen(origin: Origin, tmuxName: string): Promise<SlotScreen>;
+  arrive(origin: Origin, ask: ArriveAsk, within: number): Promise<ArriveSaid>;
   attach(origin: Origin, tmuxName: string): void;
   kill(origin: Origin, tmuxName: string): Promise<void>;
   confirm: ConfirmFn;
@@ -55,14 +50,17 @@ export interface SlotHost {
   viewTerminal(): void;
 }
 
+/** 没报到时那台说的：那一句（第一行标题）· 起在的那个终端还在 ⇒ 它的句柄。 */
+interface Missed {
+  said: string;
+  terminal: string | null;
+}
+
 interface Slot {
   id: number;
   spec: SlotSpec;
-  missed: boolean;
-  screen: SlotScreen | null;
+  missed: Missed | null;
   row: HTMLButtonElement;
-  stop: () => void;
-  timer: ReturnType<typeof setTimeout>;
 }
 
 const projOf = (cwd: string): string => cwd.split("/").filter(Boolean).pop() ?? cwd;
@@ -72,6 +70,8 @@ export class LaunchSlots {
   private next = 1;
   /** 正看着的那一个（`null` ＝ 主区是真的标签页）。 */
   private showing: number | null = null;
+  /** 正看着的那一个报到了、它的标签页还没建（会话流那一帧晚于回话）⇒ 建了就切过去。 */
+  private follow: string | null = null;
   readonly panel: HTMLElement;
 
   constructor(
@@ -96,22 +96,23 @@ export class LaunchSlots {
       e.stopPropagation();
       this.show(id);
     });
-    const slot: Slot = {
-      id,
-      spec,
-      missed: false,
-      screen: null,
-      row,
-      stop: watchUntilArrived(spec.origin, spec.match, (sid) => this.arrived(id, sid), spec.before),
-      // 一次性：到点只把样子换成「未报到」（不放弃等、不重试、不轮询）。
-      // 调度：一次性 —— 占位标签页 20s 的点：到点换成「未报到」、问一次；报到了 / 关掉时清
-      timer: setTimeout(() => void this.miss(id), SLOT_MISS_MS),
-    };
+    const slot: Slot = { id, spec, missed: null, row };
     this.slots.set(id, slot);
     this.host.tail.appendChild(row);
     this.paintRow(slot);
     this.show(id);
+    void this.acts.arrive(spec.origin, spec.arrival, SLOT_MISS_MS).then((end) => {
+      if (end.kind === "arrived") this.arrived(id, end.sid);
+      else this.miss(id, end.kind === "missed" ? end : { said: end.said, terminal: null });
+    });
     return id;
+  }
+
+  /** 一个会话的标签页建好了：正等着切过去的就是它 ⇒ 切过去。 */
+  tabAppeared(sid: string): void {
+    if (this.follow !== sid) return;
+    this.follow = null;
+    this.host.switchTo(sid);
   }
 
   /** 切到真的标签页之前：那一页收起（标签页栏 · 快捷键 · 命令面板切换都经这里）。 */
@@ -128,8 +129,6 @@ export class LaunchSlots {
   close(id: number): void {
     const sl = this.slots.get(id);
     if (!sl) return;
-    clearTimeout(sl.timer);
-    sl.stop();
     sl.row.remove();
     this.slots.delete(id);
     if (this.showing === id) this.hide();
@@ -143,8 +142,9 @@ export class LaunchSlots {
   /** 正看着的那个占位起在的那个终端（没报到、问到了它还在才有）：抽屉的终端页看它。 */
   watched(): { origin: Origin; terminal: string; name: string; title: string } | null {
     const sl = this.showing === null ? undefined : this.slots.get(this.showing);
-    if (!sl || sl.screen?.kind !== "there" || sl.spec.tmuxName === null) return null;
-    return { origin: sl.spec.origin, terminal: sl.screen.terminal, name: sl.spec.tmuxName, title: projOf(sl.spec.cwd) };
+    const terminal = sl?.missed?.terminal;
+    if (!sl || terminal === null || terminal === undefined || sl.spec.tmuxName === null) return null;
+    return { origin: sl.spec.origin, terminal, name: sl.spec.tmuxName, title: projOf(sl.spec.cwd) };
   }
 
   /** 只给判据用：此刻有几行 · 正看着哪一个。 */
@@ -166,31 +166,18 @@ export class LaunchSlots {
     const sl = this.slots.get(id);
     if (!sl) return;
     const wasShowing = this.showing === id;
-    clearTimeout(sl.timer);
     sl.row.remove();
     this.slots.delete(id);
     if (!wasShowing) return;
     this.hide();
-    // 远端那一路先报到、后建标签页 ⇒ 等它在了再切（同一拍之内）。
-    const go = (): void => {
-      if (this.host.hasTab(sid)) this.host.switchTo(sid);
-    };
-    if (this.host.hasTab(sid)) go();
-    else queueMicrotask(go);
+    if (this.host.hasTab(sid)) this.host.switchTo(sid);
+    else this.follow = sid;
   }
 
-  private async miss(id: number): Promise<void> {
+  private miss(id: number, m: Missed): void {
     const sl = this.slots.get(id);
     if (!sl) return;
-    sl.missed = true;
-    if (sl.spec.tmuxName !== null) {
-      try {
-        sl.screen = await this.acts.screen(sl.spec.origin, sl.spec.tmuxName);
-      } catch (e) {
-        sl.screen = { kind: "unread", why: e instanceof Error ? e.message : String(e) };
-      }
-    }
-    if (!this.slots.has(id)) return;
+    sl.missed = m;
     this.paintRow(sl);
     if (this.showing === id) this.paintPanel(sl);
   }
@@ -222,7 +209,6 @@ export class LaunchSlots {
   private paintPanel(sl: Slot): void {
     const { origin, cwd, tmuxName } = sl.spec;
     const machine = machineName(origin);
-    const dur = fmtDur(SLOT_MISS_MS / 1000);
 
     const head = document.createElement("div");
     head.className = s.slotHead;
@@ -234,13 +220,8 @@ export class LaunchSlots {
     where.className = s.slotWhere;
     where.textContent = `${machine}${copyText("kit.text.sep")}${cwd}`;
     head.append(dot, title, where);
-    if (sl.missed) {
-      const st = document.createElement("span");
-      st.className = s.slotState;
-      st.textContent = copyText("launch.slot.missedState", { dur });
-      head.appendChild(st);
-    }
-    if (!sl.missed) {
+    const m = sl.missed;
+    if (m === null) {
       this.panel.replaceChildren(head);
       return;
     }
@@ -250,43 +231,37 @@ export class LaunchSlots {
     card.setAttribute("role", "alert");
     const body = document.createElement("div");
     body.className = s.slotBody;
+    // 那台那一句：第一行标题 · 第二行说那个终端怎样 · 其余是画面末几行。
+    const [line, sub, ...words] = m.said.split("\n");
     const line1 = document.createElement("div");
-    line1.textContent = copyText("launch.slot.missedCard", { dur });
+    line1.textContent = line;
     body.appendChild(line1);
-
-    const acts: HTMLElement[] = [];
-    const sc = sl.screen;
-    if (tmuxName !== null && sc !== null) {
+    if (sub !== undefined) {
       const line2 = document.createElement("div");
       line2.className = s.slotSub;
-      line2.textContent =
-        sc.kind === "gone"
-          ? copyText("launch.slot.tmuxGone", { machine, name: tmuxName })
-          : sc.kind === "unread"
-            ? copyText("launch.slot.noScreen", { machine, name: tmuxName, why: sc.why })
-            : sc.words === ""
-              ? copyText("launch.slot.tmuxEmpty", { machine, name: tmuxName })
-              : copyText("launch.slot.tmuxThere", { machine, name: tmuxName });
+      line2.textContent = sub;
       body.appendChild(line2);
-      if (sc.kind === "there" && sc.words !== "") {
-        const out = document.createElement("pre");
-        out.className = s.slotOut;
-        out.textContent = sc.words;
-        body.appendChild(out);
+    }
+    if (words.length > 0) {
+      const out = document.createElement("pre");
+      out.className = s.slotOut;
+      out.textContent = words.join("\n");
+      body.appendChild(out);
+    }
+
+    const acts: HTMLElement[] = [];
+    if (tmuxName !== null && m.terminal !== null) {
+      const shot = button({ label: copyText("launch.slot.screen"), size: "compact", icon: "search", onClick: () => this.host.viewTerminal() });
+      shot.dataset.act = "screen";
+      acts.push(shot);
+      if (isRemoteOrigin(origin)) {
+        const att = button({ label: copyText("sessionHead.act.openTerm"), size: "compact", onClick: () => this.acts.attach(origin, tmuxName) });
+        att.dataset.act = "attach";
+        acts.push(att);
       }
-      if (sc.kind === "there") {
-        const shot = button({ label: copyText("launch.slot.screen"), size: "compact", icon: "search", onClick: () => this.host.viewTerminal() });
-        shot.dataset.act = "screen";
-        acts.push(shot);
-        if (isRemoteOrigin(origin)) {
-          const att = button({ label: copyText("sessionHead.act.openTerm"), size: "compact", onClick: () => this.acts.attach(origin, tmuxName) });
-          att.dataset.act = "attach";
-          acts.push(att);
-        }
-        const kill = button({ label: copyText("sessionState.killIdle.action"), size: "compact", onClick: () => void this.killIn(sl.id) });
-        kill.dataset.act = "kill";
-        acts.push(kill);
-      }
+      const kill = button({ label: copyText("sessionState.killIdle.action"), size: "compact", onClick: () => void this.killIn(sl.id) });
+      kill.dataset.act = "kill";
+      acts.push(kill);
     }
     const sp = document.createElement("span");
     sp.className = s.slotSp;
@@ -325,11 +300,7 @@ export class LaunchSlots {
 
 /** 缺省的那几件：走通道。 */
 export const CHANNEL_ACTS: SlotActs = {
-  async screen(origin, tmuxName) {
-    const row = (await listTerminals(origin)).find((r) => r.tmuxName === tmuxName);
-    if (row === undefined) return { kind: "gone" };
-    return { kind: "there", terminal: row.terminal, words: lastWords(await previewText(origin, { terminal: row.terminal })) };
-  },
+  arrive: askArrive,
   attach: (origin, tmuxName) => void openSession(origin, { what: { kind: "look", session: tmuxName }, local: isLocalOrigin(origin) }),
   kill: async (origin, tmuxName) => void (await killSession(origin, tmuxName)),
   confirm: confirmDialog,

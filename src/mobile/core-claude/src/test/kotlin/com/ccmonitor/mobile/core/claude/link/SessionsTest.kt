@@ -78,25 +78,20 @@ class SessionsTest {
     @Test
     fun `session-open：应答解出落在哪 · tmux 名 · 那一行 · 展开后的目录；新起的 sid 可为空`() {
         val a = SessionOpen.of(opened)
-        assertEquals(SessionOpen.Answer(Landed.STARTED, "proj-cc", "ccm -- --attach proj-cc", null, "/h/proj", null, null), a)
+        assertEquals(SessionOpen.Answer(Landed.STARTED, "proj-cc", "ccm -- --attach proj-cc", null, "/h/proj", null, null, null), a)
         assertEquals(Landed.IDLE, SessionOpen.of(opened + ("landed" to "idle") + ("cwd" to null))?.landed)
         assertNull("落在哪认不出 ⇒ 解不出", SessionOpen.of(opened + ("landed" to "maybe")))
     }
 
     @Test
-    fun `session-open：报到的会话按展开后的目录认，起之前就在的不算`() {
-        val before = setOf("old")
-        val table =
-            SessionTable(
-                sessions =
-                    mapOf(
-                        "old" to LiveSession("old", cwd = "/h/proj"),
-                        "other" to LiveSession("other", cwd = "/h/else"),
-                        "new" to LiveSession("new", path = "/p/new.jsonl", cwd = "/h/proj"),
-                    ),
-            )
-        assertEquals("new", SessionOpen.arrived(table, "/h/proj", before)?.sid)
-        assertNull(SessionOpen.arrived(table, "/h/none", before))
+    fun `session-arrive：回包里那一问原样交回（可空那一格不交）；回话解出报到的 sid · 没见到那一句`() {
+        val ask = SessionOpen.of(opened + ("arrival" to mapOf("by" to mapOf("kind" to "cwd", "cwd" to "/h/proj"), "since" to 3, "session" to "proj-cc")))!!.arrival!!
+        assertEquals(mapOf("by" to mapOf("kind" to "cwd", "cwd" to "/h/proj"), "since" to 3L, "session" to "proj-cc"), SessionArrive.args(ask))
+        val bySid = SessionOpen.of(opened + ("arrival" to mapOf("by" to mapOf("kind" to "sid", "sid" to "s1"), "since" to 0, "session" to null)))!!.arrival!!
+        assertEquals(mapOf("by" to mapOf("kind" to "sid", "sid" to "s1"), "since" to 0L), SessionArrive.args(bySid))
+        assertEquals("s9", SessionArrive.of(mapOf("kind" to "arrived", "sid" to "s9"))?.sid)
+        val missed = SessionArrive.of(mapOf("kind" to "missed", "said" to "未报到\n末几行", "terminal" to null))
+        assertEquals(listOf(null, "未报到\n末几行"), listOf(missed?.sid, missed?.said))
     }
 
     @Test

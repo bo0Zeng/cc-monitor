@@ -50,6 +50,35 @@ data class Opened(
     val cwd: String?,
     val note: String?,
     val prompt: FirstSay?,
+    val arrival: ArriveAsk?,
+)
+
+/** 等报到那一问（`session-open` 回包里的 `arrival`，原样交回 `session-arrive`）。 */
+@WireOf("ArriveAsk")
+@JsonClass(generateAdapter = true)
+data class ArriveAsk(
+    val by: ArriveBy,
+    val since: Long,
+    val session: String?,
+)
+
+/** 认报到：`kind` 是 `sid`（带 [sid]）或 `cwd`（带 [cwd]）。 */
+@WireOf("ArriveBy")
+@JsonClass(generateAdapter = true)
+data class ArriveBy(
+    val kind: String,
+    val sid: String?,
+    val cwd: String?,
+)
+
+/** `session-arrive` 的回话：`arrived`（带 [sid]）· `missed`（带 [said]：那台写好的那一句 · 那个终端还在 ⇒ [terminal]）。 */
+@WireOf("ArriveEnd")
+@JsonClass(generateAdapter = true)
+data class ArriveEnd(
+    val kind: String,
+    val sid: String?,
+    val said: String?,
+    val terminal: String?,
 )
 
 @JsonClass(generateAdapter = false)

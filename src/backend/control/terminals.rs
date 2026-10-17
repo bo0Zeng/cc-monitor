@@ -758,6 +758,30 @@ pub(crate) fn preview_on(
     ))
 }
 
+/// 名叫 `session` 的那个 tmux 会话此刻的样子（`session-arrive` 没见到时抓原话）：在 ⇒ 句柄 ＋ 那一屏原文（不带颜色）。
+pub(crate) fn screen_of(session: &str) -> crate::control::session_arrive::Screen {
+    screen_on(On::default(), session)
+}
+
+/// [`screen_of`] 问 `on` 那台 tmux。
+pub(crate) fn screen_on(on: On<'_>, session: &str) -> crate::control::session_arrive::Screen {
+    use crate::control::session_arrive::Screen;
+    let rows = match rows_on(on) {
+        Ok((rows, _, _)) => rows,
+        Err(e) => return Screen::Unread(e.message),
+    };
+    let Some(row) = rows.iter().find(|r| r.name == session) else {
+        return Screen::Gone;
+    };
+    match view_on(on, row.target(), false, 0) {
+        Ok(v) => Screen::There {
+            terminal: row.handle(),
+            text: v.text,
+        },
+        Err(e) => Screen::Unread(e.message),
+    }
+}
+
 /// 终端实时预览要的那一格（`terminal_follow.rs`）：名单里对上的终端 ⇒ 对它下手的 tmux 句柄 ＋ 它所在的 tmux 会话（`$N`）
 /// ＋ 只看哪个窗格的输出（挂着 sid 的窗格；没有 ⇒ 整个会话）。没装 tmux ⇒ `no_tmux`；对不上同 [`preview_on`]。
 pub(crate) struct FollowTarget {
