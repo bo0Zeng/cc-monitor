@@ -98,6 +98,24 @@ class RecordUnitsTest {
     }
 
     @Test
+    fun `增量排与整份排一样：一条一条接 · 先接后半再往前接前半，结果先到后到都配得上`() {
+        val all = cases.values.toList()
+        val whole = RecordUnits.of(all)
+        val one = RecordUnits()
+        all.forEach { one.append(listOf(it)) }
+        assertEquals(whole, one.units())
+        for (k in all.indices) {
+            val split = RecordUnits()
+            split.append(all.drop(k))
+            split.prepend(all.take(k))
+            assertEquals("从第 $k 条切开", whole, split.units())
+        }
+        val reset = RecordUnits().also { it.append(all) }
+        reset.reset(all.take(2))
+        assertEquals(RecordUnits.of(all.take(2)), reset.units())
+    }
+
+    @Test
     fun `一轮跑着时插进去的那句也是人说的`() {
         assertTrue(units("queued").single() is RenderUnit.UserText)
     }
