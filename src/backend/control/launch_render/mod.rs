@@ -75,7 +75,8 @@ impl Launch {
     }
 }
 
-/// 这台 ccm 会的那几样（渲染就在这台后端里）。
+/// 这台 ccm 会的那几样（渲染就在这台后端里）：判据拿它当「这台」那一份能力集喂渲染器。
+#[cfg(test)]
 pub(crate) fn own_caps() -> std::collections::BTreeSet<String> {
     crate::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
         .into_iter()
