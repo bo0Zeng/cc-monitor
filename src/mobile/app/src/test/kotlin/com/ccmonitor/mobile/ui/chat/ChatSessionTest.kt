@@ -2,12 +2,12 @@ package com.ccmonitor.mobile.ui.chat
 
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
-import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RecordUnits
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.ui.Faces
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink.Companion.failed
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink.Companion.human
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink.Companion.reply
@@ -226,7 +226,7 @@ class ChatSessionTest {
     fun `已有的那条：读最后一屏，再跟流上这条的新行；读到之前的旧行不重一份`() =
         runTest {
             val link = FakeCoreLink()
-            link.report("s1", "/w", Tone.NOW)
+            link.report("s1", "/w", Faces.of("live-working-plain"))
             link.answer = { cmd, args ->
                 when (cmd) {
                     "history-tail" -> {

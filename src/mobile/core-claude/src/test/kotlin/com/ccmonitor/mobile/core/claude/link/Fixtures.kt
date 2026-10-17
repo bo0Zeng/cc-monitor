@@ -15,4 +15,8 @@ internal object Fixtures {
     fun text(name: String): String = File(repoRoot, "tests/__fixtures__/$name").readText()
 
     fun json(name: String): Map<String, Any?> = Json.obj(text(name)) ?: error("$name 不是 JSON 对象")
+
+    /** 整份脸金样（后端 `SessionFace::of` 每一形一份）里 [key] 那一形，原样（`Map` 形）。 */
+    @Suppress("UNCHECKED_CAST")
+    fun face(key: String): Map<String, Any?> = json("session-face.golden.json")[key] as? Map<String, Any?> ?: error("整份脸金样里没有 $key")
 }

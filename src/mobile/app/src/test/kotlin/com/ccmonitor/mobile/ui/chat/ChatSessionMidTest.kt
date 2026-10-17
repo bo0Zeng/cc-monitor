@@ -1,13 +1,13 @@
 package com.ccmonitor.mobile.ui.chat
 
-import com.ccmonitor.mobile.core.claude.link.CanSwitch
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.Said
-import com.ccmonitor.mobile.core.claude.link.SessionFate
-import com.ccmonitor.mobile.core.claude.link.Switches
+import com.ccmonitor.mobile.core.claude.link.wire.Allow
+import com.ccmonitor.mobile.core.claude.link.wire.CanWord
 import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.ui.Faces
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
@@ -123,15 +123,16 @@ class ChatSessionMidTest {
         }
 
     @Test
-    fun `能不能换照会话帧的 switch；离开活了照那一帧带的；那台离线 ⇒ 两颗都灰、写离线那一句`() =
+    fun `能不能换照那台给的脸上的 can；离开活了照那一帧的脸；那台离线 ⇒ 两颗都灰、写离线那一句`() =
         runTest {
             val link = FakeCoreLink()
             val s = existing(link) { _, _ -> null }
-            link.report("s1", "/h/proj", switch = Switches(CanSwitch("本轮结束后可换模型"), CanSwitch(null)))
+            val idle = Faces.of("live-idle")
+            link.report("s1", "/h/proj", idle.copy(can = idle.can.copy(model = Allow(CanWord.NO, "本轮结束后可换模型"))))
             runCurrent()
             assertEquals("本轮结束后可换模型", s.state.value.model.blocked)
             assertNull(s.state.value.permission.blocked)
-            link.table.value = link.table.value.copy(sessions = emptyMap(), fates = mapOf("s1" to SessionFate(SessionFate.State.ENDED, "已结束", Switches(CanSwitch("会话已退出"), CanSwitch("会话已退出")))))
+            link.table.value = link.table.value.copy(sessions = emptyMap(), faces = mapOf("s1" to Faces.of("ended")))
             runCurrent()
             assertEquals("会话已退出", s.state.value.permission.blocked)
             link.state.value = LinkState.Down(Said("", ""), needsHand = false)
