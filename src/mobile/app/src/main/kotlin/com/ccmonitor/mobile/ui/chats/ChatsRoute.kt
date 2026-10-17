@@ -72,6 +72,7 @@ fun ChatsRoute(
     onOpen: (hostId: String, sessionId: String) -> Unit,
     onNewInDir: (hostId: String, cwd: String) -> Unit,
     onDrawerAction: (DrawerAction) -> Unit,
+    onEditHost: (hostId: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val board: ChatsBoard = koinViewModel(key = "chats-$hostId") { parametersOf(hostId) }
@@ -113,6 +114,7 @@ fun ChatsRoute(
             filters = board::filters,
             newInDir = onNewInDir,
             searchContent = board::searchContent,
+            editHost = onEditHost,
         )
     ChatDrawer(hostId, links[hostId] is HostLink.Ready, drawerState, onDrawerAction) {
         Scaffold(
@@ -262,7 +264,7 @@ private fun ChatsTopBar(
             PhIconButton(Ph.Funnel, copyText("history.page.filter"), onClick = onFilter, tint = if (filtered) LocalAppTokens.current.accent else MaterialTheme.colorScheme.onSurfaceVariant)
         },
         navigationIcon = { PhIconButton(Ph.List, DRAWER_OPEN_DESCRIPTION, onClick = onOpenDrawer, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
-        title = { Text(copyText("mobDrawer.item.chats"), style = MaterialTheme.typography.titleMedium) },
+        title = { Text(copyText("mobDrawer.item.sessions"), style = MaterialTheme.typography.titleMedium) },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = LocalAppTokens.current.bg2, scrolledContainerColor = LocalAppTokens.current.bg2),
     )
 }

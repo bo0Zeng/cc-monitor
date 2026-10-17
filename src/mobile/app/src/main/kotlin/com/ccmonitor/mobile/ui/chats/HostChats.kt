@@ -226,7 +226,7 @@ data class HostPart(
 
 /**
  * 一台顶上那一条：[offline] ＝ 那台断着（虚线条 ＋［重新连接］），否则红条 ＋［重试］［复制详情］；
- * [fix] 是成品给的「装一次会好」那一颗。
+ * [fix] 是成品给的「装一次会好」那一颗；[edit] 是改哪一台的设置能修好（跳板坏了）⇒ 条下给［编辑］。
  */
 data class HostBar(
     val hostId: String,
@@ -234,6 +234,7 @@ data class HostBar(
     val offline: Boolean,
     val fix: MachineFixButton? = null,
     val deploying: Deploying? = null,
+    val edit: String? = null,
 )
 
 /**
@@ -250,7 +251,7 @@ internal fun hostPart(
     val answer = if (down != null) s.cached.takeIf { plain } else got ?: s.cached.takeIf { plain }
     val bar =
         when {
-            ssh is HostLink.Failed -> HostBar(s.hostId, Problem(ssh.why, ""), offline = true)
+            ssh is HostLink.Failed -> HostBar(s.hostId, Problem(ssh.why, ""), offline = true, edit = ssh.edit)
             down != null && !plain -> HostBar(s.hostId, Problem(downLine(s.machine, s.ask), ""), offline = true)
             down != null -> HostBar(s.hostId, down.problem(), offline = down.deployFix() == null, down.deployFix(), s.deploying)
             s.list is Fetched.Failed -> HostBar(s.hostId, s.list.problem, offline = false)

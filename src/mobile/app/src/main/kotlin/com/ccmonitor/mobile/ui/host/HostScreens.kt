@@ -195,7 +195,7 @@ private fun HostListHeader(
     // 新建会话模式的提示：点主机即强制新建独立 tab（不复用已开会话），返回键取消。
     if (newSessionMode) {
         Text(
-            copyText("mobHosts.newSession.hint"),
+            copyText("mobHosts.newTab.hint"),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -277,7 +277,7 @@ private fun HostListActions(
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
         // 顶栏三颗图标按钮：会话总览 · 导入 · 钥匙；字只当无障碍名。
-        PhIconButton(Ph.Chats, copyText("mobHosts.list.sessions"), onClick = onSessions, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        PhIconButton(Ph.Chats, copyText("mobHosts.list.tabs"), onClick = onSessions, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         ImportSshConfigButton(vm)
         PhIconButton(Ph.Key, IDENTITY_SCREEN_TITLE, onClick = onIdentities, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }

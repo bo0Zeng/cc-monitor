@@ -192,3 +192,46 @@ rmdir gone = Err(Stale("<D>/m 已不在 · 未删除"))
 edit parents = Ok("written <D>/r/s/t.txt true")
 ours = Ok(["x"])
 ours absent = Ok([])"#;
+
+/// 读改写一直撞上别人在写（每一趟读完盘上又变）⇒ 试满 [`EDIT_ATTEMPTS`] 趟停下：那一句只说结局与次数，
+/// 最后一次被拒的原话跟在后面进复制详情（`contract::parts` 拆得开），不进句子。
+#[cfg(unix)]
+#[test]
+fn an_edit_that_keeps_losing_the_race_says_so_and_keeps_the_last_word_for_the_detail() {
+    let base = std::env::temp_dir().join(format!(
+        "ccm-door-race-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|x| x.as_nanos())
+            .unwrap_or(0)
+    ));
+    std::fs::create_dir_all(&base).unwrap();
+    let b = base.display().to_string();
+    let d = HomeDoor(base.clone());
+    let file = base.join("a.txt");
+    std::fs::write(&file, "0").unwrap();
+    let mut n = 0;
+    let e = edit(&d, &b, "a.txt", false, false, |_| {
+        n += 1;
+        std::fs::write(&file, format!("other {n}")).unwrap();
+        Ok(Some(format!("mine {n}")))
+    })
+    .expect_err("一直撞上别人写却成了");
+    let (said, raw) = crate::common::contract::parts(&e, None);
+    assert!(
+        copy_core::copy_matches_with(
+            "beAssets.door.editGaveUp",
+            &[("attempts", &EDIT_ATTEMPTS.to_string())],
+            &said
+        ),
+        "不是「持续变动 ×n」那一句：{said}"
+    );
+    let raw = raw.expect("最后一次被拒的原话没跟着走（复制详情里会没有它）");
+    assert!(!said.contains(&raw), "原话进了句子：{said}");
+    assert!(
+        raw.contains("a.txt"),
+        "跟着走的不是最后一次被拒的那一句：{raw}"
+    );
+    let _ = std::fs::remove_dir_all(&base);
+}

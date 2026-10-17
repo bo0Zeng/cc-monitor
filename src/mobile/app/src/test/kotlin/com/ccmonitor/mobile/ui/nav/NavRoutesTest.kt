@@ -68,8 +68,10 @@ class NavRoutesTest {
     }
 
     /**
-     * 用户可见的路由名要过禁用词表：路由名不直接上屏，但它是给后来者看的命名基准，跑偏了屏上文案迟早跟着跑偏。
-     * 「会话」是共用术语表里的词（与 agent 的一次运行），不在表里。
+     * 用户可见的路由名要过禁用词表。
+     *
+     * 与 agent 的一次运行两端都叫「会话」（术语表正名），新开写「新建会话」。
+     * 路由名虽然不直接上屏，但它是给后来者看的命名基准，跑偏了屏上文案迟早跟着跑偏。
      */
     @Test
     fun theNewRouteNamesFollowTheProductVocabulary() {
@@ -85,9 +87,10 @@ class NavRoutesTest {
                 .drawerEntries()
                 .first()
                 .label
-        for (w in listOf("连接", "SSH", "tmux", "bridge", "daemon")) {
+        for (w in listOf("对话", "连接", "SSH", "tmux", "bridge", "daemon")) {
             assertFalse("「新建会话」的字不许出现禁用词「$w」：$newLabel", newLabel.contains(w))
         }
+        assertEquals("它得真说「新建会话」：与桌面同一个名", "新建会话", newLabel)
     }
 
     // ---- 新界面必须能开出第一个对话 -------------------------------

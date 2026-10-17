@@ -11,6 +11,7 @@ import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.ssh.HostConnector
+import com.ccmonitor.mobile.ssh.JumpBroken
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -31,8 +32,10 @@ import java.util.UUID
 sealed interface FilesUi {
     data object Connecting : FilesUi
 
+    /** [edit]：改哪一台的设置能修好（跳板坏了）⇒ 给［编辑］。 */
     data class Error(
         val problem: Problem,
+        val edit: String? = null,
     ) : FilesUi
 
     data object Ready : FilesUi
@@ -118,7 +121,7 @@ class FilesViewModel(
                 } catch (e: FileOps.Failed) {
                     FilesUi.Error(e.problem)
                 } catch (e: Exception) {
-                    FilesUi.Error(Problem(e.message ?: e.toString(), ""))
+                    FilesUi.Error(Problem(e.message ?: e.toString(), ""), (e as? JumpBroken)?.fixHostId)
                 }
         }
     }

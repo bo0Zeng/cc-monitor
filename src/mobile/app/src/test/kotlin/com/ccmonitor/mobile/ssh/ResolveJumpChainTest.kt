@@ -75,7 +75,8 @@ class ResolveJumpChainTest {
     fun `dangling jump host throws (fail-closed, no silent bastion bypass)`() {
         val a = host("A", jump = "GHOST") // 跳板 id 指向不存在的主机（悬垂，如被删除）
         val (hr, ir) = repos(listOf(a))
-        assertThrows(IllegalStateException::class.java) { runBlocking { resolveJumpChain(a, hr, ir) } }
+        val e = assertThrows(JumpBroken::class.java) { runBlocking { resolveJumpChain(a, hr, ir) } }
+        assertEquals("跳板机不在了 ⇒［编辑］改的是这一台的跳板设置", "A", e.fixHostId)
     }
 
     @Test
@@ -83,7 +84,8 @@ class ResolveJumpChainTest {
         val a = host("A", jump = "B")
         val bNoIdentity = host("B").copy(authRef = null) // 跳板主机无身份
         val (hr, ir) = repos(listOf(a, bNoIdentity))
-        assertThrows(IllegalStateException::class.java) { runBlocking { resolveJumpChain(a, hr, ir) } }
+        val e = assertThrows(JumpBroken::class.java) { runBlocking { resolveJumpChain(a, hr, ir) } }
+        assertEquals("跳板机缺密钥 ⇒［编辑］改的是跳板那一台", "B", e.fixHostId)
     }
 
     @Test

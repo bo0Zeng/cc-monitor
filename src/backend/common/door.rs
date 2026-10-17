@@ -328,9 +328,13 @@ pub(crate) fn edit(
             Err(e) => return Err(e.said()),
         }
     }
-    Err(copy_text(
-        "beAssets.door.editGaveUp",
-        &[("last", &last), ("attempts", &EDIT_ATTEMPTS.to_string())],
+    // 最后一次被拒的原话跟着走（进复制详情，不进句子）。
+    Err(crate::common::contract::joined(
+        copy_text(
+            "beAssets.door.editGaveUp",
+            &[("attempts", &EDIT_ATTEMPTS.to_string())],
+        ),
+        Some(last),
     ))
 }
 

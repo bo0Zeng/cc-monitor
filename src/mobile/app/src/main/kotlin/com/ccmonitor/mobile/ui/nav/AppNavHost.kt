@@ -168,6 +168,7 @@ private fun NavGraphBuilder.sessionRoute(
             openPath = entry.arguments?.getString(Screen.Session.ARG_OPEN),
             onGone = { nav.popBackStack() },
             onEditKeys = { nav.navigate(Screen.Keys.route) },
+            onEditHost = { hid -> nav.navigate("host/$hid/edit") },
             onOpenTerminalTab = { hid, path ->
                 nav.navigate("session/${tabManager.open(hid, SessionTabManager.TabTarget.Terminal(cd = path))}")
             },
@@ -233,7 +234,7 @@ private fun NewSessionHostPickerScreen(
         onEdit = { hostId -> nav.navigate("host/$hostId/edit") },
         onSessions = { nav.popBackStack() }, // 本页只从会话总览进，「会话」即返回
         newSessionMode = true,
-        title = copyText("mobNav.newSession.title"),
+        title = copyText("mobNav.newTab.title"),
     )
 }
 
@@ -250,6 +251,7 @@ private fun HostedSession(
     openPath: String?,
     onGone: () -> Unit,
     onEditKeys: () -> Unit,
+    onEditHost: (hostId: String) -> Unit,
     onOpenTerminalTab: (hostId: String, path: String) -> Unit,
     onOpenTmuxTab: (hostId: String, tmuxName: String) -> Unit,
     onSwitchTab: (key: String) -> Unit,
@@ -283,6 +285,7 @@ private fun HostedSession(
                     onAttachInNewTab = { name -> onOpenTmuxTab(open.hostId, name) },
                     onShowTabs = { showTabs = true },
                     onEditKeys = onEditKeys,
+                    onEditHost = onEditHost,
                 )
             // 「在此打开终端」开新终端 tab，不替换当前 文件 tab。
             SessionTabManager.TabTarget.Files ->
@@ -290,6 +293,7 @@ private fun HostedSession(
                     open.hostId,
                     onOpenTerminal = { path -> onOpenTerminalTab(open.hostId, path) },
                     onShowTabs = { showTabs = true },
+                    onEditHost = onEditHost,
                     openPath = openPath,
                 )
         }
@@ -444,7 +448,7 @@ private fun NavGraphBuilder.chatRoutes(
     tabManager: SessionTabManager,
     chatController: ChatController,
 ) {
-    // Claude 对话总览，从抽屉「对话」进。注意：与 `sessions`（终端 tab 总览）是两件事。
+    // Claude 对话总览，从抽屉「会话」进。注意：与 `sessions`（终端 tab 总览）是两件事。
     composable(Screen.Conversations.route) { entry ->
         val hostId = entry.arguments?.getString("hostId").orEmpty()
         ChatsRoute(
@@ -452,6 +456,7 @@ private fun NavGraphBuilder.chatRoutes(
             onOpen = { host, sid -> nav.navigate(Screen.Chat.of(host, sid)) },
             onNewInDir = { host, cwd -> nav.navigate(Screen.Chat.of(host, newConversationId(), isNew = true, cwd = cwd)) },
             onDrawerAction = { action -> nav.followDrawer(action, hostId, tabManager) },
+            onEditHost = { hid -> nav.navigate("host/$hid/edit") },
         )
     }
     composable(
@@ -506,7 +511,7 @@ private fun NavHostController.followDrawer(
             openTerminal = { "session/${tabManager.open(it, SessionTabManager.TabTarget.Terminal())}" },
         )
     navigate(to.route) {
-        // 对话列表里再点「对话」不叠第二份。
+        // 对话列表里再点「会话」不叠第二份。
         launchSingleTop = !to.replacesChat
         if (to.replacesChat) popUpTo(Screen.Chat.route) { inclusive = true }
     }

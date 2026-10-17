@@ -60,6 +60,7 @@ import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import com.ccmonitor.mobile.ui.common.DashedBar
 import com.ccmonitor.mobile.ui.common.DeployStepLine
+import com.ccmonitor.mobile.ui.common.EditHostButton
 import com.ccmonitor.mobile.ui.common.STRING_SET_SAVER
 import com.ccmonitor.mobile.ui.common.StatusDot
 import com.ccmonitor.mobile.ui.common.deployLabel
@@ -93,6 +94,8 @@ class ChatsActions(
     val newInDir: (hostId: String, cwd: String) -> Unit,
     /** 「搜内容「{q}」」那一行。 */
     val searchContent: () -> Unit,
+    /** 条下那一颗［编辑］：进那一台的编辑页。 */
+    val editHost: (hostId: String) -> Unit = {},
 )
 
 /**
@@ -410,6 +413,7 @@ private fun HostBarView(
 ) {
     if (b.offline && b.fix == null) {
         DashedBar(b.problem.text, copyText("newSession.machine.reconnect"), { act.retry(b) }, Modifier.padding(horizontal = 16.dp, vertical = 4.dp).testTag(ChatsTags.DOWN))
+        Box(Modifier.padding(horizontal = 16.dp)) { EditHostButton(b.edit, act.editHost) }
         return
     }
     val step = b.deploying as? Deploying.Step

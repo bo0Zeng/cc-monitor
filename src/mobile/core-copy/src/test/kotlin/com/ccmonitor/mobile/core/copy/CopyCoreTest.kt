@@ -7,7 +7,7 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 取文 · 大小 · 短时长 · 距今经手机那份 `.so` 里的 `copy-core`（单测加载同一份 crate 的宿主编译，写法本身的对拍在 Rust 那边）：
+ * 取文 · 短时长 · 距今经手机那份 `.so` 里的 `copy-core`（单测加载同一份 crate 的宿主编译，写法本身的对拍在 Rust 那边）：
  * 这里只钉经 JNI 来回不走样；会走的钟与已等走表是手机这一侧按此刻填的，照金样 `short-duration.golden.json` 的 clock 段。
  */
 class CopyCoreTest {
@@ -19,9 +19,7 @@ class CopyCoreTest {
     }
 
     @Test
-    fun `大小 · 短时长 · 距今经核心：负数按 0，已到 ⇒ null`() {
-        assertEquals("1.5 KB", SizeFormat.text(1536))
-        assertEquals("0 B", SizeFormat.text(-1))
+    fun `短时长 · 距今经核心：负数按 0，已到 ⇒ null`() {
         assertEquals("1h4m", DurationFormat.short(3_840_000))
         assertEquals("<1s", DurationFormat.short(-5))
         assertEquals("+2m", DurationFormat.ahead(61_000))

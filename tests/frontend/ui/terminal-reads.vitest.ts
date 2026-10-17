@@ -27,6 +27,7 @@ import { chanArgsJson, chanReply, refusedReply, UNSUPPORTED, NO_CHANNEL, type Ch
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { copyPattern } from "../../test-support/copy-pattern";
 import { nonEmpty } from "../../test-support/non-empty";
+import { WALL_CEILING_MS } from "../../test-support/wall-ceiling";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
@@ -153,6 +154,22 @@ describe("抓一屏：失败怎么说", () => {
       answer({ "terminal-preview": { fail } });
       expect(await saidBy(LOCAL_ORIGIN)).toBe(fail.said);
     }
+  });
+
+  it("★ 结果未知那一句带［刷新］：点了问那台对齐一次（`resync`）；别的几层不带", async () => {
+    type Fixable = ChanError & { action?: { label: string; run: () => void } };
+    answer({ "terminal-preview": { fail: { err: { Hop: { idx: 1, tag: "wait", reach: "Unknown", why: "Overrun" } }, body: [] } } });
+    const e: Fixable = await failureOf(() => previewText("devbox", { sid: "sid-a" }));
+    expect(e.action?.label).toBe(copyText("control.channel.refresh"));
+    const asked: string[] = [];
+    invokeMock.mockImplementation(async (_cmd: string, a: ChanCallArgs) => {
+      asked.push(`${a.origin}:${a.op}`);
+      return chanReply({ added: 0, removed: 0, retagged: 0, caught_up: 0, watchers: 1 });
+    });
+    e.action!.run();
+    await vi.waitFor(() => expect(asked).toEqual(["devbox:resync"]), { timeout: WALL_CEILING_MS });
+    answer({ "terminal-preview": { fail: UNSUPPORTED } });
+    expect(((await failureOf(() => previewText("devbox", { sid: "sid-a" }))) as Fixable).action).toBeUndefined();
   });
 
   it("★★ 拒绝码（取自金样）：那台写好的那一句原样上屏、复制详情带码（逐码一句由后端判：`said_tests.rs`）", async () => {

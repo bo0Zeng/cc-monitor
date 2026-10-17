@@ -70,6 +70,7 @@ import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.service.AppForeground
 import com.ccmonitor.mobile.service.SshKeepAliveService
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
+import com.ccmonitor.mobile.ui.common.EditHostButton
 import com.ccmonitor.mobile.ui.copyPlainText
 import com.ccmonitor.mobile.ui.pastePlainText
 import com.ccmonitor.mobile.ui.theme.AppTerminalPalette
@@ -94,11 +95,12 @@ fun SessionScreen(
     onAttachInNewTab: (name: String) -> Unit = {}, // tmux「附着」：开新终端 tab
     onShowTabs: () -> Unit = {}, // 唤出 tab 面板
     onEditKeys: () -> Unit, // 进编辑按键页（⋯「编辑按键」· 绑了「编辑按键」的触发 · 空组那一行）
+    onEditHost: (hostId: String) -> Unit = {}, // 跳板坏了 ⇒ 进那一台的编辑页
 ) {
     val hostRepo = koinInject<HostRepository>()
     val hostLabel by produceState(hostId, hostId) { value = hostRepo.get(hostId)?.label ?: hostId }
     CompositionLocalProvider(LocalKeysEnv provides KeysEnv(onEditKeys, hostLabel)) {
-        SessionContent(hostId, cd, tmuxSession, resume, onAttachInNewTab, onShowTabs)
+        SessionContent(hostId, cd, tmuxSession, resume, onAttachInNewTab, onShowTabs, onEditHost)
     }
 }
 
@@ -118,6 +120,7 @@ private fun SessionContent(
     resume: String?,
     onAttachInNewTab: (name: String) -> Unit,
     onShowTabs: () -> Unit,
+    onEditHost: (hostId: String) -> Unit,
 ) {
     // Koin 参数不能传 null，可空参数一律用空串表示 null。
     val vm =
@@ -155,7 +158,7 @@ private fun SessionContent(
         // 服务器身份变了：唯一一个「拒绝连接但可恢复」的态，单独成屏
         is SessionUiState.HostKeyChanged ->
             HostKeyChangedContent(s, onShowTabs) { vm.trustNewHostKey(s.host, s.port) }
-        is SessionUiState.Error -> ErrorContent(s.message, vm, onShowTabs)
+        is SessionUiState.Error -> ErrorContent(s, vm, onShowTabs, onEditHost)
         is SessionUiState.Connected ->
             ConnectedContent(
                 s,
@@ -170,9 +173,10 @@ private fun SessionContent(
 /** 连接失败态：保留连接日志（最需要诊断的时候不清空），可重连。 */
 @Composable
 private fun ErrorContent(
-    message: String,
+    s: SessionUiState.Error,
     vm: SessionViewModel,
     onShowTabs: () -> Unit,
+    onEditHost: (hostId: String) -> Unit,
 ) {
     val log by vm.connectLog.collectAsState()
     Column(
@@ -183,9 +187,10 @@ private fun ErrorContent(
         SessionStateTabButton(onShowTabs)
         ErrorLine(copyText("mobSession.connect.failed"))
         // 下层给的原话（或这一侧判出的原因）不上屏，进复制详情；连接日志照旧给原文。
-        CopyDetailButton(copyText("mobSession.connect.failed"), message)
+        CopyDetailButton(copyText("mobSession.connect.failed"), s.message)
         if (log.isNotEmpty()) ConnectLogView(log, Modifier.fillMaxWidth().weight(1f))
         SecondaryButton(onClick = { vm.retry() }) { Text(copyText("mobSession.connect.retry")) }
+        EditHostButton(s.edit, onEditHost)
     }
 }
 
