@@ -38,8 +38,8 @@ describe("终端页看占位标签页的那个终端", () => {
     page.sessionChanged();
     page.setVisible(true);
     await flush();
-    expect(reads.list).toHaveBeenCalledWith("devbox", "billing");
-    expect(reads.shot).toHaveBeenCalledWith("devbox", "%7", "billing");
+    expect(reads.list).toHaveBeenCalledWith("devbox");
+    expect(reads.shot).toHaveBeenCalledWith("devbox", "%7");
     expect(reads.follow.mock.calls[0].slice(0, 2)).toEqual(["devbox", "%7"]);
     expect(page.el.textContent).toContain("billing");
     expect(page.el.textContent).toContain(copyText("terminal.tag.tmux", { name: "billing-2" }));

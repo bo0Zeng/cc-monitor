@@ -184,7 +184,7 @@ describe("批量起：逐项问那台（`session-open`），同一台挨个、�
   it("★ 在 tmux 里后台起 ⇒ 一个窗口都不开；本来就在跑的记跳过；那台不起的那一项照它那一句说、带复制详情", async () => {
     backend((_o, _op, args) => {
       const sid = (args.what as { sid: string }).sid;
-      if (sid === "e") return { err: "Refused", body: Array.from(new TextEncoder().encode(JSON.stringify({ code: "record_gone", message: "那台写的那一句", data: { field: null, unavailable: null } }))), detail: "detail-x" };
+      if (sid === "e") return { err: "Refused", body: Array.from(new TextEncoder().encode(JSON.stringify({ code: "record_gone", message: "那台写的那一句", data: { field: null, unavailable: null } }))), said: "那台写的那一句", detail: "detail-x" };
       return opened(sid, sid === "r" ? "running" : "started", `ccm --attach ${sid}-cc`);
     });
     const out = await startMany([tab("c", "r1"), tab("e", "r1"), tab("r", "r1")], "tmux");

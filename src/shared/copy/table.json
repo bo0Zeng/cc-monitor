@@ -31214,12 +31214,6 @@
       "zh": "已启动",
       "args": []
     },
-    "sessionOpen.timeout.title": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 未在期限内应答 · 结果未知",
-      "args": ["machine"]
-    },
     "sessionOpen.account.useAlt": {
       "kind": "action",
       "role": "按钮",

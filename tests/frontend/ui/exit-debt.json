@@ -19,7 +19,7 @@
       "lang": "kt"
     }
   ],
-  "ceiling": 149,
+  "ceiling": 146,
   "entries": [
     {
       "file": "src/frontend/ui/account-chip.ts",
@@ -244,13 +244,6 @@
       "n": 1,
       "kind": "第 1 批",
       "why": "会话在不在码 `liveness === \"unseen\"` ⇒ 字：会话帧带写好的状态字（V11 同批）"
-    },
-    {
-      "file": "src/frontend/ui/tab-batch-run.ts",
-      "rule": "caseWord",
-      "n": 3,
-      "kind": "第 1 批",
-      "why": "批量停的拒绝码（no_tmux · not_in_tmux · ambiguous）⇒ 字：每个会话的结局带 said"
     },
     {
       "file": "src/frontend/ui/tab-stream-view.ts",

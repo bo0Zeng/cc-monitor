@@ -23,7 +23,7 @@ vi.mock("../../../src/comms/inward/chan", async (importOriginal) => {
         if (gate) await gate;
         if (refusal) {
           const r = refusal;
-          throw new real.ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify(r)) }, "detail-x");
+          throw new real.ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify(r)) }, r.message, "detail-x");
         }
         return new TextEncoder().encode(JSON.stringify(reply));
       },

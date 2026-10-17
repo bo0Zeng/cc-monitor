@@ -835,7 +835,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     local_machine: "J22",
     peer_machine: "J22",
     reply_unreadable: "J22",
-    unavailable: "J37",
+    unavailable: "J38",
     TABLE_JSON: NONE,
     // 天数 ⇒ 公历（后端 · monitor · 文件窗口写日期与「复制详情」的时刻都经它）；界面那一份 TS 删了（J23 zero）。
     civil_from_days: "J23",

@@ -61,9 +61,7 @@ export async function askOpen(origin: Origin, req: SessionOpenReq): Promise<Open
     if (r?.code === "launch_pending") return { kind: "pending", said: saidOf(e), detail };
     if (r) return { kind: "refused", code: r.code, said: saidOf(e), ...refusalData(r.data), detail };
     // 发出去了、没等到回话 ⇒ 结果未知，不说失败。
-    if (e instanceof ChanError && e.error.layer === "hop" && e.error.reach !== "NotSent") {
-      return { kind: "timeout", said: copyText("sessionOpen.timeout.title", { machine: machineName(origin) }), detail };
-    }
+    if (e instanceof ChanError && e.error.layer === "hop" && e.error.reach !== "NotSent") return { kind: "timeout", said: saidOf(e), detail };
     return { kind: "unreachable", said: saidOf(e), detail };
   }
 }
