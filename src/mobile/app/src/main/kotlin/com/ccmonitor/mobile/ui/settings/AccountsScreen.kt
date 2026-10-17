@@ -107,7 +107,8 @@ fun AccountsScreen(
         }
     }
     login?.let { f ->
-        val row = ui.accounts.firstOrNull { it.name == f.state.value.account }
+        val step by f.state.collectAsState()
+        val row = ui.accounts.firstOrNull { it.name == step.account }
         LoginSheet(f, row?.plate, row?.color, here.machine, onClosed = { login = null })
     }
 }
