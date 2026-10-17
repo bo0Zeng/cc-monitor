@@ -1,7 +1,7 @@
 //! 机器状态成品：每一件事实收成哪一态 · 名字旁那个词 · 问题行那一句 · 哪几颗修法（字面表，两向相等）· 复制详情。
 
 use super::*;
-use cmd_wire::machine::MachineStateKind as K;
+use cmd_wire::machine::{MachineFix, MachineStateKind as K};
 use copy_core::copy_text;
 
 const M: &str = "gpu-01";

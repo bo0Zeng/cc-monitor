@@ -1,13 +1,13 @@
-//! **每台机器的状态成品**：收事实（接常驻那一轮 · 部署走到哪一步 · 部署收了）成一态，说名字旁那个词与问题行那一句、给哪几颗修法。
+//! **每台机器的状态成品**：收事实（接常驻那一轮 · 部署走到哪一步 · 部署收了）成一态；名字旁那个词 · 问题行那一句 · 修法照
+//! `deploy_contract::machine` 那几张表（本机那一行在壳里照同一份出）。
 //! 桌面由本机后端跑（`control/machine_state.rs`），手机由 mobcore 跑同一份；两端照画。
 
 use cmd_wire::attach::Relation;
 use cmd_wire::machine::{
-    Blocker, FixButton, MachineFix, MachineState, MachineStateKind as K, Round, RoundProblem,
-    Stage, Why,
+    Blocker, FixButton, MachineState, MachineStateKind as K, Round, RoundProblem, Stage, Why,
 };
-use copy_core::copy_text;
 use copy_core::detail::{Detail, Label, Target};
+use deploy_contract::machine::{fixes, label, said, word};
 
 use crate::Step;
 
@@ -77,12 +77,10 @@ pub fn fold(e: &mut Entry, fact: Fact) {
                 e.blocker = blocker;
             }
         },
-        Fact::Step(s) => match s {
-            Step::Plan => busy(e, K::Connecting, Some(Stage::Deploy)),
-            Step::Place { updating: false } => busy(e, K::Installing, None),
-            Step::Place { updating: true } => busy(e, K::Updating, None),
-            Step::Restart => busy(e, K::Connecting, Some(Stage::Attach)),
-        },
+        Fact::Step(s) => {
+            let (state, stage) = s.kind();
+            busy(e, state, stage);
+        }
         Fact::Deployed { os } => {
             if os.is_some() {
                 e.os = os;
@@ -152,94 +150,6 @@ pub fn product(e: &Entry, machine: &str, enabled: bool, installs: bool) -> Machi
             .and_then(|p| p.expected_key.clone()),
         detail: problem.map(|p| detail(machine, p, &code(why, blocker))),
         next: None,
-    }
-}
-
-/// 名字旁那个词（连着时空；版本不可比的那台说「开发版」）。
-fn word(state: K, relation: Option<Relation>) -> String {
-    match state {
-        K::Up if relation == Some(Relation::Incomparable) => {
-            copy_text("machineState.word.incomparable", &[])
-        }
-        K::Up | K::Unknown => String::new(),
-        K::Connecting => copy_text("machineState.word.connecting", &[]),
-        K::Installing => copy_text("machineState.word.installing", &[]),
-        K::Updating => copy_text("machineState.word.updating", &[]),
-        K::Down => copy_text("machinePage.state.down", &[]),
-        K::HostKeyChanged => copy_text("machineState.word.hostKey", &[]),
-        K::NeedsUpdate => copy_text("machineState.word.needsUpdate", &[]),
-        K::Newer => copy_text("machineState.word.newer", &[]),
-        K::Disabled => copy_text("machinePage.state.disabled", &[]),
-        K::Unsupported => copy_text("machineState.word.unsupported", &[]),
-    }
-}
-
-/// 问题行那一句（空 ⇒ 不出问题行）。正在连 / 装 / 更新那一句与部署每一步那一句是同一句（[`Step::said`]）。
-fn said(state: K, stage: Option<Stage>, why: Option<Why>, machine: &str) -> String {
-    match state {
-        K::Up | K::Unknown => String::new(),
-        K::Connecting => match stage {
-            Some(Stage::Deploy) => Step::Plan.said(machine),
-            Some(Stage::Attach) | None => Step::Restart.said(machine),
-        },
-        K::Installing => Step::Place { updating: false }.said(machine),
-        K::Updating => Step::Place { updating: true }.said(machine),
-        K::Down => match why.unwrap_or(Why::Other) {
-            Why::Resolve => copy_text("machineState.down.resolve", &[]),
-            Why::Unreachable => copy_text("machineState.down.unreachable", &[]),
-            Why::Timeout => copy_text("machineState.down.timeout", &[]),
-            Why::Auth => copy_text("machineState.down.auth", &[]),
-            Why::Password => copy_text("machineState.down.password", &[]),
-            Why::KeyUnreadable => copy_text("machineState.down.keyUnreadable", &[]),
-            Why::Jump => copy_text("machineState.down.jump", &[]),
-            Why::HostKey | Why::Other => {
-                copy_text("machinePage.problem.offline", &[("machine", machine)])
-            }
-        },
-        K::HostKeyChanged => copy_text("machineState.problem.hostKey", &[]),
-        K::NeedsUpdate => copy_text("machineState.problem.needsUpdate", &[("machine", machine)]),
-        K::Newer => copy_text("machineState.problem.newer", &[("machine", machine)]),
-        K::Disabled => copy_text("machinePage.problem.disabled", &[]),
-        K::Unsupported => copy_text("machineState.problem.notUnix", &[("machine", machine)]),
-    }
-}
-
-/// 每一态给哪几颗修法（只在这里定；原因码穷尽，加一个码编不过）。
-fn fixes(state: K, why: Option<Why>, blocker: Option<Blocker>, installs: bool) -> Vec<MachineFix> {
-    use MachineFix as F;
-    match state {
-        K::Down if blocker == Some(Blocker::NoBackend) && !installs => vec![F::Install],
-        K::Down => match why.unwrap_or(Why::Other) {
-            Why::Auth | Why::KeyUnreadable => vec![F::PushKey, F::ConnSettings],
-            Why::Password => vec![F::PushKey],
-            Why::Resolve | Why::Jump => vec![F::ConnSettings],
-            Why::Unreachable | Why::Timeout | Why::HostKey | Why::Other => {
-                vec![F::Retry, F::ConnSettings]
-            }
-        },
-        K::HostKeyChanged => vec![F::CompareFingerprint],
-        K::NeedsUpdate => vec![F::Update],
-        K::Disabled => vec![F::Connect],
-        K::Up
-        | K::Connecting
-        | K::Installing
-        | K::Updating
-        | K::Newer
-        | K::Unsupported
-        | K::Unknown => Vec::new(),
-    }
-}
-
-/// 修法按钮上的字。
-pub fn label(fix: MachineFix) -> String {
-    match fix {
-        MachineFix::Retry => copy_text("machineState.fix.retry", &[]),
-        MachineFix::ConnSettings => copy_text("machinePage.conn.toggle", &[]),
-        MachineFix::PushKey => copy_text("machineCard.build.pushKey", &[]),
-        MachineFix::CompareFingerprint => copy_text("machineState.fix.compareFingerprint", &[]),
-        MachineFix::Update => copy_text("machineState.fix.update", &[]),
-        MachineFix::Connect => copy_text("machinePage.problem.connect", &[]),
-        MachineFix::Install => copy_text("machineState.fix.install", &[]),
     }
 }
 

@@ -8,6 +8,7 @@
 
 use std::path::PathBuf;
 
+use cmd_wire::machine::{MachineStateKind, Stage};
 use copy_core::copy_text;
 use deploy_contract::{DeployAction, Key, RemoteIdentity};
 
@@ -38,24 +39,20 @@ pub enum Step {
 }
 
 impl Step {
-    /// 这一步对人说的那一句（`machine` = 那台的名字）。
-    pub fn said(self, machine: &str) -> String {
-        let connecting = |stage: String| {
-            copy_text(
-                "machineState.busy.connecting",
-                &[("machine", machine), ("stage", &stage)],
-            )
-        };
+    /// 这一步时那台的态与阶段（机器状态成品照它收）。
+    pub fn kind(self) -> (MachineStateKind, Option<Stage>) {
         match self {
-            Step::Plan => connecting(copy_text("machineState.stage.deploy", &[])),
-            Step::Place { updating: true } => {
-                copy_text("machineState.busy.updating", &[("machine", machine)])
-            }
-            Step::Place { updating: false } => {
-                copy_text("machineState.busy.installing", &[("machine", machine)])
-            }
-            Step::Restart => connecting(copy_text("machineState.stage.attach", &[])),
+            Step::Plan => (MachineStateKind::Connecting, Some(Stage::Deploy)),
+            Step::Place { updating: false } => (MachineStateKind::Installing, None),
+            Step::Place { updating: true } => (MachineStateKind::Updating, None),
+            Step::Restart => (MachineStateKind::Connecting, Some(Stage::Attach)),
         }
+    }
+
+    /// 这一步对人说的那一句（`machine` = 那台的名字；与那台状态成品问题行那一句同一句）。
+    pub fn said(self, machine: &str) -> String {
+        let (state, stage) = self.kind();
+        deploy_contract::machine::said(state, stage, None, machine)
     }
 }
 

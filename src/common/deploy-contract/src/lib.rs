@@ -1,7 +1,9 @@
 //! ——「`deploy-core` 拆开：契约（键 · 戳格式 · 答话形状 · 路径常量）成 `deploy-contract`（契约类，monitor 可链）；判定部分进后端」·
 //! 「共享 crate 只放两边必须对上的契约，不放判定；判定只在后端」。
 //!
-//! # 本 crate 是部署那一族的**契约**（两侧对上的形状），不含一条判定
+//! # 本 crate 是部署那一族的**契约**（两侧对上的形状）
+//!
+//! 唯一的判定是连上之前就要判、两端必须判得一样的那一张：每台机器状态成品「态 ⇒ 字」与本机那一行（[`machine`]）。
 //!
 //! | 契约 | 规矩出处 | 这里的口 |
 //! |---|---|---|
@@ -9,6 +11,7 @@
 //! | 拒绝的形状与对人说的话 | | [`Refusal`] · [`Refusal::say`] |
 //! | 身份戳的格式（读它字节里那段，不跑它） | | [`STAMP_OPEN`] · [`STAMP_CLOSE`] · [`Marks`] · [`RemoteIdentity`] · [`identity_of_bytes`] · [`stamp_scan_cmd`] · [`interpret_stamp_scan`] · [`build_order`] · [`build_relation`] |
 //! | 装那一趟做了什么 | `IPC-PROTOCOL.md` 的 `deploy-install` | [`DeployAction`] |
+//! | 机器状态成品的词 · 那一句 · 修法 · 本机那一行 | | [`machine::word`] · [`machine::said`] · [`machine::fixes`] · [`machine::label`] · [`machine::local`] |
 //!
 //! 判定（那台要哪一格 · 表 B 承诺 · 换不换 · 落点那一份认不认）住后端 `deploy` crate 一家（`src/backend/deploy/`，桌面后端与手机同一份）；
 //! monitor 自举那一刻（本机后端还没起）问的是手上那份字节自己（帧命令 `place-verdict`，CLI 面自动派生）。
@@ -18,6 +21,8 @@
 //! - 字节本身（`include_bytes!` 那几槽）与「这一版带没带那一格」—— monitor `byte_table.rs`（放字节的一侧才知道）；
 //! - `BUILD_ID` —— 留在后端（进了这里就又成了 monitor 读得到的源码常量；monitor 的「我这一版」只认手上那份字节自报的）；
 //! - 任何 IO（问那台、读盘、写）。
+
+pub mod machine;
 
 pub use cmd_wire::attach::Relation;
 use copy_core::copy_text;
