@@ -556,33 +556,13 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
-            // **重放缓冲与本机内容消费者先于本机后端就位。** 本机会话内容从此是
-            // 本机后端的 `line` 帧（`local_lines` 头注）；后端一接上就开始宣告、发行 ⇒ 接住它们的那一头
-            // 必须先在。原来 `EventReplay` 造在下面 watcher 那一段（本机 watcher 已删）。
+            // **重放缓冲与本机内容消费者先于本机后端就位**：本机会话内容是本机后端的 `line` 帧（`local_lines` 头注），
+            //   后端一接上就宣告、发行 ⇒ 接住它们的那一头必须先在。
             let replay = Arc::new(event_replay::EventReplay::new());
             // 会话内容经通道 `subscribe` 交给 webview（`chan/webview.rs` 头注）：出口先装上。
             replay.attach_sink(Arc::new(chan::webview::WebviewSink(app.handle().clone())));
             local_lines::install(app.handle().clone(), replay.clone());
             stream_watch::spawn(replay.clone());
-
-            // 起本机后端：字节用这一份产物内嵌的那份，释放到 `~/.cc-monitor/bin`（文件名带 build_id）再起；exe 旁不找、不扫开发产物。
-            // 失败只进日志：被拒（口上有东西、接不上）那一句下一步由 `local_backend_host` 交给本机那一台的状态成品，设置窗照画。
-            {
-                use local_backend_host::StartOutcome;
-                match local_backend_host::start_local_backend() {
-                    StartOutcome::Started(p) => {
-                        tracing::info!("本机后端 local_backend: {}", p.display())
-                    }
-                    StartOutcome::AlreadyRunning => {
-                        tracing::info!("本机后端已经在跑（启动路径不重复起）")
-                    }
-                    StartOutcome::Failed { reason, looked_at } => tracing::warn!(
-                        "本机后端未启动: {}（{}）；找过 {looked_at:?}",
-                        reason.said,
-                        reason.raw()
-                    ),
-                }
-            }
 
             // 主窗的初始尺寸（`tauri.conf.json`）夹进工作区（小屏上底边别压在任务栏下）、摆在正中（重启不漂）。
             if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
@@ -653,6 +633,9 @@ pub fn run() {
             if !done.started.is_empty() {
                 tracing::info!("remote data source(s) started: {:?}", done.started);
             }
+            // 本机后端在自己的线程上起：第一屏不等它；起着 / 接上 / 起不来走那台的机器状态（`machine-state`），与远端同一条。
+            //   放在远端那几条流的上下文就位之后：接上那一刻要问本机的机器表、起远端流。
+            local_backend_host::start_at_launch(say_local_start);
 
             // 焦点同步功能已移除：Windows 11 默认 WT 是单进程多窗口架构，
             // GetForegroundWindow 永远返回 WT 主进程 PID，OS 无法区分 tab/window。
@@ -881,6 +864,20 @@ pub(crate) fn remote_health_out(app: tauri::AppHandle) -> stream_source::HealthO
         app.emit(ui_contract::events::REMOTE_HEALTH, payload)
             .map_err(|e| e.to_string())
     })
+}
+
+/// 起来时那一趟起本机后端的结局只进日志：被拒（口上有东西、接不上）那一句下一步由 `local_backend_host` 交给本机那一台的状态成品，设置窗照画。
+fn say_local_start(out: local_backend_host::StartOutcome) {
+    use local_backend_host::StartOutcome;
+    match out {
+        StartOutcome::Started(p) => tracing::info!("本机后端 local_backend: {}", p.display()),
+        StartOutcome::AlreadyRunning => tracing::info!("本机后端已经在跑（启动路径不重复起）"),
+        StartOutcome::Failed { reason, looked_at } => tracing::warn!(
+            "本机后端未启动: {}（{}）；找过 {looked_at:?}",
+            reason.said,
+            reason.raw()
+        ),
+    }
 }
 
 /// 重放缓冲（[`event_replay::EventReplay`]）收东西的那几个口：会话成品（`session_book` 的出口线程 → `on_lifecycle`）·
