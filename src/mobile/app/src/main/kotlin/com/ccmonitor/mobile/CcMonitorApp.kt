@@ -5,7 +5,6 @@ import android.app.Application
 import android.net.ConnectivityManager
 import android.net.Network
 import android.os.Bundle
-import com.ccmonitor.mobile.core.data.db.KnownHostDao
 import com.ccmonitor.mobile.core.data.di.dataModule
 import com.ccmonitor.mobile.core.ssh.di.sshModule
 import com.ccmonitor.mobile.core.ssh.installRustCore
@@ -14,7 +13,7 @@ import com.ccmonitor.mobile.di.appModule
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.service.AppForeground
 import com.ccmonitor.mobile.service.ForegroundTracker
-import com.ccmonitor.mobile.ssh.migrateOldHostKeys
+import com.ccmonitor.mobile.ssh.OldHostKeys
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -36,7 +35,7 @@ class CcMonitorApp : Application() {
             }.koin
         // 核心先装（主机钥匙那份库在 App 私有目录），旧表迁完才往下走：之后任何一次拨号都只认那份库。
         installRustCore(File(filesDir, "known_hosts"))
-        runBlocking(Dispatchers.IO) { migrateOldHostKeys(koin.get<KnownHostDao>()) }
+        runBlocking(Dispatchers.IO) { koin.get<OldHostKeys>().migrate() }
         // 维护前台标志，并在回到前台时交给每台的常驻流（共用那条重连循环）。
         val backends = koin.get<HostBackends>()
         registerForegroundTracking(backends)

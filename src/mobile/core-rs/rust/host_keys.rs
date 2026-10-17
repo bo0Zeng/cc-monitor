@@ -1,6 +1,6 @@
 //! **主机钥匙那份库在手机上**：App 私有目录下一份 OpenSSH known_hosts（路径由 Kotlin 装核心时交）。
 //! 读 · 记 · 忘的规矩在拨号核心 `ssh_dial::known_hosts`（后端同一份）；这里只有这份文件的读写（同一个进程只有核心写它，锁是进程内的一把）
-//! ＋ Room 旧表迁进来那一次（[`PhoneHostKeys::migrate`]，只活这一版）。
+//! ＋ Room 旧表迁进来那一次（[`PhoneHostKeys::migrate`]，对不上时的出路 [`PhoneHostKeys::forget_all`]；只活这一版）。
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
@@ -133,6 +133,17 @@ impl PhoneHostKeys {
         *self.unmigrated.lock().unwrap_or_else(|e| e.into_inner()) = Some(said.clone());
         Some(said)
     }
+
+    /// 迁移对不上那一句的出路（需手动、点了才调）：清空这份库、开闸；`true` ⇒ Kotlin 删旧表，之后每台照首见重新记。
+    /// 闸关着时库里只有迁进来的那些（读库就拒 ⇒ 首见记不进来），整份清空即只清迁进来的。没对不上 ⇒ `false`，一行不动。
+    pub fn forget_all(&self) -> bool {
+        let mut gate = self.unmigrated.lock().unwrap_or_else(|e| e.into_inner());
+        if gate.is_none() || self.rewrite(&mut |t| (!t.is_empty()).then(String::new)).is_err() {
+            return false;
+        }
+        *gate = None;
+        true
+    }
 }
 
 /// 钥匙 ⇒ OpenSSH 那一行的前两段（算法 ＋ base64），与旧表那一行同形好比。
@@ -249,6 +260,29 @@ mod tests {
         assert_eq!(said, copy_core::copy_text("mobSsh.hostKey.unmigrated", &[("n", "2"), ("m", "1")]));
         // 闸关着：读库就拒（这台记过的也拒，没迁完不认首见）。
         assert_eq!(b.read().unwrap_err().said, said);
+    }
+
+    #[test]
+    fn forgetting_all_after_a_mismatch_empties_the_book_and_the_next_dial_is_a_first_use() {
+        let b = book("forget-all");
+        let rows = [row("box", 22, ED), row("bad", 22, "ssh-ed25519 not-base64")];
+        assert!(b.migrate(&rows).is_some());
+        assert!(b.read().is_err(), "对不上 ⇒ 拒拨");
+        assert!(b.forget_all(), "对不上 ⇒ 带这一个动作");
+        // 库空、闸开：下一次拨号这台什么也没记过 ⇒ 首见，首见照常记进库。
+        assert_eq!(std::fs::read_to_string(&b.path).unwrap_or_default(), "");
+        let text = b.read().unwrap();
+        assert!(known_hosts::known(&text, &at("box", 22)).is_empty());
+        b.rewrite(&mut |t| known_hosts::remembered(t, &at("box", 22), ED)).unwrap();
+        assert_eq!(b.read().unwrap(), format!("box {ED}\n"));
+    }
+
+    #[test]
+    fn forgetting_all_is_refused_when_the_migration_read_back_equal() {
+        let b = book("forget-all-no");
+        assert_eq!(b.migrate(&[row("box", 22, ED)]), None);
+        assert!(!b.forget_all());
+        assert_eq!(b.read().unwrap(), format!("box {ED}\n"));
     }
 
     #[test]

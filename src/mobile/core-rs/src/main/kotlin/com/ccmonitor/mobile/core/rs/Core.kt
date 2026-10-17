@@ -57,6 +57,9 @@ object Core {
      */
     external fun migrateHostKeys(rows: Array<String>): String?
 
+    /** 迁移对不上那一句的出路（确认过才调）：清空那份库、之后每台照首见重新记；`true` ⇒ 旧表可清空。没对不上 · 写不成 ⇒ `false`。 */
+    external fun forgetAllHostKeys(): Boolean
+
     /** 忘掉这台的主机钥匙（「钥匙变了」页上点了才调）；写不成 ⇒ `false`。 */
     external fun forgetHost(
         host: String,

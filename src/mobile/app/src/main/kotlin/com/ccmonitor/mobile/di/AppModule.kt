@@ -7,6 +7,7 @@ import com.ccmonitor.mobile.dev.DevSeeder
 import com.ccmonitor.mobile.link.BackendFiles
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ssh.HostConnector
+import com.ccmonitor.mobile.ssh.OldHostKeys
 import com.ccmonitor.mobile.ui.chat.ChatController
 import com.ccmonitor.mobile.ui.chat.ChatOpen
 import com.ccmonitor.mobile.ui.chat.ChatViewModel
@@ -102,6 +103,7 @@ val appModule =
         // 文件屏的浏览状态 VM：读写问那台后端（这台的常驻流）；SSH 连接与终端共用，按持有者计数保活。
         viewModel { (hostId: String) -> FilesViewModel(hostId, get(), get(), get()) }
         single { HostConnector(get(), get(), get()) }
+        single { OldHostKeys(get()) } // 主机钥匙旧表迁进核心（只活这一版）：迁移对不上那一句与它的出路
         single { SessionTabManager() } // 多 tab 的应用级状态：打开的会话和按 key 保活的 ViewModelStore
         single { DevSeeder(androidContext(), get(), get()) }
     }

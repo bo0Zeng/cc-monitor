@@ -541,6 +541,15 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_migrateHostKeys<'l
     })
 }
 
+/// `Core.forgetAllHostKeys()`：迁移对不上那一句的出路（点了、确认过才调）：清空库、开闸；`true` ⇒ Kotlin 删旧表。没对不上 · 写不成 ⇒ `false`。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_forgetAllHostKeys<'l>(_env: JNIEnv<'l>, _class: JClass<'l>) -> jboolean {
+    guarded(JNI_FALSE, || match BOOK.get().map(|b| b.forget_all()) {
+        Some(true) => JNI_TRUE,
+        _ => JNI_FALSE,
+    })
+}
+
 /// `Core.forgetHost(host, port)`：忘掉这台的主机钥匙（「钥匙变了」页上点了才调）。写不成 ⇒ `false`。
 #[no_mangle]
 pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_forgetHost<'l>(
