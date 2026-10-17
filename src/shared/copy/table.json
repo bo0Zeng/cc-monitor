@@ -23761,18 +23761,6 @@
       "zh": "需手动",
       "args": []
     },
-    "needs.bar.sub": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{waited} · 在终端里答",
-      "args": ["waited"]
-    },
-    "needs.bar.subBare": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "在终端里答",
-      "args": []
-    },
     "needs.windowTitle.base": {
       "kind": "title",
       "role": "标题",
@@ -30025,10 +30013,10 @@
       "zh": "用量",
       "args": []
     },
-    "mobChats.search.aria": {
-      "kind": "aria",
-      "role": "读屏",
-      "zh": "搜索会话",
+    "mobChats.search.open": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "搜索",
       "args": []
     },
     "mobChats.search.placeholder": {
@@ -30039,7 +30027,7 @@
     },
     "mobChats.search.content": {
       "kind": "action",
-      "role": "按钮",
+      "role": "菜单项",
       "zh": "搜内容「{q}」",
       "args": ["q"]
     },

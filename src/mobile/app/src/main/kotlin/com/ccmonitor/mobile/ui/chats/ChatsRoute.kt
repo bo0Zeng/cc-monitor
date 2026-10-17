@@ -258,7 +258,7 @@ private fun ChatsTopBar(
 ) {
     TopAppBar(
         actions = {
-            PhIconButton(Ph.MagnifyingGlass, copyText("mobChats.search.aria"), onClick = onSearch, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            PhIconButton(Ph.MagnifyingGlass, copyText("mobChats.search.open"), onClick = onSearch, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             PhIconButton(Ph.Funnel, copyText("history.page.filter"), onClick = onFilter, tint = if (filtered) LocalAppTokens.current.accent else MaterialTheme.colorScheme.onSurfaceVariant)
         },
         navigationIcon = { PhIconButton(Ph.List, DRAWER_OPEN_DESCRIPTION, onClick = onOpenDrawer, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
