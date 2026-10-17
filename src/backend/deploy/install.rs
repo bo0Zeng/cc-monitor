@@ -143,7 +143,10 @@ async fn run_staged(
         )
     };
     let (got, _) = host
-        .exec(format!("{} -- --{sub}", relay_route_core::home_shell(staged)))
+        .exec(format!(
+            "{} -- --{sub}",
+            relay_route_core::home_shell(staged)
+        ))
         .await
         .map_err(|e| failed(&e))?;
     let line = |t: &str| {

@@ -79,7 +79,7 @@
     "beOwnState.dir.tooWide": {
       "kind": "error",
       "role": "报错",
-      "zh": "未使用 · cc-monitor 目录 {dir} 同机他人可进 · 权限 {mode} · 收回 700 失败 · {why}",
+      "zh": "未使用 · cc-monitor 目录 {dir} 权限 {mode} · 收回 700 失败 · {why}",
       "args": ["dir", "mode", "why"]
     },
     "beOwnState.dir.unreadable": {
