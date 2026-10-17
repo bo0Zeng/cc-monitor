@@ -46,7 +46,6 @@ use copy_core::copy_text;
 use std::collections::BTreeSet;
 
 use super::source::Listed;
-use cmd_wire::files::FileClass;
 
 /// 一行在选中态里的**键**（理由住本模块头注 §四）。
 ///

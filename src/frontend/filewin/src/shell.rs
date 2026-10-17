@@ -115,7 +115,7 @@ use super::find::{self, SearchBoard};
 use super::fonts::{self, FontState};
 use super::grep::{self, GrepBoard, GrepTally};
 use super::rows::{show_hit_rows, HitTally, RenderTally};
-use super::select::{self, Action, ActionFace, Intent, Item, ItemFace, Selection, TypeAhead};
+use super::select::{self, Action, Intent, Item, ItemFace, Selection, TypeAhead};
 use super::source::{Line, Listed, Sort, Source};
 use super::transfer::{DropBoard, Pending};
 use super::writeops::{is_writable, PromptKind, WriteBoard, WriteOp, WritePrompt};

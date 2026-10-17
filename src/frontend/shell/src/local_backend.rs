@@ -1410,8 +1410,6 @@ pub(crate) fn local_stdio_consumer(
     stdin: std::process::ChildStdin,
     stdout: std::process::ChildStdout,
 ) -> ConsumerReport {
-    use std::io::BufRead;
-
     let stdin =
         match tauri::async_runtime::block_on(
             async move { tokio::process::ChildStdin::from_std(stdin) },

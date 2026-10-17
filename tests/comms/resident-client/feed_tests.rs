@@ -631,7 +631,7 @@ async fn a_backend_that_dies_right_after_hello_backs_off_and_does_not_hammer() {
             die_now: true,
         });
     }
-    let (_feed, seen) = start(&f);
+    let (_feed, _seen) = start(&f);
     until("接了 6 回", || f.attach_at.lock().unwrap().len() >= 6).await;
     let at = f.attach_at.lock().unwrap().clone();
     let gaps: Vec<u64> = at.windows(2).map(|w| (w[1] - w[0]).as_secs()).collect();
@@ -1282,7 +1282,7 @@ async fn a_link_gone_silent_is_judged_dead_by_its_own_heartbeat() {
         a.push_back(Peer::Mute { build: MINE.into() });
         a.push_back(upp(MINE));
     }
-    let (feed, seen) = start(&f);
+    let (feed, _seen) = start(&f);
     until("流接上了", || up(&feed)).await;
     until("判死、重接上了", || {
         f.attach_at.lock().unwrap().len() == 2 && up(&feed)
