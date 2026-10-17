@@ -303,6 +303,7 @@ pub(crate) enum PrefsState {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PrefsReply {
+    /// `absent`（没设过）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
     #[cfg_attr(test, ts(type = "\"absent\" | \"ok\" | \"unreadable\""))]
     pub(crate) state: PrefsState,
     /// `unreadable` 时的原因（那一句不带原话）。
