@@ -469,14 +469,15 @@ impl Home {
         head.tz = Some("UTC".into());
         let text = script::with_head(src, &head).expect("头");
         shelf::write_file(&self.own(), "t-default", &text).expect("写策略");
-        self.setup()
-            .change(&self.own(), |b| {
-                b.for_new = "t-default".into();
-                // 已经有的会话也改用它（同在下拉里换一份）。
-                for x in b.sessions.values_mut() {
-                    x.id = "t-default".into();
-                }
-            })
+        let setup = self.setup();
+        setup
+            .change(&self.own(), |b| b.for_new = "t-default".into())
+            .expect("write");
+        // 已经有的会话也载入它（同在下拉里选这一份）。
+        let sids: Vec<String> = setup.book.now().sessions.keys().cloned().collect();
+        let copy = crate::accounts::quota::setup::copy_at(setup.dir().as_deref(), "t-default");
+        setup
+            .load(&self.own(), &sids, copy.as_ref())
             .expect("write");
     }
 
@@ -1078,14 +1079,16 @@ fn a_session_started_inside_another_opens_the_default_config() {
     let relay = home.relay_tracing(up);
     let path = "/t/claude-code/a/~0a1b2c3d4e5f6071/v1/messages";
     assert!(send_on(relay, path, "s-owner", "").starts_with("HTTP/1.1 200"));
-    home.setup()
-        .change(&home.own(), |b| {
-            b.sessions.get_mut("s-owner").expect("owner").id = "other".into();
-        })
-        .expect("write");
+    let setup = home.setup();
+    crate::accounts::quota::rotation::face_change(&setup.book, &home.own(), |b| {
+        if let Some(c) = b.sessions.get_mut("s-owner").and_then(|s| s.uses.as_mut()) {
+            c.id = "other".into();
+        }
+    })
+    .expect("write");
     assert!(send_on(relay, path, "s-kid", "").starts_with("HTTP/1.1 200"));
-    let uses = home.setup().uses.now();
-    assert_eq!(uses.sessions["s-kid"].id, uses.for_new);
+    let kid = setup.book.now().sessions["s-kid"].uses.clone().map(|c| c.id);
+    assert_eq!(kid.unwrap_or_default(), setup.uses.now().for_new);
 }
 
 /// 额度预热那一发（点名一个号、从别的会话的 shell 里起）：主会话已经换到 b，它里面起的、点名 a 的新会话照 a 发 ——
@@ -1149,7 +1152,7 @@ fn a_launch_that_says_no_rotation_stays_on_the_account_it_names_whatever_new_ses
         &home.own(),
         "s-warm",
         crate::agents::pick_route(Some(&crate::agents::AgentKind::new("claude"))).unwrap(),
-        "",
+        None,
         crate::accounts::quota::now_unix(),
     )
     .expect("起之前记一条");

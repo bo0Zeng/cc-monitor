@@ -30312,12 +30312,6 @@
       "zh": "这份策略在别处已改过",
       "args": []
     },
-    "beRotation.edit.dirty": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "会话里有未保存的设置",
-      "args": []
-    },
     "beRotation.edit.forNew": {
       "kind": "error",
       "role": "报错",
@@ -30354,6 +30348,12 @@
       "zh": "{acct} 此刻无法发送",
       "args": ["acct"]
     },
+    "beRotation.edit.offNow": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "本会话先不用 {acct}",
+      "args": ["acct"]
+    },
     "beRotation.write.v1Pending": {
       "kind": "error",
       "role": "报错",
@@ -30372,29 +30372,17 @@
       "zh": "这份策略出错",
       "args": []
     },
-    "rot.top.dirty": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "未保存",
-      "args": []
-    },
-    "rot.top.revert": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "还原",
-      "args": []
-    },
-    "rot.top.save": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "存成这份策略",
-      "args": []
-    },
     "rot.top.here": {
       "kind": "body",
       "role": "片段",
       "zh": "设置 · {machine}",
       "args": ["machine"]
+    },
+    "rot.top.edit": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "编辑策略",
+      "args": []
     },
     "rot.none.label": {
       "kind": "control",
@@ -30479,6 +30467,42 @@
       "kind": "title",
       "role": "标题",
       "zh": "模拟",
+      "args": []
+    },
+    "rot.h.order": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "顺序",
+      "args": []
+    },
+    "rot.h.orderHint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "拖动改本会话先后 · 拖到第一格即换过去",
+      "args": []
+    },
+    "rot.order.use": {
+      "kind": "aria",
+      "role": "读屏",
+      "zh": "本会话用 {account}",
+      "args": ["account"]
+    },
+    "rot.order.now": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "此刻 · {why}",
+      "args": ["why"]
+    },
+    "rot.order.on": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "开",
+      "args": []
+    },
+    "rot.order.off": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "关",
       "args": []
     },
     "rot.card.w5h": {
@@ -30673,6 +30697,12 @@
       "zh": "↻{at}",
       "args": ["at"]
     },
+    "rot.sim.off": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "不用",
+      "args": []
+    },
     "beRotation.hint.hold": {
       "kind": "body",
       "role": "说明",
@@ -30778,9 +30808,15 @@
     "beRotation.hint.newer": {
       "kind": "body",
       "role": "说明",
-      "zh": "这份策略在别处被改了",
-      "args": [],
+      "zh": "策略「{name}」改过了 · 这个会话还在用旧版",
+      "args": ["name"],
       "waive": {"C-W17": "用户定的句子（轮换的提示表）"}
+    },
+    "beRotation.hint.older": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{n} 个会话还在用旧版",
+      "args": ["n"]
     },
     "rot.ask.go": {
       "kind": "action",
@@ -30830,24 +30866,6 @@
       "zh": "删除后无法撤销",
       "args": []
     },
-    "rot.ask.discardTitle": {
-      "kind": "title",
-      "role": "确认框",
-      "zh": "换一份策略",
-      "args": []
-    },
-    "rot.ask.discardGo": {
-      "kind": "action",
-      "role": "确认框",
-      "zh": "丢弃未保存的改动并切换",
-      "args": []
-    },
-    "rot.ask.discardBody": {
-      "kind": "body",
-      "role": "确认框",
-      "zh": "会话里未保存的改动随之丢弃",
-      "args": []
-    },
     "rot.read.retry": {
       "kind": "action",
       "role": "按钮",
@@ -30857,13 +30875,13 @@
     "rot.hint.loadNew": {
       "kind": "action",
       "role": "按钮",
-      "zh": "载入新的",
+      "zh": "载入新版",
       "args": []
     },
-    "rot.hint.keepMine": {
+    "rot.hint.loadAll": {
       "kind": "action",
       "role": "按钮",
-      "zh": "留着这边的",
+      "zh": "都载入新版",
       "args": []
     },
     "rot.hint.code": {
@@ -30944,16 +30962,10 @@
       "zh": "改动保存失败",
       "args": []
     },
-    "rot.fail.save": {
+    "rot.fail.reload": {
       "kind": "error",
       "role": "报错",
-      "zh": "保存失败",
-      "args": []
-    },
-    "rot.fail.revert": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "还原失败",
+      "zh": "载入新版失败",
       "args": []
     },
     "rot.fail.useNow": {

@@ -1,12 +1,11 @@
 //! 帧面 `rotation-strategies` · `rotation-view`（typed，配置编辑层）：轮换的两条读；事实 · 一判 · 推演问基础层，成品在这里拼。
-//! 都只回成品：策略目录里每一份（名字 · 灰字 · 版本 · 读不懂的原因 · 哪几个会话在用）；一个会话（或设置页上的一份策略）此刻的
-//! 设置 · 声明 · 每个号的事实 · 这一判 · 推演 · 提示。界面照画，不判、不排、不算时刻。
+//! 都只回成品：策略目录里每一份（名字 · 灰字 · 版本 · 读不懂的原因 · 哪几个会话在用）；一个会话（照它载入的副本）或设置页上的一份策略
+//! （照文件此刻的）此刻的设置 · 每个号的事实 · 顺序 · 这一判 · 推演 · 提示。界面照画，不判、不排、不算时刻。
 
-use crate::accounts::quota::rules::book;
-use crate::accounts::quota::rules::decide::Pick;
-use crate::accounts::quota::rules::{past, simulate};
-use crate::accounts::quota::setup::uses::{Uses, UsesBook};
-use crate::accounts::quota::setup::{self, form, script, shelf};
+use crate::accounts::quota::rules::book::{self, Book};
+use crate::accounts::quota::rules::decide::{Decision, Pick};
+use crate::accounts::quota::rules::{past, simulate, standing, Acct, Adopted};
+use crate::accounts::quota::setup::{self, form, script, shelf, uses};
 use crate::accounts::quota::strategy::FailWhy;
 use crate::accounts::upstream_select::turn;
 use crate::common::cells::Words;
@@ -64,7 +63,8 @@ impl crate::wire::typed::Handle for RotationStrategies {
 /// 一份写成线上那一项。
 pub(crate) fn item_of(
     s: &shelf::Shelved,
-    book: &UsesBook,
+    book: &Book,
+    for_new: &str,
     live: &dyn Fn(&str) -> bool,
 ) -> RotStrategyItem {
     let head = s.file.as_ref().ok().map(|f| &f.head);
@@ -78,12 +78,11 @@ pub(crate) fn item_of(
         description,
         rev: s.rev.clone(),
         error: s.file.as_ref().err().map(error_of),
-        in_use: book
-            .in_use(&s.id)
+        in_use: uses::in_use(book, &s.id, None)
             .into_iter()
             .filter(|sid| live(sid))
             .collect(),
-        for_new: book.for_new == s.id,
+        for_new: for_new == s.id,
         words_bad: head.is_some_and(|h| form::words_bad(&h.form)),
         tz_unknown: head.is_some_and(|h| h.tz.is_none() || h.tz_unknown),
     }
@@ -105,37 +104,27 @@ pub(crate) fn strategies_with(
     _req: &RotationStrategiesReq,
     live: &dyn Fn(&str) -> bool,
 ) -> RotationStrategiesReply {
-    let book = ctx.setup.uses.now();
+    let book = ctx.hop.store.now();
+    let for_new = ctx.setup.uses.now().for_new;
     let dir = ctx.setup.dir();
     RotationStrategiesReply {
         strategies: shelf::all(dir.as_deref())
             .iter()
-            .map(|s| item_of(s, &book, live))
+            .map(|s| item_of(s, &book, &for_new, live))
             .collect(),
-        for_new: book.for_new.clone(),
+        for_new,
         old_scripts: shelf::old_count(dir.as_deref()),
     }
 }
 
-/// 看哪一份：一个会话（会话面板）· 一份策略（设置页；`settings` ＝ 界面手上的草稿，缺 ⇒ 文件里的）。
+/// 看哪一份：一个会话（会话面板，照它载入的副本）· 一份策略（设置页，照文件此刻的）。
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged, deny_unknown_fields)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) enum RotTarget {
-    Session {
-        sid: String,
-    },
-    Strategy {
-        strategy: String,
-        #[serde(default)]
-        #[cfg_attr(test, ts(optional, type = "unknown"))]
-        settings: Option<Value>,
-        /// `settings` 是照哪个版本改出来的（缺 ⇒ 不比）：跟文件此刻的不同 ⇒ 提示「别处被改了」。
-        #[serde(default)]
-        #[cfg_attr(test, ts(optional))]
-        rev: Option<String>,
-    },
+    Session { sid: String },
+    Strategy { strategy: String },
 }
 
 /// `rotation-view` 的入参。
@@ -217,7 +206,10 @@ fn note_of(hint: RotHint, name: &str, why: FailWhy) -> RotNote {
             ),
         },
         RotHint::TzUnknown { .. } => copy_core::copy_text("beRotation.hint.tz", &[]),
-        RotHint::Newer => copy_core::copy_text("beRotation.hint.newer", &[]),
+        RotHint::Newer => copy_core::copy_text("beRotation.hint.newer", &[("name", name)]),
+        RotHint::Older { n } => {
+            copy_core::copy_text("beRotation.hint.older", &[("n", &n.to_string())])
+        }
         RotHint::OldScripts { n, .. } => {
             copy_core::copy_text("beRotation.hint.old", &[("n", &n.to_string())])
         }
@@ -232,7 +224,7 @@ fn note_of(hint: RotHint, name: &str, why: FailWhy) -> RotNote {
         RotHint::StrategyError { .. } | RotHint::BookUnreadable { .. } => Tone::Fail,
         RotHint::Hold { .. } => Tone::Warn,
         RotHint::TzUnknown { .. } | RotHint::OldScripts { .. } => Tone::Need,
-        RotHint::Newer | RotHint::WordsBad => Tone::Plain,
+        RotHint::Newer | RotHint::Older { .. } | RotHint::WordsBad => Tone::Plain,
     };
     RotNote {
         hint,
@@ -284,8 +276,6 @@ crate::wire::typed::codes! {
         NoSession = "no_session",
         /// 策略目录里没有那一份。
         NoStrategy = "no_strategy",
-        /// 交来的设置不合声明：`data.cells` 是哪几格。
-        Refused = "refused" => RotRefused,
     }
 }
 
@@ -402,6 +392,26 @@ fn past_of(
     }
 }
 
+/// 会话的顺序：第一格 ＝ 在用的号，往下照拖出来的 · 策略交的先后，此刻用不了的与先不用的沉底（各照号的先后）。
+fn lineup_of(s: &book::Session, d: &Decision, facts: &[Acct], now: u64) -> Vec<String> {
+    let ok = |a: &str| {
+        !s.off.iter().any(|x| x == a)
+            && facts
+                .iter()
+                .find(|x| x.id == a)
+                .is_some_and(|x| standing::sendable(x, now))
+    };
+    let mut out = vec![s.current.clone()];
+    let ids: Vec<&String> = facts.iter().map(|x| &x.id).collect();
+    let usable = d.sigma.temp.iter().chain(&d.order).chain(ids.iter().copied());
+    for a in usable.filter(|a| ok(a)).chain(ids.iter().copied()) {
+        if !out.contains(a) {
+            out.push(a.clone());
+        }
+    }
+    out
+}
+
 /// 本体（测试给假的账本 · 额度账 · 钟 · 判活）。
 pub(crate) fn view_with(
     ctx: &Ctx,
@@ -410,54 +420,48 @@ pub(crate) fn view_with(
     tz: &crate::Tz,
     live: &dyn Fn(&str) -> bool,
 ) -> Result<RotationViewReply, RotationViewErr> {
-    let book = ctx.setup.uses.now();
+    let base = ctx.hop.store.now();
+    let for_new = ctx.setup.uses.now().for_new;
     let dir = ctx.setup.dir();
-    let (session, uses, agent) = match &req.target {
+    let all = shelf::all(dir.as_deref());
+    // 会话 ⇒ 照它载入的副本；设置页 ⇒ 照文件此刻的。
+    let (session, plan, shelved, form, agent) = match &req.target {
         RotTarget::Session { sid } => {
-            let s = ctx
-                .hop
-                .store
-                .now()
-                .sessions
-                .get(sid)
-                .cloned()
-                .ok_or_else(|| {
-                    RotationViewErr::NoSession(copy_core::copy_text("beRotation.session.gone", &[]))
-                })?;
-            let u = book
-                .sessions
-                .get(sid)
-                .cloned()
-                .unwrap_or_else(|| Uses::of("", s.since));
+            let s = base.sessions.get(sid).cloned().ok_or_else(|| {
+                RotationViewErr::NoSession(copy_core::copy_text("beRotation.session.gone", &[]))
+            })?;
+            let shelved = s.uses.as_ref().and_then(|c| shelf::find(&all, &c.id));
+            let form = s.uses.as_ref().map(setup::form_of).unwrap_or_default();
             let agent = s.agent.clone();
-            (s, u, agent)
+            let plan = Adopted::of(s.uses.as_ref());
+            (s, plan, shelved, form, agent)
         }
-        RotTarget::Strategy {
-            strategy, settings, ..
-        } => {
-            let all = shelf::all(dir.as_deref());
+        RotTarget::Strategy { strategy } => {
             let shelved = shelf::find(&all, strategy).ok_or_else(|| {
                 RotationViewErr::NoStrategy(copy_core::copy_text(
                     "beRotation.strategy.gone",
                     &[("name", strategy)],
                 ))
             })?;
-            if let Some(s) = settings {
-                checked(shelved.file.as_ref().ok(), s).map_err(|r| {
-                    RotationViewErr::Refused(
-                        crate::common::contract::malformed("settings do not fit the form"),
-                        r,
-                    )
-                })?;
-            }
+            let (plan, form) = match &shelved.file {
+                Ok(f) => (
+                    setup::adopted_of_file(strategy, &shelved.rev, f, None),
+                    f.head.form.clone(),
+                ),
+                Err(e) => (
+                    Adopted {
+                        id: strategy.clone(),
+                        rev: shelved.rev.clone(),
+                        code: Err(e.clone()),
+                        ..Adopted::of(None)
+                    },
+                    Vec::new(),
+                ),
+            };
             let zero = crate::accounts::manage::model::ACCOUNT_ZERO;
             let s = book::Session::fresh(crate::faces::rotation_face::LIBRARY_AGENT, zero, now);
-            let u = Uses {
-                rev: shelved.rev.clone(),
-                draft: settings.clone(),
-                ..Uses::of(strategy, now)
-            };
-            (s, u, crate::faces::rotation_face::LIBRARY_AGENT.to_string())
+            let agent = crate::faces::rotation_face::LIBRARY_AGENT.to_string();
+            (s, plan, Some(shelved), form, agent)
         }
     };
     let unreadable = || {
@@ -466,7 +470,7 @@ pub(crate) fn view_with(
             .unreadable()
             .or_else(|| ctx.setup.uses.unreadable())
     };
-    if uses.id.is_empty() {
+    if plan.id.is_empty() {
         let mut hints = Vec::new();
         if let Some(e) = unreadable() {
             hints.push(note_of(
@@ -480,11 +484,11 @@ pub(crate) fn view_with(
             now_text: face(now, tz),
             title: title_of(&req.target),
             strategy: None,
-            settings: Value::Object(Default::default()),
             board: RotBoard::default(),
-            dirty: false,
             start: session.start.clone(),
             current: session.current.clone(),
+            lineup: Vec::new(),
+            off: session.off.clone(),
             // 不轮换 ⇒ 只有开会话的那个号（号列表之外，只为它那一枚号牌）。
             accounts: (!session.start.is_empty())
                 .then(|| RotAccount {
@@ -507,13 +511,10 @@ pub(crate) fn view_with(
             decision: None,
             timeline: None,
             past: None,
-            base_rev: String::new(),
             log: log_rows(&session.log),
             hints,
         });
     }
-    let shelved = shelf::find(&shelf::all(dir.as_deref()), &uses.id);
-    let plan = setup::adopted_in(&uses.id, shelved.as_deref(), uses.draft.as_ref());
     let row = ctx.row(&agent);
     let facts = ctx.hop.accts(&session, &plan.settings, &row, now);
     let d = ctx.hop.judge_session(&session, &plan, &facts, now, &[]);
@@ -530,23 +531,19 @@ pub(crate) fn view_with(
         now + hours * 3600,
     );
     let item = match &shelved {
-        Some(s) => item_of(s, &book, live),
+        Some(s) => item_of(s, &base, &for_new, live),
         None => RotStrategyItem {
             id: plan.id.clone(),
             description: String::new(),
             summary: String::new(),
             rev: String::new(),
-            error: plan.code.as_ref().err().map(error_of),
+            error: None,
             in_use: Vec::new(),
-            for_new: book.for_new == plan.id,
+            for_new: for_new == plan.id,
             words_bad: false,
             tz_unknown: false,
         },
     };
-    let head = shelved
-        .as_ref()
-        .and_then(|s| s.file.as_ref().ok())
-        .map(|f| &f.head);
     let mut hints = Vec::new();
     if let Pick::Hold { until, account } = &d.pick {
         hints.push(RotHint::Hold {
@@ -570,6 +567,23 @@ pub(crate) fn view_with(
                 .and(dir.as_deref())
                 .map(|d| shelf::path_of(d, &plan.id).display().to_string()),
         });
+    }
+    match &req.target {
+        // 文件在它载入之后改过（还读得懂）⇒ 这个会话还在用旧版。
+        RotTarget::Session { .. } => {
+            if item.error.is_none() && !item.rev.is_empty() && item.rev != plan.rev {
+                hints.push(RotHint::Newer);
+            }
+        }
+        RotTarget::Strategy { strategy } => {
+            let n = uses::in_use(&base, strategy, Some(&item.rev))
+                .into_iter()
+                .filter(|s| live(s))
+                .count();
+            if n > 0 {
+                hints.push(RotHint::Older { n });
+            }
+        }
     }
     if item.tz_unknown {
         hints.push(RotHint::TzUnknown {
@@ -619,42 +633,25 @@ pub(crate) fn view_with(
             plate: plate_of(id, &colors),
         })
         .collect();
-    let dirty = match &req.target {
-        RotTarget::Session { .. } => uses.draft.is_some(),
-        RotTarget::Strategy { settings, .. } => {
-            settings.is_some() && head.map(|h| &h.settings) != settings.as_ref()
-        }
-    };
-    // 显示的这份设置照哪个版本：会话有草稿 ⇒ 草稿基于的；设置页交了草稿与它的版本 ⇒ 那个；否则文件此刻的。
-    let base_rev = match &req.target {
-        RotTarget::Session { .. } if uses.draft.is_some() && !uses.rev.is_empty() => {
-            uses.rev.clone()
-        }
-        RotTarget::Strategy {
-            settings: Some(_),
-            rev: Some(r),
-            ..
-        } => r.clone(),
-        _ => item.rev.clone(),
-    };
-    if !item.rev.is_empty() && base_rev != item.rev {
-        hints.push(RotHint::Newer);
-    }
-    let past = match &req.target {
+    let (past, lineup, log) = match &req.target {
         RotTarget::Session { .. } => {
             let lanes: Vec<String> = tl.lanes.iter().map(|(a, _)| a.clone()).collect();
             let from = now.saturating_sub(hours * 3600 / PAST_SHARE);
-            Some(past_of(
-                &session,
-                &facts,
-                &lanes,
-                matches!(d.pick, Pick::Hold { .. }),
-                from,
-                now,
-                tz,
-            ))
+            (
+                Some(past_of(
+                    &session,
+                    &facts,
+                    &lanes,
+                    matches!(d.pick, Pick::Hold { .. }),
+                    from,
+                    now,
+                    tz,
+                )),
+                lineup_of(&session, &d, &facts, now),
+                log_rows(&session.log),
+            )
         }
-        RotTarget::Strategy { .. } => None,
+        RotTarget::Strategy { .. } => (None, Vec::new(), Vec::new()),
     };
     let name = item.id.clone();
     Ok(RotationViewReply {
@@ -662,15 +659,11 @@ pub(crate) fn view_with(
         now_text: face(now, tz),
         title: title_of(&req.target),
         strategy: Some(item),
-        board: board_of(
-            head.map_or(&[][..], |h| h.form.as_slice()),
-            &plan.settings,
-            &accounts[..listed],
-        ),
-        settings: plan.settings.clone(),
-        dirty,
+        board: board_of(&form, &plan.settings, &accounts[..listed]),
         start: session.start.clone(),
         current: session.current.clone(),
+        lineup,
+        off: session.off.clone(),
         accounts,
         listed,
         decision: Some(decision_of(&d)),
@@ -682,11 +675,7 @@ pub(crate) fn view_with(
             tz,
         )),
         past,
-        base_rev,
-        log: match &req.target {
-            RotTarget::Session { .. } => log_rows(&session.log),
-            RotTarget::Strategy { .. } => Vec::new(),
-        },
+        log,
         hints: hints.into_iter().map(|h| note_of(h, &name, why)).collect(),
     })
 }

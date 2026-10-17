@@ -1,17 +1,16 @@
-//! `rotation-uses.json`（配置编辑层那份账本，第一版）：每个会话用哪份策略（加改过的设置）· 新会话默认用哪份。
-//! 存取同 `rotation.json` 一处（[`rotation::DocStore`]）；写只经 [`Setup::change`]。另住两份账本的升级写回（[`migrate_at`]）· 盯目录（[`watch_here`]）·
-//! 起会话之前那一笔（[`preset`]）。
+//! `rotation-uses.json`（配置编辑层那份账本，第一版）：新会话默认用哪份。会话载入的副本存在基础层那份 `rotation.json` 里，
+//! 载入只经这里（[`Setup::load`] · 新会话那一份 [`Adoptions::for_new`] · 起会话之前那一笔 [`preset`]）。
+//! 存取同 `rotation.json` 一处（[`rotation::DocStore`]）。另住旧版账本的升级写回（[`migrate_at`]）· 盯目录（[`watch_here`]）。
 
 use crate::accounts::quota::nodes::{self, Nodes, Source};
 use crate::accounts::quota::rotation::{self, io_said, DiskSeen, Doc, DocStore, RotationStore};
-use crate::accounts::quota::rules::book::{self, Book};
-use crate::accounts::quota::rules::{Adopted, Adoptions};
+use crate::accounts::quota::rules::book::{self, Book, Copy};
+use crate::accounts::quota::rules::Adoptions;
 use crate::common::said::Said;
 use crate::platform::fs::Own;
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -21,68 +20,13 @@ pub(crate) const FILE_NAME: &str =
 /// 这一版的版本号。
 pub(crate) const USES_VERSION: u64 = 1;
 
-/// 整份。
+/// 整份：新会话载入哪份（策略目录里的文件名去掉 `.rhai`）；空 ⇒ 新会话不轮换，只用开会话的号。
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct UsesBook {
     pub(crate) version: u64,
-    /// 新会话用哪份（策略目录里的文件名去掉 `.rhai`）；空 ⇒ 新会话不轮换，只用开会话的号。
     #[serde(default)]
     pub(crate) for_new: String,
-    #[serde(default)]
-    pub(crate) sessions: BTreeMap<String, Uses>,
-}
-
-/// 会话用的那份策略：文件 id（空 ⇒ 这个会话不轮换）· 打开（或跟上）那一刻的内容版本 · 改过的设置（整份，只在改过时有）· 几时记下的。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct Uses {
-    pub(crate) id: String,
-    #[serde(default)]
-    pub(crate) rev: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) draft: Option<Value>,
-    #[serde(default)]
-    pub(crate) since: u64,
-}
-
-impl Uses {
-    pub(crate) fn of(id: &str, now: u64) -> Self {
-        Self {
-            id: id.to_string(),
-            rev: String::new(),
-            draft: None,
-            since: now,
-        }
-    }
-}
-
-impl UsesBook {
-    /// 用这份策略的会话（按 sid）。
-    pub(crate) fn in_use(&self, id: &str) -> Vec<String> {
-        self.sessions
-            .iter()
-            .filter(|(_, s)| s.id == id)
-            .map(|(sid, _)| sid.clone())
-            .collect()
-    }
-
-    /// 第一次问到这个会话 ⇒ 照 `forNew` 记下，顺手清旧的：没草稿 · `rotation.json` 里已经没有 · 记下超过 [`book::DROP_AFTER`]。
-    ///
-    /// 〔继承表〕轮换那一格：新会话照 `forNew` 那一份，不看起它的那条会话用的是哪份。
-    pub(crate) fn pick(&mut self, sid: &str, base: &Book, now: u64) -> Uses {
-        if let Some(u) = self.sessions.get(sid) {
-            return u.clone();
-        }
-        self.sessions.retain(|k, u| {
-            u.draft.is_some()
-                || base.sessions.contains_key(k)
-                || now.saturating_sub(u.since) <= book::DROP_AFTER
-        });
-        let u = Uses::of(&self.for_new, now);
-        self.sessions.insert(sid.to_string(), u.clone());
-        u
-    }
 }
 
 impl Doc for UsesBook {
@@ -96,23 +40,9 @@ impl Doc for UsesBook {
             ..Self::default()
         }
     }
-    /// 改到的会话各发一件；`forNew` 变了 · 哪个会话用哪份变了 ⇒ 策略那一侧也发一件。
+    /// `forNew` 变了 ⇒ 策略那一侧发一件。
     fn ring(tx: &Nodes, before: &Self, after: &Self) {
-        let mut moved = before.for_new != after.for_new;
-        for (sid, s) in &after.sessions {
-            let b = before.sessions.get(sid);
-            if b != Some(s) {
-                nodes::emit(tx, Source::Book, Some(sid));
-            }
-            moved |= b.map(|b| &b.id) != Some(&s.id);
-        }
-        for sid in before.sessions.keys() {
-            if !after.sessions.contains_key(sid) {
-                nodes::emit(tx, Source::Book, Some(sid));
-                moved = true;
-            }
-        }
-        if moved {
+        if before.for_new != after.for_new {
             nodes::emit(tx, Source::Strategies, None);
         }
     }
@@ -122,7 +52,20 @@ impl Doc for UsesBook {
     }
 }
 
-/// 这台的配置那一侧：本层的账本 ＋ 策略目录，另拿着基础层那份 `rotation.json`（清旧会话 · 起之前那一笔要看它、写它）。
+/// 在用 `id` 那份的会话（按 sid；`older` ⇒ 只要副本版本不是 `rev` 的）。
+pub(crate) fn in_use(book: &Book, id: &str, older_than: Option<&str>) -> Vec<String> {
+    book.sessions
+        .iter()
+        .filter(|(_, s)| {
+            s.uses
+                .as_ref()
+                .is_some_and(|c| c.id == id && older_than.is_none_or(|r| c.rev != r))
+        })
+        .map(|(sid, _)| sid.clone())
+        .collect()
+}
+
+/// 这台的配置那一侧：本层的账本 ＋ 策略目录，另拿着基础层那份 `rotation.json`（载入副本 · 起之前那一笔写它）。
 pub(crate) struct Setup {
     pub(crate) uses: DocStore<UsesBook>,
     pub(crate) book: Arc<RotationStore>,
@@ -143,7 +86,7 @@ impl Setup {
         self.book.path().and_then(super::shelf::dir_from)
     }
 
-    /// 帧面那一路的写口（草稿 · 存 · 下拉换一份 · 新会话用哪份）。
+    /// 帧面那一路的写口（新会话用哪份）。
     pub(crate) fn change<R>(
         &self,
         own: &Own,
@@ -151,44 +94,47 @@ impl Setup {
     ) -> Result<R, Said> {
         self.uses.change(own, f)
     }
-}
 
-impl Adoptions for Setup {
-    fn adopted(&self, own: &Own, sid: &str, now: u64) -> Adopted {
-        let mut b = self.uses.now();
-        let u = match b.sessions.get(sid) {
-            Some(u) => u.clone(),
-            None => {
-                let base = self.book.now();
-                self.change(own, |x| x.pick(sid, &base, now))
-                    .unwrap_or_else(|e| {
-                        // 写不成（盘上读不懂）：照内存里那一份接着判，不记。
-                        tracing::warn!("[rotation] {}", e.logged());
-                        b.pick(sid, &base, now)
-                    })
+    /// 给这几个会话载入 `copy`（换了一份 ⇒ memo 与叫醒清掉：那是上一份记的；临时动作照留）。回载入了几个。
+    pub(crate) fn load(&self, own: &Own, sids: &[String], copy: Option<&Copy>) -> Result<usize, Said> {
+        rotation::face_change(&self.book, own, |b| {
+            let mut n = 0;
+            for sid in sids {
+                if let Some(s) = b.sessions.get_mut(sid) {
+                    s.uses = copy.cloned();
+                    s.memo = None;
+                    s.wake = Default::default();
+                    n += 1;
+                }
             }
-        };
-        super::adopted_at(self.dir().as_deref(), &u.id, u.draft.as_ref())
+            n
+        })
     }
 }
 
-/// 起之前那一笔：给定好的 `sid` 记下用 `strategy`（空 ⇒ 不轮换），基础层那份也记一条（会话一报到前界面就看得见它）。
+impl Adoptions for Setup {
+    fn for_new(&self) -> Option<Copy> {
+        super::copy_at(self.dir().as_deref(), &self.uses.now().for_new)
+    }
+}
+
+/// 起之前那一笔：给定好的 `sid` 记一条、载入 `copy`（缺 ⇒ 不轮换），会话一报到前界面就看得见它。
 /// 面上的 `session-open` 与 ccm 的 `--no-rotation` 都走这一下。
 pub(crate) fn preset(
     setup: &Setup,
     own: &Own,
     sid: &str,
     route: crate::agents::RouteId,
-    strategy: &str,
+    copy: Option<Copy>,
     now: u64,
 ) -> Result<(), Said> {
-    setup.change(own, |b| {
-        b.sessions.insert(sid.to_string(), Uses::of(strategy, now));
-    })?;
     rotation::face_change(&setup.book, own, |b| {
         b.sessions.insert(
             sid.to_string(),
-            book::Session::fresh(route.id(), acct_core::BARE_ACCOUNT, now),
+            book::Session {
+                uses: copy,
+                ..book::Session::fresh(route.id(), acct_core::BARE_ACCOUNT, now)
+            },
         );
     })
 }
@@ -198,17 +144,7 @@ pub(crate) fn forget_preset(setup: &Setup, own: &Own, sid: &str) {
     let r = rotation::face_change(&setup.book, own, |b| {
         if b.sessions.get(sid).is_some_and(|s| s.log.is_empty()) {
             b.sessions.remove(sid);
-            return true;
         }
-        false
-    })
-    .and_then(|gone| {
-        if gone {
-            setup.change(own, |b| {
-                b.sessions.remove(sid);
-            })?;
-        }
-        Ok(())
     });
     if let Err(e) = r {
         tracing::warn!("[rotation] 撤不掉起之前记的那一条 {sid}：{}", e.logged());
@@ -302,7 +238,7 @@ pub(crate) struct Migrated {
 }
 
 /// ★ 升级写回（一次；接了中转的那个进程起来时调，[`migrate_here`]）。在 `rotation.json` 那一层的锁里做：
-/// 旧版 ⇒ v1 → v2 → 新格式一次换完、写出两份账本与升级来的策略文件（同名已有不覆盖；`rotation-uses.json` 里已有的会话照它的）、
+/// 旧版 ⇒ v1 → v2 → 新格式一次换完、写出 `rotation.json`（会话带着升级来的那份副本）与升级来的策略文件（同名已有不覆盖）、
 /// 第三版格式的脚本挪进 `strategies/v3/`、原文留 `.v1` / `.v2`（已有不覆盖）。这一版 · 没有文件 ⇒ 什么都不写。读不懂的那一份不动。
 pub(crate) fn migrate_at(own: &Own, env: &UpgradeEnv<'_>) -> Result<Migrated, Said> {
     use crate::common::own_state::Read;
@@ -395,16 +331,6 @@ pub(crate) fn migrate_at(own: &Own, env: &UpgradeEnv<'_>) -> Result<Migrated, Sa
         Some(v1) => keep(format!("{}.v1", rotation::FILE_NAME), v1)?,
         None => keep(format!("{}.v2", rotation::FILE_NAME), &v2)?,
     }
-    let ufile = own.path(FILE_NAME)?;
-    let mut uses = match rotation::read_at::<UsesBook>(ufile.as_path()) {
-        rotation::Disk::Now(b) => b,
-        _ => UsesBook::fresh(),
-    };
-    for (sid, x) in u.uses.sessions {
-        uses.sessions.entry(sid).or_insert(x);
-    }
-    let body = crate::common::own_state::json_body(ufile.as_path(), &uses)?;
-    own.write(&ufile, &held, &body)?;
     let body = crate::common::own_state::json_body(path, &u.book)?;
     own.write(&file, &held, &body)?;
     drop(held);

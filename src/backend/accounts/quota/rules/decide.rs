@@ -81,6 +81,8 @@ pub(crate) struct Sigma {
     pub(crate) current: String,
     /// 用户拖出来的「接下来先用谁」。
     pub(crate) temp: Vec<String>,
+    /// 这个会话先不用的号（当用不了）。
+    pub(crate) off: Vec<String>,
     /// 上一判策略约的读数（记账那一下比对）。
     pub(crate) wake_when: Vec<WakeWhen>,
     pub(crate) memo: Option<Value>,
@@ -145,7 +147,7 @@ pub(crate) fn ctx_of<'a>(
                 id: x.id.clone(),
                 pos,
                 api: x.api,
-                sendable: standing::sendable(x, t),
+                sendable: !sigma.off.contains(&x.id) && standing::sendable(x, t),
                 used: [standing::used_at(x, 0, t), standing::used_at(x, 1, t)],
                 resets: x.resets.map(|r| r.filter(|r| *r > t)),
                 refused_until: x.refused_until.filter(|u| *u > t),
@@ -178,6 +180,7 @@ fn choose(
         start: sigma.start.clone(),
         current: sigma.current.clone(),
         temp: sigma.temp.clone(),
+        off: sigma.off.clone(),
         wake_when: v.wake_when.clone(),
         memo: v.memo.clone(),
     };
@@ -199,7 +202,7 @@ fn choose(
         None => {
             // 5：候选空 ⇒ 停发。
             let mut best: Option<(u64, &str)> = None;
-            for x in facts {
+            for x in facts.iter().filter(|x| !sigma.off.contains(&x.id)) {
                 if let Some(at) = standing::sendable_again(x, t) {
                     if best.is_none_or(|(b, _)| at < b) {
                         best = Some((at, &x.id));
@@ -238,7 +241,9 @@ pub(crate) fn turn(
 ) -> Decision {
     let ctx = ctx_of(sigma, facts, settings, clock, t);
     let send = |a: &str| {
-        !tried.iter().any(|x| x == a) && fact(facts, a).is_some_and(|x| standing::sendable(x, t))
+        !tried.iter().any(|x| x == a)
+            && !sigma.off.iter().any(|x| x == a)
+            && fact(facts, a).is_some_and(|x| standing::sendable(x, t))
     };
     // 1：叫策略；出错 ⇒ 兜底：此刻的号发得出去就照用，否则照事实的先后取第一个发得出去的。
     let (v, strategy_error) = match p.decide(&ctx) {
@@ -325,7 +330,7 @@ pub(crate) fn turn(
     }
 }
 
-/// 「现在用 a」（用户的手动操作）：事实上发得出去 ⇒ 放到拖出来的顺序最前、换过去；发不出去 ⇒ 不改，回几点恢复。
+/// 「现在用 a」（用户的手动操作）：事实上发得出去 ⇒ 放到拖出来的顺序最前、换过去；发不出去 · 这个会话先不用它 ⇒ 不改，回几点恢复。
 /// 策略的上限不拦它。
 pub(crate) fn use_now(
     sigma: &Sigma,
@@ -334,6 +339,9 @@ pub(crate) fn use_now(
     a: &str,
 ) -> Result<Sigma, Option<u64>> {
     let x = fact(facts, a).ok_or(None)?;
+    if sigma.off.iter().any(|b| b == a) {
+        return Err(None);
+    }
     if !standing::sendable(x, t) {
         return Err(standing::sendable_again(x, t));
     }

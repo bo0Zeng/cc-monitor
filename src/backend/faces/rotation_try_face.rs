@@ -246,12 +246,11 @@ pub(crate) fn timeline_of(
                             sendable: s.sendable,
                             used: s.used,
                             reset: s.reset,
-                            text: seg_text(
-                                s.sendable,
-                                s.reset,
-                                &face(s.from),
-                                (k == 0).then_some(left),
-                            ),
+                            text: if s.off {
+                                copy_core::copy_text("rot.sim.off", &[])
+                            } else {
+                                seg_text(s.sendable, s.reset, &face(s.from), (k == 0).then_some(left))
+                            },
                             left,
                         }
                     })

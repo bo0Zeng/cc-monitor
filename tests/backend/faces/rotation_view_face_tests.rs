@@ -120,12 +120,48 @@ impl Home {
 
     /// 中转第一次看见这个会话（开它的号 a）。
     pub(crate) fn saw(&self, ctx: &Ctx, sid: &str) {
+        let copy = ctx.hop.adoptions.for_new();
         rotation::relay_change(&ctx.hop.store, &self.own(), |b| {
-            b.saw(sid, "claude-code", "a", now())
+            b.saw(sid, "claude-code", "a", now(), || copy)
         })
         .expect("write");
-        ctx.hop.adoptions.adopted(&self.own(), sid, now());
         self.live.lock().expect("lock").insert(sid.to_string());
+    }
+
+    /// 会话载入 `id` 那份此刻的版本（同下拉选它）。
+    pub(crate) fn load(&self, ctx: &Ctx, sid: &str, id: Option<&str>) {
+        crate::faces::rotation_edit_face::use_with(
+            ctx,
+            &self.own(),
+            &crate::faces::rotation_edit_face::RotationUseReq {
+                sid: sid.into(),
+                strategy: id.map(str::to_string),
+            },
+        )
+        .expect("载入");
+    }
+
+    /// 动一下这个会话载入的那份副本（判据造「副本跟文件不一样」）。
+    pub(crate) fn copy_of(&self, ctx: &Ctx, sid: &str, f: impl FnOnce(&mut book::Copy)) {
+        rotation::face_change(&ctx.hop.store, &self.own(), |b| {
+            f(b.sessions
+                .get_mut(sid)
+                .and_then(|s| s.uses.as_mut())
+                .expect("会话载入了一份"))
+        })
+        .expect("w");
+    }
+
+    /// 那份策略文件换一份设置（只重写头）。
+    pub(crate) fn settings_of(&self, id: &str, settings: serde_json::Value) {
+        let path = self.root.join(shelf::DIR_NAME).join(format!("{id}.rhai"));
+        let src = std::fs::read_to_string(path).expect("读");
+        let mut head = crate::accounts::quota::setup::script::parse(&src)
+            .expect("读得懂")
+            .head;
+        head.settings = settings;
+        let text = crate::accounts::quota::setup::script::with_head(&src, &head).expect("头");
+        shelf::write_file(&self.own(), id, &text).expect("写");
     }
 
     pub(crate) fn alive(&self) -> impl Fn(&str) -> bool + '_ {
@@ -197,7 +233,7 @@ fn session_view(ctx: &Ctx, home: &Home, sid: &str) -> RotationViewReply {
 
 // ── 命令登记 ────────────────────────────────────────────────────────────────────
 
-/// ★ 登记表里有第五版的全部命令，第三版那 15 条一条都不在（不留别名）。
+/// ★ 登记表里有第五版的全部命令，第三版那 15 条与会话草稿那两条一条都不在（不留别名）。
 #[test]
 fn the_registry_has_the_v5_commands_and_none_of_the_old_ones() {
     let names: Vec<&str> = crate::stream::inbound::REGISTRY
@@ -210,9 +246,8 @@ fn the_registry_has_the_v5_commands_and_none_of_the_old_ones() {
         "rotation-strategies",
         "rotation-view",
         "rotation-settings",
-        "rotation-save",
-        "rotation-revert",
         "rotation-use",
+        "rotation-reload",
         "rotation-for-new",
         "rotation-temp",
         "rotation-use-now",
@@ -226,6 +261,8 @@ fn the_registry_has_the_v5_commands_and_none_of_the_old_ones() {
         assert!(names.contains(&want), "缺 {want}");
     }
     for gone in [
+        "rotation-save",
+        "rotation-revert",
         "rotation-configs-read",
         "rotation-config-save",
         "rotation-config-rename",
@@ -318,7 +355,6 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
         v.decision.as_ref().and_then(|d| d.pick.as_deref()),
         Some("a")
     );
-    assert!(!v.dirty, "没改过");
     assert!(
         v.hints
             .iter()
@@ -327,16 +363,15 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
         v.hints
     );
 
-    ctx.setup
-        .change(&home.own(), |b| {
-            b.sessions.get_mut(S1).expect("s1").id = "gone".into();
-        })
-        .expect("w");
+    home.copy_of(&ctx, S1, |c| {
+        c.code = "fn decide(ctx) { throw \"boom\"; }".into();
+        c.rev = "h:boom".into();
+    });
     let v = session_view(&ctx, &home, S1);
     assert!(
         v.hints
             .iter()
-            .any(|h| matches!(h.hint, RotHint::StrategyError { .. }) && h.text.contains("gone")),
+            .any(|h| matches!(h.hint, RotHint::StrategyError { .. }) && h.text.contains("by-list")),
         "{:?}",
         v.hints
     );
@@ -347,11 +382,7 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
     );
 
     // 不轮换的会话：没有策略、不判不推演，只说开会话的号 · 在用的号。
-    ctx.setup
-        .change(&home.own(), |b| {
-            b.sessions.get_mut(S1).expect("s1").id = String::new();
-        })
-        .expect("w");
+    home.load(&ctx, S1, None);
     let v = session_view(&ctx, &home, S1);
     assert!(v.strategy.is_none() && v.decision.is_none() && v.timeline.is_none());
     assert_eq!((v.start.as_str(), v.current.as_str()), ("a", "a"));
@@ -382,52 +413,25 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
     assert_eq!(v.title.as_deref(), Some("整理报表"));
 }
 
-/// ★ 设置页那一形：照交来的草稿判、推演（不写盘）；草稿不合声明 ⇒ `refused` 带那几格；没有那一份 ⇒ `no_strategy`。
+/// ★ 设置页那一形：照文件此刻的设置判、推演（不写盘）；没有那一份 ⇒ `no_strategy`；没见过的会话 ⇒ `no_session`。
 #[test]
-fn a_strategy_view_takes_a_draft_and_checks_it() {
-    let home = Home::new("draft");
+fn a_strategy_view_reads_the_file_as_it_is_now() {
+    let home = Home::new("page");
     let ctx = home.ctx();
-    let req = |settings: Option<serde_json::Value>, id: &str| RotationViewReq {
+    let req = |id: &str| RotationViewReq {
         target: RotTarget::Strategy {
             strategy: id.into(),
-            settings,
-            rev: None,
         },
         hours: Some(24),
     };
-    let draft = json!({"caps": {}, "capKind": "hard", "accounts": [{"start": true}, {"id": "b"}]});
-    let v = view_with(
-        &ctx,
-        &req(Some(draft.clone()), "by-list"),
-        now(),
-        &crate::Tz::default(),
-        &home.alive(),
-    )
-    .expect("ok");
-    assert!(v.dirty);
-    assert_eq!(v.settings, draft);
-    assert!(home
-        .root
-        .join(crate::accounts::quota::setup::uses::FILE_NAME)
-        .exists());
-    match view_with(
-        &ctx,
-        &req(Some(json!({"nope": 99})), "by-list"),
-        now(),
-        &crate::Tz::default(),
-        &home.alive(),
-    ) {
-        Err(RotationViewErr::Refused(_, r)) => assert_eq!(r.cells[0].cell, "nope"),
-        other => panic!("该拒：{other:?}"),
-    }
+    let settings = json!({"caps": {}, "capKind": "hard", "accounts": [{"start": true}, {"id": "b"}]});
+    home.settings_of("by-list", settings);
+    let v = view_with(&ctx, &req("by-list"), now(), &crate::Tz::default(), &home.alive())
+        .expect("ok");
+    assert_eq!(v.listed, 2, "照文件此刻的号列表");
+    assert!(v.lineup.is_empty() && v.past.is_none(), "设置页没有会话");
     assert!(matches!(
-        view_with(
-            &ctx,
-            &req(None, "nope"),
-            now(),
-            &crate::Tz::default(),
-            &home.alive()
-        ),
+        view_with(&ctx, &req("nope"), now(), &crate::Tz::default(), &home.alive()),
         Err(RotationViewErr::NoStrategy(_))
     ));
     assert!(matches!(
@@ -454,14 +458,13 @@ fn a_preset_session_keeps_its_strategy_when_the_relay_first_sees_it() {
     let ctx = home.ctx();
     preset_with(&ctx, &home.own(), S1, "claude", "third", now()).expect("ok");
     home.saw(&ctx, S1);
-    assert_eq!(ctx.setup.uses.now().sessions[S1].id, "third");
+    assert_eq!(used(&ctx, S1).as_deref(), Some("third"));
     assert_eq!(
         preset_with(&ctx, &home.own(), S2, "claude", "nope", now()).map_err(|e| e.0),
         Err("no_strategy")
     );
     forget_preset_with(&ctx, &home.own(), S1);
     assert!(!ctx.hop.store.now().sessions.contains_key(S1));
-    assert!(!ctx.setup.uses.now().sessions.contains_key(S1));
 }
 
 /// ★ 线上只认 kind：起之前记那一笔时，后端里面的路由名当 `agent` 交来 ⇒ `bad_args`，账本里一条都不记。
@@ -476,7 +479,11 @@ fn a_preset_session_does_not_take_a_route_name_as_an_agent() {
         Err("bad_args")
     );
     assert!(!ctx.hop.store.now().sessions.contains_key(S1));
-    assert!(!ctx.setup.uses.now().sessions.contains_key(S1));
+}
+
+/// 这个会话载入的那份（id；不轮换 ⇒ 缺）。
+pub(crate) fn used(ctx: &Ctx, sid: &str) -> Option<String> {
+    ctx.hop.store.now().sessions[sid].uses.as_ref().map(|c| c.id.clone())
 }
 
 /// ★ 新会话框选「不轮换」：起之前写成不轮换的会话（策略 id 空），不去策略目录里找。
@@ -486,7 +493,7 @@ fn a_preset_session_can_be_written_as_not_rotating() {
     let ctx = home.ctx();
     preset_with(&ctx, &home.own(), S1, "claude", "", now()).expect("ok");
     home.saw(&ctx, S1);
-    assert_eq!(ctx.setup.uses.now().sessions[S1].id, "");
+    assert_eq!(used(&ctx, S1), None);
     let v = session_view(&ctx, &home, S1);
     assert!(v.strategy.is_none(), "起成了不轮换的会话");
 }
@@ -559,12 +566,9 @@ fn a_session_view_draws_what_already_happened() {
     let n = now();
     seen_resetting(&ctx, "a", 0.3, None, n + 4 * 3600);
     seen(&ctx, "b", 1.0, None);
-    ctx.setup
-        .change(&home.own(), |b| {
-            b.sessions.get_mut(S1).expect("s1").draft = Some(json!({"caps": {}, "capKind": "hard",
-                "accounts": [{"start": true}, {"id": "b"}]}));
-        })
-        .expect("w");
+    home.copy_of(&ctx, S1, |c| {
+        c.settings = json!({"caps": {}, "capKind": "hard", "accounts": [{"start": true}, {"id": "b"}]});
+    });
     rotation::face_change(&ctx.hop.store, &home.own(), |b| {
         let s = b.sessions.get_mut(S1).expect("s1");
         s.log = vec![
@@ -652,8 +656,6 @@ fn a_session_view_draws_what_already_happened() {
         &RotationViewReq {
             target: RotTarget::Strategy {
                 strategy: "by-list".into(),
-                settings: None,
-                rev: None,
             },
             hours: None,
         },
@@ -763,11 +765,10 @@ fn the_hints_carry_what_their_buttons_need() {
         "/*--- rotation\n{\"format\": 5}\n---*/\n",
     )
     .expect("w");
-    ctx.setup
-        .change(&home.own(), |b| {
-            b.sessions.get_mut(S1).expect("s1").id = "broken".into();
-        })
-        .expect("w");
+    home.copy_of(&ctx, S1, |c| {
+        c.code = "fn decide(ctx) { throw \"x\"; }".into();
+        c.rev = "h:x".into();
+    });
     let v = session_view(&ctx, &home, S1);
     let path = v.hints.iter().find_map(|h| match &h.hint {
         RotHint::StrategyError { path, .. } => Some(path.clone()),
@@ -775,13 +776,12 @@ fn the_hints_carry_what_their_buttons_need() {
     });
     let path = path.expect("出错那一条").expect("带着文件的路径");
     assert!(
-        path.ends_with("broken.rhai") && path.contains("strategies"),
+        path.ends_with("by-list.rhai") && path.contains("strategies"),
         "{path}"
     );
 }
 
 /// ★ 策略出错那一句照文案表：第几行（文件里的）· 哪一种（说法，不是 Rhai 的原话）· 改按默认优先级；原话进复制详情。
-/// 文件不在 ⇒ 说读不到这份文件（没有行）。
 #[test]
 fn a_strategy_error_is_said_in_words_with_its_line_and_the_raw_text_as_detail() {
     let home = Home::new("view-error-words");
@@ -793,11 +793,7 @@ fn a_strategy_error_is_said_in_words_with_its_line_and_the_raw_text_as_detail() 
         "// 说明\n/*--- rotation\n{\"format\": 5, \"settings\": {\"accounts\": [{\"start\": true}]}}\n---*/\nfn decide(ctx) {\n  let x = 1 / 0;\n  #{ order: [] }\n}\n",
     )
     .expect("写策略");
-    ctx.setup
-        .change(&home.own(), |b| {
-            b.sessions.get_mut(S1).expect("s1").id = "div".into();
-        })
-        .expect("w");
+    home.load(&ctx, S1, Some("div"));
     let v = session_view(&ctx, &home, S1);
     let n = v
         .hints
@@ -817,28 +813,6 @@ fn a_strategy_error_is_said_in_words_with_its_line_and_the_raw_text_as_detail() 
     let detail = n.detail.as_deref().expect("带复制详情");
     assert!(detail.contains("Division by zero"), "{detail}");
 
-    ctx.setup
-        .change(&home.own(), |b| {
-            b.sessions.get_mut(S1).expect("s1").id = "gone".into();
-        })
-        .expect("w");
-    let v = session_view(&ctx, &home, S1);
-    let n = v
-        .hints
-        .iter()
-        .find(|h| matches!(h.hint, RotHint::StrategyError { .. }))
-        .expect("出错那一条");
-    assert_eq!(
-        n.text,
-        copy_core::copy_text(
-            "beRotation.hint.error",
-            &[
-                ("name", "gone"),
-                ("why", &copy_core::copy_text("beRotation.why.gone", &[]))
-            ]
-        )
-    );
-    assert!(n.detail.is_some(), "原话照样进复制详情");
     // 别的提示没有复制详情。
     assert!(v
         .hints
@@ -847,47 +821,21 @@ fn a_strategy_error_is_said_in_words_with_its_line_and_the_raw_text_as_detail() 
         .all(|h| h.detail.is_none()));
 }
 
-/// ★ 别处改了：会话有草稿、草稿基于的版本跟文件此刻的不同 ⇒ 提示；没草稿 ⇒ 不提示（照新的走）。
-/// 设置页同理（草稿基于的版本随 `target.rev` 交来）。`baseRev` ＝ 写的时候拿去当 `ifRev` 的那个。
+/// ★ 会话用自己的副本：文件改过（存成新版）⇒ 会话照旧照它载入的那一版判，出「策略改过了 · 载入新版」；设置页出「N 个会话还在用旧版」。
+/// 载入新版（下拉选同一份）⇒ 提示没了、照新的判；「都载入新版」⇒ 在用旧版的活会话都换上。
 #[test]
-fn a_draft_on_an_older_version_is_flagged_as_changed_elsewhere() {
+fn a_session_keeps_its_copy_until_it_loads_the_new_version() {
     let home = Home::new("view-newer");
     let ctx = home.ctx();
     home.saw(&ctx, S1);
+    home.saw(&ctx, S2);
     let newer = |v: &RotationViewReply| v.hints.iter().any(|h| h.hint == RotHint::Newer);
-    let file_rev = session_view(&ctx, &home, S1).strategy.expect("在轮换").rev;
-    ctx.setup
-        .change(&home.own(), |b| {
-            b.sessions.get_mut(S1).expect("s1").rev = "h:000000000000".into();
-        })
-        .expect("w");
-    let v = session_view(&ctx, &home, S1);
-    assert!(!newer(&v), "没草稿不该提示");
-    assert_eq!(v.base_rev, file_rev);
-    ctx.setup
-        .change(&home.own(), |b| {
-            b.sessions.get_mut(S1).expect("s1").draft =
-                Some(json!({"caps": {}, "capKind": "hard", "accounts": [{"start": true}]}));
-        })
-        .expect("w");
-    let v = session_view(&ctx, &home, S1);
-    assert!(newer(&v), "{:?}", v.hints);
-    assert!(v
-        .hints
-        .iter()
-        .any(|h| h.hint == RotHint::Newer && h.text.contains("别处")));
-    assert_eq!(v.base_rev, "h:000000000000");
-
-    let page = |rev: Option<&str>| {
+    let page = || {
         view_with(
             &ctx,
             &RotationViewReq {
                 target: RotTarget::Strategy {
                     strategy: "by-list".into(),
-                    settings: Some(
-                        json!({"caps": {}, "capKind": "hard", "accounts": [{"start": true}]}),
-                    ),
-                    rev: rev.map(str::to_string),
                 },
                 hours: None,
             },
@@ -897,9 +845,43 @@ fn a_draft_on_an_older_version_is_flagged_as_changed_elsewhere() {
         )
         .expect("ok")
     };
-    assert!(newer(&page(Some("h:000000000000"))));
-    assert!(!newer(&page(Some(&file_rev))));
-    assert_eq!(page(Some(&file_rev)).base_rev, file_rev);
+    let older = |v: &RotationViewReply| {
+        v.hints.iter().find_map(|h| match h.hint {
+            RotHint::Older { n } => Some((n, h.text.clone())),
+            _ => None,
+        })
+    };
+    assert!(!newer(&session_view(&ctx, &home, S1)) && older(&page()).is_none());
+    let before = session_view(&ctx, &home, S1).listed;
+    home.settings_of(
+        "by-list",
+        json!({"caps": {}, "capKind": "hard", "accounts": [{"start": true}, {"id": "b"}]}),
+    );
+    let v = session_view(&ctx, &home, S1);
+    assert!(newer(&v), "{:?}", v.hints);
+    assert!(v
+        .hints
+        .iter()
+        .any(|h| h.hint == RotHint::Newer && h.text.contains("by-list")));
+    assert_eq!(v.listed, before, "文件改了，会话照旧照它的副本");
+    let (n, text) = older(&page()).expect("设置页那一条");
+    assert_eq!(n, 2);
+    assert!(text.contains('2'), "{text}");
+
+    home.load(&ctx, S1, Some("by-list"));
+    let v = session_view(&ctx, &home, S1);
+    assert!(!newer(&v) && v.listed == 2, "载入新版以后照新的：{:?}", v.hints);
+    assert_eq!(older(&page()).map(|x| x.0), Some(1));
+    crate::faces::rotation_edit_face::reload_with(
+        &ctx,
+        &home.own(),
+        &crate::faces::rotation_edit_face::RotationReloadReq {
+            strategy: "by-list".into(),
+        },
+        &home.alive(),
+    )
+    .expect("都载入新版");
+    assert!(older(&page()).is_none() && !newer(&session_view(&ctx, &home, S2)));
 }
 
 // ── quota-read ────────────────────────────────────────────────────────────────
@@ -964,15 +946,13 @@ fn the_board_carries_each_cell_resolved_once() {
     let home = Home::new("board");
     let ctx = home.ctx();
     seen(&ctx, "b", 0.4, None);
-    let draft = json!({"force": null, "capKind": "hard", "caps": {"5h": [{"from": 0, "to": 600, "v": 0}, {"from": 600, "to": 1440, "v": 80}]},
-                       "accounts": [{"start": true, "stint": null}, {"id": "b", "capKind": "soft"}]});
+    home.settings_of("by-reset", json!({"force": null, "capKind": "hard", "caps": {"5h": [{"from": 0, "to": 600, "v": 0}, {"from": 600, "to": 1440, "v": 80}]},
+                       "accounts": [{"start": true, "stint": null}, {"id": "b", "capKind": "soft"}]}));
     let v = view_with(
         &ctx,
         &RotationViewReq {
             target: RotTarget::Strategy {
                 strategy: "by-reset".into(),
-                settings: Some(draft),
-                rev: None,
             },
             hours: None,
         },

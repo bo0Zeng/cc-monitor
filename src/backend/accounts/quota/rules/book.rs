@@ -1,5 +1,5 @@
-//! `rotation.json` 第三版（基础功能层那一份）：每个会话在用哪个号 · 用户拖出来的顺序 · 策略上一判交的 `memo` 与叫醒 ·
-//! 换号记录（[`Book::saw`] 记新会话 · [`Session::push_log`] 记换号）。会话用哪份策略、改过的设置归配置编辑层那一份。
+//! `rotation.json` 第三版（基础功能层那一份）：每个会话在用哪个号 · 它载入的那份策略副本 · 会话侧的临时动作（拖出来的顺序 · 先不用的号）·
+//! 策略上一判交的 `memo` 与叫醒 · 换号记录（[`Book::saw`] 记新会话 · [`Session::push_log`] 记换号）。
 
 /// 换号记录（盘上那一份 · `rotation-view` 带的同一形）：线上形住 `cmd-wire`。
 pub(crate) use cmd_wire::rotation::{RotLog as Log, RotLogCause as Cause};
@@ -33,6 +33,9 @@ pub(crate) struct Session {
     pub(crate) since: u64,
     #[serde(default)]
     pub(crate) seen: u64,
+    /// 这个会话载入的那份策略（缺 ⇒ 不轮换）：载入之后文件再改也不跟，「载入新版」才换。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) uses: Option<Copy>,
     /// 用户拖出来的「接下来先用谁」。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) temp: Vec<String>,
@@ -46,6 +49,23 @@ pub(crate) struct Session {
     pub(crate) wake: Wake,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) log: Vec<Log>,
+}
+
+/// 一份策略的副本：哪份文件 · 那时的内容版本 · 代码 · 设置 · 时区。`form` 原样存（本层不认，配置编辑层照它画）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct Copy {
+    pub(crate) id: String,
+    pub(crate) rev: String,
+    /// 代码那一段，前面垫着空行（报第几行时与文件对得上）。
+    pub(crate) code: String,
+    pub(crate) settings: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) tz: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) time_varying: bool,
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    pub(crate) form: Value,
 }
 
 /// 策略约的叫醒（上一判交的）。
@@ -88,6 +108,7 @@ impl Session {
             current: start.to_string(),
             since: now,
             seen: now,
+            uses: None,
             temp: Vec::new(),
             off: Vec::new(),
             memo: None,
@@ -120,14 +141,24 @@ impl Book {
         }
     }
 
-    /// 中转第一次看见这个会话 / 会话换了开它的号 ⇒ 记下（换了开它的号 ⇒ 在用的号 · 拖出来的顺序 · memo · 叫醒清掉）。
+    /// 中转第一次看见这个会话 ⇒ 记下、载入 `for_new` 那份副本（缺 ⇒ 不轮换）；会话换了开它的号 ⇒ 在用的号 · 临时动作 · memo · 叫醒清掉（副本照留）。
     /// 每天头一次看见已知的会话 ⇒ 刷新「看见」的时刻；新会话被看见时顺手清旧会话。改了 ⇒ `true`。
-    pub(crate) fn saw(&mut self, sid: &str, agent: &str, start: &str, now: u64) -> bool {
+    pub(crate) fn saw(
+        &mut self,
+        sid: &str,
+        agent: &str,
+        start: &str,
+        now: u64,
+        for_new: impl FnOnce() -> Option<Copy>,
+    ) -> bool {
         match self.sessions.get_mut(sid) {
             None => {
                 self.drop_stale(now);
-                self.sessions
-                    .insert(sid.to_string(), Session::fresh(agent, start, now));
+                let s = Session {
+                    uses: for_new(),
+                    ..Session::fresh(agent, start, now)
+                };
+                self.sessions.insert(sid.to_string(), s);
                 true
             }
             Some(s) if s.start != start || s.agent != agent => {

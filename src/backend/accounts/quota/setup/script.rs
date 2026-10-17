@@ -38,6 +38,8 @@ pub(crate) struct File {
     pub(crate) about: String,
     pub(crate) head: Head,
     pub(crate) code: std::sync::Arc<Code>,
+    /// 代码那一段原文，前面垫好空行（副本存的就是它）。
+    pub(crate) code_text: String,
 }
 
 impl std::fmt::Debug for File {
@@ -135,7 +137,12 @@ pub(crate) fn parse(source: &str) -> Result<File, Fail> {
         "\n".repeat(source[..lead].matches('\n').count())
     );
     let code = std::sync::Arc::new(code::compile(&padded)?);
-    Ok(File { about, head, code })
+    Ok(File {
+        about,
+        head,
+        code,
+        code_text: padded,
+    })
 }
 
 /// ★ 换掉头那一块；说明和代码原样接回去，一个字节不动（存设置那一下）。

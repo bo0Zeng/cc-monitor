@@ -1,8 +1,7 @@
-//! 第二版 `rotation.json` → 新格式。纯函数：读第二版的原文（JSON），出两份账本（`rotation.json` 第三版 · `rotation-uses.json`）＋ 要写的策略文件 ＋ 要挪开的旧脚本。
+//! 第二版 `rotation.json` → 新格式。纯函数：读第二版的原文（JSON），出 `rotation.json` 第三版（会话带着它那份的副本）＋ 要写的策略文件 ＋ 要挪开的旧脚本。
 //! 写盘 · 挪文件 · 留 `.v2` 由调用方在锁里做。第二版的每份配置、每个活会话的副本都写成用户自己的策略文件：
 //! 代码照第二版文件里的编号取下面三份升级材料之一，设置照搬。材料只在这里（和判据里），不进策略目录、不进任何默认。
 
-use super::uses::{Uses, UsesBook};
 use crate::accounts::quota::rules::book::{self, Book};
 use serde_json::Value;
 
@@ -22,7 +21,6 @@ pub(crate) struct Env<'a> {
 #[derive(Debug)]
 pub(crate) struct Upgraded {
     pub(crate) book: Book,
-    pub(crate) uses: UsesBook,
     /// 要写进策略目录的新文件：（id, 原文）。
     pub(crate) files: Vec<(String, String)>,
     /// 用户自己加的第三版脚本（id），挪到 `strategies/v3/`、不加载。
@@ -300,7 +298,6 @@ pub(crate) fn from_v2(v: &Value, env: &Env<'_>) -> Result<Upgraded, String> {
     }
     let mut out = Upgraded {
         book: Book::fresh(),
-        uses: <UsesBook as crate::accounts::quota::rotation::Doc>::fresh(),
         files: Vec::new(),
         old_scripts: Vec::new(),
     };
@@ -349,10 +346,13 @@ pub(crate) fn from_v2(v: &Value, env: &Env<'_>) -> Result<Upgraded, String> {
             .flatten()
             .filter_map(log_of)
             .collect();
-        let since = s.get("since").and_then(Value::as_u64).unwrap_or(0);
-        out.uses
-            .sessions
-            .insert(sid.clone(), Uses::of(&strategy, since));
+        let uses = match out.files.iter().find(|f| f.0 == strategy) {
+            Some((id, text)) => {
+                let f = super::script::parse(text).map_err(|e| e.msg)?;
+                Some(super::copy_of_file(id, &super::shelf::rev_of(text), &f))
+            }
+            None => None,
+        };
         out.book.sessions.insert(
             sid.clone(),
             book::Session {
@@ -361,6 +361,7 @@ pub(crate) fn from_v2(v: &Value, env: &Env<'_>) -> Result<Upgraded, String> {
                 current: str_of("current"),
                 since: s.get("since").and_then(Value::as_u64).unwrap_or(0),
                 seen: s.get("seen").and_then(Value::as_u64).unwrap_or(0),
+                uses,
                 temp,
                 off: Vec::new(),
                 memo: None,

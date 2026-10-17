@@ -1,5 +1,5 @@
-//! 配置编辑层那份账本：两份账本的升级写回（v1 → v2 → 新格式，一次写回、原文留 `.v1` / `.v2`）· 没有随包策略（不写任何文件、新会话不轮换）·
-//! 新会话照 `forNew` · 清旧的。临时家目录，不碰真文件。
+//! 配置编辑层那份账本：升级写回（v1 → v2 → 新格式，一次写回、原文留 `.v1` / `.v2`，会话带着副本）· 没有随包策略（不写任何文件、新会话不轮换）·
+//! 新会话载入 `forNew` 那份的副本（读不懂 ⇒ 不轮换）。临时家目录，不碰真文件。
 
 use super::*;
 use crate::accounts::quota::rotation::{read_at, Disk, RotationStore};
@@ -96,7 +96,7 @@ fn a_v2_book_is_upgraded_once_with_its_files() {
         "旧版没升级前读的一侧当没有"
     );
     assert!(
-        rotation::face_change(&store, &home.own(), |b| b.saw("s", "claude-code", "a", 1)).is_err(),
+        rotation::face_change(&store, &home.own(), |b| b.saw("s", "claude-code", "a", 1, || None)).is_err(),
         "旧版没升级就写了"
     );
 
@@ -114,18 +114,19 @@ fn a_v2_book_is_upgraded_once_with_its_files() {
         other => panic!("没写成第三版：{other:?}"),
     };
     assert_eq!(b.sessions.len(), 2);
-    let u = home.setup().uses.now();
-    assert_eq!(u.for_new, "", "升级出来的不进任何默认");
-    assert_eq!(u.sessions.len(), 2);
-    assert_eq!(
-        u.sessions["s-live"].id, "副本 · s-live",
-        "活会话的副本没写成文件"
-    );
-    assert_eq!(
-        u.sessions["s-gone"].id, "默认配置 1",
-        "走了的会话的副本该丢"
-    );
+    assert_eq!(home.setup().uses.now().for_new, "", "升级出来的不进任何默认");
     let all = shelf::all(Some(&home.sdir()));
+    let copy = |sid: &str| b.sessions[sid].uses.clone().expect("会话没带副本");
+    let got = copy("s-live");
+    assert_eq!(got.id, "副本 · s-live", "活会话的副本没写成文件");
+    assert_eq!(copy("s-gone").id, "默认配置 1", "走了的会话的副本该丢");
+    let file = all.iter().find(|s| s.id == got.id).expect("副本那份文件");
+    assert_eq!(got.rev, file.rev, "会话载入的就是写出来的那一版");
+    assert_eq!(
+        got.settings["caps"]["5h"],
+        json!([{"from": 0, "to": 1440, "v": 90}]),
+        "副本的设置照第二版那份"
+    );
     let ids: Vec<&str> = all.iter().map(|s| s.id.as_str()).collect();
     for want in ["默认配置 1", "到 90 就换", "我的"] {
         assert!(ids.contains(&want), "缺 {want}：{ids:?}");
@@ -179,31 +180,26 @@ fn no_strategy_ships_and_new_sessions_do_not_rotate() {
         "策略目录里多了文件"
     );
     assert!(!home.file().exists(), "没有旧版也写了 rotation.json");
-    let setup = home.setup();
-    let p = setup.adopted(&home.own(), "s1", 100);
-    assert_eq!(p.id, "", "新会话该不轮换");
-    assert_eq!(setup.uses.now().sessions["s1"].id, "", "第一次问到就记下");
+    assert!(home.setup().for_new().is_none(), "新会话该不轮换");
 }
 
-/// 新会话照 `forNew`（记下以后 `forNew` 再变也不跟）；没草稿 · `rotation.json` 里没有 · 记下七天以上的清掉。
+const MINE: &str = "// 我的\n/*--- rotation\n{\"format\": 5, \"settings\": {\"n\": 1}}\n---*/\nfn decide(ctx) { #{ order: [] } }\n";
+
+/// ★ 新会话载入 `forNew` 那份此刻的副本（之后文件再改 · `forNew` 再换都不跟）；那份读不懂 ⇒ 不给（不轮换）。
 #[test]
-fn new_sessions_follow_for_new_and_stale_ones_are_dropped() {
-    let mut u = <UsesBook as rotation::Doc>::fresh();
-    let mut base = Book::fresh();
-    u.for_new = "mine".into();
-    assert_eq!(u.pick("s1", &base, 100).id, "mine");
-    u.for_new = "other".into();
-    assert_eq!(u.pick("s1", &base, 200).id, "mine", "记下以后不跟 forNew");
-    u.pick("s2", &base, 100);
-    u.sessions.get_mut("s2").expect("s2").draft = Some(json!({}));
-    base.saw("s3", "claude-code", "a", 100);
-    u.pick("s3", &base, 100);
-    let later = 100 + book::DROP_AFTER + 1;
-    u.pick("s4", &base, later);
-    let left: Vec<&str> = u.sessions.keys().map(String::as_str).collect();
-    assert_eq!(
-        left,
-        ["s2", "s3", "s4"],
-        "s1 该清；有草稿的 · 基础层还有的留着"
-    );
+fn a_new_session_loads_a_copy_of_for_new_and_keeps_it() {
+    let home = Home::new("fornew");
+    std::fs::write(home.sdir().join("mine.rhai"), MINE).expect("策略");
+    let setup = home.setup();
+    setup.change(&home.own(), |b| b.for_new = "mine".into()).expect("forNew");
+    let mut b = Book::fresh();
+    assert!(b.saw("s1", "claude-code", "a", 100, || setup.for_new()));
+    let c = b.sessions["s1"].uses.clone().expect("载入了副本");
+    assert_eq!((c.id.as_str(), &c.settings), ("mine", &json!({"n": 1})));
+    assert_eq!(c.rev, shelf::rev_of(MINE));
+    std::fs::write(home.sdir().join("mine.rhai"), MINE.replace("\"n\": 1", "\"n\": 2")).expect("改");
+    b.saw("s1", "claude-code", "b", 200, || panic!("已知的会话不该再问"));
+    assert_eq!(b.sessions["s1"].uses.as_ref(), Some(&c), "换了开会话的号也该留着副本");
+    std::fs::write(home.sdir().join("mine.rhai"), "fn decide(").expect("坏");
+    assert!(setup.for_new().is_none(), "读不懂的那份载入不了");
 }

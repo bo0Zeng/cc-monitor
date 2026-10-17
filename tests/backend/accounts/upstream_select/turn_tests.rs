@@ -214,9 +214,8 @@ fn without_a_strategy_a_session_keeps_its_start_account() {
         assert_eq!(which(&steer(&hop, &own, t + i)), "a");
     }
     assert_eq!(runs(&hop), 0, "没选策略也叫了策略");
-    assert!(home.session().log.is_empty(), "会话该记下");
-    let u = uses::Setup::of(Arc::clone(&hop.store)).uses.now();
-    assert_eq!(u.sessions[SID].id, "", "会话该记下、不带策略");
+    let s = home.session();
+    assert!(s.log.is_empty() && s.uses.is_none(), "会话该记下、不带策略");
 }
 
 /// ★ #28：两个节点之间 100 发，策略一次都不重跑（第一发判一次，之后照缓存），结论没变不写盘；过了下一个已知节点（a 的重置）⇒ 重跑。
@@ -417,7 +416,7 @@ fn two_sends_in_the_same_second_judging_the_same_switch_log_it_once() {
     };
     let stale = hop.entry(&own, &turn).expect("会话记下了");
     assert_eq!(stale.current, "a");
-    let plan = hop.adoptions.adopted(&own, SID, t + 1);
+    let plan = crate::accounts::quota::rules::Adopted::of(stale.uses.as_ref());
     let facts = hop.accts(&stale, &plan.settings, &none, t + 1);
     let d = hop.judge_session(&stale, &plan, &facts, t + 1, &[]);
     assert_eq!(

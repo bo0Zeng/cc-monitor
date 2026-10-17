@@ -1,5 +1,5 @@
-//! 帧面：轮换的切换（typed，基础功能层）—— 拖出来的先后（`rotation-temp`）· 现在用（`rotation-use-now`）。都是切换这一个动作：
-//! 只拿事实拦（策略的上限不拦），写进 `rotation.json`。
+//! 帧面：会话侧的临时动作（typed，基础功能层）—— 拖出来的先后 · 先不用的号（`rotation-temp`）· 现在用（`rotation-use-now`）。
+//! 都只这个会话、不改策略：只拿事实拦（策略的上限不拦），写进 `rotation.json` 会话那一条。
 
 use crate::accounts::quota::rotation;
 use crate::accounts::quota::rules::book::{self, Session};
@@ -25,14 +25,17 @@ fn session_of(ctx: &Ctx, sid: &str) -> Option<Session> {
 
 // ── rotation-temp ─────────────────────────────────────────────────────────────────────────
 
-/// 拖出来的「接下来先用谁」怎么改：把一个号放到第 `at` 位（0 起，越界取末尾）· 清掉。
+/// 会话侧的临时动作：把一个号放到「接下来先用谁」第 `at` 位（0 起，越界取末尾）· 整串换成拖完的那一串 · 清掉 ·
+/// 这个会话先不用 / 再用一个号。
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) enum RotTempOp {
     Place { account: String, at: usize },
+    Set(Vec<String>),
     Clear,
+    Off { account: String, off: bool },
 }
 
 /// `rotation-temp` 的入参。
@@ -55,7 +58,7 @@ crate::wire::typed::codes! {
     }
 }
 
-/// `rotation-temp`：用户在时间轴上拖出来的顺序（到策略说该换的那一刻先用它）。
+/// `rotation-temp`：用户拖出来的顺序（到策略说该换的那一刻先用它）· 先不用的号（一判当用不了）。
 pub(crate) struct RotationTemp;
 
 impl Command for RotationTemp {
@@ -92,15 +95,18 @@ pub(crate) fn temp_with(
     req: &RotationTempReq,
 ) -> Result<RotationTempReply, RotationTempErr> {
     let s = session_of(ctx, &req.sid).ok_or_else(|| RotationTempErr::NoSession(no_session()))?;
-    if let RotTempOp::Place { account, .. } = &req.op {
-        if !listed(ctx, &s, account) {
-            return Err(RotationTempErr::NotListed(copy_text(
-                "beRotation.edit.notListed",
-                &[("acct", account)],
-            )));
-        }
+    let named: Vec<&String> = match &req.op {
+        RotTempOp::Place { account, .. } | RotTempOp::Off { account, .. } => vec![account],
+        RotTempOp::Set(all) => all.iter().collect(),
+        RotTempOp::Clear => Vec::new(),
+    };
+    if let Some(a) = named.into_iter().find(|a| !listed(ctx, &s, a)) {
+        return Err(RotationTempErr::NotListed(copy_text(
+            "beRotation.edit.notListed",
+            &[("acct", a)],
+        )));
     }
-    let temp = rotation::face_change(&ctx.hop.store, own, |b| {
+    let (temp, off) = rotation::face_change(&ctx.hop.store, own, |b| {
         let s = b.sessions.get_mut(&req.sid)?;
         match &req.op {
             RotTempOp::Place { account, at } => {
@@ -108,13 +114,27 @@ pub(crate) fn temp_with(
                 let at = (*at).min(s.temp.len());
                 s.temp.insert(at, account.clone());
             }
+            RotTempOp::Set(all) => {
+                s.temp.clear();
+                for a in all {
+                    if !s.temp.contains(a) {
+                        s.temp.push(a.clone());
+                    }
+                }
+            }
             RotTempOp::Clear => s.temp.clear(),
+            RotTempOp::Off { account, off } => {
+                s.off.retain(|a| a != account);
+                if *off {
+                    s.off.push(account.clone());
+                }
+            }
         }
-        Some(s.temp.clone())
+        Some((s.temp.clone(), s.off.clone()))
     })
     .map_err(|e| RotationTempErr::IoFailed(note(e)))?
     .ok_or_else(|| RotationTempErr::NoSession(no_session()))?;
-    Ok(RotationTempReply { temp })
+    Ok(RotationTempReply { temp, off })
 }
 
 // ── rotation-use-now ──────────────────────────────────────────────────────────────────────
@@ -179,11 +199,20 @@ pub(crate) fn use_now_with(
             &[("acct", &req.account)],
         )));
     }
-    let plan = ctx.hop.adoptions.adopted(own, &req.sid, now);
+    let plan = crate::accounts::quota::rules::Adopted::of(s.uses.as_ref());
     let row = ctx.row(&s.agent);
     let facts = ctx.hop.accts(&s, &plan.settings, &row, now);
     let sigma = match decide::use_now(&turn::sigma_of(&s), &facts, now, &req.account) {
         Ok(x) => x,
+        Err(_) if s.off.contains(&req.account) => {
+            return Err(RotationUseNowErr::Unusable(
+                copy_text("beRotation.edit.offNow", &[("acct", &req.account)]),
+                RotUnusable {
+                    why: None,
+                    until: None,
+                },
+            ));
+        }
         Err(until) => {
             let why = ctx
                 .hop

@@ -108,10 +108,15 @@ fn u1_every_config_becomes_a_users_own_file_and_new_sessions_do_not_rotate() {
         file(&u, id);
     }
     assert_eq!(
-        u.uses.sessions["plain"].id, "默认配置 1",
+        used(&u, "plain"),
+        "默认配置 1",
         "文件名照配置名（＝ 标题）"
     );
-    assert_eq!(u.uses.for_new, "", "升级出来的不进任何默认");
+}
+
+/// 那个会话载入的那份（id）。
+fn used(u: &Upgraded, sid: &str) -> String {
+    u.book.sessions[sid].uses.as_ref().expect("会话带着副本").id.clone()
 }
 
 /// ★ 设置一格不丢：线 · 时段 ⇒ 分段上限；都到上限就停 ⇒ 硬上限；优先 ⇒ 号列表最前、备用 ⇒ 耗尽后启用（不出排）；
@@ -194,10 +199,10 @@ fn u3_waits_become_start_delays_of_fallbacks() {
 #[test]
 fn u4_live_copies_become_named_files_and_ended_ones_are_dropped() {
     let u = run(Some("Asia/Shanghai"));
-    let live = &u.uses.sessions["live1"].id;
-    assert_eq!(live.as_str(), "夜里省着用 · 修登录");
+    assert_eq!(used(&u, "live1"), "夜里省着用 · 修登录");
     assert_eq!(
-        u.uses.sessions["dead1"].id, "夜里省着用",
+        used(&u, "dead1"),
+        "夜里省着用",
         "结束了的会话的副本丢掉，改指它那份配置"
     );
 }
@@ -347,7 +352,7 @@ fn u9_our_three_sessions_keep_every_setting() {
     });
     let mut ids = Vec::new();
     for sid in ["o1", "o2", "o3"] {
-        let id = u.uses.sessions[sid].id.clone();
+        let id = used(&u, sid);
         let src = file(&u, &id);
         let h = head(src);
         assert_eq!(h.settings, want, "{sid} 的设置没照搬");

@@ -33,6 +33,8 @@ pub(crate) struct LaneSeg {
     pub(crate) used: [f64; 2],
     /// 这一段开头刚重置过。
     pub(crate) reset: bool,
+    /// 这个会话先不用这个号（整行「不用」）。
+    pub(crate) off: bool,
 }
 
 /// 推演结果。
@@ -196,6 +198,7 @@ pub(crate) fn simulate(
         .iter()
         .map(|a0| {
             let a = &a0.id;
+            let off = sigma.off.contains(a);
             let mut segs: Vec<LaneSeg> = Vec::new();
             let mut prev: Option<[f64; 2]> = None;
             for (i, (at, fs)) in points.iter().enumerate() {
@@ -206,7 +209,7 @@ pub(crate) fn simulate(
                 let used = [standing::used_at(x, 0, *at), standing::used_at(x, 1, *at)];
                 let reset = prev.is_some_and(|p| used.iter().zip(p).any(|(u, p)| *u < p));
                 prev = Some(used);
-                let ok = standing::sendable(x, *at);
+                let ok = !off && standing::sendable(x, *at);
                 match segs.last_mut() {
                     Some(l) if l.sendable == ok && !reset => l.to = to,
                     _ => segs.push(LaneSeg {
@@ -215,6 +218,7 @@ pub(crate) fn simulate(
                         sendable: ok,
                         used,
                         reset,
+                        off,
                     }),
                 }
             }

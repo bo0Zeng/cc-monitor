@@ -1,7 +1,7 @@
 //! ★ 中转发之前那一判（第五版）：叫会话用的那份策略、照它交的先后做动作；只在节点上判，
 //! 结论缓存到下一个节点 —— 节点之间一发都不叫策略（算法 #28）。
 //!
-//! - 判（[`decide::turn`]）是纯的；这里拼它要的：会话那一条（`rotation.json`）· 用哪份策略（配置那一侧交的 [`Adopted`]）· 每个号的事实。
+//! - 判（[`decide::turn`]）是纯的；这里拼它要的：会话那一条（`rotation.json`，带着它载入的那份副本 ⇒ [`Adopted`]）· 每个号的事实。
 //! - 缓存作废：过了下一个已知节点 `tn` · 会话那一条的快照变了 · 用的那份（id · 版本 · 设置）变了 · 事实那几种节点（外来的读数 · 被拒 · 续期失败 ·
 //!   `quota.json` · 账号库 / 登录文件）与策略目录 ⇒ 全部；这个会话自己的读数 ⇒ 只在越过它记着的 `wake.when` 某一条时。
 //! - 结论跟盘上那一条不同才写（先在内存里试，没变不进锁）。
@@ -24,6 +24,7 @@ struct Snap {
     start: String,
     current: String,
     temp: Vec<String>,
+    off: Vec<String>,
     memo: Option<Value>,
 }
 
@@ -33,6 +34,7 @@ fn snap(s: &Session) -> Snap {
         start: s.start.clone(),
         current: s.current.clone(),
         temp: s.temp.clone(),
+        off: s.off.clone(),
         memo: s.memo.clone(),
     }
 }
@@ -129,6 +131,7 @@ pub(crate) fn sigma_of(s: &Session) -> Sigma {
         start: s.start.clone(),
         current: s.current.clone(),
         temp: s.temp.clone(),
+        off: s.off.clone(),
         wake_when: s
             .wake
             .when
@@ -279,8 +282,14 @@ impl Hop {
         if !need {
             return book.sessions.get(a.sid).cloned();
         }
+        // 新会话载入「新会话默认」那一份（读文件在锁外）。
+        let copy = if book.sessions.contains_key(a.sid) {
+            None
+        } else {
+            self.adoptions.for_new()
+        };
         match rotation::relay_change(&self.store, own, |b| {
-            b.saw(a.sid, a.agent, a.start, a.now);
+            b.saw(a.sid, a.agent, a.start, a.now, || copy.clone());
             b.sessions.get(a.sid).cloned()
         }) {
             Ok(s) => s,
@@ -288,7 +297,7 @@ impl Hop {
                 tracing::warn!("[rotate] {}", e.logged());
                 // 写不成（盘上还是旧版 · 读不懂）：照内存里那一份接着判，不记。
                 let mut b = book;
-                b.saw(a.sid, a.agent, a.start, a.now);
+                b.saw(a.sid, a.agent, a.start, a.now, || copy);
                 b.sessions.get(a.sid).cloned()
             }
         }
@@ -490,7 +499,7 @@ impl Hop {
         let Some(s) = self.entry(own, a) else {
             return Go::Start;
         };
-        let plan = self.adoptions.adopted(own, a.sid, a.now);
+        let plan = Adopted::of(s.uses.as_ref());
         // 这个会话不轮换（没选策略）⇒ 只用开会话的号，不叫策略。
         if plan.id.is_empty() {
             return Go::Start;
@@ -525,7 +534,7 @@ impl Hop {
             return None;
         }
         let s = self.entry(own, a)?;
-        let plan = self.adoptions.adopted(own, a.sid, a.now);
+        let plan = Adopted::of(s.uses.as_ref());
         if plan.id.is_empty() {
             return None;
         }

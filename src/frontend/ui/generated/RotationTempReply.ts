@@ -3,4 +3,4 @@
 /**
  * `rotation-temp` 的应答：改完的那一排。
  */
-export type RotationTempReply = { temp: Array<string>, };
+export type RotationTempReply = { temp: Array<string>, off: Array<string>, };

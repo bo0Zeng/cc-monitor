@@ -44,6 +44,26 @@ pub(crate) fn compile(code: &str) -> Result<Code, Fail> {
     Ok(Code { ast })
 }
 
+/// 进程里至多缓存几份编好的代码（超了整份清掉重来）。
+const CACHED: usize = 32;
+
+/// ★ 副本的代码按版本编一次、之后照缓存（同一个版本 ⇒ 同一份文件 ⇒ 同一段代码）。
+pub(crate) fn cached(rev: &str, code: &str) -> Result<std::sync::Arc<Code>, Fail> {
+    type Map = std::collections::HashMap<String, Result<std::sync::Arc<Code>, Fail>>;
+    static MAP: std::sync::Mutex<Option<Map>> = std::sync::Mutex::new(None);
+    let mut g = MAP.lock().unwrap_or_else(|e| e.into_inner());
+    let m = g.get_or_insert_with(Map::new);
+    if let Some(r) = m.get(rev) {
+        return r.clone();
+    }
+    if m.len() >= CACHED {
+        m.clear();
+    }
+    let r = compile(code).map(std::sync::Arc::new);
+    m.insert(rev.to_string(), r.clone());
+    r
+}
+
 /// 积木库的源码（随包、只读）。
 pub(crate) const LIB_SOURCE: &str = include_str!("../../../../shared/rotation/lib.rhai");
 
