@@ -275,12 +275,12 @@ fn the_machine_listing_carries_group_dir_failures_synth_and_last_accounts() {
     let cx = rows.iter().find(|r| r["agent"] == "codex").unwrap();
     assert_eq!(cx["projectDir"], "codex:/w/delta");
     assert_eq!(
-        cx["isLive"],
+        cx["life"],
         Value::Null,
         "合成历史判不了活 ⇒ null，不是 false"
     );
     assert_eq!(
-        answer(json!({}))["rows"][0].get("isLive"),
+        answer(json!({}))["rows"][0].get("life"),
         None,
         "成品里活不活只出 status 一格"
     );
@@ -670,7 +670,7 @@ fn a_real_record_tree_becomes_the_machine_listing() {
                 r["sessionId"].as_str().unwrap_or_default().to_string(),
                 r["projectDir"].as_str().unwrap_or_default().to_string(),
                 r["projectPath"].as_str().unwrap_or_default().to_string(),
-                r["isLive"].as_bool().unwrap_or_default(),
+                r["life"]["is"] == "live",
             )
         })
         .collect();
@@ -964,9 +964,8 @@ fn a_session_the_ledger_calls_reconnectable_is_listed_as_reconnectable() {
     )
     .unwrap();
     crate::history::live::set_reconnectable(&Default::default());
-    assert!(r.reconnectable && !o.reconnectable && !live.reconnectable);
     assert_eq!(
-        [&r, &o, &live].map(|x| crate::history::listing::status_of(x.is_live, x.reconnectable)),
+        [&r, &o, &live].map(|x| crate::history::listing::status_of(x.life)),
         ["reconnectable", "ended", "live"]
     );
 }

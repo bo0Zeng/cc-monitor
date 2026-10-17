@@ -24,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 pub use topic::TopicExt;
 
+pub use cmd_wire::frame::FaceLive;
 /// 帧的线上形住 `cmd-wire`（[`cmd_wire::frame`]，客户端按同一份解）；这里是后端在它上面做的事：写字 · 判定 · 丢帧规矩 · 分页 · 钟面
 /// （扩展特征：孤儿规则不许在那边的类型上加固有方法）。
 pub use cmd_wire::frame::{decode, Frame, Hello, Line, SessionAdded, SessionPrimed, SessionStatus};
@@ -104,8 +105,7 @@ impl SessionFaceExt for SessionFace {
                 ));
                 SessionFace {
                     dot: SessionDot::Exited,
-                    activity: None,
-                    live: false,
+                    live: FaceLive::No,
                     settled: false,
                     name: Words(copy_core::copy_text("sessionState.reconnectable.name", &[])),
                     line: tip.clone(),
@@ -146,8 +146,7 @@ impl SessionFaceExt for SessionFace {
                 let why = ended_why(&name);
                 SessionFace {
                     dot,
-                    activity: None,
-                    live: false,
+                    live: FaceLive::No,
                     settled: true,
                     line: tip.clone(),
                     can: SessionCan {
@@ -174,8 +173,7 @@ impl SessionFaceExt for SessionFace {
                 let name = Words(copy_core::copy_text("beSession.activity.unclear", &[]));
                 SessionFace {
                     dot: SessionDot::Unknown,
-                    activity: None,
-                    live: false,
+                    live: FaceLive::No,
                     settled: false,
                     tip: name.clone(),
                     line: name.clone(),
@@ -279,8 +277,7 @@ fn live_face(activity: Option<SessionActivity>, tmux: Option<bool>, reading: boo
     };
     SessionFace {
         dot,
-        activity,
-        live: true,
+        live: FaceLive::Yes { activity },
         settled: false,
         line: name.clone(),
         name,

@@ -1228,14 +1228,7 @@ mod specimens {
     pub(super) fn session_state() -> Vec<Specimen> {
         [Life::Reconnectable, Life::Ended, Life::Gone]
             .into_iter()
-            .map(|l| {
-                let mut f = Frame::session_left(s("s"), l);
-                // 离开活的那几段不带 `activity`；样本要每格都露出来，这一格照活着那一形填上。
-                if let Frame::SessionState(st) = &mut f {
-                    st.face.activity = Some(SessionActivity::Idle);
-                }
-                node_of(&f)
-            })
+            .map(|l| node_of(&Frame::session_left(s("s"), l)))
             .collect()
     }
 

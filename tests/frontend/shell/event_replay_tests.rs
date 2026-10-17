@@ -1515,11 +1515,18 @@ fn the_codex_sample_frames_decode() {
                     cmd_wire::cells::Tone::Plain,
                     "宣告那一帧判不出却用了在跑的语气"
                 );
-                assert_eq!(a.face.activity, None, "宣告那一帧不说判出了哪一态");
+                assert_eq!(
+                    a.face.live,
+                    cmd_wire::frame::FaceLive::Yes { activity: None },
+                    "宣告那一帧不说判出了哪一态"
+                );
                 added.push((a.sid, a.path))
             }
             Frame::SessionStatus(st)
-                if st.face.activity == Some(cmd_wire::frame::SessionActivity::Working) =>
+                if st.face.live
+                    == cmd_wire::frame::FaceLive::Yes {
+                        activity: Some(cmd_wire::frame::SessionActivity::Working),
+                    } =>
             {
                 working_text.get_or_insert(st.doing.activity_text.clone());
             }

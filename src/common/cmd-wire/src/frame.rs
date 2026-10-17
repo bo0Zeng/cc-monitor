@@ -685,12 +685,8 @@ pub enum CanSwitch {
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct SessionFace {
     pub dot: SessionDot,
-    /// 活着、判得出在干什么才有。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub activity: Option<SessionActivity>,
-    /// 进程在。
-    pub live: bool,
+    /// 进程在不在；在干什么只住在「在」那一支里。
+    pub live: FaceLive,
     /// 那台看不见时照旧作数（已结束 · 记录已不在）。
     pub settled: bool,
     /// 短名（运行中 · 需手动 · 已结束 …）。
@@ -703,6 +699,20 @@ pub struct SessionFace {
     /// 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
     pub order: u8,
     pub can: SessionCan,
+}
+
+/// 进程在不在：`{is: "yes", activity?}`（判得出在干什么才带 `activity`）· `{is: "no"}`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(tag = "is", rename_all = "snake_case")]
+pub enum FaceLive {
+    Yes {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        activity: Option<SessionActivity>,
+    },
+    No,
 }
 
 /// 会话那颗点（线上名与界面状态点同一套）。

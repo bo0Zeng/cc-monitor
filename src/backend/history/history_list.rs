@@ -31,7 +31,7 @@ use serde_json::Value;
 
 use crate::common::cells::Words;
 use crate::history::history_annotations::{Loaded, Table};
-use crate::history::listing::{can_of, status_of};
+use crate::history::listing::{can_of, status_of, RowLife};
 use crate::wire::SessionFaceExt as _;
 
 /// 默认最多回多少行（按时间看时超过它只列最近这些、底部「更早的用搜索找」）。
@@ -110,9 +110,11 @@ fn session_row(v: &Value, project_dir: &str, live: &LiveSet) -> Option<RawRow> {
         started_at: v["startedAtMs"].as_i64().unwrap_or(0),
         updated_at: v["updatedAtMs"].as_i64().unwrap_or(0),
         jsonl_path: v["jsonlPath"].as_str().unwrap_or_default().to_string(),
-        is_live: Some(live.0.contains_key(sid)),
-        reconnectable: !live.0.contains_key(sid) && crate::history::live::reconnectable(sid),
-        activity: live.0.get(sid).copied().flatten(),
+        life: Some(match live.0.get(sid) {
+            Some(&activity) => RowLife::Live { activity },
+            None if crate::history::live::reconnectable(sid) => RowLife::Reconnectable,
+            None => RowLife::Ended,
+        }),
         message_count_approx: v["messageCountApprox"].as_u64().unwrap_or(0) as u32,
         is_bg: v["isBg"].as_bool().unwrap_or(false),
         starred: false,
@@ -141,9 +143,7 @@ fn synth_row(kind: &str, s: &crate::agents::SynthSession, excerpt: String) -> Ra
         started_at: s.mtime_ms,
         updated_at: s.mtime_ms,
         jsonl_path: s.path.to_string_lossy().into_owned(),
-        is_live: None,
-        reconnectable: false,
-        activity: None,
+        life: None,
         message_count_approx: 0,
         is_bg: false,
         starred: false,
@@ -462,14 +462,14 @@ fn finish_row(mut raw: RawRow, ann: Option<&Table>) -> Finished {
         &raw.project_path,
         &raw.session_id,
     );
-    let status = status_of(raw.is_live, raw.reconnectable);
-    let face = crate::wire::SessionFace::of(match raw.is_live {
-        Some(true) => crate::wire::Life::Live {
-            activity: raw.activity,
+    let status = status_of(raw.life);
+    let face = crate::wire::SessionFace::of(match raw.life {
+        Some(RowLife::Live { activity }) => crate::wire::Life::Live {
+            activity,
             tmux: None,
         },
-        Some(false) if raw.reconnectable => crate::wire::Life::Reconnectable,
-        Some(false) => crate::wire::Life::Ended,
+        Some(RowLife::Reconnectable) => crate::wire::Life::Reconnectable,
+        Some(RowLife::Ended) => crate::wire::Life::Ended,
         None => crate::wire::Life::Unclear,
     });
     Finished {
@@ -773,7 +773,6 @@ pub(crate) fn specimen() -> HistoryList {
     // 离开活的那一形也露一行（能做什么那几格的「不能」与为什么）。
     let mut ended = l.rows[0].clone();
     ended.face = crate::wire::SessionFace::of(crate::wire::Life::Ended);
-    ended.face.activity = Some(crate::agents::SessionActivity::Idle);
     l.rows.push(ended);
     l
 }

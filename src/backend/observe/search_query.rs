@@ -129,7 +129,12 @@ impl Liveness {
 
     /// 同历史清单那一格的词（`history::listing::status_of`，`can_of` 按它判）。
     fn word(self) -> &'static str {
-        crate::history::listing::status_of(Some(self == Liveness::Live), false)
+        use crate::history::listing::RowLife;
+        crate::history::listing::status_of(Some(if self == Liveness::Live {
+            RowLife::Live { activity: None }
+        } else {
+            RowLife::Ended
+        }))
     }
 }
 

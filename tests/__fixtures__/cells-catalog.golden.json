@@ -743,12 +743,6 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "children[].face.activity",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "children[].face.can.close.can",
           "type": "string"
         },
@@ -827,8 +821,14 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "children[].face.live",
-          "type": "bool"
+          "path": "children[].face.live.activity",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "children[].face.live.is",
+          "type": "string"
         },
         {
           "frozen": false,
@@ -1313,12 +1313,6 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "startedBy.face.activity",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "startedBy.face.can.close.can",
           "type": "string"
         },
@@ -1397,8 +1391,14 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "startedBy.face.live",
-          "type": "bool"
+          "path": "startedBy.face.live.activity",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "startedBy.face.live.is",
+          "type": "string"
         },
         {
           "frozen": false,
@@ -1600,12 +1600,6 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "face.activity",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "face.can.close.can",
           "type": "string"
         },
@@ -1690,8 +1684,14 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "face.live",
-          "type": "bool"
+          "path": "face.live.activity",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.live.is",
+          "type": "string"
         },
         {
           "frozen": false,
@@ -2131,12 +2131,6 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "face.activity",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "face.can.close.can",
           "type": "string"
         },
@@ -2221,8 +2215,14 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "face.live",
-          "type": "bool"
+          "path": "face.live.activity",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.live.is",
+          "type": "string"
         },
         {
           "frozen": false,
@@ -2376,12 +2376,6 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "face.activity",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "face.can.close.can",
           "type": "string"
         },
@@ -2466,8 +2460,14 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "face.live",
-          "type": "bool"
+          "path": "face.live.activity",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.live.is",
+          "type": "string"
         },
         {
           "frozen": false,
@@ -2567,12 +2567,6 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "face.activity",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "face.can.close.can",
           "type": "string"
         },
@@ -2663,8 +2657,8 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "face.live",
-          "type": "bool"
+          "path": "face.live.is",
+          "type": "string"
         },
         {
           "frozen": false,
@@ -3560,12 +3554,6 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].face.activity",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "rows[].face.can.close.can",
           "type": "string"
         },
@@ -3656,8 +3644,14 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "rows[].face.live",
-          "type": "bool"
+          "path": "rows[].face.live.activity",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].face.live.is",
+          "type": "string"
         },
         {
           "frozen": false,

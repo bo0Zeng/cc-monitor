@@ -154,9 +154,9 @@ pub(crate) async fn apply(
         Ordered::SessionPrimed(p) => intake.announced(&p.sid, p.path, p.lines),
         Ordered::SessionStatus(s) => {
             tracing::info!(
-                "session-status: [{at}] sid={} activity={:?} waiting_for={:?} → 成品交出口",
+                "session-status: [{at}] sid={} live={:?} waiting_for={:?} → 成品交出口",
                 s.sid,
-                s.face.activity,
+                s.face.live,
                 s.waiting_for
             );
             crate::session_book::feed(BookIn::Status {

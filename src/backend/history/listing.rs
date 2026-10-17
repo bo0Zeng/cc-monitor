@@ -12,7 +12,7 @@ use super::listing_scan::SessionScan;
 use crate::common::append_read::{Blocks, Step, Tailed};
 use crate::common::fence::Fence;
 use crate::platform::fs::Ro;
-pub(crate) use cmd_wire::listing::{Can, CanDelete, CanResume};
+pub(crate) use cmd_wire::listing::{Can, CanDelete, CanResume, RowLife};
 use copy_core::copy_text;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -20,11 +20,11 @@ use std::time::UNIX_EPOCH;
 
 /// 一条会话的状态：`live` 在跑 · `reconnectable` 不在跑、tmux 里还挂着它（会话账本说的）· `ended` 已结束 ·
 /// `unknown` 这条路上答不了（合成历史没有 pidfile）。历史清单的行与全文搜索的命中同一个函数。
-pub(crate) fn status_of(is_live: Option<bool>, reconnectable: bool) -> &'static str {
-    match is_live {
-        Some(true) => "live",
-        Some(false) if reconnectable => "reconnectable",
-        Some(false) => "ended",
+pub(crate) fn status_of(life: Option<RowLife>) -> &'static str {
+    match life {
+        Some(RowLife::Live { .. }) => "live",
+        Some(RowLife::Reconnectable) => "reconnectable",
+        Some(RowLife::Ended) => "ended",
         None => "unknown",
     }
 }

@@ -26,7 +26,9 @@
     },
     "dot": "ended",
     "line": "已结束 · 可恢复",
-    "live": false,
+    "live": {
+      "is": "no"
+    },
     "name": "已结束",
     "order": 5,
     "settled": true,
@@ -61,7 +63,9 @@
     },
     "dot": "gone",
     "line": "记录已不在 · 不可恢复",
-    "live": false,
+    "live": {
+      "is": "no"
+    },
     "name": "记录已不在",
     "order": 5,
     "settled": true,
@@ -69,7 +73,6 @@
     "tone": "plain"
   },
   "live-background": {
-    "activity": "background_work",
     "can": {
       "close": {
         "can": "no",
@@ -96,7 +99,10 @@
     },
     "dot": "background",
     "line": "后台任务运行中",
-    "live": true,
+    "live": {
+      "activity": "background_work",
+      "is": "yes"
+    },
     "name": "后台任务运行中",
     "order": 2,
     "settled": false,
@@ -104,7 +110,6 @@
     "tone": "busy"
   },
   "live-idle": {
-    "activity": "idle",
     "can": {
       "close": {
         "can": "no",
@@ -131,7 +136,10 @@
     },
     "dot": "idle",
     "line": "空闲",
-    "live": true,
+    "live": {
+      "activity": "idle",
+      "is": "yes"
+    },
     "name": "空闲",
     "order": 3,
     "settled": false,
@@ -139,7 +147,6 @@
     "tone": "plain"
   },
   "live-needs-you-tmux": {
-    "activity": "needs_you",
     "can": {
       "close": {
         "can": "no",
@@ -168,7 +175,10 @@
     },
     "dot": "needs-you",
     "line": "需手动",
-    "live": true,
+    "live": {
+      "activity": "needs_you",
+      "is": "yes"
+    },
     "name": "需手动",
     "order": 0,
     "settled": false,
@@ -202,7 +212,9 @@
     },
     "dot": "idle",
     "line": "状态不明",
-    "live": true,
+    "live": {
+      "is": "yes"
+    },
     "name": "状态不明",
     "order": 3,
     "settled": false,
@@ -210,7 +222,6 @@
     "tone": "plain"
   },
   "live-working-plain": {
-    "activity": "working",
     "can": {
       "close": {
         "can": "no",
@@ -238,7 +249,10 @@
     },
     "dot": "running",
     "line": "运行中",
-    "live": true,
+    "live": {
+      "activity": "working",
+      "is": "yes"
+    },
     "name": "运行中",
     "order": 1,
     "settled": false,
@@ -272,7 +286,9 @@
     },
     "dot": "idle",
     "line": "读记录中",
-    "live": true,
+    "live": {
+      "is": "yes"
+    },
     "name": "读记录中",
     "order": 3,
     "settled": false,
@@ -307,7 +323,9 @@
     },
     "dot": "exited",
     "line": "Claude 已退出 · tmux 会话在",
-    "live": false,
+    "live": {
+      "is": "no"
+    },
     "name": "Claude 已退出",
     "order": 4,
     "settled": false,
@@ -343,7 +361,9 @@
     },
     "dot": "unknown",
     "line": "状态不明",
-    "live": false,
+    "live": {
+      "is": "no"
+    },
     "name": "状态不明",
     "order": 3,
     "settled": false,

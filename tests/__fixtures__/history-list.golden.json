@@ -113,7 +113,9 @@
         },
         "dot": "ended",
         "line": "已结束 · 可恢复",
-        "live": false,
+        "live": {
+          "is": "no"
+        },
         "name": "已结束",
         "order": 5,
         "settled": true,
@@ -157,7 +159,6 @@
       },
       "customTitle": null,
       "face": {
-        "activity": "working",
         "can": {
           "close": {
             "can": "no",
@@ -185,7 +186,10 @@
         },
         "dot": "running",
         "line": "运行中",
-        "live": true,
+        "live": {
+          "activity": "working",
+          "is": "yes"
+        },
         "name": "运行中",
         "order": 1,
         "settled": false,
@@ -254,7 +258,9 @@
         },
         "dot": "ended",
         "line": "已结束 · 可恢复",
-        "live": false,
+        "live": {
+          "is": "no"
+        },
         "name": "已结束",
         "order": 5,
         "settled": true,
@@ -325,7 +331,9 @@
         },
         "dot": "unknown",
         "line": "状态不明",
-        "live": false,
+        "live": {
+          "is": "no"
+        },
         "name": "状态不明",
         "order": 3,
         "settled": false,
@@ -394,7 +402,9 @@
         },
         "dot": "ended",
         "line": "已结束 · 可恢复",
-        "live": false,
+        "live": {
+          "is": "no"
+        },
         "name": "已结束",
         "order": 5,
         "settled": true,

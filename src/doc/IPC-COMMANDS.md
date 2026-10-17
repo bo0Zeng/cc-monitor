@@ -330,8 +330,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `dot` | SessionDot |  |
-| `activity` | SessionActivity? | 活着、判得出在干什么才有 |
-| `live` | bool | 进程在 |
+| `live` | FaceLive | 进程在不在；在干什么只住在「在」那一支里 |
 | `settled` | bool | 那台看不见时照旧作数（已结束 · 记录已不在） |
 | `name` | Words | 短名（运行中 · 需手动 · 已结束 …） |
 | `tip` | Words | 悬停那一句 |
@@ -339,6 +338,13 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 | `tone` | Tone |  |
 | `order` | number | 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5 |
 | `can` | SessionCan |  |
+
+#### `FaceLive`
+
+进程在不在：`{is: "yes", activity?}`（判得出在干什么才带 `activity`）· `{is: "no"}`。
+
+- `is: "yes"`，带 `activity` SessionActivity?
+- `is: "no"`
 
 #### `SessionDot`
 
@@ -4175,6 +4181,7 @@ type Entry = { starred: boolean, customTitle: string | null,
  * 单个那一格：`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则。
  */
 hide?: Hide, updatedAt: number, };
+type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type Hide = "on" | "off";
@@ -4256,17 +4263,9 @@ type HistoryRawRow = { agent: string, sessionId: string, projectPath: string, pr
  */
 title: string, startedAt: number, updatedAt: number, jsonlPath: string, 
 /**
- * 判不了活（合成历史没有 pidfile）⇒ `null`。
+ * 这台判的活不活（判不了：合成历史没有 pidfile ⇒ `null`）。
  */
-isLive: boolean | null, 
-/**
- * 不在跑、claude 退了而 tmux 里还挂着它（那台的会话账本说的）；否 ⇒ 缺。
- */
-reconnectable?: boolean, 
-/**
- * 在跑时那一家说它在干什么（判不出 · 不在跑 ⇒ 缺）。
- */
-activity?: WireSessionActivity, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
+life: HistoryRowLife | null, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
 /**
  * 起会话时给了 `--tab` 的那一格（那台的启动台账）；没给 ⇒ 缺。
  */
@@ -4320,6 +4319,7 @@ at: number, atText: Words, sectionText: Words, spanText: Words,
  * 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
  */
 origin?: string, };
+type HistoryRowLife = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended" };
 type HistorySort = "activity" | "created";
 type LaunchTab = { tab: Tab, alias?: string, };
 type Rules = { childTab: Tab, bgTab: Tab, };
@@ -4351,13 +4351,9 @@ permission: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
- * 活着、判得出在干什么才有。
+ * 进程在不在；在干什么只住在「在」那一支里。
  */
-activity?: WireSessionActivity, 
-/**
- * 进程在。
- */
-live: boolean, 
+live: FaceLive, 
 /**
  * 那台看不见时照旧作数（已结束 · 记录已不在）。
  */
@@ -4417,6 +4413,7 @@ type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Wor
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type HistorySearchReply = { 
 /**
  * 每命中会话一行，最近优先。
@@ -4498,13 +4495,9 @@ permission: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
- * 活着、判得出在干什么才有。
+ * 进程在不在；在干什么只住在「在」那一支里。
  */
-activity?: WireSessionActivity, 
-/**
- * 进程在。
- */
-live: boolean, 
+live: FaceLive, 
 /**
  * 那台看不见时照旧作数（已结束 · 记录已不在）。
  */
@@ -4600,6 +4593,7 @@ type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Wor
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type HistorySearchMergeReq = { machines: Array<MachineHits>, };
 type Liveness = "live" | "ended";
 type MachineHits = { origin: Origin, sessions: Array<SessionHits>, };
@@ -4707,13 +4701,9 @@ permission: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
- * 活着、判得出在干什么才有。
+ * 进程在不在；在干什么只住在「在」那一支里。
  */
-activity?: WireSessionActivity, 
-/**
- * 进程在。
- */
-live: boolean, 
+live: FaceLive, 
 /**
  * 那台看不见时照旧作数（已结束 · 记录已不在）。
  */
@@ -6255,6 +6245,7 @@ type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type AskKind = "approve" | "answer" | "plan";
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type Needs = { kind: NeedsKind, 
@@ -6425,13 +6416,9 @@ permission: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
- * 活着、判得出在干什么才有。
+ * 进程在不在；在干什么只住在「在」那一支里。
  */
-activity?: WireSessionActivity, 
-/**
- * 进程在。
- */
-live: boolean, 
+live: FaceLive, 
 /**
  * 那台看不见时照旧作数（已结束 · 记录已不在）。
  */
@@ -6553,6 +6540,7 @@ cmd: string | null,
 at: string | null, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type FactsBackground = { 
 /**
  * 「后台任务运行中 · make test-all · 12m」；命令拿不到 ⇒ 「后台任务运行中」。手机与 CLI 照抄、按节拍重问。
@@ -6836,13 +6824,9 @@ permission: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
- * 活着、判得出在干什么才有。
+ * 进程在不在；在干什么只住在「在」那一支里。
  */
-activity?: WireSessionActivity, 
-/**
- * 进程在。
- */
-live: boolean, 
+live: FaceLive, 
 /**
  * 那台看不见时照旧作数（已结束 · 记录已不在）。
  */
@@ -12908,6 +12892,7 @@ type PlanStale = { said: string | null, raw: string | null, since: number, since
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type PlanArchived = { id: string, title: string | null, kind: string | null, replacedBy: string | null, };
 type PlanBlock = { id: string, cells: Array<string>, dir: string | null, owner: PlanWho | null, phase: string | null, 
 /**
@@ -13077,13 +13062,9 @@ permission: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
- * 活着、判得出在干什么才有。
+ * 进程在不在；在干什么只住在「在」那一支里。
  */
-activity?: WireSessionActivity, 
-/**
- * 进程在。
- */
-live: boolean, 
+live: FaceLive, 
 /**
  * 那台看不见时照旧作数（已结束 · 记录已不在）。
  */
@@ -13324,6 +13305,7 @@ key: string, };
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type PlanReturnReply = { line: string, to: PlanWho | null, 
 /**
  * `delivered` · `unsure`（送达未知，别重发）· `refused` · `copy`（送不了，只给这一行去复制）。
@@ -13407,13 +13389,9 @@ permission: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
- * 活着、判得出在干什么才有。
+ * 进程在不在；在干什么只住在「在」那一支里。
  */
-activity?: WireSessionActivity, 
-/**
- * 进程在。
- */
-live: boolean, 
+live: FaceLive, 
 /**
  * 那台看不见时照旧作数（已结束 · 记录已不在）。
  */

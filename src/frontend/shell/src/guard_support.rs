@@ -262,7 +262,7 @@ pub(crate) fn our_hello(commands: &[&str]) -> crate::stream_source::Frame {
 fn face(dot: &str) -> serde_json::Value {
     let yes = serde_json::json!({"can": "yes"});
     serde_json::json!({
-        "dot": dot, "live": false, "settled": false, "name": "N", "tip": "T", "line": "L", "tone": "plain", "order": 5,
+        "dot": dot, "live": {"is": "no"}, "settled": false, "name": "N", "tip": "T", "line": "L", "tone": "plain", "order": 5,
         "can": {"close": {"can": "quiet"}, "resume": yes, "term": {"can": "yes", "tmux": false}, "reattach": yes, "model": yes, "permission": yes},
     })
 }
