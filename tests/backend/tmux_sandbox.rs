@@ -17,8 +17,9 @@ impl SandboxTmux {
         let dir = std::env::temp_dir().join(format!("ccm-sbx-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("tmux")).expect("建沙箱目录");
+        // 套接字名短：目录已经是这一台独有的，套接字路径（目录 ＋ `tmux/tmux-<uid>/` ＋ 名）要压在 108 字节的上限里。
         let sb = SandboxTmux {
-            sock: format!("ccm-sbx-{tag}-{}", std::process::id()),
+            sock: "s".to_string(),
             dir,
         };
         sb.ok(&["new-session", "-d", "-s", "keep", "sleep 600"]);

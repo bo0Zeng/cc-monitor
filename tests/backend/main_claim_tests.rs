@@ -10,7 +10,8 @@ fn own_of(env: &dyn Fn(&str) -> Option<String>) -> cc_monitor_backend::platform:
 }
 
 fn scratch(tag: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("claim-then-log-{tag}-{}", std::process::id()));
+    // 名字短：下面绑 `data/run/backend.sock`，整条路径要压在 Unix 套接字的 108 字节里（临时目录已经是本进程独有的）。
+    let d = std::env::temp_dir().join(format!("claim-{tag}"));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).expect("夹具目录");
     d

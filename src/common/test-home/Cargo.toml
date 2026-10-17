@@ -3,10 +3,10 @@ name = "test-home"
 version = "0.1.0"
 edition = "2021"
 workspace = "../../frontend/shell"
-description = "测试档的家一开始就是沙箱：每个有判据的 Rust crate 都把它当 dev 依赖引进来（只做这一件事、只有这一份实现）。测试二进制起来时 HOME 若是本账号真家，就换成这个进程自己的临时目录。"
+description = "测试档的家一开始就是沙箱：每个有判据的 Rust crate 都把它当 dev 依赖引进来（只做这一件事、只有这一份实现）。测试二进制起来时把临时目录换成这个进程自己的沙箱根（退出时删），HOME 若是本账号真家也换进去。"
 
 [dependencies]
-# 把换家那个函数挂进启动段（`main` 之前、第一条判据跑之前）。只在 dev 侧链接，不进任何发布二进制。
+# 把换家那个函数挂进启动段（`main` 之前、第一条判据跑之前），删沙箱根的那个挂进退出段。只在 dev 侧链接，不进任何发布二进制。
 ctor = "0.8.0"
 
 [target.'cfg(unix)'.dependencies]
