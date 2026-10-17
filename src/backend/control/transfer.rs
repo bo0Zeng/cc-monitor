@@ -1087,17 +1087,16 @@ struct Dialed {
 impl Landing for Dialed {
     fn look<'a>(&'a self, path: &'a [u8]) -> super::transfer_copy::Fut<'a, Option<Seen>> {
         Box::pin(async move {
-            let args = serde_json::json!({ "path": cwf::WirePath(path.to_vec()) });
-            let v = crate::dial::remote_ask::ask_dialed(
+            let r = crate::dial::remote_ask::ask_dialed(
                 &self.dial,
-                "files-stat",
-                &args,
+                &cwf::StatReq {
+                    path: cwf::WirePath(path.to_vec()),
+                },
                 &self.tz,
                 &crate::dial::remote_ask::DialRemote,
             )
             .await
             .ok()?;
-            let r: cwf::StatReply = serde_json::from_value(v).ok()?;
             Some(Seen {
                 size: (r.kind == cwf::FileKind::File).then_some(r.size),
                 mtime: r.mtime_secs.and_then(|s| i64::try_from(s).ok()),

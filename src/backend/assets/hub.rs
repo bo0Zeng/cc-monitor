@@ -39,7 +39,7 @@ use super::ext::{
 };
 use super::hub_wire::{
     CcBusInstallCmd, CcBusState, CcBusStateCmd, Fill, HubApplied, HubApplyReq, HubMachineCard,
-    HubMachineDone, HubPreview, HubReq, HubSlot, Inner, McpApplyCmd, McpApplyReq, McpPreview,
+    HubMachineDone, HubPreview, HubReq, HubSlot, McpApplyCmd, McpApplyReq, McpPreview,
     McpPreviewCmd, McpPreviewReq, McpSource, McpSourceCmd, McpSourceReq, NoReq, SkillApplyCmd,
     SkillApplyReq, SkillPlan, SkillPlanCmd, SkillPlanReq, SkillRead, SkillReadCmd, SkillReadReq,
     SkillSourceFile,
@@ -47,7 +47,7 @@ use super::hub_wire::{
 use crate::dial::remote_ask::{Remote, Table};
 
 /// 这台自己的那几条内层命令那一口住协议零件那一层（[`crate::wire::typed::Here`]，命令表那一行递进来）。
-use crate::wire::typed::Here;
+use crate::wire::typed::{Command, Here};
 
 /// 枢纽要问的一台：`None` = 这台自己。
 fn machine_of(args: &Value, k: &str) -> Result<Option<String>, (String, String)> {
@@ -75,48 +75,36 @@ fn str_arg<'a>(args: &'a Value, k: &str) -> Result<&'a str, (String, String)> {
 
 /// 问一台跑一条内层命令：这台自己 ⇒ [`Here`]（阻塞档，挪到阻塞线程上跑）；别的台 ⇒ 可达表 ＋ capture。
 /// 发出去的是入参类型序列化的那一份，收回来按回包类型解；解不出（那台后端版本不同）⇒ `backend_differs`、说是哪台，解码器那一句进原话。
-async fn ask_one<C: Inner>(
+async fn ask_one<C: Command>(
     here: &Arc<dyn Here>,
     machine: Option<&str>,
     req: &C::Req,
     table: &Table,
     remote: &dyn Remote,
-) -> Result<C::Reply, (String, String)> {
-    let args = serde_json::to_value(req).map_err(|e| ("io_failed".to_string(), e.to_string()))?;
-    let got = match machine {
-        None => {
-            let h = Arc::clone(here);
-            tokio::task::spawn_blocking(move || h.ask(C::NAME, args))
-                .await
-                .map_err(|e| ("io_failed".to_string(), e.to_string()))??
-        }
-        Some(m) => {
-            if !crate::dial::remote_ask::lock(table).contains_key(m) {
-                return Err((
-                    "unreachable".to_string(),
-                    crate::dial::remote_ask::unreachable_message(m),
-                ));
-            }
-            // 码随原话一起交回（`stale` / `refused` / …照那台的原码）；读不出码（拨号 / 链路坏了）⇒ `unreachable`。
-            crate::dial::remote_ask::ask_json(m, C::NAME, &args, &here.viewer_tz(), table, remote)
-                .await
-                .map_err(|s| {
-                    (
-                        s.code.unwrap_or_else(|| "unreachable".to_string()),
-                        s.message,
-                    )
-                })?
-        }
-    };
-    serde_json::from_value(got).map_err(|e| {
+) -> Result<C::Reply, (String, String)>
+where
+    C::Req: serde::Serialize,
+    C::Reply: serde::de::DeserializeOwned,
+{
+    let said = |s: crate::dial::remote_ask::Said| {
         (
-            "backend_differs".to_string(),
-            crate::common::contract::joined(
-                copy_core::backend_differs(&machine_name(machine)),
-                Some(format!("{}: {e}", C::NAME)),
-            ),
+            s.code.unwrap_or_else(|| "unreachable".to_string()),
+            s.message,
         )
-    })
+    };
+    let Some(m) = machine else {
+        let args =
+            serde_json::to_value(req).map_err(|e| ("io_failed".to_string(), e.to_string()))?;
+        let h = Arc::clone(here);
+        let got = tokio::task::spawn_blocking(move || h.ask(C::NAME, args))
+            .await
+            .map_err(|e| ("io_failed".to_string(), e.to_string()))??;
+        return crate::dial::remote_ask::reply_of(&machine_name(None), C::NAME, got).map_err(said);
+    };
+    // 码随原话一起交回（`stale` / `refused` / …照那台的原码）；读不出码（拨号 / 链路坏了）⇒ `unreachable`。
+    crate::dial::remote_ask::ask_json::<C>(m, req, &here.viewer_tz(), table, remote)
+        .await
+        .map_err(said)
 }
 
 /// 给人看的那台的名字（`null` = 本机后端这一台）。

@@ -19,13 +19,13 @@
 
 use crate::platform::fs::Ro;
 use copy_core::copy_text;
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::common::door::{self, Door};
 use crate::platform::shell::posix;
 
 /// 推送结果：key 是新加的还是本就存在。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "lowercase")]
@@ -158,7 +158,7 @@ pub(crate) fn answer_add(
 }
 
 /// `authorized-keys-add` 的入参：一行公钥（本条自己也校验一遍）。
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
@@ -167,7 +167,7 @@ pub(crate) struct KeyAddReq {
 }
 
 /// `authorized-keys-add` 的应答。
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct KeyAdded {
@@ -229,12 +229,12 @@ pub(crate) fn pub_key_path(
 pub(crate) trait Reach: Send + Sync {
     /// 那台此刻在可达表里吗（它的长连接握过手）。
     fn backend_up(&self, machine: &str) -> bool;
-    /// 问那台后端 `authorized-keys-add {key}`，回它的结局（`added` / `already`）。
+    /// 问那台后端 `authorized-keys-add {key}`，回它的结局。
     fn ask_add<'a>(
         &'a self,
         machine: &'a str,
         key: &'a str,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send + 'a>>;
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<PushOutcome, String>> + Send + 'a>>;
     /// 沿那台的拨号请求跑**一次** exec，回 stdout（退出码非 0 ⇒ `Err` 带 stderr）。
     fn exec_once<'a>(
         &'a self,
@@ -255,24 +255,23 @@ impl Reach for Wire {
         &'a self,
         machine: &'a str,
         key: &'a str,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send + 'a>>
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<PushOutcome, String>> + Send + 'a>>
     {
         Box::pin(async move {
-            let v = crate::dial::remote_ask::ask_json(
+            let req = KeyAddReq {
+                key: key.to_string(),
+            };
+            crate::dial::remote_ask::ask_json::<AuthorizedKeysAdd>(
                 machine,
-                "authorized-keys-add",
-                &json!({ "key": key }),
+                &req,
                 // 回包里没有时刻（只回 `outcome`）。
                 &crate::Tz::default(),
                 &crate::dial::remote_ask::REACH,
                 &crate::dial::remote_ask::DialRemote,
             )
             .await
-            .map_err(|s| s.message)?;
-            v.get("outcome")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-                .ok_or_else(|| copy_text("bePubkey.add.noOutcome", &[("machine", machine)]))
+            .map(|r| r.outcome)
+            .map_err(|s| s.message)
         })
     }
 
@@ -390,20 +389,10 @@ pub(crate) async fn answer_push(
     let key = sanitize_public_key(&read_pub(&path)?).map_err(|e| ("refused", e))?;
     let name = machine.name().to_string();
     let (outcome, via) = if reach.backend_up(&name) {
-        let o = reach
+        let outcome = reach
             .ask_add(&name, &key)
             .await
             .map_err(|e| ("failed", e))?;
-        let outcome = match o.as_str() {
-            "added" => PushOutcome::Added,
-            "already" => PushOutcome::Already,
-            _ => {
-                return Err((
-                    "failed",
-                    copy_text("bePubkey.add.noOutcome", &[("machine", &name)]),
-                ))
-            }
-        };
         (outcome, PushVia::Backend)
     } else {
         let out = reach

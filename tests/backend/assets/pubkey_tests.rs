@@ -2,6 +2,7 @@
 //! 校验 · 规划 · 解记号 · 那一串 shell 的判据原住 `tests/frontend/shell/pubkey_tests.rs`，随实现搬来、期望一字未改。
 use super::*;
 use crate::assets::aliases::tests::HomeDoor;
+use serde_json::json;
 use std::sync::Mutex;
 
 // 线上那一份入参经 typed 那一处收（同分派），再交本体；回包写成线上那一份（判据照线上形比）。
@@ -47,12 +48,17 @@ impl Reach for FakeReach {
     fn backend_up(&self, _machine: &str) -> bool {
         self.up
     }
-    fn ask_add<'a>(&'a self, machine: &'a str, key: &'a str) -> BoxFut<'a> {
+    fn ask_add<'a>(
+        &'a self,
+        machine: &'a str,
+        key: &'a str,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<PushOutcome, String>> + Send + 'a>>
+    {
         self.added
             .lock()
             .unwrap()
             .push((machine.to_string(), key.to_string()));
-        Box::pin(async { Ok("already".to_string()) })
+        Box::pin(async { Ok(PushOutcome::Already) })
     }
     fn exec_once<'a>(&'a self, dial: &'a Value, command: String) -> BoxFut<'a> {
         self.execs.lock().unwrap().push((dial.clone(), command));
