@@ -20155,7 +20155,7 @@
     "history.list.machineStale": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 读不到 · 下面是 {at} 读到的",
+      "zh": "{machine} 无法读取 · 下面是 {at} 读取的记录",
       "args": ["machine", "at"]
     },
     "history.list.reconnect": {
