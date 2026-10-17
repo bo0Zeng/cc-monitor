@@ -132,6 +132,8 @@ const pushed = (state: string, extra: Record<string, unknown> = {}): Record<stri
   version: null,
   versionRelation: null,
   os: "Linux",
+  word: "",
+  said: "",
   fixes: [],
   seenHostKey: null,
   detail: null,
@@ -190,10 +192,16 @@ export const SETTINGS_SCENES: Scene[] = [
   settings("settings-machines-installing", "设置 · 机器 · 正在装", "gpu-01 正在装 cc-monitor：虚线点 ＋「安装中」＋ 进度条", async () => {
     await go("machines");
   }, installingWorld),
-  settings("settings-machines-pushed", "设置 · 机器 · 状态推送", "页面开着时壳推来两帧：devbox 正在连（启动 cc-monitor）、gpu-01 正在更新 —— 那两行原位换", async () => {
+  settings("settings-machines-pushed", "设置 · 机器 · 状态推送", "页面开着时本机后端推来两帧：devbox 正在连（启动 cc-monitor）、gpu-01 正在更新 —— 那两行原位换", async (ctx) => {
     await go("machines");
-    await emit("machine-state", { origin: "devbox", machine: pushed("connecting", { stage: "attach" }) });
-    await emit("machine-state", { origin: "gpu-01", machine: pushed("updating") });
+    ctx.backend.pushChanged(LOCAL, "machine", {
+      key: "devbox",
+      body: pushed("connecting", { stage: "attach", word: copyText("machineState.word.connecting"), said: "连接 devbox · 启动 cc-monitor" }),
+    });
+    ctx.backend.pushChanged(LOCAL, "machine", {
+      key: "gpu-01",
+      body: pushed("updating", { word: copyText("machineState.word.updating"), said: "更新 gpu-01 · cc-monitor" }),
+    });
     await sleep(800);
   }),
 

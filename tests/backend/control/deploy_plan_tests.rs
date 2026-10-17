@@ -1,4 +1,4 @@
-//! 要求：部署决策（该不该换 · 换成什么 · 身份判定）在本机常驻后端出计划。
+//! 要求：部署决策（该不该换 · 换成什么 · 身份判定）与那一趟装都在后端（本机常驻后端答 `deploy-install`，手机同一份）。
 //!
 //! 替身对面：按命令 / 路径答预设的话（不起 SSH）。钉的是**编排**：先问机器、再判表、再问落点、再问旧落点，每一步的失败落在哪一格码上；
 //! 文件末尾是随判定从共享 crate `deploy-core` 搬来的逐格判据（期望一字未改）与 `place-verdict` 的真值表。
@@ -11,18 +11,18 @@ use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 
-// 回包写成线上那一份、入参经 typed 那一处收（同分派）：判据照线上形比（盖住 `super::*` 里的同名口）。
-fn plan_json(p: &Plan) -> Value {
-    serde_json::to_value(super::plan_json(p)).unwrap()
+// 回包写成线上那一份、入参经 typed 那一处收（同分派）：判据照线上形比。
+fn installed_json(p: &Plan) -> Value {
+    serde_json::to_value(super::installed_of(p)).unwrap()
 }
 
-fn carried_of(args: &Value) -> Result<Vec<(Key, String)>, Fail> {
+fn slots_of(args: &Value) -> Result<Vec<deploy::Slot>, Fail> {
     #[derive(serde::Deserialize)]
     struct Only {
-        carried: Vec<Carried>,
+        slots: Vec<SlotRow>,
     }
     let only: Only = crate::wire::typed::take(args)?;
-    super::carried_of(&only.carried)
+    super::slots_of(&only.slots)
 }
 
 fn answer_place(args: &Value) -> Result<Value, Fail> {
@@ -280,16 +280,18 @@ async fn an_unstamped_landing_is_undecidable_whatever_it_holds() {
     // 计划这一路只 stat 与扫戳：对面那一口（`Facing`）连「读回落点那一份」都没有，落点上是什么字节都认不成「我们从前那份」。
 }
 
-/// 要求：「部署失败留下半截 ~/.cc-monitor/bin/ccm.…tmp，之后连上也不清」⇒「下次连上清旧的」。
-/// 落点目录里陈旧的临时件 · 备份件 ⇒ 进计划；新的（另一个部署者正在写）· 恰在门槛上 · 修改时间缺 · 不是 `put_atomic` 那个形状（陈旧也不碰）
-/// · 落点本身 ⇒ 不进（两向相等）。目录列不出 ⇒ 空、计划照出。
+/// 要求：「部署中途断了留下的件，之后连上也不清」⇒「下次连上清旧的」。
+/// 暂存区里陈旧的临时件 · 备份件 · 没换进落点的暂存件 ⇒ 进计划；新的（另一个部署者正在写）· 恰在门槛上 · 修改时间缺 ·
+/// 不是那个形状（陈旧也不碰：上传的 `.part` 归文件管理那一面收）⇒ 不进（两向相等）。目录列不出 ⇒ 空、计划照出。
 #[tokio::test]
-async fn stale_put_leftovers_in_the_landing_dir_are_handed_over_and_nothing_else() {
+async fn stale_deploy_leftovers_in_staging_are_handed_over_and_nothing_else() {
     let old = NOW - LEFTOVER_STALE_SECS - 1;
     let mut f = Fake::linux(Some("p9a-mine"));
     let rows: Vec<(&str, Option<u64>)> = vec![
         ("ccm.2c0-18d9c8c1df0ec9e7-c.tmp", Some(old)),
         ("ccm.2c0-18d9c8c1df0ec9e7-d.bak", Some(old)),
+        ("cc-monitor-backend.2c0-18d9c8c1df0ec9e7-e.new", Some(old)),
+        ("0123456789abcdef.part", Some(old)),
         ("ccm.2c1-18d9c8c1df0ec9e8-0.tmp", Some(NOW - 60)),
         (
             "ccm.2c1-18d9c8c1df0ec9e8-1.tmp",
@@ -304,15 +306,16 @@ async fn stale_put_leftovers_in_the_landing_dir_are_handed_over_and_nothing_else
         (".2c0-1-2.tmp", Some(old)),
     ];
     f.list.insert(
-        ".cc-monitor/bin".into(),
+        ".cc-monitor/staging".into(),
         rows.iter().map(|(n, t)| (n.to_string(), *t)).collect(),
     );
     let p = plan(&f, &carried("p9a-mine"), "box", NOW).await.unwrap();
     assert_eq!(
         p.leftovers,
         vec![
-            ".cc-monitor/bin/ccm.2c0-18d9c8c1df0ec9e7-c.tmp".to_string(),
-            ".cc-monitor/bin/ccm.2c0-18d9c8c1df0ec9e7-d.bak".to_string(),
+            ".cc-monitor/staging/cc-monitor-backend.2c0-18d9c8c1df0ec9e7-e.new".to_string(),
+            ".cc-monitor/staging/ccm.2c0-18d9c8c1df0ec9e7-c.tmp".to_string(),
+            ".cc-monitor/staging/ccm.2c0-18d9c8c1df0ec9e7-d.bak".to_string(),
         ]
     );
     f.list.clear();
@@ -323,11 +326,14 @@ async fn stale_put_leftovers_in_the_landing_dir_are_handed_over_and_nothing_else
     );
 }
 
-/// 键集合 == 金样 `tests/__fixtures__/deploy-plan.golden.json` 的键（monitor 的解码器读同一份金样）。
+/// 键集合 == 金样 `tests/__fixtures__/deploy-install.golden.json` 的键（monitor 的解码器读同一份金样）。
+/// 应答那一句是 `deploy` crate 写的那一句；`build` 是落点上现在那一份（`keep` ⇒ 那台的）。
 #[test]
-fn the_plan_frame_has_exactly_the_golden_keys() {
-    let golden: serde_json::Value =
-        serde_json::from_str(include_str!("../../__fixtures__/deploy-plan.golden.json")).unwrap();
+fn the_install_reply_has_exactly_the_golden_keys() {
+    let golden: serde_json::Value = serde_json::from_str(include_str!(
+        "../../__fixtures__/deploy-install.golden.json"
+    ))
+    .unwrap();
     let keys = |v: &serde_json::Value| -> Vec<String> {
         let mut k: Vec<String> = v.as_object().unwrap().keys().cloned().collect();
         k.sort();
@@ -340,23 +346,34 @@ fn the_plan_frame_has_exactly_the_golden_keys() {
             theirs: "p9b".into(),
             why: "w".into(),
         },
-        leftovers: vec![".cc-monitor/bin/ccm.1-2-3.tmp".into()],
+        leftovers: vec![],
         ack: fake_ack(1),
     };
-    let got = plan_json(&p);
+    let got = installed_json(&p);
     assert_eq!(keys(&got), keys(&golden["product"]));
+    assert_eq!(
+        (
+            got["action"].as_str(),
+            got["build"].as_str(),
+            got["said"].as_str()
+        ),
+        (Some("keep"), Some("p9b"), Some("w"))
+    );
+    assert_eq!(got["ack"], fake_ack(1));
 }
 
 #[test]
-fn carried_rows_outside_table_a_or_without_an_id_are_bad_args() {
-    let ok = serde_json::json!({"carried": [{"os": "Linux", "arch": "x86_64", "id": "p9a-x"}]});
-    assert_eq!(carried_of(&ok).unwrap().len(), 1);
+fn slot_rows_outside_table_a_without_an_id_or_without_an_absolute_path_are_bad_args() {
+    let ok = serde_json::json!({"slots": [{"os": "Linux", "arch": "x86_64", "id": "p9a-x", "path": "/s/linux-x86_64"}]});
+    assert_eq!(slots_of(&ok).unwrap().len(), 1);
     for bad in [
         serde_json::json!({}),
-        serde_json::json!({"carried": [{"os": "Plan9", "arch": "x86_64", "id": "p9a-x"}]}),
-        serde_json::json!({"carried": [{"os": "Linux", "arch": "x86_64"}]}),
+        serde_json::json!({"slots": [{"os": "Plan9", "arch": "x86_64", "id": "p9a-x", "path": "/s/x"}]}),
+        serde_json::json!({"slots": [{"os": "Linux", "arch": "x86_64", "id": "", "path": "/s/x"}]}),
+        serde_json::json!({"slots": [{"os": "Linux", "arch": "x86_64", "id": "p9a-x", "path": "s/x"}]}),
+        serde_json::json!({"slots": [{"os": "Linux", "arch": "x86_64", "id": "p9a-x"}]}),
     ] {
-        assert_eq!(carried_of(&bad).unwrap_err().code, "bad_args", "{bad}");
+        assert_eq!(slots_of(&bad).unwrap_err().code, "bad_args", "{bad}");
     }
 }
 
@@ -407,7 +424,7 @@ async fn the_plan_hands_back_the_ack_of_the_first_trip_for_pinning() {
     let f = Fake::linux(Some("p9a-mine"));
     let p = plan(&f, &carried("p9a-mine"), "box", NOW).await.unwrap();
     assert_eq!(p.ack, fake_ack(1), "交回的不是第一趟（问 uname）的 ack");
-    assert_eq!(plan_json(&p)["ack"], fake_ack(1));
+    assert_eq!(installed_json(&p)["ack"], fake_ack(1));
 }
 
 // ═══ 随判定从共享 crate `deploy-core` 搬来的逐格判据（判定只在后端；期望一字未改）══════════════

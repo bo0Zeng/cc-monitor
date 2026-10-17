@@ -1,8 +1,8 @@
-//! **手机给一台装 / 升级后端**的宿主：判定与 ①–④ 是 `deploy` crate 那一份（桌面后端答 `deploy-plan` 用的同一份），
+//! **手机给一台装 / 升级后端**的宿主：判定与 ①–④ 是 `deploy` crate 那一份（桌面后端答 `deploy-install` 用的同一份），
 //! ⑤ 换常驻是 `resident-client` 那一条（`Feed::replace`：`--resident-ensure --replace`，换不换那台自己判，换了就整份重接）。这里只接线、写话。
 //!
 //! 一个入口（`Core.deploy(handle, slots)`），事经那台常驻流同一个口交 Kotlin（种类 `deploy`，一行 JSON）：
-//! - `{"step": "plan" | "place" | "restart", "text", "bar"}`：走到哪一步（话是写好的；`bar` ⇒ 放字节那一步，屏上走一条进度条）；
+//! - `{"step": "plan" | "place" | "restart", "text", "bar"}`：走到哪一步（话是 `deploy` crate 写的；`bar` ⇒ 放字节那一步，屏上走一条进度条）；
 //! - `{"done": "skip" | "deploy" | "keep", "text"}`：做完了（已是这一版 · 装上了这一版 · 那台不比这一版旧、没动它）；
 //! - `{"failed": <码>, "text", "detail"}`：没做成（那一句 ＋ 复制详情）。
 //!
@@ -24,70 +24,24 @@ fn busy() -> &'static Mutex<std::collections::HashSet<i64>> {
     B.get_or_init(Default::default)
 }
 
-/// 走到哪一步了。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Step {
-    Plan,
-    Place { updating: bool },
-    Restart,
+/// 一步 ⇒ 交 Kotlin 的那一行（那一句是 `deploy` crate 写的，桌面同一句；`bar` ⇒ 放字节那一步，屏上走一条进度条）。
+pub fn step_json(s: deploy::Step, machine: &str) -> String {
+    let (step, bar) = match s {
+        deploy::Step::Plan => ("plan", false),
+        deploy::Step::Place { .. } => ("place", true),
+        deploy::Step::Restart => ("restart", false),
+    };
+    serde_json::json!({ "step": step, "text": s.said(machine), "bar": bar }).to_string()
 }
 
-/// 一步 ⇒ 交 Kotlin 的那一行（话同桌面机器页那几句）。
-pub fn step_json(s: Step, machine: &str) -> String {
-    let connecting = |stage: &str| {
-        copy_text(
-            "machineState.busy.connecting",
-            &[("machine", machine), ("stage", &copy_text(stage, &[]))],
-        )
-    };
-    let (step, text, bar) = match s {
-        Step::Plan => ("plan", connecting("machineState.stage.deploy"), false),
-        Step::Place { updating: true } => (
-            "place",
-            copy_text("machineState.busy.updating", &[("machine", machine)]),
-            true,
-        ),
-        Step::Place { updating: false } => (
-            "place",
-            copy_text("machineState.busy.installing", &[("machine", machine)]),
-            true,
-        ),
-        Step::Restart => ("restart", connecting("machineState.stage.attach"), false),
-    };
-    serde_json::json!({ "step": step, "text": text, "bar": bar }).to_string()
-}
-
-/// 做完了 ⇒ 那一行（话同桌面［部署后端］那几句；那台不比这一版旧 ⇒ 计划里那一句）。
+/// 做完了 ⇒ 那一行（那一句是 `deploy` crate 写的）。
 pub fn done_json(plan: &deploy::Plan) -> String {
-    let path = format!("~/{}", relay_route_core::BACKEND_LANDING_REL);
-    let machine = plan.key.label();
-    let (done, text) = match &plan.action {
-        DeployAction::Skip => (
-            "skip",
-            copy_text(
-                "rsSftp.deploy.upToDate",
-                &[
-                    ("buildId", &plan.expected),
-                    ("machine", &machine),
-                    ("path", &path),
-                ],
-            ),
-        ),
-        DeployAction::Deploy(reason) => (
-            "deploy",
-            copy_text(
-                "rsSftp.deploy.done",
-                &[
-                    ("buildId", &plan.expected),
-                    ("machine", &machine),
-                    ("path", &path),
-                    ("reason", reason),
-                ],
-            ),
-        ),
-        DeployAction::Keep { why, .. } => ("keep", why.clone()),
+    let done = match &plan.action {
+        DeployAction::Skip => "skip",
+        DeployAction::Deploy(_) => "deploy",
+        DeployAction::Keep { .. } => "keep",
     };
-    serde_json::json!({ "done": done, "text": text }).to_string()
+    serde_json::json!({ "done": done, "text": plan.said() }).to_string()
 }
 
 /// 没做成 ⇒ 那一行（详情：命令 · 码 · 原话，钟是这台手机的）。
@@ -178,22 +132,14 @@ async fn run(
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let step = |s: deploy::Step| {
-        emit(step_json(
-            match s {
-                deploy::Step::Plan => Step::Plan,
-                deploy::Step::Place { updating } => Step::Place { updating },
-            },
-            machine,
-        ))
-    };
+    let step = |s: deploy::Step| emit(step_json(s, machine));
     let load = |p: &std::path::Path| std::fs::read(p);
     let plan = match deploy::install(&facing, &slots, &load, machine, now, &step).await {
         Ok(p) => p,
         Err(f) => return emit(failed_json(f.code, &f.said, f.raw.as_deref())),
     };
     // 换不换常驻由那台判（`--resident-ensure --replace`：在听的比落点旧才换）。
-    emit(step_json(Step::Restart, machine));
+    emit(step_json(deploy::Step::Restart, machine));
     if let Err(p) = feed.replace().await {
         let raw = (!p.detail.is_empty()).then_some(p.detail.as_str());
         return emit(failed_json("restart_failed", &p.text, raw));
@@ -222,25 +168,28 @@ mod tests {
     /// 每一步交的话同桌面机器页那几句；只有放字节那一步走进度条。
     #[test]
     fn each_step_says_the_desktop_line_and_only_placing_runs_a_bar() {
-        let plan = v(&step_json(Step::Plan, "box"));
+        let plan = v(&step_json(deploy::Step::Plan, "box"));
         assert_eq!(plan["step"], "plan");
         assert_eq!(plan["bar"], false);
         assert!(copy_core::copy_matches(
             "machineState.busy.connecting",
             plan["text"].as_str().unwrap()
         ));
-        let install = v(&step_json(Step::Place { updating: false }, "box"));
+        let install = v(&step_json(deploy::Step::Place { updating: false }, "box"));
         assert_eq!(
             install["text"],
             copy_text("machineState.busy.installing", &[("machine", "box")])
         );
         assert_eq!(install["bar"], true);
-        let update = v(&step_json(Step::Place { updating: true }, "box"));
+        let update = v(&step_json(deploy::Step::Place { updating: true }, "box"));
         assert_eq!(
             update["text"],
             copy_text("machineState.busy.updating", &[("machine", "box")])
         );
-        assert_eq!(v(&step_json(Step::Restart, "box"))["step"], "restart");
+        assert_eq!(
+            v(&step_json(deploy::Step::Restart, "box"))["step"],
+            "restart"
+        );
     }
 
     /// 结局三种各一句：装上了（带这一版与原因）· 已是这一版 · 那台更新（计划里那一句，不叫人去别处卸载）。

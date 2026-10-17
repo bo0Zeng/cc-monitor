@@ -830,6 +830,8 @@ pub enum Topic {
     Manual,
     /// 这一端的机器表（`machines.json` 被改写；重问 `machines-read`）。
     Machines,
+    /// 这一端连的某台远端此刻的状态（`key` ＝ 那台的名字；`body` ＝ 那台的成品 `MachineState`；丢了重问 `machine-read`）。
+    Machine,
     /// 这台某个活会话隐不隐藏变了（`key` ＝ sid；`body` ＝ `{hidden}`：那一格，不隐藏 ⇒ `null`）：
     /// 注解 · 这台偏好 · 会话血缘动了之后判出来的。不重读整份清单，收到就换（丢了重问 `history-list {sid}` 那一行）。
     SessionHidden,

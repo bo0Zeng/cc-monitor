@@ -106,6 +106,14 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "只读诊断页；只交 monitor 自己进程的几条事实，不 stat，落点由本模块的 claude 棘轮数着",
     ),
     // 数据位置页列本机后端家里那几样的那一行摘了：那一块改照本机后端 `data-report` 的 `own` 画，壳不再伸手进家目录。
+    // 这一版带着的远端后端那几格落成本机文件，交本机后端 `deploy-install` 读（不经帧传字节）。
+    (
+        "deploy.rs",
+        "slots_dir",
+        "`~/.cc-monitor/bin/slots/<os>-<arch>`（这一版带着的远端后端字节）",
+        "**不是伸手拿用户的东西**：monitor 自己的目录（与自释放出来的本机后端同一个）。每个进程落一次；\
+             写侧登记在 `write_site_registry` 的 `local_backend.rs::place_local_program`",
+    ),
     // 文件窗口程序的落点：monitor 旁边没有它时，把自带那份放到 `~/.cc-monitor/bin/` 再起。
     (
         "proc.rs",

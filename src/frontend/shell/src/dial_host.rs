@@ -339,6 +339,30 @@ impl tokio::io::AsyncWrite for DialStream {
     }
 }
 
+/// 链路没开成：那一句 ＋ 详情；后端说没拨成时另带它给的原因码与那台出示的指纹（重连循环随断开那一句交出去）。
+#[derive(Debug)]
+pub(crate) struct Unopened {
+    pub(crate) said: Said,
+    pub(crate) why: Option<cmd_wire::machine::Why>,
+    pub(crate) seen_key: Option<String>,
+}
+
+impl From<Said> for Unopened {
+    fn from(said: Said) -> Self {
+        Unopened {
+            said,
+            why: None,
+            seen_key: None,
+        }
+    }
+}
+
+impl From<Unopened> for Said {
+    fn from(u: Unopened) -> Self {
+        u.said
+    }
+}
+
 /// 开链路、交请求、在 [`ACK_DEADLINE`] 内读完握手。成功 ⇒ 链路 ＋ ack。
 ///
 /// 后端说没拨成 ⇒ 详情是它写的那一份（远端补「本机」一行，[`crate::detail::relayed`]）；读应答这一跳坏了 ⇒ 壳写、原话进详情。
@@ -348,7 +372,7 @@ async fn open(
     want: &str,
     on_stage: &mut (dyn FnMut(ConnectStage) + Send),
     on_step: &mut (dyn FnMut() + Send),
-) -> Result<(DialStream, Ack), Said> {
+) -> Result<(DialStream, Ack), Unopened> {
     // 这一趟的总时限从这一刻起算（开链路本身也在里面）。
     let due = tokio::time::Instant::now() + ONE_SHOT_DEADLINE;
     let client = local_channel().await.map_err(Said::written)?;
@@ -368,20 +392,16 @@ async fn open(
             fingerprint,
             detail,
         })) => {
-            let said = refused_said(why, detail.as_deref());
-            // 后端带回的原因码 · 那台出示的指纹 · 那一句与详情进那台的状态成品（这一轮收尾时按码说那一句、给修法，详情跟着）。
-            crate::machine_state::dial_failed(
-                &cfg.origin_label(),
-                reason.as_deref(),
-                fingerprint.as_deref(),
-                &said,
-            );
-            return Err(said);
+            return Err(Unopened {
+                said: refused_said(why, detail.as_deref()),
+                why: reason,
+                seen_key: fingerprint,
+            })
         }
-        Ok(Err(e)) => return Err(link_said(e)),
+        Ok(Err(e)) => return Err(link_said(e).into()),
         // 到点：`r`（链路）随本函数返回被丢掉 ⇒ `link-close` ⇒ 后端收掉这条链路的拨号。
         Err(_) => {
-            return Err(Said::of(
+            return Err(Unopened::from(Said::of(
                 "rsDialHost.open.timeout",
                 &[
                     ("dur", &copy_core::format_elapsed(ACK_DEADLINE)),
@@ -399,7 +419,7 @@ async fn open(
                             .join(", "),
                     ),
                 ],
-            ));
+            )));
         }
     };
     // 握手做完了 ⇒ 记下这一刻：之后若总时限到点，那句话说得出「握手用了多久、远端跑了多久」。
@@ -668,7 +688,7 @@ pub(crate) async fn stream(
     cfg: &RemoteConfig,
     cmd: &str,
     on_step: &mut (dyn FnMut() + Send),
-) -> Result<DialStream, Said> {
+) -> Result<DialStream, Unopened> {
     let req = request(
         cfg,
         "stream",
@@ -685,7 +705,7 @@ pub(crate) async fn capture(
     cmd: &str,
     abort_marker: Option<&str>,
     max_bytes: usize,
-) -> Result<RemoteExec, Said> {
+) -> Result<RemoteExec, Unopened> {
     let req = request(
         cfg,
         "capture",

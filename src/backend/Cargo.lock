@@ -691,6 +691,7 @@ dependencies = [
 name = "deploy"
 version = "0.1.0"
 dependencies = [
+ "cmd-wire",
  "copy-core",
  "deploy-contract",
  "relay-route-core",
@@ -2610,6 +2611,7 @@ dependencies = [
 name = "ssh-dial"
 version = "0.1.0"
 dependencies = [
+ "cmd-wire",
  "copy-core",
  "flate2",
  "guard-core",

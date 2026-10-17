@@ -174,6 +174,7 @@ export class BackendSection {
   private readonly hosted: boolean;
   private readonly onChannel: ((origin: string, connected: boolean | null) => void) | undefined;
   private readonly onMachine: ((origin: string, machine: MachineState | null) => void) | undefined;
+  private readonly machineOf: ((origin: string) => MachineState | null) | undefined;
   /** 后端清单（`backend_machines`）。`null` = 还没问到 —— 那时寄居的四格先不画。 */
   private registered: Set<string> | null = null;
 
@@ -189,12 +190,15 @@ export class BackendSection {
       interrupts?: (origin: Origin) => Promise<Interrupts | null>;
       /** 每次问完那台的连接（`null` ＝ 没问到）。 */
       onChannel?: (origin: string, connected: boolean | null) => void;
-      /** 每次问完那台的状态成品（收不下 / 没问到 ⇒ `null`）。 */
+      /** 每次问完那台的状态成品（本机那一行；收不下 / 没问到 ⇒ `null`）。 */
       onMachine?: (origin: string, machine: MachineState | null) => void;
+      /** 那台手上最新那一份成品（远端各台由本机后端推，`backend_status` 不带）。 */
+      machineOf?: (origin: string) => MachineState | null;
     } = {},
   ) {
     this.onChannel = opts.onChannel;
     this.onMachine = opts.onMachine;
+    this.machineOf = opts.machineOf;
     this.hosted = opts.hosted ?? false;
     this.confirm = opts.confirm ?? confirmDialog;
     this.interrupts = opts.interrupts ?? askInterrupts;
@@ -619,13 +623,13 @@ export class BackendSection {
       const on = st.channel === true;
       const word = on ? copyText("backend.status.connected") : copyText("backend.status.notConnected");
       const machine = decodeMachineState(st.machine);
-      const ver = machine?.version ?? null;
+      const ver = (machine ?? this.machineOf?.(origin) ?? null)?.version ?? null;
       state.textContent = ver ? `${ver}${copyText("kit.text.sep")}${word}` : word;
       state.dataset.on = String(on);
       for (const b of cells.querySelectorAll<HTMLElement>("[data-op]")) b.style.display = (b.dataset.op === "start") === on ? "none" : "";
       if (on) void this.paintDrift(origin);
       this.onChannel?.(origin, on);
-      this.onMachine?.(origin, machine);
+      if (machine !== null) this.onMachine?.(origin, machine);
       // 那个值问那台机器的后端要（**每次现问**，不用上一次的）；问不到就是 `null`。
       let answer: ExitAnswer | null;
       try {

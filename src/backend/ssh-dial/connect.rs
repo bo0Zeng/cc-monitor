@@ -15,7 +15,7 @@ use russh::client;
 use russh::keys::{HashAlg, PrivateKeyWithHashAlg, PublicKey};
 
 use crate::env::{self, Credential};
-use crate::{DialRequest, Endpoint, JumpHop, Said, Stage, StageSink};
+use crate::{DialRequest, Endpoint, JumpHop, Said, Stage, StageSink, Why};
 
 /// 长连接的 SSH 层保活：**10 秒没收到对端字节就发一个**（russh 的 `keepalive_interval`：收到任何字节都重新计时）。
 /// 发出去之后又过了 [`KEEPALIVE_MAX`] 轮还是一个字节都没收到 ⇒ russh 判死、断开这条连接（最后收包之后 `KEEPALIVE_MAX + 1` 轮，20 秒）。
@@ -636,8 +636,7 @@ async fn authenticate(
     user: &str,
     key_path: Option<&str>,
     agent_sock: Option<&str>,
-) -> Result<(), (&'static str, Said)> {
-    use crate::why;
+) -> Result<(), (Why, Said)> {
     let Some(key) = key_path.filter(|s| !s.trim().is_empty()) else {
         let best_hash = best_rsa_hash(session).await?;
         // agent 这一支**在当前线程上就地跑完**（`block_in_place` ＋ `block_on`），不留在外层 future 里。
@@ -658,7 +657,7 @@ async fn authenticate(
     let credential = env::get()
         .keys
         .credential(key)
-        .map_err(|e| (why::KEY_UNREADABLE, e))?;
+        .map_err(|e| (Why::KeyUnreadable, e))?;
     let by_password = matches!(credential, Credential::Password(_));
     let authenticated = match credential {
         Credential::Key(key_pair) => {
@@ -671,7 +670,7 @@ async fn authenticate(
                 .await
                 .map_err(|e| {
                     (
-                        why::AUTH,
+                        Why::Auth,
                         Said::with_raw(copy_text("beConnect.auth.keyFailed", &[]), &e),
                     )
                 })?
@@ -689,7 +688,7 @@ async fn authenticate(
             })
             .map_err(|e| {
                 (
-                    why::AUTH,
+                    Why::Auth,
                     Said::with_raw(copy_text("beConnect.auth.keyFailed", &[]), &e.0),
                 )
             })?
@@ -699,7 +698,7 @@ async fn authenticate(
             .await
             .map_err(|e| {
                 (
-                    why::AUTH,
+                    Why::Auth,
                     Said::with_raw(copy_text("beConnect.auth.passwordFailed", &[]), &e),
                 )
             })?,
@@ -716,15 +715,13 @@ async fn authenticate(
 }
 
 /// RSA key 要协商出服务端支持的 hash；非 RSA 时 flatten 成 None。
-async fn best_rsa_hash(
-    session: &client::Handle<Checker>,
-) -> Result<Option<HashAlg>, (&'static str, Said)> {
+async fn best_rsa_hash(session: &client::Handle<Checker>) -> Result<Option<HashAlg>, (Why, Said)> {
     Ok(session
         .best_supported_rsa_hash()
         .await
         .map_err(|e| {
             (
-                crate::why::OTHER,
+                Why::Other,
                 Said::with_raw(copy_text("beConnect.auth.rsaHash", &[]), &e),
             )
         })?
@@ -821,7 +818,7 @@ pub fn ecdsa_der_to_ssh(der: &[u8]) -> Option<Vec<u8>> {
 }
 
 /// 公钥没过的原因码：服务端剩下的方法里没有公钥、只有密码 / 键盘交互 ⇒ 那台只收密码；否则密钥被拒。
-pub fn rejected_why(res: &russh::client::AuthResult) -> &'static str {
+pub fn rejected_why(res: &russh::client::AuthResult) -> Why {
     use russh::MethodKind as M;
     match res {
         russh::client::AuthResult::Failure {
@@ -831,9 +828,9 @@ pub fn rejected_why(res: &russh::client::AuthResult) -> &'static str {
                 .iter()
                 .any(|m| matches!(m, M::Password | M::KeyboardInteractive)) =>
         {
-            crate::why::PASSWORD
+            Why::Password
         }
-        _ => crate::why::AUTH,
+        _ => Why::Auth,
     }
 }
 
@@ -843,31 +840,30 @@ async fn agent_auth(
     user: &str,
     best_hash: Option<HashAlg>,
     agent_sock: Option<&str>,
-) -> Result<(), (&'static str, Said)> {
-    use crate::why;
+) -> Result<(), (Why, Said)> {
     let Some(source) = env::get().agent.as_ref() else {
         return Err((
-            why::AUTH,
+            Why::Auth,
             copy_text("beSshAgent.connect.unsupported", &[]).into(),
         ));
     };
     let mut agent = source.connect(agent_sock).await.map_err(|e| {
         (
-            why::AUTH,
+            Why::Auth,
             // 原话格收 agent 那一层的那一句 ＋ 它的原话。
             Said::with_raw(copy_text("beConnect.agent.unreachable", &[]), e.logged()),
         )
     })?;
     let identities = agent.request_identities().await.map_err(|e| {
         (
-            why::AUTH,
+            Why::Auth,
             Said::with_raw(copy_text("beConnect.agent.listFailed", &[]), &e),
         )
     })?;
     if identities.is_empty() {
-        return Err((why::AUTH, copy_text("beConnect.agent.empty", &[]).into()));
+        return Err((Why::Auth, copy_text("beConnect.agent.empty", &[]).into()));
     }
-    let mut last_err: Option<(&'static str, Said)> = None;
+    let mut last_err: Option<(Why, Said)> = None;
     for id in identities {
         let pubkey = id.public_key().into_owned();
         match session
@@ -883,7 +879,7 @@ async fn agent_auth(
             }
             Err(e) => {
                 last_err = Some((
-                    why::AUTH,
+                    Why::Auth,
                     Said::with_raw(copy_text("beConnect.agent.signFailed", &[]), &e),
                 ))
             }
@@ -891,7 +887,7 @@ async fn agent_auth(
     }
     Err(last_err.unwrap_or_else(|| {
         (
-            why::AUTH,
+            Why::Auth,
             copy_text("beConnect.agent.allFailed", &[]).into(),
         )
     }))
@@ -935,7 +931,7 @@ fn jump_failed(
     e: Said,
     fp: Option<String>,
 ) -> (Said, Option<String>) {
-    stages.note_why(crate::why::JUMP);
+    stages.note_why(Why::Jump);
     (inner(said, e), fp)
 }
 
@@ -1042,7 +1038,7 @@ async fn through_hops(
     let tunnel = open_tunnel(last, &req.host, req.port, stages)
         .await
         .map_err(|e| {
-            stages.note_why(crate::why::JUMP);
+            stages.note_why(Why::Jump);
             (e, None)
         })?;
     Ok((tunnel, compress, held))

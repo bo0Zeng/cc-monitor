@@ -26,18 +26,12 @@ import type { RemoteHealthPayload } from "./generated/RemoteHealthPayload";
 import { copyText } from "./copy-table";
 import { machineLabel } from "./acct-view";
 
-/** kind → toast 标题（未知 kind 回退到通用「远端提示」）。版本那三类由壳按那台回的新旧挑好（`stream_source/run.rs::version_health_kind`）。 */
+/** kind → toast 标题（未知 kind 回退到通用「远端提示」）。 */
 export function headlineFor(kind: string, origin: string): string {
   switch (kind) {
     // 拥塞那一句是那台后端写的、不带机器名 ⇒ 标题位排机器名。
     case "overflow":
       return machineLabel(origin);
-    case "version-older":
-      return copyText("remoteHealth.head.backendOld");
-    case "version-newer":
-      return copyText("remoteHealth.head.backendNewer");
-    case "version-incomparable":
-      return copyText("remoteHealth.head.versionIncomparable");
     case "snapshot":
       return copyText("remoteHealth.head.historyFailed");
     // 连接前那一步自动部署没成（那台机器不要这份后端 / 这一版没带 / 装不上），正文是那句原因。

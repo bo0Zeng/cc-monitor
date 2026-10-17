@@ -1,18 +1,5 @@
 use super::*;
 
-fn probe_cfg() -> crate::stream_source::RemoteConfig {
-    crate::stream_source::RemoteConfig {
-        host: "这个主机一定不存在-audit0805".into(),
-        label: "probe".into(),
-        port: 1,
-        user: "nobody".into(),
-        key_path: None,
-        host_key_fingerprint: None,
-        addresses: Vec::new(),
-        jump: None,
-    }
-}
-
 // 这里原来是「删远端文件的入口真的过了围栏吗」（喂 `/etc/passwd` 给 SFTP 直删、
 //   要求零网络就被结构守卫拒）。F11 改经远端后端删（`files-delete-session`，只收 sid）之后，
 //   那条 SFTP 直删与它的守卫一起走了；「只收 sid · 落点由后端按 sid 找」的判据住后端。
@@ -90,39 +77,6 @@ fn embedded_backend_binaries_present_and_valid() {
     assert!(key_of("Linux", "riscv64").is_err(), "未知 arch → 表外");
 }
 
-/// 🔴 `K-R70`：**那道身份见证真的会咬人** —— 四格（纯函数，不依赖内嵌产物在不在）。
-///
-/// ⚠ 这一条与上面那条判据分工：那条钉**接线**（有没有无条件跑），这条钉**行为**
-/// （跑了会不会说真话）。少任何一条，另一条都能被一个恒答 `true` 的实现骗过去。
-#[test]
-fn the_build_stamp_witness_actually_bites() {
-    let (o, c) = (deploy_contract::STAMP_OPEN, deploy_contract::STAMP_CLOSE);
-    let real = format!("头部随便什么{o}p9-sample{c}尾部随便什么");
-    assert!(
-        super::bytes_carry_build_stamp(real.as_bytes(), "p9-sample"),
-        "带着自己那个戳的字节被判「问不出身份」—— 见证会误拒正品"
-    );
-    assert!(
-        !super::bytes_carry_build_stamp(real.as_bytes(), "p9-other"),
-        "戳写着 `p9-sample` 而问它是不是 `p9-other`，它答了「是」—— 见证形同虚设"
-    );
-    assert!(
-        !super::bytes_carry_build_stamp(b"no stamp at all", "p9-sample"),
-        "一段没有戳的字节被判「身份可信」—— 那正是老启发式的失效面"
-    );
-    assert!(
-        !super::bytes_carry_build_stamp(real.as_bytes(), ""),
-        "空身份必须判假：空串会让「戳」退化成两个界标挨着，而那一形是噪音不是身份"
-    );
-    // ⚠ 反向自检：**戳不是随便一处提到 build_id 就算**。
-    //   旧启发式 `bytes_contain(bytes, build_id)` 会被裸出现的 id 喂饱 —— 而 backend
-    //   的 hello 帧里本来就带着这个串 ⇒ 那条判据在任何一份后端上都恒真。
-    assert!(
-        !super::bytes_carry_build_stamp(b"...p9-sample...", "p9-sample"),
-        "裸出现一次 id 就被当成身份戳 —— 那退回了 `K-R70` 之前那条恒真的启发式"
-    );
-}
-
 /// ★★ 🔴 `K-R70`（09-12）：**内嵌那份的身份只许来自它自己的字节。**
 ///
 /// # 它取代了什么，以及为什么不是「换个写法」
@@ -132,8 +86,7 @@ fn the_build_stamp_witness_actually_bites() {
 ///
 /// 1. 每一槽的 `build_id` **只许**是 `my_backend_id()`（`build.rs` 从内嵌字节里扫出、几份彼此相等的那一个）
 ///    —— 出现字面量、或退回源码 id（老 `pick()` 那条「问不出就拿源码顶上」的路）都红；
-/// 2. 部署路上**真的**跑了 [`bytes_carry_build_stamp`]，而且**不带前置条件**
-///    （老写法 `!bin.id_from_manifest && …` 正是「有清单就整个跳过」）；
+/// 2. 字节出门前的自检住后端（`deploy::install`，照计划核那一格自报的身份）；
 /// 3. 界标那两个字面量**不许**在本文件里出现第二份（闭集唯一住址在契约 crate）。
 ///
 /// 顺带钉住 arch 那条跨文件契约的**另一半**：`build.rs` 期待的每个 arch，
@@ -145,7 +98,7 @@ fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
     let src = std::fs::read_to_string(root.join("src/deploy.rs")).expect("读不到 deploy.rs");
     let prod = guard_core::production_code(&src);
     // 两份 musl 的槽与它们的身份取值口搬进了 `byte_table.rs`（全仓唯一的取字节口）；
-    //   「出门前那道见证」仍在本文件（部署路）。①④ 读那一份，② 读这一份，③ 两份都读。
+    //   ①④ 读那一份，③ 两份都读。
     let table_src =
         std::fs::read_to_string(root.join("src/byte_table.rs")).expect("读不到 byte_table.rs");
     let table = guard_core::production_code(&table_src);
@@ -171,32 +124,12 @@ fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
                  写字面量、或写一份 `.build_id` 旁文件再读它，是把标签换个地方抄（`KR70D1` 逐字点名的失效方向）。"
         );
     }
-    // ② 部署路真的跑了那道见证，而且**不带前置条件**。
-    let witness = format!("{}_carry_build_stamp(", "bytes");
-    let calls: Vec<&str> = prod
-        .lines()
-        .map(str::trim)
-        .filter(|l| l.contains(&witness) && !l.starts_with("pub fn"))
-        .collect();
-    assert_eq!(
-        calls.len(),
-        1,
-        "生产段里 `{witness}` 的调用处有 {} 个（应当恰好 1：`deploy_embedded_backend` 出门前那一道）：{calls:?}",
-        calls.len()
-    );
-    assert_eq!(
-        calls[0], "if !bytes_carry_build_stamp(bin.bytes, bin.build_id) {",
-        "那道见证被加了前置条件或换了形状：{}\n\
-             ★ 老写法 `!bin.id_from_manifest && !bytes_contain(…)` 的病就在前半句：\n\
-             **有清单时整道闸跳过**，而会出事的那一形（有人塞了别的字节、清单照旧）\n\
-             恰恰在那一支里。⇒ 它必须无条件跑。",
-        calls[0]
-    );
+    // ② 字节出门前的自检住后端（`deploy::install` 照计划核那一格自报的身份，判据 `install_tests` 那一条）。
     // ③ 界标闭集只有一个住址（契约 crate），这两份生产段只许经 `deploy_contract` 取。
     for mark in [deploy_contract::STAMP_OPEN, deploy_contract::STAMP_CLOSE] {
         assert!(
             !mark.is_empty(),
-            "契约 crate 的界标是空串 —— 空界标会让 `bytes_carry_build_stamp` 恒答 false ⇒ 自动部署整个静默关闭"
+            "契约 crate 的界标是空串 —— 空界标会让身份自检恒答「问不出」⇒ 自动部署整个静默关闭"
         );
         for (name, code) in [("byte_table.rs", &table), ("deploy.rs", &prod)] {
             assert!(
@@ -377,14 +310,14 @@ fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
     );
 }
 
-// ═══ 部署决策进本机常驻后端，本模块只放字节 ═══════════════════════
+// ═══ 装那一趟整趟在本机常驻后端，本模块只交事实 ═══════════════════════
 //
-// 要求：「部署决策（该不该换 · 换成什么 · 身份判定）进后端；monitor 只放字节」。
+// 要求：「部署决策（该不该换 · 换成什么 · 身份判定）与那一趟装都在后端；monitor 只交字节文件的路径、收进度」。
 
-/// 🔴 两条部署路（自动 · 按钮）各**恰好一次**问本机常驻后端要计划、照计划取字节；本文件生产段里**零处**再做判定
-/// （问那台 `uname` · 查表 A/B · 扫身份戳 · 判新旧 · 判落点 · 认旧入口），也零处碰旁挂标记。带正控。
+/// 🔴 两条部署路（自动 · 按钮）各**恰好一次**请本机常驻后端装（`install(`），本文件生产段里**零处**再做判定或碰那台
+/// （问那台 `uname` · 查表 A/B · 扫身份戳 · 判新旧 · 判落点 · 放字节 · 删残件），也零处碰旁挂标记。带正控。
 #[test]
-fn the_deploy_paths_only_place_bytes_the_backend_decides() {
+fn the_deploy_paths_only_hand_facts_to_the_backend() {
     let prod =
         guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
     let decisions = |code: &str| -> Vec<&'static str> {
@@ -397,9 +330,11 @@ fn the_deploy_paths_only_place_bytes_the_backend_decides() {
             "interpret_stamp_scan(",
             "interpret_target_probe(",
             "identity_decision(",
-            "legacy_verdict(",
+            "identity_of_bytes(",
             "build_relation(",
             "connect_and_exec_capture(",
+            "fs.put(",
+            "fs.mkdirs(",
         ]
         .into_iter()
         .filter(|f| code.contains(f))
@@ -408,17 +343,15 @@ fn the_deploy_paths_only_place_bytes_the_backend_decides() {
     assert_eq!(
         decisions(&prod),
         Vec::<&str>::new(),
-        "deploy.rs 又自己判起了部署 —— 判定住本机常驻后端（`deploy-plan`）"
+        "deploy.rs 又自己判起了部署 / 自己放起了字节 —— 那一趟住本机常驻后端（`deploy-install`）"
     );
     for sig in [
         "pub async fn ensure_backend_deployed(",
         "pub async fn deploy_remote_backend(",
     ] {
         let code = dp1_body(&prod, sig);
-        guard_core::find_pinned(&code, "ask_plan(")
-            .unwrap_or_else(|e| panic!("{sig}：不是恰好一处问后端要计划（{e}）"));
-        guard_core::find_pinned(&code, "planned_binary(&plan)")
-            .unwrap_or_else(|e| panic!("{sig}：不是恰好一处照计划取字节（{e}）"));
+        guard_core::find_pinned(&code, "install(")
+            .unwrap_or_else(|e| panic!("{sig}：不是恰好一处请后端装（{e}）"));
         for marker in [
             "/.build_id",
             "read_marker(",
@@ -428,31 +361,34 @@ fn the_deploy_paths_only_place_bytes_the_backend_decides() {
             assert!(!code.contains(marker), "{sig} 又碰起了旁挂标记：{marker}");
         }
     }
-    // 正控：每一种判定写法都认得出来。
+    let body = dp1_body(&prod, "async fn install_for(");
+    guard_core::find_pinned(&body, ".call(INSTALL_CMD, args, INSTALL_BUDGET)")
+        .unwrap_or_else(|e| panic!("装那一口不是恰好一处问本机后端（{e}）"));
+    // 正控：每一种写法都认得出来。
     assert_eq!(
-        decisions("probe_key( choose( key_from_uname( judge( stamp_scan_cmd( interpret_stamp_scan( interpret_target_probe( identity_decision( legacy_verdict( build_relation( connect_and_exec_capture(").len(),
-        11
+        decisions("probe_key( choose( key_from_uname( judge( stamp_scan_cmd( interpret_stamp_scan( interpret_target_probe( identity_decision( identity_of_bytes( build_relation( connect_and_exec_capture( fs.put( fs.mkdirs(").len(),
+        13
     );
 }
 
-/// 计划的解码器读后端那一侧同一份金样（`tests/__fixtures__/deploy-plan.golden.json`，后端 `deploy_plan_tests` 核键集 == 真产出）；
-/// 严格收：少一格 · 多一格 · 认不出的动作 / 旧落点结论都是错（两侧漂了当场说出来）。
+/// 应答的解码器读后端那一侧同一份金样（`tests/__fixtures__/deploy-install.golden.json`，后端 `deploy_plan_tests` 核键集 == 真产出）；
+/// 严格收：少一格 · 多一格 · 认不出的动作 · 空身份都是错（两侧漂了当场说出来）。
 #[test]
-fn the_plan_decoder_reads_the_golden() {
-    let golden: serde_json::Value =
-        serde_json::from_str(include_str!("../../__fixtures__/deploy-plan.golden.json")).unwrap();
+fn the_reply_decoder_reads_the_golden() {
+    let golden: serde_json::Value = serde_json::from_str(include_str!(
+        "../../__fixtures__/deploy-install.golden.json"
+    ))
+    .unwrap();
     let product = &golden["product"];
-    let p = decode_plan(product).expect("金样解不开");
-    assert_eq!(p.key.label(), "Linux / x86_64");
-    assert_eq!(p.expected, "p0a-placeholder");
-    assert!(
-        matches!(&p.action, DeployAction::Keep { theirs, .. } if theirs == "p0b-placeholder"),
-        "{:?}",
-        p.action
-    );
+    let got = decode_installed(product).expect("金样解不开");
     assert_eq!(
-        p.leftovers,
-        vec![".cc-monitor/bin/ccm.1-2-3.tmp".to_string()]
+        (
+            got.did,
+            got.build.as_str(),
+            got.os.as_str(),
+            got.said.as_str()
+        ),
+        (Did::Keep, "p0b-placeholder", "Linux", "placeholder")
     );
     let with = |k: &str, v: serde_json::Value| {
         let mut x = product.clone();
@@ -460,162 +396,59 @@ fn the_plan_decoder_reads_the_golden() {
         x
     };
     let mut missing = product.clone();
-    missing.as_object_mut().unwrap().remove("why");
+    missing.as_object_mut().unwrap().remove("said");
     let mut extra = product.clone();
     extra["surprise"] = serde_json::json!(1);
     for bad in [
         missing,
         extra,
         with("action", serde_json::json!("overwrite")),
-        with("action", serde_json::json!("skip")),
-        with("os", serde_json::json!("Plan9")),
-        with("expected", serde_json::json!("")),
-        with("leftovers", serde_json::json!("ccm.1-2-3.tmp")),
+        with("build", serde_json::json!("")),
+        with("ack", serde_json::json!("x")),
     ] {
-        assert!(decode_plan(&bad).is_err(), "该拒却收了：{bad}");
+        assert!(decode_installed(&bad).is_err(), "该拒却收了：{bad}");
     }
-    let skip = with("action", serde_json::json!("skip"));
-    let skip = {
-        let mut x = skip;
-        x["theirs"] = serde_json::Value::Null;
-        x
-    };
-    let p = decode_plan(&skip).expect("skip 那一形解不开");
-    assert_eq!(p.action, DeployAction::Skip);
-}
-
-/// 要求：「部署失败留下半截 …tmp，之后连上也不清」⇒「下次连上清旧的」。
-/// 计划里的残件（后端判的）在**每次连上**的那条路上照删：自动部署与手动部署两个入口各恰好一处（在执行链上，不只是解码得出来）。
-#[test]
-fn the_planned_leftovers_are_swept_on_every_connect() {
-    let prod =
-        guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
-    for sig in [
-        "pub async fn ensure_backend_deployed(",
-        "pub async fn deploy_remote_backend(",
-    ] {
-        let body = dp1_body(&prod, sig);
-        guard_core::find_pinned(
-            &body,
-            "sweep_leftovers(&plan.leftovers, &fs, &cfg.origin_label()).await;",
-        )
-        .unwrap_or_else(|e| panic!("{sig} 里没有照删计划里的残件：{e}"));
-    }
-}
-
-/// 🔴`deploy-plan` 那一跳在本机后端里拨号 ⇒ 它的逐地址指纹随计划交回、由 monitor 按**同一个**判定固化
-/// （`dial_host::settle_host_key`，monitor 自己开链路那几条也走它），不另写一份。两向：解码器把金样里的 `ack` 原样收进来；
-/// 问计划那一口恰好一处把它交给 `settle_host_key`。
-#[test]
-fn the_plan_ack_is_pinned_by_the_same_judgement_as_every_other_dial() {
-    let golden: serde_json::Value =
-        serde_json::from_str(include_str!("../../__fixtures__/deploy-plan.golden.json")).unwrap();
-    let p = decode_plan(&golden["product"]).expect("金样解不开");
     assert_eq!(
-        p.ack.fingerprints.get("192.0.2.2:22").map(String::as_str),
+        decode_installed(&with("action", serde_json::json!("skip"))).map(|i| i.did),
+        Ok(Did::Skip)
+    );
+}
+
+/// 🔴装那一趟在本机后端里拨号 ⇒ 它的逐地址指纹随应答交回、由 monitor 按**同一个**判定固化
+/// （`dial_host::settle_host_key`，monitor 自己开链路那几条也走它），不另写一份。两向：解码器把金样里的 `ack` 原样收进来；
+/// 装那一口恰好一处把它交给 `settle_host_key`。
+#[test]
+fn the_install_ack_is_pinned_by_the_same_judgement_as_every_other_dial() {
+    let golden: serde_json::Value = serde_json::from_str(include_str!(
+        "../../__fixtures__/deploy-install.golden.json"
+    ))
+    .unwrap();
+    let got = decode_installed(&golden["product"]).expect("金样解不开");
+    assert_eq!(
+        got.ack.fingerprints.get("192.0.2.2:22").map(String::as_str),
         Some("SHA256:placeholder"),
         "解码器没把 ack 的逐地址指纹收进来：{:?}",
-        p.ack
+        got.ack
     );
     let prod =
         guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
-    let body = dp1_body(&prod, "async fn ask_plan_for(");
+    let body = dp1_body(&prod, "async fn install_for(");
     guard_core::find_pinned(
         &body,
-        "crate::dial_host::settle_host_key(cfg, &dial, &plan.ack)",
+        "crate::dial_host::settle_host_key(cfg, &dial, &got.ack)",
     )
-    .unwrap_or_else(|e| panic!("问计划那一口没把 ack 交给固化判定（{e}）：\n{body}"));
-}
-
-// 这里原来是远端删会话那道结构守卫的单元判据；守卫随 SFTP 直删一起走了，
-//   「哪几份才许删」那一问的判据住后端（`session_file_for_delete` 的删会话那一族）。
-
-#[test]
-fn remote_parent_and_marker() {
-    assert_eq!(
-        remote_parent("/home/pi/.cc-monitor/bin/cc-monitor-backend"),
-        "/home/pi/.cc-monitor/bin"
-    );
-    assert_eq!(remote_parent("/x"), "/");
-    assert_eq!(remote_parent("rel/path"), "rel");
-    assert_eq!(remote_parent("noslash"), ".");
-    // 旁挂标记的路径拼法随标记一起退役（后端那条路读字节自己的身份戳）。
-}
-
-// ===== T04 审计① 上传读回判据 =====
-// 判读回的话与「读回不对当场删」随判定搬进了拨号核心（`ssh-dial/sftp.rs::put_verified` · `verify_readback`，手机那一趟装同一份），
-//   逐格判据在后端 `dial_sftp_tests.rs`（`the_readback_verdict_names_what_went_wrong` 等）。
-
-/// **结构性守卫**：两条 deploy 路径的**内容**上传必须走 verified。
-///
-/// 版本标记允许裸上传：它是"校验通过"的凭证，必须最后写。
-#[test]
-fn deploy_paths_use_verified_upload_for_content() {
-    fn body<'a>(src: &'a str, sig: &str) -> &'a str {
-        let i = src
-            .find(sig)
-            .unwrap_or_else(|| panic!("找不到 {sig}——守卫失效了"));
-        let j = src[i..].find("\n}\n").map(|k| i + k).unwrap_or(src.len());
-        &src[i..j]
-    }
-    let checks = [(
-        body(
-            include_str!("../../../src/frontend/shell/src/deploy.rs"),
-            "pub async fn deploy_remote_backend(",
-        ),
-        "deploy_remote_backend",
-    )];
-    let mut verified_total = 0usize;
-    for (b, what) in checks {
-        let code = b
-            .lines()
-            .filter(|l| !l.trim_start().starts_with("//"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        // 反向自检：真取到函数体了。上传经本机后端（`upload_verified` 读回比对 · `put_marker` 只写标记）。
-        assert!(
-            code.contains("upload_verified("),
-            "{what}: 取到的体里没有上传，守卫在空转"
-        );
-        verified_total += code.matches("upload_verified(").count();
-        for l in code.lines() {
-            if !(l.contains("put_marker(") || l.contains("fs.put(")) {
-                continue;
-            }
-            assert!(
-                l.contains("marker"),
-                "{what}: 内容上传没走读回比对（`upload_verified`）—— {}",
-                l.trim()
-            );
-        }
-    }
-    // 计数自检：按钮那条路体内 1 处后端二进制（acct-iso 那 6 份随命令退役：7 → 1）。
-    assert_eq!(
-        verified_total, 1,
-        "期望 1(backend 体内)，实得 {verified_total}"
-    );
+    .unwrap_or_else(|e| panic!("装那一口没把 ack 交给固化判定（{e}）：\n{body}"));
 }
 
 // `the_sftp_dependency_is_really_on_russh_sftp_three` 搬去了后端（`tests/backend/dial_sftp_tests.rs`）：
 //   `russh-sftp` 出了界面清单（界面进程零 SFTP），今天只在 `src/backend/Cargo.toml` 里 —— 判据跟着依赖走，读后端那份清单与 lock。
 
-/// 要求：「PATH 上放什么：后端二进制本身，名字叫 `ccm`；落点 `~/.cc-monitor/bin/ccm` —— 本机与远端同一个；
-/// 不要的三样：① 转发 shim · ② 软链 · ③ 与后端重复的第二份字节」· 「一个二进制，落 ~/.cc-monitor/bin/ccm（它自己就是 ccm，没有 shim）」。
-///
-/// 两向：部署两条路（自动 · 按钮）往落点写的恰是后端字节（`upload_verified(&fs, LANDING_REL, bin.bytes` 各恰一处），
-/// 生产段里**零处**再造入口（shim 的记号只许作为「认旧的」出现在 `ccm_legacy.rs`）；落点常量与后端那一侧同源（`relay_route_core`）。
+/// 要求：「PATH 上放什么：后端二进制本身，名字叫 `ccm`；落点 `~/.cc-monitor/bin/ccm` —— 本机与远端同一个」。
+/// 落点上放的是那一格后端字节本身（后端 `install_tests` 钉）；生产段里**零处**再造入口；落点常量与后端那一侧同源（`relay_route_core`）。
 #[test]
-fn the_landing_holds_the_backend_bytes_and_nothing_else_is_put_there() {
+fn the_landing_constant_is_the_backend_one_and_no_entry_is_made_here() {
     let prod =
         guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
-    for sig in [
-        "pub async fn ensure_backend_deployed(",
-        "pub async fn deploy_remote_backend(",
-    ] {
-        let code = dp1_body(&prod, sig);
-        guard_core::find_pinned(&code, "upload_verified(&fs, LANDING_REL, bin.bytes, 0o700)")
-            .unwrap_or_else(|e| panic!("{sig}：落点上放的不是后端字节（{e}）"));
-    }
     for gone in [
         "ccm_entry_shim",
         "put_ccm_entry",
@@ -677,23 +510,24 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         addresses: vec![],
         jump: None,
     };
-    // ① 部署那几问（判定在本机常驻后端：`deploy-plan` 沿同一条 SSH 问那台；放字节经 `files` 链路）
+    // ① 装那一趟整趟在本机常驻后端（`deploy-install`）：这一版「带着」的那一格就是台架那台的键、字节是被测的那份后端本身
+    //   （它得真跑得起 `--place-self`），身份读它自己的戳。
     let fs = RemoteFs::open(&cfg).await.expect("开不了 files 链路");
-    // 身份读那份字节自己的戳（那台 sshd 上真跑一次只读扫描），不读旁挂标记。
-    //   送去的字节里埋一段戳（界标取自契约 crate，与生产扫描同一对），其余是 3 MB 的噪声。
-    let stamp = format!(
-        "{}sr1b-id{}",
-        deploy_contract::STAMP_OPEN,
-        deploy_contract::STAMP_CLOSE
-    );
-    let mut bytes: Vec<u8> = (0..3_000_000u32).map(|i| (i * 7 % 251) as u8).collect();
-    bytes.splice(1_000_000..1_000_000, stamp.bytes());
-    // 这一版「带着」的那一格就是台架那台（本机 sshd）的键，自报 `sr1b-id`（与送去的字节同一个戳）。
-    let mine = [(
-        deploy_contract::Key::this_machine().expect("台架那台的键认不出"),
-        "sr1b-id",
-    )];
-    let decide = || async { ask_plan_for(&cfg, &mine).await.map(|p| p.action) };
+    let me = std::fs::read(s("backend")).expect("读不到被测后端");
+    let deploy_contract::RemoteIdentity::Stamp(id) = deploy_contract::identity_of_bytes(
+        &me,
+        deploy_contract::Marks {
+            open: deploy_contract::STAMP_OPEN,
+            close: deploy_contract::STAMP_CLOSE,
+        },
+    ) else {
+        panic!("被测后端不说自己是哪一版");
+    };
+    let key = deploy_contract::Key::this_machine().expect("台架那台的键认不出");
+    let slots = vec![serde_json::json!({
+        "os": key.os.label(), "arch": key.arch.label(), "id": id, "path": s("backend"),
+    })];
+    let decide = || async { install_for(&cfg, slots.clone()).await.map(|i| i.did) };
     // 读数脚本 ② 在这个落点上留下了一份 3 MB 的随机字节（没有身份戳）⇒ 那台 sshd 上真扫一次：
     //   显式失败、一个字节都不写（盘上那份原样）；出路是机器页「卸载后端」—— 这里就用那颗按钮的真命令删掉它。
     let leftover = std::fs::read(&backend_path).expect("读数脚本 ② 留下的那份不在 —— 台架变了");
@@ -711,60 +545,33 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         .await
         .expect("卸载（出路）");
     assert!(msg.starts_with("已删除 ~/.cc-monitor/bin/ccm"), "{msg}");
-    let d0 = decide().await;
-    assert!(
-        matches!(d0, Ok(DeployAction::Deploy(_))),
-        "落点缺 ⇒ 该部署：{d0:?}"
-    );
-    fs.mkdirs(remote_parent(LANDING_REL)).await.unwrap();
-    upload_verified(&fs, LANDING_REL, &bytes, 0o700)
-        .await
-        .expect("上传 ＋ 读回");
-    assert_eq!(
-        decide().await,
-        Ok(DeployAction::Skip),
-        "装完 ⇒ 该跳过（那台上那份的戳没被扫出来就不会是这一格）"
-    );
+    assert_eq!(decide().await, Ok(Did::Deploy), "落点缺 ⇒ 该装");
     assert_eq!(
         std::fs::read(&backend_path).unwrap(),
-        bytes,
+        me,
         "盘上那份不是送去的字节"
     );
-    std::fs::write(&backend_path, b"").unwrap();
-    let d2 = decide().await;
-    assert!(
-        matches!(d2, Ok(DeployAction::Deploy(_))),
-        "截成 0 字节 ⇒ 该重部署：{d2:?}"
+    assert_eq!(
+        decide().await,
+        Ok(Did::Skip),
+        "装完 ⇒ 该跳过（那台上那份的戳没被扫出来就不会是这一格）"
     );
-    // 落点上是一份不说自己是谁的东西 ⇒ 显式失败、不覆盖（判定层不写；盘上那份原样）。
+    std::fs::write(&backend_path, b"").unwrap();
+    assert_eq!(decide().await, Ok(Did::Deploy), "截成 0 字节 ⇒ 该重装");
+    // 落点上是一份不说自己是谁的东西 ⇒ 显式失败、不覆盖（盘上那份原样）。
     std::fs::write(&backend_path, b"#!/bin/sh\necho not ours\n").unwrap();
     let d3 = decide().await;
     assert!(
         matches!(&d3, Err(e) if e.said.contains("不说自己是哪一版")),
         "无戳的文件 ⇒ 该显式失败：{d3:?}"
     );
-    // ② 落点上是旧版放的三行入口 ⇒ 同样不说自己是谁 ⇒ 显式失败、不覆盖（不留旧兼容）。
-    std::fs::write(
-        &backend_path,
-        "#!/bin/sh\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec '/x/cc-monitor-backend' ccm \"$@\"\n",
-    )
-    .unwrap();
-    let d4 = decide().await;
-    assert!(
-        matches!(&d4, Err(e) if e.said.contains("不说自己是哪一版")),
-        "旧入口 ⇒ 该显式失败：{d4:?}"
-    );
-    upload_verified(&fs, LANDING_REL, &bytes, 0o700)
-        .await
-        .unwrap();
-    // ③ 两个写根之外 ⇒ 后端围栏拒、原话带回、盘上零改动
+    std::fs::write(&backend_path, &me).unwrap();
+    // ③ 暂存区之外 ⇒ 后端围栏拒、原话带回、盘上零改动
     let outside = format!("{rhome}/.cc-monitor/elsewhere/cc-monitor-backend");
-    let e = upload_verified(&fs, &outside, b"x", 0o700)
-        .await
-        .unwrap_err();
+    let e = fs.put(&outside, b"x", 0o700, true).await.unwrap_err();
     assert!(
-        e.said.contains("~/.cc-monitor/bin/"),
-        "拒绝的话没说只许哪两处：{e}"
+        e.said.contains("~/.cc-monitor/staging/"),
+        "拒绝的话没说只许哪一处：{e}"
     );
     assert!(!std::path::Path::new(&outside).exists());
     drop(fs);
@@ -860,8 +667,8 @@ fn dp1_silent_forms(body: &str) -> Vec<&'static str> {
     out
 }
 
-/// D1：`ensure_backend_deployed` 的返回类型是 `Result<String, DeployError>`（没有「没部署也算成功」那一支），
-/// 体内零 `Ok(None)` · 零 `debug!`；表拒绝恰好交成 `DeployError::Refused` 一处。
+/// D1：`ensure_backend_deployed` 的返回类型是 `Result<String, Said>`（没有「没部署也算成功」那一支），
+/// 体内零 `Ok(None)` · 零 `debug!`；后端的失败原样往上交（`?`）。
 #[test]
 fn the_auto_deploy_never_refuses_silently() {
     let prod =
@@ -869,7 +676,7 @@ fn the_auto_deploy_never_refuses_silently() {
     let body = dp1_body(&prod, "pub async fn ensure_backend_deployed(");
     let sig = body.lines().next().unwrap_or_default();
     assert!(
-        sig.contains("-> Result<String, DeployError>"),
+        sig.contains("-> Result<String, Said>"),
         "返回类型变了：{sig} —— `Option` 回来就是「没部署也算成功」那一支回来了"
     );
     assert_eq!(
@@ -877,9 +684,8 @@ fn the_auto_deploy_never_refuses_silently() {
         Vec::<&str>::new(),
         "体内又有了静默的拒绝：\n{body}"
     );
-    guard_core::find_pinned(&body, "Err(DeployError::Refused(").unwrap_or_else(|e| {
-        panic!("表拒绝没有恰好一处交成 `DeployError::Refused`（{e}）：\n{body}")
-    });
+    guard_core::find_pinned(&body, "install(cfg).await?")
+        .unwrap_or_else(|e| panic!("后端的失败没有原样往上交（{e}）：\n{body}"));
     // 正控：两种静默写法都认得出来。
     assert_eq!(
         dp1_silent_forms("x => return Ok(None),\n tracing::debug!(\"跳过\");"),
@@ -894,14 +700,17 @@ fn a_failed_auto_deploy_reaches_the_screen_through_remote_health() {
     let at = guard_core::find_pinned(&prod, "crate::deploy::ensure_backend_deployed(cfg).await")
         .unwrap_or_else(|e| panic!("调用处不是恰好一处：{e}"));
     let rest = &prod[at..];
-    let err_at = rest.find("Err(e) =>").expect("找不到 Err 那一支");
+    let err_at = rest.find("Err(said) =>").expect("找不到 Err 那一支");
     let arm = &rest[err_at..];
     let arm = &arm[..arm.find("\n        }\n").unwrap_or(arm.len())];
     guard_core::find_pinned(arm, "kind: \"deploy\"")
         .unwrap_or_else(|e| panic!("Err 那一支没有恰好一条 `kind: \"deploy\"`（{e}）：\n{arm}"));
     guard_core::find_pinned(arm, "health(payload)")
         .unwrap_or_else(|e| panic!("Err 那一支没有恰好一次发到远端健康通道（{e}）：\n{arm}"));
-    assert!(arm.contains("e.said()"), "发出去的不是那句话本身：\n{arm}");
+    assert!(
+        arm.contains("message: said.said"),
+        "发出去的不是那句话本身：\n{arm}"
+    );
     assert!(
         arm.contains("detail: said.detail"),
         "发出去的没带复制详情：\n{arm}"
@@ -909,21 +718,6 @@ fn a_failed_auto_deploy_reaches_the_screen_through_remote_health() {
     assert!(
         arm.contains("None"),
         "Err 那一支不再「不阻断、按没确认处理」：\n{arm}"
-    );
-}
-
-/// 读回比对不对 ⇒ **当场删掉传坏的那一份** —— 那一删住拨号核心 `put_verified`（后端 `dial_sftp_tests` 用一台会读坏的合成服务端判它）；
-/// 这里钉 monitor 这一侧真的要了那一格：部署的上传恰一处 `fs.put(remote_path, bytes, mode, true)`（`verify` 开着），自己不再判、不再删。
-#[test]
-fn a_bad_readback_removes_the_upload_it_just_made() {
-    let prod =
-        guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
-    let body = dp1_body(&prod, "pub(crate) async fn upload_verified(");
-    guard_core::find_pinned(&body, "fs.put(remote_path, bytes, mode, true)")
-        .unwrap_or_else(|e| panic!("部署的上传没开读回比对（{e}）：\n{body}"));
-    assert!(
-        !body.contains("fs.remove("),
-        "读回不对那一删在后端，monitor 这一侧不该再删一次：\n{body}"
     );
 }
 
@@ -961,36 +755,4 @@ fn the_alias_block_truth_no_longer_lives_in_sftp() {
             panic!("正控：`assets/aliases/block.rs` 里量不出 `{d}`（{e}）—— 这把尺子是瞎的")
         });
     }
-}
-
-// ═══ 部署只升不降：`BUILD_ID` 可比序 ═══════════════════════════════════
-//
-// 要求：「多个 monitor 连同一远端：部署只在「我的比盘上的新」时才换（BUILD_ID 可比序）」；
-// 它改写规矩 2「对就复用，不对就换」与「恰一个戳 ≠ ⇒ 换」那一格。
-// 守的：两个不同版本的 monitor 连同一台远端，不许互相重部署。
-
-/// 🔴 B2b：自动部署那条路遇到「不动」⇒ 回**那台上的**身份（源码切臂：`Keep` 臂交出 `Some(theirs)`，末尾只在没有时才回这一版 id）。
-#[test]
-fn hx2_keeping_a_newer_backend_reports_its_identity_not_ours() {
-    let prod =
-        guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
-    let f = guard_core::find_pinned(&prod, "pub async fn ensure_backend_deployed(")
-        .expect("自动部署那个函数不在了");
-    let body = &prod[f..];
-    let arm = guard_core::find_pinned(body, "DeployAction::Keep { theirs, why } => {")
-        .expect("自动部署那条路没有 Keep 臂");
-    let arm_end = arm + body[arm..].find("\n        }").expect("Keep 臂没收尾");
-    let arm_body = &body[arm..arm_end];
-    // Keep 臂之后还要扫一次旧落点 ⇒ 臂里交出那台上的身份、函数末尾回它（不再在臂里直接 return）。
-    assert_eq!(
-        arm_body.matches("Some(theirs)").count(),
-        1,
-        "Keep 臂没回那台上的身份：{arm_body}"
-    );
-    guard_core::find_pinned(
-        body,
-        "Ok(theirs.unwrap_or_else(|| bin.build_id.to_string()))",
-    )
-    .expect("自动部署末尾回的不是「那台上的身份，没有才是这一版」");
-    assert!(!arm_body.contains("upload_verified"), "Keep 臂里写了字节");
 }

@@ -381,6 +381,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 - `login` —— 一份登录作业自己收了（`key` ＝ 作业号；`body` ＝ `{state: done \| failed, said?, detail?}`）
 - `manual` —— 这台会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了 · 某个号记「MCP 要登录」的那份文件翻了；重问 `manual-list`）
 - `machines` —— 这一端的机器表（`machines.json` 被改写；重问 `machines-read`）
+- `machine` —— 这一端连的某台远端此刻的状态（`key` ＝ 那台的名字；`body` ＝ 那台的成品 `MachineState`；丢了重问 `machine-read`）
 - `session_hidden` —— 这台某个活会话隐不隐藏变了（`key` ＝ sid；`body` ＝ `{hidden}`：那一格，不隐藏 ⇒ `null`）：注解 · 这台偏好 · 会话血缘动了之后判出来的
 
 #### `RereadWhy`
@@ -12091,21 +12092,41 @@ type UserPathState = "on" | "off" | "unknown" | "not_windows";
 
 码：`bad_args`
 
-#### `deploy-plan`
+#### `deploy-install`
 
-那台的后端要不要换、换成哪一格。
+给那台装 / 升级后端。
 
-收 `args` · 可撤 · CLI：`ccm -- --deploy-plan`
+收 `args` · 可撤 · 只在流上
 
-入参 `DeployPlanReq` · 回包 `Planned`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `DeployInstallReq` · 回包 `Installed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Carried = { os: string, arch: string, id: string, };
-type DeployPlanReq = { dial: MachineDial, carried: Array<Carried>, 
+type DeployInstallReq = { dial: MachineDial, slots: Array<SlotRow>, 
 /**
- * 那台的名字（非空）。
+ * 那台的名字（非空；进度帧 `deploy.machine` 也是它）。
  */
 machine: string, };
+type Installed = { 
+/**
+ * `skip`（已是这一版）· `deploy`（放上了这一版）· `keep`（那台不比这一版旧 ⇒ 一个字节没写）。
+ */
+action: "skip" | "deploy" | "keep", 
+/**
+ * 这一趟做了什么那一句（`deploy::Plan::said`）。
+ */
+said: string, 
+/**
+ * 落点上现在那一份自报的身份（`keep` ⇒ 那台上那一份的；否则这一版的）。
+ */
+build: string, 
+/**
+ * 那台的 OS（表 A 的词）。
+ */
+os: string, 
+/**
+ * 问 `uname` 那一趟拨号的 ack 原样（逐地址指纹 · 严格与否，拨号核心 `DialAck` 那一形）：monitor 按它固化指纹。
+ */
+ack: unknown, };
 type MachineConfig = { 
 /**
  * 首选地址。
@@ -12148,39 +12169,132 @@ use?: string | null,
  * ssh-agent 套接字的路径（界面进程此刻的 `SSH_AUTH_SOCK`；缺 ⇒ 用本进程自己的）。
  */
 agent_sock?: string | null, };
-type Planned = { 
-/**
- * 那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`）。
- */
-os: string, arch: string, label: string, 
-/**
- * 那一格这一版带着的字节自报的身份（对照物）。
- */
-expected: string, 
-/**
- * `skip`（已是这一版）· `deploy`（没装 / 0 字节 / 更旧）· `keep`（另一版、不比这一版旧 ⇒ 不动它）。
- */
-action: "skip" | "deploy" | "keep", 
-/**
- * 人读原因（`skip` 时空串）。
- */
-why: string, 
-/**
- * `keep` 时那台上那一份自报的身份，否则 `null`。
- */
-theirs: string | null, 
-/**
- * 落点目录里没人要的上传残件（家目录相对，排序）；列不出那个目录 ⇒ `[]`（下次连上再问）。
- */
-leftovers: Array<string>, 
-/**
- * 问 `uname` 那一趟拨号的 ack 原样（逐地址指纹 · 严格与否，拨号核心 `DialAck` 那一形）：monitor 按它固化指纹。
- */
-ack: unknown, };
 type Prefer = { host: string, port: number, };
+type SlotRow = { os: string, arch: string, id: string, 
+/**
+ * 本机上那一格字节的文件（绝对路径；本后端读它，不经帧传字节）。
+ */
+path: string, };
 ```
 
-码：`bad_args` · `io_failed` · `refused` · `unreachable` · `undecidable`
+码：`bad_args` · `io_failed` · `refused` · `unreachable` · `undecidable` · `not_carried` · `fenced` · `place_failed`
+
+#### `machine-round`
+
+交那台接常驻这一轮的结论。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+
+入参 `MachineRoundReq` · 回包 `MachineState`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "other";
+type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
+type MachineFixButton = { fix: MachineFix, label: string, };
+type MachineRound = { "state": "connecting" } | { "state": "up", relation: VersionRelation, differs: Array<string>, } | { "state": "down", problem: MachineRoundProblem, unsupported: boolean, };
+type MachineRoundProblem = { text: string, detail: string, why: DialWhy | null, seen_key: string | null, };
+type MachineRoundReq = { machine: string, round: MachineRound, version: string, };
+type MachineStage = "deploy" | "attach";
+type MachineState = { state: MachineStateKind, 
+/**
+ * 没连上的原因码（`down` · `host_key_changed` 才有）。
+ */
+reason: DialWhy | null, 
+/**
+ * 正在连时到哪一步。
+ */
+stage: MachineStage | null, 
+/**
+ * 那台 cc-monitor 的产品版本号：与这一版同一份字节时就是这一版的号；别的报不出 ⇒ 空。
+ */
+version: string | null, 
+/**
+ * 与这一版的版本关系（握手过才有）。
+ */
+versionRelation: VersionRelation | null, 
+/**
+ * 那台的系统（部署问到过才有）。
+ */
+os: string | null, 
+/**
+ * 名字旁那个词（连着时空）。
+ */
+word: string, 
+/**
+ * 问题行那一句（空 ⇒ 不出问题行）。
+ */
+said: string, fixes: Array<MachineFixButton>, 
+/**
+ * 指纹不对时那台这一次出示的主机指纹（`host_key_changed` 才有）。
+ */
+seenHostKey: string | null, 
+/**
+ * 这一轮没连上 / 做不了时的复制详情（界面照原样跟在问题行那句后面）。
+ */
+detail: string | null, };
+type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
+type VersionRelation = "same" | "older" | "newer" | "incomparable";
+```
+
+码：`bad_args`
+
+#### `machine-read`
+
+机器表里每台此刻的状态。
+
+不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+
+入参 `NoArgs` · 回包 `MachineRead`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "other";
+type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
+type MachineFixButton = { fix: MachineFix, label: string, };
+type MachineRead = { machines: { [key in string]: MachineState }, };
+type MachineStage = "deploy" | "attach";
+type MachineState = { state: MachineStateKind, 
+/**
+ * 没连上的原因码（`down` · `host_key_changed` 才有）。
+ */
+reason: DialWhy | null, 
+/**
+ * 正在连时到哪一步。
+ */
+stage: MachineStage | null, 
+/**
+ * 那台 cc-monitor 的产品版本号：与这一版同一份字节时就是这一版的号；别的报不出 ⇒ 空。
+ */
+version: string | null, 
+/**
+ * 与这一版的版本关系（握手过才有）。
+ */
+versionRelation: VersionRelation | null, 
+/**
+ * 那台的系统（部署问到过才有）。
+ */
+os: string | null, 
+/**
+ * 名字旁那个词（连着时空）。
+ */
+word: string, 
+/**
+ * 问题行那一句（空 ⇒ 不出问题行）。
+ */
+said: string, fixes: Array<MachineFixButton>, 
+/**
+ * 指纹不对时那台这一次出示的主机指纹（`host_key_changed` 才有）。
+ */
+seenHostKey: string | null, 
+/**
+ * 这一轮没连上 / 做不了时的复制详情（界面照原样跟在问题行那句后面）。
+ */
+detail: string | null, };
+type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
+type NoArgs = Record<symbol, never>;
+type VersionRelation = "same" | "older" | "newer" | "incomparable";
+```
+
+码：`bad_args`
 
 #### `place-verdict`
 
@@ -13692,7 +13806,6 @@ needs: string | null, };
 | `--chores-mark` | ＝ 帧命令 `chores-mark`：记下「待办」里的一个选择 |
 | `--chores-merge` | ＝ 帧命令 `chores-merge`：把几台的「待办」件数合成一份 |
 | `--data-report` | ＝ 帧命令 `data-report`：「文件与数据」那一份成品 |
-| `--deploy-plan` | ＝ 帧命令 `deploy-plan`：那台的后端要不要换、换成哪一格 |
 | `--drift-report` | ＝ 帧命令 `drift-report`：这台后端的漂移账 |
 | `--exit-policy-read` | ＝ 帧命令 `exit-policy-read`：读「退出行为」那个值（值住后端所在那台） |
 | `--exit-policy-set` | ＝ 帧命令 `exit-policy-set`：写「退出行为」那个值，写完读回 |
@@ -13760,6 +13873,7 @@ needs: string | null, };
 | `--mcp-sync-preview` | ＝ 帧命令 `mcp-sync-preview`：在要被写的那一台看装上之后那一条 |
 | `--mcp-sync-source` | ＝ 帧命令 `mcp-sync-source`：装到别的机器时来源那一条 |
 | `--ping` | ＝ 帧命令 `ping`：问活：零载荷，回 `ok` |
+| `--place-self` | 部署那一趟：暂存区里新传上去的这一份读自己的字节，自报是这一版才 `rename(2)` 盖掉落点 `~/.cc-monitor/bin/ccm`；回 `{placed: true, build_id}`；不在暂存区 ⇒ `outside_staging`；自报不是这一版 ⇒ `not_self`、暂存件当场删 |
 | `--place-verdict` | ＝ 帧命令 `place-verdict`：本机那一份放不放 |
 | `--plan-ack` | ＝ 帧命令 `plan-ack`：认可一条要你看（只记在 cc-monitor；键带条目版本，版本换了那一条再出）；推一帧 `changed {plan}` 带新的数 |
 | `--plan-cell-view` | ＝ 帧命令 `plan-cell-view`：一格的 agent 视角（agent 站在这一格时 pb 印给它的那一段，原样） |
@@ -13786,7 +13900,6 @@ needs: string | null, };
 | `--resident-attach` | 小中继：连这台家里常驻后端的套接字，stdin → 套接字、套接字 → stdout 原样对拷，任一边断就退；断开 ⇒ stdout 一行 `{attach:"refused", reason: absent\|unreachable}`、退出 2 |
 | `--resident-ensure` `[--replace]` | 确保这台的常驻后端在听：已在 ⇒ `{pid, replaced: false}`（pid 是套接字对端）；没在 ⇒ 起一个脱离的自己、回 `{pid, replaced}`；`--replace` 在听那一位比自己旧才停掉再起（只升不降） |
 | `--resident-stop` `[--grace <秒>]` | 停这台的常驻后端：问套接字在听的是谁 → SIGTERM → 宽限（缺省 35 秒）→ SIGKILL；回 `{stopped: graceful\|killed\|not_running, pid}` |
-| `--resident-verdict` | ＝ 帧命令 `resident-verdict`：远端常驻后端要不要换一次 |
 | `--resolve` | ＝ 帧命令 `resolve`：按 `ResumeSpec` 推出恢复命令 `CommandPlan` |
 | `--rotation-facts` | ＝ 帧命令 `rotation-facts`：每个号此刻的事实 |
 | `--rotation-for-new` | ＝ 帧命令 `rotation-for-new`：新会话用哪份策略 |

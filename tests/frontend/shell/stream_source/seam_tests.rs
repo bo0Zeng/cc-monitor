@@ -92,3 +92,25 @@ async fn an_overflow_on_the_local_stream_is_said() {
         "本机那条流上的拥塞丢帧没原样说出来"
     );
 }
+
+/// 链路没开成交给循环的那一份：后端给的原因码与那台出示的指纹随那一句走（断开时机器状态按它定那一态与修法）；
+/// 读应答这一跳坏了 ⇒ 两格空。
+#[test]
+fn a_refused_link_hands_its_reason_and_seen_key_to_the_loop() {
+    let refused = crate::dial_host::Unopened {
+        said: crate::dial_host::refused_said("指纹变了".into(), Some("命令：dial")),
+        why: Some(cmd_wire::machine::Why::HostKey),
+        seen_key: Some("SHA256:seen".into()),
+    };
+    let p = super::problem_of(refused);
+    assert_eq!(
+        (p.text.as_str(), p.detail.as_str()),
+        ("指纹变了", "命令：dial")
+    );
+    assert_eq!(
+        (p.why, p.seen_key.as_deref()),
+        (Some(cmd_wire::machine::Why::HostKey), Some("SHA256:seen"))
+    );
+    let broken = super::problem_of(crate::detail::Said::written("读不动".to_string()).into());
+    assert_eq!((broken.why, broken.seen_key), (None, None));
+}

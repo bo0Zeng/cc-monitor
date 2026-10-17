@@ -95,7 +95,10 @@ mod byte_table; // 全仓唯一的取字节口：一台机器要哪一份可执�
 #[path = "../../../../tests/frontend/shell/contract_crate_guard_tests.rs"]
 mod contract_crate_guard;
 mod copy_table; // 对外文案表的 Rust 读口（与前端 `copyText` 同一份 `src/shared/copy/table.json`）
+/// 这一版的产品版本号（全产品一个源：monitor 那个包的版本，与安装包 · 界面同一个号）。
+pub(crate) const PRODUCT_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub(crate) mod detail; // 壳这一端写的「复制详情」那几行 ＋ 壳命令失败的那一形 `Said`
+
 
 // 截图台架那个无头壳只在台架编译时有（发版构建不带）：判据 · 本体。
 #[cfg(test)]
@@ -111,7 +114,6 @@ mod local_backend_host; // P2s（C8）：本机后端的生命周期（起/停/�
 #[path = "../../../../tests/frontend/shell/local_origin_registry.rs"]
 mod local_origin_registry;
 mod logging;
-mod machine_state; // 每台机器的状态成品（连着 · 没连上与原因码 · 版本关系 · 修法），`backend_status` 的 `machine` 一格
 mod platform; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
               // 分叉的 monitor 这一侧（整个模块）删了：界面经通道直说那台后端 `session-fork`（`src/frontend/ui/session-writes.ts`）。
 mod files_batch_relay; // 后端的 `files_batch` 帧（一组做到哪了）按票转给文件窗口订的 `files-batch/<票>`
@@ -645,12 +647,11 @@ pub fn run() {
                     }
                 });
             }
-            // 每台机器的状态成品一变就推一帧（`machine-state`：`{origin, machine}`，与 `backend_status` 那一格同形）。
+            // 本机那一台的状态成品一变就推一帧（`machine-state`：`{origin, machine}`，与 `backend_status` 那一格同形）；远端各台走本机后端的 `changed {machine}`。
             {
                 let handle = app.handle().clone();
-                crate::machine_state::install_out(move |origin| {
-                    let machine = backend_control::machine_now(origin);
-                    let payload = serde_json::json!({ "origin": origin, "machine": machine });
+                crate::local_backend_host::install_machine_out(move |machine| {
+                    let payload = serde_json::json!({ "origin": crate::inbound_client::LOCAL_ORIGIN, "machine": machine });
                     if let Err(e) = handle.emit(ui_contract::events::MACHINE_STATE, payload) {
                         tracing::warn!("emit machine-state failed: {e}");
                     }
@@ -992,12 +993,7 @@ pub(crate) fn reconcile_remote_streams() -> backend_control::Reconciled {
             respawn: remote_respawn(cfg, replay.clone(), app.clone()),
         })
         .collect();
-    let out = backend_control::reconcile_remotes(wanted);
-    // 停下的那几台（删了 / 停用了）状态成品作废；还在表里的由读点按「连接这台」说停用。
-    for origin in &out.stopped {
-        machine_state::forget(origin);
-    }
-    out
+    backend_control::reconcile_remotes(wanted)
 }
 
 /// 机器表里**要连的**那几台（某台 `"connect": false` ⇒ 不在里面）。

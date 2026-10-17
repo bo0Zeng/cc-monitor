@@ -1541,6 +1541,25 @@
       "zh": "无 HOME · 未启动后端",
       "args": []
     },
+    "bePlaceSelf.place.outsideStaging": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{path} 不在暂存区 · 未安装",
+      "args": ["path"]
+    },
+    "bePlaceSelf.place.notSelf": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{path} 自报的不是 {mine} · 已删除 · 下次连接重传",
+      "args": ["path", "mine"],
+      "limited": ["连接"]
+    },
+    "bePlaceSelf.place.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{path} 换进安装位置失败 · {why}",
+      "args": ["path", "why"]
+    },
     "beResident.spawn.noSelf": {
       "kind": "error",
       "role": "原因格",
@@ -2110,6 +2129,12 @@
       "role": "报错",
       "zh": "本版 cc-monitor 未带 {os} / {arch} 的后端 · 无法装到 {machine} · 发布版带",
       "args": ["machine", "os", "arch"]
+    },
+    "deploy.place.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} 上的后端没换进安装位置 · {why} · 原来那份未动",
+      "args": ["machine", "why"]
     },
     "deploy.bytes.unreadable": {
       "kind": "error",
@@ -5440,24 +5465,6 @@
       "kind": "body",
       "role": "片段",
       "zh": "读取远端历史失败",
-      "args": []
-    },
-    "remoteHealth.head.backendOld": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "远端后端要更新",
-      "args": []
-    },
-    "remoteHealth.head.backendNewer": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "远端后端版本较新",
-      "args": []
-    },
-    "remoteHealth.head.versionIncomparable": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "远端后端版本不可比",
       "args": []
     },
     "skeletonView.ledgerFromIndex.noIndex": {

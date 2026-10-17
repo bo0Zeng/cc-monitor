@@ -106,7 +106,13 @@ async fn a_refusal_comes_back_with_the_fingerprint_it_saw() {
         .await
         .expect_err("拨不通被读成了通");
     assert!(
-        matches!(&e, LinkError::Refused { reason: Some(w), .. } if w == "auth"),
+        matches!(
+            &e,
+            LinkError::Refused {
+                reason: Some(cmd_wire::machine::Why::Auth),
+                ..
+            }
+        ),
         "{e:?}"
     );
     // 后端写好的复制详情原样带出来（那一句里不带原话，原话在这里）。

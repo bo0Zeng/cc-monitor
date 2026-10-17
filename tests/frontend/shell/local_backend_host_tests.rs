@@ -2713,7 +2713,7 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
 /// 起本机后端被拒（口上有东西、接不上：升级后上一次脱离留下的旧后端还占着口最常见）是一件动得了手的事，
 /// 下一步那一句要进本机那一台的状态成品（设置窗本机那一行照画），不许只进日志。
 /// 判据：那一句写在真被拒的那一臂（不从 `reason` 串里认字）、取的是那条文案、带着占口进程的 pid；每次起之前先清掉上一次的。
-/// 成品带不带它由 `machine_state_tests::a_refused_local_start_carries_the_next_step` 钉。
+/// 成品带不带它由 `a_refused_local_start_carries_the_next_step` 钉。
 #[test]
 fn the_start_refusal_reaches_the_local_machine_row() {
     let me = guard_core::production_code(include_str!(
@@ -2723,7 +2723,7 @@ fn the_start_refusal_reaches_the_local_machine_row() {
     let refused = with_copy(braced_block(&me, "Adopt::Refused(why) => {", 300, 3000));
     for (needle, why) in [
         (
-            "crate::machine_state::note_local_refused(Some(",
+            "note_local_refused(Some(",
             "被拒那一臂不再把下一步交给本机那一台的状态成品 —— 用户什么都看不到",
         ),
         (
@@ -2742,7 +2742,7 @@ fn the_start_refusal_reaches_the_local_machine_row() {
     }
     let start = body_of(&me, "pub fn start_local_backend() -> StartOutcome {");
     assert!(
-        start.contains("crate::machine_state::note_local_refused(None)"),
+        start.contains("note_local_refused(None)"),
         "起之前不清上一次被拒的那句 ⇒ 这一次起成了，本机那一行还挂着旧的下一步"
     );
 }
@@ -4523,4 +4523,95 @@ fn nobody_hands_the_backend_a_path_for_the_credentials_file() {
     assert!(iso
         .iter()
         .any(|(k, v)| k == crate::config::DATA_DIR_ENV && v == "/iso/home"));
+}
+
+/// 本机那一行的成品与跨语言金样「本机没连上」「本机被拒」两形逐格相等（远端那几形由后端现产，`tests/backend/control/machine_state_tests.rs`）。
+#[test]
+fn the_local_row_matches_the_cross_language_golden() {
+    let golden: serde_json::Value =
+        serde_json::from_str(include_str!("../../__fixtures__/machine-state.golden.json"))
+            .expect("金样不是 JSON");
+    for (name, refused) in [
+        ("本机没连上", None),
+        ("本机被拒", Some("结束口上那个进程再重开（结构夹具）")),
+    ] {
+        let want = golden["cases"]
+            .as_array()
+            .and_then(|c| c.iter().find(|c| c["name"] == name))
+            .unwrap_or_else(|| panic!("金样里没有「{name}」那一形"))["machine"]
+            .clone();
+        let got = {
+            let _g = crate::inbound_client::local_origin_test_lock();
+            note_local_foreign(None);
+            note_local_refused(refused);
+            let p = local_product(false, Some("p7z"));
+            note_local_refused(None);
+            p
+        };
+        let got = serde_json::to_value(got)
+            .unwrap()
+            .to_string()
+            .replace(&format!("\"{}\"", crate::PRODUCT_VERSION), "\"<ver>\"");
+        let got: serde_json::Value = serde_json::from_str(&got).unwrap();
+        assert_eq!(got, want, "本机「{name}」那一形与金样对不上\n现产：{got}");
+    }
+}
+
+/// 起本机后端被拒（口上有东西、接不上）：下一步那一句跟着本机那一台的成品走，直到再起一次把它清掉；接上了不说。
+#[test]
+fn a_refused_local_start_carries_the_next_step() {
+    use cmd_wire::machine::MachineStateKind;
+    let _g = crate::inbound_client::local_origin_test_lock();
+    note_local_foreign(None);
+    note_local_refused(Some("停掉那个进程再重开"));
+    let p = local_product(false, Some("p8c-mine"));
+    assert_eq!(
+        (p.state, p.next.as_deref()),
+        (MachineStateKind::Down, Some("停掉那个进程再重开"))
+    );
+    note_local_foreign(Some("p7a-old"));
+    assert_eq!(
+        local_product(false, Some("p8c-mine")).next.as_deref(),
+        Some("停掉那个进程再重开"),
+        "口上是旧版那一形（要更新）也带着"
+    );
+    note_local_foreign(None);
+    assert_eq!(
+        local_product(true, Some("p8c-mine")).next,
+        None,
+        "接上了就不说"
+    );
+    note_local_refused(None);
+    assert_eq!(local_product(false, Some("p8c-mine")).next, None);
+}
+
+/// 壳里造机器状态成品只许本机那一处（远端各台的成品在后端定）：壳生产段里写 `MachineState {` 字面构造的文件恰好是这一份。
+#[test]
+fn only_the_local_row_is_built_in_the_shell() {
+    let files: Vec<(std::path::PathBuf, String)> = guard_core::addr::shell_population_roots()
+        .iter()
+        .flat_map(|root| guard_core::scan_tree!(root, &["rs"]))
+        .collect();
+    assert!(
+        files.len() > 50,
+        "壳的人群只扫到 {} 份 —— 走法坏了",
+        files.len()
+    );
+    let builds: std::collections::BTreeSet<String> = files
+        .iter()
+        .filter(|(_, src)| {
+            guard_core::production_code(src).lines().any(|l| {
+                let l = l.trim();
+                l.contains("MachineState {") && !l.contains("-> MachineState {")
+            })
+        })
+        .map(|(p, _)| guard_core::addr::rel_of(p))
+        .collect();
+    assert_eq!(
+        builds,
+        ["src/frontend/shell/src/local_backend_host.rs".to_string()]
+            .into_iter()
+            .collect(),
+        "壳里另有一处在造机器状态成品"
+    );
 }

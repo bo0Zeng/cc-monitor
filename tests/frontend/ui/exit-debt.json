@@ -1,9 +1,9 @@
 {
   "说明": [
     "出口扫描判据（tests/frontend/ui/exit-judgment-scan.vitest.ts）的欠账名单：界面与壳里「自己判定、自己格式化、按码取字」今天的存量，只许删、不许加。",
-    "每格 = 文件 × 规则（规则表 tests/frontend/ui/exit-rules.ts）× 剥过注释后的命中数，逐格恒等；ceiling = 各格之和，只许往下改（判据里 CEILING_AT_MOST 同改）。",
+    "每格 = 文件 × 规则（规则表 tests/frontend/ui/exit-rules.ts）× 剥过注释后的命中数，逐格恒等；ceiling = 各格之和，只许往下改（判据里 153ING_AT_MOST 同改）。",
     "kind：第 1 批 / 第 3 批 / 第 7 批 = 复审三排给哪一批收；留 = 不是违例（why 写凭什么：界面自己的骨架词表 · 宿主 / 通道本职的失败句 · 开发者日志 · 排版几何）。10-10 起没有「待分」（判据钉着）。",
-    "手机端并进来：roots 里加它的目录与语言，跑一次判据，逐格登进来、ceiling 与 CEILING_AT_MOST 加上那几格 —— 唯一一次许加。"
+    "手机端并进来：roots 里加它的目录与语言，跑一次判据，逐格登进来、ceiling 与 153ING_AT_MOST 加上那几格 —— 唯一一次许加。"
   ],
   "roots": [
     {
@@ -19,7 +19,7 @@
       "lang": "kt"
     }
   ],
-  "ceiling": 170,
+  "ceiling": 153,
   "entries": [
     {
       "file": "src/frontend/ui/account-chip.ts",
@@ -164,9 +164,9 @@
     {
       "file": "src/frontend/ui/remote-health.ts",
       "rule": "caseWord",
-      "n": 6,
+      "n": 3,
       "kind": "第 7 批",
-      "why": "远端健康事件 kind ⇒ 标题（版本三类 · overflow · deploy …）：壳判好的种类再由界面取字；壳那一侧的事件带写好的标题（与机器状态一起收）"
+      "why": "远端健康事件 kind ⇒ 标题（overflow · deploy …）：壳判好的种类再由界面取字；壳那一侧的事件带写好的标题（与机器状态一起收）"
     },
     {
       "file": "src/frontend/ui/runs.ts",
@@ -251,13 +251,6 @@
       "n": 9,
       "kind": "第 7 批",
       "why": "测试连接停在哪一步 / 拨号阶段码 ⇒ 字（start · handshake … · dialing · hostKey …）：机器状态成品带 said（V12 同批）"
-    },
-    {
-      "file": "src/frontend/ui/settings/machine-state.ts",
-      "rule": "caseWord",
-      "n": 14,
-      "kind": "第 7 批",
-      "why": "V12：断开的原因码 ⇒ 字（机器状态成品带 said）"
     },
     {
       "file": "src/frontend/ui/tab-batch-menu.ts",

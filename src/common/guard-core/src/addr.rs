@@ -244,36 +244,6 @@ pub fn stream_source_file(name: &str) -> String {
         .1
 }
 
-/// `parse_frame` 认得的全部 `kind`：从它的生产段源码里摘（`"xxx" =>` 那几条臂）。
-/// 认得哪些种类不另抄一张表：判据拿它与跨语言金样的种类两向比。
-pub fn parse_frame_kinds() -> std::collections::BTreeSet<String> {
-    let prod = stream_source_production();
-    let lines: Vec<&str> = prod.lines().collect();
-    let start = lines
-        .iter()
-        .position(|l| l.starts_with("pub fn parse_frame("))
-        .expect("stream_source 生产段里找不到 `pub fn parse_frame(` —— 抽取面画错了");
-    let end = (start..lines.len())
-        .find(|&k| lines[k] == "}")
-        .expect("`parse_frame` 没有收尾");
-    let mut kinds = std::collections::BTreeSet::new();
-    for l in &lines[start..=end] {
-        if let Some(rest) = l.trim_start().strip_prefix('"') {
-            if let Some((k, tail)) = rest.split_once('"') {
-                if tail.trim_start().starts_with("=>") {
-                    kinds.insert(k.to_string());
-                }
-            }
-        }
-    }
-    assert!(
-        kinds.len() >= 10,
-        "只从 parse_frame 里摘到 {} 种 —— 抽取坏了（用它的判据此刻是空转的）",
-        kinds.len()
-    );
-    kinds
-}
-
 /// 第 `i` 行（0 起）所在的那一项的名字：往上找最近一处包着它的 `fn` / `struct` / `enum` / `const` / `static` / `trait`
 ///（Rust 源码；按缩进与收口的 `}` 认外层，粗，但归错会红在名字对不上上）。找不到 ⇒ `"<顶层>"`。
 /// 逐处登记按「文件 × 外层函数」认，不按处数认。

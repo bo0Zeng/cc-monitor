@@ -1,255 +1,314 @@
 {
-  "说明": [
-    "设置窗机器列表 / 卡头那一格的成品（backend_status 的 machine）的跨语言金样。",
-    "Rust：tests/frontend/shell/machine_state_tests.rs 按 name 走生产函数现产，序列化后与 machine 逐格相等。",
-    "TS：tests/frontend/ui/settings/machine-state.vitest.ts 读同一份，逐形严格解码、逐形画出那一句与修法。",
-    "版本号与原因码是结构夹具，不取自任何真机。",
-    "version 是产品版本号：同一份字节才报得出，写成占位 <ver>（Rust 那一侧把现产的号换成它再比；发版改号不动金样）。",
-    "next 是壳写好的下一步那一句（只有本机起后端被拒时有），界面照原样画在问题行下面。"
-  ],
   "cases": [
     {
-      "name": "连着",
       "machine": {
-        "state": "up",
+        "detail": null,
+        "fixes": [],
+        "next": null,
+        "os": null,
         "reason": null,
+        "said": "",
+        "seenHostKey": null,
         "stage": null,
+        "state": "up",
         "version": "<ver>",
         "versionRelation": "same",
-        "os": null,
-        "fixes": [],
-        "seenHostKey": null,
-        "detail": null,
-        "next": null
-      }
+        "word": ""
+      },
+      "name": "连着"
     },
     {
-      "name": "正在连",
       "machine": {
-        "state": "connecting",
+        "detail": null,
+        "fixes": [],
+        "next": null,
+        "os": null,
         "reason": null,
+        "said": "连接 gpu-01 · 启动 cc-monitor",
+        "seenHostKey": null,
         "stage": "attach",
+        "state": "connecting",
         "version": null,
         "versionRelation": null,
-        "os": null,
-        "fixes": [],
-        "seenHostKey": null,
-        "detail": null,
-        "next": null
-      }
+        "word": "连接中"
+      },
+      "name": "正在连"
     },
     {
-      "name": "正在装",
       "machine": {
+        "detail": null,
+        "fixes": [],
+        "next": null,
+        "os": null,
+        "reason": null,
+        "said": "安装 cc-monitor → gpu-01",
+        "seenHostKey": null,
+        "stage": null,
         "state": "installing",
-        "reason": null,
-        "stage": null,
         "version": null,
         "versionRelation": null,
-        "os": null,
-        "fixes": [],
-        "seenHostKey": null,
-        "detail": null,
-        "next": null
-      }
+        "word": "安装中"
+      },
+      "name": "正在装"
     },
     {
-      "name": "正在更新",
       "machine": {
+        "detail": null,
+        "fixes": [],
+        "next": null,
+        "os": null,
+        "reason": null,
+        "said": "更新 gpu-01 · cc-monitor",
+        "seenHostKey": null,
+        "stage": null,
         "state": "updating",
-        "reason": null,
-        "stage": null,
         "version": null,
         "versionRelation": null,
-        "os": null,
-        "fixes": [],
-        "seenHostKey": null,
-        "detail": null,
-        "next": null
-      }
+        "word": "更新中"
+      },
+      "name": "正在更新"
     },
     {
-      "name": "密钥被拒",
       "machine": {
-        "state": "down",
+        "detail": "命令：dial\n对象：gpu-01\n断在：拨号没成\n码：auth\n原话：raw words",
+        "fixes": [
+          {
+            "fix": "push_key",
+            "label": "推送公钥…"
+          },
+          {
+            "fix": "conn_settings",
+            "label": "连接设置"
+          }
+        ],
+        "next": null,
+        "os": null,
         "reason": "auth",
+        "said": "连接失败 · 密钥被拒",
+        "seenHostKey": null,
         "stage": null,
+        "state": "down",
         "version": null,
         "versionRelation": null,
-        "os": null,
-        "fixes": [
-          "push_key",
-          "conn_settings"
-        ],
-        "seenHostKey": null,
-        "detail": "命令：dial\n对象：ms-金样-密钥被拒\n断在：拨号没成\n码：auth\n原话：raw words",
-        "next": null
-      }
+        "word": "离线"
+      },
+      "name": "密钥被拒"
     },
     {
-      "name": "无应答",
       "machine": {
-        "state": "down",
+        "detail": "命令：dial\n对象：gpu-01\n断在：拨号没成\n码：timeout\n原话：raw words",
+        "fixes": [
+          {
+            "fix": "retry",
+            "label": "重试"
+          },
+          {
+            "fix": "conn_settings",
+            "label": "连接设置"
+          }
+        ],
+        "next": null,
+        "os": null,
         "reason": "timeout",
-        "stage": null,
-        "version": null,
-        "versionRelation": null,
-        "os": null,
-        "fixes": [
-          "retry",
-          "conn_settings"
-        ],
+        "said": "连接失败 · 无应答",
         "seenHostKey": null,
-        "detail": "命令：dial\n对象：ms-金样-无应答\n断在：拨号没成\n码：timeout\n原话：raw words",
-        "next": null
-      }
-    },
-    {
-      "name": "要密码",
-      "machine": {
+        "stage": null,
         "state": "down",
-        "reason": "password",
-        "stage": null,
         "version": null,
         "versionRelation": null,
-        "os": null,
-        "fixes": [
-          "push_key"
-        ],
-        "seenHostKey": null,
-        "detail": "命令：dial\n对象：ms-金样-要密码\n断在：拨号没成\n码：password\n原话：raw words",
-        "next": null
-      }
+        "word": "离线"
+      },
+      "name": "无应答"
     },
     {
-      "name": "指纹变了",
       "machine": {
-        "state": "host_key_changed",
+        "detail": "命令：dial\n对象：gpu-01\n断在：拨号没成\n码：host_key\n原话：raw words",
+        "fixes": [
+          {
+            "fix": "compare_fingerprint",
+            "label": "比对指纹…"
+          }
+        ],
+        "next": null,
+        "os": null,
         "reason": "host_key",
+        "said": "主机指纹变更 · 未连接",
+        "seenHostKey": "SHA256:new",
         "stage": null,
+        "state": "host_key_changed",
         "version": null,
         "versionRelation": null,
-        "os": null,
-        "fixes": [
-          "compare_fingerprint"
-        ],
-        "seenHostKey": "SHA256:new",
-        "detail": "命令：dial\n对象：ms-金样-指纹变了\n断在：拨号没成\n码：host_key\n原话：raw words",
-        "next": null
-      }
+        "word": "指纹变更"
+      },
+      "name": "指纹变了"
     },
     {
-      "name": "要更新",
       "machine": {
-        "state": "needs_update",
+        "detail": null,
+        "fixes": [
+          {
+            "fix": "update",
+            "label": "更新"
+          }
+        ],
+        "next": null,
+        "os": null,
         "reason": null,
+        "said": "gpu-01 要更新",
+        "seenHostKey": null,
         "stage": null,
+        "state": "needs_update",
         "version": null,
         "versionRelation": "older",
-        "os": null,
-        "fixes": [
-          "update"
-        ],
-        "seenHostKey": null,
-        "detail": null,
-        "next": null
-      }
+        "word": "要更新"
+      },
+      "name": "要更新"
     },
     {
-      "name": "较新",
       "machine": {
-        "state": "newer",
+        "detail": null,
+        "fixes": [],
+        "next": null,
+        "os": null,
         "reason": null,
+        "said": "gpu-01 版本较新 · 部分功能不可用",
+        "seenHostKey": null,
         "stage": null,
+        "state": "newer",
         "version": null,
         "versionRelation": "newer",
-        "os": null,
-        "fixes": [],
-        "seenHostKey": null,
-        "detail": null,
-        "next": null
-      }
+        "word": "版本较新"
+      },
+      "name": "较新"
     },
     {
-      "name": "版本不可比",
       "machine": {
-        "state": "up",
+        "detail": null,
+        "fixes": [],
+        "next": null,
+        "os": null,
         "reason": null,
+        "said": "",
+        "seenHostKey": null,
         "stage": null,
+        "state": "up",
         "version": null,
         "versionRelation": "incomparable",
-        "os": null,
-        "fixes": [],
-        "seenHostKey": null,
-        "detail": null,
-        "next": null
-      }
+        "word": "开发版"
+      },
+      "name": "版本不可比"
     },
     {
-      "name": "不是 Unix",
       "machine": {
-        "state": "unsupported",
-        "reason": "not_unix",
-        "stage": null,
-        "version": null,
-        "versionRelation": null,
-        "os": null,
+        "detail": "命令：dial\n对象：gpu-01\n断在：拨号没成\n码：not_unix\n原话：raw words",
         "fixes": [],
-        "seenHostKey": null,
-        "detail": null,
-        "next": null
-      }
-    },
-    {
-      "name": "停用",
-      "machine": {
-        "state": "disabled",
+        "next": null,
+        "os": null,
         "reason": null,
+        "said": "gpu-01 · 仅支持 Unix",
+        "seenHostKey": null,
         "stage": null,
+        "state": "unsupported",
         "version": null,
         "versionRelation": null,
-        "os": null,
-        "fixes": [
-          "connect"
-        ],
-        "seenHostKey": null,
-        "detail": null,
-        "next": null
-      }
+        "word": "不支持"
+      },
+      "name": "不是 Unix"
     },
     {
-      "name": "本机没连上",
       "machine": {
-        "state": "down",
-        "reason": "local",
-        "stage": null,
-        "version": "<ver>",
-        "versionRelation": "same",
-        "os": null,
+        "detail": "命令：dial\n对象：gpu-01\n断在：拨号没成\n码：password\n原话：raw words",
         "fixes": [
-          "retry"
+          {
+            "fix": "push_key",
+            "label": "推送公钥…"
+          }
         ],
+        "next": null,
+        "os": null,
+        "reason": "password",
+        "said": "连接失败 · 不支持仅密码登录 · cc-monitor 只用密钥",
         "seenHostKey": null,
-        "detail": null,
-        "next": null
-      }
+        "stage": null,
+        "state": "down",
+        "version": null,
+        "versionRelation": null,
+        "word": "离线"
+      },
+      "name": "要密码"
     },
     {
-      "name": "本机被拒",
       "machine": {
-        "state": "down",
-        "reason": "local",
+        "detail": null,
+        "fixes": [
+          {
+            "fix": "connect",
+            "label": "连接"
+          }
+        ],
+        "next": null,
+        "os": null,
+        "reason": null,
+        "said": "连接已停用",
+        "seenHostKey": null,
         "stage": null,
+        "state": "disabled",
+        "version": null,
+        "versionRelation": null,
+        "word": "已停用"
+      },
+      "name": "停用"
+    },
+    {
+      "machine": {
+        "detail": null,
+        "fixes": [
+          {
+            "fix": "retry",
+            "label": "重试"
+          }
+        ],
+        "next": "结束口上那个进程再重开（结构夹具）",
+        "os": null,
+        "reason": null,
+        "said": "本机连接失败",
+        "seenHostKey": null,
+        "stage": null,
+        "state": "down",
         "version": "<ver>",
         "versionRelation": "same",
-        "os": null,
-        "fixes": [
-          "retry"
-        ],
-        "seenHostKey": null,
+        "word": "离线"
+      },
+      "name": "本机被拒"
+    },
+    {
+      "machine": {
         "detail": null,
-        "next": "结束口上那个进程再重开（结构夹具）"
-      }
+        "fixes": [
+          {
+            "fix": "retry",
+            "label": "重试"
+          }
+        ],
+        "next": null,
+        "os": null,
+        "reason": null,
+        "said": "本机连接失败",
+        "seenHostKey": null,
+        "stage": null,
+        "state": "down",
+        "version": "<ver>",
+        "versionRelation": "same",
+        "word": "离线"
+      },
+      "name": "本机没连上"
     }
+  ],
+  "说明": [
+    "设置窗机器列表 / 卡头那一格的成品（远端：本机后端 `changed {machine}` 的 body 与 `machine-read`；本机：`backend_status` 的 machine）的跨语言金样。",
+    "Rust：tests/backend/control/machine_state_tests.rs 按 name 走生产函数现产（本机那一形在 tests/frontend/shell/local_backend_host_tests.rs），逐字相等。",
+    "TS：tests/frontend/ui/settings/machine-state.vitest.ts 读同一份，逐形严格解码、逐形画出那一句与修法。",
+    "机器名 · 版本号 · 原因码是结构夹具，不取自任何真机；version 写成占位 <ver>（本机那一形由壳把现产的号换成它再比）。",
+    "next 是壳写好的下一步那一句（只有本机起后端被拒时有），界面照原样画在问题行下面。"
   ]
 }

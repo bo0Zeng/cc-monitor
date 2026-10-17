@@ -68,7 +68,7 @@ import { nonEmpty } from "../../test-support/non-empty.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36" | "J37";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -649,6 +649,18 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     },
     why: "INVARIANTS §40「本地 ＝ 不走 ssh 的远端」：两侧都要在读进来之后分本机与远端；线上同一个串，判法各在本侧唯一一处",
   },
+  J37: {
+    what: "每台机器此刻是什么样 · 名字旁那个词 · 问题行那一句 · 给哪几颗修法",
+    // 远端各台在后端（本机后端跑它、手机 mobcore 跑同一份）；本机那一行在壳（本机后端没起时没人替它说），照同一个类型、同一批文案键。
+    //   界面只按那一态挑样子，字照成品的 `word` · `said` · `fixes[].label`。壳里造成品只许本机那一处（`local_backend_host_tests.rs` 钉）。
+    homes: ["src/backend/deploy/machine.rs::product", "src/frontend/shell/src/local_backend_host.rs::local_product"],
+    status: "zero",
+    defs: ["downSaid", "fixLabel"],
+    needles: [
+      { text: 'copyText("machineState.down.', count: 0 },
+      { text: 'copyText("machineState.problem.', count: 0 },
+    ],
+  },
   J29: {
     what: "这个号能不能选 · 这台的默认号是谁（标了的第一个，没标 ⇒ 第一个）",
     homes: ["acct-core::account_selectable", "acct-core::effective_default"],
@@ -1014,6 +1026,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     PREFS_HANDOFF_REL: NONE,
     MACHINES_REL: NONE,
     file_name_of: NONE,
+    // 家目录底下一条相对路径的远端 POSIX 写法（部署叫暂存那一份用）；TS 侧没有孪生。
+    home_shell: NONE,
     // 常驻后端的门牌（`<家>/run/` 目录 · 套接字 · 进程记录；宿主与后端同一个函数）；TS 侧没有孪生。
     LISTEN_DIR_REL: NONE,
     LISTEN_SOCKET_NAME: NONE,

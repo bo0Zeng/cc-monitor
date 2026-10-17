@@ -1,16 +1,16 @@
 /**
- * 每台机器的状态成品（`backend_status` 的 `machine`）：严格收，按码排成「点 · 名字旁那个词 · 问题行一句 · 修法按钮」。
- * 哪一态、为什么、给哪几颗修法都是后端定的（`machine_state.rs`）；这里只是码 → 文案表那一条。
+ * 每台机器的状态成品：排成「点 · 名字旁那个词 · 问题行一句 · 修法按钮」。
+ * 哪一态、那一句、给哪几颗修法、按钮上的字都是后端定的（`deploy::machine`）；这里只按那一态挑样子（点 · 语气 · 进度条）。
  */
 import type { MachineState } from "../generated/MachineState";
 import type { MachineFix } from "../generated/MachineFix";
+import type { MachineFixButton } from "../generated/MachineFixButton";
 import type { MachineStateKind } from "../generated/MachineStateKind";
 import type { MachineDotState } from "../kit/status-dot";
 import { button } from "../kit/button";
 import { icon } from "../kit/icon";
 import { spinner } from "../kit/progress";
 import { copyDetailButton } from "../kit/detail";
-import { copyText } from "../copy-table";
 import { decodeMachineState } from "../machine-state-decode";
 
 export type { MachineState, MachineFix };
@@ -25,7 +25,7 @@ export interface MachineFace {
   /** 问题行的样子：出错 · 待办 · 正在做（转圈；`bar` ＝ 装 / 更新那一段带进度条）。 */
   tone: "error" | "warn" | "busy";
   bar: boolean;
-  fixes: MachineFix[];
+  fixes: MachineFixButton[];
   /** 页头「N 台离线 · M 台要更新」那两段各算不算它。 */
   offline: boolean;
   needsUpdate: boolean;
@@ -49,36 +49,12 @@ const DOT: Record<MachineStateKind, MachineDotState> = {
   disabled: "exited",
 };
 
-/** 掉线那一句（按原因码）。 */
-function downSaid(reason: string | null, machine: string): string {
-  switch (reason) {
-    case "resolve":
-      return copyText("machineState.down.resolve");
-    case "unreachable":
-      return copyText("machineState.down.unreachable");
-    case "timeout":
-      return copyText("machineState.down.timeout");
-    case "auth":
-      return copyText("machineState.down.auth");
-    case "password":
-      return copyText("machineState.down.password");
-    case "key_unreadable":
-      return copyText("machineState.down.keyUnreadable");
-    case "jump":
-      return copyText("machineState.down.jump");
-    case "local":
-      return copyText("machineState.down.local");
-    default:
-      return copyText("machinePage.problem.offline", { machine });
-  }
-}
-
-export function machineFace(m: MachineState, machine: string): MachineFace {
+export function machineFace(m: MachineState): MachineFace {
   const busy = m.state === "connecting" || m.state === "installing" || m.state === "updating";
-  const face = (word: string, problem: string): MachineFace => ({
+  return {
     dot: DOT[m.state],
-    word,
-    problem,
+    word: m.word,
+    problem: m.said,
     tone: busy ? "busy" : DOT[m.state] === "needs-you" ? "warn" : "error",
     bar: m.state === "installing" || m.state === "updating",
     fixes: m.fixes,
@@ -86,55 +62,7 @@ export function machineFace(m: MachineState, machine: string): MachineFace {
     needsUpdate: m.state === "needs_update",
     detail: m.detail ?? "",
     next: m.next ?? "",
-  });
-  switch (m.state) {
-    case "up":
-      return face(m.versionRelation === "incomparable" ? copyText("machineState.word.incomparable") : "", "");
-    case "connecting":
-      return face(
-        copyText("machineState.word.connecting"),
-        copyText("machineState.busy.connecting", {
-          machine,
-          stage: m.stage === "attach" ? copyText("machineState.stage.attach") : copyText("machineState.stage.deploy"),
-        }),
-      );
-    case "installing":
-      return face(copyText("machineState.word.installing"), copyText("machineState.busy.installing", { machine }));
-    case "updating":
-      return face(copyText("machineState.word.updating"), copyText("machineState.busy.updating", { machine }));
-    case "unknown":
-      return face("", "");
-    case "down":
-      return face(copyText("machinePage.state.down"), downSaid(m.reason, machine));
-    case "host_key_changed":
-      return face(copyText("machineState.word.hostKey"), copyText("machineState.problem.hostKey"));
-    case "needs_update":
-      return face(copyText("machineState.word.needsUpdate"), copyText("machineState.problem.needsUpdate", { machine }));
-    case "newer":
-      return face(copyText("machineState.word.newer"), copyText("machineState.problem.newer", { machine }));
-    case "disabled":
-      return face(copyText("machinePage.state.disabled"), copyText("machinePage.problem.disabled"));
-    case "unsupported":
-      return face(copyText("machineState.word.unsupported"), copyText("machineState.problem.notUnix", { machine }));
-  }
-}
-
-/** 修法按钮上的字。 */
-export function fixLabel(f: MachineFix): string {
-  switch (f) {
-    case "retry":
-      return copyText("machineState.fix.retry");
-    case "conn_settings":
-      return copyText("machinePage.conn.toggle");
-    case "push_key":
-      return copyText("machineCard.build.pushKey");
-    case "compare_fingerprint":
-      return copyText("machineState.fix.compareFingerprint");
-    case "update":
-      return copyText("machineState.fix.update");
-    case "connect":
-      return copyText("machinePage.problem.connect");
-  }
+  };
 }
 
 /**
@@ -159,16 +87,17 @@ export function paintProblem(el: HTMLElement, face: MachineFace, onFix: (fix: Ma
   for (const fix of face.fixes) {
     el.appendChild(
       button({
-        label: fixLabel(fix),
+        label: fix.label,
         size: "compact",
-        kind: fix === "update" ? "primary" : "secondary",
+        kind: fix.fix === "update" ? "primary" : "secondary",
         onClick: (ev) => {
           ev.stopPropagation();
-          onFix(fix);
+          onFix(fix.fix);
         },
       }),
     );
-  }  if (face.next !== "") {
+  }
+  if (face.next !== "") {
     const next = document.createElement("div");
     next.className = "machine-problem-next";
     next.textContent = face.next;

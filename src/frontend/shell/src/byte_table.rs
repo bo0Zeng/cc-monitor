@@ -138,13 +138,16 @@ pub(crate) fn choose(key: Result<Key, Refusal>) -> Result<Picked, Refusal> {
     pick(key).ok_or(Refusal::NotCarried { os, arch })
 }
 
-/// 这一版为远端**真带着**哪几格后端字节（表 A 有产线的格里 [`pick`] 取得到的）、各自自报的身份 ——
-/// 交给本机常驻后端出部署计划的那一份事实（「这一版带没带」只有放字节的一侧知道）。
-/// **不按承诺筛**：承不承诺是后端判（`deploy-plan`）。
-pub(crate) fn carried_backends() -> Vec<(Key, &'static str)> {
+/// 这一版为远端**真带着**哪几格后端字节（表 A 有产线的格里 [`pick`] 取得到的）、各自自报的身份 ＋ 那一份字节 ——
+/// 交给本机常驻后端装那一趟的那一份事实（「这一版带没带」只有放字节的一侧知道；字节落成文件交路径，`deploy.rs`）。
+/// **不按承诺筛**：承不承诺是后端判（`deploy-install`）。
+pub(crate) fn carried_backends() -> Vec<(Key, &'static str, &'static [u8])> {
     LINES
         .iter()
-        .filter_map(|k| Some((*k, pick(*k)?.build_id?)))
+        .filter_map(|k| {
+            let p = pick(*k)?;
+            Some((*k, p.build_id?, p.bytes))
+        })
         .collect()
 }
 

@@ -16,10 +16,18 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::control::ccm::user_path::CcmUserPath>(
         "`ccm` 所在目录在不在用户级 `PATH` 上 · 加 · 撤",
     ),
-    // **部署计划**：`{dial, carried, machine}` → 换成哪一格 · 落点那一份是谁 · 该不该换 · 旧落点那份删不删。
-    //   真异步（拨号 / 等远端）；一个字节都不写（放字节是 monitor 经 `files` 链路的事）。本体 `control/deploy_plan.rs`。
-    crate::wire::typed::asynchronous::<crate::control::deploy_plan::DeployPlan>(
-        "那台的后端要不要换、换成哪一格",
+    // **给那台装 / 升级后端**：`{dial, slots, machine}` → `{action, said, build, os, ack}`；每走一步记进那台的状态成品（推 `changed {machine}`）。
+    //   本体 `control/deploy_plan.rs`（编排住 `deploy` crate，手机同一份）。
+    crate::wire::typed::asynchronous::<crate::control::deploy_plan::DeployInstall>(
+        "给那台装 / 升级后端",
+    ),
+    // **那台远端此刻的状态**：壳交接常驻那一轮的结论（`machine-round`，原样的事实）· 机器表里每台的成品（`machine-read`）。
+    //   判定在 `deploy::machine`，表在 `control/machine_state.rs`（进程里的状态 ⇒ 只在流上答）。
+    crate::wire::typed::blocking::<crate::control::machine_state::MachineRoundCmd>(
+        "交那台接常驻这一轮的结论",
+    ),
+    crate::wire::typed::blocking::<crate::control::machine_state::MachineReadCmd>(
+        "机器表里每台此刻的状态",
     ),
     // **本机那一份放不放**：`{dest, machine}` → `{action: place|keep, why}`（只读落点那一个文件 ⇒ 阻塞档）。
     //   monitor 放本机后端之前还没有常驻后端 ⇒ 跑手上那份字节的 CLI 面问它（`--place-verdict`）。本体 `control/deploy_plan.rs::answer_place`。

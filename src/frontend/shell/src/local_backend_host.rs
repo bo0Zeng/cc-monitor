@@ -332,7 +332,7 @@ fn probe_listen_socket(sock_path: &std::path::Path, want_env: &[(String, String)
     let mine = crate::byte_table::my_backend_id();
     match hello_verdict(&line, mine, want_env) {
         HelloVerdict::Ours => {
-            crate::machine_state::note_local_foreign(None);
+            note_local_foreign(None);
             Probe::Ours(sock, line)
         }
         HelloVerdict::Stranger(why) => {
@@ -341,7 +341,7 @@ fn probe_listen_socket(sock_path: &std::path::Path, want_env: &[(String, String)
                 cmd_wire::frame::HelloHead::of(&line)
             {
                 if mine.is_some_and(|m| m != build_id) {
-                    crate::machine_state::note_local_foreign(Some(&build_id));
+                    note_local_foreign(Some(&build_id));
                 }
             }
             Probe::Stranger(Said::written(why))
@@ -892,7 +892,7 @@ fn start_detached(
         Adopt::Refused(why) => {
             // 被拒是动得了手的那一档（结束占着口的那个进程）：下一步交给本机那一台的状态成品，设置窗照画。
             // 只在这一臂写，不从 `reason` 串里认字；诚实降级那几档（没带后端 · 释放失败）只进日志。
-            crate::machine_state::note_local_refused(Some(&copy_text(
+            note_local_refused(Some(&copy_text(
                 "rsLocalBackendHost.start.refusedNext",
                 &[
                     ("why", &why.said),
@@ -1388,7 +1388,7 @@ pub fn start_local_backend() -> StartOutcome {
     // （从前锁的就是句柄表，`backend_status` 跟着等）。
     let _life = LIFECYCLE.lock().unwrap_or_else(|e| e.into_inner());
     // 上一次被拒的那句下一步作废：这一趟被拒会重新写下。
-    crate::machine_state::note_local_refused(None);
+    note_local_refused(None);
     let g = LOCAL_BACKEND.lock().unwrap_or_else(|e| e.into_inner());
     if g.is_some() {
         return StartOutcome::AlreadyRunning;
@@ -1589,6 +1589,127 @@ pub fn stop_local_backend() -> Result<crate::remote_resident::StopAnswer, Said> 
 //   `src/common/guard-core/src/lib.rs` 的 `test_module_ranges`；校验位（那一行的原文）
 //   **只有一个家** —— 下面 [`tests::the_strip_rule_this_file_leans_on_is_still_on_disk`]
 //   里那个 `PIN`，它在盘上找不着就当场红。
+// ─── 本机那一台的状态成品 ───────────────────────────────────────────────────────
+// 远端各台的成品由本机后端定（`deploy::machine`）；本机后端没起来时没人能替它说话（起没起 · 口上占着谁是宿主的事实），
+// 本机那一行由这里照同一个类型、同一批文案键出。
+
+use cmd_wire::attach::Relation;
+use cmd_wire::machine::{FixButton, MachineFix, MachineState, MachineStateKind};
+
+/// 本机那个口上占着的、构建与这一版不同的后端（终端里先敲 `ccm` 起的旧 / 新那一份）：它的构建标识。
+/// 起本机后端那一趟探口时记（[`probe_listen_socket`]）；是我们这一版 / 没人 ⇒ 清掉。
+static LOCAL_FOREIGN: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// 本机那一行变了之后往外推一帧的出口（壳起来时装上：发 `machine-state` 事件）。没装 ⇒ 不推。
+type MachineOut = Box<dyn Fn(MachineState) + Send + Sync>;
+static MACHINE_OUT: std::sync::OnceLock<MachineOut> = std::sync::OnceLock::new();
+
+/// 装推送出口（只装一次）。
+pub(crate) fn install_machine_out(out: impl Fn(MachineState) + Send + Sync + 'static) {
+    if MACHINE_OUT.set(Box::new(out)).is_err() {
+        tracing::warn!("[machine] 本机那一行的推送出口装了第二次，沿用第一次那个");
+    }
+}
+
+/// 本机那一行可能变了（通道接上 / 断了 · 口上换了人）⇒ 推一帧。
+pub(crate) fn machine_changed() {
+    if let Some(out) = MACHINE_OUT.get() {
+        out(local_machine_now());
+    }
+}
+
+/// 记下（或清掉）本机口上那一份别的构建。
+fn note_local_foreign(build: Option<&str>) {
+    *LOCAL_FOREIGN.lock().unwrap_or_else(|e| e.into_inner()) = build.map(str::to_string);
+    machine_changed();
+}
+
+/// 起本机后端被拒（口上有东西、接不上）时那一句下一步；每次起之前清掉（[`start_local_backend`]）。
+static LOCAL_REFUSED: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// 记下（或清掉）起本机后端被拒的那一句下一步。
+pub(crate) fn note_local_refused(next: Option<&str>) {
+    *LOCAL_REFUSED.lock().unwrap_or_else(|e| e.into_inner()) = next.map(str::to_string);
+    machine_changed();
+}
+
+/// 本机那一行此刻的成品（通道在不在现看）。
+pub(crate) fn local_machine_now() -> MachineState {
+    let channel = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN).is_some();
+    local_product(channel, crate::byte_table::my_backend_id())
+}
+
+/// 本机那一台的成品：版本就是手上这一版（本机后端换装只认同一版，[`hello_verdict`]；没带后端字节 ⇒ 开发构建、不可比）；
+/// 通道在 ⇒ 连着；不在而口上占着别的构建 ⇒ 按两边构建的序说「要更新」/「较新」（解不出序 ⇒ 照没连上说）；
+/// 别的不在 ⇒ 没连上。没连上的修法只给［重试］；起的时候被拒 ⇒ 带上那一句下一步。
+pub(crate) fn local_product(channel: bool, mine: Option<&str>) -> MachineState {
+    let foreign = LOCAL_FOREIGN
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    let relation = match (channel, mine, foreign.as_deref()) {
+        (true, Some(_), _) => Relation::Same,
+        (false, Some(m), Some(theirs)) => deploy_contract::build_relation(theirs, m),
+        (false, Some(_), None) => Relation::Same,
+        (_, None, _) => Relation::Incomparable,
+    };
+    let state = match (channel, relation) {
+        (true, _) => MachineStateKind::Up,
+        (false, Relation::Older) => MachineStateKind::NeedsUpdate,
+        (false, Relation::Newer) => MachineStateKind::Newer,
+        (false, _) => MachineStateKind::Down,
+    };
+    let name = copy_text("remote.cards.local", &[]);
+    let (word, said) = match state {
+        MachineStateKind::Up if relation == Relation::Incomparable => (
+            copy_text("machineState.word.incomparable", &[]),
+            String::new(),
+        ),
+        MachineStateKind::NeedsUpdate => (
+            copy_text("machineState.word.needsUpdate", &[]),
+            copy_text("machineState.problem.needsUpdate", &[("machine", &name)]),
+        ),
+        MachineStateKind::Newer => (
+            copy_text("machineState.word.newer", &[]),
+            copy_text("machineState.problem.newer", &[("machine", &name)]),
+        ),
+        MachineStateKind::Down => (
+            copy_text("machinePage.state.down", &[]),
+            copy_text("machineState.down.local", &[]),
+        ),
+        _ => (String::new(), String::new()),
+    };
+    let fixes = if channel {
+        Vec::new()
+    } else {
+        vec![FixButton {
+            fix: MachineFix::Retry,
+            label: copy_text("machineState.fix.retry", &[]),
+        }]
+    };
+    MachineState {
+        state,
+        reason: None,
+        stage: None,
+        version: (relation == Relation::Same).then(|| crate::PRODUCT_VERSION.to_string()),
+        version_relation: Some(relation),
+        os: None,
+        word,
+        said,
+        fixes,
+        seen_host_key: None,
+        detail: None,
+        next: if channel {
+            None
+        } else {
+            LOCAL_REFUSED
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone()
+        },
+    }
+}
+
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/local_backend_host_tests.rs"]
 pub(crate) mod tests;

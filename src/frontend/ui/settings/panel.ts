@@ -487,7 +487,7 @@ export class SettingsPanel {
     const pageId = local ? LOCAL_MACHINE_PAGE_ID : this.remoteSection?.pageIdOfMachine(origin);
     if (!pageId) return;
     const machine = local ? copyText("remote.cards.local") : origin;
-    const face = machineFace(m, machine);
+    const face = machineFace(m);
     this.remoteSection?.setFacts(origin, { os: m.os, version: m.version, dev: m.versionRelation === "incomparable" });
     this.remoteSection?.setMachine(pageId, m);
     this.router.setNavDot(pageId, face.dot, face.word ? `${machine} · ${face.word}` : copyText("settingsNav.dot.up", { machine }));
@@ -908,6 +908,7 @@ export class SettingsPanel {
         hosted: true,
         onChannel: (origin, connected) => this.paintNavDot(origin, connected),
         onMachine: (origin, machine) => this.paintMachine(origin, machine),
+        machineOf: (origin) => this.machineOf.get(origin) ?? null,
       });
       this.backendSection = backend;
     } catch (e) {

@@ -290,6 +290,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ("prefs-read", "帧命令：那台的偏好（启动命令 · 每号模型 · 上限表住那台的 prefs.json），账号页 · 起会话框只读它"),
     ("prefs-set", "帧命令：改那台的偏好（值域在那台写口判），账号页的模型下拉经它存"),
     ("machines-read", "帧命令：这一端的机器表住本机后端（machines.json），壳照它起停远端流、设置页只读它"),
+    ("machine-read", "帧命令：远端各台的状态成品住本机后端（`deploy::machine` 判），设置页 · 主窗口接上时整份问一次、之后照 `changed {machine}` 换"),
     ("machines-try", "帧命令：机器表那一道过不过（判准只在本机后端），添加机器框 · 机器卡边打边问"),
     ("machines-set", "帧命令：改机器表（按键认那一台、指纹记于哪天由写口盖），设置页存 · 拨号固化指纹经它"),
     ("rotation-view", "typed 帧命令：一个会话此刻的轮换（开会话的号 · 在用的号 · 这一判 · 推演，都由后端跑策略）；标签页与状态栏的账号格只排版"),
@@ -791,6 +792,11 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
         1,
         "机器表的最近一答（`machine_table.rs::refresh`）：本机通道登记上那一刻 ＋ 本机流每帧 `changed {machines}` 各问一次，\
          照它起停远端流、读不懂上屏 —— 壳自己的起流对齐，答案不给界面（界面那一问经通道直问本机后端）",
+    ),
+    (
+        "machine-read",
+        1,
+        "诊断信息（`diagnostics_report.rs::remote_machines`）：远端各台此刻的状态与原因码写进那段文本 —— 壳自己写诊断，答案不给界面",
     ),
     (
         "machines-set",

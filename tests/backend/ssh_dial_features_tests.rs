@@ -437,7 +437,7 @@ async fn a_password_from_the_host_logs_in_and_a_wrong_one_is_refused() {
 
     let (ack, ..) = open(req("pw-bad"), crate::uses::Control::none()).await;
     assert_eq!(ack["ok"], false, "错的密码居然登上了：{ack}");
-    assert_eq!(ack["reason"], crate::why::AUTH, "{ack}");
+    assert_eq!(ack["reason"], "auth", "{ack}");
 }
 
 /// 一个替我们签名的外部签名器（同手机 Keystore：私钥不出它、回 DER）。这里拿 `ring` 现生成一把 P-256。
@@ -730,11 +730,11 @@ async fn an_unstored_key_type_or_another_key_is_refused() {
     let (port, _l, _s) = door_keyed(Some("k"), None, Some(vec![ed25519_key(11)])).await;
     let ack = dial_with_known(port, vec![key_line(&ecdsa_key())]).await;
     assert_eq!(ack["ok"], false, "{ack}");
-    assert_eq!(ack["reason"], crate::why::HOST_KEY, "{ack}");
+    assert_eq!(ack["reason"], "host_key", "{ack}");
     assert_eq!(ack["key_type"], "ssh-ed25519", "{ack}");
     let ack = dial_with_known(port, vec![key_line(&ed25519_key(12))]).await;
     assert_eq!(ack["ok"], false, "{ack}");
-    assert_eq!(ack["reason"], crate::why::HOST_KEY, "{ack}");
+    assert_eq!(ack["reason"], "host_key", "{ack}");
     // 正控：记的正是那一把 ⇒ 过。
     let ack = dial_with_known(port, vec![key_line(&ed25519_key(11))]).await;
     assert_eq!(ack["ok"], true, "{ack}");
@@ -747,7 +747,7 @@ fn the_quiet_sink_of_a_raced_dial_still_reports_progress() {
     let (live, mut steps) = StageSink::new(true).reporting();
     let quiet = live.quiet();
     quiet.step(crate::step::TCP);
-    quiet.note_why(crate::why::TIMEOUT);
+    quiet.note_why(crate::Why::Timeout);
     quiet.emit(crate::Stage::Established);
     assert_eq!(steps.try_recv().ok(), Some(crate::step::TCP));
     assert_eq!(live.why(), None, "另拨那一条的原因码不进这一趟");
@@ -769,7 +769,11 @@ async fn a_first_seen_key_is_remembered_only_after_login() {
     };
     let (ack, ..) = open(req("tofu-bad"), crate::uses::Control::none()).await;
     assert_eq!(ack["ok"], false, "{ack}");
-    assert_eq!(ack["reason"], crate::why::AUTH, "{ack}");
+    assert_eq!(
+        ack["reason"],
+        serde_json::json!(cmd_wire::machine::Why::Auth),
+        "{ack}"
+    );
     assert!(
         ack["fingerprint"].is_string(),
         "握手要先过核钥匙那一步：{ack}"

@@ -48,7 +48,7 @@ pub enum Ask {
 /// 主题表（扩展特征：孤儿规则不许在 `cmd-wire` 的类型上加固有方法）。
 pub trait TopicExt {
     /// 全部主题（表的行序）。
-    const ALL: [Topic; 12];
+    const ALL: [Topic; 13];
     /// 这个主题那一行。穷尽 `match`：加主题时编译期就被逼着填完这一行。
     fn spec(self) -> TopicSpec;
     /// 线上名。
@@ -56,7 +56,7 @@ pub trait TopicExt {
 }
 
 impl TopicExt for Topic {
-    const ALL: [Topic; 12] = [
+    const ALL: [Topic; 13] = [
         Topic::Accounts,
         Topic::Profiles,
         Topic::Quota,
@@ -68,6 +68,7 @@ impl TopicExt for Topic {
         Topic::Login,
         Topic::Manual,
         Topic::Machines,
+        Topic::Machine,
         Topic::SessionHidden,
     ];
 
@@ -184,6 +185,17 @@ impl TopicExt for Topic {
                 body: false,
                 body_cap: 0,
                 reask: "machines-read",
+                ask: Ask::None,
+            },
+            // 走 tap 那条（可丢：成品整份，丢了下一次变化或重问就补上）；`body` 由发端给（判定在 `deploy::machine`）。
+            Topic::Machine => TopicSpec {
+                name: "machine",
+                lossy: true,
+                key: true,
+                rev: false,
+                body: true,
+                body_cap: 8192,
+                reask: "machine-read",
                 ask: Ask::None,
             },
             // 走 watcher 的出方向（不可丢：标签页挪进挪出靠它）；`body` 由发端给（判定在 `control/session_hidden.rs`）。
