@@ -47,7 +47,6 @@
 
 连上之后后端先发一帧 `hello`，**客户端读到它之前不许写命令**（后端侧 reader 要一个只有 flush 过 hello 才拿得到的见证才起得来）。几个面各管一件事：
 
-- `emits` —— 后端会发哪些帧 kind；客户端据此决定依不依赖某种帧。
 - `commands` —— 后端接哪些入方向命令；不在里面的命令客户端**不发**。缺 ＝ 这个后端不读 stdin。
 - `unavailable` —— 接得下、但**这台机器上做不到**的命令与原因码（如没有 tmux ⇒ `no_tmux`）。缺 ＝ 没有把握，照发、看回话；列出来的 ＝ 别画那个按钮。它是提示，后端自己绝不拿它拒命令（同一帧会被这个进程后来的连接共用，读数可以很旧）。
 - `shapes` —— 每条 typed 命令的形状指纹（入参 · 回包 · 码 · 撤不撤得动合起来）；跟客户端编进来的那一张对不上的命令不发。撤不撤得动客户端只看自己那一张（指纹对得上 ⇒ 两边一致）。
@@ -166,7 +165,7 @@
 
 桌面端（monitor）与第二个前端（手机端）吃同一个后端。第二个前端按下面这些格读，缺一格就把整帧当坏帧丢 ⇒ 它们**冻结**：不许改名、删、换类型，只许加新字段；非改不可就两边同拍。
 
-- 帧：`hello` `v` `build_id` `host_arch` `claude_dir` `emits` · `line` `session_id` `path` `seq` `byte_offset` `record` ·
+- 帧：`hello` `v` `build_id` `host_arch` · `line` `session_id` `path` `seq` `byte_offset` `record` ·
   `overflow` `said` · `live` `sid` `run` `card` `n` `op` `rid` `phase` `clipped` `blocks` ·
   `reply` `id` `ok` `code` `message` `detail` `data` · `cancelled` `id` · 请求信封 `id` `cmd` `args` `within_ms`（可缺）`tz`（可缺）`view`（可缺）。
 - 会话三帧与成品面在格目录里：每格带 `frozen`。`session_added`（`sid` `path` `cwd` `name` `waiting_for` `agent_kind` `attachable` `background` 与整份脸 `face` 里手机读的那几格）·
