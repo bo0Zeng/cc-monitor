@@ -118,7 +118,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("login-start", "c94ad92f"),
     ("machine-interrupts", "99335ecf"),
     ("machine-read", "bb57cd50"),
-    ("machine-round", "737ae995"),
+    ("machine-round", "1da2233c"),
     ("machines-read", "0c29f57f"),
     ("machines-set", "43dadae7"),
     ("machines-try", "b89be5b2"),

@@ -179,16 +179,19 @@ class ResidentFeedTest {
         runTest(UnconfinedTestDispatcher()) {
             val core = FakeCore()
             val f = feed(core)
-            for ((name, fix) in listOf(
-                "没有后端" to MachineFix.INSTALL,
-                "后端旧了" to MachineFix.UPDATE,
-                "那台旧" to MachineFix.UPDATE,
-                "离线" to null,
-                "密钥被拒" to null,
-                "那台新" to null,
-            )) {
+            val cases =
+                listOf(
+                    "没有后端" to MachineFix.INSTALL,
+                    "后端旧了" to MachineFix.UPDATE,
+                    "那台旧" to MachineFix.UPDATE,
+                    "离线" to null,
+                    "密钥被拒" to null,
+                    "那台新" to null,
+                )
+            for ((name, fix) in cases) {
                 core.emit("state", line(name))
-                assertEquals(name, fix, f.state.value.deployFix()?.fix)
+                val got = f.state.value.deployFix()
+                assertEquals(name, fix, got?.fix)
             }
         }
 
