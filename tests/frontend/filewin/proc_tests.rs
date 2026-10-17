@@ -454,11 +454,7 @@ fn closing_the_window_ends_the_process_even_though_stdin_stays_open() {
     let screen = xvfb::Screen::start()
         .unwrap_or_else(|e| panic!("起不了 Xvfb ⇒ 这一格判不了，不是过了：{e}"));
     let mut c = RealChild::start(ORIGIN, Some("/srv/在".into()), None, Some(screen.display()));
-    assert_eq!(
-        c.ready(),
-        Ready::Listed(2),
-        "第一屏不是替身答的那两行"
-    );
+    assert_eq!(c.ready(), Ready::Listed(2), "第一屏不是替身答的那两行");
     let ids = xvfb::wait_for_windows(screen.display(), ORIGIN);
     assert_eq!(
         ids.len(),
