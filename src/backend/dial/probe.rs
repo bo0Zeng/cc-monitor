@@ -1,20 +1,22 @@
 //! 测试连接：界面把设置页表单里那台（可能还没保存的）配置交过来，本机常驻后端组拨号请求（[`super::machine`]）、
-//! 拨一次（短命探活，不进连接池）、回结局。三步，每步的结论都进回包（部分成功照样回，不当错误）：
+//! 拨一次（短命探活，不进连接池）、回结局。三步，每步的结论都进结局（部分成功照样回，不当错误）：
 //!
-//! 1. 拨号 ＋ 鉴权 ＋ exec 那台的后端（流模式显式词）：阶段行逐条推成 `stage` 格（与界面 `ConnectStage` 同形）；ack 不成 ⇒ `sshOk: false`；
-//! 2. 读那台后端的首行：是 `hello` ⇒ `backendOk: true` ＋ 人读摘要；超时 / 关了 / 不是 hello ⇒ 「SSH 通了、后端没响应」；
+//! 1. 拨号 ＋ 鉴权 ＋ exec 那台的后端（流模式显式词）：阶段行逐条写成一格；ack 不成 ⇒ 停在这里；
+//! 2. 读那台后端的首行：是 `hello` ⇒ 人读摘要；超时 / 关了 / 不是 hello ⇒ 「SSH 通了、后端没响应」；
 //! 3. 那台声明认 `ping` ⇒ 同一条流上发一次、等应答（控制通道往返）；不认 ⇒ 「后端太旧」；不回 ⇒ 「后端连上了、不能起会话」。
 //!
-//! 边拨边推：每走一段往本连接的应答通道推一帧 `probe {ticket, cell}`（`stage` 握手那几行 → `reached: ssh` → `reached: hello` →
-//! `reached: control`），结局是最后一格（`end`）；monitor 把它们交进界面订的 `probe-progress/<ticket>`，到点没等到结局时最后一格说得出停在哪一段。
-//! 期限归发起方：本 crate 零定时器；界面那一问的预算约 15 s（`src/frontend/ui/remote-probe.ts`），到点由宿主那侧 `cancel` 打断。
-//! 往返毫秒数照旧报：量一次墙钟差不是定时器。
+//! 边拨边推：每走一步往本连接的应答通道推一帧 `probe {ticket, cell}`，每格是写好的那一句 ＋ 语气 ＋ 四段（[`ProbeCell`]），
+//! 最后一格带结局；monitor 把它们交进界面订的 `probe-progress/<ticket>`，界面照画、不按码取字。
+//! 本文件零定时器：期限的值归发起方（请求信封 `within_ms`；没带 ⇒ 登记的上限 [`PROBE_CAP`]），执行在期限原语那一处（`platform::child::bounded`）：
+//! 到点那一趟丢掉、链路随之收，结局那一格照分派的那个数说等了多久、最后一步是哪一句。往返毫秒数照旧报：量一次墙钟差不是定时器。
 
 use copy_core::copy_text;
 use serde_json::{json, Value};
 use tokio::io::{AsyncWriteExt, BufReader};
 
+use crate::common::cells::{Tone, Words};
 use crate::dial::remote_ask::{self, AbortOnDrop};
+use crate::platform::child::{bounded, Deadline, Until};
 use crate::wire::Frame;
 
 /// 链路上一行的上限（阶段行 · ack · hello · 应答；hello 行是后端出方向单行，同一个量级）。
@@ -25,48 +27,99 @@ const PING_ID: &str = "probe-ping";
 /// 票的上限与字符集（界面给的是一个 UUID；本后端只当不透明的串回填，但它会进帧 ⇒ 有界、可打印）。
 const TICKET_MAX: usize = 64;
 
-/// 测试连接的结局（进度流最后那一格 `{end}`）。
+/// 测试连接的总期限上限（握手 ＋ hello ＋ 一次往返，秒级）：发起方没带期限时按它；带了更早的截止时刻 ⇒ 照那个。
+pub(crate) const PROBE_CAP: Deadline = Deadline::secs(15);
+
+/// 测试连接那一行的一段到哪了：还没到 · 过了 · 没过。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum SegMark {
+    #[default]
+    Wait,
+    Ok,
+    Fail,
+}
+
+/// 测试连接那一行的四段：解析 · 连接 · 认证 · 就绪。
+#[derive(Debug, Clone, Copy, Default, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct Segs {
+    resolve: SegMark,
+    connect: SegMark,
+    auth: SegMark,
+    ready: SegMark,
+}
+
+impl Segs {
+    fn all(&mut self) -> [&mut SegMark; 4] {
+        [
+            &mut self.resolve,
+            &mut self.connect,
+            &mut self.auth,
+            &mut self.ready,
+        ]
+    }
+
+    /// 前 `n` 段过了。
+    fn reached(mut self, n: usize) -> Self {
+        self.all()
+            .into_iter()
+            .take(n)
+            .for_each(|m| *m = SegMark::Ok);
+        self
+    }
+
+    /// 没过：第一处还没过的那一段打 ✗（已有 ✗ 的不再多打）。
+    fn failed(mut self) -> Self {
+        let all = self.all();
+        if !all.iter().any(|m| **m == SegMark::Fail) {
+            if let Some(m) = all.into_iter().find(|m| **m != SegMark::Ok) {
+                *m = SegMark::Fail;
+            }
+        }
+        self
+    }
+}
+
+/// 进度流的一格：写好的那一句 · 语气 · 四段；最后一格带结局。
 #[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct ProbeCell {
+    /// 握手那一行 · 走到哪一步 · 结局那一句（结局不接下层原话，原话在复制详情）。
+    said: Words,
+    tone: Tone,
+    segs: Segs,
+    end: Option<ConnTestResult>,
+}
+
+/// 测试连接的结局（进度流最后那一格的 `end`）。
+#[derive(Debug, Default, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ConnTestResult {
-    /// SSH 连接 ＋ 鉴权成没成。
-    ssh_ok: bool,
-    /// 握手时看到的那台的 host key 指纹（`SHA256:...`）；没过 ⇒ `null`（免得把失配的那把固化）。
-    fingerprint: Option<String>,
-    /// 竞速胜出的地址（`host:port`）。
-    endpoint: Option<String>,
-    /// 那台后端回了 hello 没有。
-    backend_ok: bool,
-    /// 那台后端的三格（版本 · 能用几项 / 做不到几项 · 往返毫秒），按文案表拼好的一句。
+    /// 那台后端的三格（版本 · 能用几项 / 做不到几项 · 往返毫秒），按文案表拼好的一句；没回 hello ⇒ `null`。
     backend_hello: Option<String>,
     /// 这台说做不到的那几类（空 = 没有 / 没回 hello）。
     backend_gaps: Vec<GapCount>,
-    /// 总体那一句（不接下层原话）。
-    message: String,
     /// 没过时的复制详情；都过了 ⇒ `null`。
     detail: Option<String>,
 }
 
-fn outcome(
-    ssh_ok: bool,
-    fingerprint: Option<String>,
-    endpoint: Option<String>,
-    hello: Option<String>,
-    gaps: Vec<GapCount>,
-    message: String,
-    detail: Option<String>,
-) -> ConnTestResult {
-    ConnTestResult {
-        ssh_ok,
-        fingerprint,
-        endpoint,
-        backend_ok: hello.is_some(),
-        backend_hello: hello,
-        backend_gaps: gaps,
-        message,
-        detail,
+/// 没走到 hello 就停了：结局那一格（那一句 ＋ 复制详情；四段照推出去的最后那一格、第一处没过的打 ✗）。
+fn stopped(cells: &Cells<'_>, said: String, detail: Option<String>) -> ProbeCell {
+    ProbeCell {
+        said: said.into(),
+        tone: Tone::Fail,
+        segs: cells.last().1.failed(),
+        end: Some(ConnTestResult {
+            detail,
+            ..ConnTestResult::default()
+        }),
     }
 }
 
@@ -134,21 +187,94 @@ fn hello_facts(hello: &Value, machine: &str) -> HelloFacts {
     }
 }
 
-/// 进度格的出口：本连接的应答通道（不丢、与应答同序）。
+/// 进度格的出口：本连接的应答通道（不丢、与应答同序）。记着推出去的最后那一格（到点时结局照它说）。
 pub(crate) struct Cells<'a> {
     ticket: String,
     out: &'a tokio::sync::mpsc::Sender<Frame>,
+    last: std::sync::Mutex<(String, Segs)>,
 }
 
 impl Cells<'_> {
-    async fn push(&self, cell: Value) -> Result<(), (&'static str, String)> {
+    fn last(&self) -> (String, Segs) {
+        self.last.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    async fn send(&self, cell: ProbeCell) -> Result<(), (&'static str, String)> {
+        let (said, segs) = (cell.said.0.clone(), cell.segs);
         self.out
             .send(Frame::Probe(crate::wire::Probe {
                 ticket: self.ticket.clone(),
-                cell,
+                cell: serde_json::to_value(&cell).unwrap_or(Value::Null),
             }))
             .await
-            .map_err(|_| ("failed", copy_text("beProbe.client.gone", &[])))
+            .map_err(|_| ("failed", copy_text("beProbe.client.gone", &[])))?;
+        *self.last.lock().unwrap_or_else(|e| e.into_inner()) = (said, segs);
+        Ok(())
+    }
+}
+
+/// 走了一步的那一格：那一句 ＋ 语气 ＋ 四段。
+fn step(said: String, tone: Tone, segs: Segs) -> ProbeCell {
+    ProbeCell {
+        said: said.into(),
+        tone,
+        segs,
+        end: None,
+    }
+}
+
+/// 握手那一行 ⇒ 那一格（四段在 `segs` 上往前走）。
+fn stage_line(st: &ssh_dial::Stage, segs: Segs) -> ProbeCell {
+    use ssh_dial::Stage;
+    match st {
+        Stage::Dialing { endpoint } => step(
+            copy_text("beProbe.stage.dial", &[("endpoint", endpoint)]),
+            Tone::Now,
+            segs,
+        ),
+        Stage::HostKey {
+            endpoint,
+            fingerprint,
+        } => step(
+            copy_text(
+                "beProbe.stage.fingerprint",
+                &[("endpoint", endpoint), ("fingerprint", fingerprint)],
+            ),
+            Tone::Now,
+            segs.reached(2),
+        ),
+        Stage::Failed { endpoint, reason } => step(
+            copy_text(
+                "beProbe.stage.failed",
+                &[("endpoint", endpoint), ("reason", reason)],
+            ),
+            Tone::Warn,
+            segs,
+        ),
+        Stage::Won { endpoint } => step(
+            copy_text("beProbe.stage.won", &[("endpoint", endpoint)]),
+            Tone::Now,
+            segs.reached(2),
+        ),
+        Stage::Auth { ok: true, .. } => step(
+            copy_text("beProbe.stage.authOk", &[]),
+            Tone::Now,
+            segs.reached(3),
+        ),
+        Stage::Auth { ok: false, detail } => {
+            let said = detail
+                .clone()
+                .unwrap_or_else(|| copy_text("reason.io.unknown", &[]));
+            step(
+                copy_text("beProbe.stage.authFailed", &[("said", &said)]),
+                Tone::Fail,
+                Segs {
+                    auth: SegMark::Fail,
+                    ..segs.reached(2)
+                },
+            )
+        }
+        Stage::Established => step(copy_text("beProbe.stage.ready", &[]), Tone::Now, segs),
     }
 }
 
@@ -203,9 +329,10 @@ fn ticket_ok(t: &str) -> Result<String, (&'static str, String)> {
 }
 
 /// `remote-probe` 的本体：`serve` 是链路那一侧（生产 = `dial::uses::run`；判据用替身，拿改好的请求 · 上行读端 · 下行写端）；
-/// `out` 是进度格的出口（生产 = 本连接的应答通道）。结局推成最后一格（`end`），应答本身不带体。
+/// `out` 是进度格的出口（生产 = 本连接的应答通道）；`until` 是分派那一层交来的截止时刻。结局推成最后一格（`end`），应答本身不带体。
 pub(crate) async fn probe_with<F, Fut>(
     req: &ProbeReq,
+    until: Option<Until>,
     serve: F,
     out: &tokio::sync::mpsc::Sender<Frame>,
 ) -> Result<(), (&'static str, String)>
@@ -216,21 +343,37 @@ where
     let cells = Cells {
         ticket: ticket_ok(&req.ticket)?,
         out,
+        last: std::sync::Mutex::new((copy_text("beProbe.stage.notStarted", &[]), Segs::default())),
     };
     let pick = super::pick::Pick {
         machine: &req.machine,
         jump: req.jump.as_ref(),
         prefer: None,
     };
-    let end = run(&pick, serve, &cells).await?;
-    cells.push(json!({ "end": end })).await
+    let end = match bounded(
+        Deadline::within(PROBE_CAP, until),
+        run(&pick, serve, &cells),
+    )
+    .await
+    {
+        Ok(end) => end?,
+        Err(total) => {
+            let dur = copy_core::format_duration(total.shown_secs().saturating_mul(1000));
+            let said = copy_text(
+                "beProbe.test.stalled",
+                &[("dur", &dur), ("last", &cells.last().0)],
+            );
+            stopped(&cells, said, None)
+        }
+    };
+    cells.send(end).await
 }
 
 async fn run<F, Fut>(
     pick: &super::pick::Pick<'_>,
     serve: F,
     cells: &Cells<'_>,
-) -> Result<ConnTestResult, (&'static str, String)>
+) -> Result<ProbeCell, (&'static str, String)>
 where
     F: FnOnce(crate::dial::DialRequest, tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
     Fut: std::future::Future<Output = ()> + Send + 'static,
@@ -257,12 +400,8 @@ where
             .await
             .map_err(|e| ("failed", e))?;
         let Some(line) = line else {
-            return Ok(outcome(
-                false,
-                None,
-                None,
-                None,
-                Vec::new(),
+            return Ok(stopped(
+                cells,
                 copy_text(
                     "beProbe.test.sshFailed",
                     &[("why", &copy_text("beProbe.link.droppedBeforeAck", &[]))],
@@ -277,7 +416,15 @@ where
             )
         })?;
         match v.get("stage") {
-            Some(st) => cells.push(json!({ "stage": st })).await?,
+            Some(st) => {
+                let st: ssh_dial::Stage = serde_json::from_value(st.clone()).map_err(|e| {
+                    (
+                        "failed",
+                        crate::common::contract::malformed(&format!("unreadable stage line: {e}")),
+                    )
+                })?;
+                cells.send(stage_line(&st, cells.last().1)).await?;
+            }
             None => break v,
         }
     };
@@ -294,37 +441,27 @@ where
             .and_then(Value::as_str)
             .map(str::to_string)
             .or_else(|| failed_detail(None));
-        return Ok(outcome(
-            false,
-            None,
-            None,
-            None,
-            Vec::new(),
+        return Ok(stopped(
+            cells,
             copy_text("beProbe.test.sshFailed", &[("why", &why)]),
             detail,
         ));
     }
-    let fingerprint = ack
-        .get("fingerprint")
-        .and_then(Value::as_str)
-        .map(str::to_string);
-    let endpoint = ack
-        .get("endpoint")
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .or_else(|| machine.endpoints().first().map(|(h, p)| format!("{h}:{p}")));
-    cells.push(json!({ "reached": "ssh" })).await?;
+    let ssh_up = Segs::default().reached(3);
+    cells
+        .send(step(
+            copy_text("beProbe.reached.ssh", &[]),
+            Tone::Now,
+            ssh_up,
+        ))
+        .await?;
 
     // ② 首行 hello。
     let first = match remote_ask::capped_line(&mut rd, LINE_CAP).await {
         Ok(None) => None,
         Err(e) => {
-            return Ok(outcome(
-                true,
-                fingerprint,
-                endpoint,
-                None,
-                Vec::new(),
+            return Ok(stopped(
+                cells,
                 copy_text("beProbe.test.probeFailed", &[]),
                 failed_detail(Some(&e)),
             ))
@@ -334,12 +471,8 @@ where
             .filter(|v| v.get("kind").and_then(Value::as_str) == Some("hello")),
     };
     let Some(hello) = first else {
-        return Ok(outcome(
-            true,
-            fingerprint,
-            endpoint,
-            None,
-            Vec::new(),
+        return Ok(stopped(
+            cells,
             copy_text("beProbe.test.noHello", &[]),
             failed_detail(None),
         ));
@@ -348,14 +481,20 @@ where
     tracing::info!("测试连接：{}", crate::wire::hello_summary(&hello));
     let facts = hello_facts(&hello, machine.name());
     let (build, gaps) = (facts.build.clone(), facts.gaps.to_string());
-    cells.push(json!({ "reached": "hello" })).await?;
+    cells
+        .send(step(
+            copy_text("beProbe.reached.hello", &[]),
+            Tone::Now,
+            ssh_up,
+        ))
+        .await?;
 
     // ③ 控制通道往返。
     let accepts_ping = hello
         .get("commands")
         .and_then(Value::as_array)
         .is_some_and(|a| a.iter().any(|c| c.as_str() == Some("ping")));
-    let (line, message, detail) = if !accepts_ping {
+    let (line, said, tone, detail) = if !accepts_ping {
         // 那台的后端不认控制命令：全产品同一句（按名字取）。
         let said = copy_core::backend_old(machine.name());
         (
@@ -364,6 +503,7 @@ where
                 &[("build", &build), ("said", &said)],
             ),
             said,
+            Tone::Warn,
             failed_detail(None),
         )
     } else {
@@ -403,9 +543,6 @@ where
                 }
             },
         };
-        if answered.is_ok() {
-            cells.push(json!({ "reached": "control" })).await?;
-        }
         match answered {
             Ok(()) => {
                 let dur = t0
@@ -420,34 +557,38 @@ where
                         &[("build", &build), ("gaps", &gaps), ("dur", &dur)],
                     )
                 };
-                (line, copy_text("beProbe.test.ok", &[]), None)
+                (line, copy_text("beProbe.test.ok", &[]), Tone::Plain, None)
             }
             Err(e) => (
                 copy_text("beProbe.hello.noAnswer", &[("build", &build)]),
                 copy_text("beProbe.test.controlDown", &[]),
+                Tone::Warn,
                 failed_detail(Some(&e)),
             ),
         }
     };
     let _ = up_w.shutdown().await;
-    Ok(outcome(
-        true,
-        fingerprint,
-        endpoint,
-        Some(line),
-        facts.by_code,
-        message,
-        detail,
-    ))
+    Ok(ProbeCell {
+        said: said.into(),
+        tone,
+        segs: Segs::default().reached(4),
+        end: Some(ConnTestResult {
+            backend_hello: Some(line),
+            backend_gaps: facts.by_code,
+            detail,
+        }),
+    })
 }
 
 /// 生产的 `remote-probe`：真拨号；进度格进本连接的应答通道。
 pub(crate) async fn answer_probe(
     req: &ProbeReq,
+    until: Option<Until>,
     replies: &tokio::sync::mpsc::Sender<Frame>,
 ) -> Result<(), (&'static str, String)> {
     probe_with(
         req,
+        until,
         |req, up_r, mut down_w| async move {
             let stages = crate::dial::StageSink::new(true);
             crate::dial::uses::run(&req, &stages, up_r, &mut down_w).await;

@@ -57,8 +57,6 @@ import { makeInfoIcon } from "./info-icon";
 // 这几个类型是生成物（源 `stream_source/`）。
 import { importSshHosts } from "../ssh-config-reads";
 
-// `describeStage` / `ConnectStage` 住在唯一的消费者 `machine-card.ts` 身边：放这里会成 `remote-section ⇄ machine-card` 的运行期 import 环
-//   （环守卫 `tests/frontend/ui/import-cycle-guard.vitest.ts`）。
 
 
 

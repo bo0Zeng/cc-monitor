@@ -7047,38 +7047,6 @@
       "zh": "先填主机与用户名",
       "args": []
     },
-    "machineCard.test.stalled": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "测试无结果 · 停在 {where} · {said}",
-      "args": ["said", "where"]
-    },
-    "machineCard.stall.start": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未开始连接 · 本机后端无进度",
-      "args": [],
-      "limited": ["连接"]
-    },
-    "machineCard.stall.handshake": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "停在 SSH 连接 · 最后一步 {step}",
-      "args": ["step"],
-      "limited": ["SSH", "连接"]
-    },
-    "machineCard.stall.hello": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "已连上 · 等 cc-monitor 应答",
-      "args": []
-    },
-    "machineCard.stall.control": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "cc-monitor 已应答 · 等确认能起会话",
-      "args": []
-    },
     "machineCard.test.failed": {
       "kind": "error",
       "role": "报错",
@@ -7293,46 +7261,46 @@
       "zh": "删除",
       "args": []
     },
-    "machineCard.stage.ready": {
+    "beProbe.stage.ready": {
       "kind": "body",
       "role": "片段",
       "zh": "连接就绪",
       "args": [],
       "limited": ["连接"]
     },
-    "machineCard.stage.authFailed": {
+    "beProbe.stage.authFailed": {
       "kind": "body",
       "role": "说明",
       "zh": "登录失败 · {said}",
       "args": ["said"]
     },
-    "machineCard.stage.authOk": {
+    "beProbe.stage.authOk": {
       "kind": "body",
       "role": "片段",
       "zh": "已登录",
       "args": []
     },
-    "machineCard.stage.won": {
+    "beProbe.stage.won": {
       "kind": "body",
       "role": "说明",
       "zh": "已连 {endpoint} · 其余地址停止",
       "args": ["endpoint"]
     },
-    "machineCard.stage.failed": {
+    "beProbe.stage.failed": {
       "kind": "body",
       "role": "片段",
       "zh": "{endpoint} 连接失败 · {reason}",
       "args": ["endpoint", "reason"],
       "limited": ["连接"]
     },
-    "machineCard.stage.fingerprint": {
+    "beProbe.stage.fingerprint": {
       "kind": "body",
       "role": "说明",
       "zh": "{endpoint} · 主机指纹 {fingerprint}",
       "args": ["endpoint", "fingerprint"],
       "limited": ["SSH 主机指纹"]
     },
-    "machineCard.stage.dial": {
+    "beProbe.stage.dial": {
       "kind": "body",
       "role": "片段",
       "zh": "连接 {endpoint}",
@@ -15329,6 +15297,31 @@
       "role": "原因格",
       "zh": "该机后端输出中断",
       "args": []
+    },
+    "beProbe.reached.ssh": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "已连上 · 等 cc-monitor 应答",
+      "args": []
+    },
+    "beProbe.reached.hello": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "cc-monitor 已应答 · 等确认能起会话",
+      "args": []
+    },
+    "beProbe.stage.notStarted": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "未开始连接",
+      "args": [],
+      "limited": ["连接"]
+    },
+    "beProbe.test.stalled": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "测试 {dur} 无结果 · 最后一步 {last}",
+      "args": ["dur", "last"]
     },
     "beForwards.spec.localPort": {
       "kind": "error",

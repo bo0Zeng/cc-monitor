@@ -21,6 +21,7 @@
 //!
 //! 一条阻塞档命令里连发几发时，分派那一层装一个 [`Budget`]：各发共用剩下的时间（`run` 取「自己的期限」与「剩下的」里小的那个），
 //! 没剩 ⇒ 不起、直接回超时。总期限 ＝ 后端登记的上限与发起方给的截止时刻（[`Until`]）里早的那个：发起方放手之前，先答的是后端那句准话。
+//! 异步档的命令不占线程，同一个总期限经 [`bounded`] 执行（测试连接：到点丢掉那一趟，结局照这个数说）。
 
 use crate::platform::child_env::OWN_ENVS;
 use copy_core::copy_text;
@@ -48,6 +49,14 @@ impl Deadline {
 
     pub(crate) const fn secs(n: u64) -> Deadline {
         Deadline::millis(n * 1000)
+    }
+
+    /// 按上限 `cap` 与发起方截止时刻取小的那个（已过 ⇒ 零）：[`Budget::capped`] 与 [`bounded`] 同一个算法。
+    pub(crate) fn within(cap: Deadline, until: Option<Until>) -> Deadline {
+        match until {
+            Some(Until(t)) => Deadline(cap.0.min(t.saturating_duration_since(now()))),
+            None => cap,
+        }
     }
 
     /// 给文案用的秒数（向上取整）。
@@ -92,11 +101,7 @@ impl Until {
 impl Budget {
     /// 按上限 `cap` 装；发起方给了截止时刻 ⇒ 取上限与「到那一刻还剩多少」里小的那个（已过 ⇒ 零：一发都不起）。
     pub(crate) fn capped(cap: Deadline, until: Option<Until>) -> Budget {
-        let total = match until {
-            Some(Until(t)) => Deadline(cap.0.min(t.saturating_duration_since(now()))),
-            None => cap,
-        };
-        Budget::start(total)
+        Budget::start(Deadline::within(cap, until))
     }
 
     /// 从现在起 `total`。这根线程上已有更紧的 ⇒ 沿用那个（只收紧、不放宽）。
@@ -136,6 +141,18 @@ impl Span {
             .filter(|d| !d.is_zero())
             .map(Deadline)
     }
+}
+
+/// 异步档那一条命令的一次有界等待（总期限 `total`，由 [`Deadline::within`] 算）：到点 ⇒ 丢掉 `f`（它持有的一并收）、回 `Err(total)`。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "异步档命令的总期限（`child::bounded`）：发起方给的截止时刻与后端登记的上限里早的那个，只交给这一次有界等待，不驱动循环"
+)]
+pub(crate) async fn bounded<F: std::future::Future>(
+    total: Deadline,
+    f: F,
+) -> Result<F::Output, Deadline> {
+    tokio::time::timeout(total.0, f).await.map_err(|_| total)
 }
 
 /// 读一次单调钟（后端生产段唯一一处）：只用来算总期限还剩多少，不驱动任何等待。

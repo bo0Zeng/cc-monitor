@@ -19,7 +19,7 @@
       "lang": "kt"
     }
   ],
-  "ceiling": 132,
+  "ceiling": 123,
   "entries": [
     {
       "file": "src/frontend/ui/account-chip.ts",
@@ -216,13 +216,6 @@
       "n": 8,
       "kind": "第 1 批",
       "why": "扩展各台状态码（same · differs · missing · project）⇒ 字，图例同一套：ext-list 带写好的状态字与图例"
-    },
-    {
-      "file": "src/frontend/ui/settings/machine-card.ts",
-      "rule": "caseWord",
-      "n": 9,
-      "kind": "第 7 批",
-      "why": "测试连接停在哪一步 / 拨号阶段码 ⇒ 字（start · handshake … · dialing · hostKey …）：机器状态成品带 said（V12 同批）"
     },
     {
       "file": "src/frontend/ui/tab-stream-view.ts",
