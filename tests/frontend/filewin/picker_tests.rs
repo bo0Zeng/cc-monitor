@@ -168,7 +168,11 @@ fn the_save_box_keeps_the_extension_of_the_suggested_name() {
         (".bashrc", None),
         ("", None),
     ] {
-        assert_eq!(save_type(name, true).as_deref(), want, "Windows 上「{name}」");
+        assert_eq!(
+            save_type(name, true).as_deref(),
+            want,
+            "Windows 上「{name}」"
+        );
         assert_eq!(save_type(name, false), None, "别的平台上「{name}」");
     }
 }

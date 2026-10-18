@@ -105,7 +105,10 @@ fn powershell_golden() {
 fn the_powershell_alias_names_ccm_by_its_landing_and_the_old_form_still_migrates() {
     let a = sv(&["--account", "work"]);
     let now = PowerShell.render_alias(C, "workcc", &a, RestTo::Agent);
-    let calls: Vec<&str> = now.lines().filter(|l| l.trim_start().starts_with('&')).collect();
+    let calls: Vec<&str> = now
+        .lines()
+        .filter(|l| l.trim_start().starts_with('&'))
+        .collect();
     assert_eq!(
         calls,
         [r#"    & "$HOME\.cc-monitor\bin\ccm.exe" '--account' 'work' $RemainingArgs"#],
@@ -113,7 +116,10 @@ fn the_powershell_alias_names_ccm_by_its_landing_and_the_old_form_still_migrates
     );
     let old_call = crate::assets::aliases::OLD_CALL;
     let old = PowerShell.render_alias(old_call, "workcc", &a, RestTo::Agent);
-    assert!(old.contains("    & ccm '--account' 'work' $RemainingArgs"), "{old}");
+    assert!(
+        old.contains("    & ccm '--account' 'work' $RemainingArgs"),
+        "{old}"
+    );
     assert_eq!(
         PowerShell.parse_file(old_call, &old),
         vec![Ok(("workcc".to_string(), a.clone(), RestTo::Agent))]

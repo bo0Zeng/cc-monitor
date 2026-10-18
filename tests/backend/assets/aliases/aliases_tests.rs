@@ -466,7 +466,11 @@ fn a_stale_alias_file_is_rewritten_from_the_profiles_file_when_the_backend_start
     let fresh = std::fs::read_to_string(&p).unwrap();
     std::fs::write(&p, "cc() { old-ccm @cc \"$@\"; }\n").unwrap();
     migrate_here(&door(&h));
-    assert_eq!(std::fs::read_to_string(&p).unwrap(), fresh, "旧的那一份没照配置文件重写");
+    assert_eq!(
+        std::fs::read_to_string(&p).unwrap(),
+        fresh,
+        "旧的那一份没照配置文件重写"
+    );
     let before = std::fs::metadata(&p).unwrap().modified().unwrap();
     migrate_here(&door(&h));
     assert_eq!(
@@ -477,7 +481,11 @@ fn a_stale_alias_file_is_rewritten_from_the_profiles_file_when_the_backend_start
     // 配置文件整份写坏了 ⇒ 读不出清单，不照空清单把别名删掉。
     std::fs::write(profiles_path(&h.0), "[[[ not toml").unwrap();
     migrate_here(&door(&h));
-    assert_eq!(std::fs::read_to_string(&p).unwrap(), fresh, "配置文件写坏了，别名文件却被照空清单重写");
+    assert_eq!(
+        std::fs::read_to_string(&p).unwrap(),
+        fresh,
+        "配置文件写坏了，别名文件却被照空清单重写"
+    );
 }
 
 /// 🔴 **异源**：别名里能放的每个旗标，都得是后端 `ccm --help` 里真有的那个词

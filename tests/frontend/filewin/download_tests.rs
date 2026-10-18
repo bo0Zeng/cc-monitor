@@ -107,7 +107,10 @@ fn a_save_path_splits_by_the_local_platform_rules() {
     };
     let pair = |d: &str, n: &str| Some((d.to_string(), n.to_string()));
     for (path, want) in [
-        (r"C:\Users\u\Downloads\n1.txt", pair(r"C:\Users\u\Downloads", "n1.txt")),
+        (
+            r"C:\Users\u\Downloads\n1.txt",
+            pair(r"C:\Users\u\Downloads", "n1.txt"),
+        ),
         (r"C:\n1.txt", pair(r"C:\", "n1.txt")),
         (r"D:\a/b\c.txt", pair(r"D:\a/b", "c.txt")),
         (r"\\srv\share\x.bin", pair(r"\\srv\share", "x.bin")),

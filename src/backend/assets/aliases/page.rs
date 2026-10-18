@@ -854,12 +854,12 @@ pub(crate) fn read_with(d: &dyn Door, tmux: Option<bool>, tz: &crate::Tz) -> Ans
     let (seed_hint, seed_create) = match seed.len() {
         0 => (String::new(), String::new()),
         1 => (
-            copy_text("beProfile.seed.hint.one", &[]),
-            copy_text("beProfile.seed.create.one", &[]),
+            copy_text("beProfile.seedHint.one", &[]),
+            copy_text("beProfile.seedCreate.one", &[]),
         ),
         _ => (
-            copy_text("beProfile.seed.hint.two", &[]),
-            copy_text("beProfile.seed.create.two", &[]),
+            copy_text("beProfile.seedHint.two", &[]),
+            copy_text("beProfile.seedCreate.two", &[]),
         ),
     };
     Ok(ProfilesBook {

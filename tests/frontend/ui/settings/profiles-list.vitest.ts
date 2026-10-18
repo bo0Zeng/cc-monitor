@@ -265,7 +265,7 @@ describe("buildProfilesList", () => {
     book.profiles = [];
     for (const [seed, hint, create] of [
       [[row("cc", null), row("cct", "cc")], "先建下面两条（后端给）", "建这两条（后端给）"],
-      [[row("cc", null)], "先建下面这一条（后端给）", "建这一条（后端给）"],
+      [[row("cc", null)], "先建下面这条（后端给）", "建这条（后端给）"],
     ] as const) {
       book.seed = [...seed];
       book.seedHint = hint;
