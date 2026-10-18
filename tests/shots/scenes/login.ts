@@ -7,7 +7,7 @@
 import type { Scene } from "./index";
 import { Refuse, type World } from "../fake/types";
 import { accountSpecs, defaultWorld, LOCAL } from "../fake/world";
-import { needsAuthFile, putAccounts, putBrokenAccounts, putMcp, type MachineDisk } from "../disk";
+import { CREDS, needsAuthFile, putAccounts, putBrokenAccounts, putMcp, type MachineDisk } from "../disk";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { byText, click, mainReady, sleep, until, waitFor } from "./helpers";
 
@@ -124,6 +124,19 @@ export const LOGIN_SCENES: Scene[] = [
       teamSignedOut(w.disk[LOCAL]!);
       linearNeedsLogin(w.disk[LOCAL]!, false);
       putBrokenAccounts(w.disk["gpu-01"]!);
+      return w;
+    },
+  ),
+  scene(
+    "needs-panel-nofix",
+    "需手动浮层 · 没有解法的那一项",
+    "devbox 上按量号那份凭据文件被放宽成 0644（没有在 app 里能点的修法）：第一行后端写的哪份 · 宽在哪，第二行写怎么修，不画按钮",
+    () => openPanel(["team", "apikey-credentials.json"]),
+    () => {
+      const w = defaultWorld();
+      teamSignedOut(w.disk[LOCAL]!);
+      linearNeedsLogin(w.disk[LOCAL]!, false);
+      w.disk.devbox!.modes = { ...w.disk.devbox!.modes, [CREDS]: 0o644 };
       return w;
     },
   ),

@@ -922,11 +922,15 @@ def deploy_and_time(button, name):
         texts = [n.get("text") or "" for n in ns]
         if any(x.startswith(done_word) for x in texts):
             break
+        # 那一句一闪而过（机器忙时截一张就要几秒，整句可能落在两张之间）：装完的事实在台架上也看得到 ——
+        # 点下之后来了一条换常驻、落点自报这一版 ⇒ 装完了，不靠截到那一闪。
+        if sum(1 for _, c in commands() if c.endswith("--resident-ensure --replace")) > before and landing_id() == build_id():
+            break
         failed = [x for x in texts if "失败" in x or "未安装" in x]
         if failed:
             raise Step.Fail(f"没装上：{failed[0]}")
         if time.time() >= end:
-            raise Step.Fail("五分钟没等到「已安装后端」那一句")
+            raise Step.Fail("五分钟没等到「已安装后端」那一句，台架上也没换成这一版")
         time.sleep(0.3)
     cmds = [(at, c) for at, c in commands() if at >= today_secs(tapped) - 1]
     replaced = [at for at, c in cmds if c.endswith("--resident-ensure --replace")]
@@ -1557,6 +1561,12 @@ def walk():
         hide_keyboard()
         tap(t("mobDefaultButtons.label.tmux")); time.sleep(3)
         tap(t("mobTmux.new.name")); typed(f"{T}new"); hide_keyboard()
+        # 名字框独占一行、按钮在它下面一排：会话多时那一排落在窗里那一段可滚的底下，先往上滑到看得见。
+        for _ in range(6):
+            if ui.find(t("mobTmux.new.detached")) is not None:
+                break
+            adb("shell", "input", "swipe", "540", "1500", "540", "800", "400")
+            time.sleep(1)
         tap(t("mobTmux.new.detached"))
         end = time.time() + 20
         while time.time() < end and f"{T}new" not in tmux_sessions():
