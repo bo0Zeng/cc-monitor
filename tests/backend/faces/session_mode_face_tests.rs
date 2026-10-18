@@ -207,3 +207,23 @@ fn a_session_without_its_terminal_keeps_the_mode_for_the_next_resume() {
     assert_eq!(got.result, SwitchResult::Refused);
     assert_eq!(got.why, Some(Refused::NotManaged));
 }
+
+/// ★ 收哪几档：那一家循环里有的（含 `auto`）都收；认得出、却只能起会话时带参数定的（越过批准那几档）⇒ `launch_only` ＋ 说得清的那一句，
+/// 不是「请求格式不对」；认不出的 ⇒ `bad_args`。
+#[test]
+fn auto_is_offered_and_a_launch_only_mode_says_so() {
+    let (_, claude) = crate::agents::pick_kind(Some("claude")).unwrap();
+    let perm = claude.permission.unwrap();
+    for m in ["default", "acceptEdits", "plan", "auto"] {
+        assert!(offered(&perm, m).is_ok(), "`{m}` 不收");
+    }
+    for m in ["bypassPermissions", "dontAsk"] {
+        let e = offered(&perm, m).unwrap_err();
+        assert_eq!(e.code, "launch_only", "`{m}`");
+        assert_eq!(
+            e.message,
+            copy_core::copy_text("beSessionMode.switch.launchOnly", &[])
+        );
+    }
+    assert_eq!(offered(&perm, "yolo").unwrap_err().code, "bad_args");
+}

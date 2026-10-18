@@ -74,12 +74,29 @@ pub(crate) const MODEL_DEFAULT: Choice = Choice {
     text: || copy_core::copy_text("beSessionNew.model.default", &[]),
 };
 
-/// 换模型顺带改了什么（抽屉底那一行）：`/model` 也把它存成这个号以后新会话的默认（读回那一句同样照实说）。
+/// 换模型顺带改了什么（抽屉底那一行）：`/model` 也把它存成以后新会话的默认。这一行是那一家的事实（`session-open-facts` 不带会话）⇒ 不说改的是哪几个号；读回那一句照这条会话用的号说「各号 / 此号」。
 pub(crate) fn model_note() -> String {
     copy_core::copy_text("beSessionModel.note.savesDefault", &[])
 }
 
-/// `claude --permission-mode` 收的、起会话框给的档（不给越过批准那一档）。字与答批计划那一组同字。
+/// 换模型的确认框：对话里已有回复时 `/model <别的>` 先弹「Switch model?」（缓存要重读），选项里第一项是「Yes, switch to …」。
+/// 只认标题 ＋ 光标停在第一项「是」上（此时回车就是确认）；光标不在那 · 别的框 ⇒ 认不出。
+const SWITCH_MODEL_TITLE: &str = "Switch model?";
+const SWITCH_MODEL_YES: &str = "❯ 1. Yes, switch to ";
+
+/// 此刻那一屏上是不是换模型的确认框、光标在「是」上（[`SWITCH_MODEL_TITLE`] 那一行之下有 [`SWITCH_MODEL_YES`] 那一行）。
+pub(crate) fn model_confirm_on_screen(lines: &[String]) -> bool {
+    lines
+        .iter()
+        .position(|l| l.trim() == SWITCH_MODEL_TITLE)
+        .is_some_and(|at| {
+            lines[at..]
+                .iter()
+                .any(|l| l.trim_start().starts_with(SWITCH_MODEL_YES))
+        })
+}
+
+/// `claude --permission-mode` 收的、起会话框给的档（不给越过批准那一档）。`auto` 也在开着时 Shift+Tab 那一圈里（`plan` 之后）。字与答批计划那一组同字。
 pub(crate) const PERMISSION_MODES: &[Choice] = &[
     Choice {
         value: "default",
@@ -93,14 +110,14 @@ pub(crate) const PERMISSION_MODES: &[Choice] = &[
         value: "plan",
         text: || copy_core::copy_text("beSessionNew.mode.plan", &[]),
     },
-];
-
-/// 会话会处在、起会话时不给选的档（记录里写的 · 屏底认得出的）：越过批准的两档 · `auto` · 旧名 `manual`（＝ `default`，同一句）。
-pub(crate) const SHOWN_MODES: &[Choice] = &[
     Choice {
         value: "auto",
         text: || copy_core::copy_text("beAsk.choice.planAuto", &[]),
     },
+];
+
+/// 会话会处在、起会话时不给选的档（记录里写的 · 屏底认得出的）：越过批准的两档 · 旧名 `manual`（＝ `default`，同一句）。
+pub(crate) const SHOWN_MODES: &[Choice] = &[
     Choice {
         value: "bypassPermissions",
         text: || copy_core::copy_text("beSessionMode.mode.bypassPermissions", &[]),

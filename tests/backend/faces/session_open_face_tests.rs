@@ -139,6 +139,7 @@ fn each_agent_comes_with_its_name_and_its_models_and_modes_in_words() {
             ("default", t("beAsk.choice.planManual")),
             ("acceptEdits", t("beAsk.choice.planEdits")),
             ("plan", t("beSessionNew.mode.plan")),
+            ("auto", t("beAsk.choice.planAuto")),
         ]
     );
     // 每一个值都是 `session-new` 收的那一格：模型过全仓模型名判，权限档是那一家起会话认的档。

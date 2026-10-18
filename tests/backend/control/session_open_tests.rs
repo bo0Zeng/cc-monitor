@@ -625,7 +625,7 @@ fn a_resumed_item_carries_the_line_the_model_and_the_mode_and_drops_what_it_must
         );
         for (model, mode) in [
             (Some("bad model;"), Some("bypassPermissions")),
-            (None, Some("auto")),
+            (None, Some("dontAsk")),
         ] {
             let rig = Rig::new(Some(vec![]));
             rig.run(|d| {

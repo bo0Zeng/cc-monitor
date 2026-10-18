@@ -1288,7 +1288,7 @@ fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
         1,
         "向适配层要那两个键的那一处不见了 / 变形了"
     );
-    // 配置目录键只在 `owner_of` 里抠一处；它的两个调用方（会话那几行 · 宣告判号）都传适配层给的那个键。
+    // 配置目录键只在 `owner_of` 里抠一处；它的三个调用方（会话那几行 · 宣告判号 · 换模型判这条会话用的号）都传适配层给的那个键。
     assert_eq!(
         prod.matches("proc_env_var(pid, key)").count(),
         1,
@@ -1301,7 +1301,7 @@ fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
             .count();
     assert_eq!(
         (calls, keyed),
-        (2, 2),
+        (3, 3),
         "`owner_of` 的调用方变了，或有一处传的不是适配层给的配置目录键"
     );
     assert_eq!(
@@ -2609,4 +2609,58 @@ fn only_an_account_that_only_needs_signing_in_gets_the_login_button() {
         l.accounts[0].unselectable.as_ref().map(|w| w.0.clone()),
         Some(copy_core::copy_text("accounts.row.loginElsewhere", &[]))
     );
+}
+
+/// ★ 换模型写的那份设置共不共用，按**这条会话用的那个号**判：a · b 两个号链回共享库同一份、c 自己一份 ⇒
+/// a · b 说「各号新会话的默认」，c 说「此号」；都还没有这份文件 · 没有账号库 ⇒「此号」。
+#[cfg(unix)]
+#[test]
+fn whether_the_settings_are_shared_is_judged_for_the_session_s_own_account() {
+    let root = tmpdir("shared-settings");
+    let accts = root.join("accts");
+    let shared = root.join("shared");
+    let (a, b, c) = (accts.join("a"), accts.join("b"), accts.join("c"));
+    for d in [&shared, &a, &b, &c] {
+        fs::create_dir_all(d).unwrap();
+    }
+    write_manifest(
+        &accts,
+        &format!(
+            r#"{{"version":1,"accounts":[
+                {{"name":"a","configDir":"{a}"}},
+                {{"name":"b","configDir":"{b}"}},
+                {{"name":"c","configDir":"{c}"}}]}}"#,
+            a = a.display(),
+            b = b.display(),
+            c = c.display()
+        ),
+    );
+    let said = |home: &Path, accts: &Path| {
+        crate::faces::session_model_face::settled(
+            Some(crate::agents::ModelSaid {
+                name: "Sonnet 5.5".into(),
+                kept: false,
+                effort: None,
+            }),
+            shared_with_other_accounts_in(accts, home, "settings.json"),
+        )
+        .said
+        .unwrap()
+    };
+    let m = [("model", "Sonnet 5.5")];
+    let (each, own) = (
+        copy_core::copy_text("beSessionModel.set.savedShared", &m),
+        copy_core::copy_text("beSessionModel.set.saved", &m),
+    );
+    assert_eq!(said(&a, &accts), own, "都还没有这份文件就算共用了");
+    fs::write(shared.join("settings.json"), "{}").unwrap();
+    for d in [&a, &b] {
+        std::os::unix::fs::symlink(shared.join("settings.json"), d.join("settings.json")).unwrap();
+    }
+    fs::write(c.join("settings.json"), "{}").unwrap();
+    assert_eq!(said(&a, &accts), each, "a 与 b 共用一份，a 没说「各号」");
+    assert_eq!(said(&b, &accts), each, "a 与 b 共用一份，b 没说「各号」");
+    assert_eq!(said(&c, &accts), own, "c 自己一份，却说成了「各号」");
+    assert_eq!(said(&a, &root.join("none")), own, "没有账号库也算共用了");
+    let _ = fs::remove_dir_all(&root);
 }

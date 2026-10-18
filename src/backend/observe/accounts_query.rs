@@ -949,6 +949,43 @@ fn waiting_needs(agent_home: &Path, sid: &str) -> Option<super::recognize::facts
     super::recognize::facts::needs_of(kind, &pending, Some(&wait))
 }
 
+/// 这条会话跑在哪个号的家目录下：它的 pidfile 在、进程身份对得上 ⇒ 读进程环境里的配置目录（没设 ⇒ 默认家目录，注册表 `agents::home_at`）。
+/// 找不到 · 进程不在了 · 环境读不到 ⇒ `None`（不猜）。
+pub(crate) fn session_home(agent_home: &Path, sid: &str) -> Option<PathBuf> {
+    let face = crate::agents::account_library_face()?;
+    let (pid, _) = pidfiles(agent_home).into_iter().find(|(pid, v)| {
+        v.get("sessionId").and_then(|x| x.as_str()) == Some(sid)
+            && session_process_identity_ok(*pid, v)
+    })?;
+    let owner = owner_of(pid, face.session_env.config_dir, &[]);
+    if owner.env_unreadable {
+        return None;
+    }
+    Some(crate::agents::home_at(
+        owner.config_dir.as_deref().map(Path::new),
+        false,
+    ))
+}
+
+/// 家目录 `home` 下的 `<rel>` 跟这台账号库里别的号共用同一份（[`shared_with_other_accounts_in`]）。
+pub(crate) fn shared_with_other_accounts(home: &Path, rel: &str) -> bool {
+    shared_with_other_accounts_in(&resolve_accts_dir(), home, rel)
+}
+
+/// 看的是链接布局：`home` 下那一份解开链接后的真身，跟账号库里另一个号（家目录不是同一个）的那一份是同一份 ⇒ 共用。
+/// 它自己一份 · 没有账号库 · 这份文件还没有（解不开）⇒ `false`。
+pub(crate) fn shared_with_other_accounts_in(accts_dir: &Path, home: &Path, rel: &str) -> bool {
+    use crate::common::fence::real_path;
+    let (Some(me), Some(my_home)) = (real_path(&home.join(rel)), real_path(home)) else {
+        return false;
+    };
+    dirs_of(accts_dir).iter().any(|(d, _)| {
+        let other = crate::agents::home_at(d.as_deref().map(Path::new), false);
+        real_path(&other).is_some_and(|h| h != my_home)
+            && real_path(&other.join(rel)).is_some_and(|f| f == me)
+    })
+}
+
 /// 账号库里每个号的配置目录（规范过的写法）⇒ 号名；`None` 这个 key 是账号 0（configDir 缺席）：裸起的会话归属到它。
 fn dirs_of(accts_dir: &Path) -> Vec<(Option<String>, String)> {
     load_manifest(accts_dir)

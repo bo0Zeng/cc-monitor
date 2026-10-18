@@ -531,7 +531,7 @@ export interface TypedCommands {
   "session-open": { req: SessionOpenReq; reply: Opened; code: "bad_args" | "unknown_agent" | "bad_command" | "no_dir" | "account_unavailable" | "place_unavailable" | "bad_tmux_name" | "tmux_taken" | "record_gone" | "already_live" | "not_in_tmux" | "wrong_owner" | "unobservable" | "fork_failed" | "refused" | "start_failed" | "child_timed_out" | "launch_pending" | "no_strategy" };
   "session-open-dir": { req: OpenDirReq; reply: DirChecked; code: "bad_args" };
   "session-open-facts": { req: OpenFactsReq; reply: OpenFacts; code: "bad_args" | "fork_failed" };
-  "session-permission": { req: SessionPermissionReq; reply: ModeSwitched; code: "bad_args" | "unsupported" | "not_known" | "ambiguous" | "no_tmux" | "tmux_too_old" | "no_server" | "no_such_session" | "capture_failed" | "unobservable" | "child_timed_out" };
+  "session-permission": { req: SessionPermissionReq; reply: ModeSwitched; code: "bad_args" | "unsupported" | "launch_only" | "not_known" | "ambiguous" | "no_tmux" | "tmux_too_old" | "no_server" | "no_such_session" | "capture_failed" | "unobservable" | "child_timed_out" };
   "session-restart": { req: RestartReq; reply: Restarted; code: "bad_args" | "unobservable" | "account_unavailable" | "not_in_terminal" | "ambiguous" | "already_live" | "stop_failed" | "start_failed" | "child_timed_out" };
   "session-say": { req: SessionSayReq; reply: Sent; code: "bad_args" | "no_tmux" | "no_such_session" | "unobservable" | "child_timed_out" };
   "session-terminals": { req: SidReq; reply: Showing; code: "bad_args" | "no_such_session" | "failed" | "child_timed_out" };

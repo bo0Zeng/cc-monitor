@@ -565,3 +565,12 @@ fn the_setting_is_checked_before_it_is_written() {
     // 到点时 hook 还活着：至多等的那几分钟短于那一家给 hook 的期限。
     assert!(u64::from(AUTO_MAX_MIN) * 60 < crate::agents::claudecode::asks::HOOK_TIMEOUT_SECS);
 }
+
+/// ★ 替人答的缺省那一句不预设有推荐项：有推荐 · 没推荐两种都说得通（选项都没标推荐时也对得上）。
+#[test]
+fn the_default_auto_answer_holds_with_or_without_a_recommended_option() {
+    let say = auto_say();
+    assert!(say.contains("有推荐就"), "{say}");
+    assert!(say.contains("没有就"), "{say}");
+    assert!(!say.contains("你"), "缺省那一句用了第二人称：{say}");
+}

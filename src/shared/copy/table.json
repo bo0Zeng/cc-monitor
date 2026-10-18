@@ -1778,10 +1778,22 @@
       "zh": "此会话不支持中途切换权限档",
       "args": []
     },
+    "beSessionMode.switch.launchOnly": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未切换权限档 · 此档只能在起会话时指定",
+      "args": []
+    },
     "beSessionModel.set.saved": {
       "kind": "body",
       "role": "说明",
       "zh": "已换成 {model} · 同时存为此号新会话的默认",
+      "args": ["model"]
+    },
+    "beSessionModel.set.savedShared": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已换成 {model} · 同时存为各号新会话的默认",
       "args": ["model"]
     },
     "beSessionModel.set.kept": {
@@ -1817,7 +1829,7 @@
     "beSessionModel.note.savesDefault": {
       "kind": "body",
       "role": "说明",
-      "zh": "换模型也改此号以后新会话的默认",
+      "zh": "换模型也改以后新会话的默认",
       "args": []
     },
     "beSessionModel.switch.unsupported": {
@@ -16984,7 +16996,7 @@
     "beAsk.auto.say": {
       "kind": "body",
       "role": "片段",
-      "zh": "不要卡着，按推荐的做，继续",
+      "zh": "不要卡着：有推荐就按推荐，没有就选最合适的，继续",
       "args": []
     },
     "beAsk.answer.closed": {

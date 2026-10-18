@@ -38,6 +38,8 @@ typed::codes! {
     pub(crate) enum SessionPermissionErr {
         /// 那一家会话开着时切不了档。
         Unsupported = "unsupported",
+        /// 认得出这一档，却只能起会话时带参数定（开着时那一圈里没有它）。
+        LaunchOnly = "launch_only",
         /// 名单里此刻没有它。
         NotKnown = "not_known",
         /// 不止一个终端挂着这个 sid。
@@ -248,6 +250,23 @@ impl crate::wire::typed::Handle for SessionPermission {
     }
 }
 
+/// 收不收这一档：那一家给选的 ⇒ 收；认得出、却不给选的（越过批准那几档：只能起会话时带参数定）⇒ `launch_only`；认不出 ⇒ `bad_args`。
+pub(crate) fn offered(perm: &crate::agents::PermissionFace, mode: &str) -> Result<(), CmdErr> {
+    if perm.modes.iter().any(|c| c.value == mode) {
+        return Ok(());
+    }
+    if perm.shown.iter().any(|c| c.value == mode) {
+        return Err(CmdErr::new(
+            "launch_only",
+            copy_core::copy_text("beSessionMode.switch.launchOnly", &[]),
+        ));
+    }
+    Err(CmdErr::new(
+        "bad_args",
+        malformed("`mode` is not one this agent offers"),
+    ))
+}
+
 fn answer(req: &SessionPermissionReq, own: &crate::platform::Own) -> Result<ModeSwitched, CmdErr> {
     if !shell_quote_core::session_id_ok(&req.sid) {
         return Err(CmdErr::new(
@@ -267,12 +286,7 @@ fn answer(req: &SessionPermissionReq, own: &crate::platform::Own) -> Result<Mode
             copy_core::copy_text("beSessionMode.switch.unsupported", &[]),
         ));
     };
-    if !perm.modes.iter().any(|c| c.value == req.mode) {
-        return Err(CmdErr::new(
-            "bad_args",
-            malformed("`mode` is not one this agent offers"),
-        ));
-    }
+    offered(&perm, &req.mode)?;
     let waiting =
         crate::observe::accounts_query::waiting_now(&home, &req.sid, &crate::control::asks::sids());
     let mut io = Live {
