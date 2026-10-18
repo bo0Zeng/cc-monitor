@@ -204,6 +204,7 @@ async fn loopback_roundtrip_through_the_resident_backend() {
     // 起真后端（stdio 载体），用**生产那一个**消费者接上它 ⇒ `<local>` 那条流登记上。
     let home = v["home"].as_str().unwrap();
     let mut child = std::process::Command::new(v["backend"].as_str().unwrap())
+        .args(crate::local_backend::LOCAL_STREAM_ARGS) // 生产起本机流后端那一份起参（零参数是「起会话」）
         .env("HOME", home)
         .env("TMUX_TMPDIR", home)
         .env_remove("TMUX")

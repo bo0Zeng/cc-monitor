@@ -49,6 +49,7 @@ import type { Tab } from "./tab-model";
 import { faceOf, hasTerminal } from "./face-can";
 import type { TabStore } from "./tab-store";
 import { ColdReads, IdleSlot } from "./tab-cold-reads";
+import { noteColdFilled, noteHistoryArrived, noteHistoryFed } from "./startup-perf";
 import { copyText } from "./copy-table";
 
 /** 只问「这条是不是 meta」、不喂任何账的空 sink（骨架按偏移取回**见过**的行时用）。 */
@@ -1212,11 +1213,13 @@ export class TabStreamView {
    */
   private feedHistoryRows(tab: Tab, payloads: JsonlLinePayload[]): void {
     if (payloads.length === 0) return;
+    noteHistoryArrived();
     const wasBatch = this.store.inBatch;
     this.store.inBatch = true;
     try {
       for (const p of payloads) this.host.onLine(p);
     } finally {
+      noteHistoryFed(payloads.length);
       this.store.inBatch = wasBatch;
       if (!wasBatch) {
         this.flushMidBatchBuffer(tab);
@@ -1316,8 +1319,10 @@ export class TabStreamView {
     }
     const fresh = have >= 0 ? this.restartTail(tab) : tab;
     // 取回来的进的是账本（批语义、不建卡）⇒ 取完了它还在眼前，就照切进来那样物化尾段、停下来看时接骨架。
+    // 冷起首个标签页的正文走的就是这一趟（壳冷起不整份重放）⇒ 启动管线那份 timeline 在它落地时落盘（只第一次，`startup-perf.ts`）。
     this.readForward(fresh, path, Math.max(0, seq - TabStreamView.WATCH_REFILL_MAX), undefined, () => {
       if (this.inFront(fresh)) this.activate(fresh);
+      noteColdFilled();
     });
   }
 

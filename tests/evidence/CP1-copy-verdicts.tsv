@@ -43,12 +43,12 @@ src/frontend/filewin/src/fonts.rs:277	×书加找移签	保留	[不对外] 字�
 src/frontend/filewin/src/fonts.rs:326	处	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（搬家那一跳两句的字；那两句随书签旧键退役删了，只剩别处还用的 `处`）
 src/frontend/filewin/src/fonts.rs:291	显示预	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（预览那几个字）
 src/frontend/shell/src/lib.rs:1578	认不出：没有 hosts 数组（旧的单台写法不再认），远端一台都不连；在设置里重新添加这台机器	保留	[不对外] REMOTE_HOSTS_UNRECOGNIZED 只进 monitor 日志（load_remote_configs 的 error! 那一行，前面带配置文件路径）；界面那一侧读同一份 config 的是 TS remote-config.ts，不经这句
-src/frontend/ui/events.ts:585	[perf] === 启动管线 timeline (前端 performance.now ms · window={…}) ===	保留	[不对外] 启动管线 perf timeline 行，经 console.info / frontend_perf_log 进开发者日志
-src/frontend/ui/events.ts:589	[perf]   first jsonl-batch in   T+{…} (+{…}) ← 后端 replay 完成	保留	[不对外] perf timeline 开发者日志行
-src/frontend/ui/events.ts:591	[perf]   batch payloads drained T+{…} (+{…}) ← drain 全部 {…} 条	保留	[不对外] perf timeline 开发者日志行
-src/frontend/ui/events.ts:592	[perf]   onBatchEnd fired       T+{…} (+{…}) ← 300ms grace 后真正切 live	保留	[不对外] perf timeline 开发者日志行
-src/frontend/ui/events.ts:595	[perf]   建卡 rendered={…} · 收纳 deferred={…} · drained={…}(累计)	保留	[不对外] perf timeline 开发者日志行
-src/frontend/ui/events.ts:596	[perf]   ── 总耗时（DOM → 加载完成）：{…}ms ──	保留	[不对外] perf timeline 开发者日志行
+src/frontend/ui/startup-perf.ts:77	[perf] === 启动管线 timeline (前端 performance.now ms · window={…}) ===	保留	[不对外] 启动管线 perf timeline 行，经 console.info / frontend_perf_log 进开发者日志
+src/frontend/ui/startup-perf.ts:81	[perf]   first jsonl-batch in   T+{…} (+{…}) ← 首批行到前端（重放批 · 冷起补读）	保留	[不对外] perf timeline 开发者日志行
+src/frontend/ui/startup-perf.ts:83	[perf]   batch payloads drained T+{…} (+{…}) ← drain 全部 {…} 条	保留	[不对外] perf timeline 开发者日志行
+src/frontend/ui/startup-perf.ts:84	[perf]   onBatchEnd fired       T+{…} (+{…}) ← 切 live（重放批：300ms grace 后；冷起补读：取完、当前 tab 物化之后）	保留	[不对外] perf timeline 开发者日志行
+src/frontend/ui/startup-perf.ts:86	[perf]   建卡 rendered={…} · 收纳 deferred={…} · drained={…}(累计)	保留	[不对外] perf timeline 开发者日志行
+src/frontend/ui/startup-perf.ts:87	[perf]   ── 总耗时（DOM → 加载完成）：{…}ms ──	保留	[不对外] perf timeline 开发者日志行
 src/comms/inward/chan/router.rs:171	读出错：{e}	保留	[不对外] 只进日志（host.rs 的 tracing::warn），连接结束原因
 src/comms/inward/chan/router.rs:182	编号 {id} 还在飞，又来了一次	保留	[不对外] 只进日志（host.rs 的 tracing::warn），客户端违约
 src/comms/inward/chan/router.rs:203	编号 {id} 还在飞，又来了一次	保留	[不对外] 只进日志（host.rs 的 tracing::warn），客户端违约

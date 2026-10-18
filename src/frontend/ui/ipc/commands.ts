@@ -94,7 +94,7 @@ export const commands = {
 
   /**
    * 前端性能日志落进 monitor 日志（无 devtools 环境下的唯一取证通道，grep `fe_perf`）。
-   * Rust 侧无返回值 ⇒ **桶①** `Promise<void>`。调用方：`e2e-probe.ts` 与 `events.ts`。
+   * Rust 侧无返回值 ⇒ **桶①** `Promise<void>`。调用方：`e2e-probe.ts` 与 `startup-perf.ts`。
    */
   frontend_perf_log: (args: { lines: string }) =>
     invoke<void>("frontend_perf_log", args),

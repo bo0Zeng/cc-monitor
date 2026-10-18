@@ -123,6 +123,14 @@ vi.mock("../../../src/frontend/ui/render-stream-record", () => ({
   // 这里只塞「一条记录 = 一个 seq」（与真实现同：一条记录至多一张卡）。
   renderContentRecord: vi.fn(f15.insertingRender),
 }));
+// 启动管线读数（`startup-perf.ts`）换成 spy：判的是冷起补读那一趟调到了哪几处（读数本身住 `startup-perf.vitest.ts`）。
+vi.mock("../../../src/frontend/ui/startup-perf", () => ({
+  noteFirstBatch: vi.fn(),
+  noteHistoryArrived: vi.fn(),
+  noteHistoryFed: vi.fn(),
+  noteColdFilled: vi.fn(),
+  emitPerfSummary: vi.fn(),
+}));
 vi.mock("../../../src/frontend/ui/cards", () => ({
   reconcilePendingToolResults: vi.fn(() => []),
 }));
@@ -169,6 +177,7 @@ import { openSession } from "../../../src/frontend/ui/session-open";
 import { pickAsk } from "../../../src/frontend/ui/resume-menu";
 import { callStop } from "../../../src/frontend/ui/tab-batch-run";
 import { TabManager, type Tab } from "../../../src/frontend/ui/tabs";
+import * as startupPerf from "../../../src/frontend/ui/startup-perf";
 import { DWELL_MS, DWELL_MOVE_PX, type DropTarget } from "../../../src/frontend/ui/tab-drop";
 import tg from "../../../src/frontend/ui/tab-group.module.css";
 
@@ -6234,6 +6243,22 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段", () 
     expect(turnsAfter, "重来之后轮次又从 0 整份要").not.toContain(0);
     expect(inputsAfter, "重来之后大纲又从 0 整份要").not.toContain(0);
     expect(t.turnFold.all.map((x) => x.at), "轮次没接过来").toEqual([100]);
+  });
+
+  it("冷起那一形（tab 一行都没见过、刚进「在看」名单）⇒ 取回的行喂进去时打首批那一句，取完之后启动 timeline 落一次盘", async () => {
+    answerLines();
+    tm.ensureTab("wcold", null, "/p/wcold.jsonl", LOCAL_ORIGIN);
+    tm.switchTo("wcold");
+    tm.onSessionWatch(LOCAL_ORIGIN, { sid: "wcold", path: "/p/wcold.jsonl", seq: 2000 });
+    for (let k = 0; k < 5; k++) await settle();
+    expect(lineReads()[0], "冷起那一趟：上流点之下那一截取到末尾").toEqual({ from: 1400, until: undefined });
+    const arrived = vi.mocked(startupPerf.noteHistoryArrived).mock.invocationCallOrder;
+    const fed = vi.mocked(startupPerf.noteHistoryFed).mock;
+    const filled = vi.mocked(startupPerf.noteColdFilled).mock.invocationCallOrder;
+    expect(arrived.length, "取回的行喂进去时没记首批").toBeGreaterThan(0);
+    expect(fed.calls[0]?.[0], "冷起那一趟喂进去的行数").toBe(END - 1400);
+    expect(filled, "取完之后 timeline 该落一次盘").toHaveLength(1);
+    expect(filled[0], "落盘要在那一趟喂完之后").toBeGreaterThan(fed.invocationCallOrder[0]!);
   });
 
   it("连着的不取；别的那份记录（路径对不上）· 别的机器上的同名会话不归这个 tab", async () => {

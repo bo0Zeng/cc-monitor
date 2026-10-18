@@ -371,8 +371,9 @@ fn the_production_wiring_hosts_the_relay_and_never_writes_tee_lines_to_stdout() 
         )
         .env("CCM_DATA_DIR", creds.parent().expect("夹具目录"))
         .env("CLAUDE_CONFIG_DIR", &home)
-        // 钥匙文件落在夹具家目录里（预先放好夹具那一把），不碰用户真实的家目录。
+        // 钥匙文件落在夹具家目录里（预先放好夹具那一把），不碰用户真实的家目录。家那一对一起给（Windows 上找家先看 `USERPROFILE`）。
         .env("HOME", super::super::key::key_tests::seed_test_home(&home))
+        .env("USERPROFILE", &home)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())

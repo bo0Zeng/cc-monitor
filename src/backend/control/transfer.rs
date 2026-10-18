@@ -7,8 +7,8 @@
 //!
 //! | 命令 | `args` | 应答 | |
 //! |---|---|---|---|
-//! | `transfer-upload` | `TransferUploadReq {dial, local_path, home?}` | `TransferUploaded {id, key}` | 开单（不起跑）；`key` = 暂存件的键，提交时交给远端后端 `files-commit-upload` |
-//! | `transfer-download` | `TransferDownloadReq {dial, remote_path, local_path}` | `TransferOpened {id}` | 开单；本机落点当场过路径解析（出声早），起跑时再过一次 |
+//! | `transfer-upload` | `TransferUploadReq {dial, items: [{local_path}], remote_dir, home?, on_exists?, decide?}` | `TransferOpened {items}` | 一组开单（不起跑）：先在远端落点探同名；每项的 `staged` = 暂存件的键，提交时交给远端后端 `files-commit-upload` |
+//! | `transfer-download` | `TransferDownloadReq {dial, items: [{remote_path, name?}], local_dir, on_exists?, decide?}` | `TransferOpened {items}` | 一组开单：本机落点先探同名、当场过路径解析（出声早），起跑时再过一次 |
 //! | `transfer-start` | `{id}` | — | 起跑；进度走出方向 `transfer` 帧（`wire.rs`） |
 //! | `transfer-stop` | `{id}` | — | 撤（幂等）。上传删暂存件；下载留 `.part` |
 //!

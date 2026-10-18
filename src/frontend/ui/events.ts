@@ -1,12 +1,11 @@
 import { makeYieldToMain } from "./yield-to-main";
 import type { SessionHidden } from "./session-hidden";
-import { commands } from "./ipc/commands";
 import { chan, type HopFault, type HopTag, type Item, type Sub } from "../../comms/inward/chan";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { toast } from "./kit/toast";
 import { CHANGED_WINDOW, changedItems, changedStream, type Changed, type Topic } from "./changed-stream";
-import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { emitPerfSummary, noteFirstBatch } from "./startup-perf";
 // 这几个 payload 类型从生成物 re-export（源：`src/frontend/shell/src/ui_contract.rs` 的 ts-rs 派生）。
 // 仍然 `export`：不缩小已经导出的表面（要用的话从这个枢纽拿）。
 import type { JsonlLinePayload } from "./generated/JsonlLinePayload";
@@ -627,10 +626,7 @@ export async function bindEvents(
           snapshotInflight = f.snapshot_inflight.count;
         } else if (f !== null && typeof f === "object" && "batch" in f) {
           if (f.batch === "start") {
-            if (perf.firstJsonlBatch === undefined) {
-              perf.firstJsonlBatch = performance.now();
-              console.info(`[perf] first stream batch received @ ${perf.firstJsonlBatch.toFixed(0)}ms`);
-            }
+            noteFirstBatch();
             take({ kind: "batch-start" });
           } else {
             // 每块末尾一个 —— 300ms grace 内有新 payload / 新块都续期
@@ -825,59 +821,4 @@ export async function followSession(origin: Origin, sid: string, sink: (e: Follo
     hold.owed = 0;
   }
   return { stop: () => hold.sub?.stop() };
-}
-
-/**
- * 「这个东西可以 `.catch`」—— 下面那一跳唯一依赖的那条前提，抽出来给它一个名字。
- *
- * ⚠ 判的是 **`.catch`**，不是 `.then`。两者在「thenable」这个词下常被当成一件事，
- * 而调用点真正要的是前者 —— 一个只有 `.then` 的 thenable 照样会在 `.catch(` 那一行炸。
- * **判据要贴着调用点写，不贴着行话写。**
- */
-function isCatchable(v: unknown): v is Promise<unknown> {
-  return typeof (v as { catch?: unknown } | null | undefined)?.catch === "function";
-}
-
-/** 启动管线 perf timeline 输出（onBatchEnd 真正 fire 时调一次） */
-function emitPerfSummary(
-  p: typeof window.__ccmPerf,
-  payloadCount: number,
-): void {
-  const dom = p.domContentLoaded ?? 0;
-  const theme = p.themeLoaded ?? 0;
-  const ready = p.frontendReadyEmit ?? 0;
-  const firstBatch = p.firstJsonlBatch ?? 0;
-  const firstDrain = p.firstPayloadDrained ?? 0;
-  const drainEnd = p.batchDrainEnd ?? 0;
-  const endFired = p.onBatchEndFired ?? performance.now();
-
-  // 多窗口（查看器 / 拆出的窗口）各自落盘，带 label 免得读数混在一起
-  const winLabel = getCurrentWebviewWindow().label;
-  const lines = [
-    `[perf] === 启动管线 timeline (前端 performance.now ms · window=${winLabel}) ===`,
-    `[perf]   DOMContentLoaded       T+${dom.toFixed(0)}`,
-    `[perf]   loadTheme done         T+${theme.toFixed(0)} (+${(theme - dom).toFixed(0)})`,
-    `[perf]   emit frontend-ready    T+${ready.toFixed(0)} (+${(ready - theme).toFixed(0)})`,
-    `[perf]   first jsonl-batch in   T+${firstBatch.toFixed(0)} (+${(firstBatch - ready).toFixed(0)}) ← 后端 replay 完成`,
-    `[perf]   first payload dispatch T+${firstDrain.toFixed(0)} (+${(firstDrain - firstBatch).toFixed(0)})`,
-    `[perf]   batch payloads drained T+${drainEnd.toFixed(0)} (+${(drainEnd - firstDrain).toFixed(0)}) ← drain 全部 ${payloadCount} 条`,
-    `[perf]   onBatchEnd fired       T+${endFired.toFixed(0)} (+${(endFired - drainEnd).toFixed(0)}) ← 300ms grace 后真正切 live`,
-    // 建卡 vs 收纳对照；计数为页面生命周期累计（二次批不归零；批后 rIC 物化不在本行内）
-    `[perf]   建卡 rendered=${p.recordsRendered ?? 0} · 收纳 deferred=${p.recordsDeferred ?? 0} · drained=${payloadCount}(累计)`,
-    `[perf]   ── 总耗时（DOM → 加载完成）：${(endFired - dom).toFixed(0)}ms ──`,
-  ];
-  console.info(lines.join("\n"));
-  // 没有 devtools 的环境里的读数通道：经后端写进 monitor 日志（grep fe_perf）。
-  // 返回的不是 Promise（桩返回 undefined）⇒ 出声不炸：在 grace 那个 `setTimeout` 回调里抛，没有调用栈接得住。
-  const sent: unknown = commands.frontend_perf_log({ lines: lines.join("\n") });
-  if (isCatchable(sent)) {
-    void sent.catch(() => {});
-  } else {
-    console.warn(
-      `[perf] frontend_perf_log 的返回值没有 .catch（拿到 ${typeof sent}）——` +
-        "本次 perf timeline 没能经后端落盘。\n" +
-        "★ 在测试里看到这一行 = 那个桩返回的不是 Promise；" +
-        "它此前的表现是一条点不出判据名的 unhandled error。",
-    );
-  }
 }

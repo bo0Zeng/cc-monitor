@@ -106,18 +106,42 @@ fi
 # 乙：backend **握手过且盯的是 fixture 目录**（挡 ②③⑤）。
 _hello="$(grep 'backend hello' "$LOG" | tail -1)"
 [ -n "$_hello" ] || _abort "日志里一条 backend hello 都没有 —— 远端没连上，本跑与 #60 无关"
-# 🔴 〔2026-09-18 修陈旧〕这里匹配的是**人读日志那一行的文本**，而那行的字段名被
-#    `17924e9e`（「S4：协议去 agent 名 —— codex_dir/kinds 换成通用 homes，claude_dir 冻结兼容」）
-#    从 `claude_dir=` 改成了 `claude_home=`（wire 上的 JSON 字段仍叫 `claude_dir`，
-#    人读那行打的是派生值 `claude_home_from_hello(&homes, &claude_dir)`）。
-#    ⇒ 本格从此**恒 ABORT**，而 ABORT 长得像「台架没搭好」，不像「判据过期了」
-#    ——于是它在 ABORT 里藏了下来，没人看见。这正是本套件头注那条
-#    「判据看的是围栏，还是围栏的说明书」的又一例：**锚在日志文案上，改文案即失效。**
-#    两个名字都收：新的是今天的，旧的留给还没升的树。
-case "$_hello" in
-  *"claude_home=$CLAUDE_DIR"* | *"claude_dir=$CLAUDE_DIR"*) : ;;
-  *) _abort "backend 盯的不是 fixture 目录（要 $CLAUDE_DIR）：$_hello" ;;
-esac
+# 盯哪个目录不在握手里（今天的 hello 只带 build_id · host_arch · 命令表，日志那一行也只印这几格；从前印的 `claude_home=` 随
+#   「协议去 agent 名」那一刀没了，锚在那行文案上的这一格从此恒 ABORT）⇒ 按身份认：那台后端进程环境里的 `CLAUDE_CONFIG_DIR`
+#   （wrapper 用 `env` 交的那一个），与下面丁那一格同一个判法（`_count_our_backends`）。一个都没有 ⇒ 握手的那个不是 wrapper 起的。
+_count_our_backends() {
+  local n=0 pid env_dir
+  for pid in $(pgrep -f '.build/backend/[^ ]*/cc-monitor-backend' 2>/dev/null) \
+             $(pgrep -f '\.cc-monitor/bin/cc-monitor-backend' 2>/dev/null); do
+    # ⚠ **按 exe 复核，不信 cmdline**：`pgrep -f` 会匹配到**任何命令行里含这个模式的进程**
+    #   —— 08-13 实测它数进了**我自己那条正在跑的 shell**。这与那五次 `pkill -f` 自伤
+    #   同一族（`reap-orphan-backends.sh` 早就改成按 exe 判，这里跟上）。
+    case "$(readlink -f "/proc/$pid/exe" 2>/dev/null)" in
+      *cc-monitor-backend) : ;;
+      *) continue ;;
+    esac
+    # 常驻模型下每条连接另有一个 `--resident-attach` 小中继（同一份二进制、同一份环境，只在 stdio 与常驻之间搬字节）：
+    #   它不是第二个后端，不计（不跳过的话，一条连接就被数成「多一个孤儿」）。
+    case "$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)" in
+      *" --resident-attach"*) continue ;;
+    esac
+    # 身份 = 它盯哪个 claude_dir。三态**语义不同，必须分开**（08-13 实测把后两态混过一次）：
+    #   · 值 == 本跑的 fixture      ⇒ 是我们的，计入
+    #   · 值 != 本跑的              ⇒ 别人的（别的工作区/别的台架），不计
+    #   · **变量不存在**            ⇒ 它盯的是默认 `~/.claude`，**不是我们的**（本台架的
+    #     wrapper 一律 `exec env CLAUDE_CONFIG_DIR=… backend`，我们的那个必定带着它）
+    #   · environ **真的读不到**    ⇒ 不知道 ⇒ **计入**（宁可多报一次 ABORT）
+    if [ -r "/proc/$pid/environ" ]; then
+      env_dir="$(tr '\0' '\n' < "/proc/$pid/environ" | sed -n 's/^CLAUDE_CONFIG_DIR=//p' | head -1)"
+      [ "$env_dir" = "$CLAUDE_DIR" ] && n=$(( n + 1 ))
+    else
+      n=$(( n + 1 ))
+    fi
+  done
+  printf '%s' "$n"
+}
+_backends=$(_count_our_backends)
+[ "$_backends" -ge 1 ] || _abort "没有一个后端进程盯着 fixture 目录（环境里 \`CLAUDE_CONFIG_DIR=$CLAUDE_DIR\` 的一个都没有）—— 握手的那个不是 wrapper 起的？$_hello"
 
 # 丙：跑的是 **dev 实例**（挡 ④）。DEV 探针（`import.meta.env.DEV` 门控）是本套件两条主断言的
 #     唯一数据源，生产构建里整支被 vite 消除 ⇒ 断言永不可能通过。
@@ -162,35 +186,9 @@ fi
 #
 # ⚠ 射程如实写：读不到 environ 的（权限/进程刚没）**当作「盯着本跑」计入** ——
 #   宁可多报一次 ABORT，不可漏掉一个真的在搅局的。
-_count_our_backends() {
-  local n=0 pid env_dir
-  for pid in $(pgrep -f '.build/backend/[^ ]*/cc-monitor-backend' 2>/dev/null) \
-             $(pgrep -f '\.cc-monitor/bin/cc-monitor-backend' 2>/dev/null); do
-    # ⚠ **按 exe 复核，不信 cmdline**：`pgrep -f` 会匹配到**任何命令行里含这个模式的进程**
-    #   —— 08-13 实测它数进了**我自己那条正在跑的 shell**。这与那五次 `pkill -f` 自伤
-    #   同一族（`reap-orphan-backends.sh` 早就改成按 exe 判，这里跟上）。
-    case "$(readlink -f "/proc/$pid/exe" 2>/dev/null)" in
-      *cc-monitor-backend) : ;;
-      *) continue ;;
-    esac
-    # 身份 = 它盯哪个 claude_dir。三态**语义不同，必须分开**（08-13 实测把后两态混过一次）：
-    #   · 值 == 本跑的 fixture      ⇒ 是我们的，计入
-    #   · 值 != 本跑的              ⇒ 别人的（别的工作区/别的台架），不计
-    #   · **变量不存在**            ⇒ 它盯的是默认 `~/.claude`，**不是我们的**（本台架的
-    #     wrapper 一律 `exec env CLAUDE_CONFIG_DIR=… backend`，我们的那个必定带着它）
-    #   · environ **真的读不到**    ⇒ 不知道 ⇒ **计入**（宁可多报一次 ABORT）
-    if [ -r "/proc/$pid/environ" ]; then
-      env_dir="$(tr '\0' '\n' < "/proc/$pid/environ" | sed -n 's/^CLAUDE_CONFIG_DIR=//p' | head -1)"
-      [ "$env_dir" = "$CLAUDE_DIR" ] && n=$(( n + 1 ))
-    else
-      n=$(( n + 1 ))
-    fi
-  done
-  printf '%s' "$n"
-}
-_dev_backends=$(pgrep -fc '.build/backend/[^ ]*/cc-monitor-backend' 2>/dev/null || echo 0)
-_dep_backends=$(pgrep -fc '\.cc-monitor/bin/cc-monitor-backend' 2>/dev/null || echo 0)
-_backends=$(_count_our_backends)
+# 按身份数的那个函数（`_count_our_backends`）定义在乙那一格，乙要「至少一个」、本格要「至多一个」，`$_backends` 是那一次数的。
+_dev_backends=$(pgrep -fc '.build/backend/[^ ]*/cc-monitor-backend' 2>/dev/null || true)  # 一个都没有时 pgrep 照印 0、只是退 1
+_dep_backends=$(pgrep -fc '\.cc-monitor/bin/cc-monitor-backend' 2>/dev/null || true)  # 一个都没有时 pgrep 照印 0、只是退 1
 # ★★ **降级档，不动判定**〔`P0b` 第三拍 08-13，待决 `U10g` 未裁前的过渡〕：
 #
 # 补齐人群之后本格变成 fail-closed —— 好处是「读数被别人污染」不会再无声通过，

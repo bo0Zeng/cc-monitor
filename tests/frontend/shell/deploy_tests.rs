@@ -481,6 +481,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     let home = s("home");
     let rhome = s("rhome");
     let mut child = std::process::Command::new(s("backend"))
+        .args(crate::local_backend::LOCAL_STREAM_ARGS) // 生产起本机流后端那一份起参（零参数是「起会话」）
         .env("HOME", &home)
         .env("TMUX_TMPDIR", &home)
         .env_remove("TMUX")
@@ -491,6 +492,15 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         .spawn()
         .expect("起不了后端");
     let (stdin, stdout) = (child.stdin.take().unwrap(), child.stdout.take().unwrap());
+    // 断言红了也收掉那个后端：它继承着读数脚本接的输出管道，留着的话脚本等不到 EOF、整趟挂住。
+    struct Reap(std::process::Child);
+    impl Drop for Reap {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let _child = Reap(child);
     std::thread::spawn(move || {
         crate::local_backend::local_stdio_consumer(
             &crate::local_backend::StdioRoute::local(),
@@ -527,12 +537,27 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         "os": key.os.label(), "arch": key.arch.label(), "id": id, "path": s("backend"),
     })];
     let decide = || async { install_for(&cfg, slots.clone()).await.map(|i| i.did) };
+    // 「落点上是一份不说自己是哪一版的东西」那一句照文案表现拼（原话改了这里跟着走，不抄字面量）。
+    let unstamped = copy_core::copy_text(
+        "rsSftp.identity.unstamped",
+        &[
+            ("machine", cfg.label.as_str()),
+            (
+                "path",
+                format!("~/{}", relay_route_core::BACKEND_LANDING_REL).as_str(),
+            ),
+            (
+                "handsOff",
+                &*copy_core::copy_text("rsSftp.identity.handsOff", &[]),
+            ),
+        ],
+    );
     // 读数脚本 ② 在这个落点上留下了一份 3 MB 的随机字节（没有身份戳）⇒ 那台 sshd 上真扫一次：
     //   显式失败、一个字节都不写（盘上那份原样）；出路是机器页「卸载后端」—— 这里就用那颗按钮的真命令删掉它。
     let leftover = std::fs::read(&backend_path).expect("读数脚本 ② 留下的那份不在 —— 台架变了");
     let d_pre = decide().await;
     assert!(
-        matches!(&d_pre, Err(e) if e.said.contains("不说自己是哪一版")),
+        matches!(&d_pre, Err(e) if e.said == unstamped),
         "无戳的旧文件 ⇒ 该显式失败：{d_pre:?}"
     );
     assert_eq!(
@@ -561,7 +586,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     std::fs::write(&backend_path, b"#!/bin/sh\necho not ours\n").unwrap();
     let d3 = decide().await;
     assert!(
-        matches!(&d3, Err(e) if e.said.contains("不说自己是哪一版")),
+        matches!(&d3, Err(e) if e.said == unstamped),
         "无戳的文件 ⇒ 该显式失败：{d3:?}"
     );
     std::fs::write(&backend_path, &me).unwrap();
@@ -626,8 +651,6 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         std::fs::read(&dl_local).unwrap() == std::fs::read(s("dl_remote")).unwrap(),
         "下载落地的字节不对"
     );
-    let _ = child.kill();
-    let _ = child.wait();
     println!("SR1B-LOOPBACK-MONITOR ok");
 }
 
