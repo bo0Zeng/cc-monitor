@@ -23,11 +23,11 @@ export interface EventHandlers {
   /** 一行记录。payload 带 seq，RecordTimeline 按 seq 排进 DOM，先到后到不影响画面。 */
   onLine: (e: JsonlLinePayload) => void;
   /**
-   * 一条会话此刻的整份脸（那台后端判好的：宣告 · 活动 · 去向三帧都带）。宣告 · 活动那两帧当场派（稀疏、Tab 还没建由宿主暂存），
-   * 去向那一帧进 queue（与行保序）。同一 sid 后到的覆盖先到的。
+   * 一条会话此刻的整份脸（那台后端判好的：宣告 · 活动 · 去向三帧都带）。三帧一样进 queue、按流里到达的先后落（与行保序；
+   * Tab 还没建由宿主暂存）。同一 sid 后到的覆盖先到的。
    */
   onSessionFace: (sessionId: string, face: SessionFace) => void;
-  /** 核心报来叫这条会话什么（宣告 · 活动那两帧带的 `label` · `label_project`），当场派。 */
+  /** 核心报来叫这条会话什么（宣告 · 活动那两帧带的 `label` · `label_project`），与那一帧的脸同一格落。 */
   onSessionName?: (sessionId: string, label: string, labelProject: string | null) => void;
   /**
    * 本机会话宣告（`session_added`）：建骨架 Tab。与去向帧同进 queue（保持结束 / 复活的先后）。
@@ -153,8 +153,8 @@ type Queued =
   | { kind: "batch-end" }
   // 那台机器的流里丢了几格（`gap`）。
   | { kind: "gap"; origin: Origin }
-  // 去向那一帧带的脸 —— 与行同 queue 保序（见 onSessionFace）。
-  | { kind: "face"; sessionId: string; face: SessionFace }
+  // 三帧带的脸（宣告 · 活动那两帧连着名字）—— 与行同 queue 保序（见 onSessionFace）。
+  | { kind: "face"; sessionId: string; face: SessionFace; name: { label: string; labelProject: string | null } | null }
   | {
       kind: "started";
       sessionId: string;
@@ -441,6 +441,7 @@ export async function bindEvents(
         perf.batchDrainEnd = performance.now();
         scheduleBatchEnd();
       } else if (item.kind === "face") {
+        if (item.name) handlers.onSessionName?.(item.sessionId, item.name.label, item.name.labelProject);
         handlers.onSessionFace(item.sessionId, item.face);
       } else if (item.kind === "started") {
         handlers.onSessionStarted?.(item.sessionId, {
@@ -560,12 +561,14 @@ export async function bindEvents(
   };
 
   const onStreamItems = (origin: Origin, hold: StreamHold, items: Item[]): void => {
-    // 每一格都占过一格 credit：进队的处理掉再还，当场派的 · 读不懂的当场记还。
+    // 每一格都占过一格 credit：进队的处理掉再还，不进队的 · 读不懂的当场记还。
     const take = (q: Queued): void => void queue.push({ ...q, grant: hold });
-    const status = (p: Pick<SessionStatus, "sid" | "face" | "label" | "label_project">): void => {
-      handlers.onSessionName?.(p.sid, p.label, p.label_project ?? null);
-      handlers.onSessionFace(p.sid, p.face);
-    };
+    const status = (p: Pick<SessionStatus, "sid" | "face" | "label" | "label_project">): Queued => ({
+      kind: "face",
+      sessionId: p.sid,
+      face: p.face,
+      name: { label: p.label, labelProject: p.label_project ?? null },
+    });
     const owe = (): void => {
       hold.owed += 1;
       owedHolds.add(hold);
@@ -612,12 +615,10 @@ export async function bindEvents(
               hidden: p.hidden ?? null,
             });
           }
-          // 此刻的脸与名字当场派（同 `status`）：Tab 还没建由宿主暂存。
-          status(p);
+          // 此刻的脸与名字紧跟着进队（一帧只还一格 credit：这一格不另带）。
+          queue.push(status(p));
         } else if (f !== null && typeof f === "object" && "status" in f) {
-          // 稀疏，当场派（不进 queue）。
-          owe();
-          status(f.status);
+          take(status(f.status));
         } else if (f !== null && typeof f === "object" && "runs" in f) {
           take({ kind: "runs", payload: f.runs });
         } else if (f !== null && typeof f === "object" && "branch" in f) {
@@ -625,7 +626,7 @@ export async function bindEvents(
         } else if (f !== null && typeof f === "object" && "watch" in f) {
           take({ kind: "watch", origin, payload: f.watch });
         } else if (f !== null && typeof f === "object" && "state" in f) {
-          take({ kind: "face", sessionId: f.state.sid, face: f.state.face });
+          take({ kind: "face", sessionId: f.state.sid, face: f.state.face, name: null });
         } else if (f !== null && typeof f === "object" && "unseen" in f) {
           take({ kind: "unseen", origin: f.unseen.origin });
         } else if (f !== null && typeof f === "object" && "listed" in f) {
