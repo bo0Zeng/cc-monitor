@@ -4,31 +4,44 @@
 use crate::platform::fs::Ro;
 use std::path::{Path, PathBuf};
 
-/// 这台的文件系统认路径时折不折大小写（NTFS 折）。
-const FOLDS_CASE: bool = cfg!(windows);
+/// 这台认路径照不照 Windows 的规矩（NTFS 不分大小写 · 扩展长度前缀 `\\?\` 与平常那一形是同一处）。
+const WINDOWS_RULES: bool = cfg!(windows);
 
-/// Case-fold the path on Windows so notify's NTFS case variance does not double
-/// emit; on other platforms keep the path verbatim. 调用方是 `observe/watcher.rs`。
+/// 认路径用的键：Windows 上折大小写（notify 在 NTFS 上大小写会变，不折就重复报）、扩展长度那一形（`canonicalize` 交回的
+/// `\\?\C:\…` · `\\?\UNC\…`）换成平常那一形；别的平台原样。只当键用，不拿去显示。
 pub(crate) fn path_key(p: &Path) -> PathBuf {
-    key_as(p, FOLDS_CASE)
+    key_as(p, WINDOWS_RULES)
 }
 
-/// `p` 落不落在 `root` 底下（按段比）。两边先照同一种规范化（[`path_key`]）再比：`p` 是原样还是已折过的键都对得上 ——
-/// 认路径归属只许经这里，别拿折过的键去 `starts_with` 一个原样大小写的根（Windows 上永远对不上）。
+/// `p` 落不落在 `root` 底下（按段比）。两边先照同一种规范化（[`path_key`]）再比：原样的、折过的键、解开链接的扩展长度那一形都对得上 ——
+/// 认路径归属只许经这里，别拿一边规范化过的去 `starts_with` 另一边原样的（Windows 上对不上）。
 pub(crate) fn is_under(p: &Path, root: &Path) -> bool {
-    under_as(p, root, FOLDS_CASE)
+    under_as(p, root, WINDOWS_RULES)
 }
 
-fn key_as(p: &Path, fold: bool) -> PathBuf {
-    if fold {
-        PathBuf::from(p.to_string_lossy().to_ascii_lowercase())
-    } else {
-        p.to_path_buf()
+/// [`path_key`] 两臂都能喂的那一形（`windows` ＝ 照 Windows 的规矩）；判据直接喂 `true` 测 Windows 那一臂。
+pub(crate) fn key_as(p: &Path, windows: bool) -> PathBuf {
+    if !windows {
+        return p.to_path_buf();
+    }
+    let s = p.to_string_lossy().to_ascii_lowercase();
+    let sep = |c: u8| c == b'\\' || c == b'/';
+    let b = s.as_bytes();
+    if !(b.len() >= 4 && sep(b[0]) && sep(b[1]) && b[2] == b'?' && sep(b[3])) {
+        return PathBuf::from(s);
+    }
+    // 扩展长度前缀：`\\?\UNC\服务器\…` ⇒ `\\服务器\…`；`\\?\C:\…` ⇒ `C:\…`（已折成小写）。
+    let rest = &s[4..];
+    match rest.strip_prefix("unc") {
+        Some(r) if r.bytes().next().is_some_and(sep) => {
+            PathBuf::from(format!("{}{}", &s[..2], &r[1..]))
+        }
+        _ => PathBuf::from(rest),
     }
 }
 
-fn under_as(p: &Path, root: &Path, fold: bool) -> bool {
-    key_as(p, fold).starts_with(key_as(root, fold))
+fn under_as(p: &Path, root: &Path, windows: bool) -> bool {
+    key_as(p, windows).starts_with(key_as(root, windows))
 }
 
 /// 本平台放「每用户临时文件」的那个根目录（与 [`current_uid`] 一起是平台原语）。

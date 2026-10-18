@@ -3895,6 +3895,9 @@ pub(crate) struct PrimeJob {
 
 /// 一份记录预读完交回的：读到了 ⇒ 新游标 · 指纹 · 行号 · 链索引；不在了 ⇒ `gone`；读不出 ⇒ 都没有（游标不装，下一趟再来）。
 pub(crate) struct FileDone {
+    /// 盘上那一份（原样写法）：读完之后往下走的那几步（续读 · 帧里的 `path`）用它。
+    path: PathBuf,
+    /// 账上认它的键（[`path_key`]），只当键用。
     key: PathBuf,
     read: Option<FileRead>,
     gone: bool,
@@ -3997,6 +4000,7 @@ fn prime_file_cursor(
     let said_activity = face.and_then(|f| f.activity);
     let key_str = key.to_string_lossy().into_owned();
     let none = |key: PathBuf, gone: bool| FileDone {
+        path: path.clone(),
         key,
         read: None,
         gone,
@@ -4012,6 +4016,7 @@ fn prime_file_cursor(
                 r.prime(session_id, &said_lines(map.runs()));
             }
             let done = FileDone {
+                path: path.clone(),
                 key,
                 read: Some(FileRead {
                     cursor: ReadCursor {
@@ -4123,6 +4128,7 @@ fn prime_file_cursor(
         .map(|_| path.clone());
     (
         FileDone {
+            path: path.clone(),
             key,
             read: Some(FileRead {
                 cursor,
@@ -4193,7 +4199,7 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
             None if f.gone => forget_cursor(state, &f.key),
             None => {}
         }
-        paths.push(f.key);
+        paths.push(f.path);
     }
     let path = state
         .sessions
@@ -4250,7 +4256,7 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
     // 这个会话此刻已有的子运行（宣告之前就派出去的那几个）：收进来、从头读一遍，有就发一帧运行表。
     let jsonls: Vec<PathBuf> = paths
         .iter()
-        .filter(|k| state.offsets.contains_key(*k))
+        .filter(|p| state.offsets.contains_key(&path_key(p)))
         .cloned()
         .collect();
     let mut runs_changed = false;
@@ -4262,7 +4268,11 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
     }
     // 历史里已经有主线外的 ⇒ 整份发一次（之后变了才发）。
     for p in &jsonls {
-        if state.branches.get(p).is_some_and(|c| !c.off().is_empty()) {
+        if state
+            .branches
+            .get(&path_key(p))
+            .is_some_and(|c| !c.off().is_empty())
+        {
             send_branch(state, sink, &sid, p, true);
         }
     }

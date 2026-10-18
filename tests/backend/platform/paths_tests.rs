@@ -45,3 +45,33 @@ fn being_under_is_by_segment_and_folds_only_where_the_filesystem_does() {
         Path::new("/Users/user")
     );
 }
+
+/// Windows 上 `canonicalize` 交回扩展长度那一形（`\\?\C:\…` · `\\?\UNC\…`），记录路径是平常那一形：
+/// 规范化之后是同一处（`agents::record_kind_among` 拿解开链接的根去认记录归哪一家就靠它）。
+#[test]
+fn an_extended_length_path_is_the_same_place_as_its_plain_form() {
+    assert_eq!(
+        key_as(Path::new(r"\\?\C:\Users\U\.codex\sessions"), true).to_string_lossy(),
+        r"c:\users\u\.codex\sessions"
+    );
+    assert_eq!(
+        key_as(Path::new(r"\\?\UNC\Srv\Share\x"), true).to_string_lossy(),
+        r"\\srv\share\x"
+    );
+    // 设备路径（`\\.\`）不是同一处的另一种写法，不动。
+    assert_eq!(
+        key_as(Path::new(r"\\.\PIPE\x"), true).to_string_lossy(),
+        r"\\.\pipe\x"
+    );
+    // 按段比的那一半在这里只认 `/`：同一形写成 `/` 分隔再比一次。
+    let root = Path::new("//?/C:/Users/u/.codex/sessions");
+    let rec = Path::new("C:/Users/u/.codex/sessions/2026/10/r.jsonl");
+    assert!(
+        under_as(rec, root, true),
+        "扩展长度的根认不出平常那一形的记录"
+    );
+    assert!(
+        !under_as(rec, root, false),
+        "不折的那一臂（unix）不该认 `\\\\?\\`"
+    );
+}

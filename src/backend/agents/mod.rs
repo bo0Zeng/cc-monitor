@@ -1485,9 +1485,10 @@ pub(crate) fn record_kind_of(path: &Path) -> Option<&'static str> {
 
 /// [`record_kind_of`] 的可喂夹具那一半。
 pub(crate) fn record_kind_among(registry: &[Adapter], path: &Path) -> Option<&'static str> {
+    // 根解开链接再比（Windows 上那一形带扩展长度前缀）⇒ 两边照同一种规范化比（`is_under`）。
     let under = |root: PathBuf| {
         let root = Ro::canonicalize(&root).unwrap_or(root);
-        path.starts_with(root)
+        crate::platform::paths::is_under(path, &root)
     };
     registry
         .iter()
