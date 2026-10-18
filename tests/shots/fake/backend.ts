@@ -96,16 +96,17 @@ export const REAL_OPS = new Set([
   "machines-read",
   "machines-try",
   "machine-read",
+  // 等起好的会话报到（起新会话那一下回包里的 `arrival` 原样交回）：真后端认报到、没见到就抓那个 tmux 会话那一屏写那一句。
+  "session-arrive",
 ]);
 
 /**
  * 交给无头壳的订阅（壳的 `event_replay` 交格，那几台后端推）：会话流（`session-lines` 与独立窗口的 `session-lines/<sid>`：
  * 后端读盘上的原始记录 ＋ pidfile ＋ 私有 tmux 出宣告 · 行 · 红绿灯 · 容器 · 子运行 · 已结束 / 可重连，壳的会话账攒批、重放）· 那几种 `changed/<topic>`（含待答请求 `needs` · 计划 `plan`：那台后端盯着工作区，pb 写了就推）·
- * 终端实时画面（`terminal-screen/<票>`：那台后端挂一个只读客户端看替身窗格、有变化推一屏）。
- * 其余几种还是这里合成：`session-live-card`（活卡帧，台架没有真流量，场景自己推）· 其余几种 `changed/<topic>`（场景演换号那一下自己推，`pushChanged`；
- * 换号那几条帧命令还是合成的）。看不见 / 被关掉的那几台（`unseenMachines` · `closedMachines`）是连接那一跳的事，照旧这里演。
+ * 会话外的需手动可能变了（`manual`：那台后端盯着账号库与各号的「要登录」那一笔）· 终端实时画面（`terminal-screen/<票>`：那台后端挂一个只读客户端看替身窗格、有变化推一屏）。
+ * 其余几种还是这里合成：`session-live-card`（活卡帧，台架没有真流量，场景自己推）· 其余几种 `changed/<topic>`（只交 `seen`，不推）。看不见 / 被关掉的那几台（`unseenMachines` · `closedMachines`）是连接那一跳的事，照旧这里演。
  */
-export const SHELL_KINDS = new Set(["session-lines", "changed/accounts", "changed/profiles", "changed/tasks", "changed/needs", "changed/session_hidden", "changed/plan", "changed/machines", "changed/machine"]);
+export const SHELL_KINDS = new Set(["session-lines", "changed/accounts", "changed/profiles", "changed/tasks", "changed/needs", "changed/manual", "changed/session_hidden", "changed/plan", "changed/machines", "changed/machine"]);
 const shellKind = (kind: string): boolean => SHELL_KINDS.has(kind) || kind.startsWith("session-lines/") || kind.startsWith("terminal-screen/");
 
 /**
@@ -118,8 +119,6 @@ const WINDOWS_FACE: Record<string, Record<string, { meta: Record<string, unknown
 
 type Emit = (event: string, payload: unknown) => unknown;
 
-/** 会话外那一档的先后（同后端：会话八档 ＋ 计划一档之后，每档 2^40）。 */
-const MANUAL_RANK = 10 * 2 ** 40;
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
@@ -203,17 +202,6 @@ export class FakeBackend {
     const f = (await r.json()) as { ok: boolean; body?: string; fail?: unknown };
     if (f.ok) return enc.encode(f.body ?? "null").buffer;
     throw f.fail;
-  }
-
-  /** 场景给了那台会话外的需手动（`world.manualAt`）⇒ 真后端那一份里会外那一截换成它（排在会话外那一档，同后端）。 */
-  private withManual(origin: string, body: ArrayBuffer): ArrayBuffer {
-    const got = this.world.manualAt?.(origin);
-    if (got === undefined) return body;
-    const v = JSON.parse(dec.decode(body)) as { items: { kind: string }[]; manualUnreadable?: string };
-    v.items = v.items.filter((i) => i.kind !== "manual");
-    if (got instanceof Refuse) v.manualUnreadable = got.message;
-    else v.items.push(...got.map((manual) => ({ kind: "manual", rank: MANUAL_RANK, manual })));
-    return enc.encode(JSON.stringify(v)).buffer;
   }
 
   /** 那台真后端此刻在等人的会话（`sessions-needs`）；那台看不见 ⇒ 空。 */
@@ -415,8 +403,8 @@ export class FakeBackend {
     if (REAL_OPS.has(op)) {
       const face = WINDOWS_FACE[origin]?.[op];
       return new Promise((r) => setTimeout(r, delay))
-        .then(() => this.real(origin, op, req, args.view))
-        .then((b) => (op === "sessions-needs" ? this.withManual(origin, b) : b))
+        // 这一跳的期限照页里给的交（同壳 `chan_call`）：等报到那一问按它等、到了答「没见到」。
+        .then(() => this.real(origin, op, req, args.view, typeof args.leftMs === "number" ? args.leftMs : undefined))
         .then((b) => {
           this.judgeAsked(op, b);
           return b;
@@ -476,13 +464,6 @@ export class FakeBackend {
 
   private send(sub: Sub, items: unknown[]): void {
     void this.emit("chan-items", { sub: sub.id, items });
-  }
-
-  /** 场景在开页之后推一格 `changed/<topic>`（格体 `{key?, rev?, body?}`，同壳交的那一份）。 */
-  pushChanged(origin: string, topic: string, cell: unknown): void {
-    for (const sub of this.subs.values()) {
-      if (sub.origin === origin && sub.kind === `changed/${topic}`) this.send(sub, [{ t: "frame", seq: 0, body: JSON.stringify(cell) }]);
-    }
   }
 
   pushLiveCard(origin: string, payloads: unknown[]): void {

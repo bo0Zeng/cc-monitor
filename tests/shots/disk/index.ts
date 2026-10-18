@@ -86,12 +86,14 @@ export interface AccountSpec {
 
 /**
  * 照一台正常机器的样子写账号清单：具名的号 ＋ 末尾那一条账号 0（不设 `CLAUDE_CONFIG_DIR` 那个状态，没有 `configDir`；后端写清单时也是这么合成的）。
+ * 共享库（`sharedStore`）写明是 `~/.claude`：账号 0 登没登录看那里（后端写清单时也写它；缺了后端说不清账号 0 登没登录、当它要登录）。
  * `zero: false` ＝ 清单缺了账号 0（只给专门截「缺默认账号」那一条提示的场景用）。
  */
 export function putAccounts(d: MachineDisk, accounts: AccountSpec[], opts: { zero?: boolean } = {}): void {
   d.files[`${ACCTS}/accounts.json`] = json({
     version: 1,
     updatedAt: "2026-10-01T08:00:00Z",
+    sharedStore: `${HOME}/.claude`,
     accounts: [
       ...accounts.map((a) => ({
         name: a.name,
@@ -116,16 +118,25 @@ export function putAccounts(d: MachineDisk, accounts: AccountSpec[], opts: { zer
   if (Object.keys(keys).length > 0) d.files[".cc-monitor/apikey-credentials.json"] = json({ accounts: keys });
 }
 
+/** 账号库清单在、却读不懂（写到一半的那种）：后端说不出哪些号需登录，那一句照解析错。 */
+export function putBrokenAccounts(d: MachineDisk): void {
+  d.files[`${ACCTS}/accounts.json`] = '{\n  "version": 1,\n  "accounts": [\n    ,\n  ]\n}\n';
+}
+
+/** 那个号记「MCP 要登录」的那一笔（相对家目录；Claude Code 连它碰到要登录时写、登完自己删掉那一条）。 */
+export const needsAuthFile = (account: string): string => `${ACCTS}/${account}/mcp-needs-auth-cache.json`;
+
 /**
- * 用户级 MCP 配置（`~/.claude.json` 的 `mcpServers`，并进登录那一份身份里）＋ 哪几个号连它时碰到要登录（各号配置目录里
- * `mcp-needs-auth-cache.json`，Claude Code 记的那一笔：服务器名 → `{timestamp}`；后端只认 15 分钟内的）。
+ * 这台的用户级 MCP 整份（之前写的那一份连同各号的「要登录」那几笔一并换掉）：`~/.claude.json` 的 `mcpServers`（并进登录那一份身份里）＋
+ * 哪几个号连它时碰到要登录（[`needsAuthFile`]：服务器名 → `{timestamp}`；后端只认 15 分钟内的）。
  */
 export function putMcp(d: MachineDisk, servers: Record<string, unknown>, needsAuth: { account: string; atMs: number; server: string }[] = []): void {
   const cfg = JSON.parse(d.files[".claude.json"] ?? "{}") as Record<string, unknown>;
   d.files[".claude.json"] = json({ ...cfg, mcpServers: servers });
+  for (const f of Object.keys(d.files)) if (f.startsWith(`${ACCTS}/`) && f.endsWith("/mcp-needs-auth-cache.json")) delete d.files[f];
   const caches = new Map<string, Record<string, { timestamp: number }>>();
   for (const n of needsAuth) caches.set(n.account, { ...(caches.get(n.account) ?? {}), [n.server]: { timestamp: n.atMs } });
-  for (const [account, cache] of caches) d.files[`${ACCTS}/${account}/mcp-needs-auth-cache.json`] = json(cache);
+  for (const [account, cache] of caches) d.files[needsAuthFile(account)] = json(cache);
 }
 
 /** 订阅号登着：配置目录里一份 `.credentials.json`（令牌是占位串）＋ 那份配置里的账号身份（`oauthAccount.accountUuid`，按名字编的）。 */

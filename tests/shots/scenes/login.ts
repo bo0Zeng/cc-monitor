@@ -1,15 +1,15 @@
 /**
  * 「需手动」浮层与登录抽屉：浮层的几种情形 · 抽屉从起登录到各种结局 · 别的入口。
  *
- * 会话外的需手动清单（各台 `sessions-needs` 里会外那一截，`world.manualAt`）与登录那三条（`login-start` · `login-finish` · `login-cancel`）都是场景合成的答法；
- * 不起任何登录程序。号名 · 服务器名 · 链接全是编的。
+ * 会话外的需手动清单是真后端读台架盘上那几份文件答的：场景只在盘上造事实（哪个号没登录 · 哪个号连哪个 MCP 碰到要登录 · 哪台的账号库写坏了）。
+ * 登录那三条（`login-start` · `login-finish` · `login-cancel`）是场景合成的答法，不起任何登录程序。号名 · 服务器名 · 链接全是编的。
  */
 import type { Scene } from "./index";
 import { Refuse, type World } from "../fake/types";
-import { defaultWorld, LOCAL } from "../fake/world";
-import { putAccounts } from "../disk";
+import { accountSpecs, defaultWorld, LOCAL } from "../fake/world";
+import { needsAuthFile, putAccounts, putBrokenAccounts, putMcp, type MachineDisk } from "../disk";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import { byText, click, mainReady, sleep, waitFor } from "./helpers";
+import { byText, click, mainReady, sleep, until, waitFor } from "./helpers";
 
 const ALL_TABS = 7;
 
@@ -17,34 +17,46 @@ function scene(id: string, title: string, desc: string, act: Scene["act"], world
   return { id, page, dir: "需手动与登录", title, desc, width: size[0], height: size[1], world, act };
 }
 
-const acctFix = (account: string) => ({ command: "login-start", args: { kind: "account", agent: "claude", account } });
-const mcpFix = (account: string, server: string) => ({ command: "login-start", args: { kind: "mcp", agent: "claude", account, server, projectDir: null } });
-const acctItem = (account: string) => ({ kind: "accountLogin", agent: "claude", account, said: copyText("beManual.list.accountLogin", { account }), fix: acctFix(account) });
-const mcpItem = (account: string, server: string) => ({ kind: "mcpLogin", account, server, scope: "user", said: copyText("beManual.list.mcpLogin", { server, account }), fix: mcpFix(account, server) });
-
-/** 默认世界 ＋ 各台会话外的清单（按 origin；没写 ⇒ 空）。 */
-function manualWorld(lists: Record<string, unknown[] | Refuse>): () => World {
-  return () => {
-    const w = defaultWorld();
-    w.manualAt = (origin) => lists[origin] ?? [];
-    return w;
-  };
+/** 账号库里另有一个 team 号、配置目录里没有凭据（没登录）。 */
+function teamSignedOut(d: MachineDisk): void {
+  putAccounts(d, [...accountSpecs(), { name: "team", kind: "sub", signedIn: false }]);
 }
 
-const busyWorld = manualWorld({ [LOCAL]: [acctItem("team"), mcpItem("work", "linear")] });
+/** 用户级 MCP 只配了 linear；work 那个号 8 分钟前连它碰到要登录（`linear: false` ⇒ 一个 MCP 都没配）。 */
+function linearNeedsLogin(d: MachineDisk, linear = true): void {
+  putMcp(d, linear ? { linear: { type: "http", url: "https://mcp.linear.example/mcp" } } : {}, linear ? [{ account: "work", atMs: Date.now() - 8 * 60_000, server: "linear" }] : []);
+}
 
-/** 点开「需手动」。 */
-async function openPanel(): Promise<void> {
+/** 本机盘上：team 没登录 ＋ work 连 linear 要登录（先写账号库：它重写 `~/.claude.json`，MCP 配置写在它后面）。 */
+function busyWorld(): World {
+  const w = defaultWorld();
+  teamSignedOut(w.disk[LOCAL]!);
+  linearNeedsLogin(w.disk[LOCAL]!);
+  return w;
+}
+
+/**
+ * 点开「需手动」，等会话外那几行（照序）正是盘上造的那几样：每行带 `want` 里对应那一词，多一行少一行都不算 ——
+ * 截的是真后端读台架盘上那几份文件答的，盘上没造成就进问题表，不截一张画着别的事实的图。
+ */
+async function openPanel(want: string[]): Promise<void> {
   await mainReady(ALL_TABS);
   await sleep(400);
   await click(".tab-needs");
   await waitFor('[role="dialog"] [role="listbox"]');
+  const rows = (): string[] => [...document.querySelectorAll('[role="dialog"] [data-row="manual"]')].map((r) => r.textContent ?? "");
+  await until(() => {
+    const got = rows();
+    return got.length === want.length && want.every((w, i) => got[i]!.includes(w)) ? true : null;
+  }, 60_000).catch(() => {
+    throw new Error(`会话外那几行不是盘上造的那几样：要 ${want.join(" · ") || "（无）"}，现有 ${rows().join(" | ") || "（无）"}`);
+  });
   await sleep(600);
 }
 
 /** 点开浮层里会话外那一行的［登录…］（第 `nth` 个）。 */
 async function loginFromPanel(nth = 0): Promise<void> {
-  await openPanel();
+  await openPanel(["team", "linear"]);
   document.querySelectorAll<HTMLElement>('[data-action="manual-login"]')[nth]!.click();
   await waitFor("aside[data-login-kind]");
 }
@@ -90,12 +102,12 @@ async function go(...ids: string[]): Promise<void> {
 }
 
 export const LOGIN_SCENES: Scene[] = [
-  scene("needs-panel", "需手动浮层 · 有事", "点「需手动 4」：在等的两个会话（照旧的序）· 分隔线 · 会话外两项（号 / MCP 图标 · 后端写好的那一句 · 机器 ·［登录…］）", openPanel, busyWorld),
+  scene("needs-panel", "需手动浮层 · 有事", "点「需手动 3」：在等的那个会话 · 分隔线 · 会话外两项（号 / MCP 图标 · 后端写好的那一句 · 机器 ·［登录…］）", () => openPanel(["team", "linear"]), busyWorld),
   scene(
     "needs-panel-offline",
     "需手动浮层 · 一台断开",
     "devbox 那一问够不着：底部一条中性灰虚线「devbox 离线 · 未计入」，数里不算它",
-    openPanel,
+    () => openPanel(["team", "linear"]),
     () => {
       const w = busyWorld();
       w.hopDown = { devbox: ["sessions-needs"] };
@@ -106,31 +118,32 @@ export const LOGIN_SCENES: Scene[] = [
     "needs-panel-unreadable",
     "需手动浮层 · 清单无法读取",
     "gpu-01 回了话、账号库无法解析（会外那一截读不出）：入口不带数字、虚线框；面板照常列读到的，底部一条虚线说哪台无法读取（那一句在悬停里）",
-    openPanel,
-    manualWorld({ [LOCAL]: [acctItem("team")], "gpu-01": new Refuse("unreadable", copyText("beAccountsQuery.loadManifest.unreadable", { path: "/home/user/.cc-monitor/accounts/accounts.json", why: "expected value at line 3 column 5" })) }),
-  ),
-  scene(
-    "needs-panel-nofix",
-    "需手动浮层 · 没有解法的那一项",
-    "devbox 上 codex 那个 MCP 不在 app 里登：第二行写后端给的 why，不画按钮",
-    openPanel,
-    manualWorld({ [LOCAL]: [acctItem("team")], devbox: [{ kind: "mcpLogin", account: null, server: "notion", scope: "user", said: copyText("beManual.list.mcpLoginBare", { server: "notion" }), fix: null, why: copyText("beManual.list.mcpNoFix", { agent: "Codex" }) }] }),
+    () => openPanel(["team"]),
+    () => {
+      const w = defaultWorld();
+      teamSignedOut(w.disk[LOCAL]!);
+      linearNeedsLogin(w.disk[LOCAL]!, false);
+      putBrokenAccounts(w.disk["gpu-01"]!);
+      return w;
+    },
   ),
   scene(
     "needs-panel-cleared",
     "需手动浮层 · 刚清空",
-    "浮层开着时最后一项解决了（会话外那份重问回来空了、会话都答完了）：一行「无需手动事项」，入口去掉数字、不自己关",
+    "浮层开着时最后一项解决了（work 在终端里登上了 linear，Claude Code 删掉「要登录」那一笔；那台推「需手动变了」、重问回来空了；会话都答完了）：一行「无需手动事项」，入口去掉数字、不自己关",
     async (ctx) => {
-      await openPanel();
-      for (const id of ["manual"]) ctx.backend.pushChanged(LOCAL, id, {});
+      await openPanel(["linear"]);
+      await ctx.backend.writeFile(LOCAL, needsAuthFile("work"), "{}\n");
+      await until(() => (document.querySelector('[role="dialog"] [data-row="manual"]') ? null : true), 60_000).catch(() => {
+        throw new Error("盘上那一笔删了，浮层里 linear 那一行一直没下去");
+      });
       await sleep(900);
     },
     () => {
-      const w = manualWorld({ [LOCAL]: [acctItem("team")] })();
-      // 会话都不在等；会话外那份第一问有一项、之后（推了「需手动变了」再问）就空了。
+      const w = defaultWorld();
+      linearNeedsLogin(w.disk[LOCAL]!);
+      // 会话都不在等。
       for (const s of w.sessions) if (s.activity === "needs_you") s.activity = "idle";
-      let asked = 0;
-      w.manualAt = (origin) => (origin === LOCAL && asked++ < 2 ? [acctItem("team")] : []);
       return w;
     },
   ),
@@ -218,7 +231,7 @@ export const LOGIN_SCENES: Scene[] = [
       await waitFor('.settings-page:not([hidden]) [data-action="mcp-login"]');
       await sleep(500);
     },
-    manualWorld({ [LOCAL]: [mcpItem("personal", "github"), mcpItem("work", "github")] }),
+    defaultWorld,
     "settings",
     [960, 740],
   ),

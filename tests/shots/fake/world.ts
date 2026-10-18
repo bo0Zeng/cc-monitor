@@ -8,7 +8,7 @@ import { defaultCommands } from "./commands";
 import { putHistory } from "./history";
 import { HOST_KEYS, machineCommands, machineOps } from "./machine";
 import { ACCOUNTS } from "./ops";
-import { blankDisk, putAccounts, putMcp, type LiveSession, type MachineDisk } from "../disk";
+import { blankDisk, putAccounts, putMcp, type AccountSpec, type LiveSession, type MachineDisk } from "../disk";
 import { putProfiles } from "../disk/profiles";
 import { CLAUDE_SCREEN } from "../disk/screen";
 
@@ -300,11 +300,15 @@ const SSH_CONFIG = [
   "",
 ].join("\n");
 
+/** 每台一样的那几个号（`ops.ts::ACCOUNTS`），照账号库那一形。 */
+export const accountSpecs = (): AccountSpec[] =>
+  ACCOUNTS.map((a) => ({ name: a.name, kind: a.authKind === "api-key" ? "api" : "sub", email: a.email || undefined, isDefault: a.isDefault, baseUrl: a.baseUrl }));
+
 export function defaultDisk(machines: string[]): Record<string, MachineDisk> {
   return Object.fromEntries(
     machines.map((m) => {
       const d = blankDisk();
-      putAccounts(d, ACCOUNTS.map((a) => ({ name: a.name, kind: a.authKind === "api-key" ? "api" : "sub", email: a.email || undefined, isDefault: a.isDefault, baseUrl: a.baseUrl })));
+      putAccounts(d, accountSpecs());
       // 设置窗「别名与配置文件」那一页（devbox）：一台典型机器的配置文件。
       if (m === "devbox") putProfiles(d, "normal");
       // 本机的 ~/.ssh/config（「从 ~/.ssh/config 选」那一页：真后端逐个 `ssh -G`）：devbox 两个别名并成一组、与机器表里那台同址（已在列表）· build-02 经 bastion 跳。用户名都写明（不落到跑截图那台的登录名）。
