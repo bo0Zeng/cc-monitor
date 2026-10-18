@@ -92,21 +92,35 @@ class RustTransportTest {
         sh.close()
     }
 
-    /** 首见记进库文件（鉴权过了才记）；之后按记下的那一把严格比；那一把被换了 ⇒ 拒并带库里那一把的指纹；忘掉之后又是首见。 */
+    /**
+     * 首见记进库文件（鉴权过了才记）；之后按记下的那一把严格比；那一把被换了 ⇒ 拒并带库里那一把的指纹；忘掉之后又是首见。
+     * 每一拨都 [handshake]：拨完就关，否则核心按拨号身份复用还连着的那一条、不再握手，库里那一把就没被核过。
+     */
     @Test
     fun first_use_is_recorded_then_enforced_and_forgetting_starts_over() {
         assumeTrue("没给台架钥匙与地址（sshKey · sshHost）", pem != null && host.isNotEmpty())
         assertTrue(forgetHostKey(host, port))
-        connected()
+        assertEquals(null, handshake())
         val line = book.readLines().single { it.isNotBlank() }
-        connected()
+        assertEquals(null, handshake())
         val (names, alg, b64) = line.split(' ')
         book.writeText("$names $alg ${flipped(b64)}\n")
-        val e = runCatching { connected() }.exceptionOrNull()
+        val e = handshake()
         assertTrue("$e", e is HostKeyChangedException && e.expectedFingerprint.startsWith("SHA256:"))
         assertTrue(forgetHostKey(host, port))
-        connected()
+        assertEquals(null, handshake())
         assertEquals(line, book.readLines().single { it.isNotBlank() })
+    }
+
+    /**
+     * 拨一次就关（成不成都关），回拨的失败（成了 ⇒ `null`）。关了这一条就放掉它握的那把钥匙；钥匙表里没人握了 ⇒ 下一拨交进去是新编号，
+     * 拨号身份（含 `key_path`）随之是新的 ⇒ 核心新握一条、握手时照库核主机钥匙（不会碰上上一条还没收完的连接）。
+     */
+    private fun handshake(): Throwable? {
+        val t = RustTransport().also { open += it }
+        val failed = runCatching { runBlocking { withTimeout(WALL_CEILING_MS) { t.connect(config()) } } }.exceptionOrNull()
+        t.close()
+        return failed
     }
 
     /** Keystore 里不可导出的 P-256：先用台架钥匙把它的公钥放进台架的 authorized_keys，再只凭 Keystore 签名登上。 */
