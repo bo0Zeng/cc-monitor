@@ -81,20 +81,14 @@ pub(crate) fn shared_on_demand() -> &'static [&'static str] {
     face().map_or(&[], |f| f.shared_on_demand)
 }
 
-/// 共享库顶层此刻有的、要链给各号的那几项：顶层全部，减去身份那几项 · 排除的那几项 · 按需才建的那几个
-/// （那几个是这边建的空目录，不算「共享库里有东西」）。
-pub(crate) fn shared_found(shared: &DirState) -> Vec<String> {
-    shared
+/// 要链给每个号的那几项（排好序）：共享库顶层此刻有的（减去身份那几项 · 排除的那几项）∪ 按需才建的那几个（[`shared_on_demand`]）。
+pub(crate) fn share_items(shared: &DirState) -> Vec<String> {
+    let mut items: Vec<String> = shared
         .entries
         .keys()
-        .filter(|n| !is_identity(n) && !is_excluded(n) && !shared_on_demand().contains(&n.as_str()))
+        .filter(|n| !is_identity(n) && !is_excluded(n))
         .cloned()
-        .collect()
-}
-
-/// 要链给每个号的那几项（排好序）：共享库顶层此刻有的（[`shared_found`]）∪ 按需才建的那几个（[`shared_on_demand`]）。
-pub(crate) fn share_items(shared: &DirState) -> Vec<String> {
-    let mut items = shared_found(shared);
+        .collect();
     for n in shared_on_demand() {
         if !items.iter().any(|i| i == n) {
             items.push((*n).to_string());
@@ -215,12 +209,6 @@ fn check_name(name: &str) -> Result<(), Refusal> {
 
 /// 一个号该有的共享链接（只计划新建的那几条）。
 fn link_all(plan: &mut Plan, s: &Snapshot, cfg: &str) {
-    if shared_found(&s.shared).is_empty() {
-        plan.notes.push(copy_text(
-            "beAcctPlan.links.noneShared",
-            &[("shared", &s.roots().shared)],
-        ));
-    }
     seed_shared(plan, s);
     for it in share_items(&s.shared) {
         plan.ops.push(Op::Link {

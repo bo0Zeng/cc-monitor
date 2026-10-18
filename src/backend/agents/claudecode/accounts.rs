@@ -72,9 +72,15 @@ pub(crate) const NATIVE_IDENTITY: &[(&str, IdentityRoot, IdentityClass)] = &[
 ];
 
 /// Claude Code 按需才在配置根下建、各号该共用的目录：用户自建的子代理（`agents/`，同 `skills/` 是用户自己的配置）·
-/// 计划模式写的计划（`plans/`：会话记录共用，换个号接着那条会话也要找得到它的计划）。
+/// 计划模式写的计划（`plans/`：会话记录共用，换个号接着那条会话也要找得到它的计划）·
+/// 会话记录（[`super::paths::PROJECTS_DIR`]）与在跑会话的登记（[`super::paths::SESSIONS_DIR`]）：后端只在共享库里找这两个。
 /// 共享库里还没有也照样链（先在共享库里建）—— 不链的话头一回用就在号里落一份实体，各号就分开了。
-pub(crate) const SHARED_ON_DEMAND: &[&str] = &["agents", "plans"];
+pub(crate) const SHARED_ON_DEMAND: &[&str] = &[
+    "agents",
+    "plans",
+    super::paths::PROJECTS_DIR,
+    super::paths::SESSIONS_DIR,
+];
 
 /// 注册表里 Claude 那一行的账号库布局（`agents::Adapter::accounts`）。
 pub(crate) const FACE: AccountsFace = AccountsFace {
