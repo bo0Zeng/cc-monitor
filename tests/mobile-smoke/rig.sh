@@ -29,8 +29,7 @@ say() { printf 'rig: %s\n' "$*" >&2; }
 up() {
   : "${CCM_SMOKE_RELAY_PORT:?rig: 要先给中转口 CCM_SMOKE_RELAY_PORT（不落默认口）}"
   [ -x "$backend" ] || { say "没有编好的后端 $backend（先 cd src/backend && cargo build）"; exit 2; }
-  # 台架家里的 ~/.claude 照一台用过 Claude Code 的机器：记录 · pidfile 那两个目录已在（账号库建号时照共享根此刻有的链过去）。
-  mkdir -p "$box"/{sshd,bin,tmux,logs} "$home"/.cc-monitor/bin "$home"/.claude/{projects,sessions} "$home"/.codex "$home"/work
+  mkdir -p "$box"/{sshd,bin,tmux,logs} "$home"/.cc-monitor/bin "$home"/.claude "$home"/.codex "$home"/work
   chmod 700 "$box/tmux"
   [ -f "$box/sshd/host_ed25519" ] || ssh-keygen -q -t ed25519 -N '' -f "$box/sshd/host_ed25519" -C smoke-host
   [ -f "$box/sshd/client_ed25519" ] || ssh-keygen -q -t ed25519 -N '' -f "$box/sshd/client_ed25519" -C smoke-client
