@@ -10,6 +10,7 @@ import re
 import signal
 import subprocess
 import sys
+import threading
 import time
 
 here = os.path.dirname(os.path.abspath(__file__))
@@ -1539,6 +1540,8 @@ def walk():
         end = ui.within(20)
         while time.time() < end and sum(1 for r in rig("tmux", "list-clients", "-F", "#{session_name}").stdout.split() if r == name) <= attached:
             time.sleep(1)
+        if sum(1 for r in rig("tmux", "list-clients", "-F", "#{session_name}").stdout.split() if r == name) <= attached:
+            raise Step.Fail(f"点了「{t('mobTmux.row.attach')}」，20 秒内台架 tmux 里没多一个接着 {name} 的终端")
         typed(f"{T} from phone terminal")
         adb("shell", "input", "keyevent", "66")
         rig("tmux", "send-keys", "-t", name, f"{T} from desk", "Enter")
@@ -1576,17 +1579,28 @@ def walk():
         row = ui.find("smoke")
         if row is None:
             raise Step.Fail("推送公钥那一框里没有「smoke」那把钥匙")
-        # 无障碍事件流和 `uiautomator dump` 抢同一个口：看事件的这几秒里只点，不 dump 屏。
+        # 无障碍事件流和 `uiautomator dump` 抢同一个口：看事件的这几秒里只点，不 dump 屏。结局是一条 Toast，按条件等它（读事件流的每一行）。
         events = subprocess.Popen(["adb", "shell", "uiautomator", "events"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        lines = []
+        reader = threading.Thread(target=lambda: lines.extend(iter(events.stdout.readline, "")), daemon=True)
+        reader.start()
         try:
             # 事件流起来要几秒（机器忙时一秒不够：点下去那一下的 Toast 落在流起来之前，就看不到）。
             time.sleep(4)
             adb("shell", "input", "tap", *map(str, ui.center(row)))
-            time.sleep(6)
+            tapped = time.time()
+            end = ui.within(60)
+            while time.time() < end and not any(said in ln for ln in list(lines)):
+                time.sleep(0.5)
+            took = time.time() - tapped
         finally:
             events.terminate()
-        if said not in events.communicate(timeout=5)[0]:
-            raise Step.Fail(f"没看到那台的结局「{said}」")
+        seen = "".join(lines)
+        if said not in seen:
+            # 看到的是什么（Toast · 提示条的字），分得清是没推成、推成了别的话，还是事件流根本没起来。
+            got = sorted(set(re.findall(r"Text: \[([^\]]*)\]", seen)) - {""})
+            raise Step.Fail(f"点了 smoke 那一把，60 秒没看到那台的结局「{said}」（事件里的字：{got[:6]}）")
+        print(f"   推送公钥：点下 → 结局上屏 {took:.1f} s", flush=True)
         adb("shell", "input", "keyevent", "4")
 
     with Step("10-Codex"):
