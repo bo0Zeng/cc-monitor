@@ -15,7 +15,7 @@
 //! 6. **排与窗口**：`activity` 按最后活动、`created` 按开始，`at` 就是那个键；`range` 只回那一窗、总数是整份的。
 //! 7. **分组**：有在跑的 → 有星标的 → 最近动过的；读不了的目录是一组、带原因。
 //! 8. **远端**：那台的清单由这台问那台的常驻取来记着（`remote_listing.rs`，判据在 `remote_listing_tests`），这台并 · 筛 · 排、行组带 `origin`；
-//!    够不着那台 ⇒ `unreachable`；`fresh` 不带 `origin` ⇒ `bad_args`；旧的 `raw` · `listing` 两格不认（`bad_args`）。
+//!    够不着那台 ⇒ `unreachable`；旧的 `fresh`（同步副本归 `history-browse`）· `raw` · `listing` 几格不认（`bad_args`）。
 //! 10. **按会话 ID 要一行**（`sid`：独立查看窗开任意一个会话）：只回那一行（隐藏的、出了时间窗的也回）、不补父会话；
 //!     形状不对 ⇒ `bad_args`（先于 IO）；没有这个会话 ⇒ 空清单。
 //! 11. **带记号再问**（`common/views.rs`）：同一问第二次 ⇒ `same`；一条会话写了一行 ⇒ `up` 只它一行（先后没变不带 `order`）；
@@ -547,7 +547,7 @@ fn groups_rank_live_then_starred_then_recent_and_keep_failed_dirs() {
 }
 
 /// ★ 判据 8：问那一台 ⇒ 经 `remote_listing` 取那台的清单（这台的可达表里没有它 ⇒ `unreachable`，照实说、不凭空答）；
-/// `fresh` 不带 `origin` ⇒ `bad_args`；界面当信差的那两格（`raw` · `listing`）不认了 ⇒ `bad_args`。
+/// 同步副本那一格（`fresh`，归 `history-browse`）· 界面当信差的那两格（`raw` · `listing`）不认了 ⇒ `bad_args`。
 #[tokio::test]
 async fn a_remote_listing_comes_from_that_machine_or_fails_plainly() {
     // 等多久只归发起方：问那一台却没带期限 ⇒ `bad_args`（后端不自己定一个）；带了 ⇒ 照它去问（这台够不着那台 ⇒ `unreachable`）。
@@ -564,7 +564,7 @@ async fn a_remote_listing_comes_from_that_machine_or_fails_plainly() {
         .unwrap_err();
     assert_eq!(e.0, "unreachable", "{e:?}");
     for bad in [
-        json!({"fresh": true}),
+        json!({"origin": "never-reached", "fresh": true}),
         json!({"raw": true}),
         json!({"origin": "never-reached", "listing": listing()}),
         json!({"origin": ""}),

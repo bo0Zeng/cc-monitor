@@ -5,10 +5,10 @@
 //! # 形状
 //!
 //! ```text
-//! history-list {origin?, fresh?, sid?, query?, sort?, within_days?, hidden?, held?, range?}   （入参 · 回包 · 码都是类型）
+//! history-list {origin?, sid?, query?, sort?, within_days?, hidden?, held?, range?}   （入参 · 回包 · 码都是类型）
 //!   origin 缺席    这台；给了 = 那一台：那台的清单（那台自己判活、自己读上次的号、并好它自己的注解）由本进程问那台的常驻取、记着副本
-//!                  （`remote_listing.rs`：带记号问 `history-listing`，只拿变了的那几行）；手上没有 · 或 `fresh`（开页 · 刷新）才去问，
-//!                  敲字搜索用手上那份；那台常驻不在 ⇒ `resident_absent`（不在那台起一个冷进程顶上）
+//!                  （`remote_listing.rs`：带记号问 `history-listing`，只拿变了的那几行）；手上有就用手上那份，没有才去问
+//!                  （历史页开页 · 刷新时同步副本归几台并成一列那一问，`history_browse.rs`）；那台常驻不在 ⇒ `resident_absent`（不在那台起一个冷进程顶上）
 //!   ⇒ 并上那台的注解（星标 · 改名 · 隐藏）⇒ 筛（隐藏 · 时间 · 搜索词）⇒ 补上被筛掉的分叉父会话（`context`）⇒ 排 ⇒ 截
 //!   sid: 只要那一个会话那一行（独立查看窗按会话 ID 开任意一个会话，含已结束的、隐藏的）：别的筛一概不看、不补父会话
 //!   ⇒ 带键集合那一形（`common/views.rs`，键 ＝ 会话 ID）：`range` 那一窗（缺 ⇒ 头 2000 行）；头 ＝ {groups, notice} ＋ 总数；
@@ -16,7 +16,7 @@
 //! ```
 //!
 //! 判定全在这里：搜什么（显示标题 · 第一句 · 项目名）· 按什么排（`at`）· 每行能不能恢复 / 分叉 / 删、不能的为什么。
-//! 界面按 `at` 把各台的行并成一列（各台各自排好了），不另判。
+//! 历史页要的是几台并成一列的那一份（`history_browse.rs`，照这里每台的成品并）；这里答一台的（手机 · 独立查看窗按会话 ID）。
 //! 「不知道」不装成已知：判不了活（合成历史没有 pidfile）⇒ `isLive: null`、那一组 `hasLive: null`；
 //! 注解读不到 / 读不懂 ⇒ 行照出（星标 · 隐藏按没有算），`notice` 说一句为什么。
 
@@ -339,10 +339,6 @@ pub(crate) struct HistoryListReq {
     #[serde(default)]
     #[cfg_attr(test, ts(optional, as = "Option<String>"))]
     pub(crate) origin: Option<cmd_wire::Machine>,
-    /// `true` ⇒ 先问那一台（`origin`）同步一次本进程记着的副本再答（开页 · 刷新）；缺 ⇒ 手上有就用手上那份（敲字搜索）。不带 `origin` ⇒ `bad_args`。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) fresh: Option<bool>,
     /// 只要这一个会话那一行（独立查看窗；别的筛一概不看、不补父会话）。形状同 `history-record`（`[A-Za-z0-9-]`，1..=64）。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
@@ -441,16 +437,6 @@ pub(crate) fn parse_ask(req: &HistoryListReq) -> Result<Ask, (&'static str, Stri
         }
         Some(_) => return Err(bad("`sid` must be a session id ([A-Za-z0-9-], 1..=64)")),
     };
-    let query = req
-        .query
-        .as_deref()
-        .map(|s| s.trim().to_lowercase())
-        .filter(|s| !s.is_empty());
-    let within_ms = match req.within_days {
-        None => None,
-        Some(d @ 1..=3650) => Some(d as i64 * 86_400_000),
-        Some(_) => return Err(bad("`within_days` must be 1..=3650")),
-    };
     let range = match req.range {
         None => DEFAULT_WINDOW,
         Some(
@@ -462,11 +448,34 @@ pub(crate) fn parse_ask(req: &HistoryListReq) -> Result<Ask, (&'static str, Stri
     };
     Ok(Ask {
         sid,
-        query,
-        by_created: req.sort == Some(Sort::Created),
-        within_ms,
-        hidden: req.hidden == Some(true),
         range,
+        ..filters(req.query.as_deref(), req.sort, req.within_days, req.hidden)?
+    })
+}
+
+/// 筛排那几格（搜索词 · 排法 · 时间窗 · 隐藏的出不出）⇒ [`Ask`]（不按会话 ID、窗口取缺省）：值域不对 ⇒ `bad_args`。
+/// `history-list` 与几台并成一列那一问（`history_browse.rs`）共用。
+pub(crate) fn filters(
+    query: Option<&str>,
+    sort: Option<Sort>,
+    within_days: Option<u64>,
+    hidden: Option<bool>,
+) -> Result<Ask, (&'static str, String)> {
+    let query = query
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty());
+    let within_ms = match within_days {
+        None => None,
+        Some(d @ 1..=3650) => Some(d as i64 * 86_400_000),
+        Some(_) => return Err(bad("`within_days` must be 1..=3650")),
+    };
+    Ok(Ask {
+        sid: None,
+        query,
+        by_created: sort == Some(Sort::Created),
+        within_ms,
+        hidden: hidden == Some(true),
+        range: DEFAULT_WINDOW,
     })
 }
 
@@ -807,7 +816,7 @@ fn groups_of(
         let rank = |g: &HistoryGroup| (live_rank(g), g.starred, g.last_activity);
         rank(b).cmp(&rank(a)).then_with(|| a.key.cmp(&b.key))
     });
-    // 各台各自排好，界面要把几台的组并成一列 ⇒ 把这个序压成一个数交出去（`order` 大的在前；界面只按它并，不另判）：
+    // 各台各自排好，几台的组并成一列（`history_browse.rs`）⇒ 把这个序压成一个数（`order` 大的在前；并的时候只按它，不另判）：
     //   档位 × 10^14 ＋ 有星标 × 10^13 ＋ 最后动过（毫秒，< 10^13）。
     for g in &mut out {
         g.at_text = Some(crate::common::time::history_at_text(
@@ -964,9 +973,7 @@ pub(crate) async fn answer(
         Some(cmd_wire::Machine(s)) if !s.is_empty() => Some(s),
         Some(_) => return Err(bad("`origin` must be a non-empty string")),
     };
-    let fresh = req.fresh == Some(true);
     let listing = match &origin {
-        None if fresh => return Err(bad("`fresh` needs the `origin` it syncs from")),
         None => {
             let only = ask.sid.clone();
             blocking(move || {
@@ -974,7 +981,7 @@ pub(crate) async fn answer(
             })
             .await?
         }
-        Some(o) => super::remote_listing::listing(o, fresh, &tz, until).await?,
+        Some(o) => super::remote_listing::listing(o, false, &tz, until).await?,
     };
     blocking(move || {
         // 并的是清单自己带来的那台的注解（本机的那份只并本机会话；远端那台自己并好了它那份）。

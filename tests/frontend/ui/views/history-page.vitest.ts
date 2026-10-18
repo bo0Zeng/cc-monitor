@@ -1,9 +1,11 @@
 /**
  * 历史页（`src/frontend/ui/views/history.ts`）的判据。
  *
- * 1. 开页即给焦点（R5W-H08）；每台问一次 `history-list`（远端带 `origin`），哪台先答先画；行按 `at` 并成一列、按今天 / 昨天 … 分段。
- * 2. 敲字 ⇒ 停 150 ms 带 `query` 再问各台（后端搜全部会话，R2-2-5）；不在界面里过滤。
- * 3. 一台没答 ⇒ 列表顶「{机器} 离线 · 未列出［重新连接］」，点了只再问那一台（经长连接问它的 `raw`、带着交本机后端）（R2-2-6）；别的台照画。
+ * 1. 开页即给焦点（R5W-H08）；问本机后端那一列（`history-browse`）：一问照手上的 ＋ 每台远端各一问带它的 `fresh`（慢的不挡别的）；
+ *    几台在后端并好（行按 `at`、按今天 / 昨天 … 分段），界面照项画、不并不排。
+ * 2. 敲字 ⇒ 停 150 ms 带 `query` 再问那一窗的整份（不带记号，后端搜全部会话，R2-2-5）；不在界面里过滤。
+ * 3. 一台没读到 ⇒ 列表顶「{机器} 离线 · 未列出［重新连接］」，点了带它的 `fresh` 再问（R2-2-6）；别的台照画。
+ * 8. 虚拟滚动：只问看得见的那一窗（上下各多带 20 项），滚到哪问到哪；整列高照总数与段头垫好。
  * 4. 回车 ⇒ 内容搜索；失败 ⇒ 清掉旧结果、换成错误条（R5W-H06）。
  * 5. 行上的按钮照后端给的 `can` 画：在跑的是「切过去」（不起第二份）；Codex 行恢复按它自己那一家起（E1）。
  * 6. 删除只问一次（R2-2-2）；在跑的不问、直接说「运行中 · 先结束」。
@@ -115,18 +117,67 @@ function row(over: Record<string, unknown>): Record<string, unknown> {
   };
 }
 
-/** 一台整份那一答（不带记号问 ⇒ `whole`；行照 `order` 从 `up` 取）。 */
-const list = (rows: Record<string, unknown>[], groups: unknown[] = []) => ({
-  held: "h",
-  whole: true,
-  same: false,
-  order: rows.map((r) => String(r.sessionId)),
-  up: Object.fromEntries(rows.map((r) => [String(r.sessionId), r])),
-  head: { total: rows.length, info: { groups, notice: null } },
-});
+type Rec = Record<string, unknown>;
+/** 每台的会话与组（`origin` 缺 = 本机）；`fail` 里的那几台读不到（`""` = 本机）；`notice` ＝ 那台说注解没并上的那一句。 */
+let world: { local: Rec[]; dev: Rec[]; groups: { local: Rec[]; dev: Rec[] }; fail: Set<string>; stale: Set<string>; notice: Record<string, string>; search: "ok" | "fail" };
 
-/** 每台的回答（`origin` 缺 = 本机）；`fail` 里的那几台答不上。 */
-let world: { local: Record<string, unknown>[]; dev: Record<string, unknown>[]; fail: Set<string>; search: "ok" | "fail" };
+/**
+ * 本机后端 `history-browse` 的替身：照入参里的几台把行按 `at` 并成一列（同一刻照台的先后）、分叉挂在展开了的父会话下、
+ * 按时间看时段头记在头里、按项目看时组头 ＋ 开着的组里那几行；只回 `range` 那一窗（整份那一形）。并法本身的判据在后端（对拍金样）。
+ */
+function browse(args: Rec): Rec {
+  const machines: [string, Rec[]][] = [];
+  if (args.here) machines.push(["", world.local]);
+  if ((args.remotes as string[]).includes("dev")) machines.push(["dev", world.dev.map((r) => ({ ...r, origin: "dev" }))]);
+  const q = String(args.query ?? "");
+  const head = machines.map(([o, rs]) => {
+    // `stale` 里的那台：读不到、行照上一次的副本出。
+    const read = world.stale.has(o) ? { is: "stale", why: "w", at: "09:30" } : world.fail.has(o) ? { is: "failed", why: `${o || "本机"} 读不出` } : { is: "ok", notice: world.notice[o] ?? null };
+    const n = read.is !== "failed" ? rs.filter((r) => !q || String(r.label).includes(q)).length : 0;
+    return { ...(o ? { origin: o } : {}), total: n, read };
+  });
+  const ok = machines.filter(([o]) => !world.fail.has(o));
+  const rows = ok.flatMap(([, rs]) => rs.filter((r) => !q || String(r.label).includes(q))).sort((a, b) => Number(b.at) - Number(a.at));
+  const id = (r: Rec, sid = r.sessionId) => `${String(r.origin ?? "")}\u0000${String(sid)}`;
+  const present = new Set(rows.map((r) => id(r)));
+  const nested = (r: Rec) => r.forkedFromSessionId !== undefined && present.has(id(r, r.forkedFromSessionId));
+  const forks = new Set((args.forks as { origin?: string; sid: string }[]).map((f) => `${f.origin ?? ""}\u0000${f.sid}`));
+  const lines: Rec[] = [];
+  const push = (r: Rec, child: boolean): void => {
+    const kids = rows.filter((k) => k.forkedFromSessionId !== undefined && id(k, k.forkedFromSessionId) === id(r));
+    const open = forks.has(id(r));
+    lines.push({ kind: "row", row: r, child, forks: kids.length, forksOpen: open, orphan: !child && r.forkedFromSessionId !== undefined && !nested(r) });
+    if (open) for (const k of kids) push(k, true);
+  };
+  const sections: Rec[] = [];
+  const groups = ok.flatMap(([o]) => (o ? world.groups.dev.map((g) => ({ ...g, origin: o })) : world.groups.local));
+  if (args.by === "time") {
+    let sec = "";
+    for (const r of rows.filter((r) => !nested(r))) {
+      if (r.sectionText !== sec) sections.push({ at: lines.length, text: (sec = String(r.sectionText)) });
+      push(r, false);
+    }
+  } else {
+    const fold = args.groups as { open: boolean; except: { origin?: string; key: string }[] };
+    for (const g of groups) {
+      const flipped = fold.except.some((e) => (e.origin ?? "") === String(g.origin ?? "") && e.key === g.key);
+      const open = q !== "" || fold.open !== flipped;
+      lines.push({ kind: "group", group: g, open });
+      if (open) for (const r of rows.filter((r) => r.group === g.key && String(r.origin ?? "") === String(g.origin ?? "") && !nested(r))) push(r, false);
+    }
+  }
+  const range = args.range as { from: number; limit: number };
+  const win = lines.slice(range.from, range.from + range.limit);
+  const key = (i: number) => `${range.from + i}`;
+  return {
+    held: "h",
+    whole: true,
+    same: false,
+    order: win.map((_, i) => key(i)),
+    up: Object.fromEntries(win.map((l, i) => [key(i), l])),
+    head: { total: lines.length, info: { machines: head, projects: groups.length, grouped: groups.reduce((n, g) => n + Number(g.count), 0), sections } },
+  };
+}
 
 /** 交本机后端的那几问（界面只问本机后端：远端那台由它自己去问）。 */
 function calls(op: string): Record<string, unknown>[] {
@@ -135,9 +186,9 @@ function calls(op: string): Record<string, unknown>[] {
     .map((c) => chanArgsJson(c[1] as ChanCallArgs) as Record<string, unknown>);
 }
 
-/** 要本机后端先问 dev 那台同步一次副本（`fresh`）的次数。 */
+/** 要本机后端先同步 dev 那台副本（`fresh`）的次数。 */
 function syncs(): number {
-  return calls("history-list").filter((a) => a.origin === "dev" && a.fresh === true).length;
+  return calls("history-browse").filter((a) => (a.fresh as string[]).includes("dev")).length;
 }
 
 /** 钟往前拨 `ms`（只假 `setTimeout`：页里的两处停顿 —— 敲字之后 · 方向键走行之后 —— 拨到界上判，不真等）。 */
@@ -167,22 +218,14 @@ beforeEach(() => {
   vi.mocked(resumeAccounts).mockClear();
   viewerStub.last = null;
   viewerStub.banner = null;
-  world = { local: [], dev: [], fail: new Set(), search: "ok" };
+  world = { local: [], dev: [], groups: { local: [], dev: [] }, fail: new Set(), stale: new Set(), notice: {}, search: "ok" };
   invokeMock.mockReset();
   invokeMock.mockImplementation(async (cmd: string, a: unknown) => {
     if (cmd === "list_remote_mcp_origins") return ["dev"];
     if (cmd !== "chan_call") return undefined;
     const c = a as ChanCallArgs;
     const args = chanArgsJson(c) as Record<string, unknown>;
-    if (c.op === "history-list") {
-      const o = (args.origin as string | undefined) ?? "";
-      // 本机后端问 dev 那台的常驻问不成（那台常驻不在）⇒ 照实失败。
-      if (o === "dev" && world.fail.has("dev")) return Promise.reject(refusedReply("resident_absent", "dev 后端未在运行"));
-      if (world.fail.has(o)) return Promise.reject(refusedReply("failed", `${o} 读不出`));
-      const q = String(args.query ?? "");
-      const mine = (o ? world.dev : world.local).filter((r) => !q || String(r.label).includes(q));
-      return chanReply(list(mine.map((r) => (o ? { ...r, origin: o } : r))));
-    }
+    if (c.op === "history-browse") return chanReply(browse(args));
     if (c.op === "history-search") {
       if (world.search === "fail") return Promise.reject(new Error("搜不动"));
       return chanReply({
@@ -209,14 +252,18 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("开页 · 每台一问 · 按时间", () => {
-  it("开页即给焦点；本机与 dev 各问一次；行按 at 并成一列、分段；远端行带机器标签", async () => {
+describe("开页 · 问本机后端那一列 · 按时间", () => {
+  it("开页即给焦点；一问照手上的 ＋ dev 同步一问；照后端并好的项画、分段；远端行带机器标签", async () => {
     world.local = [row({ sessionId: "a", at: NOW - 1000 }), row({ sessionId: "c", at: NOW - 3 * 86_400_000 - 1 })];
     world.dev = [row({ sessionId: "b", at: NOW - 2000 })];
     const v = await opened();
     expect(document.activeElement?.classList.contains("history-search")).toBe(true);
-    expect(calls("history-list").map((a) => a.origin ?? "")).toEqual(["", "dev"]);
-    // 开页：dev 那一份要本机后端先问那台同步一次（`fresh`）。
+    // 开页：一问照手上的（马上答）、dev 那一份要本机后端先同步一次（`fresh`），两问都要两台、都不带记号。
+    expect(calls("history-browse").map((a) => [a.here, a.remotes, a.fresh, "held" in a])).toEqual([
+      [true, ["dev"], [], false],
+      [true, ["dev"], ["dev"], false],
+    ]);
+    expect(calls("history-list"), "历史页不再逐台问").toEqual([]);
     expect(syncs()).toBe(1);
     expect(rows().map((r) => r.dataset.key?.split("\u0000")[1])).toEqual(["a", "b", "c"]);
     expect(byText('[role="option"]', "标题 b")?.textContent).toContain("dev");
@@ -227,7 +274,7 @@ describe("开页 · 每台一问 · 按时间", () => {
     v.close();
   });
 
-  it("敲字 ⇒ 停 150 ms 后带 query 再问各台，界面不自己筛", async () => {
+  it("敲字 ⇒ 停 150 ms 后带 query 再问那一窗的整份（不带记号），界面不自己筛", async () => {
     world.local = [row({ sessionId: "a" }), row({ sessionId: "z", label: "别的" })];
     const v = await opened();
     invokeMock.mock.calls.length = 0;
@@ -235,46 +282,17 @@ describe("开页 · 每台一问 · 按时间", () => {
     input.value = "标题";
     input.dispatchEvent(new Event("input"));
     await flush(149);
-    expect(calls("history-list"), "还没停够就问了").toEqual([]);
+    expect(calls("history-browse"), "还没停够就问了").toEqual([]);
     await flush(1);
-    expect(calls("history-list").map((a) => [a.origin ?? "", a.query])).toEqual([
-      ["", "标题"],
-      ["dev", "标题"],
-    ]);
+    expect(calls("history-browse").map((a) => [a.query, a.fresh, a.range, "held" in a])).toEqual([["标题", [], { from: 0, limit: 21 }, false]]);
     expect(syncs(), "敲字不该再去问那台").toBe(0);
     expect(titles()).toEqual(["标题 a"]);
     v.close();
   });
 });
 
-describe("那台推了「清单变了」", () => {
-  it("开着 ⇒ 只再问推的那一台（远端带 fresh，本机不带）；关着 · 筛掉的那一台 ⇒ 不问", async () => {
-    world.local = [row({ sessionId: "a" })];
-    world.dev = [row({ sessionId: "b", at: NOW - 2000 })];
-    const v = await opened();
-    invokeMock.mock.calls.length = 0;
-    world.dev = [row({ sessionId: "d", at: NOW - 500 }), row({ sessionId: "b", at: NOW - 2000 })];
-    v.onListMoved("dev");
-    await flush();
-    expect(calls("history-list").map((a) => [a.origin ?? "", a.fresh])).toEqual([["dev", true]]);
-    expect(titles()).toEqual(["标题 d", "标题 b", "标题 a"]);
-    invokeMock.mock.calls.length = 0;
-    v.onListMoved(LOCAL_ORIGIN);
-    await flush();
-    expect(calls("history-list").map((a) => [a.origin ?? "", a.fresh ?? false])).toEqual([["", false]]);
-    v.close();
-    invokeMock.mock.calls.length = 0;
-    v.onListMoved("dev");
-    await flush();
-    expect(calls("history-list"), "关着不问").toEqual([]);
-    v.onListMoved("elsewhere");
-    await flush();
-    expect(calls("history-list"), "不在这一页的台不问").toEqual([]);
-  });
-});
-
-describe("一台没答", () => {
-  it("dev 答不上 ⇒ 顶上一条［重新连接］，点了只再问 dev、带 fresh；本机照画", async () => {
+describe("一台没读到", () => {
+  it("dev 读不到 ⇒ 顶上一条［重新连接］，点了带 dev 的 fresh 再问；本机照画", async () => {
     world.local = [row({ sessionId: "a" })];
     world.fail.add("dev");
     const v = await opened();
@@ -286,10 +304,111 @@ describe("一台没答", () => {
     world.dev = [row({ sessionId: "b", at: NOW })];
     byText("button", copyText("history.list.reconnect"))!.click();
     await flush();
-    expect(calls("history-list").map((a) => [a.origin, a.sort, a.fresh])).toEqual([["dev", "activity", true]]);
+    expect(calls("history-browse").map((a) => [a.remotes, a.sort, a.fresh])).toEqual([
+      [["dev"], "activity", []],
+      [["dev"], "activity", ["dev"]],
+    ]);
     expect(syncs(), "重新连接 ⇒ 再问那台一次").toBe(1);
     expect(titles()).toEqual(["标题 b", "标题 a"]);
     expect(document.body.textContent).not.toContain(msg);
+    v.close();
+  });
+});
+
+describe("虚拟滚动：只问看得见的那一窗", () => {
+  it("开页只要看得见的那几项（上下各多带 20）；滚下去问到那一窗、画的就是那一窗；整列高照总数与段头垫好", async () => {
+    // 300 行：前 100 行在「今天」，余下的在九月那一段（两个段头）。
+    world.local = Array.from({ length: 300 }, (_, i) => row({ sessionId: `s${i}`, at: i < 100 ? NOW - 1000 - i : NOW - 2 * 86_400_000 - i }));
+    world.dev = [];
+    const height = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return this.getAttribute("role") === "listbox" ? 520 : 0;
+    });
+    try {
+      const v = await opened();
+      // 520 高 ⇒ 看得见 0–10 项，再往下多带 20。
+      expect(calls("history-browse").map((a) => a.range)).toEqual([
+        { from: 0, limit: 31 },
+        { from: 0, limit: 31 },
+      ]);
+      const list = document.querySelector<HTMLElement>('[role="listbox"]')!;
+      const spacer = list.querySelector<HTMLElement>("[class*=hvSpacer]")!;
+      expect(spacer.style.height, "300 行 × 52 ＋ 两个段头 × 32").toBe(`${300 * 52 + 2 * 32}px`);
+      expect(rows()).toHaveLength(31);
+      invokeMock.mock.calls.length = 0;
+      // 滚到第 150 项那里（越过了第一个段头 ＋ 100 行 ＋ 第二个段头）。
+      list.scrollTop = 32 + 100 * 52 + 32 + 50 * 52;
+      list.dispatchEvent(new Event("scroll"));
+      await flush();
+      expect(calls("history-browse").map((a) => [a.range, a.fresh])).toEqual([[{ from: 130, limit: 51 }, []]]);
+      expect(rows().map((r) => r.dataset.key?.split("\u0000")[1])).toEqual(Array.from({ length: 51 }, (_, i) => `s${130 + i}`));
+      expect(list.querySelector<HTMLElement>("[class*=hvBlock]")!.style.top, "那一窗摆在第 130 项的高度上").toBe(`${32 + 130 * 52 + 32}px`);
+      // 粘在顶上的段头写的是看得见的第一项那一段。
+      expect(list.querySelector<HTMLElement>('[data-pin="true"]')!.textContent).toBe(copyText("history.section.month", { month: 9 }));
+      // 在那一窗里再滚一点 ⇒ 不再问。
+      invokeMock.mock.calls.length = 0;
+      list.scrollTop += 52 * 3;
+      list.dispatchEvent(new Event("scroll"));
+      await flush();
+      expect(calls("history-browse")).toEqual([]);
+      v.close();
+    } finally {
+      height.mockRestore();
+    }
+  });
+});
+
+describe("推送叫回来的重问", () => {
+  it("那台推「清单变了」⇒ 页开着、那台在这一页上才再问那一窗（远端带它的 fresh，本机不带）；改名 · 星标 · 隐藏 · 删之后页里不另问", async () => {
+    world.local = [row({ sessionId: "a" })];
+    world.dev = [row({ sessionId: "b", at: NOW - 120_000 })];
+    const v = await opened();
+    invokeMock.mock.calls.length = 0;
+    v.onListMoved("dev");
+    await flush();
+    expect(calls("history-browse").map((a) => a.fresh)).toEqual([[], ["dev"]]);
+    invokeMock.mock.calls.length = 0;
+    v.onListMoved(LOCAL_ORIGIN);
+    await flush();
+    expect(calls("history-browse").map((a) => a.fresh)).toEqual([[]]);
+    // 页里的动作之后不另问：那台的推送会叫回来。
+    invokeMock.mock.calls.length = 0;
+    rows()[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 3, clientY: 3 }));
+    [...document.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find((b) => b.textContent?.startsWith(copyText("history.menu.star")))!.click();
+    await flush();
+    expect(calls("history-annotate")).toHaveLength(1);
+    expect(calls("history-browse"), "标星之后页里又问了一次").toEqual([]);
+    // 不在这一页上的那台 · 关了页 ⇒ 不问。
+    byText("button", copyText("history.page.filter"))!.click();
+    await flush();
+    byText("label", "dev")!.querySelector("input")!.click();
+    await flush();
+    invokeMock.mock.calls.length = 0;
+    v.onListMoved("dev");
+    v.close();
+    v.onListMoved(LOCAL_ORIGIN);
+    await flush();
+    expect(calls("history-browse")).toEqual([]);
+    // 筛掉的那台记在本机界面偏好里，别带进后面几条。
+    localStorage.clear();
+  });
+});
+
+describe("一台读不到 · 有上一次的副本", () => {
+  it("行照副本出，列表顶说是几时读到的 ＋［重新连接］（带它的 fresh）；同步再成了标记清掉", async () => {
+    world.local = [row({ sessionId: "a" })];
+    world.dev = [row({ sessionId: "b", at: NOW - 120_000 })];
+    world.stale.add("dev");
+    const v = await opened();
+    expect(titles()).toEqual(["标题 a", "标题 b"]);
+    const said = copyText("history.list.machineStale", { machine: "dev", at: "09:30" });
+    expect(document.body.textContent).toContain(said);
+    expect(document.body.textContent).not.toContain(copyText("history.list.machineDown", { machine: "dev" }));
+    invokeMock.mock.calls.length = 0;
+    world.stale.clear();
+    byText("button", copyText("history.list.reconnect"))!.click();
+    await flush();
+    expect(syncs()).toBe(1);
+    expect(document.body.textContent, "同步再成了还标着旧").not.toContain(said);
     v.close();
   });
 });
@@ -368,8 +487,11 @@ describe("分叉", () => {
     const v = await opened();
     expect(rows().map((r) => r.dataset.key?.split("\u0000")[1])).toEqual(["dad"]);
     expect(rows()[0].dataset.context).toBe("true");
+    invokeMock.mock.calls.length = 0;
     byText("button", copyText("history.row.forks", { n: 1 }))!.click();
     await flush();
+    // 展开交后端摊：下一问带上展开了的那一行。
+    expect(calls("history-browse").map((a) => a.forks)).toEqual([[{ sid: "dad" }]]);
     expect(rows().map((r) => r.dataset.key?.split("\u0000")[1])).toEqual(["dad", "kid"]);
     expect(rows()[1].dataset.child).toBe("true");
     v.close();
@@ -384,24 +506,19 @@ describe("按项目", () => {
       { key: "claude:/w/q", agent: "claude", projectName: "q", projectPath: "/w/q", projectDir: "-w-q", count: 1, hasLive: false, starred: false, lastActivity: NOW, order: 1, failed: null },
       { key: "dir:-w-x", agent: "claude", projectName: "-w-x", projectPath: "", projectDir: "-w-x", count: 0, hasLive: null, starred: false, lastActivity: 0, order: 0, failed: "读不了" },
     ];
-    const base = invokeMock.getMockImplementation() as (cmd: string, a: unknown) => Promise<unknown>;
-    invokeMock.mockImplementation(async (cmd: string, a: unknown) => {
-      const r = await base(cmd, a);
-      if (cmd === "chan_call" && (a as ChanCallArgs).op === "history-list" && !(chanArgsJson(a as ChanCallArgs) as { origin?: string }).origin) {
-        const v = JSON.parse(new TextDecoder().decode(new Uint8Array(r as ArrayBuffer))) as ReturnType<typeof list>;
-        return chanReply({ ...v, head: { ...v.head, info: { ...v.head.info, groups } } });
-      }
-      return r;
-    });
+    world.groups.local = groups;
     const v = await opened();
     byText('[role="tab"]', copyText("history.page.byProject"))!.click();
     await flush();
-    const heads = [...document.querySelectorAll<HTMLElement>('[role="treeitem"]')];
-    expect(heads.map((h) => h.textContent?.slice(0, 1))).toEqual(["p", "q", "-"]);
+    const heads = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>('[role="treeitem"]')];
+    expect(heads().map((h) => h.textContent?.slice(0, 1))).toEqual(["p", "q", "-"]);
     expect(rows()).toEqual([]);
-    expect(heads[2].textContent).toContain(copyText("history.group.failed"));
-    heads[0].click();
+    expect(heads()[2].textContent).toContain(copyText("history.group.failed"));
+    expect(document.body.textContent).toContain(copyText("history.list.countProjects", { p: 3, n: 2 }));
+    invokeMock.mock.calls.length = 0;
+    heads()[0].click();
     await flush();
+    expect(calls("history-browse").map((a) => [a.by, a.groups])).toEqual([["project", { open: false, except: [{ key: "claude:/w/p" }] }]]);
     expect(titles()).toEqual(["标题 a"]);
     byText("button", copyText("history.list.expandAll"))!.click();
     await flush();
@@ -409,7 +526,7 @@ describe("按项目", () => {
     invokeMock.mock.calls.length = 0;
     byText("button", copyText("history.group.retry"))!.click();
     await flush();
-    expect(calls("history-list").map((a) => a.origin ?? "")).toEqual([""]);
+    expect(calls("history-browse").map((a) => a.fresh)).toEqual([[]]);
     byText('[role="tab"]', copyText("history.page.byTime"))!.click();
     v.close();
   });
@@ -425,18 +542,18 @@ describe("筛选", () => {
     invokeMock.mock.calls.length = 0;
     box(copyText("history.filter.showHidden")).click();
     await flush();
-    expect(calls("history-list").map((a) => a.hidden)).toEqual([true, true]);
+    expect(calls("history-browse").map((a) => a.hidden)).toEqual([true]);
     invokeMock.mock.calls.length = 0;
     box(copyText("history.filter.time7d")).click();
     box(copyText("history.filter.sortCreated")).click();
     await flush();
-    expect(calls("history-list").at(-1)).toMatchObject({ within_days: 7, sort: "created", hidden: true });
+    expect(calls("history-browse").at(-1)).toMatchObject({ within_days: 7, sort: "created", hidden: true });
     invokeMock.mock.calls.length = 0;
     box("dev").click();
     await flush();
     box(copyText("history.filter.time30d")).click();
     await flush();
-    expect(calls("history-list").map((a) => a.origin ?? "")).toEqual([""]);
+    expect(calls("history-browse").map((a) => a.remotes)).toEqual([[], []]);
     expect(byText("button", copyText("history.page.filter"))!.textContent).toContain("4");
     v.close();
   });
@@ -643,7 +760,7 @@ describe("窄档 / 中档 · 列表宽度可拖（乙4-① ⑧）", () => {
   it("窄档：点开一行 ⇒ 内容盖满；头左端「列表」与 Esc 都回列表、焦点回那一行；方向键走行不翻", async () => {
     vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("799"), media: q }));
     try {
-      world.local = [row({ sessionId: "a" }), row({ sessionId: "b", at: NOW - 5000 })];
+      world.local = [row({ sessionId: "a" }), row({ sessionId: "b", at: NOW - 120_000 })];
       const v = await opened();
       expect(split().dataset.pane).toBe("list");
       rows()[0].click();
@@ -735,24 +852,14 @@ describe("键盘：列表里每个键做什么", () => {
 describe("列表顶上的提示条 · 空着时说什么", () => {
   beforeEach(() => localStorage.clear());
 
-  it("本机读不出 ⇒ 红条［重试］只再问本机；那台说清单不全 ⇒ 黄条［重试］；清单截断 ⇒ 列表尾一句", async () => {
+  it("本机读不出 ⇒ 红条［重试］再问（不同步远端）；那台说清单不全 ⇒ 黄条［重试］带它的 fresh；没有截断那一句（滚到哪问到哪）", async () => {
     world.fail.add("");
     world.dev = [row({ sessionId: "b" })];
-    const base = invokeMock.getMockImplementation() as (cmd: string, a: unknown) => Promise<unknown>;
-    invokeMock.mockImplementation(async (cmd: string, a: unknown) => {
-      const r = await base(cmd, a);
-      if (cmd === "chan_call" && (a as ChanCallArgs).op === "history-list" && (chanArgsJson(a as ChanCallArgs) as { origin?: string }).origin === "dev") {
-        const v = JSON.parse(new TextDecoder().decode(new Uint8Array(r as ArrayBuffer))) as ReturnType<typeof list>;
-        // 那台常驻答的 `raw` 清单原样过；本机后端并好的那一份：注解没并全 · 整份比这一窗多（窗外还有）。
-        if (!("held" in v)) return r;
-        return chanReply({ ...v, head: { total: v.head.total + 5, info: { ...v.head.info, notice: "partial" } } });
-      }
-      return r;
-    });
+    world.notice.dev = "partial";
     const v = await opened();
     expect(document.body.textContent).toContain(copyText("history.list.localFailed"));
     expect(document.body.textContent).toContain(copyText("history.list.notice"));
-    expect(document.body.textContent).toContain(copyText("history.list.truncated"));
+    expect(document.body.textContent).not.toContain(copyText("history.list.truncated"));
     invokeMock.mock.calls.length = 0;
     world.fail.clear();
     byText("[class*=strip], div", copyText("history.list.localFailed"));
@@ -760,11 +867,11 @@ describe("列表顶上的提示条 · 空着时说什么", () => {
     expect(retries).toHaveLength(2);
     retries[0].click();
     await flush();
-    expect(calls("history-list").map((a) => [a.origin ?? "", a.fresh])).toEqual([["", undefined]]);
+    expect(calls("history-browse").map((a) => a.fresh)).toEqual([[]]);
     expect(syncs()).toBe(0);
     retries[1].click();
     await flush();
-    expect(calls("history-list").map((a) => [a.origin ?? "", a.fresh]).at(-1)).toEqual(["dev", true]);
+    expect(calls("history-browse").map((a) => a.fresh).at(-1)).toEqual(["dev"]);
     expect(syncs()).toBe(1);
     v.close();
   });
@@ -782,7 +889,7 @@ describe("列表顶上的提示条 · 空着时说什么", () => {
     byText("button", copyText("history.list.clearFilter"))!.click();
     await flush(200);
     expect(input.value).toBe("");
-    expect(calls("history-list").at(-1)!.query, "清掉之后最后那一问还带着字").toBeUndefined();
+    expect(calls("history-browse").at(-1)!.query, "清掉之后最后那一问还带着字").toBeUndefined();
     v.close();
   });
 });
@@ -849,7 +956,7 @@ describe("内容搜索的其余几态", () => {
 describe("筛选浮层的其余几格 · 按项目收起与新建", () => {
   beforeEach(() => localStorage.clear());
 
-  it("那台答不上 ⇒ 机器那一格标「离线」；勾回一台 ⇒ 只再问它；搜内容时改「谁说的」/ 含工具输出 ⇒ 当场重搜", async () => {
+  it("那台读不到 ⇒ 机器那一格标「离线」；勾回一台 ⇒ 带它的 fresh 再问；搜内容时改「谁说的」/ 含工具输出 ⇒ 当场重搜", async () => {
     world.local = [row({ sessionId: "a" })];
     world.fail.add("dev");
     const v = await opened();
@@ -862,7 +969,10 @@ describe("筛选浮层的其余几格 · 按项目收起与新建", () => {
     invokeMock.mock.calls.length = 0;
     box("dev").click();
     await flush();
-    expect(calls("history-list").map((a) => a.origin ?? "")).toEqual(["dev"]);
+    expect(calls("history-browse").map((a) => [a.remotes, a.fresh])).toEqual([
+      [["dev"], []],
+      [["dev"], ["dev"]],
+    ]);
     invokeMock.mock.calls.length = 0;
     box(copyText("history.filter.scopeYou")).click();
     await flush();
@@ -889,15 +999,7 @@ describe("筛选浮层的其余几格 · 按项目收起与新建", () => {
   it("按项目：点开的组再点收起；组头的［新建］在那个目录起新会话", async () => {
     world.local = [row({ sessionId: "a" })];
     const groups = [{ key: "claude:/w/p", agent: "claude", projectName: "p", projectPath: "/w/p", projectDir: "-w-p", count: 1, hasLive: false, starred: false, lastActivity: NOW, order: 1, failed: null }];
-    const base = invokeMock.getMockImplementation() as (cmd: string, a: unknown) => Promise<unknown>;
-    invokeMock.mockImplementation(async (cmd: string, a: unknown) => {
-      const r = await base(cmd, a);
-      if (cmd === "chan_call" && (a as ChanCallArgs).op === "history-list" && !(chanArgsJson(a as ChanCallArgs) as { origin?: string }).origin) {
-        const v = JSON.parse(new TextDecoder().decode(new Uint8Array(r as ArrayBuffer))) as ReturnType<typeof list>;
-        return chanReply({ ...v, head: { ...v.head, info: { ...v.head.info, groups } } });
-      }
-      return r;
-    });
+    world.groups.local = groups;
     const v = await opened();
     byText('[role="tab"]', copyText("history.page.byProject"))!.click();
     await flush();

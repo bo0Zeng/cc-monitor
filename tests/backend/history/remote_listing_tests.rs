@@ -13,6 +13,8 @@
 //! 4. 那台重启过（另一份备忘）⇒ 整份。
 //! 5. 不 `fresh`、手上有副本 ⇒ 不问那台。
 //! 7. 本机后端交给那台的期限就是发起方给的那个（`--within-ms` 原样往下带）。
+//! 8. 手上那份不去问就能读（历史页几台并成一列那一问用）：没问成过 ⇒ 说没读过；上一次同步没成 ⇒ 那一句 ＋ 旧副本 ＋ 它落下的时刻（照出、标明是旧的）；
+//!    从没读到过又没成 ⇒ 只有那一句；再问成了 ⇒ 清掉。
 //! 6. 问的永远是那台的常驻（命令行是 `--resident-call`，命令名与入参走 stdin）；那台常驻不在 ⇒ `resident_absent`、那句说的是那台的名字。
 //!
 //! # 买不到
@@ -241,6 +243,60 @@ async fn it_asks_the_resident_and_an_absent_one_fails_plainly() {
     .await
     .unwrap_err();
     assert_eq!(e.0, "unreachable", "{e:?}");
+}
+
+/// ★ 判据 8：手上那份照读，不去问那台；同步没成记下那一句，再成了清掉。
+#[tokio::test]
+async fn what_is_held_reads_without_asking_and_remembers_a_failed_sync() {
+    let mut peer = Peer::new(vec![row("s1", "一", 30)]);
+    let (copies, t) = (Copies::default(), table("devbox"));
+    assert!(matches!(kept_in(&copies, "devbox"), Kept::Unread));
+    ask(&peer, &copies, &t, true).await.unwrap();
+    let Kept::Got(l) = kept_in(&copies, "devbox") else {
+        panic!("问成了却读不到手上那份")
+    };
+    assert_eq!(sids(&l), ["s1"]);
+    assert_eq!(peer.times(), 1, "读手上那份去问了那台");
+    let landed = crate::common::time::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+    peer.absent = true;
+    ask(&peer, &copies, &t, true).await.unwrap_err();
+    let Kept::Stale {
+        listing,
+        why,
+        at_ms,
+    } = kept_in(&copies, "devbox")
+    else {
+        panic!("同步没成：手上那份要照出、标明是旧的")
+    };
+    assert!(why.contains("devbox"), "{why}");
+    assert_eq!(sids(&listing), ["s1"], "旧副本的行要照出");
+    assert!(
+        (landed - at_ms).abs() < 60_000,
+        "标的时刻得是副本落下那一刻：{at_ms} vs {landed}"
+    );
+    // 从没读到过、同步又没成 ⇒ 只有那一句，没有行可出。
+    let fresh_copies = Copies::default();
+    let _ = listing_with(
+        "devbox",
+        true,
+        &crate::Tz::default(),
+        crate::platform::child::Deadline::secs(5),
+        &t,
+        &peer,
+        &fresh_copies,
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(kept_in(&fresh_copies, "devbox"), Kept::Failed(_)));
+    peer.absent = false;
+    ask(&peer, &copies, &t, true).await.unwrap();
+    assert!(
+        matches!(kept_in(&copies, "devbox"), Kept::Got(_)),
+        "再问成了那一句没清掉"
+    );
 }
 
 /// 那台答整份：键是会话 ID、先后照清单、头带读不了的目录与注解。

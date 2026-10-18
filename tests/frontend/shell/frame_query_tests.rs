@@ -264,6 +264,8 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ("ccm-user-path", "取代本机那三条 Tauri 命令（壳自己起 PowerShell 读 / 改用户级 PATH、拼那句话）"),
     // 历史页的平铺清单（`src/frontend/ui/history-list-reads.ts`）：本机后端出成品（判活 · 每行能做什么 · 分组 · 搜标题），远端经它问那台。
     ("history-list", "新帧命令：一台的全部会话一次给（`history_list.rs`），界面问 `<local>`、远端带 `origin`；取代按项目逐个展开的那两问"),
+    // 历史页那一列（`src/frontend/ui/history-list-reads.ts::fetchBrowse`）：几台在本机后端并成一列、按看得见的那一窗答。
+    ("history-browse", "新帧命令：几台的清单在本机后端并成一列（`history_browse.rs`），界面只问 `<local>` 看得见的那一窗；取代界面里逐台问、按 `at` 并"),
     // 额度与轮换（`src/frontend/ui/quota-reads.ts`）：额度账 · 轮换都是那台后端账号域自己的状态，monitor 从没有过这几条命令。
     ("plan-list", "新帧命令：这台的 pb 工作区与片（找 pb · 跑 pb dump 在后端）；计划页只排版"),
     ("plan-read", "新帧命令：一个工作区的成品（接手 / 签收人对到会话 · 要你看四种 · 认可与退回的状态都在后端）；计划页只排版"),

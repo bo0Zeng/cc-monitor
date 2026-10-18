@@ -1,0 +1,1179 @@
+{
+ "about": "几台各自排好的成品（machines）照历史页从前在界面里的并法（按 at 并行 · 按 order 并组 · 分段 · 分叉挂父会话 · 按项目开合）并成一列，逐条记下（expect）。后端 history-browse 的并法照它对拍。",
+ "machines": [
+  {
+   "origin": null,
+   "head": {
+    "groups": [
+     {
+      "key": "claude:/w/p",
+      "agent": "claude",
+      "projectName": "p",
+      "projectPath": "/w/p",
+      "projectDir": "-x",
+      "count": 4,
+      "hasLive": false,
+      "starred": false,
+      "lastActivity": 900,
+      "atText": "12:00",
+      "order": 900,
+      "failed": null
+     },
+     {
+      "key": "claude:/w/q",
+      "agent": "claude",
+      "projectName": "q",
+      "projectPath": "/w/q",
+      "projectDir": "-x",
+      "count": 2,
+      "hasLive": false,
+      "starred": false,
+      "lastActivity": 500,
+      "atText": "12:00",
+      "order": 500,
+      "failed": null
+     }
+    ],
+    "notice": null
+   },
+   "rows": [
+    {
+     "agent": "claude",
+     "agentTag": null,
+     "sessionId": "a1",
+     "projectDir": "-w-p",
+     "projectPath": "/w/p",
+     "projectName": "p",
+     "group": "claude:/w/p",
+     "aiTitle": null,
+     "firstUserExcerpt": "说过的话",
+     "title": "t a1",
+     "label": "t a1",
+     "untitled": false,
+     "startedAt": 1000,
+     "updatedAt": 1000,
+     "at": 1000,
+     "atText": "12:00",
+     "sectionText": "今天",
+     "spanText": "s",
+     "jsonlPath": "/h/a1.jsonl",
+     "messageCountApprox": 3,
+     "isBg": false,
+     "starred": false,
+     "customTitle": null,
+     "hidden": null,
+     "face": {
+      "can": {
+       "close": {
+        "can": "quiet"
+       },
+       "model": {
+        "can": "yes"
+       },
+       "permission": {
+        "can": "yes"
+       },
+       "reattach": {
+        "can": "no",
+        "why": "会话已结束"
+       },
+       "resume": {
+        "can": "yes"
+       },
+       "term": {
+        "can": "no",
+        "why": "会话已结束"
+       }
+      },
+      "dot": "ended",
+      "line": "已结束 · 可恢复",
+      "live": {
+       "is": "no"
+      },
+      "name": "已结束",
+      "order": 5,
+      "settled": true,
+      "tip": "已结束 · 可恢复",
+      "tone": "plain"
+     },
+     "can": {
+      "resume": "yes",
+      "accounts": true,
+      "fork": true,
+      "delete": "yes"
+     }
+    },
+    {
+     "agent": "claude",
+     "agentTag": null,
+     "sessionId": "k1",
+     "projectDir": "-w-p",
+     "projectPath": "/w/p",
+     "projectName": "p",
+     "group": "claude:/w/p",
+     "aiTitle": null,
+     "firstUserExcerpt": "说过的话",
+     "title": "t k1",
+     "label": "t k1",
+     "untitled": false,
+     "startedAt": 950,
+     "updatedAt": 950,
+     "at": 950,
+     "atText": "12:00",
+     "sectionText": "今天",
+     "spanText": "s",
+     "jsonlPath": "/h/k1.jsonl",
+     "messageCountApprox": 3,
+     "isBg": false,
+     "starred": false,
+     "customTitle": null,
+     "hidden": null,
+     "face": {
+      "can": {
+       "close": {
+        "can": "quiet"
+       },
+       "model": {
+        "can": "yes"
+       },
+       "permission": {
+        "can": "yes"
+       },
+       "reattach": {
+        "can": "no",
+        "why": "会话已结束"
+       },
+       "resume": {
+        "can": "yes"
+       },
+       "term": {
+        "can": "no",
+        "why": "会话已结束"
+       }
+      },
+      "dot": "ended",
+      "line": "已结束 · 可恢复",
+      "live": {
+       "is": "no"
+      },
+      "name": "已结束",
+      "order": 5,
+      "settled": true,
+      "tip": "已结束 · 可恢复",
+      "tone": "plain"
+     },
+     "can": {
+      "resume": "yes",
+      "accounts": true,
+      "fork": true,
+      "delete": "yes"
+     },
+     "forkedFromSessionId": "a1",
+     "forkedFromMessageUuid": "m"
+    },
+    {
+     "agent": "claude",
+     "agentTag": null,
+     "sessionId": "g1",
+     "projectDir": "-w-p",
+     "projectPath": "/w/p",
+     "projectName": "p",
+     "group": "claude:/w/p",
+     "aiTitle": null,
+     "firstUserExcerpt": "说过的话",
+     "title": "t g1",
+     "label": "t g1",
+     "untitled": false,
+     "startedAt": 940,
+     "updatedAt": 940,
+     "at": 940,
+     "atText": "12:00",
+     "sectionText": "今天",
+     "spanText": "s",
+     "jsonlPath": "/h/g1.jsonl",
+     "messageCountApprox": 3,
+     "isBg": false,
+     "starred": false,
+     "customTitle": null,
+     "hidden": null,
+     "face": {
+      "can": {
+       "close": {
+        "can": "quiet"
+       },
+       "model": {
+        "can": "yes"
+       },
+       "permission": {
+        "can": "yes"
+       },
+       "reattach": {
+        "can": "no",
+        "why": "会话已结束"
+       },
+       "resume": {
+        "can": "yes"
+       },
+       "term": {
+        "can": "no",
+        "why": "会话已结束"
+       }
+      },
+      "dot": "ended",
+      "line": "已结束 · 可恢复",
+      "live": {
+       "is": "no"
+      },
+      "name": "已结束",
+      "order": 5,
+      "settled": true,
+      "tip": "已结束 · 可恢复",
+      "tone": "plain"
+     },
+     "can": {
+      "resume": "yes",
+      "accounts": true,
+      "fork": true,
+      "delete": "yes"
+     },
+     "forkedFromSessionId": "k1",
+     "forkedFromMessageUuid": "m"
+    },
+    {
+     "agent": "claude",
+     "agentTag": null,
+     "sessionId": "a2",
+     "projectDir": "-w-p",
+     "projectPath": "/w/p",
+     "projectName": "p",
+     "group": "claude:/w/q",
+     "aiTitle": null,
+     "firstUserExcerpt": "说过的话",
+     "title": "t a2",
+     "label": "t a2",
+     "untitled": false,
+     "startedAt": 900,
+     "updatedAt": 900,
+     "at": 900,
+     "atText": "12:00",
+     "sectionText": "今天",
+     "spanText": "s",
+     "jsonlPath": "/h/a2.jsonl",
+     "messageCountApprox": 3,
+     "isBg": false,
+     "starred": false,
+     "customTitle": null,
+     "hidden": null,
+     "face": {
+      "can": {
+       "close": {
+        "can": "quiet"
+       },
+       "model": {
+        "can": "yes"
+       },
+       "permission": {
+        "can": "yes"
+       },
+       "reattach": {
+        "can": "no",
+        "why": "会话已结束"
+       },
+       "resume": {
+        "can": "yes"
+       },
+       "term": {
+        "can": "no",
+        "why": "会话已结束"
+       }
+      },
+      "dot": "ended",
+      "line": "已结束 · 可恢复",
+      "live": {
+       "is": "no"
+      },
+      "name": "已结束",
+      "order": 5,
+      "settled": true,
+      "tip": "已结束 · 可恢复",
+      "tone": "plain"
+     },
+     "can": {
+      "resume": "yes",
+      "accounts": true,
+      "fork": true,
+      "delete": "yes"
+     }
+    },
+    {
+     "agent": "claude",
+     "agentTag": null,
+     "sessionId": "o1",
+     "projectDir": "-w-p",
+     "projectPath": "/w/p",
+     "projectName": "p",
+     "group": "claude:/w/p",
+     "aiTitle": null,
+     "firstUserExcerpt": "说过的话",
+     "title": "t o1",
+     "label": "t o1",
+     "untitled": false,
+     "startedAt": 700,
+     "updatedAt": 700,
+     "at": 700,
+     "atText": "12:00",
+     "sectionText": "昨天",
+     "spanText": "s",
+     "jsonlPath": "/h/o1.jsonl",
+     "messageCountApprox": 3,
+     "isBg": false,
+     "starred": false,
+     "customTitle": null,
+     "hidden": null,
+     "face": {
+      "can": {
+       "close": {
+        "can": "quiet"
+       },
+       "model": {
+        "can": "yes"
+       },
+       "permission": {
+        "can": "yes"
+       },
+       "reattach": {
+        "can": "no",
+        "why": "会话已结束"
+       },
+       "resume": {
+        "can": "yes"
+       },
+       "term": {
+        "can": "no",
+        "why": "会话已结束"
+       }
+      },
+      "dot": "ended",
+      "line": "已结束 · 可恢复",
+      "live": {
+       "is": "no"
+      },
+      "name": "已结束",
+      "order": 5,
+      "settled": true,
+      "tip": "已结束 · 可恢复",
+      "tone": "plain"
+     },
+     "can": {
+      "resume": "yes",
+      "accounts": true,
+      "fork": true,
+      "delete": "yes"
+     },
+     "forkedFromSessionId": "nowhere",
+     "forkedFromMessageUuid": "m"
+    },
+    {
+     "agent": "claude",
+     "agentTag": null,
+     "sessionId": "x1",
+     "projectDir": "-w-p",
+     "projectPath": "/w/p",
+     "projectName": "p",
+     "group": "claude:/w/p",
+     "aiTitle": null,
+     "firstUserExcerpt": "说过的话",
+     "title": "t x1",
+     "label": "t x1",
+     "untitled": false,
+     "startedAt": 700,
+     "updatedAt": 700,
+     "at": 700,
+     "atText": "12:00",
+     "sectionText": "昨天",
+     "spanText": "s",
+     "jsonlPath": "/h/x1.jsonl",
+     "messageCountApprox": 3,
+     "isBg": false,
+     "starred": false,
+     "customTitle": null,
+     "hidden": null,
+     "face": {
+      "can": {
+       "close": {
+        "can": "quiet"
+       },
+       "model": {
+        "can": "yes"
+       },
+       "permission": {
+        "can": "yes"
+       },
+       "reattach": {
+        "can": "no",
+        "why": "会话已结束"
+       },
+       "resume": {
+        "can": "yes"
+       },
+       "term": {
+        "can": "no",
+        "why": "会话已结束"
+       }
+      },
+      "dot": "ended",
+      "line": "已结束 · 可恢复",
+      "live": {
+       "is": "no"
+      },
+      "name": "已结束",
+      "order": 5,
+      "settled": true,
+      "tip": "已结束 · 可恢复",
+      "tone": "plain"
+     },
+     "can": {
+      "resume": "yes",
+      "accounts": true,
+      "fork": true,
+      "delete": "yes"
+     },
+     "forkedFromSessionId": "d1",
+     "forkedFromMessageUuid": "m"
+    },
+    {
+     "agent": "claude",
+     "agentTag": null,
+     "sessionId": "a3",
+     "projectDir": "-w-p",
+     "projectPath": "/w/p",
+     "projectName": "p",
+     "group": "claude:/w/q",
+     "aiTitle": null,
+     "firstUserExcerpt": "说过的话",
+     "title": "t a3",
+     "label": "t a3",
+     "untitled": false,
+     "startedAt": 300,
+     "updatedAt": 300,
+     "at": 300,
+     "atText": "12:00",
+     "sectionText": "九月",
+     "spanText": "s",
+     "jsonlPath": "/h/a3.jsonl",
+     "messageCountApprox": 3,
+     "isBg": false,
+     "starred": false,
+     "customTitle": null,
+     "hidden": null,
+     "face": {
+      "can": {
+       "close": {
+        "can": "quiet"
+       },
+       "model": {
+        "can": "yes"
+       },
+       "permission": {
+        "can": "yes"
+       },
+       "reattach": {
+        "can": "no",
+        "why": "会话已结束"
+       },
+       "resume": {
+        "can": "yes"
+       },
+       "term": {
+        "can": "no",
+        "why": "会话已结束"
+       }
+      },
+      "dot": "ended",
+      "line": "已结束 · 可恢复",
+      "live": {
+       "is": "no"
+      },
+      "name": "已结束",
+      "order": 5,
+      "settled": true,
+      "tip": "已结束 · 可恢复",
+      "tone": "plain"
+     },
+     "can": {
+      "resume": "yes",
+      "accounts": true,
+      "fork": true,
+      "delete": "yes"
+     }
+    },
+    {
+     "agent": "claude",
+     "agentTag": null,
+     "sessionId": "cx",
+     "projectDir": "-w-p",
+     "projectPath": "/w/p",
+     "projectName": "p",
+     "group": "claude:/w/p",
+     "aiTitle": null,
+     "firstUserExcerpt": "说过的话",
+     "title": "t cx",
+     "label": "t cx",
+     "untitled": false,
+     "startedAt": 200,
+     "updatedAt": 200,
+     "at": 200,
+     "atText": "12:00",
+     "sectionText": "九月",
+     "spanText": "s",
+     "jsonlPath": "/h/cx.jsonl",
+     "messageCountApprox": 3,
+     "isBg": false,
+     "starred": false,
+     "customTitle": null,
+     "hidden": null,
+     "face": {
+      "can": {
+       "close": {
+        "can": "quiet"
+       },
+       "model": {
+        "can": "yes"
+       },
+       "permission": {
+        "can": "yes"
+       },
+       "reattach": {
+        "can": "no",
+        "why": "会话已结束"
+       },
+       "resume": {
+        "can": "yes"
+       },
+       "term": {
+        "can": "no",
+        "why": "会话已结束"
+       }
+      },
+      "dot": "ended",
+      "line": "已结束 · 可恢复",
+      "live": {
+       "is": "no"
+      },
+      "name": "已结束",
+      "order": 5,
+      "settled": true,
+      "tip": "已结束 · 可恢复",
+      "tone": "plain"
+     },
+     "can": {
+      "resume": "yes",
+      "accounts": true,
+      "fork": true,
+      "delete": "yes"
+     },
+     "context": true
+    },
+    {
+     "agent": "claude",
+     "agentTag": null,
+     "sessionId": "k2",
+     "projectDir": "-w-p",
+     "projectPath": "/w/p",
+     "projectName": "p",
+     "group": "claude:/w/p",
+     "aiTitle": null,
+     "firstUserExcerpt": "说过的话",
+     "title": "t k2",
+     "label": "t k2",
+     "untitled": false,
+     "startedAt": 150,
+     "updatedAt": 150,
+     "at": 150,
+     "atText": "12:00",
+     "sectionText": "九月",
+     "spanText": "s",
+     "jsonlPath": "/h/k2.jsonl",
+     "messageCountApprox": 3,
+     "isBg": false,
+     "starred": false,
+     "customTitle": null,
+     "hidden": null,
+     "face": {
+      "can": {
+       "close": {
+        "can": "quiet"
+       },
+       "model": {
+        "can": "yes"
+       },
+       "permission": {
+        "can": "yes"
+       },
+       "reattach": {
+        "can": "no",
+        "why": "会话已结束"
+       },
+       "resume": {
+        "can": "yes"
+       },
+       "term": {
+        "can": "no",
+        "why": "会话已结束"
+       }
+      },
+      "dot": "ended",
+      "line": "已结束 · 可恢复",
+      "live": {
+       "is": "no"
+      },
+      "name": "已结束",
+      "order": 5,
+      "settled": true,
+      "tip": "已结束 · 可恢复",
+      "tone": "plain"
+     },
+     "can": {
+      "resume": "yes",
+      "accounts": true,
+      "fork": true,
+      "delete": "yes"
+     },
+     "forkedFromSessionId": "cx",
+     "forkedFromMessageUuid": "m"
+    }
+   ]
+  },
+  {
+   "origin": "dev",
+   "head": {
+    "groups": [
+     {
+      "key": "claude:/w/p",
+      "agent": "claude",
+      "projectName": "p",
+      "projectPath": "/w/p",
+      "projectDir": "-x",
+      "count": 2,
+      "hasLive": false,
+      "starred": false,
+      "lastActivity": 900,
+      "atText": "12:00",
+      "order": 900,
+      "failed": null,
+      "origin": "dev"
+     },
+     {
+      "key": "claude:/w/q",
+      "agent": "claude",
+      "projectName": "q",
+      "projectPath": "/w/q",
+      "projectDir": "-x",
+      "count": 1,
+      "hasLive": false,
+      "starred": false,
+      "lastActivity": 400,
+      "atText": "12:00",
+      "order": 400,
+      "failed": null,
+      "origin": "dev"
+     }
+    ],
+    "notice": null
+   },
+   "rows": [
+    {
+     "agent": "claude",
+     "agentTag": null,
+     "sessionId": "d1",
+     "projectDir": "-w-p",
+     "projectPath": "/w/p",
+     "projectName": "p",
+     "group": "claude:/w/p",
+     "aiTitle": null,
+     "firstUserExcerpt": "说过的话",
+     "title": "t d1",
+     "label": "t d1",
+     "untitled": false,
+     "startedAt": 1000,
+     "updatedAt": 1000,
+     "at": 1000,
+     "atText": "12:00",
+     "sectionText": "今天",
+     "spanText": "s",
+     "jsonlPath": "/h/d1.jsonl",
+     "messageCountApprox": 3,
+     "isBg": false,
+     "starred": false,
+     "customTitle": null,
+     "hidden": null,
+     "face": {
+      "can": {
+       "close": {
+        "can": "quiet"
+       },
+       "model": {
+        "can": "yes"
+       },
+       "permission": {
+        "can": "yes"
+       },
+       "reattach": {
+        "can": "no",
+        "why": "会话已结束"
+       },
+       "resume": {
+        "can": "yes"
+       },
+       "term": {
+        "can": "no",
+        "why": "会话已结束"
+       }
+      },
+      "dot": "ended",
+      "line": "已结束 · 可恢复",
+      "live": {
+       "is": "no"
+      },
+      "name": "已结束",
+      "order": 5,
+      "settled": true,
+      "tip": "已结束 · 可恢复",
+      "tone": "plain"
+     },
+     "can": {
+      "resume": "yes",
+      "accounts": true,
+      "fork": true,
+      "delete": "yes"
+     },
+     "origin": "dev"
+    },
+    {
+     "agent": "claude",
+     "agentTag": null,
+     "sessionId": "d2",
+     "projectDir": "-w-p",
+     "projectPath": "/w/p",
+     "projectName": "p",
+     "group": "claude:/w/q",
+     "aiTitle": null,
+     "firstUserExcerpt": "说过的话",
+     "title": "t d2",
+     "label": "t d2",
+     "untitled": false,
+     "startedAt": 700,
+     "updatedAt": 700,
+     "at": 700,
+     "atText": "12:00",
+     "sectionText": "昨天",
+     "spanText": "s",
+     "jsonlPath": "/h/d2.jsonl",
+     "messageCountApprox": 3,
+     "isBg": false,
+     "starred": false,
+     "customTitle": null,
+     "hidden": null,
+     "face": {
+      "can": {
+       "close": {
+        "can": "quiet"
+       },
+       "model": {
+        "can": "yes"
+       },
+       "permission": {
+        "can": "yes"
+       },
+       "reattach": {
+        "can": "no",
+        "why": "会话已结束"
+       },
+       "resume": {
+        "can": "yes"
+       },
+       "term": {
+        "can": "no",
+        "why": "会话已结束"
+       }
+      },
+      "dot": "ended",
+      "line": "已结束 · 可恢复",
+      "live": {
+       "is": "no"
+      },
+      "name": "已结束",
+      "order": 5,
+      "settled": true,
+      "tip": "已结束 · 可恢复",
+      "tone": "plain"
+     },
+     "can": {
+      "resume": "yes",
+      "accounts": true,
+      "fork": true,
+      "delete": "yes"
+     },
+     "origin": "dev"
+    },
+    {
+     "agent": "claude",
+     "agentTag": null,
+     "sessionId": "d3",
+     "projectDir": "-w-p",
+     "projectPath": "/w/p",
+     "projectName": "p",
+     "group": "claude:/w/p",
+     "aiTitle": null,
+     "firstUserExcerpt": "说过的话",
+     "title": "t d3",
+     "label": "t d3",
+     "untitled": false,
+     "startedAt": 100,
+     "updatedAt": 100,
+     "at": 100,
+     "atText": "12:00",
+     "sectionText": "九月",
+     "spanText": "s",
+     "jsonlPath": "/h/d3.jsonl",
+     "messageCountApprox": 3,
+     "isBg": false,
+     "starred": false,
+     "customTitle": null,
+     "hidden": null,
+     "face": {
+      "can": {
+       "close": {
+        "can": "quiet"
+       },
+       "model": {
+        "can": "yes"
+       },
+       "permission": {
+        "can": "yes"
+       },
+       "reattach": {
+        "can": "no",
+        "why": "会话已结束"
+       },
+       "resume": {
+        "can": "yes"
+       },
+       "term": {
+        "can": "no",
+        "why": "会话已结束"
+       }
+      },
+      "dot": "ended",
+      "line": "已结束 · 可恢复",
+      "live": {
+       "is": "no"
+      },
+      "name": "已结束",
+      "order": 5,
+      "settled": true,
+      "tip": "已结束 · 可恢复",
+      "tone": "plain"
+     },
+     "can": {
+      "resume": "yes",
+      "accounts": true,
+      "fork": true,
+      "delete": "yes"
+     },
+     "origin": "dev"
+    }
+   ]
+  },
+  {
+   "origin": "box",
+   "head": {
+    "groups": [
+     {
+      "key": "dir:-w-x",
+      "agent": "claude",
+      "projectName": "dir:-w-x",
+      "projectPath": "-w-x",
+      "projectDir": "-x",
+      "count": 0,
+      "hasLive": null,
+      "starred": false,
+      "lastActivity": 0,
+      "atText": null,
+      "order": 0,
+      "failed": "读不了",
+      "origin": "box"
+     },
+     {
+      "key": "claude:/w/p",
+      "agent": "claude",
+      "projectName": "p",
+      "projectPath": "/w/p",
+      "projectDir": "-x",
+      "count": 1,
+      "hasLive": false,
+      "starred": false,
+      "lastActivity": 900,
+      "atText": "12:00",
+      "order": 900,
+      "failed": null,
+      "origin": "box"
+     }
+    ],
+    "notice": null
+   },
+   "rows": [
+    {
+     "agent": "claude",
+     "agentTag": null,
+     "sessionId": "b1",
+     "projectDir": "-w-p",
+     "projectPath": "/w/p",
+     "projectName": "p",
+     "group": "claude:/w/p",
+     "aiTitle": null,
+     "firstUserExcerpt": "说过的话",
+     "title": "t b1",
+     "label": "t b1",
+     "untitled": false,
+     "startedAt": 950,
+     "updatedAt": 950,
+     "at": 950,
+     "atText": "12:00",
+     "sectionText": "今天",
+     "spanText": "s",
+     "jsonlPath": "/h/b1.jsonl",
+     "messageCountApprox": 3,
+     "isBg": false,
+     "starred": false,
+     "customTitle": null,
+     "hidden": null,
+     "face": {
+      "can": {
+       "close": {
+        "can": "quiet"
+       },
+       "model": {
+        "can": "yes"
+       },
+       "permission": {
+        "can": "yes"
+       },
+       "reattach": {
+        "can": "no",
+        "why": "会话已结束"
+       },
+       "resume": {
+        "can": "yes"
+       },
+       "term": {
+        "can": "no",
+        "why": "会话已结束"
+       }
+      },
+      "dot": "ended",
+      "line": "已结束 · 可恢复",
+      "live": {
+       "is": "no"
+      },
+      "name": "已结束",
+      "order": 5,
+      "settled": true,
+      "tip": "已结束 · 可恢复",
+      "tone": "plain"
+     },
+     "can": {
+      "resume": "yes",
+      "accounts": true,
+      "fork": true,
+      "delete": "yes"
+     },
+     "origin": "box"
+    }
+   ]
+  }
+ ],
+ "cases": [
+  {
+   "name": "按时间 · 分叉都收着",
+   "view": "time",
+   "query": "",
+   "groups": {
+    "open": false,
+    "except": []
+   },
+   "forks": [],
+   "expect": [
+    "sec:今天",
+    "r:|a1:forks=1",
+    "r:dev|d1",
+    "r:box|b1",
+    "r:|a2",
+    "sec:昨天",
+    "r:|o1:orphan",
+    "r:|x1:orphan",
+    "r:dev|d2",
+    "sec:九月",
+    "r:|a3",
+    "r:|cx:forks=1",
+    "r:dev|d3"
+   ]
+  },
+  {
+   "name": "按时间 · 两处分叉展开（含孙辈）",
+   "view": "time",
+   "query": "",
+   "groups": {
+    "open": false,
+    "except": []
+   },
+   "forks": [
+    {
+     "origin": null,
+     "sid": "a1"
+    },
+    {
+     "origin": null,
+     "sid": "k1"
+    },
+    {
+     "origin": null,
+     "sid": "cx"
+    }
+   ],
+   "expect": [
+    "sec:今天",
+    "r:|a1:forks=1(open)",
+    "r:|k1:child:forks=1(open)",
+    "r:|g1:child",
+    "r:dev|d1",
+    "r:box|b1",
+    "r:|a2",
+    "sec:昨天",
+    "r:|o1:orphan",
+    "r:|x1:orphan",
+    "r:dev|d2",
+    "sec:九月",
+    "r:|a3",
+    "r:|cx:forks=1(open)",
+    "r:|k2:child",
+    "r:dev|d3"
+   ]
+  },
+  {
+   "name": "按项目 · 全收着",
+   "view": "project",
+   "query": "",
+   "groups": {
+    "open": false,
+    "except": []
+   },
+   "forks": [],
+   "expect": [
+    "g:|claude:/w/p:false",
+    "g:dev|claude:/w/p:false",
+    "g:|claude:/w/q:false",
+    "g:dev|claude:/w/q:false",
+    "g:box|dir:-w-x:false",
+    "g:box|claude:/w/p:false"
+   ]
+  },
+  {
+   "name": "按项目 · 开两组、展开一处分叉",
+   "view": "project",
+   "query": "",
+   "groups": {
+    "open": false,
+    "except": [
+     {
+      "origin": null,
+      "key": "claude:/w/p"
+     },
+     {
+      "origin": "dev",
+      "key": "claude:/w/q"
+     }
+    ]
+   },
+   "forks": [
+    {
+     "origin": null,
+     "sid": "a1"
+    }
+   ],
+   "expect": [
+    "g:|claude:/w/p:true",
+    "r:|a1:forks=1(open)",
+    "r:|k1:child:forks=1",
+    "r:|o1",
+    "r:|x1",
+    "r:|cx:forks=1",
+    "g:dev|claude:/w/p:false",
+    "g:|claude:/w/q:false",
+    "g:dev|claude:/w/q:true",
+    "r:dev|d2",
+    "g:box|dir:-w-x:false",
+    "g:box|claude:/w/p:false"
+   ]
+  },
+  {
+   "name": "按项目 · 全部展开但收起一组",
+   "view": "project",
+   "query": "",
+   "groups": {
+    "open": true,
+    "except": [
+     {
+      "origin": "dev",
+      "key": "claude:/w/p"
+     }
+    ]
+   },
+   "forks": [],
+   "expect": [
+    "g:|claude:/w/p:true",
+    "r:|a1:forks=1",
+    "r:|o1",
+    "r:|x1",
+    "r:|cx:forks=1",
+    "g:dev|claude:/w/p:false",
+    "g:|claude:/w/q:true",
+    "r:|a2",
+    "r:|a3",
+    "g:dev|claude:/w/q:true",
+    "r:dev|d2",
+    "g:box|dir:-w-x:true",
+    "g:box|claude:/w/p:true",
+    "r:box|b1"
+   ]
+  },
+  {
+   "name": "按项目 · 搜着字 ⇒ 组都展开",
+   "view": "project",
+   "query": "t",
+   "groups": {
+    "open": false,
+    "except": []
+   },
+   "forks": [],
+   "expect": [
+    "g:|claude:/w/p:true",
+    "r:|a1:forks=1",
+    "r:|o1",
+    "r:|x1",
+    "r:|cx:forks=1",
+    "g:dev|claude:/w/p:true",
+    "r:dev|d1",
+    "r:dev|d3",
+    "g:|claude:/w/q:true",
+    "r:|a2",
+    "r:|a3",
+    "g:dev|claude:/w/q:true",
+    "r:dev|d2",
+    "g:box|dir:-w-x:true",
+    "g:box|claude:/w/p:true",
+    "r:box|b1"
+   ]
+  }
+ ]
+}

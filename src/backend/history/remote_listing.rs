@@ -1,16 +1,17 @@
 //! **远端那台的会话清单**：那台怎么答（帧面 `history-listing`，带键集合那一形）· 本机后端怎么取、怎么存（副本）。
 //!
 //! ```text
-//! history-list {origin, fresh?}（本机后端）
-//!   ⇒ 手上没有那台的副本 · 或 fresh ⇒ 经 `remote_ask::ask_resident` 问那台的常驻：history-listing {held: 手上那份的记号}
+//! history-list {origin}（本机后端，按会话 ID 要一行）· history-browse {remotes, fresh}（历史页那一列）
+//!   ⇒ 手上没有那台的副本 · 或要同步（fresh）⇒ 经 `remote_ask::ask_resident` 问那台的常驻：history-listing {held: 手上那份的记号}
 //!        ⇒ 那台答 Patch<ListingHead, RawRow>（没变 / 只给变了的那几行 / 整份）⇒ 照答换副本（`Hand::apply`，没有判断）
 //!   ⇒ 副本拼回一份清单（`Listing`）交 `history_list::answer_from` 并注解 · 筛 · 排
+//!   历史页那一列不带 fresh 的那几台只读手上那份（[`kept`]：没问成过 ⇒ 没读过；上一次同步没成 ⇒ 那一句），不去问
 //! ```
 //!
 //! - 问的是那台**热着的常驻**（`--resident-call`）：那台扫过的清单缓存与这一问的备忘都在它那里；
 //!   那台常驻不在 ⇒ 照实失败（`resident_absent`），不在那台起一个冷进程顶上。
-//! - 副本只在内存里（按机器名），本机后端重启后第一问整份一次；不按时间过期（这一层不看钟）：开页 · 刷新带 `fresh` 才同步。
-//! - 等多久只归发起方：`history-list` 那一发交来的截止时刻（请求信封 `within_ms`）原样往下带（本机等它、那台 `--resident-call --within-ms` 也等它）；
+//! - 副本只在内存里（按机器名），本机后端重启后第一问整份一次；不按时间过期（这一层不看钟）：历史页开页 · 刷新带 `fresh` 才同步。
+//! - 等多久只归发起方：`history-list` · `history-browse` 那一发交来的截止时刻（请求信封 `within_ms`）原样往下带（本机等它、那台 `--resident-call --within-ms` 也等它）；
 //!   没带 ⇒ `bad_args`，这里不自己定一个。
 //! - 压缩照旧在 SSH 那一层，这里不另做。
 
@@ -108,13 +109,62 @@ pub(crate) fn answer_with(
 
 // ───────────────────────── 本机后端怎么取、怎么存 ─────────────────────────
 
-/// 远端那几台的副本：机器名 ⇒ 手上那份（记号 ＋ 先后 ＋ 各行 ＋ 头）。
+/// 远端那几台的副本：机器名 ⇒ 手上那份（记号 ＋ 先后 ＋ 各行 ＋ 头）＋ 上一次同步没成的那一句（成了就清掉）。
 #[derive(Default)]
-pub(crate) struct Copies(Mutex<BTreeMap<String, Hand<ListingHead, RawRow>>>);
+pub(crate) struct Copies(Mutex<BTreeMap<String, Slot>>);
+
+/// 一台的副本：没问成过 ⇒ `hand.held` 缺。
+#[derive(Default)]
+pub(crate) struct Slot {
+    hand: Hand<ListingHead, RawRow>,
+    failed: Option<String>,
+    /// 手上那份落下的那一刻（毫秒）：同步没成时照它说「下面是那一刻读到的」。
+    at_ms: i64,
+}
 
 impl Copies {
-    fn lock(&self) -> std::sync::MutexGuard<'_, BTreeMap<String, Hand<ListingHead, RawRow>>> {
+    fn lock(&self) -> std::sync::MutexGuard<'_, BTreeMap<String, Slot>> {
         self.0.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
+/// 手上那份那台的清单此刻是什么样（不去问）。
+#[derive(Debug)]
+pub(crate) enum Kept {
+    /// 拼回来的那份。
+    Got(Listing),
+    /// 上一次同步没成、手上有之前那份：照出、标明是旧的（那一句 ＋ 那份落下的那一刻）。
+    Stale {
+        listing: Listing,
+        why: String,
+        at_ms: i64,
+    },
+    /// 从没问成过、同步又没成：只有那一句。
+    Failed(String),
+    /// 还没问成过、这一趟也没去问。
+    Unread,
+}
+
+/// 那一台手上那份（生产：本进程的副本表）。
+pub(crate) fn kept(machine: &str) -> Kept {
+    kept_in(&COPIES, machine)
+}
+
+/// [`kept`] 的本体（副本表由调用方给）。
+pub(crate) fn kept_in(copies: &Copies, machine: &str) -> Kept {
+    let book = copies.lock();
+    let Some(c) = book.get(machine) else {
+        return Kept::Unread;
+    };
+    match (&c.failed, c.hand.held.is_some()) {
+        (Some(why), true) => Kept::Stale {
+            listing: assembled(&c.hand),
+            why: why.clone(),
+            at_ms: c.at_ms,
+        },
+        (Some(why), false) => Kept::Failed(why.clone()),
+        (None, true) => Kept::Got(assembled(&c.hand)),
+        (None, false) => Kept::Unread,
     }
 }
 
@@ -149,7 +199,7 @@ pub(crate) async fn listing(
 }
 
 /// [`listing`] 的本体（可达表 · 对面 · 副本表由调用方给）：手上没有 · 或 `fresh` ⇒ 带记号问那台、照答换；再拼回一份清单。
-/// 问不成 ⇒ 那台的码与那一句（够不着 `unreachable` · 常驻不在 `resident_absent` · …），手上那份不动。
+/// 问不成 ⇒ 那台的码与那一句（够不着 `unreachable` · 常驻不在 `resident_absent` · …），手上那份不动、那一句记下（[`kept_in`] 照它答），下一次问成了清掉。
 pub(crate) async fn listing_with(
     machine: &str,
     fresh: bool,
@@ -161,13 +211,13 @@ pub(crate) async fn listing_with(
 ) -> Result<Listing, (&'static str, String)> {
     let held = {
         let book = copies.lock();
-        match book.get(machine) {
-            Some(hand) if !fresh => return Ok(assembled(hand)),
+        match book.get(machine).map(|c| &c.hand) {
+            Some(hand) if !fresh && hand.held.is_some() => return Ok(assembled(hand)),
             Some(hand) => hand.held.clone(),
             None => None,
         }
     };
-    let patch = crate::dial::remote_ask::ask_resident::<HistoryListingCmd>(
+    let got = crate::dial::remote_ask::ask_resident::<HistoryListingCmd>(
         machine,
         &HistoryListingReq { held },
         tz,
@@ -176,11 +226,23 @@ pub(crate) async fn listing_with(
         remote,
     )
     .await
-    .map_err(|s| (code_of(s.code.as_deref()), s.message))?;
+    .map_err(|s| (code_of(s.code.as_deref()), s.message));
     let mut book = copies.lock();
-    let hand = book.entry(machine.to_string()).or_default();
-    hand.apply(patch);
-    Ok(assembled(hand))
+    let slot = book.entry(machine.to_string()).or_default();
+    match got {
+        Ok(patch) => {
+            slot.failed = None;
+            slot.hand.apply(patch);
+            slot.at_ms = crate::common::time::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_millis() as i64);
+            Ok(assembled(&slot.hand))
+        }
+        Err(e) => {
+            slot.failed = Some(e.1.clone());
+            Err(e)
+        }
+    }
 }
 
 /// 那台的码落到 `history-list` 的码表上（不在表里的落 `failed`，那一句照旧）。

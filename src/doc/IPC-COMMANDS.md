@@ -4186,10 +4186,6 @@ type HistoryListReq = {
  */
 origin?: string, 
 /**
- * `true` ⇒ 先问那一台（`origin`）同步一次本进程记着的副本再答（开页 · 刷新）；缺 ⇒ 手上有就用手上那份（敲字搜索）。不带 `origin` ⇒ `bad_args`。
- */
-fresh?: boolean, 
-/**
  * 只要这一个会话那一行（独立查看窗；别的筛一概不看、不补父会话）。形状同 `history-record`（`[A-Za-z0-9-]`，1..=64）。
  */
 sid?: string, 
@@ -4321,6 +4317,237 @@ type Words = string;
 ```
 
 码：`bad_args` · `failed` · `unreachable` · `resident_absent`
+
+#### `history-browse`
+
+历史页那一列（几台并成一列）。
+
+收 `args` · 可撤 · CLI：`ccm -- --history-browse`
+
+入参 `HistoryBrowseReq` · 回包 `SyncPatch<HistoryBrowseHead, HistoryLine>`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Allow = { "can": "yes" } | { "can": "no", why: Words, };
+type Can = { 
+/**
+ * `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
+ */
+resume: CanResume, 
+/**
+ * 恢复时能不能选号。
+ */
+accounts: boolean, 
+/**
+ * 能不能从某一轮分叉。
+ */
+fork: boolean, 
+/**
+ * `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑。
+ */
+delete: CanDelete, };
+type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
+type CanDelete = "yes" | "live" | "unsure";
+type CanResume = "yes" | "switch" | "bg";
+type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
+type ForkedFrom = { label: string, };
+type Hidden = { by: HiddenBy, said: string, };
+type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
+type HistoryBrowseHead = { 
+/**
+ * 问到的每台（先后同入参：这台在前）。
+ */
+machines: Array<HistoryMachine>, 
+/**
+ * 几个项目 · 组里一共几个会话（按项目看时列表头那一句）。
+ */
+projects: number, grouped: number, 
+/**
+ * 按时间看的段头（按项目看 ⇒ 空）。
+ */
+sections: Array<HistorySection>, };
+type HistoryBrowseReq = { 
+/**
+ * 带不带这台。
+ */
+here: boolean, 
+/**
+ * 远端那几台（并列时同一刻的行照这台 · 再照这里的先后）。
+ */
+remotes: Array<string>, 
+/**
+ * 先同步这几台的副本再答（开页 · 刷新 · 勾回一台；别的时候空）；须在 `remotes` 里。带了要带期限（请求信封 `within_ms`）：等多久归发起方。
+ */
+fresh: Array<string>, 
+/**
+ * 同 `history-list`。
+ */
+query?: string, sort?: HistorySort, within_days?: number, hidden?: boolean, 
+/**
+ * 怎么看。
+ */
+by: HistoryBy, 
+/**
+ * 按项目看时哪几组开着（搜着字时一律开着）。
+ */
+groups: HistoryFold, 
+/**
+ * 展开了分叉的那几行。
+ */
+forks: Array<HistoryRowId>, 
+/**
+ * 要哪一窗（`limit` 1–2000）。总数在回包的头里。
+ */
+range: SyncRange, };
+type HistoryBy = "time" | "project";
+type HistoryFold = { open: boolean, except: Array<HistoryGroupId>, };
+type HistoryGroup = { key: string, agent: string, projectName: string, projectPath: string, projectDir: string, count: number, 
+/**
+ * 有在跑的 ⇒ `true`；有答不了的 ⇒ `null`；都没在跑 ⇒ `false`。
+ */
+hasLive: boolean | null, starred: boolean, lastActivity: number, 
+/**
+ * `last_activity` 写好的字（同行尾那一格的写法）；读不了的那一组 ⇒ `null`。
+ */
+atText: string | null, 
+/**
+ * 几台的组并成一列时按它（大的在前）。
+ */
+order: number, 
+/**
+ * 读不了的那个记录目录：原因。
+ */
+failed: string | null, 
+/**
+ * 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
+ */
+origin?: string, };
+type HistoryGroupId = { 
+/**
+ * 哪台（这台 ⇒ 缺）。
+ */
+origin?: string, key: string, };
+type HistoryLine = { "kind": "group", group: HistoryGroup, open: boolean, } | { "kind": "row", row: HistoryRow, child: boolean, forks: number, forksOpen: boolean, orphan: boolean, };
+type HistoryMachine = { 
+/**
+ * 哪台（这台 ⇒ 缺）。
+ */
+origin?: string, 
+/**
+ * 那台筛好的几行（算上只为挂住分叉才带上的父会话）。
+ */
+total: number, read: HistoryMachineRead, };
+type HistoryMachineRead = { "is": "ok", notice: string | null, } | { "is": "stale", why: string, at: string, } | { "is": "failed", why: string, } | { "is": "unread" };
+type HistoryRow = { agent: string, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, title: string, startedAt: number, updatedAt: number, jsonlPath: string, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
+/**
+ * 隐藏那一格（判定只住后端 `control/session_hidden.rs`）；不隐藏 ⇒ `null`（格恒在）。
+ */
+hidden: Hidden | null, forkedFromSessionId?: string, forkedFromMessageUuid?: string, 
+/**
+ * 分叉来的：父会话那一行（显示标题）；不是分叉来的 · 父会话不在这台的清单里 ⇒ 缺（界面写「分叉自其他会话」）。
+ */
+forkedFrom?: ForkedFrom, projectDir: string, group: string, lastAccount?: string, 
+/**
+ * 显示的标题：用户改过的 ＞ 标题 ＞ 第一句。
+ */
+label: Words, 
+/**
+ * 改过的标题 · 标题 · 第一句都没有（界面写「没有说过话的会话」）。
+ */
+untitled: boolean, 
+/**
+ * 那台此刻对这一行的说法（活着的照它的进程状态文件判在干什么；判不了活 ⇒ 状态不明）。
+ */
+face: SessionFace, can: Can, 
+/**
+ * 行上那一家的小牌（对用户的叫法）；默认那一家 ⇒ `null`。
+ */
+agentTag: Words | null, 
+/**
+ * 被筛掉、只为挂住分叉子会话才带上的父会话（界面淡显）。
+ */
+context?: true, 
+/**
+ * 排序键（`activity` ⇒ 最后活动，`created` ⇒ 开始；毫秒）。
+ */
+at: number, atText: Words, sectionText: Words, spanText: Words, 
+/**
+ * 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
+ */
+origin?: string, };
+type HistoryRowId = { 
+/**
+ * 哪台（这台 ⇒ 缺）。
+ */
+origin?: string, sid: string, };
+type HistorySection = { at: number, text: string, };
+type HistorySort = "activity" | "created";
+type SessionCan = { 
+/**
+ * 关掉它的标签页。
+ */
+close: CanClose, 
+/**
+ * 恢复（起一个新进程接着那份记录）。
+ */
+resume: Allow, 
+/**
+ * 还有终端可去（拉前 · 停 · 杀 · 终端页）。
+ */
+term: CanTerm, 
+/**
+ * 程序退了、tmux 会话还在 ⇒ 接回。
+ */
+reattach: Allow, 
+/**
+ * 换模型（`session-model`）。
+ */
+model: Allow, 
+/**
+ * 切权限档（`session-permission`）。
+ */
+permission: Allow, };
+type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
+type SessionFace = { dot: SessionDot, 
+/**
+ * 进程在不在；在干什么只住在「在」那一支里。
+ */
+live: FaceLive, 
+/**
+ * 那台看不见时照旧作数（已结束 · 记录已不在）。
+ */
+settled: boolean, 
+/**
+ * 短名（运行中 · 需手动 · 已结束 …）。
+ */
+name: Words, 
+/**
+ * 悬停那一句。
+ */
+tip: Words, 
+/**
+ * 没有会话事实时的状态一句。
+ */
+line: Words, tone: Tone, 
+/**
+ * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
+ */
+order: number, can: SessionCan, 
+/**
+ * 跑在账号库里哪个号下：那台后端宣告时读会话进程环境判一次，这条会话之后的脸（含离开「活」的那几张）都带它。
+ * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
+ */
+account?: string, };
+type SyncHead<H> = { total: number, info: H, };
+type SyncHeld = string;
+type SyncPatch<H, T> = { held: SyncHeld, whole: boolean, same: boolean, order: Array<string> | null, up: { [key in string]: T }, head: SyncHead<H> | null, };
+type SyncRange = { from: number, limit: number, };
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
+type Words = string;
+```
+
+码：`bad_args` · `failed`
 
 #### `history-listing`
 
@@ -14092,6 +14319,7 @@ type Words = string;
 | `--footprint-report` | ＝ 帧命令 `footprint-report`：「足迹」由这台后端出整份成品 |
 | `--history-annotate` | ＝ 帧命令 `history-annotate`：改一条历史注解 |
 | `--history-branch` | ＝ 帧命令 `history-branch`：主线外清单 |
+| `--history-browse` | ＝ 帧命令 `history-browse`：历史页那一列（几台并成一列） |
 | `--history-facts` | ＝ 帧命令 `history-facts`：会话事实 |
 | `--history-find` | ＝ 帧命令 `history-find`：会话内查找 |
 | `--history-forget` | ＝ 帧命令 `history-forget`：删一条历史注解 |

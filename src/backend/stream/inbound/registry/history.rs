@@ -35,6 +35,11 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::asynchronous::<crate::history::history_list::HistoryListCmd>(
         "历史页的平铺会话清单",
     ),
+    // 历史页那一列（`history_browse.rs`）：几台的清单在这里并成一列（行按 `at`、组按 `order`、分叉挂父会话、按项目开合），界面只问看得见的那一窗。
+    //   远端那几台读本进程记着的副本，`fresh` 里的那几台先同步一次（并着等）。扫这台在阻塞池里 ⇒ 异步档。
+    crate::wire::typed::asynchronous::<crate::history::history_browse::HistoryBrowseCmd>(
+        "历史页那一列（几台并成一列）",
+    ),
     // 这台自己的清单按带键集合答（备忘住本进程、只在被问时比）：别的后端经 `--resident-call` 问它，记着副本。扫记录树在阻塞池里 ⇒ 异步档。
     crate::wire::typed::asynchronous::<crate::history::remote_listing::HistoryListingCmd>(
         "这台的清单（按记号只给变了的）",

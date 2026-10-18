@@ -2,6 +2,7 @@
 declare const classes: {
   readonly hv: string;
   readonly hvActs: string;
+  readonly hvBlock: string;
   readonly hvCol: string;
   readonly hvContent: string;
   readonly hvCount: string;
@@ -11,7 +12,6 @@ declare const classes: {
   readonly hvFilterGroup: string;
   readonly hvFilterHead: string;
   readonly hvFilterWarn: string;
-  readonly hvFoot: string;
   readonly hvForks: string;
   readonly hvGroup: string;
   readonly hvGroupCount: string;
@@ -36,6 +36,7 @@ declare const classes: {
   readonly hvSearch: string;
   readonly hvSec: string;
   readonly hvSizer: string;
+  readonly hvSpacer: string;
   readonly hvSplit: string;
   readonly hvStar: string;
   readonly hvStrip: string;
