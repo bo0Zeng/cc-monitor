@@ -22,6 +22,12 @@
  *   （带 `procStart`，判活照真的那一套）；替身 · tmux · 后端同在一个沙箱里（见 `start`）。替身先把 `screen` 那一屏印进自己的窗格，
  *   `windows` 个终端窗口是同一台 tmux 里嵌套的客户端（真后端的终端名单 · 抓屏 · 实时画面照真的那样读）。
  *
+ *   世界里的 `reach`（`/__ccm/world` 的那一格，本机后端问得到的那几台远端：`{<origin>: {refuse: [<命令>…]}}`）：跨台合并那几条由本机后端自己扇出（`--resident-call`），
+ *   台架照产品那一形让它问得到 —— 每台远端在它的沙箱里另起一个常驻（同一个家 · 同一台私有 tmux；起好了才起 stdio 那一个）；
+ *   本机沙箱里起一个只听回环的 sshd（一台远端一个口），登录壳是按口转发的假 ssh（[`forwarderSh`]：只认台架那几台、只转 `--resident-call`，
+ *   `refuse` 里的命令照「那一跳断开」拒）；都握上手之后经 `remote-reach` 把每台登记进本机后端的可达表（同壳在远端流握手那一刻交的那一条）。
+ *   合并只在本机后端那一处，台架不再写一份。
+ *
  * 隔离：每台后端跑在 bwrap 里 —— 家目录挂成 `/home/user`（界面上看到的路径与机器无关）、断网（`--unshare-net`）、主机名 `shots`、
  * `/tmp` 是空的；白名单环境（PATH · HOME · LANG · TZ · TMUX_TMPDIR · XDG_RUNTIME_DIR 都指沙箱）；不起 claude、不碰用户的 tmux。
  * 后端二进制：`CCM_SHOTS_BACKEND`，不给就用本树 `.build/backend-shots/debug/cc-monitor-backend`（带特性 `shots` 编）；无头壳：本树 `.build/shell/debug/examples/ccm-shots-shell`
@@ -126,6 +132,84 @@ export function tmuxShim(shim, sock) {
   }
   lines.push(`exec ${tmuxBin()} "$@"`);
   return lines.join("\n") + "\n";
+}
+
+/** 本机那一台的名字（同 `fake/world.ts::LOCAL`）。 */
+const LOCAL = "<local>";
+
+/** 本机沙箱里那个 sshd 给第 k 台远端（`reach` 里的先后，0 起）听的口：`PEER_PORT_BASE + k`（沙箱自己的网络命名空间，不碰宿主的口）。 */
+export const PEER_PORT_BASE = 2201;
+
+/** 沙箱里够那几样的位置：sshd 的钥匙（只读挂进本机沙箱）· 第 k 台远端那个常驻的套接字目录（挂成 `<PEERS>/<k>/run`，即 `CCM_DATA_DIR=<PEERS>/<k>` 的 `run/`）。 */
+const SSH_DIR = "/tmp/shots-ssh";
+const PEERS = "/tmp/shots-peers";
+const BACKEND_IN_BOX = "/tmp/ccm-shots/cc-monitor-backend";
+
+/**
+ * 本机沙箱里 sshd 的登录壳（`ForceCommand`）：按连进来的那个口认是哪一台（`peers`：`[{port, k, refuse}]`），
+ * 只转产品问常驻的那一形（`"$HOME"/.cc-monitor/bin/ccm -- '--resident-call' …`）—— 换成那台常驻的套接字目录（`CCM_DATA_DIR`）跑同一个后端的
+ * `--resident-call`（`backend` ＝ 沙箱里那份后端；判据换成替身）；那台 `refuse` 里的命令（stdin 那一行的 `cmd`）⇒ 一个字不回、退 255（同 ssh 那一跳断开）。别的口 · 别的形一律拒。
+ */
+export function forwarderSh(peers, backend = BACKEND_IN_BOX) {
+  const q = (v) => `'${String(v).replace(/'/g, `'\\''`)}'`;
+  const lines = ["#!/bin/sh", "set -- $SSH_CONNECTION", 'case "$4" in'];
+  for (const p of peers) {
+    if (!Number.isInteger(p.port) || !Number.isInteger(p.k)) throw new Error(`转发表里的口 / 序号不是整数：${JSON.stringify(p)}`);
+    for (const c of p.refuse ?? []) if (!/^[a-z-]+$/.test(c)) throw new Error(`refuse 里的命令形状不对：${c}`);
+    lines.push(`  ${p.port}) k=${p.k}; refuse=${q((p.refuse ?? []).join(" "))} ;;`);
+  }
+  lines.push(`  *) echo "shots: 口 $4 不是台架里的哪一台" >&2; exit 255 ;;`, "esac");
+  lines.push(
+    `pre=${q(`"$HOME"/.cc-monitor/bin/ccm -- '--resident-call' `)}`,
+    'case "$SSH_ORIGINAL_COMMAND" in "$pre"*) ;; *) echo "shots: 只转问常驻的那一形：$SSH_ORIGINAL_COMMAND" >&2; exit 127 ;; esac',
+    "IFS= read -r line || exit 255",
+    `for c in $refuse; do case "$line" in *'"cmd":"'"$c"'"'*) exit 255 ;; esac; done`,
+    // 剩下那几格是产品逐格单引号过的（`shell_quote_core::posix_quote`），交 shell 重新切开。
+    'eval "set -- ${SSH_ORIGINAL_COMMAND#"$pre"}"',
+    `printf '%s\\n' "$line" | CCM_DATA_DIR=${PEERS}/$k exec ${backend} -- --resident-call "$@"`,
+  );
+  return lines.join("\n") + "\n";
+}
+
+/** 本机沙箱里那个 sshd 的配置：只听回环、一台远端一个口、只认台架那把登录钥匙、登录壳是 [`forwarderSh`]。 */
+function sshdConfig(peers, forwarder) {
+  return [
+    ...peers.map((p) => `Port ${p.port}`),
+    "ListenAddress 127.0.0.1",
+    `HostKey ${SSH_DIR}/host`,
+    "PidFile none",
+    `AuthorizedKeysFile ${SSH_DIR}/authorized_keys`,
+    "AllowUsers user",
+    "PasswordAuthentication no",
+    "KbdInteractiveAuthentication no",
+    "PubkeyAuthentication yes",
+    "UsePAM no",
+    "StrictModes no",
+    "PermitUserEnvironment no",
+    `ForceCommand ${forwarder}`,
+    "LogLevel VERBOSE",
+    "",
+  ].join("\n");
+}
+
+/** 台架那一对 ssh 钥匙（host key ＋ 登录钥匙，每个池子造一次，在沙箱目录里）。 */
+function sshKeys(sandbox) {
+  const dir = path.join(sandbox, "shots-ssh");
+  if (!existsSync(path.join(dir, "authorized_keys"))) {
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    for (const k of ["host", "client"]) {
+      const r = spawnSync("ssh-keygen", ["-q", "-t", "ed25519", "-N", "", "-C", `shots-${k}`, "-f", path.join(dir, k)], { stdio: ["ignore", "ignore", "pipe"], encoding: "utf8" });
+      if (r.status !== 0) throw new Error(`ssh-keygen 没造出钥匙：${r.stderr}`);
+    }
+    writeFileSync(path.join(dir, "authorized_keys"), readFileSync(path.join(dir, "client.pub")));
+  }
+  return dir;
+}
+
+/** 登记进本机后端可达表的那一份（`remote-reach` 的入参，同壳 `asset_sync::args_for`）：拨本机沙箱里那个 sshd 给这台听的口。 */
+export function reachArgs(origin, k) {
+  return { origin, dial: { machine: { host: "127.0.0.1", port: PEER_PORT_BASE + k, user: "user", keyPath: `${SSH_DIR}/client` }, use: "capture" } };
 }
 
 /** 台架那一份后端的构建目录（带特性 `shots`）。 */
@@ -269,7 +353,23 @@ export function backendPool({ repo, sandbox }) {
       sh.push(`sleep 3600 3>>${q(`${H}/${rel}`)} &`);
     }
     // 看的那一台的时区（同壳 attach 行带的 `tz`）：推来的钟面（记录的时刻字 · 子运行的起始字）按它写。
-    const backend = `/tmp/ccm-shots/cc-monitor-backend -- --stream --tz ${SHOTS_TZ}`;
+    const backend = `${BACKEND_IN_BOX} -- --stream --tz ${SHOTS_TZ}`;
+    if (m.resident) {
+      // 这台的常驻（本机后端经 `--resident-call` 问到的就是它）：同一个家、同一台私有 tmux（钩子按槽位各占一格），日志另一份。
+      // 问得到了才往下起 stdio 那一个：常驻起来那一下补的号色 · 接的共用目录在 stdio 那一个读盘之前就落定，截到的不随先后变。
+      sh.push(
+        `CCM_RESIDENT=1 CCM_BACKEND_STDERR_LOG=${H}/.shots-run/resident.log ${backend} </dev/null >/dev/null 2>&1 &`,
+        "n=0",
+        `until printf '%s\\n' '{"cmd":"prefs-read","args":{}}' | ${BACKEND_IN_BOX} -- --resident-call --stdin-line --within-ms 5000 >/dev/null 2>&1; do n=$((n+1)); [ $n -lt 1500 ] || { echo "这台的常驻 30 秒还问不到" >&2; exit 1; }; sleep 0.02; done`,
+      );
+    }
+    if (m.peers?.length) {
+      // 本机问远端那一跳的另一头：只听回环的 sshd（`--unshare-net`：这个沙箱自己的回环），它自己转进后台。
+      const fwd = `${H}/.shots-setup/forward.sh`;
+      writeFileSync(path.join(setup, "forward.sh"), forwarderSh(m.peers), { mode: 0o755 });
+      writeFileSync(path.join(setup, "sshd_config"), sshdConfig(m.peers, fwd));
+      sh.push(`/usr/sbin/sshd -f ${H}/.shots-setup/sshd_config -E ${H}/.shots-run/sshd.log`);
+    }
     const held = m.primeHeld ?? [];
     if (held.length === 0) sh.push(`exec ${backend}`);
     else {
@@ -308,7 +408,9 @@ export function backendPool({ repo, sandbox }) {
       // 读的是台架盘上的 `~/.ssh/config`、缺省用户名是 `user`，不随跑截图那台机器变、不带出它的登录名）。
       "--tmpfs", "/etc/ssh",
       "--ro-bind", passwd, "/etc/passwd",
-      "--ro-bind", bin, "/tmp/ccm-shots/cc-monitor-backend",
+      "--ro-bind", bin, BACKEND_IN_BOX,
+      // 本机那一台：sshd 的钥匙 · 各台远端常驻的套接字目录（问那台的常驻就连它）。
+      ...(m.peers?.length ? ["--ro-bind", m.sshKeys, SSH_DIR, ...m.peers.flatMap((p) => ["--bind", p.run, `${PEERS}/${p.k}/run`])] : []),
       "--dev", "/dev",
       // 自成一个进程命名空间：沙箱的头一个进程一退（壳杀那一台 · 台架收场），替身与 tmux 跟着全没。
       "--unshare-pid", "--proc", "/proc",
@@ -419,10 +521,11 @@ export function backendPool({ repo, sandbox }) {
         for (const it of items) {
           if (it.t !== "frame") continue;
           const f = JSON.parse(it.body);
-          if (!killed && f.live?.session_id === d.sid) {
+          // 宣告是那台的 `added` 帧；裁出来的去向是 `state` 帧（`ended` · `reconnectable`，同 `SessionStreamFrame`）。
+          if (!killed && f.added?.sid === d.sid) {
             killed = true;
             if (!d.act()) reject(new Error(`${d.origin} 上 ${d.sid} 的替身关不掉`));
-          } else if (killed && (d.fate === "ended" ? f.ended : f.idle)?.session_id === d.sid) {
+          } else if (killed && f.state?.sid === d.sid && f.state.state === d.fate) {
             clearTimeout(timer);
             w.inner.delete(id);
             w.sh.send({ t: "stop", id });
@@ -453,8 +556,17 @@ export function backendPool({ repo, sandbox }) {
     };
     const w = { dir, homes: new Map(), paints: new Map(), doomed: [], inner: new Map(), listeners: [], backlog: [], shell: null, shift: now - Date.now(), scene: String(body.scene ?? ""), lines, trace };
     worlds.set(key, w);
-    const list = Object.entries(machines).map(([origin, m], i) => {
+    // 本机后端问得到的那几台（`reach`）：各起一个常驻；本机那一台起 sshd、挂上它们的套接字目录（先建好，0700 同常驻自己建的那一形）。
+    const order = Object.keys(machines);
+    const reach = Object.entries(body.reach ?? {}).filter(([o]) => o !== LOCAL && o in machines);
+    const peers = reach.map(([origin, r], k) => {
+      const run = path.join(dir, `m${order.indexOf(origin)}`, "home", ".cc-monitor", "run");
+      mkdirSync(run, { recursive: true, mode: 0o700 });
+      return { origin, k, port: PEER_PORT_BASE + k, refuse: r.refuse ?? [], run };
+    });
+    const list = Object.entries(machines).map(([origin, m0], i) => {
       w.homes.set(origin, path.join(dir, `m${i}`, "home"));
+      const m = { ...m0, resident: peers.some((p) => p.origin === origin), ...(origin === LOCAL && peers.length > 0 ? { peers, sshKeys: sshKeys(sandbox) } : {}) };
       const { argv, doomed, paints, tmux } = start(path.join(dir, `m${i}`), origin, m, now);
       w.doomed.push(...doomed.map((d) => ({ ...d, origin, act: () => tmux(d.act) })));
       for (const [sid, fifo] of paints) w.paints.set(`${origin}\0${sid}`, fifo);
@@ -465,6 +577,12 @@ export function backendPool({ repo, sandbox }) {
     w.sh = sh;
     sh.send({ t: "machines", machines: list });
     await sh.up(list.map((m) => m.origin));
+    // 每台登记进本机后端的可达表（同壳在远端流握手那一刻交的 `remote-reach`）：之后跨台合并那几问它自己去问。
+    if (peers.length > 0 && !(LOCAL in machines)) throw new Error("世界里有 reach 却没有本机那一台");
+    for (const p of peers) {
+      const r = await sh.call(LOCAL, "remote-reach", reachArgs(p.origin, p.k), null);
+      if (!r.ok) throw new Error(`${p.origin} 没登记进本机后端的可达表：${JSON.stringify(r.fail)}`);
+    }
     while (worlds.size > KEEP) kill(worlds.keys().next().value);
   }
 
@@ -477,13 +595,16 @@ export function backendPool({ repo, sandbox }) {
       const stem = path.join(dir, `${scene.replace(/[^A-Za-z0-9_.-]/g, "_")}${mine.length > 1 ? `.${i}` : ""}`);
       writeFileSync(`${stem}.log`, w.lines.join("\n") + "\n");
       // 各台后端自己的诊断日志（一台一份，按台名）。
-      const backends = [...w.homes.keys()].flatMap((origin, m) => {
-        const log = path.join(w.dir, `m${m}`, "run", "stderr.log");
-        if (!existsSync(log)) return [];
-        const to = `${stem}.${origin.replace(/[^A-Za-z0-9_.-]/g, "_")}.stderr.log`;
-        writeFileSync(to, readFileSync(log));
-        return [to];
-      });
+      // 另有常驻那一份（`resident.log`）与本机 sshd 那一份（`sshd.log`）：有就一并落。
+      const backends = [...w.homes.keys()].flatMap((origin, m) =>
+        ["stderr", "resident", "sshd"].flatMap((name) => {
+          const log = path.join(w.dir, `m${m}`, "run", `${name}.log`);
+          if (!existsSync(log)) return [];
+          const to = `${stem}.${origin.replace(/[^A-Za-z0-9_.-]/g, "_")}.${name}.log`;
+          writeFileSync(to, readFileSync(log));
+          return [to];
+        }),
+      );
       return [`${stem}.log`, ...backends];
     });
   }

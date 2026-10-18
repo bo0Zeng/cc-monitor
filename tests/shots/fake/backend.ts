@@ -43,16 +43,18 @@ export const REAL_OPS = new Set([
   "history-branch",
   "history-run",
   "history-list",
+  // 历史页那一列（几台并成一列、按窗要）：本机后端问各台的常驻要清单副本（`history-listing`）、并好再答。
+  "history-browse",
   "history-search",
   "history-search-merge",
   "history-find",
   "history-last-accounts",
   "exit-policy-read",
   "needs-answer",
-  // 「需手动」的先后（`Ctrl+J` · 浮层开的那一下）：各台的清单与本机合一份都交真后端。
+  // 「需手动」的先后（`Ctrl+J` · 浮层开的那一下）：本机后端自己问各台（经台架那几台的常驻，`real/pool.mjs` 的 `reach`）、合一份。
   "sessions-needs",
   "sessions-needs-merge",
-  // 几台的「待办」件数合成一份（状态栏 · 「文件与数据」角标）：交真后端相加。
+  // 几台的「待办」件数合成一份（状态栏 · 「文件与数据」角标）：本机后端自己问各台、相加。
   "chores-merge",
   // 那台的偏好（`prefs.json`：启动命令 · 子会话 / 分身会话进不进标签栏 …）：真后端读写台架盘上那一份，缺省只在后端。
   "prefs-read",
@@ -141,7 +143,7 @@ export class FakeBackend {
   private readonly listedOrigins = new Set<string>();
   /** 有一台报完清单了（[`settled`] 按它醒，不按钟点问）。 */
   private onListed: () => void = () => undefined;
-  /** 无头壳已经交出 `live` 那一格的会话（按 sid 去重）：等 tab 等不到时的读数（`window.__shots.sessions`）。 */
+  /** 无头壳已经交出宣告（`added`）那一格的会话（按 sid 去重）：等 tab 等不到时的读数（`window.__shots.sessions`）。 */
   readonly liveSent = new Set<string>();
 
   /** 真后端那一屋子起好了（`/__ccm/world` 答了）。 */
@@ -160,7 +162,8 @@ export class FakeBackend {
       if (op in world.ops) this.miss(`场景替真后端答了 ${op}（改写 world.disk）`);
     }
     const machines = diskOf(world);
-    this.ready = fetch("/__ccm/world", { method: "POST", body: JSON.stringify({ key: this.key, machines, now: Date.now(), scene: new URLSearchParams(location.search).get("scene") ?? "" }) }).then(async (r) => {
+    const reach = reachOf(world);
+    this.ready = fetch("/__ccm/world", { method: "POST", body: JSON.stringify({ key: this.key, machines, reach, now: Date.now(), scene: new URLSearchParams(location.search).get("scene") ?? "" }) }).then(async (r) => {
       if (!r.ok) throw new Error(`真后端起不来：${await r.text()}`);
       // 无头壳交的格（同壳交给页的 `chan-items` 事件体），原样当事件发。
       // 事件流**连上了才算起好**：别的问（帧命令 · 订阅）都排在它后面。浏览器对一个源同时只开 6 条连接，
@@ -170,8 +173,8 @@ export class FakeBackend {
         const d = JSON.parse(m.data as string) as { sub: number; items: { t: string; body?: string }[] };
         this.watch(d.sub, d.items);
         for (const it of d.items) {
-          if (it.t !== "frame" || !it.body?.startsWith('{"live"')) continue;
-          const sid = (JSON.parse(it.body) as { live?: { session_id?: string } }).live?.session_id;
+          if (it.t !== "frame" || !it.body?.startsWith('{"added"')) continue;
+          const sid = (JSON.parse(it.body) as { added?: { sid?: string } }).added?.sid;
           if (sid) this.liveSent.add(sid);
         }
         void this.emit("chan-items", d);
@@ -344,6 +347,21 @@ export class FakeBackend {
     for (let n = 0; n < this.pending.length; n = this.pending.length) await Promise.all(this.pending.slice(n));
   }
 
+  /**
+   * 跨台合并那几条（[`ASKS_EACH`]）的回包里，没问到的每一台都得是场景演的那一种（看不见 · 会话流被关 · 断了 · 那一问那一跳断开）；
+   * 别的没问到 ⇒ 记进问题表（台架让本机后端问不到别的台，截出来的「离线 · 未计入」就是台架的错，不是那一幕）。
+   */
+  private judgeAsked(op: string, body: ArrayBuffer): void {
+    const inner = ASKS_EACH[op];
+    if (!inner) return;
+    const w = this.world;
+    const meant = (o: string): boolean =>
+      w.unseenMachines.includes(o) || w.closedMachines.includes(o) || (w.droppedMachines?.includes(o) ?? false) || (w.hopDown?.[o]?.includes(inner) ?? false);
+    for (const [o, said] of downOf(op, JSON.parse(dec.decode(body)))) {
+      if (!meant(o)) this.miss(`${op} 没问到 ${o}：${said}`);
+    }
+  }
+
   attachEmitter(emit: Emit): void {
     this.emit = emit;
   }
@@ -399,6 +417,10 @@ export class FakeBackend {
       return new Promise((r) => setTimeout(r, delay))
         .then(() => this.real(origin, op, req, args.view))
         .then((b) => (op === "sessions-needs" ? this.withManual(origin, b) : b))
+        .then((b) => {
+          this.judgeAsked(op, b);
+          return b;
+        })
         .then((b) => {
           if (!face) return b;
           const v = JSON.parse(dec.decode(b)) as { meta?: object };
@@ -473,6 +495,37 @@ export class FakeBackend {
       }
     }
   }
+}
+
+/** 本机后端自己扇出问各台的那几条 ⇒ 它问每台的那一条（`hopDown` 照这一条认那一跳断开：`real/pool.mjs` 的转发照它拒）。 */
+export const ASKS_EACH: Record<string, string> = {
+  "sessions-needs-merge": "sessions-needs",
+  "history-search-merge": "history-search",
+  "chores-merge": "data-report",
+  "history-browse": "history-listing",
+};
+
+/** 那一份回包里没问到的那几台：`[台名, 那一句]`。 */
+export function downOf(
+  op: string,
+  v: { down?: { origin: string; said: string }[]; machines?: { origin?: string; said?: string; read?: { is: string; why?: string } }[]; head?: { info?: { machines?: { origin?: string; read?: { is: string; why?: string } }[] } } | null },
+): [string, string][] {
+  if (op === "chores-merge") return (v.machines ?? []).flatMap((m) => (m.said === undefined ? [] : [[m.origin ?? LOCAL, m.said] as [string, string]]));
+  // 历史页那一列（头变了才带）：读不到（`failed`）· 照上次的副本（`stale`）的那几台。
+  if (op === "history-browse") return (v.head?.info?.machines ?? []).flatMap((m) => (m.read?.is === "failed" || m.read?.is === "stale" ? [[m.origin ?? LOCAL, m.read.why ?? m.read.is] as [string, string]] : []));
+  return (v.down ?? []).map((d) => [d.origin, d.said]);
+}
+
+/**
+ * 本机后端问得到的那几台（交 `real/pool.mjs` 的 `reach`：那几台各起一个常驻、登记进本机后端的可达表）：看不见的 · 会话流被关掉的不登记
+ * （壳只在远端流握手那一刻登记，这两种握不上手）；`hopDown` 里那几条 ⇒ 那一台转发时照「那一跳断开」拒。
+ */
+export function reachOf(w: World): Record<string, { refuse: string[] }> {
+  return Object.fromEntries(
+    w.machines
+      .filter((m) => m !== LOCAL && !w.unseenMachines.includes(m) && !w.closedMachines.includes(m))
+      .map((m) => [m, { refuse: w.hopDown?.[m] ?? [] }]),
+  );
 }
 
 /** 替身那一份复制详情（那台后端写、monitor 转交的那几行）：钟停在夹具那一刻，机器与版本是合成的。 */

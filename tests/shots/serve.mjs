@@ -38,7 +38,9 @@ const server = await createServer({
   cacheDir: path.join(sandbox, "vite-cache"),
   logLevel: "warn",
   clearScreen: false,
-  server: { port, strictPort: true, host: "127.0.0.1", hmr: false },
+  // 不盯 `.build/`：截图沙箱里各台的家 · 同一棵树里别的台架（手机冒烟那一屋子一造就是几十万个文件）都在那里，
+  // 盯着它会把这台的 inotify 额度用光，vite 当场崩、之后每一页都没有假适配层（10-17 合测撞过）。与仓里那份配置的 `ignored` 合并。
+  server: { port, strictPort: true, host: "127.0.0.1", hmr: false, watch: { ignored: ["**/.build/**"] } },
   optimizeDeps: { force: false },
 });
 await server.listen();
