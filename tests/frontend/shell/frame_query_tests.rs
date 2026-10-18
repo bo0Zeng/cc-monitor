@@ -41,13 +41,13 @@ const BORN_ON_FRAME: &[&str] = &[
     // 记录解释进后端之后生在帧面上的两条（界面经通道直接问；monitor 这一侧从不发它们）。
     "history-page",
     "drift-report",
-    // 各台搜索结果合一份（合并排序进本机后端；界面经通道直接问，monitor 这一侧从不发它）。
+    // 问到各台搜一遍、合一份（本机后端自己扇出 · 合并排序；界面经通道直接问，monitor 这一侧从不发它）。
     "history-search-merge",
     // 按运行读一个子运行的记录（替掉按目录 ＋ 描述 ＋ 时间戳挑的那一条与它的列候选子命令；界面经通道直接问）。
     "history-run",
     // 停 / 重启 / 更新 / 卸载之前会打断什么（这台的活会话 ＋ 通往那台的转发；界面经通道问那台与本机，monitor 这一侧从不发它）。
     "machine-interrupts",
-    // 这台上需手动的会话清单（一次问一台）· 各台的合成一个先后（本机后端排）：界面经通道直接问，monitor 这一侧从不发它们。
+    // 这台上需手动的会话清单（一次问一台）· 各台的合成一个先后（本机后端自己问到各台再排）：界面 / 别的后端经通道直接问，monitor 这一侧从不发它们。
     "sessions-needs",
     "sessions-needs-merge",
 ];
@@ -222,11 +222,6 @@ fn the_dial_per_query_path_is_gone() {
 /// 已迁到通道的帧命令：前端经通道（`callTyped(origin, "<op>", …)`）直接问那台后端，monitor 那一跳只搬字节。
 /// 迁的判准只有一条：迁过去之后，**那条应答的解释只有一个家**。
 const CHANNELED: &[(&str, &str)] = &[
-    (
-        "history-search",
-        "远端那半迁：逐台 fan-out ＋ 补 origin ＋ 与本机索引合并三件事搬到 `src/frontend/ui/views/history-search.ts`，\
-         每件只有那一个家。本机那半也迁了：本机也经通道问本机后端，monitor 内存索引删了",
-    ),
     // 会话读面那三条：**解释挪进后端、直接出成品**（`read_face.rs`），monitor 那一份
     //   「核头尾、剥行、失败分档」删了；界面经 `src/frontend/ui/session-reads.ts` 问，本机与远端同一条路。
     (
@@ -384,10 +379,10 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "第几帧画完了（两次至少隔 100 ms）：后端收到才推下一帧；前端 `terminal-follow.ts` 发",
     ),
     // `terminal-unfollow` 不在这里：界面不发它（撤流即可），由 monitor 替界面发 —— 见 [`SENT_BY_MONITOR_ONLY`]。
-    // 各台搜索结果合成一份：合并排序进本机后端（`search_rules::sort_by_recency`），界面逐台扇出。
+    // 问到各台搜一遍、合一份：本机后端自己扇出（别的台经 `--resident-call` 问它的常驻 `history-search`）、合并排序（`cmd_wire::search::merge`）。
     (
         "history-search-merge",
-        "各台 `history-search` 的会话行合一份：本机后端 `observe/search_query.rs::merge_at`（`search_rules::sort_by_recency`）；\
+        "本机后端问到各台的 `history-search`、合一份：`src/backend/faces/search_face.rs::merge_with`（`cmd_wire::search::merge`）；\
          前端 `src/frontend/ui/views/history-search.ts` 问，monitor 这一侧零发送点",
     ),
     // 开终端那一行：ssh 外壳由本机后端渲（monitor 只开窗）。
@@ -495,11 +490,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "后端读—改—写自己那份小文件（`src/backend/footprint/chores/marks.rs`）；前端 `src/frontend/ui/settings/data-reads.ts::markChore` 问\
          （「待办」里［不用了］［还是要做］· 别名页［我自己贴］［改由 cc-monitor 接上］），monitor 这一侧零发送点",
     ),
-    // 几台的「待办」件数合成一份：本机后端逐格相加。
+    // 几台的「文件与数据」与件数合成一份：本机后端自己问到各台的 `data-report`、逐格相加。
     (
         "chores-merge",
-        "后端出成品（`src/backend/footprint/chores/mod.rs::merge_counts`）；前端 `src/frontend/ui/settings/data-reads.ts::mergeChores` 问本机后端\
-         （设置窗角标 · 「文件与数据」顶上 · 主窗口状态栏），monitor 这一侧零发送点",
+        "后端出成品（`src/backend/faces/footprint_report_face.rs::chores_merge_with` → `src/backend/footprint/chores/mod.rs::merge_counts`）；\
+         前端 `src/frontend/ui/settings/data-reads.ts::readChores` 问本机后端（「文件与数据」· 设置窗角标 · 主窗口状态栏），monitor 这一侧零发送点",
     ),
     // 换 Claude 目录前那一问：后端 stat 两次回码。
     (
@@ -515,13 +510,8 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
          前端 `src/frontend/ui/control-said.ts::resync` 问、按类型收（`callTyped`），monitor 这一侧零发送点",
     ),
     (
-        "sessions-needs",
-        "`BORN_ON_FRAME` 那一条：后端出成品（这台需手动的整份：在等的会话 · 计划格 · 会话外的，`recognize::facts::needs_list` 排好）；\
-         前端 `src/frontend/ui/needs-book.ts` 逐台问，monitor 这一侧零发送点",
-    ),
-    (
         "sessions-needs-merge",
-        "`BORN_ON_FRAME` 那一条：各台的需手动整份合成一份 ＋ 总数（`recognize::facts::merge_needs`，照各项的 `rank`）；\
+        "`BORN_ON_FRAME` 那一条：本机后端问到各台的需手动整份、合成一份 ＋ 总数（`recognize::facts::merge_needs`，照各项的 `rank`）；\
          前端 `needs-book.ts` 问本机后端（入口 · 浮层 · `Ctrl+J` · 窗口标题走它），monitor 这一侧零发送点",
     ),
     (
@@ -829,6 +819,14 @@ fn backend_registered_commands() -> std::collections::BTreeSet<String> {
         .collect()
 }
 
+/// 前端与 monitor 都不再发、改由本机后端问各台的那几条（跨台合并去信差之后）—— `(帧命令, 谁在问)`。
+/// 前端那一侧的通道操作名里没有它们（[`the_channeled_ops_are_sent_only_through_the_channel`] 两向管）。
+const ASKED_BY_BACKEND: &[(&str, &str)] = &[(
+    "history-search",
+    "本机后端 `history-search-merge` 经 `--resident-call` 问各台的常驻（`src/backend/faces/search_face.rs::merge_with`）；\
+     手机逐台直连问、交它的 Rust 核心合",
+)];
+
 /// 还留在 monitor 侧发送的那几条 —— `(帧命令, 为什么今天不迁)`。**不是豁免清单**：
 /// 下面那条判据要求它们**真的**还有 monitor 侧发送点（没了 ⇒ 这一行的理由已经馊了）。
 ///
@@ -938,7 +936,7 @@ fn chan_ops_in(
     }
 }
 
-/// ★★ 帧面只读查询的分区：[`MOVED`] 右列 == [`CHANNELED`] ⊔ [`HELD_BACK`]（不相交、每行都写了理由）。
+/// ★★ 帧面只读查询的分区：[`MOVED`] 右列 == [`CHANNELED`] ⊔ [`HELD_BACK`] ⊔ [`ASKED_BY_BACKEND`]（不相交、每行都写了理由）。
 /// （C4a 立它时是 C1 那八条；SR1a 同波又搬上来三条 ⇒ 今天十一条。）
 #[test]
 fn the_eight_are_partitioned_into_channeled_and_held_back() {
@@ -947,6 +945,7 @@ fn the_eight_are_partitioned_into_channeled_and_held_back() {
     let mut both: Vec<String> = CHANNELED
         .iter()
         .chain(HELD_BACK)
+        .chain(ASKED_BY_BACKEND)
         .map(|(c, _)| c.to_string())
         .collect();
     let n = both.len();
@@ -957,8 +956,11 @@ fn the_eight_are_partitioned_into_channeled_and_held_back() {
         n,
         "同一条帧命令同时在「已迁」与「未迁」两张表里"
     );
-    assert_eq!(both, moved, "已迁 ⊔ 未迁 != C1 的八条（`MOVED` 右列）");
-    for (c, why) in CHANNELED.iter().chain(HELD_BACK) {
+    assert_eq!(
+        both, moved,
+        "已迁 ⊔ 未迁 ⊔ 后端在问 != C1 的八条（`MOVED` 右列）"
+    );
+    for (c, why) in CHANNELED.iter().chain(HELD_BACK).chain(ASKED_BY_BACKEND) {
         assert!(!why.trim().is_empty(), "`{c}` 没写理由");
     }
 }

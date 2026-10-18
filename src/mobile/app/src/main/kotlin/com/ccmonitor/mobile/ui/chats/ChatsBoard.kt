@@ -2,15 +2,16 @@ package com.ccmonitor.mobile.ui.chats
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.ccmonitor.mobile.core.claude.link.HistorySearchMerge
+import com.ccmonitor.mobile.core.claude.link.HistorySearch
 import com.ccmonitor.mobile.core.claude.link.ListAsk
 import com.ccmonitor.mobile.core.claude.link.ListSort
+import com.ccmonitor.mobile.core.claude.link.SearchMerge
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryGroup
 import com.ccmonitor.mobile.core.claude.link.wire.Merged
 import com.ccmonitor.mobile.core.claude.link.wire.MergedRow
 import com.ccmonitor.mobile.core.copy.copyText
-import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.link.Problem
+import com.ccmonitor.mobile.link.unreadableReply
 import com.ccmonitor.mobile.ui.common.HostLink
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.FlowPreview
@@ -137,6 +138,8 @@ class ChatsBoard(
     private val current: String,
     hosts: Flow<List<HostName>>,
     private val make: (HostName, CoroutineScope) -> HostChats,
+    /** 几台搜内容的结果合成一份（嵌的 Rust 核心那一步，[SearchMerge]）。 */
+    private val merge: (String) -> String,
     scope: CoroutineScope? = null,
 ) : ViewModel() {
     private val scope = scope ?: viewModelScope
@@ -205,8 +208,8 @@ class ChatsBoard(
     }
 
     /**
-     * 搜内容：勾上的每台各问 `history-search`，答了的那几台回包里的 `sessions` 原样交一台 `history-search-merge`
-     * （当前机器答了就是它，否则第一台答了的；它自己写 [HistorySearchMerge.LOCAL]、别的台写 hostId），照合好的排。
+     * 搜内容：勾上的每台各问 `history-search`，答了的那几台回包原样交核心合（[SearchMerge]，本机后端扇出完调的同一份），照合好的排；
+     * 不交哪一台当信差。
      */
     fun searchContent() {
         val q = query.value ?: return
@@ -216,7 +219,7 @@ class ChatsBoard(
         contentJob =
             scope.launch {
                 val per = hosts.map { h -> async { h to h.searchContent(q) } }.awaitAll()
-                content.value = contentOf(q, per, current)
+                content.value = contentOf(q, per, current, merge)
             }
     }
 
@@ -254,8 +257,11 @@ private fun summaryOf(
         copyText("history.search.summary", "q" to q, "n" to r.totalHits, "m" to r.sessionCount)
     }
 
-/** 各台没答上的那几句 · 读不动几份 · 只按标题的那几家。 */
-private fun contentLines(per: List<Pair<HostChats, Searched>>): List<String> =
+/** 没答上的那几台各一句 · 合好的那一份里读不动几份 · 只按标题的那几家。 */
+private fun contentLines(
+    per: List<Pair<HostChats, Searched>>,
+    r: Merged?,
+): List<String> =
     buildList {
         per.forEach { (h, s) ->
             when (s) {
@@ -264,41 +270,37 @@ private fun contentLines(per: List<Pair<HostChats, Searched>>): List<String> =
                 is Searched.Got -> Unit
             }
         }
-        val got = per.mapNotNull { it.second as? Searched.Got }
-        got.sumOf { it.reply.unreadable }.takeIf { it > 0 }?.let { add(copyText("history.search.unreadable", "n" to it)) }
-        got.flatMap { it.reply.skipped }.distinct().forEach { add(copyText("history.search.skipped", "agent" to it)) }
+        r?.unreadable?.takeIf { it > 0 }?.let { add(copyText("history.search.unreadable", "n" to it)) }
+        r?.skipped?.forEach { add(copyText("history.search.skipped", "agent" to it)) }
     }
 
-/** 各台答回来的 ⇒ 合一份（合并那一问交一台）。 */
-private suspend fun contentOf(
+/** 各台答回来的 ⇒ 核心合一份。 */
+private fun contentOf(
     q: String,
     per: List<Pair<HostChats, Searched>>,
     current: String,
+    merge: (String) -> String,
 ): ContentUi {
-    val answered = per.mapNotNull { (h, s) -> (s as? Searched.Got)?.let { h to it } }
-    val lines = contentLines(per)
-    val merger = answered.firstOrNull { it.first.hostId == current }?.first ?: answered.firstOrNull()?.first ?: return ContentUi(q, searching = false, lines = lines)
-    val machines = answered.map { (h, got) -> (if (h === merger) HistorySearchMerge.LOCAL else h.hostId) to got.raw }
+    val answered = per.mapNotNull { (h, s) -> (s as? Searched.Got)?.let { h.hostId to it.raw } }
+    if (answered.isEmpty()) return ContentUi(q, searching = false, lines = contentLines(per, null))
+    val byId = per.associate { it.first.hostId to it.first.machine }
+    val input = SearchMerge.input(answered)
+    val r =
+        SearchMerge.of(merge(input))
+            ?: return ContentUi(q, searching = false, lines = contentLines(per, null), problem = unreadableReply(byId[current] ?: current, HistorySearch.COMMAND, input))
     val tagged = per.size > 1
-    return when (val m = merger.call(HistorySearchMerge.COMMAND, HistorySearchMerge.args(machines), HistorySearchMerge::of)) {
-        is Fetched.Got -> {
-            val r = m.value
-            val byId = per.associate { it.first.hostId to it.first.machine }
-            ContentUi(
-                query = q,
-                searching = false,
-                summary = summaryOf(q, r),
-                rows =
-                    r.sessions.map { row ->
-                        val id = row.origin ?: merger.hostId
-                        ContentRow(id, byId[id].takeIf { tagged && id != current }, row)
-                    },
-                lines = lines,
-            )
-        }
-        is Fetched.Failed -> ContentUi(q, searching = false, lines = lines, problem = m.problem)
-        Fetched.Loading -> ContentUi(q, lines = lines)
-    }
+    return ContentUi(
+        query = q,
+        searching = false,
+        summary = summaryOf(q, r),
+        rows =
+            r.sessions.map { row ->
+                val id = row.origin ?: current
+                ContentRow(id, byId[id].takeIf { tagged && id != current }, row)
+            },
+        // 核心解不开哪台那一份 ⇒ 那台一句（同「答了读不出」那一说法）。
+        lines = contentLines(per, r) + r.down.map { unreadableReply(byId[it.origin] ?: it.origin, HistorySearch.COMMAND, it.said).text },
+    )
 }
 
 /**

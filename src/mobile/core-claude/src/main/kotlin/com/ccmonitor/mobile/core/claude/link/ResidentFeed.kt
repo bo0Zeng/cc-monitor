@@ -100,6 +100,9 @@ interface ResidentCore {
     /** 同名清单（JSON）⇒ 抽屉那几行（JSON 数组）。 */
     fun clashRows(data: String): String
 
+    /** 几台搜内容的结果（`[{origin, reply}]`，JSON）⇒ 合好的那一份（[SearchMerge.of]）；读不动 ⇒ 空串。 */
+    fun searchMerge(data: String): String
+
     /** 下载一组那几格（JSON）⇒ `batch` 那一形的一行（[BatchEvent.of]）；读不动 ⇒ 空串。 */
     fun downloadEvent(want: String): String
 

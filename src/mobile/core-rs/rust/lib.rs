@@ -335,6 +335,30 @@ pub fn clash_rows_json(data: &str) -> String {
         .unwrap_or_else(|_| "[]".to_string())
 }
 
+/// 几台的搜内容结果合成一份：`[{origin, reply}]`（`reply` ＝ 那台 `history-search` 回包原样）⇒ `Merged`。
+/// 合的那一步是本机后端扇出完调的同一份（`cmd_wire::search::merge`）：手机逐台直连问完，在这里合，不经哪一台当信差。
+/// 某台那一份照类型解不开 ⇒ 那台进 `down`（serde 那一句），别台照合；整份读不动 ⇒ 空串。
+pub fn search_merge_json(data: &str) -> String {
+    let Ok(all) = serde_json::from_str::<Vec<serde_json::Value>>(data) else {
+        return String::new();
+    };
+    let mut answered = Vec::new();
+    let mut down = Vec::new();
+    for mut one in all {
+        let Ok(origin) = serde_json::from_value::<cmd_wire::Machine>(one["origin"].take()) else {
+            return String::new();
+        };
+        match serde_json::from_value::<cmd_wire::search::HistorySearchReply>(one["reply"].take()) {
+            Ok(r) => answered.push((origin, r)),
+            Err(e) => down.push(cmd_wire::search::SearchDown {
+                origin,
+                said: e.to_string(),
+            }),
+        }
+    }
+    serde_json::to_string(&cmd_wire::search::merge(answered, down)).unwrap_or_default()
+}
+
 /// 下载一组那几格（[`batch::download_event`]）；读不动 ⇒ 空串。
 pub fn download_event_json(want: &str) -> String {
     serde_json::from_str::<serde_json::Value>(want)
@@ -744,6 +768,21 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_clashRows<'l>(
     guarded(std::ptr::null_mut(), || {
         let text = string(&mut env, &data).unwrap_or_default();
         env.new_string(clash_rows_json(&text))
+            .map(|s| s.into_raw())
+            .unwrap_or(std::ptr::null_mut())
+    })
+}
+
+/// `Core.searchMerge(data)`：几台的搜内容结果合成一份（[`search_merge_json`]）。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_searchMerge<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    data: JString<'l>,
+) -> jstring {
+    guarded(std::ptr::null_mut(), || {
+        let text = string(&mut env, &data).unwrap_or_default();
+        env.new_string(search_merge_json(&text))
             .map(|s| s.into_raw())
             .unwrap_or(std::ptr::null_mut())
     })
@@ -1402,5 +1441,62 @@ mod tests {
         assert_eq!(ack["ok"], false, "{ack}");
         super::close_link(id);
         assert!(!super::send_link(id, b"x".to_vec()));
+    }
+
+    /// 搜内容几台合一份：手机核心合出的就是 `cmd_wire::search::merge` 那一份（本机后端扇出完调的同一个）；
+    /// 交进来的是各台真回包的形（金样那一行：`updatedAt` · `face.order` · `hits[].offset` 这类整数格），合完整数格原样是整数；
+    /// 某台那一份解不开 ⇒ 那台进 `down`、别台照合。
+    #[test]
+    fn the_phone_merges_search_replies_with_the_one_shared_merge() {
+        use serde_json::{json, Value};
+        let golden: Value = serde_json::from_str(include_str!(
+            "../../../../tests/__fixtures__/history-search-row.golden.json"
+        ))
+        .unwrap();
+        let line = |sid: &str, at: i64| {
+            let mut r: Value = serde_json::from_str(golden["lines"][0].as_str().unwrap()).unwrap();
+            r["sessionId"] = json!(sid);
+            r["updatedAt"] = json!(at);
+            r["atText"] = json!("09:05");
+            r["spanText"] = json!("09:05–09:05");
+            r["label"] = json!(sid);
+            r["starred"] = json!(true);
+            r["hidden"] = json!(null);
+            r
+        };
+        let a = json!({"sessions": [line("a1", 100)], "unreadable": 1, "skipped": ["Codex"]});
+        let b =
+            json!({"sessions": [line("b1", 1_767_225_600_123)], "unreadable": 0, "skipped": []});
+        let text = json!([
+            {"origin": "phone-a", "reply": a},
+            {"origin": "phone-b", "reply": b},
+            {"origin": "phone-c", "reply": {"sessions": [{"updatedAt": 1.5}], "unreadable": 0, "skipped": []}},
+        ])
+        .to_string();
+        let got: Value = serde_json::from_str(&super::search_merge_json(&text)).unwrap();
+        let want = cmd_wire::search::merge(
+            vec![
+                (
+                    cmd_wire::Machine("phone-a".into()),
+                    serde_json::from_value(a).unwrap(),
+                ),
+                (
+                    cmd_wire::Machine("phone-b".into()),
+                    serde_json::from_value(b).unwrap(),
+                ),
+            ],
+            vec![],
+        );
+        let mut want = serde_json::to_value(&want).unwrap();
+        assert_eq!(got["down"][0]["origin"], "phone-c", "{got}");
+        want["down"] = got["down"].clone();
+        assert_eq!(got, want, "手机核心合出的不是那一份合并");
+        assert_eq!(got["sessions"][0]["sessionId"], "b1");
+        assert!(
+            got["sessions"][0]["updatedAt"].is_i64()
+                && got["sessions"][0]["face"]["order"].is_u64(),
+            "{got}"
+        );
+        assert_eq!(super::search_merge_json("不是 JSON"), "");
     }
 }

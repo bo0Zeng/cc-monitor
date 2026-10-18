@@ -30,9 +30,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::faces::footprint_face::ChoresMarkCmd>(
         "记下「待办」里的一个选择",
     ),
-    // 几台的「待办」件数合成一份（纯计算 ⇒ 异步档，同 `sessions-needs-merge`）：界面逐台问 `data-report`，本机后端相加。
-    crate::wire::typed::asynchronous::<crate::faces::footprint_face::ChoresMergeCmd>(
-        "把几台的「待办」件数合成一份",
+    // 几台的「文件与数据」与件数合成一份：这台自己问到各台的 `data-report`（别的台经 `--resident-call`，本机那一份在阻塞池里出）、
+    //   件数相加再答 ⇒ 异步档（同 `sessions-needs-merge`）。
+    crate::wire::typed::asynchronous::<crate::faces::footprint_report_face::ChoresMergeCmd>(
+        "问到各台的「文件与数据」、件数合成一份",
     ),
     // 设置里换 agent 家目录存之前那一问：在不在 · 是不是目录 · 有没有那一家的记录树，回一个码（`footprint/agent_home_check.rs`）。只读，阻塞档（stat）。
     crate::wire::typed::blocking::<crate::faces::footprint_face::AgentHomeCheckCmd>(

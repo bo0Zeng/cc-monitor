@@ -42,8 +42,8 @@ export interface PanelFacts {
   sessions: readonly PanelSession[];
   plans: readonly PanelPlan[];
   manual: readonly { origin: Origin; item: ManualItem }[];
-  /** 断开的那几台（不计）。 */
-  offline: readonly Origin[];
+  /** 这一问没问到的那几台（不计；那一句在悬停里）。 */
+  offline: readonly { origin: Origin; said: string }[];
   /** 会话外那一截读不出的那几台（那台那一句）。 */
   unreadable: readonly { origin: Origin; said: string }[];
 }
@@ -124,9 +124,10 @@ export function renderNeedsPanel(f: PanelFacts, acts: PanelActs, selected: numbe
 
   if (rows.length === 0 && root.querySelector("[data-inert]") === null) root.appendChild(empty());
 
-  for (const origin of f.offline) {
-    const n = note(copyText("needs.panel.offline", { machine: machineName(origin) }));
+  for (const d of f.offline) {
+    const n = note(copyText("needs.panel.offline", { machine: machineName(d.origin) }));
     n.dataset.note = "offline";
+    n.title = d.said;
     root.appendChild(n);
   }
   for (const u of f.unreadable) {

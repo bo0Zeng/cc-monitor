@@ -58,7 +58,7 @@ import { unavailableSaid } from "./control-said";
 import { KeysOverview } from "./views/keys-overview";
 import { StatusMessages } from "./status-messages";
 import { StatusChores } from "./status-chores";
-import { choresOf, mergeChores } from "./settings/data-reads";
+import { readChores } from "./settings/data-reads";
 import { readReadiness, type Readiness } from "./settings/readiness-reads";
 import { MainEmpty } from "./main-empty";
 import { StatusStart } from "./status-start";
@@ -172,14 +172,13 @@ window.addEventListener("DOMContentLoaded", async () => {
   status.innerHTML = "";
   // 最左「消息」：本次运行里最近 20 条提示（toast 收进来的那几条也在这里找得回）。
   status.appendChild(new StatusMessages().el);
-  // 「待办 N」（有才出）：各台「文件与数据」的件数交本机后端合计，与设置窗左栏同一个数。
+  // 「待办 N」（有才出）：本机后端问到各台「文件与数据」、件数合计，与设置窗左栏同一个数。
   const chores = new StatusChores({
     machines: async () => {
       const got: unknown = await commands.backend_machines();
       return Array.isArray(got) ? got.filter((o): o is string => typeof o === "string") : [LOCAL_ORIGIN];
     },
-    chores: choresOf,
-    merge: mergeChores,
+    read: (ms) => readChores(ms as Origin[]),
     open: () => void openSettingsWindow(undefined, dest.CHORES),
   });
   status.appendChild(chores.el);
@@ -255,7 +254,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 那台接上了（起来时本机后端还在起 · 断开之后又连上）⇒ 接上之前问过它的那几处再问一次；终端页停在「那台断开」的实时自己重新订上。
   onMachineUp((origin) => {
     terminalPage.machineUp(origin);
-    void chores.refresh(origin);
+    void chores.refreshAll();
     void needsBook.refresh(origin);
     if (isLocalOrigin(origin)) void start.refresh();
   });

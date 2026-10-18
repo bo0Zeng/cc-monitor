@@ -88,6 +88,11 @@ object CoreResident : ResidentCore {
         return Core.clashRows(data)
     }
 
+    override fun searchMerge(data: String): String {
+        ensureRustCore()
+        return Core.searchMerge(data)
+    }
+
     override fun downloadEvent(want: String): String {
         ensureRustCore()
         return Core.downloadEvent(want)

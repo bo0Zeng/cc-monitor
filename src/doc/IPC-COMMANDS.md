@@ -4655,11 +4655,13 @@ type CanResume = "yes" | "switch" | "bg";
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
 type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type ForkedFrom = { label: string, };
+type Hidden = { by: HiddenBy, said: string, };
+type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type HistorySearchReply = { 
 /**
  * 每命中会话一行，最近优先。
  */
-sessions: Array<SessionHits>, 
+sessions: Array<SearchRow>, 
 /**
  * 这一趟有几份会话记录读不动、没搜到。
  */
@@ -4693,6 +4695,297 @@ limit?: number,
  * 只比会话标题与第一句（不搜内容）。
  */
 titles?: boolean, };
+type SearchHit = { 
+/**
+ * 消息 uuid：打开查看器后据此滚动定位、高亮。
+ */
+uuid: string, tsMs: number, 
+/**
+ * `user` · `assistant` · `tool` · `report`。
+ */
+kind: string, before: string, matched: string, after: string, 
+/**
+ * 它落在哪次工具调用的卡里（调用 id，同会话内查找的 `tool`）；缺 ⇒ 落在它自己那张卡上。
+ */
+tool?: string, 
+/**
+ * 这条记录那一行在记录文件里的起点（字节；交给 `history-read` 的 `offset` 就从它读起）。
+ */
+offset: number, 
+/**
+ * 这条记录的行号（与实时行的 `seq` 同一个空间；打开查看器后按它物化、按 `uuid` 找卡）。
+ */
+line: number, };
+type SearchRow = { 
+/**
+ * 行尾那一格。
+ */
+atText: string, 
+/**
+ * 内容头那一段。
+ */
+spanText: string, 
+/**
+ * 显示的名字：改过的名 ＞ 那台扫出的标题（同历史清单那一行的 `label`）。
+ */
+label: string, 
+/**
+ * 星标（那台的注解）。
+ */
+starred: boolean, 
+/**
+ * 隐藏那一格（那台判的，与历史清单那一行同一条规则）；不隐藏 ⇒ `null`。
+ */
+hidden: Hidden | null, 
+/**
+ * 这个会话是哪一家（线上的 kind）：恢复按它起。全文搜索只扫记录树 ⇒ 都是记录树那一家。
+ */
+agent: string, sessionId: string, projectPath: string, projectName: string, jsonlPath: string, 
+/**
+ * 显示标题（ai-title / 首条 user 摘要 / sid 前 8 位之一）。
+ */
+title: string, 
+/**
+ * 记录文件最后改动的毫秒。
+ */
+updatedAt: number, hits: Array<SearchHit>, 
+/**
+ * `hits` 之外这个会话还有几处命中。
+ */
+moreHits: number, 
+/**
+ * 本会话有命中被「全局 snippet 预算用完」挡下了。
+ */
+hitsTruncated: boolean, 
+/**
+ * 后台分身会话。
+ */
+isBg: boolean, 
+/**
+ * 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
+ */
+can: Can, 
+/**
+ * 分叉来的：父会话的显示标题（同历史清单那一格）；不是分叉来的 · 父会话这一趟没走到 ⇒ 缺。
+ */
+forkedFrom?: ForkedFrom, 
+/**
+ * 那台此刻对这个会话的说法（同历史清单那一行的 `face`）。
+ */
+face: SessionFace, };
+type SearchScope = "user" | "assistant" | "report";
+type SessionCan = { 
+/**
+ * 关掉它的标签页。
+ */
+close: CanClose, 
+/**
+ * 恢复（起一个新进程接着那份记录）。
+ */
+resume: Allow, 
+/**
+ * 还有终端可去（拉前 · 停 · 杀 · 终端页）。
+ */
+term: CanTerm, 
+/**
+ * 程序退了、tmux 会话还在 ⇒ 接回。
+ */
+reattach: Allow, 
+/**
+ * 换模型（`session-model`）。
+ */
+model: Allow, 
+/**
+ * 切权限档（`session-permission`）。
+ */
+permission: Allow, };
+type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
+type SessionFace = { dot: SessionDot, 
+/**
+ * 进程在不在；在干什么只住在「在」那一支里。
+ */
+live: FaceLive, 
+/**
+ * 那台看不见时照旧作数（已结束 · 记录已不在）。
+ */
+settled: boolean, 
+/**
+ * 短名（运行中 · 需手动 · 已结束 …）。
+ */
+name: Words, 
+/**
+ * 悬停那一句。
+ */
+tip: Words, 
+/**
+ * 没有会话事实时的状态一句。
+ */
+line: Words, tone: Tone, 
+/**
+ * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
+ */
+order: number, can: SessionCan, 
+/**
+ * 跑在账号库里哪个号下：那台后端宣告时读会话进程环境判一次，这条会话之后的脸（含离开「活」的那几张）都带它。
+ * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
+ */
+account?: string, };
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
+type Words = string;
+```
+
+码：`bad_args` · `failed` · `too_large`
+
+#### `history-search-merge`
+
+问到各台搜一遍、合成一份。
+
+收 `args` · 可撤 · CLI：`ccm -- --history-search-merge`
+
+入参 `HistorySearchMergeReq` · 回包 `Merged`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Allow = { "can": "yes" } | { "can": "no", why: Words, };
+type Can = { 
+/**
+ * `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
+ */
+resume: CanResume, 
+/**
+ * 恢复时能不能选号。
+ */
+accounts: boolean, 
+/**
+ * 能不能从某一轮分叉。
+ */
+fork: boolean, 
+/**
+ * `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑。
+ */
+delete: CanDelete, };
+type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
+type CanDelete = "yes" | "live" | "unsure";
+type CanResume = "yes" | "switch" | "bg";
+type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
+type ForkedFrom = { label: string, };
+type Hidden = { by: HiddenBy, said: string, };
+type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
+type HistorySearchMergeReq = { machines: Array<Origin>, search: HistorySearchReq, };
+type HistorySearchReq = { 
+/**
+ * 搜索词（不分大小写，子串）。
+ */
+query: string, 
+/**
+ * 工具调用与结果也搜。
+ */
+include_tools?: boolean, 
+/**
+ * 只搜哪一种：人说的话 · agent 的回答 · agent 回报；缺 ⇒ 全部。
+ */
+scope?: SearchScope, 
+/**
+ * 只要这一刻（毫秒）之后的。
+ */
+after_ms?: number, 
+/**
+ * 全局片段上限（没给的照样记进 `moreHits`）。
+ */
+limit?: number, 
+/**
+ * 只比会话标题与第一句（不搜内容）。
+ */
+titles?: boolean, };
+type Merged = { 
+/**
+ * 各会话命中数（`hits` 条数 ＋ `moreHits`）之和。
+ */
+totalHits: number, sessionCount: number, 
+/**
+ * 任一行 `hitsTruncated`（每一台都被自己的 `limit` 砍过）。
+ */
+truncated: boolean, 
+/**
+ * 各台的会话行，按 `updatedAt` 倒序（同一刻照台的先后）。
+ */
+sessions: Array<MergedRow>, 
+/**
+ * 答了的那几台读不动、没搜到的会话记录份数之和。
+ */
+unreadable: number, 
+/**
+ * 内容搜索不覆盖的那几家（各台说的，去重、照先说的那台的先后）。
+ */
+skipped: Array<string>, 
+/**
+ * 没答上的那几台（它们的会话没搜到）：哪台 · 那一句。
+ */
+down: Array<SearchDown>, };
+type MergedRow = { 
+/**
+ * 那台远端的名字；本机 ⇒ 缺。
+ */
+origin?: string, 
+/**
+ * 行尾那一格。
+ */
+atText: string, 
+/**
+ * 内容头那一段。
+ */
+spanText: string, 
+/**
+ * 显示的名字：改过的名 ＞ 那台扫出的标题（同历史清单那一行的 `label`）。
+ */
+label: string, 
+/**
+ * 星标（那台的注解）。
+ */
+starred: boolean, 
+/**
+ * 隐藏那一格（那台判的，与历史清单那一行同一条规则）；不隐藏 ⇒ `null`。
+ */
+hidden: Hidden | null, 
+/**
+ * 这个会话是哪一家（线上的 kind）：恢复按它起。全文搜索只扫记录树 ⇒ 都是记录树那一家。
+ */
+agent: string, sessionId: string, projectPath: string, projectName: string, jsonlPath: string, 
+/**
+ * 显示标题（ai-title / 首条 user 摘要 / sid 前 8 位之一）。
+ */
+title: string, 
+/**
+ * 记录文件最后改动的毫秒。
+ */
+updatedAt: number, hits: Array<SearchHit>, 
+/**
+ * `hits` 之外这个会话还有几处命中。
+ */
+moreHits: number, 
+/**
+ * 本会话有命中被「全局 snippet 预算用完」挡下了。
+ */
+hitsTruncated: boolean, 
+/**
+ * 后台分身会话。
+ */
+isBg: boolean, 
+/**
+ * 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
+ */
+can: Can, 
+/**
+ * 分叉来的：父会话的显示标题（同历史清单那一格）；不是分叉来的 · 父会话这一趟没走到 ⇒ 缺。
+ */
+forkedFrom?: ForkedFrom, 
+/**
+ * 那台此刻对这个会话的说法（同历史清单那一行的 `face`）。
+ */
+face: SessionFace, };
+type Origin = string;
+type SearchDown = { origin: Origin, said: string, };
 type SearchHit = { 
 /**
  * 消息 uuid：打开查看器后据此滚动定位、高亮。
@@ -4771,268 +5064,12 @@ order: number, can: SessionCan,
  * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
-type SessionHits = { 
-/**
- * 这个会话是哪一家（线上的 kind）：恢复按它起。全文搜索只扫记录树 ⇒ 都是记录树那一家。
- */
-agent: string, sessionId: string, projectPath: string, projectName: string, jsonlPath: string, 
-/**
- * 显示标题（ai-title / 首条 user 摘要 / sid 前 8 位之一）。
- */
-title: string, 
-/**
- * 记录文件最后改动的毫秒。
- */
-updatedAt: number, hits: Array<SearchHit>, 
-/**
- * `hits` 之外这个会话还有几处命中。
- */
-moreHits: number, 
-/**
- * 本会话有命中被「全局 snippet 预算用完」挡下了。
- */
-hitsTruncated: boolean, 
-/**
- * 后台分身会话。
- */
-isBg: boolean, 
-/**
- * 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
- */
-can: Can, 
-/**
- * 分叉来的：父会话的显示标题（同历史清单那一格）；不是分叉来的 · 父会话这一趟没走到 ⇒ 缺。
- */
-forkedFrom?: ForkedFrom, 
-/**
- * 那台此刻对这个会话的说法（同历史清单那一行的 `face`）。
- */
-face: SessionFace, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
 
 码：`bad_args` · `failed` · `too_large`
-
-#### `history-search-merge`
-
-把各台的搜索结果合成一份。
-
-收 `args` · 可撤 · CLI：`ccm -- --history-search-merge`
-
-入参 `HistorySearchMergeReq` · 回包 `Merged`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type Allow = { "can": "yes" } | { "can": "no", why: Words, };
-type Can = { 
-/**
- * `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
- */
-resume: CanResume, 
-/**
- * 恢复时能不能选号。
- */
-accounts: boolean, 
-/**
- * 能不能从某一轮分叉。
- */
-fork: boolean, 
-/**
- * `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑。
- */
-delete: CanDelete, };
-type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
-type CanDelete = "yes" | "live" | "unsure";
-type CanResume = "yes" | "switch" | "bg";
-type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
-type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
-type ForkedFrom = { label: string, };
-type HistorySearchMergeReq = { machines: Array<MachineHits>, };
-type MachineHits = { origin: Origin, sessions: Array<SessionHits>, };
-type Merged = { 
-/**
- * 各会话命中数（`hits` 条数 ＋ `moreHits`）之和。
- */
-totalHits: number, sessionCount: number, 
-/**
- * 任一行 `hitsTruncated`。
- */
-truncated: boolean, 
-/**
- * 各台的会话行，按 `updatedAt` 倒序。
- */
-sessions: Array<MergedRow>, };
-type MergedRow = { 
-/**
- * 那台远端的名字；本机 ⇒ 缺。
- */
-origin?: string, 
-/**
- * 行尾那一格。
- */
-atText: string, 
-/**
- * 内容头那一段。
- */
-spanText: string, 
-/**
- * 这个会话是哪一家（线上的 kind）：恢复按它起。全文搜索只扫记录树 ⇒ 都是记录树那一家。
- */
-agent: string, sessionId: string, projectPath: string, projectName: string, jsonlPath: string, 
-/**
- * 显示标题（ai-title / 首条 user 摘要 / sid 前 8 位之一）。
- */
-title: string, 
-/**
- * 记录文件最后改动的毫秒。
- */
-updatedAt: number, hits: Array<SearchHit>, 
-/**
- * `hits` 之外这个会话还有几处命中。
- */
-moreHits: number, 
-/**
- * 本会话有命中被「全局 snippet 预算用完」挡下了。
- */
-hitsTruncated: boolean, 
-/**
- * 后台分身会话。
- */
-isBg: boolean, 
-/**
- * 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
- */
-can: Can, 
-/**
- * 分叉来的：父会话的显示标题（同历史清单那一格）；不是分叉来的 · 父会话这一趟没走到 ⇒ 缺。
- */
-forkedFrom?: ForkedFrom, 
-/**
- * 那台此刻对这个会话的说法（同历史清单那一行的 `face`）。
- */
-face: SessionFace, };
-type Origin = string;
-type SearchHit = { 
-/**
- * 消息 uuid：打开查看器后据此滚动定位、高亮。
- */
-uuid: string, tsMs: number, 
-/**
- * `user` · `assistant` · `tool` · `report`。
- */
-kind: string, before: string, matched: string, after: string, 
-/**
- * 它落在哪次工具调用的卡里（调用 id，同会话内查找的 `tool`）；缺 ⇒ 落在它自己那张卡上。
- */
-tool?: string, 
-/**
- * 这条记录那一行在记录文件里的起点（字节；交给 `history-read` 的 `offset` 就从它读起）。
- */
-offset: number, 
-/**
- * 这条记录的行号（与实时行的 `seq` 同一个空间；打开查看器后按它物化、按 `uuid` 找卡）。
- */
-line: number, };
-type SessionCan = { 
-/**
- * 关掉它的标签页。
- */
-close: CanClose, 
-/**
- * 恢复（起一个新进程接着那份记录）。
- */
-resume: Allow, 
-/**
- * 还有终端可去（拉前 · 停 · 杀 · 终端页）。
- */
-term: CanTerm, 
-/**
- * 程序退了、tmux 会话还在 ⇒ 接回。
- */
-reattach: Allow, 
-/**
- * 换模型（`session-model`）。
- */
-model: Allow, 
-/**
- * 切权限档（`session-permission`）。
- */
-permission: Allow, };
-type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
-type SessionFace = { dot: SessionDot, 
-/**
- * 进程在不在；在干什么只住在「在」那一支里。
- */
-live: FaceLive, 
-/**
- * 那台看不见时照旧作数（已结束 · 记录已不在）。
- */
-settled: boolean, 
-/**
- * 短名（运行中 · 需手动 · 已结束 …）。
- */
-name: Words, 
-/**
- * 悬停那一句。
- */
-tip: Words, 
-/**
- * 没有会话事实时的状态一句。
- */
-line: Words, tone: Tone, 
-/**
- * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
- */
-order: number, can: SessionCan, 
-/**
- * 跑在账号库里哪个号下：那台后端宣告时读会话进程环境判一次，这条会话之后的脸（含离开「活」的那几张）都带它。
- * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
- */
-account?: string, };
-type SessionHits = { 
-/**
- * 这个会话是哪一家（线上的 kind）：恢复按它起。全文搜索只扫记录树 ⇒ 都是记录树那一家。
- */
-agent: string, sessionId: string, projectPath: string, projectName: string, jsonlPath: string, 
-/**
- * 显示标题（ai-title / 首条 user 摘要 / sid 前 8 位之一）。
- */
-title: string, 
-/**
- * 记录文件最后改动的毫秒。
- */
-updatedAt: number, hits: Array<SearchHit>, 
-/**
- * `hits` 之外这个会话还有几处命中。
- */
-moreHits: number, 
-/**
- * 本会话有命中被「全局 snippet 预算用完」挡下了。
- */
-hitsTruncated: boolean, 
-/**
- * 后台分身会话。
- */
-isBg: boolean, 
-/**
- * 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
- */
-can: Can, 
-/**
- * 分叉来的：父会话的显示标题（同历史清单那一格）；不是分叉来的 · 父会话这一趟没走到 ⇒ 缺。
- */
-forkedFrom?: ForkedFrom, 
-/**
- * 那台此刻对这个会话的说法（同历史清单那一行的 `face`）。
- */
-face: SessionFace, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
-type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
-type Words = string;
-```
-
-码：`bad_args`
 
 #### `history-run`
 
@@ -6797,7 +6834,7 @@ type Words = string;
 
 #### `sessions-needs-merge`
 
-把各台的需手动清单合成一个先后。
+问到各台的需手动、合成一个先后。
 
 收 `args` · 可撤 · CLI：`ccm -- --sessions-needs-merge`
 
@@ -6805,7 +6842,6 @@ type Words = string;
 
 ```ts
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
-type AnsweredRow = { sid: string, said: Words, };
 type AskKind = "approve" | "answer" | "plan";
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
@@ -6935,24 +6971,11 @@ note: NeedsNote,
  */
 row: NeedsChoiceRow, };
 type NeedsChoiceRow = "main" | "hold" | "release";
+type NeedsDown = { origin: Origin, said: string, };
 type NeedsItem = { "kind": "session", rank: number, session: NeedsRow, } | { "kind": "plan", rank: number, workspace: string, slice: string, k: number, } | { "kind": "manual", rank: number, manual: ManualItem, };
 type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
-type NeedsList = { 
-/**
- * 依次：此刻活着、那台说在等人的会话 · 计划里要人看的格 · 会话外的（需登录的号 · MCP）；一项都没有 ⇒ 空。
- */
-items: Array<NeedsItem>, 
-/**
- * 提问没人答、已替人答过的会话（各留最近一次，那条会话下一次挂上提问才换掉），按会话 id 排。
- */
-answered: Array<AnsweredRow>, 
-/**
- * 会话外那一截读不出（账号库清单在、却读不懂）⇒ 那一句；那一截这时不列（空清单看起来像「没事」）。读得出 ⇒ 缺。
- */
-manualUnreadable?: Words, };
-type NeedsMachine = { origin: Origin, list: NeedsList, };
-type NeedsMergeReq = { machines: Array<NeedsMachine>, };
-type NeedsMerged = { items: Array<NeedsAt>, total: number, unreadable: Array<NeedsUnreadable>, };
+type NeedsMergeReq = { machines: Array<Origin>, };
+type NeedsMerged = { items: Array<NeedsAt>, total: number, unreadable: Array<NeedsUnreadable>, down: Array<NeedsDown>, };
 type NeedsNote = "none" | "optional" | "required";
 type NeedsQuestion = { 
 /**
@@ -8882,13 +8905,28 @@ startSkipped: boolean, };
 
 #### `chores-merge`
 
-把几台的「待办」件数合成一份。
+问到各台的「文件与数据」、件数合成一份。
 
 收 `args` · 可撤 · CLI：`ccm -- --chores-merge`
 
-入参 `ChoresMergeReq` · 回包 `ChoreCounts`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `ChoresMergeReq` · 回包 `ChoresMerged`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type ChangedFile = { path: string, what: string, 
+/**
+ * 撤回在哪（设置窗的页 · 栏 · 锚点）；没有 ⇒ `null`。
+ */
+undo: UndoAt | null, };
+type Chore = { id: string, kind: ChoreKind, state: ChoreState, name: string, loc: string, said: string, why: string, steps: Array<string>, diff: Array<DiffRow>, copy: string | null, whole: string | null, 
+/**
+ * 「整份」盖了哪几件（同一份文件里两件都没做 ⇒ 两件的 id）。
+ */
+wholeCovers: Array<string>, file: string | null, 
+/**
+ * 去哪一处做（设置窗的页 · 栏 · 锚点）。
+ */
+go: UndoAt | null, howUrl: string | null, action: ChoreAction, };
+type ChoreAction = "copyCommand" | "copySnippet" | "decide" | "locate" | "how" | "installFirst";
 type ChoreCounts = { 
 /**
  * 进角标的：要做 ＋ 待定 ＋ 要装，还没做完的（没做 · 过期）。
@@ -8918,7 +8956,51 @@ optional: number,
  * 已做。
  */
 done: number, };
-type ChoresMergeReq = { machines: Array<ChoreCounts>, };
+type ChoreKind = "must" | "decide" | "install" | "installOptional" | "optional";
+type ChoreState = "todo" | "done" | "expired" | "blocked" | "declined";
+type ChoresAt = { origin: Origin, report?: DataReport, said?: string, };
+type ChoresMergeReq = { machines: Array<Origin>, client?: FootprintClient | null, };
+type ChoresMerged = { total: ChoreCounts, machines: Array<ChoresAt>, };
+type DataReport = { 
+/**
+ * 这台家目录（显示时 `~` 缩写按它）。
+ */
+home: string, changedFiles: Array<ChangedFile>, todo: Array<Chore>, 
+/**
+ * 这台有没有 tmux（查不动 ⇒ `null`）。
+ */
+tmux: boolean | null, 
+/**
+ * 「待办」各类的件数。
+ */
+counts: ChoreCounts, 
+/**
+ * 几台排先后的键，小的在前：有进角标的件 0 · 只剩别的没做完的 1 · 没事 2。
+ */
+rank: number, own: Array<OwnItem>, };
+type DiffOp = "same" | "del" | "add";
+type DiffRow = { n: number | null, op: DiffOp, text: string, };
+type FootprintClient = { home: string, path?: string | null, };
+type Origin = string;
+type OwnClass = "truth" | "cache";
+type OwnItem = { 
+/**
+ * 闭集同 `relay_route_core::OWN_HOME_ENTRIES`。
+ */
+id: string, 
+/**
+ * 是什么（写好的那一句，界面照抄）。
+ */
+what: string, 
+/**
+ * `~/.cc-monitor/…` 写法。
+ */
+path: string, dir: boolean, class: OwnClass, exists: boolean, 
+/**
+ * 文件的字节数；目录 / 不在 ⇒ `null`。
+ */
+size: number | null, };
+type UndoAt = { page: string, tab?: string, anchor?: string, };
 ```
 
 码：`bad_args`
@@ -14283,7 +14365,7 @@ type Words = string;
 | `--cc-bus-install-state` | ＝ 帧命令 `cc-bus-install-state`：装 cc-bus 到这台之前看一眼 |
 | `--ccm-user-path` | ＝ 帧命令 `ccm-user-path`：`ccm` 所在目录在不在用户级 `PATH` 上 · 加 · 撤 |
 | `--chores-mark` | ＝ 帧命令 `chores-mark`：记下「待办」里的一个选择 |
-| `--chores-merge` | ＝ 帧命令 `chores-merge`：把几台的「待办」件数合成一份 |
+| `--chores-merge` | ＝ 帧命令 `chores-merge`：问到各台的「文件与数据」、件数合成一份 |
 | `--data-report` | ＝ 帧命令 `data-report`：「文件与数据」那一份成品 |
 | `--drift-report` | ＝ 帧命令 `drift-report`：这台后端的漂移账 |
 | `--exit-policy-read` | ＝ 帧命令 `exit-policy-read`：读「退出行为」那个值（值住后端所在那台） |
@@ -14333,7 +14415,7 @@ type Words = string;
 | `--history-record` | ＝ 帧命令 `history-record`：这条会话的记录还在不在 |
 | `--history-run` | ＝ 帧命令 `history-run`：一个子运行的记录 |
 | `--history-search` | ＝ 帧命令 `history-search`：全文搜索 |
-| `--history-search-merge` | ＝ 帧命令 `history-search-merge`：把各台的搜索结果合成一份 |
+| `--history-search-merge` | ＝ 帧命令 `history-search-merge`：问到各台搜一遍、合成一份 |
 | `--history-tail` | ＝ 帧命令 `history-tail`：一份会话的尾段：手上那一份怎么接，连第一页正文 |
 | `--history-turns` | ＝ 帧命令 `history-turns`：一轮的摘要 |
 | `--history-user-inputs` | ＝ 帧命令 `history-user-inputs`：「人说过的话」清单 |
@@ -14405,7 +14487,7 @@ type Words = string;
 | `--session-permission` | ＝ 帧命令 `session-permission`：切权限档（开着 ⇒ 按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按；终端没了 ⇒ 记下、下次恢复照它起） |
 | `--session-say` | ＝ 帧命令 `session-say`：往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车；终端没了 ⇒ 按记下的号恢复、那一句当第一句交） |
 | `--sessions-needs` | ＝ 帧命令 `sessions-needs`：这台上需手动的会话清单 |
-| `--sessions-needs-merge` | ＝ 帧命令 `sessions-needs-merge`：把各台的需手动清单合成一个先后 |
+| `--sessions-needs-merge` | ＝ 帧命令 `sessions-needs-merge`：问到各台的需手动、合成一个先后 |
 | `--sessions-stop` | ＝ 帧命令 `sessions-stop`：停一批会话（逐个答，一个不成不挡下一个） |
 | `--sessions-where` | ＝ 帧命令 `sessions-where`：一批会话各在这台哪个终端里 |
 | `--skill-install-apply` | ＝ 帧命令 `skill-install-apply`：在要被写的那一台把勾的那几个 skill 文件写进去 |

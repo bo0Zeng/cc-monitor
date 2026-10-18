@@ -841,18 +841,8 @@ pub(crate) fn rank_of(item: &cmd_wire::needs::NeedsItem) -> u64 {
     }
 }
 
-/// `sessions-needs-merge` 入参里的一台：它的名字（本机逐字 `"<local>"`）＋ 它答回来的 `sessions-needs` 原样。
-#[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct NeedsMachine {
-    pub(crate) origin: cmd_wire::Machine,
-    pub(crate) list: cmd_wire::needs::NeedsList,
-}
-
 /// `sessions-needs-merge` 的回包：各台需手动的每一项，先答的在前；`total` 是各台加起来几项（入口 · 窗口标题照它写）；
-/// 会话外那一截读不出的那几台（各带那一句，那几台的会外项这时不在 `items` 里）。
+/// 会话外那一截读不出的那几台（各带那一句，那几台的会外项这时不在 `items` 里）；没问到的那几台（不计，各带那一句）。
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -860,6 +850,16 @@ pub(crate) struct NeedsMerged {
     pub(crate) items: Vec<NeedsAt>,
     pub(crate) total: u32,
     pub(crate) unreadable: Vec<NeedsUnreadable>,
+    pub(crate) down: Vec<NeedsDown>,
+}
+
+/// 没问到的一台：哪台 · 那一句（够不着 · 那台常驻不在 · 那台答了失败 …）。
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct NeedsDown {
+    pub(crate) origin: cmd_wire::Machine,
+    pub(crate) said: String,
 }
 
 /// 合好的一项：哪台 · 那一项原样。
@@ -880,27 +880,27 @@ pub(crate) struct NeedsUnreadable {
     pub(crate) said: Words,
 }
 
-/// **各台的「需手动」合成一份**（`sessions-needs-merge`）：照各项的 `rank`（[`needs_rank`] · 计划 · 会外两档）排；
-/// 并列 ⇒ 本机在前、再照给的台序、台内原来的先后。各台的 `rank` 是同一回问回来的、已等多久各在那台的钟上量，跨台照样比。纯计算。
-pub(crate) fn merge_needs(mut machines: Vec<NeedsMachine>) -> NeedsMerged {
-    machines.sort_by_key(|m| !m.origin.is_local());
-    let unreadable = machines
+/// **各台的「需手动」合成一份**（`sessions-needs-merge`；`answered` ＝ 每台 `(名字, 它答回来的 sessions-needs)`，`down` ＝ 没问到的那几台原样带上）：
+/// 照各项的 `rank`（[`needs_rank`] · 计划 · 会外两档）排；并列 ⇒ 本机在前、再照给的台序、台内原来的先后。
+/// 各台的 `rank` 是同一回问回来的、已等多久各在那台的钟上量，跨台照样比。纯计算。
+pub(crate) fn merge_needs(
+    mut answered: Vec<(cmd_wire::Machine, cmd_wire::needs::NeedsList)>,
+    down: Vec<NeedsDown>,
+) -> NeedsMerged {
+    answered.sort_by_key(|(origin, _)| !origin.is_local());
+    let unreadable = answered
         .iter()
-        .filter_map(|m| {
-            m.list
-                .manual_unreadable
-                .clone()
-                .map(|said| NeedsUnreadable {
-                    origin: m.origin.clone(),
-                    said,
-                })
+        .filter_map(|(origin, list)| {
+            list.manual_unreadable.clone().map(|said| NeedsUnreadable {
+                origin: origin.clone(),
+                said,
+            })
         })
         .collect();
-    let mut items: Vec<NeedsAt> = machines
+    let mut items: Vec<NeedsAt> = answered
         .into_iter()
-        .flat_map(|m| {
-            let origin = m.origin;
-            m.list.items.into_iter().map(move |item| NeedsAt {
+        .flat_map(|(origin, list)| {
+            list.items.into_iter().map(move |item| NeedsAt {
                 origin: origin.clone(),
                 item,
             })
@@ -911,6 +911,7 @@ pub(crate) fn merge_needs(mut machines: Vec<NeedsMachine>) -> NeedsMerged {
         total: items.len() as u32,
         items,
         unreadable,
+        down,
     }
 }
 

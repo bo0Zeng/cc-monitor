@@ -538,16 +538,7 @@ data class ForkedFrom(
     val label: String,
 )
 
-/** `history-search`：每个命中会话一行。 */
-@WireOf("HistorySearchReply")
-@JsonClass(generateAdapter = true)
-data class HistorySearchReply(
-    val sessions: List<SessionHits>,
-    val unreadable: Long,
-    val skipped: List<String>,
-)
-
-/** `history-search-merge`：几台合好的一份（照那台排好的先后）。 */
+/** 几台搜内容合好的一份（手机核心合的：`cmd_wire::search::merge`，照各台排好的先后并成一列）。 */
 @WireOf("Merged")
 @JsonClass(generateAdapter = true)
 data class Merged(
@@ -555,9 +546,20 @@ data class Merged(
     val sessionCount: Long,
     val truncated: Boolean,
     val sessions: List<MergedRow>,
+    val unreadable: Long,
+    val skipped: List<String>,
+    val down: List<SearchDown>,
 )
 
-/** 合好的一行：[origin] 是交合并时给那台起的名字（合并的那一台自己 ⇒ 缺）。 */
+/** 核心解不开的那一台：交合并时给它起的名字 · serde 那一句。 */
+@WireOf("SearchDown")
+@JsonClass(generateAdapter = true)
+data class SearchDown(
+    val origin: String,
+    val said: String,
+)
+
+/** 合好的一行：[origin] 是交合并时给那台起的名字（手机这一侧每台都交 hostId ⇒ 恒有）。 */
 @WireOf("MergedRow")
 @JsonClass(generateAdapter = true)
 data class MergedRow(
@@ -567,16 +569,6 @@ data class MergedRow(
     val title: String,
     val hits: List<SearchHit>,
     val moreHits: Long,
-)
-
-@WireOf("SessionHits")
-@JsonClass(generateAdapter = true)
-data class SessionHits(
-    val sessionId: String,
-    val title: String,
-    val hits: List<SearchHit>,
-    val moreHits: Long,
-    val forkedFrom: ForkedFrom?,
 )
 
 /** 一条命中：`offset` 交给 `history-read` 就从那一条读起。 */

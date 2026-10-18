@@ -5,7 +5,7 @@ import type { SearchHit } from "./SearchHit";
 import type { SessionFace } from "./SessionFace";
 
 /**
- * 一个命中会话的那一行（`history-search` 回包 `sessions[]` 的一项）。
+ * 一个命中会话的那一行（那台扫出来的；`history-search` 回包里一行的主体）。
  */
 export type SessionHits = { 
 /**

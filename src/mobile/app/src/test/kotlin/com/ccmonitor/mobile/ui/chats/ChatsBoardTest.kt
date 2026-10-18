@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.ui.chats
 
 import com.ccmonitor.mobile.cache.ListCache
+import com.ccmonitor.mobile.core.claude.link.RawJson
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.ui.Faces
@@ -48,9 +49,8 @@ class ChatsBoardTest {
         val link = FakeCoreLink()
         var rows: List<Map<String, Any?>> = emptyList()
 
-        /** `history-search` 的回包；`history-search-merge` 的回包。 */
+        /** `history-search` 的回包。 */
         var search: Reply = Reply.LinkDown
-        var merged: Reply = Reply.LinkDown
 
         init {
             link.answer = { cmd, _ ->
@@ -68,18 +68,31 @@ class ChatsBoardTest {
                             ),
                         )
                     "history-search" -> search
-                    "history-search-merge" -> merged
                     else -> Reply.LinkDown
                 }
             }
         }
     }
 
-    private fun TestScope.board(vararg hosts: Host): ChatsBoard {
+    /** 核心合一份那一步的替身：记下交进来的那一行，答 [out]（核心那一份另有 Rust 判据管）。 */
+    private class Merge {
+        val got = mutableListOf<String>()
+        var out = ""
+
+        fun run(input: String): String {
+            got += input
+            return out
+        }
+    }
+
+    private fun TestScope.board(
+        vararg hosts: Host,
+        merge: Merge = Merge(),
+    ): ChatsBoard {
         val by = hosts.associateBy { it.name.id }
         return ChatsBoard(hosts.first().name.id, MutableStateFlow(hosts.map { it.name }), { h, s ->
             HostChats(h.id, h.label, by.getValue(h.id).link, emptyFlow(), MutableStateFlow(null), {}, {}, ListCache.None, s)
-        }, backgroundScope)
+        }, merge::run, backgroundScope)
     }
 
     @Test
@@ -149,33 +162,30 @@ class ChatsBoardTest {
             )
         }
 
-    /** 一台 `history-search` 的回包；会话里放一格手机的类不认的（`spanText`），合并那一问里要原样还在。 */
+    /**
+     * 一台 `history-search` 的回包，照帧客户端读进来的那一形（[RawJson.read]：数 ⇒ `Double`）——真形里的整数格 `updatedAt` · `face.order` 都在；
+     * 放一格手机的类不认的（`spanText`），交核心时要原样还在。
+     */
     private fun hits(sid: String) =
-        mapOf(
-            "sessions" to listOf(mapOf("sessionId" to sid, "title" to sid, "hits" to emptyList<Any>(), "moreHits" to 1, "forkedFrom" to null, "spanText" to "keep-$sid")),
-            "unreadable" to 2,
-            "skipped" to listOf("Codex"),
+        RawJson.read(
+            """{"sessions":[{"sessionId":"$sid","updatedAt":1767225600123,"face":{"order":5},"hits":[],"moreHits":1,"spanText":"keep-$sid"}],"unreadable":2,"skipped":["Codex"]}""",
         )
 
-    private fun mergedOf(vararg rows: Pair<String?, String>) =
-        Reply.Ok(
-            mapOf(
-                "totalHits" to rows.size,
-                "sessionCount" to rows.size,
-                "truncated" to false,
-                "sessions" to rows.map { (origin, sid) -> mapOf("origin" to origin, "atText" to "09:00", "sessionId" to sid, "title" to sid, "hits" to emptyList<Any>(), "moreHits" to 1) },
-            ),
-        )
+    /** 核心合好的那一行（替身）。 */
+    private fun mergedOf(vararg rows: Pair<String, String>) =
+        """{"totalHits":${rows.size},"sessionCount":${rows.size},"truncated":false,"unreadable":4,"skipped":["Codex"],"down":[],"sessions":[""" +
+            rows.joinToString(",") { (origin, sid) -> """{"origin":"$origin","atText":"09:00","sessionId":"$sid","title":"$sid","hits":[],"moreHits":1}""" } +
+            "]}"
 
     @Test
-    fun `搜内容：各台回包的 sessions 原样交当前那台合并（自己是 LOCAL、别的台是它的 id）；合好的行按 origin 对回哪台`() =
+    fun `搜内容：各台回包原样交核心合（每台写它的 hostId，整数照整数写），不交哪一台当信差；合好的行按 origin 对回哪台`() =
         runTest {
             val a = Host(HostName("h1", "a"))
             val b = Host(HostName("h2", "gpu"))
             a.search = Reply.Ok(hits("s1"))
             b.search = Reply.Ok(hits("s2"))
-            a.merged = mergedOf("h2" to "s2", null to "s1")
-            val board = board(a, b)
+            val merge = Merge().apply { out = mergedOf("h2" to "s2", "h1" to "s1") }
+            val board = board(a, b, merge = merge)
             runCurrent()
             board.query("登录")
             advanceTimeBy(ChatsBoard.QUERY_DEBOUNCE_MS + 1)
@@ -183,14 +193,12 @@ class ChatsBoardTest {
             board.searchContent()
             runCurrent()
             assertEquals(mapOf("query" to "登录"), b.link.calls("history-search").single())
-            assertEquals(emptyList<Any?>(), b.link.calls("history-search-merge"))
-            val machines = a.link.calls("history-search-merge").single()!!["machines"]
+            assertEquals("哪一台都没被当成信差", emptyList<Any?>(), a.link.calls("history-search-merge") + b.link.calls("history-search-merge"))
+            val input = merge.got.single()
             assertEquals(
-                listOf(
-                    mapOf("origin" to "<local>", "sessions" to (hits("s1")["sessions"])),
-                    mapOf("origin" to "h2", "sessions" to (hits("s2")["sessions"])),
-                ),
-                machines,
+                """[{"origin":"h1","reply":{"sessions":[{"sessionId":"s1","updatedAt":1767225600123,"face":{"order":5},"hits":[],"moreHits":1,"spanText":"keep-s1"}],"unreadable":2,"skipped":["Codex"]}},""" +
+                    """{"origin":"h2","reply":{"sessions":[{"sessionId":"s2","updatedAt":1767225600123,"face":{"order":5},"hits":[],"moreHits":1,"spanText":"keep-s2"}],"unreadable":2,"skipped":["Codex"]}}]""",
+                input,
             )
             val c = board.ui.value.content!!
             assertEquals(listOf("h2" to "s2", "h1" to "s1"), c.rows.map { it.hostId to it.row.sessionId })
@@ -202,21 +210,21 @@ class ChatsBoardTest {
         }
 
     @Test
-    fun `搜内容：一台没答 ⇒ 那台离线 · 未搜索那一句，别的台的行照出；当前那台没答 ⇒ 交给答了的那一台合并`() =
+    fun `搜内容：一台没答 ⇒ 那台离线 · 未搜索那一句、不交核心，别的台的行照出`() =
         runTest {
             val a = Host(HostName("h1", "a"))
             val b = Host(HostName("h2", "gpu"))
             a.search = Reply.TimedOut
             b.search = Reply.Ok(hits("s2"))
-            b.merged = mergedOf(null to "s2")
-            val board = board(a, b)
+            val merge = Merge().apply { out = mergedOf("h2" to "s2") }
+            val board = board(a, b, merge = merge)
             runCurrent()
             board.query("x")
             advanceTimeBy(ChatsBoard.QUERY_DEBOUNCE_MS + 1)
             runCurrent()
             board.searchContent()
             runCurrent()
-            assertEquals(mapOf("origin" to "<local>", "sessions" to hits("s2")["sessions"]), (b.link.calls("history-search-merge").single()!!["machines"] as List<*>).single())
+            assertEquals(listOf("h2"), Regex(""""origin":"([^"]+)"""").findAll(merge.got.single()).map { it.groupValues[1] }.toList())
             val c = board.ui.value.content!!
             assertEquals(listOf("h2" to "s2"), c.rows.map { it.hostId to it.row.sessionId })
             assertEquals(copyText("history.search.machineDown", "machine" to "a"), c.lines.first())

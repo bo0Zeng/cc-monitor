@@ -1,5 +1,5 @@
 //! 客户端那一侧（手机嵌的 Rust 核心）按类型解回包：「命令 ⇒ 回包类型」那一张表（[`decode_reply`]）。
-//! 表里的类型都住本包（[`crate::session`] · [`crate::files`] · [`crate::needs`] · [`crate::listing`] · [`crate::record`] …），就是后端那条命令 `impl Command` 回的那一个
+//! 表里的类型都住本包（[`crate::session`] · [`crate::files`] · [`crate::needs`] · [`crate::listing`] · [`crate::record`] · [`crate::search`] …），就是后端那条命令 `impl Command` 回的那一个
 //! （后端判据按 TS 名对，[`reply_names`]）。表里没有的命令照原样交（回包类型还住后端那几族）。
 
 use crate::accounts::AccountsList;
@@ -16,6 +16,7 @@ use crate::rotation::{
     RotDone, RotStrategyId, RotStrategyRev, RotationFactsReply, RotationStrategiesReply,
     RotationTempReply, RotationTryReply, RotationViewReply,
 };
+use crate::search::HistorySearchReply;
 use crate::session::{
     HistoryTail, Killed, ModeSwitched, ModelSwitched, OpenFacts, Opened, Preview, Sent,
     SessionCommands, TerminalsList,
@@ -75,6 +76,7 @@ replies! {
     "history-lines" => HistoryLines<OrUnread>,
     "history-list" => Patch<HistoryHead, HistoryRow>,
     "history-read" => HistoryRead<OrUnread>,
+    "history-search" => HistorySearchReply,
     "history-tail" => HistoryTail<OrUnread>,
     "kill" => Killed,
     "needs-answer" => Answered,

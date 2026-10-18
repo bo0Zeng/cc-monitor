@@ -1,12 +1,13 @@
 /**
- * 设置窗「文件与数据」：那台后端的 `data-report` 严格收 · 两栏照那份成品画 · 角标与顶上那一行 ＝ 读到的各台 `counts` 交本机后端合的那一份 ·
+ * 设置窗「文件与数据」：一趟只问本机后端一次 `chores-merge {machines, client}`（它问到各台的 `data-report`、件数合成一份）· 两栏照每台那份成品画 ·
+ * 角标与顶上那一行 ＝ 它合的那一份 ·
  * 那台说了没有 tmux ⇒ 恢复默认的「运行于」回落 · 改过你的文件［前往］带上那台去撤回那一处。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { fakeClipboard } from "../../../test-support/clipboard-fake";
 
 const { disk, answers, opened, marks, seen, fileWin, localOpened, localRevealed, merges } = vi.hoisted(() => ({
-  /** 交给本机后端 `chores-merge` 的每一趟（`reply` 设了就照它答，否则逐格相加）。 */
+  /** 交给本机后端 `chores-merge` 的每一趟问的那几台（替身照 `answers` 逐台答；`reply` 设了合计就照它，否则逐格相加）。 */
   merges: { asked: [] as unknown[][], reply: null as Record<string, number> | null },
   localOpened: [] as string[],
   localRevealed: [] as string[],
@@ -30,13 +31,19 @@ vi.mock("../../../../src/comms/inward/chan", () => ({
   chan: {
     call: (origin: string, op: string, body: Uint8Array) => {
       if (op === "chores-merge") {
-        if (origin !== "<local>") return Promise.reject(new Error("合计只问本机后端"));
-        const { machines } = JSON.parse(new TextDecoder().decode(body)) as { machines: Record<string, number>[] };
+        if (origin !== "<local>") return Promise.reject(new Error("只问本机后端"));
+        const { machines, client } = JSON.parse(new TextDecoder().decode(body)) as { machines: string[]; client: unknown };
+        if (client === undefined) return Promise.reject(new Error("本机那几条事实没带"));
         merges.asked.push(machines);
         const sum: Record<string, number> = {};
-        for (const m of machines) for (const [k, v] of Object.entries(m)) sum[k] = (sum[k] ?? 0) + v;
-        const out = merges.reply ?? { badge: 0, open: 0, must: 0, decide: 0, install: 0, optional: 0, done: 0, ...sum };
-        return Promise.resolve(new TextEncoder().encode(JSON.stringify(out)));
+        const rows = machines.map((o) => {
+          const a = answers.get(o) as { counts: Record<string, number> } | undefined;
+          if (a === undefined) return { origin: o, said: `${o} 断开` };
+          for (const [k, v] of Object.entries(a.counts)) sum[k] = (sum[k] ?? 0) + v;
+          return { origin: o, report: a };
+        });
+        const total = merges.reply ?? { badge: 0, open: 0, must: 0, decide: 0, install: 0, optional: 0, done: 0, ...sum };
+        return Promise.resolve(new TextEncoder().encode(JSON.stringify({ total, machines: rows })));
       }
       if (op === "chores-mark") {
         marks.push({ origin, args: JSON.parse(new TextDecoder().decode(body)) });
@@ -173,8 +180,7 @@ describe("待办", () => {
     const { page, badge } = mount();
     page.loadNow();
     await settle();
-    expect(merges.asked.at(-1), "交的是读到的那几台（读不到的那台不交）").toEqual(expect.arrayContaining([counts({ badge: 1, open: 2, install: 1, optional: 1 }), counts({ badge: 2 })]));
-    expect(merges.asked.at(-1)).toHaveLength(2);
+    expect(merges.asked, "一趟只问本机后端一次、交机器表那几台").toEqual([[LOCAL_ORIGIN, "devbox", "gpu"]]);
     expect(badge.at(-1)).toBe(3);
     const local = page.element.querySelector<HTMLElement>(`[data-machine="${LOCAL_ORIGIN}"]`)!;
     expect([...local.querySelectorAll<HTMLElement>("[data-chore]")].map((r) => r.dataset.chore)).toEqual(["install:claude-cli", "install:git"]);

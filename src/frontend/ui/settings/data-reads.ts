@@ -1,10 +1,11 @@
 /**
  * 「文件与数据」那一份成品（那台后端的 `data-report`，typed：形状由握手指纹核过）：按机器问。
  * 本机那一栏先问 monitor 一次它自己进程的那几条事实（`footprint_client_facts`），原样带给本机后端（同足迹那一问）。
- * 每台的各类件数是那台后端数好的（`counts`）；跨台合计交本机后端（[`mergeChores`]），界面不另数。
+ * 几台一起（「文件与数据」页 · 状态栏「待办 N」）：本机后端 `chores-merge` 自己问到各台的 `data-report`、件数合成一份再答（[`readChores`]），
+ * 界面不逐台问、不另数。
  */
 import { budgetWithin, callTyped } from "../ipc/chan-caller";
-import type { ChoreCounts } from "../generated/ChoreCounts";
+import type { ChoresMerged } from "../generated/ChoresMerged";
 import type { ChoresMarkReq } from "../generated/ChoresMarkReq";
 import type { DataReport } from "../generated/DataReport";
 import type { FootprintClient } from "../generated/FootprintClient";
@@ -61,19 +62,19 @@ export async function recallDataReport(origin: Origin): Promise<{ report: DataRe
   return { report: seen.value, atMs: seen.atMs };
 }
 
-/** 那台各类的件数（问不到 ⇒ `null`，不当 0）。 */
-export async function choresOf(origin: Origin): Promise<ChoreCounts | null> {
+/**
+ * 问本机后端：它自己问到这几台的 `data-report`（本机那一台带 monitor 那几条事实，别的台经它的连接问那台的常驻）、件数合成一份；
+ * 每台读成的那一份记成那台「上次的」。没问到的那台带那一句（`said`）。本机后端问不到 ⇒ 抛一句人话。
+ * 期限：各台同时问，一台一次 stat 一批、读几份小文件 ＋ 回程，30 秒。
+ */
+export async function readChores(machines: Origin[]): Promise<ChoresMerged> {
+  const client = machines.some(isLocalOrigin) ? ((await commands.footprint_client_facts()) as unknown as FootprintClient) : null;
+  let got: ChoresMerged;
   try {
-    return (await readDataReport(origin)).counts;
-  } catch {
-    return null;
+    got = await callTyped(LOCAL_ORIGIN, "chores-merge", { machines, client }, budgetWithin(DATA_BUDGET_MS));
+  } catch (e) {
+    throw new Error(saidOf(e));
   }
-}
-
-/** 本机后端纯计算：同「需手动」合先后那一问，10 秒。 */
-const MERGE_BUDGET_MS = 10_000;
-
-/** 几台的件数合成一份（本机后端 `chores-merge`）：设置窗角标 · 「文件与数据」顶上 · 主窗口状态栏读这一份。问不到 ⇒ 抛。 */
-export async function mergeChores(machines: ChoreCounts[]): Promise<ChoreCounts> {
-  return callTyped(LOCAL_ORIGIN, "chores-merge", { machines }, budgetWithin(MERGE_BUDGET_MS));
+  for (const m of got.machines) if (m.report) void rememberSeen(m.origin, "data", m.report);
+  return got;
 }

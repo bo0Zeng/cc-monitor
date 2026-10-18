@@ -5,7 +5,7 @@
  * - 浮层：会话行（照「需手动」的序）· 分隔线 · 会话外每一项（第一行 `said`、第二行机器名；`fix` 为空 ⇒ 第二行写 `why`、不画按钮）；
  *   断开那台一条「{machine} 离线 · 未计入」；那台会外那一截读不出 ⇒ 入口不带数字、虚线框，底部一条「{machine} · 需手动清单无法读取」（那台那一句在悬停里）。
  * - 点会话行 ⇒ 切过去；点会话外那一行或［登录…］⇒ 开登录抽屉（交那一项）；↑↓ · Enter · Esc。最后一项刚解决、浮层开着 ⇒「无需手动事项」，关了入口才消失。
- * - 一台从哪来：`sessions-needs` 回包 · 那一跳断开 · 问不到（`needs-book.ts::readNeeds`）。
+ * - 各台从哪来：本机后端 `sessions-needs-merge` 问到各台再合（替身 `needs-fake.ts`；扇出与合的判法在后端判据里）。
  *
  * 夹具只造结构（占位的号名 · 服务器名 · 句子），不采真正文。
  */
@@ -23,10 +23,8 @@ import type { Tab } from "../../../src/frontend/ui/tab-model";
 import { LOCAL_ORIGIN, type Origin } from "../../../src/frontend/ui/ipc/origin";
 import { liveFace } from "../../test-support/session-faces";
 import type { ManualItem } from "../../../src/frontend/ui/login-reads";
-import { readNeeds, type NeedsRead } from "../../../src/frontend/ui/needs-book";
-import { fakeNeedsBook, listOf, manualItem, sessionItem } from "../../test-support/needs-fake";
+import { fakeNeedsBook, listOf, manualItem, sessionItem, type NeedsRead } from "../../test-support/needs-fake";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import { chanReply, NO_CHANNEL, UNSUPPORTED, refusedReply, type ChanCallArgs } from "../../test-support/chan-fake";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -161,6 +159,7 @@ describe("浮层", () => {
     expect(r.strip.querySelector(".tab-needs-count")?.textContent).toBe("2");
     r.strip.click();
     expect(panel()!.querySelector('[data-note="offline"]')?.textContent).toBe(copyText("needs.panel.offline", { machine: "devbox" }));
+    expect(panel()!.querySelector<HTMLElement>('[data-note="offline"]')?.title, "后端那一句在悬停里").toBe("devbox 没问到");
     r.strip.click();
     r.answers["gpu-01"] = machine([], [], "核心·账号库无法解析");
     await r.book.refresh("gpu-01" as Origin);
@@ -202,19 +201,4 @@ describe("浮层", () => {
   });
 });
 
-describe("一台从哪来：sessions-needs 的回包", () => {
-  it("★ 读到 ⇒ 那一份整份；那一跳断开 ⇒ 断开（不计、底下说一句）；问不到 · 不认这条（老后端）⇒ 不计不画", async () => {
-    const list = { items: [manualItem(acctItem("t1"))], answered: [] };
-    invokeMock.mockImplementation(async (cmd: string, a: ChanCallArgs) => {
-      if (cmd !== "chan_call" || a.op !== "sessions-needs") throw new Error(`没料到：${cmd}`);
-      if (a.origin === "ok") return chanReply(list);
-      if (a.origin === "bad") throw refusedReply("bad_args", "核心·不对");
-      if (a.origin === "old") throw UNSUPPORTED;
-      throw NO_CHANNEL;
-    });
-    expect(await readNeeds("ok" as Origin)).toEqual({ t: "ok", list });
-    expect(await readNeeds("down" as Origin)).toEqual({ t: "offline" });
-    expect(await readNeeds("bad" as Origin)).toEqual({ t: "none" });
-    expect(await readNeeds("old" as Origin)).toEqual({ t: "none" });
-  });
-});
+

@@ -616,7 +616,7 @@ export class HistoryView {
     const strips: HTMLElement[] = [];
     const c = this.content;
     if (c?.state === "done") {
-      for (const h of c.r.failedHosts) strips.push(strip("warn", copyText("history.search.machineDown", { machine: h }), { label: copyText("history.list.reconnect"), run: () => void this.runContentSearch() }));
+      for (const d of c.r.down) strips.push(strip("warn", copyText("history.search.machineDown", { machine: d.origin }), { label: copyText("history.list.reconnect"), run: () => void this.runContentSearch() }));
       for (const a of c.r.skipped) strips.push(strip("info", copyText("history.search.skipped", { agent: a })));
       if (c.r.unreadable > 0) strips.push(strip("info", copyText("history.search.unreadable", { n: c.r.unreadable })));
     } else if (c?.state === "failed") {
@@ -791,7 +791,7 @@ export class HistoryView {
       return;
     }
     for (const sh of r.sessions) {
-      const row = this.rowsByKey.get(rowKey(sh)) ?? rowFromHits(sh);
+      const row = rowFromHits(sh);
       const el = sessionRow(row, hooks, { compact: false, forks: 0, forksOpen: false, child: false, orphan: false });
       this.order.push(rowKey(row));
       body.push(hitsBlock(el, sh, (hit) => this.show(row, hit ?? undefined)));
@@ -1360,7 +1360,7 @@ function groupKey(g: HistoryGroup): string {
   return `${g.origin ?? ""}\u0000${g.key}`;
 }
 
-/** 内容命中里那个会话不在清单里（被筛掉 / 那台的清单没答上）⇒ 用命中那一行拼一个只够画的行；状态与能做什么照那台判的。 */
+/** 内容命中那一行 ⇒ 画它的那一行：名字 · 星标 · 隐藏 · 状态 · 能做什么都是那台在命中行上带来的（界面不拿清单去对）。 */
 function rowFromHits(sh: SessionHits): HistoryRow {
   return {
     agent: sh.agent,
@@ -1373,7 +1373,7 @@ function rowFromHits(sh: SessionHits): HistoryRow {
     aiTitle: null,
     firstUserExcerpt: "",
     title: sh.title,
-    label: sh.title,
+    label: sh.label,
     untitled: false,
     startedAt: sh.updatedAt,
     updatedAt: sh.updatedAt,
@@ -1384,10 +1384,9 @@ function rowFromHits(sh: SessionHits): HistoryRow {
     jsonlPath: sh.jsonlPath,
     messageCountApprox: 0,
     isBg: sh.isBg,
-    starred: false,
+    starred: sh.starred,
     customTitle: null,
-    // 命中那一行不带隐藏那一格（全文搜索不判它）⇒ 按没隐藏画；它在清单里那一行到了照那一行。
-    hidden: null,
+    hidden: sh.hidden,
     face: sh.face,
     can: sh.can,
     ...(sh.origin ? { origin: sh.origin } : {}),

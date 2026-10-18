@@ -635,6 +635,10 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
         "同上，只摘票（订阅线程自己收那个只读客户端）、不起 tmux",
     ),
     (
+        "chores-merge",
+        "几台的文件与数据：本机那一台就是 `data-report` 那一份（同一个降级：没 tmux ⇒ `tmux: false`）",
+    ),
+    (
         "data-report",
         "文件与数据：`tmux` 那一格问这台有没有 tmux（与起新会话框同一个判法），没 tmux ⇒ `tmux: false`、别的几格照答",
     ),

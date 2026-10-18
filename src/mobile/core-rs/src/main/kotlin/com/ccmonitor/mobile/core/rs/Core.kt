@@ -108,6 +108,9 @@ object Core {
     /** 同名清单（码 `exists` 的 `data`）⇒ 抽屉那几行 `[{key, name, meta, answers}]`。 */
     external fun clashRows(data: String): String
 
+    /** 几台搜内容的结果 `[{origin, reply}]` ⇒ 合好的那一份（`Merged`，本机后端扇出完调的同一份合并）；读不动 ⇒ 空串。 */
+    external fun searchMerge(data: String): String
+
     /** 下载一组那几格（`{id, machine, names, phase, …}` JSON）⇒ `batch` 那一形的一行；读不动 ⇒ 空串。 */
     external fun downloadEvent(want: String): String
 

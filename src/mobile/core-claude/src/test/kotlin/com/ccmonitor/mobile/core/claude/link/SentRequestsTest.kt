@@ -54,7 +54,6 @@ class SentRequestsTest {
                 ),
             HistoryList.COMMAND to listOf(HistoryList.args(ListAsk()), HistoryList.args(ListAsk("q", 7, ListSort.CREATED, true)), HistoryList.args(ListAsk(sort = ListSort.ACTIVITY)), HistoryList.args(ListAsk(), "e.1.2")),
             HistorySearch.COMMAND to listOf(HistorySearch.args("q")),
-            HistorySearchMerge.COMMAND to listOf(HistorySearchMerge.args(listOf(HistorySearchMerge.LOCAL to listOf(SEARCH_ROW), "h2" to emptyList()))),
             HistoryRead.COMMAND to listOf(HistoryRead.args("/p/s.jsonl", 0L, 10L)),
             HistoryTail.COMMAND to listOf(HistoryTail.args("/p/s.jsonl", 50), HistoryTail.args("/p/s.jsonl", 50, Held("/p/s.jsonl", 3L, 30L, "m"))),
             Kill.COMMAND to listOf(Kill.args("demo")),
@@ -176,24 +175,6 @@ class SentRequestsTest {
         const val GOLDEN = "mobile-requests.golden.json"
         val SHA = "ab".repeat(32)
 
-        /** `history-search` 回包里的一行（交合并那一问时原样带上）。 */
-        val SEARCH_ROW =
-            mapOf(
-                "agent" to "claude",
-                "sessionId" to "s",
-                "projectPath" to "/w",
-                "projectName" to "w",
-                "jsonlPath" to "/w/s.jsonl",
-                "title" to "t",
-                "updatedAt" to 1L,
-                "hits" to listOf(mapOf("uuid" to "u", "tsMs" to 0L, "kind" to "user", "before" to "", "matched" to "q", "after" to "", "offset" to 0L, "line" to 0L)),
-                "moreHits" to 0L,
-                "hitsTruncated" to false,
-                "isBg" to false,
-                "can" to mapOf("resume" to "yes", "accounts" to true, "fork" to true, "delete" to "yes"),
-                // 金样经 moshi 读进来数都是 Double；那台的 `order` 是整数，交回去照整数写。
-                "face" to Fixtures.face("ended").mapValues { (_, v) -> (v as? Double)?.takeIf { it % 1 == 0.0 }?.toLong() ?: v },
-            )
         val LINK = File(Fixtures.repoRoot, "src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link")
 
         /** 别名页表单那一形（「建这条」交的那几格；没交的那台按缺省）。 */

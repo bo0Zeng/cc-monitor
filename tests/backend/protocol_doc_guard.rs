@@ -691,31 +691,6 @@ mod tests {
                 "同上，帧命令 `history-record` 的应答 `data`",
             ),
             (
-                "observe/search_query.rs",
-                "Merged",
-                "typed 帧命令 `history-search-merge` 的回包（`faces/search_face.rs`；形状指纹与生成类型从它来）",
-            ),
-            (
-                "observe/search_query.rs",
-                "MergedRow",
-                "同上，`Merged.sessions` 的一行",
-            ),
-            (
-                "observe/search_query.rs",
-                "MachineHits",
-                "typed 帧命令 `history-search-merge` 的入参一项（那一台 ＋ 它答回来的会话行）",
-            ),
-            (
-                "observe/search_query.rs",
-                "SessionHits",
-                "typed 帧命令 `history-search` 回包里的一行（也是 `history-search-merge` 入参里的一行）",
-            ),
-            (
-                "observe/search_query.rs",
-                "SearchHit",
-                "同上，`SessionHits.hits` 的一条",
-            ),
-            (
                 "observe/tasks_query.rs",
                 "Task",
                 "typed 帧命令 `tasks-list` 回包 `tasks[]` 的一格（`faces/feature_face.rs`；生成类型从它来）",
