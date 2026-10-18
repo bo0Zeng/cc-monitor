@@ -429,6 +429,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Manual("Windows 上让开：替身是一段 sh、转交真 tmux；Linux 上门禁与 quick-check 的整套 vitest 跑它"),
     ),
     (
+        "tests/shots/forwarder.vitest.ts",
+        "process.platform===\"\"",
+        Trigger::Manual("Windows 上让开：假 ssh 是一段 sh、替身后端也是；Linux 上门禁与 quick-check 的整套 vitest 跑它"),
+    ),
+    (
         "tests/shots/pb-stand-in.vitest.ts",
         "process.platform===\"\"",
         Trigger::Manual("Windows 上让开：替身起 `python3`、PATH 照 Unix 给；Linux 上门禁与 quick-check 的整套 vitest 跑它"),

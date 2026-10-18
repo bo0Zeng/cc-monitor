@@ -57,7 +57,8 @@ async function openLastResult(): Promise<HTMLDetailsElement> {
   return res;
 }
 
-const offline = (): ReturnType<typeof defaultWorld> => ({ ...defaultWorld(), hopDown: { "gpu-01": ["history-list"] } });
+// gpu-01 那一跳断开：本机后端问它的常驻要清单副本（`history-listing`）问不到。
+const offline = (): ReturnType<typeof defaultWorld> => ({ ...defaultWorld(), hopDown: { "gpu-01": ["history-listing"] } });
 
 /** 额度账里有这几台的号的数（恢复菜单每个号后面 `5h N%`）。 */
 function withQuota(): ReturnType<typeof defaultWorld> {

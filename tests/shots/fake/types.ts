@@ -61,7 +61,10 @@ export interface World {
   machines: string[];
   /** 订阅时看不见的那几台（流里第一格 `unseen`）。 */
   unseenMachines: string[];
-  /** 到那台那一跳断开的几条帧命令：机器 → op（例：历史清单问不到那台，`history-list`）。 */
+  /**
+   * 到那台那一跳断开的几条帧命令：机器 → op。直接问那台的照壳那一形拒；本机后端替界面问各台的那几条（跨台合并 · 历史页那一列）
+   * 写它问每台的那一条（例：历史清单副本问不到那台，`history-listing`；需手动那一份，`sessions-needs`），台架的转发照它拒（`real/pool.mjs` 的 `reach`）。
+   */
   hopDown?: Record<string, string[]>;
   /** 那台后端比界面老、不认的几条帧命令：机器 → op。 */
   older?: Record<string, string[]>;
