@@ -23,6 +23,8 @@
  *   量帧间隔 p50 / p95 / 最长、> 50 ms 的帧数、长任务。
  * - **只留眼前**（mem）：新开页、点最长那条，一屏一屏滚到顶、再滚回底（每屏等安静），然后 24 个 tab 逐个切一遍；
  *   开头 · 到顶 · 回底 · 切完各强制 GC 一次，读 JS 堆 · 浏览器进程树的 Pss · DOM 元素数（`getElementsByTagName("*")`），另记最长那条流里的卡数。
+ *   切一遍时每个 tab 等到流里出了卡（至多 10 s）才切下一个：不等的话切完时一半 tab 还没收到正文，「切完」那一格量的是没来得及建的样子；
+ *   切完另记每条流留着几个顶层条目（还空着的 tab 记 0）。
  * 每项跑 `--runs` 趟（缺省 3），表里给的是全部趟合在一起的分位数；机器负载（loadavg）开头结尾各记一次。
  */
 import { spawn } from "node:child_process";
@@ -660,9 +662,11 @@ async function benchMem(run) {
     const x = await tabAt(page, i);
     if (x.active) continue;
     await clickAt(page, x.x, x.y);
+    await page.waitFor(`(document.querySelector(".stream.active")?.querySelectorAll(".stream-content > *:not(.stream-skeleton-gap)").length ?? 0) > 0`, 10_000).catch(() => undefined);
     await page.eval("__perf.quiet(300, 5000)");
   }
   const toured = await memRead(page);
+  toured.kept = await page.eval(`[...document.querySelectorAll(".stream")].map((s) => s.querySelectorAll(".stream-content > *:not(.stream-skeleton-gap)").length)`);
   await page.close();
   console.log(`  只留眼前 第 ${run + 1} 趟：往顶 ${up} 屏 · 回底 ${down} 屏`);
   return { run, up, down, open, top, back, toured };
@@ -752,11 +756,12 @@ function summarize(r) {
   if (r.mem?.length) {
     L.push("## 只留眼前（最长那条滚到顶再回底 ＋ 24 个 tab 逐个切一遍；强制 GC 后）");
     L.push("");
-    L.push("| 趟 | 屏数（上 / 下） | JS 堆 MB：开 · 顶 · 底 · 切完 | 浏览器 Pss MB：开 · 顶 · 底 · 切完 | DOM 元素：开 · 顶 · 底 · 切完 | 流里的卡：开 · 顶 · 底 |");
-    L.push("|---|---|---|---|---|---|");
+    L.push("| 趟 | 屏数（上 / 下） | JS 堆 MB：开 · 顶 · 底 · 切完 | 浏览器 Pss MB：开 · 顶 · 底 · 切完 | DOM 元素：开 · 顶 · 底 · 切完 | 流里的卡：开 · 顶 · 底 | 切完每条流的顶层条目：最多 · 合计 · 空着的流 |");
+    L.push("|---|---|---|---|---|---|---|");
     for (const x of r.mem) {
       const s = [x.open, x.top, x.back, x.toured];
-      L.push(`| ${x.run + 1} | ${x.up} / ${x.down} | ${s.map((y) => mb(y.heap)).join(" · ")} | ${s.map((y) => (y.pss === undefined ? "—" : y.pss.toFixed(0))).join(" · ")} | ${s.map((y) => y.els).join(" · ")} | ${s.slice(0, 3).map((y) => y.cards).join(" · ")} |`);
+      const kept = x.toured.kept ?? [];
+      L.push(`| ${x.run + 1} | ${x.up} / ${x.down} | ${s.map((y) => mb(y.heap)).join(" · ")} | ${s.map((y) => (y.pss === undefined ? "—" : y.pss.toFixed(0))).join(" · ")} | ${s.map((y) => y.els).join(" · ")} | ${s.slice(0, 3).map((y) => y.cards).join(" · ")} | ${Math.max(0, ...kept)} · ${kept.reduce((a, n) => a + n, 0)} · ${kept.filter((n) => n === 0).length} |`);
     }
     L.push("");
   }
