@@ -161,12 +161,12 @@ internal fun TipLabel(
     modifier: Modifier = Modifier,
     onClick: () -> Unit = {},
 ) {
+    val scope = rememberCoroutineScope()
     if (tip == null) {
         Text(text, style = style, modifier = modifier)
         return
     }
     val state = rememberTooltipState()
-    val scope = rememberCoroutineScope()
     TooltipBox(
         positionProvider = TooltipDefaults.rememberTooltipPositionProvider(),
         tooltip = { PlainTooltip { Text(tip) } },

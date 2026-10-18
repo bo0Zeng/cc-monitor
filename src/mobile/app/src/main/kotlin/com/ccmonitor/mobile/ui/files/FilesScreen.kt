@@ -313,11 +313,11 @@ private fun ReadyContent(
     val sortBySize by vm.sortBySize.collectAsState()
     val selection by vm.selection.collectAsState()
     val online by vm.online.collectAsState()
+    val scope = rememberCoroutineScope()
     val dir = cwd ?: return
     val entries = listing.entries
     val bookmarkRepo = koinInject<BookmarkRepository>()
     val bookmarks by bookmarkRepo.observeForHost(hostId).collectAsState(initial = emptyList())
-    val scope = rememberCoroutineScope()
     val tokens = LocalAppTokens.current
     Column(Modifier.fillMaxSize()) {
         if (selection.active) {

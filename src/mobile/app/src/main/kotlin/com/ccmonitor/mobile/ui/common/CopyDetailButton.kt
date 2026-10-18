@@ -18,8 +18,8 @@ fun CopyDetailButton(
     text: String,
     detail: String?,
 ) {
-    if (detail.isNullOrBlank()) return
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
+    if (detail.isNullOrBlank()) return
     SecondaryButton(onClick = { scope.launch { clipboard.copyPlainText(text + "\n" + detail) } }) { Text(copyText("detail.act.copy")) }
 }

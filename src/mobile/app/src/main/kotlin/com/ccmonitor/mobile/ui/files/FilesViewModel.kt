@@ -135,25 +135,6 @@ class FilesViewModel(
 
     private val holderToken = UUID.randomUUID().toString()
 
-    init {
-        hostConnector.retain(hostId, holderToken)
-        connect()
-        // 落过盘、开起来接回来的那几组：屏后开也照最后那一格画。
-        viewModelScope.launch {
-            feed.batches.onSubscription { feed.resumed().forEach(::show) }.collect(::onBatch)
-        }
-        // 换了一条流（`epoch` 变了）：之前在路上的问答作废了 ⇒ 打不开的那一屏再问一次，列着的那一屏重列。
-        viewModelScope.launch {
-            feed.epoch.drop(1).collect {
-                when (_ui.value) {
-                    is FilesUi.Error -> connect()
-                    FilesUi.Ready -> refresh()
-                    FilesUi.Connecting -> {}
-                }
-            }
-        }
-    }
-
     /** SSH 那层通着（常驻流在它上面）；没有 · 死了 ⇒ 当场（重）连。 */
     private suspend fun ensureSsh() {
         val epoch = hostConnector.retain(hostId, holderToken)
@@ -470,6 +451,26 @@ class FilesViewModel(
             }.onFailure(::say)
         _busy.value = false
         return r
+    }
+
+    // 放在全部状态字段之后：开起来就接回落过盘的那几组、当场照最后那一格画浮卡（[show]），用到的字段那时都得已初始化。
+    init {
+        hostConnector.retain(hostId, holderToken)
+        connect()
+        // 落过盘、开起来接回来的那几组：屏后开也照最后那一格画。
+        viewModelScope.launch {
+            feed.batches.onSubscription { feed.resumed().forEach(::show) }.collect(::onBatch)
+        }
+        // 换了一条流（`epoch` 变了）：之前在路上的问答作废了 ⇒ 打不开的那一屏再问一次，列着的那一屏重列。
+        viewModelScope.launch {
+            feed.epoch.drop(1).collect {
+                when (_ui.value) {
+                    is FilesUi.Error -> connect()
+                    FilesUi.Ready -> refresh()
+                    FilesUi.Connecting -> {}
+                }
+            }
+        }
     }
 
     override fun onCleared() {
