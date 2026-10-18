@@ -162,6 +162,19 @@ describe("一个会话读成什么（session-face）：点 · 字照抄那台的
     vi.useRealTimers();
   });
 
+  it("机器表里删掉的那台不再问（`drop`）：再问时 machines 里没有它，别的照旧", async () => {
+    const asked: unknown[] = [];
+    typed.fake = vi.fn(async (_o: string, _op: string, args: unknown) => {
+      asked.push(args);
+      return { items: [], total: 0, unreadable: [], down: [] };
+    }) as never;
+    const book = new NeedsBook();
+    await book.refreshAll(["<local>", "box"]);
+    await book.drop("box");
+    expect(asked.at(-1)).toEqual({ machines: ["<local>"] });
+    typed.fake = null;
+  });
+
   it("窄窗两个字母取项目目录名里的字母；标题拆成项目那一格 ＋ 名字（都是核心给的；核心还没报 ⇒ sid 前 8 位）", () => {
     expect([abbrOf(tab("x", { projectDir: "/w/orders" })), abbrOf(tab("x", { projectDir: "/w/web-console" })), abbrOf(tab("x", { projectDir: "/w/数据集" }))]).toEqual(["or", "we", "数据"]);
     expect(titleParts(tab("x", { projectDir: "/w/orders", label: "加重试", labelProject: "orders" }))).toEqual({ proj: "orders", title: "加重试", bg: false, forked: false });

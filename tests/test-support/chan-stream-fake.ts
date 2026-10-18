@@ -20,6 +20,8 @@ interface Rec {
   sink: (items: unknown[]) => void;
   /** 每次 `want(n)` 的 n（判据核「还 credit」用）。 */
   wants: number[];
+  /** 退订过（`stop()`）。 */
+  stopped: boolean;
 }
 
 const recs: Rec[] = [];
@@ -29,9 +31,9 @@ export const chanStreamModule = {
   chan: {
     subscribe: vi.fn(
       (origin: string, kind: string, _from: unknown, _want: number, sink: (items: unknown[]) => void) => {
-        const rec: Rec = { origin, kind, sink, wants: [] };
+        const rec: Rec = { origin, kind, sink, wants: [], stopped: false };
         recs.push(rec);
-        return Promise.resolve({ want: (n: number) => rec.wants.push(n), stop: () => {} });
+        return Promise.resolve({ want: (n: number) => rec.wants.push(n), stop: () => void (rec.stopped = true) });
       },
     ),
   },
@@ -52,6 +54,11 @@ export const streamFake = {
   },
   get subscriptions(): readonly Rec[] {
     return recs;
+  },
+  /** 那台那一种流最近订的那一条是第几条（没有 ⇒ -1）。 */
+  indexOf(origin: string, kind: string): number {
+    for (let i = recs.length - 1; i >= 0; i--) if (recs[i]!.origin === origin && recs[i]!.kind === kind) return i;
+    return -1;
   },
   /** 逐行来的实时格（小批：没有批边界）。 */
   lines(payloads: unknown[], i = 0): void {

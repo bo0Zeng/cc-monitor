@@ -596,10 +596,14 @@ async fn local_changed_pushes_reach_the_ui_subscription() {
     );
 }
 
-/// 两条路交界面的是同一个口：`changed` 那一格在 monitor 生产段里恰好由分派第二层调一处（本机远端同一处）。
+/// 两条路交界面的是同一个口：后端推来的 `changed` 那一格在 monitor 生产段里恰好由分派第二层调一处（本机远端同一处）。
+/// 另一处是壳自己说的那一声：照机器表对齐完远端流（`machine_table::tell_followed`；本机后端那一帧 `changed {machines}` 分派那里不转）。
 #[test]
 fn both_paths_hand_changed_pushes_to_the_same_replay_entry() {
-    let want = set(&[("stream_source/dispatch.rs", "apply")]);
+    let want = set(&[
+        ("stream_source/dispatch.rs", "apply"),
+        ("machine_table.rs", "tell_followed"),
+    ]);
     for needle in ["replay.changed("] {
         assert_eq!(callers_of(needle), want, "`{needle}` 的生产调用方对不上");
     }

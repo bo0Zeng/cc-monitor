@@ -78,6 +78,16 @@ pub(crate) fn refresh() {
     });
 }
 
+/// 壳照机器表对齐完远端流之后在本机 `changed/machines` 上说一声：主窗口据它重问 `backend_machines`、补订新来的 · 退订没了的。
+/// 本机后端自己那一帧 `changed {machines}` 不往界面转（它说的是表写完了，那一刻远端流还没对齐，界面这时重问拿到的是旧的）。
+pub(crate) fn tell_followed(replay: &crate::event_replay::EventReplay) {
+    let topic = serde_json::to_value(cmd_wire::frame::Topic::Machines)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_default();
+    replay.changed(&crate::origin::Origin::local(), &topic, "{}".into());
+}
+
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/machine_table_tests.rs"]
 mod tests;

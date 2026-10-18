@@ -805,18 +805,20 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  // 会话内容经通道 `subscribe` 来：每台机器一条 `session-lines`。哪几台由后端注册表说了算
-  //   （`backend_machines`：本机恒第一，远端是起步时各起了一条流的那几台）。问不到 ⇒ 至少订本机。
-  let machines: string[] = [LOCAL_ORIGIN];
-  try {
-    machines = await commands.backend_machines();
-  } catch (e) {
-    console.warn("[events] backend_machines 失败，只订本机的会话流：", e);
-  }
-  // 「没回来的组员」等每台都在自己那条流上报完了才认（壳那一刻先在别的台的流上到了也不算）。
-  tabs.setMachines(machines as Origin[]);
-  // 需手动：每台问一次（之后那台推 `changed {needs | plan | manual}` · 条上会话进出需手动再问它）。
-  void needsBook.refreshAll(machines as Origin[]);
+  // 会话内容经通道 `subscribe` 来：每台机器一条 `session-lines`（连同活卡 · 那几种 `changed`）。哪几台由壳的注册表说了算
+  //   （`backend_machines`：本机恒第一，远端是此刻起了流的那几台；问不到 ⇒ 至少订本机）。机器表变了（加 · 删 · 改名）壳对齐完远端流
+  //   在本机 `changed/machines` 上说一声 ⇒ 再问、新来的补订、没了的退订（`bindEvents` 的 `machines`），不重启。
+  let machinesSettled = false;
+  const onMachinesMoved = (now: readonly Origin[], added: readonly Origin[], dropped: readonly Origin[]): void => {
+    // 「没回来的组员」等每台都在自己那条流上报完了才认（壳那一刻先在别的台的流上到了也不算）。
+    tabs.setMachines(now);
+    for (const o of dropped) void needsBook.drop(o);
+    // 需手动：每台问一次（之后那台推 `changed {needs | plan | manual}` · 条上会话进出需手动再问它）；计划那一侧同。
+    if (added.length > 0) void needsBook.refreshAll(added);
+    for (const o of added) void planNeeds.refresh(o);
+    // 起来那一批的账号在 `bindEvents` 返回后一起补刷（见下）；之后新来的那台当场补。
+    if (machinesSettled) for (const o of added) onAccountsChanged(o);
+  };
   // await：保证 listener 注册完成、会话流订阅在 monitor 那一侧登记好，再 emit frontend-ready
   // （它就是这些订阅的就绪点：后端先重发宣告、再按 credit 交留存、再对账 —— 顺序见 `event_replay·rs::ready_point`）。
   await bindEvents({
@@ -945,21 +947,24 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 一个会话刚进了那台那条流的「在看」名单 ⇒ 没在看那段没上流的补上（`TabManager.onSessionWatch`）。
     onSessionWatch: (origin, p) => tabs.onSessionWatch(origin, p),
   }, {
-    streams: machines.map((origin) => ({ origin, kind: "session-lines" })),
-    // 每台的活卡都住那台的常驻后端 ⇒ 每台都订（与会话行同一份机器清单）。
-    liveCards: machines,
-    // 每台每个主题一条 `changed/<topic>`：账号清单（替掉裸事件 `remote-backend-ready`）· 任务清单（替掉本机那个裸事件 `task-update`）·
-    //   额度 · 会话轮换 · 策略目录 · 计划 · 待答请求 · 会话清单。配置文件那一种只设置窗订。
-    changed: machines.flatMap((origin) =>
-      (["accounts", "tasks", "quota", "rotation", "rotation_strategies", "plan", "needs", "manual", "session_hidden", "history_list"] as const).map((topic) => ({ origin, topic })),
-    ),
+    machines: {
+      ask: async () => (await commands.backend_machines()) as Origin[],
+      plan: (origin) => ({
+        streams: [{ origin, kind: "session-lines" }],
+        // 每台的活卡都住那台的常驻后端 ⇒ 每台都订（与会话行同一份机器清单）。
+        liveCards: [origin],
+        // 每台每个主题一条 `changed/<topic>`：账号清单（替掉裸事件 `remote-backend-ready`）· 任务清单（替掉本机那个裸事件 `task-update`）·
+        //   额度 · 会话轮换 · 策略目录 · 计划 · 待答请求 · 会话清单。配置文件那一种只设置窗订。
+        changed: (["accounts", "tasks", "quota", "rotation", "rotation_strategies", "plan", "needs", "manual", "session_hidden", "history_list"] as const).map((topic) => ({ origin, topic })),
+      }),
+      moved: onMachinesMoved,
+    },
   });
+  machinesSettled = true;
   // 账号那一格经通道订（每台一条 `changed/accounts`，上面 `bindEvents` 的 `changed`）。
   //   订阅登记之前那一窗里连上的不会有 `seen`（句柄只在状态变时说）⇒ `bindEvents` 返回（订阅都登记好了）之后补刷一次 ——
   //   与「独立窗口的订阅本身就是它的就绪点」同一个道理。
   onAccountsChanged();
-  // 计划那一侧的「需手动」：起来每台问一次（之后靠「计划变了」与会话结束再问）。
-  for (const m of machines) void planNeeds.refresh(m);
 
   // 后端 ERROR 级别 tracing → 右下角红色 toast
   bindErrorToast();

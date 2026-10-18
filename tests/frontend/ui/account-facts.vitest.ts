@@ -85,7 +85,7 @@ describe("账号清单那一侧：只在那台清单可能变了时问那一台"
 
 describe("主界面接线：谁会重问账号清单", () => {
   // 会话起停不在里面：会话跑在哪个号下由那台在宣告里说（`tabs.vitest.ts` 那条「3 台、起停一条会话」管徽章那一半）。
-  it("★ 重问只有三处：本界面切号（那一台）· 那台 `changed/accounts`（那一台）· 订阅登记好之后补刷一次（各台）", () => {
+  it("★ 重问只有四处：本界面切号（那一台）· 那台 `changed/accounts`（那一台）· 订阅登记好之后补刷一次（各台）· 起来之后新加的那台订上之后补刷（那一台）", () => {
     const src = readFileSync(resolve(REPO_ROOT, "src", "frontend", "ui", "main.ts"), "utf8");
     const lines = (needle: RegExp): string[] => src.split("\n").filter((l) => needle.test(l)).map((l) => l.trim());
     expect(lines(/accountFacts\.refresh\(/)).toEqual([
@@ -93,6 +93,7 @@ describe("主界面接线：谁会重问账号清单", () => {
       "accountFacts.refresh(origin);",
     ]);
     expect(lines(/onAccountsChanged\(/).filter((l) => !l.startsWith("const "))).toEqual([
+      "if (machinesSettled) for (const o of added) onAccountsChanged(o);",
       "onAccountsChanged(origin);",
       "onAccountsChanged();",
     ]);

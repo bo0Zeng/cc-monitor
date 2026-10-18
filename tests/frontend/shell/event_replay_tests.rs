@@ -1545,3 +1545,35 @@ fn the_codex_sample_frames_decode() {
     assert!(path.as_deref().is_some_and(|p| p.ends_with(".jsonl")));
     assert_eq!(lines, 6);
 }
+
+/// 壳照机器表对齐完远端流 ⇒ 本机 `changed/machines` 上恰好一格（主窗口据它重问 `backend_machines`、补订 / 退订那几台）；别的主题 · 别台一格不收。
+#[tokio::test]
+async fn aligning_the_remote_streams_tells_the_window_on_the_local_machines_stream() {
+    let (r, rec) = hub();
+    r.origin_seen(&local(), true);
+    r.subscribe("w", 1, &local(), "changed/machines", None, 4);
+    r.subscribe("w", 2, &local(), "changed/accounts", None, 4);
+    r.subscribe(
+        "w",
+        3,
+        &crate::origin::Origin("box".into()),
+        "changed/machines",
+        None,
+        4,
+    );
+    rec.0.lock().unwrap().clear();
+    crate::machine_table::tell_followed(&r);
+    let frames: Vec<u64> = rec
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .flat_map(|(_, id, items)| {
+            items
+                .iter()
+                .filter(|i| matches!(i, WItem::Frame { .. }))
+                .map(move |_| *id)
+        })
+        .collect();
+    assert_eq!(frames, vec![1]);
+}
