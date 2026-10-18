@@ -4,9 +4,9 @@
 //! |---|---|---|
 //! | R1 | 一遍扫出来的 尾段 · 骨架索引 · 用户输入 · 轮次 · 事实 == 各自单扫的那一份（逐格相等，含空行 · 坏行 · 残尾） | 合成记录 |
 //! | R2 | 同一份没变 ⇒ 第二次拿到的就是第一次那张（同一个 `Arc`）；追加一行 / 改了修改时刻 ⇒ 重扫、读到新内容 | 真文件 |
-//! | R3 | 条数上限：超了先淘汰最久没用的；单张比字节上限还大 ⇒ 不留（每次现扫） | 真文件 |
+//! | R3 | 条数上限：超了先淘汰最久没用的；单张比字节上限还大 ⇒ 照留、别的全挤掉（连问几次只读一遍盘） | 真文件 |
 //! | R4 | 几个线程同时冷开同一份 ⇒ 只扫一遍（都拿到同一张） | 真文件、8 线程 |
-//! | R10 | 图被挤掉 / 太大不留 ⇒ 留下事实尾巴；再问事实只读追加的那一截，答案同从 0 扫 | 真文件 |
+//! | R10 | 图被挤掉（条数 · 被一张超字节上限的挤）⇒ 留下事实尾巴；再问事实只读追加的那一截，答案同从 0 扫 | 真文件 |
 
 use super::*;
 use std::io::Write as _;
@@ -193,7 +193,7 @@ fn r2_unchanged_is_a_hit_changed_is_a_rescan() {
 }
 
 #[test]
-fn r3_entry_cap_evicts_the_least_recent_and_oversized_is_not_kept() {
+fn r3_entry_cap_evicts_the_least_recent_and_oversized_is_kept_alone() {
     let d = sandbox("r3");
     let paths: Vec<PathBuf> = (0..3)
         .map(|i| {
@@ -219,11 +219,27 @@ fn r3_entry_cap_evicts_the_least_recent_and_oversized_is_not_kept() {
         "最久没用的 1 没被淘汰"
     );
 
+    // 单张比字节上限还大 ⇒ 照留（问的时候本来就整张在内存里），别的全挤掉：连问几次只读一遍盘。
     let tiny = RecordScans::new(4, 1);
+    let y = tiny.get(&paths[1]).unwrap();
+    let before = tiny.bytes_read();
     let x = tiny.get(&paths[0]).unwrap();
+    let once = tiny.bytes_read() - before;
+    assert_eq!(once, std::fs::metadata(&paths[0]).unwrap().len());
+    for _ in 0..3 {
+        assert!(
+            Arc::ptr_eq(&x, &tiny.get(&paths[0]).unwrap()),
+            "超字节上限的没留下"
+        );
+    }
+    assert_eq!(
+        tiny.bytes_read() - before,
+        once,
+        "超字节上限的每问都回盘重读"
+    );
     assert!(
-        !Arc::ptr_eq(&x, &tiny.get(&paths[0]).unwrap()),
-        "超字节上限的也留下了"
+        !Arc::ptr_eq(&y, &tiny.get(&paths[1]).unwrap()),
+        "超字节上限的那张留下了，别的没挤掉"
     );
     std::fs::remove_dir_all(&d).ok();
 }
@@ -554,7 +570,7 @@ fn r9_a_continuation_extends_the_held_map_by_the_appended_bytes_only() {
     std::fs::remove_dir_all(&d).ok();
 }
 
-/// R10（事实尾巴）：扫描图被挤掉（条数上限）· 单张比字节上限还大不留 ⇒ 按路径留下事实尾巴；之后记录追加了一截，
+/// R10（事实尾巴）：扫描图被挤掉（条数上限 · 被一张超字节上限的挤）⇒ 按路径留下事实尾巴；之后记录追加了一截，
 /// 再问事实只读追加的那一截 ＋ 见证，答案与此刻从 0 扫的那一份逐格相同（同一请求替掉前一条那一格也接得上）。
 /// 尾巴对不上（截断重写）⇒ 整份重扫，答的是新内容。
 #[test]
@@ -608,10 +624,11 @@ fn r10_an_evicted_map_leaves_a_facts_tail_that_reads_only_the_appended_bytes() {
         "同一请求的两条算成了两次"
     );
 
-    // 单张比字节上限还大 ⇒ 不留图、留尾巴。
+    // 被一张超字节上限的挤掉 ⇒ 留尾巴。
     let tiny = RecordScans::new(4, 1);
     std::fs::write(&b, branched(2)).unwrap();
     tiny.facts(&b, &limits, None).unwrap();
+    tiny.get(&a).unwrap();
     let more = "{\"type\":\"user\",\"uuid\":\"z\",\"message\":{\"role\":\"user\",\"content\":\"再一句\"}}\n";
     append(&b, more);
     let before = tiny.bytes_read();

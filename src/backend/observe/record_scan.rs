@@ -5,12 +5,13 @@
 //!   [`super::recognize::index_row::index_row_of`] · [`super::recognize::user_inputs::user_input_of`] · [`super::recognize::turns::TurnScan`] ·
 //!   [`super::recognize::facts::note_record`] · [`super::lines::counts`]）。
 //! - 留着：没变 ⇒ 那一张；变长了 ⇒ 核游标前那几个字节（见证），对得上就从那一张接着扫追加的那一截（还没收尾那一轮的扫描状态
-//!   也留着）、对不上 ⇒ 整份重扫；条数与估算字节各有上限，超了先淘汰最久没用的；单张比字节上限还大就不留。
+//!   也留着）、对不上 ⇒ 整份重扫；条数与估算字节各有上限，超了先淘汰最久没用的；单张比字节上限还大 ⇒ 照留、别的全挤掉
+//!   （问的时候它本来就整张在内存里；不留就每问回盘重读）。常驻上界 = 字节上限与眼下最大那一张取大。
 //! - 落盘：大记录扫完落一份骨架（[`super::skeleton`]）；进程里没有那一张时照骨架起步 —— 没变 ⇒ 不读，变长了 ⇒ 只读追加的那一截。
 //! - 同时冷开同一份（界面开一条会话几问是一齐发的）：先到的那一个扫，后到的等它扫完拿同一张 —— 那一张是它们发问之后才扫完的，
 //!   每样都带着 `end`，续取从那里接。
 //! - 只扫到问的那一刻的长度：之后写进来的不在这一张里（键对得上内容）。
-//! - 事实尾巴：一张图被挤掉（或太大不留）时按路径留下它的事实累加器（游标 · 见证 · 累加器），至多 [`TAIL_KEEP`] 条；
+//! - 事实尾巴：一张图被挤掉时按路径留下它的事实累加器（游标 · 见证 · 累加器），至多 [`TAIL_KEEP`] 条；
 //!   之后问事实（[`RecordScans::facts`]）图不在、尾巴在且见证对得上 ⇒ 只认事实地接着读追加的那一截，不读骨架、不整份重扫。
 
 use super::recognize::facts::{ContextLimits, SessionFacts};
@@ -439,7 +440,7 @@ pub(crate) struct RecordScans {
     writes: Mutex<Vec<(PathBuf, std::thread::JoinHandle<()>)>>,
 }
 
-/// 全进程那一份的上限：条数（同时开着的大会话）与估算字节。
+/// 全进程那一份的上限：条数（同时开着的大会话）与估算字节（单张超了照留、独占，见 [`RecordScans::evict`]）。
 const MAX_ENTRIES: usize = 16;
 const MAX_BYTES: usize = 64 << 20;
 
@@ -597,19 +598,15 @@ impl RecordScans {
             g.flights.retain(|(p, _)| p != path);
             g.slots.retain(|s| s.path != path);
             if let Ok(map) = &scanned {
-                if map.bytes <= self.max_bytes {
-                    let tick = g.tick;
-                    g.tails.retain(|t| t.path != path);
-                    g.slots.push(Slot {
-                        path: path.to_path_buf(),
-                        stamp,
-                        map: map.clone(),
-                        used: tick,
-                    });
-                    self.evict(&mut g);
-                } else {
-                    g.leave_tail(path, map);
-                }
+                let tick = g.tick;
+                g.tails.retain(|t| t.path != path);
+                g.slots.push(Slot {
+                    path: path.to_path_buf(),
+                    stamp,
+                    map: map.clone(),
+                    used: tick,
+                });
+                self.evict(&mut g, path);
             }
         }
         let shared = scanned.as_ref().map(Arc::clone).map_err(|e| e.to_string());
@@ -705,8 +702,8 @@ impl RecordScans {
         w.push((path.to_path_buf(), h));
     }
 
-    /// 条数或字节超了 ⇒ 从最久没用的开始扔。
-    fn evict(&self, g: &mut Inner) {
+    /// 条数或字节超了 ⇒ 从最久没用的开始扔；刚放进来的 `kept` 那张不扔。它一张就比字节上限大 ⇒ 别的全扔、它独留，说一声。
+    fn evict(&self, g: &mut Inner, kept: &Path) {
         loop {
             let bytes: usize = g.slots.iter().map(|s| s.map.bytes).sum();
             if g.slots.len() <= self.max_entries && bytes <= self.max_bytes {
@@ -716,9 +713,16 @@ impl RecordScans {
                 .slots
                 .iter()
                 .enumerate()
+                .filter(|(_, s)| s.path != kept)
                 .min_by_key(|(_, s)| s.used)
                 .map(|(i, _)| i)
             else {
+                tracing::warn!(
+                    "扫描图 {} MiB 超过缓存上限 {} MiB：照留，别的扫描图全挤掉 —— {}",
+                    bytes >> 20,
+                    self.max_bytes >> 20,
+                    kept.display()
+                );
                 return;
             };
             let gone = g.slots.remove(oldest);
