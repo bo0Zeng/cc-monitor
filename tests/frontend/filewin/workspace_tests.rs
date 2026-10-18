@@ -3117,8 +3117,11 @@ async fn a_moved_directory_re_asks_only_the_tabs_showing_it_with_their_held() {
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
+    // 两页同时问，哪一条先上线不定 ⇒ 按集合比。
+    let mut first = ls_asks(&wired);
+    first.sort();
     assert_eq!(
-        ls_asks(&wired),
+        first,
         [(a.clone(), false), (b.clone(), false)],
         "头一趟各自整份问"
     );
