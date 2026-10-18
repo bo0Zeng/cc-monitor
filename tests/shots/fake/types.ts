@@ -82,8 +82,6 @@ export interface World {
   sessions: SessionSpec[];
   /** 帧命令的答法，按 op 名；场景可以整条覆盖。 */
   ops: Record<string, OpHandler>;
-  /** 各台会话外的需手动（按 origin）：给了 ⇒ 那台 `sessions-needs` 真后端那一份里会外那一截换成它；`Refuse` ⇒ 那一截读不出（那一句）。 */
-  manualAt?: (origin: string) => unknown[] | Refuse;
   /** 场景故意不答的那几条（演「后端比界面老」）：答不上照样按「不认」拒，只是不报。 */
   quiet?: string[];
   /** 帧命令晚多少毫秒才答（按 op 名；不给 ⇒ 当场答）。性能台架用它演「后端读大文件 / 远端那一跳要时间」：快速连切时，切走之后才回来的那几问还干不干活。 */

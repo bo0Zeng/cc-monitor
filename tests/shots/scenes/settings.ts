@@ -205,7 +205,7 @@ export const SETTINGS_SCENES: Scene[] = [
     await sleep(800);
   }),
   settings("settings-machine-local-refused", "设置 · 本机 · 本机后端被拒", "同上，本机那一页卡头：问题行 ＋ 下一步", async () => {
-    await go("machine:（本机）");
+    await go("machine:<local>");
     await emit("machine-state", { origin: "<local>", machine: localRefused });
     await sleep(800);
   }),
@@ -414,14 +414,14 @@ export const SETTINGS_SCENES: Scene[] = [
   page("settings-machine-config", "设置 · 远端 · 别名与配置文件", "devbox 的「别名与配置文件」栏", "machine:devbox", "machine:devbox#config"),
   settings("settings-machine-menu", "设置 · 机器 ⋯ 菜单", "机器列表里 devbox 那一行的 ⋯", async () => {
     await go("machines");
-    const row = document.querySelector<HTMLElement>('.remote-machine-row[data-page-id="machine:devbox"]')!;
-    await click(row.querySelector<HTMLButtonElement>('button[aria-label]')!);
+    // 机器表是本机后端读盘答的：等那一行画出来（「读取中」那一下之后）再点。
+    await click(await waitFor('.remote-machine-row[data-page-id="machine:devbox"] button[aria-label]'));
     await sleep(500);
   }),
   settings("settings-machine-removed", "设置 · 删机器 ＋ 8 秒撤销", "⋯ →「从列表删除」：那一行当场没了，底下一条撤销", async () => {
     await go("machines");
-    const row = document.querySelector<HTMLElement>('.remote-machine-row[data-page-id="machine:gpu-01"]')!;
-    await click(row.querySelector<HTMLButtonElement>('button[aria-label]')!);
+    // 机器表是本机后端读盘答的：等那一行画出来（「读取中」那一下之后）再点。
+    await click(await waitFor('.remote-machine-row[data-page-id="machine:gpu-01"] button[aria-label]'));
     await sleep(300);
     await click(await byText("[role=menuitem], button", "从列表删除"));
     await sleep(600);

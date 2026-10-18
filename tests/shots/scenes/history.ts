@@ -4,6 +4,8 @@
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { Scene } from "./index";
 import { defaultWorld, LOCAL } from "../fake/world";
+import { arrivalOf } from "../fake/ops";
+import type { Opened } from "../../../src/frontend/ui/generated/Opened";
 import { putQuota, type QuotaSpec } from "../disk";
 import { codexRolloutRel, codexSaidRollout, SEARCH_WORD } from "../fake/history";
 import { byText, click, key, mainReady, sleep, type, waitFor } from "./helpers";
@@ -159,7 +161,7 @@ export const HISTORY_SCENES: Scene[] = [
       const w = defaultWorld();
       w.ops = {
         ...w.ops,
-        "session-open": () => ({ landed: "window", session: null, line: "ccm --resume s3", sid: "s3", agent: "claude", cwd: "~/notes", account: null, note: null, prompt: null }),
+        "session-open": (): Opened => ({ landed: "window", session: null, line: "ccm --resume s3", sid: "s3", agent: "claude", cwd: "/home/user/notes", account: null, note: null, prompt: null, arrival: arrivalOf("s3", null) }),
       };
       w.commands = { ...w.commands, open_local_terminal: () => "noWindow" };
       return w;
