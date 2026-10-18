@@ -1436,6 +1436,13 @@ fn repair_lifts_the_one_account_copy_of_an_on_demand_shared_dir_into_the_shared_
         "计划（夹具句）",
         "{fixed}"
     );
+    // 同一个盘上挪是改名：备份里不留整份拷贝。
+    let bk = format!(
+        ".cc-monitor/accounts/.backup-{}/root{}",
+        fixed["backup"].as_str().unwrap(),
+        t.s(&acct("lab", "plans"))
+    );
+    assert!(!t.exists(&bk), "挪之前整份拷了一次备份：{bk}");
     for n in ["lab", "x"] {
         assert!(t.is_link(&acct(n, "plans")), "{n} 没链上");
         assert_eq!(t.read(&acct(n, "plans/a-plan.md")), "计划（夹具句）");

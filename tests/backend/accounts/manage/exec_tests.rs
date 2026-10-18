@@ -48,3 +48,26 @@ fn backup_names_are_timestamps_only() {
         assert!(!backup_id_ok(bad), "{bad:?}");
     }
 }
+
+/// 挪（`Move`）：同一个文件系统里是改名、不丢东西 ⇒ 不先整份拷进备份，撤销记成「从挪到的那一处拷回来」（`UNMOVE\t<原处>\t<挪到的那一处>`，
+/// 归「还原」那一组，原处后来建的链接不再删）；跨文件系统 · 认不出在哪个盘 ⇒ 照旧先拷备份。
+#[test]
+fn a_same_disk_move_is_undone_from_where_it_went_not_from_a_backup_copy() {
+    assert!(!move_keeps_backup(Some(7), Some(7)));
+    assert!(move_keeps_backup(Some(7), Some(8)));
+    assert!(move_keeps_backup(None, Some(7)));
+    assert!(move_keeps_backup(Some(7), None));
+    let (steps, bad) =
+        undo_steps("UNMOVE\t/h/a/p\t/h/s/p\nDELETE\t/h/s/p\nDELETE\t/h/a/p\nUNMOVE\t/h/a\n");
+    assert_eq!(
+        steps,
+        vec![
+            Undo::Back {
+                at: "/h/a/p".into(),
+                from: "/h/s/p".into()
+            },
+            Undo::Delete("/h/s/p".into()),
+        ]
+    );
+    assert_eq!(bad, ["UNMOVE\t/h/a"]);
+}
