@@ -11,10 +11,16 @@ fn scratch(tag: &str) -> std::path::PathBuf {
     d
 }
 
+/// 起子进程那一刻（fork 到 exec 之间）子进程拿着本进程每一份打开的描述，锁跟着那份描述走 ⇒
+/// 锁那条与起子进程那条不能同时跑，否则「放了还拿不到」会偶发红。
+#[cfg(unix)]
+static NO_FORK_NOW: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// 第一个拿到，第二个（另一次打开 = 另一份打开文件描述）拿不到；第一个放了之后第二个拿得到。
 #[cfg(unix)]
 #[test]
 fn the_dir_lock_is_exclusive_and_released_on_drop() {
+    let _quiet = NO_FORK_NOW.lock().unwrap_or_else(|e| e.into_inner());
     let d = scratch("lock");
     let first = try_hold(&d).expect("锁").expect("第一个该拿到");
     assert!(
@@ -103,6 +109,7 @@ fn the_peer_is_the_process_that_listens() {
     use std::io::BufRead as _;
     let d = scratch("peer");
     let path = d.join("s.sock");
+    let quiet = NO_FORK_NOW.lock().unwrap_or_else(|e| e.into_inner());
     let mut other = std::process::Command::new("python3")
         .args([
             "-c",
@@ -114,6 +121,7 @@ fn the_peer_is_the_process_that_listens() {
         .stdout(std::process::Stdio::piped())
         .spawn()
         .expect("起在听的那个进程");
+    drop(quiet);
     let mut line = String::new();
     std::io::BufReader::new(other.stdout.take().unwrap())
         .read_line(&mut line)
