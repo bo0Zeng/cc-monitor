@@ -25,6 +25,7 @@ import { liveFace } from "../../test-support/session-faces";
 import type { ManualItem } from "../../../src/frontend/ui/login-reads";
 import { fakeNeedsBook, listOf, manualItem, sessionItem, type NeedsRead } from "../../test-support/needs-fake";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { icon } from "../../../src/frontend/ui/kit/icon";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -151,6 +152,23 @@ describe("浮层", () => {
     inert.click();
     expect(r.login).not.toHaveBeenCalled();
     expect(rows().filter((e) => e.dataset.inert !== "true").length, "能点的只剩那一行").toBe(1);
+  });
+
+  it("★ 权限太宽的秘密文件：第一行 said、第二行机器名 ＋ 怎么修（why），警示图标，不画按钮、点不了；计进入口的数", async () => {
+    const file: ManualItem = { kind: "secretFile", said: "核心·钥匙文件 /h/k：太宽", fix: null, why: "核心·只给本人" };
+    const r = rig([], { [LOCAL_ORIGIN]: machine([], [file]) });
+    await r.book.refresh(LOCAL_ORIGIN);
+    expect(r.strip.querySelector(".tab-needs-count")?.textContent).toBe("1");
+    r.strip.click();
+    const inert = panel()!.querySelector<HTMLElement>('[data-inert="true"]')!;
+    expect(inert.dataset.row).toBe("manual");
+    expect(inert.textContent).toContain("核心·钥匙文件 /h/k：太宽");
+    expect(inert.textContent).toContain(copyText("control.machine.local"));
+    expect(inert.textContent).toContain("核心·只给本人");
+    expect(inert.querySelector("button")).toBeNull();
+    expect(inert.querySelector("svg")?.outerHTML).toBe(icon("warning", "compact").outerHTML);
+    inert.click();
+    expect(r.login).not.toHaveBeenCalled();
   });
 
   it("★ 一台断开 ⇒ 底部「{machine} 离线 · 未计入」，不计数；回了话、清单无法读取 ⇒ 入口不带数字、虚线框，底部那一句、原话在悬停里", async () => {

@@ -2379,33 +2379,6 @@ fn the_badge_is_written_by_the_core() {
     );
 }
 
-/// 清单的 `notice` 是几句「能用但有缺」并成的一句：凭据文件权限那一句并进去（KS11）；都没有 ⇒ `null`。
-#[test]
-fn the_list_notice_carries_the_credentials_file_warning_too() {
-    let empty = tmpdir("notice");
-    let base = |n: Option<&str>| {
-        let mut v =
-            super::list_product_with(&empty, None, &[], &[], "claude-code", "claude-code", false);
-        v.notice = n.map(str::to_string);
-        v
-    };
-    assert_eq!(with_notice(base(None), None).notice, None);
-    assert_eq!(
-        with_notice(base(None), Some("宽".into())).notice.unwrap(),
-        "宽"
-    );
-    assert_eq!(with_notice(base(Some("缺")), None).notice.unwrap(), "缺");
-    assert_eq!(
-        with_notice(base(Some("缺")), Some("宽".into()))
-            .notice
-            .unwrap(),
-        copy_text(
-            "beAccountsQuery.listProductAt.joined",
-            &[("a", "缺"), ("b", "宽")]
-        )
-    );
-}
-
 /// 「这条会话此刻谁持着它」只有一处（[`session_holders_by`]），照适配层声明的判活方式走：
 /// 开着写那一家 ⇒ 此刻开着记录写的进程（关了 ⇒ 判过了、没人）；pidfile 那一家 ⇒ 这台 pidfile（一份都没有 ⇒ 判过了、没人）；
 /// 判不了的那一家 ⇒ `None`，哪怕此刻正有进程开着它写（不冒充判过）。
@@ -2592,47 +2565,6 @@ fn a_row_says_why_it_cannot_be_picked_and_its_plate() {
         ["work", "w", "工作", "", "0"].map(plate_text),
         ["wo", "w", "工", "?", "0"].map(str::to_string)
     );
-}
-
-/// KS11 上屏：两份自家秘密文件同一套判法、各一句。钥匙文件 0644 · 凭据文件 0600 ⇒ 恰好一句，点名钥匙文件；
-/// 两份都只给本人 · 都不在 ⇒ 不说。
-#[cfg(unix)]
-#[test]
-fn a_too_wide_relay_key_file_has_its_own_sentence_like_the_credentials_file() {
-    use std::os::unix::fs::PermissionsExt;
-    let dir = tmpdir("secret-notices");
-    let creds = dir.join("apikey-credentials.json");
-    let key = dir.join("relay-key");
-    assert!(
-        secret_file_notices(Some(&creds), Some(&key)).is_empty(),
-        "都不在 ⇒ 不说"
-    );
-    fs::write(&creds, "{}").unwrap();
-    fs::write(&key, "k").unwrap();
-    let mode = |p: &Path, m| fs::set_permissions(p, fs::Permissions::from_mode(m)).unwrap();
-    mode(&creds, 0o600);
-    mode(&key, 0o600);
-    assert!(
-        secret_file_notices(Some(&creds), Some(&key)).is_empty(),
-        "只给本人 ⇒ 不说"
-    );
-    mode(&key, 0o644);
-    let got = secret_file_notices(Some(&creds), Some(&key));
-    assert_eq!(got.len(), 1, "{got:?}");
-    assert!(
-        got[0].contains(&key.display().to_string())
-            && got[0].contains(&copy_text("credsPerm.notice.relayKey", &[]))
-            && got[0].contains("0644"),
-        "{got:?}"
-    );
-    mode(&creds, 0o640);
-    let got = secret_file_notices(Some(&creds), Some(&key));
-    assert_eq!(got.len(), 2, "{got:?}");
-    assert!(
-        got[0].contains(&copy_text("credsPerm.notice.apikey", &[])),
-        "{got:?}"
-    );
-    fs::remove_dir_all(&dir).ok();
 }
 
 /// ★ 每个号给不给［登录…］：只差登录、这一家能在 app 里登录 ⇒ 给；按量号没配 key · 号目录不在 · 不隔离 · 已就绪 ⇒ 不给；

@@ -6,6 +6,7 @@ use crate::accounts::sign_in::{self, FinishFail, SignInEnd};
 use crate::wire::spec::Fail;
 use crate::wire::typed::{self, Command};
 use copy_core::copy_text;
+use std::path::Path;
 
 pub(crate) use cmd_wire::needs::{LoginStartReq, ManualFix, ManualItem};
 
@@ -413,8 +414,53 @@ impl crate::wire::typed::Handle for LoginCancel {
     }
 }
 
-/// 这台此刻会话外的需手动清单（[`manual_of`] 喂这台的账号库 · 换号那一侧记的 · MCP 读面）；`sessions-needs` 那一截。
+/// 这台此刻会话外的需手动清单（[`manual_of`] 喂这台的账号库 · 换号那一侧记的 · MCP 读面；之后是 [`secret_files`] 这台那两份）；`sessions-needs` 那一截。
 pub(crate) fn manual_here() -> Result<Vec<ManualItem>, String> {
+    let mut items = logins_here()?;
+    items.extend(secret_files(
+        crate::accounts::upstream_select::file_face::machine_path()
+            .ok()
+            .as_deref(),
+        crate::platform::paths::home_dir()
+            .map(|h| h.join(relay_route_core::KEY_FILE_REL))
+            .as_deref(),
+    ));
+    Ok(items)
+}
+
+/// 这台自家两份秘密文件（API key 凭据文件 · 中转钥匙文件）各该列的那一项：不在 · 只给本人 ⇒ 不列。判法只在 `creds_core::perm`；每问一次现量。
+pub(crate) fn secret_files(creds: Option<&Path>, key: Option<&Path>) -> Vec<ManualItem> {
+    use creds_core::perm::Verdict;
+    [
+        (creds, copy_text("credsPerm.notice.apikey", &[])),
+        (key, copy_text("credsPerm.notice.relayKey", &[])),
+    ]
+    .into_iter()
+    .filter_map(|(path, what)| {
+        let path = path?;
+        let (how, why) = match creds_core::perm::verdict_at(path)? {
+            Verdict::OwnerOnly => return None,
+            Verdict::TooWide { how, fix } => (how, Some(fix)),
+            Verdict::Undetermined { why, .. } => (why, None),
+        };
+        Some(ManualItem::SecretFile {
+            said: copy_text(
+                "beManual.list.secretFile",
+                &[
+                    ("what", &what),
+                    ("path", &path.display().to_string()),
+                    ("how", &how),
+                ],
+            ),
+            fix: None,
+            why,
+        })
+    })
+    .collect()
+}
+
+/// 需登录的号 · 需登录的 MCP（[`manual_of`] 喂这台的）。
+fn logins_here() -> Result<Vec<ManualItem>, String> {
     let Some(agent) = crate::agents::sole_kind(|a| a.accounts.is_some()) else {
         return Ok(Vec::new());
     };

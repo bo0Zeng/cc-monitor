@@ -52,6 +52,18 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "MASK_READ",
+        "**访问掩码的位**不是体量：`creds-core/src/perm.rs` 一条 ACE 里读得到内容的那几位。",
+    ),
+    (
+        "MASK_WRITE",
+        "**访问掩码的位**不是体量：`creds-core/src/perm.rs` 一条 ACE 里写得进内容的那几位。",
+    ),
+    (
+        "MASK_PERMS",
+        "**访问掩码的位**不是体量：`creds-core/src/perm.rs` 一条 ACE 里改得了权限的那几位。",
+    ),
+    (
         "FNV64_BASIS",
         "**散列的起点**不是体量：`cmd-wire/src/fnv.rs` FNV-1a 64 从这个数开始喂字节。",
     ),

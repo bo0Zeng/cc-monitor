@@ -196,6 +196,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/stderr_log.rs", "let _ = append_line(log, &self.0);", Why::Diag, "一次性模式的诊断行：写不进诊断文件也不许回落 stderr（stderr 是协议通道），丢这一行、命令照常"),
     ("src/common/creds-core/src/perm.rs", "let _ = CloseHandle(token);", Why::Reap, "Windows 句柄 / 内存释放"),
     ("src/common/creds-core/src/perm.rs", "let _ = GetTokenInformation(token, TokenUser, None, 0, &mut need);", Why::NotAnError, "第一次调用只为问缓冲区要多大，按约定一定回「缓冲区不够」"),
+    ("src/common/creds-core/src/perm.rs", "let _ = LookupAccountSidW(PCWSTR::null(), sid, PWSTR::null(), &mut n, PWSTR::null(), &mut d, &mut kind);", Why::NotAnError, "第一次调用只为问名字与域要多长，按约定一定回「缓冲区不够」；长度为 0 ⇒ 翻不出、给 SID"),
     ("src/common/creds-core/src/perm.rs", "let _ = LocalFree(HLOCAL(psd.0));", Why::Reap, "Windows 句柄 / 内存释放"),
     ("src/common/creds-core/src/perm.rs", "let _ = LocalFree(HLOCAL(s.0 as *mut core::ffi::c_void));", Why::Reap, "Windows 句柄 / 内存释放"),
     // `cc_bus.rs` 那两行（本机 shell 读收尸）随那条读删了。

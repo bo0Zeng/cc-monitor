@@ -976,7 +976,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 自家秘密文件的权限：开一次、按句柄量（后端读凭据文件与中转钥匙都经它）· 量不动时的结论 · 上屏那一句；TS 侧零处判权限。
     open_checked: NONE,
     open_failed: NONE,
-    notice: NONE,
+    verdict_at: NONE,
     // Windows 判宽的白名单与「这条掩码碰不碰得到内容」（纯）；TS 侧没有孪生。
     TRUSTED_SIDS: NONE,
     mask_reaches: NONE,

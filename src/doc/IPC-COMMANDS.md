@@ -6613,7 +6613,7 @@ account: string | null, server: string, scope: string, said: string, fix: Manual
 /**
  * `fix` 为 `null` 时必有：为什么没有解法（写好的那一句）；有 `fix` ⇒ 缺。
  */
-why?: string, };
+why?: string, } | { "kind": "secretFile", said: string, fix: ManualFix | null, why?: string, };
 type Needs = { kind: NeedsKind, 
 /**
  * 等的是哪个工具调用（工具名原样）；判不出 ⇒ `null`。
@@ -6729,7 +6729,7 @@ type NeedsItem = { "kind": "session", rank: number, session: NeedsRow, } | { "ki
 type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
 type NeedsList = { 
 /**
- * 依次：此刻活着、那台说在等人的会话 · 计划里要人看的格 · 会话外的（需登录的号 · MCP）；一项都没有 ⇒ 空。
+ * 依次：此刻活着、那台说在等人的会话 · 计划里要人看的格 · 会话外的（需登录的号 · MCP · 权限太宽的自家秘密文件）；一项都没有 ⇒ 空。
  */
 items: Array<NeedsItem>, 
 /**
@@ -6858,7 +6858,7 @@ account: string | null, server: string, scope: string, said: string, fix: Manual
 /**
  * `fix` 为 `null` 时必有：为什么没有解法（写好的那一句）；有 `fix` ⇒ 缺。
  */
-why?: string, };
+why?: string, } | { "kind": "secretFile", said: string, fix: ManualFix | null, why?: string, };
 type Needs = { kind: NeedsKind, 
 /**
  * 等的是哪个工具调用（工具名原样）；判不出 ⇒ `null`。

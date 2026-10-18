@@ -8,7 +8,7 @@ import type { Words } from "./Words";
  */
 export type NeedsList = { 
 /**
- * 依次：此刻活着、那台说在等人的会话 · 计划里要人看的格 · 会话外的（需登录的号 · MCP）；一项都没有 ⇒ 空。
+ * 依次：此刻活着、那台说在等人的会话 · 计划里要人看的格 · 会话外的（需登录的号 · MCP · 权限太宽的自家秘密文件）；一项都没有 ⇒ 空。
  */
 items: Array<NeedsItem>, 
 /**

@@ -197,6 +197,14 @@ private fun PlanLine(line: NeedsLine.Plan) {
     }
 }
 
+/** 会话外那一行的图标：MCP · 权限太宽的秘密文件 · 号。 */
+private fun manualIcon(kind: String) =
+    when (kind) {
+        "mcpLogin" -> Ph.Key
+        "secretFile" -> Ph.Warning
+        else -> Ph.UserCircle
+    }
+
 @Composable
 private fun ManualLine(
     line: NeedsLine.Manual,
@@ -212,7 +220,7 @@ private fun ManualLine(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        PhIcon(if (item.kind == "mcpLogin") Ph.Key else Ph.UserCircle, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        PhIcon(manualIcon(item.kind), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Column(Modifier.weight(1f)) {
             Text(item.said, style = MaterialTheme.typography.bodyMedium)
             if (second.isNotEmpty()) Text(second, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

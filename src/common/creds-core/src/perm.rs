@@ -6,7 +6,7 @@
 //! 设 DACL 与「能手编」不冲突：ACL 限的是谁能读写，不是用什么程序读写。
 //!
 //! - [`judge`] 两侧都在（纯函数，两个平台的量法都在 Linux 上测得到）。
-//! - [`open_checked`] / [`notice`] / [`create_private`] 只在 `harden` feature 打开时存在（只有后端开：后端读、写这几份文件；monitor 都不碰）。
+//! - [`open_checked`] / [`verdict_at`] / [`create_private`] 只在 `harden` feature 打开时存在（只有后端开：后端读、写这几份文件；monitor 都不碰）。
 //!   量与读同一个句柄：先按路径量、再按路径读，中间被换掉时量的就不是读的那一份。
 //!
 //! 没有判据钉「平台原语只许住这里」：后端那几条只扫 `backend/` / `platform/`，扫不到 `src/common/` ⇒ 别处再写一个平台 cfg 不会红，今天靠约定。
@@ -16,11 +16,17 @@ use copy_core::copy_text;
 /// 我们在盘上**量到**的保护状态。**平台中立** —— 判断住 [`judge`]，一处。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Protection {
-    /// POSIX：mode 位（已 `& 0o7777`）· 文件属主 · 本进程的有效用户。
-    Unix { mode: u32, owner: u32, me: u32 },
-    /// Windows：属主与本进程用户（SID 串）· DACL 逐条（`None` ＝ 没有 DACL，人人全权）。
+    /// POSIX：mode 位（已 `& 0o7777`）· 文件属主（uid ＋ 翻得出的用户名）· 本进程的有效用户。
+    Unix {
+        mode: u32,
+        owner: u32,
+        owner_name: Option<String>,
+        me: u32,
+    },
+    /// Windows：属主（SID 串 ＋ 翻得出的账号名）与本进程用户（SID 串）· DACL 逐条（`None` ＝ 没有 DACL，人人全权）。
     Windows {
         owner: String,
+        owner_name: Option<String>,
         me: String,
         dacl: Option<Vec<Ace>>,
     },
@@ -39,6 +45,8 @@ pub struct Ace {
     pub allow: bool,
     /// 主体的 SID 串。
     pub who: String,
+    /// 那个 SID 翻成的账号名（`域\名`，本机账号的域是机器名）；翻不出 ⇒ `None`，说法里给 SID。
+    pub name: Option<String>,
     /// 访问掩码。
     pub mask: u32,
 }
@@ -46,12 +54,39 @@ pub struct Ace {
 /// 除本人之外许它碰这份文件的主体：SYSTEM 与 Administrators（管理员本来就能夺属主，算不上放宽）。
 pub const TRUSTED_SIDS: &[&str] = &["S-1-5-18", "S-1-5-32-544"];
 
-/// 一条访问掩码够不够碰到内容或改权限：读数据 · 写数据 · 追加 · 改 DACL · 改属主 · 三个通用位
+/// 掩码里读得到内容的位：读数据 0x1 · GENERIC_READ 0x8000_0000 · GENERIC_ALL 0x1000_0000。
+const MASK_READ: u32 = 0x9000_0001;
+/// 写得进内容的位：写数据 0x2 · 追加 0x4 · GENERIC_WRITE 0x4000_0000 · GENERIC_ALL。
+const MASK_WRITE: u32 = 0x5000_0006;
+/// 改得了权限的位：WRITE_DAC 0x4_0000 · WRITE_OWNER 0x8_0000 · GENERIC_ALL。
+const MASK_PERMS: u32 = 0x100c_0000;
+
+/// 一条访问掩码够不够碰到内容或改权限：读 · 写 · 改权限三类位（[`MASK_READ`] · [`MASK_WRITE`] · [`MASK_PERMS`]）
 /// （写得进去的能改上游地址把 key 引走，改得了 DACL / 属主的能给自己补读权）。
 pub fn mask_reaches(mask: u32) -> bool {
-    // 读数据 0x1 · 写数据 0x2 · 追加 0x4 · WRITE_DAC 0x4_0000 · WRITE_OWNER 0x8_0000 ·
-    // GENERIC_ALL 0x1000_0000 · GENERIC_WRITE 0x4000_0000 · GENERIC_READ 0x8000_0000。
-    mask & 0xd00c_0007 != 0
+    mask & (MASK_READ | MASK_WRITE | MASK_PERMS) != 0
+}
+
+/// 一个主体能做什么，照实际给的位说：可读 · 可写 · 可读写，改得了权限另说一句；一样都没有 ⇒ `None`。
+fn can_words(read: bool, write: bool, perms: bool) -> Option<String> {
+    let rw = match (read, write) {
+        (true, true) => Some(copy_text("credsPerm.judge.canReadWrite", &[])),
+        (true, false) => Some(copy_text("credsPerm.judge.canRead", &[])),
+        (false, true) => Some(copy_text("credsPerm.judge.canWrite", &[])),
+        (false, false) => None,
+    };
+    let perms = perms.then(|| copy_text("credsPerm.judge.canChangePerms", &[]));
+    let words: Vec<String> = rw.into_iter().chain(perms).collect();
+    (!words.is_empty()).then(|| words.join(&copy_text("kit.text.sep", &[])))
+}
+
+/// 「谁（能做什么）」那几段连成一句。
+fn who_can(parts: &[(String, String)]) -> String {
+    parts
+        .iter()
+        .map(|(who, can)| copy_text("credsPerm.judge.whoCan", &[("who", who), ("can", can)]))
+        .collect::<Vec<_>>()
+        .join(&copy_text("credsPerm.judge.listSep", &[]))
 }
 
 /// 判完的结论。
@@ -81,13 +116,33 @@ impl Verdict {
 pub fn judge(p: &Protection) -> Verdict {
     let wide = |how: String, fix: String| Verdict::TooWide { how, fix };
     match p {
-        Protection::Unix { owner, me, .. } if owner != me => wide(
-            copy_text("credsPerm.judge.notOwner", &[("owner", &owner.to_string())]),
+        Protection::Unix {
+            owner,
+            owner_name,
+            me,
+            ..
+        } if owner != me => wide(
+            copy_text(
+                "credsPerm.judge.notOwner",
+                &[(
+                    "owner",
+                    &owner_name.clone().unwrap_or_else(|| owner.to_string()),
+                )],
+            ),
             copy_text("credsPerm.judge.fixOwner", &[]),
         ),
         Protection::Unix { mode, .. } => {
-            let extra = mode & 0o077;
-            if extra == 0 {
+            // 只看读 · 写两位：执行位碰不到数据文件的内容（同 Windows 那半不看执行位）。
+            let parts: Vec<(String, String)> = [
+                (copy_text("credsPerm.judge.group", &[]), mode >> 3),
+                (copy_text("credsPerm.judge.others", &[]), *mode),
+            ]
+            .into_iter()
+            .filter_map(|(who, bits)| {
+                can_words(bits & 0o4 != 0, bits & 0o2 != 0, false).map(|can| (who, can))
+            })
+            .collect();
+            if parts.is_empty() {
                 Verdict::OwnerOnly
             } else {
                 wide(
@@ -95,18 +150,26 @@ pub fn judge(p: &Protection) -> Verdict {
                         "credsPerm.judge.tooWideUnix",
                         &[
                             ("mode", &format!("{:04o}", mode & 0o7777)),
-                            ("extra", &format!("{:03o}", extra)),
+                            ("who", &who_can(&parts)),
                         ],
                     ),
                     copy_text("credsPerm.judge.fixUnix", &[]),
                 )
             }
         }
-        Protection::Windows { owner, me, dacl } => {
+        Protection::Windows {
+            owner,
+            owner_name,
+            me,
+            dacl,
+        } => {
             let trusted = |sid: &str| sid == me || TRUSTED_SIDS.contains(&sid);
             if !trusted(owner) {
                 return wide(
-                    copy_text("credsPerm.judge.notOwner", &[("owner", owner)]),
+                    copy_text(
+                        "credsPerm.judge.notOwner",
+                        &[("owner", owner_name.as_deref().unwrap_or(owner))],
+                    ),
                     copy_text("credsPerm.judge.fixOwner", &[]),
                 );
             }
@@ -116,23 +179,38 @@ pub fn judge(p: &Protection) -> Verdict {
                     copy_text("credsPerm.judge.fixWindows", &[]),
                 );
             };
-            let mut who: Vec<&str> = Vec::new();
+            // 同一个主体的几条允许项并起来说（照先出现的先后）。
+            let mut who: Vec<(&str, Option<&str>, u32)> = Vec::new();
             for a in aces {
-                if a.allow
-                    && mask_reaches(a.mask)
-                    && !trusted(&a.who)
-                    && !who.contains(&a.who.as_str())
-                {
-                    who.push(&a.who);
+                if !a.allow || !mask_reaches(a.mask) || trusted(&a.who) {
+                    continue;
+                }
+                match who.iter_mut().find(|(sid, ..)| *sid == a.who) {
+                    Some((_, name, mask)) => {
+                        *mask |= a.mask;
+                        *name = name.or(a.name.as_deref());
+                    }
+                    None => who.push((&a.who, a.name.as_deref(), a.mask)),
                 }
             }
-            if who.is_empty() {
+            let parts: Vec<(String, String)> = who
+                .into_iter()
+                .filter_map(|(sid, name, mask)| {
+                    can_words(
+                        mask & MASK_READ != 0,
+                        mask & MASK_WRITE != 0,
+                        mask & MASK_PERMS != 0,
+                    )
+                    .map(|can| (name.unwrap_or(sid).to_string(), can))
+                })
+                .collect();
+            if parts.is_empty() {
                 Verdict::OwnerOnly
             } else {
                 wide(
                     copy_text(
                         "credsPerm.judge.tooWideWindows",
-                        &[("who", &who.join(" / "))],
+                        &[("who", &who_can(&parts))],
                     ),
                     copy_text("credsPerm.judge.fixWindows", &[]),
                 )
@@ -167,25 +245,13 @@ pub fn open_failed(e: &std::io::Error) -> Verdict {
     })
 }
 
-/// 一份自家秘密文件该说的那一句（`what` 是它叫什么）：不在 · 只给本人 ⇒ `None`；宽了 ⇒ 路径 ＋ 宽在哪 ＋ 怎么修；查不出 ⇒ 路径 ＋ 为什么。
+/// 一份自家秘密文件此刻的结论（只量不读内容）：不在 ⇒ `None`；打不开 ⇒ 查不出（[`open_failed`]）。
 #[cfg(feature = "harden")]
-pub fn notice(path: &std::path::Path, what: &str) -> Option<String> {
-    let verdict = match open_checked(path) {
-        Ok((_, v)) => v,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
-        Err(e) => open_failed(&e),
-    };
-    let p = path.display().to_string();
-    match verdict {
-        Verdict::OwnerOnly => None,
-        Verdict::TooWide { how, fix } => Some(copy_text(
-            "credsPerm.notice.tooWide",
-            &[("what", what), ("path", &p), ("how", &how), ("fix", &fix)],
-        )),
-        Verdict::Undetermined { why, .. } => Some(copy_text(
-            "credsPerm.notice.unknown",
-            &[("what", what), ("path", &p), ("why", &why)],
-        )),
+pub fn verdict_at(path: &std::path::Path) -> Option<Verdict> {
+    match open_checked(path) {
+        Ok((_, v)) => Some(v),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => Some(open_failed(&e)),
     }
 }
 
@@ -197,6 +263,7 @@ fn measure(f: &std::fs::File) -> Protection {
         Ok(m) => Protection::Unix {
             mode: m.mode() & 0o7777,
             owner: m.uid(),
+            owner_name: user_name(m.uid()),
             // SAFETY: geteuid 不读写任何内存、恒成功。
             me: unsafe { libc::geteuid() },
         },
@@ -208,6 +275,22 @@ fn measure(f: &std::fs::File) -> Protection {
             raw: Some(e.to_string()),
         },
     }
+}
+
+/// uid ⇒ 用户名（`getpwuid_r`）；查不到 ⇒ `None`（说法里给 uid）。
+#[cfg(all(unix, feature = "harden"))]
+fn user_name(uid: u32) -> Option<String> {
+    let mut buf = vec![0 as libc::c_char; 4096];
+    // SAFETY: 全零的 passwd 只当出参；getpwuid_r 只往 pwd · buf 里写、写不超过给的长度。
+    let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
+    let mut out: *mut libc::passwd = std::ptr::null_mut();
+    let rc = unsafe { libc::getpwuid_r(uid, &mut pwd, buf.as_mut_ptr(), buf.len(), &mut out) };
+    if rc != 0 || out.is_null() || pwd.pw_name.is_null() {
+        return None;
+    }
+    // SAFETY: 成功时 pw_name 指向 buf 里一个以 0 结尾的串。
+    let name = unsafe { std::ffi::CStr::from_ptr(pwd.pw_name) };
+    Some(name.to_string_lossy().into_owned()).filter(|n| !n.is_empty())
 }
 
 #[cfg(all(not(any(unix, windows)), feature = "harden"))]
@@ -380,14 +463,17 @@ fn measure(f: &std::fs::File) -> Protection {
             let e = std::io::Error::from_raw_os_error(rc.0 as i32);
             return unreadable(e, format!("GetSecurityInfo {}", rc.0));
         }
+        let owner_sid = owner;
         let read = (|| -> Result<Protection, Protection> {
             let owner = sid_text(owner).map_err(|e| {
                 let raw = e.to_string();
                 unreadable(e, raw)
             })?;
+            let owner_name = account_name(owner_sid);
             if dacl.is_null() {
                 return Ok(Protection::Windows {
                     owner,
+                    owner_name,
                     me: me.clone(),
                     dacl: None,
                 });
@@ -427,11 +513,13 @@ fn measure(f: &std::fs::File) -> Protection {
                 aces.push(Ace {
                     allow,
                     who,
+                    name: account_name(sid),
                     mask: a.Mask,
                 });
             }
             Ok(Protection::Windows {
                 owner,
+                owner_name,
                 me: me.clone(),
                 dacl: Some(aces),
             })
@@ -440,6 +528,49 @@ fn measure(f: &std::fs::File) -> Protection {
         match read {
             Ok(p) | Err(p) => p,
         }
+    }
+}
+
+/// 一个 SID ⇒ 账号名（`LookupAccountSidW`：有域 ⇒ `域\名`，内置组那种没有域的 ⇒ 名）；翻不出 ⇒ `None`（说法里给 SID 串）。
+#[cfg(all(windows, feature = "harden"))]
+unsafe fn account_name(sid: windows::Win32::Foundation::PSID) -> Option<String> {
+    use windows::core::{PCWSTR, PWSTR};
+    use windows::Win32::Security::{LookupAccountSidW, SID_NAME_USE};
+    let (mut n, mut d) = (0u32, 0u32);
+    let mut kind = SID_NAME_USE::default();
+    let _ = LookupAccountSidW(
+        PCWSTR::null(),
+        sid,
+        PWSTR::null(),
+        &mut n,
+        PWSTR::null(),
+        &mut d,
+        &mut kind,
+    );
+    if n == 0 {
+        return None;
+    }
+    let mut name = vec![0u16; n as usize];
+    let mut dom = vec![0u16; d.max(1) as usize];
+    LookupAccountSidW(
+        PCWSTR::null(),
+        sid,
+        PWSTR(name.as_mut_ptr()),
+        &mut n,
+        PWSTR(dom.as_mut_ptr()),
+        &mut d,
+        &mut kind,
+    )
+    .ok()?;
+    let text = |v: &[u16], len: u32| String::from_utf16_lossy(&v[..len as usize]);
+    let name = text(&name, n);
+    let dom = text(&dom, d);
+    if name.is_empty() {
+        None
+    } else if dom.is_empty() {
+        Some(name)
+    } else {
+        Some(format!("{dom}\\{name}"))
     }
 }
 

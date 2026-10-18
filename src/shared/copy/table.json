@@ -15507,12 +15507,6 @@
       "zh": "读取任务目录失败 · {dir} · {why}",
       "args": ["dir", "why"]
     },
-    "beAccountsQuery.listProductAt.joined": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{a}；{b}",
-      "args": ["a", "b"]
-    },
     "beAccountsQuery.listProductAt.noDefault": {
       "kind": "body",
       "role": "说明",
@@ -15767,8 +15761,56 @@
     "credsPerm.judge.tooWideWindows": {
       "kind": "body",
       "role": "说明",
-      "zh": "权限列表里本人之外还有可读写的条目：{who}",
+      "zh": "权限列表里本人之外还有 {who}",
       "args": ["who"]
+    },
+    "credsPerm.judge.whoCan": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{who}（{can}）",
+      "args": ["who", "can"]
+    },
+    "credsPerm.judge.listSep": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "、",
+      "args": []
+    },
+    "credsPerm.judge.canRead": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "可读",
+      "args": []
+    },
+    "credsPerm.judge.canWrite": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "可写",
+      "args": []
+    },
+    "credsPerm.judge.canReadWrite": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "可读写",
+      "args": []
+    },
+    "credsPerm.judge.canChangePerms": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "可改权限",
+      "args": []
+    },
+    "credsPerm.judge.group": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "同组用户",
+      "args": []
+    },
+    "credsPerm.judge.others": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "其他用户",
+      "args": []
     },
     "credsPerm.judge.fixUnix": {
       "kind": "body",
@@ -15779,8 +15821,8 @@
     "credsPerm.judge.tooWideUnix": {
       "kind": "body",
       "role": "说明",
-      "zh": "同机他人可读 · 权限 {mode} · 本人之外开着 {extra}",
-      "args": ["mode", "extra"]
+      "zh": "权限 {mode} · 本人之外还有{who}",
+      "args": ["mode", "who"]
     },
     "credsPerm.judge.notOwner": {
       "kind": "body",
@@ -15799,18 +15841,6 @@
       "role": "说明",
       "zh": "没有权限列表 · 所有人可读写",
       "args": []
-    },
-    "credsPerm.notice.tooWide": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{what} {path}：{how} · {fix}",
-      "args": ["what", "path", "how", "fix"]
-    },
-    "credsPerm.notice.unknown": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{what} {path}：{why}",
-      "args": ["what", "path", "why"]
     },
     "credsPerm.notice.apikey": {
       "kind": "body",
@@ -20463,6 +20493,12 @@
       "role": "片段",
       "zh": "MCP {server} 需登录",
       "args": ["server"]
+    },
+    "beManual.list.secretFile": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{what} {path}：{how}",
+      "args": ["what", "path", "how"]
     },
     "beManual.list.mcpNoFix": {
       "kind": "body",
