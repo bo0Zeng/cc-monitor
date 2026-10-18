@@ -1959,8 +1959,10 @@ fn own_state_cache_arm(root: &Path) -> String {
         .unwrap_or_else(|e| panic!("{file} 读不到：{e} —— 文件搬了就把这里一起改"));
     let src = guard_core::production_code(&raw);
     let lines: Vec<&str> = src.lines().collect();
-    let at = guard_core::pin_line(&src, "(Kind::Cache, Read::Unreadable(e)) => {")
-        .unwrap_or_else(|e| panic!("{file} 里缓存读不出来的那一臂认不准（{e}）—— 改了形状就把这里一起改"));
+    let at =
+        guard_core::pin_line(&src, "(Kind::Cache, Read::Unreadable(e)) => {").unwrap_or_else(|e| {
+            panic!("{file} 里缓存读不出来的那一臂认不准（{e}）—— 改了形状就把这里一起改")
+        });
     lines[at..(at + 10).min(lines.len())].join("\n")
 }
 

@@ -22,7 +22,10 @@ fn files_under(root: &Path) -> Vec<(String, Vec<u8>)> {
     let mut out = vec![];
     let mut stack = vec![root.to_path_buf()];
     while let Some(d) = stack.pop() {
-        for e in crate::platform::fs::Ro::read_dir(&d).expect("list").flatten() {
+        for e in crate::platform::fs::Ro::read_dir(&d)
+            .expect("list")
+            .flatten()
+        {
             let p = e.path();
             if p.is_dir() {
                 stack.push(p);

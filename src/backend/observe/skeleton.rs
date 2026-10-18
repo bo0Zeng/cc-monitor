@@ -38,10 +38,8 @@ pub(crate) const MAX_FILES: usize = 256;
 const MAX_READ: u64 = 1 << 30;
 
 /// 一份骨架：缓存（读不出来 · 版本或路径对不上 ⇒ 当没有，照记录整份重扫）。各份读成哪一形由 [`Skeletons::load`] 的调用方定。
-const DOC: crate::common::own_state::Doc<serde_json::Value> = crate::common::own_state::Doc::cache(
-    ".cc-monitor/cache/skeleton/<digest>.json",
-    MAX_READ,
-);
+const DOC: crate::common::own_state::Doc<serde_json::Value> =
+    crate::common::own_state::Doc::cache(".cc-monitor/cache/skeleton/<digest>.json", MAX_READ);
 
 /// 一份骨架记的「读到哪了」：那一刻的长度 · 修改时刻 · 游标（最后一个整行之后）· 游标前那几个字节。
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

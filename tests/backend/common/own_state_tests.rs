@@ -101,7 +101,10 @@ fn s6_state_unreadable_stays_unreadable_and_cache_unreadable_is_absent() {
             "超上限",
             Box::new(|| std::fs::write(&p, vec![b' '; 17]).expect("seed")),
         ),
-        ("落点是个目录", Box::new(|| std::fs::create_dir(&p).expect("dir"))),
+        (
+            "落点是个目录",
+            Box::new(|| std::fs::create_dir(&p).expect("dir")),
+        ),
     ];
     for (what, seed) in &seeds {
         std::fs::remove_dir(&p).ok();
