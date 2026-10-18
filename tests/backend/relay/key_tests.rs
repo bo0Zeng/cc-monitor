@@ -279,3 +279,18 @@ fn the_key_files_disk_half_is_called_only_by_the_host() {
     let planted = "fn f(p: &std::path::Path) {\n    let _ = super::key::read_key(p);\n}\n";
     assert_eq!(words_in(planted), BTreeMap::from([("read_key", 1)]));
 }
+
+/// 钥匙文件的住址照家目录自己的写法拼：Windows 形的家拼出来全是 `\`（需手动浮层里照这一份显示）。
+#[test]
+fn the_key_file_path_uses_the_home_directorys_own_separator() {
+    let win = key_path(std::path::Path::new(r"C:\Users\user"));
+    assert_eq!(
+        win.to_string_lossy(),
+        r"C:\Users\user\.cc-monitor\relay-key"
+    );
+    let unix = key_path(std::path::Path::new("/home/user"));
+    assert_eq!(
+        unix,
+        std::path::Path::new("/home/user/.cc-monitor/relay-key")
+    );
+}

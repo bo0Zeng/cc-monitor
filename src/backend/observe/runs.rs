@@ -7,6 +7,7 @@
 
 use crate::agents::{ChildLink, RunEnd, RunFaces, RunMark};
 use crate::platform::fs::Ro;
+use crate::platform::paths::path_key;
 use crate::wire::{Frame, RunEnded, RunInfo, RunState, RunWhy};
 use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
@@ -636,11 +637,14 @@ pub(crate) struct MainRecord {
 /// 一份子运行记录读到哪了 · 派出那一刻落盘的对上（`ChildFace::spawned`）收到了没有。
 struct ChildCursor {
     sid: String,
+    /// 盘上那一份（原样大小写；表里按 [`path_key`] 认）。
+    path: PathBuf,
     consumed: u64,
     linked: bool,
 }
 
 /// watcher 那一侧的运行跟踪：运行面 ＋ 运行簿 ＋ 各会话的主记录路径 ＋ 子运行记录的游标。
+/// 两张表都按 [`path_key`] 认路径（与 watcher 的游标同一种规范化）：主记录有时以折过的键交进来、文件事件总是原样，两边得对得上。
 pub(crate) struct RunTrack {
     pub(crate) faces: RunFaces,
     pub(crate) book: Arc<RunBook>,
@@ -712,27 +716,30 @@ impl RunTrack {
         if !self.has_children() {
             return false;
         }
+        let key = path_key(parent);
         let ps = self.parents.entry(sid.to_string()).or_default();
-        if ps.iter().any(|p| p == parent) {
+        if ps.contains(&key) {
             return false;
         }
-        ps.push(parent.to_path_buf());
+        ps.push(key);
         self.discover_under(sid, parent)
     }
 
     fn discover_under(&mut self, sid: &str, parent: &Path) -> bool {
         let mut changed = false;
         for c in self.faces.sources(parent) {
-            if !self.children.contains_key(&c) {
+            let key = path_key(&c);
+            if !self.children.contains_key(&key) {
                 self.children.insert(
-                    c.clone(),
+                    key.clone(),
                     ChildCursor {
                         sid: sid.to_string(),
+                        path: c,
                         consumed: 0,
                         linked: false,
                     },
                 );
-                changed |= self.read_child(&c);
+                changed |= self.read_child(&key);
             }
         }
         changed
@@ -744,32 +751,35 @@ impl RunTrack {
         if !self.has_children() {
             return None;
         }
-        if self.parents.values().any(|ps| ps.iter().any(|x| x == p)) {
+        let key = path_key(p);
+        if self.parents.values().any(|ps| ps.contains(&key)) {
             return None;
         }
-        if !self.children.contains_key(p) {
+        if !self.children.contains_key(&key) {
             // 新长出来的子运行记录：只认这一家说得出「属于哪份父记录」的形状，且只在那一份底下找（不是每个事件都把全部会话扫一遍）。
             let parent = self.faces.owner(p)?;
+            let parent_key = path_key(&parent);
             let sid = self
                 .parents
                 .iter()
-                .find(|(_, ps)| ps.contains(&parent))
+                .find(|(_, ps)| ps.contains(&parent_key))
                 .map(|(sid, _)| sid.clone())?;
             let changed = self.discover_under(&sid, &parent);
-            self.children.contains_key(p).then_some(())?;
+            self.children.contains_key(&key).then_some(())?;
             return Some((sid, changed));
         }
-        let sid = self.children.get(p).map(|c| c.sid.clone())?;
-        let changed = self.read_child(p);
+        let sid = self.children.get(&key).map(|c| c.sid.clone())?;
+        let changed = self.read_child(&key);
         Some((sid, changed))
     }
 
-    /// 读一份子运行记录从游标到最后一个整行；变短了 ⇒ 从头读。
-    fn read_child(&mut self, p: &Path) -> bool {
-        let Some(cur) = self.children.get_mut(p) else {
+    /// 读一份子运行记录（表里的键 `key`）从游标到最后一个整行；变短了 ⇒ 从头读。
+    fn read_child(&mut self, key: &Path) -> bool {
+        let Some(cur) = self.children.get_mut(key) else {
             return false;
         };
-        let Ok(mut f) = Ro::open(p) else {
+        let p = cur.path.clone();
+        let Ok(mut f) = Ro::open(&p) else {
             return false;
         };
         let meta = f.metadata().ok();
@@ -780,7 +790,7 @@ impl RunTrack {
         // 派出那一刻落盘的对上：卡（父侧那次调用）在父侧结果回来之前就对上这个运行；那一份比子记录晚落 ⇒ 下次读到再问。
         let mut changed = false;
         if !cur.linked {
-            if let Some(l) = self.faces.spawned(p) {
+            if let Some(l) = self.faces.spawned(&p) {
                 cur.linked = true;
                 changed |= self.book.spawned(&cur.sid, l, written);
             }

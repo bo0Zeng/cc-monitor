@@ -72,7 +72,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 // U2：平台原语搬进 `platform/`（§1.1 第一条解耦线）。这里 re-import 回来，
 // 调用点一处未改 —— 纯重构，行为逐字不变。
-use crate::platform::paths::path_key;
+use crate::platform::paths::{is_under, path_key};
 use crate::platform::proc::{pid_alive, proc_cmdline, proc_starttime, start_epoch_from_ticks};
 // 只在测试段用到的几个（生产段的调用点随函数一起搬走了）。分开写而不是给整条 `use`
 // 加 `#[cfg(test)]`：上面那四个生产段真在用，混在一起会让「谁是生产依赖」看不出来。
@@ -1411,7 +1411,7 @@ fn watch_loop(
                     let child = state
                         .roots
                         .iter_mut()
-                        .find(|r| p.starts_with(&r.root))
+                        .find(|r| r.holds(p))
                         .and_then(|r| r.runs.on_path(p));
                     if let Some((sid, changed)) = child {
                         if changed {
@@ -1897,7 +1897,7 @@ impl ReaderState {
     fn root_of(&self, p: &Path) -> Option<usize> {
         self.roots
             .iter()
-            .position(|r| p.starts_with(&r.root) && (r.face.is_session_file)(p))
+            .position(|r| r.holds(p) && (r.face.is_session_file)(p))
     }
 
     /// 这份会话记录的 sid（那一家的文件命名）。
@@ -1963,6 +1963,13 @@ struct Root {
     /// 判活认写者（没有 pidfile 的那一家，[`crate::agents::LiveBy::HeldOpen`]）。
     by_writer: bool,
     runs: crate::observe::runs::RunTrack,
+}
+
+impl Root {
+    /// `p` 落在这一家的记录根下（原样路径与折过的游标键都认，[`is_under`]）。
+    fn holds(&self, p: &Path) -> bool {
+        is_under(p, &self.root)
+    }
 }
 
 /// An ACTIVE session tracked by the reader, keyed in [`ReaderState::sessions`]
@@ -3513,7 +3520,7 @@ fn settle_all_writers(state: &mut ReaderState, sink: &mut FrameSink, only: Optio
         return;
     }
     let Some(found) =
-        crate::platform::writers::writers_of(&|p| roots.iter().any(|r| p.starts_with(r)))
+        crate::platform::writers::writers_of(&|p| roots.iter().any(|r| is_under(p, r)))
     else {
         return;
     };

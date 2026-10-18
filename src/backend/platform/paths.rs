@@ -4,16 +4,31 @@
 use crate::platform::fs::Ro;
 use std::path::{Path, PathBuf};
 
+/// 这台的文件系统认路径时折不折大小写（NTFS 折）。
+const FOLDS_CASE: bool = cfg!(windows);
+
 /// Case-fold the path on Windows so notify's NTFS case variance does not double
 /// emit; on other platforms keep the path verbatim. 调用方是 `observe/watcher.rs`。
-#[cfg(windows)]
 pub(crate) fn path_key(p: &Path) -> PathBuf {
-    PathBuf::from(p.to_string_lossy().to_ascii_lowercase())
+    key_as(p, FOLDS_CASE)
 }
 
-#[cfg(not(windows))]
-pub(crate) fn path_key(p: &Path) -> PathBuf {
-    p.to_path_buf()
+/// `p` 落不落在 `root` 底下（按段比）。两边先照同一种规范化（[`path_key`]）再比：`p` 是原样还是已折过的键都对得上 ——
+/// 认路径归属只许经这里，别拿折过的键去 `starts_with` 一个原样大小写的根（Windows 上永远对不上）。
+pub(crate) fn is_under(p: &Path, root: &Path) -> bool {
+    under_as(p, root, FOLDS_CASE)
+}
+
+fn key_as(p: &Path, fold: bool) -> PathBuf {
+    if fold {
+        PathBuf::from(p.to_string_lossy().to_ascii_lowercase())
+    } else {
+        p.to_path_buf()
+    }
+}
+
+fn under_as(p: &Path, root: &Path, fold: bool) -> bool {
+    key_as(p, fold).starts_with(key_as(root, fold))
 }
 
 /// 本平台放「每用户临时文件」的那个根目录（与 [`current_uid`] 一起是平台原语）。
@@ -281,3 +296,7 @@ pub(crate) fn unix_name_problem(name: &[u8]) -> Option<NameProblem> {
         .find(|b| **b == b'/' || **b == 0)
         .map(|b| NameProblem::BadChar(char::from(*b)))
 }
+
+#[cfg(test)]
+#[path = "../../../tests/backend/platform/paths_tests.rs"]
+mod paths_tests;
