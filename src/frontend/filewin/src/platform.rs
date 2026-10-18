@@ -1,6 +1,6 @@
 //! 文件窗口包的平台层〔窗口包链不到壳的 `platform/`，自开这一份〕：本包平台 cfg 的唯一住址。
 //! 都原住别处、逐字搬来：[`any_thread_hook`]（`shell.rs`）· [`local_dest_kept`] · [`path_from_bytes`]（`lossy_pull.rs`）·
-//! [`SYSTEM_CJK_FONTS`]（`fonts.rs`）· [`rss_kib`]（`scale.rs`）· [`BACKSLASH_IS_SEP`]（`download.rs` · `lossy_pull.rs` 各一处 `cfg!(windows)`）。
+//! [`SYSTEM_CJK_FONTS`]（`fonts.rs`）· [`rss_kib`]（`scale.rs`）· [`BACKSLASH_IS_SEP`]（`download.rs` · `lossy_pull.rs` 各一处 `cfg!(windows)`，今天并成 `download.rs::split_dest` 一处）。
 //! 另有本包自己的一处：[`renderer_options`]（开窗参数里渲染器那几格，Windows 走 wgpu）。
 
 /// 🔴 让 winit 的事件循环能建在**非主线程**上。
@@ -64,7 +64,7 @@ pub(crate) fn local_dest_kept(
     )
 }
 
-/// 本机路径的分隔符里有没有 `\`（Windows 有，别处只有 `/`）。原是下载落点那一段（随系统存盘框删了）· `lossy_pull.rs::split_local` 里各一处 `cfg!(windows)`。
+/// 本机路径的分隔符里有没有 `\`（Windows 有，别处只有 `/`）。下载落点那一处拆法（`download.rs::split_dest`）照它切。
 pub const BACKSLASH_IS_SEP: bool = cfg!(windows);
 
 /// 本机文件名按 Windows 的规矩判（非法字符 · 保留的设备名 · 结尾的点与空格）—— 下载落点的缺省名用它（`download.rs`）。
