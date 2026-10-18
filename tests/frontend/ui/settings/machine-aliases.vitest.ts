@@ -314,9 +314,24 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
       const allow = [...access.querySelectorAll<HTMLButtonElement>(":scope > button")].find((b) => b.textContent === copyText("machineAliases.policy.allow"))!;
       expect(allow.hidden, JSON.stringify(p)).toBe(!btn);
       const loads = p.loads === false;
-      expect(access.textContent!.includes(copyText("machineAliases.access.notLoaded", { path: "~/rc-a", ps })), JSON.stringify(p)).toBe(loads);
+      expect(access.textContent!.includes(copyText("machineAliases.access.notLoaded", { path: "~/rc-a" })), JSON.stringify(p)).toBe(loads);
+      // 执行策略只在那一行说（接上那一行不再说「不加载它」）。
+      expect(access.textContent!.split(ps).length - 1, JSON.stringify(p)).toBe(said === "" ? 0 : 1);
       document.body.replaceChildren();
     }
+  });
+
+  it("接上时执行策略挡着：执行策略只在那一行说一次（接上之后那一句不再说「取决于执行策略」）", async () => {
+    policyA = { host: "powershell", effective: "Restricted", loads: false, groupPolicy: false, error: null };
+    const el = await mount();
+    await open(el);
+    const access = el.querySelector<HTMLElement>('[data-role="access"]')!;
+    clickText(access, copyText("machineAliases.access.connectTo", { path: "~/rc-a" }));
+    await flush();
+    expect(seen.some((c) => c.cmd === "aliases_block_install")).toBe(true);
+    const ps = copyText("machineAliases.policy.hostPowershell");
+    expect(access.textContent!.split(ps).length - 1, access.textContent!).toBe(1);
+    expect(el.querySelector('[data-role="access-note"]')!.textContent).toBe("");
   });
 
   it("［允许本地脚本］先问一句；不答应不动；答应 ⇒ 请那台设、重读，接着说设好了没有", async () => {
@@ -341,7 +356,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     await flush();
     expect(seen.map((c) => c.cmd).slice(0, 2)).toEqual(["powershell_policy_set", "aliases_read"]);
     expect(el.querySelector('[data-role="access-note"]')!.textContent).toBe(copyText("machineAliases.policy.setDone", { ps, policy: "RemoteSigned" }));
-    expect(el.textContent).not.toContain(copyText("machineAliases.access.notLoaded", { path: "~/rc-a", ps }));
+    expect(el.textContent).not.toContain(copyText("machineAliases.access.notLoaded", { path: "~/rc-a" }));
   });
 
   it("收着时那一行：没接上 ⇒ 主动作「接上 …」；已接上 ⇒ 不给主动作；有同名 ⇒ 点变黄、尾巴点名", async () => {

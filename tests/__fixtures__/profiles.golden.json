@@ -337,6 +337,8 @@
       }
     ],
     "seed": [],
+    "seedCreate": "",
+    "seedHint": "",
     "tmux": true
   },
   "resolveReply": {

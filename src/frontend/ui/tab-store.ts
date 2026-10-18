@@ -19,6 +19,8 @@ import type { UsageFact } from "./session-reads";
 /** 当前 tab 那一格对外的样子：HUD 要的 usage 与「会话事实要不到」的原因。 */
 export interface ActiveView {
   sid: string | null;
+  /** 当前 tab 的标题（`Tab.title`，照核心给的名字排好的）：改了名会话头 · 窗口标题跟着刷（不带它 ⇒ 同值不通知，会话头停在旧名）。 */
+  title: string | null;
   /** 当前会话的用量与上下文（后端那一份成品，照抄）。 */
   usage: UsageFact | null;
   /** 会话事实要不到的原因（`null` = 可用）。 */
@@ -31,9 +33,10 @@ export interface ActiveView {
   account: string | null;
 }
 
-const NO_ACTIVE: ActiveView = { sid: null, usage: null, unavailable: null, projectDir: null, modelText: null, account: null };
+const NO_ACTIVE: ActiveView = { sid: null, title: null, usage: null, unavailable: null, projectDir: null, modelText: null, account: null };
 const sameActive = (a: ActiveView, b: ActiveView): boolean =>
   a.sid === b.sid &&
+  a.title === b.title &&
   JSON.stringify(a.usage) === JSON.stringify(b.usage) &&
   a.unavailable === b.unavailable &&
   a.projectDir === b.projectDir &&

@@ -506,7 +506,8 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
   const emptyState = (b: ProfilesBook): HTMLElement => {
     const box = el("div", "prof-empty-state");
     box.dataset.role = "seed";
-    box.appendChild(el("div", "cfg-hint", copyText("profilesPage.seed.hint")));
+    // 说明与按钮的字随首建几条（没有 tmux 的那台只一条），由后端给。
+    box.appendChild(el("div", "cfg-hint", b.seedHint));
     const tree = el("div", "prof-tree");
     for (const t of treeOf(b.seed)) {
       const r = el("div", "prof-trow");
@@ -519,7 +520,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     }
     const acts = el("div", "cfg-acts");
     acts.append(
-      button(copyText("profilesPage.seed.create"), "settings-btn settings-btn-primary", () => void init(true)),
+      button(b.seedCreate, "settings-btn settings-btn-primary", () => void init(true)),
       button(copyText("profilesPage.seed.blank"), "settings-btn", () => void init(false)),
       el("span", "cfg-hint", copyText("profilesPage.seed.where", { path: short(b.path) })),
     );

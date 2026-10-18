@@ -6180,8 +6180,8 @@
     "machineAliases.access.notLoaded": {
       "kind": "body",
       "role": "说明",
-      "zh": "已接在 {path} · {ps} 不加载它",
-      "args": ["path", "ps"]
+      "zh": "已接在 {path}",
+      "args": ["path"]
     },
     "machineAliases.access.off": {
       "kind": "body",
@@ -6822,19 +6822,6 @@
       "zh": "从空的开始",
       "args": []
     },
-    "profilesPage.seed.create": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "建这两条",
-      "args": []
-    },
-    "profilesPage.seed.hint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "别名 = ccm 的具名配置 · 一条一组选项\n可基于另一条 · 先建下面两条",
-      "args": [],
-      "limited": ["ccm"]
-    },
     "profilesPage.seed.where": {
       "kind": "body",
       "role": "片段",
@@ -6925,12 +6912,6 @@
       "role": "报错",
       "zh": "改执行策略失败 · {ps} · {why}",
       "args": ["ps", "why"]
-    },
-    "machineAliases.policy.afterInstall": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "已接上 · 是否生效取决于执行策略 · 见上一行",
-      "args": []
     },
     "machineAliases.policy.title": {
       "kind": "title",
@@ -25666,6 +25647,32 @@
       "role": "报错",
       "zh": "取消隐藏失败 · {title}",
       "args": ["title"]
+    },
+    "beProfile.seed.hint.two": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "别名 = ccm 的具名配置 · 一条一组选项\n可基于另一条 · 先建下面两条",
+      "args": [],
+      "limited": ["ccm"]
+    },
+    "beProfile.seed.hint.one": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "别名 = ccm 的具名配置 · 一条一组选项\n可基于另一条 · 先建下面这一条",
+      "args": [],
+      "limited": ["ccm"]
+    },
+    "beProfile.seed.create.two": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "建这两条",
+      "args": []
+    },
+    "beProfile.seed.create.one": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "建这一条",
+      "args": []
     },
     "beProfile.name.own": {
       "kind": "error",

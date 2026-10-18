@@ -976,6 +976,8 @@ export class SettingsPanel {
             machinesReconciled: () => {
               for (const [origin, c] of this.channelOf) this.paintNavDot(origin, c);
               void this.backendSection?.refresh();
+              // 「开始用」第三步看机器表台数：加完一台当场重读（带新台数）。
+              void this.firstRun?.loadNow(this.remoteSection?.machineCount());
             },
           },
         });
@@ -1091,6 +1093,8 @@ export class SettingsPanel {
     });
     router.onNavigate((id) => {
       if (id === PAGE.ext) this.extSection?.loadNow();
+      // 回到机器页 ⇒ 「开始用」重读（照第一、二步去别处做完回来，该勾的当场勾上）。
+      if (id === PAGE.machines) void this.firstRun?.loadNow(this.remoteSection?.machineCount());
     });
 
 
