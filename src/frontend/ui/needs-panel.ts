@@ -3,17 +3,20 @@
  * 底部断开 / 清单无法读取的那几台各一条虚线。没有小标题：会话行是琥珀点 ＋ 标题，会话外那几行是号 / MCP 图标，靠形就分得开。
  *
  * 这里只排版：会话行的字照会话事实那一份（`session-face.ts`）；会话外那一行第一行是后端写好的 `said`、第二行是问来那台的机器名
- * （`fix` 为空 ⇒ 后端给的 `why`，不画按钮）。点会话行 ⇒ 切过去；点会话外那一行或它的［登录…］⇒ 开登录抽屉。↑↓ 选行 · Enter ＝ 点 · Esc 收起（浮层那一套）。
+ * （`fix` 为空 ⇒ 后端给的 `why`：为什么没有解法 / 怎么手动修，不画按钮）。点会话行 ⇒ 切过去；点会话外那一行或它的［登录…］⇒ 开登录抽屉。↑↓ 选行 · Enter ＝ 点 · Esc 收起（浮层那一套）。
  */
 import { copyText } from "./copy-table";
 import { button } from "./kit/button";
 import { tag, countBadge } from "./kit/badge";
-import { icon } from "./kit/icon";
+import { icon, type IconName } from "./kit/icon";
 import { statusDot } from "./kit/status-dot";
 import { machineName } from "./ipc/chan-caller";
 import { isRemoteOrigin, type Origin } from "./ipc/origin";
 import type { ManualItem } from "./login-reads";
 import s from "./needs-panel.module.css";
+
+/** 会话外那一行的图标：号 · MCP · 权限太宽的秘密文件。 */
+const MANUAL_ICON: Record<ManualItem["kind"], IconName> = { accountLogin: "account", mcpLogin: "plug", secretFile: "warning" };
 
 /** 一行里几格之间那一个分隔。 */
 const SEP = copyText("kit.text.sep");
@@ -97,13 +100,13 @@ export function renderNeedsPanel(f: PanelFacts, acts: PanelActs, selected: numbe
   const items = f.manual;
   if (rows.length > 0 && items.length > 0) root.appendChild(rule());
   for (const { origin, item } of items) {
-    const r = row(icon(item.kind === "mcpLogin" ? "plug" : "account", "compact"));
+    const r = row(icon(MANUAL_ICON[item.kind], "compact"));
     r.dataset.row = "manual";
     r.icon.className = `${s.npLead} ${s.npKindIcon}`;
     const l1 = lineOne();
     l1.appendChild(titled(item.said));
     const l2 = lineTwo();
-    const why = item.kind === "mcpLogin" && item.fix === null ? (item.why ?? "") : "";
+    const why = item.kind !== "accountLogin" && item.fix === null ? (item.why ?? "") : "";
     l2.textContent = why ? [machineName(origin), why].join(SEP) : machineName(origin);
     r.main.append(l1, l2);
     if (item.fix === null) {

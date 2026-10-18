@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct NeedsList {
-    /// 依次：此刻活着、那台说在等人的会话 · 计划里要人看的格 · 会话外的（需登录的号 · MCP）；一项都没有 ⇒ 空。
+    /// 依次：此刻活着、那台说在等人的会话 · 计划里要人看的格 · 会话外的（需登录的号 · MCP · 权限太宽的自家秘密文件）；一项都没有 ⇒ 空。
     pub items: Vec<NeedsItem>,
     /// 提问没人答、已替人答过的会话（各留最近一次，那条会话下一次挂上提问才换掉），按会话 id 排。
     pub answered: Vec<AnsweredRow>,
@@ -45,7 +45,7 @@ pub enum NeedsItem {
         slice: String,
         k: u32,
     },
-    /// 会话外的一项（需登录的号 · MCP）。
+    /// 会话外的一项（需登录的号 · MCP · 权限太宽的自家秘密文件）。
     Manual {
         #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
         rank: u64,
@@ -91,6 +91,15 @@ pub enum ManualItem {
         said: String,
         fix: Option<ManualFix>,
         /// `fix` 为 `null` 时必有：为什么没有解法（写好的那一句）；有 `fix` ⇒ 缺。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        why: Option<String>,
+    },
+    /// 一份自家秘密文件（API key 凭据文件 · 中转钥匙文件）权限太宽 / 查不出：`said` ＝ 哪份 ＋ 路径 ＋ 宽在哪；
+    /// app 里没有解法（`fix` 恒 `null`），`why` ＝ 怎么手动修（查不出那一种 `said` 里已说要手动确认 ⇒ 缺）。权限改好，下一问就不列了。
+    SecretFile {
+        said: String,
+        fix: Option<ManualFix>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         why: Option<String>,

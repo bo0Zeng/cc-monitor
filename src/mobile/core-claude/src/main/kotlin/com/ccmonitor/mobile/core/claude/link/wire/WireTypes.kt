@@ -287,7 +287,7 @@ data class NeedsItem(
     val manual: ManualItem?,
 )
 
-/** 会话外的一项（`accountLogin` · `mcpLogin` 两臂平铺）。 */
+/** 会话外的一项（`accountLogin` · `mcpLogin` · `secretFile` 三臂平铺；`fix` 为空 ⇒ [why] 是第二行那一句）。 */
 @WireOf("ManualItem")
 @JsonClass(generateAdapter = true)
 data class ManualItem(

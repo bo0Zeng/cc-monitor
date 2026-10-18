@@ -455,15 +455,7 @@ pub(crate) fn list_product(
     table_agent: &str,
     relay_running: bool,
 ) -> AccountsList {
-    let notices = secret_file_notices(
-        crate::accounts::upstream_select::file_face::machine_path()
-            .ok()
-            .as_deref(),
-        home_dir()
-            .map(|h| h.join(relay_route_core::KEY_FILE_REL))
-            .as_deref(),
-    );
-    let list = list_product_with(
+    list_product_with(
         &resolve_accts_dir(),
         home_dir().as_deref(),
         rows,
@@ -471,34 +463,7 @@ pub(crate) fn list_product(
         agent,
         table_agent,
         relay_running,
-    );
-    notices
-        .into_iter()
-        .fold(list, |v, n| with_notice(v, Some(n)))
-}
-
-/// KS11：这台两份自家秘密文件（API key 凭据文件 · 中转钥匙文件）各该说的那一句（不在 · 只给本人的不说）。判法只在 `creds_core::perm`。
-pub(crate) fn secret_file_notices(creds: Option<&Path>, key: Option<&Path>) -> Vec<String> {
-    [
-        (creds, copy_text("credsPerm.notice.apikey", &[])),
-        (key, copy_text("credsPerm.notice.relayKey", &[])),
-    ]
-    .into_iter()
-    .filter_map(|(p, what)| creds_core::perm::notice(p?, &what))
-    .collect()
-}
-
-/// 清单的 `notice` 并上另一句（自家秘密文件权限那一句，KS11）：两句都有 ⇒ 连成一句；只有一句 ⇒ 就是它。
-pub(crate) fn with_notice(mut v: AccountsList, more: Option<String>) -> AccountsList {
-    let Some(more) = more else { return v };
-    v.notice = Some(match v.notice.take() {
-        Some(a) => copy_text(
-            "beAccountsQuery.listProductAt.joined",
-            &[("a", &a), ("b", &more)],
-        ),
-        None => more,
-    });
-    v
+    )
 }
 
 /// ★ 徽章一处判（每一态只出自这里）：原地模式 ⇒ 不隔离；API key 号 ⇒ 这台 key 表里有没有它那一行 · 这台的中转在不在

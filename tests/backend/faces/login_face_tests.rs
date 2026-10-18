@@ -354,3 +354,73 @@ fn the_pushed_failure_says_it_must_restart() {
         json!({"state": "failed", "said": "x", "detail": "tail", "again": "restart"})
     );
 }
+
+/// 自家秘密文件（API key 凭据文件 · 中转钥匙文件）权限太宽 ⇒ 会话外的需手动多一项：那一句（哪份文件 ＋ 路径 ＋ 宽在哪）·
+/// 没有 app 里的解法（`fix: null`）· 第二行那一句是怎么修；`sessions-needs` 整单里照会话外那一截列出。
+/// 不在 · 只给本人 ⇒ 不列；改回只给本人 ⇒ 那一项没了（每问一次现量，不记）。判法只在 `creds_core::perm`。
+#[cfg(unix)]
+#[test]
+fn a_too_wide_secret_file_is_a_manual_item_until_it_is_fixed() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = std::env::temp_dir().join(format!("ccm-secret-files-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let creds = dir.join("apikey-credentials.json");
+    let key = dir.join("relay-key");
+    let items = || secret_files(Some(&creds), Some(&key));
+    assert!(items().is_empty(), "都不在 ⇒ 不列");
+    std::fs::write(&creds, "{}").unwrap();
+    std::fs::write(&key, "k").unwrap();
+    let mode = |p: &std::path::Path, m| {
+        std::fs::set_permissions(p, std::fs::Permissions::from_mode(m)).unwrap()
+    };
+    mode(&creds, 0o600);
+    mode(&key, 0o600);
+    assert!(items().is_empty(), "只给本人 ⇒ 不列");
+
+    mode(&key, 0o644);
+    let got = serde_json::to_value(items()).unwrap();
+    let how = match creds_core::perm::judge(&creds_core::perm::Protection::Unix {
+        mode: 0o644,
+        owner: 0,
+        owner_name: None,
+        me: 0,
+    }) {
+        creds_core::perm::Verdict::TooWide { how, .. } => how,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(
+        got,
+        json!([{
+            "kind": "secretFile",
+            "said": copy_text("beManual.list.secretFile", &[
+                ("what", &copy_text("credsPerm.notice.relayKey", &[])),
+                ("path", &key.display().to_string()),
+                ("how", &how),
+            ]),
+            "fix": null,
+            "why": copy_text("credsPerm.judge.fixUnix", &[]),
+        }])
+    );
+    // 进整单：会话外那一截。
+    let list = crate::observe::recognize::facts::needs_list(vec![], &[], Ok(items()), vec![]);
+    let whole = serde_json::to_value(&list).unwrap();
+    assert_eq!(whole["items"][0]["kind"], "manual");
+    assert_eq!(whole["items"][0]["manual"], got[0]);
+
+    mode(&creds, 0o640);
+    let got = items();
+    assert_eq!(got.len(), 2, "{got:?}");
+    let first = serde_json::to_value(&got[0]).unwrap();
+    assert!(
+        first["said"]
+            .as_str()
+            .unwrap()
+            .starts_with(&copy_text("credsPerm.notice.apikey", &[])),
+        "{first}"
+    );
+
+    mode(&creds, 0o600);
+    mode(&key, 0o600);
+    assert!(items().is_empty(), "改回只给本人 ⇒ 那一项没了");
+    std::fs::remove_dir_all(&dir).ok();
+}

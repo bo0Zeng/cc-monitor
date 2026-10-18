@@ -138,12 +138,13 @@ fn a_unix_mode_wider_than_owner_only_is_called_out_with_a_fix() {
     let unix = |mode| Protection::Unix {
         mode,
         owner: 1000,
+        owner_name: None,
         me: 1000,
     };
     assert_eq!(judge(&unix(0o600)), Verdict::OwnerOnly);
     assert_eq!(judge(&unix(0o400)), Verdict::OwnerOnly);
     // 分母 = 我列出的这 4 形（组可读 / 其他可读 / 全开 / 只多一位）。
-    for mode in [0o640, 0o604, 0o666, 0o601] {
+    for mode in [0o640, 0o604, 0o666, 0o602] {
         match judge(&unix(mode)) {
             Verdict::TooWide { how, fix } => {
                 assert!(
@@ -157,16 +158,76 @@ fn a_unix_mode_wider_than_owner_only_is_called_out_with_a_fix() {
     }
 }
 
-/// 0600 但属主是别人 ⇒ 过宽（属主读得到、还改得了权限），说出属主是谁。
+/// 0600 但属主是别人 ⇒ 过宽（属主读得到、还改得了权限），说出属主是谁：翻得出用户名就写名，翻不出给 uid。
 #[test]
 fn an_owner_only_mode_held_by_someone_else_is_too_wide() {
-    match judge(&Protection::Unix {
+    let held = |owner_name: Option<&str>| match judge(&Protection::Unix {
         mode: 0o600,
         owner: 1001,
+        owner_name: owner_name.map(str::to_string),
         me: 1000,
     }) {
-        Verdict::TooWide { how, .. } => assert!(how.contains("1001"), "{how}"),
+        Verdict::TooWide { how, .. } => how,
         other => panic!("属主是别人应当判过宽，实得 {other:?}"),
+    };
+    assert!(held(None).contains("1001"), "{}", held(None));
+    let named = held(Some("guest"));
+    assert!(
+        named.contains("guest") && !named.contains("1001"),
+        "{named}"
+    );
+}
+
+/// Unix 的说法照实际开着的位：哪一类（同组 · 其他）· 能做什么（可读 · 可写 · 可读写）；只开执行位碰不到内容 ⇒ 不算宽。
+#[test]
+fn the_unix_wording_says_who_can_do_what() {
+    let how = |mode| match judge(&Protection::Unix {
+        mode,
+        owner: 1000,
+        owner_name: None,
+        me: 1000,
+    }) {
+        Verdict::TooWide { how, .. } => how,
+        other => panic!("mode {mode:04o} 应当判过宽，实得 {other:?}"),
+    };
+    let t = |k: &str| copy_text(k, &[]);
+    let part = |who: &str, can: &str| {
+        copy_text(
+            "credsPerm.judge.whoCan",
+            &[("who", &t(who)), ("can", &t(can))],
+        )
+    };
+    let group_read = part("credsPerm.judge.group", "credsPerm.judge.canRead");
+    let g = how(0o640);
+    assert!(
+        g.contains(&group_read) && !g.contains(&t("credsPerm.judge.others")),
+        "{g}"
+    );
+    let w = how(0o620);
+    assert!(
+        w.contains(&part("credsPerm.judge.group", "credsPerm.judge.canWrite")),
+        "只开了组写 ⇒ 说可写，不说可读：{w}"
+    );
+    let all = how(0o646);
+    assert!(
+        all.contains(&group_read)
+            && all.contains(&part(
+                "credsPerm.judge.others",
+                "credsPerm.judge.canReadWrite"
+            )),
+        "{all}"
+    );
+    for mode in [0o700, 0o710, 0o701, 0o611] {
+        assert_eq!(
+            judge(&Protection::Unix {
+                mode,
+                owner: 1000,
+                owner_name: None,
+                me: 1000,
+            }),
+            Verdict::OwnerOnly,
+            "mode {mode:04o}：只开执行位碰不到内容"
+        );
     }
 }
 
@@ -179,6 +240,7 @@ fn ace(allow: bool, who: &str, mask: u32) -> Ace {
     Ace {
         allow,
         who: who.to_string(),
+        name: None,
         mask,
     }
 }
@@ -186,9 +248,84 @@ fn ace(allow: bool, who: &str, mask: u32) -> Ace {
 fn win(owner: &str, dacl: Option<Vec<Ace>>) -> Verdict {
     judge(&Protection::Windows {
         owner: owner.to_string(),
+        owner_name: None,
         me: ME.to_string(),
         dacl,
     })
+}
+
+fn wide_how(v: Verdict) -> String {
+    match v {
+        Verdict::TooWide { how, .. } => how,
+        other => panic!("应当判过宽，实得 {other:?}"),
+    }
+}
+
+/// Windows 的说法照那一条（几条并起来）的实际掩码：只给读 ⇒ 可读 · 只给写 ⇒ 可写 · 都给 ⇒ 可读写，改得了权限另说；
+/// 能翻成账号名就写名，翻不出给 SID（属主那一句同）。
+#[test]
+fn the_windows_wording_follows_the_mask_and_names_the_account() {
+    let t = |k: &str| copy_text(k, &[]);
+    let can = |who: &str, can: String| {
+        copy_text("credsPerm.judge.whoCan", &[("who", who), ("can", &can)])
+    };
+    let sep = t("kit.text.sep");
+    let with = |extra: Vec<Ace>| {
+        let mut dacl = vec![ace(true, ME, FA)];
+        dacl.extend(extra);
+        wide_how(win(ME, Some(dacl)))
+    };
+    let named = |mask: u32| Ace {
+        name: Some("PC\\Guest".into()),
+        ..ace(true, OTHER, mask)
+    };
+    // icacls 加的只读（`R` ＝ 0x120089）⇒ 可读，点名账号名、不给 SID。
+    let r = with(vec![named(0x0012_0089)]);
+    assert!(
+        r.contains(&can("PC\\Guest", t("credsPerm.judge.canRead"))),
+        "{r}"
+    );
+    assert!(!r.contains(OTHER), "翻得出名就不给 SID：{r}");
+    // 只写数据 ⇒ 可写；翻不出名 ⇒ 给 SID。
+    let w = with(vec![ace(true, OTHER, 0x2)]);
+    assert!(
+        w.contains(&can(OTHER, t("credsPerm.judge.canWrite"))),
+        "{w}"
+    );
+    // 读一条 ＋ 写一条（同一个主体）⇒ 并成可读写，只列一次。
+    let rw = with(vec![named(0x1), named(0x4)]);
+    assert!(
+        rw.contains(&can("PC\\Guest", t("credsPerm.judge.canReadWrite"))),
+        "{rw}"
+    );
+    assert_eq!(rw.matches("PC\\Guest").count(), 1, "{rw}");
+    // 全权 ⇒ 可读写 ＋ 可改权限；只有改 DACL ⇒ 只说可改权限。
+    let full = with(vec![named(FA)]);
+    let both = [
+        t("credsPerm.judge.canReadWrite"),
+        t("credsPerm.judge.canChangePerms"),
+    ]
+    .join(&sep);
+    assert!(full.contains(&can("PC\\Guest", both)), "{full}");
+    let dac = with(vec![named(0x4_0000)]);
+    assert!(
+        dac.contains(&can("PC\\Guest", t("credsPerm.judge.canChangePerms"))),
+        "{dac}"
+    );
+    // 两个主体各自一段。
+    let two = with(vec![named(0x1), ace(true, "S-1-1-0", FA)]);
+    assert!(two.contains(&t("credsPerm.judge.listSep")), "{two}");
+    // 属主那一句：翻得出名写名。
+    let owner = wide_how(judge(&Protection::Windows {
+        owner: OTHER.into(),
+        owner_name: Some("PC\\Guest".into()),
+        me: ME.into(),
+        dacl: Some(vec![ace(true, ME, FA)]),
+    }));
+    assert!(
+        owner.contains("PC\\Guest") && !owner.contains(OTHER),
+        "{owner}"
+    );
 }
 
 /// `KS11` Windows 那半：白名单（本人 · SYSTEM · Administrators），逐条读 ACE。
