@@ -91,7 +91,7 @@ class ChatsBoardTest {
     ): ChatsBoard {
         val by = hosts.associateBy { it.name.id }
         return ChatsBoard(hosts.first().name.id, MutableStateFlow(hosts.map { it.name }), { h, s ->
-            HostChats(h.id, h.label, by.getValue(h.id).link, emptyFlow(), MutableStateFlow(null), {}, {}, ListCache.None, s)
+            HostChats(h.id, h.label, by.getValue(h.id).link, emptyFlow(), MutableStateFlow(null), {}, ListCache.None, s)
         }, merge::run, backgroundScope)
     }
 

@@ -188,7 +188,7 @@ fun FilesScreen(
                     Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             ErrorLine(s.problem.text)
-                            SecondaryButton(onClick = { vm.connect() }) { Text(copyText("front.act.retry")) }
+                            SecondaryButton(onClick = vm::retry) { Text(copyText("front.act.retry")) }
                             EditHostButton(s.edit, onEditHost)
                             CopyDetailButton(s.problem.text, s.problem.detail)
                         }

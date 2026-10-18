@@ -2,6 +2,7 @@ package com.ccmonitor.mobile.ui.session
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -229,7 +230,7 @@ private fun TmuxSessionRow(
     HorizontalDivider(color = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant)
 }
 
-/** 底部新建行：输入名，新建 / 后台 cc / 新建并附着。 */
+/** 底部新建那一段：名字框一行，下面新建 / 后台 agent / 新建并附着。 */
 @Composable
 private fun TmuxNewSessionRow(
     newName: String,
@@ -239,14 +240,19 @@ private fun TmuxNewSessionRow(
     onNewAttach: (String) -> Unit,
 ) {
     val tokens = LocalAppTokens.current
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm), verticalAlignment = Alignment.CenterVertically) {
-        OutlinedTextField(
-            value = newName,
-            onValueChange = onNameChange,
-            label = { Text(copyText("mobTmux.new.name")) },
-            singleLine = true,
-            modifier = Modifier.weight(1f),
-        )
+    // 名字框独占一行：与三颗按钮同挤一行时窄屏上按钮先量，框只剩一个字宽（标签竖排、敲不进字）。按钮一排靠右，放不下换行。
+    OutlinedTextField(
+        value = newName,
+        onValueChange = onNameChange,
+        label = { Text(copyText("mobTmux.new.name")) },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    FlowRow(
+        Modifier.fillMaxWidth().padding(top = tokens.spacing.sm),
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm, Alignment.End),
+        verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+    ) {
         SecondaryButton(enabled = newName.isNotBlank(), onClick = { onNewDetached(newName.trim()) }) { Text(copyText("mobTmux.new.detached")) }
         // 后台起一个跑着 agent 的 tmux 会话，不进入，之后可打开。
         SecondaryButton(enabled = newName.isNotBlank(), onClick = { onNewDetachedCc(newName.trim()) }) { Text(copyText("mobTmux.new.detachedCc")) }

@@ -393,6 +393,23 @@ class ResidentFeedTest {
             assertEquals("""["0"]""" to null, core.answered.last())
         }
 
+    /** ［重试］（会话列表 · 文件页同一条）：断着（停在要人动手那一步的「没有后端」也算）⇒ 交核心整份重接、不另问；通着 ⇒ 只重问。 */
+    @Test
+    fun `［重试］断着就整份重接，通着只重问`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val core = FakeCore()
+            val f = feed(core)
+            var asked = 0
+            core.emit("state", line("没有后端"))
+            f.retry { asked++ }
+            assertEquals(listOf(true), core.kicks)
+            assertEquals(0, asked)
+            core.emit("state", line("连着"))
+            f.retry { asked++ }
+            assertEquals(listOf(true), core.kicks)
+            assertEquals(1, asked)
+        }
+
     @Test
     fun `拥塞那一句不叫重接（那台就地重报）`() =
         runTest(UnconfinedTestDispatcher()) {

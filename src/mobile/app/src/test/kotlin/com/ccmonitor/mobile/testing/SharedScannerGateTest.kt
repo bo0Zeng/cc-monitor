@@ -11,7 +11,7 @@ import java.io.File
  * 坏正则指「非贪婪匹配块注释 + 按行 `substringBefore` 砍行注释」。它会被字符串字面骗到：
  * 字面里的「星-斜杠」被当成块注释的收尾、字面里的两个斜杠被当成行注释的起点。
  * 在 `FilesScreen.kt` 上（上传用的 MIME 通配串就是那个形状）它会把后面一大段代码当注释吃掉，
- * `vm.connect(` 从 1 处变 0 处，任何在那个文件上断言「零命中 = 守住了」的判据静默失效。
+ * 文件页［重试］那一处调用从 1 处变 0 处，任何在那个文件上断言「零命中 = 守住了」的判据静默失效。
  *
  * | # | 守什么 | 它要防的 bug 存在时会不会红 |
  * |---|---|---|
@@ -132,8 +132,8 @@ class SharedScannerGateTest {
     /**
      * ③ 真实文件上的锚：坏的真的会吃代码，新的真的不吃。
      *
-     * `FilesScreen.kt` 上坏正则剥完会少掉几十行、`vm.connect(` 从 1 处变 0 处；
-     * 共享扫描器一行不少、`vm.connect(` 仍是 1 处。
+     * `FilesScreen.kt` 上坏正则剥完会少掉几十行、`vm::retry` 从 1 处变 0 处；
+     * 共享扫描器一行不少、`vm::retry` 仍是 1 处。
      *
      * 这里不钉绝对行数（会随 UI 改动乱红），钉的是那个关系。哪天这个文件不再是那个形状
      * （通配串没了 / 后面没有真注释去给它配对），本条会红并要求换一个锚：没有靶子的「零命中 = 守住了」就是假绿。
@@ -506,6 +506,6 @@ class SharedScannerGateTest {
             )
 
         private const val ANCHOR = "app/src/main/kotlin/com/ccmonitor/mobile/ui/files/FilesScreen.kt"
-        private const val ANCHOR_MARK = "vm.connect("
+        private const val ANCHOR_MARK = "vm::retry"
     }
 }

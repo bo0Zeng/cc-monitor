@@ -143,7 +143,16 @@ interface CoreLink {
      * `phase`：`asking`（`here` 本机文件夹里已有的名字）· `running`（`done` · `part` · `current`）· `cut` · `ended`（`outcomes` 逐项结局）。
      */
     fun downloadEvent(want: Map<String, Any?>): BatchEvent?
+
+    /** 断开这一条（有的话）、马上整份重来：停在要人动手那一步的（没装 · 起不来）也重拨。 */
+    fun reconnect()
 }
+
+/**
+ * 一台的［重试］（会话列表问题条 · 文件页那一屏走这同一条）：流断着 ⇒ 整份重接（停在要人动手那一步的也重拨；
+ * 接上了 [CoreLink.epoch] · [CoreLink.state] 跟着变，看着它的那一处重问）；通着 ⇒ [ask] 重问。
+ */
+fun CoreLink.retry(ask: () -> Unit) = if (state.value is LinkState.Down) reconnect() else ask()
 
 /** 分块传哪一半（[CoreLink.transfer]）。 */
 sealed interface Transfer {

@@ -40,6 +40,13 @@ internal class FakeCoreLink :
 
     val calls = mutableListOf<Pair<String, Map<String, Any?>?>>()
 
+    /** ［重试］叫了几回整份重接。 */
+    var reconnects = 0
+
+    override fun reconnect() {
+        reconnects++
+    }
+
     var answer: (String, Map<String, Any?>?) -> Reply = { _, _ -> Reply.LinkDown }
 
     /** `session-arrive` 那一问挂着、直到判据说报到了（[arrive]）或没见到（[miss]）。 */
