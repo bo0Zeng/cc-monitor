@@ -1412,6 +1412,34 @@ fn wait_until(mut cond: impl FnMut() -> bool) -> bool {
     cond()
 }
 
+/// 主线程在监听口上等客户端那条线程连上来 —— **带期限**（风险 `5x`，同 [`send_request`] 头注：走得到中转的判据一律带期限，把「挂住」换成「红」）。
+/// 客户端那条线程先收场了（连接失败 · 读到对端重置 · 它自己的断言红了）⇒ 它的连接永远不会来：当场红（它的原话在它自己那条线程的输出里），
+/// 不等到上限；到上限还没来也红。接到的那条连接改回阻塞（Windows 上它随监听口一起是非阻塞的）。
+fn accept_from<T>(listener: &TcpListener, client: &std::thread::JoinHandle<T>) -> TcpStream {
+    listener.set_nonblocking(true).expect("监听口改非阻塞");
+    for _ in guard_core::wall::rounds() {
+        match listener.accept() {
+            Ok((down, _)) => {
+                down.set_nonblocking(false).expect("接到的连接改回阻塞");
+                listener.set_nonblocking(false).expect("监听口改回阻塞");
+                return down;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                assert!(
+                    !client.is_finished(),
+                    "客户端那条线程已经收场（多半是它自己红了，原话在它的输出里），它的连接不会再来 —— 红，不挂"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+            Err(e) => panic!("accept：{e}"),
+        }
+    }
+    panic!(
+        "等了 {} 秒，客户端那条连接还没来",
+        guard_core::wall::CEILING_SECS
+    )
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // ★★ 真子进程的中转 —— `阻-5(D3)` 与 `重要-4(D3)` 的**唯一**可行台子
 // ─────────────────────────────────────────────────────────────────────────
@@ -1552,7 +1580,10 @@ fn spawn_relay_child_at(
             creds_core::store::DATA_DIR_ENV,
             creds_path.parent().expect("凭据夹具有父目录"),
         )
+        // 家那一对一起给（同 test-home 换家）：Windows 上找家先看 `USERPROFILE`（`creds_core::store::home_dir`），
+        //   只给 `HOME` 的话子进程沿用父进程那个沙箱家、在那里铸一把别的钥匙 ⇒ 门上回 403 `bad-key`。
         .env("HOME", &home)
+        .env("USERPROFILE", &home)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -2679,7 +2710,7 @@ fn forwarding_keeps_nothing_per_request_on_the_relay() {
         }
     });
     let mut one = || {
-        let (down, _) = listener.accept().expect("accept");
+        let down = accept_from(&listener, &client);
         serve_one(down, &relay).expect("serve_one");
     };
     for _ in 0..WARM {
@@ -2802,7 +2833,7 @@ fn both_directions_really_disable_nagle_on_the_socket() {
         c.read_to_end(&mut got).expect("read response");
         got
     });
-    let (down, _peer) = listener.accept().expect("accept");
+    let down = accept_from(&listener, &client);
     let probe = down.try_clone().expect("clone");
     // 非空对照：进 `handle` **之前** Nagle 是开着的（内核默认 TCP_NODELAY = 0）。
     // 没有这一格，下面那句在「内核默认就关着」的系统上是**空真**。
@@ -2893,7 +2924,7 @@ fn both_peers_really_carry_their_read_and_write_deadline_on_the_socket() {
         c.read_to_end(&mut got).expect("read response");
         got
     });
-    let (down, _peer) = listener.accept().expect("accept");
+    let down = accept_from(&listener, &client);
     let probe = down.try_clone().expect("clone");
     // 非空对照：进 `handle` **之前**两个方向都**没有**期限（内核默认 `SO_*TIMEO` = 0）。
     // 没有这两格，下面那两句在「内核默认就带期限」的系统上是**空真**。

@@ -2,19 +2,12 @@
 # auto-e2e F-E0:loopback-remote 的后端包装器(测试 fixture,**非** backend 改动)。
 # 把后端的 $CLAUDE_CONFIG_DIR 钉到一个一次性隔离目录(默认 /tmp/e2e-remote-claude),
 # 让 app 经 loopback SSH 连上来时读的是 fixture 而**不是**真实 ~/.claude——否则本机会话会
-# 同时以「本地 tab」和「远端 tab」双份出现(§ 双 tab)。config.json 的 backendPath 指向本脚本即可。
+# 同时以「本地 tab」和「远端 tab」双份出现(§ 双 tab)。远端后端恒是那一头的 `~/.cc-monitor/bin/ccm`:
+# `tier2-rig.sh setup` 把本脚本拷到台架那台 sshd 那一头(家在沙箱里)的这个落点上。
 # 默认后端二进制 = 仓内 debug 构建;CCM_E2E_BACKEND / CCM_E2E_CLAUDE_DIR 可覆盖。
 #
-# ★重要(实测,F-E1 全链):app **会自动部署** backend——若 backendPath 同目录没有匹配当前
-#   app 期望 build_id 的 `.build_id` 标记文件,app 会把内嵌后端二进制**覆盖写到 backendPath**
-#   (把本脚本冲掉!)。故全链跑法:把本脚本(或其副本)放进一个目录,旁边放一个 `.build_id`
-#   ⚠⚠ **文件名逐字是 `.build_id`(同目录下的隐藏文件),不是 `<二进制名>.build_id`**
-#   ——`sftp.rs::marker_path` 是 `format!("{dir}/.build_id")`。08-13 写错成后者,
-#   app 当场判「远端无版本标记」⇒ **把本脚本覆盖成内嵌二进制**,于是后端用**真** `~/.claude`
-#   起来了(只读铁律没破,但沙箱意图整个落空)。这一行写清楚,省得下一个人再踩。
-#   (内容 = app 期望的 backend build_id,如 `p1p-tmux-frame`),再把 backendPath 指向它 →
-#   deploy_decision=Skip、脚本存活。(见 src/frontend/shell/src/deploy.rs::deploy_decision +
-#   monitor 的「我这一版」)
+# app 连上时会扫落点那份字节的身份戳决定部署不部署(后端 `deploy` crate 的 `identity_decision`):本脚本没有戳 ⇒
+#   部署那一步显式失败、一个字节不写,脚本留着。旁挂的 `.build_id` 文件没有任何东西读(那条按旁挂标记判的路早删了),不用放。
 E2E_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO=$(CDPATH= cd -- "$E2E_DIR/../.." && pwd)
 # 🔴 **防呆：直接跑就拒。** 本脚本是夹具（loopback 远端的后端包装器），合法的叫法只有一种：
@@ -76,10 +69,10 @@ CCM_E2E_TMUX_SOCK=$(cat "$E2E_DIR/tmux-sock")
 if [ -n "${CCM_E2E_TMUX_SOCK:-}" ]; then
   _real_tmux=$(command -v tmux 2>/dev/null)
   if [ -n "$_real_tmux" ]; then
-    _shim=$(mktemp -d /tmp/e2e-backend-tmuxshim.XXXXXX) || _shim=""
-    if [ -n "$_shim" ]; then
-      printf '#!/bin/sh\nexec %s -L %s "$@"\n' "$_real_tmux" "$CCM_E2E_TMUX_SOCK" > "$_shim/tmux"
-      chmod +x "$_shim/tmux"
+    # 垫片住台架目录（每次叫都写同一份、先写临时名再改名上位）：放 /tmp 的话每叫一次留一个目录，一趟下来几十个没人收。
+    _shim="$E2E_DIR/.tmux-shim"
+    if mkdir -p "$_shim" && printf '#!/bin/sh\nexec %s -L %s "$@"\n' "$_real_tmux" "$CCM_E2E_TMUX_SOCK" > "$_shim/tmux.$$" \
+       && chmod +x "$_shim/tmux.$$" && mv -f "$_shim/tmux.$$" "$_shim/tmux"; then
       PATH="$_shim:$PATH"; export PATH
     fi
   fi

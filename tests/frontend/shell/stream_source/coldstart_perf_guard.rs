@@ -111,3 +111,46 @@ fn the_perf_probes_in_this_file_only_grow() {
              同样适用：**删之前先说清「这一段现在靠什么知道快慢」**。"
     );
 }
+
+/// 界面那一头的启动管线读数：「首批行到前端」那一句（`[perf] first stream batch received`）与整条 timeline（经 `frontend_perf_log`
+/// 落进 monitor 日志、带建卡数 `recordsRendered`）要打在**今天冷起真走的那一处**。
+///
+/// 壳冷起不再整份重放（会话流里没有那一段批）⇒ 原来挂在批边界上的这一句冷起时一次都不打，timeline 也不落盘（合测读不到）。
+/// 冷起首个标签页的正文走的是「会话刚进在看名单 ⇒ 按行号把上流点之下那一截取回来」（`TabStreamView.catchUpTo`）：
+/// 喂行那一处（`feedHistoryRows`）记首批、那一趟落地处落 timeline。行为（只打一次 · 建卡数照读）住 `startup-perf.vitest.ts` 与
+/// `tabs.vitest.ts`「冷起那一形」；本条只钉「那一句只有一处发」「冷起那条路调到了它」。
+#[test]
+fn the_ui_first_batch_line_is_emitted_on_todays_cold_start_path() {
+    let perf = include_str!("../../../../src/frontend/ui/startup-perf.ts");
+    let view = include_str!("../../../../src/frontend/ui/tab-stream-view.ts");
+    let events = include_str!("../../../../src/frontend/ui/events.ts");
+    let needle = "console.info(`[perf] first stream batch received @ ";
+    assert_eq!(
+        perf.matches(needle).count(),
+        1,
+        "「首批行到前端」那一句该恰好一处发（`startup-perf.ts::noteFirstBatch`）"
+    );
+    assert!(
+        !events.contains(needle) && !view.contains(needle),
+        "那一句又在别处另打了一份 —— 两条来路（重放批 · 冷起补读）都经 `noteFirstBatch`"
+    );
+    let method = |sig: &str| -> String {
+        let at = view.find(sig).unwrap_or_else(|| {
+            panic!("`tab-stream-view.ts` 里找不到 `{sig}` —— 被改写或搬走了，本条会零命中地绿")
+        });
+        let rest = &view[at..];
+        rest[..rest.find("\n  }\n").unwrap_or(rest.len())].to_string()
+    };
+    assert!(
+        method("  private feedHistoryRows(").contains("noteHistoryArrived();"),
+        "按行号取回的行喂进 tab 那一处（`feedHistoryRows`）没记首批"
+    );
+    assert!(
+        method("  catchUpTo(").contains("noteColdFilled();"),
+        "冷起那一趟（`catchUpTo` 整份取尾巴那一形）落地时没把 timeline 落盘"
+    );
+    assert!(
+        events.contains("noteFirstBatch();"),
+        "重放批那一条来路（会话流里的 `batch` 边界）不再记首批"
+    );
+}

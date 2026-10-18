@@ -62,13 +62,15 @@ canary 例外：它问的正是用户那台默认 server）。
 
 ## 全链套件的台架
 
-GUI 那几套（`graylight-suite` · `f40-suite`）的台架用脚本搭，不手搓（手搓容易让后端用真 `~/.claude` 起来）：
+GUI 那几套（`graylight-suite` · `f40-suite`）的台架用脚本搭，不手搓（手搓容易让后端用真 `~/.claude` 起来）。
+两头的家都在沙箱里（默认本树 `.build/tier2/`）：app 的家是 `h/`；「远端」是台架自己起的一台回环 sshd，
+每个会话的 `HOME` 换成 `r/`，wrapper 就放在那一头的后端落点 `r/.cc-monitor/bin/ccm`；tmux 两头各一台私有的（`-L`）。
 
 ```bash
-bash tests/e2e/tier2-rig.sh setup     # 沙箱 ＋ config.json ＋ Xvfb（会自证 loopback ssh / 后端二进制 / build_id）
-bash tests/e2e/tier2-rig.sh dev &     # dev 实例（HOME 指沙箱）
+bash tests/e2e/tier2-rig.sh setup     # 沙箱 ＋ 回环 sshd ＋ config.json ＋ Xvfb（自证：钉住的后端是这一版 · 远端的家在沙箱里）
+bash tests/e2e/tier2-rig.sh dev &     # dev 实例（环境从空起、HOME 指沙箱）
 bash tests/e2e/tier2-rig.sh run       # graylight-suite ＋ f40-suite
-bash tests/e2e/tier2-rig.sh teardown  # 按 pid 收 dev ＋ vite ＋ Xvfb
+bash tests/e2e/tier2-rig.sh teardown  # 按记下的 pid / 名字收：dev 进程组（含 vite）· 两头常驻 · sshd · Xvfb · 私有 tmux
 ```
 
 没有窗口管理器时 `xdotool getmouselocation` 报 `window:0`（指针与窗口关联不上），装 `openbox` 再跑。
@@ -86,9 +88,9 @@ E2E_DISPLAY=:80 HOME=<沙箱> CLAUDE_CONFIG_DIR=<沙箱>/.claude bash tests/e2e/
 
 1. **`RUSTUP_HOME`/`CARGO_HOME` 要显式指回真路径**：沙箱 `HOME` 会把 rustup 的家一起换掉，
    `npx tauri dev` 报 `rustup could not find toolchain`。（那两个不是账号数据，与沙箱意图不冲突。）
-2. **后端的 `.build_id` 标记文件名逐字是 `.build_id`**（同目录隐藏文件），
-   不是 `<二进制名>.build_id` —— 写错的话 app 判「远端无版本标记」，
-   **把 wrapper 覆盖成内嵌二进制**，后端就用**真** `~/.claude` 起来了。
+2. **远端后端的落点是那一头家里固定的 `~/.cc-monitor/bin/ccm`**（`backendPath` 那一格删了）：
+   wrapper 要放进那个落点才接得上，而回环到本机真 sshd 那一头就是真家目录 ⇒ 用台架起的那台 sshd（家在沙箱里）。
+   wrapper 没有身份戳 ⇒ app 部署那一步显式失败、一个字节不写（不覆盖 wrapper）；旁挂的 `.build_id` 文件没有任何东西读，不用放。
 3. **gate 丁 会因为盘上多余的后端直接 ABORT**：先 `bash tests/e2e/reap-orphan-backends.sh` 看清楚，
    自己上一轮留下的按 pid 精确收，认不出的用 `E2E_ACK_BACKENDS=<pid>` 点名放行（要举证）。
 4. **收尾要连 vite 一起收**：只收 `tauri dev` 那个 node 的话，vite 还占着 devUrl 端口，
@@ -184,13 +186,11 @@ fixtures:
    `session_added` → (kill fake-claude) `session_removed` **且** `session_state` = `reconnectable`
    (=灰) → (kill-session) `session_state` = `ended`(=归档边沿；原看 `tmux_sessions` 快照帧，那一帧删了)。
 
-2. **全链级(GUI + loopback SSH)**:前置同 f40(Xvfb + dev 实例)+ config.json 配一个 loopback 远端,
-   `backendPath` 指向 `backend-wrapper.sh`。然后 `E2E_DISPLAY=:80 bash tests/e2e/graylight-suite.sh`。断言 monitor
-   日志:`[e2e] tab-state … dot=exited`(Claude 已退出)→
-   `… dot=ended`(已结束)。**★ app 会自动部署后端**:backendPath 同目录须放一个 `.build_id`(内容=app
-   **内嵌** 后端的 build_id;那条按旁挂标记判的路已删,今天后端读字节自报的身份戳,见后端 `deploy` crate 的 `identity_decision`——不是 monitor 的「我这一版」),否则
-   app 会用内嵌二进制覆盖写 backendPath(把 wrapper 冲掉)。杀 fake-claude **前须等 > 一个 8s 发帧周期**,
-   让 app 先收到含 @ccm_sid 的 `TmuxSessions` 帧,否则 removed 到达时 tmux 账本无此 sid → 判 Archive 丢灰。
+2. **全链级(GUI + loopback SSH)**:台架用 `tier2-rig.sh` 搭（见上「全链套件的台架」：wrapper 放在台架那台 sshd 那一头的后端落点上），
+   `tier2-rig.sh run` 跑它。断言 monitor 日志:`[e2e] tab-state … dot=exited`(Claude 已退出)→
+   `… dot=ended`(已结束)。开跑前自证台架：握手过、且有一个后端进程环境里带着 fixture 的 `CLAUDE_CONFIG_DIR`
+   （握手里不带盯哪个目录，按进程环境认；每条连接的 `--resident-attach` 小中继不算后端）。杀 fake-claude 前先等一段，
+   让后端会话账本见过含 @ccm_sid 的 tmux 快照，否则 removed 到达时判不出「还挂着」→ 判已结束、丢灰。
 
 ## auto-e2e:resume idle 就地复用(F-E2,#75/#76)
 

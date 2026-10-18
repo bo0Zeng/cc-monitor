@@ -2,15 +2,18 @@
 # ruff: noqa: E501
 """SR1b：**SFTP 住本机常驻后端**（传输四条 ＋ 部署 `deploy-*`）—— 对着一台真 sshd 的现打。
 
-跑法（仓根下，先 `cd src/backend && cargo build`）：
+跑法（仓根下，先 `cd src/backend && cargo build --release`）：
     python3 tests/evidence/SR1b-sftp-loopback.py [--monitor] [后端二进制路径]
+后端二进制缺省用 release 构建：`--monitor` 那一半要把这份字节真部署到回环那一头（还要传一份暂存件去卸），
+debug 构建约 500 MB，传暂存件那一步实测撞上期限（`deploy-uninstall` 回 `io_failed` · `Timeout`）。
 
 `--monitor`：后端那几项之后再跑一趟**界面那一侧**（`sftp_tests::sr1b_loopback_deploy_and_transfer_through_the_resident_backend`，
 平时 `#[ignore]`）—— 起一个真后端、用生产那个本机吸收点接上它，装 · 卸经 `deploy-install` · `deploy-uninstall`、传输经中继。
 
 它起一台**临时的回环 sshd**（本用户身份、随机端口、临时 host key 与客户端钥匙、`UsePAM no`、`LogLevel VERBOSE`），
-🔴 **sftp 子系统的起始目录钉在一个临时目录**（`sftp-server -d <rhome>`，日志 `-e` 接进临时文件）⇒ 后端眼里的远端 home 是 `rhome`，
-写不到这台机器上真的 `~/.cc-monitor/`。再起一个**流模式**的后端（stdio 载体；私有 HOME / TMUX_TMPDIR、摘掉 TMUX）。
+🔴 **远端那一侧的家整个换成一个临时目录 `rhome`**：sftp 子系统的起始目录钉在它（`sftp-server -d <rhome>`，日志 `-e` 接进临时文件），
+exec 那一侧的 `HOME` 也设成它（`SetEnv HOME=<rhome>`；上传开单探同名 · 部署扫身份都经 shell 跑 `~/.cc-monitor/bin/ccm`）
+⇒ 后端眼里的远端 home 是 `rhome`，读写不到这台机器上真的 `~/.cc-monitor/`；开跑前经一次 ssh 自证 `$HOME` 换过来了，没换过来 ⇒ 退 3。再起一个**流模式**的后端（stdio 载体；私有 HOME / TMUX_TMPDIR、摘掉 TMUX）。
 **不进门禁**（门禁的沙箱里没有 sshd 可起）—— 它是一份读数，不是判据；交付报告里贴的是它的输出。
 
 覆盖（每条都是「真 TCP ＋ 真 SSH 握手 ＋ 真鉴权 ＋ 真 sftp 子系统」）：
@@ -40,7 +43,7 @@ import threading
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DEFAULT_BIN = os.path.join(ROOT, ".build", "backend", "debug", "cc-monitor-backend")
+DEFAULT_BIN = os.path.join(ROOT, ".build", "backend", "release", "cc-monitor-backend")
 
 
 def free_port():
@@ -132,7 +135,7 @@ class Backend:
 def main():
     args = [a for a in sys.argv[1:] if a != "--monitor"]
     with_monitor = "--monitor" in sys.argv[1:]
-    bin_path = args[0] if args else DEFAULT_BIN
+    bin_path = os.path.abspath(args[0]) if args else DEFAULT_BIN  # 界面那一半在另一个目录里起它
     sshd = shutil.which("sshd") or "/usr/sbin/sshd"
     sftp_server = next((p for p in ("/usr/lib/openssh/sftp-server", "/usr/libexec/openssh/sftp-server", "/usr/libexec/sftp-server") if os.path.isfile(p)), "")
     if not os.path.isfile(bin_path) or not os.path.isfile(sshd) or not sftp_server or not shutil.which("ss"):
@@ -167,6 +170,7 @@ def main():
                 f"AuthorizedKeysFile {d}/authorized_keys\nPidFile {d}/sshd.pid\nUsePAM no\n"
                 "StrictModes no\nPasswordAuthentication no\nKbdInteractiveAuthentication no\n"
                 "PubkeyAuthentication yes\nLogLevel VERBOSE\nMaxSessions 10\n"
+                f"SetEnv HOME={rhome}\n"
                 f"Subsystem sftp {sftp_server} -e -l VERBOSE -d {rhome} 2>>{d}/sftp.log\n"
             )
         procs.append(subprocess.Popen([sshd, "-D", "-E", slog, "-f", f"{d}/sshd_config"]))
@@ -179,6 +183,13 @@ def main():
         else:
             print("sshd 起不来")
             return 3
+        # 台架自证：exec 那一侧的家是 rhome（不是就会经 shell 跑到真家目录里那份 `~/.cc-monitor/bin/ccm`）。
+        said = subprocess.run(["ssh", "-F", "/dev/null", "-i", f"{d}/client_key", "-p", str(port), "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes",
+                               "-o", f"UserKnownHostsFile={d}/known_hosts", "-o", "StrictHostKeyChecking=accept-new", f"{user}@127.0.0.1", 'printf %s "$HOME"'],
+                              capture_output=True, text=True, timeout=30).stdout
+        if said != rhome:
+            print(f"远端 shell 的 HOME 不是临时目录（要 {rhome}，是 {said!r}）—— 不跑")
+            return 3
 
         def slog_text():
             with open(slog, errors="replace") as fh:
@@ -186,6 +197,18 @@ def main():
 
         def auths():
             return slog_text().count("Accepted publickey")
+
+        def upload(local):
+            """开一单上传（一组一项，落点目录 = rhome）⇒ (id, 暂存件的键)；没开成 ⇒ (None, None) 与那一份回包。"""
+            r = be.call("transfer-upload", {"dial": base, "items": [{"local_path": local}], "remote_dir": rhome, "home": rhome})
+            it = (r or {}).get("data", {}).get("items", [{}])[0] if r and r.get("ok") else {}
+            return (it.get("id"), it.get("staged"), r) if it.get("state") == "opened" else (None, None, r)
+
+        def download(remote, local):
+            """开一单下载（落点目录 = `local` 那一层、落名 = 它的名字）⇒ (id, 回包)。"""
+            r = be.call("transfer-download", {"dial": base, "items": [{"remote_path": remote, "name": os.path.basename(local)}], "local_dir": os.path.dirname(local)})
+            it = (r or {}).get("data", {}).get("items", [{}])[0] if r and r.get("ok") else {}
+            return (it.get("id") if it.get("state") == "opened" else None), r
 
         def written(path):
             """sftp-server 记下的、关掉 `path` 那一次的写入字节数（最后一次）。它的日志经 `-e` 打到 stderr，再由子系统那行命令接进 `sftp.log`。"""
@@ -224,10 +247,8 @@ def main():
         up = os.path.join(d, "up.bin")
         with open(up, "wb") as fh:
             fh.write(os.urandom(5 * 1024 * 1024 + 3))
-        r = be.call("transfer-upload", {"dial": base, "local_path": up})
-        ok = bool(r and r["ok"])
-        xid, key = (r["data"]["id"], r["data"]["key"]) if ok else (None, None)
-        check("开单：回 id ＋ 32 位键", ok and len(key) == 32, r)
+        xid, key, r = upload(up)
+        check("开单：回 id ＋ 32 位暂存键", bool(xid) and len(key or "") == 32, r)
         r = be.call("transfer-start", {"id": xid})
         last = be.end_of(xid)
         frames = be.xfer.get(xid, [])
@@ -248,8 +269,7 @@ def main():
         body = os.urandom(4 * 1024 * 1024 + 11)
         with open(up2, "wb") as fh:
             fh.write(body)
-        r = be.call("transfer-upload", {"dial": base, "local_path": up2})
-        xid2, key2 = r["data"]["id"], r["data"]["key"]
+        xid2, key2, _ = upload(up2)
         have = 1536 * 1024
         part2 = f"{rhome}/.cc-monitor/staging/{key2}.part"
         with open(part2, "wb") as fh:
@@ -266,8 +286,7 @@ def main():
         big_up = os.path.join(d, "big.bin")
         with open(big_up, "wb") as fh:
             fh.truncate(256 * 1024 * 1024)
-        r = be.call("transfer-upload", {"dial": base, "local_path": big_up})
-        xid3, key3 = r["data"]["id"], r["data"]["key"]
+        xid3, key3, _ = upload(big_up)
         be.call("transfer-start", {"id": xid3})
         be.wait(lambda: any(f["got"] > 0 for f in be.xfer.get(xid3, [])) or None, 30)
         be.call("transfer-stop", {"id": xid3})
@@ -279,8 +298,7 @@ def main():
             fh.truncate(256 * 1024 * 1024)
         dl_big = os.path.join(d, "dl", "big.bin")
         os.makedirs(os.path.dirname(dl_big))
-        r = be.call("transfer-download", {"dial": base, "remote_path": rbig, "local_path": dl_big})
-        xid4 = r["data"]["id"]
+        xid4, _ = download(rbig, dl_big)
         be.call("transfer-start", {"id": xid4})
         be.wait(lambda: any(f["got"] > 0 for f in be.xfer.get(xid4, [])) or None, 30)
         be.call("transfer-stop", {"id": xid4})
@@ -294,8 +312,7 @@ def main():
         with open(rsrc, "wb") as fh:
             fh.write(os.urandom(2 * 1024 * 1024 + 5))
         dl = os.path.join(d, "dl", "data.bin")
-        r = be.call("transfer-download", {"dial": base, "remote_path": rsrc, "local_path": dl})
-        xid5 = r["data"]["id"]
+        xid5, _ = download(rsrc, dl)
         be.call("transfer-start", {"id": xid5})
         last = be.end_of(xid5)
         with open(rsrc, "rb") as a:
@@ -303,14 +320,13 @@ def main():
         got = open(dl, "rb").read() if os.path.exists(dl) else b""
         check("下载 done、落地逐字节对、.part 不留", bool(last) and last["end"].get("state") == "done" and got == want and not os.path.exists(dl + ".part"), last)
         miss = os.path.join(d, "dl", "missing.bin")
-        r = be.call("transfer-download", {"dial": base, "remote_path": f"{rhome}/no-such-file", "local_path": miss})
-        xid6 = r["data"]["id"]
+        xid6, _ = download(f"{rhome}/no-such-file", miss)
         be.call("transfer-start", {"id": xid6})
         last = be.end_of(xid6)
         check("远端不存在 ⇒ failed、.part 不留", bool(last) and last["end"].get("state") == "failed" and not os.path.exists(miss + ".part") and not os.path.exists(miss), last)
         sess = os.path.join(home, ".claude", "projects", "p", "x.jsonl")
-        r = be.call("transfer-download", {"dial": base, "remote_path": rsrc, "local_path": sess})
-        check("本机落点是会话文件 ⇒ 照样开单（没有数据围栏）", bool(r) and r["ok"], r)
+        xid7, r = download(rsrc, sess)
+        check("本机落点是会话文件 ⇒ 照样开单（没有数据围栏）", bool(xid7), r)
 
         # 长流在时传输分道（`ssh-dial/pool.rs`：主连接上有长流 ⇒ 传输另开一条批量连接，
         #   被主连接托着、之后的传输都复用它）⇒ 长流一条、六趟传输一条：恰好两次鉴权、两条 TCP。

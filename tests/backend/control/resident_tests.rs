@@ -3,8 +3,11 @@
 
 use super::*;
 
+/// 名字压短、不带进程号：临时目录已是这个测试进程自己的沙箱根（test-home），几条判据在 `<这里>/run/backend.sock` 绑 Unix 套接字，
+/// 整条路径要压在 107 字节里 —— 原来的 `ccm-resident-<tag>-<pid>` 在临时目录深一点的快检里把 `call-absent` 那一条顶过了线，
+/// 连接回 `InvalidInput`（不是「没人在听」），读成了 `failed`。
 fn scratch(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("ccm-resident-{tag}-{}", std::process::id()));
+    let d = std::env::temp_dir().join(format!("res-{tag}"));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d

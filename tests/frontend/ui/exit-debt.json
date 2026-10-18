@@ -85,14 +85,14 @@
       "why": "会话流那条连接自己的故障（HopFault：Dropped · Overrun），是通道 / 宿主本职的失败句，不是核心成品的码"
     },
     {
-      "file": "src/frontend/ui/events.ts",
+      "file": "src/frontend/ui/startup-perf.ts",
       "rule": "durUnit",
       "n": 1,
       "kind": "留",
       "why": "开发者日志（`[perf]` 行 / console），不上屏"
     },
     {
-      "file": "src/frontend/ui/events.ts",
+      "file": "src/frontend/ui/startup-perf.ts",
       "rule": "toFixed",
       "n": 15,
       "kind": "留",
