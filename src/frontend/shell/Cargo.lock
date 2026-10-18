@@ -3410,7 +3410,7 @@ dependencies = [
 
 [[package]]
 name = "monitor"
-version = "4.1.10"
+version = "5.0.0"
 dependencies = [
  "acct-core",
  "arboard",

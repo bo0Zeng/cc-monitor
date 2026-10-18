@@ -2,7 +2,7 @@
 
 **All your Claude Code sessions, on every machine, in one window: watch them live, jump back in, and manage every machine from one place.**
 
-> English · [中文](./README.md) | License: MIT | Platform: Windows 10/11 · Linux (.deb) · Android phone app (.apk) | Current: v4.1.10
+> English · [中文](./README.md) | License: MIT | Platform: Windows 10/11 · Linux (.deb) · Android phone app (.apk) | Current: v5.0.0
 
 ![Main window: each tab on the left is a running Claude Code session; the right side shows the conversation and tool calls live](docs/screenshots/main.png)
 
@@ -35,6 +35,9 @@ cc-monitor only observes and launches: `claude` still runs in your own terminal,
 - Select several tabs (Ctrl-click, Shift-click for a range) and stop, start, pin, group or close them together from the right-click menu
 - ↗ on a tab brings the terminal window that is showing that session to the front; for remote sessions it finds whichever terminal is attached right now, no matter who opened it
 - "Reload" on the tab bar re-syncs every tab with the records on disk
+- Answer in the message stream: approve a step · deny with a reason · answer a question · approve a plan; the terminal still works too, and whichever answers first wins. A question can be set to get an automatic reply after a few minutes with no answer
+- The "needs attention" overlay and `Ctrl+J` put the riskiest items first; tabs and the window title show the count
+- The session header can switch the model and the permission mode; sub-sessions started from inside a session stay out of the tab bar by default, and any session can be hidden or shown again
 
 ### History
 - Browse every session by machine and project, with full-text search
@@ -59,12 +62,21 @@ cc-monitor only observes and launches: `claude` still runs in your own terminal,
 - Same colours and fonts as the main window; back / forward, an editable address bar, a sidebar (bookmarks · this machine · other machines), a details list (resizable columns, click a header to sort) and a status bar
 - Search as you type across the whole home folder, with the common Everything syntax (space = and · `|` or · `!` not · `*` `?` · `ext:` `path:` `file:` `folder:`)
 - Create, rename, delete, copy, change permissions, upload and download, bookmarks, search by content; "Properties" in the right-click menu; preview with syntax highlighting and images
+- Select a group and copy, delete, change permissions, upload or download it at once; name clashes are asked item by item, and failed items can be retried on their own
+- Images open in a viewer (zoom · previous / next); text files open in an editor on double-click
 - On remote machines it can do everything SSH can do to files
 
 ### Accounts and relay
 - Subscription accounts (official Claude login) and API accounts (your own URL and key) in one place
 - Two accounts can run at the same time: separate login credentials, shared skills, memory and settings
 - An API key stays on its own machine and is only injected when a request passes that machine's relay — never on the command line, never in the environment
+- Sign in to subscription accounts and MCP servers inside the app; when one account signs in to (or refreshes) an MCP server, the other accounts get the same login
+- Account rotation: switch to another account when quota runs low and keep going. Rules are strategies, edited in Settings or the session panel (account list · order · thresholds · time slots · smart switching) or written by hand; each session keeps its own copy, can switch on the spot and can dry-run the result
+
+### Phone app (Android)
+- Connects to the same machines: read sessions, keep chatting, open a terminal, manage files (with multi-select)
+- Approve steps, answer questions and approve plans on the phone; see each account's usage and change rotation
+- Install or upgrade the backend on a machine; SSH runs on the same core as the desktop (jump hosts · passwords · host key checks)
 
 ### Assets
 - Push and pull skills and MCP servers between machines; review the differences first, and uninstall what you installed
@@ -196,9 +208,10 @@ The "Data locations" page in Settings shows the full path of every file.
 - On Windows, sessions cannot yet be sent to the background, re-attached, previewed or typed into; the local backend exits together with the UI.
 - macOS is not supported, neither as the local machine nor as a remote one; Linux arm64 works as a remote machine only.
 - Multi-account currently works on Linux machines only; the account store cannot be set up on a local Windows machine.
-- The Windows side has been regression-tested in a Windows 11 virtual machine (copy-details, icons, the terminal drawer, the file window, ↗ bringing the right window and the right Windows Terminal tab forward); terminals opened as administrator have not been tested yet.
+- The Windows side has been regression-tested in a Windows 11 virtual machine (copy-details, icons, the terminal drawer, the file window, ↗ bringing the right window and the right Windows Terminal tab forward, terminals opened as administrator).
 - ↗ only brings the window forward (and says why) when the tab name does not follow the program title (renamed by hand, or "suppress title changes" is set) or the tabs cannot be read; terminals connected through a jump host or port translation cannot be matched.
-- The signed Android app ships with each Release (`cc-monitor-<version>.apk`); it cannot install or upgrade a backend on a machine yet and only reports "needs update"; its SSH is still its own, and moves to the same core as the desktop in the next release.
+- The signed Android app ships with each Release (`cc-monitor-<version>.apk`) under the same version number as the desktop; the backend on a machine it connects to must be the same version, otherwise it says the machine needs an update and installs only when asked.
+- Sessions started through a custom launcher (`--launcher` and the like) can answer approvals in the message stream on Linux only; on Windows they still answer in the terminal.
 
 ---
 
@@ -213,7 +226,7 @@ The "Data locations" page in Settings shows the full path of every file.
 
 ## Status
 
-- current release **v4.1.10**: see the [CHANGELOG](CHANGELOG.md)
+- current release **v5.0.0**: see the [CHANGELOG](CHANGELOG.md)
 
 ## License
 
