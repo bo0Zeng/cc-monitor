@@ -27,7 +27,7 @@ fn dir(mode: u32, entries: &[(&str, Item)]) -> DirState {
     }
 }
 
-/// `/h` 家；共享库有 skills · settings.json · agents · plans · accounts（排除）· x.bak（排除）；清单里一个号 z。
+/// `/h` 家；共享库有 skills · settings.json · agents · plans · projects · sessions · accounts（排除）· x.bak（排除）；清单里一个号 z。
 fn snap(z: DirState) -> Snapshot {
     let text = r#"{"version":1,"sharedStore":"/h/.claude","accounts":[{"name":"z","email":"","configDir":"/h/.cc-monitor/accounts/z","isDefault":true}]}"#;
     let mut dirs = BTreeMap::new();
@@ -47,6 +47,8 @@ fn snap(z: DirState) -> Snapshot {
                 ("settings.json", file(0o644)),
                 ("agents", Item::Dir { mode: Some(0o700) }),
                 ("plans", Item::Dir { mode: Some(0o700) }),
+                ("projects", Item::Dir { mode: Some(0o700) }),
+                ("sessions", Item::Dir { mode: Some(0o700) }),
                 ("accounts", Item::Dir { mode: Some(0o755) }),
                 ("x.bak", file(0o644)),
             ],
@@ -65,6 +67,8 @@ fn healthy() -> DirState {
             ("settings.json", link("/h/.claude/settings.json")),
             ("agents", link("/h/.claude/agents")),
             ("plans", link("/h/.claude/plans")),
+            ("projects", link("/h/.claude/projects")),
+            ("sessions", link("/h/.claude/sessions")),
             (".credentials.json", file(0o600)),
         ],
     )
@@ -74,7 +78,14 @@ fn healthy() -> DirState {
 fn share_items_skip_identity_and_excluded_names() {
     assert_eq!(
         share_items(&snap(healthy()).shared),
-        ["agents", "plans", "settings.json", "skills"]
+        [
+            "agents",
+            "plans",
+            "projects",
+            "sessions",
+            "settings.json",
+            "skills"
+        ]
     );
 }
 
@@ -94,6 +105,8 @@ fn repair_plans_exactly_the_fixes() {
             ("stats-cache.json", link("/h/.claude/stats-cache.json")),
             ("agents", link("/h/.claude/agents")),
             ("plans", link("/h/.claude/plans")),
+            ("projects", link("/h/.claude/projects")),
+            ("sessions", link("/h/.claude/sessions")),
         ],
     );
     let p = plan_repair(&snap(broken)).unwrap();
@@ -316,4 +329,48 @@ fn the_upgrade_step_touches_only_the_on_demand_dirs_and_settles_to_nothing() {
         plan_shared_on_demand(&snap(healthy())).unwrap(),
         Plan::default()
     );
+}
+
+/// 会话记录（`projects`）与在跑会话的那份登记（`sessions`）：后端只在共享库里找它们，所以各号必须链回共享库那一份。
+/// 新机器上 `~/.claude` 里还没有这两个 ⇒ 建库 · 加号照样先在共享库里建出来再链 —— 不链的话那个号头一回起会话就在号里落一份实体，
+/// 后端看不见那条会话。
+#[test]
+fn transcripts_and_live_session_records_are_linked_even_when_the_shared_store_has_none_yet() {
+    let bare = || {
+        let mut s = snap(healthy());
+        s.shared.entries.remove("projects");
+        s.shared.entries.remove("sessions");
+        s
+    };
+    let mut s = bare();
+    s.manifest = None;
+    s.manifest_text = None;
+    s.dirs.clear();
+    let mk = |n: &str| Op::MkDir(format!("/h/.claude/{n}"));
+    let ln = |who: &str, n: &str| Op::Link {
+        target: format!("/h/.claude/{n}"),
+        at: format!("/h/.cc-monitor/accounts/{who}/{n}"),
+    };
+    let p = plan_init(&s, "lab").unwrap();
+    for n in ["projects", "sessions"] {
+        let made = p.ops.iter().position(|o| *o == mk(n));
+        let linked = p.ops.iter().position(|o| *o == ln("lab", n));
+        assert!(made.is_some(), "{n}：共享库里没建：{:?}", p.ops);
+        assert!(linked > made, "{n}：没在建好之后链上：{:?}", p.ops);
+    }
+    let s = bare();
+    let p = plan_add(
+        &s,
+        &AddIntent {
+            name: "c".into(),
+            api_key: true,
+            cred_file: None,
+            make_default: false,
+        },
+    )
+    .unwrap();
+    for n in ["projects", "sessions"] {
+        assert!(p.ops.contains(&mk(n)), "{n}：{:?}", p.ops);
+        assert!(p.ops.contains(&ln("c", n)), "{n}：{:?}", p.ops);
+    }
 }

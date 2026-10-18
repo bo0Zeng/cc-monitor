@@ -405,12 +405,6 @@
       "zh": "{path} 是指向 {target} 的链接 · 先换回普通文件再建账号库",
       "args": ["path", "target"]
     },
-    "beAcctPlan.links.noneShared": {
-      "kind": "body",
-      "role": "空态",
-      "zh": "共享库 {shared} 为空 · 此号只有自己的身份文件",
-      "args": ["shared"]
-    },
     "beAcctPlan.name.shape": {
       "kind": "error",
       "role": "报错",
@@ -656,12 +650,6 @@
       "role": "说明",
       "zh": "邮箱不明 · 未登录过或无 .claude.json",
       "args": []
-    },
-    "beAcctVerify.acct.noShared": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "共享库 {shared} 里无可共享项 · 实际未共享",
-      "args": ["shared"]
     },
     "beAcctVerify.acct.notLoggedIn": {
       "kind": "body",

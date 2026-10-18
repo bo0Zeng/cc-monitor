@@ -3,7 +3,8 @@
 //!
 //! 先备份再改：一趟改动之前在 `<账号库>/.backup-<时间戳>/` 建一份备份（`0700`）；每一步动一份既有的东西之前先把它原样
 //! 拷进 `root/<它的绝对路径>`，**这一步真做成了之后**才往 `undo.tsv` 记一行（`RESTORE\t<路径>` = 还原那一份 ·
-//! `DELETE\t<路径>` = 删掉这一趟新建的）⇒ 撤销清单里的每一行都对应一次真发生过的改动，中途停下也能回滚。
+//! `DELETE\t<路径>` = 删掉这一趟新建的）；同一个文件系统里挪（`Move`）是改名、不丢东西 ⇒ 不拷，记 `UNMOVE\t<原处>\t<挪到的那一处>`
+//! （回滚从挪到的那一处拷回原处）⇒ 撤销清单里的每一行都对应一次真发生过的改动，中途停下也能回滚。
 //! 回滚（[`rollback`]）按撤销清单倒着来：先把该还原的都还原（现场的那一份先挪进 `pre-rollback/`，不直接删），
 //! 再删这一趟新建的；每一条自己的错误不挡别的条。
 //!
@@ -123,9 +124,18 @@ impl Run<'_> {
                 self.record(&[("RESTORE", at)])
             }
             Op::Move { from, to } => {
-                self.backup(from)?;
+                let to_dir = to.rsplit_once('/').map_or(to.as_str(), |(p, _)| p);
+                let dev = |p: &str| crate::platform::paths::device_of(std::path::Path::new(p));
+                let keep = move_keeps_backup(dev(from), dev(to_dir));
+                if keep {
+                    self.backup(from)?;
+                }
                 door::rename(d, &home, &self.rel(from)?, &self.rel(to)?)?;
-                self.record(&[("RESTORE", from), ("DELETE", to)])
+                if keep {
+                    self.record(&[("RESTORE", from), ("DELETE", to)])
+                } else {
+                    self.record(&[("UNMOVE", &format!("{from}\t{to}")), ("DELETE", to)])
+                }
             }
             Op::Isolate { from, at } => self.isolate(from, at),
             Op::Copy { from, to } => {
@@ -349,6 +359,12 @@ pub(crate) fn apply(
     })
 }
 
+/// 挪之前要不要先整份拷进备份：同一个文件系统里挪是改名、不丢东西 ⇒ 不拷（回滚从挪到的那一处拷回来，[`Undo::Back`]）；
+/// 跨文件系统 · 认不出在哪个盘 ⇒ 照旧先拷。
+pub(crate) fn move_keeps_backup(from_dev: Option<u64>, to_dev: Option<u64>) -> bool {
+    !matches!((from_dev, to_dev), (Some(a), Some(b)) if a == b)
+}
+
 /// 备份目录那一段名字：UTC `YYYYMMDD-HHMMSS`；同一秒里已有 ⇒ 后面接 `-2` `-3` …
 fn backup_id(r: &Roots) -> String {
     let base = utc_stamp(false);
@@ -383,6 +399,11 @@ pub(crate) fn utc_stamp(iso: bool) -> String {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Undo {
     Restore(String),
+    /// 同盘挪走的那一份：从挪到的那一处（`from`）拷回原处（`at`），挪到的那一处留着。
+    Back {
+        at: String,
+        from: String,
+    },
     Delete(String),
     /// 把 `config_dir` 那个号那一行放回 key 表 `table`。
     Rekey {
@@ -412,6 +433,15 @@ pub(crate) fn undo_steps(text: &str) -> (Vec<Undo>, Vec<String>) {
                 restore.push(Undo::Restore(p.to_string()))
             }
             Some(("DELETE", p)) if p.starts_with('/') => delete.push(Undo::Delete(p.to_string())),
+            Some(("UNMOVE", rest)) => match rest.split_once('\t') {
+                Some((at, from)) if at.starts_with('/') && from.starts_with('/') => {
+                    restore.push(Undo::Back {
+                        at: at.to_string(),
+                        from: from.to_string(),
+                    })
+                }
+                _ => bad.push(line.to_string()),
+            },
             Some(("REKEY", rest)) => match rest.split_once('\t') {
                 Some((t, c)) if t.starts_with('/') && c.starts_with('/') => {
                     restore.push(Undo::Rekey {
@@ -427,7 +457,7 @@ pub(crate) fn undo_steps(text: &str) -> (Vec<Undo>, Vec<String>) {
     let restored: Vec<String> = restore
         .iter()
         .filter_map(|u| match u {
-            Undo::Restore(p) => Some(p.clone()),
+            Undo::Restore(p) | Undo::Back { at: p, .. } => Some(p.clone()),
             _ => None,
         })
         .collect();
@@ -441,7 +471,9 @@ pub(crate) fn undo_steps(text: &str) -> (Vec<Undo>, Vec<String>) {
 /// 一条回滚给人看的那一句。
 pub(crate) fn describe_undo(u: &Undo) -> String {
     match u {
-        Undo::Restore(p) => copy_text("beAcctExec.rollback.restore", &[("path", p)]),
+        Undo::Restore(p) | Undo::Back { at: p, .. } => {
+            copy_text("beAcctExec.rollback.restore", &[("path", p)])
+        }
         Undo::Delete(p) => copy_text("beAcctExec.rollback.delete", &[("path", p)]),
         Undo::Rekey { table, config_dir } => copy_text(
             "beAcctExec.rollback.rekey",
@@ -468,7 +500,13 @@ pub(crate) fn rollback(
     let aside = join(bk, "pre-rollback");
     for u in steps {
         let res = match u {
-            Undo::Restore(p) => restore_one(d, r, bk, &aside, p),
+            Undo::Restore(p) => restore_one(d, r, &format!("{bk}/root{p}"), &aside, p),
+            Undo::Back { at, from } if restore_target_ok(r, from) => {
+                restore_one(d, r, from, &aside, at)
+            }
+            Undo::Back { from, .. } => {
+                Err(copy_text("beAcctExec.rollback.outside", &[("path", from)]))
+            }
             Undo::Delete(p) => delete_one(d, r, p),
             Undo::Rekey { table, config_dir } => rekey_one(r, bk, keys, table, config_dir),
         };
@@ -517,12 +555,12 @@ fn rekey_one(
     (k.restore)(config_dir, &saved)
 }
 
-fn restore_one(d: &dyn Door, r: &Roots, bk: &str, aside: &str, p: &str) -> Result<(), String> {
+/// 把 `saved`（备份里那一份，或同盘挪到的那一处）原样拷回 `p`；`p` 上已有的先挪到 `aside` 底下。
+fn restore_one(d: &dyn Door, r: &Roots, saved: &str, aside: &str, p: &str) -> Result<(), String> {
     if !restore_target_ok(r, p) {
         return Err(copy_text("beAcctExec.rollback.outside", &[("path", p)]));
     }
-    let saved = format!("{bk}/root{p}");
-    let it = item_at(&saved);
+    let it = item_at(saved);
     if !it.exists() {
         return Err(copy_text("beAcctExec.rollback.notSaved", &[("path", p)]));
     }
@@ -549,7 +587,7 @@ fn restore_one(d: &dyn Door, r: &Roots, bk: &str, aside: &str, p: &str) -> Resul
         )?;
     }
     mkdirs(d, &r.home, parent)?;
-    place_copy(d, &r.home, &it, &saved, p)
+    place_copy(d, &r.home, &it, saved, p)
 }
 
 fn delete_one(d: &dyn Door, r: &Roots, p: &str) -> Result<(), String> {

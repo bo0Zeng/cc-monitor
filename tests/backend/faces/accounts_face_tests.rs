@@ -331,12 +331,13 @@ fn init_moves_the_identity_links_the_rest_and_writes_the_manifest_and_alias() {
     ] {
         steps.push(format!("搬文件 {from} → {lab}/{name}"));
     }
-    steps.extend(["agents", "plans"].map(|d| format!("建目录 {cl}/{d}")));
+    steps.extend(["agents", "plans", "sessions"].map(|d| format!("建目录 {cl}/{d}")));
     for name in [
         "CLAUDE.md",
         "agents",
         "plans",
         "projects",
+        "sessions",
         "settings.json",
         "skills",
     ] {
@@ -473,14 +474,58 @@ fn init_refusals_leave_nothing_behind() {
     assert_eq!(code(&u, "accounts-init", json!({ "name": "e" })), "refused");
 }
 
-/// 空家目录（连 `~/.claude` 都没有）：共享库先建出来，默认号只有自己，提示「没有可共享的顶层项」。
+/// 空家目录（连 `~/.claude` 都没有）：共享库先建出来，默认号的目录也在。
 #[test]
 fn init_on_an_empty_home_creates_the_shared_root_too() {
     let t = tmp("empty");
-    let got = ok(&t, "accounts-init", json!({ "name": "lab" }));
+    ok(&t, "accounts-init", json!({ "name": "lab" }));
     assert!(t.p(".claude").is_dir() && t.p(".cc-monitor/accounts/lab").is_dir());
-    assert!(!got["notes"].as_array().unwrap().is_empty(), "{got}");
     assert_eq!(t.manifest()["accounts"][0]["email"], "");
+}
+
+/// ★ 从没起过会话的家（`~/.claude` 里只有凭据，没有 `projects` · `sessions`）：建库 · 加号之后两个号里这两项都是链回共享库的链接、
+/// 共享库里建出了目录 —— 不然那个号起的会话记录与在跑会话的登记落在号里，后端看不见。
+/// 已经建好、缺这两条链接的旧库（lab 里留着一份自己的 `sessions`）：常驻那一个起来时那一步挪进共享库、两个号都链上。
+#[test]
+fn a_fresh_home_without_transcripts_still_gets_them_shared_and_old_libraries_are_relinked_on_start()
+{
+    let acct = |n: &str, rel: &str| format!(".cc-monitor/accounts/{n}/{rel}");
+    let t = tmp("fresh");
+    t.write(".claude/.credentials.json", "{\"fake\":\"cred-d\"}");
+    ok(&t, "accounts-init", json!({ "name": "lab" }));
+    t.write("snap/cred-x.json", "{\"fake\":\"cred-x\"}");
+    ok(
+        &t,
+        "accounts-add",
+        json!({ "name": "x", "kind": "subscription", "credFile": "~/snap/cred-x.json" }),
+    );
+    for d in ["projects", "sessions"] {
+        assert!(t.p(&format!(".claude/{d}")).is_dir(), "共享库里没有 {d}");
+        for n in ["lab", "x"] {
+            assert_eq!(
+                t.link_of(&acct(n, d)),
+                t.s(&format!(".claude/{d}")),
+                "{n}/{d}"
+            );
+        }
+    }
+    for n in ["lab", "x"] {
+        for d in ["projects", "sessions"] {
+            std::fs::remove_file(t.p(&acct(n, d))).unwrap();
+        }
+    }
+    for d in ["projects", "sessions"] {
+        std::fs::remove_dir_all(t.p(&format!(".claude/{d}"))).unwrap();
+    }
+    t.write(&acct("lab", "sessions/1.json"), "{}");
+    crate::accounts::manage::wire::shared_on_demand_here(&HomeDoor(t.0.clone()));
+    assert_eq!(t.read(".claude/sessions/1.json"), "{}");
+    for n in ["lab", "x"] {
+        for d in ["projects", "sessions"] {
+            assert!(t.is_link(&acct(n, d)), "{n}/{d} 没补上");
+        }
+    }
+    assert_eq!(verify(&t)["pass"], true);
 }
 
 // ───────────────────────────── 加号 ─────────────────────────────
@@ -997,14 +1042,14 @@ fn verify_fails_on_each_broken_invariant() {
     }
 }
 
-/// 共享库本身没有可共享的项 ⇒ 致命（根本没有共享）；源头就是断链 ⇒ 只提示（修复修不了，要到共享库里处理）。
+/// 空家目录上建的库：共享库里只有建库时建出来的那几个共用目录，号都链上了 ⇒ 不报致命（会话记录照样共用）；
+/// 源头就是断链 ⇒ 只提示（修复修不了，要到共享库里处理）。
 #[test]
 fn verify_on_empty_shared_and_broken_sources() {
     let t = tmp("v-empty");
     ok(&t, "accounts-init", json!({ "name": "lab" }));
-    assert!(checks(&verify(&t), "fail")
-        .iter()
-        .any(|f| f.contains(&t.s(".claude"))));
+    let v = verify(&t);
+    assert!(checks(&v, "fail").is_empty(), "{v}");
 
     let u = two_accounts("v-src");
     std::os::unix::fs::symlink(u.p("gone"), u.p(".claude/local")).unwrap();
@@ -1391,6 +1436,13 @@ fn repair_lifts_the_one_account_copy_of_an_on_demand_shared_dir_into_the_shared_
         "计划（夹具句）",
         "{fixed}"
     );
+    // 同一个盘上挪是改名：备份里不留整份拷贝。
+    let bk = format!(
+        ".cc-monitor/accounts/.backup-{}/root{}",
+        fixed["backup"].as_str().unwrap(),
+        t.s(&acct("lab", "plans"))
+    );
+    assert!(!t.exists(&bk), "挪之前整份拷了一次备份：{bk}");
     for n in ["lab", "x"] {
         assert!(t.is_link(&acct(n, "plans")), "{n} 没链上");
         assert_eq!(t.read(&acct(n, "plans/a-plan.md")), "计划（夹具句）");

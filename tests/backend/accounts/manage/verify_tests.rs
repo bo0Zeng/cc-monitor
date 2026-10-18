@@ -14,7 +14,7 @@ fn snap(z: BTreeMap<String, Item>) -> Snapshot {
         },
     );
     let mut shared = BTreeMap::new();
-    for n in ["skills", "agents", "plans"] {
+    for n in ["skills", "agents", "plans", "projects", "sessions"] {
         shared.insert(n.to_string(), Item::Dir { mode: Some(0o755) });
     }
     Snapshot {
@@ -43,7 +43,7 @@ fn fails(r: &VerifyReport) -> Vec<&str> {
 
 /// 号 z 里链好共享库那几项（[`snap`] 的共享库有的那几样）。
 fn all_linked() -> BTreeMap<String, Item> {
-    ["skills", "agents", "plans"]
+    ["skills", "agents", "plans", "projects", "sessions"]
         .iter()
         .map(|n| {
             (
