@@ -456,6 +456,38 @@ fn the_old_alias_file_is_migrated_once_into_the_profiles_file() {
     assert!(!profiles_path(&empty.0).exists());
 }
 
+/// 配置文件在了 ⇒ 后端起来那一次照它重写别名文件（与当下的写法对不上的那一份，比如早先版本写下的裸 `& ccm` 别名，
+/// 不等人再改一次清单才换）；内容一样就一个字节不写。
+#[test]
+fn a_stale_alias_file_is_rewritten_from_the_profiles_file_when_the_backend_starts() {
+    let h = tmp_home("stale");
+    assert!(inst(&h, &[al("cc", &[])], P).unwrap());
+    let p = alias_path(&h.0, P);
+    let fresh = std::fs::read_to_string(&p).unwrap();
+    std::fs::write(&p, "cc() { old-ccm @cc \"$@\"; }\n").unwrap();
+    migrate_here(&door(&h));
+    assert_eq!(
+        std::fs::read_to_string(&p).unwrap(),
+        fresh,
+        "旧的那一份没照配置文件重写"
+    );
+    let before = std::fs::metadata(&p).unwrap().modified().unwrap();
+    migrate_here(&door(&h));
+    assert_eq!(
+        std::fs::metadata(&p).unwrap().modified().unwrap(),
+        before,
+        "内容一样也写了一遍"
+    );
+    // 配置文件整份写坏了 ⇒ 读不出清单，不照空清单把别名删掉。
+    std::fs::write(profiles_path(&h.0), "[[[ not toml").unwrap();
+    migrate_here(&door(&h));
+    assert_eq!(
+        std::fs::read_to_string(&p).unwrap(),
+        fresh,
+        "配置文件写坏了，别名文件却被照空清单重写"
+    );
+}
+
 /// 🔴 **异源**：别名里能放的每个旗标，都得是后端 `ccm --help` 里真有的那个词
 /// （用法文本住后端 `control/ccm/mod.rs::USAGE`，两棵树不共享源码 ⇒ 读它的原文）。
 /// 反向：用法里那几个「每次取值都不同」的（第三档）不许混进来。

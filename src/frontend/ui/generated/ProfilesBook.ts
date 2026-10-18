@@ -32,9 +32,13 @@ editedAt: string | null,
  */
 fileProblem: ProfileProblem | null, profiles: Array<ProfileRow>, 
 /**
- * 配置文件不在时首建那两条的预览（在 ⇒ 空）。
+ * 配置文件不在时首建那几条的预览（在 ⇒ 空）：两条（`cc` · `cct`），没有 tmux 的那台只一条。
  */
 seed: Array<ProfileRow>, 
+/**
+ * 空态那一块的说明与按钮字，随 `seed` 的条数（没有 tmux 的那台只建一条）；`seed` 空 ⇒ 空串。
+ */
+seedHint: string, seedCreate: string, 
 /**
  * 旧别名清单一次性转进来之后那张说明（「知道了」之后 `null`）。
  */

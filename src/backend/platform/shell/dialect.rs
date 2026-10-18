@@ -104,6 +104,9 @@ pub(crate) struct Call<'a> {
     pub(crate) word: &'a str,
     /// 分两半的那个词（`ccm_line::argv::flag::END`）：左边交 claude，右边归 ccm。
     pub(crate) end: &'a str,
+    /// ccm 落在家目录下哪儿（`/` 分隔的相对路径，`relay_route_core::BACKEND_LANDING_REL`）：给了 ⇒ 不靠 `PATH` 的那一臂按它显式叫
+    /// （PowerShell：别名块不动会话 `PATH`）；`None` ＝ 照 `word` 裸叫 —— 早先版本写下的那一形，只给一次性迁移读旧文件。
+    pub(crate) landing: Option<&'a str>,
 }
 
 /// 一份启动文件候选：**路径 ＋ 盘上不在时列不列**（「列不列不存在的」是方言的读法，表第一行）。
@@ -629,10 +632,19 @@ impl PowerShell {
         Ok(out)
     }
 
-    /// `& ccm '…' $RemainingArgs['--' '…']` → 参数（`$RemainingArgs` 是分界：左边交 claude，右边 `'--'` 之后归 ccm）。
+    /// 别名里叫 ccm 的那个词：给了落点 ⇒ `"$HOME\<落点>.exe"`（双引号：`$HOME` 在那台上展开、展开出来的值不再解析；
+    /// 别名块不往会话 `PATH` 里加东西，新机器上 `PATH` 里没有 ccm）；没给 ⇒ 裸 `word`（早先版本写下的那一形）。
+    fn invoked(call: Call) -> String {
+        match call.landing {
+            Some(rel) => format!("\"$HOME\\{}.exe\"", rel.replace('/', "\\")),
+            None => call.word.to_string(),
+        }
+    }
+
+    /// `& <ccm> '…' $RemainingArgs['--' '…']` → 参数（`$RemainingArgs` 是分界：左边交 claude，右边 `'--'` 之后归 ccm）。
     fn parse_call(call: Call, line: &str) -> Result<(Vec<String>, RestTo), String> {
         let word = call.word;
-        let head = format!("    & {word}");
+        let head = format!("    & {}", Self::invoked(call));
         let bad = || copy_text("rsShellDialect.ps.badCall", &[("word", &word.to_string())]);
         let body = line.strip_prefix(&head).ok_or_else(bad)?;
         let at = body.rfind(PS_TAIL).ok_or_else(bad)?;
@@ -727,11 +739,11 @@ impl ShellDialect for PowerShell {
         )
     }
 
-    /// `function 名字 { param…; <有守卫的 __ccm_bind>; & ccm <预置> $RemainingArgs['--' <ccm 选项>] }`（交给 ccm 时 `$RemainingArgs` 在最后）。
+    /// `function 名字 { param…; <有守卫的 __ccm_bind>; & "$HOME\…\ccm.exe" <预置> $RemainingArgs['--' <ccm 选项>] }`（交给 ccm 时 `$RemainingArgs` 在最后；
+    /// 叫法见 [`PowerShell::invoked`]）。
     fn render_alias(&self, c: Call, name: &str, argv: &[String], rest: RestTo) -> String {
-        let word = c.word;
         let (left, right) = split_last_end(c.end, argv);
-        let mut call = format!("    & {word}");
+        let mut call = format!("    & {}", Self::invoked(c));
         for w in left {
             call.push(' ');
             call.push_str(&ps_literal(w));

@@ -799,8 +799,11 @@ pub(crate) struct ProfilesBook {
     /// TOML 本身写坏 ⇒ 那一处（这时 `profiles` 为空、不能按条目改）；否则 `null`。
     file_problem: Option<ProblemOut>,
     profiles: Vec<ProfileOut>,
-    /// 配置文件不在时首建那两条的预览（在 ⇒ 空）。
+    /// 配置文件不在时首建那几条的预览（在 ⇒ 空）：两条（`cc` · `cct`），没有 tmux 的那台只一条。
     seed: Vec<ProfileOut>,
+    /// 空态那一块的说明与按钮字，随 `seed` 的条数（没有 tmux 的那台只建一条）；`seed` 空 ⇒ 空串。
+    seed_hint: String,
+    seed_create: String,
     /// 旧别名清单一次性转进来之后那张说明（「知道了」之后 `null`）。
     migrated: Option<Migrated>,
     /// 链接住的目录（`~/.cc-monitor/bin`）。
@@ -848,6 +851,17 @@ pub(crate) fn read_with(d: &dyn Door, tmux: Option<bool>, tz: &crate::Tz) -> Ans
     } else {
         Vec::new()
     };
+    let (seed_hint, seed_create) = match seed.len() {
+        0 => (String::new(), String::new()),
+        1 => (
+            copy_text("beProfile.seedHint.one", &[]),
+            copy_text("beProfile.seedCreate.one", &[]),
+        ),
+        _ => (
+            copy_text("beProfile.seedHint.two", &[]),
+            copy_text("beProfile.seedCreate.two", &[]),
+        ),
+    };
     Ok(ProfilesBook {
         exists: store.text.is_some(),
         fingerprint: super::fingerprint_of(store.text.as_deref()),
@@ -855,6 +869,8 @@ pub(crate) fn read_with(d: &dyn Door, tmux: Option<bool>, tz: &crate::Tz) -> Ans
         file_problem,
         profiles,
         seed,
+        seed_hint,
+        seed_create,
         migrated: migrated_note(d, &store.home),
         bin_dir: door::join_under(&store.home, links::bin_rel()),
         accounts: super::account_table(&store.home),
@@ -864,7 +880,7 @@ pub(crate) fn read_with(d: &dyn Door, tmux: Option<bool>, tz: &crate::Tz) -> Ans
     })
 }
 
-/// 首建那两条（`cc` · `cct` 基于 `cc`；名字由默认那一家的 wrapper 名派生）。
+/// 首建那几条（`cc` · `cct` 基于 `cc`，没有 tmux 的那台只 `cc`；名字由默认那一家的 wrapper 名派生）。
 fn seed_changes() -> Vec<Change> {
     let first = super::first_aliases(here_shell());
     let base = first.first().map(|a| a.name.clone());

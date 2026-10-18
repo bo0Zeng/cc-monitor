@@ -147,7 +147,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("profiles-bases", "557c8fb0"),
     ("profiles-from-line", "fec9f263"),
     ("profiles-impact", "17adf378"),
-    ("profiles-read", "ba788448"),
+    ("profiles-read", "9d170556"),
     ("profiles-resolve", "1f35ac06"),
     ("profiles-write", "ade56df7"),
     ("pubkey-push", "13c0856c"),

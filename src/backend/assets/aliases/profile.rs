@@ -124,7 +124,7 @@ impl Book {
     }
 
     /// 整份文件级的错（TOML 写错）。
-    fn file_problem(&self) -> Option<&Problem> {
+    pub(crate) fn file_problem(&self) -> Option<&Problem> {
         self.problems.iter().find(|p| p.profile.is_none())
     }
 }

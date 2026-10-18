@@ -63,6 +63,8 @@ describe("buildProfilesList", () => {
       fileProblem: null,
       profiles: [row("cc", null, { kind: "function", functionWhy: "和 /usr/bin/cc 同名" }), row("workcc", "cc"), row("cct", "cc"), row("teamcct", "cct"), row("pcc", null)],
       seed: [],
+      seedHint: "",
+      seedCreate: "",
       migrated: null,
       binDir: "/h/.cc-monitor/bin",
       accounts: ["team", "work"],
@@ -258,16 +260,26 @@ describe("buildProfilesList", () => {
     expect(again.el.querySelector('[data-role="edited-elsewhere"]')!.textContent).toContain(copyText("profilesPage.edited.line", { time: "10-06 14:20" }));
   });
 
-  it("没有配置文件：给首建那两条的预览；点了才写（init seed）", async () => {
+  it("没有配置文件：给首建那几条的预览；说明与按钮的字照后端给的（没有 tmux 的那台只一条）；点了才写（init seed）", async () => {
     book.exists = false;
     book.profiles = [];
-    book.seed = [row("cc", null), row("cct", "cc")];
-    const { el } = await mount();
-    const seed = el.querySelector<HTMLElement>('[data-role="seed"]')!;
-    expect(names(seed)).toHaveLength(2);
-    expect(writes).toEqual([]);
-    [...seed.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("profilesPage.seed.create"))!.click();
-    await flush();
-    expect(writes).toEqual([{ changes: [{ op: "init", seed: true }], fingerprint: "fp-1" }]);
+    for (const [seed, hint, create] of [
+      [[row("cc", null), row("cct", "cc")], "先建下面两条（后端给）", "建这两条（后端给）"],
+      [[row("cc", null)], "先建下面这条（后端给）", "建这条（后端给）"],
+    ] as const) {
+      book.seed = [...seed];
+      book.seedHint = hint;
+      book.seedCreate = create;
+      writes = [];
+      document.body.replaceChildren();
+      const { el } = await mount();
+      const box = el.querySelector<HTMLElement>('[data-role="seed"]')!;
+      expect(names(box)).toHaveLength(seed.length);
+      expect(box.querySelector(".cfg-hint")!.textContent).toBe(hint);
+      expect(writes).toEqual([]);
+      [...box.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === create)!.click();
+      await flush();
+      expect(writes).toEqual([{ changes: [{ op: "init", seed: true }], fingerprint: "fp-1" }]);
+    }
   });
 });

@@ -262,7 +262,11 @@ pub async fn pull_one_at(
     board: &DownloadBoard,
 ) -> Result<(), super::source::Failed> {
     // 一组一项：存盘框给的落点拆成目录 ＋ 落名；存盘框已经问过盖不盖 ⇒ 同名照盖。
-    let (dir, name) = split_dest(&dest);
+    let Some((dir, name)) = split_dest(dest.bytes(), crate::platform::BACKSLASH_IS_SEP) else {
+        return Err(super::source::Failed::from(
+            copy_text("rsFilewinLossyPull.local.badDest", &[]).as_str(),
+        ));
+    };
     let ask = cmd_wire::transfer::TransferDownloadAsk {
         items: vec![cmd_wire::transfer::DownloadItem {
             remote_path: remote_path.to_string(),
@@ -377,22 +381,30 @@ pub async fn pull_many(
     }
 }
 
-/// 本机落点（原始字节）拆成目录 ＋ 最后那一段名字（按字节切 `/`；没有 `/` ⇒ 目录是空的，后端照实拒）。
+/// 本机落点（原始字节）拆成 `(目录, 落名)`：按最后一个分隔符切 —— `/` 恒是，`backslash` ＝ 本机路径也认 `\`（Windows，
+/// [`crate::platform::BACKSLASH_IS_SEP`]）。目录是盘根那一级（`/` · `C:\`）⇒ 带着那个分隔符（Windows 上 `C:` 是「那个盘的当前目录」）。
+/// 没有分隔符 · 落名是空的 ⇒ `None`。下载落点只经这一处拆（单个文件 · 有损名那一路都是）。
 pub fn split_dest(
-    dest: &cmd_wire::files::WirePath,
-) -> (cmd_wire::files::WirePath, cmd_wire::files::WirePath) {
-    let b = dest.bytes();
-    match b.iter().rposition(|&c| c == b'/') {
-        Some(0) => (
-            cmd_wire::files::WirePath(b"/".to_vec()),
-            cmd_wire::files::WirePath(b[1..].to_vec()),
-        ),
-        Some(i) => (
-            cmd_wire::files::WirePath(b[..i].to_vec()),
-            cmd_wire::files::WirePath(b[i + 1..].to_vec()),
-        ),
-        None => (cmd_wire::files::WirePath(Vec::new()), dest.clone()),
+    b: &[u8],
+    backslash: bool,
+) -> Option<(cmd_wire::files::WirePath, cmd_wire::files::WirePath)> {
+    let cut = b
+        .iter()
+        .rposition(|c| *c == b'/' || (backslash && *c == b'\\'))?;
+    let (head, name) = (&b[..cut], &b[cut + 1..]);
+    if name.is_empty() {
+        return None;
     }
+    let drive = backslash && head.len() == 2 && head[0].is_ascii_alphabetic() && head[1] == b':';
+    let dir = if head.is_empty() || drive {
+        &b[..=cut]
+    } else {
+        head
+    };
+    Some((
+        cmd_wire::files::WirePath(dir.to_vec()),
+        cmd_wire::files::WirePath(name.to_vec()),
+    ))
 }
 
 #[cfg(test)]

@@ -5169,7 +5169,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     expect(seen, "值没变却通知了").toEqual([]);
     tm.switchTo("v2");
     await vi.waitFor(() => expect(seen.length).toBe(1), UNTIL_CEILING);
-    expect(seen).toEqual([{ sid: "v2", usage: null, unavailable: null, projectDir: null, modelText: null, account: null }]);
+    expect(seen).toEqual([{ sid: "v2", title: home(tm).store.tabs.get("v2")!.title, usage: null, unavailable: null, projectDir: null, modelText: null, account: null }]);
   });
 
   // 状态栏账号按钮读当前 tab 那一格：那台脸上说的号到了 / 变了 ⇒ 当场跟上；别的 tab 的脸不惊动它。
@@ -6330,6 +6330,27 @@ describe("标签页的名字照抄核心那一格", () => {
     tm.ensureTab("n2", "/w/q", "/p/n2.jsonl", "box");
     tm.updateName("n2", "登录修复", "q");
     expect(home(tm).store.tabs.get("n2")!.title).toBe("[box] [q] 登录修复");
+  });
+
+  // 会话头 · 窗口标题跟「当前 tab」那一格刷：当前那条改了名也得通知（原先那一格不带名字 ⇒ 同值不通知，会话头停在
+  // 「没有说过话的会话」，标签页那一行却已经是第一句）。别的 tab 改名不惊动它。
+  it("当前 tab 改了名 ⇒ 「当前 tab」那一格通知一次、带上新标题；别的 tab 改名不通知", async () => {
+    document.body.innerHTML = "";
+    const barEl = document.createElement("div");
+    const streamRootEl = document.createElement("div");
+    document.body.append(barEl, streamRootEl);
+    const tm = owned(announced(new TabManager(barEl, streamRootEl, () => {})));
+    tm.ensureTab("a1", "/w/proj", "/p/a1.jsonl", LOCAL_ORIGIN);
+    tm.ensureTab("a2", "/w/proj", "/p/a2.jsonl", LOCAL_ORIGIN);
+    tm.switchTo("a1");
+    await vi.waitFor(() => expect(tm.active.get().sid).toBe("a1"), UNTIL_CEILING);
+    const seen: Array<string | null> = [];
+    tm.active.subscribe((a) => seen.push(a.title));
+    tm.updateName("a2", "别的那条", null);
+    expect(seen, "别的 tab 改名惊动了当前那一格").toEqual([]);
+    tm.updateName("a1", "RT1 第一句", null);
+    expect(seen).toEqual([home(tm).store.tabs.get("a1")!.title]);
+    expect(seen[0]).toContain("RT1 第一句");
   });
 });
 

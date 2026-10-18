@@ -214,16 +214,16 @@ function policyText(p: ExecPolicy | null): string {
   return copyText("machineAliases.policy.blocks", { ps, policy: p.effective ?? "" });
 }
 
-/** 已接上那一行的话（加载它的那一代 PowerShell 不跑它 ⇒ 说没生效）。 */
+/** 已接上那一行的话（加载它的那一代 PowerShell 不跑它 ⇒ 只说接在哪，为什么没生效只在执行策略那一行说）。 */
 function onLineText(c: StartupFile, p: string, shell: Shell): string {
-  if (c.policy?.loads === false) return copyText("machineAliases.access.notLoaded", { path: p, ps: psName(c.policy.host) });
+  if (c.policy?.loads === false) return copyText("machineAliases.access.notLoaded", { path: p });
   return shell === "powershell" ? copyText("machineAliases.access.onWindow", { path: p }) : copyText("machineAliases.access.on", { path: p });
 }
 
-/** 接上 / 卸载成了之后那一句：接上了再看执行策略挡不挡（失败那一句由调用方就地说）。 */
+/** 接上 / 卸载成了之后那一句（失败那一句由调用方就地说）：执行策略挡着 ⇒ 不说（执行策略那一行已在说）。 */
 function afterRcText(verb: "install" | "remove", pol: ExecPolicy | null, shell: Shell): string {
   if (verb !== "install") return "";
-  if (pol !== null && pol.loads !== true) return copyText("machineAliases.policy.afterInstall");
+  if (pol !== null && pol.loads !== true) return "";
   return shell === "powershell" ? copyText("machineAliases.powershell.blockAfterInstall") : copyText("machineAliases.posix.blockAfterInstall");
 }
 

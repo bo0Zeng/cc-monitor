@@ -56,14 +56,19 @@ impl Picker for NativePicker {
                     .pick_files()
                     .await
                     .map(|v| v.into_iter().map(|h| h.path().to_path_buf()).collect()),
-                PickKind::SaveFile { suggested_name } => downloads_dir()
-                    .map_or_else(rfd::AsyncFileDialog::new, |d| {
+                PickKind::SaveFile { suggested_name } => {
+                    let d = downloads_dir().map_or_else(rfd::AsyncFileDialog::new, |d| {
                         rfd::AsyncFileDialog::new().set_directory(d)
-                    })
+                    });
+                    match save_type(&suggested_name, crate::platform::WINDOWS_NAMES) {
+                        Some(ext) => d.add_filter(format!("*.{ext}"), &[ext.as_str()]),
+                        None => d,
+                    }
                     .set_file_name(suggested_name)
                     .save_file()
                     .await
-                    .map(|h| vec![h.path().to_path_buf()]),
+                    .map(|h| vec![h.path().to_path_buf()])
+                }
                 PickKind::Folder => downloads_dir()
                     .map_or_else(rfd::AsyncFileDialog::new, |d| {
                         rfd::AsyncFileDialog::new().set_directory(d)
@@ -74,6 +79,20 @@ impl Picker for NativePicker {
             }
         })
     }
+}
+
+/// 存盘框带上的那一类（缺省扩展名）：`windows` ＝ 本机是 Windows ⇒ 建议名的扩展名（没有 ⇒ `None`）；别的平台 ⇒ `None`。
+/// Windows 的存盘框照「隐藏已知文件类型的扩展名」把 `n1.txt` 显示成 `n1`；保存类型只有「全部」时框里看不出扩展名、
+/// 人改了名也不补。带上这一类 ⇒ 保存类型写着 `*.txt`、缺省扩展名是它（改成没有扩展名的名字照样补上）。别的平台框里照原名显示，不加。
+pub fn save_type(suggested: &str, windows: bool) -> Option<String> {
+    if !windows {
+        return None;
+    }
+    std::path::Path::new(suggested)
+        .extension()
+        .and_then(|e| e.to_str())
+        .filter(|e| !e.is_empty())
+        .map(str::to_string)
 }
 
 /// 进程里那一份生产选择框。

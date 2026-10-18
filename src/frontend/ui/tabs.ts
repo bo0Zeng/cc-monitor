@@ -660,6 +660,7 @@ export class TabManager {
     const t = sid === null ? undefined : this.store.tabs.get(sid);
     this.store.active.set({
       sid: t ? sid : null,
+      title: t?.title ?? null,
       usage: t?.usage ?? null,
       unavailable: t?.facts.unavailableReason ?? null,
       projectDir: t?.projectDir ?? null,
@@ -698,6 +699,7 @@ export class TabManager {
         tab.bgName = null;
         tab.title = this.computeTitle(tab);
         this.refreshTabBar();
+        if (sessionId === this.store.activeId) this.publishActive();
       }
       // 骨架 Tab 的 parentPath 为空 ⇒ 首条带路径的行回填（「在新窗口打开」等要它）。
       if (!tab.parentPath && sourcePath) {
@@ -1258,7 +1260,7 @@ export class TabManager {
       tab.title = this.computeTitle(tab);
       this.refreshTabBar();
     } else if (ch.writers || ch.needs || ch.peek || ch.lineage || ch.switchable) this.refreshTabBar();
-    if ((ch.usage || ch.projectDir || ch.switchable) && sid === this.store.activeId) this.publishActive();
+    if ((ch.usage || ch.projectDir || ch.forkedFrom || ch.switchable) && sid === this.store.activeId) this.publishActive();
   }
 
   /** 这个 tab 的会话事实可不可用变了 ⇒ 是 active 就告诉 HUD（要不到 ⇒ 出声，「不可用，不是空表」）。 */

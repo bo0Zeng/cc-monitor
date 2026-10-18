@@ -155,3 +155,24 @@ async fn download_opens_the_save_box_with_a_legal_name_and_starts_the_pull_there
     settle(&mut w).await;
     assert_eq!(w.progress.jobs().len(), 1, "没选却又起了一趟");
 }
+
+/// 存盘框的缺省名带着扩展名落盘：Windows 的存盘框照「隐藏已知文件类型的扩展名」把 `n1.txt` 显示成 `n1`，
+/// 保存类型只有「全部」时框里看不出扩展名、改了名也不补 ⇒ 带上那一类（框的缺省扩展名就是它）。
+/// 别的平台框里照原名显示，不加（GTK 的 `*.*` 还会把没有扩展名的文件藏掉）。
+#[test]
+fn the_save_box_keeps_the_extension_of_the_suggested_name() {
+    for (name, want) in [
+        ("n1.txt", Some("txt")),
+        ("archive.tar.gz", Some("gz")),
+        ("README", None),
+        (".bashrc", None),
+        ("", None),
+    ] {
+        assert_eq!(
+            save_type(name, true).as_deref(),
+            want,
+            "Windows 上「{name}」"
+        );
+        assert_eq!(save_type(name, false), None, "别的平台上「{name}」");
+    }
+}

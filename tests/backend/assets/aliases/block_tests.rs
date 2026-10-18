@@ -1019,11 +1019,11 @@ fn the_powershell_block_never_touches_the_session_path_again() {
 }
 
 /// ★★ **两臂的 `cc` 走同一条路**：`cc` 今天是清单里首建就带的一条（[`super::super::first_aliases`]），
-/// 两种方言都由同一个渲染器写出 —— POSIX `cc() { ccm @cc "$@"; }`、PowerShell `& ccm '@cc' $RemainingArgs`
+/// 两种方言都由同一个渲染器写出 —— POSIX `cc() { ccm @cc "$@"; }`、PowerShell `& "$HOME\.cc-monitor\bin\ccm.exe" '@cc' $RemainingArgs`
 /// （`K33`「所有命令只许有一处」＋ `K28`「一切对外都经后端」）。PowerShell 的别名块里**一条调用行都没有**
 /// （`cc` 不再住块里）；没有 tmux 的那一臂首建不带 `cct`（「名字在、行为不在」的壳比没有更坏，`K-R129`）。
 ///
-/// 🔴 诚实边界：证的是「生成的文本指向 `ccm`」，不是「敲下去真起得来」（要一台 Windows）。
+/// 🔴 诚实边界：证的是「生成的文本指向 `ccm` 的落点」，不是「敲下去真起得来」（要一台 Windows）。
 #[test]
 fn the_powershell_cc_goes_through_ccm_exactly_like_the_posix_one() {
     use super::super::{first_aliases, render_line};
@@ -1045,9 +1045,10 @@ fn the_powershell_cc_goes_through_ccm_exactly_like_the_posix_one() {
         .map(str::trim)
         .filter(|l| l.starts_with("& "))
         .collect();
+    // PowerShell 那一臂按落点显式叫（别名块不动会话 `PATH`，新机器上 `PATH` 里没有 ccm）。
     assert_eq!(
         invokes,
-        vec![format!("& {word} '@cc' $RemainingArgs")],
+        vec![r#"& "$HOME\.cc-monitor\bin\ccm.exe" '@cc' $RemainingArgs"#],
         "{ps}"
     );
     let block = render_cc_code(std::path::Path::new("/_"));

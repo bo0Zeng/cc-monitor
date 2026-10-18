@@ -45,22 +45,12 @@ pub fn unhex(s: &str) -> Option<Vec<u8>> {
         .collect()
 }
 
-/// 本机落点（线上那一形）→ `(父目录那一形, 名字那一形)`：按最后一个 `/`（Windows 上还有 `\`）切，都保持字节。
+/// 本机落点（线上那一形）→ `(父目录那一形, 名字那一形)`：解出字节、照本机的路径规矩拆（[`super::download::split_dest`]）。
 pub fn split_local(
     local: &serde_json::Value,
 ) -> Option<(cmd_wire::files::WirePath, cmd_wire::files::WirePath)> {
     let b = super::find::decode_path(local)?;
-    let cut = b
-        .iter()
-        .rposition(|c| *c == b'/' || (crate::platform::BACKSLASH_IS_SEP && *c == b'\\'))?;
-    let (dir, name) = (&b[..cut.max(1)], &b[cut + 1..]);
-    if name.is_empty() {
-        return None;
-    }
-    Some((
-        cmd_wire::files::WirePath(dir.to_vec()),
-        cmd_wire::files::WirePath(name.to_vec()),
-    ))
+    super::download::split_dest(&b, crate::platform::BACKSLASH_IS_SEP)
 }
 
 /// 读回来的一块再进本机的暂存区（同一个键，块号连着）。

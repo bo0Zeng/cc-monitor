@@ -66,10 +66,17 @@ pub(crate) const ALIASES_READ_CAP: Deadline = Deadline::secs(28);
 /// `powershell-policy-set` 整条命令总期限的上限（设一发 ＋ 再问一发）。
 pub(crate) const POLICY_SET_CAP: Deadline = Deadline::secs(28);
 
-/// 交给方言的那条调用形状：`ccm` 那个词与 `--` 分界住 `control::ccm`，适配层不往上够 ⇒ 由这里交下去。
+/// 交给方言的那条调用形状：`ccm` 那个词与 `--` 分界住 `control::ccm`、落点住 `relay_route_core`，适配层不往上够 ⇒ 由这里交下去。
 pub(crate) const CALL: dialect::Call<'static> = dialect::Call {
     word: crate::ccm_line::SUBCOMMAND_WORD,
     end: flag::END,
+    landing: Some(relay_route_core::BACKEND_LANDING_REL),
+};
+
+/// 早先版本写别名文件时的那条（裸叫 `ccm`）：只给一次性迁移读旧文件（[`old_list`]）。
+pub(crate) const OLD_CALL: dialect::Call<'static> = dialect::Call {
+    landing: None,
+    ..CALL
 };
 
 /// 生成文件自己的围栏（整份重写，所以它只是给人看的边界；两种方言共用，理由同上）。
@@ -221,7 +228,7 @@ fn old_list(shell: Shell, text: &str) -> (Vec<Alias>, Vec<String>) {
     let dia = shell.dialect();
     let mut aliases = Vec::new();
     let mut unparsed = Vec::new();
-    for got in dia.parse_file(CALL, dia.decode_from_disk(text)) {
+    for got in dia.parse_file(OLD_CALL, dia.decode_from_disk(text)) {
         match got {
             Ok((name, args, rest_to)) => {
                 if args == [own_word(&name)] && rest_to == RestTo::Agent {
@@ -490,12 +497,23 @@ pub(crate) fn migrate(d: &dyn Door, home: &str) -> Result<bool, String> {
     Ok(true)
 }
 
-/// 后端起来时那一次（经本进程自己的文件管理面，门由 `stream::inbound::migrate_aliases` 递）：配置文件还不在、旧形状的别名文件在 ⇒ [`migrate`]。没做成只记日志，不挡起来。
+/// 后端起来时那一次（经本进程自己的文件管理面，门由 `stream::inbound::migrate_aliases` 递）：配置文件还不在、旧形状的别名文件在 ⇒ [`migrate`]；
+/// 配置文件在、读得懂 ⇒ 照它把别名文件 · 链接对齐一次（[`sync_outputs`]，内容一样一个字节不写）—— 早先版本写下的那一份（如 PowerShell 裸叫 `ccm`）
+/// 不等人再改一次清单才换成当下的写法。没做成只记日志，不挡起来。
 pub(crate) fn migrate_here(d: &dyn Door) {
     match door::home(d).and_then(|home| {
         let path = profile::path_in(&home);
         match read_profiles(d, &home, &path)? {
-            Some(_) => Ok(false),
+            Some(text) => {
+                // 整份写坏了（TOML 解不开）⇒ 读不出清单，不照「空清单」去删别名与链接。
+                let book = profile::parse_book(&text);
+                if book.file_problem().is_none() {
+                    for p in sync_outputs(d, &home, &book, None).problems {
+                        tracing::warn!("{p}");
+                    }
+                }
+                Ok(false)
+            }
             None => migrate(d, &home),
         }
     }) {
