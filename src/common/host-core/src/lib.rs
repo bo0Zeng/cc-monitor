@@ -5,7 +5,8 @@
 //! - [`atomic_write_json`] —— 前端自己那几份状态文件（`auto-launch.json` · 书签 · 绑定表）的原子覆盖；
 //! - [`local_offset_at`] —— 那一刻本机时区与 UTC 的差（文件窗口画修改时间 · 两边写「复制详情」的时刻）；
 //! - [`viewer_tz`] —— 这一台的时区名（请求信封与起流的 `tz`：后端按看的那一台的钟写「几点」）；
-//! - [`WorkArea`] ＋ [`fit_into_work_area`] —— 一扇窗夹进它所在显示器的工作区（Tauri 那几扇窗与文件窗口同一个判定）。
+//! - [`WorkArea`] ＋ [`fit_into_work_area`] —— 一扇窗夹进它所在显示器的工作区（Tauri 那几扇窗与文件窗口同一个判定）；
+//!   [`work_area_at`] —— 文件窗口改缩放之后问此刻那块屏的工作区（只 Windows）。
 
 mod atomic;
 mod clock;
@@ -18,7 +19,7 @@ pub use clock::{local_offset_at, viewer_tz, TZ_ROOM};
 pub const OS: &str = std::env::consts::OS;
 /// 同上，架构。
 pub const ARCH: &str = std::env::consts::ARCH;
-pub use geometry::{center_in_work_area, fit_into_work_area, WorkArea};
+pub use geometry::{center_in_work_area, fit_into_work_area, work_area_at, WorkArea};
 
 #[cfg(test)]
 #[path = "../../../../tests/common/host-core/lib_tests.rs"]

@@ -381,6 +381,42 @@ fn closing_a_tab_with_a_transfer_running_closes_it_and_the_transfer_keeps_going(
     assert_eq!(ws.progress.running(), 0);
 }
 
+/// 和 monitor 之间那对管子断了（monitor 退了 / 重启了）⇒ 警告条说「与 cc-monitor 的连接已断开」，不说「重新连接中」、不给［重新连接］
+/// （这扇窗没有谁能接回去）；给［关闭窗口］（走关窗那一问：没存的改动照样先问）；写类照样做不了。
+#[test]
+fn a_gone_monitor_is_said_as_such_not_as_reconnecting() {
+    use crate::source::LinkSeen;
+    let mut ws = Workspace::new(pane("/srv", &["a.txt"]));
+    let machine = ws.pane_on(0).source.label();
+    let screen = egui::vec2(1280.0, 800.0);
+    ws.link.set(LinkSeen::Severed);
+    let painted = frames_at(&mut ws, screen, 3);
+    let said = copy_text("rsFilewinChrome.link.severed", &[]);
+    assert!(
+        painted.iter().any(|(t, _)| *t == said),
+        "没说和 monitor 断了：{said}"
+    );
+    let reconnecting = copy_text(
+        "rsFilewinChrome.link.reconnecting",
+        &[("machine", &machine)],
+    );
+    assert!(
+        !painted.iter().any(|(t, _)| *t == reconnecting),
+        "monitor 不在了还说在重连"
+    );
+    let retry = copy_text("rsFilewinChrome.link.retry", &[]);
+    assert!(
+        !painted.iter().any(|(t, _)| *t == retry),
+        "monitor 不在了还给「重新连接」"
+    );
+    let close = copy_text("rsFilewinChrome.link.close", &[]);
+    assert!(painted.iter().any(|(t, _)| *t == close), "没给「关闭窗口」");
+    assert_eq!(
+        ws.pane_on(0).refused_here(crate::select::Action::Rename),
+        Some(copy_text("rsFilewinChrome.link.readOnly", &[]))
+    );
+}
+
 /// 和那台断了 ⇒ 工具条下一条警告条（重连中 ⇒「devbox 断开 · 重新连接中…」，没按钮；一轮没连上 ⇒
 /// 「devbox 离线 · 采样 HH:MM」＋［重新连接］，时刻 ＝ 摆着那一屏列到的时刻）；列表照常摆着、F5 不把它换成一句「断开」；
 /// 写类那几件说「离线 · 只读」做不了；又连上 ⇒ 条没了、每个标签页重列一遍。

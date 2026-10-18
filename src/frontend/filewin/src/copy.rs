@@ -59,10 +59,19 @@ pub struct CopyPrompt {
 }
 
 impl CopyPrompt {
-    /// 缺省的新名字 —— 同旧面板（`panel.ts::copyFile` 的 `${e.name}.copy`）。
-    /// **别让两个面板两套手感。**
-    pub fn suggest(name: &str) -> String {
-        format!("{name}.copy")
+    /// 缺省的新名字：「副本」插在扩展名前面（`n1 副本.txt`，种类不变；拆法同保留两份那一处 [`batch_core::split_ext`]）；
+    /// 目录没有扩展名一说，接在整个名字后面。
+    pub fn suggest(name: &str, is_dir: bool) -> String {
+        let (stem, ext) = if is_dir {
+            (name, "")
+        } else {
+            batch_core::split_ext(name)
+        };
+        // 扩展名接在那一句之后、不进文案：文案表照规矩在中文与拉丁字母之间补空格，`副本.txt` 会成 `副本 .txt`。
+        format!(
+            "{}{ext}",
+            copy_text("rsFilewinCopy.suggest.name", &[("stem", stem)])
+        )
     }
 
     pub fn for_row(dir: &str, r: &Row) -> Self {
@@ -70,7 +79,7 @@ impl CopyPrompt {
             from: r.path.clone(),
             src_name: r.name.clone(),
             dir: dir.to_string(),
-            new_name: Self::suggest(&r.name),
+            new_name: Self::suggest(&r.name, r.is_dir),
             is_dir: r.is_dir,
             from_raw: None,
             dir_raw: None,

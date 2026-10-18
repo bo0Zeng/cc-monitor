@@ -10298,6 +10298,12 @@
       "zh": "复制一份",
       "args": []
     },
+    "rsFilewinCopy.suggest.name": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{stem} 副本",
+      "args": ["stem"]
+    },
     "rsFilewinPreview.ui.reading": {
       "kind": "body",
       "role": "片段",
@@ -21733,6 +21739,19 @@
       "zh": "重新连接",
       "args": [],
       "limited": ["连接"]
+    },
+    "rsFilewinChrome.link.severed": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "与 cc-monitor 的连接已断开 · 从 cc-monitor 重新打开此窗口",
+      "args": [],
+      "limited": ["连接"]
+    },
+    "rsFilewinChrome.link.close": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "关闭窗口",
+      "args": []
     },
     "tabBar.head.refresh": {
       "kind": "aria",

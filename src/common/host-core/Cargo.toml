@@ -18,8 +18,9 @@ serde_json = "1"
 win-path-core = { path = "../win-path-core" }
 
 [target.'cfg(windows)'.dependencies]
-# 与 `src/frontend/shell/Cargo.toml` 那条 `windows` 同版本（0.56）：`ReplaceFileW` 住 `Win32_Storage_FileSystem`。
-windows = { version = "0.56", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
+# 与 `src/frontend/shell/Cargo.toml` 那条 `windows` 同版本（0.56）：`ReplaceFileW` 住 `Win32_Storage_FileSystem`；
+# 一点所在那块屏的工作区（`MonitorFromPoint` · `GetMonitorInfoW`）住 `Win32_Graphics_Gdi`。
+windows = { version = "0.56", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_Graphics_Gdi"] }
 
 [dev-dependencies]
 # 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。

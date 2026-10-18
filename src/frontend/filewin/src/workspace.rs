@@ -1211,7 +1211,7 @@ impl Workspace {
         true
     }
 
-    /// 「进度」表上按下的那一颗：停 ⇒ 拨那一趟的撤单；重试 / 接着传 ⇒ 在焦点那一栏起一趟新的（同一台机器、同一条线）。
+    /// 「进度」表上按下的那一颗：停 ⇒ 拨那一趟的撤单；重试 / 接着传 ⇒ 在焦点那一栏起一趟新的（同一台机器、同一条线；下载那一趟顶替按下的那一行）。
     pub fn apply_progress_act(
         &mut self,
         a: super::progress::Act,
@@ -1224,8 +1224,14 @@ impl Workspace {
             Act::RetryUpload(items) | Act::Resume(items) => {
                 self.pane_on_mut(f).start_drop_items(items, ctx)
             }
-            Act::RetryDownload { src, dest } => {
-                self.pane_on_mut(f).start_pull(&src, &dest, false, ctx)
+            Act::RetryDownload { row, src, dest } => {
+                match self.pane_on_mut(f).start_pull(&src, &dest, false, ctx) {
+                    Some(new) => {
+                        self.progress.supersede(row, new);
+                        true
+                    }
+                    None => false,
+                }
             }
             // 另起的那一组寻址同一台：落在看着那台的那一栏（焦点那一栏优先）；那台已经没有标签页开着 ⇒ 做不了。
             Act::RetryBatch {

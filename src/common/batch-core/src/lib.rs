@@ -16,6 +16,15 @@ use cmd_wire::batch::{BatchOutcome, BatchReply, Conflict, Conflicts, Decide, Ite
 use cmd_wire::files::{Call, CopyItem, FilesCopyReq, WirePath};
 use copy_core::copy_text;
 
+/// 一个文件名拆成「名」与「扩展名」（扩展名带点、取最后一个点起；点打头的名字 · 没有点 ⇒ 扩展名空）。
+/// 起新名字那几处（保留两份的 `名 (2).ext` · 「复制为」的缺省名）都照它拆，规矩只有这一份。
+pub fn split_ext(name: &str) -> (&str, &str) {
+    match name.rfind('.') {
+        Some(i) if i > 0 => (&name[..i], &name[i..]),
+        _ => (name, ""),
+    }
+}
+
 /// 一组那一问等多久（到点 ⇒ 当它断了：同一张票再问，那台还在做就等它做完）。
 pub const BATCH_BUDGET: std::time::Duration = std::time::Duration::from_secs(600);
 

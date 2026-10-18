@@ -68,8 +68,8 @@ pub enum Act {
     Stop(u64),
     /// 重传这一摞里失败的那几个（上传）。
     RetryUpload(Vec<Pending>),
-    /// 再下一次（下载）。
-    RetryDownload { src: String, dest: String },
+    /// 再下一次（下载）：`row` ＝ 按下的那一行，重下那一趟顶替它（[`Progress::supersede`]）。
+    RetryDownload { row: u64, src: String, dest: String },
     /// 接着传这一摞里没传的（上传停了之后；再开单，续传先对尾块）。
     Resume(Vec<Pending>),
     /// 一组里没成的那几项另起一组（另一张票）：`at` ＝ 寻址的那台，`home` ＝ 在哪台的后端里做（同原来那一组）。
@@ -165,6 +165,21 @@ impl Progress {
         if let Some(j) = self.lock().jobs.iter_mut().find(|j| j.id == id) {
             j.orphan = true;
         }
+    }
+
+    /// 重试那一趟（`new`）顶替按下的那一行（`old`）：挪到它的位置、旧的那一行不留（重试成了 ⇒ 表里只剩成了的那一行）。
+    /// 两行有一行不在 ⇒ 不动。
+    pub fn supersede(&self, old: u64, new: u64) {
+        let mut g = self.lock();
+        let (Some(at), Some(from)) = (
+            g.jobs.iter().position(|j| j.id == old),
+            g.jobs.iter().position(|j| j.id == new),
+        ) else {
+            return;
+        };
+        let job = g.jobs.remove(from);
+        let at = if from < at { at - 1 } else { at };
+        g.jobs[at] = job;
     }
 
     /// 一份快照（判据与画表用）。
@@ -719,6 +734,7 @@ impl Job {
                         button: Some((
                             copy_text("rsFilewinBatch.btn.resume", &[]),
                             Ok(Act::RetryDownload {
+                                row: self.id,
                                 src: src.clone(),
                                 dest: dest.clone(),
                             }),
@@ -753,6 +769,7 @@ impl Job {
                         button: Some((
                             copy_text("rsFilewinProgress.action.retry", &[]),
                             Ok(Act::RetryDownload {
+                                row: self.id,
                                 src: src.clone(),
                                 dest: dest.clone(),
                             }),

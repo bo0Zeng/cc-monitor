@@ -2762,21 +2762,22 @@ impl FileWindow {
     /// 🔴 三支各自的下一跳完全不同（理由住 `download::DestVerdict` 的头注）：
     /// 不合法 ⇒ **框留着 ＋ 出声**（收掉的话「点了确认什么都没发生」与成功同形）；
     /// 要确认 ⇒ 换成第二问；可以做 ⇒ 起那一趟并收掉框。
+    /// 起了 ⇒ 回它在「进度」表里那一行的号（重试那一处拿它顶替按下的那一行）；没起 ⇒ `None`。
     pub fn start_pull(
         &mut self,
         src_path: &str,
         dest: &str,
         overwrite: bool,
         ctx: Option<egui::Context>,
-    ) -> bool {
+    ) -> Option<u64> {
         let Some(h) = self.rt.clone() else {
             *self.say_slot() = Some(copy_text("rsFilewinShell.pull.noRuntime", &[]).into());
-            return false;
+            return None;
         };
         // 下载经通道开单、订阅进度 —— 要那条线 ＋ 那台机器的地址。
         let Some(line) = self.line.clone() else {
             *self.say_slot() = Some(NO_LINE.to_string().into());
-            return false;
+            return None;
         };
         let origin = self.source.origin();
         // 一趟一块新看板（「进度」表里独立的一行）：上一趟还在下也不碍事。
@@ -2840,7 +2841,7 @@ impl FileWindow {
                 },
             });
         });
-        true
+        Some(id)
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -5336,7 +5337,7 @@ pub fn open_detached_seeded(
     view: Option<std::path::PathBuf>,
     // 「复制到另一台」下拉里的机器（开窗种子带来的）。
     machines: Vec<String>,
-    // 开出来第一拍夹进这块工作区（`None` ＝ 不夹）。
+    // 开出来第一拍夹进这块工作区（`None` ＝ 不夹）；之后改缩放再夹按的是那一刻所在那块屏（[`fit_step`]）。
     work_area: Option<host_core::WorkArea>,
     // 窗口的样子（开窗种子带来的那一套；`None` ＝ 判据那一形，照 egui 当下的样子画）。
     theme: Option<filewin_contract::Theme>,
@@ -5388,6 +5389,7 @@ pub fn open_detached_seeded(
                 Ok(Box::new(FitOnce {
                     inner: ws,
                     work: work_area,
+                    fitted_at: None,
                 }) as Box<dyn eframe::App>)
             }),
         )
@@ -5405,10 +5407,13 @@ mod tests;
 #[path = "../../../../tests/frontend/filewin/shell_keys_tests.rs"]
 mod keys_tests;
 
-/// 开窗后第一拍（窗口几何有了的那一帧）把窗口夹进 monitor 交来的工作区，之后原样转交。
+/// 把窗口夹进工作区，之后原样转交：开窗后第一拍（窗口几何有了的那一帧）夹进 monitor 交来的那块；
+/// 之后系统缩放一变（改了显示缩放 / 拖到另一块缩放不同的屏）再夹一次，按那一刻窗口所在那块屏的工作区（[`fit_step`]）。
 struct FitOnce<A> {
     inner: A,
     work: Option<host_core::WorkArea>,
+    /// 上次夹的时候系统缩放是多少（`None` ＝ 还没夹过）。
+    fitted_at: Option<f32>,
 }
 
 impl<A: eframe::App> eframe::App for FitOnce<A> {
@@ -5417,22 +5422,52 @@ impl<A: eframe::App> eframe::App for FitOnce<A> {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
-        if let Some(work) = self.work {
-            // 几何是逻辑点、而逻辑点随整窗缩放变 ⇒ 按此刻的 pixels_per_point（含缩放）换算。
-            let ppp = Some(ui.ctx().pixels_per_point());
-            let (outer, inner) = ui.ctx().input(|i| {
-                let v = i.viewport();
-                (v.outer_rect, v.inner_rect)
-            });
-            if let (Some(outer), Some(inner), Some(ppp)) = (outer, inner, ppp) {
-                self.work = None;
-                for cmd in fit_commands(outer, inner, ppp, work) {
-                    ui.ctx().send_viewport_cmd(cmd);
-                }
+        // 几何是逻辑点、而逻辑点随整窗缩放变 ⇒ 按此刻的 pixels_per_point（含缩放）换算；系统缩放单看 native 那一份。
+        let ppp = ui.ctx().pixels_per_point();
+        let (outer, inner, native) = ui.ctx().input(|i| {
+            let v = i.viewport();
+            (v.outer_rect, v.inner_rect, v.native_pixels_per_point)
+        });
+        if let (Some(outer), Some(inner), Some(native)) = (outer, inner, native) {
+            for cmd in fit_step(
+                &mut self.fitted_at,
+                native,
+                ppp,
+                outer,
+                inner,
+                self.work,
+                |(x, y)| host_core::work_area_at(x, y),
+            ) {
+                ui.ctx().send_viewport_cmd(cmd);
             }
         }
         self.inner.ui(ui, frame);
     }
+}
+
+/// [`FitOnce`] 每一帧那一步（纯函数；`fitted_at` 是它的记性）：还没夹过 ⇒ 夹进开窗种子那块（`seed`，`None` ＝ 不夹）；
+/// 系统缩放（`native`）比上次夹时变了 ⇒ 按外框中点（像素）问此刻那块屏的工作区（`now`；问不到 ⇒ 不夹 —— 不拿开窗那块屏去拽它）再夹；
+/// 别的帧一条命令都不发（人自己拖大的窗口不跟他抢）。
+pub(crate) fn fit_step(
+    fitted_at: &mut Option<f32>,
+    native: f32,
+    ppp: f32,
+    outer: egui::Rect,
+    inner: egui::Rect,
+    seed: Option<host_core::WorkArea>,
+    now: impl FnOnce((i32, i32)) -> Option<host_core::WorkArea>,
+) -> Vec<egui::ViewportCommand> {
+    let work = match *fitted_at {
+        None => seed,
+        Some(was) if (was - native).abs() > 1e-3 => {
+            let c = outer.center();
+            now(((c.x * ppp).round() as i32, (c.y * ppp).round() as i32))
+        }
+        Some(_) => return Vec::new(),
+    };
+    *fitted_at = Some(native);
+    work.map(|w| fit_commands(outer, inner, ppp, w))
+        .unwrap_or_default()
 }
 
 /// [`FitOnce`] 那一帧发什么（纯函数）：egui 的几何是逻辑点，工作区是物理像素 ⇒ 换算后交给同一个判定

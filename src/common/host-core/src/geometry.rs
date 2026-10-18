@@ -72,3 +72,37 @@ pub fn center_in_work_area(
         (mid(work.x, work.w, fitted.0), mid(work.y, work.h, fitted.1)),
     )
 }
+
+/// 屏上这一点（物理像素）所在那块显示器的工作区；不在任何一块上 ⇒ 最近那块。只有 Windows 问得到（别处 `None`：
+/// 文件窗口进程没有 Tauri，开窗那一次用 monitor 随种子交来的那块，改缩放之后再夹只在 Windows 上做）。
+#[cfg(windows)]
+pub fn work_area_at(x: i32, y: i32) -> Option<WorkArea> {
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
+    // SAFETY：`MonitorFromPoint` 只读一个点；`GetMonitorInfoW` 写进本栈上那份、`cbSize` 已填对。
+    unsafe {
+        let m = MonitorFromPoint(POINT { x, y }, MONITOR_DEFAULTTONEAREST);
+        let mut info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        if !GetMonitorInfoW(m, &mut info).as_bool() {
+            return None;
+        }
+        let r = info.rcWork;
+        Some(WorkArea {
+            x: r.left,
+            y: r.top,
+            w: u32::try_from(r.right - r.left).ok()?,
+            h: u32::try_from(r.bottom - r.top).ok()?,
+        })
+    }
+}
+
+/// 同上，别的平台问不到。
+#[cfg(not(windows))]
+pub fn work_area_at(_x: i32, _y: i32) -> Option<WorkArea> {
+    None
+}

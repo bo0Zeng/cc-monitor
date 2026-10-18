@@ -373,3 +373,59 @@ fn the_time_left_is_said_only_once_there_is_a_rate() {
         Some(copy_text("rsFilewinProgress.eta.about", &[("dur", "3h")]))
     );
 }
+
+/// 下载失败那一行按［重试］：按钮带着这一行的号；重下的那一趟顶替这一行（同一个位置、旧的那一行不留），
+/// 重下成了 ⇒ 表里只剩一行「已存到」，不留那一行失败。
+#[test]
+fn a_retried_download_takes_the_place_of_the_failed_row() {
+    let p = Progress::default();
+    let down = |name: &str| {
+        let b = DownloadBoard::default();
+        let trip = Trip::Download {
+            board: b.clone(),
+            name: name.into(),
+            src: format!("/srv/{name}"),
+            dest: format!("/tmp/{name}"),
+        };
+        (b, trip)
+    };
+    let (failed, trip) = down("n1.txt");
+    let row = p.add(trip, None, None);
+    let (other, trip) = down("n2.txt");
+    p.add(trip, None, None);
+    failed.finish(crate::download::Outcome::Failed {
+        dest: "/tmp/n1.txt".into(),
+        why: crate::source::Failed {
+            code: None,
+            said: "x".into(),
+            detail: String::new(),
+        },
+    });
+    let Some((_, Ok(Act::RetryDownload { row: r, src, dest }))) = p.jobs()[0].view().button else {
+        panic!("失败那一行没有「重试」");
+    };
+    assert_eq!(
+        (r, src.as_str(), dest.as_str()),
+        (row, "/srv/n1.txt", "/tmp/n1.txt")
+    );
+    // 重下那一趟（开单那一处照常开一行），顶替失败那一行。
+    let (again, trip) = down("n1.txt");
+    let new = p.add(trip, None, None);
+    p.supersede(row, new);
+    let jobs = p.jobs();
+    assert_eq!(
+        jobs.iter().map(|j| j.id).collect::<Vec<_>>(),
+        vec![new, jobs[1].id]
+    );
+    assert!(jobs.iter().all(|j| j.id != row), "失败那一行还留着");
+    again.finish(crate::download::Outcome::Done {
+        dest: "/tmp/n1.txt".into(),
+        bytes: 10,
+    });
+    other.finish(crate::download::Outcome::Done {
+        dest: "/tmp/n2.txt".into(),
+        bytes: 10,
+    });
+    let states: Vec<State> = p.jobs().iter().map(Job::state).collect();
+    assert_eq!(states, vec![State::Done, State::Done]);
+}
