@@ -31,7 +31,6 @@ fn answered(g: &Value) -> Vec<Answered> {
         .unwrap()
         .iter()
         .map(|m| Answered {
-            origin: m["origin"].as_str().map(str::to_string),
             head: serde_json::from_value(m["head"].clone()).expect("头"),
             rows: serde_json::from_value(m["rows"].clone()).expect("行"),
         })
@@ -102,11 +101,16 @@ fn several_machines_merge_the_way_the_page_used_to() {
     }
 }
 
-fn machines_ok(a: &[Answered]) -> Vec<MachineHead> {
-    a.iter()
+fn machines_ok(g: &Value) -> Vec<MachineHead> {
+    g["machines"]
+        .as_array()
+        .unwrap()
+        .iter()
         .map(|m| MachineHead {
-            origin: m.origin.clone().map(cmd_wire::Machine),
-            total: m.rows.len() as u32,
+            origin: m["origin"]
+                .as_str()
+                .map(|o| cmd_wire::Machine(o.to_string())),
+            total: m["rows"].as_array().unwrap().len() as u32,
             read: Read::Ok { notice: None },
         })
         .collect()
@@ -125,7 +129,7 @@ fn a_range_answers_only_that_window() {
     let p = patch_from(
         &views,
         "f",
-        machines_ok(&a),
+        machines_ok(&g),
         &a,
         &shape,
         Some(Range { from: 2, limit: 3 }),
@@ -142,7 +146,7 @@ fn a_range_answers_only_that_window() {
     let p = patch_from(
         &views,
         "f",
-        machines_ok(&a),
+        machines_ok(&g),
         &a,
         &shape,
         Some(Range {
@@ -177,8 +181,11 @@ fn each_machine_says_whether_it_was_read() {
         &Default::default(),
     );
     assert_eq!(answered.len(), 2, "只有读到了的与有旧副本的出成品");
-    assert_eq!(answered[1].origin.as_deref(), Some("old"));
     assert_eq!(answered[1].rows.len(), 1, "旧副本的行要照出");
+    assert_eq!(
+        answered[1].rows[0].origin.as_ref().map(|m| m.0.as_str()),
+        Some("old")
+    );
     let v = serde_json::to_value(&heads).unwrap();
     assert_eq!(
         v,

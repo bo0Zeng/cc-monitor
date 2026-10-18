@@ -408,7 +408,6 @@ pub(crate) async fn answer(
 
 /// 一台的成品（读到了的那几台）。
 pub(crate) struct Answered {
-    pub(crate) origin: Option<String>,
     pub(crate) head: HistoryHead,
     pub(crate) rows: Vec<HistoryRow>,
 }
@@ -434,7 +433,7 @@ pub(crate) fn per_machine(
                         notice: head.notice.clone(),
                     },
                 });
-                answered.push(Answered { origin, head, rows });
+                answered.push(Answered { head, rows });
             }
             Got::Stale {
                 listing,
@@ -450,7 +449,7 @@ pub(crate) fn per_machine(
                         at: crate::common::time::history_at_text(at_ms, now_ms, tz),
                     },
                 });
-                answered.push(Answered { origin, head, rows });
+                answered.push(Answered { head, rows });
             }
             Got::Failed(why) => heads.push(MachineHead {
                 origin: machine,
