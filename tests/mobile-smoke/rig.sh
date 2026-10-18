@@ -124,9 +124,11 @@ land() {
 }
 
 hop() {
-  local hp=${CCM_SMOKE_HOP_PORT:?rig: 要先给跳板口 CCM_SMOKE_HOP_PORT（不落默认口）} cfg=$box/sshd/hop_config pid=$box/sshd/hop.pid
+  local hp cfg=$box/sshd/hop_config pid=$box/sshd/hop.pid
   case "${1:-}" in
     up)
+      # 起才要口；停只认门牌（`down` 收台架时也停它，冒烟那几趟没给跳板口）。
+      hp=${CCM_SMOKE_HOP_PORT:?rig: 要先给跳板口 CCM_SMOKE_HOP_PORT（不落默认口）}
       [ -f "$box/sshd/sshd_config" ] || { say "先 rig.sh up"; exit 2; }
       sed -e "s|^Port .*|Port $hp|" -e "s|^PidFile .*|PidFile $pid|" "$box/sshd/sshd_config" > "$cfg"
       if [ -f "$pid" ] && kill -0 "$(cat "$pid")" 2>/dev/null; then say "跳板 sshd 已在跑"; else
