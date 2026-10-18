@@ -72,11 +72,11 @@ fn powershell_golden() {
         .collect();
     let body = |call: &str, name: &str| {
         format!(
-            "function {name} {{\n    [CmdletBinding()] param(\n        [Parameter(ValueFromRemainingArguments = $true)] $RemainingArgs\n    )\n    if (Get-Command __ccm_bind -CommandType Function -ErrorAction SilentlyContinue) {{ __ccm_bind }}\n    & ccm{call} $RemainingArgs\n}}"
+            "function {name} {{\n    [CmdletBinding()] param(\n        [Parameter(ValueFromRemainingArguments = $true)] $RemainingArgs\n    )\n    if (Get-Command __ccm_bind -CommandType Function -ErrorAction SilentlyContinue) {{ __ccm_bind }}\n    & \"$HOME\\.cc-monitor\\bin\\ccm.exe\"{call} $RemainingArgs\n}}"
         )
     };
     assert!(
-        got[2].ends_with("    & ccm '--model' 'it''s' $RemainingArgs '--' '--verbose'\n}"),
+        got[2].ends_with(concat!(r#"    & "$HOME\.cc-monitor\bin\ccm.exe" '--model' 'it''s' $RemainingArgs '--' '--verbose'"#, "\n}")),
         "{}",
         got[2]
     );
@@ -95,6 +95,33 @@ fn powershell_golden() {
             // 交给 ccm：`$RemainingArgs` 接在 `'--'` 右边的最后。
             body(" '--' '--attach'", "cca"),
         ]
+    );
+}
+
+/// PowerShell 的别名按**落点的显式路径**叫 ccm（`$HOME` 那一台上展开）：别名块不往会话 `PATH` 里加东西，
+/// 新机器上 `PATH` 里没有 ccm ⇒ 裸写 `& ccm` 的别名敲下去就是「无法将 ccm 项识别」。
+/// 早先版本写下的那一形（裸 `& ccm`）一次性迁移照样读得回（[`crate::assets::aliases::OLD_CALL`]）。
+#[test]
+fn the_powershell_alias_names_ccm_by_its_landing_and_the_old_form_still_migrates() {
+    let a = sv(&["--account", "work"]);
+    let now = PowerShell.render_alias(C, "workcc", &a, RestTo::Agent);
+    let calls: Vec<&str> = now.lines().filter(|l| l.trim_start().starts_with('&')).collect();
+    assert_eq!(
+        calls,
+        [r#"    & "$HOME\.cc-monitor\bin\ccm.exe" '--account' 'work' $RemainingArgs"#],
+        "{now}"
+    );
+    let old_call = crate::assets::aliases::OLD_CALL;
+    let old = PowerShell.render_alias(old_call, "workcc", &a, RestTo::Agent);
+    assert!(old.contains("    & ccm '--account' 'work' $RemainingArgs"), "{old}");
+    assert_eq!(
+        PowerShell.parse_file(old_call, &old),
+        vec![Ok(("workcc".to_string(), a.clone(), RestTo::Agent))]
+    );
+    // POSIX 那一臂：别名块先把落点目录放进 `PATH` 再接上别名文件（`src/shared/ccm-aliases.sh`）⇒ 裸写 `ccm` 走得到，两种 Call 写出来一样。
+    assert_eq!(
+        Posix.render_alias(C, "workcc", &a, RestTo::Agent),
+        Posix.render_alias(old_call, "workcc", &a, RestTo::Agent)
     );
 }
 
