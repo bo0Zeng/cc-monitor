@@ -271,6 +271,8 @@ pub struct FakeBackend {
     pub grep_reply: Option<serde_json::Value>,
     /// 给了 ⇒ `files-grep` 的应答扣住，等用例放行才回（「停」那条判据要在它还在飞那一刻撤）。
     hold_grep: Option<std::sync::Arc<tokio::sync::Notify>>,
+    /// 给了 ⇒ 读这一个路径的 `files-read-text` 应答扣住，等用例放行才回（「它还在飞时连挪几下」要它真的还在飞）。
+    hold_read_text: Option<(String, std::sync::Arc<tokio::sync::Notify>)>,
     /// 路径换名（截图那几张）：`(窗口看到的前缀, 盘上真的前缀)` —— 进来的参数把前者换成后者再答，答出去的再换回来，
     /// 窗口里的面包屑就是一台真机器那样的 `/home/user/…`，看不到沙箱路径。
     pub alias: Option<(String, String)>,
@@ -301,6 +303,7 @@ impl FakeBackend {
             hold_rebuild: None,
             grep_reply: None,
             hold_grep: None,
+            hold_read_text: None,
             alias: None,
             plan_reply: Default::default(),
             plan_push: None,
@@ -356,6 +359,16 @@ impl FakeBackend {
             )),
             Some(_) => Ok(()),
         }
+    }
+
+    /// 把读 `path` 的那一趟 `files-read-text` 的应答扣到 `gate` 被 `notify_one` 为止（别的路径照回）。
+    pub fn holding_read_text(
+        mut self,
+        path: &str,
+        gate: std::sync::Arc<tokio::sync::Notify>,
+    ) -> Self {
+        self.hold_read_text = Some((path.to_string(), gate));
+        self
     }
 
     /// 把 `files-index-rebuild` 的应答扣到 `gate` 被 `notify_one` 为止（见 [`FakeBackend::hold_rebuild`]）。
@@ -1319,6 +1332,11 @@ impl comms_inward::chan::router::Backends for Hosted {
             be.hold_rebuild.clone()
         } else if op.0 == "files-grep" {
             be.hold_grep.clone()
+        } else if op.0 == "files-read-text" {
+            be.hold_read_text
+                .as_ref()
+                .filter(|(p, _)| args["path"].as_str() == Some(p.as_str()))
+                .map(|(_, g)| g.clone())
         } else {
             None
         };

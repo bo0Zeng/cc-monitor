@@ -35,11 +35,16 @@ fn row(name: &str, size: u64, is_dir: bool) -> Row {
 }
 
 async fn rig(tag: &str, rows: Vec<Row>) -> (Wired, FileWindow) {
-    let wired = wire_up(
+    rig_on(
         tag,
+        rows,
         FakeBackend::new(&["files-read-text"], Declared::default()),
     )
-    .await;
+    .await
+}
+
+async fn rig_on(tag: &str, rows: Vec<Row>, be: FakeBackend) -> (Wired, FileWindow) {
+    let wired = wire_up(tag, be).await;
     let w = window_on(&wired, "/srv");
     // 照真列表那样带着后端（合成后端）给的种类与门。
     *w.listing.rows.lock().unwrap() = rows
@@ -74,13 +79,17 @@ async fn follow_until_settled(p: &mut Preview, w: &FileWindow) {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_latest_pick_wins_and_the_middle_ones_are_never_read() {
-    let (wired, mut w) = rig(
+    // 读 a 那一趟扣到两下挪完才放：「a 还在飞」不靠它比同步的挪动慢。
+    let a_lands = std::sync::Arc::new(tokio::sync::Notify::new());
+    let (wired, mut w) = rig_on(
         "fw34-pv-latest",
         vec![
             row("a.txt", 5, false),
             row("b.txt", 5, false),
             row("c.txt", 5, false),
         ],
+        FakeBackend::new(&["files-read-text"], Declared::default())
+            .holding_read_text("/srv/a.txt", a_lands.clone()),
     )
     .await;
     let mut p = Preview::default();
@@ -102,6 +111,7 @@ async fn the_latest_pick_wins_and_the_middle_ones_are_never_read() {
     step(&mut w);
     p.follow(&w, None);
     assert_eq!(p.fired(), 1, "a 还在飞时就又发了");
+    a_lands.notify_one();
     follow_until_settled(&mut p, &w).await;
     assert_eq!(
         reads(&wired),
