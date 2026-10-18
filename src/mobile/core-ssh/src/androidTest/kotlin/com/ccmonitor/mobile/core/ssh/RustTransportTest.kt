@@ -130,7 +130,8 @@ class RustTransportTest {
         try {
             val key = SshKeyGenerator.generateEcdsaP256InKeystore(alias, comment = "rust-ks")
             val admin = connected()
-            val add = runBlocking { admin.execCapture("printf '%s\\n' '${key.publicKeyOpenSsh}' >> \"\$CCM_SMOKE_BOX/sshd/authorized_keys\"") }
+            // 台架 sshd 认的是台架家里的 ~/.ssh/authorized_keys（台架的登录壳把 HOME 换成台架的家）。
+            val add = runBlocking { admin.execCapture("printf '%s\\n' '${key.publicKeyOpenSsh}' >> ~/.ssh/authorized_keys") }
             assertEquals(0, add.exitStatus)
             val t = connected(auth = AuthMethod.KeystoreSigner(alias))
             assertEquals("ks\n", runBlocking { t.execCapture("echo ks") }.stdout)
