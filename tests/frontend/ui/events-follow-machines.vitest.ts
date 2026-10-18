@@ -12,11 +12,12 @@ vi.mock("../src/commands", () => ({ commands: { frontend_perf_log: vi.fn(() => P
 vi.mock("../../../src/comms/inward/chan", async () => (await import("../../test-support/chan-stream-fake.ts")).chanStreamModule);
 
 import { bindEvents } from "../../../src/frontend/ui/events";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 import { streamFake } from "../../test-support/chan-stream-fake.ts";
 import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
 
 const LOCAL = "<local>";
-const face = { dot: "idle", live: { is: "yes", activity: "idle" }, settled: false, name: "空闲", tip: "", line: "", tone: "plain", order: 3, can: {} };
+const face = { dot: "idle", live: { is: "yes", activity: "idle" }, settled: false, name: copyText("beSession.activity.idle"), tip: "", line: "", tone: "plain", order: 3, can: {} };
 const plan = (origin: string) => ({
   streams: [{ origin, kind: "session-lines" }],
   liveCards: [origin],
