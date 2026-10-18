@@ -2,7 +2,7 @@
 # 手机冒烟主路，一条命令走完（不进门禁默认格，按需跑；说明见同目录 README.md）。
 # 用法：bash tests/mobile-smoke/smoke.sh        （CCM_SMOKE_BOX 改台架目录；CCM_SMOKE_OUT 改截图目录；CCM_SMOKE_VARIANTS 挑哪几趟，默认 `debug minified`）
 # 做的事：编后端（每趟都编：增量，没改就秒过；只在缺二进制时才编会拿旧后端去接新手机包，版本门照「后端要更新」接、对不上的命令不发）→ rig.sh up（沙箱 sshd ＋ 后端 ＋ 替身）→ emu.sh up（模拟器）
-#   → 每一趟：编那个包、装上、smoke.py 走十一步。两趟：debug（调试包）· minified（混淆过的包：R8 照正式包、调试签名，不碰正式 keystore）——
+#   → 每一趟：（重）起模拟器、编那个包、装上、smoke.py 走十一步。两趟：debug（调试包）· minified（混淆过的包：R8 照正式包、调试签名，不碰正式 keystore）——
 #   门禁只编正式包不跑它，靠运行时按名字认的地方被混淆弄坏了，只有这一趟露得出来。截图分趟放（`<截图目录>/<趟>/`）。
 # 重活（cargo · gradle）经 tests/scripts/heavy.sh（有就用），gradle 带 --no-daemon；模拟器自己一个封了内存的 scope。
 set -euo pipefail
@@ -16,12 +16,16 @@ heavy=()
 [ -f "$root/src/frontend/shell/embedded-backends/cc-monitor-backend-x86_64" ] ||
   { echo "包里没带后端字节（src/frontend/shell/embedded-backends/ 空）：先 bash tests/scripts/re-embed.sh" >&2; exit 2; }
 bash "$here/rig.sh" up
-bash "$here/emu.sh" up
 eval "$(bash "$here/emu.sh" env)"
 out=${CCM_SMOKE_OUT:-$CCM_SMOKE_BOX/../shots}
 red=()
+first=1
 for variant in ${CCM_SMOKE_VARIANTS:-debug minified}; do
   cap=${variant^}
+  # 每一趟一台刚开机的模拟器：宿主那一侧画图的堆一趟要涨两三个 G、不往回落，两趟接着跑会顶穿 scope 的上限（emu.sh 头注的读数）。
+  [ "$first" = 1 ] || bash "$here/emu.sh" down
+  first=0
+  bash "$here/emu.sh" up
   # shellcheck disable=SC1091
   (cd "$root/src/mobile" && . ./scripts/env.sh >/dev/null && "${heavy[@]}" ./gradlew --no-daemon -q ":app:assemble$cap")
   # 两趟同一个包名、同一把调试签名：覆盖装（清数据在 smoke.py 开头）。

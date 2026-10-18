@@ -31,7 +31,7 @@ CCM_SMOKE_ADB_PORT=… CCM_SMOKE_EMU_PORT=… CCM_SMOKE_PORT=… CCM_SMOKE_RELAY
 | 后端 | ssh 进来的每条命令由台架的登录壳（`rig.sh up` 写进台架目录）换上台架的 `HOME` · `TMUX_TMPDIR` · `PATH` · `CCM_SANDBOX=1` · 私有中转口；后端文件放在台架家里的 `~/.cc-monitor/bin/ccm`（本树编的那份） |
 | tmux | 台架自己的 server（`TMUX_TMPDIR` 在台架目录下）；从桌面那一侧打字用 `rig.sh tmux …`（显式 `-S`） |
 | agent | 不起真 claude / codex：`fake-agent.py` 装成这两个名字放在台架 `PATH` 最前，按那一家的原始记录格式写盘（pidfile · jsonl · Codex rollout），带初始提示词起、读终端里敲进来的行 |
-| 模拟器 | 无头，AVD 在台架目录旁（磁盘上），adb 私有端口 `CCM_SMOKE_ADB_PORT` · 模拟器口 `CCM_SMOKE_EMU_PORT`（没给就拒）；单独一个 `systemd-run --user --scope`（MemoryMax 8G，不设 MemoryHigh） |
+| 模拟器 | 无头，AVD 在台架目录旁（磁盘上），adb 私有端口 `CCM_SMOKE_ADB_PORT` · 模拟器口 `CCM_SMOKE_EMU_PORT`（没给就拒）；单独一个 `systemd-run --user --scope`（MemoryMax 10G，不设 MemoryHigh；冒烟每趟重起一台，读数见 `emu.sh` 头注） |
 
 ## 几样零件
 

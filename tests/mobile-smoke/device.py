@@ -8,7 +8,7 @@
 #     静默断网 15 秒 · 90 秒：网回来 CCM_DEVICE_REJOIN（默认 10）秒内要重连上，晚了就红（断 90 秒改前要 56 秒）。
 #   6 终端是逃生口：那台常驻后端起不来（rig.sh backend off）、SSH 照通 ⇒ 静默断网 30 秒（长过 SSH 保活判死）之后，
 #     开着的终端 CCM_DEVICE_REJOIN ＋ 5 秒内照样回来（在终端里 touch 一个文件、台架里看得到它）。
-#   7 冷启动时断网：飞行模式下杀掉再开 App（SSH 一次都没通过）→ 关飞行模式 ⇒ CCM_DEVICE_REJOIN ＋ 10 秒内会话列表自己出来，不靠谁再点一下
+#   7 冷启动时断网：飞行模式下杀掉再开 App（SSH 一次都没通过；列表照本地缓存画、行上写离线）→ 关飞行模式 ⇒ CCM_DEVICE_REJOIN ＋ 10 秒内会话列表自己接上（离线字样收掉），不靠谁再点一下
 #     （网回来的回调 App 一起来就挂上、交给那条重连循环；拨号请求没够着那一台也照样交给它）。
 #   5 慢链路 ＋ 跳板：台架起第二台 sshd 当跳板（rig.sh hop），加一台经它的机器；模拟器里 netem 往返 1.5 秒：
 #     新加那一台要接得上（新建会话答得回）；慢链路上断 20 秒 · 正常网上断 90 秒，网回来 CCM_DEVICE_REJOIN 秒内常驻流要重连上、
@@ -768,12 +768,13 @@ def item7():
         if not wait(failed, WITHIN):
             raise Red("断着网冷启动，落地那一屏没说读不到那台（没断成，或落地不在新建会话）")
         landed = back_by_itself("落地那一屏的新建会话信息", lambda: ui.find(failed) is None and ui.find(t("chat.input.placeholder")) is not None)
-        # ② 断着网时进会话列表：网回来列表自己出来。
+        # ② 断着网时进会话列表：列表照本地缓存画、每行写那台离线；网回来那台的行自己不再写离线（重新读到了那台）。
+        offline = t("newSession.machine.offline", machine="devbox")
         cold_offline()
         smoke.drawer(t("mobDrawer.item.sessions"))
-        if listed():
-            raise Red("断着网，会话列表却出来了（没断成）")
-        got = back_by_itself("会话列表", listed)
+        if not wait(offline, WITHIN):
+            raise Red("断着网，会话列表的行没写那台离线（没断成，或没上本地缓存）")
+        got = back_by_itself("会话列表", lambda: listed() and ui.find(offline) is None)
         return f"网回来 {landed}s 新建会话信息 · {got}s 会话列表自己出来"
     finally:
         airplane(False)

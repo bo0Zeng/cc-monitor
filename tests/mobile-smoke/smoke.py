@@ -521,6 +521,19 @@ def tap_last(text):
     adb("shell", "input", "tap", *map(str, ui.center(hits[-1])))
 
 
+def pick_act(name, label):
+    """长按 [name] 进选择模式，点顶栏或 ⋯ 里的 [label]（哪件在顶栏、哪件进 ⋯ 照核心那张表，冒烟不抄表：顶栏没有就开 ⋯ 找）。"""
+    long_press(name)
+    if ui.find(label) is None:
+        tap(t("rsFilewinChrome.command.more"))
+    tap(label)
+
+
+def confirm_delete(n=1):
+    """删除先问一次：框的标题与确认键同字「删除 n 项」，点下面那一处。"""
+    tap_last(t("rsFilewinSelect.label.deleteMany", n=n))
+
+
 def files_page():
     """文件页那几步：列目录 · 进一层 · 预览 · 新建 · 改名 · 删除 · 上传 · 下载；读写都问那台后端（台架盘上看结果）。"""
     d = f"files{T}"
@@ -537,8 +550,8 @@ def files_page():
     tap(d)
     if not wait("a.txt", 15):
         raise Step.Fail(f"进不了 {d}")
-    long_press("a.txt")
-    tap(t("rsFilewinWorkspace.label.preview"))
+    # 不在选择模式时点一下文本 ⇒ 预览（核心那张表的「点一下」）：不进选择模式，关了预览顶栏还是那一排工具。
+    tap("a.txt")
     if not wait(f"hello {T}", 15):
         raise Step.Fail("预览没出那一份的字")
     shot("11-预览")
@@ -549,24 +562,20 @@ def files_page():
     tap_last(mk)
     if not wait(f"new{T}", 15) or "new" + T not in sh(f"ls ~/work/{d}"):
         raise Step.Fail("新建目录没落到那台")
-    long_press(f"new{T}")
     rn = t("rsFilewinWriteops.label.rename")
-    tap(rn)
+    pick_act(f"new{T}", rn)
     type_in(f"ren{T}"); hide_keyboard()
     tap_last(rn)
     if not wait(f"ren{T}", 15) or "ren" + T not in sh(f"ls ~/work/{d}"):
         raise Step.Fail("改名没落到那台")
-    long_press(f"ren{T}")
-    de = t("rsFilewinWriteops.label.delete")
-    tap(de); time.sleep(1)
-    tap_last(de)
+    pick_act(f"ren{T}", t("rsFilewinWriteops.label.delete")); time.sleep(1)
+    confirm_delete()
     time.sleep(3)
     if "ren" + T in sh(f"ls ~/work/{d}"):
         raise Step.Fail("删除没落到那台")
     # 下载：选中 a.txt ⇒［下载］⇒ 系统选文件夹那一屏点 Download ⇒［使用此文件夹］⇒ 盘上 /sdcard/Download/a.txt 是那一份。
     adb("shell", "rm", "-f", "/sdcard/Download/a.txt", "/sdcard/Download/b.txt")
-    long_press("a.txt")
-    tap(t("rsFilewinDownload.label.download"))
+    pick_act("a.txt", t("rsFilewinDownload.label.download"))
     pick_folder("Download")
     landed("/sdcard/Download/a.txt", f"hello {T}")
     # 上传：系统选文件那一屏里点台架推进去的那一份。
@@ -768,6 +777,24 @@ def seed_alias():
         raise Step.Fail(f"台架建不了别名：{r!r}"[:300])
 
 
+def launcher_shows(name, secs=30):
+    """终端屏「用哪个启动」那一排有 [name]：那一排横着滚（那台每个号还各有一组别名，排得比一屏宽），看不到就往左滑着找。"""
+    names = [p.get("name") for p in (frames("profiles-read", {}).get("data") or {}).get("profiles") or []]
+    end = ui.within(secs)
+    while time.time() < end:
+        ns = ui.nodes()
+        if ui.find_in(ns, name) is not None:
+            return True
+        row = next((n for n in ns if n.get("text") in names), None)
+        if row is None:
+            time.sleep(1)
+            continue
+        y = ui.center(row)[1]
+        adb("shell", "input", "swipe", "900", str(y), "200", str(y), "300")
+        time.sleep(0.5)
+    return False
+
+
 def seed_rotation():
     """台架里的账号库（work · team · lab）与两份策略；跨趟留着，再跑一遍不出错就行。"""
     frames("accounts-init", {"name": "work"})
@@ -776,6 +803,10 @@ def seed_rotation():
     import base64
     b = base64.b64encode(SMOKE_STRATEGY.encode()).decode()
     sh(f"mkdir -p ~/.cc-monitor/strategies && for n in smoke-a smoke-b; do echo {b} | base64 -d > ~/.cc-monitor/strategies/$n.rhai; done")
+    # 新会话用哪份：没有随包策略、没人选过就是空的；设置进的轮换屏改的是这一份。
+    r = frames("rotation-for-new", {"strategy": "smoke-a"})
+    if r.get("ok") is False or r.get("error"):
+        raise Step.Fail(f"台架定不了新会话用的那份策略：{r!r}"[:300])
 
 
 def plate_of(name):
@@ -819,6 +850,18 @@ def older_backend():
     open(dest, "wb").write(open(src, "rb").read().replace(mine.encode(), old.encode()))
     os.chmod(dest, 0o755)
     return dest, old
+
+
+def resident_pid():
+    """台架那台此刻在听的常驻（落点那份 ccm 跑的 `--stream`）是哪个进程；没有 ⇒ None。"""
+    exe = os.path.join(BOX, "home", ".cc-monitor", "bin", "ccm")
+    for p in os.listdir("/proc"):
+        try:
+            if p.isdigit() and os.readlink(f"/proc/{p}/exe") == exe and b"--stream" in open(f"/proc/{p}/cmdline", "rb").read().split(b"\0"):
+                return int(p)
+        except OSError:
+            continue
+    return None
 
 
 def commands():
@@ -893,21 +936,22 @@ def deploy_steps():
     with Step("1c-升级后端"):
         old_bin, old_id = older_backend()
         rig("land", old_bin)
-        if not wait(t("peerVersion.said.old", machine=MACHINE), 60):
+        if not wait(t("machineState.problem.needsUpdate", machine=MACHINE), 60):
             raise Step.Fail(f"那台是旧版 {old_id}，却没说要更新")
         shot("1c-要更新")
         deploy_and_time(t("machineState.fix.update"), "1c")
         end = ui.within(60)
-        while time.time() < end and ui.find(t("peerVersion.said.old", machine=MACHINE)) is not None:
+        while time.time() < end and ui.find(t("machineState.problem.needsUpdate", machine=MACHINE)) is not None:
             time.sleep(1)
-        if ui.find(t("peerVersion.said.old", machine=MACHINE)) is not None:
+        if ui.find(t("machineState.problem.needsUpdate", machine=MACHINE)) is not None:
             raise Step.Fail("换了常驻还说要更新（接上的不是这一版）")
     if landing_id() != build_id():
         # 升级那一步没走完、那台还是旧版：放回这一版再往下走（后面几步不该跟着它红）。
         rig("land", os.environ.get("CCM_SMOKE_BACKEND", os.path.join(ROOT, ".build", "backend", "debug", "cc-monitor-backend")))
     with Step("1d-主机设置核对版本"):
         # 主机设置里那一行：通着、已是这一版 ⇒ 按钮是「核对版本」，按下去说「已是最新」、一个字节不写、不换常驻。
-        before = sum(1 for _, c in commands() if c.endswith("--resident-ensure --replace"))
+        # 手机照样发 `--resident-ensure --replace`（换不换由那台判：在听的比落点旧才换）⇒ 看在听的那个进程换没换，不数命令。
+        before = resident_pid()
         drawer(t("mobDrawer.server.named", name=""))
         time.sleep(1.5)
         # 编辑在主机行尾的 ⋯ 里：先点 ⋯，再在弹出的那一列里点「编辑」。
@@ -926,8 +970,8 @@ def deploy_steps():
             time.sleep(1)
         if not any((n.get("text") or "").startswith(up_to_date) for n in ui.nodes()):
             raise Step.Fail("核对版本没说「已是最新」")
-        if sum(1 for _, c in commands() if c.endswith("--resident-ensure --replace")) != before:
-            raise Step.Fail("同版也换了常驻")
+        if before is None or resident_pid() != before:
+            raise Step.Fail(f"同版也换了常驻（在听的 {before} → {resident_pid()}）")
         shot("1d-主机设置")
         # 回那台的会话列表（后面几步从那里接着走）。
         adb("shell", "input", "keyevent", "4")
@@ -1035,7 +1079,8 @@ def walk():
 
     with Step("2-会话列表"):
         # 台架只有一台：几台并成一列、机器小标签没在模拟器上跑过（JVM 单测钉着）。这里看一台的两层行：
-        # 停在批准框上的那一条在列表里，第二层状态字是需手动那一类（那台写的字）。
+        # 停在批准框上的那一条在列表里，第二层状态字是需手动那一类（那台写的字）。App 起来落在新建会话那一屏：先进会话列表。
+        drawer(t("mobDrawer.item.sessions"))
         sh(f'tmux new -d -s seed{T} -c ~/work claude; sleep 3; tmux send-keys -t seed{T} "{T} seed" Enter; '
            f'tmux new -d -s needs{T} -c ~/work claude; sleep 3; tmux send-keys -t needs{T} "ask {T} needs" Enter')
         if not wait(f"{T} seed", 30):
@@ -1355,19 +1400,18 @@ def walk():
     with Step("8-杀进程"):
         # 进程整个没了（停掉，连前台服务一起）：内存里的续点都没了；重开 ⇒ 核心重接、先取尾巴，被杀那段的话照样在。
         # 杀之前起一组慢的删除（台架造一棵大树）：在做的那一组落了盘，重开 ⇒ 核心带同一张票再问，卡在、结局与台架一致。
+        # 树要大到删得慢、又不过那台的上限（一棵超过十万条整个拒删）：九万来条。
         name = tmux_name_of(f"{T} new session")
         tree = f"tree{T}"
-        sh(f"rm -rf ~/work/tree* && mkdir -p ~/work/{tree} && cd ~/work/{tree} && for i in $(seq 1 400); do mkdir d$i && (cd d$i && seq 1 500 | xargs touch); done")
+        sh(f"rm -rf ~/work/tree* && mkdir -p ~/work/{tree} && cd ~/work/{tree} && for i in $(seq 1 180); do mkdir d$i && (cd d$i && seq 1 500 | xargs touch); done")
         drawer(t("mobDrawer.item.files"))
         if not wait("work", 30):
             raise Step.Fail("文件页没列出家目录")
         tap("work")
         if not wait(tree, 15):
             raise Step.Fail(f"work 里没有 {tree}")
-        long_press(tree)
-        de = t("rsFilewinWriteops.label.delete")
-        tap(de); time.sleep(1)
-        tap_last(de)
+        pick_act(tree, t("rsFilewinWriteops.label.delete")); time.sleep(1)
+        confirm_delete()
         title = t("rsFilewinBatch.row.title", action=t("beFiles.batch.verbDelete"), n=1)
         done = t("beFiles.batch.done", action=t("beFiles.batch.verbDelete"), n=1)
         time.sleep(1)
@@ -1443,7 +1487,7 @@ def walk():
         seed_alias()
         before = set(tmux_sessions())
         drawer(t("mobDrawer.item.terminal"))
-        if not wait(SMOKE_ALIAS, 30):
+        if not launcher_shows(SMOKE_ALIAS):
             raise Step.Fail(f"终端屏「用哪个启动」那一排没列出那台的别名 {SMOKE_ALIAS}")
         shot("9a-终端屏-别名")
         hide_keyboard()
@@ -1499,6 +1543,10 @@ def walk():
 
     with Step("9c-推公钥"):
         # 命令面板「推送公钥」：问那台后端 authorized-keys-add，结局照回包说；这把钥匙本来就在（连上用的就是它）⇒「已在」那一句。
+        # 从终端屏起（上一步红了收拾回起点时不在终端屏）。
+        if ui.find(t("mobDefaultButtons.label.command")) is None:
+            drawer(t("mobDrawer.item.terminal"))
+            time.sleep(2)
         hide_keyboard()
         tap(t("mobDefaultButtons.label.command")); time.sleep(1.5)
         tap(t("mobPalette.item.key")); time.sleep(1.5)
@@ -1575,16 +1623,27 @@ def walk():
             raise Step.Fail("从总览返回没回到聊天屏")
 
     with Step("12b-离线"):
-        # 停掉台架那台的中转 ⇒ 入口的数减掉那台（只连着这一台 ⇒ 入口不画；总览组底那一句「{machine} 离线 · 未计入」截图看）。停中转的造法由合测那一轮定。
-        stop = os.environ.get("CCM_SMOKE_STOP_RELAY")
-        if not stop:
-            raise Step.Fail("没给停中转的命令（CCM_SMOKE_STOP_RELAY）")
-        subprocess.run(stop, shell=True, check=False)
-        end = time.time() + 40
-        while time.time() < end and ui.find(entry) is not None:
+        # 那台断了 ⇒ 入口的数减掉那台（只连着这一台 ⇒ 入口不画）。造法：停掉那台的常驻、落点挪开（重连 ensure 起不来），
+        # 判完才放回去 —— 判的那几十秒里一直断着（先放回再判，手机早连回去了、入口照旧在）。
+        rig("backend", "off")
+        try:
+            end = ui.within(60)
+            while time.time() < end and ui.find(entry) is not None:
+                time.sleep(1)
+            if ui.find(entry) is not None:
+                raise Step.Fail("那台断了，入口照旧在数它")
+            shot("12b-断开")
+        finally:
+            rig("backend", "on")
+        # 起不来的那几回手机记成那台「未装」：等人点［重试］（不自己重拨）。点它接回来，后面几步照常连着。
+        drawer(t("mobDrawer.item.sessions"))
+        if wait(t("remoteHealth.head.notDeployed"), 15):
+            tap(t("machineState.fix.retry"))
+        end = ui.within(60)
+        while time.time() < end and ui.find(t("remoteHealth.head.notDeployed")) is not None:
             time.sleep(1)
-        if ui.find(entry) is not None:
-            raise Step.Fail("那台断了，入口照旧在数它")
+        if ui.find(t("remoteHealth.head.notDeployed")) is not None:
+            raise Step.Fail("放回去点了［重试］，那台还是「未装」")
 
     report()
 
@@ -1700,7 +1759,12 @@ def report():
         ns = ui.nodes()
         row = next(n for n in ns if n.get("text") == t("settings.machine.childTab"))
         y = ui.center(row)[1]
-        lit = [n for n in ns if n.get("text") == seg and abs(ui.center(n)[1] - y) < 80 and "true" in (n.get("checked"), n.get("selected"))]
+        # 亮着的那一段：勾着的是装着那个字的那一格（分段钮），不是字本身。
+        def holds(outer, inner):
+            o, i = ui.bounds(outer), ui.bounds(inner)
+            return o[0] <= i[0] and o[1] <= i[1] and o[2] >= i[2] and o[3] >= i[3]
+        lit = [n for n in ns if n.get("text") == seg and abs(ui.center(n)[1] - y) < 80
+               and any(m.get("checked") == "true" and holds(m, n) for m in ns)]
         if not lit:
             raise Step.Fail(f"再进设置，子会话那一行亮着的不是「{seg}」")
         # 拨回去，台架那台的偏好留成进来时那样。
@@ -1734,9 +1798,14 @@ def report():
 
     with Step("15-长按改标题"):
         # 会话屏长按一行 ⇒ 改标题 ⇒ 列表那一行换字、台架 history-list 那一行 customTitle 是新字；再改回空（回到那台算的标题）。
+        def rows():
+            # 回包：`order` 是这一份的先后（sid），`up` 是这回送来的那几行（按 sid）。
+            d = frames("history-list", {}).get("data") or {}
+            up = d.get("up") or {}
+            return [up[k] for k in d.get("order") or [] if k in up]
+
         def custom(sid):
-            rows = (frames("history-list", {}).get("data") or {}).get("rows") or []
-            return next((r.get("customTitle") for r in rows if r.get("sessionId") == sid), "缺")
+            return next((r.get("customTitle") for r in rows() if r.get("sessionId") == sid), "缺")
 
         def rename(to):
             tap(t("history.menu.rename"))
@@ -1751,10 +1820,10 @@ def report():
 
         adb("shell", "input", "keyevent", "4")
         time.sleep(1)
-        drawer(t("mobDrawer.item.chats"))
+        drawer(t("mobDrawer.item.sessions"))
         if not wait(f"{T} seed", 30):
             raise Step.Fail("会话屏里没有那一行")
-        sid = next((r.get("sessionId") for r in (frames("history-list", {}).get("data") or {}).get("rows") or [] if f"{T} seed" in (r.get("label") or "")), None)
+        sid = next((r.get("sessionId") for r in rows() if f"{T} seed" in (r.get("label") or "")), None)
         if sid is None:
             raise Step.Fail("台架 history-list 里找不到那一行")
         long_press(f"{T} seed")

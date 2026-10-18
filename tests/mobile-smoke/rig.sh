@@ -29,7 +29,8 @@ say() { printf 'rig: %s\n' "$*" >&2; }
 up() {
   : "${CCM_SMOKE_RELAY_PORT:?rig: 要先给中转口 CCM_SMOKE_RELAY_PORT（不落默认口）}"
   [ -x "$backend" ] || { say "没有编好的后端 $backend（先 cd src/backend && cargo build）"; exit 2; }
-  mkdir -p "$box"/{sshd,bin,tmux,logs} "$home"/.cc-monitor/bin "$home"/.claude "$home"/.codex "$home"/work
+  # 台架家里的 ~/.claude 照一台用过 Claude Code 的机器：记录 · pidfile 那两个目录已在（账号库建号时照共享根此刻有的链过去）。
+  mkdir -p "$box"/{sshd,bin,tmux,logs} "$home"/.cc-monitor/bin "$home"/.claude/{projects,sessions} "$home"/.codex "$home"/work
   chmod 700 "$box/tmux"
   [ -f "$box/sshd/host_ed25519" ] || ssh-keygen -q -t ed25519 -N '' -f "$box/sshd/host_ed25519" -C smoke-host
   [ -f "$box/sshd/client_ed25519" ] || ssh-keygen -q -t ed25519 -N '' -f "$box/sshd/client_ed25519" -C smoke-client
@@ -90,12 +91,13 @@ EOF
   say "probe：$(head -c 200 "$box/logs/probe.json")"
 }
 
-# 台架家里的后端进程：只认 exe 是台架那份 ccm 的（文件换过的那种 exe 末尾带「 (deleted)」，也认）。
+# 台架家里的后端进程：只认 exe 是台架那份 ccm 的（文件换过的那种 exe 末尾带「 (deleted)」，也认；
+#   `backend off` 先把落点挪成 ccm.off 再停 ⇒ 在跑的那几个 exe 跟着那个 inode 改叫 ccm.off，也认）。
 stop_resident() {
   local p e
   for p in $(pgrep -f "$home/.cc-monitor/bin/ccm" || true); do
     e=$(readlink /proc/"$p"/exe 2>/dev/null) || continue
-    case "$e" in "$home/.cc-monitor/bin/ccm" | "$home/.cc-monitor/bin/ccm (deleted)") kill "$p" 2>/dev/null || true ;; esac
+    case "$e" in "$home/.cc-monitor/bin/ccm" | "$home/.cc-monitor/bin/ccm (deleted)" | "$home/.cc-monitor/bin/ccm.off") kill "$p" 2>/dev/null || true ;; esac
   done
 }
 

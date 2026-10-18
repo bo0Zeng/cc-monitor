@@ -1368,7 +1368,7 @@ run_gate mobile '这一趟 Gradle test-results 里的单测条数（各模块合
 
 # ── `android-device`：手机端要设备的 instrumentation 测（androidTest，10-11 起进全量门禁）────────────────────
 # 起因：从前它们不在任何一格里（上一格「不起模拟器」），`SmokeTest` 红了很久没人看见（10-11 才撞见）。
-# 起停：`tests/mobile-smoke/emu.sh up|down` —— 无头 KVM 模拟器，自己一个 `systemd-run --user --scope`（MemoryMax 8G，不设 MemoryHigh），
+# 起停：`tests/mobile-smoke/emu.sh up|down` —— 无头 KVM 模拟器，自己一个 `systemd-run --user --scope`（MemoryMax 10G，不设 MemoryHigh），
 #   不占 heavy 的槽位；adb 用私有端口（默认 5139 / 模拟器 5592，与冒烟台架的 5137 / 5590 错开），不碰本机正在跑的 adb 与真手机。
 #   AVD 默认建在这棵树的 `.build/android-device/avd`，`GATE_ANDROID_AVD_HOME` 可指别处（`gate-clean.sh` 只清 `CCM_*` 等会话变量，不清它）。
 # 跑：`src/mobile/scripts/android-test.sh`（唯一入口：装 app → `pm clear` 判成没成 → 三个模块的设备测；gradle 带 --no-daemon）。
