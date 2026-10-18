@@ -1829,13 +1829,7 @@
     "beSessionModel.note.savesDefault": {
       "kind": "body",
       "role": "说明",
-      "zh": "换模型也改此号以后新会话的默认",
-      "args": []
-    },
-    "beSessionModel.note.savesDefaultShared": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "换模型也改各号以后新会话的默认",
+      "zh": "换模型也改以后新会话的默认",
       "args": []
     },
     "beSessionModel.switch.unsupported": {

@@ -252,11 +252,9 @@ pub(crate) fn launchable_here(found: &dyn Fn(&str) -> bool) -> Vec<&'static str>
 pub(crate) use cmd_wire::session::{AgentFacts, AgentPick, ForkFacts, OpenFacts, RecentDir};
 
 /// 一家的起会话事实（名字 · 可选的模型与权限档）；`kind` 认不出 ⇒ 名字照 kind、两张表空。
-/// `shared` 答「配置目录下这份文件各号共不共用」（生产 ＝ [`crate::observe::accounts_query::shared_across_accounts`]）：换模型抽屉底那一句照它说。
 pub(crate) fn agent_facts(
     kind: &'static str,
     prefs: &crate::control::machine_prefs::Prefs,
-    shared: &dyn Fn(&str) -> bool,
 ) -> AgentFacts {
     let face = crate::agents::pick_kind(Some(kind)).ok().map(|(_, f)| f);
     let picks = |cs: &[crate::agents::Choice]| {
@@ -277,7 +275,8 @@ pub(crate) fn agent_facts(
         }),
         model_note: face
             .and_then(|f| f.model_switch)
-            .and_then(|m| m.note.map(|n| n(m.saves.is_some_and(shared)))),
+            .and_then(|m| m.note)
+            .map(|n| n()),
         permission_modes: face
             .and_then(|f| f.permission)
             .map(|p| picks(p.modes))
@@ -468,13 +467,7 @@ pub(crate) fn facts(
             let prefs = crate::control::machine_prefs::read_now().prefs();
             launchable_here(&launcher_found)
                 .into_iter()
-                .map(|k| {
-                    agent_facts(
-                        k,
-                        &prefs,
-                        &crate::observe::accounts_query::shared_across_accounts,
-                    )
-                })
+                .map(|k| agent_facts(k, &prefs))
                 .collect()
         },
         fork,

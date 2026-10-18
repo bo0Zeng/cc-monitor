@@ -354,10 +354,10 @@ pub(crate) struct ModelSwitch {
     pub(crate) command: fn(&str) -> String,
     /// 从记录里的一条认出读回的那一句；不是 ⇒ `None`。
     pub(crate) read: fn(&serde_json::Value) -> Option<ModelSaid>,
-    /// 换模型顺带写的那份设置（配置目录下的相对路径）：换模型抽屉底那一行 · 读回那一句照它在各号间共不共用说；不写 ⇒ `None`。
+    /// 换模型顺带写的那份设置（配置目录下的相对路径）：读回那一句照这条会话用的号的那一份跟不跟别的号共用说；不写 ⇒ `None`。
     pub(crate) saves: Option<&'static str>,
-    /// 换模型顺带改了什么（换模型抽屉底那一行；参数 ＝ [`Self::saves`] 那份各号共用）；没有 ⇒ `None`。
-    pub(crate) note: Option<fn(bool) -> String>,
+    /// 换模型顺带改了什么（换模型抽屉底那一行）；没有 ⇒ `None`。
+    pub(crate) note: Option<fn() -> String>,
     /// 送出那一行之后那一家可能弹的确认框（换模型本来就是人点的 ⇒ 认出来就替人确认）；不弹 ⇒ `None`。认不出的框不按。
     pub(crate) confirm: Option<ScreenBox>,
 }

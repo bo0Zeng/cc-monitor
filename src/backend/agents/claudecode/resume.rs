@@ -74,13 +74,9 @@ pub(crate) const MODEL_DEFAULT: Choice = Choice {
     text: || copy_core::copy_text("beSessionNew.model.default", &[]),
 };
 
-/// 换模型顺带改了什么（抽屉底那一行）：`/model` 也把它存成以后新会话的默认 —— 那份设置各号共用（链回共享库）⇒ 改的是各号的（读回那一句同样照实说）。
-pub(crate) fn model_note(shared: bool) -> String {
-    if shared {
-        copy_core::copy_text("beSessionModel.note.savesDefaultShared", &[])
-    } else {
-        copy_core::copy_text("beSessionModel.note.savesDefault", &[])
-    }
+/// 换模型顺带改了什么（抽屉底那一行）：`/model` 也把它存成以后新会话的默认。这一行是那一家的事实（`session-open-facts` 不带会话）⇒ 不说改的是哪几个号；读回那一句照这条会话用的号说「各号 / 此号」。
+pub(crate) fn model_note() -> String {
+    copy_core::copy_text("beSessionModel.note.savesDefault", &[])
 }
 
 /// 换模型的确认框：对话里已有回复时 `/model <别的>` 先弹「Switch model?」（缓存要重读），选项里第一项是「Yes, switch to …」。

@@ -108,7 +108,7 @@ fn a_windows_launcher_counts_the_powershell_forms() {
 /// 字由后端写（界面零拼）；没声明的那一家 ⇒ 两张表都空（不是 `null`：界面照空表不画那颗 chip）。
 #[test]
 fn each_agent_comes_with_its_name_and_its_models_and_modes_in_words() {
-    let claude = agent_facts("claude", &Default::default(), &|_| false);
+    let claude = agent_facts("claude", &Default::default());
     assert_eq!(claude.kind, "claude");
     assert_eq!(claude.text, "Claude Code");
     let t = |k: &str| copy_core::copy_text(k, &[]);
@@ -146,7 +146,7 @@ fn each_agent_comes_with_its_name_and_its_models_and_modes_in_words() {
     for c in &claude.models {
         assert!(shell_quote_core::model_name_ok(&c.value), "{}", c.value);
     }
-    let codex = agent_facts("codex", &Default::default(), &|_| false);
+    let codex = agent_facts("codex", &Default::default());
     assert_eq!(codex.text, "Codex");
     assert!(codex.models.is_empty() && codex.permission_modes.is_empty());
 }
@@ -156,7 +156,7 @@ fn each_agent_comes_with_its_name_and_its_models_and_modes_in_words() {
 #[test]
 fn each_agent_says_how_to_go_back_to_its_default_model_and_what_a_switch_also_changes() {
     let t = |k: &str| copy_core::copy_text(k, &[]);
-    let claude = agent_facts("claude", &Default::default(), &|_| false);
+    let claude = agent_facts("claude", &Default::default());
     let d = claude.model_default.expect("Claude 有「默认」那一项");
     assert_eq!(
         (d.value.as_str(), d.text),
@@ -170,25 +170,14 @@ fn each_agent_says_how_to_go_back_to_its_default_model_and_what_a_switch_also_ch
         claude.model_note,
         Some(t("beSessionModel.note.savesDefault"))
     );
-    // 那份设置各号共用（问的就是换模型写的那一份）⇒ 那一句说「各号」。
-    let asked = std::cell::RefCell::new(Vec::new());
-    let shared = agent_facts("claude", &Default::default(), &|f: &str| {
-        asked.borrow_mut().push(f.to_string());
-        true
-    });
-    assert_eq!(
-        shared.model_note,
-        Some(t("beSessionModel.note.savesDefaultShared"))
-    );
-    assert_eq!(*asked.borrow(), vec!["settings.json".to_string()]);
-    let codex = agent_facts("codex", &Default::default(), &|_| false);
+    let codex = agent_facts("codex", &Default::default());
     assert!(codex.model_default.is_none() && codex.model_note.is_none());
 }
 
 /// ★ 线上那一形：`agents` 每项 `{kind, text, models, modelDefault, modelNote, permissionModes, permissionDefault}`，`recent` 每项 `{cwd, lastMs, lastText}`。
 #[test]
 fn the_new_session_facts_wire_names_its_cells() {
-    let v = serde_json::to_value(agent_facts("claude", &Default::default(), &|_| false)).unwrap();
+    let v = serde_json::to_value(agent_facts("claude", &Default::default())).unwrap();
     let keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
     assert_eq!(
         keys,
@@ -221,19 +210,19 @@ fn the_permission_default_follows_the_preference_while_the_agent_still_offers_it
         permission_modes: [(kind.to_string(), mode.to_string())].into_iter().collect(),
         ..Default::default()
     };
-    let got = agent_facts("claude", &prefs("claude", "plan"), &|_| false).permission_default;
+    let got = agent_facts("claude", &prefs("claude", "plan")).permission_default;
     assert_eq!(got.map(|p| p.value), Some("plan".to_string()));
     assert_eq!(
-        agent_facts("claude", &Default::default(), &|_| false).permission_default,
+        agent_facts("claude", &Default::default()).permission_default,
         None
     );
     assert_eq!(
-        agent_facts("claude", &prefs("claude", "yolo"), &|_| false).permission_default,
+        agent_facts("claude", &prefs("claude", "yolo")).permission_default,
         None,
         "清单里没了 ⇒ 当没设"
     );
     assert_eq!(
-        agent_facts("codex", &prefs("codex", "plan"), &|_| false).permission_default,
+        agent_facts("codex", &prefs("codex", "plan")).permission_default,
         None
     );
 }

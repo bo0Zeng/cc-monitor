@@ -2,7 +2,7 @@
 //! 开着 ⇒ 往会话里送那一家声明的那一行（Claude：`/model <值>`），
 //! 再从记录里此后长出的那一条读回换成了什么（适配层 `LaunchFace.model_switch` 认）。在等人不送；读不回 ⇒ 结果未知，不猜。
 //! 对话里已有回复时那一家先弹确认框 ⇒ 适配层声明了框的样子（`ModelSwitch.confirm`），认出来就替人确认（换模型本来就是人点的）；认不出的框不按。
-//! 那一家换模型时也把它存成以后新会话的默认 —— 那份设置各号共用（链回共享库）⇒ 读回那一句说「各号」，各自一份 ⇒「此号」。
+//! 那一家换模型时也把它存成以后新会话的默认 —— 这条会话用的那个号的那份设置跟别的号共用（链回共享库）⇒ 读回那一句说「各号」，它自己一份 ⇒「此号」。
 
 use crate::agents::ModelSaid;
 use crate::common::contract::malformed;
@@ -302,9 +302,10 @@ fn send(req: &SessionModelReq, own: &crate::platform::Own) -> Result<Sent2, Fail
     let watch = sw
         .confirm
         .and_then(|bx| box_watch(&req.sid, req.client.as_deref()).map(|w| (bx, w)));
-    let shared = sw
-        .saves
-        .is_some_and(crate::observe::accounts_query::shared_across_accounts);
+    let shared = sw.saves.is_some_and(|rel| {
+        crate::observe::accounts_query::session_home(&home, &req.sid)
+            .is_some_and(|h| crate::observe::accounts_query::shared_with_other_accounts(&h, rel))
+    });
     let sent = crate::control::terminals_wire::say(&TerminalInputReq {
         sid: Some(req.sid.clone()),
         text: Some((sw.command)(&req.model)),
