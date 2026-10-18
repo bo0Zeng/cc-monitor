@@ -610,3 +610,7 @@ fn atomic_write_with(
 #[cfg(test)]
 #[path = "../../../../tests/backend/platform/fs/own_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../../tests/backend/platform/fs/own_bytes_golden.rs"]
+mod bytes_golden;

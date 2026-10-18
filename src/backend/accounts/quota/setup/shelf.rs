@@ -13,6 +13,12 @@ pub(crate) const DIR_NAME: &str = "strategies";
 pub(crate) const OLD_DIR: &str = "v3";
 /// 一份文件至多多大。
 pub(crate) const MAX_SOURCE_BYTES: usize = 64 * 1024;
+
+/// 一份策略文件：状态（读不懂的也列出来、照实写原因，不覆盖）。
+const SOURCE: crate::common::own_state::Doc<String> = crate::common::own_state::Doc::state(
+    ".cc-monitor/strategies/<id>.rhai",
+    MAX_SOURCE_BYTES as u64,
+);
 /// 目录里至多读几份。
 pub(crate) const MAX_FILES: usize = 64;
 /// id 至多几个字。
@@ -99,11 +105,14 @@ fn read_one(path: &Path) -> Result<String, Fail> {
         msg: m,
         why: crate::accounts::quota::strategy::FailWhy::Gone,
     };
-    match crate::platform::fs::Ro::metadata(path) {
-        Ok(m) if m.len() > MAX_SOURCE_BYTES as u64 => {
-            Err(gone(format!("file is over {MAX_SOURCE_BYTES} bytes")))
+    match SOURCE.read_with(path, |b| {
+        String::from_utf8(b).map_err(|e| e.to_string().into())
+    }) {
+        crate::common::own_state::Read::Present(s) => Ok(s),
+        crate::common::own_state::Read::Absent => {
+            Err(gone(copy_core::io_reason(std::io::ErrorKind::NotFound)))
         }
-        _ => crate::platform::fs::Ro::read_to_string(path).map_err(|e| gone(e.to_string())),
+        crate::common::own_state::Read::Unreadable(why) => Err(gone(why.logged())),
     }
 }
 

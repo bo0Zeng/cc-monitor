@@ -9,6 +9,10 @@ use std::path::{Path, PathBuf};
 /// 那份文件最大多少字节（超了当读不懂）。
 pub(crate) const MAX_BYTES: u64 = 64 * 1024;
 
+/// 那一份：状态（读不懂不覆盖）。
+const DOC: crate::common::own_state::Doc<Marks> =
+    crate::common::own_state::Doc::state(relay_route_core::CHORES_REL, MAX_BYTES);
+
 /// 记下的那几样（盘上那一份，也是 `chores-mark` 的回包：改完记着的整份）。
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -60,7 +64,7 @@ pub(crate) enum ChoresMarkReq {
 
 /// 读一次（三态）。
 pub(crate) fn read_at(path: &Path) -> crate::common::own_state::Read<Marks> {
-    crate::common::own_state::read_json(path, MAX_BYTES)
+    DOC.read(path)
 }
 
 /// 判「待办」用：读不懂的那份照什么都没记算（写的那一刻才回错）。
@@ -95,7 +99,7 @@ pub(crate) fn mark_at(
     let dir = own.home_dir().map_err(|_| {
         crate::wire::spec::Fail::from(("io_failed", copy_text("beChore.marks.noHome", &[])))
     })?;
-    let file = own.at_home(relay_route_core::CHORES_REL).map_err(io)?;
+    let file = own.at_home(DOC.rel).map_err(io)?;
     let path = file.as_path();
     // 只建那一层、建的那一下就是 0700。
     own.ensure_dir(&dir).map_err(|e| {

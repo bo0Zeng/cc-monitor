@@ -1067,6 +1067,18 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
+        "src/backend/control/ccm/mod.rs",
+        "PLUGIN_FILE_MAX_BYTES",
+        "读回答题插件的一份文件（`~/.cc-monitor/answer-plugin/` 底下，只为比内容一样不一样）；超了 ⇒ `warn!` 带路径，当没有、重写",
+        "跳过+说清",
+    ),
+    (
+        "src/backend/relay/key.rs",
+        "KEY_MAX_BYTES",
+        "中转钥匙文件 `~/.cc-monitor/relay-key`（一行）；超了 ⇒ `warn!` 带路径说读不懂，当没有、重铸一把",
+        "跳过+说清",
+    ),
+    (
         "src/backend/dial/known_hosts.rs",
         "MAX_BYTES",
         "后端自有的主机钥匙 `~/.cc-monitor/known_hosts`（读不出来 ⇒ 不覆盖、回错，记钥匙那一处留一行日志）",
@@ -1745,6 +1757,18 @@ fn a_cap_registered_as_hard_error_is_not_swallowed_at_its_call_site() {
             } else {
                 window.clone()
             };
+            // 「跳过+说清」那一档的上限交给一份缓存声明（`Doc::cache(…, 它)`）：跳过与那句 `warn!` 住
+            //   `common/own_state.rs` 的 `Doc::settle`（缓存读不出来 ⇒ 说是哪一份、当没有），针改去那里认。
+            //   声明折成几行时 `Doc::cache(` 在上面一两行 ⇒ 往上看两行。
+            let declared = lines[i.saturating_sub(2)..=i].join("\n");
+            let scope = if *sem == "跳过+说清"
+                && (guard_core::contains_word(&scope, "Doc::cache")
+                    || guard_core::contains_word(&declared, "Doc::cache"))
+            {
+                own_state_cache_arm(&root)
+            } else {
+                scope
+            };
             // 针可以是**一组备选**（`|` 分隔）：命中任一即可。
             if !need.split('|').any(|n| scope.contains(n)) {
                 bad.push(format!(
@@ -1919,6 +1943,18 @@ fn every_inline_read_cap_resolves_to_something_registered() {
                  删掉这条，别留死规则"
         );
     }
+}
+
+/// 后端自有文件声明那一处（`common/own_state.rs`）缓存读不出来的那一臂：从那一臂的臂头起的 10 行。
+fn own_state_cache_arm(root: &Path) -> String {
+    let file = "src/backend/common/own_state.rs";
+    let raw = std::fs::read_to_string(root.join(file))
+        .unwrap_or_else(|e| panic!("{file} 读不到：{e} —— 文件搬了就把这里一起改"));
+    let src = guard_core::production_code(&raw);
+    let lines: Vec<&str> = src.lines().collect();
+    let at = guard_core::pin_line(&src, "(Kind::Cache, Read::Unreadable(e)) => {")
+        .unwrap_or_else(|e| panic!("{file} 里缓存读不出来的那一臂认不准（{e}）—— 改了形状就把这里一起改"));
+    lines[at..(at + 10).min(lines.len())].join("\n")
 }
 
 /// 抠出生产段里所有「`.take(<实参>)` 紧邻一个字节读」的位置。

@@ -288,8 +288,8 @@ pub(crate) struct Note {
 
 /// 读那份记录。没有 ⇒ 空；读不懂 ⇒ `Err`（不覆盖它）。
 pub(crate) fn read_book(home: &Path) -> Result<Book, crate::common::said::Said> {
-    use crate::common::own_state::{read_json, Read};
-    match read_json(&home.join(FILE_NAME), MAX_BYTES) {
+    use crate::common::own_state::Read;
+    match BOOK.read(&home.join(FILE_NAME)) {
         Read::Absent => Ok(Book::default()),
         Read::Present(b) => Ok(b),
         Read::Unreadable(why) => Err(why),
@@ -298,6 +298,14 @@ pub(crate) fn read_book(home: &Path) -> Result<Book, crate::common::said::Said> 
 
 /// 读盘的上限（一条会话一行）。
 const MAX_BYTES: u64 = 16 << 20;
+
+/// 启动台账：状态（读不懂不覆盖）。
+const BOOK: crate::common::own_state::Doc<Book> =
+    crate::common::own_state::Doc::state(relay_route_core::LAUNCH_ACCOUNTS_REL, MAX_BYTES);
+
+/// 一个进程一张便条：状态（写的那一下不读它；读不懂的那张不作数）。
+const NOTE: crate::common::own_state::Doc<Note> =
+    crate::common::own_state::Doc::state(".cc-monitor/launch-pending/<pid>.json", MAX_BYTES);
 
 /// 这条会话上次用的号（读不出 / 没记 ⇒ `None`）。
 pub(crate) fn last_of(home: Option<&Path>, sid: &str) -> Option<String> {
@@ -329,10 +337,10 @@ pub(crate) fn leave_note(
 /// 这个进程（`pid`，起始时刻 `started`）的便条，且对它作数（不早于它起）。`data` ＝ 数据目录。没有 ⇒ `None`。
 pub(crate) fn note_of(data: &Path, pid: u32, started: Option<u64>) -> Option<Note> {
     let f = data.join(NOTES_DIR).join(format!("{pid}.json"));
-    crate::platform::fs::Ro::read_to_string(f)
-        .ok()
-        .and_then(|s| serde_json::from_str::<Note>(&s).ok())
-        .filter(|n| fresh(n, started))
+    match NOTE.read(&f) {
+        crate::common::own_state::Read::Present(n) => Some(n).filter(|n| fresh(n, started)),
+        _ => None,
+    }
 }
 
 fn write_note(own: &Own, pid: u32, note: &Note) -> Result<(), crate::common::said::Said> {
@@ -392,9 +400,10 @@ pub(crate) fn adopt(
         else {
             continue;
         };
-        let read = crate::platform::fs::Ro::read_to_string(&path)
-            .ok()
-            .and_then(|s| serde_json::from_str::<Note>(&s).ok());
+        let read = match NOTE.read(&path) {
+            crate::common::own_state::Read::Present(n) => Some(n),
+            _ => None,
+        };
         if p == pid {
             note = read.filter(|n| fresh(n, started));
             continue;

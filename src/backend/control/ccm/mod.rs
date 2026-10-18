@@ -1026,6 +1026,15 @@ fn lay_plugin(d: &plan::Direct, own: &crate::platform::fs::Own) -> plan::Direct 
     }
 }
 
+/// 答题插件的一份文件：缓存（照这一版现写；读不出来 ⇒ 当没有、重写）。
+const PLUGIN_FILE: crate::common::own_state::Doc<String> = crate::common::own_state::Doc::cache(
+    ".cc-monitor/answer-plugin/<file>",
+    PLUGIN_FILE_MAX_BYTES,
+);
+
+/// 读回答题插件一份文件的上限（几份小脚本与清单）。
+const PLUGIN_FILE_MAX_BYTES: u64 = 1 << 20;
+
 fn write_plugin(
     files: &[(&'static str, String)],
     own: &crate::platform::fs::Own,
@@ -1055,12 +1064,13 @@ fn write_plugin(
         };
         own.ensure_dir(&dir)
             .map_err(|e| failed(dir.as_path(), &e))?;
-        if crate::platform::fs::Ro::read_to_string(file.as_path())
-            .ok()
-            .as_deref()
-            == Some(body.as_str())
+        let text = |b: Vec<u8>| String::from_utf8(b).map_err(|e| e.to_string().into());
+        if let crate::common::own_state::Read::Present(now) =
+            PLUGIN_FILE.read_with(file.as_path(), text)
         {
-            continue;
+            if now == *body {
+                continue;
+            }
         }
         let held = own.lock(&dir)?;
         own.write(&file, &held, body.as_bytes())?;

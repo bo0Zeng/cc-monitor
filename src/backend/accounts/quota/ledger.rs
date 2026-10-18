@@ -520,8 +520,12 @@ pub(crate) type Read = crate::common::own_state::Read<Book>;
 /// 读盘的上限（一台的号数有限，远到不了）。
 const MAX_BYTES: u64 = 16 << 20;
 
+/// 那一份：状态（读不懂不覆盖）。
+const DOC: crate::common::own_state::Doc<Book> =
+    crate::common::own_state::Doc::state(relay_route_core::QUOTA_LEDGER_REL, MAX_BYTES);
+
 pub(crate) fn read_at(path: &Path) -> Read {
-    crate::common::own_state::read_json(path, MAX_BYTES)
+    DOC.read(path)
 }
 
 /// ★ 盘上那份的唯一写法：在跨进程锁里读盘 → 那个号那一条按窗口并进 `add`（[`merge`]；`headers` 同它）→ `O_EXCL` 临时文件 →

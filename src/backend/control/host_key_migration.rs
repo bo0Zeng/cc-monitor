@@ -93,12 +93,12 @@ pub(crate) enum Moved {
 
 /// 本体（写句柄与库的那只手是参数）。
 pub(crate) fn migrate_in(own: &Own, library: &crate::dial::known_hosts::Writer) -> Moved {
-    use crate::common::own_state::{read_json, Read};
+    use crate::common::own_state::Read;
     let path = match own.home_dir().and_then(|d| d.join(machines::FILE_NAME)) {
         Ok(p) => p.as_path().to_path_buf(),
         Err(e) => return Moved::Later(e.logged()),
     };
-    let doc: Value = match read_json(&path, 4 << 20) {
+    let doc: Value = match machines::DOC.read_as(&path) {
         Read::Present(v) => v,
         Read::Absent => return Moved::Nothing,
         Read::Unreadable(why) => return Moved::Later(why.logged()),
