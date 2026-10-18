@@ -745,7 +745,7 @@ export class TabManager {
       agent: null, // 是哪一家：会话事实到了才有（`onSessionFacts`），之前要分家的那几项灰着
       writers: [], // 同上
       origin,
-      // 脸早于建 Tab 到（宣告那一格当场派）⇒ 落实；没有 ⇒ 画说不清，等那台的帧。
+      // 脸早于建 Tab 到 ⇒ 落实；没有 ⇒ 画说不清，等那台的帧。
       face: this.store.pendingFace.get(sessionId) ?? null,
       // 不自动固定；盘上固定过的由 `loadPinned` 在复活时置回 true。
       pinned: false,

@@ -75,7 +75,7 @@ export class TabStore {
   inBatch = false;
   /** 每个 sid 当前的任务列表（ensureTab 拉初次快照，之后按通道的任务变更重问）。切 Tab 时把那个 sid 的快照喂给 TasksPanel。 */
   readonly tasksBySid = new Map<string, TaskEntry[]>();
-  /** 脸早于建 Tab 到（宣告那一格当场派，建 Tab 的行走异步队列）⇒ 暂存，建 Tab 时落实；同一 sid 后到的覆盖先到的。 */
+  /** 脸早于建 Tab 到（那台说的会话还没有 Tab）⇒ 暂存，建 Tab 时落实；同一 sid 后到的覆盖先到的。 */
   readonly pendingFace = new Map<string, SessionFace>();
   /** 已经把活会话清单报完了的机器（会话流的 `listed` 格）：「没回来的组员」等每台都报完了才认。 */
   readonly seenOrigins = new Set<string>();
