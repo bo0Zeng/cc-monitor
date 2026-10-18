@@ -209,8 +209,7 @@ class ResidentFeed(
         }
     }
 
-    /** ［重试］：断开这一条（有的话）、马上整份重来。 */
-    fun reconnect() {
+    override fun reconnect() {
         ensure()
         scope.launch { core.kick(opened.await(), true) }
     }

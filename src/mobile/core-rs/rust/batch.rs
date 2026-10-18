@@ -85,7 +85,8 @@ impl PhoneBoard {
         Some(Self { kept: true, ..b })
     }
 
-    /// 跑这一组（[`batch_core::run`]）：每次发之前入参变了 ⇒ 落盘那一份跟着换；收场 ⇒ 删。接回来的那一组先摆断开那一行。
+    /// 跑这一组（[`batch_core::run`]）：每次发之前入参变了 ⇒ 落盘那一份跟着换；收场 ⇒ 删。
+    /// 一开工先摆「在做」那一格（那台可能很久才报第一格进度）；接回来的那一组先摆断开那一行。
     pub async fn go<C, CF, U, UF>(&self, call: C, wait_up: U)
     where
         C: Fn(serde_json::Value) -> CF,
@@ -93,9 +94,11 @@ impl PhoneBoard {
         U: Fn() -> UF,
         UF: std::future::Future<Output = ()>,
     {
-        if self.kept {
-            self.emit(&Phase::Cut(batch_core::cut_line(&self.plan, &self.tick())));
-        }
+        self.emit(&if self.kept {
+            Phase::Cut(batch_core::cut_line(&self.plan, &self.tick()))
+        } else {
+            Phase::Running
+        });
         let sending = |args: serde_json::Value| {
             let changed = lock(&self.sent).as_ref() != Some(&args);
             if changed {
@@ -1039,6 +1042,33 @@ mod tests {
             .filter(|(k, _)| k == kind)
             .map(|(_, v)| v.clone())
             .collect()
+    }
+
+    /// 🔴 一开工卡就在：那台还没回（删一棵大目录那一问可能几分钟不报一格进度）⇒ 屏上已经是「在做」那一格，不等第一格进度。
+    #[tokio::test]
+    async fn a_group_shows_running_before_the_first_reply() {
+        let (on, seen) = events();
+        let b = Arc::new(PhoneBoard::new(7, 1, del("devbox"), "t-1".into(), on));
+        let b2 = b.clone();
+        let run = tokio::spawn(async move {
+            b2.go(
+                |_args| std::future::pending::<Result<serde_json::Value, Rebuff>>(),
+                || async {},
+            )
+            .await;
+        });
+        for _ in 0..2000 {
+            if !lock(&seen).is_empty() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        run.abort();
+        let seen = lock(&seen).clone();
+        let first = seen.first().expect("那台没回之前一格都没交：屏上没有卡");
+        assert_eq!(first["phase"], "running", "{seen:?}");
+        assert_eq!(first["id"], 7);
+        assert!(first["frac"].is_null(), "还没有一格进度 ⇒ 不写几成：{first}");
     }
 
     /// 🔴 一组落盘的那一份 ＝ 最后发出去的入参（带票 · 带答过的 `decide`）＋ 断开时的完成数：开始时写、答了重写、断开重写、收场删；

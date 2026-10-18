@@ -9,6 +9,7 @@ import com.ccmonitor.mobile.core.claude.link.FilesReadText
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.PickMenu
 import com.ccmonitor.mobile.core.claude.link.RemotePath
+import com.ccmonitor.mobile.core.claude.link.retry
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.ui.feedback.Notice
@@ -161,9 +162,15 @@ class FilesViewModel(
         hostConnector.connect(host, expectedGen = epoch)
     }
 
+    /**
+     * ［重试］：SSH 那层没通 ⇒ 整条重建、重问；不然交会话列表那一条同一份（[retry]：流断着 ⇒ 整份重接，停在要人动手那一步的也重拨，
+     * 接上了 `epoch` 变、照上面那一份重问；通着 ⇒ 重问）。
+     */
+    fun retry() = if (hostConnector.connection(hostId)?.isConnected != true) connect() else feed.retry(::connect)
+
     /** 初次与「重试」共用：起点是那台给的家；重试留在当前目录。 */
     @Suppress("TooGenericExceptionCaught") // 建连可抛各类异常（IO · 认证 · 超时 …）⇒ 统一兜成 Error 态（取消先重抛）
-    fun connect() {
+    private fun connect() {
         viewModelScope.launch {
             _ui.value = FilesUi.Connecting
             _ui.value =

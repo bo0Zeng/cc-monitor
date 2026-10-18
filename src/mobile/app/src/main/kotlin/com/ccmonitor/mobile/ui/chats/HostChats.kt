@@ -14,6 +14,7 @@ import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.Toned
 import com.ccmonitor.mobile.core.claude.link.deployFix
+import com.ccmonitor.mobile.core.claude.link.retry
 import com.ccmonitor.mobile.core.claude.link.wire.CanDelete
 import com.ccmonitor.mobile.core.claude.link.wire.ForkedFrom
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryGroup
@@ -60,7 +61,6 @@ class HostChats(
     /** 清单该重问了（那台推的 `changed {history_list}`）。 */
     listChanged: Flow<Unit>,
     deploying: StateFlow<Deploying?>,
-    private val reconnect: () -> Unit,
     /** 给这台装 / 更新后端（判定与做法在核心）。 */
     val deploy: () -> Unit,
     private val cache: ListCache,
@@ -99,10 +99,8 @@ class HostChats(
         fetch()
     }
 
-    /** ［重试］：流断了 ⇒ 重接；通着 ⇒ 重问。 */
-    fun retry() {
-        if (link.state.value is LinkState.Down) reconnect() else fetch()
-    }
+    /** ［重试］：流断着 ⇒ 重接（接上了照上面那一份重问）；通着 ⇒ 重问（[CoreLink.retry]）。 */
+    fun retry() = link.retry(::fetch)
 
     fun fetch() {
         val wanted = asked.value
@@ -354,7 +352,6 @@ fun hostChats(
             link = feed,
             listChanged = feed.changed.filter { it.topic == HostChats.LIST_TOPIC }.map { },
             deploying = feed.deploying,
-            reconnect = feed::reconnect,
             deploy = { backends.deploy(h.id) },
             cache = cache.list(h.id),
             scope = scope,
