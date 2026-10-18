@@ -52,6 +52,14 @@ export class NeedsBook {
     return this.ask();
   }
 
+  /** 那台从机器表里删了：不再问它，剩下的再问一次。 */
+  drop(origin: Origin): Promise<void> {
+    const i = this.origins.indexOf(origin);
+    if (i < 0) return Promise.resolve();
+    this.origins.splice(i, 1);
+    return this.ask();
+  }
+
   /** 记着的每一台再问一次（开浮层 · `Ctrl+J` 那一下）。 */
   again(): Promise<void> {
     return this.ask();

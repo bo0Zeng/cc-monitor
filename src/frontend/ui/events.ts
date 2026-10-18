@@ -1,7 +1,7 @@
 import { makeYieldToMain } from "./yield-to-main";
 import type { SessionHidden } from "./session-hidden";
 import { chan, type HopFault, type HopTag, type Item, type Sub } from "../../comms/inward/chan";
-import { isLocalOrigin, type Origin } from "./ipc/origin";
+import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { toast } from "./kit/toast";
 import { CHANGED_WINDOW, changedItems, changedStream, type Changed, type Topic } from "./changed-stream";
@@ -312,6 +312,16 @@ export interface BindEventsOptions {
    * 与会话行 · 活卡同一处 `chan.subscribe`；窗口是 `CHANGED_WINDOW`。
    */
   changed?: ReadonlyArray<{ origin: Origin; topic: Topic }>;
+  /**
+   * 订的那几台跟着壳的机器表走（主窗口用）：起来问一次 `ask`（问不到 ⇒ 只订本机），每台照 `plan` 订；之后壳在本机
+   * `changed/machines` 上说一声（它照机器表对齐完远端流之后说）⇒ 再问 · 新来的补订 · 没了的退订。
+   * 每问定一次交 `moved(此刻那几台, 新订的, 退掉的)`（起来那一次新订的是全部）。
+   */
+  machines?: {
+    ask(): Promise<readonly Origin[]>;
+    plan(origin: Origin): BindEventsOptions;
+    moved?(now: readonly Origin[], added: readonly Origin[], dropped: readonly Origin[]): void;
+  };
 }
 
 /**
@@ -721,22 +731,67 @@ export async function bindEvents(
   //   返回时 monitor 那一侧已经登记好 ⇒ 主界面接着发 `frontend-ready`（就绪点）不会落空。
   // `session-live-card` 与会话行走同一处 `chan.subscribe`（前端对通信层入口的调用点各恰好一处）：
   //   两种流只差窗口与这一格怎么交。
-  const plan: { origin: Origin; kind: string; window: number; feed: typeof onStreamItems }[] = [
-    ...(opts.streams ?? []).map(({ origin, kind }) => ({ origin, kind, window: STREAM_WINDOW, feed: onStreamItems })),
-    ...(opts.liveCards ?? []).map((origin) => ({ origin, kind: "session-live-card", window: LIVE_CARD_WINDOW, feed: onLiveCardItems })),
-    ...(opts.changed ?? []).map(({ origin, topic }) => ({
+  const planOf = (o: BindEventsOptions): { origin: Origin; kind: string; window: number; feed: typeof onStreamItems }[] => [
+    ...(o.streams ?? []).map(({ origin, kind }) => ({ origin, kind, window: STREAM_WINDOW, feed: onStreamItems })),
+    ...(o.liveCards ?? []).map((origin) => ({ origin, kind: "session-live-card", window: LIVE_CARD_WINDOW, feed: onLiveCardItems })),
+    ...(o.changed ?? []).map(({ origin, topic }) => ({
       origin,
       kind: changedStream(topic),
       window: CHANGED_WINDOW,
-      feed: (o: Origin, hold: StreamHold, items: Item[]) => onChangedItems(o, topic, hold, items),
+      feed: (from: Origin, hold: StreamHold, items: Item[]) => onChangedItems(from, topic, hold, items),
     })),
   ];
-  await Promise.all(
-    plan.map(async ({ origin, kind, window, feed }) => {
-      const hold: StreamHold = { sub: null, owed: 0 };
-      hold.sub = await openStream(origin, kind, window, (items) => feed(origin, hold, items));
-    }),
-  );
+  const openAll = (o: BindEventsOptions): Promise<Sub[]> =>
+    Promise.all(
+      planOf(o).map(async ({ origin, kind, window, feed }) => {
+        const hold: StreamHold = { sub: null, owed: 0 };
+        hold.sub = await openStream(origin, kind, window, (items) => feed(origin, hold, items));
+        return hold.sub;
+      }),
+    );
+  await openAll(opts);
+  const m = opts.machines;
+  if (m) await followMachines(m, openAll, (feed) => {
+    const hold: StreamHold = { sub: null, owed: 0 };
+    return openStream(LOCAL_ORIGIN, changedStream("machines"), CHANGED_WINDOW, (items) => {
+      onChangedItems(LOCAL_ORIGIN, "machines", hold, items);
+      feed();
+    }).then((s) => (hold.sub = s));
+  });
+}
+
+/**
+ * 订的那几台跟着机器表走（[`BindEventsOptions.machines`]）：先订本机的 `changed/machines`（之后壳说一声就再问），再问一次、照答的订。
+ * 几次问排着队一次一次来（后一问看的是前一问定下来的那几台）。
+ */
+async function followMachines(
+  m: NonNullable<BindEventsOptions["machines"]>,
+  openAll: (o: BindEventsOptions) => Promise<Sub[]>,
+  hear: (moved: () => void) => Promise<unknown>,
+): Promise<void> {
+  const held = new Map<Origin, Sub[]>();
+  let queue: Promise<void> = Promise.resolve();
+  const sync = (): Promise<void> =>
+    (queue = queue.then(async () => {
+      let want: Origin[];
+      try {
+        want = [...(await m.ask())];
+      } catch (e) {
+        console.warn("[events] 问不到机器表：", e);
+        if (held.size > 0) return;
+        want = [LOCAL_ORIGIN];
+      }
+      const added = want.filter((o) => !held.has(o));
+      const dropped = [...held.keys()].filter((o) => !want.includes(o));
+      for (const o of dropped) {
+        for (const s of held.get(o) ?? []) s.stop();
+        held.delete(o);
+      }
+      for (const o of added) held.set(o, await openAll(m.plan(o)));
+      m.moved?.(want, added, dropped);
+    }));
+  await hear(() => void sync());
+  await sync();
 }
 
 /** 订一条流（前端对通信层 `subscribe` 的唯一调用点：整台机器的那几条与单个会话那一条都经这里）。 */

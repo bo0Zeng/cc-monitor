@@ -973,7 +973,10 @@ pub(crate) fn reconcile_remote_streams() -> backend_control::Reconciled {
             respawn: remote_respawn(cfg, replay.clone(), app.clone()),
         })
         .collect();
-    backend_control::reconcile_remotes(wanted)
+    let done = backend_control::reconcile_remotes(wanted);
+    // 注册表此刻就是机器表的样子了 ⇒ 告诉主窗口（它订的那几台跟着走）。
+    machine_table::tell_followed(replay);
+    done
 }
 
 /// 机器表里**要连的**那几台（某台 `"connect": false` ⇒ 不在里面）。
