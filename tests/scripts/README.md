@@ -39,7 +39,7 @@
 | CI | `.github/workflows/ci.yml` | 两棵树 cargo · clippy · vitest · 覆盖率 · e2e · 手机 JVM 单测与 release 构建 · Windows 真测 | 设备测（runner 上没有 KVM 模拟器） |
 | 只能手跑（登记着理由） | 各自的入口 | `SshConnectionTest`（要一台真 SSH 服务端；设备测那一格用 instrumentation 过滤跳过它，`InstrumentedTestInventoryTest` 钉着条数）· `f40-suite` / `graylight-suite`（要 Xvfb 上真开着的窗口）· 容器台架 `tests/e2e/local-backend-container/` · 速度台 `tests/benches/`（读数，不进门禁）· 截图台架 `tests/shots/run.mjs`（发版前与合并时手跑） | — |
 
-**设备测那一格（`android-device`，10-11 起）**：经 `tests/mobile-smoke/emu.sh` 起一台无头 KVM 模拟器（自己一个 `systemd-run --user --scope`，MemoryMax 8G，不设 MemoryHigh，不占 heavy 的槽位；adb 用私有端口，不碰本机正在跑的 adb 与真手机），
+**设备测那一格（`android-device`，10-11 起）**：经 `tests/mobile-smoke/emu.sh` 起一台无头 KVM 模拟器（自己一个 `systemd-run --user --scope`，MemoryMax 10G，不设 MemoryHigh，不占 heavy 的槽位；adb 用私有端口，不碰本机正在跑的 adb 与真手机），
 跑设备测唯一的入口 `src/mobile/scripts/android-test.sh`（gradle 一律 `--no-daemon`：先装上 app、`pm clear` 清它的数据 —— 退出码 0 且回 `Success` 才往下跑，清不掉就红；
 所以「从没连过服务器 ⇒ 落在服务器列表」那一支每趟都走得到），收场关模拟器。AVD 默认建在这棵树的 `.build/android-device/avd`，`GATE_ANDROID_AVD_HOME` 可指别处（要 SDK 里装着 `emulator` 与 `system-images;android-36;google_apis;x86_64`）。
 没有 `systemd-run --user` 或 KVM 的机器上这一格按红记（判不了 ≠ 绿）。

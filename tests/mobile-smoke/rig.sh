@@ -29,11 +29,16 @@ say() { printf 'rig: %s\n' "$*" >&2; }
 up() {
   : "${CCM_SMOKE_RELAY_PORT:?rig: 要先给中转口 CCM_SMOKE_RELAY_PORT（不落默认口）}"
   [ -x "$backend" ] || { say "没有编好的后端 $backend（先 cd src/backend && cargo build）"; exit 2; }
-  mkdir -p "$box"/{sshd,bin,tmux,logs} "$home"/.cc-monitor/bin "$home"/.claude "$home"/.codex "$home"/work
+  # 台架家里的 ~/.claude 照一台用过 Claude Code 的机器：记录 · pidfile 那两个目录已在（账号库建号时照共享根此刻有的链过去）。
+  mkdir -p "$box"/{sshd,bin,tmux,logs} "$home"/.cc-monitor/bin "$home"/.claude/{projects,sessions} "$home"/.codex "$home"/work
   chmod 700 "$box/tmux"
   [ -f "$box/sshd/host_ed25519" ] || ssh-keygen -q -t ed25519 -N '' -f "$box/sshd/host_ed25519" -C smoke-host
   [ -f "$box/sshd/client_ed25519" ] || ssh-keygen -q -t ed25519 -N '' -f "$box/sshd/client_ed25519" -C smoke-client
-  cp "$box/sshd/client_ed25519.pub" "$box/sshd/authorized_keys"
+  # sshd 认的就是台架家里的 ~/.ssh/authorized_keys：手机「推送公钥」写的也是它（那台后端写），推进去的那一把与登录用的同一处。
+  mkdir -p "$home/.ssh" && chmod 700 "$home/.ssh"
+  grep -qxF "$(cat "$box/sshd/client_ed25519.pub")" "$home/.ssh/authorized_keys" 2>/dev/null ||
+    cat "$box/sshd/client_ed25519.pub" >> "$home/.ssh/authorized_keys"
+  chmod 600 "$home/.ssh/authorized_keys"
   # 换了后端那份文件就停台架里的常驻（它跑的还是旧文件）。
   if ! cmp -s "$backend" "$home/.cc-monitor/bin/ccm"; then put "$backend"; stop_resident; fi
   install -m 644 "$root/tests/mobile-smoke/fake-agent.py" "$box/bin/fake-agent.py"
@@ -69,7 +74,7 @@ Port $port
 ListenAddress 127.0.0.1
 HostKey $box/sshd/host_ed25519
 PidFile $box/sshd/sshd.pid
-AuthorizedKeysFile $box/sshd/authorized_keys
+AuthorizedKeysFile $home/.ssh/authorized_keys
 AllowUsers $(id -un)
 PasswordAuthentication no
 KbdInteractiveAuthentication no
@@ -90,12 +95,13 @@ EOF
   say "probe：$(head -c 200 "$box/logs/probe.json")"
 }
 
-# 台架家里的后端进程：只认 exe 是台架那份 ccm 的（文件换过的那种 exe 末尾带「 (deleted)」，也认）。
+# 台架家里的后端进程：只认 exe 是台架那份 ccm 的（文件换过的那种 exe 末尾带「 (deleted)」，也认；
+#   `backend off` 先把落点挪成 ccm.off 再停 ⇒ 在跑的那几个 exe 跟着那个 inode 改叫 ccm.off，也认）。
 stop_resident() {
   local p e
   for p in $(pgrep -f "$home/.cc-monitor/bin/ccm" || true); do
     e=$(readlink /proc/"$p"/exe 2>/dev/null) || continue
-    case "$e" in "$home/.cc-monitor/bin/ccm" | "$home/.cc-monitor/bin/ccm (deleted)") kill "$p" 2>/dev/null || true ;; esac
+    case "$e" in "$home/.cc-monitor/bin/ccm" | "$home/.cc-monitor/bin/ccm (deleted)" | "$home/.cc-monitor/bin/ccm.off") kill "$p" 2>/dev/null || true ;; esac
   done
 }
 
@@ -122,9 +128,11 @@ land() {
 }
 
 hop() {
-  local hp=${CCM_SMOKE_HOP_PORT:?rig: 要先给跳板口 CCM_SMOKE_HOP_PORT（不落默认口）} cfg=$box/sshd/hop_config pid=$box/sshd/hop.pid
+  local hp cfg=$box/sshd/hop_config pid=$box/sshd/hop.pid
   case "${1:-}" in
     up)
+      # 起才要口；停只认门牌（`down` 收台架时也停它，冒烟那几趟没给跳板口）。
+      hp=${CCM_SMOKE_HOP_PORT:?rig: 要先给跳板口 CCM_SMOKE_HOP_PORT（不落默认口）}
       [ -f "$box/sshd/sshd_config" ] || { say "先 rig.sh up"; exit 2; }
       sed -e "s|^Port .*|Port $hp|" -e "s|^PidFile .*|PidFile $pid|" "$box/sshd/sshd_config" > "$cfg"
       if [ -f "$pid" ] && kill -0 "$(cat "$pid")" 2>/dev/null; then say "跳板 sshd 已在跑"; else
