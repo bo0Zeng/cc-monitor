@@ -8,6 +8,8 @@
 
 export const HOME = "/home/user";
 const ACCTS = ".cc-monitor/accounts";
+/** 按量号那几把 key 落的那份（`creds_core::store::FILE_NAME`，数据目录下）。 */
+export const CREDS = ".cc-monitor/apikey-credentials.json";
 
 /**
  * 一个活会话（`real/pool.mjs` 给它配一个替身进程、写 `.claude/sessions/<pid>.json`）。替身缺省住在那台私有 tmux 的一个窗格里。
@@ -40,6 +42,8 @@ export interface MachineDisk {
   files: Record<string, string>;
   /** 修改时刻不是开页那一刻的那几份：相对家目录的路径 → epoch ms。 */
   mtimes?: Record<string, number>;
+  /** 权限位不照台架进程 umask 建的那几份：相对家目录的路径 → 模式（秘密文件照产品自己写的 `0600`；演「权限太宽」的场景放宽它）。 */
+  modes?: Record<string, number>;
   live: LiveSession[];
   /** quota-warm 在跑（`real/pool.mjs` 配一个替身进程、写 `.cc-monitor/quota-warm.json` 带它的 pid）：号 → 下一次开窗的时刻。 */
   warm?: { account: string; at: number }[];
@@ -115,7 +119,11 @@ export function putAccounts(d: MachineDisk, accounts: AccountSpec[], opts: { zer
     if (a.kind === "sub") signIn(d, `${ACCTS}/${a.name}`, `${ACCTS}/${a.name}/.claude.json`, a.name);
     else keys[a.name] = { api_key: `sk-placeholder-${a.name}-a1b2`, base_url: a.baseUrl ?? "https://api.example.com" };
   }
-  if (Object.keys(keys).length > 0) d.files[".cc-monitor/apikey-credentials.json"] = json({ accounts: keys });
+  if (Object.keys(keys).length > 0) {
+    d.files[CREDS] = json({ accounts: keys });
+    // 后端写这份时只给本人（`creds_core::perm::create_private`）；照 umask 建出来就成了「权限太宽」那一项。
+    d.modes = { ...d.modes, [CREDS]: 0o600 };
+  }
 }
 
 /** 账号库清单在、却读不懂（写到一半的那种）：后端说不出哪些号需登录，那一句照解析错。 */

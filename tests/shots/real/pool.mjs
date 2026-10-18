@@ -34,7 +34,7 @@
  * （两样都由 [`buildBins`] 编：`run.mjs` 起 vite 前调；无头壳只在特性 `shots` 下编，发版构建里没有它）。
  */
 import { spawn, spawnSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
 
@@ -272,6 +272,7 @@ export function backendPool({ repo, sandbox }) {
       const p = path.join(home, rel);
       mkdirSync(path.dirname(p), { recursive: true });
       writeFileSync(p, text);
+      if (m.modes?.[rel] !== undefined) chmodSync(p, m.modes[rel]);
       const at = m.mtimes?.[rel] ?? now;
       utimesSync(p, at / 1000, at / 1000);
     }
