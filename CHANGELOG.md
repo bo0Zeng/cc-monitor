@@ -116,7 +116,7 @@
 - **会话列表**：`history-list` 可带 `held` · `range`，回增量（`Patch`）；问远端那一台只带 `origin`（本机后端读它记着的副本，`history-listing` 经 `--resident-call` 向那台常驻要），`raw` / `listing` 删。加 `history-browse`：几台在本机后端并成一列（排法 · 搜索词 · 时间窗 · 隐藏的出不出 · 按时间 / 按项目 · 开合 · 展开分叉），只答 `range` 那一窗，头里每台一格总数与读没读到（`ok` · `stale` · `failed` · `unread`），`fresh` 里的那几台先同步。
 - **跨台合并**：`history-search-merge` 入参从「各台回包」换成「问哪几台」（`machines`），本机后端自己问到各台再合，回包多 `down`（没问到的那几台）；新加的 `sessions-needs-merge` · `chores-merge` 同一形；问别的台而没带期限 ⇒ `bad_args`。`history-search` 每行多 `atText` · `spanText` · `label` · `starred` · `hidden`，`history-search-merge` 多 `unreadable` · `skipped`。
 - **会话开着时切档**：`session-permission` 收 `auto`（`session-open-facts` 的 `permissionModes` 多这一项）；认得出、只能起会话时定的档回新码 `launch_only`（从前回 `bad_args`）。
-- 后端版本号 `BUILD_ID`：`p10x-shared-links`。已部署的远端会判旧、照常重装；手机连上只核这一个值。
+- 后端版本号 `BUILD_ID`：`p10y-model-confirm`。已部署的远端会判旧、照常重装；手机连上只核这一个值。
 
 ### 已知限制
 
