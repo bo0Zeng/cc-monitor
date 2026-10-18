@@ -10,8 +10,6 @@
 
 ## [5.0.0] — 2026-10-18
 
-<!-- 草稿：标「（待合）」的几条等最后几处改动合进来才算数；合进来的去掉标记，没合进来的删掉；终版填上 BUILD_ID，删掉这一行。 -->
-
 ### 会改变已有行为的
 
 - **账号轮换换成第五版，升级时把旧配置写成策略文件**：`~/.cc-monitor/rotation.json` 升到第三版，原文留作 `rotation.json.v1` / `rotation.json.v2`（已有的备份不盖）。4.1.9 的每份配置、每个活会话手上那一份，都写成 `~/.cc-monitor/strategies/` 里一份自己的策略文件，设置照搬；4.1.9 上自己加的脚本格式不同，挪到 `strategies/v3/`、不再加载，要用就照新格式重写一份。不再随包带策略：新会话缺省不轮换，要轮换先在设置 → 轮换里新建一份，再设成「新会话用」。
@@ -45,9 +43,9 @@
 - **手机答批准 · 提问 · 批计划**，选项的分组与桌面同一份。
 - **手机自己给机器装 / 升级后端**：那台后端版本不同时提示，按了才装，进度画在那台的状态条里。
 - **手机 SSH 换成与桌面同一个核心**：多跳 · 密码 · 外部签名器 · 主机钥匙与桌面同一份；换网（Wi-Fi ↔ 移动数据）后常驻流自己接回、断着那段补上；静默断网时按时重拨，断 90 秒后重连从约一分钟降到两三秒。
-- **手机会话屏几台并一列**：勾几台一起看，带机器小标签；筛选抽屉；按目录看（点开先给「在此目录新建会话」）；搜标题，搜内容（每个会话列前 3 处命中）；长按改标题 · 删 · 隐藏。会话列表离线也能看（存一份副本，连上后只取变了的）（待合）。
+- **手机会话屏几台并一列**：勾几台一起看，带机器小标签；筛选抽屉；按目录看（点开先给「在此目录新建会话」）；搜标题，搜内容（每个会话列前 3 处命中）；长按改标题 · 删 · 隐藏。会话列表离线也能看（存一份副本，连上后只取变了的）。
 - **手机用量屏**：每个号一张卡，两窗的条长、重置时刻、「1% 约多少」，旧数画斜纹。
-- **手机总览与需手动入口**：每台一份需手动整单（在等的会话 · 计划要看的格 · 需登录的号与 MCP），聊天屏右上角一个入口直达（待合）。
+- **手机总览与需手动入口**：每台一份需手动整单（在等的会话 · 计划要看的格 · 需登录的号与 MCP），聊天屏右上角一个入口直达。
 - **手机文件页**：多选一组复制 · 删除 · 改权限 · 下载，同名逐项问；进程被杀后在做的那一组从落盘那一份接着；新建空文件、改权限、看修改时间、上传冲突框、按大小排、大文本编辑。
 - **手机会话隐藏**：对话列表顶栏一个漏斗，「显示已隐藏」开着才列；长按隐藏 / 取消隐藏，可撤销，与桌面同一条命令。
 - **手机终端键条**：键条上直接编辑按键，键帽可以选图标。
@@ -79,29 +77,30 @@
 - 开着「显示系统注入」时，滚远再滚回来，注入那几行不再丢。
 - 手机钥匙页粘贴私钥那一格不再让输入法联想、纠错、首字母大写（私钥不进输入法词库）。
 - 手机续读会话记录认文件身份：同一路径换了一份文件就从头读；轮换屏顶栏第二行写会话名；打开别处点名的路径时是文件就进它所在的目录。
-- 诊断日志新建时就只给本人读写；入参类型不对时，回包只说哪一格、期望什么形，不再带出调用方给的原值；推公钥认不出类型时只回文件名，不回文件内容（待合）。
-- 手机几台一起搜内容时，合并那一步不再把整数写成小数而被那台拒掉（待合）。
+- 诊断日志新建时就只给本人读写；入参类型不对时，回包只说哪一格、期望什么形，不再带出调用方给的原值；推公钥认不出类型时只回文件名，不回文件内容。
 - **更快、更省**：
   - 文件窗口第一帧不再同步扫一遍系统字体（几扇窗一起开从五六秒降到零点几秒）。
   - 桌面第一屏不等本机后端，约一秒出头就出来。
   - 长会话离视口远的卡交回占位（从底滚到顶，页面元素约 14 万降到 5 万）；全文搜索索引第一次搜时才建；大记录按块读，内存峰值不再随记录大小涨到几百 MB；大记录的骨架落盘，记录没变就不重读。
   - 换 tab 回来缺得多只重取正文那一半；冷起只先问当前 tab，后台 tab 空闲时一个一个补。
   - 会话起停不再每台问三次账号；出方向按字节封顶，大回包不再堵住别的会话。
-  - 会话列表与目录列表由那台只答变了的那几行，目录有动静就推过来（不再靠手动刷新）；远端的会话清单由本机后端沿已开着的连接去问那台常驻，不再每次冷扫；几台的会话列表与需手动、内容搜索、待办合计由本机后端去问各台、并好再答，桌面历史页只取看得见的那一窗（待合）。
+  - 会话列表与目录列表由那台只答变了的那几行，有动静就推过来（不再靠手动刷新）；远端的会话清单由本机后端沿已开着的连接去问那台常驻，不再每次冷扫；几台的会话列表与需手动、内容搜索、待办合计由本机后端去问各台、并好再答。
+  - 桌面历史页只取看得见的那一窗，滚到哪取到哪，整列都翻得到（不再只列最近的、底部「更早的用搜索找」）；一台无法读取时照上一次读到的那份列出，顶上写明是几时读取的。内容搜索的命中行带那台的改名、星标与隐藏标记。
 
 ### 给第二个前端与脚本的协议变化
 
 - **后端每条命令都按类型收发**：握手 `hello` 带每条命令的形状指纹，monitor 与那台对不上的命令不发，写「<机器名> 后端版本不同」；入参多一个键或一格类型不对一律回 `bad_args`；版本门照 `hello` 里的版本号判。握手那一行上限 8 KiB → 64 KiB。
-- **子命令**：删 `--accounts-sessions` · `--cells-catalog` · `--deploy-plan` · `--files-link` · `--files-peek` · `--files-put` · `--launch-render-cli` · `--mcp-server-put` · `--mcp-server-remove` · `--mcp-sync-plan` · `--resident-verdict` · `--rotation-config-delete` · `--rotation-config-rename` · `--rotation-config-save` · `--rotation-configs-read` · `--rotation-default-set` · `--rotation-plan` · `--rotation-session-edit` · `--rotation-session-open` · `--rotation-session-read` · `--rotation-session-revert` · `--rotation-session-save` · `--rotation-session-set` · `--rotation-strategies-read` · `--rotation-strategy-try` · `--rotation-switch` · `--session-interrupts` · `--session-new` · `--session-new-dir` · `--session-new-facts` · `--sessions-start` · `--ssh-config-aliases` · `--ssh-config-resolve` · `--terminal-name-mint`；`--files-browse` · `--manual-list`（待合）。
-- 加 `--ccm-user-path` · `--chores-merge` · `--files-batch-stop` · `--host-keys-forget` · `--machines-read` · `--machines-set` · `--machines-try` · `--place-self` · `--unplace-self` · `--plan-pb-check` · `--prefs-read` · `--prefs-set` · `--profiles-from-line` · `--rotation-facts` · `--rotation-for-new` · `--rotation-reload` · `--rotation-settings` · `--rotation-strategies` · `--rotation-strategy-copy` · `--rotation-strategy-rename` · `--rotation-strategy-tz` · `--rotation-temp` · `--rotation-try` · `--rotation-use` · `--rotation-use-now` · `--rotation-view` · `--session-commands` · `--session-model` · `--session-open` · `--session-open-dir` · `--session-open-facts` · `--session-permission` · `--session-say` · `--sessions-needs-merge`；`--resident-call` · `--history-listing`（待合）。
+- **子命令**：删 `--accounts-sessions` · `--cells-catalog` · `--deploy-plan` · `--files-browse` · `--files-link` · `--files-peek` · `--files-put` · `--launch-render-cli` · `--mcp-server-put` · `--mcp-server-remove` · `--mcp-sync-plan` · `--resident-verdict` · `--rotation-config-delete` · `--rotation-config-rename` · `--rotation-config-save` · `--rotation-configs-read` · `--rotation-default-set` · `--rotation-plan` · `--rotation-session-edit` · `--rotation-session-open` · `--rotation-session-read` · `--rotation-session-revert` · `--rotation-session-save` · `--rotation-session-set` · `--rotation-strategies-read` · `--rotation-strategy-try` · `--rotation-switch` · `--session-interrupts` · `--session-new` · `--session-new-dir` · `--session-new-facts` · `--sessions-start` · `--ssh-config-aliases` · `--ssh-config-resolve` · `--terminal-name-mint`。
+- 加 `--ccm-user-path` · `--chores-merge` · `--files-batch-stop` · `--history-browse` · `--history-listing` · `--host-keys-forget` · `--machines-read` · `--machines-set` · `--machines-try` · `--place-self` · `--unplace-self` · `--plan-pb-check` · `--prefs-read` · `--prefs-set` · `--profiles-from-line` · `--resident-call` · `--rotation-facts` · `--rotation-for-new` · `--rotation-reload` · `--rotation-settings` · `--rotation-strategies` · `--rotation-strategy-copy` · `--rotation-strategy-rename` · `--rotation-strategy-tz` · `--rotation-temp` · `--rotation-try` · `--rotation-use` · `--rotation-use-now` · `--rotation-view` · `--session-commands` · `--session-model` · `--session-open` · `--session-open-dir` · `--session-open-facts` · `--session-permission` · `--session-say` · `--sessions-needs-merge`。
 - **起会话**：`session-new` 一族换成 `session-open`（new · resume · look · shell 四形），回包带 `arrival`，`session-arrive` 等那台报到。
-- **帧**：`turn_end` 删，通用记录不再带 `endsTurn`；`tap` 删、换成 `live_card`；`deploy` 删，部署进度进机器状态成品；`session_added` 一认出来就发、不带 `lines`，读完发 `session_primed`；会话帧的 `switch` 删；链路上 `use:"files"` 那一族删；`changed` 的主题 `rotation_configs` 换成 `rotation_strategies`，多 `login` · `manual` · `machines` · `machine` · `session_hidden`，`files_dir`（待合）· `history_list`（待合）。
+- **帧**：`turn_end` 删，通用记录不再带 `endsTurn`；`tap` 删、换成 `live_card`；`deploy` 删，部署进度进机器状态成品；`session_added` 一认出来就发、不带 `lines`，读完发 `session_primed`；会话帧的 `switch` 删；链路上 `use:"files"` 那一族删；`changed` 的主题 `rotation_configs` 换成 `rotation_strategies`，多 `login` · `manual` · `machines` · `machine` · `session_hidden`，`files_dir` · `history_list`。
 - **线上的 agent 一律只认 kind**：`accounts-list` · `quota-probe` · `rotation-facts` · `rotation-try` 交路由名回 `bad_args`；`relay-optin` 删，中转钥匙不进界面。
-- **文件**：`files-copy` · `files-delete` · `files-chmod` 收一组（`items`，回 `{outcomes, said}`）；`files-commit-upload` 的 `overwrite` 换成 `on_exists`；`files-ls` 每行带种类、类型字与预览 / 看图 / 编辑三道门，入参多 `sort` · `dirs_only`，回包多 `up` · `crumbs`；`files-ls` 可带 `held` 只取变了的（待合）。
+- **文件**：`files-copy` · `files-delete` · `files-chmod` 收一组（`items`，回 `{outcomes, said}`）；`files-commit-upload` 的 `overwrite` 换成 `on_exists`；`files-ls` 每行带种类、类型字与预览 / 看图 / 编辑三道门，入参多 `sort` · `dirs_only`，回包多 `up` · `crumbs`；`files-ls` 可带 `held` 只取变了的。
 - **账号与额度**：`accounts-add` 不再带 `loginCmd`（去问 `accounts-login-cmd`）；`accounts-list` 每号多 `label` · `color` · `plate` · `quota` · `unselectable`；`quota-read` 多 `candidates`，每窗口多 `tokensPerPct`；`login-start` / `-finish` / `-cancel`（`kind` 分账号与 MCP），回包多 `opened`，失败多 `again`。
-- **需手动**：`sessions-needs` 改成每台一份整单（在等的会话 · 计划要看的格 · 会话外的需手动，带 `total`），`manual-list` 删，`login-start` 的目标进同一份类型（待合）。
-- **会话列表**：`history-list` 可带 `held` · `range`，回增量（`Patch`）；远端那一份只剩 `{origin, fresh}` 一形，`raw` / `listing` 删（待合）。
-- 后端版本号 `BUILD_ID`：`＿＿＿＿＿＿`（终版时填）。已部署的远端会判旧、照常重装；手机连上只核这一个值。
+- **需手动**：`sessions-needs` 改成每台一份整单（在等的会话 · 计划要看的格 · 会话外的需手动，带 `total`），`manual-list` 删，`login-start` 的目标进同一份类型。
+- **会话列表**：`history-list` 可带 `held` · `range`，回增量（`Patch`）；问远端那一台只带 `origin`（本机后端读它记着的副本，`history-listing` 经 `--resident-call` 向那台常驻要），`raw` / `listing` 删。加 `history-browse`：几台在本机后端并成一列（排法 · 搜索词 · 时间窗 · 隐藏的出不出 · 按时间 / 按项目 · 开合 · 展开分叉），只答 `range` 那一窗，头里每台一格总数与读没读到（`ok` · `stale` · `failed` · `unread`），`fresh` 里的那几台先同步。
+- **跨台合并**：`history-search-merge` 入参从「各台回包」换成「问哪几台」（`machines`），本机后端自己问到各台再合，回包多 `down`（没问到的那几台）；新加的 `sessions-needs-merge` · `chores-merge` 同一形；问别的台而没带期限 ⇒ `bad_args`。`history-search` 每行多 `atText` · `spanText` · `label` · `starred` · `hidden`，`history-search-merge` 多 `unreadable` · `skipped`。
+- 后端版本号 `BUILD_ID`：`p10w-history-browse`。已部署的远端会判旧、照常重装；手机连上只核这一个值。
 
 ### 已知限制
 

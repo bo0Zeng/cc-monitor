@@ -76,6 +76,7 @@ cc-monitor only observes and launches: `claude` still runs in your own terminal,
 ### Phone app (Android)
 - Connects to the same machines: read sessions, keep chatting, open a terminal, manage files (with multi-select)
 - Approve steps, answer questions and approve plans on the phone; see each account's usage and change rotation
+- Overview: one list per machine of everything waiting on a person (sessions waiting · plan items to review · accounts and MCP servers that need a sign-in), one tap away from the top-right of the chat screen
 - Install or upgrade the backend on a machine; SSH runs on the same core as the desktop (jump hosts · passwords · host key checks)
 
 ### Assets
