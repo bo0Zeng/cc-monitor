@@ -128,17 +128,16 @@ fn without_opengl_2_the_window_still_draws_its_first_frame() {
         std::env::temp_dir().join(format!("ccm-filewin-render-{}.frames", std::process::id()));
     let _ = std::fs::remove_file(&log);
     std::env::set_var(crate::frame_log::ENV, &log);
-    let rows = (0..200)
-        .map(|i| {
-            crate::source::Listed::plain(crate::source::Row {
-                name: format!("f{i:04}.rs"),
-                path: format!("/srv/render/f{i:04}.rs"),
-                is_dir: false,
-                size: i,
-                lossy_name: false,
-            })
+    let rows: Vec<crate::source::Row> = (0..200)
+        .map(|i| crate::source::Row {
+            name: format!("f{i:04}.rs"),
+            path: format!("/srv/render/f{i:04}.rs"),
+            is_dir: false,
+            size: i,
+            lossy_name: false,
         })
         .collect();
+    let rows = crate::find::testing::shown_of(&rows);
     let h = crate::shell::open_detached_seeded(
         crate::source::Source::remote("render-judge".into()),
         "/srv/render".into(),

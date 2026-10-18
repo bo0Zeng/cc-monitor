@@ -60,7 +60,8 @@ ask_id() {
   ask sessions-needs '{}' | python3 -I -c '
 import json, sys
 v = json.load(sys.stdin)
-for r in v.get("data", {}).get("waiting", []):
+for it in v.get("data", {}).get("items", []):
+    r = it.get("session") or {}
     a = (r.get("needs") or {}).get("ask")
     if r.get("sid") == sys.argv[1] and a: print(a["id"]); break' "$SID"
 }
