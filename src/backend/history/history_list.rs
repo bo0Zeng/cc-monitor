@@ -184,12 +184,18 @@ fn group_key(agent: &str, project_path: &str) -> String {
 /// 这台的平铺清单（并上这台的注解）：记录树每个目录 ＋ 合成历史各家；判活 ＝ 这台 pidfile；上次的号 ＝ 这台的起会话账号记录。
 /// `last` 读不懂 ⇒ 那一格都不带（界面不说「上次用的」，照样能恢复）。
 pub(crate) fn machine_listing() -> Result<Listing, (&'static str, String)> {
-    machine_listing_for(None)
+    machine_listing_for(None, crate::history::list_node::node())
 }
 
 /// [`machine_listing`]；`only` ＝ 按 sid 问的那一条：记录树里只整份扫叫这个名字的那一份（别的会话只出分组要的几格，
 /// [`answer_from`] 按 sid 滤掉）⇒ 答案与整台扫逐字相同，不必把整台每份会话从头扫一遍。
-fn machine_listing_for(only: Option<&str>) -> Result<Listing, (&'static str, String)> {
+/// `node` ＝ 这台会话清单的节点（生产 ＝ 本进程那一份）：读之前放开。
+fn machine_listing_for(
+    only: Option<&str>,
+    node: &crate::history::list_node::ListNode,
+) -> Result<Listing, (&'static str, String)> {
+    // 读之前放开清单的节点：此后再变的会话再响一次（这一份里没赶上的由下一帧叫回来重问）。
+    node.asked();
     let home = crate::history::listing::agent_home();
     let live = LiveSet(crate::history::live::live_activity(&home));
     let tree = tree_for(&home, only).map_err(|e| ("failed", e))?;
@@ -963,7 +969,10 @@ pub(crate) async fn answer(
         None if fresh => return Err(bad("`fresh` needs the `origin` it syncs from")),
         None => {
             let only = ask.sid.clone();
-            blocking(move || machine_listing_for(only.as_deref())).await?
+            blocking(move || {
+                machine_listing_for(only.as_deref(), crate::history::list_node::node())
+            })
+            .await?
         }
         Some(o) => super::remote_listing::listing(o, fresh, &tz, until).await?,
     };

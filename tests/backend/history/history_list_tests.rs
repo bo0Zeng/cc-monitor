@@ -1070,3 +1070,44 @@ async fn the_frame_arm_takes_the_mark() {
     let e = answer_wire(json!({"held": 7})).await.unwrap_err();
     assert_eq!(e.0, "bad_args");
 }
+
+/// ★ 答一份清单（这台的整份扫）⇒ 清单的节点放开：响过的会话再变一次 ⇒ 再响（放开那一处没接上 ⇒ 每个会话只响头一次、之后清单静默变旧）。
+/// 记录放在测试档的沙箱家里（两份夹具记录，答完删掉）。
+#[test]
+fn answering_the_listing_lets_a_session_ring_again() {
+    let dir = crate::history::listing::records_root(&crate::history::listing::agent_home())
+        .expect("有记录树")
+        .join(format!("-w-listnode-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    for s in [S1, S2] {
+        std::fs::write(
+            dir.join(format!("{s}.jsonl")),
+            "{\"cwd\":\"/w/listnode\"}\n",
+        )
+        .unwrap();
+    }
+    let node = crate::history::list_node::ListNode::default();
+    let mut rx = node.subscribe();
+    node.moved(Some(S1));
+    rx.borrow_and_update();
+    node.moved(Some(S1));
+    assert!(!rx.has_changed().unwrap(), "还没答过清单：同一个会话不再响");
+    let got = machine_listing_for(None, &node);
+    let _ = std::fs::remove_dir_all(&dir);
+    let got = got.expect("答得出");
+    let sids: Vec<String> = serde_json::to_value(&got).unwrap()["rows"]
+        .as_array()
+        .expect("rows")
+        .iter()
+        .filter_map(|r| r["sessionId"].as_str().map(str::to_string))
+        .collect();
+    assert!(
+        sids.contains(&S1.to_string()) && sids.contains(&S2.to_string()),
+        "两份夹具记录都在清单里：{sids:?}"
+    );
+    node.moved(Some(S1));
+    assert!(
+        rx.has_changed().unwrap(),
+        "答过清单之后同一个会话再变 ⇒ 再响"
+    );
+}

@@ -110,6 +110,49 @@ fn a_moved_directory_becomes_one_changed_frame() {
     });
 }
 
+/// ★ 会话清单的节点响了 ⇒ 这条流连接推一帧 `changed {history_list}`（不带 `key` · 小成品）；
+/// 连着响几下、还没取 ⇒ 只一帧（这条连接没在看清单、不重问，也只收这一帧）；没再响 ⇒ 不再推。
+#[test]
+fn list_moves_become_one_changed_frame() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("rt");
+    rt.block_on(async {
+        let mut t = attach_rx(std::sync::Arc::new(TapHub::default()));
+        let node = crate::history::list_node::ListNode::default();
+        t.list = Some(node.subscribe());
+        node.moved(Some("a"));
+        node.moved(Some("b"));
+        node.moved(None);
+        let f = tokio::time::timeout(guard_core::wall::CEILING, t.next())
+            .await
+            .expect("该推一帧");
+        match f {
+            Some(Frame::Changed(crate::wire::Changed {
+                topic: Topic::HistoryList,
+                key,
+                rev,
+                body,
+            })) => assert_eq!((key, rev, body), (None, None, None)),
+            other => panic!("{other:?}"),
+        }
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(50), t.next())
+                .await
+                .is_err(),
+            "连着响的几下只出一帧"
+        );
+        node.moved(Some("c"));
+        assert!(
+            tokio::time::timeout(guard_core::wall::CEILING, t.next())
+                .await
+                .is_ok(),
+            "再响 ⇒ 再一帧"
+        );
+    });
+}
+
 /// ★ 订阅节点：事实那几种 ⇒ 推一帧 `changed {quota}`；带会话的 ⇒ 再推一帧 `changed {rotation, key: sid}`；
 /// 策略那一种 ⇒ `changed {rotation_strategies}`；续令牌没成 ⇒ 再推一帧 `changed {manual}`。没订那条通道的连接永远不推。
 #[test]

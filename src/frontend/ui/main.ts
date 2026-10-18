@@ -917,6 +917,10 @@ window.addEventListener("DOMContentLoaded", async () => {
           break;
         case "profiles":
           break;
+        case "history_list":
+          // 那台的会话清单动了 ⇒ 历史页开着就再问那一台。
+          historyView.onListMoved(origin);
+          break;
         case "session_hidden":
           // 会话隐藏那一格变了（单个点的 · 规则改了）：帧里带着那一格 ⇒ 当场换上、挪进挪出；没带 ⇒ 等那台重宣告（重连时整份再来）。
           for (const [sid, h] of hiddenPushed(change)) tabs.setHidden(sid, h);
@@ -946,9 +950,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 每台的活卡都住那台的常驻后端 ⇒ 每台都订（与会话行同一份机器清单）。
     liveCards: machines,
     // 每台每个主题一条 `changed/<topic>`：账号清单（替掉裸事件 `remote-backend-ready`）· 任务清单（替掉本机那个裸事件 `task-update`）·
-    //   额度 · 会话轮换 · 策略目录 · 计划 · 待答请求。配置文件那一种只设置窗订。
+    //   额度 · 会话轮换 · 策略目录 · 计划 · 待答请求 · 会话清单。配置文件那一种只设置窗订。
     changed: machines.flatMap((origin) =>
-      (["accounts", "tasks", "quota", "rotation", "rotation_strategies", "plan", "needs", "manual", "session_hidden"] as const).map((topic) => ({ origin, topic })),
+      (["accounts", "tasks", "quota", "rotation", "rotation_strategies", "plan", "needs", "manual", "session_hidden", "history_list"] as const).map((topic) => ({ origin, topic })),
     ),
   });
   // 账号那一格经通道订（每台一条 `changed/accounts`，上面 `bindEvents` 的 `changed`）。

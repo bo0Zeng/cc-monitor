@@ -120,6 +120,8 @@ pub struct TapRx {
     machine: Option<tokio::sync::broadcast::Receiver<(String, cmd_wire::machine::MachineState)>>,
     /// 正被浏览的某个目录有了动静的通道（推一帧 `changed {files_dir, key: 那个目录}`）；`None` ＝ 不订。
     dirs: Option<tokio::sync::broadcast::Receiver<String>>,
+    /// 这台会话清单的节点（[`crate::history::list_node`]，只留最新）：响了推一帧 `changed {history_list}`；`None` ＝ 不订。
+    list: Option<tokio::sync::watch::Receiver<u64>>,
     /// 帧里的小成品怎么现算（生产 ＝ [`crate::wire::topic_hook::body`]；判据自己接的那一形不现算）。
     bodies: crate::wire::topic_hook::Bodies,
     /// 这条连接看的那一台的时区（attach 带来的）：小成品里的时刻字按它写。
@@ -250,6 +252,12 @@ impl TapSource for TapRx {
                     // 落后丢了几件：可丢的通道，下一次动静或重问就补上。
                     Some(None) => {}
                     None => self.dirs = None,
+                },
+                moved = latest_moved(&mut self.list) => if moved {
+                    let f = self.changed(Topic::HistoryList, None);
+                    self.out.push_back(f);
+                } else {
+                    self.list = None;
                 }
             }
         }
@@ -271,6 +279,7 @@ pub fn attach(tz: crate::Tz, watch: Option<&[String]>) -> TapRx {
     rx.machines = Some(crate::control::machines::changes().subscribe());
     rx.machine = Some(crate::control::machine_state::changes().subscribe());
     rx.dirs = Some(crate::stream::inbound::files_face::dir_changes());
+    rx.list = Some(crate::history::list_node::node().subscribe());
     rx.bodies = crate::wire::topic_hook::body;
     rx.tz = tz;
     rx
@@ -287,6 +296,14 @@ async fn item_moved<T: Clone>(
             Err(RecvError::Lagged(_)) => Some(None),
             Err(RecvError::Closed) => None,
         },
+        None => std::future::pending().await,
+    }
+}
+
+/// 只留最新的那几条（会话清单的节点）响了 ⇒ `true`（连着响几下只醒一次）；通道没了 ⇒ `false`；没订 ⇒ 永远不醒。
+async fn latest_moved(r: &mut Option<tokio::sync::watch::Receiver<u64>>) -> bool {
+    match r {
+        Some(r) => r.changed().await.is_ok(),
         None => std::future::pending().await,
     }
 }
@@ -354,6 +371,7 @@ pub(crate) fn attach_rx(hub: Arc<TapHub>) -> TapRx {
         machines: None,
         machine: None,
         dirs: None,
+        list: None,
         bodies: no_bodies,
         tz: crate::Tz::default(),
     }

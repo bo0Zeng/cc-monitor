@@ -24,7 +24,7 @@ import { askText, confirmDialog } from "../kit/dialog";
 import { dispatcher } from "../keybindings/registry";
 import { copyText } from "../copy-table";
 import { commands } from "../ipc/commands";
-import { isLocalOrigin, LOCAL_ORIGIN } from "../ipc/origin";
+import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import { annotate, forgetAnnotation } from "../history-reads";
 import { setHide } from "../session-hidden-cmds";
@@ -165,6 +165,14 @@ export class HistoryView {
     this.root.remove();
     this.isOpen = false;
     dispatcher.popOverlay(this.layer);
+  }
+
+  /** 那台推了「清单变了」（`changed/history_list`）：开着、那台在这一页上 ⇒ 只再问那一台（远端那台由本机后端带 `fresh` 先同步副本）。 */
+  onListMoved(origin: Origin): void {
+    if (!this.isOpen) return;
+    const m = isLocalOrigin(origin) ? "" : origin;
+    if (!this.wanted().includes(m)) return;
+    this.refresh(m !== "", m);
   }
 
   /** Ctrl+F 落在历史页：右边有会话 ⇒ 会话内查找；否则不接（交给主窗口）。 */

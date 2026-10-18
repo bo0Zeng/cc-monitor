@@ -1787,6 +1787,8 @@ impl ReaderState {
     /// 注解 · 这台偏好 · 会话血缘动了 ⇒ 每个活会话重判一次隐藏，变了的各推一帧 `changed {session_hidden, key: sid, body: {hidden}}`，
     /// 记着的那一帧 `session_added` 一起换（之后接上来的连接拿到的是新的）。
     fn rejudge_hidden(&mut self, sink: &mut FrameSink) {
+        // 不在跟的那几行也照这几样判：清单整份可能变了。
+        sink.list.moved(None);
         let here = crate::history::session_hidden::Here::read_now();
         let mut sids: Vec<String> = self.added.keys().cloned().collect();
         sids.sort_unstable();
@@ -4557,6 +4559,8 @@ struct FrameSink {
     priming: HashSet<String>,
     /// 起好的会话报到没有（`observe::arrivals`）：每一帧发出去之前过它。
     arrivals: crate::observe::arrivals::Arrivals,
+    /// 这台会话清单的节点（`history::list_node`）：扇出去的帧说的事让清单里某一行变了 ⇒ 响它（生产 ＝ 本进程那一份；夹具各一份）。
+    list: std::sync::Arc<crate::history::list_node::ListNode>,
 }
 
 /// 一条流连接在这台 watcher 上的投影：它的有界通道 · 它的名单 · 它欠的丢帧账。
@@ -4600,6 +4604,7 @@ impl FrameSink {
             ledger: Some(crate::observe::session_ledger::SessionLedger::new()),
             priming: HashSet::new(),
             arrivals: crate::observe::arrivals::Arrivals::default(),
+            list: crate::history::list_node::node().clone(),
         }
     }
 
@@ -4723,8 +4728,11 @@ impl FrameSink {
         }
     }
 
-    /// 逐条连接按名单投（最后一条拿原帧，前面的拿副本）；通道关了的连接顺手摘掉。
+    /// 逐条连接按名单投（最后一条拿原帧，前面的拿副本）；通道关了的连接顺手摘掉。说的事让清单里那一行变了 ⇒ 先响清单的节点（没人连着也响）。
     fn fan(&mut self, frame: Frame) {
+        if let Some(sid) = row_moved_by(&frame) {
+            self.list.moved(Some(sid));
+        }
         let to: Vec<usize> = (0..self.subs.len())
             .filter(|&i| self.subs[i].wants(&frame))
             .collect();
@@ -4789,6 +4797,22 @@ impl FrameSink {
     /// 那条连接走了。
     fn leave(&mut self, id: u64) {
         self.subs.retain(|s| s.id != id);
+    }
+}
+
+/// 这一帧说的事会让这台会话清单里哪一行变（宣告 · 结束 · 名字 / 状态 · 记录长了 · 记录没了 / 从头重读）；别的帧 ⇒ `None`。
+fn row_moved_by(frame: &Frame) -> Option<&str> {
+    match frame {
+        Frame::SessionAdded(crate::wire::SessionAdded { sid, .. })
+        | Frame::SessionStatus(crate::wire::SessionStatus { sid, .. })
+        | Frame::SessionState(crate::wire::SessionState { sid, .. })
+        | Frame::SessionRemoved(crate::wire::SessionRemoved { sid, .. }) => Some(sid),
+        Frame::Line(crate::wire::Line { session_id, .. })
+        | Frame::SessionFileGone(crate::wire::SessionFileGone { session_id, .. })
+        | Frame::SessionFileReread(crate::wire::SessionFileReread { session_id, .. }) => {
+            Some(session_id)
+        }
+        _ => None,
     }
 }
 
