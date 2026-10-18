@@ -422,7 +422,7 @@ pub(crate) fn manual_here() -> Result<Vec<ManualItem>, String> {
             .ok()
             .as_deref(),
         crate::platform::paths::home_dir()
-            .map(|h| h.join(relay_route_core::KEY_FILE_REL))
+            .map(|h| crate::relay::key_path(&h))
             .as_deref(),
     ));
     Ok(items)

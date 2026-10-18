@@ -31,7 +31,7 @@ use crate::platform::fs::Own;
 use comms_outward::Key;
 use copy_core::copy_text;
 use creds_core::perm::Verdict;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// 哪一个范围的钥匙。盘上只有全权那一把（根钥匙）；只许直通那一把从它派生（[`pass_of`]）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,10 +83,18 @@ pub(crate) fn scoped(full: Key, kind: KeyKind) -> Key {
     }
 }
 
+/// 这台的钥匙文件在 `home` 底下的那一份：分隔符照 `home` 自己的写法拼（[`crate::platform::paths::join_under`]），
+/// Windows 上显示出来不混 `/`。
+pub(crate) fn key_path(home: &Path) -> PathBuf {
+    PathBuf::from(crate::platform::paths::join_under(
+        &home.to_string_lossy(),
+        relay_route_core::KEY_FILE_REL,
+    ))
+}
+
 /// 这台盘上根钥匙派生出来的只许直通那一把（[`pass_of`]）的串；读不到 ⇒ `None`（**只读**）。
 pub(crate) fn pass_key_on_disk(home: &Path) -> Option<String> {
-    read_key(&home.join(relay_route_core::KEY_FILE_REL))
-        .map(|full| pass_of(&full).expose().to_string())
+    read_key(&key_path(home)).map(|full| pass_of(&full).expose().to_string())
 }
 
 /// 读回盘上那一把。不在 / 读不动 / 形状不对 ⇒ `None`（**只读**：探针与门都走这里）。
@@ -110,7 +118,7 @@ const KEY_MAX_BYTES: u64 = 4096;
 /// 钥匙文件不在 / 形状不对 / 地址不是构造口产物 ⇒ `None`。
 pub(crate) fn keyed_with_key_on_disk(home: &Path, url: &str) -> Option<String> {
     let kind = KeyKind::for_url(url)?;
-    let key = scoped(read_key(&home.join(relay_route_core::KEY_FILE_REL))?, kind);
+    let key = scoped(read_key(&key_path(home))?, kind);
     relay_route_core::keyed_base_url(url, key.expose())
 }
 

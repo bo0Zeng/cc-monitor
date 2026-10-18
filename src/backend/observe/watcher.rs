@@ -72,7 +72,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 // U2：平台原语搬进 `platform/`（§1.1 第一条解耦线）。这里 re-import 回来，
 // 调用点一处未改 —— 纯重构，行为逐字不变。
-use crate::platform::paths::path_key;
+use crate::platform::paths::{is_under, path_key};
 use crate::platform::proc::{pid_alive, proc_cmdline, proc_starttime, start_epoch_from_ticks};
 // 只在测试段用到的几个（生产段的调用点随函数一起搬走了）。分开写而不是给整条 `use`
 // 加 `#[cfg(test)]`：上面那四个生产段真在用，混在一起会让「谁是生产依赖」看不出来。
@@ -1411,7 +1411,7 @@ fn watch_loop(
                     let child = state
                         .roots
                         .iter_mut()
-                        .find(|r| p.starts_with(&r.root))
+                        .find(|r| r.holds(p))
                         .and_then(|r| r.runs.on_path(p));
                     if let Some((sid, changed)) = child {
                         if changed {
@@ -1897,7 +1897,7 @@ impl ReaderState {
     fn root_of(&self, p: &Path) -> Option<usize> {
         self.roots
             .iter()
-            .position(|r| p.starts_with(&r.root) && (r.face.is_session_file)(p))
+            .position(|r| r.holds(p) && (r.face.is_session_file)(p))
     }
 
     /// 这份会话记录的 sid（那一家的文件命名）。
@@ -1963,6 +1963,13 @@ struct Root {
     /// 判活认写者（没有 pidfile 的那一家，[`crate::agents::LiveBy::HeldOpen`]）。
     by_writer: bool,
     runs: crate::observe::runs::RunTrack,
+}
+
+impl Root {
+    /// `p` 落在这一家的记录根下（原样路径与折过的游标键都认，[`is_under`]）。
+    fn holds(&self, p: &Path) -> bool {
+        is_under(p, &self.root)
+    }
 }
 
 /// An ACTIVE session tracked by the reader, keyed in [`ReaderState::sessions`]
@@ -3513,7 +3520,7 @@ fn settle_all_writers(state: &mut ReaderState, sink: &mut FrameSink, only: Optio
         return;
     }
     let Some(found) =
-        crate::platform::writers::writers_of(&|p| roots.iter().any(|r| p.starts_with(r)))
+        crate::platform::writers::writers_of(&|p| roots.iter().any(|r| is_under(p, r)))
     else {
         return;
     };
@@ -3888,6 +3895,9 @@ pub(crate) struct PrimeJob {
 
 /// 一份记录预读完交回的：读到了 ⇒ 新游标 · 指纹 · 行号 · 链索引；不在了 ⇒ `gone`；读不出 ⇒ 都没有（游标不装，下一趟再来）。
 pub(crate) struct FileDone {
+    /// 盘上那一份（原样写法）：读完之后往下走的那几步（续读 · 帧里的 `path`）用它。
+    path: PathBuf,
+    /// 账上认它的键（[`path_key`]），只当键用。
     key: PathBuf,
     read: Option<FileRead>,
     gone: bool,
@@ -3990,6 +4000,7 @@ fn prime_file_cursor(
     let said_activity = face.and_then(|f| f.activity);
     let key_str = key.to_string_lossy().into_owned();
     let none = |key: PathBuf, gone: bool| FileDone {
+        path: path.clone(),
         key,
         read: None,
         gone,
@@ -4005,6 +4016,7 @@ fn prime_file_cursor(
                 r.prime(session_id, &said_lines(map.runs()));
             }
             let done = FileDone {
+                path: path.clone(),
                 key,
                 read: Some(FileRead {
                     cursor: ReadCursor {
@@ -4116,6 +4128,7 @@ fn prime_file_cursor(
         .map(|_| path.clone());
     (
         FileDone {
+            path: path.clone(),
             key,
             read: Some(FileRead {
                 cursor,
@@ -4186,7 +4199,7 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
             None if f.gone => forget_cursor(state, &f.key),
             None => {}
         }
-        paths.push(f.key);
+        paths.push(f.path);
     }
     let path = state
         .sessions
@@ -4243,7 +4256,7 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
     // 这个会话此刻已有的子运行（宣告之前就派出去的那几个）：收进来、从头读一遍，有就发一帧运行表。
     let jsonls: Vec<PathBuf> = paths
         .iter()
-        .filter(|k| state.offsets.contains_key(*k))
+        .filter(|p| state.offsets.contains_key(&path_key(p)))
         .cloned()
         .collect();
     let mut runs_changed = false;
@@ -4255,7 +4268,11 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
     }
     // 历史里已经有主线外的 ⇒ 整份发一次（之后变了才发）。
     for p in &jsonls {
-        if state.branches.get(p).is_some_and(|c| !c.off().is_empty()) {
+        if state
+            .branches
+            .get(&path_key(p))
+            .is_some_and(|c| !c.off().is_empty())
+        {
             send_branch(state, sink, &sid, p, true);
         }
     }

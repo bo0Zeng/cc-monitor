@@ -472,3 +472,29 @@ fn a_restart_reads_only_what_the_skeleton_has_not_seen() {
     assert_eq!(off3, off, "接着骨架读，链索引丢了");
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// ⑦ 预读交回的那一份带原样路径（键只当键用）：Windows 上键是折过大小写的那一形，读完之后往下走的那几步
+/// （续读 · 重读那一帧的 `path` · 主线外清单）拿它当路径就成了全小写。这里直接喂折过的键（`key_as(.., true)`）模拟那一臂。
+#[test]
+fn a_prime_hands_back_the_record_path_as_written_beside_its_key() {
+    let rig = Rig::new("Case");
+    let rec = rig.proj.join("p-Case.jsonl");
+    std::fs::write(&rec, lines(0..3)).unwrap();
+    let state = rig.state();
+    let key = crate::platform::paths::key_as(&rec, true);
+    assert_ne!(key, rec, "夹具的路径里得有大写字母");
+    let job = FilePrime {
+        path: rec.clone(),
+        key: key.clone(),
+        prev: ReadCursor::default(),
+        tail: None,
+        seq: 0,
+        chain: None,
+        face: state.root_of(&rec).map(|i| state.roots[i].face),
+        runs: None,
+        scans: None,
+    };
+    let (done, _, _) = prime_file_cursor("p-Case", job);
+    assert_eq!(done.key, key);
+    assert_eq!(done.path, rec, "交回的路径是键那一形");
+}
