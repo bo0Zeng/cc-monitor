@@ -750,6 +750,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     CMD_STOP: NONE,
     EXISTS: NONE,
     CUTS_MAX: NONE,
+    // 文件名拆「名 ＋ 扩展名」（保留两份的另起名 · 「复制为」的缺省名）；界面（TS）不给文件起名，没有孪生。
+    split_ext: NONE,
     local: NONE,
     copy_many: NONE,
     copy_body: NONE,
@@ -1037,6 +1039,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     fit_into_work_area: NONE,
     // 主窗 / 设置窗摆进工作区正中（宿主那一侧用；TS 侧没有孪生）。
     center_in_work_area: NONE,
+    // 屏上一点所在那块屏的工作区（文件窗口改缩放之后再夹；只 Windows 问得到）；TS 侧没有孪生。
+    work_area_at: NONE,
     // 本机时区偏移 · 这一份编给的系统与架构（文件窗口画修改时间 · monitor 写「复制详情」的时刻与「本机」那一行）；TS 侧零孪生。
     local_offset_at: NONE,
     // 看的这一台的时区名（请求信封与起流的 `tz`，后端按它写「几点」）· 信封里给它留的位子；TS 侧零孪生（界面不碰时区，壳代它交）。
@@ -1055,6 +1059,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   "win-path-core": {
     win32_long_path: NONE,
     win32_path: NONE,
+    // 给人看的路径摘掉长路径前缀（后端写进句子之前）；TS 侧只照后端写好的句子显示，没有孪生。
+    shown: NONE,
   },
   // 本人通道（Unix 套接字 ＋ 对端 uid）：后端 · monitor 同一份平台原语，不判业务；TS 侧没有孪生。
   "own-chan": {

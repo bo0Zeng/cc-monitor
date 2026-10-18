@@ -1120,7 +1120,7 @@ fn kind_words(what: &str) -> String {
 
 /// 复制目录那几句话里「这一条」的路径。
 fn shown(p: &Path) -> String {
-    p.display().to_string()
+    win_path_core::shown(p)
 }
 
 /// **复制目录的计划趟（只读）**。整趟拒的几形都**一个字节不动**（本函数一个改动都没有）。

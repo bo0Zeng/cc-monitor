@@ -668,6 +668,8 @@ mod tests {
         "io::Result<std::fs::File>",
         "std::fs::File::from(",
         "std::os::unix::fs::PermissionsExt",
+        // Windows 臂改名顶掉被别的程序开着的目标：按「删」那一项访问权探一下打不打得开（只开不改，`held_as_busy`）。
+        "std::os::windows::fs::OpenOptionsExt",
     ];
     /// `platform/fs/own.rs`（自家状态写句柄 `Own`）点名的标准库条目：它的写只有这几样（删文件 · 改名 · 带权限位建一层目录 · 自家目录收回 0700）；
     /// 原子写的旁名经 `creds_core::perm::create_private` 建（依赖签字那一侧管）。谁能调由类型管：方法都在 `Own` 上，`Own` 只在启动时造。
@@ -2803,11 +2805,11 @@ mod g6_dependency_signoff {
             "上游 base URL 的形状 ＋ 明文只许回环（纯字符串判定）；仓内 crate、零依赖，现打 0 处写面、0 处 I/O",
         ),
         (
-            // 交给 Win32 的路径（长路径前缀）的唯一一份：不覆盖改名那一处用。
+            // 交给 Win32 的路径（长路径前缀）的唯一一份：不覆盖改名那一处用；句子里给人看的路径摘掉前缀也住它。
             "win-path-core",
             DEPS,
             MEASURED_CLEAN,
-            "路径编成 UTF-16 并补长路径前缀（纯变换；Windows 那一半只取绝对路径）；仓内 crate、零依赖，现打 0 处写面、0 处 I/O",
+            "路径编成 UTF-16 并补长路径前缀 · 给人看时摘掉前缀（纯变换；Windows 那一半只取绝对路径）；仓内 crate、零依赖，现打 0 处写面、0 处 I/O",
         ),
         (
             // 部署那一族的契约（表 A 的键与行 · 戳格式 · 答话形状 · 路径）；判定那一半住后端 `deploy` crate。

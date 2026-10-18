@@ -155,3 +155,4 @@ src/backend/plan/command.rs:24	写了 	保留	[不对外] pb view 成了时那�
 src/frontend/filewin/src/fonts.rs:390	—也切划因块声明	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（文件窗口反查 plan.rs 那几句新进的字）
 src/frontend/filewin/src/fonts.rs:393	像寸尺张素	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（图片查看页那几句新进的字）
 src/frontend/filewin/src/fonts.rs:410	运	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（通道那一句「本机后端未运行 · 未执行」进来的字）
+src/frontend/filewin/src/fonts.rs:419	副	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（「复制为」缺省名「n1 副本.txt」进来的字）

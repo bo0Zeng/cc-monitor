@@ -59,7 +59,7 @@ pub fn walk_in_root(last: Last, root: &Path, rel: impl AsRef<Path>) -> Result<Re
         copy_text(
             "beFilesWrite.path.unresolved",
             &[
-                ("path", &p.display().to_string()),
+                ("path", &win_path_core::shown(&p)),
                 ("why", &io_reason(e.kind())),
             ],
         )
@@ -70,13 +70,13 @@ pub fn walk_in_root(last: Last, root: &Path, rel: impl AsRef<Path>) -> Result<Re
             let parent = target.parent().ok_or_else(|| {
                 copy_text(
                     "beFilesWrite.path.noParent",
-                    &[("path", &target.display().to_string())],
+                    &[("path", &win_path_core::shown(&target))],
                 )
             })?;
             let name = target.file_name().ok_or_else(|| {
                 copy_text(
                     "beFilesWrite.path.noName",
-                    &[("path", &target.display().to_string())],
+                    &[("path", &win_path_core::shown(&target))],
                 )
             })?;
             Ro::canonicalize(parent)
@@ -88,15 +88,15 @@ pub fn walk_in_root(last: Last, root: &Path, rel: impl AsRef<Path>) -> Result<Re
     let (Some(dir), Some(name)) = (real.parent(), real.file_name()) else {
         return Err(copy_text(
             "beFilesWrite.path.noName",
-            &[("path", &real.display().to_string())],
+            &[("path", &win_path_core::shown(&real))],
         ));
     };
     let Ok(inner) = dir.strip_prefix(&real_root) else {
         return Err(copy_text(
             "beFilesWrite.path.escaped",
             &[
-                ("path", &real.display().to_string()),
-                ("root", &real_root.display().to_string()),
+                ("path", &win_path_core::shown(&real)),
+                ("root", &win_path_core::shown(&real_root)),
             ],
         ));
     };

@@ -186,7 +186,11 @@ impl Face {
                 at::Rename::Replace,
             )
         }
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            std::fs::rename(&from.path, &to.path).map_err(|e| held_as_busy(e, &to.path))
+        }
+        #[cfg(not(any(unix, windows)))]
         {
             std::fs::rename(&from.path, &to.path)
         }
@@ -544,6 +548,29 @@ mod at {
     #[cfg(not(any(target_os = "linux", target_vendor = "apple")))]
     fn noreplace(_: libc::c_int, _: &CString, _: libc::c_int, _: &CString) -> io::Result<()> {
         Err(io::Error::from(io::ErrorKind::Unsupported))
+    }
+}
+
+/// 改名顶掉 `to` 没成时（Windows）：照 [`super::replace_refusal`] 认出「被别的程序开着」⇒ 换成「被占用」那一类（原错包在里面，进复制详情）。
+/// 拒绝访问时探一下：按「删」（改名顶掉要的就是这一项访问权，winnt.h 的 `DELETE` ＝ `0x0001_0000`）打开 `to`、打不开的错号交给判定；探只开不改。
+#[cfg(windows)]
+fn held_as_busy(e: io::Error, to: &Path) -> io::Error {
+    use std::os::windows::fs::OpenOptionsExt as _;
+    let Some(code) = e.raw_os_error() else {
+        return e;
+    };
+    let probe = (code == super::WIN_ACCESS_DENIED)
+        .then(|| {
+            std::fs::OpenOptions::new()
+                .access_mode(0x0001_0000)
+                .open(to)
+                .err()
+                .and_then(|p| p.raw_os_error())
+        })
+        .flatten();
+    match super::replace_refusal(code, probe) {
+        Some(k) => io::Error::new(k, e),
+        None => e,
     }
 }
 

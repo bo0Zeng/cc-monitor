@@ -1133,7 +1133,7 @@ pub async fn watch_cells(
     }
 }
 
-/// 等那台连回来（`link` 那条流说「连着」为止；那条流不在 ⇒ 当场回，让调用方照旧再问一次）。
+/// 等那台连回来（`link` 那条流说「连着」为止；那条流不在 · 和 monitor 断了 ⇒ 当场回，让调用方照旧再问一次）。
 pub async fn link_up(line: &Line, origin: &Origin) {
     use comms_inward::chan::wire::{Comms, Item, Kind, Sub};
     use futures::StreamExt as _;
@@ -1144,10 +1144,13 @@ pub async fn link_up(line: &Line, origin: &Origin) {
         WATCH_CREDIT,
     );
     while let Some(item) = sub.next().await {
-        match item {
-            Item::Seen { .. } | Item::Closed { .. } => return,
-            Item::Frame { .. } | Item::Gap { .. } | Item::Unseen { .. } => sub.want(1),
+        // 连上了 · 流关了 · 和 monitor 断了（再等也不会连上）⇒ 回。
+        if matches!(item, Item::Closed { .. })
+            || matches!(link_seen(&item), Some(LinkSeen::Up | LinkSeen::Severed))
+        {
+            return;
         }
+        sub.want(1);
     }
 }
 
@@ -1272,12 +1275,31 @@ pub enum LinkSeen {
     Reconnecting,
     /// 重连一轮没连上（或从没连上）。
     Down,
+    /// 窗口自己和 monitor 之间那对管子断了（monitor 退了 / 重启了）：没有谁在重连，这扇窗接不回去
+    /// （通道是起它的那一方给的父子管道，没有可再拨的地址）。
+    Severed,
+}
+
+/// 那条流的一格 ⇒ 那台此刻的样子（纯函数）；`None` ＝ 这一格不说连没连着。
+/// 「看不见」出在第 0 跳 ⇒ 是窗口与 monitor 之间那对管子断了（通道客户端在那一跳原位出这一格），不是那台在重连。
+pub fn link_seen(item: &comms_inward::chan::wire::Item) -> Option<LinkSeen> {
+    use comms_inward::chan::wire::{HopFault, Item};
+    match item {
+        Item::Seen { .. } => Some(LinkSeen::Up),
+        Item::Unseen { at, .. } if at.idx == 0 => Some(LinkSeen::Severed),
+        Item::Unseen {
+            why: HopFault::Dropped,
+            ..
+        } => Some(LinkSeen::Reconnecting),
+        Item::Unseen { .. } => Some(LinkSeen::Down),
+        Item::Frame { .. } | Item::Gap { .. } | Item::Closed { .. } => None,
+    }
 }
 
 /// 订「那台连没连着」那条流（[`filewin_contract::LINK_KIND`]，monitor 自己接）到它关掉为止；每一格交给 `on`。
 /// 对端说「没有这条流」/ 流关了 ⇒ 回（窗口当作说不清：不画断线条）。
 pub async fn watch_link(line: &Line, origin: &Origin, mut on: impl FnMut(LinkSeen)) {
-    use comms_inward::chan::wire::{Comms, HopFault, Item, Kind, Sub};
+    use comms_inward::chan::wire::{Comms, Item, Kind, Sub};
     use futures::StreamExt as _;
     let mut sub = line.subscribe(
         origin,
@@ -1286,15 +1308,11 @@ pub async fn watch_link(line: &Line, origin: &Origin, mut on: impl FnMut(LinkSee
         WATCH_CREDIT,
     );
     while let Some(item) = sub.next().await {
-        match item {
-            Item::Seen { .. } => on(LinkSeen::Up),
-            Item::Unseen {
-                why: HopFault::Dropped,
-                ..
-            } => on(LinkSeen::Reconnecting),
-            Item::Unseen { .. } => on(LinkSeen::Down),
-            Item::Frame { .. } | Item::Gap { .. } => {}
-            Item::Closed { .. } => return,
+        if let Item::Closed { .. } = item {
+            return;
+        }
+        if let Some(s) = link_seen(&item) {
+            on(s);
         }
         sub.want(1);
     }

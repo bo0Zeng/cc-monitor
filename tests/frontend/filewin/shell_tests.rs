@@ -413,11 +413,11 @@ fn a_copy_from_the_menu_puts_up_the_rename_box_for_that_row() {
         "第 1 行的复制点了，框却没摆出来"
     );
     let p = w.copy_prompt().expect("框不见了");
-    // 相等断言，逐项：摆的是**那一行**、目标落在**当前目录**、缺省名同旧面板。
+    // 相等断言，逐项：摆的是**那一行**、目标落在**当前目录**、缺省名「副本」插在扩展名前面。
     assert_eq!(p.from, "/srv/data/b.bin");
     assert_eq!(p.src_name, "b.bin");
     assert_eq!(p.dir, "/srv/data");
-    assert_eq!(p.new_name, "b.bin.copy");
+    assert_eq!(p.new_name, "b 副本.bin");
 }
 
 /// 目录 · 有损名 · 越界下标 —— 三档都**不摆框**（第二道闸，防「按钮没了、调用还在」）。
@@ -2906,6 +2906,65 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
     // 上一级：按字节回到 `/srv`（它是合法 UTF-8 ⇒ 字节那一格清掉）。
     w.navigate_up();
     assert_eq!((w.cwd.as_str(), w.cwd_raw.clone()), ("/srv", None));
+}
+
+/// 要求：改了显示缩放（或拖到另一块缩放不同的屏）之后，文件窗口再夹一次 —— 按那一刻所在那块屏的工作区。
+/// 100% 下开窗：1280×800 点的内框（标题栏 30 点）放不进 1280×712 的工作区 ⇒ 用种子那块夹一次；同一缩放下再来一帧 ⇒ 不动（不跟人抢窗口大小）。
+/// 改到 125%：系统照原逻辑尺寸放大（外框 1280×742 点 ＝ 1600×927.5 像素），工作区变成 1280×700（任务栏变高）⇒ 再夹一次、按的是此刻问到的那块；
+/// 夹完的外框换回像素落在工作区里（期望手算）。问不到此刻的工作区 ⇒ 不夹（不拿开窗那块屏去拽它）。
+#[test]
+fn a_rescaled_file_window_is_fitted_again_into_the_work_area_it_is_on_now() {
+    use egui::{pos2, vec2, Rect, ViewportCommand};
+    let seed = host_core::WorkArea {
+        x: 0,
+        y: 0,
+        w: 1280,
+        h: 712,
+    };
+    let now = host_core::WorkArea {
+        x: 0,
+        y: 0,
+        w: 1280,
+        h: 700,
+    };
+    let mut memo = None;
+    let outer = Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 830.0));
+    let inner = Rect::from_min_size(pos2(0.0, 30.0), vec2(1280.0, 800.0));
+    let first = super::fit_step(&mut memo, 1.0, 1.0, outer, inner, Some(seed), |_| {
+        panic!("开窗那一次用种子，不问")
+    });
+    assert_eq!(first.len(), 2, "开窗那一次没夹：{first:?}");
+    let again = super::fit_step(&mut memo, 1.0, 1.0, outer, inner, Some(seed), |_| Some(now));
+    assert!(again.is_empty(), "同一缩放下又夹了：{again:?}");
+    // 改到 125%：外框 / 内框按原逻辑尺寸（点）放大。
+    let outer = Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 742.0));
+    let inner = Rect::from_min_size(pos2(0.0, 30.0), vec2(1280.0, 712.0));
+    let mut asked = None;
+    let got = super::fit_step(&mut memo, 1.25, 1.25, outer, inner, Some(seed), |at| {
+        asked = Some(at);
+        Some(now)
+    });
+    assert_eq!(asked, Some((800, 464)), "该按外框中点（像素）问那块屏");
+    let [ViewportCommand::InnerSize(size), ViewportCommand::OuterPosition(at)] = got.as_slice()
+    else {
+        panic!("改缩放之后该发「缩内框 ＋ 挪外框」两条，实得 {got:?}");
+    };
+    let chrome = (outer.height() - inner.height()) * 1.25;
+    let (w, h) = (size.x * 1.25, size.y * 1.25 + chrome);
+    let (x, y) = (at.x * 1.25, at.y * 1.25);
+    assert!(x >= 0.0 && y >= 0.0, "外框左上出了工作区：({x},{y})");
+    assert!(
+        x + w <= 1280.5 && y + h <= 700.5,
+        "外框出了工作区：{w}×{h} 于 ({x},{y})"
+    );
+    // 同一缩放下再来一帧 ⇒ 不动；再改缩放但问不到此刻的工作区 ⇒ 不夹。
+    assert!(
+        super::fit_step(&mut memo, 1.25, 1.25, outer, inner, Some(seed), |_| Some(
+            now
+        ))
+        .is_empty()
+    );
+    assert!(super::fit_step(&mut memo, 1.5, 1.5, outer, inner, Some(seed), |_| None).is_empty());
 }
 
 /// 要求：文件窗口也夹进工作区。

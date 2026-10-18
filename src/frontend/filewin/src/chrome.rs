@@ -847,7 +847,11 @@ impl LinkState {
     pub fn offline(&self) -> bool {
         matches!(
             self.seen(),
-            Some(super::source::LinkSeen::Reconnecting | super::source::LinkSeen::Down)
+            Some(
+                super::source::LinkSeen::Reconnecting
+                    | super::source::LinkSeen::Down
+                    | super::source::LinkSeen::Severed
+            )
         )
     }
 
@@ -856,7 +860,11 @@ impl LinkState {
         let mut g = self.lock();
         let was_off = matches!(
             g.seen,
-            Some(super::source::LinkSeen::Reconnecting | super::source::LinkSeen::Down)
+            Some(
+                super::source::LinkSeen::Reconnecting
+                    | super::source::LinkSeen::Down
+                    | super::source::LinkSeen::Severed
+            )
         );
         if was_off && s == super::source::LinkSeen::Up {
             g.ups += 1;
@@ -951,10 +959,17 @@ impl Workspace {
             .show_separator_line(false)
             .show(ui, |ui| self.pane_on_mut(f).toolbar_ui(ui));
         // 和那台断着 ⇒ 工具条下一条窗口级警告条：在重连 ⇒「devbox 断开 · 重新连接中…」；
-        //   一轮没连上 ⇒「devbox 离线 · 采样 13:40」＋［重新连接］（采样 ＝ 摆着的这一屏是什么时候列到的）。
+        //   一轮没连上 ⇒「devbox 离线 · 采样 13:40」＋［重新连接］（采样 ＝ 摆着的这一屏是什么时候列到的）；
+        //   和 monitor 断了 ⇒「与 cc-monitor 的连接已断开 …」＋［关闭窗口］。
         if let Some(seen) = self.link.seen().filter(|_| self.link.offline()) {
             let machine = self.pane_on(f).source.label();
+            let severed = seen == super::source::LinkSeen::Severed;
             let (text, acts) = match seen {
+                // 和 monitor 断了：没有谁在重连，给的是［关闭窗口］（走关窗那一问）。
+                super::source::LinkSeen::Severed => (
+                    copy_text("rsFilewinChrome.link.severed", &[]),
+                    vec![copy_text("rsFilewinChrome.link.close", &[])],
+                ),
                 super::source::LinkSeen::Reconnecting => (
                     copy_text(
                         "rsFilewinChrome.link.reconnecting",
@@ -993,7 +1008,11 @@ impl Workspace {
                     hit = super::kit::banner(ui, super::kit::Tone::Warn, &text, &acts);
                 });
             if hit == Some(0) {
-                self.retry_link();
+                if severed {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                } else {
+                    self.retry_link();
+                }
             }
         }
         let mut cmd = None;

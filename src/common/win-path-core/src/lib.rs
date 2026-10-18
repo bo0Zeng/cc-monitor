@@ -2,7 +2,8 @@
 //!
 //! 标准库的文件函数会自己给超过 260 字符的路径补 `\\?\` 前缀，直接调 Win32 的（`ReplaceFileW` · `MoveFileExW` ·
 //! `CreateFileW` · `Get/SetNamedSecurityInfoW` …）不会：传原样路径，过 260 字符就失败。
-//! [`win32_long_path`] 是那一步的纯函数（各平台都编、都测）；[`win32_path`] 是 Windows 上调用点用的那一形。
+//! [`win32_long_path`] 是那一步的纯函数（各平台都编、都测）；[`win32_path`] 是 Windows 上调用点用的那一形；
+//! [`shown`] 是反过来那一步：句子里给人看的路径不带前缀。
 
 /// 绝对路径的 UTF-16（不带结尾 0）⇒ 带长路径前缀的那一形：
 /// `C:\…` → `\\?\C:\…`；`\\服务器\共享\…` → `\\?\UNC\服务器\共享\…`；已带 `\\?\` / `\\.\` 的原样；
@@ -33,6 +34,25 @@ pub fn win32_long_path(path: impl IntoIterator<Item = u16>) -> Vec<u16> {
         return p;
     }
     out
+}
+
+/// 给人看的那一串：长路径前缀摘掉（`\\?\C:\…` → `C:\…`，`\\?\UNC\服务器\…` → `\\服务器\…`），[`win32_long_path`] 的反面。
+/// 前缀是交给 Win32 的写法，句子里写出来只是噪声；规范化（`canonicalize`）出来的路径在 Windows 上都带它。
+/// 前缀后面不是盘符也不是 `UNC\` 的（卷名形）原样。各平台都编、都测。
+pub fn shown(p: &std::path::Path) -> String {
+    let s = p.display().to_string();
+    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        return format!(r"\\{rest}");
+    }
+    match s.strip_prefix(r"\\?\") {
+        Some(rest)
+            if rest.as_bytes().get(1) == Some(&b':')
+                && rest.as_bytes()[0].is_ascii_alphabetic() =>
+        {
+            rest.to_string()
+        }
+        _ => s,
+    }
 }
 
 /// `p` 交给 Win32 的那一串：先取绝对路径，再补长路径前缀，末尾带 0。

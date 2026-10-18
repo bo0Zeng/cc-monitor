@@ -60,3 +60,28 @@ fn new_file_only_creates() {
     assert_eq!(std::fs::read(d.join("s.jsonl")).unwrap(), b"{}\n");
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// 改名顶掉一份别的程序开着的文件（Windows）：说「被占用」，不说「无权限」。
+/// 错号（Windows 的）→ 归哪一类是纯函数：共享冲突 32 · 锁冲突 33 本身就是占用；拒绝访问 5 而目标此刻按写打开回的是 32 / 33 ⇒ 也是占用
+/// （换名到独占着的文件，系统回的是拒绝访问）；拒绝访问而目标打得开（真的没权限）· 别的错号 ⇒ 照原错。期望手写。
+#[test]
+fn replacing_a_file_another_program_holds_is_busy_not_denied() {
+    use std::io::ErrorKind as K;
+    let kind = |rename: i32, probe: Option<i32>| super::super::replace_refusal(rename, probe);
+    assert_eq!(kind(32, None), Some(K::ResourceBusy));
+    assert_eq!(kind(33, None), Some(K::ResourceBusy));
+    assert_eq!(kind(5, Some(32)), Some(K::ResourceBusy));
+    assert_eq!(kind(5, Some(33)), Some(K::ResourceBusy));
+    assert_eq!(kind(5, None), None, "目标打得开 ⇒ 真的没权限");
+    assert_eq!(
+        kind(5, Some(5)),
+        None,
+        "目标按写也打不开、回的是拒绝访问 ⇒ 真的没权限"
+    );
+    assert_eq!(kind(2, Some(32)), None, "别的错号不探");
+    // 原因词照它走：被占用那一类说「被占用」。
+    assert_eq!(
+        copy_core::reason::io_reason(K::ResourceBusy),
+        copy_core::copy_text("reason.io.busy", &[])
+    );
+}

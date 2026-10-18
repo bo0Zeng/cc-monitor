@@ -23,6 +23,21 @@ pub(crate) use own::{
 pub use own::{DiagLog, Own, OwnLock};
 pub(crate) use ro::{Metadata, Perms, Ro, RoFile, Stamp};
 
+/// Windows 的系统错号：拒绝访问。
+const WIN_ACCESS_DENIED: i32 = 5;
+/// Windows 的系统错号里「那份文件正被别的程序开着」那一类：共享冲突 · 锁冲突（标准库把它们归「未分类」）。
+const WIN_HELD: [i32; 2] = [32, 33];
+
+/// 改名顶掉目标没成，这回事归哪一类（Windows 的错号；纯函数，各平台都编、都测）：
+/// 错号本身是占用那一类 ⇒ 被占用；拒绝访问而目标此刻按「删」打开回的是占用那一类 ⇒ 也是被占用
+/// （换名到别的程序独占着的文件，系统回的是拒绝访问）；别的 ⇒ `None`（照原错，真没权限就是没权限）。
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn replace_refusal(rename: i32, probe: Option<i32>) -> Option<std::io::ErrorKind> {
+    let held = |c: i32| WIN_HELD.contains(&c);
+    (held(rename) || (rename == WIN_ACCESS_DENIED && probe.is_some_and(held)))
+        .then_some(std::io::ErrorKind::ResourceBusy)
+}
+
 /// 非 unix 的不覆盖改名（按路径；unix 那一臂在 `face.rs` 里相对目录句柄做）。
 #[cfg(not(unix))]
 fn rename_noreplace(from: &Path, to: &Path) -> std::io::Result<()> {

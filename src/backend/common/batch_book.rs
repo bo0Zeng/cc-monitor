@@ -299,9 +299,6 @@ pub(crate) fn minted(to: &Path, k: u32) -> PathBuf {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let (stem, ext) = match name.rfind('.') {
-        Some(i) if i > 0 => (&name[..i], &name[i..]),
-        _ => (name.as_str(), ""),
-    };
+    let (stem, ext) = batch_core::split_ext(&name);
     to.with_file_name(format!("{stem} ({k}){ext}"))
 }

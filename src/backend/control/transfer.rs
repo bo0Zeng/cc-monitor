@@ -228,7 +228,7 @@ fn land_open_fresh(face: &Face, root: &Path, part: &OsStr) -> Result<FaceFile, S
                 copy_text(
                     "beTransfer.land.dropPartFailed",
                     &[
-                        ("path", &at.display().to_string()),
+                        ("path", &win_path_core::shown(&at)),
                         ("why", &io_reason(e.kind())),
                     ],
                 ),
@@ -241,7 +241,7 @@ fn land_open_fresh(face: &Face, root: &Path, part: &OsStr) -> Result<FaceFile, S
             copy_text(
                 "beTransfer.land.createFailed",
                 &[
-                    ("path", &at.display().to_string()),
+                    ("path", &win_path_core::shown(&at)),
                     ("why", &io_reason(e.kind())),
                 ],
             ),
@@ -264,7 +264,7 @@ fn land_carry_over(face: &Face, root: &Path, part: &OsStr, keep: u64) -> Result<
                 copy_text(
                     "beTransfer.land.dropLeftoverFailed",
                     &[
-                        ("path", &old.display().to_string()),
+                        ("path", &win_path_core::shown(&old)),
                         ("why", &io_reason(e.kind())),
                     ],
                 ),
@@ -277,7 +277,7 @@ fn land_carry_over(face: &Face, root: &Path, part: &OsStr, keep: u64) -> Result<
             copy_text(
                 "beTransfer.land.moveAsideFailed",
                 &[
-                    ("path", &at.display().to_string()),
+                    ("path", &win_path_core::shown(&at)),
                     ("why", &io_reason(e.kind())),
                 ],
             ),
@@ -289,7 +289,7 @@ fn land_carry_over(face: &Face, root: &Path, part: &OsStr, keep: u64) -> Result<
             copy_text(
                 "beTransfer.land.createFailed",
                 &[
-                    ("path", &at.display().to_string()),
+                    ("path", &win_path_core::shown(&at)),
                     ("why", &io_reason(e.kind())),
                 ],
             ),
@@ -302,7 +302,7 @@ fn land_carry_over(face: &Face, root: &Path, part: &OsStr, keep: u64) -> Result<
                 copy_text(
                     "beTransfer.land.readPartFailed",
                     &[
-                        ("path", &old.display().to_string()),
+                        ("path", &win_path_core::shown(&old)),
                         ("why", &io_reason(e.kind())),
                     ],
                 ),
@@ -324,7 +324,7 @@ fn land_carry_over(face: &Face, root: &Path, part: &OsStr, keep: u64) -> Result<
             copy_text(
                 "beTransfer.land.dropPartFailed",
                 &[
-                    ("path", &old.display().to_string()),
+                    ("path", &win_path_core::shown(&old)),
                     ("why", &io_reason(e.kind())),
                 ],
             ),
@@ -350,7 +350,7 @@ fn land_commit(face: &Face, root: &Path, part: &OsStr, name: &OsStr) -> Result<(
             copy_text(
                 "beTransfer.land.commitFailed",
                 &[
-                    ("path", &to.display().to_string()),
+                    ("path", &win_path_core::shown(&to)),
                     ("why", &io_reason(e.kind())),
                 ],
             ),

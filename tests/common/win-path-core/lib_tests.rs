@@ -55,3 +55,19 @@ fn only_this_crate_turns_a_path_into_utf16() {
         "这几处自己把路径编成 UTF-16 交给 Win32，没过长路径前缀 —— 改调 `win_path_core::win32_path`：{stray:?}"
     );
 }
+
+/// 给人看的路径不带长路径前缀：`\\?\C:\…` → `C:\…`、`\\?\UNC\srv\share\…` → `\\srv\share\…`；
+/// 别的（本来就没带的 · 设备形 `\\.\` · 前缀后面不是盘符的卷名形）原样。期望手写。
+#[test]
+fn shown_paths_drop_the_long_path_prefix() {
+    for (given, want) in [
+        (r"\\?\C:\Users\u\dl\n1.txt", r"C:\Users\u\dl\n1.txt"),
+        (r"\\?\UNC\srv\share\a.json", r"\\srv\share\a.json"),
+        (r"C:\plain\x", r"C:\plain\x"),
+        (r"\\.\pipe\x", r"\\.\pipe\x"),
+        (r"\\?\Volume{0b1c}\x", r"\\?\Volume{0b1c}\x"),
+        ("/home/u/x", "/home/u/x"),
+    ] {
+        assert_eq!(shown(std::path::Path::new(given)), want, "{given}");
+    }
+}
