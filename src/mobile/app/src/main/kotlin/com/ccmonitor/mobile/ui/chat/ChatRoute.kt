@@ -94,6 +94,7 @@ fun ChatRoute(
     // 先把连接建起来；持有挂在对话上，由 `ChatController.sessionFor(hostId = …)` 负责。
     val link by rememberHostLink(hostId, chatHolder(chatKey(hostId, sessionId)), retainWhileComposed = false)
     KeepAliveWhileLinked(link)
+    val scope = rememberCoroutineScope()
     val host = rememberChatHost(hostId) ?: return
     val product = rememberProductName(hostId, host.agent)
     val open = if (isNew) ChatOpen(hostId, chatKey(hostId, sessionId), ChatTarget.Draft(ticket = sessionId, cwd = draftCwd, agent = host.agent), host.machine) else existingChat(hostId, sessionId, host.machine)
@@ -110,7 +111,6 @@ fun ChatRoute(
     }
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
-    val scope = rememberCoroutineScope()
     // 在一条会话里点「新建会话」⇒ 新的那张起在这条的目录。
     val onDrawer: (DrawerAction) -> Unit = { action ->
         val cwd = state.cwd

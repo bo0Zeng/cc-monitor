@@ -516,10 +516,11 @@ private fun CaptureControl(
     text: String?,
     onDismiss: () -> Unit,
 ) {
-    if (text == null) return
+    // 作用域在框外取：点了复制先关框，复制那一下照样做完。
     val context = LocalContext.current
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
+    if (text == null) return
     CaptureDialog(
         text = text,
         onCopy = {
@@ -539,10 +540,11 @@ private fun PushKeyControl(
     terminals: TerminalOps,
     onDismiss: () -> Unit,
 ) {
-    if (!show) return
+    // 作用域在框外取：选了那把先关框，推送照样做完、照结局说一句。
     val context = LocalContext.current
     val snackbar = LocalAppSnackbar.current
     val scope = rememberCoroutineScope()
+    if (!show) return
     PushKeyDialog(
         identities = identities,
         onDismiss = onDismiss,
