@@ -354,8 +354,21 @@ pub(crate) struct ModelSwitch {
     pub(crate) command: fn(&str) -> String,
     /// 从记录里的一条认出读回的那一句；不是 ⇒ `None`。
     pub(crate) read: fn(&serde_json::Value) -> Option<ModelSaid>,
-    /// 换模型顺带改了什么（换模型抽屉底那一行）；没有 ⇒ `None`。
-    pub(crate) note: Option<fn() -> String>,
+    /// 换模型顺带写的那份设置（配置目录下的相对路径）：换模型抽屉底那一行 · 读回那一句照它在各号间共不共用说；不写 ⇒ `None`。
+    pub(crate) saves: Option<&'static str>,
+    /// 换模型顺带改了什么（换模型抽屉底那一行；参数 ＝ [`Self::saves`] 那份各号共用）；没有 ⇒ `None`。
+    pub(crate) note: Option<fn(bool) -> String>,
+    /// 送出那一行之后那一家可能弹的确认框（换模型本来就是人点的 ⇒ 认出来就替人确认）；不弹 ⇒ `None`。认不出的框不按。
+    pub(crate) confirm: Option<ScreenBox>,
+}
+
+/// 终端画面上一个认得出、该替人按掉的框（适配层声明它的样子与按哪个键）。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ScreenBox {
+    /// 此刻那一屏（纯文本行）上是不是这个框、而且按 [`Self::key`] 就是确认。
+    pub(crate) seen: fn(&[String]) -> bool,
+    /// 确认按哪个键（`terminal-input` 键表里的名字）。
+    pub(crate) key: &'static str,
 }
 
 /// 换模型读回的那一句（[`ModelSwitch::read`]）。

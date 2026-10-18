@@ -140,6 +140,9 @@ pub fn home_of(config_dir: Option<&Path>, from_env: bool) -> PathBuf {
     }
 }
 
+/// 配置根下那份用户设置的文件名（`/model` 也把换成的模型写进它，存成以后新会话的默认）。**只读**：后端不写它。
+pub(crate) const SETTINGS_FILE: &str = "settings.json";
+
 /// 会话记录目录在配置根下的名字。
 pub(crate) const PROJECTS_DIR: &str = "projects";
 /// 会话 pidfile 目录在配置根下的名字。

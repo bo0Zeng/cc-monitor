@@ -2610,3 +2610,50 @@ fn only_an_account_that_only_needs_signing_in_gets_the_login_button() {
         Some(copy_core::copy_text("accounts.row.loginElsewhere", &[]))
     );
 }
+
+/// ★ 换模型写的那份设置各号共不共用：看的是链接布局 —— 两个号的那一份落在同一份文件上（链回共享库）⇒ 共用；各自一份 · 只有一个号 · 没有账号库 · 都还没有这份文件 ⇒ 不算共用。
+#[cfg(unix)]
+#[test]
+fn a_file_linked_back_to_the_shared_store_is_shared_across_accounts() {
+    let root = tmpdir("shared-settings");
+    let accts = root.join("accts");
+    let shared = root.join("shared");
+    let (a, b) = (accts.join("a"), accts.join("b"));
+    for d in [&shared, &a, &b] {
+        fs::create_dir_all(d).unwrap();
+    }
+    write_manifest(
+        &accts,
+        &format!(
+            r#"{{"version":1,"accounts":[
+                {{"name":"a","configDir":"{a}"}},
+                {{"name":"b","configDir":"{b}"}}]}}"#,
+            a = a.display(),
+            b = b.display()
+        ),
+    );
+    assert!(
+        !shared_across_accounts_in(&accts, "settings.json"),
+        "都还没有这份文件就算共用了"
+    );
+    fs::write(a.join("settings.json"), "{}").unwrap();
+    fs::write(b.join("settings.json"), "{}").unwrap();
+    assert!(
+        !shared_across_accounts_in(&accts, "settings.json"),
+        "各自一份算成了共用"
+    );
+    fs::write(shared.join("settings.json"), "{}").unwrap();
+    for d in [&a, &b] {
+        fs::remove_file(d.join("settings.json")).unwrap();
+        std::os::unix::fs::symlink(shared.join("settings.json"), d.join("settings.json")).unwrap();
+    }
+    assert!(
+        shared_across_accounts_in(&accts, "settings.json"),
+        "链回共享库那一份没认成共用"
+    );
+    assert!(
+        !shared_across_accounts_in(&root.join("none"), "settings.json"),
+        "没有账号库也算共用了"
+    );
+    let _ = fs::remove_dir_all(&root);
+}

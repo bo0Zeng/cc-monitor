@@ -23,6 +23,11 @@ impl<T> Armed<T> {
         drop(ears);
         got
     }
+
+    /// 此刻已经到了 ⇒ 那一份（交出去之后再 [`Self::fetch`] 等不到）；还没到 ⇒ `None`，不等。
+    pub(crate) fn take_now(&mut self) -> Option<T> {
+        self.hit.try_recv().ok()
+    }
 }
 
 /// 一次有界等待：那一声 `ms` 毫秒内到了 ⇒ 它；没到 · 发声的那一头走了 ⇒ `None`。

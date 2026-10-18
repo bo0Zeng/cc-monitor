@@ -179,7 +179,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("session-open", "cf4c2965"),
     ("session-open-dir", "ecd2a49b"),
     ("session-open-facts", "41c0b0bf"),
-    ("session-permission", "ede16b14"),
+    ("session-permission", "6e03daa6"),
     ("session-restart", "4ad2657d"),
     ("session-say", "eb03338e"),
     ("session-terminals", "049d3292"),

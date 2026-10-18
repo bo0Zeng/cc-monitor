@@ -29,7 +29,7 @@ claude	nested_env	CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUD
 claude	launch_args	<empty>
 claude	answer_hook_flag	--settings
 claude	preset_sid	--session-id
-claude	permission	--permission-mode default acceptEdits plan
+claude	permission	--permission-mode default acceptEdits plan auto
 claude	self_sid_env	CLAUDE_CODE_SESSION_ID
 codex	default_launcher	codex
 codex	resume_kind	subcommand

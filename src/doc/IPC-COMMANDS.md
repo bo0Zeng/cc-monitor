@@ -11443,7 +11443,7 @@ mode: string,
 client?: string, };
 ```
 
-码：`bad_args` · `unsupported` · `not_known` · `ambiguous` · `no_tmux` · `tmux_too_old` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
+码：`bad_args` · `unsupported` · `launch_only` · `not_known` · `ambiguous` · `no_tmux` · `tmux_too_old` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
 
 #### `session-say`
 

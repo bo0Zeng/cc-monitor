@@ -204,7 +204,12 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     model_switch: Some(super::ModelSwitch {
         command: resume::model_command,
         read: resume::model_said,
+        saves: Some(paths::SETTINGS_FILE),
         note: Some(resume::model_note),
+        confirm: Some(super::ScreenBox {
+            seen: resume::model_confirm_on_screen,
+            key: "enter",
+        }),
     }),
 };
 

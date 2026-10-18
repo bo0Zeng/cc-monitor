@@ -949,6 +949,24 @@ fn waiting_needs(agent_home: &Path, sid: &str) -> Option<super::recognize::facts
     super::recognize::facts::needs_of(kind, &pending, Some(&wait))
 }
 
+/// 这台账号库里不止一个号的 `<配置目录>/<rel>` 落在同一份文件上（链回共享库那一份）⇒ `true`（[`shared_across_accounts_in`]）。
+pub(crate) fn shared_across_accounts(rel: &str) -> bool {
+    shared_across_accounts_in(&resolve_accts_dir(), rel)
+}
+
+/// 看的是链接布局：每个号的家目录（注册表 `agents::home_at`；账号 0 ＝ 默认家目录）下那一份解开链接后的真身，有两个号相同 ⇒ 共用。
+/// 没有账号库 · 只有一个号 · 各自一份 · 都还没有这份文件（解不开）⇒ `false`。
+pub(crate) fn shared_across_accounts_in(accts_dir: &Path, rel: &str) -> bool {
+    let mut seen = std::collections::BTreeSet::new();
+    dirs_of(accts_dir)
+        .iter()
+        .filter_map(|(d, _)| {
+            let home = crate::agents::home_at(d.as_deref().map(Path::new), false);
+            crate::common::fence::real_path(&home.join(rel))
+        })
+        .any(|real| !seen.insert(real))
+}
+
 /// 账号库里每个号的配置目录（规范过的写法）⇒ 号名；`None` 这个 key 是账号 0（configDir 缺席）：裸起的会话归属到它。
 fn dirs_of(accts_dir: &Path) -> Vec<(Option<String>, String)> {
     load_manifest(accts_dir)

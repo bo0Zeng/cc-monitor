@@ -208,3 +208,29 @@ fn the_record_model_is_picked_only_when_one_item_matches() {
     assert_eq!(pick("gpt-5"), None);
     assert_eq!(crate::agents::model_pick("codex", "claude-opus-4-5"), None);
 }
+
+/// 真 Claude Code 2.1.302 上、对话里已有回复时 `/model sonnet` 之后那一屏（工作目录与第一句换成了中性的）。
+const SWITCH_MODEL_BOX: &str =
+    include_str!("../../../__fixtures__/claude-switch-model-box.screen.txt");
+
+/// ★ 换模型的确认框：认得出真机那一屏（光标停在「是」上，按回车就是确认）；光标不在「是」上 · 别的框 · 正文里引了框的标题 · 平常的一屏 ⇒ 认不出（不乱按）。
+#[test]
+fn the_switch_model_box_is_recognized_and_nothing_else_is() {
+    let seen = |s: &str| super::model_confirm_on_screen(&screen(&s.lines().collect::<Vec<_>>()));
+    assert!(seen(SWITCH_MODEL_BOX), "真机那一屏认不出");
+    let cursor_on_no = SWITCH_MODEL_BOX
+        .replace("❯ 1. Yes, switch to", "  1. Yes, switch to")
+        .replace("  2. No, go back", "❯ 2. No, go back");
+    assert!(!seen(&cursor_on_no), "光标在「否」上也认了");
+    assert!(!seen(
+        "   Do you want to proceed?\n\n   ❯ 1. Yes\n     2. No"
+    ));
+    assert!(!seen("● 换模型时会弹 Switch model? 那个框\n\n> "));
+    assert!(!seen("● 好\n\n> \n  ⏸ plan mode on"));
+    let face = crate::agents::claudecode::LAUNCH.model_switch.unwrap();
+    let bx = face.confirm.expect("Claude 换模型声明了确认框");
+    assert_eq!(bx.key, "enter");
+    assert!(crate::control::terminals::KEYS
+        .iter()
+        .any(|(k, _)| *k == bx.key));
+}
