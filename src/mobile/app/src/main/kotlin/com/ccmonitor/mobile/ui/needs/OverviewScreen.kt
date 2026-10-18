@@ -119,7 +119,8 @@ fun OverviewScreen(
     val board = koinInject<NeedsBoard>()
     val backends = koinInject<HostBackends>()
     val hostRepo = koinInject<HostRepository>()
-    val hosts by hostRepo.observeAll().map { hs -> hs.map { HostName(it.id, it.label.ifBlank { it.id }) } }.collectAsState(initial = emptyList())
+    val names = remember(hostRepo) { hostRepo.observeAll().map { hs -> hs.map { HostName(it.id, it.label.ifBlank { it.id }) } } }
+    val hosts by names.collectAsState(initial = emptyList())
     val all by board.state.collectAsState()
     val tables by remember(backends) {
         backends.feeds.flatMapLatest { m ->
