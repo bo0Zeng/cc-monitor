@@ -34,7 +34,11 @@ up() {
   chmod 700 "$box/tmux"
   [ -f "$box/sshd/host_ed25519" ] || ssh-keygen -q -t ed25519 -N '' -f "$box/sshd/host_ed25519" -C smoke-host
   [ -f "$box/sshd/client_ed25519" ] || ssh-keygen -q -t ed25519 -N '' -f "$box/sshd/client_ed25519" -C smoke-client
-  cp "$box/sshd/client_ed25519.pub" "$box/sshd/authorized_keys"
+  # sshd 认的就是台架家里的 ~/.ssh/authorized_keys：手机「推送公钥」写的也是它（那台后端写），推进去的那一把与登录用的同一处。
+  mkdir -p "$home/.ssh" && chmod 700 "$home/.ssh"
+  grep -qxF "$(cat "$box/sshd/client_ed25519.pub")" "$home/.ssh/authorized_keys" 2>/dev/null ||
+    cat "$box/sshd/client_ed25519.pub" >> "$home/.ssh/authorized_keys"
+  chmod 600 "$home/.ssh/authorized_keys"
   # 换了后端那份文件就停台架里的常驻（它跑的还是旧文件）。
   if ! cmp -s "$backend" "$home/.cc-monitor/bin/ccm"; then put "$backend"; stop_resident; fi
   install -m 644 "$root/tests/mobile-smoke/fake-agent.py" "$box/bin/fake-agent.py"
@@ -70,7 +74,7 @@ Port $port
 ListenAddress 127.0.0.1
 HostKey $box/sshd/host_ed25519
 PidFile $box/sshd/sshd.pid
-AuthorizedKeysFile $box/sshd/authorized_keys
+AuthorizedKeysFile $home/.ssh/authorized_keys
 AllowUsers $(id -un)
 PasswordAuthentication no
 KbdInteractiveAuthentication no

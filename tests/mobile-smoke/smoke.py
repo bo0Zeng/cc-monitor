@@ -223,6 +223,8 @@ def reset():
     adb("shell", "cmd", "connectivity", "airplane-mode", "disable")
     adb("shell", "svc", "wifi", "enable")
     adb("shell", "am", "force-stop", PKG)
+    # 系统的选文件夹那一屏（另一个包）停在半截时也收掉：不然它压在 App 上面，回不到聊天屏。
+    adb("shell", "am", "force-stop", "com.google.android.documentsui")
     launch()
 
 
@@ -573,11 +575,13 @@ def files_page():
     time.sleep(3)
     if "ren" + T in sh(f"ls ~/work/{d}"):
         raise Step.Fail("删除没落到那台")
-    # 下载：选中 a.txt ⇒［下载］⇒ 系统选文件夹那一屏点 Download ⇒［使用此文件夹］⇒ 盘上 /sdcard/Download/a.txt 是那一份。
-    adb("shell", "rm", "-f", "/sdcard/Download/a.txt", "/sdcard/Download/b.txt")
+    # 下载：选中 a.txt ⇒［下载］⇒ 系统选文件夹那一屏点 Download 下的 ccm-smoke ⇒［使用此文件夹］⇒ 盘上那一份是 a.txt。
+    # （Download 本身系统不给选：「Can’t use this folder」，只能选它下面的一层。）
+    adb("shell", "rm", "-rf", DOWN)
+    adb("shell", "mkdir", "-p", DOWN)
     pick_act("a.txt", t("rsFilewinDownload.label.download"))
-    pick_folder("Download")
-    landed("/sdcard/Download/a.txt", f"hello {T}")
+    pick_folder()
+    landed(f"{DOWN}/a.txt", f"hello {T}")
     # 上传：系统选文件那一屏里点台架推进去的那一份。
     up = f"up{T}.txt"
     open(os.path.join(OUT, up), "w").write(f"up {T}\n")
@@ -626,13 +630,22 @@ def files_page():
         raise Step.Fail(f"答了保留两份，那台上没有 {both}")
 
 
-def pick_folder(name):
-    """系统「选文件夹」那一屏：上次选过 ⇒ 直接在那一棵里；否则先点进 [name]。按钮的字按系统认（英文 · 中文），认不到 ⇒ 这台判不了。"""
+# 下载落到的那一层：Download 下面一层（Download 本身系统的选文件夹那一屏不给选）。
+DOWN_DIR = "ccm-smoke"
+DOWN = f"/sdcard/Download/{DOWN_DIR}"
+
+
+def pick_folder():
+    """系统「选文件夹」那一屏：走进 Download/ccm-smoke（上次选过 ⇒ 已在那一棵里）、点［使用此文件夹］。
+    按钮与「Files in …」的字按系统认（英文 · 中文），认不到 ⇒ 这台判不了。"""
     use = ["USE THIS FOLDER", "Use this folder", "使用此文件夹"]
     if not wait_any(use, 15):
         raise Step.Fail("系统选文件夹那一屏没出来（或认不出它的按钮字 —— 这台判不了）")
-    # 第一次在存储根上（点进 [name]）；上次选过 ⇒ 已在那一棵里，[name] 是顶上那一格，点了不动。
-    if tap(name, must=False):
+    for _ in range(4):
+        if wait_any([f"Files in {DOWN_DIR}", f"{DOWN_DIR} 中的文件"], 2):
+            break
+        if not (tap(DOWN_DIR, must=False) or tap("Download", must=False)):
+            raise Step.Fail(f"选文件夹那一屏走不到 Download/{DOWN_DIR}")
         time.sleep(2)
     for u in use:
         if tap(u, must=False):
@@ -669,13 +682,13 @@ def files_download_two():
     long_press("a.txt")
     tap("b.txt")
     tap(t("rsFilewinDownload.label.download"))
-    pick_folder("Download")
+    pick_folder()
     if not wait(t("rsFilewinBatch.btn.overwrite"), 20):
         raise Step.Fail("本机已有 a.txt，没出同名抽屉")
     shot("11e-本机同名")
     tap(t("rsFilewinBatch.btn.overwrite"))
-    landed("/sdcard/Download/a.txt", f"hello again {T}")
-    landed("/sdcard/Download/b.txt", f"bee {T}")
+    landed(f"{DOWN}/a.txt", f"hello again {T}")
+    landed(f"{DOWN}/b.txt", f"bee {T}")
     shot("11e-下载两份")
 
 
@@ -688,6 +701,9 @@ def big_text():
     pss = lambda: re.search(r"TOTAL PSS:\s+(\d+)", adb("shell", "dumpsys", "meminfo", PKG)) or re.search(r"TOTAL\s+(\d+)", adb("shell", "dumpsys", "meminfo", PKG))
     before = pss()
     long_press(name)
+    # 编辑在 ⋯ 里（文本那一种的顶栏只有下载 · 删除）：先开 ⋯，再从这一刻起量。
+    if ui.find(t("rsFilewinEditor.label.edit")) is None:
+        tap(t("rsFilewinChrome.command.more"))
     adb("shell", "dumpsys", "gfxinfo", PKG, "reset")
     wins = lambda: adb("shell", "dumpsys", "window", "windows").count(PKG)
     base = wins()
@@ -1445,9 +1461,15 @@ def walk():
         if not wait(f"替身收到：{T} while dead", 60):
             raise Step.Fail("重开之后没有被杀那段的话")
 
-    with Step("8b-离线打开"):
+    with Step("8b-离线打开") as st:
         # 断着网重开 App：会话列表与那一条的最后一屏照本地缓存画（上次从那台读到的原样）；网回来跟上断着那段来的话。
+        # 先让那一条的最后一屏有一句这一步自己的（不靠上一步杀进程那段：它红了这一步照样判得了）：连着时看到它，本地缓存里就有。
         name = tmux_name_of(f"{T} new session")
+        rig("tmux", "send-keys", "-t", name or "", f"{T} before offline", "Enter")
+        st.back_to(f"{T} new session")
+        to_bottom()
+        if not wait(f"替身收到：{T} before offline", 60):
+            raise Step.Fail("连着网时那一条没出这一步发的那句（断网之前就没跟上）")
         adb("shell", "am", "force-stop", PKG)
         adb("shell", "cmd", "connectivity", "airplane-mode", "enable")
         time.sleep(3)
@@ -1462,7 +1484,7 @@ def walk():
             tap(f"{T} new session")
             time.sleep(3)
             to_bottom()
-            if not wait(f"替身收到：{T} while dead", 20):
+            if not wait(f"替身收到：{T} before offline", 20):
                 raise Step.Fail("断网时那一条的最后一屏没上本地缓存")
             shot("8b-离线那一条")
             rig("tmux", "send-keys", "-t", name or "", f"{T} back online", "Enter")
@@ -1557,7 +1579,8 @@ def walk():
         # 无障碍事件流和 `uiautomator dump` 抢同一个口：看事件的这几秒里只点，不 dump 屏。
         events = subprocess.Popen(["adb", "shell", "uiautomator", "events"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
         try:
-            time.sleep(1)
+            # 事件流起来要几秒（机器忙时一秒不够：点下去那一下的 Toast 落在流起来之前，就看不到）。
+            time.sleep(4)
             adb("shell", "input", "tap", *map(str, ui.center(row)))
             time.sleep(6)
         finally:
@@ -1625,6 +1648,10 @@ def walk():
     with Step("12b-离线"):
         # 那台断了 ⇒ 入口的数减掉那台（只连着这一台 ⇒ 入口不画）。造法：停掉那台的常驻、落点挪开（重连 ensure 起不来），
         # 判完才放回去 —— 判的那几十秒里一直断着（先放回再判，手机早连回去了、入口照旧在）。
+        launch()
+        entry = t("tabBar.needs.aria", n=len((frames("sessions-needs", {}).get("data") or {}).get("items") or []))
+        if not wait(entry, 30):
+            raise Step.Fail(f"断开之前聊天屏右上就没有「{entry}」")
         rig("backend", "off")
         try:
             end = ui.within(60)
