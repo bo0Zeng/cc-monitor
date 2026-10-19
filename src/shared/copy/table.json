@@ -20424,6 +20424,24 @@
       "zh": "启动 {program} 失败 · {why}",
       "args": ["program", "why"]
     },
+    "beAgentLaunch.absent.session": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "起会话的 shell 的 PATH 上未找到 · 查过目录 ×{dirs}",
+      "args": ["dirs"]
+    },
+    "beAgentLaunch.absent.own": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "后端的 PATH 上未找到 · 查过目录 ×{dirs} · 起会话的 shell 的 PATH 未取到",
+      "args": ["dirs"]
+    },
+    "beAgentLaunch.path.unknown": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "PATH 未取到 · 无从找起",
+      "args": []
+    },
     "beLogin.start.failed": {
       "kind": "error",
       "role": "报错",

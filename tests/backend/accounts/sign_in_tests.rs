@@ -64,7 +64,7 @@ impl Rig {
         self.root.join("acct").display().to_string()
     }
 
-    fn path(&self) -> std::ffi::OsString {
+    fn path(&self) -> String {
         format!("{}:/usr/bin:/bin", self.root.join("bin").display()).into()
     }
 
@@ -300,4 +300,44 @@ fn link_then_instant_exit() {
             .expect("它没自己退");
         assert_eq!(got, (s.job.clone(), SignInEnd::Done), "第 {i} 份");
     }
+}
+
+/// 缺陷（10-19）：登录子命令照**起会话那个 shell** 的 `PATH` 找、子进程也拿那一份（npm 装的那一形要靠它找 `node`）；
+/// 那一份上没有 ⇒ 起不成，说的是查过哪儿，不是「未装」（它可能装了、只是不在后端自己的 `PATH` 上）。
+#[test]
+fn the_login_runs_with_the_session_shell_path_and_says_where_it_looked() {
+    let rig = Rig::new(
+        "spath",
+        &format!(
+            "case \":$PATH:\" in *\":{}:\"*) ;; *) echo \"PATH=$PATH\" >&2; exit 3;; esac\necho \"visit: {FAKE_URL}\"\nsleep 5",
+            rig_bin_marker()
+        ),
+    );
+    let log: Log = Default::default();
+    let (mut a, _) = rig.ask("acct-spath", conn());
+    let session = format!(
+        "{}:{}:/usr/bin:/bin",
+        rig.root.join("bin").display(),
+        rig_bin_marker()
+    );
+    a.path = Some(session.into());
+    let s = start(&a, on_end(&log))
+        .expect("起会话那个 shell 的 PATH 上有它 ⇒ 起得来，且子进程拿的是那一份");
+    assert_eq!(s.url, FAKE_URL);
+    cancel(&s.job);
+
+    let not_installed = copy_core::copy_text("reason.spawn.notInstalled", &[]);
+    let (mut a, _) = rig.ask("acct-spath-none", conn());
+    a.path = Some(format!("{}:/usr/bin:/bin", rig.root.join("acct").display()).into());
+    let e = start(&a, on_end(&log)).expect_err("那一份 PATH 上没有 ⇒ 起不成");
+    assert!(e.said.contains("×3"), "要说查过几个目录：{e:?}");
+    assert!(
+        !e.said.contains(&not_installed),
+        "不许说「{not_installed}」：{e:?}"
+    );
+}
+
+/// 只出现在「起会话那个 shell」那一份 `PATH` 里的一个目录（不必存在）。
+fn rig_bin_marker() -> &'static str {
+    "/nonexistent/session-only"
 }

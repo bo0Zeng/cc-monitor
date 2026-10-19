@@ -13,7 +13,6 @@ use crate::faces::rotation_face::Ctx;
 use crate::platform::child::{Child, Deadline};
 use crate::platform::fs::Own;
 use copy_core::copy_text;
-use std::ffi::OsStr;
 
 /// 失败带码 ＋ 那一句 ＋ 原话（落账写不进那一形的原话进复制详情，[`Fail`]）。
 type Answer = Result<Probed, crate::wire::spec::Fail>;
@@ -93,13 +92,13 @@ pub(crate) fn answer_probe(req: &QuotaProbeReq, own: &Own) -> Answer {
     )
 }
 
-/// 本体。`path` ＝ 子进程的 `PATH`（判据交一个放着假客户端的目录；生产 `None` ＝ 照宿主的）。
+/// 本体。`path` ＝ 起会话那个 shell 的 `PATH`（判据交一个放着假客户端的目录；生产 `None` ＝ 现问，见 `platform::shell::agent_launch`）。
 pub(crate) fn answer_probe_with(
     ctx: &Ctx,
     own: &Own,
     req: &QuotaProbeReq,
     now: u64,
-    path: Option<&OsStr>,
+    path: Option<&str>,
 ) -> Answer {
     let agent = Some(&req.agent)
         .filter(|a| !a.as_str().trim().is_empty())
@@ -155,7 +154,16 @@ pub(crate) fn answer_probe_with(
         )
         .with_raw(Some(&e.to_string()))
     })?;
-    let mut child = Child::new(face.program)
+    let failed = |why: &str| {
+        copy_text(
+            "beQuotaProbe.run.failed",
+            &[("program", face.program), ("why", why)],
+        )
+    };
+    let at = crate::platform::shell::agent_launch(face.program, path)
+        .map_err(|why| crate::wire::spec::Fail::new("failed", failed(&why)))?;
+    let mut child = Child::new(at.program)
+        .args(at.lead)
         .args(face.args)
         .current_dir(cwd.as_path());
     child = match &found.dir {
@@ -168,17 +176,12 @@ pub(crate) fn answer_probe_with(
     for (k, v) in face.env_set {
         child = child.env(k, v);
     }
-    if let Some(p) = path {
+    if let Some(p) = &at.path {
         child = child.env("PATH", p);
     }
-    let out = child.run(PROBE_WITHIN).map_err(|e| {
-        crate::wire::spec::Fail::from(e.into_cmd_said("failed", |why| {
-            copy_text(
-                "beQuotaProbe.run.failed",
-                &[("program", face.program), ("why", why)],
-            )
-        }))
-    })?;
+    let out = child
+        .run(PROBE_WITHIN)
+        .map_err(|e| crate::wire::spec::Fail::from(e.into_cmd_said("failed", failed)))?;
     let text = String::from_utf8_lossy(&out.stdout);
     if !out.status.success() {
         let stderr: String = String::from_utf8_lossy(&out.stderr)

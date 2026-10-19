@@ -93,7 +93,7 @@ impl Home {
             &crate::platform::fs::Own::issue_data_at(&self.root),
             &req,
             NOW,
-            Some(OsStr::new(&path)),
+            Some(path.as_str()),
         )
         .map(|p| serde_json::to_value(p).unwrap())
     }

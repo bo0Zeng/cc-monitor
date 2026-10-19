@@ -14,7 +14,6 @@ use crate::agents::SignInFace;
 use crate::common::said::Said;
 use crate::platform::child::{Child, Conversation, Heard};
 use std::collections::BTreeMap;
-use std::ffi::OsString;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Mutex};
 use std::time::Duration;
@@ -56,8 +55,8 @@ pub(crate) struct SignInAsk<'a> {
     pub(crate) conn: u64,
     /// 起它时的工作目录（家）。
     pub(crate) cwd: Option<std::path::PathBuf>,
-    /// 判据换 `PATH`（假的登录子命令放在临时目录里）；生产 ⇒ `None`（照这台的环境找）。
-    pub(crate) path: Option<OsString>,
+    /// 起会话那个 shell 的 `PATH`：判据交一份（假的登录子命令放在临时目录里）；生产 ⇒ `None`（现问，见 `platform::shell::agent_launch`）。
+    pub(crate) path: Option<String>,
 }
 
 /// 起好了：作业号 ＋ 登录链接。
@@ -118,7 +117,18 @@ fn new_job_id() -> String {
 /// 起不来 · 没给出链接就退了 · 等不到链接 ⇒ `Err(那一句 ＋ 原话)`。给了链接 ⇒ 回链接，哪怕它随后（`start` 醒来之前）就退了：结局走「结束了」回调。
 pub(crate) fn start(a: &SignInAsk, on_end: OnEnd) -> Result<Started, Said> {
     let f = a.face;
-    let mut child = Child::new(f.program).args(f.args).args(a.then);
+    let failed = |why: &str| {
+        copy_core::copy_text(
+            "beLogin.start.failed",
+            &[("program", f.program), ("why", why)],
+        )
+    };
+    let at = crate::platform::shell::agent_launch(f.program, a.path.as_deref())
+        .map_err(|why| Said::from(failed(&why)))?;
+    let mut child = Child::new(at.program)
+        .args(at.lead)
+        .args(f.args)
+        .args(a.then);
     child = match a.dir {
         Some(d) => child.env(f.dir_env, d),
         None => child.env_remove(f.dir_env),
@@ -126,7 +136,7 @@ pub(crate) fn start(a: &SignInAsk, on_end: OnEnd) -> Result<Started, Said> {
     for k in f.env_remove {
         child = child.env_remove(k);
     }
-    if let Some(p) = &a.path {
+    if let Some(p) = &at.path {
         child = child.env("PATH", p);
     }
     if let Some(d) = &a.cwd {
@@ -137,15 +147,7 @@ pub(crate) fn start(a: &SignInAsk, on_end: OnEnd) -> Result<Started, Said> {
     } else {
         child.converse()
     };
-    let mut conv = conv.map_err(|e| {
-        e.into_cmd_said("failed", |why| {
-            copy_core::copy_text(
-                "beLogin.start.failed",
-                &[("program", f.program), ("why", why)],
-            )
-        })
-        .1
-    })?;
+    let mut conv = conv.map_err(|e| e.into_cmd_said("failed", failed).1)?;
     let heard = conv
         .take_heard()
         .ok_or_else(|| Said::from(copy_core::copy_text("beLogin.start.noLink", &[])))?;
