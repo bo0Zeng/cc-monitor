@@ -39,7 +39,10 @@ pub(crate) struct Marks {
 
 /// 这台机器上那份文件的路径；家目录解析不出来 ⇒ `None`。
 pub(crate) fn marks_path() -> Option<PathBuf> {
-    Some(crate::platform::paths::home_dir()?.join(relay_route_core::CHORES_REL))
+    Some(crate::platform::paths::home_join(
+        &crate::platform::paths::home_dir()?,
+        relay_route_core::CHORES_REL,
+    ))
 }
 
 /// `chores-mark` 的入参：按 `op` 分（多一个键 ⇒ `bad_args`；不带参数的那几种也写成空结构体：内标签枚举的单元变体不拒多出来的键）。

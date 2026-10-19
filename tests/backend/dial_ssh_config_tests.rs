@@ -191,28 +191,6 @@ fn is_safe_alias_allowlist() {
     assert!(is_safe_alias("-oProxyCommand"));
 }
 
-/// `~` 展开：`~` / `~/x` 展开到 home；非 `~` 前缀原样。
-#[test]
-fn expand_tilde_basics() {
-    #[allow(deprecated)]
-    let home = std::env::home_dir().expect("home dir for test");
-    assert_eq!(expand_tilde("~"), home);
-    assert_eq!(
-        expand_tilde("~/.ssh/id_ed25519"),
-        home.join(".ssh/id_ed25519")
-    );
-    // 非 ~ 前缀原样（不是 home-relative）。
-    assert_eq!(
-        expand_tilde("/etc/ssh/key"),
-        std::path::PathBuf::from("/etc/ssh/key")
-    );
-    // `~user` 形式（非 `~/`）不展开（我们只处理自己的 home）。
-    assert_eq!(
-        expand_tilde("~otheruser/key"),
-        std::path::PathBuf::from("~otheruser/key")
-    );
-}
-
 /// 「成品的两侧对拍」：`ssh-config-import` 的线上形状 == 金样 `tests/__fixtures__/ssh-config.golden.json`
 /// （界面那一侧的判据喂同一份）。成品由生产构造器出（聚合 ＋ 标「已在列表里」，经线上类型 `SshImported`）。
 #[test]

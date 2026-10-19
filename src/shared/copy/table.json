@@ -9655,6 +9655,20 @@
       "zh": "读取后端回复失败 · 内容无法解析",
       "args": []
     },
+    "rsFilewinSource.hop.severed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "与 cc-monitor 的连接已断开 · 未执行",
+      "args": [],
+      "limited": ["连接"]
+    },
+    "rsFilewinSource.hop.severedUnknown": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "与 cc-monitor 的连接断开 · 结果未知",
+      "args": [],
+      "limited": ["连接"]
+    },
     "rsFilewinSource.home.notUtf8": {
       "kind": "error",
       "role": "报错",
@@ -21832,6 +21846,13 @@
       "zh": "离线 · 只读",
       "args": []
     },
+    "rsFilewinChrome.link.severedReadOnly": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "与 cc-monitor 的连接已断开 · 只读",
+      "args": [],
+      "limited": ["连接"]
+    },
     "rsFilewinFind.status.look": {
       "kind": "action",
       "role": "按钮",
@@ -21903,6 +21924,13 @@
       "role": "说明",
       "zh": "{machine} 离线 · 改动保留",
       "args": ["machine"]
+    },
+    "rsFilewinEditPage.severed.line": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "与 cc-monitor 的连接已断开 · 改动保留",
+      "args": [],
+      "limited": ["连接"]
     },
     "rsFilewinEditPage.action.retry": {
       "kind": "action",

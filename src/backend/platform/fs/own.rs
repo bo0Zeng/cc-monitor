@@ -68,7 +68,7 @@ impl OwnPath {
         if !relative_ok(rel) {
             return Err(copy_text("beOwnState.path.notRelative", &[("rel", rel)]).into());
         }
-        Ok(OwnPath(self.0.join(rel)))
+        Ok(OwnPath(crate::platform::paths::home_join(&self.0, rel)))
     }
 }
 
@@ -113,7 +113,7 @@ impl Own {
         if !relative_ok(rel) || first != Some(Component::Normal(HOME_DIR_NAME.as_ref())) {
             return Err(copy_text("beOwnState.path.notRelative", &[("rel", rel)]).into());
         }
-        Ok(OwnPath(home.join(rel)))
+        Ok(OwnPath(crate::platform::paths::home_join(home, rel)))
     }
 
     /// 家目录底下后端那一层本身（`~/.cc-monitor`）。

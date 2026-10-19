@@ -1314,3 +1314,32 @@ fn the_link_stream_tells_a_gone_monitor_apart_from_a_reconnecting_machine() {
         Some(LinkSeen::Severed)
     );
 }
+
+/// 一趟命令没成、断在第 0 跳（窗口与 cc-monitor 之间那对管子）⇒ 那一句说与 cc-monitor 断开，不说那台离线；
+/// 断在后面那几跳 ⇒ 照通道那一句（那台离线）。期望手写。
+#[test]
+fn a_call_cut_at_the_monitor_pipe_is_not_said_as_the_machine_offline() {
+    use comms_inward::chan::wire::{CallError, HopFault, HopId, Reach};
+    let at = Origin("devbox".into());
+    let hop = |idx: u8, reach: Reach, why: HopFault| CallError::Hop {
+        at: HopId { idx, tag: "write" },
+        reach,
+        why,
+    };
+    assert_eq!(
+        said_here(&hop(0, Reach::NotSent, HopFault::Dropped), &at),
+        copy_text("rsFilewinSource.hop.severed", &[])
+    );
+    assert_eq!(
+        said_here(&hop(0, Reach::NotSent, HopFault::Unreachable), &at),
+        copy_text("rsFilewinSource.hop.severed", &[])
+    );
+    assert_eq!(
+        said_here(&hop(0, Reach::Unknown, HopFault::Dropped), &at),
+        copy_text("rsFilewinSource.hop.severedUnknown", &[])
+    );
+    assert_eq!(
+        said_here(&hop(1, Reach::NotSent, HopFault::Dropped), &at),
+        copy_text("rsChanSaid.hop.remoteDown", &[("machine", "devbox")])
+    );
+}

@@ -142,23 +142,6 @@ pub(crate) fn is_safe_alias(alias: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '@' | ':' | '-'))
 }
 
-/// 以 `~` 开头的路径展开成绝对路径（`~` / `~/...`）。其余原样。
-pub(crate) fn expand_tilde(path: &str) -> std::path::PathBuf {
-    if let Some(rest) = path.strip_prefix('~') {
-        if rest.is_empty() || rest.starts_with('/') || rest.starts_with('\\') {
-            if let Some(home) = crate::platform::paths::home_dir() {
-                let rest = rest.trim_start_matches(['/', '\\']);
-                return if rest.is_empty() {
-                    home
-                } else {
-                    home.join(rest)
-                };
-            }
-        }
-    }
-    std::path::PathBuf::from(path)
-}
-
 /// `ssh -G <alias>` 的 stdout ⇒ [`ResolvedHost`]（纯逻辑）。`hostname` 缺省回退别名；`identityfile` 取第一个展开后存在的。
 pub(crate) fn parse_ssh_g_output(stdout: &str, alias: &str) -> ResolvedHost {
     let mut host: Option<String> = None;
@@ -178,9 +161,9 @@ pub(crate) fn parse_ssh_g_output(stdout: &str, alias: &str) -> ResolvedHost {
             "port" => port = val.parse::<u16>().ok(),
             "user" => user = Some(val.to_string()),
             "identityfile" if key_path.is_none() => {
-                let expanded = expand_tilde(val);
-                if expanded.exists() {
-                    key_path = Some(expanded.to_string_lossy().to_string());
+                let expanded = crate::platform::paths::expand_tilde(val);
+                if std::path::Path::new(&expanded).exists() {
+                    key_path = Some(expanded);
                 }
             }
             "proxyjump" if !val.eq_ignore_ascii_case("none") => {

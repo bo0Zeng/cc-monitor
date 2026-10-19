@@ -84,7 +84,7 @@ fn logins_dirs(
     home: &std::path::Path,
     library: &AccountDirs,
 ) -> (std::path::PathBuf, Vec<std::path::PathBuf>) {
-    let manifest_dir = home.join(relay_route_core::ACCOUNTS_DIR_REL);
+    let manifest_dir = crate::platform::paths::home_join(home, relay_route_core::ACCOUNTS_DIR_REL);
     (manifest_dir, library(home))
 }
 

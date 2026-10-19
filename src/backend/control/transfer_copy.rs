@@ -437,7 +437,7 @@ impl Wired {
         home: &Path,
         remote: Box<dyn crate::dial::remote_ask::Remote>,
     ) -> Result<Wired, CopyErr> {
-        let staging = home.join(relay_route_core::STAGING_DIR_REL);
+        let staging = crate::platform::paths::home_join(home, relay_route_core::STAGING_DIR_REL);
         if crate::platform::fs::Ro::symlink_metadata(&staging).is_err() {
             if let Ok(at) = crate::common::root_path::walk_in_root(
                 crate::common::root_path::Last::Link,

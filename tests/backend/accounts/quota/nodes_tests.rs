@@ -112,3 +112,13 @@ fn no_node_is_sent_from_the_session_file_loop() {
         .collect();
     assert!(hits.is_empty(), "会话文件那一圈里不许发节点：{hits:?}");
 }
+
+/// 账号库那一层在家目录底下的路径（盯不上那一句里给人看的就是它）：分隔符照家目录自己的写法，Windows 上不写成 `…\.cc-monitor/accounts`。
+#[test]
+fn the_account_library_path_uses_the_homes_own_separator() {
+    let none: AccountDirs = std::sync::Arc::new(|_| Vec::new());
+    let (win, _) = logins_dirs(Path::new(r"C:\Users\user"), &none);
+    assert_eq!(win, PathBuf::from(r"C:\Users\user\.cc-monitor\accounts"));
+    let (unix, _) = logins_dirs(Path::new("/home/user"), &none);
+    assert_eq!(unix, PathBuf::from("/home/user/.cc-monitor/accounts"));
+}

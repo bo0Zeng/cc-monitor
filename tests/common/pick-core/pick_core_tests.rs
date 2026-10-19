@@ -228,7 +228,7 @@ fn a_tap_does_what_the_table_says() {
 fn the_phone_greys_what_the_machine_cannot_do_now() {
     let g = gates(false);
     let off = Here {
-        offline: true,
+        offline: Some(Cut::Machine),
         unavailable: vec![],
     };
     let m = phone_menu(&[file("a", C::Text, &g), file("b", C::Text, &g)], &off);
@@ -243,7 +243,7 @@ fn the_phone_greys_what_the_machine_cannot_do_now() {
         "进目录照常"
     );
     let no_chmod = Here {
-        offline: false,
+        offline: None,
         unavailable: vec!["files-chmod".into()],
     };
     let m = phone_menu(&[file("a", C::Text, &g)], &no_chmod);
@@ -361,4 +361,23 @@ fn copy_and_download_gates_of_one_row() {
             (true, true)
         ]
     );
+}
+
+/// 断在哪一段决定写类说什么：那台断着 ⇒「离线 · 只读」；窗口与 cc-monitor 之间断了 ⇒ 说与 cc-monitor 断开，不说那台离线。
+/// 进目录两种都照常；连着 ⇒ 写类不拦。期望手写。
+#[test]
+fn a_cut_to_the_monitor_is_said_as_such_on_every_write() {
+    assert_eq!(write_refused(None), None);
+    assert_eq!(
+        write_refused(Some(Cut::Machine)),
+        Some(copy_text("rsFilewinChrome.link.readOnly", &[]))
+    );
+    let monitor = Some(copy_text("rsFilewinChrome.link.severedReadOnly", &[]));
+    assert_eq!(write_refused(Some(Cut::Monitor)), monitor);
+    let here = Here {
+        offline: Some(Cut::Monitor),
+        unavailable: vec![],
+    };
+    assert_eq!(refused_here(Action::Rename, &here), monitor);
+    assert_eq!(refused_here(Action::Open, &here), None);
 }

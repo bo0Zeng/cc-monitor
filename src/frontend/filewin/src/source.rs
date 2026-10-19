@@ -1084,7 +1084,7 @@ async fn ask_raw(
         .map_err(|e| batch_core::Rebuff {
             failed: Failed {
                 code: refused_code(&e),
-                said: comms_inward::chan::said::said(&e, origin),
+                said: said_here(&e, origin),
                 detail: detail_of(origin, cmd, &e),
             },
             data: refused_data(&e),
@@ -1280,13 +1280,35 @@ pub enum LinkSeen {
     Severed,
 }
 
+/// 一趟命令没成 ⇒ 给人看的那一句：断在窗口与 monitor 之间那对管子（[`monitor_hop`]）⇒ 说与 cc-monitor 断开，不说那台离线；
+/// 别的照通道那一句（[`comms_inward::chan::said::said`]）。
+pub fn said_here(e: &comms_inward::chan::wire::CallError, origin: &Origin) -> String {
+    use comms_inward::chan::wire::{CallError, HopFault, Reach};
+    match e {
+        CallError::Hop {
+            at,
+            reach,
+            why: HopFault::Unreachable | HopFault::Dropped,
+        } if monitor_hop(at) => match reach {
+            Reach::NotSent => copy_text("rsFilewinSource.hop.severed", &[]),
+            Reach::Sent | Reach::Unknown => copy_text("rsFilewinSource.hop.severedUnknown", &[]),
+        },
+        _ => comms_inward::chan::said::said(e, origin),
+    }
+}
+
+/// 这一跳是不是窗口与 monitor 之间那对管子（第 0 跳：通道客户端在那一跳原位出「看不见」）。断线条（[`link_seen`]）与失败那一句（[`said_here`]）同读这一处。
+fn monitor_hop(at: &comms_inward::chan::wire::HopId) -> bool {
+    at.idx == 0
+}
+
 /// 那条流的一格 ⇒ 那台此刻的样子（纯函数）；`None` ＝ 这一格不说连没连着。
 /// 「看不见」出在第 0 跳 ⇒ 是窗口与 monitor 之间那对管子断了（通道客户端在那一跳原位出这一格），不是那台在重连。
 pub fn link_seen(item: &comms_inward::chan::wire::Item) -> Option<LinkSeen> {
     use comms_inward::chan::wire::{HopFault, Item};
     match item {
         Item::Seen { .. } => Some(LinkSeen::Up),
-        Item::Unseen { at, .. } if at.idx == 0 => Some(LinkSeen::Severed),
+        Item::Unseen { at, .. } if monitor_hop(at) => Some(LinkSeen::Severed),
         Item::Unseen {
             why: HopFault::Dropped,
             ..

@@ -441,8 +441,17 @@ pub(crate) async fn answer_push(
     })
 }
 
-/// 生产那一个读口：本机那份 `.pub`（有界，超了就不是公钥）。
+/// 生产那一个读口：本机那份 `.pub`（有界，超了就不是公钥）；`~` 按这台家目录展开（[`read_pub_file`]）。
 pub(crate) fn read_local_pub(path: &str) -> Result<String, (&'static str, String)> {
+    read_pub_file(path, crate::platform::paths::home_dir().as_deref())
+}
+
+/// `path` 那份 `.pub`：打头的 `~` 按 `home` 展开再读（[`crate::platform::paths::expand_tilde_from`]）；说给人看的路径照用户写的。
+pub(crate) fn read_pub_file(
+    path: &str,
+    home: Option<&std::path::Path>,
+) -> Result<String, (&'static str, String)> {
+    let at = crate::platform::paths::expand_tilde_from(path, home);
     let said = |why: &str| {
         (
             "refused",
@@ -457,11 +466,11 @@ pub(crate) fn read_local_pub(path: &str) -> Result<String, (&'static str, String
             crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(m, e)),
         )
     };
-    let meta = Ro::metadata(path).map_err(io)?;
+    let meta = Ro::metadata(&at).map_err(io)?;
     if meta.len() > PUB_READ_MAX {
         return Err(said(&copy_text("bePubkey.read.tooBig", &[])));
     }
-    Ro::read_to_string(path).map_err(io)
+    Ro::read_to_string(&at).map_err(io)
 }
 
 #[cfg(test)]

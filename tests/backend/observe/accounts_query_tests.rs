@@ -1821,7 +1821,7 @@ fn the_accounts_library_lives_under_the_contract_directory_name() {
     let body_end = prod[at + 1..]
         .find("\nfn ")
         .map_or(prod.len(), |k| at + 1 + k);
-    guard_core::find_pinned(&prod[at..body_end], "h.join(ACCOUNTS_DIR_REL)")
+    guard_core::find_pinned(&prod[at..body_end], "home_join(&h, ACCOUNTS_DIR_REL)")
         .unwrap_or_else(|e| panic!("缺省解析不再经契约常量拼家目录下那一层：{e}"));
 }
 

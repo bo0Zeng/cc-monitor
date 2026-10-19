@@ -252,13 +252,7 @@ fn fence_marker(line: &str) -> Option<bool> {
 /// （`files-home`），而那台可能不是 monitor 这台 —— `std::path::Path::is_absolute` 在 Windows 上把 `/home/user/.bashrc`
 /// 判成相对（没有盘符），`Path::join` 又用本机分隔符。
 pub(crate) fn fence_lexical(home: &str, raw: &str) -> Result<String, String> {
-    let expanded = if raw == "~" {
-        home.to_string()
-    } else if let Some(rest) = raw.strip_prefix("~/").or_else(|| raw.strip_prefix("~\\")) {
-        door::join_under(home, rest)
-    } else {
-        raw.to_string()
-    };
+    let expanded = crate::platform::paths::expand_tilde_from(raw, Some(std::path::Path::new(home)));
     let b = expanded.as_bytes();
     let absolute = expanded.starts_with('/')
         || expanded.starts_with("\\\\")

@@ -64,14 +64,7 @@ pub(crate) type ForkWrite<'a> = &'a dyn Fn(&str, &str) -> Result<String, (&'stat
 
 /// `~` / `~/…` ⇒ 这台的家目录下（界面显示的目录常写成 `~/…`）。家说不出 ⇒ 原样。
 pub(crate) fn expand_home(cwd: &str, home: Option<&std::path::Path>) -> String {
-    let rest = match cwd.strip_prefix('~') {
-        Some(r) if r.is_empty() || r.starts_with('/') => r,
-        _ => return cwd.to_string(),
-    };
-    match home {
-        Some(h) => format!("{}{rest}", h.to_string_lossy().trim_end_matches('/')),
-        None => cwd.to_string(),
-    }
+    crate::platform::paths::expand_tilde_from(cwd, home)
 }
 
 /// 那一家起的时候收不收第一句（[`crate::agents::LaunchFace::first_prompt_arg`]）：不收 ⇒ 那句不行的话。

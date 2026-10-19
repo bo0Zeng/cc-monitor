@@ -116,10 +116,15 @@ pub struct KeyFiles;
 
 impl KeySource for KeyFiles {
     fn credential(&self, key: &str) -> Result<Credential, Said> {
-        russh::keys::load_secret_key(key, None)
-            .map(|k| Credential::Key(Box::new(k)))
-            .map_err(|e| Said::with_raw(copy_text("beConnect.auth.keyLoad", &[("path", key)]), &e))
+        key_file(key, key)
     }
+}
+
+/// 读 `at` 那个 OpenSSH 私钥文件；读不出来那一句里的路径写 `shown`（用户写的那一形：宿主展开过 `~` 也照原样说）。
+pub fn key_file(shown: &str, at: &str) -> Result<Credential, Said> {
+    russh::keys::load_secret_key(at, None)
+        .map(|k| Credential::Key(Box::new(k)))
+        .map_err(|e| Said::with_raw(copy_text("beConnect.auth.keyLoad", &[("path", shown)]), &e))
 }
 
 /// 没有库：一把都没记过、记了也不留。
