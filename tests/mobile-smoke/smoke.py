@@ -1000,6 +1000,205 @@ def deploy_steps():
         drawer(t("mobDrawer.item.sessions"))
 
 
+def terminal_steps():
+    """9 终端屏 · 9b tmux 新建 · 9c 推公钥 · 9d 抓屏复制（整趟与 `CCM_SMOKE_ONLY=terminal` 同一份）。"""
+    with Step("9-终端屏"):
+        # 从别名起：台架那台配一条别名（别名页那条写命令），终端屏「用哪个启动」那一排列的是它（profiles-read），
+        # 点它 ⇒ 那个 shell 里敲 `ccm @名`、在台架 tmux 里起会话；再从 tmux 会话列表接进去，两侧打字都进那个会话、命令面板换模型。
+        seed_alias()
+        before = set(tmux_sessions())
+        drawer(t("mobDrawer.item.terminal"))
+        if not launcher_shows(SMOKE_ALIAS):
+            raise Step.Fail(f"终端屏「用哪个启动」那一排没列出那台的别名 {SMOKE_ALIAS}")
+        shot("9a-终端屏-别名")
+        hide_keyboard()
+        tap(SMOKE_ALIAS)
+        end = ui.within(30)
+        while time.time() < end and not (set(tmux_sessions()) - before):
+            time.sleep(1)
+        fresh = sorted(set(tmux_sessions()) - before)
+        if not fresh:
+            raise Step.Fail(f"点了 {SMOKE_ALIAS}，台架 tmux 里没起新会话（ccm @{SMOKE_ALIAS} 没跑起来）")
+        name = fresh[0]
+        if not pane_has(name, "就绪", 30):
+            raise Step.Fail(f"别名起的会话 {name} 里替身没就绪")
+        end = ui.within(10)
+        while ui.find(SMOKE_ALIAS) is not None and time.time() < end:
+            time.sleep(0.5)
+        if ui.find(SMOKE_ALIAS) is not None:
+            raise Step.Fail("按过一个别名之后那一排没收起")
+        adb("shell", "input", "keyevent", "4")
+        drawer(t("mobDrawer.item.terminal"))
+        hide_keyboard()
+        tap(t("mobDefaultButtons.label.tmux"))
+        if not wait(name, 15) or not any(n.get("text") == name for n in ui.nodes()):
+            raise Step.Fail(f"tmux 会话列表里没有 {name}")
+        attached = sum(1 for r in rig("tmux", "list-clients", "-F", "#{session_name}").stdout.split() if r == name)
+        tap_in_row(name, t("mobTmux.row.attach"))
+        end = ui.within(20)
+        while time.time() < end and sum(1 for r in rig("tmux", "list-clients", "-F", "#{session_name}").stdout.split() if r == name) <= attached:
+            time.sleep(1)
+        if sum(1 for r in rig("tmux", "list-clients", "-F", "#{session_name}").stdout.split() if r == name) <= attached:
+            raise Step.Fail(f"点了「{t('mobTmux.row.attach')}」，20 秒内台架 tmux 里没多一个接着 {name} 的终端")
+        # 手机敲的字先落到那一屏上再按回车、再从桌面敲：`input text` 是异步的，忙时回车会和那段字错开（桌面那句接在没回车的那行后面）。
+        typed(f"{T} from phone terminal")
+        if not pane_has(name, f"{T} from phone terminal", 20):
+            raise Step.Fail("手机在终端里敲的字没到那个会话")
+        adb("shell", "input", "keyevent", "66")
+        if not pane_has(name, f"> {T} from phone terminal", 20):
+            raise Step.Fail("手机在终端里按的回车没到那个会话（字到了）")
+        rig("tmux", "send-keys", "-t", name, f"{T} from desk", "Enter")
+        if not (pane_has(name, f"> {T} from phone terminal", 20) and pane_has(name, f"> {T} from desk", 20)):
+            raise Step.Fail("两侧打的字没都进那个会话")
+        term_pane = name  # 9d 抓屏抓的就是这一个
+        switch_model(name)
+        adb("shell", "input", "keyevent", "4")
+
+    with Step("9b-tmux 新建"):
+        # tmux 管理窗「新建」：请那台建一个空会话（session-open 的 shell 那一形），手机不拼 tmux 命令；台架 tmux 里看得到它。
+        drawer(t("mobDrawer.item.terminal"))
+        time.sleep(2)
+        hide_keyboard()
+        tap(t("mobDefaultButtons.label.tmux")); time.sleep(3)
+        fill(t("mobTmux.new.name"), f"{T}new"); hide_keyboard()  # 读回核过：忙时 `input text` 会丢字
+        # 名字框独占一行、按钮在它下面一排：会话多时那一排落在窗里那一段可滚的底下，先往上滑到看得见。
+        for _ in range(6):
+            if ui.find(t("mobTmux.new.detached")) is not None:
+                break
+            adb("shell", "input", "swipe", "540", "1500", "540", "800", "400")
+            time.sleep(1)
+        tap(t("mobTmux.new.detached"))
+        end = time.time() + 20
+        while time.time() < end and f"{T}new" not in tmux_sessions():
+            time.sleep(1)
+        if f"{T}new" not in tmux_sessions():
+            raise Step.Fail(f"点了「{t('mobTmux.new.detached')}」，台架 tmux 里没有 {T}new")
+        shot("9b-新建")
+        adb("shell", "input", "keyevent", "4")
+
+    with Step("9c-推公钥"):
+        # 命令面板「推送公钥」：问那台后端 authorized-keys-add，结局照回包说。那台按整行比：台架登录用的那一行注释是台架起的、
+        # 手机推的那一行带手机上的名字 ⇒ 头一回推是「已推送」、并进一行，再推是「已存在」、不动。两句哪句都行，要与台架盘上那份对得上。
+        # 从终端屏起（上一步红了收拾回起点时不在终端屏）。
+        if ui.find(t("mobDefaultButtons.label.command")) is None:
+            drawer(t("mobDrawer.item.terminal"))
+            time.sleep(2)
+        hide_keyboard()
+        tap(t("mobDefaultButtons.label.command")); time.sleep(1.5)
+        tap(t("mobPalette.item.key")); time.sleep(1.5)
+        outcomes = {t("mobKeyPush.result.added"): "added", t("mobKeyPush.result.already"): "already"}
+        blob = open(os.path.join(BOX, "sshd", "client_ed25519.pub")).read().split()[1]
+        keys_before = sh("cat ~/.ssh/authorized_keys").splitlines()
+        row = ui.find("smoke")
+        if row is None:
+            raise Step.Fail("推送公钥那一框里没有「smoke」那把钥匙")
+        # 无障碍事件流和 `uiautomator dump` 抢同一个口：看事件的这几秒里只点，不 dump 屏。结局是一条 Toast，按条件等它（读事件流的每一行）。
+        events = subprocess.Popen(["adb", "shell", "uiautomator", "events"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        lines = []
+        reader = threading.Thread(target=lambda: lines.extend(iter(events.stdout.readline, "")), daemon=True)
+        reader.start()
+        try:
+            # 事件流起来要几秒（机器忙时一秒不够：点下去那一下的 Toast 落在流起来之前，就看不到）。
+            time.sleep(4)
+            adb("shell", "input", "tap", *map(str, ui.center(row)))
+            tapped = time.time()
+            end = ui.within(60)
+            while time.time() < end and not any(o in ln for ln in list(lines) for o in outcomes):
+                time.sleep(0.5)
+            took = time.time() - tapped
+        finally:
+            events.terminate()
+        seen = "".join(lines)
+        said = [o for o in outcomes if o in seen]
+        if not said:
+            # 看到的是什么（Toast · 提示条的字），分得清是没推成、推成了别的话，还是事件流根本没起来。
+            got = sorted(set(re.findall(r"Text: \[([^\]]*)\]", seen)) - {""})
+            raise Step.Fail(f"点了 smoke 那一把，60 秒没看到那台的结局（「{'」或「'.join(outcomes)}」；事件里的字：{got[:6]}）")
+        keys_after = sh("cat ~/.ssh/authorized_keys").splitlines()
+        grown = [ln for ln in keys_after if ln not in keys_before]
+        if outcomes[said[0]] == "added" and not (len(keys_after) == len(keys_before) + 1 and len(grown) == 1 and blob in grown[0]):
+            raise Step.Fail(f"屏上说「{said[0]}」，台架那份 authorized_keys 没多出这把的一行（{len(keys_before)} → {len(keys_after)} 行）")
+        if outcomes[said[0]] == "already" and keys_after != keys_before:
+            raise Step.Fail(f"屏上说「{said[0]}」，台架那份 authorized_keys 却变了")
+        print(f"   推送公钥：点下 → 结局「{said[0]}」上屏 {took:.1f} s（authorized_keys {len(keys_before)} → {len(keys_after)} 行）", flush=True)
+        adb("shell", "input", "keyevent", "4")
+
+    with Step("9d-抓屏复制"):
+        # 命令面板「抓屏」：那台抓第 9 步那个 tmux 会话的一屏，框里点［复制］先关框、复制照样做完。
+        # 剪贴板读数：键条［粘贴］把剪贴板原样送进那个终端，台架那一屏上标记多出来 ＝ 复制上了。
+        # 上一步按过返回、终端屏那一格未必还接着它：先从 tmux 会话列表再接一次（新开一个 tab）。
+        try:
+            pane = term_pane
+        except NameError:
+            raise Step.Fail("第 9 步没接上 tmux 会话，抓屏无从抓")
+        mark = f"{T} capmark"
+        rig("tmux", "send-keys", "-t", pane, mark, "Enter")
+        if not pane_has(pane, f"> {mark}", 20):
+            raise Step.Fail("桌面那侧敲的标记没进那个会话")
+
+        def clients():
+            return sum(1 for r in rig("tmux", "list-clients", "-F", "#{session_name}").stdout.split() if r == pane)
+        print(f"   抓屏前台架那边接着 {pane} 的终端：{clients()} 个", flush=True)
+        drawer(t("mobDrawer.item.terminal"))
+        time.sleep(2)
+        hide_keyboard()
+        tap(t("mobDefaultButtons.label.tmux"))
+        if not wait(pane, 15):
+            raise Step.Fail(f"tmux 会话列表里没有 {pane}")
+        # 手机上已有一个 tab 接着它（第 9 步那个）⇒ 点［打开］是切回那个 tab、不另接：台架那边接着它的终端有一个就行。
+        tap_in_row(pane, t("mobTmux.row.attach"))
+        end = ui.within(20)
+        while time.time() < end and clients() < 1:
+            time.sleep(1)
+        if clients() < 1:
+            shot("9d-打开之后")
+            raise Step.Fail(f"点了「{t('mobTmux.row.attach')}」，台架 tmux 里没有接着 {pane} 的终端")
+        time.sleep(2)
+        hide_keyboard()
+        tap(t("mobDefaultButtons.label.command")); time.sleep(1.5)
+        # 面板最上是那台给的模型一组，「读取画面」在下面：往上滑到它露出来。
+        for _ in range(6):
+            if ui.find(t("mobPalette.item.capture")) is not None:
+                break
+            adb("shell", "input", "swipe", "540", "1900", "540", "1000", "400")
+            time.sleep(1)
+        tap(t("mobPalette.item.capture"))
+        if not wait(t("mobCapture.dialog.title"), 20):
+            raise Step.Fail("抓屏框没出来")
+        if not wait(mark, 5):
+            raise Step.Fail(f"抓屏框里没有那一屏的「{mark}」")
+        shot("9d-抓屏框")
+        tap(t("mobCapture.dialog.copy"))
+        end = ui.within(10)
+        while time.time() < end and ui.find(t("mobCapture.dialog.title")) is not None:
+            time.sleep(0.5)
+        if ui.find(t("mobCapture.dialog.title")) is not None:
+            raise Step.Fail(f"点了［{t('mobCapture.dialog.copy')}］框没关")
+
+        def marks():
+            return rig("tmux", "capture-pane", "-p", "-S", "-300", "-t", pane).stdout.count(mark)
+        before = marks()
+        hide_keyboard()
+        # ［粘贴］在常用那一组键条的最右头，屏宽放不下：按着键条往左滑到它露出来。
+        paste = t("mobKeys.action.paste")
+        for _ in range(4):
+            if ui.find(paste) is not None:
+                break
+            row = ui.find(t("mobDefaultButtons.label.command"))
+            y = ui.bounds(row)[3] + 120 if row is not None else 2260
+            adb("shell", "input", "swipe", "900", str(y), "200", str(y), "300")
+            time.sleep(1)
+        tap(paste)
+        end = ui.within(20)
+        while time.time() < end and marks() <= before:
+            time.sleep(1)
+        after = marks()
+        print(f"   剪贴板读数：标记 {before} → {after} 处（键条［{paste}］之后）", flush=True)
+        if after <= before:
+            raise Step.Fail(f"关框后点［{paste}］，那一屏没多出「{mark}」：剪贴板里没有抓到的那一屏")
+        adb("shell", "input", "keyevent", "4")  # 同 9 · 9b · 9c：退出终端屏，下一步从聊天那边起
+
+
 def main():
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))  # 被停掉时也收掉这一趟的 tmux 会话
     tidy_tmux(walk)
@@ -1037,6 +1236,23 @@ def walk():
             if not wait(t("machineState.fix.install"), 30):
                 raise Step.Fail("那台没有后端，问题条上没给［安装］")
         deploy_steps()
+        return report()
+    if only == "terminal":
+        # 只走终端屏那几步（台架里已有后端、钥匙已导；补跑 9–9d 用）。
+        with Step("1-加机器连上"):
+            launch(fresh=True)
+            tap(t("mobIdentity.page.title")); time.sleep(1)
+            open_import()
+            fill(t("mobIdentity.import.name"), "smoke")
+            tap(t("mobIdentity.import.pem")); time.sleep(0.5)
+            type_key(key)
+            hide_keyboard(); tap(t("mobIdentity.import.ok"))
+            if not wait("SHA256:", 40):
+                raise Step.Fail("整把钥匙没导进来")
+            tap(t("mobKit.act.back")); time.sleep(1)
+            add_host(MACHINE)
+            drawer(t("mobDrawer.item.sessions"))
+        terminal_steps()
         return report()
     if only == "files":
         # 只走文件页（台架里已有 smokebox、钥匙已导；调样子 · 截图用）。
@@ -1508,110 +1724,39 @@ def walk():
         if not wait(f"替身收到：{T} back online", 60):
             raise Step.Fail("网回来之后没跟上断着那段来的话")
 
-    with Step("9-终端屏"):
-        # 从别名起：台架那台配一条别名（别名页那条写命令），终端屏「用哪个启动」那一排列的是它（profiles-read），
-        # 点它 ⇒ 那个 shell 里敲 `ccm @名`、在台架 tmux 里起会话；再从 tmux 会话列表接进去，两侧打字都进那个会话、命令面板换模型。
-        seed_alias()
-        before = set(tmux_sessions())
-        drawer(t("mobDrawer.item.terminal"))
-        if not launcher_shows(SMOKE_ALIAS):
-            raise Step.Fail(f"终端屏「用哪个启动」那一排没列出那台的别名 {SMOKE_ALIAS}")
-        shot("9a-终端屏-别名")
-        hide_keyboard()
-        tap(SMOKE_ALIAS)
-        end = ui.within(30)
-        while time.time() < end and not (set(tmux_sessions()) - before):
-            time.sleep(1)
-        fresh = sorted(set(tmux_sessions()) - before)
-        if not fresh:
-            raise Step.Fail(f"点了 {SMOKE_ALIAS}，台架 tmux 里没起新会话（ccm @{SMOKE_ALIAS} 没跑起来）")
-        name = fresh[0]
-        if not pane_has(name, "就绪", 30):
-            raise Step.Fail(f"别名起的会话 {name} 里替身没就绪")
-        end = ui.within(10)
-        while ui.find(SMOKE_ALIAS) is not None and time.time() < end:
-            time.sleep(0.5)
-        if ui.find(SMOKE_ALIAS) is not None:
-            raise Step.Fail("按过一个别名之后那一排没收起")
-        adb("shell", "input", "keyevent", "4")
-        drawer(t("mobDrawer.item.terminal"))
-        hide_keyboard()
-        tap(t("mobDefaultButtons.label.tmux"))
-        if not wait(name, 15) or not any(n.get("text") == name for n in ui.nodes()):
-            raise Step.Fail(f"tmux 会话列表里没有 {name}")
-        attached = sum(1 for r in rig("tmux", "list-clients", "-F", "#{session_name}").stdout.split() if r == name)
-        tap_in_row(name, t("mobTmux.row.attach"))
-        end = ui.within(20)
-        while time.time() < end and sum(1 for r in rig("tmux", "list-clients", "-F", "#{session_name}").stdout.split() if r == name) <= attached:
-            time.sleep(1)
-        if sum(1 for r in rig("tmux", "list-clients", "-F", "#{session_name}").stdout.split() if r == name) <= attached:
-            raise Step.Fail(f"点了「{t('mobTmux.row.attach')}」，20 秒内台架 tmux 里没多一个接着 {name} 的终端")
-        typed(f"{T} from phone terminal")
-        adb("shell", "input", "keyevent", "66")
-        rig("tmux", "send-keys", "-t", name, f"{T} from desk", "Enter")
-        if not (pane_has(name, f"> {T} from phone terminal", 20) and pane_has(name, f"> {T} from desk", 20)):
-            raise Step.Fail("两侧打的字没都进那个会话")
-        switch_model(name)
-        adb("shell", "input", "keyevent", "4")
-
-    with Step("9b-tmux 新建"):
-        # tmux 管理窗「新建」：请那台建一个空会话（session-open 的 shell 那一形），手机不拼 tmux 命令；台架 tmux 里看得到它。
-        drawer(t("mobDrawer.item.terminal"))
-        time.sleep(2)
-        hide_keyboard()
-        tap(t("mobDefaultButtons.label.tmux")); time.sleep(3)
-        tap(t("mobTmux.new.name")); typed(f"{T}new"); hide_keyboard()
-        # 名字框独占一行、按钮在它下面一排：会话多时那一排落在窗里那一段可滚的底下，先往上滑到看得见。
-        for _ in range(6):
-            if ui.find(t("mobTmux.new.detached")) is not None:
-                break
-            adb("shell", "input", "swipe", "540", "1500", "540", "800", "400")
-            time.sleep(1)
-        tap(t("mobTmux.new.detached"))
-        end = time.time() + 20
-        while time.time() < end and f"{T}new" not in tmux_sessions():
-            time.sleep(1)
-        if f"{T}new" not in tmux_sessions():
-            raise Step.Fail(f"点了「{t('mobTmux.new.detached')}」，台架 tmux 里没有 {T}new")
-        shot("9b-新建")
-        adb("shell", "input", "keyevent", "4")
-
-    with Step("9c-推公钥"):
-        # 命令面板「推送公钥」：问那台后端 authorized-keys-add，结局照回包说；这把钥匙本来就在（连上用的就是它）⇒「已在」那一句。
-        # 从终端屏起（上一步红了收拾回起点时不在终端屏）。
-        if ui.find(t("mobDefaultButtons.label.command")) is None:
-            drawer(t("mobDrawer.item.terminal"))
-            time.sleep(2)
-        hide_keyboard()
-        tap(t("mobDefaultButtons.label.command")); time.sleep(1.5)
-        tap(t("mobPalette.item.key")); time.sleep(1.5)
-        said = t("mobKeyPush.result.already")
-        row = ui.find("smoke")
-        if row is None:
-            raise Step.Fail("推送公钥那一框里没有「smoke」那把钥匙")
-        # 无障碍事件流和 `uiautomator dump` 抢同一个口：看事件的这几秒里只点，不 dump 屏。结局是一条 Toast，按条件等它（读事件流的每一行）。
-        events = subprocess.Popen(["adb", "shell", "uiautomator", "events"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
-        lines = []
-        reader = threading.Thread(target=lambda: lines.extend(iter(events.stdout.readline, "")), daemon=True)
-        reader.start()
+    with Step("8c-离线只读"):
+        # 文件页开着时断网：列表照留、顶一条「{machine} 离线」；选一项点删除 ⇒ 灰着、底部说那台断着的那一句（核心 write_refused：离线 · 只读），台架上那一项不动。
+        ro = f"ro{T}"
+        sh(f"mkdir -p ~/work/{ro}")
+        launch()
+        drawer(t("mobDrawer.item.files"))
+        if not wait("work", 30):
+            raise Step.Fail("文件页没列出家目录")
+        tap("work")
+        if not wait(ro, 15):
+            raise Step.Fail(f"work 里没有 {ro}")
+        adb("shell", "cmd", "connectivity", "airplane-mode", "enable")
         try:
-            # 事件流起来要几秒（机器忙时一秒不够：点下去那一下的 Toast 落在流起来之前，就看不到）。
-            time.sleep(4)
-            adb("shell", "input", "tap", *map(str, ui.center(row)))
-            tapped = time.time()
-            end = ui.within(60)
-            while time.time() < end and not any(said in ln for ln in list(lines)):
-                time.sleep(0.5)
-            took = time.time() - tapped
+            if not wait(t("front.body.offline", machine=MACHINE), 60):
+                raise Step.Fail("断了网，文件页 60 秒没顶出那台离线那一条")
+            pick_act(ro, t("rsFilewinWriteops.label.delete"))
+            said = t("rsFilewinChrome.link.readOnly")
+            if not wait(said, 10):
+                raise Step.Fail(f"断着点删除，底部没说「{said}」")
+            shot("8c-只读那一句")
         finally:
-            events.terminate()
-        seen = "".join(lines)
-        if said not in seen:
-            # 看到的是什么（Toast · 提示条的字），分得清是没推成、推成了别的话，还是事件流根本没起来。
-            got = sorted(set(re.findall(r"Text: \[([^\]]*)\]", seen)) - {""})
-            raise Step.Fail(f"点了 smoke 那一把，60 秒没看到那台的结局「{said}」（事件里的字：{got[:6]}）")
-        print(f"   推送公钥：点下 → 结局上屏 {took:.1f} s", flush=True)
+            adb("shell", "cmd", "connectivity", "airplane-mode", "disable")
+        if ro not in sh("ls ~/work"):
+            raise Step.Fail(f"断着点了删除，台架上 {ro} 却没了")
         adb("shell", "input", "keyevent", "4")
+        # 网回来等它接上（离线那一条自己收掉）再往下：刚放回网时下一步那几排还在重画。
+        end = ui.within(60)
+        while time.time() < end and ui.find(t("front.body.offline", machine=MACHINE)) is not None:
+            time.sleep(1)
+        if ui.find(t("front.body.offline", machine=MACHINE)) is not None:
+            raise Step.Fail("网回来 60 秒，文件页那条离线还在")
+
+    terminal_steps()
 
     with Step("10-Codex"):
         launch()
