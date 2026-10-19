@@ -931,6 +931,8 @@ run_gate winchk '不是数出来的数：`cargo check --all-targets --target x86
 #   系统目录那份 comctl32 是 v5 ⇒ 没清单的那份在 Windows 上第一行代码之前就死（`0xc0000139`）。先死过的是 monitor 的，后来文件窗口的那份照样（真机复现过）。
 #   清单只有一份、编法只有一处：`src/common/win-manifest`（两个包的 `build.rs` 都调它）。本机不在 Windows 上跑测试程序，这一类只能从资源表里看出来；
 #   起得来之后跑不跑得完由 CI 的 Windows job 真跑（两份测试程序里各有一条读回自己清单的判据）。
+# 两份 exe 再读一遍导入表（`tests/scripts/pe-imports.mjs`，与 `release.yml` Windows 那一 job 发版前那一步同一个脚本）：不许导入 C 运行库（`VCRUNTIME*` · `MSVCP*` · `api-ms-win-crt-*`）。
+#   `-gnu` 链的是系统自带的 `msvcrt.dll`，本来就不中 —— 这里买的是「那个脚本对真 Rust 产物读得懂、不恒红」；msvc 那一形只有发版那一趟编得出来、在那里判。
 # 只链不跑；`-gnu` 不是 `-msvc`；release 档不链；链的是不带本机后端那一形：`native-backend/` 没铺，或铺着本机 linux 那份（清单写着别的 target ⇒ `build.rs` 这一趟当它不在，判据 `native_bytes_staged_for_another_target_are_left_out_not_fatal`）。
 # 判资源表的那段 python 读 `llvm-readobj` 的输出（stdin），$1 是给人看的名字；绿时印一行 `清单 ok`，红时说缺什么并退 1。
 GATE_PE_MANIFEST_PY='
@@ -956,6 +958,8 @@ gate_winlink() {
   local t=x86_64-pc-windows-gnu js exe pkg lib label bad=0 n=0
   ( cd src/frontend/shell && cargo build --locked -p monitor -p cc-monitor-filewin --bins --target "$t" 2>&1 ) || return $?
   command -v llvm-readobj >/dev/null 2>&1 || { echo "winlink: 这台机器上没有 llvm-readobj（装 llvm）—— 判不了测试程序的清单，按红记"; return 1; }
+  n=$((n + 2))
+  node tests/scripts/pe-imports.mjs ".build/shell/$t/debug/cc-monitor.exe" ".build/shell/$t/debug/cc-monitor-filewin.exe" || bad=1
   n=$((n + 1))
   llvm-readobj --coff-resources ".build/shell/$t/debug/cc-monitor-filewin.exe" | gate_pe_manifest_judge "文件窗口程序" || bad=1
   while read -r pkg lib label; do
@@ -977,7 +981,7 @@ for l in sys.stdin:
   [ "$bad" -eq 0 ] || return 1
   echo "winlink: $n passed"
 }
-run_gate winlink '不是数出来的数：`cargo build --bins --target x86_64-pc-windows-gnu`（dev）＋ 文件窗口程序与两份 lib 测试程序的资源表，只有绿/红两态（几份 passed 是查了几份）。射程 = `-p monitor` 的 `cc-monitor` 与 `-p cc-monitor-filewin` 的 `cc-monitor-filewin` **真链接**一趟、文件窗口程序的资源表里有 MANIFEST ＋ monitor 与文件窗口包两份 lib 测试程序编出来（`--no-run`）、各自资源表里有 MANIFEST（ID 24）且点名 Common-Controls；⚠ 只链不跑（跑不跑得完要真机，CI 的 Windows job 真跑）· `-gnu` 不是 `-msvc` · release 那一档不链' \
+run_gate winlink '不是数出来的数：`cargo build --bins --target x86_64-pc-windows-gnu`（dev）＋ 两份 exe 的导入表 ＋ 文件窗口程序与两份 lib 测试程序的资源表，只有绿/红两态（几份 passed 是查了几份）。射程 = `-p monitor` 的 `cc-monitor` 与 `-p cc-monitor-filewin` 的 `cc-monitor-filewin` **真链接**一趟、两份都不导入 C 运行库、文件窗口程序的资源表里有 MANIFEST ＋ monitor 与文件窗口包两份 lib 测试程序编出来（`--no-run`）、各自资源表里有 MANIFEST（ID 24）且点名 Common-Controls；⚠ 只链不跑（跑不跑得完要真机，CI 的 Windows job 真跑）· `-gnu` 不是 `-msvc` · release 那一档不链' \
          gate_winlink
 # 探针⑪ · 清单那条还在判：喂两份合成的 `llvm-readobj` 输出 —— 一份没有 ID 24、一份有 ID 24 却不含 Common-Controls；
 #   其余（链接、编出测试程序）对探针不存在，判的就是资源表那一步。

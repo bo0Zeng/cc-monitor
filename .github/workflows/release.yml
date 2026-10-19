@@ -277,6 +277,16 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write   # 需要 write 才能上传 release 附件
+    # 本 job 编的每一份 Windows 程序（本机后端 · 文件窗口 · monitor）一律**静态链 C 运行库**，配在这一处：
+    #   没装 VC++ 运行库的 Windows 上，导入 `VCRUNTIME140.dll` 的程序一起就弹「找不到 VCRUNTIME140.dll」。
+    #   · `RUSTFLAGS`：本 job 里每一趟 cargo（含 `tauri build` 起的那一趟）都读它；没有别处设 `RUSTFLAGS`，不会被盖掉。
+    #     不放进 `.cargo/config.toml`：那里不许出现 `rustflags`（构建期执行面那条判据），而且只有发出去的这一趟需要。
+    #   · `STATIC_VCRUNTIME: 'false'`：关掉 `tauri build` 自带的那套（它只给 monitor 一份把 vcruntime 换成静态、UCRT 仍动态的链接参数，
+    #     内嵌的两份是普通 `cargo build`、吃不到）。两套一起开，它那句「UCRT 仍动态」会盖回静态链 ⇒ 只留这一套。
+    #   编完由 `No C runtime imports` 那一步逐份读导入表核。
+    env:
+      RUSTFLAGS: -C target-feature=+crt-static
+      STATIC_VCRUNTIME: 'false'
     steps:
       - uses: actions/checkout@v4
 
@@ -486,6 +496,12 @@ jobs:
       #   从前的 `externalBin`（安装包旁边另放一份本机后端）size2 10-11 撤了。
       - name: tauri build
         run: npx tauri build --config src/frontend/shell/tauri.sidecar.conf.json --bundles nsis,msi
+
+      # 三份 Windows 程序（铺进 `native-backend/`、内嵌进 monitor 的本机后端 · 文件窗口那两份字节 ＋ monitor 本身）逐份读导入表：
+      #   命中 `VCRUNTIME*` · `MSVCP*` · `api-ms-win-crt-*` 就红、说是哪一份导入了哪个 ⇒ 后面的校验和与上传都不走。
+      #   读法在 `tests/scripts/pe-imports.mjs`（自己解 PE，不靠 runner 上有没有 dumpbin）；门禁 `winlink` 那一格对本机交叉编的那两份跑同一个脚本。
+      - name: No C runtime imports
+        run: node tests/scripts/pe-imports.mjs src/frontend/shell/native-backend/cc-monitor-native src/frontend/shell/native-backend/cc-monitor-filewin .build/shell/release/cc-monitor.exe
 
       # ── 🔴 **产物根不是 `src/frontend/shell/target/`，是 `.build/shell/`** ────
       #
