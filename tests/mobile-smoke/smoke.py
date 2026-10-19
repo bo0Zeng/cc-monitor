@@ -1060,7 +1060,7 @@ def terminal_steps():
         time.sleep(2)
         hide_keyboard()
         tap(t("mobDefaultButtons.label.tmux")); time.sleep(3)
-        tap(t("mobTmux.new.name")); typed(f"{T}new"); hide_keyboard()
+        fill(t("mobTmux.new.name"), f"{T}new"); hide_keyboard()  # 读回核过：忙时 `input text` 会丢字
         # 名字框独占一行、按钮在它下面一排：会话多时那一排落在窗里那一段可滚的底下，先往上滑到看得见。
         for _ in range(6):
             if ui.find(t("mobTmux.new.detached")) is not None:
@@ -1196,6 +1196,7 @@ def terminal_steps():
         print(f"   剪贴板读数：标记 {before} → {after} 处（键条［{paste}］之后）", flush=True)
         if after <= before:
             raise Step.Fail(f"关框后点［{paste}］，那一屏没多出「{mark}」：剪贴板里没有抓到的那一屏")
+        adb("shell", "input", "keyevent", "4")  # 同 9 · 9b · 9c：退出终端屏，下一步从聊天那边起
 
 
 def main():
@@ -1722,6 +1723,38 @@ def walk():
         to_bottom()
         if not wait(f"替身收到：{T} back online", 60):
             raise Step.Fail("网回来之后没跟上断着那段来的话")
+
+    with Step("8c-离线只读"):
+        # 文件页开着时断网：列表照留、顶一条「{machine} 离线」；选一项点删除 ⇒ 灰着、底部说那台断着的那一句（核心 write_refused：离线 · 只读），台架上那一项不动。
+        ro = f"ro{T}"
+        sh(f"mkdir -p ~/work/{ro}")
+        launch()
+        drawer(t("mobDrawer.item.files"))
+        if not wait("work", 30):
+            raise Step.Fail("文件页没列出家目录")
+        tap("work")
+        if not wait(ro, 15):
+            raise Step.Fail(f"work 里没有 {ro}")
+        adb("shell", "cmd", "connectivity", "airplane-mode", "enable")
+        try:
+            if not wait(t("front.body.offline", machine=MACHINE), 60):
+                raise Step.Fail("断了网，文件页 60 秒没顶出那台离线那一条")
+            pick_act(ro, t("rsFilewinWriteops.label.delete"))
+            said = t("rsFilewinChrome.link.readOnly")
+            if not wait(said, 10):
+                raise Step.Fail(f"断着点删除，底部没说「{said}」")
+            shot("8c-只读那一句")
+        finally:
+            adb("shell", "cmd", "connectivity", "airplane-mode", "disable")
+        if ro not in sh("ls ~/work"):
+            raise Step.Fail(f"断着点了删除，台架上 {ro} 却没了")
+        adb("shell", "input", "keyevent", "4")
+        # 网回来等它接上（离线那一条自己收掉）再往下：刚放回网时下一步那几排还在重画。
+        end = ui.within(60)
+        while time.time() < end and ui.find(t("front.body.offline", machine=MACHINE)) is not None:
+            time.sleep(1)
+        if ui.find(t("front.body.offline", machine=MACHINE)) is not None:
+            raise Step.Fail("网回来 60 秒，文件页那条离线还在")
 
     terminal_steps()
 
