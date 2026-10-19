@@ -531,11 +531,7 @@ pub(crate) fn under_home(home: &str, rel: &str) -> String {
     if home.is_empty() {
         return format!("/{rel}");
     }
-    rel.split('/')
-        .filter(|s| !s.is_empty())
-        .fold(std::path::PathBuf::from(home), |p, s| p.join(s))
-        .to_string_lossy()
-        .into_owned()
+    crate::platform::paths::join_under(home, rel)
 }
 
 /// cc-bus 的脚本目录：`CC_BUS_SCRIPTS` → 本二进制旁边的 `cc-bus/scripts` → `PATH`。
@@ -1016,16 +1012,10 @@ fn absolute_from(d: &str, pwd: &str) -> String {
 
 /// 打头的 `~` / `~/…` 换成家目录（家目录说不出 ⇒ 原样）。
 pub(crate) fn expand_home(p: &str, home: &str) -> String {
-    if home.is_empty() {
-        return p.to_string();
-    }
-    if p == "~" {
-        return home.to_string();
-    }
-    match p.strip_prefix("~/").or_else(|| p.strip_prefix("~\\")) {
-        Some(rest) => crate::platform::paths::join_under(home, rest),
-        None => p.to_string(),
-    }
+    crate::platform::paths::expand_tilde_from(
+        p,
+        (!home.is_empty()).then(|| std::path::Path::new(home)),
+    )
 }
 
 /// 比「是不是同一个目录」用的键：解开链接（解不开就按原样），再按这台的大小写规矩折。

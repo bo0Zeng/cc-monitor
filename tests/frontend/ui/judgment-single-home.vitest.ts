@@ -789,6 +789,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     phone_menu: NONE,
     // 「此刻那一台做不到」（离线 · 那台没有这条命令）⇒ 那一句：桌面窗口与手机核心都问它；界面不列文件，没有孪生。
     refused_here: NONE,
+    // 断着 ⇒ 写类为什么做不了（那台离线 · 与 cc-monitor 断开）：菜单 · 命令栏 · 编辑页的［保存］· 关窗那一问都问它；界面不列文件，没有孪生。
+    write_refused: NONE,
     // `files-ls` 原行 ⇒ 一行的事实：桌面窗口与手机核心同一个认法。
     of_ls: NONE,
     opens_as_dir: NONE,

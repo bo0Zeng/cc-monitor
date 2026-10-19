@@ -404,3 +404,22 @@ async fn push_public_key_unknown_type_omits_sentinel_content_and_reports_file() 
         err.1
     );
 }
+
+/// 私钥框里写的 `~/.ssh/…` 推公钥时读的那份 `.pub` 也按这台家目录展开再读；读不出来那一句里的路径照用户写的。
+#[test]
+fn the_pub_file_beside_a_tilde_key_path_is_read_under_the_home() {
+    let home = std::env::temp_dir().join(format!("ccm-pub-tilde-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    std::fs::create_dir_all(home.join(".ssh")).unwrap();
+    std::fs::write(home.join(".ssh").join("id_t.pub"), "ssh-ed25519 AAAA t\n").unwrap();
+    assert_eq!(
+        read_pub_file("~/.ssh/id_t.pub", Some(&home)).map_err(|e| e.1),
+        Ok("ssh-ed25519 AAAA t\n".to_string())
+    );
+    let said = read_pub_file("~/.ssh/nope.pub", Some(&home)).unwrap_err().1;
+    assert!(
+        said.contains("~/.ssh/nope.pub"),
+        "报错句里的路径不是用户写的那一形：{said}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}

@@ -413,7 +413,66 @@ fn a_gone_monitor_is_said_as_such_not_as_reconnecting() {
     assert!(painted.iter().any(|(t, _)| *t == close), "没给「关闭窗口」");
     assert_eq!(
         ws.pane_on(0).refused_here(crate::select::Action::Rename),
-        Some(copy_text("rsFilewinChrome.link.readOnly", &[]))
+        Some(copy_text("rsFilewinChrome.link.severedReadOnly", &[]))
+    );
+}
+
+/// 和 monitor 断了、编辑页里有没存的改动 ⇒ 编辑页的［保存］与别的写类一样灰着、Ctrl+S 不发；条上说与 cc-monitor 断开（不说那台离线）；
+/// 关窗那一问照样先问、列出没存的那一份，但不给存不成的「全部保存后关闭」，「仍然关闭」照给。
+#[test]
+fn a_gone_monitor_greys_save_and_the_close_ask_offers_no_save_all() {
+    use crate::source::LinkSeen;
+    let cancel = egui::ViewportCommand::CancelClose;
+    let mut d = Drive::new();
+    let mut ws = two_sides(pane("/l", &["a"]), pane("/r", &["b"]));
+    open_text(ws.pane_on_mut(1), "x\n");
+    *ws.pane_on_mut(1).editing_text_mut().unwrap() = "x2\n".into();
+    ws.link.set(LinkSeen::Severed);
+    let mut painted = Vec::new();
+    for _ in 0..3 {
+        painted = d.frame(&mut ws, Vec::new());
+    }
+    let machine = ws.pane_on(1).source.label();
+    let has = |painted: &[PaintedText], t: &str| painted.iter().any(|(p, _)| p == t);
+    assert!(
+        has(&painted, &copy_text("rsFilewinEditPage.severed.line", &[])),
+        "编辑页上没说和 cc-monitor 断了"
+    );
+    assert!(
+        !has(
+            &painted,
+            &copy_text("rsFilewinEditPage.offline.line", &[("machine", &machine)])
+        ),
+        "和 monitor 断了，编辑页上却说那台离线"
+    );
+    let save = rects_of(&painted, &copy_text("rsFilewinShell.editor.save", &[]));
+    assert_eq!(save.len(), 1, "编辑页没立起来");
+    d.frame(&mut ws, vec![egui::Event::PointerMoved(save[0].center())]);
+    d.frame(&mut ws, crate::rows::testing::click_at(save[0].center()));
+    // 窗口没接运行时：真去存了就会落一句「没有运行时」—— 没落 ⇒ 存在发之前就被拦下了。
+    let tried = |ws: &Workspace| ws.pane_on(1).listing.error.lock().unwrap().is_some();
+    assert!(!tried(&ws), "和 monitor 断了，［保存］还点得动");
+    assert!(!ws.pane_on_mut(1).save_edit(None));
+    assert!(!tried(&ws), "和 monitor 断了，Ctrl+S 那一路还去存了");
+    assert!(
+        close_frame(&mut d, &mut ws, true).contains(&cancel),
+        "有没存的改动，关窗却没先问"
+    );
+    let painted = d.frame(&mut ws, Vec::new());
+    assert!(has(&painted, "t.txt"), "关窗那一问没列出没存的那一份");
+    assert!(
+        !has(
+            &painted,
+            &copy_text("rsFilewinWorkspace.closeAsk.saveAll", &[])
+        ),
+        "和 monitor 断了，关窗那一问还给「全部保存后关闭」"
+    );
+    assert!(
+        has(
+            &painted,
+            &copy_text("rsFilewinWorkspace.closeAsk.force", &[])
+        ),
+        "关窗那一问没给「仍然关闭」"
     );
 }
 

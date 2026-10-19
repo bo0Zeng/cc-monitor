@@ -710,7 +710,7 @@ impl FileWindow {
     /// 这一件此刻做不到 ⇒ 为什么（这台不支持 · 离线 · 只读；菜单 · 命令栏悬停 · 键盘按了的回话同一句）：判法在 `pick-core`，手机同一份。
     pub fn refused_here(&self, a: Action) -> Option<String> {
         let here = pick_core::Here {
-            offline: self.link.offline(),
+            offline: self.link.cut(),
             unavailable: self
                 .offer
                 .lock()
@@ -731,8 +731,7 @@ impl FileWindow {
             Cmd::Act(a) => return self.refused_here(a),
             Cmd::Mkdir | Cmd::NewFile | Cmd::Upload | Cmd::Term | Cmd::Across => true,
         };
-        (needs_machine && self.link.offline())
-            .then(|| copy_text("rsFilewinChrome.link.readOnly", &[]))
+        needs_machine.then(|| self.link.write_refused()).flatten()
     }
 
     /// 带着**已经列好的那一屏**建窗 —— [`super::entry::open_file_window`] 走这条。
@@ -3022,6 +3021,10 @@ impl FileWindow {
         let Some(p) = self.editing.clone() else {
             return false;
         };
+        // 此刻写不了（断着）⇒ 不发：［保存］灰着、条上说着为什么（Ctrl+S 与「全部保存后关闭」那一路也到这里）。
+        if self.link.write_refused().is_some() {
+            return false;
+        }
         // 🔴 敲超上限 ⇒ 屏幕上先说，不发那趟注定被池子拒的往返。
         if p.over_cap() {
             *self.listing.error.lock().unwrap() = Some(
@@ -3480,8 +3483,12 @@ impl FileWindow {
         } else {
             copy_text("rsFilewinShell.editor.save", &[])
         };
-        let can = pane.is_some() && dirty && idle && !over;
-        let why = if over {
+        // 能不能写读窗口那一格（[`super::chrome::LinkState::write_refused`]，与工具条 · 菜单同一处）。
+        let refused = self.link.write_refused();
+        let can = pane.is_some() && dirty && idle && !over && refused.is_none();
+        let why = if let Some(r) = refused {
+            r
+        } else if over {
             copy_text(
                 "rsFilewinEditPage.foot.overCap",
                 &[("n", &pane.as_ref().map_or(0, |e| -e.headroom()).to_string())],
@@ -3565,16 +3572,15 @@ impl FileWindow {
                     acts.reopen = true;
                 }
             }
-            if self.link.offline() {
-                super::kit::banner(
-                    ui,
-                    super::kit::Tone::Warn,
-                    &copy_text(
+            if let Some(cut) = self.link.cut() {
+                let line = match cut {
+                    pick_core::Cut::Monitor => copy_text("rsFilewinEditPage.severed.line", &[]),
+                    pick_core::Cut::Machine => copy_text(
                         "rsFilewinEditPage.offline.line",
                         &[("machine", &self.source.label())],
                     ),
-                    &[],
-                );
+                };
+                super::kit::banner(ui, super::kit::Tone::Warn, &line, &[]);
             }
         }
     }

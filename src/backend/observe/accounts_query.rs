@@ -101,7 +101,7 @@ fn home_dir() -> Option<PathBuf> {
 /// （测试换掉家目录就碰不到真数据）。
 fn resolve_accts_dir() -> PathBuf {
     match home_dir() {
-        Some(h) => h.join(ACCOUNTS_DIR_REL),
+        Some(h) => crate::platform::paths::home_join(&h, ACCOUNTS_DIR_REL),
         None => PathBuf::from(ACCOUNTS_DIR_REL),
     }
 }

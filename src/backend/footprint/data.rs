@@ -194,7 +194,7 @@ pub(crate) fn own_rows(home: &std::path::Path) -> Vec<OwnItem> {
     relay_route_core::OWN_HOME_ENTRIES
         .iter()
         .map(|&(id, rel, dir, truth)| {
-            let p = home.join(rel);
+            let p = crate::platform::paths::home_join(home, rel);
             let meta = Ro::metadata(&p).ok();
             let exists = meta.as_ref().is_some_and(|m| m.is_dir() == dir);
             let size = meta.filter(|m| exists && m.is_file()).map(|m| m.len());

@@ -843,16 +843,24 @@ impl LinkState {
         self.lock().seen
     }
 
-    /// 断着（在重连 / 离线）。
+    /// 断着（在重连 / 离线 / 与 monitor 断开）。
     pub fn offline(&self) -> bool {
-        matches!(
-            self.seen(),
-            Some(
-                super::source::LinkSeen::Reconnecting
-                    | super::source::LinkSeen::Down
-                    | super::source::LinkSeen::Severed
-            )
-        )
+        self.cut().is_some()
+    }
+
+    /// 断在哪一段：那台在重连 / 离线 ⇒ 那台；窗口与 monitor 之间那对管子断了 ⇒ monitor；连着 / 还没说 ⇒ `None`。
+    pub fn cut(&self) -> Option<pick_core::Cut> {
+        use super::source::LinkSeen;
+        match self.seen()? {
+            LinkSeen::Up => None,
+            LinkSeen::Reconnecting | LinkSeen::Down => Some(pick_core::Cut::Machine),
+            LinkSeen::Severed => Some(pick_core::Cut::Monitor),
+        }
+    }
+
+    /// 🔴 此刻能不能写、不能 ⇒ 为什么（判法在 [`pick_core::write_refused`]）：菜单 · 命令栏 · 编辑页的［保存］· 关窗那一问都读这一格。
+    pub fn write_refused(&self) -> Option<String> {
+        pick_core::write_refused(self.cut())
     }
 
     /// 流上来了一格。由断转连 ⇒ 记一次「又连上了」。

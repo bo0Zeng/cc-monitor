@@ -247,7 +247,8 @@ fn unavailables() -> &'static Mutex<HashMap<i64, Vec<String>>> {
 /// 此刻那一台的样子（文件页「能做什么」那一张要它）：断没断着 · 那台说做不到的那几条命令。这台不在 ⇒ 断着。
 pub fn here(h: i64) -> pick_core::Here {
     pick_core::Here {
-        offline: !feed(h).is_some_and(|f| matches!(f.state(), State::Up { .. })),
+        offline: (!feed(h).is_some_and(|f| matches!(f.state(), State::Up { .. })))
+            .then_some(pick_core::Cut::Machine),
         unavailable: unavailables()
             .lock()
             .unwrap_or_else(|e| e.into_inner())

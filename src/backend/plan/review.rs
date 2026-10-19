@@ -110,7 +110,10 @@ impl Review {
 
 /// 这台机器上那份文件的路径；家目录解析不出来 ⇒ `None`。
 pub(crate) fn review_path() -> Option<PathBuf> {
-    Some(crate::platform::paths::home_dir()?.join(relay_route_core::PLAN_REVIEW_REL))
+    Some(crate::platform::paths::home_join(
+        &crate::platform::paths::home_dir()?,
+        relay_route_core::PLAN_REVIEW_REL,
+    ))
 }
 
 /// 读一次（三态）。

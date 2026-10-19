@@ -314,6 +314,9 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     ("comms_inward::chan::wire::CancelToken::new", Kind::Wire),
     ("comms_inward::chan::wire::Comms", Kind::Wire),
     ("comms_inward::chan::wire::HopFault", Kind::Wire),
+    // 断在哪一跳 · 发没发出去：第 0 跳（窗口与 monitor 之间那对管子）断了那一句照实说与 cc-monitor 断开（`source::said_here`）。
+    ("comms_inward::chan::wire::HopId", Kind::Wire),
+    ("comms_inward::chan::wire::Reach", Kind::Wire),
     ("comms_inward::chan::wire::Op", Kind::Wire),
     ("comms_inward::chan::wire::Origin", Kind::Wire),
     ("comms_inward::chan::wire::PeerFault", Kind::Wire),

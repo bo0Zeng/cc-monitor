@@ -475,11 +475,18 @@ pub fn actions_for(o: Outlet, picked: &[Pick]) -> Vec<Action> {
         .collect()
 }
 
-/// 此刻那一台的样子：断没断着 · 那台说做不到的那几条命令（`hello.unavailable`）。
+/// 此刻那一台的样子：断在哪一段（连着 ⇒ `None`）· 那台说做不到的那几条命令（`hello.unavailable`）。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Here {
-    pub offline: bool,
+    pub offline: Option<Cut>,
     pub unavailable: Vec<String>,
+}
+
+/// 断在哪一段：那台机器（在重连 / 离线）· 窗口与 cc-monitor 之间（桌面文件窗口才有；手机没有这一段）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Cut {
+    Machine,
+    Monitor,
 }
 
 /// 这一件落到哪条命令上（那台说做不到它 ⇒ 这一件做不到）。
@@ -491,12 +498,24 @@ fn command_of(a: Action) -> Option<&'static str> {
 }
 
 /// 🔴 **此刻做不到的那一件 ⇒ 为什么（唯一一处）**：那台说做不到那条命令 ⇒ 这台不支持；断着、而这一件要碰那台
-/// （进目录除外：进去那一下自己会说断开）⇒ 离线 · 只读。桌面菜单 · 键盘 · 手机顶栏与 ⋯ 都问它。
+/// （进目录除外：进去那一下自己会说断开）⇒ 断在哪一段说哪一段（[`write_refused`]）。桌面菜单 · 键盘 · 手机顶栏与 ⋯ 都问它。
 pub fn refused_here(a: Action, here: &Here) -> Option<String> {
     if command_of(a).is_some_and(|c| here.unavailable.iter().any(|u| u == c)) {
         return Some(copy_text("rsFilewinShell.menu.unavailableHere", &[]));
     }
-    (here.offline && a != Action::Open).then(|| copy_text("rsFilewinChrome.link.readOnly", &[]))
+    if a == Action::Open {
+        return None;
+    }
+    write_refused(here.offline)
+}
+
+/// 🔴 **断着 ⇒ 写类为什么做不了（唯一一处）**：菜单那几件（[`refused_here`]）· 命令栏 · 编辑页的［保存］· 关窗那一问都问它。
+/// 那台断着 ⇒ 离线 · 只读；与 cc-monitor 断开 ⇒ 照实说那一段，不说那台离线。连着 ⇒ `None`。
+pub fn write_refused(cut: Option<Cut>) -> Option<String> {
+    cut.map(|c| match c {
+        Cut::Machine => copy_text("rsFilewinChrome.link.readOnly", &[]),
+        Cut::Monitor => copy_text("rsFilewinChrome.link.severedReadOnly", &[]),
+    })
 }
 
 /// 手机那一项：交回的词 · 字 · 能不能点 · 灰着的为什么（手机没有悬停，点了在底部说这一句）。

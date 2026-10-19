@@ -1164,7 +1164,7 @@ mod tests {
         assert_eq!(v["more"][0].as_object().map(|o| o.len()), Some(4));
         assert_eq!(v["tap"], "open");
         let off = pick_core::Here {
-            offline: true,
+            offline: Some(pick_core::Cut::Machine),
             unavailable: vec![],
         };
         let v: serde_json::Value =

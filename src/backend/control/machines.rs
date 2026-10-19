@@ -530,7 +530,9 @@ pub(crate) struct MachinesReply {
 /// 库里每台记下的那几把的指纹（库读不出来 ⇒ 空：那一处另有拨号时的那一句）。
 fn host_keys_of(home: &Path, hosts: &[Host]) -> std::collections::BTreeMap<String, Vec<String>> {
     let known = crate::dial::known_hosts::KNOWN_HOSTS;
-    let text = crate::dial::known_hosts::read_at(&home.join(known.rel)).unwrap_or_default();
+    let text =
+        crate::dial::known_hosts::read_at(&crate::platform::paths::home_join(home, known.rel))
+            .unwrap_or_default();
     hosts
         .iter()
         .filter_map(|h| {

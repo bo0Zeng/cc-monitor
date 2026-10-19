@@ -186,7 +186,8 @@ pub(crate) fn oneshot_log_path(get: &dyn Fn(&str) -> Option<String>) -> Option<P
     if let Some(p) = get(ENV).filter(|v| !v.trim().is_empty()) {
         return Some(PathBuf::from(p));
     }
-    crate::platform::paths::home_dir().map(|h| h.join(STDERR_LOG_REL))
+    crate::platform::paths::home_dir()
+        .map(|h| crate::platform::paths::home_join(&h, STDERR_LOG_REL))
 }
 
 /// 一次性模式里本进程那几行诊断的落点（[`keep_oneshot`] 装一次；没装 ⇒ 不写）。

@@ -97,13 +97,15 @@ pub(crate) mod sftp {
 pub(crate) mod sftp_rig;
 
 /// 装上本后端交给拨号核心的那一套（一个进程一次；`main` 起来就装，进拨号核心的几个口也各装一次兜住测试档）：
-/// 钥匙是私钥文件的路径 · 认下的 host key 记进 cc-monitor 那份 known_hosts · 本机 ssh-agent · 详情写本后端的时刻与机器 ·
+/// 钥匙是私钥文件的路径（`~` 按这台家目录展开）· 认下的 host key 记进 cc-monitor 那份 known_hosts · 本机 ssh-agent · 详情写本后端的时刻与机器 ·
 /// 远端写只许暂存区那一处（建出来的目录收成 [`crate::common::own_dir::PRIVATE_DIR_MODE`]）。
 pub fn host() {
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
         let env = ssh_dial::env::Env {
-            keys: Box::new(ssh_dial::env::KeyFiles),
+            keys: Box::new(HomeKeyFiles {
+                home: crate::platform::paths::home_dir(),
+            }),
             host_keys: Box::new(known_hosts::KnownHostsFile),
             agent: Some(Box::new(crate::platform::ssh_agent::LocalAgent)),
             facts: Box::new(BackendFacts),
@@ -117,6 +119,20 @@ pub fn host() {
             );
         }
     });
+}
+
+/// 钥匙是私钥文件的路径：打头的 `~` 按这台家目录展开再读（[`crate::platform::paths::expand_tilde_from`]；
+/// 拨号核心不碰家目录，展开是宿主的事）；读不出来那一句里的路径照用户写的。
+pub(crate) struct HomeKeyFiles {
+    /// 这台的家目录（装的那一下定；说不出 ⇒ `None`，`~` 原样交下去）。
+    pub(crate) home: Option<std::path::PathBuf>,
+}
+
+impl ssh_dial::env::KeySource for HomeKeyFiles {
+    fn credential(&self, key: &str) -> Result<ssh_dial::env::Credential, ssh_dial::Said> {
+        let at = crate::platform::paths::expand_tilde_from(key, self.home.as_deref());
+        ssh_dial::env::key_file(key, &at)
+    }
 }
 
 /// 复制详情那几行：本后端的时刻与机器（`wire/detail.rs`）· 本后端的钟（`common/time.rs`）。
