@@ -23,6 +23,7 @@
 | [`xvfb-free.sh`](xvfb-free.sh) | 起一台私有 Xvfb：在 `:100–:899` 里挑空号、按 X 的老规矩建 `/tmp/.X<n>-lock` 占住（门禁的网络命名空间里外都认得），号由 Xvfb 写在标准输出第一行；`release <n> <pid>` 收场。文件窗口台架与截图工具共用 |
 | [`apt-install.sh`](apt-install.sh) | CI 上装 apt 包的唯一写法（两份 workflow 每一处都调它）：每趟 update / install 套 `timeout`、apt 下载带重试、一趟没成歇一下再来、最多 3 趟；调它的那一步自带 `timeout-minutes` |
 | [`release-notes.mjs`](release-notes.mjs) | GitHub Release 的正文生成器：从 `CHANGELOG.md` 里本版那一段生成正文，`release.yml` 两处发布步骤都用它；`--check` 只验不写，门禁 `release-gate` 那一格调它 |
+| [`pe-imports.mjs`](pe-imports.mjs) | Windows 程序导入表检查：自己解 PE 读普通导入与延迟导入的 DLL 名，导入了 C 运行库（`VCRUNTIME*` · `MSVCP*` · `api-ms-win-crt-*`）就退 1、点名哪一份导入了哪个。`release.yml` Windows 那一 job 发版前对三份 msvc 程序跑，门禁 `winlink` 那一格对本机交叉编的两份跑 |
 | [`third-party-notices.py`](third-party-notices.py) | 第三方许可声明的生成器：用 cargo-about（版本钉在脚本里，没有就装进 `.build/tools`）与 `node_modules/` 生成仓根 `THIRD-PARTY-NOTICES.txt`（随安装包与 Release 分发）和 `tests/evidence/third-party-not-shipped.txt`；`--check` 只验不写，`release.yml` 发版那一趟调它；加删依赖后重跑一次再提交（门禁 `release-gate` ⑰ 两向核） |
 | [`third-party-about.toml`](third-party-about.toml) | 上面那个生成器给 cargo-about 的配置：收哪几种许可 · 按哪几个目标平台收依赖 · 不收开发期依赖 |
 
