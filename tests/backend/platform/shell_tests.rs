@@ -428,3 +428,53 @@ fn entering_a_dir_is_written_in_each_dialect() {
         super::enter_dir_line_in(here, "/p")
     );
 }
+
+/// 缺陷（10-19）：后端经 ssh 非登录 shell 起时它自己的 `PATH` 没有用户级 `bin`，登录子命令照它找 `claude` ⇒ 起不来、还说成「未装」。
+/// 后端自己起 agent 程序（登录子命令 · 用量探针）照**起会话那个 shell** 的 `PATH` 找、子进程也拿那一份 `PATH`；
+/// 问不出那一份 ⇒ 照本进程的；查了没有 ⇒ 说查过哪儿（哪一份 `PATH` · 几个目录），不说「未装」。
+#[test]
+fn an_agent_program_is_found_on_the_session_shell_path_not_the_backend_one() {
+    let user_bin = std::path::PathBuf::from("/u/.local/bin");
+    let claude = user_bin.join("claude");
+    let present = [claude.clone()];
+    let is_file = files_at(&present);
+    let session = "/u/.local/bin:/usr/bin:/bin";
+    let own = "/usr/bin:/bin";
+    let l = super::agent_launch_in("claude", Some(session), Some(own), false, &is_file)
+        .expect("起会话那个 shell 的 PATH 上有它 ⇒ 起得来");
+    assert_eq!(l.program, claude.clone().into_os_string());
+    assert!(l.lead.is_empty());
+    assert_eq!(
+        l.path.as_deref(),
+        Some(session),
+        "子进程该拿起会话那个 shell 的 PATH"
+    );
+    // 问不出那一份 ⇒ 照本进程的找；本进程的 PATH 上有就起它、PATH 不另给。
+    let own_has = "/u/.local/bin:/usr/bin";
+    let l = super::agent_launch_in("claude", None, Some(own_has), false, &is_file)
+        .expect("问不出起会话那个 shell 的 PATH ⇒ 照本进程的");
+    assert_eq!(l.program, claude.into_os_string());
+    assert_eq!(l.path, None);
+    // 查了没有 ⇒ 说的是查过哪一份、几个目录，不是「未装」。
+    let not_installed = copy_core::copy_text("reason.spawn.notInstalled", &[]);
+    let why = super::agent_launch_in("claude", Some(own), Some(session), false, &is_file)
+        .err()
+        .expect("起会话那个 shell 的 PATH 上没有 ⇒ 不起（不退回本进程的那一份）");
+    assert!(why.contains("×2"), "要说查过几个目录：{why}");
+    assert!(
+        !why.contains(&not_installed),
+        "不许说「{not_installed}」：{why}"
+    );
+    let why_own = super::agent_launch_in("claude", None, Some(own), false, &is_file)
+        .err()
+        .expect("本进程的 PATH 上也没有 ⇒ 不起");
+    assert_ne!(why, why_own, "两份 PATH 要说得分开");
+    assert!(why_own.contains("×2"), "{why_own}");
+    assert!(super::agent_launch_in("claude", None, None, false, &is_file).is_err());
+    // Windows：npm 装的 `.cmd` 也起得来（与起会话、足迹同一个找法）。
+    let cmd = std::path::PathBuf::from("/w/npm/claude.cmd");
+    let present = [cmd.clone()];
+    let l = super::agent_launch_in("claude", Some("/w/npm"), None, true, &files_at(&present))
+        .expect("Windows 上 .cmd 那一形");
+    assert_eq!(l.program, cmd.into_os_string());
+}

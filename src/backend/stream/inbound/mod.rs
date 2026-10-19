@@ -415,7 +415,7 @@ fn dispatch(
                                 ));
                                 crate::accounts::sign_in::ring_manual();
                             });
-                        crate::faces::login_face::start(&r, asks, None, on_end)
+                        crate::faces::login_face::start(&r, asks, on_end)
                     },
                 ),
             )

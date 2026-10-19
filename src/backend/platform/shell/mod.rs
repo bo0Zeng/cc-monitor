@@ -43,7 +43,7 @@ pub(crate) const SESSION_PATH_WITHIN: crate::platform::child::Deadline =
 
 /// **起会话那个 shell** 的 `PATH`：会话在 tmux 窗格里的用户登录 shell 里起（交互、登录；远端开窗那一形是 `bash -lic`），
 /// agent 命令按那里的 `PATH` 找；后端进程自己的 `PATH` 不是那一份（经 ssh 非登录 shell 起时常常没有用户级 `bin`）。
-/// 「装没装」（足迹）· 「这台能起哪几家」（起新会话框）· 待办「终端里的 ccm 是旧的一份」都经这一处问。
+/// 「装没装」（足迹）· 「这台能起哪几家」（起新会话框）· 待办「终端里的 ccm 是旧的一份」· 后端自己起 agent 程序（[`agent_launch`]）都经这一处问。
 ///
 /// **按后端生命周期只问一次**（缓存的是 `PATH`，不是答案：之后装进同一个目录的程序照样查得到；只问一次 ⇒ rc 里起 ssh-agent 那一类至多多起一个）。
 /// 问法与防法见 [`fresh_terminal_path`]；问不出来 ⇒ `None`（调用方不许当成「没有」）。
@@ -110,7 +110,7 @@ pub(crate) enum StartBy {
     PowerShellFile,
 }
 
-/// 「装没装」（足迹）· 「这台能起哪几家」（起新会话框）· `ccm` 最后起 agent 那一下 —— **只经这一处**找 agent 命令行，
+/// 「装没装」（足迹）· 「这台能起哪几家」（起新会话框）· `ccm` 最后起 agent 那一下 · 后端自己起 agent 程序（[`agent_launch`]）—— **只经这一处**找 agent 命令行，
 /// 于是「认得出」就是「起得来」。
 ///
 /// - unix：只认原名（直接起）。
@@ -170,6 +170,60 @@ pub(crate) fn find_session_command(
         }
     }
     SessionCommand::Absent
+}
+
+/// 后端**自己**起一个 agent 程序（登录子命令 · 用量探针）怎么起：找到的那个文件 ＋ 前导参数 ＋ 子进程的 `PATH`（`None` ＝ 照本进程的）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AgentLaunch {
+    pub(crate) program: std::ffi::OsString,
+    pub(crate) lead: Vec<std::ffi::OsString>,
+    pub(crate) path: Option<String>,
+}
+
+/// 后端自己起 agent 程序的那一下 —— **只经这一处**拿 `PATH`、找程序：照起会话那个 shell 的 `PATH`（[`session_shell_path`]）找，
+/// 子进程也拿那一份（npm 装的那一形靠它找 `node`）。后端经 ssh 非登录 shell 起时它自己的 `PATH` 常常没有用户级 `bin` ⇒ 不能照它找。
+/// `given` ＝ 判据交的那一份「起会话那个 shell 的 `PATH`」；生产 `None` ⇒ 现问（按后端生命周期缓存）。
+/// 找不到 ⇒ `Err(查过哪一份 PATH、几个目录)`，不说「未装」（它可能装了、只是不在这一份上）。
+pub(crate) fn agent_launch(prog: &str, given: Option<&str>) -> Result<AgentLaunch, String> {
+    let asked = match given {
+        Some(_) => None,
+        None => session_shell_path(),
+    };
+    agent_launch_in(
+        prog,
+        given.or(asked.as_deref()),
+        std::env::var("PATH").ok().as_deref(),
+        cfg!(windows),
+        &|p| p.is_file(),
+    )
+}
+
+/// [`agent_launch`] 的本体（两份 `PATH` · 平台 · 查文件都是参数）。起会话那个 shell 的 `PATH` 问不出 ⇒ 照本进程的找、`PATH` 不另给；
+/// 问得出 ⇒ 只照它找（上面没有就是没有，不退回本进程那一份：起会话里敲它也起不来）。
+pub(crate) fn agent_launch_in(
+    prog: &str,
+    session: Option<&str>,
+    own: Option<&str>,
+    windows: bool,
+    is_file: &dyn Fn(&std::path::Path) -> bool,
+) -> Result<AgentLaunch, String> {
+    let session = session.filter(|p| !p.trim().is_empty());
+    let path = session.or(own);
+    match find_session_command(prog, path, windows, is_file) {
+        SessionCommand::Found { program, lead, .. } => Ok(AgentLaunch {
+            program,
+            lead,
+            path: session.map(str::to_string),
+        }),
+        SessionCommand::Absent => {
+            let dirs = path.map_or(0, |p| path_dirs(p).len()).to_string();
+            Err(match session {
+                Some(_) => copy_core::copy_text("beAgentLaunch.absent.session", &[("dirs", &dirs)]),
+                None => copy_core::copy_text("beAgentLaunch.absent.own", &[("dirs", &dirs)]),
+            })
+        }
+        SessionCommand::Unknown => Err(copy_core::copy_text("beAgentLaunch.path.unknown", &[])),
+    }
 }
 
 /// 找到的是 PowerShell 脚本（`.ps1` 那一形）、这台 PowerShell 的执行策略不运行本地未签名脚本（`Restricted` · `AllSigned`）

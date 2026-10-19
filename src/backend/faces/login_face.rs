@@ -158,7 +158,6 @@ fn accounts_product(agent: &str) -> crate::observe::accounts_query::AccountsList
 pub(crate) fn start(
     args: &LoginStartArgs,
     conn: u64,
-    path: Option<std::ffi::OsString>,
     on_end: sign_in::OnEnd,
 ) -> Result<LoginStarted, LoginStartErr> {
     let unsupported = |agent: &str| {
@@ -221,7 +220,7 @@ pub(crate) fn start(
         then: &then,
         conn,
         cwd,
-        path,
+        path: None,
     };
     let s = sign_in::start(&ask, on_end)
         .map_err(|s| LoginStartErr::failed(Fail::from(("failed", s)).into_said()))?;
