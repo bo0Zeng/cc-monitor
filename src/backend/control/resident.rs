@@ -550,10 +550,7 @@ fn run_dir(own: &Own) -> Result<(OwnPath, OwnPath), crate::common::said::Said> {
 pub(crate) fn child_env(home: &Path, hosted: &[(&str, String)]) -> Vec<(String, String)> {
     let mut env = vec![(crate::wire::listen::ENV_RESIDENT.into(), "1".into())];
     env.extend(hosted.iter().map(|(k, v)| {
-        let v = match v.strip_prefix("~/") {
-            Some(rel) => home.join(rel).display().to_string(),
-            None => v.clone(),
-        };
+        let v = crate::platform::paths::expand_tilde_from(v, Some(home));
         (k.to_string(), v)
     }));
     env

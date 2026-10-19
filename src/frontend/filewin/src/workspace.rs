@@ -942,7 +942,7 @@ impl Workspace {
     }
 
     /// 「关闭文件窗口 · devbox」：按族列出会打断的（未保存 · 传输中 · 删除中 · 解压中 · 计算大小中）；
-    /// 按钮「取消」（焦点）·「全部保存后关闭」（只在有没保存的时出现）·「仍然关闭」（危险）。
+    /// 按钮「取消」（焦点）·「全部保存后关闭」（只在有没保存的、此刻又写得了时出现）·「仍然关闭」（危险）。
     pub fn close_ask_ui(&mut self, ctx: &egui::Context) {
         if !self.closing_ask {
             return;
@@ -959,7 +959,8 @@ impl Workspace {
             copy_text("rsFilewinWorkspace.closeAsk.cancel", &[]),
             super::kit::Btn::Plain,
         )];
-        let save_all = !ask.unsaved.is_empty();
+        // 存不成（断着，[`super::chrome::LinkState::write_refused`]）⇒ 不给「全部保存后关闭」；没存的照样列出来、「仍然关闭」照给。
+        let save_all = !ask.unsaved.is_empty() && self.link.write_refused().is_none();
         if save_all {
             buttons.push((
                 copy_text("rsFilewinWorkspace.closeAsk.saveAll", &[]),

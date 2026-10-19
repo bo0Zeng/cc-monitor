@@ -75,3 +75,46 @@ fn an_extended_length_path_is_the_same_place_as_its_plain_form() {
         "不折的那一臂（unix）不该认 `\\\\?\\`"
     );
 }
+
+use super::{expand_tilde_from, home_join};
+
+/// 打头的 `~` 按家目录展开（`~/` 与 Windows 的 `~\` 都认），分隔符照家目录自己的写法；别的形原样（`~别人/…` · 绝对 · 相对）；
+/// 家目录说不出 ⇒ 原样。期望手写。
+#[test]
+fn a_leading_tilde_expands_under_the_home_in_its_own_separator() {
+    let unix = Some(std::path::Path::new("/home/user"));
+    let win = Some(std::path::Path::new(r"C:\Users\user"));
+    assert_eq!(
+        expand_tilde_from("~/.ssh/id_ed25519", unix),
+        "/home/user/.ssh/id_ed25519"
+    );
+    assert_eq!(expand_tilde_from("~", unix), "/home/user");
+    assert_eq!(
+        expand_tilde_from(r"~\.ssh\id_ed25519", win),
+        r"C:\Users\user\.ssh\id_ed25519"
+    );
+    assert_eq!(
+        expand_tilde_from("~/.ssh/id_ed25519", win),
+        r"C:\Users\user\.ssh\id_ed25519"
+    );
+    assert_eq!(expand_tilde_from("~bob/key", unix), "~bob/key");
+    assert_eq!(expand_tilde_from("/etc/ssh/key", unix), "/etc/ssh/key");
+    assert_eq!(expand_tilde_from("keys/a", unix), "keys/a");
+    assert_eq!(expand_tilde_from("~/.ssh/id", None), "~/.ssh/id");
+}
+
+/// 家目录底下一段 `/` 写的相对路径（契约 crate 里那些 `.cc-monitor/…`）⇒ 分隔符照家目录自己的写法拼，Windows 上不混 `/`。
+#[test]
+fn a_path_under_the_home_uses_the_homes_own_separator() {
+    assert_eq!(
+        home_join(
+            std::path::Path::new(r"C:\Users\user"),
+            ".cc-monitor/accounts"
+        ),
+        std::path::PathBuf::from(r"C:\Users\user\.cc-monitor\accounts")
+    );
+    assert_eq!(
+        home_join(std::path::Path::new("/home/user"), ".cc-monitor/accounts"),
+        std::path::PathBuf::from("/home/user/.cc-monitor/accounts")
+    );
+}

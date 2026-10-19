@@ -222,6 +222,31 @@ pub(crate) fn join_under(home: &str, rel: &str) -> String {
     out
 }
 
+/// 家目录底下一段 `/` 写的相对路径（契约 crate 里那些 `.cc-monitor/…`）⇒ 完整路径，分隔符照家目录自己的写法（[`join_under`]）：
+/// `Path::join` 不拆 `rel` 里的 `/`，Windows 上会拼成 `…\.cc-monitor/accounts`。
+pub(crate) fn home_join(home: &Path, rel: &str) -> PathBuf {
+    PathBuf::from(join_under(&home.to_string_lossy(), rel))
+}
+
+/// 🔴 **打头的 `~` 展开（唯一一处）**：`~` · `~/…` · `~\…`（Windows）⇒ `home` 底下（[`join_under`]，分隔符照家目录）；
+/// 别的形（`~别人/…` · 绝对 · 相对）或家目录说不出 ⇒ 原样。给人看的那一形由调用方留着原样，这里只管读盘用的那一份。
+pub(crate) fn expand_tilde_from(p: &str, home: Option<&Path>) -> String {
+    let Some(home) = home else {
+        return p.to_string();
+    };
+    let home = home.to_string_lossy();
+    match p.strip_prefix('~') {
+        Some("") => home.into_owned(),
+        Some(rest) if rest.starts_with(['/', '\\']) => join_under(&home, rest),
+        _ => p.to_string(),
+    }
+}
+
+/// 同 [`expand_tilde_from`]，家目录取这台的（[`home_dir`]）。
+pub(crate) fn expand_tilde(p: &str) -> String {
+    expand_tilde_from(p, home_dir().as_deref())
+}
+
 /// **这台后端的家目录只在这里答** ——规矩（哪个环境变量算家、按平台的先后）是两侧的契约，
 /// 住 `creds_core::store::home_dir_from`（monitor 同调它）；都没有 ⇒ `None`（调用方明说）。判据 `shell_home_guard.rs::the_home_directory_is_read_in_one_place`。
 pub(crate) fn home_dir() -> Option<PathBuf> {

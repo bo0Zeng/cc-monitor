@@ -8,8 +8,7 @@ use std::path::Path;
 
 /// 这台的账号库：清单里每个号（配置目录的末段 ＝ 路由第 2 段）＋ 账号 0。没建账号库 / 清单读不懂 ⇒ 空。
 pub(crate) fn library_at(home: &Path) -> Library {
-    let manifest = home
-        .join(relay_route_core::ACCOUNTS_DIR_REL)
+    let manifest = crate::platform::paths::home_join(home, relay_route_core::ACCOUNTS_DIR_REL)
         .join(relay_route_core::ACCOUNTS_MANIFEST_NAME);
     let Some(m) = crate::accounts::manage::scan::manifest_text_at(&manifest)
         .ok()

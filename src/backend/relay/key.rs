@@ -86,10 +86,7 @@ pub(crate) fn scoped(full: Key, kind: KeyKind) -> Key {
 /// 这台的钥匙文件在 `home` 底下的那一份：分隔符照 `home` 自己的写法拼（[`crate::platform::paths::join_under`]），
 /// Windows 上显示出来不混 `/`。
 pub(crate) fn key_path(home: &Path) -> PathBuf {
-    PathBuf::from(crate::platform::paths::join_under(
-        &home.to_string_lossy(),
-        relay_route_core::KEY_FILE_REL,
-    ))
+    crate::platform::paths::home_join(home, relay_route_core::KEY_FILE_REL)
 }
 
 /// 这台盘上根钥匙派生出来的只许直通那一把（[`pass_of`]）的串；读不到 ⇒ `None`（**只读**）。

@@ -1221,8 +1221,12 @@ fn watch_loop(
         // `sock_dir_watched` = 目录**本身**挂上了没有（没挂上时 `arm_ears` 退一层监视它的父）。
         let mut sock_dir_watched = false;
         let mut accounts_ear = accounts_manifest.parent().map(AccountsEar::new);
-        let mut profiles_ear = crate::platform::paths::home_dir()
-            .and_then(|h| ProfilesEar::new(h.join(relay_route_core::PROFILES_REL)));
+        let mut profiles_ear = crate::platform::paths::home_dir().and_then(|h| {
+            ProfilesEar::new(crate::platform::paths::home_join(
+                &h,
+                relay_route_core::PROFILES_REL,
+            ))
+        });
         if let Some(ear) = profiles_ear.as_mut() {
             ear.arm(&mut debouncer);
         }

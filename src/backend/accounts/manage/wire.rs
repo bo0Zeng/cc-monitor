@@ -102,10 +102,7 @@ fn alias_events(before: &[String], after: &[String]) -> Vec<AliasEvent> {
 /// 导入凭据的那个路径：`~/…` 按家目录展开；只收家目录底下的绝对路径（无 `..` 段 · 无控制符）。
 fn cred_path(home: &str, raw: &str) -> Result<String, Refusal> {
     let t = raw.trim();
-    let abs = match t.strip_prefix("~/") {
-        Some(rest) => join(home, rest),
-        None => t.to_string(),
-    };
+    let abs = crate::platform::paths::expand_tilde_from(t, Some(std::path::Path::new(home)));
     // 尾部 `/` 先去掉再判：`~/` · `<家>/` 就是家目录本身，不许当成「家目录底下」放过去。
     let abs = abs.trim_end_matches('/');
     let ok = abs.starts_with('/')

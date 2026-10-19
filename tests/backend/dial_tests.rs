@@ -1106,3 +1106,35 @@ fn the_backend_installs_its_own_host_into_the_dial_core() {
         crate::control::files_commit::STAGING_DIR
     );
 }
+
+/// 私钥框里写的 `~/.ssh/…`：拨号那一层按这台家目录展开再读（不原样交给读文件那一下）；读不出来那一句里的路径照用户写的。
+#[test]
+fn a_key_path_written_with_a_tilde_is_read_under_the_home() {
+    use ssh_dial::env::{Credential, KeySource};
+    let home = std::env::temp_dir().join(format!("ccm-dial-tilde-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    std::fs::create_dir_all(home.join(".ssh")).unwrap();
+    let key = russh::keys::PrivateKey::from(
+        russh::keys::ssh_key::private::Ed25519Keypair::from_seed(&[7; 32]),
+    );
+    let text = key
+        .to_openssh(russh::keys::ssh_key::LineEnding::LF)
+        .unwrap();
+    std::fs::write(home.join(".ssh").join("id_t"), text.as_bytes()).unwrap();
+    let keys = HomeKeyFiles {
+        home: Some(home.clone()),
+    };
+    assert!(
+        matches!(keys.credential("~/.ssh/id_t"), Ok(Credential::Key(_))),
+        "`~/.ssh/id_t` 没按家目录展开就去读了"
+    );
+    let said = match keys.credential("~/.ssh/nope") {
+        Err(s) => s.said,
+        Ok(_) => panic!("没有的钥匙读成了"),
+    };
+    assert!(
+        said.contains("~/.ssh/nope"),
+        "报错句里的路径不是用户写的那一形：{said}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
