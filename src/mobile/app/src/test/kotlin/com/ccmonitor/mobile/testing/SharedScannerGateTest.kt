@@ -456,10 +456,12 @@ class SharedScannerGateTest {
             listOf(
                 "fun " + "codeOnlyKeepingLiterals(",
                 "fun " + "codeOnlyDroppingLiterals(",
-                // 三支「抠字面」入口：同样各自只许声明一次。
+                // 四支「抠字面」入口与按句登记用的模板形状：同样各自只许声明一次。
                 "fun " + "literalsOf(",
                 "fun " + "literalCorpusOf(",
                 "fun " + "literalsInCallsTo(",
+                "fun " + "literalsWithEnclosingCall(",
+                "fun " + "templateShape(",
             )
 
         /**
