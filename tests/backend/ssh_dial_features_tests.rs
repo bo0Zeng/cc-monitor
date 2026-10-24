@@ -705,7 +705,7 @@ async fn a_refused_sftp_subsystem_says_so_instead_of_waiting() {
         "host": "127.0.0.1", "port": port, "user": "u", "key_path": "refusing-sftp-pw", "use": "hold"
     }));
     let got = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
+        guard_core::wall::CEILING,
         crate::sftp::open_for_transfer(&crate::sftp::Dial::of(req)),
     )
     .await

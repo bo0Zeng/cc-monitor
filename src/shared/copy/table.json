@@ -23767,7 +23767,7 @@
     "machineState.down.sessionDenied": {
       "kind": "body",
       "role": "片段",
-      "zh": "{machine} 登录通过 · 拒绝开会话（多半是进程数到上限）",
+      "zh": "{machine} 登录通过 · 拒绝开会话",
       "args": ["machine"]
     },
     "machineState.down.local": {
