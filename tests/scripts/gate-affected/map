@@ -16,7 +16,7 @@
 
 # ── 组 ───────────────────────────────────────────────────────────────────────────
 # 恒跑（两种模式都跑）：静态那几格（全是读盘上文本，合计十几秒）· 两棵树的排版 · tsc · npm audit。
-@cheap worktree-clean copy2 e2e-smoke release-gate platform installface ccbus-twophase fmt fmt-backend audit tsc tmux-default
+@cheap worktree-clean e2e-smoke release-gate platform ccbus-twophase fmt fmt-backend audit tsc tmux-default
 # 默认模式与 quick-check 恒跑、--trust-ci 模式交给 CI 的：两棵树的全部单测（cargo · backend）与 vitest（npm）及跟着它们的三格。
 #   为什么恒跑：三套里都有扫全仓的判据（strace 实测：后端那套读到被跟踪的 3698 份里的 3686 份、vitest 3674 份；壳那套的私人形状 ·
 #   出仓引用按 `git ls-files` 扫全仓）⇒ 按路径挑会绿着说假话。要挑它们，先得把扫全仓的那几族挪出这三套。

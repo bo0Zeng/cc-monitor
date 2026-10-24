@@ -637,7 +637,6 @@ fn the_process_words_net_catches_build_wording_and_spares_the_turn_copy() {
         "tests/evidence/K-T68-A1-outward-copy-census.py",
         "src/shared/copy/rules.json",
         "src/backend/lib.rs",
-        "tests/evidence/K-R117-ruler.py",
     ]
     .into_iter()
     .filter(|r| process_words_exempt(r))

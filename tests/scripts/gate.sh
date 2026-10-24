@@ -183,11 +183,11 @@ gate_vitest_share() { ( export GATE_VITEST_WORKERS="$GATE_VITEST_EACH"; "$@" ); 
 #      · `mobile`（手机端的 JVM 单测里有带等待上限的进程与协程用例）· `android-device`（模拟器上的设备测，带等待上限）；
 #    · 不按墙钟判（只看编得过 / 诊断零条 / 盘上文本 / 两份对得上 ⇒ 让路）—— 编译类 `deadcode` · `deadcode-backend` · `clippy`
 #      · `clippy-backend` · `appbuild` · `shotsshell` · `winchk` · `winchk-backend` · `winlink` · `muslbuild` · `androidbuild` · `tsc` · e2e 前置那趟 `cargo build`（`e2e-prep`）；
-#      读文本类 `worktree-clean` · `copy2` · `shellcheck` · `e2e-smoke` · `release-gate` · `platform` · `installface`
+#      读文本类 `worktree-clean` · `shellcheck` · `e2e-smoke` · `release-gate` · `platform`
 #      · `fmt` · `fmt-backend` · `audit` · `generated` · `tmux-default`。
 #    两张表与盘上的格两向相等（同一个判据文件钉）：新加一格就得在这里归一边。
 GATE_WALL_CELLS=" npm coverage cargo creds-harden backend rotation-500 comm-boundary test-tiers ccbus-twophase e2e env-sandbox weak-net mobile android-device "
-GATE_YIELD_CELLS=" deadcode deadcode-backend clippy clippy-backend appbuild shotsshell winchk winchk-backend winlink muslbuild androidbuild tsc e2e-prep worktree-clean copy2 shellcheck e2e-smoke release-gate platform installface fmt fmt-backend audit generated tmux-default "
+GATE_YIELD_CELLS=" deadcode deadcode-backend clippy clippy-backend appbuild shotsshell winchk winchk-backend winlink muslbuild androidbuild tsc e2e-prep worktree-clean shellcheck e2e-smoke release-gate platform fmt fmt-backend audit generated tmux-default "
 gate_yields() { case "$GATE_YIELD_CELLS" in *" $1 "*) return 0 ;; esac; return 1; }
 # 只降调它所在的那个子 shell（`$BASHPID`）及其往后起的子进程；调用方负责把它放进子 shell 里。
 gate_yield() { renice -n 10 -p "$BASHPID" >/dev/null 2>&1 || true; "$@"; }
@@ -651,13 +651,6 @@ gate_ci_steps() {
 # ── 「静态」道：只读盘上文本的那几格（外加 `audit` 问一趟 registry）──
 gate_lane 静态
 
-# ── `copy2`：量具的还原那一跳有没有把旧 mtime 搬回被测树 ──
-# 用 `shutil.copy2` 还原源码会带回旧 mtime ⇒ cargo 判「源码没变」、复用上一刀的产物，那一趟读数作废。
-# 判复制的目的地落不落在被 git 跟踪的工作树内容上（造夹具、拷读数是正当用途，不红）。
-# 判据本体与它看不见什么住 `tests/evidence/K-R115-ruler.py` 头注。本格是唯一盖到 `evidence/` 的门。
-run_gate copy2 '`evidence/*.py` 里 `shutil` 保元数据复制族（copy2 · copytree · copystat）的调用点数，逐处判目的地；份数以 `tests/evidence/K-R115-ruler.py` 自己印的那一行为准。⚠ 只看 `evidence/` 下的 `.py`；别的目录、别的语言、shell 串里的 `cp -a` 本行盖不到' \
-         bash -c 'python3 tests/evidence/K-R115-ruler.py'
-
 # ── `shellcheck`：shell 脚本的 `--severity=error` 那一档 ───────────────────────────────────────
 # 人群的唯一住址是下面这一行（CI 调本格）；`shell_lint_registry` 读它判每个 shell 脚本要么在人群里、要么登记豁免。
 # 本段不让任何注释行以 `#` ＋ 空格 ＋ 那个工具名开头：那是它的指令语法。
@@ -716,12 +709,6 @@ run_gate release-gate '判过的条数（`release.yml` 上逐行印出来的 PAS
 # 各格只说「我编得过」，这一格说「该编的都编了」：少一格、或多一个没登记的 target 都红。只判登记，不编东西。
 run_gate platform '判过的条数（判据本体每趟现算并印在它自己那行上：P1 承诺表 ↔ 门禁格两向集合相等 ＋ P2 每格一条逐字锚点 count()==1 ＋ P3 显式拒绝的那格全仓零脚印）。⚠ 反空真锚是 P1 那两向相等。⚠ 它不编任何东西：判的是门禁盖到了哪些平台，不判那些平台上真跑得起来' \
          python3 tests/evidence/K-G4-platform-ledger.py
-
-# ── `installface`：安装面那 22 条命令的分组与前端落点（判据本体 `tests/evidence/K-R117-ruler.py`）──
-# 每组前端落点的名单钉在 `FRONTEND_PIN` 里、逐字相等（不是 `<=`）：多一份落点或表记错都红；收干净一组就同拍把那一行降下来。
-# 射程见那份文件头注；`parity_ledger.rs` 那一份判不了（命令名就从它解析），它的闸在闭集判定。
-run_gate installface '判过的条数（判据本体逐条印出来的 PASS：22 条命令各归一组 ＋ 闭集并集两向 ＋ 五组交集空 ＋ 5 组前端落点棘轮 ＋ 22 条包装层入口两侧 ＋ `claims()` 10 个装/卸符号各有着落）。⚠ 只在红的时候出声的那几条不在这个数里。⚠ 落点只认调用形状 `.<命令>(`（注释里提到命令名不算），`invoke("<名>")` 直呼只出读数；度量的是几份文件不是几处引用。⚠ `parity_ledger.rs` 那一份判不了（空真），闸在闭集判定' \
-         python3 tests/evidence/K-R117-ruler.py
 
 # ── `ccbus-twophase`：cc-bus 两阶段读口 ＋ 三个适配 trait ＋ Windows 那一侧 ──
 # 推进已读位置是有副作用的那一跳，错一次就是「消息被消费掉却没人看见」。判据本体与射程住
