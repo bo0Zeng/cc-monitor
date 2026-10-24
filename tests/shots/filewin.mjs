@@ -3,7 +3,6 @@
  * （winit 一个进程只许建一个事件循环）。测试二进制先 `cargo test --no-run` 编出来，再逐场景按名字拉起。
  */
 import { spawn, spawnSync } from "node:child_process";
-import zlib from "node:zlib";
 import { existsSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { WALL_CEILING_MS } from "./real/pool.mjs";
@@ -148,73 +147,14 @@ fn main() {
 }
 `;
 
-/** 一张 RGBA 的 png（`paint(x, y)` 给每个像素的 [r, g, b, a]）：查看页那两张要真解得开的图。 */
-function png(w, h, paint) {
-  const raw = Buffer.alloc((w * 4 + 1) * h);
-  for (let y = 0; y < h; y++) {
-    raw[y * (w * 4 + 1)] = 0;
-    for (let x = 0; x < w; x++) raw.set(paint(x, y), y * (w * 4 + 1) + 1 + x * 4);
-  }
-  const chunk = (type, data) => {
-    const len = Buffer.alloc(4);
-    len.writeUInt32BE(data.length);
-    const td = Buffer.concat([Buffer.from(type, "ascii"), data]);
-    const crc = Buffer.alloc(4);
-    crc.writeUInt32BE(zlib.crc32(td) >>> 0);
-    return Buffer.concat([len, td, crc]);
-  };
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(w, 0);
-  ihdr.writeUInt32BE(h, 4);
-  ihdr.set([8, 6, 0, 0, 0], 8);
-  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
-}
-
-/** 一张架构草图样子的图：透明底上几块色块 ＋ 连线（`k` 是缩放）。 */
-function diagram(w, h) {
-  const boxes = [[0.05, 0.38, 0.24, 0.58, [59, 110, 165]], [0.41, 0.16, 0.6, 0.36, [201, 100, 66]], [0.41, 0.62, 0.6, 0.82, [111, 154, 90]], [0.76, 0.38, 0.95, 0.58, [138, 107, 176]]];
-  return png(w, h, (x, y) => {
-    const u = x / w, v = y / h;
-    for (const [a, b, c, d, rgb] of boxes) if (u >= a && u <= c && v >= b && v <= d) return [...rgb, 255];
-    if (Math.abs(u - 0.505) < 0.004 && v > 0.36 && v < 0.62) return [90, 90, 90, 255];
-    if (Math.abs(v - 0.48) < 0.006 && ((u > 0.24 && u < 0.41) || (u > 0.6 && u < 0.76))) return [90, 90, 90, 255];
-    return [0, 0, 0, 0];
-  });
-}
-
-/** 铺一个合成的项目目录（占位文件；修改时间钉死，每次截出来一样）。 */
+/**
+ * 铺这一张要的真盘那几份：家目录本身（书签那份文件落在这里）＋ 「上传遇到同名」那一张本机那一侧的三份（两份与目录里同名）。
+ * 远端那棵树不在这里：截图那一格自己铺在合成后端那台机器的盘上（`workspace_tests.rs` 的 `lay_shots_tree`，内存里，不落盘）。
+ */
 function layFixture(home) {
   rmSync(home, { recursive: true, force: true });
-  const dir = path.join(home, "work", "orders-service");
+  mkdirSync(home, { recursive: true });
   const at = (iso) => new Date(iso);
-  const dirs = [["src", "2026-10-01T09:12:00"], ["docs", "2026-09-28T17:40:00"], ["tests", "2026-10-01T09:20:00"], [".git", "2026-10-01T09:31:00"], ["node_modules", "2026-09-02T11:05:00"], ["empty-dir", "2026-09-30T08:00:00"]];
-  for (const [d] of dirs) mkdirSync(path.join(dir, d), { recursive: true });
-  const files = [
-    ["README.md", "# orders-service\n\n订单服务。\n", "2026-09-15T10:00:00"],
-    [".env", "A=1\n", "2026-08-01T09:00:00"],
-    [".gitignore", "target\n", "2026-08-01T09:00:00"],
-    ["Cargo.toml", '[package]\nname = "orders"\nversion = "0.1.0"\n', "2026-09-20T14:22:00"],
-    ["notes.txt", "todo\n".repeat(200), "2026-09-29T18:03:00"],
-    ["report.pdf", Buffer.alloc(182_000), "2025-12-31T23:59:00"],
-    ["release.tar.gz", Buffer.alloc(3_400_000), "2026-09-30T20:15:00"],
-    ["logo.png", Buffer.alloc(24_000), "2026-07-11T08:30:00"],
-    ["main.rs", CODE, "2026-10-01T09:18:00"],
-    ["src/retry.rs", "pub fn backoff() {}\n", "2026-10-01T09:12:00"],
-    ["src/clients.rs", "pub struct InventoryClient;\n", "2026-10-01T09:11:00"],
-    ["tests/retry_test.rs", "#[test]\nfn retries() {}\n", "2026-10-01T09:20:00"],
-    ["docs/retry.md", "# 重试\n", "2026-09-28T17:40:00"],
-    ["docs/architecture.png", diagram(1600, 1000), "2026-09-28T17:30:00"],
-    ["docs/flow.png", diagram(800, 500), "2026-09-28T17:35:00"],
-  ];
-  for (const [name, body, t] of files) {
-    writeFileSync(path.join(dir, name), body);
-    utimesSync(path.join(dir, name), at(t), at(t));
-  }
-  // 目录的修改时间最后钉（往里写文件会把它刷成现在）
-  for (const [d, t] of dirs) utimesSync(path.join(dir, d), at(t), at(t));
-  // 「复制到另一台」那一张：那台主目录底下的几个文件夹（合成后端一台答所有机器）。
-  for (const d of ["datasets", "inbox", "runs", "ranker"]) mkdirSync(path.join(home, d), { recursive: true });
-  // 「上传遇到同名」那一张：本机那一侧的三份（两份与目录里同名）。
   const local = path.join(home, "..", "..", "local");
   mkdirSync(local, { recursive: true });
   for (const [name, n, t] of [["main.rs", 612, "2026-10-01T13:50:00"], ["README.md", 34, "2026-09-12T10:00:00"], ["new.txt", 9, "2026-10-01T13:50:00"]]) {

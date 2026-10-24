@@ -6,6 +6,8 @@ import com.ccmonitor.mobile.testing.KotlinSourceScanner.codeOnlyKeepingLiterals
 import com.ccmonitor.mobile.testing.KotlinSourceScanner.literalCorpusOf
 import com.ccmonitor.mobile.testing.KotlinSourceScanner.literalsInCallsTo
 import com.ccmonitor.mobile.testing.KotlinSourceScanner.literalsOf
+import com.ccmonitor.mobile.testing.KotlinSourceScanner.literalsWithEnclosingCall
+import com.ccmonitor.mobile.testing.KotlinSourceScanner.templateShape
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -273,6 +275,48 @@ class KotlinSourceScannerTest {
             "提前收尾之后那一段里没有引文了，对照是空的：不认嵌套的扫描器在这份样本上也不会错",
             sample.substring(firstClose + close.length).contains("Text(\"注释里的引文\")"),
         )
+    }
+
+    /**
+     * 每条字面认得出它**直接**落在哪个调用里：限定名照原样、尾随 lambda 跨过前面那对括号、
+     * 字面里的括号骗不了它、外层调用不算（只认最近那一层）、下标与顶层赋值答空。
+     */
+    @Test
+    fun eachLiteralKnowsTheCallItSitsDirectlyIn() {
+        val sample =
+            listOf(
+                "android.util.Log.w(TAG, \"a\")",
+                "require(f(x)) { \"b\" }",
+                "Text(\"c (不是括号\")",
+                "Row { Text(\"d\") }",
+                "val e = \"e\"",
+                "val f = m[\"f\"]",
+                "outer(inner(1), \"g\")",
+            ).joinToString("\n")
+        val got = literalsWithEnclosingCall(sample).map { it.literal.body to it.call }
+        assertEquals(
+            listOf(
+                "a" to "android.util.Log.w",
+                "b" to "require",
+                "c (不是括号" to "Text",
+                "d" to "Text",
+                "e" to "",
+                "f" to "",
+                "g" to "outer",
+            ),
+            got,
+        )
+    }
+
+    /** 模板那一截（`$name` 与带花括号的那种，花括号里再嵌一对也算一截）记成 `{…}`；转义的美元号不是模板。 */
+    @Test
+    fun templatesAreShapedAndAnEscapedDollarIsNot() {
+        val d = "$"
+        assertEquals("连接失败：{…}", templateShape("连接失败：$d{e.message}"))
+        assertEquals("{…} 行 {…}", templateShape("${d}n 行 $d{if (a) { b } else c}"))
+        assertEquals("转义的 \\${d}x 照留", templateShape("转义的 \\${d}x 照留"))
+        assertEquals("没有模板", templateShape("没有模板"))
+        assertEquals("末尾一个美元号 $d", templateShape("末尾一个美元号 $d"))
     }
 
     // ---- 帮手 -----------------------------------------------------------------

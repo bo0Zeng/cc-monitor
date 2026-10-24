@@ -1090,11 +1090,94 @@ fn chrono_like_today_at(h: i64, m: i64) -> u64 {
     (day + h * 3600 + m * 60 - off) as u64
 }
 
+/// 截图那一格的远端那棵树：铺在合成后端那台机器的盘上（`find::testing::synth_fs`，不落盘），
+/// 一个合成的项目目录（占位文件；修改时间按本机钟钉死，每次截出来一样）＋ 「复制到另一台」那一张要的几个文件夹。
+/// `code` 是 main.rs 的正文（截图工具交来的那一份，预览也画它）。
+#[cfg(not(windows))]
+fn lay_shots_tree(home: &std::path::Path, code: &str) {
+    use crate::find::testing::synth_fs;
+    let at = |iso: &str| -> u64 {
+        chrono::NaiveDateTime::parse_from_str(iso, "%Y-%m-%dT%H:%M:%S")
+            .expect("钉死的时刻写错了")
+            .and_local_timezone(chrono::Local)
+            .earliest()
+            .expect("本机时区里没有这一刻")
+            .timestamp() as u64
+    };
+    // 一张架构草图样子的图：透明底上几块色块 ＋ 连线。
+    let diagram = |w: u32, h: u32| -> Vec<u8> {
+        let boxes: [(f32, f32, f32, f32, [u8; 3]); 4] = [
+            (0.05, 0.38, 0.24, 0.58, [59, 110, 165]),
+            (0.41, 0.16, 0.6, 0.36, [201, 100, 66]),
+            (0.41, 0.62, 0.6, 0.82, [111, 154, 90]),
+            (0.76, 0.38, 0.95, 0.58, [138, 107, 176]),
+        ];
+        let img = image::RgbaImage::from_fn(w, h, |x, y| {
+            let (u, v) = (x as f32 / w as f32, y as f32 / h as f32);
+            for (a, b, c, d, rgb) in boxes {
+                if u >= a && u <= c && v >= b && v <= d {
+                    return image::Rgba([rgb[0], rgb[1], rgb[2], 255]);
+                }
+            }
+            let wire = ((u - 0.505).abs() < 0.004 && v > 0.36 && v < 0.62)
+                || ((v - 0.48).abs() < 0.006 && ((u > 0.24 && u < 0.41) || (u > 0.6 && u < 0.76)));
+            image::Rgba(if wire { [90, 90, 90, 255] } else { [0, 0, 0, 0] })
+        });
+        let mut buf = std::io::Cursor::new(Vec::new());
+        img.write_to(&mut buf, image::ImageFormat::Png).unwrap();
+        buf.into_inner()
+    };
+    synth_fs::remove_all(home);
+    let dir = home.join("work").join("orders-service");
+    let dirs = [
+        ("src", "2026-10-01T09:12:00"),
+        ("docs", "2026-09-28T17:40:00"),
+        ("tests", "2026-10-01T09:20:00"),
+        (".git", "2026-10-01T09:31:00"),
+        ("node_modules", "2026-09-02T11:05:00"),
+        ("empty-dir", "2026-09-30T08:00:00"),
+    ];
+    let files: Vec<(&str, Vec<u8>, &str)> = vec![
+        ("README.md", "# orders-service\n\n订单服务。\n".into(), "2026-09-15T10:00:00"),
+        (".env", "A=1\n".into(), "2026-08-01T09:00:00"),
+        (".gitignore", "target\n".into(), "2026-08-01T09:00:00"),
+        (
+            "Cargo.toml",
+            "[package]\nname = \"orders\"\nversion = \"0.1.0\"\n".into(),
+            "2026-09-20T14:22:00",
+        ),
+        ("notes.txt", "todo\n".repeat(200).into(), "2026-09-29T18:03:00"),
+        ("report.pdf", vec![0; 182_000], "2025-12-31T23:59:00"),
+        ("release.tar.gz", vec![0; 3_400_000], "2026-09-30T20:15:00"),
+        ("logo.png", vec![0; 24_000], "2026-07-11T08:30:00"),
+        ("main.rs", code.as_bytes().to_vec(), "2026-10-01T09:18:00"),
+        ("src/retry.rs", "pub fn backoff() {}\n".into(), "2026-10-01T09:12:00"),
+        ("src/clients.rs", "pub struct InventoryClient;\n".into(), "2026-10-01T09:11:00"),
+        ("tests/retry_test.rs", "#[test]\nfn retries() {}\n".into(), "2026-10-01T09:20:00"),
+        ("docs/retry.md", "# 重试\n".into(), "2026-09-28T17:40:00"),
+        ("docs/architecture.png", diagram(1600, 1000), "2026-09-28T17:30:00"),
+        ("docs/flow.png", diagram(800, 500), "2026-09-28T17:35:00"),
+    ];
+    for (d, t) in dirs {
+        synth_fs::mkdir_all(dir.join(d));
+        synth_fs::set_mtime(dir.join(d), at(t));
+    }
+    for (name, body, t) in files {
+        synth_fs::write(dir.join(name), body);
+        synth_fs::set_mtime(dir.join(name), at(t));
+    }
+    // 「复制到另一台」那一张：那台主目录底下的几个文件夹（合成后端一台答所有机器）。
+    for d in ["datasets", "inbox", "runs", "ranker"] {
+        synth_fs::mkdir_all(home.join(d));
+    }
+}
+
 /// 截图工具（`npm run shots`）那一格：不是判据。在私有 Xvfb 上开真窗口、画几帧、窗口内截屏存 PNG。
 /// 一个进程只许建一个事件循环 ⇒ 每张图一个进程，场景走环境变量：
 /// `CCM_SHOTS_FILEWIN_SCENE`（main · split · empty · missing · search）· `CCM_SHOTS_FILEWIN_OUT`（PNG）· `CCM_SHOTS_FILEWIN_DIR`（合成的家目录）·
 /// `CCM_SHOTS_FILEWIN_PREVIEW`（预览里那份 main.rs 的正文）。
-/// 目录与文件是截图工具事先铺好的占位；后端是合成后端（`find::testing::FakeBackend`），不连任何机器。
+/// 远端那棵树由这一格自己铺在合成盘上（[`lay_shots_tree`]）；本机那几份（上传撞名那一张）是截图工具铺在
+/// `CCM_SHOTS_FILEWIN_DIR` 旁边真盘上的。后端是合成后端（`find::testing::FakeBackend`），不连任何机器。
 #[cfg(not(windows))]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore]
@@ -1105,12 +1188,12 @@ async fn screenshot_for_the_shots_tool() {
     let scene = need("CCM_SHOTS_FILEWIN_SCENE");
     let out = need("CCM_SHOTS_FILEWIN_OUT");
     let base = std::path::PathBuf::from(need("CCM_SHOTS_FILEWIN_DIR"));
-    // 合成目录由截图工具事先铺好（这一格只读盘，不写）。
     let dir = base.join("work").join("orders-service");
-    // 预览那一栏的正文：合成后端按路径从内存里答（不读盘），工具把 main.rs 那一份一并给过来。
+    // 预览那一栏的正文：合成后端按路径从内存里答，工具把 main.rs 那一份一并给过来。
     let code = need("CCM_SHOTS_FILEWIN_PREVIEW");
-    // 窗口里看到的是一台真机器那样的路径（`/home/user/…`）：合成后端把它换成盘上的沙箱路径再答（[`FakeBackend::aliased`]），
-    //   面包屑里就没有沙箱那几级（场景名之类）。`dir` 是盘上那一份（读盘用），`vdir` / `d` 是窗口那一份。
+    lay_shots_tree(&base, &code);
+    // 窗口里看到的是一台真机器那样的路径（`/home/user/…`）：合成后端把它换成合成盘上的路径再答（[`FakeBackend::aliased`]），
+    //   面包屑里就没有沙箱那几级（场景名之类）。`dir` 是合成盘上那一份，`vdir` / `d` 是窗口那一份。
     let vhome = std::path::PathBuf::from("/home/user");
     let vdir = vhome.join("work").join("orders-service");
     let d = vdir.to_string_lossy().to_string();
@@ -1198,14 +1281,10 @@ async fn screenshot_for_the_shots_tool() {
     while w.listing.is_loading() {
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
-    // 合成后端的 files-ls 不送修改时间（真后端送）：照盘上补上。
+    // 合成后端的 files-ls 不送修改时间（真后端送）：照合成盘上钉的那一刻补上。
     for r in w.listing.rows.lock().unwrap().iter_mut() {
         let real = r.path.replacen("/home/user", &base.to_string_lossy(), 1);
-        r.mtime_secs = std::fs::metadata(&real)
-            .ok()
-            .and_then(|m| m.modified().ok())
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|t| t.as_secs());
+        r.mtime_secs = crate::find::testing::synth_fs::node(&real).map(|n| n.mtime);
         // 真后端连写好的两格一起送（合成场景替它按这台的钟写）。
         let texts = r.mtime_secs.map(crate::source::mtime_text);
         r.mtime_text = texts.as_ref().map(|t| t.short.clone());
@@ -3189,8 +3268,8 @@ async fn a_moved_directory_re_asks_only_the_tabs_showing_it_with_their_held() {
     let root = std::env::temp_dir().join(format!("dk5-dirs-{}", std::process::id()));
     let (a, b) = (root.join("a"), root.join("b"));
     for d in [&a, &b] {
-        std::fs::create_dir_all(d).unwrap();
-        std::fs::write(d.join("x.txt"), b"x").unwrap();
+        crate::find::testing::synth_fs::mkdir_all(d);
+        crate::find::testing::synth_fs::write(d.join("x.txt"), b"x");
     }
     let (a, b) = (
         crate::find::testing::remote_form(&a.to_string_lossy()),
@@ -3280,5 +3359,5 @@ async fn a_moved_directory_re_asks_only_the_tabs_showing_it_with_their_held() {
         2,
         "说不清是哪个，却没有每页都重问"
     );
-    std::fs::remove_dir_all(&root).ok();
+    crate::find::testing::synth_fs::remove_all(&root);
 }

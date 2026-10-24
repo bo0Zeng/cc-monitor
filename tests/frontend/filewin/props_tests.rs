@@ -1,7 +1,7 @@
 //! 右键「属性」：后端那一份解得对、框里列得对、菜单那一下真的摆出框并去问。
 
 use super::*;
-use crate::find::testing::{window_on, wire_up, Declared, FakeBackend};
+use crate::find::testing::{synth_fs, window_on, wire_up, Declared, FakeBackend};
 use crate::select::Action;
 
 /// 一份 `files-stat` 回包（JSON）先按回包类型解（`ask_typed` 那一步），再摊成框里那几格。
@@ -40,17 +40,21 @@ fn a_stat_reply_is_read_with_owner_and_link_target() {
 /// 菜单上「属性」那一下：框摆出来、真去问了 `files-stat`，答回来的那几格逐格列在框里。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_menu_item_puts_up_the_box_and_asks_the_backend() {
-    let dir = std::env::temp_dir().join(format!("ccm-props-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("a.txt"), b"abc").unwrap();
-    let d = dir.to_string_lossy().to_string();
+    let d = format!("/srv/ccm-props-{}", std::process::id());
+    synth_fs::write(format!("{d}/a.txt"), b"abc");
     let wired = wire_up(
         "props",
         FakeBackend::new(&["files-stat", "files-ls"], Declared::default()),
     )
     .await;
     let mut w = window_on(&wired, &d);
-    *w.listing.rows.lock().unwrap() = crate::source::list_local(&dir).unwrap();
+    *w.listing.rows.lock().unwrap() = vec![crate::source::Listed::plain(crate::source::Row {
+        name: "a.txt".into(),
+        path: format!("{d}/a.txt"),
+        is_dir: false,
+        size: 3,
+        lossy_name: false,
+    })];
     // 目录里只有这一份 ⇒ 全选就是选中它。
     assert!(w.apply_intent(crate::select::Intent::SelectAll, 0.0, None));
     assert!(w.perform(Action::Properties, None), "菜单那一下该摆出框");
@@ -84,5 +88,5 @@ async fn the_menu_item_puts_up_the_box_and_asks_the_backend() {
         .find(|(k, _)| *k == copy_text("rsFilewinProps.label.path", &[]))
         .unwrap();
     assert!(path_line.1.ends_with("a.txt"), "{lines:?}");
-    std::fs::remove_dir_all(&dir).ok();
+    synth_fs::remove_all(&d);
 }
