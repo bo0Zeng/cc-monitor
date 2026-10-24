@@ -117,17 +117,18 @@ fn both_ends_take_the_backoff_from_here() {
             );
         }
     }
-    // 两端要进展行的是同一个请求格（拨号核心 `DialRequest::progress`），各在开长 exec 那一处要。
-    for (who, rel) in [
-        ("桌面", "src/frontend/shell/src/dial_host.rs"),
-        ("手机核心", "src/mobile/core-rs/rust/resident.rs"),
-    ] {
-        let src = guard_core::production_code(&read(rel));
-        assert!(
-            src.contains("\"progress\""),
-            "{who}开长 exec 时没要拨号核心的进展行（{rel}）"
-        );
-    }
+    // 两端都在开长 exec 那一处要拨号核心的进展：桌面隔着进程，要的是请求格（`DialRequest::progress`，进展行）；
+    // 手机在进程里，走有类型的口（`uses::open` 的进展回调直接接到循环的 `Progress::step`）。
+    let desk = guard_core::production_code(&read("src/frontend/shell/src/dial_host.rs"));
+    assert!(
+        desk.contains("\"progress\""),
+        "桌面开长 exec 时没要拨号核心的进展行（src/frontend/shell/src/dial_host.rs）"
+    );
+    let phone = guard_core::production_code(&read("src/mobile/core-rs/rust/resident.rs"));
+    assert!(
+        phone.contains("ssh_dial::uses::open(&req, &stages, |_| progress.step())"),
+        "手机核心开长 exec 时没把拨号核心的进展接到循环（src/mobile/core-rs/rust/resident.rs）"
+    );
     // Kotlin 那一侧：从前那一份（`BackendFeed.Backoff` · `HEALTHY_MS`）的名字一个都不许回来；逐文件扫在 `LinkLayerLivesInTheCoreScanTest`，这里只看落地那一份。
     let kt = read("src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/ResidentFeed.kt");
     for name in [
