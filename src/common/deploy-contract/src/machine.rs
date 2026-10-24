@@ -50,6 +50,9 @@ pub fn said(state: K, stage: Option<Stage>, why: Option<Why>, machine: &str) -> 
             Why::Password => copy_text("machineState.down.password", &[]),
             Why::KeyUnreadable => copy_text("machineState.down.keyUnreadable", &[]),
             Why::Jump => copy_text("machineState.down.jump", &[]),
+            Why::SessionDenied => {
+                copy_text("machineState.down.sessionDenied", &[("machine", machine)])
+            }
             Why::HostKey | Why::Other => {
                 copy_text("machinePage.problem.offline", &[("machine", machine)])
             }
@@ -76,6 +79,8 @@ pub fn fixes(
             Why::Auth | Why::KeyUnreadable => vec![F::PushKey, F::ConnSettings],
             Why::Password => vec![F::PushKey],
             Why::Resolve | Why::Jump => vec![F::ConnSettings],
+            // 钥匙没问题、路也通：那台此刻不收新会话，等它松了再试。
+            Why::SessionDenied => vec![F::Retry],
             Why::Unreachable | Why::Timeout | Why::HostKey | Why::Other => {
                 vec![F::Retry, F::ConnSettings]
             }
@@ -90,6 +95,23 @@ pub fn fixes(
         | K::Newer
         | K::Unsupported
         | K::Unknown => Vec::new(),
+    }
+}
+
+/// 算不算离线（页头「N 台离线」那一段 · 文件窗口那一句数的都是它）：没连上 · 指纹不对 · 做不了 ⇒ 是；
+/// 登录过了、只是开会话被拒 ⇒ 不是（那台在线，此刻不收新会话）。
+pub fn offline(state: K, why: Option<Why>) -> bool {
+    match state {
+        K::Down => why != Some(Why::SessionDenied),
+        K::HostKeyChanged | K::Unsupported => true,
+        K::Up
+        | K::Connecting
+        | K::Installing
+        | K::Updating
+        | K::NeedsUpdate
+        | K::Newer
+        | K::Disabled
+        | K::Unknown => false,
     }
 }
 
@@ -140,9 +162,10 @@ pub fn local(f: Local<'_>) -> MachineState {
         (false, _) => K::Down,
     };
     let stage = (state == K::Connecting).then_some(Stage::Attach);
+    let name = copy_text("remote.cards.local", &[]);
     let said = match state {
         K::Down => copy_text("machineState.down.local", &[]),
-        s => said(s, stage, None, &copy_text("remote.cards.local", &[])),
+        s => said(s, stage, None, &name),
     };
     let fixes = match state {
         K::Up | K::Connecting => Vec::new(),
@@ -153,6 +176,8 @@ pub fn local(f: Local<'_>) -> MachineState {
     };
     MachineState {
         state,
+        name,
+        offline: offline(state, None),
         reason: None,
         stage,
         version: (relation == Relation::Same).then(|| f.version.to_string()),

@@ -254,6 +254,8 @@ pub enum Why {
     KeyUnreadable,
     /// 跳板那一台断开（拨号 · 鉴权 · 经它开隧道任一步）。
     Jump,
+    /// 登录过了、开会话被那台回拒（exec · shell · 子系统回 CHANNEL_FAILURE：共用登录机进程数到上限那一形）。
+    SessionDenied,
     /// 别的（看那一句）。
     Other,
 }
@@ -336,7 +338,11 @@ pub struct FixButton {
 )]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MachineState {
+    /// 给人看的那台的名字（问题行那一句里说的就是它）。
+    pub name: String,
     pub state: MachineStateKind,
+    /// 算不算离线（页头「N 台离线」数的就是这一格）：没连上 · 指纹不对 · 做不了 ⇒ 是；登录过了、只是拒开会话 ⇒ 不是。
+    pub offline: bool,
     /// 没连上的原因码（`down` · `host_key_changed` 才有）。
     pub reason: Option<Why>,
     /// 正在连时到哪一步。

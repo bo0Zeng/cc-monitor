@@ -123,6 +123,11 @@ fn subsystem(
     Box::pin(channel.request_subsystem(true, "sftp"))
 }
 
+/// 没答就关了通道时那一句（[`crate::uses::granted`] 的 `closed`）。
+fn subsystem_failed() -> String {
+    copy_text("beSftp.open.subsystem", &[])
+}
+
 /// 开一条 SFTP 会话：过这条连接的预算（`lane`）→ 开 session channel → 请求 sftp 子系统 → `SSH_FXP_INIT` →
 /// 问一次起始目录的真路径。**三到四个往返**。传输那一形用完停进这条连接的空位（[`Parked`]），
 /// 下一趟传输先取它（[`open_for_transfer`]，1 个往返验活）—— 旧 monitor 池的空闲栈随它一起删了，今天回来的是「每条连接一个空位」。
@@ -131,10 +136,13 @@ pub async fn open(
     req: &DialRequest,
     stages: &StageSink,
 ) -> Result<Session, Said> {
-    let (channel, permit) = lease.session_channel(req, stages).await?;
+    let (mut channel, permit) = lease.session_channel(req, stages).await?;
     subsystem(&channel)
         .await
         .map_err(|e| Said::with_raw(copy_text("beSftp.open.subsystem", &[]), &e))?;
+    // 等那台答应子系统（[`crate::uses::granted`]）：回拒 ⇒ 当场说「登录通过 · 拒绝执行命令」，不去一条不答的通道上等 INIT。
+    // 答复之前不会有 sftp 的字节（服务端要先收到我们的 `SSH_FXP_INIT`），先到的窗口调整之类照丢。
+    crate::uses::granted(&mut channel, "subsystem sftp", subsystem_failed, stages).await?;
     let stream = channel.into_stream();
     let linked = Arc::clone(lease.linked());
     if lease.lane() != Lane::Transfer {

@@ -7,7 +7,7 @@ use cmd_wire::machine::{
     Blocker, FixButton, MachineState, MachineStateKind as K, Round, RoundProblem, Stage, Why,
 };
 use copy_core::detail::{Detail, Label, Target};
-use deploy_contract::machine::{fixes, label, said, word};
+use deploy_contract::machine::{fixes, label, offline, said, word};
 
 use crate::Step;
 
@@ -119,6 +119,8 @@ pub fn product(e: &Entry, machine: &str, enabled: bool, installs: bool) -> Machi
     });
     let blocker = problem.and(e.blocker);
     MachineState {
+        name: machine.to_string(),
+        offline: offline(state, why),
         state,
         reason: why,
         stage: if state == K::Connecting {

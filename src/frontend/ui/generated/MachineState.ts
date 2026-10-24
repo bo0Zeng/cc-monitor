@@ -8,7 +8,15 @@ import type { VersionRelation } from "./VersionRelation";
 /**
  * 一台的状态成品（判定在后端 `deploy::machine`；本机那一行由壳照同一批键出）。界面照画：字取 `word` · `said` · `fixes[].label`。
  */
-export type MachineState = { state: MachineStateKind, 
+export type MachineState = { 
+/**
+ * 给人看的那台的名字（问题行那一句里说的就是它）。
+ */
+name: string, state: MachineStateKind, 
+/**
+ * 算不算离线（页头「N 台离线」数的就是这一格）：没连上 · 指纹不对 · 做不了 ⇒ 是；登录过了、只是拒开会话 ⇒ 不是。
+ */
+offline: boolean, 
 /**
  * 没连上的原因码（`down` · `host_key_changed` 才有）。
  */

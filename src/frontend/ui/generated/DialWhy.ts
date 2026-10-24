@@ -3,4 +3,4 @@
 /**
  * 拨一台没拨成的原因（闭集）：拨号核心判、写进拨号应答的 `reason`；接这台的宿主随断开那一句带着它，后端按它定那一态与修法。
  */
-export type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "other";
+export type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "session_denied" | "other";

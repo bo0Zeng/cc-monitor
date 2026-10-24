@@ -5,7 +5,9 @@
         "detail": null,
         "expectedHostKey": null,
         "fixes": [],
+        "name": "gpu-01",
         "next": null,
+        "offline": false,
         "os": null,
         "reason": null,
         "said": "",
@@ -23,7 +25,9 @@
         "detail": null,
         "expectedHostKey": null,
         "fixes": [],
+        "name": "gpu-01",
         "next": null,
+        "offline": false,
         "os": null,
         "reason": null,
         "said": "连接 gpu-01 · 启动 cc-monitor",
@@ -41,7 +45,9 @@
         "detail": null,
         "expectedHostKey": null,
         "fixes": [],
+        "name": "gpu-01",
         "next": null,
+        "offline": false,
         "os": null,
         "reason": null,
         "said": "安装 cc-monitor → gpu-01",
@@ -59,7 +65,9 @@
         "detail": null,
         "expectedHostKey": null,
         "fixes": [],
+        "name": "gpu-01",
         "next": null,
+        "offline": false,
         "os": null,
         "reason": null,
         "said": "更新 gpu-01 · cc-monitor",
@@ -86,7 +94,9 @@
             "label": "连接设置"
           }
         ],
+        "name": "gpu-01",
         "next": null,
+        "offline": true,
         "os": null,
         "reason": "auth",
         "said": "连接失败 · 密钥被拒",
@@ -113,7 +123,9 @@
             "label": "连接设置"
           }
         ],
+        "name": "gpu-01",
         "next": null,
+        "offline": true,
         "os": null,
         "reason": "timeout",
         "said": "连接失败 · 无应答",
@@ -136,7 +148,9 @@
             "label": "比对指纹…"
           }
         ],
+        "name": "gpu-01",
         "next": null,
+        "offline": true,
         "os": null,
         "reason": "host_key",
         "said": "主机指纹变更 · 未连接",
@@ -159,7 +173,9 @@
             "label": "更新"
           }
         ],
+        "name": "gpu-01",
         "next": null,
+        "offline": false,
         "os": null,
         "reason": null,
         "said": "gpu-01 要更新",
@@ -177,7 +193,9 @@
         "detail": null,
         "expectedHostKey": null,
         "fixes": [],
+        "name": "gpu-01",
         "next": null,
+        "offline": false,
         "os": null,
         "reason": null,
         "said": "gpu-01 版本较新 · 部分功能不可用",
@@ -195,7 +213,9 @@
         "detail": null,
         "expectedHostKey": null,
         "fixes": [],
+        "name": "gpu-01",
         "next": null,
+        "offline": false,
         "os": null,
         "reason": null,
         "said": "",
@@ -213,7 +233,9 @@
         "detail": "命令：dial\n对象：gpu-01\n断在：拨号没成\n码：not_unix\n原话：raw words",
         "expectedHostKey": null,
         "fixes": [],
+        "name": "gpu-01",
         "next": null,
+        "offline": true,
         "os": null,
         "reason": null,
         "said": "gpu-01 · 仅支持 Unix",
@@ -236,7 +258,9 @@
             "label": "推送公钥…"
           }
         ],
+        "name": "gpu-01",
         "next": null,
+        "offline": true,
         "os": null,
         "reason": "password",
         "said": "连接失败 · 不支持仅密码登录 · cc-monitor 只用密钥",
@@ -259,7 +283,9 @@
             "label": "连接"
           }
         ],
+        "name": "gpu-01",
         "next": null,
+        "offline": false,
         "os": null,
         "reason": null,
         "said": "连接已停用",
@@ -282,7 +308,9 @@
             "label": "重试"
           }
         ],
+        "name": "本机",
         "next": "结束口上那个进程再重开（结构夹具）",
+        "offline": true,
         "os": null,
         "reason": null,
         "said": "本机连接失败",
@@ -305,7 +333,9 @@
             "label": "重试"
           }
         ],
+        "name": "本机",
         "next": null,
+        "offline": true,
         "os": null,
         "reason": null,
         "said": "本机连接失败",

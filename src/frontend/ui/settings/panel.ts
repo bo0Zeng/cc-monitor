@@ -485,7 +485,7 @@ export class SettingsPanel {
     const local = isLocalOrigin(origin);
     const pageId = local ? LOCAL_MACHINE_PAGE_ID : this.remoteSection?.pageIdOfMachine(origin);
     if (!pageId) return;
-    const machine = local ? copyText("remote.cards.local") : origin;
+    const machine = m.name;
     const face = machineFace(m);
     this.remoteSection?.setFacts(origin, { os: m.os, version: m.version, dev: m.versionRelation === "incomparable" });
     this.remoteSection?.setMachine(pageId, m);
