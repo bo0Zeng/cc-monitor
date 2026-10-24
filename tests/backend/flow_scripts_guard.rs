@@ -1586,9 +1586,11 @@ case "$a" in
 esac
 "#;
 
-    /// 在假远端（本地裸仓）上跑一趟 push-candidate：主工作树在 main 上，`w8/x` 比 main 多一个提交；gh 是上面那个假的。
-    /// 返回（退出码是否 0 · 输出 · 跑完后 origin 上 main 的提交 · w8/x 的提交）。
+    /// 在假远端（本地裸仓）上跑一趟 push-candidate：主工作树在 main 上，要推的分支（脚本认的 `w8/<名>`，名取 `x`）比 main 多一个提交；gh 是上面那个假的。
+    /// 返回（退出码是否 0 · 输出 · 跑完后 origin 上 main 的提交 · 要推的那个提交）。
     fn push_on_fake_remote(next: &str, main: &str) -> (bool, String, String, String) {
+        const NAME: &str = "x";
+        let br = format!("w8/{NAME}");
         use std::os::unix::fs::PermissionsExt;
         let d = scratch(&format!("push-{next}-{main}"));
         let git = |dir: &Path, args: &[&str]| -> String {
@@ -1628,10 +1630,10 @@ esac
             ],
         );
         git(&work, &["push", "-q", "origin", "main"]);
-        git(&work, &["checkout", "-q", "-b", "w8/x"]);
+        git(&work, &["checkout", "-q", "-b", &br]);
         git(&work, &["commit", "-q", "--allow-empty", "-m", "b"]);
         git(&work, &["checkout", "-q", "main"]);
-        let sha = git(&work, &["rev-parse", "w8/x"]);
+        let sha = git(&work, &["rev-parse", &br]);
         let bin = d.join("bin");
         std::fs::create_dir_all(&bin).unwrap();
         for (name, body) in [("gh", FAKE_GH), ("private-scan.sh", "exit 0\n")] {
@@ -1646,7 +1648,7 @@ esac
         );
         let out = Command::new("bash")
             .arg(root().join("tests/scripts/push-candidate.sh"))
-            .arg("x")
+            .arg(NAME)
             .current_dir(&work)
             .env("PATH", path)
             .env("HOME", &d)
