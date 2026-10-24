@@ -1307,18 +1307,22 @@ fn watch_loop(
     // 所有发送端都掉了就结束（等价于原来的 Disconnected 分支）。
     loop {
         // 每一拍（事件之后 · 到点）都按此刻把全部会话的「久未动静」判一遍，表变了的才发帧。
-        for f in state.book.due_frames(crate::common::time::now()) {
+        let now = crate::common::time::now();
+        for f in state.book.due_frames(now) {
             sink.send(f);
         }
-        let event = match crate::observe::runs::next_event(
-            &events_rx,
-            state.book.next_due(),
-            crate::common::time::now(),
-        ) {
-            Ok(Some(e)) => e,
-            Ok(None) => continue,
-            Err(_) => break,
-        };
+        // 主运行的心跳同一个期限（#43）：说在跑、久未动静 ⇒ 状态不明。
+        judge_beats(&mut state, &mut sink, now);
+        let due = [state.book.next_due(), state.beat_due(now)]
+            .into_iter()
+            .flatten()
+            .min();
+        let event =
+            match crate::observe::runs::next_event(&events_rx, due, crate::common::time::now()) {
+                Ok(Some(e)) => e,
+                Ok(None) => continue,
+                Err(_) => break,
+            };
         match event {
             WatchEvent::Notify(Ok(events)) => {
                 // 账号目录自己出现 / 消失 ⇒ 先重挂；它也算「清单可能变了」。
@@ -1730,7 +1734,50 @@ impl ReaderState {
             Some(Frame::SessionAdded(a)) => (a.container.as_ref(), a.face.account.clone()),
             _ => (None, None),
         };
+        let activity = self.heard(sid, activity);
         crate::wire::SessionFace::of(crate::wire::Life::live(activity, container)).under(account)
+    }
+
+    /// 这条会话此刻交出去的那一态（#43）：说在跑、可说它在跑的那几个进程都冻住了（[`judge_beats`]）⇒ 不给 ——
+    /// 脸照「状态不明」画，不画在跑那颗点。别的态照原样。
+    fn heard(
+        &self,
+        sid: &str,
+        activity: Option<crate::agents::SessionActivity>,
+    ) -> Option<crate::agents::SessionActivity> {
+        if !wants_beat(activity) {
+            return activity;
+        }
+        let mut busy = self
+            .sessions
+            .values()
+            .filter(|e| e.sid == sid && wants_beat(e.activity))
+            .peekable();
+        if busy.peek().is_some() && busy.all(|e| e.frozen) {
+            None
+        } else {
+            activity
+        }
+    }
+
+    /// 此刻冻住的那几条（判据看它）。
+    #[cfg(test)]
+    fn frozen_sids(&self) -> std::collections::BTreeSet<String> {
+        self.sessions
+            .values()
+            .filter(|e| e.frozen)
+            .map(|e| e.sid.clone())
+            .collect()
+    }
+
+    /// 最早那条该有心跳、还没冻住的会话到时限的时刻（已过了的不算：那几条有在跑的子运行撑着，子运行自己的期限会叫醒）。
+    fn beat_due(&self, now: std::time::SystemTime) -> Option<std::time::SystemTime> {
+        self.sessions
+            .values()
+            .filter(|e| wants_beat(e.activity) && !e.frozen)
+            .map(|e| e.beat + crate::observe::runs::STALE_AFTER)
+            .filter(|d| *d > now)
+            .min()
     }
 
     fn name_face(&self, sid: &str) -> crate::wire::NameFace {
@@ -2011,6 +2058,10 @@ struct SessionEntry {
     facts: crate::history::search_rules::LabelFacts,
     /// 客户端手里这条会话的记录路径（宣告时那一份；之后记录出现 · 换了一份就跟上，并发一帧 `session_status` 带它）。
     path: Option<String>,
+    /// 最后一次听见它（#43 心跳那一维）：宣告时取这份进程状态文件与它的记录的修改时刻里最晚那个；之后状态文件重写 · 记录读到新字节记成此刻。
+    beat: std::time::SystemTime,
+    /// 说在跑、可过了时限没再听见它（[`judge_beats`] 判）⇒ 交出去的不说在跑（[`ReaderState::heard`]）。
+    frozen: bool,
 }
 
 /// One line read out of a JSONL file, with its assigned per-file seq.
@@ -2522,6 +2573,10 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
     let (new_cursor, tail) = new.finish();
     state.tails.insert(key.clone(), tail);
     state.offsets.insert(key.clone(), new_cursor);
+    // 记录长了 · 被改写 ⇒ 它此刻还在写（#43 心跳那一维）。
+    if new_cursor.seen_len > prev_cursor.seen_len || reread.is_some() {
+        heard_from(state, sink, &session_id, crate::common::time::now());
+    }
     if let Some(why) = reread {
         sink.send(Frame::SessionFileReread(crate::wire::SessionFileReread {
             session_id: session_id.clone(),
@@ -2697,7 +2752,7 @@ fn report_to(id: u64, state: &mut ReaderState, sink: &mut FrameSink) {
             let account = face.account.take();
             *face = announced_face(
                 state.reading.contains(&sid),
-                e.activity,
+                state.heard(&sid, e.activity),
                 container.as_ref(),
                 account,
             );
@@ -3154,7 +3209,22 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         let new_status = meta_str("status");
         let new_waiting = meta_str("waitingFor");
         let entry = state.sessions.get_mut(&key).expect("just checked");
-        if entry.status != new_status || entry.waiting_for != new_waiting {
+        // 状态文件重写过（修改时刻往后挪了）⇒ 听见它了（重扫读到同一份不算）。
+        let rewrote = Ro::metadata(path)
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .filter(|t| *t > entry.beat);
+        let mut thawed = false;
+        if let Some(t) = rewrote {
+            entry.beat = t;
+            thawed = std::mem::take(&mut entry.frozen);
+        }
+        let status_changed = entry.status != new_status || entry.waiting_for != new_waiting;
+        if thawed && !status_changed {
+            send_heard(state, sink, &sid);
+        }
+        let entry = state.sessions.get_mut(&key).expect("just checked");
+        if status_changed {
             entry.status = new_status.clone();
             entry.waiting_for = new_waiting.clone();
             let activity = meta.as_ref().and_then(crate::agents::pidfile_activity);
@@ -3290,18 +3360,26 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
         ..Default::default()
     });
     let name_face = crate::history::search_rules::name_face(&facts);
-    state.sessions.insert(
-        key,
-        SessionEntry {
-            pid,
-            sid: sid.clone(),
-            status: a.status,
-            waiting_for: a.waiting_for.clone(),
-            activity: a.activity,
-            facts,
-            path: jsonls.first().map(|p| p.to_string_lossy().into_owned()),
-        },
-    );
+    // 最后一次听见它：这份进程状态文件与它的记录里最晚的修改时刻（一份都读不出 ⇒ 此刻：没有证据不判它挂住）。
+    let now = crate::common::time::now();
+    let beat = std::iter::once(key.as_path())
+        .chain(jsonls.iter().map(PathBuf::as_path))
+        .filter_map(|p| Ro::metadata(p).ok()?.modified().ok())
+        .max()
+        .unwrap_or(now);
+    let mut entry = SessionEntry {
+        pid,
+        sid: sid.clone(),
+        status: a.status,
+        waiting_for: a.waiting_for.clone(),
+        activity: a.activity,
+        facts,
+        path: jsonls.first().map(|p| p.to_string_lossy().into_owned()),
+        beat,
+        frozen: false,
+    };
+    entry.frozen = frozen_at(&entry, &state.book, now);
+    state.sessions.insert(key, entry);
     // 同一个 sid 已由另一份 pidfile 宣告过（resume 时原进程还活着）⇒ 只记账、打标、挂看守，不再宣告第二次。
     let announced = !state.active_sids.insert(sid.clone());
     // `U-NP④`：身份打标（`@ccm_sid`）—— 接 `shared/ccm` 那条每秒轮询的班，见
@@ -3347,7 +3425,12 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
     let account = crate::agents::accounts_face(a.kind).and_then(|f| {
         crate::observe::accounts_query::account_of_process(pid, &f, &state.accts_dir)
     });
-    let face = announced_face(reading, a.activity, container.as_ref(), account);
+    let face = announced_face(
+        reading,
+        state.heard(&sid, a.activity),
+        container.as_ref(),
+        account,
+    );
     let added = Frame::SessionAdded(crate::wire::SessionAdded {
         sid: sid.clone(),
         agent_kind: a.kind.to_string(),
@@ -3370,6 +3453,79 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
     sink.send(added);
     start_prime(&sid, &jsonls, fresh_name, state, sink);
     wrote
+}
+
+/// 这一态要不要一直听得见它（#43）：一轮在跑就该有动静（记录在写 · 子运行在跑 · 状态文件在改）；
+/// 等人 · 闲着 · 后台命令在跑本来就安静，不判。时限同子运行的「久未动静」（[`crate::observe::runs::STALE_AFTER`]）。
+fn wants_beat(a: Option<crate::agents::SessionActivity>) -> bool {
+    a == Some(crate::agents::SessionActivity::Working)
+}
+
+/// 这一份说在跑的会话此刻算不算冻住：过了时限没听见它、也没有在跑的子运行（子运行的记录在写就是它还活着）。
+fn frozen_at(
+    e: &SessionEntry,
+    book: &crate::observe::runs::RunBook,
+    now: std::time::SystemTime,
+) -> bool {
+    wants_beat(e.activity)
+        && !crate::platform::liveness::heard_within(e.beat, now, crate::observe::runs::STALE_AFTER)
+        && book.running(&e.sid) == 0
+}
+
+/// 按此刻把每条会话的心跳判一遍（主循环每一拍 · 到点）：冻住 / 又听见了的那几条各发一帧 `session_status`（脸照 [`ReaderState::heard`]）。
+fn judge_beats(state: &mut ReaderState, sink: &mut FrameSink, now: std::time::SystemTime) {
+    let book = state.book.clone();
+    let mut flipped = std::collections::BTreeSet::new();
+    for e in state.sessions.values_mut() {
+        let frozen = frozen_at(e, &book, now);
+        if frozen != e.frozen {
+            e.frozen = frozen;
+            flipped.insert(e.sid.clone());
+        }
+    }
+    for sid in &flipped {
+        send_heard(state, sink, sid);
+    }
+}
+
+/// 记录读到新字节 ⇒ 这条会话此刻听得见；冻住过的回到它说的那一态、发一帧。
+fn heard_from(
+    state: &mut ReaderState,
+    sink: &mut FrameSink,
+    sid: &str,
+    now: std::time::SystemTime,
+) {
+    let mut thawed = false;
+    for e in state.sessions.values_mut().filter(|e| e.sid == sid) {
+        e.beat = e.beat.max(now);
+        thawed |= std::mem::take(&mut e.frozen);
+    }
+    if thawed {
+        send_heard(state, sink, sid);
+    }
+}
+
+/// 冻住 / 回来那一帧：活动那几格照记着的带全（同 [`note_activity`]）。还没宣告的不发。
+fn send_heard(state: &ReaderState, sink: &mut FrameSink, sid: &str) {
+    if !state.active_sids.contains(sid) {
+        return;
+    }
+    let mine = || state.sessions.values().filter(|e| e.sid == sid);
+    let Some(e) = mine()
+        .find(|e| wants_beat(e.activity))
+        .or_else(|| mine().next())
+    else {
+        return;
+    };
+    let (activity, waiting_for, path) = (e.activity, e.waiting_for.clone(), e.path.clone());
+    let face = state.live_face(sid, activity);
+    sink.send(Frame::SessionStatus(crate::wire::SessionStatus {
+        sid: sid.to_string(),
+        face,
+        name_face: state.name_face(sid),
+        waiting_for,
+        path,
+    }));
 }
 
 /// 宣告那一帧的整份脸：记录还没读完、此刻在干什么只有记录说 ⇒「读记录中」；否则照那一家说的那一态。
