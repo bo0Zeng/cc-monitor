@@ -21,12 +21,12 @@ fn a_dir_outside_every_slice_adds_nothing() {
 #[test]
 fn entries_become_owners_by_name_with_label_status_block_sign_and_double_claims() {
     let d = dir(json!({"workspace": "/w", "slice": "alpha", "unreadable": null, "unowned": [], "unownedWhy": null, "entries": [
-        {"name": "read.txt", "id": "A1-1", "label": "A1-1 甲的读入", "title": "甲的读入", "statusCode": "done", "status": "做完了",
+        {"name": "read.txt", "id": "A1-1", "label": "A1-1 甲的读入", "title": "甲的读入", "statusCode": "done", "status": null,
          "block": "甲功能", "signAtText": "02:08", "fileState": "ok", "fileNote": "12 字",
          "dup": [{"id": "A1-2", "label": "A1-2 甲的写出", "title": "甲的写出"}]},
-        {"name": "write.txt", "id": "A1-2", "label": "A1-2", "title": null, "statusCode": "open", "status": "没做完",
+        {"name": "write.txt", "id": "A1-2", "label": "A1-2", "title": null, "statusCode": "open", "status": null,
          "block": null, "signAtText": null, "fileState": "broken", "fileNote": "不是 UTF-8", "dup": []},
-        {"name": "gone.txt", "id": "A2", "label": "A2 乙", "title": "乙", "statusCode": "dropped", "status": "不做了",
+        {"name": "gone.txt", "id": "A2", "label": "A2 乙", "title": "乙", "statusCode": "dropped", "status": null,
          "block": null, "signAtText": null, "fileState": "missing", "fileNote": null, "dup": []}
     ]}))
     .unwrap();
