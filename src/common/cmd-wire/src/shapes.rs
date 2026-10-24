@@ -138,7 +138,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("plan-files", "f9dd4dc9"),
     ("plan-list", "692d535e"),
     ("plan-pb-check", "fbcc64c4"),
-    ("plan-read", "0d4790b4"),
+    ("plan-read", "bce40799"),
     ("plan-return", "df0279ae"),
     ("plan-unack", "e7594b91"),
     ("powershell-policy-set", "a1430df5"),

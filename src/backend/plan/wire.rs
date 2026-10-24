@@ -109,7 +109,7 @@ pub(crate) struct PlanPendingSet {
     pub why_not: Option<String>,
 }
 
-/// 记下的一条原话：号 · 定了什么 · 时刻 · 谁记的（人 ⇒ `human`、`by` 为 null）· 原话（照抄，带「」）。
+/// 记下的一条原话：号 · 定了什么 · 时刻 · 谁记的（对到会话；人敲的对不上 ⇒ `unknown`、`id` 是 pb 写的那个字）· 原话（照抄，带「」）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -122,7 +122,6 @@ pub(crate) struct PlanRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub at_text: Option<String>,
-    pub human: bool,
     pub by: Option<PlanWho>,
     pub quotes: Vec<String>,
 }

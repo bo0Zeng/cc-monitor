@@ -2,6 +2,6 @@
 import type { PlanWho } from "./PlanWho";
 
 /**
- * 记下的一条原话：号 · 定了什么 · 时刻 · 谁记的（人 ⇒ `human`、`by` 为 null）· 原话（照抄，带「」）。
+ * 记下的一条原话：号 · 定了什么 · 时刻 · 谁记的（对到会话；人敲的对不上 ⇒ `unknown`、`id` 是 pb 写的那个字）· 原话（照抄，带「」）。
  */
-export type PlanRecord = { n: number | null, summary: string | null, at: string | null, atText?: string, human: boolean, by: PlanWho | null, quotes: Array<string>, };
+export type PlanRecord = { n: number | null, summary: string | null, at: string | null, atText?: string, by: PlanWho | null, quotes: Array<string>, };

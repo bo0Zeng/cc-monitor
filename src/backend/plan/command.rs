@@ -4,7 +4,7 @@
 //! `record` 记下的是「人」说的（pb 记成「人」），同样只在不带 agent 身份时代敲。
 //!
 //! 这几条写盘的是 pb 自己（`continue` / `pause` 改 `auto`，`repo` / `take` 改工作区配置，`view` 往系统临时目录写一页，
-//! `record` 往那一片的 `原话.md` 追加一条、提交计划仓）；本族照旧一个字节都不写。拆 pb 原话只在 [`classify`] 这一处。
+//! `record` 往那一片记原话的那份文件追加一条、提交计划仓）；本族照旧一个字节都不写。拆 pb 原话只在 [`classify`] 这一处。
 
 use crate::platform::child::Deadline;
 use copy_core::copy_text;

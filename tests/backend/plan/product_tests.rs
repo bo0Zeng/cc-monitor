@@ -119,7 +119,7 @@ fn evidence_cells_are_marked_and_left_out_of_every_count() {
     // 顶层一格是凭据：不进顶层进度。
     let mut d = dump("/w");
     d["slices"][0]["cells"][10]["evidence"] = json!(true);
-    d["slices"][0]["cells"][10]["status"] = json!("凭据");
+    d["slices"][0]["cells"][10]["status"] = d["slices"][0]["cells"][3]["status"].clone();
     assert_eq!(
         make(&d, &who).doc["slices"][0]["progress"],
         json!({"done": 0, "open": 4, "dropped": 0})
@@ -154,8 +154,7 @@ fn the_new_slice_and_top_level_fields_come_through_in_wire_keys() {
         sl["records"][0]["quotes"],
         json!(["「分开做」", "「先读后写」"])
     );
-    assert_eq!(sl["records"][0]["human"], true);
-    assert_eq!(sl["records"][0]["by"], Value::Null);
+    assert_eq!(sl["records"][0]["by"]["kind"], "unknown");
     assert_eq!(sl["kinds"][2]["evidence"], true);
     assert_eq!(sl["kinds"][2]["values"], json!(["收下"]));
     assert_eq!(
@@ -299,7 +298,6 @@ fn every_pb_word_maps_to_its_code_and_strangers_to_null() {
     assert_eq!(status_code(Some("做完了")), Some("done"));
     assert_eq!(status_code(Some("没做完")), Some("open"));
     assert_eq!(status_code(Some("不做了")), Some("dropped"));
-    assert_eq!(status_code(Some("凭据")), Some("evidence"));
     assert_eq!(status_code(Some("别的")), None);
     assert_eq!(why_code(Some("等上一级收下")), json!({"kind": "upper"}));
     assert_eq!(

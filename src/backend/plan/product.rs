@@ -24,16 +24,12 @@ pub(crate) const EDGES: [&str; 4] = ["to", "with", "after", "replaces"];
 pub(crate) const DONE: &str = "做完了";
 pub(crate) const DROPPED: &str = "不做了";
 
-/// 记原话的是人（不是一个身份）时 pb 写的那个字。
-const HUMAN: &str = "人";
-
-/// pb 的四种状态 ⇒ 线上的码（`statusCode`）；pb 给了别的字 ⇒ `None`（界面照出原话、当没做完画）。
+/// pb 的三种状态 ⇒ 线上的码（`statusCode`）；pb 给了别的字 ⇒ `None`（界面照出原话、当没做完画）。凭据类的格看 `evidence`（码 `evidence`），不认它的状态字。
 pub(crate) fn status_code(s: Option<&str>) -> Option<&'static str> {
     match s? {
         DONE => Some("done"),
         "没做完" => Some("open"),
         DROPPED => Some("dropped"),
-        "凭据" => Some("evidence"),
         _ => None,
     }
 }
@@ -291,18 +287,15 @@ pub(crate) fn label(id: &str, title: Option<&str>) -> String {
     }
 }
 
-/// 一片里记下的原话：记的人是人 ⇒ `human`、`by` 为 null；是一个身份 ⇒ 对到会话。
+/// 一片里记下的原话：谁记的照 pb 给的那一格对到会话（人敲的 pb 写它自己的那个字，对不上 ⇒ `unknown`，界面照出那个字）。
 fn records_of(sl: &Value, who: WhoPort) -> Vec<Value> {
     arr(sl, "records")
         .map(|r| {
-            let by = r.get("by").and_then(Value::as_str);
-            let human = by == Some(HUMAN);
             json!({
                 "n": r.get("n").and_then(Value::as_u64),
                 "summary": s(r, "summary"),
                 "at": s(r, "at"),
-                "human": human,
-                "by": if human { Value::Null } else { who_json(by, who) },
+                "by": who_json(r.get("by").and_then(Value::as_str), who),
                 "quotes": strs(r.get("quotes")),
             })
         })
@@ -445,7 +438,7 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort) -> Value {
                 "files": files,
                 "evidence": is_evidence(c),
                 "status": s(c, "status"),
-                "statusCode": status_code(c.get("status").and_then(Value::as_str)),
+                "statusCode": if is_evidence(c) { Some("evidence") } else { status_code(c.get("status").and_then(Value::as_str)) },
                 "why": s(c, "why"),
                 "whyCode": why_code(c.get("why").and_then(Value::as_str)),
                 "whyShort": why_short(c.get("why").and_then(Value::as_str)),

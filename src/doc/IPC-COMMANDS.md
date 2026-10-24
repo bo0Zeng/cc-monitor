@@ -13890,7 +13890,7 @@ type PlanReadReq = {
  * 工作区根（`plan-list` 给的那个）。
  */
 workspace: string, };
-type PlanRecord = { n: number | null, summary: string | null, at: string | null, atText?: string, human: boolean, by: PlanWho | null, quotes: Array<string>, };
+type PlanRecord = { n: number | null, summary: string | null, at: string | null, atText?: string, by: PlanWho | null, quotes: Array<string>, };
 type PlanRed = { rule: string | null, what: string | null, block: string | null, fix: string | null, 
 /**
  * `what` 里提到的格（UTF-16 下标）。
