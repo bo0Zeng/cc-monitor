@@ -4,7 +4,7 @@
  * 改一格当场存成那份的新版）共用这一处。界面不判：收不下的照后端的码说。
  */
 import { accountLabel } from "./acct-words";
-import { board, type BoardActs, type BoardState } from "./rot-board";
+import { board, draftKey, type BoardActs, type BoardState } from "./rot-board";
 import { copyText } from "./copy-table";
 import { callTyped } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
@@ -117,7 +117,18 @@ export function mountRotation(spec: RotMountSpec): RotMount {
       machine: spec.machine,
     });
     b.prepend(...top);
+    // 焦点在草稿的某一格（正打着字）⇒ 重画后聚回同一格、光标放末尾。
+    const was = document.activeElement;
+    const at =
+      was instanceof HTMLInputElement && root.contains(was) ? { row: was.closest<HTMLElement>("[data-rot-draft]")?.dataset.rotDraft, part: was.dataset.part } : null;
     root.replaceChildren(b);
+    if (at?.row === undefined || at.part === undefined) return;
+    const back = [...root.querySelectorAll<HTMLElement>("[data-rot-draft]")]
+      .find((r) => r.dataset.rotDraft === at.row)
+      ?.querySelector<HTMLInputElement>(`input[data-part="${at.part}"]`);
+    if (!back) return;
+    back.focus();
+    if (back.type === "text") back.setSelectionRange(back.value.length, back.value.length);
   };
 
   const refresh = async (): Promise<void> => {
@@ -141,21 +152,21 @@ export function mountRotation(spec: RotMountSpec): RotMount {
     paint();
   };
 
-  /** 发一条写；不成 ⇒ 一条失败 toast（字是后端那一句）；撞上 `conflict`（别处改过）⇒ 不 toast、重读（提示由后端出）。成了 ⇒ 重读。 */
+  /** 发一条写；不成 ⇒ 一条失败 toast（字是后端那一句）；撞上 `conflict`（别处改过）⇒ 同样照后端那一句说，再重读此刻的
+   *  （手上没交的草稿留着，照新版再交）。成了 ⇒ `ok`（重读之前）⇒ 重读。 */
   const write = async (
     what: string,
     run: () => Promise<unknown>,
+    ok?: () => void,
   ): Promise<boolean> => {
     try {
       await run();
     } catch (e) {
-      if (refusedCode(e)?.code === "conflict") {
-        await refresh();
-        return false;
-      }
       failToast(what, e);
+      if (refusedCode(e)?.code === "conflict") await refresh();
       return false;
     }
+    ok?.();
     await refresh();
     return true;
   };
@@ -234,13 +245,18 @@ export function mountRotation(spec: RotMountSpec): RotMount {
             callTyped(origin, "rotation-strategy-add", { source: f.text, name }, rotBudget()),
           );
       })(),
-    // 设置页：改一格当场存成那份的新版（版本对不上 ⇒ 重读，照此刻的再改）。
+    // 设置页：改一格当场存成那份的新版（版本对不上 ⇒ 重读，照此刻的再改）。草稿那一行交成了 ⇒ 草稿清掉。
     edit: (edit) => {
       const st = view?.strategy;
-      if (st)
-        void write(copyText("rot.fail.settings"), () =>
-          callTyped(origin, "rotation-settings", { strategy: st.id, edit, ifRev: st.rev }, rotBudget()),
-        );
+      if (!st) return;
+      const seg = "seg" in edit && edit.seg.at === undefined && edit.seg.seg !== undefined ? edit.seg : null;
+      const account = seg?.row === undefined ? null : (view?.board.rows[seg.row]?.account ?? null);
+      const done = seg ? () => void delete state.drafts?.[draftKey(account, seg.key, seg.window)] : undefined;
+      void write(
+        copyText("rot.fail.settings"),
+        () => callTyped(origin, "rotation-settings", { strategy: st.id, edit, ifRev: st.rev }, rotBudget()),
+        done,
+      );
     },
     hours: (h) => {
       state.hours = h;
