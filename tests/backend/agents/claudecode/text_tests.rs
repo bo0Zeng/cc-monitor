@@ -492,7 +492,10 @@ fn an_old_mid_turn_line_is_told_by_its_words() {
         )
     };
     assert_eq!(old("<task-notification>\n<task-id>f6</task-id>\n<status>completed</status>\n</task-notification>"), None);
-    assert_eq!(old("<agent-message from=\"g7\">\n甲\n</agent-message>"), None);
+    assert_eq!(
+        old("<agent-message from=\"g7\">\n甲\n</agent-message>"),
+        None
+    );
     assert_eq!(old("Your claude.ai usage limit has reset. 甲"), None);
     assert_eq!(old("  往后排，先做乙  "), Some(human("往后排，先做乙")));
     let p = old("<pasted_content id=\"h8\">甲</pasted_content id=\"h8\">").unwrap();
@@ -506,11 +509,17 @@ fn a_mid_turn_line_from_the_person_is_what_the_person_said() {
     let att = |a: Value| -> Value {
         json!({"type":"attachment","parentUuid":"a1","isSidechain":false,"attachment":a,"uuid":"q-1","timestamp":"2026-10-09T01:30:08.000Z","sessionId":"s"})
     };
-    let mine = att(json!({"type":"queued_command","prompt":"往后排，先做乙","commandMode":"prompt","origin":{"kind":"human"},"humanTurn":true}));
+    let mine = att(
+        json!({"type":"queued_command","prompt":"往后排，先做乙","commandMode":"prompt","origin":{"kind":"human"},"humanTurn":true}),
+    );
     assert_eq!(user_text_of_record(&mine), Some(human("往后排，先做乙")));
     let beat = crate::agents::beat_of("claude", &mine).unwrap();
-    assert_eq!(beat.said().and_then(|s| s.speech()).as_deref(), Some("往后排，先做乙"));
-    let row = crate::observe::recognize::user_inputs::user_input_of("claude", &mine).expect("进大纲");
+    assert_eq!(
+        beat.said().and_then(|s| s.speech()).as_deref(),
+        Some("往后排，先做乙")
+    );
+    let row =
+        crate::observe::recognize::user_inputs::user_input_of("claude", &mine).expect("进大纲");
     assert_eq!(row.uuid, "q-1");
     for other in [
         json!({"type":"queued_command","prompt":"<task-notification>\n<task-id>f6</task-id>\n</task-notification>","origin":{"kind":"task-notification"}}),

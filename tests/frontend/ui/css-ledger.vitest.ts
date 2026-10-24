@@ -299,7 +299,7 @@ const PREFIX_MASKED: readonly string[] = [
 const DANGLING: readonly string[] = [
   "acct-enable", "acct-form-slot", "acct-new-cell", "agent-older", "agents-page", "all",
   "api-error-next-text", "backend-list", "backend-row-drift", "backend-row-name", "backend-section", "badge-agents",
-  "badge-unread", "block-body-json", "block-body-result", "block-text", "card-user-queued", "cc-bus-broadcast",
+  "badge-unread", "block-body-json", "block-body-result", "block-text", "cc-bus-broadcast",
   "cc-bus-broadcast-input", "cc-bus-check", "cc-bus-controls", "cc-bus-detail", "cc-bus-id", "cc-bus-inbox",
   "cc-bus-kill", "cc-bus-list", "cc-bus-meta", "cc-bus-msg", "cc-bus-msg-line", "cc-bus-online",
   "cc-bus-origin", "cc-bus-read", "cc-bus-row", "cc-bus-section", "cc-bus-send", "cc-bus-spawn",

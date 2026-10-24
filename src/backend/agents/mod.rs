@@ -1162,8 +1162,6 @@ pub(crate) struct TextFace {
     pub(crate) tool: fn(&serde_json::Value, bool) -> String,
     /// 一条已解析的记录 ⇒ 它是谁说的（[`UserText`]）；不是用户角色的记录 ⇒ `None`。
     pub(crate) user: fn(&serde_json::Value) -> Option<UserText>,
-    /// 一条已解析的记录是不是进界面的一句排队插话（人打的）⇒ 它的原文（已 trim）；不是 ⇒ `None`。
-    pub(crate) queued: fn(&serde_json::Value) -> Option<String>,
     /// 一条已解析的记录在消息流里落在哪张卡上（[`Lands`]）：查找 · 搜索的单位就是流里画的那几张卡。
     pub(crate) lands: fn(&serde_json::Value) -> Lands,
 }
@@ -1197,11 +1195,6 @@ pub(crate) fn tool_text(kind: &str, content: &serde_json::Value, is_assistant: b
 /// `kind` 那一家判这条记录是谁说的。那一家答不了 ⇒ `None`。
 pub(crate) fn user_text_of(kind: &str, v: &serde_json::Value) -> Option<UserText> {
     text_face(kind).and_then(|t| (t.user)(v))
-}
-
-/// `kind` 那一家判这条记录是不是一句排队插话（进界面的那种）⇒ 原文。那一家答不了 ⇒ `None`。
-pub(crate) fn queued_text_of(kind: &str, v: &serde_json::Value) -> Option<String> {
-    text_face(kind).and_then(|t| (t.queued)(v))
 }
 
 /// `kind` 那一家说这条记录在流里落在哪。那一家答不了 ⇒ 自己那张卡。
@@ -2008,7 +2001,10 @@ pub(crate) fn inject_among(registry: &[Adapter], kind: &str) -> Option<Inject> {
 }
 
 /// `kind` 那一家走中转时随地址一起设的环境（[`DefaultUpstream::relay_env`]）；没登记 ⇒ 空。
-pub(crate) fn relay_env_among(registry: &[Adapter], kind: &str) -> &'static [(&'static str, &'static str)] {
+pub(crate) fn relay_env_among(
+    registry: &[Adapter],
+    kind: &str,
+) -> &'static [(&'static str, &'static str)] {
     registry
         .iter()
         .find(|a| a.kind == kind)

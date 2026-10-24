@@ -115,8 +115,6 @@ export class TurnFold {
   private turns: TurnRow[] = [];
   /** 边界：每一轮的开头 ＋ 露着的那几条 ＋ 每一段的 `until`（uuid，都是后端给的）。 */
   private bounds = new Set<string>();
-  /** 落成了人话的排队插话（排队卡的记录 id，后端 `landed`）。 */
-  private landed = new Set<string>();
   /** 段的 `after` ⇒ 那一段。 */
   private byAfter = new Map<string, FoldRef>();
   private lines = new Map<string, HTMLButtonElement>();
@@ -191,7 +189,7 @@ export class TurnFold {
       if (!res.available && from > 0) {
         res = await this.read(where.origin, where.jsonlPath, 0);
         if (gen !== this.gen) return;
-        // 续点不在了：回来的从 0 起 ⇒ `replaceFrom(0, …)` 把手上的全换掉（连同三张表）
+        // 续点不在了：回来的从 0 起 ⇒ `replaceFrom(0, …)` 把手上的全换掉（连同两张表）
       }
       if (!res.available) {
         if (++this.failures >= MAX_FAILURES) this.gaveUp = true;
@@ -219,7 +217,6 @@ export class TurnFold {
   adopt(prev: TurnFold): void {
     this.turns = prev.turns;
     this.bounds = prev.bounds;
-    this.landed = prev.landed;
     this.byAfter = prev.byAfter;
     this.overrides = new Map(prev.overrides);
     this.expandedDefault = prev.expandedDefault;
@@ -227,7 +224,7 @@ export class TurnFold {
   }
 
   /**
-   * 续取回来的那几轮换进手上那一份：`at ≥ from` 的旧轮连同它们记进三张表的那几格摘掉，新来的记进去 ——
+   * 续取回来的那几轮换进手上那一份：`at ≥ from` 的旧轮连同它们记进两张表的那几格摘掉，新来的记进去 ——
    * 只碰变了的那几轮（续取一般就是还没收尾的那一轮），不按全部轮重建（几万轮的会话每批新行一次）。
    */
   private replaceFrom(from: number, fresh: readonly TurnRow[]): void {
@@ -238,12 +235,11 @@ export class TurnFold {
     for (const t of fresh) this.remember(t);
   }
 
-  /** 一轮记进三张表（边界 · 落成人话的排队 · 段）。`indexed` 记碰过几轮（判据数它）。 */
+  /** 一轮记进两张表（边界 · 段）。`indexed` 记碰过几轮（判据数它）。 */
   private remember(turn: TurnRow): void {
     this.indexed++;
     this.bounds.add(turn.uuid);
     for (const u of turn.shown) this.bounds.add(u);
-    for (const l of turn.landed) this.landed.add(l);
     for (const fold of turn.folds) {
       if (fold.until !== null) this.bounds.add(fold.until);
       this.byAfter.set(fold.after, { key: fold.after, turn, fold });
@@ -254,7 +250,6 @@ export class TurnFold {
     this.indexed++;
     this.bounds.delete(turn.uuid);
     for (const u of turn.shown) this.bounds.delete(u);
-    for (const l of turn.landed) this.landed.delete(l);
     for (const fold of turn.folds) {
       if (fold.until !== null) this.bounds.delete(fold.until);
       if (this.byAfter.get(fold.after)?.turn === turn) this.byAfter.delete(fold.after);
@@ -294,9 +289,6 @@ export class TurnFold {
     const spans = this.foldSpans();
     for (const el of Array.from(this.content.children)) {
       if (!(el instanceof HTMLElement) || isOurs(el)) continue;
-      // 排队插话已经落成了人话（后端判）：不再单独出。
-      const queued = el.dataset.queuedId;
-      if (queued !== undefined && el.classList.contains("queued-landed") !== this.landed.has(queued)) el.classList.toggle("queued-landed");
       const uuid = el.getAttribute("data-id");
       if (uuid !== null && (this.bounds.has(uuid) || this.byAfter.has(uuid))) {
         cur = this.byAfter.get(uuid) ?? null;

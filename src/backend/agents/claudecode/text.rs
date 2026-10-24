@@ -233,7 +233,9 @@ pub(crate) fn mid_turn_text(
         has_parent,
         origin: a.origin.filter(|o| o.is_object()),
     });
-    crate::agents::UserTextExt::speech(&t).is_some().then_some(t)
+    crate::agents::UserTextExt::speech(&t)
+        .is_some()
+        .then_some(t)
 }
 
 /// **一条 user 记录是谁说的**（规则只此一份）。
@@ -273,12 +275,6 @@ pub(crate) fn user_text(f: &Facts) -> UserText {
         return shown(Speaker::AgentTask, &raw);
     }
     spoken(&raw)
-}
-
-/// 注册表 `TextFace.queued`：这一家不再出「排队插话」那一类卡（一轮中途插的那一句由那一行 attachment 出 `said`，[`mid_turn_text`]）⇒ 恒 `None`。
-/// 这一格连同通用记录的 `queued` 一类、轮次里的 `landed` 要整个删掉（牵动界面与手机，另排一批做减法）。
-pub(crate) fn queued_of_record(_: &Value) -> Option<String> {
-    None
 }
 
 /// 整条是不是 ESC 中断标记（子运行被叫停的收场认它）。

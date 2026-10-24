@@ -606,40 +606,46 @@ fn live_turn_says_what_runs_now_or_what_waits_for_you() {
     assert_eq!(done, before, "收尾了的轮不动");
 }
 
-/// ★ 排队插话落成了人话：中断之后那句排队的话又作为你的一句落进记录（下一句的原文与它一字不差）⇒ 排队那一条记进这一轮的
-/// `landed`（界面不再单独出它，只露人话那一条）；还在排队、人话还没落 ⇒ 不记（插话卡照常露着）；下一句说的不是它 ⇒ 也不记。
+/// ★ 一轮中途人插的那一句（Claude 记成一行 `attachment queued_command`，`origin.kind: human`）是「你说的一句」：
+/// 它自成一轮的开头、露在外面，之前那一段过程管到它为止（不把它收进过程）；别人那一形（后台通知）照旧收进过程。
+/// 先后照记录：那一句在它那一行的位置上，后面的回复归它那一轮。
 #[test]
-fn a_queued_line_that_lands_as_your_next_sentence_is_marked_landed() {
+fn a_line_the_person_slips_in_mid_turn_starts_its_own_turn() {
     let t = "2026-10-07T08:00:00Z";
-    let queued = |s: &str| serde_json::json!({"type":"queue-operation","operation":"remove","timestamp":t,"content":s});
-    let head = [
+    let slipped = |uuid: &str, kind: &str, s: &str| {
+        serde_json::json!({"type":"attachment","uuid":uuid,"parentUuid":"r1","timestamp":t,
+            "attachment":{"type":"queued_command","prompt":s,"commandMode":"prompt","origin":{"kind":kind}}})
+    };
+    let lines = [
         user("u1", t, "q"),
         said("a1", t, calls("t1")),
-        user("x1", t, "[Request interrupted by user]"),
-        queued("用 functools"),
+        result("r1", "t1", false),
+        slipped("q1", "human", "用 functools"),
+        said("a2", t, text("好")),
     ];
-    let body = body_of(&head);
-    let at = |k: usize| {
-        head[..k]
-            .iter()
-            .map(|l| l.to_string().len() as u64 + 1)
-            .sum::<u64>()
-    };
-    let qid = crate::agents::line_id(at(3));
+    let rows = scan(&body_of(&lines), 0);
+    assert_eq!(rows.len(), 2, "{rows:#?}");
+    assert_eq!(
+        (rows[1].uuid.as_str(), rows[1].said.as_str()),
+        ("q1", "用 functools")
+    );
+    assert_eq!(rows[0].tools, 1);
+    assert_eq!(untils(&rows[0]), [Some("q1")], "前一段过程没管到插话为止");
+    assert_eq!(rows[1].shown, ["a2"]);
 
-    // 人话还没落：插话卡照常露着
-    let rows = scan(&body, 0);
-    assert!(rows[0].landed.is_empty(), "还在排队");
-
-    // 落了（同一段文字）：记进排队那一条所在的那一轮
-    let landed = format!("{body}{}\n", user("u2", t, "用 functools"));
-    let rows = scan(&landed, 0);
-    assert_eq!(rows[0].landed, [qid.clone()]);
-    assert!(rows[1].landed.is_empty());
-
-    // 下一句说的不是它：不记
-    let other = format!("{body}{}\n", user("u2", t, "别的"));
-    assert!(scan(&other, 0)[0].landed.is_empty());
+    // 别人那一形（后台任务收场）不是你说的：不分轮。
+    let notice = [
+        user("u1", t, "q"),
+        said("a1", t, calls("t1")),
+        result("r1", "t1", false),
+        slipped(
+            "q2",
+            "task-notification",
+            "<task-notification>\n<task-id>k</task-id>\n</task-notification>",
+        ),
+        said("a2", t, text("好")),
+    ];
+    assert_eq!(scan(&body_of(&notice), 0).len(), 1);
 }
 
 fn untils(row: &TurnRow) -> Vec<Option<&str>> {

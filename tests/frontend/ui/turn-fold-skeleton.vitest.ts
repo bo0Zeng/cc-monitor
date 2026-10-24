@@ -78,7 +78,6 @@ const turn = (k: number): TurnRow => ({
   peers: 0,
   fails: 0,
   shown: [`u${k * PER_TURN + ENDING_AT}`],
-  landed: [],
   reply: "",
   done: true,
   phase: "idle",

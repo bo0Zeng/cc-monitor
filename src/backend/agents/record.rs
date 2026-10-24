@@ -2,7 +2,7 @@
 //! 适配层把一行翻成这里的 [`Record`]；通用层与界面只认它（字段名不带任何一家的写法）。
 //!
 //! 公共四格 ＋ 时刻字：`agent`（哪一家）· `id`（会话内非空、唯一）· `at`（记录时刻）· `timeText`（看的那一台钟上的 `HH:MM`，出口那一下写，界面照抄）· `t`（哪一类）。
-//! `t` 的闭集：`said`（人那一侧说的）· `reply`（代理的回复）· `retry`（一次要重试的上游失败）· `title`（会话标题）· `queued`（插进正在跑那一轮的一句）·
+//! `t` 的闭集：`said`（人那一侧说的；一轮中途插进来的那一句也是它）· `reply`（代理的回复）· `retry`（一次要重试的上游失败）· `title`（会话标题）·
 //! `unread`（这一家的这一行适配层认不出：写好的一句 ＋ 原文摘录）。
 //! 内容块 [`Block`] 是两家共有的词：正文 · 推理 · 工具调用 · 工具结果 · 图片。
 //!
@@ -48,13 +48,12 @@ impl BodyExt for Body {
             Self::Reply { .. } => RecordClass::Reply,
             Self::Retry { .. } => RecordClass::Retry,
             Self::Title { .. } => RecordClass::Title,
-            Self::Queued { .. } => RecordClass::Queued,
             Self::Unread { .. } => RecordClass::Unread,
         }
     }
 }
 
-/// 通用记录的类（记录上 `t` 那一格的六个词；骨架行 `t` 也是它，`unread` 除外：骨架不出认不出的行）。
+/// 通用记录的类（记录上 `t` 那一格的五个词；骨架行 `t` 也是它，`unread` 除外：骨架不出认不出的行）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -64,11 +63,12 @@ pub enum RecordClass {
     Reply,
     Retry,
     Title,
-    Queued,
     Unread,
 }
 
 /// 排队消息的打字时刻表（一份会话一张；上界固定，挤掉最老的）。通用：只认 [`super::QueueMark`]，不认哪一家的字段。
+/// ⚠ 已没有读者：通用记录的 `queued` 一类删了（插话由 Claude 那一行 attachment 出 `said`，时刻是它自己的）。
+/// 它连同 `QueueMark` · `Translated.queue` · 读页往回看的那一段（`observe/query/body.rs` · `faces/read_face.rs`）· watcher 那一张表要一起删。
 #[derive(Debug, Default, Clone)]
 pub(crate) struct TypedTimes {
     /// (原句, 打字时刻)，越往后越新。

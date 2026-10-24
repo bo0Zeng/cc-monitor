@@ -219,7 +219,7 @@ const FOLD_PAGE: &[&str] = &[
     r#"{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-01-02T03:04:06.000Z","message":{"role":"assistant","model":"m","content":[{"type":"thinking","thinking":"ZQBODY-think"},{"type":"text","text":"ZQBODY-say"},{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/w/f.txt","zq_extra":"ZQBODY-input"}}],"usage":{"input_tokens":11,"output_tokens":22}}}"#,
     r#"{"type":"user","uuid":"u2","parentUuid":"a1","timestamp":"2026-01-02T03:04:07.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ZQKEEP-preview\nZQBODY-result"}]},"toolUseResult":{"type":"text","file":{"numLines":7}}}"#,
     r#"{"type":"user","uuid":"u3","parentUuid":"u2","timestamp":"2026-01-02T03:04:07.500Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t2","content":"ok"}]},"toolUseResult":{"filePath":"/w/f.txt","structuredPatch":[{"oldStart":1,"oldLines":1,"newStart":1,"newLines":1,"lines":["-a","+ZQBODY-patch"]}]}}"#,
-    r#"{"type":"queue-operation","operation":"remove","timestamp":"2026-01-02T03:04:08.000Z","content":"ZQKEEP-queued"}"#,
+    r#"{"type":"attachment","uuid":"q1","parentUuid":"u3","timestamp":"2026-01-02T03:04:08.000Z","attachment":{"type":"queued_command","prompt":"ZQKEEP-queued","commandMode":"prompt","origin":{"kind":"human"}}}"#,
 ];
 
 /// 「折起那一行」那份声明（出口交的 `omit`）：正文住的那几格。
@@ -395,52 +395,52 @@ fn the_desktop_folded_view_in_shared_parses_and_drops_only_the_tool_bodies() {
 }
 
 const ENQ: &str = r#"{"type":"queue-operation","operation":"enqueue","timestamp":"2026-01-02T03:00:00.000Z","content":"also this"}"#;
-const REM: &str = r#"{"type":"queue-operation","operation":"remove","timestamp":"2026-01-02T03:02:00.000Z","content":"also this"}"#;
+const REM: &str = r#"{"type":"queue-operation","operation":"remove","timestamp":"2026-01-02T03:02:00.000Z","content":"also this","reason":"absorbed_mid_turn","commandUuid":"c1"}"#;
+const SLIPPED: &str = r#"{"type":"attachment","uuid":"q1","parentUuid":"u1","timestamp":"2026-01-02T03:00:00.000Z","attachment":{"type":"queued_command","prompt":"also this","source_uuid":"c1","commandMode":"prompt","origin":{"kind":"human"}}}"#;
 
-fn queued_at(lines: &[serde_json::Value]) -> Vec<String> {
-    lines
-        .iter()
-        .filter(|l| l["record"]["t"] == "queued")
-        .map(|l| l["record"]["at"].as_str().unwrap_or("").to_string())
-        .collect()
-}
-
-/// 排队那一句的 `at` 是**打字时刻**（打字那一行的时刻），不是被插进那一轮的时刻；打字那一行自己不出记录。
-/// 同一页里、和打字那一行落在上一页（往回看的那一段）两种都配得上；配不上 ⇒ 照用它自己的时刻（不空着）。
+/// 一轮中途插进去的那一句：排队那几行（进队 · 被吸进那一轮）不出记录；紧跟着的那一行 attachment 出一条人说的，
+/// 身份 ＝ 它自己的 uuid，时刻 ＝ 它自己的（就是打字那一刻）——按页 · 按行摘要两条读路一样，不靠往回看去配。
 #[test]
-fn a_queued_line_carries_the_moment_it_was_typed() {
+fn a_line_slipped_in_mid_turn_comes_out_once_with_its_own_identity_and_moment() {
     let face = claude();
     let at = std::path::Path::new("/p/q.jsonl");
-    let page = format!("{ENQ}\n{USER}\n{REM}\n");
+    let page = format!("{ENQ}\n{USER}\n{REM}\n{SLIPPED}\n");
     let (lines, _) = record_lines_of_page(&mut rd(&face), at, 0, 0, page.as_bytes());
-    assert_eq!(queued_at(&lines), ["2026-01-02T03:00:00.000Z"]);
-    assert_eq!(lines.len(), 2, "打字那一行不出记录：{lines:?}");
-
-    // 打字那一行在这一页之前：往回看的那一段交进来就配得上。
-    let lead = format!("{{\"torn\": 1}}\n{ENQ}\n");
-    let tail = format!("{REM}\n");
-    let mut r = Reader::new(&face, 40, lead.as_bytes(), Default::default());
-    let (lines, _) = record_lines_of_page(&mut r, at, 9, 40 + lead.len() as u64, tail.as_bytes());
-    assert_eq!(queued_at(&lines), ["2026-01-02T03:00:00.000Z"]);
-    let (rows_with, rows_without) = (
-        rows_v(
-            &mut Reader::new(&face, 40, lead.as_bytes(), Default::default()),
-            99,
-            tail.as_bytes(),
-        ),
-        rows_v(&mut rd(&face), 99, tail.as_bytes()),
+    let got: Vec<(&str, &str, &str)> = lines
+        .iter()
+        .filter(|l| l.get("record").is_some())
+        .map(|l| {
+            let r = &l["record"];
+            (
+                r["t"].as_str().unwrap_or(""),
+                r["id"].as_str().unwrap_or(""),
+                r["at"].as_str().unwrap_or(""),
+            )
+        })
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("said", "u1", "t"),
+            ("said", "q1", "2026-01-02T03:00:00.000Z")
+        ],
+        "{lines:?}"
     );
-    assert_eq!(rows_with[0]["record"]["at"], "2026-01-02T03:00:00.000Z");
-    // 没有往回看那一段 ⇒ 用它自己的时刻。
-    assert_eq!(rows_without[0]["record"]["at"], "2026-01-02T03:02:00.000Z");
+    let rows: Vec<_> = rows_v(&mut rd(&face), 0, page.as_bytes())
+        .into_iter()
+        .filter(|r| r.get("record").is_some())
+        .collect();
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    assert_eq!(rows[1]["record"]["id"], "q1");
 }
 
-/// 没有自己身份的那几条（标题 · 排队）`id` 按这一行的起点偏移合成：各条读路（按页 · 按行摘要）给出的一样、互不相撞。
+/// 没有自己身份的那几条（标题）`id` 按这一行的起点偏移合成：各条读路（按页 · 按行摘要）给出的一样、互不相撞。
 #[test]
 fn records_without_their_own_id_get_one_from_where_the_line_starts() {
     let face = claude();
     let title = r#"{"type":"ai-title","aiTitle":"x","sessionId":"s"}"#;
-    let page = format!("{title}\n{REM}\n");
+    let renamed = r#"{"type":"custom-title","customTitle":"y","sessionId":"s"}"#;
+    let page = format!("{title}\n{renamed}\n");
     let rows = rows_v(&mut rd(&face), 1000, page.as_bytes());
     let (lines, _) = record_lines_of_page(
         &mut rd(&face),

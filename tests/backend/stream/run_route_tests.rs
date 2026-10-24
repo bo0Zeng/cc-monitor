@@ -169,7 +169,10 @@ fn a_side_request_never_reaches_a_card() {
         for (n, d) in [OPEN, PART, SHUT].into_iter().enumerate() {
             out.extend(r.on_tap(classed("auxiliary", 1, n as u64, d)));
         }
-        out.extend(r.on_tap(TapEvent { class: "auxiliary".into(), ..end(1, 3) }));
+        out.extend(r.on_tap(TapEvent {
+            class: "auxiliary".into(),
+            ..end(1, 3)
+        }));
         assert!(out.is_empty(), "旁路的那一段放出去了：{out:?}");
         out.extend(r.on_tap(classed("main", 2, 0, OPEN)));
         assert_eq!(out.len(), 1, "对话那一发没放出去");

@@ -480,6 +480,9 @@ fn a_parsed_user_record_carries_the_one_speaker_product() {
         let q = super::super::parse::parse_line(&crate::agents::Line::new(raw, 0))
             .unwrap()
             .unwrap();
-        assert!(serde_json::to_value(&q).unwrap().get("userText").is_none(), "{raw}");
+        assert!(
+            serde_json::to_value(&q).unwrap().get("userText").is_none(),
+            "{raw}"
+        );
     }
 }

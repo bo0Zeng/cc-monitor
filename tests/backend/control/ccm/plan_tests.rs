@@ -2304,7 +2304,10 @@ fn the_relay_is_injected_the_way_that_family_declares() {
         "{line}"
     );
     for (k, _) in &rides {
-        assert!(line.contains(&format!("export {k}=")), "{k} 没印出来：{line}");
+        assert!(
+            line.contains(&format!("export {k}=")),
+            "{k} 没印出来：{line}"
+        );
     }
     assert!(
         !line.contains(full_key),

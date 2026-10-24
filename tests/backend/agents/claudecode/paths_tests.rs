@@ -83,7 +83,11 @@ fn every_uncovered_shape_is_still_uncovered_today() {
 /// 不然直接敲的 claude 走中转时不带分类头，旁路请求（预测下一句那一类）分不出来。别的格原样。
 #[test]
 fn writing_the_relay_address_also_writes_the_env_that_rides_with_it() {
-    let merged = settings_env_merge(r#"{"env":{"OTHER":"x"},"theme":"dark"}"#, "http://127.0.0.1:1/t/a").unwrap();
+    let merged = settings_env_merge(
+        r#"{"env":{"OTHER":"x"},"theme":"dark"}"#,
+        "http://127.0.0.1:1/t/a",
+    )
+    .unwrap();
     let v: serde_json::Value = serde_json::from_str(&merged).unwrap();
     assert_eq!(v["env"][BASE_URL_ENV], "http://127.0.0.1:1/t/a");
     assert_eq!(v["env"]["OTHER"], "x");

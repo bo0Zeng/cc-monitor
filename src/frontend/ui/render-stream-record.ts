@@ -25,7 +25,7 @@ export interface StreamSink {
   /** 按 seq 排序插入用 */
   timeline: RecordTimeline;
   /**
-   * payload 是真用户输入（人说的 said / queued + 渲染成 card）时调，传入 sessionId。
+   * payload 是真用户输入（人说的 said + 渲染成 card）时调，传入 sessionId。
    * 仅 TabManager 用（触发自动切 Tab 到对应 session）。
    */
   onRealUserInput?: (sessionId: string) => void;
@@ -250,10 +250,10 @@ export function renderContentRecord(
       if (sink.enhanceRoot) observeForEnhance(result.element, sink.enhanceRoot);
       const tMount = probe ? performance.now() : 0;
 
-      // 真用户输入触发回调（让 TabManager 自动切 Tab）。排队消息也算：用户刚插了话，多半正等着看回应。
+      // 真用户输入触发回调（让 TabManager 自动切 Tab）。一轮中途插的话也是 said：用户刚插了话，多半正等着看回应。
       // 只认**刚写进来的**：补历史带来的旧记录（载荷 `catch_up`，monitor 按会话宣告那一刻的行数分的）里人说过的话不是刚敲的。
       // `userActive` 自带三道闸（设置开关 / 5s 手动保护 / batch 期守卫），不会乱切。
-      if (payload.catch_up !== true && (message.t === "said" || message.t === "queued") && saidByHuman(message.who.speaker.kind)) {
+      if (payload.catch_up !== true && message.t === "said" && saidByHuman(message.who.speaker.kind)) {
         sink.onRealUserInput?.(payload.session_id);
       }
       if (probe) {
@@ -315,15 +315,9 @@ function markToolAnchors(record: LineRecord, ctx: RenderContext): void {
 
 /**
  * 给卡的 root 写 data-id（记录的 `id`）：BranchFolder 按它认主线外清单里的那几条，轮次 / 跳转 / 查找按它找卡。
- * 重试细条与认不出的那一行也要写：回退掉的那一段里夹着它时，不写会把折叠段劈成两段。排队那一句不写 `data-id`（它不在哪一轮的链上），
- * 写 `data-queued-id`。
+ * 重试细条与认不出的那一行也要写：回退掉的那一段里夹着它时，不写会把折叠段劈成两段。
  */
 export function markCardId(el: HTMLElement, rec: LineRecord): void {
-  // 排队那一句：只记它自己的记录 id（后端说它落成了人话 ⇒ 按它藏，`turn-fold.ts`），不进 `data-id`。
-  if (rec.t === "queued") {
-    el.dataset.queuedId = rec.id;
-    return;
-  }
   if (rec.t !== "said" && rec.t !== "reply" && rec.t !== "retry" && rec.t !== "unread") return;
   el.setAttribute("data-id", rec.id);
 }
