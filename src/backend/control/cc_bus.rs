@@ -224,7 +224,7 @@ fn run_as(name: &str, args: &[&str], as_id: Option<&str>) -> Result<Done, CmdErr
         env.retain(|(k, _)| *k != "CC_BUS_ID");
         env.push(("CC_BUS_ID", id));
     }
-    crate::plugin::invoke::run(&bin, args, secs, &env).map_err(|e| match e {
+    crate::plugin::invoke::run(&bin, args, secs, &env, None).map_err(|e| match e {
         // ★ **E2BIG 要单独说**〔08-13 实测〕：`{"code":"failed","message":"起不来 cc-send：
         //   Argument list too long"}` 有两处不对 —— ① `failed` 是兜底桶，调用方分不出
         //   「我的消息太长」（自己能修：发短点）和「cc-bus 坏了」（自己修不了）；

@@ -1,25 +1,18 @@
-//! 跑一次 `pb dump`：当前目录设在要问的那个目录、环境只给白名单（不带 `PB_ID` ⇒ pb 认作人）、限时；认退出码与形状版本。
+//! 跑一次 `pb dump`（起法见 [`super::pb`]，当前目录设在要问的那个目录）；认退出码与形状版本。
 //!
 //! 「这个目录算不算 pb 工作区」不在这里另写一份：pb 自己从当前目录往上找，找不到回 3。
 
-use crate::platform::child::Deadline;
+use crate::plugin::invoke::Done;
 use copy_core::copy_text;
+use copy_core::said::Said;
 use std::path::Path;
 
 /// 认得的形状版本（`pb dump` 顶上的 `shape`）。pb 改了形状会把它加一 ⇒ 这里不认 ⇒ 当作「pb 太旧 / 太新」说出来，不硬读。
 pub(crate) const SHAPE: u64 = 4;
 
-/// 一次 dump 最多等多久。量过：252 格的研究盘 1.1 秒；留一个数量级给慢盘与远端。
-pub(crate) const DEADLINE_SECS: u64 = 20;
-
 /// pb 的退出码：读不成 · 用法错。
 const RC_UNREADABLE: i32 = 3;
 const RC_USAGE: i32 = 4;
-
-/// 起 pb 用的解释器（裸名：在 `PATH` 上按这台的规矩找，Windows 上找到的是 `python3.exe`）。
-pub(crate) fn interpreter() -> String {
-    "python3".to_string()
-}
 
 /// 跑一次的结局。
 #[derive(Debug)]
@@ -39,31 +32,24 @@ pub(crate) enum Ran {
 
 /// 在 `dir` 里跑 `<entry> dump`。
 pub(crate) fn run(entry: &Path, dir: &Path) -> Ran {
-    let py = match crate::plugin::discover::find(
-        &interpreter(),
-        &[],
-        true,
-        &copy_text("bePlan.dump.noPythonHint", &[]),
-    ) {
-        Ok(p) => p,
-        Err(said) => return Ran::Failed { said, raw: None },
-    };
-    let entry_s = entry.to_string_lossy().to_string();
-    let child =
-        crate::plugin::invoke::child_for(&py, &[entry_s.as_str(), "dump"], &[]).current_dir(dir);
-    match child.run(Deadline::secs(DEADLINE_SECS)) {
-        Ok(out) => classify(out.status.code(), &out.stdout, &out.stderr),
-        Err(e) if e.is_timed_out() => Ran::Failed {
+    ran_of(super::pb(entry, dir, &["dump"]))
+}
+
+/// 起了一次 pb ⇒ 结局（纯函数）：起不来 ⇒ 失败；过了期限 ⇒ 读计划超时（等了多久照原语说的）；跑完了 ⇒ [`classify`]。
+pub(crate) fn ran_of(r: Result<Done, Said>) -> Ran {
+    match r {
+        Err(Said { said, raw }) => Ran::Failed { said, raw },
+        Ok(Done {
+            waited_secs: Some(secs),
+            ..
+        }) => Ran::Failed {
             said: copy_text(
                 "bePlan.dump.timedOut",
-                &[("dur", &copy_core::format_duration(DEADLINE_SECS * 1000))],
+                &[("dur", &copy_core::format_duration(secs * 1000))],
             ),
             raw: None,
         },
-        Err(e) => Ran::Failed {
-            said: copy_text("bePlan.dump.notRun", &[]),
-            raw: Some(e.to_string()),
-        },
+        Ok(d) => classify(d.code, &d.stdout, &d.stderr),
     }
 }
 
@@ -120,35 +106,12 @@ pub(crate) fn classify(code: Option<i32>, stdout: &[u8], stderr: &[u8]) -> Ran {
 /// 在工作区根 `ws` 里跑 `<entry> dump --cell <片> <格> <工作区>`：一格的 agent 视角（pb 原样那一段）。
 /// 不成 ⇒ [`CellMiss`]。
 pub(crate) fn run_cell(entry: &Path, ws: &Path, slice: &str, id: &str) -> Result<String, CellMiss> {
-    let py = crate::plugin::discover::find(
-        &interpreter(),
-        &[],
-        true,
-        &copy_text("bePlan.dump.noPythonHint", &[]),
-    )
-    .map_err(|said| CellMiss::Ran(Ran::Failed { said, raw: None }))?;
-    let entry_s = entry.to_string_lossy().to_string();
     let ws_s = ws.to_string_lossy().to_string();
-    let child = crate::plugin::invoke::child_for(
-        &py,
-        &[entry_s.as_str(), "dump", "--cell", slice, id, ws_s.as_str()],
-        &[],
-    )
-    .current_dir(ws);
-    match child.run(Deadline::secs(DEADLINE_SECS)) {
-        Ok(out) => cell_of(classify(out.status.code(), &out.stdout, &out.stderr)),
-        Err(e) if e.is_timed_out() => Err(CellMiss::Ran(Ran::Failed {
-            said: copy_text(
-                "bePlan.dump.timedOut",
-                &[("dur", &copy_core::format_duration(DEADLINE_SECS * 1000))],
-            ),
-            raw: None,
-        })),
-        Err(e) => Err(CellMiss::Ran(Ran::Failed {
-            said: copy_text("bePlan.dump.notRun", &[]),
-            raw: Some(e.to_string()),
-        })),
-    }
+    cell_of(ran_of(super::pb(
+        entry,
+        ws,
+        &["dump", "--cell", slice, id, ws_s.as_str()],
+    )))
 }
 
 /// `dump --cell` 没给出那一段：pb 说那一片 · 那一格不在（`error`，pb 那一句）· 别的结局（同 [`run`]）。
