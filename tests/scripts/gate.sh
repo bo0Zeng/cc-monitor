@@ -162,7 +162,7 @@ fi
 GATE_CELL_DIR="$(mktemp -d "${TMPDIR:-/tmp}/gate-cells.XXXXXX")" || { echo "GATE: FAIL —— 建不了各格的输出目录"; exit 2; }
 
 # ── 机器忙时谁让路（10-08）──────────────────────────────────────────────────
-# 拿锁那一刻看一次负载（`gate-clean.sh`）管不住跑起来之后才涨上来的负载 ⇒ 门禁自己分两手：
+# 拿锁那一刻看一次负载（`gate-affected.sh`）管不住跑起来之后才涨上来的负载 ⇒ 门禁自己分两手：
 #
 # ① **整套 vitest 分核**：`npm` 与 `coverage` 两格在两条道里同时各起一整套 vitest，各按默认（核数 − 1）起 worker
 #    ⇒ 合起来近两倍核数，再叠 Rust 与 e2e，按墙钟判的用例被挤过期限。并跑时每格只拿「核数 ÷ 格数」个 worker
@@ -1299,7 +1299,7 @@ run_gate mobile '这一趟 Gradle test-results 里的单测条数（各模块合
 # 起因：从前它们不在任何一格里（上一格「不起模拟器」），`SmokeTest` 红了很久没人看见（10-11 才撞见）。
 # 起停：`tests/mobile-smoke/emu.sh up|down` —— 无头 KVM 模拟器，自己一个 `systemd-run --user --scope`（MemoryMax 10G，不设 MemoryHigh），
 #   不占 heavy 的槽位；adb 用私有端口（默认 5139 / 模拟器 5592，与冒烟台架的 5137 / 5590 错开），不碰本机正在跑的 adb 与真手机。
-#   AVD 默认建在这棵树的 `.build/android-device/avd`，`GATE_ANDROID_AVD_HOME` 可指别处（`gate-clean.sh` 只清 `CCM_*` 等会话变量，不清它）。
+#   AVD 默认建在这棵树的 `.build/android-device/avd`，`GATE_ANDROID_AVD_HOME` 可指别处（`gate-affected.sh` 经 `heavy.sh` 只清 `CCM_*` 等会话变量，不清它）。
 # 跑：`src/mobile/scripts/android-test.sh`（唯一入口：装 app → `pm clear` 判成没成 → 三个模块的设备测；gradle 带 --no-daemon）。
 # 判：退出码 0 ＋ 这一趟 connected 报告里的条数 > 0（先清旧报告）。要台架的 `RustTransportTest` 没给台架参数就整份跳过（冒烟台架那一格才带参数跑它）。
 # 与 `mobile` 同一条道、排在它后面（两格共用 Gradle 的构建目录）。不进无网沙箱：Gradle 要读依赖缓存、模拟器要 KVM。

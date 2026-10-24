@@ -9,7 +9,7 @@
  * ② **让路表**：按墙钟判（`GATE_WALL_CELLS`）与让路（`GATE_YIELD_CELLS`）两张表不相交，并起来 == 盘上声明的格（两向）。
  *
  * ⚠ 买不到：worker 数只管 vitest 自己起的线程 / 进程，用例里再起的子进程（`node --check`、`vite build`）不在数里；
- *   `nice` 只排 CPU，不排内存与磁盘；门禁外面别的路起的负载两手都管不着（那归 `gate-clean.sh` 拿锁时那一看）。
+ *   `nice` 只排 CPU，不排内存与磁盘；门禁外面别的路起的负载两手都管不着（那归 `gate-affected.sh` 拿锁时那一看）。
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";

@@ -4,7 +4,7 @@
 #   @组名  格名…          —— 一组格。格名必须是 tests/scripts/gate.sh 盘上真有的格（脚本每趟对账，对不上就停、不猜）。
 #   路径模式  组名[,组名…]  理由  —— 一条映射。模式是相对仓根的 glob：`*` 不跨 `/`，`**` 跨任意层；`{a,b}` 不支持，分两行写。
 # 判法：改到的每条路径 = 它命中的**所有**行的组的并集（不是第一条命中）。
-#       一条路径一行都没命中 ⇒ 不认识 ⇒ 整趟退回全量（不带 GATE_ONLY，等于 gate-clean.sh）。
+#       一条路径一行都没命中 ⇒ 不认识 ⇒ 整趟退回全量（不带 GATE_ONLY，同 gate-affected.sh --full）。
 #       组名 `-` = 只跑恒跑的那组（这条路径有人读，但读它的判据全在恒跑格里）。组名 `FULL` = 整趟全量。
 #       gate.sh 里新加了格、这里两段都没提到它 ⇒ 当成恒跑（宁可多跑，不许新格悄悄不跑）。
 # 另有五条现算的规则住在挑格那一半 plan.py 里（不是这张表能写死的东西）：
@@ -20,7 +20,7 @@
 # 默认模式与 quick-check 恒跑、--trust-ci 模式交给 CI 的：两棵树的全部单测（cargo · backend）与 vitest（npm）及跟着它们的三格。
 #   为什么恒跑：三套里都有扫全仓的判据（strace 实测：后端那套读到被跟踪的 3698 份里的 3686 份、vitest 3674 份；壳那套的私人形状 ·
 #   出仓引用按 `git ls-files` 扫全仓）⇒ 按路径挑会绿着说假话。要挑它们，先得把扫全仓的那几族挪出这三套。
-#   出仓引用（no_outside_refs）在 cargo 里，文案机检（copy-rules · copy-table）在 npm 里；--trust-ci 时 gate-affected 在门禁外单跑这几条。
+#   出仓引用（no_outside_refs）在 cargo 里，文案机检（copy-rules · copy-table）在 npm 里；--trust-ci 时它们随这三套交给 CI，本机不跑。
 @suites cargo creds-harden comm-boundary test-tiers generated backend npm
 # 壳那棵 workspace（monitor · 文件窗口 · 共享 crate）只编不跑的那几格：lint · 死码 · Linux 真链 · 截图台架的无头壳 · Windows 交叉检查与真链。
 @shellrs clippy deadcode appbuild shotsshell winchk winlink
