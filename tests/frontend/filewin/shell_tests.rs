@@ -14,24 +14,6 @@ fn synth_cfg(label: &str) -> String {
 #[cfg(not(windows))]
 const XVFB_ORIGIN: &str = "xvfb-origin";
 
-/// 造一棵**结构**上像样的临时目录树（名字全合成）。回 `(根, 根下那个子目录)`。
-fn synth_tree(tag: &str) -> (std::path::PathBuf, std::path::PathBuf) {
-    let root = std::env::temp_dir().join(format!(
-        "ccm-filewin-shell-{}-{}-{}",
-        tag,
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    let sub = root.join("sub");
-    std::fs::create_dir_all(sub.join("deeper")).unwrap();
-    std::fs::write(root.join("f.txt"), b"xyz").unwrap();
-    std::fs::write(sub.join("inner.txt"), b"0123456789").unwrap();
-    (root, sub)
-}
-
 fn names(w: &FileWindow) -> Vec<String> {
     w.listing
         .rows
@@ -542,7 +524,7 @@ fn xvfb_worker_opens_a_real_window() {
     use crate::rows::testing::xvfb;
     let display = xvfb::child_display();
     // 🔴〔2026-09-23 本机侧退役〕**种子从「真目录树」换成「合成的几行」。**
-    //    从前这里 `synth_tree()` 造一棵临时目录树、`list_local()` 列一趟当种子。
+    //    从前这里造一棵临时目录树、列一趟本机目录当种子。
     //    窗口今天只看远端 ⇒ 那棵树没有对应的一侧了。
     //    ⚠ 这一换**不减读数**：`open_detached_seeded` 从来就不列目录（种子是给它的），
     //      这一格买的是「窗口真的起来了 ＋ 标题 ＋ 几何 ＋ 循环干净退出」。
@@ -2681,21 +2663,18 @@ fn gp1_a_chmod_box_without_a_line_says_the_current_mode_is_unreadable() {
     assert_eq!(w.write_prompt().map(|p| p.text.as_str()), Some(""));
 }
 
-/// P2⁗：现值那一趟**真上线**：挂一台合成后端（它按盘上真文件答 `files-stat`，`mode` 取真权限位），逐项问、按序交回；
-/// 不在的那一项 ⇒ `None`（读不到，不猜）。异源：期望的权限位是本测试自己 `set_permissions` 设下去的。
-#[cfg(unix)]
+/// P2⁗：现值那一趟**真上线**：挂一台合成后端（它按合成盘上那一条答 `files-stat`，`mode` 取那一条的权限位），逐项问、按序交回；
+/// 不在的那一项 ⇒ `None`（读不到，不猜）。异源：期望的权限位是本测试自己在合成盘上设下去的。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn gp1_the_mode_probe_asks_files_stat_per_target_over_the_wire() {
-    use crate::find::testing::{wire_up, Declared, FakeBackend};
-    use std::os::unix::fs::PermissionsExt as _;
-    let dir = std::env::temp_dir().join(format!("ccm-gp1-modes-{}", std::process::id()));
-    std::fs::remove_dir_all(&dir).ok();
-    std::fs::create_dir_all(&dir).expect("建夹具目录");
-    let a = dir.join("a.bin");
-    let b = dir.join("b.bin");
+    use crate::find::testing::{synth_fs, wire_up, Declared, FakeBackend};
+    let dir = format!("/srv/ccm-gp1-modes-{}", std::process::id());
+    synth_fs::remove_all(&dir);
+    let a = format!("{dir}/a.bin");
+    let b = format!("{dir}/b.bin");
     for (f, m) in [(&a, 0o640_u32), (&b, 0o600)] {
-        std::fs::write(f, b"x").expect("铺文件");
-        std::fs::set_permissions(f, std::fs::Permissions::from_mode(m)).expect("设权限");
+        synth_fs::write(f, b"x");
+        synth_fs::set_mode(f, m);
     }
     let wired = wire_up(
         "gp1-modes",
@@ -2703,10 +2682,7 @@ async fn gp1_the_mode_probe_asks_files_stat_per_target_over_the_wire() {
     )
     .await;
     let origin = comms_inward::origin::Origin(wired.origin.clone());
-    let paths: Vec<String> = [&a, &b, &dir.join("gone.bin")]
-        .iter()
-        .map(|p| p.to_str().expect("ASCII").to_string())
-        .collect();
+    let paths: Vec<String> = vec![a, b, format!("{dir}/gone.bin")];
     let got = crate::writeops::probe_modes(&wired.line, &origin, &paths).await;
     assert_eq!(got, vec![Some(0o640), Some(0o600), None]);
     let asked: Vec<String> = wired
@@ -2718,7 +2694,7 @@ async fn gp1_the_mode_probe_asks_files_stat_per_target_over_the_wire() {
         .map(|v| v["args"]["path"].as_str().unwrap_or("").to_string())
         .collect();
     assert_eq!(asked, paths, "逐项各问一次、按序");
-    std::fs::remove_dir_all(&dir).ok();
+    synth_fs::remove_all(&dir);
 }
 
 // ════════════════════════════════════════════════════════════════════════

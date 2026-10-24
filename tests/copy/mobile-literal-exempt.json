@@ -1,6 +1,6 @@
 {
   "说明": [
-    "手机生产 Kotlin 里含汉字、却不该进文案表的字面量（判据：tests/copy/mobile-literals.vitest.ts）。日志 · testTag · require / check 按位置放过，不用登记。",
+    "手机生产 Kotlin 里含汉字、却不该进文案表的字面量（判据：src/mobile/app/src/test/kotlin/com/ccmonitor/mobile/copy/MobileLiteralsTest.kt）。日志 · testTag · require / check 按位置放过，不用登记。",
     "按 文件 · 那句（模板那一截记 {…}）· 用途 · 去向 认；用途取自判据里的闭集（词表 · 命令 · 内部）。那份文件里已没有这句 ⇒ 死豁免红，删掉这条。",
     "res/values/strings.xml 不归这张表：app_name 由清单 android:label 引用，系统要求住在资源里，照留。"
   ],

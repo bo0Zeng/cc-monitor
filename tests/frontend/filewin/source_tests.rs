@@ -31,48 +31,29 @@ fn whole_json(entries: serde_json::Value, info: serde_json::Value) -> serde_json
     })
 }
 
-/// 造一棵**结构**上像样的临时目录树：名字全合成，不锚在任何活体上。
-fn synth_tree() -> std::path::PathBuf {
-    let root = std::env::temp_dir().join(format!(
-        "ccm-filewin-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("Beta")).unwrap();
-    std::fs::create_dir_all(root.join("alpha")).unwrap();
-    std::fs::write(root.join("Zeta.txt"), b"0123456789").unwrap();
-    std::fs::write(root.join("mid.txt"), b"01234").unwrap();
-    root
-}
-
-#[test]
-fn listing_a_local_dir_reads_every_entry_with_its_real_size() {
-    let root = synth_tree();
-    let rows = list_local(&root).unwrap();
-    let got: std::collections::BTreeSet<(&str, bool, u64)> = rows
-        .iter()
-        .map(|r| (r.name.as_str(), r.is_dir, r.size))
-        .collect();
-    // 先后照目录项（不排）；大小走的是真 metadata，不是编出来的。
-    assert_eq!(
-        got,
-        [
-            ("Beta", true, got.iter().find(|g| g.0 == "Beta").unwrap().2),
-            ("Zeta.txt", false, 10),
-            (
-                "alpha",
-                true,
-                got.iter().find(|g| g.0 == "alpha").unwrap().2
-            ),
-            ("mid.txt", false, 5)
-        ]
-        .into_iter()
-        .collect()
-    );
-    std::fs::remove_dir_all(&root).ok();
+/// 在合成后端那台机器的盘上（`find::testing::synth_fs`）造一棵**结构**上像样的树：名字全合成，不锚在任何活体上。
+///
+/// 回（根, 这棵树该列出来的那一层）：后者由造法直接写出来，不是列一趟数出来的（两侧不同源）。
+fn synth_tree() -> (String, std::collections::BTreeSet<(String, u64, bool)>) {
+    use crate::find::testing::synth_fs;
+    let root = format!("/srv/ccm-filewin-source-{}", std::process::id());
+    synth_fs::remove_all(&root);
+    synth_fs::mkdir_all(format!("{root}/Beta"));
+    synth_fs::mkdir_all(format!("{root}/alpha"));
+    // 下一级里也有一份：列一层不许把它带出来。
+    synth_fs::write(format!("{root}/Beta/deeper.txt"), b"x");
+    synth_fs::write(format!("{root}/Zeta.txt"), b"0123456789");
+    synth_fs::write(format!("{root}/mid.txt"), b"01234");
+    let want = [
+        ("Beta", 0, true),
+        ("alpha", 0, true),
+        ("Zeta.txt", 10, false),
+        ("mid.txt", 5, false),
+    ]
+    .into_iter()
+    .map(|(n, s, d)| (n.to_string(), s, d))
+    .collect();
+    (root, want)
 }
 
 // 这里原先有一条「`SftpEntry` → 行的映射六格一格不许掉」的判据。
@@ -219,13 +200,6 @@ fn walking_up_uses_slashes_only_and_never_the_platform_separator() {
         Some(also_backslash("/srv/a\\b")),
         "阴性对照那一形不是这台机器上 `std::path` 的答案"
     );
-}
-
-#[test]
-fn a_missing_dir_is_an_error_not_an_empty_list() {
-    let missing = std::env::temp_dir().join("ccm-filewin-does-not-exist-9d3f1a");
-    let r = list_local(&missing);
-    assert!(r.is_err(), "不存在的目录必须报错，不许静默返回空列表");
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -397,14 +371,14 @@ fn only_dir_counts_as_a_directory_and_the_rest_are_flattened() {
         let r = entry(&v).unwrap();
         assert_eq!(r.is_dir, want_dir, "`kind={kind}` 判错了");
     }
-    // `size` 缺了不整条失败（同本机那条：读不到 stat 也照样给一行）。
+    // `size` 缺了不整条失败（读不到 stat 也照样给一行）。
     let v = serde_json::json!({ "path": "/a/x", "name": "x", "kind": "file", "class": "other", "type_text": "" });
     assert_eq!(entry(&v).unwrap().size, 0);
 }
 
 /// 🔴 **`lossy_name` 这一格当场变准了 —— 而旧那份是一个猜。**
 ///
-/// 旧写法是 `name.contains('\u{FFFD}')`（`list_local` 里那一行，今天还在退路上）：
+/// 旧写法是 `name.contains('\u{FFFD}')`（从前列本机目录那一份里的那一行）：
 /// 它把「转换时产生了替换字符」与「这个文件真叫这个名字」混成一件事
 /// ⇒ 一个**真叫** `\u{FFFD}` 的文件会被误判成有损，于是复制/改名/删除三颗按钮
 /// 对它一颗都不画（复制那道门与 `is_writable` 都看这一格）。
@@ -534,8 +508,8 @@ fn truncation_is_carried_back_not_dropped() {
 /// ③ 线上恰好一条 `files-ls`（没有第二趟、也没有别的命令被悄悄发出去）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn listing_has_no_second_road_when_the_backend_refuses() {
-    use crate::find::testing::{remote_form, wire_up, Declared, FakeBackend};
-    let root = synth_tree();
+    use crate::find::testing::{synth_fs, wire_up, Declared, FakeBackend};
+    let (dir, want) = synth_tree();
     let wired = wire_up(
         "source-ls",
         FakeBackend::new(&[CMD_LS], Declared::default()),
@@ -543,25 +517,17 @@ async fn listing_has_no_second_road_when_the_backend_refuses() {
     .await;
     let cfg = wired.origin.clone();
     let src = Source::remote(cfg);
-    // 窗口手里的是远端那一形（恒 `/`；Windows 上本机临时目录要换一下，见 `remote_form` 头注）。
-    let dir = remote_form(&root.to_string_lossy());
     // ① 后端答得出。
     let (rows, cut) = screen_of(
         &list_dir(&wired.line, &src, &dir, Sort::default())
             .await
             .expect("后端答得出，窗口这一侧却失败了"),
     );
-    let want = list_local(&root).expect("合成树列得出来");
-    let set = |v: &[Listed]| {
-        v.iter()
-            .map(|r| (r.name.clone(), r.size, r.is_dir))
-            .collect::<std::collections::BTreeSet<_>>()
-    };
-    assert_eq!(
-        set(&rows),
-        set(&want),
-        "经通道回来的那一屏与后端那一侧看见的不等"
-    );
+    let got: std::collections::BTreeSet<_> = rows
+        .iter()
+        .map(|r| (r.name.clone(), r.size, r.is_dir))
+        .collect();
+    assert_eq!(got, want, "经通道回来的那一屏与那台盘上造的那一层不等");
     assert!(!rows.is_empty(), "合成树是空的 —— 上面那条相等在空集上成立");
     assert_eq!(
         cut,
@@ -575,13 +541,12 @@ async fn listing_has_no_second_road_when_the_backend_refuses() {
         .await
         .expect_err("后端拒了，窗口却交出了一屏");
     assert!(
-        copy_core::copy_matches("rsFilewinSource.local.readDirFailed", &e)
-            && !e.contains("unreadable"),
+        copy_core::copy_matches("beFilesRead.ls.unreadable", &e) && !e.contains("not_found"),
         "那句话里没有后端的原话，或错误码上了屏：{e}"
     );
     // ③ 线上恰好两条 `files-ls`（① 一条、② 一条），没有别的。
     assert_eq!(wired.cmds(), [CMD_LS, CMD_LS]);
-    std::fs::remove_dir_all(&root).ok();
+    synth_fs::remove_all(&dir);
 }
 
 /// 要求：「只有远端，没有本机」（远端路径恒用 `/`）—— Windows runner 上那一形**在这台 Linux 上也跑一遍**。

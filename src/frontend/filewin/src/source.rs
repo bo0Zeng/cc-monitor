@@ -5,7 +5,7 @@
 //! 本机有操作系统的文件管理器，窗口不列本机目录（`src/doc/INVARIANTS.md` §40「天然不对称白名单」第一条：
 //! **SFTP 文件面板** —— 本地有操作系统的文件管理器，不需要它）。
 //! 上传与往外拖照旧碰本机盘（`transfer` 读本机文件、`download` 往本机盘写、`shell::local_home` 给「存到哪儿」一个缺省值）：
-//! 那是**传输**，不是文件管理器。[`list_local`] 生产路径上零消费者，留着的理由写在它自己的头注上。
+//! 那是**传输**，不是文件管理器。
 //!
 //! # 🔴列目录**只经通道问后端**（逐条理由住下面「窗口进程只说 `call`」那一节）
 //!
@@ -17,7 +17,6 @@
 //! 一屏的先后（四列 · 目录在前 · 反过来只反那一列）由 `files-ls` 的 `sort` 排好送来，窗口照摆、不重排。
 
 use copy_core::copy_text;
-use std::path::Path;
 
 /// 文件列表里的一行。**故意比 `SftpEntry` 窄** —— 列表只画得下这些。
 ///
@@ -432,63 +431,6 @@ pub fn mtime_text(secs: u64) -> MtimeText {
         .map_or(0, |d| d.as_secs() as i64);
     let today = copy_core::civil_from_days((now + local_offset_at(now)).div_euclid(86_400));
     mtime_text_at(secs, local_offset_at(secs as i64), today)
-}
-
-/// 列一个**本机**目录。
-///
-/// # 🔴 它在生产路径上**零消费者**，而它还在盘上 —— 逐条理由，不是「以后可能用得上」
-///
-/// 没有本机那一侧（见本模块头注「只有远端一侧」那一节），它唯一的消费者是
-/// `tests/frontend/filewin/find_testing.rs::walk` —— 搜索那一族判据用的**合成后端**
-/// 要一个「列一个目录」原语去走一棵临时目录树。
-///
-/// 为什么不把它搬进那份测试文件（那才是「该删就删」的写法）：
-/// `scanning_guard_registry::no_new_guard_walks_the_tree_without_excluding_itself`
-/// 的人群是 `tests/` 整棵树，而它的针里逐字有 `read_dir(`
-/// ⇒ 搬过去就是往那条**递减棘轮**的存量清单里**新加一个文件**，
-/// 而那张清单逐字「**只许变短**，不许往里加」，且
-/// `the_pending_ratchet_never_turns_backwards` 拿 git 历史当权威
-/// ——「抬上限让今天好过」提交了也不会绿。
-///
-/// ⇒ 三条路里选了代价最小的一条，**并且把代价写在这里**：
-/// ① 搬进测试文件 ⇒ 顶破棘轮（禁）；② 抽进 `guard-core` ⇒ 动共享 crate 登记表
-/// （不归这里改）；③ **留在原处、降级申报**（选它）。
-///
-/// ⚠ **它不是「本机文件管理器」的一部分了。** 「本机也能浏览」那条路径整条不在了：
-/// 没有 `Source` 的本机格、没有那颗按钮、[`list_dir`] 的退路里也不再提它。
-/// 谁要把它接回一条用户可达的路径上 —— 那是在推翻一条产品裁决，先去读本模块头注「只有远端一侧」那一节。
-///
-/// ⚠ 单个条目 `metadata()` 失败（权限 / 竞态删除）时**不整趟失败**：
-/// 那一行按「非目录、大小 0」记下来 —— 列目录的用处是「看得见有什么」，
-/// 为一个读不到 stat 的条目把整屏打掉不划算。
-pub fn list_local(dir: &Path) -> Result<Vec<Listed>, String> {
-    let rd = std::fs::read_dir(dir).map_err(|e| {
-        copy_text(
-            "rsFilewinSource.local.readDirFailed",
-            &[("why", &copy_core::io_reason(e.kind()))],
-        )
-    })?;
-    let mut out: Vec<Listed> = Vec::new();
-    for entry in rd.flatten() {
-        let raw = entry.file_name();
-        let name = raw.to_string_lossy().to_string();
-        let lossy_name = name.contains('\u{FFFD}');
-        // `metadata()` 跟随符号链接；跟不动（悬空链接）就退回 `symlink_metadata`。
-        let meta = entry
-            .metadata()
-            .or_else(|_| std::fs::symlink_metadata(entry.path()))
-            .ok();
-        // ⚠ 这一侧**刻意不接那两格**（链接 / 时间）：它在生产路径上零消费者
-        //   （见上面那一节），给它加两格只会让「本机那一侧还活着」看起来更像真的。
-        out.push(Listed::plain(Row {
-            path: entry.path().to_string_lossy().to_string(),
-            is_dir: meta.as_ref().is_some_and(|m| m.is_dir()),
-            size: meta.as_ref().map_or(0, |m| m.len()),
-            lossy_name,
-            name,
-        }));
-    }
-    Ok(out)
 }
 
 /// 那台机器答出来的 home 能不能当**起点**用。
