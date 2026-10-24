@@ -240,12 +240,31 @@ fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
         rel.lines().count()
     );
 
+    // 交叉编译那一步只调 `re-embed.sh --build-only`：配方（编哪几个 target）只住那条命令的 `REEMBED_TARGETS`。
+    assert!(
+        rel.contains("run: bash tests/scripts/re-embed.sh --build-only"),
+        "`release.yml` 里没有一步（非注释行）调 `bash tests/scripts/re-embed.sh --build-only` —— 交叉编译不经那条配方了"
+    );
+    let reembed = std::fs::read_to_string(
+        guard_core::addr::repo_root().join("tests/scripts/re-embed.sh"),
+    )
+    .expect("读不到 re-embed.sh");
+    let targets: Vec<&str> = reembed
+        .lines()
+        .find_map(|l| l.strip_prefix("REEMBED_TARGETS=("))
+        .expect("re-embed.sh 里抠不到 `REEMBED_TARGETS=(…)` —— 写法变了，本条会零命中")
+        .trim_end()
+        .trim_end_matches(')')
+        .split_whitespace()
+        .collect();
+
     for arch in &arches {
+        let triple = format!("{arch}-unknown-linux-musl");
+        assert!(
+            targets.contains(&triple.as_str()),
+            "re-embed.sh 的 REEMBED_TARGETS（{targets:?}）里没有 `{triple}` —— 没有为这个 arch 交叉编译，远端自动部署对它悄悄关闭"
+        );
         for (needle, why) in [
-            (
-                format!("--target {arch}-unknown-linux-musl"),
-                "没有为这个 arch 交叉编译",
-            ),
             (
                 format!("staged/cc-monitor-backend-{arch}"),
                 "编了但没按 `build.rs` 期待的名字放进 staged/",
