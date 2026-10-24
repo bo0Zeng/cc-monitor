@@ -5,12 +5,13 @@
 //! 之后 `plan-read` 里那一格带落没落地（[`crate::plan::needs::landing`]）。
 
 use crate::plan::needs::{self, Returned};
+use crate::plan::wire::{PlanRead, PlanReturnReply, PlanWho};
 use crate::wire::spec::Fail;
 use crate::wire::typed::{self, Command, Cx, Handle};
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 
-type Answer = Result<Value, Fail>;
+type Answer = Result<PlanReturnReply, Fail>;
 
 fn bad(what: &str) -> Fail {
     Fail::new("bad_args", crate::common::contract::malformed(what))
@@ -23,26 +24,33 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-fn slice_of<'a>(doc: &'a Value, name: &str) -> Option<&'a Value> {
-    doc.get("slices")?
-        .as_array()?
-        .iter()
-        .find(|s| s.get("name").and_then(Value::as_str) == Some(name))
-}
-
 /// 说一句（`session-say` 的入参那一形 ＋ 这台已经没有它的终端时恢不恢复它；生产 ＝ `session-say` 的本体）。
 pub(crate) type Send<'a> = &'a dyn Fn(&Value, bool) -> Result<Value, Fail>;
 /// 记一次退回（生产 ＝ [`crate::plan::review`] 的写口）。
 pub(crate) type Record<'a> = &'a dyn Fn(&str, &str, &str, Returned) -> Result<(), Fail>;
 
-fn reply(line: &str, to: &Value, result: &str, why: Option<&str>, said: Option<String>) -> Value {
-    json!({"line": line, "to": to, "result": result, "why": why, "said": said, "screen": null, "resumed": false})
+fn reply(
+    line: &str,
+    to: &PlanWho,
+    result: &str,
+    why: Option<&str>,
+    said: Option<String>,
+) -> PlanReturnReply {
+    PlanReturnReply {
+        line: line.to_string(),
+        to: Some(to.clone()),
+        result: result.to_string(),
+        why: why.map(str::to_string),
+        said,
+        screen: None,
+        resumed: false,
+    }
 }
 
 /// `plan-return` 的本体：`doc` 是此刻现读、标过的那一份。
 pub(crate) fn return_with(
     req: &PlanReturnReq,
-    doc: &Value,
+    doc: &PlanRead,
     send: Send,
     record: Record,
     now: u64,
@@ -58,37 +66,36 @@ pub(crate) fn return_with(
         Some(_) => return Err(bad("`to` must be `owner` or `signer`")),
     };
     let no_cell = || Fail::new("no_such_cell", copy_text("bePlan.review.noSuchCell", &[]));
-    let sl = slice_of(doc, slice).ok_or_else(no_cell)?;
-    // 一格，或顶块 `project`（与格同形，[`needs::target`]）。
-    let cell = &needs::target(sl, id).ok_or_else(no_cell)?;
-    let title = cell
-        .get("title")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    let line = needs::line(id, title, text);
-    let to = cell.get(role).cloned().unwrap_or(Value::Null);
-    if to.is_null() {
+    let sl = doc
+        .slices
+        .iter()
+        .find(|s| s.name == slice)
+        .ok_or_else(no_cell)?;
+    // 一格，或顶块 `project`（[`needs::target`]）。
+    let cell = needs::target(sl, id).ok_or_else(no_cell)?;
+    let line = needs::line(id, cell.title.as_deref().unwrap_or_default(), text);
+    let Some(to) = cell.who(role) else {
         return Err(Fail::new(
             "no_target",
             copy_text("bePlan.review.noTarget", &[("role", role)]),
         ));
-    }
-    let Some(sid) = to.get("sid").and_then(Value::as_str) else {
+    };
+    let Some(sid) = to.sid.as_deref() else {
         return Ok(reply(
             &line,
-            &to,
+            to,
             "copy",
             Some("unknown"),
             Some(copy_text("bePlan.return.unknown", &[])),
         ));
     };
     let resume = req.resume == Some(true);
-    let live = needs::live_of(&to);
+    let live = needs::live_of(to);
     let alive = live.is_some();
     if !alive && !resume {
         return Ok(reply(
             &line,
-            &to,
+            to,
             "copy",
             Some("ended"),
             Some(copy_text("sessionState.planReturn.ended", &[])),
@@ -97,7 +104,7 @@ pub(crate) fn return_with(
     if live == Some(Some(crate::agents::SessionActivity::NeedsYou)) {
         return Ok(reply(
             &line,
-            &to,
+            to,
             "refused",
             Some("waiting"),
             Some(copy_text("bePlan.return.waiting", &[])),
@@ -119,13 +126,6 @@ pub(crate) fn return_with(
         .and_then(Value::as_str)
         .unwrap_or_default();
     if result == "delivered" || result == "unsure" {
-        let children = cell
-            .get("children")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .filter_map(|c| c.as_str().map(str::to_string))
-            .collect();
         record(
             ws,
             slice,
@@ -134,20 +134,21 @@ pub(crate) fn return_with(
                 at: now,
                 to: sid.to_string(),
                 result: result.to_string(),
-                children,
-                body: needs::body_digest(cell),
+                children: cell.children.clone(),
+                body: needs::body_digest(cell.body.as_deref()),
             },
         )?;
     }
+    let text = |k: &str| got.get(k).and_then(Value::as_str).map(str::to_string);
     let mut out = reply(
         &line,
-        &to,
+        to,
         result,
         got.get("why").and_then(Value::as_str),
-        got.get("said").and_then(Value::as_str).map(str::to_string),
+        text("said"),
     );
-    out["screen"] = got.get("screen").cloned().unwrap_or(Value::Null);
-    out["resumed"] = json!(got.get("resumed").and_then(Value::as_bool) == Some(true));
+    out.screen = text("screen");
+    out.resumed = got.get("resumed").and_then(Value::as_bool) == Some(true);
     Ok(out)
 }
 
@@ -253,9 +254,7 @@ impl Handle for PlanReturnCmd {
            + 'static {
         async move {
             let (_, (files, own)) = cx.split();
-            give_back(&req, files, &own)
-                .and_then(crate::faces::plan_face::wired)
-                .map_err(|f| typed::of_fail(f, PlanReturnErr::Failed))
+            give_back(&req, files, &own).map_err(|f| typed::of_fail(f, PlanReturnErr::Failed))
         }
     }
 }

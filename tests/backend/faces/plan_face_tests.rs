@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::wire::typed::tests::ask;
+use serde_json::json;
 
 #[test]
 fn missing_args_are_bad_args() {
@@ -65,15 +66,15 @@ fn an_unfresh_list_runs_pb_once_per_dir_whatever_it_said() {
             runs.set(runs.get() + 1);
             b.take(ran(), dir, &crate::plan::fixture::who, 1)
         };
-        let first = list_in(&b, vec!["/d".into()], false, &read, &tz).expect("列得出");
-        let again = list_in(&b, vec!["/d".into()], false, &read, &tz).expect("列得出");
+        let first = list_in(&b, vec!["/d".into()], false, &read, &tz);
+        let again = list_in(&b, vec!["/d".into()], false, &read, &tz);
         assert_eq!(runs.get(), 1, "{name}：同一个目录连问两次只起一次 pb");
         assert_eq!(
             serde_json::to_value(&first).unwrap(),
             serde_json::to_value(&again).unwrap(),
             "{name}：第二次照记下的结局"
         );
-        list_in(&b, vec!["/d".into()], true, &read, &tz).expect("列得出");
+        list_in(&b, vec!["/d".into()], true, &read, &tz);
         assert_eq!(runs.get(), 2, "{name}：fresh ⇒ 重起");
     }
 }
@@ -93,4 +94,36 @@ fn record_takes_slice_summary_and_quotes_and_nothing_else_does() {
             "{bad}"
         );
     }
+}
+
+/// `plan-command` 的回包：命令那一侧（[`crate::plan::command`]）写的每一格都取进线上类型 —— 页面路径 · 接到了哪一片 · 换没换此刻那一片。
+#[test]
+fn a_command_reply_carries_every_field_the_command_side_writes() {
+    use crate::plan::command::{classify, take_with, Taking};
+    let view = cmd_reply(&classify("view", Some(0), "写了 /w/图.html\n".as_bytes(), b"").unwrap());
+    assert_eq!((view.rc, view.path.as_deref()), (0, Some("/w/图.html")));
+    assert_eq!(view.said.as_deref(), Some("写了 /w/图.html"));
+    assert_eq!(view.took, None);
+    let t = Taking {
+        slice: "alpha",
+        path: "repos/alpha",
+        docs_only: true,
+        current: false,
+    };
+    let run = |args: &[&str]| classify(args[0], Some(0), "接过来了\n".as_bytes(), b"");
+    let took = cmd_reply(&take_with(&t, &run).unwrap()).took.unwrap();
+    assert_eq!(
+        (took.slice.as_str(), took.path.as_str(), took.switched),
+        ("alpha", "repos/alpha", true)
+    );
+    let kept = Taking {
+        docs_only: false,
+        ..t
+    };
+    assert!(
+        !cmd_reply(&take_with(&kept, &run).unwrap())
+            .took
+            .unwrap()
+            .switched
+    );
 }

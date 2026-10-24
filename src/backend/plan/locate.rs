@@ -3,7 +3,6 @@
 //! 设之前校验一个路径能不能用（[`check`]）。
 
 use copy_core::copy_text;
-use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
 /// 清单里 pb 的名字。
@@ -56,9 +55,12 @@ pub(crate) fn pick(set: Option<&Path>, plugins: &[(PathBuf, String)]) -> Result<
 
 /// 校验一个路径：`{state: ok | missing | no_entry | not_runnable, said}`（以人的身份起一次 `pb help`：入口在、解释器在、
 /// pb 自己的几个模块都载得进来才算能用）。不写盘。
-pub(crate) fn check(dir: &Path) -> Value {
+pub(crate) fn check(dir: &Path) -> super::wire::PlanPbCheck {
     let shown = dir.display().to_string();
-    let out = |state: &str, said: String| json!({"state": state, "said": said});
+    let out = |state: &str, said: String| super::wire::PlanPbCheck {
+        state: state.to_string(),
+        said,
+    };
     if !dir.is_dir() {
         return out(
             "missing",

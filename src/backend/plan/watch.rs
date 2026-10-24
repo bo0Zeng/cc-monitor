@@ -33,42 +33,24 @@ pub(crate) struct Spots {
 }
 
 /// 从一份成品算出 [`Spots`]：每片的仓库照 [`super::owners::repo_dir`]（与文件窗口反查同一处），每格的文件声明相对它。
-pub(crate) fn spots(doc: &serde_json::Value) -> Spots {
-    use serde_json::Value;
+pub(crate) fn spots(doc: &super::wire::PlanRead) -> Spots {
     let mut out = Spots::default();
-    let Some(ws) = doc.get("workspace").and_then(Value::as_str) else {
+    let ws = doc.workspace.as_str();
+    if ws.is_empty() {
         return out;
-    };
+    }
     let root = PathBuf::from(ws);
-    for sl in doc
-        .get("slices")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-    {
+    for sl in &doc.slices {
         let Some(repo) = super::owners::repo_dir(ws, sl).map(PathBuf::from) else {
             continue;
         };
         let mut want = vec![repo.clone()];
-        for c in sl
-            .get("cells")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-        {
-            for f in c
-                .get("files")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-            {
-                let Some(p) = f
-                    .get("path")
-                    .and_then(Value::as_str)
-                    .filter(|p| !p.is_empty())
-                else {
+        for c in &sl.cells {
+            for f in &c.files {
+                let p = f.path.as_str();
+                if p.is_empty() {
                     continue;
-                };
+                }
                 let file = repo.join(p);
                 if !out.hits.contains(&file) {
                     out.hits.push(file.clone());

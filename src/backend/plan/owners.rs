@@ -9,12 +9,9 @@
 //! - 那一片读不成（没读好过 ⇒ `error`；读好过 ⇒ `stale`）⇒ `unreadable` 是那一句、条目空（文件窗口整列写「—」）。
 
 use super::needs::TOP_BLOCK;
-use serde_json::{json, Value};
+use super::wire::{PlanFiles, PlanRead, PlanSlice};
+use cmd_wire::plan::{PlanFileDup, PlanFileOwner};
 use std::collections::BTreeMap;
-
-fn str_of<'a>(v: &'a Value, k: &str) -> Option<&'a str> {
-    v.get(k).and_then(Value::as_str)
-}
 
 /// 目录相对一片仓库的那一段（`""` ＝ 仓库根）；不在 ⇒ `None`。按段比，不按字符前缀比。
 fn rel_in<'a>(dir: &'a str, repo: &str) -> Option<&'a str> {
@@ -27,43 +24,30 @@ fn rel_in<'a>(dir: &'a str, repo: &str) -> Option<&'a str> {
 }
 
 /// 那一格住哪一块：往上找第一个块根格；住顶块 ⇒ `None`。回块根格的标题。
-fn block_title(sl: &Value, id: &str) -> Option<String> {
-    let cells: BTreeMap<&str, &Value> = sl
-        .get("cells")
-        .and_then(Value::as_array)?
-        .iter()
-        .filter_map(|c| Some((str_of(c, "id")?, c)))
-        .collect();
+fn block_title(sl: &PlanSlice, id: &str) -> Option<String> {
+    let cells: BTreeMap<&str, _> = sl.cells.iter().map(|c| (c.id.as_str(), c)).collect();
     let roots: Vec<&str> = sl
-        .get("blocks")
-        .and_then(Value::as_array)?
+        .blocks
         .iter()
-        .filter(|b| str_of(b, "id") != Some(TOP_BLOCK))
-        .flat_map(|b| {
-            b.get("cells")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-        })
-        .filter_map(Value::as_str)
+        .filter(|b| b.id != TOP_BLOCK)
+        .flat_map(|b| b.cells.iter().map(String::as_str))
         .collect();
     let mut at = Some(id);
     while let Some(i) = at {
         if roots.contains(&i) {
-            return cells
-                .get(i)
-                .and_then(|c| str_of(c, "title"))
-                .map(str::to_string);
+            return cells.get(i).and_then(|c| c.title.clone());
         }
-        at = cells.get(i).and_then(|c| str_of(c, "parent"));
+        at = cells.get(i).and_then(|c| c.parent.as_deref());
     }
     None
 }
 
 /// 一片的仓库目录（绝对路径，`/` 分隔）：`<工作区>/<path>`。成品里没有 `path` 或是片名不像一片（空 · `.` 起头）⇒ `None`。
-pub(crate) fn repo_dir(ws: &str, sl: &Value) -> Option<String> {
-    str_of(sl, "name").filter(|n| !n.is_empty() && !n.starts_with('.'))?;
-    let path = str_of(sl, "path").filter(|p| !p.is_empty())?;
+pub(crate) fn repo_dir(ws: &str, sl: &PlanSlice) -> Option<String> {
+    if sl.name.is_empty() || sl.name.starts_with('.') {
+        return None;
+    }
+    let path = sl.path.as_deref().filter(|p| !p.is_empty())?;
     Some(format!(
         "{}/{}",
         ws.trim_end_matches('/'),
@@ -71,109 +55,90 @@ pub(crate) fn repo_dir(ws: &str, sl: &Value) -> Option<String> {
     ))
 }
 
+/// 不在任何一片的仓库里（`workspace` 照给的）。
+pub(crate) fn nowhere(workspace: Option<String>) -> PlanFiles {
+    PlanFiles {
+        workspace,
+        slice: None,
+        unreadable: None,
+        entries: Vec::new(),
+        unowned: None,
+        unowned_why: None,
+    }
+}
+
 /// `plan-files {dir}` 的本体：`doc` 是一个工作区标过的成品；`dir` 是那台机器上的绝对路径。
-pub(crate) fn of_dir(doc: &Value, dir: &str) -> Value {
-    let ws = str_of(doc, "workspace").unwrap_or_default();
-    let none = json!({"workspace": ws, "slice": null, "unreadable": null, "entries": [], "unowned": null, "unownedWhy": null});
-    let Some(slices) = doc.get("slices").and_then(Value::as_array) else {
-        return none;
-    };
-    for sl in slices {
+pub(crate) fn of_dir(doc: &PlanRead, dir: &str) -> PlanFiles {
+    let ws = doc.workspace.as_str();
+    for sl in &doc.slices {
         let Some(repo) = repo_dir(ws, sl) else {
             continue;
         };
-        let name = str_of(sl, "name").unwrap_or_default();
         let Some(rel) = rel_in(dir, &repo) else {
             continue;
         };
+        let mut out = nowhere(Some(ws.to_string()));
+        out.slice = Some(sl.name.clone());
         let unreadable = sl
-            .get("stale")
-            .and_then(|s| str_of(s, "said"))
-            .or_else(|| str_of(sl, "error"));
-        if let Some(said) = unreadable {
-            return json!({"workspace": ws, "slice": name, "unreadable": said, "entries": [], "unowned": null, "unownedWhy": null});
+            .stale
+            .as_ref()
+            .and_then(|s| s.said.clone())
+            .or_else(|| sl.error.clone());
+        if unreadable.is_some() {
+            out.unreadable = unreadable;
+            return out;
         }
         // 文件名 ⇒ 作主的那一条（先声明的格）· 其余声明它的格。
-        let mut by_name: BTreeMap<String, (Value, Vec<Value>)> = BTreeMap::new();
-        for c in sl
-            .get("cells")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-        {
-            let id = str_of(c, "id").unwrap_or_default();
-            for f in c
-                .get("files")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-            {
-                let Some(p) = str_of(f, "path") else { continue };
+        let mut by_name: BTreeMap<String, PlanFileOwner> = BTreeMap::new();
+        for c in &sl.cells {
+            for f in &c.files {
+                let p = f.path.as_str();
                 let (parent, file) = p.rsplit_once('/').unwrap_or(("", p));
                 if parent != rel || file.is_empty() {
                     continue;
                 }
-                let title = str_of(c, "title");
-                let label = super::product::label(id, title);
-                let me = json!({"id": id, "label": label, "title": title});
+                let label = super::product::label(&c.id, c.title.as_deref());
                 match by_name.get_mut(file) {
-                    Some((_, dup)) => dup.push(me),
+                    Some(head) => head.dup.push(PlanFileDup {
+                        id: c.id.clone(),
+                        label,
+                        title: c.title.clone(),
+                    }),
                     None => {
-                        let sign = c
-                            .get("signs")
-                            .and_then(Value::as_array)
-                            .and_then(|a| a.last())
-                            .and_then(|g| g.get("atText"))
-                            .cloned()
-                            .unwrap_or(Value::Null);
-                        let head = json!({
-                            "name": file,
-                            "id": id,
-                            "label": label,
-                            "title": title,
-                            "statusCode": c.get("statusCode").cloned().unwrap_or(Value::Null),
-                            "status": c.get("status").cloned().unwrap_or(Value::Null),
-                            "block": block_title(sl, id),
-                            "signAtText": sign,
-                            "fileState": f.get("stateCode").cloned().unwrap_or(Value::Null),
-                            "fileNote": f.get("note").cloned().unwrap_or(Value::Null),
-                        });
-                        by_name.insert(file.to_string(), (head, Vec::new()));
+                        let head = PlanFileOwner {
+                            name: file.to_string(),
+                            id: c.id.clone(),
+                            label,
+                            title: c.title.clone(),
+                            status_code: c.status_code,
+                            status: c.status.clone(),
+                            block: block_title(sl, &c.id),
+                            sign_at_text: c.signs.last().and_then(|g| g.at_text.clone()),
+                            file_state: f.state_code,
+                            file_note: f.note.clone(),
+                            dup: Vec::new(),
+                        };
+                        by_name.insert(file.to_string(), head);
                     }
                 }
             }
         }
-        let entries: Vec<Value> = by_name
-            .into_values()
-            .map(|(mut head, dup)| {
-                head["dup"] = json!(dup);
-                head
-            })
-            .collect();
+        out.entries = by_name.into_values().collect();
         // 无主：pb 给的是整片（相对仓库根）；只留落在这个目录里的那几份的文件名。
-        let un = sl.get("unowned");
-        let unowned = un
-            .and_then(|u| u.get("paths"))
-            .and_then(Value::as_array)
-            .map(|ps| {
-                ps.iter()
-                    .filter_map(Value::as_str)
-                    .filter_map(|p| {
-                        let (parent, file) = p.rsplit_once('/').unwrap_or(("", p));
-                        (parent == rel && !file.is_empty()).then(|| file.to_string())
-                    })
-                    .collect::<Vec<_>>()
-            });
-        let why = match unowned {
-            Some(_) => Value::Null,
-            None => un
-                .and_then(|u| u.get("why"))
-                .cloned()
-                .unwrap_or(Value::Null),
-        };
-        return json!({"workspace": ws, "slice": name, "unreadable": null, "entries": entries, "unowned": unowned, "unownedWhy": why});
+        out.unowned = sl.unowned.paths.as_ref().map(|ps| {
+            ps.iter()
+                .filter_map(|p| {
+                    let (parent, file) = p.rsplit_once('/').unwrap_or(("", p));
+                    (parent == rel && !file.is_empty()).then(|| file.to_string())
+                })
+                .collect()
+        });
+        if out.unowned.is_none() {
+            out.unowned_why = sl.unowned.why.clone();
+        }
+        return out;
     }
-    none
+    nowhere(Some(ws.to_string()))
 }
 
 #[cfg(test)]

@@ -9,19 +9,11 @@ use crate::plan::wire;
 use crate::wire::spec::Fail;
 use crate::wire::typed::{self, Command, Cx, Handle};
 use copy_core::copy_text;
-use serde_json::{json, Value};
 
-type Answer = Result<Value, Fail>;
-
-fn slice_of<'a>(doc: &'a Value, name: &str) -> Option<&'a Value> {
-    doc.get("slices")?
-        .as_array()?
-        .iter()
-        .find(|s| s.get("name").and_then(Value::as_str) == Some(name))
-}
+type Answer = Result<wire::PlanAckReply, Fail>;
 
 /// 这个键此刻能不能认可：不在 ⇒ `no_such_need`；问人那一种 ⇒ `not_ackable`。
-pub(crate) fn check_ack(sl: &Value, key: &str) -> Result<(), Fail> {
+pub(crate) fn check_ack(sl: &wire::PlanSlice, key: &str) -> Result<(), Fail> {
     match needs::ackable(sl, key) {
         None => Err(Fail::new(
             "no_such_need",
@@ -36,7 +28,7 @@ pub(crate) fn check_ack(sl: &Value, key: &str) -> Result<(), Fail> {
 }
 
 /// 这个工作区上一次读好的那一份（没读过 ⇒ `not_read`）。
-fn last(ws: &str) -> Result<Value, Fail> {
+fn last(ws: &str) -> Result<wire::PlanRead, Fail> {
     crate::plan::book::book()
         .last(ws)
         .ok_or_else(|| Fail::new("not_read", copy_text("bePlan.review.notRead", &[])))
@@ -45,18 +37,23 @@ fn last(ws: &str) -> Result<Value, Fail> {
 /// 认可改了之后：这个工作区此刻要你看的数，推一帧 `changed {plan}`（别的窗口跟着改数）。
 fn after_ack(ws: &str, key: &str, acked: bool) -> Answer {
     let doc = crate::faces::plan_face::marked(last(ws)?);
-    let n = doc.get("needCount").and_then(Value::as_u64).unwrap_or(0);
-    if let Some((rev, n)) = crate::faces::plan_face::seen_of(&doc) {
-        // 此刻没有流连接订它 ⇒ 发不出是正常的，客户端重问 `plan-read` 就有。
-        let _ = crate::plan::watch::changes().send((ws.to_string(), rev, n));
-    }
-    Ok(json!({"key": key, "acked": acked, "needCount": n}))
+    let (rev, n) = crate::faces::plan_face::seen_of(&doc);
+    // 此刻没有流连接订它 ⇒ 发不出是正常的，客户端重问 `plan-read` 就有。
+    let _ = crate::plan::watch::changes().send((ws.to_string(), rev, n));
+    Ok(wire::PlanAckReply {
+        acked,
+        key: key.to_string(),
+        need_count: doc.need_count,
+    })
 }
 
 fn ack(req: &PlanAckReq, own: &crate::platform::fs::Own) -> Answer {
     let (ws, slice, key) = (req.workspace.as_str(), req.slice.as_str(), req.key.as_str());
     let doc = last(ws)?;
-    let sl = slice_of(&doc, slice)
+    let sl = doc
+        .slices
+        .iter()
+        .find(|s| s.name == slice)
         .ok_or_else(|| Fail::new("no_such_need", copy_text("bePlan.review.noSuchNeed", &[])))?;
     check_ack(sl, key)?;
     crate::plan::review::answer_ack(own, ws, slice, key, &needs::keys_of(sl))?;
@@ -119,11 +116,7 @@ impl Handle for PlanAckCmd {
         cx: Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<wire::PlanAckReply, PlanAckErr>> + Send + 'static
     {
-        async move {
-            ack(&req, &cx.needs)
-                .and_then(crate::faces::plan_face::wired)
-                .map_err(|f| typed::of_fail(f, PlanAckErr::IoFailed))
-        }
+        async move { ack(&req, &cx.needs).map_err(|f| typed::of_fail(f, PlanAckErr::IoFailed)) }
     }
 }
 
@@ -144,11 +137,7 @@ impl Handle for PlanUnackCmd {
         cx: Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<wire::PlanAckReply, PlanUnackErr>> + Send + 'static
     {
-        async move {
-            unack(&req, &cx.needs)
-                .and_then(crate::faces::plan_face::wired)
-                .map_err(|f| typed::of_fail(f, PlanUnackErr::IoFailed))
-        }
+        async move { unack(&req, &cx.needs).map_err(|f| typed::of_fail(f, PlanUnackErr::IoFailed)) }
     }
 }
 

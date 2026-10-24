@@ -9,10 +9,10 @@
 //! 全仓唯一的写口是本模块的 `answer_*` 三个：认可两个只从 `faces/plan_review_face.rs` 进，记退回那一个只从 `faces/plan_return_face.rs` 进。
 
 use super::needs::{self, Returned};
+use super::wire::{PlanRead, PlanReturned};
 use crate::platform::fs::Own;
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -61,50 +61,35 @@ impl Review {
 
     /// 给一份成品（[`super::book::Book`] 出的）标上：每条要你看认可没有（`acked`）· 每片与整份的要你看数（`needCount`）·
     /// 退回过的格此刻的状态（`returned`：[`needs::landing`]；没退回过 ⇒ `null`；顶块那一次记在片上）。
-    pub(crate) fn annotate(&self, doc: &mut Value) {
-        let ws = doc
-            .get("workspace")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
+    pub(crate) fn annotate(&self, doc: &mut PlanRead) {
+        let ws = doc.workspace.clone();
         needs::mark_acked(doc, &|slice, key| self.acked(&ws, slice, key));
-        let mut total = 0;
-        if let Some(slices) = doc.get_mut("slices").and_then(Value::as_array_mut) {
-            for sl in slices {
-                let n = needs::count_slice(sl);
-                total += n;
-                sl["needCount"] = json!(n);
-                let name = sl
-                    .get("name")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_string();
-                let cells: Vec<Value> = sl
-                    .get("cells")
-                    .and_then(Value::as_array)
-                    .cloned()
-                    .unwrap_or_default();
-                // 顶块（`project`）退回过 ⇒ 那一片顶上带它此刻落没落地（与格同一判法）。
-                let top = match (
-                    self.returned(&ws, &name, needs::TOP_BLOCK),
-                    needs::target(sl, needs::TOP_BLOCK),
-                ) {
-                    (Some(r), Some(t)) => needs::landing(r, &t, &cells),
-                    _ => Value::Null,
-                };
-                sl["returned"] = top;
-                if let Some(arr) = sl.get_mut("cells").and_then(Value::as_array_mut) {
-                    for c in arr {
-                        let id = c.get("id").and_then(Value::as_str).unwrap_or_default();
-                        let st = self
-                            .returned(&ws, &name, id)
-                            .map_or(Value::Null, |r| needs::landing(r, c, &cells));
-                        c["returned"] = st;
-                    }
-                }
+        let mut total = 0u32;
+        for sl in &mut doc.slices {
+            let n = needs::count_slice(sl);
+            total = total.saturating_add(n);
+            sl.need_count = n;
+            // 顶块（`project`）退回过 ⇒ 那一片顶上带它此刻落没落地（与格同一判法）。
+            sl.returned = match (
+                self.returned(&ws, &sl.name, needs::TOP_BLOCK),
+                needs::target(sl, needs::TOP_BLOCK),
+            ) {
+                (Some(r), Some(t)) => Some(needs::landing(r, &t, &sl.cells)),
+                _ => None,
+            };
+            let landed: Vec<Option<PlanReturned>> = sl
+                .cells
+                .iter()
+                .map(|c| {
+                    self.returned(&ws, &sl.name, &c.id)
+                        .map(|r| needs::landing(r, &needs::Target::of_cell(c), &sl.cells))
+                })
+                .collect();
+            for (c, st) in sl.cells.iter_mut().zip(landed) {
+                c.returned = st;
             }
         }
-        doc["needCount"] = json!(total);
+        doc.need_count = total;
     }
 }
 

@@ -1,11 +1,13 @@
 //! 计划读面的线上形状（`plan-list` · `plan-read` · `plan-command` 的回包）：界面的类型由这里经 ts-rs 生成，不手写。
 //!
-//! 成品在 [`super::product`] · [`super::book`] · [`super::review`] 里按 JSON 拼（pb 的形状原样往下传最省事）；
-//! 帧面出口那一下（`faces/plan_face.rs`）过一遍这里的类型（[`checked`]）⇒ 线上那一份就是这些类型的序列化，界面拿到的与生成的类型对得上。
-//! 判据 `tests/backend/plan/wire_tests.rs` 钉「夹具出的成品过一遍不丢不添」。
+//! 成品在 [`super::product`] · [`super::book`] · [`super::needs`] · [`super::review`] 里直接造这些类型，帧面照原样交出去：
+//! 形状只写这一遍，线上那一份就是它们的序列化。
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+/// 格的状态码 · 文件的对账码与 `plan-files` 同一份（住 `cmd-wire`）。
+pub(crate) use cmd_wire::plan::{PlanFileState, PlanStatusCode};
 
 /// 一个 id（块的接手 · 签收的「由」· 在长它的 · 签它的）对到的会话。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -38,7 +40,7 @@ pub(crate) struct PlanFile {
         test,
         ts(type = "\"ok\" | \"missing\" | \"empty\" | \"broken\" | null")
     )]
-    pub state_code: Option<String>,
+    pub state_code: Option<PlanFileState>,
     pub note: Option<String>,
     /// 同一份文件还挂在哪几格（编号）。
     pub also_by: Vec<String>,
@@ -269,7 +271,7 @@ pub(crate) struct PlanCell {
         test,
         ts(type = "\"done\" | \"open\" | \"dropped\" | \"evidence\" | null")
     )]
-    pub status_code: Option<String>,
+    pub status_code: Option<PlanStatusCode>,
     /// 没做完时的原因（pb 原话）。
     pub why: Option<String>,
     /// 原因拆好的那一份；认不出 ⇒ `null`（界面照出 `why` 原话）。
@@ -655,7 +657,3 @@ pub(crate) struct PlanReturnReply {
 
 /// `plan-files` 的回包住 `cmd-wire`（文件窗口按同一份类型解）；这里只转一下名字，帧面出口照旧写 `wire::PlanFiles`。
 pub(crate) use cmd_wire::plan::PlanFiles;
-
-#[cfg(test)]
-#[path = "../../../tests/backend/plan/wire_tests.rs"]
-pub(crate) mod tests;

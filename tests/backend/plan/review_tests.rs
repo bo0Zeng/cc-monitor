@@ -2,7 +2,6 @@
 
 use super::*;
 use crate::plan::fixture::{dump, scratch, who, MAIN};
-use serde_json::json;
 
 fn file(tag: &str) -> PathBuf {
     scratch(tag).join(".cc-monitor").join("plan-review.json")
@@ -109,33 +108,24 @@ fn annotate_marks_acks_counts_and_return_states_on_the_product() {
             1,
         )
         .unwrap();
-    let rev = doc["rev"].as_str().unwrap().to_string();
+    let rev = doc.rev.clone();
     let f = file("review-annotate");
-    let keys = crate::plan::needs::keys_of(&doc["slices"][0]);
+    let keys = crate::plan::needs::keys_of(&doc.slices[0]);
     ack_at(&own_of(&f), "/w", "alpha", &format!("top:{rev}"), &keys).unwrap();
-    let a1 = doc["slices"][0]["cells"][0].clone();
     let mut r = rec(3);
-    r.body = crate::plan::needs::body_digest(&a1);
+    r.body = crate::plan::needs::body_digest(doc.slices[0].cells[0].body.as_deref());
     returned_at(&own_of(&f), "/w", "alpha", "A1", r).unwrap();
     current(Some(&f)).annotate(&mut doc);
-    let sl = &doc["slices"][0];
-    let top = sl["needs"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|n| n["kind"] == "top")
-        .unwrap();
-    assert_eq!(top["acked"], true);
+    let sl = &doc.slices[0];
+    assert!(sl.needs.iter().find(|n| n.kind == "top").unwrap().acked);
     // 顶块已认可 ⇒ 剩判据红那一条（问人那两条不算）。
-    assert_eq!(sl["needCount"], 1);
+    assert_eq!(sl.need_count, 1);
     // 整个工作区：alpha 那一条 ＋ beta 那一片的判据红一条。
-    assert_eq!(doc["needCount"], 2);
-    assert_eq!(sl["cells"][0]["returned"]["state"], "returned");
-    assert_eq!(sl["cells"][0]["returned"]["to"]["sid"], MAIN);
-    // 标过的成品照线上类型收得下（帧面出口那一道）。
-    serde_json::from_value::<crate::plan::wire::PlanRead>(doc.clone()).expect("线上形状");
-    assert_eq!(sl["cells"][1]["returned"], Value::Null);
-    let _ = json!(null);
+    assert_eq!(doc.need_count, 2);
+    let back = sl.cells[0].returned.as_ref().unwrap();
+    assert_eq!(back.state, "returned");
+    assert_eq!(back.to.as_ref().and_then(|t| t.sid.as_deref()), Some(MAIN));
+    assert_eq!(sl.cells[1].returned, None);
 }
 
 /// 退回过顶块（project）⇒ 那一片顶上带 `returned`：顶层多出退回之后新建的一格 ⇒ 已落地（带那一格的标题）；没退回过 ⇒ `null`。
@@ -157,25 +147,24 @@ fn a_return_of_the_top_block_lands_when_a_new_top_cell_appears() {
     let mut doc = take(&b);
     let f = file("review-project");
     current(Some(&f)).annotate(&mut doc);
-    assert_eq!(doc["slices"][0]["returned"], Value::Null);
+    assert_eq!(doc.slices[0].returned, None);
     let mut r = rec(5);
     r.children = vec!["A1".into()];
     returned_at(&own_of(&f), "/w", "alpha", "project", r).unwrap();
     let mut doc = take(&b);
     current(Some(&f)).annotate(&mut doc);
-    let got = &doc["slices"][0]["returned"];
+    let got = crate::plan::fixture::as_json(&doc.slices[0].returned);
     assert_eq!(got["state"], "landed");
     assert_eq!(got["by"], "child");
     assert_eq!(got["child"]["id"], "A2");
     assert_eq!(got["child"]["title"], "乙功能");
     assert_eq!(got["to"]["sid"], MAIN);
-    serde_json::from_value::<crate::plan::wire::PlanRead>(doc.clone()).expect("线上形状");
     let mut r = rec(6);
     r.children = ["A1", "A2", "A3", "A4", "A5"].map(String::from).to_vec();
     // 顶块没有正文：记下的摘要是空正文那一份（送的那一刻也是这么记的）。
-    r.body = crate::plan::needs::body_digest(&json!({}));
+    r.body = crate::plan::needs::body_digest(None);
     returned_at(&own_of(&f), "/w", "alpha", "project", r).unwrap();
     let mut doc = take(&b);
     current(Some(&f)).annotate(&mut doc);
-    assert_eq!(doc["slices"][0]["returned"]["state"], "returned");
+    assert_eq!(doc.slices[0].returned.as_ref().unwrap().state, "returned");
 }

@@ -7,8 +7,8 @@
 use super::dump::{self, Ran};
 use super::needs;
 use super::product;
+use super::wire::{PlanRead, PlanSlice, PlanStale};
 use super::WhoPort;
-use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -16,10 +16,9 @@ use std::sync::Mutex;
 /// 一个工作区上一次读好的那一份。
 struct Seen {
     /// 成品（已经按「留上一次好的」处置过）。
-    doc: Value,
+    doc: PlanRead,
     /// 每一片上一次读好的那一份 ＋ 读到的时刻（epoch ms）。
-    good: BTreeMap<String, (Value, u64)>,
-    read_at: u64,
+    good: BTreeMap<String, (PlanSlice, u64)>,
 }
 
 /// 读不成的几种（帧面翻成码）。
@@ -69,7 +68,7 @@ impl Book {
         who: WhoPort,
         now_ms: u64,
         prior: Prior,
-    ) -> Result<Value, Miss> {
+    ) -> Result<PlanRead, Miss> {
         self.take_with(dump::run(entry, dir), dir, who, now_ms, prior)
     }
 
@@ -81,59 +80,49 @@ impl Book {
         who: WhoPort,
         now_ms: u64,
         prior: Prior,
-    ) -> Result<Value, Miss> {
+    ) -> Result<PlanRead, Miss> {
         match ran {
             Ran::Dump { doc, raw } => {
-                let made = product::make(&doc, who);
-                let ws = made
-                    .doc
-                    .get("workspace")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_string();
+                let rev = rev_of(&raw);
+                let mut out = product::make(&doc, who, rev.clone(), now_ms);
+                let ws = out.workspace.clone();
                 lock(&self.dirs).insert(dir.to_path_buf(), Some(ws.clone()));
                 lock(&self.unread).remove(dir);
-                let rev = rev_of(&raw);
                 let mut seen = lock(&self.seen);
                 let prev = seen.remove(&ws);
                 let mut good = prev.map(|s| s.good).unwrap_or_default();
-                let mut out = made.doc;
-                if let Some(slices) = out.get_mut("slices").and_then(Value::as_array_mut) {
-                    for sl in slices.iter_mut() {
-                        let name = sl
-                            .get("name")
-                            .and_then(Value::as_str)
-                            .unwrap_or_default()
-                            .to_string();
-                        let error = sl.get("error").cloned().unwrap_or(Value::Null);
-                        if error.is_null() {
+                for sl in &mut out.slices {
+                    match sl.error.clone() {
+                        None => {
                             let at = self.entered_at(
                                 &ws,
-                                &name,
+                                &sl.name,
                                 needs::top_at_look_global(sl),
                                 &rev,
                                 prior,
                             );
-                            sl["needs"] = json!(needs::of_slice(sl, at.as_deref()));
-                            good.insert(name, (sl.clone(), now_ms));
-                        } else if let Some((prev, at)) = good.get(&name) {
-                            let mut kept = prev.clone();
-                            kept["stale"] = json!({"said": error, "raw": null, "since": at});
-                            *sl = kept;
-                        } else {
-                            sl["needs"] = json!([]);
+                            sl.needs = needs::of_slice(sl, at.as_deref());
+                            good.insert(sl.name.clone(), (sl.clone(), now_ms));
+                        }
+                        Some(error) => {
+                            if let Some((prev, at)) = good.get(&sl.name) {
+                                let mut kept = prev.clone();
+                                kept.stale = Some(PlanStale {
+                                    said: Some(error),
+                                    raw: None,
+                                    since: *at,
+                                    since_text: None,
+                                });
+                                *sl = kept;
+                            }
                         }
                     }
                 }
-                out["rev"] = json!(rev);
-                out["readAt"] = json!(now_ms);
-                out["stale"] = Value::Null;
                 seen.insert(
                     ws,
                     Seen {
                         doc: out.clone(),
                         good,
-                        read_at: now_ms,
                     },
                 );
                 Ok(out)
@@ -150,7 +139,12 @@ impl Book {
                 match ws.and_then(|w| seen.get(&w)) {
                     Some(prev) => {
                         let mut out = prev.doc.clone();
-                        out["stale"] = json!({"said": said, "raw": raw, "since": prev.read_at});
+                        out.stale = Some(PlanStale {
+                            said: Some(said),
+                            raw,
+                            since: prev.doc.read_at,
+                            since_text: None,
+                        });
                         Ok(out)
                     }
                     None => {
@@ -186,7 +180,7 @@ impl Book {
 
     /// 这个目录认过、在哪个工作区里（没认过 ⇒ `None`；认过不在工作区里 ⇒ `Some(None)`）。
     /// 记下这个目录读不成的结局、原样回它。
-    fn miss_at(&self, dir: &Path, m: Miss) -> Result<Value, Miss> {
+    fn miss_at(&self, dir: &Path, m: Miss) -> Result<PlanRead, Miss> {
         lock(&self.unread).insert(dir.to_path_buf(), m.clone());
         Err(m)
     }
@@ -216,7 +210,7 @@ impl Book {
     }
 
     /// 这个工作区上一次读好的成品。
-    pub(crate) fn last(&self, workspace: &str) -> Option<Value> {
+    pub(crate) fn last(&self, workspace: &str) -> Option<PlanRead> {
         lock(&self.seen).get(workspace).map(|s| s.doc.clone())
     }
 }
