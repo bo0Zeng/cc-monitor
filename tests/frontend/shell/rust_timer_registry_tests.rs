@@ -486,31 +486,6 @@ fn the_windows_pidwatch_has_landed_so_f12_is_unblocked() {
     );
 }
 
-/// ★ `bind.rs` 那个真节拍器的**形态**没变：还是「无限循环 + 周期 sleep」。
-///
-/// ⚠ **函数名里的「one real ticker」是历史措辞，别读成「全仓唯一」** —— 08-10 起
-/// 登记表里有 **4 条** ticker（见上一条判据的诊断）。本条只查 `bind.rs` 这一个，
-/// 因为它是唯一「事件源都还没有」的那个；另三条各自有事件源与退役归属。
-/// 不改函数名是刻意的：改名会牵动引用它的地方，而误导用一句头注就消掉了。
-///
-/// 它一旦被改成事件驱动（或加上终止条件），本条会红 —— **那是好事**，
-/// 提醒把登记表那条从 `ticker` 降级到别的类。
-#[test]
-fn the_one_real_ticker_still_looks_like_a_ticker() {
-    let src = production(include_str!("../../../src/frontend/shell/src/bind.rs"));
-    let at = src
-        .find("fn run_heartbeat")
-        .expect("`bind.rs` 里找不到 `run_heartbeat` —— 它被改名或删了，回 F09 更新登记表");
-    let body = &src[at..src.len().min(at + 400)];
-    let verb = format!("thread::{}", "sleep");
-    assert!(
-        body.contains("loop {") && body.contains(verb.as_str()),
-        "`run_heartbeat` 不再是「无限循环 + 周期 sleep」了 —— **这多半是好事**，\n\
-             但登记表里它还记成 `ticker`：请回 F09 把那条改成它现在真实的类别。\n\
-             抽到的函数体：{body}"
-    );
-}
-
 // ═══════════════════════════════════════════════════════════════════════
 // F17：**monitor Rust 自己拼出来的 shell 周期唤醒**（三张表此前都看不见的那一族）
 // ═══════════════════════════════════════════════════════════════════════

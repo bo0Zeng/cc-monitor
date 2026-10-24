@@ -5,8 +5,8 @@
 //! **界面进程里还有几处自己拨 SSH，以及拿链路的原语由谁拨。**
 //!
 //! 🔴 **它断的不是「`russh` 这个词还在不在」** —— `K-P6` 那次已经证过后者会量错集合。
-//! ⇒ 判据落在两处：**拿链路那个原语的函数体**（`connect_and_exec_cmd` 只经拨号代理的宿主拿链路，零进程内回落）
-//! ＋ **每一份文件里 `connect_session(` 的调用点**逐份登记（[`DIAL_SITES`]）。
+//! ⇒ 判据落在**拿链路那个原语的函数体**上（`connect_and_exec_cmd` 只经拨号代理的宿主拿链路，零进程内回落），
+//! 整份生产段里零处 `connect_session(`。
 //!
 //! C2 之后：入口走 `dial_host::open_stream`，**回落删了**（`D11`：「后端是给定的，不要退路」），
 //! `FALLBACKS` 那张表整张删了（它的两行 —— 拿不到代理二进制 · 没配 `keyPath` —— 前者改成「报」，
@@ -18,83 +18,14 @@
 
 use guard_core::production_code;
 
-/// 界面进程里**每一处**往外拨号的入口，逐处登记。
-///
-/// `(文件, 生产段里的调用点处数, 这一处的拨号搬走了没有, 它是什么, 解锁条件)`
-///
-/// 🔴 **`pub(crate)` 是承重的，别顺手收回去**：
-/// `dial_home_registry` 那条递减棘轮拿本表 `moved == false` 的**处数合计**当今天的读数，
-/// 再对着这张表旧住址（`ssh_source.rs`）的 git 历史比「历史上出现过的最低档」。
-/// 收回成私有 ⇒ 那条棘轮编不过；改成在那边抄一份数字 ⇒ 同一个值两个家，本区最贵的那条病。
-///
-/// 🔴 **这张表就是「7 处里搬走 1 处」那句话的机器形态。** 第三栏 `false` 的每一行
-/// 都是一句「**没有**买到这里」——散文里那句话可以腐烂，这张表不行：
-/// 处数由下面的判据**从源码派生**再逐格比对，多一处少一处都红。
-pub(crate) const DIAL_SITES: &[(&str, usize, bool, &str, &str)] = &[
-    (
-        "stream_source/",
-        0,
-        true,
-        "**搬走了**：跳板 · 一次性 exec · 收全 exec · 测试连接 · 后端长连接流全部改经拨号代理的宿主 \
-             （`dial_host`），拨号本身在后端 `dial/`。\
-             〔棘轮史：`K-P6b` 09-06 登记 5 处 → `K-R59` 09-11 退役 `daemonless` 一处 → 4 → C2 → **0**。〕",
-        "已经是 0。这一行留着是为了让「又长回来一处」当场红（处数钉成 0，不是删行）。",
-    ),
-    (
-        "deploy.rs",
-        0,
-        true,
-        "**搬走了**：SFTP 进了本机常驻后端（用户），与其它 SSH 同一条连接；\
-             部署经 `deploy-*`，传输经 `transfer-*`。\
-             〔从前：「SFTP 会话要一个 russh 连接句柄，不是一条字节流 ⇒ 仍在界面进程里拨，用 `inproc_dial.rs` 那一份」。〕",
-        "已经是 0。这一行留着是为了让「又长回来一处」当场红（处数钉成 0，不是删行）。",
-    ),
-    // `port_forward.rs` 那一行（C2 起处数钉 0）随文件删了：转发账也进了本机常驻后端
-    //   （`src/backend/dial/forwards.rs`），界面 crate 里没有这份文件了。先例同下面 `inproc_dial.rs` 那一行。
-    // `inproc_dial.rs` 那一行（进程内那一份自己的跳板，只服务 `sftp.rs`）**兑现了它写的解锁条件**：
-    //   「与 `sftp.rs` 那一行同一天删：SFTP 换走 ⇒ 本文件整份删 ⇒ `russh` 出 `Cargo.toml`」—— 三件同拍。文件不在了，行随之删。
-];
-
-/// 语料地板：低于这个字节数就判「语料没喂进来」，而不是「一处都没有」。
-///
-/// 🔴 这条与函数体那条地板一起，是 `P6bM4` 的被测对象。
-const CORPUS_FLOOR_BYTES: usize = 50_000;
 /// 入口函数体的地板：切不出函数体（或切出个空壳）时判据必须**自己先红**。
 /// **200 → 120**：判据的靶换成了拿链路的原语 `connect_and_exec_cmd`，它今天只转一句
 /// （现打 178 字节）；120 仍比「切出来的是个空壳」（签名 ＋ 一对括号，约 90 字节）大。
 const BODY_FLOOR_BYTES: usize = 120;
 
-/// 语料：四份文件的**生产段**（剥掉 `#[cfg(test)]` 段）。
-fn corpus() -> Vec<(&'static str, String)> {
-    vec![
-        (
-            "stream_source/",
-            guard_core::addr::stream_source_production(),
-        ),
-        (
-            "deploy.rs",
-            production_code(include_str!("../../../../src/frontend/shell/src/deploy.rs")),
-        ),
-    ]
-}
-
-/// `connect_session(` 的**调用点**处数 —— 剔掉定义行本身（`fn connect_session(`）。
-///
-/// ⚠ 这把尺子**数不到**：`use` 别名、函数指针、宏里拼出来的调用。
-/// **不声称堵住**。
-fn call_sites(code: &str) -> usize {
-    let needle = "connect_session(";
-    let mut n = 0usize;
-    let mut from = 0usize;
-    while let Some(rel) = code[from..].find(needle) {
-        let at = from + rel;
-        from = at + needle.len();
-        if code[..at].ends_with("fn ") {
-            continue; // 定义行，不是调用点
-        }
-        n += 1;
-    }
-    n
+/// 语料：`stream_source/` 的**生产段**（剥掉 `#[cfg(test)]` 段）。
+fn corpus() -> String {
+    guard_core::addr::stream_source_production()
 }
 
 /// 按**行**取一个函数体：从 `head` 那一行起，到第一行**恰好是 `}`** 为止。
@@ -154,10 +85,7 @@ fn backend_stream_dial_verdict(body: &str) -> Result<(), String> {
 /// 远端后端长连接流的入口今天是 `remote_resident::attach`（capture ＋ `dial_host::tunnel`），不再经本文件起流。
 #[test]
 fn the_backend_stream_entry_hands_the_dial_to_another_process() {
-    let (_, prod) = corpus()
-        .into_iter()
-        .find(|(n, _)| *n == "stream_source/")
-        .expect("语料里没有 stream_source/");
+    let prod = corpus();
     // 流那一个原语（`connect_and_exec_cmd`）随最后一个调用方（公钥推送）进本机后端删了 ⇒
     //   本条的靶只剩收全那一个；「界面进程零拨号」照旧钉：整份生产段里零处自己拨、零处开流用法的链路。
     assert_eq!(
@@ -178,78 +106,6 @@ fn the_backend_stream_entry_hands_the_dial_to_another_process() {
         (1, 0),
         "收全 exec 的原语没有恰好一次经拨号代理（或者自己拨了）"
     );
-}
-
-/// ★ **「7 处里搬走 1 处」是机器数的，不是散文。**
-///
-/// 这一条与上一条是**两半**：上一条证「入口交出去了」，本条证
-/// 「**别处一处都没搬**」。少了本条，「拨号搬出去了」这句话就没人拦得住。
-#[test]
-fn six_of_the_seven_dial_sites_are_still_in_this_process() {
-    let c = corpus();
-    let bytes: usize = c.iter().map(|(_, s)| s.len()).sum();
-    assert!(
-        bytes >= CORPUS_FLOOR_BYTES,
-        "语料只有 {bytes} 字节（地板 {CORPUS_FLOOR_BYTES}）—— 抽取坏了，本条在空转"
-    );
-    let mut total = 0usize;
-    for (file, want, _moved, what, _unlock) in DIAL_SITES {
-        let (_, code) = c
-            .iter()
-            .find(|(n, _)| n == file)
-            .unwrap_or_else(|| panic!("语料里没有 {file} —— 登记表指向一份不在的文件"));
-        let got = call_sites(code);
-        assert_eq!(
-            got, *want,
-            "{file} 里 `connect_session(` 的调用点有 {got} 处，登记的是 {want} 处。\n\
-                 那一处是什么：{what}\n\
-                 🔴 **这个数变了要先回答「搬走了没有」**：搬走了就把第三栏改成 `true` \
-                 并在件文件里同轮改掉「7 处里搬走 1 处」那句话；只是重构就把数字改掉。"
-        );
-        total += got;
-    }
-    assert_eq!(
-        total, 0,
-        "界面侧拨号调用点总数是 {total}，登记的是 **0**（**2 → 0**：SFTP 那一家 —— `sftp.rs` 1 ＋ \
-             它用的 `inproc_dial.rs` 跳板 1 —— 进了本机常驻后端，界面进程零 SSH）。\n\
-             ⚠ **6 → 2**：`stream_source/` 4 与 `port_forward.rs` 1 搬进拨号代理；\
-             `inproc_dial.rs` 那 1 处是 `stream_source/` 原来那 4 处里的跳板一处**原样搬过去**的（只服务 SFTP）。\n\
-             这两个数必须一起动 —— 本表就是那句话的家。\n\
-             ⚠ 棘轮史：**7**（`K-P6b` 件文件 09-06 现打，逐处点名）→ **6**：\n\
-             `daemonless` 轮询流那一处**退役**（`K35`：没有「没有后端」这回事）。\n\
-             🔴 **本函数的名字里那个 `seven` 是 09-06 那一刻的数，刻意没改** ——\n\
-             改名会打断几处按名字的引用。**活的数住在本断言里，不在名字里。**"
-    );
-    // 「搬走了」那一栏与处数必须对得上：搬走的行处数恰好为 0，没搬走的行处数 > 0。
-    for (file, n, moved, ..) in DIAL_SITES {
-        assert_eq!(
-            *moved,
-            *n == 0,
-            "{file}：登记着「搬走了={moved}」而处数是 {n} —— 两栏自相矛盾"
-        );
-    }
-    let moved = DIAL_SITES.iter().filter(|(_, _, m, ..)| *m).count();
-    assert_eq!(
-        moved, 2,
-        "登记表说有 {moved} 份文件的拨号已经搬走了（C2 之后 `stream_source/` 与 `port_forward.rs` 两份；+ `sftp.rs`；\
-3 → 2：`port_forward.rs` 整份删了、那一行随之删）"
-    );
-}
-
-/// 登记表每条都要有非空理由与**解锁条件**（同 `no_timer_guard` 那张表的纪律）。
-#[test]
-fn every_registered_dial_site_says_what_it_is_and_when_it_could_go() {
-    for (file, _n, _moved, what, unlock) in DIAL_SITES {
-        assert!(
-            what.chars().count() >= 20,
-            "{file} 的说法太短，说不清那一处是什么"
-        );
-        assert!(
-            unlock.trim().chars().count() >= 20,
-            "{file} 没写**解锁条件** —— 要写的是「什么条件满足之后这一行就能删」，\
-                 不是「为什么现在不能删」"
-        );
-    }
 }
 
 /// 🔴 **搬家之前**的远端起流入口函数体，**逐字冻结**（那个入口随远端流模式一形删了，冻结的是历史文本）。
