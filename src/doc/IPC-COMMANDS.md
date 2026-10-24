@@ -5204,7 +5204,7 @@ runs?: { [key in string]: ChildRunTag },
 /**
  * 这条是上游最终失败写的报错（报错正文在 `blocks` 的正文里）。不是 ⇒ 缺。
  */
-error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "queued", who: UserText, } | { "t": "unread", why: UnreadWhy, 
+error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "unread", why: UnreadWhy, 
 /**
  * 那一行自己说的类型原样（标签，出口不许按它取字）；没有 ⇒ `null`。
  */
@@ -5563,7 +5563,7 @@ runs?: { [key in string]: ChildRunTag },
 /**
  * 这条是上游最终失败写的报错（报错正文在 `blocks` 的正文里）。不是 ⇒ 缺。
  */
-error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "queued", who: UserText, } | { "t": "unread", why: UnreadWhy, 
+error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "unread", why: UnreadWhy, 
 /**
  * 那一行自己说的类型原样（标签，出口不许按它取字）；没有 ⇒ `null`。
  */
@@ -5899,7 +5899,7 @@ runs?: { [key in string]: ChildRunTag },
 /**
  * 这条是上游最终失败写的报错（报错正文在 `blocks` 的正文里）。不是 ⇒ 缺。
  */
-error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "queued", who: UserText, } | { "t": "unread", why: UnreadWhy, 
+error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "unread", why: UnreadWhy, 
 /**
  * 那一行自己说的类型原样（标签，出口不许按它取字）；没有 ⇒ `null`。
  */
@@ -6235,7 +6235,7 @@ runs?: { [key in string]: ChildRunTag },
 /**
  * 这条是上游最终失败写的报错（报错正文在 `blocks` 的正文里）。不是 ⇒ 缺。
  */
-error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "queued", who: UserText, } | { "t": "unread", why: UnreadWhy, 
+error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "unread", why: UnreadWhy, 
 /**
  * 那一行自己说的类型原样（标签，出口不许按它取字）；没有 ⇒ `null`。
  */
@@ -6575,12 +6575,7 @@ phase: TurnPhase,
 /**
  * 过程段（文件序）：一段一行，界面把那一行插在 `after` 那张卡后面、把这一段的卡收进去。空 ⇒ 这一轮什么都不折。
  */
-folds: Array<FoldSegment>, 
-/**
- * 这一轮里落成了人话的排队插话（排队那一条的记录 id）：下一句你说的原文与它一字不差 ⇒ 那句话已经作为你的一句进了记录，
- * 界面不再单独出排队那一条（同一句不上屏两次）；还在排队 / 下一句不是它 ⇒ 不在这里（照常露着）。
- */
-landed: Array<string>, };
+folds: Array<FoldSegment>, };
 type TurnSpan = { text: string, from: number | null, to: number | null, };
 ```
 
@@ -7821,7 +7816,7 @@ type IndexSpeaker = {
  * 行号差。
  */
 at: Array<number>, v: Array<string>, };
-type RecordClass = "said" | "reply" | "retry" | "title" | "queued" | "unread";
+type RecordClass = "said" | "reply" | "retry" | "title" | "unread";
 ```
 
 码：`bad_args` · `failed` · `too_large`
@@ -8052,7 +8047,7 @@ runs?: { [key in string]: ChildRunTag },
 /**
  * 这条是上游最终失败写的报错（报错正文在 `blocks` 的正文里）。不是 ⇒ 缺。
  */
-error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "queued", who: UserText, } | { "t": "unread", why: UnreadWhy, 
+error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "unread", why: UnreadWhy, 
 /**
  * 那一行自己说的类型原样（标签，出口不许按它取字）；没有 ⇒ `null`。
  */
