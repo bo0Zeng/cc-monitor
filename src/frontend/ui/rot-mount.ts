@@ -293,14 +293,14 @@ export function mountRotation(spec: RotMountSpec): RotMount {
     },
   };
   if (sid !== null) {
-    acts.useNow = (account) =>
+    // 换到 `account`（「立即用」· 顺序里拖到第一格）：那台说它事实上发不出去（unusable）⇒ 不换，原因写在顺序上方。
+    const switchTo = (account: string, fail: string, run: () => Promise<unknown>): void =>
       void (async () => {
         try {
-          await callTyped(origin, "rotation-use-now", { sid, account }, rotBudget());
+          await run();
           state.refused = null;
         } catch (e) {
-          if (refusedCode(e)?.code !== "unusable")
-            return void failToast(copyText("rot.fail.useNow"), e);
+          if (refusedCode(e)?.code !== "unusable") return void failToast(fail, e);
           const why =
             view?.accounts.find((f) => f.account === account)?.blocked?.text ??
             saidOf(e);
@@ -314,10 +314,13 @@ export function mountRotation(spec: RotMountSpec): RotMount {
         }
         await refresh();
       })();
-    acts.temp = (op) =>
-      void write(copyText("rot.fail.temp"), () =>
-        callTyped(origin, "rotation-temp", { sid, op }, rotBudget()),
-      );
+    acts.useNow = (account) =>
+      switchTo(account, copyText("rot.fail.useNow"), () => callTyped(origin, "rotation-use-now", { sid, account }, rotBudget()));
+    acts.temp = (op) => {
+      const run = () => callTyped(origin, "rotation-temp", { sid, op }, rotBudget());
+      if (typeof op === "object" && "move" in op) return switchTo(op.move.account, copyText("rot.fail.temp"), run);
+      void write(copyText("rot.fail.temp"), run);
+    };
     // 编辑策略：开设置窗那台的「轮换」栏、看这个会话用的那份（给了号 ⇒ 开它的编辑小窗；策略只在那里改）。
     acts.editStrategy = (account) => {
       const id = view?.strategy?.id;

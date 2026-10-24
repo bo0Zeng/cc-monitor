@@ -15,6 +15,7 @@ const NOW = 1_800_000_000;
 const fact = (account: string, u5: number, u7: number, blocked = false): RotAccount => ({
   account,
   plate: { color: 5, label: account, text: account.slice(0, 2) },
+  full: u5 >= 100 ? ["5h"] : [],
   kind: "sub",
   w5h: { open: true, used: u5, resets: NOW + 3600, resetsText: "18:30" },
   w7d: { open: true, used: u7 },
@@ -22,7 +23,7 @@ const fact = (account: string, u5: number, u7: number, blocked = false): RotAcco
   ...(blocked ? { blocked: { why: "used", text: "5h 用满 · 18:30 重置" } } : {}),
 });
 
-const seg = { from: 0, to: 1440, v: 90, text: "夹具·90", tip: "夹具·全天 90" };
+const seg = { from: 0, to: 1440, fromText: "00:00", toText: "24:00", v: 90, text: "夹具·90", tip: "夹具·全天 90" };
 const caps = (window: string, from: RotCell["from"]): RotCell => ({ key: "caps", kind: "daySegments", window, label: `夹具·上限 ${window}`, help: "夹具·上限的定义", v: null, from, segs: [seg] });
 const each = (fallback: boolean, from: RotCell["from"]): RotCell[] => [
   caps("5h", "all"),
@@ -55,13 +56,13 @@ function view(over: Partial<RotationViewReply> = {}): RotationViewReply {
     timeline: {
       switches: [{ at: NOW + 5400, atText: "16:00", account: "lab" }],
       uses: [
-        { from: NOW, to: NOW + 5400, account: "team", fromTemp: false, capUnknown: false, skipped: [] },
-        { from: NOW + 5400, to: NOW + 9000, account: "lab", fromTemp: true, capUnknown: false, skipped: ["work"] },
-        { from: NOW + 9000, to: NOW + 43_200, fromTemp: false, capUnknown: false, skipped: [] },
+        { from: NOW, to: NOW + 5400, account: "team", fromTemp: false, capUnknown: false, skipped: [], text: "team" },
+        { from: NOW + 5400, to: NOW + 9000, account: "lab", fromTemp: true, capUnknown: false, skipped: ["work"], text: "lab" },
+        { from: NOW + 9000, to: NOW + 43_200, fromTemp: false, capUnknown: false, skipped: [], text: copyText("rot.sim.hold") },
       ],
       lanes: [
-        { account: "team", segs: [{ from: NOW, to: NOW + 3600, sendable: true, used: [58, 30], reset: false, text: "夹具·剩 42", left: 42 }, { from: NOW + 3600, to: NOW + 43_200, sendable: true, used: [0, 30], reset: true, text: "夹具·↻15:30", left: 70 }] },
-        { account: "work", segs: [{ from: NOW, to: NOW + 43_200, sendable: false, used: [100, 40], reset: false, text: "", left: 0 }] },
+        { account: "team", segs: [{ from: NOW, to: NOW + 3600, sendable: true, reset: false, text: "夹具·剩 42" }, { from: NOW + 3600, to: NOW + 43_200, sendable: true, reset: true, text: "夹具·↻15:30" }] },
+        { account: "work", segs: [{ from: NOW, to: NOW + 43_200, sendable: false, reset: false, text: "" }] },
       ],
       truncated: false,
       ticks: [{ at: NOW + 1800, text: "15:00" }, { at: NOW + 9000, text: "17:00" }],
@@ -299,15 +300,18 @@ describe("会话的顺序", () => {
     expect(a.temp.mock.calls).toEqual([[{ off: { account: "lab", off: true } }], [{ off: { account: "api", off: false } }]]);
   });
 
-  it("★ 拖一行 ⇒ 交拖完的那一串（到落点与原处里靠后的那一格为止）；拖到第一格 ⇒ 现在用", () => {
+  it("★ 拖一行 ⇒ 交拖的是哪个号 · 松在第几格（拖完那一串 · 第一格当现在用都由后端认）；没挪 ⇒ 不交", () => {
     const a = acts();
     const root = draw(view(), state(), a);
     drag(root, 2, 1);
-    expect(a.temp.mock.calls).toEqual([[{ set: ["api", "lab"] }]]);
+    expect(a.temp.mock.calls).toEqual([[{ move: { account: "api", to: 1 } }]]);
     drag(draw(view(), state(), a), 1, 2);
-    expect(a.temp.mock.calls[1]).toEqual([{ set: ["api", "lab"] }]);
+    expect(a.temp.mock.calls[1]).toEqual([{ move: { account: "lab", to: 2 } }]);
     drag(draw(view(), state(), a), 2, 0);
-    expect(a.useNow).toHaveBeenCalledWith("api");
+    expect(a.temp.mock.calls[2]).toEqual([{ move: { account: "api", to: 0 } }]);
+    drag(draw(view(), state(), a), 2, 2);
+    expect(a.temp).toHaveBeenCalledTimes(3);
+    expect(a.useNow).not.toHaveBeenCalled();
   });
 
   it("★ 点一行 ⇒ 小窗只看：此刻 · 规则（字照回包）· 立即用 · 编辑策略；被拦下的原因写在顺序上方", () => {
@@ -343,6 +347,14 @@ describe("设置页的号牌与点开一个号", () => {
     expect(a.open).toHaveBeenCalledWith("lab");
   });
 
+  it("★ 号牌上那条小计量画不画满照后端说的用满了的那几窗（不照用量自己比）", () => {
+    const v = view({ accounts: [{ ...fact("work", 94, 40), full: ["7d"] }, { ...fact("team", 100, 30), full: [] }, fact("lab", 35, 20)] });
+    const root = draw(v, state(), acts(), "settings");
+    const fills = (account: string) => [...root.querySelector<HTMLElement>(`[data-account="${account}"]`)!.querySelectorAll<HTMLElement>("i")].map((e) => e.dataset.full ?? "");
+    expect(fills("work")).toEqual(["", "true"]);
+    expect(fills("team")).toEqual(["", ""]);
+  });
+
   it("★ 拖第 1 张松在第 3 张上 ⇒ 交「第 0 行挪到第 2 行前头」那个意图（怎么排是后端的）", () => {
     const a = acts();
     const root = draw(view(), state(), a, "settings");
@@ -373,7 +385,7 @@ describe("设置页的号牌与点开一个号", () => {
     expect(pane.querySelector("[data-day-bar]")!.textContent).toBe("夹具·90");
     const line = pane.querySelector<HTMLElement>('[data-rot-seg="0"]')!;
     const [from, to, v] = [...line.querySelectorAll<HTMLInputElement>("input")];
-    expect([from.value, to.value, v.value]).toEqual(["00:00", copyText("rot.day.end"), "90"]);
+    expect([from.value, to.value, v.value], "两格钟点照回包写好的字").toEqual(["00:00", "24:00", "90"]);
     v.value = "70";
     v.dispatchEvent(new Event("change"));
     to.value = "20:00";
@@ -389,10 +401,10 @@ describe("设置页的号牌与点开一个号", () => {
     nv.value = "0";
     nv.dispatchEvent(new Event("change"));
     expect(a.edit.mock.calls).toEqual([
-      [{ seg: { key: "caps", window: "5h", row: 2, at: 0, seg: { from: 0, to: 1440, v: 70 } } }],
-      [{ seg: { key: "caps", window: "5h", row: 2, at: 0, seg: { from: 0, to: 1200, v: 70 } } }],
+      [{ seg: { key: "caps", window: "5h", row: 2, at: 0, seg: { from: "00:00", to: "24:00", v: 70 } } }],
+      [{ seg: { key: "caps", window: "5h", row: 2, at: 0, seg: { from: "00:00", to: "20:00", v: 70 } } }],
       [{ seg: { key: "caps", window: "5h", row: 2, at: 0 } }],
-      [{ seg: { key: "caps", window: "5h", row: 2, seg: { from: 1200, to: 1380, v: 0 } } }],
+      [{ seg: { key: "caps", window: "5h", row: 2, seg: { from: "20:00", to: "23:00", v: 0 } } }],
     ]);
   });
 
@@ -492,9 +504,9 @@ describe("模拟", () => {
     const past = {
       from: NOW - 7200,
       uses: [
-        { from: NOW - 7200, to: NOW - 3600, account: "work" },
-        { from: NOW - 3600, to: NOW - 1800 },
-        { from: NOW - 1800, to: NOW, account: "team" },
+        { from: NOW - 7200, to: NOW - 3600, account: "work", text: "work" },
+        { from: NOW - 3600, to: NOW - 1800, text: copyText("rot.sim.hold") },
+        { from: NOW - 1800, to: NOW, account: "team", text: "" },
       ],
       lanes: [
         { account: "team", segs: [{ from: NOW - 5400, to: NOW, sendable: true, reset: true, text: "夹具·↻13:00" }] },
@@ -506,7 +518,7 @@ describe("模拟", () => {
     v.timeline!.ticks.unshift({ at: NOW - 5400, text: "13:00" });
     const root = draw(v, state(), acts());
     const pastTop = [...root.querySelectorAll<HTMLElement>('[data-past="true"]')].filter((e) => !e.dataset.state);
-    expect(pastTop.map((e) => e.textContent), "接着此刻、跟推演第一段同一个号的那一段不再写号名").toEqual(["work", copyText("rot.sim.hold"), ""]);
+    expect(pastTop.map((e) => e.textContent), "每段的字照回包（接着此刻那段后端给的是空）").toEqual(["work", copyText("rot.sim.hold"), ""]);
     expect(pastTop.every((e) => e.dataset.future === undefined)).toBe(true);
     // 12 小时往后 ＋ 2 小时往前：此刻在 1/7 处。
     expect(Number(pastTop[0].style.getPropertyValue("--rot-x"))).toBe(0);
@@ -538,7 +550,7 @@ describe("模拟", () => {
     expect(a.temp).toHaveBeenCalledWith("clear");
   });
 
-  it("★ 拖号名松在最上那条上 ⇒ 排进临时条目：落在第一次换号之后 ⇒ 第 2 位", () => {
+  it("★ 拖号名松在最上那条上 ⇒ 交松手那一刻（排到第几段由后端照推演数）", () => {
     const a = acts();
     const root = draw(view(), state(), a);
     const top = root.querySelector<HTMLElement>('[data-hold="true"]')!.parentElement!;
@@ -547,6 +559,6 @@ describe("模拟", () => {
     head.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 0, clientY: 200 }));
     // 12 小时 ⇒ 1200px：第一次换号在 90 分钟（150px），松在 200px。
     document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 200, clientY: 110 }));
-    expect(a.temp).toHaveBeenCalledWith({ place: { account: "team", at: 2 } });
+    expect(a.temp).toHaveBeenCalledWith({ place: { account: "team", t: NOW + 7200 } });
   });
 });

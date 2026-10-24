@@ -9,7 +9,6 @@
  * 判据：`tests/frontend/ui/rot-board.vitest.ts`。
  */
 import { accountAvatarEl } from "./account-color";
-import { clockFace } from "./clock-face";
 import { copyText } from "./copy-table";
 import type { Origin } from "./ipc/origin";
 import { banner } from "./kit/banner";
@@ -22,7 +21,7 @@ import { select } from "./kit/select";
 import { toggleSwitch } from "./kit/switch";
 import { segmented } from "./kit/tabs";
 import { attachTooltip } from "./kit/tooltip";
-import type { Fact } from "./generated/Fact";
+import type { RotAccount } from "./generated/RotAccount";
 import type { RotCell } from "./generated/RotCell";
 import type { RotDaySeg } from "./generated/RotDaySeg";
 import type { RotEdit } from "./generated/RotEdit";
@@ -132,11 +131,6 @@ function avatar(view: RotationViewReply | null | undefined, account: string, ori
   return accountAvatarEl(account, { size: 16, origin, color: plate?.color ?? null, plate: plate?.text });
 }
 
-
-/** 一天里的分钟 ⇒ `HH:MM`（24:00 写成 24:00）。 */
-function dayClock(min: number): string {
-  return min >= 1440 ? copyText("rot.day.end") : clockFace(min * 60_000, 0);
-}
 
 // ─────────────────────────────── 第一行
 
@@ -305,7 +299,7 @@ function hints(spec: BoardSpec): HTMLElement[] {
 // ─────────────────────────────── 号牌
 
 /** 号牌上的两条小计量（上 5h、下 7d）；悬停那一句后端写好。 */
-function meters(f: Fact, row: RotRow | undefined): HTMLElement {
+function meters(f: RotAccount, row: RotRow | undefined): HTMLElement {
   const m = el("span", (e) => (e.className = s.rotMeters));
   for (const [w, wf] of [
     ["5h", f.w5h],
@@ -315,7 +309,7 @@ function meters(f: Fact, row: RotRow | undefined): HTMLElement {
     const bar = el("span", (e) => (e.className = s.rotMeter));
     const fill = el("i", (e) => (e.className = s.rotMeterFill));
     at(fill, 0, Math.max(0, Math.min(100, wf.used)) / 100);
-    if (wf.used >= 100) fill.dataset.full = "true";
+    if (f.full.includes(w)) fill.dataset.full = "true";
     bar.appendChild(fill);
     r.append(
       el(
@@ -566,7 +560,7 @@ function order(spec: BoardSpec, view: RotationViewReply): HTMLElement {
     );
     if (f) r.appendChild(meters(f, undefined));
     r.appendChild(el("span", (e) => (e.className = s.rotPaneLine), nowOf(view, account)));
-    // 按下拖过 4px ⇒ 拖这一行（松在第一格 ⇒ 现在用；别的行 ⇒ 本会话先后照拖完的那一串）；没拖开 ⇒ 点：出小窗。
+    // 按下拖过 4px ⇒ 拖这一行：交拖的号与松在第几格（第一格当现在用 · 拖完那一串都由后端认）；没拖开 ⇒ 点：出小窗。
     r.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
       const x0 = e.clientX;
@@ -589,10 +583,7 @@ function order(spec: BoardSpec, view: RotationViewReply): HTMLElement {
         });
         const to = hit ? line.indexOf(hit.dataset.account ?? "") : -1;
         if (to < 0 || to === i) return;
-        if (to === 0) return spec.acts.useNow?.(account);
-        const next = line.filter((a) => a !== account);
-        next.splice(to, 0, account);
-        spec.acts.temp?.({ set: next.slice(1, Math.max(i, to) + 1) });
+        spec.acts.temp?.({ move: { account, to } });
       };
       document.addEventListener("pointermove", move);
       document.addEventListener("pointerup", up);
@@ -704,19 +695,11 @@ function cellRows(spec: BoardSpec, cell: RotCell, row: number | null): HTMLEleme
 
 const DAY = 1440;
 
-/** `HH:MM` ⇒ 一天里的分钟（24:00 ⇒ 1440）；写得不对 ⇒ `null`。 */
-function minutesOf(text: string): number | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(text.trim());
-  if (!m) return null;
-  const v = Number(m[1]) * 60 + Number(m[2]);
-  return Number(m[2]) < 60 && v <= DAY ? v : null;
-}
-
 /** 分段一窗：后面那几窗先是［同第一窗 · 另设］；自己设的 ⇒ 上面一条只画的条 ＋ 一段一行（从 · 到 · 上限 · ✕）＋「＋ 加一段」。 */
 function segments(spec: BoardSpec, cell: RotCell, inRow: { row?: number }): HTMLElement {
   const box = el("div", (e) => (e.className = s.rotSegs));
   const win = cell.window ?? "";
-  const edit = (at: number | undefined, seg: { from: number; to: number; v: number } | undefined): void =>
+  const edit = (at: number | undefined, seg: { from: string; to: string; v: number } | undefined): void =>
     spec.acts.edit({ seg: { key: cell.key, window: win, ...inRow, ...(at === undefined ? {} : { at }), ...(seg ? { seg } : {}) } });
   if (cell.same !== undefined) {
     const same = cell.from === "same";
@@ -745,18 +728,18 @@ function segments(spec: BoardSpec, cell: RotCell, inRow: { row?: number }): HTML
     const r = el("div", (e) => (e.className = s.rotSegRow));
     r.dataset.rotSeg = at === undefined ? "new" : String(at);
     if (d) r.dataset.rotDraft = dk;
-    const time = (min: number | null, name: string): HTMLInputElement => {
+    const time = (text: string, name: string): HTMLInputElement => {
       const t = document.createElement("input");
       t.type = "text";
       t.inputMode = "numeric";
       t.className = s.rotSegTime;
-      t.value = min === null ? "" : dayClock(min);
+      t.value = text;
       t.placeholder = copyText("rot.seg.placeholder");
       t.setAttribute("aria-label", name);
       return t;
     };
-    const from = time(g ? Number(g.from) : null, copyText("rot.seg.from"));
-    const to = time(g ? Number(g.to) : null, copyText("rot.seg.to"));
+    const from = time(g?.fromText ?? "", copyText("rot.seg.from"));
+    const to = time(g?.toText ?? "", copyText("rot.seg.to"));
     const v = document.createElement("input");
     v.type = "number";
     v.className = s.rotNumInput;
@@ -772,11 +755,11 @@ function segments(spec: BoardSpec, cell: RotCell, inRow: { row?: number }): HTML
         for (const ev of ["input", "change"]) x.addEventListener(ev, () => (d[part] = x.value));
       }
     }
+    // 三格都有字才交；钟点交原样的字，认不认得由后端说。
     const commit = (): void => {
-      const a = minutesOf(from.value);
-      const b = minutesOf(to.value);
+      const [a, b] = [from.value.trim(), to.value.trim()];
       const n = v.value.trim() === "" ? NaN : Number(v.value);
-      if (a === null || b === null || !Number.isFinite(n)) return;
+      if (a === "" || b === "" || !Number.isFinite(n)) return;
       edit(at, { from: a, to: b, v: n });
     };
     for (const x of [from, to, v]) x.addEventListener("change", commit);
@@ -904,11 +887,9 @@ function simulation(spec: BoardSpec, view: RotationViewReply): HTMLElement {
       if (slot !== undefined) seg.dataset.c = String(slot);
     } else seg.dataset.hold = "true";
   };
-  // 接着此刻、跟推演第一段同一个号的那一段不再写号名（同一段只写一次，写在推演那一截）。
-  const first = tl.uses[0];
+  // 每段写的字照回包（号名 · 停发；接着此刻那段后端给空）。
   for (const u of past?.uses ?? []) {
-    const joins = u.to === view.now && first !== undefined && first.from === view.now && (first.account ?? null) === (u.account ?? null);
-    const seg = el("span", (e) => (e.className = s.rotSimUse), joins ? "" : u.account ? nameIn(view, u.account) : copyText("rot.sim.hold"));
+    const seg = el("span", (e) => (e.className = s.rotSimUse), u.text);
     place(seg, u.from, u.to);
     useColor(seg, u.account);
     seg.dataset.past = "true";
@@ -916,11 +897,7 @@ function simulation(spec: BoardSpec, view: RotationViewReply): HTMLElement {
   }
   for (const u of tl.uses) {
     if (u.to <= a || u.from >= b) continue;
-    const seg = el(
-      "span",
-      (e) => (e.className = s.rotSimUse),
-      u.account ? nameIn(view, u.account) : copyText("rot.sim.hold"),
-    );
+    const seg = el("span", (e) => (e.className = s.rotSimUse), u.text);
     place(seg, u.from, u.to);
     useColor(seg, u.account);
     if (u.fromTemp) seg.dataset.temp = "true";
@@ -936,13 +913,12 @@ function simulation(spec: BoardSpec, view: RotationViewReply): HTMLElement {
       top.appendChild(k);
     }
   }
-  // 拖号名到最上面那条：松在哪一刻 ⇒ 排到那一刻之后那一段（此刻那段是第 0 位，在用的号排第一，之后每段换号往后数一位）。
+  // 拖号名到最上面那条：交松在哪一刻（排到那一刻之后那一段由后端照推演数）。
   const dropOnTop = (account: string, x: number, y: number): void => {
     const r = top.getBoundingClientRect();
     if (!spec.acts.temp || y < r.top - 8 || y > r.bottom + 8 || x < r.left || x > r.right) return;
-    const t = a + ((x - r.left) / Math.max(1, r.width)) * (b - a);
-    const at = tl.uses.filter((u) => u.from > view.now && u.from < t).length + 1;
-    spec.acts.temp({ place: { account, at } });
+    const t = Math.round(a + ((x - r.left) / Math.max(1, r.width)) * (b - a));
+    spec.acts.temp({ place: { account, t } });
   };
   nowLine(top);
   box.appendChild(grid(null, top, true));
