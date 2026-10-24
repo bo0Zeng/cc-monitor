@@ -131,6 +131,7 @@ fn 待办里的钥匙只有只许直通那一把() {
                 items: vec![("Stop".into(), serde_json::json!({"hooks": []}))],
             }),
             mcp_login: vec![],
+            sshd: None,
             declined: vec![],
         };
         let wire = serde_json::to_string(&super::super::chores(&f)).unwrap();
@@ -141,4 +142,26 @@ fn 待办里的钥匙只有只许直通那一把() {
         );
         let _ = std::fs::remove_dir_all(&h);
     }
+}
+
+/// 假的那台（临时目录里的 sshd 配置 ＋ 一个 Include 目录）拒端口转发 ⇒ 收到「关了」那一行；没那份配置（没装 sshd）⇒ 不收。
+#[test]
+fn sshd_配置读真文件_include_目录照展开() {
+    let h = tmp("sshd");
+    std::fs::create_dir_all(h.join("sshd_config.d")).unwrap();
+    let main = h.join("sshd_config");
+    std::fs::write(&main, "Include sshd_config.d/*.conf\nPort 22\n").unwrap();
+    std::fs::write(
+        h.join("sshd_config.d/60-deny.conf"),
+        "AllowTcpForwarding no\n",
+    )
+    .unwrap();
+    let got = sshd_at(&main).expect("该收到");
+    assert_eq!(
+        got.path,
+        h.join("sshd_config.d/60-deny.conf").display().to_string()
+    );
+    assert_eq!(got.line, 1);
+    assert!(sshd_at(&h.join("gone")).is_none());
+    let _ = std::fs::remove_dir_all(&h);
 }
