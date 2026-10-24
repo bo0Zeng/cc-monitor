@@ -1068,7 +1068,7 @@ fn a_manifest_we_cannot_read_says_so_and_the_named_account_is_refused() {
     let none = copy_core::copy_static!("bePlan.names.none");
     for (what, body) in [
         ("坏 JSON", r#"{"accounts":[{"name":"work",]}"#.to_string()),
-        ("空文件", "   \n".to_string()),
+        ("只有空白", "   \n".to_string()),
         ("未来版本", ONE.replace(r#""version":1"#, r#""version":99"#)),
     ] {
         let (accts, m, _) = library_on_disk(&body, true);

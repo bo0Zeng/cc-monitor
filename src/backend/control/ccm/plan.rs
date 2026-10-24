@@ -579,15 +579,11 @@ pub(crate) use cmd_wire::accounts::AccountsList;
 /// UTF-8 BOM 的清单被从前那句 `unwrap_or_default()` 整张吃掉、还被报成「(无账号库)」—— BOM 现由账号库那一个读口剥掉）。
 fn names(list: &AccountsList, manifest_path: &str) -> String {
     if !list.meta.enabled {
-        let there = std::path::Path::new(manifest_path).exists();
-        return copy_text(
-            if there {
-                "bePlan.names.unreadable"
-            } else {
-                "bePlan.names.none"
-            },
-            &[],
-        );
+        return if std::path::Path::new(manifest_path).exists() {
+            copy_text("bePlan.names.unreadable", &[])
+        } else {
+            copy_text("bePlan.names.none", &[])
+        };
     }
     if list.accounts.is_empty() {
         return copy_text("bePlan.names.none", &[]);
