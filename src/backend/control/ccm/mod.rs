@@ -41,7 +41,7 @@ use crate::ccm_line::{argv, is_backend_word, is_own_name, PROFILE_SIGIL, SUBCOMM
 use crate::platform::child::Child;
 use argv::{Die, Early, Parsed};
 use copy_core::copy_text;
-use plan::{Env, ManifestRead, Plan};
+use plan::{AccountsList, Env, Plan};
 
 /// 这套 CLI 的版本号（`--ccm-probe` 的 `version=` · 帧 `ccm-probe` 的 `version`）。**行为变了就要动它**。
 ///
@@ -158,6 +158,10 @@ pub(crate) static USAGE: std::sync::LazyLock<String> =
 /// 入口注入的「此刻在跑的会话」扫描：入参 = 账号配置目录（`None` = agent 默认家目录），出 `(sid, pid)`。
 pub type RunningScan = fn(Option<&std::path::Path>) -> Vec<(String, u32)>;
 
+/// 入口注入的「这台的账号清单成品」（`accounts-list` 那一份，入参 = 家目录 · 起哪一家）：起会话用哪个号只经 `launch_account::pick` 判，
+/// 它要的「能不能用」在观测层算（control 不引用 observe）。只在真要判号的时候读。
+pub type AccountsScan = fn(&str, &str) -> AccountsList;
+
 /// 本文件自己的源码，给别的护栏对账用。
 ///
 /// ⚠ 刻意由本模块**自己**提供，而不是让调用方写 `include_str!("control/ccm/mod.rs")`：
@@ -267,6 +271,7 @@ pub fn run(
     process_argv: &[String],
     own: &crate::platform::fs::Own,
     running: RunningScan,
+    accounts: AccountsScan,
 ) -> i32 {
     use std::io::IsTerminal;
     if refuses_without_terminal(
@@ -307,11 +312,7 @@ pub fn run(
             let mut env = env;
             // 这一家认不认得这份扫描由计划那一侧问适配层（`Adapter::live`）。
             env.running_sessions = o.resumes.is_some().then_some(running);
-            let Planned {
-                plan,
-                env,
-                accounts,
-            } = match plan_of(&o, env, true) {
+            let Planned { plan, env } = match plan_of(&o, env, true, accounts) {
                 Ok(p) => p,
                 Err(Die(msg)) => return die(&msg),
             };
@@ -320,7 +321,13 @@ pub fn run(
                 println!("{}", plan::render_for(&plan, plan::terminal_shell()));
                 eprint!(
                     "{}",
-                    plan::render_from(&plan::from_rows(&o, &origins, &env, &accounts, &plan))
+                    plan::render_from(&plan::from_rows(
+                        &o,
+                        &origins,
+                        &env,
+                        &|| accounts(&env.home, &o.agent),
+                        &plan,
+                    ))
                 );
                 return 0;
             }
@@ -353,18 +360,18 @@ fn agent_env(agent: &str, env: &mut Env, inherit: Option<&dyn Fn(&str) -> Option
 ///
 /// `inherit_account`：要不要读**这个进程**环境里继承来的账号目录变量。一次性模式（用户终端里敲的）要；
 /// 别名预览不要 —— 那一问答的是「从一个新终端敲这条别名」，常驻后端进程身上的变量不是那个终端的。
-fn plan_of(o: &argv::Opts, mut env: Env, inherit_account: bool) -> Result<Planned, Die> {
+fn plan_of(
+    o: &argv::Opts,
+    mut env: Env,
+    inherit_account: bool,
+    accounts: AccountsScan,
+) -> Result<Planned, Die> {
     let get = |k: &str| std::env::var(k).ok();
     agent_env(
         &o.agent,
         &mut env,
         inherit_account.then_some(&get as &dyn Fn(&str) -> Option<String>),
     );
-    let accounts = if needs_account_table(o, &env) {
-        plan::read_accounts(&env.accts_manifest)
-    } else {
-        Ok(None)
-    };
     // ★★ `K-R96`（09-12）：**铸名避让在这里就问那张唯一的会话快照**。
     //
     // 用户 `R52` 裁定二逐字：「不就是先校验冲突然后取名吗? **搞个 hash 表**不就好了」。
@@ -375,19 +382,15 @@ fn plan_of(o: &argv::Opts, mut env: Env, inherit_account: bool) -> Result<Planne
     // 问不到就 `None` ⇒ **不退让**（诚实降级，见 `plan::build` 头注）。
     // ⚠ 探测点仍然只有一个（快照那处），`readonly_guard::spawn_registry` 的数不变。
     let taken = crate::common::session_snapshot::global().taken_names().ok();
-    let plan = plan::build(o, &env, &accounts, taken.as_ref())?;
-    Ok(Planned {
-        plan,
-        env,
-        accounts,
-    })
+    // 号那一格只在真要判的时候读成品（`--base` · 已继承号目录 · 这一家没有账号这一维都不读）。
+    let plan = plan::build(o, &env, &|| accounts(&env.home, &o.agent), taken.as_ref())?;
+    Ok(Planned { plan, env })
 }
 
-/// [`plan_of`] 的成品：计划 ＋ 算它用的那份环境与账号表（`--ccm-print` 的「来自」按同一份写）。
+/// [`plan_of`] 的成品：计划 ＋ 算它用的那份环境（`--ccm-print` 的「来自」按同一份写）。
 struct Planned {
     plan: Plan,
     env: Env,
-    accounts: ManifestRead,
 }
 
 /// 一条别名的预置参数最多几个词、每个词最长多少（帧面入参的上界；别名表单产出的远小于它）。
@@ -483,7 +486,7 @@ crate::wire::typed::codes! {
     }
 }
 
-/// `ccm-print`：一条别名实际会执行什么。只读（读账号库 manifest ＋ 问会话快照）⇒ 阻塞档。
+/// `ccm-print`：一条别名实际会执行什么。只读（读账号清单成品 ＋ 问会话快照）⇒ 阻塞档。处理器住 `faces/launch_account_face.rs`（要这台的账号清单成品，control 不读观测层）。
 pub(crate) struct CcmPrint;
 
 impl crate::wire::typed::Command for CcmPrint {
@@ -491,16 +494,6 @@ impl crate::wire::typed::Command for CcmPrint {
     type Req = CcmPrintReq;
     type Reply = CcmLine;
     type Err = PrintErr;
-}
-
-impl crate::wire::typed::Handle for CcmPrint {
-    type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
-        req: CcmPrintReq,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<CcmLine, PrintErr>> + Send + 'static {
-        async move { answer_print(&req).map_err(crate::wire::typed::of_pair(PrintErr::Refused)) }
-    }
 }
 
 /// 帧命令 `ccm-print`：**一条别名实际会执行什么**（
@@ -513,7 +506,11 @@ impl crate::wire::typed::Handle for CcmPrint {
 ///
 /// 错误码：`bad_args`（入参形状不对 / 超上界）· `refused`（ccm 自己拒了这组参数 —— 原话带回；
 /// 或给的是 `--help` 这类不起会话的那一形）。只读：不起进程、不写盘。
-pub(crate) fn answer_print(req: &CcmPrintReq) -> Result<CcmLine, (&'static str, String)> {
+/// `accounts` ＝ 这台的账号清单成品（宿主交：处理器住 `faces/launch_account_face.rs`）。
+pub(crate) fn answer_print(
+    req: &CcmPrintReq,
+    accounts: AccountsScan,
+) -> Result<CcmLine, (&'static str, String)> {
     // 前两种拒是**契约错**（调用方是 monitor，用户手敲不出来）⇒ 英文诊断经 `contract::malformed`；
     // 「不起会话的那一形」是用户清单里真能出现的（手写进别名文件的 `--help`）⇒ 进表说人话。
     let words = &req.args;
@@ -548,7 +545,7 @@ pub(crate) fn answer_print(req: &CcmPrintReq) -> Result<CcmLine, (&'static str, 
         }
         Err(Die(msg)) => return Err(("refused", msg)),
     };
-    let plan = plan_of(&o, Env::for_preview(), false)
+    let plan = plan_of(&o, Env::for_preview(), false, accounts)
         .map_err(|Die(msg)| ("refused", msg))?
         .plan;
     Ok(CcmLine {
@@ -562,6 +559,7 @@ pub(crate) fn preview_resolved(
     p: Parsed,
     home: &str,
     at: Option<&str>,
+    accounts: AccountsScan,
 ) -> Result<(String, String), String> {
     let Parsed::Opts(o) = p else {
         return Err(copy_text("beCcm.preview.noSession", &[]));
@@ -571,7 +569,7 @@ pub(crate) fn preview_resolved(
         env.pwd = plan::expand_home(a, &env.home);
     }
     let home = env.home.clone();
-    let plan = plan_of(&o, env, false).map_err(|Die(m)| m)?.plan;
+    let plan = plan_of(&o, env, false, accounts).map_err(|Die(m)| m)?.plan;
     Ok((
         plan::render_for(&plan, plan::terminal_shell()),
         plan::render_short(&plan, &home),
@@ -598,22 +596,6 @@ pub(crate) fn terminal_name_mint_with(
         Err(e) => return Err(e),
     };
     Ok(name)
-}
-
-/// `--base` 与「已继承 `CLAUDE_CONFIG_DIR`」这两条路**不需要账号表** ——
-/// 读它就是白付一次 IO，还会把「这台机器没有账号库」变成一句多余的话。
-fn needs_account_table(o: &argv::Opts, env: &Env) -> bool {
-    // 没有账号这一维的那一家不选号。
-    if env.account_env.is_empty() {
-        return false;
-    }
-    if !o.account.is_empty() {
-        return true;
-    }
-    if o.use_base || !o.account_dir.is_empty() {
-        return false;
-    }
-    env.inherited_config_dir.is_none()
 }
 
 /// `--ccm-probe` 那几行。**首行逐字 `name=ccm`**（认得出这是 ccm 的名片；`cc-spawn` 的能力协商读 `capabilities=` 那一行）。

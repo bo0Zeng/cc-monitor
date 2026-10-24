@@ -121,15 +121,12 @@ fn spec_with<T>(
     }
     let launcher = checked_launcher(&l.launcher)?;
     let tmux = l.tmux.as_deref().filter(|n| !n.is_empty() && !windows);
+    // 远端那台不表态的号落账号 0（ssh 过去的那台不是 monitor 的环境，没有可继承的）。
+    let base = Settled::Base;
     let (account, picked_model) = match (account, here) {
-        (Settled::Account(a), _) => (
-            ci::CliAccount::Named {
-                name: a.name.as_str(),
-            },
-            a.model.as_deref(),
-        ),
-        (Settled::Unsaid, Here::Local { .. }) => (ci::CliAccount::Inherit, None),
-        (Settled::Base | Settled::Unsaid, _) => (ci::CliAccount::Base, None),
+        (Settled::Account(a), _) => (account, a.model.as_deref()),
+        (Settled::Unsaid, Here::Local { .. }) => (account, None),
+        (Settled::Base | Settled::Unsaid, _) => (&base, None),
     };
     let action = match &l.act {
         Act::New => ci::Action::New,
