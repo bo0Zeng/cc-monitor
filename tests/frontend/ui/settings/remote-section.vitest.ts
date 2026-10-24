@@ -1002,7 +1002,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       for (let i = 0; i < 5; i++) await tick();
       expect(document.querySelector('[role="dialog"]'), "没存上框却关了").not.toBeNull();
       expect(host!.value).toBe("7.7.7.7");
-      expect(dlg.textContent).toContain(copyText("addMachine.err.save"));
+      expect(dlg.textContent, "框顶说的是那一句原因（不一律说「别处改过」）").toContain("disk full");
+      expect(dlg.textContent).not.toContain(copyText("addMachine.err.save"));
       expect(sec.element.querySelectorAll(".remote-machine-row:not(.remote-machine-local)")).toHaveLength(1);
       ipcReplies.clear();
     });

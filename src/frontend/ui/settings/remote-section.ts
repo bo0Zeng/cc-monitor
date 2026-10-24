@@ -41,6 +41,7 @@ import { icon } from "../kit/icon";
 import { openMenu, type MenuItem } from "../kit/menu";
 import { statusDot, setDot } from "../kit/status-dot";
 import { toast, undoToast } from "../kit/toast";
+import { write } from "../ipc/write";
 import { forgetSeen } from "../last-seen";
 import { openAddMachine } from "./add-machine";
 import { localMeta, machineMeta, NO_FACTS, type MachineFacts, type MachineSection } from "./machine-page";
@@ -732,14 +733,16 @@ export class RemoteSection {
       imported: () => importSshHosts(this.cards.map((c) => c.collect()).map((h) => ({ host: h.host, user: h.user, port: h.port || 22 }))),
       add: async (cfgs) => {
         const cards = cfgs.map((c) => this.appendCard(c));
-        if (await this.save()) {
+        const said = await this.save();
+        if (said === null) {
           this.hideBanner();
           toast(copyText("addMachine.save.done", { names: cards.map((c) => c.displayName()).join(copyText("kit.text.sep")) }), "", { level: "success" });
           return null;
         }
+        // 没存上 ⇒ 卡收回去，框顶照那一句说（后端说的原因，不一律说「别处改过」）。
         for (const c of cards) this.dropCard(c);
         this.hideBanner();
-        return copyText("addMachine.err.save");
+        return said;
       },
     });
   }
@@ -859,8 +862,8 @@ export class RemoteSection {
 
   // === 数据 ===
 
-  /** 任一控件变化 → 组装 → merge 进 config.json → 提示重启。存进去了 ⇒ `true`（没存进去的原因已画在横幅上）。 */
-  private async save(): Promise<boolean> {
+  /** 任一控件变化 → 组装 → merge 进 config.json → 提示重启；写走统一写口。存进去了 ⇒ `null`；没存进去 ⇒ 那一句（原因也画在横幅上）。 */
+  private async save(): Promise<string | null> {
     // 还没落过盘、主机或用户没填的卡（「＋ 添加机器」刚出来那张）不进补丁：
     // 写进去就是一条认不出、删不掉的空机器。它留在界面上，填完了再存。
     const saving = this.cards.filter((c) => {
@@ -877,22 +880,22 @@ export class RemoteSection {
       );
     }
 
-    try {
-      // 局部合并，不整表覆盖（整表覆盖会把不在本页的机器静默删光）：
-      // - upsert 用每张卡的 `persistedKey` 定位盘上那一条 ⇒ 改 label（换 origin）仍是改那一条，不变成「新增 ＋ 孤儿」；
-      // - remove 只取「加载时见过、现在卡片没了」的那些 ⇒ 没加载过的机器字节不动。
-      // 按出现次数比、不按集合比：两台 origin 相同时删掉其中一台，集合比会算出 remove=[]。
-      const countBy = (keys: (string | null)[]): Map<string, number> => {
-        const m = new Map<string, number>();
-        for (const k of keys) if (k !== null) m.set(k, (m.get(k) ?? 0) + 1);
-        return m;
-      };
-      const liveCount = countBy(saving.map((c) => c.persistedKey));
-      // 每张已在盘上的卡带上加载时那份（origin 在加载时恰好一台的才带）⇒ 数据层按格改、只交动过的格。
-      const loadedCount = countBy(this.loadedKeys);
-      const wasOf = (k: string | null): RemoteHostConfig | undefined =>
-        k !== null && loadedCount.get(k) === 1 ? findHostByOrigin(this.original.hosts, k) ?? undefined : undefined;
-      await patchRemoteConfig({
+    // 局部合并，不整表覆盖（整表覆盖会把不在本页的机器静默删光）：
+    // - upsert 用每张卡的 `persistedKey` 定位盘上那一条 ⇒ 改 label（换 origin）仍是改那一条，不变成「新增 ＋ 孤儿」；
+    // - remove 只取「加载时见过、现在卡片没了」的那些 ⇒ 没加载过的机器字节不动。
+    // 按出现次数比、不按集合比：两台 origin 相同时删掉其中一台，集合比会算出 remove=[]。
+    const countBy = (keys: (string | null)[]): Map<string, number> => {
+      const m = new Map<string, number>();
+      for (const k of keys) if (k !== null) m.set(k, (m.get(k) ?? 0) + 1);
+      return m;
+    };
+    const liveCount = countBy(saving.map((c) => c.persistedKey));
+    // 每张已在盘上的卡带上加载时那份（origin 在加载时恰好一台的才带）⇒ 数据层按格改、只交动过的格。
+    const loadedCount = countBy(this.loadedKeys);
+    const wasOf = (k: string | null): RemoteHostConfig | undefined =>
+      k !== null && loadedCount.get(k) === 1 ? findHostByOrigin(this.original.hosts, k) ?? undefined : undefined;
+    const end = await write(() =>
+      patchRemoteConfig({
         upsert: saving.map((c) => ({
           key: c.persistedKey,
           value: c.collect(),
@@ -901,28 +904,29 @@ export class RemoteSection {
         remove: [...countBy(this.loadedKeys)]
           .filter(([k, n]) => n > (liveCount.get(k) ?? 0))
           .map(([k]) => k),
-      });
-      // 落盘成功后卡片身份跟到新 origin 上（用户这次可能就是在改名）。
-      for (const c of saving) {
-        c.persistedKey = hostKey(c.collect());
-        c.renderStatusStrip();
-      }
-      this.loadedKeys = saving.map((c) => c.persistedKey!);
-
-      const changed = !sameRemote(next, this.original);
-      this.original = next;
-      if (changed && incompleteCount === 0) {
-        this.showBanner(copyText("remote.save.done"));
-      }
-      // 机器表改了 ⇒ 本机后端推 `changed {machines}`，壳照它当场对齐那几条流（加的去连、删的 · 停用的断开、改了连接参数的重连）。
-      if (changed) this.pages?.machinesReconciled?.();
-      for (const c of saving) this.repaintRow(c);
-      return true;
-    } catch (e) {
-      console.warn("save remote config failed:", e);
-      this.showFailure(copyText("remote.save.failed"), e);
-      return false;
+      }),
+    );
+    if (!end.ok) {
+      console.warn("save remote config failed:", end.error);
+      this.showFailure(copyText("remote.save.failed"), end.error);
+      return end.said;
     }
+    // 落盘成功后卡片身份跟到新 origin 上（用户这次可能就是在改名）。
+    for (const c of saving) {
+      c.persistedKey = hostKey(c.collect());
+      c.renderStatusStrip();
+    }
+    this.loadedKeys = saving.map((c) => c.persistedKey!);
+
+    const changed = !sameRemote(next, this.original);
+    this.original = next;
+    if (changed && incompleteCount === 0) {
+      this.showBanner(copyText("remote.save.done"));
+    }
+    // 机器表改了 ⇒ 本机后端推 `changed {machines}`，壳照它当场对齐那几条流（加的去连、删的 · 停用的断开、改了连接参数的重连）。
+    if (changed) this.pages?.machinesReconciled?.();
+    for (const c of saving) this.repaintRow(c);
+    return null;
   }
 
   /** 照这台现在的「连接这台」重画那一行（停用 ⇒ 空心点 ＋「已停用」＋［连接］；开着 ⇒ 照上次问到的连接）。 */
