@@ -28281,6 +28281,12 @@
       "zh": "—",
       "args": []
     },
+    "rsFilewinPlan.cell.unowned": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "无主",
+      "args": []
+    },
     "rsFilewinPlan.cell.dup": {
       "kind": "body",
       "role": "悬停",

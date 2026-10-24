@@ -418,7 +418,7 @@ fn record_classes_equal_the_table_with_a_reader_for_each() {
         ("custom-title", true),           // 同上
         ("system", false), // 只有 api_error 那一种出 `retry`（这一行不是）；进链由链事实管
         ("attachment", false), // 只进链（链事实，`chain.rs`），不进界面
-        ("queue-operation", false), // enqueue 只配打字时刻；remove 出 `queued`（`record_of_tests`）
+        ("queue-operation", false), // 无读者：中途插话由记录里那一行出（`attachment` 的 queued_command）
         ("permission-mode", false), // 无读者
         ("last-prompt", false), // 无读者
         ("file-history-snapshot", false), // 无读者
