@@ -115,7 +115,7 @@ pub struct TerminalItem {
     pub host: String,
     /// tmux 会话名。
     pub tmux_name: String,
-    /// 里面跑着会话、前台不是 shell 时是窗格标题；否则是前台程序名。
+    /// 里面跑着会话、前台是 agent 时是窗格标题；否则是前台程序名。
     pub title: String,
     /// 前台程序名。
     pub program: String,
@@ -199,11 +199,11 @@ pub struct Attached {
 )]
 #[serde(rename_all = "snake_case")]
 pub enum TermState {
-    /// 前台不是 shell。
+    /// 有会话、agent 还在前台。
     Running,
-    /// 没会话、前台是 shell。
+    /// 这个窗格没会话。
     Idle,
-    /// 有会话、前台是 shell（程序已退出）。
+    /// 有会话、agent 已不在前台（程序已退出）。
     ProgramExited,
 }
 
