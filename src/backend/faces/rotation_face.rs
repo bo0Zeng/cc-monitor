@@ -203,17 +203,27 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::Tz) -> QuotaRead 
     };
     let mut usable: Vec<String> = Vec::new();
     let mut earliest: Option<(u64, String)> = None;
+    // 「可发」与「几点回来」照事实那一格（`blocked` 由 `rules::standing` 那一处判），显示态不另判。
+    let mut judge = |agent: &str, account: &str| {
+        let f = ctx
+            .hop
+            .fact_one(agent, &lib, account, &|a| (ctx.rows)(agent, a), now, tz);
+        match f.blocked {
+            None => usable.push(account.to_string()),
+            Some(b) => {
+                if let Some(at) = b
+                    .until
+                    .filter(|at| earliest.as_ref().is_none_or(|(t, _)| at < t))
+                {
+                    earliest = Some((at, account.to_string()));
+                }
+            }
+        }
+    };
     let mut rows: Vec<Seen> = Vec::new();
     for o in seen {
         let sh = shown(&o.agent, &o.account, Some(o));
-        if show::usable(&sh) {
-            usable.push(o.account.clone());
-        }
-        if let Some(at) = show::back_at(&sh, &o.reading, now) {
-            if earliest.as_ref().is_none_or(|(t, _)| at < *t) {
-                earliest = Some((at, o.account.clone()));
-            }
-        }
+        judge(&o.agent, &o.account);
         rows.push(Seen {
             agent: o.agent.clone(),
             account: o.account.clone(),
@@ -233,9 +243,7 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::Tz) -> QuotaRead 
         })
         .map(|a| {
             let sh = shown(LIBRARY_AGENT, &a.id, None);
-            if show::usable(&sh) {
-                usable.push(a.id.clone());
-            }
+            judge(LIBRARY_AGENT, &a.id);
             UnseenHead {
                 agent: crate::agents::kind_of_route(LIBRARY_AGENT),
                 account: a.id.clone(),

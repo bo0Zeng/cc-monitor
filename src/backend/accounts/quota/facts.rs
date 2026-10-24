@@ -1,10 +1,12 @@
 //! ★ 轮换的**事实 F**：每个号的用量 · 重置 · 用速 · 1% ≈ 多少用量 · 被拒 · 超额 · 登录。
 //! 只读额度账 ＋ 账号库 ＋ 登录，换一份策略不变；上限、余量、「能不能用」里跟设置有关的那一半不在这里（在判的那一层）。
+//! 「事实上发不发得出去」不在这里判：照 [`super::rules::standing`] 那一处出 `blocked`。
 //!
 //! 拼装只有一处（[`crate::accounts::upstream_select::rotate::Hop::facts`]，它手上有额度账与账号库）；这里是形状与纯函数。
 
+use super::rules::{standing, Acct, Barred};
 use super::show::LoginState;
-use crate::agents::QuotaReading;
+use crate::agents::{QuotaReading, QuotaWindow};
 
 /// 号的种类（线上 `sub` · `api`）：线上形住 `cmd-wire`。
 pub(crate) use cmd_wire::quota::Kind;
@@ -26,7 +28,7 @@ pub(crate) fn overage_in_use(r: &QuotaReading, kind: Kind, now: u64) -> bool {
 }
 
 /// 一个窗口此刻的用量（已重置、未计时 ⇒ 0）。
-pub(crate) fn used_now(w: &crate::agents::QuotaWindow, now: u64) -> f64 {
+pub(crate) fn used_now(w: &QuotaWindow, now: u64) -> f64 {
     if super::reset_since_seen(w.resets_at, now) {
         0.0
     } else {
@@ -34,84 +36,27 @@ pub(crate) fn used_now(w: &crate::agents::QuotaWindow, now: u64) -> f64 {
     }
 }
 
-/// 一个语义位此刻的窗口：在计时吗 · 用了几点 · 几点重置。
-struct Win {
-    open: bool,
-    used: f64,
-    resets: Option<u64>,
+/// 一个窗口此刻在计时：有用量、重置时刻还没到。
+pub(crate) fn open(w: &QuotaWindow, now: u64) -> bool {
+    w.used.is_some() && w.resets_at.is_some_and(|t| t > now)
 }
 
-/// 一个语义位（`5h` / `7d`）此刻的窗口。那一位有几个窗口（`7d` 分档）⇒ 取用得最多的那个。
-fn window_fact(
-    r: Option<&QuotaReading>,
-    w: &str,
+/// ★ 一个语义位（`5h` / `7d`）此刻取哪个窗口（唯一的挑法：事实 · 显示态 · 别的会话的用速都照它）：
+/// 那一位有几个窗口（`7d` 分档）⇒ 在计时的先，再取此刻用得最多的那个（[`used_now`]，已重置的算 0）。
+pub(crate) fn pick<'a>(
+    r: &'a QuotaReading,
+    slot: &str,
     now: u64,
-    slot: &dyn Fn(&str) -> Option<&'static str>,
-) -> Win {
-    let closed = Win {
-        open: false,
-        used: 0.0,
-        resets: None,
-    };
-    let Some(r) = r else { return closed };
+    slot_of: &dyn Fn(&str) -> Option<&'static str>,
+) -> Option<&'a QuotaWindow> {
     r.windows
         .iter()
-        .filter(|x| slot(&x.name) == Some(w))
-        .filter(|x| x.used.is_some() && x.resets_at.is_some_and(|t| t > now))
-        .map(|x| Win {
-            open: true,
-            used: used_now(x, now) * 100.0,
-            resets: x.resets_at,
+        .filter(|x| slot_of(&x.name) == Some(slot))
+        .max_by(|a, b| {
+            open(a, now)
+                .cmp(&open(b, now))
+                .then(used_now(a, now).total_cmp(&used_now(b, now)))
         })
-        .max_by(|a, b| a.used.total_cmp(&b.used))
-        .unwrap_or(closed)
-}
-
-/// 事实上用不了的几种（判的那一下）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum WhyNot {
-    Refused,
-    Full,
-    Overage,
-    Login,
-}
-
-/// ★ 一个号此刻**事实上**能不能用（唯一一处）：被拒 · 超额在兜 · 用满（某个窗口用到 100%、还没重置）· 要重新登录 ·
-/// 续令牌一时没成（`retry` ＝ 几点再试）。回 `(为什么不能用, 几点回来)`；能用 ⇒ `None`。
-fn standing(
-    r: Option<&QuotaReading>,
-    kind: Kind,
-    login_ok: bool,
-    retry: Option<u64>,
-    now: u64,
-) -> Option<(WhyNot, Option<u64>)> {
-    if let Some(r) = r {
-        if refused_at(r, now) {
-            return Some((WhyNot::Refused, r.resets_at));
-        }
-        if overage_in_use(r, kind, now) {
-            return Some((WhyNot::Overage, r.resets_at));
-        }
-        let full: Vec<Option<u64>> = r
-            .windows
-            .iter()
-            .filter(|w| w.used.is_some_and(|u| u >= 1.0) && live(w.resets_at, now))
-            .map(|w| w.resets_at)
-            .collect();
-        if !full.is_empty() {
-            // 几个窗口都满着 ⇒ 都重置的那一刻；有一个说不出 ⇒ 说不出。
-            let back = full
-                .iter()
-                .copied()
-                .collect::<Option<Vec<u64>>>()
-                .and_then(|v| v.into_iter().max());
-            return Some((WhyNot::Full, back));
-        }
-    }
-    if !login_ok {
-        return Some((WhyNot::Login, None));
-    }
-    retry.filter(|t| *t > now).map(|t| (WhyNot::Login, Some(t)))
 }
 
 /// 一个窗口在额度账上量出来的那两样（按窗口原名问；调用方交）：用速（点 / 分）· 1% ≈ 多少用量。
@@ -120,22 +65,7 @@ pub(crate) struct Measured<'a> {
     pub(crate) per_pct: &'a dyn Fn(&str) -> Option<u64>,
 }
 
-/// 一个语义位此刻开着的窗口里用得最多的那个的原名（量出来的那几样按它问额度账；同 [`window_fact`] 的取法）。
-pub(crate) fn slot_window(
-    r: Option<&QuotaReading>,
-    slot: &str,
-    now: u64,
-    slot_of: &dyn Fn(&str) -> Option<&'static str>,
-) -> Option<String> {
-    r?.windows
-        .iter()
-        .filter(|x| slot_of(&x.name) == Some(slot))
-        .filter(|x| x.used.is_some() && x.resets_at.is_some_and(|t| t > now))
-        .max_by(|a, b| used_now(a, now).total_cmp(&used_now(b, now)))
-        .map(|x| x.name.clone())
-}
-
-/// 一个语义位此刻的窗口事实（量出来的那两样由调用方按窗口原名问额度账）。
+/// 一个语义位此刻的窗口事实（[`pick`] 挑的那个在计时才算开着；量出来的那两样由调用方按窗口原名问额度账）。
 fn win_of(
     r: Option<&QuotaReading>,
     slot: &str,
@@ -144,20 +74,61 @@ fn win_of(
     m: &Measured<'_>,
     when: &dyn Fn(u64) -> String,
 ) -> WinFact {
-    let w = window_fact(r, slot, now, slot_of);
-    let name = slot_window(r, slot, now, slot_of);
-    WinFact {
-        open: w.open,
-        used: w.used,
-        resets: w.resets,
-        resets_text: w.resets.map(when),
-        rate: name.as_deref().and_then(m.rate),
-        tokens_per_pct: name.as_deref().and_then(m.per_pct),
+    match r
+        .and_then(|r| pick(r, slot, now, slot_of))
+        .filter(|x| open(x, now))
+    {
+        None => WinFact {
+            open: false,
+            used: 0.0,
+            resets: None,
+            resets_text: None,
+            rate: None,
+            tokens_per_pct: None,
+        },
+        Some(x) => WinFact {
+            open: true,
+            used: used_now(x, now) * 100.0,
+            resets: x.resets_at,
+            resets_text: x.resets_at.map(when),
+            rate: (m.rate)(&x.name),
+            tokens_per_pct: (m.per_pct)(&x.name),
+        },
+    }
+}
+
+/// 跟窗口无关的「用不了」：超额在兜（到卡着的窗口重置）· 缺 key · 要重新登录 · 续令牌一时没成（`retry` ＝ 几点再试）。
+fn barred_of(
+    r: Option<&QuotaReading>,
+    kind: Kind,
+    login: LoginState,
+    retry: Option<u64>,
+    now: u64,
+) -> Option<Barred> {
+    if let Some(r) = r.filter(|r| overage_in_use(r, kind, now)) {
+        return Some(Barred {
+            why: FactWhy::Overage,
+            until: r.resets_at,
+        });
+    }
+    match login {
+        LoginState::NeedsKey => Some(Barred {
+            why: FactWhy::Key,
+            until: None,
+        }),
+        LoginState::NeedsLogin => Some(Barred {
+            why: FactWhy::Login,
+            until: None,
+        }),
+        LoginState::Ok => retry.filter(|t| *t > now).map(|t| Barred {
+            why: FactWhy::Login,
+            until: Some(t),
+        }),
     }
 }
 
 /// ★ 拼一个号的事实（唯一一处的纯函数部分）：额度账那一条 ＋ 种类 ＋ 登录（`retry` ＝ 续令牌一时没成、几点再试）。
-/// `when` 把时刻写成给人看的样子。
+/// 用不了的那一格照 [`standing::sendable`] / [`standing::sendable_again`] 出。`when` 把时刻写成给人看的样子。
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn fact_of(
     account: &str,
@@ -171,15 +142,29 @@ pub(crate) fn fact_of(
     m: &Measured<'_>,
     when: &dyn Fn(u64) -> String,
 ) -> Fact {
-    let st = standing(r, kind, login == LoginState::Ok, retry, now);
-    let blocked = st.map(|(w, until)| {
-        let why = match w {
-            WhyNot::Refused => FactWhy::Refused,
-            WhyNot::Overage => FactWhy::Overage,
-            WhyNot::Full => FactWhy::Used,
-            WhyNot::Login if login == LoginState::NeedsKey => FactWhy::Key,
-            WhyNot::Login => FactWhy::Login,
+    let w5h = win_of(r, "5h", now, slot_of, m, when);
+    let w7d = win_of(r, "7d", now, slot_of, m, when);
+    let a = Acct {
+        id: account.to_string(),
+        api: kind == Kind::Api,
+        used: [w5h.used, w7d.used],
+        resets: [w5h.resets, w7d.resets],
+        refused_until: r.filter(|r| refused_at(r, now)).and_then(|r| r.resets_at),
+        barred: barred_of(r, kind, login, retry, now),
+        rate: [w5h.rate, w7d.rate],
+        per_pct: [w5h.tokens_per_pct, w7d.tokens_per_pct],
+        weekly: r.is_some_and(|r| r.windows.iter().any(|x| slot_of(&x.name) == Some("7d"))),
+        others: None,
+    };
+    let blocked = (!standing::sendable(&a, now)).then(|| {
+        let why = if a.refused_until.is_some() {
+            FactWhy::Refused
+        } else {
+            a.barred
+                .filter(|b| b.until.is_none_or(|u| u > now))
+                .map_or(FactWhy::Used, |b| b.why)
         };
+        let until = standing::sendable_again(&a, now);
         FactBlocked {
             why,
             until,
@@ -189,9 +174,9 @@ pub(crate) fn fact_of(
     Fact {
         account: account.to_string(),
         kind,
-        w5h: win_of(r, "5h", now, slot_of, m, when),
-        w7d: win_of(r, "7d", now, slot_of, m, when),
-        weekly: r.is_some_and(|r| r.windows.iter().any(|x| slot_of(&x.name) == Some("7d"))),
+        w5h,
+        w7d,
+        weekly: a.weekly,
         login,
         seen_at,
         blocked,

@@ -485,12 +485,29 @@ fn finer_windows_each_get_a_row_between_7d_and_overage() {
     );
 }
 
+/// ★ 语义位取哪个窗口与事实同一个挑法：用得多的那个已经重置 ⇒ 取还在计时的那个，用满也不照重置前的数判。
+#[test]
+fn a_slot_takes_the_live_window_not_one_already_reset() {
+    let o = observed();
+    let mut r = o.reading.clone();
+    r.windows[2].used = Some(1.0);
+    r.windows[2].resets_at = Some(EARLIER);
+    let sh = show(Some((&r, o.seen_at)), facts(Kind::Sub), NOW, &slot);
+    let s = &sh.slots[1];
+    assert_eq!(
+        (s.window.as_str(), s.pct, s.full),
+        ("seven_day", Some(40), false)
+    );
+}
+
 /// ★ 语义位那一格的重置字（`resetText`）与 `rows` 里那一格同一个写法：还没到 ⇒ ↻时刻；已过 ⇒ ↻时刻 已过。
+/// 7d 那两个窗口都已重置 ⇒ 那一格照旧取其中一个、写「已过」。
 #[test]
 fn slot_reset_text_is_the_rows_reset_cell() {
     let o = observed();
     let clock = crate::common::time::TextClock::new(NOW, &crate::Tz::default());
     let mut r = o.reading.clone();
+    r.windows[1].resets_at = Some(EARLIER);
     r.windows[2].resets_at = Some(EARLIER);
     let mut sh = show(Some((&r, o.seen_at)), facts(Kind::Sub), NOW, &slot);
     sh.stamp(&clock);

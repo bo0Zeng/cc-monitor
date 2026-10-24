@@ -9,11 +9,13 @@
 //! | `near` | 有语义位的窗口用到 [`NEAR_DEFAULT`]、未重置，或回包说越过了预警线（线是策略的设置，后端不解它的意思，说不出「到线」） |
 //! | `ok` | 其余 |
 //!
-//! 每个语义位另带一格 `full`（用满：用到 100%、未重置）：画 `✕` 只看它；被拒而没用满画「{pct}% · 被拒」。
+//! 每个语义位另带一格 `full`（用满：照 `rules::standing::used_up` 那一处判）：画 `✕` 只看它；被拒而没用满画「{pct}% · 被拒」。
+//! 语义位取哪个窗口照事实那一处的挑法（`facts::pick`）。显示态只管画成什么样，「此刻发不发得出去」不在这里判（`rules::standing`）。
 //!
 //! 另叠一格 `stale`：最后一次看到距今超过 [`STALE_AFTER`]。各窗口照原名的那几格（[`windows_of`]）由调用方按额度账那一条补上。
 
 use super::facts::{self, Kind};
+use super::rules::standing;
 use crate::agents::{QuotaReading, QuotaStatus};
 use crate::common::cells::{Tone, Words};
 pub(crate) use cmd_wire::quota::{LoginState, QuotaShow, QuotaState, SlotShow, Usage, WindowShow};
@@ -230,9 +232,10 @@ pub(crate) fn windows_of(
             let seen = o.window_seen(&w.name);
             let reset = super::reset_since_seen(w.resets_at, now);
             let per_pct = o.tokens_per_pct(&w.name, now);
-            let tone = if full(w, now) {
+            let pct = pct_now(w, now);
+            let tone = if standing::used_up(pct) {
                 Tone::Fail
-            } else if over(w, NEAR_DEFAULT, now) {
+            } else if pct >= f64::from(NEAR_DEFAULT) {
                 Tone::Warn
             } else {
                 Tone::Plain
@@ -244,9 +247,7 @@ pub(crate) fn windows_of(
                 seen_at_rel_text: None,
                 name: w.name.clone(),
                 key: key(&w.name),
-                pct: w
-                    .used
-                    .map(|_| (facts::used_now(w, now) * 100.0).round().max(0.0) as u32),
+                pct: w.used.map(|_| pct.round().max(0.0) as u32),
                 resets_at: w.resets_at,
                 seen_at: seen.at,
                 from: seen.from,
@@ -295,9 +296,9 @@ pub(crate) fn window_label(key: Option<&str>) -> String {
     }
 }
 
-/// 「用到 N%」的显示判法：这个窗口用到 `n`%、还没重置。
-fn over(w: &crate::agents::QuotaWindow, n: u8, now: u64) -> bool {
-    w.used.is_some_and(|u| u * 100.0 >= f64::from(n)) && !super::reset_since_seen(w.resets_at, now)
+/// 一个窗口此刻用到百分之几（已重置 ⇒ 0；同事实那一处 [`facts::used_now`]）。
+fn pct_now(w: &crate::agents::QuotaWindow, now: u64) -> f64 {
+    facts::used_now(w, now) * 100.0
 }
 
 /// 一个号除额度账之外的几格（种类 · 登录 · 订阅标识），由宿主读好交进来。
@@ -316,24 +317,17 @@ fn slots_of(
     SLOTS
         .iter()
         .filter_map(|s| {
-            // 同一语义位有几个窗口（7 天那几个）⇒ 取用得最多的那个。
-            let w = r
-                .windows
-                .iter()
-                .filter(|w| slot(&w.name) == Some(*s))
-                .max_by(|a, b| {
-                    a.used
-                        .unwrap_or(f64::MIN)
-                        .total_cmp(&b.used.unwrap_or(f64::MIN))
-                })?;
+            // 同一语义位有几个窗口（7 天那几个）⇒ 同事实那一处的挑法。
+            let w = facts::pick(r, s, now, slot)?;
+            let pct = pct_now(w, now);
             Some(SlotShow {
                 resets_at_text: None,
                 resets_at_rel_text: None,
                 reset_text: None,
                 slot: (*s).to_string(),
-                pct: w.used.map(|u| (u * 100.0).round().max(0.0) as u32),
+                pct: w.used.map(|_| pct.round().max(0.0) as u32),
                 resets_at: w.resets_at,
-                full: full(w, now),
+                full: standing::used_up(pct),
                 text: Words::default(),
                 tone: Tone::Plain,
                 per_pct_text: None,
@@ -341,11 +335,6 @@ fn slots_of(
             })
         })
         .collect()
-}
-
-/// 用满的唯一判法：这个窗口用到 100%、还没重置。
-fn full(w: &crate::agents::QuotaWindow, now: u64) -> bool {
-    w.used.is_some_and(|u| u >= 1.0) && !super::reset_since_seen(w.resets_at, now)
 }
 
 /// ★ 判一个号的显示态。`seen` ＝ 额度账上那一条（快照 ＋ 看到的时刻）。
@@ -399,7 +388,7 @@ pub(crate) fn show(
     } else if r
         .windows
         .iter()
-        .any(|w| slot(&w.name).is_some() && over(w, NEAR_DEFAULT, now))
+        .any(|w| slot(&w.name).is_some() && pct_now(w, now) >= f64::from(NEAR_DEFAULT))
         || r.status == Some(QuotaStatus::Warning)
     {
         QuotaState::Near
@@ -426,19 +415,6 @@ pub(crate) fn show(
         sub_id: facts.sub_id,
         windows: Vec::new(),
     }
-}
-
-/// 此刻用不了的号几点回来（被拒 · 超额在兜 ⇒ 卡着的窗口的重置时刻；说不出 ⇒ `None`）。
-pub(crate) fn back_at(s: &QuotaShow, r: &QuotaReading, now: u64) -> Option<u64> {
-    matches!(s.state, QuotaState::Refused | QuotaState::OverageInUse)
-        .then_some(r.resets_at)
-        .flatten()
-        .filter(|t| *t > now)
-}
-
-/// 此刻发得出去：登录拿得到，且不是被拒 / 超额在兜（快满 · 数旧 · 没采样 · 上一窗已过都算能发）。
-pub(crate) fn usable(s: &QuotaShow) -> bool {
-    s.login == LoginState::Ok && !matches!(s.state, QuotaState::Refused | QuotaState::OverageInUse)
 }
 
 /// 同一订阅的稳定标识：账号身份加一个固定前缀做 SHA-256，取前 12 字节的十六进制。不加每台的盐 ⇒ 两台算出来相同；
