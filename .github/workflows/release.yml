@@ -394,76 +394,22 @@ jobs:
           }
           Write-Host "Backend identity OK: src/backend version=0.0.0 (deliberate), BUILD_ID=$did"
 
-      # **本机后端**（C7「没有 daemonless，本机也要有后端进程」）：原生编一份，下一步铺进 `native-backend/`、内嵌进 exe；
-      # monitor 起它之前先放到 `~/.cc-monitor/bin/ccm` 再跑。
+      # ── K-R42：**本机后端与文件窗口程序内嵌进 exe** —— 裸 `cc-monitor.exe` 与装机那份都靠它们 ──────
       #
-      # 与上面那批 embedded-backends 是**两件事**：那些是远端 SFTP 部署用的 musl 二进制；这一份是**用户自己机器上**的本机后端。
-      # ⚠ size2（10-11）起安装包旁边**不再另放一份**（从前经 Tauri `externalBin` 装在 exe 旁边，与内嵌那份逐字节相同、
-      #   开机只用内嵌那份 ⇒ setup 多 5.9 MB、msi 多 8 MB）。判据 `local_backend_tests::no_bundle_job_puts_a_second_local_backend_beside_the_exe`。
-      # `--locked` 的理由与 build-backends 那步同源（同一份 `src/backend/Cargo.lock`、
-      # 同一个 yanked 的 `crypto-bigint 0.7.3`），逐字见那里的头注 —— 这里不抄第二份。
-      - name: Build local backend (native)
-        working-directory: src/backend
-        run: cargo build --release --locked
-      # ── K-R42：**本机后端内嵌进 exe** —— 裸 `cc-monitor.exe` 与装机那份都靠它起本机后端 ──────
-      #
-      # 09-10 干净 win11 上现打：那时安装包旁边另装一份（Tauri `externalBin`），裸 `monitor.exe` 拿不到它 ⇒ **0 个**本机后端进程。
-      # 本步把上一步的产物铺进 `native-backend/`，由 `src/frontend/shell/build.rs::embed_native_backend` `include_bytes!` 进 exe；
-      # size2（10-11）起这是本机后端**唯一**的字节来源（安装包旁边那份撤了）。
-      #
-      # ⚠ **落点刻意不是 `embedded-backends/`**，理由住 `build.rs` 的 `NATIVE_BACKEND_DIR` 头注
-      # （一句话：那个目录名是另一条判据认「谁会起真后端」用的来历串，
-      #  消费侧那个**字面量** `include_bytes!` 写下它会误伤那条判据）。
-      #
-      # ⚠ 两个文件**缺一不可**，名字定死在 `build.rs::NATIVE_BACKEND_DIR`/`NATIVE_BACKEND_FILE`：
-      #   · `cc-monitor-native`           字节本身（**身份就在它里面**，见下）
-      #   · `cc-monitor-native.target`    它是给哪个 triple 编的（名字里没有 triple ⇒ 只能靠它）
-      # 少任何一个，`build.rs` 要么打一条 `cargo:warning=没有本机内嵌后端（…）`
-      # 而构建照常绿（二进制缺席），要么当场 panic（问不出身份 / target 对不上）。
-      # ⇒ 下面那几条 `Test-Path` 就是把前一种也变成硬失败。
-      #
-      # 🔴 **K-R70（09-12）：`cc-monitor-native.build_id` 那一份不写了。**
-      # ⚠ `.target` **留着**：它答的是「给哪个平台编的」，不是「你是谁」——
-      #   那个事实今天确实只能靠旁边这一份（名字里没有 triple）。如实登记为同族剩余。
-      #
-      # ⚠ **诚实边界**：本步买到的是「铺了 · target 对得上 · build.rs 没 panic」。
-      # 它**买不到**「裸 exe 在真 Windows 上真的起得来一个本机后端」—— 那要真机跑一趟。
-      - name: Stage native backend for self-extract
-        shell: pwsh
-        run: |
-          $triple = (rustc -vV | Select-String '^host:').Line.Split(' ')[1]
-          $dir = "src/frontend/shell/native-backend"
-          $dst = "$dir/cc-monitor-native"
-          New-Item -ItemType Directory -Force $dir | Out-Null
-          Copy-Item .build/backend/release/cc-monitor-backend.exe $dst -Force
-          Set-Content -Path "$dst.target" -Value $triple
-          foreach ($f in $dst, "$dst.target") {
-            if (-not (Test-Path $f)) { Write-Error "本机内嵌后端没铺全（缺 $f）——裸 exe 会回到「0 个本机后端进程」那个读数"; exit 1 }
-          }
-          Write-Host ("native backend staged: {0} ({1} bytes, target={2})" -f $dst, (Get-Item $dst).Length, $triple)
-
-      # ── **文件窗口程序也内嵌进 exe** —— 开窗那一刻放到 `~/.cc-monitor/bin/` 再起 ──
-      #
-      # 它是文件窗口包 `cc-monitor-filewin` 自己的 `[[bin]]`：monitor 的 `build.rs` 吃不到它 ⇒ 先单编、铺进 `native-backend/`
-      # （名字定死在 `build.rs::NATIVE_FILEWIN_FILE`，旁挂 `.target` 同上面两对），下面 `tauri build` 编 monitor 时
-      # `build.rs::embed_native_filewin` 把它内嵌进去。与 `tests/scripts/re-embed.sh --native` 同一条配方（`K-R124-ruler.py` ⑬j 对拍）。
-      # ⚠ size2（10-11）起它不再是 monitor 包的第二个 `[[bin]]`（打包器会把 monitor 包的每个 bin 都装进安装包，那一份与内嵌的逐字节相同）
-      #   ⇒ 安装包里只有内嵌那一份：第一次开文件窗口时放到 `~/.cc-monitor/bin/` 再起（`filewin::proc::resolve_window_bin`）。
-      # ⚠ **诚实边界**：本步买到「编得出 · 铺了 · target 对得上」；买不到「在真 Windows 上放得下来、起得来」—— 那要真机跑一趟。
-      - name: Build local filewin (native)
-        working-directory: src/frontend/shell
-        run: cargo build --release --locked -p cc-monitor-filewin --bin cc-monitor-filewin
-      - name: Stage native filewin for self-extract
-        shell: pwsh
-        run: |
-          $triple = (rustc -vV | Select-String '^host:').Line.Split(' ')[1]
-          $dst = "src/frontend/shell/native-backend/cc-monitor-filewin"
-          Copy-Item .build/shell/release/cc-monitor-filewin.exe $dst -Force
-          Set-Content -Path "$dst.target" -Value $triple
-          foreach ($f in $dst, "$dst.target") {
-            if (-not (Test-Path $f)) { Write-Error "文件窗口程序没铺全（缺 $f）——单文件的 cc-monitor.exe 会打不开文件窗口"; exit 1 }
-          }
-          Write-Host ("native filewin staged: {0} ({1} bytes, target={2})" -f $dst, (Get-Item $dst).Length, $triple)
+      # 本机后端（C7「没有 daemonless，本机也要有后端进程」）：monitor 起它之前先放到 `~/.cc-monitor/bin/ccm` 再跑；
+      #   文件窗口程序（文件窗口包 `cc-monitor-filewin` 自己的 `[[bin]]`，monitor 的 `build.rs` 吃不到它 ⇒ 先单编再铺）开窗那一刻
+      #   放到 `~/.cc-monitor/bin/` 再起（`filewin::proc::resolve_window_bin`）。两件都原生编、铺进 `native-backend/`
+      #   （字节 ＋ 旁挂 `.target`，名字定死在 `build.rs::NATIVE_BACKEND_DIR` · `NATIVE_BACKEND_FILE` · `NATIVE_FILEWIN_FILE`），
+      #   下面 `tauri build` 编 monitor 时由 `build.rs::embed_native_backend` / `embed_native_filewin` 内嵌进去。
+      # 与上面那批 embedded-backends 是**两件事**：那些是远端 SFTP 部署用的 musl 二进制；这几份是**用户自己机器上**的。
+      # 配方（旗标含 `--locked` · 编的次序 · 落点）只住 `tests/scripts/re-embed.sh`；`--stage-native` 只编只铺、不判
+      #   （铺不全 ⇒ 脚本里那一下 `cp` 当场失败）。Git Bash 跑它，job 级 `RUSTFLAGS` 照样传进去。
+      # ⚠ size2（10-11）起安装包旁边**不再另放一份**（判据 `local_backend_tests::no_bundle_job_puts_a_second_local_backend_beside_the_exe`）。
+      # ⚠ **落点刻意不是 `embedded-backends/`**，理由住 `build.rs` 的 `NATIVE_BACKEND_DIR` 头注。
+      # ⚠ **诚实边界**：本步买到「编得出 · 铺了 · target 对得上 · build.rs 没 panic」；买不到「在真 Windows 上起得来」—— 那要真机跑一趟。
+      - name: Build and stage native backend + filewin
+        shell: bash
+        run: bash tests/scripts/re-embed.sh --stage-native
 
       # tauri build 会顺序：npm run build (vite) → cargo build --release → bundle (msi + nsis)
       #
@@ -541,8 +487,7 @@ jobs:
   # ⚠ **仍然成立的那一半，别跟着一起删**：本 job 只在 tag 时触发 ⇒ **本地一步都验不了**。
   # 而且**真正一次都没在 tag 上跑过的**是 v3.6.0 之后加进来的那些 —— 那之后本文件被改过两次、
   # 期间**没有再发过版**：`ae18878`（08-02，裸二进制上传）与 `e39253e`（08-04，本机后端）。
-  # 具体是：两个 job 里的 `Build local backend (native)` + `Stage local backend for externalBin`
-  # 共四步、两处 `tauri build` 上的 `--config tauri.sidecar.conf.json`、以及裸二进制那条上传。
+  # 具体是：两个 job 里编、铺本机字节的那几步（今天收成 `re-embed.sh --stage-native` / `--stage-filewin` 各一步）、两处 `tauri build` 上的 `--config tauri.sidecar.conf.json`、以及裸二进制那条上传。
   # ⇒ 下面每一处设计都是为了「万一它坏了，坏得可见且不伤及发版」：
   #
   # 1. `needs: [build-backends, build-windows]` —— **串在 Windows 之后**，两个理由：
@@ -623,20 +568,11 @@ jobs:
       - name: npm ci
         run: npm ci
 
-      # 文件窗口程序也内嵌进裸 `cc-monitor`（理由与次序同 build-windows 那两步，见那里的头注）：先单编、铺进 `native-backend/`，
+      # 文件窗口程序也内嵌进裸 `cc-monitor`（理由与次序同 build-windows 那一步，见那里的头注）：先单编、铺进 `native-backend/`，
       # 再由下面 `tauri build` 编 monitor 时内嵌。Linux 这一格的后端用 musl 那两份，文件窗口要原生的一份（它链 GTK）。
-      - name: Build local filewin (native)
-        working-directory: src/frontend/shell
-        run: cargo build --release --locked -p cc-monitor-filewin --bin cc-monitor-filewin
-      - name: Stage native filewin for self-extract
-        run: |
-          set -euo pipefail
-          triple=$(rustc -vV | sed -n 's/^host: //p')
-          dst=src/frontend/shell/native-backend/cc-monitor-filewin
-          mkdir -p src/frontend/shell/native-backend
-          cp .build/shell/release/cc-monitor-filewin "$dst"
-          printf '%s\n' "$triple" > "$dst.target"
-          ls -l src/frontend/shell/native-backend
+      # 配方只住 `tests/scripts/re-embed.sh`；`--stage-filewin` 只编只铺文件窗口那一件。
+      - name: Build and stage native filewin
+        run: bash tests/scripts/re-embed.sh --stage-filewin
 
       - name: tauri build (deb)
         run: npx tauri build --config src/frontend/shell/tauri.sidecar.conf.json --bundles deb
