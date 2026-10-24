@@ -266,7 +266,34 @@ pub(crate) fn install_at(
         fenced_root(skills).map_err(|e| crate::wire::spec::Fail::from(("refused", e)))?;
     let root = top.display().to_string();
     let dest_s = dest.display().to_string();
-    // 先算幂等：全都一致就什么都不做（不备份、不写、不记）。
+    // 记：每个内嵌文件一行、摘要是内嵌那一份的；`created` = 这一趟是不是新建的（已记的取第一次的，写口管）。
+    //   全都一致那一形也记：盘上被别处换成了这一版之后，记录里不能还留着旧摘要（卸时会误判「装完改过」）；记录没变写口不写盘。
+    let record_all = |created: bool| -> Result<Option<String>, crate::wire::spec::Fail> {
+        let mut files = std::collections::BTreeMap::new();
+        for (rel, bytes) in FILES {
+            let text = std::str::from_utf8(bytes).map_err(|_| {
+                (
+                    "bad_file",
+                    copy_text("beCcBusInstall.embed.notUtf8", &[("rel", rel)]),
+                )
+            })?;
+            files.insert(
+                (*rel).to_string(),
+                Recorded {
+                    digest: crate::common::digest::fnv_digest(text),
+                    created,
+                },
+            );
+        }
+        Ok(record(&RecordReq::Add {
+            name: NAME.to_string(),
+            files,
+            project: None,
+        })
+        .err()
+        .map(|f| copy_text("beCcBusInstall.record.failed", &[("why", &f.into_note())])))
+    };
+    // 先算幂等：全都一致就一个字节不写、不备份（只记）。
     let mut all_same =
         door::stat_kind(d, &dest_s).map_err(|e| ("refused", e))? == Some("dir".into());
     if all_same {
@@ -283,7 +310,7 @@ pub(crate) fn install_at(
             dest: dest_s,
             written: Vec::new(),
             backup: None,
-            record_failed: None,
+            record_failed: record_all(false)?,
         });
     }
     // ★ 可撤销：整个目录改名（原子）。已经一致时走不到这里 ⇒ 不攒垃圾备份。
@@ -311,7 +338,6 @@ pub(crate) fn install_at(
     } else {
         None
     };
-    let mut files = std::collections::BTreeMap::new();
     for (rel, bytes) in FILES {
         let text = std::str::from_utf8(bytes).map_err(|_| {
             (
@@ -327,22 +353,9 @@ pub(crate) fn install_at(
         {
             door::chmod(d, &root, &at, 0o755).map_err(|e| ("refused", e))?;
         }
-        files.insert(
-            (*rel).to_string(),
-            Recorded {
-                digest: crate::common::digest::fnv_digest(text),
-                created: true,
-            },
-        );
     }
-    let record_failed = record(&RecordReq::Add {
-        name: NAME.to_string(),
-        files,
-        project: None,
-        at: None,
-    })
-    .err()
-    .map(|f| copy_text("beCcBusInstall.record.failed", &[("why", &f.into_note())]));
+    // 原有那一份已整个改名走 ⇒ 这一趟每个都是新建的。
+    let record_failed = record_all(true)?;
     Ok(CcBusInstalled {
         dest: dest_s,
         written: FILES.iter().map(|(rel, _)| (*rel).to_string()).collect(),

@@ -164,3 +164,58 @@ fn a_file_changed_after_the_preview_stops_the_install_there() {
     );
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// 装完之后那个文件被别处换成了来源这一份（记录里还是旧摘要）⇒ 再装一趟（只写新加的那个）之后，
+/// 卸判定说它「原样」：与来源相同的那几个也按来源那一份记，不留旧摘要（A9-2）。
+#[test]
+fn a_file_already_equal_to_the_source_is_recorded_with_the_source_digest() {
+    let base = fixture("same-refresh");
+    let root = base.join("skills");
+    let ledger = base.join(relay_route_core::SKILL_LEDGER_REL);
+    let record = |a: &crate::assets::skill_ledger::RecordReq| {
+        crate::assets::skill_ledger::record_at(&own_at(&ledger), Some(&root), a)
+    };
+    std::fs::create_dir_all(root.join("demo")).unwrap();
+    record(
+        &crate::wire::typed::take(&json!({ "op": "add", "name": "demo", "files": {
+            "SKILL.md": { "digest": crate::common::digest::fnv_digest("v1\n"), "created": true }
+        } }))
+        .unwrap(),
+    )
+    .expect("记 v1");
+    std::fs::write(root.join("demo/SKILL.md"), "v2\n").unwrap();
+    let source = json!([
+        { "path": "SKILL.md", "text": "v2\n", "exec": false },
+        { "path": "new.md", "text": "n\n", "exec": false },
+    ]);
+    let plan = plan_with(
+        &NoFacts,
+        Some(&root),
+        &json!({ "name": "demo", "source": source }),
+    )
+    .unwrap();
+    answer_install(
+        &LocalFiles,
+        &NoFacts,
+        Some(&root),
+        &record,
+        &json!({ "name": "demo", "source": source, "target": plan["target"], "take": ["new.md"], "overwrite": [] }),
+    )
+    .expect("装不上");
+    let seen = crate::assets::skill_install::answer_uninstall_plan_at(
+        &ledger,
+        &json!({ "dir": root.join("demo").display().to_string() }),
+    )
+    .unwrap();
+    let state = |p: &str| {
+        seen["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["path"] == p)
+            .map(|r| r["state"].clone())
+    };
+    assert_eq!(state("SKILL.md"), Some(json!("intact")), "{seen}");
+    assert_eq!(state("new.md"), Some(json!("intact")), "{seen}");
+    let _ = std::fs::remove_dir_all(&base);
+}
