@@ -15180,30 +15180,11 @@
       "zh": "后端报错 · 原因不明",
       "args": []
     },
-    "beRemoteAsk.run.resultUnreadable": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "对端交回的结果无法解析",
-      "args": []
-    },
-    "beRemoteAsk.run.droppedBeforeResult": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "跑完未交结果即断开",
-      "args": []
-    },
     "beRemoteAsk.run.unreachable": {
       "kind": "error",
       "role": "原因格",
       "zh": "连接失败 · {why}",
       "args": ["why"],
-      "limited": ["连接"]
-    },
-    "beRemoteAsk.run.droppedBeforeReady": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "连接未接通即断开",
-      "args": [],
       "limited": ["连接"]
     },
     "beRemoteAsk.cappedLine.tooLong": {
@@ -15271,13 +15252,6 @@
       "zh": "SSH 与后端均正常",
       "args": [],
       "limited": ["SSH"]
-    },
-    "beProbe.link.droppedBeforeAck": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "连接未确认即断开",
-      "args": [],
-      "limited": ["连接"]
     },
     "beProbe.link.closed": {
       "kind": "error",
