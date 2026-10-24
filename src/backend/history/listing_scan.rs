@@ -1,12 +1,14 @@
-//! 历史清单那一行的逐行扫描：扫一份会话记录时累计的那几格（[`SessionScan`]）与读每一行用的窄探针（[`ListingHead`]）。
+//! 一份会话记录的会话级那几格怎么逐行累计（[`SessionScan`]）：历史清单那一行与全文搜索索引**同一个扫描器**。
+//! 每一行原文先交给那一家的适配层翻成一行 [`SessionLine`]（`agents::session_line`，字段名只住适配层），这里只累计、不认格式。
 //! 口径（每一格取什么）逐格说明在 `history::listing::analyze_session` 的头注；缓存与「变长只扫尾巴」在 `history::listing` 的清单缓存那一格。
-//! 单住一份：探针是读记录文件 schema 的反序列化类型，不是协议类型（不进生成的协议参考）。
 
+use crate::agents::{LineRole, SessionLine};
+use std::borrow::Cow;
 use std::path::Path;
 
-/// 扫一份会话记录时逐行累计的那几格（[`analyze_session`] 的口径，逐格说明在它的头注）。
+/// 扫一份会话记录时逐行累计的那几格（[`analyze_session`] 的口径，逐格说明在它的头注）。清单缓存与搜索索引都存它。
 #[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
-pub(super) struct SessionScan {
+pub(crate) struct SessionScan {
     /// 读到过一行不是合法 UTF-8 ⇒ 那一行和之后的都不算（逐行读到读不动就停，与整份逐行读同一个口径）。
     pub(super) stopped: bool,
     count: u32,
@@ -14,8 +16,10 @@ pub(super) struct SessionScan {
     ai_title: Option<String>,
     started_at: Option<i64>,
     forked: Option<(String, String)>,
+    /// 第一条写着工作目录的记录说的那个（全文搜索的项目名从这里取；清单那一行照适配层的项目目录）。
+    cwd: Option<String>,
     // Batch11-F32：CC 2.1.x 后台分身会话（←/bg/退出转后台 fork 出的 worker）——
-    // 记录级 sessionKind:"bg" 是官方 resume 选择器同款识别信号（内部字段无兼容
+    // 记录级的后台标记是官方 resume 选择器同款识别信号（内部字段无兼容
     // 承诺，缺失=false 安全降级）。历史列表标 ⚙ 徽标防 resume 选错克隆。
     is_bg: bool,
 }
@@ -33,7 +37,7 @@ impl SessionScan {
     }
 
     /// 前面这一段（`self`）接上后面那一段（`later`）：按段序合并与整份顺扫相等。
-    pub(super) fn joined(&self, later: &Self) -> Self {
+    pub(crate) fn joined(&self, later: &Self) -> Self {
         let mut out = self.clone();
         if out.stopped {
             return out;
@@ -51,87 +55,90 @@ impl SessionScan {
         if out.forked.is_none() {
             out.forked.clone_from(&later.forked);
         }
+        if out.cwd.is_none() {
+            out.cwd.clone_from(&later.cwd);
+        }
         out.is_bg |= later.is_bg;
         out.stopped = later.stopped;
         out
     }
 
-    /// 吸收一行。
-    ///
-    /// 〔perfC〕先按 [`ListingHead`] 只取要的那几格（其余跳过、不分配：一行里几 MB 的工具输出不再复制一份）；
-    /// 取不了（不是对象 · 同名键 · 坏行）⇒ 退回整行解成 `Value` 那一条，口径逐格相同（值不是串当没有 · 同名键取最后一个）。
-    /// 首条人说的话要看整条记录 ⇒ 还没取到摘录时，`user` 那几行另解一次 `Value`（通常第一条就取到）。
+    /// 吸收一行原文：那一家翻成 [`SessionLine`]（〔perfC〕适配层只取要的那几格，一行里几 MB 的工具输出不复制）；
+    /// 解不成 ⇒ 只数行。首条人说的话要看整条记录 ⇒ 还没取到摘录时，人说的那几行另解一次（通常第一条就取到）。
     pub(super) fn absorb(&mut self, kind: &str, line: &str) {
         let trimmed = line.trim_start_matches('\u{feff}').trim();
         if trimmed.is_empty() {
             return;
         }
         self.count += 1;
-        let head = if trimmed.starts_with('{') {
-            serde_json::from_str::<ListingHead>(trimmed).ok()
-        } else {
-            None
+        let Some(l) = crate::agents::session_line(kind, trimmed) else {
+            return;
         };
-        let full;
-        let (head, whole) = match head {
-            Some(h) => (h, None),
-            None => {
-                full = match serde_json::from_str::<serde_json::Value>(trimmed) {
-                    Ok(v) => v,
-                    Err(_) => return,
-                };
-                (ListingHead::of(&full), Some(&full))
-            }
-        };
-        if !self.is_bg && head.session_kind.is("bg") {
-            self.is_bg = true;
+        self.take(kind, l, || {
+            serde_json::from_str::<serde_json::Value>(trimmed)
+                .ok()
+                .map(Cow::Owned)
+        });
+    }
+
+    /// 吸收已解析好的一条（全文搜索那一路本来就整条解开了）：同 [`SessionScan::absorb`] 那一套。
+    pub(crate) fn absorb_value(&mut self, kind: &str, v: &serde_json::Value) {
+        self.count += 1;
+        let l = crate::agents::session_line_of(kind, v);
+        self.take(kind, l, || Some(Cow::Borrowed(v)));
+    }
+
+    /// 一行翻好的那几格并进来：后台标记任一行有就算 · 时刻与分叉来源取第一条 · 标题取最新（持续覆盖）·
+    /// 工作目录取第一个 · 首句摘要取第一条人说的话（那一家判「谁说的」，`agents::human_speech`）。
+    fn take<'v>(
+        &mut self,
+        kind: &str,
+        l: SessionLine,
+        whole: impl FnOnce() -> Option<Cow<'v, serde_json::Value>>,
+    ) {
+        self.is_bg |= l.bg;
+        if self.started_at.is_none() {
+            self.started_at = l.at_ms;
         }
-        let rtype = head.kind.0.as_deref();
-        if matches!(rtype, Some("user") | Some("assistant")) {
-            if self.started_at.is_none() {
-                self.started_at = head
-                    .timestamp
-                    .0
-                    .as_deref()
-                    .and_then(crate::common::time::parse_iso8601_ms);
-            }
-            if self.forked.is_none() {
-                self.forked = head
-                    .forked_from
-                    .as_ref()
-                    .and_then(|f| crate::agents::fork_pair_of(kind, f));
+        if self.forked.is_none() {
+            self.forked = l.forked;
+        }
+        if self.cwd.is_none() {
+            self.cwd = l.cwd;
+        }
+        if l.title.is_some() {
+            self.ai_title = l.title;
+        }
+        if l.role == Some(LineRole::Said) && self.excerpt.is_empty() {
+            if let Some(said) = whole().and_then(|v| crate::agents::human_speech(kind, &v)) {
+                self.excerpt = super::search_rules::truncate_excerpt(&said, 120);
             }
         }
-        match rtype {
-            Some("ai-title") => {
-                if let Some(t) = head.ai_title.0 {
-                    self.ai_title = Some(t.into_owned()); // 取最新（持续覆盖）
-                }
-            }
-            // CC v2.1.x 起标题记录改名 `custom-title` / `customTitle`（旧的 `ai-title` 在历史记录里仍会出现，两个都认）。
-            Some("custom-title") => {
-                if let Some(t) = head.custom_title.0 {
-                    self.ai_title = Some(t.into_owned());
-                }
-            }
-            Some("user") if self.excerpt.is_empty() => {
-                let parsed;
-                let v = match whole {
-                    Some(v) => v,
-                    None => match serde_json::from_str::<serde_json::Value>(trimmed) {
-                        Ok(v) => {
-                            parsed = v;
-                            &parsed
-                        }
-                        Err(_) => return,
-                    },
-                };
-                if let Some(said) = crate::agents::human_speech(kind, v) {
-                    self.excerpt = super::search_rules::truncate_excerpt(&said, 120);
-                }
-            }
-            _ => {}
-        }
+    }
+
+    /// 首条人说的话（截好的）。
+    pub(crate) fn excerpt(&self) -> &str {
+        &self.excerpt
+    }
+
+    /// 最新的标题。
+    pub(crate) fn title(&self) -> Option<&str> {
+        self.ai_title.as_deref()
+    }
+
+    /// 第一条写着的工作目录。
+    pub(crate) fn cwd(&self) -> Option<&str> {
+        self.cwd.as_deref()
+    }
+
+    /// 是后台分身会话。
+    pub(crate) fn bg(&self) -> bool {
+        self.is_bg
+    }
+
+    /// 分叉来的：父会话 id。
+    pub(crate) fn forked_from(&self) -> Option<&str> {
+        self.forked.as_ref().map(|(s, _)| s.as_str())
     }
 
     /// 这一份的清单行。
@@ -181,102 +188,4 @@ pub(crate) struct SessionRow {
     pub(crate) is_bg: bool,
     pub(crate) forked_from_session_id: Option<String>,
     pub(crate) forked_from_message_uuid: Option<String>,
-}
-
-/// 扫清单时一条记录里要的那几格；其余字段跳过（不分配）。同名键 ⇒ 解不出（退回 `Value` 那一条，那边取最后一个）。
-#[derive(serde::Deserialize, Default)]
-pub(super) struct ListingHead<'a> {
-    #[serde(rename = "type", borrow, default)]
-    kind: LooseStr<'a>,
-    #[serde(rename = "sessionKind", borrow, default)]
-    session_kind: LooseStr<'a>,
-    #[serde(borrow, default)]
-    timestamp: LooseStr<'a>,
-    #[serde(rename = "aiTitle", borrow, default)]
-    ai_title: LooseStr<'a>,
-    #[serde(rename = "customTitle", borrow, default)]
-    custom_title: LooseStr<'a>,
-    #[serde(rename = "forkedFrom", default)]
-    forked_from: Option<serde_json::Value>,
-}
-
-impl<'a> ListingHead<'a> {
-    /// 从整条 `Value` 取同样那几格（退回那一条用；口径同 `v.get(k).and_then(as_str)`）。
-    fn of(v: &'a serde_json::Value) -> Self {
-        let s = |k: &str| {
-            LooseStr(
-                v.get(k)
-                    .and_then(serde_json::Value::as_str)
-                    .map(std::borrow::Cow::Borrowed),
-            )
-        };
-        Self {
-            kind: s("type"),
-            session_kind: s("sessionKind"),
-            timestamp: s("timestamp"),
-            ai_title: s("aiTitle"),
-            custom_title: s("customTitle"),
-            forked_from: v.get("forkedFrom").cloned(),
-        }
-    }
-}
-
-/// 一格「是串就要、不是串当没有」（与 `Value::as_str` 同口径）；不是串的值整个跳过，不报错。
-#[derive(Default)]
-struct LooseStr<'a>(Option<std::borrow::Cow<'a, str>>);
-
-impl LooseStr<'_> {
-    fn is(&self, want: &str) -> bool {
-        self.0.as_deref() == Some(want)
-    }
-}
-
-impl<'de: 'a, 'a> serde::Deserialize<'de> for LooseStr<'a> {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        use serde::de::{IgnoredAny, MapAccess, SeqAccess, Visitor};
-        use std::borrow::Cow;
-        struct V<'a>(std::marker::PhantomData<&'a ()>);
-        impl<'de: 'a, 'a> Visitor<'de> for V<'a> {
-            type Value = LooseStr<'a>;
-            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                f.write_str("any JSON value")
-            }
-            fn visit_borrowed_str<E>(self, v: &'de str) -> Result<Self::Value, E> {
-                Ok(LooseStr(Some(Cow::Borrowed(v))))
-            }
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E> {
-                Ok(LooseStr(Some(Cow::Owned(v.to_owned()))))
-            }
-            fn visit_string<E>(self, v: String) -> Result<Self::Value, E> {
-                Ok(LooseStr(Some(Cow::Owned(v))))
-            }
-            fn visit_bool<E>(self, _: bool) -> Result<Self::Value, E> {
-                Ok(LooseStr(None))
-            }
-            fn visit_i64<E>(self, _: i64) -> Result<Self::Value, E> {
-                Ok(LooseStr(None))
-            }
-            fn visit_u64<E>(self, _: u64) -> Result<Self::Value, E> {
-                Ok(LooseStr(None))
-            }
-            fn visit_f64<E>(self, _: f64) -> Result<Self::Value, E> {
-                Ok(LooseStr(None))
-            }
-            fn visit_unit<E>(self) -> Result<Self::Value, E> {
-                Ok(LooseStr(None))
-            }
-            fn visit_none<E>(self) -> Result<Self::Value, E> {
-                Ok(LooseStr(None))
-            }
-            fn visit_seq<A: SeqAccess<'de>>(self, mut a: A) -> Result<Self::Value, A::Error> {
-                while a.next_element::<IgnoredAny>()?.is_some() {}
-                Ok(LooseStr(None))
-            }
-            fn visit_map<A: MapAccess<'de>>(self, mut a: A) -> Result<Self::Value, A::Error> {
-                while a.next_entry::<IgnoredAny, IgnoredAny>()?.is_some() {}
-                Ok(LooseStr(None))
-            }
-        }
-        d.deserialize_any(V(std::marker::PhantomData))
-    }
 }

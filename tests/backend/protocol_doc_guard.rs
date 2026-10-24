@@ -749,11 +749,6 @@ mod tests {
                 "typed 帧命令 `history-find` 回包 `hits[]` 的一条（`faces/history_face.rs`；生成类型从它来）",
             ),
             (
-                "history/listing_scan.rs",
-                "ListingHead",
-                "**只读不出**：扫历史清单时读 CLI 记录行的窄探针（记录文件 schema 里要的那几格），不上线",
-            ),
-            (
                 "history/listing.rs",
                 "Saved",
                 "**文件 schema**：历史清单缓存落盘那一份（数据目录 `cache/listing.json`），只本机后端自己读写，不上线",

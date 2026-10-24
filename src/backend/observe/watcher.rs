@@ -3856,7 +3856,10 @@ fn reconcile_sessions(
                 continue;
             }
             if let Some(want) = only {
-                let sid = Ro::read(p).ok().and_then(|b| parse_session_id(&b));
+                let sid = Ro::read(p)
+                    .ok()
+                    .and_then(|b| crate::agents::proc_fact(&b))
+                    .and_then(|f| f.sid);
                 if sid.as_deref() != Some(want) {
                     continue;
                 }
@@ -4623,11 +4626,6 @@ pub(crate) fn pidfile_dir(agent_home: &Path) -> PathBuf {
     crate::agents::pidfile_dir(agent_home)
 }
 
-/// 这份 pidfile 说的是后台会话（适配层翻好的 `ProcFact::background`）；读不成 ⇒ 不是。
-fn is_background(bytes: &[u8]) -> bool {
-    crate::agents::proc_fact(bytes).is_some_and(|f| f.background)
-}
-
 /// **一次性扫描**：`<agent_home>/sessions/` 下此刻活着的交互会话 `(sid, pid)` —— 判活与起步初扫同一条
 /// （pid 在 · 不是后台任务 · add-time 冒名判定过）。给 `ccm` resume 用（由 `main` 注入，control 层不引用 observe）。
 pub fn running_sessions(agent_home: &Path) -> Vec<(String, u32)> {
@@ -4641,19 +4639,12 @@ pub fn running_sessions(agent_home: &Path) -> Vec<(String, u32)> {
         .filter(|p| is_session_json(p))
         .filter_map(|p| {
             let pid = file_stem_str(&p)?.parse::<u32>().ok()?;
-            let bytes = Ro::read(&p).ok()?;
-            let sid = parse_session_id(&bytes)?;
-            (pid_alive(pid)
-                && !is_background(&bytes)
-                && add_time_check(pid, parse_procstart_ticks(&bytes), &p).is_ok())
-            .then_some((sid, pid))
+            let fact = crate::agents::proc_fact(&Ro::read(&p).ok()?)?;
+            let sid = fact.sid?;
+            (pid_alive(pid) && !fact.background && add_time_check(pid, fact.proc_start, &p).is_ok())
+                .then_some((sid, pid))
         })
         .collect()
-}
-
-/// 这份 pidfile 说的启动时刻（starttime ticks，适配层翻好的 `ProcFact::proc_start`）；读不成 / 没写 ⇒ `None`（退到兜底判法）。
-fn parse_procstart_ticks(bytes: &[u8]) -> Option<u64> {
-    crate::agents::proc_fact(bytes)?.proc_start
 }
 
 /// The pidfile's mtime as epoch seconds (None on any error → check skipped).
@@ -4663,11 +4654,6 @@ fn file_mtime_epoch(path: &Path) -> Option<u64> {
         .duration_since(std::time::UNIX_EPOCH)
         .ok()
         .map(|d| d.as_secs())
-}
-
-/// 这份 pidfile 说的会话 id（适配层翻好的 `ProcFact::sid`）。
-fn parse_session_id(bytes: &[u8]) -> Option<String> {
-    crate::agents::proc_fact(bytes)?.sid
 }
 
 /// 这台 watcher 的发帧口：**整台一份**的那几样（会话账本 · 预读还没交回的会话）＋ **每条连接一份**的投影（[`Sub`]）。

@@ -288,7 +288,7 @@ static LOADED: std::sync::Once = std::sync::Once::new();
 static DIRTY: AtomicBool = AtomicBool::new(false);
 
 /// 盘上那一份的格式：形状变了就加一（对不上 ⇒ 当没有，照记录重扫、覆盖）。
-const STORE_VERSION: u32 = 1;
+const STORE_VERSION: u32 = 2;
 
 /// 读盘上那一份的上限。
 const STORE_MAX_READ: u64 = 256 << 20;

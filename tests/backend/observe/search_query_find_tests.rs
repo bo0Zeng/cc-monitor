@@ -189,7 +189,7 @@ fn find_and_global_search_agree_on_the_same_file() {
         let mut budget = SnippetBudget::new(opts.limit);
         let q = Q.trim().to_lowercase();
         // 会话那一格来自索引：整份读进一格 `FileEntry`。
-        let mut entry = FileEntry::empty(true);
+        let mut entry = FileEntry::empty(crate::agents::claudecode::AGENT_KIND, true);
         entry
             .take(
                 None,
@@ -609,7 +609,7 @@ fn hits_carry_the_index_row_of_their_record() {
         limit: crate::history::search_rules::DEFAULT_LIMIT,
         titles: false,
     };
-    let mut entry = FileEntry::empty(true);
+    let mut entry = FileEntry::empty(crate::agents::claudecode::AGENT_KIND, true);
     entry
         .take(None, &mut Blocks::new(&data[..], 7))
         .expect("读得动");

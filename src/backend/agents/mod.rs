@@ -1192,6 +1192,58 @@ pub(crate) struct TextFace {
     pub(crate) user: fn(&serde_json::Value) -> Option<UserText>,
     /// 一条已解析的记录在消息流里落在哪张卡上（[`Lands`]）：查找 · 搜索的单位就是流里画的那几张卡。
     pub(crate) lands: fn(&serde_json::Value) -> Lands,
+    /// 一行原文（已去掉换行）⇒ 它说的会话级那几格（[`SessionLine`]）；整行解不成 ⇒ `None`。历史清单那一行的扫描只经它读原文。
+    pub(crate) line: fn(&str) -> Option<SessionLine>,
+    /// 已解析好的一条 ⇒ 同上那几格（全文搜索索引那一路）。
+    pub(crate) line_of: fn(&serde_json::Value) -> SessionLine,
+    /// 一条记录正文的形状（[`BodyShape`]，骨架索引粗估高度用）；没有正文那一格 ⇒ `None`。
+    pub(crate) shape: fn(&serde_json::Value) -> Option<BodyShape<'_>>,
+}
+
+/// 一行会话记录里会话级的那几格（[`TextFace::line`]，那一家的字段名只在适配层读）：清单行与搜索索引同一份，累计在 `history::listing_scan::SessionScan`。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct SessionLine {
+    /// 这一条是人那一侧的一句 / 回话；别的记录（标题 · 元数据）⇒ `None`。
+    pub(crate) role: Option<LineRole>,
+    /// 它是一条标题记录 ⇒ 那个标题。
+    pub(crate) title: Option<String>,
+    /// 它说这是后台分身会话。
+    pub(crate) bg: bool,
+    /// 记录时刻（毫秒；只有人说的 / 回话那两类才给）。
+    pub(crate) at_ms: Option<i64>,
+    /// 它写着的工作目录（空串当没有）。
+    pub(crate) cwd: Option<String>,
+    /// 分叉来源（源会话 id, 分叉处的消息 id；只有人说的 / 回话那两类才给）。
+    pub(crate) forked: Option<(String, String)>,
+}
+
+/// [`SessionLine::role`]：人那一侧的一句（首句摘要从这里取）· 回话。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LineRole {
+    Said,
+    Replied,
+}
+
+/// 一条记录正文的形状（[`TextFace::shape`]）：正文那几段的字（借着原文）· 折叠单元几个（工具调用 · 工具结果 · 思考 · 图片各一个）。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct BodyShape<'a> {
+    pub(crate) prose: Vec<&'a str>,
+    pub(crate) folded: u32,
+}
+
+/// `kind` 那一家：一行原文的会话级那几格（[`TextFace::line`]）。那一家没有文本面 / 解不成 ⇒ `None`。
+pub(crate) fn session_line(kind: &str, text: &str) -> Option<SessionLine> {
+    text_face(kind).and_then(|t| (t.line)(text))
+}
+
+/// `kind` 那一家：已解析好的一条的会话级那几格（[`TextFace::line_of`]）。那一家没有文本面 ⇒ 全空。
+pub(crate) fn session_line_of(kind: &str, v: &serde_json::Value) -> SessionLine {
+    text_face(kind).map(|t| (t.line_of)(v)).unwrap_or_default()
+}
+
+/// `kind` 那一家：一条记录正文的形状（[`TextFace::shape`]）。那一家没有文本面 / 没有正文 ⇒ `None`。
+pub(crate) fn body_shape<'a>(kind: &str, v: &'a serde_json::Value) -> Option<BodyShape<'a>> {
+    text_face(kind).and_then(|t| (t.shape)(v))
 }
 
 /// 一条记录在消息流里落在哪（[`TextFace::lands`]，判法是各家的格式知识；界面照它跳、不自己推）。

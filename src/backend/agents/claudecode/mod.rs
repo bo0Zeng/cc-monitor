@@ -59,6 +59,8 @@ pub(crate) mod usage;
 // 子运行（子 agent）的形状：对账键 · 归属 · 派出链接 · 记录住址 · 请求自报身份的头。
 pub(crate) mod runs;
 pub(crate) mod schema;
+// 一行记录里通用层要的会话级那几格 · 正文的形状（清单 · 全文搜索 · 骨架索引共用这一份读法）。
+pub(crate) mod session_line;
 pub(crate) mod sign_in;
 pub(crate) mod steps;
 // 记录文本：正文 / 工具内容怎么抽 · CLI 注入怎么剥（原共享 crate `search-core` 的 Claude 那一半）。
@@ -271,6 +273,9 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
         tool: text::extract_tool_text,
         user: text::user_text_of_record,
         lands: record_of::lands_of,
+        line: session_line::line_of,
+        line_of: session_line::line_of_value,
+        shape: session_line::shape_of,
     }),
     delete: Some(super::SessionDelete {
         locate: paths::session_file_for_delete,

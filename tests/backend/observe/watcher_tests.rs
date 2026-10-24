@@ -954,14 +954,16 @@ fn is_jsonl_and_is_session_json_classify_correctly() {
     assert!(!is_session_json(Path::new("/x/1234.jsonl")));
 }
 
+/// pidfile 的字节只经适配层翻成一行（`agents::proc_fact`）：会话 id 那一格。
 #[test]
 fn parse_session_id_extracts_the_field() {
+    let sid = |b: &[u8]| crate::agents::proc_fact(b).and_then(|f| f.sid);
     let blob = br#"{"sessionId":"abc-123","pid":4242}"#;
-    assert_eq!(parse_session_id(blob), Some("abc-123".to_string()));
+    assert_eq!(sid(blob), Some("abc-123".to_string()));
     // Missing field / wrong type / garbage → None.
-    assert_eq!(parse_session_id(br#"{"pid":1}"#), None);
-    assert_eq!(parse_session_id(br#"{"sessionId":5}"#), None);
-    assert_eq!(parse_session_id(b"not json"), None);
+    assert_eq!(sid(br#"{"pid":1}"#), None);
+    assert_eq!(sid(br#"{"sessionId":5}"#), None);
+    assert_eq!(sid(b"not json"), None);
 }
 
 #[test]
@@ -2072,6 +2074,7 @@ fn the_record_path_reaches_the_client_once_the_record_appears_after_the_announce
 
 #[test]
 fn background_reads_through_the_adapter() {
+    let is_background = |b: &[u8]| crate::agents::proc_fact(b).is_some_and(|f| f.background);
     assert!(
         is_background(br#"{"sessionId":"s","kind":"bg","jobId":"j"}"#),
         "真实 bg 样本形态"
@@ -2136,6 +2139,7 @@ fn tolerance_exact_boundary() {
 
 #[test]
 fn parse_procstart_ticks_variants() {
+    let parse_procstart_ticks = |b: &[u8]| crate::agents::proc_fact(b).and_then(|f| f.proc_start);
     assert_eq!(
         parse_procstart_ticks(br#"{"sessionId":"abc","procStart":"12285972"}"#),
         Some(12285972),

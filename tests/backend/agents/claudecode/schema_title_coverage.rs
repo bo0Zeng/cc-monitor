@@ -11,8 +11,8 @@
 ///
 /// ⇒ 本条把「谁承载标题」这件事变成可机检的：
 /// 人群 = `agents/claudecode/schema.rs`（原 monitor `messages.rs`）的 `JsonlRecord` 里**带 `*title` 字段**的变体（今天 2 个）；
-/// 性质 = 它必须被标题抽取段接住 ——那一段今天住后端 `history/listing_scan.rs::SessionScan::absorb`（`history/listing.rs::analyze_session` 转调）
-/// （本机与远端同一个函数），按记录的线上类型名分臂。
+/// 性质 = 它必须被标题抽取段接住 ——那一段今天住适配层 `agents/claudecode/session_line.rs` 的 `Head::line`
+/// （历史清单那一行与全文搜索索引同一个扫描器 `history/listing_scan.rs::SessionScan` 经它读；本机与远端同一个函数），按记录的线上类型名分臂。
 /// 加第三种标题记录而忘了接 ⇒ 红。
 ///
 /// ⚠ 人群刻意**不按变体名**取（`*Title` 结尾那种）——名字是可以随便起的，
@@ -67,14 +67,12 @@ fn every_title_bearing_record_is_consumed_by_the_extractor() {
         bearers.len()
     );
 
-    let backend = include_str!("../../../../src/backend/history/listing_scan.rs");
-    let at = guard_core::find_pinned(
-        backend,
-        "pub(super) fn absorb(&mut self, kind: &str, line: &str) {",
-    )
-    .unwrap_or_else(|e| panic!("后端逐行吸收记录的那个方法不是恰好一处：{e}"));
+    let backend = include_str!("../../../../src/backend/agents/claudecode/session_line.rs");
+    let at = guard_core::find_pinned(backend, "fn line(self) -> SessionLine {")
+        .unwrap_or_else(|e| panic!("适配层翻一行会话级那几格的那个方法不是恰好一处：{e}"));
     let body_end = backend[at + 1..]
-        .find("\n    pub(super) fn ")
+        .find("\n    fn ")
+        .or_else(|| backend[at + 1..].find("\n}\n"))
         .map_or(backend.len(), |k| at + 1 + k);
     let here = &backend[at..body_end];
     let missing: Vec<String> = bearers
@@ -89,7 +87,7 @@ fn every_title_bearing_record_is_consumed_by_the_extractor() {
         .collect();
     assert!(
         missing.is_empty(),
-        "这些记录类型带 `*title` 字段，却没被后端会话行（`SessionScan::absorb`）的标题抽取接住：{missing:?}\n\
+        "这些记录类型带 `*title` 字段，却没被适配层一行会话级那几格（`session_line.rs` 的 `Head::line`）的标题抽取接住：{missing:?}\n\
              ⚠ 后果不是报错，是**标题静默消失** —— 会话列表上那一行变回默认名，\n\
              而没有任何判据会红。这件事真发生过一次（`ai-title` 改名成 `custom-title`），\n\
              那次是靠人发现的。\n\

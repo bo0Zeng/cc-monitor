@@ -138,6 +138,14 @@ mod tests {
     /// ⇒ 两个不同的问题各问了一次同一个事实，删掉任一张都会漏掉另一张管的那一半。
     const FROZEN_COMPAT: &[(&str, &str, &str, &str)] = &[];
 
+    /// **整棵进表的子树**（相对 `src/`，按前缀认）：其下每一份 `.rs` 都是通用层，**新长出来的文件从第一天就在扫**
+    ///（[`CORE_FILES`] 是逐条的，新文件不进表就不扫 —— `KY6` 那个洞；整棵进表把它堵上）。
+    ///
+    /// 这三块是「读会话」的核心：记录怎么读成清单行 · 搜索索引 · 骨架索引 · 判活 · 起会话 / 恢复。
+    /// 它们只认适配层交来的那几种行（进程状态那一份 `ProcFact` · 一行记录里会话级那几格），**不认那一家的文件格式**。
+    /// 同 [`CORE_FILES`]：只增不减（`the_core_file_list_only_grows` 钉住）。
+    const CORE_TREES: &[&str] = &["observe/", "history/", "control/session_"];
+
     fn src_dir() -> PathBuf {
         guard_core::addr::backend_src_root()
     }
@@ -155,6 +163,54 @@ mod tests {
             (format!("sessi{}", "ons/"), "会话目录布局"),
             (format!("CLAUDE_CONFIG{}", "_DIR"), "账号环境变量"),
         ]
+    }
+
+    /// 针之二：**那一家原文里的字段名**（进程状态文件与会话记录），按带引号的字面量认、大小写照原样 ——
+    /// 读字段只有 `get("…")` · `["…"]` · `rename = "…"` · `json!` 键这几形，都带引号；
+    /// 不带引号的同名标识符（线上类型 `ForkedFrom` · 蛇形的 `ai_title`）不是在读原文，不算。
+    ///
+    /// 通用层要这些事实，只经适配层交来的那一种行（`ProcFact` · `SessionLine`）拿；字段叫什么只住 `agents/<名>/`。
+    fn field_needles() -> Vec<(String, &'static str)> {
+        vec![
+            (format!("\"proc{}\"", "Start"), "进程状态文件的字段名"),
+            (format!("\"waiting{}\"", "For"), "进程状态文件的字段名"),
+            (format!("\"statusUpdated{}\"", "At"), "进程状态文件的字段名"),
+            (format!("\"ai{}\"", "Title"), "会话记录的字段名"),
+            (format!("\"session{}\"", "Kind"), "会话记录的字段名"),
+            (format!("\"forked{}\"", "From"), "会话记录的字段名"),
+        ]
+    }
+
+    /// 这一行扎到哪一根针（两套针各自的认法）；一根都没扎到 ⇒ `None`。
+    fn hit_of(line: &str) -> Option<&'static str> {
+        let low = line.to_lowercase();
+        needles()
+            .into_iter()
+            .find(|(n, _)| low.contains(&n.to_lowercase()))
+            .or_else(|| {
+                field_needles()
+                    .into_iter()
+                    .find(|(n, _)| line.contains(n.as_str()))
+            })
+            .map(|(_, why)| why)
+    }
+
+    /// 通用层今天的全部文件：[`CORE_FILES`] 逐条的 ＋ [`CORE_TREES`] 每棵底下的每一份 `.rs`（去重、排序）。
+    /// 每棵树都得至少认出一份（认不出 ⇒ 前缀写错了，那一棵在空转）。
+    fn core_files() -> Vec<String> {
+        let all = guard_core::files_by_extension(&src_dir(), "rs");
+        let mut out: Vec<String> = CORE_FILES.iter().map(|f| (*f).to_string()).collect();
+        for tree in CORE_TREES {
+            let under: Vec<&String> = all.iter().filter(|f| f.starts_with(tree)).collect();
+            assert!(
+                !under.is_empty(),
+                "通用层子树 `{tree}` 底下一份 `.rs` 都没认出 —— 前缀写错了 / 目录挪走了，那一棵此刻在空转"
+            );
+            out.extend(under.into_iter().cloned());
+        }
+        out.sort();
+        out.dedup();
+        out
     }
 
     /// 一行是不是**真代码**（剥 `//` 注释）。
@@ -178,28 +234,26 @@ mod tests {
         // `文件:行号:命中的词:那一行` —— `S1-Y3` 要的是**逐条可核**，不是一个总数：
         // 只报数字的话，`S2`/`S3` 搬的时候没法对照，人会去改数字而不是搬代码。
         let mut hits: Vec<String> = Vec::new();
-        for rel in CORE_FILES {
+        let files = core_files();
+        for rel in &files {
             let p = root.join(rel);
             let Ok(src) = std::fs::read_to_string(&p) else {
                 continue; // 文件被挪走 ⇒ 下面那条「每一份都读到了」会红，比在这里 panic 诊断更清楚
             };
             scanned += 1;
             for (no, line) in production_lines(&src) {
-                let low = line.to_lowercase();
-                for (n, why) in needles() {
-                    if low.contains(&n.to_lowercase()) {
-                        hits.push(format!("  {rel}:{no}  [{why}] {}", line.trim()));
-                        break; // 一行只报一次，免得同一行刷屏
-                    }
+                // 一行只报一次（扎到的第一根针），免得同一行刷屏
+                if let Some(why) = hit_of(&line) {
+                    hits.push(format!("  {rel}:{no}  [{why}] {}", line.trim()));
                 }
             }
         }
         assert_eq!(
             scanned,
-            CORE_FILES.len(),
+            files.len(),
             "通用层清单 {} 份里只读到 {scanned} 份 —— \
              取法坏了（路径写错？文件挪走了？），本断言此刻有一部分在**空转**",
-            CORE_FILES.len()
+            files.len()
         );
         // 冻结兼容 `FROZEN_COMPAT` 登记过的挑出来；剩下的才是**新增违规**（欠账表数到 0 删了，新冒出一处直接红）。
         let (known, unknown): (Vec<String>, Vec<String>) = hits.into_iter().partition(|h| {
@@ -280,6 +334,25 @@ mod tests {
             "stream/inbound/registry/machine.rs",
             "stream/inbound/registry/terminals.rs",
         ];
+        // 整棵进表的子树（[`CORE_TREES`]），同上只增不减、两张表同轮改。
+        const EVER_DECLARED_TREES: &[&str] = &[
+            // A2-2 加入（10-24）：读会话的核心三块整棵进表
+            "observe/",
+            "history/",
+            "control/session_",
+        ];
+        let gone: Vec<&str> = EVER_DECLARED_TREES
+            .iter()
+            .filter(|t| !CORE_TREES.contains(t))
+            .copied()
+            .collect();
+        assert!(
+            gone.is_empty() && CORE_TREES.len() == EVER_DECLARED_TREES.len(),
+            "通用层子树清单变了：少了 {gone:?}，或多了没追加进棘轮表的（{} vs {}）—— \
+             两张表必须同轮改，删一棵是把判据的覆盖面缩小",
+            CORE_TREES.len(),
+            EVER_DECLARED_TREES.len()
+        );
         let missing: Vec<&str> = EVER_DECLARED_CORE
             .iter()
             .filter(|f| !CORE_FILES.contains(f))
@@ -349,6 +422,20 @@ mod tests {
                 .any(|(n, _)| low.contains(&n.to_lowercase()))
         });
         assert!(found, "判定认不出合成的违规样本 —— 正题那条此刻是空转的");
+
+        // 字段名那一套针：读原文字段（带引号）要扎到；同名的线上类型 / 蛇形标识符不扎。
+        let reads = format!("let t = v.get(\"ai{}\");", "Title");
+        assert_eq!(
+            hit_of(&reads),
+            Some("会话记录的字段名"),
+            "读原文字段名没认出来"
+        );
+        let typed = "let f = cmd_wire::listing::ForkedFrom { label }; let t = row.ai_title;";
+        assert_eq!(
+            hit_of(typed),
+            None,
+            "把线上类型 / 蛇形标识符误判成读原文字段"
+        );
         assert!(!needles().is_empty(), "针表空了 ⇒ 正题恒绿");
 
         // 注释里的写法**不算**（判据的语料不许混进散文）
