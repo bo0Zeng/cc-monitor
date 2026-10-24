@@ -1665,13 +1665,6 @@ pub fn stop_local_backend() -> Result<crate::remote_resident::StopAnswer, Said> 
 // 生产段，各条扫生产段的守卫跟着去扫测试代码。
 // `K-R75`（09-12）把那一步换成**按形状**剥可见性修饰（`guard_core::strip_visibility`）之后
 // **那个理由不再成立** ⇒ 绕道拆掉，模块写回它本来的样子。
-//
-// 🔴 **上一版这里指的是一个裸行号**（`guard-core/src/lib.rs` 加一个数字）——
-//   那份文件 09-12 一动那个数就漂了，而**漂了没有任何东西会说话**（本区 `[J5 审计正文]` 那一族）。
-//   ⇒ 今天指的是**函数名 ＋ 一段机检着的逐字校验位**，不是行号：剥法住
-//   `src/common/guard-core/src/lib.rs` 的 `test_module_ranges`；校验位（那一行的原文）
-//   **只有一个家** —— 下面 [`tests::the_strip_rule_this_file_leans_on_is_still_on_disk`]
-//   里那个 `PIN`，它在盘上找不着就当场红。
 // ─── 本机那一台的状态成品 ───────────────────────────────────────────────────────
 // 远端各台的成品由本机后端定（`deploy::machine`）；本机后端没起来时没人能替它说话（起没起 · 口上占着谁是宿主的事实），
 // 本机那一行由这里交事实、照同一张表出（`deploy_contract::machine::local`）。

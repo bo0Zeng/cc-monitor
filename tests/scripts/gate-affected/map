@@ -92,7 +92,6 @@ src/frontend/ui/**              -      CSS / 图标 / JSON：读它们的判据�
 src/comms/ui/**                 coverage  ts-rs 生成的 TS，前端 import 它
 tests/frontend/ui/**            coverage  vitest 本体：改它就改了覆盖率
 tests/copy/**                   coverage  文案表的 vitest 与夹具
-tests/naming/**                 coverage  命名判据（vitest）
 tests/shots/**                  coverage,shots  截图场景（TS，tsc 恒跑；vitest 有几份读它）；无头壳的例子源（real/shell_main.rs）与台架编它的那一条也在这
 tests/test-support/**           coverage  vitest 共用的辅助
 

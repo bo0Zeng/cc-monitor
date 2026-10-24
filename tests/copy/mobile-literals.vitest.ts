@@ -4,9 +4,9 @@
  *
  * # 为什么
  *
- * 手机、桌面、后端读同一张 `src/shared/copy/table.json`。桌面那一半由普查 ＋ 待办表（`copy-ledgers.vitest.ts` 的 CP2b · CP2c）
+ * 手机、桌面、后端读同一张 `src/shared/copy/table.json`。桌面那一半由普查（`copy-ledgers.vitest.ts` 的 CP2：全仓对外字面量零条）
  * 钉住「抽完的文件不许长回字面量」；手机抽完了（待办表直接是空的），就不另起待办表，直接判零。
- * 口径与桌面那两条一致：日志不对外（桌面放过 console / tracing）、前置条件的报错是程序员错（桌面放过 panic / assert），
+ * 口径与桌面那一条一致：日志不对外（桌面放过 console / tracing）、前置条件的报错是程序员错（桌面放过 panic / assert），
  * 其余对外的字只从表里来。
  *
  * # 判什么
