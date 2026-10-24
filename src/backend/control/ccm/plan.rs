@@ -571,7 +571,7 @@ pub(crate) fn discover_bus_scripts() -> Option<String> {
     }
 }
 
-use crate::accounts::manage::model::Row as Account;
+use crate::accounts::manage::model::OnDiskAccount as Account;
 pub(crate) use crate::accounts::manage::scan::ManifestRead;
 
 /// 读这台的账号库清单：只经 `accounts/manage` 那一个读口（剥 BOM · 读取上限 · 版本闸与账号页同一份）。

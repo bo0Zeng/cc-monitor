@@ -915,7 +915,7 @@ const CCM_TMUX_EXCEPTIONS: &[(&str, bool, &str)] = &[
 /// 🔴 ccm 面：真靠 tmux 的能力（真解析器 ＋ 真计划现推）∪ 登记的例外 == `CCM_TMUX_CARRIED`。
 #[test]
 fn every_ccm_capability_that_rides_tmux_is_declared_tmux_carried() {
-    use crate::accounts::manage::model::Row as Account;
+    use crate::accounts::manage::model::OnDiskAccount as Account;
     use crate::ccm_line::argv::{parse, Parsed};
     use crate::control::ccm::plan::{build, tests::library_of, Env, Plan};
     use std::collections::BTreeSet;

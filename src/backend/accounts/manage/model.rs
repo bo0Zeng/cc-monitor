@@ -61,35 +61,52 @@ pub(crate) struct OnDisk {
     /// 盘上 `updatedAt` 那一格。
     pub updated_at: Option<String>,
     /// 照清单顺序的每一条号（含账号 0）。
-    pub rows: Vec<Row>,
+    pub rows: Vec<OnDiskAccount>,
 }
 
 /// 盘上一条号原样读出来的那几格。缺 `name` · 那几格类型不对 · `configDir` 过不了配置目录那一关（任一平台形：Windows 上的
 /// `ccm --account` 也读这份）⇒ 这一条不列（写侧那一面照旧原样留着它）。
-#[derive(Debug, Clone, PartialEq, Default, serde::Deserialize)]
-pub(crate) struct Row {
+#[derive(Debug, Clone, PartialEq, Default)]
+pub(crate) struct OnDiskAccount {
     pub name: String,
-    #[serde(default)]
     pub email: Option<String>,
     /// 缺席 = 账号 0 =「不设 `CLAUDE_CONFIG_DIR`」（结构性认：看这个键在不在，不认名字）。空串不算缺席（过不了那一关）。
-    #[serde(rename = "configDir", default)]
     pub config_dir: Option<String>,
-    #[serde(rename = "isDefault", default)]
     pub is_default: bool,
     /// 盘上 `mode` 原样（缺席 ⇒ 读的那一处按 `isolated`）。
-    #[serde(default)]
     pub mode: Option<String>,
     /// 盘上 `authKind` 原样（缺席 = 订阅号；分类规则只住 `acct_core::auth_kind_from_manifest`）。
-    #[serde(rename = "authKind", default)]
     pub auth_kind: Option<String>,
 }
 
-fn row_of(item: &Value) -> Option<Row> {
-    let r = serde_json::from_value::<Row>(item.clone()).ok()?;
-    r.config_dir
+fn on_disk_account_of(item: &Value) -> Option<OnDiskAccount> {
+    let o = item.as_object()?;
+    // 可缺的文本格：缺席 / null ⇒ `None`；是别的类型 ⇒ 这一条不列。
+    let text = |k: &str| -> Option<Option<String>> {
+        match o.get(k) {
+            None | Some(Value::Null) => Some(None),
+            Some(Value::String(s)) => Some(Some(s.clone())),
+            Some(_) => None,
+        }
+    };
+    let config_dir = text("configDir")?;
+    if config_dir
         .as_deref()
-        .is_none_or(acct_core::config_dir_ok)
-        .then_some(r)
+        .is_some_and(|c| !acct_core::config_dir_ok(c))
+    {
+        return None;
+    }
+    Some(OnDiskAccount {
+        name: o.get("name")?.as_str()?.to_string(),
+        email: text("email")?,
+        config_dir,
+        is_default: match o.get("isDefault") {
+            None => false,
+            Some(v) => v.as_bool()?,
+        },
+        mode: text("mode")?,
+        auth_kind: text("authKind")?,
+    })
 }
 
 /// 顶层本模块认得（每次写都重算或原样处置）的键。
@@ -175,7 +192,7 @@ impl Manifest {
             }
         }
         if let Some(arr) = obj.get("accounts").and_then(Value::as_array) {
-            m.on_disk.rows = arr.iter().filter_map(row_of).collect();
+            m.on_disk.rows = arr.iter().filter_map(on_disk_account_of).collect();
             for item in arr {
                 if is_zero_entry(item) {
                     m.zero_color = color_of(item);
