@@ -2344,12 +2344,15 @@ pub(crate) fn relay_headers() -> Vec<&'static str> {
     v
 }
 
-/// 带回的头里名为 `name` 的那一个的值（头名不分大小写）。
+/// 带回的头里名为 `name` 的那一个的值（头名不分大小写；中转那一侧同名的已并成一个值）。
+/// 扫的是这一发请求的头，不是注册表。
 pub(crate) fn head_value<'h, V: AsRef<str>>(heads: &'h [(&str, V)], name: &str) -> Option<&'h str> {
-    heads
-        .iter()
-        .find(|(k, _)| k.eq_ignore_ascii_case(name))
-        .map(|(_, v)| v.as_ref())
+    for (k, v) in heads {
+        if k.eq_ignore_ascii_case(name) {
+            return Some(v.as_ref());
+        }
+    }
+    None
 }
 
 /// 这一发请求（中转带回的那几个头）说的是不是扩展上下文：有一家登记的 [`RelayHead::Wide`] 那个头里有那一项。
@@ -2399,17 +2402,20 @@ pub(crate) fn stream_families() -> Vec<StreamFamily> {
         .iter()
         .filter_map(|a| {
             let u = a.upstream.as_ref()?;
-            Some(StreamFamily {
+            let mut f = StreamFamily {
                 face: u.stream?,
-                run: u.relay_heads.iter().find_map(|h| match *h {
-                    RelayHead::Run(n) => Some(n),
-                    _ => None,
-                }),
-                side: u.relay_heads.iter().find_map(|h| match *h {
-                    RelayHead::Class(c) => Some(c),
-                    _ => None,
-                }),
-            })
+                run: None,
+                side: None,
+            };
+            // 这一家自己那几个头里，自报运行的与分类的各是哪一个。
+            for h in u.relay_heads {
+                match *h {
+                    RelayHead::Run(n) => f.run = Some(n),
+                    RelayHead::Class(c) => f.side = Some(c),
+                    RelayHead::Wide { .. } => {}
+                }
+            }
+            Some(f)
         })
         .collect()
 }
