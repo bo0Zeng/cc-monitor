@@ -29,3 +29,14 @@ pub(crate) fn is_same_live_process(
         _ => true,
     }
 }
+
+/// 心跳那一维（#43）：进程在、身份也对，可它挂住了 —— 上面那张表看不出来。最后一次动静 `last` 距此刻 `now` 还不到 `within`
+/// ⇒ 还听得见它（真）；到了 ⇒ 冻住（假）。`last` 在 `now` 之后（钟往回拨 · 文件时刻比此刻新）⇒ 照「听得见」，不凭一个说不通的钟判它挂住。
+/// 哪一态要心跳、什么算动静由调用方定；这里只管时刻。
+pub(crate) fn heard_within(
+    last: std::time::SystemTime,
+    now: std::time::SystemTime,
+    within: std::time::Duration,
+) -> bool {
+    now.duration_since(last).map_or(true, |age| age < within)
+}

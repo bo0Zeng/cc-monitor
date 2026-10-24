@@ -1438,6 +1438,8 @@ fn the_session_name_follows_the_records_even_when_nobody_watches() {
                 ..Default::default()
             },
             path: Some(path.to_string_lossy().into_owned()),
+            beat: std::time::SystemTime::now(),
+            frozen: false,
         },
     );
     watch_sessions(
@@ -4783,5 +4785,189 @@ fn the_outbound_channel_holds_at_most_its_byte_cap() {
     assert!(
         matches!(rx.try_recv(), Ok(Frame::Overflow(_))),
         "排空后下一帧之前先出 Overflow"
+    );
+}
+
+// === #43：心跳冻结、进程还在 ⇒ 不当它在跑 ===
+
+/// 本测试进程当会话进程：pidfile 写 `status`、修改时刻拨到 `ago` 之前；`projects/` 下没有记录。
+#[cfg(target_os = "linux")]
+fn frozen_fixture(
+    tag: &str,
+    sid: &str,
+    status: &str,
+    ago: std::time::Duration,
+) -> (std::path::PathBuf, std::path::PathBuf, ReaderState) {
+    let dir = std::env::temp_dir().join(format!("ccm-beat-{tag}-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::create_dir_all(dir.join("projects").join("-p")).unwrap();
+    let pid = std::process::id();
+    let ticks = proc_starttime(pid).expect("own starttime");
+    let pidfile = dir.join(format!("{pid}.json"));
+    std::fs::write(
+        &pidfile,
+        format!(
+            r#"{{"pid":{pid},"sessionId":"{sid}","cwd":"/p","procStart":"{ticks}","status":"{status}"}}"#
+        ),
+    )
+    .unwrap();
+    let then = std::time::SystemTime::now() - ago;
+    std::fs::File::options()
+        .write(true)
+        .open(&pidfile)
+        .unwrap()
+        .set_modified(then)
+        .unwrap();
+    let state = ReaderState::new(dir.join("projects"));
+    (dir, pidfile, state)
+}
+
+#[cfg(target_os = "linux")]
+fn face_of(f: &Frame) -> Option<&crate::wire::SessionFace> {
+    match f {
+        Frame::SessionAdded(a) => Some(&a.face),
+        Frame::SessionStatus(s) => Some(&s.face),
+        _ => None,
+    }
+}
+
+/// 宣告时 pidfile 说在跑、可它与记录已经 16 分钟没动静 ⇒ 宣告那一帧不说在跑（状态不明）。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_busy_session_silent_past_the_window_is_not_announced_as_working() {
+    use crate::observe::runs::STALE_AFTER;
+    let _iso = crate::control::identity_tag::door::isolate();
+    let minute = std::time::Duration::from_secs(60);
+    let (dir, pidfile, mut state) = frozen_fixture("old", "hb-old", "busy", STALE_AFTER + minute);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let mut sink = FrameSink::new(tx);
+    process_session_added(&pidfile, &mut state, &mut sink);
+    let added = rx.try_recv().expect("宣告那一帧");
+    assert_eq!(
+        face_of(&added).map(|f| f.live),
+        Some(crate::wire::FaceLive::Yes { activity: None }),
+        "心跳停了 16 分钟、进程还在 ⇒ 不是在跑：{added:?}"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 宣告时新鲜 ⇒ 在跑；此刻拨过时限再判 ⇒ 一帧不带 activity；记录写一行 ⇒ 再一帧回到在跑。等人的那条不判。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_working_session_goes_unclear_when_its_beat_stops_and_back_when_it_writes() {
+    use crate::agents::SessionActivity;
+    use crate::observe::runs::STALE_AFTER;
+    let _iso = crate::control::identity_tag::door::isolate();
+    let second = std::time::Duration::from_secs(1);
+    let (dir, pidfile, mut state) = frozen_fixture("live", "hb-live", "busy", second);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let mut sink = FrameSink::new(tx);
+    process_session_added(&pidfile, &mut state, &mut sink);
+    let added = rx.try_recv().expect("宣告那一帧");
+    assert_eq!(
+        face_of(&added).map(|f| f.live),
+        Some(crate::wire::FaceLive::Yes {
+            activity: Some(SessionActivity::Working)
+        }),
+        "一秒前还有动静 ⇒ 在跑"
+    );
+    while rx.try_recv().is_ok() {}
+    let now = std::time::SystemTime::now();
+    judge_beats(&mut state, &mut sink, now + STALE_AFTER - 10 * second);
+    assert!(rx.try_recv().is_err(), "还没到时限 ⇒ 不发帧");
+    judge_beats(&mut state, &mut sink, now + STALE_AFTER + second);
+    let f = rx.try_recv().expect("过了时限 ⇒ 发一帧 session_status");
+    assert!(matches!(f, Frame::SessionStatus(_)), "{f:?}");
+    assert_eq!(
+        face_of(&f).map(|f| f.live),
+        Some(crate::wire::FaceLive::Yes { activity: None })
+    );
+    assert_eq!(
+        face_of(&f).map(|f| f.dot),
+        Some(crate::wire::SessionDot::Idle),
+        "不画在跑那颗点"
+    );
+    assert_eq!(
+        state
+            .sessions
+            .values()
+            .filter(|e| e.frozen)
+            .map(|e| e.sid.clone())
+            .collect::<std::collections::BTreeSet<_>>(),
+        std::collections::BTreeSet::from(["hb-live".to_string()]),
+        "冻住的名单（交给清单那一半的那一份）"
+    );
+    judge_beats(&mut state, &mut sink, now + STALE_AFTER + 2 * second);
+    assert!(rx.try_recv().is_err(), "已经说过冻住 ⇒ 不再发");
+    // 记录写了一行 ⇒ 有动静了 ⇒ 回到 pidfile 说的那一态。
+    let rec = dir.join("projects").join("-p").join("hb-live.jsonl");
+    std::fs::write(&rec, "{\"type\":\"system\",\"uuid\":\"u1\"}\n").unwrap();
+    process_jsonl(&rec, &mut state, &mut sink);
+    let back: Vec<Frame> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+    assert!(
+        back.iter().filter_map(face_of).last().map(|f| f.live)
+            == Some(crate::wire::FaceLive::Yes {
+                activity: Some(SessionActivity::Working)
+            }),
+        "记录一写 ⇒ 最后一帧回到在跑：{back:?}"
+    );
+    assert!(
+        !state.sessions.values().any(|e| e.frozen),
+        "冻住那一格也撤掉"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 等人 · 有在跑的子运行：本来就安静 / 有别处的动静 ⇒ 过了时限也照 pidfile 说的。
+#[cfg(target_os = "linux")]
+#[test]
+fn waiting_sessions_and_ones_with_running_children_are_not_judged_frozen() {
+    use crate::agents::SessionActivity;
+    use crate::observe::runs::STALE_AFTER;
+    let _iso = crate::control::identity_tag::door::isolate();
+    let hour = std::time::Duration::from_secs(3600);
+    let (dir, pidfile, mut state) = frozen_fixture("wait", "hb-wait", "waiting", hour);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let mut sink = FrameSink::new(tx);
+    process_session_added(&pidfile, &mut state, &mut sink);
+    let added = rx.try_recv().expect("宣告那一帧");
+    assert_eq!(
+        face_of(&added).map(|f| f.live),
+        Some(crate::wire::FaceLive::Yes {
+            activity: Some(SessionActivity::NeedsYou)
+        })
+    );
+    while rx.try_recv().is_ok() {}
+    judge_beats(&mut state, &mut sink, std::time::SystemTime::now() + hour);
+    assert!(rx.try_recv().is_err(), "等人那一态安静是常态 ⇒ 不判");
+    std::fs::remove_dir_all(&dir).ok();
+
+    let (dir, pidfile, mut state) =
+        frozen_fixture("kid", "hb-kid", "busy", std::time::Duration::from_secs(1));
+    crate::observe::runs::testing::seed_running(&state.book, "hb-kid", "agent-1", None);
+    process_session_added(&pidfile, &mut state, &mut sink);
+    while rx.try_recv().is_ok() {}
+    judge_beats(
+        &mut state,
+        &mut sink,
+        std::time::SystemTime::now() + STALE_AFTER + std::time::Duration::from_secs(1),
+    );
+    assert!(rx.try_recv().is_err(), "子运行还在跑 ⇒ 主运行不算冻住");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 纯判定：时限两侧各一格、正好到时限算冻住、钟往回拨不算。
+#[test]
+fn heard_within_truth_table() {
+    use crate::platform::liveness::heard_within;
+    let t0 = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000);
+    let w = std::time::Duration::from_secs(900);
+    let s = std::time::Duration::from_secs(1);
+    assert!(heard_within(t0, t0 + w - s, w));
+    assert!(!heard_within(t0, t0 + w, w), "正好到时限 ⇒ 冻住");
+    assert!(!heard_within(t0, t0 + w + s, w));
+    assert!(
+        heard_within(t0 + s, t0, w),
+        "最后动静在此刻之后（钟往回拨）⇒ 不算冻住"
     );
 }
