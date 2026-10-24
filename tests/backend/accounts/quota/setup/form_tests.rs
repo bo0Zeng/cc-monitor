@@ -3,6 +3,11 @@
 use super::*;
 use serde_json::json;
 
+/// 一天里的分钟写成界面交来的那种字（`H:MM`）。
+fn hm(m: u64) -> String {
+    format!("{}:{:02}", m / 60, m % 60)
+}
+
 /// 升级材料「离重置近的权重高」那一份声明（用量上限 · 上限类型 · 权重容差 · 强制切换阈值 · 耗尽后启用 · 启用延迟 · 单次用量上限）：五种格都在里面。
 fn full_form() -> Vec<Cell> {
     super::super::script::parse(super::super::upgrade::material(1))
@@ -269,7 +274,7 @@ fn an_edit_is_applied_where_the_form_says() {
         row,
         window: "5h".into(),
         at,
-        seg: g.map(|(from, to, v)| RotSeg { from, to, v }),
+        seg: g.map(|(from, to, v)| RotSeg { from: hm(from), to: hm(to), v }),
     };
     let painted = ap(seg(Some(1), None, Some((0, 600, 50.0)))).expect("ok");
     assert_eq!(
@@ -346,8 +351,8 @@ fn an_edit_is_applied_where_the_form_says() {
             window: "5h".into(),
             at: None,
             seg: Some(RotSeg {
-                from: 0,
-                to: 60,
+                from: "0".into(),
+                to: "1".into(),
                 v: 1.0,
             }),
         },
@@ -357,8 +362,8 @@ fn an_edit_is_applied_where_the_form_says() {
             window: "5h".into(),
             at: None,
             seg: Some(RotSeg {
-                from: 0,
-                to: 2000,
+                from: "0".into(),
+                to: "2000".into(),
                 v: 1.0,
             }),
         },
@@ -457,7 +462,7 @@ fn a_later_window_follows_the_first_and_segments_are_edited_one_by_one() {
         row: Some(0),
         window: "5h".into(),
         at,
-        seg: g.map(|(from, to, v)| RotSeg { from, to, v }),
+        seg: g.map(|(from, to, v)| RotSeg { from: hm(from), to: hm(to), v }),
     };
     let segs = |v: &Value| v["accounts"][0]["caps"]["5h"].clone();
     assert_eq!(
@@ -490,4 +495,46 @@ fn a_later_window_follows_the_first_and_segments_are_edited_one_by_one() {
     );
     assert!(apply(&f, &s, &seg(Some(5), None)).is_err());
     assert!(apply(&f, &s, &seg(None, Some((600, 600, 1.0)))).is_err());
+}
+
+/// ★ 分段交来的是原样的字，钟点只在这里认一种：`20:30` · `2030` · `20` · `9` 都认，`24:00` ⇒ 一整天的末尾；
+/// 小时过 24 · 分钟过 59 · 过了 24:00 · 空 · 不是数 ⇒ 不认（那一段不改）。
+#[test]
+fn the_clock_words_are_read_in_one_place() {
+    for (text, want) in [
+        ("20:30", Some(1230)),
+        ("2030", Some(1230)),
+        ("20", Some(1200)),
+        ("9", Some(540)),
+        (" 7:05 ", Some(425)),
+        ("24:00", Some(1440)),
+        ("0", Some(0)),
+        ("24:30", None),
+        ("25", None),
+        ("2061", None),
+        ("", None),
+        ("ab", None),
+        ("20:3", None),
+    ] {
+        assert_eq!(day_minute(text), want, "{text:?}");
+    }
+    let f = full_form();
+    let s = json!({"caps": {"5h": [{"from": 0, "to": 1440, "v": 80}]}});
+    let seg = |from: &str, to: &str| RotEdit::Seg {
+        key: "caps".into(),
+        row: None,
+        window: "5h".into(),
+        at: None,
+        seg: Some(RotSeg {
+            from: from.into(),
+            to: to.into(),
+            v: 0.0,
+        }),
+    };
+    assert_eq!(
+        apply(&f, &s, &seg("2000", "23")).expect("ok")["caps"]["5h"],
+        json!([{"from": 0, "to": 1200, "v": 80}, {"from": 1200, "to": 1380, "v": 0}, {"from": 1380, "to": 1440, "v": 80}])
+    );
+    assert!(apply(&f, &s, &seg("20:00", "23:61")).is_err());
+    assert!(apply(&f, &s, &seg("", "23")).is_err());
 }

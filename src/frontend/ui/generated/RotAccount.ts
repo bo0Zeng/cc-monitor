@@ -6,9 +6,9 @@ import type { RotPlate } from "./RotPlate";
 import type { WinFact } from "./WinFact";
 
 /**
- * `rotation-view` 里的一个号：事实 ＋ 号牌。
+ * `rotation-view` 里的一个号：事实 ＋ 号牌 ＋ 用满了的那几窗（`5h` · `7d`；号牌上那条小计量照它画满）。
  */
-export type RotAccount = { plate: RotPlate, 
+export type RotAccount = { plate: RotPlate, full: Array<string>, 
 /**
  * 路由第 2 段。
  */

@@ -217,7 +217,7 @@ pub(crate) fn seen_resetting(
     ledger::record_seen(&ctx.hop.quota, &own, None, "claude-code", account, r, now);
 }
 
-fn session_view(ctx: &Ctx, home: &Home, sid: &str) -> RotationViewReply {
+pub(crate) fn session_view(ctx: &Ctx, home: &Home, sid: &str) -> RotationViewReply {
     view_with(
         ctx,
         &RotationViewReq {
@@ -535,11 +535,7 @@ fn a_session_view_writes_every_time_it_carries() {
         assert!(hm(&w.at_text), "{w:?}");
     }
     let seg = &tl.lanes[0].segs[0];
-    assert_eq!(seg.text, "剩 60%", "{seg:?}");
-    assert!(
-        (seg.left - 60.0).abs() < 1e-6,
-        "剩 ＝ 100 − 两窗里用得多的：{seg:?}"
-    );
+    assert_eq!(seg.text, "剩 60%", "剩 ＝ 100 − 两窗里用得多的：{seg:?}");
 
     // 停发：到几点那一刻也写好。
     seen(&ctx, "a", 1.0, Some(now() + 3600));
@@ -643,6 +639,32 @@ fn a_session_view_draws_what_already_happened() {
         p.uses
     );
     assert!(tops.iter().all(|t| t.1 && t.2), "{:?}", p.uses);
+    // 每段写的字后端写好：号名 · 停发那一句；接着此刻、跟推演第一段同一个号的那一段不写（同一段只写一次，写在推演那一截）。
+    let first = v
+        .timeline
+        .as_ref()
+        .and_then(|t| t.uses.first())
+        .expect("推演第一段");
+    assert_eq!(
+        (first.from, first.account.as_deref(), first.text.as_str()),
+        (v.now, Some("a"), "a")
+    );
+    assert_eq!(
+        p.uses.iter().map(|u| u.text.as_str()).collect::<Vec<_>>(),
+        ["b", "a", copy_text("rot.sim.hold", &[]).as_str(), ""],
+        "{:?}",
+        p.uses
+    );
+    // 用满了的那几窗后端说（号牌上的小计量照它画满）。
+    let full = |id: &str| {
+        v.accounts
+            .iter()
+            .find(|x| x.fact.account == id)
+            .map(|x| x.full.clone())
+            .expect("号牌")
+    };
+    assert_eq!(full("b"), ["5h"]);
+    assert!(full("a").is_empty());
     let lane = |id: &str| p.lanes.iter().find(|l| l.account == id).expect("那一行");
     let a = lane("a");
     assert_eq!(a.segs.len(), 1, "{:?}", a.segs);
@@ -1034,6 +1056,14 @@ fn the_board_carries_each_cell_resolved_once() {
             (0, 600, zero.as_str(), "00:00–10:00 · 上限 0%"),
             (600, 1440, "80%", "10:00–24:00 · 上限 80%")
         ]
+    );
+    assert_eq!(
+        caps.segs
+            .iter()
+            .map(|s| (s.from_text.as_str(), s.to_text.as_str()))
+            .collect::<Vec<_>>(),
+        [("00:00", "10:00"), ("10:00", "24:00")],
+        "一段一行那两格的钟点后端写好"
     );
     assert_eq!(
         pick(r0, "caps", Some("7d")).segs.len(),
