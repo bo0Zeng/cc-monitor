@@ -575,7 +575,10 @@ async fn the_ack_and_the_stage_lines_have_the_shape_the_monitor_reads() {
     write_stages_then_ack(
         &mut buf,
         &sink,
-        &DialAck::of_fail(ssh_dial::fail("x".to_string().into(), Some("SHA256:x".into()))),
+        &DialAck::of_fail(ssh_dial::fail(
+            "x".to_string().into(),
+            Some("SHA256:x".into()),
+        )),
     )
     .await
     .unwrap();
@@ -1093,9 +1096,12 @@ fn the_backend_installs_its_own_host_into_the_dial_core() {
             dir_mode: crate::common::own_dir::PRIVATE_DIR_MODE
         }
     );
-    let d = DialAck::of_fail(ssh_dial::fail(crate::common::said::Said::with_raw("x".into(), "raw"), None))
-        .detail
-        .expect("失败的 ack 带详情");
+    let d = DialAck::of_fail(ssh_dial::fail(
+        crate::common::said::Said::with_raw("x".into(), "raw"),
+        None,
+    ))
+    .detail
+    .expect("失败的 ack 带详情");
     assert!(
         d.contains(crate::BUILD_ID),
         "详情里没有本后端的机器那一行：{d}"

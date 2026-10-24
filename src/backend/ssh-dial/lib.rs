@@ -293,7 +293,6 @@ pub mod step {
     pub const CHANNEL: &str = "channel";
 }
 
-
 /// 阶段行的出口。`stages=false` 时一个字节都不写。
 ///
 /// 阶段是从握手的好几个并发任务里产生的，而 stdout 只有一个 ⇒ 先进一个共享的缓冲，
