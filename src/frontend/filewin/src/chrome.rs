@@ -373,7 +373,7 @@ impl FileWindow {
         let Some(buf) = self.addr_edit.take() else {
             return false;
         };
-        let want = super::bookmarks::normalize_dir(buf.trim());
+        let want = cmd_wire::bookmarks::normalize_dir(buf.trim());
         if !want.starts_with('/') {
             self.set_key_notice(copy_text("rsFilewinChrome.address.notAbsolute", &[]));
             return false;
@@ -1218,7 +1218,7 @@ impl Workspace {
             ui.label(egui::RichText::new(title).color(p.text2).small().strong());
             ui.add_space(2.0);
         };
-        let here_dir = super::bookmarks::normalize_dir(&self.pane_on(f).cwd);
+        let here_dir = cmd_wire::bookmarks::normalize_dir(&self.pane_on(f).cwd);
         egui::ScrollArea::vertical()
             .auto_shrink([false; 2])
             .show(ui, |ui| {
@@ -1236,7 +1236,7 @@ impl Workspace {
                     for d in list {
                         let tail = super::source::remote_basename(&d);
                         let tail = if tail.is_empty() { "/" } else { tail };
-                        let here = super::bookmarks::normalize_dir(&d) == here_dir;
+                        let here = cmd_wire::bookmarks::normalize_dir(&d) == here_dir;
                         let r = side_item(ui, ph::STAR, tail, here, SideMark::None).on_hover_text(&d);
                         if r.clicked() {
                             go = Some(d.clone());
@@ -1281,7 +1281,7 @@ impl Workspace {
                     }
                     _ => (SideMark::Busy, String::new()),
                 };
-                let here_home = matches!(&home, HomeState::Known(h) if super::bookmarks::normalize_dir(h) == here_dir);
+                let here_home = matches!(&home, HomeState::Known(h) if cmd_wire::bookmarks::normalize_dir(h) == here_dir);
                 let r = side_item(ui, ph::HOUSE, &copy_text("rsFilewinChrome.side.home", &[]), here_home, mark);
                 let r = if tip.is_empty() { r } else { r.on_hover_text(&tip) };
                 if r.clicked() {

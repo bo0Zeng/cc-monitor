@@ -1117,6 +1117,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "后端自有的计划认可与退回记录 `~/.cc-monitor/plan-review.json`（读不出来就不覆盖）",
         "拒收+回错",
     ),
+    (
+        "src/backend/control/bookmarks.rs",
+        "MAX_BYTES",
+        "这台的书签 `~/.cc-monitor/bookmarks.json`（超了当读不懂：`bookmarks_unreadable`，不覆盖）",
+        "拒收+回错",
+    ),
     // 离线那台的上次值：一份超了拒收回错（`too_large`，不落一个字节）；整份超了当读不懂、照没记过算，写的那一下整份重来（它只是缓存）。
     (
         "src/backend/footprint/last_seen.rs",

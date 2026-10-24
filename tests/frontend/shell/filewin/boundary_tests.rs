@@ -400,9 +400,7 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     // 名单里本机那一项的名字：从前借窗口那一侧 `cross_copy::LOCAL_ORIGIN`，窗口独立成包之后引 monitor 自己那一份哨兵值。
     ("inbound_client::LOCAL_ORIGIN", Kind::Config),
     ("config::resolve_monitor_data_dir", Kind::DataDir), // 原 `paths::`（`paths.rs` 并进 `config.rs`）
-    // 书签文件的名字：全路径在这一侧拼好随种子交过去（窗口那一侧不再引它）。
-    ("data_paths::FILEWIN_BOOKMARKS_FILE", Kind::DataDir),
-    // 视图文件（整窗缩放）的名字：同书签那一份。
+    // 视图文件（整窗缩放）的名字：全路径在这一侧拼好随种子交过去（窗口那一侧不引它）。
     ("data_paths::FILEWIN_VIEW_FILE", Kind::DataDir),
     // monitor 那一侧（entry.rs）的报错也从文案表取。
     ("copy_table::copy_text", Kind::Copy),

@@ -991,7 +991,7 @@ impl FileWindow {
         self.cwd_raw = at.raw;
         self.listing.invalidate();
         self.reload();
-        // 换目录时现读一次书签：别的窗口刚加的那几条从这里进来（小文件一次读，不是每帧）。
+        // 换目录时现问一次书签：别的窗口 · 手机刚加的那几条从这里进来（一次问，不是每帧）。
         if let Some(s) = &self.shelf {
             s.refresh();
         }
@@ -5307,7 +5307,6 @@ pub fn open_detached(
         super::source::Shown::default(),
         None,
         None,
-        None,
         Vec::new(),
         None,
         None,
@@ -5338,9 +5337,7 @@ pub fn open_detached_seeded(
     // 🔴`reveal` = 开窗就高亮这一行（`None` = 不高亮）。
     //    那是老面板 `open(revealPath)` 那一形（会话工具卡 → 文件跳转）。
     reveal: Option<String>,
-    // 书签文件（monitor 算好交过来；`None` ＝ 数据目录解不出来，书签栏上出声）。
-    bookmarks: Option<std::path::PathBuf>,
-    // 视图文件（记缩放与预览开关；同书签那份，monitor 算好交过来；`None` ＝ 照样能缩放、开预览，只是不记）。
+    // 视图文件（记缩放与预览开关；monitor 算好交过来；`None` ＝ 照样能缩放、开预览，只是不记）。
     view: Option<std::path::PathBuf>,
     // 「复制到另一台」下拉里的机器（开窗种子带来的）。
     machines: Vec<String>,
@@ -5376,8 +5373,12 @@ pub fn open_detached_seeded(
                 if let Some(name) = reveal {
                     w.set_reveal(&name);
                 }
-                // 书签：按这台机器的 origin 读一次。
-                w.shelf = Some(super::bookmarks::Shelf::open(bookmarks, &w.source.origin()));
+                // 书签：问这台机器的后端一次（本机与远端同一形）。
+                w.shelf = Some(super::bookmarks::Shelf::open(
+                    w.rt.clone(),
+                    w.line.clone(),
+                    &w.source.origin(),
+                ));
                 w.machines = machines;
                 // 样子：主界面那一套配色 · 字号 · 间距。
                 if let Some(t) = &theme {

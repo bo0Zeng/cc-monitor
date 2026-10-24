@@ -120,10 +120,6 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     //    （`sftp_pool.rs::transfer_call`）」—— FN1 把那一判删了（后端那道也没了，本地那道是它的出声早副本）。
     // 原 `utils.rs`：随两个前端共用搬进 `host-core`（`src/common/host-core/src/atomic.rs`）。
     ("atomic.rs", "atomic_write_json", None, "通用原子写原语，调用方各自申报"),
-    // 文件窗口的书签：锁旁件（空文件，只拿来上锁）＋ 它所在的目录。
-    //   书签文件本身走上面那条原子写原语（`filewin/bookmarks.rs::mutate`）。
-    ("bookmarks.rs", "lock_store", None,
-     "monitor 自己的状态：文件窗口书签的锁旁件（`<数据目录>/filewin-bookmarks.json.lock`，空文件）"),
     ("atomic.rs", "atomic_replace_path", None, "同上，原语的本地副本"),
     // 文件窗口的帧日志：只在设了 `CCM_FILEWIN_FRAME_LOG=<文件>` 时开，往那份文件追加（收集「一闪一闪」的证据）。
     ("frame_log.rs", "to_file", None,
@@ -441,9 +437,6 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     ("atomic.rs", "atomic_replace_path", Lands::OwnState),
     // monitor 自己的日志目录下那一层（后端 stderr 诊断文件住那里）。
     ("local_backend_host.rs", "spawn_detached", Lands::OwnState),
-    // 文件窗口书签的锁旁件（`<monitor 数据目录>/filewin-bookmarks.json.lock`）——
-    //   书签是 monitor 自己的状态（FW34 头注逐字「不是用户文件 ⇒ 不走后端写面」）。
-    ("bookmarks.rs", "lock_store", Lands::OwnState),
     // 文件窗口的帧日志（自己的诊断日志，落点是用户经 `CCM_FILEWIN_FRAME_LOG` 点名的那一份；不设就不写）。
     ("frame_log.rs", "to_file", Lands::OwnState),
 ];

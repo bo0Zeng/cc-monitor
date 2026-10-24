@@ -146,7 +146,6 @@ fn without_opengl_2_the_window_still_draws_its_first_frame() {
         rows,
         None,
         None,
-        None,
         Vec::new(),
         None,
         None,
