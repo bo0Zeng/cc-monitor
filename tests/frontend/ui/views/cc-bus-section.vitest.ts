@@ -126,6 +126,18 @@ describe("B03 登记 ≠ 在线", () => {
     return s;
   };
 
+  it("★ 某一行的消息打了一半，再读一次 ⇒ 那句字还在、焦点还在那一格", async () => {
+    const s = await setup();
+    const msg = s.element.querySelectorAll<HTMLInputElement>(".cc-bus-row .cc-bus-msg")[1];
+    msg.focus();
+    msg.value = "打了一半";
+    (s.element.querySelector(".cc-bus-read") as HTMLButtonElement).click();
+    await flush();
+    const after = s.element.querySelectorAll<HTMLInputElement>(".cc-bus-row .cc-bus-msg")[1];
+    expect(after.value).toBe("打了一半");
+    expect(document.activeElement).toBe(after);
+  });
+
   it("读状态**不得**顺带查在线——否则一屏 37 个 agent 就是 37 次往返", async () => {
     const s = await setup();
     expect(mockInvoke.mock.calls.filter((c) => c[0] === "check_cc_bus_agent_online")).toHaveLength(0);

@@ -21,6 +21,7 @@ import { confirmDialog } from "../kit/dialog";
 import { copyText } from "../copy-table";
 import { DEFAULT_AGENT, listAgents } from "../agent-profile";
 import { sayFailure } from "../kit/detail";
+import { morph } from "../kit/morph";
 
 export class CcBusSection {
   readonly element: HTMLElement;
@@ -261,12 +262,12 @@ export class CcBusSection {
     if (!origin) return;
     this.readBtn.disabled = true;
     this.statusEl.textContent = copyText("kit.state.reading");
-    this.listBox.replaceChildren();
     try {
       this.state = await readState(origin);
       this.render();
     } catch (e) {
       this.state = null;
+      morph(this.listBox, []);
       // 失败说清是哪一步，别留个空面板让人以为「没有 agent」
       sayFailure(this.statusEl, copyText("ccBus.reload.readFailed"), e);
     } finally {
@@ -293,28 +294,18 @@ export class CcBusSection {
     parts.push(copyText("ccBus.summary.notOnline"));
     this.statusEl.textContent = parts.join(copyText("ccBus.summary.sep"));
 
-    this.listBox.replaceChildren();
     if (st.agents.length === 0 && extra.length === 0) {
       const empty = document.createElement("div");
       empty.className = "settings-hint";
       empty.textContent = copyText("ccBus.render.empty");
-      this.listBox.appendChild(empty);
+      morph(this.listBox, [empty]);
       return;
     }
-    for (const a of st.agents) {
-      this.listBox.appendChild(this.buildRow(a, spawnedIds.has(a.id), dirOf.get(a.id), true));
-    }
+    // 重读时各行整份新画，正打着的那句消息（焦点 · 字）由 kit morph 搬过去。
+    const rows = st.agents.map((a) => this.buildRow(a, spawnedIds.has(a.id), dirOf.get(a.id), true));
     // 未登记的派生记录：明确标注它没在总线上
-    for (const sp of extra) {
-      this.listBox.appendChild(
-        this.buildRow(
-          { id: sp.id, registered_at: sp.spawned_at },
-          true,
-          sp.dir,
-          false,
-        ),
-      );
-    }
+    for (const sp of extra) rows.push(this.buildRow({ id: sp.id, registered_at: sp.spawned_at }, true, sp.dir, false));
+    morph(this.listBox, rows);
   }
 
   private buildRow(
@@ -372,6 +363,7 @@ export class CcBusSection {
     const msg = document.createElement("input");
     msg.type = "text";
     msg.className = "settings-input cc-bus-msg";
+    msg.dataset.key = `msg:${this.originSel.value}:${a.id}`; // 重画时认同一格（kit morph）
     msg.placeholder = copyText("ccBus.row.messageHint");
     row.appendChild(msg);
 
