@@ -915,8 +915,9 @@ const CCM_TMUX_EXCEPTIONS: &[(&str, bool, &str)] = &[
 /// 🔴 ccm 面：真靠 tmux 的能力（真解析器 ＋ 真计划现推）∪ 登记的例外 == `CCM_TMUX_CARRIED`。
 #[test]
 fn every_ccm_capability_that_rides_tmux_is_declared_tmux_carried() {
+    use crate::accounts::manage::model::Row as Account;
     use crate::ccm_line::argv::{parse, Parsed};
-    use crate::control::ccm::plan::{build, Account, AccountTable, Env, Plan};
+    use crate::control::ccm::plan::{build, tests::library_of, Env, Plan};
     use std::collections::BTreeSet;
     let env = Env {
         home: "/home/pi".into(),
@@ -930,16 +931,18 @@ fn every_ccm_capability_that_rides_tmux_is_declared_tmux_carried() {
     // 建临时目录会让本文件在测试层分区里从「源码扫描」升成「集成」，`test_tiers` 那张表跟着要挪）。
     let acct_dir = guard_core::addr::backend_src_root();
     // 账号 0 排第一个：没标默认号 ⇒ 默认号是它（不指定号），基线不落到 `acct-x` 上（否则 `--account acct-x` 与基线同形）。
-    let table = AccountTable::from_accounts(vec![
+    let table = library_of(vec![
         Account {
             name: "zero".into(),
             config_dir: None,
             is_default: false,
+            ..Default::default()
         },
         Account {
             name: "acct-x".into(),
             config_dir: Some(acct_dir.to_string_lossy().into_owned()),
             is_default: false,
+            ..Default::default()
         },
     ]);
     let plan_of = |args: &[&str]| -> Result<Plan, String> {

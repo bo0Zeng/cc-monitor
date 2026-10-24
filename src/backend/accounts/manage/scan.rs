@@ -163,25 +163,9 @@ pub(crate) fn scan(home: &str, extra_dirs: &[String], extra_files: &[String]) ->
     let home = home.trim_end_matches('/').to_string();
     let accts = accts_root(&home);
     let mpath = join(&accts, MANIFEST_FILE);
-    let (manifest_text, manifest) = match acct_view::item(Path::new(&mpath)) {
-        Item::Absent => (None, None),
-        _ => match manifest_text_at(Path::new(&mpath)) {
-            Ok(t) => {
-                let parsed = Manifest::parse(&t);
-                (Some(t), Some(parsed))
-            }
-            Err(e) => (
-                None,
-                Some(Err(e
-                    .wrap(|why| {
-                        copy_core::copy_text(
-                            "beAcctScan.manifest.unreadable",
-                            &[("path", &mpath), ("why", why)],
-                        )
-                    })
-                    .into_note())),
-            ),
-        },
+    let (manifest_text, manifest) = match read_manifest(Path::new(&mpath)) {
+        None => (None, None),
+        Some((text, parsed)) => (text, Some(parsed.map_err(Unread::into_said))),
     };
     let default_shared = super::layout::shared_root_in(&home);
     let shared = manifest
@@ -242,6 +226,55 @@ pub(crate) fn scan(home: &str, extra_dirs: &[String], extra_files: &[String]) ->
     snap.backups = backups_in(&accts, &snap.accts);
     snap.roots = Some(roots);
     snap
+}
+
+/// 账号库清单在、却用不了：`Io` 读不动（不是常规文件 · 太大 · 不是文本）· `Bad` 读不懂（不是 JSON · 不是对象 · 版本不认）。各带一句话（原话在复制详情里）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Unread {
+    Io(crate::common::said::Said),
+    Bad(String),
+}
+
+impl Unread {
+    /// 只成一句话（原话记一行日志）：快照 · 账号清单的 `meta.error` · 起会话那句「读不懂」。
+    pub(crate) fn into_said(self) -> String {
+        match self {
+            Unread::Io(s) => s.into_note(),
+            Unread::Bad(s) => s,
+        }
+    }
+}
+
+/// [`manifest_at`] 读出来的样子：`Ok(None)` 没有清单 · `Ok(Some)` 读懂了 · `Err` 在却用不了。
+pub(crate) type ManifestRead = Result<Option<Manifest>, Unread>;
+
+/// ★ 账号库清单（`accounts.json`）的**唯一读口**：后端读这份文件只经这里（快照 [`scan`] 也是）。不在 ⇒ `Ok(None)`（没建账号库，正常状态）；
+/// 在却读不动 / 读不懂 ⇒ `Err`（版本不认的也在这里拒 —— 账号页与起会话同一个判法）。
+pub(crate) fn manifest_at(p: &Path) -> ManifestRead {
+    read_manifest(p).map(|(_, m)| m).transpose()
+}
+
+/// 清单全文（读得动才有）＋ 读成的模型；不在 ⇒ `None`。
+fn read_manifest(p: &Path) -> Option<(Option<String>, Result<Manifest, Unread>)> {
+    if matches!(acct_view::item(p), Item::Absent) {
+        return None;
+    }
+    Some(match manifest_text_at(p) {
+        Ok(t) => {
+            let parsed = Manifest::parse(&t).map_err(Unread::Bad);
+            (Some(t), parsed)
+        }
+        Err(e) => {
+            let path = p.display().to_string();
+            let said = e.wrap(|why| {
+                copy_core::copy_text(
+                    "beAcctScan.manifest.unreadable",
+                    &[("path", &path), ("why", why)],
+                )
+            });
+            (None, Err(Unread::Io(said)))
+        }
+    })
 }
 
 /// 清单全文（在却读不动 ⇒ `Err`，调用方把它记进快照、由用的那一步报出来）。

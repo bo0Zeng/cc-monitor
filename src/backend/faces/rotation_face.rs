@@ -10,10 +10,7 @@ use std::path::Path;
 pub(crate) fn library_at(home: &Path) -> Library {
     let manifest = crate::platform::paths::home_join(home, relay_route_core::ACCOUNTS_DIR_REL)
         .join(relay_route_core::ACCOUNTS_MANIFEST_NAME);
-    let Some(m) = crate::accounts::manage::scan::manifest_text_at(&manifest)
-        .ok()
-        .and_then(|t| crate::accounts::manage::model::Manifest::parse(&t).ok())
-    else {
+    let Ok(Some(m)) = crate::accounts::manage::scan::manifest_at(&manifest) else {
         return Library::default();
     };
     let mut accounts = vec![LibAccount {
