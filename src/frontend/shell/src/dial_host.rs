@@ -31,8 +31,8 @@ use tokio::io::BufReader;
 use crate::inbound_client::{self, InboundClient};
 use crate::link_mux::LinkStream;
 use crate::ssh_link::{self, LinkError};
-use cmd_wire::dial::{DialAck, Stage};
 use crate::stream_source::{RemoteConfig, RemoteExec};
+use cmd_wire::dial::{DialAck, Stage};
 
 /// 等代理回 ack 的上限：握手看门狗（黑洞地址 TCP 连上后握手可以无限阻塞）。与界面侧原来那条
 /// `HANDSHAKE_DEADLINE` 同值。后端不许有 `timeout(`（`no_timer_guard`），⇒ 看门狗在这里执行：
