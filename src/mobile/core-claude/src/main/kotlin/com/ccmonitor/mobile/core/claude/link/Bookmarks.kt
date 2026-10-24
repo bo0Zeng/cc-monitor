@@ -1,5 +1,7 @@
 package com.ccmonitor.mobile.core.claude.link
 
+import com.ccmonitor.mobile.core.claude.link.wire.BookmarkDirs
+import com.ccmonitor.mobile.core.claude.link.wire.Wire
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,11 +16,8 @@ object Bookmarks {
     const val READ: String = "bookmarks-read"
     const val EDIT: String = "bookmarks-edit"
 
-    /** 那台交来的 `{dirs: [...]}` ⇒ 那几个目录；认不出 ⇒ `null`。 */
-    fun dirs(data: Any?): List<String>? {
-        val raw = (data as? Map<*, *>)?.get("dirs") as? List<*> ?: return null
-        return raw.map { it as? String ?: return null }
-    }
+    /** 那台交来的回包（核心按 `cmd-wire` 那一份解过）⇒ 那几个目录；认不出 ⇒ `null`。 */
+    fun dirs(data: Any?): List<String>? = Wire.bind<BookmarkDirs>(data)?.dirs
 
     internal fun edit(
         op: String,

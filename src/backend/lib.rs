@@ -397,6 +397,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--files-stat",
     // 同族第七、第八条。登记理由与上面那几条逐字相同。
     "--files-home",
+    // 书签那两条（这台的书签归这台后端）。**是新子命令** ⇒ `build_id_guard` 红是预期的（BUILD_ID 归合并树）。
+    "--bookmarks-read",
+    "--bookmarks-edit",
     "--files-read-text",
     // 读族第十条（按字节寻址分块读回）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
     "--files-read-chunk",
