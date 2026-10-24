@@ -4851,7 +4851,7 @@ fn a_busy_session_silent_past_the_window_is_not_announced_as_working() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// 宣告时新鲜 ⇒ 在跑；此刻拨过时限判一拍 ⇒ 一帧不带 activity；记录写一行 ⇒ 再一帧回到在跑。等人的那条不判。
+/// 宣告时新鲜 ⇒ 在跑；此刻拨过时限再判 ⇒ 一帧不带 activity；记录写一行 ⇒ 再一帧回到在跑。等人的那条不判。
 #[cfg(target_os = "linux")]
 #[test]
 fn a_working_session_goes_unclear_when_its_beat_stops_and_back_when_it_writes() {
@@ -4876,7 +4876,7 @@ fn a_working_session_goes_unclear_when_its_beat_stops_and_back_when_it_writes() 
     judge_beats(&mut state, &mut sink, now + STALE_AFTER - 10 * second);
     assert!(rx.try_recv().is_err(), "还没到时限 ⇒ 不发帧");
     judge_beats(&mut state, &mut sink, now + STALE_AFTER + second);
-    let f = rx.try_recv().expect("过了时限那一拍");
+    let f = rx.try_recv().expect("过了时限 ⇒ 发一帧 session_status");
     assert!(matches!(f, Frame::SessionStatus(_)), "{f:?}");
     assert_eq!(
         face_of(&f).map(|f| f.live),
@@ -4888,7 +4888,12 @@ fn a_working_session_goes_unclear_when_its_beat_stops_and_back_when_it_writes() 
         "不画在跑那颗点"
     );
     assert_eq!(
-        state.frozen_sids(),
+        state
+            .sessions
+            .values()
+            .filter(|e| e.frozen)
+            .map(|e| e.sid.clone())
+            .collect::<std::collections::BTreeSet<_>>(),
         std::collections::BTreeSet::from(["hb-live".to_string()]),
         "冻住的名单（交给清单那一半的那一份）"
     );
@@ -4906,7 +4911,10 @@ fn a_working_session_goes_unclear_when_its_beat_stops_and_back_when_it_writes() 
             }),
         "记录一写 ⇒ 最后一帧回到在跑：{back:?}"
     );
-    assert!(state.frozen_sids().is_empty(), "名单也撤掉");
+    assert!(
+        !state.sessions.values().any(|e| e.frozen),
+        "冻住那一格也撤掉"
+    );
     std::fs::remove_dir_all(&dir).ok();
 }
 

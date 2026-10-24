@@ -1760,16 +1760,6 @@ impl ReaderState {
         }
     }
 
-    /// 此刻冻住的那几条（判据看它）。
-    #[cfg(test)]
-    fn frozen_sids(&self) -> std::collections::BTreeSet<String> {
-        self.sessions
-            .values()
-            .filter(|e| e.frozen)
-            .map(|e| e.sid.clone())
-            .collect()
-    }
-
     /// 最早那条该有心跳、还没冻住的会话到时限的时刻（已过了的不算：那几条有在跑的子运行撑着，子运行自己的期限会叫醒）。
     fn beat_due(&self, now: std::time::SystemTime) -> Option<std::time::SystemTime> {
         self.sessions
