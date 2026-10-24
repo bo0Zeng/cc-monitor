@@ -708,7 +708,9 @@ async fn opening(req: &DialRequest, stages: &StageSink) -> Result<Opened, DialFa
             exec_half(wr.get(), req.command.as_bytes().to_vec())
                 .await
                 .map_err(|e| fail(Said::with_raw(copy_text("beUses.exec.failed", &[]), &e)))?;
-            let early = granted(&mut rd, "exec", exec_failed, stages).await.map_err(fail)?;
+            let early = granted(&mut rd, "exec", exec_failed, stages)
+                .await
+                .map_err(fail)?;
             // 有载荷就写进远端进程的 stdin（不关 —— 收的一侧只读一行）。
             if let Some(input) = opts.stdin.clone() {
                 wr.get().data_bytes(input.into_bytes()).await.map_err(|e| {

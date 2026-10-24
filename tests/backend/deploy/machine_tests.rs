@@ -592,7 +592,9 @@ fn a_session_refused_after_login_is_its_own_state_not_offline() {
         );
         assert!(!p.offline, "登录过了的那台不是离线");
         assert!(
-            p.detail.as_deref().is_some_and(|d| d.contains("码：session_denied")),
+            p.detail
+                .as_deref()
+                .is_some_and(|d| d.contains("码：session_denied")),
             "{:?}",
             p.detail
         );
@@ -613,7 +615,12 @@ fn the_product_carries_its_name_and_whether_it_is_offline() {
         ("没有后端", vec![blocked(Blocker::NoBackend)], true, true),
         ("后端旧了", vec![blocked(Blocker::OldBackend)], true, false),
         ("要更新", vec![up(Relation::Older, &[])], true, false),
-        ("拒绝开会话", vec![down_(Some(Why::SessionDenied))], true, false),
+        (
+            "拒绝开会话",
+            vec![down_(Some(Why::SessionDenied))],
+            true,
+            false,
+        ),
         ("停用", vec![down_(Some(Why::Auth))], false, false),
         ("没轮过", vec![], true, false),
     ];

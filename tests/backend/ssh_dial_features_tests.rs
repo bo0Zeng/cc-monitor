@@ -682,7 +682,10 @@ async fn a_login_that_passes_but_refuses_the_session_says_so() {
         assert_eq!(ack["ok"], false, "{use_}：开会话被拒却回了 ok：{ack}");
         assert_eq!(ack["error"], refused.as_str(), "{use_}：{ack}");
         assert_ne!(ack["reason"], "auth", "{use_}：登录是过了的：{ack}");
-        assert_eq!(ack["reason"], "session_denied", "{use_}：要带上拒开会话那个码：{ack}");
+        assert_eq!(
+            ack["reason"], "session_denied",
+            "{use_}：要带上拒开会话那个码：{ack}"
+        );
         assert!(
             ack["detail"]
                 .as_str()
@@ -710,9 +713,14 @@ async fn a_refused_sftp_subsystem_says_so_instead_of_waiting() {
     let Err(said) = got else {
         panic!("子系统被拒却开成了");
     };
-    assert_eq!(said.said, copy_core::copy_text("beUses.session.denied", &[]));
+    assert_eq!(
+        said.said,
+        copy_core::copy_text("beUses.session.denied", &[])
+    );
     assert!(
-        said.raw.as_deref().is_some_and(|r| r.contains("CHANNEL_FAILURE")),
+        said.raw
+            .as_deref()
+            .is_some_and(|r| r.contains("CHANNEL_FAILURE")),
         "{:?}",
         said.raw
     );
