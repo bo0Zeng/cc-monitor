@@ -296,10 +296,8 @@ export function renderMessage(rec: LineRecord, ctx: RenderContext, seq?: number)
       }
       // 代理那一侧自动写的应答（不是模型说的）：不建卡。
       if (rec.autoReply) return { kind: "skip" };
-      const meaningful = rec.blocks.filter((b) => {
-        if (b.type === "text" || b.type === "thinking") return b.text.trim().length > 0;
-        return true;
-      });
+      // 思考的空串是后端说「没写进记录」（线上约定，后端判一次）⇒ 留着画成一行；只有空的正文才跳过。
+      const meaningful = rec.blocks.filter((b) => b.type !== "text" || b.text.trim().length > 0);
       if (meaningful.length === 0) return { kind: "skip" };
 
       const hasText = meaningful.some((b) => b.type === "text");
@@ -453,6 +451,8 @@ function renderBlock(
     case "text":
       return buildTextBlock(block.text, ctx.lazy);
     case "thinking": {
+      // 空串 ＝ 没写进记录 ⇒ 一行不可展开的步骤行（点开是空的，不给点）。
+      if (block.text === "") return buildUnrecordedThinking();
       // 思考是一步（§5.2.3）：「思考」＋ 第一行斜体预览，点开看全文。
       return makeCollapsible(
         "block-thinking",
@@ -1171,6 +1171,18 @@ function loadRenderModePreference(toolName: string): "text" | "md" | null {
 
 function saveRenderModePreference(toolName: string, mode: "text" | "md"): void {
   safeSet(LS_KEYS.toolRender(toolName), mode);
+}
+
+/** 「思考 · 没写进记录」那一行：与折叠步骤同一副框与行高，但不是 <details>，没有展开。 */
+function buildUnrecordedThinking(): HTMLElement {
+  const d = document.createElement("div");
+  d.className = "block-collapsible block-thinking";
+  d.dataset.recorded = "false";
+  const s = document.createElement("div");
+  s.className = "block-summary block-step";
+  s.appendChild(buildThinkingLine(copyText("cards.thinking.unrecorded"), ""));
+  d.appendChild(s);
+  return d;
 }
 
 /**

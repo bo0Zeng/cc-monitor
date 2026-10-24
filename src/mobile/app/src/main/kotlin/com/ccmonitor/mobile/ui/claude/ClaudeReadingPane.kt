@@ -425,7 +425,7 @@ private fun ThinkingCard(
         ) {
             if (recorded) Caret(expanded)
             Spacer(Modifier.width(tokens.spacing.xs))
-            Text(copyText("cards.thinking.title"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(if (recorded) copyText("cards.thinking.title") else copyText("cards.thinking.unrecorded"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         AnimatedVisibility(recorded && expanded) {
             Text(
