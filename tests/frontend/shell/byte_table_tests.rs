@@ -28,6 +28,20 @@ fn read(rel: &str) -> String {
     std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}：{e}"))
 }
 
+/// `tests/scripts/re-embed.sh` 里 `REEMBED_TARGETS=(…)` 那一行的元素：musl 字节配方的唯一住址。
+fn reembed_targets() -> Vec<String> {
+    let sh = read("tests/scripts/re-embed.sh");
+    let line = sh
+        .lines()
+        .find_map(|l| l.strip_prefix("REEMBED_TARGETS=("))
+        .unwrap_or_else(|| panic!("re-embed.sh 里抠不到 `REEMBED_TARGETS=(…)` —— 写法变了"));
+    line.trim_end()
+        .trim_end_matches(')')
+        .split_whitespace()
+        .map(String::from)
+        .collect()
+}
+
 // ═══ 键的解析 ═══════════════════════════════════════════════════════════════════════════
 
 /// B5：两个答话 → 键。问不出 ⇒ `os_unknown` / `arch_unknown`；答得出但不在 3 × 2 里 ⇒ `unsupported_machine`。
@@ -454,7 +468,7 @@ fn byte_table_is_the_only_home_of_embedded_executables() {
 
 /// B3：`LINES`（表 A 里有产线的格子）== `release.yml` 真编得出字节的那几格（**异源**：读发版流水线）。
 ///
-/// 读法：`Cross-compile backend for both musl targets` 那一步里的 `--target <arch>-unknown-linux-musl` ⇒ (Linux, arch)；
+/// 读法：`Cross-compile backend for both musl targets` 那一步调 `re-embed.sh --build-only` ⇒ 它 `REEMBED_TARGETS` 里每个 `<arch>-unknown-linux-musl` ⇒ (Linux, arch)；
 /// `runs-on: windows-latest` 那个 job 里名为 `Stage native backend for self-extract` 的步 ⇒ (Windows, x86_64)。
 #[test]
 fn lines_are_exactly_what_the_release_pipeline_builds() {
@@ -487,13 +501,13 @@ fn lines_are_exactly_what_the_release_pipeline_builds() {
         let windows = job.contains("runs-on: windows-latest");
         for step in job.split("- name:").skip(1) {
             let name = step.lines().next().unwrap_or_default().trim();
-            if name == "Cross-compile backend for both musl targets" {
-                for l in step.lines() {
-                    if let Some(rest) = l.split("--target ").nth(1) {
-                        let triple = rest.split_whitespace().next().unwrap_or_default();
-                        let arch = triple.split('-').next().unwrap_or_default();
-                        built.insert(key_of("Linux", arch).expect(triple));
-                    }
+            // 这一步只调 `re-embed.sh --build-only`（配方只住那条命令）⇒ 编哪几个 target 读它的 `REEMBED_TARGETS`。
+            if name == "Cross-compile backend for both musl targets"
+                && step.contains("bash tests/scripts/re-embed.sh --build-only")
+            {
+                for triple in reembed_targets() {
+                    let arch = triple.split('-').next().unwrap_or_default();
+                    built.insert(key_of("Linux", arch).expect(&triple));
                 }
             }
             if windows && name == "Stage native backend for self-extract" {

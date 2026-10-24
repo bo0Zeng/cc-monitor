@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# 快检：交给门禁之前的那一圈，也是合并后 gate-affected --trust-ci 的第一步。不拿门禁锁、不代替门禁。
-# 用法：在仓里任一处 `bash tests/scripts/quick-check.sh [--all | --plan | --only <段>]`
-#   恒跑（便宜）：两棵 Rust 树的排版 · tsc · 门禁里只读盘上文本的那几格（static_cells，经 gate.sh 的 GATE_ONLY）·
+# 快检：交给门禁之前的那一圈。不拿门禁锁、不代替门禁。
+# 用法：在仓里任一处 `bash tests/scripts/quick-check.sh [--plan | --only <段>]`
+#   恒跑（便宜）：两棵 Rust 树的排版 · tsc · 门禁里只读盘上文本的那几格（名单是 ci.yml 里 `static-gate` 那个 job 的 GATE_ONLY，经 gate.sh 跑）·
 #     后端那棵改到的包跑 clippy（照门禁 `clippy-backend` 的参数；系统钟 · 定时器那几类 lint 定成 deny，测试拦不住）·
 #     凭据那份共享 crate 开 `harden` 那一档（creds-harden：壳那棵不开它，后端那棵不跑它的测试）· 末尾生成物有没有落在提交外（generated-drift.sh）。
 #   重的四段：后端那棵 `cargo test --workspace --lib --bins --benches`（bench 只跑冒烟档）· 壳那棵 `cargo test --workspace --lib` · 整套 vitest ·
@@ -9,7 +9,7 @@
 #     交给 gate-affected/plan.py 照 gate-affected/map 判（与 gate-affected 同一张表）：挑上那一段的格（backend · cargo · npm · mobile）才跑；
 #     前三段在表里恒跑（@suites：它们都扫全仓），手机那一段按改动挑。表不认识的路径、找不到起点、plan.py 停了 ⇒ 四段全跑。
 #     起点是 base.sh 印的那一个（分支上游，没设就 origin/main）。
-#   `--all` 四段全跑（gate-affected --trust-ci 这样调）；`--plan` 只印四段跑不跑、为什么；`--only <段>` 只跑那一段（照挑）。
+#   `--plan` 只印四段跑不跑、为什么；`--only <段>` 只跑那一段（照挑）。
 #   「加了子命令要打版本号」那一条在各路树上必红（版本号合并时打：bump-build-id.sh）⇒ 单列成「待打版本号」，不算红。
 # 环境：每一步经 session-scrub.sh 摘掉会话继承来的变量（表在 session-vars）；HOME 与 TMUX_TMPDIR 指到 `.build/` 下一次性沙箱目录。
 #   cargo 那几步的 TMPDIR 是外面临时目录下一个一次性的空目录，收尾判它还是空的（tmp-left：测试进程退出时删自己的沙箱根，见 test-home）。
@@ -20,16 +20,16 @@ set -uo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 root=$(git rev-parse --show-toplevel) || exit 2
 cd "$root" || exit 2
-mode=all; every=; only=
+mode=all; only=
 case "${1:-}" in
   --only) only=${2:-}; shift 2 || shift
     case "$only" in backend|shell|vitest|mobile) ;; *) echo "quick-check --only 要 backend · shell · vitest · mobile 之一" >&2; exit 2 ;; esac ;;
-  --plan) mode=plan; shift ;; --all) every=1; shift ;;
+  --plan) mode=plan; shift ;;
+  '') ;;
+  *) echo "quick-check：不认识的参数 $1（只认 --plan · --only <段>）" >&2; exit 2 ;;
 esac
 # 后端那棵 workspace 的包 → 编进它的路径（git 路径规格，空格分隔）
 clippy_pkgs=("cc-monitor-backend:src/backend/ tests/backend/ :(exclude)src/backend/ssh-dial/ :(exclude)src/backend/deploy/" "ssh-dial:src/backend/ssh-dial/" "deploy:src/backend/deploy/" "mobcore:src/mobile/core-rs/rust/")
-# 便宜的静态格：只读盘上文本，合计十来秒（shellcheck 按核数并起）。
-static_cells="shellcheck e2e-smoke release-gate platform"
 # 起点（base.sh：`<提交> <对着谁>`；找不到 ⇒ 空）
 base_line=$(bash "$HERE/base.sh") || base_line=
 base_ref=${base_line#* }
@@ -44,8 +44,7 @@ segs=(backend:backend shell:cargo vitest:npm mobile:mobile)
 # 每段跑不跑：seg_why[段] = 跑的理由；没有这一项 = 不跑
 declare -A seg_why
 plan_all() { local s; for s in "${segs[@]}"; do seg_why[${s%%:*}]=$1; done; }
-if [ -n "$every" ]; then plan_all "--all（四段全跑）"
-elif [ -z "$base_line" ]; then plan_all "找不到起点（没有上游 · origin/main · main）"
+if [ -z "$base_line" ]; then plan_all "找不到起点（没有上游 · origin/main · main）"
 else
   plan=$( { git -c core.quotepath=false diff --name-status -M "${base_line%% *}"
             git -c core.quotepath=false ls-files --others --exclude-standard | sed 's/^/A\t/'; } \
@@ -91,8 +90,6 @@ run() { bash "$HERE/session-scrub.sh" env HOME="$box/home" TMUX_TMPDIR="$box/tmu
 # 每路 cargo 并行数默认 4。要改就在外面设 CARGO_BUILD_JOBS。
 # cargo 那几步不按墙钟判 ⇒ 降到 nice 10，机器忙时给别处按墙钟判的测试让路（vitest / tsc 不降）。
 runcargo() { run env TMPDIR="$ctmp" nice -n 10 "$@"; }
-
-[ $# -gt 0 ] && echo "  --   过滤词 $* 不再需要：两棵树整套都跑"
 fails=(); notes=()
 t_all=$SECONDS
 # 失败测试的 panic 原话：`panicked at` 那一行起、到空行为止（cargo 的格式）。
@@ -185,7 +182,10 @@ if [ ! -x node_modules/.bin/tsc ]; then echo "  --   node_modules 不在（新�
 step fmt          runcargo bash -c 'cd src/frontend/shell && cargo fmt --all --check'
 step fmt-backend  runcargo bash -c 'cd src/backend && cargo fmt --check -p cc-monitor-backend -p ssh-dial -p deploy'
 step tsc          run node_modules/.bin/tsc --noEmit
-step static       run env GATE_ONLY="$static_cells" bash tests/scripts/gate.sh
+# 便宜的静态格：只读盘上文本，合计十来秒（shellcheck 按核数并起）。名单只住 ci.yml `static-gate` 那个 job 的 GATE_ONLY。
+static=$(awk '/^  static-gate:/{f=1} f&&/GATE_ONLY:/{sub(/.*GATE_ONLY:[[:space:]]*/,""); print; exit}' .github/workflows/ci.yml 2>/dev/null)
+if [ -n "$static" ]; then step static run env GATE_ONLY="$static" bash tests/scripts/gate.sh
+else printf '  红   %-16s ci.yml 里读不到 static-gate 那个 job 的 GATE_ONLY（job 改名了？）\n' static; fails+=(static); fi
 
 backend_step
 clippy_step

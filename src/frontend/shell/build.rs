@@ -26,8 +26,8 @@ fn main() {
 /// 住发版那一侧（`release.yml` 的内嵌校验 · [`REEMBED_CMD`] 的 `--check`）—— 那里读源码是对的，它就是判据。
 /// 开发中「源码 bump 了、字节还没重铺」不让 monitor 编不过：monitor 按手上那份旧字节说话。
 ///
-/// 出事之后怎么办只有这一个住址：一条命令（`tests/scripts/re-embed.sh`），配方与 `release.yml` 的
-/// `Cross-compile backend for both musl targets` 逐字同源（`tests/evidence/K-R124-ruler.py` ⑬b 每趟两向对拍）；
+/// 出事之后怎么办只有这一个住址：一条命令（`tests/scripts/re-embed.sh`），musl 那两份的配方也只住它：`release.yml` 的
+/// `Cross-compile backend for both musl targets` 调的是它的 `--build-only`；
 /// 本机重编为什么必须用 zigbuild、不能换回 `rust-lld`，读数写在那条命令的头注里。
 const REEMBED_CMD: &str = "bash tests/scripts/re-embed.sh";
 
@@ -103,7 +103,7 @@ fn emit_embedded_id(carried: &[(String, String)]) {
 ///
 /// 🔴 **这两份字节从哪来，只有两个地方**：发版那趟是 `release.yml` 的
 /// `Cross-compile backend for both musl targets`，本机那趟是 [`REEMBED_CMD`]，
-/// 两者**逐字同一条配方**（`K-R124` ⑬b 两向对拍）。
+/// 两者是**同一条配方**：发版那一步只调 `re-embed.sh --build-only`（`K-R124` ⑬i）。
 fn embed_backends(carried: &mut Vec<(String, String)>) {
     // 允许自定义 cfg（Rust 1.80+ unexpected_cfgs 检查）。
     println!("cargo:rustc-check-cfg=cfg(embedded_backends)");

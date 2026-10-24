@@ -1,4 +1,4 @@
-//! 流程工具住在仓里：门禁入口 `gate-clean.sh` · 按改动挑格 `gate-affected.sh`（＋ `gate-affected/plan.py` · `gate-affected/map`）·
+//! 流程工具住在仓里：门禁入口 `gate-affected.sh`（按改动挑格，`--full` 全量；＋ `gate-affected/plan.py` · `gate-affected/map`）·
 //! 重活隔离 `heavy.sh` · 推候选分支 `push-candidate.sh`，连同早先进仓的 `quick-check.sh` · `bump-build-id.sh`。
 //!
 //! 从前它们在仓外、只认一台机器、没有版本：门禁入口的 tmux 隔离改坏了几天没人发现，挑格的表与仓里的格对不上也只有跑起来才知道。
@@ -21,7 +21,6 @@ mod tests {
 
     /// 流程工具全集（相对仓根）。
     const FLOW_FILES: &[&str] = &[
-        "tests/scripts/gate-clean.sh",
         "tests/scripts/gate-affected.sh",
         "tests/scripts/gate-affected/plan.py",
         "tests/scripts/gate-affected/map",
@@ -38,7 +37,6 @@ mod tests {
 
     /// 带 `--help` 的入口。
     const HELPFUL: &[&str] = &[
-        "tests/scripts/gate-clean.sh",
         "tests/scripts/gate-affected.sh",
         "tests/scripts/heavy.sh",
         "tests/scripts/push-candidate.sh",
@@ -142,6 +140,35 @@ mod tests {
                 let _ = std::fs::remove_dir_all(&d);
             }
         }
+    }
+
+    /// 全量只有一个入口：`gate-affected.sh --full` 不挑格（不找起点、计划就是「全量」），与 `--trust-ci` 二选一。
+    #[test]
+    fn the_full_gate_is_gate_affected_with_full() {
+        let d = scratch("full");
+        git(&d, &["init", "-q", "-b", "lone"]);
+        write(&d, "README", "x\n");
+        git(&d, &["add", "-A"]);
+        git(&d, &["commit", "-q", "-m", "x"]);
+        let script = root().join("tests/scripts/gate-affected.sh");
+        let o = bash(&script, &["--full", "--dry-run"], &d);
+        let said = format!(
+            "{}{}",
+            String::from_utf8_lossy(&o.stdout),
+            String::from_utf8_lossy(&o.stderr)
+        );
+        assert!(
+            o.status.success() && said.contains("PLAN-MODE: full"),
+            "没有上游 · origin/main · main 的树上 `--full --dry-run` 该照样出全量计划：{said}"
+        );
+        let o = bash(&script, &["--full", "--trust-ci", "--dry-run"], &d);
+        assert_eq!(
+            o.status.code(),
+            Some(2),
+            "--full 与 --trust-ci 同给该退 2：{}",
+            String::from_utf8_lossy(&o.stderr)
+        );
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     /// 挑格那一半拿仓里的表对仓里的 `gate.sh`：表里每个格名都得是 gate.sh 盘上的格，不然它退 2。

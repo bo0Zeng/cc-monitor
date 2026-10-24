@@ -33,7 +33,7 @@ bash tests/scripts/re-embed.sh --check    # 只查：盘上的字节与源码的
 bash tests/scripts/re-embed.sh --clean    # 删掉落点：自动部署诚实关闭，编译立刻恢复
 ```
 
-配方与 `release.yml` 产字节那一步同源（门禁 `release-gate` 那一格对拍）。本机编出来的字节够开发期自洽，但不等于发版产物（发版用钉死版本的 zig / cargo-zigbuild）。要在本机编一份起得来本机后端、部署得了远端的包，先跑前两条再打包。
+musl 那两份的配方只住这条命令：`release.yml` 产字节那一步调的就是它的 `--build-only`。本机编出来的字节够开发期自洽，但不等于发版产物（发版用钉死版本的 zig / cargo-zigbuild）。要在本机编一份起得来本机后端、部署得了远端的包，先跑前两条再打包。
 
 ---
 

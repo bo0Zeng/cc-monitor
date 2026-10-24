@@ -22,20 +22,6 @@ name: Release
 #  ② 三条产线**只由本文件驱动**，而本文件只在推 `v*` tag / 手工触发时跑
 #     ⇒ 平常的 `cargo build` 一格字节都没有 ⇒ **这张表的门禁只能建在本文件上，不能建在 `cargo` 上**。
 #
-# ── 🔴 `19c`（2026-09-19）：本文件有一个**本机孪生** ─────────────────────────────
-#
-# `tests/scripts/re-embed.sh` 是「`BUILD_ID` bump 的同拍步骤」：开发树上 bump 了
-# `src/backend/lib.rs` 的 `const BUILD_ID` 之后，盘上那几份内嵌字节立刻变旧（monitor 照样编得过，
-# 按手上那份旧字节说话；「字节 == 源码」那条核对住下面的内嵌校验与那条命令的 `--check`）。那条命令把它们重编回来。
-# 🔴 **它与本文件下面那两步是同一条配方，不是两条**：
-#   · `Cross-compile backend for both musl targets` ↔ 脚本的 `REEMBED_TARGETS` ＋ `REEMBED_BUILD_FLAGS`
-#   · `Build local backend (native)`（Windows job 一处）     ↔ 脚本的 `--native` 那一趟
-#   两侧由 `tests/evidence/K-R124-ruler.py` 的 ⑬b **每趟两向对拍**（target 集合相等 ＋ 旗标逐字相同）。
-#   ⇒ **改本文件那几步的 target 或旗标，不同拍改那条命令，门禁当场红**（反过来也一样）。
-# ⚠ **诚实边界**：本机那一趟买到的是「开发期自洽 ＋ 裸 exe 恢复部署能力」，
-#   **不等于**本文件这一趟办完了 —— 形态不同（`build.rs` 自陈：static-pie / 未 strip / 不同 rustc），
-#   工具链版本也未必是下面钉的那两个。
-#
 # ⚠ **平台承诺面哪几格 ↔ 本文件哪几步产它们的字节** —— 那张表**不抄在这里**。
 #   唯一住址：`tests/evidence/K-R124-ruler.py` 的 `BYTE_LINES`（承诺面那一侧它又是从
 #   `tests/evidence/K-G4-platform-ledger.py::PROMISED` 导进去的，全仓只有那一份）。
@@ -236,21 +222,10 @@ jobs:
 
       # cc-monitor-backend 是独立 crate（无 workspace），静态编译成 musl。
       # build_id 由源码 const BUILD_ID 决定（拼进字节里的身份戳），从源码编译天然版本一致。
-      #
-      # ⚠ **`--locked` 不是可选的**（2026-09-09 加）：两份 `Cargo.lock` 今天都钉着
-      # `crypto-bigint 0.7.3`，而 **`0.7.0…0.7.4` 在 crates.io 上全部 yanked、只有 `0.7.5` 没被 yank**
-      #（09-09 现打 crates.io API 核实过 —— `src/backend/Cargo.toml` 里 `K-R34` 那段
-      #  留着的问号「没核，判不了」，后来核了：`yanked=true`）。
-      # cargo **只在解析那一步**挡 yanked，lock 里已经写着的照用 ⇒ 今天编得过。
-      # 但凡有什么让它**重走解析**（换机器 / 改依赖 / lock 与 manifest 对不上），后果二选一，
-      # 两条都坏：① 联网时它会**悄悄挪到 `0.7.5`** ⇒ 发出去的安装包与 CI 测过的**不是同一棵依赖树**；
-      # ② 拿不到 `0.7.5`（离线 / 缓存里只有那份 yanked 的）时当场退 101。
-      # `--locked` 把这两种都变成**一条响亮的失败**：lock 要动就报错，绝不静默换依赖。
+      # 配方（target 与旗标，含 `--locked` 的理由）只住 `tests/scripts/re-embed.sh`；`--build-only` 只编不铺，
+      #   字节落在 `.build/backend/<target>/release/`，下一步改名成资产。门禁 `muslbuild` 那一格调的是同一条。
       - name: Cross-compile backend for both musl targets
-        working-directory: src/backend
-        run: |
-          cargo zigbuild --release --locked --target x86_64-unknown-linux-musl
-          cargo zigbuild --release --locked --target aarch64-unknown-linux-musl
+        run: bash tests/scripts/re-embed.sh --build-only
 
       # 命名成 src/frontend/shell/build.rs embed_backends 期望的 cc-monitor-backend-<arch>。
       #
@@ -471,7 +446,7 @@ jobs:
       #
       # 它是文件窗口包 `cc-monitor-filewin` 自己的 `[[bin]]`：monitor 的 `build.rs` 吃不到它 ⇒ 先单编、铺进 `native-backend/`
       # （名字定死在 `build.rs::NATIVE_FILEWIN_FILE`，旁挂 `.target` 同上面两对），下面 `tauri build` 编 monitor 时
-      # `build.rs::embed_native_filewin` 把它内嵌进去。与 `tests/scripts/re-embed.sh --native` 同一条配方（`K-R124-ruler.py` ⑬b 对拍）。
+      # `build.rs::embed_native_filewin` 把它内嵌进去。与 `tests/scripts/re-embed.sh --native` 同一条配方（`K-R124-ruler.py` ⑬j 对拍）。
       # ⚠ size2（10-11）起它不再是 monitor 包的第二个 `[[bin]]`（打包器会把 monitor 包的每个 bin 都装进安装包，那一份与内嵌的逐字节相同）
       #   ⇒ 安装包里只有内嵌那一份：第一次开文件窗口时放到 `~/.cc-monitor/bin/` 再起（`filewin::proc::resolve_window_bin`）。
       # ⚠ **诚实边界**：本步买到「编得出 · 铺了 · target 对得上」；买不到「在真 Windows 上放得下来、起得来」—— 那要真机跑一趟。
