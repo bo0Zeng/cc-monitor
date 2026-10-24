@@ -53,7 +53,8 @@ const DAY: i64 = 86_400;
 /// 写「几点」「今天 / 昨天」的那几处都按它排，不按这台后端自己的钟：远端回的时刻字是给看的人看的。
 /// 偏移按**那一刻**算（夏令时跟着那一刻）；时区库随二进制带（jiff 的 `tzdb-bundle-always`），各平台同一份。
 /// 没带 · 不是字符串 · 库里没有这个名 ⇒ 按 UTC 算（[`Tz::default`]，协议里写明），但不冒充成「看的那一台在 UTC」（[`Tz::viewer_zone`] 说不出）。
-/// 另认一个词 [`TZ_HERE`]：看的人就在答话这一台上（终端里敲的 `ccm -- --… --text`、本机脚本）⇒ 按这台系统的钟（夏令时同样按那一刻）。
+/// 另认一个词 [`TZ_HERE`]：看的人就在答话这一台上 ⇒ 按这台系统的钟（夏令时同样按那一刻）。命令行那一形（一次性命令 · 流模式起参）
+/// **没写** `--tz` 就是它（[`Tz::here`]）：argv 只有这台上的进程起得了，从别台起的都显式交 `--tz`。
 #[derive(Clone, Debug)]
 pub struct Tz(Zone);
 
@@ -104,12 +105,20 @@ impl Tz {
             .map(|z| Self(Zone::Named(z)))
     }
 
-    /// 存得进盘 · 转得给别台的那个名（IANA；UTC ⇒ `UTC`；没说 ⇒ 照算的那一个 `UTC` 明说）；「这一台」没有名 ⇒ `None`。
-    pub fn iana_name(&self) -> Option<String> {
+    /// 「看的人就在这一台」（[`TZ_HERE`]）：命令行那一形没写 `--tz` 时就是它。
+    pub fn here() -> Self {
+        Self(Zone::Here)
+    }
+
+    /// 转得给别台的那个名（`--tz` · 信封 `tz`），恒说得出：说了名 ⇒ 那个名（UTC ⇒ `UTC`）；没说 ⇒ 照算的那一个 `UTC` 明说；
+    /// 「这一台」⇒ 这台系统的 IANA 名，说不出（Windows · `TZ` 是 POSIX 串）⇒ `UTC`。不交 ⇒ 那台按它自己的钟写，就错到那台去了。
+    pub fn iana_name(&self) -> String {
         match &self.0 {
-            Zone::Named(z) => Some(z.iana_name().unwrap_or("UTC").to_string()),
-            Zone::Here => None,
-            Zone::Unsaid => Some("UTC".to_string()),
+            Zone::Named(z) => z.iana_name().unwrap_or("UTC").to_string(),
+            Zone::Here => {
+                crate::platform::local_tz::iana_name().unwrap_or_else(|| "UTC".to_string())
+            }
+            Zone::Unsaid => "UTC".to_string(),
         }
     }
 
@@ -117,7 +126,7 @@ impl Tz {
     /// 「这一台」⇒ 这台系统的时区名（说不出 ⇒ `None`）；没说 ⇒ `None`（照实说不出，不冒充成 `UTC`）。
     pub fn viewer_zone(&self) -> Option<String> {
         match &self.0 {
-            Zone::Named(_) => self.iana_name(),
+            Zone::Named(_) => Some(self.iana_name()),
             Zone::Here => crate::platform::local_tz::iana_name(),
             Zone::Unsaid => None,
         }
