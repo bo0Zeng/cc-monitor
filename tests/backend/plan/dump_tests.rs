@@ -140,14 +140,12 @@ fn a_real_cell_run_names_slice_cell_and_workspace() {
 /// dump · cell · command 各自只判结局。数的是 `plan/` 底下全部源文件，新加一份照样算进来。
 #[test]
 fn starting_pb_lives_in_one_function() {
+    // 扫的是 `src/backend/plan/`（生产源码），本文件不在里面 ⇒ 不用摘自己。
     let dir = guard_core::addr::backend_src_root().join("plan");
-    let mut texts = String::new();
-    for e in std::fs::read_dir(&dir).unwrap() {
-        let p = e.unwrap().path();
-        if p.extension().is_some_and(|x| x == "rs") {
-            texts.push_str(&std::fs::read_to_string(&p).unwrap());
-        }
-    }
+    let texts: String = guard_core::scan_tree_excluding(&dir, &["rs"], &[])
+        .into_iter()
+        .map(|(_, src)| src)
+        .collect();
     assert!(
         texts.contains("pub(crate) fn pb("),
         "plan/ 里没有起 pb 的那个函数"
