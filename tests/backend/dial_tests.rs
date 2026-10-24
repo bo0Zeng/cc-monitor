@@ -732,8 +732,9 @@ async fn dropping_the_guard_closes_the_channel_exactly_once() {
     );
 }
 
-/// A5 接线（文本，如实登记：按行为量要真 sshd）：capture 那一臂拿到通道之后**先 `split`、写半边交给守卫**，
-/// exec 走守卫里那一半、收全走读半边；裸通道（`&channel` / `&mut channel`）在那一臂里零处。
+/// A5 接线（文本，如实登记：按行为量要真 sshd）：开 capture 那一臂拿到通道之后**先 `split`、写半边交给守卫**，
+/// exec 走守卫里那一半；裸通道（`&channel` / `&mut channel`）在那一臂里零处。收全在开成之后（`Opened::pump` · `uses::capture`
+/// 那两处），只走读半边。
 #[test]
 fn the_capture_arm_holds_its_channel_under_the_close_guard() {
     let src = guard_core::production_code(include_str!("../../src/backend/ssh-dial/uses.rs"));
@@ -746,7 +747,6 @@ fn the_capture_arm_holds_its_channel_under_the_close_guard() {
         "channel.split()",
         "CloseOnDrop::new(wr)",
         "exec_half(wr.get(),",
-        "collect(&mut rd,",
     ] {
         assert_eq!(
             arm.matches(need).count(),
@@ -754,6 +754,13 @@ fn the_capture_arm_holds_its_channel_under_the_close_guard() {
             "capture 臂里 `{need}` 不是恰好一处"
         );
     }
+    // 收全那两处（字节那一口 `pump` · 有类型的 `capture`）都只拿读半边。
+    assert_eq!(
+        src.matches("collect(&mut rd,").count(),
+        2,
+        "收全不是恰好走读半边的那两处"
+    );
+    assert_eq!(src.matches("collect(&mut ").count(), 2, "收全拿了别的东西");
     for bare in ["exec(&channel", "&mut channel"] {
         assert_eq!(
             arm.matches(bare).count(),
