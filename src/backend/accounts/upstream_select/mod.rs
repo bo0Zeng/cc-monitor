@@ -543,7 +543,7 @@ impl Destinations for Accounts {
             None => rotate::Go::Start,
         };
         let table = self.table();
-        rotate::dispatch_go(&table, &self.upstreams, mode, key, ask.names, go, act);
+        rotate::dispatch_go(&table, &self.upstreams, mode, key, &names_of(ask), go, act);
     }
 
     /// 名单只从适配层来（`agents::session_headers`，与默认上游同一张注册表）。
@@ -551,16 +551,9 @@ impl Destinations for Accounts {
         crate::agents::session_headers()
     }
 
-    fn stream_owner_headers(&self) -> Vec<&'static str> {
-        crate::agents::owner_headers()
-    }
-
-    fn stream_class_headers(&self) -> Vec<&'static str> {
-        crate::agents::class_headers()
-    }
-
-    fn request_marks(&self) -> Vec<(&'static str, &'static str)> {
-        crate::agents::context_marks()
+    /// 中转要带回的请求头：同上，只从适配层来（`agents::relay_headers`）。
+    fn relay_headers(&self) -> Vec<&'static str> {
+        crate::agents::relay_headers()
     }
 
     /// 回包头 → 这一家的读法 → 额度账（记在答这一发的那个号名下：`tag` 就是那个号）。
@@ -597,7 +590,7 @@ impl Destinations for Accounts {
             return;
         };
         let table = self.table();
-        rotate::dispatch_go(&table, &self.upstreams, mode, key, ask.names, go, act);
+        rotate::dispatch_go(&table, &self.upstreams, mode, key, &names_of(ask), go, act);
     }
 
     fn observe(&self, _mode: Mode, key: &RouteKey, ask: &Ask<'_>, seen: &Heard<'_>) {
@@ -660,6 +653,11 @@ pub(crate) fn auth_refusal_line(account: &str, status: u16) -> Option<String> {
 ///
 /// `/s/` 表里没这一行（`§3.1` 第 2 行）· `/t/` 表里没这一行、而这个 agent 没登记默认上游（`§3.1` 第 4 行，先前是 502）。
 const NO_ROUTE: &str = "404 Not Found";
+
+/// 中转带回的那几个头里出现了哪些（头名）：默认上游按带没带某个头二选一时看它（[`UpstreamPick::ByHeader`]）。
+fn names_of<'a>(ask: &Ask<'a>) -> Vec<&'a str> {
+    ask.heads.iter().map(|&(k, _)| k).collect()
+}
 
 /// 那张决策表**本身**，从「谁持锁、什么时候重载」里剥出来。
 ///

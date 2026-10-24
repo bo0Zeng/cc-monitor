@@ -183,7 +183,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/comms/outward/server.rs", "let _ = down.set_nonblocking(false);", Why::DeadLink, "已经答完的那条连接上排掉已到的字节，排不掉就算了"),
     ("src/comms/outward/server.rs", "let _ = down.set_nonblocking(true);", Why::DeadLink, "已经答完的那条连接上排掉已到的字节，排不掉就算了"),
     // 两处（事件那一件 · 收尾那一件）归一化截到同一个键。
-    ("src/comms/outward/tee.rs", "let _ = self.port.offer(TapEvent { stream: id.stream.to_string(), owner: id.owner.to_string(), class: id.class.to_string", Why::Backpressure, "投不进就丢：号照占，缺口在接收侧按号算得出（「SSE 保快、jsonl 保对」）；事件那一件与收尾那一件各一处"),
+    ("src/comms/outward/tee.rs", "let _ = self.port.offer(TapEvent { stream, heads, resp, n, body, });", Why::Backpressure, "投不进就丢：号照占，缺口在接收侧按号算得出（「SSE 保快、jsonl 保对」）；事件那一件与收尾那一件都经 `put` 这一处"),
     // NDJSON 那一形的四行（写线程 · 两处 `write_all` · `flush`）随独立 `--relay` 删了。
     ("src/backend/stderr_log.rs", "let _ = f.write_all(roll_note(self.log.old()).as_bytes());", Why::Diag, "「写不进去不拖垮后端」（脱离载体那一格）"),
     ("src/backend/stderr_log.rs", "let _ = self.fresh();", Why::Diag, "「写不进去不拖垮后端」（脱离载体那一格）"),

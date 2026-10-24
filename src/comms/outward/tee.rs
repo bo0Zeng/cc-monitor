@@ -1,5 +1,5 @@
-//! tee：把响应体里的 SSE 事件抄一份出去。**只抄响应体，永不抄请求头**
-//! （请求那一侧只出一样：名单上那几项在不在，布尔，见 [`TapPort::note_marks`]）。
+//! tee：把响应体里的 SSE 事件抄一份出去。**只抄响应体，不抄整份请求头**
+//! （请求那一侧只出一样：宿主名单上那几个头的值，随 0 号那一件交一次，见 [`TapEvent::heads`]）。
 //!
 //! # 落点：**tap**（常驻后端进程内那一份中转）
 //!
@@ -7,7 +7,7 @@
 //! [`TapPort`]：每个 SSE 事件交一个 [`TapEvent`]（**结构体，不是格式串** —— 线上字段名住
 //! 宿主那一侧），由宿主拼成活卡（`live_card` 帧）。
 //!
-//! - **四样东西**：`stream`（请求自带的会话标识头，中转不解释它）· `resp`（本进程第几个响应）·
+//! - **五样东西**：`stream`（请求自带的会话标识头，中转不解释它）· `heads`（名单上的请求头，只在 0 号那一件上）· `resp`（本进程第几个响应）·
 //!   `n`（这一个响应里第几个事件，从 0 连续）· 事件原文 / 收尾方式。**不带路由那两段**：挂载物 ① 不问账号。
 //! - **丢必须说，而且说在原位**：每个事件**先占号再投递**；单个事件超 [`TAP_DATA_CAP`] ⇒ 只交开头那一截、明标截断与原长
 //!   （[`TapBody::Clipped`]；有的协议开头那一件就带整份应答对象）；投不进（宿主通道满 / 没人连着）、解码那一路丢了半行 ⇒ 号照占、事件没了 ⇒ 接收侧看 `n` 连不连得上就知道丢在哪两个号之间
@@ -81,10 +81,9 @@ impl SseSplitter {
 pub struct TapEvent {
     /// 请求自带的会话标识头的值（中转不解释它；消费侧拿它对 sid）；没有 ⇒ 空串。
     pub stream: String,
-    /// 第二个标签（请求自带的另一个头的值，中转不解释它）；没有 ⇒ 空串。
-    pub owner: String,
-    /// 第三个标签（请求自带的又一个头的值，中转不解释它）；没有 ⇒ 空串。
-    pub class: String,
+    /// 名单（[`super::Destinations::relay_headers`]）上这一发请求带着的那几个头：(名单上的名字, 值)，中转不解释它们。
+    /// **只在 0 号那一件上**（一个响应交一次）；别的件 ⇒ 空。
+    pub heads: Vec<(&'static str, String)>,
     /// 本进程第几个响应（跨连接单调，[`TeeSink`] 那一个计数器）。
     pub resp: u64,
     /// 这一个响应里第几个事件（从 0 连续）；收尾那一件是「一共占了几个号」。
@@ -110,14 +109,7 @@ pub enum TapBody {
 /// 阻塞 = 让「有它更好」变成「非它不可」。答 `false` 的那一件号已占，接收侧看得见缺口。
 pub trait TapPort: Send + Sync {
     fn offer(&self, ev: TapEvent) -> bool;
-
-    /// 一条流（`stream`）的一发请求里，名单上那几项各在不在（[`super::Destinations::request_marks`]）。
-    /// 只交布尔，不交头的值。缺省 ⇒ 不收。
-    fn note_marks(&self, _stream: &str, _marks: &[RequestMark]) {}
 }
-
-/// 一项的「在不在」：（头名, 那一项的前缀）＋ 这一发带没带。
-pub type RequestMark = ((&'static str, &'static str), bool);
 
 /// 单个事件原文的字节上限。超了只交开头这么多、标成截断（[`TapBody::Clipped`]）。
 ///
@@ -171,13 +163,6 @@ impl TeeSink {
         TeeStream { resp: seq, n: 0 }
     }
 
-    /// 这条流的这一发请求里名单上那几项在不在（没有流标签 / 名单是空的 ⇒ 不交）。
-    pub fn mark(&self, stream: &str, marks: &[RequestMark]) {
-        if !stream.is_empty() && !marks.is_empty() {
-            self.port.note_marks(stream, marks);
-        }
-    }
-
     /// 一个 SSE 事件：先占号，再投递（投不进 ⇒ 号照占，缺口在接收侧可算；超界 ⇒ 交开头那一截、标截断）。
     pub(crate) fn event(&self, id: super::StreamId<'_>, at: &mut TeeStream, payload: &str) {
         let n = at.take();
@@ -193,11 +178,21 @@ impl TeeSink {
                 len: payload.len() as u64,
             }
         };
+        self.put(id, at.resp, n, body);
+    }
+
+    /// 交一件（事件那一件与收尾那一件都经这里）：名单上的头只随 0 号那一件带。
+    fn put(&self, id: super::StreamId<'_>, resp: u64, n: u64, body: TapBody) {
+        let heads = if n == 0 {
+            id.heads.iter().map(|&(k, v)| (k, v.to_string())).collect()
+        } else {
+            Vec::new()
+        };
+        let stream = id.stream.to_string();
         let _ = self.port.offer(TapEvent {
-            stream: id.stream.to_string(),
-            owner: id.owner.to_string(),
-            class: id.class.to_string(),
-            resp: at.resp,
+            stream,
+            heads,
+            resp,
             n,
             body,
         });
@@ -216,14 +211,7 @@ impl TeeSink {
     /// **一个号都没占过的响应不交**（非 SSE 的响应：`HEAD /api/hello`、JSON 错误体 —— 接收侧本来也认不出它们）。
     pub(crate) fn close(&self, id: super::StreamId<'_>, at: TeeStream, broken: bool) {
         if at.n > 0 {
-            let _ = self.port.offer(TapEvent {
-                stream: id.stream.to_string(),
-                owner: id.owner.to_string(),
-                class: id.class.to_string(),
-                resp: at.resp,
-                n: at.n,
-                body: TapBody::End { broken },
-            });
+            self.put(id, at.resp, at.n, TapBody::End { broken });
         }
     }
 }

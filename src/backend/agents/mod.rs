@@ -1886,14 +1886,11 @@ pub(crate) struct DefaultUpstream {
     pub(crate) session_header: Option<&'static str>,
     /// 这一家的上游说哪种流协议（归一流的折法）。`None` ＝ 它的流不折（活卡认不得）。
     pub(crate) stream: Option<StreamFace>,
-    /// 请求本身就说出「我是哪个子运行」的那个头（值 ＝ 子运行的标识，与 [`RecordFace::run_of`] 同一个值域）。
-    /// 声明了 ⇒ 带头的请求归那个子运行、不带头的就是主运行（当场定）；`None` ＝ 请求认不出运行 ⇒ 通用层按记录对账归位。
-    pub(crate) owner_header: Option<&'static str>,
-    /// 请求自己说出「这一发是不是对话」的那个头 ＋ 哪几个值算旁路（预测下一句 · 起标题 · 压缩总结那一类：不进记录、不上活卡）。
-    /// `None` ＝ 这一家的请求说不出 ⇒ 每一发都当对话。
-    pub(crate) side_class: Option<SideClass>,
+    /// 这一家要中转原样带回的请求头，各说什么（[`RelayHead`]）。通用层把各家的头名并成一张名单交中转（[`relay_headers`]），
+    /// 中转随 0 号那一件交回 (名, 值)；流归位 · 上游选择 · 请求标记各按名从里面拿。空 ＝ 这一家的请求说不出这些。
+    pub(crate) relay_heads: &'static [RelayHead],
     /// 走中转时随地址一起设的环境（名, 值）：凡是注中转地址的地方（起会话 exec 那一刻 · `--print` 那一行 · 设置文件的 `env` 块）都照这一份一起设。
-    /// 例：要这一家的请求带上 [`Self::side_class`] 那个头的开关。空 ＝ 没有。
+    /// 例：要这一家的请求带上 [`RelayHead::Class`] 那个头的开关。空 ＝ 没有。
     pub(crate) relay_env: &'static [(&'static str, &'static str)],
     /// API key 凭据文件（界面给账号配第三方 key 时写的那一份）里的行挂在这一家名下。
     /// 那份文件没有 agent 这一维 ⇒ 至多一家为真；没有一家为真 ⇒ 上游选择起不来（fail-closed）。
@@ -1901,9 +1898,6 @@ pub(crate) struct DefaultUpstream {
     /// 直接敲的这一家也走中转（可选，用户自己贴、后端只读）：它的用户级设置文件里写进程环境的那一块。
     /// `None` ＝ 这一家没有这一形，只能经起会话注入。
     pub(crate) settings_env: Option<SettingsEnvFace>,
-    /// 请求里说明「这一轮用的是扩展上下文」的那一项：（头名, 列表里那一项的前缀）。中转只记它在不在，会话事实据此定上限。
-    /// `None` ＝ 这一家的请求说不出。
-    pub(crate) context_mark: Option<(&'static str, &'static str)>,
     /// 回包状态 ＋ 回包头（＋ 此刻，unix 秒）→ 通用的额度快照：这一家的读法（头名只住那一家）。
     /// `None` ＝ 这一家的回包说不出额度；`Some` 答 `None` ＝ 这一个回包里没有额度信息。
     pub(crate) quota: Option<QuotaRead>,
@@ -2307,35 +2301,78 @@ pub(crate) fn session_headers() -> Vec<&'static str> {
     v
 }
 
-/// 各家登记的「请求说明用的是扩展上下文」的那一项（注册序、去重）：中转按它记每个会话的请求带没带。
-pub(crate) fn context_marks() -> Vec<(&'static str, &'static str)> {
-    let mut v: Vec<(&'static str, &'static str)> = Vec::new();
-    for m in REGISTRY
-        .iter()
-        .filter_map(|a| a.upstream.as_ref()?.context_mark)
-    {
-        if !v.contains(&m) {
-            v.push(m);
-        }
-    }
-    v
+/// 一家要中转原样带回的一个请求头，它说什么（[`DefaultUpstream::relay_heads`]）。中转只认头名、不认这几种意思。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RelayHead {
+    /// 请求本身就说出「我是哪个子运行」的那个头（值 ＝ 子运行的标识，与 [`RecordFace::run_of`] 同一个值域）。
+    /// 声明了 ⇒ 带头的请求归那个子运行、不带头的就是主运行（当场定）；没声明 ⇒ 请求认不出运行 ⇒ 通用层按记录对账归位。
+    Run(&'static str),
+    /// 请求自己说出「这一发是不是对话」的那个头 ＋ 哪几个值算旁路（预测下一句 · 起标题 · 压缩总结那一类：不进记录、不上活卡）。
+    /// 没声明 ⇒ 这一家的请求说不出 ⇒ 每一发都当对话。
+    Class(SideClass),
+    /// 请求里说明「这一轮用的是扩展上下文」的那一项：那个头的逗号列表里有一项以 `item` 开头（大小写不论）。会话事实据此定上限。
+    Wide {
+        header: &'static str,
+        item: &'static str,
+    },
 }
 
-/// 各家登记的「请求说出子运行」的头（注册序、去重）：中转按它从请求里认运行。
-pub(crate) fn owner_headers() -> Vec<&'static str> {
+impl RelayHead {
+    fn name(&self) -> &'static str {
+        match *self {
+            Self::Run(h) | Self::Wide { header: h, .. } => h,
+            Self::Class(c) => c.header,
+        }
+    }
+}
+
+/// 中转要原样带回的请求头名单（注册序、去重、不分大小写）：各家 [`DefaultUpstream::relay_heads`] 的头名，
+/// 加上默认上游按带没带某个头二选一的那个头（[`Fallback::ByHeader`]）。中转经上游选择拿到这一份，值随 0 号那一件交回。
+pub(crate) fn relay_headers() -> Vec<&'static str> {
     let mut v: Vec<&'static str> = Vec::new();
-    for h in REGISTRY
-        .iter()
-        .filter_map(|a| a.upstream.as_ref()?.owner_header)
-    {
-        if !v.contains(&h) {
-            v.push(h);
+    for u in REGISTRY.iter().filter_map(|a| a.upstream.as_ref()) {
+        let picks = match u.fallback {
+            Fallback::ByHeader { header, .. } => Some(header),
+            Fallback::One(_) => None,
+        };
+        for h in u.relay_heads.iter().map(RelayHead::name).chain(picks) {
+            if !v.iter().any(|x| x.eq_ignore_ascii_case(h)) {
+                v.push(h);
+            }
         }
     }
     v
 }
 
-/// 一家的请求怎么说出「这一发是不是对话」（[`DefaultUpstream::side_class`]）：哪个头 · 那个头的哪几个值是旁路。
+/// 带回的头里名为 `name` 的那一个的值（头名不分大小写；中转那一侧同名的已并成一个值）。
+/// 扫的是这一发请求的头，不是注册表。
+pub(crate) fn head_value<'h, V: AsRef<str>>(heads: &'h [(&str, V)], name: &str) -> Option<&'h str> {
+    for (k, v) in heads {
+        if k.eq_ignore_ascii_case(name) {
+            return Some(v.as_ref());
+        }
+    }
+    None
+}
+
+/// 这一发请求（中转带回的那几个头）说的是不是扩展上下文：有一家登记的 [`RelayHead::Wide`] 那个头里有那一项。
+pub(crate) fn wide_context<V: AsRef<str>>(heads: &[(&str, V)]) -> bool {
+    REGISTRY
+        .iter()
+        .filter_map(|a| a.upstream.as_ref())
+        .flat_map(|u| u.relay_heads.iter())
+        .any(|h| match *h {
+            RelayHead::Wide { header, item } => head_value(heads, header).is_some_and(|v| {
+                v.split(',').any(|t| {
+                    let t = t.trim();
+                    t.len() >= item.len() && t[..item.len()].eq_ignore_ascii_case(item)
+                })
+            }),
+            _ => false,
+        })
+}
+
+/// 一家的请求怎么说出「这一发是不是对话」（[`RelayHead::Class`]）：哪个头 · 那个头的哪几个值是旁路。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SideClass {
     pub(crate) header: &'static str,
@@ -2349,27 +2386,13 @@ impl SideClass {
     }
 }
 
-/// 各家登记的分类头（注册序、去重）：中转按它给流打第三个标签。
-pub(crate) fn class_headers() -> Vec<&'static str> {
-    let mut v: Vec<&'static str> = Vec::new();
-    for h in REGISTRY
-        .iter()
-        .filter_map(|a| a.upstream.as_ref()?.side_class.map(|s| s.header))
-    {
-        if !v.contains(&h) {
-            v.push(h);
-        }
-    }
-    v
-}
-
-/// 一家上游在流归位那里的样子：它的流协议面 ＋ 它的请求是否自报运行（声明了 [`DefaultUpstream::owner_header`]）＋ 怎么认旁路。
+/// 一家上游在流归位那里的样子：它的流协议面 ＋ 它的请求自报运行的那个头（[`RelayHead::Run`]）＋ 怎么认旁路（[`RelayHead::Class`]）。
 #[derive(Clone, Copy)]
 pub(crate) struct StreamFamily {
     pub(crate) face: StreamFace,
-    /// 声明了自报运行的头 ⇒ 带头的归那个子运行、不带头的就是主运行（当场定，不挂起）。
-    pub(crate) owns: bool,
-    /// 请求的分类头报的是旁路 ⇒ 那一段不上活卡（[`DefaultUpstream::side_class`]）。
+    /// 自报运行的头：声明了 ⇒ 带头的归那个子运行、不带头的就是主运行（当场定，不挂起）。
+    pub(crate) run: Option<&'static str>,
+    /// 请求的分类头报的是旁路 ⇒ 那一段不上活卡。
     pub(crate) side: Option<SideClass>,
 }
 
@@ -2379,11 +2402,20 @@ pub(crate) fn stream_families() -> Vec<StreamFamily> {
         .iter()
         .filter_map(|a| {
             let u = a.upstream.as_ref()?;
-            Some(StreamFamily {
+            let mut f = StreamFamily {
                 face: u.stream?,
-                owns: u.owner_header.is_some(),
-                side: u.side_class,
-            })
+                run: None,
+                side: None,
+            };
+            // 这一家自己那几个头里，自报运行的与分类的各是哪一个。
+            for h in u.relay_heads {
+                match *h {
+                    RelayHead::Run(n) => f.run = Some(n),
+                    RelayHead::Class(c) => f.side = Some(c),
+                    RelayHead::Wide { .. } => {}
+                }
+            }
+            Some(f)
         })
         .collect()
 }

@@ -63,10 +63,10 @@ fn an_endless_sse_line_is_dropped_and_counted_instead_of_growing_forever() {
 //   那个落点随独立 `--relay` 删了。tap 那一形的逐件语义（先占号再投递 · 超界 / 投不进号照占 · 收尾带总号数 · 非 SSE 不交）
 //   住 `host_tests`（真起中转、走生产接线）。
 
-/// 第三个标签（请求里分类头的值，[`super::super::Destinations::stream_class_headers`]）原样随每一件交给宿主：事件那一件与收尾那一件都带。
-/// 中转不解释它（旁路不上活卡是宿主那一侧按适配层的声明判的）。
+/// 名单上那几个头（[`super::super::Destinations::relay_headers`]）的 (名, 值) 只随 0 号那一件交一次：
+/// 后面的事件与收尾那一件不再抄（接收侧在 0 号那一件上认归属与分类）。中转不解释它们。
 #[test]
-fn the_class_label_rides_every_tapped_event() {
+fn the_listed_headers_ride_only_the_first_event() {
     #[derive(Default)]
     struct Got(std::sync::Mutex<Vec<TapEvent>>);
     impl TapPort for Got {
@@ -77,15 +77,21 @@ fn the_class_label_rides_every_tapped_event() {
     }
     let got = std::sync::Arc::new(Got::default());
     let tee = TeeSink::to_port(got.clone());
+    let heads = [("h-class", "auxiliary"), ("h-beta", "a-1, b-2")];
     let id = super::super::StreamId {
         stream: "s-1",
-        owner: "",
-        class: "auxiliary",
+        heads: &heads,
     };
     let mut at = tee.open();
     tee.event(id, &mut at, r#"{"type":"message_start"}"#);
+    tee.event(id, &mut at, r#"{"type":"ping"}"#);
     tee.close(id, at, false);
     let got = got.0.lock().unwrap();
-    assert_eq!(got.len(), 2);
-    assert!(got.iter().all(|e| e.class == "auxiliary"), "{got:?}");
+    assert_eq!(got.len(), 3);
+    let want: Vec<(&str, String)> = heads.iter().map(|&(k, v)| (k, v.to_string())).collect();
+    assert_eq!(got[0].heads, want, "0 号那一件带名单上的头");
+    assert!(
+        got[1].heads.is_empty() && got[2].heads.is_empty(),
+        "后面的不再抄：{got:?}"
+    );
 }

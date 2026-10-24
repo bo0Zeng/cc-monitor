@@ -86,15 +86,20 @@ pub(crate) const UPSTREAM: super::DefaultUpstream = super::DefaultUpstream {
     // 真 claude（2.1.283）每条 `POST /v1/messages` 都带它：UUID 形，== 它落盘的 jsonl 文件名。
     session_header: Some("x-claude-code-session-id"),
     stream: Some(super::sse_anthropic::FACE),
-    owner_header: Some(runs::OWNER_HEADER),
-    side_class: Some(runs::SIDE_CLASS),
+    relay_heads: &[
+        super::RelayHead::Run(runs::RUN_HEADER),
+        super::RelayHead::Class(runs::REQUEST_CLASS),
+        // 1M 上下文的请求在 `anthropic-beta` 里带 `context-1m-<日期>` 那一项；不带 ⇒ 这个模型的默认上下文。
+        super::RelayHead::Wide {
+            header: "anthropic-beta",
+            item: "context-1m",
+        },
+    ],
     relay_env: runs::RELAY_ENV,
     // 界面给这一家的账号配第三方 key 时写那份凭据文件 ⇒ 文件里的行都是这一家的。
     owns_credentials_file: true,
     // 直接敲的 claude 读 `~/.claude/settings.json` 的 `env` 块（各号的那一份都链回它）。
     settings_env: Some(paths::SETTINGS_ENV),
-    // 1M 上下文的请求在 `anthropic-beta` 里带 `context-1m-<日期>` 那一项；不带 ⇒ 这个模型的默认上下文。
-    context_mark: Some(("anthropic-beta", "context-1m")),
     quota: Some(quota::read),
     window_slot: Some(quota::slot_of),
     window_key: Some(quota::key_of),

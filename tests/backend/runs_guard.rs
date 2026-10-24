@@ -148,8 +148,8 @@ fn claude_code() -> Shape {
         faces: RunFaces::of(&crate::agents::claudecode::RECORDS),
         stream: StreamFamily {
             face: crate::agents::sse_anthropic::FACE,
-            owns: crate::agents::claudecode::UPSTREAM.owner_header.is_some(),
-            side: crate::agents::claudecode::UPSTREAM.side_class,
+            run: Some(crate::agents::claudecode::runs::RUN_HEADER),
+            side: Some(crate::agents::claudecode::runs::REQUEST_CLASS),
         },
         parent_of: |d, sid| d.join(format!("{sid}.jsonl")),
         child_of: |parent, run| {
@@ -258,7 +258,7 @@ fn fake() -> Shape {
         faces: crate::agents::fake::runs::FACES,
         stream: StreamFamily {
             face: crate::agents::fake::runs::STREAM,
-            owns: false,
+            run: None,
             side: None,
         },
         parent_of: |d, sid| d.join(format!("sess-{sid}.ndjson")),
@@ -356,15 +356,22 @@ fn append(p: &Path, lines: &[String]) {
     }
 }
 
-/// 一段流交给流归位（`owner` 空 ＝ 请求没自报运行）：回放出来的帧。
-fn feed(router: &mut RunRouter, resp: u64, owner: &str, data: Vec<String>) -> Vec<Routed> {
+/// 一段流交给流归位（`owner`：请求自报运行的那个头与它的值，随 0 号那一件；`None` ＝ 请求没自报运行）：回放出来的帧。
+fn feed(
+    router: &mut RunRouter,
+    resp: u64,
+    owner: Option<(&'static str, &str)>,
+    data: Vec<String>,
+) -> Vec<Routed> {
     let n = data.len() as u64;
     let mut out = Vec::new();
     for (i, d) in data.into_iter().enumerate() {
         out.extend(router.on_tap(TapEvent {
             stream: SID.into(),
-            owner: owner.into(),
-            class: String::new(),
+            heads: match owner {
+                Some((h, v)) if i == 0 => vec![(h, v.to_string())],
+                _ => Vec::new(),
+            },
             resp,
             n: i as u64,
             body: TapBody::Data(d),
@@ -372,8 +379,7 @@ fn feed(router: &mut RunRouter, resp: u64, owner: &str, data: Vec<String>) -> Ve
     }
     out.extend(router.on_tap(TapEvent {
         stream: SID.into(),
-        owner: owner.into(),
-        class: String::new(),
+        heads: Vec::new(),
         resp,
         n,
         body: TapBody::End { broken: false },
@@ -424,7 +430,7 @@ fn run_the_scenario(shape: &Shape) {
     let mut router = RunRouter::new(book.clone(), vec![shape.stream]);
     // 正控：两套形状正好各走一条路（Claude Code 声明了自报的头、假适配层没声明）。
     assert_eq!(
-        shape.stream.owns,
+        shape.stream.run.is_some(),
         shape.name == "claude-code",
         "[{}] 自报头的声明与预期不符",
         shape.name
@@ -466,10 +472,21 @@ fn run_the_scenario(shape: &Shape) {
         shape.name
     );
 
-    // 三段流：主运行（没自报）· 两个子运行（自报了是谁）。
-    let main = feed(&mut router, 0, "", (shape.sse)("r-main", None));
-    let s1 = feed(&mut router, 1, "w1", (shape.sse)("r-w1b", Some("Bash")));
-    let s2 = feed(&mut router, 2, "w2", (shape.sse)("r-w2b", Some("Grep")));
+    // 三段流：主运行（没自报）· 两个子运行（声明了自报的头 ⇒ 自报了是谁；没声明 ⇒ 请求说不出，挂起等记录对账）。
+    let main = feed(&mut router, 0, None, (shape.sse)("r-main", None));
+    let says = |run: &'static str| shape.stream.run.map(|h| (h, run));
+    let s1 = feed(
+        &mut router,
+        1,
+        says("w1"),
+        (shape.sse)("r-w1b", Some("Bash")),
+    );
+    let s2 = feed(
+        &mut router,
+        2,
+        says("w2"),
+        (shape.sse)("r-w2b", Some("Grep")),
+    );
     let on_main: Vec<String> = said(&[main.clone(), s1.clone(), s2.clone()].concat())
         .into_iter()
         .filter(|(_, run, _)| run.is_none())
@@ -487,7 +504,7 @@ fn run_the_scenario(shape: &Shape) {
         (0, None, "stop true".into()),
         (0, None, "end Done".into()),
     ];
-    if shape.stream.owns {
+    if shape.stream.run.is_some() {
         assert_eq!(
             said(&main),
             main_said,
@@ -502,30 +519,39 @@ fn run_the_scenario(shape: &Shape) {
             said(&main)
         );
     }
-    assert_eq!(
-        said(&s1),
-        vec![
-            (1, w("w1"), "start r-w1b".into()),
-            (1, w("w1"), "tool Bash".into()),
-            (1, w("w1"), "stop true".into()),
-            (1, w("w1"), "end Done".into()),
-        ],
-        "[{}] 子运行 w1 的流归 w1 那一行",
-        shape.name
-    );
-    assert!(
-        said(&s2)
-            .iter()
-            .all(|(r, run, _)| *r == 2 && *run == w("w2")),
-        "[{}] 子运行 w2 的流归 w2 那一行：{:?}",
-        shape.name,
-        said(&s2)
-    );
+    if shape.stream.run.is_some() {
+        assert_eq!(
+            said(&s1),
+            vec![
+                (1, w("w1"), "start r-w1b".into()),
+                (1, w("w1"), "tool Bash".into()),
+                (1, w("w1"), "stop true".into()),
+                (1, w("w1"), "end Done".into()),
+            ],
+            "[{}] 子运行 w1 的流归 w1 那一行",
+            shape.name
+        );
+        assert!(
+            !s2.is_empty()
+                && said(&s2)
+                    .iter()
+                    .all(|(r, run, _)| *r == 2 && *run == w("w2")),
+            "[{}] 子运行 w2 的流归 w2 那一行：{:?}",
+            shape.name,
+            said(&s2)
+        );
+    } else {
+        assert!(
+            s1.is_empty() && s2.is_empty(),
+            "[{}] 没声明自报的头 ⇒ 请求说不出是哪个子运行，对账前不许放出",
+            shape.name
+        );
+    }
 
     // 主运行那一次的记录落盘：挂起的那段（只有没声明头的家才挂起）按它的归属放出，只有主运行自己的东西。
     main_line(&track, (shape.main_say)("r-main"));
     let released = router.on_learned();
-    if shape.stream.owns {
+    if shape.stream.run.is_some() {
         assert!(
             released.is_empty(),
             "[{}] 当场定了的那段不该再放一次",
@@ -541,9 +567,9 @@ fn run_the_scenario(shape: &Shape) {
     }
 
     let w1 = (shape.child_of)(&parent, "w1");
-    if !shape.stream.owns {
+    if !shape.stream.run.is_some() {
         // 没声明头的家：没自报的子运行段挂起，等它自己的记录对上对账键 ⇒ 归它。
-        let quiet = feed(&mut router, 3, "", (shape.sse)("r-w1c", Some("Read")));
+        let quiet = feed(&mut router, 3, None, (shape.sse)("r-w1c", Some("Read")));
         assert!(
             quiet.is_empty(),
             "[{}] 没自报的那段在对上之前不许放出",
@@ -584,7 +610,7 @@ fn run_the_scenario(shape: &Shape) {
         "[{}] 子运行写出终局 ⇒ 那一行变完成",
         shape.name
     );
-    let after = feed(&mut router, 4, "", (shape.sse)("r-main2", None));
+    let after = feed(&mut router, 4, None, (shape.sse)("r-main2", None));
     assert!(
         !after.is_empty() && said(&after).iter().all(|(_, run, _)| run.is_none()),
         "[{}] 没有在跑的子运行 ⇒ 主运行的流直接上（延迟不变）",
@@ -618,11 +644,11 @@ fn an_adapter_that_declares_no_runs_keeps_everything_on_the_main_run() {
         book,
         vec![StreamFamily {
             face: crate::agents::fake::runs::STREAM,
-            owns: false,
+            run: None,
             side: None,
         }],
     );
-    let f = feed(&mut router, 0, "", (fake().sse)("r1", None));
+    let f = feed(&mut router, 0, None, (fake().sse)("r1", None));
     assert!(!f.is_empty() && said(&f).iter().all(|(_, run, _)| run.is_none()));
 }
 
