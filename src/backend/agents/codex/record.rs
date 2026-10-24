@@ -466,7 +466,7 @@ fn agent_mail_said(payload: &Value) -> UserText {
 const AGENT: &str = super::AGENT_KIND;
 
 /// 一行 rollout 原文（与它的起点字节偏移）⇒ 交给通用层的那一形（注册表 `RecordFace.parse`；契约同 Claude 那一家：
-/// 空行 `Ok(None)` · 连 JSON 都不是 `Err`）。这一家没有排队那一对、记录上也不带 `cwd`。
+/// 空行 `Ok(None)` · 连 JSON 都不是 `Err`）。这一家的记录上不带 `cwd`。
 pub(crate) fn translated(line: &crate::agents::Line<'_>) -> Result<Option<Translated>, String> {
     if line.is_blank() {
         return Ok(None);
@@ -475,7 +475,6 @@ pub(crate) fn translated(line: &crate::agents::Line<'_>) -> Result<Option<Transl
     Ok(Some(Translated {
         record: record_of(v, line.start()),
         cwd: None,
-        queue: None,
     }))
 }
 

@@ -116,7 +116,7 @@ pub(crate) fn read_at(
 ) -> Result<HistoryRead, HistoryReadErr> {
     let lower = of_pair(HistoryReadErr::Failed);
     let offset = req.offset.unwrap_or(0);
-    let (target, face) = record_face(home, &req.path).map_err(&lower)?;
+    let (_, face) = record_face(home, &req.path).map_err(&lower)?;
     let page = body::read_page(
         home,
         &req.path,
@@ -128,7 +128,7 @@ pub(crate) fn read_at(
     .map_err(&lower)?;
     Ok(HistoryRead {
         rows: crate::observe::query::body::rows_of(
-            &mut reader(&face, &target, offset, tz),
+            &mut reader(&face, tz),
             offset,
             &page.bytes,
         ),
@@ -229,7 +229,7 @@ pub(crate) fn page_at(
     )
     .map_err(&lower)?;
     let (lines, next_seq) = crate::observe::query::body::record_lines_of_page(
-        &mut reader(&face, &target, offset, tz),
+        &mut reader(&face, tz),
         &target,
         req.seq.unwrap_or(0),
         offset,
@@ -311,9 +311,8 @@ pub(crate) fn lines_at(
         LINE_CAP_BYTES,
     )
     .map_err(&lower)?;
-    let first = page.starts.first().copied().unwrap_or(0);
     let (lines, _) = crate::observe::query::body::record_lines(
-        &mut reader(&face, &target, first, tz),
+        &mut reader(&face, tz),
         &target,
         page.from,
         page.lines
@@ -426,11 +425,11 @@ pub(crate) fn run_at(
         locate::run_source(home, &req.parent, req.run.as_deref(), req.tool.as_deref())
             .map_err(&lower)?;
     let path = source.to_string_lossy().into_owned();
-    let (target, face) = record_face(home, &path).map_err(&lower)?;
+    let (_, face) = record_face(home, &path).map_err(&lower)?;
     let page = body::read_page(home, &path, from, None, READ_PAGE_BYTES, LINE_CAP_BYTES)
         .map_err(&lower)?;
     let rows = crate::observe::query::body::run_rows(
-        &mut reader(&face, &target, from, tz),
+        &mut reader(&face, tz),
         from,
         &page.bytes,
     );

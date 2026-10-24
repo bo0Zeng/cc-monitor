@@ -398,15 +398,12 @@ pub(crate) fn record_face(
     Ok((target, face))
 }
 
-/// 从 `offset` 起读那一份记录的读法：起点之前那一段一起喂进去配排队消息的打字时刻（`body::lead_of`）。
+/// 读那一份记录的读法：适配层 ＋ 看的那一台的时区。
 pub(crate) fn reader<'a>(
     face: &'a crate::agents::RecordFace,
-    target: &std::path::Path,
-    offset: u64,
     tz: &crate::Tz,
 ) -> crate::observe::query::body::Reader<'a> {
-    let (lead_at, lead) = crate::observe::query::body::lead_of(target, offset);
-    crate::observe::query::body::Reader::new(face, lead_at, &lead, tz.clone())
+    crate::observe::query::body::Reader::new(face, tz.clone())
 }
 
 pub(crate) fn too_large(size: usize) -> (&'static str, String) {

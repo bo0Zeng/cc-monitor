@@ -428,7 +428,7 @@ fn events_and_meta_records_do_not_come_out() {
         let t = translated(&crate::agents::Line::new(&v.to_string(), 0))
             .unwrap()
             .unwrap();
-        assert!(t.record.is_none() && t.queue.is_none(), "{v}");
+        assert!(t.record.is_none(), "{v}");
     }
 }
 
@@ -567,7 +567,7 @@ fn codex_sample_rollout_reads_to_the_record_golden() {
     let sample = std::fs::read(root.join("tests/__fixtures__/codex-rollout.sample.jsonl")).unwrap();
     let face = super::super::RECORDS;
     let tz = crate::Tz::named("UTC").unwrap();
-    let mut reader = crate::observe::query::body::Reader::new(&face, 0, &[], tz);
+    let mut reader = crate::observe::query::body::Reader::new(&face, tz);
     let rows = crate::observe::query::body::rows_of(&mut reader, 0, &sample);
     let mut got = String::new();
     for (i, row) in rows.iter().enumerate() {

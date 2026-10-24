@@ -1240,24 +1240,13 @@ pub(crate) fn is_session_record(p: &Path) -> bool {
         .is_some_and(|d| (d.is_record)(p))
 }
 
-/// 一行原文翻成的那一形 —— 适配层给，通用层只搬（[`record::Record`] 的格通用层一个都不读，只按 [`QueueMark`] 配打字时刻）。
+/// 一行原文翻成的那一形 —— 适配层给，通用层只搬（[`record::Record`] 的格通用层一个都不读）。
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Translated {
     /// 这一行在界面里是什么；缺 ＝ 不进界面（照占号、不出成品）。
     pub(crate) record: Option<record::Record>,
     /// 这条记录自己的 `cwd`（带它的那一类才有）。
     pub(crate) cwd: Option<String>,
-    /// 排队那一对：打字那一刻（不出记录）· 被插进那一轮的那一条（它的 `at` 要换成打字时刻）。
-    pub(crate) queue: Option<QueueMark>,
-}
-
-/// 排队消息的两头。配对按 `text`（人打的那句原文）：同一句重打 ⇒ 取最近一次。
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum QueueMark {
-    /// 人在一轮跑着时打了这一句（`at` ＝ 打字时刻）。
-    Typed { text: String, at: String },
-    /// 这一条 `queued` 记录插的是这一句。
-    Taken { text: String },
 }
 
 /// **一行记录**，交给适配层那几问（成品 · 链事实 · 轮次结束 · 此刻在干什么 · 运行簿）的同一份：原文（去掉 BOM 与两端空白）＋
