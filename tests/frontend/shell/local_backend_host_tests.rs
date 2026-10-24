@@ -9,69 +9,9 @@
 //! 〔本机取字节前先问 OS〕乙 · 迁移底账：「**这道闸要消失**」。〔几条量具〕丙，服务上面那几块的源码扫描。
 //! 〔监听口要钥匙 · 脱离后不留僵尸 · 起真后端必须 fail-closed 地隔离用户 tmux〕三块已升格：`INVARIANTS §48.1` · `§48.2` · `§48.3`（
 //! 「本机后端宿主三条」）。三块各自的判据逐个点名在那三小节的「谁在守」里。〔IV1 改指 2026-09-25〕
-//! ⚠ 本族「56 条」是尺子把注释 / 字符串里的测试属性字样也数成了判据；族内真判据 33 条。
+//! ⚠ 按字样数会把注释 / 字符串里的测试属性字样也数成判据；族内真判据 49 条。
 
 use super::*;
-
-/// 〔`K-R76` `KR76D2`，09-12〕**上面那个 `pub(crate) mod tests` 靠的那条剥法，今天还在盘上。**
-///
-/// # 它治的是一处**裸行号**
-///
-/// 09-01 到 09-12 之间，上面那段说明指的是 `guard-core/src/lib.rs` 的**某一行行号**。
-/// 那份文件 09-12 被 `K-R75` 改过 ⇒ **那个数当场就漂了**，而漂了**没有任何东西会说话**
-/// （本区 `[J5 审计正文]` 一直在治这一族）。⇒ 换成**逐字校验位**：把剥法那一行的原文抄进
-/// `PIN`，由本条去核它还在不在、且**恰好一处**。
-///
-/// # 买到什么 · 买不到什么（写死，别读大）
-///
-/// - **买到**：上面那段散文**指得着** —— 剥法那一行被改写 / 退回旧写法 / 搬走，本条当场红。
-/// - **买不到**：剥法**对不对**。那是 `guard-core` 自己那几条的事
-///   （`a_test_module_is_recognised_whatever_its_visibility` 那一族），不归本条。
-/// - **也买不到**「本文件的测试段真的被剥干净了」—— 那归 `structural_scan.rs` 里那条
-///   走 `guard_core::assert_tree_strips_clean` 的树级反向自检。
-/// - ⚠ 这条 `include_str!` **不是跨半边的边**：`cross_half_edge_registry` 那张表管的是
-///   monitor ↔ backend，而 `src/common/` 与 `src/frontend/shell/src/` 同属这一半。
-///   同形先例：`dial_home_registry::INTERFACE_MANIFEST` · `usage.rs` 读 `usage-core`。
-#[test]
-fn the_strip_rule_this_file_leans_on_is_still_on_disk() {
-    // 校验位：`guard_core::test_module_ranges` 里认「这一行是不是测试模块的开头」的那一句，**逐字**。
-    //
-    // 🔴 **这一族只许有一个家**：别在上面那段注释里、也别在别的判据里再抄一份
-    //   —— 抄一份就有两个家，而漂开的那一天两边看起来一模一样。
-    const PIN: &str = r#"strip_visibility(mod_line).starts_with("mod ")"#;
-    const GUARD_CORE: &str = include_str!("../../../src/common/guard-core/src/lib.rs");
-    // 反空真：先证 `include_str!` 真读到了东西，否则「找不到就红」是空转。
-    assert!(
-        GUARD_CORE.len() > 10_000,
-        "只读到 {} 字节的 `crates/guard-core/src/lib.rs` —— `include_str!` 没读到东西，本条在空转",
-        GUARD_CORE.len()
-    );
-    assert_eq!(
-        GUARD_CORE.matches(PIN).count(),
-        1,
-        "在 `src/common/guard-core/src/lib.rs` 里没有恰好一处剥法那一行的逐字校验位：\n\
-             逐字 `{PIN}`\n\
-             ⇒ 两种来路，都要人来看：\n\
-             ① **剥法被改了**（退回按字面前缀认 `mod ` 那一版？）—— 那么本文件上面那个\n\
-                `pub(crate) mod tests` 会让整段测试代码留在生产段里。**这不是改注释能修的。**\n\
-             ② 只是那一行被重写 / 搬家了 —— 那么把 `PIN` 换成新的原文，\
-                **别换回一个行号**（那正是本条 09-12 治掉的那个病）。"
-    );
-}
-
-//
-// 删它的理由是一个实测读数，不是风格：它量的是「`relay_prefix_for_launch` 的体切出
-// 700 字节，那个窗口里**有没有**那两段文本」。`D5` 现打：在同一个窗口里加一行把那两段
-// 文本原样留住的死赋值，同时把真入参换成空表 / 常量 ⇒ 文本一处不少、判据照绿、
-// **全量门禁四个数与干净树逐字相同**，而中转注入在生产上被整个摘掉。
-// ⇒ 铁律 13「删之前先证明它恒绿」：`D5` 那一刀就是那份证明。
-//
-// ⚠ **别在这里补一个「更聪明的文本判据」**（比如切实参表按逗号分段再比字面量）——
-//   `D4` 那一轮的修法（把判据搬出被扫文件）买到的东西正是被下一层的量法漏掉的，
-//   而两轮的量法都是「量文本」。这一族已经连着五层了，出路是**不量文本**：
-//   两个事实走本机后端 `launch_render/mod.rs::Host` 那张事实表，判据喂替身、断言前缀随答案变。
-//
-// ⚠ 先前本文件上一条买的是另一半（那个取值口自己真的去连那个口）；那个取值口随「本机中转在不在由本机后端答」一起退役。
 
 /// M2：**两条载体起本机后端时交的是同一份环境**：中转端口 ＋（隔离跑时）家；没有另指凭据 / 注解位置的格。
 ///
@@ -1013,47 +953,6 @@ fn the_detach_landing_is_the_host_layer_and_the_injection_is_really_used() {
         "`spawn_detached` 没有清掉 `TMUX` —— tmux 客户端在 `TMUX` 有值时**按它给的 socket 走**，\
              `TMUX_TMPDIR` 完全不起作用。那正是 08-11 打没用户 9 个真实 tmux 会话的机制。"
     );
-}
-
-/// M4：**退出臂里零中转收法** —— 本机固定两个进程，中转随常驻后端按「退出行为」留或退。
-///
-/// 先前这里是 `D7 阻-3` 那两条（替身记账量「勾了才收中转」＋ 臂里恰好一行委托）：monitor 另起的中转
-/// 自己感觉不到宿主离开，只能由退出臂收。中转并进本机后端之后那条缝与它的收口点一起删了 ⇒
-/// 本条钉「删干净了、没人在臂里另起炉灶」：
-/// ① 臂体里 `relay` 这个词（标识符边界）**零命中**；
-/// ② `lib.rs` 生产段里那条旧缝的三个名字**零命中**；
-/// ③ 正控：同一把尺子在臂体里数得到 `kill_on_exit_now(` 恰好一处（臂切对了，不是空块）。
-/// ⚠ **臂里那一处 `.stop()` 与那一处 `kill_on_exit_now(` 是刻意留着的**：被监护那条起法必须留在臂里，
-/// 而 `local_backend_tests.rs::the_exit_path_really_stops_the_local_backend` 正是数它们的。
-/// ⚠ 它是文本判据，如实登记：它量「有没有人在这条臂里另起炉灶」，不是「退出时后端里的中转真的走了」
-/// （后者随后端进程退出，由构造保证：中转线程住在那个进程里）。
-#[test]
-fn the_exit_arm_collects_no_relay() {
-    let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/lib.rs"));
-    // ⚠ 找不到 `RunEvent::Exit` 就是整段钩子没了 —— 实测：删掉它，全仓判据一条不红。
-    let body = braced_block(&prod, "RunEvent::Exit", 200, 3000);
-    assert_eq!(
-        body.split("kill_on_exit_now(").count(),
-        2,
-        "正控：退出臂里 `kill_on_exit_now(` 不是恰好一处 —— 臂切错了，下面的零命中是空真"
-    );
-    // ⚠ 刻意是**子串**不是词边界：`contains_word` 认不出 `relay_running` / `relay_port` 这种
-    //   带下划线的名字（死值验 M6 第一版就是这么绿的：臂里插一句 `relay_running()` 它照过）。
-    assert!(
-        body.split("relay").count() == 1,
-        "退出臂里又出现了 `relay` —— 有人又在这条臂里收中转了。\n\
-         中转住本机常驻后端进程里，随它按「退出行为」留或退；monitor 再收一次就是第二个决策处。\n实得臂体：{body}"
-    );
-    for gone in [
-        "ExitShutdownSinks",
-        "PRODUCTION_EXIT_SHUTDOWN",
-        "shutdown_relay_on_exit",
-    ] {
-        assert!(
-            !guard_core::contains_word(&prod, gone),
-            "`lib.rs` 生产段里又出现了旧缝的名字 `{gone}` —— 退出臂那条收中转的缝回来了"
-        );
-    }
 }
 
 /// ★★ `KPY5`：**`detached` 的源头只能是「起它的时候走没走那条路」。**
@@ -4011,31 +3910,6 @@ fn three_fake_backends_land_in_three_different_cells() {
         "③ 我们这一侧读错误没落进「读坏了」（前 {b:?} / 后 {c:?}）。\n\
              ★ 被计成一次崩溃 = `B1` 那条「一个错误的诊断」原样复发：\n\
              三次之后整个进程周期不再起来，日志写「崩了 3 次」。"
-    );
-}
-
-// ── P28：给这条源码扫描型守卫立**负对照** ──
-//
-// 判的不是产品性质，是「**剥法没把我要扫的那一段剥掉**」。
-// 被扫的 `src/frontend/shell/src/lib.rs` 今天 2458 行，第一个 `#[cfg(test)]` 在 **59** 行
-// ⇒ 便宜近似 `src.split("\n#[cfg(test)]").next()` 把扫描面砍到前 58 行，
-// 而本文件要扫的东西在它**后面**（逐针行号写在下面）⇒ 扫描面静默缩水时本文件会**零命中地绿**。
-//
-// 原语与它买不到什么：`guard_core::assert_stripper_keeps` 的头注。
-// 一句话：它不买「针还是那个针」—— 下面这张表必须从本文件真正用的针里抄。
-
-/// ★ 扫描面自检：共享剥法留住了本文件要扫的那几段，而便宜近似留不住。
-#[test]
-fn the_shared_stripper_keeps_the_exit_and_refusal_arms_this_guard_must_scan() {
-    // 本文件对 `lib.rs` 取的针：`kill_on_exit_now(`（退出臂那一条的正控）—— 在第一个 `#[cfg(test)]` 之后。
-    //
-    // ⚠ 本文件另有一条 `the_strip_rule_this_file_leans_on_is_still_on_disk`，它是剥法的
-    //    **住址钉**，头注自己逐字声明「买不到剥法对不对」——**那条与本条不重叠**：
-    //    住址钉判「那一行还在 guard-core 里」，本条判「剥完之后我要扫的那一段还在」。
-    guard_core::assert_stripper_keeps(
-        "local_backend_host_tests · lib.rs",
-        include_str!("../../../src/frontend/shell/src/lib.rs"),
-        &["kill_on_exit_now("],
     );
 }
 

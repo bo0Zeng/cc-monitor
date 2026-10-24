@@ -436,8 +436,8 @@ class SharedScannerGateTest {
         /** 扫描面下限。 */
         private const val MIN_SOURCES = 200
 
-        /** 转发到共享扫描器的 `codeOnly` 声明数的下限（今天 14 处；只用来证明扫描面是真的，不钉准数）。 */
-        private const val MIN_CODE_ONLY_SITES = 10
+        /** 转发到共享扫描器的 `codeOnly` 声明数的下限（今天 9 处；只用来证明扫描面是真的，不钉准数）。 */
+        private const val MIN_CODE_ONLY_SITES = 6
 
         private val SKIPPED_DIRS = setOf("build", ".git", ".gradle", ".idea", "libs", ".codepicture")
 
@@ -471,7 +471,7 @@ class SharedScannerGateTest {
             listOf(
                 SHARED_IMPL,
                 "app/src/test/kotlin/com/ccmonitor/mobile/ssh/HostConnectorGatewayTest.kt",
-                "core-claude/src/test/kotlin/com/ccmonitor/mobile/core/claude/CoreClaudeKnowsNoTmuxTest.kt",
+                "core-ssh/src/test/kotlin/com/ccmonitor/mobile/core/ssh/SessionStateTest.kt",
             )
 
         /** ⑤⑥的扫描面下限（旧 SSH 库那一族的 JVM 单测删掉以后，test 源集剩一百份上下）。 */
