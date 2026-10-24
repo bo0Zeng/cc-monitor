@@ -208,10 +208,8 @@ fn check_files(files: &BTreeMap<String, Recorded>) -> Result<(), crate::wire::sp
     Ok(())
 }
 
-/// `skill-install-record` 的入参：按 `op` 分（多一个键 ⇒ `bad_args`）。
+/// 装记录写口的入参：按 `op` 分（多一个键 ⇒ `bad_args`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(tag = "op", rename_all = "kebab-case", deny_unknown_fields)]
 pub(crate) enum RecordReq {
     /// 装完记：`files` = `skill-install-plan` 答的 `ledger` 里真写成了的那几个。
@@ -221,11 +219,9 @@ pub(crate) enum RecordReq {
         files: BTreeMap<String, Recorded>,
         /// 给了 ⇒ 目录按那个项目里的 skill 根算。
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(test, ts(optional))]
         project: Option<String>,
         /// 缺 ⇒ 目录按 skill 根算；`home` ⇒ 目录 = 记录所在那个家目录（装在家目录底下、不在 skill 根下的东西用）。
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(test, ts(optional))]
         at: Option<RecordAt>,
     },
     /// 卸掉 / 已经不在的摘掉：`paths` 不在记录里 ⇒ `bad_args`，一个字节不动；摘到零个 ⇒ 整条记录摘掉。
@@ -242,17 +238,13 @@ pub(crate) enum RecordReq {
 
 /// `add` 的 `at`（闭集，只此一个值）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum RecordAt {
     Home,
 }
 
-/// `skill-install-record` 的回包。
+/// 装记录写口的回包。
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct RecordReply {
     /// 这一条记录的目录（MCP：那份配置文件）。
     pub dir: String,
@@ -462,7 +454,7 @@ pub(crate) fn record_at(
     })
 }
 
-/// `skill-install-record`：帧面入口（**写口**，只从 `stream/inbound/` 进）。
+/// 装记录的写口（本进程里记；写句柄只从 `stream/inbound/` 递进来）。
 pub(crate) fn answer_record(
     req: &RecordReq,
     own: &Own,

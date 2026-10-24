@@ -135,7 +135,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     ("terminal_choices", "terminal.window", Side::Both),
     // 别名块那三格能力 id 按改名改归（别名块是「② 别名」，不是装后端）：
     //   `ccm.install` → `alias.block-install` · `ccm.uninstall` → `alias.block-remove` · `ccm.install-ui` → `alias.block-preview`
-    //   （「ccm 助手」年代的遗名）。`K-R117` 的归档表同拍从 ① 挪到 ②。
+    //   （「ccm 助手」年代的遗名）。安装面的归档表同拍从 ① 挪到 ②。
     // 远端装 / 卸别名块那两条 `Remote` 命令并进 `aliases_block_install` / `_remove`（`Both`），两行删。
     // 改了：`alias.block-*`，归档表同拍挪到 ②。〕
     // 三条 `Local` → `Both`（带 `origin`）；远端卡接上块预览（一并做）。
@@ -225,8 +225,6 @@ const LEDGER: &[(&str, &str, Side)] = &[
     ("kept_sessions", "comm.face-a.subscribe", Side::Both),
     ("chan_want", "comm.face-a.subscribe", Side::Both),
     ("chan_stop", "comm.face-a.subscribe", Side::Both),
-    // 能力 `accounts.trust` 那一行（`check_account_trust`，A3 起 `Both`）退役：信任预检上了帧面
-    //   （`accounts-trust`），前端经通道直接问、本机与远端同一条路 ⇒ 同上，住到了帧面上。
     // 这两条（`acct-iso.check` · `acct-iso.shellinit`）退役：那台后端出成品（围栏在后端校验），界面经通道直问；两项都对称 ⇒ 不对称数不动。
     // 列 tmux 会话那两条（远端 `tmux.manage` · 本机 `tmux.local-census`，§40 九对合并「第 10 对」那一注记）出表：
     //   那台后端的 `tmux-list` 出成品、界面经通道直问，本机远端同一条路 —— 通道上的问法不是 Tauri 命令、不进本表（同上面抓屏 / 杀会话 / 送键）。
@@ -595,8 +593,8 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     // - P2s 的四条 `Both`（策略那一条今天换成了 `backend_exit_policy` / `set_backend_exit_policy` 两条）
     //   ＋ `backend_status` / `backend_start` / `backend_stop` —— per-host backend 策略与状态，本机 origin 是 `<local>`（C1）；
     // - 用户级 PATH 那三条（`ccm_user_path_*`，`Local`）进了后端帧命令 `ccm-user-path`，**−3**；
-    // - K-H2a **+2**（`read_apikey_credentials_status` / `write_apikey_credentials_key`，都 `Local`）；
-    // - K-H2b **+1**（`apikey_routing_for`，`Local`）—— 界面问「这几个**本机**账号走不走 apikey 端点改写」。
+    // - K-H2a **+2**（apikey 凭据读状态 / 写 key 那两条，都 `Local`；今天都已删）；
+    // - K-H2b **+1**（问 apikey 端点改不改写那一条，`Local`；今天已删）—— 界面问「这几个**本机**账号走不走 apikey 端点改写」。
     //   只答本机不是欠账，是**机制决定的**：中转是每台机器自己的进程、注入的是回环地址，
     //   本机这一侧答不了远端那台 ⇒ 它在 `ASYMMETRY_REASONS` 里记的是 `NaturallyAsymmetric`。
     //
@@ -617,7 +615,7 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     // - **+1**（`list_user_inputs`，`Both`，归已有能力 `history.read-session`）。
     // - **+1**（`find_in_session`，`Both`，归已有能力 `history.read-session`）。
     // - **+1**（`probe_session_record`，`Both`，归已有能力 `history.read-session`）。
-    // - **−2**（`read_apikey_credentials_status` / `apikey_routing_for`，都 `Both`：界面经通道问那台后端）。
+    // - **−2**（apikey 凭据读状态 · 端点改写那两条，都 `Both`：界面经通道问那台后端）。
     // - **−2**（`remote_reconcile` / 机器表试算，都 `Both`：机器表搬进本机后端，壳照 `changed {machines}` 自己对齐、试算改问 `machines-try`）。
     // - **+1**（`clipboard_read`，`Both`，归已有能力 `app.window.self`：登录抽屉［粘贴］读面前这台的剪贴板）。
     // - **−1**（`notify_desktop`，`Both`：界面不再发系统通知）。
@@ -694,7 +692,7 @@ fn every_asymmetry_is_decided() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 🔴 `K-R115` `KR115D4`：**`Side` 这一栏靠人签字，而签字的触发是派生出来的**
+// 🔴 `KR115D4`：**`Side` 这一栏靠人签字，而签字的触发是派生出来的**
 // ════════════════════════════════════════════════════════════════════════
 //
 // # 问题（`K-R112` 撞见、一个字没动）
@@ -994,8 +992,8 @@ fn the_remote_side_column_is_signed_off() {
         // 123 → 110：本机那十七条全景命令删了（人群真少了 17 个；合并主线 C4c 之后今天 113）。
         // 110 → 109：抓屏 · 杀会话 · 送键 · 就地 resume 四条 `#[tauri::command]` 删了（人群真少了 4 个；今天 109）。
         // 109 → 104：cc-bus 查在线 · 发消息 · 派生 · 广播 · 收掉五条 `#[tauri::command]` 删了（人群真少了 5 个；今天 104）。
-        // 104 → 103：`read_apikey_credentials_status` / `apikey_routing_for` 两条删了（合并主线 C4e 之后今天 103）。
-        // 103 → 102：`write_apikey_credentials_key` 删了（人群真少了 1 个）。
+        // 104 → 103：apikey 凭据读状态 · 端点改写两条删了（合并主线 C4e 之后今天 103）。
+        // 103 → 102：apikey 写 key 那一条删了（人群真少了 1 个）。
         // 103 → 102：`get_session_tasks` 删了（人群真少了 1 个；今天 102）。
         // 基于 99b8adb6：LOC1b −3 ＋ HX2 −1 ⇒ 98。
         // 98 → 96：驾驶舱 `read_cc_bus_state` / `read_cc_bus_inbox` 两条删了（人群真少了 2 个）。

@@ -16,7 +16,7 @@ fn own_err<E: Codes>(fallback: fn(String) -> E) -> impl Fn(Fail) -> E {
     move |f| typed::of_fail(f, fallback)
 }
 
-/// 装记录的写口（`skill-install-record` 那一份本体，写句柄由分派那一层递）。
+/// 装记录的写口（本进程里记，写句柄由分派那一层递）。
 fn record(
     own: &crate::platform::Own,
 ) -> impl Fn(

@@ -335,97 +335,6 @@ fn a_windows_shaped_account_survives_the_listing() {
     let _ = fs::remove_dir_all(&root);
 }
 
-// ---- 4. --account-trust ----
-#[test]
-fn account_trust_paths() {
-    let root = tmpdir("trust");
-    let accts = root.join("accts");
-    let z = accts.join("z");
-    fs::create_dir_all(&z).unwrap();
-    write_manifest(
-        &accts,
-        &format!(
-            r#"{{"version":1,"accounts":[{{"name":"z","configDir":"{}"}}]}}"#,
-            z.display()
-        ),
-    );
-    // 没有 .claude.json → trusted:false / known:false，不是错误
-    let out = account_trust(&accts, &z.to_string_lossy(), "/w").unwrap();
-    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-    assert_eq!(v["trusted"], false);
-    assert_eq!(v["known"], false);
-
-    fs::write(
-        z.join(".claude.json"),
-        r#"{"projects":{"/w":{"hasTrustDialogAccepted":true},"/x":{}},
-                "mcpServers":{"gh":{"env":{"GITHUB_TOKEN":"ghp_SUPERSECRET"}}},
-                "oauthAccount":{"emailAddress":"z@example.test"}}"#,
-    )
-    .unwrap();
-    let out = account_trust(&accts, &z.to_string_lossy(), "/w").unwrap();
-    assert!(!out.contains("ghp_SUPERSECRET"), "绝不能回传文件内容");
-    assert!(!out.contains("z@example.test"));
-    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-    assert_eq!(v["trusted"], true);
-    assert_eq!(v["known"], true);
-    // 已记录但未接受 → known:true, trusted:false
-    let v: serde_json::Value =
-        serde_json::from_str(&account_trust(&accts, &z.to_string_lossy(), "/x").unwrap()).unwrap();
-    assert_eq!(v["known"], true);
-    assert_eq!(v["trusted"], false);
-    // manifest 之外的 configDir → 拒（防任意文件读）
-    let e = account_trust(&accts, "/etc", "/w").unwrap_err();
-    assert_eq!(e.0, "unknown_config_dir");
-    // 不安全的 configDir → 拒
-    let e = account_trust(&accts, "/a'b", "/w").unwrap_err();
-    assert_eq!(e.0, "unsafe_config_dir");
-    let _ = fs::remove_dir_all(&root);
-}
-
-/// 信任记在仓的根上、在子目录里查 ⇒ 已信任（读那一侧也认适配层给的那几个键，任一格为真就算）；仓外的目录照旧只认自己。
-#[test]
-fn account_trust_in_a_subdirectory_counts_the_repo_root() {
-    let root = tmpdir("trustroot");
-    let accts = root.join("accts");
-    let z = accts.join("z");
-    fs::create_dir_all(&z).unwrap();
-    let repo = root.join("repo");
-    fs::create_dir_all(repo.join(".git")).unwrap();
-    fs::create_dir_all(repo.join("sub/deeper")).unwrap();
-    let outside = root.join("outside");
-    fs::create_dir_all(&outside).unwrap();
-    write_manifest(
-        &accts,
-        &format!(
-            r#"{{"version":1,"accounts":[{{"name":"z","configDir":"{}"}}]}}"#,
-            z.display()
-        ),
-    );
-    let repo_key = fs::canonicalize(&repo).unwrap();
-    fs::write(
-        z.join(".claude.json"),
-        serde_json::json!({"projects": {repo_key.to_str().unwrap(): {"hasTrustDialogAccepted": true}}})
-            .to_string(),
-    )
-    .unwrap();
-    let ask = |cwd: &Path| -> serde_json::Value {
-        serde_json::from_str(
-            &account_trust(&accts, &z.to_string_lossy(), cwd.to_str().unwrap()).unwrap(),
-        )
-        .unwrap()
-    };
-    assert_eq!(
-        ask(&repo.join("sub/deeper"))["trusted"],
-        true,
-        "仓根有、子目录没有 ⇒ 已信任"
-    );
-    assert_eq!(ask(&repo)["trusted"], true);
-    let v = ask(&outside);
-    assert_eq!(v["trusted"], false, "仓外的目录没记 ⇒ 没信任");
-    assert_eq!(v["known"], false);
-    let _ = fs::remove_dir_all(&root);
-}
-
 // ---- 6. --session-accounts（procStart 身份对拍是核心）----
 
 #[test]
@@ -1018,76 +927,6 @@ fn bare_session_without_account_zero_stays_unattributed() {
     let _ = fs::remove_dir_all(&root);
 }
 
-/// 账号 0 **不得**把 `--account-trust` 变成「读共享库 .claude.json」的口子：
-/// 它没有 configDir ⇒ 任何路径都不在 manifest 里 ⇒ 拒。
-#[test]
-fn account_trust_does_not_accept_shared_store_via_account_zero() {
-    let root = tmpdir("acct0trust");
-    let shared = root.join("claude");
-    fs::create_dir_all(&shared).unwrap();
-    fs::write(shared.join(".claude.json"), r#"{"projects":{"/w":{}}}"#).unwrap();
-    let accts = root.join("accts");
-    write_manifest(
-        &accts,
-        &format!(
-            r#"{{"version":1,"sharedStore":{s:?},"accounts":[{{"name":"0","mode":"bare"}}]}}"#,
-            s = shared.to_string_lossy()
-        ),
-    );
-    let e = account_trust(&accts, &shared.to_string_lossy(), "/w").unwrap_err();
-    assert_eq!(e.0, "unknown_config_dir");
-    let _ = fs::remove_dir_all(&root);
-}
-
-/// `agents::claudecode::accounts::trust_of_config` 是两个 trust 入口共用的那份实现（避免第二份）。
-/// ⚠ `S3` 把实现搬去了适配层，**本测原地留下**：它测的是"消费侧看到的行为"，
-/// 而消费侧（`--account-trust` / `--account-trust-zero`）还在本模块。断言一字未改。
-/// 账号 0 走 `$HOME/.claude.json`——声明里 `.claude.json` 的原生根就是 home。
-#[test]
-fn trust_of_claude_json_reads_only_the_three_booleans() {
-    let root = tmpdir("acct0tz");
-    fs::create_dir_all(&root).unwrap();
-    let cj = root.join(".claude.json");
-
-    // 文件不存在 ⇒ known:false，不是错误
-    let v: serde_json::Value =
-        serde_json::from_str(&cc_accounts::trust_of_config(&cj, "/w").unwrap()).unwrap();
-    assert_eq!(v["known"], false);
-    assert_eq!(v["trusted"], false);
-
-    fs::write(
-        &cj,
-        r#"{"projects":{"/w":{"hasTrustDialogAccepted":true}},
-                "mcpServers":{"x":{"env":{"API_KEY":"sk-SECRET"}}}}"#,
-    )
-    .unwrap();
-    let out = cc_accounts::trust_of_config(&cj, "/w").unwrap();
-    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-    assert_eq!(v["trusted"], true);
-    assert_eq!(v["known"], true);
-    assert!(
-        !out.contains("sk-SECRET"),
-        "绝不能把 .claude.json 的内容回传"
-    );
-    let _ = fs::remove_dir_all(&root);
-}
-
-/// `--account-trust-zero` 只收 cwd，路径写死在代码里 ⇒ 它连「任意文件读」的面都没有。
-/// 钉住入口形状（而不是去改 $HOME 跑真的，那在并行测试里是竞态）。
-#[test]
-fn account_trust_zero_takes_no_path_argument() {
-    let me = include_str!("../../../src/backend/observe/accounts_query.rs");
-    assert!(
-        me.contains("fn account_trust_zero(cwd: &str)"),
-        "账号 0 的 trust 入口一旦收了路径参数，就重新开出了任意文件读的面"
-    );
-    assert!(
-        me.contains("trust_in(&home, cwd)"),
-        "账号 0 的配置文件必须来自 $HOME（声明里它的原生根是 home）：交给账号库面 `trust_in` 的根就是 `home`。"
-    );
-    assert!(me.len() > 1000, "include_str! 没读到源码，上面的断言是空转");
-}
-
 // ---- K-A1：鉴权方式这一维（生产者①） ----
 
 /// ★ **跨生产者对拍，backend 这一半。**
@@ -1339,7 +1178,7 @@ fn the_header_names_both_env_keys_we_read() {
 }
 
 // ============================================================================
-// 帧面出成品：`accounts-list`（并上这台机器自己那份 apikey 表）· `accounts-trust`
+// 帧面出成品：`accounts-list`（并上这台机器自己那份 apikey 表）
 // ============================================================================
 //
 // 要求：「一次性请求那半收口成 `call` —— 按能力分批」· 「一个判定只有一个家」·
@@ -1515,54 +1354,6 @@ fn the_list_product_says_when_account_zero_is_missing() {
     let _ = fs::remove_dir_all(&root);
 }
 
-/// ★ 信任预检成品：`{trusted, known}` 两格与 CLI 那一臂同一个函数的答案一致；不在 manifest 的目录照旧拒。
-#[test]
-fn the_trust_product_answers_through_the_same_function_as_the_cli_arm() {
-    let (root, accts) = c4c_fixture("c4c-trust", true);
-    let a = accts.join("acct-a");
-    fs::write(
-        a.join(".claude.json"),
-        r#"{"projects":{"/w/p":{"hasTrustDialogAccepted":true},"/w/q":{}}}"#,
-    )
-    .unwrap();
-    let dir = a.to_string_lossy().to_string();
-    assert_eq!(
-        trust_product_at(&accts, Some(&dir), "/w/p").unwrap(),
-        Trust {
-            trusted: true,
-            known: true
-        }
-    );
-    assert_eq!(
-        trust_product_at(&accts, Some(&dir), "/w/q").unwrap(),
-        Trust {
-            trusted: false,
-            known: true
-        }
-    );
-    assert_eq!(
-        trust_product_at(&accts, Some(&dir), "/w/r").unwrap(),
-        Trust {
-            trusted: false,
-            known: false
-        }
-    );
-    // 与 CLI 那一臂逐格对拍（同一个函数，两个出口）。
-    let cli: serde_json::Value =
-        serde_json::from_str(&account_trust(&accts, &dir, "/w/p").unwrap()).unwrap();
-    assert_eq!(cli["trusted"], true);
-    assert_eq!(cli["known"], true);
-    let outside = root.join("elsewhere").to_string_lossy().to_string();
-    assert_eq!(
-        trust_product_at(&accts, Some(&outside), "/w/p")
-            .unwrap_err()
-            .0,
-        "unknown_config_dir",
-        "不在 manifest 里的目录不许读（任意文件读原语）"
-    );
-    let _ = fs::remove_dir_all(&root);
-}
-
 /// 金样那份 apikey 表：`acct-b` 一行（key ＋ 端点）· `acct-a` 一行只有端点（订阅号不带出去）。经真读口 `key_facts_at` 读回。
 fn golden_key_facts(root: &Path) -> Vec<crate::accounts::upstream_select::file_face::KeyFact> {
     let p = root.join("apikey-credentials.json");
@@ -1630,17 +1421,11 @@ fn the_list_product_carries_each_api_accounts_masked_key_and_address() {
     let _ = fs::remove_dir_all(&root);
 }
 
-/// ★★ **金样**：两条成品对同一份夹具 == `tests/__fixtures__/accounts.golden.json`（夹具根替换成 `<root>`）。
+/// ★★ **金样**：账号清单成品对同一份夹具 == `tests/__fixtures__/accounts.golden.json`（夹具根替换成 `<root>`）。
 /// 界面那一侧按生成类型收（形状由握手指纹管），不再另读这份。金样手写落盘（本条红时印出现打的成品，人读过再改）。
 #[test]
 fn the_account_products_match_the_cross_language_golden() {
     let (root, accts) = c4c_fixture("c4c-golden", true);
-    fs::write(
-        accts.join("acct-a").join(".claude.json"),
-        r#"{"projects":{"/w/p":{"hasTrustDialogAccepted":true}}}"#,
-    )
-    .unwrap();
-    let dir = accts.join("acct-a").to_string_lossy().to_string();
     let got = serde_json::json!({
         "accounts-list": list_product_with(
             &accts,
@@ -1651,7 +1436,6 @@ fn the_account_products_match_the_cross_language_golden() {
             "claude-code",
             true,
         ),
-        "accounts-trust": trust_product_at(&accts, Some(&dir), "/w/p").unwrap(),
     });
     let got: serde_json::Value = serde_json::from_str(
         &got.to_string()

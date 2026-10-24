@@ -63,11 +63,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::faces::hub_inner_face::SkillPlanCmd>(
         "在要被写的那一台判 skill 装不装得过来",
     ),
-    // 装记录：`skill-install-record` 是 `~/.cc-monitor/skill-installs.json` 的写口（自家状态，经 `Own`；
-    //   skill 装完记 `add` · 卸掉的摘 `drop`；MCP 那一条 `mcp-add` / `mcp-drop`）。卸在 `ext-uninstall-*`（判 · 删 · 摘同一台）。阻塞档。
-    crate::wire::typed::blocking::<crate::faces::catalog_face::SkillInstallRecordCmd>(
-        "skill 装记录的写口",
-    ),
     // MCP 列表成品：user / local / project 三段 ＋ 用过的项目目录 ＋ 读不出来的那几份。阻塞档（同步文件 I/O）。
     crate::wire::typed::blocking::<crate::faces::feature_face::McpReadCmd>(
         "这台机器的 MCP 列表成品",

@@ -1,5 +1,5 @@
 //! skill「装到这台」与「卸」的写那一半：帧面 `skill-install-apply`；卸由 `ext-uninstall-apply` 调 [`answer_uninstall`]。
-//! 判（`skill_install::answer_plan_with` · `answer_uninstall_plan_at`）、写（本进程文件管理面 [`Door`]）、记（`skill-install-record`，
+//! 判（`skill_install::answer_plan_with` · `answer_uninstall_plan_at`）、写（本进程文件管理面 [`Door`]）、记（装记录 [`skill_ledger::answer_record`]，
 //! 写口由 `stream/inbound/` 递进来 —— 写自家状态的 `Own` 只经那一扇门递进来）都在被写的这一台。
 //! 写不重读重算：用户确认的是他看到的那份差异；看过之后变了 ⇒ `stale` 就停，说清前面写了 / 删了哪几个。
 

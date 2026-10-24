@@ -1694,8 +1694,6 @@ pub(crate) struct AccountsFace {
     pub(crate) sign_in: Option<SignInFace>,
     /// 账号归属读会话进程环境时读哪几个键（账号 · 上游地址）。
     pub(crate) session_env: SessionEnvKeys,
-    /// 一个配置根下、对某个 cwd 的信任状态 ⇒ 一行 JSON（`{trusted, known, error}`）；读不了 ⇒ `(码, 原话)`。
-    pub(crate) trust_in: fn(root: &Path, cwd: &str) -> Result<String, (String, String)>,
     /// 「这个目录信任过」在那份配置文件里记在哪一格（各号之间同步信任 · 起会话前预标都只碰它）；没有这件事的家 ⇒ `None`。
     pub(crate) trust: Option<TrustCells>,
 }

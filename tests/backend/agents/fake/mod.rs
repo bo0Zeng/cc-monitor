@@ -13,7 +13,7 @@
 //! | 会话文件命名 | `<sid>.jsonl` | `sess-<sid>.ndjson` | `RecordFace.tree.file_name` |
 //! | pidfile 目录 | `<home>/sessions` | `<home>/live` | `LocalFace.pidfile_dir` |
 //! | 账号环境变量名 | `CLAUDE_CONFIG_DIR` | `CCM_FAKE_ACCOUNT_DIR` | `AccountsFace.session_env` |
-//! | 账号信任判定 | `.claude.json` → `projects[cwd].hasTrustDialogAccepted` | `fake-config.json` → `trusted[cwd]` | `AccountsFace.trust_in` |
+//! | 账号信任判定 | `.claude.json` → `projects[cwd].hasTrustDialogAccepted` | `fake-config.json` → `trusted[cwd]` | `AccountsFace.trust` |
 //! | 判活 cmdline | 含 `claude` / `node` | 含 `fakeagent` | `LocalFace.cmdline_may_be_agent` |
 //! | 解析本机 home | `$CLAUDE_CONFIG_DIR` 否则 `$HOME/.claude`（**恒有值**） | `$CCM_FAKE_AGENT_HOME`，**没有默认** | `Adapter.home` · `LocalFace.home_at` |
 //! | resume 默认命令 | `claude` | `fakeagent` | `LaunchFace.default_launcher` |
@@ -469,7 +469,6 @@ fn accounts_face(account_env: &'static str) -> crate::agents::AccountsFace {
             base_url: "CCM_FAKE_UPSTREAM",
             settings_may_set_base_url: |_, _, _| false,
         },
-        trust_in: trust_line,
         trust: Some(TRUST_CELLS),
     }
 }
@@ -480,12 +479,6 @@ pub(crate) const TRUST_CELLS: crate::agents::TrustCells = crate::agents::TrustCe
     flag: None,
     dir_keys: |cwd| vec![cwd.to_string()],
 };
-
-/// [`trust_of_config`] 说成账号库面那一形（`{trusted, known, error}` 一行；读不了 ⇒ `(码, 原话)`）。
-fn trust_line(root: &Path, cwd: &str) -> Result<String, (String, String)> {
-    let trusted = trust_of_config(root, cwd).map_err(|e| ("fake_config".to_string(), e))?;
-    Ok(serde_json::json!({ "trusted": trusted, "known": true, "error": null }).to_string())
-}
 
 /// 把假 agent 推过全流程，每一段都经通用层（见模块头注）。成功 = 走完的段名。
 pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static str>, Stop> {
@@ -625,10 +618,15 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
             capability: "账号环境变量名",
         });
     }
-    let trusted = (face.trust_in)(fixture_home, FIXTURE_CWD)
-        .ok()
-        .and_then(|line| serde_json::from_str::<serde_json::Value>(&line).ok())
-        .is_some_and(|v| v["trusted"] == true);
+    // 信任经通用层读：那一家说的配置文件名 ＋ 信任那一格（`AccountsFace.trust`），本体是各号同步信任那一份。
+    let trusted = face.trust.is_some_and(|cells| {
+        Ro::read(&fixture_home.join(face.config_file))
+            .ok()
+            .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+            .is_some_and(|v| {
+                crate::accounts::manage::trust_share::trusted(&cells, &v).contains(FIXTURE_CWD)
+            })
+    });
     if !trusted {
         return Err(Stop::MissingCapability {
             stage: STAGES[3],

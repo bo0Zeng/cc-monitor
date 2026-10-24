@@ -438,7 +438,7 @@ pub(crate) fn answer_plan_with(
         }
     };
     // 真要写的那几个各自「装时写进去的那一份」的摘要 ＋ 装之前在不在（`new` ⇒ 新建；`differs` ⇒ 盖掉原有的）。
-    //   monitor 写完把真写成了的那几个原样交回 `skill-install-record`（摘要与新旧是**这台**判的，不由 monitor 算）。
+    //   写完把真写成了的那几个原样记进装记录（摘要与新旧是**这台**判的，不由 monitor 算）。
     let ledger = write.as_ref().map(|w| {
         let states: BTreeMap<&str, State> = rows.iter().map(|(p, s)| (p.as_str(), *s)).collect();
         w.iter()
@@ -501,7 +501,7 @@ pub(crate) fn answer_plan_with(
 //
 // 卸只删装记录（`skill_ledger.rs`）里那几个文件；装完用户自己改过的先问。两条只读命令，判定都在**被卸的那一台**：
 // `skill-installs`（这台记着哪几个从别处装来的 skill）· `skill-uninstall-plan`（逐文件四态 ＋ 要不要问 ＋ 给了 `take` 才答删哪几个）。
-// 一个字节都不写：删经 monitor → 这台后端 `files-delete`（`expect` = 这里回的 `seen` 那一份）；摘记录经 `skill-install-record`。
+// 一个字节都不写：删经 monitor → 这台后端 `files-delete`（`expect` = 这里回的 `seen` 那一份）；摘记录经本进程的装记录写口（`skill_ledger::answer_record`）。
 
 /// 卸时一个记着的文件在盘上的样子（线上名）。**闭集**：界面文案表按它逐键给字。
 // ⚠ 逐字写成字面量（不引用下面四个常量）：界面与 monitor 的判据按「这一行的引号」从源码现抠人群。

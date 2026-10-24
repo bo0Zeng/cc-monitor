@@ -1,5 +1,5 @@
 /**
- * 账号读面里另外几口：信任预检（`accounts-trust`）答成 / 没答成两形 · 账号页那一家的画像与 `launchAgentId` 同一个出处 ·
+ * 账号读面里另外几口：账号页那一家的画像与 `launchAgentId` 同一个出处 ·
  * 本机后端记着的上次那份不是这一版 ⇒ 不画上次的。账号清单那一问本身见 `accounts.vitest.ts` · `last-seen.vitest.ts`。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -21,25 +21,11 @@ vi.mock("../../../src/comms/inward/chan", () => ({
   },
 }));
 
-import { accountsAgentProfile, checkTrust, fetchAccounts, launchAgentId } from "../../../src/frontend/ui/account-reads";
+import { accountsAgentProfile, fetchAccounts, launchAgentId } from "../../../src/frontend/ui/account-reads";
 
 beforeEach(() => {
   calls.length = 0;
   replies.clear();
-});
-
-describe("信任预检 `checkTrust`", () => {
-  it("★ 答成 ⇒ 原样交回那台判的两格；入参照收（configDir 为 null 问账号 0）", async () => {
-    replies.set("devbox:accounts-trust", { trusted: true, known: false });
-    expect(await checkTrust("devbox", null, "/w")).toEqual({ available: true, error: null, trusted: true, known: false });
-    expect(calls).toEqual([{ origin: "devbox", op: "accounts-trust", args: { configDir: null, cwd: "/w" } }]);
-  });
-  it("★ 没答成 ⇒ available:false ＋ 一句人话，信任两格都说不知道（调用方只警告不拦）", async () => {
-    const r = await checkTrust("devbox", "/h/.claude-alt/z", "/w");
-    expect(r.available).toBe(false);
-    expect([r.trusted, r.known]).toEqual([false, false]);
-    expect(typeof r.error === "string" && r.error.length > 0, String(r.error)).toBe(true);
-  });
 });
 
 describe("账号页那一家的画像", () => {
