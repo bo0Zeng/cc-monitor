@@ -1952,6 +1952,11 @@
   color: var(--text-faint);
 }
 
+/* 「思考 · 没写进记录」那一行点不开 ⇒ 不给手形 */
+.block-thinking[data-recorded="false"] .block-summary {
+  cursor: default;
+}
+
 /* 失败 tool result summary 染红，无 border-left 色条 */
 .block-tool-result.block-error > .block-summary {
   color: var(--error);
