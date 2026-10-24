@@ -89,7 +89,6 @@ src/frontend/ui/**/*.ts         coverage  覆盖率量的就是它；e2e 驱动 
 src/frontend/ui/**/*.tsx        coverage  同上
 src/frontend/ui/**/*.mts        coverage  同上
 src/frontend/ui/**              -      CSS / 图标 / JSON：读它们的判据在 npm（恒跑）；被 Rust include_str! 的由规则 ① 另加
-src/comms/ui/**                 coverage  ts-rs 生成的 TS，前端 import 它
 tests/frontend/ui/**            coverage  vitest 本体：改它就改了覆盖率
 tests/copy/**                   coverage  文案表的 vitest 与夹具
 tests/shots/**                  coverage,shots  截图场景（TS，tsc 恒跑；vitest 有几份读它）；无头壳的例子源（real/shell_main.rs）与台架编它的那一条也在这

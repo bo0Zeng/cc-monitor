@@ -804,6 +804,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 拨号的线上形状（`dial.rs`）：ack 的协议版本与用法表 · 开成 / 没开成那一行 ack 怎么组。拨号核心写、壳与手机核心读；界面不碰拨号的行，TS 侧没有孪生。
     ACK_V: NONE,
     USES: NONE,
+    OLD_BACKEND_MARKER: NONE,
     opened: NONE,
     of_fail: NONE,
     // FNV-1a 的唯一一份（只求稳定的摘要；号色兜底的家是后端 `color_fallback`，见 J35）：界面不算摘要，TS 侧没有孪生。

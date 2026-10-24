@@ -355,7 +355,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 ### 3.7 生成类型
 
-线上类型只在 Rust 写一份，经 ts-rs 导出成 TS：界面那份在 `src/frontend/ui/generated/`，通信层那份在 `src/comms/ui/generated/`。`npm run gen:types` 重生成（两棵 Rust 树各跑一次 `export_bindings`），`npm run check:types` 要求重生成后零差异；生成物勿手改。手机的帧解码今天是手写的，按冻结格与金样（`tests/__fixtures__/`）对拍。
+线上类型只在 Rust 写一份，经 ts-rs 导出成 TS：界面那份在 `src/frontend/ui/generated/`。`npm run gen:types` 重生成（两棵 Rust 树各跑一次 `export_bindings`），`npm run check:types` 要求重生成后零差异；生成物勿手改。手机的帧解码今天是手写的，按冻结格与金样（`tests/__fixtures__/`）对拍。
 
 ### 3.8 格目录与 `BUILD_ID`
 
