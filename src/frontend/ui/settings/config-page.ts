@@ -14,6 +14,7 @@ import { isLocalOrigin, type Origin } from "../ipc/origin";
 import { button } from "../kit/button";
 import { confirmDialog } from "../kit/dialog";
 import { failToast } from "../kit/toast";
+import { write } from "../ipc/write";
 
 import { accountsMcpPick, accountsMcpRead, accountsMcpRemove, accountsMcpSync, type AccountMcpView } from "../account-ops";
 import { extList, type ExtList } from "../ext-reads";
@@ -118,12 +119,12 @@ function buildMcpRow(origin: () => Origin, machine: () => string): { row: CfgRow
     body.appendChild(foot);
   };
 
+  /** 一笔写经统一写口：回包就是新的那一份 ⇒ 照它画（不必再读）；不成 ⇒ 失败 toast（那一句是后端写的），别处改过的再读一次。 */
   const act = async (op: () => Promise<AccountMcpView>, failed: () => string): Promise<void> => {
-    try {
-      paint(await op());
-    } catch (e) {
-      failToast(failed(), e, { level: "error" });
-    }
+    const end = await write(op);
+    if (end.ok) return paint(end.value);
+    failToast(failed(), end.error, { level: "error" });
+    if (end.stale) load();
   };
 
   const remove = async (name: string): Promise<void> => {
