@@ -1,0 +1,1733 @@
+{
+  "cases": {
+    "accounts-list": {
+      "rust": "{\"meta\":{\"enabled\":true,\"acctsDir\":\"acctsDir-x\",\"manifestPath\":\"manifestPath-x\",\"updatedAt\":\"updatedAt-x\",\"sharedStore\":\"sharedStore-x\",\"count\":7,\"error\":\"error-x\",\"unsupported\":\"unsupported-x\",\"nextDefault\":\"nextDefault-x\",\"effectiveDefault\":\"effectiveDefault-x\",\"home\":\"home-x\"},\"accounts\":[{\"name\":\"name-x\",\"label\":\"label-x\",\"email\":\"email-x\",\"configDir\":\"configDir-x\",\"isDefault\":true,\"mode\":\"mode-x\",\"exists\":true,\"loggedIn\":true,\"authKind\":\"authKind-x\",\"authReady\":true,\"selectable\":true,\"color\":7,\"keyMasked\":\"keyMasked-x\",\"baseUrl\":\"baseUrl-x\",\"badge\":{\"text\":\"text-x\",\"warn\":true,\"title\":\"title-x\"},\"plate\":\"plate-x\",\"quota\":\"quota-x\",\"unselectable\":\"unselectable-x\",\"login\":true,\"newSession\":true}],\"notice\":\"notice-x\"}",
+      "sample": {
+        "accounts": [
+          {
+            "authKind": "authKind-x",
+            "authReady": true,
+            "badge": {
+              "text": "text-x",
+              "title": "title-x",
+              "warn": true
+            },
+            "baseUrl": "baseUrl-x",
+            "color": 7,
+            "configDir": "configDir-x",
+            "email": "email-x",
+            "exists": true,
+            "isDefault": true,
+            "keyMasked": "keyMasked-x",
+            "label": "label-x",
+            "loggedIn": true,
+            "login": true,
+            "mode": "mode-x",
+            "name": "name-x",
+            "newSession": true,
+            "plate": "plate-x",
+            "quota": "quota-x",
+            "selectable": true,
+            "unselectable": "unselectable-x"
+          }
+        ],
+        "meta": {
+          "acctsDir": "acctsDir-x",
+          "count": 7,
+          "effectiveDefault": "effectiveDefault-x",
+          "enabled": true,
+          "error": "error-x",
+          "home": "home-x",
+          "manifestPath": "manifestPath-x",
+          "nextDefault": "nextDefault-x",
+          "sharedStore": "sharedStore-x",
+          "unsupported": "unsupported-x",
+          "updatedAt": "updatedAt-x"
+        },
+        "notice": "notice-x"
+      }
+    },
+    "bookmarks-edit": {
+      "rust": "{\"dirs\":[\"dirs-x\"]}",
+      "sample": {
+        "dirs": [
+          "dirs-x"
+        ]
+      }
+    },
+    "bookmarks-read": {
+      "rust": "{\"dirs\":[\"dirs-x\"]}",
+      "sample": {
+        "dirs": [
+          "dirs-x"
+        ]
+      }
+    },
+    "files-chmod": {
+      "rust": "{\"outcomes\":[{\"key\":\"key-x\",\"state\":\"done\",\"path\":\"path-x\",\"new_name\":\"new_name-x\",\"bytes\":7,\"files\":7,\"dirs\":7,\"removed\":7,\"before\":7,\"code\":\"code-x\",\"reason\":\"reason-x\",\"detail\":\"detail-x\"}],\"said\":\"said-x\"}",
+      "sample": {
+        "outcomes": [
+          {
+            "before": 7,
+            "bytes": 7,
+            "code": "code-x",
+            "detail": "detail-x",
+            "dirs": 7,
+            "files": 7,
+            "key": "key-x",
+            "new_name": "new_name-x",
+            "path": "path-x",
+            "reason": "reason-x",
+            "removed": 7,
+            "state": "done"
+          }
+        ],
+        "said": "said-x"
+      }
+    },
+    "files-commit-upload": {
+      "rust": "{\"path\":\"path-x\",\"bytes\":7}",
+      "sample": {
+        "bytes": 7,
+        "path": "path-x"
+      }
+    },
+    "files-create": {
+      "rust": "{\"path\":\"path-x\",\"bytes\":7}",
+      "sample": {
+        "bytes": 7,
+        "path": "path-x"
+      }
+    },
+    "files-delete": {
+      "rust": "{\"outcomes\":[{\"key\":\"key-x\",\"state\":\"done\",\"path\":\"path-x\",\"new_name\":\"new_name-x\",\"bytes\":7,\"files\":7,\"dirs\":7,\"removed\":7,\"before\":7,\"code\":\"code-x\",\"reason\":\"reason-x\",\"detail\":\"detail-x\"}],\"said\":\"said-x\"}",
+      "sample": {
+        "outcomes": [
+          {
+            "before": 7,
+            "bytes": 7,
+            "code": "code-x",
+            "detail": "detail-x",
+            "dirs": 7,
+            "files": 7,
+            "key": "key-x",
+            "new_name": "new_name-x",
+            "path": "path-x",
+            "reason": "reason-x",
+            "removed": 7,
+            "state": "done"
+          }
+        ],
+        "said": "said-x"
+      }
+    },
+    "files-home": {
+      "rust": "{\"path\":\"path-x\"}",
+      "sample": {
+        "path": "path-x"
+      }
+    },
+    "files-ls": {
+      "rust": "{\"held\":\"held-x\",\"whole\":true,\"same\":true,\"order\":[\"order-x\"],\"up\":{\"k\":{\"path\":\"path-x\",\"name\":\"name-x\",\"kind\":\"dir\",\"size\":7,\"size_text\":\"size_text-x\",\"mtime_secs\":7,\"mtime_text\":\"mtime_text-x\",\"mtime_full\":\"mtime_full-x\",\"link_dir\":true,\"link_to\":\"dir\",\"class\":\"folder\",\"type_text\":\"type_text-x\",\"gates\":{\"preview\":{\"text\":{\"cap\":7,\"lang\":\"lang-x\"}},\"view\":{\"cap\":7},\"edit\":{\"cap\":7}}}},\"head\":{\"total\":7,\"info\":{\"up\":\"up-x\",\"crumbs\":[{\"name\":\"name-x\",\"path\":\"path-x\"}],\"truncated\":true,\"total\":7,\"unreadable\":7}}}",
+      "sample": {
+        "head": {
+          "info": {
+            "crumbs": [
+              {
+                "name": "name-x",
+                "path": "path-x"
+              }
+            ],
+            "total": 7,
+            "truncated": true,
+            "unreadable": 7,
+            "up": "up-x"
+          },
+          "total": 7
+        },
+        "held": "held-x",
+        "order": [
+          "order-x"
+        ],
+        "same": true,
+        "up": {
+          "k": {
+            "class": "folder",
+            "gates": {
+              "edit": {
+                "cap": 7
+              },
+              "preview": {
+                "text": {
+                  "cap": 7,
+                  "lang": "lang-x"
+                }
+              },
+              "view": {
+                "cap": 7
+              }
+            },
+            "kind": "dir",
+            "link_dir": true,
+            "link_to": "dir",
+            "mtime_full": "mtime_full-x",
+            "mtime_secs": 7,
+            "mtime_text": "mtime_text-x",
+            "name": "name-x",
+            "path": "path-x",
+            "size": 7,
+            "size_text": "size_text-x",
+            "type_text": "type_text-x"
+          }
+        },
+        "whole": true
+      }
+    },
+    "files-mkdir": {
+      "rust": "{\"path\":\"path-x\"}",
+      "sample": {
+        "path": "path-x"
+      }
+    },
+    "files-read-chunk": {
+      "rust": "{\"path\":\"path-x\",\"offset\":7,\"size\":7,\"eof\":true,\"content\":{\"b16\":\"6869\"}}",
+      "sample": {
+        "content": {
+          "b16": "6869"
+        },
+        "eof": true,
+        "offset": 7,
+        "path": "path-x",
+        "size": 7
+      }
+    },
+    "files-read-text": {
+      "rust": "{\"path\":\"path-x\",\"text\":\"text-x\",\"bytes\":7,\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\"}",
+      "sample": {
+        "bytes": 7,
+        "path": "path-x",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "text": "text-x"
+      }
+    },
+    "files-rename": {
+      "rust": "{\"path\":\"path-x\"}",
+      "sample": {
+        "path": "path-x"
+      }
+    },
+    "files-stage-chunk": {
+      "rust": "{\"bytes\":7}",
+      "sample": {
+        "bytes": 7
+      }
+    },
+    "files-stat": {
+      "rust": "{\"path\":\"path-x\",\"up\":\"up-x\",\"kind\":\"dir\",\"size\":7,\"readonly\":true,\"mode\":7,\"mtime_secs\":7,\"mtime_text\":\"mtime_text-x\",\"mtime_full\":\"mtime_full-x\",\"owner\":\"owner-x\",\"link_target\":\"link_target-x\"}",
+      "sample": {
+        "kind": "dir",
+        "link_target": "link_target-x",
+        "mode": 7,
+        "mtime_full": "mtime_full-x",
+        "mtime_secs": 7,
+        "mtime_text": "mtime_text-x",
+        "owner": "owner-x",
+        "path": "path-x",
+        "readonly": true,
+        "size": 7,
+        "up": "up-x"
+      }
+    },
+    "files-write-text": {
+      "rust": "{\"path\":\"path-x\",\"bytes\":7,\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\"}",
+      "sample": {
+        "bytes": 7,
+        "path": "path-x",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    "history-lines": {
+      "rust": "{\"from\":7,\"next\":7,\"eof\":true,\"end\":7,\"lines\":[{\"session_id\":\"session_id-x\",\"path\":\"path-x\",\"seq\":7,\"end\":7,\"cwd\":\"cwd-x\",\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"t\":\"said\",\"who\":{\"speaker\":{\"kind\":\"human\"},\"text\":\"text-x\",\"pasted\":[{\"id\":\"id-x\",\"start\":7,\"end\":7,\"bodyStart\":7,\"bodyEnd\":7,\"lines\":7}]},\"blocks\":[{\"type\":\"text\",\"text\":\"text-x\"}],\"results\":{\"k\":{\"ok\":true,\"rejected\":true,\"lines\":7,\"added\":7,\"removed\":7,\"files\":7,\"answer\":{\"kind\":\"approved\"},\"exitCode\":7,\"file\":\"file-x\",\"patch\":[{\"oldStart\":7,\"oldLines\":7,\"newStart\":7,\"newLines\":7,\"lines\":[\"lines-x\"]}],\"patchTruncated\":true,\"text\":\"text-x\",\"timed\":\"timed-x\",\"preview\":\"preview-x\",\"chars\":7,\"kind\":\"launched\"}},\"cwd\":\"cwd-x\"}}]}",
+      "sample": {
+        "end": 7,
+        "eof": true,
+        "from": 7,
+        "lines": [
+          {
+            "cwd": "cwd-x",
+            "end": 7,
+            "path": "path-x",
+            "record": {
+              "agent": "agent-x",
+              "at": "at-x",
+              "atMs": 7,
+              "blocks": [
+                {
+                  "text": "text-x",
+                  "type": "text"
+                }
+              ],
+              "cwd": "cwd-x",
+              "id": "id-x",
+              "results": {
+                "k": {
+                  "added": 7,
+                  "answer": {
+                    "kind": "approved"
+                  },
+                  "chars": 7,
+                  "exitCode": 7,
+                  "file": "file-x",
+                  "files": 7,
+                  "kind": "launched",
+                  "lines": 7,
+                  "ok": true,
+                  "patch": [
+                    {
+                      "lines": [
+                        "lines-x"
+                      ],
+                      "newLines": 7,
+                      "newStart": 7,
+                      "oldLines": 7,
+                      "oldStart": 7
+                    }
+                  ],
+                  "patchTruncated": true,
+                  "preview": "preview-x",
+                  "rejected": true,
+                  "removed": 7,
+                  "text": "text-x",
+                  "timed": "timed-x"
+                }
+              },
+              "t": "said",
+              "timeText": "timeText-x",
+              "who": {
+                "pasted": [
+                  {
+                    "bodyEnd": 7,
+                    "bodyStart": 7,
+                    "end": 7,
+                    "id": "id-x",
+                    "lines": 7,
+                    "start": 7
+                  }
+                ],
+                "speaker": {
+                  "kind": "human"
+                },
+                "text": "text-x"
+              }
+            },
+            "seq": 7,
+            "session_id": "session_id-x"
+          }
+        ],
+        "next": 7
+      }
+    },
+    "history-list": {
+      "rust": "{\"held\":\"held-x\",\"whole\":true,\"same\":true,\"order\":[\"order-x\"],\"up\":{\"k\":{\"agent\":\"agent-x\",\"sessionId\":\"sessionId-x\",\"projectPath\":\"projectPath-x\",\"projectName\":\"projectName-x\",\"aiTitle\":\"aiTitle-x\",\"firstUserExcerpt\":\"firstUserExcerpt-x\",\"title\":\"title-x\",\"startedAt\":7,\"updatedAt\":7,\"jsonlPath\":\"jsonlPath-x\",\"messageCountApprox\":7,\"isBg\":true,\"starred\":true,\"customTitle\":\"customTitle-x\",\"hidden\":{\"by\":\"self\",\"said\":\"said-x\"},\"forkedFromSessionId\":\"forkedFromSessionId-x\",\"forkedFromMessageUuid\":\"forkedFromMessageUuid-x\",\"forkedFrom\":{\"label\":\"label-x\"},\"projectDir\":\"projectDir-x\",\"group\":\"group-x\",\"lastAccount\":\"lastAccount-x\",\"label\":\"label-x\",\"untitled\":true,\"face\":{\"dot\":\"running\",\"live\":{\"is\":\"yes\",\"activity\":\"working\"},\"settled\":true,\"name\":\"name-x\",\"tip\":\"tip-x\",\"line\":\"line-x\",\"tone\":\"plain\",\"order\":7,\"can\":{\"close\":{\"can\":\"quiet\"},\"resume\":{\"can\":\"yes\"},\"term\":{\"can\":\"yes\",\"tmux\":true},\"reattach\":{\"can\":\"yes\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"account\":\"account-x\"},\"can\":{\"resume\":\"yes\",\"accounts\":true,\"fork\":true,\"delete\":\"yes\"},\"agentTag\":\"agentTag-x\",\"context\":true,\"at\":7,\"atText\":\"atText-x\",\"sectionText\":\"sectionText-x\",\"spanText\":\"spanText-x\",\"origin\":\"origin-x\"}},\"head\":{\"total\":7,\"info\":{\"groups\":[{\"key\":\"key-x\",\"agent\":\"agent-x\",\"projectName\":\"projectName-x\",\"projectPath\":\"projectPath-x\",\"projectDir\":\"projectDir-x\",\"count\":7,\"hasLive\":true,\"starred\":true,\"lastActivity\":7,\"atText\":\"atText-x\",\"order\":7,\"failed\":\"failed-x\",\"origin\":\"origin-x\"}],\"notice\":\"notice-x\"}}}",
+      "sample": {
+        "head": {
+          "info": {
+            "groups": [
+              {
+                "agent": "agent-x",
+                "atText": "atText-x",
+                "count": 7,
+                "failed": "failed-x",
+                "hasLive": true,
+                "key": "key-x",
+                "lastActivity": 7,
+                "order": 7,
+                "origin": "origin-x",
+                "projectDir": "projectDir-x",
+                "projectName": "projectName-x",
+                "projectPath": "projectPath-x",
+                "starred": true
+              }
+            ],
+            "notice": "notice-x"
+          },
+          "total": 7
+        },
+        "held": "held-x",
+        "order": [
+          "order-x"
+        ],
+        "same": true,
+        "up": {
+          "k": {
+            "agent": "agent-x",
+            "agentTag": "agentTag-x",
+            "aiTitle": "aiTitle-x",
+            "at": 7,
+            "atText": "atText-x",
+            "can": {
+              "accounts": true,
+              "delete": "yes",
+              "fork": true,
+              "resume": "yes"
+            },
+            "context": true,
+            "customTitle": "customTitle-x",
+            "face": {
+              "account": "account-x",
+              "can": {
+                "close": {
+                  "can": "quiet"
+                },
+                "model": {
+                  "can": "yes"
+                },
+                "permission": {
+                  "can": "yes"
+                },
+                "reattach": {
+                  "can": "yes"
+                },
+                "resume": {
+                  "can": "yes"
+                },
+                "term": {
+                  "can": "yes",
+                  "tmux": true
+                }
+              },
+              "dot": "running",
+              "line": "line-x",
+              "live": {
+                "activity": "working",
+                "is": "yes"
+              },
+              "name": "name-x",
+              "order": 7,
+              "settled": true,
+              "tip": "tip-x",
+              "tone": "plain"
+            },
+            "firstUserExcerpt": "firstUserExcerpt-x",
+            "forkedFrom": {
+              "label": "label-x"
+            },
+            "forkedFromMessageUuid": "forkedFromMessageUuid-x",
+            "forkedFromSessionId": "forkedFromSessionId-x",
+            "group": "group-x",
+            "hidden": {
+              "by": "self",
+              "said": "said-x"
+            },
+            "isBg": true,
+            "jsonlPath": "jsonlPath-x",
+            "label": "label-x",
+            "lastAccount": "lastAccount-x",
+            "messageCountApprox": 7,
+            "origin": "origin-x",
+            "projectDir": "projectDir-x",
+            "projectName": "projectName-x",
+            "projectPath": "projectPath-x",
+            "sectionText": "sectionText-x",
+            "sessionId": "sessionId-x",
+            "spanText": "spanText-x",
+            "starred": true,
+            "startedAt": 7,
+            "title": "title-x",
+            "untitled": true,
+            "updatedAt": 7
+          }
+        },
+        "whole": true
+      }
+    },
+    "history-read": {
+      "rust": "{\"rows\":[{\"end\":7,\"hash\":7,\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"t\":\"said\",\"who\":{\"speaker\":{\"kind\":\"human\"},\"text\":\"text-x\",\"pasted\":[{\"id\":\"id-x\",\"start\":7,\"end\":7,\"bodyStart\":7,\"bodyEnd\":7,\"lines\":7}]},\"blocks\":[{\"type\":\"text\",\"text\":\"text-x\"}],\"results\":{\"k\":{\"ok\":true,\"rejected\":true,\"lines\":7,\"added\":7,\"removed\":7,\"files\":7,\"answer\":{\"kind\":\"approved\"},\"exitCode\":7,\"file\":\"file-x\",\"patch\":[{\"oldStart\":7,\"oldLines\":7,\"newStart\":7,\"newLines\":7,\"lines\":[\"lines-x\"]}],\"patchTruncated\":true,\"text\":\"text-x\",\"timed\":\"timed-x\",\"preview\":\"preview-x\",\"chars\":7,\"kind\":\"launched\"}},\"cwd\":\"cwd-x\"},\"cwd\":\"cwd-x\"}],\"next\":7,\"eof\":true}",
+      "sample": {
+        "eof": true,
+        "next": 7,
+        "rows": [
+          {
+            "cwd": "cwd-x",
+            "end": 7,
+            "hash": 7,
+            "record": {
+              "agent": "agent-x",
+              "at": "at-x",
+              "atMs": 7,
+              "blocks": [
+                {
+                  "text": "text-x",
+                  "type": "text"
+                }
+              ],
+              "cwd": "cwd-x",
+              "id": "id-x",
+              "results": {
+                "k": {
+                  "added": 7,
+                  "answer": {
+                    "kind": "approved"
+                  },
+                  "chars": 7,
+                  "exitCode": 7,
+                  "file": "file-x",
+                  "files": 7,
+                  "kind": "launched",
+                  "lines": 7,
+                  "ok": true,
+                  "patch": [
+                    {
+                      "lines": [
+                        "lines-x"
+                      ],
+                      "newLines": 7,
+                      "newStart": 7,
+                      "oldLines": 7,
+                      "oldStart": 7
+                    }
+                  ],
+                  "patchTruncated": true,
+                  "preview": "preview-x",
+                  "rejected": true,
+                  "removed": 7,
+                  "text": "text-x",
+                  "timed": "timed-x"
+                }
+              },
+              "t": "said",
+              "timeText": "timeText-x",
+              "who": {
+                "pasted": [
+                  {
+                    "bodyEnd": 7,
+                    "bodyStart": 7,
+                    "end": 7,
+                    "id": "id-x",
+                    "lines": 7,
+                    "start": 7
+                  }
+                ],
+                "speaker": {
+                  "kind": "human"
+                },
+                "text": "text-x"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "history-search": {
+      "rust": "{\"sessions\":[{\"agent\":\"agent-x\",\"sessionId\":\"sessionId-x\",\"projectPath\":\"projectPath-x\",\"projectName\":\"projectName-x\",\"jsonlPath\":\"jsonlPath-x\",\"title\":\"title-x\",\"updatedAt\":7,\"hits\":[{\"uuid\":\"uuid-x\",\"tsMs\":7,\"kind\":\"kind-x\",\"before\":\"before-x\",\"matched\":\"matched-x\",\"after\":\"after-x\",\"tool\":\"tool-x\",\"offset\":7,\"line\":7}],\"moreHits\":7,\"hitsTruncated\":true,\"isBg\":true,\"can\":{\"resume\":\"yes\",\"accounts\":true,\"fork\":true,\"delete\":\"yes\"},\"forkedFrom\":{\"label\":\"label-x\"},\"face\":{\"dot\":\"running\",\"live\":{\"is\":\"yes\",\"activity\":\"working\"},\"settled\":true,\"name\":\"name-x\",\"tip\":\"tip-x\",\"line\":\"line-x\",\"tone\":\"plain\",\"order\":7,\"can\":{\"close\":{\"can\":\"quiet\"},\"resume\":{\"can\":\"yes\"},\"term\":{\"can\":\"yes\",\"tmux\":true},\"reattach\":{\"can\":\"yes\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"account\":\"account-x\"},\"atText\":\"atText-x\",\"spanText\":\"spanText-x\",\"label\":\"label-x\",\"starred\":true,\"hidden\":{\"by\":\"self\",\"said\":\"said-x\"}}],\"unreadable\":7,\"skipped\":[\"skipped-x\"]}",
+      "sample": {
+        "sessions": [
+          {
+            "agent": "agent-x",
+            "atText": "atText-x",
+            "can": {
+              "accounts": true,
+              "delete": "yes",
+              "fork": true,
+              "resume": "yes"
+            },
+            "face": {
+              "account": "account-x",
+              "can": {
+                "close": {
+                  "can": "quiet"
+                },
+                "model": {
+                  "can": "yes"
+                },
+                "permission": {
+                  "can": "yes"
+                },
+                "reattach": {
+                  "can": "yes"
+                },
+                "resume": {
+                  "can": "yes"
+                },
+                "term": {
+                  "can": "yes",
+                  "tmux": true
+                }
+              },
+              "dot": "running",
+              "line": "line-x",
+              "live": {
+                "activity": "working",
+                "is": "yes"
+              },
+              "name": "name-x",
+              "order": 7,
+              "settled": true,
+              "tip": "tip-x",
+              "tone": "plain"
+            },
+            "forkedFrom": {
+              "label": "label-x"
+            },
+            "hidden": {
+              "by": "self",
+              "said": "said-x"
+            },
+            "hits": [
+              {
+                "after": "after-x",
+                "before": "before-x",
+                "kind": "kind-x",
+                "line": 7,
+                "matched": "matched-x",
+                "offset": 7,
+                "tool": "tool-x",
+                "tsMs": 7,
+                "uuid": "uuid-x"
+              }
+            ],
+            "hitsTruncated": true,
+            "isBg": true,
+            "jsonlPath": "jsonlPath-x",
+            "label": "label-x",
+            "moreHits": 7,
+            "projectName": "projectName-x",
+            "projectPath": "projectPath-x",
+            "sessionId": "sessionId-x",
+            "spanText": "spanText-x",
+            "starred": true,
+            "title": "title-x",
+            "updatedAt": 7
+          }
+        ],
+        "skipped": [
+          "skipped-x"
+        ],
+        "unreadable": 7
+      }
+    },
+    "history-tail": {
+      "rust": "{\"total\":7,\"tail_from\":7,\"split_at\":7,\"end\":7,\"how\":\"tail\",\"from\":7,\"rows\":[{\"end\":7,\"hash\":7,\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"t\":\"said\",\"who\":{\"speaker\":{\"kind\":\"human\"},\"text\":\"text-x\",\"pasted\":[{\"id\":\"id-x\",\"start\":7,\"end\":7,\"bodyStart\":7,\"bodyEnd\":7,\"lines\":7}]},\"blocks\":[{\"type\":\"text\",\"text\":\"text-x\"}],\"results\":{\"k\":{\"ok\":true,\"rejected\":true,\"lines\":7,\"added\":7,\"removed\":7,\"files\":7,\"answer\":{\"kind\":\"approved\"},\"exitCode\":7,\"file\":\"file-x\",\"patch\":[{\"oldStart\":7,\"oldLines\":7,\"newStart\":7,\"newLines\":7,\"lines\":[\"lines-x\"]}],\"patchTruncated\":true,\"text\":\"text-x\",\"timed\":\"timed-x\",\"preview\":\"preview-x\",\"chars\":7,\"kind\":\"launched\"}},\"cwd\":\"cwd-x\"},\"cwd\":\"cwd-x\"}],\"next\":7,\"eof\":true,\"held\":{\"path\":\"path-x\",\"next\":7,\"next_byte\":7,\"mark\":\"mark-x\"}}",
+      "sample": {
+        "end": 7,
+        "eof": true,
+        "from": 7,
+        "held": {
+          "mark": "mark-x",
+          "next": 7,
+          "next_byte": 7,
+          "path": "path-x"
+        },
+        "how": "tail",
+        "next": 7,
+        "rows": [
+          {
+            "cwd": "cwd-x",
+            "end": 7,
+            "hash": 7,
+            "record": {
+              "agent": "agent-x",
+              "at": "at-x",
+              "atMs": 7,
+              "blocks": [
+                {
+                  "text": "text-x",
+                  "type": "text"
+                }
+              ],
+              "cwd": "cwd-x",
+              "id": "id-x",
+              "results": {
+                "k": {
+                  "added": 7,
+                  "answer": {
+                    "kind": "approved"
+                  },
+                  "chars": 7,
+                  "exitCode": 7,
+                  "file": "file-x",
+                  "files": 7,
+                  "kind": "launched",
+                  "lines": 7,
+                  "ok": true,
+                  "patch": [
+                    {
+                      "lines": [
+                        "lines-x"
+                      ],
+                      "newLines": 7,
+                      "newStart": 7,
+                      "oldLines": 7,
+                      "oldStart": 7
+                    }
+                  ],
+                  "patchTruncated": true,
+                  "preview": "preview-x",
+                  "rejected": true,
+                  "removed": 7,
+                  "text": "text-x",
+                  "timed": "timed-x"
+                }
+              },
+              "t": "said",
+              "timeText": "timeText-x",
+              "who": {
+                "pasted": [
+                  {
+                    "bodyEnd": 7,
+                    "bodyStart": 7,
+                    "end": 7,
+                    "id": "id-x",
+                    "lines": 7,
+                    "start": 7
+                  }
+                ],
+                "speaker": {
+                  "kind": "human"
+                },
+                "text": "text-x"
+              }
+            }
+          }
+        ],
+        "split_at": 7,
+        "tail_from": 7,
+        "total": 7
+      }
+    },
+    "kill": {
+      "rust": "{\"session\":\"session-x\",\"killed\":true,\"bus\":{\"removed\":[\"removed-x\"],\"failed\":[{\"id\":\"id-x\",\"why\":\"why-x\"}],\"unread\":\"unread-x\",\"said\":\"said-x\",\"detail\":\"detail-x\"}}",
+      "sample": {
+        "bus": {
+          "detail": "detail-x",
+          "failed": [
+            {
+              "id": "id-x",
+              "why": "why-x"
+            }
+          ],
+          "removed": [
+            "removed-x"
+          ],
+          "said": "said-x",
+          "unread": "unread-x"
+        },
+        "killed": true,
+        "session": "session-x"
+      }
+    },
+    "needs-answer": {
+      "rust": "{\"result\":\"answered\"}",
+      "sample": {
+        "result": "answered"
+      }
+    },
+    "quota-read": {
+      "rust": "{\"state\":\"present\",\"reason\":\"reason-x\",\"detail\":\"detail-x\",\"path\":\"path-x\",\"now\":7,\"accounts\":[{\"agent\":\"agent-x\",\"account\":\"account-x\",\"seenAt\":7,\"seenAtText\":\"seenAtText-x\",\"seenAtRelText\":\"seenAtRelText-x\",\"reading\":{\"status\":\"allowed\",\"refused\":true,\"limiting\":\"limiting-x\",\"resetsAt\":7,\"resetsAtText\":\"resetsAtText-x\",\"resetsAtRelText\":\"resetsAtRelText-x\",\"windows\":[{\"name\":\"name-x\",\"used\":1.5,\"resetsAt\":7,\"resetsAtText\":\"resetsAtText-x\",\"resetsAtRelText\":\"resetsAtRelText-x\",\"warnedAt\":1.5}],\"overage\":{\"status\":\"allowed\",\"resetsAt\":7,\"resetsAtText\":\"resetsAtText-x\",\"resetsAtRelText\":\"resetsAtRelText-x\",\"disabled\":\"disabled-x\",\"inUse\":true}},\"windowsSeen\":{\"k\":{\"at\":7,\"atText\":\"atText-x\",\"atRelText\":\"atRelText-x\",\"from\":\"headers\"}},\"kind\":\"sub\",\"state\":\"ok\",\"stale\":true,\"limiting\":\"limiting-x\",\"slots\":[{\"slot\":\"slot-x\",\"pct\":7,\"resetsAt\":7,\"resetsAtText\":\"resetsAtText-x\",\"resetsAtRelText\":\"resetsAtRelText-x\",\"resetText\":\"resetText-x\",\"full\":true,\"text\":\"text-x\",\"tone\":\"plain\",\"perPctText\":\"perPctText-x\"}],\"login\":\"ok\",\"subId\":\"subId-x\",\"windows\":[{\"name\":\"name-x\",\"key\":\"key-x\",\"pct\":7,\"resetsAt\":7,\"resetsAtText\":\"resetsAtText-x\",\"resetsAtRelText\":\"resetsAtRelText-x\",\"seenAt\":7,\"seenAtText\":\"seenAtText-x\",\"seenAtRelText\":\"seenAtRelText-x\",\"from\":\"headers\",\"tokensPerPct\":7,\"perPctText\":\"perPctText-x\",\"resetSinceSeen\":true,\"tone\":\"plain\"}],\"usage\":{\"slot\":\"slot-x\",\"window\":\"window-x\",\"value\":\"value-x\",\"reset\":\"reset-x\",\"text\":\"text-x\",\"tone\":\"plain\"},\"rows\":[[{\"text\":\"text-x\",\"tone\":\"plain\"}]],\"fiveHour\":\"fiveHour-x\",\"warm\":{\"act\":\"send\",\"at\":7,\"atText\":\"atText-x\",\"atRelText\":\"atRelText-x\",\"text\":\"text-x\"}}],\"unseen\":[{\"agent\":\"agent-x\",\"account\":\"account-x\",\"kind\":\"sub\",\"login\":\"ok\",\"subId\":\"subId-x\",\"usage\":{\"slot\":\"slot-x\",\"window\":\"window-x\",\"value\":\"value-x\",\"text\":\"text-x\",\"tone\":\"plain\"},\"rows\":[[{\"text\":\"text-x\",\"tone\":\"plain\"}]],\"fiveHour\":\"fiveHour-x\",\"warm\":{\"act\":\"send\",\"at\":7,\"atText\":\"atText-x\",\"atRelText\":\"atRelText-x\",\"text\":\"text-x\"}}],\"candidates\":[{\"agent\":\"agent-x\",\"account\":\"account-x\",\"kind\":\"sub\"}],\"text\":\"text-x\",\"fiveHour\":\"fiveHour-x\",\"names\":{\"accounts\":{\"k\":\"accounts-x\"},\"slots\":{\"k\":\"slots-x\"}},\"verdict\":{\"text\":\"text-x\",\"sub\":\"sub-x\",\"tone\":\"plain\"}}",
+      "sample": {
+        "accounts": [
+          {
+            "account": "account-x",
+            "agent": "agent-x",
+            "fiveHour": "fiveHour-x",
+            "kind": "sub",
+            "limiting": "limiting-x",
+            "login": "ok",
+            "reading": {
+              "limiting": "limiting-x",
+              "overage": {
+                "disabled": "disabled-x",
+                "inUse": true,
+                "resetsAt": 7,
+                "resetsAtRelText": "resetsAtRelText-x",
+                "resetsAtText": "resetsAtText-x",
+                "status": "allowed"
+              },
+              "refused": true,
+              "resetsAt": 7,
+              "resetsAtRelText": "resetsAtRelText-x",
+              "resetsAtText": "resetsAtText-x",
+              "status": "allowed",
+              "windows": [
+                {
+                  "name": "name-x",
+                  "resetsAt": 7,
+                  "resetsAtRelText": "resetsAtRelText-x",
+                  "resetsAtText": "resetsAtText-x",
+                  "used": 1.5,
+                  "warnedAt": 1.5
+                }
+              ]
+            },
+            "rows": [
+              [
+                {
+                  "text": "text-x",
+                  "tone": "plain"
+                }
+              ]
+            ],
+            "seenAt": 7,
+            "seenAtRelText": "seenAtRelText-x",
+            "seenAtText": "seenAtText-x",
+            "slots": [
+              {
+                "full": true,
+                "pct": 7,
+                "perPctText": "perPctText-x",
+                "resetText": "resetText-x",
+                "resetsAt": 7,
+                "resetsAtRelText": "resetsAtRelText-x",
+                "resetsAtText": "resetsAtText-x",
+                "slot": "slot-x",
+                "text": "text-x",
+                "tone": "plain"
+              }
+            ],
+            "stale": true,
+            "state": "ok",
+            "subId": "subId-x",
+            "usage": {
+              "reset": "reset-x",
+              "slot": "slot-x",
+              "text": "text-x",
+              "tone": "plain",
+              "value": "value-x",
+              "window": "window-x"
+            },
+            "warm": {
+              "act": "send",
+              "at": 7,
+              "atRelText": "atRelText-x",
+              "atText": "atText-x",
+              "text": "text-x"
+            },
+            "windows": [
+              {
+                "from": "headers",
+                "key": "key-x",
+                "name": "name-x",
+                "pct": 7,
+                "perPctText": "perPctText-x",
+                "resetSinceSeen": true,
+                "resetsAt": 7,
+                "resetsAtRelText": "resetsAtRelText-x",
+                "resetsAtText": "resetsAtText-x",
+                "seenAt": 7,
+                "seenAtRelText": "seenAtRelText-x",
+                "seenAtText": "seenAtText-x",
+                "tokensPerPct": 7,
+                "tone": "plain"
+              }
+            ],
+            "windowsSeen": {
+              "k": {
+                "at": 7,
+                "atRelText": "atRelText-x",
+                "atText": "atText-x",
+                "from": "headers"
+              }
+            }
+          }
+        ],
+        "candidates": [
+          {
+            "account": "account-x",
+            "agent": "agent-x",
+            "kind": "sub"
+          }
+        ],
+        "detail": "detail-x",
+        "fiveHour": "fiveHour-x",
+        "names": {
+          "accounts": {
+            "k": "accounts-x"
+          },
+          "slots": {
+            "k": "slots-x"
+          }
+        },
+        "now": 7,
+        "path": "path-x",
+        "reason": "reason-x",
+        "state": "present",
+        "text": "text-x",
+        "unseen": [
+          {
+            "account": "account-x",
+            "agent": "agent-x",
+            "fiveHour": "fiveHour-x",
+            "kind": "sub",
+            "login": "ok",
+            "rows": [
+              [
+                {
+                  "text": "text-x",
+                  "tone": "plain"
+                }
+              ]
+            ],
+            "subId": "subId-x",
+            "usage": {
+              "slot": "slot-x",
+              "text": "text-x",
+              "tone": "plain",
+              "value": "value-x",
+              "window": "window-x"
+            },
+            "warm": {
+              "act": "send",
+              "at": 7,
+              "atRelText": "atRelText-x",
+              "atText": "atText-x",
+              "text": "text-x"
+            }
+          }
+        ],
+        "verdict": {
+          "sub": "sub-x",
+          "text": "text-x",
+          "tone": "plain"
+        }
+      }
+    },
+    "rotation-facts": {
+      "rust": "{\"now\":7,\"accounts\":[{\"account\":\"account-x\",\"kind\":\"sub\",\"w5h\":{\"open\":true,\"used\":1.5,\"resets\":7,\"resetsText\":\"resetsText-x\",\"rate\":1.5,\"tokensPerPct\":7},\"w7d\":{\"open\":true,\"used\":1.5,\"resets\":7,\"resetsText\":\"resetsText-x\",\"rate\":1.5,\"tokensPerPct\":7},\"weekly\":true,\"login\":\"ok\",\"seenAt\":7,\"blocked\":{\"why\":\"refused\",\"until\":7,\"text\":\"text-x\"}}]}",
+      "sample": {
+        "accounts": [
+          {
+            "account": "account-x",
+            "blocked": {
+              "text": "text-x",
+              "until": 7,
+              "why": "refused"
+            },
+            "kind": "sub",
+            "login": "ok",
+            "seenAt": 7,
+            "w5h": {
+              "open": true,
+              "rate": 1.5,
+              "resets": 7,
+              "resetsText": "resetsText-x",
+              "tokensPerPct": 7,
+              "used": 1.5
+            },
+            "w7d": {
+              "open": true,
+              "rate": 1.5,
+              "resets": 7,
+              "resetsText": "resetsText-x",
+              "tokensPerPct": 7,
+              "used": 1.5
+            },
+            "weekly": true
+          }
+        ],
+        "now": 7
+      }
+    },
+    "rotation-for-new": {
+      "rust": "{}",
+      "sample": {}
+    },
+    "rotation-reload": {
+      "rust": "{}",
+      "sample": {}
+    },
+    "rotation-settings": {
+      "rust": "{\"rev\":\"rev-x\"}",
+      "sample": {
+        "rev": "rev-x"
+      }
+    },
+    "rotation-strategies": {
+      "rust": "{\"strategies\":[{\"id\":\"id-x\",\"description\":\"description-x\",\"summary\":\"summary-x\",\"rev\":\"rev-x\",\"error\":{\"line\":7,\"msg\":\"msg-x\"},\"inUse\":[\"inUse-x\"],\"forNew\":true,\"wordsBad\":true,\"tzUnknown\":true,\"hand\":true}],\"forNew\":\"forNew-x\",\"oldScripts\":7}",
+      "sample": {
+        "forNew": "forNew-x",
+        "oldScripts": 7,
+        "strategies": [
+          {
+            "description": "description-x",
+            "error": {
+              "line": 7,
+              "msg": "msg-x"
+            },
+            "forNew": true,
+            "hand": true,
+            "id": "id-x",
+            "inUse": [
+              "inUse-x"
+            ],
+            "rev": "rev-x",
+            "summary": "summary-x",
+            "tzUnknown": true,
+            "wordsBad": true
+          }
+        ]
+      }
+    },
+    "rotation-strategy-add": {
+      "rust": "{\"id\":\"id-x\"}",
+      "sample": {
+        "id": "id-x"
+      }
+    },
+    "rotation-strategy-copy": {
+      "rust": "{\"id\":\"id-x\"}",
+      "sample": {
+        "id": "id-x"
+      }
+    },
+    "rotation-strategy-delete": {
+      "rust": "{}",
+      "sample": {}
+    },
+    "rotation-strategy-rename": {
+      "rust": "{\"id\":\"id-x\"}",
+      "sample": {
+        "id": "id-x"
+      }
+    },
+    "rotation-strategy-tz": {
+      "rust": "{\"rev\":\"rev-x\"}",
+      "sample": {
+        "rev": "rev-x"
+      }
+    },
+    "rotation-temp": {
+      "rust": "{\"temp\":[\"temp-x\"],\"off\":[\"off-x\"]}",
+      "sample": {
+        "off": [
+          "off-x"
+        ],
+        "temp": [
+          "temp-x"
+        ]
+      }
+    },
+    "rotation-try": {
+      "rust": "{\"now\":7,\"description\":\"description-x\",\"source\":\"source-x\",\"useNowRefused\":7,\"decision\":{\"pick\":\"pick-x\",\"holdUntil\":7,\"holdAccount\":\"holdAccount-x\",\"order\":[\"order-x\"],\"why\":[{\"account\":\"account-x\",\"why\":\"why-x\"}],\"fromTemp\":true,\"skipped\":[\"skipped-x\"],\"temp\":[\"temp-x\"],\"nextNode\":7,\"strategyError\":\"strategyError-x\"},\"timeline\":{\"switches\":[{\"at\":7,\"atText\":\"atText-x\",\"account\":\"account-x\"}],\"uses\":[{\"from\":7,\"to\":7,\"account\":\"account-x\",\"fromTemp\":true,\"capUnknown\":true,\"skipped\":[\"skipped-x\"],\"text\":\"text-x\"}],\"lanes\":[{\"account\":\"account-x\",\"segs\":[{\"from\":7,\"to\":7,\"sendable\":true,\"reset\":true,\"text\":\"text-x\"}]}],\"truncated\":true,\"ticks\":[{\"at\":7,\"text\":\"text-x\"}]}}",
+      "sample": {
+        "decision": {
+          "fromTemp": true,
+          "holdAccount": "holdAccount-x",
+          "holdUntil": 7,
+          "nextNode": 7,
+          "order": [
+            "order-x"
+          ],
+          "pick": "pick-x",
+          "skipped": [
+            "skipped-x"
+          ],
+          "strategyError": "strategyError-x",
+          "temp": [
+            "temp-x"
+          ],
+          "why": [
+            {
+              "account": "account-x",
+              "why": "why-x"
+            }
+          ]
+        },
+        "description": "description-x",
+        "now": 7,
+        "source": "source-x",
+        "timeline": {
+          "lanes": [
+            {
+              "account": "account-x",
+              "segs": [
+                {
+                  "from": 7,
+                  "reset": true,
+                  "sendable": true,
+                  "text": "text-x",
+                  "to": 7
+                }
+              ]
+            }
+          ],
+          "switches": [
+            {
+              "account": "account-x",
+              "at": 7,
+              "atText": "atText-x"
+            }
+          ],
+          "ticks": [
+            {
+              "at": 7,
+              "text": "text-x"
+            }
+          ],
+          "truncated": true,
+          "uses": [
+            {
+              "account": "account-x",
+              "capUnknown": true,
+              "from": 7,
+              "fromTemp": true,
+              "skipped": [
+                "skipped-x"
+              ],
+              "text": "text-x",
+              "to": 7
+            }
+          ]
+        },
+        "useNowRefused": 7
+      }
+    },
+    "rotation-use": {
+      "rust": "{}",
+      "sample": {}
+    },
+    "rotation-use-now": {
+      "rust": "{}",
+      "sample": {}
+    },
+    "rotation-view": {
+      "rust": "{\"now\":7,\"nowText\":\"nowText-x\",\"title\":\"title-x\",\"strategy\":{\"id\":\"id-x\",\"description\":\"description-x\",\"summary\":\"summary-x\",\"rev\":\"rev-x\",\"error\":{\"line\":7,\"msg\":\"msg-x\"},\"inUse\":[\"inUse-x\"],\"forNew\":true,\"wordsBad\":true,\"tzUnknown\":true,\"hand\":true},\"board\":{\"all\":[{\"key\":\"key-x\",\"kind\":\"percent\",\"window\":\"window-x\",\"label\":\"label-x\",\"help\":\"help-x\",\"v\":{},\"num\":1.5,\"from\":\"own\",\"nullable\":\"nullable-x\",\"choices\":[{\"v\":\"v-x\",\"label\":\"label-x\"}],\"min\":1.5,\"max\":1.5,\"segs\":[{\"from\":7,\"to\":7,\"fromText\":\"fromText-x\",\"toText\":\"toText-x\",\"v\":1.5,\"text\":\"text-x\",\"tip\":\"tip-x\"}],\"lead\":\"lead-x\",\"under\":\"under-x\",\"same\":\"same-x\"}],\"rows\":[{\"account\":\"account-x\",\"line\":\"line-x\",\"hover\":\"hover-x\",\"cells\":[{\"key\":\"key-x\",\"kind\":\"percent\",\"window\":\"window-x\",\"label\":\"label-x\",\"help\":\"help-x\",\"v\":{},\"num\":1.5,\"from\":\"own\",\"nullable\":\"nullable-x\",\"choices\":[{\"v\":\"v-x\",\"label\":\"label-x\"}],\"min\":1.5,\"max\":1.5,\"segs\":[{\"from\":7,\"to\":7,\"fromText\":\"fromText-x\",\"toText\":\"toText-x\",\"v\":1.5,\"text\":\"text-x\",\"tip\":\"tip-x\"}],\"lead\":\"lead-x\",\"under\":\"under-x\",\"same\":\"same-x\"}],\"rules\":[\"rules-x\"],\"marks\":[{\"glyph\":\"glyph-x\",\"dashed\":true,\"tip\":\"tip-x\"}]}]},\"start\":\"start-x\",\"current\":\"current-x\",\"lineup\":[\"lineup-x\"],\"off\":[\"off-x\"],\"accounts\":[{\"account\":\"account-x\",\"kind\":\"sub\",\"w5h\":{\"open\":true,\"used\":1.5,\"resets\":7,\"resetsText\":\"resetsText-x\",\"rate\":1.5,\"tokensPerPct\":7},\"w7d\":{\"open\":true,\"used\":1.5,\"resets\":7,\"resetsText\":\"resetsText-x\",\"rate\":1.5,\"tokensPerPct\":7},\"weekly\":true,\"login\":\"ok\",\"seenAt\":7,\"blocked\":{\"why\":\"refused\",\"until\":7,\"text\":\"text-x\"},\"plate\":{\"color\":7,\"label\":\"label-x\",\"text\":\"text-x\"},\"full\":[\"full-x\"]}],\"listed\":7,\"decision\":{\"pick\":\"pick-x\",\"holdUntil\":7,\"holdAccount\":\"holdAccount-x\",\"order\":[\"order-x\"],\"why\":[{\"account\":\"account-x\",\"why\":\"why-x\"}],\"fromTemp\":true,\"skipped\":[\"skipped-x\"],\"temp\":[\"temp-x\"],\"nextNode\":7,\"strategyError\":\"strategyError-x\"},\"timeline\":{\"switches\":[{\"at\":7,\"atText\":\"atText-x\",\"account\":\"account-x\"}],\"uses\":[{\"from\":7,\"to\":7,\"account\":\"account-x\",\"fromTemp\":true,\"capUnknown\":true,\"skipped\":[\"skipped-x\"],\"text\":\"text-x\"}],\"lanes\":[{\"account\":\"account-x\",\"segs\":[{\"from\":7,\"to\":7,\"sendable\":true,\"reset\":true,\"text\":\"text-x\"}]}],\"truncated\":true,\"ticks\":[{\"at\":7,\"text\":\"text-x\"}]},\"past\":{\"from\":7,\"uses\":[{\"from\":7,\"to\":7,\"account\":\"account-x\",\"text\":\"text-x\"}],\"lanes\":[{\"account\":\"account-x\",\"segs\":[{\"from\":7,\"to\":7,\"sendable\":true,\"reset\":true,\"text\":\"text-x\"}]}]},\"log\":[{\"at\":7,\"from\":\"from-x\",\"to\":\"to-x\",\"cause\":{\"k\":\"order\"},\"why\":\"why-x\",\"because\":\"because-x\"}],\"hints\":[{\"hint\":{\"k\":\"hold\",\"until\":7,\"account\":\"account-x\",\"untilText\":\"untilText-x\"},\"tone\":\"plain\",\"text\":\"text-x\",\"detail\":\"detail-x\"}]}",
+      "sample": {
+        "accounts": [
+          {
+            "account": "account-x",
+            "blocked": {
+              "text": "text-x",
+              "until": 7,
+              "why": "refused"
+            },
+            "full": [
+              "full-x"
+            ],
+            "kind": "sub",
+            "login": "ok",
+            "plate": {
+              "color": 7,
+              "label": "label-x",
+              "text": "text-x"
+            },
+            "seenAt": 7,
+            "w5h": {
+              "open": true,
+              "rate": 1.5,
+              "resets": 7,
+              "resetsText": "resetsText-x",
+              "tokensPerPct": 7,
+              "used": 1.5
+            },
+            "w7d": {
+              "open": true,
+              "rate": 1.5,
+              "resets": 7,
+              "resetsText": "resetsText-x",
+              "tokensPerPct": 7,
+              "used": 1.5
+            },
+            "weekly": true
+          }
+        ],
+        "board": {
+          "all": [
+            {
+              "choices": [
+                {
+                  "label": "label-x",
+                  "v": "v-x"
+                }
+              ],
+              "from": "own",
+              "help": "help-x",
+              "key": "key-x",
+              "kind": "percent",
+              "label": "label-x",
+              "lead": "lead-x",
+              "max": 1.5,
+              "min": 1.5,
+              "nullable": "nullable-x",
+              "num": 1.5,
+              "same": "same-x",
+              "segs": [
+                {
+                  "from": 7,
+                  "fromText": "fromText-x",
+                  "text": "text-x",
+                  "tip": "tip-x",
+                  "to": 7,
+                  "toText": "toText-x",
+                  "v": 1.5
+                }
+              ],
+              "under": "under-x",
+              "v": {},
+              "window": "window-x"
+            }
+          ],
+          "rows": [
+            {
+              "account": "account-x",
+              "cells": [
+                {
+                  "choices": [
+                    {
+                      "label": "label-x",
+                      "v": "v-x"
+                    }
+                  ],
+                  "from": "own",
+                  "help": "help-x",
+                  "key": "key-x",
+                  "kind": "percent",
+                  "label": "label-x",
+                  "lead": "lead-x",
+                  "max": 1.5,
+                  "min": 1.5,
+                  "nullable": "nullable-x",
+                  "num": 1.5,
+                  "same": "same-x",
+                  "segs": [
+                    {
+                      "from": 7,
+                      "fromText": "fromText-x",
+                      "text": "text-x",
+                      "tip": "tip-x",
+                      "to": 7,
+                      "toText": "toText-x",
+                      "v": 1.5
+                    }
+                  ],
+                  "under": "under-x",
+                  "v": {},
+                  "window": "window-x"
+                }
+              ],
+              "hover": "hover-x",
+              "line": "line-x",
+              "marks": [
+                {
+                  "dashed": true,
+                  "glyph": "glyph-x",
+                  "tip": "tip-x"
+                }
+              ],
+              "rules": [
+                "rules-x"
+              ]
+            }
+          ]
+        },
+        "current": "current-x",
+        "decision": {
+          "fromTemp": true,
+          "holdAccount": "holdAccount-x",
+          "holdUntil": 7,
+          "nextNode": 7,
+          "order": [
+            "order-x"
+          ],
+          "pick": "pick-x",
+          "skipped": [
+            "skipped-x"
+          ],
+          "strategyError": "strategyError-x",
+          "temp": [
+            "temp-x"
+          ],
+          "why": [
+            {
+              "account": "account-x",
+              "why": "why-x"
+            }
+          ]
+        },
+        "hints": [
+          {
+            "detail": "detail-x",
+            "hint": {
+              "account": "account-x",
+              "k": "hold",
+              "until": 7,
+              "untilText": "untilText-x"
+            },
+            "text": "text-x",
+            "tone": "plain"
+          }
+        ],
+        "lineup": [
+          "lineup-x"
+        ],
+        "listed": 7,
+        "log": [
+          {
+            "at": 7,
+            "because": "because-x",
+            "cause": {
+              "k": "order"
+            },
+            "from": "from-x",
+            "to": "to-x",
+            "why": "why-x"
+          }
+        ],
+        "now": 7,
+        "nowText": "nowText-x",
+        "off": [
+          "off-x"
+        ],
+        "past": {
+          "from": 7,
+          "lanes": [
+            {
+              "account": "account-x",
+              "segs": [
+                {
+                  "from": 7,
+                  "reset": true,
+                  "sendable": true,
+                  "text": "text-x",
+                  "to": 7
+                }
+              ]
+            }
+          ],
+          "uses": [
+            {
+              "account": "account-x",
+              "from": 7,
+              "text": "text-x",
+              "to": 7
+            }
+          ]
+        },
+        "start": "start-x",
+        "strategy": {
+          "description": "description-x",
+          "error": {
+            "line": 7,
+            "msg": "msg-x"
+          },
+          "forNew": true,
+          "hand": true,
+          "id": "id-x",
+          "inUse": [
+            "inUse-x"
+          ],
+          "rev": "rev-x",
+          "summary": "summary-x",
+          "tzUnknown": true,
+          "wordsBad": true
+        },
+        "timeline": {
+          "lanes": [
+            {
+              "account": "account-x",
+              "segs": [
+                {
+                  "from": 7,
+                  "reset": true,
+                  "sendable": true,
+                  "text": "text-x",
+                  "to": 7
+                }
+              ]
+            }
+          ],
+          "switches": [
+            {
+              "account": "account-x",
+              "at": 7,
+              "atText": "atText-x"
+            }
+          ],
+          "ticks": [
+            {
+              "at": 7,
+              "text": "text-x"
+            }
+          ],
+          "truncated": true,
+          "uses": [
+            {
+              "account": "account-x",
+              "capUnknown": true,
+              "from": 7,
+              "fromTemp": true,
+              "skipped": [
+                "skipped-x"
+              ],
+              "text": "text-x",
+              "to": 7
+            }
+          ]
+        },
+        "title": "title-x"
+      }
+    },
+    "session-commands": {
+      "rust": "{\"commands\":[{\"name\":\"name-x\",\"text\":\"text-x\",\"scope\":\"builtin\",\"scopeText\":\"scopeText-x\",\"needsArgs\":true,\"confirm\":true,\"needsArgsText\":\"needsArgsText-x\",\"confirmText\":\"confirmText-x\"}],\"skills\":[{\"name\":\"name-x\",\"text\":\"text-x\",\"say\":\"say-x\"}],\"problems\":[\"problems-x\"],\"compact\":{\"say\":\"say-x\",\"confirm\":true},\"clear\":{\"say\":\"say-x\",\"confirm\":true}}",
+      "sample": {
+        "clear": {
+          "confirm": true,
+          "say": "say-x"
+        },
+        "commands": [
+          {
+            "confirm": true,
+            "confirmText": "confirmText-x",
+            "name": "name-x",
+            "needsArgs": true,
+            "needsArgsText": "needsArgsText-x",
+            "scope": "builtin",
+            "scopeText": "scopeText-x",
+            "text": "text-x"
+          }
+        ],
+        "compact": {
+          "confirm": true,
+          "say": "say-x"
+        },
+        "problems": [
+          "problems-x"
+        ],
+        "skills": [
+          {
+            "name": "name-x",
+            "say": "say-x",
+            "text": "text-x"
+          }
+        ]
+      }
+    },
+    "session-model": {
+      "rust": "{\"result\":\"done\",\"model\":\"model-x\",\"effort\":\"effort-x\",\"why\":\"not_yours\",\"said\":\"said-x\"}",
+      "sample": {
+        "effort": "effort-x",
+        "model": "model-x",
+        "result": "done",
+        "said": "said-x",
+        "why": "not_yours"
+      }
+    },
+    "session-open": {
+      "rust": "{\"landed\":\"started\",\"session\":\"session-x\",\"line\":\"line-x\",\"sid\":\"sid-x\",\"agent\":\"agent-x\",\"cwd\":\"cwd-x\",\"account\":{\"name\":\"name-x\",\"configDir\":\"configDir-x\",\"model\":\"model-x\"},\"note\":\"note-x\",\"prompt\":{\"result\":\"result-x\",\"why\":\"why-x\",\"said\":\"said-x\"},\"arrival\":{\"by\":{\"kind\":\"sid\",\"sid\":\"sid-x\"},\"since\":7,\"session\":\"session-x\"}}",
+      "sample": {
+        "account": {
+          "configDir": "configDir-x",
+          "model": "model-x",
+          "name": "name-x"
+        },
+        "agent": "agent-x",
+        "arrival": {
+          "by": {
+            "kind": "sid",
+            "sid": "sid-x"
+          },
+          "session": "session-x",
+          "since": 7
+        },
+        "cwd": "cwd-x",
+        "landed": "started",
+        "line": "line-x",
+        "note": "note-x",
+        "prompt": {
+          "result": "result-x",
+          "said": "said-x",
+          "why": "why-x"
+        },
+        "session": "session-x",
+        "sid": "sid-x"
+      }
+    },
+    "session-open-facts": {
+      "rust": "{\"recent\":[{\"cwd\":\"cwd-x\",\"lastMs\":7,\"lastText\":\"lastText-x\"}],\"tmux\":true,\"run\":\"tmux\",\"agents\":[{\"kind\":\"kind-x\",\"text\":\"text-x\",\"models\":[{\"value\":\"value-x\",\"text\":\"text-x\"}],\"modelDefault\":{\"value\":\"value-x\",\"text\":\"text-x\"},\"modelNote\":\"modelNote-x\",\"permissionModes\":[{\"value\":\"value-x\",\"text\":\"text-x\"}],\"permissionDefault\":{\"value\":\"value-x\",\"text\":\"text-x\"}}],\"fork\":{\"agent\":\"agent-x\",\"launch\":{\"cwd\":{\"kind\":\"known\",\"value\":\"value-x\",\"from\":\"record\"},\"account\":{\"kind\":\"known\",\"value\":\"value-x\",\"from\":\"record\"},\"terminal\":{\"kind\":\"known\",\"value\":{\"host\":\"tmux\",\"terminal\":\"terminal-x\"},\"from\":\"record\"}},\"turn\":7,\"startText\":\"startText-x\"}}",
+      "sample": {
+        "agents": [
+          {
+            "kind": "kind-x",
+            "modelDefault": {
+              "text": "text-x",
+              "value": "value-x"
+            },
+            "modelNote": "modelNote-x",
+            "models": [
+              {
+                "text": "text-x",
+                "value": "value-x"
+              }
+            ],
+            "permissionDefault": {
+              "text": "text-x",
+              "value": "value-x"
+            },
+            "permissionModes": [
+              {
+                "text": "text-x",
+                "value": "value-x"
+              }
+            ],
+            "text": "text-x"
+          }
+        ],
+        "fork": {
+          "agent": "agent-x",
+          "launch": {
+            "account": {
+              "from": "record",
+              "kind": "known",
+              "value": "value-x"
+            },
+            "cwd": {
+              "from": "record",
+              "kind": "known",
+              "value": "value-x"
+            },
+            "terminal": {
+              "from": "record",
+              "kind": "known",
+              "value": {
+                "host": "tmux",
+                "terminal": "terminal-x"
+              }
+            }
+          },
+          "startText": "startText-x",
+          "turn": 7
+        },
+        "recent": [
+          {
+            "cwd": "cwd-x",
+            "lastMs": 7,
+            "lastText": "lastText-x"
+          }
+        ],
+        "run": "tmux",
+        "tmux": true
+      }
+    },
+    "session-permission": {
+      "rust": "{\"result\":\"done\",\"mode\":\"mode-x\",\"modeText\":\"modeText-x\",\"why\":\"not_yours\",\"said\":\"said-x\"}",
+      "sample": {
+        "mode": "mode-x",
+        "modeText": "modeText-x",
+        "result": "done",
+        "said": "said-x",
+        "why": "not_yours"
+      }
+    },
+    "session-say": {
+      "rust": "{\"result\":\"delivered\",\"why\":\"not_yours\",\"said\":\"said-x\",\"screen\":\"screen-x\",\"resumed\":true}",
+      "sample": {
+        "result": "delivered",
+        "resumed": true,
+        "said": "said-x",
+        "screen": "screen-x",
+        "why": "not_yours"
+      }
+    },
+    "sessions-needs": {
+      "rust": "{\"items\":[{\"kind\":\"session\",\"rank\":7,\"session\":{\"sid\":\"sid-x\",\"label\":\"label-x\",\"face\":{\"dot\":\"running\",\"live\":{\"is\":\"yes\",\"activity\":\"working\"},\"settled\":true,\"name\":\"name-x\",\"tip\":\"tip-x\",\"line\":\"line-x\",\"tone\":\"plain\",\"order\":7,\"can\":{\"close\":{\"can\":\"quiet\"},\"resume\":{\"can\":\"yes\"},\"term\":{\"can\":\"yes\",\"tmux\":true},\"reattach\":{\"can\":\"yes\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"account\":\"account-x\"},\"needs\":{\"kind\":\"approve\",\"tool\":\"tool-x\",\"call\":\"call-x\",\"what\":\"what-x\",\"sinceMs\":7,\"text\":\"text-x\",\"head\":\"head-x\",\"headCode\":\"headCode-x\",\"tone\":\"plain\",\"rank\":7,\"waitedMs\":7,\"waitedText\":\"waitedText-x\",\"ask\":{\"id\":\"id-x\",\"kind\":\"approve\",\"tool\":\"tool-x\",\"run\":{\"id\":\"id-x\",\"kind\":\"kind-x\"},\"what\":\"what-x\",\"detail\":\"detail-x\",\"choices\":[{\"id\":\"id-x\",\"text\":\"text-x\",\"tone\":\"plain\",\"note\":\"none\",\"row\":\"main\"}],\"questions\":[{\"id\":\"id-x\",\"text\":\"text-x\",\"header\":\"header-x\",\"multi\":true,\"options\":[{\"id\":\"id-x\",\"text\":\"text-x\",\"detail\":\"detail-x\"}],\"other\":true}],\"sinceMs\":7},\"manualText\":\"manualText-x\"},\"hidden\":{\"by\":\"self\",\"said\":\"said-x\"}}}],\"answered\":[{\"sid\":\"sid-x\",\"said\":\"said-x\"}],\"manualUnreadable\":\"manualUnreadable-x\"}",
+      "sample": {
+        "answered": [
+          {
+            "said": "said-x",
+            "sid": "sid-x"
+          }
+        ],
+        "items": [
+          {
+            "kind": "session",
+            "rank": 7,
+            "session": {
+              "face": {
+                "account": "account-x",
+                "can": {
+                  "close": {
+                    "can": "quiet"
+                  },
+                  "model": {
+                    "can": "yes"
+                  },
+                  "permission": {
+                    "can": "yes"
+                  },
+                  "reattach": {
+                    "can": "yes"
+                  },
+                  "resume": {
+                    "can": "yes"
+                  },
+                  "term": {
+                    "can": "yes",
+                    "tmux": true
+                  }
+                },
+                "dot": "running",
+                "line": "line-x",
+                "live": {
+                  "activity": "working",
+                  "is": "yes"
+                },
+                "name": "name-x",
+                "order": 7,
+                "settled": true,
+                "tip": "tip-x",
+                "tone": "plain"
+              },
+              "hidden": {
+                "by": "self",
+                "said": "said-x"
+              },
+              "label": "label-x",
+              "needs": {
+                "ask": {
+                  "choices": [
+                    {
+                      "id": "id-x",
+                      "note": "none",
+                      "row": "main",
+                      "text": "text-x",
+                      "tone": "plain"
+                    }
+                  ],
+                  "detail": "detail-x",
+                  "id": "id-x",
+                  "kind": "approve",
+                  "questions": [
+                    {
+                      "header": "header-x",
+                      "id": "id-x",
+                      "multi": true,
+                      "options": [
+                        {
+                          "detail": "detail-x",
+                          "id": "id-x",
+                          "text": "text-x"
+                        }
+                      ],
+                      "other": true,
+                      "text": "text-x"
+                    }
+                  ],
+                  "run": {
+                    "id": "id-x",
+                    "kind": "kind-x"
+                  },
+                  "sinceMs": 7,
+                  "tool": "tool-x",
+                  "what": "what-x"
+                },
+                "call": "call-x",
+                "head": "head-x",
+                "headCode": "headCode-x",
+                "kind": "approve",
+                "manualText": "manualText-x",
+                "rank": 7,
+                "sinceMs": 7,
+                "text": "text-x",
+                "tone": "plain",
+                "tool": "tool-x",
+                "waitedMs": 7,
+                "waitedText": "waitedText-x",
+                "what": "what-x"
+              },
+              "sid": "sid-x"
+            }
+          }
+        ],
+        "manualUnreadable": "manualUnreadable-x"
+      }
+    },
+    "terminal-input": {
+      "rust": "{\"result\":\"delivered\",\"why\":\"not_yours\",\"said\":\"said-x\",\"screen\":\"screen-x\",\"resumed\":true}",
+      "sample": {
+        "result": "delivered",
+        "resumed": true,
+        "said": "said-x",
+        "screen": "screen-x",
+        "why": "not_yours"
+      }
+    },
+    "terminal-preview": {
+      "rust": "{\"screen\":\"screen-x\",\"cols\":7,\"rows\":7,\"cursor\":{\"x\":7,\"y\":7,\"visible\":true},\"lines\":[{\"text\":\"text-x\",\"spans\":[{\"from\":7,\"to\":7,\"fg\":\"fg-x\",\"bg\":\"bg-x\",\"bold\":true,\"dim\":true,\"italic\":true,\"underline\":true,\"inverse\":true}]}],\"scrollback_lines\":7,\"capped\":true,\"captured_at\":7,\"captured_at_text\":\"captured_at_text-x\"}",
+      "sample": {
+        "capped": true,
+        "captured_at": 7,
+        "captured_at_text": "captured_at_text-x",
+        "cols": 7,
+        "cursor": {
+          "visible": true,
+          "x": 7,
+          "y": 7
+        },
+        "lines": [
+          {
+            "spans": [
+              {
+                "bg": "bg-x",
+                "bold": true,
+                "dim": true,
+                "fg": "fg-x",
+                "from": 7,
+                "inverse": true,
+                "italic": true,
+                "to": 7,
+                "underline": true
+              }
+            ],
+            "text": "text-x"
+          }
+        ],
+        "rows": 7,
+        "screen": "screen-x",
+        "scrollback_lines": 7
+      }
+    },
+    "terminals-list": {
+      "rust": "{\"terminals\":[{\"terminal\":\"terminal-x\",\"host\":\"tmux\",\"tmux_name\":\"tmux_name-x\",\"title\":\"title-x\",\"program\":\"program-x\",\"cwd\":\"cwd-x\",\"session\":{\"sid\":\"sid-x\",\"agent\":\"agent-x\"},\"started_by\":{\"client\":\"client-x\",\"mine\":true},\"clients\":[{\"kind\":\"terminal-window\",\"since\":7,\"last_activity\":7}],\"input\":\"shared\",\"state\":\"running\",\"last_activity\":7,\"can\":{\"input\":true,\"end\":true}}],\"complete\":true}",
+      "sample": {
+        "complete": true,
+        "terminals": [
+          {
+            "can": {
+              "end": true,
+              "input": true
+            },
+            "clients": [
+              {
+                "kind": "terminal-window",
+                "last_activity": 7,
+                "since": 7
+              }
+            ],
+            "cwd": "cwd-x",
+            "host": "tmux",
+            "input": "shared",
+            "last_activity": 7,
+            "program": "program-x",
+            "session": {
+              "agent": "agent-x",
+              "sid": "sid-x"
+            },
+            "started_by": {
+              "client": "client-x",
+              "mine": true
+            },
+            "state": "running",
+            "terminal": "terminal-x",
+            "title": "title-x",
+            "tmux_name": "tmux_name-x"
+          }
+        ]
+      }
+    }
+  },
+  "说明": [
+    "手机读的那几条回包的跨语言金样。",
+    "sample：结构夹具（每格都填、并集取第一形；node tests/scripts/gen-kotlin-wire.mjs --samples 现出，不放真正文）。",
+    "rust：cmd-wire 的 replies 表按类型解 sample、照类型写成的那一行（tests/common/cmd-wire/reply_goldens_tests.rs）。",
+    "Kotlin：core-claude 的 RepliesGoldenTest 拿生成的类解 rust、再写回，逐字节同。"
+  ]
+}

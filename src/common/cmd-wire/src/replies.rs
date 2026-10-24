@@ -50,6 +50,19 @@ macro_rules! replies {
             })
         }
 
+        /// 判据用：`cmd` 的回包按这里的类型解、再照类型写成一行（格按类型的顺序 —— 手机生成的类写回要与它逐字节同）。
+        #[cfg(test)]
+        pub(crate) fn typed_text(cmd: &str, data: serde_json::Value) -> Option<Result<String, String>> {
+            fn text<T: Serialize + serde::de::DeserializeOwned>(data: serde_json::Value) -> Result<String, String> {
+                let typed: T = serde_json::from_value(data).map_err(|e| e.to_string())?;
+                serde_json::to_string(&typed).map_err(|e| e.to_string())
+            }
+            Some(match cmd {
+                $($cmd => text::<$ty>(data),)*
+                _ => return None,
+            })
+        }
+
         /// `(命令, 解它用的那个类型的 TS 名)`：后端判据对着那条命令 `impl Command` 的回包类型核（同一个名 ⇒ 同一个类型）。
         #[cfg(any(test, feature = "ts"))]
         pub fn reply_names() -> Vec<(&'static str, String)> {
@@ -178,3 +191,7 @@ mod tests {
         ));
     }
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/common/cmd-wire/reply_goldens_tests.rs"]
+mod reply_goldens_tests;

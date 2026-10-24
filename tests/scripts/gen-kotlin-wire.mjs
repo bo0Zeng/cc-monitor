@@ -1,0 +1,861 @@
+#!/usr/bin/env node
+// 手机那一侧的线上类型（Kotlin）由这里从 ts-rs 导出的声明生成，不手抄。
+//
+//   读：src/frontend/ui/generated/*.ts（ts-rs 从 Rust 类型导出的那一份）· TypedCommands.ts（命令 ⇒ 入参 · 回包）·
+//       Rust 源里写成 f32 / f64 的格（TS 只有一种 `number`，整数与小数写回时字节不同 ⇒ 照 Rust 定）。
+//   写：src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/wire/Generated.kt（类型 ＋ 各自的编解码）·
+//       同目录 Commands.kt（命令表：命令名 ⇒ 回包怎么解）。
+//   用法：node tests/scripts/gen-kotlin-wire.mjs            重生成上面两份
+//         node tests/scripts/gen-kotlin-wire.mjs --samples  印每条命令回包的结构夹具（`tests/__fixtures__/wire-replies.golden.json` 的 `sample` 格从它来）
+//
+// 映射：对象 ⇒ data class（格按线上顺序，键名原样）· 字符串并集 ⇒ enum · 带同一个字面量判别格的对象并集 ⇒ sealed 一族 ·
+// `T | null` ⇒ 可空（写回照样写出 null）· `k?:` ⇒ 可缺（写回时缺）· Array ⇒ List · 键集合 ⇒ Map · 认不出的形 ⇒ Raw（原样那一段 JSON）。
+// 编解码是生成的（Moshi 的 JsonReader / JsonWriter，不经反射、不经 codegen）：写回与 Rust 逐字节同。
+
+import { readFileSync, readdirSync, writeFileSync, existsSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
+const GEN = join(ROOT, "src/frontend/ui/generated");
+const OUT_DIR = join(ROOT, "src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/wire");
+const PKG = "com.ccmonitor.mobile.core.claude.link.wire.gen";
+
+// ───────────────────────────── 读 TS 声明 ─────────────────────────────
+
+function stripComments(s) {
+  return s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+}
+
+function tokenize(s) {
+  const out = [];
+  let i = 0;
+  while (i < s.length) {
+    const c = s[i];
+    if (/\s/.test(c)) { i++; continue; }
+    if (c === '"') {
+      let j = i + 1;
+      while (s[j] !== '"') j += s[j] === "\\" ? 2 : 1;
+      out.push({ t: "str", v: JSON.parse(s.slice(i, j + 1)) });
+      i = j + 1;
+      continue;
+    }
+    if (/[A-Za-z_$]/.test(c)) {
+      let j = i;
+      while (j < s.length && /[A-Za-z0-9_$]/.test(s[j])) j++;
+      out.push({ t: "id", v: s.slice(i, j) });
+      i = j;
+      continue;
+    }
+    if (/[0-9-]/.test(c)) {
+      let j = i + 1;
+      while (j < s.length && /[0-9.eE+-]/.test(s[j])) j++;
+      out.push({ t: "num", v: s.slice(i, j) });
+      i = j;
+      continue;
+    }
+    out.push({ t: "p", v: c });
+    i++;
+  }
+  return out;
+}
+
+class Parser {
+  constructor(toks) { this.k = toks; this.i = 0; }
+  peek(o = 0) { return this.k[this.i + o]; }
+  is(v) { const t = this.peek(); return t && t.t === "p" && t.v === v; }
+  eat(v) { if (!this.is(v)) throw new Error(`want ${v} at ${JSON.stringify(this.peek())}`); this.i++; }
+  type() {
+    const alts = [this.inter()];
+    while (this.is("|")) { this.i++; alts.push(this.inter()); }
+    return alts.length === 1 ? alts[0] : { k: "union", alts };
+  }
+  inter() {
+    const parts = [this.primary()];
+    while (this.is("&")) { this.i++; parts.push(this.primary()); }
+    return parts.length === 1 ? parts[0] : { k: "inter", parts };
+  }
+  primary() {
+    const t = this.peek();
+    if (t.t === "str") { this.i++; return { k: "lit", v: t.v }; }
+    if (t.t === "num") { this.i++; return { k: "numlit", v: t.v }; }
+    if (t.t === "p" && t.v === "(") { this.i++; const x = this.type(); this.eat(")"); return x; }
+    if (t.t === "p" && t.v === "[") {
+      this.i++;
+      const items = [];
+      while (!this.is("]")) { items.push(this.type()); if (this.is(",")) this.i++; }
+      this.eat("]");
+      return { k: "tuple", items };
+    }
+    if (t.t === "p" && t.v === "{") return this.object();
+    if (t.t === "id") {
+      this.i++;
+      const name = t.v;
+      let args = [];
+      if (this.is("<")) {
+        this.i++;
+        while (!this.is(">")) { args.push(this.type()); if (this.is(",")) this.i++; }
+        this.eat(">");
+      }
+      if (name === "Array") return { k: "array", of: args[0] };
+      if (name === "true" || name === "false") return { k: "boollit", v: name === "true" };
+      if (name === "Record") return args[0].k === "ref" && args[0].name === "symbol" ? { k: "obj", fields: [] } : { k: "map", of: args[1] };
+      if (["string", "number", "boolean", "bigint", "null", "unknown", "any"].includes(name)) return { k: "prim", v: name };
+      return { k: "ref", name, args };
+    }
+    throw new Error(`unexpected ${JSON.stringify(t)}`);
+  }
+  object() {
+    this.eat("{");
+    if (this.is("[")) {
+      // { [key in K]?: V }
+      this.i++;
+      this.i++; // key
+      this.i++; // in
+      this.type();
+      this.eat("]");
+      if (this.is("?")) this.i++;
+      this.eat(":");
+      const v = this.type();
+      if (this.is(",") || this.is(";")) this.i++;
+      this.eat("}");
+      return { k: "map", of: v };
+    }
+    const fields = [];
+    while (!this.is("}")) {
+      const kt = this.peek();
+      this.i++;
+      let opt = false;
+      if (this.is("?")) { this.i++; opt = true; }
+      this.eat(":");
+      const ty = this.type();
+      fields.push({ key: kt.v, opt, ty });
+      if (this.is(",") || this.is(";")) this.i++;
+    }
+    this.eat("}");
+    return { k: "obj", fields };
+  }
+}
+
+function loadDecls() {
+  const decls = new Map();
+  for (const f of readdirSync(GEN).filter((f) => f.endsWith(".ts"))) {
+    const text = stripComments(readFileSync(join(GEN, f), "utf8"));
+    const m = text.match(/export type (\w+)(?:<([^>=]*)>)?\s*=\s*([\s\S]*?);\s*$/);
+    if (!m) continue;
+    const [, name, params, body] = m;
+    try {
+      const p = new Parser(tokenize(body));
+      const ty = p.type();
+      decls.set(name, { name, params: params ? params.split(",").map((s) => s.trim()) : [], ty });
+    } catch (e) {
+      decls.set(name, { name, params: [], ty: { k: "raw" }, bad: String(e) });
+    }
+  }
+  return decls;
+}
+
+/** TypedCommands.ts：命令 ⇒ { req, reply }（类型表达式）。 */
+function loadCommands() {
+  const text = stripComments(readFileSync(join(GEN, "TypedCommands.ts"), "utf8"));
+  const out = new Map();
+  const re = /^\s*"([a-z0-9-]+)":\s*\{\s*req:\s*([\s\S]*?);\s*reply:\s*([\s\S]*?);\s*code:/gm;
+  let m;
+  while ((m = re.exec(text))) {
+    out.set(m[1], { req: new Parser(tokenize(m[2])).type(), reply: new Parser(tokenize(m[3])).type() });
+  }
+  return out;
+}
+
+/** 手机按类型读回包的那几条命令（`cmd-wire/src/replies.rs` 那张表）。 */
+function phoneCommands() {
+  const text = readFileSync(join(ROOT, "src/common/cmd-wire/src/replies.rs"), "utf8");
+  const body = text.slice(text.indexOf("replies! {"));
+  return [...body.matchAll(/^\s*"([a-z0-9-]+)"\s*=>/gm)].map((m) => m[1]);
+}
+
+// ───────────────────── Rust 里哪些格是小数 ─────────────────────
+
+function rustFloatFields() {
+  const own = new Map(); // Rust 类型名 ⇒ { ts: 导出名, floats: Set, flat: [被 flatten 进来的类型名] }
+  const walk = (d) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const p = join(d, e.name);
+      if (e.isDirectory()) { if (!["target", "vendor", "node_modules"].includes(e.name)) walk(p); continue; }
+      if (!e.name.endsWith(".rs")) continue;
+      const text = readFileSync(p, "utf8");
+      for (const m of text.matchAll(/pub (?:struct|enum) (\w+)[^{;]*\{([\s\S]*?)\n\}/g)) {
+        // 紧挨着它的那几行属性里的 `ts(rename = "…")`（导出名与 Rust 名不同）。
+        const before = text.slice(Math.max(0, m.index - 800), m.index);
+        const attrs = before.slice(Math.max(before.lastIndexOf("}\n"), before.lastIndexOf(";\n")) + 1);
+        const rn = attrs.match(/ts\([^)]*rename\s*=\s*"(\w+)"/);
+        const x = { ts: rn ? rn[1] : m[1], floats: new Set(), flat: [] };
+        for (const g of m[2].matchAll(/(?:pub )?(\w+): (?:Option<)?(?:Vec<)?f(?:32|64)\b/g)) {
+          x.floats.add(g[1]);
+          x.floats.add(g[1].replace(/_([a-z])/g, (_, c) => c.toUpperCase()));
+        }
+        for (const g of m[2].matchAll(/#\[serde\(flatten\)\][\s\S]*?pub \w+: (?:[\w:]+::)?(\w+)/g)) x.flat.push(g[1]);
+        own.set(m[1], x);
+      }
+    }
+  };
+  walk(join(ROOT, "src/common"));
+  walk(join(ROOT, "src/backend"));
+  const all = (name, seen = new Set()) => {
+    const x = own.get(name);
+    if (!x || seen.has(name)) return new Set();
+    seen.add(name);
+    const out = new Set(x.floats);
+    for (const c of x.flat) for (const v of all(c, seen)) out.add(v);
+    return out;
+  };
+  const out = new Map(); // 导出名 ⇒ Set(格名，snake 与 camel 都记)
+  for (const [name, x] of own) {
+    const fl = all(name);
+    if (fl.size) out.set(x.ts, new Set([...(out.get(x.ts) ?? []), ...fl]));
+  }
+  return out;
+}
+
+// ───────────────────────────── 出 Kotlin ─────────────────────────────
+
+const pascal = (s) => s.replace(/(^|[_\-\s.])([a-zA-Z0-9])/g, (_, __, c) => c.toUpperCase()).replace(/[^A-Za-z0-9]/g, "");
+const camel = (s) => { const p = pascal(s); return p.charAt(0).toLowerCase() + p.slice(1); };
+const KW = new Set(["class", "object", "fun", "val", "var", "in", "is", "as", "when", "if", "else", "for", "while", "do", "return", "null", "true", "false", "this", "super", "typealias", "interface", "package", "import", "try", "catch", "throw", "break", "continue", "type"]);
+const prop = (key) => { const c = camel(key) || "x"; const n = /^[0-9]/.test(c) ? "n" + c : c; return KW.has(n) ? "`" + n + "`" : n; };
+
+class Gen {
+  constructor(decls, floats) {
+    this.decls = decls;
+    this.floats = floats;
+    this.out = new Map(); // Kotlin 类型名 ⇒ 代码
+    this.done = new Set();
+    this.raw = [];
+    this.rawNames = new Set();
+  }
+
+  /** 类型表达式 ⇒ { kt: Kotlin 型, ad: 编解码表达式, nullable } */
+  ty(t, ctx) {
+    switch (t.k) {
+      case "prim":
+        if (t.v === "string") return { kt: "String", ad: "Str" };
+        if (t.v === "boolean") return { kt: "Boolean", ad: "Bool" };
+        if (t.v === "number" || t.v === "bigint") return ctx.float ? { kt: "Double", ad: "Dbl" } : { kt: "Long", ad: "Lng" };
+        return { kt: "Raw", ad: "RawJson" };
+      case "array": {
+        const e = this.ty(t.of, ctx);
+        return { kt: `List<${e.kt}>`, ad: `arr(${e.ad})` };
+      }
+      case "map": {
+        const e = this.ty(t.of, ctx);
+        return { kt: `Map<String, ${e.kt}>`, ad: `dict(${e.ad})` };
+      }
+      case "union": {
+        const alts = t.alts.filter((a) => !(a.k === "prim" && a.v === "null"));
+        const nullable = alts.length < t.alts.length;
+        let inner;
+        if (alts.length === 1) inner = this.ty(alts[0], ctx);
+        else inner = this.anon({ k: "union", alts }, ctx);
+        return nullable ? { kt: inner.kt + "?", ad: `opt(${inner.ad})` } : inner;
+      }
+      case "lit": return this.anon({ k: "union", alts: [t] }, ctx);
+      case "boollit": return { kt: "Boolean", ad: "Bool" };
+      case "obj": case "inter": case "tuple": return this.anon(t, ctx);
+      case "ref": {
+        if (ctx.params && ctx.params.includes(t.name)) return { kt: t.name, ad: `ad${t.name}` };
+        const d = this.decls.get(t.name);
+        if (!d) { this.raw.push(`${ctx.owner}: 没有 ${t.name} 的声明`); return { kt: "Raw", ad: "RawJson" }; }
+        // 别名（`type X = Y<…>` · 数组 · 键集合 · 原始型）不另出一个类，照它指的那一个。
+        if (!d.params.length && ["ref", "array", "map", "prim"].includes(d.ty.k)) return this.ty(d.ty, { ...ctx, owner: d.name });
+        this.emit(d);
+        if (this.rawNames.has(d.name)) return { kt: "Raw", ad: "RawJson" };
+        const args = t.args.map((a) => this.ty(a, ctx));
+        if (!args.length) return { kt: t.name, ad: `${t.name}.ADAPTER` };
+        return { kt: `${t.name}<${args.map((a) => a.kt).join(", ")}>`, ad: `${t.name}.adapter(${args.map((a) => a.ad).join(", ")})` };
+      }
+      default:
+        return { kt: "Raw", ad: "RawJson" };
+    }
+  }
+
+  anon(t, ctx) {
+    const name = ctx.owner + pascal(ctx.field ?? "Item");
+    this.emitDecl(name, [], t, { ...ctx, owner: name });
+    if (this.rawNames.has(name)) return { kt: "Raw", ad: "RawJson" };
+    return { kt: name, ad: `${name}.ADAPTER` };
+  }
+
+  emit(d) {
+    if (this.done.has(d.name)) return;
+    this.emitDecl(d.name, d.params, d.ty, { owner: d.name, params: d.params });
+  }
+
+  fieldsOf(t, ctx) {
+    if (t.k === "obj") return t.fields;
+    if (t.k === "inter") {
+      const parts = t.parts.map((p) => this.fieldsOf(p, ctx));
+      return parts.every(Boolean) ? parts.flat() : null;
+    }
+    if (t.k === "ref") {
+      const d = this.decls.get(t.name);
+      if (d && !d.params.length) return this.fieldsOf(d.ty, ctx);
+    }
+    return null;
+  }
+
+  /** 交叉里夹着一个并集（`{共有的格} & ({…} | {…})`）⇒ 摊成并集：每一形都带上共有的那几格。 */
+  distribute(t) {
+    if (t.k !== "inter") return t;
+    const u = t.parts.find((p) => p.k === "union");
+    if (!u) return t;
+    const rest = t.parts.filter((p) => p !== u);
+    return { k: "union", alts: u.alts.map((a) => ({ k: "inter", parts: [...rest, a] })) };
+  }
+
+  /** 并集各形在 JSON 里是哪一种记号（分得开就能按记号认）。 */
+  tokenOf(t) {
+    if (t.k === "prim") return { string: "STRING", number: "NUMBER", bigint: "NUMBER", boolean: "BOOLEAN" }[t.v];
+    if (t.k === "boollit") return "BOOLEAN";
+    if (t.k === "array" || t.k === "tuple") return "BEGIN_ARRAY";
+    if (t.k === "obj" || t.k === "inter" || t.k === "map") return "BEGIN_OBJECT";
+    if (t.k === "ref") {
+      const d = this.decls.get(t.name);
+      if (!d) return null;
+      if (d.ty.k === "union") return d.ty.alts.every((a) => a.k === "lit") ? "STRING" : "BEGIN_OBJECT";
+      return this.tokenOf(d.ty);
+    }
+    if (t.k === "lit") return "STRING";
+    return null;
+  }
+
+  emitDecl(name, params, t0, ctx) {
+    if (this.done.has(name)) return;
+    this.done.add(name);
+    this.out.set(name, ""); // 先占位（递归引用）
+    const floats = this.floats.get(name) ?? new Set();
+    const t = this.distribute(t0);
+    const alts = t.k === "union" ? t.alts.filter((a) => !(a.k === "prim" && a.v === "null")) : [t];
+    const c = { ...ctx, floats };
+    // 字符串并集 ⇒ 枚举
+    if (alts.every((a) => a.k === "lit")) {
+      this.out.set(name, this.enumCode(name, alts.map((a) => a.v)));
+      return;
+    }
+    // 对象（含交叉）
+    if (t.k !== "union") {
+      const fields = this.fieldsOf(t, ctx);
+      if (fields) {
+        this.out.set(name, this.objCode(name, params, fields, c));
+        return;
+      }
+    }
+    if (t.k === "union") {
+      const objs = alts.map((a) => this.fieldsOf(a, ctx));
+      if (objs.every(Boolean)) {
+        // 带同一个字面量判别格（serde internally tagged）
+        const disc = objs[0].map((f) => f.key).find((k) =>
+          objs.every((fs) => fs.some((f) => f.key === k && f.ty.k === "lit")));
+        if (disc) {
+          this.out.set(name, this.sealedCode(name, params, disc, objs, c));
+          return;
+        }
+        // 每一形一个键（serde externally tagged）
+        const keys = objs.map((fs) => (fs.length === 1 ? fs[0].key : null));
+        if (keys.every(Boolean) && new Set(keys).size === keys.length) {
+          this.out.set(name, this.externalCode(name, params, objs.map((fs) => fs[0]), c));
+          return;
+        }
+      }
+      // 各形的记号分得开（untagged：串 · 数 · 真假 · 对象 · 数组各至多一形）
+      const toks = alts.map((a) => this.tokenOf(a));
+      if (toks.every(Boolean) && new Set(toks).size === toks.length) {
+        this.out.set(name, this.tokenCode(name, params, alts, toks, c));
+        return;
+      }
+    }
+    if (t.k === "tuple") {
+      this.out.set(name, this.tupleCode(name, t.items, c));
+      return;
+    }
+    this.raw.push(`${name}: 认不出的形（${t.k}${t.k === "union" ? "：" + t.alts.map((a) => a.k).join("|") : ""}）⇒ 原样`);
+    this.rawNames.add(name);
+    this.out.delete(name);
+  }
+
+  enumCode(name, vals) {
+    const consts = vals.map((v) => `    ${(pascal(v) || "Empty").replace(/^([0-9])/, "N$1")}("${esc(v)}"),`).join("\n");
+    return `enum class ${name}(val wire: String) {\n${consts}\n    ;\n\n    companion object {\n        val ADAPTER: JsonAdapter<${name}> = enumOf(entries) { it.wire }\n    }\n}\n`;
+  }
+
+  fieldSpecs(fields, ctx) {
+    return fields.map((f) => {
+      const x = this.ty(f.ty, { ...ctx, field: f.key, float: ctx.floats?.has(f.key) });
+      const nullable = x.kt.endsWith("?") || f.opt;
+      const kt = f.opt && !x.kt.endsWith("?") ? x.kt + "?" : x.kt;
+      const ad = f.opt && !x.kt.endsWith("?") ? `opt(${x.ad})` : x.ad;
+      return { key: f.key, prop: prop(f.key), kt, ad, opt: f.opt, nullable };
+    });
+  }
+
+  /** `specs` 里可以夹判别格（`tag`：不进类，读时核那个词、写时写那个词，位置照声明）。 */
+  objBody(cls, specs, typeArgs) {
+    const props = specs.filter((s) => s.tag === undefined);
+    const ctor = props.map((s) => `    val ${s.prop}: ${s.kt}${s.opt ? " = null" : ""},`).join("\n");
+    const fieldList = specs.map((s) => s.tag !== undefined
+      ? `            Field("${esc(s.key)}", { tag("${esc(s.tag)}") }, optional = false, nullable = false),`
+      : `            Field("${esc(s.key)}", { ${s.ad} }, optional = ${s.opt}, nullable = ${s.nullable}),`).join("\n");
+    const build = specs.map((s, i) => (s.tag !== undefined ? null : `a[${i}] as ${s.kt}`)).filter(Boolean).join(", ");
+    const get = specs.map((s) => (s.tag !== undefined ? `"${esc(s.tag)}"` : `v.${s.prop}`)).join(", ");
+    if (!props.length) {
+      const one = typeArgs ? `${cls}${typeArgs}()` : cls;
+      return { ctor, adapter: `obj(\n            listOf(\n${fieldList}\n            ),\n            { ${one} },\n            { arrayOf(${get}) },\n        )` };
+    }
+    return { ctor, adapter: `obj(\n            listOf(\n${fieldList}\n            ),\n            { a -> ${cls}${typeArgs}(${build}) },\n            { v -> arrayOf(${get}) },\n        )` };
+  }
+
+  objCode(name, params, fields, ctx) {
+    if (!fields.length && !params.length) {
+      return `data object ${name} {\n    val ADAPTER: JsonAdapter<${name}> = obj(emptyList(), { ${name} }, { emptyArray() })\n}\n`;
+    }
+    const specs = this.fieldSpecs(fields, ctx);
+    const tp = params.length ? `<${params.join(", ")}>` : "";
+    const { ctor, adapter } = this.objBody(name, specs, tp);
+    const head = `@Suppress("UNCHECKED_CAST")\ndata class ${name}${tp}(\n${ctor}\n) : Ordered`;
+    if (!params.length) return `${head} {\n    override var wireOrder: IntArray? = null\n\n    companion object {\n        val ADAPTER: JsonAdapter<${name}> = ${adapter}\n    }\n}\n`;
+    const ps = params.map((p) => `ad${p}: JsonAdapter<${p}>`).join(", ");
+    return `${head} {\n    override var wireOrder: IntArray? = null\n\n    companion object {\n        fun ${tp} adapter(${ps}): JsonAdapter<${name}${tp}> = ${adapter}\n    }\n}\n`;
+  }
+
+  /** 一族的头：`sealed interface X<…>` 与它的编解码怎么开口（有类型参数 ⇒ 函数）。 */
+  familyHead(name, params) {
+    const tp = params.length ? `<${params.join(", ")}>` : "";
+    const ps = params.map((p) => `ad${p}: JsonAdapter<${p}>`).join(", ");
+    const open = params.length
+      ? `fun ${tp} adapter(${ps}): JsonAdapter<${name}${tp}>`
+      : `val ADAPTER: JsonAdapter<${name}>`;
+    return { tp, open };
+  }
+
+  variantClass(name, tp, vname, specs) {
+    if (!specs.length) {
+      return tp
+        ? `    class ${vname}${tp} : ${name}${tp} {\n        override fun equals(other: Any?): Boolean = other is ${vname}<*>\n\n        override fun hashCode(): Int = ${JSON.stringify(vname)}.hashCode()\n    }`
+        : `    data object ${vname} : ${name}`;
+    }
+    const ctor = specs.map((s) => `        val ${s.prop}: ${s.kt}${s.opt ? " = null" : ""},`).join("\n");
+    return `    @Suppress("UNCHECKED_CAST")\n    data class ${vname}${tp}(\n${ctor}\n    ) : ${name}${tp}, Ordered {\n        override var wireOrder: IntArray? = null\n    }`;
+  }
+
+  sealedCode(name, params, disc, objs, ctx) {
+    const { tp, open } = this.familyHead(name, params);
+    const variants = objs.map((fs) => {
+      const tag = fs.find((f) => f.key === disc).ty.v;
+      const vname = pascal(tag) || "Empty";
+      const specs = this.fieldSpecs(fs.filter((f) => f.key !== disc), { ...ctx, owner: name + vname });
+      const at = fs.findIndex((f) => f.key === disc);
+      const all = [...specs.slice(0, at), { key: disc, tag }, ...specs.slice(at)];
+      return { tag, vname, specs, all };
+    });
+    const code = [`sealed interface ${name}${tp} {`];
+    const rows = [];
+    for (const v of variants) {
+      code.push(this.variantClass(name, tp, v.vname, v.specs));
+      const cls = `${name}.${v.vname}${tp}`;
+      const ad = this.objBody(`${name}.${v.vname}`, v.all, tp).adapter;
+      rows.push(`                Variant("${esc(v.tag)}", ${cast(`${name}.${v.vname}::class.java`, name, tp)}, ${ad.replace(/\n/g, "\n            ")}),`);
+    }
+    code.push(`\n    companion object {\n        ${open} =\n            tagged<${name}${tp}>(\n                "${esc(disc)}",\n                listOf(\n${rows.join("\n")}\n                ),\n            )\n    }\n}\n`);
+    return code.join("\n");
+  }
+
+  externalCode(name, params, fields, ctx) {
+    const { tp, open } = this.familyHead(name, params);
+    const code = [`sealed interface ${name}${tp} {`];
+    const rows = [];
+    for (const f of fields) {
+      const vname = pascal(f.key) || "Empty";
+      const x = this.ty(f.ty, { ...ctx, owner: name + vname, field: "value", float: ctx.floats?.has(f.key) });
+      code.push(`    data class ${vname}${tp}(\n        val value: ${x.kt},\n    ) : ${name}${tp}`);
+      rows.push(`                Ext("${esc(f.key)}", ${cast(`${name}.${vname}::class.java`, name, tp)}, { ${x.ad} }, { ${name}.${vname}${tp}(it as ${x.kt}) }, { (it as ${name}.${vname}${tp}).value }),`);
+    }
+    code.push(`\n    companion object {\n        ${open} =\n            external<${name}${tp}>(\n                listOf(\n${rows.join("\n")}\n                ),\n            )\n    }\n}\n`);
+    return code.join("\n");
+  }
+
+  tokenCode(name, params, alts, toks, ctx) {
+    const { tp, open } = this.familyHead(name, params);
+    const VN = { STRING: "Text", NUMBER: "Num", BOOLEAN: "Flag", BEGIN_OBJECT: "Obj", BEGIN_ARRAY: "Items" };
+    const code = [`sealed interface ${name}${tp} {`];
+    const rows = [];
+    alts.forEach((a, i) => {
+      const vname = a.k === "ref" ? a.name : VN[toks[i]];
+      const x = this.ty(a.k === "boollit" ? { k: "prim", v: "boolean" } : a, { ...ctx, owner: name + vname, field: "value" });
+      code.push(`    data class ${vname}${tp}(\n        val value: ${x.kt},\n    ) : ${name}${tp}`);
+      rows.push(`                Tok(JsonReader.Token.${toks[i]}, ${cast(`${name}.${vname}::class.java`, name, tp)}, { ${x.ad} }, { ${name}.${vname}${tp}(it as ${x.kt}) }, { (it as ${name}.${vname}${tp}).value }),`);
+    });
+    code.push(`\n    companion object {\n        ${open} =\n            byToken<${name}${tp}>(\n                listOf(\n${rows.join("\n")}\n                ),\n            )\n    }\n}\n`);
+    return code.join("\n");
+  }
+
+  tupleCode(name, items, ctx) {
+    const specs = items.map((t, i) => {
+      const x = this.ty(t, { ...ctx, field: `p${i}` });
+      return { prop: `p${i}`, kt: x.kt, ad: x.ad };
+    });
+    const ctor = specs.map((s) => `    val ${s.prop}: ${s.kt},`).join("\n");
+    return `@Suppress("UNCHECKED_CAST")\ndata class ${name}(\n${ctor}\n) {\n    companion object {\n        val ADAPTER: JsonAdapter<${name}> = tuple(\n            listOf(${specs.map((s) => `{ ${s.ad} }`).join(", ")}),\n            { a -> ${name}(${specs.map((s, i) => `a[${i}] as ${s.kt}`).join(", ")}) },\n            { v -> arrayOf(${specs.map((s) => `v.${s.prop}`).join(", ")}) },\n        )\n    }\n}\n`;
+  }
+}
+
+/** 带类型参数的一族：各形的类按擦除后的类认，转成这一族的那一个类型。 */
+const cast = (cls, name, tp) => (tp ? `${cls} as Class<out ${name}${tp}>` : cls);
+
+const esc = (s) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\$/g, "\\$");
+
+// ───────────────────────────── 夹具 ─────────────────────────────
+
+/** 线上带格式约束、TS 里只是 string 的格 ⇒ 夹具里填一个合格的值（Rust 那头解的时候核）。 */
+const FORMATS = { b16: "6869", sha256: "0".repeat(64) };
+
+/** 一份结构夹具：每格都填（可空的填非空、可缺的也给），并集取第一形，数组 · 键集合各一项。 */
+function sample(t, decls, floats, owner, field, depth = 0, env = {}) {
+  if (depth > 40) return null;
+  switch (t.k) {
+    case "prim":
+      // 线上带格式约束、TS 里只是 string 的那几格（[FORMATS]）。
+      if (t.v === "string") return FORMATS[field] ?? (field ? `${field}-x` : "x");
+      if (t.v === "boolean") return true;
+      if (t.v === "number" || t.v === "bigint") return floats.get(owner)?.has(field) ? 1.5 : 7;
+      if (t.v === "null") return null;
+      return {};
+    case "lit": return t.v;
+    case "boollit": return t.v;
+    case "numlit": return Number(t.v);
+    case "array": return [sample(t.of, decls, floats, owner, field, depth + 1, env)];
+    case "map": return { k: sample(t.of, decls, floats, owner, field, depth + 1, env) };
+    case "tuple": return t.items.map((x, i) => sample(x, decls, floats, owner, `p${i}`, depth + 1, env));
+    case "union": {
+      const alts = t.alts.filter((a) => !(a.k === "prim" && a.v === "null"));
+      return sample(alts[0], decls, floats, owner, field, depth + 1, env);
+    }
+    case "obj": {
+      const o = {};
+      for (const f of t.fields) o[f.key] = sample(f.ty, decls, floats, owner, f.key, depth + 1, env);
+      return o;
+    }
+    case "inter": return Object.assign({}, ...t.parts.map((p) => sample(p, decls, floats, owner, field, depth + 1, env)));
+    case "ref": {
+      if (env[t.name]) return sample(env[t.name], decls, floats, owner, field, depth + 1, {});
+      const d = decls.get(t.name);
+      if (!d) return {};
+      const e = {};
+      d.params.forEach((p, i) => { const a = t.args[i]; e[p] = a && a.k === "ref" && env[a.name] ? env[a.name] : a; });
+      return sample(d.ty, decls, floats, t.name, field, depth + 1, e);
+    }
+    default: return null;
+  }
+}
+
+// ───────────────────────────── 主 ─────────────────────────────
+
+// 生成的编解码共用的那几块（随生成物一起出，不另住一份手写的）。
+const PREAMBLE = String.raw`import com.squareup.moshi.JsonDataException
+import com.squareup.moshi.JsonReader
+import com.squareup.moshi.JsonWriter
+
+/** 线上原样的一段 JSON（声明里认不出的那几形）：读进来什么、写回去就是什么。 */
+@JvmInline
+value class Raw(val json: String)
+
+/**
+ * 对象的一格：线上键 · 它的编解码（头一回用到才取：各类的编解码互相引用，不按初始化先后）·
+ * 可缺（写回时值为 null 就不写，Rust 那头 skip_serializing_if）· 可空（缺席照 null 读）。
+ */
+class Field(val key: String, ad: () -> JsonAdapter<*>, val optional: Boolean, val nullable: Boolean) {
+    val ad: JsonAdapter<*> by lazy(ad)
+}
+
+/** 两端契约对不上（缺格 · 型不对 · 认不出的词）：说出是哪一格。 */
+fun mismatch(what: String): JsonDataException = JsonDataException("两端契约对不上：" + what)
+
+private fun JsonReader.notNull(what: String) {
+    if (peek() == JsonReader.Token.NULL) throw mismatch(what + " 不该是 null（" + path + "）")
+}
+
+private inline fun <T> prim(
+    crossinline read: (JsonReader) -> T,
+    crossinline write: (JsonWriter, T) -> Unit,
+    what: String,
+): JsonAdapter<T> =
+    object : JsonAdapter<T>() {
+        override fun fromJson(reader: JsonReader): T {
+            reader.notNull(what)
+            return read(reader)
+        }
+
+        override fun toJson(writer: JsonWriter, value: T?) {
+            write(writer, value ?: throw mismatch(what + " 不该是 null"))
+        }
+    }
+
+val Str: JsonAdapter<String> = prim({ it.nextString() }, { w, v -> w.value(v) }, "字串")
+val Bool: JsonAdapter<Boolean> = prim({ it.nextBoolean() }, { w, v -> w.value(v) }, "真假")
+val Lng: JsonAdapter<Long> = prim({ it.nextLong() }, { w, v -> w.value(v) }, "整数")
+val Dbl: JsonAdapter<Double> = prim({ it.nextDouble() }, { w, v -> w.value(v) }, "小数")
+val RawJson: JsonAdapter<Raw> =
+    prim({ r -> r.nextSource().use { Raw(it.readUtf8()) } }, { w, v -> w.valueSink().use { it.writeUtf8(v.json) } }, "那一段")
+
+fun <T> opt(ad: JsonAdapter<T>): JsonAdapter<T?> =
+    object : JsonAdapter<T?>() {
+        override fun fromJson(reader: JsonReader): T? = if (reader.peek() == JsonReader.Token.NULL) reader.nextNull() else ad.fromJson(reader)
+
+        override fun toJson(writer: JsonWriter, value: T?) {
+            if (value == null) {
+                val was = writer.serializeNulls
+                writer.serializeNulls = true
+                writer.nullValue()
+                writer.serializeNulls = was
+            } else {
+                ad.toJson(writer, value)
+            }
+        }
+    }
+
+@Suppress("UNCHECKED_CAST")
+fun <T> arr(ad: JsonAdapter<T>): JsonAdapter<List<T>> =
+    prim({ r ->
+        val out = ArrayList<T>()
+        r.beginArray()
+        while (r.hasNext()) out.add(ad.fromJson(r) as T)
+        r.endArray()
+        out
+    }, { w, v ->
+        w.beginArray()
+        v.forEach { ad.toJson(w, it) }
+        w.endArray()
+    }, "数组")
+
+@Suppress("UNCHECKED_CAST")
+fun <T> dict(ad: JsonAdapter<T>): JsonAdapter<Map<String, T>> =
+    prim({ r ->
+        val out = LinkedHashMap<String, T>()
+        r.beginObject()
+        while (r.hasNext()) out[r.nextName()] = ad.fromJson(r) as T
+        r.endObject()
+        out
+    }, { w, v ->
+        w.beginObject()
+        v.forEach { (k, x) ->
+            w.name(k)
+            ad.toJson(w, x)
+        }
+        w.endObject()
+    }, "键集合")
+
+fun <E : Enum<E>> enumOf(all: List<E>, wire: (E) -> String): JsonAdapter<E> =
+    prim({ r ->
+        val s = r.nextString()
+        all.firstOrNull { wire(it) == s } ?: throw mismatch("认不出的词 \"" + s + "\"（" + r.path + "）")
+    }, { w, v -> w.value(wire(v)) }, "词")
+
+/**
+ * 读进来的那一份记着各格到的先后，写回照它（ts-rs 导出时把 serde flatten 进来的格挪到了最后，声明里的先后不是 Rust 写的先后）；
+ * 自己造的照声明的先后写（读的那一头不看先后）。不进 equals。
+ */
+interface Ordered {
+    var wireOrder: IntArray?
+}
+
+/** 一个对象：读时认不得的格跳过，缺了非可空的格是契约对不上。 */
+class ObjAd<T>(
+    private val fields: List<Field>,
+    private val build: (Array<Any?>) -> T,
+    private val get: (T) -> Array<Any?>,
+) : JsonAdapter<T>() {
+    private val index = fields.withIndex().associate { (i, f) -> f.key to i }
+
+    override fun fromJson(reader: JsonReader): T {
+        reader.notNull("对象")
+        val a = arrayOfNulls<Any?>(fields.size)
+        val seen = BooleanArray(fields.size)
+        val order = ArrayList<Int>(fields.size)
+        reader.beginObject()
+        while (reader.hasNext()) {
+            val i = index[reader.nextName()]
+            if (i == null) {
+                reader.skipValue()
+            } else {
+                a[i] = fields[i].ad.fromJson(reader)
+                if (!seen[i]) order.add(i)
+                seen[i] = true
+            }
+        }
+        reader.endObject()
+        fields.forEachIndexed { i, f ->
+            if (!seen[i] && !f.nullable) throw mismatch("缺格 \"" + f.key + "\"（" + reader.path + "）")
+        }
+        val built = build(a)
+        (built as? Ordered)?.wireOrder = order.toIntArray()
+        return built
+    }
+
+    override fun toJson(writer: JsonWriter, value: T?) {
+        writer.beginObject()
+        writeFields(writer, value ?: throw mismatch("对象不该是 null"))
+        writer.endObject()
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    fun writeFields(writer: JsonWriter, value: T) {
+        val v = get(value)
+        val read = (value as? Ordered)?.wireOrder
+        val order = if (read == null) fields.indices.toList() else read.toList() + fields.indices.filter { it !in read }
+        for (i in order) {
+            val f = fields[i]
+            if (v[i] == null && (f.optional || read != null && i !in read)) continue
+            writer.name(f.key)
+            (f.ad as JsonAdapter<Any?>).toJson(writer, v[i])
+        }
+    }
+}
+
+fun <T> obj(fields: List<Field>, build: (Array<Any?>) -> T, get: (T) -> Array<Any?>): ObjAd<T> = ObjAd(fields, build, get)
+
+/** 判别格那一格：读时只认那一个词，写时写它。 */
+fun tag(word: String): JsonAdapter<String> =
+    prim({ r ->
+        val s = r.nextString()
+        if (s != word) throw mismatch("判别格该是 \"" + word + "\"，来的是 \"" + s + "\"（" + r.path + "）")
+        s
+    }, { w, _ -> w.value(word) }, "判别格")
+
+/** 带判别格的并集的一形：判别格的那个词 · 它的类 · 其余各格。 */
+class Variant<T : Any>(val tag: String, val cls: Class<out T>, val ad: ObjAd<out T>)
+
+/** 带判别格的并集（serde 的 internally tagged）：判别格是各形里的一格（位置照读进来的 · 照声明）。 */
+fun <T : Any> tagged(disc: String, variants: List<Variant<T>>): JsonAdapter<T> =
+    object : JsonAdapter<T>() {
+        override fun fromJson(reader: JsonReader): T {
+            reader.notNull("并集")
+            val tag =
+                reader.peekJson().use { p ->
+                    p.beginObject()
+                    var t: String? = null
+                    while (p.hasNext()) {
+                        if (p.nextName() == disc) {
+                            t = p.nextString()
+                            break
+                        }
+                        p.skipValue()
+                    }
+                    t
+                } ?: throw mismatch("缺判别格 \"" + disc + "\"（" + reader.path + "）")
+            val v = variants.firstOrNull { it.tag == tag } ?: throw mismatch("认不出的一形 \"" + tag + "\"（" + reader.path + "）")
+            return v.ad.fromJson(reader) as T
+        }
+
+        @Suppress("UNCHECKED_CAST")
+        override fun toJson(writer: JsonWriter, value: T?) {
+            val x = value ?: throw mismatch("并集不该是 null")
+            val v = variants.first { it.cls.isInstance(x) }
+            (v.ad as ObjAd<T>).toJson(writer, x)
+        }
+    }
+
+/** 每一形一个键的并集（serde 的 externally tagged）：{"那个键": 值}。 */
+class Ext<T : Any>(val key: String, val cls: Class<out T>, ad: () -> JsonAdapter<*>, val wrap: (Any?) -> T, val unwrap: (T) -> Any?) {
+    val ad: JsonAdapter<*> by lazy(ad)
+}
+
+fun <T : Any> external(variants: List<Ext<T>>): JsonAdapter<T> =
+    object : JsonAdapter<T>() {
+        override fun fromJson(reader: JsonReader): T {
+            reader.notNull("并集")
+            reader.beginObject()
+            val key = reader.nextName()
+            val v = variants.firstOrNull { it.key == key } ?: throw mismatch("认不出的一形 \"" + key + "\"（" + reader.path + "）")
+            val x = v.wrap(v.ad.fromJson(reader))
+            reader.endObject()
+            return x
+        }
+
+        @Suppress("UNCHECKED_CAST")
+        override fun toJson(writer: JsonWriter, value: T?) {
+            val x = value ?: throw mismatch("并集不该是 null")
+            val v = variants.first { it.cls.isInstance(x) }
+            writer.beginObject()
+            writer.name(v.key)
+            (v.ad as JsonAdapter<Any?>).toJson(writer, v.unwrap(x))
+            writer.endObject()
+        }
+    }
+
+/** 各形按 JSON 记号分得开的并集（serde 的 untagged：串 · 数 · 真假 · 对象 · 数组各至多一形）。 */
+class Tok<T : Any>(val token: JsonReader.Token, val cls: Class<out T>, ad: () -> JsonAdapter<*>, val wrap: (Any?) -> T, val unwrap: (T) -> Any?) {
+    val ad: JsonAdapter<*> by lazy(ad)
+}
+
+fun <T : Any> byToken(variants: List<Tok<T>>): JsonAdapter<T> =
+    object : JsonAdapter<T>() {
+        override fun fromJson(reader: JsonReader): T {
+            val tok = reader.peek()
+            val v = variants.firstOrNull { it.token == tok } ?: throw mismatch("这一格不该是 " + tok + "（" + reader.path + "）")
+            return v.wrap(v.ad.fromJson(reader))
+        }
+
+        @Suppress("UNCHECKED_CAST")
+        override fun toJson(writer: JsonWriter, value: T?) {
+            val x = value ?: throw mismatch("并集不该是 null")
+            val v = variants.first { it.cls.isInstance(x) }
+            (v.ad as JsonAdapter<Any?>).toJson(writer, v.unwrap(x))
+        }
+    }
+
+/** 定长数组（Rust 的元组）。 */
+fun <T> tuple(lazyAds: List<() -> JsonAdapter<*>>, build: (Array<Any?>) -> T, get: (T) -> Array<Any?>): JsonAdapter<T> =
+    prim({ r ->
+        val ads = lazyAds.map { it() }
+        val a = arrayOfNulls<Any?>(ads.size)
+        r.beginArray()
+        ads.forEachIndexed { i, ad -> a[i] = ad.fromJson(r) }
+        r.endArray()
+        build(a)
+    }, { w, v ->
+        val a = get(v)
+        val ads = lazyAds.map { it() }
+        w.beginArray()
+        @Suppress("UNCHECKED_CAST")
+        ads.forEachIndexed { i, ad -> (ad as JsonAdapter<Any?>).toJson(w, a[i]) }
+        w.endArray()
+    }, "元组")
+`;
+
+
+function main() {
+  const decls = loadDecls();
+  const cmds = loadCommands();
+  const floats = rustFloatFields();
+  const phone = phoneCommands();
+  if (process.argv.includes("--samples")) {
+    const out = {};
+    for (const c of phone) out[c] = sample(cmds.get(c).reply, decls, floats, "", "");
+    process.stdout.write(JSON.stringify(out, null, 2) + "\n");
+    return;
+  }
+  const g = new Gen(decls, floats);
+  const table = [];
+  for (const c of phone) {
+    const x = g.ty(cmds.get(c).reply, { owner: pascal(c) + "Reply" });
+    table.push(`        "${c}" to ${x.ad},`);
+  }
+  const header = `// 生成的文件（tests/scripts/gen-kotlin-wire.mjs 读 ts-rs 导出的声明出的）。不要手改：改 Rust 那一份类型，再跑 \`npm run gen:types\`。\n@file:Suppress("ktlint", "detekt:all")\n\npackage ${PKG}\n\nimport com.squareup.moshi.JsonAdapter\n`;
+  const types = [...g.out.keys()].sort().map((k) => g.out.get(k)).join("\n");
+  writeFileSync(join(OUT_DIR, "Generated.kt"), `${header}\n${PREAMBLE}\n${types}`);
+  writeFileSync(
+    join(OUT_DIR, "Commands.kt"),
+    `${header}\n/** 手机按类型读回包的那几条命令 ⇒ 回包怎么解（\`cmd-wire/src/replies.rs\` 那张表 · 类型照 TypedCommands）。 */\nobject Commands {\n    val REPLIES: Map<String, JsonAdapter<*>> = mapOf(\n${table.join("\n")}\n    )\n}\n`,
+  );
+  if (g.raw.length) process.stderr.write("原样（认不出的形）：\n  " + g.raw.join("\n  ") + "\n");
+}
+
+main();
