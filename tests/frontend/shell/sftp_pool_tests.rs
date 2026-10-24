@@ -139,11 +139,11 @@ pub(crate) fn cfg(label: &str) -> RemoteConfig {
 }
 
 /// 收一条快照流直到收场（或 10 s）。
-async fn drain(mut s: futures::stream::BoxStream<'static, Snap>) -> Vec<Snap> {
+async fn drain(mut s: futures::stream::BoxStream<'static, Step>) -> Vec<Step> {
     let mut out = Vec::new();
     let r = tokio::time::timeout(guard_core::wall::CEILING, async {
         while let Some(x) = s.next().await {
-            let over = x.end.is_some();
+            let over = is_last(&x);
             out.push(x);
             if over {
                 break;
@@ -157,7 +157,7 @@ async fn drain(mut s: futures::stream::BoxStream<'static, Snap>) -> Vec<Snap> {
 
 /// 🔴🔴 **M2：开单 → 订阅即起跑 → 帧 → 终局**，而且转给后端的是**本机**那条流、带着那台远端的拨号请求。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn an_upload_is_relayed_to_the_local_backend_and_its_frames_come_back_as_snaps() {
+async fn an_upload_is_relayed_to_the_local_backend_and_its_frames_come_back_as_they_are() {
     let _g = crate::inbound_client::local_origin_test_lock();
     let mut rig = rig(&ALL);
     let v = transfer_call(
@@ -197,10 +197,11 @@ async fn an_upload_is_relayed_to_the_local_backend_and_its_frames_come_back_as_s
     rig.frame(
         r#"{"kind":"transfer","id":"xfer-1","got":30,"total":30,"end":{"state":"done","bytes":30,"sha256":"ab"}}"#,
     );
-    let snaps = drain(s).await;
+    let steps = drain(s).await;
     assert_eq!(
-        snaps.last(),
-        Some(&Snap {
+        steps.last(),
+        Some(&Ok(cmd_wire::frame::Transfer {
+            id: "xfer-1".into(),
             got: 30,
             total: 30,
             // 上传那一路的整份摘要原样带着（形状由远端后端提交那一关判，中继不判）。
@@ -208,7 +209,7 @@ async fn an_upload_is_relayed_to_the_local_backend_and_its_frames_come_back_as_s
                 bytes: 30,
                 sha256: Some("ab".into())
             })
-        })
+        }))
     );
     // 收场之后中继摘掉（再订阅 = 没有这一趟）。
     assert_eq!(
@@ -232,8 +233,9 @@ async fn dropping_the_stream_sends_a_stop_to_the_local_backend() {
     let origin = crate::origin::Origin("中继·撤".to_string());
     let mut s = watch_ticket(&origin, "xfer-1").expect("订阅");
     rig.next("transfer-start").await;
-    let first = s.next().await.expect("第一格是此刻");
-    assert!(first.end.is_none());
+    rig.frame(r#"{"kind":"transfer","id":"xfer-1","got":1,"total":9}"#);
+    let first = s.next().await.expect("第一格是后端推上来的那一帧");
+    assert!(!is_last(&first));
     drop(s);
     let stop = rig.next("transfer-stop").await;
     assert_eq!(stop["args"]["id"], "xfer-1");
@@ -294,9 +296,9 @@ async fn a_dead_local_stream_ends_every_relay_it_opened() {
     let s = watch_ticket(&origin, "xfer-1").expect("订阅");
     rig.next("transfer-start").await;
     fail_owned_by(&rig.client, "本机后端的流断了（判据）");
-    let snaps = drain(s).await;
+    let steps = drain(s).await;
     assert_eq!(
-        snaps.last().and_then(|x| x.end.clone()),
+        steps.last().and_then(end_of).cloned(),
         Some(crate::sftp_pool::failed(
             "本机后端的流断了（判据）".to_string()
         ))

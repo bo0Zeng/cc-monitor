@@ -1343,3 +1343,100 @@ fn a_call_cut_at_the_monitor_pipe_is_not_said_as_the_machine_offline() {
         copy_text("rsChanSaid.hop.remoteDown", &[("machine", "devbox")])
     );
 }
+
+/// 合成后端：订阅那一面照剧本吐几格（调用那一面不用）。
+struct Scripted(Vec<comms_inward::chan::wire::Item>);
+
+impl comms_inward::chan::router::Backends for Scripted {
+    fn call(
+        &self,
+        _origin: comms_inward::chan::wire::Origin,
+        _op: comms_inward::chan::wire::Op,
+        _payload: comms_inward::chan::wire::Body,
+        _view: Option<serde_json::Value>,
+        _left: std::time::Duration,
+        _cancel: comms_inward::chan::wire::CancelToken,
+    ) -> futures::future::BoxFuture<
+        'static,
+        Result<comms_inward::chan::wire::Body, comms_inward::chan::wire::CallError>,
+    > {
+        Box::pin(async { Ok(comms_inward::chan::wire::Body(b"{}".to_vec())) })
+    }
+
+    fn subscribe(
+        &self,
+        _o: comms_inward::chan::wire::Origin,
+        _k: comms_inward::chan::wire::Kind,
+        _f: Option<comms_inward::chan::wire::Cursor>,
+    ) -> futures::stream::BoxStream<'static, comms_inward::chan::wire::Item> {
+        use futures::StreamExt as _;
+        futures::stream::iter(self.0.clone()).boxed()
+    }
+}
+
+/// 照剧本看一趟传输：回（每一格进度, 结局）。
+async fn watch_script(
+    items: Vec<comms_inward::chan::wire::Item>,
+) -> (Vec<(u64, u64)>, Result<Watched, Failed>) {
+    let line = crate::find::testing::wire(std::sync::Arc::new(Scripted(items)), 1 << 20);
+    let stop = comms_inward::chan::wire::CancelToken::new();
+    let mut seen = Vec::new();
+    let r = watch(&line, &Origin("R".into()), "transfer/t1", &stop, |g, t| {
+        seen.push((g, t))
+    })
+    .await;
+    (seen, r)
+}
+
+fn frame_of(v: serde_json::Value) -> comms_inward::chan::wire::Item {
+    comms_inward::chan::wire::Item::Frame {
+        seq: 1,
+        body: comms_inward::chan::wire::Body(serde_json::to_vec(&v).unwrap()),
+    }
+}
+
+fn end_of(v: serde_json::Value) -> comms_inward::chan::wire::Item {
+    comms_inward::chan::wire::Item::Closed {
+        by: comms_inward::chan::wire::By::Peer(comms_inward::chan::wire::Body(
+            serde_json::to_vec(&v).unwrap(),
+        )),
+    }
+}
+
+/// 传输进度帧按 `cmd_wire::frame::Transfer` 解、收场按 `TransferEnd` 解：照类型写的那几格原样到手。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_transfer_is_read_by_its_wire_type() {
+    use cmd_wire::frame::{Transfer, TransferEnd};
+    let t = Transfer {
+        id: "t1".into(),
+        got: 3,
+        total: 9,
+        end: None,
+    };
+    let done = TransferEnd::Done {
+        bytes: 9,
+        sha256: Some("ab".into()),
+    };
+    let (seen, r) = watch_script(vec![
+        frame_of(serde_json::to_value(&t).unwrap()),
+        end_of(serde_json::to_value(&done).unwrap()),
+    ])
+    .await;
+    assert_eq!(seen, vec![(3, 9)]);
+    let w = r.expect("传完了");
+    assert_eq!((w.bytes, w.sha256.as_deref()), (9, Some("ab")));
+}
+
+/// 缺必填格的进度帧 / 收场不许补 0 当真：缺 `total` 的那一格不画、缺 `bytes` 的「传完了」是失败。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_transfer_missing_a_required_field_is_an_error_not_a_zero() {
+    let (seen, r) = watch_script(vec![frame_of(serde_json::json!({ "id": "t1", "got": 5 }))]).await;
+    assert!(seen.is_empty(), "缺 total 那一格被补成了 0：{seen:?}");
+    assert!(r.is_err());
+    let (_, r) = watch_script(vec![end_of(serde_json::json!({ "state": "done" }))]).await;
+    assert!(
+        r.is_err(),
+        "缺 bytes 的「传完了」被补成了 0：{:?}",
+        r.ok().map(|w| w.bytes)
+    );
+}

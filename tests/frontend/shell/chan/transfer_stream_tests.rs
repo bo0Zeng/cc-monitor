@@ -96,7 +96,7 @@ async fn open_upload(label: &str) -> String {
 /// 🔴🔴 **生产句柄对 `transfer/<id>` 真的出帧**，而且那些帧说的就是本机后端推上来的那几格。
 ///
 /// **逐格对拍**：每推一帧，先等流把上一格交出来再推。快照流按设计会合并还没被取走的中间几格
-/// （`sftp_pool::Snap` 头注「合并掉中间几格不丢信息」）⇒ 一口气推完的话看得见几格取决于调度
+/// （`sftp_pool` 的中继头注「合并掉中间几格不丢信息」）⇒ 一口气推完的话看得见几格取决于调度
 /// （Windows CI 上撞到过一格进度都没有、只剩终局那一形 —— 那一形由下一条钉）。对拍之后每一格都是确定的。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_production_handle_streams_the_local_backends_frames_over_real_loopback() {
@@ -114,8 +114,8 @@ async fn the_production_handle_streams_the_local_backends_frames_over_real_loopb
     let start = be.next("transfer-start").await;
     assert_eq!(start["args"]["id"], id.as_str(), "订阅没起跑那一趟");
     let total = 300 * 1024 + 17;
-    // 第一格是订阅那一刻的快照：一帧还没推 ⇒ 0 / 0。
-    let mut items = vec![one(&mut sub).await];
+    // 本机后端一帧还没推 ⇒ 流里一格也没有（不拿 0 / 0 充一格「此刻」）；每一格就是推上来的那一帧 `Transfer` 原样。
+    let mut items = Vec::new();
     for got in [65_536u64, 196_608, total] {
         be.frame(&format!(
             r#"{{"kind":"transfer","id":{id:?},"got":{got},"total":{total}}}"#
@@ -136,10 +136,18 @@ async fn the_production_handle_streams_the_local_backends_frames_over_real_loopb
     assert_eq!(
         frames,
         vec![
-            (1, serde_json::json!({ "got": 0, "total": 0 })),
-            (2, serde_json::json!({ "got": 65_536, "total": total })),
-            (3, serde_json::json!({ "got": 196_608, "total": total })),
-            (4, serde_json::json!({ "got": total, "total": total })),
+            (
+                1,
+                serde_json::json!({ "id": id, "got": 65_536, "total": total })
+            ),
+            (
+                2,
+                serde_json::json!({ "id": id, "got": 196_608, "total": total })
+            ),
+            (
+                3,
+                serde_json::json!({ "id": id, "got": total, "total": total })
+            ),
         ],
         "进度格不是「序号从 1 连续、每格就是本机后端推上来的那一格」：{items:?}"
     );
@@ -208,6 +216,9 @@ async fn stopping_the_subscription_cancels_the_transfer() {
         8,
     );
     be.next("transfer-start").await;
+    be.frame(&format!(
+        r#"{{"kind":"transfer","id":{id:?},"got":1,"total":2}}"#
+    ));
     let first = tokio::time::timeout(guard_core::wall::CEILING, sub.next())
         .await
         .expect("第一格该来")
@@ -222,7 +233,7 @@ async fn stopping_the_subscription_cancels_the_transfer() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_bad_transfer_subscription_says_why_in_place() {
     let _g = crate::inbound_client::local_origin_test_lock();
-    let _be = backend_rig(&ALL);
+    let be = backend_rig(&ALL);
     let client = rig().await;
     let label = "判据机器·transfer-bad";
     let origin = crate::chan::wire::Origin(label.to_string());
@@ -240,6 +251,10 @@ async fn a_bad_transfer_subscription_says_why_in_place() {
     let id = open_upload(label).await;
     let mut a = client.subscribe(&origin, &kind(&id), None, 4);
     let mut b = client.subscribe(&origin, &kind(&id), None, 4);
+    // 流里只出后端推上来的帧 ⇒ 推一帧，拿到那一趟的那条才有第一格。
+    be.frame(&format!(
+        r#"{{"kind":"transfer","id":{id:?},"got":1,"total":2}}"#
+    ));
     let first = |i: Option<Item>| i.expect("流没断");
     let ia = first(
         tokio::time::timeout(guard_core::wall::CEILING, a.next())

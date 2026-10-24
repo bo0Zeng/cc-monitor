@@ -469,7 +469,7 @@ fn the_uninstall_reply_decoder_reads_the_golden() {
 /// （`{host,port,user,key_path,backend,home,rhome,up,dl_remote,dl_local}`）来跑；那台 sshd 的 sftp 起始目录是临时的 `rhome`，
 /// 写不到真 home。买到：部署判定四形（缺 ⇒ 部署 · 装完 ⇒ 那台 sshd 上真扫出戳、跳过 · 截成 0 字节 ⇒ 重部署 ·
 /// 无戳的文件 ⇒ 显式失败不覆盖；从前那份三行入口也一样）·
-/// 卸载按钮删后端那一份 · 上传 / 下载经中继走完、帧翻成 `Snap` 终局。
+/// 卸载按钮删后端那一份 · 上传 / 下载经中继走完、最后一格是后端那一帧的终局。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "要真 sshd ＋ 真后端二进制：由 tests/evidence/SR1b-sftp-loopback.py --monitor 带环境变量来跑"]
 async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
@@ -617,10 +617,9 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     let want = std::fs::read(&up).unwrap();
     // 上传那一路的传完带整份摘要（64 位十六进制；算法对不对由后端那一侧对拍 `sha2`）。
     assert!(
-        matches!(&last.end, Some(crate::sftp_pool::End::Done { bytes, sha256: Some(h) })
+        matches!(crate::sftp_pool::end_of(&last), Some(crate::sftp_pool::End::Done { bytes, sha256: Some(h) })
             if *bytes == want.len() as u64 && h.len() == 64),
-        "{:?}",
-        last.end
+        "{last:?}"
     );
     let staged = std::fs::read(format!("{rhome}/.cc-monitor/staging/{key}.part")).unwrap();
     assert!(staged == want, "暂存件不是本机那份的字节");
@@ -644,7 +643,10 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         .pop()
         .unwrap();
     assert!(
-        matches!(last.end, Some(crate::sftp_pool::End::Done { .. })),
+        matches!(
+            crate::sftp_pool::end_of(&last),
+            Some(crate::sftp_pool::End::Done { .. })
+        ),
         "{last:?}"
     );
     assert!(
