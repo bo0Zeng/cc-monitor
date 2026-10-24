@@ -36,7 +36,6 @@
     "test:backend-cc-bus": "bash tests/e2e/backend-cc-bus.sh",
     "test:ccm-print-parity": "bash tests/e2e/ccm-print-parity.sh",
     "gate": "bash tests/scripts/gate.sh",
-    "verify:committed": "bash tests/scripts/verify-committed-state.sh",
     "test:backend-fork": "bash tests/e2e/backend-fork-session.sh",
     "test:files-manager": "bash tests/e2e/files-manager.sh",
     "test:p3t-local-tmux": "bash tests/e2e/p3t-local-tmux.sh",

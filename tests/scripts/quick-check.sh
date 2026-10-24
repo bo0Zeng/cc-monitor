@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 快检：交给门禁之前的那一圈，也是合并后 gate-affected --trust-ci 的第一步。不拿门禁锁、不代替门禁。
 # 用法：在仓里任一处 `bash tests/scripts/quick-check.sh [--all | --plan | --only <段>]`
-#   恒跑（便宜）：两棵 Rust 树的排版 · tsc · 门禁里只读盘上文本的那几格（static_cells，经 gate.sh 的 GATE_ONLY，收据另存）·
+#   恒跑（便宜）：两棵 Rust 树的排版 · tsc · 门禁里只读盘上文本的那几格（static_cells，经 gate.sh 的 GATE_ONLY）·
 #     后端那棵改到的包跑 clippy（照门禁 `clippy-backend` 的参数；系统钟 · 定时器那几类 lint 定成 deny，测试拦不住）·
 #     凭据那份共享 crate 开 `harden` 那一档（creds-harden：壳那棵不开它，后端那棵不跑它的测试）· 末尾生成物有没有落在提交外（generated-drift.sh）。
 #   重的四段：后端那棵 `cargo test --workspace --lib --bins --benches`（bench 只跑冒烟档）· 壳那棵 `cargo test --workspace --lib` · 整套 vitest ·
@@ -29,7 +29,7 @@ esac
 # 后端那棵 workspace 的包 → 编进它的路径（git 路径规格，空格分隔）
 clippy_pkgs=("cc-monitor-backend:src/backend/ tests/backend/ :(exclude)src/backend/ssh-dial/ :(exclude)src/backend/deploy/" "ssh-dial:src/backend/ssh-dial/" "deploy:src/backend/deploy/" "mobcore:src/mobile/core-rs/rust/")
 # 便宜的静态格：只读盘上文本，合计十来秒（shellcheck 按核数并起）。
-static_cells="hooks copy2 shellcheck e2e-smoke release-gate platform installface"
+static_cells="copy2 shellcheck e2e-smoke release-gate platform installface"
 # 起点（base.sh：`<提交> <对着谁>`；找不到 ⇒ 空）
 base_line=$(bash "$HERE/base.sh") || base_line=
 base_ref=${base_line#* }
@@ -185,7 +185,7 @@ if [ ! -x node_modules/.bin/tsc ]; then echo "  --   node_modules 不在（新�
 step fmt          runcargo bash -c 'cd src/frontend/shell && cargo fmt --all --check'
 step fmt-backend  runcargo bash -c 'cd src/backend && cargo fmt --check -p cc-monitor-backend -p ssh-dial -p deploy'
 step tsc          run node_modules/.bin/tsc --noEmit
-step static       run env GATE_ONLY="$static_cells" GATE_RECEIPT="$root/.build/quick-check/static-receipt.json" bash tests/scripts/gate.sh
+step static       run env GATE_ONLY="$static_cells" bash tests/scripts/gate.sh
 
 backend_step
 clippy_step

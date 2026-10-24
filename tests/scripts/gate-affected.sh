@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 按改动挑格跑门禁：`git diff --name-only <基>...HEAD` 改到的路径 → 受影响的格（映射表 tests/scripts/gate-affected/map，理由逐行写在表里）
-#   ＋ 恒跑的便宜格，用 gate.sh 的 GATE_ONLY 跑、出收据，再跑私人扫描。表不认识的路径 ⇒ 整趟退回全量（等于 gate-clean.sh）。
+#   ＋ 恒跑的便宜格，用 gate.sh 的 GATE_ONLY 跑，再跑私人扫描。表不认识的路径 ⇒ 整趟退回全量（等于 gate-clean.sh）。
 # 用法：在干净的树里 `bash tests/scripts/gate-affected.sh [--base <ref>] [--trust-ci] [--dry-run]`
 #   --base <ref>  跟谁比（取 merge-base，只算这棵树自己的改动）；不给 ⇒ base.sh 那一个：分支上游，没设就 origin/main
 #   --trust-ci    合并工作树推候选分支 next 之前用（push-candidate.sh 推 next、等 CI 全绿才快进 main）：CI 会跑的格这一趟不跑，只跑
@@ -10,7 +10,7 @@
 # 规矩照 gate-clean.sh：工作树必须干净；经 heavy.sh 跑（它摘掉会话继承来的变量，表在 session-vars）；排门禁锁；拿到锁时负载 > 核数 × 0.6 就串跑。
 # 门禁锁 · 槽位在 GATE_STATE_DIR（默认 ${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate，几棵树共用一把锁）。
 # 私人扫描：私人词表与扫描脚本都不进仓，只认 PATH 上的 private-scan.sh；找不到 ⇒ 开跑前就停（没判的不许说绿）。
-# 收据：挑格跑的写 .build/gate-affected-receipt.json（裁决是 PARTIAL，不许拿它出货）；退回全量的写默认的 .build/gate-receipt.json。
+# 挑格跑的裁决是 PARTIAL（不许拿它出货）；退回全量的才可能是 GATE: OK。
 # 计划另存 .build/gate-affected-plan.txt。末行：`AFFECTED: OK …` / `AFFECTED: 红 …`。
 set -uo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -64,10 +64,10 @@ fi
 
 if [ ${#fails[@]} -eq 0 ]; then
   echo; echo "── 门禁（$( [ "$mode" = full ] && echo 全量 || echo "GATE_ONLY $(echo $cells | wc -w) 格")）"
-  if [ "$mode" = full ]; then only_env=(); receipt=.build/gate-receipt.json
-  else only_env=(GATE_ONLY="$cells"); receipt=.build/gate-affected-receipt.json; fi
+  if [ "$mode" = full ]; then only_env=()
+  else only_env=(GATE_ONLY="$cells"); fi
   # 门禁放进自己的 systemd scope（heavy.sh），内存吃紧时只杀这一份（10-10 14:53）。
-  env CARGO_BUILD_JOBS="$jobs" "${only_env[@]}" GATE_RECEIPT="$receipt" GATE_STATE_DIR="$state" HEAVY_MEM_HIGH=18G HEAVY_MEM_MAX=22G \
+  env CARGO_BUILD_JOBS="$jobs" "${only_env[@]}" GATE_STATE_DIR="$state" HEAVY_MEM_HIGH=18G HEAVY_MEM_MAX=22G \
     bash "$HERE/heavy.sh" flock "$state/gate.lock" bash -c '
       cores=$(nproc); load=$(cut -d" " -f1 /proc/loadavg)
       if [ -z "${GATE_SERIAL:-}" ] && awk -v l="$load" -v c="$cores" "BEGIN{exit !(l > c*0.6)}"; then

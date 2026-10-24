@@ -638,8 +638,6 @@ fn probe_slot_verdict(tag: &str, body: &[u8]) -> Option<String> {
 /// ⚠ **尺子没覆盖到的**（写下来免得把它读成穷举）：① `cargo tauri build` 那种**由工具
 /// 再去起 cargo** 的，cwd 由 tauri CLI 定，本条没现打；② 人手临时 `cd` 到任意目录敲的
 /// cargo —— 那个分母没人数得出，也不是一条判据守得住的。
-/// ③ `tests/scripts/verify-committed-state.sh` 的 `run monitor-lib` / `run backend` / `run backend-win`
-/// 三条在**另开的临时工作树**里跑，相对目录仍是这两个，不新增发起面。
 ///
 /// **为什么是 6 不是 7**：往下没有第 4 个发起面 —— `src/common/*` 与
 /// `src/frontend/shell/vendor/*` 里放一份配置，**上面那张表里的命令一条都读不到它**
