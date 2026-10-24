@@ -86,7 +86,7 @@ internal fun Simulation(
             SimRow(null) { Switches(view, tl, span, board) }
             SimRow(null, Modifier.onGloballyPositioned { top = it.boundsInRoot() }) { TopUses(ui, view, tl, span, board, highlight = dragging != null) }
             tl.lanes.forEach { lane ->
-                val head: @Composable () -> Unit = { LaneHead(lane.account, ui, board, top, span, tl, view.now) { dragging = it } }
+                val head: @Composable () -> Unit = { LaneHead(lane.account, ui, board, top, span, tl) { dragging = it } }
                 SimRow(head) { LaneTrack(view, lane.account, span) }
             }
         }
@@ -157,13 +157,12 @@ private fun BoxWithConstraintsScope.TopUses(
     board: RotationBoard,
     highlight: Boolean,
 ) {
-    val first = tl.uses.firstOrNull()
+    // 每段写的字照回包（号名 · 停发；接着此刻那段那台给空）。
     view.past?.uses?.forEach { u ->
-        val joins = u.to == view.now && first?.from == view.now && first.account == u.account
-        UseSeg(place(span, u.from, u.to), u.account, if (joins) "" else u.account?.let(board::label) ?: copyText("rot.sim.hold"), ui, past = true, temp = false)
+        UseSeg(place(span, u.from, u.to), u.account, u.text, ui, past = true, temp = false)
     }
     tl.uses.filter { it.to > span.a && it.from < span.b }.forEach { u ->
-        UseSeg(place(span, u.from, u.to), u.account, u.account?.let(board::label) ?: copyText("rot.sim.hold"), ui, past = false, temp = u.fromTemp)
+        UseSeg(place(span, u.from, u.to), u.account, u.text, ui, past = false, temp = u.fromTemp)
         u.skipped.forEach { sk ->
             Text(
                 copyText("rot.sim.skip", "account" to board.label(sk)),
@@ -208,7 +207,7 @@ private fun UseSeg(
     }
 }
 
-/** 号名一列：号牌 ＋ 截断的名字；会话里长按再拖到最上那条 ⇒ 排临时条目（松在哪一刻换成第几段，只是几何）。 */
+/** 号名一列：号牌 ＋ 截断的名字；会话里长按再拖到最上那条 ⇒ 排临时条目（交松在哪一刻，排到第几段由那台数）。 */
 @Composable
 private fun LaneHead(
     account: String,
@@ -217,7 +216,6 @@ private fun LaneHead(
     top: Rect,
     span: Span,
     tl: RotTryTimeline,
-    now: Long,
     onDragging: (String?) -> Unit,
 ) {
     val haptic = LocalHapticFeedback.current
@@ -244,7 +242,7 @@ private fun LaneHead(
                         val inside = at.y in (top.top - slack)..(top.bottom + slack) && at.x in top.left..top.right
                         if (inside) {
                             val t = span.a + ((at.x - top.left) / top.width.coerceAtLeast(1f) * (span.b - span.a)).toLong()
-                            board.place(account, placeAt(tl.uses, now, t))
+                            board.place(account, t)
                         }
                     },
                     onDragCancel = { onDragging(null) },

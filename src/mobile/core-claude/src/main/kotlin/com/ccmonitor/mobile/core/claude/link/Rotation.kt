@@ -72,18 +72,19 @@ object Rotation {
 
     fun forNew(strategy: String?): Map<String, Any?> = mapOf("strategy" to strategy)
 
-    /** 临时条目：把 [account] 排到第 [at] 段（界面把松手的横坐标换成第几段，只是几何）。 */
+    /** 临时条目：把 [account] 拖到最上那条、松在时刻 [t]（unix 秒；排到第几段由那台照推演数）。 */
     fun place(
         sid: String,
         account: String,
-        at: Int,
-    ): Map<String, Any?> = mapOf("sid" to sid, "op" to mapOf("place" to mapOf("account" to account, "at" to at)))
+        t: Long,
+    ): Map<String, Any?> = mapOf("sid" to sid, "op" to mapOf("place" to mapOf("account" to account, "t" to t)))
 
-    /** 会话顺序里拖一行：拖完那一串「接下来先用谁」（第一格在用的号不在里头）。 */
-    fun set(
+    /** 会话顺序里把 [account] 那一行拖到第 [to] 格（第一格 ⇒ 现在用它；拖完那一串由那台认）。 */
+    fun move(
         sid: String,
-        next: List<String>,
-    ): Map<String, Any?> = mapOf("sid" to sid, "op" to mapOf("set" to next))
+        account: String,
+        to: Int,
+    ): Map<String, Any?> = mapOf("sid" to sid, "op" to mapOf("move" to mapOf("account" to account, "to" to to)))
 
     fun clearTemp(sid: String): Map<String, Any?> = mapOf("sid" to sid, "op" to "clear")
 
@@ -136,7 +137,7 @@ object RotEdit {
         v: Any?,
     ): Map<String, Any?> = mapOf("set" to at(row, mapOf("key" to key, "v" to v)))
 
-    /** 分段那一窗（[window]）里：[at] ＋ [seg] ⇒ 第 [at] 段换成它；只 [at] ⇒ 删第 [at] 段；只 [seg] ⇒ 加一段（`[from, to)` 一天里的分钟 · 上限）。 */
+    /** 分段那一窗（[window]）里：[at] ＋ [seg] ⇒ 第 [at] 段换成它；只 [at] ⇒ 删第 [at] 段；只 [seg] ⇒ 加一段（[RotSegment]）。 */
     fun seg(
         key: String,
         row: Int?,
@@ -180,10 +181,10 @@ object RotEdit {
     ): Map<String, Any?> = if (row == null) m else m + ("row" to row)
 }
 
-/** 分段里的一段（线上 `RotSeg`）：一天里的分钟 `[from, to)` · 上限。 */
+/** 分段里的一段（线上 `RotSeg`）：`[from, to)` 是一段一行里打的钟点原样的字（认不认得由那台说）· 上限。 */
 data class RotSegment(
-    val from: Long,
-    val to: Long,
+    val from: String,
+    val to: String,
     val v: Double,
 )
 

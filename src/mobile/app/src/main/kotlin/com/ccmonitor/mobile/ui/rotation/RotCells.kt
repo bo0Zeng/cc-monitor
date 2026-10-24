@@ -331,11 +331,11 @@ private fun SegLine(
     onDel: () -> Unit,
     row: Int?,
 ) {
-    var from by remember(g) { mutableStateOf(g?.let { dayClock(it.from) }.orEmpty()) }
-    var to by remember(g) { mutableStateOf(g?.let { dayClock(it.to) }.orEmpty()) }
+    var from by remember(g) { mutableStateOf(g?.fromText.orEmpty()) }
+    var to by remember(g) { mutableStateOf(g?.toText.orEmpty()) }
     var v by remember(g) { mutableStateOf(g?.let { numText(it.v) }.orEmpty()) }
-    val was = g?.let { segEdit(cell, row, at, dayClock(it.from), dayClock(it.to), numText(it.v)) }
-    // 三格都写对了、又跟读到的那段不一样才交（只是挪了焦点不交）。
+    val was = g?.let { segEdit(cell, row, at, it.fromText, it.toText, numText(it.v)) }
+    // 三格都有字、又跟读到的那段不一样才交（只是挪了焦点不交；钟点认不认得由那台说）。
     val commit: () -> Unit = { segEdit(cell, row, at, from, to, v)?.takeIf { it != was }?.let(onEdit) }
     val hint = copyText("rot.seg.placeholder")
     Row(Modifier.fillMaxWidth().testTag("rot-seg-${at ?: "new"}"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -387,9 +387,10 @@ private fun DayBar(
 @Composable
 private fun DayAxis() {
     Row(Modifier.fillMaxWidth()) {
-        listOf(0L, 6L, 12L, 18L, 24L).forEachIndexed { i, h ->
+        // 一天的五个整点刻度（00 · 06 · 12 · 18 · 24），只是轴上的字。
+        listOf("00", "06", "12", "18", "24").forEachIndexed { i, h ->
             Text(
-                dayClock(h * 60).take(2),
+                h,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = if (i == 4) TextAlign.End else TextAlign.Start,

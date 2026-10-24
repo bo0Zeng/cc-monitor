@@ -1148,6 +1148,8 @@ data class RotChoice(
 data class RotDaySeg(
     val from: Long,
     val to: Long,
+    val fromText: String,
+    val toText: String,
     val v: Double,
     val text: String,
     val tip: String,
@@ -1179,6 +1181,7 @@ data class RotAccount(
     val w7d: WinFact,
     val blocked: FactBlocked?,
     val plate: RotPlate,
+    val full: List<String>,
 )
 
 @WireOf("RotPlate")
@@ -1242,23 +1245,14 @@ data class RotTryUse(
     val fromTemp: Boolean,
     val capUnknown: Boolean,
     val skipped: List<String>,
+    val text: String,
 )
 
 @WireOf("RotTryLane")
 @JsonClass(generateAdapter = true)
 data class RotTryLane(
     val account: String,
-    val segs: List<RotTryLaneSeg>,
-)
-
-@WireOf("RotTryLaneSeg")
-@JsonClass(generateAdapter = true)
-data class RotTryLaneSeg(
-    val from: Long,
-    val to: Long,
-    val sendable: Boolean,
-    val reset: Boolean,
-    val text: String,
+    val segs: List<RotPastSeg>,
 )
 
 @WireOf("RotTryTick")
@@ -1282,6 +1276,7 @@ data class RotPastUse(
     val from: Long,
     val to: Long,
     val account: String?,
+    val text: String,
 )
 
 @WireOf("RotPastLane")
