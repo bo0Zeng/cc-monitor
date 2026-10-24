@@ -74,7 +74,7 @@ mod local_backend;
 // 第 7 批换形的壳那一半：本机后端那一份偏好写成了 ⇒ 删 `config.json` 里搬走的那几个键（下一版删）。
 mod machine_table;
 mod prefs_migration; // 机器表的最近一份（本机后端 `machines-read` 答的，`changed {machines}` 每帧重问）
-                     // 标识符放行判定的生成物（`src/frontend/ui/generated/judgment-rules.ts`）与共用金样（`INVARIANTS §47` ①）：只读共享 crate 的常量。
+                     // 账号种类取值集的生成物（`src/frontend/ui/generated/judgment-rules.ts`）与标识符 · 上游地址的金样：只读共享 crate。
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/payload_judgment_rules.rs"]
 mod judgment_rules;

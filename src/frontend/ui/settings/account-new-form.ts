@@ -135,7 +135,7 @@ export function renderNewAccountForm(
    * 名字那一格还空着 ⇒ `null`（还没什么可问）。
    */
   const intent = (): AccountAddArgs | null => {
-    if (nameIn.value === "") return null;
+    if (!nameIn.value) return null;
     const args: AccountAddArgs = { name: nameIn.value, kind: access === "apikey" ? "api-key" : "subscription" };
     if (makeDefault) args.isDefault = true;
     if (access === "apikey") {

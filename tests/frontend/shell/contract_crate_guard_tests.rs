@@ -49,7 +49,7 @@ const CRATES: &[(&str, Class, &str)] = &[
     ("shell-quote-core", Class::Contract, "令牌形状：POSIX 单引号 quote 与标识符放行形状（session id · 启动令牌 · cc-bus id · 路径），两侧拼进 shell 前对上同一份"),
     ("win-path-core", Class::Contract, "路径：交给 Win32 文件 API 的那一形（UTF-16 ＋ 长路径前缀），后端 · monitor · 文件窗口 · creds-core 拼同一份，不裁决"),
     ("win-manifest", Class::HostPrimitive, "两个前端包在 Windows 上带的进程清单（通用控件 v6）：清单本身 · 构建脚本里的编法 · 测试程序读回，只一份；不裁决业务，后端不链"),
-    ("upstream-url-core", Class::Decision, "上游 URL 能不能用是裁决；界面读的是生成器现生成的式子（monitor 只在 dev 侧链它）"),
+    ("upstream-url-core", Class::Decision, "上游 URL 能不能用是裁决；界面不判（只画后端拒的那一句），monitor 只在 dev 侧为金样判据链它"),
 ];
 
 /// ⑤前端包：不住 `src/common/`、自己出一个程序的包 —— (包目录（仓根相对）, 那个 bin 的 crate 根, 理由)。
