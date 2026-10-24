@@ -424,7 +424,7 @@ impl Home {
                 accounts: ["a", "b"]
                     .iter()
                     .map(|id| {
-                        crate::accounts::upstream_select::rotate::book_row(
+                        crate::accounts::upstream_select::rotate::tests::book_row(
                             &id.to_string(),
                             Some(accts.join(id)),
                             false,
@@ -1197,7 +1197,7 @@ impl Home {
                 accounts: ids
                     .iter()
                     .map(|id| {
-                        crate::accounts::upstream_select::rotate::book_row(
+                        crate::accounts::upstream_select::rotate::tests::book_row(
                             &id.clone(),
                             (id != "0").then(|| accts.join(id)),
                             false,

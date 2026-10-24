@@ -102,7 +102,7 @@ impl Home {
                         accounts: [("a", false), ("b", false), ("c", false), ("api", true)]
                             .iter()
                             .map(|(id, api)| {
-                                crate::accounts::upstream_select::rotate::book_row(
+                                crate::accounts::upstream_select::rotate::tests::book_row(
                                     &id.to_string(),
                                     Some(accts.join(id)),
                                     *api,

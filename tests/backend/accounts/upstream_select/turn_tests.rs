@@ -98,7 +98,7 @@ impl Home {
                     accounts: ["a", "b"]
                         .iter()
                         .map(|id| {
-                            crate::accounts::upstream_select::rotate::book_row(
+                            crate::accounts::upstream_select::rotate::tests::book_row(
                                 &id.to_string(),
                                 Some(accts.join(id)),
                                 false,

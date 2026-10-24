@@ -529,15 +529,4 @@ pub(crate) fn dispatch_go(
 
 #[cfg(test)]
 #[path = "../../../../tests/backend/accounts/upstream_select/rotate_tests.rs"]
-mod tests;
-
-/// 判据夹具：号表里的一行（`id` 是路由段，`dir` 的末段要与它一致；`dir: None` ＝ 账号 0）。
-#[cfg(test)]
-pub(crate) fn book_row(id: &str, dir: Option<PathBuf>, api: bool) -> ManifestAccount {
-    ManifestAccount {
-        name: id.to_string(),
-        config_dir: dir.map(|d| d.to_string_lossy().into_owned()),
-        auth_kind: api.then(|| acct_core::AUTH_KIND_API_KEY.to_string()),
-        ..Default::default()
-    }
-}
+pub(crate) mod tests;

@@ -54,11 +54,11 @@ impl Home {
         let accts = self.root.join("accts");
         let library: crate::accounts::upstream_select::rotate::BookAt = Arc::new(move |_| {
             Some(acct_core::AccountBook {
-                accounts: std::iter::once(crate::accounts::upstream_select::rotate::book_row(
-                    "0", None, false,
-                ))
+                accounts: std::iter::once(
+                    crate::accounts::upstream_select::rotate::tests::book_row("0", None, false),
+                )
                 .chain(["b", "c", "bad", "api"].iter().map(|id| {
-                    crate::accounts::upstream_select::rotate::book_row(
+                    crate::accounts::upstream_select::rotate::tests::book_row(
                         &id.to_string(),
                         Some(accts.join(id)),
                         *id == "api",

@@ -418,3 +418,13 @@ fn the_rest_members_are_the_unnamed_subscriptions_by_name() {
         vec!["a".to_string(), "b".to_string(), "z".to_string()]
     );
 }
+
+/// 判据夹具：号表里的一行（`id` 是路由段，`dir` 的末段要与它一致；`dir: None` ＝ 账号 0）。换号那几族的判据共用。
+pub(crate) fn book_row(id: &str, dir: Option<PathBuf>, api: bool) -> acct_core::ManifestAccount {
+    acct_core::ManifestAccount {
+        name: id.to_string(),
+        config_dir: dir.map(|d| d.to_string_lossy().into_owned()),
+        auth_kind: api.then(|| acct_core::AUTH_KIND_API_KEY.to_string()),
+        ..Default::default()
+    }
+}
