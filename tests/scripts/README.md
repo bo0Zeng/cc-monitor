@@ -57,7 +57,7 @@
 没设上游 ⇒ 对 origin/main（合并用的分支上别的分支的改动也算进来，只会多跑、不会漏跑）。合并用的分支自己不设上游，对的就是 origin/main。
 
 **快检里的静态格**：门禁里只读盘上文本、合计十来秒的那几格进快检（`static_cells`，经 `gate.sh` 的 `GATE_ONLY` 跑同一份命令）。
-量过的数（24 核、负载二十多时）：`copy2` 1–5 秒 · `e2e-smoke` 0.2 秒 · `release-gate` 1 秒 · `platform` 0.2 秒 · `installface` 0.8 秒 ·
+量过的数（24 核、负载二十多时）：`e2e-smoke` 0.2 秒 · `release-gate` 1 秒 · `platform` 0.2 秒 ·
 `shellcheck` 九十来份串跑 20–57 秒、按核数并起后 4–5 秒（门禁那一格也是并起的）；门禁脚本自己起跑约 3 秒。
 不进快检的：`worktree-clean`（快检本来就跑在没提交的树上）· `audit`（要联网）· `tmux-default` 与 `ccbus-twophase`（要起真进程）· 编译类各格；
 Windows 交叉编译与死码（`winchk` · `winchk-backend` · `winlink` · `deadcode` · `deadcode-backend`）要编 Windows 目标或整棵再编一遍，一格几分钟，留给 gate-affected。

@@ -29,7 +29,7 @@ esac
 # 后端那棵 workspace 的包 → 编进它的路径（git 路径规格，空格分隔）
 clippy_pkgs=("cc-monitor-backend:src/backend/ tests/backend/ :(exclude)src/backend/ssh-dial/ :(exclude)src/backend/deploy/" "ssh-dial:src/backend/ssh-dial/" "deploy:src/backend/deploy/" "mobcore:src/mobile/core-rs/rust/")
 # 便宜的静态格：只读盘上文本，合计十来秒（shellcheck 按核数并起）。
-static_cells="copy2 shellcheck e2e-smoke release-gate platform installface"
+static_cells="shellcheck e2e-smoke release-gate platform"
 # 起点（base.sh：`<提交> <对着谁>`；找不到 ⇒ 空）
 base_line=$(bash "$HERE/base.sh") || base_line=
 base_ref=${base_line#* }
