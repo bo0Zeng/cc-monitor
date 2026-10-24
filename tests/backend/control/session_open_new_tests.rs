@@ -93,7 +93,7 @@ impl Rig {
         };
         let library = || {
             use crate::observe::accounts_query::test_support::{list, row_with};
-            la::Library::of_product(&list(vec![
+            list(vec![
                 row_with("work", |a| {
                     a.config_dir = Some("/h/.cc/work".into());
                     a.is_default = true;
@@ -103,7 +103,7 @@ impl Rig {
                     a.exists = false;
                     a.auth_ready = false;
                 }),
-            ]))
+            ])
         };
         let last_of = |_: &str| self.last.map(str::to_string);
         let accounts = la::Facts {
@@ -438,7 +438,7 @@ fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint(
         })
     };
     let no = |_: &str, _: Option<&str>| -> Result<(bool, String), String> { unreachable!() };
-    let library = la::Library::default;
+    let library = || crate::observe::accounts_query::test_support::list(Vec::new());
     let accounts = la::Facts {
         has_accounts: false,
         library: &library,

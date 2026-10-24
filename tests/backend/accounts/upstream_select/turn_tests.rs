@@ -6,7 +6,7 @@ use crate::accounts::quota::nodes::Source;
 use crate::accounts::quota::rotation::{self, RotationStore};
 use crate::accounts::quota::rules::book::{self, Cause};
 use crate::accounts::quota::setup::{script, shelf, uses};
-use crate::accounts::upstream_select::rotate::{Go, Hop, LibAccount, Library, Turn};
+use crate::accounts::upstream_select::rotate::{Go, Hop, Turn};
 use crate::agents::{QuotaReading, QuotaStatus, QuotaWindow};
 use std::sync::Arc;
 
@@ -93,16 +93,19 @@ impl Home {
             &crate::faces::rotation_face::adoptions_at(),
             self.ledger(),
             Some(self.root.clone()),
-            Arc::new(move |_| Library {
-                enabled: true,
-                accounts: ["a", "b"]
-                    .iter()
-                    .map(|id| LibAccount {
-                        id: id.to_string(),
-                        dir: Some(accts.join(id)),
-                        api: false,
-                    })
-                    .collect(),
+            Arc::new(move |_| {
+                Some(acct_core::AccountBook {
+                    accounts: ["a", "b"]
+                        .iter()
+                        .map(|id| {
+                            crate::accounts::upstream_select::rotate::book_row(
+                                &id.to_string(),
+                                Some(accts.join(id)),
+                                false,
+                            )
+                        })
+                        .collect(),
+                })
             }),
             Arc::new(std::collections::BTreeSet::new),
             Some(ep),

@@ -2,38 +2,15 @@
 //! 「会话用哪份策略问谁」—— 上游选择与账号库管理、基础层与配置编辑层互不认识（后者只许配置层问基础层），都只在这里接上。另住 `quota-read`（额度账的显示态）。
 //! typed 命令：基础层 `rotation_facts_face` · `rotation_act_face`；配置编辑层 `rotation_view_face` · `rotation_edit_face` · `rotation_try_face`。
 
-use crate::accounts::upstream_select::rotate::{LibAccount, Library, LibraryRead};
+use crate::accounts::upstream_select::rotate::BookAt;
 use crate::platform::fs::Own;
-use std::path::Path;
+use acct_core::{AccountBook, ManifestAccount};
 
-/// 这台的账号库：清单里每个号（配置目录的末段 ＝ 路由第 2 段）＋ 账号 0。没建账号库 / 清单读不懂 ⇒ 空。
-pub(crate) fn library_at(home: &Path) -> Library {
-    let manifest = crate::platform::paths::home_join(home, relay_route_core::ACCOUNTS_DIR_REL)
-        .join(relay_route_core::ACCOUNTS_MANIFEST_NAME);
-    let Ok(Some(m)) = crate::accounts::manage::scan::manifest_at(&manifest) else {
-        return Library::default();
-    };
-    let mut accounts = vec![LibAccount {
-        id: crate::accounts::manage::model::ACCOUNT_ZERO.to_string(),
-        dir: None,
-        api: false,
-    }];
-    accounts.extend(m.managed().filter_map(|a| {
-        Some(LibAccount {
-            id: acct_core::apikey_account_id_of_dir(&a.config_dir)?,
-            dir: Some(a.config_dir.clone().into()),
-            api: a.is_api_key(),
-        })
-    }));
-    Library {
-        enabled: true,
-        accounts,
-    }
-}
-
-/// 交给中转装配的那一份读法。
-pub(crate) fn library() -> LibraryRead {
-    std::sync::Arc::new(library_at)
+/// 交给中转装配的那一份读法：这台的号表（账号库那一个读口），换号那一侧账号 0 恒在、排第一个。
+pub(crate) fn books() -> BookAt {
+    std::sync::Arc::new(|home| {
+        crate::accounts::manage::scan::book_at(home).map(AccountBook::with_bare_first)
+    })
 }
 
 /// 交给中转装配的「会话用哪份策略问谁」：跟着那份 `rotation.json` 的配置编辑层。
@@ -45,14 +22,19 @@ pub(crate) fn adoptions_at() -> crate::accounts::quota::rules::AdoptionsAt {
 /// 盘上的轮换若还是旧版，升级写回、播种（全机只这一处写回）。
 pub fn host_relay(tap: std::sync::Arc<dyn crate::relay::TapPort>, own: Own) -> String {
     let up = own.clone();
-    crate::accounts::upstream_select::host_relay(library(), adoptions_at(), tap, own, move || {
+    crate::accounts::upstream_select::host_relay(books(), adoptions_at(), tap, own, move || {
         let lib = crate::platform::paths::home_dir()
-            .map(|h| library_at(&h))
+            .and_then(|h| books()(&h))
             .unwrap_or_default();
+        let ids: Vec<String> = lib
+            .accounts
+            .iter()
+            .filter_map(ManifestAccount::route_id)
+            .collect();
         let rest = crate::accounts::upstream_select::rotate::rest_members(
-            lib.accounts.iter().map(|a| a.id.as_str()),
+            ids.iter().map(String::as_str),
             &[],
-            |x| lib.accounts.iter().any(|a| a.id == x && !a.api),
+            |x| lib.by_route(x).is_some_and(|a| !a.is_api_key()),
         );
         let live = crate::history::live::live_here();
         uses::migrate_here(
@@ -69,11 +51,14 @@ pub fn host_relay(tap: std::sync::Arc<dyn crate::relay::TapPort>, own: Own) -> S
 /// 交给登录盯防的那一份：账号库里每个号的配置目录（`accounts::quota::nodes::watch_logins_here` 起时递进去）。
 pub(crate) fn account_dirs() -> crate::accounts::quota::nodes::AccountDirs {
     std::sync::Arc::new(|home| {
-        library_at(home)
-            .accounts
-            .into_iter()
-            .filter_map(|a| a.dir)
-            .collect()
+        crate::accounts::manage::scan::book_at(home)
+            .map(|b| {
+                b.named()
+                    .filter_map(|a| a.config_dir.clone())
+                    .map(Into::into)
+                    .collect()
+            })
+            .unwrap_or_default()
     })
 }
 
@@ -116,7 +101,7 @@ impl Ctx {
                 &adoptions,
                 quota,
                 home,
-                library(),
+                books(),
                 Arc::new(crate::history::live::live_here),
                 None,
             ),
@@ -233,17 +218,18 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::Tz) -> QuotaRead 
     let unseen: Vec<UnseenHead> = lib
         .accounts
         .iter()
-        .filter(|a| {
+        .filter_map(ManifestAccount::route_id)
+        .filter(|id| {
             !seen
                 .iter()
-                .any(|o| o.agent == LIBRARY_AGENT && o.account == a.id)
+                .any(|o| o.agent == LIBRARY_AGENT && o.account == *id)
         })
-        .map(|a| {
-            let sh = shown(LIBRARY_AGENT, &a.id, None);
-            judge(LIBRARY_AGENT, &a.id);
+        .map(|id| {
+            let sh = shown(LIBRARY_AGENT, &id, None);
+            judge(LIBRARY_AGENT, &id);
             UnseenHead {
                 agent: crate::agents::kind_of_route(LIBRARY_AGENT),
-                account: a.id.clone(),
+                account: id,
                 kind: sh.kind,
                 login: sh.login,
                 sub_id: sh.sub_id,

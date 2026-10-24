@@ -418,8 +418,8 @@ pub(crate) fn add_with(
                 .hop
                 .library()
                 .accounts
-                .into_iter()
-                .map(|a| a.id)
+                .iter()
+                .filter_map(acct_core::ManifestAccount::route_id)
                 .collect();
             setup::editor::fresh(&ids, crate::platform::local_tz::iana_name())
         }

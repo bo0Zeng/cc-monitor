@@ -81,7 +81,7 @@ fn answer(req: &SessionCommandsReq) -> Result<SessionCommands, Fail> {
     let project = crate::agents::project_dir_of(&record).map(PathBuf::from);
     let root = config_root_of(
         super::launch_account_face::last_of(&req.sid).as_deref(),
-        &super::launch_account_face::library_of(kind),
+        &super::launch_account_face::list_of(kind),
         crate::agents::home_of_kind(kind).as_deref(),
     );
     let mut out = match root {
@@ -96,18 +96,19 @@ fn answer(req: &SessionCommandsReq) -> Result<SessionCommands, Fail> {
 /// 号在库里却没有配置目录 ⇒ 往下一级退。
 pub(crate) fn config_root_of(
     last: Option<&str>,
-    lib: &crate::control::launch_account::Library,
+    list: &cmd_wire::accounts::AccountsList,
     zero: Option<&Path>,
 ) -> Option<PathBuf> {
     let dir_of = |name: &str| {
-        lib.accounts
+        list.accounts
             .iter()
-            .find(|a| a.name == name)
-            .and_then(|a| a.config_dir.as_deref())
+            .find(|a| a.scanned.name == name)
+            .and_then(|a| a.scanned.config_dir.as_deref())
+            .filter(|d| !d.is_empty())
             .map(PathBuf::from)
     };
     last.and_then(dir_of)
-        .or_else(|| lib.default.as_deref().and_then(dir_of))
+        .or_else(|| list.meta.effective_default.as_deref().and_then(dir_of))
         .or_else(|| zero.map(Path::to_path_buf))
 }
 

@@ -5,7 +5,7 @@
 //! - 起会话的号照今天走（[`Go::Start`]，那张决策表一个字节不变）；只有换到**别的号**时才由这里备料：
 //!   订阅号 ⇒ 鉴权头换成那个号的访问令牌（账号域 `oauth` 给，快过期就续），请求体里账号身份那一格一起换；
 //!   按量号 ⇒ 照它在 key 表里那一行，身份格换成空串。
-//! - 账号库（哪些号 · 配置目录 · 是不是按量号）由宿主读好交进来（[`LibraryRead`]）：上游选择不认识账号库管理。
+//! - 账号库（哪些号 · 配置目录 · 是不是按量号）由宿主读好交进来（[`BookAt`]）：上游选择不认识账号库管理。
 //! - 令牌只在备料时拿到、包在秘密类型里；拿不到只记原因码，那一句不带令牌。
 
 use super::table::RoutingTable;
@@ -18,6 +18,7 @@ use crate::accounts::quota::show::{self, LoginState};
 use crate::agents::{IdentityCell, LoginFace};
 use crate::platform::fs::{Own, Ro};
 use crate::relay::{AuthSwap, Destination, Mode, RouteKey};
+use acct_core::{AccountBook, ManifestAccount};
 use creds_core::SecretKey;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -30,32 +31,9 @@ use std::sync::{Arc, Mutex};
 )]
 const TOKEN_DEADLINE: std::time::Duration = std::time::Duration::from_millis(15_000);
 
-/// 账号库里的一个号（换号要的那几格）。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LibAccount {
-    /// 路由第 2 段（配置目录的末段；账号 0 是 `0`）。
-    pub id: String,
-    /// 配置目录；`None` ＝ 账号 0（这一家的默认配置目录，身份在家目录下）。
-    pub dir: Option<PathBuf>,
-    /// 按量号（API key）。
-    pub api: bool,
-}
-
-/// 这台的账号库。`enabled = false` ⇒ 没建账号库（只能用起会话那个号）。
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Library {
-    pub enabled: bool,
-    pub accounts: Vec<LibAccount>,
-}
-
-impl Library {
-    fn find(&self, id: &str) -> Option<&LibAccount> {
-        self.accounts.iter().find(|a| a.id == id)
-    }
-}
-
-/// 家目录 → 这台的账号库（宿主给）。
-pub type LibraryRead = Arc<dyn Fn(&Path) -> Library + Send + Sync>;
+/// 家目录 → 这台的号表（宿主给：全仓那一张 `acct_core::AccountBook`，账号 0 排第一个）。`None` ⇒ 没建账号库 / 读不懂（只能用起会话那个号）。
+/// 号的路由段 · 配置目录 · 是不是按量号都照那一行现算（`route_id` · `config_dir` · `is_api_key`），这里不另存一张表。
+pub type BookAt = Arc<dyn Fn(&Path) -> Option<AccountBook> + Send + Sync>;
 
 /// 能当轮换里的号：过路由段闸、不是「没说是哪个号」那一格。
 pub(crate) fn account_ok(a: &str) -> bool {
@@ -139,7 +117,7 @@ pub(crate) struct Hop {
     pub(crate) adoptions: Arc<dyn Adoptions>,
     pub(crate) quota: Arc<Ledger>,
     pub(crate) home: Option<PathBuf>,
-    pub(crate) library: LibraryRead,
+    pub(crate) library: BookAt,
     pub(crate) token: Option<TokenEndpoint>,
     /// 这台此刻活着的会话。
     pub(crate) live: Live,
@@ -156,7 +134,7 @@ impl Hop {
         adoptions: &AdoptionsAt,
         quota: Arc<Ledger>,
         home: Option<PathBuf>,
-        library: LibraryRead,
+        library: BookAt,
         live: Live,
         token: Option<TokenEndpoint>,
     ) -> Self {
@@ -173,11 +151,19 @@ impl Hop {
         }
     }
 
-    pub(crate) fn library(&self) -> Library {
-        self.home
-            .as_deref()
-            .map(|h| (self.library)(h))
-            .unwrap_or_default()
+    /// 这台的号表；没建账号库 / 读不懂 / 没有家目录 ⇒ `None`（只能用起会话那个号）。
+    pub(crate) fn library_here(&self) -> Option<AccountBook> {
+        self.home.as_deref().and_then(|h| (self.library)(h))
+    }
+
+    /// [`Self::library_here`]，没有就是空表（列事实、拼一个号的样子用；判换不换先看 `library_here`）。
+    pub(crate) fn library(&self) -> AccountBook {
+        self.library_here().unwrap_or_default()
+    }
+
+    /// 号表里每个号的路由段（照表里的先后；路由段推不出来的那一行不算）。
+    fn ids(lib: &AccountBook) -> impl Iterator<Item = String> + '_ {
+        lib.accounts.iter().filter_map(ManifestAccount::route_id)
     }
 
     fn endpoint(&self, face: &LoginFace) -> Option<TokenEndpoint> {
@@ -195,13 +181,13 @@ impl Hop {
     fn dir_of(
         &self,
         face: &LoginFace,
-        lib: &Library,
+        lib: &AccountBook,
         id: &str,
     ) -> Option<(PathBuf, Option<PathBuf>)> {
         let home = self.home.as_deref()?;
         // 起会话时没说是哪个号（`_`）不是哪一份登录：不拿默认配置目录（账号 0）那份顶。
-        match &lib.find(id)?.dir {
-            Some(d) => Some((d.clone(), None)),
+        match lib.by_route(id)?.config_dir.as_deref() {
+            Some(d) => Some((PathBuf::from(d), None)),
             None => Some(((face.base_dir)(home), Some(home.to_path_buf()))),
         }
     }
@@ -213,13 +199,18 @@ impl Hop {
         let face = crate::agents::login_of(agent)?;
         let uuid = (face.identity_of_body)(body)?;
         let lib = self.library();
-        let mut hit = lib.accounts.iter().filter(|x| !x.api).filter(|x| {
-            self.dir_of(&face, &lib, &x.id)
-                .and_then(|(dir, base)| self.identity(&face, &dir, base.as_deref()))
-                .is_some_and(|who| who == uuid)
-        });
+        let mut hit = lib
+            .accounts
+            .iter()
+            .filter(|x| !x.is_api_key())
+            .filter_map(ManifestAccount::route_id)
+            .filter(|id| {
+                self.dir_of(&face, &lib, id)
+                    .and_then(|(dir, base)| self.identity(&face, &dir, base.as_deref()))
+                    .is_some_and(|who| who == uuid)
+            });
         let one = hit.next()?;
-        hit.next().is_none().then(|| one.id.clone())
+        hit.next().is_none().then_some(one)
     }
 
     fn identity(&self, face: &LoginFace, dir: &Path, base: Option<&Path>) -> Option<String> {
@@ -243,7 +234,7 @@ impl Hop {
         &self,
         own: &Own,
         agent: &str,
-        lib: &Library,
+        lib: &AccountBook,
         account: &str,
         now: u64,
     ) -> Result<(SecretKey, String), Unready> {
@@ -272,7 +263,7 @@ impl Hop {
     pub(super) fn reach(
         &self,
         a: &Turn<'_>,
-        lib: &Library,
+        lib: &AccountBook,
         account: &str,
     ) -> Result<Reach, Unready> {
         if account == a.start {
@@ -293,7 +284,7 @@ impl Hop {
         &self,
         own: &Own,
         a: &Turn<'_>,
-        lib: &Library,
+        lib: &AccountBook,
         account: &str,
     ) -> Result<Go, Unready> {
         let rewrite = |who: &str| -> Result<Option<Vec<u8>>, Unready> {
@@ -321,7 +312,12 @@ impl Hop {
         }
     }
 
-    fn who_on_disk(&self, agent: &str, lib: &Library, account: &str) -> Result<String, Unready> {
+    fn who_on_disk(
+        &self,
+        agent: &str,
+        lib: &AccountBook,
+        account: &str,
+    ) -> Result<String, Unready> {
         let face = crate::agents::login_of(agent).ok_or(Unready::NeedsLogin)?;
         let (dir, base) = self
             .dir_of(&face, lib, account)
@@ -340,7 +336,7 @@ impl Hop {
     fn missed(
         &self,
         agent: &str,
-        lib: &Library,
+        lib: &AccountBook,
         account: &str,
         now: u64,
     ) -> Option<oauth::missed::Unrenewed> {
@@ -354,12 +350,11 @@ impl Hop {
         let lib = self.library();
         lib.accounts
             .iter()
-            .filter(|a| {
-                !a.api
-                    && self.missed(agent, &lib, &a.id, now)
-                        == Some(oauth::missed::Unrenewed::Manual)
+            .filter(|a| !a.is_api_key())
+            .filter_map(ManifestAccount::route_id)
+            .filter(|id| {
+                self.missed(agent, &lib, id, now) == Some(oauth::missed::Unrenewed::Manual)
             })
-            .map(|a| a.id.clone())
             .collect()
     }
 
@@ -367,7 +362,7 @@ impl Hop {
     pub(crate) fn show_facts(
         &self,
         agent: &str,
-        lib: &Library,
+        lib: &AccountBook,
         account: &str,
         row: &dyn Fn(&str) -> Option<bool>,
         now: u64,
@@ -413,9 +408,8 @@ impl Hop {
         tz: &crate::Tz,
     ) -> Vec<crate::accounts::quota::facts::Fact> {
         let lib = self.library();
-        lib.accounts
-            .iter()
-            .map(|a| self.fact_one(agent, &lib, &a.id, row, now, tz))
+        Self::ids(&lib)
+            .map(|id| self.fact_one(agent, &lib, &id, row, now, tz))
             .collect()
     }
 
@@ -423,7 +417,7 @@ impl Hop {
     pub(crate) fn fact_one(
         &self,
         agent: &str,
-        lib: &Library,
+        lib: &AccountBook,
         id: &str,
         row: &dyn Fn(&str) -> Option<bool>,
         now: u64,
@@ -462,12 +456,16 @@ impl Hop {
 }
 
 /// 号的种类：key 表里有行、或账号库说它是按量号 ⇒ 按量号；其余是订阅号。
-fn kind_of(a: &Turn<'_>, lib: &Library, account: &str) -> Kind {
+fn kind_of(a: &Turn<'_>, lib: &AccountBook, account: &str) -> Kind {
     kind_with(a.row, lib, account)
 }
 
-fn kind_with(row: &dyn Fn(&str) -> Option<bool>, lib: &Library, account: &str) -> Kind {
-    if row(account).is_some() || lib.find(account).is_some_and(|x| x.api) {
+fn kind_with(row: &dyn Fn(&str) -> Option<bool>, lib: &AccountBook, account: &str) -> Kind {
+    if row(account).is_some()
+        || lib
+            .by_route(account)
+            .is_some_and(ManifestAccount::is_api_key)
+    {
         Kind::Api
     } else {
         Kind::Sub
@@ -532,3 +530,14 @@ pub(crate) fn dispatch_go(
 #[cfg(test)]
 #[path = "../../../../tests/backend/accounts/upstream_select/rotate_tests.rs"]
 mod tests;
+
+/// 判据夹具：号表里的一行（`id` 是路由段，`dir` 的末段要与它一致；`dir: None` ＝ 账号 0）。
+#[cfg(test)]
+pub(crate) fn book_row(id: &str, dir: Option<PathBuf>, api: bool) -> ManifestAccount {
+    ManifestAccount {
+        name: id.to_string(),
+        config_dir: dir.map(|d| d.to_string_lossy().into_owned()),
+        auth_kind: api.then(|| acct_core::AUTH_KIND_API_KEY.to_string()),
+        ..Default::default()
+    }
+}

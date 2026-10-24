@@ -254,6 +254,13 @@ pub(crate) fn manifest_at(p: &Path) -> ManifestRead {
     read_manifest(p).map(|(_, m)| m).transpose()
 }
 
+/// 家目录 `home` 下这台的号表（全仓那一张，经 [`manifest_at`]）；没建账号库 / 读不懂 ⇒ `None`。
+pub(crate) fn book_at(home: &Path) -> Option<acct_core::AccountBook> {
+    let p = crate::platform::paths::home_join(home, relay_route_core::ACCOUNTS_DIR_REL)
+        .join(MANIFEST_FILE);
+    manifest_at(&p).ok().flatten().map(|m| m.book)
+}
+
 /// 清单全文（读得动才有）＋ 读成的模型；不在 ⇒ `None`。
 fn read_manifest(p: &Path) -> Option<(Option<String>, Result<Manifest, Unread>)> {
     if matches!(acct_view::item(p), Item::Absent) {

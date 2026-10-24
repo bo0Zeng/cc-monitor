@@ -4,7 +4,7 @@
 //! 盘上那一份是用户的活数据，原样接着用：认得的格改，认不得的格（顶层与每个号上的）原样留着写回去；
 //! 形状不合规矩的号（名字或配置目录过不了）整条原样留着、不去动它。
 //! 账号 0（「不设 `CLAUDE_CONFIG_DIR`」这个状态）不是注册项：读时丢掉、写时在数组末尾合成一条（没有 `configDir` 键）。
-//! 读的那几处（账号清单 · 起会话）要的是盘上原样那一面，另记在 [`OnDisk`]（含账号 0 那一条，照清单顺序）。
+//! 读的那几处（换号 · 起会话 · 账号清单）要的是盘上原样那一面：号表 [`Manifest::book`]（含账号 0 那一条，照清单顺序）。
 //! 这份文件全后端只经 `scan::manifest_at` 读（剥 BOM · 上限 · 版本闸在那里与这里），不另写解析器。
 
 use serde_json::{Map, Value};
@@ -51,35 +51,16 @@ pub(crate) struct Manifest {
     pub zero_color: Option<u8>,
     /// 顶层本模块不认得的键（如 `claudeVersionPinned`），原样写回。
     pub extra: Map<String, Value>,
-    /// 盘上那一面（只读）：账号清单与起会话照它列号；写时不经它（[`Self::render`] 只看上面那几格）。
-    pub on_disk: OnDisk,
-}
-
-/// 清单在盘上的样子，读的那几处照它列（[`Manifest::parse`] 时一次读出；改过的清单写回去、重读才更新）。
-#[derive(Debug, Clone, PartialEq, Default)]
-pub(crate) struct OnDisk {
-    /// 盘上 `updatedAt` 那一格。
+    /// 盘上 `updatedAt` 那一格（只读：写时由 [`Self::render`] 的 `updated_at` 重写）。
     pub updated_at: Option<String>,
-    /// 照清单顺序的每一条号（含账号 0）。
-    pub rows: Vec<OnDiskAccount>,
+    /// 这台的号表（只读那一面，全仓唯一的一张 `acct_core::AccountBook`）：盘上原样、照清单顺序、含账号 0 那一条；
+    /// 换号 · 起会话 · 账号清单都照它列号。写时不经它（[`Self::render`] 只看上面那几格；改过的清单写回去、重读才更新）。
+    pub book: acct_core::AccountBook,
 }
 
-/// 盘上一条号原样读出来的那几格。缺 `name` · 那几格类型不对 · `configDir` 过不了配置目录那一关（任一平台形：Windows 上的
+/// 盘上一条号读成号表那一行。缺 `name` · 那几格类型不对 · `configDir` 过不了配置目录那一关（任一平台形：Windows 上的
 /// `ccm --account` 也读这份）⇒ 这一条不列（写侧那一面照旧原样留着它）。
-#[derive(Debug, Clone, PartialEq, Default)]
-pub(crate) struct OnDiskAccount {
-    pub name: String,
-    pub email: Option<String>,
-    /// 缺席 = 账号 0 =「不设 `CLAUDE_CONFIG_DIR`」（结构性认：看这个键在不在，不认名字）。空串不算缺席（过不了那一关）。
-    pub config_dir: Option<String>,
-    pub is_default: bool,
-    /// 盘上 `mode` 原样（缺席 ⇒ 读的那一处按 `isolated`）。
-    pub mode: Option<String>,
-    /// 盘上 `authKind` 原样（缺席 = 订阅号；分类规则只住 `acct_core::auth_kind_from_manifest`）。
-    pub auth_kind: Option<String>,
-}
-
-fn on_disk_account_of(item: &Value) -> Option<OnDiskAccount> {
+fn book_row_of(item: &Value) -> Option<acct_core::ManifestAccount> {
     let o = item.as_object()?;
     // 可缺的文本格：缺席 / null ⇒ `None`；是别的类型 ⇒ 这一条不列。
     let text = |k: &str| -> Option<Option<String>> {
@@ -96,7 +77,7 @@ fn on_disk_account_of(item: &Value) -> Option<OnDiskAccount> {
     {
         return None;
     }
-    Some(OnDiskAccount {
+    Some(acct_core::ManifestAccount {
         name: o.get("name")?.as_str()?.to_string(),
         email: text("email")?,
         config_dir,
@@ -180,10 +161,7 @@ impl Manifest {
         let text_of = |k: &str| obj.get(k).and_then(Value::as_str).map(str::to_string);
         let mut m = Manifest {
             shared_store: text_of("sharedStore"),
-            on_disk: OnDisk {
-                updated_at: text_of("updatedAt"),
-                rows: Vec::new(),
-            },
+            updated_at: text_of("updatedAt"),
             ..Manifest::default()
         };
         for (k, v) in &obj {
@@ -192,7 +170,7 @@ impl Manifest {
             }
         }
         if let Some(arr) = obj.get("accounts").and_then(Value::as_array) {
-            m.on_disk.rows = arr.iter().filter_map(on_disk_account_of).collect();
+            m.book.accounts = arr.iter().filter_map(book_row_of).collect();
             for item in arr {
                 if is_zero_entry(item) {
                     m.zero_color = color_of(item);

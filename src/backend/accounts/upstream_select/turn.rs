@@ -6,7 +6,7 @@
 //!   `quota.json` · 账号库 / 登录文件）与策略目录 ⇒ 全部；这个会话自己的读数 ⇒ 只在越过它记着的 `wake.when` 某一条时。
 //! - 结论跟盘上那一条不同才写（先在内存里试，没变不进锁）。
 
-use super::rotate::{Go, Hop, Library, Turn};
+use super::rotate::{Go, Hop, Turn};
 use crate::accounts::quota::nodes::{Node, Nodes, Source};
 use crate::accounts::quota::rotation;
 use crate::accounts::quota::rules::book::{self, Session};
@@ -14,6 +14,7 @@ use crate::accounts::quota::rules::decide::{self, Decision, Pick, Sigma, WakeWhe
 use crate::accounts::quota::rules::{listed_ids, standing, Acct, Adopted};
 use crate::agents::QuotaReading;
 use crate::platform::fs::Own;
+use acct_core::AccountBook;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -496,7 +497,7 @@ impl Hop {
         &self,
         own: &Own,
         a: &Turn<'_>,
-        lib: &Library,
+        lib: &AccountBook,
         s: &Session,
         plan: &Adopted,
         mut pick: Pick,
@@ -568,10 +569,9 @@ impl Hop {
         if a.sid.is_empty() || crate::agents::login_of(a.agent).is_none() {
             return Go::Start;
         }
-        let lib = self.library();
-        if !lib.enabled {
+        let Some(lib) = self.library_here() else {
             return Go::Start;
-        }
+        };
         let Some(s) = self.entry(own, a) else {
             return Go::Start;
         };
@@ -634,7 +634,14 @@ impl Hop {
 
     /// 锁里那一判之后：换到别的号 ⇒ 备那个号的料，接不上就撤回那一笔（没换成的不记）、照同一份事实带着它再判；
     /// 留着 · 停发 ⇒ 照它走。`tried` ＝ 这一发已经发过的号（平时空）。
-    fn follow(&self, own: &Own, a: &Turn<'_>, lib: &Library, j: InTurn, tried: Vec<String>) -> Go {
+    fn follow(
+        &self,
+        own: &Own,
+        a: &Turn<'_>,
+        lib: &AccountBook,
+        j: InTurn,
+        tried: Vec<String>,
+    ) -> Go {
         let InTurn {
             before,
             after,
@@ -686,10 +693,7 @@ impl Hop {
         if a.sid.is_empty() || crate::agents::login_of(a.agent).is_none() {
             return None;
         }
-        let lib = self.library();
-        if !lib.enabled {
-            return None;
-        }
+        let lib = self.library_here()?;
         let s = self.entry(own, a)?;
         let plan = Adopted::of(s.uses.as_ref());
         if plan.id.is_empty() {

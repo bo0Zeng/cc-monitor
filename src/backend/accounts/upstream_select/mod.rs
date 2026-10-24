@@ -203,10 +203,10 @@ impl Upstreams {
 /// `tap`：tee 的落点（生产 ＝ 进程级那一个 tap 口 `crate::stream::tap::port`，宿主交进来）—— 本函数只递，上游选择不碰它交出去的任何一件事
 /// （② 不碰响应体）。
 ///
-/// `library`：这台的账号库怎么读（宿主交进来 —— 上游选择不认识账号库管理）；换号要它找各号的配置目录。
+/// `library`：这台的号表怎么读（宿主交进来 —— 上游选择不认识账号库管理）；换号要它找各号的配置目录。
 /// `own`：写自家状态的句柄（启动时造的那一份）；额度账 · 轮换 · 血缘 · 中转钥匙的写都经它。
 pub(crate) fn host_relay(
-    library: rotate::LibraryRead,
+    library: rotate::BookAt,
     adoptions: crate::accounts::quota::rules::AdoptionsAt,
     tap: std::sync::Arc<dyn crate::relay::TapPort>,
     own: crate::platform::fs::Own,
@@ -233,7 +233,7 @@ pub(crate) fn host_relay(
 /// 带着这台的账号库怎么读。判据交一份空账号库 ⇒ 永远只走起会话那个号。
 /// 第二格是写自家状态的句柄（启动时造的那一份）；第三格是会话用哪份策略问谁（宿主交进来 —— 上游选择不认识策略文件）。
 pub(crate) struct Rotating(
-    pub(crate) rotate::LibraryRead,
+    pub(crate) rotate::BookAt,
     pub(crate) crate::platform::fs::Own,
     pub(crate) crate::accounts::quota::rules::AdoptionsAt,
 );
@@ -254,7 +254,7 @@ impl Startup for Rotating {
 /// 起监听之前验过的那一份：默认上游 ＋（生产）账号库怎么读。
 pub(crate) struct Booted {
     upstreams: Upstreams,
-    library: rotate::LibraryRead,
+    library: rotate::BookAt,
     own: crate::platform::fs::Own,
     adoptions: crate::accounts::quota::rules::AdoptionsAt,
 }

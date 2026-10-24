@@ -8,7 +8,7 @@
 //! - 凭据文件不在 / 读不出来的号这一趟不参与。说出去的每一句只有号名与原因，不带令牌，也不带指纹。
 
 use super::mcp_logins::{self, Cells, Entries, LoginBase, LoginWrite, SeenLogins};
-use super::mcp_share_exec::{accounts_in, load_store, lock, put_private};
+use super::mcp_share_exec::{load_store, lock, manifest_in, put_private};
 use crate::accounts::oauth::store::{self, Locked, Read};
 use crate::agents::{EntryLogins, LoginFace};
 use crate::common::door::{self, Door};
@@ -111,7 +111,7 @@ fn revert(next: &mut LoginBase, old: &LoginBase, dir: &str, key: &str) {
 pub(crate) fn sync(d: &dyn Door, own: &Own) -> Result<Synced, Refusal> {
     let home = door::home(d).map_err(|e| ("io_failed", e))?;
     let _held = lock(&home)?;
-    let Some(list) = accounts_in(&home)? else {
+    let Some(m) = manifest_in(&home)? else {
         return Ok(Synced::default());
     };
     let Some(face) = super::layout::face().and_then(|f| f.login) else {
@@ -129,21 +129,24 @@ pub(crate) fn sync(d: &dyn Door, own: &Own) -> Result<Synced, Refusal> {
         refresh: entries.refresh,
         expires_ms: entries.expires_ms,
     };
-    let seen: Vec<SeenLogins> = list
-        .iter()
-        .map(|(_, dir)| SeenLogins {
-            dir: dir.clone(),
-            now: section_in(store::read(Path::new(dir), &face), entries.section),
+    let seen: Vec<SeenLogins> = m
+        .managed()
+        .map(|a| SeenLogins {
+            dir: a.config_dir.clone(),
+            now: section_in(
+                store::read(Path::new(&a.config_dir), &face),
+                entries.section,
+            ),
         })
         .collect();
     let plan = mcp_logins::plan(&store.logins, &seen, &cells);
     let mut base = plan.base.clone();
     let mut out = Synced::default();
     for w in &plan.writes {
-        let name = list
-            .iter()
-            .find(|(_, dir)| *dir == w.dir)
-            .map(|(n, _)| n.clone())
+        let name = m
+            .managed()
+            .find(|a| a.config_dir == w.dir)
+            .map(|a| a.name.clone())
             .unwrap_or_default();
         match write_one(own, &face, &entries, &cells, w) {
             Ok(()) => {

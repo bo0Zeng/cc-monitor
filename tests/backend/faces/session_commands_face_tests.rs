@@ -91,21 +91,14 @@ fn the_list_puts_builtins_first_and_writes_every_word() {
 /// ★ 号：这条会话上次用的号 → 这台默认号 → 账号 0（那一家自己的家）；号在库里却没有配置目录 ⇒ 往下一级退。
 #[test]
 fn the_account_follows_last_then_default_then_account_zero() {
-    let lib = |default: Option<&str>| crate::control::launch_account::Library {
-        known: true,
-        accounts: vec![
-            crate::control::launch_account::Candidate {
-                name: "work".into(),
-                config_dir: Some("/h/work".into()),
-                usable: true,
-            },
-            crate::control::launch_account::Candidate {
-                name: "lab".into(),
-                config_dir: None,
-                usable: false,
-            },
-        ],
-        default: default.map(str::to_string),
+    use crate::observe::accounts_query::test_support::{list, row_with};
+    let lib = |default: Option<&str>| {
+        let mut l = list(vec![
+            row_with("work", |a| a.config_dir = Some("/h/work".into())),
+            row_with("lab", |a| a.config_dir = None),
+        ]);
+        l.meta.effective_default = default.map(str::to_string);
+        l
     };
     let zero = std::path::Path::new("/h/zero");
     let pick = |last: Option<&str>, default| config_root_of(last, &lib(default), Some(zero));

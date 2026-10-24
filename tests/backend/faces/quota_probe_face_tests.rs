@@ -4,7 +4,7 @@
 use super::*;
 use crate::accounts::quota::ledger::{Ledger, Source};
 use crate::accounts::quota::rotation::{self, RotationStore};
-use crate::accounts::upstream_select::rotate::{Hop, LibAccount, Library};
+use crate::accounts::upstream_select::rotate::Hop;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -52,21 +52,21 @@ impl Home {
     /// 账号库：0（默认配置目录）· b · c（没登录）· bad（输出对不上）· api（按量号）。
     fn ctx(&self) -> Ctx {
         let accts = self.root.join("accts");
-        let library: crate::accounts::upstream_select::rotate::LibraryRead =
-            Arc::new(move |_| Library {
-                enabled: true,
-                accounts: std::iter::once(LibAccount {
-                    id: "0".into(),
-                    dir: None,
-                    api: false,
-                })
-                .chain(["b", "c", "bad", "api"].iter().map(|id| LibAccount {
-                    id: id.to_string(),
-                    dir: Some(accts.join(id)),
-                    api: *id == "api",
+        let library: crate::accounts::upstream_select::rotate::BookAt = Arc::new(move |_| {
+            Some(acct_core::AccountBook {
+                accounts: std::iter::once(crate::accounts::upstream_select::rotate::book_row(
+                    "0", None, false,
+                ))
+                .chain(["b", "c", "bad", "api"].iter().map(|id| {
+                    crate::accounts::upstream_select::rotate::book_row(
+                        &id.to_string(),
+                        Some(accts.join(id)),
+                        *id == "api",
+                    )
                 }))
                 .collect(),
-            });
+            })
+        });
         Ctx {
             setup: Arc::new(crate::accounts::quota::setup::uses::Setup::of(Arc::new(
                 RotationStore::at(Some(self.root.join(rotation::FILE_NAME))),

@@ -254,3 +254,89 @@ fn the_parity_fixtures_stay_behind_the_fixtures_gate() {
         "正控：契约项 `AUTH_KINDS` 也被认成有门 —— 尺子恒真"
     );
 }
+
+fn row(name: &str, dir: Option<&str>, default: bool, auth: Option<&str>) -> ManifestAccount {
+    ManifestAccount {
+        name: name.into(),
+        config_dir: dir.map(str::to_string),
+        is_default: default,
+        auth_kind: auth.map(str::to_string),
+        ..Default::default()
+    }
+}
+
+/// ★ 号表只有一张：换号认的路由段 · 按量号 · 默认号 · 按名字找，都是同一行上现算的。
+/// 账号 0（没写号目录的那一条，不认名字）路由段恒是 [`BARE_ACCOUNT`]；其余是号目录末段（同 [`apikey_account_id_of_dir`]）。
+#[test]
+fn one_account_book_answers_routes_kinds_and_the_default() {
+    let book = AccountBook {
+        accounts: vec![
+            row("work", Some("/h/accts/acct-w"), false, None),
+            row("zero", None, false, None),
+            row("key", Some("/h/accts/k1/"), true, Some(AUTH_KIND_API_KEY)),
+        ],
+    };
+    assert_eq!(
+        book.accounts
+            .iter()
+            .map(ManifestAccount::route_id)
+            .collect::<Vec<_>>(),
+        [
+            Some("acct-w".into()),
+            Some(BARE_ACCOUNT.into()),
+            Some("k1".into())
+        ]
+    );
+    assert_eq!(book.by_route("k1").map(|a| a.name.as_str()), Some("key"));
+    assert_eq!(
+        book.by_route(BARE_ACCOUNT).map(|a| a.name.as_str()),
+        Some("zero")
+    );
+    assert!(book.by_route("nope").is_none());
+    assert!(book.by_route("k1").is_some_and(ManifestAccount::is_api_key));
+    assert!(!book
+        .by_route("acct-w")
+        .is_some_and(ManifestAccount::is_api_key));
+    assert_eq!(
+        book.by_name("work").and_then(|a| a.config_dir.as_deref()),
+        Some("/h/accts/acct-w")
+    );
+    assert_eq!(book.default_account().map(|a| a.name.as_str()), Some("key"));
+    assert_eq!(
+        book.named().map(|a| a.name.as_str()).collect::<Vec<_>>(),
+        ["work", "key"],
+        "具名号 = 写了号目录的那几个，照清单顺序"
+    );
+}
+
+/// ★ 换号那一侧账号 0 恒在、排第一个：清单里写了那一条就把它挪到前面，没写就补一条（名字是 [`BARE_ACCOUNT`]）。
+#[test]
+fn the_bare_account_is_always_first_on_the_rotation_side() {
+    let without = AccountBook {
+        accounts: vec![row("work", Some("/h/a/w"), false, None)],
+    }
+    .with_bare_first();
+    assert_eq!(
+        without
+            .accounts
+            .iter()
+            .map(|a| (a.name.as_str(), a.config_dir.is_none()))
+            .collect::<Vec<_>>(),
+        [(BARE_ACCOUNT, true), ("work", false)]
+    );
+    let with = AccountBook {
+        accounts: vec![
+            row("work", Some("/h/a/w"), false, None),
+            row("zero", None, false, None),
+        ],
+    }
+    .with_bare_first();
+    assert_eq!(
+        with.accounts
+            .iter()
+            .map(|a| a.name.as_str())
+            .collect::<Vec<_>>(),
+        ["zero", "work"],
+        "清单里那一条照用，不另补一条"
+    );
+}

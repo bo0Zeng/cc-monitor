@@ -10,6 +10,7 @@
 use super::json_key;
 use super::layout;
 use super::mcp_share::{self, Seen, Servers, Store};
+use super::model::Manifest;
 use super::scan::{item_at, join, Unread};
 use crate::common::door::{self, Door, Refused};
 use crate::platform::acct_view::Item;
@@ -57,8 +58,9 @@ pub(crate) fn read_text(p: &str, cap: u64) -> Result<Option<String>, crate::comm
     }
 }
 
-/// 这台的账号库清单里有哪几个号（`None` = 这台没有账号库 / 做不了多账号）。
-pub(crate) fn accounts_in(home: &str) -> Result<Option<Vec<(String, String)>>, Refusal> {
+/// 这台的账号库清单（各号之间同步 · 预标信任 · 别名都照它的具名号 `Manifest::managed`：名字与号目录过了写侧那一关）。
+/// `None` = 这台没有账号库 / 做不了多账号。
+pub(crate) fn manifest_in(home: &str) -> Result<Option<Manifest>, Refusal> {
     if layout::face().is_none() || crate::platform::acct_view::multi_account_supported().is_err() {
         return Ok(None);
     }
@@ -70,16 +72,12 @@ pub(crate) fn accounts_in(home: &str) -> Result<Option<Vec<(String, String)>>, R
         Err(Unread::Io(s)) => return Err(("io_failed", s).into()),
         Err(Unread::Bad(s)) => return Err(("refused", s).into()),
     };
-    Ok(Some(
-        m.managed()
-            .map(|a| (a.name.clone(), a.config_dir.clone()))
-            .collect(),
-    ))
+    Ok(Some(m))
 }
 
 /// 这台账号库里各号共用的用户级 MCP 住哪份文件；没有账号库 ⇒ `None`（用户级 MCP 就是 agent 自己那一份）。
 pub(crate) fn store_file_in(home: &str) -> Option<String> {
-    matches!(accounts_in(home), Ok(Some(_)))
+    matches!(manifest_in(home), Ok(Some(_)))
         .then(|| door::join_under(home, relay_route_core::ACCOUNTS_MCP_REL))
 }
 
@@ -139,13 +137,14 @@ pub(crate) fn load_store(home: &str) -> Result<(Store, Option<String>), Refusal>
     Ok((store, store_raw))
 }
 
-fn load(home: &str, list: Vec<(String, String)>) -> Result<Here, Refusal> {
+fn load(home: &str, m: &Manifest) -> Result<Here, Refusal> {
     let key = layout::user_mcp_key();
     let file = layout::identity_config_file();
     let (store, store_raw) = load_store(home)?;
     let mut notes = Vec::new();
     let mut accounts = Vec::new();
-    for (name, dir) in list {
+    for a in m.managed() {
+        let (name, dir) = (a.name.clone(), a.config_dir.clone());
         let path = join(&dir, file);
         let got = read_text(&path, MAX_CONFIG_BYTES)
             .and_then(|raw| Ok((servers_in(raw.as_deref(), key)?, raw)));
@@ -296,10 +295,10 @@ fn run(
 ) -> Result<AccountMcpView, Refusal> {
     let home = door::home(d).map_err(|e| ("io_failed", e))?;
     let _held = lock(&home)?;
-    let Some(list) = accounts_in(&home)? else {
+    let Some(m) = manifest_in(&home)? else {
         return Ok(AccountMcpView::default());
     };
-    let h = load(&home, list)?;
+    let h = load(&home, &m)?;
     if h.store.paused {
         return match why {
             Why::Auto => Ok(paused_view(&h)),
@@ -372,13 +371,13 @@ pub(crate) fn set_sync(d: &dyn Door, on: bool) -> Result<AccountMcpView, Refusal
     let home = door::home(d).map_err(|e| ("io_failed", e))?;
     {
         let _held = lock(&home)?;
-        let Some(list) = accounts_in(&home)? else {
+        let Some(m) = manifest_in(&home)? else {
             return Err(Refusal::from((
                 "refused",
                 copy_text("beAcctMcpShare.sync.noLibrary", &[]),
             )));
         };
-        let h = load(&home, list)?;
+        let h = load(&home, &m)?;
         if h.store.paused == !on {
             return if on {
                 Ok(view_after(&h))
@@ -422,10 +421,10 @@ fn view_after(h: &Here) -> AccountMcpView {
 /// `accounts-mcp-read`：此刻的样子（只算不写；冲突照算）。
 pub(crate) fn read(d: &dyn Door) -> Result<AccountMcpView, Refusal> {
     let home = door::home(d).map_err(|e| ("io_failed", e))?;
-    let Some(list) = accounts_in(&home)? else {
+    let Some(m) = manifest_in(&home)? else {
         return Ok(AccountMcpView::default());
     };
-    let h = load(&home, list)?;
+    let h = load(&home, &m)?;
     Ok(if h.store.paused {
         paused_view(&h)
     } else {
@@ -486,11 +485,18 @@ pub(crate) fn put(d: &dyn Door, name: &str, def: &Value) -> Result<AccountMcpVie
 /// 账号库读不出 ⇒ 只看没设账号的那一份（状态少说，不说错）。足迹 · 帧面（MCP 读面 · 登录）都问它（原住 `faces/feature_face.rs`）。
 pub(crate) fn mcp_look(kind: &str) -> crate::agents::McpLook {
     let mut homes: Vec<(Option<String>, std::path::PathBuf)> = crate::platform::paths::home_dir()
-        .and_then(|h| accounts_in(&h.display().to_string()).ok().flatten())
-        .unwrap_or_default()
-        .into_iter()
-        .map(|(name, dir)| (Some(name), std::path::PathBuf::from(dir)))
-        .collect();
+        .and_then(|h| manifest_in(&h.display().to_string()).ok().flatten())
+        .map(|m| {
+            m.managed()
+                .map(|a| {
+                    (
+                        Some(a.name.clone()),
+                        std::path::PathBuf::from(&a.config_dir),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     if let Some(bare) = crate::agents::home_of_kind(kind) {
         if !homes.iter().any(|(_, d)| *d == bare) {
             homes.push((None, bare));

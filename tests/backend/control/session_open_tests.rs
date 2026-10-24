@@ -164,7 +164,7 @@ impl Rig {
             Ok(true)
         };
         let library = || {
-            la::Library::of_product(&crate::observe::accounts_query::test_support::list(
+            crate::observe::accounts_query::test_support::list(
                 self.names
                     .iter()
                     .map(|n| {
@@ -173,7 +173,7 @@ impl Rig {
                         })
                     })
                     .collect(),
-            ))
+            )
         };
         let accounts = la::Facts {
             has_accounts: true,
