@@ -241,7 +241,7 @@ mod tests {
         ("会话文件命名", "RecordFace.tree.file_name"),
         ("pidfile 目录", "LocalFace.pidfile_dir"),
         ("账号环境变量名", "AccountsFace.session_env"),
-        ("账号信任判定", "AccountsFace.trust_in"),
+        ("账号信任判定", "AccountsFace.trust"),
         ("判活 cmdline", "LocalFace.cmdline_may_be_agent"),
         ("解析本机 home", "Adapter.home · LocalFace.home_at"),
         ("resume 默认命令", "LaunchFace.default_launcher"),

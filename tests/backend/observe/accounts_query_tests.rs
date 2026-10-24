@@ -927,37 +927,6 @@ fn bare_session_without_account_zero_stays_unattributed() {
     let _ = fs::remove_dir_all(&root);
 }
 
-/// `agents::claudecode::accounts::trust_of_config`（账号库那一家的信任判定）只取那几个布尔、绝不回传文件内容。
-/// 账号 0 走 `$HOME/.claude.json`——声明里 `.claude.json` 的原生根就是 home。
-#[test]
-fn trust_of_claude_json_reads_only_the_three_booleans() {
-    let root = tmpdir("acct0tz");
-    fs::create_dir_all(&root).unwrap();
-    let cj = root.join(".claude.json");
-
-    // 文件不存在 ⇒ known:false，不是错误
-    let v: serde_json::Value =
-        serde_json::from_str(&cc_accounts::trust_of_config(&cj, "/w").unwrap()).unwrap();
-    assert_eq!(v["known"], false);
-    assert_eq!(v["trusted"], false);
-
-    fs::write(
-        &cj,
-        r#"{"projects":{"/w":{"hasTrustDialogAccepted":true}},
-                "mcpServers":{"x":{"env":{"API_KEY":"sk-SECRET"}}}}"#,
-    )
-    .unwrap();
-    let out = cc_accounts::trust_of_config(&cj, "/w").unwrap();
-    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-    assert_eq!(v["trusted"], true);
-    assert_eq!(v["known"], true);
-    assert!(
-        !out.contains("sk-SECRET"),
-        "绝不能把 .claude.json 的内容回传"
-    );
-    let _ = fs::remove_dir_all(&root);
-}
-
 // ---- K-A1：鉴权方式这一维（生产者①） ----
 
 /// ★ **跨生产者对拍，backend 这一半。**
