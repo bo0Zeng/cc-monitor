@@ -377,7 +377,7 @@ jobs:
           GATE_ONLY: tsc appbuild
         run: bash tests/scripts/gate.sh
 
-  # 门禁里只读盘上文本的那几格（shellcheck · py 语法与可执行位 · hooks · 复制族 · 发版守卫 · 平台承诺 · 安装面）。
+  # 门禁里只读盘上文本的那几格（shellcheck · py 语法与可执行位 · 复制族 · 发版守卫 · 平台承诺 · 安装面）。
   static-gate:
     name: Gate static cells
     runs-on: ubuntu-latest
@@ -387,7 +387,7 @@ jobs:
 
       - name: 门禁 · 静态那几格
         env:
-          GATE_ONLY: hooks copy2 shellcheck e2e-smoke release-gate platform installface
+          GATE_ONLY: copy2 shellcheck e2e-smoke release-gate platform installface
         run: bash tests/scripts/gate.sh
 
   # 真机 e2e：每一套在门禁里一行 `run_e2e <套件>`；`GATE_ONLY=e2e` 点名全部套件（名单不在这里抄第二份）。

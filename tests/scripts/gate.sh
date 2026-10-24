@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # 出货前的唯一闸门：各格跑一遍，末尾只吐一行裁决（`GATE: OK` / `GATE: PARTIAL` / `GATE: FAIL …`）。
 # 用法：先跑它、看见 `GATE: OK`，再单独提交。它故意不提交任何东西 —— 读数与动作不焊在同一条命令里。
-# 跑哪几格以行首的 `run_gate` / `run_gate_sum` / `run_e2e` 与 `if gate_wants <名>` 为准；格数与名单从这一趟现算，
-# 收据 `.build/gate-receipt.json` 记着真跑过哪几格、每格几毫秒。CI 的 Linux job 调本脚本（`GATE_ONLY=<格>`）；
+# 跑哪几格以行首的 `run_gate` / `run_gate_sum` / `run_e2e` 与 `if gate_wants <名>` 为准；格数与名单从这一趟现算。
+# CI 的 Linux job 调本脚本（`GATE_ONLY=<格>`）；
 # 留在 Windows job 里的几步由 `coverage` · `audit` 两格从 `ci.yml` 按步骤名现取原样跑。
 # Windows 那一维由 `winchk` · `winchk-backend` · `winlink` 交叉编译盖；真 Windows 上的行为判不了（见 `GATE_BLIND`）。
 # 格分进几条「道」（`gate_lane`）：道内一格接一格，道与道同时跑；跑完按本文件里的顺序逐格判、逐格打印。
@@ -123,21 +123,17 @@ gate_nonet_e2e() {
   return "$rc"
 }
 
-# ── `GATE_ONLY` 子集 ＋ 一张跑过的收据 ─────────────────────────────────────
-# 收据（`GATE_RECEIPT`，默认 `.build/gate-receipt.json`）只记真跑过这一趟才拿得到的东西：本文件的 sha256 ·
-#   tree oid 与脏不脏 · 真判过的格（`GATE_RAN`）· 被挡掉的格（`GATE_SKIPPED`）· 每格与整趟的墙钟。
-#   判它的是 `tests/evidence/K-G4C-gate-receipt.py`，由调用方（`tests/hooks/pre-push`）在门禁之后跑 —— 本脚本判自己的收据是同源恒真。
-#   它的反空真锚：`ran ∪ skipped` 与本文件现打的格名两向相等。
+# ── `GATE_ONLY` 子集 ─────────────────────────────────────────────────────
+# 裁决从这一趟现算：真判过的格（`GATE_RAN`）· 被挡掉的格（`GATE_SKIPPED`）；不落盘。
 # `GATE_ONLY`：空格分隔的格名（e2e 用套件短名，或组名 `e2e`），只跑那几格。
 #   ① 名字不是盘上的格 ⇒ 红；② 跳过的格逐个印出；③ 跳过了一格裁决就是 `GATE: PARTIAL` —— `GATE: OK` 只表示每格都跑过；
 #   ④ 自检探针不受它影响（`gate_selftest*` 里 `local GATE_PROBE=1`，动态作用域）。探针跑在 `$( )` 里，进不了那两张表。
 GATE_ONLY="${GATE_ONLY:-}"
-GATE_RECEIPT="${GATE_RECEIPT:-.build/gate-receipt.json}"
 GATE_DECLARED=()   # 盘上声明过的格（短名，现算）
 GATE_GROUPS=()     # 盘上声明过的组名（`GATE_ONLY` 里写组名 = 点名组里每一格；今天只有 `e2e`）
 GATE_RAN=()        # 这一趟**命令真的执行过并被判过**的格（规范名，现算）
 GATE_SKIPPED=()    # 这一趟被 GATE_ONLY 挡掉的格（短名，现算）
-declare -A GATE_MS=()   # 这一趟每格的墙钟（毫秒，规范名 → 数），进收据
+declare -A GATE_MS=()   # 这一趟每格的墙钟（毫秒，规范名 → 数），进墙钟那一行
 GATE_WIN=()        # 这一趟每格的起止（`<起 ms> <止 ms> <规范名>`）：`tmux-default` 拿它说外来连接出在哪一格
 GATE_PREP_MS=0          # e2e 前置那一趟 cargo build 的墙钟（不是格，单记）
 GATE_T0=""              # 整趟起点，下面定义完 `gate_now_ms` 就取
@@ -154,7 +150,7 @@ gate_took() { gate_fmt_ms "${GATE_MS[$1]:-0}"; }
 # `gate_lane <道> [after <格>…]`：往下的格排进这条道；`after` 只许点本行之前已声明的格（道与道之间因此不会互等成环），
 #   被 `GATE_ONLY` 挡掉的不等。`gate_lanes_run`：各道同时起跑、等齐，再按格在本文件里的顺序逐格判。
 # 每格分「跑」与「判」两半：跑的那半把输出、退出码、起止写进这一格自己的文件（并发输出不交错），
-#   判的那半在本进程里读回来做判定、记收据。不排进道时（自检探针 · `GATE_SERIAL=1` · 没有无网沙箱，CI 即如此）跑完立刻判。
+#   判的那半在本进程里读回来做判定、记进 `GATE_RAN`。不排进道时（自检探针 · `GATE_SERIAL=1` · 没有无网沙箱，CI 即如此）跑完立刻判。
 # 并发靠的独立资源：每格一个网络命名空间 · e2e 每套一个 `/tmp`（`gate_nonet_e2e`）· 两棵 Rust 各一把 target 锁（同一棵的格同一条道）。
 GATE_PAR=0
 if [ "${GATE_SERIAL:-0}" != 1 ] && [ -z "$GATE_NONET_WHY" ] && [ "${#GATE_NONET[@]}" -gt 0 ] && [ -n "${GATE_TMUX_HOME:-}" ]; then
@@ -187,11 +183,11 @@ gate_vitest_share() { ( export GATE_VITEST_WORKERS="$GATE_VITEST_EACH"; "$@" ); 
 #      · `mobile`（手机端的 JVM 单测里有带等待上限的进程与协程用例）· `android-device`（模拟器上的设备测，带等待上限）；
 #    · 不按墙钟判（只看编得过 / 诊断零条 / 盘上文本 / 两份对得上 ⇒ 让路）—— 编译类 `deadcode` · `deadcode-backend` · `clippy`
 #      · `clippy-backend` · `appbuild` · `shotsshell` · `winchk` · `winchk-backend` · `winlink` · `muslbuild` · `androidbuild` · `tsc` · e2e 前置那趟 `cargo build`（`e2e-prep`）；
-#      读文本类 `worktree-clean` · `hooks` · `copy2` · `shellcheck` · `e2e-smoke` · `release-gate` · `platform` · `installface`
+#      读文本类 `worktree-clean` · `copy2` · `shellcheck` · `e2e-smoke` · `release-gate` · `platform` · `installface`
 #      · `fmt` · `fmt-backend` · `audit` · `generated` · `tmux-default`。
 #    两张表与盘上的格两向相等（同一个判据文件钉）：新加一格就得在这里归一边。
 GATE_WALL_CELLS=" npm coverage cargo creds-harden backend rotation-500 comm-boundary test-tiers ccbus-twophase e2e env-sandbox weak-net mobile android-device "
-GATE_YIELD_CELLS=" deadcode deadcode-backend clippy clippy-backend appbuild shotsshell winchk winchk-backend winlink muslbuild androidbuild tsc e2e-prep worktree-clean hooks copy2 shellcheck e2e-smoke release-gate platform installface fmt fmt-backend audit generated tmux-default "
+GATE_YIELD_CELLS=" deadcode deadcode-backend clippy clippy-backend appbuild shotsshell winchk winchk-backend winlink muslbuild androidbuild tsc e2e-prep worktree-clean copy2 shellcheck e2e-smoke release-gate platform installface fmt fmt-backend audit generated tmux-default "
 gate_yields() { case "$GATE_YIELD_CELLS" in *" $1 "*) return 0 ;; esac; return 1; }
 # 只降调它所在的那个子 shell（`$BASHPID`）及其往后起的子进程；调用方负责把它放进子 shell 里。
 gate_yield() { renice -n 10 -p "$BASHPID" >/dev/null 2>&1 || true; "$@"; }
@@ -329,7 +325,7 @@ gate_wants() {
     case " $GATE_ONLY " in *" $2 "*) return 0 ;; esac
   fi
   GATE_SKIPPED+=("$1")
-  printf '  skip %-14s %s\n' "$1" "GATE_ONLY 没点它 ⇒ 这一格这一趟**没判**（收据里如实记着，裁决行因此不许是 GATE: OK）"
+  printf '  skip %-14s %s\n' "$1" "GATE_ONLY 没点它 ⇒ 这一格这一趟**没判**（裁决行因此不许是 GATE: OK）"
   return 1
 }
 
@@ -348,57 +344,6 @@ gate_check_only() {
 盘上现打这几格（短名）：${GATE_DECLARED[*]}")
     fi
   done
-}
-
-# 一串字符串印成 JSON 数组。格名里没有引号与反斜杠（`found_cells()` 的正则决定），所以不转义。
-gate_json_arr() {
-  local i first=1
-  printf '['
-  for i in "$@"; do
-    if [ "$first" -eq 1 ]; then first=0; else printf ', '; fi
-    printf '"%s"' "$i"
-  done
-  printf ']'
-}
-
-# 落一张收据。绿红两支都落：只在绿那一支落，就看不见「红过一趟、然后有人把红的那一格删了」。
-gate_write_receipt() {
-  local verdict="$1" sha tree head dirty
-  sha="$(sha256sum "$0" 2>/dev/null | cut -d' ' -f1)"
-  sha="${sha:-<数不出 sha256>}"
-  tree="$(git rev-parse 'HEAD^{tree}' 2>/dev/null)"
-  tree="${tree:-<不在 git 仓里>}"
-  head="$(git rev-parse HEAD 2>/dev/null)"
-  head="${head:-<不在 git 仓里>}"
-  if git diff --quiet HEAD 2>/dev/null; then dirty=false; else dirty=true; fi
-  mkdir -p "$(dirname "$GATE_RECEIPT")" 2>/dev/null
-  {
-    printf '{\n'
-    printf '  "verdict": "%s",\n' "$verdict"
-    printf '  "gate_sha256": "%s",\n' "$sha"
-    printf '  "tree": "%s",\n' "$tree"
-    printf '  "head": "%s",\n' "$head"
-    printf '  "dirty": %s,\n' "$dirty"
-    printf '  "when": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    printf '  "gate_only": "%s",\n' "$GATE_ONLY"
-    printf '  "ran": '    ; gate_json_arr ${GATE_RAN[@]+"${GATE_RAN[@]}"}        ; printf ',\n'
-    printf '  "skipped": '; gate_json_arr ${GATE_SKIPPED[@]+"${GATE_SKIPPED[@]}"}; printf ',\n'
-    printf '  "ms": {'
-    local i first=1
-    for i in ${GATE_RAN[@]+"${GATE_RAN[@]}"}; do
-      if [ "$first" -eq 1 ]; then first=0; else printf ', '; fi
-      printf '"%s": %s' "$i" "${GATE_MS[$i]:-0}"
-    done
-    printf '},\n'
-    printf '  "e2e_prep_ms": %s,\n' "$GATE_PREP_MS"
-    printf '  "total_ms": %s\n' "$(( $(gate_now_ms) - GATE_T0 ))"
-    printf '}\n'
-  } > "$GATE_RECEIPT" || {
-    printf 'GATE: 收据落不了盘（%s 写不进去）—— 后面那条 K-G4C-gate-receipt.py 会因此红，那是对的\n' "$GATE_RECEIPT"
-    return 0
-  }
-  printf 'GATE: 收据 —— %s（verdict=%s · 真判过 %s 格 · 跳过 %s 格 · tree %s · dirty %s）\n' \
-    "$GATE_RECEIPT" "$verdict" "${#GATE_RAN[@]}" "${#GATE_SKIPPED[@]}" "${tree:0:12}" "$dirty"
 }
 
 # ── 失败诊断：红的那一格自带「为什么红」 ────────────────────────────────
@@ -461,7 +406,7 @@ gate_judge_gate() {
   local name="$1" denom="$2" out rc
   gate_cell_read "$name" || return 0
   out="$GATE_C_OUT"; rc="$GATE_C_RC"
-  # 记在命令执行完之后：收据里 `ran` 的意思是「真跑过并被判过」，不是「被点到过」。
+  # 记在命令执行完之后：`GATE_RAN` 的意思是「真跑过并被判过」，不是「被点到过」。
   gate_ran "$name" "$GATE_C_T0" "$GATE_C_T1"
   # rc=0 不等于绿（`0 passed` 也是 rc=0）：退出码与读数里的数两条都判。
   local n
@@ -706,13 +651,6 @@ gate_ci_steps() {
 # ── 「静态」道：只读盘上文本的那几格（外加 `audit` 问一趟 registry）──
 gate_lane 静态
 
-# ── `hooks`：`tests/hooks/` 里会被 git 执行的那几份跑不跑得起来 ──
-# 本仓 `core.filemode=false`，`chmod +x` 不进 git，而 644 的 hook 会被 git 忽略并照常提交。
-# 所以「盘上可执行」（`test -x`）与「库里记着可执行位」（index mode）分开判；只判「文件在不在」不算数。
-# 判据本体住 `tests/scripts/hooks-are-runnable.sh`（含阳性对照，能对着变异副本跑）。
-run_gate hooks '每个被跟踪的 hook 文件 3 条（盘上可执行 · 库里记着可执行位 · 语法过得了它自己声明的解释器）＋ 8 条阳性对照；份数以判据本体那一行为准（它从 `git ls-files tests/hooks/` 现算）。hooks/ 之外的树本行盖不到' \
-         bash tests/scripts/hooks-are-runnable.sh
-
 # ── `copy2`：量具的还原那一跳有没有把旧 mtime 搬回被测树 ──
 # 用 `shutil.copy2` 还原源码会带回旧 mtime ⇒ cargo 判「源码没变」、复用上一刀的产物，那一趟读数作废。
 # 判复制的目的地落不落在被 git 跟踪的工作树内容上（造夹具、拷读数是正当用途，不红）。
@@ -724,7 +662,7 @@ run_gate copy2 '`evidence/*.py` 里 `shutil` 保元数据复制族（copy2 · co
 # 人群的唯一住址是下面这一行（CI 调本格）；`shell_lint_registry` 读它判每个 shell 脚本要么在人群里、要么登记豁免。
 # 本段不让任何注释行以 `#` ＋ 空格 ＋ 那个工具名开头：那是它的指令语法。
 # 反空真：展开出的份数 > 0 且本文件在里面；某组 glob 一个都不匹配由 `shell_lint_registry` 接住。本地与 CI 的二进制版本可能不同。
-GATE_SHELLCHECK_GLOBS='tests/e2e/*.sh tests/__fixtures__/*.sh tests/mobile-smoke/*.sh src/shared/cc-bus/scripts/* src/shared/cc-bus/examples/cc-keepalive tests/e2e/fake-claude tests/e2e/weak-net/*.sh tests/e2e/local-backend-container/*.sh tests/evidence/*.sh tests/scripts/*.sh tests/hooks/* tests/shots/perf/*.sh tests/shots/perf/backend/*.sh src/mobile/scripts/*.sh src/mobile/gradlew'
+GATE_SHELLCHECK_GLOBS='tests/e2e/*.sh tests/__fixtures__/*.sh tests/mobile-smoke/*.sh src/shared/cc-bus/scripts/* src/shared/cc-bus/examples/cc-keepalive tests/e2e/fake-claude tests/e2e/weak-net/*.sh tests/e2e/local-backend-container/*.sh tests/evidence/*.sh tests/scripts/*.sh tests/shots/perf/*.sh tests/shots/perf/backend/*.sh src/mobile/scripts/*.sh src/mobile/gradlew'
 gate_shellcheck() {
   local out rc n self=0 f
   command -v shellcheck >/dev/null 2>&1 || {
@@ -1004,7 +942,7 @@ gate_selftest_winlink
 # ── 真机 e2e：每一套一行 `run_e2e <套件>` ─────────────────────────────────────────
 # 判法复用 `tests/e2e/assert-pass-floor.sh`：退出码 0 ＋ 收尾 `合计 PASS=<n> FAIL=0` ＋ `n > 0`；跑在无网沙箱里。
 # 每套几条只住套件自己的输出里，这里与 CI 都不钉数。`GATE_ONLY` 里写套件短名（`ccm-cli`），或写 `e2e` 点名全部。
-# 收据与裁决行里的规范名带前缀（`ccm tests/e2e/<套件>`）。
+# 裁决行里的规范名带前缀（`ccm tests/e2e/<套件>`）。
 run_e2e() {
   local suite="$1"
   gate_wants "$suite" e2e || return 0
@@ -1135,7 +1073,7 @@ gate_lane 前端 after cargo backend
 # 位置是承重的：必须在 `cargo` 与 `backend` 两格都跑完之后（「前端」道 after 它俩）—— 两格的 `cargo test --lib` 里都有 ts-rs 导出测试，跑过它们生成物才按当前 Rust 源重写过；
 #   排在前面判的是没重写的树，恒绿；与它们并发则读到截了一半的文件（ts-rs 截断再写）。
 # 看不见的：内容对不对（只比 HEAD）。
-# 本格不走 `run_gate`，`gate_wants` / `gate_cell` 手接；漏接会让收据少一格，`K-G4C-gate-receipt.py` 的两向相等当场分叉。
+# 本格不走 `run_gate`，`gate_wants` / `gate_cell` 手接；漏接这一格就不进 `GATE_RAN`，裁决行里少它。
 gate_exec_generated() {
   gate_now_ms > "$GATE_K.t0"
   ( gate_yield bash tests/scripts/generated-drift.sh ) > "$GATE_K.out" 2>&1
@@ -1279,7 +1217,7 @@ print(*[x.getsockname()[1] for x in s])')
              CCM_BACKEND_STDERR_LOG="$d/cc/logs/backend/stderr.log" CCM_HISTORY_METADATA="$d/cc/history.json" \
              CCM_APIKEY_CREDENTIALS="$d/cc/apikey.json" CLAUDE_CONFIG_DIR="$d/claude" \
              ANTHROPIC_BASE_URL="http://127.0.0.1:$p3" TMUX="$d/tmux.sock,1,0" \
-             GATE_ONLY="backend-tmux-late-server restart" GATE_RECEIPT="$d.receipt.json" \
+             GATE_ONLY="backend-tmux-late-server restart" \
              bash tests/scripts/gate.sh 2>&1)"; rc=$?
   kill "$w" 2>/dev/null; wait "$w" 2>/dev/null
   if [ -n "$rport" ]; then
@@ -1289,7 +1227,7 @@ print(*[x.getsockname()[1] for x in s])')
   fi
   after="$(find "$d" -printf '%P %s %T@\n' | sort)"
   lis="$(sort -u "$d.listen" | tr '\n' ' ')"
-  rm -rf -- "$d" "$d.listen" "$d.receipt.json" "$d.ns" "$d.real"
+  rm -rf -- "$d" "$d.listen" "$d.ns" "$d.real"
   if [ "$before" != "$after" ] || [ -n "${lis// /}" ]; then
     diff <(printf '%s\n' "$before") <(printf '%s\n' "$after") | head -20
     printf 'env-sandbox: 会话环境漏进去了 —— 假家有写入（上面的 diff）、或这几个口上出现过监听 [%s]\n' "${lis% }"
@@ -1473,7 +1411,7 @@ gate_short_names() {
   for n in ${GATE_RAN[@]+"${GATE_RAN[@]}"}; do out="${out:+$out · }${n#ccm tests/e2e/}"; done
   printf '%s' "$out"
 }
-# 墙钟：这一趟合计 ＋ 最慢的几格（逐格的数在每一格的绿行上、也在收据的 `ms` 里）。
+# 墙钟：这一趟合计 ＋ 最慢的几格（逐格的数在每一格的绿行上）。
 gate_print_timing() {
   local total=$(( $(gate_now_ms) - GATE_T0 )) n ms line=""
   while IFS=$'\t' read -r ms n; do
@@ -1486,16 +1424,7 @@ echo
 gate_print_timing
 # 拼错的 `GATE_ONLY` 是红，不是「少跑一格」。
 gate_check_only
-# 落收据。裁词先算再落：`OK` 只在一格没红且一格没跳时给。
-if [ "${#fails[@]}" -ne 0 ]; then
-  gate_verdict=FAIL
-elif [ "${#GATE_SKIPPED[@]}" -ne 0 ]; then
-  gate_verdict=PARTIAL
-else
-  gate_verdict=OK
-fi
-gate_write_receipt "$gate_verdict"
-
+# 裁决：`OK` 只在一格没红且一格没跳时给。
 if [ "${#fails[@]}" -eq 0 ] && [ "${#GATE_SKIPPED[@]}" -ne 0 ]; then
   # 刻意不印 `GATE: OK`：「跑过的全绿」与「全都跑过」是两句话。
   printf 'GATE: PARTIAL —— 跑过的那 %s 格全绿，但 GATE_ONLY 挡掉了 %s 格：%s\n' \

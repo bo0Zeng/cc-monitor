@@ -4,12 +4,10 @@
 |---|---|
 | [`run.ps1`](run.ps1) | 自动注入 MSVC dev shell 环境后跑 tauri 命令 |
 | [`gate.sh`](gate.sh) | 全量门禁，格的唯一名单：各格跑一遍，末尾只吐一行 `GATE: OK` / `GATE: PARTIAL` / `GATE: FAIL …`；`GATE_ONLY=<格>` 只跑点名的（CI 的 Linux job 这么调它）。平时经 `gate-affected.sh` 挑格跑，全量只在打发版标签前经 `gate-clean.sh` 跑一趟；它故意不提供 `--commit` 开关 |
-| [`verify-committed-state.sh`](verify-committed-state.sh) | 从提交状态（不是工作树）编一次：工作树里有未提交改动时，「工作树绿」与「提交状态绿」是两件事。提交推上候选分支之前 CI 见不到它们，所以在本机跑 |
-| [`hooks-are-runnable.sh`](hooks-are-runnable.sh) | 门禁 `hooks` 那一格：`tests/hooks/` 下会被 git 执行的每个脚本，盘上有没有可执行位 · 库里记没记那个位 · 语法过不过它自己声明的解释器（本仓 `core.filemode=false`，前两条分开判）。自带 8 条阳性对照 |
 | [`assert-coverage-floors.mjs`](assert-coverage-floors.mjs) | 逐文件覆盖率地板 + 0% 文件递减棘轮（聚合阈值看不见单模块归零） |
 | [`rust-coverage.sh`](rust-coverage.sh) | Rust 覆盖率量具：rustc 自带的 `-C instrument-coverage` ＋ 系统 `llvm-profdata` / `llvm-cov`，不装任何东西；两侧各跑一遍与门禁同一条 `cargo test`，报生产源码被执行到的行数。是量具不是门禁 |
 | [`re-embed.sh`](re-embed.sh) | `BUILD_ID` bump 的同拍步骤：把内嵌的那几份后端字节重编并铺回落点，全仓唯一的本机产字节入口。配方与 `release.yml` 产字节那一步同源（门禁 `release-gate` 那一格两向对拍）；`--check` 只问盘上的字节与源码对不对得上，`--native` 铺本机那一份，`--clean` 删落点 |
-| [`quick-check.sh`](quick-check.sh) | 交门禁之前的那一圈（不拿门禁锁、不代替门禁）。恒跑便宜的：两棵 Rust 树的排版 · tsc · 门禁里只读盘上文本的那几格（经 `gate.sh` 的 `GATE_ONLY`，收据另存）· 后端那棵改到的包跑 clippy · 末尾核生成物（`generated-drift.sh`）。重的四段（后端 · 壳两棵整套 `cargo test --lib` · 整套 vitest（逐条耗时另存 `.build/quick-check/vitest-times.json`）· 手机那一套）照 `gate-affected/map` 挑：相对起点（`base.sh`）改到的路径挑上那一段对应的格才跑 —— 前三段扫全仓、表里恒跑，手机那一段按改动挑；表不认识的 · 找不到起点 ⇒ 全跑；跑没跑、为什么逐段印出。测试一律在 `.build/` 下的一次性沙箱里跑（每一步经 `session-scrub.sh` 摘掉会话变量，再换 HOME 与 TMUX_TMPDIR）。「加了子命令要打版本号」那一条单列成「待打版本号」，不算红。`--all` 四段全跑（`gate-affected --trust-ci` 这样调），`--plan` 只印跑不跑，`--only <段>` 只跑那一段 |
+| [`quick-check.sh`](quick-check.sh) | 交门禁之前的那一圈（不拿门禁锁、不代替门禁）。恒跑便宜的：两棵 Rust 树的排版 · tsc · 门禁里只读盘上文本的那几格（经 `gate.sh` 的 `GATE_ONLY`）· 后端那棵改到的包跑 clippy · 末尾核生成物（`generated-drift.sh`）。重的四段（后端 · 壳两棵整套 `cargo test --lib` · 整套 vitest（逐条耗时另存 `.build/quick-check/vitest-times.json`）· 手机那一套）照 `gate-affected/map` 挑：相对起点（`base.sh`）改到的路径挑上那一段对应的格才跑 —— 前三段扫全仓、表里恒跑，手机那一段按改动挑；表不认识的 · 找不到起点 ⇒ 全跑；跑没跑、为什么逐段印出。测试一律在 `.build/` 下的一次性沙箱里跑（每一步经 `session-scrub.sh` 摘掉会话变量，再换 HOME 与 TMUX_TMPDIR）。「加了子命令要打版本号」那一条单列成「待打版本号」，不算红。`--all` 四段全跑（`gate-affected --trust-ci` 这样调），`--plan` 只印跑不跑，`--only <段>` 只跑那一段 |
 | [`session-vars`](session-vars) | 会话继承来的环境变量表，全仓只这一张：Claude Code 与 Codex 的 · tmux 的 · cc-monitor 自己的（连 cc-bus）· 上游与代理的；族里照留的判据输入（`CCM_E2E_*` · `CCM_SHOTS_*` …）以 `!` 标出。`session-scrub.sh`（`gate.sh` · `sandbox-env.sh` · 手机台架照它的 `--list`）与 `src/common/test-home`（测试二进制起来时）读它 |
 | [`session-scrub.sh`](session-scrub.sh) | 摘掉表里的变量再起命令：`heavy.sh` 每个出口、`quick-check.sh` 每一步都经它，于是经它们跑的一切测试与门禁都看不见外面会话的配置目录 · tmux · 真端口 · 上游；`--list` 只印这一刻会摘哪几个 |
 | [`base.sh`](base.sh) | 「这棵树自己改了哪些」的起点：HEAD 与分支上游（没设上游就 origin/main，再没有就 main）的 merge-base。quick-check 挑段、gate-affected 挑格都用它 |
@@ -59,7 +57,7 @@
 没设上游 ⇒ 对 origin/main（合并用的分支上别的分支的改动也算进来，只会多跑、不会漏跑）。合并用的分支自己不设上游，对的就是 origin/main。
 
 **快检里的静态格**：门禁里只读盘上文本、合计十来秒的那几格进快检（`static_cells`，经 `gate.sh` 的 `GATE_ONLY` 跑同一份命令）。
-量过的数（24 核、负载二十多时）：`hooks` 0.3 秒 · `copy2` 1–5 秒 · `e2e-smoke` 0.2 秒 · `release-gate` 1 秒 · `platform` 0.2 秒 · `installface` 0.8 秒 ·
+量过的数（24 核、负载二十多时）：`copy2` 1–5 秒 · `e2e-smoke` 0.2 秒 · `release-gate` 1 秒 · `platform` 0.2 秒 · `installface` 0.8 秒 ·
 `shellcheck` 九十来份串跑 20–57 秒、按核数并起后 4–5 秒（门禁那一格也是并起的）；门禁脚本自己起跑约 3 秒。
 不进快检的：`worktree-clean`（快检本来就跑在没提交的树上）· `audit`（要联网）· `tmux-default` 与 `ccbus-twophase`（要起真进程）· 编译类各格；
 Windows 交叉编译与死码（`winchk` · `winchk-backend` · `winlink` · `deadcode` · `deadcode-backend`）要编 Windows 目标或整棵再编一遍，一格几分钟，留给 gate-affected。

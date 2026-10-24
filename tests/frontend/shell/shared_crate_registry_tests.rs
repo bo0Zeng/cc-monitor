@@ -168,40 +168,13 @@ fn every_shared_crate_is_a_workspace_member() {
 
 /// ★★ **每个 path 依赖的 `Cargo.toml` 都必须已被 git 跟踪**。
 ///
-/// # 它是那个真事故的**结构性**修法
-///
-/// 事故原文（`tests/scripts/verify-committed-state.sh` 头注）：`gate-core` 这条依赖
-/// **从没被提交过** ⇒ **committed `main` 连续约 20 轮编不过**，而每一次「全绿」
-/// 都来自我的工作树。根因是「排除用户改动」那半做了、「blob-replay 我方那几行」那半没做。
-///
-/// # 为什么不接 pre-push 钩子（理由进 `DECISIONS §2`）
-///
-/// **本工作流的红线是「从不 push」** —— 那正是 `verify-committed-state.sh` 存在的理由：
-/// 它是 CI 的本地替身。⇒ **pre-push 钩子永远不会触发**，接了等于没接。
-/// 而 pre-commit 挂那个脚本要 80–150 秒，每次提交都付这个代价不现实。
-/// ⇒ 真正的修法不是找个钩子挂它，是**把检查从「记得跑那个慢脚本」搬进「总会跑的快套件」**。
-/// 本条就是那一步：它跑在 `cargo test` 里，**每轮门禁必过**，耗时几十毫秒。
-///
-/// ⚠ 它**不取代**那个脚本：脚本做的是「在干净检出上真跑 `cargo check`」，
-/// 覆盖面更宽（任何编译错误）。本条只钉**那一类**最阴的错
-/// —— 依赖声明在、而被依赖的东西根本没进版本库。**两者并存，不是二选一。**
+/// 2026-08-04 真事故：`gate-core` 这条依赖**从没被提交过** ⇒ 提交状态的 `main` 连续约 20 轮编不过，
+/// 而每一次「全绿」都来自工作树。本条跑在 `cargo test` 里、几十毫秒，在本机就把这一类钉住，不必等 CI 检出那一趟。
 #[test]
 fn every_path_dependency_is_actually_committed() {
     let toml = fs::read_to_string(root().join("Cargo.toml")).expect("Cargo.toml 读不到");
-    // 抽 `path = "…"` 的值 —— **只认内联表里那一个**（`x = { path = "…" }`）。
-    //
-    // 🔴**这一刀是现打逼出来的，不是洁癖。**
-    // 上一版抽的是文件里**每一处** `path = "`，而 `[[bin]]` / `[[example]]` /
-    // `[[test]]` 这种**目标**声明里那个顶格的 `path = "src/…"` 指的是**一个入口文件**，
-    // 不是一棵 crate 树 ⇒ 它会被拼成 `src/frontend/shell/src/main.rs/Cargo.toml` 去问 git，
-    // 而那个东西按构造永远不存在 ⇒ **本条当场假红**。
-    // 现打：本包加第二个 `[[bin]]` 那一刻，这一条报的是「`src/main.rs/Cargo.toml`
-    // 没被 git 跟踪」—— 一条**讲错了成因**的红灯（本仓记过：讲错成因的红比不红更坏）。
-    //
-    // ⚠ 判准是**形状**不是白名单：依赖声明恒是内联表（`{ path = … }`），
-    // 目标声明恒是表里的一个顶格键（只认依赖段：`[[bin]]` 那条 `path` 指的是入口文件，不是一棵树）。
-    // 🔴 解析那一段搬进了 `guard_core::inline_table_paths`（同拍，2026-09-23）——
-    //    理由与「它买不到什么」住那个原语的头注，不在这里抄第二份。
+    // 只认内联表里的 `path = "…"`（`x = { path = "…" }`）：`[[bin]]` 那种目标声明里的 `path` 指入口文件，不是一棵 crate 树。
+    // 解析住 `guard_core::inline_table_paths`。
     let paths: Vec<String> = guard_core::inline_table_paths(&toml);
     // 抽取器自检（正控）：守卫原语那个共享 crate 的 path 依赖必被抽到。
     assert!(
@@ -225,9 +198,7 @@ fn every_path_dependency_is_actually_committed() {
     assert!(
         untracked.is_empty(),
         "这些 path 依赖的 `Cargo.toml` **没有被 git 跟踪**：{untracked:?}\n\
-             ⇒ 别人（和 CI）检出这个提交会直接编不过，而你的工作树一切正常。\n\
-             这正是 `tests/scripts/verify-committed-state.sh` 头注记的那个真事故\n\
-             （`gate-core` 从没被提交，committed main 连续约 20 轮编不过）。"
+             ⇒ 别人（和 CI）检出这个提交会直接编不过，而你的工作树一切正常。"
     );
 }
 
@@ -1025,134 +996,6 @@ fn the_premise_behind_three_honesty_boundaries_still_holds() {
         "「裁过的」那一支这一趟走了 {seen_adjudicated} 次，而登记表有 {} 行 —— \n\
              对不上说明有登记行没被行使（上面两条 panic 本该先响；都没响就是扫描面漏了文件）。",
         ADJUDICATED.len()
-    );
-}
-
-/// **唯一量「提交状态」的那道门，本身没人守着。**
-///
-/// `tests/scripts/verify-committed-state.sh` 的头注逐字写着它为什么必须存在：
-/// 2026-08-04 实测，`gate-core` 那条 path 依赖**一次都没落盘**，
-/// 提交状态的 `main` 在任何平台上都编不过，**持续了约二十轮** ——
-/// 而每一轮的 `cargo test` / fmt / clippy 读数**都是真的**，
-/// 因为它们量的是**工作树**。「工作树绿」与「提交状态绿」是两件事。
-/// 它同时写着「本仓红线是不 push ⇒ CI 从来没见过这些 commit，**这道门必须在本机跑**」。
-///
-/// # 本条钉什么
-///
-/// 08-06 查到：`ci.yml` 里**只有一句注释**提到这个脚本（不是步骤），
-/// 而仓里**没有任何判据读它的内容** ⇒ 三项检查被删掉一项不会红。
-/// 本条钉住那三项还在：`monitor-lib` · `backend` · `backend-win`。
-///
-/// ⚠ **如实记一处局限**（免得把它的绿读大）：monitor 那项是 `cargo check --lib`，
-/// **不编测试段**。所以「提交状态编得过」不等于「提交状态的测试编得过」。
-/// 真要覆盖那一半得改成 `--all-targets`，代价是本机每次多编一大块 —— 暂不做，
-/// 写在这里让下一个人看得见。
-#[test]
-fn the_only_gate_that_measures_committed_state_still_does_all_three_checks() {
-    let path = guard_core::addr::repo_root().join("tests/scripts/verify-committed-state.sh");
-    let src = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读不到 {path:?}: {e}"));
-
-    // `(检查名, 那一行还必须含什么)` —— 钉性质不钉整行，留出改写空间。
-    const CHECKS: &[(&str, &str)] = &[
-        ("run monitor-lib", "cargo check"),
-        ("run backend ", "cargo check --all-targets"),
-        ("run backend-win", "x86_64-pc-windows-msvc"),
-    ];
-    for (head, must) in CHECKS {
-        let hit = src
-            .lines()
-            .map(str::trim)
-            .filter(|l| !l.starts_with('#'))
-            .any(|l| l.starts_with(head) && l.contains(must));
-        assert!(
-            hit,
-            "`verify-committed-state.sh` 里找不到 `{head}` 那一项（且含 `{must}`）。\n\
-                 ⚠ 这是**唯一量「提交状态」的门**：其余门禁量的都是工作树。\n\
-                 它存在的理由是一次真事故 —— 一条 path 依赖没落盘，提交状态的 `main`\n\
-                 **约二十轮编不过**，而每一轮的工作树读数都是真的。\n\
-                 而且本仓不 push ⇒ CI 见不到这些 commit，这道门**只能在本机跑**。\n\
-                 删掉一项之前，先说清楚那半由谁接。"
-        );
-    }
-}
-
-/// **三项还在 ≠ 三项都跑了**。
-///
-/// 上一条钉的是那三项检查**存在**。而 `backend-win` 那项包在
-/// `if rustup target list --installed | grep -q x86_64-pc-windows-msvc` 里 ——
-/// ★ 08-08 **真路实测**（临时放一个假 `rustup` 到 `PATH` 前面、让它报「什么都没装」）：
-///
-/// ```text
-///    ok   monitor-lib
-///    ok   backend
-///    skip backend-win（没装 x86_64-pc-windows-msvc target）
-/// == 提交状态编得过 ==            ← 与三项全跑时**一字不差**，exit 0
-/// ```
-///
-/// 而读门禁的人（以及 loop 里的我，习惯是 `| tail -2`）读的就是最后那一行 ⇒
-/// **Windows 那半没量这件事，在结论里没有任何痕迹**，上一条判据照旧全绿。
-///
-/// 这正是本区反复逮到的那个形状在门禁自己身上的一例：
-/// 「围栏有判据 ≠ 那条路过了围栏」——这次是「检查在 ≠ 检查跑」。
-///
-/// # 为什么它比一般的静默降级更要紧（E8）
-///
-/// 定框 E8 逐字规定：没有当次 Windows 证据时，「全绿」只许写成「Linux 上全绿」。
-/// 而跨 target check 在**本机**只有这一处真跑 —— `ci.yml` 那条要 push 才动，
-/// 本仓红线是**不 push**。⇒ 这一跳过，E8 所说的那个前提就整个没了。
-///
-/// # 本条是**源码层代理**，如实写明
-///
-/// 真路今天由人跑（改前/改后各一次，输出见上）。没做成自动判据的理由具体：
-/// 它要在临时 worktree 里真编两遍 cargo check（约一分钟），
-/// 放进 `cargo test` 等于每轮门禁多编一遍全仓。⇒ 登记进。
-/// 本条能挡的是「有人把降级那一支改回成和成功一样的结论」；
-/// 挡不住的是「`run` 函数本身坏掉但文本还在」。
-#[test]
-fn a_skipped_windows_check_cannot_look_like_a_full_pass() {
-    let path = guard_core::addr::repo_root().join("tests/scripts/verify-committed-state.sh");
-    let src = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读不到 {path:?}: {e}"));
-    // ⚠ **只看非注释行**：本脚本的头注里逐字引用着那句成功结论（讲的就是这次事故），
-    // 连注释一起数，下面「恰好一处」当场变成两处 —— 08-08 写这条时就差点踩上。
-    let code: Vec<&str> = src
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.starts_with('#'))
-        .collect();
-    assert!(
-        !code.is_empty(),
-        "剥注释后一行不剩 —— 读法坏了，下面几条会零命中地绿"
-    );
-
-    let plain = code
-        .iter()
-        .filter(|l| l.contains("提交状态编得过") && !l.contains("Linux"))
-        .count();
-    assert_eq!(
-        plain, 1,
-        "无保留的成功结论「提交状态编得过」在可执行部分出现 {plain} 次（应为 1）。\n\
-             ⚠ 出现 0 次 = 结论措辞被换掉了，本条其余几款都在空转；\n\
-             出现 2 次以上 = 很可能降级那一支也在打同一句话 —— 那就等于没降级。"
-    );
-
-    assert!(
-        code.iter()
-            .any(|l| l.starts_with("skipped=") && l.contains("backend-win")),
-        "跳过 `backend-win` 那一支没有把这件事**记进变量**（找不到 `skipped=…backend-win…`）。\n\
-             ⚠ 只 `echo` 一行「skip」是不够的：结论行不读它，读门禁的人只看最后一行。\n\
-             08-08 真路实测过这个状态：skip 打了，最后一行仍是「== 提交状态编得过 ==」、exit 0。"
-    );
-    assert!(
-        code.iter().any(|l| l.contains("-n \"$skipped\"")),
-        "结论没有分支到 `$skipped` 上 —— 那个变量记了也没人读，等于没记。"
-    );
-    let degraded = code.iter().filter(|l| l.contains("Linux 上编得过")).count();
-    assert_eq!(
-        degraded, 1,
-        "降级结论（含「Linux 上编得过」）出现 {degraded} 次（应为 1）。\n\
-             ★ 定框 E8 逐字写着：没有当次 Windows 证据时，结论只许写成「Linux 上全绿」。\n\
-             而跨 target check 在**本机**只有这一处真跑（`ci.yml` 那条要 push，本仓不 push）\n\
-             ⇒ 它一跳过，E8 的前提就整个没了，结论必须自己把这件事说出来。"
     );
 }
 
