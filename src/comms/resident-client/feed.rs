@@ -29,6 +29,7 @@ use crate::frames::Admit;
 use crate::line::{read_capped_line, CappedLine, BACKEND_FRAME_LINE_CAP};
 use crate::watch::Desk;
 use cmd_wire::attach::Relation;
+use cmd_wire::dial::OLD_BACKEND_MARKER;
 use cmd_wire::machine::{Blocker, Why};
 use copy_core::copy_text;
 use std::future::Future;
@@ -251,9 +252,9 @@ pub fn sink(f: impl Fn(Event) + Send + Sync + 'static) -> Sink {
     })
 }
 
-/// 走不通的一轮：那一句 ＋ 是哪一类。
-struct Fail {
-    problem: Problem,
+/// 走不通的一轮：那一句 ＋ 是哪一类（哪一类只循环自己看）。
+pub struct Fail {
+    pub problem: Problem,
     kind: FailKind,
 }
 
@@ -1003,13 +1004,10 @@ async fn route(client: &InboundClient, kind: &str, line: &str, events: &Sink) {
 /// shell 找不到命令 / 不能执行。
 const ABSENT_CODES: [u32; 2] = [126, 127];
 
-/// 不认 `--resident-ensure` 的老后端会把它当未知旗标、直接进流模式发 hello ⇒ 见到它就当「太旧」（桌面收全那一趟见到它就提前收）。
-pub const OLD_BACKEND_MARKER: &str = "\"kind\":\"hello\"";
-
-/// 一次性 CLI 的回话（`--resident-ensure [--replace]`）：退出 0 ＋ stdout 一行 JSON 对象 ⇒ 成；stdout 里有 hello ⇒ 老后端、要更新；
-/// 127 / 126 ⇒ 没装；非 0 ＋ stderr 一行 `{code, message, detail}` ⇒ 那一句（`code == "unsupported"` ⇒ 那台不是 Unix）；
-/// 对不上协议 ⇒ 原样进详情。
-fn read_one_shot(exec: &Exec, machine: &str) -> Result<serde_json::Value, Fail> {
+/// 一次性 CLI 的回话（`--resident-ensure [--replace]` · `--resident-stop`，桌面停那一趟也读它）：退出 0 ＋ stdout 一行 JSON 对象 ⇒ 成；
+/// stdout 里有 hello（[`OLD_BACKEND_MARKER`]）⇒ 老后端、要更新；127 / 126 ⇒ 没装；非 0 ＋ stderr 一行 `{code, message, detail}` ⇒ 那一句
+/// （`code == "unsupported"` ⇒ 那台不是 Unix）；对不上协议 ⇒ 原样进详情。
+pub fn read_one_shot(exec: &Exec, machine: &str) -> Result<serde_json::Value, Fail> {
     let out = exec.stdout.trim();
     let err = exec.stderr.trim();
     let raw = || format!("exit: {:?}\nstdout: {out}\nstderr: {err}", exec.exit_status);

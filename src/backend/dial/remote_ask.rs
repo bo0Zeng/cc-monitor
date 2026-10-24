@@ -24,6 +24,7 @@
 //! **写口只有 [`register`] 一个**：`remote-reach`（每台远端流握手时 monitor 无条件交）与 `assets-sync`
 //! （顺手登记）都调它。
 
+use cmd_wire::dial::OLD_BACKEND_MARKER;
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -38,9 +39,6 @@ pub const PULL_MAX_BYTES: usize = 16 * 1024 * 1024;
 
 /// 可达表的条数上限（有界资源；一个人配不出这么多台远端）。
 pub const MAX_REACH: usize = 256;
-
-/// 老后端不认一次性子命令会进流模式、第一行是 hello —— capture 看见它就收工（不让它装 hook、不挂住）。
-pub(crate) const HELLO_MARKER: &str = "\"kind\":\"hello\"";
 
 /// 那台不认这条命令 / 子命令：与帧协议里同一个码。
 const UNKNOWN_COMMAND: &str = "unknown_command";
@@ -500,7 +498,7 @@ pub(crate) fn for_capture(
     req.command = command;
     req.capture = Some(crate::dial::CaptureOpts {
         max_bytes: PULL_MAX_BYTES,
-        abort_marker: Some(HELLO_MARKER.to_string()),
+        abort_marker: Some(OLD_BACKEND_MARKER.to_string()),
         stdin,
     });
     req.stages = false;
@@ -589,7 +587,7 @@ fn settle_pulled(got: &crate::dial::Captured) -> Result<String, Said> {
         message,
     };
     let stdout = got.stdout.as_str();
-    if stdout.contains(HELLO_MARKER) {
+    if stdout.contains(OLD_BACKEND_MARKER) {
         // 那台的后端不认这条子命令（掉进了流模式）：码同「不认这条命令」，话按码取；知道那台名字的调用方换成名字（[`ask`]）。
         return Err(Said {
             code: Some(UNKNOWN_COMMAND.to_string()),

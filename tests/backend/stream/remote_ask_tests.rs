@@ -376,7 +376,7 @@ fn a_capture_dial_carries_the_stdin_line_verbatim_and_only_when_given() {
     );
     assert_eq!(
         cap.abort_marker.as_deref(),
-        Some(crate::dial::remote_ask::HELLO_MARKER)
+        Some(cmd_wire::dial::OLD_BACKEND_MARKER)
     );
     let without =
         crate::dial::remote_ask::for_capture(&dial, "'/b'".into(), None).expect("拼得出请求");
