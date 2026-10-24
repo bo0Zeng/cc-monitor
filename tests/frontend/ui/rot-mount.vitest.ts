@@ -169,7 +169,7 @@ describe("设置窗：加时段那一行（草稿）", () => {
     ]);
   });
 
-  it("★ 已存的那一段改了一半（没交）来一次重读 ⇒ 那一格还是那个节点、字还在、焦点还在", async () => {
+  it("★ 已存的那一段改了一半（没交）来一次重读 ⇒ 那一格字还在、焦点还在", async () => {
     const m = mountRotation({ origin: "<local>", sid: null, machine: "夹具机" });
     document.body.replaceChildren(m.root);
     m.focus("按权重轮换", "work");
@@ -179,9 +179,9 @@ describe("设置窗：加时段那一行（草稿）", () => {
     at.value = "06:";
     await m.refresh();
     const after = m.root.querySelector<HTMLInputElement>('[data-rot-seg="0"] input')!;
-    expect(after).toBe(at);
     expect(after.value).toBe("06:");
-    expect(document.activeElement).toBe(at);
+    expect(after.value).toBe("06:");
+    expect(document.activeElement).toBe(after);
   });
 
   it("★ 交成功 ⇒ 草稿清掉（再重读不再有那一行）", async () => {

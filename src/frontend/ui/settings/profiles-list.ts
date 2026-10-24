@@ -452,9 +452,16 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     return r;
   };
 
+  /** 照手上的那份画清单与右栏（kit morph：开着的表单里正打着的字 · 焦点不丢）。 */
   const render = (): void => {
-    left.replaceChildren();
-    right.replaceChildren();
+    const l: Node[] = [];
+    const r: Node[] = [];
+    draw(l, r);
+    morph(left, l);
+    morph(right, r);
+  };
+
+  const draw = (l: Node[], r: Node[]): void => {
     renderNotes();
     // 列表头只在有清单时挂上（它是 flex 盒，`hidden` 盖不住）。
     if (book?.exists && !book.fileProblem) {
@@ -470,11 +477,11 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       if (fp.detail !== null) sayWithDetail(err, said, fp.detail);
       card.append(el("div", "prof-card-title", copyText("profilesPage.file.broken")), err);
       if (opts.local) card.appendChild(button(copyText("profilesPage.list.open"), "settings-btn", () => void onOpenFile()));
-      left.appendChild(card);
+      l.push(card);
       return;
     }
     if (!book.exists) {
-      left.appendChild(emptyState(book));
+      l.push(emptyState(book));
       return;
     }
     const tree = el("div", "prof-tree");
@@ -483,14 +490,14 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     const wide = window.matchMedia?.(WIDE).matches ?? true;
     lines.forEach((t, i) => {
       tree.appendChild(treeRow(t, i, lines));
-      if (form?.was === t.p.name) tree.appendChild(form.el);
+      if (form?.was === t.p.name) tree.appendChild(freshForm());
       if (!wide && selected === t.p.name && !form) tree.appendChild(panel());
     });
     if (!lines.length) tree.appendChild(el("div", "cfg-hint prof-empty", copyText("profilesPage.list.empty")));
-    if (form && form.was === null) tree.appendChild(form.el);
-    left.appendChild(tree);
+    if (form && form.was === null) tree.appendChild(freshForm());
+    l.push(tree);
     split.classList.toggle("prof-split-on", wide && selected !== null && !form);
-    if (wide && selected && !form) right.appendChild(panel());
+    if (wide && selected && !form) r.push(panel());
   };
 
   const emptyState = (b: ProfilesBook): HTMLElement => {
@@ -942,7 +949,16 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     return cell;
   };
 
-  const paintForm = (): void => {
+  /** 表单整份新画进一个新容器（清单重画时用：正打着的字由外层那一次 morph 搬过来）；「更多」开没开照旧那份。 */
+  const freshForm = (): HTMLElement => {
+    const st = form!;
+    const prev = st.el;
+    st.el = el("div", "");
+    paintForm(prev);
+    return st.el;
+  };
+
+  const paintForm = (prev?: HTMLElement): void => {
     const st = form;
     if (!st) return;
     const f = st.form;
@@ -1001,7 +1017,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     const moreGrid = el("div", "cfg-fg prof-fg");
     for (const s of MORE_SLOTS) moreGrid.append(el("div", "cfg-fl", SLOT_LABEL[s]()), slotEditor(s, f, accounts));
     more.appendChild(moreGrid);
-    const prevMore = st.el.querySelector("details.prof-more") as HTMLDetailsElement | null;
+    const prevMore = (prev ?? st.el).querySelector("details.prof-more") as HTMLDetailsElement | null;
     if (prevMore) more.open = prevMore.open;
     field("", more);
     box.appendChild(grid);

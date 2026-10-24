@@ -202,7 +202,7 @@ describe("buildProfilesList", () => {
     expect(el.querySelector('[data-role="profile-form"]')).not.toBeNull();
   });
 
-  it("★ 打了一半的字遇到一次重读（存时撞上别处改过 ⇒ 重读重画），字还在、还是那一格", async () => {
+  it("★ 打了一半的字遇到一次重读（存时撞上别处改过 ⇒ 重读重画），字还在、焦点还在", async () => {
     staleOnce = true;
     const { el } = await mount();
     [...el.querySelectorAll<HTMLElement>('.prof-trow[data-name="workcc"] .cfg-link')][0].click();
@@ -215,7 +215,7 @@ describe("buildProfilesList", () => {
     await flush();
     const after = el.querySelector<HTMLInputElement>('[data-role="profile-form"] input[data-role="name"]')!;
     expect(after.value).toBe("半截");
-    expect(after).toBe(name);
+    expect(document.activeElement).toBe(after);
   });
 
   it("删一条被别人基于的：三个选择、默认推荐改成基于它的父；点执行交 remove + reparent", async () => {

@@ -1,5 +1,5 @@
 /**
- * 按身份原地画（`kit/morph.ts`）：重画不丢正在打的字 · 不丢焦点；同一个身份的节点留着、只挪位置。
+ * 按身份原地画（`kit/morph.ts`）：重画不丢正在打的字 · 不丢焦点 · 不丢光标；新树的回调认得的就是人在打字的那一格。
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { morph, place } from "../../../../src/frontend/ui/kit/morph";
@@ -12,59 +12,75 @@ function row(key: string, value = ""): HTMLElement {
   const input = document.createElement("input");
   input.dataset.key = `${key}.at`;
   input.value = value;
-  input.defaultValue = value;
   r.appendChild(input);
   return r;
 }
 
-describe("morph：整棵新树换进来，正打着的那一格不碰", () => {
-  it("输入框有焦点、值为 20:，morph 一棵值为空的新树后：还是同一个节点、焦点还在、值还是 20:、光标还在末尾", () => {
+describe("morph：整棵新树换进来，正打着的那一格不丢", () => {
+  it("输入框有焦点、值为 20:，morph 一棵值为空的新树后：同一格（同一个身份）、焦点还在、值还是 20:、光标还在原处", () => {
     const host = document.createElement("div");
     document.body.appendChild(host);
-    host.append(row("a"), row("b"));
+    morph(host, [row("a"), row("b")]);
     const input = host.querySelector<HTMLInputElement>('[data-key="b.at"]')!;
     input.focus();
     input.value = "20:";
-    input.setSelectionRange(3, 3);
-    morph(host, [row("a"), row("b"), row("c")]);
+    input.setSelectionRange(2, 2);
+    const fresh = [row("a"), row("b"), row("c")];
+    morph(host, fresh);
     const after = host.querySelector<HTMLInputElement>('[data-key="b.at"]')!;
-    expect(after).toBe(input);
-    expect(document.activeElement).toBe(input);
+    expect((after.parentElement as HTMLElement).dataset.key).toBe("b");
+    expect(fresh[1].contains(after), "是新树里那一格（新树的回调认得它）").toBe(true);
+    expect(document.activeElement).toBe(after);
     expect(after.value).toBe("20:");
-    expect(after.selectionStart).toBe(3);
+    expect(after.selectionStart).toBe(2);
     expect(host.querySelectorAll("[data-key$='.at']").length).toBe(3);
   });
 
-  it("没焦点但改过没交的框（值不等于画出来时的值）也留着；没改过的照新树换", () => {
+  it("没焦点但改过没交的框（值不等于画出来时的值）也留着字；没改过的照新树的值", () => {
     const host = document.createElement("div");
     document.body.appendChild(host);
-    host.append(row("a", "1"), row("b", "2"));
-    const a = host.querySelector<HTMLInputElement>('[data-key="a.at"]')!;
-    const b = host.querySelector<HTMLInputElement>('[data-key="b.at"]')!;
-    a.value = "改了";
+    morph(host, [row("a", "1"), row("b", "2")]);
+    host.querySelector<HTMLInputElement>('[data-key="a.at"]')!.value = "改了";
     morph(host, [row("a", "9"), row("b", "9")]);
-    expect(host.querySelector('[data-key="a.at"]')).toBe(a);
-    expect(a.value).toBe("改了");
-    const nb = host.querySelector<HTMLInputElement>('[data-key="b.at"]')!;
-    expect(nb).not.toBe(b);
-    expect(nb.value).toBe("9");
+    expect(host.querySelector<HTMLInputElement>('[data-key="a.at"]')!.value).toBe("改了");
+    expect(host.querySelector<HTMLInputElement>('[data-key="b.at"]')!.value).toBe("9");
   });
 
-  it("新树里没有那个身份了 ⇒ 留着的那一格跟着没（不凭空留一格）", () => {
+  it("新树里没有那个身份了 ⇒ 那一格跟着没（不凭空留一格）", () => {
     const host = document.createElement("div");
     document.body.appendChild(host);
-    host.append(row("a"));
+    morph(host, [row("a")]);
     const a = host.querySelector<HTMLInputElement>("input")!;
     a.focus();
     a.value = "x";
     morph(host, [row("b")]);
-    expect(host.contains(a)).toBe(false);
+    expect(host.querySelector('[data-key="a.at"]')).toBeNull();
     expect(host.querySelector('[data-key="b.at"]')).not.toBeNull();
+  });
+
+  it("同一行的按钮读的就是人打过字的那一格（新树的闭包捕获的是新画的那一格）", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    let sent = "";
+    const mk = (): HTMLElement => {
+      const r = document.createElement("div");
+      const msg = document.createElement("input");
+      msg.dataset.key = "msg";
+      const send = document.createElement("button");
+      send.addEventListener("click", () => (sent = msg.value));
+      r.append(msg, send);
+      return r;
+    };
+    morph(host, [mk()]);
+    host.querySelector("input")!.value = "你好";
+    morph(host, [mk()]);
+    host.querySelector("button")!.click();
+    expect(sent).toBe("你好");
   });
 });
 
 describe("morph：画出来时的值就是基准", () => {
-  it("只设了 value（没设 defaultValue）的框：没人改过 ⇒ 下一次照新值换；人改了 ⇒ 留着", () => {
+  it("没人改过 ⇒ 下一次照新值；人改了 ⇒ 留着；交上去后端也回成同一个值 ⇒ 又照新值", () => {
     const host = document.createElement("div");
     document.body.appendChild(host);
     const mk = (v: string): HTMLInputElement => {
@@ -73,18 +89,16 @@ describe("morph：画出来时的值就是基准", () => {
       i.value = v;
       return i;
     };
+    const val = (): string => host.querySelector("input")!.value;
     morph(host, [mk("x")]);
     morph(host, [mk("y")]);
-    const i = host.querySelector("input")!;
-    expect(i.value).toBe("y");
-    i.value = "人打的";
+    expect(val()).toBe("y");
+    host.querySelector("input")!.value = "人打的";
     morph(host, [mk("z")]);
-    expect(host.querySelector("input")).toBe(i);
-    expect(i.value).toBe("人打的");
-    // 交上去了、后端也回成同一个值 ⇒ 没在改了：下一次照新值换
+    expect(val()).toBe("人打的");
     morph(host, [mk("人打的")]);
     morph(host, [mk("w")]);
-    expect(host.querySelector("input")!.value).toBe("w");
+    expect(val()).toBe("w");
   });
 });
 
@@ -124,5 +138,23 @@ describe("place：容器的孩子换成这一串，留着的节点原地不动",
     expect(document.activeElement).toBe(a);
     place(host, [b]);
     expect([...host.children]).toEqual([b]);
+  });
+});
+
+describe("morph：调用方自己留着的那个节点（原样交回）", () => {
+  it("焦点 · 字 · 光标都还在", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const wrap = document.createElement("div");
+    const i = document.createElement("input");
+    i.dataset.key = "k";
+    wrap.appendChild(i);
+    morph(host, [wrap]);
+    i.focus();
+    i.value = "xy";
+    i.setSelectionRange(1, 1);
+    // 直接交回那个节点（先挪进别的新容器会当场失焦 —— 那样的画法该整棵新画、交给 morph 搬值）。
+    morph(host, [document.createElement("hr"), wrap]);
+    expect([document.activeElement === i, i.value, host.contains(i), i.selectionStart]).toEqual([true, "xy", true, 1]);
   });
 });
