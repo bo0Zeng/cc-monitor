@@ -5,8 +5,8 @@
 //! - `plan-list {dirs?, fresh?}`：这台的工作区与片。目录 ＝ 此刻活着的会话的工作目录 ∪ `dirs`；每个目录让 pb 自己往上找工作区
 //!   （认过的目录不再问，`fresh: true` 全部重问）。
 //! - `plan-read {workspace}`：一个工作区的成品（[`crate::plan::product`]，顶上带 `rev` · `readAt` · `stale`）。
-//! - `plan-cell-view {workspace, slice, id}`：一格的 `agent_view`（上一次读好的那一份里的）。
-//! - `plan-command {workspace, cmd: continue|pause|take|view, slice?}`：以人的身份代敲 pb 的命令（写盘的是 pb）；`take` 接 `slice` 那一片的仓库。
+//! - `plan-cell-view {workspace, slice, id}`：一格的 agent 视角（点到才起 `pb dump --cell`）。
+//! - `plan-command {workspace, cmd: continue|pause|take|view|record, slice?, summary?, quotes?}`：以人的身份代敲 pb 的命令（写盘的是 pb）；`take` 接 `slice` 那一片的仓库；`record` 把人的原话记进 `slice` 那一片。
 //! - `plan-files {dir}`：文件窗口反查（[`crate::plan::owners`]）：这个目录落在哪一片的仓库里、每份文件归哪一格。
 //! - `plan-pb-check {dir}`：这个路径能不能当 pb 用（[`locate::check`]），设置里存 pb 路径之前问。
 //!
@@ -129,7 +129,7 @@ fn read_dir(entry: &Path, dir: &Path) -> Result<Value, book::Miss> {
         .and_then(Value::as_str)
         .map(PathBuf::from)
     {
-        // pb 的输出随当前目录变（agent_view 里的路径是相对当前目录的）⇒ 一律以工作区根为准再读一次，
+        // pb 的输出里印的路径可能随当前目录变 ⇒ 一律以工作区根为准再读一次，
         // 摘要才与盯盘那一路（当前目录 ＝ 工作区根）对得上，不会凭空推一帧。
         if ws.as_path() != dir {
             out = book::book().read(entry, &ws, &who, now_ms(), &prior)?;
@@ -191,16 +191,36 @@ fn miss(m: book::Miss) -> Fail {
 /// `plan-command {workspace, cmd, slice?}`：以人的身份代敲 pb 的一条命令（[`crate::plan::command`]）。
 /// 写盘的是 pb；改了工作区配置 ⇒ 盯盘那一路照常推 `changed {plan}`（`auto` · 只写文档 · 此刻那一片都在成品里）。
 /// `take` 先现读一次（起 pb），按那一片此刻只写不只写文档 · 是不是此刻那一片定敲哪几条。
+/// `record` 记进 `slice` 那一片（`pb record --slice`，工作区的当前片不动）：定了什么一行 ＋ 原话一句一项。
 fn command(req: &PlanCommandReq, tz: &crate::Tz) -> Result<wire::PlanCmdReply, Fail> {
     let cmd = Some(req.cmd.as_str())
         .filter(|c| crate::plan::command::VERBS.contains(c))
-        .ok_or_else(|| bad("`cmd` must be one of continue · pause · take · view"))?;
-    if (cmd == "take") != req.slice.is_some() {
-        return Err(bad("`slice` goes with `take` and only with it"));
+        .ok_or_else(|| bad("`cmd` must be one of continue · pause · take · view · record"))?;
+    if matches!(cmd, "take" | "record") != req.slice.is_some() {
+        return Err(bad(
+            "`slice` goes with `take` · `record` and only with them",
+        ));
+    }
+    if (cmd == "record") != (req.summary.is_some() || req.quotes.is_some()) {
+        return Err(bad(
+            "`summary` · `quotes` go with `record` and only with it",
+        ));
     }
     let entry = entry()?;
     let ws = Path::new(&req.workspace);
     let run = |args: &[&str]| crate::plan::command::run(&entry, ws, args);
+    if cmd == "record" {
+        let slice = req.slice.as_deref().unwrap_or_default();
+        let summary = req.summary.as_deref().unwrap_or_default();
+        let quotes = req.quotes.as_deref().unwrap_or_default();
+        let args = crate::plan::command::record_args(slice, summary, quotes).ok_or_else(|| {
+            bad("`summary` must be one non-empty line and `quotes` non-empty, without NUL")
+        })?;
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        return run(&args)
+            .map_err(|(code, said, raw)| Fail::new(code, said).with_raw(raw.as_deref()))
+            .and_then(wired::<wire::PlanCmdReply>);
+    }
     let out = match req.slice.as_deref() {
         Some(name) => {
             let doc = read_fresh(&req.workspace, tz)?;
@@ -219,7 +239,7 @@ fn command(req: &PlanCommandReq, tz: &crate::Tz) -> Result<wire::PlanCmdReply, F
             let flag = |k: &str| sl.get(k).and_then(Value::as_bool) == Some(true);
             let t = crate::plan::command::Taking {
                 slice: name,
-                path: sl.get("path").and_then(Value::as_str).unwrap_or(name),
+                path: sl.get("path").and_then(Value::as_str).unwrap_or_default(),
                 docs_only: flag("docsOnly"),
                 current: flag("current"),
             };
@@ -250,7 +270,7 @@ fn files(dir: &str, tz: &crate::Tz) -> Result<wire::PlanFiles, Fail> {
     let out = match doc {
         Some(d) => crate::plan::owners::of_dir(&d, dir),
         None => {
-            json!({"workspace": null, "slice": null, "unreadable": null, "entries": [], "unowned": null})
+            json!({"workspace": null, "slice": null, "unreadable": null, "entries": [], "unowned": null, "unownedWhy": null})
         }
     };
     wired::<wire::PlanFiles>(out)
@@ -405,13 +425,24 @@ pub(crate) struct PlanCellView {
 pub(crate) struct PlanCommandReq {
     /// 工作区根。
     pub(crate) workspace: String,
-    /// `continue` · `pause` · `take` · `view`。
-    #[cfg_attr(test, ts(type = "\"continue\" | \"pause\" | \"take\" | \"view\""))]
+    /// `continue` · `pause` · `take` · `view` · `record`。
+    #[cfg_attr(
+        test,
+        ts(type = "\"continue\" | \"pause\" | \"take\" | \"view\" | \"record\"")
+    )]
     pub(crate) cmd: String,
-    /// `take` 接哪一片的仓库（片名）；别的动词不带。
+    /// `take` 接哪一片的仓库 · `record` 记进哪一片（片名）；别的动词不带。
     #[serde(default)]
     #[cfg_attr(test, ts(optional = nullable))]
     pub(crate) slice: Option<String>,
+    /// `record`：定了什么（一行）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) summary: Option<String>,
+    /// `record`：人的原话，一句一项（照抄；没带「」pb 包上）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) quotes: Option<Vec<String>>,
 }
 
 /// `plan-pb-check` 的入参。
@@ -464,9 +495,13 @@ typed::codes! {
 }
 
 typed::codes! {
-    /// `plan-cell-view` 的码：上一次读好的那一份里没有这一格的视角。
+    /// `plan-cell-view` 的码：起 pb 的那几种 ＋ pb 说那一片 · 那一格不在。
     pub(crate) enum PlanCellViewErr {
+        Failed = "failed",
+        NoPb = "no_pb",
         NoView = "no_view",
+        NotWorkspace = "not_workspace",
+        PbUnsupported = "pb_unsupported",
     }
 }
 
@@ -533,12 +568,28 @@ impl Handle for PlanCellViewCmd {
     ) -> impl std::future::Future<Output = Result<PlanCellView, PlanCellViewErr>> + Send + 'static
     {
         async move {
-            book::book()
-                .view(&req.workspace, &req.slice, &req.id)
+            cell_view(&req)
                 .map(|view| PlanCellView { view })
-                .ok_or_else(|| PlanCellViewErr::NoView(copy_text("bePlan.face.noView", &[])))
+                .map_err(|f| typed::of_fail(f, PlanCellViewErr::Failed))
         }
     }
+}
+
+/// `plan-cell-view` 的本体：点到这一格才起 `pb dump --cell`（整份 dump 里不带 agent 视角）。
+/// pb 说那一片 · 那一格不在 ⇒ `no_view`（pb 那一句）。
+fn cell_view(req: &PlanCellViewReq) -> Result<String, Fail> {
+    use crate::plan::dump::{self, CellMiss, Ran};
+    let entry = entry()?;
+    dump::run_cell(&entry, Path::new(&req.workspace), &req.slice, &req.id).map_err(|m| match m {
+        CellMiss::Gone(said) if said.trim().is_empty() => {
+            Fail::new("no_view", copy_text("bePlan.face.noView", &[]))
+        }
+        CellMiss::Gone(said) => Fail::new("no_view", said),
+        CellMiss::Ran(Ran::NotWorkspace(said)) => miss(book::Miss::NotWorkspace(said)),
+        CellMiss::Ran(Ran::Unsupported(said)) => miss(book::Miss::Unsupported(said)),
+        CellMiss::Ran(Ran::Failed { said, raw }) => miss(book::Miss::Failed { said, raw }),
+        CellMiss::Ran(Ran::Dump { .. }) => Fail::new("failed", copy_text("bePlan.face.shape", &[])),
+    })
 }
 
 /// `plan-command`：以人的身份代敲 pb 的用户命令（起 pb ⇒ 阻塞档）。

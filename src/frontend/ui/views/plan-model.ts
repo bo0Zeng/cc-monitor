@@ -3,13 +3,35 @@
  *
  * 只排版：状态、原因、接手是谁、几格做完、签收先后都是后端给的成品；这里只做「按排期先后摆」「按过滤藏」「按标题找」。
  */
-import type { PlanBlock, PlanCell, PlanSign, PlanSlice } from "../plan-reads";
+import type { PlanBlock, PlanCell, PlanRef, PlanSign, PlanSlice } from "../plan-reads";
 
-/** 三种状态画哪一种（图标 · 颜色）：照后端给的码；认不出的状态当没做完画（字照出）。 */
-export type StatusLook = "done" | "open" | "dropped";
+/** 四种状态画哪一种（图标 · 颜色）：照后端给的码；凭据类的格不算活、不画做完没有；认不出的状态当没做完画（字照出）。 */
+export type StatusLook = "done" | "open" | "dropped" | "evidence";
 
 export function statusLook(c: Pick<PlanCell, "statusCode">): StatusLook {
   return c.statusCode ?? "open";
+}
+
+/** 一格写成「编号 标题」：后端拼好的那一份（`labels`）；表里没有 ⇒ 只写编号。界面不自己拼。 */
+export function labelOf(slice: Pick<PlanSlice, "labels">, id: string): string {
+  return slice.labels[id] ?? id;
+}
+
+/**
+ * 一段话按提到的格切开：原文那几段（字符串）与提到格的那几段（`PlanRef`）照先后排。下标是 UTF-16（后端从 pb 的码位换好的），
+ * 直接按 JS 字符串切；越界 · 空段 · 与前一段叠着的不算（照原文）。
+ */
+export function refSpans(text: string, refs: readonly PlanRef[]): (string | PlanRef)[] {
+  const out: (string | PlanRef)[] = [];
+  let at = 0;
+  for (const r of [...refs].sort((a, b) => a.start - b.start)) {
+    if (r.start < at || r.end > text.length || r.start >= r.end) continue;
+    if (r.start > at) out.push(text.slice(at, r.start));
+    out.push(r);
+    at = r.end;
+  }
+  if (at < text.length) out.push(text.slice(at));
+  return out;
 }
 
 /** 过滤三枚。 */
@@ -165,4 +187,36 @@ export function shortId(id: string): string {
 /** 新开的一片还没有图：读好了（不是读不成那两种）、一格都没有（pb 只记了名字与领域，顶块等某个会话 claim 才建）。 */
 export function isFresh(slice: Pick<PlanSlice, "bare" | "error" | "cells">): boolean {
   return !slice.bare && !slice.error && slice.cells.length === 0;
+}
+
+/** 圈色的取法：同一套七色，按规矩在图上的先后从第六色起每隔两色取（6 · 2 · 5 · 1 · 4 · 7 · 3），挨着的两圈不同色系。 */
+const RING_SLOTS = [5, 1, 4, 0, 3, 6, 2] as const;
+
+/** 一格在哪几道括弧里。 */
+export interface Ring {
+  /** 写 covers 的那一格（规矩）。 */
+  rule: string;
+  /** 色位（类色那一套令牌的第几档）。 */
+  slot: number;
+}
+
+/** 画圈的那几条规矩（照图上的先后）与各自的色位：大纲底下的图例照它列。 */
+export function ringRules(slice: Pick<PlanSlice, "cells">): Ring[] {
+  return slice.cells.filter((c) => c.covers.some((x) => x !== "project")).map((c, i) => ({ rule: c.id, slot: RING_SLOTS[i % RING_SLOTS.length] }));
+}
+
+/**
+ * covers 画圈不连线（大纲左侧槽）：格 ⇒ 圈住它的那几道（`coveredBy` 是 pb 算的，连底下整棵）。
+ * 只写了 `project` 的规矩不画圈（在它那一格标「管全部」）；圈住的格才有一项。
+ */
+export function ringsOf(slice: Pick<PlanSlice, "cells">): Map<string, Ring[]> {
+  const all = ringRules(slice);
+  const rules = all.map((g) => g.rule);
+  const slot = new Map(all.map((g) => [g.rule, g.slot]));
+  const out = new Map<string, Ring[]>();
+  for (const c of slice.cells) {
+    const rs = rules.filter((r) => c.coveredBy.includes(r)).map((r) => ({ rule: r, slot: slot.get(r) ?? 0 }));
+    if (rs.length > 0) out.set(c.id, rs);
+  }
+  return out;
 }

@@ -75,9 +75,93 @@ pub(crate) struct PlanSign {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub at_text: Option<String>,
+    /// 执行那一条 sets 的那一位。
     pub by: Option<PlanWho>,
+    /// 记下的值（`收下` · 那一类登的别的值）。
+    pub value: Option<String>,
+    /// 凭：来处那一格（编号）；早先 `pb sign` 那一笔 ⇒ `null`。
+    pub via: Option<String>,
+    /// 这一笔的值在那一类算不算做完。
+    pub done: bool,
+    /// 早先那一笔的理由（新的一笔理由住来处那一格的正文 ⇒ 空）。
     pub reason: Option<String>,
     pub refs: Vec<PlanRef>,
+}
+
+/// 一格自己写的、还没执行的 sets。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct PlanSetsTo {
+    pub target: Option<String>,
+    pub value: Option<String>,
+}
+
+/// 一片里还没执行的一条 sets：来处 · 目标 · 值 · 为什么没执行（查都过了 ⇒ `null`：下一趟那一块 update 就执行）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct PlanPendingSet {
+    pub source: Option<String>,
+    pub target: Option<String>,
+    pub value: Option<String>,
+    pub why_not: Option<String>,
+}
+
+/// 记下的一条原话：号 · 定了什么 · 时刻 · 谁记的（对到会话；人敲的对不上 ⇒ `unknown`、`id` 是 pb 写的那个字）· 原话（照抄，带「」）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct PlanRecord {
+    #[cfg_attr(test, ts(type = "number | null"))]
+    pub n: Option<u64>,
+    pub summary: Option<String>,
+    pub at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub at_text: Option<String>,
+    pub by: Option<PlanWho>,
+    pub quotes: Vec<String>,
+}
+
+/// 写了「块:」还没立块的（下一趟 update 立）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct PlanUnbuilt {
+    pub id: Option<String>,
+    pub cells: Vec<String>,
+}
+
+/// 无主文件：`paths` 为 null ⇒ 仓库读不出、判不了（`why` 说为什么），不是一份都没有。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct PlanUnowned {
+    pub paths: Option<Vec<String>>,
+    pub why: Option<String>,
+}
+
+/// 没分下去的一份：有子的格拿到了、底下没有一个叶子声明它。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct PlanUnsplit {
+    pub id: Option<String>,
+    pub path: Option<String>,
+}
+
+/// 能选的一档领域（`pb repo` 认得的）：类 · 阶段；表读不成 ⇒ `error`、两样空。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct PlanDomain {
+    pub name: Option<String>,
+    pub error: Option<String>,
+    pub kinds: Vec<PlanKind>,
+    pub phases: Vec<PlanPhase>,
 }
 
 /// 四种边（指向 · 连着 · 排在后面 · 顶掉），各一列编号。
@@ -176,10 +260,15 @@ pub(crate) struct PlanCell {
     pub edges: PlanEdges,
     pub pointed_by: PlanEdges,
     pub files: Vec<PlanFile>,
-    /// pb 的原话（做完了 · 没做完 · 不做了）。
+    /// 凭据类的格：不算活（不进进度 · 父做完没有不看它）。
+    pub evidence: bool,
+    /// pb 的原话（做完了 · 没做完 · 不做了 · 凭据）。
     pub status: Option<String>,
     /// 状态的码；pb 给了别的字 ⇒ `null`。
-    #[cfg_attr(test, ts(type = "\"done\" | \"open\" | \"dropped\" | null"))]
+    #[cfg_attr(
+        test,
+        ts(type = "\"done\" | \"open\" | \"dropped\" | \"evidence\" | null")
+    )]
     pub status_code: Option<String>,
     /// 没做完时的原因（pb 原话）。
     pub why: Option<String>,
@@ -188,11 +277,20 @@ pub(crate) struct PlanCell {
     /// 行尾那一个原因短词；没有原因 ⇒ `null`。
     pub why_short: Option<PlanWhyShort>,
     pub signs: Vec<PlanSign>,
+    /// 几种值的计数（pb 原话，如「正 2（A1-7 · A1-9）」）；没有 ⇒ `null`。
+    pub counts: Option<String>,
+    /// 它自己写的、还没执行的 sets。
+    pub sets: Vec<PlanSetsTo>,
+    /// 住哪一块（块的编号；顶那一块 ⇒ `project`）。
+    pub block: Option<String>,
     pub owner: Option<PlanWho>,
-    /// 签它的（上一级）；pb 没给 ⇒ `null`。
+    /// 谁的 update 执行得了收下它的 sets（凭据类的 · 有子的格 ⇒ `null`）。
     pub signer: Option<PlanWho>,
+    /// 它写的 covers（格的编号或 `project`）。
+    pub covers: Vec<String>,
+    /// covers 管着它的那几格（pb 算的）。
+    pub covered_by: Vec<String>,
     pub refs: PlanRefs,
-    pub has_view: bool,
     /// 退回过 ⇒ 那一次的状态；没有 ⇒ `null`。
     #[serde(default)]
     pub returned: Option<PlanReturned>,
@@ -255,6 +353,10 @@ pub(crate) struct PlanEdgeWords {
 pub(crate) struct PlanKind {
     pub name: Option<String>,
     pub edge_words: PlanEdgeWords,
+    /// 凭据类：这一类的格不算活。
+    pub evidence: bool,
+    /// 这一类许的状态值（收下在头一个）。
+    pub values: Vec<String>,
 }
 
 /// 阶段表里的一步。
@@ -276,6 +378,8 @@ pub(crate) struct PlanRed {
     pub what: Option<String>,
     pub block: Option<String>,
     pub fix: Option<String>,
+    /// `what` 里提到的格（UTF-16 下标）。
+    pub refs: Vec<PlanRef>,
 }
 
 /// 判不了的一条。
@@ -343,11 +447,13 @@ pub(crate) struct PlanArchived {
 pub(crate) struct PlanSlice {
     pub name: String,
     pub domain: Option<String>,
-    /// 这一片的仓库相对工作区根在哪（pb 登记的；旧 pb 没给 ⇒ 片名）。
-    pub path: String,
+    /// 这一片的仓库相对工作区根在哪（pb 给的，照用；pb 没给 ⇒ `null`）。
+    pub path: Option<String>,
     pub current: bool,
     /// 只写文档：仓库还没接过来（`plan-command take` 接）。
     pub docs_only: bool,
+    /// 这一片记下的人的原话（照号）。
+    pub records: Vec<PlanRecord>,
     /// 这一刻读不成的那一句（pb 原样）。
     pub error: Option<String>,
     pub stale: Option<PlanStale>,
@@ -362,7 +468,17 @@ pub(crate) struct PlanSlice {
     /// 全片的签收，新的在上（读不出时刻的排后）。
     pub recent_signs: Vec<PlanSignAt>,
     pub blocks: Vec<PlanBlock>,
+    /// 写了「块:」还没立块的。
+    pub unbuilt_blocks: Vec<PlanUnbuilt>,
+    /// 无主文件（仓库读不出 ⇒ `paths` 为 null、`why` 说为什么）。
+    pub unowned: PlanUnowned,
+    /// 没分下去的文件。
+    pub unsplit: Vec<PlanUnsplit>,
+    /// 还没执行的 sets（画虚线，为什么写在目标那一格上）。
+    pub pending_sets: Vec<PlanPendingSet>,
     pub check: PlanCheck,
+    /// 编号 ⇒「编号 标题」（活图上的格 ＋ 归档里的；后端拼，界面凡出现编号照它写）。
+    pub labels: std::collections::BTreeMap<String, String>,
     pub cells: Vec<PlanCell>,
     pub archived: Vec<PlanArchived>,
     pub needs: Vec<PlanNeed>,
@@ -403,6 +519,8 @@ pub(crate) struct PlanRead {
     pub workspace: String,
     pub repo: Option<String>,
     pub auto: bool,
+    /// 能选的领域（`pb repo` 认得的每一档）。
+    pub domains: Vec<PlanDomain>,
     pub slices: Vec<PlanSlice>,
     pub by_session: std::collections::BTreeMap<String, PlanSessionBlock>,
     /// 这一份输出的摘要：变了才算计划变了。
@@ -580,8 +698,12 @@ pub(crate) struct PlanFiles {
     /// 那一片此刻读不成的那一句（条目空）。
     pub unreadable: Option<String>,
     pub entries: Vec<PlanFileOwner>,
-    /// 无主的那几份（要 pb 给 `unowned`；没给 ⇒ `null`）。
+    /// 这个目录里无主的那几份（文件名）；不在任何一片里 · 那一片读不成 · 仓库读不出 ⇒ `null`。
     pub unowned: Option<Vec<String>>,
+    /// 仓库读不出、判不了无主的那一句（pb 原样）；判得了 ⇒ `null`。
+    #[serde(rename = "unownedWhy")]
+    #[cfg_attr(test, ts(rename = "unownedWhy"))]
+    pub unowned_why: Option<String>,
 }
 
 #[cfg(test)]

@@ -14891,7 +14891,7 @@
     "bePlan.dump.shape": {
       "kind": "error",
       "role": "报错",
-      "zh": "要更新 · 计划不可用\nplanned-build 输出形状 {shape}",
+      "zh": "要更新 · 计划不可用\n需 planned-build 0.3.8 及以上（输出形状 4） · 现为形状 {shape}",
       "args": ["shape"]
     },
     "bePlan.face.noPb": {
@@ -28076,13 +28076,103 @@
     "plan.sign.count": {
       "kind": "body",
       "role": "片段",
-      "zh": "{n} 条 · 后签的作数",
+      "zh": "{n} 条",
       "args": ["n"]
     },
     "plan.sign.counts": {
       "kind": "body",
       "role": "片段",
       "zh": "作数",
+      "args": []
+    },
+    "plan.sign.via": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "凭 {cell}",
+      "args": ["cell"]
+    },
+    "plan.sign.pending": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "待收",
+      "args": []
+    },
+    "plan.cell.coversAll": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "管全部",
+      "args": []
+    },
+    "plan.cell.rings": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "圈",
+      "args": []
+    },
+    "plan.ring.in": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "圈住它的",
+      "args": []
+    },
+    "plan.ring.out": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "它圈住的",
+      "args": []
+    },
+    "plan.outline.rings": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "圈",
+      "args": []
+    },
+    "plan.overview.records": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "原话",
+      "args": []
+    },
+    "plan.record.open": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "记原话…",
+      "args": []
+    },
+    "plan.record.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "记原话 · {slice}",
+      "args": ["slice"]
+    },
+    "plan.record.summary": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "裁定",
+      "args": []
+    },
+    "plan.record.quotes": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "原话 · 一行一句，照抄",
+      "args": []
+    },
+    "plan.record.save": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "记下",
+      "args": []
+    },
+    "plan.record.done": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "原话已记下",
+      "args": []
+    },
+    "plan.record.none": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "未记原话",
       "args": []
     },
     "plan.bar.dropped": {

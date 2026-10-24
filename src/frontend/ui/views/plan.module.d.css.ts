@@ -27,6 +27,8 @@ declare const classes: {
   readonly pvPane: string;
   readonly pvR: string;
   readonly pvRed: string;
+  readonly pvRing: string;
+  readonly pvRings: string;
   readonly pvRow: string;
   readonly pvRowHead: string;
   readonly pvRows: string;

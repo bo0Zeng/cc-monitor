@@ -18,7 +18,7 @@ fn rec(at: u64) -> Returned {
         at,
         to: MAIN.into(),
         result: "delivered".into(),
-        children: vec!["A1-1".into(), "A1-2".into()],
+        children: (1..=6).map(|i| format!("A1-{i}")).collect(),
         body: "x".into(),
     }
 }
@@ -128,7 +128,8 @@ fn annotate_marks_acks_counts_and_return_states_on_the_product() {
     assert_eq!(top["acked"], true);
     // 顶块已认可 ⇒ 剩判据红那一条（问人那两条不算）。
     assert_eq!(sl["needCount"], 1);
-    assert_eq!(doc["needCount"], 1);
+    // 整个工作区：alpha 那一条 ＋ beta 那一片的判据红一条。
+    assert_eq!(doc["needCount"], 2);
     assert_eq!(sl["cells"][0]["returned"]["state"], "returned");
     assert_eq!(sl["cells"][0]["returned"]["to"]["sid"], MAIN);
     // 标过的成品照线上类型收得下（帧面出口那一道）。
@@ -170,7 +171,7 @@ fn a_return_of_the_top_block_lands_when_a_new_top_cell_appears() {
     assert_eq!(got["to"]["sid"], MAIN);
     serde_json::from_value::<crate::plan::wire::PlanRead>(doc.clone()).expect("线上形状");
     let mut r = rec(6);
-    r.children = vec!["A1".into(), "A2".into()];
+    r.children = ["A1", "A2", "A3", "A4", "A5"].map(String::from).to_vec();
     // 顶块没有正文：记下的摘要是空正文那一份（送的那一刻也是这么记的）。
     r.body = crate::plan::needs::body_digest(&json!({}));
     returned_at(&own_of(&f), "/w", "alpha", "project", r).unwrap();

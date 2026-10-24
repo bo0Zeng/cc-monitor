@@ -5,24 +5,33 @@ import type { PlanCell } from "./PlanCell";
 import type { PlanCheck } from "./PlanCheck";
 import type { PlanKind } from "./PlanKind";
 import type { PlanNeed } from "./PlanNeed";
+import type { PlanPendingSet } from "./PlanPendingSet";
 import type { PlanPhase } from "./PlanPhase";
 import type { PlanProgress } from "./PlanProgress";
+import type { PlanRecord } from "./PlanRecord";
 import type { PlanReturned } from "./PlanReturned";
 import type { PlanSignAt } from "./PlanSignAt";
 import type { PlanStale } from "./PlanStale";
+import type { PlanUnbuilt } from "./PlanUnbuilt";
+import type { PlanUnowned } from "./PlanUnowned";
+import type { PlanUnsplit } from "./PlanUnsplit";
 
 /**
  * 一片。读不成又没读好过 ⇒ `bare`（只有头几格有字，其余是空的）。
  */
 export type PlanSlice = { name: string, domain: string | null, 
 /**
- * 这一片的仓库相对工作区根在哪（pb 登记的；旧 pb 没给 ⇒ 片名）。
+ * 这一片的仓库相对工作区根在哪（pb 给的，照用；pb 没给 ⇒ `null`）。
  */
-path: string, current: boolean, 
+path: string | null, current: boolean, 
 /**
  * 只写文档：仓库还没接过来（`plan-command take` 接）。
  */
 docsOnly: boolean, 
+/**
+ * 这一片记下的人的原话（照号）。
+ */
+records: Array<PlanRecord>, 
 /**
  * 这一刻读不成的那一句（pb 原样）。
  */
@@ -34,7 +43,27 @@ openCells: number,
 /**
  * 全片的签收，新的在上（读不出时刻的排后）。
  */
-recentSigns: Array<PlanSignAt>, blocks: Array<PlanBlock>, check: PlanCheck, cells: Array<PlanCell>, archived: Array<PlanArchived>, needs: Array<PlanNeed>, 
+recentSigns: Array<PlanSignAt>, blocks: Array<PlanBlock>, 
+/**
+ * 写了「块:」还没立块的。
+ */
+unbuiltBlocks: Array<PlanUnbuilt>, 
+/**
+ * 无主文件（仓库读不出 ⇒ `paths` 为 null、`why` 说为什么）。
+ */
+unowned: PlanUnowned, 
+/**
+ * 没分下去的文件。
+ */
+unsplit: Array<PlanUnsplit>, 
+/**
+ * 还没执行的 sets（画虚线，为什么写在目标那一格上）。
+ */
+pendingSets: Array<PlanPendingSet>, check: PlanCheck, 
+/**
+ * 编号 ⇒「编号 标题」（活图上的格 ＋ 归档里的；后端拼，界面凡出现编号照它写）。
+ */
+labels: { [key in string]: string }, cells: Array<PlanCell>, archived: Array<PlanArchived>, needs: Array<PlanNeed>, 
 /**
  * 这一片要你看的数（没认可的，不含问人）。
  */

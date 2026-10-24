@@ -485,7 +485,7 @@ export interface TypedCommands {
   "ping": { req: NoArgs; reply: null; code: "bad_args" };
   "place-verdict": { req: PlaceReq; reply: PlaceAnswer; code: "bad_args" | "refused" | "undecidable" };
   "plan-ack": { req: PlanAckReq; reply: PlanAckReply; code: "bad_args" | "io_failed" | "no_such_need" | "not_ackable" | "not_read" | "review_unreadable" };
-  "plan-cell-view": { req: PlanCellViewReq; reply: PlanCellView; code: "bad_args" | "no_view" };
+  "plan-cell-view": { req: PlanCellViewReq; reply: PlanCellView; code: "bad_args" | "failed" | "no_pb" | "no_view" | "not_workspace" | "pb_unsupported" };
   "plan-command": { req: PlanCommandReq; reply: PlanCmdReply; code: "bad_args" | "failed" | "no_pb" | "no_such_slice" | "not_workspace" | "pb_unsupported" | "refused" };
   "plan-files": { req: PlanFilesReq; reply: PlanFiles; code: "bad_args" | "failed" };
   "plan-list": { req: PlanListReq; reply: PlanList; code: "bad_args" | "failed" };

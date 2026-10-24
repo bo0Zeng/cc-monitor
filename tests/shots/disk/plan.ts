@@ -1,6 +1,7 @@
 /**
  * 计划那一族的盘上输入：一个装在插件缓存里的 pb 替身（真后端照常找名字是 planned-build 的插件、起 `python3 <入口> <动词>`）＋
- * 工作区里 pb 原样那一份 dump（形状 1，键名照 pb：`edge_words` · `agent_view` · `replaced_by` · `docs_only` …）。
+ * 工作区里 pb 原样那一份 dump（pb 0.3.8 · 形状 4，键名照 pb：`edge_words` · `replaced_by` · `docs_only` · `pending_sets` …；每格另存一段 `agent_view`，
+ * 替身的 `dump` 摘掉它、`dump --cell` 才给，同 0.3.8）。
  * 替身只吐那一份、照几条命令改那一份、演 pb 的退出码（判据 `tests/shots/pb-stand-in.vitest.ts`）；数 · 排 · 短词 · 时刻字一律是真后端算的。
  */
 import type { MachineDisk } from "./index";
@@ -40,7 +41,29 @@ def save():
     os.replace(tmp, f)
 if verb in cfg.get("refuse", {}):
     sys.stderr.write(cfg["refuse"][verb] + "\n"); sys.exit(2)
+if verb == "dump" and sys.argv[2:3] == ["--cell"] and len(sys.argv) >= 5:
+    sl, cid = sys.argv[3], sys.argv[4]
+    out = {"pb": doc.get("pb"), "shape": doc.get("shape"), "workspace": doc.get("workspace"), "slice": sl, "id": cid}
+    s = next((x for x in doc["slices"] if x["name"] == sl), None)
+    c = next((x for x in (s or {}).get("cells", []) if x["id"] == cid), None)
+    if c is not None and c.get("agent_view") is not None:
+        out["agent_view"] = c["agent_view"]
+    else:
+        out["error"] = "%s 不在「%s」的图上" % (cid, sl)
+    sys.stdout.write(json.dumps(out, ensure_ascii=False)); sys.exit(0)
+if verb == "record" and sys.argv[2:3] == ["--slice"] and len(sys.argv) >= 6:
+    s = next((x for x in doc["slices"] if x["name"] == sys.argv[3]), None)
+    if s is None:
+        sys.stderr.write("那一片还没建\n"); sys.exit(2)
+    recs = s.setdefault("records", [])
+    n = max([r["n"] for r in recs], default=0) + 1
+    qs = [q if q.startswith("「") and q.endswith("」") else "「%s」" % q for q in sys.argv[5:]]
+    recs.append({"n": n, "summary": sys.argv[4], "at": "2026-01-01T00:00:00Z", "by": "人", "quotes": qs})
+    save(); print("记下了 原话 %d" % n); sys.exit(0)
 if verb == "dump":
+    for s in doc["slices"]:
+        for c in s.get("cells", []):
+            c.pop("agent_view", None)
     n = os.path.join(root, "dumps.n")
     k = int(open(n).read()) + 1 if os.path.exists(n) else 1
     open(n, "w").write(str(k))
@@ -92,6 +115,10 @@ export interface CellIn {
   signs?: { at: string; by: string; reason: string }[];
   signer?: string;
   owner?: string;
+  /** 写的 covers · pb 算的 covered_by · 自己写的还没执行的 sets（0.3.8）。 */
+  covers?: string[];
+  coveredBy?: string[];
+  sets?: { target: string; value: string }[];
   /** 站在这一格时 pb 印给 agent 的那一段；`false` ⇒ 这一格没有。缺 ⇒ 照编号拼一段。 */
   view?: string | false;
 }
@@ -107,28 +134,39 @@ function refsIn(text: string, ids: ReadonlySet<string>): { start: number; end: n
   return out;
 }
 
-const agentView = (c: CellIn): string => `── ${c.id} ${c.title}（${c.kind} · ${c.status}）\n> id: ${c.id} | kind: ${c.kind}\n\n要做成什么样：见上。\n下一步：pb sign ${c.id} <理由>`;
+const agentView = (c: CellIn): string => `── ${c.id} ${c.title}（${c.kind} · ${c.status}）\n> id: ${c.id} | kind: ${c.kind}\n\n要做成什么样：见上。\n下一步：做完了写一格验收 sets ${c.id} 收下`;
+
+/** 凭据类（0.3.8 软件档：测试 · 验收）：不算活，pb 给状态「凭据」、不给原因。 */
+const EVIDENCE_KINDS: ReadonlySet<string> = new Set(["测试", "验收"]);
 
 /** 一片的格（pb 原样）：父格照 `children` 倒出来，正文与签收里的编号标出位置。 */
 export function dumpCells(cells: CellIn[]): Record<string, unknown>[] {
   const ids = new Set(cells.map((c) => c.id));
   const parentOf = new Map<string, string>();
   for (const c of cells) for (const k of c.children ?? []) parentOf.set(k, c.id);
-  return cells.map((c) => ({
-    id: c.id,
-    title: c.title,
-    kind: c.kind,
-    body: c.body ?? null,
-    parent: parentOf.get(c.id) ?? null,
-    children: c.children ?? [],
-    edges: { to: [], with: [], after: [], replaces: [], ...c.edges },
-    files: c.files ?? [],
-    status: c.status,
-    why: c.why ?? null,
-    signs: (c.signs ?? []).map((g) => ({ ...g, refs: refsIn(g.reason, ids) })),
-    owner: c.owner ?? null,
-    ...(c.signer ? { signer: c.signer } : {}),
-    refs: { title: [], body: refsIn(c.body ?? "", ids) },
-    ...(c.view === false ? {} : { agent_view: c.view ?? agentView(c) }),
-  }));
+  return cells.map((c) => {
+    const ev = EVIDENCE_KINDS.has(c.kind);
+    return {
+      id: c.id,
+      title: c.title,
+      kind: c.kind,
+      body: c.body ?? null,
+      parent: parentOf.get(c.id) ?? null,
+      children: c.children ?? [],
+      edges: { to: [], with: [], after: [], replaces: [], ...c.edges },
+      files: c.files ?? [],
+      evidence: ev,
+      status: ev ? "凭据" : c.status,
+      why: ev ? null : (c.why ?? null),
+      signs: (c.signs ?? []).map((g) => ({ ...g, value: "收下", via: null, done: true, refs: refsIn(g.reason, ids) })),
+      counts: null,
+      sets: c.sets ?? [],
+      owner: c.owner ?? null,
+      ...(c.signer ? { signer: c.signer } : {}),
+      covers: c.covers ?? [],
+      covered_by: c.coveredBy ?? [],
+      refs: { title: [], body: refsIn(c.body ?? "", ids) },
+      ...(c.view === false ? {} : { agent_view: c.view ?? agentView(c) }),
+    };
+  });
 }

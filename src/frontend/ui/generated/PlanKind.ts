@@ -4,4 +4,12 @@ import type { PlanEdgeWords } from "./PlanEdgeWords";
 /**
  * 领域表里的一类。
  */
-export type PlanKind = { name: string | null, edgeWords: PlanEdgeWords, };
+export type PlanKind = { name: string | null, edgeWords: PlanEdgeWords, 
+/**
+ * 凭据类：这一类的格不算活。
+ */
+evidence: boolean, 
+/**
+ * 这一类许的状态值（收下在头一个）。
+ */
+values: Array<string>, };

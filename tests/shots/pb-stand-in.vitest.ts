@@ -17,7 +17,7 @@ afterEach(() => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-const DOC = { pb: "0.2.0", shape: 1, workspace: "/w", repo: "alpha", auto: false, slices: [{ name: "alpha", domain: "软件", docs_only: true, path: "repos/alpha", cells: [] }, { name: "beta", domain: "研究", cells: [] }] };
+const DOC = { pb: "0.3.8", shape: 4, workspace: "/w", repo: "alpha", auto: false, slices: [{ name: "alpha", domain: "软件", docs_only: true, path: "repos/alpha", cells: [] }, { name: "beta", domain: "研究", cells: [] }] };
 
 /** 照 `putPb` · `putWorkspace` 落一个家目录，回它与工作区根。 */
 function home(cfg: PbStandIn = {}, ws = "work/alpha"): { root: string; ws: string } {
@@ -113,5 +113,42 @@ describe.skipIf(process.platform === "win32")("pb 替身", () => {
   it("工作区里 dump 那一份就是 putWorkspace 写的（相对家目录）", () => {
     const { ws } = home();
     expect(JSON.parse(readFileSync(path.join(ws, ".planned-build", "dump.json"), "utf8"))).toEqual(DOC);
+  });
+});
+
+// pb 0.3.8：整份 dump 不带 agent 视角，点到一格再 `dump --cell` 取；记原话 `record --slice <片> …`。
+describe.skipIf(process.platform === "win32")("pb 替身 · 0.3.8 那几样", () => {
+  const VIEWED = { ...DOC, slices: [{ ...DOC.slices[0], cells: [{ id: "A1", title: "甲", agent_view: "── A1 甲" }] }, DOC.slices[1]] };
+  function homeWith(doc: unknown): { root: string; ws: string } {
+    const root = mkdtempSync(path.join(os.tmpdir(), "shots-pb-"));
+    dirs.push(root);
+    const d = blankDisk();
+    putPb(d);
+    putWorkspace(d, "work/alpha", doc);
+    for (const [rel, text] of Object.entries(d.files)) {
+      mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+      writeFileSync(path.join(root, rel), text);
+    }
+    return { root, ws: path.join(root, "work/alpha") };
+  }
+
+  it("dump 摘掉每格的 agent_view；dump --cell 回那一格的那一段，图上没有 ⇒ 带 error", () => {
+    const { root, ws } = homeWith(VIEWED);
+    const all = dumped(root, ws) as { slices: { cells?: Record<string, unknown>[] }[] };
+    expect(all.slices[0].cells?.[0]).toEqual({ id: "A1", title: "甲" });
+    const one = JSON.parse(pb(root, ws, "dump", "--cell", "alpha", "A1", ws).out) as Record<string, unknown>;
+    expect([one.shape, one.slice, one.id, one.agent_view]).toEqual([4, "alpha", "A1", "── A1 甲"]);
+    const gone = JSON.parse(pb(root, ws, "dump", "--cell", "alpha", "Z9", ws).out) as Record<string, unknown>;
+    expect(gone.agent_view).toBeUndefined();
+    expect(gone.error).toBeTruthy();
+  });
+
+  it("record --slice 记进那一片的 records（号往上加），此刻那一片不动", () => {
+    const { root, ws } = homeWith(VIEWED);
+    const r = pb(root, ws, "record", "--slice", "beta", "读写分两半", "「分开做」", "先读后写");
+    expect(r.rc).toBe(0);
+    const after = dumped(root, ws) as { repo: string; slices: { records?: Record<string, unknown>[] }[] };
+    expect(after.repo).toBe("alpha");
+    expect(after.slices[1].records).toEqual([{ n: 1, summary: "读写分两半", at: expect.any(String), by: "人", quotes: ["「分开做」", "「先读后写」"] }]);
   });
 });

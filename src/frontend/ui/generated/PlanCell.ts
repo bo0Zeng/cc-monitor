@@ -3,6 +3,7 @@ import type { PlanEdges } from "./PlanEdges";
 import type { PlanFile } from "./PlanFile";
 import type { PlanRefs } from "./PlanRefs";
 import type { PlanReturned } from "./PlanReturned";
+import type { PlanSetsTo } from "./PlanSetsTo";
 import type { PlanSign } from "./PlanSign";
 import type { PlanWho } from "./PlanWho";
 import type { PlanWhyCode } from "./PlanWhyCode";
@@ -13,13 +14,17 @@ import type { PlanWhyShort } from "./PlanWhyShort";
  */
 export type PlanCell = { id: string, title: string | null, kind: string | null, body: string | null, parent: string | null, children: Array<string>, edges: PlanEdges, pointedBy: PlanEdges, files: Array<PlanFile>, 
 /**
- * pb 的原话（做完了 · 没做完 · 不做了）。
+ * 凭据类的格：不算活（不进进度 · 父做完没有不看它）。
+ */
+evidence: boolean, 
+/**
+ * pb 的原话（做完了 · 没做完 · 不做了 · 凭据）。
  */
 status: string | null, 
 /**
  * 状态的码；pb 给了别的字 ⇒ `null`。
  */
-statusCode: "done" | "open" | "dropped" | null, 
+statusCode: "done" | "open" | "dropped" | "evidence" | null, 
 /**
  * 没做完时的原因（pb 原话）。
  */
@@ -31,11 +36,31 @@ whyCode: PlanWhyCode | null,
 /**
  * 行尾那一个原因短词；没有原因 ⇒ `null`。
  */
-whyShort: PlanWhyShort | null, signs: Array<PlanSign>, owner: PlanWho | null, 
+whyShort: PlanWhyShort | null, signs: Array<PlanSign>, 
 /**
- * 签它的（上一级）；pb 没给 ⇒ `null`。
+ * 几种值的计数（pb 原话，如「正 2（A1-7 · A1-9）」）；没有 ⇒ `null`。
  */
-signer: PlanWho | null, refs: PlanRefs, hasView: boolean, 
+counts: string | null, 
+/**
+ * 它自己写的、还没执行的 sets。
+ */
+sets: Array<PlanSetsTo>, 
+/**
+ * 住哪一块（块的编号；顶那一块 ⇒ `project`）。
+ */
+block: string | null, owner: PlanWho | null, 
+/**
+ * 谁的 update 执行得了收下它的 sets（凭据类的 · 有子的格 ⇒ `null`）。
+ */
+signer: PlanWho | null, 
+/**
+ * 它写的 covers（格的编号或 `project`）。
+ */
+covers: Array<string>, 
+/**
+ * covers 管着它的那几格（pb 算的）。
+ */
+coveredBy: Array<string>, refs: PlanRefs, 
 /**
  * 退回过 ⇒ 那一次的状态；没有 ⇒ `null`。
  */

@@ -20,12 +20,12 @@ fn doc_with(who: &dyn Fn(&str) -> crate::plan::Whose) -> Value {
 fn only_a_present_key_that_is_not_an_ask_can_be_acked() {
     let doc = doc_with(&crate::plan::fixture::who);
     let sl = &doc["slices"][0];
-    let red = "red:悬空@B";
+    let red = "red:悬空@project";
     assert!(check_ack(sl, red).is_ok());
     assert_eq!(
-        check_ack(sl, "red:别的@B").unwrap_err().code,
+        check_ack(sl, "red:别的@project").unwrap_err().code,
         "no_such_need"
     );
-    let ask = format!("ask:B@{SUB}");
+    let ask = format!("ask:A2@{SUB}");
     assert_eq!(check_ack(sl, &ask).unwrap_err().code, "not_ackable");
 }

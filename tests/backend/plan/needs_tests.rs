@@ -95,26 +95,28 @@ fn a_top_block_not_at_a_look_global_phase_is_no_need() {
 
 #[test]
 fn every_red_check_is_one_need_keyed_by_rule_and_block_at_the_blocks_root_cell() {
-    let sl = slice_with(&dump("/w"), &all_working);
+    let mut d0 = dump("/w");
+    d0["slices"][0]["check"]["red"][0]["block"] = json!("A2");
+    let sl = slice_with(&d0, &all_working);
     let n = of_slice(&sl, None);
     let red: Vec<_> = n.iter().filter(|x| x["kind"] == "red").collect();
     assert_eq!(red.len(), 1);
-    assert_eq!(red[0]["key"], "red:悬空@B");
-    assert_eq!(red[0]["block"], "B");
-    assert_eq!(red[0]["cell"], "A1");
+    assert_eq!(red[0]["key"], "red:悬空@A2");
+    assert_eq!(red[0]["block"], "A2");
+    assert_eq!(red[0]["cell"], "A2");
     assert_eq!(red[0]["red"], 0, "指回 check.red 的第几条");
     // 两条红：各出一条；`what` 变了键不变（认可仍作数），规则或块换了键就换。
     let mut d = dump("/w");
     d["slices"][0]["check"]["red"] = json!([
-        {"rule": "悬空", "what": "A1-2 指着 A8", "block": "B", "fix": "x"},
-        {"rule": "无主", "what": "src/x 没人管", "block": null, "fix": "y"}
+        {"rule": "悬空", "what": "A1-2 指着 A8", "block": "A2", "fix": "x", "refs": []},
+        {"rule": "无主", "what": "src/x 没人管", "block": null, "fix": "y", "refs": []}
     ]);
     let n = of_slice(&slice_with(&d, &all_working), None);
     let keys: Vec<_> = kinds(&n).into_iter().filter(|(k, _)| k == "red").collect();
     assert_eq!(
         keys,
         vec![
-            ("red".into(), "red:悬空@B".into()),
+            ("red".into(), "red:悬空@A2".into()),
             ("red".into(), "red:无主@".into())
         ]
     );
@@ -128,11 +130,11 @@ fn an_ended_owner_of_an_unfinished_block_is_a_need_and_a_subagent_counts_by_its_
     let sl = slice_with(&dump("/w"), &all_ended);
     let n = of_slice(&sl, None);
     let ended: Vec<_> = n.iter().filter(|x| x["kind"] == "ended").collect();
-    // 顶块（主会话停了、整片没做完）· 块 B（子 agent 接手，父会话也停了）。
+    // 顶块（主会话停了、整片没做完）· 块 A2（子 agent 接手，父会话也停了）。
     assert_eq!(ended.len(), 2, "{n:?}");
-    let b = ended.iter().find(|x| x["block"] == "B").unwrap();
-    assert_eq!(b["key"], format!("ended:B@{SUB}"));
-    assert_eq!(b["cell"], "A1");
+    let b = ended.iter().find(|x| x["block"] == "A2").unwrap();
+    assert_eq!(b["key"], format!("ended:A2@{SUB}"));
+    assert_eq!(b["cell"], "A2");
     assert_eq!(b["sid"], MAIN, "恢复的是父会话");
     // 父会话还活着 ⇒ 子 agent 停了不算（父会话会收它）。
     let sl = slice_with(&dump("/w"), &all_working);
@@ -142,13 +144,13 @@ fn an_ended_owner_of_an_unfinished_block_is_a_need_and_a_subagent_counts_by_its_
 #[test]
 fn an_ended_owner_of_a_finished_block_or_an_unknown_owner_is_no_need() {
     let mut d = dump("/w");
-    // 块 B 的根格做完了；整片也做完了（顶块那一条看 `done`）。
-    d["slices"][0]["cells"][0]["status"] = json!("做完了");
+    // 块 A2 的根格（A2）做完了；整片也做完了（顶块那一条看 `done`）。
+    d["slices"][0]["cells"][7]["status"] = json!("做完了");
     d["slices"][0]["done"] = json!(true);
     let n = of_slice(&slice_with(&d, &all_ended), None);
     assert!(n.iter().all(|x| x["kind"] != "ended"), "{n:?}");
     // 不做了也算收了尾。
-    d["slices"][0]["cells"][0]["status"] = json!("不做了");
+    d["slices"][0]["cells"][7]["status"] = json!("不做了");
     let n = of_slice(&slice_with(&d, &all_ended), None);
     assert!(n.iter().all(|x| x["kind"] != "ended"));
     // 对不上的 id：说不清停没停 ⇒ 不出。
@@ -163,10 +165,10 @@ fn an_owner_waiting_for_you_is_an_ask_need_at_the_cell_the_block_stands_on() {
     let n = of_slice(&sl, None);
     let ask: Vec<_> = n.iter().filter(|x| x["kind"] == "ask").collect();
     assert_eq!(ask.len(), 2);
-    let b = ask.iter().find(|x| x["block"] == "B").unwrap();
-    assert_eq!(b["cell"], "A1-2", "块站在 A1-2");
+    let b = ask.iter().find(|x| x["block"] == "A2").unwrap();
+    assert_eq!(b["cell"], "A2-1", "块站在 A2-1");
     assert_eq!(b["sid"], MAIN);
-    assert_eq!(b["key"], format!("ask:B@{SUB}"));
+    assert_eq!(b["key"], format!("ask:A2@{SUB}"));
     let p = ask.iter().find(|x| x["block"] == "project").unwrap();
     assert_eq!(p["cell"], "project", "没站位 ⇒ 块根");
     // 在跑 ⇒ 不问人。
@@ -215,7 +217,7 @@ fn a_return_lands_when_a_new_child_appears_or_the_body_changes() {
         at: 5,
         to: MAIN.into(),
         result: "delivered".into(),
-        children: vec!["A1-1".into(), "A1-2".into()],
+        children: (1..=6).map(|i| format!("A1-{i}")).collect(),
         body: body_digest(&cell),
     };
     let cells = sl["cells"].as_array().unwrap();
@@ -239,13 +241,13 @@ fn a_return_lands_when_a_new_child_appears_or_the_body_changes() {
     assert_eq!(landing(&unsure, &cell, cells)["state"], "unsure");
     // 底下多了一格 ⇒ 落地，带那一格的标题。
     let mut grown = cell.clone();
-    grown["children"] = json!(["A1-1", "A1-2", "A1-3"]);
+    grown["children"] = json!(["A1-1", "A1-2", "A1-3", "A1-4", "A1-5", "A1-6", "A1-7"]);
     let mut more = cells.clone();
-    more.push(json!({"id": "A1-3", "title": "甲的补丁"}));
+    more.push(json!({"id": "A1-7", "title": "甲的补丁"}));
     let st = landing(&at, &grown, &more);
     assert_eq!(st["state"], "landed");
     assert_eq!(st["by"], "child");
-    assert_eq!(st["child"], json!({"id": "A1-3", "title": "甲的补丁"}));
+    assert_eq!(st["child"], json!({"id": "A1-7", "title": "甲的补丁"}));
     // 少了一格不算落地（被顶掉不是「照退回加了一格」）。
     let mut shrunk = cell.clone();
     shrunk["children"] = json!(["A1-1"]);

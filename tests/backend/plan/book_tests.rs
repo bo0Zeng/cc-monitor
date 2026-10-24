@@ -41,15 +41,11 @@ fn a_slice_that_cannot_be_read_now_shows_the_last_good_one_with_reason_and_time(
     let sl = &second["slices"][0];
     assert_eq!(
         sl["cells"].as_array().unwrap().len(),
-        4,
+        12,
         "给的是上一次好的那一份"
     );
     assert_eq!(sl["stale"]["said"], "图.md 第 3 行：元行缺 id");
     assert_eq!(sl["stale"]["since"], 1_000);
-    assert_eq!(
-        b.view("/w", "alpha", "A1").as_deref(),
-        Some("── A1 甲功能（能力 · 没做完）\n> id: A1")
-    );
 }
 
 #[test]
@@ -78,7 +74,7 @@ fn a_failed_run_gives_the_whole_last_good_one_or_a_miss() {
     let out = b.take(fail(), dir, &who, 9).unwrap();
     assert_eq!(out["stale"]["said"], "超时");
     assert_eq!(out["stale"]["since"], 5);
-    assert_eq!(out["slices"][0]["cells"].as_array().unwrap().len(), 4);
+    assert_eq!(out["slices"][0]["cells"].as_array().unwrap().len(), 12);
 }
 
 #[test]
@@ -113,10 +109,10 @@ fn snapshot(root: &Path) -> Vec<(PathBuf, Option<std::time::SystemTime>, Vec<u8>
         "",
         ".planned-build",
         ".planned-build/alpha",
-        "alpha",
-        "alpha/src",
+        "repos/alpha",
+        "repos/alpha/src",
     ];
-    let files = [".env", "dump.json"];
+    let files = [".env", "dump.json", "cell.json"];
     let mut out: Vec<_> = dirs
         .iter()
         .map(|d| {

@@ -70,3 +70,59 @@ describe("「在计划里看」：壳发给主窗口的事件名两边同一个"
     expect(main).toContain("listen<PlanOpenSaid>(PLAN_OPEN_EVENT");
   });
 });
+
+describe("编号一律「编号 标题」：照后端拼好的 labels 写，界面不拼", () => {
+  it("labels 里有 ⇒ 照它；没有 ⇒ 只写编号", async () => {
+    const { labelOf } = await import("../../../src/frontend/ui/views/plan-model.ts");
+    const s = { labels: { A1: "A1 读入模块" } } as unknown as PlanSlice;
+    expect(labelOf(s, "A1")).toBe("A1 读入模块");
+    expect(labelOf(s, "Z9")).toBe("Z9");
+  });
+});
+
+describe("话里提到的格：下标是 UTF-16（后端从码位换好的），按 JS 字符串直接切", () => {
+  it("码位外的字在前面：照 UTF-16 下标切出那一段，前后原样", async () => {
+    const { refSpans } = await import("../../../src/frontend/ui/views/plan-model.ts");
+    const text = "😀照 A3 的公约";
+    const r = { start: 4, end: 6, ids: ["A3"] };
+    expect(refSpans(text, [r])).toEqual(["😀照 ", r, " 的公约"]);
+  });
+  it("越界 · 倒着 · 叠着的那几段不算，照原文", async () => {
+    const { refSpans } = await import("../../../src/frontend/ui/views/plan-model.ts");
+    const a = { start: 0, end: 2, ids: ["A1"] };
+    expect(refSpans("A1 和 A2", [{ start: 5, end: 99, ids: ["A2"] }, a, { start: 1, end: 3, ids: ["A9"] }])).toEqual([a, " 和 A2"]);
+  });
+});
+
+describe("covers 画圈不连线：大纲左侧槽里一条规矩一道括弧", () => {
+  const c = (id: string, extra: Partial<PlanCell>): PlanCell => ({ id, covers: [], coveredBy: [], ...extra }) as unknown as PlanCell;
+  const sl = {
+    cells: [
+      c("A1", { coveredBy: ["R1", "R2"] }),
+      c("A1-1", { coveredBy: ["R1", "R2"] }),
+      c("A2", { coveredBy: ["R2"] }),
+      c("R1", { covers: ["A1"], coveredBy: ["R2"] }),
+      c("R2", { covers: ["project"] }),
+    ],
+  } as unknown as PlanSlice;
+  it("每格在哪几道括弧里：照规矩在图上的先后，色位从第六色起隔两色取；写 project 的不画（标管全部）", async () => {
+    const { ringsOf } = await import("../../../src/frontend/ui/views/plan-model.ts");
+    const m = ringsOf(sl);
+    expect(m.get("A1")).toEqual([{ rule: "R1", slot: 5 }]);
+    expect(m.get("A1-1")).toEqual([{ rule: "R1", slot: 5 }]);
+    expect(m.get("A2")).toBeUndefined();
+    expect(m.get("R1")).toBeUndefined();
+  });
+});
+
+describe("圈的图例：画圈的那几条规矩照图上的先后", () => {
+  it("只写 project 的不进图例；色位与括弧同一个", async () => {
+    const { ringRules } = await import("../../../src/frontend/ui/views/plan-model.ts");
+    const c = (id: string, covers: string[]): PlanCell => ({ id, covers, coveredBy: [] }) as unknown as PlanCell;
+    const sl = { cells: [c("R0", ["project"]), c("R1", ["A1"]), c("R2", ["A2", "project"])] } as unknown as PlanSlice;
+    expect(ringRules(sl)).toEqual([
+      { rule: "R1", slot: 5 },
+      { rule: "R2", slot: 1 },
+    ]);
+  });
+});

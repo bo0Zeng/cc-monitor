@@ -41,16 +41,20 @@ import {
   cellIndex,
   isFresh,
   kindSlot,
+  labelOf,
   lastSign,
   outlineRows,
   shortId,
   recentSigns,
+  ringRules,
+  ringsOf,
   statusLook,
   topBlock,
   type PlanFilter,
+  type Ring,
 } from "./plan-model";
 import { CellDetail } from "./plan-cell";
-import { cellTarget, needBar, openNeeds, openReturn, returnedBar, type ReviewHost } from "./plan-review";
+import { cellTarget, needBar, openNeeds, openRecord, openReturn, returnedBar, type ReviewHost } from "./plan-review";
 import type { PlanNeedsBook } from "../plan-needs";
 import type { PlanNeedItem } from "../needs-book";
 import { freshPane, phaseBadge, setKindColor, STATUS_ICON } from "./plan-bits";
@@ -420,7 +424,7 @@ export class PlanView {
       failToast(copyText("plan.review.ackFailed"), e);
       return;
     }
-    const what = need.cell ? (cellIndex(slice).get(need.cell)?.title ?? need.cell) : slice.name;
+    const what = need.cell ? labelOf(slice, need.cell) : slice.name;
     toast(copyText("plan.review.acked", { what }), "", {
       level: "success",
       action: {
@@ -595,7 +599,7 @@ export class PlanView {
     const b = button({
       label: copyText("plan.take.open"),
       icon: "folder",
-      hint: copyText("plan.take.hint", { path: slice.path }),
+      hint: copyText("plan.take.hint", { path: slice.path ?? "" }),
       onClick: () => void this.takeRepo(b, slice),
     });
     b.dataset.act = "take";
@@ -608,7 +612,7 @@ export class PlanView {
     const ok = await confirmDialog({
       title: copyText("plan.take.title", { slice: slice.name }),
       action: copyText("plan.take.action"),
-      body: copyText("plan.take.body", { path: slice.path }),
+      body: copyText("plan.take.body", { path: slice.path ?? "" }),
       note: slice.current ? undefined : copyText("plan.take.switchNote", { slice: slice.name }),
     });
     if (!ok) return;
@@ -666,7 +670,7 @@ export class PlanView {
       if (top.owner) parts.push(this.whoChip(top.owner));
       if (top.phase) parts.push(phaseBadge(top.phase));
       const at = top.at ? cellIndex(slice).get(top.at) : null;
-      if (at) parts.push(document.createTextNode(copyText("plan.sub.standing", { title: at.title ?? at.id })));
+      if (at) parts.push(document.createTextNode(copyText("plan.sub.standing", { title: labelOf(slice, at.id) })));
     }
     if (slice.check.red.length > 0) {
       const red = document.createElement("span");
@@ -682,7 +686,7 @@ export class PlanView {
   private docsOnlyBadge(slice: PlanSlice): HTMLElement {
     const b = phaseBadge(copyText("plan.sub.docsOnly"));
     b.dataset.badge = "docs-only";
-    attachTooltip(b, () => copyText("plan.sub.docsOnlyHint", { path: slice.path }));
+    attachTooltip(b, () => copyText("plan.sub.docsOnlyHint", { path: slice.path ?? "" }));
     return b;
   }
 
@@ -836,11 +840,12 @@ export class PlanView {
       query: this.query,
       needsCells: new Set((slice.needs ?? []).map((n) => n.cell).filter((x): x is string => x !== null)),
     });
-    for (const r of rows) box.appendChild(this.row(slice, r));
+    const rings = ringsOf(slice);
+    for (const r of rows) box.appendChild(this.row(slice, r, rings.get(r.cell.id) ?? []));
     return box;
   }
 
-  private row(slice: PlanSlice, r: ReturnType<typeof outlineRows>[number]): HTMLElement {
+  private row(slice: PlanSlice, r: ReturnType<typeof outlineRows>[number], rings: readonly Ring[]): HTMLElement {
     const c = r.cell;
     const look = statusLook(c);
     const el = document.createElement("div");
@@ -853,6 +858,19 @@ export class PlanView {
     if (r.hasKids) el.setAttribute("aria-expanded", String(!r.folded));
     el.style.paddingLeft = `${16 + r.depth * 18}px`;
     setKindColor(el, kindSlot(slice, c.kind));
+    // covers 画圈：最左一条槽，圈住它的每条规矩一道（同一条规矩同一色，几道并排），停在上面说是哪一条。
+    if (rings.length > 0) {
+      const slot = document.createElement("span");
+      slot.className = s.pvRings;
+      for (const g of rings) {
+        const b = document.createElement("span");
+        b.className = s.pvRing;
+        setKindColor(b, g.slot);
+        b.title = labelOf(slice, g.rule);
+        slot.appendChild(b);
+      }
+      el.appendChild(slot);
+    }
     const chev = document.createElement("span");
     chev.className = s.pvChev;
     if (r.hasKids) {
@@ -874,7 +892,7 @@ export class PlanView {
     bar.className = s.pvKbar;
     const tt = document.createElement("span");
     tt.className = s.pvTt;
-    tt.textContent = c.title ?? c.id;
+    tt.textContent = labelOf(slice, c.id);
     const kw = document.createElement("span");
     kw.className = s.pvKw;
     kw.textContent = c.kind ?? "";
@@ -906,6 +924,7 @@ export class PlanView {
       const u = icon("person", "compact");
       trail.appendChild(u);
     }
+    if (c.covers.includes("project")) trail.appendChild(text(copyText("plan.cell.coversAll"), s.pvKw));
     el.append(chev, st, bar, tt, kw, trail);
     el.addEventListener("click", () => this.select(c.id));
     return el;
@@ -934,6 +953,26 @@ export class PlanView {
     });
     dropped.appendChild(t);
     box.appendChild(dropped);
+    // 圈：画圈的每条规矩一项（同括弧一色），点了去那一格。
+    const rules = ringRules(slice);
+    if (rules.length > 0) {
+      const rs = document.createElement("span");
+      rs.dataset.legend = "rings";
+      rs.appendChild(document.createTextNode(copyText("plan.outline.rings")));
+      box.appendChild(rs);
+      for (const g of rules) {
+        const it = document.createElement("span");
+        it.className = s.pvLegendKind;
+        setKindColor(it, g.slot);
+        const go = document.createElement("button");
+        go.type = "button";
+        go.className = s.pvLink;
+        go.textContent = labelOf(slice, g.rule);
+        go.addEventListener("click", () => this.select(g.rule));
+        it.appendChild(go);
+        box.appendChild(it);
+      }
+    }
     return box;
   }
 
@@ -966,10 +1005,10 @@ export class PlanView {
         const root = byId.get(b.cells[0] ?? "");
         const at = b.at ? byId.get(b.at) : null;
         const tr = tbl.row([
-          text(root?.title ?? b.id),
+          text(labelOf(slice, root?.id ?? b.id)),
           b.owner ? this.whoChip(b.owner) : text(copyText("plan.page.none")),
           b.phase ? phaseBadge(b.phase) : text(copyText("plan.page.none")),
-          text(at ? (at.title ?? at.id) : copyText("plan.page.none")),
+          text(at ? labelOf(slice, at.id) : copyText("plan.page.none")),
           text(b.inside ? `${b.inside.done}/${b.inside.of}` : copyText("plan.page.none")),
         ]);
         if (root) clickRow(tr, () => this.select(root.id));
@@ -990,7 +1029,7 @@ export class PlanView {
       setKindColor(name, kindSlot(slice, c.kind));
       const bar = document.createElement("span");
       bar.className = s.pvKbar;
-      name.append(bar, document.createTextNode(c.title ?? c.id));
+      name.append(bar, document.createTextNode(labelOf(slice, c.id)));
       const look = statusLook(c);
       const stw = document.createElement("span");
       stw.className = s.pvStw;
@@ -1016,7 +1055,36 @@ export class PlanView {
       for (const it of signs.slice(0, 5)) sec3.appendChild(this.signRow(slice, it));
       box.appendChild(sec3);
     }
+
+    // 原话：记下的人的原话（照号，新的在上）＋［记原话…］（记进看着的这一片，工作区的当前片不动）
+    const sec4 = section(copyText("plan.overview.records"));
+    sec4.firstElementChild?.appendChild(button({ label: copyText("plan.record.open"), kind: "ghost", size: "compact", onClick: () => openRecord(this.review, slice) }));
+    if (slice.records.length === 0) sec4.appendChild(text(copyText("plan.record.none"), s.pvMeta));
+    for (const r of [...slice.records].reverse()) sec4.appendChild(this.recordRow(r));
+    box.appendChild(sec4);
     return box;
+  }
+
+  /** 一条原话：时刻 · 号与裁定 · 一句一行的原话 · 谁记的（对不上会话 ⇒ 照出 pb 写的那个字）。 */
+  private recordRow(r: PlanSlice["records"][number]): HTMLElement {
+    const row = document.createElement("div");
+    row.className = s.pvSign;
+    const tm = text(r.atText ?? r.at ?? "", s.pvSignTm);
+    const body = document.createElement("div");
+    body.className = s.pvSignBody;
+    const tl = document.createElement("div");
+    tl.className = s.pvSignTitle;
+    tl.textContent = joinSep(r.n === null ? "" : String(r.n), r.summary ?? "");
+    body.appendChild(tl);
+    for (const q of r.quotes) {
+      const why = document.createElement("div");
+      why.className = s.pvSignWhy;
+      why.textContent = q;
+      body.appendChild(why);
+    }
+    row.append(tm, body);
+    if (r.by) row.appendChild(r.by.kind === "unknown" ? text(r.by.id, s.pvMeta) : this.whoChip(r.by, true));
+    return row;
   }
 
   // ───────────────────────── 签收流 ─────────────────────────
@@ -1072,7 +1140,7 @@ export class PlanView {
     const go = document.createElement("button");
     go.type = "button";
     go.className = s.pvLink;
-    go.textContent = it.cell.title ?? it.cell.id;
+    go.textContent = labelOf(slice, it.cell.id);
     go.addEventListener("click", () => this.select(it.cell.id));
     tl.append(go, kw);
     const why = document.createElement("div");

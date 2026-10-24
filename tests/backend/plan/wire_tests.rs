@@ -41,7 +41,7 @@ fn a_full_read_a_stale_slice_and_a_bare_slice_all_pass_through_the_types_unchang
     let b = crate::plan::book::Book::default();
     let dir = Path::new("/w");
     let first = out(b.take(ran(&dump("/w")), dir, &who, 1_000).unwrap());
-    assert!(first["slices"][0]["cells"].as_array().unwrap().len() == 4);
+    assert!(first["slices"][0]["cells"].as_array().unwrap().len() == 12);
     lossless::<PlanRead>(&first);
     let stale = out(b.take(ran(&dump_broken("/w")), dir, &who, 2_000).unwrap());
     assert!(!stale["slices"][0]["stale"].is_null());

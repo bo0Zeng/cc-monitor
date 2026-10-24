@@ -213,3 +213,59 @@ fn a_refused_switch_stops_before_take() {
     assert_eq!(e.0, "refused");
     assert_eq!(*ran.borrow(), 1);
 }
+
+/// 记原话：`record --slice <片> <定了什么> <原话>…`（当前片不动）；定了什么不是一行 · 没有原话 · 带 NUL ⇒ 不拼、不起 pb。
+#[test]
+fn record_args_name_the_slice_and_keep_every_quote_as_given() {
+    let q = vec!["「分开做」".to_string(), "先读\n后写".to_string()];
+    assert_eq!(
+        record_args("alpha", " 读写分两半 ", &q).unwrap(),
+        [
+            "record",
+            "--slice",
+            "alpha",
+            "读写分两半",
+            "「分开做」",
+            "先读\n后写"
+        ]
+    );
+    assert!(record_args("alpha", "", &q).is_none());
+    assert!(record_args("alpha", "两\n行", &q).is_none());
+    assert!(record_args("alpha", "x", &[]).is_none());
+    assert!(record_args("alpha", "x", &["  ".to_string()]).is_none());
+    assert!(record_args("alpha", "x", &["a\0b".to_string()]).is_none());
+    assert!(record_args("", "x", &q).is_none());
+}
+
+/// 记原话记成「人」说的：这一侧带着 agent 身份 ⇒ 拒、不起 pb。
+#[test]
+fn record_is_not_run_from_an_agent_side() {
+    let root = scratch("command-record-agent");
+    let entry = fake_pb(&root.join("pb"), "planned-build", None);
+    let ws = workspace(&root.join("ws"), &dump("/x"));
+    let (code, _, _) =
+        run_as(&entry, &ws, &["record", "--slice", "alpha", "x", "y"], true).unwrap_err();
+    assert_eq!(code, "refused");
+    assert!(runs(&root.join("pb")).is_empty());
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// 真起一次记原话：当前目录是工作区根，argv 是 `record --slice <片> <定了什么> <原话>…`，不带 PB_ID；回 pb 那一句。
+#[test]
+fn a_real_record_run_names_the_slice_and_carries_no_pb_id() {
+    let root = scratch("command-record");
+    let entry = fake_pb(&root.join("pb"), "planned-build", None);
+    let ws = workspace(&root.join("ws"), &dump("/x"));
+    let args = record_args("beta", "读写分两半", &["分开做".to_string()]).unwrap();
+    let argv: Vec<&str> = args.iter().map(String::as_str).collect();
+    let got = run_as(&entry, &ws, &argv, false).unwrap();
+    assert_eq!(got["said"], "记下了 原话 1");
+    let ran: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(root.join("pb/ran.json")).unwrap()).unwrap();
+    assert_eq!(
+        ran["argv"],
+        serde_json::json!(["record", "--slice", "beta", "读写分两半", "分开做"])
+    );
+    assert_eq!(ran["pb_id"], false);
+    let _ = std::fs::remove_dir_all(&root);
+}

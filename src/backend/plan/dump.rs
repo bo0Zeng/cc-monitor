@@ -7,7 +7,7 @@ use copy_core::copy_text;
 use std::path::Path;
 
 /// 认得的形状版本（`pb dump` 顶上的 `shape`）。pb 改了形状会把它加一 ⇒ 这里不认 ⇒ 当作「pb 太旧 / 太新」说出来，不硬读。
-pub(crate) const SHAPE: u64 = 1;
+pub(crate) const SHAPE: u64 = 4;
 
 /// 一次 dump 最多等多久。量过：252 格的研究盘 1.1 秒；留一个数量级给慢盘与远端。
 pub(crate) const DEADLINE_SECS: u64 = 20;
@@ -115,6 +115,66 @@ pub(crate) fn classify(code: Option<i32>, stdout: &[u8], stderr: &[u8]) -> Ran {
         doc,
         raw: stdout.to_vec(),
     }
+}
+
+/// 在工作区根 `ws` 里跑 `<entry> dump --cell <片> <格> <工作区>`：一格的 agent 视角（pb 原样那一段）。
+/// 不成 ⇒ [`CellMiss`]。
+pub(crate) fn run_cell(entry: &Path, ws: &Path, slice: &str, id: &str) -> Result<String, CellMiss> {
+    let py = crate::plugin::discover::find(
+        &interpreter(),
+        &[],
+        true,
+        &copy_text("bePlan.dump.noPythonHint", &[]),
+    )
+    .map_err(|said| CellMiss::Ran(Ran::Failed { said, raw: None }))?;
+    let entry_s = entry.to_string_lossy().to_string();
+    let ws_s = ws.to_string_lossy().to_string();
+    let child = crate::plugin::invoke::child_for(
+        &py,
+        &[entry_s.as_str(), "dump", "--cell", slice, id, ws_s.as_str()],
+        &[],
+    )
+    .current_dir(ws);
+    match child.run(Deadline::secs(DEADLINE_SECS)) {
+        Ok(out) => cell_of(classify(out.status.code(), &out.stdout, &out.stderr)),
+        Err(e) if e.is_timed_out() => Err(CellMiss::Ran(Ran::Failed {
+            said: copy_text(
+                "bePlan.dump.timedOut",
+                &[("dur", &copy_core::format_duration(DEADLINE_SECS * 1000))],
+            ),
+            raw: None,
+        })),
+        Err(e) => Err(CellMiss::Ran(Ran::Failed {
+            said: copy_text("bePlan.dump.notRun", &[]),
+            raw: Some(e.to_string()),
+        })),
+    }
+}
+
+/// `dump --cell` 没给出那一段：pb 说那一片 · 那一格不在（`error`，pb 那一句）· 别的结局（同 [`run`]）。
+#[derive(Debug)]
+pub(crate) enum CellMiss {
+    Gone(String),
+    Ran(Ran),
+}
+
+/// `dump --cell` 的结局 ⇒ 那一段原文（纯函数）：带 `error` ⇒ `Gone`；读到了却没有 `agent_view` ⇒ 读不懂。
+pub(crate) fn cell_of(ran: Ran) -> Result<String, CellMiss> {
+    let Ran::Dump { doc, .. } = ran else {
+        return Err(CellMiss::Ran(ran));
+    };
+    if let Some(e) = doc.get("error").and_then(serde_json::Value::as_str) {
+        return Err(CellMiss::Gone(e.to_string()));
+    }
+    doc.get("agent_view")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| {
+            CellMiss::Ran(Ran::Failed {
+                said: copy_text("bePlan.dump.unparsable", &[]),
+                raw: None,
+            })
+        })
 }
 
 #[cfg(test)]

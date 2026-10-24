@@ -54,6 +54,10 @@
     color: var(--text-faint);
   }
 
+  .cdSt[data-look="evidence"] {
+    color: var(--text-2);
+  }
+
   .cdTitle {
     font-size: var(--font-size-title);
     font-weight: 600;
@@ -299,6 +303,14 @@
 
   .cdSign[data-old="true"] .cdSignWhy {
     color: var(--text-2);
+  }
+
+  /* 还没执行的 sets：虚线（同 pb view），为什么没执行写在下面。 */
+  .cdSign[data-pending="true"] {
+    margin-bottom: var(--space-4);
+    padding: var(--space-4);
+    border: 1px dashed var(--border-soft);
+    border-radius: var(--radius-m);
   }
 
   .cdFold {

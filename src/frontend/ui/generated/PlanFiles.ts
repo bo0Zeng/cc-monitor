@@ -10,6 +10,10 @@ export type PlanFiles = { workspace: string | null, slice: string | null,
  */
 unreadable: string | null, entries: Array<PlanFileOwner>, 
 /**
- * 无主的那几份（要 pb 给 `unowned`；没给 ⇒ `null`）。
+ * 这个目录里无主的那几份（文件名）；不在任何一片里 · 那一片读不成 · 仓库读不出 ⇒ `null`。
  */
-unowned: Array<string> | null, };
+unowned: Array<string> | null, 
+/**
+ * 仓库读不出、判不了无主的那一句（pb 原样）；判得了 ⇒ `null`。
+ */
+unownedWhy: string | null, };

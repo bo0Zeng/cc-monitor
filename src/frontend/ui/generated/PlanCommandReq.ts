@@ -9,10 +9,18 @@ export type PlanCommandReq = {
  */
 workspace: string, 
 /**
- * `continue` · `pause` · `take` · `view`。
+ * `continue` · `pause` · `take` · `view` · `record`。
  */
-cmd: "continue" | "pause" | "take" | "view", 
+cmd: "continue" | "pause" | "take" | "view" | "record", 
 /**
- * `take` 接哪一片的仓库（片名）；别的动词不带。
+ * `take` 接哪一片的仓库 · `record` 记进哪一片（片名）；别的动词不带。
  */
-slice?: string | null, };
+slice?: string | null, 
+/**
+ * `record`：定了什么（一行）。
+ */
+summary?: string | null, 
+/**
+ * `record`：人的原话，一句一项（照抄；没带「」pb 包上）。
+ */
+quotes?: Array<string> | null, };

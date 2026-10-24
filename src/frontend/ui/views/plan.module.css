@@ -262,6 +262,7 @@
   }
 
   .pvRow {
+    position: relative;
     display: flex;
     align-items: center;
     gap: var(--space-3);
@@ -270,6 +271,21 @@
     border-left: 2px solid transparent;
     white-space: nowrap;
     cursor: pointer;
+  }
+
+  /* covers 的括弧：最左一条槽，一条规矩一道（类色那一套，按规矩先后隔两色取），连着的几行连成一条。 */
+  .pvRings {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 2px;
+    display: flex;
+    gap: 2px;
+  }
+
+  .pvRing {
+    width: 2px;
+    background: var(--kc, var(--text-faint));
   }
 
   .pvRow:hover {
@@ -315,6 +331,10 @@
 
   .pvSt[data-look="dropped"] {
     color: var(--text-faint);
+  }
+
+  .pvSt[data-look="evidence"] {
+    color: var(--text-2);
   }
 
   .pvKbar {

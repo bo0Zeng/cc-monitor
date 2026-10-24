@@ -13786,13 +13786,17 @@ inside: PlanKids | null, dir: string | null, owner: PlanWho | null, phase: strin
 at: string | null, row: boolean, };
 type PlanCell = { id: string, title: string | null, kind: string | null, body: string | null, parent: string | null, children: Array<string>, edges: PlanEdges, pointedBy: PlanEdges, files: Array<PlanFile>, 
 /**
- * pb 的原话（做完了 · 没做完 · 不做了）。
+ * 凭据类的格：不算活（不进进度 · 父做完没有不看它）。
+ */
+evidence: boolean, 
+/**
+ * pb 的原话（做完了 · 没做完 · 不做了 · 凭据）。
  */
 status: string | null, 
 /**
  * 状态的码；pb 给了别的字 ⇒ `null`。
  */
-statusCode: "done" | "open" | "dropped" | null, 
+statusCode: "done" | "open" | "dropped" | "evidence" | null, 
 /**
  * 没做完时的原因（pb 原话）。
  */
@@ -13804,16 +13808,37 @@ whyCode: PlanWhyCode | null,
 /**
  * 行尾那一个原因短词；没有原因 ⇒ `null`。
  */
-whyShort: PlanWhyShort | null, signs: Array<PlanSign>, owner: PlanWho | null, 
+whyShort: PlanWhyShort | null, signs: Array<PlanSign>, 
 /**
- * 签它的（上一级）；pb 没给 ⇒ `null`。
+ * 几种值的计数（pb 原话，如「正 2（A1-7 · A1-9）」）；没有 ⇒ `null`。
  */
-signer: PlanWho | null, refs: PlanRefs, hasView: boolean, 
+counts: string | null, 
+/**
+ * 它自己写的、还没执行的 sets。
+ */
+sets: Array<PlanSetsTo>, 
+/**
+ * 住哪一块（块的编号；顶那一块 ⇒ `project`）。
+ */
+block: string | null, owner: PlanWho | null, 
+/**
+ * 谁的 update 执行得了收下它的 sets（凭据类的 · 有子的格 ⇒ `null`）。
+ */
+signer: PlanWho | null, 
+/**
+ * 它写的 covers（格的编号或 `project`）。
+ */
+covers: Array<string>, 
+/**
+ * covers 管着它的那几格（pb 算的）。
+ */
+coveredBy: Array<string>, refs: PlanRefs, 
 /**
  * 退回过 ⇒ 那一次的状态；没有 ⇒ `null`。
  */
 returned: PlanReturned | null, };
 type PlanCheck = { unreadable: unknown[], red: Array<PlanRed>, undecidable: Array<PlanUndecidable>, };
+type PlanDomain = { name: string | null, error: string | null, kinds: Array<PlanKind>, phases: Array<PlanPhase>, };
 type PlanEdgeWords = { to: string | null, with: string | null, after: string | null, replaces: string | null, };
 type PlanEdges = { to: Array<string>, with: Array<string>, after: Array<string>, replaces: Array<string>, };
 type PlanFile = { path: string, 
@@ -13830,7 +13855,15 @@ stateCode: "ok" | "missing" | "empty" | "broken" | null, note: string | null,
  */
 alsoBy: Array<string>, };
 type PlanKids = { done: number, of: number, };
-type PlanKind = { name: string | null, edgeWords: PlanEdgeWords, };
+type PlanKind = { name: string | null, edgeWords: PlanEdgeWords, 
+/**
+ * 凭据类：这一类的格不算活。
+ */
+evidence: boolean, 
+/**
+ * 这一类许的状态值（收下在头一个）。
+ */
+values: Array<string>, };
 type PlanNeed = { key: string, kind: "top" | "red" | "ended" | "ask", block: string | null, cell: string | null, 
 /**
  * 那一条牵着的会话（问人 · 停了的那一个）。
@@ -13840,9 +13873,14 @@ sid: string | null,
  * 判据红那一条在 `check.red` 里的位置。
  */
 red?: number, acked: boolean, };
+type PlanPendingSet = { source: string | null, target: string | null, value: string | null, whyNot: string | null, };
 type PlanPhase = { name: string | null, does: string | null, marks: Array<string>, };
 type PlanProgress = { done: number, open: number, dropped: number, };
-type PlanRead = { pb: string | null, workspace: string, repo: string | null, auto: boolean, slices: Array<PlanSlice>, bySession: { [key in string]: PlanSessionBlock }, 
+type PlanRead = { pb: string | null, workspace: string, repo: string | null, auto: boolean, 
+/**
+ * 能选的领域（`pb repo` 认得的每一档）。
+ */
+domains: Array<PlanDomain>, slices: Array<PlanSlice>, bySession: { [key in string]: PlanSessionBlock }, 
 /**
  * 这一份输出的摘要：变了才算计划变了。
  */
@@ -13852,7 +13890,12 @@ type PlanReadReq = {
  * 工作区根（`plan-list` 给的那个）。
  */
 workspace: string, };
-type PlanRed = { rule: string | null, what: string | null, block: string | null, fix: string | null, };
+type PlanRecord = { n: number | null, summary: string | null, at: string | null, atText?: string, by: PlanWho | null, quotes: Array<string>, };
+type PlanRed = { rule: string | null, what: string | null, block: string | null, fix: string | null, 
+/**
+ * `what` 里提到的格（UTF-16 下标）。
+ */
+refs: Array<PlanRef>, };
 type PlanRef = { start: number, end: number, ids: Array<string>, };
 type PlanRefs = { title: Array<PlanRef>, body: Array<PlanRef>, };
 type PlanReturned = { 
@@ -13874,6 +13917,7 @@ cell: string | null,
  * 块根格的标题；顶块 ⇒ `null`。
  */
 title: string | null, top: boolean, phase: string | null, at: string | null, atTitle: string | null, via: "session" | "subagent", };
+type PlanSetsTo = { target: string | null, value: string | null, };
 type PlanSign = { 
 /**
  * pb 的 ISO 时刻。
@@ -13882,17 +13926,41 @@ at: string | null,
 /**
  * 那一刻写成给人看的字（按看的那一台的时区）；读不出时刻 ⇒ 没有。
  */
-atText?: string, by: PlanWho | null, reason: string | null, refs: Array<PlanRef>, };
+atText?: string, 
+/**
+ * 执行那一条 sets 的那一位。
+ */
+by: PlanWho | null, 
+/**
+ * 记下的值（`收下` · 那一类登的别的值）。
+ */
+value: string | null, 
+/**
+ * 凭：来处那一格（编号）；早先 `pb sign` 那一笔 ⇒ `null`。
+ */
+via: string | null, 
+/**
+ * 这一笔的值在那一类算不算做完。
+ */
+done: boolean, 
+/**
+ * 早先那一笔的理由（新的一笔理由住来处那一格的正文 ⇒ 空）。
+ */
+reason: string | null, refs: Array<PlanRef>, };
 type PlanSignAt = { cell: string, i: number, };
 type PlanSlice = { name: string, domain: string | null, 
 /**
- * 这一片的仓库相对工作区根在哪（pb 登记的；旧 pb 没给 ⇒ 片名）。
+ * 这一片的仓库相对工作区根在哪（pb 给的，照用；pb 没给 ⇒ `null`）。
  */
-path: string, current: boolean, 
+path: string | null, current: boolean, 
 /**
  * 只写文档：仓库还没接过来（`plan-command take` 接）。
  */
 docsOnly: boolean, 
+/**
+ * 这一片记下的人的原话（照号）。
+ */
+records: Array<PlanRecord>, 
 /**
  * 这一刻读不成的那一句（pb 原样）。
  */
@@ -13904,7 +13972,27 @@ openCells: number,
 /**
  * 全片的签收，新的在上（读不出时刻的排后）。
  */
-recentSigns: Array<PlanSignAt>, blocks: Array<PlanBlock>, check: PlanCheck, cells: Array<PlanCell>, archived: Array<PlanArchived>, needs: Array<PlanNeed>, 
+recentSigns: Array<PlanSignAt>, blocks: Array<PlanBlock>, 
+/**
+ * 写了「块:」还没立块的。
+ */
+unbuiltBlocks: Array<PlanUnbuilt>, 
+/**
+ * 无主文件（仓库读不出 ⇒ `paths` 为 null、`why` 说为什么）。
+ */
+unowned: PlanUnowned, 
+/**
+ * 没分下去的文件。
+ */
+unsplit: Array<PlanUnsplit>, 
+/**
+ * 还没执行的 sets（画虚线，为什么写在目标那一格上）。
+ */
+pendingSets: Array<PlanPendingSet>, check: PlanCheck, 
+/**
+ * 编号 ⇒「编号 标题」（活图上的格 ＋ 归档里的；后端拼，界面凡出现编号照它写）。
+ */
+labels: { [key in string]: string }, cells: Array<PlanCell>, archived: Array<PlanArchived>, needs: Array<PlanNeed>, 
 /**
  * 这一片要你看的数（没认可的，不含问人）。
  */
@@ -13914,7 +14002,10 @@ needCount: number,
  */
 returned: PlanReturned | null, };
 type PlanStale = { said: string | null, raw: string | null, since: number, sinceText?: string, };
+type PlanUnbuilt = { id: string | null, cells: Array<string>, };
 type PlanUndecidable = { rule: string | null, why: string | null, };
+type PlanUnowned = { paths: Array<string> | null, why: string | null, };
+type PlanUnsplit = { id: string | null, path: string | null, };
 type PlanWho = { id: string, kind: "session" | "subagent" | "unknown", 
 /**
  * 主会话 ⇒ 它自己；子 agent ⇒ 父会话；认不出 ⇒ `null`。
@@ -13995,7 +14086,7 @@ type Words = string;
 
 #### `plan-cell-view`
 
-一格的 agent 视角（agent 站在这一格时 pb 印给它的那一段，原样）。
+一格的 agent 视角（agent 站在这一格时 pb 印给它的那一段，原样；点到才起 `pb dump --cell`）。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-cell-view`
 
@@ -14018,11 +14109,11 @@ slice: string,
 id: string, };
 ```
 
-码：`bad_args` · `no_view`
+码：`bad_args` · `failed` · `no_pb` · `no_view` · `not_workspace` · `pb_unsupported`
 
 #### `plan-command`
 
-以人的身份代敲 pb 的命令：`continue` · `pause`（开关自动接着做，管整个工作区）· `take`（接过一片的仓库，不是此刻那一片先切过去）· `view`（pb 画整张图写进系统临时目录，回页面路径）；这一侧带着 agent 身份 ⇒ 用户命令不代敲。
+以人的身份代敲 pb 的命令：`continue` · `pause`（开关自动接着做，管整个工作区）· `take`（接过一片的仓库，不是此刻那一片先切过去）· `view`（pb 画整张图写进系统临时目录，回页面路径）· `record`（把人的原话记进 `slice` 那一片，当前片不动）；这一侧带着 agent 身份 ⇒ 这几条都不代敲。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-command`
 
@@ -14040,13 +14131,21 @@ type PlanCommandReq = {
  */
 workspace: string, 
 /**
- * `continue` · `pause` · `take` · `view`。
+ * `continue` · `pause` · `take` · `view` · `record`。
  */
-cmd: "continue" | "pause" | "take" | "view", 
+cmd: "continue" | "pause" | "take" | "view" | "record", 
 /**
- * `take` 接哪一片的仓库（片名）；别的动词不带。
+ * `take` 接哪一片的仓库 · `record` 记进哪一片（片名）；别的动词不带。
  */
-slice?: string | null, };
+slice?: string | null, 
+/**
+ * `record`：定了什么（一行）。
+ */
+summary?: string | null, 
+/**
+ * `record`：人的原话，一句一项（照抄；没带「」pb 包上）。
+ */
+quotes?: Array<string> | null, };
 type PlanTook = { slice: string, 
 /**
  * 仓库相对工作区根在哪。
@@ -14120,9 +14219,13 @@ type PlanFiles = { workspace: string | null, slice: string | null,
  */
 unreadable: string | null, entries: Array<PlanFileOwner>, 
 /**
- * 无主的那几份（要 pb 给 `unowned`；没给 ⇒ `null`）。
+ * 这个目录里无主的那几份（文件名）；不在任何一片里 · 那一片读不成 · 仓库读不出 ⇒ `null`。
  */
-unowned: Array<string> | null, };
+unowned: Array<string> | null, 
+/**
+ * 仓库读不出、判不了无主的那一句（pb 原样）；判得了 ⇒ `null`。
+ */
+unownedWhy: string | null, };
 type PlanFilesReq = { 
 /**
  * 那台机器上的绝对路径。
@@ -14441,8 +14544,8 @@ type Words = string;
 | `--place-self` | 部署那一趟：暂存区里新传上去的这一份读自己的字节，自报是这一版才 `rename(2)` 盖掉落点 `~/.cc-monitor/bin/ccm`；回 `{placed: true, build_id}`；不在暂存区 ⇒ `outside_staging`；自报不是这一版 ⇒ `not_self`、暂存件当场删 |
 | `--place-verdict` | ＝ 帧命令 `place-verdict`：本机那一份放不放 |
 | `--plan-ack` | ＝ 帧命令 `plan-ack`：认可一条要你看（只记在 cc-monitor；键带条目版本，版本换了那一条再出）；推一帧 `changed {plan}` 带新的数 |
-| `--plan-cell-view` | ＝ 帧命令 `plan-cell-view`：一格的 agent 视角（agent 站在这一格时 pb 印给它的那一段，原样） |
-| `--plan-command` | ＝ 帧命令 `plan-command`：以人的身份代敲 pb 的命令：`continue` · `pause`（开关自动接着做，管整个工作区）· `take`（接过一片的仓库，不是此刻那一片先切过去）· `view`（pb 画整张图写进系统临时目录，回页面路径）；这一侧带着 agent 身份 ⇒ 用户命令不代敲 |
+| `--plan-cell-view` | ＝ 帧命令 `plan-cell-view`：一格的 agent 视角（agent 站在这一格时 pb 印给它的那一段，原样；点到才起 `pb dump --cell`） |
+| `--plan-command` | ＝ 帧命令 `plan-command`：以人的身份代敲 pb 的命令：`continue` · `pause`（开关自动接着做，管整个工作区）· `take`（接过一片的仓库，不是此刻那一片先切过去）· `view`（pb 画整张图写进系统临时目录，回页面路径）· `record`（把人的原话记进 `slice` 那一片，当前片不动）；这一侧带着 agent 身份 ⇒ 这几条都不代敲 |
 | `--plan-files` | ＝ 帧命令 `plan-files`：文件窗口反查：这个目录落在哪一片的仓库里、每份文件归哪一格（只看读好过的工作区，不起 pb） |
 | `--plan-list` | ＝ 帧命令 `plan-list`：这台的 pb 工作区与片（目录 ＝ 活会话的工作目录 ∪ `dirs`，pb 自己往上找工作区） |
 | `--plan-pb-check` | ＝ 帧命令 `plan-pb-check`：一个路径能不能当 pb 用（入口在 · 起得来），回给人看的那一句；设置里存 pb 路径之前问 |
