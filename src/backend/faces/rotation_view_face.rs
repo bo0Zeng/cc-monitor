@@ -3,12 +3,12 @@
 //! （照文件此刻的）此刻的设置 · 每个号的事实 · 顺序 · 这一判 · 推演 · 提示。界面照画，不判、不排、不算时刻。
 
 use crate::accounts::quota::rules::book::{self, Book};
-use crate::accounts::quota::rules::decide::{Decision, Pick};
-use crate::accounts::quota::rules::{past, simulate, standing, Acct, Adopted};
+use crate::accounts::quota::rules::decide::Pick;
+use crate::accounts::quota::rules::{past, standing, Adopted};
 use crate::accounts::quota::setup::{self, form, script, shelf, uses};
 use crate::accounts::quota::strategy::FailWhy;
-use crate::accounts::upstream_select::turn;
 use crate::common::cells::Words;
+use crate::faces::rotation_act_face::{judged, lineup_of, Judged};
 use crate::faces::rotation_face::Ctx;
 use crate::faces::rotation_try_face::{decision_of, timeline_of};
 use crate::wire::typed::Command;
@@ -151,6 +151,23 @@ fn plate_of(id: &str, colors: &std::collections::BTreeMap<String, u8>) -> RotPla
             .unwrap_or_else(|| crate::accounts::manage::model::color_fallback(id)),
         label: Words(account_text(id)),
         text: Words(plate_text(id)),
+    }
+}
+
+/// 视图里的一个号：事实 · 号牌 · 用满了的那几窗（照 [`standing::used_up`] 那一处判）。
+fn account_of(
+    fact: cmd_wire::rotation::Fact,
+    colors: &std::collections::BTreeMap<String, u8>,
+) -> RotAccount {
+    let full = [("5h", &fact.w5h), ("7d", &fact.w7d)]
+        .into_iter()
+        .filter(|(_, w)| standing::used_up(w.used))
+        .map(|(k, _)| k.to_string())
+        .collect();
+    RotAccount {
+        plate: plate_of(&fact.account, colors),
+        fact,
+        full,
     }
 }
 
@@ -342,11 +359,14 @@ fn face(t: u64, tz: &crate::Tz) -> String {
 const PAST_SHARE: u64 = 6;
 
 /// 时间轴过去那一截：最上那条照这个会话的换号记录；每号一行照此刻的读数与记录，说不出的空着（[`past`]）。
+/// `first` ＝ 推演第一段（起点 · 用哪个号）：接着此刻、跟它同一个号的那一段不写号名（同一段只写一次，写在推演那一截）。
+#[allow(clippy::too_many_arguments)]
 fn past_of(
     session: &book::Session,
     facts: &[crate::accounts::quota::rules::Acct],
     lanes: &[String],
     holding: bool,
+    first: Option<(u64, Option<&str>)>,
     from: u64,
     now: u64,
     tz: &crate::Tz,
@@ -362,10 +382,18 @@ fn past_of(
             holding,
         )
         .into_iter()
-        .map(|u| RotPastUse {
-            from: u.from,
-            to: u.to,
-            account: u.account,
+        .map(|u| {
+            let joins = u.to == now && first == Some((now, u.account.as_deref()));
+            RotPastUse {
+                from: u.from,
+                to: u.to,
+                text: if joins {
+                    String::new()
+                } else {
+                    crate::faces::rotation_try_face::use_text(u.account.as_deref())
+                },
+                account: u.account,
+            }
         })
         .collect(),
         lanes: lanes
@@ -391,31 +419,6 @@ fn past_of(
             })
             .collect(),
     }
-}
-
-/// 会话的顺序：第一格 ＝ 在用的号，往下照拖出来的 · 策略交的先后，此刻用不了的与先不用的沉底（各照号的先后）。
-fn lineup_of(s: &book::Session, d: &Decision, facts: &[Acct], now: u64) -> Vec<String> {
-    let ok = |a: &str| {
-        !s.off.iter().any(|x| x == a)
-            && facts
-                .iter()
-                .find(|x| x.id == a)
-                .is_some_and(|x| standing::sendable(x, now))
-    };
-    let mut out = vec![s.current.clone()];
-    let ids: Vec<&String> = facts.iter().map(|x| &x.id).collect();
-    let usable = d
-        .sigma
-        .temp
-        .iter()
-        .chain(&d.order)
-        .chain(ids.iter().copied());
-    for a in usable.filter(|a| ok(a)).chain(ids.iter().copied()) {
-        if !out.contains(a) {
-            out.push(a.clone());
-        }
-    }
-    out
 }
 
 /// 本体（测试给假的账本 · 额度账 · 钟 · 判活）。
@@ -497,19 +500,18 @@ pub(crate) fn view_with(
             off: session.off.clone(),
             // 不轮换 ⇒ 只有开会话的那个号（号列表之外，只为它那一枚号牌）。
             accounts: (!session.start.is_empty())
-                .then(|| RotAccount {
-                    fact: ctx.hop.fact_one(
-                        &agent,
-                        &ctx.hop.library(),
-                        &session.start,
-                        &ctx.row(&agent),
-                        now,
-                        tz,
-                    ),
-                    plate: plate_of(
-                        &session.start,
+                .then(|| {
+                    account_of(
+                        ctx.hop.fact_one(
+                            &agent,
+                            &ctx.hop.library(),
+                            &session.start,
+                            &ctx.row(&agent),
+                            now,
+                            tz,
+                        ),
                         &crate::observe::accounts_query::account_colors(),
-                    ),
+                    )
                 })
                 .into_iter()
                 .collect(),
@@ -526,24 +528,8 @@ pub(crate) fn view_with(
         RotTarget::Session { sid } => sid.as_str(),
         RotTarget::Strategy { .. } => "",
     };
-    let facts = ctx
-        .hop
-        .accts(sid, &session, &base, &plan.settings, &row, now);
-    let d = ctx
-        .hop
-        .judge_session(sid, &session, &plan, &facts, now, &[]);
     let hours = u64::from(req.hours.unwrap_or(12).clamp(1, 48));
-    let budget = crate::accounts::quota::rules::code::Budgeted::new(&plan);
-    let stz = plan.tz.clone();
-    let tl = simulate::simulate(
-        &ctx.hop.sigma(sid, &session, now),
-        &facts,
-        &plan.settings,
-        &budget,
-        &|t| crate::accounts::quota::rules::clock_at(&stz, t),
-        now,
-        now + hours * 3600,
-    );
+    let Judged { facts, d, tl } = judged(ctx, sid, &session, &plan, &row, now, now + hours * 3600);
     let item = match &shelved {
         Some(s) => item_of(s, &base, &for_new, live),
         None => RotStrategyItem {
@@ -639,13 +625,15 @@ pub(crate) fn view_with(
     let colors = crate::observe::accounts_query::account_colors();
     let accounts: Vec<RotAccount> = listed_ids
         .iter()
-        .map(|id| RotAccount {
-            fact: all_facts
-                .iter()
-                .find(|f| f.account == *id)
-                .cloned()
-                .unwrap_or_else(|| ctx.hop.fact_one(&agent, &lib, id, &row, now, tz)),
-            plate: plate_of(id, &colors),
+        .map(|id| {
+            account_of(
+                all_facts
+                    .iter()
+                    .find(|f| f.account == *id)
+                    .cloned()
+                    .unwrap_or_else(|| ctx.hop.fact_one(&agent, &lib, id, &row, now, tz)),
+                &colors,
+            )
         })
         .collect();
     let (past, lineup, log) = match &req.target {
@@ -658,6 +646,15 @@ pub(crate) fn view_with(
                     &facts,
                     &lanes,
                     matches!(d.pick, Pick::Hold { .. }),
+                    tl.uses.first().map(|u| {
+                        (
+                            u.from,
+                            match &u.pick {
+                                Pick::Use(a) => Some(a.as_str()),
+                                Pick::Hold { .. } => None,
+                            },
+                        )
+                    }),
                     from,
                     now,
                     tz,
@@ -718,6 +715,8 @@ fn day_seg((from, to, v): (u64, u64, f64)) -> RotDaySeg {
     RotDaySeg {
         from,
         to,
+        from_text: day_clock(from),
+        to_text: day_clock(to),
         v,
         text: if v == 0.0 {
             copy_text("rot.day.zero", &[])

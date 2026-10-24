@@ -314,37 +314,18 @@ pub struct RotTryUse {
     /// 在用的号用到上限的时刻还不知道（额度账里量不到它的用速）：这一段只排确定的事件。
     pub cap_unknown: bool,
     pub skipped: Vec<String>,
-}
-
-/// 每个号那一行的一段。
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct RotTryLaneSeg {
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub from: u64,
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub to: u64,
-    /// 事实上发得出去吗（被拒 · 登录 · key · 超额 · 用到 100 都算发不出去）。
-    pub sendable: bool,
-    /// 这一段开头两窗的用量（5 小时 · 7 天）。
-    pub used: [f64; 2],
-    pub reset: bool,
-    /// 这一段写的字：发不出去 ⇒ 空；重置那段 `↻18:30`；此刻那段 `剩 40%`。
+    /// 这一段写的字：号名 · 停发那一句。
     pub text: String,
-    /// 这一段开头剩多少（事实：100 − 两窗里用得多的那个，不低于 0）。
-    pub left: f64,
 }
 
-/// 一个号那一行。
+/// 一个号那一行（段同过去那一截：[`RotPastSeg`]）。
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct RotTryLane {
     pub account: String,
-    pub segs: Vec<RotTryLaneSeg>,
+    pub segs: Vec<RotPastSeg>,
 }
 
 /// 一次换号。
@@ -521,10 +502,12 @@ pub struct RotPastUse {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub account: Option<String>,
+    /// 这一段写的字：号名 · 停发那一句；接着此刻、跟推演第一段同一个号的那一段 ⇒ 空（同一段只写一次，写在推演那一截）。
+    pub text: String,
 }
 
-/// 过去那一截每号一行的一段：发得出去吗 · 开头是不是刚开了新窗 · 写的字（重置那段 `↻HH:MM`，别的空）。
-/// 不带「剩多少」：只知道此刻的读数。
+/// 时间轴上每号一行的一段（过去那一截与推演那一截同一形）：事实上发得出去吗（被拒 · 登录 · key · 超额 · 用到 100 都算发不出去）·
+/// 开头是不是刚开了新窗 · 写的字（发不出去 ⇒ 空；重置那段 `↻HH:MM`；推演里此刻那段 `剩 40%`；这个会话先不用 ⇒ 「不用」）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -724,7 +707,7 @@ pub struct RotationFactsReply {
     pub accounts: Vec<Fact>,
 }
 
-/// `rotation-view` 里的一个号：事实 ＋ 号牌。
+/// `rotation-view` 里的一个号：事实 ＋ 号牌 ＋ 用满了的那几窗（`5h` · `7d`；号牌上那条小计量照它画满）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
@@ -733,6 +716,7 @@ pub struct RotAccount {
     #[cfg_attr(any(test, feature = "ts"), ts(flatten))]
     pub fact: Fact,
     pub plate: RotPlate,
+    pub full: Vec<String>,
 }
 
 /// 一个号的号牌：号色（`--acct-c0..c7` 第几格，同 `accounts-list` 那一格）· 号名（人眼里叫什么，同额度那几处）· 号牌字（同 `accounts-list` 那一格）。
@@ -757,8 +741,10 @@ pub enum RotFrom {
     Same,
 }
 
-/// 24 小时条上的一段：一天里的分钟 `[from, to)` · 值 · 段上写的字 · 悬停那一句。
+/// 24 小时条上的一段：一天里的分钟 `[from, to)` · 那两刻写成钟点（一段一行那两格里的字，`24:00` 是一整天的末尾）·
+/// 值 · 段上写的字 · 悬停那一句。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct RotDaySeg {
@@ -766,6 +752,8 @@ pub struct RotDaySeg {
     pub from: u64,
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub to: u64,
+    pub from_text: String,
+    pub to_text: String,
     pub v: f64,
     pub text: String,
     pub tip: String,

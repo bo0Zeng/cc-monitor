@@ -63,10 +63,11 @@ internal object RotFixture {
             put("w7d", win(u7))
             put("login", "ok")
             put("plate", mapOf("color" to 2.0, "label" to if (account == "work") "Work" else account, "text" to account.take(2)))
+            put("full", listOfNotNull("5h".takeIf { u5 >= 100.0 }, "7d".takeIf { u7 >= 100.0 }))
             blocked?.let { put("blocked", mapOf("why" to "used", "text" to it)) }
         }
 
-    private fun daySegs(v: Double) = listOf(mapOf("from" to 0.0, "to" to 1440.0, "v" to v, "text" to "夹具·$v", "tip" to "夹具·全天 $v"))
+    private fun daySegs(v: Double) = listOf(mapOf("from" to 0.0, "to" to 1440.0, "fromText" to "00:00", "toText" to "24:00", "v" to v, "text" to "夹具·$v", "tip" to "夹具·全天 $v"))
 
     /** 分段一窗：5h 自己的一段；7d 同第一窗（带「同 5 小时」那颗钮的字）。 */
     private fun caps(w: String) =
@@ -151,9 +152,9 @@ internal object RotFixture {
                         "switches" to listOf(mapOf("at" to (NOW + 5_000).toDouble(), "atText" to "16:07", "account" to "work")),
                         "uses" to
                             listOf(
-                                mapOf("from" to NOW.toDouble(), "to" to (NOW + 5_000).toDouble(), "account" to "team", "fromTemp" to false, "capUnknown" to false, "skipped" to emptyList<String>()),
-                                mapOf("from" to (NOW + 5_000).toDouble(), "to" to (NOW + 20_000).toDouble(), "account" to "work", "fromTemp" to false, "capUnknown" to false, "skipped" to listOf("lab")),
-                                mapOf("from" to (NOW + 20_000).toDouble(), "to" to (NOW + 43_200).toDouble(), "account" to "lab", "fromTemp" to false, "capUnknown" to false, "skipped" to emptyList<String>()),
+                                mapOf("from" to NOW.toDouble(), "to" to (NOW + 5_000).toDouble(), "account" to "team", "fromTemp" to false, "capUnknown" to false, "skipped" to emptyList<String>(), "text" to "team"),
+                                mapOf("from" to (NOW + 5_000).toDouble(), "to" to (NOW + 20_000).toDouble(), "account" to "work", "fromTemp" to false, "capUnknown" to false, "skipped" to listOf("lab"), "text" to "Work"),
+                                mapOf("from" to (NOW + 20_000).toDouble(), "to" to (NOW + 43_200).toDouble(), "account" to "lab", "fromTemp" to false, "capUnknown" to false, "skipped" to emptyList<String>(), "text" to "lab"),
                             ),
                         "lanes" to
                             listOf(
@@ -161,8 +162,8 @@ internal object RotFixture {
                                     "account" to "team",
                                     "segs" to
                                         listOf(
-                                            mapOf("from" to NOW.toDouble(), "to" to (NOW + 9_000).toDouble(), "sendable" to true, "used" to listOf(58.0, 30.0), "reset" to false, "text" to "夹具·剩 42", "left" to 42.4),
-                                            mapOf("from" to (NOW + 9_000).toDouble(), "to" to (NOW + 43_200).toDouble(), "sendable" to true, "used" to listOf(0.0, 30.0), "reset" to true, "text" to "夹具·↻18:30", "left" to 70.0),
+                                            mapOf("from" to NOW.toDouble(), "to" to (NOW + 9_000).toDouble(), "sendable" to true, "reset" to false, "text" to "夹具·剩 42"),
+                                            mapOf("from" to (NOW + 9_000).toDouble(), "to" to (NOW + 43_200).toDouble(), "sendable" to true, "reset" to true, "text" to "夹具·↻18:30"),
                                         ),
                                 ),
                             ),

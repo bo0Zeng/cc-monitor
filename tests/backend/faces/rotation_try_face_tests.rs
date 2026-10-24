@@ -142,16 +142,45 @@ fn the_clock_words_follow_the_viewing_machine() {
         assert_eq!(t.text, face(t.at), "{:?}", got.timeline.ticks);
     }
     for l in &got.timeline.lanes {
+        // 此刻那段剩多少 ＝ 100 − 两窗里用得多的（work 89 · team 10）。
+        let left = if l.account == "work" { 11 } else { 90 };
         for (k, g) in l.segs.iter().enumerate() {
             let want = match (g.sendable, g.reset, k) {
                 (false, ..) => String::new(),
                 (true, true, _) => format!("↻{}", face(g.from)),
-                (true, false, 0) => format!("剩 {}%", g.left.round()),
+                (true, false, 0) => format!("剩 {left}%"),
                 _ => String::new(),
             };
             assert_eq!(g.text, want, "{g:?}");
         }
     }
+}
+
+/// ★ 最上那条每段写的字由后端写好：用哪个号 ⇒ 它的号名；停发 ⇒ 「停下」那一句（界面不再自己挑）。
+#[test]
+fn each_use_carries_the_words_it_shows() {
+    let req = RotationTryReq {
+        source: source(),
+        settings: Some(settings()),
+        ..Default::default()
+    };
+    let facts = [a("work", 89.0, Some(0.5)), a("team", 10.0, None)];
+    let got = try_with(&req, &facts, NOW, &crate::Tz::default()).expect("ok");
+    assert!(!got.timeline.uses.is_empty());
+    for u in &got.timeline.uses {
+        let want = match &u.account {
+            Some(a) => crate::accounts::quota::name_words::account_text(a),
+            None => copy_core::copy_text("rot.sim.hold", &[]),
+        };
+        assert_eq!(u.text, want, "{u:?}");
+    }
+    let held = try_with(&req, &[a("work", 100.0, None)], NOW, &crate::Tz::default()).expect("ok");
+    let first = held.timeline.uses.first().expect("一段");
+    assert_eq!(
+        (first.account.as_deref(), first.text.as_str()),
+        (None, copy_core::copy_text("rot.sim.hold", &[]).as_str()),
+        "只有一个号且用满 ⇒ 停发"
+    );
 }
 
 /// ★ 读不懂的原文 ⇒ `bad_strategy`，带第几行。

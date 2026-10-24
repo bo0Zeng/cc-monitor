@@ -358,17 +358,36 @@ pub(crate) fn day_of(
     (whole.unwrap_or_default(), RotFrom::Default)
 }
 
-/// 分段里的一段（[`RotEdit::Seg`]）：一天里的分钟 `[from, to)` · 上限。
-#[derive(Debug, Clone, Copy, Deserialize)]
+/// 分段里的一段（[`RotEdit::Seg`]）：`[from, to)` 是一段一行里打的钟点原样的字（照 [`day_minute`] 认）· 上限。
+#[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct RotSeg {
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) from: u64,
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) to: u64,
+    pub(crate) from: String,
+    pub(crate) to: String,
     pub(crate) v: f64,
+}
+
+/// 一段一行里打的钟点 ⇒ 一天里的分钟：`20:30` · `2030` · `20` 都认（前后空白不算），`24:00` ⇒ 一整天的末尾；写得不对 ⇒ 缺。
+/// 两端交来的都照这一处认。
+pub(crate) fn day_minute(text: &str) -> Option<u64> {
+    let t = text.trim();
+    let (h, m) = match t.split_once(':') {
+        Some((h, m)) => (h, Some(m)),
+        None if t.len() > 2 => (&t[..t.len() - 2], Some(&t[t.len() - 2..])),
+        None => (t, None),
+    };
+    let digits = |s: &str, n: std::ops::RangeInclusive<usize>| {
+        n.contains(&s.len()) && s.bytes().all(|b| b.is_ascii_digit())
+    };
+    if !digits(h, 1..=2) || m.is_some_and(|m| !digits(m, 2..=2)) {
+        return None;
+    }
+    let h: u64 = h.parse().ok()?;
+    let m: u64 = m.map_or(Some(0), |m| m.parse().ok())?;
+    let v = h * 60 + m;
+    (m < 60 && v <= DAY_MIN).then_some(v)
 }
 
 /// 改设置的一个意图（`rotation-settings` 的 `edit`）：设一格 · 分段里改 / 加 / 删一段 · 同第一窗与否 · 拖号牌 · 加号 · 移出。
@@ -523,13 +542,16 @@ pub(crate) fn apply(form: &[Cell], settings: &Value, edit: &RotEdit) -> Result<V
                 now = day_paint(&now, a, b, None);
             }
             if let Some(g) = seg {
-                if g.from == g.to || g.from > DAY_MIN || g.to > DAY_MIN {
-                    return Err(
-                        "a segment needs from ≠ to, both 0–1440 (from > to crosses midnight)"
-                            .into(),
-                    );
-                }
-                now = day_paint(&now, g.from, g.to, Some(g.v));
+                let (from, to) = match (day_minute(&g.from), day_minute(&g.to)) {
+                    (Some(a), Some(b)) if a != b => (a, b),
+                    _ => {
+                        return Err(format!(
+                            "a segment needs two different clock times (HH:MM · HHMM · HH, up to 24:00; from > to crosses midnight): `{}`–`{}`",
+                            g.from, g.to
+                        ))
+                    }
+                };
+                now = day_paint(&now, from, to, Some(g.v));
             }
             put_window(top, key, *row, window, &now)?;
         }

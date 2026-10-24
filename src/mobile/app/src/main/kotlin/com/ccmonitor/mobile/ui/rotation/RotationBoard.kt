@@ -308,8 +308,18 @@ class RotationBoard(
     /** ［立即用］：那台说用不了（`unusable`）⇒ 按钮下照 `rot.acct.refused` 写那一句（那台事实上的那一句 `blocked.text`，没有就照回的话）。 */
     fun useNow(account: String) {
         val s = sid ?: return
+        switchTo(account, copyText("rot.fail.useNow"), Rotation.USE_NOW, Rotation.useNow(s, account))
+    }
+
+    /** 换到 [account]（［立即用］· 顺序里拖到第一格）：那台说它事实上发不出去（`unusable`）⇒ 不换，照 `rot.acct.refused` 写那一句。 */
+    private fun switchTo(
+        account: String,
+        what: String,
+        command: String,
+        args: Map<String, Any?>,
+    ) {
         scope.launch {
-            val r = link.call(Rotation.USE_NOW, Rotation.useNow(s, account), WRITE_MS)
+            val r = link.call(command, args, WRITE_MS)
             val f = (r as? Reply.Failed)?.failure
             when {
                 r is Reply.Ok -> _state.update { it.copy(refused = null) }
@@ -322,7 +332,7 @@ class RotationBoard(
                             ?.text ?: f.message
                     _state.update { it.copy(refused = account to copyText("rot.acct.refused", "account" to label(account), "why" to why)) }
                 }
-                else -> fail(copyText("rot.fail.useNow"), problemOf(r, Rotation.USE_NOW))
+                else -> fail(what, problemOf(r, command))
             }
             refresh()
         }
@@ -335,16 +345,16 @@ class RotationBoard(
         scope.launch { refresh() }
     }
 
-    /** 拖到最上那条：排到第 [at] 段（几何换出来的位置；能不能用 · 跳不跳由那台推演答）。 */
+    /** 拖到最上那条、松在时刻 [t]（unix 秒）：排到第几段 · 能不能用 · 跳不跳都由那台照推演答。 */
     fun place(
         account: String,
-        at: Int,
+        t: Long,
     ) {
         val s = sid ?: return
-        launchWrite(copyText("rot.fail.temp"), Rotation.TEMP, Rotation.place(s, account, at))
+        launchWrite(copyText("rot.fail.temp"), Rotation.TEMP, Rotation.place(s, account, t))
     }
 
-    /** 顺序里长按把第 [i] 行拖到第 [to] 格：第一格 ⇒ 现在用；别处 ⇒ 本会话先后照拖完那一串（[dropRow]）。 */
+    /** 顺序里长按把第 [i] 行拖到第 [to] 格：交拖的号与第几格（第一格当现在用 · 拖完那一串都由那台认）；没挪 ⇒ 不发。 */
     fun drop(
         account: String,
         i: Int,
@@ -352,12 +362,8 @@ class RotationBoard(
     ) {
         val s = sid ?: return
         val line = _state.value.view?.lineup ?: return
-        if (line.getOrNull(i) != account) return
-        when (val d = dropRow(line, i, to)) {
-            null -> Unit
-            is RowDrop.UseNow -> useNow(d.account)
-            is RowDrop.Set -> launchWrite(copyText("rot.fail.temp"), Rotation.TEMP, Rotation.set(s, d.next))
-        }
+        if (line.getOrNull(i) != account || to !in line.indices || to == i) return
+        switchTo(account, copyText("rot.fail.temp"), Rotation.TEMP, Rotation.move(s, account, to))
     }
 
     fun clearTemp() {

@@ -50,12 +50,12 @@ const VIEW: RotationViewReply = {
   now: 1,
   nowText: "00:00", title: null,
   strategy: LIST.strategies[0],
-  board: { all: [{ key: "close", kind: "percent", label: "夹具·容差", v: 25, num: 25, from: "own", min: 0, max: 100 }], rows: [{ account: "work", line: "", hover: "", cells: [{ key: "caps", kind: "daySegments", window: "5h", label: "夹具·上限 5h", v: null, from: "own", segs: [{ from: 0, to: 1440, v: 90, text: "夹具·90", tip: "夹具·全天 90" }] }], rules: [], marks: [] }] },
+  board: { all: [{ key: "close", kind: "percent", label: "夹具·容差", v: 25, num: 25, from: "own", min: 0, max: 100 }], rows: [{ account: "work", line: "", hover: "", cells: [{ key: "caps", kind: "daySegments", window: "5h", label: "夹具·上限 5h", v: null, from: "own", segs: [{ from: 0, to: 1440, fromText: "00:00", toText: "24:00", v: 90, text: "夹具·90", tip: "夹具·全天 90" }] }], rules: [], marks: [] }] },
   start: "work",
   current: "team",
   lineup: ["team", "work"],
   off: [],
-  accounts: [{ account: "work", plate: { color: 0, label: "work", text: "wo" }, kind: "sub", w5h: { open: true, used: 99 }, w7d: { open: true, used: 1 }, login: "ok", blocked: { why: "used", text: "后端写的那一句" } }],
+  accounts: [{ account: "work", plate: { color: 0, label: "work", text: "wo" }, full: [], kind: "sub", w5h: { open: true, used: 99 }, w7d: { open: true, used: 1 }, login: "ok", blocked: { why: "used", text: "后端写的那一句" } }],
   listed: 1,
   decision: null,
   timeline: null,
@@ -99,7 +99,7 @@ describe("会话面板（目标 {sid}）", () => {
     expect(parseRotAnchor("keybindings")).toBeNull();
   });
 
-  it("★ 勾 · 拖 ⇒ rotation-temp（这个会话的临时动作）；拖到第一格碰上用不了（unusable）⇒ 不换，顺序上方写那一句（为什么照后端写的）", async () => {
+  it("★ 勾 · 拖 ⇒ rotation-temp（这个会话的临时动作）；拖到第一格 ⇒ move 到第 0 格（后端当现在用），碰上用不了（unusable）⇒ 不换，顺序上方写那一句（为什么照后端写的）", async () => {
     const m = mountRotation({ origin: "<local>", sid: "s1" });
     document.body.replaceChildren(m.root);
     await m.refresh();
@@ -109,12 +109,12 @@ describe("会话面板（目标 {sid}）", () => {
     expect(calls.find((c) => c.name === "rotation-temp")?.req).toEqual({ sid: "s1", op: { off: { account: "work", off: true } } });
     rows = [...m.root.querySelectorAll<HTMLElement>("[data-rot-row]")];
     rows.forEach((r, k) => (r.getBoundingClientRect = () => ({ left: 0, right: 300, top: k * 40, bottom: k * 40 + 30, width: 300, height: 30, x: 0, y: k * 40, toJSON: () => ({}) })));
-    refuse.set("rotation-use-now", "unusable");
+    refuse.set("rotation-temp", "unusable");
     rows[1].dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 10, clientY: 50 }));
     document.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 10, clientY: 30 }));
     document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 10, clientY: 10 }));
     await settle();
-    expect(calls.find((c) => c.name === "rotation-use-now")?.req).toEqual({ sid: "s1", account: "work" });
+    expect(calls.filter((c) => c.name === "rotation-temp").at(-1)?.req).toEqual({ sid: "s1", op: { move: { account: "work", to: 0 } } });
     expect(m.root.querySelector('[data-rot-order] [role="status"]')?.textContent).toBe(copyText("rot.acct.refused", { account: "work", why: "后端写的那一句" }));
   });
 });
@@ -165,7 +165,7 @@ describe("设置窗：加时段那一行（草稿）", () => {
     fill(m.root);
     await settle();
     expect(calls.filter((c) => c.name === "rotation-settings").map((c) => c.req)).toEqual([
-      { strategy: "按权重轮换", edit: { seg: { key: "caps", window: "5h", row: 0, seg: { from: 1200, to: 1380, v: 0 } } }, ifRev: "h:1" },
+      { strategy: "按权重轮换", edit: { seg: { key: "caps", window: "5h", row: 0, seg: { from: "20:00", to: "23:00", v: 0 } } }, ifRev: "h:1" },
     ]);
   });
 

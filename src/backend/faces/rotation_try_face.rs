@@ -7,7 +7,7 @@ use crate::accounts::quota::rules::Acct;
 use crate::accounts::quota::setup::{self, script};
 use crate::wire::typed::Command;
 pub(crate) use cmd_wire::rotation::{
-    RotTryDecision, RotTryLane, RotTryLaneSeg, RotTryRow, RotTrySwitch, RotTryTick, RotTryTimeline,
+    RotPastSeg, RotTryDecision, RotTryLane, RotTryRow, RotTrySwitch, RotTryTick, RotTryTimeline,
     RotTryUse, RotationTryReply,
 };
 
@@ -218,16 +218,20 @@ pub(crate) fn timeline_of(
         uses: tl
             .uses
             .iter()
-            .map(|u| RotTryUse {
-                from: u.from,
-                to: u.to,
-                account: match &u.pick {
+            .map(|u| {
+                let account = match &u.pick {
                     Pick::Use(a) => Some(a.clone()),
                     Pick::Hold { .. } => None,
-                },
-                from_temp: u.from_temp,
-                cap_unknown: u.cap_unknown,
-                skipped: u.skipped.clone(),
+                };
+                RotTryUse {
+                    from: u.from,
+                    to: u.to,
+                    text: use_text(account.as_deref()),
+                    account,
+                    from_temp: u.from_temp,
+                    cap_unknown: u.cap_unknown,
+                    skipped: u.skipped.clone(),
+                }
             })
             .collect(),
         lanes: tl
@@ -238,26 +242,22 @@ pub(crate) fn timeline_of(
                 segs: segs
                     .iter()
                     .enumerate()
-                    .map(|(k, s)| {
-                        let left = (100.0 - s.used[0].max(s.used[1])).max(0.0);
-                        RotTryLaneSeg {
-                            from: s.from,
-                            to: s.to,
-                            sendable: s.sendable,
-                            used: s.used,
-                            reset: s.reset,
-                            text: if s.off {
-                                copy_core::copy_text("rot.sim.off", &[])
-                            } else {
-                                seg_text(
-                                    s.sendable,
-                                    s.reset,
-                                    &face(s.from),
-                                    (k == 0).then_some(left),
-                                )
-                            },
-                            left,
-                        }
+                    .map(|(k, s)| RotPastSeg {
+                        from: s.from,
+                        to: s.to,
+                        sendable: s.sendable,
+                        reset: s.reset,
+                        text: if s.off {
+                            copy_core::copy_text("rot.sim.off", &[])
+                        } else {
+                            // 此刻那段写剩多少（100 − 两窗里用得多的那个，不低于 0）。
+                            seg_text(
+                                s.sendable,
+                                s.reset,
+                                &face(s.from),
+                                (k == 0).then(|| (100.0 - s.used[0].max(s.used[1])).max(0.0)),
+                            )
+                        },
                     })
                     .collect(),
             })
@@ -267,6 +267,14 @@ pub(crate) fn timeline_of(
             .into_iter()
             .map(|at| RotTryTick { at, text: face(at) })
             .collect(),
+    }
+}
+
+/// 最上那条一段写的字：用哪个号 ⇒ 它的号名（同号牌那一格）；停发 ⇒ 「停下」那一句。
+pub(crate) fn use_text(account: Option<&str>) -> String {
+    match account {
+        Some(a) => crate::accounts::quota::name_words::account_text(a),
+        None => copy_core::copy_text("rot.sim.hold", &[]),
     }
 }
 

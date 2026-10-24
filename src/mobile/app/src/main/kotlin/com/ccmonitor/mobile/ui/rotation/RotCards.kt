@@ -187,12 +187,12 @@ private fun Card(
     }
 }
 
-/** 号牌上的两条小计量（上 5h、下 7d）。 */
+/** 号牌上的两条小计量（上 5h、下 7d）；画不画满照那台说的用满了的那几窗（`full`）。 */
 @Composable
 internal fun Meters(f: RotAccount) {
     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Meter(copyText("rot.card.w5h"), f.w5h)
-        Meter(copyText("rot.card.w7d"), f.w7d)
+        Meter(copyText("rot.card.w5h"), f.w5h, "5h" in f.full)
+        Meter(copyText("rot.card.w7d"), f.w7d, "7d" in f.full)
     }
 }
 
@@ -200,13 +200,14 @@ internal fun Meters(f: RotAccount) {
 private fun Meter(
     win: String,
     w: WinFact,
+    full: Boolean,
 ) {
     val track = MaterialTheme.colorScheme.outlineVariant
-    val fill = if (w.used >= FULL) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+    val fill = if (full) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
         Text(win, style = MaterialTheme.typography.labelSmall.copy(fontSize = MaterialTheme.typography.labelSmall.fontSize * 0.75f), color = MaterialTheme.colorScheme.onSurfaceVariant)
         Box(Modifier.width(18.dp).height(3.dp).background(track, RoundedCornerShape(2.dp))) {
-            Box(Modifier.fillMaxWidth((w.used / FULL).coerceIn(0.0, 1.0).toFloat()).height(3.dp).background(fill, RoundedCornerShape(2.dp)))
+            Box(Modifier.fillMaxWidth((w.used / PCT).coerceIn(0.0, 1.0).toFloat()).height(3.dp).background(fill, RoundedCornerShape(2.dp)))
         }
     }
 }
@@ -342,5 +343,5 @@ private fun EditSheet(
 
 private val WIDE = 340.dp
 private val GAP = 8.dp
-private const val FULL = 100.0
+private const val PCT = 100.0
 private const val LIFT = 12f

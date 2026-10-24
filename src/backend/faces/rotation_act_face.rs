@@ -3,7 +3,8 @@
 
 use crate::accounts::quota::rotation;
 use crate::accounts::quota::rules::book::{self, Session};
-use crate::accounts::quota::rules::decide;
+use crate::accounts::quota::rules::decide::{self, Decision};
+use crate::accounts::quota::rules::{simulate, standing, Acct, Adopted};
 use crate::accounts::upstream_select::turn;
 use crate::faces::rotation_face::Ctx;
 use crate::wire::typed::Command;
@@ -23,19 +24,97 @@ fn session_of(ctx: &Ctx, sid: &str) -> Option<Session> {
     ctx.hop.store.now().sessions.get(sid).cloned()
 }
 
+// ── 判一次 · 推演（视图与临时动作同用） ────────────────────────────────────────────────────
+
+/// 照一份副本此刻判一次、推演到 `end`：事实 · 那一判 · 推演。
+pub(crate) struct Judged {
+    pub(crate) facts: Vec<Acct>,
+    pub(crate) d: Decision,
+    pub(crate) tl: simulate::Timeline,
+}
+
+/// 视图与会话侧的临时动作同照这一处判、推演（`sid` 空 ⇒ 设置页，没有会话）。
+pub(crate) fn judged(
+    ctx: &Ctx,
+    sid: &str,
+    session: &Session,
+    plan: &Adopted,
+    row: &dyn Fn(&str) -> Option<bool>,
+    now: u64,
+    end: u64,
+) -> Judged {
+    let facts = ctx
+        .hop
+        .accts(sid, session, &ctx.hop.store.now(), &plan.settings, row, now);
+    let d = ctx.hop.judge_session(sid, session, plan, &facts, now, &[]);
+    let budget = crate::accounts::quota::rules::code::Budgeted::new(plan);
+    let tl = simulate::simulate(
+        &ctx.hop.sigma(sid, session, now),
+        &facts,
+        &plan.settings,
+        &budget,
+        &|t| crate::accounts::quota::rules::clock_at(&plan.tz, t),
+        now,
+        end,
+    );
+    Judged { facts, d, tl }
+}
+
+/// 会话的顺序：第一格 ＝ 在用的号，往下照拖出来的 · 策略交的先后，此刻用不了的与先不用的沉底（各照号的先后）。
+pub(crate) fn lineup_of(s: &Session, d: &Decision, facts: &[Acct], now: u64) -> Vec<String> {
+    let ok = |a: &str| {
+        !s.off.iter().any(|x| x == a)
+            && facts
+                .iter()
+                .find(|x| x.id == a)
+                .is_some_and(|x| standing::sendable(x, now))
+    };
+    let mut out = vec![s.current.clone()];
+    let ids: Vec<&String> = facts.iter().map(|x| &x.id).collect();
+    let usable = d
+        .sigma
+        .temp
+        .iter()
+        .chain(&d.order)
+        .chain(ids.iter().copied());
+    for a in usable.filter(|a| ok(a)).chain(ids.iter().copied()) {
+        if !out.contains(a) {
+            out.push(a.clone());
+        }
+    }
+    out
+}
+
+/// 这个会话照它载入的副本判一次、推演到 `end`。
+fn judged_session(ctx: &Ctx, sid: &str, s: &Session, now: u64, end: u64) -> Judged {
+    let plan = Adopted::of(s.uses.as_ref());
+    let row = ctx.row(&s.agent);
+    judged(ctx, sid, s, &plan, &row, now, end)
+}
+
 // ── rotation-temp ─────────────────────────────────────────────────────────────────────────
 
-/// 会话侧的临时动作：把一个号放到「接下来先用谁」第 `at` 位（0 起，越界取末尾）· 整串换成拖完的那一串 · 清掉 ·
-/// 这个会话先不用 / 再用一个号。
+/// 会话侧的临时动作：拖号名到最上那条、松在时刻 `t` · 顺序里把一行拖到第 `to` 格（0 起，第 0 格是在用的号）· 清掉 ·
+/// 这个会话先不用 / 再用一个号。第几段 · 第几格都由这里照这个会话此刻的推演与顺序认（界面只交松手的地方）。
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) enum RotTempOp {
-    Place { account: String, at: usize },
-    Set(Vec<String>),
+    Place {
+        account: String,
+        #[cfg_attr(test, ts(type = "number"))]
+        t: u64,
+    },
+    Move {
+        account: String,
+        to: usize,
+    },
     Clear,
-    Off { account: String, off: bool },
+    Off {
+        account: String,
+        off: bool,
+    },
 }
 
 /// `rotation-temp` 的入参。
@@ -54,6 +133,8 @@ crate::wire::typed::codes! {
         NoSession = "no_session",
         /// 那个号不在这台的账号里。
         NotListed = "not_listed",
+        /// 拖到第一格（现在用它）而它事实上发不出去（同 `rotation-use-now`）。
+        Unusable = "unusable" => RotUnusable,
         IoFailed = "io_failed",
     }
 }
@@ -79,7 +160,7 @@ impl crate::wire::typed::Handle for RotationTemp {
         async move {
             let (_files, own) = (needs.0, &needs.1);
 
-            temp_with(&Ctx::here(), own, &req)
+            temp_with(&Ctx::here(), own, &req, crate::accounts::quota::now_unix())
         }
     }
 }
@@ -89,37 +170,91 @@ fn listed(ctx: &Ctx, s: &Session, account: &str) -> bool {
     account == s.start || ctx.hop.library().accounts.iter().any(|a| a.id == account)
 }
 
+/// 把 `account` 放到那一串第 `at` 位（越界取末尾；已在就挪过去）。
+pub(crate) fn put_at(temp: &mut Vec<String>, account: &str, at: usize) {
+    temp.retain(|a| a != account);
+    let at = at.min(temp.len());
+    temp.insert(at, account.to_string());
+}
+
+/// 顺序 `line` 里把 `account` 拖到第 `to` 格之后，「接下来先用谁」那一串：第二格起到挪动那一截的尽头（第一格在用的号不在里头）。
+/// 没挪 · 不在顺序里 · 越界 ⇒ 缺。
+fn moved(line: &[String], account: &str, to: usize) -> Option<Vec<String>> {
+    let i = line.iter().position(|a| a == account)?;
+    if to >= line.len() || to == i {
+        return None;
+    }
+    let mut next: Vec<String> = line.iter().filter(|a| *a != account).cloned().collect();
+    next.insert(to, account.to_string());
+    Some(next[1..=i.max(to)].to_vec())
+}
+
 pub(crate) fn temp_with(
     ctx: &Ctx,
     own: &crate::platform::Own,
     req: &RotationTempReq,
+    now: u64,
 ) -> Result<RotationTempReply, RotationTempErr> {
     let s = session_of(ctx, &req.sid).ok_or_else(|| RotationTempErr::NoSession(no_session()))?;
-    let named: Vec<&String> = match &req.op {
-        RotTempOp::Place { account, .. } | RotTempOp::Off { account, .. } => vec![account],
-        RotTempOp::Set(all) => all.iter().collect(),
-        RotTempOp::Clear => Vec::new(),
+    let account = match &req.op {
+        RotTempOp::Place { account, .. }
+        | RotTempOp::Move { account, .. }
+        | RotTempOp::Off { account, .. } => Some(account),
+        RotTempOp::Clear => None,
     };
-    if let Some(a) = named.into_iter().find(|a| !listed(ctx, &s, a)) {
+    if let Some(a) = account.filter(|a| !listed(ctx, &s, a)) {
         return Err(RotationTempErr::NotListed(copy_text(
             "beRotation.edit.notListed",
             &[("acct", a)],
         )));
     }
+    // 拖到第一格 ⇒ 现在用它（同 `rotation-use-now`）。
+    if let RotTempOp::Move { account, to: 0 } = &req.op {
+        let use_now = RotationUseNowReq {
+            sid: req.sid.clone(),
+            account: account.clone(),
+        };
+        use_now_with(ctx, own, &use_now, now).map_err(|e| match e {
+            RotationUseNowErr::NoSession(t) => RotationTempErr::NoSession(t),
+            RotationUseNowErr::NotListed(t) => RotationTempErr::NotListed(t),
+            RotationUseNowErr::Unusable(t, u) => RotationTempErr::Unusable(t, u),
+            RotationUseNowErr::IoFailed(t) => RotationTempErr::IoFailed(t),
+            RotationUseNowErr::BadArgs(t) => RotationTempErr::BadArgs(t),
+        })?;
+        let s =
+            session_of(ctx, &req.sid).ok_or_else(|| RotationTempErr::NoSession(no_session()))?;
+        return Ok(RotationTempReply {
+            temp: s.temp,
+            off: s.off,
+        });
+    }
+    // 第几段 · 第几格照这个会话此刻的推演与顺序认（写之前算好，写的那一下只动那一串）。
+    let at = match &req.op {
+        // 此刻那段是第 0 位，之后每段换号往后数一位：排到松手那一刻之后那一段。
+        RotTempOp::Place { t, .. } => {
+            let j = judged_session(ctx, &req.sid, &s, now, (*t).max(now));
+            j.tl.uses
+                .iter()
+                .filter(|u| u.from > now && u.from < *t)
+                .count()
+                + 1
+        }
+        _ => 0,
+    };
+    let next = match &req.op {
+        RotTempOp::Move { account, to } => {
+            let j = judged_session(ctx, &req.sid, &s, now, now);
+            moved(&lineup_of(&s, &j.d, &j.facts, now), account, *to)
+        }
+        _ => None,
+    };
     let (temp, off) = rotation::face_change(&ctx.hop.store, own, |b| {
         let s = b.sessions.get_mut(&req.sid)?;
         match &req.op {
-            RotTempOp::Place { account, at } => {
-                s.temp.retain(|a| a != account);
-                let at = (*at).min(s.temp.len());
-                s.temp.insert(at, account.clone());
-            }
-            RotTempOp::Set(all) => {
-                s.temp.clear();
-                for a in all {
-                    if !s.temp.contains(a) {
-                        s.temp.push(a.clone());
-                    }
+            RotTempOp::Place { account, .. } => put_at(&mut s.temp, account, at),
+            RotTempOp::Move { .. } => {
+                if let Some(all) = &next {
+                    s.temp.clone_from(all);
                 }
             }
             RotTempOp::Clear => s.temp.clear(),
@@ -199,7 +334,7 @@ pub(crate) fn use_now_with(
             &[("acct", &req.account)],
         )));
     }
-    let plan = crate::accounts::quota::rules::Adopted::of(s.uses.as_ref());
+    let plan = Adopted::of(s.uses.as_ref());
     let row = ctx.row(&s.agent);
     let facts = ctx.hop.accts(
         &req.sid,

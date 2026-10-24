@@ -148,17 +148,11 @@ class RotationBoardTest {
         }
 
     @Test
-    fun `临时条目：拖到最上那条 ⇒ rotation-temp place {account, at}；清掉 ⇒ op clear；第几段照那台推演的段数`() =
+    fun `临时条目：拖到最上那条 ⇒ rotation-temp place {account, t}（松手那一刻；排到第几段由那台照推演数）；清掉 ⇒ op clear`() =
         runTest {
             val (link, b) = board()
-            val uses =
-                b.state.value.view!!
-                    .timeline!!
-                    .uses
-            assertEquals("松在第二段里 ⇒ 排到它", 2, placeAt(uses, RotFixture.NOW, RotFixture.NOW + 6_000))
-            assertEquals("松在此刻那段里 ⇒ 第一位", 1, placeAt(uses, RotFixture.NOW, RotFixture.NOW + 100))
-            b.place("lab", 2)
-            assertEquals(mapOf("sid" to "s1", "op" to mapOf("place" to mapOf("account" to "lab", "at" to 2))), link.calls(Rotation.TEMP).single())
+            b.place("lab", RotFixture.NOW + 6_000)
+            assertEquals(mapOf("sid" to "s1", "op" to mapOf("place" to mapOf("account" to "lab", "t" to RotFixture.NOW + 6_000))), link.calls(Rotation.TEMP).single())
             b.clearTemp()
             assertEquals(mapOf("sid" to "s1", "op" to "clear"), link.calls(Rotation.TEMP).last())
         }
@@ -192,24 +186,22 @@ class RotationBoardTest {
         }
 
     @Test
-    fun `一段一行：改第几段就带第几段；新加的那一行不带；钟点或上限写得不对 ⇒ 不交`() {
+    fun `一段一行：改第几段就带第几段；新加的那一行不带；钟点交原样的字（认不认得是那台的）；有一格空着或上限不是数 ⇒ 不交`() {
         val cap = cellOf(RotFixture.view(), 1, "caps", "5h")
         assertEquals(
-            mapOf("seg" to mapOf("key" to "caps", "window" to "5h", "at" to 1, "seg" to mapOf("from" to 1200L, "to" to 1380L, "v" to 0.0), "row" to 1)),
-            segEdit(cap, 1, 1, "20:00", "23:00", "0"),
+            mapOf("seg" to mapOf("key" to "caps", "window" to "5h", "at" to 1, "seg" to mapOf("from" to "20:00", "to" to "2300", "v" to 0.0), "row" to 1)),
+            segEdit(cap, 1, 1, "20:00", " 2300 ", "0"),
         )
         assertEquals(
-            mapOf("seg" to mapOf("key" to "caps", "window" to "5h", "seg" to mapOf("from" to 0L, "to" to 1440L, "v" to 50.0), "row" to 1)),
+            mapOf("seg" to mapOf("key" to "caps", "window" to "5h", "seg" to mapOf("from" to "0", "to" to "24:00", "v" to 50.0), "row" to 1)),
             segEdit(cap, 1, null, "0", "24:00", "50"),
         )
         assertEquals("删一段只带第几段", mapOf("seg" to mapOf("key" to "caps", "window" to "5h", "at" to 0)), RotEdit.seg("caps", null, "5h", 0, null))
-        assertNull(segEdit(cap, 1, 0, "25:00", "23:00", "0"))
-        assertNull(segEdit(cap, 1, 0, "20:00", "23:61", "0"))
+        assertNull(segEdit(cap, 1, 0, " ", "23:00", "0"))
         assertNull(segEdit(cap, 1, 0, "20:00", "23:00", ""))
-        assertEquals(1230L, minutesOf("2030"))
-        assertEquals(540L, minutesOf("9"))
-        assertEquals(1440L, minutesOf("24:00"))
-        assertNull(minutesOf("24:30"))
+        assertNull(segEdit(cap, 1, 0, "20:00", "23:00", "x"))
+        val shown = cap.segs.orEmpty().map { it.fromText to it.toText }
+        assertEquals("两格钟点照那台写好的字", listOf("00:00" to "24:00"), shown)
     }
 
     @Test
@@ -247,18 +239,17 @@ class RotationBoardTest {
     }
 
     @Test
-    fun `顺序里长按拖一行：松在第一格 ⇒ 现在用；别处 ⇒ rotation-temp set 拖完那一串；没挪 ⇒ 不发`() =
+    fun `顺序里长按拖一行 ⇒ rotation-temp move {account, to}（拖完那一串 · 第一格当现在用都由那台认）；没挪 ⇒ 不发；拖到第一格那台回 unusable ⇒ 照 rot·acct·refused 写那一句`() =
         runTest {
-            val line = listOf("team", "work", "api", "lab")
-            assertEquals(RowDrop.UseNow("api"), dropRow(line, 2, 0))
-            assertEquals(RowDrop.Set(listOf("lab", "work", "api")), dropRow(line, 3, 1))
-            assertEquals(RowDrop.Set(listOf("api", "work")), dropRow(line, 1, 2))
-            assertNull(dropRow(line, 2, 2))
-            val (link, b) = board()
+            val (link, b) = board(more = { cmd, args -> if (cmd == Rotation.TEMP && ((args?.get("op") as? Map<*, *>)?.get("move") as? Map<*, *>)?.get("to") == 0) RotFixture.failed("unusable", "用不了") else null })
             b.drop("lab", 3, 1)
-            assertEquals(mapOf("sid" to "s1", "op" to mapOf("set" to listOf("lab", "work", "api"))), link.calls(Rotation.TEMP).single())
-            b.drop("api", 2, 0)
-            assertEquals(mapOf("sid" to "s1", "account" to "api"), link.calls(Rotation.USE_NOW).single())
+            assertEquals(mapOf("sid" to "s1", "op" to mapOf("move" to mapOf("account" to "lab", "to" to 1))), link.calls(Rotation.TEMP).single())
+            b.drop("api", 2, 2)
+            assertEquals("没挪 ⇒ 不发", 1, link.calls(Rotation.TEMP).size)
+            b.drop("lab", 3, 0)
+            assertEquals(mapOf("sid" to "s1", "op" to mapOf("move" to mapOf("account" to "lab", "to" to 0))), link.calls(Rotation.TEMP).last())
+            assertEquals(0, link.calls(Rotation.USE_NOW).size)
+            assertEquals("lab" to copyText("rot.acct.refused", "account" to "lab", "why" to "5 小时用量已到上限"), b.state.value.refused)
         }
 
     @Test

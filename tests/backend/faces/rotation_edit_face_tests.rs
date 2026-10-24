@@ -66,8 +66,8 @@ fn settings_edits_are_saved_into_the_file_as_a_new_version() {
         window: "5h".into(),
         at: None,
         seg: Some(RotSeg {
-            from: 0,
-            to: 1440,
+            from: "0:00".into(),
+            to: "24:00".into(),
             v: 80.0,
         }),
     })

@@ -89,9 +89,9 @@ class SentRequestsTest {
                 listOf(
                     Rotation.settings("x", RotEdit.set("k", null, 1L), "r"),
                     Rotation.settings("x", RotEdit.set("k", 0, null), "r"),
-                    Rotation.settings("x", RotEdit.seg("caps", 1, "5h", 0, RotSegment(0L, 600L, 50.0)), "r"),
+                    Rotation.settings("x", RotEdit.seg("caps", 1, "5h", 0, RotSegment("0:00", "10:00", 50.0)), "r"),
                     Rotation.settings("x", RotEdit.seg("caps", null, "5h", 1, null), "r"),
-                    Rotation.settings("x", RotEdit.seg("caps", 0, "5h", null, RotSegment(1200L, 1380L, 0.0)), "r"),
+                    Rotation.settings("x", RotEdit.seg("caps", 0, "5h", null, RotSegment("2000", "23", 0.0)), "r"),
                     Rotation.settings("x", RotEdit.same("caps", 0, "7d", true), "r"),
                     Rotation.settings("x", RotEdit.move(0, 2), "r"),
                     Rotation.settings("x", RotEdit.add("a"), "r"),
@@ -103,7 +103,7 @@ class SentRequestsTest {
             Rotation.DELETE to listOf(Rotation.delete("x")),
             Rotation.RENAME to listOf(Rotation.rename("x", "n", "r")),
             Rotation.TZ to listOf(Rotation.tz("x", "Asia/Shanghai", "r")),
-            Rotation.TEMP to listOf(Rotation.place("s", "a", 0), Rotation.set("s", listOf("b", "a")), Rotation.clearTemp("s"), Rotation.off("s", "a", true)),
+            Rotation.TEMP to listOf(Rotation.place("s", "a", 1_800_000_000L), Rotation.move("s", "b", 1), Rotation.clearTemp("s"), Rotation.off("s", "a", true)),
             Rotation.USE to listOf(Rotation.use("s", "x"), Rotation.use("s", null)),
             Rotation.USE_NOW to listOf(Rotation.useNow("s", "a")),
             Rotation.VIEW to
