@@ -60,9 +60,8 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         include_str!("../../src/backend/control/launch.rs"),
     ),
     // P4d：控制面的 CLI 入口。它**不做 match 分派**（认哪些 flag 由
-    // `stream::cli::spec_for` 从 `inbound::REGISTRY` 派生），但它持有
-    // `PROBE_FLAG = "--backend-probe"` 这个字面量 —— 派生的文件集因此把它扫了进来。
-    // ⇒ 登记在这里，`--backend-probe` 才受 IPC-PROTOCOL.md 对拍约束。
+    // `stream::cli::spec_for` 从 `inbound::REGISTRY` 派生），但读选项值那几处有 `"--"` 字面量
+    // （`starts_with("--")`：下一格是不是另一个旗标）—— 派生的文件集因此把它扫了进来。登记，不改判据。
     (
         "stream/cli.rs",
         include_str!("../../src/backend/stream/cli.rs"),

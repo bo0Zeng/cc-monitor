@@ -79,19 +79,19 @@ impl Home {
     /// 账号库：`subs` 是订阅号、`apis` 是按量号（都在 `accts/<id>`）。
     fn hop(&self, subs: &[&str], apis: &[&str]) -> Hop {
         let accts = self.root.join("accts");
-        let mut accounts: Vec<LibAccount> = subs
-            .iter()
-            .map(|id| LibAccount {
-                id: id.to_string(),
-                dir: Some(accts.join(id)),
-                api: false,
-            })
-            .collect();
-        accounts.extend(apis.iter().map(|id| LibAccount {
-            id: id.to_string(),
-            dir: Some(accts.join(id)),
-            api: true,
-        }));
+        let row = |id: &str, api: bool| acct_core::ManifestAccount {
+            name: id.to_string(),
+            config_dir: Some(accts.join(id).to_string_lossy().into_owned()),
+            auth_kind: api.then(|| acct_core::AUTH_KIND_API_KEY.to_string()),
+            ..Default::default()
+        };
+        let book = acct_core::AccountBook {
+            accounts: subs
+                .iter()
+                .map(|id| row(id, false))
+                .chain(apis.iter().map(|id| row(id, true)))
+                .collect(),
+        };
         Hop::new(
             Arc::new(RotationStore::with_nodes(
                 Some(self.root.join(rotation::FILE_NAME)),
@@ -104,10 +104,7 @@ impl Home {
                 Default::default(),
             )),
             Some(self.root.clone()),
-            Arc::new(move |_| Library {
-                enabled: true,
-                accounts: accounts.clone(),
-            }),
+            Arc::new(move |_| Some(book.clone())),
             Arc::new(std::collections::BTreeSet::new),
             Some(dead_token_endpoint()),
         )
@@ -420,4 +417,14 @@ fn the_rest_members_are_the_unnamed_subscriptions_by_name() {
         rest_members(ids, &named, |x| x != "k"),
         vec!["a".to_string(), "b".to_string(), "z".to_string()]
     );
+}
+
+/// 判据夹具：号表里的一行（`id` 是路由段，`dir` 的末段要与它一致；`dir: None` ＝ 账号 0）。换号那几族的判据共用。
+pub(crate) fn book_row(id: &str, dir: Option<PathBuf>, api: bool) -> acct_core::ManifestAccount {
+    acct_core::ManifestAccount {
+        name: id.to_string(),
+        config_dir: dir.map(|d| d.to_string_lossy().into_owned()),
+        auth_kind: api.then(|| acct_core::AUTH_KIND_API_KEY.to_string()),
+        ..Default::default()
+    }
 }

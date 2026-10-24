@@ -252,23 +252,15 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J9: {
     what: "上游 base URL 能不能用（形状 ＋ 协议闭集 ＋ 明文只许回环）",
     // 三截（写口 creds-core 形状关 · 中转 `Base::parse` · 装表的回环判定）收成一份进新 crate
-    //   `upstream-url-core`；界面 `checkBaseUrl` 成读生成物的薄壳（只剩「空 ⇒ 默认」与「按理由挑一句」）。
+    //   `upstream-url-core`。界面不判：新建账号表单与改 key 那格把原样打的字交那台后端（`accounts-add` 预演 · `apikey-key-set`），
+    //   只画它拒的那一句（读生成物的那一层薄壳与生成物里那张式子表都删了）。
     homes: ["upstream-url-core::usable", "upstream-url-core::parse", "upstream-url-core::upstream_is_loopback"],
-    status: "generated",
-    defs: ["checkBaseUrl"],
+    status: "zero",
+    defs: ["checkBaseUrl", "baseUrlSaid", "baseUrlIssue", "BASE_URL_ISSUE_PATTERNS"],
     needles: [
       { text: "new URL(s)", count: 0, file: "src/frontend/ui/settings/account-new-form.ts" },
       { text: "127(\\.\\d{1,3}){3}", count: 0 },
     ],
-    gen: {
-      file: "src/frontend/ui/generated/judgment-rules.ts",
-      exports: ["BASE_URL_ISSUE_PATTERNS", "baseUrlIssue", "BaseUrlIssue"],
-      importers: ["src/frontend/ui/settings/account-new-form.ts"],
-    },
-    parity: {
-      via: "tests/__fixtures__/upstream-url.golden.json",
-      tests: ["tests/frontend/shell/payload_judgment_rules.rs", "tests/frontend/ui/upstream-url-parity.vitest.ts"],
-    },
     rustGone: ["src/comms/outward/upstream.rs::host_is_loopback", "src/common/creds-core/src/store.rs::check_base_url_shape"],
     // 中转那份不许再有自己的协议表 / 回环判定。
     rustNeedles: [
@@ -367,23 +359,14 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     what: "账号名（`--account <名>`）",
     // Rust 侧接上：`ccm …` 的 `--account` · 后端 ccm argv（此前只靠 quote ＋ 名单成员检查）。
     homes: ["shell-quote-core::account_name_ok"],
-    // 新建账号表单那一句读生成物（`validateAcctName` 成薄壳：只多说一句「空」）；
-    //   顺带修掉「比 cc-acct-iso 宽」—— 旧的手写规则放行 `.` 与 33–64 位，两根指纹钉它不许回来。
-    status: "generated",
-    defs: ["validateAcctName"],
+    // 界面不判：新建账号表单 · 启用多账号那张卡片把原样打的字交那台后端预演（`accounts-add` / `accounts-init` 带 `dryRun`），
+    //   只画它拒的那一句。旧的手写规则放行 `.` 与 33–64 位，两根指纹钉它不许回来。
+    status: "zero",
+    defs: ["validateAcctName", "accountNameOk", "ACCOUNT_NAME_PATTERN"],
     needles: [
       { text: "name.length > 64", count: 0 },
       { text: 'name.startsWith(".")', count: 0 },
     ],
-    gen: {
-      file: "src/frontend/ui/generated/judgment-rules.ts",
-      exports: ["accountNameOk", "ACCOUNT_NAME_PATTERN", "ACCOUNT_NAME_MAX"],
-      importers: ["src/frontend/ui/account-ops.ts"],
-    },
-    parity: {
-      via: "tests/__fixtures__/identifier-rules.golden.json",
-      tests: ["tests/frontend/shell/payload_judgment_rules.rs", "tests/frontend/ui/identifier-rules-parity.vitest.ts"],
-    },
   },
   J19: {
     what: "工具词表：哪些工具名算「展开 = 子会话」（agent 工具）· 哪个工具名画成哪一种卡 · tmux 前台命令哪几个算 agent 的会话",
@@ -1190,8 +1173,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     MODEL_NAME_EXTRA: NONE,
     model_name_ok: "J17",
     ACCOUNT_NAME_MAX: NONE,
-    // 规则的一部分（放行的标点），现生成进 `judgment-rules.ts`（生成物不是孪生）⇒ NONE。
-    ACCOUNT_NAME_EXTRA: NONE,
     account_name_ok: "J18",
     // cc-bus agent id（共享 crate 一份）。
     bus_id_ok: "J12",

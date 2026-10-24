@@ -1,28 +1,30 @@
 //! 测试连接：界面把设置页表单里那台（可能还没保存的）配置交过来，本机常驻后端组拨号请求（[`super::machine`]）、
-//! 拨一次（短命探活，不进连接池）、回结局。三步，每步的结论都进结局（部分成功照样回，不当错误）：
+//! 跑一趟**真连接那一串**、回结局：连常驻那一层（`resident_client::feed`，桌面 · 手机同一份）照它自己的走法
+//! attach → 没接上 ensure → 再 attach（拨号都是短命探活，不进连接池；测试连接不换装）。走到第一个通 / 断为止：
 //!
-//! 1. 拨号 ＋ 鉴权 ＋ exec 那台的后端（流模式显式词）：拨号核心报的阶段逐条写成一格；没开成 ⇒ 停在这里；
-//! 2. 读那台后端的首行：是 `hello` ⇒ 人读摘要；超时 / 关了 / 不是 hello ⇒ 「SSH 通了、后端没响应」；
-//! 3. 那台声明认 `ping` ⇒ 同一条流上发一次、等应答（控制通道往返）；不认 ⇒ 「后端太旧」；不回 ⇒ 「后端连上了、不能起会话」。
+//! 1. 拨号核心报的阶段逐条写成一格；SSH 够着了 ⇒ 「已连上」那一格；
+//! 2. 断了 ⇒ 结局就是真连接会说的那一句（原话在复制详情）；
+//! 3. 通了 ⇒ hello 拼那一行；那台认 `ping` ⇒ 同一条流上问一次（控制通道往返）；不认 ⇒ 「后端太旧」；不回 ⇒ 「后端连上了、不能起会话」。
 //!
 //! 边拨边推：每走一步往本连接的应答通道推一帧 `probe {ticket, cell}`，每格是写好的那一句 ＋ 语气 ＋ 四段（[`ProbeCell`]），
 //! 最后一格带结局；monitor 把它们交进界面订的 `probe-progress/<ticket>`，界面照画、不按码取字。
-//! 本文件零定时器：期限的值归发起方（请求信封 `within_ms`；没带 ⇒ 登记的上限 [`PROBE_CAP`]），执行在期限原语那一处（`platform::child::bounded`）：
-//! 到点那一趟丢掉、链路随之收，结局那一格照分派的那个数说等了多久、最后一步是哪一句。往返毫秒数照旧报：量一次墙钟差不是定时器。
+//! 本文件不起定时器：总期限的值归发起方（请求信封 `within_ms`；没带 ⇒ 登记的上限 [`PROBE_CAP`]），执行在期限原语那一处（`platform::child::bounded`）：
+//! 到点那一趟丢掉、那一台的常驻流随之收，结局那一格照分派的那个数说等了多久、最后一步是哪一句。拨号 · 握手 · 一问的期限是连常驻那一层自己的（客户端那一侧）。
 
 use copy_core::copy_text;
+use resident_client::client::CallError;
+use resident_client::feed::{
+    self, Boxed, Config, Event, Exec, Feed, Problem, Progress, State, Transport,
+};
+use resident_client::watch::Desk;
 use serde_json::{json, Value};
-use tokio::io::{AsyncWriteExt, BufReader};
+use ssh_dial::Captured;
+use std::sync::Arc;
+use std::time::Duration;
 
 use crate::common::cells::{Tone, Words};
-use crate::dial::remote_ask::{self, AbortOnDrop};
 use crate::platform::child::{bounded, Deadline, Until};
 use crate::wire::Frame;
-
-/// 链路上一行的上限（hello · 应答；hello 行是后端出方向单行，同一个量级）。
-const LINE_CAP: u64 = 1024 * 1024;
-/// 探针发的那一问的 id（这条链路只有这一问）。
-const PING_ID: &str = "probe-ping";
 
 /// 票的上限与字符集（界面给的是一个 UUID；本后端只当不透明的串回填，但它会进帧 ⇒ 有界、可打印）。
 const TICKET_MAX: usize = 64;
@@ -331,52 +333,163 @@ fn ticket_ok(t: &str) -> Result<String, (&'static str, String)> {
 /// 拨号那一侧报阶段的口：报一条就推一格（[`stage_line`]）。
 pub(crate) type StageTx = tokio::sync::mpsc::UnboundedSender<crate::dial::Stage>;
 
-/// 开成的那一条链路：下行读端（那台后端的输出）· 上行写端 · 对面那一侧的任务（随本链路被丢一起收）。
-pub(crate) struct Link {
-    pub(crate) down: tokio::io::DuplexStream,
-    pub(crate) up: tokio::io::DuplexStream,
-    pub(crate) _serve: AbortOnDrop,
+/// 开成的一条长 exec：读那台后端的输出 · 往它写（两头随丢随收）。
+pub(crate) type Pipe = tokio::io::Join<tokio::io::DuplexStream, tokio::io::DuplexStream>;
+
+/// 拨号那一侧：开一条长 exec（拨号核心报的阶段照序交 `stages`，每过一步 `progress.step()`）· 跑一次收全。
+/// 生产 = [`Real`]（拨号核心）；判据用替身。
+pub(crate) trait Dial: Send + Sync + 'static {
+    fn open(
+        &self,
+        req: crate::dial::DialRequest,
+        stages: StageTx,
+        progress: Progress,
+    ) -> Boxed<'_, Result<Pipe, ssh_dial::DialFail>>;
+    fn capture(
+        &self,
+        req: crate::dial::DialRequest,
+    ) -> Boxed<'_, Result<Captured, ssh_dial::DialFail>>;
 }
 
-/// 生产那一侧：拨号核心开一条（`ssh_dial::uses::open`），阶段照序报给 `stages`；开成之后那条通道接在一对内存管子上对拷（`Opened::pump`）。
-async fn dial_for_real(
-    req: crate::dial::DialRequest,
-    stages: StageTx,
-) -> Result<Link, ssh_dial::DialFail> {
-    let sink = crate::dial::StageSink::new(true);
-    let opened = ssh_dial::uses::open(&req, &sink, |_| {}).await;
-    for st in sink.drain() {
-        if stages.send(st).is_err() {
-            break;
-        }
-    }
-    let opened = opened?;
-    let (up_w, up_r) = tokio::io::duplex(64 * 1024);
-    let (mut down_w, down_r) = tokio::io::duplex(256 * 1024);
-    let serve = tokio::spawn(async move {
-        opened
-            .pump(up_r, &mut down_w, ssh_dial::uses::Control::none())
+/// 生产那一侧：拨号核心开一条（`ssh_dial::uses::open`），每过一步把攒下的阶段交出去、报一步进展；
+/// 开成之后那条通道接在一对内存管子上对拷（`Opened::pump`，两头的读写端收了它就收）。收全 = `ssh_dial::uses::capture`。
+struct Real;
+
+impl Dial for Real {
+    fn open(
+        &self,
+        req: crate::dial::DialRequest,
+        stages: StageTx,
+        progress: Progress,
+    ) -> Boxed<'_, Result<Pipe, ssh_dial::DialFail>> {
+        Box::pin(async move {
+            let sink = crate::dial::StageSink::new(true);
+            // 收的那一头没了 ⇒ 这一趟已经收场，余下的不必再交。
+            let pass = |sink: &crate::dial::StageSink| {
+                for st in sink.drain() {
+                    if stages.send(st).is_err() {
+                        break;
+                    }
+                }
+            };
+            let opened = ssh_dial::uses::open(&req, &sink, |_| {
+                pass(&sink);
+                progress.step();
+            })
             .await;
-    });
-    Ok(Link {
-        down: down_r,
-        up: up_w,
-        _serve: AbortOnDrop(serve),
-    })
+            pass(&sink);
+            let opened = opened?;
+            let (up_w, up_r) = tokio::io::duplex(64 * 1024);
+            let (mut down_w, down_r) = tokio::io::duplex(256 * 1024);
+            // 对拷完（任一头收了）这一侧的写端随任务一起丢 ⇒ 读的那一头读到 EOF。
+            tokio::spawn(async move {
+                opened
+                    .pump(up_r, &mut down_w, ssh_dial::uses::Control::none())
+                    .await;
+            });
+            Ok(tokio::io::join(down_r, up_w))
+        })
+    }
+
+    fn capture(
+        &self,
+        req: crate::dial::DialRequest,
+    ) -> Boxed<'_, Result<Captured, ssh_dial::DialFail>> {
+        Box::pin(async move { ssh_dial::uses::capture(&req).await })
+    }
 }
 
-/// `remote-probe` 的本体：`dial` 是拨号那一侧（生产 = [`dial_for_real`]；判据用替身，拿改好的请求 · 报阶段的口，交开成的链路或没开成）；
-/// `out` 是进度格的出口（生产 = 本连接的应答通道）；`until` 是分派那一层交来的截止时刻。结局推成最后一格（`end`），应答本身不带体。
-pub(crate) async fn probe_with<F, Fut>(
+/// 握手每一行等多久（同手机：冷启要起常驻、读盘，给足）。比总期限长 ⇒ 卡在握手上的那一趟由总期限收，照最后一步说。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "不是本后端的定时器：交给连常驻那一层（客户端那一侧）当握手每一行的期限；比总期限长，实际由 PROBE_CAP 先收"
+)]
+const HANDSHAKE: Duration = Duration::from_secs(20);
+
+/// 这一趟里发生的事，按发生的先后进一条通道：拨号核心报的阶段 · 常驻流交给宿主的事。
+enum Ev {
+    Stage(crate::dial::Stage),
+    Feed(Event),
+}
+
+/// 表单那一台的连接：每一趟在组好的拨号请求上填命令（长 exec 一份 · 收全一份）。测试连接不换装（`installs` 取缺省）。
+struct ProbeLink {
+    dial: Arc<dyn Dial>,
+    stream: crate::dial::DialRequest,
+    capture: crate::dial::DialRequest,
+    events: tokio::sync::mpsc::UnboundedSender<Ev>,
+}
+
+impl Transport for ProbeLink {
+    type Stream = Pipe;
+
+    fn stream(&self, command: String, progress: Progress) -> Boxed<'_, Result<Pipe, Problem>> {
+        let mut req = self.stream.clone();
+        req.command = command;
+        Box::pin(async move {
+            // 报来的阶段原样进同一条通道，先于开成之后的那几件事（开完把还没交的补完）。收的那一头没了 ⇒ 这一趟已经收场，不必再交。
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+            let opening = self.dial.open(req, tx, progress);
+            tokio::pin!(opening);
+            let mut heard = true;
+            let opened = loop {
+                tokio::select! {
+                    biased;
+                    Some(st) = rx.recv(), if heard => heard = self.events.send(Ev::Stage(st)).is_ok(),
+                    r = &mut opening => break r,
+                }
+            };
+            while let (true, Ok(st)) = (heard, rx.try_recv()) {
+                heard = self.events.send(Ev::Stage(st)).is_ok();
+            }
+            opened.map_err(problem_of)
+        })
+    }
+
+    fn capture(&self, command: String) -> Boxed<'_, Result<Exec, Problem>> {
+        let mut req = self.capture.clone();
+        req.command = command;
+        Box::pin(async move {
+            let got = self.dial.capture(req).await.map_err(problem_of)?;
+            Ok(Exec {
+                exit_status: got.exit_status,
+                stdout: got.stdout,
+                stderr: got.stderr,
+            })
+        })
+    }
+}
+
+/// 拨号核心没开成的那一份 ⇒ 那一句（空 ⇒ 链路断了那一句）＋ 复制详情 ＋ 原因码与指纹（同手机那一侧）。
+fn problem_of(f: ssh_dial::DialFail) -> Problem {
+    Problem::new(
+        if f.error.is_empty() {
+            copy_text("reason.link.lost", &[])
+        } else {
+            f.error
+        },
+        f.detail.unwrap_or_default(),
+    )
+    .because(f.reason, (f.fingerprint, f.expected_fingerprint))
+}
+
+/// 这一趟起的那一台常驻流：随这一趟收（结局出了 · 到点被丢）。
+struct Closing(Arc<Feed<ProbeLink>>);
+
+impl Drop for Closing {
+    fn drop(&mut self) {
+        self.0.close();
+    }
+}
+
+/// `remote-probe` 的本体：`dial` 是拨号那一侧（生产 = [`Real`]；判据用替身）；`out` 是进度格的出口（生产 = 本连接的应答通道）；
+/// `until` 是分派那一层交来的截止时刻。结局推成最后一格（`end`），应答本身不带体。
+pub(crate) async fn probe_with(
     req: &ProbeReq,
     until: Option<Until>,
-    dial: F,
+    dial: Arc<dyn Dial>,
     out: &tokio::sync::mpsc::Sender<Frame>,
-) -> Result<(), (&'static str, String)>
-where
-    F: FnOnce(crate::dial::DialRequest, StageTx) -> Fut,
-    Fut: std::future::Future<Output = Result<Link, ssh_dial::DialFail>> + Send + 'static,
-{
+) -> Result<(), (&'static str, String)> {
     let cells = Cells {
         ticket: ticket_ok(&req.ticket)?,
         out,
@@ -401,90 +514,94 @@ where
     cells.send(end).await
 }
 
-async fn run<F, Fut>(
+/// 跑一趟真连接那一串（`resident_client::feed`：attach → 没接上 ensure → 再 attach），等到第一个通 / 断。
+/// 通了 ⇒ 问一次 `ping` 量往返；断了 ⇒ 那一句就是真连接会说的那一句。
+async fn run(
     pick: &super::pick::Pick<'_>,
-    dial: F,
+    dial: Arc<dyn Dial>,
     cells: &Cells<'_>,
-) -> Result<ProbeCell, (&'static str, String)>
-where
-    F: FnOnce(crate::dial::DialRequest, StageTx) -> Fut,
-    Fut: std::future::Future<Output = Result<Link, ssh_dial::DialFail>> + Send + 'static,
-{
+) -> Result<ProbeCell, (&'static str, String)> {
     let (machine, _) = pick.machines()?;
-    let command = format!(
-        "{} -- {}",
-        relay_route_core::BACKEND_LANDING_SHELL,
-        crate::wire::cli_words::STREAM_FLAG_EXPLICIT
-    );
-    let req = pick.request(
-        "stream",
-        json!({ "command": command, "stages": true, "probe": true }),
+    let name = machine.name().to_string();
+    // 探完即丢 ⇒ 每一条都是短命探活（不进连接池：表单那份可能还没保存）。
+    let stream = pick.request("stream", json!({ "stages": true, "probe": true }))?;
+    let capture = pick.request(
+        "capture",
+        // 上限同别的远端一次性收全（`--resident-ensure` 只回一行）；老后端认不得它、掉进流模式 ⇒ 见到 hello 就收（判在连常驻那一层）。
+        json!({ "probe": true, "capture": {
+            "max_bytes": super::remote_ask::PULL_MAX_BYTES,
+            "abort_marker": cmd_wire::dial::OLD_BACKEND_MARKER,
+        } }),
     )?;
-    // ① 拨：报来的阶段逐条推成一格；开成 / 没开成之后把还没推的补完。探完即丢 ⇒ 那条链路一起收（探针不进连接池 ⇒ 那条 SSH 连接随之关）。
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-    let dialing = dial(req, tx);
-    tokio::pin!(dialing);
-    let opened = loop {
-        tokio::select! {
-            biased;
-            Some(st) = rx.recv() => cells.send(stage_line(&st, cells.last().1)).await?,
-            r = &mut dialing => break r,
-        }
+    let link = ProbeLink {
+        dial,
+        stream,
+        capture,
+        events: tx.clone(),
     };
-    while let Ok(st) = rx.try_recv() {
-        cells.send(stage_line(&st, cells.last().1)).await?;
-    }
-    let link = match opened {
-        Ok(link) => link,
-        Err(f) => {
-            // 握手失败（含 host key 不匹配被拒）：看到过的指纹不回（信哪一把只在拨号核心那份库里判，比对走机器状态那一格）。
-            // 那一句（原因词，拨号核心写好的）进句子；它的复制详情原样带上（原话在那里）。
-            return Ok(stopped(
-                cells,
-                copy_text("beProbe.test.sshFailed", &[("why", &f.error)]),
-                f.detail.or_else(|| failed_detail(None)),
-            ));
-        }
-    };
-    let Link {
-        down,
-        up: mut up_w,
-        _serve,
-    } = link;
-    let mut rd = BufReader::new(down);
+    let _feed = Closing(Feed::start(
+        Config {
+            machine: name.clone(),
+            mine: Some(crate::BUILD_ID.to_string()),
+            tz: None,
+            handshake: HANDSHAKE,
+        },
+        Some(Arc::new(link)),
+        Desk::new(|_| Vec::new(), |_| {}),
+        feed::sink(move |e| {
+            let _ = tx.send(Ev::Feed(e));
+        }),
+    ));
     let ssh_up = Segs::default().reached(3);
-    cells
-        .send(step(
-            copy_text("beProbe.reached.ssh", &[]),
-            Tone::Now,
-            ssh_up,
-        ))
-        .await?;
-
-    // ② 首行 hello。
-    let first = match remote_ask::capped_line(&mut rd, LINE_CAP).await {
-        Ok(None) => None,
-        Err(e) => {
+    let mut ssh = false;
+    let mut attached = None;
+    loop {
+        let Some(ev) = rx.recv().await else {
             return Ok(stopped(
                 cells,
                 copy_text("beProbe.test.probeFailed", &[]),
-                failed_detail(Some(&e)),
-            ))
+                failed_detail(None),
+            ));
+        };
+        match ev {
+            Ev::Stage(st) => cells.send(stage_line(&st, cells.last().1)).await?,
+            Ev::Feed(Event::Ssh(true)) if !ssh => {
+                ssh = true;
+                cells
+                    .send(step(
+                        copy_text("beProbe.reached.ssh", &[]),
+                        Tone::Now,
+                        ssh_up,
+                    ))
+                    .await?;
+            }
+            Ev::Feed(Event::Attached { hello, client }) => attached = Some((hello, client)),
+            Ev::Feed(Event::State(State::Up { .. })) => break,
+            Ev::Feed(Event::State(State::Down { problem, .. })) => {
+                // SSH 都没够着 ⇒ 那一句说握手没成（原因是真连接那一句）；够着了 ⇒ 就是真连接那一句。原话在复制详情。
+                let said = if ssh {
+                    problem.text
+                } else {
+                    copy_text("beProbe.test.sshFailed", &[("why", &problem.text)])
+                };
+                let detail = Some(problem.detail).filter(|d| !d.is_empty());
+                return Ok(stopped(cells, said, detail.or_else(|| failed_detail(None))));
+            }
+            Ev::Feed(_) => {}
         }
-        Ok(Some(l)) => serde_json::from_str::<Value>(&l)
-            .ok()
-            .filter(|v| v.get("kind").and_then(Value::as_str) == Some("hello")),
-    };
-    let Some(hello) = first else {
+    }
+    let Some((hello, client)) = attached else {
         return Ok(stopped(
             cells,
             copy_text("beProbe.test.noHello", &[]),
             failed_detail(None),
         ));
     };
+    let hello: Value = serde_json::from_str(&hello).unwrap_or(Value::Null);
     // 键值对那一形只进日志（`wire::hello_summary`）；界面那一行由下面三格拼（文案表）。
     tracing::info!("测试连接：{}", crate::wire::hello_summary(&hello));
-    let facts = hello_facts(&hello, machine.name());
+    let facts = hello_facts(&hello, &name);
     let (build, gaps) = (facts.build.clone(), facts.gaps.to_string());
     cells
         .send(step(
@@ -494,14 +611,10 @@ where
         ))
         .await?;
 
-    // ③ 控制通道往返。
-    let accepts_ping = hello
-        .get("commands")
-        .and_then(Value::as_array)
-        .is_some_and(|a| a.iter().any(|c| c.as_str() == Some("ping")));
-    let (line, said, tone, detail) = if !accepts_ping {
+    // 控制通道往返。
+    let (line, said, tone, detail) = if !client.accepts("ping") {
         // 那台的后端不认控制命令：全产品同一句（按名字取）。
-        let said = copy_core::backend_old(machine.name());
+        let said = copy_core::backend_old(&name);
         (
             copy_text(
                 "beProbe.hello.tooOld",
@@ -514,42 +627,11 @@ where
     } else {
         // 量一次往返经过的墙钟（不是节拍：只读两次钟、算个差）。
         let t0 = crate::common::time::now();
-        let asked = up_w
-            .write_all(
-                format!(
-                    "{}\n",
-                    json!({ "id": PING_ID, "cmd": "ping", "args": null })
-                )
-                .as_bytes(),
-            )
-            .await;
-        let answered = match asked {
-            Err(e) => Err(e.to_string()),
-            Ok(()) => loop {
-                match remote_ask::capped_line(&mut rd, LINE_CAP).await {
-                    Ok(Some(l)) => {
-                        let v: Value = serde_json::from_str(&l).unwrap_or(Value::Null);
-                        if v.get("kind").and_then(Value::as_str) == Some("reply")
-                            && v.get("id").and_then(Value::as_str) == Some(PING_ID)
-                        {
-                            break if v.get("ok").and_then(Value::as_bool) == Some(true) {
-                                Ok(())
-                            } else {
-                                Err(v
-                                    .get("message")
-                                    .and_then(Value::as_str)
-                                    .unwrap_or_default()
-                                    .to_string())
-                            };
-                        }
-                    }
-                    Ok(None) => break Err(copy_text("beProbe.link.closed", &[])),
-                    Err(e) => break Err(e),
-                }
-            },
-        };
-        match answered {
-            Ok(()) => {
+        match client
+            .call("ping", Value::Null, resident_client::backoff::PING_WITHIN)
+            .await
+        {
+            Ok(_) => {
                 let dur = t0
                     .elapsed()
                     .map(copy_core::format_elapsed)
@@ -564,15 +646,20 @@ where
                 };
                 (line, copy_text("beProbe.test.ok", &[]), Tone::Plain, None)
             }
-            Err(e) => (
-                copy_text("beProbe.hello.noAnswer", &[("build", &build)]),
-                copy_text("beProbe.test.controlDown", &[]),
-                Tone::Warn,
-                failed_detail(Some(&e)),
-            ),
+            Err(e) => {
+                let raw = match &e {
+                    CallError::Remote { message, .. } => message.clone(),
+                    other => other.to_string(),
+                };
+                (
+                    copy_text("beProbe.hello.noAnswer", &[("build", &build)]),
+                    copy_text("beProbe.test.controlDown", &[]),
+                    Tone::Warn,
+                    failed_detail(Some(&raw)),
+                )
+            }
         }
     };
-    let _ = up_w.shutdown().await;
     Ok(ProbeCell {
         said: said.into(),
         tone,
@@ -591,7 +678,7 @@ pub(crate) async fn answer_probe(
     until: Option<Until>,
     replies: &tokio::sync::mpsc::Sender<Frame>,
 ) -> Result<(), (&'static str, String)> {
-    probe_with(req, until, dial_for_real, replies).await
+    probe_with(req, until, Arc::new(Real), replies).await
 }
 
 #[cfg(test)]

@@ -285,10 +285,10 @@ fn fingerprint_of(text: Option<&str>) -> Option<String> {
 
 /// 这台的账号表（具名号）。没有账号库 / 读不了 ⇒ 空（账号页自己会说读不了）。
 fn account_table(home: &str) -> Vec<String> {
-    crate::accounts::manage::mcp_share_exec::accounts_in(home)
+    crate::accounts::manage::mcp_share_exec::manifest_in(home)
         .ok()
         .flatten()
-        .map(|v| v.into_iter().map(|(name, _)| name).collect())
+        .map(|m| m.managed().map(|a| a.name.clone()).collect())
         .unwrap_or_default()
 }
 

@@ -89,6 +89,12 @@ import type { ConfirmSpec } from "../../../../src/frontend/ui/kit/dialog";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { toast } from "../../../../src/frontend/ui/kit/toast";
 import { nonEmpty } from "../../../test-support/non-empty";
+import { ChanError } from "../../../../src/comms/inward/chan";
+
+/** 那台后端拒了一发（对端 `refused` 那一层 ＋ 码 ＋ 那一句）。 */
+function refusal(code: string, message: string): ChanError {
+  return new ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify({ code, message })) }, message);
+}
 
 function acct(p: Partial<Account>): Account {
   return { name: "z", email: "z@x", configDir: "/h/.cc-monitor/accounts/z", isDefault: false, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true, selectable: true, badge: { text: copyText("accounts.badge.signedIn"), warn: false, title: "" }, ...p };
@@ -492,6 +498,19 @@ describe("动作", () => {
     expect(accountsInit.mock.calls).toEqual([["devbox", { name: "main", dryRun: true }]]);
   });
 
+  it("没启用 ⇒ 名字界面不判：原样交那台预演，名字格上画它拒的那一句", async () => {
+    fetchAccounts.mockResolvedValue(state({ meta: { ...META, enabled: false }, accounts: [] }));
+    const said = copyText("beAcctPlan.name.shape", { name: '" B!"', max: 32 });
+    accountsInit.mockRejectedValue(refusal("refused", said));
+    const el = await mount();
+    el.querySelector<HTMLInputElement>(".acct-enable input")!.value = " B!";
+    buttonNamed(el, copyText("acctPage.notEnabled.enable")).click();
+    await settle();
+    expect(accountsInit.mock.calls).toEqual([["devbox", { name: " B!", dryRun: true }]]);
+    expect(el.querySelector(".acct-enable [data-error]")?.textContent).toContain(said);
+    expect(confirmed).toEqual([]);
+  });
+
   it("警告条［修复…］：预演出几步 ⇒ 确认框列出来，确认后才修；修过之后条上 ⋯ 里才有「恢复到修复之前」", async () => {
     accountsVerify.mockResolvedValue({ pass: false, fails: 1, warns: 0, checks: [{ level: "fail", account: "personal", text: "登录信息缺失" }] });
     const el = await mount();
@@ -549,6 +568,24 @@ describe("动作", () => {
     expect(writeApikeyKey).toHaveBeenCalledWith("devbox", "/h/.cc-monitor/accounts/z", "sk-ant-NEW", undefined);
     expect(row.querySelector(".acct-key")!.textContent).toContain("••••••••c3d4gw.example.com");
     expect(key.value).toBe("");
+  });
+
+  it("API key 号详情［更换…］：地址界面不判，原样交写 key 那一条；它以 bad_args 拒 ⇒ 那一句画在地址格", async () => {
+    const said = copyText("beUpstreamTable.whyPlaintextOffLoopback.say");
+    writeApikeyKey.mockRejectedValue(refusal("bad_args", said));
+    const el = await mount();
+    (rowOf(el, "api").querySelector(".acct-row") as HTMLElement).click();
+    await settle();
+    const row = rowOf(el, "api");
+    buttonNamed(row, copyText("acctPage.detail.keyChange")).click();
+    const inputs = row.querySelectorAll<HTMLInputElement>(".acct-key-form input");
+    const base = [...inputs].find((i) => i.type !== "password")!;
+    base.value = " http://gw.example.com ";
+    row.querySelector<HTMLInputElement>(".acct-key-form input[type=password]")!.value = "sk-ant-NEW";
+    buttonNamed(row, copyText("acctPage.detail.keySave")).click();
+    await settle();
+    expect(writeApikeyKey).toHaveBeenCalledWith("devbox", "/h/.cc-monitor/accounts/z", "sk-ant-NEW", " http://gw.example.com ");
+    expect(base.closest("[data-error]")?.textContent).toContain(said);
   });
 });
 

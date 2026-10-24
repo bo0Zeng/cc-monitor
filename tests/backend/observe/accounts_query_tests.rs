@@ -1245,6 +1245,10 @@ fn the_list_product_carries_exactly_what_the_scan_reads() {
             "帧面每个号带选不了的那一句"
         );
         assert!(o.remove("login").is_some(), "帧面每个号带给不给［登录…］");
+        assert!(
+            o.remove("newSession").is_some(),
+            "帧面每个号带进不进新建会话的选号表"
+        );
     }
     assert_eq!(
         product["meta"], cli_meta,
@@ -2023,10 +2027,10 @@ fn the_list_product_says_who_is_selectable_and_who_is_the_default() {
             "{what}：默认号"
         );
         // 起会话跟随（没有上次的号）：默认号选得了 ⇒ 它；否则不指定号。
-        use crate::control::launch_account::{pick, Asked, Library, Picked};
+        use crate::control::launch_account::{pick, Asked, Picked};
         let typed =
             super::list_product_with(&accts, None, &[], &[], "claude-code", "claude-code", false);
-        let picked = pick(&Asked::Follow, &Library::of_product(&typed), None, None);
+        let picked = pick(&Asked::Follow, &typed, None, None);
         let want_pick = case["effectiveDefault"]
             .as_str()
             .filter(|d| want.contains(d));
@@ -2037,6 +2041,56 @@ fn the_list_product_says_who_is_selectable_and_who_is_the_default() {
         }
         let _ = fs::remove_dir_all(&root);
     }
+}
+
+/// ★★ 进不进新建会话的选号表是成品写好的一格（`newSession`），两个出口照它列、不自己判：
+/// 没有配置目录（账号 0）⇒ 不进；原地模式 ⇒ 不进；隔离、有目录 ⇒ 进（哪怕还需登录：选不选得了另看 `selectable`）。
+#[test]
+fn the_list_product_says_who_goes_into_the_new_session_picker() {
+    let root = tmpdir("newsession");
+    let accts = root.join("accts");
+    let iso = accts.join("iso");
+    let inplace = accts.join("inplace");
+    fs::create_dir_all(&iso).unwrap();
+    fs::create_dir_all(&inplace).unwrap();
+    write_manifest(
+        &accts,
+        &format!(
+            r#"{{"version":1,"acctsDir":"{a}","accounts":[
+                {{"name":"base","email":"","isDefault":true,"mode":"isolated"}},
+                {{"name":"iso","email":"","configDir":"{i}","isDefault":false,"mode":"isolated"}},
+                {{"name":"inplace","email":"","configDir":"{p}","isDefault":false,"mode":"in-place"}}]}}"#,
+            a = accts.display(),
+            i = iso.display(),
+            p = inplace.display()
+        ),
+    );
+    let product = list_product_with(&accts, None, &[], &[], "claude-code", "claude-code", false);
+    let cell = |name: &str| {
+        product["accounts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["name"] == name)
+            .unwrap_or_else(|| panic!("清单里没有 {name}"))["newSession"]
+            .clone()
+    };
+    assert_eq!(
+        cell("base"),
+        serde_json::json!(false),
+        "没有配置目录 ⇒ 不进选号表"
+    );
+    assert_eq!(
+        cell("inplace"),
+        serde_json::json!(false),
+        "原地模式 ⇒ 不进选号表"
+    );
+    assert_eq!(
+        cell("iso"),
+        serde_json::json!(true),
+        "隔离、有目录 ⇒ 进（需登录照样列，灰着）"
+    );
+    let _ = fs::remove_dir_all(&root);
 }
 
 /// ★★ 徽章一格只出自这一处（`badge_of`，界面照抄）：原地模式 · API key 号按「key 表里有没有它那一行」×「这台的中转在不在」·

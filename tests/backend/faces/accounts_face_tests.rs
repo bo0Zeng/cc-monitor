@@ -773,6 +773,37 @@ fn api_key_account_lands_its_key_in_the_apikey_table_not_in_the_manifest() {
     }
 }
 
+/// ★ 预演（不带 key）也判 Base URL：界面只交原样打的字、只画这一句（A5-5）。
+/// 用不了 ⇒ `bad_args` 带那一句（明文非回环与协议不对各说各的）；留空 · 回环明文 · 前后带空格的好地址 ⇒ 预演过。一个字节不写。
+#[test]
+fn the_dry_run_judges_the_base_url_too() {
+    let t = machine("api-dry");
+    ok(&t, "accounts-init", json!({ "name": "lab" }));
+    let dry = |b: &str| json!({ "name": "k", "kind": "api-key", "baseUrl": b, "dryRun": true });
+    let mut said = Vec::new();
+    for bad in [
+        "ftp://x.test",
+        "not a url",
+        "http://api.example.test",
+        "https://x.test/?q=1",
+    ] {
+        let e = call(&t, "accounts-add", dry(bad)).unwrap_err();
+        assert_eq!(e.code, "bad_args", "{bad}");
+        assert!(!e.message.trim().is_empty(), "{bad}：拒了却没说为什么");
+        said.push(e.message);
+    }
+    assert_ne!(said[0], said[2], "明文非回环与协议不对说成了同一句");
+    for good in [
+        "",
+        "   ",
+        "https://api.example.test/v1",
+        " http://127.0.0.1:11434 ",
+    ] {
+        ok(&t, "accounts-add", dry(good));
+    }
+    assert!(!t.exists(".cc-monitor/accounts/k"));
+}
+
 /// key 写不进去（表那一口拒了）：号照样建好，应答里说清 key 没写进去（界面据此让人在那一行重填）。
 #[test]
 fn a_key_that_does_not_land_is_said_not_swallowed() {

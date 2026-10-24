@@ -35,10 +35,11 @@ fn config_roots() -> Vec<PathBuf> {
     let mut roots = vec![crate::history::listing::agent_home()];
     if let Some(home) = crate::platform::paths::home_dir() {
         roots.extend(
-            crate::faces::rotation_face::library_at(&home)
+            crate::accounts::manage::scan::book_at(&home)
+                .unwrap_or_default()
                 .accounts
                 .into_iter()
-                .filter_map(|a| a.dir),
+                .filter_map(|a| a.config_dir.map(PathBuf::from)),
         );
     }
     roots.dedup();

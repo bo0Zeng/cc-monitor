@@ -5,7 +5,7 @@ use super::*;
 use crate::accounts::quota::ledger::{self, Ledger};
 use crate::accounts::quota::rotation::{self, RotationStore};
 use crate::accounts::quota::setup::shelf;
-use crate::accounts::upstream_select::rotate::{Hop, LibAccount, Library};
+use crate::accounts::upstream_select::rotate::Hop;
 use crate::faces::rotation_edit_face::{forget_preset_with, preset_with};
 use crate::faces::rotation_face::quota_read_with;
 use serde_json::json;
@@ -97,16 +97,19 @@ impl Home {
                 &crate::faces::rotation_face::adoptions_at(),
                 Arc::new(Ledger::at(Some(self.root.join(ledger::FILE_NAME)))),
                 Some(self.root.clone()),
-                Arc::new(move |_| Library {
-                    enabled: true,
-                    accounts: [("a", false), ("b", false), ("c", false), ("api", true)]
-                        .iter()
-                        .map(|(id, api)| LibAccount {
-                            id: id.to_string(),
-                            dir: Some(accts.join(id)),
-                            api: *api,
-                        })
-                        .collect(),
+                Arc::new(move |_| {
+                    Some(acct_core::AccountBook {
+                        accounts: [("a", false), ("b", false), ("c", false), ("api", true)]
+                            .iter()
+                            .map(|(id, api)| {
+                                crate::accounts::upstream_select::rotate::tests::book_row(
+                                    &id.to_string(),
+                                    Some(accts.join(id)),
+                                    *api,
+                                )
+                            })
+                            .collect(),
+                    })
                 }),
                 {
                     let live = Arc::clone(&self.live);

@@ -201,7 +201,8 @@ fn a_new_strategy_is_the_editor_one_with_every_account() {
         .library()
         .accounts
         .iter()
-        .map(|a| json!({"id": a.id}))
+        .filter_map(acct_core::ManifestAccount::route_id)
+        .map(|id| json!({"id": id}))
         .collect();
     assert!(!ids.is_empty(), "夹具里有账号库");
     assert_eq!(f.head.settings["accounts"], Value::Array(ids));

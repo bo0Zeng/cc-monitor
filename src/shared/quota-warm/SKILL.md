@@ -34,12 +34,12 @@ description: 让这台机器上各 Claude 订阅号的 5 小时额度窗口尽�
 
 ```text
 ccm -p --model haiku --tools "" --no-session-persistence --setting-sources project --strict-mcp-config \
-    --output-format json --system-prompt '只回复字母a' a -- --account-dir ~/.cc-monitor/accounts/<号> --cwd ~/.cc-monitor/autostart --no-rotation
+    --output-format json --system-prompt '只回复字母a' a -- --account <号> --cwd ~/.cc-monitor/autostart --no-rotation
 ```
 
 - 不给工具 · 不起 MCP · 不跑用户级钩子与插件 · 关掉思考（`MAX_THINKING_TOKENS=0`）· 不落会话记录。
 - 工作目录 `~/.cc-monitor/autostart/`：cc-monitor 后端在历史页与会话列表里藏掉工作目录是它的会话。
-- 交给 ccm 的环境照本进程的，只多 `MAX_THINKING_TOKENS=0` · `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` 两格：号由 `--account-dir` 点名（压过继承来的号）、中转按这一发重新问、嵌套标记由 ccm 清掉。在某条会话里跑时这一发记成它的子会话，轮换不跟随主会话，照点名的号发。
+- 交给 ccm 的环境照本进程的，只多 `MAX_THINKING_TOKENS=0` · `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` 两格：号由 `--account <名>` 点名（压过继承来的号）、中转按这一发重新问、嵌套标记由 ccm 清掉。在某条会话里跑时这一发记成它的子会话，轮换不跟随主会话，照点名的号发。
 - `--no-rotation`：这一发不轮换 —— 「新会话用」设成会换号的那一份时，不带它这一发会被换到别的号、预热白做。
 - 环境里有用户自己设的上游地址或 API 密钥时照样交下去（ccm 不按名字猜着剥）：那一发就走用户自己那一路。
 
@@ -55,14 +55,13 @@ scripts/quota-warm run         先跑一趟，之后按最早的醒点自己醒�
 
 | 选项 | 缺省 | 说明 |
 |---|---|---|
-| `--accounts work,personal` | 账号库里所有已登录的号 | 看哪几个号（逗号分隔，账号库里的名字，即 `~/.cc-monitor/accounts/<名>`） |
+| `--accounts work,personal` | 额度账的候选（`--quota-read` 的 `candidates`：出过数的号 ＋ 账号库里没出过数的号） | 看哪几个号（逗号分隔，账号库里的名字） |
 | `--system '…'` | `只回复字母a` | 换上的系统提示词 |
 | `--text '…'` | `a` | 发的那一句 |
 | `--model …` | `haiku` | 用哪个模型 |
 | `--dry-run` | 关 | 只判、不发（日志写「该发（--dry-run，没发）」） |
 
 - `once` / `run` 持一把锁 `~/.cc-monitor/quota-warm.lock`（里面是 pid）：同一时刻只跑一份，第二份直接退出并说锁在哪。`status` 不拿锁。
-- 每趟（不是 `--dry-run`）写一份小状态文件 `~/.cc-monitor/quota-warm.json`：`{pid, next: [{account, at}]}`（每个号下一次几点再看，原子换名）。cc-monitor 的时间轴只读它画「○ 开窗」，写它的进程没了就不画。
 - `run` 长睡分段（每段至多 10 分钟）醒来按真实时刻重算，机器休眠醒来不会睡过头；下一次至少隔 30 秒。没有要看的号 ⇒ 退出。
 - 想让它一直在：自己挑方式起 `run`（tmux 窗口、用户级服务……）。cc-monitor 不替你装。
 
@@ -84,8 +83,8 @@ scripts/quota-warm run         先跑一趟，之后按最早的醒点自己醒�
 
 ## 依赖（cc-monitor 的基本模块）
 
-- `ccm -- --quota-read`：读这台的额度账（只读，不读 stdin）。
-- ccm `--account-dir <目录>` 用某个号起一次 `claude -p`，走这台的中转；`--no-rotation` 让这一发不轮换。
+- `ccm -- --quota-read`：读这台的额度账（只读，不读 stdin）；不给 `--accounts` 时号单也从这里来（`candidates`），脚本不另扫账号库。
+- ccm `--account <名>` 用某个号起一次 `claude -p`，走这台的中转；`--no-rotation` 让这一发不轮换。
 - 后端藏掉工作目录是 `~/.cc-monitor/autostart/` 的会话（历史页 · 会话列表 · 流上的会话宣告）。
 
 ## AI 自己管额度：cc-monitor 的后端命令

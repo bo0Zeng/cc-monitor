@@ -7,8 +7,8 @@ use std::path::PathBuf;
 
 /// 成品那两格（`selectable` · `meta.effectiveDefault`）由夹具照成品的规则补上（成品真写这两格由
 /// `accounts_query_tests::the_list_product_says_who_is_selectable_and_who_is_the_default` 钉）。
-fn lib(accounts: Vec<AccountRow>) -> Library {
-    Library::of_product(&list(accounts))
+fn lib(accounts: Vec<AccountRow>) -> AccountsList {
+    list(accounts)
 }
 fn take(name: &str) -> Picked {
     Picked::Account {
@@ -81,7 +81,7 @@ fn an_api_key_account_without_a_credentials_file_is_usable() {
 
 #[test]
 fn account_zero_asked_for_is_base_and_needs_no_library() {
-    let lib = || -> Library { panic!("账号 0 不用读账号库") };
+    let lib = || -> AccountsList { panic!("账号 0 不用读账号库") };
     let facts = Facts {
         has_accounts: true,
         library: &lib,
@@ -136,7 +136,7 @@ fn settle_maps_follow_and_named_onto_pick_and_attaches_the_model() {
         Ok(Settled::Unsaid)
     );
     // 这一家没有账号这一维 ⇒ 跟随不表态、不读账号库。
-    let boom = || -> Library { panic!("没有账号这一维还去读账号库") };
+    let boom = || -> AccountsList { panic!("没有账号这一维还去读账号库") };
     let f3 = Facts {
         has_accounts: false,
         library: &boom,
@@ -217,7 +217,7 @@ fn no_alternative_when_the_default_is_the_requested_one_or_unusable() {
 
 #[test]
 fn an_unreadable_list_refuses_named_and_pinned_and_offers_nothing() {
-    let l = Library::of_product(&unreadable("坏了"));
+    let l = unreadable("坏了");
     assert_eq!(
         pick(&named("z"), &l, None, None),
         refused("z", false, false, None)

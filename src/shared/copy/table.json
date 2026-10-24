@@ -9,18 +9,6 @@
     "生产代码只经 src/frontend/ui/copy-table.ts 的 copyText(key, {…}) 取文，key 必须是字面量；表里的 key 与代码里的引用两向相等（tests/copy/copy-table.vitest.ts）。"
   ],
   "entries": {
-    "accountOps.name.empty": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "账号名不能为空",
-      "args": []
-    },
-    "accountOps.name.shape": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "账号名不合规 · 只用字母、数字、_、- · 字母或数字开头 · 最长 {max}",
-      "args": ["max"]
-    },
     "beAcctExec.key.noDoor": {
       "kind": "error",
       "role": "报错",
@@ -7346,24 +7334,6 @@
       "args": ["endpoint"],
       "limited": ["连接"]
     },
-    "accountNewForm.baseUrl.scheme": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "Base URL 须以 https:// 开头 · 本机回环可用 http://",
-      "args": []
-    },
-    "accountNewForm.baseUrl.plainHttp": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "http:// 仅限本机回环（127.0.0.1 · localhost） · 否则用 https",
-      "args": []
-    },
-    "accountNewForm.baseUrl.shape": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "Base URL 格式 https://主机[:端口][/路径] · 留空用默认上游",
-      "args": []
-    },
     "settingsPanel.save.appearance": {
       "kind": "body",
       "role": "片段",
@@ -9686,12 +9656,6 @@
       "role": "报错",
       "zh": "远端主目录是空路径 · 无起点可打开窗口",
       "args": []
-    },
-    "rsFilewinSource.local.readDirFailed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "读取失败 · 目录 · {why}",
-      "args": ["why"]
     },
     "rsFilewinSource.sort.type": {
       "kind": "control",

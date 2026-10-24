@@ -258,9 +258,7 @@ fn every_listed_subcommand_has_a_live_dispatch_route() {
             if literal.contains(tok) {
                 return false;
             }
-            !(derived_arm
-                && (crate::stream::cli::spec_for(tok).is_some()
-                    || *tok == crate::stream::cli::PROBE_FLAG))
+            !(derived_arm && crate::stream::cli::spec_for(tok).is_some())
         })
         .collect();
     assert!(
@@ -367,7 +365,7 @@ fn x15_the_process_argv_is_read_once_in_main() {
     );
 }
 
-/// 第 7 批第二题删掉的一次性子命令：手写、生产里没人调（帧面早有同义的帧命令；手机只调 `--resident-*` · `--backend-probe`）。
+/// 第 7 批第二题删掉的一次性子命令：手写、生产里没人调（帧面早有同义的帧命令；手机只调 `--resident-*`）。
 /// **异源**：这张表手抄方案里的名单，不从任何生产表派生。
 const RETIRED_ONESHOTS: &[&str] = &[
     "--read-session",
@@ -435,7 +433,6 @@ fn kept_oneshot_subcommands_are_still_dispatched() {
         "--resident-ensure",
         "--resident-attach",
         "--resident-stop",
-        "--backend-probe",
         "--tmux-notify",
         "--place-verdict",
         "--assets-catalog",

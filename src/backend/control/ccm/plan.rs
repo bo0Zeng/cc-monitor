@@ -571,8 +571,8 @@ pub(crate) fn discover_bus_scripts() -> Option<String> {
     }
 }
 
-use crate::accounts::manage::model::OnDiskAccount as Account;
 pub(crate) use crate::accounts::manage::scan::ManifestRead;
+use acct_core::ManifestAccount as Account;
 
 /// 读这台的账号库清单：只经 `accounts/manage` 那一个读口（剥 BOM · 读取上限 · 版本闸与账号页同一份）。
 ///
@@ -584,10 +584,10 @@ pub(crate) fn read_accounts(manifest_path: &str) -> ManifestRead {
     crate::accounts::manage::scan::manifest_at(std::path::Path::new(manifest_path))
 }
 
-/// 清单里照顺序的每一条号（盘上原样那一面，含账号 0：`config_dir: None`）；没有 / 用不了 ⇒ 空。
+/// 号表（`Manifest::book`）里照顺序的每一个号（含账号 0：`config_dir: None`）；没有 / 用不了 ⇒ 空。
 fn accounts_of(lib: &ManifestRead) -> &[Account] {
     match lib {
-        Ok(Some(m)) => &m.on_disk.rows,
+        Ok(Some(m)) => &m.book.accounts,
         _ => &[],
     }
 }
@@ -595,7 +595,7 @@ fn accounts_of(lib: &ManifestRead) -> &[Account] {
 /// 名字 → 存在的 configDir。**目录不存在 ⇒ 当作不可用**
 ///（「manifest 里写着」与「盘上真有」是两件事）。
 fn config_dir_of(lib: &ManifestRead, want: &str) -> Option<String> {
-    let a = accounts_of(lib).iter().find(|a| a.name == want)?;
+    let a = lib.as_ref().ok()?.as_ref()?.book.by_name(want)?;
     let c = a.config_dir.as_deref().filter(|c| !c.is_empty())?;
     std::path::Path::new(c).is_dir().then(|| c.to_string())
 }
@@ -618,7 +618,7 @@ fn names(lib: &ManifestRead) -> String {
 
 /// 这台的默认号（标了的第一个，没标 ⇒ 第一个）：规则只住 `acct_core::effective_default`，与清单成品 `meta.effectiveDefault` 同一条。
 fn effective_default(lib: &ManifestRead) -> Option<&Account> {
-    acct_core::effective_default(accounts_of(lib), |a| a.is_default)
+    lib.as_ref().ok()?.as_ref()?.book.default_account()
 }
 
 /// 一趟要干的事。`--ccm-print` 与真跑读的是**同一个**。

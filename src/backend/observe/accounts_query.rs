@@ -6,7 +6,7 @@
 //! # 账号 0
 //!
 //! manifest 里 `configDir` 键缺席的那一条 = 账号 0 =「不设 `CLAUDE_CONFIG_DIR`」这个状态本身。结构性地认它（看键在不在），
-//! 不认名字（不硬编码 "0"）—— 认法住读口那一面（`model::OnDiskAccount`）。它的 config dir 是共享库（`sharedStore`）、`.claude.json` 在 `$HOME`。
+//! 不认名字（不硬编码 "0"）—— 认法住读口那一面（`acct_core::ManifestAccount`）。它的 config dir 是共享库（`sharedStore`）、`.claude.json` 在 `$HOME`。
 //! 空串不算缺席：`configDir: ""` 过不了配置目录那一关，那一条不列（空值 ≠ 未设）。
 //!
 //! # 读清单
@@ -48,9 +48,9 @@ use std::path::{Path, PathBuf};
 use crate::accounts::manage::model::Manifest;
 // ---------------------------------------------------------------- manifest
 
-/// 清单里列出来的那几行：读口读出来的盘上原样那一面（`model::OnDisk`，照清单顺序、含账号 0）。
-fn listed(m: &Manifest) -> &[crate::accounts::manage::model::OnDiskAccount] {
-    &m.on_disk.rows
+/// 清单里列出来的那几行：读口读出来的号表（`Manifest::book`，照清单顺序、含账号 0）。
+fn listed(m: &Manifest) -> &[acct_core::ManifestAccount] {
+    &m.book.accounts
 }
 
 /// 路径是否可安全地交给下游。规则是 `acct_core::config_dir_ok`（全仓唯一一份，认 Windows 形：`\` 是那边的路径分隔符）；
@@ -274,7 +274,7 @@ fn scan_accounts(
             (
                 meta(
                     true,
-                    m.on_disk.updated_at.clone(),
+                    m.updated_at.clone(),
                     m.shared_store.clone(),
                     lines.len(),
                     None,
@@ -311,6 +311,11 @@ fn unselectable_of(a: &ScannedAccount, api_key: bool) -> Option<String> {
     } else {
         copy_text("acct.tag.login", &[])
     })
+}
+
+/// ★ 进不进新建会话的选号表（唯一一处）：隔离、有配置目录。账号 0 不经选号；原地模式的号不拿来起会话。
+pub(crate) fn new_session_of(a: &ScannedAccount) -> bool {
+    a.config_dir.is_some() && a.mode == "isolated"
 }
 
 /// 选不了只差登录（四条里只有「需登录」那一条没过）。
@@ -501,6 +506,7 @@ pub(crate) fn list_product_with(
                 quota: None,
                 unselectable: unselectable_of(&a, api_key).map(Words),
                 login: false,
+                new_session: new_session_of(&a),
                 scanned: a,
             }
         })

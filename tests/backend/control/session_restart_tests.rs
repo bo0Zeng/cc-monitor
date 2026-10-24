@@ -166,11 +166,11 @@ impl Rig {
         let mint =
             |_: batch::NameBase| -> Result<String, batch::CmdErr> { Ok("minted".to_string()) };
         let library = || {
-            la::Library::of_product(&crate::observe::accounts_query::test_support::list(vec![
+            crate::observe::accounts_query::test_support::list(vec![
                 crate::observe::accounts_query::test_support::row_with("work", |a| {
                     a.config_dir = Some("/h/.cc/work".into())
                 }),
-            ]))
+            ])
         };
         let facts = la::Facts {
             has_accounts: true,

@@ -10,23 +10,25 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const invokeMock = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invokeMock(...a) }));
 
-import { renderNewAccountForm, aliasHintFor, checkBaseUrl, type NewAccountRequest } from "../../../../src/frontend/ui/settings/account-new-form";
+import { renderNewAccountForm, aliasHintFor, type NewAccountRequest } from "../../../../src/frontend/ui/settings/account-new-form";
 import { accountsFakeInvoke, chanArgsJson, isChanCall, refusedReply, type ChanCallArgs } from "../../../test-support/chan-fake";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 /** 表单问的那几发预演（交给了哪台 ＋ 请求体）。 */
 const asked: ChanCallArgs[] = [];
-/** 下一发预演要不要让那台后端拒（`null` = 照罐头答）。 */
+/** 下一发预演要不要让那台后端拒（`null` = 照罐头答）：那一句 ＋ 码（缺省 `refused`）。 */
 let refuse: string | null = null;
+let refuseCode = "refused";
 
 beforeEach(() => {
   asked.length = 0;
   refuse = null;
+  refuseCode = "refused";
   invokeMock.mockReset();
   invokeMock.mockImplementation((cmd: string, args: unknown) => {
     if (isChanCall(cmd, args, "accounts-add")) {
       asked.push(args);
-      if (refuse !== null) return Promise.reject(refusedReply("refused", refuse));
+      if (refuse !== null) return Promise.reject(refusedReply(refuseCode, refuse));
       return accountsFakeInvoke(args);
     }
     return Promise.reject(new Error(`判据没料到这一发：${cmd}`));
@@ -133,13 +135,19 @@ describe("新建账号表单", () => {
     expect(f.key.value, "交完 key 还留在输入框里").toBe("");
   });
 
-  it("名字不合法：当场说原因、灰掉、绕过 disabled 点也不交；撞名那一句是那台拒的原话", async () => {
+  it("名字不合法：界面不判，原样问那台；说的是那台拒的原话、灰掉、绕过 disabled 点也不交；撞名同理", async () => {
     const f = form();
+    const said = copyText("beAcctPlan.name.shape", { name: '"B!"', max: 32 });
+    refuse = said;
     await f.type(f.name, "B!");
+    expect(chanArgsJson(asked.at(-1)!)).toEqual({ name: "B!", kind: "subscription", dryRun: true });
     expect(f.btn(copyText("acctNew.form.createLogin")).disabled).toBe(true);
-    expect(f.el.querySelector("[data-error]")).not.toBeNull();
+    expect(f.name.closest("[data-error]")?.textContent).toContain(said);
     f.btn(copyText("acctNew.form.createLogin")).click();
     expect(f.seen).toEqual([]);
+    refuse = null;
+    await f.type(f.name, " team ");
+    expect((chanArgsJson(asked.at(-1)!) as { name: string }).name, "名字被界面改过（trim）才交").toBe(" team ");
     refuse = copyText("beAcctPlan.add.taken", { name: "team" });
     await f.type(f.name, "team");
     expect(f.el.textContent).toContain(copyText("beAcctPlan.add.taken", { name: "team" }));
@@ -153,15 +161,33 @@ describe("新建账号表单", () => {
     expect(f.seen).toEqual([{ name: "team", kind: "subscription" }]);
   });
 
-  it("地址填错：表单那一句、主按钮灰（规则读生成物，与后端同一条）", async () => {
-    expect(checkBaseUrl("").ok).toBe(true);
-    expect(checkBaseUrl("ftp://x").ok).toBe(false);
+  it("地址：原样交那台预演；它以 bad_args 拒 ⇒ 那一句落在地址格、主按钮灰；留空不带 baseUrl", async () => {
     const f = form();
     await f.type(f.name, "team");
     await f.pick("API key");
-    await f.type(f.base, "ftp://x");
+    expect(chanArgsJson(asked.at(-1)!)).toEqual({ name: "team", kind: "api-key", dryRun: true });
+    const said = copyText("beUpstreamTable.whyPlaintextOffLoopback.say");
+    refuse = said;
+    refuseCode = "bad_args";
+    await f.type(f.base, " http://api.example.test ");
+    expect((chanArgsJson(asked.at(-1)!) as { baseUrl?: string }).baseUrl).toBe(" http://api.example.test ");
     await f.type(f.key, "sk");
     expect(f.btn(copyText("acctNew.form.create")).disabled).toBe(true);
+    expect(f.base.closest("[data-error]")?.textContent).toContain(said);
+    expect(f.name.closest("[data-error]"), "地址的毛病记到了名字头上").toBeNull();
+    refuse = null;
+    await f.type(f.base, "https://api.example.test");
+    await f.type(f.key, "sk");
+    expect(f.base.closest("[data-error]")).toBeNull();
+    expect(f.btn(copyText("acctNew.form.create")).disabled).toBe(false);
+  });
+
+  it("名字空着：不问那台、不报错、主按钮灰", async () => {
+    const f = form();
+    await f.type(f.name, "");
+    expect(asked).toEqual([]);
+    expect(f.el.querySelector("[data-error]")).toBeNull();
+    expect(f.btn(copyText("acctNew.form.createLogin")).disabled).toBe(true);
   });
 
   it("Esc：空表单直接收；填过先问「放弃填写的内容」，答不放弃就不收", async () => {

@@ -44,8 +44,7 @@ class NewSessionPickerTest {
     ) = mapOf(
         "name" to name,
         "label" to name,
-        "configDir" to "/a/$name",
-        "mode" to "isolated",
+        "newSession" to true,
         "selectable" to selectable,
         "color" to color.toDouble(),
         "plate" to name.take(2),

@@ -275,6 +275,7 @@ dependencies = [
  "own-chan",
  "portable-pty",
  "relay-route-core",
+ "resident-client",
  "rhai",
  "ring",
  "russh",

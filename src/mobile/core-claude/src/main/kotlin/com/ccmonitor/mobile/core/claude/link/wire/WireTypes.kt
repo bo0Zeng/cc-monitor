@@ -1405,8 +1405,7 @@ data class AccountRow(
     val unselectable: String?,
     val selectable: Boolean,
     val login: Boolean,
-    val configDir: String?,
-    val mode: String,
+    val newSession: Boolean,
     val authKind: String,
     val badge: Badge,
 )

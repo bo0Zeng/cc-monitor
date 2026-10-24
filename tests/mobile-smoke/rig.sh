@@ -90,8 +90,8 @@ EOF
     sleep 0.5; say "sshd 起在 127.0.0.1:$port（pid $(cat "$box/sshd/sshd.pid")）"; fi
   ssh -F /dev/null -i "$box/sshd/client_ed25519" -p "$port" -o StrictHostKeyChecking=no \
     -o UserKnownHostsFile="$box/sshd/known_hosts" "$(id -un)@127.0.0.1" \
-    '"$HOME"/.cc-monitor/bin/ccm -- --backend-probe' > "$box/logs/probe.json"
-  say "probe：$(head -c 200 "$box/logs/probe.json")"
+    '"$HOME"/.cc-monitor/bin/ccm -- --stream </dev/null | head -1' > "$box/logs/hello.json"
+  say "hello：$(head -c 200 "$box/logs/hello.json")"
 }
 
 # 台架家里的后端进程：只认 exe 是台架那份 ccm 的（文件换过的那种 exe 末尾带「 (deleted)」，也认；

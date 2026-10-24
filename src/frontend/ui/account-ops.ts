@@ -14,14 +14,12 @@
  * | 各号共用的用户级 MCP：看 · 删一条 · 两边都改了时挑一版 | `accounts-mcp-read` · `accounts-mcp-remove` · `accounts-mcp-pick` |
  *
  * 都是 typed 帧命令（`callTyped`）：入参 · 成品的类型从 Rust 生成，形状由握手时的指纹核过，这里不再逐格解。
- * 界面只交意图（名字 · 类型 · 凭据文件 / 地址与 key · 是否默认）、只显那台后端答的那几句；
+ * 界面只交意图（原样打的名字 · 类型 · 凭据文件 / 地址与 key · 是否默认）、不判，只显那台后端答的那几句；
  * 建目录、搭链接、写清单、放凭据或 key、重写别名文件都由那台后端做。每条都能先 `dryRun` 预演（回将要做的那几步）。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { settleTyped } from "./control-said";
 import type { Origin } from "./ipc/origin";
-import { copyText } from "./copy-table";
-import { ACCOUNT_NAME_MAX, accountNameOk } from "./generated/judgment-rules";
 import type { AccountAddArgs } from "./generated/AccountAddArgs";
 import type { AccountChange } from "./generated/AccountChange";
 import type { AccountInitArgs } from "./generated/AccountInitArgs";
@@ -39,19 +37,6 @@ export type {
   VerifyReport,
   VerifyCheck,
 };
-
-export type NameCheck = { ok: true } | { ok: false; reason: string };
-
-/** 账号名能不能用 —— 规则读生成物（`accountNameOk`，与后端建号 · `ccm --account` 同一条），这里只多说一句「空」。 */
-export function validateAcctName(name: string): NameCheck {
-  if (!name) return { ok: false, reason: copyText("accountOps.name.empty") };
-  if (!accountNameOk(name))
-    return {
-      ok: false,
-      reason: copyText("accountOps.name.shape", { max: ACCOUNT_NAME_MAX }),
-    };
-  return { ok: true };
-}
 
 /** 改账号库的命令要读写一批小文件、可能整棵复制一个号的目录进备份：给足一分钟。 */
 const CHANGE_BUDGET_MS = 60_000;

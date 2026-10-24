@@ -359,6 +359,8 @@ function productAccount(a: Record<string, unknown>): Record<string, unknown> {
   out.quota = a.quota ?? null;
   out.unselectable = a.unselectable ?? null;
   out.login = a.login ?? false;
+  // 进不进新建会话的选号表是那台后端写好的格（`accounts_query::new_session_of`）：夹具不写 ⇒ 照那台的样子（有目录、隔离 ⇒ 进）。
+  out.newSession = a.newSession ?? (out.configDir !== null && out.mode === "isolated");
   return out;
 }
 

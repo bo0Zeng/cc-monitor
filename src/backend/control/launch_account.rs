@@ -24,65 +24,37 @@ pub(crate) enum Asked {
     Follow,
 }
 
-/// 账号库里的一个号（只留判定要的几格）。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Candidate {
-    pub(crate) name: String,
-    pub(crate) config_dir: Option<String>,
-    /// 能拿来起会话：隔离模式 · 鉴权前提就绪 · 目录在 · 有账号目录（账号 0 恒不在此列）。
-    pub(crate) usable: bool,
+// 判定直接读 `accounts-list` 的成品（同一份扫描，不另读清单、不另转一张表）：能不能用是成品写好的 `selectable`
+//（`acct_core::account_selectable`），默认号是 `meta.effectiveDefault`（`acct_core::effective_default`），这里都不另判。
+// `meta.enabled = false` ⇒ 清单读不出来（说不清默认号是谁）。
+
+/// 这一行的号目录（空串不算）。
+fn dir_of(a: &AccountRow) -> Option<&str> {
+    a.scanned.config_dir.as_deref().filter(|d| !d.is_empty())
 }
 
-/// 这台的账号库。`known = false` ⇒ 清单读不出来（说不清默认号是谁）。
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct Library {
-    pub(crate) known: bool,
-    pub(crate) accounts: Vec<Candidate>,
-    /// 这台的默认号（成品 `meta.effectiveDefault`：规则住 `acct_core::effective_default`，这里不另判）。
-    pub(crate) default: Option<String>,
+/// 能拿来起会话：成品说选得了、且写了号目录（账号 0 恒不在此列）。
+fn usable(a: &AccountRow) -> bool {
+    !a.scanned.name.is_empty() && a.scanned.selectable && dir_of(a).is_some()
 }
 
-impl Library {
-    /// `accounts-list` 的成品 ⇒ 判定要的那一份（同一份扫描，不另读 manifest）。
-    pub(crate) fn of_product(v: &AccountsList) -> Library {
-        Library {
-            known: v.meta.enabled,
-            accounts: v.accounts.iter().filter_map(candidate_of).collect(),
-            default: v.meta.effective_default.clone(),
-        }
-    }
-
-    fn usable(&self, name: &str) -> Option<&Candidate> {
-        self.accounts.iter().find(|a| a.name == name && a.usable)
-    }
-
-    /// 这台的默认号（成品写好的那一格）。
-    fn default_one(&self) -> Option<&Candidate> {
-        let d = self.default.as_deref()?;
-        self.accounts.iter().find(|a| a.name == d)
-    }
-
-    /// 要的号选不了时给的那个显式替代：默认号（能用、且不是要的那个）；清单读不出 ⇒ 没有。
-    fn alternative_to(&self, requested: &str) -> Option<String> {
-        self.default_one()
-            .filter(|a| self.known && a.usable && a.name != requested)
-            .map(|a| a.name.clone())
-    }
+fn usable_named<'a>(list: &'a AccountsList, name: &str) -> Option<&'a AccountRow> {
+    list.accounts
+        .iter()
+        .find(|a| a.scanned.name == name && usable(a))
 }
 
-fn candidate_of(a: &AccountRow) -> Option<Candidate> {
-    let a = &a.scanned;
-    if a.name.is_empty() {
-        return None;
-    }
-    let config_dir = a.config_dir.clone().filter(|d| !d.is_empty());
-    // 能不能用是成品写好的那一格（`acct_core::account_selectable`），这里不另判。
-    let usable = a.selectable && config_dir.is_some();
-    Some(Candidate {
-        name: a.name.clone(),
-        config_dir,
-        usable,
-    })
+/// 这台的默认号（成品写好的那一格）。
+fn default_one(list: &AccountsList) -> Option<&AccountRow> {
+    let d = list.meta.effective_default.as_deref()?;
+    list.accounts.iter().find(|a| a.scanned.name == d)
+}
+
+/// 要的号选不了时给的那个显式替代：默认号（能用、且不是要的那个）；清单读不出 ⇒ 没有。
+fn alternative_to(list: &AccountsList, requested: &str) -> Option<String> {
+    default_one(list)
+        .filter(|a| list.meta.enabled && usable(a) && a.scanned.name != requested)
+        .map(|a| a.scanned.name.clone())
 }
 
 /// 判定的结局。
@@ -117,7 +89,7 @@ pub struct AccountUnavailable {
 /// `last` ＝ 这条会话上次用的号（[`last_of`]）。`pinned_now` ＝ 会话此刻钉着的号（额度轮换用，今天恒空、不参与判定）。
 pub(crate) fn pick(
     asked: &Asked,
-    lib: &Library,
+    list: &AccountsList,
     last: Option<&str>,
     pinned_now: Option<&str>,
 ) -> Picked {
@@ -126,21 +98,20 @@ pub(crate) fn pick(
         Picked::Unavailable(AccountUnavailable {
             requested: requested.to_string(),
             pinned,
-            list_known: lib.known,
-            alternative: lib.alternative_to(requested),
+            list_known: list.meta.enabled,
+            alternative: alternative_to(list, requested),
         })
     };
-    let take = |a: &Candidate| Picked::Account {
-        name: a.name.clone(),
-        config_dir: a.config_dir.clone().unwrap_or_default(),
+    let take = |a: &AccountRow| Picked::Account {
+        name: a.scanned.name.clone(),
+        config_dir: dir_of(a).unwrap_or_default().to_string(),
     };
     match asked {
-        Asked::Named(n) => lib.usable(n).map_or_else(|| refuse(n, false), take),
+        Asked::Named(n) => usable_named(list, n).map_or_else(|| refuse(n, false), take),
         Asked::Follow => match last {
-            Some(p) => lib.usable(p).map_or_else(|| refuse(p, true), take),
-            None => lib
-                .default_one()
-                .filter(|a| a.usable)
+            Some(p) => usable_named(list, p).map_or_else(|| refuse(p, true), take),
+            None => default_one(list)
+                .filter(|a| usable(a))
                 .map_or(Picked::Base, take),
         },
     }
@@ -167,8 +138,8 @@ pub enum AccountAsk {
 pub(crate) struct Facts<'a> {
     /// 这一家有没有账号这一维（没有 ⇒ 跟随什么都不选）。
     pub(crate) has_accounts: bool,
-    /// 这台的账号库（只在要判的时候读）。
-    pub(crate) library: &'a dyn Fn() -> Library,
+    /// 这台的账号清单成品（`accounts-list`，只在要判的时候读）。
+    pub(crate) library: &'a dyn Fn() -> AccountsList,
     /// 某条会话上次用的号。
     pub(crate) last: &'a dyn Fn(&str) -> Option<String>,
 }

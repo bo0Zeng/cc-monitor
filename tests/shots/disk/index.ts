@@ -45,8 +45,6 @@ export interface MachineDisk {
   /** 权限位不照台架进程 umask 建的那几份：相对家目录的路径 → 模式（秘密文件照产品自己写的 `0600`；演「权限太宽」的场景放宽它）。 */
   modes?: Record<string, number>;
   live: LiveSession[];
-  /** quota-warm 在跑（`real/pool.mjs` 配一个替身进程、写 `.cc-monitor/quota-warm.json` 带它的 pid）：号 → 下一次开窗的时刻。 */
-  warm?: { account: string; at: number }[];
   /**
    * 「开着即活」那一家（没有 pidfile，在世期间写记录的进程一直开着那份记录）的活会话：每份配一个替身进程开着它写（相对家目录）。
    * 后端照真的那一套认写者、宣告。
@@ -323,10 +321,4 @@ export function putLineage(d: MachineDisk, parents: Record<string, string>, at: 
 
 export function putPrefs(d: MachineDisk, prefs: Record<string, unknown>): void {
   d.files[".cc-monitor/prefs.json"] = json({ version: 1, ...prefs });
-}
-
-// ── quota-warm 在跑（`<家>/.cc-monitor/quota-warm.json`：写它的那个进程的 pid ＋ 每号下一次开窗的时刻）──
-
-export function putWarm(d: MachineDisk, next: { account: string; at: number }[]): void {
-  d.warm = next.map((n) => ({ account: n.account, at: Math.round(n.at) }));
 }

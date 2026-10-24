@@ -17,7 +17,6 @@
  *   POST /__ccm/trace  {scene}                               ⇒ 那个场景的世界里台架与无头壳之间的来往（最近 [`TRACE_KEEP`] 条，带毫秒）落进
  *                                                              `<沙箱>/trace/<场景>.log`，答那几份的路径（一张图没截成时 `run.mjs` 来要，问题表里点名它）
  *
- *   世界里的 `warm`（quota-warm 在跑）：同样配一个替身进程，写 `.cc-monitor/quota-warm.json` 带它的 pid。
  *   世界里的 `live`（活会话）：每个配一个 `sleep` 进程当 claude 的替身（缺省住在那台私有 tmux 的一个窗格里），写 `.claude/sessions/<pid>.json`
  *   （带 `procStart`，判活照真的那一套）；替身 · tmux · 后端同在一个沙箱里（见 `start`）。替身先把 `screen` 那一屏印进自己的窗格，
  *   `windows` 个终端窗口是同一台 tmux 里嵌套的客户端（真后端的终端名单 · 抓屏 · 实时画面照真的那样读）。
@@ -276,7 +275,7 @@ export function backendPool({ repo, sandbox }) {
       const at = m.mtimes?.[rel] ?? now;
       utimesSync(p, at / 1000, at / 1000);
     }
-    // 替身进程（活会话的 claude · quota-warm）与这台的私有 tmux 都起在后端那一个沙箱里（同一个用户 / 进程命名空间）：
+    // 替身进程（活会话的 claude）与这台的私有 tmux 都起在后端那一个沙箱里（同一个用户 / 进程命名空间）：
     // 后端要读替身的 `/proc/<pid>/environ` 取 `TMUX_PANE`（打标 `@ccm_sid`、报容器），沙箱外的进程它读不到；pid 也只在这一个命名空间里算数。
     // 沙箱里先跑一段起替身、写 pidfile 的开场（`.shots-setup/run.sh`），再 exec 后端。判活照真的那一套：pid 在不在 ＋ 进程起始时刻（`procStart`，/proc/<pid>/stat 第 22 格）。
     const H = "/home/user";
@@ -343,11 +342,6 @@ export function backendPool({ repo, sandbox }) {
     });
     // 终端窗口：同一台私有 tmux 里另起一个会话，窗格里跑一个嵌套的客户端 attach 到它那个会话上（后端 `list-clients` 照真的那样数到它）。
     viewers.forEach((name, j) => sh.push(newSession(`window-${j}`, `exec env -u TMUX -u TMUX_PANE ${tmuxBin()} -S ${sock} -f /dev/null attach -t ${q(`=${name}`)}`)));
-    if (m.warm) {
-      mkdirSync(path.join(home, ".cc-monitor"), { recursive: true });
-      writeFileSync(path.join(setup, "warm.json"), JSON.stringify({ pid: "__PID__", next: m.warm }).replace('"__PID__"', "__PID__"));
-      sh.push("sleep 3600 & pid=$!", `sed "s/__PID__/$pid/" ${H}/.shots-setup/warm.json > ${H}/.cc-monitor/quota-warm.json`);
-    }
     // 「开着即活」那一家的替身：开着那份记录写（追加方式打开、一个字不写），后端照真的那一套认写者。
     for (const rel of m.writers ?? []) {
       if (rel.startsWith("/") || rel.split("/").includes("..")) throw new Error(`替身开着写的记录要相对家目录：${rel}`);
