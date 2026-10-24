@@ -178,7 +178,7 @@ fn a_bare_call_without_any_terminal_does_not_start_an_agent() {
         other => panic!("{other:?}"),
     };
     let Ok(Plan::Container(c)) =
-        plan::build(&o, &Env::for_preview(), &AccountTable::default(), None)
+        plan::build(&o, &Env::for_preview(), &ManifestRead::Ok(None), None)
     else {
         panic!("不是容器路")
     };
@@ -326,7 +326,7 @@ fn the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it() {
         else {
             panic!("`--tmux=n1` 不该被解析成 Early")
         };
-        match plan::build(&o, env, &AccountTable::default(), None).expect("该算得出计划") {
+        match plan::build(&o, env, &ManifestRead::Ok(None), None).expect("该算得出计划") {
             Plan::Container(c) => c.payload,
             other => panic!("`--tmux=` 该走容器路，实得 {other:?}"),
         }
@@ -477,7 +477,7 @@ fn direct_of(args: &[&str], tmux: Option<&str>) -> plan::Direct {
         Parsed::Opts(o) => o,
         other => panic!("{other:?}"),
     };
-    match plan::build(&o, &e, &AccountTable::default(), None).expect("该算得出计划") {
+    match plan::build(&o, &e, &ManifestRead::Ok(None), None).expect("该算得出计划") {
         Plan::Direct(d) => d,
         other => panic!("直路测试却算出 {other:?}"),
     }
@@ -689,11 +689,11 @@ fn the_alias_preview_is_the_same_plan_as_ccm_print() {
             bus_scripts: plan::discover_bus_scripts(),
             ..Default::default()
         };
-        // 账号表照这台机器的真值（预览要的就是这一点：「这台机器上敲这条别名」）—— 读法与真跑同一个 `AccountTable::load`。
+        // 账号表照这台机器的真值（预览要的就是这一点：「这台机器上敲这条别名」）—— 读法与真跑同一个 `plan::read_accounts`（账号库那一个读口）。
         let table = if needs_account_table(&o, &e) {
-            AccountTable::load(&e.accts_manifest)
+            plan::read_accounts(&e.accts_manifest)
         } else {
-            AccountTable::default()
+            ManifestRead::Ok(None)
         };
         let plan = plan::build(&o, &e, &table, None).expect("该算得出计划");
         assert_eq!(
@@ -1265,7 +1265,7 @@ fn the_upstream_variable_comes_from_the_agents_own_upstream_cell() {
         else {
             panic!("不该是 Early")
         };
-        plan::render(&plan::build(&o, &e, &AccountTable::default(), None).expect("计划"))
+        plan::render(&plan::build(&o, &e, &ManifestRead::Ok(None), None).expect("计划"))
     };
     assert!(
         line("claude").contains("unset ANTHROPIC_BASE_URL; "),

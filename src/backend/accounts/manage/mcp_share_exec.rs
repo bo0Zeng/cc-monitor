@@ -10,8 +10,7 @@
 use super::json_key;
 use super::layout;
 use super::mcp_share::{self, Seen, Servers, Store};
-use super::model::Manifest;
-use super::scan::{item_at, join};
+use super::scan::{item_at, join, Unread};
 use crate::common::door::{self, Door, Refused};
 use crate::platform::acct_view::Item;
 use cmd_wire::accounts::{AccountMcpChoice, AccountMcpConflict, AccountMcpView};
@@ -21,7 +20,7 @@ use std::path::Path;
 
 type Refusal = crate::wire::spec::Fail;
 
-/// 清单 · 共享集合两份小文件的读取上限。
+/// 共享集合那份小文件的读取上限。
 const MAX_SMALL_BYTES: u64 = 8 * 1024 * 1024;
 /// 改写某个号的配置文件之前那份原文放在备份目录下的哪一层（每个号一份 `<号><配置文件名>`）。
 const BACKUP_SUBDIR: &str = "accounts-mcp";
@@ -64,19 +63,13 @@ pub(crate) fn accounts_in(home: &str) -> Result<Option<Vec<(String, String)>>, R
         return Ok(None);
     }
     let mpath = join(&super::scan::accts_root(home), super::scan::MANIFEST_FILE);
-    // 那一句只带路径与原因词；原话进复制详情。
-    let say = |w: &str| {
-        copy_text(
-            "beAcctScan.manifest.unreadable",
-            &[("path", &mpath), ("why", w)],
-        )
+    // 读不动那一句只带路径与原因词；原话进复制详情。
+    let m = match super::scan::manifest_at(Path::new(&mpath)) {
+        Ok(None) => return Ok(None),
+        Ok(Some(m)) => m,
+        Err(Unread::Io(s)) => return Err(("io_failed", s).into()),
+        Err(Unread::Bad(s)) => return Err(("refused", s).into()),
     };
-    let text = read_text(&mpath, MAX_SMALL_BYTES)
-        .map_err(|e| Refusal::from(("io_failed", e.wrap(say))))?;
-    let Some(text) = text else {
-        return Ok(None);
-    };
-    let m = Manifest::parse(&text).map_err(|e| ("refused", e))?;
     Ok(Some(
         m.managed()
             .map(|a| (a.name.clone(), a.config_dir.clone()))

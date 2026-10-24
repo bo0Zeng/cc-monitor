@@ -904,7 +904,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     (
         "src/backend/accounts/manage/scan.rs",
         "MAX_MANIFEST_BYTES",
-        "改账号库之前读账号清单（与只读那一侧 `accounts_query.rs` 同一个量、同一个数）",
+        "读账号清单（账号库那一个读口：账号页 · 起会话 · 改账号库都经它）",
         "硬报错",
     ),
     (
@@ -1241,12 +1241,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "硬报错",
     ),
     (
-        "src/backend/observe/accounts_query.rs",
-        "MAX_MANIFEST_BYTES",
-        "backend 侧读账号 manifest",
-        "硬报错",
-    ),
-    (
         "src/backend/history/live.rs",
         "MAX_SESSION_FILE_BYTES",
         "读单个 `sessions/<PID>.json`",
@@ -1573,7 +1567,7 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
 
     // 对 A 🔴 **这一对没了，是被解决掉的**：monitor 那一侧（`local_accounts.rs` 的
     //   `MANIFEST_CAP`，本机账号 manifest 参照实现）随那份实现删了 ⇒ 读 manifest 的上限只剩后端
-    //   `observe/accounts_query.rs::MAX_MANIFEST_BYTES` 一处，「两侧漂开」在结构上不再可能（同对 D 的处置）。
+    //   `accounts/manage/scan.rs::MAX_MANIFEST_BYTES` 一处，「两侧漂开」在结构上不再可能（同对 D 的处置）。
 
     // 对 B 🔴 **这一对没了，是被解决掉的**：查看器整份读那一道上限（「一整份会话 jsonl」读过 256 MiB 就明拒）
     //   随 `history-page` 的 `whole` 入参一起删了（查看器改成骨架 ＋ 按视口取，没有「整份读」这件事了）⇒ 「一整份会话 jsonl」的上限只剩分叉那一处

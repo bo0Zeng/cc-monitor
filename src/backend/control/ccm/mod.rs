@@ -41,7 +41,7 @@ use crate::ccm_line::{argv, is_backend_word, is_own_name, PROFILE_SIGIL, SUBCOMM
 use crate::platform::child::Child;
 use argv::{Die, Early, Parsed};
 use copy_core::copy_text;
-use plan::{AccountTable, Env, Plan};
+use plan::{Env, ManifestRead, Plan};
 
 /// 这套 CLI 的版本号（`--ccm-probe` 的 `version=` · 帧 `ccm-probe` 的 `version`）。**行为变了就要动它**。
 ///
@@ -307,7 +307,11 @@ pub fn run(
             let mut env = env;
             // 这一家认不认得这份扫描由计划那一侧问适配层（`Adapter::live`）。
             env.running_sessions = o.resumes.is_some().then_some(running);
-            let Planned { plan, env, table } = match plan_of(&o, env, true) {
+            let Planned {
+                plan,
+                env,
+                accounts,
+            } = match plan_of(&o, env, true) {
                 Ok(p) => p,
                 Err(Die(msg)) => return die(&msg),
             };
@@ -316,7 +320,7 @@ pub fn run(
                 println!("{}", plan::render_for(&plan, plan::terminal_shell()));
                 eprint!(
                     "{}",
-                    plan::render_from(&plan::from_rows(&o, &origins, &env, &table, &plan))
+                    plan::render_from(&plan::from_rows(&o, &origins, &env, &accounts, &plan))
                 );
                 return 0;
             }
@@ -356,10 +360,10 @@ fn plan_of(o: &argv::Opts, mut env: Env, inherit_account: bool) -> Result<Planne
         &mut env,
         inherit_account.then_some(&get as &dyn Fn(&str) -> Option<String>),
     );
-    let table = if needs_account_table(o, &env) {
-        AccountTable::load(&env.accts_manifest)
+    let accounts = if needs_account_table(o, &env) {
+        plan::read_accounts(&env.accts_manifest)
     } else {
-        AccountTable::default()
+        Ok(None)
     };
     // ★★ `K-R96`（09-12）：**铸名避让在这里就问那张唯一的会话快照**。
     //
@@ -371,15 +375,19 @@ fn plan_of(o: &argv::Opts, mut env: Env, inherit_account: bool) -> Result<Planne
     // 问不到就 `None` ⇒ **不退让**（诚实降级，见 `plan::build` 头注）。
     // ⚠ 探测点仍然只有一个（快照那处），`readonly_guard::spawn_registry` 的数不变。
     let taken = crate::common::session_snapshot::global().taken_names().ok();
-    let plan = plan::build(o, &env, &table, taken.as_ref())?;
-    Ok(Planned { plan, env, table })
+    let plan = plan::build(o, &env, &accounts, taken.as_ref())?;
+    Ok(Planned {
+        plan,
+        env,
+        accounts,
+    })
 }
 
 /// [`plan_of`] 的成品：计划 ＋ 算它用的那份环境与账号表（`--ccm-print` 的「来自」按同一份写）。
 struct Planned {
     plan: Plan,
     env: Env,
-    table: AccountTable,
+    accounts: ManifestRead,
 }
 
 /// 一条别名的预置参数最多几个词、每个词最长多少（帧面入参的上界；别名表单产出的远小于它）。

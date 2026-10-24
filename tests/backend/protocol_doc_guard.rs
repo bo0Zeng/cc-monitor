@@ -681,9 +681,8 @@ mod tests {
     /// 而且后两个**搬进 `wire/`（流协议的家）是错误归类**：
     ///
     /// - `resolve_query.rs` 的几个：命令 `resolve` 的入参与成品（当时与手机端冻结，10-11 解冻）；
-    /// - `fork_write.rs` 的几个：分叉的出参（当时是一次性子命令 `--fork-session` 的出参，今天是 typed 帧命令 `session-fork`），不是流协议；
-    /// - `accounts_query.rs::RawAccount`：**根本不是 wire** —— 它在解析账号库的清单
-    ///   **文件**（文件 schema）。
+    /// - `fork_write.rs` 的几个：分叉的出参（当时是一次性子命令 `--fork-session` 的出参，今天是 typed 帧命令 `session-fork`），不是流协议。
+    /// （当时还有账号清单那一侧解析清单**文件**的一个类型；10-24 账号库清单收成 `accounts/manage` 一个读口，它删了。）
     ///
     /// ⇒ 目标不变（新增一个上线类型不许溜进来），形状改成 `spawn_registry` 那一套：
     /// **逐条列举 + 写明它是什么 + 机检**。
@@ -728,11 +727,6 @@ mod tests {
                 "observe/accounts_query.rs",
                 "Interrupts",
                 "typed 帧命令 `machine-interrupts` 的回包（形状从类型生成进协议参考与 TS），命令应答不是流协议帧",
-            ),
-            (
-                "observe/accounts_query.rs",
-                "RawAccount",
-                "**根本不是 wire**：它在解析账号库的清单**文件**（文件 schema）",
             ),
             (
                 "observe/recognize/index_row.rs",

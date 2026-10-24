@@ -6,12 +6,16 @@
 //! # 账号 0
 //!
 //! manifest 里 `configDir` 键缺席的那一条 = 账号 0 =「不设 `CLAUDE_CONFIG_DIR`」这个状态本身。结构性地认它（看键在不在），
-//! 不认名字（不硬编码 "0"）。它的 config dir 是共享库（`sharedStore`）、`.claude.json` 在 `$HOME`。
-//! 空串不算缺席：`is_safe_config_dir("")` 会挡掉它（空值 ≠ 未设）。
+//! 不认名字（不硬编码 "0"）—— 认法住读口那一面（`model::OnDiskAccount`）。它的 config dir 是共享库（`sharedStore`）、`.claude.json` 在 `$HOME`。
+//! 空串不算缺席：`configDir: ""` 过不了配置目录那一关，那一条不列（空值 ≠ 未设）。
+//!
+//! # 读清单
+//!
+//! 清单只经 `accounts/manage` 那一个读口（`scan::manifest_at`：剥 BOM · 读取上限 · 版本闸都在那里），每趟只读一次，本文件不另解析。
 //!
 //! # 谓词的作用面不对称
 //!
-//! `is_safe_config_dir` 的调用点都在清单侧（源是 accounts manifest）；会话那几行（[`session_accounts`]）的 `configDir` 来自
+//! 清单侧的配置目录都过了读口那一关（`is_safe_config_dir` 同一条规则，过不了的那条不列）；会话那几行（[`session_accounts`]）的 `configDir` 来自
 //! `/proc/<pid>/environ`，没过谓词。不给它套谓词：进程侧的值只拿去与 `by_dir`（只装过了谓词的目录）比对，
 //! 不安全的值匹配不上、`account` 恒 `None`；若把它丢弃（置 `None`），那条会话就变成 `bare: true` —— 等于把一个可疑会话贴成默认账号。
 //! ⇒ 归属安全、展示未净化；要表达「configDir 不可信」得给帧加一个状态位（改上线契约）。
@@ -34,7 +38,6 @@ use crate::platform::fs::Ro;
 use crate::wire::SessionFaceExt as _;
 use acct_core::{
     auth_kind_from_manifest, auth_kind_with_apikey_table, auth_ready, CREDENTIALS_NAME,
-    SUPPORTED_SCHEMA,
 };
 pub(crate) use cmd_wire::accounts::{AccountRow, AccountsList, Badge, ListMeta, ScannedAccount};
 pub(crate) use cmd_wire::needs::NeedsRow;
@@ -42,32 +45,12 @@ use copy_core::copy_text;
 use relay_route_core::{ACCOUNTS_DIR_REL, ACCOUNTS_MANIFEST_NAME};
 use std::path::{Path, PathBuf};
 
-/// manifest 读取上限。账号数有限，几 MB 足矣，此处宽松给 8MB 兜底。
-const MAX_MANIFEST_BYTES: u64 = 8 * 1024 * 1024;
+use crate::accounts::manage::model::Manifest;
 // ---------------------------------------------------------------- manifest
 
-#[derive(serde::Deserialize)]
-struct RawAccount {
-    name: String,
-    #[serde(default)]
-    email: Option<String>,
-    /// 可以缺席：缺席 = 账号 0 =「不设 `CLAUDE_CONFIG_DIR`」，它的 config dir 就是共享库。判据是结构性的（这个键在不在），不认名字。
-    /// 空串不算缺席（`is_safe_config_dir("")` 会挡掉）。
-    #[serde(rename = "configDir", default)]
-    config_dir: Option<String>,
-    #[serde(rename = "isDefault", default)]
-    is_default: bool,
-    #[serde(default)]
-    mode: Option<String>,
-    /// 鉴权方式。可以缺席 —— 缺席 = 订阅号。分类规则的唯一住址是 `acct_core::auth_kind_from_manifest`，这里不再写一份 match。
-    #[serde(rename = "authKind", default)]
-    auth_kind: Option<String>,
-}
-
-struct Manifest {
-    updated_at: Option<String>,
-    shared_store: Option<String>,
-    accounts: Vec<RawAccount>,
+/// 清单里列出来的那几行：读口读出来的盘上原样那一面（`model::OnDisk`，照清单顺序、含账号 0）。
+fn listed(m: &Manifest) -> &[crate::accounts::manage::model::OnDiskAccount] {
+    &m.on_disk.rows
 }
 
 /// 路径是否可安全地交给下游。规则是 `acct_core::config_dir_ok`（全仓唯一一份，认 Windows 形：`\` 是那边的路径分隔符）；
@@ -110,22 +93,18 @@ pub(crate) fn default_manifest_path() -> PathBuf {
     manifest_path(&resolve_accts_dir())
 }
 
-/// 读 + 解析 manifest。缺文件/坏 JSON/不支持的 schema 都是 `Err(人话原因)`——
-/// 调用方据此输出 `enabled:false` 而**不是**失败退出（"没启用多账号"是正常状态）。
-///
-/// 账号数组**逐条**解析：单个坏账号（缺 name/configDir 等）被跳过而非拖垮整份
-/// manifest（避免手改 manifest 时一坏全灭；写侧 `accounts/manage/model.rs` 对这种条目也是原样留着、不去动它）。
 /// 这台启用了多账号没有（账号库清单读得出 ⇒ 是）：与账号清单那一份的 `meta.enabled` 同一个判法（[`scan_accounts`]）。
 /// 首次运行「给现在登录的号起个名字」那一步读它（`footprint/readiness.rs`）。
 pub(crate) fn accounts_enabled_here() -> bool {
-    load_manifest(&resolve_accts_dir()).is_ok()
+    manifest_or_why(&resolve_accts_dir()).is_ok()
 }
 
 /// 账号库清单在、却读不懂（读不出 · 不是 JSON · 版本不认）⇒ 为什么（同账号清单 `meta.error` 那一句）；读得懂 · 没有清单
 /// （没启用多账号，正常状态）⇒ `None`。需手动清单据此回 `unreadable`，不把读不懂当成「没有需登录的号」。
 pub(crate) fn library_unreadable(accts_dir: &Path) -> Option<String> {
-    let why = load_manifest(accts_dir).err()?;
-    (!matches!(manifest_path(accts_dir).try_exists(), Ok(false))).then_some(why)
+    crate::accounts::manage::scan::manifest_at(&manifest_path(accts_dir))
+        .err()
+        .map(crate::accounts::manage::scan::Unread::into_said)
 }
 
 /// [`library_unreadable`]，这台的账号库。
@@ -133,66 +112,23 @@ pub(crate) fn library_unreadable_here() -> Option<String> {
     library_unreadable(&resolve_accts_dir())
 }
 
-fn load_manifest(accts_dir: &Path) -> Result<Manifest, String> {
+/// 这台的清单（经 `accounts/manage` 那一个读口；剥 BOM · 上限 · 版本闸都在那里）。没有清单 / 在却读不懂都是 `Err(人话原因)`——
+/// 调用方据此输出 `enabled:false` 而**不是**失败退出（"没启用多账号"是正常状态）。形状不合规矩的号原样留在清单里、不列（写侧也不动它）。
+fn manifest_or_why(accts_dir: &Path) -> Result<Manifest, String> {
     let p = manifest_path(accts_dir);
-    // 没有清单 ＝ 没启用多账号（正常状态）：只回那一句，不记日志（记了就是每次列账号都多一行 WARN，CLI 的 stderr 也跟着脏）。
-    if matches!(p.try_exists(), Ok(false)) {
-        return Err(copy_text(
+    match crate::accounts::manage::scan::manifest_at(&p) {
+        Ok(Some(m)) => Ok(m),
+        // 没有清单 ＝ 没启用多账号（正常状态）：只回那一句，不记日志（记了就是每次列账号都多一行 WARN，CLI 的 stderr 也跟着脏）。
+        Ok(None) => Err(copy_text(
             "beAccountsQuery.loadManifest.unreadable",
             &[
                 ("path", &(p.display()).to_string()),
                 ("why", &copy_core::io_reason(std::io::ErrorKind::NotFound)),
             ],
-        ));
+        )),
+        // 屏上那一句只带原因词；系统原话记一行日志（这一形的失败是给账号页一句话，没有原话位）。
+        Err(e) => Err(e.into_said()),
     }
-    // 屏上那一句只带原因词；系统原话记一行日志（这一形的失败是给账号页一句话，没有原话位）。
-    let bytes = Ro::read_regular_capped(&p, MAX_MANIFEST_BYTES).map_err(|e| {
-        crate::common::said::IntoNote::into_note(e.wrap(|why| {
-            copy_text(
-                "beAccountsQuery.loadManifest.unreadable",
-                &[("path", &(p.display()).to_string()), ("why", why)],
-            )
-        }))
-    })?;
-    // UTF-8 BOM 剥掉再解析：PowerShell 5.1 `-Encoding UTF8` 与记事本默认写 BOM，`serde_json` 不吃它 ⇒ 不剥就是账号页整块空。
-    // 同一份文件的另一个读者是 `control/ccm/plan.rs::AccountTable::load`，两个读者读出同一张表由 `tests::both_readers_of_the_manifest_see_the_same_accounts` 钉。
-    let body = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&bytes);
-    let root: serde_json::Value = serde_json::from_slice(body).map_err(|e| {
-        crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
-            copy_text("beAccountsQuery.loadManifest.badJson", &[]),
-            e,
-        ))
-    })?;
-    match root.get("version").and_then(|v| v.as_u64()) {
-        Some(SUPPORTED_SCHEMA) => {}
-        Some(v) => {
-            return Err(copy_text(
-                "beAccountsQuery.loadManifest.badVersion",
-                &[("v", &v.to_string())],
-            ))
-        }
-        None => return Err(copy_text("beAccountsQuery.loadManifest.noVersion", &[]).into()),
-    }
-    let mut accounts = Vec::new();
-    if let Some(arr) = root.get("accounts").and_then(|a| a.as_array()) {
-        for (i, item) in arr.iter().enumerate() {
-            match serde_json::from_value::<RawAccount>(item.clone()) {
-                Ok(a) => accounts.push(a),
-                Err(e) => tracing::warn!("manifest 第 {i} 个账号解析失败，已跳过：{e}"),
-            }
-        }
-    }
-    Ok(Manifest {
-        updated_at: root
-            .get("updatedAt")
-            .and_then(|v| v.as_str())
-            .map(String::from),
-        shared_store: root
-            .get("sharedStore")
-            .and_then(|v| v.as_str())
-            .map(String::from),
-        accounts,
-    })
 }
 
 fn json_str(v: Option<&str>) -> serde_json::Value {
@@ -246,6 +182,9 @@ fn scan_accounts(
     accts_dir: &Path,
     in_table: &dyn Fn(&str) -> bool,
 ) -> (ListMeta, Vec<ScannedAccount>) {
+    // 这一趟只读一次清单：号色 · 删掉默认号之后默认谁都从这一份算。
+    let read = manifest_or_why(accts_dir);
+    let next = read.as_ref().ok().and_then(next_default);
     let meta = |enabled: bool,
                 updated_at: Option<String>,
                 shared_store: Option<String>,
@@ -260,25 +199,22 @@ fn scan_accounts(
         count,
         error,
         unsupported: crate::platform::acct_view::unsupported_said(),
-        next_default: next_default(accts_dir),
+        next_default: next.clone(),
         // 这台的默认号是谁（标了的第一个，没标 ⇒ 第一个）：规则只住 `acct_core::effective_default`，界面与起会话都读这一格。
         effective_default,
         home: None,
     };
-    match load_manifest(accts_dir) {
+    match read {
         Err(e) => (meta(false, None, None, 0, Some(e), None), Vec::new()),
         Ok(m) => {
-            let colors = colors_at(accts_dir);
+            let colors = colors_of(&m);
             let mut lines = Vec::new();
-            for a in &m.accounts {
+            for a in listed(&m) {
                 // configDir 缺席 = 账号 0：它的 config dir 就是共享库 ⇒ 登录态查那儿，`configDir` 在帧里出 null（下游据此不注入 CLAUDE_CONFIG_DIR）。
                 let (cfg_out, probe_dir) = match a.config_dir.as_deref() {
                     None => (None, m.shared_store.as_deref().map(PathBuf::from)),
+                    // 配置目录过不了那一关的那条读口不列（[`listed`]）。
                     Some(c) => {
-                        if !is_safe_config_dir(c) {
-                            tracing::warn!("账号 {} 的 configDir 不安全，已丢弃：{}", a.name, c);
-                            continue;
-                        }
                         let n = norm_dir(c);
                         (Some(n.to_string()), Some(PathBuf::from(n)))
                     }
@@ -326,7 +262,7 @@ fn scan_accounts(
                     auth_kind: auth_kind.to_string(),
                     // 鉴权方式这一维不阻塞它被选中；不等于真能连上（界面要把这个状态说出来）。
                     auth_ready: ready,
-                    // 号色（`--acct-c0..c7` 第几格）：账号库里的事实，界面只画它（[`colors_at`]；形状不合规矩的那条按名字哈希兜底）。
+                    // 号色（`--acct-c0..c7` 第几格）：账号库里的事实，界面只画它（[`colors_of`]；不在表里的按名字哈希兜底）。
                     color: colors
                         .get(&a.name)
                         .copied()
@@ -338,7 +274,7 @@ fn scan_accounts(
             (
                 meta(
                     true,
-                    m.updated_at.clone(),
+                    m.on_disk.updated_at.clone(),
                     m.shared_store.clone(),
                     lines.len(),
                     None,
@@ -401,32 +337,24 @@ pub(crate) fn with_sign_in(list: &mut AccountsList, sign_in: bool) {
 pub(crate) const CREDENTIALS_FILE: &str = CREDENTIALS_NAME;
 
 /// 删掉默认号之后新会话默认谁（默认号只有清单里那一份）：问写侧那一条规则（`Manifest::without`），这里不另判。
-/// 清单读不出 / 没有默认号 / 删了之后没有别的号 ⇒ `None`。
-fn next_default(accts_dir: &Path) -> Option<String> {
-    let m = library_model(accts_dir)?;
+/// 没有默认号 / 删了之后没有别的号 ⇒ `None`。
+fn next_default(m: &Manifest) -> Option<String> {
     let current = m.managed().find(|a| a.is_default)?.name.clone();
     m.without(&current).1
-}
-
-/// 写侧那份模型读出来的清单（读不出 ⇒ `None`）。
-fn library_model(accts_dir: &Path) -> Option<crate::accounts::manage::model::Manifest> {
-    let bytes = Ro::read_regular_capped(&manifest_path(accts_dir), MAX_MANIFEST_BYTES).ok()?;
-    let text = String::from_utf8(bytes).ok()?;
-    crate::accounts::manage::model::Manifest::parse(text.trim_start_matches('\u{feff}')).ok()
 }
 
 /// 这台账号库给每个号的号色（名 ⇒ 第几格；读不出 ⇒ 空表）：别处画号色（轮换那一页）与 `accounts-list` 同一份；
 /// 不在表里的号照 `color_fallback` 按名字算（同清单那一行）。
 pub(crate) fn account_colors() -> std::collections::BTreeMap<String, u8> {
-    colors_at(&resolve_accts_dir())
+    manifest_or_why(&resolve_accts_dir())
+        .map(|m| colors_of(&m))
+        .unwrap_or_default()
 }
 
 /// 清单里每个号的号色（名 ⇒ 第几格）：盘上有就照盘上；还没补过色的照补色那一处现算（`Manifest::with_colors`，
-/// 与常驻那一个补完写回去的同一份）。读不出 ⇒ 空表（行上按名字哈希兜底）。
-fn colors_at(accts_dir: &Path) -> std::collections::BTreeMap<String, u8> {
-    let Some(m) = library_model(accts_dir).map(|m| m.with_colors()) else {
-        return Default::default();
-    };
+/// 与常驻那一个补完写回去的同一份）。
+fn colors_of(m: &Manifest) -> std::collections::BTreeMap<String, u8> {
+    let m = m.with_colors();
     m.managed()
         .filter_map(|a| a.color.map(|c| (a.name.clone(), c)))
         .chain(
@@ -983,16 +911,13 @@ pub(crate) fn shared_with_other_accounts_in(accts_dir: &Path, home: &Path, rel: 
 
 /// 账号库里每个号的配置目录（规范过的写法）⇒ 号名；`None` 这个 key 是账号 0（configDir 缺席）：裸起的会话归属到它。
 fn dirs_of(accts_dir: &Path) -> Vec<(Option<String>, String)> {
-    load_manifest(accts_dir)
+    manifest_or_why(accts_dir)
         .map(|m| {
-            m.accounts
-                .into_iter()
-                .filter_map(|a| match a.config_dir.as_deref() {
-                    None => Some((None, a.name)),
-                    Some(c) if is_safe_config_dir(c) => {
-                        Some((Some(norm_dir(c).to_string()), a.name))
-                    }
-                    Some(_) => None,
+            listed(&m)
+                .iter()
+                .map(|a| {
+                    let dir = a.config_dir.as_deref().map(|c| norm_dir(c).to_string());
+                    (dir, a.name.clone())
                 })
                 .collect()
         })
