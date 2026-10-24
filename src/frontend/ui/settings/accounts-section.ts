@@ -11,7 +11,7 @@ import { spanNow } from "../duration-format";
 import { emit } from "@tauri-apps/api/event";
 import { getCurrentMachine, subscribeMachine } from "../machine-context";
 import { SETTINGS_APPLIED_EVENT, SETTINGS_GO_EVENT } from "./events";
-import { renderNewAccountForm, checkBaseUrl, type NewAccountForm, type NewAccountRequest } from "./account-new-form";
+import { renderNewAccountForm, type NewAccountForm, type NewAccountRequest } from "./account-new-form";
 import { openLoginWindow, loginInTmux } from "./account-login";
 import { askFacts } from "../new-session-reads";
 import { accountRowKind, deriveUi, defaultAccount, type Account, type AccountsState } from "../accounts";
@@ -27,7 +27,8 @@ import { openOnMachine } from "../file-window";
 import { findHostByOrigin, readRemoteConfig } from "../remote-config";
 import { bindEvents } from "../events";
 import { openLoginDrawer } from "../login-drawer";
-import { accountsAdd, accountsInit, accountsRemove, accountsRepair, accountsRollback, accountsSetDefault, accountsVerify, validateAcctName, type VerifyReport } from "../account-ops";
+import { accountsAdd, accountsInit, accountsRemove, accountsRepair, accountsRollback, accountsSetDefault, accountsVerify, type VerifyReport } from "../account-ops";
+import { refusalIn } from "../ipc/chan-caller";
 import { confirmDialog, type ConfirmFn } from "../kit/dialog";
 import { button, buttonRow, setBusy, setDisabled } from "../kit/button";
 import { banner } from "../kit/banner";
@@ -291,12 +292,8 @@ export class AccountsSection {
     const name = field({ label: copyText("acctPage.notEnabled.name"), placeholder: copyText("acctNew.name.example"), noteOnDemand: true });
     const go = button({ label: copyText("acctPage.notEnabled.enable"), kind: "primary" });
     go.addEventListener("click", () => {
-      const n = name.input.value.trim();
-      const ok = validateAcctName(n);
-      if (!ok.ok) {
-        name.setError(ok.reason);
-        return;
-      }
+      // 名字原样交那台预演：能不能用只由它判，拒了那一句落在名字格（下面 catch）。
+      const n = name.input.value;
       name.setError(null);
       void (async () => {
         setBusy(go, copyText("acctPage.notEnabled.enabling"));
@@ -648,23 +645,21 @@ export class AccountsSection {
     save.addEventListener("click", () => {
       const k = keyIn.value.trim();
       if (!k || a.configDir === null) return;
-      const b = checkBaseUrl(base.input.value);
-      if (!b.ok) {
-        base.setError(b.reason);
-        return;
-      }
+      // 地址原样交（留空 = 不碰那一格）：能不能用只由那台写口判。
+      const b = base.input.value || undefined;
       base.setError(null);
+      keyF.setError(null);
       const dir = a.configDir;
       void (async () => {
         setBusy(save, copyText("acctPage.detail.keySaving"));
         try {
-          const w = await writeApikeyKey(origin, dir, k, b.value);
+          const w = await writeApikeyKey(origin, dir, k, b);
           keyIn.value = "";
           form.hidden = true;
           show(w.masked || null, w.baseUrl);
-          keyF.setError(null);
         } catch (e) {
-          keyF.setError(saidOf(e));
+          // 挑格照那台回的码：`bad_args` 是地址那一格（空 key 这里先挡了），其余落在 key 上。
+          (refusalIn(e)?.code === "bad_args" ? base : keyF).setError(saidOf(e));
         } finally {
           setBusy(save, null);
         }
