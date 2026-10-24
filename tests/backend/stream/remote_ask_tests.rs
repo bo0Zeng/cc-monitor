@@ -172,10 +172,11 @@ async fn a_registered_origin_is_asked_with_exactly_its_dial_and_a_quoted_command
         .expect_err("替身答的不是 JSON");
     let calls = far.calls.lock().unwrap().clone();
     assert_eq!(calls.len(), 1);
-    // 表里存的是按类型收过的那一份（缺的几格写成 `null`，`ssh_dial::machine::resolve` 照缺读）。
+    // 表里存的是读成一台（`Host`，缺的几格补成缺省）的那一份；没交的那几格写成 `null`，`ssh_dial::machine::resolve` 照缺读。
     assert_eq!(
         calls[0].0,
-        json!({"machine": {"host": "192.0.2.2", "port": 22, "user": "u", "keyPath": "/k", "addresses": []},
+        json!({"machine": {"label": "", "host": "192.0.2.2", "port": 22, "user": "u", "keyPath": "/k", "addresses": [],
+                           "jump": "", "connect": true},
                "jump": null, "prefer": null, "use": null, "agent_sock": null})
     );
     // 期望值手写成字面量（不拿 `command_line` 去比它自己 —— 那样两侧同源，拿掉引号也恒绿）。

@@ -289,11 +289,12 @@ pub(crate) struct ProbeReq {
     /// 1..=64 个 `[A-Za-z0-9-]`；进度帧 `probe` 原样回填。
     pub(crate) ticket: String,
     /// 那台的配置。
-    pub(crate) machine: super::pick::MachineConfig,
+    #[serde(deserialize_with = "ssh_dial::machine::loose_field")]
+    pub(crate) machine: super::Host,
     /// 跳板那一台的配置（可缺）。
-    #[serde(default)]
+    #[serde(default, deserialize_with = "ssh_dial::machine::loose_opt")]
     #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) jump: Option<super::pick::MachineConfig>,
+    pub(crate) jump: Option<super::Host>,
 }
 
 crate::wire::typed::codes! {
@@ -495,12 +496,7 @@ pub(crate) async fn probe_with(
         out,
         last: std::sync::Mutex::new((copy_text("beProbe.stage.notStarted", &[]), Segs::default())),
     };
-    let pick = super::pick::Pick {
-        machine: &req.machine,
-        jump: req.jump.as_ref(),
-        prefer: None,
-    };
-    let end = match bounded(Deadline::within(PROBE_CAP, until), run(&pick, dial, &cells)).await {
+    let end = match bounded(Deadline::within(PROBE_CAP, until), run(req, dial, &cells)).await {
         Ok(end) => end?,
         Err(total) => {
             let dur = copy_core::format_duration(total.shown_secs().saturating_mul(1000));
@@ -517,15 +513,16 @@ pub(crate) async fn probe_with(
 /// 跑一趟真连接那一串（`resident_client::feed`：attach → 没接上 ensure → 再 attach），等到第一个通 / 断。
 /// 通了 ⇒ 问一次 `ping` 量往返；断了 ⇒ 那一句就是真连接会说的那一句。
 async fn run(
-    pick: &super::pick::Pick<'_>,
+    req: &ProbeReq,
     dial: Arc<dyn Dial>,
     cells: &Cells<'_>,
 ) -> Result<ProbeCell, (&'static str, String)> {
-    let (machine, _) = pick.machines()?;
-    let name = machine.name().to_string();
+    let name = req.machine.name().to_string();
+    let request =
+        |use_: &str, extra| super::dial_of(&req.machine, req.jump.as_ref(), None, use_, extra);
     // 探完即丢 ⇒ 每一条都是短命探活（不进连接池：表单那份可能还没保存）。
-    let stream = pick.request("stream", json!({ "stages": true, "probe": true }))?;
-    let capture = pick.request(
+    let stream = request("stream", json!({ "stages": true, "probe": true }))?;
+    let capture = request(
         "capture",
         // 上限同别的远端一次性收全（`--resident-ensure` 只回一行）；老后端认不得它、掉进流模式 ⇒ 见到 hello 就收（判在连常驻那一层）。
         json!({ "probe": true, "capture": {

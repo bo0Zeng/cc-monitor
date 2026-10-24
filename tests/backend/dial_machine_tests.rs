@@ -1,24 +1,28 @@
-//! 「测试连接：界面把表单里（未保存的）那台配置交给本机后端，后端组拨号请求」·
-//! 「端口转发：流没起的远端不许拒，本机后端按配置自己拨」—— `ssh-dial/machine.rs` 的规则判据（从 monitor `dial_host::request` /
-//! `stream_source::parse_address_line` 搬来：地址四形态 · 指纹只继承同一个 host 的 · 跳板查无 / 环都拒）。
+//! `ssh-dial/machine.rs` 的规则判据：一台机器（`Host`）的名字 · 地址四形态 · 判准 · 组拨号请求 · 跳板一路照表找（多跳；查无 / 环都拒）。
 use super::*;
 
-fn m(v: Value) -> Machine {
-    Machine::parse(&v).unwrap()
+/// 线上那一形（键可缺）读成的一台。
+fn m(v: Value) -> Host {
+    loose(&v).unwrap()
+}
+
+fn ep(host: &str, port: u16) -> Endpoint {
+    Endpoint {
+        host: host.into(),
+        port,
+    }
+}
+
+fn code(r: Result<Value, Err>) -> Result<(), &'static str> {
+    r.map(|_| ()).map_err(|(c, _)| c)
 }
 
 #[test]
 fn address_lines_read_the_four_shapes_and_refuse_garbage() {
-    assert_eq!(parse_address_line("h", 22), Some(("h".into(), 22)));
-    assert_eq!(parse_address_line(" h:2222 ", 22), Some(("h".into(), 2222)));
-    assert_eq!(
-        parse_address_line("[::1]:2200", 22),
-        Some(("::1".into(), 2200))
-    );
-    assert_eq!(
-        parse_address_line("fe80::1", 22),
-        Some(("fe80::1".into(), 22))
-    );
+    assert_eq!(parse_address_line("h", 22), Some(ep("h", 22)));
+    assert_eq!(parse_address_line(" h:2222 ", 22), Some(ep("h", 2222)));
+    assert_eq!(parse_address_line("[::1]:2200", 22), Some(ep("::1", 2200)));
+    assert_eq!(parse_address_line("fe80::1", 22), Some(ep("fe80::1", 22)));
     assert_eq!(parse_address_line(":22", 22), None, "只有端口没有 host");
     assert_eq!(
         parse_address_line("h:x", 22),
@@ -29,12 +33,53 @@ fn address_lines_read_the_four_shapes_and_refuse_garbage() {
 }
 
 #[test]
+fn the_name_is_the_trimmed_label_else_the_trimmed_host() {
+    assert_eq!(m(json!({"host": " h ", "label": "  "})).name(), "h");
+    assert_eq!(m(json!({"host": "h", "label": " box "})).name(), "box");
+    assert_eq!(m(json!({"host": "h"})).name(), "h");
+}
+
+#[test]
+fn one_machine_is_judged_by_one_rule() {
+    let ok = json!({"host": "h", "user": "u"});
+    assert_eq!(m(ok.clone()).fault(), None);
+    let with = |k: &str, v: Value| {
+        let mut o = ok.clone();
+        o[k] = v;
+        m(o).fault()
+    };
+    assert_eq!(with("host", json!(" ")), Some(MachineFaultCode::NoHost));
+    assert_eq!(with("user", json!("")), Some(MachineFaultCode::NoUser));
+    assert_eq!(with("port", json!(0)), Some(MachineFaultCode::Port));
+    assert_eq!(with("port", json!(65536)), Some(MachineFaultCode::Port));
+    assert_eq!(with("user", json!("-oX")), Some(MachineFaultCode::LeadingDash));
+    assert_eq!(
+        with("addresses", json!(["ok", " -x"])),
+        Some(MachineFaultCode::LeadingDash)
+    );
+    let twin = [m(json!({"host": "a", "user": "u", "label": "x"})), m(json!({"host": "b", "user": "u", "label": " x"}))];
+    assert_eq!(
+        check_table(&twin).map(|(c, h)| (c, h.host.as_str())),
+        Some((MachineFaultCode::NameTaken, "b")),
+        "名字去首尾空白后比"
+    );
+}
+
+#[test]
+fn the_wire_shape_tolerates_nulls_and_extra_keys_but_not_wrong_types() {
+    let h = m(json!({"host": "h", "user": "u", "keyPath": null, "jump": null, "resumeCommand": "x"}));
+    assert_eq!((h.key(), h.jump_name(), h.port, h.connect), (None, None, 22, true));
+    assert_eq!(loose(&json!({"host": 1})).unwrap_err().0, "bad_args");
+    assert_eq!(loose(&json!({"port": "22"})).unwrap_err().0, "bad_args");
+}
+
+#[test]
 fn the_request_carries_the_form_and_no_trust_anchor() {
     let form = m(
         json!({"host": "192.0.2.2", "label": "devbox", "port": 2222, "user": "u", "keyPath": "",
                         "addresses": ["devbox.lan", "192.0.2.2:2222", "bad:x"], "jump": ""}),
     );
-    let r = request(&form, None, None, "stream", json!({"stages": true})).unwrap();
+    let r = request(&[form], "devbox", None, "stream", json!({"stages": true})).unwrap();
     assert!(
         r.get("host_key_fingerprint").is_none() && r.get("known_keys").is_none(),
         "信哪把主机钥匙由拨号核心读库，请求里不带：{r}"
@@ -53,35 +98,80 @@ fn the_request_carries_the_form_and_no_trust_anchor() {
 }
 
 #[test]
-fn a_jump_must_be_handed_over_and_must_not_point_at_itself() {
-    let via = m(json!({"host": "192.0.2.2", "label": "devbox", "user": "u", "jump": "bastion"}));
-    let bastion =
-        m(json!({"host": "b.example", "label": "bastion", "user": "j", "jump": "elsewhere"}));
-    let r = request(&via, Some(&bastion), None, "forward", json!({})).unwrap();
-    assert_eq!(r["jump"]["host"], "b.example");
-    assert_eq!(r["jump"]["label"], "bastion");
+fn a_machine_that_does_not_hold_is_not_dialed() {
+    for bad in [json!({"host": "h", "user": " "}), json!({"host": "h", "user": "u", "port": 70000})] {
+        let t = [m(bad)];
+        assert_eq!(code(request(&t, "h", None, "stream", json!({}))), Err("bad_args"));
+    }
+    let t = [
+        m(json!({"host": "h", "user": "u", "jump": "j"})),
+        m(json!({"host": "j", "user": ""})),
+    ];
     assert_eq!(
-        request(&via, None, None, "forward", json!({}))
-            .unwrap_err()
-            .0,
-        "bad_jump",
-        "跳板没交来 ⇒ 拒（不回落直连）"
+        code(request(&t, "h", None, "stream", json!({}))),
+        Err("bad_args"),
+        "跳板那一台不成立也拒"
+    );
+    let t = [m(json!({"host": "h", "user": "u"}))];
+    assert_eq!(
+        code(request(&t, "nobody", None, "stream", json!({}))),
+        Err("bad_args"),
+        "表里没有这一台"
+    );
+}
+
+#[test]
+fn jumps_are_followed_through_the_table_hop_by_hop() {
+    let t = [
+        m(json!({"host": "192.0.2.2", "label": "devbox", "user": "u", "jump": "bastion"})),
+        m(json!({"host": "b.example", "label": "bastion", "user": "j", "keyPath": "/k", "jump": "edge"})),
+        m(json!({"host": "e.example", "label": "edge", "user": "e"})),
+    ];
+    let r = request(&t, "devbox", None, "forward", json!({})).unwrap();
+    assert_eq!(
+        (r["jump"]["host"].as_str(), r["jump"]["label"].as_str(), r["jump"]["key_path"].as_str()),
+        (Some("b.example"), Some("bastion"), Some("/k"))
+    );
+    assert_eq!(r["jump"]["jump"]["host"], "e.example", "跳板自己的跳板再套一层");
+    assert!(r["jump"]["jump"].get("jump").is_none());
+    serde_json::from_value::<crate::DialRequest>(r).expect("多跳那一形读得动");
+}
+
+#[test]
+fn a_jump_that_is_missing_or_points_back_is_refused() {
+    let via = m(json!({"host": "192.0.2.2", "label": "devbox", "user": "u", "jump": "bastion"}));
+    assert_eq!(
+        code(request(&[via.clone()], "devbox", None, "forward", json!({}))),
+        Err("bad_jump"),
+        "跳板不在表里 ⇒ 拒（不回落直连）"
     );
     let wrong = m(json!({"host": "x", "label": "other", "user": "j"}));
     assert_eq!(
-        request(&via, Some(&wrong), None, "forward", json!({}))
-            .unwrap_err()
-            .0,
-        "bad_jump"
+        code(request(&[via.clone(), wrong], "devbox", None, "forward", json!({}))),
+        Err("bad_jump")
     );
-    let selfish = m(json!({"host": "192.0.2.2", "label": "devbox", "user": "u", "jump": "devbox"}));
+    let far = m(json!({"host": "b", "label": "bastion", "user": "j", "jump": "elsewhere"}));
     assert_eq!(
-        request(&selfish, Some(&selfish), None, "forward", json!({}))
-            .unwrap_err()
-            .0,
-        "bad_jump",
+        code(request(&[via, far], "devbox", None, "forward", json!({}))),
+        Err("bad_jump"),
+        "再外一台找不到 ⇒ 也拒（不再忽略跳板自己的跳板）"
+    );
+    let selfish = m(json!({"host": "192.0.2.2", "label": "devbox", "user": "u", "jump": " devbox "}));
+    assert_eq!(
+        code(request(&[selfish], "devbox", None, "forward", json!({}))),
+        Err("bad_jump"),
         "环"
     );
+}
+
+#[test]
+fn a_jump_chain_that_loops_back_is_refused() {
+    // 表 A→B→A：连 A 经 B，B 又经 A ⇒ 环，拒（不回落成「B 的跳板忽略」）。
+    let t = [
+        m(json!({"host": "a.example", "label": "A", "user": "u", "jump": "B"})),
+        m(json!({"host": "b.example", "label": "B", "user": "u", "jump": "A"})),
+    ];
+    assert_eq!(code(request(&t, "A", None, "stream", json!({}))), Err("bad_jump"));
 }
 
 #[test]
@@ -124,6 +214,14 @@ fn a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first() {
         .map(|e| e.host)
         .collect();
     assert_eq!(order, vec!["192.0.2.2", "devbox.lan", "fe80::1"]);
+    // 线上那一份的跳板：`jump` 那一台进表。
+    let mut via = wire.clone();
+    via["machine"]["jump"] = json!("bastion");
+    via["jump"] = json!({"host": "b.example", "label": "bastion", "user": "j", "keyPath": null});
+    assert_eq!(
+        resolve(&via).unwrap().jump.map(|j| j.host).as_deref(),
+        Some("b.example")
+    );
     // 没有 `machine` ⇒ 拒（线上不再收组好的那一形）。
     assert_eq!(
         resolve(&json!({"host": "192.0.2.2", "user": "u", "port": 22}))
