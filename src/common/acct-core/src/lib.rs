@@ -1,8 +1,8 @@
-//! 账号库清单契约的**唯一定义**（清单常量），外加平台无关的名字安全判据。账号库那几条帧命令的线上形状住 `cmd-wire::accounts`。
+//! 账号库清单契约的**唯一定义**（清单常量 · 全仓唯一的号表类型 [`AccountBook`]），外加平台无关的名字安全判据。账号库那几条帧命令的线上形状住 `cmd-wire::accounts`。
 //!
 //! 今天的消费者：
 //! - 后端：`accounts/manage/`（写账号库）· `observe/accounts_query.rs`（读清单）· `accounts/upstream_select/file_face.rs` ·
-//!   `accounts/upstream_select/endpoint.rs` · `control/ccm/plan.rs` · `control/launch_render/payload.rs`；
+//!   `accounts/upstream_select/endpoint.rs` · `control/ccm/plan.rs` · `control/launch_render/payload.rs`；号表由 `accounts/manage` 读清单时填，`accounts/upstream_select/rotate.rs`（换号）· `control/ccm/plan.rs`（起会话）· `observe/accounts_query.rs`（账号清单）读；
 //! - 界面只经**生成物**用它：`tests/frontend/shell/payload_judgment_rules.rs` 从 [`AUTH_KINDS`] 现生成
 //!   `src/frontend/ui/generated/judgment-rules.ts`。
 //!
@@ -124,6 +124,81 @@ pub fn effective_default<T>(accounts: &[T], is_default: impl Fn(&T) -> bool) -> 
         .iter()
         .find(|a| is_default(a))
         .or_else(|| accounts.first())
+}
+
+// ---------------------------------------------------------------- 号表
+
+/// 账号库清单里的一个号 —— 全仓**唯一**的号表（[`AccountBook`]）的一行。本 crate 只放这个类型：清单只由后端 `accounts/manage`
+/// 那一个读口读（剥 BOM · 读取上限 · 版本闸都在那里），读出来照盘上原样一行一个；换号 · 起会话 · 账号清单 · 各号之间同步都读这一份，
+/// 路由段与是不是按量号照下面的方法现算，不另存一张表。
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ManifestAccount {
+    pub name: String,
+    pub email: Option<String>,
+    /// 缺席 = 账号 0 =「不设配置目录」这个状态本身（结构性认：看这个键在不在，不认名字）。
+    pub config_dir: Option<String>,
+    pub is_default: bool,
+    /// 盘上 `mode` 原样（缺席 ⇒ 读的那一处按 `isolated`）。
+    pub mode: Option<String>,
+    /// 盘上 `authKind` 原样（缺席 = 订阅号；分类规则只住 [`auth_kind_from_manifest`]）。
+    pub auth_kind: Option<String>,
+}
+
+impl ManifestAccount {
+    /// `/t/` 路由第 2 段：账号 0 ⇒ [`BARE_ACCOUNT`]；其余 ⇒ 号目录末段（[`apikey_account_id_of_dir`]，同一条规则）。
+    pub fn route_id(&self) -> Option<String> {
+        match self.config_dir.as_deref() {
+            None => Some(BARE_ACCOUNT.to_string()),
+            Some(d) => apikey_account_id_of_dir(d),
+        }
+    }
+
+    /// 按量号（API key）。
+    pub fn is_api_key(&self) -> bool {
+        auth_kind_from_manifest(self.auth_kind.as_deref()) == AUTH_KIND_API_KEY
+    }
+}
+
+/// 这台的号表：账号库清单读出来的每一个号，照清单顺序（含账号 0 那一条 —— 清单里写了才有）。
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AccountBook {
+    pub accounts: Vec<ManifestAccount>,
+}
+
+impl AccountBook {
+    /// 路由段是 `id` 的那个号（[`ManifestAccount::route_id`]）。
+    pub fn by_route(&self, id: &str) -> Option<&ManifestAccount> {
+        self.accounts
+            .iter()
+            .find(|a| a.route_id().as_deref() == Some(id))
+    }
+
+    pub fn by_name(&self, name: &str) -> Option<&ManifestAccount> {
+        self.accounts.iter().find(|a| a.name == name)
+    }
+
+    /// 具名号：写了号目录的那几个，照清单顺序。
+    pub fn named(&self) -> impl Iterator<Item = &ManifestAccount> {
+        self.accounts.iter().filter(|a| a.config_dir.is_some())
+    }
+
+    /// 这台的默认号（[`effective_default`]）。
+    pub fn default_account(&self) -> Option<&ManifestAccount> {
+        effective_default(&self.accounts, |a| a.is_default)
+    }
+
+    /// 换号那一侧：账号 0 恒在、排第一个（「裸起」这个状态永远可达）—— 清单里写了那一条就挪到最前，没写就补一条（名字 [`BARE_ACCOUNT`]）。
+    pub fn with_bare_first(mut self) -> Self {
+        let bare = match self.accounts.iter().position(|a| a.config_dir.is_none()) {
+            Some(i) => self.accounts.remove(i),
+            None => ManifestAccount {
+                name: BARE_ACCOUNT.to_string(),
+                ..Default::default()
+            },
+        };
+        self.accounts.insert(0, bare);
+        self
+    }
 }
 
 /// 跨生产者对拍夹具的**一格**：喂什么、该出什么。

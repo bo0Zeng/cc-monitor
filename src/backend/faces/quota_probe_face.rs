@@ -118,17 +118,13 @@ pub(crate) fn answer_probe_with(
         )
     })?;
     let lib = ctx.hop.library();
-    let found = lib
-        .accounts
-        .iter()
-        .find(|a| a.id == account)
-        .ok_or_else(|| {
-            (
-                "not_found",
-                copy_text("beQuotaProbe.account.notFound", &[("account", account)]),
-            )
-        })?;
-    if found.api {
+    let found = lib.by_route(account).ok_or_else(|| {
+        (
+            "not_found",
+            copy_text("beQuotaProbe.account.notFound", &[("account", account)]),
+        )
+    })?;
+    if found.is_api_key() {
         return Err((
             "unsupported",
             copy_text("beQuotaProbe.account.apiKey", &[("account", account)]),
@@ -166,7 +162,7 @@ pub(crate) fn answer_probe_with(
         .args(at.lead)
         .args(face.args)
         .current_dir(cwd.as_path());
-    child = match &found.dir {
+    child = match &found.config_dir {
         Some(d) => child.env(face.dir_env, d),
         None => child.env_remove(face.dir_env),
     };

@@ -342,7 +342,7 @@ fn a_resend_that_cannot_connect_hands_down_the_answer_in_hand() {
 
 use crate::accounts::quota::rotation::{self, RotationStore};
 use crate::accounts::quota::rules::book::{self, Cause};
-use crate::accounts::upstream_select::rotate::{Hop, LibAccount, Library};
+use crate::accounts::upstream_select::rotate::Hop;
 
 const UUID_A: &str = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
 const UUID_B: &str = "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb";
@@ -417,18 +417,21 @@ impl Home {
         Self { root }
     }
 
-    fn library(&self) -> crate::accounts::upstream_select::rotate::LibraryRead {
+    fn library(&self) -> crate::accounts::upstream_select::rotate::BookAt {
         let accts = self.root.join("accts");
-        Arc::new(move |_| Library {
-            enabled: true,
-            accounts: ["a", "b"]
-                .iter()
-                .map(|id| LibAccount {
-                    id: id.to_string(),
-                    dir: Some(accts.join(id)),
-                    api: false,
-                })
-                .collect(),
+        Arc::new(move |_| {
+            Some(acct_core::AccountBook {
+                accounts: ["a", "b"]
+                    .iter()
+                    .map(|id| {
+                        crate::accounts::upstream_select::rotate::tests::book_row(
+                            &id.to_string(),
+                            Some(accts.join(id)),
+                            false,
+                        )
+                    })
+                    .collect(),
+            })
         })
     }
 
@@ -493,7 +496,7 @@ impl Home {
     fn relay_on(
         &self,
         up: SocketAddr,
-        library: crate::accounts::upstream_select::rotate::LibraryRead,
+        library: crate::accounts::upstream_select::rotate::BookAt,
     ) -> SocketAddr {
         let quota = Arc::new(Ledger::at(Some(self.root.join(ledger::FILE_NAME))));
         let hop = Hop::new(
@@ -1186,19 +1189,22 @@ const UUID_NOBODY: &str = "99999999-4444-4444-8444-999999999999";
 
 impl Home {
     /// 账号库：`ids` 里的号（`0` ⇒ 账号 0，身份在这个家下面；其余在 `accts/<id>`）。
-    fn library_of(&self, ids: &[&str]) -> crate::accounts::upstream_select::rotate::LibraryRead {
+    fn library_of(&self, ids: &[&str]) -> crate::accounts::upstream_select::rotate::BookAt {
         let accts = self.root.join("accts");
         let ids: Vec<String> = ids.iter().map(|s| s.to_string()).collect();
-        Arc::new(move |_| Library {
-            enabled: true,
-            accounts: ids
-                .iter()
-                .map(|id| LibAccount {
-                    id: id.clone(),
-                    dir: (id != "0").then(|| accts.join(id)),
-                    api: false,
-                })
-                .collect(),
+        Arc::new(move |_| {
+            Some(acct_core::AccountBook {
+                accounts: ids
+                    .iter()
+                    .map(|id| {
+                        crate::accounts::upstream_select::rotate::tests::book_row(
+                            &id.clone(),
+                            (id != "0").then(|| accts.join(id)),
+                            false,
+                        )
+                    })
+                    .collect(),
+            })
         })
     }
 

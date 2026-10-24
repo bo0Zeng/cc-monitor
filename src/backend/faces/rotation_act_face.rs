@@ -167,7 +167,7 @@ impl crate::wire::typed::Handle for RotationTemp {
 
 /// 这个号在这台的账号里吗（开会话用的号算）。
 fn listed(ctx: &Ctx, s: &Session, account: &str) -> bool {
-    account == s.start || ctx.hop.library().accounts.iter().any(|a| a.id == account)
+    account == s.start || ctx.hop.library().by_route(account).is_some()
 }
 
 /// 把 `account` 放到那一串第 `at` 位（越界取末尾；已在就挪过去）。

@@ -5,7 +5,7 @@ use crate::accounts::quota::facts::{FactBlocked, FactWhy, WinFact};
 use crate::accounts::quota::ledger::{self, Ledger};
 use crate::accounts::quota::rotation::{self, RotationStore};
 use crate::accounts::quota::show::LoginState;
-use crate::accounts::upstream_select::rotate::{Hop, LibAccount, Library};
+use crate::accounts::upstream_select::rotate::Hop;
 use crate::agents::{QuotaReading, QuotaStatus, QuotaWindow};
 use std::sync::Arc;
 
@@ -42,16 +42,19 @@ fn ctx(root: &std::path::Path) -> crate::faces::rotation_face::Ctx {
             &crate::faces::rotation_face::adoptions_at(),
             Arc::new(Ledger::at(Some(root.join(ledger::FILE_NAME)))),
             Some(root.to_path_buf()),
-            Arc::new(move |_| Library {
-                enabled: true,
-                accounts: [("b", false), ("c", false), ("api", true)]
-                    .iter()
-                    .map(|(id, api)| LibAccount {
-                        id: id.to_string(),
-                        dir: Some(accts.join(id)),
-                        api: *api,
-                    })
-                    .collect(),
+            Arc::new(move |_| {
+                Some(acct_core::AccountBook {
+                    accounts: [("b", false), ("c", false), ("api", true)]
+                        .iter()
+                        .map(|(id, api)| {
+                            crate::accounts::upstream_select::rotate::tests::book_row(
+                                &id.to_string(),
+                                Some(accts.join(id)),
+                                *api,
+                            )
+                        })
+                        .collect(),
+                })
             }),
             Arc::new(Default::default),
             None,

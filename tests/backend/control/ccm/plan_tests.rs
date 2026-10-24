@@ -921,7 +921,7 @@ fn tempdir() -> String {
 /// 现成的一摞号 ⇒ 一份读懂了的清单（判据夹具用；生产侧只经 [`read_accounts`] 进来）。
 pub(crate) fn library_of(rows: Vec<Account>) -> ManifestRead {
     let mut m = crate::accounts::manage::model::Manifest::default();
-    m.on_disk.rows = rows;
+    m.book.accounts = rows;
     Ok(Some(m))
 }
 

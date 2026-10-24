@@ -12,6 +12,28 @@ use serde_json::{json, Value};
 use sha2::Digest;
 use std::path::PathBuf;
 
+/// 一份只有这几个具名号的清单（名字 ⇒ 号目录）。
+fn library(rows: &[(&str, String)]) -> crate::accounts::manage::model::Manifest {
+    use crate::accounts::manage::model::{Account, Entry, Manifest};
+    Manifest {
+        entries: rows
+            .iter()
+            .map(|(name, dir)| {
+                Entry::Managed(Account {
+                    name: (*name).to_string(),
+                    email: String::new(),
+                    config_dir: dir.clone(),
+                    is_default: false,
+                    auth_kind: None,
+                    color: None,
+                    extra: Default::default(),
+                })
+            })
+            .collect(),
+        ..Manifest::default()
+    }
+}
+
 struct Tmp(PathBuf);
 impl Drop for Tmp {
     fn drop(&mut self) {
@@ -264,10 +286,10 @@ fn the_same_pass_runs_on_the_fake_adapters_format() {
         "{\n  \"keep\": [1],\n  \"trusted\": {\n    \"/a\": true\n  }\n}\n",
     );
     t.write("b/fake-config.json", "{\"keep\": 2}\n");
-    let list = vec![
-        ("a".to_string(), format!("{}/a", t.home())),
-        ("b".to_string(), format!("{}/b", t.home())),
-    ];
+    let list = library(&[
+        ("a", format!("{}/a", t.home())),
+        ("b", format!("{}/b", t.home())),
+    ]);
     let home_before = sha(&t, "fake-config.json");
     let mut changed = sync_with(&t.door(), &t.home(), &cells, "fake-config.json", &list);
     changed.sort();
@@ -354,7 +376,7 @@ fn the_generic_layer_does_not_know_about_git() {
     t.write("repo/.git/HEAD", "x\n");
     std::fs::create_dir_all(t.0.join("repo/sub")).unwrap();
     t.write("a/fake-config.json", "{}\n");
-    let list = vec![("a".to_string(), format!("{}/a", t.home()))];
+    let list = library(&[("a", format!("{}/a", t.home()))]);
     let sub = format!("{}/repo/sub", t.home());
     assert_eq!(
         pretrust_with(

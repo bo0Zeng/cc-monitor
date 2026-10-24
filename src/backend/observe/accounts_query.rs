@@ -6,7 +6,7 @@
 //! # 账号 0
 //!
 //! manifest 里 `configDir` 键缺席的那一条 = 账号 0 =「不设 `CLAUDE_CONFIG_DIR`」这个状态本身。结构性地认它（看键在不在），
-//! 不认名字（不硬编码 "0"）—— 认法住读口那一面（`model::OnDiskAccount`）。它的 config dir 是共享库（`sharedStore`）、`.claude.json` 在 `$HOME`。
+//! 不认名字（不硬编码 "0"）—— 认法住读口那一面（`acct_core::ManifestAccount`）。它的 config dir 是共享库（`sharedStore`）、`.claude.json` 在 `$HOME`。
 //! 空串不算缺席：`configDir: ""` 过不了配置目录那一关，那一条不列（空值 ≠ 未设）。
 //!
 //! # 读清单
@@ -48,9 +48,9 @@ use std::path::{Path, PathBuf};
 use crate::accounts::manage::model::Manifest;
 // ---------------------------------------------------------------- manifest
 
-/// 清单里列出来的那几行：读口读出来的盘上原样那一面（`model::OnDisk`，照清单顺序、含账号 0）。
-fn listed(m: &Manifest) -> &[crate::accounts::manage::model::OnDiskAccount] {
-    &m.on_disk.rows
+/// 清单里列出来的那几行：读口读出来的号表（`Manifest::book`，照清单顺序、含账号 0）。
+fn listed(m: &Manifest) -> &[acct_core::ManifestAccount] {
+    &m.book.accounts
 }
 
 /// 路径是否可安全地交给下游。规则是 `acct_core::config_dir_ok`（全仓唯一一份，认 Windows 形：`\` 是那边的路径分隔符）；
@@ -274,7 +274,7 @@ fn scan_accounts(
             (
                 meta(
                     true,
-                    m.on_disk.updated_at.clone(),
+                    m.updated_at.clone(),
                     m.shared_store.clone(),
                     lines.len(),
                     None,

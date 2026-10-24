@@ -7,7 +7,8 @@
 //! - 整趟持账号库那把锁（与 MCP 同步 · 改账号库那几条命令同一把）。写不成只出声，不挡起会话。
 
 use super::layout;
-use super::mcp_share_exec::{accounts_in, lock, put_private, read_text, MAX_CONFIG_BYTES};
+use super::mcp_share_exec::{lock, manifest_in, put_private, read_text, MAX_CONFIG_BYTES};
+use super::model::{Account, Manifest};
 use super::scan::join;
 use super::trust_share;
 use crate::agents::TrustCells;
@@ -38,7 +39,7 @@ pub(crate) fn sync(d: &dyn Door) -> Result<Vec<String>, Refusal> {
     };
     let home = door::home(d).map_err(|e| Refusal::new("io_failed", e))?;
     let _held = lock(&home)?;
-    let Some(list) = accounts_in(&home)? else {
+    let Some(m) = manifest_in(&home)? else {
         return Ok(Vec::new());
     };
     Ok(sync_with(
@@ -46,7 +47,7 @@ pub(crate) fn sync(d: &dyn Door) -> Result<Vec<String>, Refusal> {
         &home,
         &cells,
         layout::identity_config_file(),
-        &list,
+        &m,
     ))
 }
 
@@ -65,23 +66,23 @@ fn read_conf(
 }
 
 /// 号目录过得了那两道关：写法安全（全仓那一条规矩）＋ 在清单里。过得了 ⇒ 清单里那一条的写法。
-fn listed<'a>(list: &'a [(String, String)], dir: &str) -> Option<&'a (String, String)> {
+fn listed<'a>(m: &'a Manifest, dir: &str) -> Option<&'a Account> {
     let norm = |p: &str| p.trim_end_matches('/').to_string();
     if !acct_core::config_dir_ok(dir) {
         return None;
     }
-    list.iter()
-        .find(|(_, d)| acct_core::config_dir_ok(d) && norm(d) == norm(dir))
+    m.managed()
+        .find(|a| acct_core::config_dir_ok(&a.config_dir) && norm(&a.config_dir) == norm(dir))
 }
 
-/// [`sync`] 的本体：信任那几格 · 配置文件名 · 清单（`(号名, 号目录)`）是参数（判据拿假适配层的格式喂它）。
+/// [`sync`] 的本体：信任那几格 · 配置文件名 · 清单（它的具名号）是参数（判据拿假适配层的格式喂它）。
 /// 家目录下那一份（账号 0）只读。读不出来的号这一趟不参与（不读它、也不写它）。
 pub(crate) fn sync_with(
     d: &dyn Door,
     home: &str,
     cells: &TrustCells,
     file: &str,
-    list: &[(String, String)],
+    m: &Manifest,
 ) -> Vec<String> {
     let mut union = BTreeSet::new();
     let zero = join(home, file);
@@ -93,8 +94,9 @@ pub(crate) fn sync_with(
         ),
     }
     let mut seen = Vec::new();
-    for (name, dir) in list {
-        if listed(list, dir).is_none() {
+    for a in m.managed() {
+        let (name, dir) = (&a.name, &a.config_dir);
+        if listed(m, dir).is_none() {
             tracing::warn!("账号之间同步信任：{name} 号的目录写法不安全，跳过它");
             continue;
         }
@@ -157,7 +159,7 @@ pub(crate) fn pretrust(
     };
     let home = door::home(d)?;
     let _held = lock(&home).map_err(crate::common::said::Said::from)?;
-    let Some(list) = accounts_in(&home).map_err(crate::common::said::Said::from)? else {
+    let Some(m) = manifest_in(&home).map_err(crate::common::said::Said::from)? else {
         return Ok(Marked::Nothing);
     };
     pretrust_with(
@@ -165,7 +167,7 @@ pub(crate) fn pretrust(
         &home,
         &cells,
         layout::identity_config_file(),
-        &list,
+        &m,
         config_dir,
         cwd,
     )
@@ -177,11 +179,14 @@ pub(crate) fn pretrust_with(
     home: &str,
     cells: &TrustCells,
     file: &str,
-    list: &[(String, String)],
+    m: &Manifest,
     config_dir: &str,
     cwd: &str,
 ) -> Result<Marked, crate::common::said::Said> {
-    let Some((_, dir)) = listed(list, config_dir) else {
+    let Some(Account {
+        config_dir: dir, ..
+    }) = listed(m, config_dir)
+    else {
         return Ok(Marked::NotListed);
     };
     let dirs: BTreeSet<String> = (cells.dir_keys)(cwd).into_iter().collect();

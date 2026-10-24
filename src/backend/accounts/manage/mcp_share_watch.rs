@@ -34,8 +34,8 @@ fn relevant(p: &std::path::Path) -> bool {
 fn wanted(home: &str) -> Vec<PathBuf> {
     let accts = super::scan::accts_root(home);
     let mut out = vec![PathBuf::from(&accts)];
-    if let Ok(Some(list)) = super::mcp_share_exec::accounts_in(home) {
-        out.extend(list.into_iter().map(|(_, dir)| PathBuf::from(dir)));
+    if let Ok(Some(m)) = super::mcp_share_exec::manifest_in(home) {
+        out.extend(m.managed().map(|a| PathBuf::from(&a.config_dir)));
         out.push(PathBuf::from(home));
     }
     out.retain(|p| p.is_dir());
