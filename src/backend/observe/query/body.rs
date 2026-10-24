@@ -2,24 +2,20 @@
 //! 查看器整页 · 按偏移 · 按行号 · 子 agent）共用的那一个核。
 //!
 //! 它只做「通用的流式读取机器」那一半：切行 · 可计行编号（口径只住 `lines::counts`）· 挑哪一家来解释
-//! （注册表 `agents::record_face_of`，按那份文件落在谁的根下）· 配排队消息的打字时刻（[`TypedTimes`]，只认适配层给的
-//! [`crate::agents::QueueMark`]）· 装成品。**一行在界面里是什么**住适配层（`agents/<名>/` 的 `RecordFace.parse`，出通用记录）。
+//! （注册表 `agents::record_face_of`，按那份文件落在谁的根下）· 装成品。**一行在界面里是什么**住适配层（`agents/<名>/` 的 `RecordFace.parse`，出通用记录）。
 //!
 //! 这里**一家自己的字段一个都不读**；出口要哪几格由登记处照它交的声明统一投影（`faces/project.rs`），不在这里。
 //!
-//! 三种成品（都经一个 [`Reader`]：它带着打字时刻表）：
+//! 三种成品（都经一个 [`Reader`]）：
 //! - **行摘要**（[`rows_of`]，给 monitor 旁路快照）：每个可计行 `{end, hash, record?, cwd?}` —— `end` 是这一行（含 `\n`）
 //!   之后那个字节的偏移（后端读的是原始字节 ⇒ 永远说得准；没 `\n` 收尾的残尾 ⇒ `null`），`hash` 是这一行正文的摘要
 //!   （续传前核「还是不是那一行」用，[`line_hash`]）。`record` 缺 ＝ 不进界面（照占号）。
 //! - **记录行**（[`record_lines`]，给界面）：只装进界面的那些，`{session_id, path, seq, cwd, record}`（`JsonlLinePayload`
 //!   去掉流机器那两格：`origin` 由问的那一方知道 · `skipped_from` 只属实时流）。
 //! - **子运行那一页**（[`run_rows`]）：`{record, rid?}`。
-//!
-//! 一页从文件中段起读时，调用方把起点之前 [`QUEUE_LOOKBACK_BYTES`] 以内那一段一起交进来（[`Reader::new`]），只为配打字时刻。
 
 use super::locate::validate_session_path;
 use crate::agents::record::RecordExt as _;
-use crate::agents::record::TypedTimes;
 use crate::agents::RecordFace;
 use crate::platform::fs::Ro;
 /// 行摘要 · 记录行的线上形住 `cmd-wire`（手机按同一份解）；记录那一格后端照原样的一团写（缺省 `Value`）。
@@ -58,62 +54,25 @@ fn split_lines_full(offset: u64, bytes: &[u8]) -> Vec<(&[u8], u64, Option<u64>)>
     out
 }
 
-/// 往回多看多少字节配排队消息的打字时刻：一页从文件中段起读时，`queued` 那条的打字时刻（那一家写在更早的一行上）
-/// 可能落在上一页。排队消息与它被插进那一轮的那一条实测相隔两分钟量级 ⇒ 上界固定，配不上照用那条自己的时刻。
-pub(crate) const QUEUE_LOOKBACK_BYTES: u64 = 512 * 1024;
-
-/// 一页起点 `offset` 之前那一段（[`QUEUE_LOOKBACK_BYTES`] 以内）⇒ `(它的起点, 原始字节)`；从文件头读 / 读不动 ⇒ 空。
-/// `target` 是已过围栏的那份记录。
-pub(crate) fn lead_of(target: &Path, offset: u64) -> (u64, Vec<u8>) {
-    use std::io::{Read, Seek, SeekFrom};
-    let at = offset.saturating_sub(QUEUE_LOOKBACK_BYTES);
-    let mut buf = Vec::new();
-    let read = Ro::open(target).and_then(|mut f| {
-        f.seek(SeekFrom::Start(at))?;
-        f.take(offset - at).read_to_end(&mut buf)
-    });
-    match read {
-        Ok(_) => (at, buf),
-        Err(_) => (offset, Vec::new()),
-    }
-}
-
-/// 一页的读法：适配层 ＋ 打字时刻表（往回多看那一段已经喂过）。要哪几格不归这里管：出口交的声明由登记处统一投影（`faces/project.rs`）。
+/// 一页的读法：适配层 ＋ 看的那一台的时区。要哪几格不归这里管：出口交的声明由登记处统一投影（`faces/project.rs`）。
 pub(crate) struct Reader<'a> {
     face: &'a RecordFace,
-    typed: TypedTimes,
     /// 看的那一台的时区（请求带来的）：成品的钟面按它写（[`crate::agents::record::Record::stamp`]）。
     tz: crate::common::time::Tz,
 }
 
 impl<'a> Reader<'a> {
-    /// `lead` ＝ 这一页起点之前那一段原始字节（[`QUEUE_LOOKBACK_BYTES`] 以内；从文件头读 ⇒ 空），`lead_at` 是它在文件里的起点。
-    /// 只拿来配打字时刻：不出成品、不占号；开头那半截行（从行中间起的）解析不出，自然跳过。
-    pub(crate) fn new(
-        face: &'a RecordFace,
-        lead_at: u64,
-        lead: &[u8],
-        tz: crate::common::time::Tz,
-    ) -> Self {
-        let mut r = Self {
-            face,
-            typed: TypedTimes::default(),
-            tz,
-        };
-        for (body, start) in split_starts(lead_at, lead) {
-            r.interpret(body, start); // 只为喂打字时刻表：成品不要
-        }
-        r
+    pub(crate) fn new(face: &'a RecordFace, tz: crate::common::time::Tz) -> Self {
+        Self { face, tz }
     }
 
     /// 一行交适配层解释：解析不出（连 JSON 都不是）与不进界面同一个结局 —— 照占号、不出成品。
-    fn interpret(&mut self, body: &[u8], start: u64) -> Option<(Value, Option<String>)> {
+    fn interpret(&self, body: &[u8], start: u64) -> Option<(Value, Option<String>)> {
         match (self.face.parse)(&crate::agents::Line::new(
             &String::from_utf8_lossy(body),
             start,
         )) {
-            Ok(Some(mut t)) => {
-                self.typed.pass(&mut t);
+            Ok(Some(t)) => {
                 let mut rec = t.record?;
                 rec.stamp(&self.tz);
                 let record = serde_json::to_value(rec).ok()?;

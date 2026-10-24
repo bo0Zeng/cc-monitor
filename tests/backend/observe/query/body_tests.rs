@@ -51,9 +51,8 @@ fn claude() -> RecordFace {
     crate::agents::claudecode::RECORDS
 }
 
-/// 从文件头读的那一种读法（没有往回看的那一段）。
 fn rd(face: &RecordFace) -> Reader<'_> {
-    Reader::new(face, 0, &[], Default::default())
+    Reader::new(face, Default::default())
 }
 
 const USER: &str = r#"{"type":"user","uuid":"u1","timestamp":"t","cwd":"/w","message":{"role":"user","content":"q"}}"#;
@@ -459,22 +458,6 @@ fn records_without_their_own_id_get_one_from_where_the_line_starts() {
     );
     let ids2: Vec<_> = lines.iter().map(|l| l["record"]["id"].clone()).collect();
     assert_eq!(ids, ids2);
-}
-
-/// 往回看的那一段从文件里取：起点之前至多 [`QUEUE_LOOKBACK_BYTES`]；从文件头读 ⇒ 空。
-#[test]
-fn the_lead_is_the_bounded_stretch_just_before_the_page() {
-    let dir = std::env::temp_dir().join(format!("ccm-lead-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let p = dir.join("s.jsonl");
-    std::fs::write(&p, b"0123456789").unwrap();
-    assert_eq!(lead_of(&p, 0), (0, Vec::new()));
-    assert_eq!(lead_of(&p, 4), (0, b"0123".to_vec()));
-    let big = QUEUE_LOOKBACK_BYTES + 10;
-    std::fs::write(&p, vec![b'x'; big as usize]).unwrap();
-    let (at, bytes) = lead_of(&p, big);
-    assert_eq!((at, bytes.len() as u64), (10, QUEUE_LOOKBACK_BYTES));
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// 认不出的行：相邻、同一个原因同一个类型的并成一条（`count` 记几条、`text` 带数）；中间隔着不上屏的行也算相邻；

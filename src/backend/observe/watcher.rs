@@ -1688,9 +1688,6 @@ struct ReaderState {
     book: std::sync::Arc<crate::observe::runs::RunBook>,
     /// 每份活会话记录的链索引（主线外清单从它出；键同 `offsets`）。只记链上几个短串，不留正文。
     branches: HashMap<PathBuf, crate::agents::mainline::Chain>,
-    /// 每份活会话记录的排队打字时刻表（`queued` 那条的 `at` 换成打字时刻；键同 `offsets`）。上界固定（`TypedTimes::CAP`）。
-    /// 冷接那一趟不喂它（要逐行全解析）：打字在冷接之前、插进去在之后的那一句照用它自己的时刻。
-    typed: HashMap<PathBuf, crate::agents::record::TypedTimes>,
     /// 认起会话便条、记账号：控制面那一手 ＋ 写句柄（便条与记录住它的数据目录那一根；`None` ⇒ 不认便条）。
     /// 默认 `None`、不进 `new` 的签名（夹具不碰真家目录）；生产由 [`watch_loop`] 注入启动时造的那一份。
     launch: Option<(Reactions, crate::platform::fs::Own)>,
@@ -1983,7 +1980,6 @@ impl ReaderState {
             launch: None,
             scans: None,
             branches: HashMap::new(),
-            typed: HashMap::new(),
             annotations: Default::default(),
             pool: None,
             priming: HashMap::new(),
@@ -2494,7 +2490,6 @@ fn forget_cursor(state: &mut ReaderState, key: &Path) {
     state.offsets.remove(key);
     state.tails.remove(key);
     state.branches.remove(key);
-    state.typed.remove(key);
 }
 
 /// Read a JSONL file incrementally and send a [`Frame::Line`] per new line. 回交出去几行（补读计数用）。
@@ -2924,14 +2919,7 @@ fn send_line(
     }
     note_path(session_id, path_str, state, sink);
     let (record, cwd) = match translated {
-        Some(mut t) => {
-            state
-                .typed
-                .entry(path_key(Path::new(path_str)))
-                .or_default()
-                .pass(&mut t);
-            (t.record, t.cwd)
-        }
+        Some(t) => (t.record, t.cwd),
         None => (None, None),
     };
 
@@ -4061,8 +4049,6 @@ pub(crate) struct FileRead {
     /// 读完时行号计数器该是的值（＝ 完整行数）。
     seq: u64,
     chain: Option<crate::agents::mainline::Chain>,
-    /// 这一趟从 0 起（排队打字时刻表跟着作废）。
-    from_zero: bool,
 }
 
 /// 一条会话预读完交回本线程的（[`primed`] 装回）。
@@ -4176,7 +4162,6 @@ fn prime_file_cursor(
                     tail: map.witness().to_vec(),
                     seq: map.lines(),
                     chain: chain.map(|_| map.chain().clone()),
-                    from_zero: false,
                 }),
                 gone: false,
                 bytes: scans.bytes_read() - before,
@@ -4285,7 +4270,6 @@ fn prime_file_cursor(
                 tail,
                 seq: start + n_lines as u64,
                 chain: chain.map(|_| c),
-                from_zero,
             }),
             gone: false,
             bytes,
@@ -4336,9 +4320,6 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
         let key_str = f.key.to_string_lossy().into_owned();
         match f.read {
             Some(r) => {
-                if r.from_zero {
-                    state.typed.remove(&f.key);
-                }
                 state.seqs.set(&key_str, r.seq);
                 state.tails.insert(f.key.clone(), r.tail);
                 state.offsets.insert(f.key.clone(), r.cursor);
