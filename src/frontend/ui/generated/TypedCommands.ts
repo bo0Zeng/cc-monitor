@@ -482,9 +482,9 @@ export interface TypedCommands {
   "plan-ack": { req: PlanAckReq; reply: PlanAckReply; code: "bad_args" | "io_failed" | "no_such_need" | "not_ackable" | "not_read" | "review_unreadable" };
   "plan-cell-view": { req: PlanCellViewReq; reply: PlanCellView; code: "bad_args" | "failed" | "no_pb" | "no_view" | "not_workspace" | "pb_unsupported" };
   "plan-command": { req: PlanCommandReq; reply: PlanCmdReply; code: "bad_args" | "failed" | "no_pb" | "no_such_slice" | "not_workspace" | "pb_unsupported" | "refused" };
-  "plan-files": { req: PlanFilesReq; reply: PlanFiles; code: "bad_args" | "failed" };
-  "plan-list": { req: PlanListReq; reply: PlanList; code: "bad_args" | "failed" };
-  "plan-pb-check": { req: PlanPbCheckReq; reply: PlanPbCheck; code: "bad_args" | "failed" };
+  "plan-files": { req: PlanFilesReq; reply: PlanFiles; code: "bad_args" };
+  "plan-list": { req: PlanListReq; reply: PlanList; code: "bad_args" };
+  "plan-pb-check": { req: PlanPbCheckReq; reply: PlanPbCheck; code: "bad_args" };
   "plan-read": { req: PlanReadReq; reply: PlanRead; code: "bad_args" | "failed" | "no_pb" | "not_workspace" | "pb_unsupported" };
   "plan-return": { req: PlanReturnReq; reply: PlanReturnReply; code: "bad_args" | "bad_target" | "capture_failed" | "child_timed_out" | "failed" | "io_failed" | "no_pb" | "no_server" | "no_such_cell" | "no_such_session" | "no_target" | "no_tmux" | "not_workspace" | "pb_unsupported" | "review_unreadable" | "unobservable" };
   "plan-unack": { req: PlanAckReq; reply: PlanAckReply; code: "bad_args" | "io_failed" | "not_read" | "review_unreadable" };

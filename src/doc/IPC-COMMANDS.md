@@ -13655,7 +13655,7 @@ title: string | null, top: boolean, phase: string | null, at: string | null, atT
 type PlanStale = { said: string | null, raw: string | null, since: number, sinceText?: string, };
 ```
 
-码：`bad_args` · `failed`
+码：`bad_args`
 
 #### `plan-read`
 
@@ -14072,7 +14072,7 @@ type PlanPbCheckReq = {
 dir: string, };
 ```
 
-码：`bad_args` · `failed`
+码：`bad_args`
 
 #### `plan-files`
 
@@ -14141,7 +14141,7 @@ type PlanFilesReq = {
 dir: string, };
 ```
 
-码：`bad_args` · `failed`
+码：`bad_args`
 
 #### `plan-ack`
 
