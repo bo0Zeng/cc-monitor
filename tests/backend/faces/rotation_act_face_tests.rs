@@ -7,10 +7,7 @@ fn temp(ctx: &Ctx, home: &Home, op: RotTempOp) -> Result<RotationTempReply, Rota
     temp_with(
         ctx,
         &home.own(),
-        &RotationTempReq {
-            sid: S1.into(),
-            op,
-        },
+        &RotationTempReq { sid: S1.into(), op },
         now(),
     )
 }

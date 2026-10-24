@@ -43,14 +43,9 @@ pub(crate) fn judged(
     now: u64,
     end: u64,
 ) -> Judged {
-    let facts = ctx.hop.accts(
-        sid,
-        session,
-        &ctx.hop.store.now(),
-        &plan.settings,
-        row,
-        now,
-    );
+    let facts = ctx
+        .hop
+        .accts(sid, session, &ctx.hop.store.now(), &plan.settings, row, now);
     let d = ctx.hop.judge_session(sid, session, plan, &facts, now, &[]);
     let budget = crate::accounts::quota::rules::code::Budgeted::new(plan);
     let tl = simulate::simulate(
@@ -226,7 +221,8 @@ pub(crate) fn temp_with(
             RotationUseNowErr::IoFailed(t) => RotationTempErr::IoFailed(t),
             RotationUseNowErr::BadArgs(t) => RotationTempErr::BadArgs(t),
         })?;
-        let s = session_of(ctx, &req.sid).ok_or_else(|| RotationTempErr::NoSession(no_session()))?;
+        let s =
+            session_of(ctx, &req.sid).ok_or_else(|| RotationTempErr::NoSession(no_session()))?;
         return Ok(RotationTempReply {
             temp: s.temp,
             off: s.off,
@@ -237,7 +233,11 @@ pub(crate) fn temp_with(
         // 此刻那段是第 0 位，之后每段换号往后数一位：排到松手那一刻之后那一段。
         RotTempOp::Place { t, .. } => {
             let j = judged_session(ctx, &req.sid, &s, now, (*t).max(now));
-            j.tl.uses.iter().filter(|u| u.from > now && u.from < *t).count() + 1
+            j.tl.uses
+                .iter()
+                .filter(|u| u.from > now && u.from < *t)
+                .count()
+                + 1
         }
         _ => 0,
     };

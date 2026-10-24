@@ -8,8 +8,8 @@ use crate::accounts::quota::rules::{past, standing, Adopted};
 use crate::accounts::quota::setup::{self, form, script, shelf, uses};
 use crate::accounts::quota::strategy::FailWhy;
 use crate::common::cells::Words;
-use crate::faces::rotation_face::Ctx;
 use crate::faces::rotation_act_face::{judged, lineup_of, Judged};
+use crate::faces::rotation_face::Ctx;
 use crate::faces::rotation_try_face::{decision_of, timeline_of};
 use crate::wire::typed::Command;
 use cmd_wire::cells::Tone;
@@ -155,7 +155,10 @@ fn plate_of(id: &str, colors: &std::collections::BTreeMap<String, u8>) -> RotPla
 }
 
 /// 视图里的一个号：事实 · 号牌 · 用满了的那几窗（照 [`standing::used_up`] 那一处判）。
-fn account_of(fact: cmd_wire::rotation::Fact, colors: &std::collections::BTreeMap<String, u8>) -> RotAccount {
+fn account_of(
+    fact: cmd_wire::rotation::Fact,
+    colors: &std::collections::BTreeMap<String, u8>,
+) -> RotAccount {
     let full = [("5h", &fact.w5h), ("7d", &fact.w7d)]
         .into_iter()
         .filter(|(_, w)| standing::used_up(w.used))

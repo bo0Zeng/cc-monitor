@@ -274,7 +274,11 @@ fn an_edit_is_applied_where_the_form_says() {
         row,
         window: "5h".into(),
         at,
-        seg: g.map(|(from, to, v)| RotSeg { from: hm(from), to: hm(to), v }),
+        seg: g.map(|(from, to, v)| RotSeg {
+            from: hm(from),
+            to: hm(to),
+            v,
+        }),
     };
     let painted = ap(seg(Some(1), None, Some((0, 600, 50.0)))).expect("ok");
     assert_eq!(
@@ -462,7 +466,11 @@ fn a_later_window_follows_the_first_and_segments_are_edited_one_by_one() {
         row: Some(0),
         window: "5h".into(),
         at,
-        seg: g.map(|(from, to, v)| RotSeg { from: hm(from), to: hm(to), v }),
+        seg: g.map(|(from, to, v)| RotSeg {
+            from: hm(from),
+            to: hm(to),
+            v,
+        }),
     };
     let segs = |v: &Value| v["accounts"][0]["caps"]["5h"].clone();
     assert_eq!(
