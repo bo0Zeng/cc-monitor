@@ -136,7 +136,7 @@ function ledgerSlice(o: PlanWorldOpts, landed?: Landed): Record<string, unknown>
     { id: "A2-1-3", title: "编码探测", kind: "模块", status: "没做完", why: "没签", owner: SUB_ID, edges: { with: ["A2-1"] }, coveredBy: ["A8"], body: "认出 GBK 与 UTF-8，别的编码直接报错。", files: [{ path: "ledger/encoding.py", state: "缺", note: null }] },
     { id: "A2-1-4", title: "收下编码探测", kind: "验收", status: "没做完", owner: SUB_ID, coveredBy: ["A8"], body: "GBK 与 UTF-8 各一份样本读得出，别的编码报错。", sets: [{ target: "A2-1-3", value: "收下" }] },
     { id: "A2-2", title: "导入验收测试", kind: "测试", status: "没做完", why: "没签", owner: P.lead, coveredBy: ["A8"], edges: { with: ["A2"], after: ["A2-1-1"] }, files: [{ path: "tests/test_accept_import.py", state: "空", note: "0 字节" }] },
-    { id: "A3", title: "导出 CSV", kind: "能力", status: "没做完", why: "里面 0/2 做完了", children: ["A3-1", "A3-2"], owner: P.lead, body: "把对过账的行写回 CSV，列序照 A2。" },
+    { id: "A3", title: "导出 CSV", kind: "能力", status: "没做完", why: "里面 0/1 做完了", children: ["A3-1", "A3-2"], owner: P.lead, body: "把对过账的行写回 CSV，列序照 A2。" },
     { id: "A3-1", title: "导出实现", kind: "模块", status: "没做完", why: "没签", owner: P.export, edges: { with: ["A3"] }, files: [{ path: "ledger/export_csv.py", state: "坏", note: "第 12 行语法错" }] },
     { id: "A3-2", title: "导出验收测试", kind: "测试", status: "没做完", why: "没签", owner: P.lead, edges: { with: ["A3"] }, view: false },
     { id: "A4", title: "工程底座", kind: "能力", status: "没做完", why: "等上一级收下", children: ["A4-1", "A4-2"], owner: P.base, body: "检查脚本与打包配置，一条命令跑全部检查。" },
