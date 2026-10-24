@@ -1372,6 +1372,34 @@ def run_checks(emit):
                   "现打 rc=%r 红在 %r（要 rc=%r 红在 %r）—— 红错地方、或该红不红，都说明那条判词"
                   "判的不是「开发构建起不起得来本机后端」" % (rc, got, want_rc, want_fails))
 
+        # ── ⑬i 只编不铺（`--build-only`）：发版那一步与门禁 `muslbuild` 都经它产 musl 字节 ──
+        #   真跑：沙箱仓根 ＋ PATH 最前面一个只记账的 `cargo` 替身（一个字节都不编）。
+        #   要：退 0；替身恰好被叫 `REEMBED_TARGETS` 那几次、每次 `zigbuild <旗标> --target <t>`、在 `src/backend` 里；
+        #   落点目录没被建出来（「编」与「铺」是两件事：发版那趟自己改名成资产，门禁那格只看字节）。
+        d = fixture(None)
+        try:
+            (d / "bin").mkdir()
+            (d / "bin" / "cargo").write_text(
+                '#!/bin/sh\nprintf "%%s|%%s\\n" "$PWD" "$*" >> "%s"\n' % (d / "cargo.log"), encoding="utf-8")
+            (d / "bin" / "cargo").chmod(0o755)
+            env = dict(os.environ, PATH="%s:%s" % (d / "bin", os.environ.get("PATH", "")))
+            p = subprocess.run(["bash", str(d / "tests" / "scripts" / "re-embed.sh"), "--build-only"],
+                               capture_output=True, text=True, timeout=60, env=env)
+            log = (d / "cargo.log").read_text(encoding="utf-8").splitlines() if (d / "cargo.log").exists() else []
+            flags = " ".join(sh_array(reembed, "REEMBED_BUILD_FLAGS") or [])
+            want = ["%s|zigbuild %s --target %s" % (d / "src" / "backend", flags, t)
+                    for t in (sh_array(reembed, "REEMBED_TARGETS") or [])]
+            landed = (d / "src" / "frontend" / "shell" / "embedded-backends").exists()
+            check(p.returncode == 0 and bool(want) and log == want and not landed,
+                  "⑬i`--build-only` 只编不铺",
+                  "rc=%d · cargo 替身记下 %r（要 %r）· 落点目录%s建出来 —— 红 = 发版那一步与 `muslbuild` "
+                  "那一格不再是同一条配方，或「只编」偷偷铺了字节（stderr：%s）"
+                  % (p.returncode, log, want, "**被**" if landed else "没", (p.stderr or "").strip()[-200:]))
+        except subprocess.TimeoutExpired:
+            check(False, "⑬i`--build-only` 只编不铺", "跑超时 60s —— 判不了，按红记")
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
     # ══ ⑭ 本包的每一个 `[[bin]]` ↔ 安装包的清单 ══════════════════════
     cargo_doc = toml_load(BRIDGE_CARGO)
     bins = cargo_bins(cargo_doc)

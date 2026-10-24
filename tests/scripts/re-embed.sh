@@ -4,8 +4,8 @@
 #   发版那趟的内嵌校验会红；本机手工打包则装出去一份自报旧 id 的字节，已部署的远端不判 stale、不重装。
 # `--check` 当场用相等断言回答「盘上这几份字节与源码的 `BUILD_ID` 对不对得上」；发版那一侧是 `release.yml` 的内嵌校验。
 #
-# 配方与 `release.yml` 的 `Cross-compile backend for both musl targets` 那一步同源：`REEMBED_BUILD_FLAGS` / `REEMBED_TARGETS`
-#   由 `tests/evidence/K-R124-ruler.py` 每趟两向对拍（target 集合相等 ＋ 旗标逐字相同）。
+# musl 那两份的配方只住这里：`release.yml` 的 `Cross-compile backend for both musl targets` 与门禁 `muslbuild` 那一格
+#   都调 `--build-only`（只编不铺）。
 # `zig cc` 是承重的，别换成 `rust-lld`：`ring` 的 build script 要编 C，`rust-lld` 只是链接器，aarch64 上会找不到
 #   `aarch64-linux-musl-gcc`；`cargo zigbuild` 自带 `zig cc`，两个 arch 都不用另装 C 交叉工具链。
 #
@@ -24,6 +24,7 @@
 #
 # 跑法：
 #   bash tests/scripts/re-embed.sh             # 重编两份 musl 字节并铺回落点，铺完自检
+#   bash tests/scripts/re-embed.sh --build-only # 只编两份 musl 字节（落在 .build/backend/<target>/release/），不铺不判：发版那一步与门禁 muslbuild 那一格调它
 #   bash tests/scripts/re-embed.sh --check     # 只问「盘上的字节与源码对不对得上 · 铺了的起不起得来」，不产字节
 #   bash tests/scripts/re-embed.sh --check-dev # 同上，但本机那一份缺席就是红：开发构建起得来本机后端吗
 #   bash tests/scripts/re-embed.sh --native    # 本机那几份（裸 exe 自带的后端 · 文件窗口程序）重编并重铺，铺完按 --check-dev 自检
@@ -35,7 +36,7 @@ set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-#: 与 `release.yml` 那一步逐字同源（`K-R124-ruler.py` 两向对拍）。
+#: 产 musl 字节的唯一配方（发版那一步与门禁 `muslbuild` 都经 `--build-only` 走它）。
 REEMBED_BUILD_FLAGS=(--release --locked)
 REEMBED_TARGETS=(x86_64-unknown-linux-musl aarch64-unknown-linux-musl)
 
@@ -83,12 +84,18 @@ bytes_id() {
   printf '%s' "$s"
 }
 
-do_build() {
-  local t arch
+# 只编：两份 musl 字节落在 `.build/backend/<target>/release/`，不铺。发版那一步与门禁 `muslbuild` 那一格只走这一半。
+do_compile() {
+  local t
   for t in "${REEMBED_TARGETS[@]}"; do
     printf '==> cargo zigbuild %s --target %s\n' "${REEMBED_BUILD_FLAGS[*]}" "$t"
     ( cd "$ROOT/src/backend" && cargo zigbuild "${REEMBED_BUILD_FLAGS[@]}" --target "$t" )
   done
+}
+
+do_build() {
+  local t arch
+  do_compile
   mkdir -p "$EMBEDDED_DIR"
   for t in "${REEMBED_TARGETS[@]}"; do
     arch="${t%%-*}"
@@ -305,8 +312,9 @@ case "${1:---reembed}" in
   --clean) do_clean ;;
   --native) do_native; do_check 1 ;;
   --reembed) do_build; do_check 0 ;;
+  --build-only) do_compile ;;
   *)
-    printf 'usage: %s [--check|--check-dev|--clean|--native]\n' "$0" >&2
+    printf 'usage: %s [--build-only|--check|--check-dev|--clean|--native]\n' "$0" >&2
     exit 2
     ;;
 esac
