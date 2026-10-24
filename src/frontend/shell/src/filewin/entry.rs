@@ -212,9 +212,8 @@ pub(crate) async fn open_with(
 ) -> Result<usize, Said> {
     // 窗口进程只拿那台的名字（寻址用，`origin_label` 口径）；它不认识 monitor 的配置类型。
     let origin = cfg.origin_label();
-    // 书签文件住 monitor 自己的数据目录（不是用户文件），路径在这一侧算好交过去（名字只住 `data_paths`）。
-    let bookmarks = crate::config::resolve_monitor_data_dir()
-        .map(|d| d.join(crate::data_paths::FILEWIN_BOOKMARKS_FILE));
+    // 视图文件住 monitor 自己的数据目录（不是用户文件），路径在这一侧算好交过去（名字只住 `data_paths`）。
+    //   书签不在这里：它归那台后端，窗口按机器名自己问（`bookmarks-read` / `-edit`）。
     let view = crate::config::resolve_monitor_data_dir()
         .map(|d| d.join(crate::data_paths::FILEWIN_VIEW_FILE));
     // ⓪ 三者优先级 —— 那一段是**纯函数**（[`plan_target`]），理由见它的头注。
@@ -230,7 +229,6 @@ pub(crate) async fn open_with(
         cwd,
         reveal,
         frame: crate::chan::host::FRAME_MAX_BYTES,
-        bookmarks,
         view,
         machines: machine_names(),
         work_area,

@@ -1415,6 +1415,12 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
         "第 7 批换形（下一版删）：本机通道登记上那一刻问一次本机的偏好写成没有（一问，10 秒）",
     ),
     (
+        "bookmarks_migration.rs",
+        "after_ready",
+        1,
+        "书签迁移（下一版删）：连上一台那一刻，旧书签文件里那台那一格有东西才问一次 `bookmarks-edit`（一问，10 秒）",
+    ),
+    (
         "machine_table.rs",
         "refresh",
         1,

@@ -4,6 +4,7 @@
 
 use crate::accounts::AccountsList;
 use crate::batch::BatchReply;
+use crate::bookmarks::Bookmarks;
 use crate::files::{
     FilesPathBytesReply, FilesPathReply, FilesStageChunkReply, FilesWrittenReply, LsReply,
     ReadChunkReply, ReadTextReply, StatReply,
@@ -60,6 +61,8 @@ macro_rules! replies {
 
 replies! {
     "accounts-list" => AccountsList,
+    "bookmarks-edit" => Bookmarks,
+    "bookmarks-read" => Bookmarks,
     "files-chmod" => BatchReply,
     "files-commit-upload" => FilesPathBytesReply,
     "files-create" => FilesPathBytesReply,

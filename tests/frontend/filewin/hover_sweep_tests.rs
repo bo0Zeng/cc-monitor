@@ -209,19 +209,7 @@ fn pane(dir: &str) -> FileWindow {
         ],
     );
     *w.listing.error.lock().unwrap() = None;
-    let file = std::env::temp_dir().join(format!(
-        "ccm-filewin-sweep-bm-{}-{}.json",
-        std::process::id(),
-        dir.replace('/', "_")
-    ));
-    let _ = std::fs::remove_file(&file);
-    let shelf = crate::bookmarks::Shelf::open(Some(file), &crate::source::Origin("sweep".into()));
-    assert!(
-        shelf.toggle(dir) && shelf.toggle("/etc"),
-        "量具：书签没记上 {:?}",
-        shelf.notice()
-    );
-    w.shelf = Some(shelf);
+    w.shelf = Some(crate::bookmarks::tests::holding("sweep", &[dir, "/etc"]));
     w
 }
 

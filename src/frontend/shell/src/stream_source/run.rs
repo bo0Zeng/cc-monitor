@@ -435,6 +435,8 @@ fn on_attached(
     crate::inbound_client::register(&host_label, client.clone());
     // 连上那一刻：让本机常驻后端沿池里那条 SSH 同步资产目录（后台跑，零判定）。
     crate::asset_sync::on_remote_ready(cfg, client.accepts(crate::asset_sync::REMOTE_NEEDS));
+    // 〔一次性迁移 · 下一版删〕桌面旧书签文件里这台那一格交给这台后端。
+    crate::bookmarks_migration::after_ready(crate::origin::Origin(host_label.clone()));
     let mut conn = Conn {
         client,
         intake: LineIntake::open(host_label.clone(), replay, health),

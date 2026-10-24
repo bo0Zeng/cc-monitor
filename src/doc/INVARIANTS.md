@@ -51,13 +51,12 @@
 |---|---|---|---|
 | `config.json` | **真相** | `config.rs` | 主题 · 字体 · 快捷键 · 诊断开关 —— 全是用户手填 |
 | `history-metadata.json` | **真相** | 本机常驻后端 `history_annotations.rs::annotate_at` | 按 sid 的星标 · 改名 · 隐藏 |
-| `filewin-bookmarks.json` | **真相** | `filewin/src/bookmarks.rs`（文件窗口进程，旁件 `.lock` 上独占锁读改写） | 每台机器一份收藏目录 |
 | `filewin-view.json` | **真相** | `filewin/src/workspace.rs`（整份原子换，后写者赢） | 文件窗口的整窗缩放 |
 | `auto-launch.json` | **混（良性）** | `auto_launch.rs` | `enabled` 是真相；`monitor_exe_path` 每次启动自愈改写 |
 | `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | Linux bash / zsh 接入块留的终端记录与认出来的窗口，启动重扫 |
 | `logs/` | **缓存/派生** | `logging.rs` · 本机常驻后端 | `monitor/` 按天滚动、留 3 天（§15）；`backend/` 是脱离运行的本机后端 stderr |
 | `bin/` `staging/` `logs/backend/` `assets-catalog.json` `last-seen.json` `launch-pending/` `answer-plugin/` `ssh_config` `profiles-written.json` `cache/skeleton/` `cache/listing.json` | **缓存** | 本机后端 | 能重建的：程序 · 上传暂存区 · 错误输出 · 资产目录 · 离线那台的上次值 · 起会话便条 · 答题插件 · 终端用的 ssh 配置 · 上次写出的配置指纹 · 大记录的骨架 · 历史清单缓存（都照记录重扫） |
-| `relay-key` `run/` `backend.json` `prefs.json` `prefs-handoff.json` `machines.json` `profiles.toml` `profiles-migrated.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `chores.json` `plan-review.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `rotation-uses.json` `lineage.json` `launch-accounts.json` `known_hosts` | **真相** | 本机后端 | 删了会丢的：中转根钥匙 · 常驻后端的套接字与进程记录 · 退出行为 · 这台的偏好（启动命令 · 每号模型 · 上下文上限 · 各家数据目录）· 机器表 · 升级时搬来、还没交给远端那几台的偏好 · 别名配置 · 装记录 · 「待办」里的选择 · 计划需手动的认可 · 卸外来资产前的备份 · 账号库 · API key · 各号最近的用量与轮换设置 · 会话血缘 · 每条会话上次用的号 · 各台的主机钥匙（删了下回连上就是首见）。名字取契约常量（`relay_route_core` · `creds_core::store`）：家里那几样由本机后端 `data-report` 的 `own` 列（`relay_route_core::OWN_HOME_ENTRIES`）；住数据目录的 `logs/backend/` · `apikey-credentials.json` 由 `data_paths.rs::monitor_entries` 列 |
+| `relay-key` `run/` `backend.json` `prefs.json` `prefs-handoff.json` `machines.json` `profiles.toml` `profiles-migrated.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `chores.json` `plan-review.json` `bookmarks.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `rotation-uses.json` `lineage.json` `launch-accounts.json` `known_hosts` | **真相** | 本机后端 | 删了会丢的：中转根钥匙 · 常驻后端的套接字与进程记录 · 退出行为 · 这台的偏好（启动命令 · 每号模型 · 上下文上限 · 各家数据目录）· 机器表 · 升级时搬来、还没交给远端那几台的偏好 · 别名配置 · 装记录 · 「待办」里的选择 · 计划需手动的认可 · 这台的书签（文件窗口与手机收藏的目录）· 卸外来资产前的备份 · 账号库 · API key · 各号最近的用量与轮换设置 · 会话血缘 · 每条会话上次用的号 · 各台的主机钥匙（删了下回连上就是首见）。名字取契约常量（`relay_route_core` · `creds_core::store`）：家里那几样由本机后端 `data-report` 的 `own` 列（`relay_route_core::OWN_HOME_ENTRIES`）；住数据目录的 `logs/backend/` · `apikey-credentials.json` 由 `data_paths.rs::monitor_entries` 列 |
 
 - **真相** = 用户手写 / 意图，删了丢东西、要备份、要迁移友好；**缓存/派生** = 能从别处重建，随便删。
 - **新增任何 data dir 文件，必须声明它是哪类**：界面这一侧的（monitor 数据目录）在 `data_paths.rs` 的枚举里（`DataPathInfo.class: DataClass` 非可选）；本机后端家里的（`~/.cc-monitor/`）在 `relay_route_core::OWN_HOME_ENTRIES` 里（后端 `data-report` 的 `own` 照它出、界面照抄）。设置页每行据它显示「删了会丢 / 可随手删」。两边拼起来与上表两向相等（`data_paths_tests.rs`，异源判据）；后端自家那几样另与上表逐样对（`footprint/data_tests.rs`）。
@@ -478,7 +477,7 @@ PID 死亡判定用 `pidfd` 绑进程实例本身 ⇒ PID 复用在机制上无�
 
 ### 41.5 兼容与部署
 
-线上只做加法：新帧、新格不加 `PROTO_VERSION`；后端改了行为必须加 `BUILD_ID`，否则已部署的旧后端报同一个 id、不被判陈旧、不自动换，整轮改动在远端休眠（monitor 比的是内嵌字节自报的 id，`byte_table.rs::my_backend_id`）。
+线上只做加法：新帧、新格照加，两端形状对不对得上由握手时的形状指纹管；后端改了行为必须加 `BUILD_ID`，否则已部署的旧后端报同一个 id、不被判陈旧、不自动换，整轮改动在远端休眠（monitor 比的是内嵌字节自报的 id，`byte_table.rs::my_backend_id`）。
 
 ---
 
