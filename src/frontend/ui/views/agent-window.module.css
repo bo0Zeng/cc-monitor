@@ -149,10 +149,8 @@
   }
 
   .awKidLabel {
+    composes: one-line from global;
     min-width: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
   }
 
   .awTimeline {
@@ -194,15 +192,13 @@
   }
 
   .awCrumb {
+    composes: one-line from global;
     min-width: 0;
     padding: 0;
-    overflow: hidden;
     border: none;
     background: none;
     color: var(--text-2);
     font: inherit;
-    white-space: nowrap;
-    text-overflow: ellipsis;
     cursor: pointer;
   }
 

@@ -68,13 +68,13 @@ pub(crate) struct ForwardStartReq {
     pub(crate) remote_host: String,
     pub(crate) remote_port: u16,
     /// 那台的配置（可达表里**没有**那台、流没起来时按它组请求去拨，不拒）。
-    #[serde(default)]
+    #[serde(default, deserialize_with = "ssh_dial::machine::loose_opt")]
     #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) machine: Option<super::pick::MachineConfig>,
+    pub(crate) machine: Option<super::Host>,
     /// 跳板那一台。
-    #[serde(default)]
+    #[serde(default, deserialize_with = "ssh_dial::machine::loose_opt")]
     #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) jump: Option<super::pick::MachineConfig>,
+    pub(crate) jump: Option<super::Host>,
 }
 
 /// 读规格并过围栏 —— **在任何查表 / 拨号之前**（`INVARIANTS §47`：外部值交给对端之前本侧先判）。
@@ -177,16 +177,8 @@ where
         .map(|r| r.dial.clone());
     let dial = match (reached, &req.machine) {
         (Some(d), _) => d,
-        // 界面交来的那台原样的配置（组法在 `ssh-dial/machine.rs`）；先读一遍，坏了当场拒。
-        (None, Some(machine)) => {
-            let pick = super::pick::Pick {
-                machine,
-                jump: req.jump.as_ref(),
-                prefer: None,
-            };
-            pick.machines()?;
-            pick.dial_value()
-        }
+        // 界面交来的那台原样的配置（组法在 `ssh-dial/machine.rs`）；先组一遍，坏了当场拒。
+        (None, Some(machine)) => super::wire_dial(machine, req.jump.as_ref(), None)?,
         (None, None) => return Err(("unreachable", remote_ask::unreachable_message(&spec.origin))),
     };
     if ledger.rows().len() >= MAX_FORWARDS {

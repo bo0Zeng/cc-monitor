@@ -35,6 +35,9 @@ import type { Batched } from "./Batched";
 import type { BlockDone } from "./BlockDone";
 import type { BlockReq } from "./BlockReq";
 import type { BlockText } from "./BlockText";
+import type { Bookmarks } from "./Bookmarks";
+import type { BookmarksEditReq } from "./BookmarksEditReq";
+import type { BookmarksReadReq } from "./BookmarksReadReq";
 import type { Branch } from "./Branch";
 import type { BranchReq } from "./BranchReq";
 import type { BrowseReply } from "./BrowseReply";
@@ -375,6 +378,8 @@ export interface TypedCommands {
   "assets-sync": { req: AssetsSyncReq; reply: AssetsSynced; code: "bad_args" | "io_failed" | "unreachable" };
   "authorized-keys-add": { req: KeyAddReq; reply: KeyAdded; code: "bad_args" | "refused" | "io_failed" };
   "backend-log": { req: BackendLogReq; reply: LogTail; code: "bad_args" | "failed" };
+  "bookmarks-edit": { req: BookmarksEditReq; reply: Bookmarks; code: "bad_args" | "io_failed" | "bookmarks_unreadable" };
+  "bookmarks-read": { req: BookmarksReadReq; reply: Bookmarks; code: "bad_args" | "io_failed" | "bookmarks_unreadable" };
   "bus-broadcast": { req: BusBroadcastReq; reply: BusBroadcast; code: "bad_args" | "not_installed" | "child_timed_out" | "failed" | "bad_id" };
   "bus-inbox": { req: BusInboxReq; reply: BusInbox; code: "bad_args" | "bad_id" | "not_installed" | "child_timed_out" | "failed" };
   "bus-kill": { req: BusKillReq; reply: BusKilled; code: "bad_args" | "bad_id" | "not_installed" | "child_timed_out" | "failed" };

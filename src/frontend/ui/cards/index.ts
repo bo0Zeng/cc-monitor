@@ -532,7 +532,7 @@ function buildToolUseCard(
 
   // 一步一行（§5.2.3）：主参数与说明是后端给的（`steps`）；没有那一格 ⇒ 只写工具名。
   const s = document.createElement("summary");
-  s.className = "block-summary block-step";
+  s.className = "block-summary block-step one-line";
   const line = buildStepLine(block.name, step, block.id);
   s.appendChild(line);
   d.appendChild(s);
@@ -756,7 +756,7 @@ function injectOrBuildToolResult(
           : "Error"
         : "Output";
       const summary = document.createElement("summary");
-      summary.className = "block-summary";
+      summary.className = "block-summary one-line";
       // approximateSize 对 617 KB 的 content 整份 JSON.stringify
       //（O(len) 时间 + 一份等长字符串分配），而 preview 非空时这个结果 100% 用不上。
       // 挪进三元的 else 分支 ⇒ 惰性求值。显示结果一字不变。
@@ -1179,7 +1179,7 @@ function buildUnrecordedThinking(): HTMLElement {
   d.className = "block-collapsible block-thinking";
   d.dataset.recorded = "false";
   const s = document.createElement("div");
-  s.className = "block-summary block-step";
+  s.className = "block-summary block-step one-line";
   s.appendChild(buildThinkingLine(copyText("cards.thinking.unrecorded"), ""));
   d.appendChild(s);
   return d;
@@ -1198,7 +1198,7 @@ function makeCollapsible(
   d.className = `block-collapsible ${cls}`;
 
   const s = document.createElement("summary");
-  s.className = "block-summary";
+  s.className = "block-summary one-line";
   if (typeof summaryText === "string") s.textContent = summaryText;
   else {
     s.classList.add("block-step");

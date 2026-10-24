@@ -1,4 +1,4 @@
-//! 命令表 · 文件管理：`files-*`（读 · 写 · 上传的提交 · 解压 · 删历史会话）。
+//! 命令表 · 文件管理：`files-*`（读 · 写 · 上传的提交 · 解压 · 删历史会话）· 书签 `bookmarks-*`。
 
 use crate::wire::spec::CommandSpec;
 use crate::wire::typed;
@@ -142,6 +142,12 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 读族第九条：算目录大小。与同族那几条逐字同形、同在阻塞档。
     typed::blocking::<crate::stream::inbound::files_face::FilesSize>("算一个目录有多大"),
     typed::blocking::<crate::stream::inbound::files_face::FilesHome>("后端这个用户的 home"),
+    // 书签归这台后端（`control/bookmarks.rs`，`~/.cc-monitor/bookmarks.json`）：文件窗口与手机按机器名问，本机与远端同一形。
+    //   读—改—写在跨进程锁里、原子写 ⇒ 阻塞档（同步文件 I/O），只要写句柄。
+    typed::blocking::<crate::faces::bookmarks_face::BookmarksReadCmd>("这台的书签"),
+    typed::blocking::<crate::faces::bookmarks_face::BookmarksEditCmd>(
+        "切换 · 删 · 加几条书签，回改完的整份",
+    ),
 ];
 
 // 文件窗口读的那几条回包的线上字节钉在夹具里（换形前后逐字节比）。

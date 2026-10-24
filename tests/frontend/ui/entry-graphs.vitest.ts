@@ -804,6 +804,14 @@ const KIT_AWAITING_FACES: ReadonlySet<string> = new Set(
   [],
 );
 
+/** 一份 module CSS 里，提到 `.k` 的每条规则都只有 `composes`（至少一条）⇒ 这个类自己不出 CSS。 */
+function composesOnly(css: string, k: string): boolean {
+  const mentions = new RegExp(`\\.${k}(?![\\w-])`);
+  const rules = [...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => mentions.test(m[1]));
+  const props = (body: string): string[] => body.split(";").map((d) => d.split(":")[0].trim()).filter(Boolean);
+  return rules.length > 0 && rules.every((m) => props(m[2]).every((p) => p === "composes"));
+}
+
 /** 已有面用上、但其中一形还没有面的 kit 件：那一形的类今天产物 JS 里没有（两向：用上了就从这里摘）。 */
 const KIT_PARTIAL: Readonly<Record<string, readonly string[]>> = {
   // （分段按钮 C23 账号面板用上了，分栏 C5 那一形由历史页「按时间 | 按项目」用上了 ⇒ tabs 那一条摘了。）
@@ -872,6 +880,8 @@ describe("〔UC2〕CSS Modules 在构建产物里（件 10）", () => {
           const hashed = r.hashed.get(k) ?? hashedOf(built, k);
           judged++;
           if (built.has(k) && !GLOBAL_CLASSES.has(k)) bad.push(`${w}：产物 CSS 里出现了原名 .${k} —— CSS Modules 没生效`);
+          // 只有 `composes` 的类（如 `composes: one-line from global`）自己不出 CSS：产物里没有它的哈希名，样式全在被组合的那个类上。
+          if (hashed.length === 0 && composesOnly(CSS_SOURCES[f], k)) continue;
           if (hashed.length !== 1) {
             bad.push(`${w}：${f} 的 .${k} 在产物 CSS 里应恰有一个哈希名，实有 ${hashed.length} 个（${hashed.join(" ")}）`);
             continue;

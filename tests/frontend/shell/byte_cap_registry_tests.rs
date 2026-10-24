@@ -1117,6 +1117,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "后端自有的计划认可与退回记录 `~/.cc-monitor/plan-review.json`（读不出来就不覆盖）",
         "拒收+回错",
     ),
+    (
+        "src/backend/control/bookmarks.rs",
+        "MAX_BYTES",
+        "这台的书签 `~/.cc-monitor/bookmarks.json`（超了当读不懂：`bookmarks_unreadable`，不覆盖）",
+        "拒收+回错",
+    ),
     // 离线那台的上次值：一份超了拒收回错（`too_large`，不落一个字节）；整份超了当读不懂、照没记过算，写的那一下整份重来（它只是缓存）。
     (
         "src/backend/footprint/last_seen.rs",
@@ -1189,13 +1195,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "src/backend/dial/remote_ask.rs",
         "PULL_MAX_BYTES",
         "本机后端经池里那条 SSH 在远端跑一条一次性子命令、拿回来的 stdout（资产目录 · 历史清单；capture）",
-        "拒收+回错",
-    ),
-    // 测试连接进本机后端：探活链路上的每一行（阶段行 · ack · 那台后端的 hello · 应答）。
-    (
-        "src/backend/dial/probe.rs",
-        "LINE_CAP",
-        "测试连接那条探活链路上的一行（阶段行 · ack · 那台后端的首行 hello · ping 应答；hello 是后端出方向单行，同量级）",
         "拒收+回错",
     ),
     // 端口转发账进本机常驻后端：读链路那一侧的 ack 与计数行。

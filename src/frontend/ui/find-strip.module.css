@@ -111,9 +111,7 @@
   }
 
   .fsSnip {
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+    composes: one-line from global;
   }
 
   .fsState {

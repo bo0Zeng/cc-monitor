@@ -13,6 +13,7 @@ import com.ccmonitor.mobile.core.data.db.IdentityDao
 import com.ccmonitor.mobile.core.data.db.Settings
 import com.ccmonitor.mobile.core.data.db.SettingsDao
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 class HostRepository(
@@ -61,17 +62,16 @@ class HostRepository(
         }
 }
 
-/** SFTP 目录书签。 */
+/**
+ * 〔一次性迁移 · 下一版删〕旧的书签（从前只存在手机上）：书签已归那台后端（`bookmarks-read` / `-edit`），
+ * 这里只剩迁移要的两样 —— 读出一台的旧行、迁好之后删掉。Room 那张表随下一次 Room 换形删。
+ */
 class BookmarkRepository(
     private val dao: BookmarkDao,
 ) {
-    fun observeForHost(hostId: String): Flow<List<Bookmark>> = dao.observeForHost(hostId)
-
-    suspend fun save(bookmark: Bookmark) = dao.upsert(bookmark)
+    suspend fun forHost(hostId: String): List<Bookmark> = dao.observeForHost(hostId).first()
 
     suspend fun delete(bookmark: Bookmark) = dao.delete(bookmark)
-
-    suspend fun deleteById(id: String) = dao.deleteById(id)
 }
 
 /** 应用级设置（键值），类型化访问。 */

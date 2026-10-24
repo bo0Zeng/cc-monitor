@@ -23,6 +23,8 @@
 //   `src/frontend/ui/generated/agent-profile-table.ts`（起前清洗那一格，[`nested_env_markers`]）。
 mod asset_sync; // 资产目录同步：连上那一刻把「怎么够到那台」交给本机常驻后端 `assets-sync`（零判定；看机器页那一问界面直问）
 mod auto_launch;
+// 〔一次性迁移 · 下一版删〕桌面旧书签文件连上一台就交给那台后端、答 ok 删那一格。
+mod bookmarks_migration;
 // 🔴 `origin` 归一的地基：「这一趟问的是哪台机器」的唯一类型。
 mod backend_policy;
 // 通信层面 A 是 crate `comms_inward`（住 `src/comms/inward/`）：`origin` · 分流 · SSH 链路读应答这里再导出、路径不变；
@@ -74,7 +76,7 @@ mod local_backend;
 // 第 7 批换形的壳那一半：本机后端那一份偏好写成了 ⇒ 删 `config.json` 里搬走的那几个键（下一版删）。
 mod machine_table;
 mod prefs_migration; // 机器表的最近一份（本机后端 `machines-read` 答的，`changed {machines}` 每帧重问）
-                     // 标识符放行判定的生成物（`src/frontend/ui/generated/judgment-rules.ts`）与共用金样（`INVARIANTS §47` ①）：只读共享 crate 的常量。
+                     // 账号种类取值集的生成物（`src/frontend/ui/generated/judgment-rules.ts`）与标识符 · 上游地址的金样：只读共享 crate。
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/payload_judgment_rules.rs"]
 mod judgment_rules;

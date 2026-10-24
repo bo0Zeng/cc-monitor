@@ -78,10 +78,8 @@
 
   .cbTitle,
   .cbProject {
-    overflow: hidden;
+    composes: one-line from global;
     color: var(--text);
-    white-space: nowrap;
-    text-overflow: ellipsis;
   }
 
   .cbProject {
@@ -89,12 +87,10 @@
   }
 
   .cbSub {
-    overflow: hidden;
+    composes: one-line from global;
     min-width: 0;
     color: var(--text-2);
     font-size: var(--font-size-small);
-    white-space: nowrap;
-    text-overflow: ellipsis;
   }
 
   .cbWaiting {

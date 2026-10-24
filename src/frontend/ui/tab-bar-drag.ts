@@ -326,7 +326,7 @@ export class TabBarDrag {
     }
     for (const el of d.dim) el.classList.add("dragging");
     const ghost = document.createElement("div");
-    ghost.className = "tab-drag-ghost";
+    ghost.className = "tab-drag-ghost one-line";
     // 几个一起拖：影子叠一层。
     if (d.group === null && d.sids.length > 1) ghost.classList.add(s.ghostStack);
     const tab = d.group === null ? this.store.tabs.get(d.sid) : undefined;

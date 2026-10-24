@@ -43,6 +43,7 @@ import "../../src/frontend/ui/styles/shared.css";
 import "../../src/frontend/ui/styles.css";
 import fixtureJsonl from "../__fixtures__/scale2-height-line-records.jsonl?raw";
 import { buildCorpus, htmlFingerprint } from "../frontend/ui/scale2-height-corpus";
+import { buildApiRetryCard } from "../../src/frontend/ui/cards/api-error";
 import {
   estimateStreamNodeHeight,
   applyIntrinsicSize,
@@ -323,9 +324,8 @@ async function main(): Promise<void> {
   });
 
   // ── C 段：环境 ──────────────────────────────────────────────────────────
-  const probeRetry = document.createElement("div");
-  probeRetry.className = "card card-api-retry";
-  probeRetry.textContent = "⚠ API 调用失败：Connection error · 重试 1/5 · 12:34";
+  // 产品造重试细条的那个函数（类怎么挂跟着产品走，不在这里抄一份）。
+  const probeRetry = buildApiRetryCard({ timeLabel: "12:34", retryAttempt: 1, maxRetries: 5, reason: "network" });
   content.appendChild(probeRetry);
   void probeRetry.getBoundingClientRect();
   const retryCs = getComputedStyle(probeRetry);

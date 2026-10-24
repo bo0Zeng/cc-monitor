@@ -21,12 +21,10 @@
   }
 
   .svTitle {
-    overflow: hidden;
+    composes: one-line from global;
     min-width: 0;
     font-size: var(--font-size-title);
     font-weight: var(--font-weight-strong);
-    white-space: nowrap;
-    text-overflow: ellipsis;
   }
 
   .svLead {
@@ -94,11 +92,9 @@
   }
 
   .svPath {
-    overflow: hidden;
+    composes: one-line from global;
     max-width: 48ch;
     font-family: var(--font-mono);
-    white-space: nowrap;
-    text-overflow: ellipsis;
   }
 
   .svBanner {

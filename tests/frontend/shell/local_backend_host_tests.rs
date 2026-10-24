@@ -4120,12 +4120,6 @@ fn hx1_every_monitor_dir_creation_is_registered_and_only_one_builds_the_backend_
         // `config.rs::patch_config_at` 那一行摘了：config.json 的目录改走 `platform::fs::ensure_private_dir`（0700）。
         // `session_map.rs` 那条 watcher 线程那一行摘了：monitor 自己那份本机判活（连同它盯的 sessions 目录）删了。
         (
-            // 文件窗口独立成包：住址带包名。
-            "cc-monitor-filewin/bookmarks.rs",
-            "lock_store",
-            "monitor 数据目录（书签）",
-        ),
-        (
             "local_backend_host.rs",
             "spawn_detached",
             "monitor 数据目录下的 logs/backend（交给脱离后端的 stderr 文件）",

@@ -49,11 +49,8 @@ fn synthetic_request() -> OpenRequest {
         //   窗口进程自己列（`first_screen`）；那几格的解法由 `source_tests` 的 `row_from_ls_entry` 那几条判。
         reveal: Some("坏\u{FFFD}名字".to_string()),
         frame: crate::chan::host::FRAME_MAX_BYTES,
-        // 书签文件那一格也进种子对拍（带空格 ＋ 多字节，同 `cwd` 那一格的理由）。
-        bookmarks: Some(std::path::PathBuf::from(
-            "/tmp/书签 目录/filewin-bookmarks.json",
-        )),
-        view: Some(std::path::PathBuf::from("/tmp/书签 目录/filewin-view.json")),
+        // 视图文件那一格也进种子对拍（带空格 ＋ 多字节，同 `cwd` 那一格的理由）。
+        view: Some(std::path::PathBuf::from("/tmp/视图 目录/filewin-view.json")),
         // 机器名单也进种子对拍（带中文与空格）。
         machines: vec!["<local>".to_string(), "台架 远端".to_string()],
         // 工作区那一格也进种子对拍（负坐标：主屏左边那台副屏）。
@@ -84,10 +81,10 @@ fn a_seed_survives_the_trip_through_a_process_boundary() {
         want.cwd.is_some(),
         "夹具里 cwd 得是 `Some`，否则两侧都是 `None` 恒相等"
     );
-    // 书签文件那一格：漂了 ⇒ 窗口读写的是另一份书签。
-    assert_eq!(got.bookmarks, want.bookmarks, "书签文件的路径漂了");
+    // 视图文件那一格：漂了 ⇒ 窗口记的缩放落在另一份里。
+    assert_eq!(got.view, want.view, "视图文件的路径漂了");
     assert!(
-        want.bookmarks.is_some(),
+        want.view.is_some(),
         "夹具里这一格得是 `Some`，否则两侧都是 `None` 恒相等"
     );
     // 机器名单（「复制到另一台」的下拉）：漂了 ⇒ 下拉里列的不是配置里那几台。
@@ -120,7 +117,7 @@ fn a_seed_survives_the_trip_through_a_process_boundary() {
     assert!(!wire.contains('\n'), "种子不是一行 —— 窗口进程只读第一行");
     // ★ 反向自检：**线上那份字节里真的装着那几个值**。
     //   少了这一比，一个「原样回传入参」的假实现照样绿（encode/decode 都不走 serde）。
-    for needle in ["台架-远端", "带空格 的目录", "书签 目录"] {
+    for needle in ["台架-远端", "带空格 的目录", "视图 目录"] {
         assert!(
             wire.contains(needle),
             "线上那份字节里找不到 {needle:?} —— encode/decode 可能压根没经过 serde：{wire}"
@@ -425,7 +422,6 @@ fn opening_a_window_three_times_really_starts_three_independent_processes() {
         cwd: Some("/tmp".to_string()),
         reveal: None,
         frame: crate::chan::host::FRAME_MAX_BYTES,
-        bookmarks: None,
         view: None,
         machines: Vec::new(),
         work_area: None,
@@ -546,7 +542,6 @@ fn the_window_process_lists_first_and_the_parent_carries_its_words() {
         cwd: None,
         reveal: None,
         frame: crate::chan::host::FRAME_MAX_BYTES,
-        bookmarks: None,
         view: None,
         machines: Vec::new(),
         work_area: None,
@@ -610,7 +605,6 @@ fn a_window_that_dies_after_being_judged_open_is_still_reported() {
         cwd: None,
         reveal: None,
         frame: crate::chan::host::FRAME_MAX_BYTES,
-        bookmarks: None,
         view: None,
         machines: Vec::new(),
         work_area: None,
@@ -767,7 +761,6 @@ fn a_window_process_that_dies_at_once_comes_back_as_a_reason() {
             cwd: Some(dir.to_string_lossy().to_string()),
             reveal: None,
             frame: crate::chan::host::FRAME_MAX_BYTES,
-            bookmarks: None,
             view: None,
             machines: Vec::new(),
             work_area: None,

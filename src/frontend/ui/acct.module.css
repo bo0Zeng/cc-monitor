@@ -24,10 +24,8 @@
   }
 
   .acctChipName {
+    composes: one-line from global;
     max-width: 12ch;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
     color: var(--text);
   }
 
@@ -165,13 +163,14 @@
     flex: none;
   }
 
+  .acctPickName {
+    composes: one-line from global;
+  }
+
   .acctPick > .acctPickName {
     flex: 0 1 auto;
     min-width: 0;
-    overflow: hidden;
     color: var(--text);
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .acctFoot {

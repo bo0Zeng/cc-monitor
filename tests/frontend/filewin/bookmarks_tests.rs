@@ -1,271 +1,199 @@
-//! [`super`] 的判据 —— 前半是书签的**存储**（归一 · 切换 · 锁 · 原子换），
-//! 后半是**窗口上那一半**（书签栏真画得出、真点得到，跑生产那个 `frame_body`）。
+//! [`super`] 的判据：窗口只按机器名问那台后端（本机与远端同一形）· 书签栏真画得出、真点得到（跑生产那个 `Workspace::frame`）·
+//! 别的写者加的那一条换一次目录就看得见 · 问不成那一句画在栏上 · 先发后到的回包不盖掉后发的。
 //!
-//! | 判据 | 钉的那一形 | 两侧异源在哪 |
-//! |---|---|---|
-//! | [`normalize_matches_the_old_panel_case_by_case`] | 归一与老面板 `normalize` 逐格相等 | 期望是老面板那份 vitest 里的原样例（删老面板那次的父提交里现读）＋ 手推的几格 |
-//! | [`normalize_agrees_with_the_two_step_rewrite_on_a_generated_corpus`] | 同上，在 4 096 条生成路径上 | 另一侧是老面板那两步替换的逐字移植（「折叠」与「去尾」分两趟做），与生产那一趟扫描不同写法 |
-//! | [`toggle_and_remove_follow_the_old_panel`] | 切换 / 删除的列表逐格相等（去重 · 保序 · 归一比较） | 期望手写 |
-//! | [`the_disk_holds_exactly_what_was_written`] | 盘上那份读回来逐格相等；文件不在 ⇒ 空；读不懂 ⇒ 报错且**不覆盖** | 盘上字节读回 |
-//! | [`two_writers_lose_nothing`] | 两条线程各切 N 条不同目录，完了盘上集合 == 全部 2N 条（两向） | 期望集合由循环下标另算 |
-//! | [`a_writer_waits_while_another_holds_the_lock`] | 锁被拿着 ⇒ 写等着、盘上不变；锁一放 ⇒ 写进去（上一条的确定性那一半） | 锁由判据自己拿 |
-//! | [`the_bar_is_really_clickable_and_the_disk_follows`] | ☆ 真点一下盘上就有 · 点书签真跳过去 · × 真点一下盘上就没了 | 按钮位置从这一帧画出来的字里现找；盘上字节读回 |
-//! | [`another_windows_bookmark_shows_up_after_a_navigation`] | 别的写者加的那一条，换一次目录就看得见（之前看不见 ⇒ 不是每帧读盘） | 另一个写者走同一个写口 |
-//! | [`no_data_dir_is_said_on_the_bar`] | 数据目录解不出来 ⇒ 那句话画在这一帧上；没接书签的窗口整条栏不画 | galley 读回 |
-//!
-//! ⚠ 全部落在 `std::env::temp_dir()` 下的独立目录里；真数据目录一个字节都不碰。
+//! 那台后端是本文件里一台合成的书签后端（[`Books`]，挂在真通道上）：切换 / 删照那台的规矩做一份，判据只看线上发了什么、
+//! 窗口照回包画了什么。切换 · 归一 · 两个写者不丢的本体判据在后端（`tests/backend/control/bookmarks_tests.rs`）。
 
 use super::*;
-use std::collections::BTreeSet;
-
-/// 判据用的书签文件落点（名字与「数据目录下的全路径」住 monitor 那一侧 —— 窗口只拿开窗入口算好的全路径，判据随便起个名字即可）。
-fn file_in(dir: &Path) -> PathBuf {
-    dir.join("书签.json")
-}
-
-fn scratch(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!(
-        "ccm-fw34-{tag}-{}-{}",
-        std::process::id(),
-        uuid::Uuid::new_v4().simple()
-    ));
-    std::fs::create_dir_all(&d).expect("建临时目录");
-    d
-}
-
-/// 🔴 老面板 `src/sftp/paths.ts::normalize` 那份 vitest 的原样例（删老面板那次的父提交里现读），
-/// 外加几格手推（与老算法逐步推一遍得到的）。
-#[test]
-fn normalize_matches_the_old_panel_case_by_case() {
-    let cases: &[(&str, &str)] = &[
-        // ── 老面板 vitest 原样例 ──
-        ("/a//b/", "/a/b"),
-        ("/", "/"),
-        ("//", "/"),
-        // ── 手推 ──
-        ("/home/pi", "/home/pi"),
-        ("/home/pi/", "/home/pi"),
-        ("///srv///data///", "/srv/data"),
-        ("", ""),
-        ("rel/dir/", "rel/dir"),
-        ("/文档/项目/", "/文档/项目"),
-    ];
-    for (input, want) in cases {
-        assert_eq!(normalize_dir(input), *want, "normalize_dir({input:?})");
-    }
-}
-
-/// 老面板那两步替换的逐字移植：`replace(/\/+/g, "/")`，是根就回根，否则 `replace(/\/$/, "")`。
-/// ⚠ 与生产那一趟扫描**刻意不同写法**（反复 `replace` 到不动为止、再去尾），两侧才异源。
-fn old_two_step(path: &str) -> String {
-    let mut c = path.to_string();
-    while c.contains("//") {
-        c = c.replace("//", "/");
-    }
-    if c == "/" {
-        return c;
-    }
-    c.strip_suffix('/').map(str::to_string).unwrap_or(c)
-}
-
-#[test]
-fn normalize_agrees_with_the_two_step_rewrite_on_a_generated_corpus() {
-    // 字母表里恰好有 `/`、普通字、多字节字 ⇒ 每条路径都是这几样的任意排列。
-    let alphabet = ['/', 'a', '文', '.'];
-    let mut checked = 0usize;
-    for n in 0..4096u32 {
-        let mut s = String::new();
-        let mut k = n;
-        for _ in 0..6 {
-            s.push(alphabet[(k % 4) as usize]);
-            k /= 4;
-        }
-        assert_eq!(normalize_dir(&s), old_two_step(&s), "路径 {s:?}");
-        checked += 1;
-    }
-    assert_eq!(checked, 4096);
-    // 语料自检：三种要紧的形（连续 `/` · 尾 `/` · 只有 `/`）都真在人群里，否则这条对拍是空转的。
-    let has = |f: &dyn Fn(&str) -> bool| {
-        (0..4096u32).any(|n| {
-            let mut s = String::new();
-            let mut k = n;
-            for _ in 0..6 {
-                s.push(alphabet[(k % 4) as usize]);
-                k /= 4;
-            }
-            f(&s)
-        })
-    };
-    assert!(has(&|s| s.contains("//")));
-    assert!(has(&|s| s.len() > 1
-        && s.ends_with('/')
-        && !s.ends_with("//")));
-    assert!(has(&|s| s.chars().all(|c| c == '/')));
-}
-
-#[test]
-fn toggle_and_remove_follow_the_old_panel() {
-    // 老面板 vitest「addBookmark 去重 + 归一 + 保序」逐字那一串。
-    let mut l: Vec<String> = Vec::new();
-    assert!(toggle_in(&mut l, "/home/pi"));
-    // ⚠ 老面板那一下是 `addBookmark`（在就不动）；窗口这边是一颗切换按钮 ⇒ 第二下是「取消」。
-    //   去重那一格照旧：`/home/pi/` 与 `/home/pi` 是同一条。
-    assert!(!toggle_in(&mut l, "/home/pi/"));
-    assert!(toggle_in(&mut l, "/home/pi/"));
-    assert!(toggle_in(&mut l, "/var/log"));
-    assert_eq!(l, vec!["/home/pi".to_string(), "/var/log".to_string()]);
-    // 老面板 vitest「removeBookmark 归一匹配」逐字那一串。
-    let mut r = vec!["/home/pi".to_string(), "/var".to_string()];
-    assert!(remove_in(&mut r, "/home/pi/"));
-    assert_eq!(r, vec!["/var".to_string()]);
-    assert!(!remove_in(&mut r, "/nope"), "删一条不在的 ⇒ 回 false");
-    // 空路径不加。
-    assert!(!toggle_in(&mut r, ""));
-    assert_eq!(r, vec!["/var".to_string()]);
-}
-
-fn book(pairs: &[(&str, &[&str])]) -> Book {
-    pairs
-        .iter()
-        .map(|(o, v)| {
-            (
-                (*o).to_string(),
-                v.iter().map(|s| (*s).to_string()).collect(),
-            )
-        })
-        .collect()
-}
-
-#[test]
-fn the_disk_holds_exactly_what_was_written() {
-    let dir = scratch("disk");
-    let file = file_in(&dir);
-    assert_eq!(
-        read_book(&file).unwrap(),
-        Book::new(),
-        "文件不在 ⇒ 空的一份"
-    );
-
-    mutate(&file, |b| {
-        b.insert("devbox".into(), vec!["/srv".into(), "/home/user".into()]);
-    })
-    .unwrap();
-    assert_eq!(
-        read_book(&file).unwrap(),
-        book(&[("devbox", &["/srv", "/home/user"])])
-    );
-
-    // 切掉最后一条 ⇒ 那台机器那一格整个不在（不留空数组）。
-    let (_, after) = mutate(&file, |b| {
-        let l = b.get_mut("devbox").unwrap();
-        l.clear();
-    })
-    .unwrap();
-    assert!(after.is_empty());
-    assert_eq!(read_book(&file).unwrap(), Book::new());
-
-    // 读不懂 ⇒ 报错，而且**不覆盖**（覆盖掉就是把别的机器那几格一起清了）。
-    std::fs::write(&file, b"{ not json").unwrap();
-    let e = mutate(&file, |b| b.insert("devbox".into(), vec!["/x".into()])).unwrap_err();
-    assert!(
-        copy_core::copy_matches("rsFilewinBookmarks.read.unreadable", &e),
-        "那句话要说清是读不懂：{e}"
-    );
-    assert_eq!(
-        std::fs::read(&file).unwrap(),
-        b"{ not json",
-        "坏文件一个字节都没动"
-    );
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
-/// 🔴 两个写者（窗口 · monitor，或两个窗口）**不丢更新**。
-///
-/// 两条线程各开各的锁句柄（`flock` 按打开的文件描述算，同进程两次打开照样互斥），
-/// 各切 `N` 条互不相同的目录。完了盘上那一格的集合必须 == 全部 `2N` 条。
-#[test]
-fn two_writers_lose_nothing() {
-    const N: usize = 40;
-    let dir = scratch("race");
-    let file = file_in(&dir);
-    let spawn = |tag: &'static str| {
-        let file = file.clone();
-        std::thread::spawn(move || {
-            for i in 0..N {
-                mutate(&file, |b| {
-                    toggle_in(
-                        b.entry("devbox".into()).or_default(),
-                        &format!("/{tag}/{i}"),
-                    )
-                })
-                .unwrap();
-            }
-        })
-    };
-    let (a, b) = (spawn("a"), spawn("b"));
-    a.join().unwrap();
-    b.join().unwrap();
-    let got: BTreeSet<String> = read_book(&file).unwrap()["devbox"]
-        .iter()
-        .cloned()
-        .collect();
-    let want: BTreeSet<String> = (0..N)
-        .flat_map(|i| [format!("/a/{i}"), format!("/b/{i}")])
-        .collect();
-    assert_eq!(
-        got,
-        want,
-        "少了：{:?}\n多了：{:?}",
-        want.difference(&got).collect::<Vec<_>>(),
-        got.difference(&want).collect::<Vec<_>>()
-    );
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
-/// 🔴 **写口真的上锁**（确定性的那一半 —— 上一条是概率性的：两条线程不一定真撞上）。
-///
-/// 判据自己先拿住锁 ⇒ 另一条线程的写**必须等**（300 ms 内不许写进去）；放了锁 ⇒ 它才写进去。
-/// 把 [`mutate`] 里那一下上锁摘掉，这条当场红（死值验那一刀就下在那儿）。
-#[test]
-fn a_writer_waits_while_another_holds_the_lock() {
-    let dir = scratch("lock");
-    let file = file_in(&dir);
-    let held = lock_store(&file).expect("判据自己拿锁");
-    let (tx, rx) = std::sync::mpsc::channel();
-    let f2 = file.clone();
-    let t = std::thread::spawn(move || {
-        mutate(&f2, |b| {
-            toggle_in(b.entry("devbox".into()).or_default(), "/x")
-        })
-        .unwrap();
-        tx.send(()).unwrap();
-    });
-    assert!(
-        rx.recv_timeout(std::time::Duration::from_millis(300))
-            .is_err(),
-        "锁被别人拿着时，写照样进去了 —— 写口没上锁"
-    );
-    assert_eq!(
-        read_book(&file).unwrap(),
-        Book::new(),
-        "锁拿着的时候盘上就变了"
-    );
-    drop(held);
-    rx.recv_timeout(guard_core::wall::CEILING)
-        .expect("锁放了还写不进去");
-    t.join().unwrap();
-    assert_eq!(read_book(&file).unwrap(), book(&[("devbox", &["/x"])]));
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// 窗口上那一半：左栏的书签那一段真画得出、真点得到（跑生产那个 `Workspace::frame`）
-// ═══════════════════════════════════════════════════════════════════
-
 use crate::copy::testing::{rects_of, PaintedText};
 use crate::find::testing::{window_on, wire_up, Declared, FakeBackend};
 use crate::shell::FileWindow;
 use crate::workspace::Workspace;
+use comms_inward::chan::wire::{Body, CallError, PeerFault};
+
+/// 合成的那台书签后端：一份书签 ＋ 收到过的每一问（机器名 · 命令 · 入参）。
+#[derive(Default)]
+pub(crate) struct Books {
+    pub(crate) dirs: Mutex<Vec<String>>,
+    log: Mutex<Vec<(String, String, serde_json::Value)>>,
+    /// 设了 ⇒ 每一问都回这一句（`io_failed`）。
+    refuse: Mutex<Option<String>>,
+}
+
+impl Books {
+    fn asked(&self) -> Vec<(String, String, serde_json::Value)> {
+        self.log.lock().unwrap().clone()
+    }
+    fn dirs(&self) -> Vec<String> {
+        self.dirs.lock().unwrap().clone()
+    }
+}
+
+/// 不接通道、手上已有这几条的一份（判据直接喂画面用：悬停扫 · 截图场景）。
+pub(crate) fn holding(origin: &str, dirs: &[&str]) -> Shelf {
+    let s = Shelf::open(None, None, &Origin(origin.into()));
+    s.0.land(
+        1,
+        Ok(Bookmarks {
+            dirs: dirs.iter().map(|d| normalize_dir(d)).collect(),
+        }),
+    );
+    s
+}
+
+impl comms_inward::chan::router::Backends for Books {
+    fn call(
+        &self,
+        origin: comms_inward::chan::wire::Origin,
+        op: comms_inward::chan::wire::Op,
+        payload: Body,
+        _view: Option<serde_json::Value>,
+        _left: std::time::Duration,
+        _cancel: comms_inward::chan::wire::CancelToken,
+    ) -> futures::future::BoxFuture<'static, Result<Body, CallError>> {
+        let args: serde_json::Value =
+            serde_json::from_slice(&payload.0).unwrap_or(serde_json::Value::Null);
+        self.log.lock().unwrap().push((
+            origin.as_wire_str().to_string(),
+            op.0.clone(),
+            args.clone(),
+        ));
+        if let Some(said) = self.refuse.lock().unwrap().clone() {
+            let body = serde_json::json!({ "code": "io_failed", "message": said });
+            return Box::pin(async move {
+                Err(CallError::Peer {
+                    why: PeerFault::Refused {
+                        body: Body(serde_json::to_vec(&body).unwrap()),
+                    },
+                })
+            });
+        }
+        let mut dirs = self.dirs.lock().unwrap();
+        if op.0 == "bookmarks-edit" {
+            let req: BookmarksEditReq = serde_json::from_value(args).expect("入参照类型");
+            for d in &req.dirs {
+                let d = normalize_dir(d);
+                let at = dirs.iter().position(|x| *x == d);
+                match (req.op, at) {
+                    (BookmarkOp::Toggle | BookmarkOp::Remove, Some(i)) => {
+                        dirs.remove(i);
+                    }
+                    (BookmarkOp::Toggle | BookmarkOp::Add, None) => dirs.push(d),
+                    _ => {}
+                }
+            }
+        }
+        let reply = Bookmarks { dirs: dirs.clone() };
+        Box::pin(async move { Ok(Body(serde_json::to_vec(&reply).unwrap())) })
+    }
+
+    fn subscribe(
+        &self,
+        _origin: comms_inward::chan::wire::Origin,
+        _kind: comms_inward::chan::wire::Kind,
+        _from: Option<comms_inward::chan::wire::Cursor>,
+    ) -> futures::stream::BoxStream<'static, comms_inward::chan::wire::Item> {
+        Box::pin(futures::stream::empty())
+    }
+}
+
+/// 一台书签后端 ＋ 拨通它的那条线。**要在 tokio 运行时里调。**
+pub(crate) fn books() -> (Arc<Books>, Line) {
+    let be = Arc::new(Books::default());
+    let line = crate::find::testing::wire(be.clone(), 1 << 22);
+    (be, line)
+}
+
+pub(crate) fn shelf_on(line: &Line, origin: &str) -> Shelf {
+    Shelf::open(
+        tokio::runtime::Handle::try_current().ok(),
+        Some(line.clone()),
+        &Origin(origin.into()),
+    )
+}
+
+/// 等到 `ok` 成立（带上限，绝不挂死）。
+async fn until(who: &str, ok: impl Fn() -> bool) {
+    for _ in guard_core::wall::rounds() {
+        if ok() {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    panic!("{who}：到兜底上限还没等到");
+}
+
+/// 🔴 先红的那一条：`<local>` 与远端**同一形** —— 同一串动作，线上发的命令与入参逐字相等，只有机器名不同；
+/// 窗口里没有「本机走文件、远端走命令」两条路。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn local_and_remote_ask_their_backend_in_the_same_shape() {
+    let mut seen = Vec::new();
+    for origin in [cmd_wire::LOCAL, "devbox"] {
+        let (be, line) = books();
+        let s = shelf_on(&line, origin);
+        until("开窗那一问", || be.asked().len() == 1).await;
+        s.toggle("/srv/");
+        until("切换落地", || s.contains("/srv")).await;
+        s.remove("/srv");
+        until("删落地", || !s.contains("/srv")).await;
+        let asked = be.asked();
+        assert!(
+            asked.iter().all(|(o, _, _)| o == origin),
+            "问的不是这台：{asked:?}"
+        );
+        seen.push(
+            asked
+                .into_iter()
+                .map(|(_, c, a)| (c, a))
+                .collect::<Vec<_>>(),
+        );
+    }
+    assert_eq!(
+        seen[0],
+        vec![
+            ("bookmarks-read".to_string(), serde_json::json!({})),
+            (
+                "bookmarks-edit".to_string(),
+                serde_json::json!({ "op": "toggle", "dirs": ["/srv/"] })
+            ),
+            (
+                "bookmarks-edit".to_string(),
+                serde_json::json!({ "op": "remove", "dirs": ["/srv"] })
+            ),
+        ]
+    );
+    assert_eq!(seen[0], seen[1], "本机与远端发的不一样");
+}
+
+/// 先发后到的回包不盖掉后发的那一问（第 1 问晚到 ⇒ 不认）。
+#[test]
+fn a_late_reply_of_an_earlier_ask_is_not_taken() {
+    let s = Shelf::open(None, None, &Origin("x".into()));
+    s.0.land(
+        2,
+        Ok(Bookmarks {
+            dirs: vec!["/new".into()],
+        }),
+    );
+    s.0.land(
+        1,
+        Ok(Bookmarks {
+            dirs: vec!["/old".into()],
+        }),
+    );
+    assert_eq!(s.list(), vec!["/new".to_string()]);
+    s.0.land(3, Err("那一句".into()));
+    assert_eq!(s.notice().as_deref(), Some("那一句"));
+    assert_eq!(
+        s.list(),
+        vec!["/new".to_string()],
+        "问不成 ⇒ 手上那一份不动"
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 窗口上那一半：左栏的书签那一段真画得出、真点得到
+// ═══════════════════════════════════════════════════════════════════
 
 /// 一帧生产那个 `Workspace::frame`（左栏在它的框里），交回这一帧画出来的字 ＋ 位置。
 fn frame(ctx: &egui::Context, ws: &mut Workspace, events: Vec<egui::Event>) -> Vec<PaintedText> {
@@ -278,20 +206,20 @@ fn click_label(ctx: &egui::Context, ws: &mut Workspace, label: &str) -> Vec<Pain
 
 /// 等列目录落地（带上限，绝不挂死）。
 async fn settle_listing(w: &FileWindow, who: &str) {
-    for _ in guard_core::wall::rounds() {
-        if !w.listing.is_loading() {
-            return;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-    }
-    panic!("{who}：到兜底上限目录还没列完");
+    until(who, || !w.listing.is_loading()).await;
 }
 
-/// 🔴 **真点一下**：☆ 加进去（盘上真有）→ 换目录 → 点那条书签跳回来 → × 删掉（盘上真没了）。
+fn scratch(tag: &str) -> std::path::PathBuf {
+    let d = std::env::temp_dir().join(format!("ccm-fw-bm-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).expect("建临时目录");
+    d
+}
+
+/// 🔴 **真点一下**：☆ 加进去（那台后端真有）→ 换目录 → 点那条书签跳回来 → × 删掉（那台后端真没了）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn the_bar_is_really_clickable_and_the_disk_follows() {
-    // 垫两段很长的名字（Windows 的临时目录就这么长）：路径长到盖过地址栏右端那颗星时星照样点得到；
-    // 收藏的目录名本身很长时，左栏那一条截断显示、它和 × 都还在左栏里点得到。
+async fn the_bar_is_really_clickable_and_the_backend_follows() {
+    // 垫两段很长的名字：路径长到盖过地址栏右端那颗星时星照样点得到；收藏的目录名很长时左栏那一条截断显示、它和 × 都点得到。
     let base = scratch("ui");
     let root = base.join("x".repeat(160));
     let (a, b) = (root.join(format!("a{}", "y".repeat(120))), root.join("b"));
@@ -301,22 +229,18 @@ async fn the_bar_is_really_clickable_and_the_disk_follows() {
         a.to_string_lossy().to_string(),
         b.to_string_lossy().to_string(),
     );
-    // 书签文件放在短路径里：本条看的是长名字怎么画、怎么点，不是长路径怎么落盘。
-    let file = file_in(&base);
     let wired = wire_up(
-        "fw34-bm-ui",
+        "fw-bm-ui",
         FakeBackend::new(&["files-ls"], Declared::default()),
     )
     .await;
+    let (be, line) = books();
     let mut w = window_on(&wired, &a);
-    w.shelf = Some(Shelf::open(
-        Some(file.clone()),
-        &Origin("fw34-bm-ui".into()),
-    ));
+    w.shelf = Some(shelf_on(&line, "fw-bm-ui"));
     let mut ws = Workspace::new(w);
     let ctx = egui::Context::default();
 
-    // ① 地址栏那颗星（Phosphor 线形，灰）⇒ 盘上那一格恰好是当前目录；星换成强调色（同一个字形，只换色）。
+    // ① 地址栏那颗星（灰）⇒ 那台后端里恰好是当前目录；星换成强调色。
     let star = egui_phosphor::regular::STAR;
     let p = crate::theme::palette(&ctx);
     assert_eq!(
@@ -325,11 +249,9 @@ async fn the_bar_is_really_clickable_and_the_disk_follows() {
         "没加书签时那颗星该是灰的"
     );
     let _ = click_label(&ctx, &mut ws, star);
-    assert_eq!(
-        read_book(&file).unwrap(),
-        book(&[("fw34-bm-ui", &[a.as_str()])])
-    );
-    // 加完之后左栏多一条书签（它前面也是一颗灰星），地址栏那颗换成强调色。
+    let shelf = ws.pane_on(0).shelf.clone().unwrap();
+    until("☆ 落地", || shelf.contains(&a)).await;
+    assert_eq!(be.dirs(), vec![a.clone()]);
     let after = crate::chrome::testing::ws_colors_of(&ctx, &mut ws, star);
     assert_eq!(after.len(), 2, "地址栏一颗 ＋ 左栏那条书签一颗：{after:?}");
     assert!(
@@ -343,10 +265,9 @@ async fn the_bar_is_really_clickable_and_the_disk_follows() {
     let _ = click_label(&ctx, &mut ws, crate::source::remote_basename(&a));
     assert_eq!(ws.pane_on(0).cwd, a, "点了书签却没跳过去");
 
-    // ③ × 删掉 ⇒ 盘上那台机器那一格整个没了（× 只在悬停那一行时出：先把指针挪上去，再点左栏里那颗 ×）。
+    // ③ × 删掉 ⇒ 那台后端里没了（× 只在悬停那一行时出）。
     let tail = crate::source::remote_basename(&a).to_string();
     let painted = frame(&ctx, &mut ws, Vec::new());
-    // 同名的那一段在地址栏 · 标签栏上也有：取左栏里那一条。
     let row = rects_of(&painted, &tail)
         .into_iter()
         .find(|r| r.left() < 220.0 && r.top() > 60.0)
@@ -359,65 +280,77 @@ async fn the_bar_is_really_clickable_and_the_disk_follows() {
         .find(|r| r.center().x < row.right() + 40.0 && (r.center().y - row.center().y).abs() < 14.0)
         .expect("悬停那一行没出 ×");
     let _ = frame(&ctx, &mut ws, crate::rows::testing::click_at(x.center()));
-    assert_eq!(read_book(&file).unwrap(), Book::new(), "点了 × 盘上还在");
+    until("× 落地", || shelf.list().is_empty()).await;
+    assert!(be.dirs().is_empty(), "点了 × 那台后端里还在");
     let _ = std::fs::remove_dir_all(&base);
 }
 
-/// 别的窗口（另一个进程）刚加的书签，本窗口**换一次目录**就看得见。
+/// 别的写者（另一个窗口 · 手机）刚加的书签，本窗口**换一次目录**就看得见；之前看不见（不是定时去问）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn another_windows_bookmark_shows_up_after_a_navigation() {
+async fn another_writers_bookmark_shows_up_after_a_navigation() {
     let root = scratch("other");
     let a = root.join("a");
     std::fs::create_dir_all(&a).unwrap();
     let a = a.to_string_lossy().to_string();
-    let file = file_in(&root);
     let wired = wire_up(
-        "fw34-bm-other",
+        "fw-bm-other",
         FakeBackend::new(&["files-ls"], Declared::default()),
     )
     .await;
+    let (be, line) = books();
     let mut w = window_on(&wired, "/");
-    w.shelf = Some(Shelf::open(
-        Some(file.clone()),
-        &Origin("fw34-bm-other".into()),
-    ));
-    // 另一个写者（同一个写口）。
-    mutate(&file, |b| {
-        toggle_in(b.entry("fw34-bm-other".into()).or_default(), "/elsewhere")
-    })
-    .unwrap();
+    w.shelf = Some(shelf_on(&line, "fw-bm-other"));
+    until("开窗那一问", || be.asked().len() == 1).await;
+    be.dirs.lock().unwrap().push("/elsewhere".into());
+    let shelf = w.shelf.clone().unwrap();
     assert!(
-        w.shelf.as_ref().unwrap().list().is_empty(),
-        "还没换目录就看见了 —— 那说明每帧在读盘"
+        shelf.list().is_empty(),
+        "还没换目录就看见了 —— 那说明在定时去问"
     );
     w.navigate_to(a);
+    until("换目录才问第二次", || be.asked().len() == 2).await;
     assert_eq!(
-        w.shelf.as_ref().unwrap().list(),
-        vec!["/elsewhere".to_string()]
+        be.asked()
+            .iter()
+            .filter(|(_, c, _)| c == "bookmarks-read")
+            .count(),
+        2,
+        "开窗一次 ＋ 换目录一次，别的时候不问"
     );
+    until("换目录那一问", || {
+        shelf.list() == vec!["/elsewhere".to_string()]
+    })
+    .await;
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// 数据目录解不出来 ⇒ 左栏书签那一段**出声**（从这一帧的 galley 里读回来），按钮点了也不写任何地方。
+/// 那台后端问不成 ⇒ 左栏书签那一段**出声**（那一句从这一帧的 galley 里读回来）；没接书签的窗口整条栏不画。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn no_data_dir_is_said_on_the_bar() {
-    let wired = wire_up("fw34-bm-nodir", FakeBackend::new(&[], Declared::default())).await;
+async fn a_refusal_is_said_on_the_bar() {
+    let wired = wire_up("fw-bm-refused", FakeBackend::new(&[], Declared::default())).await;
+    let (be, line) = books();
+    *be.refuse.lock().unwrap() = Some("书签读不出来".into());
     let mut w = window_on(&wired, "/srv");
-    w.shelf = Some(Shelf::open(None, &Origin("fw34-bm-nodir".into())));
+    w.shelf = Some(shelf_on(&line, "fw-bm-refused"));
+    let shelf = w.shelf.clone().unwrap();
+    until("那一问回来", || shelf.notice().is_some()).await;
+    let said = shelf.notice().unwrap();
+    assert!(
+        said.contains("书签读不出来"),
+        "那一句没带那台的原话：{said}"
+    );
     let mut ws = Workspace::new(w);
     let ctx = egui::Context::default();
     let painted = frame(&ctx, &mut ws, Vec::new());
     assert!(
-        painted.iter().any(|(t, _)| t == NO_DATA_DIR.as_str()),
+        painted.iter().any(|(t, _)| *t == said),
         "那句话没画出来：{painted:?}"
     );
-    let _ = click_label(&ctx, &mut ws, egui_phosphor::regular::STAR);
-    assert!(ws.pane_on(0).shelf.as_ref().unwrap().list().is_empty());
     // 阴性对照：没接书签（判据直接建的窗口）⇒ 加 / 去那颗与出声那句都不画。
     let mut bare = Workspace::new(window_on(&wired, "/srv"));
     let painted = frame(&ctx, &mut bare, Vec::new());
     assert!(
         rects_of(&painted, egui_phosphor::regular::STAR).is_empty()
-            && !painted.iter().any(|(t, _)| t == NO_DATA_DIR.as_str())
+            && !painted.iter().any(|(t, _)| *t == said)
     );
 }

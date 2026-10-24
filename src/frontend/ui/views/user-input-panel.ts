@@ -156,7 +156,7 @@ export class UserInputPanel {
   private buildRow(entry: UserInputEntry, i: number): HTMLButtonElement {
     const row = document.createElement("button");
     row.type = "button";
-    row.className = "user-input-row";
+    row.className = "user-input-row one-line";
     // 🔴 **刻意不叫 `data-id`**：那个名字在本仓有且只有一个意思 ——
     // 「这是一张渲染出来的消息卡」，`branch-fold.ts:236` 就是照它扫主线的。
     // 清单行不是卡。两件事共用一个属性名，下一个写 `[data-id]` 选择器的人就会数错。

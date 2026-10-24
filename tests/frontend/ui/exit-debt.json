@@ -19,7 +19,7 @@
       "lang": "kt"
     }
   ],
-  "ceiling": 121,
+  "ceiling": 119,
   "entries": [
     {
       "file": "src/frontend/ui/account-chip.ts",
@@ -160,13 +160,6 @@
       "n": 5,
       "kind": "第 1 批",
       "why": "子运行状态码 ⇒ 字（running · done · failed · stopped · unknown）：子运行成品带写好的状态字"
-    },
-    {
-      "file": "src/frontend/ui/settings/account-new-form.ts",
-      "rule": "caseWord",
-      "n": 2,
-      "kind": "第 1 批",
-      "why": "新账号表单 baseUrl 格错码 ⇒ 字：同 R2，格错带 said"
     },
     {
       "file": "src/frontend/ui/settings/accounts-section.ts",

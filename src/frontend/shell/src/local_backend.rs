@@ -1524,6 +1524,7 @@ pub(crate) fn local_stdio_consumer(
         crate::stream_watch::desk(&route.origin).up(&client, None);
         registered = Some(client);
         crate::prefs_migration::after_local_ready();
+        crate::bookmarks_migration::after_ready(crate::origin::Origin::local());
         crate::machine_table::refresh();
         tracing::info!(
             "本机入方向通道已登记：origin={} build_id={build_id} commands={commands:?}",

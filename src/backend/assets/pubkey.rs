@@ -325,11 +325,12 @@ impl Reach for Wire {
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct PubkeyPushReq {
     /// 那台的配置（设置页表单里那台，可能还没保存）。
-    pub(crate) machine: crate::dial::pick::MachineConfig,
+    #[serde(deserialize_with = "ssh_dial::machine::loose_field")]
+    pub(crate) machine: crate::dial::Host,
     /// 跳板那一台。
-    #[serde(default)]
+    #[serde(default, deserialize_with = "ssh_dial::machine::loose_opt")]
     #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) jump: Option<crate::dial::pick::MachineConfig>,
+    pub(crate) jump: Option<crate::dial::Host>,
     /// 本机那份 `.pub` 的路径；缺 / 空 ⇒ 私钥同名 `.pub`（两样都没有 ⇒ `refused`，界面让人挑文件）。
     #[serde(default)]
     #[cfg_attr(test, ts(optional = nullable))]
@@ -399,14 +400,10 @@ pub(crate) async fn answer_push(
     reach: &dyn Reach,
     read_pub: &(dyn Fn(&str) -> Result<String, (&'static str, String)> + Send + Sync),
 ) -> Result<PubkeyPushed, (&'static str, String)> {
-    let pick = crate::dial::pick::Pick {
-        machine: &req.machine,
-        jump: req.jump.as_ref(),
-        prefer: None,
-    };
-    let (machine, _jump) = pick.machines()?;
-    let path = pub_key_path(req.pub_key_path.as_deref(), machine.key_path.as_deref())
-        .map_err(|e| ("refused", e))?;
+    let machine = &req.machine;
+    let dial = crate::dial::wire_dial(machine, req.jump.as_ref(), None)?;
+    let path =
+        pub_key_path(req.pub_key_path.as_deref(), machine.key()).map_err(|e| ("refused", e))?;
     let key = match sanitize_public_key(&read_pub(&path)?) {
         Ok(k) => k,
         Err(SanitizeKeyErr::UnknownType) => {
@@ -426,7 +423,7 @@ pub(crate) async fn answer_push(
         (outcome, PushVia::Backend)
     } else {
         let out = reach
-            .exec_once(&pick.dial_value(), authorized_keys_cmd(&key))
+            .exec_once(&dial, authorized_keys_cmd(&key))
             .await
             .map_err(|e| ("failed", e))?;
         (

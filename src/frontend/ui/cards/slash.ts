@@ -31,7 +31,7 @@ export function buildSlashCommandCard(
 
   if (cmd.args) {
     const args = document.createElement("span");
-    args.className = "slash-args";
+    args.className = "slash-args one-line";
     args.textContent = cmd.args;
     card.appendChild(args);
   }

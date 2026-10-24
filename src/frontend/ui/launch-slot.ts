@@ -187,7 +187,7 @@ export class LaunchSlots {
     const dot = sl.missed ? statusDot("failed", copyText("launch.slot.missedTitle"), "compact") : spinner();
     dot.classList.add("tab-dot");
     const title = document.createElement("span");
-    title.className = "tab-title";
+    title.className = "tab-title one-line";
     const proj = document.createElement("span");
     proj.className = "tab-proj";
     proj.textContent = projOf(cwd);

@@ -139,7 +139,7 @@ export class SettingsRouter {
     navButton.addEventListener("click", () => this.navigate(route.id));
     if (route.icon) navButton.appendChild(icon(route.icon));
     const label = document.createElement("span");
-    label.className = "settings-nav-label";
+    label.className = "settings-nav-label one-line";
     label.textContent = route.title;
     navButton.appendChild(label);
 

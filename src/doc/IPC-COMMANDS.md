@@ -1971,6 +1971,40 @@ type WirePath = string | { b16: string };
 
 码：`bad_args` · `no_home`
 
+#### `bookmarks-read`
+
+这台的书签。
+
+不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --bookmarks-read`
+
+入参 `BookmarksReadReq` · 回包 `Bookmarks`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Bookmarks = { dirs: Array<string>, };
+type BookmarksReadReq = Record<symbol, never>;
+```
+
+码：`bad_args` · `io_failed` · `bookmarks_unreadable`
+
+#### `bookmarks-edit`
+
+切换 · 删 · 加几条书签，回改完的整份。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --bookmarks-edit`
+
+入参 `BookmarksEditReq` · 回包 `Bookmarks`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Bookmarks = { dirs: Array<string>, };
+type BookmarksEditReq = { op: "toggle" | "remove" | "add", 
+/**
+ * 那几个目录（这台的绝对路径；按归一之后的形比、存）。
+ */
+dirs: Array<string>, };
+```
+
+码：`bad_args` · `io_failed` · `bookmarks_unreadable`
+
 ### 4.3 账号
 
 #### `quota-read`
@@ -9132,36 +9166,36 @@ self: string, synced: Array<AssetsSyncRow>,
  * 可达表 `[{origin, machine}]`：`machine` 是那台目录的 id（还没拉成过 ⇒ `null`）。
  */
 reach: Array<ReachRow>, };
-type MachineConfig = { 
+type Host = { 
+/**
+ * 这台的名字（origin）；空 ⇒ 用 `host`。
+ */
+label: string, 
 /**
  * 首选地址。
  */
 host: string, 
 /**
- * 登录用户。
+ * 端口（缺 ＝ 22）。
  */
-user: string, 
+port: number, user: string, 
 /**
- * 这台的名字（空 ⇒ 用 `host`）。
+ * 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
  */
-label?: string, 
+keyPath: string, 
 /**
- * 口（缺 ⇒ 22）。
- */
-port?: number, 
-/**
- * 私钥路径（缺 / 空 ⇒ 走 ssh-agent）。
- */
-keyPath?: string, 
-/**
- * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
+ * 备用地址（竞发）。
  */
 addresses: Array<string>, 
 /**
- * 跳板那一台的名字（空 ⇒ 直连）。
+ * 跳板：另一台的名字（空 ＝ 直连）。
  */
-jump?: string, };
-type MachineDial = { machine: MachineConfig, jump?: MachineConfig | null, prefer?: Prefer | null, 
+jump: string, 
+/**
+ * 连不连这台。
+ */
+connect: boolean, };
+type MachineDial = { machine: Host, jump?: Host | null, prefer?: Prefer | null, 
 /**
  * 用法（存着不读：问那台的每一趟按自己的用法改，`capture` · `forward`）。
  */
@@ -10652,35 +10686,35 @@ class: string, };
 入参 `TerminalSshReq` · 回包 `SshCommand`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type MachineConfig = { 
+type Host = { 
+/**
+ * 这台的名字（origin）；空 ⇒ 用 `host`。
+ */
+label: string, 
 /**
  * 首选地址。
  */
 host: string, 
 /**
- * 登录用户。
+ * 端口（缺 ＝ 22）。
  */
-user: string, 
+port: number, user: string, 
 /**
- * 这台的名字（空 ⇒ 用 `host`）。
+ * 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
  */
-label?: string, 
+keyPath: string, 
 /**
- * 口（缺 ⇒ 22）。
- */
-port?: number, 
-/**
- * 私钥路径（缺 / 空 ⇒ 走 ssh-agent）。
- */
-keyPath?: string, 
-/**
- * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
+ * 备用地址（竞发）。
  */
 addresses: Array<string>, 
 /**
- * 跳板那一台的名字（空 ⇒ 直连）。
+ * 跳板：另一台的名字（空 ＝ 直连）。
  */
-jump?: string, };
+jump: string, 
+/**
+ * 连不连这台。
+ */
+connect: boolean, };
 type Prefer = { host: string, port: number, };
 type SshCommand = { 
 /**
@@ -10691,11 +10725,11 @@ type TerminalSshReq = {
 /**
  * 那台的配置（可能还没保存）。
  */
-machine: MachineConfig, 
+machine: Host, 
 /**
  * 跳板那一台的配置（`machine.jump` 指它时必给）。
  */
-jump?: MachineConfig | null, 
+jump?: Host | null, 
 /**
  * 上次赢的那条地址（仍在这台的地址里 ⇒ 用它）。
  */
@@ -12318,6 +12352,35 @@ type DeployInstallReq = { dial: MachineDial, slots: Array<SlotRow>,
  * 那台的名字（非空；状态成品按它记）。
  */
 machine: string, };
+type Host = { 
+/**
+ * 这台的名字（origin）；空 ⇒ 用 `host`。
+ */
+label: string, 
+/**
+ * 首选地址。
+ */
+host: string, 
+/**
+ * 端口（缺 ＝ 22）。
+ */
+port: number, user: string, 
+/**
+ * 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
+ */
+keyPath: string, 
+/**
+ * 备用地址（竞发）。
+ */
+addresses: Array<string>, 
+/**
+ * 跳板：另一台的名字（空 ＝ 直连）。
+ */
+jump: string, 
+/**
+ * 连不连这台。
+ */
+connect: boolean, };
 type Installed = { 
 /**
  * `skip`（已是这一版）· `deploy`（放上了这一版）· `keep`（那台不比这一版旧 ⇒ 一个字节没写）。
@@ -12335,36 +12398,7 @@ build: string,
  * 那台的 OS（表 A 的词）。
  */
 os: string, };
-type MachineConfig = { 
-/**
- * 首选地址。
- */
-host: string, 
-/**
- * 登录用户。
- */
-user: string, 
-/**
- * 这台的名字（空 ⇒ 用 `host`）。
- */
-label?: string, 
-/**
- * 口（缺 ⇒ 22）。
- */
-port?: number, 
-/**
- * 私钥路径（缺 / 空 ⇒ 走 ssh-agent）。
- */
-keyPath?: string, 
-/**
- * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
- */
-addresses: Array<string>, 
-/**
- * 跳板那一台的名字（空 ⇒ 直连）。
- */
-jump?: string, };
-type MachineDial = { machine: MachineConfig, jump?: MachineConfig | null, prefer?: Prefer | null, 
+type MachineDial = { machine: Host, jump?: Host | null, prefer?: Prefer | null, 
 /**
  * 用法（存着不读：问那台的每一趟按自己的用法改，`capture` · `forward`）。
  */
@@ -12397,36 +12431,36 @@ type DeployInstallReq = { dial: MachineDial, slots: Array<SlotRow>,
  * 那台的名字（非空；状态成品按它记）。
  */
 machine: string, };
-type MachineConfig = { 
+type Host = { 
+/**
+ * 这台的名字（origin）；空 ⇒ 用 `host`。
+ */
+label: string, 
 /**
  * 首选地址。
  */
 host: string, 
 /**
- * 登录用户。
+ * 端口（缺 ＝ 22）。
  */
-user: string, 
+port: number, user: string, 
 /**
- * 这台的名字（空 ⇒ 用 `host`）。
+ * 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
  */
-label?: string, 
+keyPath: string, 
 /**
- * 口（缺 ⇒ 22）。
- */
-port?: number, 
-/**
- * 私钥路径（缺 / 空 ⇒ 走 ssh-agent）。
- */
-keyPath?: string, 
-/**
- * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
+ * 备用地址（竞发）。
  */
 addresses: Array<string>, 
 /**
- * 跳板那一台的名字（空 ⇒ 直连）。
+ * 跳板：另一台的名字（空 ＝ 直连）。
  */
-jump?: string, };
-type MachineDial = { machine: MachineConfig, jump?: MachineConfig | null, prefer?: Prefer | null, 
+jump: string, 
+/**
+ * 连不连这台。
+ */
+connect: boolean, };
+type MachineDial = { machine: Host, jump?: Host | null, prefer?: Prefer | null, 
 /**
  * 用法（存着不读：问那台的每一趟按自己的用法改，`capture` · `forward`）。
  */
@@ -12640,44 +12674,44 @@ dest: string, machine: string, };
 入参 `PubkeyPushReq` · 回包 `PubkeyPushed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type MachineConfig = { 
+type Host = { 
+/**
+ * 这台的名字（origin）；空 ⇒ 用 `host`。
+ */
+label: string, 
 /**
  * 首选地址。
  */
 host: string, 
 /**
- * 登录用户。
+ * 端口（缺 ＝ 22）。
  */
-user: string, 
+port: number, user: string, 
 /**
- * 这台的名字（空 ⇒ 用 `host`）。
+ * 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
  */
-label?: string, 
+keyPath: string, 
 /**
- * 口（缺 ⇒ 22）。
- */
-port?: number, 
-/**
- * 私钥路径（缺 / 空 ⇒ 走 ssh-agent）。
- */
-keyPath?: string, 
-/**
- * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
+ * 备用地址（竞发）。
  */
 addresses: Array<string>, 
 /**
- * 跳板那一台的名字（空 ⇒ 直连）。
+ * 跳板：另一台的名字（空 ＝ 直连）。
  */
-jump?: string, };
+jump: string, 
+/**
+ * 连不连这台。
+ */
+connect: boolean, };
 type PubkeyPushReq = { 
 /**
  * 那台的配置（设置页表单里那台，可能还没保存）。
  */
-machine: MachineConfig, 
+machine: Host, 
 /**
  * 跳板那一台。
  */
-jump?: MachineConfig | null, 
+jump?: Host | null, 
 /**
  * 本机那份 `.pub` 的路径；缺 / 空 ⇒ 私钥同名 `.pub`（两样都没有 ⇒ `refused`，界面让人挑文件）。
  */
@@ -13311,45 +13345,45 @@ remoteHost: string, remotePort: number,
 /**
  * 那台的配置（可达表里**没有**那台、流没起来时按它组请求去拨，不拒）。
  */
-machine?: MachineConfig | null, 
+machine?: Host | null, 
 /**
  * 跳板那一台。
  */
-jump?: MachineConfig | null, };
+jump?: Host | null, };
 type ForwardStarted = { 
 /**
  * `fwd-<n>`，本进程内单调。
  */
 id: string, };
-type MachineConfig = { 
+type Host = { 
+/**
+ * 这台的名字（origin）；空 ⇒ 用 `host`。
+ */
+label: string, 
 /**
  * 首选地址。
  */
 host: string, 
 /**
- * 登录用户。
+ * 端口（缺 ＝ 22）。
  */
-user: string, 
+port: number, user: string, 
 /**
- * 这台的名字（空 ⇒ 用 `host`）。
+ * 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
  */
-label?: string, 
+keyPath: string, 
 /**
- * 口（缺 ⇒ 22）。
- */
-port?: number, 
-/**
- * 私钥路径（缺 / 空 ⇒ 走 ssh-agent）。
- */
-keyPath?: string, 
-/**
- * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
+ * 备用地址（竞发）。
  */
 addresses: Array<string>, 
 /**
- * 跳板那一台的名字（空 ⇒ 直连）。
+ * 跳板：另一台的名字（空 ＝ 直连）。
  */
-jump?: string, };
+jump: string, 
+/**
+ * 连不连这台。
+ */
+connect: boolean, };
 type Origin = string;
 ```
 
@@ -13364,35 +13398,35 @@ type Origin = string;
 入参 `ProbeReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type MachineConfig = { 
+type Host = { 
+/**
+ * 这台的名字（origin）；空 ⇒ 用 `host`。
+ */
+label: string, 
 /**
  * 首选地址。
  */
 host: string, 
 /**
- * 登录用户。
+ * 端口（缺 ＝ 22）。
  */
-user: string, 
+port: number, user: string, 
 /**
- * 这台的名字（空 ⇒ 用 `host`）。
+ * 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
  */
-label?: string, 
+keyPath: string, 
 /**
- * 口（缺 ⇒ 22）。
- */
-port?: number, 
-/**
- * 私钥路径（缺 / 空 ⇒ 走 ssh-agent）。
- */
-keyPath?: string, 
-/**
- * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
+ * 备用地址（竞发）。
  */
 addresses: Array<string>, 
 /**
- * 跳板那一台的名字（空 ⇒ 直连）。
+ * 跳板：另一台的名字（空 ＝ 直连）。
  */
-jump?: string, };
+jump: string, 
+/**
+ * 连不连这台。
+ */
+connect: boolean, };
 type ProbeReq = { 
 /**
  * 1..=64 个 `[A-Za-z0-9-]`；进度帧 `probe` 原样回填。
@@ -13401,11 +13435,11 @@ ticket: string,
 /**
  * 那台的配置。
  */
-machine: MachineConfig, 
+machine: Host, 
 /**
  * 跳板那一台的配置（可缺）。
  */
-jump?: MachineConfig | null, };
+jump?: Host | null, };
 ```
 
 码：`bad_args` · `bad_jump` · `failed`
@@ -13466,36 +13500,36 @@ type Origin = string;
 入参 `ReachReq` · 回包 `Reached`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type MachineConfig = { 
+type Host = { 
+/**
+ * 这台的名字（origin）；空 ⇒ 用 `host`。
+ */
+label: string, 
 /**
  * 首选地址。
  */
 host: string, 
 /**
- * 登录用户。
+ * 端口（缺 ＝ 22）。
  */
-user: string, 
+port: number, user: string, 
 /**
- * 这台的名字（空 ⇒ 用 `host`）。
+ * 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
  */
-label?: string, 
+keyPath: string, 
 /**
- * 口（缺 ⇒ 22）。
- */
-port?: number, 
-/**
- * 私钥路径（缺 / 空 ⇒ 走 ssh-agent）。
- */
-keyPath?: string, 
-/**
- * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
+ * 备用地址（竞发）。
  */
 addresses: Array<string>, 
 /**
- * 跳板那一台的名字（空 ⇒ 直连）。
+ * 跳板：另一台的名字（空 ＝ 直连）。
  */
-jump?: string, };
-type MachineDial = { machine: MachineConfig, jump?: MachineConfig | null, prefer?: Prefer | null, 
+jump: string, 
+/**
+ * 连不连这台。
+ */
+connect: boolean, };
+type MachineDial = { machine: Host, jump?: Host | null, prefer?: Prefer | null, 
 /**
  * 用法（存着不读：问那台的每一趟按自己的用法改，`capture` · `forward`）。
  */
@@ -14392,6 +14426,8 @@ type Words = string;
 | `--assets-sync` | ＝ 帧命令 `assets-sync`：本机常驻后端沿池里那条 SSH 同步资产目录 |
 | `--authorized-keys-add` | ＝ 帧命令 `authorized-keys-add`：把一行公钥并进这台的 `authorized_keys` |
 | `--backend-log` | ＝ 帧命令 `backend-log`：这台后端的 stderr 诊断文件尾部 |
+| `--bookmarks-edit` | ＝ 帧命令 `bookmarks-edit`：切换 · 删 · 加几条书签，回改完的整份 |
+| `--bookmarks-read` | ＝ 帧命令 `bookmarks-read`：这台的书签 |
 | `--bus-broadcast` | ＝ 帧命令 `bus-broadcast`：给总线上在线的成员群发一条 |
 | `--bus-inbox` | ＝ 帧命令 `bus-inbox`：只读看一个 agent 收件箱的尾巴 |
 | `--bus-kill` | ＝ 帧命令 `bus-kill`：收掉一个总线成员 |

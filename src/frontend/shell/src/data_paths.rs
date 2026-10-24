@@ -104,11 +104,7 @@ pub fn collect(handle: &AppHandle) -> DataPathsResponse {
     }
 }
 
-/// 文件管理窗口书签那份文件的名字 —— **唯一住址**（本文件是数据目录的唯一权威枚举点）。
-/// 窗口进程那一侧（`filewin/bookmarks.rs`）引它，app 这一侧不去够窗口模块（「文件管理器可以单独搞」那道门只有一扇）。
-pub const FILEWIN_BOOKMARKS_FILE: &str = "filewin-bookmarks.json";
-
-/// 文件管理窗口记整窗缩放那份文件的名字 —— 同 [`FILEWIN_BOOKMARKS_FILE`]（开窗入口拼好全路径、随种子交给窗口）。
+/// 文件管理窗口记整窗缩放那份文件的名字 —— **唯一住址**（本文件是数据目录的唯一权威枚举点；开窗入口拼好全路径、随种子交给窗口）。
 pub const FILEWIN_VIEW_FILE: &str = "filewin-view.json";
 
 /// monitor data dir 下逐个文件 / 目录的枚举 —— **唯一权威枚举点**（`INVARIANTS §2.1`）。
@@ -132,14 +128,6 @@ fn monitor_entries(monitor_data_dir: &Path) -> Vec<DataPathInfo> {
             monitor_data_dir.join("history-metadata.json"),
             "history-metadata.json",
             &copy_text("rsDataPaths.monitor.historyMeta", &[]),
-            DataClass::Truth,
-        ),
-        // 文件管理窗口的书签（monitor 自己的状态文件，与 `config.json` 同一族）。
-        //   名字只住本文件 [`FILEWIN_BOOKMARKS_FILE`] 一处（开窗入口 `filewin/entry.rs::open_with` 用它拼好全路径、随种子交给窗口）；你收藏的目录 ⇒ 删了会丢，按真相记。
-        probe_file(
-            monitor_data_dir.join(FILEWIN_BOOKMARKS_FILE),
-            FILEWIN_BOOKMARKS_FILE,
-            &copy_text("rsDataPaths.monitor.bookmarks", &[]),
             DataClass::Truth,
         ),
         // 文件管理窗口的整窗缩放（你调过的大小 ⇒ 按真相记）。

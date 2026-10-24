@@ -119,6 +119,9 @@ pub const PLAN_REVIEW_REL: &str = ".cc-monitor/plan-review.json";
 /// 〔同上〕离线那台的上次值：本机后端替界面记下每台最近一次读成的账号清单与「文件与数据」那一份（后端 `footprint/last_seen.rs` 写；断开时照它画、跨重启还在）。
 pub const LAST_SEEN_REL: &str = ".cc-monitor/last-seen.json";
 
+/// 〔同上〕这台的书签：文件窗口与手机收藏的这台上的目录（后端 `control/bookmarks.rs` 写；`bookmarks-read` / `-edit` 读写，本机与远端同形）。
+pub const BOOKMARKS_REL: &str = ".cc-monitor/bookmarks.json";
+
 /// 〔同上〕skill 装记录（后端 `assets/skill_ledger.rs` 写；卸的时候按它删）。
 pub const SKILL_LEDGER_REL: &str = ".cc-monitor/skill-installs.json";
 
@@ -452,6 +455,7 @@ pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
     ("chores", CHORES_REL, false, true),
     ("planReview", PLAN_REVIEW_REL, false, true),
     ("lastSeen", LAST_SEEN_REL, false, false),
+    ("bookmarks", BOOKMARKS_REL, false, true),
     ("assetCatalog", ASSET_CATALOG_REL, false, false),
     ("quota", QUOTA_LEDGER_REL, false, true),
     ("rotation", ROTATION_REL, false, true),

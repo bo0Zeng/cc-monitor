@@ -24,32 +24,9 @@ fn pinned_of(row: &Value) -> Option<(Vec<Endpoint>, String)> {
     let fp = s("hostKeyFingerprint")
         .map(str::trim)
         .filter(|f| !f.is_empty())?;
-    let m = ssh_dial::machine::Machine::of(ssh_dial::machine::Fields {
-        host: s("host"),
-        user: s("user").or(Some("-")),
-        port: row
-            .get("port")
-            .and_then(Value::as_u64)
-            .and_then(|p| u16::try_from(p).ok()),
-        addresses: row
-            .get("addresses")
-            .and_then(Value::as_array)
-            .map(|a| {
-                a.iter()
-                    .filter_map(Value::as_str)
-                    .map(str::to_string)
-                    .collect()
-            })
-            .unwrap_or_default(),
-        ..Default::default()
-    })
-    .ok()?;
-    let addrs = m
-        .endpoints()
-        .into_iter()
-        .map(|(host, port)| Endpoint { host, port })
-        .collect();
-    Some((addrs, fp.to_string()))
+    // 旧形状那一行多带那两格 ⇒ 按线上那一形读（多带的键不读）；地址算法只在拨号核心。
+    let addrs = ssh_dial::machine::loose(row).ok()?.endpoints();
+    (!addrs.is_empty()).then(|| (addrs, fp.to_string()))
 }
 
 /// 库的一份文本按机器表那几台换形（第 1、2 步）。**纯函数**。

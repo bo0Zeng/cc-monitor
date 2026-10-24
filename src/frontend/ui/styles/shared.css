@@ -9,6 +9,13 @@
  */
 
 @layer components {
+/* 单行省略只住这一处：CSS 模块 `composes: one-line from global`，全局 CSS 画的那几处由 TS 挂这个类。 */
+.one-line {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 /* A3：状态栏「当前账号」chip（照 .status-cmdk 形态）+ 账号选单浮层 */
 .status-account {
   display: inline-flex;
@@ -42,9 +49,6 @@
 
 .status-account-label {
   max-width: 10ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* A3：tab 行账号徽章（该会话属于哪个账号；未知 .unknown 显 —，弱化） */
