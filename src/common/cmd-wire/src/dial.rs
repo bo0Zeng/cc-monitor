@@ -1,6 +1,6 @@
 //! **拨号的线上形状**：拨号核心（`ssh-dial`）写、读它的那一侧（壳的 `ssh_link` · 手机 Kotlin）读的那几样，两头同一份。
 //!
-//! 一条链路上 ack 之前只有一种行 `{"stage":{…}}`（[`Stage`]；过了一步是 [`Stage::Step`]），然后恰好一行 ack（[`DialAck`]），
+//! 一条链路上 ack 之前只有一种行 `{"stage":{…}}`（[`StageLine`]：拨号阶段 [`Stage`] 或「过了一步」），然后恰好一行 ack（[`DialAck`]），
 //! 之后按用法（`capture` 那一形是一行 [`Captured`]）。纯数据：怎么拨、详情怎么写住拨号核心。
 
 use serde::{Deserialize, Serialize};
@@ -40,9 +40,18 @@ pub enum Stage {
     Auth { ok: bool, detail: Option<String> },
     /// 连接就绪（握手 ＋ 鉴权全过）。
     Established,
+}
+
+/// ack 之前那一行 `{"stage":…}` 的值：拨号又过了一步，或者一条拨号阶段（[`Stage`]）。同一种行、同一个 `kind` 标签。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum StageLine {
     /// 拨号又过了一步（`tcp` · `banner` · `hostkey` · `auth` · `tunnel` · `channel`，经跳板时每一台各走一遍）。
     /// 当场就写，不攒；读的那一侧只拿它重新计时，不按名字分支。
     Step { step: String },
+    /// 一条拨号阶段（`kind` 是它自己那几个）。
+    #[serde(untagged)]
+    Stage(Stage),
 }
 
 /// 拨号代理回的那一行 ack。读的那一侧对老代理宽容：除 `ok` 之外的格缺席都按缺省读。

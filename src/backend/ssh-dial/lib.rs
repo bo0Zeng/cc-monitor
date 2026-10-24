@@ -10,8 +10,8 @@
 //!
 //! ```text
 //! 上行  stream / shell 时是原样写进 SSH channel 的字节；capture · forward 时不读（读到 EOF ＝ 对面走了）
-//! 下行  stages=true 时先有若干行 {"stage":{…}}（与界面 `ConnectStage` 同形）
-//!       progress=true 时每过一步当场一行 {"progress":"tcp|banner|hostkey|auth|tunnel|channel"}（[`step`]；与阶段行交错，不攒）
+//! 下行  ack 之前只有一种行 {"stage":{…}}（[`Stage`]，契约 `cmd_wire::dial`）：stages=true 时攒下的拨号阶段在 ack 之前一次写出；
+//!       progress=true 时每过一步当场一行 {"stage":{"kind":"step","step":"tcp|banner|hostkey|auth|tunnel|channel"}}（[`step`]；不攒）
 //!       然后恰好一行 ack（DialAck，`\n` 结尾）
 //!       其后按用法：stream / shell 原样字节 · capture 一行 Captured 后结束 ·
 //!       forward 每接进一条连接一行 {"accepted":n}
@@ -98,19 +98,8 @@ pub fn joined(said: String, raw: Option<String>) -> String {
     }
 }
 
-/// ack 里的协议版本：v2 = 竞速 · 跳板 · agent · 几种用法 · 阶段行。多一种用法不 bump 它（新界面凭 `uses` 认出老后端），
-/// 版本号只在同一种用法的字节形状变了时才动。
-pub const ACK_V: u32 = 2;
-
-/// 本代理认得的用法 —— ack 的 `uses` 字段原样回这张表，界面据它判「代理够不够新」。
-pub const USES: &[&str] = &["stream", "capture", "forward", "shell", "hold"];
-
-/// 一个拨号地址。
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct Endpoint {
-    pub host: String,
-    pub port: u16,
-}
+/// 线上那几样（ack 的协议版本与用法表 · 地址 · 阶段 · ack · 没开成 · 收全的结果）住契约（`cmd_wire::dial`），读它的那一侧同一份。
+pub use cmd_wire::dial::{Captured, DialAck, DialFail, Endpoint, Stage, ACK_V, USES};
 
 /// 跳板那一台。它自己还要经别的跳板 ⇒ `jump` 再套一层（多跳，同 `ssh -J 外,内`；桌面的机器表今天只给一跳，手机给多跳）。
 #[derive(Debug, Clone, Deserialize)]
@@ -232,7 +221,7 @@ pub struct DialRequest {
     /// 它是一条路径、不是凭据本体；不进连接池的身份（换 agent 不该换连接）。
     #[serde(default)]
     pub agent_sock: Option<String>,
-    /// ack 之前每过一步当场写一行 `{"progress":…}`（[`step`]）。重连循环拿它判「这一拨还在动」（`resident-client` 的 `DIAL_WITHIN`）。
+    /// ack 之前每过一步当场写一行「过了一步」那一形阶段行（`{"stage":{"kind":"step",…}}`，[`step`]）。重连循环拿它判「这一拨还在动」（`resident-client` 的 `DIAL_WITHIN`）。
     #[serde(default)]
     pub progress: bool,
 }
@@ -251,105 +240,25 @@ impl DialRequest {
     }
 }
 
-/// 代理回给界面的那一行 JSON。
-#[derive(Debug, Clone, Serialize)]
-pub struct DialAck {
-    pub ok: bool,
-    /// `ok=false` 时的那一句（只带原因词，不带下层原话）。界面把它原样冒泡给重连那一层。
-    pub error: Option<String>,
-    /// `ok=false` 时的复制详情（时刻 · 机器 · 命令 · 下层原话，后端这一端写好；排法同失败应答那一格）。成功 ⇒ 不出这一格。additive。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub detail: Option<String>,
-    /// 实际观察到的 host key 指纹（展示用；失败时也尽量带上）。
-    pub fingerprint: Option<String>,
-    /// 竞速胜出的地址（`host:port`）—— 测试连接展示「你正连着哪条路」。
-    pub endpoint: Option<String>,
-    /// 同一条胜者，结构化（`{host, port}`）—— 界面记 last-good、下一趟当 `prefer` 交回来、起终端时拼 ssh 命令用它；
-    /// 界面因此不必再解析 `host:port`（地址解析只在 `machine.rs`）。失败 ⇒ `None`。additive。
-    pub winner: Option<Endpoint>,
-    /// 没拨成时的原因码（[`Why`]）：接这台的宿主按它定那一态与修法。拨成了 / 说不清 ⇒ `None`。additive。
-    pub reason: Option<Why>,
-    /// 目标那一台握手时给的 host key 是什么类型（「钥匙变了」那一句要说是哪一种）。没握到那一步 ⇒ 不出这一格。additive。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub key_type: Option<String>,
-    /// 「钥匙变了」时库里同类型那一把的指纹（没有 ⇒ 空串）：桌面与手机都照它说，不各自算。没因钥匙被拒 ⇒ 不出这一格。additive。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub expected_fingerprint: Option<String>,
-    /// 协议版本（[`ACK_V`]）。
-    pub v: u32,
-    /// 本代理认得的用法（[`USES`]）。
-    pub uses: &'static [&'static str],
-}
-
-impl DialAck {
-    /// 没拨成 / 没开成：那一句 ＋ 下层原话（进 `detail`，不进 `error`）。
-    pub fn failed(error: Said, fingerprint: Option<String>) -> Self {
-        Self::of_fail(DialFail::new(error, fingerprint))
-    }
-
-    /// 没开成的那一份写成线上那一行。
-    pub fn of_fail(f: DialFail) -> Self {
-        DialAck {
-            ok: false,
-            error: Some(f.error),
-            detail: f.detail,
-            fingerprint: f.fingerprint,
-            endpoint: None,
-            winner: None,
-            reason: f.reason,
-            key_type: f.key_type,
-            expected_fingerprint: f.expected_fingerprint,
-            v: ACK_V,
-            uses: USES,
-        }
+/// 没开成：那一句 ＋ 下层原话（进 `detail`，按宿主的 [`env::Facts`] 写成复制详情）＋ 看到的指纹。
+pub fn fail(error: Said, fingerprint: Option<String>) -> DialFail {
+    DialFail {
+        detail: Some(env::get().facts.detail("dial", None, error.raw.as_deref())),
+        error: error.said,
+        fingerprint,
+        reason: None,
+        key_type: None,
+        expected_fingerprint: None,
     }
 }
 
-/// 没开成（[`uses::open`] · [`uses::capture`]）：线上就是一行 `ok:false` 的 ack（[`DialAck::of_fail`]），进程内的调用方直接拿这一份。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DialFail {
-    /// 那一句（只带原因词，不带下层原话）。
-    pub error: String,
-    /// 复制详情（时刻 · 机器 · 命令 · 下层原话）。
-    pub detail: Option<String>,
-    /// 握手时看到的 host key 指纹（失败时也尽量带上）。
-    pub fingerprint: Option<String>,
-    /// 原因码（[`Why`]）；说不清 ⇒ `None`。
-    pub reason: Option<Why>,
-    /// 目标那一台握手时给的 host key 类型（没握到那一步 ⇒ `None`）。
-    pub key_type: Option<String>,
-    /// 「钥匙变了」时库里同类型那一把的指纹（没有 ⇒ 空串；没因钥匙被拒 ⇒ `None`）。
-    pub expected_fingerprint: Option<String>,
-}
-
-impl DialFail {
-    /// 那一句 ＋ 下层原话（进 `detail`）＋ 看到的指纹。
-    pub fn new(error: Said, fingerprint: Option<String>) -> Self {
-        DialFail {
-            detail: Some(env::get().facts.detail("dial", None, error.raw.as_deref())),
-            error: error.said,
-            fingerprint,
-            reason: None,
-            key_type: None,
-            expected_fingerprint: None,
-        }
-    }
-
-    /// 带上这一趟记下的原因码（[`StageSink::why`]）。
-    pub fn because(self, why: Option<Why>) -> Self {
-        DialFail {
-            reason: why,
-            ..self
-        }
-    }
-
-    /// 带上这一趟握手时看到的 host key 类型与（钥匙被拒时）库里那一把的指纹（[`StageSink`]）。
-    pub fn seen(self, stages: &StageSink) -> Self {
-        DialFail {
-            key_type: stages.key_type(),
-            expected_fingerprint: stages.expected(),
-            ..self
-        }
+/// 带上这一趟记下的原因码与握手时看到的 host key 类型 ·（钥匙被拒时）库里那一把的指纹（[`StageSink`]）。
+pub fn noted(f: DialFail, stages: &StageSink) -> DialFail {
+    DialFail {
+        reason: stages.why(),
+        key_type: stages.key_type(),
+        expected_fingerprint: stages.expected(),
+        ..f
     }
 }
 
@@ -367,34 +276,7 @@ pub fn why_of_stage(stage: &str) -> Why {
     }
 }
 
-/// 一行阶段（`stages=true` 时在 ack 之前出）。**形状与壳 `ssh_link::ConnectStage` 逐字段相同** ——
-/// 壳那一侧原样反序列化进它自己的类型，对拍判据住壳那侧；测试连接（`dial/probe.rs`）读回这个类型、写成那一句。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
-pub enum Stage {
-    Dialing {
-        endpoint: String,
-    },
-    HostKey {
-        endpoint: String,
-        fingerprint: String,
-    },
-    Failed {
-        endpoint: String,
-        reason: String,
-    },
-    Won {
-        endpoint: String,
-    },
-    Auth {
-        ok: bool,
-        /// 没登上时那一句（`Said::said`，已带原因词；原话随拨号应答那一格走，不在这里）。线上名沿用 `detail`。
-        detail: Option<String>,
-    },
-    Established,
-}
-
-/// 拨号的进展（`progress` 行的值）：每过一步报一次，经跳板时跳板那几台与目标那一台各走一遍。
+/// 拨号过了哪一步（[`Stage::Step`] 的 `step`）：每过一步报一次，经跳板时跳板那几台与目标那一台各走一遍。
 /// 只报「过了」：没过的那一步由 ack 说。读它的那一侧只拿它重新计时，不按名字分支。
 pub mod step {
     /// 那个口的 TCP 连上了。
@@ -411,14 +293,6 @@ pub mod step {
     pub const CHANNEL: &str = "channel";
 }
 
-/// `use: capture` 的结果行。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct Captured {
-    pub stdout: String,
-    pub stderr: String,
-    /// `None` = 远端没送 exit-status（连接被掐 / 服务端不守规矩）。**不许把 `None` 当成 0**。
-    pub exit_status: Option<u32>,
-}
 
 /// 阶段行的出口。`stages=false` 时一个字节都不写。
 ///

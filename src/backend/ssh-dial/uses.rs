@@ -11,7 +11,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use crate::connect::{self, Linked};
 use crate::{
     pool, write_line, write_stages_then_ack, CaptureOpts, Captured, DialAck, DialFail, DialRequest,
-    Endpoint, StageSink, Use, ACK_V, USES,
+    Endpoint, StageSink, Use,
 };
 
 /// `channel.exec(true, cmd)` 装进一个显式 `Send` 的盒子：russh 的 `Channel::exec` 是借 `&self` 的 `async fn`，放进要 `tokio::spawn`
@@ -509,19 +509,7 @@ impl Opened {
     /// 线上那一行成功的 ack（只给真过进程的那一处写：[`run_with`]）。
     pub fn ack(&self) -> DialAck {
         let l = &self.lease.linked;
-        DialAck {
-            ok: true,
-            error: None,
-            detail: None,
-            fingerprint: l.fingerprint.clone(),
-            endpoint: Some(l.endpoint.clone()),
-            winner: Some(l.winner.clone()),
-            reason: None,
-            key_type: None,
-            expected_fingerprint: None,
-            v: ACK_V,
-            uses: USES,
-        }
+        DialAck::opened(l.fingerprint.clone(), l.endpoint.clone(), l.winner.clone())
     }
 
     /// 按用法对拷字节，直到一头走了：stream / shell 原样字节 · capture 一行 [`Captured`] · forward 每接进一条一行 `{"accepted":n}` ·
@@ -652,7 +640,7 @@ pub async fn open(
 /// **一次性收全**（`use: capture`）：开成之后收全 stdout / stderr / 退出码（[`Captured`]）。别的用法 ⇒ 请求格式不对。
 pub async fn capture(req: &DialRequest) -> Result<Captured, DialFail> {
     if req.use_ != Use::Capture {
-        return Err(DialFail::new(
+        return Err(crate::fail(
             crate::malformed("capture() needs use=capture").into(),
             None,
         ));
@@ -680,11 +668,11 @@ async fn opening(req: &DialRequest, stages: &StageSink) -> Result<Opened, DialFa
         Ok(l) => l,
         Err((e, fp)) => {
             tracing::error!("dial: 拨号失败: {e}");
-            return Err(DialFail::new(e, fp).because(stages.why()).seen(stages));
+            return Err(crate::noted(crate::fail(e, fp), stages));
         }
     };
     let fp = lease.linked.fingerprint.clone();
-    let fail = |e: Said| DialFail::new(e, fp.clone());
+    let fail = |e: Said| crate::fail(e, fp.clone());
     let held = match req.use_ {
         Use::Stream => {
             // `_permit`：这条长流占着这条连接的一格通道，直到用完（`pool::Budget`）。
@@ -781,7 +769,7 @@ async fn opening(req: &DialRequest, stages: &StageSink) -> Result<Opened, DialFa
 }
 
 /// 一份拨号请求的完整一趟，写成**一条链路上的字节**（真过进程的那一处：`dial/link.rs`）：
-/// [`open`] 的进展写成 `{"progress":…}` 行（请求带 `progress` 才写）→ 阶段行 → 一行 ack → [`Opened::pump`]。
+/// [`open`] 报的每一步当场写成一行「过了一步」（[`crate::Stage::Step`]，请求带 `progress` 才写）→ 攒下的阶段行 → 一行 ack → [`Opened::pump`]。
 /// 返回类型显式写出 `+ Send`：理由同 [`exec`]（russh 借 `&self` 的 `async fn` 在高阶生命周期上推不出 Send）。
 pub fn run<'a, R, W>(
     req: &'a DialRequest,
@@ -834,8 +822,13 @@ where
     }
 }
 
-/// ack 之前的一段（拿连接 · 开通道）：等 `fut` 的同时把报来的进展（[`StageSink::step`]）当场写成 `{"progress":…}` 行；
-/// `fut` 好了之后把已经报了、还没写的那几步补完再回（之后就是 ack）。不要进展行（`steps` 为 `None`）⇒ 就是等它。
+/// 「过了一步」那一行（线上只有阶段行一种：`{"stage":{"kind":"step","step":…}}`）。
+fn step_line(step: &str) -> serde_json::Value {
+    serde_json::json!({ "stage": crate::Stage::Step { step: step.to_string() } })
+}
+
+/// ack 之前的一段（拿连接 · 开通道）：等 `fut` 的同时把报来的那一步（[`StageSink::step`]）当场写成一行 `{"stage":{"kind":"step",…}}`；
+/// `fut` 好了之后把已经报了、还没写的那几步补完再回（之后就是 ack）。不报那一步（`steps` 为 `None`）⇒ 就是等它。
 /// 写不出去（对面走了）⇒ 不再写，照等 `fut`（收场由写 ack 那一下发现）。
 async fn moving<W, F>(
     out: &mut W,
@@ -855,7 +848,7 @@ where
             biased;
             r = &mut fut => {
                 while let Ok(st) = rx.try_recv() {
-                    if write_line(out, &serde_json::json!({ "progress": st })).await.is_err() {
+                    if write_line(out, &step_line(st)).await.is_err() {
                         break;
                     }
                 }
@@ -863,7 +856,7 @@ where
             }
             got = rx.recv() => {
                 let wrote = match got {
-                    Some(st) => write_line(out, &serde_json::json!({ "progress": st })).await.is_ok(),
+                    Some(st) => write_line(out, &step_line(st)).await.is_ok(),
                     None => false,
                 };
                 if !wrote {
