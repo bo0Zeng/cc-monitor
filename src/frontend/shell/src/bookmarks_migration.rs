@@ -25,7 +25,9 @@ fn lock_path(file: &Path) -> PathBuf {
 /// 读整份：不在 ⇒ `Ok(None)`；读不懂 ⇒ `Err`。
 fn read(file: &Path) -> Result<Option<Book>, String> {
     match std::fs::read_to_string(file) {
-        Ok(raw) => serde_json::from_str(&raw).map(Some).map_err(|e| e.to_string()),
+        Ok(raw) => serde_json::from_str(&raw)
+            .map(Some)
+            .map_err(|e| e.to_string()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e.to_string()),
     }

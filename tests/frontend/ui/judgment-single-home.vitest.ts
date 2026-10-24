@@ -793,6 +793,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   },
   "cmd-wire": {
     LOCAL: "J36",
+    // 书签的目录归一（`bookmarks.rs`）：后端存之前归一、文件窗口拿它比；界面不碰书签，TS 侧没有孪生。
+    normalize_dir: NONE,
     // 拨号的线上形状（`dial.rs`）：ack 的协议版本与用法表 · 开成 / 没开成那一行 ack 怎么组。拨号核心写、壳与手机核心读；界面不碰拨号的行，TS 侧没有孪生。
     ACK_V: NONE,
     USES: NONE,

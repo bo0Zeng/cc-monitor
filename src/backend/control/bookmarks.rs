@@ -20,7 +20,7 @@ pub(crate) const MAX_BYTES: u64 = 256 * 1024;
 const DOC: Doc<Bookmarks> = Doc::state(relay_route_core::BOOKMARKS_REL, MAX_BYTES);
 
 fn no_home(_: Said) -> Fail {
-    Fail::new("io_failed", copy_text("beBookmarks.noHome", &[]))
+    Fail::new("io_failed", copy_text("beBookmarks.store.noHome", &[]))
 }
 
 fn read_in(own: &Own) -> Result<Bookmarks, Fail> {
@@ -62,7 +62,7 @@ pub(crate) fn answer_edit(own: &Own, req: &BookmarksEditReq) -> Result<Bookmarks
             "io_failed",
             Said::with_raw(
                 copy_text(
-                    "beBookmarks.mkdirFailed",
+                    "beBookmarks.store.mkdirFailed",
                     &[("dir", &dir.as_path().display().to_string())],
                 ),
                 e,

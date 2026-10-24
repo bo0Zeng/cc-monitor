@@ -31,10 +31,12 @@ impl crate::wire::typed::Handle for BookmarksReadCmd {
     fn run(
         _req: BookmarksReadReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<Bookmarks, BookmarksReadErr>> + Send + 'static {
+    ) -> impl std::future::Future<Output = Result<Bookmarks, BookmarksReadErr>> + Send + 'static
+    {
         let (_cx, needs) = cx.split();
         async move {
-            bookmarks::answer_read(&needs).map_err(|f| typed::of_fail(f, BookmarksReadErr::IoFailed))
+            bookmarks::answer_read(&needs)
+                .map_err(|f| typed::of_fail(f, BookmarksReadErr::IoFailed))
         }
     }
 }
@@ -64,7 +66,8 @@ impl crate::wire::typed::Handle for BookmarksEditCmd {
     fn run(
         req: BookmarksEditReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<Bookmarks, BookmarksEditErr>> + Send + 'static {
+    ) -> impl std::future::Future<Output = Result<Bookmarks, BookmarksEditErr>> + Send + 'static
+    {
         let (_cx, needs) = cx.split();
         async move {
             bookmarks::answer_edit(&needs, &req)

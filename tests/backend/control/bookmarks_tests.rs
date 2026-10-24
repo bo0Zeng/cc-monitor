@@ -33,11 +33,18 @@ fn edit(o: &crate::platform::fs::Own, op: BookmarkOp, dirs: &[&str]) -> Vec<Stri
 fn absent_reads_as_empty_and_writes_land_where_the_contract_says() {
     let h = home("absent");
     let o = own(&h);
-    assert!(answer_read(&o).unwrap().dirs.is_empty(), "文件不在 ⇒ 空的一份");
+    assert!(
+        answer_read(&o).unwrap().dirs.is_empty(),
+        "文件不在 ⇒ 空的一份"
+    );
     edit(&o, BookmarkOp::Add, &["/srv/"]);
     let raw = std::fs::read_to_string(h.join(relay_route_core::BOOKMARKS_REL)).unwrap();
     let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
-    assert_eq!(v, serde_json::json!({ "dirs": ["/srv"] }), "存的是归一之后的形");
+    assert_eq!(
+        v,
+        serde_json::json!({ "dirs": ["/srv"] }),
+        "存的是归一之后的形"
+    );
     assert_eq!(answer_read(&o).unwrap().dirs, vec!["/srv".to_string()]);
 }
 
@@ -53,7 +60,11 @@ fn toggle_remove_and_add_follow_the_old_panel() {
         ["/home/pi", "/var/log"]
     );
     assert_eq!(edit(&o, BookmarkOp::Remove, &["/home/pi/"]), ["/var/log"]);
-    assert_eq!(edit(&o, BookmarkOp::Remove, &["/nope"]), ["/var/log"], "删一条不在的 ⇒ 不动");
+    assert_eq!(
+        edit(&o, BookmarkOp::Remove, &["/nope"]),
+        ["/var/log"],
+        "删一条不在的 ⇒ 不动"
+    );
     // 加：在就不动（迁移重来一次不翻转）；空路径不加。
     assert_eq!(
         edit(&o, BookmarkOp::Add, &["/var/log/", "", "/srv", "/srv"]),

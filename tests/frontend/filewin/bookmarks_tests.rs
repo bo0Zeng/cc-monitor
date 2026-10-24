@@ -53,10 +53,11 @@ impl comms_inward::chan::router::Backends for Books {
     ) -> futures::future::BoxFuture<'static, Result<Body, CallError>> {
         let args: serde_json::Value =
             serde_json::from_slice(&payload.0).unwrap_or(serde_json::Value::Null);
-        self.log
-            .lock()
-            .unwrap()
-            .push((origin.as_wire_str().to_string(), op.0.clone(), args.clone()));
+        self.log.lock().unwrap().push((
+            origin.as_wire_str().to_string(),
+            op.0.clone(),
+            args.clone(),
+        ));
         if let Some(said) = self.refuse.lock().unwrap().clone() {
             let body = serde_json::json!({ "code": "io_failed", "message": said });
             return Box::pin(async move {
@@ -168,12 +169,26 @@ async fn local_and_remote_ask_their_backend_in_the_same_shape() {
 #[test]
 fn a_late_reply_of_an_earlier_ask_is_not_taken() {
     let s = Shelf::open(None, None, &Origin("x".into()));
-    s.0.land(2, Ok(Bookmarks { dirs: vec!["/new".into()] }));
-    s.0.land(1, Ok(Bookmarks { dirs: vec!["/old".into()] }));
+    s.0.land(
+        2,
+        Ok(Bookmarks {
+            dirs: vec!["/new".into()],
+        }),
+    );
+    s.0.land(
+        1,
+        Ok(Bookmarks {
+            dirs: vec!["/old".into()],
+        }),
+    );
     assert_eq!(s.list(), vec!["/new".to_string()]);
     s.0.land(3, Err("那一句".into()));
     assert_eq!(s.notice().as_deref(), Some("那一句"));
-    assert_eq!(s.list(), vec!["/new".to_string()], "问不成 ⇒ 手上那一份不动");
+    assert_eq!(
+        s.list(),
+        vec!["/new".to_string()],
+        "问不成 ⇒ 手上那一份不动"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -239,7 +254,10 @@ async fn the_bar_is_really_clickable_and_the_backend_follows() {
     assert_eq!(be.dirs(), vec![a.clone()]);
     let after = crate::chrome::testing::ws_colors_of(&ctx, &mut ws, star);
     assert_eq!(after.len(), 2, "地址栏一颗 ＋ 左栏那条书签一颗：{after:?}");
-    assert!(after.contains(&p.accent), "加完之后地址栏那颗星该涂强调色：{after:?}");
+    assert!(
+        after.contains(&p.accent),
+        "加完之后地址栏那颗星该涂强调色：{after:?}"
+    );
 
     // ② 换到 b，点左栏那条书签（写的是目录的尾段）⇒ 真的跳回 a。
     ws.pane_on_mut(0).navigate_to(b.clone());
@@ -285,10 +303,24 @@ async fn another_writers_bookmark_shows_up_after_a_navigation() {
     until("开窗那一问", || be.asked().len() == 1).await;
     be.dirs.lock().unwrap().push("/elsewhere".into());
     let shelf = w.shelf.clone().unwrap();
-    tokio::time::sleep(std::time::Duration::from_millis(30)).await;
-    assert!(shelf.list().is_empty(), "还没换目录就看见了 —— 那说明在定时去问");
+    assert!(
+        shelf.list().is_empty(),
+        "还没换目录就看见了 —— 那说明在定时去问"
+    );
     w.navigate_to(a);
-    until("换目录那一问", || shelf.list() == vec!["/elsewhere".to_string()]).await;
+    until("换目录才问第二次", || be.asked().len() == 2).await;
+    assert_eq!(
+        be.asked()
+            .iter()
+            .filter(|(_, c, _)| c == "bookmarks-read")
+            .count(),
+        2,
+        "开窗一次 ＋ 换目录一次，别的时候不问"
+    );
+    until("换目录那一问", || {
+        shelf.list() == vec!["/elsewhere".to_string()]
+    })
+    .await;
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -303,7 +335,10 @@ async fn a_refusal_is_said_on_the_bar() {
     let shelf = w.shelf.clone().unwrap();
     until("那一问回来", || shelf.notice().is_some()).await;
     let said = shelf.notice().unwrap();
-    assert!(said.contains("书签读不出来"), "那一句没带那台的原话：{said}");
+    assert!(
+        said.contains("书签读不出来"),
+        "那一句没带那台的原话：{said}"
+    );
     let mut ws = Workspace::new(w);
     let ctx = egui::Context::default();
     let painted = frame(&ctx, &mut ws, Vec::new());

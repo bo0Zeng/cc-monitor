@@ -44,5 +44,9 @@ fn an_unreadable_old_file_is_neither_migrated_nor_touched() {
     std::fs::write(&f, b"{ not json").unwrap();
     assert_eq!(pending_at(&f, "devbox"), None);
     assert!(settled_at(&f, "devbox").is_err());
-    assert_eq!(std::fs::read(&f).unwrap(), b"{ not json", "读不懂 ⇒ 一个字节不动");
+    assert_eq!(
+        std::fs::read(&f).unwrap(),
+        b"{ not json",
+        "读不懂 ⇒ 一个字节不动"
+    );
 }

@@ -14870,13 +14870,13 @@
       "zh": "不在 planned-build 工作区里",
       "args": []
     },
-    "beBookmarks.noHome": {
+    "beBookmarks.store.noHome": {
       "kind": "error",
       "role": "报错",
       "zh": "书签未读写 · 无主目录",
       "args": []
     },
-    "beBookmarks.mkdirFailed": {
+    "beBookmarks.store.mkdirFailed": {
       "kind": "error",
       "role": "报错",
       "zh": "创建 {dir} 失败",
@@ -26402,7 +26402,7 @@
     "rsDataPaths.backend.bookmarks": {
       "kind": "body",
       "role": "说明",
-      "zh": "书签 · 文件窗口与手机收藏的这台上的目录",
+      "zh": "书签 · 文件窗口与手机收藏的目录",
       "args": []
     },
     "rsDataPaths.backend.lastSeen": {
