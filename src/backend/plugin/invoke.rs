@@ -149,13 +149,20 @@ fn not_run(bin: &Path, e: ChildFail) -> NotRun {
 
 /// 起它、**同步**等它退出（阻塞档的调用方用：它们本来就跑在 `spawn_blocking` 的线程上）。
 /// `deadline_secs` 是给它的期限；过了 ⇒ 整组被杀、交成 [`TIMED_OUT_CODE`]（`waited_secs` 是原语说的实际等了多久）。
+/// `dir` 是它的当前目录（有的程序按当前目录认自己在哪，如 pb 往上找工作区）；不给 ⇒ 照宿主的。
 pub(crate) fn run(
     bin: &Path,
     args: &[&str],
     deadline_secs: u64,
     env: &[(&str, &str)],
+    dir: Option<&Path>,
 ) -> Result<Done, NotRun> {
-    match child_for(bin, args, env).run(Deadline::secs(deadline_secs)) {
+    let child = child_for(bin, args, env);
+    let child = match dir {
+        Some(d) => child.current_dir(d),
+        None => child,
+    };
+    match child.run(Deadline::secs(deadline_secs)) {
         Ok(out) => Ok(Done {
             code: out.status.code(),
             stdout: out.stdout,

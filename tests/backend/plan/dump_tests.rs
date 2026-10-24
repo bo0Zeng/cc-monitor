@@ -135,3 +135,63 @@ fn a_real_cell_run_names_slice_cell_and_workspace() {
     );
     assert_eq!(log["pb_id"], false);
 }
+
+/// 起 pb 只有一处（`plan::pb`）：找 python · 说「没装 python」那一句 · 定期限 · 认超时，整个 `plan/` 里各至多一处，
+/// dump · cell · command 各自只判结局。数的是 `plan/` 底下全部源文件，新加一份照样算进来。
+#[test]
+fn starting_pb_lives_in_one_function() {
+    let dir = guard_core::addr::backend_src_root().join("plan");
+    let mut texts = String::new();
+    for e in std::fs::read_dir(&dir).unwrap() {
+        let p = e.unwrap().path();
+        if p.extension().is_some_and(|x| x == "rs") {
+            texts.push_str(&std::fs::read_to_string(&p).unwrap());
+        }
+    }
+    assert!(
+        texts.contains("pub(crate) fn pb("),
+        "plan/ 里没有起 pb 的那个函数"
+    );
+    for needle in [
+        "noPythonHint",
+        "is_timed_out",
+        "Deadline::secs",
+        "discover::find",
+        "child_for",
+    ] {
+        let n = texts.matches(needle).count();
+        assert!(n <= 1, "`{needle}` 在 plan/ 里出现 {n} 处");
+    }
+}
+
+/// 过了期限被收掉 ⇒ 读计划超时，等了多久照原语说的；起不来 ⇒ 失败、带原话。
+#[test]
+fn a_timed_out_or_unstarted_pb_is_a_failed_read() {
+    let late = crate::plugin::invoke::Done {
+        code: Some(crate::plugin::invoke::TIMED_OUT_CODE),
+        stdout: Vec::new(),
+        stderr: Vec::new(),
+        waited_secs: Some(7),
+    };
+    match ran_of(Ok(late)) {
+        Ran::Failed { said, raw: None } => assert_eq!(
+            said,
+            copy_text(
+                "bePlan.dump.timedOut",
+                &[("dur", &copy_core::format_duration(7000))]
+            )
+        ),
+        other => panic!("{other:?}"),
+    }
+    let gone = copy_core::said::Said {
+        said: "x".into(),
+        raw: Some("no such file".into()),
+    };
+    match ran_of(Err(gone)) {
+        Ran::Failed { said, raw } => {
+            assert_eq!(said, "x");
+            assert_eq!(raw.as_deref(), Some("no such file"));
+        }
+        other => panic!("{other:?}"),
+    }
+}

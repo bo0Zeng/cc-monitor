@@ -7,7 +7,7 @@
 //!
 //! | 做什么 | 住哪 |
 //! |---|---|
-//! | 找 pb、跑 `pb dump`、认退出码与形状版本 | [`locate`] · [`dump`] |
+//! | 找 pb · 起 pb（本族唯一一处）· 认 `pb dump` 的退出码与形状版本 · 代敲人的命令 | [`locate`] · [`pb`] · [`dump`] · [`command`] |
 //! | 摘掉 `agent_view`（点到那一格再给）· 把边与文件倒过来索引 · 把接手 / 签收人的 id 对到会话 | [`product`] |
 //! | 每个工作区留上一次读好的那一份（某片读不成 ⇒ 那一片给旧的 ＋ 原因 ＋ 时刻）· 输出摘要 | [`book`] |
 //! | 盯计划仓 · 工作区 `.env` · 各片仓库里声明过的文件，输出摘要或要你看的数变了才推一帧 `changed {plan}` | [`watch`] |
@@ -32,6 +32,40 @@ pub(crate) mod product;
 pub(crate) mod review;
 pub(crate) mod watch;
 pub(crate) mod wire;
+
+/// 起 pb 的一条命令最多等多久。量过：252 格的研究盘 `dump` 1.1 秒，`view` 同量级；留一个数量级给慢盘与远端。
+pub(crate) const PB_DEADLINE_SECS: u64 = 20;
+
+/// 起一次 pb，本族唯一一处：找 python（裸名，在 `PATH` 上按这台的规矩找）· 当前目录设在 `ws`（pb 自己从那儿往上找工作区）·
+/// 环境只给白名单（不带 `PB_ID` ⇒ pb 认作人）· 限时 [`PB_DEADLINE_SECS`]。
+/// 跑完了（含过了期限被收掉：`waited_secs` 有数）⇒ `Done`，结局由调用方各自判；找不到 python · 起不来 ⇒ 一句话 ＋ 原话。
+pub(crate) fn pb(
+    entry: &std::path::Path,
+    ws: &std::path::Path,
+    argv: &[&str],
+) -> Result<crate::plugin::invoke::Done, copy_core::said::Said> {
+    use copy_core::copy_text;
+    let py = crate::plugin::discover::find(
+        "python3",
+        &[],
+        true,
+        &copy_text("bePlan.dump.noPythonHint", &[]),
+    )?;
+    let entry_s = entry.to_string_lossy().to_string();
+    let all: Vec<&str> = std::iter::once(entry_s.as_str())
+        .chain(argv.iter().copied())
+        .collect();
+    crate::plugin::invoke::run(&py, &all, PB_DEADLINE_SECS, &[], Some(ws)).map_err(|e| {
+        let raw = match e {
+            crate::plugin::invoke::NotRun::ArgListTooLong => None,
+            crate::plugin::invoke::NotRun::Failed(s) => s.raw.or(Some(s.said)),
+        };
+        copy_core::said::Said {
+            said: copy_text("bePlan.dump.notRun", &[]),
+            raw,
+        }
+    })
+}
 
 /// 一个 id（块的接手 · 签收的「由」）对到的会话：主会话 ＝ 它自己那个标签页；子 agent ＝ 父会话那个标签页。
 #[derive(Debug, Clone, PartialEq, Eq)]

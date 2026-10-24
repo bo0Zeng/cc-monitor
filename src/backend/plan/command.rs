@@ -1,13 +1,14 @@
 //! 以人的身份代敲 pb 的命令（`continue` · `pause` · `take` · `view` · `record`；`take` 不在此刻那一片时先 `repo <片名>`）：
-//! 当前目录设在工作区根、环境只给白名单（不带 `PB_ID` ⇒ pb 认作人）、限时；认退出码，拆 `view` 那句话里的页面路径。
+//! 起法见 [`super::pb`]（当前目录设在工作区根）；认退出码，拆 `view` 那句话里的页面路径。
 //! 这一侧自己带着 agent 的身份（在 agent 的 shell 里起的）⇒ 用户命令一律不代敲：pb 的用户命令只许人发起；
 //! `record` 记下的是「人」说的（pb 记成「人」），同样只在不带 agent 身份时代敲。
 //!
 //! 这几条写盘的是 pb 自己（`continue` / `pause` 改 `auto`，`repo` / `take` 改工作区配置，`view` 往系统临时目录写一页，
 //! `record` 往那一片记原话的那份文件追加一条、提交计划仓）；本族照旧一个字节都不写。拆 pb 原话只在 [`classify`] 这一处。
 
-use crate::platform::child::Deadline;
+use crate::plugin::invoke::Done;
 use copy_core::copy_text;
+use copy_core::said::Said;
 use serde_json::{json, Value};
 use std::path::Path;
 
@@ -44,9 +45,6 @@ pub(crate) fn record_args(slice: &str, summary: &str, quotes: &[String]) -> Opti
 /// pb 认 agent 的那个环境变量（钩子递进 agent 的 shell）。
 const AGENT_ENV: &str = "PB_ID";
 
-/// 一条最多等多久（`view` 要把整张图画成一页，量过与 `dump` 同量级）。
-pub(crate) const DEADLINE_SECS: u64 = 20;
-
 /// pb 的退出码：拒 · 读不成 · 用法错。
 const RC_REFUSED: i32 = 2;
 const RC_UNREADABLE: i32 = 3;
@@ -78,36 +76,28 @@ pub(crate) fn run_as(
             None,
         ));
     }
-    let py = crate::plugin::discover::find(
-        &super::dump::interpreter(),
-        &[],
-        true,
-        &copy_text("bePlan.dump.noPythonHint", &[]),
-    )
-    .map_err(|said| ("failed", said, None))?;
-    let entry_s = entry.to_string_lossy().to_string();
-    let argv: Vec<&str> = std::iter::once(entry_s.as_str())
-        .chain(args.iter().copied())
-        .collect();
-    let child = crate::plugin::invoke::child_for(&py, &argv, &[]).current_dir(ws);
-    match child.run(Deadline::secs(DEADLINE_SECS)) {
-        Ok(out) => classify(verb, out.status.code(), &out.stdout, &out.stderr),
-        Err(e) if e.is_timed_out() => Err((
+    answer(verb, super::pb(entry, ws, args))
+}
+
+/// 起了一次 pb ⇒ 回包或拒（纯函数）：起不来 ⇒ `failed`；过了期限 ⇒ 「pb <动词> 超时」（等了多久照原语说的）；跑完了 ⇒ [`classify`]。
+pub(crate) fn answer(verb: &str, r: Result<Done, Said>) -> Result<Value, Refused> {
+    match r {
+        Err(Said { said, raw }) => Err(("failed", said, raw)),
+        Ok(Done {
+            waited_secs: Some(secs),
+            ..
+        }) => Err((
             "failed",
             copy_text(
                 "bePlan.command.timedOut",
                 &[
                     ("verb", verb),
-                    ("dur", &copy_core::format_duration(DEADLINE_SECS * 1000)),
+                    ("dur", &copy_core::format_duration(secs * 1000)),
                 ],
             ),
             None,
         )),
-        Err(e) => Err((
-            "failed",
-            copy_text("bePlan.dump.notRun", &[]),
-            Some(e.to_string()),
-        )),
+        Ok(d) => classify(verb, d.code, &d.stdout, &d.stderr),
     }
 }
 

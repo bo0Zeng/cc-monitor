@@ -269,3 +269,33 @@ fn a_real_record_run_names_the_slice_and_carries_no_pb_id() {
     assert_eq!(ran["pb_id"], false);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// 过了期限被收掉 ⇒ 「pb <动词> 超时」，等了多久照原语说的；起不来 ⇒ `failed`、带原话。
+#[test]
+fn a_timed_out_or_unstarted_pb_is_failed_with_the_verb() {
+    let late = crate::plugin::invoke::Done {
+        code: Some(crate::plugin::invoke::TIMED_OUT_CODE),
+        stdout: Vec::new(),
+        stderr: Vec::new(),
+        waited_secs: Some(7),
+    };
+    let (code, said, raw) = answer("view", Ok(late)).unwrap_err();
+    assert_eq!(code, "failed");
+    assert_eq!(
+        said,
+        copy_text(
+            "bePlan.command.timedOut",
+            &[("verb", "view"), ("dur", &copy_core::format_duration(7000))]
+        )
+    );
+    assert_eq!(raw, None);
+    let gone = copy_core::said::Said {
+        said: "x".into(),
+        raw: Some("no such file".into()),
+    };
+    let (code, said, raw) = answer("view", Err(gone)).unwrap_err();
+    assert_eq!(
+        (code, said.as_str(), raw.as_deref()),
+        ("failed", "x", Some("no such file"))
+    );
+}

@@ -857,7 +857,7 @@ fn senders_and_broadcast_recipients_are_judged_before_they_reach_cc_send() {
 fn a_timeout_says_how_long_it_actually_waited() {
     use crate::platform::child::{Budget, Deadline};
     let _total = Budget::capped(Deadline::secs(1), None);
-    let out = crate::plugin::invoke::run(std::path::Path::new("sleep"), &["30"], 10, &[])
+    let out = crate::plugin::invoke::run(std::path::Path::new("sleep"), &["30"], 10, &[], None)
         .unwrap_or_else(|_| panic!("起不来 sleep"));
     assert!(out.timed_out());
     assert_eq!(out.waited_secs, Some(1), "原语交回的不是截短后的那个时长");
