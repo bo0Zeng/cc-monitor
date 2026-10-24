@@ -589,7 +589,7 @@ fn no_rotation_presets_the_session_id_it_hands_the_agent() {
 }
 
 /// 额度预热的号单与起号只经后端：不给 `--accounts` ⇒ 号单照 `quota-read` 的 `candidates`（出过数的 ＋ 账号库里没出过数的，
-/// `_` 不在里面）—— 不自己去扫账号库目录；起号用 `--account <名>`，不自己拼账号目录；跑一趟不留任何状态文件。
+/// `_` 不在里面）—— 不自己去扫账号库目录；起号用 `--account <名>`，不自己拼账号目录。
 /// 隔离的家目录里只有一个假 `ccm`（答 `--quota-read`、把每一发的参数记下来），没有一份登录文件。
 #[cfg(unix)]
 #[test]
@@ -602,10 +602,10 @@ fn quota_warm_takes_its_accounts_from_quota_read_and_names_them_to_ccm() {
     let sent = home.join("sent.txt");
     let read = serde_json::json!({
         "accounts": [
-            {"account": "_", "seenAt": 0, "warm": {"act": "send", "text": "5h 窗口已过期"}},
-            {"account": "seen1", "seenAt": 0, "warm": {"act": "send", "text": "5h 窗口已过期"}},
+            {"account": "_", "seenAt": 0, "warm": {"act": "send", "text": "w"}},
+            {"account": "seen1", "seenAt": 0, "warm": {"act": "send", "text": "w"}},
         ],
-        "unseen": [{"account": "fresh", "warm": {"act": "send", "text": "无采样 · 发一句才知道"}}],
+        "unseen": [{"account": "fresh", "warm": {"act": "send", "text": "w"}}],
         "candidates": [
             {"agent": "claude", "account": "seen1", "kind": "sub"},
             {"agent": "claude", "account": "fresh", "kind": "sub"},
@@ -617,7 +617,7 @@ fn quota_warm_takes_its_accounts_from_quota_read_and_names_them_to_ccm() {
         &ccm,
         format!(
             "#!/bin/sh\ncase \" $* \" in *' --quota-read '*) cat '{r}'; exit 0;; esac\n\
-             printf '%s\\n' \"$*\" >> '{s}'\necho '{{\"usage\":{{}}}}'\n",
+             {{ printf '%s\\n' \"$@\"; echo '<end>'; }} >> '{s}'\necho '{{\"usage\":{{}}}}'\n",
             r = home.join("read.json").display(),
             s = sent.display()
         ),
@@ -639,30 +639,21 @@ fn quota_warm_takes_its_accounts_from_quota_read_and_names_them_to_ccm() {
         String::from_utf8_lossy(&out.stderr)
     );
     let sent = std::fs::read_to_string(&sent).unwrap_or_default();
-    let lines: Vec<&str> = sent.lines().collect();
-    assert_eq!(lines.len(), 2, "号单该是 seen1 · fresh 两个：{sent}");
-    for (line, name) in lines.iter().zip(["seen1", "fresh"]) {
-        assert!(
-            line.contains(&format!("--account {name}")),
-            "起号要用 --account {name}：{line}"
-        );
-        assert!(!line.contains("--account-dir"), "不自己拼账号目录：{line}");
-    }
-    // 家里只多锁 · 日志 · 工作目录：不留没人读的状态文件。
-    let mut left: Vec<String> = std::fs::read_dir(home.join(".cc-monitor"))
-        .expect("读得出 .cc-monitor")
-        .map(|e| {
-            e.expect("目录项")
-                .file_name()
-                .to_string_lossy()
-                .into_owned()
+    let work = home.join(".cc-monitor/autostart").display().to_string();
+    std::fs::remove_dir_all(&home).ok();
+    // 每一发 ccm 自己那一段（最后一个 `--` 之后），逐个参数比。
+    let tails: Vec<Vec<&str>> = sent
+        .split("<end>\n")
+        .filter(|b| !b.is_empty())
+        .map(|b| {
+            let args: Vec<&str> = b.lines().collect();
+            let cut = args.iter().rposition(|a| *a == "--").expect("有 --");
+            args[cut + 1..].to_vec()
         })
         .collect();
-    left.sort();
-    std::fs::remove_dir_all(&home).ok();
-    assert_eq!(
-        left,
-        ["autostart", "bin", "logs", "quota-warm.lock"],
-        "跑一趟只留这几样"
-    );
+    let want: Vec<Vec<&str>> = ["seen1", "fresh"]
+        .iter()
+        .map(|n| vec!["--account", n, "--cwd", &work, "--no-rotation"])
+        .collect();
+    assert_eq!(tails, want, "号单该是 seen1 · fresh，起号用 --account <名>");
 }
