@@ -1213,10 +1213,13 @@ pub async fn watch_coded(
                     Ok(t) => on(t.got, t.total),
                     Err(e) => {
                         sub.stop();
-                        return Err(plain(copy_text(
-                            "rsFilewinSource.watch.localBreak",
-                            &[("why", &e.to_string())],
-                        )));
+                        // 解码器那一句不进句子，进详情。
+                        return Err(failed_here(
+                            copy_text("rsFilewinSource.ask.unreadable", &[]),
+                            origin,
+                            kind,
+                            Some(&e.to_string()),
+                        ));
                     }
                 }
                 sub.want(1);
