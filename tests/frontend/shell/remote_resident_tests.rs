@@ -17,89 +17,57 @@ fn exec(stdout: &str, stderr: &str, code: Option<u32>) -> crate::stream_source::
     }
 }
 
-/// 一次性回话（`--resident-stop`，本机那一趟同读）：那台脱离不了（`unsupported`，非 unix）⇒ **明说**「远端只支持 Unix」、
-/// 带上那台原话，并归成 `Unsupported`；别的失败 ⇒ 那台原话原样；老后端掉进流模式发 hello ⇒ 「太旧」。都是失败，没有「回落」那一格。
-/// （`--resident-ensure` 那一趟由重连循环读，`resident-client` 的 `feed_tests.rs::the_ensure_answer_is_read_the_same_on_both_ends`。）
+/// 停那一趟（`--resident-stop`，本机那一趟同读）的失败与重连循环读 `--resident-ensure` 同一份读法
+/// （`resident_client::feed::read_one_shot`，逐格见 `feed_tests.rs::the_ensure_answer_is_read_the_same_on_both_ends`）：
+/// 那台脱离不了（`unsupported`，非 unix）⇒ **明说**「远端只支持 Unix」、那台原话 ＋ 详情进复制详情；127 ⇒ 没装；
+/// 别的失败 ⇒ 那台那一句、它写的详情原样；老后端掉进流模式发 hello ⇒「太旧」。都是失败，没有「回落」那一格。
 /// 要求：「非 unix 远端（Windows 远端，不承诺）断开常驻时**明说**不支持，不静默」。
 #[test]
-fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back() {
-    let ok = parse_answer(&exec(r#"{"pid":7}"#, "", Some(0)), "devbox").unwrap();
-    assert_eq!(ok, serde_json::json!({"pid": 7}));
-    // 那台的失败信封只有一种（`{code, message, detail, data?}`）：`detail` 是那台写好的一整份复制详情，原样转交（补「本机」一行）。
-    use copy_core::detail::{Detail, Label};
-    let wrote = |code: &str, raw: &str| {
-        Detail::new()
-            .item(Label::Command, "resident-ensure")
-            .item(Label::Code, code)
-            .item(Label::Raw, raw)
-            .render()
-    };
+fn the_stop_failures_are_read_the_same_as_the_ensure_answer() {
     let envelope = |code: &str, message: &str, detail: &str| {
         serde_json::json!({"code": code, "message": message, "detail": detail}).to_string()
     };
-    // 脱离不了（非 unix）⇒ 句子由这边说「远端只支持 Unix」；那台的那一句（它就是系统原话）与那台的详情都进复制详情。
-    match parse_answer(
+    let s = read_stop(
         &exec(
             "",
-            &envelope("unsupported", "不是 unix", &wrote("unsupported", "")),
+            &envelope("unsupported", "不是 unix", "那台写的详情"),
             Some(2),
         ),
         "devbox",
-    ) {
-        Err(AttachErr::Unsupported(s)) => {
-            assert_eq!(
-                s.said,
-                copy_text("rsRemoteResident.ensure.unsupported", &[])
-            );
-            assert!(s.detail.contains("不是 unix"), "{}", s.detail);
-            assert!(
-                s.detail.contains("resident-ensure"),
-                "那台写的那份没带上：{}",
-                s.detail
-            );
-        }
-        other => panic!("{other:?}"),
-    }
-    // 别的失败 ⇒ 句子照那台那一句；那台的详情（含下层原话）整份进复制详情，句子里没有原话。
-    match parse_answer(
-        &exec(
-            "",
-            &envelope(
-                "spawn_failed",
-                "x",
-                &wrote("spawn_failed", "Permission denied (os error 13)"),
-            ),
-            Some(2),
-        ),
-        "devbox",
-    ) {
-        Err(AttachErr::Failed(s)) => {
-            assert_eq!(s.said, "x");
-            assert!(
-                s.detail.contains("Permission denied (os error 13)"),
-                "{}",
-                s.detail
-            );
-            assert!(
-                s.detail.contains(&copy_text("detail.label.local", &[])),
-                "远端那份没补「本机」一行：{}",
-                s.detail
-            );
-        }
-        other => panic!("{other:?}"),
-    }
+    )
+    .unwrap_err();
     assert_eq!(
-        parse_answer(
-            &exec("", r#"{"code":"spawn_failed","message":"x"}"#, Some(2)),
-            "devbox"
+        s.said,
+        copy_text("rsRemoteResident.ensure.unsupported", &[])
+    );
+    assert!(s.detail.contains("不是 unix"), "{}", s.detail);
+    assert!(s.detail.contains("那台写的详情"), "{}", s.detail);
+    let s = read_stop(
+        &exec(
+            "",
+            &envelope("spawn_failed", "x", "Permission denied (os error 13)"),
+            Some(2),
         ),
-        Err(AttachErr::Failed(Said::written("x".into())))
+        "devbox",
+    )
+    .unwrap_err();
+    assert_eq!(s.said, "x");
+    assert!(
+        s.detail.contains("Permission denied (os error 13)"),
+        "{}",
+        s.detail
     );
     assert_eq!(
-        parse_answer(&exec(&hello("p1a-old"), "", None), "devbox"),
-        Err(AttachErr::Failed(Said::written(copy_core::backend_old(
-            "devbox"
-        ))))
+        read_stop(&exec("", "", Some(127)), "devbox")
+            .unwrap_err()
+            .said,
+        copy_text("remoteHealth.head.notDeployed", &[])
+    );
+    assert_eq!(
+        read_stop(&exec(&hello("p1a-old"), "", None), "devbox")
+            .unwrap_err()
+            .said,
+        copy_core::backend_old("devbox")
     );
 }
 

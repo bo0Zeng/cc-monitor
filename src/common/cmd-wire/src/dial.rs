@@ -14,6 +14,10 @@ pub const ACK_V: u32 = 2;
 /// 拨号代理认得的用法 —— ack 的 `uses` 原样回这张表，读的那一侧据它判「代理够不够新」。
 pub const USES: &[&str] = &["stream", "capture", "forward", "shell", "hold"];
 
+/// capture 那一形的收工记号：不认一次性子命令的老后端会把它当未知旗标、直接进流模式、第一行发 hello ——
+/// 收全的一侧见到它就提前收（不让它装 hook、不挂住），读的一侧当「太旧、要更新」。后端问远端 · 桌面与手机的重连循环同读这一份。
+pub const OLD_BACKEND_MARKER: &str = "\"kind\":\"hello\"";
+
 /// 一个拨号地址。
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct Endpoint {

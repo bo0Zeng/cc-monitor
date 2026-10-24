@@ -23,7 +23,7 @@ const EVENT_QUEUE: usize = 1024;
 const HANDSHAKE_LINE: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// 「这台」那几句的读法：给人看的那一句 ＋ 复制详情。
-fn said_of(p: &Problem) -> crate::detail::Said {
+pub(crate) fn said_of(p: &Problem) -> crate::detail::Said {
     if p.detail.trim().is_empty() {
         crate::detail::Said::written(p.text.clone())
     } else {
@@ -69,7 +69,7 @@ impl Transport for DeskLink {
             let exec = connect_and_exec_capture(
                 &self.cfg,
                 &command,
-                Some(resident_client::feed::OLD_BACKEND_MARKER),
+                Some(cmd_wire::dial::OLD_BACKEND_MARKER),
             )
             .await
             .map_err(problem_of)?;
