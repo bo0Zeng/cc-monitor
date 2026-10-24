@@ -17863,6 +17863,12 @@
       "args": [],
       "limited": ["SSH", "连接"]
     },
+    "beUses.session.denied": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "登录通过 · 拒绝执行命令",
+      "args": []
+    },
     "beUses.exec.failed": {
       "kind": "error",
       "role": "原因格",
