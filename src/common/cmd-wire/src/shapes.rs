@@ -135,7 +135,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("plan-ack", "5b1e9f56"),
     ("plan-cell-view", "061a69ac"),
     ("plan-command", "7442e6ff"),
-    ("plan-files", "f9dd4dc9"),
+    ("plan-files", "915e2703"),
     ("plan-list", "692d535e"),
     ("plan-pb-check", "fbcc64c4"),
     ("plan-read", "bce40799"),

@@ -14182,7 +14182,11 @@ dir: string, };
 入参 `PlanFilesReq` · 回包 `PlanFiles`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type PlanFileDup = { id: string, title: string | null, };
+type PlanFileDup = { id: string, 
+/**
+ * 「编号 标题」，后端拼好。
+ */
+label: string, title: string | null, };
 type PlanFileOwner = { 
 /**
  * 文件名（目录里的那一项）。
@@ -14191,7 +14195,15 @@ name: string,
 /**
  * 作主的那一格（排期上先声明它的那一格）。
  */
-id: string, title: string | null, statusCode: string | null, status: string | null, 
+id: string, 
+/**
+ * 「编号 标题」（没有标题 ⇒ 只写编号），后端拼好。
+ */
+label: string, title: string | null, 
+/**
+ * 认不出 pb 的状态字 ⇒ `null`（当没做完画）。
+ */
+statusCode: "done" | "open" | "dropped" | "evidence" | null, status: string | null, 
 /**
  * 那一格住的那一块（块根格的标题）；住顶块 ⇒ `null`。
  */
@@ -14201,9 +14213,9 @@ block: string | null,
  */
 signAtText: string | null, 
 /**
- * 对账：`ok` · `missing` · `empty` · `broken`。
+ * 对账码；认不出 ⇒ `null`。
  */
-fileState: string | null, fileNote: string | null, 
+fileState: "ok" | "missing" | "empty" | "broken" | null, fileNote: string | null, 
 /**
  * 也声明它的那几格（pb 判据红「两个节点声明同一个文件」）。
  */

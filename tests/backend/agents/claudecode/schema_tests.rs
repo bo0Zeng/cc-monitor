@@ -420,9 +420,9 @@ fn record_classes_equal_the_table_with_a_reader_for_each() {
         ("attachment", false), // 只进链（链事实，`chain.rs`），不进界面
         ("queue-operation", false), // 无读者：中途插话由记录里那一行出（`attachment` 的 queued_command）
         ("permission-mode", false), // 无读者
-        ("last-prompt", false), // 无读者
+        ("last-prompt", false),     // 无读者
         ("file-history-snapshot", false), // 无读者
-        ("status-line", false), // 无读者（Claude 的状态行：mode · agent-name …）
+        ("status-line", false),     // 无读者（Claude 的状态行：mode · agent-name …）
         ("unrecognized+identity", true), // `unread` 一行（两个前端画一行 warn 细条）；也进链（F63 保险那一半在链事实里）
         ("unrecognized-bare", false), // 没见过的类型又没有链上身份 ⇒ 那一家的簿记行，不成卡、不进链；会话事实 `quietUnread` 记数（10-14 起）
     ]
