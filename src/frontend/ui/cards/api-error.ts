@@ -77,7 +77,7 @@ export function buildApiRetryCard(args: {
   outcome?: RetryOutcome;
 }): HTMLElement {
   const line = document.createElement("div");
-  line.className = "card card-api-retry";
+  line.className = "card card-api-retry one-line";
   line.dataset.state = "retrying";
   if (args.id) line.dataset.run = args.id;
   line.dataset.reason = args.reason ?? "unknown";

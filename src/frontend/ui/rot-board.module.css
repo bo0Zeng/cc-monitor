@@ -138,10 +138,8 @@
   }
 
   .rotCardName {
+    composes: one-line from global;
     max-width: 14ch;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .rotCardAdd {
@@ -451,8 +449,7 @@
   }
 
   .rotSimName {
-    overflow: hidden;
-    text-overflow: ellipsis;
+    composes: one-line from global;
   }
 
   .rotSimAxis,

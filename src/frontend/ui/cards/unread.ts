@@ -8,6 +8,7 @@ export function buildUnreadLine(args: { text: string; excerpt: string; time: str
   const line = document.createElement("details");
   line.className = "card card-unread";
   const sum = document.createElement("summary");
+  sum.className = "one-line";
   const what = document.createElement("span");
   what.textContent = args.text;
   sum.appendChild(what);

@@ -28,21 +28,17 @@
   }
 
   .slotTitle {
+    composes: one-line from global;
     flex: 0 1 auto;
     min-width: 0;
-    overflow: hidden;
     font-weight: var(--font-weight-strong);
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .slotWhere {
+    composes: one-line from global;
     min-width: 0;
-    overflow: hidden;
     color: var(--text-2);
     font-size: var(--font-size-small);
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .slotCard {

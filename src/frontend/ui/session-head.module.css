@@ -14,23 +14,19 @@
   }
 
   .shTitle {
+    composes: one-line from global;
     flex: 0 1 auto;
     min-width: 0;
-    overflow: hidden;
     font-weight: var(--font-weight-strong);
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .shWhere,
   .shDir,
   .shState {
+    composes: one-line from global;
     min-width: 0;
-    overflow: hidden;
     color: var(--text-2);
     font-size: var(--font-size-small);
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .shPlanSlot {
@@ -158,9 +154,8 @@
   }
 
   .shChipText {
+    composes: one-line from global;
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 
   .shIb {
@@ -244,11 +239,9 @@
   }
 
   .shEditName {
+    composes: one-line from global;
     flex: 1;
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .shEditNote {

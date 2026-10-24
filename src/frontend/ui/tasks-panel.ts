@@ -208,12 +208,12 @@ export class TasksPanel {
     ic.setAttribute("role", "img");
     ic.setAttribute("aria-label", statusText(t.status));
     const subject = document.createElement("span");
-    subject.className = "tasks-subject";
+    subject.className = "tasks-subject one-line";
     subject.textContent = t.subject;
     row.replaceChildren(ic, subject);
     if (t.status === "in_progress" && t.activeForm) {
       const now = document.createElement("span");
-      now.className = "tasks-now";
+      now.className = "tasks-now one-line";
       now.textContent = t.activeForm;
       row.appendChild(now);
     }

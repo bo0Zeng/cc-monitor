@@ -236,7 +236,7 @@ export class AgentsPanel {
     span("agent-icon", "").appendChild(runStateMark(r.state));
     if (r.kind) span("agent-type", r.kind);
     const label = runLabel(r);
-    span("agent-label", label);
+    span("agent-label one-line", label);
     const sid = this.activeSid;
     const opened = sid !== null && this.host?.isOpen(sid, r.run) === true;
     if (opened) {
@@ -246,7 +246,7 @@ export class AgentsPanel {
     }
     span("agent-state", runStateText(r.state));
     const last = this.lastOf(r);
-    if (last !== null) span("agent-last", copyText("agentsPanel.row.last", { last }));
+    if (last !== null) span("agent-last one-line", copyText("agentsPanel.row.last", { last }));
     row.replaceChildren(...spans);
     row.title = opened ? copyText("agentsPanel.row.openedHint") : `${label}${copyText("kit.text.sep")}${copyText("agentsPanel.row.openHint")}`;
     return [row];

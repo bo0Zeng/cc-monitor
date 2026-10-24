@@ -415,7 +415,7 @@ export class AgentWindow {
     }
     parts.push(icon("caretRight", "compact"));
     const me = document.createElement("span");
-    me.className = "viewer-topbar-label";
+    me.className = "viewer-topbar-label one-line";
     me.append(stateIcon(r), runLabel(r));
     parts.push(me);
     this.crumbs.replaceChildren(...parts);

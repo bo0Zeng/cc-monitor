@@ -30,17 +30,18 @@
     flex: none;
   }
 
-  .acctSessStripSep,
+  .acctSessStripSep {
+    white-space: nowrap;
+  }
+
   .acctSessStripMove,
   .acctSessStripWhy {
-    white-space: nowrap;
+    composes: one-line from global;
   }
 
   .acctSessStripText > .acctSessStripMove,
   .acctSessStripText > .acctSessStripWhy {
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 
   .acctSessStripText > .acctSessStripMove {

@@ -77,12 +77,14 @@ function declsOf(file: string, sel: string): Map<string, string> {
   return out;
 }
 
-/** 能在框内截断：超出藏起来 · 省略号 · 能缩（flex 第二个数不是 0、不是 none）· 能缩到比字窄（min-width 不是 auto）。 */
-function clips(file: string, sel: string, nowrapFromParent = false): void {
+/**
+ * 能在框内截断：单行省略（那个类 composes 全局的 one-line，三件套只住那一处）· 能缩（flex 第二个数不是 0、不是 none）·
+ * 能缩到比字窄（min-width 不是 auto）。`sel` 是排版那条规则；省略号挂在它最后那个类上。
+ */
+function clips(file: string, sel: string): void {
+  const cls = sel.split(/\s|>/).filter(Boolean).at(-1) ?? sel;
+  expect(declsOf(file, cls).get("composes"), `${cls} composes`).toBe("one-line from global");
   const d = declsOf(file, sel);
-  expect(d.get("overflow"), `${sel} overflow`).toBe("hidden");
-  expect(d.get("text-overflow"), `${sel} text-overflow`).toBe("ellipsis");
-  if (!nowrapFromParent) expect(d.get("white-space"), `${sel} white-space`).toBe("nowrap");
   const flex = d.get("flex") ?? "";
   expect(flex !== "none" && !/^\S+ 0( |$)/.test(flex), `${sel} 的 flex = ${flex}`).toBe(true);
   expect(d.get("min-width") ?? "auto", `${sel} min-width`).not.toBe("auto");
@@ -92,7 +94,7 @@ describe("长名字在框内截断", () => {
   it("★ 策略下拉面板的一项：名字 · 灰字 · 右侧摘要三段都能截断，项本身不让字伸出去", () => {
     expect(declsOf("kit/menu.module.css", ".menuItem").get("white-space")).toBe("nowrap");
     expect(declsOf("kit/menu.module.css", ".menuItem").get("overflow")).toBe("hidden");
-    for (const sel of [".menuLabel", ".menuNote", ".menuDetail"]) clips("kit/menu.module.css", sel, true);
+    for (const sel of [".menuLabel", ".menuNote", ".menuDetail"]) clips("kit/menu.module.css", sel);
   });
 
   it("★ 策略下拉框上：名字与灰字都能截断", () => {

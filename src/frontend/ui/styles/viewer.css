@@ -48,11 +48,8 @@ body.viewer-mode #tab-bar-resizer {
 }
 
 .viewer-topbar-label {
-  overflow: hidden;
   min-width: 0;
   font-weight: var(--font-weight-strong);
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 .viewer-topbar [data-emph="live"] {

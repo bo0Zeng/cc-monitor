@@ -6,6 +6,7 @@
       "z-index": ["/^var\\(--z-[a-z0-9-]+\\)$/"]
     },
     "no-descending-specificity": true,
+    "property-no-unknown": [true, { "ignoreProperties": ["composes"] }],
     "custom-property-empty-line-before": null,
     "declaration-empty-line-before": null,
     "rule-empty-line-before": null,

@@ -180,7 +180,7 @@ function crumbsOf(r: HistoryRow, live: boolean): Node[] {
   project.textContent = r.projectName;
   const sep = icon("caretRight", "compact");
   const title = document.createElement("span");
-  title.className = "viewer-topbar-label";
+  title.className = "viewer-topbar-label one-line";
   title.textContent = r.label;
   title.title = title.textContent;
   const out: Node[] = [project, sep, title];

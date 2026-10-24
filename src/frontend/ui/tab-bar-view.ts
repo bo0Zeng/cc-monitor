@@ -891,7 +891,7 @@ export class TabBarView {
       const gid = col.id;
       const name = document.createElement("button");
       name.type = "button";
-      name.className = "tab-group-name";
+      name.className = "tab-group-name one-line";
       name.addEventListener("click", (e) => {
         e.stopPropagation();
         this.beginGroupRename(gid, name);
@@ -1169,7 +1169,7 @@ export class TabBarView {
     const machine = tag("");
     machine.classList.add("tab-machine");
     machine.style.display = "none";
-    const titleEl = span("tab-title");
+    const titleEl = span("tab-title one-line");
     const proj = span("tab-proj");
     const bg = span("tab-gear");
     bg.appendChild(icon("background", "compact"));
@@ -1371,7 +1371,7 @@ function groupShell(name: HTMLElement, tail: HTMLElement[]): GroupEls {
   caret.type = "button";
   caret.className = "tab-group-caret";
   caret.appendChild(foldCaret());
-  name.classList.add("tab-group-name");
+  name.classList.add("tab-group-name", "one-line");
   const count = document.createElement("span");
   count.className = "tab-group-count";
   const sum = document.createElement("span");

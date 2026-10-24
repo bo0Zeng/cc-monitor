@@ -4,17 +4,20 @@
  * 浏览器里量外接框的那一半住截图工具（`tests/shots/scenes/layout-check.ts`，每张图都量）；门禁里没有排版引擎，
  * 这里钉住让它成立的那几条样式：
  *
- * ① 登记的单行文字：不折行 · 超出省略 · 能缩到 0（否则把右边的按钮挤出去）。
+ * ① 单行省略只住一处：`styles/shared.css` 的全局类 `.one-line`（不折行 · 超出藏起 · 省略号）。CSS 模块用
+ *    `composes: one-line from global`，全局 CSS 画的那几处在 TS 里挂这个类 ⇒ 别处再写一份 `text-overflow` 就红。
  * ② 登记的右侧按钮组：不缩（宽度固定，永远不被压）。
  * ③ 标签页行尾按钮盖在标题尾巴上：底色每一层都垫着不透的 `--bg-2`（只写半透明的选中色 ⇒ 标题字透出来，就是那次撞见的样子）。
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
 import postcss, { type Rule } from "postcss";
 import { nonEmpty } from "../../test-support/non-empty";
 
-const UI = resolve(__dirname, "../../../src/frontend/ui");
+const SRC = resolve(__dirname, "../../../src");
+const UI = resolve(SRC, "frontend/ui");
+const HOME = resolve(UI, "styles/shared.css");
 
 /** 一份 CSS 里，选择器恰好是 `sel`（逗号分开的任一段）的规则里各声明的最后取值。 */
 function declsOf(file: string, sel: string): Map<string, string> {
@@ -26,15 +29,30 @@ function declsOf(file: string, sel: string): Map<string, string> {
   return out;
 }
 
-/** ① 单行文字：文件 · 选择器 · 是什么。 */
-const SINGLE_LINE: [string, string, string][] = [
-  ["session-head.module.css", ".shTitle", "会话头标题"],
-  ["session-head.module.css", ".shWhere", "会话头机器名"],
-  ["session-head.module.css", ".shDir", "会话头目录"],
-  ["session-head.module.css", ".shState", "会话头状态一句"],
-  ["styles.css", ".tab-title", "标签页名字"],
-  ["kit/fold.module.css", ".foldSummary", "折叠块标题行右侧那一句摘要"],
-];
+function walk(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    if (e.name === "node_modules" || e.name === "target") return [];
+    const p = join(dir, e.name);
+    return e.isDirectory() ? walk(p) : [p];
+  });
+}
+
+/** 一段 CSS 里自己写的省略号：`选择器:行号`。`isHome` 时 `.one-line` 那一家不算。 */
+function ownEllipsis(css: string, isHome: boolean): string[] {
+  const hits: string[] = [];
+  postcss.parse(css).walkDecls("text-overflow", (d) => {
+    const sel = (d.parent as Rule).selector;
+    if (isHome && sel === ".one-line") return;
+    hits.push(`${sel}:${d.source?.start?.line}`);
+  });
+  return hits;
+}
+
+/** 一段 TS 里内联写的省略号（两种写法）。 */
+const TS_ELLIPSIS = /textOverflow|text-overflow/;
+
+const files = walk(SRC);
+const moduleCss = files.filter((f) => f.endsWith(".module.css"));
 
 /** ② 右侧按钮组：文件 · 选择器 · 是什么。 */
 const FIXED_BUTTONS: [string, string, string][] = [
@@ -45,9 +63,42 @@ const FIXED_BUTTONS: [string, string, string][] = [
 ];
 
 describe("单行文字不压按钮", () => {
-  it.each(SINGLE_LINE)("① %s %s（%s）：不折行 · 省略号 · 能缩到 0", (file, sel) => {
-    const d = declsOf(file, sel);
-    expect([d.get("white-space"), d.get("overflow"), d.get("text-overflow"), d.get("min-width")]).toEqual(["nowrap", "hidden", "ellipsis", "0"]);
+  it("① 单行省略的家：shared.css 的 .one-line 恰好是 不折行 · 藏起 · 省略号", () => {
+    expect(declsOf("styles/shared.css", ".one-line")).toEqual(
+      new Map([
+        ["overflow", "hidden"],
+        ["white-space", "nowrap"],
+        ["text-overflow", "ellipsis"],
+      ]),
+    );
+  });
+
+  it("① 正控：扫描认得出自己写的一份，也认得出家", () => {
+    expect(ownEllipsis(".a { overflow: hidden; text-overflow: ellipsis; }", false)).toEqual([".a:1"]);
+    expect(ownEllipsis(".one-line { text-overflow: ellipsis; }", false)).toEqual([".one-line:1"]);
+    expect(ownEllipsis(".one-line { text-overflow: ellipsis; }", true)).toEqual([]);
+    expect(TS_ELLIPSIS.test('el.style.textOverflow = "ellipsis"')).toBe(true);
+  });
+
+  it("① 别处的 CSS 里没有自己写的省略号（模块 composes: one-line from global，全局 CSS 由 TS 挂 one-line）", () => {
+    const hits = nonEmpty(files.filter((f) => f.endsWith(".css"))).flatMap((f) => ownEllipsis(readFileSync(f, "utf8"), f === HOME).map((h) => `${relative(SRC, f)} ${h}`));
+    expect(hits).toEqual([]);
+  });
+
+  it("① TS 里没有内联写的省略号", () => {
+    const ts = nonEmpty(files.filter((f) => f.endsWith(".ts") && !f.endsWith(".d.css.ts")));
+    expect(ts.filter((f) => TS_ELLIPSIS.test(readFileSync(f, "utf8"))).map((f) => relative(SRC, f))).toEqual([]);
+  });
+
+  it("① 模块里的 one-line 都写成 from global（不是本地同名类）", () => {
+    const uses: string[] = [];
+    for (const f of moduleCss) {
+      postcss.parse(readFileSync(f, "utf8")).walkDecls("composes", (d) => {
+        if (/\bone-line\b/.test(d.value)) uses.push(`${relative(SRC, f)}:${d.source?.start?.line} ${d.value.trim()}`);
+      });
+    }
+    nonEmpty(uses);
+    expect(uses.filter((u) => !u.endsWith(" one-line from global"))).toEqual([]);
   });
 
   it.each(FIXED_BUTTONS)("② %s %s（%s）：不缩", (file, sel) => {

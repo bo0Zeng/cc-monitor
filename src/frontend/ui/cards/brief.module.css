@@ -25,10 +25,8 @@
   }
 
   .briefWho {
+    composes: one-line from global;
     min-width: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
   }
 
   .briefWhen {
