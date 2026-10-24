@@ -363,7 +363,7 @@ fn an_edit_is_applied_where_the_form_says() {
             at: None,
             seg: Some(RotSeg {
                 from: "0".into(),
-                to: "2000".into(),
+                to: "25:00".into(),
                 v: 1.0,
             }),
         },
