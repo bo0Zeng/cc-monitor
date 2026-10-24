@@ -24,7 +24,8 @@
         "plate": "ze",
         "quota": null,
         "unselectable": null,
-        "login": false
+        "login": false,
+        "newSession": false
       },
       {
         "authKind": "subscription",
@@ -49,7 +50,8 @@
         "plate": "a",
         "quota": null,
         "unselectable": null,
-        "login": false
+        "login": false,
+        "newSession": true
       },
       {
         "authKind": "api-key",
@@ -74,7 +76,8 @@
         "plate": "b",
         "quota": null,
         "unselectable": null,
-        "login": false
+        "login": false,
+        "newSession": true
       }
     ],
     "meta": {

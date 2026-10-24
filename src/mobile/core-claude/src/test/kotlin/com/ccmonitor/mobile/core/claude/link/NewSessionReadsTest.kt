@@ -52,13 +52,12 @@ class NewSessionReadsTest {
     }
 
     @Test
-    fun `accounts-list：照类型解，号牌字 · 5h 那一格 · 选不了的那一句照那台写的；这台的默认 · 家目录照 meta；缺格 ⇒ 解不出`() {
-        val row = { name: String, dir: String?, mode: String, ok: Boolean, color: Int ->
+    fun `accounts-list：照类型解，列不列只照那台的 newSession；号牌字 · 5h 那一格 · 选不了的那一句照那台写的；这台的默认 · 家目录照 meta；缺格 ⇒ 解不出`() {
+        val row = { name: String, listed: Boolean, ok: Boolean, color: Int ->
             mapOf(
                 "name" to name,
                 "label" to name.uppercase(),
-                "configDir" to dir,
-                "mode" to mode,
+                "newSession" to listed,
                 "selectable" to ok,
                 "color" to color,
                 "plate" to "夹" + name,
@@ -71,19 +70,19 @@ class NewSessionReadsTest {
         }
         val data =
             mapOf(
-                "accounts" to listOf(row("0", null, "in-place", true, 0), row("work", "/a/work", "isolated", true, 3), row("team", "/a/team", "isolated", false, 1)),
+                "accounts" to listOf(row("0", false, true, 0), row("work", true, true, 3), row("team", true, false, 1)),
                 "meta" to mapOf("effectiveDefault" to "work", "home" to "/h"),
             )
         val a = AccountsList.of(data)!!
         assertEquals("work", a.meta.effectiveDefault)
         assertEquals("/h", a.meta.home)
-        assertEquals("账号 0（不是隔离的号）不列（同桌面新建会话框）", listOf("work", "team"), a.accounts.map { it.name })
+        assertEquals("那台说不进选号表的不列（有目录、隔离也不列；界面不另判，同桌面新建会话框）", listOf("work", "team"), a.accounts.map { it.name })
         assertEquals(listOf(3, 1), a.accounts.map { it.color })
         assertEquals(listOf("夹work", "夹team"), a.accounts.map { it.plate })
         assertEquals(listOf("5h 41%", null), a.accounts.map { it.quota })
         assertEquals(listOf(null, "需登录"), a.accounts.map { it.unselectable })
         assertEquals(mapOf("agent" to "claude"), AccountsList.args("claude"))
-        assertNull("缺号牌字 ⇒ 契约对不上", AccountsList.of(data + ("accounts" to listOf(row("x", "/a/x", "isolated", true, 0) - "plate"))))
+        assertNull("缺号牌字 ⇒ 契约对不上", AccountsList.of(data + ("accounts" to listOf(row("x", true, true, 0) - "plate"))))
     }
 
     @Test
