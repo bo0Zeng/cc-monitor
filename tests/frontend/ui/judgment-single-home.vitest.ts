@@ -662,6 +662,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       "deploy-contract::said",
       "deploy-contract::fixes",
       "deploy-contract::local",
+      "deploy-contract::offline",
     ],
     status: "zero",
     defs: ["downSaid", "fixLabel"],
@@ -1225,6 +1226,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     key_of: NONE,
     label: NONE,
     local: "J37",
+    offline: "J37",
     raw: NONE, // 拒绝里那台答的原话（进复制详情；TS 不判拒绝）
     said: "J37",
     say: NONE,
