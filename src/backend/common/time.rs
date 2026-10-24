@@ -88,7 +88,7 @@ impl Default for Tz {
 }
 
 impl Tz {
-    /// 按 IANA 名找（或 [`TZ_HERE`]）；找不到 ⇒ `None`（调用方当没带 ⇒ UTC）。
+    /// 按 IANA 名找（或 [`TZ_HERE`]）；找不到 ⇒ `None`（调用方按认不得 ⇒ UTC）。
     pub fn named(name: &str) -> Option<Self> {
         if name == TZ_HERE {
             return Some(Self(Zone::Here));
