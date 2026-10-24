@@ -2270,12 +2270,6 @@
           "kind": "value",
           "path": "sid",
           "type": "string"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
-          "path": "waiting_for",
-          "type": "string"
         }
       ],
       "name": "session_added"

@@ -54,11 +54,6 @@ const PANES_FIELDS: usize = 13;
 const CLIENTS_FMT: &str =
     "#{?client_control_mode,,#{session_id}\t#{client_created}\t#{client_activity}}";
 
-/// 终端前台若是这些 shell ⇒ 程序已退出、只剩 shell。
-const SHELLS: &[&str] = &[
-    "bash", "zsh", "fish", "sh", "dash", "ksh", "tcsh", "csh", "nu", "pwsh",
-];
-
 /// 送键那张有限键表：线上的名字 → tmux 的键名。不收任意转义串。
 pub(crate) const KEYS: &[(&str, &str)] = &[
     ("esc", "Escape"),
@@ -321,13 +316,13 @@ pub(crate) fn terminal_json(
         Who::OtherClient => super::terminals_wire::refused(Refused::NotYours),
         Who::NotOurs => super::terminals_wire::refused(Refused::NotManaged),
     };
-    let shell = shell_only(row);
-    let state = match (row.sid.is_empty(), shell) {
-        (false, true) => TermState::ProgramExited,
-        (true, true) => TermState::Idle,
-        _ => TermState::Running,
+    let agent = agent_in_front(row);
+    let state = match (row.sid.is_empty(), agent) {
+        (true, _) => TermState::Idle,
+        (false, true) => TermState::Running,
+        (false, false) => TermState::ProgramExited,
     };
-    let title = if !row.sid.is_empty() && !shell && !row.title.is_empty() {
+    let title = if !row.sid.is_empty() && agent && !row.title.is_empty() {
         row.title.clone()
     } else {
         row.program.clone()
@@ -906,17 +901,17 @@ pub(crate) fn input_on(on: On<'_>, req: &TerminalInputReq) -> Result<Sent, CmdEr
     send_on(on, req, |_| true)
 }
 
-/// 往一条会话说一句（`session-say` 那一条送字）：同 [`input_on`]，过了身份门再多一道 —— 挂着它的那个窗格此刻前台是不是只剩 shell
-/// （名单那一刻的 `#{pane_current_command}`，同名单里「程序已退出」那一处：[`shell_only`]）。
-/// 是（agent 退了）⇒ 一个字都不送，回「已经没了」（`ended`）：话是说给 agent 的，送进 shell 就成了一行命令。
-/// 只认 shell 不认「是不是那一家的进程名」：Codex 今天没登记进程名、前台还可能是 agent 起的别的程序，按名字认会把在跑的会话当成没了。
+/// 往一条会话说一句（`session-say` 那一条送字）：同 [`input_on`]，过了身份门再多一道 —— 挂着它的那个窗格此刻前台是不是 agent
+/// （名单那一刻的 `#{pane_current_command}`，同名单里「程序已退出」那一处：[`agent_in_front`]）。
+/// 不是（agent 退了，或前台换成了别的程序）⇒ 一个字都不送，回「已经没了」（`ended`）：话是说给 agent 的，送进 shell 就成了一行命令。
 pub(crate) fn say_on(on: On<'_>, req: &TerminalInputReq) -> Result<Sent, CmdErr> {
-    send_on(on, req, |row| !shell_only(row))
+    send_on(on, req, agent_in_front)
 }
 
-/// 这个窗格前台是 shell（[`SHELLS`]）⇒ 跑在里面的程序已经退了、只剩 shell。名单那一格的状态与 [`say_on`] 都读它。
-fn shell_only(row: &TermRow) -> bool {
-    SHELLS.contains(&row.program.as_str())
+/// 这个窗格前台是不是某一家 agent 的进程（[`crate::agents::is_agent_process`]，与 `sessions-where` 认窗格同一个判法）。
+/// 名单那一格的状态 · [`say_on`] · [`say_target_on`] 都读它。
+fn agent_in_front(row: &TermRow) -> bool {
+    crate::agents::is_agent_process(&row.program)
 }
 
 /// 名单里对上 · 过身份门 · `takes` 收 ⇒ 那一行 ＋ 对它下手的句柄；不收 ⇒ 原因（[`send_on`] 送之前、[`say_target_on`] 看屏之前同一道）。
@@ -949,7 +944,7 @@ fn admit_on(
     Ok(Ok((row.clone(), at)))
 }
 
-/// 切权限档看屏 · 等重画那一份（同 [`follow_target_on`] 的形）：过 [`say_on`] 那同一道门 —— 只剩 shell 的窗格不看（读不出档，也不该往里按键）。
+/// 切权限档看屏 · 等重画那一份（同 [`follow_target_on`] 的形）：过 [`say_on`] 那同一道门 —— 前台不是 agent 的窗格不看（读不出档，也不该往里按键）。
 pub(crate) fn say_target_on(
     on: On<'_>,
     sid: &str,
@@ -957,7 +952,7 @@ pub(crate) fn say_target_on(
 ) -> Result<Result<FollowTarget, Refused>, CmdErr> {
     let t = target(None, Some(sid))?;
     Ok(
-        admit_on(on, &t, client, |row| !shell_only(row))?.map(|(row, _)| FollowTarget {
+        admit_on(on, &t, client, agent_in_front)?.map(|(row, _)| FollowTarget {
             target: row.target().to_string(),
             session: row.id.clone(),
             pane: row.pane.clone(),

@@ -308,6 +308,35 @@ fn each_row_says_whether_this_caller_may_act_on_it() {
     }
 }
 
+/// 窗格前台判法只有一种（agent 的进程名表 `agents::is_agent_process`）：名单那一格的状态与 `sessions-where` 认窗格时的 `agent`
+/// 说法一致 —— 前台是 `vim` 的、挂着 sid 的窗格两边都说 agent 不在前台（程序已退出），不是一边「在跑」一边「只剩 shell」。
+#[test]
+fn the_list_and_sessions_where_judge_the_foreground_the_same_way() {
+    for program in ["vim", "bash", "htop", "claude", "node", "codex"] {
+        let agent = crate::agents::is_agent_process(program);
+        let state =
+            terminal_json(&row("$1", "a-cc", "s", "ccm", program), &[], None)["state"].clone();
+        assert_eq!(
+            state,
+            if agent { "running" } else { "program_exited" },
+            "前台 {program}：名单说 {state}，sessions-where 说 agent={agent}"
+        );
+        let plain = terminal_json(&row("$2", "work", "", "", program), &[], None)["state"].clone();
+        assert_eq!(
+            plain, "idle",
+            "没挂 sid 的窗格没会话，前台 {program} 也一样"
+        );
+    }
+    assert!(
+        !crate::agents::is_agent_process("vim"),
+        "夹具：vim 不在任何一家的进程名表里"
+    );
+    assert!(
+        crate::agents::is_agent_process("codex"),
+        "codex 登记了进程名"
+    );
+}
+
 /// 带颜色那一屏 ⇒ 纯文字 ＋ 属性段；指纹不看颜色（带不带颜色抓的同一屏指纹相同）。
 #[test]
 fn colours_become_spans_and_the_fingerprint_ignores_them() {

@@ -22,7 +22,7 @@ host: "tmux",
  */
 tmux_name: string, 
 /**
- * 里面跑着会话、前台不是 shell 时是窗格标题；否则是前台程序名。
+ * 里面跑着会话、前台是 agent 时是窗格标题；否则是前台程序名。
  */
 title: string, 
 /**

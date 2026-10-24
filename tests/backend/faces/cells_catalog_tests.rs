@@ -63,7 +63,6 @@ pub(crate) const FROZEN: &[(&str, Frozen)] = &[
             "path",
             "cwd",
             "name",
-            "waiting_for",
             "agent_kind",
             "attachable",
             "face.dot",

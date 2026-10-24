@@ -186,7 +186,6 @@ fn the_stream_view_trims_pushed_frames_and_leaves_the_rest_alone() {
             tmux: None,
         }),
         name_face: crate::history::search_rules::name_face(&Default::default()),
-        waiting_for: None,
         hidden: None,
         container: None,
         pid: 42,

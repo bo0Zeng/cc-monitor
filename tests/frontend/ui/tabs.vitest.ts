@@ -6272,7 +6272,7 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段", () 
   });
 
   it("Codex 样本 ⇒ 它那个 tab 的活动跟着一轮走：一轮开始在跑、一轮完了空闲（帧上那几格照抄）", () => {
-    type F = { kind: string; sid?: string; path?: string; waiting_for?: string; face?: SessionFace };
+    type F = { kind: string; sid?: string; path?: string; face?: SessionFace };
     const frames = readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/codex-session-stream.golden.jsonl"), "utf8")
       .trim()
       .split("\n")

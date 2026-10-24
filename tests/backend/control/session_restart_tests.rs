@@ -40,7 +40,6 @@ fn added(sid: &str) -> crate::wire::Frame {
             tmux: None,
         }),
         name_face: crate::history::search_rules::name_face(&Default::default()),
-        waiting_for: None,
         hidden: None,
         container: None,
         pid: 0,

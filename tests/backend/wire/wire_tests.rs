@@ -320,7 +320,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                         ..Default::default()
                     },
                 ),
-                waiting_for: Some(s("permission prompt")),
                 hidden: crate::control::session_hidden::judge(
                     &crate::control::session_hidden::Facts {
                         bg: true,
@@ -347,7 +346,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 path: None,
                 face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: None, tmux: None }),
                 name_face: crate::history::search_rules::name_face(&Default::default()),
-                waiting_for: None,
                 hidden: None,
                 container: None,
                 pid: 0,
@@ -1166,7 +1164,6 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
                 tmux: None,
             }),
             name_face: crate::history::search_rules::name_face(&Default::default()),
-            waiting_for: None,
             hidden: None,
             container: c,
             pid: 0,
@@ -1241,7 +1238,6 @@ fn loc1b_session_added_carries_the_pid() {
             tmux: None,
         }),
         name_face: crate::history::search_rules::name_face(&Default::default()),
-        waiting_for: None,
         hidden: None,
         container: None,
         pid: 4242,

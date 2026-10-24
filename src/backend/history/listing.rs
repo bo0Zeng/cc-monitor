@@ -169,8 +169,7 @@ pub(crate) fn list_sessions_for(
     agent_home: &Path,
     project_dir: &str,
     only: Option<&str>,
-    out: &mut dyn Write,
-) -> Result<(), String> {
+) -> Result<Vec<serde_json::Value>, String> {
     // project_dir 是目录名而非路径：拒绝任何分隔符 / 上跳
     if project_dir.contains('/') || project_dir.contains('\\') || project_dir.contains("..") {
         return Err(format!("invalid project dir name: {project_dir}"));
@@ -182,22 +181,22 @@ pub(crate) fn list_sessions_for(
     // 注释写着「与 `read_session` 对齐」—— 靠手工对齐的两份迟早会漂。
     let dir = fence_under_projects(agent_home, Path::new(project_dir))?;
     let entries = Ro::read_dir(&dir).map_err(|e| unreadable_dir(&dir, &e))?;
+    let mut rows = Vec::new();
     for entry in entries.flatten() {
         let p = entry.path();
         if !p.is_file() || !crate::agents::is_tree_session_file(&p) {
             continue;
         }
-        let meta = match only {
+        rows.push(match only {
             Some(sid) if p.file_stem().is_none_or(|s| s != sid) => serde_json::json!({
                 "sessionId": p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(),
                 "cwd": crate::agents::project_dir_of(&p),
                 "updatedAtMs": Ro::mtime_ms(&p),
             }),
             _ => analyze_session_cached(&p),
-        };
-        writeln!(out, "{meta}").map_err(|e| format!("stdout write failed: {e}"))?;
+        });
     }
-    Ok(())
+    Ok(rows)
 }
 
 /// 平铺清单（`history-list`）那一份：这台**每个**记录目录 ⇒ `(目录名, 那一目录的会话行 | 读不了的那一句)`。
@@ -248,12 +247,7 @@ fn rows_of_dir(
     dir_name: &str,
     only: Option<&str>,
 ) -> Option<Result<Vec<serde_json::Value>, String>> {
-    let mut buf = Vec::new();
-    let rows = list_sessions_for(agent_home, dir_name, only, &mut buf).map(|()| {
-        let mut rows: Vec<serde_json::Value> = String::from_utf8_lossy(&buf)
-            .lines()
-            .filter_map(|l| serde_json::from_str(l).ok())
-            .collect();
+    let rows = list_sessions_for(agent_home, dir_name, only).map(|mut rows| {
         let keys: Vec<(Option<String>, i64)> = rows
             .iter()
             .map(|v| {

@@ -639,7 +639,7 @@ pub(crate) fn build_branch_records(
     }
 }
 
-/// 这个 tmux 前台命令是不是注册表里某一家的进程（[`Adapter::processes`]）—— 批量停 / 起认窗格时每一行的 `agent`。
+/// 这个 tmux 前台命令是不是注册表里某一家的进程（[`Adapter::processes`]）—— 窗格前台判法只此一种：批量停 / 起认窗格时每一行的 `agent` · 终端名单那一格的状态 · 往会话说一句那道门都读它。
 pub(crate) fn is_agent_process(command: &str) -> bool {
     REGISTRY
         .iter()
@@ -2591,7 +2591,7 @@ pub(crate) fn user_mcp_file(kind: &str) -> Option<PathBuf> {
 pub(crate) const REGISTRY: &[Adapter] = &[
     Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), old_home_pref: Some(claudecode::OLD_HOME_PREF), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE), accounts: Some(claudecode::accounts::FACE), records: Some(claudecode::RECORDS), processes: Some(claudecode::cards::PROCESS_NAMES), launch: Some(claudecode::LAUNCH), compact_request: Some(claudecode::COMPACT_REQUEST), clear_request: Some(claudecode::CLEAR_REQUEST), local: Some(claudecode::LOCAL), live: claudecode::LIVE, asks: Some(claudecode::asks::FACE) },
     // codex 今天没有账号维度（`account_env: None`）：选号对它说不出，起法与 `ccm` 都明说不行。
-    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: None, old_home_pref: None, assets: None, history: Some(codex::HISTORY), upstream: Some(codex::relay::UPSTREAM), mcp: None, footprint: None, accounts: None, records: Some(codex::RECORDS), processes: None, launch: Some(codex::LAUNCH), compact_request: None, clear_request: None, local: None, live: codex::LIVE, asks: None },
+    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: None, old_home_pref: None, assets: None, history: Some(codex::HISTORY), upstream: Some(codex::relay::UPSTREAM), mcp: None, footprint: None, accounts: None, records: Some(codex::RECORDS), processes: Some(codex::PROCESS_NAMES), launch: Some(codex::LAUNCH), compact_request: None, clear_request: None, local: None, live: codex::LIVE, asks: None },
 ];
 
 /// 某一家的账号载体（环境变量名）。认不出这家 ⇒ `None`。

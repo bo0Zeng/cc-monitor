@@ -160,7 +160,6 @@ impl Book {
                 {
                     m.face = status.face.clone();
                     m.name_face = status.name_face.clone();
-                    m.waiting_for = status.waiting_for.clone();
                 }
                 vec![Out::Status { origin, status }]
             }

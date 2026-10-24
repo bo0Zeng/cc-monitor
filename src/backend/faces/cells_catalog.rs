@@ -1175,7 +1175,6 @@ mod specimens {
             })
             .under(some("b")),
             name_face: named(),
-            waiting_for: some("w"),
             hidden: crate::control::session_hidden::judge(&crate::control::session_hidden::Facts {
                 pin: Some(crate::history::history_annotations::Hide::On),
                 ..Default::default()

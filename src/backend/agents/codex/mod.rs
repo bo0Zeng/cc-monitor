@@ -69,6 +69,9 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
 /// 根本不在做派发）。
 pub(crate) const AGENT_KIND: &str = "codex";
 
+/// tmux 前台命令算 Codex 的会话：原生装的报 `codex`；npm 装的经 Node 包一层，前台报 `node`（已在 Claude 那张表里）。注册表 `Adapter.processes` 那一格。
+pub(crate) const PROCESS_NAMES: &[&str] = &["codex"];
+
 /// 怎么判活（注册表 `Adapter.live` 那一格）：认开着写：没有 pidfile，会话在世期间写记录的那个任务一直开着这份 rollout（codex-rs `rollout/recorder.rs` 的写者任务持有文件；
 /// 新会话第一轮落盘时才建文件，resume 打开旧的那份接着写）。⚠ 只读过源码，没在真机上实测过。
 pub(crate) const LIVE: crate::agents::LiveBy = crate::agents::LiveBy::HeldOpen;
