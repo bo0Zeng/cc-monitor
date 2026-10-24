@@ -39,7 +39,8 @@
       { "text": "超时", "use": "输入" }
     ],
     "tests/backend/plan/needs_tests.rs": [
-      { "text": "不做了", "use": "输入" }
+      { "text": "不做了", "use": "输入" },
+      { "text": "无主", "use": "输入" }
     ],
     "tests/backend/plan/product_tests.rs": [
       { "text": "没做完", "use": "输入" },
