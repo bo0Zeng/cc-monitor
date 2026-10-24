@@ -1245,7 +1245,10 @@ fn the_list_product_carries_exactly_what_the_scan_reads() {
             "帧面每个号带选不了的那一句"
         );
         assert!(o.remove("login").is_some(), "帧面每个号带给不给［登录…］");
-        assert!(o.remove("newSession").is_some(), "帧面每个号带进不进新建会话的选号表");
+        assert!(
+            o.remove("newSession").is_some(),
+            "帧面每个号带进不进新建会话的选号表"
+        );
     }
     assert_eq!(
         product["meta"], cli_meta,
@@ -2072,9 +2075,21 @@ fn the_list_product_says_who_goes_into_the_new_session_picker() {
             .unwrap_or_else(|| panic!("清单里没有 {name}"))["newSession"]
             .clone()
     };
-    assert_eq!(cell("base"), serde_json::json!(false), "没有配置目录 ⇒ 不进选号表");
-    assert_eq!(cell("inplace"), serde_json::json!(false), "原地模式 ⇒ 不进选号表");
-    assert_eq!(cell("iso"), serde_json::json!(true), "隔离、有目录 ⇒ 进（需登录照样列，灰着）");
+    assert_eq!(
+        cell("base"),
+        serde_json::json!(false),
+        "没有配置目录 ⇒ 不进选号表"
+    );
+    assert_eq!(
+        cell("inplace"),
+        serde_json::json!(false),
+        "原地模式 ⇒ 不进选号表"
+    );
+    assert_eq!(
+        cell("iso"),
+        serde_json::json!(true),
+        "隔离、有目录 ⇒ 进（需登录照样列，灰着）"
+    );
     let _ = fs::remove_dir_all(&root);
 }
 
