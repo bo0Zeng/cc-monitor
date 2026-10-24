@@ -1,5 +1,6 @@
-//! 开出 channel 之后的几种用法（[`crate::Use`]）。握手已过：每一支先回 ack（失败就回失败的 ack），再干自己那件事。
-//! I/O 是调用方给的一对 `AsyncRead` / `AsyncWrite`（常驻后端里是那条链路的两根内存管子，`link.rs`）；连接是池里拿的（[`Lease`]，同身份复用）。
+//! 开出 channel 之后的几种用法（[`crate::Use`]）。进程内的调用方走有类型的两个口：[`open`]（开成 ⇒ [`Opened`]，没开成 ⇒ [`DialFail`]）·
+//! [`capture`]（一口收全 ⇒ [`Captured`]）。写成链路字节的只有 [`run_with`] 一处（真过进程的那条链路，`link.rs`）。
+//! 连接是池里拿的（[`Lease`]，同身份复用）。
 
 use crate::Said;
 use copy_core::copy_text;
@@ -9,25 +10,9 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::connect::{self, Linked};
 use crate::{
-    pool, write_line, write_stages_then_ack, CaptureOpts, Captured, DialAck, DialRequest,
-    StageSink, Use, ACK_V, USES,
+    pool, write_line, write_stages_then_ack, CaptureOpts, Captured, DialAck, DialFail,
+    DialRequest, Endpoint, StageSink, Use, ACK_V, USES,
 };
-
-fn ok_ack(l: &Linked) -> DialAck {
-    DialAck {
-        ok: true,
-        error: None,
-        detail: None,
-        fingerprint: l.fingerprint.clone(),
-        endpoint: Some(l.endpoint.clone()),
-        winner: Some(l.winner.clone()),
-        reason: None,
-        key_type: None,
-        expected_fingerprint: None,
-        v: ACK_V,
-        uses: USES,
-    }
-}
 
 /// `channel.exec(true, cmd)` 装进一个显式 `Send` 的盒子：russh 的 `Channel::exec` 是借 `&self` 的 `async fn`，放进要 `tokio::spawn`
 /// 的链路任务里会撞 rustc 的「`implementation of Send is not general enough`」。在这里把 Send 写死在一个具体生命周期上。
@@ -476,7 +461,334 @@ impl Control {
     }
 }
 
-/// 一份拨号请求的完整一趟：拿连接（池里复用或新拨）→ 按用法服务 → 结束（调用方手里那根下行管子读到 EOF）。
+/// 开成的那一份（[`open`]）：这条连接（指纹 · 胜者）＋ 按用法握着的那几样（通道 · 那一格预算 · 绑好的本机口）。
+/// 接着按用法对拷字节 ⇒ [`Opened::pump`]；收全 ⇒ [`capture`]。被丢 ⇒ 通道随之关（写半边有 [`CloseOnDrop`] 守着）。
+pub struct Opened {
+    lease: Lease,
+    held: Held,
+}
+
+/// 开成之后按用法握着的那几样。
+enum Held {
+    Stream {
+        channel: russh::Channel<russh::client::Msg>,
+        early: Vec<russh::ChannelMsg>,
+        _permit: pool::Permit,
+    },
+    Capture {
+        rd: russh::ChannelReadHalf,
+        wr: CloseOnDrop<russh::ChannelWriteHalf<russh::client::Msg>>,
+        opts: CaptureOpts,
+        early: Vec<russh::ChannelMsg>,
+        _permit: pool::Permit,
+    },
+    Forward {
+        listener: tokio::net::TcpListener,
+        spec: crate::ForwardSpec,
+    },
+    Hold,
+    Shell {
+        rd: russh::ChannelReadHalf,
+        wr: CloseOnDrop<russh::ChannelWriteHalf<russh::client::Msg>>,
+        early: Vec<russh::ChannelMsg>,
+        _permit: pool::Permit,
+    },
+}
+
+impl Opened {
+    /// 握手时看到的 host key 指纹。
+    pub fn fingerprint(&self) -> Option<&str> {
+        self.lease.linked.fingerprint.as_deref()
+    }
+
+    /// 竞速胜出的地址（结构化）。
+    pub fn winner(&self) -> &Endpoint {
+        &self.lease.linked.winner
+    }
+
+    /// 线上那一行成功的 ack（只给真过进程的那一处写：[`run_with`]）。
+    pub fn ack(&self) -> DialAck {
+        let l = &self.lease.linked;
+        DialAck {
+            ok: true,
+            error: None,
+            detail: None,
+            fingerprint: l.fingerprint.clone(),
+            endpoint: Some(l.endpoint.clone()),
+            winner: Some(l.winner.clone()),
+            reason: None,
+            key_type: None,
+            expected_fingerprint: None,
+            v: ACK_V,
+            uses: USES,
+        }
+    }
+
+    /// 按用法对拷字节，直到一头走了：stream / shell 原样字节 · capture 一行 [`Captured`] · forward 每接进一条一行 `{"accepted":n}` ·
+    /// hold 只握着（上行 EOF 或连接没了收工）。
+    pub async fn pump<R, W>(self, mut input: R, out: &mut W, control: Control)
+    where
+        R: AsyncRead + Unpin + Send,
+        W: AsyncWrite + Unpin + Send,
+    {
+        let Opened { lease, held } = self;
+        match held {
+            Held::Stream {
+                channel,
+                early,
+                _permit,
+            } => {
+                // 跟着答复一起到的字节先补交；那台已经收了这条通道 ⇒ 到此为止。
+                match replay_early(out, early).await {
+                    Ok(false) => {}
+                    Ok(true) | Err(_) => return,
+                }
+                // 两条方向对拷，哪一边先结束就收工：下行结束 = 远端那头走了；上行结束 = 界面走了（链路被关 / 句柄被丢）。
+                // 不许把上行 EOF 读成「半关、接着等下行」：远端后端的长流不会因为 stdin EOF 退出，会挂在一条没人收的下行上。
+                let (mut down, mut up) = tokio::io::split(channel.into_stream());
+                tokio::select! {
+                    r = tokio::io::copy(&mut input, &mut up) => {
+                        tracing::info!("dial: 上行结束（界面那头断了）：{r:?}");
+                    }
+                    r = tokio::io::copy(&mut down, out) => {
+                        tracing::info!("dial: 下行结束（远端那头断了）：{r:?}");
+                    }
+                }
+            }
+            Held::Capture {
+                mut rd,
+                wr,
+                opts,
+                early,
+                _permit,
+            } => {
+                let got = collect(&mut rd, &opts, early).await;
+                let _ = write_line(out, &got).await;
+                drop(wr);
+            }
+            Held::Forward { listener, spec } => {
+                forward(Arc::clone(&lease.linked), listener, spec, &mut input, out).await
+            }
+            Held::Hold => {
+                // 上行读到 EOF（对面走了）或连接没了 ⇒ 收工；上行的字节不是协议的一部分，读到就扔。
+                let heard = Arc::clone(&lease.linked.heard);
+                let mut sink = [0u8; 64];
+                loop {
+                    tokio::select! {
+                        r = input.read(&mut sink) => if matches!(r, Ok(0) | Err(_)) { break },
+                        () = heard.gone() => {
+                            tracing::info!("dial: 握着的那条连接没了，这条链路收工");
+                            break;
+                        }
+                    }
+                }
+            }
+            Held::Shell {
+                mut rd,
+                wr,
+                early,
+                _permit,
+            } => {
+                match replay_early(out, early).await {
+                    Ok(false) => {}
+                    Ok(true) | Err(_) => return,
+                }
+                let mut up = wr.get().make_writer();
+                let mut down = rd.make_reader();
+                let up_done = tokio::io::copy(&mut input, &mut up);
+                let down_done = tokio::io::copy(&mut down, out);
+                tokio::pin!(up_done, down_done);
+                let mut resize = control.resize;
+                loop {
+                    tokio::select! {
+                        r = &mut up_done => {
+                            tracing::info!("dial: shell 上行结束（对面断了）：{r:?}");
+                            break;
+                        }
+                        r = &mut down_done => {
+                            tracing::info!("dial: shell 下行结束（远端那头断了）：{r:?}");
+                            break;
+                        }
+                        size = recv_resize(&mut resize) => match size {
+                            Some((cols, rows)) => {
+                                if let Err(e) = window_half(wr.get(), cols, rows).await {
+                                    tracing::info!("dial: 改窗口没成：{e}");
+                                }
+                            }
+                            // 改窗口那根管子没人了：之后只对拷字节。
+                            None => resize = None,
+                        },
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// **开一条用法**：拿连接（池里复用或新拨）→ 开通道 → 等远端答应（[`granted`]）。开成 ⇒ [`Opened`]；没开成 ⇒ [`DialFail`]。
+/// 拨号每过一步（[`crate::step`]）当场交给 `on_step`；阶段（[`crate::Stage`]）记进 `stages`。被丢 ⇒ 这一拨一并收掉。
+pub async fn open(
+    req: &DialRequest,
+    stages: &StageSink,
+    mut on_step: impl FnMut(&'static str) + Send,
+) -> Result<Opened, DialFail> {
+    let (live, mut rx) = stages.reporting();
+    let fut = opening(req, &live);
+    tokio::pin!(fut);
+    loop {
+        tokio::select! {
+            biased;
+            r = &mut fut => {
+                while let Ok(st) = rx.try_recv() {
+                    on_step(st);
+                }
+                return r;
+            }
+            Some(st) = rx.recv() => on_step(st),
+        }
+    }
+}
+
+/// **一次性收全**（`use: capture`）：开成之后收全 stdout / stderr / 退出码（[`Captured`]）。别的用法 ⇒ 请求格式不对。
+pub async fn capture(req: &DialRequest) -> Result<Captured, DialFail> {
+    if req.use_ != Use::Capture {
+        return Err(DialFail::new(
+            crate::malformed("capture() needs use=capture").into(),
+            None,
+        ));
+    }
+    let opened = opening(req, &StageSink::new(false)).await?;
+    let Opened { lease, held } = opened;
+    let Held::Capture {
+        mut rd,
+        wr,
+        opts,
+        early,
+        _permit,
+    } = held
+    else {
+        unreachable!("use=capture 只开出 Held::Capture");
+    };
+    let got = collect(&mut rd, &opts, early).await;
+    drop((wr, lease));
+    Ok(got)
+}
+
+/// [`open`] 的本体（进展只报进 `stages`，不另交）。
+async fn opening(req: &DialRequest, stages: &StageSink) -> Result<Opened, DialFail> {
+    let mut lease = Lease::take(req, stages, lane_of(req.use_))
+        .await
+        .map_err(|(e, fp)| {
+            tracing::error!("dial: 拨号失败: {e}");
+            DialFail::new(e, fp).because(stages.why()).seen(stages)
+        })?;
+    let fp = lease.linked.fingerprint.clone();
+    let fail = |e: Said| DialFail::new(e, fp.clone());
+    let held = match req.use_ {
+        Use::Stream => {
+            // `_permit`：这条长流占着这条连接的一格通道，直到用完（`pool::Budget`）。
+            let (mut channel, permit) = lease.session_channel(req, stages).await.map_err(fail)?;
+            // want_reply = true：等远端答应 exec 再算开成（[`granted`]）。
+            let early = match exec(&channel, req.command.as_bytes().to_vec()).await {
+                Ok(()) => granted(&mut channel, "exec", exec_failed).await,
+                Err(e) => Err(Said::with_raw(copy_text("beUses.exec.failed", &[]), &e)),
+            }
+            .map_err(fail)?;
+            Held::Stream {
+                channel,
+                early,
+                _permit: permit,
+            }
+        }
+        Use::Capture => {
+            let opts = req
+                .capture
+                .clone()
+                .ok_or_else(|| fail(crate::malformed("use=capture without `capture`").into()))?;
+            let (channel, permit) = lease.session_channel(req, stages).await.map_err(fail)?;
+            // 读半边收全，写半边被守着：无论怎么收场（收全 · 提前收工 · 链路被关 ⇒ abort），远端那条通道都被关。
+            let (mut rd, wr) = channel.split();
+            let wr = CloseOnDrop::new(wr);
+            exec_half(wr.get(), req.command.as_bytes().to_vec())
+                .await
+                .map_err(|e| fail(Said::with_raw(copy_text("beUses.exec.failed", &[]), &e)))?;
+            let early = granted(&mut rd, "exec", exec_failed)
+                .await
+                .map_err(fail)?;
+            // 有载荷就写进远端进程的 stdin（不关 —— 收的一侧只读一行）。
+            if let Some(input) = opts.stdin.clone() {
+                wr.get()
+                    .data_bytes(input.into_bytes())
+                    .await
+                    .map_err(|e| {
+                        fail(Said::with_raw(
+                            copy_text("beUses.exec.stdinLost", &[]),
+                            &e,
+                        ))
+                    })?;
+            }
+            Held::Capture {
+                rd,
+                wr,
+                opts,
+                early,
+                _permit: permit,
+            }
+        }
+        Use::Forward => {
+            let spec = req
+                .forward
+                .clone()
+                .ok_or_else(|| fail(crate::malformed("use=forward without `forward`").into()))?;
+            // 只绑回环（不对外暴露）。绑口是**后端**的事。
+            let listener = tokio::net::TcpListener::bind(("127.0.0.1", spec.local_port))
+                .await
+                .map_err(|e| {
+                    fail(Said::with_raw(
+                        copy_text(
+                            "beUses.forward.bindFailed",
+                            &[
+                                ("port", &spec.local_port.to_string()),
+                                ("why", &copy_core::io_reason(e.kind())),
+                            ],
+                        ),
+                        &e,
+                    ))
+                })?;
+            Held::Forward { listener, spec }
+        }
+        Use::Hold => Held::Hold,
+        Use::Shell => {
+            let pty = req.pty.clone().unwrap_or_default();
+            let (channel, permit) = lease.session_channel(req, stages).await.map_err(fail)?;
+            // 读写两半分开：写半边被守着（无论怎么收场远端那条通道都被关），改窗口也走它。
+            let (mut rd, wr) = channel.split();
+            let wr = CloseOnDrop::new(wr);
+            // pty 与 shell 各等一次答复（[`granted`]）：两样都答应了才算开成。
+            let failed =
+                |e: russh::Error| Said::with_raw(copy_text("beUses.shell.failed", &[]), &e);
+            let early = async {
+                pty_half(wr.get(), &pty).await.map_err(failed)?;
+                let mut early = granted(&mut rd, "pty-req", shell_failed).await?;
+                shell_half(wr.get()).await.map_err(failed)?;
+                early.extend(granted(&mut rd, "shell", shell_failed).await?);
+                Ok::<_, Said>(early)
+            }
+            .await
+            .map_err(fail)?;
+            Held::Shell {
+                rd,
+                wr,
+                early,
+                _permit: permit,
+            }
+        }
+    };
+    Ok(Opened { lease, held })
+}
+
+/// 一份拨号请求的完整一趟，写成**一条链路上的字节**（真过进程的那一处：`dial/link.rs`）：
+/// [`open`] 的进展写成 `{"progress":…}` 行（请求带 `progress` 才写）→ 阶段行 → 一行 ack → [`Opened::pump`]。
 /// 返回类型显式写出 `+ Send`：理由同 [`exec`]（russh 借 `&self` 的 `async fn` 在高阶生命周期上推不出 Send）。
 pub fn run<'a, R, W>(
     req: &'a DialRequest,
@@ -504,29 +816,28 @@ where
     W: AsyncWrite + Unpin + Send,
 {
     async move {
-        // 要进展行 ⇒ 这一趟的阶段出口另接一头，ack 之前拨号那几段边等边把报来的那一步当场写出去（[`moving`]）。
+        // 要进展行 ⇒ 这一趟的阶段出口另接一头，开的那一段边等边把报来的那一步当场写出去（[`moving`]）。
         let (live, mut steps) = if req.progress {
             let (s, rx) = stages.reporting();
             (s, Some(rx))
         } else {
             (stages.clone(), None)
         };
-        let stages = &live;
-        let taken = moving(out, &mut steps, Lease::take(req, stages, lane_of(req.use_))).await;
-        let mut lease = match taken {
-            Ok(l) => l,
-            Err((e, fp)) => {
-                tracing::error!("dial: 拨号失败: {e}");
-                let _ = write_stages_then_ack(
-                    out,
-                    stages,
-                    &DialAck::failed(e, fp).because(stages.why()).seen(stages),
-                )
-                .await;
-                return;
+        match moving(out, &mut steps, opening(req, &live)).await {
+            Err(f) => {
+                let _ = write_stages_then_ack(out, &live, &DialAck::of_fail(f)).await;
             }
-        };
-        serve(req, &mut lease, stages, &mut steps, input, out, control).await;
+            Ok(opened) => {
+                if write_stages_then_ack(out, &live, &opened.ack())
+                    .await
+                    .is_err()
+                {
+                    tracing::error!("dial: 写 ack 失败（界面已经走了？）");
+                    return;
+                }
+                opened.pump(input, out, control).await;
+            }
+        }
     }
 }
 
@@ -564,268 +875,6 @@ where
                 };
                 if !wrote {
                     *steps = None;
-                }
-            }
-        }
-    }
-}
-
-/// 拨通之后的那一段。
-async fn serve<R, W>(
-    req: &DialRequest,
-    lease: &mut Lease,
-    stages: &StageSink,
-    steps: &mut Option<tokio::sync::mpsc::UnboundedReceiver<&'static str>>,
-    mut input: R,
-    out: &mut W,
-    control: Control,
-) where
-    R: AsyncRead + Unpin + Send,
-    W: AsyncWrite + Unpin + Send,
-{
-    match req.use_ {
-        Use::Stream => {
-            // `_permit`：这条长流占着这条连接的一格通道，直到本臂返回（`pool::Budget`）。
-            let (mut channel, _permit) =
-                match moving(out, steps, lease.session_channel(req, stages)).await {
-                    Ok(c) => c,
-                    Err(e) => {
-                        let fp = lease.linked.fingerprint.clone();
-                        let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
-                        return;
-                    }
-                };
-            let fail = |e: Said| DialAck::failed(e, lease.linked.fingerprint.clone());
-            // want_reply = true：等远端答应 exec 再回 ack（[`granted`]）。
-            let opened = match exec(&channel, req.command.as_bytes().to_vec()).await {
-                Ok(()) => granted(&mut channel, "exec", exec_failed).await,
-                Err(e) => Err(Said::with_raw(copy_text("beUses.exec.failed", &[]), &e)),
-            };
-            let early = match opened {
-                Ok(early) => early,
-                Err(e) => {
-                    let _ = write_stages_then_ack(out, stages, &fail(e)).await;
-                    return;
-                }
-            };
-            if write_stages_then_ack(out, stages, &ok_ack(&lease.linked))
-                .await
-                .is_err()
-            {
-                tracing::error!("dial: 写 ack 失败（界面已经走了？）");
-                return;
-            }
-            // 跟着答复一起到的字节先补交；那台已经收了这条通道 ⇒ 到此为止。
-            match replay_early(out, early).await {
-                Ok(false) => {}
-                Ok(true) | Err(_) => return,
-            }
-            // 两条方向对拷，哪一边先结束就收工：下行结束 = 远端那头走了；上行结束 = 界面走了（链路被关 / 句柄被丢）。
-            // 不许把上行 EOF 读成「半关、接着等下行」：远端后端的长流不会因为 stdin EOF 退出，会挂在一条没人收的下行上。
-            let (mut down, mut up) = tokio::io::split(channel.into_stream());
-            tokio::select! {
-                r = tokio::io::copy(&mut input, &mut up) => {
-                    tracing::info!("dial: 上行结束（界面那头断了）：{r:?}");
-                }
-                r = tokio::io::copy(&mut down, out) => {
-                    tracing::info!("dial: 下行结束（远端那头断了）：{r:?}");
-                }
-            }
-        }
-        Use::Capture => {
-            let fp = lease.linked.fingerprint.clone();
-            let Some(opts) = req.capture.clone() else {
-                let _ = write_stages_then_ack(
-                    out,
-                    stages,
-                    &DialAck::failed(crate::malformed("use=capture without `capture`").into(), fp),
-                )
-                .await;
-                return;
-            };
-            let (channel, _permit) =
-                match moving(out, steps, lease.session_channel(req, stages)).await {
-                    Ok(c) => c,
-                    Err(e) => {
-                        let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
-                        return;
-                    }
-                };
-            // 读半边收全，写半边被守着：本臂无论怎么收场（收全 · 提前收工 · 链路被关 ⇒ abort），远端那条通道都被关。
-            let (mut rd, wr) = channel.split();
-            let wr = CloseOnDrop::new(wr);
-            if let Err(e) = exec_half(wr.get(), req.command.as_bytes().to_vec()).await {
-                let _ = write_stages_then_ack(
-                    out,
-                    stages,
-                    &DialAck::failed(Said::with_raw(copy_text("beUses.exec.failed", &[]), &e), fp),
-                )
-                .await;
-                return;
-            }
-            let early = match granted(&mut rd, "exec", exec_failed).await {
-                Ok(early) => early,
-                Err(e) => {
-                    let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
-                    return;
-                }
-            };
-            // 有载荷就写进远端进程的 stdin（不关 —— 收的一侧只读一行）。
-            if let Some(input) = opts.stdin.clone() {
-                if let Err(e) = wr.get().data_bytes(input.into_bytes()).await {
-                    let _ = write_stages_then_ack(
-                        out,
-                        stages,
-                        &DialAck::failed(
-                            Said::with_raw(copy_text("beUses.exec.stdinLost", &[]), &e),
-                            fp,
-                        ),
-                    )
-                    .await;
-                    return;
-                }
-            }
-            if write_stages_then_ack(out, stages, &ok_ack(&lease.linked))
-                .await
-                .is_err()
-            {
-                return;
-            }
-            let got = collect(&mut rd, &opts, early).await;
-            let _ = write_line(out, &got).await;
-        }
-        Use::Forward => {
-            let fp = lease.linked.fingerprint.clone();
-            let Some(spec) = req.forward.clone() else {
-                let _ = write_stages_then_ack(
-                    out,
-                    stages,
-                    &DialAck::failed(crate::malformed("use=forward without `forward`").into(), fp),
-                )
-                .await;
-                return;
-            };
-            // 只绑回环（不对外暴露）。绑口是**后端**的事。
-            let listener = match tokio::net::TcpListener::bind(("127.0.0.1", spec.local_port)).await
-            {
-                Ok(l) => l,
-                Err(e) => {
-                    let _ = write_stages_then_ack(
-                        out,
-                        stages,
-                        &DialAck::failed(
-                            Said::with_raw(
-                                copy_text(
-                                    "beUses.forward.bindFailed",
-                                    &[
-                                        ("port", &spec.local_port.to_string()),
-                                        ("why", &copy_core::io_reason(e.kind())),
-                                    ],
-                                ),
-                                &e,
-                            ),
-                            fp,
-                        ),
-                    )
-                    .await;
-                    return;
-                }
-            };
-            if write_stages_then_ack(out, stages, &ok_ack(&lease.linked))
-                .await
-                .is_err()
-            {
-                return;
-            }
-            forward(Arc::clone(&lease.linked), listener, spec, &mut input, out).await
-        }
-        Use::Hold => {
-            if write_stages_then_ack(out, stages, &ok_ack(&lease.linked))
-                .await
-                .is_err()
-            {
-                return;
-            }
-            // 上行读到 EOF（对面走了）或连接没了 ⇒ 收工；上行的字节不是协议的一部分，读到就扔。
-            let heard = Arc::clone(&lease.linked.heard);
-            let mut sink = [0u8; 64];
-            loop {
-                tokio::select! {
-                    r = input.read(&mut sink) => if matches!(r, Ok(0) | Err(_)) { break },
-                    () = heard.gone() => {
-                        tracing::info!("dial: 握着的那条连接没了，这条链路收工");
-                        break;
-                    }
-                }
-            }
-        }
-        Use::Shell => {
-            let fp = lease.linked.fingerprint.clone();
-            let pty = req.pty.clone().unwrap_or_default();
-            let (channel, _permit) =
-                match moving(out, steps, lease.session_channel(req, stages)).await {
-                    Ok(c) => c,
-                    Err(e) => {
-                        let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
-                        return;
-                    }
-                };
-            // 读写两半分开：写半边被守着（无论怎么收场远端那条通道都被关），改窗口也走它。
-            let (mut rd, wr) = channel.split();
-            let wr = CloseOnDrop::new(wr);
-            // pty 与 shell 各等一次答复（[`granted`]）：两样都答应了才回 ack。
-            let failed =
-                |e: russh::Error| Said::with_raw(copy_text("beUses.shell.failed", &[]), &e);
-            let opened = async {
-                pty_half(wr.get(), &pty).await.map_err(failed)?;
-                let mut early = granted(&mut rd, "pty-req", shell_failed).await?;
-                shell_half(wr.get()).await.map_err(failed)?;
-                early.extend(granted(&mut rd, "shell", shell_failed).await?);
-                Ok::<_, Said>(early)
-            }
-            .await;
-            let early = match opened {
-                Ok(early) => early,
-                Err(e) => {
-                    let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
-                    return;
-                }
-            };
-            if write_stages_then_ack(out, stages, &ok_ack(&lease.linked))
-                .await
-                .is_err()
-            {
-                return;
-            }
-            match replay_early(out, early).await {
-                Ok(false) => {}
-                Ok(true) | Err(_) => return,
-            }
-            let mut up = wr.get().make_writer();
-            let mut down = rd.make_reader();
-            let up_done = tokio::io::copy(&mut input, &mut up);
-            let down_done = tokio::io::copy(&mut down, out);
-            tokio::pin!(up_done, down_done);
-            let mut resize = control.resize;
-            loop {
-                tokio::select! {
-                    r = &mut up_done => {
-                        tracing::info!("dial: shell 上行结束（对面断了）：{r:?}");
-                        break;
-                    }
-                    r = &mut down_done => {
-                        tracing::info!("dial: shell 下行结束（远端那头断了）：{r:?}");
-                        break;
-                    }
-                    size = recv_resize(&mut resize) => match size {
-                        Some((cols, rows)) => {
-                            if let Err(e) = window_half(wr.get(), cols, rows).await {
-                                tracing::info!("dial: 改窗口没成：{e}");
-                            }
-                        }
-                        // 改窗口那根管子没人了：之后只对拷字节。
-                        None => resize = None,
-                    },
                 }
             }
         }

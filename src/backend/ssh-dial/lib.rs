@@ -284,24 +284,60 @@ pub struct DialAck {
 impl DialAck {
     /// 没拨成 / 没开成：那一句 ＋ 下层原话（进 `detail`，不进 `error`）。
     pub fn failed(error: Said, fingerprint: Option<String>) -> Self {
+        Self::of_fail(DialFail::new(error, fingerprint))
+    }
+
+    /// 没开成的那一份写成线上那一行。
+    pub fn of_fail(f: DialFail) -> Self {
         DialAck {
             ok: false,
-            detail: Some(env::get().facts.detail("dial", None, error.raw.as_deref())),
-            error: Some(error.said),
-            fingerprint,
+            error: Some(f.error),
+            detail: f.detail,
+            fingerprint: f.fingerprint,
             endpoint: None,
             winner: None,
+            reason: f.reason,
+            key_type: f.key_type,
+            expected_fingerprint: f.expected_fingerprint,
+            v: ACK_V,
+            uses: USES,
+        }
+    }
+}
+
+/// 没开成（[`uses::open`] · [`uses::capture`]）：线上就是一行 `ok:false` 的 ack（[`DialAck::of_fail`]），进程内的调用方直接拿这一份。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DialFail {
+    /// 那一句（只带原因词，不带下层原话）。
+    pub error: String,
+    /// 复制详情（时刻 · 机器 · 命令 · 下层原话）。
+    pub detail: Option<String>,
+    /// 握手时看到的 host key 指纹（失败时也尽量带上）。
+    pub fingerprint: Option<String>,
+    /// 原因码（[`Why`]）；说不清 ⇒ `None`。
+    pub reason: Option<Why>,
+    /// 目标那一台握手时给的 host key 类型（没握到那一步 ⇒ `None`）。
+    pub key_type: Option<String>,
+    /// 「钥匙变了」时库里同类型那一把的指纹（没有 ⇒ 空串；没因钥匙被拒 ⇒ `None`）。
+    pub expected_fingerprint: Option<String>,
+}
+
+impl DialFail {
+    /// 那一句 ＋ 下层原话（进 `detail`）＋ 看到的指纹。
+    pub fn new(error: Said, fingerprint: Option<String>) -> Self {
+        DialFail {
+            detail: Some(env::get().facts.detail("dial", None, error.raw.as_deref())),
+            error: error.said,
+            fingerprint,
             reason: None,
             key_type: None,
             expected_fingerprint: None,
-            v: ACK_V,
-            uses: USES,
         }
     }
 
     /// 带上这一趟记下的原因码（[`StageSink::why`]）。
     pub fn because(self, why: Option<Why>) -> Self {
-        DialAck {
+        DialFail {
             reason: why,
             ..self
         }
@@ -309,7 +345,7 @@ impl DialAck {
 
     /// 带上这一趟握手时看到的 host key 类型与（钥匙被拒时）库里那一把的指纹（[`StageSink`]）。
     pub fn seen(self, stages: &StageSink) -> Self {
-        DialAck {
+        DialFail {
             key_type: stages.key_type(),
             expected_fingerprint: stages.expected(),
             ..self
