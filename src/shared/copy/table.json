@@ -9867,30 +9867,6 @@
       "zh": "当前目录加入书签",
       "args": []
     },
-    "rsFilewinBookmarks.store.noDataDir": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "保存书签失败 · 无数据目录",
-      "args": []
-    },
-    "rsFilewinBookmarks.mutate.failed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "保存书签失败 · {why}",
-      "args": ["why"]
-    },
-    "rsFilewinBookmarks.read.unreadable": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "读取书签文件 {file} 失败 · 内容无法解析",
-      "args": ["file"]
-    },
-    "rsFilewinBookmarks.read.failed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "读取书签失败 · {why}",
-      "args": ["why"]
-    },
     "rsFilewinTransfer.ui.redone": {
       "kind": "error",
       "role": "报错",
@@ -11998,12 +11974,6 @@
       "kind": "body",
       "role": "片段",
       "zh": "开机自启开关与程序路径",
-      "args": []
-    },
-    "rsDataPaths.monitor.bookmarks": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "文件窗口收藏的目录 · 每台机器一份",
       "args": []
     },
     "rsDataPaths.monitor.filewinView": {
@@ -14900,6 +14870,18 @@
       "zh": "不在 planned-build 工作区里",
       "args": []
     },
+    "beBookmarks.noHome": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "书签未读写 · 无主目录",
+      "args": []
+    },
+    "beBookmarks.mkdirFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "创建 {dir} 失败",
+      "args": ["dir"]
+    },
     "bePlan.review.mkdirFailed": {
       "kind": "error",
       "role": "报错",
@@ -15222,12 +15204,6 @@
       "zh": "SSH 与后端均正常",
       "args": [],
       "limited": ["SSH"]
-    },
-    "beProbe.link.closed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "该机后端输出中断",
-      "args": []
     },
     "beProbe.reached.ssh": {
       "kind": "body",
@@ -26421,6 +26397,12 @@
       "kind": "body",
       "role": "说明",
       "zh": "计划需手动里认可过的几条 · 退回过的格",
+      "args": []
+    },
+    "rsDataPaths.backend.bookmarks": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "书签 · 文件窗口与手机收藏的这台上的目录",
       "args": []
     },
     "rsDataPaths.backend.lastSeen": {

@@ -1197,13 +1197,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "本机后端经池里那条 SSH 在远端跑一条一次性子命令、拿回来的 stdout（资产目录 · 历史清单；capture）",
         "拒收+回错",
     ),
-    // 测试连接进本机后端：探活链路上的每一行（阶段行 · ack · 那台后端的 hello · 应答）。
-    (
-        "src/backend/dial/probe.rs",
-        "LINE_CAP",
-        "测试连接那条探活链路上的一行（阶段行 · ack · 那台后端的首行 hello · ping 应答；hello 是后端出方向单行，同量级）",
-        "拒收+回错",
-    ),
     // 端口转发账进本机常驻后端：读链路那一侧的 ack 与计数行。
     (
         "src/backend/dial/forwards.rs",

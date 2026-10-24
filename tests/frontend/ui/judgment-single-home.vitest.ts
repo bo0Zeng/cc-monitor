@@ -710,6 +710,14 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     CREDENTIALS_NAME: NONE,
     is_deceptive_char: "J2",
     SUPPORTED_SCHEMA: NONE,
+    // 账号清单的查法（A5-7）：后端与手机核心照它，界面不另判，没有孪生。
+    route_id: NONE,
+    is_api_key: NONE,
+    by_route: NONE,
+    by_name: NONE,
+    named: NONE,
+    default_account: NONE,
+    with_bare_first: NONE,
   },
   // `agent-tools-core` 那一格删了：它收进后端适配层（`agents/claudecode/cards.rs`），不再是共享 crate。
   // `branch-core` 那一格删了：它收进后端适配层（`agents/claudecode/branch.rs`），不再是共享 crate。
@@ -1109,6 +1117,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     PLAN_REVIEW_REL: NONE,
     // 离线那台的上次值（后端写；数据位置页按它列）· 后端自己家里那一份清单（后端「文件与数据」逐样 stat 它）。
     LAST_SEEN_REL: NONE,
+    // 这台的书签（后端 `control/bookmarks.rs` 写；文件窗口与手机按机器名问，界面不读）。
+    BOOKMARKS_REL: NONE,
     OWN_HOME_ENTRIES: NONE,
     // 额度账 · 账号轮换（后端账号域写；数据位置页按它列）。
     QUOTA_LEDGER_REL: NONE,

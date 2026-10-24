@@ -756,6 +756,7 @@ fn attach_stream(
         crate::inbound_client::LOCAL_ORIGIN
     );
     crate::prefs_migration::after_local_ready();
+    crate::bookmarks_migration::after_ready(crate::origin::Origin::local());
     crate::machine_table::refresh();
     tauri::async_runtime::spawn(async move {
         use crate::stream_source::{CappedLine, BACKEND_FRAME_LINE_CAP};
