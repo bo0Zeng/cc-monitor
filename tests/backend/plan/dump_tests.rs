@@ -146,10 +146,9 @@ fn starting_pb_lives_in_one_function() {
         .into_iter()
         .map(|(_, src)| src)
         .collect();
-    assert!(
-        texts.contains("pub(crate) fn pb("),
-        "plan/ 里没有起 pb 的那个函数"
-    );
+    if let Err(e) = guard_core::find_pinned(&texts, "pub(crate) fn pb(") {
+        panic!("plan/ 里起 pb 的那个函数不是恰好一个：{e}");
+    }
     for needle in [
         "noPythonHint",
         "is_timed_out",
