@@ -15447,30 +15447,6 @@
       "zh": "后端正在退出 · 命令未执行 · 重新连上后再试",
       "args": []
     },
-    "beAccountsQuery.trustProductAt.unparsable": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "信任状态无法解析",
-      "args": []
-    },
-    "beAccountsQuery.accountTrustZero.noHome": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未找到主目录 · 无法定位默认账号的配置文件",
-      "args": []
-    },
-    "beAccountsQuery.accountTrust.notListed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "此配置目录不在账号清单 · 未读",
-      "args": []
-    },
-    "beAccountsQuery.accountTrust.unsafeDir": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "信任检查失败 · 路径不合规",
-      "args": []
-    },
     "beAccountsQuery.loadManifest.noVersion": {
       "kind": "error",
       "role": "原因格",
