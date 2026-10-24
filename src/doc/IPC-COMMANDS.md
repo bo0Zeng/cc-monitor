@@ -2406,6 +2406,7 @@ tokensPerPct?: number, };
 
 ```ts
 type AgentKind = string;
+type RotPastSeg = { from: number, to: number, sendable: boolean, reset: boolean, text: string, };
 type RotTryDecision = { 
 /**
  * 用哪个号（停发 ⇒ 缺）。
@@ -2431,24 +2432,7 @@ fromTemp: boolean, skipped: Array<string>, temp: Array<string>, nextNode?: numbe
  * 策略这一判出错（走了兜底）：原话。
  */
 strategyError?: string, };
-type RotTryLane = { account: string, segs: Array<RotTryLaneSeg>, };
-type RotTryLaneSeg = { from: number, to: number, 
-/**
- * 事实上发得出去吗（被拒 · 登录 · key · 超额 · 用到 100 都算发不出去）。
- */
-sendable: boolean, 
-/**
- * 这一段开头两窗的用量（5 小时 · 7 天）。
- */
-used: [number, number], reset: boolean, 
-/**
- * 这一段写的字：发不出去 ⇒ 空；重置那段 `↻18:30`；此刻那段 `剩 40%`。
- */
-text: string, 
-/**
- * 这一段开头剩多少（事实：100 − 两窗里用得多的那个，不低于 0）。
- */
-left: number, };
+type RotTryLane = { account: string, segs: Array<RotPastSeg>, };
 type RotTryRow = { account: string, why: string, };
 type RotTrySwitch = { at: number, 
 /**
@@ -2469,7 +2453,11 @@ type RotTryUse = { from: number, to: number, account?: string, fromTemp: boolean
 /**
  * 在用的号用到上限的时刻还不知道（额度账里量不到它的用速）：这一段只排确定的事件。
  */
-capUnknown: boolean, skipped: Array<string>, };
+capUnknown: boolean, skipped: Array<string>, 
+/**
+ * 这一段写的字：号名 · 停发那一句。
+ */
+text: string, };
 type RotationTryReply = { now: number, 
 /**
  * 这份策略的说明（原文开头那段 `//` 注释，一行一行 `\n` 接起来、空行分段）。
@@ -2582,7 +2570,7 @@ type FactBlocked = { why: FactWhy, until?: number, text: string, };
 type FactWhy = "refused" | "overage" | "used" | "login" | "key";
 type LoginState = "ok" | "needsLogin" | "needsKey";
 type QuotaKind = "sub" | "api";
-type RotAccount = { plate: RotPlate, 
+type RotAccount = { plate: RotPlate, full: Array<string>, 
 /**
  * 路由第 2 段。
  */
@@ -2634,7 +2622,7 @@ under?: string,
  */
 same?: string, };
 type RotChoice = { v: string, label: string, };
-type RotDaySeg = { from: number, to: number, v: number, text: string, tip: string, };
+type RotDaySeg = { from: number, to: number, fromText: string, toText: string, v: number, text: string, tip: string, };
 type RotFormKind = "percent" | "minutes" | "toggle" | "choice" | "daySegments";
 type RotFrom = "own" | "all" | "default" | "same";
 type RotHint = { "k": "hold", until?: number, account?: string, 
@@ -2654,7 +2642,11 @@ type RotOldFile = { name: string, path: string, };
 type RotPast = { from: number, uses: Array<RotPastUse>, lanes: Array<RotPastLane>, };
 type RotPastLane = { account: string, segs: Array<RotPastSeg>, };
 type RotPastSeg = { from: number, to: number, sendable: boolean, reset: boolean, text: string, };
-type RotPastUse = { from: number, to: number, account?: string, };
+type RotPastUse = { from: number, to: number, account?: string, 
+/**
+ * 这一段写的字：号名 · 停发那一句；接着此刻、跟推演第一段同一个号的那一段 ⇒ 空（同一段只写一次，写在推演那一截）。
+ */
+text: string, };
 type RotPlate = { color: number, label: Words, text: Words, };
 type RotRow = { account: string, line: string, hover: string, cells: Array<RotCell>, rules: Array<string>, marks: Array<RotMark>, };
 type RotStrategyError = { line?: number, msg: string, };
@@ -2709,24 +2701,7 @@ fromTemp: boolean, skipped: Array<string>, temp: Array<string>, nextNode?: numbe
  * 策略这一判出错（走了兜底）：原话。
  */
 strategyError?: string, };
-type RotTryLane = { account: string, segs: Array<RotTryLaneSeg>, };
-type RotTryLaneSeg = { from: number, to: number, 
-/**
- * 事实上发得出去吗（被拒 · 登录 · key · 超额 · 用到 100 都算发不出去）。
- */
-sendable: boolean, 
-/**
- * 这一段开头两窗的用量（5 小时 · 7 天）。
- */
-used: [number, number], reset: boolean, 
-/**
- * 这一段写的字：发不出去 ⇒ 空；重置那段 `↻18:30`；此刻那段 `剩 40%`。
- */
-text: string, 
-/**
- * 这一段开头剩多少（事实：100 − 两窗里用得多的那个，不低于 0）。
- */
-left: number, };
+type RotTryLane = { account: string, segs: Array<RotPastSeg>, };
 type RotTryRow = { account: string, why: string, };
 type RotTrySwitch = { at: number, 
 /**
@@ -2747,7 +2722,11 @@ type RotTryUse = { from: number, to: number, account?: string, fromTemp: boolean
 /**
  * 在用的号用到上限的时刻还不知道（额度账里量不到它的用速）：这一段只排确定的事件。
  */
-capUnknown: boolean, skipped: Array<string>, };
+capUnknown: boolean, skipped: Array<string>, 
+/**
+ * 这一段写的字：号名 · 停发那一句。
+ */
+text: string, };
 type RotationViewReply = { now: number, 
 /**
  * `now` 的钟面（`HH:MM`，看的那一台的时区）。
@@ -2826,7 +2805,7 @@ type RotBadCell = { cell: string, code: string, };
 type RotConflict = { rev: string, };
 type RotEdit = { "set": { key: string, row?: number, v: unknown, } } | { "seg": { key: string, row?: number, window: string, at?: number, seg?: RotSeg, } } | { "same": { key: string, row?: number, window: string, same: boolean, } } | { "move": { from: number, to: number, } } | { "add": { account: string, } } | { "remove": { row: number, } };
 type RotRefused = { cells: Array<RotBadCell>, };
-type RotSeg = { from: number, to: number, v: number, };
+type RotSeg = { from: string, to: string, v: number, };
 type RotStrategyRev = { rev: string, };
 type RotationSettingsReq = { strategy: string, edit: RotEdit, ifRev: string, };
 ```
@@ -2897,12 +2876,16 @@ strategy: string | null, };
 入参 `RotationTempReq` · 回包 `RotationTempReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type RotTempOp = { "place": { account: string, at: number, } } | { "set": Array<string> } | "clear" | { "off": { account: string, off: boolean, } };
+type FactWhy = "refused" | "overage" | "used" | "login" | "key";
+type RotTempOp = { "place": { account: string, t: number, } } | { "move": { account: string, to: number, } } | "clear" | { "off": { account: string, off: boolean, } };
+type RotUnusable = { why?: FactWhy, until?: number, };
 type RotationTempReply = { temp: Array<string>, off: Array<string>, };
 type RotationTempReq = { sid: string, op: RotTempOp, };
 ```
 
-码：`bad_args` · `no_session` · `not_listed` · `io_failed`
+码：`bad_args` · `no_session` · `not_listed` · `unusable` · `io_failed`
+
+失败带 `data` 的码：`unusable` ⇒ `RotUnusable`
 
 #### `rotation-use-now`
 
@@ -3221,38 +3204,6 @@ appExit?: boolean | null, };
 ```
 
 码：`bad_args`
-
-#### `accounts-trust`
-
-换号前的信任预检。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --accounts-trust`
-
-入参 `AccountsTrustReq` · 回包 `Trust`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type AccountsTrustReq = { 
-/**
- * 目标账号的 config dir（必须逐字 ∈ manifest，否则 `unknown_config_dir`）；**缺席或 `null` = 账号 0**
- * （读 agent 自己那份用户级配置，不收路径）。
- */
-configDir?: string | null, 
-/**
- * 要预检的工作目录。
- */
-cwd: string, };
-type Trust = { 
-/**
- * 这个账号接受过该目录的信任对话框。
- */
-trusted: boolean, 
-/**
- * 这个账号的用户级配置里有该目录的记录（`false` ⇒ 首次进入，大概率会弹确认）。
- */
-known: boolean, };
-```
-
-码：`bad_args` · `failed` · `manifest_unavailable` · `no_home` · `unknown_config_dir` · `unsafe_config_dir`
 
 #### `accounts-init`
 
@@ -9309,47 +9260,6 @@ type SkillTargetFile = { path: string, text: string, };
 
 码：`bad_args` · `bad_file` · `io_failed` · `needs_consent` · `too_large`
 
-#### `skill-install-record`
-
-skill 装记录的写口。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --skill-install-record`
-
-入参 `RecordReq` · 回包 `RecordReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type LedgerFile = { digest: string, created: boolean, };
-type RecordAt = "home";
-type RecordReply = { 
-/**
- * 这一条记录的目录（MCP：那份配置文件）。
- */
-dir: string, name: string, 
-/**
- * 记录变没变（没变不写）。
- */
-changed: boolean, 
-/**
- * 这一条还剩几个文件（MCP：那份配置里还记着几条）。
- */
-remaining: number, };
-type RecordReq = { "op": "add", 
-/**
- * skill 的目录名。
- */
-name: string, files: { [key in string]: LedgerFile }, 
-/**
- * 给了 ⇒ 目录按那个项目里的 skill 根算。
- */
-project?: string, 
-/**
- * 缺 ⇒ 目录按 skill 根算；`home` ⇒ 目录 = 记录所在那个家目录（装在家目录底下、不在 skill 根下的东西用）。
- */
-at?: RecordAt, } | { "op": "drop", dir: string, paths: Array<string>, } | { "op": "mcp-add", file: string, name: string, digest: string, } | { "op": "mcp-drop", file: string, name: string, };
-```
-
-码：`bad_args` · `io_failed` · `ledger_unreadable` · `not_found` · `too_large`
-
 #### `mcp-read`
 
 这台机器的 MCP 列表成品。
@@ -14444,7 +14354,6 @@ type Words = string;
 | `--accounts-repair` | ＝ 帧命令 `accounts-repair`：修复账号库（幂等） |
 | `--accounts-rollback` | ＝ 帧命令 `accounts-rollback`：按一份备份还原 |
 | `--accounts-set-default` | ＝ 帧命令 `accounts-set-default`：设默认号 |
-| `--accounts-trust` | ＝ 帧命令 `accounts-trust`：换号前的信任预检 |
 | `--accounts-verify` | ＝ 帧命令 `accounts-verify`：核对账号库 |
 | `--agent-home-check` | ＝ 帧命令 `agent-home-check`：那个目录能不能当 agent 家目录 |
 | `--aliases-block-install` | ＝ 帧命令 `aliases-block-install`：别名块装进人选的那份启动文件 |
@@ -14597,7 +14506,6 @@ type Words = string;
 | `--sessions-where` | ＝ 帧命令 `sessions-where`：一批会话各在这台哪个终端里 |
 | `--skill-install-apply` | ＝ 帧命令 `skill-install-apply`：在要被写的那一台把勾的那几个 skill 文件写进去 |
 | `--skill-install-plan` | ＝ 帧命令 `skill-install-plan`：在要被写的那一台判 skill 装不装得过来 |
-| `--skill-install-record` | ＝ 帧命令 `skill-install-record`：skill 装记录的写口 |
 | `--skill-read` | ＝ 帧命令 `skill-read`：读来源那台上的一个 skill |
 | `--ssh-config-import` | ＝ 帧命令 `ssh-config-import`：批量导入预览 |
 | `--tasks-list` | ＝ 帧命令 `tasks-list`：一个会话的任务列表 |

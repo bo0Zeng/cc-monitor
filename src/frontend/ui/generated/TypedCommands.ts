@@ -514,7 +514,7 @@ export interface TypedCommands {
   "rotation-strategy-delete": { req: RotationStrategyDeleteReq; reply: RotDone; code: "bad_args" | "no_strategy" | "in_use" | "io_failed" };
   "rotation-strategy-rename": { req: RotationStrategyRenameReq; reply: RotStrategyId; code: "bad_args" | "no_strategy" | "conflict" | "io_failed" };
   "rotation-strategy-tz": { req: RotationStrategyTzReq; reply: RotStrategyRev; code: "bad_args" | "no_strategy" | "conflict" | "io_failed" };
-  "rotation-temp": { req: RotationTempReq; reply: RotationTempReply; code: "bad_args" | "no_session" | "not_listed" | "io_failed" };
+  "rotation-temp": { req: RotationTempReq; reply: RotationTempReply; code: "bad_args" | "no_session" | "not_listed" | "unusable" | "io_failed" };
   "rotation-try": { req: RotationTryReq; reply: RotationTryReply; code: "bad_args" | "bad_strategy" };
   "rotation-use": { req: RotationUseReq; reply: RotDone; code: "bad_args" | "no_session" | "no_strategy" | "io_failed" };
   "rotation-use-now": { req: RotationUseNowReq; reply: RotDone; code: "bad_args" | "no_session" | "not_listed" | "unusable" | "io_failed" };
@@ -567,6 +567,7 @@ export interface RefusalData {
   "rotation-strategy-delete": { "in_use": RotInUse };
   "rotation-strategy-rename": { "conflict": RotConflict };
   "rotation-strategy-tz": { "conflict": RotConflict };
+  "rotation-temp": { "unusable": RotUnusable };
   "rotation-use-now": { "unusable": RotUnusable };
   "session-open": { "bad_args": OpenRefusal; "unknown_agent": OpenRefusal; "bad_command": OpenRefusal; "no_dir": OpenRefusal; "account_unavailable": OpenRefusal; "place_unavailable": OpenRefusal; "bad_tmux_name": OpenRefusal; "tmux_taken": OpenRefusal; "record_gone": OpenRefusal; "already_live": OpenRefusal; "not_in_tmux": OpenRefusal; "wrong_owner": OpenRefusal; "unobservable": OpenRefusal; "fork_failed": OpenRefusal; "refused": OpenRefusal; "start_failed": OpenRefusal; "child_timed_out": OpenRefusal; "launch_pending": OpenRefusal; "no_strategy": OpenRefusal };
   "session-restart": { "account_unavailable": AccountUnavailable; "ambiguous": RestartRefused; "already_live": RestartRefused; "stop_failed": RestartRefused; "start_failed": RestartRefused };
