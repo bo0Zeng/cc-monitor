@@ -1121,7 +1121,11 @@ fn lay_shots_tree(home: &std::path::Path, code: &str) {
             }
             let wire = ((u - 0.505).abs() < 0.004 && v > 0.36 && v < 0.62)
                 || ((v - 0.48).abs() < 0.006 && ((u > 0.24 && u < 0.41) || (u > 0.6 && u < 0.76)));
-            image::Rgba(if wire { [90, 90, 90, 255] } else { [0, 0, 0, 0] })
+            image::Rgba(if wire {
+                [90, 90, 90, 255]
+            } else {
+                [0, 0, 0, 0]
+            })
         });
         let mut buf = std::io::Cursor::new(Vec::new());
         img.write_to(&mut buf, image::ImageFormat::Png).unwrap();
@@ -1138,7 +1142,11 @@ fn lay_shots_tree(home: &std::path::Path, code: &str) {
         ("empty-dir", "2026-09-30T08:00:00"),
     ];
     let files: Vec<(&str, Vec<u8>, &str)> = vec![
-        ("README.md", "# orders-service\n\n订单服务。\n".into(), "2026-09-15T10:00:00"),
+        (
+            "README.md",
+            "# orders-service\n\n订单服务。\n".into(),
+            "2026-09-15T10:00:00",
+        ),
         (".env", "A=1\n".into(), "2026-08-01T09:00:00"),
         (".gitignore", "target\n".into(), "2026-08-01T09:00:00"),
         (
@@ -1146,16 +1154,36 @@ fn lay_shots_tree(home: &std::path::Path, code: &str) {
             "[package]\nname = \"orders\"\nversion = \"0.1.0\"\n".into(),
             "2026-09-20T14:22:00",
         ),
-        ("notes.txt", "todo\n".repeat(200).into(), "2026-09-29T18:03:00"),
+        (
+            "notes.txt",
+            "todo\n".repeat(200).into(),
+            "2026-09-29T18:03:00",
+        ),
         ("report.pdf", vec![0; 182_000], "2025-12-31T23:59:00"),
         ("release.tar.gz", vec![0; 3_400_000], "2026-09-30T20:15:00"),
         ("logo.png", vec![0; 24_000], "2026-07-11T08:30:00"),
         ("main.rs", code.as_bytes().to_vec(), "2026-10-01T09:18:00"),
-        ("src/retry.rs", "pub fn backoff() {}\n".into(), "2026-10-01T09:12:00"),
-        ("src/clients.rs", "pub struct InventoryClient;\n".into(), "2026-10-01T09:11:00"),
-        ("tests/retry_test.rs", "#[test]\nfn retries() {}\n".into(), "2026-10-01T09:20:00"),
+        (
+            "src/retry.rs",
+            "pub fn backoff() {}\n".into(),
+            "2026-10-01T09:12:00",
+        ),
+        (
+            "src/clients.rs",
+            "pub struct InventoryClient;\n".into(),
+            "2026-10-01T09:11:00",
+        ),
+        (
+            "tests/retry_test.rs",
+            "#[test]\nfn retries() {}\n".into(),
+            "2026-10-01T09:20:00",
+        ),
         ("docs/retry.md", "# 重试\n".into(), "2026-09-28T17:40:00"),
-        ("docs/architecture.png", diagram(1600, 1000), "2026-09-28T17:30:00"),
+        (
+            "docs/architecture.png",
+            diagram(1600, 1000),
+            "2026-09-28T17:30:00",
+        ),
         ("docs/flow.png", diagram(800, 500), "2026-09-28T17:35:00"),
     ];
     for (d, t) in dirs {
