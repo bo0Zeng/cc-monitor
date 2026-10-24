@@ -47,10 +47,6 @@ path?: string,
  */
 face: SessionFace, 
 /**
- * 宣告时在等什么（同 `session_status`）。
- */
-waiting_for?: string, 
-/**
  * 隐藏那一格（不占标签页）；不隐藏 ⇒ 不上线。之后变了经主题 `session_hidden` 推。
  */
 hidden?: Hidden, 

@@ -95,7 +95,7 @@
 
 ## 5. 会话流：帧的先后与续传
 
-1. 连上：`hello` → 每个活会话一帧 `session_added`（宣告时带那条会话的整份脸 `face` 与 `waiting_for`；后台会话带 `background: true`）→ `sessions_replayed`（「清单报完了」：分清「还没说完」与「说完了、里面没有它」）。
+1. 连上：`hello` → 每个活会话一帧 `session_added`（宣告时带那条会话的整份脸 `face`；在等什么只由 `session_status` 带；后台会话带 `background: true`）→ `sessions_replayed`（「清单报完了」：分清「还没说完」与「说完了、里面没有它」）。
    `session_added.agent_kind` 每条都带（那一家的 kind）；脸上的 `account` 是这条会话跑在账号库里哪个号下（宣告时读会话进程环境里的配置目录判一次，之后那几帧的脸照带；判不了 ⇒ 缺），界面的账号徽章只读它，起停不回头问。哪几家进流、各自怎么判活由适配层在注册表那一行声明（`Adapter::live`：认 pidfile · 认开着写 · 判不了），
    冷读（`history-facts` 的 `writers` 与「状态不明」的原因 · `history-turns` 还在跑那一轮）问同一个声明（`accounts_query::session_holders`）：
    - 有 pidfile 的那一家（Claude Code）：活会话 ＝ pidfile 在、进程在。
@@ -172,7 +172,7 @@
 - 帧：`hello` `build_id` `host_arch` · `line` `session_id` `path` `seq` `byte_offset` `record` ·
   `overflow` `said` · `live` `sid` `run` `card` `n` `op` `rid` `phase` `clipped` `blocks` ·
   `reply` `id` `ok` `code` `message` `detail` `data` · `cancelled` `id` · 请求信封 `id` `cmd` `args` `within_ms`（可缺）`tz`（可缺）`view`（可缺）。
-- 会话三帧与成品面在格目录里：每格带 `frozen`。`session_added`（`sid` `path` `cwd` `name` `waiting_for` `agent_kind` `attachable` `background` 与整份脸 `face` 里手机读的那几格）·
+- 会话三帧与成品面在格目录里：每格带 `frozen`。`session_added`（`sid` `path` `cwd` `name` `agent_kind` `attachable` `background` 与整份脸 `face` 里手机读的那几格）·
   `session_status`（`sid` `waiting_for` 与 `face` 那几格）· `session_state`（`sid` 与 `face` 那几格）· `session_removed`（`sid` `cause`）只冻这几格；
   `line.record` 与 `history-read` 的 `rows`（`end` `hash` `record` `cwd`）整件冻结 —— 通用记录的公共格、六类各自的格、`who`、`error`、各种内容块逐格冻结（见下面「通用记录」一节）；
   `history-page` / `history-lines` / `history-run` 的 `record` 是同一形；

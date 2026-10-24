@@ -265,10 +265,6 @@ pub struct SessionAdded {
     /// 叫这条会话什么（[`NameFace`]，平铺在帧上）。
     #[serde(flatten)]
     pub name_face: NameFace,
-    /// 宣告时在等什么（同 `session_status`）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub waiting_for: Option<String>,
     /// 隐藏那一格（不占标签页）；不隐藏 ⇒ 不上线。之后变了经主题 `session_hidden` 推。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]

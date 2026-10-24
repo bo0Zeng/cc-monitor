@@ -2726,7 +2726,6 @@ fn report_to(id: u64, state: &mut ReaderState, sink: &mut FrameSink) {
             Frame::SessionAdded(crate::wire::SessionAdded {
                 face,
                 name_face,
-                waiting_for,
                 path,
                 container,
                 ..
@@ -2742,7 +2741,6 @@ fn report_to(id: u64, state: &mut ReaderState, sink: &mut FrameSink) {
                 account,
             );
             *name_face = crate::history::search_rules::name_face(&e.facts);
-            waiting_for.clone_from(&e.waiting_for);
             if e.path.is_some() {
                 path.clone_from(&e.path);
             }
@@ -3349,7 +3347,7 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
         pid,
         sid: sid.clone(),
         status: a.status,
-        waiting_for: a.waiting_for.clone(),
+        waiting_for: a.waiting_for,
         activity: a.activity,
         facts,
         path: jsonls.first().map(|p| p.to_string_lossy().into_owned()),
@@ -3420,7 +3418,6 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
         path: jsonls.first().map(|p| p.to_string_lossy().into_owned()),
         face,
         name_face,
-        waiting_for: a.waiting_for,
         hidden,
         // 判不了 ⇒ `None` ⇒ 不上线（与本字段加进来之前逐字节相同）。
         container,

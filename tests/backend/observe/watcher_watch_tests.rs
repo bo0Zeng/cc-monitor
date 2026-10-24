@@ -327,7 +327,6 @@ fn added_frame(sid: &str) -> Frame {
             tmux: None,
         }),
         name_face: crate::history::search_rules::name_face(&Default::default()),
-        waiting_for: None,
         hidden: None,
         container: None,
         pid: 0,
