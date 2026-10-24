@@ -587,3 +587,82 @@ fn no_rotation_presets_the_session_id_it_hands_the_agent() {
         assert!(plan_of(bad).is_err(), "{bad:?} 该拒");
     }
 }
+
+/// 额度预热的号单与起号只经后端：不给 `--accounts` ⇒ 号单照 `quota-read` 的 `candidates`（出过数的 ＋ 账号库里没出过数的，
+/// `_` 不在里面）—— 不自己去扫账号库目录；起号用 `--account <名>`，不自己拼账号目录；跑一趟不留任何状态文件。
+/// 隔离的家目录里只有一个假 `ccm`（答 `--quota-read`、把每一发的参数记下来），没有一份登录文件。
+#[cfg(unix)]
+#[test]
+fn quota_warm_takes_its_accounts_from_quota_read_and_names_them_to_ccm() {
+    use std::os::unix::fs::PermissionsExt;
+    let home = std::env::temp_dir().join(format!("quota-warm-{}", std::process::id()));
+    std::fs::remove_dir_all(&home).ok();
+    let bin = home.join(".cc-monitor/bin");
+    std::fs::create_dir_all(&bin).expect("造 bin");
+    let sent = home.join("sent.txt");
+    let read = serde_json::json!({
+        "accounts": [
+            {"account": "_", "seenAt": 0, "warm": {"act": "send", "text": "5h 窗口已过期"}},
+            {"account": "seen1", "seenAt": 0, "warm": {"act": "send", "text": "5h 窗口已过期"}},
+        ],
+        "unseen": [{"account": "fresh", "warm": {"act": "send", "text": "无采样 · 发一句才知道"}}],
+        "candidates": [
+            {"agent": "claude", "account": "seen1", "kind": "sub"},
+            {"agent": "claude", "account": "fresh", "kind": "sub"},
+        ],
+    });
+    std::fs::write(home.join("read.json"), read.to_string()).expect("写回包");
+    let ccm = bin.join("ccm");
+    std::fs::write(
+        &ccm,
+        format!(
+            "#!/bin/sh\ncase \" $* \" in *' --quota-read '*) cat '{r}'; exit 0;; esac\n\
+             printf '%s\\n' \"$*\" >> '{s}'\necho '{{\"usage\":{{}}}}'\n",
+            r = home.join("read.json").display(),
+            s = sent.display()
+        ),
+    )
+    .expect("写假 ccm");
+    std::fs::set_permissions(&ccm, std::fs::Permissions::from_mode(0o755)).expect("可执行");
+    let script = guard_core::addr::repo_root().join("src/shared/quota-warm/scripts/quota-warm");
+    let out = std::process::Command::new("python3")
+        .arg(&script)
+        .arg("once")
+        .env_clear()
+        .env("HOME", &home)
+        .env("PATH", "/usr/bin:/bin")
+        .output()
+        .expect("跑得起预热脚本");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let sent = std::fs::read_to_string(&sent).unwrap_or_default();
+    let lines: Vec<&str> = sent.lines().collect();
+    assert_eq!(lines.len(), 2, "号单该是 seen1 · fresh 两个：{sent}");
+    for (line, name) in lines.iter().zip(["seen1", "fresh"]) {
+        assert!(
+            line.contains(&format!("--account {name}")),
+            "起号要用 --account {name}：{line}"
+        );
+        assert!(!line.contains("--account-dir"), "不自己拼账号目录：{line}");
+    }
+    // 家里只多锁 · 日志 · 工作目录：不留没人读的状态文件。
+    let mut left: Vec<String> = std::fs::read_dir(home.join(".cc-monitor"))
+        .expect("读得出 .cc-monitor")
+        .map(|e| {
+            e.expect("目录项")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    left.sort();
+    std::fs::remove_dir_all(&home).ok();
+    assert_eq!(
+        left,
+        ["autostart", "bin", "logs", "quota-warm.lock"],
+        "跑一趟只留这几样"
+    );
+}

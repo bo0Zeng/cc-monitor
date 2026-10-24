@@ -4,7 +4,7 @@
  *
  * 量法与读数住 `settings-bench.mjs` 头注；这里只造数据。
  */
-import { putAccounts, putQuota, putRotation, putWarm } from "../disk";
+import { putAccounts, putQuota, putRotation } from "../disk";
 import type { OpHandler, World } from "../fake/types";
 import { defaultConfig, defaultDisk, defaultWorld, LOCAL, session, sidOf } from "../fake/world";
 import { Convo } from "../fake/records";
@@ -65,9 +65,7 @@ export function settingsPerfWorld(): World {
     }),
   );
   const sids = w.sessions.map((s) => s.sid);
-  putRotation(d, { sessions: Object.fromEntries(sids.map((sid) => [sid, { start: accts[0], current: accts[0], since: t - 3600 }])) });
-  putWarm(d, [{ account: accts[1], at: t + 2.5 * 3600 }]);
-  // ── 扩展：几百个 × 十几台 ──
+  putRotation(d, { sessions: Object.fromEntries(sids.map((sid) => [sid, { start: accts[0], current: accts[0], since: t - 3600 }])) });  // ── 扩展：几百个 × 十几台 ──
   // 造一次、记成线上那一串：之后每问只 `JSON.parse` 一遍（真壳也是后端交一串、页里解析）—— 每问现拼几百行的深拷贝是假后端自己的活，不该算进产品读数。
   const extList = w.ops["ext-list"];
   let wire: string | null = null;

@@ -17,7 +17,7 @@
   quota-warm status             只读：列出各号的重置时刻
   quota-warm once               跑一趟（该发的发）后退出
   quota-warm run                先跑一趟，之后按最早的重置时刻自己醒来再跑，一直跑
-  选项：--accounts work,personal（不给 ⇒ 账号库里所有已登录的号）· --system '只回复字母a' · --text a · --model haiku · --dry-run
+  选项：--accounts work,personal（不给 ⇒ quota-read 的 candidates：出过数的号 ＋ 账号库里没出过数的号）· --system '只回复字母a' · --text a · --model haiku · --dry-run
 """
 
 import argparse
@@ -32,11 +32,9 @@ from datetime import datetime
 HOME = os.path.expanduser("~")
 CCM_HOME = os.path.join(HOME, ".cc-monitor")
 CCM = os.path.join(CCM_HOME, "bin", "ccm")
-ACCOUNTS_DIR = os.path.join(CCM_HOME, "accounts")
 WORK_DIR = os.path.join(CCM_HOME, "autostart")
 LOG = os.path.join(CCM_HOME, "logs", "quota-warm.log")
 LOCK = os.path.join(CCM_HOME, "quota-warm.lock")
-STATE = os.path.join(CCM_HOME, "quota-warm.json")  # cc-monitor 时间轴只读它画「开窗」：{pid, next: [{account, at}]}
 
 RETRY_S = 15 * 60      # 发了没出新数 / 读不到额度账 ⇒ 过这么久再试
 SEND_TIMEOUT_S = 120
@@ -61,7 +59,7 @@ def log(msg):
 
 
 def ccm_env():
-    """交给 ccm 的环境：就是本进程的（新会话从调用方拿什么由 ccm 那一张继承表定：号照 --account-dir、中转按这一发重新问、
+    """交给 ccm 的环境：就是本进程的（新会话从调用方拿什么由 ccm 那一张继承表定：号照 --account、中转按这一发重新问、
     嵌套标记清掉；在某条会话里跑时这一发记成它的子会话，轮换不跟随它），只多这一发自己要的两格。"""
     env = dict(os.environ)
     env["MAX_THINKING_TOKENS"] = "0"
@@ -94,12 +92,11 @@ def judge(q, name):
 
 
 def send(name, system, text, model):
-    acct = os.path.join(ACCOUNTS_DIR, name)
     os.makedirs(WORK_DIR, mode=0o700, exist_ok=True)
     argv = [
         CCM, "-p", "--model", model, "--tools", "", "--no-session-persistence",
         "--setting-sources", "project", "--strict-mcp-config", "--output-format", "json",
-        "--system-prompt", system, text, "--", "--account-dir", acct, "--cwd", WORK_DIR,
+        "--system-prompt", system, text, "--", "--account", name, "--cwd", WORK_DIR,
         # 这一发不轮换：「新会话用」设成会换号的那一份时也落在点名的这个号上（不然预热白做）。
         "--no-rotation",
     ]
@@ -121,46 +118,25 @@ def send(name, system, text, model):
         return False, f"退出码 {p.returncode}，回包读不懂"
 
 
-def library_accounts():
-    """账号库里有登录文件的号（`~/.cc-monitor/accounts/<名>/.credentials.json`），按名排。"""
-    try:
-        return sorted(
-            n for n in os.listdir(ACCOUNTS_DIR)
-            if os.path.isfile(os.path.join(ACCOUNTS_DIR, n, ".credentials.json"))
-        )
-    except OSError:
-        return []
-
-
-def write_state(nexts):
-    """每趟写一份小状态文件（原子换名）：哪个号下一次几点再看。cc-monitor 只在写它的进程还活着时读。写不了就算了。"""
-    body = {"pid": os.getpid(), "next": [{"account": n, "at": int(at)} for n, at in nexts]}
-    tmp = STATE + ".tmp"
-    try:
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(body, f)
-        os.replace(tmp, STATE)
-    except OSError:
-        pass
+def candidates(q):
+    """不给 --accounts 时看哪几个号：照 quota-read 的 `candidates`（出过数的 ＋ 账号库里没出过数的，核心挑好），不另扫账号库。"""
+    seen = []
+    for c in q.get("candidates", []):
+        n = c.get("account")
+        if n and n not in seen:
+            seen.append(n)
+    return seen
 
 
 def one_pass(accounts, system, text, model, dry_run):
-    """跑一趟，回下一次该醒的时刻；不是 --dry-run 时顺手写状态文件（每个号下一次几点再看）。"""
-    nexts = []
-    wake = _one_pass(accounts, system, text, model, dry_run, nexts)
-    if not dry_run:
-        write_state(nexts)
-    return wake
-
-
-def _one_pass(accounts, system, text, model, dry_run, nexts):
+    """跑一趟，回下一次该醒的时刻。`accounts` 为空 ⇒ 这一趟照额度账的候选。"""
     try:
         q = quota_read()
     except Exception as e:  # noqa: BLE001 —— 读不到就过一阵再试，不让常驻那一形死掉
         log(f"读额度账失败：{e}")
         return time.time() + RETRY_S
     wakes = []
-    for name in accounts:
+    for name in accounts or candidates(q):
         action, at, why = judge(q, name)
         if action == "send":
             if dry_run:
@@ -178,15 +154,12 @@ def _one_pass(accounts, system, text, model, dry_run, nexts):
             if ok and heard and a2 == "wait":
                 log(f"{name}: {why} ⇒ 发了（{info}）⇒ {why2}")
                 wakes.append(at2)
-                nexts.append((name, at2))
             else:
                 log(f"{name}: {why} ⇒ 发了没成（{info}；额度账{'有' if heard else '没有'}新数）⇒ {stamp(time.time() + RETRY_S)} 再试")
                 wakes.append(time.time() + RETRY_S)
-                nexts.append((name, time.time() + RETRY_S))
         elif action == "wait":
             log(f"{name}: {why}")
             wakes.append(at)
-            nexts.append((name, at))
         else:
             log(f"{name}: {why}，跳过")
     return min(wakes) if wakes else None
@@ -194,7 +167,7 @@ def _one_pass(accounts, system, text, model, dry_run, nexts):
 
 def status(accounts):
     q = quota_read()
-    for name in accounts:
+    for name in accounts or candidates(q):
         action, at, why = judge(q, name)
         print(f"{name:10} {why}" + ("  ⇒ 该发" if action == "send" else ""))
 
@@ -214,18 +187,18 @@ def hold_lock():
 def main():
     ap = argparse.ArgumentParser(description="让各账号的 5h 窗口尽早开始计时")
     ap.add_argument("mode", choices=["status", "once", "run"])
-    ap.add_argument("--accounts", help="逗号分隔的账号名（不给 ⇒ 账号库里所有已登录的号）")
+    ap.add_argument("--accounts", help="逗号分隔的账号名（不给 ⇒ 额度账的候选：出过数的 ＋ 账号库里没出过数的）")
     ap.add_argument("--system", default="只回复字母a", help="换上的系统提示词")
     ap.add_argument("--text", default="a", help="发的那一句")
     ap.add_argument("--model", default="haiku")
     ap.add_argument("--dry-run", action="store_true", help="只判、不发")
     a = ap.parse_args()
-    accounts = [x for x in (a.accounts.split(",") if a.accounts else library_accounts()) if x]
+    accounts = [x for x in (a.accounts or "").split(",") if x]
     if a.mode == "status":
         status(accounts)
         return
     lock = hold_lock()  # noqa: F841 —— 进程活着就一直持着
-    log(f"开始（{a.mode}）：{', '.join(accounts)}")
+    log(f"开始（{a.mode}）：{', '.join(accounts) or '额度账的候选'}")
     while True:
         wake = one_pass(accounts, a.system, a.text, a.model, a.dry_run)
         if a.mode == "once":
