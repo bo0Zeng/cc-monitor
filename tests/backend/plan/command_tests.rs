@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::plan::fixture::{dump, fake_pb, runs, scratch, workspace};
+use crate::plan::wire::{PlanCmdReply, PlanTook};
 use std::cell::RefCell;
 
 #[test]
@@ -15,9 +16,15 @@ fn view_rc0_gives_the_page_path_out_of_pbs_sentence() {
         b"",
     )
     .unwrap();
-    assert_eq!(got["rc"], 0);
-    assert_eq!(got["path"], "/tmp/pb-读图-0123456789.html");
-    assert_eq!(got["said"], "写了 /tmp/pb-读图-0123456789.html");
+    assert_eq!(
+        got,
+        PlanCmdReply {
+            rc: 0,
+            said: Some("写了 /tmp/pb-读图-0123456789.html".into()),
+            path: Some("/tmp/pb-读图-0123456789.html".into()),
+            took: None,
+        }
+    );
 }
 
 #[test]
@@ -31,10 +38,7 @@ fn view_rc0_without_a_page_is_a_failure_not_a_null_path() {
 fn continue_and_pause_rc0_carry_pbs_sentence_and_no_path() {
     for v in ["continue", "pause"] {
         let got = classify(v, Some(0), "auto 开\n".as_bytes(), b"").unwrap();
-        assert_eq!(
-            got,
-            serde_json::json!({"rc": 0, "said": "auto 开", "path": null, "took": null})
-        );
+        assert_eq!(got, reply("auto 开"));
     }
 }
 
@@ -99,7 +103,7 @@ fn a_human_caller_passes_the_verb_and_its_args_through() {
     let entry = fake_pb(&root.join("pb"), "planned-build", Some(0));
     let ws = workspace(&root.join("ws"), &dump("/x"));
     let got = run_as(&entry, &ws, &["repo", "beta"], false).unwrap();
-    assert_eq!(got["rc"], 0);
+    assert_eq!(got.rc, 0);
     assert_eq!(
         runs(&root.join("pb")),
         vec![vec!["repo".to_string(), "beta".to_string()]]
@@ -107,14 +111,32 @@ fn a_human_caller_passes_the_verb_and_its_args_through() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-fn ok(said: &str) -> Result<Value, Refused> {
-    Ok(json!({"rc": 0, "said": said, "path": null, "took": null}))
+/// pb 跑成了、只说了一句的回包。
+fn reply(said: &str) -> PlanCmdReply {
+    PlanCmdReply {
+        rc: 0,
+        said: Some(said.into()),
+        path: None,
+        took: None,
+    }
+}
+
+fn ok(said: &str) -> Result<PlanCmdReply, Refused> {
+    Ok(reply(said))
+}
+
+fn took(slice: &str, path: &str, switched: bool) -> Option<PlanTook> {
+    Some(PlanTook {
+        slice: slice.into(),
+        path: path.into(),
+        switched,
+    })
 }
 
 /// 已经接过来的那一片：不起 pb，照成回、说接到的是哪一片。
 #[test]
 fn taking_a_slice_already_taken_runs_nothing() {
-    let run = |a: &[&str]| -> Result<Value, Refused> { panic!("ran {a:?}") };
+    let run = |a: &[&str]| -> Result<PlanCmdReply, Refused> { panic!("ran {a:?}") };
     let got = take_with(
         &Taking {
             slice: "alpha",
@@ -125,12 +147,9 @@ fn taking_a_slice_already_taken_runs_nothing() {
         &run,
     )
     .unwrap();
-    assert_eq!(
-        got["took"],
-        json!({"slice": "alpha", "path": "repos/alpha", "switched": false})
-    );
-    assert_eq!(got["rc"], 0);
-    assert!(got["said"].as_str().unwrap().contains("alpha"));
+    assert_eq!(got.took, took("alpha", "repos/alpha", false));
+    assert_eq!((got.rc, got.path), (0, None));
+    assert!(got.said.unwrap().contains("alpha"));
 }
 
 /// 此刻的那一片：只敲 `take`，pb 那一句原样带回。
@@ -153,13 +172,10 @@ fn taking_the_current_slice_runs_take_alone() {
     )
     .unwrap();
     assert_eq!(*ran.borrow(), vec![vec!["take".to_string()]]);
+    assert_eq!(got.took, took("alpha", "alpha", false));
     assert_eq!(
-        got["took"],
-        json!({"slice": "alpha", "path": "alpha", "switched": false})
-    );
-    assert_eq!(
-        got["said"],
-        "「alpha」的仓库接过来了（alpha）：从现在起照规矩守"
+        got.said.as_deref(),
+        Some("「alpha」的仓库接过来了（alpha）：从现在起照规矩守")
     );
 }
 
@@ -189,14 +205,14 @@ fn taking_another_slice_switches_to_it_first() {
             vec!["take".to_string()]
         ]
     );
-    assert_eq!(got["took"]["switched"], true);
+    assert_eq!(got.took, took("beta", "repos/beta", true));
 }
 
 /// 切不过去 ⇒ 停在那一步、原样回拒，`take` 不敲。
 #[test]
 fn a_refused_switch_stops_before_take() {
     let ran = RefCell::new(0);
-    let run = |_: &[&str]| -> Result<Value, Refused> {
+    let run = |_: &[&str]| -> Result<PlanCmdReply, Refused> {
         *ran.borrow_mut() += 1;
         Err(("refused", "拒：x".into(), None))
     };
@@ -259,7 +275,7 @@ fn a_real_record_run_names_the_slice_and_carries_no_pb_id() {
     let args = record_args("beta", "读写分两半", &["分开做".to_string()]).unwrap();
     let argv: Vec<&str> = args.iter().map(String::as_str).collect();
     let got = run_as(&entry, &ws, &argv, false).unwrap();
-    assert_eq!(got["said"], "记下了 原话 1");
+    assert_eq!(got.said.as_deref(), Some("记下了 原话 1"));
     let ran: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(root.join("pb/ran.json")).unwrap()).unwrap();
     assert_eq!(
