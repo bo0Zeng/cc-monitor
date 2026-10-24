@@ -82,10 +82,10 @@ fn too_many_pixels_says_so_instead_of_undecodable() {
 
 async fn rig(tag: &str, bytes: &[u8]) -> (Wired, std::path::PathBuf, PicKey) {
     let dir = std::env::temp_dir().join(format!("ccm-fw-pic-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
+    crate::find::testing::synth_fs::remove_all(&dir);
+    crate::find::testing::synth_fs::mkdir_all(&dir);
     let file = dir.join("a.png");
-    std::fs::write(&file, bytes).unwrap();
+    crate::find::testing::synth_fs::write(&file, bytes);
     let wired = wire_up(
         tag,
         FakeBackend::new(&["files-read-chunk"], Declared::default()),
@@ -173,7 +173,7 @@ async fn one_picture_is_read_once_for_every_place_that_shows_it() {
     assert_eq!(a.tex.id(), b.tex.id(), "两处拿到的不是同一张贴图");
     assert_eq!(a.native, [600, 400]);
     assert_eq!(first_reads(&wired), 1, "同一张图从头读了不止一趟");
-    let _ = std::fs::remove_dir_all(dir);
+    crate::find::testing::synth_fs::remove_all(dir);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -193,7 +193,7 @@ async fn what_nobody_shows_any_more_is_dropped() {
     );
     assert!(matches!(settle(&pics, &key, &ctx).await, Look::Ready(_)));
     assert_eq!(first_reads(&wired), 2);
-    let _ = std::fs::remove_dir_all(dir);
+    crate::find::testing::synth_fs::remove_all(dir);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -217,5 +217,5 @@ async fn a_picture_that_grows_past_the_cap_while_read_stops_and_says_so() {
         )
     );
     assert_eq!(chunk_reads(&wired), 2, "到了上限没停");
-    let _ = std::fs::remove_dir_all(dir);
+    crate::find::testing::synth_fs::remove_all(dir);
 }

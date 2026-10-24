@@ -68,7 +68,7 @@ fn ctx_ready() -> egui::Context {
 /// 都可能是**退化**的（全中 / 全不中都会让「相等」变得毫无信息）。
 #[test]
 fn the_synthetic_tree_is_not_a_trivial_shape() {
-    let t = testing::plant("shape", TREE_N, TREE_SEED).expect("造不出那棵树");
+    let t = testing::plant("shape", TREE_N, TREE_SEED);
     let all = t.entries.len();
     let hit = t.expected(NEEDLE).len();
     assert!(
@@ -161,7 +161,7 @@ fn the_synthetic_tree_is_not_a_trivial_shape() {
 /// `decode_find` → `Hit::display` → `show_hit_rows` → galley」整条链。
 #[tokio::test]
 async fn typing_into_the_box_puts_exactly_the_expected_hits_on_the_frame() {
-    let tree = testing::plant("e2e", TREE_N, TREE_SEED).expect("造不出那棵树");
+    let tree = testing::plant("e2e", TREE_N, TREE_SEED);
     let root = tree.remote_root();
     let wired = testing::wire_up(
         "b1-find-e2e",
@@ -215,7 +215,7 @@ async fn typing_into_the_box_puts_exactly_the_expected_hits_on_the_frame() {
 /// ⇒ 「命中集恰好等于预期集」不可能靠「永远回空集」蒙过去。
 #[tokio::test]
 async fn a_find_against_a_backend_that_never_built_an_index_comes_back_empty_and_says_so() {
-    let tree = testing::plant("nonull", TREE_N, TREE_SEED).expect("造不出那棵树");
+    let tree = testing::plant("nonull", TREE_N, TREE_SEED);
     let root = tree.remote_root();
     // 🔴 它**不声明** `files-index-rebuild` ⇒ 客户端连发都发不出去
     //    （`InboundClient::call` 第一行的能力协商），索引永远建不起来。
@@ -279,7 +279,7 @@ async fn a_find_against_a_backend_that_never_built_an_index_comes_back_empty_and
 /// 而且顺序也钉：先问状态（拿 `index_missing`）、再重走、最后才查。
 #[tokio::test]
 async fn the_window_sends_a_rebuild_when_the_backend_says_the_index_is_missing() {
-    let tree = testing::plant("cadence", 40, TREE_SEED).expect("造不出那棵树");
+    let tree = testing::plant("cadence", 40, TREE_SEED);
     let root = tree.remote_root();
     let wired = testing::wire_up(
         "b1-find-cadence",
@@ -348,7 +348,7 @@ async fn the_window_sends_a_rebuild_when_the_backend_says_the_index_is_missing()
 /// 每敲一个字走一整棵树（64 万条热缓存 0.99 秒，冷缓存没量过）。
 #[tokio::test]
 async fn a_fresh_index_is_never_rebuilt_behind_the_users_back() {
-    let tree = testing::plant("fresh", 40, TREE_SEED).expect("造不出那棵树");
+    let tree = testing::plant("fresh", 40, TREE_SEED);
     let root = tree.remote_root();
     let declared = Declared {
         age_secs: 7,
@@ -409,7 +409,7 @@ async fn a_fresh_index_is_never_rebuilt_behind_the_users_back() {
 /// 这一条与上面那条只差 `stale` 一个布尔 ⇒ 它证明那个布尔**真的在驱动**这条命令。
 #[tokio::test]
 async fn a_stale_index_the_backend_flagged_gets_rebuilt() {
-    let tree = testing::plant("stale", 40, TREE_SEED).expect("造不出那棵树");
+    let tree = testing::plant("stale", 40, TREE_SEED);
     let root = tree.remote_root();
     let declared = Declared {
         age_secs: 9_999,
@@ -447,7 +447,7 @@ async fn a_stale_index_the_backend_flagged_gets_rebuilt() {
 /// 不拦一下就是「连打五个字 ⇒ 五趟全树遍历」。
 #[tokio::test]
 async fn many_keystrokes_in_flight_still_only_trigger_one_rebuild() {
-    let tree = testing::plant("burst", 40, TREE_SEED).expect("造不出那棵树");
+    let tree = testing::plant("burst", 40, TREE_SEED);
     let root = tree.remote_root();
     let wired = testing::wire_up(
         "b1-find-burst",
@@ -533,7 +533,7 @@ fn find_calls(wired: &testing::Wired) -> Vec<serde_json::Value> {
 /// 后面没有了 ⇒ 一趟都不多发（阴性对照）。
 #[tokio::test]
 async fn the_last_row_on_screen_pulls_the_next_page_with_the_same_seq() {
-    let tree = testing::plant("pages", TREE_N, TREE_SEED).expect("造不出那棵树");
+    let tree = testing::plant("pages", TREE_N, TREE_SEED);
     let root = tree.remote_root();
     let wired = testing::wire_up(
         "b1-find-pages",
@@ -600,7 +600,7 @@ async fn the_last_row_on_screen_pulls_the_next_page_with_the_same_seq() {
 /// 打开一条文件命中 ⇒ 进它所在的目录，打开一条目录命中 ⇒ 进它自己。
 #[tokio::test]
 async fn the_scope_follows_the_directory_and_a_hit_takes_you_there() {
-    let tree = testing::plant("here", TREE_N, TREE_SEED).expect("造不出那棵树");
+    let tree = testing::plant("here", TREE_N, TREE_SEED);
     let root = tree.remote_root();
     let wired = testing::wire_up(
         "b1-find-here",
@@ -677,7 +677,7 @@ async fn the_scope_follows_the_directory_and_a_hit_takes_you_there() {
 /// 点表头 ⇒ 按那一列从头再问一遍（排是后端排的，这一侧只发列名与正反）；翻页带着同一个序。
 #[tokio::test]
 async fn a_header_click_asks_the_backend_for_that_order_and_pages_keep_it() {
-    let tree = testing::plant("sort", TREE_N, TREE_SEED).expect("造不出那棵树");
+    let tree = testing::plant("sort", TREE_N, TREE_SEED);
     let root = tree.remote_root();
     let wired = testing::wire_up(
         "b1-find-sort",
@@ -769,7 +769,7 @@ async fn the_status_line_shows_the_numbers_the_backend_reports() {
         ("b1-fresh-a", 1234u64, "20m", 41u64, 3u64, 'a'),
         ("b1-fresh-b", 7300u64, "2h1m", 13u64, 29u64, 'b'),
     ] {
-        let tree = testing::plant(&format!("fresh-{hint}"), 30, TREE_SEED).expect("造不出那棵树");
+        let tree = testing::plant(&format!("fresh-{hint}"), 30, TREE_SEED);
         let root = tree.remote_root();
         let declared = Declared {
             rewalk_interval_secs: 99_999,
@@ -828,7 +828,7 @@ async fn the_status_line_shows_the_numbers_the_backend_reports() {
 /// 点一行 ⇒ 复制那条**绝对**路径、右下角回执「路径已复制」，**不**跳过去（跳过去只会落到「无权限」那一条）。数与名单都是后端报的。
 #[tokio::test]
 async fn the_unreadable_dirs_can_be_listed_and_a_click_copies_the_path() {
-    let tree = testing::plant("unreadable-list", 30, TREE_SEED).expect("造不出那棵树");
+    let tree = testing::plant("unreadable-list", 30, TREE_SEED);
     let root = tree.remote_root();
     let declared = Declared {
         unreadable_dirs: 3,
@@ -938,7 +938,7 @@ async fn the_cold_first_build_line_is_on_the_frame_while_it_runs_and_gone_after(
     let groups = [("b1-cold-a", 37u64), ("b1-cold-b", 58u64)];
     for (i, (tag, secs)) in groups.iter().enumerate() {
         let other = groups[1 - i].1;
-        let tree = testing::plant(tag, 30, TREE_SEED).expect("造不出那棵树");
+        let tree = testing::plant(tag, 30, TREE_SEED);
         let root = tree.remote_root();
         let gate = std::sync::Arc::new(tokio::sync::Notify::new());
         let declared = Declared {
@@ -1027,7 +1027,7 @@ async fn the_cold_first_build_line_is_on_the_frame_while_it_runs_and_gone_after(
 /// 冷启动那个数套在它头上就是在说假话（两个数分开钉）。
 #[tokio::test]
 async fn a_warm_rewalk_never_claims_to_be_the_cold_first_build() {
-    let tree = testing::plant("warm", 30, TREE_SEED).expect("造不出那棵树");
+    let tree = testing::plant("warm", 30, TREE_SEED);
     let root = tree.remote_root();
     let gate = std::sync::Arc::new(tokio::sync::Notify::new());
     let declared = Declared {

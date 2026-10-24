@@ -13,10 +13,12 @@ package com.ccmonitor.mobile.testing
  *
  * 注意：选错不会编译失败，只会静默全绿。拿删字面那支去扫字面载荷，什么都扫不到。
  *
- * 另有三支抠字面的入口，共用同一个词法主循环 [lex]：
+ * 另有四支抠字面的入口，共用同一个词法主循环 [lex]：
  * - [literalsOf]：全部字符串字面，带行号与原文下标；
  * - [literalCorpusOf]：字面内容用 [LITERAL_SEPARATOR] 拼成一份可 `indexOf` 的语料；
- * - [literalsInCallsTo]：某个名字的调用实参里的字面（例如 `Text(…)`）。
+ * - [literalsInCallsTo]：某个名字的调用实参里的字面（例如 `Text(…)`）；
+ * - [literalsWithEnclosingCall]：每条字面直接落在哪个调用里（按位置放过 `Log.w(…)` · `require(…) { … }` 用）。
+ * 按句登记例外时用 [templateShape] 把字面里模板那一截记成 `{…}`。
  *
  * 看不见的东西：
  * - 反射、拼接出来的名字、`Class.forName`：只答「这段文本在不在」，不答运行时会发生什么；
@@ -145,6 +147,130 @@ object KotlinSourceScanner {
             for (l in literals) if (l.from in at until j) found += l
         }
         return CallLiterals(sites, found)
+    }
+
+    /**
+     * 一条字面，连同它**直接**落在哪个调用里。
+     *
+     * @param call 调用名（`Log.w` · `testTag` · `require` …，带点号的限定名照原样）；
+     *   不在任何调用的括号或尾随 lambda 里、或落在下标 `[…]` 里 ⇒ ""。
+     */
+    data class CalledLiteral(
+        val literal: Literal,
+        val call: String,
+    )
+
+    /**
+     * [literalsOf] 的每一条，标上它直接落在哪个调用里。
+     *
+     * 在骨架上从字面往回找最近一个没闭合的 `(` / `{`，取它前面那个名字；
+     * `{` 前面紧跟 `)` 的是尾随 lambda（`require(ok) { "…" }`），先跨过 `(…)` 再取名。
+     * 字面内容在骨架里是空格，所以字面里的括号骗不了它。
+     *
+     * 看不见的：模板插值里嵌套的字面会让引号配对翻面（见本对象头注），那种字面的调用名可能认错。
+     */
+    fun literalsWithEnclosingCall(text: String): List<CalledLiteral> {
+        val skeleton = codeSkeleton(text)
+        return literalsOf(text).map { CalledLiteral(it, enclosingCall(skeleton, it.from)) }
+    }
+
+    /**
+     * 一条字面内容的「形状」：模板那一截（`$name` · `${…}`）记成 [TEMPLATE_MARK]，别的原样。
+     *
+     * 给按句登记例外的判据用：行号挪了、模板里的变量改了名，登记的那句照样对得上。
+     * 反斜杠转义的美元号不是模板，照原样留着。
+     */
+    fun templateShape(body: String): String {
+        val out = StringBuilder()
+        var i = 0
+        while (i < body.length) {
+            val c = body[i]
+            val next = body.getOrNull(i + 1)
+            when {
+                c == '\\' && next != null -> {
+                    out.append(c).append(next)
+                    i += 2
+                }
+                c == '$' && next == '{' -> {
+                    i = closingBraceOf(body, i + 1) + 1
+                    out.append(TEMPLATE_MARK)
+                }
+                c == '$' && next != null && (next.isLetter() || next == '_') -> {
+                    i++
+                    while (i < body.length && (body[i].isLetterOrDigit() || body[i] == '_')) i++
+                    out.append(TEMPLATE_MARK)
+                }
+                else -> {
+                    out.append(c)
+                    i++
+                }
+            }
+        }
+        return out.toString()
+    }
+
+    /** [templateShape] 里模板那一截的记号。 */
+    const val TEMPLATE_MARK: String = "{…}"
+
+    /** `open` 处那个 `{` 配对的 `}`；没配上 ⇒ 末尾。 */
+    private fun closingBraceOf(
+        s: String,
+        open: Int,
+    ): Int {
+        var depth = 0
+        for (j in open until s.length) {
+            if (s[j] == '{') depth++
+            if (s[j] == '}' && --depth == 0) return j
+        }
+        return s.length
+    }
+
+    private fun enclosingCall(
+        skeleton: String,
+        at: Int,
+    ): String {
+        var depth = 0
+        for (k in at - 1 downTo 0) {
+            when (skeleton[k]) {
+                ')', '}', ']' -> depth++
+                '(', '{', '[' -> {
+                    if (depth == 0) return if (skeleton[k] == '[') "" else nameBefore(skeleton, k, skeleton[k] == '{')
+                    depth--
+                }
+                else -> Unit
+            }
+        }
+        return ""
+    }
+
+    /** `open` 处那个括号前面的调用名；`lambda` ⇒ 前面紧跟 `)` 时先跨过那一对 `(…)`。 */
+    private fun nameBefore(
+        skeleton: String,
+        open: Int,
+        lambda: Boolean,
+    ): String {
+        var j = skipSpaceBack(skeleton, open - 1)
+        if (lambda && j >= 0 && skeleton[j] == ')') {
+            var d = 0
+            while (j >= 0) {
+                if (skeleton[j] == ')') d++
+                if (skeleton[j] == '(' && --d == 0) break
+                j--
+            }
+            j = skipSpaceBack(skeleton, j - 1)
+        }
+        val end = j + 1
+        while (j >= 0 && (skeleton[j].isLetterOrDigit() || skeleton[j] == '_' || skeleton[j] == '.')) j--
+        return skeleton.substring(j + 1, end).trimStart('.')
+    }
+
+    private fun skipSpaceBack(
+        s: String,
+        from: Int,
+    ): Int {
+        var j = from
+        while (j >= 0 && s[j].isWhitespace()) j--
+        return j
     }
 
     // ---- 唯一的词法主循环 -------------------------------------------------------

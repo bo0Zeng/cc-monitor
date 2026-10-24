@@ -1,4 +1,4 @@
-//! 量具：**一台合成后端** ＋ **一棵合成的真目录树**。
+//! 量具：**一台合成后端** ＋ **它那台机器的盘**（[`synth_fs`]：进程里一份、内存里的一棵树）＋ **一棵合成的目录树**。
 //!
 //! # 🔴 一、它为什么必须存在（而不是「起一个真后端」）
 //!
@@ -39,9 +39,11 @@
 //! 路径由 [`super::super::corpus::synth_paths`]（生产件，`24e` 就在的那一份）生成，
 //! **一个真路径都没有** —— 真路径带个人信息，而判据要的是结构。
 //!
-//! ⚠ **为了能落到真文件系统上，段长与深度被夹紧了**（[`SEG_CAP`] / [`DEPTH_CAP`]）：
+//! ⚠ **段长与深度被夹紧了**（[`SEG_CAP`] / [`DEPTH_CAP`]）：
 //! `corpus` 那份采样会产出单段上千字符、深度几十级的路径，而
 //! Linux 的单段上限是 255 字节、Windows 的整条路径上限是 260 字符。
+//! 这棵树今天住在内存里（[`synth_fs`]，不落盘），夹紧照留：窗口画的就是这些路径，
+//! 它们得是一台真机器上建得出来的样子。
 //! ⇒ **这棵树刻意不与那张分布表对拍** —— 那一条是
 //! `corpus_tests` 的活，本模块要的只是「一棵形状不平凡、内容全合成的真树」。
 //! 夹紧这件事有判据看着：[`super::tests::the_synthetic_tree_is_not_a_trivial_shape`]。
@@ -59,12 +61,175 @@ pub const SEG_CAP: usize = 24;
 /// 「`临时目录前缀 + 6×24` 仍然远小于 260」。
 pub const DEPTH_CAP: usize = 6;
 
-/// 一棵合成树的**全部条目**（绝对路径），以及它落在盘上的根。
+/// 合成后端那台机器的**盘**：进程里一份、内存里的一棵树（路径 → 那一条）。
+///
+/// # 为什么是内存里的一棵树，而不是临时目录
+///
+/// 合成后端要答「列一个目录」「走一棵树」。落在真盘上就得在测试里遍历目录，
+/// 而 `scanning_guard_registry` 不许测试段裸遍历（存量清单只许变短）；
+/// 生产里也没有一条列本机目录的路可借（窗口只列远端，经后端 `files-ls`）。
+/// ⇒ 那台机器的盘本来就是合成的，就让它整个住在内存里：造树 · 列目录 · 走树 · 读字节都在这一份上。
+///
+/// # 形状
+///
+/// - 键是**远端那一形**（[`remote_form`]：分隔符一律 `/`，末尾不带 `/`）；入参收 `&Path` 也收 `&str`，进来先换形。
+/// - 进程里一份，同一台真机器的盘一样是全局的：并行的用例各用各的根（[`plant`] 的根带 tag · pid · 种子），
+///   收尾删自己那一棵（[`synth_fs::remove_all`]）。
+/// - 写一条会把上面每一级补成目录（同 `create_dir_all`）；空目录照样在（[`synth_fs::mkdir_all`]）。
+/// - 每一条带一个修改时间（缺省定值 [`synth_fs::FAKE_MTIME_SECS`]；截图场景用 [`synth_fs::set_mtime`] 钉成场景里那几个）。
+/// - 键是 `String` ⇒ 名字只有 UTF-8 那一形；非 UTF-8 那一形由
+///   `super::tests::a_non_utf8_hit_keeps_its_bytes_and_says_it_is_lossy` 单独喂一份十六进制夹具去判。
+pub mod synth_fs {
+    use std::collections::BTreeMap;
+    use std::sync::{LazyLock, Mutex};
+
+    /// 盘上的一条。
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub struct Node {
+        pub is_dir: bool,
+        /// 文件的字节（目录恒空）。
+        pub bytes: Vec<u8>,
+        /// 权限的低 12 位（文件缺省 `0o644`、目录 `0o755`）。
+        pub mode: u32,
+        /// 修改时间（epoch 秒；缺省 [`FAKE_MTIME_SECS`]，截图场景按场景钉死的那几个改它）。
+        pub mtime: u64,
+    }
+
+    /// 缺省的修改时间（定值：判据要的是「窗口照抄后端送的那一格」，不是真时间）。
+    pub const FAKE_MTIME_SECS: u64 = 1_759_363_200;
+
+    static DISK: LazyLock<Mutex<BTreeMap<String, Node>>> = LazyLock::new(Default::default);
+
+    fn key(p: impl AsRef<std::path::Path>) -> String {
+        let s = super::remote_form(&p.as_ref().to_string_lossy());
+        match s.trim_end_matches('/') {
+            "" => "/".to_string(),
+            t => t.to_string(),
+        }
+    }
+
+    fn parents_of(k: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut at = k;
+        while let Some(i) = at.rfind('/') {
+            at = &at[..i];
+            if at.is_empty() || at.ends_with(':') {
+                break;
+            }
+            out.push(at.to_string());
+        }
+        out
+    }
+
+    fn dir_node() -> Node {
+        Node {
+            is_dir: true,
+            bytes: Vec::new(),
+            mode: 0o755,
+            mtime: FAKE_MTIME_SECS,
+        }
+    }
+
+    /// 建一个目录（连同上面每一级）。
+    pub fn mkdir_all(p: impl AsRef<std::path::Path>) {
+        let k = key(p);
+        let mut d = DISK.lock().unwrap();
+        for at in parents_of(&k).into_iter().chain([k]) {
+            d.entry(at).or_insert_with(dir_node);
+        }
+    }
+
+    /// 写一份文件（上面每一级补成目录；已有 ⇒ 换掉内容）。
+    pub fn write(p: impl AsRef<std::path::Path>, bytes: impl AsRef<[u8]>) {
+        let k = key(p);
+        let mut d = DISK.lock().unwrap();
+        for at in parents_of(&k) {
+            d.entry(at).or_insert_with(dir_node);
+        }
+        d.insert(
+            k,
+            Node {
+                is_dir: false,
+                bytes: bytes.as_ref().to_vec(),
+                mode: 0o644,
+                mtime: FAKE_MTIME_SECS,
+            },
+        );
+    }
+
+    /// 改一条的权限位（不在 ⇒ 什么都不做）。
+    pub fn set_mode(p: impl AsRef<std::path::Path>, mode: u32) {
+        if let Some(n) = DISK.lock().unwrap().get_mut(&key(p)) {
+            n.mode = mode;
+        }
+    }
+
+    /// 改一条的修改时间（不在 ⇒ 什么都不做）。
+    pub fn set_mtime(p: impl AsRef<std::path::Path>, secs: u64) {
+        if let Some(n) = DISK.lock().unwrap().get_mut(&key(p)) {
+            n.mtime = secs;
+        }
+    }
+
+    /// 删掉这一条与它下面的整棵（同 `remove_dir_all`；不在 ⇒ 什么都不做）。
+    pub fn remove_all(p: impl AsRef<std::path::Path>) {
+        let k = key(p);
+        let under = format!("{k}/");
+        DISK.lock()
+            .unwrap()
+            .retain(|at, _| at != &k && !at.starts_with(&under));
+    }
+
+    /// 那一条（不在 ⇒ `None`）。
+    pub fn node(p: impl AsRef<std::path::Path>) -> Option<Node> {
+        DISK.lock().unwrap().get(&key(p)).cloned()
+    }
+
+    pub fn exists(p: impl AsRef<std::path::Path>) -> bool {
+        node(p).is_some()
+    }
+
+    pub fn is_dir(p: impl AsRef<std::path::Path>) -> bool {
+        node(p).is_some_and(|n| n.is_dir)
+    }
+
+    /// 一个目录的直接子项（完整路径, 那一条），按路径排；不是目录 ⇒ `None`。
+    pub fn children(dir: impl AsRef<std::path::Path>) -> Option<Vec<(String, Node)>> {
+        let k = key(dir);
+        let d = DISK.lock().unwrap();
+        if k != "/" && !d.get(&k).is_some_and(|n| n.is_dir) {
+            return None;
+        }
+        let under = if k == "/" { k.clone() } else { format!("{k}/") };
+        Some(
+            d.range(under.clone()..)
+                .take_while(|(at, _)| at.starts_with(&under))
+                .filter(|(at, _)| !at[under.len()..].contains('/'))
+                .map(|(at, n)| (at.clone(), n.clone()))
+                .collect(),
+        )
+    }
+
+    /// 这个根下面的每一条（不含根自己）：（路径字节, 是不是目录），按路径排。
+    pub fn walk(root: impl AsRef<std::path::Path>) -> Vec<(Vec<u8>, bool)> {
+        let k = key(root);
+        let under = if k == "/" { k } else { format!("{k}/") };
+        DISK.lock()
+            .unwrap()
+            .range(under.clone()..)
+            .take_while(|(at, _)| at.starts_with(&under))
+            .map(|(at, n)| (at.clone().into_bytes(), n.is_dir))
+            .collect()
+    }
+}
+
+/// 一棵合成树的**全部条目**（绝对路径），以及它在 [`synth_fs`] 上的根。
 pub struct SynthTree {
+    /// 根：借本机临时目录那一形当名字（**不落盘**），平台分隔符与从前落盘时同形。
     pub root: std::path::PathBuf,
     /// 🔴 **这棵树该有的每一条**（目录 ＋ 文件，根自己不算）。
     ///
-    /// 它由**路径算术**算出来（[`closure_of`]），**不是**走一趟磁盘数出来的
+    /// 它由**路径算术**算出来（[`closure_of`]），**不是**走一趟盘数出来的
     /// —— 那样两侧就同源了，而这一摞的相等断言正是拿它当另一侧。
     pub entries: std::collections::BTreeSet<String>,
 }
@@ -72,7 +237,7 @@ pub struct SynthTree {
 impl Drop for SynthTree {
     fn drop(&mut self) {
         // 收尾放 `Drop` 里 —— **panic 时它照样跑**，写在用例末尾的不会。
-        let _ = std::fs::remove_dir_all(&self.root);
+        synth_fs::remove_all(&self.root);
     }
 }
 
@@ -162,17 +327,17 @@ fn closure_of(
     all
 }
 
-/// 在临时目录下**真的**造出一棵合成树。
+/// 在 [`synth_fs`] 上造出一棵合成树。
 ///
 /// `tag` 只用来让并行跑的用例各有自己的根（本仓 `cargo test` 默认并行）。
-pub fn plant(tag: &str, n: usize, seed: u64) -> std::io::Result<SynthTree> {
+pub fn plant(tag: &str, n: usize, seed: u64) -> SynthTree {
     let root = std::env::temp_dir().join(format!(
         "ccm-filewin-find-{tag}-{}-{}",
         std::process::id(),
         seed
     ));
-    let _ = std::fs::remove_dir_all(&root);
-    std::fs::create_dir_all(&root)?;
+    synth_fs::remove_all(&root);
+    synth_fs::mkdir_all(&root);
     let rels = clamped_relatives(n, seed);
     let closure = closure_of(&rels);
     let mut entries = std::collections::BTreeSet::new();
@@ -182,16 +347,13 @@ pub fn plant(tag: &str, n: usize, seed: u64) -> std::io::Result<SynthTree> {
             p.push(s);
         }
         if *is_dir {
-            std::fs::create_dir_all(&p)?;
+            synth_fs::mkdir_all(&p);
         } else {
-            if let Some(parent) = p.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            std::fs::write(&p, b"")?;
+            synth_fs::write(&p, b"");
         }
         entries.insert(p.to_string_lossy().to_string());
     }
-    Ok(SynthTree { root, entries })
+    SynthTree { root, entries }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -379,7 +541,7 @@ impl FakeBackend {
 
     /// 让它开局就**已经**有一份索引（`files-index-rebuild` 那条阴性对照要它）。
     pub fn preindexed(mut self, root: &std::path::Path) -> Self {
-        self.index = Some((remote_form(&root.to_string_lossy()), walk(root)));
+        self.index = Some((remote_form(&root.to_string_lossy()), synth_fs::walk(root)));
         self
     }
 
@@ -465,7 +627,7 @@ impl FakeBackend {
                 let root = root.as_str();
                 // 🔴 照后端那一层的语义：**根读不进去是「拒」，不是走出一棵空树**
                 //    （`src/doc/IPC-PROTOCOL.md §10` 逐字，常驻那一份一个字节不动）。
-                if crate::source::list_local(std::path::Path::new(root)).is_err() {
+                if !synth_fs::is_dir(root) {
                     return (
                         false,
                         Some("unreadable".into()),
@@ -473,7 +635,7 @@ impl FakeBackend {
                         None,
                     );
                 }
-                let paths = walk(std::path::Path::new(root));
+                let paths = synth_fs::walk(root);
                 let resident: usize =
                     paths.iter().map(|(p, _)| p.len()).sum::<usize>() + 5 * paths.len();
                 let entries = paths.len();
@@ -633,8 +795,8 @@ impl FakeBackend {
                     .skip(offset)
                     .take(limit)
                     .map(|(p, d)| {
-                        // 盘上那两格照夹具读（合成树是现造的临时目录）；名字里对上搜索词的那几段。
-                        let md = std::fs::metadata(String::from_utf8_lossy(p).as_ref()).ok();
+                        // 盘上那两格照合成盘读（大小；时间是定值）；名字里对上搜索词的那几段。
+                        let md = synth_fs::node(String::from_utf8_lossy(p).as_ref());
                         let n = name(p);
                         let marks: Vec<[usize; 2]> = (!q.is_empty())
                             .then(|| {
@@ -651,8 +813,8 @@ impl FakeBackend {
                             "kind": if *d { "dir" } else { "file" },
                             "class": if *d { "folder" } else { "other" },
                             "location": to_json(&location(p)),
-                            "size": md.as_ref().filter(|m| !m.is_dir()).map(|m| m.len()),
-                            "mtime_secs": md.as_ref().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|t| t.as_secs()),
+                            "size": md.as_ref().filter(|m| !m.is_dir).map(|m| m.bytes.len() as u64),
+                            "mtime_secs": md.as_ref().map(|m| m.mtime),
                             // 真后端按那台本地钟写好的短写法（合成后端写一个固定的字，窗口只照抄）。
                             "mtime_text": md.as_ref().map(|_| "10-02"),
                             "marks": marks,
@@ -683,8 +845,7 @@ impl FakeBackend {
                     })),
                 )
             }
-            // 列目录：走 `list_local`（理由同 [`walk`] 头注：扫描型判据不许裸遍历），
-            //   按线上契约把每一条摊成 `{path, kind, size}`。
+            // 列目录：列合成盘（[`synth_fs`]）上那一层，按线上契约把每一条摊成 `{path, kind, size}`。
             "files-ls" => {
                 let Some(dir) = args.get("path").and_then(|v| v.as_str()) else {
                     return (
@@ -694,8 +855,19 @@ impl FakeBackend {
                         None,
                     );
                 };
-                match crate::source::list_local(std::path::Path::new(dir)) {
-                    Ok(mut rows) => {
+                let rows = synth_fs::children(dir).map(|kids| {
+                    kids.into_iter()
+                        .map(|(path, n)| crate::source::Row {
+                            name: crate::source::remote_basename(&path).to_string(),
+                            path,
+                            is_dir: n.is_dir,
+                            size: n.bytes.len() as u64,
+                            lossy_name: false,
+                        })
+                        .collect::<Vec<_>>()
+                });
+                match rows {
+                    Some(mut rows) => {
                         // 合成后端也排：目录在前，按名称（小写）· 大小（大的在前）· 类型；`reverse` 只反那一列。
                         let sort: cmd_wire::files::LsSort = args
                             .get("sort")
@@ -764,14 +936,23 @@ impl FakeBackend {
                             ),
                         )
                     }
-                    // 不在了 ⇒ `not_found`（同真后端按 `io::ErrorKind` 分的那几个码）。
-                    Err(e) if !std::path::Path::new(dir).exists() => {
-                        (false, Some("not_found".into()), Some(e), None)
+                    // 不在了 ⇒ `not_found`；在、但不是目录 ⇒ `not_dir`。码与那句话同真后端
+                    //   （`src/backend/files/mod.rs` 的 `ls_now`：按 `io::ErrorKind` 分码，话是 `beFilesRead.ls.unreadable`）。
+                    None => {
+                        let (code, kind) = if synth_fs::exists(dir) {
+                            ("not_dir", std::io::ErrorKind::NotADirectory)
+                        } else {
+                            ("not_found", std::io::ErrorKind::NotFound)
+                        };
+                        let said = copy_core::copy_text(
+                            "beFilesRead.ls.unreadable",
+                            &[("kind", &copy_core::io_reason(kind))],
+                        );
+                        (false, Some(code.into()), Some(said), None)
                     }
-                    Err(e) => (false, Some("unreadable".into()), Some(e), None),
                 }
             }
-            // 那条路径上有没有东西：列它的上一级，找那个名字。
+            // 那条路径上有没有东西：问合成盘。
             "files-stat" => {
                 let Some(p) = args.get("path").and_then(|v| v.as_str()) else {
                     return (
@@ -781,22 +962,9 @@ impl FakeBackend {
                         None,
                     );
                 };
-                let parent = crate::source::parent_dir(p);
-                let name = crate::source::remote_basename(p);
-                let hit = crate::source::list_local(std::path::Path::new(&parent))
-                    .map(|rows| rows.iter().any(|r| r.name == name))
-                    .unwrap_or(false);
-                if hit {
-                    // 照后端那一格：unix 上送 `mode`（盘上那个文件真的低 12 位），非 unix 缺席。
-                    #[allow(unused_mut)]
-                    let mut mode: Option<u32> = None;
-                    #[cfg(unix)]
-                    {
-                        use std::os::unix::fs::PermissionsExt as _;
-                        if let Ok(md) = std::fs::metadata(p) {
-                            mode = Some(md.permissions().mode() & 0o7777);
-                        }
-                    }
+                if let Some(node) = synth_fs::node(p) {
+                    // 照后端那一格（unix 上那台）：送 `mode`（合成盘上那一条的低 12 位）。
+                    let mode = Some(node.mode & 0o7777);
                     let v = serde_json::to_value(cmd_wire::files::StatReply {
                         path: cmd_wire::files::WirePath::from(p),
                         up: None,
@@ -853,14 +1021,15 @@ impl FakeBackend {
                     ),
                 )
             }
-            // 按字节分块读：读**真盘**上那份（图片判据要真字节去解码），同后端 `files-read-chunk` 的应答形
-            //   `{path, offset, size, eof, content: {b16}}`；读不到 ⇒ `unreadable`。
+            // 按字节分块读：读合成盘上那份的字节（图片判据要真字节去解码），同后端 `files-read-chunk` 的应答形
+            //   `{path, offset, size, eof, content: {b16}}`；不在或是目录 ⇒ `unreadable`。
             "files-read-chunk" => {
                 let p = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
                 let off = args.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
                 let len = args.get("len").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-                match std::fs::read(p) {
-                    Ok(all) => {
+                match synth_fs::node(p).filter(|n| !n.is_dir).ok_or("not a file") {
+                    Ok(node) => {
+                        let all = node.bytes;
                         let a = off.min(all.len());
                         let b = (a + len).min(all.len());
                         let hex: String = all[a..b].iter().map(|x| format!("{x:02x}")).collect();
@@ -1013,7 +1182,7 @@ impl FakeBackend {
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
                 // 盘上真有那一项（截图那几张的合成目录）也算被占了。
-                let taken = !to.is_empty() && std::path::Path::new(root).join(to).exists();
+                let taken = !to.is_empty() && synth_fs::exists(format!("{root}/{to}"));
                 if (cmd == "files-rename" || cmd == "files-mkdir")
                     && (to.contains("exists") || taken)
                 {
@@ -1222,42 +1391,6 @@ fn to_json(bytes: &[u8]) -> serde_json::Value {
             serde_json::json!({ "b16": h })
         }
     }
-}
-
-/// 走一趟磁盘（**显式栈，不递归** —— 同后端 `index::build` 的理由：
-/// 目录深度是用户数据说了算的）。
-///
-/// # 🔴 为什么它列目录走 [`crate::source::list_local`]，而不是裸 `read_dir`
-///
-/// 两条独立的理由，都不是风格：
-///
-/// 1. **`scanning_guard_registry` 不许测试段裸遍历目录**（现打：第一版就是裸的，
-///    被 `no_new_guard_walks_the_tree_without_excluding_itself` 当场逮住）。
-///    那条判据的存量清单逐字「**只许变短**，不许往里加」⇒ 只能换写法。
-/// 2. 换出来的写法**更好**，不是将就：`list_local` 是**生产件**（`24e` 第一刀就在，
-///    自己有判据），于是这台合成后端的「列一个目录」与窗口自己的「列一个目录」
-///    是**同一份实现** —— 两处漂开这件事在这一格结构上不存在。
-///
-/// ⚠ **它买不到「原始字节」那一档**：`list_local` 的 `path` 是
-/// `to_string_lossy` 过的（同 [`crate::source::Row::lossy_name`]）
-/// ⇒ 这棵合成树刻意**全 ASCII**，非 UTF-8 那一形由
-/// `super::tests::a_non_utf8_hit_keeps_its_bytes_and_says_it_is_lossy`
-/// 单独喂一份十六进制夹具去判，不靠这棵树。
-fn walk(root: &std::path::Path) -> Vec<(Vec<u8>, bool)> {
-    let mut out = Vec::new();
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        let Ok(rows) = crate::source::list_local(&dir) else {
-            continue;
-        };
-        for r in rows {
-            out.push((remote_form(&r.path).into_bytes(), r.is_dir));
-            if r.is_dir {
-                stack.push(std::path::PathBuf::from(&r.path));
-            }
-        }
-    }
-    out
 }
 
 /// 一台**挂在通道宿主上**的合成后端（从前挂在进程级登记表上）。

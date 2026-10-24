@@ -225,19 +225,18 @@ fn pane(dir: &str) -> FileWindow {
     w
 }
 
-/// 一棵真目录 ＋ 合成后端：预览与搜索那两种状态要它答。
+/// 合成盘上一棵目录 ＋ 合成后端：预览与搜索那两种状态要它答。
 async fn wired_pane(tag: &str) -> (crate::find::testing::Wired, FileWindow, std::path::PathBuf) {
     let base = std::env::temp_dir().join(format!("ccm-filewin-sweep-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&base);
+    crate::find::testing::synth_fs::remove_all(&base);
     let dir = base.join("work");
-    std::fs::create_dir_all(dir.join("src")).unwrap();
-    std::fs::write(
+    crate::find::testing::synth_fs::mkdir_all(dir.join("src"));
+    crate::find::testing::synth_fs::write(
         dir.join("main.rs"),
         "fn main() {\n    println!(\"retry\");\n}\n",
-    )
-    .unwrap();
-    std::fs::write(dir.join("retry.rs"), "pub fn retry() {}\n").unwrap();
-    std::fs::write(dir.join("src").join("retry_policy.rs"), "// retry\n").unwrap();
+    );
+    crate::find::testing::synth_fs::write(dir.join("retry.rs"), "pub fn retry() {}\n");
+    crate::find::testing::synth_fs::write(dir.join("src").join("retry_policy.rs"), "// retry\n");
     let mut offered = vec!["files-ls", "files-read-text", "files-stat", "files-home"];
     offered.extend_from_slice(crate::find::COMMANDS);
     let be = FakeBackend::new(&offered, Declared::default())
@@ -379,7 +378,7 @@ async fn sweeping_with_the_preview_open_never_flips_a_frame() {
         ws.preview.as_ref().map(|p| p.view())
     );
     let flips = s.run("预览开着", &mut ws);
-    let _ = std::fs::remove_dir_all(base);
+    crate::find::testing::synth_fs::remove_all(base);
     no_flips(flips);
 }
 
@@ -396,15 +395,15 @@ async fn sweeping_over_search_results_never_flips_a_frame() {
     assert!(!w.search.hit_rows().is_empty(), "量具：搜索没出结果");
     let mut ws = Workspace::new(w);
     let flips = Sweep::new().run("搜索结果", &mut ws);
-    let _ = std::fs::remove_dir_all(base);
+    crate::find::testing::synth_fs::remove_all(base);
     no_flips(flips);
 }
 
-/// 查看页摆着一张 1600×1000 的图（同目录还有一张小的），图已在读：回 `(通道, 窗口, 临时目录)`。
+/// 查看页摆着一张 1600×1000 的图（同目录还有一张小的），图已在读：回 `(通道, 窗口, 合成盘上那个目录)`。
 async fn picture_pane(tag: &str) -> (crate::find::testing::Wired, FileWindow, std::path::PathBuf) {
     let base = std::env::temp_dir().join(format!("ccm-filewin-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&base);
-    std::fs::create_dir_all(&base).unwrap();
+    crate::find::testing::synth_fs::remove_all(&base);
+    crate::find::testing::synth_fs::mkdir_all(&base);
     let png = |w: u32, h: u32| {
         let mut buf = std::io::Cursor::new(Vec::new());
         image::RgbaImage::from_pixel(w, h, image::Rgba([200, 90, 60, 255]))
@@ -412,8 +411,8 @@ async fn picture_pane(tag: &str) -> (crate::find::testing::Wired, FileWindow, st
             .unwrap();
         buf.into_inner()
     };
-    std::fs::write(base.join("a.png"), png(1600, 1000)).unwrap();
-    std::fs::write(base.join("b.png"), png(40, 30)).unwrap();
+    crate::find::testing::synth_fs::write(base.join("a.png"), png(1600, 1000));
+    crate::find::testing::synth_fs::write(base.join("b.png"), png(40, 30));
     let be = FakeBackend::new(
         &["files-ls", "files-read-chunk", "files-stat"],
         Declared::default(),
@@ -463,7 +462,7 @@ async fn sweeping_over_the_picture_page_never_flips_a_frame() {
     }
     assert!(ready(&ws), "量具：查看页没等到图");
     let flips = s.run("查看页", &mut ws);
-    let _ = std::fs::remove_dir_all(base);
+    crate::find::testing::synth_fs::remove_all(base);
     no_flips(flips);
 }
 
@@ -518,7 +517,7 @@ async fn real_window_rig_for_the_frame_log() {
     } else {
         let (wired, mut w, base) = wired_pane(&format!("rig-{scene}")).await;
         for n in ["Cargo.toml", "README.md", "notes.txt", "build.log"] {
-            std::fs::write(base.join("work").join(n), format!("{n}\n")).unwrap();
+            crate::find::testing::synth_fs::write(base.join("work").join(n), format!("{n}\n"));
         }
         w.reload();
         while w.listing.is_loading() {
@@ -636,7 +635,7 @@ async fn real_window_rig_for_the_frame_log() {
     tokio::task::spawn_blocking(move || h.join().unwrap())
         .await
         .unwrap();
-    let _ = std::fs::remove_dir_all(base);
+    crate::find::testing::synth_fs::remove_all(base);
 }
 
 /// 🔴 **划过一排带提示的行，提示框不一行一行地冒**：指针在第一行的修改时间上停够、它的提示出来之后，

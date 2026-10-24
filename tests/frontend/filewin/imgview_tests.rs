@@ -152,14 +152,14 @@ fn png(w: u32, h: u32) -> Vec<u8> {
     buf.into_inner()
 }
 
-/// 一个真目录（a.png · b.txt · c.png）＋ 合成后端；窗口列好了它。
+/// 合成盘上一个目录（a.png · b.txt · c.png）＋ 合成后端；窗口列好了它。
 async fn rig(tag: &str) -> (Wired, FileWindow, std::path::PathBuf) {
     let dir = std::env::temp_dir().join(format!("ccm-fw-imgview-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("a.png"), png(1600, 1000)).unwrap();
-    std::fs::write(dir.join("b.txt"), "hello\n").unwrap();
-    std::fs::write(dir.join("c.png"), png(30, 20)).unwrap();
+    crate::find::testing::synth_fs::remove_all(&dir);
+    crate::find::testing::synth_fs::mkdir_all(&dir);
+    crate::find::testing::synth_fs::write(dir.join("a.png"), png(1600, 1000));
+    crate::find::testing::synth_fs::write(dir.join("b.txt"), "hello\n");
+    crate::find::testing::synth_fs::write(dir.join("c.png"), png(30, 20));
     let be = FakeBackend::new(
         &[
             "files-ls",
@@ -338,7 +338,7 @@ async fn enter_and_double_click_open_a_view_tab_and_again_switch_to_it() {
     d.double_click(&mut ws, at);
     assert_eq!(ws.tabs_on(0), 3, "双击文本没开编辑页");
     assert!(ws.tab(0, 2).edit_tab, "双击文本开的不是编辑页");
-    let _ = std::fs::remove_dir_all(dir);
+    crate::find::testing::synth_fs::remove_all(dir);
 }
 
 #[test]
@@ -451,7 +451,7 @@ async fn the_page_draws_the_picture_and_shares_one_decode_with_the_preview() {
     assert!(ws.close_tab(0, 1), "查看页关不掉");
     d.frame(&mut ws, Vec::new());
     assert!(ws.pictures.is_empty(), "没人摆的图还留着");
-    let _ = std::fs::remove_dir_all(dir);
+    crate::find::testing::synth_fs::remove_all(dir);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -513,7 +513,7 @@ async fn zoom_keys_the_wheel_and_dragging_move_the_picture() {
     d.frame_at(&mut ws, 0.05, vec![b(mid + egui::vec2(-120.0, 0.0), false)]);
     let off = ws.pane_on(0).viewing().unwrap().offset;
     assert!(off.x < -50.0, "拖了没平移：{off:?}");
-    let _ = std::fs::remove_dir_all(dir);
+    crate::find::testing::synth_fs::remove_all(dir);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -547,5 +547,5 @@ async fn over_the_cap_says_why_and_reads_nothing() {
         "画面上没给「下载」（头条一颗 ＋ 画面一颗）"
     );
     assert_eq!(chunk_reads(&wired, false), 0, "说了不读却读了");
-    let _ = std::fs::remove_dir_all(dir);
+    crate::find::testing::synth_fs::remove_all(dir);
 }
