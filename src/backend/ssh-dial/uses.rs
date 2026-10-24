@@ -10,8 +10,8 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::connect::{self, Linked};
 use crate::{
-    pool, write_line, write_stages_then_ack, CaptureOpts, Captured, DialAck, DialFail,
-    DialRequest, Endpoint, StageSink, Use, ACK_V, USES,
+    pool, write_line, write_stages_then_ack, CaptureOpts, Captured, DialAck, DialFail, DialRequest,
+    Endpoint, StageSink, Use, ACK_V, USES,
 };
 
 /// `channel.exec(true, cmd)` 装进一个显式 `Send` 的盒子：russh 的 `Channel::exec` 是借 `&self` 的 `async fn`，放进要 `tokio::spawn`
@@ -713,20 +713,12 @@ async fn opening(req: &DialRequest, stages: &StageSink) -> Result<Opened, DialFa
             exec_half(wr.get(), req.command.as_bytes().to_vec())
                 .await
                 .map_err(|e| fail(Said::with_raw(copy_text("beUses.exec.failed", &[]), &e)))?;
-            let early = granted(&mut rd, "exec", exec_failed)
-                .await
-                .map_err(fail)?;
+            let early = granted(&mut rd, "exec", exec_failed).await.map_err(fail)?;
             // 有载荷就写进远端进程的 stdin（不关 —— 收的一侧只读一行）。
             if let Some(input) = opts.stdin.clone() {
-                wr.get()
-                    .data_bytes(input.into_bytes())
-                    .await
-                    .map_err(|e| {
-                        fail(Said::with_raw(
-                            copy_text("beUses.exec.stdinLost", &[]),
-                            &e,
-                        ))
-                    })?;
+                wr.get().data_bytes(input.into_bytes()).await.map_err(|e| {
+                    fail(Said::with_raw(copy_text("beUses.exec.stdinLost", &[]), &e))
+                })?;
             }
             Held::Capture {
                 rd,
