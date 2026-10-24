@@ -63,6 +63,31 @@ describe("morph：整棵新树换进来，正打着的那一格不碰", () => {
   });
 });
 
+describe("morph：画出来时的值就是基准", () => {
+  it("只设了 value（没设 defaultValue）的框：没人改过 ⇒ 下一次照新值换；人改了 ⇒ 留着", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const mk = (v: string): HTMLInputElement => {
+      const i = document.createElement("input");
+      i.dataset.key = "k";
+      i.value = v;
+      return i;
+    };
+    morph(host, [mk("x")]);
+    morph(host, [mk("y")]);
+    const i = host.querySelector("input")!;
+    expect(i.value).toBe("y");
+    i.value = "人打的";
+    morph(host, [mk("z")]);
+    expect(host.querySelector("input")).toBe(i);
+    expect(i.value).toBe("人打的");
+    // 交上去了、后端也回成同一个值 ⇒ 没在改了：下一次照新值换
+    morph(host, [mk("人打的")]);
+    morph(host, [mk("w")]);
+    expect(host.querySelector("input")!.value).toBe("w");
+  });
+});
+
 describe("morph：焦点在一行上（不是输入框）", () => {
   it("新树里同一个 data-key 的那一行接过焦点", () => {
     const host = document.createElement("div");

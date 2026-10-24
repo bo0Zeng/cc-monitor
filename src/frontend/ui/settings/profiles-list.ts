@@ -15,6 +15,8 @@ import { copyText } from "../copy-table";
 import { writeClipboard } from "../clipboard";
 import { homeShort } from "../kit/path";
 import { select as kitSelect } from "../kit/select";
+import { morph } from "../kit/morph";
+import { write } from "../ipc/write";
 import { toast, undoToast, failToast } from "../kit/toast";
 import { confirmDialog, type ConfirmFn } from "../kit/dialog";
 import { sayWithDetail } from "../kit/detail";
@@ -22,7 +24,6 @@ import type { Origin } from "../generated/Origin";
 import type { ClashWins } from "../alias-reads";
 import { changedItems, changedStream } from "../changed-stream";
 import {
-  ProfilesStale,
   profileBases,
   profileImpact,
   readProfiles,
@@ -264,8 +265,6 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
   let impact: { names: string[]; rows: Affected[]; open: boolean } | null = null;
   /** 「上次 cc-monitor 写过之后有人改过」那一格（后端判、后端写好时刻）。开着表单时来的那一份不换清单，只换这一格。 */
   let editedAt: string | null = null;
-  /** 开着表单 / 删的选择时盘上变了：关掉之后重读。 */
-  let behind = false;
   let clashes: readonly ProfileClash[] = [];
   let sub: Sub | null = null;
   let seq = 0;
@@ -285,7 +284,6 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       return render();
     }
     editedAt = book.editedAt;
-    behind = false;
     opts.onHead(
       book.exists
         ? copyText("profilesPage.head.line", { n: String(book.profiles.length), path: short(book.path) })
@@ -306,16 +304,8 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       const { cells, all, frames } = changedItems(fresh);
       if (frames > 0) sub?.want(frames);
       if (!all && cells.length === 0) return;
-      // 开着表单 / 删的选择时不换清单（不拽人）：只问一次后端那一格、亮那一句；关掉之后重读。
-      if (form || removing) {
-        behind = true;
-        void readProfiles(opts.origin())
-          .then((b) => {
-            editedAt = b.editedAt;
-            renderNotes();
-          })
-          .catch(() => undefined);
-      } else void reread();
+      // 开着表单也照重读：表单里正打着的字由重画（kit morph）留着。
+      void reread();
     });
   };
 
@@ -724,27 +714,20 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
 
   const cancelRemove = (): void => {
     removing = null;
-    if (behind && !form) void reread();
-    else render();
+    render();
   };
 
   // ── 写 ──
 
-  /** 存一批改动（带读回时的指纹）。成了 ⇒ 记下修改时间、重读，回 `null`；被别处改过且 `throwStale` ⇒ 抛 [`ProfilesStale`]；
-   *  别的 ⇒ 重读之后状态行说那一句、回那一句。 */
-  const commit = async (changes: ProfileOp[], throwStale = false): Promise<string | null> => {
-    try {
-      const done = await writeProfiles(opts.origin(), changes, book?.fingerprint ?? null);
-      if (done.reload) toast(copyText("profilesPage.save.done"), done.reload, { level: "info" });
-    } catch (e) {
-      if (e instanceof ProfilesStale && throwStale) throw e;
-      const said = e instanceof Error ? e.message : String(e);
-      await reread();
-      status.textContent = said;
-      return said;
+  /** 存一批改动（带读回时的指纹），经统一写口：成了 ⇒ 重读、回 `null`；没成 ⇒ 状态行说那一句、回那一结局（别处改过的已重读）。 */
+  const commit = async (changes: ProfileOp[]): Promise<{ stale: boolean; said: string } | null> => {
+    const end = await write(() => writeProfiles(opts.origin(), changes, book?.fingerprint ?? null), reread);
+    if (end.ok) {
+      if (end.value.reload) toast(copyText("profilesPage.save.done"), end.value.reload, { level: "info" });
+      return null;
     }
-    await reread();
-    return null;
+    status.textContent = end.said;
+    return end;
   };
 
   const init = async (seed: boolean): Promise<void> => {
@@ -788,8 +771,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     }
     form = null;
     impact = null;
-    if (behind && !removing) void reread();
-    else render();
+    render();
     return true;
   };
 
@@ -857,12 +839,13 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     return copyText("profilesPage.form.inherit", { value: rows.map((r) => r.said).join(copyText("profilesPage.list.sep")), from });
   };
 
-  const text = (value: string, placeholder: string, onChange: (v: string) => void, role?: string): HTMLInputElement => {
+  const text = (value: string, placeholder: string, onChange: (v: string) => void, role?: string, key = role): HTMLInputElement => {
     const i = el("input", "settings-input");
     i.type = "text";
     i.value = value;
     i.placeholder = placeholder;
     if (role) i.dataset.role = role;
+    if (key) i.dataset.key = key; // 重画时认同一格（kit morph：正打着的字留着）
     i.addEventListener("change", () => onChange(i.value));
     return i;
   };
@@ -934,9 +917,9 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
         const put = (patch: Partial<typeof c>): ProfileForm => ({ ...f, cwdIf: cases.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
         row.append(
           el("span", "", copyText("profilesPage.form.caseIn")),
-          text(c.at, copyText("profilesPage.form.caseAt"), (v) => changed(put({ at: v }))),
+          text(c.at, copyText("profilesPage.form.caseAt"), (v) => changed(put({ at: v })), undefined, `cwdIf.${i}.at`),
           el("span", "", copyText("profilesPage.form.caseArrow")),
-          text(c.to, copyText("profilesPage.form.caseTo"), (v) => changed(put({ to: v }))),
+          text(c.to, copyText("profilesPage.form.caseTo"), (v) => changed(put({ to: v })), undefined, `cwdIf.${i}.to`),
           link(copyText("profilesPage.form.caseDrop"), () => changed(cases.length > 1 ? { ...f, cwdIf: cases.filter((_, j) => j !== i) } : clearSlot(f, s))),
         );
         cell.appendChild(row);
@@ -954,7 +937,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     }
     const row = el("div", "prof-inhrow");
     const v = f[s as "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "busNote"] ?? "";
-    row.append(text(v, SLOT_LABEL[s](), (nv) => changed({ ...f, [s]: nv })), back);
+    row.append(text(v, SLOT_LABEL[s](), (nv) => changed({ ...f, [s]: nv }), undefined, `slot.${s}`), back);
     cell.appendChild(row);
     return cell;
   };
@@ -1008,6 +991,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       onChange: (v) => changed({ ...f, from: v || null }),
     });
     fromSel.el.dataset.role = "from";
+    fromSel.el.dataset.key = "from";
     field(copyText("profilesPage.form.from"), fromSel.el, el("div", "cfg-hint", copyText("profilesPage.form.fromHelp")));
     const accounts = book?.accounts ?? [];
     for (const s of MAIN_SLOTS) field(SLOT_LABEL[s](), slotEditor(s, f, accounts));
@@ -1027,6 +1011,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     const acts = el("div", "cfg-acts");
     const save = button(copyText("profilesPage.form.save"), "settings-btn settings-btn-primary", () => void onSave());
     save.dataset.role = "save";
+    save.dataset.key = "save";
     const kids = st.was ? kidsOf(st.was) : [];
     const renamed = st.was !== null && f.name.trim() !== "" && f.name.trim() !== st.was;
     const hint = renamed && kids.length
@@ -1048,33 +1033,26 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
         void onSave();
       }
     });
-    const focused = document.activeElement instanceof HTMLElement && st.el.contains(document.activeElement) ? document.activeElement.dataset.role : undefined;
-    st.el.replaceChildren(box);
-    if (focused) (box.querySelector(`[data-role="${focused}"]`) as HTMLElement | null)?.focus();
+    morph(st.el, [box]);
   };
 
   const onSave = async (): Promise<void> => {
     const st = form;
     if (!st) return;
-    try {
-      const said = await commit([{ op: "set", was: st.was, form: st.form }], true);
-      if (said === null) {
-        form = null;
-        impact = null;
-        selected = st.form.name.trim() || null;
-        render();
-        void askResolve();
-      } else if (form === st) {
-        st.top = said;
-        status.textContent = "";
-        render();
-        paintForm();
-      }
-    } catch (e) {
-      if (e instanceof ProfilesStale && form === st) {
-        st.stale = true;
-        paintForm();
-      }
+    const end = await commit([{ op: "set", was: st.was, form: st.form }]);
+    if (end === null) {
+      form = null;
+      impact = null;
+      selected = st.form.name.trim() || null;
+      render();
+      void askResolve();
+    } else if (form === st) {
+      // 别处改过 ⇒ 表单上方说「已在别处改过」＋［重读］（填的还在）；别的 ⇒ 那一句。
+      if (end.stale) st.stale = true;
+      else st.top = end.said;
+      status.textContent = "";
+      render();
+      paintForm();
     }
   };
 
