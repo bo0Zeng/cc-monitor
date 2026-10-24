@@ -1522,11 +1522,10 @@ fn the_envelope_carries_the_viewer_zone_and_pushed_lines_are_stamped_by_it() {
 
 // ═══ 第二个前端调的一次性子命令：冻结（叫法）══════════════════════════════════════
 //
-// 10-10 起手机只调这三条（其余都走常驻流上的帧命令）：探后端 · 起 / 找常驻后端 · 接常驻后端的小中继。
+// 手机只调这两条（其余都走常驻流上的帧命令）：起 / 找常驻后端 · 接常驻后端的小中继（那台是哪一版在 attach 之后的 hello 里）。
 
 /// 第二个前端调的一次性子命令（都不带位置参数；`--resident-ensure` 认一个 `--replace`）。叫法一改它那一侧就叫不通了。
-const SECOND_FRONTEND_SUBCOMMANDS: &[&str] =
-    &["--backend-probe", "--resident-ensure", "--resident-attach"];
+const SECOND_FRONTEND_SUBCOMMANDS: &[&str] = &["--resident-ensure", "--resident-attach"];
 
 /// 每一条都还在子命令表里、还进一次性模式。
 #[test]

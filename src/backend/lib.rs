@@ -348,7 +348,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--history-annotate",
     "--history-forget",
     "--history-last-accounts",
-    "--backend-probe",
     // `--dial`（拨号代理，`K-P6b` / C2）**从本表摘掉了**：拨号挪进本机那一个常驻后端、
     // 经流上的链路（`link-*` 四条，`dial/link.rs`）做，不再每条链路起一个进程。
     //  ⚠ 摘这一行会让 `build_id_guard` 红 —— 这里**不 bump**，打版本号时统一做。
