@@ -236,6 +236,7 @@ fn own_what(id: &str) -> String {
         "chores" => copy_text("rsDataPaths.backend.chores", &[]),
         "planReview" => copy_text("rsDataPaths.backend.planReview", &[]),
         "lastSeen" => copy_text("rsDataPaths.backend.lastSeen", &[]),
+        "bookmarks" => copy_text("rsDataPaths.backend.bookmarks", &[]),
         "assetCatalog" => copy_text("rsDataPaths.backend.assetCatalog", &[]),
         "quota" => copy_text("rsDataPaths.backend.quota", &[]),
         "rotation" => copy_text("rsDataPaths.backend.rotation", &[]),
