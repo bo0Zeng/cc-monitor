@@ -112,6 +112,11 @@ export async function takeRepo(origin: Origin, workspace: string, slice: string)
   return { ...r, took: r.took };
 }
 
+/** 记原话：以人的身份代敲 `pb record --slice <片> <定了什么> <原话>…`（记进看着的那一片，工作区的当前片不动）。 */
+export async function recordQuote(origin: Origin, workspace: string, slice: string, summary: string, quotes: string[]): Promise<PlanCmdReply> {
+  return callTyped(origin, "plan-command", { workspace, cmd: "record", slice, summary, quotes }, budgetWithin(READ_BUDGET_MS));
+}
+
 /** 认可一条 / 撤掉认可（只记在 cc-monitor，不写计划仓）。 */
 export async function ackNeed(origin: Origin, workspace: string, slice: string, key: string, on: boolean): Promise<PlanAckReply> {
   const req = { workspace, slice, key };

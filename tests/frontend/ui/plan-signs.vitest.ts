@@ -93,3 +93,24 @@ describe("话里提到的格：下标是 UTF-16（后端从码位换好的），
     expect(refSpans("A1 和 A2", [{ start: 5, end: 99, ids: ["A2"] }, a, { start: 1, end: 3, ids: ["A9"] }])).toEqual([a, " 和 A2"]);
   });
 });
+
+describe("covers 画圈不连线：大纲左侧槽里一条规矩一道括弧", () => {
+  const c = (id: string, extra: Partial<PlanCell>): PlanCell => ({ id, covers: [], coveredBy: [], ...extra }) as unknown as PlanCell;
+  const sl = {
+    cells: [
+      c("A1", { coveredBy: ["R1", "R2"] }),
+      c("A1-1", { coveredBy: ["R1", "R2"] }),
+      c("A2", { coveredBy: ["R2"] }),
+      c("R1", { covers: ["A1"], coveredBy: ["R2"] }),
+      c("R2", { covers: ["project"] }),
+    ],
+  } as unknown as PlanSlice;
+  it("每格在哪几道括弧里：照规矩在图上的先后，色位从第六色起隔两色取；写 project 的不画（标管全部）", async () => {
+    const { ringsOf } = await import("../../../src/frontend/ui/views/plan-model.ts");
+    const m = ringsOf(sl);
+    expect(m.get("A1")).toEqual([{ rule: "R1", slot: 5 }]);
+    expect(m.get("A1-1")).toEqual([{ rule: "R1", slot: 5 }]);
+    expect(m.get("A2")).toBeUndefined();
+    expect(m.get("R1")).toBeUndefined();
+  });
+});

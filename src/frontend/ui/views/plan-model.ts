@@ -188,3 +188,29 @@ export function shortId(id: string): string {
 export function isFresh(slice: Pick<PlanSlice, "bare" | "error" | "cells">): boolean {
   return !slice.bare && !slice.error && slice.cells.length === 0;
 }
+
+/** 圈色的取法：同一套七色，按规矩在图上的先后从第六色起每隔两色取（6 · 2 · 5 · 1 · 4 · 7 · 3），挨着的两圈不同色系。 */
+const RING_SLOTS = [5, 1, 4, 0, 3, 6, 2] as const;
+
+/** 一格在哪几道括弧里。 */
+export interface Ring {
+  /** 写 covers 的那一格（规矩）。 */
+  rule: string;
+  /** 色位（类色那一套令牌的第几档）。 */
+  slot: number;
+}
+
+/**
+ * covers 画圈不连线（大纲左侧槽）：格 ⇒ 圈住它的那几道（`coveredBy` 是 pb 算的，连底下整棵）。
+ * 只写了 `project` 的规矩不画圈（在它那一格标「管全部」）；圈住的格才有一项。
+ */
+export function ringsOf(slice: Pick<PlanSlice, "cells">): Map<string, Ring[]> {
+  const rules = slice.cells.filter((c) => c.covers.some((x) => x !== "project")).map((c) => c.id);
+  const slot = new Map(rules.map((r, i) => [r, RING_SLOTS[i % RING_SLOTS.length]]));
+  const out = new Map<string, Ring[]>();
+  for (const c of slice.cells) {
+    const rs = rules.filter((r) => c.coveredBy.includes(r)).map((r) => ({ rule: r, slot: slot.get(r) ?? 0 }));
+    if (rs.length > 0) out.set(c.id, rs);
+  }
+  return out;
+}

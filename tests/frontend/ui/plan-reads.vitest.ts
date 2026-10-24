@@ -28,3 +28,15 @@ describe("plan-* 没成", () => {
     await expect(takeRepo("devbox", "/w", "invoice")).rejects.toThrow("pb 没认这一片");
   });
 });
+
+describe("记原话：代敲 plan-command record（片 · 定了什么 · 原话照给）", () => {
+  it("请求里带着看着的那一片、定了什么与每一句原话", async () => {
+    const { recordQuote } = await import("../../../src/frontend/ui/plan-reads");
+    invokeMock.mockResolvedValueOnce(chanReply({ rc: 0, said: "记下了 原话 3", path: null, took: null }));
+    const r = await recordQuote("devbox", "/w", "beta", "读写分两半", ["分开做", "先读后写"]);
+    expect(r.said).toBe("记下了 原话 3");
+    const payload = (invokeMock.mock.calls[0][1] as { payload: number[] }).payload;
+    const sent = JSON.parse(new TextDecoder().decode(new Uint8Array(payload))) as Record<string, unknown>;
+    expect(sent).toEqual({ workspace: "/w", cmd: "record", slice: "beta", summary: "读写分两半", quotes: ["分开做", "先读后写"] });
+  });
+});
