@@ -1564,4 +1564,133 @@ mod tests {
         assert_eq!(o.status.code(), Some(1), "没有现打的金样却没说");
         let _ = std::fs::remove_dir_all(&d);
     }
+
+    /// 假 gh：next 上那一趟是 run 1、main 上那一趟是 run 2，各自的结论由 `FAKE_NEXT` · `FAKE_MAIN` 给；没想到的调用退 9。
+    const FAKE_GH: &str = r#"#!/usr/bin/env bash
+a="$*"
+case "$a" in
+  "auth status") exit 0 ;;
+  run\ list*--branch\ next*) echo 1 ;;
+  run\ list*--branch\ main*) echo 2 ;;
+  run\ view\ *--log-failed*) echo "fake log" ;;
+  run\ view\ *)
+    id=$3; c=$FAKE_NEXT; [ "$id" = 2 ] && c=$FAKE_MAIN
+    case "$a" in
+      *"--json url"*) echo "https://ci.invalid/$id" ;;
+      *"--json status,conclusion,jobs"*) echo "completed $c 1/1" ;;
+      *"--json jobs"*) printf '%s\tbuild\thttps://ci.invalid/%s/job\n' "$c" "$id" ;;
+      *"--json conclusion"*) echo "$c" ;;
+      *) echo "fake gh: 没想到的调用 $a" >&2; exit 9 ;;
+    esac ;;
+  *) echo "fake gh: 没想到的调用 $a" >&2; exit 9 ;;
+esac
+"#;
+
+    /// 在假远端（本地裸仓）上跑一趟 push-candidate：主工作树在 main 上，要推的分支（脚本认的 `w8/<名>`，名取 `x`）比 main 多一个提交；gh 是上面那个假的。
+    /// 返回（退出码是否 0 · 输出 · 跑完后 origin 上 main 的提交 · 要推的那个提交）。
+    fn push_on_fake_remote(next: &str, main: &str) -> (bool, String, String, String) {
+        const NAME: &str = "x";
+        let br = format!("w8/{NAME}");
+        use std::os::unix::fs::PermissionsExt;
+        let d = scratch(&format!("push-{next}-{main}"));
+        let git = |dir: &Path, args: &[&str]| -> String {
+            let out = Command::new("git")
+                .args([
+                    "-c",
+                    "user.name=t",
+                    "-c",
+                    "user.email=t@t.invalid",
+                    "-c",
+                    "commit.gpgsign=false",
+                ])
+                .args(args)
+                .current_dir(dir)
+                .env("HOME", &d)
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .output()
+                .unwrap();
+            assert!(
+                out.status.success(),
+                "git {args:?}：{}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        git(&d, &["init", "-q", "--bare", "-b", "main", "origin.git"]);
+        git(&d, &["init", "-q", "-b", "main", "work"]);
+        let work = d.join("work");
+        git(&work, &["commit", "-q", "--allow-empty", "-m", "a"]);
+        git(
+            &work,
+            &[
+                "remote",
+                "add",
+                "origin",
+                d.join("origin.git").to_str().unwrap(),
+            ],
+        );
+        git(&work, &["push", "-q", "origin", "main"]);
+        git(&work, &["checkout", "-q", "-b", &br]);
+        git(&work, &["commit", "-q", "--allow-empty", "-m", "b"]);
+        git(&work, &["checkout", "-q", "main"]);
+        let sha = git(&work, &["rev-parse", &br]);
+        let bin = d.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        for (name, body) in [("gh", FAKE_GH), ("private-scan.sh", "exit 0\n")] {
+            std::fs::write(bin.join(name), body).unwrap();
+            std::fs::set_permissions(bin.join(name), std::fs::Permissions::from_mode(0o755))
+                .unwrap();
+        }
+        let path = format!(
+            "{}:{}",
+            bin.display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
+        let out = Command::new("bash")
+            .arg(root().join("tests/scripts/push-candidate.sh"))
+            .arg(NAME)
+            .current_dir(&work)
+            .env("PATH", path)
+            .env("HOME", &d)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GATE_STATE_DIR", d.join("state"))
+            .env("FAKE_NEXT", next)
+            .env("FAKE_MAIN", main)
+            .env_remove("TMUX")
+            .env_remove("TMUX_PANE")
+            .output()
+            .unwrap();
+        let said = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let remote_main = git(&d.join("origin.git"), &["rev-parse", "main"]);
+        let _ = std::fs::remove_dir_all(&d);
+        (out.status.success(), said, remote_main, sha)
+    }
+
+    /// ★ 快进 main 以后同一个提交在 main 上还要再跑一遍 CI：那一遍红 ⇒ 退非 0、说红的是 main 上那一遍（main 已经推出去了）。
+    /// 正控：两遍都绿 ⇒ 退 0；next 那一遍红 ⇒ 退非 0、main 不动。
+    #[test]
+    fn push_waits_for_the_main_ci_run_after_fast_forwarding() {
+        let (ok, said, remote_main, sha) = push_on_fake_remote("success", "failure");
+        assert!(!ok, "main 上那一遍 CI 红了，push-candidate 却退 0：{said}");
+        assert_eq!(remote_main, sha, "next 绿了 main 却没快进：{said}");
+        assert!(
+            said.contains("main 上那一遍"),
+            "没说红的是 main 上那一遍：{said}"
+        );
+
+        let (ok, said, remote_main, sha) = push_on_fake_remote("success", "success");
+        assert!(
+            ok && said.contains("PUSH: OK"),
+            "两遍 CI 都绿却没退 0：{said}"
+        );
+        assert_eq!(remote_main, sha, "{said}");
+
+        let (ok, said, remote_main, sha) = push_on_fake_remote("failure", "success");
+        assert!(!ok, "next 上 CI 红了却退 0：{said}");
+        assert_ne!(remote_main, sha, "next 红了 main 却动了：{said}");
+    }
 }
