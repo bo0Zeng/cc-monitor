@@ -6,6 +6,7 @@
 //! 渲不出来带理由（[`Refusal`]）：某个维度说不成 ccm 参数 ⇒ 整条放弃，不渲一条丢了修饰的命令。
 //! 独立说法：本文件的自测（判据自带清单）与那一行的字节表（`ccm_invocation_tests.rs::cells`，手写期望）。
 
+use crate::control::launch_account::Settled;
 use copy_core::copy_text;
 use std::collections::BTreeSet;
 
@@ -146,19 +147,6 @@ pub enum Container<'a> {
     Tmux { name: &'a str },
 }
 
-/// 账号维度的三态。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CliAccount<'a> {
-    /// 账号库里的一个号 ⇒ `--account <名>`。
-    Named {
-        name: &'a str,
-    },
-    Base,
-    /// 调用方没表态（继承）：一个旗标都不吐，省略在 ccm 上有确定语义（`plan.rs::resolve_account`）。
-    /// 只有本机那条路构造它（远端那台的继承态不是 monitor 的环境）。
-    Inherit,
-}
-
 /// 渲染 ccm 调用行所需的全部输入。
 #[derive(Debug, Clone)]
 pub struct CliSpec<'a> {
@@ -167,7 +155,9 @@ pub struct CliSpec<'a> {
     pub action: Action<'a>,
     pub container: Container<'a>,
     pub cwd: Option<&'a str>,
-    pub account: CliAccount<'a>,
+    /// 判好的号（`launch_account::Settled`，与起会话那一步同一个类型）：账号库里的一个号 ⇒ `--account <名>` · 账号 0 ⇒ `--base` ·
+    /// 没表态（继承）⇒ 一个旗标都不吐（省略在 ccm 上有确定语义：`plan.rs::account_for`；只有本机那条路交它，远端那台的继承态不是 monitor 的环境）。
+    pub(crate) account: &'a Settled,
     pub ccm_sid: Option<&'a str>,
     pub model: Option<&'a str>,
     /// 等于默认启动器时**不吐** `--launcher`。
@@ -256,9 +246,9 @@ const DIMENSION_ORDER: &[Dim] = &[
         // **恒真** —— 账号维度必须永远显式表态（沉默 = 意外身份切换）；继承是「表了态的省略」。
         applies: |_| true,
         cli_flags: |s| match s.account {
-            CliAccount::Base => Some(vec!["--base".into()]),
-            CliAccount::Named { name } => Some(vec!["--account".into(), name.to_string()]),
-            CliAccount::Inherit => Some(vec![]),
+            Settled::Base => Some(vec!["--base".into()]),
+            Settled::Account(a) => Some(vec!["--account".into(), a.name.to_string()]),
+            Settled::Unsaid => Some(vec![]),
         },
         caps: &["account"],
     },
@@ -351,7 +341,7 @@ pub fn ccm_argv(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Vec<String>, 
         Action::Attach { .. } => {}
     }
     identifiers_ok(spec)?;
-    if matches!(spec.account, CliAccount::Named { .. })
+    if matches!(spec.account, Settled::Account(_))
         && crate::agents::account_env_of(spec.agent).is_none()
     {
         return Err(Refusal::AgentNoAccounts {
@@ -441,9 +431,9 @@ fn identifiers_ok(spec: &CliSpec) -> Result<(), Refusal> {
     if let Some(s) = spec.ccm_sid.filter(|s| !shell_quote_core::session_id_ok(s)) {
         return bad(IdentifierSlot::CcmSid, s);
     }
-    if let CliAccount::Named { name } = spec.account {
-        if !shell_quote_core::account_name_ok(name) {
-            return bad(IdentifierSlot::Account, name);
+    if let Settled::Account(a) = spec.account {
+        if !shell_quote_core::account_name_ok(&a.name) {
+            return bad(IdentifierSlot::Account, &a.name);
         }
     }
     if let Some(m) = spec.model.filter(|m| !shell_quote_core::model_name_ok(m)) {

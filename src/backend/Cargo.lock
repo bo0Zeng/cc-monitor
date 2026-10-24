@@ -2639,6 +2639,7 @@ dependencies = [
  "test-home",
  "tokio",
  "tracing",
+ "ts-rs",
  "upstream-url-core",
 ]
 

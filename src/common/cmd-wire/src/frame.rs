@@ -214,7 +214,7 @@ pub struct Line<R = Record> {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub cwd: Option<String>,
-    /// backend-01（gap#2，additive 不 bump PROTO_VERSION）：本行末尾（含 `\n`）在文件中的**累计原始字节 offset**——
+    /// 本行末尾（含 `\n`）在文件中的**累计原始字节 offset**——
     /// 语义逐字节对齐手机端 `LineFramer.endOffset`：计 CRLF 的 `\r`、含 `\n`、残行不计；resume N ⇒ `tail -c +(N+1)`。
     #[serde(default)]
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]

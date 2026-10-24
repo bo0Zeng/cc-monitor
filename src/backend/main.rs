@@ -19,7 +19,7 @@
 //!   inotify reader. This split is the single most-cited Phase-0 accident
 //!   source; keeping it real is the point.
 
-// 🔴 模块声明、`PROTO_VERSION`、身份块（`BUILD_ID` ＋ 戳）、`SUBCOMMANDS`
+// 🔴 模块声明、身份块（`BUILD_ID` ＋ 戳）、`SUBCOMMANDS`
 //    都搬进了 `lib.rs`，理由逐字写在那份文件的头注里（一句话：**in-process 那条路没有
 //    这个 `main.rs`**，身份与模块跟着它一起消失）。**本文件只留分派**（规格）。
 // ⚠ 用 glob 而不是逐项列 —— 这一段是**纯机械搬家**，逐项列会让 diff 里混进
@@ -127,13 +127,17 @@ async fn main() {
     let backend_args: Vec<String> = {
         let rest: Vec<String> = process_argv.iter().skip(1).cloned().collect();
         match control::ccm::route(process_argv.first().map_or("", String::as_str), &rest) {
-            // resume 判「在别处跑着」用观测层那一份扫描（control 不引用 observe ⇒ 由入口注入）。
-            control::ccm::Entry::Ccm(ccm_args) => {
-                std::process::exit(control::ccm::run(&ccm_args, &process_argv, &own, |dir| {
+            // resume 判「在别处跑着」用观测层那一份扫描、选号判「能不能用」用账号清单成品（control 不引用 observe ⇒ 都由入口注入）。
+            control::ccm::Entry::Ccm(ccm_args) => std::process::exit(control::ccm::run(
+                &ccm_args,
+                &process_argv,
+                &own,
+                |dir| {
                     let home = agent_home(dir, false);
                     observe::watcher::running_sessions(&home)
-                }))
-            }
+                },
+                faces::launch_account_face::list_at,
+            )),
             control::ccm::Entry::Backend(a) => a,
         }
     };

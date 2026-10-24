@@ -2,6 +2,7 @@
 
 pub mod accounts_face; // 改账号库那几条命令的帧面宿主：本体在 accounts/manage/，接上 apikey 表与别名文件那两步
 pub(crate) mod assets_sync_face; // 帧面 `assets-sync`（typed）：沿池里那条 SSH 同步资产目录，本体在 assets/asset_sync.rs
+pub(crate) mod bookmarks_face; // 书签那两条（typed）：bookmarks-read · bookmarks-edit，本体在 control/bookmarks.rs
 pub(crate) mod catalog_face; // 资产目录那一族四条（typed）：assets-catalog · assets-catalog-merge · ext-note-set · ext-list-here
 pub(crate) mod cells_catalog; // 格目录：每件成品有哪些格（从成品的 Rust 类型序列化出来，不手写第二份；`view` 投影按它认成品名与路径）
 pub(crate) mod ext_hub_face; // 两台之间「装」那一件的枢纽那一对（typed）：ext-hub-preview · ext-hub-apply
@@ -13,7 +14,7 @@ pub(crate) mod footprint_report_face; // 「足迹」那两条成品（typed）�
 pub mod fork_face;
 pub(crate) mod history_face; // 读一份会话记录的那几条（typed）：history-read · -page · -lines · -run · -tail · -branch · -record · sessions-needs
 pub(crate) mod hub_inner_face; // 枢纽问各台的那 8 条内层命令（typed）：名字 · 入参 · 回包取 `assets::hub_wire` 那三样
-pub(crate) mod launch_account_face; // 起会话挑号要的事实（账号库 · 上次的号）与起之前预标信任：`session-open` · 换号重启 · 会话里切号同一份
+pub mod launch_account_face; // 起会话挑号要的事实（账号库 · 上次的号）与起之前预标信任：`session-open` · 换号重启 · 会话里切号同一份
 pub mod login_face; // 在 app 里登录一个号（`login-*`）· 会话外的需手动清单（进 `sessions-needs`）
 pub mod plan_face; // 帧面 `plan-list` · `plan-read` · `plan-cell-view`：计划读面要的这台事实（pb 装在哪 · 会话在哪些目录 · id 是哪个会话）
 pub mod plan_return_face; // 帧面 `plan-return`：计划退回（拼那一行 · 判能不能送 · 走 `terminal-input` 的本体 · 记已退回）

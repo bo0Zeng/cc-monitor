@@ -33,16 +33,14 @@
   }
 
   .termTitle {
-    overflow: hidden;
+    composes: one-line from global;
     color: var(--text);
     font-weight: 600;
-    text-overflow: ellipsis;
   }
 
   .termWhere {
-    overflow: hidden;
+    composes: one-line from global;
     color: var(--text-2);
-    text-overflow: ellipsis;
   }
 
   .termTag {
@@ -154,8 +152,7 @@
   }
 
   .termTo {
-    overflow: hidden;
-    text-overflow: ellipsis;
+    composes: one-line from global;
   }
 
   .termOwner {

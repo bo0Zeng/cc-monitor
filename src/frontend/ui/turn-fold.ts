@@ -607,7 +607,7 @@ export function paintLine(line: HTMLElement, fold: FoldSegment, open: boolean, n
   }
   if (fold.phase === "awaiting") line.appendChild(statusDot("needs-you", fold.parts[fold.parts.length - 1]?.text ?? "", "compact"));
   const text = document.createElement("span");
-  text.className = "proc-text";
+  text.className = "proc-text one-line";
   line.appendChild(text);
   for (const p of fold.parts) {
     if (text.childNodes.length > 0) text.append(sep);

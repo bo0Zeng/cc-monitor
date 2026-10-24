@@ -288,7 +288,7 @@ const PREFIX_MASKED: readonly string[] = [
   "acct-c0", "acct-c1", "acct-c2", "acct-c3", "acct-c4", "acct-c5",
   "acct-c6", "acct-c7", "agent-failed", "agent-running", "agent-stopped", "agent-timeline",
   "block-diff-add", "block-diff-del", "pf-dot-err", "pf-dot-ok", "status-completed", "status-deleted",
-  "status-failed", "status-in_progress", "status-msg", "status-running", "status-stopped",
+  "status-failed", "status-in_progress", "status-running", "status-stopped",
 ];
 
 /**

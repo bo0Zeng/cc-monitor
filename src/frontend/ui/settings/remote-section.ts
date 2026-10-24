@@ -301,13 +301,13 @@ export class RemoteSection {
     line.className = "remote-machine-line";
     const nameBtn = document.createElement("button");
     nameBtn.type = "button";
-    nameBtn.className = "remote-machine-name remote-machine-open";
+    nameBtn.className = "remote-machine-name remote-machine-open one-line";
     nameBtn.textContent = name;
     const word = document.createElement("span");
     word.className = "remote-machine-word";
     line.append(nameBtn, word);
     const metaEl = document.createElement("div");
-    metaEl.className = "remote-machine-meta";
+    metaEl.className = "remote-machine-meta one-line";
     metaEl.textContent = meta;
     main.append(line, metaEl);
     const side = document.createElement("div");

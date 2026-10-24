@@ -171,7 +171,7 @@ function renderBadges(s: GridSessionSnapshot, badges: HTMLElement, now: number):
   const bg = s.face.dot === "background" ? s.backgroundWork : null;
   if (bg?.what) {
     const b = document.createElement("span");
-    b.className = "grid-monitor-badge badge-bgwork";
+    b.className = "grid-monitor-badge badge-bgwork one-line";
     b.textContent = copyText("gridMonitor.renderBadges.background", { cmd: bg.what });
     b.title = backgroundLine(bg, now);
     badges.appendChild(b);
@@ -404,7 +404,7 @@ export class GridMonitorView {
     const head = document.createElement("div");
     head.className = "grid-monitor-peek-head";
     const title = document.createElement("span");
-    title.className = "grid-monitor-peek-title";
+    title.className = "grid-monitor-peek-title one-line";
     title.textContent = selected.title;
     head.appendChild(title);
     if (isRemoteOrigin(selected.origin)) {
@@ -444,7 +444,7 @@ export class GridMonitorView {
       k.className = "grid-monitor-peek-k";
       k.textContent = label;
       const v = document.createElement("span");
-      v.className = "grid-monitor-peek-v";
+      v.className = "grid-monitor-peek-v one-line";
       v.textContent = value;
       v.title = value;
       row.append(k, v);
@@ -498,7 +498,7 @@ export class GridMonitorView {
       }
       for (const f of peek.recentFiles.slice(-8)) {
         const item = document.createElement("code");
-        item.className = "grid-monitor-peek-file";
+        item.className = "grid-monitor-peek-file one-line";
         item.textContent = f;
         item.title = f;
         list.appendChild(item);
@@ -522,7 +522,7 @@ export class GridMonitorView {
       head.className = "grid-monitor-cell-head";
       const dot = statusDot("running", "", "compact");
       const name = document.createElement("span");
-      name.className = "grid-monitor-cell-title";
+      name.className = "grid-monitor-cell-title one-line";
       head.append(dot, name);
       cell.appendChild(head);
 
@@ -552,7 +552,7 @@ export class GridMonitorView {
     if (s.cwd) {
       if (!refs.cwd) {
         refs.cwd = document.createElement("div");
-        refs.cwd.className = "grid-monitor-cell-cwd";
+        refs.cwd.className = "grid-monitor-cell-cwd one-line";
         cell.insertBefore(refs.cwd, cell.children[1] ?? null);
       }
       if (refs.cwd.textContent !== s.cwd) {

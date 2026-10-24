@@ -162,7 +162,6 @@ fn run_on(rt: &tokio::runtime::Runtime, req: filewin_contract::OpenRequest) -> i
         Some(line),
         first,
         req.reveal,
-        req.bookmarks,
         req.view,
         req.machines,
         req.work_area,

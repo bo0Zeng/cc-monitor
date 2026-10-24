@@ -182,11 +182,6 @@ impl AccountBook {
         self.accounts.iter().filter(|a| a.config_dir.is_some())
     }
 
-    /// 这台的默认号（[`effective_default`]）。
-    pub fn default_account(&self) -> Option<&ManifestAccount> {
-        effective_default(&self.accounts, |a| a.is_default)
-    }
-
     /// 换号那一侧：账号 0 恒在、排第一个（「裸起」这个状态永远可达）—— 清单里写了那一条就挪到最前，没写就补一条（名字 [`BARE_ACCOUNT`]）。
     pub fn with_bare_first(mut self) -> Self {
         let bare = match self.accounts.iter().position(|a| a.config_dir.is_none()) {

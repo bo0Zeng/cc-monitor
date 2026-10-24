@@ -36,7 +36,7 @@ fn the_seed_is_exactly_the_first_line_and_the_channel_follows_on_the_same_pipes(
     assert!(at_dial < at_open, "开窗排在起通道之前");
     // ⑤种子里每一格都真的交给了开窗那一下（漏交一格 ＝ 那一格在窗口那侧恒是默认值，
     //    种子对拍照样绿 —— 它只判「过得了进程边界」，判不了「过去之后有人接」）。
-    for f in ["reveal", "bookmarks", "machines"] {
+    for f in ["reveal", "view", "machines"] {
         let at = guard_core::find_pinned(&prod, &format!("        req.{f},\n"))
             .unwrap_or_else(|e| panic!("child_main 没把种子里的 `{f}` 交给开窗那一下：{e}"));
         assert!(at > at_open, "`req.{f}` 不在开窗那一下的实参里");
@@ -317,7 +317,6 @@ impl RealChild {
             cwd,
             reveal: None,
             frame: 1 << 20,
-            bookmarks: None,
             view: None,
             machines: Vec::new(),
             work_area: None,

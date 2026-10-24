@@ -9,18 +9,6 @@
     "生产代码只经 src/frontend/ui/copy-table.ts 的 copyText(key, {…}) 取文，key 必须是字面量；表里的 key 与代码里的引用两向相等（tests/copy/copy-table.vitest.ts）。"
   ],
   "entries": {
-    "accountOps.name.empty": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "账号名不能为空",
-      "args": []
-    },
-    "accountOps.name.shape": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "账号名不合规 · 只用字母、数字、_、- · 字母或数字开头 · 最长 {max}",
-      "args": ["max"]
-    },
     "beAcctExec.key.noDoor": {
       "kind": "error",
       "role": "报错",
@@ -7346,24 +7334,6 @@
       "args": ["endpoint"],
       "limited": ["连接"]
     },
-    "accountNewForm.baseUrl.scheme": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "Base URL 须以 https:// 开头 · 本机回环可用 http://",
-      "args": []
-    },
-    "accountNewForm.baseUrl.plainHttp": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "http:// 仅限本机回环（127.0.0.1 · localhost） · 否则用 https",
-      "args": []
-    },
-    "accountNewForm.baseUrl.shape": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "Base URL 格式 https://主机[:端口][/路径] · 留空用默认上游",
-      "args": []
-    },
     "settingsPanel.save.appearance": {
       "kind": "body",
       "role": "片段",
@@ -9687,12 +9657,6 @@
       "zh": "远端主目录是空路径 · 无起点可打开窗口",
       "args": []
     },
-    "rsFilewinSource.local.readDirFailed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "读取失败 · 目录 · {why}",
-      "args": ["why"]
-    },
     "rsFilewinSource.sort.type": {
       "kind": "control",
       "role": "标签",
@@ -9902,30 +9866,6 @@
       "role": "片段",
       "zh": "当前目录加入书签",
       "args": []
-    },
-    "rsFilewinBookmarks.store.noDataDir": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "保存书签失败 · 无数据目录",
-      "args": []
-    },
-    "rsFilewinBookmarks.mutate.failed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "保存书签失败 · {why}",
-      "args": ["why"]
-    },
-    "rsFilewinBookmarks.read.unreadable": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "读取书签文件 {file} 失败 · 内容无法解析",
-      "args": ["file"]
-    },
-    "rsFilewinBookmarks.read.failed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "读取书签失败 · {why}",
-      "args": ["why"]
     },
     "rsFilewinTransfer.ui.redone": {
       "kind": "error",
@@ -12034,12 +11974,6 @@
       "kind": "body",
       "role": "片段",
       "zh": "开机自启开关与程序路径",
-      "args": []
-    },
-    "rsDataPaths.monitor.bookmarks": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "文件窗口收藏的目录 · 每台机器一份",
       "args": []
     },
     "rsDataPaths.monitor.filewinView": {
@@ -14535,12 +14469,6 @@
       "zh": "attach 与 --detach 不能同用 · attach 就是接进去",
       "args": []
     },
-    "bePlan.resolveAccount.defaultMissing": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "默认账号 '{name}' 目录不存在 · 用 --base 或 --account <名>",
-      "args": ["name"]
-    },
     "bePlan.resolveAccount.unavailable": {
       "kind": "error",
       "role": "命令行",
@@ -14936,6 +14864,18 @@
       "zh": "不在 planned-build 工作区里",
       "args": []
     },
+    "beBookmarks.store.noHome": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "书签未读写 · 无主目录",
+      "args": []
+    },
+    "beBookmarks.store.mkdirFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "创建 {dir} 失败",
+      "args": ["dir"]
+    },
     "bePlan.review.mkdirFailed": {
       "kind": "error",
       "role": "报错",
@@ -15258,12 +15198,6 @@
       "zh": "SSH 与后端均正常",
       "args": [],
       "limited": ["SSH"]
-    },
-    "beProbe.link.closed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "该机后端输出中断",
-      "args": []
     },
     "beProbe.reached.ssh": {
       "kind": "body",
@@ -26457,6 +26391,12 @@
       "kind": "body",
       "role": "说明",
       "zh": "计划需手动里认可过的几条 · 退回过的格",
+      "args": []
+    },
+    "rsDataPaths.backend.bookmarks": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "书签 · 文件窗口与手机收藏的目录",
       "args": []
     },
     "rsDataPaths.backend.lastSeen": {

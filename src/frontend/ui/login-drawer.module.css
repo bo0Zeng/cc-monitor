@@ -32,14 +32,12 @@
   }
 
   .ldUrl {
+    composes: one-line from global;
     flex: 1;
     min-width: 0;
-    overflow: hidden;
     color: var(--text-2);
     font-family: var(--font-mono);
     font-size: var(--font-size-xs);
-    white-space: nowrap;
-    text-overflow: ellipsis;
   }
 
   .ldAuto {

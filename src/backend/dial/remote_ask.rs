@@ -128,7 +128,7 @@ pub(crate) fn insert(
 pub(crate) fn register(
     table: &Table,
     origin: &cmd_wire::Machine,
-    dial: &super::pick::MachineDial,
+    dial: &super::MachineDial,
 ) -> Result<String, (&'static str, String)> {
     insert(table, origin.as_wire_str(), dial.stored()?)
 }
@@ -164,7 +164,7 @@ pub(crate) struct ReachReq {
     /// 那台的名字（monitor 的 origin 名）。
     pub(crate) origin: cmd_wire::Machine,
     /// 那台的拨号（只有路径，没有私钥本体）。
-    pub(crate) dial: super::pick::MachineDial,
+    pub(crate) dial: super::MachineDial,
 }
 
 /// `remote-reach` 的应答：登记的那台 ＋ 登记之后的可达表。

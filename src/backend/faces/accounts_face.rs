@@ -43,9 +43,13 @@ pub(crate) fn change(
     keys: &KeyDoor,
 ) -> Result<AccountChange, Fail> {
     let key = match &req {
-        // 预演不带 key（界面填表时每改一格问一次，明文不必跟着走）；真建号之前先判 key 与地址写不写得进去，
-        // 不然号建好了、key 却落不下。
-        wire::Request::Add(a) if a.kind == AccountKind::ApiKey && a.dry_run != Some(true) => {
+        // 预演不带 key（界面填表时每改一格问一次，明文不必跟着走），地址照样判：界面只交原样打的字、只画这里拒的那一句。
+        wire::Request::Add(a) if a.kind == AccountKind::ApiKey && a.dry_run == Some(true) => {
+            base_url_usable(a.base_url.as_deref())?;
+            None
+        }
+        // 真建号之前先判 key 与地址写不写得进去，不然号建好了、key 却落不下。
+        wire::Request::Add(a) if a.kind == AccountKind::ApiKey => {
             let k = creds_core::SecretKey::new(a.key.clone().unwrap_or_default());
             file_face::check_inputs(&k, a.base_url.as_deref())?;
             Some((k, a.base_url.clone()))
@@ -555,6 +559,16 @@ fn sync_mcp(d: &dyn Door, change: &mut AccountChange) {
         )),
     }
     mcp_share_watch::kick();
+}
+
+/// 预演那一趟的地址：留空 = 默认上游；给了就过写口 · 装表同一个谓词（`table::base_if_usable`），理由是它说的那一句。
+fn base_url_usable(base_url: Option<&str>) -> Result<(), Fail> {
+    match base_url.map(str::trim).filter(|u| !u.is_empty()) {
+        Some(url) => crate::accounts::upstream_select::table::base_if_usable(url)
+            .map(|_| ())
+            .map_err(|why| Fail::from(("bad_args", why.to_string()))),
+        None => Ok(()),
+    }
 }
 
 fn put_key(

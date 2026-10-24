@@ -224,6 +224,7 @@ async fn a_new_tab_and_the_right_side_inherit_the_line_and_the_shelf() {
     let mut first = window_on(&wired, "/");
     first.shelf = Some(crate::bookmarks::Shelf::open(
         None,
+        None,
         &crate::source::Origin("fw34-ws-inherit".into()),
     ));
     let mut ws = Workspace::new(first);
@@ -1281,14 +1282,10 @@ async fn screenshot_for_the_shots_tool() {
         "gpu-01".into(),
         "win-laptop".into(),
     ];
-    let shelf = crate::bookmarks::Shelf::open(
-        Some(base.join("bm.json")),
-        &crate::source::Origin("devbox".into()),
-    );
-    shelf.toggle(&d);
-    shelf.toggle(&vdir.join("src").to_string_lossy());
-    shelf.toggle("/etc");
-    w.shelf = Some(shelf);
+    w.shelf = Some(crate::bookmarks::tests::holding(
+        "devbox",
+        &[&d, &vdir.join("src").to_string_lossy(), "/etc"],
+    ));
     let target = match scene.as_str() {
         "empty" => vdir.join("empty-dir").to_string_lossy().to_string(),
         "missing" => vdir.join("gone").to_string_lossy().to_string(),
@@ -3147,7 +3144,6 @@ async fn perf_rig_worker() {
         tokio::runtime::Handle::try_current().ok(),
         Some(line),
         first,
-        None,
         None,
         None,
         Vec::new(),

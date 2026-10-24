@@ -35,6 +35,7 @@
 use std::sync::Once;
 
 pub(crate) use ssh_dial::machine;
+pub(crate) use ssh_dial::machine::Host;
 #[cfg(test)]
 pub(crate) use ssh_dial::pool;
 pub use ssh_dial::{
@@ -46,10 +47,9 @@ pub(crate) mod forwards; // 端口转发的账（起 · 停 · 列三条帧命�
 pub(crate) mod known_hosts; // cc-monitor 自己那份 known_hosts（握手认下的钥匙；开终端那一行交给 ssh）
 pub use known_hosts::install as install_known_hosts;
 pub mod link;
-// 本机后端问远端后端的那一跳（池里那条 SSH 上 capture 一次性子命令）＋ 可达表 —— 全后端只此一处；帧面 `remote-reach`。
-// 住拨号层：它只用拨号与契约那几样，不碰帧面（审计二 B2e：原住 `stream/`，那时 `dial ⇄ stream` 双向都因它多出几条边）。
-pub(crate) mod pick; // 帧命令入参里「拨哪台」那几格的类型（组请求在 `ssh_dial::machine`）
 pub(crate) mod probe; // 测试连接（`remote-probe`）
+                      // 本机后端问远端后端的那一跳（池里那条 SSH 上 capture 一次性子命令）＋ 可达表 —— 全后端只此一处；帧面 `remote-reach`。
+                      // 住拨号层：它只用拨号与契约那几样，不碰帧面（审计二 B2e：原住 `stream/`，那时 `dial ⇄ stream` 双向都因它多出几条边）。
 pub mod remote_ask;
 pub(crate) mod ssh_config;
 pub(crate) mod terminal; // 开终端那一串（`ssh -t …` 外壳 ＋ PowerShell 窗口载荷）在这里渲
@@ -157,6 +157,90 @@ pub(crate) fn parse_request_value(
     v: &serde_json::Value,
 ) -> Result<DialRequest, (&'static str, String)> {
     machine::resolve(v)
+}
+
+type CmdErr = (&'static str, String);
+
+/// 上次赢的那条地址（monitor 记的）：仍在这台的地址里 ⇒ 排首。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Prefer {
+    pub(crate) host: String,
+    pub(crate) port: u16,
+}
+
+impl Prefer {
+    fn endpoint(&self) -> Endpoint {
+        Endpoint {
+            host: self.host.clone(),
+            port: self.port,
+        }
+    }
+}
+
+/// 帧命令入参里交来的那一台 ＋ 它的跳板（线上那一形，经 [`machine::loose`] 读）⇒ 两台成一张表，拨 `machine` 那一台。
+/// 组法 · 判准 · 跳板一路只在 [`machine::request`]。
+pub(crate) fn dial_of(
+    machine: &Host,
+    jump: Option<&Host>,
+    prefer: Option<&Prefer>,
+    use_: &str,
+    extra: serde_json::Value,
+) -> Result<DialRequest, CmdErr> {
+    let table: Vec<Host> = std::iter::once(machine).chain(jump).cloned().collect();
+    let prefer = prefer.map(Prefer::endpoint);
+    machine::dial_request(&table, machine.name(), prefer.as_ref(), use_, extra)
+}
+
+/// 线上那一份拨号（`{machine, jump, prefer}`）：存进可达表 · 交给还收原样拨号的那几处（它们经 [`machine::resolve`] 读）。
+/// 先组一遍，坏了当场拒。
+pub(crate) fn wire_dial(
+    machine: &Host,
+    jump: Option<&Host>,
+    prefer: Option<&Prefer>,
+) -> Result<serde_json::Value, CmdErr> {
+    dial_of(machine, jump, prefer, "stream", serde_json::json!({}))?;
+    Ok(serde_json::json!({
+        "machine": machine,
+        "jump": jump,
+        "prefer": prefer,
+    }))
+}
+
+/// 一份拨号（线上形）：拨哪台那几格 ＋ 用法 ＋ 界面进程此刻的 ssh-agent 套接字。可达表存它（`remote-reach` · `assets-sync`），给那台装后端拿它去拨那台（`deploy-install`）。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct MachineDial {
+    #[serde(deserialize_with = "machine::loose_field")]
+    pub(crate) machine: Host,
+    #[serde(default, deserialize_with = "machine::loose_opt")]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) jump: Option<Host>,
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) prefer: Option<Prefer>,
+    /// 用法（存着不读：问那台的每一趟按自己的用法改，`capture` · `forward`）。
+    #[serde(default, rename = "use")]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) use_: Option<String>,
+    /// ssh-agent 套接字的路径（界面进程此刻的 `SSH_AUTH_SOCK`；缺 ⇒ 用本进程自己的）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) agent_sock: Option<String>,
+}
+
+impl MachineDial {
+    /// 交给还收原样拨号的那几处的那一份（之后经 [`machine::resolve`] 读；先在这里组一遍，坏了当场拒）。
+    pub(crate) fn stored(&self) -> Result<serde_json::Value, CmdErr> {
+        let mut v = wire_dial(&self.machine, self.jump.as_ref(), self.prefer.as_ref())?;
+        v["use"] = serde_json::json!(self.use_);
+        v["agent_sock"] = serde_json::json!(self.agent_sock);
+        Ok(v)
+    }
 }
 
 #[cfg(test)]

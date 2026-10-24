@@ -26,9 +26,13 @@ russh-sftp = "3"
 # 后端的测试档经 dev 依赖打开 `test-support`（resolver 2 ⇒ dev 依赖的 feature 不并进发布构建）：
 # 测试档不许出网（`connect.rs::tcp_hop` 那一句断言）· 拨了必被拒的本机口 · 合成 SFTP 服务端（`sftp::rig`）。
 upstream-url-core = { path = "../../common/upstream-url-core", optional = true }
+# 机器那一形（`machine::Host`）的 TS 派生：后端的测试档有生成类型嵌着它（`MachinesReply` 等）⇒ 经 `ts` 拿到同一个派生；发布构建不开。
+ts-rs = { version = "12.0.1", optional = true }
 
 [features]
-test-support = ["dep:upstream-url-core"]
+# 后端的测试档经 dev 依赖开它，`ts` 随它一起开（那边要导出嵌着 `Host` 的生成类型）。
+test-support = ["dep:upstream-url-core", "ts"]
+ts = ["dep:ts-rs"]
 
 [dev-dependencies]
 # 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
@@ -43,6 +47,7 @@ ring = "0.17"
 # 判据现生成一把 ECDSA 的 host key（版本同 russh 那一棵用的 0.10，不新增包）。
 rand = { version = "0.10", features = ["thread_rng"] }
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+ts-rs = "12.0.1"
 
 [lints.clippy]
 # 禁的路径与理由住上一级的 `clippy.toml`（后端零定时器那一组）。

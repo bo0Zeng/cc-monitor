@@ -26,6 +26,8 @@ class SentRequestsTest {
         mapOf(
             AccountsList.COMMAND to listOf(AccountsList.args("claude"), AccountsList.args("")),
             AccountsSetDefault.COMMAND to listOf(AccountsSetDefault.args("a")),
+            Bookmarks.READ to listOf(emptyMap()),
+            Bookmarks.EDIT to listOf(Bookmarks.edit("toggle", listOf("/w")), Bookmarks.edit("remove", listOf("/w")), Bookmarks.edit("add", listOf("/w", "/v"))),
             FilesCommitUpload.COMMAND to
                 listOf(
                     FilesCommitUpload.args(dir, "up.bin", FilesCommitUpload.Staged("k", 3L, 9L, SHA)),

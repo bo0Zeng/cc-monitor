@@ -83,9 +83,8 @@ pub fn model_name_ok(s: &str) -> bool {
 /// 账号名的上界（与建账号的那个工具逐字同，见 [`account_name_ok`]）。
 pub const ACCOUNT_NAME_MAX: usize = 32;
 
-/// 账号名在字母数字之外还放行的字符（首字符除外）。单独提成常量：新建账号表单要在写入点先说一句，
-/// 规则从这里现生成到 `src/frontend/ui/generated/judgment-rules.ts`（不手抄）。
-pub const ACCOUNT_NAME_EXTRA: &str = "_-";
+/// 账号名在字母数字之外还放行的字符（首字符除外）。界面不判账号名（新建账号表单问那台后端预演）。
+const ACCOUNT_NAME_EXTRA: &str = "_-";
 
 /// **账号名**（`--account <名>`）：1..=[`ACCOUNT_NAME_MAX`] 位 · 首字符 ASCII 字母数字 · 其余字母数字或 [`ACCOUNT_NAME_EXTRA`]。
 ///

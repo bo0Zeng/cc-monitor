@@ -58,11 +58,11 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.BatchEvent
+import com.ccmonitor.mobile.core.claude.link.BookmarkShelf
 import com.ccmonitor.mobile.core.claude.link.FilesLs
 import com.ccmonitor.mobile.core.claude.link.PickMenu
 import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.copy.copyText
-import com.ccmonitor.mobile.core.data.db.Bookmark
 import com.ccmonitor.mobile.core.data.repo.BookmarkRepository
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.dialog.DangerConfirmDialog
@@ -76,17 +76,16 @@ import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
+import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.chat.newsession.DirBrowseScreen
 import com.ccmonitor.mobile.ui.chat.newsession.DirBrowser
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import com.ccmonitor.mobile.ui.common.EditHostButton
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
 import java.io.IOException
-import java.util.UUID
 
 /** 当前打开的对话框。 */
 private sealed interface FilesDialog {
@@ -316,8 +315,14 @@ private fun ReadyContent(
     val scope = rememberCoroutineScope()
     val dir = cwd ?: return
     val entries = listing.entries
-    val bookmarkRepo = koinInject<BookmarkRepository>()
-    val bookmarks by bookmarkRepo.observeForHost(hostId).collectAsState(initial = emptyList())
+    // 书签归那台后端（与桌面文件窗口同一族命令）：进屏与每次换目录时问一次。
+    val backends = koinInject<HostBackends>()
+    val shelf = remember(hostId) { BookmarkShelf { cmd, args -> backends.of(hostId).call(cmd, args) } }
+    val bookmarks by shelf.dirs.collectAsState()
+    val bookmarkSaid by shelf.said.collectAsState()
+    val oldBookmarks = koinInject<BookmarkRepository>()
+    LaunchedEffect(shelf) { adoptOldBookmarks(shelf, oldBookmarks, hostId) }
+    LaunchedEffect(shelf, dir) { shelf.refresh() }
     val tokens = LocalAppTokens.current
     Column(Modifier.fillMaxSize()) {
         if (selection.active) {
@@ -325,18 +330,16 @@ private fun ReadyContent(
             PickBar(selection.size, menu, onClose = vm::unpick) { picked(it, vm, actions, onDialog) }
         } else {
             // 书签存那一串：名字不是合法 UTF-8 的目录不给星标。
-            val bookmarked = dir.text?.let { t -> bookmarks.firstOrNull { it.path == t } }
+            val bookmarked = dir.text?.let { t -> t in bookmarks } ?: false
             PathHeader(
                 dir = dir,
                 listing = listing,
                 bookmarked = bookmarked,
                 onNavigate = vm::navigateTo,
-                onToggleBookmark = {
-                    dir.text?.let { toggleBookmark(scope, bookmarkRepo, hostId, it, listing.crumbs.lastOrNull()?.first ?: dir.shown, bookmarked) }
-                },
+                onToggleBookmark = { dir.text?.let { t -> scope.launch { shelf.toggle(t) } } },
             )
             Toolbar(dir, sortBySize, vm, onOpenTerminal, onShowTabs, onDialog)
-            BookmarkBar(bookmarks, vm, bookmarkRepo)
+            BookmarkBar(bookmarks, bookmarkSaid, vm, shelf)
         }
         if (!online) OfflineBand(vm)
         val p = progress
@@ -460,31 +463,33 @@ private fun Toolbar(
     }
 }
 
-/** 书签横条（点跳转 · 长按删，删了给撤销）。 */
+/** 书签横条（点跳转 · 长按删，删了给撤销）；那台问不成 ⇒ 那一句。 */
 @Composable
 private fun BookmarkBar(
-    bookmarks: List<Bookmark>,
+    bookmarks: List<String>,
+    said: String?,
     vm: FilesViewModel,
-    bookmarkRepo: BookmarkRepository,
+    shelf: BookmarkShelf,
 ) {
     val tokens = LocalAppTokens.current
     val snackbar = LocalAppSnackbar.current
     val scope = rememberCoroutineScope()
+    said?.let { ErrorLine(it) }
     if (bookmarks.isNotEmpty()) {
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.sm),
             horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            bookmarks.forEach { bm ->
-                // 书签删除是本机的、撤得回：直接做并给撤销，不加确认框。
+            bookmarks.forEach { path ->
+                // 书签删除撤得回：直接做并给撤销（撤销 ＝ 再加回去），不加确认框。
                 BookmarkChip(
-                    bm = bm,
-                    onJump = { vm.navigateTo(RemotePath.of(bm.path)) },
+                    path = path,
+                    onJump = { vm.navigateTo(RemotePath.of(path)) },
                     onDelete = {
                         scope.launch {
-                            bookmarkRepo.delete(bm)
-                            snackbar.showUndo(copyText("mobFiles.bookmark.deleted", "label" to bm.label.ifBlank { bm.path })) { bookmarkRepo.save(bm) }
+                            shelf.remove(path)
+                            snackbar.showUndo(copyText("mobFiles.bookmark.deleted", "label" to path)) { scope.launch { shelf.adopt(listOf(path)) } }
                         }
                     },
                 )
@@ -499,7 +504,7 @@ private fun PathHeader(
     dir: RemotePath,
     /** 上一级与各段（那台切好的）。 */
     listing: FilesLs.Listing,
-    bookmarked: Bookmark?,
+    bookmarked: Boolean,
     onNavigate: (RemotePath) -> Unit,
     onToggleBookmark: () -> Unit,
 ) {
@@ -534,29 +539,26 @@ private fun PathHeader(
         if (dir.text != null) {
             PhIconButton(
                 Ph.Star,
-                if (bookmarked != null) copyText("rsFilewinBookmarks.label.drop") else copyText("rsFilewinBookmarks.label.add"),
+                if (bookmarked) copyText("rsFilewinBookmarks.label.drop") else copyText("rsFilewinBookmarks.label.add"),
                 onClick = onToggleBookmark,
-                tint = if (bookmarked != null) tokens.accent else MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = if (bookmarked) tokens.accent else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
 }
 
-private fun toggleBookmark(
-    scope: CoroutineScope,
-    repo: BookmarkRepository,
+/**
+ * 〔一次性迁移 · 下一版删〕这台 Room 里旧的书签（书签从前只存在手机上）一次加到那台后端，答 ok 才删那几行；
+ * 没答 ok ⇒ 留着，下次进这台的文件屏再迁。Room 那张表随下一次 Room 换形删。
+ */
+private suspend fun adoptOldBookmarks(
+    shelf: BookmarkShelf,
+    old: BookmarkRepository,
     hostId: String,
-    path: String,
-    label: String,
-    bookmarked: Bookmark?,
 ) {
-    scope.launch {
-        if (bookmarked != null) {
-            repo.delete(bookmarked)
-        } else {
-            repo.save(Bookmark(id = "bm-" + UUID.randomUUID(), hostId = hostId, path = path, label = label))
-        }
-    }
+    val rows = old.forHost(hostId)
+    if (rows.isEmpty()) return
+    if (shelf.adopt(rows.map { it.path })) rows.forEach { old.delete(it) }
 }
 
 @Composable
@@ -754,13 +756,13 @@ private fun NameDialog(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun BookmarkChip(
-    bm: Bookmark,
+    path: String,
     onJump: () -> Unit,
     onDelete: () -> Unit,
 ) {
     val tokens = LocalAppTokens.current
     Text(
-        bm.label,
+        path,
         style = monoSmall,
         color = MaterialTheme.colorScheme.onSurface,
         maxLines = 1,

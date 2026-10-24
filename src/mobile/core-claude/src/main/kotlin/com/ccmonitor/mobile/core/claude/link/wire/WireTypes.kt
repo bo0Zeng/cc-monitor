@@ -904,6 +904,12 @@ data class FilesPathReply(
     val path: Any,
 )
 
+@WireOf("Bookmarks")
+@JsonClass(generateAdapter = true)
+data class BookmarkDirs(
+    val dirs: List<String>,
+)
+
 @WireOf("RotationStrategiesReply")
 @JsonClass(generateAdapter = true)
 data class RotationStrategiesReply(

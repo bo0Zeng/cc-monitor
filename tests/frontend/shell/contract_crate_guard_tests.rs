@@ -10,7 +10,8 @@
 //! ④「前端宿主原语」类（`host-core`）只许两个前端链：后端生产段闭包里出现即红。
 //! ⑤「前端包」（[`FRONTEND_PACKAGES`]：文件窗口）不住 `src/common/`、自己出一个程序（它的 `[[bin]]` 住它自己名下，size2 10-11 从 monitor 包搬来）：
 //!    monitor 生产段不链它、生产源码一处都不提它；它自己的闭包照 ② 判（「前端那一侧的生产闭包」= monitor ＋ 各前端包）；
-//!    monitor 的源码人群声明（`[package.metadata.guard] population`）== 前端那一侧的生产闭包 − 后端生产闭包（两向）。
+//!    monitor 的源码人群声明（`[package.metadata.guard] population`）== 前端那一侧的生产闭包 − 后端生产闭包 ＋ 两头都链、归这一群的通信层客户端包
+//!    （[`CLIENT_SIDE_COMMS`]；后端那一群不写它们）（两向）。
 //!
 //! 买不到：契约类 crate **里面**长出一个名字不在 [`DEPLOY_DECISIONS`] 里的判定（这条只按 crate 分类 ＋ 点名的判定符号，不读函数体；
 //! 那是 `judgment-single-home.vitest.ts` 的 CORE_ITEMS）。
@@ -49,7 +50,20 @@ const CRATES: &[(&str, Class, &str)] = &[
     ("shell-quote-core", Class::Contract, "令牌形状：POSIX 单引号 quote 与标识符放行形状（session id · 启动令牌 · cc-bus id · 路径），两侧拼进 shell 前对上同一份"),
     ("win-path-core", Class::Contract, "路径：交给 Win32 文件 API 的那一形（UTF-16 ＋ 长路径前缀），后端 · monitor · 文件窗口 · creds-core 拼同一份，不裁决"),
     ("win-manifest", Class::HostPrimitive, "两个前端包在 Windows 上带的进程清单（通用控件 v6）：清单本身 · 构建脚本里的编法 · 测试程序读回，只一份；不裁决业务，后端不链"),
-    ("upstream-url-core", Class::Decision, "上游 URL 能不能用是裁决；界面读的是生成器现生成的式子（monitor 只在 dev 侧链它）"),
+    ("upstream-url-core", Class::Decision, "上游 URL 能不能用是裁决；界面不判（只画后端拒的那一句），monitor 只在 dev 侧为金样判据链它"),
+];
+
+/// ⑤ 两头都链、归 monitor 那一群的通信层包 —— (包目录（仓根相对）, 理由)。两头都链的包只归一群、只登一份：
+/// 这几包是通信层**客户端那一侧**，归 monitor；后端的源码人群（它 manifest 的 `population`，不顺着依赖扫）不写它们。
+const CLIENT_SIDE_COMMS: &[(&str, &str)] = &[
+    (
+        "src/comms/inward",
+        "通信层面 A（前端 ↔ 后端）的客户端零件：帧 · 路由器 · 问后端的分流；后端只经 resident-client 间接链它",
+    ),
+    (
+        "src/comms/resident-client",
+        "连常驻后端的客户端那一侧（握手 · 重连退避 · 期限，有定时器）：桌面 · 手机的真连接走它；后端只在测试连接里当一回客户端跑它一趟（`dial/probe.rs`）",
+    ),
 ];
 
 /// ⑤前端包：不住 `src/common/`、自己出一个程序的包 —— (包目录（仓根相对）, 那个 bin 的 crate 根, 理由)。
@@ -449,10 +463,39 @@ fn a_frontend_package_ships_its_own_bin_and_the_monitor_does_not_link_it() {
     }
 }
 
-/// ⑤ monitor 的源码人群声明（`guard_core::population_trees`：判据按它收兄弟源码树）== 前端那一侧的生产闭包（monitor ＋ 各前端包）− 后端生产闭包。
+/// ⑤ monitor 的源码人群声明（`guard_core::population_trees`：判据按它收兄弟源码树）== 前端那一侧的生产闭包（monitor ＋ 各前端包）− 后端生产闭包
+/// ＋ [`CLIENT_SIDE_COMMS`]（两头都链、归这一群的通信层客户端包）。
 /// 少写一包 ⇒ 按人群扫的判据静默少扫搬进去的那几份；多写一包（后端也链的契约）⇒ 人群被别家的代码撑大。
+/// 两头都链的包只归一群：登记的那几包两头真都链（不是了就摘：那时它按「只有前端链」本来就在）、后端那一群的声明里没有它们。
 #[test]
 fn the_monitor_population_is_exactly_its_frontend_only_closure() {
+    let backend_declared: BTreeSet<PathBuf> = {
+        let manifest = root().join("src/backend/Cargo.toml");
+        let text = std::fs::read_to_string(&manifest).expect("读后端 manifest");
+        guard_core::population_decl(&text, &manifest)
+            .iter()
+            .map(|rel| normalize(&root().join("src/backend").join(rel)))
+            .collect()
+    };
+    let shared_client: BTreeSet<PathBuf> = CLIENT_SIDE_COMMS
+        .iter()
+        .map(|(dir, _)| normalize(&root().join(dir)))
+        .collect();
+    let monitor_links: BTreeSet<PathBuf> = monitor_production_closure()
+        .into_iter()
+        .map(|(_, _, dir)| dir)
+        .collect();
+    let backend_links = backend_production_closure();
+    for d in &shared_client {
+        assert!(
+            monitor_links.contains(d) && backend_links.contains(d),
+            "`CLIENT_SIDE_COMMS` 登的 {d:?} 不再两头都链 —— 摘掉那一行（只有前端链的包按差集本来就在人群里）"
+        );
+        assert!(
+            !backend_declared.contains(d),
+            "{d:?} 既归 monitor 那一群、又写进了后端那一群（`src/backend/Cargo.toml` 的 population）—— 两头都链的包只归一群"
+        );
+    }
     let declared: BTreeSet<PathBuf> =
         guard_core::population_trees(&root().join("src/frontend/shell/src"))
             .into_iter()
@@ -470,17 +513,18 @@ fn the_monitor_population_is_exactly_its_frontend_only_closure() {
         backend.iter().any(|d| d.ends_with("copy-core")),
         "后端生产闭包一个共享 crate 都没量到（`copy-core` 明明在）—— 量法瞎了"
     );
-    let frontend_only: BTreeSet<PathBuf> = monitor_production_closure()
-        .into_iter()
-        .map(|(_, _, dir)| dir)
-        .filter(|d| !backend.contains(d))
+    let frontend_only: BTreeSet<PathBuf> = monitor_links
+        .iter()
+        .filter(|d| !backend.contains(*d))
+        .cloned()
         .collect();
     assert!(
         !frontend_only.is_empty(),
         "monitor 生产闭包减掉后端那一份之后是空集 —— 量法瞎了"
     );
+    let want: BTreeSet<PathBuf> = frontend_only.union(&shared_client).cloned().collect();
     assert_eq!(
-        declared, frontend_only,
-        "monitor 的源码人群声明（`src/frontend/shell/Cargo.toml` 的 `[package.metadata.guard] population`）与「只有前端链的包」两向不等"
+        declared, want,
+        "monitor 的源码人群声明（`src/frontend/shell/Cargo.toml` 的 `[package.metadata.guard] population`）与「只有前端链的包 ＋ 归这一群的通信层客户端包」两向不等"
     );
 }

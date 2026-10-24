@@ -261,7 +261,7 @@ export class MachineCard {
 
     // 机器名（label || host）—— 独立 span（不靠脆弱的 firstChild 文本节点）。flex:1 把删除推到右侧。
     this.nameSpan = document.createElement("span");
-    this.nameSpan.className = "remote-machine-name";
+    this.nameSpan.className = "remote-machine-name one-line";
     legend.appendChild(this.nameSpan);
 
     // 删除按钮（legend 右侧）

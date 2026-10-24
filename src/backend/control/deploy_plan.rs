@@ -104,7 +104,7 @@ pub(crate) fn slots_of(rows: &[SlotRow]) -> Result<Vec<deploy::Slot>, Fail> {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct DeployInstallReq {
-    pub(crate) dial: crate::dial::pick::MachineDial,
+    pub(crate) dial: crate::dial::MachineDial,
     pub(crate) slots: Vec<SlotRow>,
     /// 那台的名字（非空；状态成品按它记）。
     pub(crate) machine: String,

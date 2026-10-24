@@ -26,7 +26,7 @@ members = [
     "../../common/shell-quote-core",
     "../../common/copy-core",
     # `agent-tools-core` 出列：界面不再按工具名判卡型（卡型随记录成品带出），它只剩后端用，收进后端适配层。
-    # 上游 base URL 能不能用 —— 后端中转 · 上游选择 · 写口与界面生成物共用的唯一一份。
+    # 上游 base URL 能不能用 —— 后端中转 · 上游选择 · 写口（含加号预演）共用的唯一一份。
     "../../common/upstream-url-core",
     # 部署那一族的契约（表 A 的键与行 · 戳格式 · 答话形状 · 路径）；判定那一半（原 `deploy-core`）进了后端 `control/deploy_plan.rs`。
     "../../common/deploy-contract",
@@ -67,8 +67,9 @@ categories = ["development-tools", "visualization"]
 default-run = "cc-monitor"
 
 # 「monitor 源码树」的判据人群：本包 `src/` ＋ 下面这几包 —— monitor 的代码搬进去的、只有前端链的兄弟包
-#   （通道 · 前端宿主原语 · 开窗契约 · 分块传那一圈 · 文件窗口）。`guard_core::walk_tree` / `module_address` 按它收 / 认，按人群扫的判据搬家前后逐条同一群；
-#   两向对着「monitor 生产闭包 − 后端生产闭包」由 `contract_crate_guard_tests.rs` ⑤ 钉住。
+#   （前端宿主原语 · 开窗契约 · 分块传那一圈 · 文件窗口），外加通信层客户端那一侧的两包（通道 · 连常驻的端核心）：
+#   后端也链它们（测试连接当一回客户端），但两头都链的包只归一群 —— 归这一群，后端那一群不写。`guard_core::walk_tree` / `module_address` 按它收 / 认；
+#   两向对着「monitor 生产闭包 − 后端生产闭包 ＋ 登记的客户端包」由 `contract_crate_guard_tests.rs` ⑤ 钉住。
 [package.metadata.guard]
 population = [
     "../../comms/inward",
@@ -213,7 +214,7 @@ cc-monitor-filewin = { path = "../filewin" }
 # 供应链增量本来就小（`ts-rs` + `ts-rs-macros` + `termcolor`，后两者是 proc-macro/构建期），
 # 但「codegen 工具不进产物」是正确的依赖方向。
 ts-rs = "12.0.1"
-# 上游 base URL 能不能用：monitor 生产树零引用，只有生成器（`export_bindings_judgment_rules`）与金样那条判据用它 ⇒ dev 侧。
+# 上游 base URL 能不能用：monitor 生产树零引用，只有金样那条判据（`the_upstream_url_golden_agrees_with_the_one_rule`）用它 ⇒ dev 侧。
 upstream-url-core = { path = "../../common/upstream-url-core" }
 # 账号种类取值集 `AUTH_KINDS`（J16）：monitor 生产树零引用，只有生成器（`export_bindings_judgment_rules`）用它 ⇒ dev 侧，
 #   发布二进制里不再链它（连同它那张对拍夹具 —— 夹具另在 `fixtures` feature 后面，这里也不开）。

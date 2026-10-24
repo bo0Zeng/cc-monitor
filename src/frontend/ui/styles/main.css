@@ -163,18 +163,12 @@
 .grid-monitor-cell-title {
   flex: 1 1 auto;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: var(--font-size-small);
 }
 
 .grid-monitor-cell-cwd {
   font-size: var(--font-size-xs);
   color: var(--text-faint);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   direction: rtl; /* cwd 太长时省略头部、保留尾部（更可辨） */
   text-align: left;
 }
@@ -207,11 +201,8 @@
 
 /* 后台任务运行中：命令那一格（等宽，放不下截尾；悬停给整句）。 */
 .grid-monitor-badge.badge-bgwork {
-  overflow: hidden;
   max-width: 100%;
   font-family: var(--font-mono);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .grid-monitor-empty {
@@ -256,9 +247,6 @@
   font-size: var(--font-size-small);
   font-weight: 600;
   color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .grid-monitor-peek-origin {
@@ -326,9 +314,6 @@
 
 .grid-monitor-peek-v {
   color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .grid-monitor-peek-agents,
@@ -376,9 +361,6 @@
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   color: var(--text-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* F84b-fix：首运行一次性微高亮——有限次脉冲后自然停，非模态、点一下即消。 */
