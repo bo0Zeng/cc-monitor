@@ -16,7 +16,6 @@ use crate::plan::{book, locate, watch, wire, Live, Whose};
 use crate::wire::spec::Fail;
 use crate::wire::typed::{self, Command, Cx, Handle};
 use copy_core::copy_text;
-use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -166,28 +165,6 @@ pub(crate) fn read_fresh(ws: &str, tz: &crate::Tz) -> Result<wire::PlanRead, Fai
         .map_err(miss)
 }
 
-/// [`crate::plan::command`] 的回包此刻还是 JSON（`{rc, said, path, took}`，那一形住它那里）⇒ 在这一处照键取成线上类型。
-fn cmd_reply(v: &Value) -> wire::PlanCmdReply {
-    let s = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
-    wire::PlanCmdReply {
-        rc: v
-            .get("rc")
-            .and_then(Value::as_i64)
-            .and_then(|n| i32::try_from(n).ok())
-            .unwrap_or_default(),
-        said: s(v, "said"),
-        path: s(v, "path"),
-        took: v
-            .get("took")
-            .filter(|t| t.is_object())
-            .map(|t| wire::PlanTook {
-                slice: s(t, "slice").unwrap_or_default(),
-                path: s(t, "path").unwrap_or_default(),
-                switched: t.get("switched").and_then(Value::as_bool) == Some(true),
-            }),
-    }
-}
-
 fn miss(m: book::Miss) -> Fail {
     match m {
         book::Miss::NotWorkspace(said) => {
@@ -229,7 +206,6 @@ fn command(req: &PlanCommandReq, tz: &crate::Tz) -> Result<wire::PlanCmdReply, F
         })?;
         let args: Vec<&str> = args.iter().map(String::as_str).collect();
         return run(&args)
-            .map(|v| cmd_reply(&v))
             .map_err(|(code, said, raw)| Fail::new(code, said).with_raw(raw.as_deref()));
     }
     let out = match req.slice.as_deref() {
@@ -251,8 +227,7 @@ fn command(req: &PlanCommandReq, tz: &crate::Tz) -> Result<wire::PlanCmdReply, F
         }
         None => run(&[cmd]),
     };
-    out.map(|v| cmd_reply(&v))
-        .map_err(|(code, said, raw)| Fail::new(code, said).with_raw(raw.as_deref()))
+    out.map_err(|(code, said, raw)| Fail::new(code, said).with_raw(raw.as_deref()))
 }
 
 /// `plan-files {dir}`：文件窗口反查。只看读好过的工作区（主窗口与需手动的账起来就问过 `plan-list`）——

@@ -6,10 +6,10 @@
 //! 这几条写盘的是 pb 自己（`continue` / `pause` 改 `auto`，`repo` / `take` 改工作区配置，`view` 往系统临时目录写一页，
 //! `record` 往那一片记原话的那份文件追加一条、提交计划仓）；本族照旧一个字节都不写。拆 pb 原话只在 [`classify`] 这一处。
 
+use super::wire::{PlanCmdReply, PlanTook};
 use crate::plugin::invoke::Done;
 use copy_core::copy_text;
 use copy_core::said::Said;
-use serde_json::{json, Value};
 use std::path::Path;
 
 /// 界面能点的那几条（pb 的命令名原样）。
@@ -57,7 +57,7 @@ const VIEW_WROTE: &str = "写了 ";
 pub(crate) type Refused = (&'static str, String, Option<String>);
 
 /// 跑一条（`args[0]` 是动词，帧面先判）；这一侧带不带 agent 身份照本进程的环境。
-pub(crate) fn run(entry: &Path, ws: &Path, args: &[&str]) -> Result<Value, Refused> {
+pub(crate) fn run(entry: &Path, ws: &Path, args: &[&str]) -> Result<PlanCmdReply, Refused> {
     run_as(entry, ws, args, std::env::var_os(AGENT_ENV).is_some())
 }
 
@@ -67,7 +67,7 @@ pub(crate) fn run_as(
     ws: &Path,
     args: &[&str],
     agent: bool,
-) -> Result<Value, Refused> {
+) -> Result<PlanCmdReply, Refused> {
     let verb = args.first().copied().unwrap_or_default();
     if agent && USER_VERBS.contains(&verb) {
         return Err((
@@ -80,7 +80,7 @@ pub(crate) fn run_as(
 }
 
 /// 起了一次 pb ⇒ 回包或拒（纯函数）：起不来 ⇒ `failed`；过了期限 ⇒ 「pb <动词> 超时」（等了多久照原语说的）；跑完了 ⇒ [`classify`]。
-pub(crate) fn answer(verb: &str, r: Result<Done, Said>) -> Result<Value, Refused> {
+pub(crate) fn answer(verb: &str, r: Result<Done, Said>) -> Result<PlanCmdReply, Refused> {
     match r {
         Err(Said { said, raw }) => Err(("failed", said, raw)),
         Ok(Done {
@@ -112,31 +112,44 @@ pub(crate) struct Taking<'a> {
 }
 
 /// 接过一片的仓库：已经接过 ⇒ 不起 pb；不是此刻那一片 ⇒ 先 `repo <片名>`（只给名字 ＝ 切过去，路径与领域照旧）再 `take`。
-/// 回包多 `took {slice, path, switched}`：接到了哪一片 · 仓库在哪 · 此刻那一片换没换。
+/// 回包多 `took`：接到了哪一片 · 仓库在哪 · 此刻那一片换没换。
 pub(crate) fn take_with(
     t: &Taking,
-    run: &dyn Fn(&[&str]) -> Result<Value, Refused>,
-) -> Result<Value, Refused> {
-    let took = |switched: bool| json!({"slice": t.slice, "path": t.path, "switched": switched});
+    run: &dyn Fn(&[&str]) -> Result<PlanCmdReply, Refused>,
+) -> Result<PlanCmdReply, Refused> {
+    let took = |switched: bool| {
+        Some(PlanTook {
+            slice: t.slice.to_string(),
+            path: t.path.to_string(),
+            switched,
+        })
+    };
     if !t.docs_only {
         let said = copy_text("bePlan.command.taken", &[("slice", t.slice)]);
-        return Ok(json!({"rc": 0, "said": said, "path": null, "took": took(false)}));
+        return Ok(PlanCmdReply {
+            rc: 0,
+            said: Some(said),
+            path: None,
+            took: took(false),
+        });
     }
     if !t.current {
         run(&["repo", t.slice])?;
     }
-    let mut out = run(&["take"])?;
-    out["took"] = took(!t.current);
-    Ok(out)
+    let out = run(&["take"])?;
+    Ok(PlanCmdReply {
+        took: took(!t.current),
+        ..out
+    })
 }
 
-/// 退出码 ＋ 两条输出 ⇒ 回包 `{rc, said, path}` 或拒（纯函数）。`said` 是 pb 的第一句（它是中文、给人读的）。
+/// 退出码 ＋ 两条输出 ⇒ 回包（`took` 空着）或拒（纯函数）。`said` 是 pb 的第一句（它是中文、给人读的）。
 pub(crate) fn classify(
     verb: &str,
     code: Option<i32>,
     stdout: &[u8],
     stderr: &[u8],
-) -> Result<Value, Refused> {
+) -> Result<PlanCmdReply, Refused> {
     let line = |b: &[u8]| {
         let l = crate::plugin::invoke::first_line(b);
         (!l.trim().is_empty()).then_some(l)
@@ -151,7 +164,12 @@ pub(crate) fn classify(
             if verb == "view" && path.is_none() {
                 return Err(("failed", copy_text("bePlan.command.noPage", &[]), said));
             }
-            Ok(json!({ "rc": 0, "said": said, "path": path, "took": null }))
+            Ok(PlanCmdReply {
+                rc: 0,
+                said,
+                path,
+                took: None,
+            })
         }
         Some(RC_REFUSED) => {
             let said = line(stderr).unwrap_or_default();
