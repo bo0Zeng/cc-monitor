@@ -15,7 +15,7 @@ pub(crate) fn index_row(kind: &str, line: &[u8], offset: u64, len: u64) -> Index
 
 /// 这几份夹具是记录树那一家的记录。
 fn tree() -> &'static str {
-    crate::agents::record_tree_kind().unwrap_or_default()
+    crate::agents::claudecode::AGENT_KIND
 }
 
 /// 扫一遍（冷开扫描图那一张），从 `from` 切到 `until`（同 `history-index` 从图上切的那一段），

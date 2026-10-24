@@ -1107,6 +1107,7 @@ pub(crate) fn with_hit_text(hit: &FindHit, tz: &crate::common::time::Tz) -> Find
 /// 第几轮：每遇到你说的一句（口径同大纲 `user_inputs::user_input_of`）加一，与常驻索引那一臂同一个数法。
 /// `on_hit` 回错 ⇒ 扫描当场停、错原样上抛（帧面那一臂靠它在整份超上限时停下）。
 pub(crate) fn scan_session_find<R: std::io::BufRead>(
+    kind: &str,
     r: R,
     query: &str,
     include_tools: bool,
@@ -1115,8 +1116,6 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
     mut on_hit: impl FnMut(&FindHit) -> std::io::Result<()>,
 ) -> std::io::Result<(u64, u64)> {
     let include_tools = tools_in(scope, include_tools);
-    // 这一路拿到的只是一条读流（调用方没交路径）⇒ 照记录树那一家读；交路径之后改成照记录文件认（`agents::record_kind_of`）。
-    let kind = crate::agents::record_tree_kind().unwrap_or_default();
     let q = query.trim().to_lowercase();
     let mut pager = FindPager::new(page);
     let mut turn: u64 = 0;

@@ -1584,13 +1584,6 @@ pub(crate) fn record_face_among(registry: &[Adapter], path: &Path) -> Option<Rec
 /// 家目录记录树那一家的 kind：**恰一家**有记录解释面、却没有合成历史面（它的会话住在按项目分的记录树里）。
 /// 记录树根 · pidfile 目录归它；问这几样的入口在本文件里配上它（[`records_root`] · [`tree_local_face`] · [`record_kind_of`]），
 /// 通用层不另问「是哪一家」—— 那一家跟着读出来的那一行走（[`ProcFact::kind`] · 会话行照记录文件认）。不止一家 ⇒ `None`（说不清是哪一家，不猜）。
-///
-/// ⚠ 单例的入口 [`record_tree_kind`] 还剩全文搜索索引（`observe/search_query.rs`，它的索引格不带路径）与几份判据在问；
-/// 那几处改成照记录文件认之后删它（A2-2）。
-pub(crate) fn record_tree_kind() -> Option<&'static str> {
-    record_tree_kind_among(REGISTRY)
-}
-
 fn record_tree_kind_among(registry: &[Adapter]) -> Option<&'static str> {
     sole_kind_among(registry, |a| a.history.is_none() && a.records.is_some())
 }

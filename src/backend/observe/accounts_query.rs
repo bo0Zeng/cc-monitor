@@ -840,11 +840,16 @@ fn waiting_needs(agent_home: &Path, sid: &str) -> Option<super::recognize::facts
         })
         .map(|f| f.pending)
         .unwrap_or_default();
-    // 找不到记录 ⇒ 按记录树那一家认工具（那台 pidfile 就是它的）。
+    // 找不到记录 ⇒ 按写那份 pidfile 的那一家认工具（哪一家跟着那一行走，`ProcFact::kind`）。
     let kind = record
         .as_deref()
         .and_then(crate::agents::record_kind_of)
-        .or_else(crate::agents::record_tree_kind)
+        .or_else(|| {
+            pidfiles(agent_home)
+                .into_iter()
+                .find(|(_, f)| f.sid.as_deref() == Some(sid))
+                .map(|(_, f)| f.kind)
+        })
         .unwrap_or_default();
     let wait = session_wait(agent_home, sid).unwrap_or(super::recognize::facts::PidWait {
         waiting_for: None,

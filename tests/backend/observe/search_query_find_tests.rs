@@ -56,10 +56,18 @@ fn bytes_of(lines: &[String]) -> Vec<u8> {
 fn find(data: &[u8], q: &str, tools: bool, limit: usize) -> Vec<Value> {
     let mut v = vec![serde_json::json!({})];
     let page = FindPage { skip: 0, limit };
-    let (count, total) = scan_session_find(data, q, tools, None, page, |hit| {
-        v.push(serde_json::to_value(with_hit_text(hit, &Default::default())).unwrap());
-        Ok(())
-    })
+    let (count, total) = scan_session_find(
+        crate::agents::claudecode::AGENT_KIND,
+        data,
+        q,
+        tools,
+        None,
+        page,
+        |hit| {
+            v.push(serde_json::to_value(with_hit_text(hit, &Default::default())).unwrap());
+            Ok(())
+        },
+    )
     .expect("find ok");
     v.push(serde_json::json!({ "count": count, "total": total }));
     assert_eq!(
@@ -254,6 +262,7 @@ fn gap1_history_find_rides_the_resident_index_and_equals_the_plain_scan() {
         let r = crate::observe::query::locate::open_session_at(&home, &p, 0).unwrap();
         let mut hits = Vec::new();
         let (_, total) = crate::observe::search_query::scan_session_find(
+            crate::agents::claudecode::AGENT_KIND,
             r,
             "zqx",
             tools,
@@ -340,15 +349,22 @@ fn find_hits_carry_turn_and_time_and_page_by_skip_on_both_arms() {
         let r = crate::observe::query::locate::open_session_at(&home, &p, 0).unwrap();
         let mut hits = Vec::new();
         let page = crate::observe::search_query::FindPage { skip, limit };
-        let (_, total) =
-            crate::observe::search_query::scan_session_find(r, "zqx", false, None, page, |h| {
+        let (_, total) = crate::observe::search_query::scan_session_find(
+            crate::agents::claudecode::AGENT_KIND,
+            r,
+            "zqx",
+            false,
+            None,
+            page,
+            |h| {
                 hits.push(crate::observe::search_query::with_hit_text(
                     h,
                     &Default::default(),
                 ));
                 Ok(())
-            })
-            .unwrap();
+            },
+        )
+        .unwrap();
         serde_json::json!({ "total": total, "hits": hits })
     };
     let ask = |skip: usize, limit: usize| {
@@ -459,6 +475,7 @@ fn user_scope_hits_are_what_the_stream_draws_as_said_by_the_person() {
     for tools in [false, true] {
         let mut got = Vec::new();
         let (_, total) = scan_session_find(
+            crate::agents::claudecode::AGENT_KIND,
             &data[..],
             q,
             tools,
@@ -545,7 +562,7 @@ fn hits_carry_the_index_row_of_their_record() {
     let map = crate::observe::record_scan::ScanMap::scan_with(
         &data[..],
         data.len() as u64,
-        crate::agents::record_tree_kind().unwrap_or_default(),
+        crate::agents::claudecode::AGENT_KIND,
         None,
     )
     .unwrap();

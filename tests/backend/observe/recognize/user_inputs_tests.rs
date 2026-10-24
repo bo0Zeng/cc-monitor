@@ -50,7 +50,7 @@ fn map_of(data: &[u8]) -> crate::observe::record_scan::ScanMap {
     crate::observe::record_scan::ScanMap::scan_with(
         data,
         data.len() as u64,
-        crate::agents::record_tree_kind().unwrap_or_default(),
+        crate::agents::claudecode::AGENT_KIND,
         None,
     )
     .expect("scan ok")
