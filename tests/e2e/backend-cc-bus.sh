@@ -132,18 +132,11 @@ chk "  列出了 ~/.local/bin 那一处" "$(printf '%s' "$msg" | grep -c '.local
 chk "  列出了 skills 那一处" "$(printf '%s' "$msg" | grep -c 'skills/cc-bus/scripts/cc-list')" "1"
 chk "  告诉人怎么指过去" "$(printf '%s' "$msg" | grep -c 'CC_BUS_BIN_DIR')" "1"
 
-echo "[7] ★ 两个入口都有：能力探测口报得出这两条"
-probe="$(d --backend-probe </dev/null)"
-# ⚠ 探测口报的是 **CLI flag 形式**（`--bus-list`），不是裸命令名 —— 我第一版按裸名断言，
-#   当场红。写判据前先看一眼真实输出，别照着脑子里的形状写。
-chk "探测口的 commands 里有 --bus-list" \
-  "$(printf '%s' "$probe" | jq -r '.commands | index("--bus-list") != null')" "true"
-chk "探测口的 commands 里有 --bus-send" \
-  "$(printf '%s' "$probe" | jq -r '.commands | index("--bus-send") != null')" "true"
-# ★ 这一格钉的是那条**静默失效**：命令"被报出来"不等于"调得动"。
-#   闸门（`main::SUBCOMMANDS`）漏加时，上面两格照样绿，而下面这格会红。
+echo "[7] ★ 两个入口都有：CLI 面上调得动"
+# ★ 这一格钉的是那条**静默失效**：闸门（`main::SUBCOMMANDS`）漏加时，这条 flag 不进一次性模式、
+#   掉进流模式吐一堆 jsonl 行 ⇒ 下面这格会红。
 out="$(d --bus-list </dev/null)"
-chk "★ 报得出**且**调得动（漏了闸门这格会红）" \
+chk "★ --bus-list 调得动（漏了闸门这格会红）" \
   "$(printf '%s' "$out" | jq -e 'has("agents")' >/dev/null 2>&1 && echo yes || echo no)" "yes"
 
 echo "[8] ★ cc-bus 命令卡住时，backend 不许陪着一起卡"

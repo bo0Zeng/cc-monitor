@@ -424,6 +424,9 @@ pub struct AccountRow {
     pub unselectable: Option<crate::cells::Words>,
     /// 给不给［登录…］：需登录、而这一家能在 app 里登录 ⇒ `true`（需登录却登不了的，`unselectable` 那一句说为什么）。
     pub login: bool,
+    /// 进不进新建会话的选号表：隔离、有配置目录 ⇒ `true`（需登录的照样列、灰着，选不选得了看 `selectable`）；
+    /// 账号 0（不经选号）· 原地模式 ⇒ `false`。两个出口照它列，不自己判。
+    pub new_session: bool,
 }
 
 /// 一个号那一枚徽章（账号菜单每一项右边那一格）：写好的字 · 要不要标警示 · 悬停那一句（没有 ⇒ 空串）。

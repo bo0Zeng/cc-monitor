@@ -6,12 +6,15 @@ use crate::agents::StreamFamily;
 use crate::relay::{TapBody, TapEvent};
 use crate::wire::LiveCard;
 
+/// 假的那一家自报运行的头（判据自己定的名字）。
+const RUN: &str = "x-run";
+
 fn live() -> Live {
     Live::new(
         Arc::new(RunBook::default()),
         vec![StreamFamily {
             face: crate::agents::fake::runs::STREAM,
-            owns: true,
+            run: Some(RUN),
             side: None,
         }],
     )
@@ -45,8 +48,11 @@ impl Seg {
     fn put(&mut self, l: &mut Live, d: &str) {
         l.tap(TapEvent {
             stream: self.sid.into(),
-            owner: self.owner.into(),
-            class: String::new(),
+            heads: if self.n == 0 && !self.owner.is_empty() {
+                vec![(RUN, self.owner.into())]
+            } else {
+                Vec::new()
+            },
             resp: self.resp,
             n: self.n,
             body: TapBody::Data(d.into()),
@@ -66,8 +72,7 @@ impl Seg {
     fn end(&mut self, l: &mut Live, broken: bool) {
         l.tap(TapEvent {
             stream: self.sid.into(),
-            owner: self.owner.into(),
-            class: String::new(),
+            heads: Vec::new(),
             resp: self.resp,
             n: self.n,
             body: TapBody::End { broken },

@@ -221,10 +221,6 @@ impl comms_outward::Destinations for Scripted {
     fn stream_label_headers(&self) -> Vec<&'static str> {
         Vec::new()
     }
-
-    fn stream_owner_headers(&self) -> Vec<&'static str> {
-        Vec::new()
-    }
 }
 
 fn base_of(up: SocketAddr) -> comms_outward::Base {

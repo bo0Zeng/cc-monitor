@@ -1,4 +1,4 @@
-//! Claude Code 的**子运行形状**（注册表 `RecordFace` 的 `response_id` · `run_of` · `child_link` · `children` 四格，`DefaultUpstream.owner_header`）。
+//! Claude Code 的**子运行形状**（注册表 `RecordFace` 的 `response_id` · `run_of` · `child_link` · `children` 四格，`DefaultUpstream.relay_heads` 里的 `RelayHead::Run`）。
 //!
 //! - 对账键：assistant 记录的 `message.id`（同一次应答拆成几条记录，它们共用这一个）。
 //! - 子 agent 的记录住 `<父记录去后缀>/subagents/[<子目录>/]agent-<agentId>.jsonl`；每条带 `isSidechain: true` 与 `agentId`，
@@ -30,18 +30,18 @@ const CHILD_DEPTH: usize = 4;
 /// 标签取 `prompt` 首行时最多几个字。
 pub(crate) const LABEL_PROMPT_CHARS: usize = 80;
 /// 子 agent 自报身份的请求头（值 ＝ 记录里的 `agentId`）。
-pub(crate) const OWNER_HEADER: &str = "x-claude-code-agent-id";
+pub(crate) const RUN_HEADER: &str = "x-claude-code-agent-id";
 
-/// 请求自报「这一发是哪一类」的头（`DefaultUpstream.side_class`；2.1.310 读码）：值 ∈ main · subagent · workflow ·
-/// compaction · auxiliary · side_reply。预测下一句 · 起标题这类分叉请求是 auxiliary（它是主运行的分叉、不带 [`OWNER_HEADER`]，
+/// 请求自报「这一发是哪一类」的头（`DefaultUpstream.relay_heads` 里的 `RelayHead::Class`；2.1.310 读码）：值 ∈ main · subagent · workflow ·
+/// compaction · auxiliary · side_reply。预测下一句 · 起标题这类分叉请求是 auxiliary（它是主运行的分叉、不带 [`RUN_HEADER`]，
 /// 只有这一格分得出它），压缩总结是 compaction，旁问的回答是 side_reply —— 这三类都不进记录 ⇒ 不上活卡。
 /// 只在设了 [`HINT_HEADERS_ENV`] 时发（[`RELAY_ENV`]）；没带 ⇒ 通用层照主运行放、照实说一行。
-pub(crate) const SIDE_CLASS: crate::agents::SideClass = crate::agents::SideClass {
+pub(crate) const REQUEST_CLASS: crate::agents::SideClass = crate::agents::SideClass {
     header: "x-claude-code-request-class",
     side: &["compaction", "auxiliary", "side_reply"],
 };
 
-/// 让请求带上 [`SIDE_CLASS`] 那个头的开关（不设 ⇒ 走自定地址时不发）。
+/// 让请求带上 [`REQUEST_CLASS`] 那个头的开关（不设 ⇒ 走自定地址时不发）。
 pub(crate) const HINT_HEADERS_ENV: &str = "CLAUDE_CODE_GATEWAY_HINT_HEADERS";
 
 /// 走中转时随地址一起设的环境（`DefaultUpstream.relay_env`）。

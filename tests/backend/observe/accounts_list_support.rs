@@ -27,6 +27,7 @@ pub(crate) fn row_with(name: &str, f: impl FnOnce(&mut ScannedAccount)) -> Accou
     f(&mut a);
     a.selectable =
         acct_core::account_selectable(&a.mode, a.auth_ready, a.exists, a.config_dir.is_some());
+    let new_session = super::new_session_of(&a);
     AccountRow {
         plate: Words(a.name.clone()),
         scanned: a,
@@ -40,6 +41,7 @@ pub(crate) fn row_with(name: &str, f: impl FnOnce(&mut ScannedAccount)) -> Accou
         quota: None,
         unselectable: None,
         login: false,
+        new_session,
     }
 }
 

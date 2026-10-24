@@ -822,9 +822,12 @@ fn history_facts_takes_the_context_window_from_what_the_relay_saw() {
         std::fs::write(&p, format!("{rec}\n")).unwrap();
         paths.push(p.to_string_lossy().to_string());
     }
-    let item = ("anthropic-beta", "context-1m");
-    crate::observe::relay_marks::note("rf-wide", &[(item, true)]);
-    crate::observe::relay_marks::note("rf-std", &[(item, false)]);
+    // 中转带回的请求头：一发带扩展上下文那一项，一发不带。
+    crate::observe::relay_marks::note(
+        "rf-wide",
+        &[("anthropic-beta", "a-1, context-1m-2025-08-07")],
+    );
+    crate::observe::relay_marks::note("rf-std", &[("anthropic-beta", "a-1")]);
     let ask = |p: &str| {
         answer_at(
             &home,
@@ -2348,7 +2351,7 @@ fn each_listed_account_carries_its_five_hour_cell_from_the_quota_read() {
     let row = |name: &str| {
         serde_json::json!({"name": name, "label": name, "email": "", "configDir": "/d", "isDefault": false, "mode": "isolated",
             "exists": true, "loggedIn": true, "authKind": "subscription", "authReady": true, "selectable": true, "color": 0,
-            "keyMasked": null, "baseUrl": null, "badge": {"text": "", "warn": false, "title": ""}, "plate": "x", "quota": null, "unselectable": null, "login": false})
+            "keyMasked": null, "baseUrl": null, "badge": {"text": "", "warn": false, "title": ""}, "plate": "x", "quota": null, "unselectable": null, "login": false, "newSession": true})
     };
     let mut list: crate::observe::accounts_query::AccountsList = serde_json::from_value(serde_json::json!({
         "meta": {"enabled": true, "acctsDir": "", "manifestPath": "", "updatedAt": null, "sharedStore": null, "count": 2,

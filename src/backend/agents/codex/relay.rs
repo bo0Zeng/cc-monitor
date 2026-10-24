@@ -25,14 +25,12 @@ pub(crate) const UPSTREAM: crate::agents::DefaultUpstream = crate::agents::Defau
     session_header: Some("session-id"),
     stream: Some(crate::agents::sse_openai_responses::FACE),
     // 本线程 id：子 agent ＝ 它自己的；主运行也带、值等于 `session-id`（通用层据此归主运行）。
-    owner_header: Some("thread-id"),
-    // 请求说不出这一发是不是对话 ⇒ 每一发都当对话。
-    side_class: None,
+    // 请求说不出这一发是不是对话（每一发都当对话）、也说不出扩展上下文 ⇒ 只这一个。
+    relay_heads: &[crate::agents::RelayHead::Run("thread-id")],
     relay_env: &[],
     // API key 凭据文件没有 agent 这一维，行都归 claude-code ⇒ `/s/` 代入对这一家照旧拒。
     owns_credentials_file: false,
     settings_env: Some(SETTINGS_ENV),
-    context_mark: None,
     // 回包里没有这一家的额度头 ⇒ 不记。
     quota: None,
     window_slot: None,

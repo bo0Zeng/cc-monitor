@@ -6,7 +6,6 @@ use crate::accounts::upstream_select::{self as accounts, table::RoutingTable, Ac
 use crate::common::net::LOOPBACK;
 use comms_outward::test_support::http1::RequestHead;
 use comms_outward::test_support::server::*;
-use comms_outward::test_support::tee::RequestMark;
 use comms_outward::test_support::{http1, upstream};
 use comms_outward::{
     Base, Destination, Destinations, Mode, Relay, RouteKey, TapBody, TapEvent, TapPort, TeeSink,
@@ -624,15 +623,12 @@ fn a_stub_failure_that_is_not_the_peer_leaving_still_brings_the_stub_down_loudly
 struct TeeTap {
     got: Arc<std::sync::Mutex<Vec<TapEvent>>>,
     rx: mpsc::Receiver<()>,
-    /// 每发请求交来的「名单上那几项在不在」（流标签 ⇒ 那几项）。
-    marks: Arc<std::sync::Mutex<Vec<(String, Vec<RequestMark>)>>>,
 }
 
 /// 测试侧的 tap 口：每件都收下（立刻答「收了」，契约同生产那一个：不阻塞）。
 struct CollectingTap {
     got: Arc<std::sync::Mutex<Vec<TapEvent>>>,
     tick: std::sync::Mutex<mpsc::Sender<()>>,
-    marks: Arc<std::sync::Mutex<Vec<(String, Vec<RequestMark>)>>>,
 }
 
 impl TapPort for CollectingTap {
@@ -640,13 +636,6 @@ impl TapPort for CollectingTap {
         self.got.lock().expect("lock").push(ev);
         let _ = self.tick.lock().expect("lock").send(());
         true
-    }
-
-    fn note_marks(&self, stream: &str, marks: &[RequestMark]) {
-        self.marks
-            .lock()
-            .expect("lock")
-            .push((stream.to_string(), marks.to_vec()));
     }
 }
 
@@ -709,12 +698,10 @@ fn spawn_relay(up: SocketAddr) -> (SocketAddr, Arc<Relay>, TeeTap) {
 /// 同上，另交回监听面那份在途计数（它住宿主 `listen.rs`，不在 `Relay` 身上）。
 fn spawn_relay_counted(up: SocketAddr) -> (SocketAddr, Arc<Relay>, TeeTap, Arc<AtomicUsize>) {
     let got = Arc::new(std::sync::Mutex::new(Vec::new()));
-    let marks = Arc::new(std::sync::Mutex::new(Vec::new()));
     let (tick, rx) = mpsc::channel();
     let port = Arc::new(CollectingTap {
         got: Arc::clone(&got),
         tick: std::sync::Mutex::new(tick),
-        marks: Arc::clone(&marks),
     });
     let base = Base::parse(&format!("http://127.0.0.1:{}", up.port())).expect("base");
     let relay = Arc::new(Relay::new(
@@ -730,7 +717,7 @@ fn spawn_relay_counted(up: SocketAddr) -> (SocketAddr, Arc<Relay>, TeeTap, Arc<A
     let inflight = Arc::new(AtomicUsize::new(0));
     let counted = Arc::clone(&inflight);
     std::thread::spawn(move || serve(listener, r2, counted));
-    (addr, relay, TeeTap { got, rx, marks }, inflight)
+    (addr, relay, TeeTap { got, rx }, inflight)
 }
 
 fn send_request(addr: SocketAddr, target: &str, extra: &str) -> TcpStream {
@@ -780,36 +767,53 @@ fn send_request(addr: SocketAddr, target: &str, extra: &str) -> TcpStream {
     c
 }
 
-/// ★ 中转记下每发请求带没带「扩展上下文」那一项（名单由宿主交下来，中转不知道它的意思）：
-/// 合成两发请求 —— 一发 `anthropic-beta` 里有 `context-1m-…`、一发只有别的项 ⇒ 交给 tap 口的布尔一真一假，
-/// 流标签各是各的；头的值不出去（交的只有名单上那一项与布尔）。
+/// ★ 名单上的请求头（宿主交下来的那一张，中转不知道它们的意思）原样交值、只随 0 号那一件交一次：
+/// 逗号列表整串过闸（`anthropic-beta` 那一形，项间带空格也算）· 名单外的头不交 · 值过不了闸的那一个不交（别的照交）。
 #[test]
-fn the_relay_notes_whether_each_request_carries_the_wide_context_item() {
+fn the_listed_request_headers_ride_the_first_event_with_their_values() {
     let up = spawn_fake_upstream(None);
     let (relay_addr, _relay, tee) = spawn_relay(up.addr);
+    let wide = "interleaved-thinking-2025-05-14, Context-1M-2025-08-07";
     let mut c = send_request(
         relay_addr,
         "/s/agentA/acctA/v1/messages?beta=true",
-        "x-claude-code-session-id: sid-WIDE\r\nanthropic-beta: interleaved-thinking-2025-05-14, Context-1M-2025-08-07\r\n",
+        &format!("x-claude-code-session-id: sid-WIDE\r\nanthropic-beta: {wide}\r\nx-claude-code-request-class: main\r\nx-not-listed: zzz\r\n"),
     );
     let mut got = Vec::new();
     c.read_to_end(&mut got).expect("read wide");
     let mut c2 = send_request(
         relay_addr,
         "/s/agentA/acctA/v1/messages?beta=true",
-        "x-claude-code-session-id: sid-STD\r\nanthropic-beta: interleaved-thinking-2025-05-14\r\n",
+        "x-claude-code-session-id: sid-BAD\r\nanthropic-beta: a/b\r\nx-claude-code-request-class: main\r\n",
     );
     let mut got2 = Vec::new();
-    c2.read_to_end(&mut got2).expect("read std");
+    c2.read_to_end(&mut got2).expect("read bad");
     tee.wait_events(2 * (UPSTREAM_EVENTS + 1));
-    let marks = tee.marks.lock().expect("lock").clone();
-    let item = ("anthropic-beta", "context-1m");
+    let evs = tee.events();
+    let first = |sid: &str| -> Vec<(&'static str, String)> {
+        let e = evs
+            .iter()
+            .find(|e| e.stream == sid && e.n == 0)
+            .unwrap_or_else(|| panic!("{sid} 没有 0 号那一件：{evs:?}"));
+        let mut h = e.heads.clone();
+        h.sort();
+        h
+    };
     assert_eq!(
-        marks,
+        first("sid-WIDE"),
         vec![
-            ("sid-WIDE".to_string(), vec![(item, true)]),
-            ("sid-STD".to_string(), vec![(item, false)]),
+            ("anthropic-beta", wide.to_string()),
+            ("x-claude-code-request-class", "main".to_string()),
         ]
+    );
+    assert_eq!(
+        first("sid-BAD"),
+        vec![("x-claude-code-request-class", "main".to_string())],
+        "值过不了闸的那一个不交"
+    );
+    assert!(
+        evs.iter().filter(|e| e.n != 0).all(|e| e.heads.is_empty()),
+        "只随 0 号那一件交：{evs:?}"
     );
 }
 
@@ -4308,8 +4312,6 @@ fn tee_line(ev: &TapEvent) -> String {
     struct TeeLine<'a> {
         kind: &'static str,
         stream: &'a str,
-        #[serde(skip_serializing_if = "str::is_empty")]
-        owner: &'a str,
         resp: u64,
         n: u64,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -4325,7 +4327,6 @@ fn tee_line(ev: &TapEvent) -> String {
     serde_json::to_string(&TeeLine {
         kind: "tap",
         stream: &ev.stream,
-        owner: &ev.owner,
         resp: ev.resp,
         n: ev.n,
         data,
@@ -4406,7 +4407,6 @@ impl Taps {
 }
 
 impl comms_outward::TapPort for Taps {
-    fn note_marks(&self, _: &str, _: &[((&'static str, &'static str), bool)]) {}
     fn offer(&self, ev: crate::relay::TapEvent) -> bool {
         let g = self.0.lock().unwrap();
         g.iter()

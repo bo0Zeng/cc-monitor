@@ -65,7 +65,6 @@ impl Taps {
 }
 
 impl comms_outward::TapPort for Taps {
-    fn note_marks(&self, _: &str, _: &[((&'static str, &'static str), bool)]) {}
     fn offer(&self, ev: crate::relay::TapEvent) -> bool {
         let g = self.0.lock().unwrap();
         g.iter()
@@ -580,8 +579,7 @@ fn tap_gets_every_sse_data_payload_in_order_with_contiguous_positions_and_a_clea
         .enumerate()
         .map(|(i, e)| comms_outward::TapEvent {
             stream: "k-rl1".into(),
-            owner: String::new(),
-            class: String::new(),
+            heads: Vec::new(),
             resp: got.first().map(|g| g.resp).unwrap_or(u64::MAX),
             n: i as u64,
             body: comms_outward::TapBody::Data((*e).to_string()),
@@ -589,8 +587,7 @@ fn tap_gets_every_sse_data_payload_in_order_with_contiguous_positions_and_a_clea
         .collect();
     want.push(comms_outward::TapEvent {
         stream: "k-rl1".into(),
-        owner: String::new(),
-        class: String::new(),
+        heads: Vec::new(),
         resp: got.first().map(|g| g.resp).unwrap_or(u64::MAX),
         n: k,
         body: comms_outward::TapBody::End { broken: false },
@@ -634,9 +631,9 @@ fn the_stream_label_is_the_session_id_the_agent_sends_in_its_own_request_header(
     );
 }
 
-/// 请求自报的运行（子运行发的请求带着它自己是谁）随 tee 那一件一起交出（`TapEvent.owner`），中转不解释它。
+/// 请求自报的运行（子运行发的请求带着它自己是谁）随 0 号那一件交出（`TapEvent.heads` 里那个头），中转不解释它。
 /// 守的要求：`stream_owner(请求头, 请求体) → Option<run>`「请求本身就认得出是哪个运行时用它」。名单走生产接线
-/// （`host` → 上游选择 → 适配层 `owner_header`）；没带 ⇒ 空串（交给流归位按记录对账）；值过不了段闸 ⇒ 空串。
+/// （`host` → 上游选择 → 适配层 `RelayHead::Run`）；没带 ⇒ 没有那一项（交给流归位按记录对账）；值过不了闸 ⇒ 没有那一项。
 #[test]
 fn the_run_a_request_names_rides_along_with_its_tee_events() {
     let body = tap_body();
@@ -645,23 +642,36 @@ fn the_run_a_request_names_rides_along_with_its_tee_events() {
     let mut rx = hub.attach();
     let addr = hosted_with_tap("tapowner", up, hub.clone());
     let sid = "3f2a9c1e-7d44-4c3b-9a55-0e6b2f1d8c77";
+    let run = crate::agents::claudecode::runs::RUN_HEADER;
     let owners_of = |extra: &str, rx: &mut tokio::sync::mpsc::Receiver<comms_outward::TapEvent>| {
         through_with(addr, &format!("X-Claude-Code-Session-Id: {sid}\r\n{extra}"));
         let got = drain(rx);
         assert!(!got.is_empty(), "正控：这一发该有 tap 件");
-        let owners: std::collections::BTreeSet<String> = got.into_iter().map(|e| e.owner).collect();
-        owners.into_iter().collect::<Vec<_>>()
+        assert!(
+            got.iter().filter(|e| e.n != 0).all(|e| e.heads.is_empty()),
+            "只随 0 号那一件交：{got:?}"
+        );
+        got.into_iter()
+            .filter(|e| e.n == 0)
+            .flat_map(|e| e.heads)
+            .filter(|(k, _)| *k == run)
+            .map(|(_, v)| v)
+            .collect::<Vec<_>>()
     };
     assert_eq!(
         owners_of("x-claude-code-agent-id: a5c0ffee12\r\n", &mut rx),
         vec!["a5c0ffee12".to_string()],
         "子运行自报的那个值没随 tee 交出"
     );
-    assert_eq!(owners_of("", &mut rx), vec![String::new()], "没自报 ⇒ 空串");
+    assert_eq!(
+        owners_of("", &mut rx),
+        Vec::<String>::new(),
+        "没自报 ⇒ 没有"
+    );
     assert_eq!(
         owners_of("x-claude-code-agent-id: a/b\r\n", &mut rx),
-        vec![String::new()],
-        "过不了段闸的值不许进 tap"
+        Vec::<String>::new(),
+        "过不了闸的值不许进 tap"
     );
 }
 

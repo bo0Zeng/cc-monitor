@@ -53,10 +53,10 @@ setup() {
   [ ! -e "$RIG/sshd.pid" ] || die "上一次的台架没收（$RIG/sshd.pid 还在）—— 先跑：bash $0 teardown"
   local bid said
   bid="$(_build_id)"
-  # 台架自证 ①：钉住的那份后端就是这一版（旧的那份会让套件测的不是这棵树）。它自己答（`--backend-probe` 那一行的 `buildId`）。
+  # 台架自证 ①：钉住的那份后端就是这一版（旧的那份会让套件测的不是这棵树）。它自己答（流模式第一行 hello 的 `build_id`）。
   mkdir -p "$RIG/probe-home"
-  said="$(env -i PATH=/usr/bin:/bin HOME="$RIG/probe-home" "$BACKEND" -- --backend-probe < /dev/null 2>/dev/null | head -1 \
-    | sed -n 's/.*"buildId":"\([^"]*\)".*/\1/p')"
+  said="$(env -i PATH=/usr/bin:/bin HOME="$RIG/probe-home" "$BACKEND" -- --stream < /dev/null 2>/dev/null | head -1 \
+    | sed -n 's/.*"build_id":"\([^"]*\)".*/\1/p')"
   rm -rf "$RIG/probe-home"
   [ "$said" = "$bid" ] || die "钉住的后端自报 build_id「$said」，源码是「$bid」—— 先重编：cd src/backend && cargo build"
   local sshd sftp_server p

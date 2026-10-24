@@ -104,7 +104,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/control/transfer.rs", "let _ = sftp::remove(s, &part).await;", Why::CleanupAfterFailure, "撤了 ⇒ 删暂存区里的半截（用户说了不要）；删不掉只是暂存区里多一份，孤儿扫会收"),
     ("src/backend/control/transfer.rs", "let _ = face.delete_file(&at);", Why::CleanupAfterFailure, "DP1 之后只清**空的** `.part`（一个字节都没落）；清不掉只剩一个 0 字节文件，主错误已在回"),
     ("src/backend/dial/link.rs", "let _ = replies.send(Frame::LinkEnd(crate::wire::LinkEnd { link: link.clone(), error, })).await;", Why::PeerGone, ""),
-    ("src/backend/dial/probe.rs", "let _ = up_w.shutdown().await;", Why::DeadLink, "测试连接探完关上行写半边（结局已定，这条探活链路随即整条丢掉）"),
+    ("src/backend/dial/probe.rs", "let _ = tx.send(Ev::Feed(e));", Why::PeerGone, "测试连接那一台常驻流交来的事转进这一趟：这一趟已经收场（结局出了 · 到点被丢）就没人要这一下"),
     ("src/backend/ssh-dial/lib.rs", "let _ = tx.send(s);", Why::PeerGone, "拨号进展报给这一趟写进展行的那一头；ack 写出去之后那一头收了，后到的那一步没人要"),
     ("src/backend/ssh-dial/pool.rs", "let _ = self.freed.set(freed);", Why::SetOnce, "族的铃只挂一次"),
     ("src/backend/ssh-dial/sftp.rs", "let _ = s.sftp().remove_file(b).await;", Why::CleanupAfterFailure, "部署换名成功后删自己挪走的旧备份件 / 换名失败而落点已被别的部署者占上时删它；删不掉只剩一份 `.bak`"),
@@ -183,7 +183,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/comms/outward/server.rs", "let _ = down.set_nonblocking(false);", Why::DeadLink, "已经答完的那条连接上排掉已到的字节，排不掉就算了"),
     ("src/comms/outward/server.rs", "let _ = down.set_nonblocking(true);", Why::DeadLink, "已经答完的那条连接上排掉已到的字节，排不掉就算了"),
     // 两处（事件那一件 · 收尾那一件）归一化截到同一个键。
-    ("src/comms/outward/tee.rs", "let _ = self.port.offer(TapEvent { stream: id.stream.to_string(), owner: id.owner.to_string(), class: id.class.to_string", Why::Backpressure, "投不进就丢：号照占，缺口在接收侧按号算得出（「SSE 保快、jsonl 保对」）；事件那一件与收尾那一件各一处"),
+    ("src/comms/outward/tee.rs", "let _ = self.port.offer(TapEvent { stream, heads, resp, n, body, });", Why::Backpressure, "投不进就丢：号照占，缺口在接收侧按号算得出（「SSE 保快、jsonl 保对」）；事件那一件与收尾那一件都经 `put` 这一处"),
     // NDJSON 那一形的四行（写线程 · 两处 `write_all` · `flush`）随独立 `--relay` 删了。
     ("src/backend/stderr_log.rs", "let _ = f.write_all(roll_note(self.log.old()).as_bytes());", Why::Diag, "「写不进去不拖垮后端」（脱离载体那一格）"),
     ("src/backend/stderr_log.rs", "let _ = self.fresh();", Why::Diag, "「写不进去不拖垮后端」（脱离载体那一格）"),

@@ -16,7 +16,7 @@ fn what_the_relay_offers_reaches_the_connection_as_live_frames_for_its_list_only
     rt.block_on(async {
         let hub = std::sync::Arc::new(TapHub::new(vec![crate::agents::StreamFamily {
             face: crate::agents::fake::runs::STREAM,
-            owns: true,
+            run: Some("x-run"),
             side: None,
         }]));
         let mut t = attach_rx(hub.clone());
@@ -24,8 +24,7 @@ fn what_the_relay_offers_reaches_the_connection_as_live_frames_for_its_list_only
         for (sid, resp) in [("B", 2u64), ("A", 1u64)] {
             hub.offer(TapEvent {
                 stream: sid.into(),
-                owner: String::new(),
-                class: String::new(),
+                heads: Vec::new(),
                 resp,
                 n: 0,
                 body: TapBody::Data(format!(r#"{{"ev":"open","rid":"r{resp}"}}"#)),
@@ -39,6 +38,30 @@ fn what_the_relay_offers_reaches_the_connection_as_live_frames_for_its_list_only
             other => panic!("不是 A 的活卡：{other:?}"),
         }
     });
+}
+
+/// 0 号那一件带来的请求头进会话的请求标记（会话事实定上下文上限时读）：带了扩展上下文那一项 ⇒ 真；
+/// 后面的事件不再带头、也不把它抹掉。
+#[test]
+fn the_first_event_heads_land_in_the_session_marks() {
+    let hub = TapHub::new(crate::agents::stream_families());
+    let ev = |sid: &str, n: u64, heads: Vec<(&'static str, String)>| TapEvent {
+        stream: sid.into(),
+        heads,
+        resp: 7,
+        n,
+        body: TapBody::Data("{}".into()),
+    };
+    hub.offer(ev(
+        "tm-wide",
+        0,
+        vec![("anthropic-beta", "a-1, context-1m-2025-08-07".into())],
+    ));
+    hub.offer(ev("tm-wide", 1, Vec::new()));
+    hub.offer(ev("tm-std", 0, vec![("anthropic-beta", "a-1".into())]));
+    assert_eq!(crate::observe::relay_marks::seen("tm-wide"), Some(true));
+    assert_eq!(crate::observe::relay_marks::seen("tm-std"), Some(false));
+    assert_eq!(crate::observe::relay_marks::seen("tm-never"), None);
 }
 
 /// ★ 订阅计划：某个工作区的计划变了 ⇒ 这条流连接推一帧 `changed {plan, key: 工作区, rev, body: {needs}}`；没再变 ⇒ 不再推。
@@ -268,8 +291,7 @@ fn usage_in_the_stream_reaches_the_process_spend_book() {
         book.answered(Some(&sid), "claude-code", &acct);
         hub.offer(TapEvent {
             stream: sid.clone(),
-            owner: String::new(),
-            class: String::new(),
+            heads: Vec::new(),
             resp: 0,
             n: 0,
             body: TapBody::Data(format!(

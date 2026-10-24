@@ -149,6 +149,9 @@ deploy-contract = { path = "../common/deploy-contract" }
 ssh-dial = { path = "ssh-dial" }
 # 装 / 升级远端后端的判定与编排（与 ssh-dial 并列；手机 mobcore 链同一份）。
 deploy = { path = "deploy" }
+# 连远端常驻后端的客户端那一侧（桌面 · 手机同一份）：测试连接拿表单那份配置跑一趟它的常驻流（`dial/probe.rs`），与真连接同一串。
+# 它的期限与退避属客户端那一侧，不进本 crate 的零定时器判据人群。
+resident-client = { path = "../comms/resident-client" }
 tokio = { version = "1", features = [
     "rt-multi-thread",
     "macros",

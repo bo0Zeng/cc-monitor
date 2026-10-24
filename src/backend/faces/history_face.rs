@@ -1233,9 +1233,7 @@ pub(crate) fn facts_at(
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("");
-    let relay = crate::agents::context_marks()
-        .into_iter()
-        .find_map(|m| crate::observe::relay_marks::seen(sid, m));
+    let relay = crate::observe::relay_marks::seen(sid);
     let mut facts = locate::facts(home, path, limits, relay).map_err(HistoryFactsErr::Failed)?;
     if facts.project_dir.is_none() {
         facts.project_dir = locate::facts_project_dir(home, path);
