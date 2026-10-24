@@ -37,6 +37,7 @@
 
   .select > svg {
     flex: none;
+    margin-left: auto;
     color: var(--text-2);
   }
 
@@ -50,17 +51,19 @@
     display: none;
   }
 
+  /* 名字与灰字都在框内截断：名字照自身宽起算，挤的时候灰字先让。 */
   .selectText {
-    flex: none;
-    max-width: 60%;
+    flex: 0 1 auto;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .selectNote {
-    flex: 1;
+    flex: 0 1 auto;
     min-width: 0;
+    max-width: 40%;
     overflow: hidden;
     color: var(--text-2);
     text-overflow: ellipsis;

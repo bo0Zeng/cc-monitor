@@ -16,16 +16,39 @@
     background: var(--border-soft);
   }
 
+  /* 长号名 · 长原因在流宽内截断：原因先让，号名那一段再让；图标 · 分隔 · 按钮不让。 */
   .acctSessStripText {
     display: inline-flex;
+    flex: 0 1 auto;
     align-items: center;
     gap: var(--space-3);
+    min-width: 0;
+  }
+
+  .acctSessStripText > *,
+  .acctSessStrip > button {
+    flex: none;
   }
 
   .acctSessStripSep,
   .acctSessStripMove,
   .acctSessStripWhy {
     white-space: nowrap;
+  }
+
+  .acctSessStripText > .acctSessStripMove,
+  .acctSessStripText > .acctSessStripWhy {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .acctSessStripText > .acctSessStripMove {
+    flex: 0 1 auto;
+  }
+
+  .acctSessStripText > .acctSessStripWhy {
+    flex: 0 4 auto;
   }
 
   /* 提示条本身是 kit 的警告条（C15）；这一层只管它在流容器里的位置。 */

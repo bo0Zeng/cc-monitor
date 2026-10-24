@@ -91,8 +91,11 @@
     gap: var(--space-3);
   }
 
+  /* 悬停卡就是看全名的地方：长名（不带空格的邮箱之类）折行，不截、不撑宽。 */
   .acctHoverName {
+    min-width: 0;
     font-weight: var(--font-weight-strong);
+    overflow-wrap: anywhere;
   }
 
   .acctHoverTag {
@@ -151,13 +154,24 @@
     cursor: pointer;
   }
 
+  /* 号名长了在框内截断，不把「管理账号…」挤出去；头像与箭头不让。 */
   .acctFoot .acctPick {
-    flex: none;
+    flex: 0 1 auto;
+    min-width: 0;
     height: var(--control-h-compact);
   }
 
-  .acctPickName {
+  .acctPick > * {
+    flex: none;
+  }
+
+  .acctPick > .acctPickName {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
     color: var(--text);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .acctFoot {

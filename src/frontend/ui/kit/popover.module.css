@@ -12,5 +12,7 @@
     background: var(--card);
     box-shadow: var(--shadow-float);
     font-size: var(--font-size-mono);
+    /* 长的不断行的字（路径 · 邮箱）折行，不撑宽。 */
+    overflow-wrap: anywhere;
   }
 }

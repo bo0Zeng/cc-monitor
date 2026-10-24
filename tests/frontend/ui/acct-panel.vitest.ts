@@ -1,8 +1,12 @@
 /**
  * 「账号」面板：头下那一条（中转没见过这个会话 · 额度账读不出）＋ 底栏（新会话默认 · 管理账号…）。
  * 轮换那一块此刻空着：这里也验它不画任何第三版的东西。数据只从 `appStore` 来。期望手写。
+ * 末尾一节：策略下拉 · 底栏号名长了在框内截断的那几条样式。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import postcss, { type Rule } from "postcss";
 
 const { never } = vi.hoisted(() => ({ never: () => new Promise(() => {}) }));
 vi.mock("../../../src/frontend/ui/rotation-view-reads", () => ({ readSessionView: vi.fn(never) }));
@@ -54,5 +58,49 @@ describe("账号面板", () => {
     appStore.quota.set(new Map([["<local>", { state: "present", reason: null, detail: null, path: null, now: 1, accounts: [], unseen: [], usableNow: [], candidates: [], earliestReturn: null, text: null, fiveHour: null, names: { accounts: {}, slots: {} }, verdict: null }]]));
     expect(btn(copyText("acct.now.retry"))).toBeUndefined();
     expect(panel().querySelector("[data-rot-cfg], [data-rc-row], [data-rot-switch]")).toBeNull();
+  });
+});
+
+/**
+ * 长名字不撑破（10-19 用户：账号面板里点下拉选策略，字超出去）。门禁里没有排版引擎，这里钉住让截断成立的那几条样式；
+ * 浏览器里量外接框的那一半住截图工具。
+ */
+const UI = resolve(__dirname, "../../../src/frontend/ui");
+
+/** 一份 CSS 里，选择器恰好是 `sel` 的规则里各声明的最后取值。 */
+function declsOf(file: string, sel: string): Map<string, string> {
+  const out = new Map<string, string>();
+  postcss.parse(readFileSync(resolve(UI, file), "utf8")).walkRules((r: Rule) => {
+    if (!r.selectors.map((x) => x.trim()).includes(sel)) return;
+    r.walkDecls((d) => void out.set(d.prop, d.value));
+  });
+  return out;
+}
+
+/** 能在框内截断：超出藏起来 · 省略号 · 能缩（flex 第二个数不是 0、不是 none）· 能缩到比字窄（min-width 不是 auto）。 */
+function clips(file: string, sel: string, nowrapFromParent = false): void {
+  const d = declsOf(file, sel);
+  expect(d.get("overflow"), `${sel} overflow`).toBe("hidden");
+  expect(d.get("text-overflow"), `${sel} text-overflow`).toBe("ellipsis");
+  if (!nowrapFromParent) expect(d.get("white-space"), `${sel} white-space`).toBe("nowrap");
+  const flex = d.get("flex") ?? "";
+  expect(flex !== "none" && !/^\S+ 0( |$)/.test(flex), `${sel} 的 flex = ${flex}`).toBe(true);
+  expect(d.get("min-width") ?? "auto", `${sel} min-width`).not.toBe("auto");
+}
+
+describe("长名字在框内截断", () => {
+  it("★ 策略下拉面板的一项：名字 · 灰字 · 右侧摘要三段都能截断，项本身不让字伸出去", () => {
+    expect(declsOf("kit/menu.module.css", ".menuItem").get("white-space")).toBe("nowrap");
+    expect(declsOf("kit/menu.module.css", ".menuItem").get("overflow")).toBe("hidden");
+    for (const sel of [".menuLabel", ".menuNote", ".menuDetail"]) clips("kit/menu.module.css", sel, true);
+  });
+
+  it("★ 策略下拉框上：名字与灰字都能截断", () => {
+    for (const sel of [".selectText", ".selectNote"]) clips("kit/select.module.css", sel);
+  });
+
+  it("★ 底栏「新会话默认」那个号名能截断，框能缩、不把「管理账号…」挤出去", () => {
+    clips("acct.module.css", ".acctPick > .acctPickName");
+    expect(declsOf("acct.module.css", ".acctFoot .acctPick").get("min-width")).toBe("0");
   });
 });
