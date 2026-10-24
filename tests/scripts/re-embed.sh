@@ -37,6 +37,9 @@ set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 #: 产 musl 字节的唯一配方（发版那一步与门禁 `muslbuild` 都经 `--build-only` 走它）。
+#: ⚠ `--locked` 不是可选的（09-09）：两份 `Cargo.lock` 钉着 `crypto-bigint 0.7.3`，而 `0.7.0…0.7.4` 在 crates.io 上全部 yanked。
+#:   cargo 只在解析那一步挡 yanked ⇒ 今天编得过；一旦重走解析，联网时会悄悄挪到 `0.7.5`（发出去的与 CI 测过的不是同一棵依赖树），
+#:   离线时当场退 101。`--locked` 把两种都变成一条响亮的失败。
 REEMBED_BUILD_FLAGS=(--release --locked)
 REEMBED_TARGETS=(x86_64-unknown-linux-musl aarch64-unknown-linux-musl)
 

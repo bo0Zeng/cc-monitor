@@ -147,8 +147,6 @@ RENDERER = "tests/scripts/release-notes.mjs"
 #: 平台**承诺面**住这份账本，本文件只 import、**不抄第二份**
 #: （`G4` 09-19 立，它是 `platform` 那一格的本体）。
 LEDGER = "tests/evidence/K-G4-platform-ledger.py"
-#: 门禁本体 —— ⑫ 要读它那条 `muslbuild` 裁词里点名的工具链版本。
-GATE_SH = "tests/scripts/gate.sh"
 #: 内嵌那一段的住址 —— ⑪ 读它，确认「抠不到 `BUILD_ID`」是一条响亮的失败。
 BUILD_RS = "src/frontend/shell/build.rs"
 
@@ -243,11 +241,10 @@ IDENTITY_READS = {
 #
 # 🔴 **它为什么也归这一格，而不是新开第 25 格**
 #
-# `19b` 已经把「产字节那条路」的**两端**收进本格：⑪ 读 `src/frontend/shell/build.rs`（吃字节那一侧）、
-# ⑫ 读 `tests/scripts/gate.sh`（门禁那一侧的工具链版本）。`19c` 补的是同一条路上
-# **本机产字节**那一端：一条 re-embed 命令，它的配方必须与 `release.yml` 那一步**同源**
+# `19b` 已经把「产字节那条路」收进本格：⑪ 读 `src/frontend/shell/build.rs`（吃字节那一侧）。`19c` 补的是同一条路上
+# **产字节**那一端：一条 re-embed 命令，musl 那两份的配方只住它，`release.yml` 那一步只调它的 `--build-only`
 # —— 判它就得同时读那两份文本，而「同时读那两份」正是本格的定义。
-# ⇒ 本组判据与 ⑨⑩⑪⑫ 共用同一个被测面，拆出去就得把 `release.yml` 的解析再抄一份。
+# ⇒ 本组判据与 ⑨⑩⑪ 共用同一个被测面，拆出去就得把 `release.yml` 的解析再抄一份。
 #
 # 🔴 **它治的病**（步 `19c` 逐字）：协议面一变就要 bump `BUILD_ID`，
 # 而 bump 那一刻 `embedded-backends/` 里那两份 musl 字节立刻变旧 ⇒ `build.rs` 的
@@ -256,8 +253,8 @@ IDENTITY_READS = {
 # `tests/scripts/re-embed.sh`：一条真跑得起来的命令 ＋ 一条 `--check`。
 #
 # ⚠ **本组买不到什么**（与本文件头注第 4 条同一条边界，别读宽）：
-#   · ⑬a–⑬e 全是**盘上文本**的对拍 —— 「配方写得一样」≠「那条命令今天在这台机器上跑得出字节」
-#     （它要 `cargo-zigbuild` ＋ `zig`，本判据一次都不装、不跑）。
+#   · ⑬a–⑬e、⑬j 全是**盘上文本**的对拍；⑬i 真跑 `--build-only` 用的是一个只记账的 `cargo` 替身 ——
+#     「配方对」≠「那条命令今天在这台机器上跑得出字节」（它要 `cargo-zigbuild` ＋ `zig`，本判据一次都不装、不编）。
 #   · ⑬g 真跑的是 `--check`（**只读**），不是 re-embed 本身。它在一棵**没铺字节**的树上
 #     只答得出「这里没有一份对不上的字节」——那不是「字节是对的」。
 #   · 「本机重编过了」**永远不等于**「发版办完了」：本机产物与发版 CI 的 zigbuild
@@ -272,11 +269,12 @@ BRIDGE_GITIGNORE = "src/frontend/shell/.gitignore"
 #: 🔴 `build.rs` 里那个**出路唯一住址**常量的值，逐字。
 #: 它指的脚本必须在盘上 —— 「出路指着一个不存在的命令」与「没有出路」在文案上一模一样。
 REEMBED_CMD = "bash tests/scripts/re-embed.sh"
-#: ⑬b 的对照物：`release.yml` 里产 musl 字节那一步（与 `COMPILE_STEPS` 第一条同源）。
+#: ⑬i：`release.yml` 里产 musl 字节那一步（与 `COMPILE_STEPS` 第一条同源）只调这一条（配方只住 re-embed.sh）。
 MUSL_STEP = ("build-backends", "Cross-compile backend for both musl targets")
-#: ⑬b 的第二个对照物：两个 job 里那条原生编译（`--native` 那一趟要与它同配方）。
+MUSL_RUN = REEMBED_CMD + " --build-only"
+#: ⑬j 的对照物：两个 job 里那条原生编译（`--native` 那一趟要与它同配方）。
 NATIVE_STEP = "Build local backend (native)"
-#: ⑬b 的第三个对照物：两个 job 里编文件窗口程序那一步（`--native` 那一趟也编它，同配方、同工作目录）。
+#: ⑬j 的第二个对照物：两个 job 里编文件窗口程序那一步（`--native` 那一趟也编它，同配方、同工作目录）。
 FILEWIN_STEP = "Build local filewin (native)"
 FILEWIN_BIN_ARG = "-p cc-monitor-filewin --bin cc-monitor-filewin"
 FILEWIN_WORKDIR = "src/frontend/shell"
@@ -1058,10 +1056,10 @@ def run_checks(emit):
               "承诺了却没产线 %s · 有产线却不在承诺面里 %s（承诺面现打 %s，唯一住址 `%s`）"
               % (sorted(promised - mine), sorted(mine - promised), sorted(promised), LEDGER))
 
-    # ── ⑨b 本文件里「跑 cargo 编后端」的步骤 ↔ 登记，两向集合相等 ────────────────
+    # ── ⑨b 本文件里「跑 cargo 编后端」的步骤（直接跑，或经 re-embed.sh 跑）↔ 登记，两向集合相等 ────────────────
     on_disk = set()
     for jname, _, st in steps:
-        if re.search(r"\bcargo\s+(?:zigbuild|build)\b", str(st.get("run") or "")):
+        if re.search(r"\bcargo\s+(?:zigbuild|build)\b|\bre-embed\.sh\s+--build-only\b", str(st.get("run") or "")):
             on_disk.add((jname, str(st.get("name") or "<无名步骤>")))
     registered = {(j, n) for j, n, _, _ in COMPILE_STEPS}
     check(on_disk == registered, "⑨b编后端的步骤 ↔ 登记，两向集合相等",
@@ -1145,29 +1143,6 @@ def run_checks(emit):
               "`main` 里%s把两条内嵌路收来的 id 交给它 —— 漏一条 = 那一份不进「同一版」的核对" % (
                   "" if wired else "**没有**"))
 
-    # ── ⑫ 门禁 `muslbuild` 那一格的工具链版本 == 本文件真装的那两个 ──────────────
-    #   G4 立那一格时逐字写着「版本一漂，本格的绿就不代表发版那趟会绿」——
-    #   而在本条之前，**没有任何东西在核这句话**：两个版本号是两处手抄的。
-    zig = next((str(((st.get("with") or {}).get("version")) or "")
-                for _, _, st in steps if str(st.get("uses") or "").startswith("mlugg/setup-zig")), "")
-    zb = next((str(((st.get("with") or {}).get("tool")) or "")
-               for _, _, st in steps if str(st.get("uses") or "").startswith("taiki-e/install-action")), "")
-    zb = zb.split("@")[-1] if "@" in zb else ""
-    gate_text = read_rel(GATE_SH)
-    verdict = ""
-    if gate_text:
-        m = re.search(r"^run_gate muslbuild '(.*)'\s*\\?$", gate_text, re.M)
-        verdict = m.group(1) if m else ""
-    check(bool(zig) and bool(zb) and bool(verdict), "⑫地板·两侧的版本都取得到",
-          "`release.yml` zig=%r cargo-zigbuild=%r · `gate.sh` 那条 muslbuild 裁词%s"
-          % (zig, zb, "取到了" if verdict else "**取不到**（改名/改行形了）"))
-    if zig and zb and verdict:
-        named = set(re.findall(r"\b(?:zig|cargo-zigbuild)\s+\**(\d+\.\d+\.\d+)", verdict))
-        check(named == {zig, zb}, "⑫门禁那一格与发版那趟用同一套工具链",
-              "裁词里点名 %s · `release.yml` 真装 %s —— 两向相等才算数："
-              "版本一漂，`muslbuild` 那一格的绿就**不再代表**发版那趟会绿"
-              % (sorted(named), sorted({zig, zb})))
-
     # ══ `19c`（09-19）：`BUILD_ID` bump 的同拍债 —— re-embed ═══════════════════
     reembed = read_rel(REEMBED_SH)
     gi = read_rel(BRIDGE_GITIGNORE)
@@ -1186,34 +1161,25 @@ def run_checks(emit):
         emit("::error::⑬ 的地板没过 —— 本组后面几条一律不算数")
         return (1 if fails else 0), passes[0], fails
 
-    # ── ⑬b 本机那条配方 ↔ `release.yml` 那一步，同源 ────────────────────────────
-    #   🔴 **反空真锚是 target 那一条两向集合相等**：单向「脚本里每个 target 在 yml 里也有」
-    #     在脚本把数组清空时恒真，而那正好等于「本机这条命令什么都不编」。
+    # ── 配方的唯一住址是 re-embed 那两个数组；发版那一步只调它 ─────────────────────
+    #   musl 那两份字节只有一条配方（`REEMBED_TARGETS` ＋ `REEMBED_BUILD_FLAGS`）：发版那一步与门禁 `muslbuild`
+    #   都经 `--build-only` 走它，「只编不铺」真跑一趟是下面的 ⑬i。这里只钉发版那一步没被换回一条手抄的配方。
     targets = sh_array(reembed, "REEMBED_TARGETS")
     flags = sh_array(reembed, "REEMBED_BUILD_FLAGS")
     musl_run = next((str(st.get("run") or "") for jn, _, st in steps
                      if (jn, str(st.get("name") or "")) == MUSL_STEP), "")
-    check(bool(targets) and bool(flags) and bool(musl_run), "⑬b地板·两侧的配方都取得到",
-          "`%s` 的 REEMBED_TARGETS=%r REEMBED_BUILD_FLAGS=%r · `release.yml` 的 `%s / %s` 那一步%s"
-          % (REEMBED_SH, targets, flags, MUSL_STEP[0], MUSL_STEP[1],
-             "取到了" if musl_run else "**取不到**（改名/改 job 了）"))
-    if targets and flags and musl_run:
-        yml_targets = set(re.findall(r"--target\s+(\S+)", musl_run))
-        check(set(targets) == yml_targets, "⑬b本机 re-embed 的 target ↔ 发版那一步，两向集合相等",
-              "脚本有而发版没有 %s · 发版有而脚本没有 %s —— 差一个就是"
-              "「本机 re-embed 完了，发版那趟还少一份字节」或者反过来"
-              % (sorted(set(targets) - yml_targets), sorted(yml_targets - set(targets))))
-        yml_flags = re.findall(r"cargo zigbuild\s+(.*?)\s+--target", musl_run)
+    check(bool(targets) and bool(flags), "⑬i地板·配方的两个数组抠得到",
+          "`%s` 的 REEMBED_TARGETS=%r REEMBED_BUILD_FLAGS=%r" % (REEMBED_SH, targets, flags))
+    check(musl_run.strip() == MUSL_RUN, "⑬i发版那一步只经 `re-embed.sh --build-only` 产字节",
+          "`%s / %s` 那一步现打 %r（要逐字 %r）—— 换回手抄的 `cargo zigbuild` 就又是两条配方"
+          % (MUSL_STEP[0], MUSL_STEP[1], musl_run.strip(), MUSL_RUN))
+    if flags:
         want = " ".join(flags)
-        check(bool(yml_flags) and all(f == want for f in yml_flags),
-              "⑬b本机 re-embed 的旗标 ↔ 发版那一步，逐字相同",
-              "脚本 %r · 发版那一步现打 %r —— 少一个 `--locked` 就是"
-              "「本机编的那份与发版编的那份依赖树可能不同」（理由住 `release.yml` 那一步的头注）"
-              % (want, yml_flags))
+        # 本机那一份（`--native`）与文件窗口：发版两个 job 里的原生编译仍是手抄的一份（另一格收它），这里逐字对拍。
         native_runs = [str(st.get("run") or "").strip() for _, _, st in steps
                        if str(st.get("name") or "") == NATIVE_STEP]
         check(bool(native_runs) and all(r == "cargo build " + want for r in native_runs),
-              "⑬b`--native` 那一趟 ↔ 发版那两步，逐字相同",
+              "⑬j`--native` 那一趟 ↔ 发版那两步，逐字相同",
               "发版那两步现打 %r · 脚本那一趟是 `cargo build %s` —— 本条盯的是"
               "「本机那一份字节」的配方，与上面 musl 那两格是两条产线" % (native_runs, want))
         # 文件窗口程序：两个 job 各一步，run 与工作目录逐字相同；脚本 `--native` 在同一个目录里跑同一条。
@@ -1223,7 +1189,7 @@ def run_checks(emit):
         fw_sh = '( cd "$ROOT/%s" && cargo build "${REEMBED_BUILD_FLAGS[@]}" %s )' % (FILEWIN_WORKDIR, FILEWIN_BIN_ARG)
         check(sorted(j for _, _, j in fw) == ["build-linux", "build-windows"]
               and all(r == fw_want and w == FILEWIN_WORKDIR for r, w, _ in fw) and fw_sh in reembed,
-              "⑬b`--native` 编文件窗口那一趟 ↔ 发版那两步，逐字相同",
+              "⑬j`--native` 编文件窗口那一趟 ↔ 发版那两步，逐字相同",
               "发版那两步现打 %r（要两个 job 各一步、run = %r、工作目录 = %r）· 脚本里 %r %s —— "
               "差一格就是「本机铺的那份与发版内嵌的那份不是同一条路编的」，或某个 job 的单文件 monitor 没带它"
               % (fw, fw_want, FILEWIN_WORKDIR, fw_sh, "在" if fw_sh in reembed else "**不在**"))
@@ -1497,7 +1463,7 @@ def run_checks(emit):
 
     # ── ⑭f 那条「非主 bin 也装」的机制，依据的工具版本逐字钉住 ───────────────────────
     #   ⚠ 它买的是「**产这几个安装包的那把工具没被换掉**」，**买不到**「换了之后行为会不会变」
-    #     —— 那要人去重读源码。形状与 ⑫（门禁 ↔ 发版的工具链版本）同源。
+    #     —— 那要人去重读源码。
     lock = json_load(PACKAGE_LOCK)
     locked = (((lock or {}).get("packages") or {}).get(CLI_LOCK_KEY) or {}).get("version")
     check(locked == CLI_VERSION, "⑭f打包工具版本 ↔ 登记，逐字相同",
@@ -1548,9 +1514,10 @@ def run_checks(emit):
               % (lg, ln, multi, globs))
 
     reg_arches = {n[len(BACKEND_ASSET_PREFIX):] for n, _, _ in reg if n.startswith(BACKEND_ASSET_PREFIX)}
-    musl_run = "".join(str(st.get("run") or "") for jn, _, st in steps
-                       if (jn, st.get("name")) == MUSL_STEP)
-    built = set(re.findall(r"--target ([a-z0-9_]+)-unknown-linux-musl\b", musl_run))
+    # 交叉编译那一侧：发版那一步只调 re-embed（⑬i），编哪几个 target 读它的 `REEMBED_TARGETS`。
+    built = {t[:-len("-unknown-linux-musl")]
+             for t in (sh_array(read_rel(REEMBED_SH) or "", "REEMBED_TARGETS") or [])
+             if t.endswith("-unknown-linux-musl")}
     stage_run = "".join(str(st.get("run") or "") for jn, _, st in steps
                         if (jn, st.get("name")) == STAGE_STEP)
     staged = set(re.findall(r"\.build/backend/([a-z0-9_]+)-unknown-linux-musl/release/cc-monitor-backend"
@@ -1724,7 +1691,7 @@ def main():
           "⑨ 那几条尤其是 —— 「登记的那一步在文件里」≠「那一步在 runner 上编得出字节」，"
           "更不等于「那份字节在目标机器上跑得起来」。真机行为仍是**判不了**，不是「通过」。"
           "🔴 **⑬（`19c`）那一组同一条边界**：⑬a–⑬e 全是盘上文本的对拍，"
-          "「配方写得一样」≠「那条命令今天跑得出字节」；⑬g 真跑的是 `--check`（只读），"
+          "「配方写得一样」≠「那条命令今天跑得出字节」；⑬i 真跑 `--build-only` 用的是只记账的 cargo 替身；⑬g 真跑的是 `--check`（只读），"
           "在一棵没铺字节的树上它只答得出「这里没有一份对不上的字节」，"
           "**不是**「字节是对的」，更不是「发版办完了」。"
           "🔴 **⑭ 那一组的边界**：它读的全是**盘上的文本**（Cargo.toml 的 "

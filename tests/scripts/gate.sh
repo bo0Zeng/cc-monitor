@@ -700,9 +700,9 @@ run_gate e2e-smoke '步数：`tests/e2e/*.py` 的 `py_compile` · `tests/e2e/exe
 # ── `release-gate`：发版那条流水线的盘上文本 ──
 # 判据本体 `tests/evidence/K-R124-ruler.py`（CI 那一步跑同一份；不依赖 PyYAML，自带 YAML 子集切块器）：
 #   `release.yml` 的触发与发布闸 · 产字节那条路（承诺的平台 ↔ 产线 ↔ 登记）· `BUILD_ID` 的抠法实打得到 ·
-#   本文件 `muslbuild` 点名的工具链版本 == `release.yml` 真装的 · `tests/scripts/re-embed.sh` 与发版那一步同源。
-# 射程与买不到的东西住那份文件头注。它不编字节：re-embed 只真跑 `--check`（只读）。
-run_gate release-gate '判过的条数（`release.yml` 上逐行印出来的 PASS：触发与发布闸 · 两处发布步骤的正文来源与生成器 · 产字节那条路（承诺的平台 ↔ 产线 ↔ 登记、target triple，两向集合相等；runner 标签逐字）· 每一处抠 `const BUILD_ID`／身份戳界标的住址实打读得到恰好一行 · 本文件 muslbuild 点名的工具链版本 == `release.yml` 真装的 · `tests/scripts/re-embed.sh` 与发版那一步同源（target 与旗标逐字、落点 ↔ `.gitignore` 两向）并真跑 `--check` · Release 资产 ↔ `src/doc/RELEASING.md` §2.2 登记表）。⚠ 不执行 GitHub 的表达式求值器、不跑流水线 ⇒ 「盘上文本满足这几条」不等于「云端那一趟会绿」，更不等于字节在目标机器上跑得起来；往 Release 上写只认 `softprops/action-gh-release` 与 `gh release`/`gh api …/releases` 两种形状；正文写得对不对不判；`--check` 只读，在没铺字节的树上只答得出「没有对不上的字节」' \
+#   发版产 musl 字节那一步只调 `tests/scripts/re-embed.sh --build-only`。
+# 射程与买不到的东西住那份文件头注。它不编字节：re-embed 真跑 `--check`（只读）与 `--build-only`（cargo 是只记账的替身）。
+run_gate release-gate '判过的条数（`release.yml` 上逐行印出来的 PASS：触发与发布闸 · 两处发布步骤的正文来源与生成器 · 产字节那条路（承诺的平台 ↔ 产线 ↔ 登记、target triple，两向集合相等；runner 标签逐字）· 每一处抠 `const BUILD_ID`／身份戳界标的住址实打读得到恰好一行 · 发版产 musl 字节那一步只调 `tests/scripts/re-embed.sh --build-only`（真跑一趟、cargo 是替身：只编不铺）· 本机那一份的原生编译与 `--native` 逐字 · 落点 ↔ `.gitignore` 两向 · 真跑 `--check` · Release 资产 ↔ `src/doc/RELEASING.md` §2.2 登记表）。⚠ 不执行 GitHub 的表达式求值器、不跑流水线 ⇒ 「盘上文本满足这几条」不等于「云端那一趟会绿」，更不等于字节在目标机器上跑得起来；往 Release 上写只认 `softprops/action-gh-release` 与 `gh release`/`gh api …/releases` 两种形状；正文写得对不对不判；`--check` 只读，在没铺字节的树上只答得出「没有对不上的字节」' \
          python3 tests/evidence/K-R124-ruler.py
 
 # ── `platform`：承诺的平台 ↔ 门禁真跑的格（判据本体 `tests/evidence/K-G4-platform-ledger.py`）──
@@ -1021,10 +1021,10 @@ run_gate winchk-backend '不是数出来的数：`cargo check --all-targets --ta
          bash -c 'cd src/backend && cargo check --workspace --all-targets --target x86_64-pc-windows-gnu 2>&1 && echo "winchk-backend: 1 passed"'
 
 # ── `muslbuild`：远端 Linux 那一格 —— 两个 musl target 编得出静态字节 ──
-# 用 `cargo zigbuild`，版本与 `release.yml` 对齐（`release-gate` 两向对拍）：版本一漂，本格的绿就不代表发版那趟会绿。
-# 买不到「在真远端上跑得起来」，也不编 test 档（只编 bin）。
-run_gate muslbuild '不是数出来的数：两个 musl target（`x86_64` ＋ `aarch64`）各一趟 `cargo zigbuild`，只有绿/红两态。⚠ 买的是「编得出静态字节」，不买「在真远端上跑得起来」、不买 test 档（只编 bin）。每个 arch 的字节里要认得出 mimalloc（远端版换过分配器：源码那一半由 `allocator_guard` 判，字节这一半本格判，认法是它自带的报错前缀 `mimalloc: `）。⚠ 工具链版本与 `release.yml` 对齐（zig 0.14.0 / cargo-zigbuild 0.23.0）—— 版本一漂，本格的绿就不再代表发版那趟会绿' \
-         bash -c 'cd src/backend && n=0; for t in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do cargo zigbuild --target "$t" >/dev/null || { echo "musl: $t 编不过"; exit 1; }; grep -qa "mimalloc: " "../../.build/backend/$t/debug/cc-monitor-backend" || { echo "musl: $t 的字节里认不出 mimalloc（分配器没换上）"; exit 1; }; n=$((n+1)); done; printf "muslbuild: %s passed（两个 arch 各一趟 cargo zigbuild，字节里都认得出 mimalloc，zig $(zig version)）\n" "$n"'
+# 与发版那一步同一条配方：都调 `re-embed.sh --build-only`（配方只住那条命令）；编哪几个 target 读它印的那几行。
+# 买不到「在真远端上跑得起来」，也不编 test 档（只编 bin）；本机的 zig 未必是 `release.yml` 钉的那一版。
+run_gate muslbuild '不是数出来的数：`re-embed.sh --build-only` 编的那几个 musl target 各一份字节，只有绿/红两态。⚠ 买的是「发版那条配方在本机编得出静态字节」，不买「在真远端上跑得起来」、不买 test 档（只编 bin）。每个 target 的字节里要认得出 mimalloc（远端版换过分配器：源码那一半由 `allocator_guard` 判，字节这一半本格判，认法是它自带的报错前缀 `mimalloc: `）。⚠ 用的是本机的 zig（版本印在末行），未必是 `release.yml` 钉的那一版' \
+         bash -c 'out=$(bash tests/scripts/re-embed.sh --build-only 2>&1) || { printf "%s\n" "$out" | tail -20; echo "musl: re-embed.sh --build-only 编不过"; exit 1; }; ts=$(printf "%s\n" "$out" | sed -n "s/^==> cargo zigbuild .* --target \(.*\)$/\1/p"); [ -n "$ts" ] || { echo "musl: re-embed.sh --build-only 一个 target 都没编"; exit 1; }; n=0; for t in $ts; do grep -qa "mimalloc: " ".build/backend/$t/release/cc-monitor-backend" || { echo "musl: $t 的字节里认不出 mimalloc（分配器没换上）"; exit 1; }; n=$((n+1)); done; printf "muslbuild: %s passed（re-embed.sh --build-only 编的 %s 个 target，字节里都认得出 mimalloc，zig $(zig version)）\n" "$n" "$n"'
 
 # ── `androidbuild`：拨号核心（`src/backend/ssh-dial`，手机也链）编得过手机那两个 target ──
 # android 不算 linux：平台 cfg 悄悄落进「别的平台」那一支是编得过的 —— 那一维由判据 `android_cfg_guard` 管；本格只管「编得过」。
