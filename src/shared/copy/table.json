@@ -3220,6 +3220,12 @@
       "zh": "思考",
       "args": []
     },
+    "cards.thinking.unrecorded": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "思考 · 没写进记录",
+      "args": []
+    },
     "cards.user.title": {
       "kind": "title",
       "role": "标题",
