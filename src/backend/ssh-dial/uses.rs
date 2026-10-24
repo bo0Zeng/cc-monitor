@@ -32,7 +32,7 @@ fn exec_half(
 }
 
 /// 读得出通道下一条消息的那一形（整条通道 · 读半边）；返回的盒子显式 `Send`，理由同 [`exec`]。
-trait Waits: Send {
+pub(crate) trait Waits: Send {
     fn next_msg(
         &mut self,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<russh::ChannelMsg>> + Send + '_>>;
@@ -56,16 +56,18 @@ impl Waits for russh::ChannelReadHalf {
     }
 }
 
-/// **等那台答一条要回话的通道请求**（exec · pty · shell，都带 want_reply）。russh 发出请求就回、不等对面答，
+/// **等那台答一条要回话的通道请求**（exec · pty · shell · 子系统，都带 want_reply）。russh 发出请求就回、不等对面答，
 /// 不在这里等 ⇒ 那台登录过了、开会话被拒（CHANNEL_FAILURE：共用登录机进程数到上限那一形）时 ack 照回 ok，
 /// 之后长流一个字节都不来、capture 等不到 Close。
 ///
-/// 答应 ⇒ 回答复之前先到的消息（照序；调用方补交）；回拒 ⇒「登录通过 · 拒绝执行命令」，原话说是哪一种请求；
+/// 答应 ⇒ 回答复之前先到的消息（照序；调用方补交）；回拒 ⇒「登录通过 · 拒绝执行命令」，原话说是哪一种请求，
+/// 原因码 [`crate::Why::SessionDenied`] 记进 `stages`（ack 的 `reason` 带它，机器状态照它说、不说离线）；
 /// 没答就关了通道 ⇒ `closed()` 那一句。
-async fn granted(
+pub(crate) async fn granted(
     ch: &mut impl Waits,
     request: &str,
     closed: fn() -> String,
+    stages: &StageSink,
 ) -> Result<Vec<russh::ChannelMsg>, Said> {
     let mut early = Vec::new();
     loop {
@@ -73,6 +75,7 @@ async fn granted(
             Some(russh::ChannelMsg::Success) => return Ok(early),
             Some(russh::ChannelMsg::Failure) => {
                 tracing::warn!("dial: 登录过了，{request} 请求被那台回拒（CHANNEL_FAILURE）");
+                stages.note_why(crate::Why::SessionDenied);
                 return Err(Said::with_raw(
                     copy_text("beUses.session.denied", &[]),
                     format!("{request} request: server replied SSH_MSG_CHANNEL_FAILURE"),
@@ -672,14 +675,18 @@ async fn opening(req: &DialRequest, stages: &StageSink) -> Result<Opened, DialFa
         }
     };
     let fp = lease.linked.fingerprint.clone();
-    let fail = |e: Said| crate::fail(e, fp.clone());
+    // 拨通之后没开成：原因码只有「开会话被拒」那一种会记（[`granted`]），记了就带上。
+    let fail = |e: Said| DialFail {
+        reason: stages.why(),
+        ..crate::fail(e, fp.clone())
+    };
     let held = match req.use_ {
         Use::Stream => {
             // `_permit`：这条长流占着这条连接的一格通道，直到用完（`pool::Budget`）。
             let (mut channel, permit) = lease.session_channel(req, stages).await.map_err(fail)?;
             // want_reply = true：等远端答应 exec 再算开成（[`granted`]）。
             let early = match exec(&channel, req.command.as_bytes().to_vec()).await {
-                Ok(()) => granted(&mut channel, "exec", exec_failed).await,
+                Ok(()) => granted(&mut channel, "exec", exec_failed, stages).await,
                 Err(e) => Err(Said::with_raw(copy_text("beUses.exec.failed", &[]), &e)),
             }
             .map_err(fail)?;
@@ -701,7 +708,9 @@ async fn opening(req: &DialRequest, stages: &StageSink) -> Result<Opened, DialFa
             exec_half(wr.get(), req.command.as_bytes().to_vec())
                 .await
                 .map_err(|e| fail(Said::with_raw(copy_text("beUses.exec.failed", &[]), &e)))?;
-            let early = granted(&mut rd, "exec", exec_failed).await.map_err(fail)?;
+            let early = granted(&mut rd, "exec", exec_failed, stages)
+                .await
+                .map_err(fail)?;
             // 有载荷就写进远端进程的 stdin（不关 —— 收的一侧只读一行）。
             if let Some(input) = opts.stdin.clone() {
                 wr.get().data_bytes(input.into_bytes()).await.map_err(|e| {
@@ -750,9 +759,9 @@ async fn opening(req: &DialRequest, stages: &StageSink) -> Result<Opened, DialFa
                 |e: russh::Error| Said::with_raw(copy_text("beUses.shell.failed", &[]), &e);
             let early = async {
                 pty_half(wr.get(), &pty).await.map_err(failed)?;
-                let mut early = granted(&mut rd, "pty-req", shell_failed).await?;
+                let mut early = granted(&mut rd, "pty-req", shell_failed, stages).await?;
                 shell_half(wr.get()).await.map_err(failed)?;
-                early.extend(granted(&mut rd, "shell", shell_failed).await?);
+                early.extend(granted(&mut rd, "shell", shell_failed, stages).await?);
                 Ok::<_, Said>(early)
             }
             .await

@@ -56,7 +56,7 @@ export function machineFace(m: MachineState): MachineFace {
     tone: busy ? "busy" : DOT[m.state] === "needs-you" ? "warn" : "error",
     bar: m.state === "installing" || m.state === "updating",
     fixes: m.fixes,
-    offline: m.state === "down" || m.state === "host_key_changed" || m.state === "unsupported",
+    offline: m.offline,
     needsUpdate: m.state === "needs_update",
     detail: m.detail ?? "",
     next: m.next ?? "",

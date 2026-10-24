@@ -23764,6 +23764,12 @@
       "args": [],
       "limited": ["连接"]
     },
+    "machineState.down.sessionDenied": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{machine} 登录通过 · 拒绝开会话",
+      "args": ["machine"]
+    },
     "machineState.down.local": {
       "kind": "body",
       "role": "片段",

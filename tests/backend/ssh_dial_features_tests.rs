@@ -168,6 +168,17 @@ impl russh::server::Handler for Door {
         session.close(channel)
     }
 
+    /// 子系统（sftp）：这台不带 sftp 服务端 ⇒ 一律回 CHANNEL_FAILURE（`Answer::No` 那一形就是共用登录机拒开会话；别的形没人请求它）。
+    async fn subsystem_request(
+        &mut self,
+        channel: russh::ChannelId,
+        name: &str,
+        session: &mut russh::server::Session,
+    ) -> Result<(), Self::Error> {
+        self.note(format!("subsystem {name}"));
+        session.channel_failure(channel)
+    }
+
     async fn channel_open_direct_tcpip(
         &mut self,
         channel: russh::Channel<russh::server::Msg>,
@@ -671,6 +682,10 @@ async fn a_login_that_passes_but_refuses_the_session_says_so() {
         assert_eq!(ack["ok"], false, "{use_}：开会话被拒却回了 ok：{ack}");
         assert_eq!(ack["error"], refused.as_str(), "{use_}：{ack}");
         assert_ne!(ack["reason"], "auth", "{use_}：登录是过了的：{ack}");
+        assert_eq!(
+            ack["reason"], "session_denied",
+            "{use_}：要带上拒开会话那个码：{ack}"
+        );
         assert!(
             ack["detail"]
                 .as_str()
@@ -678,6 +693,37 @@ async fn a_login_that_passes_but_refuses_the_session_says_so() {
             "{use_}：复制详情里要有被拒的原话：{ack}"
         );
     }
+}
+
+/// ★ 请求 sftp 子系统也等那台答复：登录过了、子系统被拒（CHANNEL_FAILURE）⇒ 当场回「登录通过 · 拒绝执行命令」，
+/// 不当成开成了、再去一条永远不答的通道上等 `SSH_FXP_INIT`。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_refused_sftp_subsystem_says_so_instead_of_waiting() {
+    let port = door_answering("p", Answer::No).await;
+    register("refusing-sftp-pw", TestCred::Password("p".into()));
+    let req = request(serde_json::json!({
+        "host": "127.0.0.1", "port": port, "user": "u", "key_path": "refusing-sftp-pw", "use": "hold"
+    }));
+    let got = tokio::time::timeout(
+        guard_core::wall::CEILING,
+        crate::sftp::open_for_transfer(&crate::sftp::Dial::of(req)),
+    )
+    .await
+    .expect("子系统被拒却一直在等");
+    let Err(said) = got else {
+        panic!("子系统被拒却开成了");
+    };
+    assert_eq!(
+        said.said,
+        copy_core::copy_text("beUses.session.denied", &[])
+    );
+    assert!(
+        said.raw
+            .as_deref()
+            .is_some_and(|r| r.contains("CHANNEL_FAILURE")),
+        "{:?}",
+        said.raw
+    );
 }
 
 /// 等那台答应 exec 时，答复前后到的字节一个不丢（输出先到、答应在后那一形也算）：stream 的 ack 之后头一批就是它们，

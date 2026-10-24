@@ -566,3 +566,67 @@ fn a_failed_round_carries_the_copy_detail() {
         assert_eq!(of(facts, enabled).detail, None, "{name}");
     }
 }
+
+/// ★ **登录过了、开会话被拒**（共用登录机进程数到上限那一形）那一轮：`reason = session_denied`、问题行说「{机器} 登录通过、
+/// 但拒绝开会话」、修法只有［重试］（钥匙没问题，不给［推送公钥］· 连接设置）、**不算离线**；桌面与手机同一份。
+#[test]
+fn a_session_refused_after_login_is_its_own_state_not_offline() {
+    for p in [
+        of(vec![down_(Some(Why::SessionDenied))], true),
+        phone(vec![down_(Some(Why::SessionDenied))]),
+    ] {
+        assert_eq!(p.state, K::Down);
+        assert_eq!(p.reason, Some(Why::SessionDenied));
+        assert_eq!(
+            p.said,
+            copy_text("machineState.down.sessionDenied", &[("machine", M)])
+        );
+        assert!(p.said.contains(M), "那一句要说是哪台：{}", p.said);
+        assert_ne!(
+            p.said,
+            copy_text("machinePage.problem.offline", &[("machine", M)])
+        );
+        assert_eq!(
+            p.fixes.iter().map(|f| f.fix).collect::<Vec<_>>(),
+            vec![MachineFix::Retry]
+        );
+        assert!(!p.offline, "登录过了的那台不是离线");
+        assert!(
+            p.detail
+                .as_deref()
+                .is_some_and(|d| d.contains("码：session_denied")),
+            "{:?}",
+            p.detail
+        );
+    }
+}
+
+/// 成品自带名字与「算不算离线」：出口只照画，不再自己按那一态算（页头「N 台离线」数的就是这一格）。
+#[test]
+fn the_product_carries_its_name_and_whether_it_is_offline() {
+    let cases: Vec<(&str, Vec<Fact>, bool, bool)> = vec![
+        ("连着", vec![up(Relation::Same, &[])], true, false),
+        ("正在连", vec![round(Round::Connecting)], true, false),
+        ("密钥被拒", vec![down_(Some(Why::Auth))], true, true),
+        ("拨号超时", vec![down_(Some(Why::Timeout))], true, true),
+        ("没带码", vec![down_(None)], true, true),
+        ("指纹变了", vec![down_(Some(Why::HostKey))], true, true),
+        ("不是 Unix", vec![unsupported()], true, true),
+        ("没有后端", vec![blocked(Blocker::NoBackend)], true, true),
+        ("后端旧了", vec![blocked(Blocker::OldBackend)], true, false),
+        ("那台旧", vec![up(Relation::Older, &[])], true, false),
+        (
+            "拒绝开会话",
+            vec![down_(Some(Why::SessionDenied))],
+            true,
+            false,
+        ),
+        ("停用", vec![down_(Some(Why::Auth))], false, false),
+        ("没轮过", vec![], true, false),
+    ];
+    for (name, facts, enabled, offline) in cases {
+        let p = of(facts, enabled);
+        assert_eq!(p.name, M, "{name}");
+        assert_eq!(p.offline, offline, "{name}");
+    }
+}
