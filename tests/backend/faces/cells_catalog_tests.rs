@@ -115,7 +115,6 @@ pub(crate) const FROZEN: &[(&str, Frozen)] = &[
             "state",
             "text",
             "detail",
-            "usableNow[]",
             "names.accounts.*",
             "names.slots.*",
             "accounts[].account",
@@ -604,7 +603,7 @@ fn real_quota_read() -> crate::faces::quota_read::QuotaRead {
             detail: None,
             path: Some("/q".into()),
             now,
-            usable_now: vec!["a".into()],
+            usable: vec!["a".into()],
             earliest: None,
         },
         vec![Seen {

@@ -394,12 +394,8 @@ pub struct QuotaRead {
     pub accounts: Vec<QuotaAccount>,
     /// 账号库里有、额度账上从没出过数的号。
     pub unseen: Vec<QuotaUnseen>,
-    /// 此刻发得出去的号（路由第 2 段）：登录拿得到、不是被拒 / 超额在兜。
-    pub usable_now: Vec<String>,
     /// 换号 · 加号那几处的候选：出过数的在前、没出过的在后，`_` 不在里面（`is_candidate`）。界面只照它画，不另拼、不另滤。
     pub candidates: Vec<Candidate>,
-    /// 被拒 / 超额在兜的号里最早回来的那个；没有、或都说不出时刻 ⇒ `null`。
-    pub earliest_return: Option<EarliestReturn>,
     /// 读不出 / 一个号都没有 ⇒ 那一句（`--text` 拼字时放最前）；否则 `null`（`quota_rows::head_text`）。
     pub text: Option<Words>,
     /// 读不出 ⇒「5h 那一格」写好的字（`5h 读不到`，`quota_rows::head_five_hour`）；否则 `null`（每号自己那一格）。
@@ -699,25 +695,4 @@ pub struct Candidate {
     pub agent: crate::AgentKind,
     pub account: String,
     pub kind: Kind,
-}
-
-/// 被拒 / 超额在兜的号里最早回来的那个。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"),
-    ts(
-        rename = "QuotaEarliestReturn",
-        export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
-    )
-)]
-#[serde(rename_all = "camelCase")]
-pub struct EarliestReturn {
-    pub account: String,
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub at: u64,
-    pub at_text: Words,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub at_rel_text: Option<Words>,
 }

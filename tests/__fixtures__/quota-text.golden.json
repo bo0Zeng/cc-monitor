@@ -74,13 +74,13 @@
             "subId": "3f9c0e1a2b3c4d5e6f708192"
           }
         ],
-        "earliestReturn": null,
+        "earliest": null,
         "now": 1791189600,
         "path": "/home/u/.cc-monitor/quota.json",
         "reason": null,
         "state": "present",
         "unseen": [],
-        "usableNow": [
+        "usable": [
           "personal"
         ]
       },
@@ -201,13 +201,13 @@
             ]
           }
         ],
-        "earliestReturn": null,
+        "earliest": null,
         "now": 1791189600,
         "path": "/home/u/.cc-monitor/quota.json",
         "reason": null,
         "state": "present",
         "unseen": [],
-        "usableNow": [
+        "usable": [
           "personal"
         ]
       },
@@ -288,13 +288,13 @@
             "subId": "3f9c0e1a2b3c4d5e6f708192"
           }
         ],
-        "earliestReturn": null,
+        "earliest": null,
         "now": 1791189600,
         "path": "/home/u/.cc-monitor/quota.json",
         "reason": null,
         "state": "present",
         "unseen": [],
-        "usableNow": [
+        "usable": [
           "personal"
         ]
       },
@@ -378,7 +378,7 @@
             "subId": "3f9c0e1a2b3c4d5e6f708192"
           }
         ],
-        "earliestReturn": {
+        "earliest": {
           "account": "work",
           "at": 1791198000,
           "atText": "19:00"
@@ -388,7 +388,7 @@
         "reason": null,
         "state": "present",
         "unseen": [],
-        "usableNow": []
+        "usable": []
       },
       "text": "work  订阅\n  5h    ✕    ↻19:00        +2h20m\n  7d    78%  ↻10-07 09:00  +1d\n  超额  —\n  采样  16:38",
       "tz": "Asia/Shanghai"
@@ -469,7 +469,7 @@
             "subId": "3f9c0e1a2b3c4d5e6f708192"
           }
         ],
-        "earliestReturn": {
+        "earliest": {
           "account": "work",
           "at": 1791198000,
           "atText": "19:00"
@@ -479,7 +479,7 @@
         "reason": null,
         "state": "present",
         "unseen": [],
-        "usableNow": []
+        "usable": []
       },
       "text": "work  订阅\n  5h    58% · 被拒  ↻19:00        +2h20m\n  7d    78%         ↻10-07 09:00  +1d\n  超额  —\n  采样  16:38",
       "tz": "Asia/Shanghai"
@@ -561,7 +561,7 @@
             "subId": "3f9c0e1a2b3c4d5e6f708192"
           }
         ],
-        "earliestReturn": {
+        "earliest": {
           "account": "work",
           "at": 1791198000,
           "atText": "19:00"
@@ -571,7 +571,7 @@
         "reason": null,
         "state": "present",
         "unseen": [],
-        "usableNow": []
+        "usable": []
       },
       "text": "work  订阅\n  5h    超额    ↻19:00        +2h20m\n  7d    78%     ↻10-07 09:00  +1d\n  超额  使用中  另计费\n  采样  16:38",
       "tz": "Asia/Shanghai"
@@ -646,13 +646,13 @@
             "subId": "3f9c0e1a2b3c4d5e6f708192"
           }
         ],
-        "earliestReturn": null,
+        "earliest": null,
         "now": 1791189600,
         "path": "/home/u/.cc-monitor/quota.json",
         "reason": null,
         "state": "present",
         "unseen": [],
-        "usableNow": [
+        "usable": [
           "team"
         ]
       },
@@ -720,7 +720,7 @@
             "subId": "3f9c0e1a2b3c4d5e6f708192"
           }
         ],
-        "earliestReturn": {
+        "earliest": {
           "account": "work",
           "at": 1791192300,
           "atText": "17:25"
@@ -730,7 +730,7 @@
         "reason": null,
         "state": "present",
         "unseen": [],
-        "usableNow": []
+        "usable": []
       },
       "text": "work  订阅\n  5h    —\n  7d    —\n  状态  被拒  ↻17:25  +45m\n  超额  —\n  采样  16:38",
       "tz": "Asia/Shanghai"
@@ -807,13 +807,13 @@
             "subId": "3f9c0e1a2b3c4d5e6f708192"
           }
         ],
-        "earliestReturn": null,
+        "earliest": null,
         "now": 1791189600,
         "path": "/home/u/.cc-monitor/quota.json",
         "reason": null,
         "state": "present",
         "unseen": [],
-        "usableNow": []
+        "usable": []
       },
       "text": "old  订阅  需登录\n  5h    30%  ↻20:00  +3h20m\n  7d    ✕\n  超额  —\n  采样  16:38",
       "tz": "Asia/Shanghai"
@@ -892,13 +892,13 @@
             "subId": "3f9c0e1a2b3c4d5e6f708192"
           }
         ],
-        "earliestReturn": null,
+        "earliest": null,
         "now": 1791189600,
         "path": "/home/u/.cc-monitor/quota.json",
         "reason": null,
         "state": "present",
         "unseen": [],
-        "usableNow": [
+        "usable": [
           "_"
         ]
       },
@@ -1031,7 +1031,7 @@
             "state": "ok"
           }
         ],
-        "earliestReturn": {
+        "earliest": {
           "account": "api2",
           "at": 1791190320,
           "atText": "16:52"
@@ -1041,7 +1041,7 @@
         "reason": null,
         "state": "present",
         "unseen": [],
-        "usableNow": [
+        "usable": [
           "api"
         ]
       },
@@ -1166,7 +1166,7 @@
             "subId": "3f9c0e1a2b3c4d5e6f708192"
           }
         ],
-        "earliestReturn": null,
+        "earliest": null,
         "now": 1791189600,
         "path": "/home/u/.cc-monitor/quota.json",
         "reason": null,
@@ -1185,7 +1185,7 @@
             "login": "ok"
           }
         ],
-        "usableNow": [
+        "usable": [
           "personal"
         ]
       },
@@ -1323,13 +1323,13 @@
             "subId": "3f9c0e1a2b3c4d5e6f708192"
           }
         ],
-        "earliestReturn": null,
+        "earliest": null,
         "now": 1798718400,
         "path": "/home/u/.cc-monitor/quota.json",
         "reason": null,
         "state": "present",
         "unseen": [],
-        "usableNow": [
+        "usable": [
           "team",
           "cold"
         ]
@@ -1343,13 +1343,13 @@
       "name": "还没看到过任何回包、账号库也是空的",
       "reply": {
         "accounts": [],
-        "earliestReturn": null,
+        "earliest": null,
         "now": 1791189600,
         "path": "/home/u/.cc-monitor/quota.json",
         "reason": null,
         "state": "absent",
         "unseen": [],
-        "usableNow": []
+        "usable": []
       },
       "text": "无采样",
       "tz": "Asia/Shanghai"
@@ -1360,13 +1360,13 @@
       "name": "额度账读不出来",
       "reply": {
         "accounts": [],
-        "earliestReturn": null,
+        "earliest": null,
         "now": 1791189600,
         "path": "/home/u/.cc-monitor/quota.json",
         "reason": "读取 /h/.cc-monitor/quota.json 失败 · 内容无法解析",
         "state": "unreadable",
         "unseen": [],
-        "usableNow": []
+        "usable": []
       },
       "text": "读取 /h/.cc-monitor/quota.json 失败 · 内容无法解析",
       "tz": "Asia/Shanghai"

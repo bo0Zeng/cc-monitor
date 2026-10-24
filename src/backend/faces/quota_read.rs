@@ -14,8 +14,8 @@ use crate::common::cells::{Tone, Words};
 use crate::common::time::TextClock;
 use crate::faces::quota_rows;
 pub(crate) use cmd_wire::quota::{
-    AccountHead, Candidate, EarliestReturn, OverageShown, QuotaAccount, QuotaRead, QuotaUnseen,
-    ReadingShown, ResetsAt, UnseenHead, UnseenUsage, Verdict, WindowReadShown, WindowSeenShown,
+    AccountHead, Candidate, OverageShown, QuotaAccount, QuotaRead, QuotaUnseen, ReadingShown,
+    ResetsAt, UnseenHead, UnseenUsage, Verdict, WindowReadShown, WindowSeenShown,
 };
 use std::collections::BTreeMap;
 
@@ -81,7 +81,7 @@ pub(crate) struct Base {
     pub(crate) detail: Option<String>,
     pub(crate) path: Option<String>,
     pub(crate) now: u64,
-    pub(crate) usable_now: Vec<String>,
+    pub(crate) usable: Vec<String>,
     /// （号, 几点回来）。
     pub(crate) earliest: Option<(String, u64)>,
 }
@@ -207,7 +207,7 @@ pub(crate) fn reply_of(
         w
     };
     let verdict = (base.state == ReadState::Present && !(seen.is_empty() && unseen.is_empty()))
-        .then(|| verdict_of(&base.usable_now, base.earliest.as_ref(), clock));
+        .then(|| verdict_of(&base.usable, base.earliest.as_ref(), clock));
     QuotaRead {
         verdict,
         candidates,
@@ -234,13 +234,6 @@ pub(crate) fn reply_of(
                 u
             })
             .collect(),
-        usable_now: base.usable_now,
-        earliest_return: base.earliest.map(|(account, at)| EarliestReturn {
-            account,
-            at,
-            at_text: clock.text(at),
-            at_rel_text: clock.rel(at),
-        }),
         names: names(),
     }
 }
@@ -304,7 +297,7 @@ pub(crate) fn specimen() -> QuotaRead {
             detail: Some("d".into()),
             path: Some("/q".into()),
             now: 1_000,
-            usable_now: vec!["a".into()],
+            usable: vec!["a".into()],
             earliest: Some(("a".into(), 2_000)),
         },
         vec![Seen {

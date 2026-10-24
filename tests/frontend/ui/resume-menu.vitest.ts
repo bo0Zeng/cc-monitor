@@ -57,8 +57,6 @@ const quota = (accounts: { account: string; pct?: number; state?: string; kind?:
             }),
     })),
     unseen: [],
-    usableNow: [],
-    earliestReturn: null,
     fiveHour: null,
   }) as unknown as QuotaRead;
 
