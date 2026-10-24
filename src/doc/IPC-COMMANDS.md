@@ -1971,6 +1971,40 @@ type WirePath = string | { b16: string };
 
 码：`bad_args` · `no_home`
 
+#### `bookmarks-read`
+
+这台的书签。
+
+不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --bookmarks-read`
+
+入参 `BookmarksReadReq` · 回包 `Bookmarks`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Bookmarks = { dirs: Array<string>, };
+type BookmarksReadReq = Record<symbol, never>;
+```
+
+码：`bad_args` · `io_failed` · `bookmarks_unreadable`
+
+#### `bookmarks-edit`
+
+切换 · 删 · 加几条书签，回改完的整份。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --bookmarks-edit`
+
+入参 `BookmarksEditReq` · 回包 `Bookmarks`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Bookmarks = { dirs: Array<string>, };
+type BookmarksEditReq = { op: "toggle" | "remove" | "add", 
+/**
+ * 那几个目录（这台的绝对路径；按归一之后的形比、存）。
+ */
+dirs: Array<string>, };
+```
+
+码：`bad_args` · `io_failed` · `bookmarks_unreadable`
+
 ### 4.3 账号
 
 #### `quota-read`
@@ -14392,6 +14426,8 @@ type Words = string;
 | `--assets-sync` | ＝ 帧命令 `assets-sync`：本机常驻后端沿池里那条 SSH 同步资产目录 |
 | `--authorized-keys-add` | ＝ 帧命令 `authorized-keys-add`：把一行公钥并进这台的 `authorized_keys` |
 | `--backend-log` | ＝ 帧命令 `backend-log`：这台后端的 stderr 诊断文件尾部 |
+| `--bookmarks-edit` | ＝ 帧命令 `bookmarks-edit`：切换 · 删 · 加几条书签，回改完的整份 |
+| `--bookmarks-read` | ＝ 帧命令 `bookmarks-read`：这台的书签 |
 | `--bus-broadcast` | ＝ 帧命令 `bus-broadcast`：给总线上在线的成员群发一条 |
 | `--bus-inbox` | ＝ 帧命令 `bus-inbox`：只读看一个 agent 收件箱的尾巴 |
 | `--bus-kill` | ＝ 帧命令 `bus-kill`：收掉一个总线成员 |
