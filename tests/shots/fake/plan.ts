@@ -154,6 +154,7 @@ function ledgerSlice(o: PlanWorldOpts, landed?: Landed): Record<string, unknown>
     name: "ledger",
     domain: "软件",
     path: "repos/ledger",
+    records: [{ n: 1, summary: "导入与导出共用一份列定义", at: daysAgo(1, 9, 30), by: "人", quotes: ["「列定义只写一处」", "「导出照导入的列序」"] }],
     ...(o.docsOnly ? { docs_only: true } : {}),
     kinds: SOFT_KINDS,
     phases: SOFT_PHASES,

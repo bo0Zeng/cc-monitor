@@ -114,3 +114,15 @@ describe("covers 画圈不连线：大纲左侧槽里一条规矩一道括弧", 
     expect(m.get("R1")).toBeUndefined();
   });
 });
+
+describe("圈的图例：画圈的那几条规矩照图上的先后", () => {
+  it("只写 project 的不进图例；色位与括弧同一个", async () => {
+    const { ringRules } = await import("../../../src/frontend/ui/views/plan-model.ts");
+    const c = (id: string, covers: string[]): PlanCell => ({ id, covers, coveredBy: [] }) as unknown as PlanCell;
+    const sl = { cells: [c("R0", ["project"]), c("R1", ["A1"]), c("R2", ["A2", "project"])] } as unknown as PlanSlice;
+    expect(ringRules(sl)).toEqual([
+      { rule: "R1", slot: 5 },
+      { rule: "R2", slot: 1 },
+    ]);
+  });
+});

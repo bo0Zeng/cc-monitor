@@ -27,7 +27,7 @@ vi.mock("../../../src/frontend/ui/ipc/chan-caller", async (orig) => ({
 }));
 
 import { takeRepo } from "../../../src/frontend/ui/plan-reads.ts";
-import { openReturn, type ReviewHost, type ReturnTarget } from "../../../src/frontend/ui/views/plan-review.ts";
+import { openRecord, openReturn, type ReviewHost, type ReturnTarget } from "../../../src/frontend/ui/views/plan-review.ts";
 import { pbDirRow } from "../../../src/frontend/ui/settings/pb-dir-row.ts";
 import type { PlanSlice, PlanWho } from "../../../src/frontend/ui/plan-reads.ts";
 
@@ -130,5 +130,25 @@ describe("设置里 pb 路径那一行", () => {
   });
   it("带锚，计划页「未装」那一屏跳得过来", () => {
     expect(pbDirRow("<local>").row.dataset.anchor).toBe("pb-dir");
+  });
+});
+
+describe("记原话框", () => {
+  it("裁定与原话都有字才放行；原话一行一句、去掉空行，记进看着的那一片", async () => {
+    reply = { rc: 0, said: "记下了 原话 1", path: null, took: null };
+    openRecord(host, slice);
+    const ok = [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => (b.textContent ?? "") === "plan.record.save")!;
+    expect(ok.getAttribute("aria-disabled")).toBe("true");
+    const sum = document.querySelector<HTMLInputElement>("input.plan-record-summary")!;
+    sum.value = " 读写分两半 ";
+    sum.dispatchEvent(new Event("input"));
+    expect(ok.getAttribute("aria-disabled")).toBe("true");
+    const ta = document.querySelector<HTMLTextAreaElement>("textarea.plan-record-quotes")!;
+    ta.value = "分开做\n\n 先读后写 ";
+    ta.dispatchEvent(new Event("input"));
+    expect(ok.getAttribute("aria-disabled")).toBeNull();
+    ok.click();
+    await flush();
+    expect(calls).toEqual([{ op: "plan-command", body: { workspace: "/work", cmd: "record", slice: "ledger", summary: "读写分两半", quotes: ["分开做", "先读后写"] } }]);
   });
 });

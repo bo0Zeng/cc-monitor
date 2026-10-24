@@ -46,6 +46,7 @@ import {
   outlineRows,
   shortId,
   recentSigns,
+  ringRules,
   ringsOf,
   statusLook,
   topBlock,
@@ -53,7 +54,7 @@ import {
   type Ring,
 } from "./plan-model";
 import { CellDetail } from "./plan-cell";
-import { cellTarget, needBar, openNeeds, openReturn, returnedBar, type ReviewHost } from "./plan-review";
+import { cellTarget, needBar, openNeeds, openRecord, openReturn, returnedBar, type ReviewHost } from "./plan-review";
 import type { PlanNeedsBook } from "../plan-needs";
 import type { PlanNeedItem } from "../needs-book";
 import { freshPane, phaseBadge, setKindColor, STATUS_ICON } from "./plan-bits";
@@ -923,6 +924,7 @@ export class PlanView {
       const u = icon("person", "compact");
       trail.appendChild(u);
     }
+    if (c.covers.includes("project")) trail.appendChild(text(copyText("plan.cell.coversAll"), s.pvKw));
     el.append(chev, st, bar, tt, kw, trail);
     el.addEventListener("click", () => this.select(c.id));
     return el;
@@ -951,6 +953,26 @@ export class PlanView {
     });
     dropped.appendChild(t);
     box.appendChild(dropped);
+    // 圈：画圈的每条规矩一项（同括弧一色），点了去那一格。
+    const rules = ringRules(slice);
+    if (rules.length > 0) {
+      const rs = document.createElement("span");
+      rs.dataset.legend = "rings";
+      rs.appendChild(document.createTextNode(copyText("plan.outline.rings")));
+      box.appendChild(rs);
+      for (const g of rules) {
+        const it = document.createElement("span");
+        it.className = s.pvLegendKind;
+        setKindColor(it, g.slot);
+        const go = document.createElement("button");
+        go.type = "button";
+        go.className = s.pvLink;
+        go.textContent = labelOf(slice, g.rule);
+        go.addEventListener("click", () => this.select(g.rule));
+        it.appendChild(go);
+        box.appendChild(it);
+      }
+    }
     return box;
   }
 
@@ -1033,7 +1055,36 @@ export class PlanView {
       for (const it of signs.slice(0, 5)) sec3.appendChild(this.signRow(slice, it));
       box.appendChild(sec3);
     }
+
+    // 原话：记下的人的原话（照号，新的在上）＋［记原话…］（记进看着的这一片，工作区的当前片不动）
+    const sec4 = section(copyText("plan.overview.records"));
+    sec4.firstElementChild?.appendChild(button({ label: copyText("plan.record.open"), kind: "ghost", size: "compact", onClick: () => openRecord(this.review, slice) }));
+    if (slice.records.length === 0) sec4.appendChild(text(copyText("plan.record.none"), s.pvMeta));
+    for (const r of [...slice.records].reverse()) sec4.appendChild(this.recordRow(r));
+    box.appendChild(sec4);
     return box;
+  }
+
+  /** 一条原话：时刻 · 号与裁定 · 一句一行的原话 · 谁记的（对不上会话 ⇒ 照出 pb 写的那个字）。 */
+  private recordRow(r: PlanSlice["records"][number]): HTMLElement {
+    const row = document.createElement("div");
+    row.className = s.pvSign;
+    const tm = text(r.atText ?? r.at ?? "", s.pvSignTm);
+    const body = document.createElement("div");
+    body.className = s.pvSignBody;
+    const tl = document.createElement("div");
+    tl.className = s.pvSignTitle;
+    tl.textContent = joinSep(r.n === null ? "" : String(r.n), r.summary ?? "");
+    body.appendChild(tl);
+    for (const q of r.quotes) {
+      const why = document.createElement("div");
+      why.className = s.pvSignWhy;
+      why.textContent = q;
+      body.appendChild(why);
+    }
+    row.append(tm, body);
+    if (r.by) row.appendChild(r.by.kind === "unknown" ? text(r.by.id, s.pvMeta) : this.whoChip(r.by, true));
+    return row;
   }
 
   // ───────────────────────── 签收流 ─────────────────────────

@@ -200,13 +200,19 @@ export interface Ring {
   slot: number;
 }
 
+/** 画圈的那几条规矩（照图上的先后）与各自的色位：大纲底下的图例照它列。 */
+export function ringRules(slice: Pick<PlanSlice, "cells">): Ring[] {
+  return slice.cells.filter((c) => c.covers.some((x) => x !== "project")).map((c, i) => ({ rule: c.id, slot: RING_SLOTS[i % RING_SLOTS.length] }));
+}
+
 /**
  * covers 画圈不连线（大纲左侧槽）：格 ⇒ 圈住它的那几道（`coveredBy` 是 pb 算的，连底下整棵）。
  * 只写了 `project` 的规矩不画圈（在它那一格标「管全部」）；圈住的格才有一项。
  */
 export function ringsOf(slice: Pick<PlanSlice, "cells">): Map<string, Ring[]> {
-  const rules = slice.cells.filter((c) => c.covers.some((x) => x !== "project")).map((c) => c.id);
-  const slot = new Map(rules.map((r, i) => [r, RING_SLOTS[i % RING_SLOTS.length]]));
+  const all = ringRules(slice);
+  const rules = all.map((g) => g.rule);
+  const slot = new Map(all.map((g) => [g.rule, g.slot]));
   const out = new Map<string, Ring[]>();
   for (const c of slice.cells) {
     const rs = rules.filter((r) => c.coveredBy.includes(r)).map((r) => ({ rule: r, slot: slot.get(r) ?? 0 }));

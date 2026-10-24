@@ -61,6 +61,8 @@ export class CellDetail {
     if (cell.children.length > 0) box.appendChild(this.inside(slice, cell));
     const edges = this.edges(slice, cell);
     if (edges) box.appendChild(edges);
+    const rings = this.rings(slice, cell);
+    if (rings) box.appendChild(rings);
     if (cell.files.length > 0) box.appendChild(this.files(slice, cell));
     box.appendChild(this.signs(slice, cell));
     box.appendChild(this.agentView(slice, cell, rev));
@@ -105,6 +107,7 @@ export class CellDetail {
     badge.textContent = cell.status ?? "";
     h.appendChild(badge);
     if (look === "open" && cell.why) h.appendChild(span(cell.why, s.cdWhy));
+    if (cell.covers.includes("project")) h.appendChild(span(copyText("plan.cell.coversAll"), s.cdWhy));
     if (look !== "dropped") {
       const gap = document.createElement("span");
       gap.className = s.cdGap;
@@ -253,9 +256,6 @@ export class CellDetail {
     };
     for (const e of PLAN_EDGE_KINDS) for (const id of cell.edges[e]) add(outLabel(e, wordOf(cell.kind, e)), id);
     for (const e of PLAN_EDGE_KINDS) for (const id of cell.pointedBy[e]) add(inLabel(e, wordOf(byId.get(id)?.kind ?? null, e)), id);
-    // covers 是格身上的一份名单（不是边）：照 pb 列在格的面板上，组名用写它的那一类的词（规矩「管」）；`project` 不是一格，不列。
-    for (const id of cell.covers) if (id !== "project") add(outLabel("with", wordOf(cell.kind, "with")), id);
-    for (const id of cell.coveredBy) add(inLabel("with", wordOf(byId.get(id)?.kind ?? null, "with")), id);
     if (groups.size === 0) return null;
     const sec = section(copyText("plan.cell.edges"));
     for (const [label, cells] of groups) {
@@ -265,6 +265,30 @@ export class CellDetail {
       for (const c of cells) g.appendChild(this.cellLine(slice, c));
       sec.appendChild(g);
     }
+    return sec;
+  }
+
+  /**
+   * 圈：covers 是格身上的一份名单（不是边），照 pb 列在格的面板上 —— 圈住它的（`coveredBy`，pb 算的）· 它圈住的（`covers`，写的）；
+   * 写了 `project` ⇒ 那一项写「管全部」。两样都空不出。
+   */
+  private rings(slice: PlanSlice, cell: PlanCell): HTMLElement | null {
+    const byId = cellIndex(slice);
+    const inside = cell.coveredBy.map((id) => byId.get(id)).filter((c): c is PlanCell => c !== undefined);
+    const outs = cell.covers.filter((id) => id !== "project").map((id) => byId.get(id)).filter((c): c is PlanCell => c !== undefined);
+    const all = cell.covers.includes("project");
+    if (inside.length === 0 && outs.length === 0 && !all) return null;
+    const sec = section(copyText("plan.cell.rings"));
+    const group = (word: string, cells: PlanCell[], extra?: HTMLElement): void => {
+      const g = document.createElement("div");
+      g.className = s.cdGroup;
+      g.appendChild(span(copyText("plan.edge.group", { word, n: cells.length + (extra ? 1 : 0) }), s.cdGroupHead));
+      if (extra) g.appendChild(extra);
+      for (const c of cells) g.appendChild(this.cellLine(slice, c));
+      sec.appendChild(g);
+    };
+    if (inside.length > 0) group(copyText("plan.ring.in"), inside);
+    if (outs.length > 0 || all) group(copyText("plan.ring.out"), outs, all ? span(copyText("plan.cell.coversAll"), s.cdMuted) : undefined);
     return sec;
   }
 
@@ -316,9 +340,10 @@ export class CellDetail {
       row.dataset.pending = "true";
       const h = document.createElement("div");
       h.className = s.cdSignHead;
+      h.appendChild(span(copyText("plan.sign.pending"), s.cdCounts));
       const src = p.source;
       if (src) h.appendChild(link(labelOf(slice, src), () => this.host.select(src)));
-      if (p.value) h.appendChild(span(p.value, s.cdCounts));
+      if (p.value) h.appendChild(span(p.value));
       row.appendChild(h);
       if (p.whyNot) row.appendChild(span(p.whyNot, s.cdSignWhy));
       sec.appendChild(row);
@@ -340,7 +365,7 @@ export class CellDetail {
       h.appendChild(span(g.atText ?? ""));
       if (g.by) h.appendChild(this.host.who(g.by, true));
       const via = g.via;
-      if (via) h.appendChild(link(labelOf(slice, via), () => this.host.select(via)));
+      if (via) h.appendChild(link(copyText("plan.sign.via", { cell: labelOf(slice, via) }), () => this.host.select(via)));
       const r = document.createElement("div");
       r.className = s.cdSignWhy;
       r.append(...this.refText(slice, g.reason ?? "", g.refs));
