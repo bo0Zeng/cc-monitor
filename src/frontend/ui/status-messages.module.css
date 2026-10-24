@@ -99,12 +99,10 @@
   }
 
   .smText {
+    composes: one-line from global;
     flex: 1;
     min-width: 0;
-    overflow: hidden;
     color: var(--text);
-    white-space: nowrap;
-    text-overflow: ellipsis;
   }
 
   .smMore {

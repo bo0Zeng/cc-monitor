@@ -97,7 +97,7 @@ export class AccountChip {
     btn.appendChild(iconSpan);
     this.iconEl = iconSpan;
     this.labelSpan = document.createElement("span");
-    this.labelSpan.className = "status-account-label";
+    this.labelSpan.className = "status-account-label one-line";
     btn.appendChild(this.labelSpan);
     this.sessionEl = document.createElement("span");
     this.sessionEl.className = s.acctChipSession;

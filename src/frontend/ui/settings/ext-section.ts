@@ -394,7 +394,7 @@ export class ExtSection {
     head.append(el("span", "", copyText("extPage.table.headName")), el("span", "", copyText("extPage.table.headKind")), el("span", "", copyText("extPage.table.headAbout")));
     const cols = el("span", "ext-dots");
     for (const m of list.machines) {
-      const c = el("span", m.reachable ? "ext-col" : "ext-col is-offline", machineName(m));
+      const c = el("span", m.reachable ? "ext-col one-line" : "ext-col one-line is-offline", machineName(m));
       c.title = machineName(m);
       cols.appendChild(c);
     }
@@ -433,7 +433,7 @@ export class ExtSection {
     const line = el("button", "ext-row");
     line.type = "button";
     line.dataset.key = `${r.kind}/${r.name}`;
-    const name = el("span", "ext-name", r.name);
+    const name = el("span", "ext-name one-line", r.name);
     if (r.new) name.appendChild(el("span", "ext-new", copyText("extPage.row.new")));
     if (r.builtin !== null || r.note !== null) {
       const mark = el("span", "ext-note-mark");
@@ -445,7 +445,7 @@ export class ExtSection {
     }
     line.appendChild(name);
     line.appendChild(el("span", "ext-kind", kindText(r)));
-    line.appendChild(el("span", "ext-about", r.about ?? ""));
+    line.appendChild(el("span", "ext-about one-line", r.about ?? ""));
     const dots = el("span", "ext-dots");
     r.cells.forEach((c, i) => {
       const m = list.machines[i];

@@ -42,10 +42,8 @@
   }
 
   .foldSummary {
+    composes: one-line from global;
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
     color: var(--text-2);
     font-size: var(--font-size-small);
   }

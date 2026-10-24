@@ -53,18 +53,15 @@
   }
 
   .npTitle {
+    composes: one-line from global;
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 
   .npL2 {
+    composes: one-line from global;
     margin-top: var(--space-1);
-    overflow: hidden;
     color: var(--text-2);
     font-size: var(--font-size-small);
-    white-space: nowrap;
-    text-overflow: ellipsis;
   }
 
   .npCode {

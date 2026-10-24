@@ -86,10 +86,12 @@ describe("换号条长字截断", () => {
     return out;
   };
 
-  it("★ 号名那一段与原因那一段：超出藏起来 · 省略号 · 能缩到比字窄；装它们的那一格也能缩", () => {
-    for (const sel of [".acctSessStripText > .acctSessStripMove", ".acctSessStripText > .acctSessStripWhy"]) {
+  it("★ 号名那一段与原因那一段：单行省略（one-line）· 能缩到比字窄；装它们的那一格也能缩", () => {
+    for (const cls of ["acctSessStripMove", "acctSessStripWhy"]) {
+      expect(css(`.${cls}`).get("composes"), cls).toBe("one-line from global");
+      const sel = `.acctSessStripText > .${cls}`;
       const d = css(sel);
-      expect([d.get("overflow"), d.get("text-overflow"), d.get("min-width")], sel).toEqual(["hidden", "ellipsis", "0"]);
+      expect(d.get("min-width"), sel).toBe("0");
       expect(d.get("flex"), sel).toMatch(/^0 [1-9]\d* auto$/);
     }
     expect(css(".acctSessStripText").get("min-width")).toBe("0");

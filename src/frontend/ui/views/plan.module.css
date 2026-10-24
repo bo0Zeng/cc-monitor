@@ -140,18 +140,16 @@
   }
 
   .pvAutoFail {
+    composes: one-line from global;
     flex: none;
     max-width: 260px;
     padding: 0 var(--space-4);
-    overflow: hidden;
     border-left: 3px solid var(--error);
     border-radius: var(--radius-s);
     background: var(--bg-2);
     color: var(--error-text);
     font-size: var(--font-size-small);
     line-height: 22px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .pvSub {
@@ -346,10 +344,9 @@
   }
 
   .pvTt {
+    composes: one-line from global;
     flex: 0 1 auto;
     min-width: 4em;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 
   .pvRow[data-look="done"] .pvTt {
@@ -407,8 +404,7 @@
   }
 
   .pvOwnerText {
-    overflow: hidden;
-    text-overflow: ellipsis;
+    composes: one-line from global;
   }
 
   .pvOwnerMt {
@@ -609,11 +605,9 @@
   }
 
   .pvSignWhy {
+    composes: one-line from global;
     margin-top: 1px;
-    overflow: hidden;
     color: var(--text-2);
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
 

@@ -443,7 +443,7 @@ export class AccountsSection {
       line1.appendChild(t);
     }
     const line2 = document.createElement("div");
-    line2.className = "acct-row-kind";
+    line2.className = "acct-row-kind one-line";
     line2.textContent = kindLine(a, waiting);
     who.append(line1, line2);
 

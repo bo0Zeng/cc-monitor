@@ -80,14 +80,14 @@ export function buildStepLine(name: string, step: ToolStep | undefined, call?: s
   tool.className = "step-tool";
   tool.textContent = step?.tool ?? name;
   const arg = document.createElement("span");
-  arg.className = "step-arg";
+  arg.className = "step-arg one-line";
   const a = step?.arg ?? "";
   // 不挂 `title`：展开那一步就看得到全文；属性里的 `<` `>` 各引擎序列化也不一样（秤 2 的 DOM 指纹按引擎对拍）。
   arg.textContent = step?.path ? middleEllipsis(a) : a;
   row.append(ic, tool, arg);
   if (step?.note) {
     const note = document.createElement("span");
-    note.className = "step-note";
+    note.className = "step-note one-line";
     note.textContent = step.note;
     row.appendChild(note);
   }
@@ -119,7 +119,7 @@ export function buildThinkingLine(label: string, preview: string): HTMLElement {
   tool.className = "step-tool";
   tool.textContent = label;
   const p = document.createElement("span");
-  p.className = "step-preview";
+  p.className = "step-preview one-line";
   p.textContent = preview;
   row.append(ic, tool, p);
   return row;

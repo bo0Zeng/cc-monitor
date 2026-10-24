@@ -232,9 +232,6 @@
 .tab-title {
   flex: 1 1 auto;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .tab-proj {
@@ -366,9 +363,6 @@
 }
 
 .agent-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   min-width: 0;
   flex: 1;
 }
@@ -391,9 +385,6 @@
 .agent-last {
   flex: none;
   max-width: 40%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: var(--font-size-xs);
   color: var(--text-faint);
 }
@@ -591,9 +582,6 @@
   gap: 6px;
   pointer-events: none;
   max-width: 240px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
   padding: 4px 10px;
   background: var(--card);
   color: var(--text);
@@ -991,9 +979,6 @@
 
 .card-slash .slash-args {
   color: var(--text-2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   flex: 1;
   min-width: 0;
 }
@@ -1285,9 +1270,6 @@
   margin: 4px 0;
   color: var(--text-2);
   font-size: var(--font-size-xs);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* 认不出的那一行（通用记录 `unread`）：同重试细条（左 2px 琥珀），默认折起；展开是原文摘录 ＋［复制详情］。 */
@@ -1303,9 +1285,6 @@
 
 .card-unread > summary {
   cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .card-unread-ts {
@@ -1548,10 +1527,7 @@
 }
 
 .proc-text {
-  overflow: hidden;
   min-width: 0;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 .proc-line .proc-fails {
@@ -1723,9 +1699,6 @@
   font-size: var(--font-size-small);
   color: var(--text-2);
   user-select: none;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* 过程里的一步一行：28 高 · 图标 16 · 工具名 600 · 主参数等宽一行 · 说明 · 右侧小字。没有展开记号（点整行展开）。 */
@@ -1782,31 +1755,22 @@
 
 .step-arg {
   min-width: 0;
-  overflow: hidden;
   color: var(--text);
   font-family: var(--font-mono);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .step-preview {
   min-width: 0;
-  overflow: hidden;
   color: var(--text-2);
   font-family: var(--font-prose);
   font-style: italic;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .step-note {
   flex: none;
   max-width: 30%;
   margin-left: auto;
-  overflow: hidden;
   color: var(--text-2);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .step-line[data-state="awaiting"] .step-note {
@@ -2120,13 +2084,6 @@
   gap: 8px;
 }
 
-.status-msg {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* 状态栏左边那一段空白：把这个会话的几枚与命令顶到右边。 */
 .status-sp {
   flex: 1;
@@ -2291,17 +2248,8 @@
   color: var(--text-faint);
 }
 
-.tasks-subject {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .tasks-now {
-  overflow: hidden;
   color: var(--text-2);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .tasks-item.status-completed,
@@ -2380,9 +2328,6 @@
   font: inherit;
   padding: 4px 16px;
   cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* 「这一条跳不过去」的变灰。原来住在 `jumpToUserInput` 里的 `row.style.opacity = "0.55"`。
@@ -2571,7 +2516,6 @@
   flex: 0 0 auto;
   min-width: 0;
   max-width: 50%;
-  overflow: hidden;
   padding: 0;
   border: 0;
   background: transparent;
@@ -2579,8 +2523,6 @@
   font: inherit;
   font-weight: 600;
   text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   cursor: text;
 }
 
