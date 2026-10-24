@@ -781,14 +781,24 @@ fn the_dry_run_judges_the_base_url_too() {
     ok(&t, "accounts-init", json!({ "name": "lab" }));
     let dry = |b: &str| json!({ "name": "k", "kind": "api-key", "baseUrl": b, "dryRun": true });
     let mut said = Vec::new();
-    for bad in ["ftp://x.test", "not a url", "http://api.example.test", "https://x.test/?q=1"] {
+    for bad in [
+        "ftp://x.test",
+        "not a url",
+        "http://api.example.test",
+        "https://x.test/?q=1",
+    ] {
         let e = call(&t, "accounts-add", dry(bad)).unwrap_err();
         assert_eq!(e.code, "bad_args", "{bad}");
         assert!(!e.message.trim().is_empty(), "{bad}：拒了却没说为什么");
         said.push(e.message);
     }
     assert_ne!(said[0], said[2], "明文非回环与协议不对说成了同一句");
-    for good in ["", "   ", "https://api.example.test/v1", " http://127.0.0.1:11434 "] {
+    for good in [
+        "",
+        "   ",
+        "https://api.example.test/v1",
+        " http://127.0.0.1:11434 ",
+    ] {
         ok(&t, "accounts-add", dry(good));
     }
     assert!(!t.exists(".cc-monitor/accounts/k"));
