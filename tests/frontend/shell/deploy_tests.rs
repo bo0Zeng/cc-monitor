@@ -245,10 +245,9 @@ fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
         rel.contains("run: bash tests/scripts/re-embed.sh --build-only"),
         "`release.yml` 里没有一步（非注释行）调 `bash tests/scripts/re-embed.sh --build-only` —— 交叉编译不经那条配方了"
     );
-    let reembed = std::fs::read_to_string(
-        guard_core::addr::repo_root().join("tests/scripts/re-embed.sh"),
-    )
-    .expect("读不到 re-embed.sh");
+    let reembed =
+        std::fs::read_to_string(guard_core::addr::repo_root().join("tests/scripts/re-embed.sh"))
+            .expect("读不到 re-embed.sh");
     let targets: Vec<&str> = reembed
         .lines()
         .find_map(|l| l.strip_prefix("REEMBED_TARGETS=("))
