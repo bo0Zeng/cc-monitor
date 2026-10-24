@@ -118,10 +118,6 @@ fn old_mobile_name() -> String {
     ["a", "term"].concat()
 }
 
-/// 手机那棵树里留着旧名的唯一一份：它钉的就是「远端那层旧目录的字面不许回来」，必须写出那两个字面。
-const OLD_MOBILE_NAME_PIN: &str =
-    "src/mobile/app/src/test/kotlin/com/ccmonitor/mobile/ssh/NamespaceLiteralScanTest.kt";
-
 /// `line` 里有没有旧名（不分大小写；`highwatermark` 这个词里恰好带着它，不算）。
 fn says_old_mobile_name(line: &str, old: &str) -> bool {
     line.to_lowercase()
@@ -147,9 +143,6 @@ fn the_mobile_tree_never_says_the_old_product_name() {
     );
     let mut hits = Vec::new();
     for (rel, text) in mobile {
-        if rel == OLD_MOBILE_NAME_PIN {
-            continue;
-        }
         for (i, line) in text.lines().enumerate() {
             if says_old_mobile_name(line, &old) {
                 hits.push(format!("{rel}:{}: {}", i + 1, line.trim()));

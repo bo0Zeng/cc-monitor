@@ -471,7 +471,7 @@ class SharedScannerGateTest {
             listOf(
                 SHARED_IMPL,
                 "app/src/test/kotlin/com/ccmonitor/mobile/ssh/HostConnectorGatewayTest.kt",
-                "core-claude/src/test/kotlin/com/ccmonitor/mobile/core/claude/CoreClaudeKnowsNoTmuxTest.kt",
+                "core-ssh/src/test/kotlin/com/ccmonitor/mobile/core/ssh/SessionStateTest.kt",
             )
 
         /** ⑤⑥的扫描面下限（旧 SSH 库那一族的 JVM 单测删掉以后，test 源集剩一百份上下）。 */

@@ -342,7 +342,7 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 
 **谁在守**：`tests/frontend/ui/launch-no-shell-in-ts.vitest.ts`（`src/**/*.ts` 生产段零处 tmux 动词 / `&&` 字面量，不开例外）。
 
-手机那一侧：列会话 · 附着 · 建会话 · 结束 · 抓屏 · 送字都问那台核心（进终端那一行由 `session-open` 渲、手机原样敲进自己的终端），不改会话级选项。守它的是 `src/mobile/app/src/test/kotlin/com/ccmonitor/mobile/ssh/TmuxSurfaceLiteralScanTest.kt`（手机生产代码的字符串字面量里 tmux 锚点零命中）。
+手机那一侧：列会话 · 附着 · 建会话 · 结束 · 抓屏 · 送字都问那台核心（进终端那一行由 `session-open` 渲、手机原样敲进自己的终端），不改会话级选项。
 
 ## 31a. tmux `-t` 目标恒用 `=<名>:` 精确形态——三处同源，禁止任一处退回裸目标（F01 / unify-launch）
 

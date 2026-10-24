@@ -128,7 +128,7 @@ fn both_ends_take_the_backoff_from_here() {
             "{who}开长 exec 时没要拨号核心的进展行（{rel}）"
         );
     }
-    // Kotlin 那一侧：从前那一份（`BackendFeed.Backoff` · `HEALTHY_MS`）的名字一个都不许回来；逐文件扫在 `LinkLayerLivesInTheCoreScanTest`，这里只看落地那一份。
+    // Kotlin 那一侧：从前那一份（`BackendFeed.Backoff` · `HEALTHY_MS`）的名字一个都不许回来（只看落地那一份）。
     let kt = read("src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/ResidentFeed.kt");
     for name in [
         "class Backoff",

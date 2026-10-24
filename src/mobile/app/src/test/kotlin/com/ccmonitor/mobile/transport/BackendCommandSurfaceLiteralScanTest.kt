@@ -22,7 +22,7 @@ import java.io.File
  * | 嵌的 Rust 核心（`resident-client`） | cc-monitor 后端 | 走；Kotlin 这一侧一处都不许有，本文件守的就是它 |
  * | `core-claude/.../command/PipeCommands` | 我们自己的管道 | 合法地不走（`PipeSurfaceLiteralScanTest` 守） |
  *
- * tmux 命令手机一条都不拼（`TmuxSurfaceLiteralScanTest` 守）。锚点表里一个 tmux / 管道 / claude CLI 的词都没有，全是只属于后端的子命令字面。
+ * 锚点表里一个 tmux / 管道 / claude CLI 的词都没有，全是只属于后端的子命令字面。
  *
  * 剥注释 + 抠字面走 [KotlinSourceScanner.literalCorpusOf]。必须是这一支：本文件的锚点就是字面内容
  * （后端子命令只可能写在字面里）；接到 `codeOnlyDroppingLiterals` 上会让锚点全零命中然后全绿。
@@ -206,7 +206,7 @@ class BackendCommandSurfaceLiteralScanTest {
     /**
      * 扫描面：`app` ＋ 每个 `core-…` 模块的 `src/main/kotlin` 与 `src/debug/kotlin` 下的全部 `.kt`。
      *
-     * 比 `TmuxSurfaceLiteralScanTest` 多收了 `src/debug`，是有意的：「临时在 debug 里内联拼一条真命令」
+     * 连 `src/debug` 一起收，是有意的：「临时在 debug 里内联拼一条真命令」
      * 恰恰是这类代码最可能长出来的地方。
      *
      * `src/test` / `androidTest` 不在扫描面内：测试里拿子命令当 fixture 是正常的。
