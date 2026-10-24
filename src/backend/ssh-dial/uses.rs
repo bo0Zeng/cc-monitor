@@ -676,12 +676,13 @@ pub async fn capture(req: &DialRequest) -> Result<Captured, DialFail> {
 
 /// [`open`] 的本体（进展只报进 `stages`，不另交）。
 async fn opening(req: &DialRequest, stages: &StageSink) -> Result<Opened, DialFail> {
-    let mut lease = Lease::take(req, stages, lane_of(req.use_))
-        .await
-        .map_err(|(e, fp)| {
+    let mut lease = match Lease::take(req, stages, lane_of(req.use_)).await {
+        Ok(l) => l,
+        Err((e, fp)) => {
             tracing::error!("dial: 拨号失败: {e}");
-            DialFail::new(e, fp).because(stages.why()).seen(stages)
-        })?;
+            return Err(DialFail::new(e, fp).because(stages.why()).seen(stages));
+        }
+    };
     let fp = lease.linked.fingerprint.clone();
     let fail = |e: Said| DialFail::new(e, fp.clone());
     let held = match req.use_ {
