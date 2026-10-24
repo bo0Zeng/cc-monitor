@@ -18,7 +18,6 @@ import com.ccmonitor.mobile.core.copy.copyText
 /** 一天的分钟。 */
 internal const val DAY_MIN = 1440L
 
-
 /** 视图里这个号那一行（号列表外 ⇒ `null`）。 */
 internal fun rowOf(
     view: RotationViewReply,
