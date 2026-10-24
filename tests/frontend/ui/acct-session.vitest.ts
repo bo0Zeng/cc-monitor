@@ -2,6 +2,9 @@
  * 会话里的换号条与停发提示（`acct-session.ts`）：照这个会话的 `rotation-view`（appStore）画；字是后端写好的。期望手写。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import postcss, { type Rule } from "postcss";
 import { __resetSeenLogForTests, onSessionEntry } from "../../../src/frontend/ui/acct-session";
 import { holdOf } from "../../../src/frontend/ui/rot-words";
 import { copyText } from "../../../src/frontend/ui/copy-table";
@@ -70,5 +73,25 @@ describe("停发提示", () => {
     expect(holdOf(read())).toBeNull();
     expect(holdOf(null)).toBeNull();
     expect(holdOf(hold)).toContain("15:30 lab");
+  });
+});
+
+/** 换号条里长号名 · 长原因不伸出流宽（10-19 用户：文本超出去）。门禁里没有排版引擎，这里钉住让截断成立的那几条样式。 */
+describe("换号条长字截断", () => {
+  const css = (sel: string): Map<string, string> => {
+    const out = new Map<string, string>();
+    postcss.parse(readFileSync(resolve(__dirname, "../../../src/frontend/ui/acct-session.module.css"), "utf8")).walkRules((r: Rule) => {
+      if (r.selectors.map((x) => x.trim()).includes(sel)) r.walkDecls((d) => void out.set(d.prop, d.value));
+    });
+    return out;
+  };
+
+  it("★ 号名那一段与原因那一段：超出藏起来 · 省略号 · 能缩到比字窄；装它们的那一格也能缩", () => {
+    for (const sel of [".acctSessStripText > .acctSessStripMove", ".acctSessStripText > .acctSessStripWhy"]) {
+      const d = css(sel);
+      expect([d.get("overflow"), d.get("text-overflow"), d.get("min-width")], sel).toEqual(["hidden", "ellipsis", "0"]);
+      expect(d.get("flex"), sel).toMatch(/^0 [1-9]\d* auto$/);
+    }
+    expect(css(".acctSessStripText").get("min-width")).toBe("0");
   });
 });

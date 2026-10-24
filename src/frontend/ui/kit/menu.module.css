@@ -91,6 +91,7 @@
     gap: var(--space-4);
     width: 100%;
     height: var(--row-h);
+    overflow: hidden;
     padding: 0 var(--space-4);
     border: none;
     border-radius: var(--radius-m);
@@ -172,16 +173,18 @@
     color: var(--error);
   }
 
+  /* 一项里三段都在项内截断：名字至少留三成宽；挤的时候右边的灰字与摘要按各自长短让，短的（键位 · 读不出）留得住。 */
   .menuLabel {
-    flex: 1;
-    min-width: 0;
+    flex: 1 1 0;
+    min-width: 30%;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   .menuNote {
-    flex: none;
-    max-width: 40%;
+    flex: 0 1 auto;
+    min-width: min(4em, 20%);
+    max-width: 30%;
     overflow: hidden;
     color: var(--text-2);
     font-size: var(--font-size-small);
@@ -189,8 +192,13 @@
   }
 
   .menuDetail {
-    flex: none;
+    flex: 0 1 auto;
+    min-width: min(12ch, 30%);
+    max-width: 45%;
+    overflow: hidden;
     padding-left: var(--space-6);
+    text-align: right;
+    text-overflow: ellipsis;
     color: var(--text-2);
     font-size: var(--font-size-small);
   }
