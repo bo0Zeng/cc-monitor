@@ -618,7 +618,8 @@ impl comms_inward::chan::router::Backends for XferHost {
             .push(("subscribe".into(), serde_json::json!(kind.0)));
         let frame = Item::Frame {
             seq: 1,
-            body: Body(br#"{"got":1,"total":3}"#.to_vec()),
+            // 传输台那一帧原样（`cmd_wire::frame::Transfer`，窗口按类型解）。
+            body: Body(br#"{"id":"xfer-1","got":1,"total":3}"#.to_vec()),
         };
         let end = |v: serde_json::Value| Item::Closed {
             by: By::Peer(Body(serde_json::to_vec(&v).unwrap_or_default())),

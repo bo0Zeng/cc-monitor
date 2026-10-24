@@ -313,7 +313,7 @@ fn link_item(l: inbound_client::Link) -> Item {
 // 传输台那一口：开单 ＋ 进度流
 // ══════════════════════════════════════════════════════════════════
 //
-// 这里只做宿主那几件事：按 `origin` 找那台机器的配置、把载荷当 JSON 读、把传输台的领域话（`sftp_pool::Snap`）翻成通道的格子。
+// 这里只做宿主那几件事：按 `origin` 找那台机器的配置、把载荷当 JSON 读、把传输台那一格（`sftp_pool::Step`）原样装进通道的格子（帧照 `cmd_wire::frame::Transfer` · 收场照 `TransferEnd` 序列化，不手写）。
 // 传输本身（借通道 · 写暂存区 · 续传 · 撤）不在这里。
 
 /// 拒绝的信封：与后端命令的拒绝**同一个形状**（`{"code","message"}`，`backend_route::layer_call_error`
@@ -514,35 +514,22 @@ async fn plan_open(origin: Origin, payload: Body) -> Result<Body, CallError> {
     Ok(Body(b"{}".to_vec()))
 }
 
-/// 一格快照 ⇒ 流里的一格。收场那一格是 `Closed{Peer(结局)}`，其余是 `Frame{seq, {"got","total"}}`。
-fn snap_item(seq: u64, snap: &crate::sftp_pool::Snap) -> Item {
-    use crate::sftp_pool::End;
-    let json = |v: serde_json::Value| Body(serde_json::to_vec(&v).unwrap_or_default());
-    match &snap.end {
-        None => Item::Frame {
-            seq,
-            body: json(serde_json::json!({ "got": snap.got, "total": snap.total })),
+/// 传输台的一格 ⇒ 流里的一格。进度是 `Frame{seq, Transfer}`（后端那一帧原样）；
+/// 收场那一格是 `Closed{Peer(TransferEnd)}`（码 · 复制详情原样，窗口按码换路）。
+fn step_item(seq: u64, step: crate::sftp_pool::Step) -> Item {
+    let bytes = |v: Result<Vec<u8>, serde_json::Error>| Body(v.unwrap_or_default());
+    match step {
+        Ok(t) => match &t.end {
+            None => Item::Frame {
+                seq,
+                body: bytes(serde_json::to_vec(&t)),
+            },
+            Some(end) => Item::Closed {
+                by: By::Peer(bytes(serde_json::to_vec(end))),
+            },
         },
-        Some(End::Done { bytes, sha256 }) => Item::Closed {
-            by: By::Peer(json(
-                serde_json::json!({ "state": "done", "bytes": bytes, "sha256": sha256 }),
-            )),
-        },
-        // 码原样交给窗口（它按码换路）；复制详情原样交给窗口（空 ⇒ 窗口自己写）。缺的格不出。
-        Some(End::Failed { why, code, detail }) => {
-            let mut v = serde_json::json!({ "state": "failed", "why": why });
-            if let Some(c) = code {
-                v["code"] = serde_json::Value::from(c.as_str());
-            }
-            if let Some(d) = detail.as_deref().filter(|d| !d.is_empty()) {
-                v["detail"] = serde_json::Value::from(d);
-            }
-            Item::Closed {
-                by: By::Peer(json(v)),
-            }
-        }
-        Some(End::Cancelled) => Item::Closed {
-            by: By::Peer(json(serde_json::json!({ "state": "cancelled" }))),
+        Err(end) => Item::Closed {
+            by: By::Peer(bytes(serde_json::to_vec(&end))),
         },
     }
 }
@@ -562,10 +549,10 @@ fn transfer_stream(origin: &Origin, id: &str, from: Option<Cursor>) -> BoxStream
         return closed("bad_args", copy_text("rsChanHost.transfer.noResume", &[]));
     }
     match crate::sftp_pool::watch_ticket(origin, id) {
-        Ok(snaps) => Box::pin(
-            snaps
+        Ok(steps) => Box::pin(
+            steps
                 .enumerate()
-                .map(|(i, snap)| snap_item(i as u64 + 1, &snap)),
+                .map(|(i, step)| step_item(i as u64 + 1, step)),
         ),
         Err((code, e)) => closed(code, e),
     }

@@ -5,7 +5,8 @@
 //! 窗口进程经通道说 `call(origin, "transfer-upload" | "transfer-download", …)` 开单、`subscribe(origin, "transfer/<id>")`
 //! 起跑并看进度、停订即撤（**一个字没变**）。那一面的宿主 `chan/host.rs` 把这两条交到这里；
 //! 这里把它们**原样转给本机常驻后端**（`transfer-upload` / `-download` / `-start` / `-stop`，后端 `control/transfer.rs`），
-//! 再把后端推上来的 `transfer` 帧（经本机那条流的吸收点，[`deliver`]）翻成窗口认的那几格（[`Snap`]）。
+//! 再把后端推上来的 `transfer` 帧（经本机那条流的吸收点，[`deliver`]）**原样**交给看它的那条流（[`Step`]：
+//! 后端那一帧 `cmd_wire::frame::Transfer`，或这一侧收场的那一形 `TransferEnd`）—— 不换形、不补格。
 //!
 //! # 🔴 没有退路（`D11`）
 //!
@@ -58,17 +59,40 @@ pub fn is_transfer_op(op: &str) -> bool {
     TRANSFER_OPS.contains(&op)
 }
 
-/// 一趟传输**此刻**的样子（流里的每一格都是一整份快照，不是增量 ⇒ 合并掉中间几格不丢信息）。
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct Snap {
-    pub got: u64,
-    pub total: u64,
-    /// `Some` ⇒ 收场了（流的最后一格）。
-    pub end: Option<End>,
-}
-
 /// 怎么收场的（传输台的那一形，`transfer.end`）。
 pub use cmd_wire::frame::TransferEnd as End;
+
+/// 流里的一格：`Ok` ＝ 本机后端推上来的那一帧原样（带 `end` 的那一帧是最后一格）；
+/// `Err` ＝ 这一侧收场（流断了 · 起跑那一问没成），只有结局、没有进度可说。
+/// 每一格都是一整份快照，不是增量 ⇒ 合并掉中间几格不丢信息。
+pub type Step = Result<cmd_wire::frame::Transfer, End>;
+
+/// 这一格的结局（`None` ⇒ 还在传）。
+pub fn end_of(s: &Step) -> Option<&End> {
+    match s {
+        Ok(t) => t.end.as_ref(),
+        Err(e) => Some(e),
+    }
+}
+
+/// 这一格是不是最后一格。
+pub fn is_last(s: &Step) -> bool {
+    end_of(s).is_some()
+}
+
+/// 中继手上那一格：后端一帧还没推 ⇒ `None`（流里不出格，不拿 0 / 0 充「此刻」）。
+type Held = watch::Sender<Option<Step>>;
+
+/// 这一侧收场（已经收场的不动）。
+fn end_here(state: &Held, why: String) {
+    state.send_if_modified(|s| {
+        if s.as_ref().is_some_and(is_last) {
+            return false;
+        }
+        *s = Some(Err(failed(why)));
+        true
+    });
+}
 
 /// 壳这一侧收场的失败（流断了 · 开跑那一问没成）：只有那一句，详情由窗口进程自己写。
 pub(crate) fn failed(why: String) -> End {
@@ -84,7 +108,7 @@ struct Relay {
     origin: crate::origin::Origin,
     /// 开它的那条本机流（断了就收场；撤的时候经它发 `transfer-stop`）。
     owner: Weak<InboundClient>,
-    state: Arc<watch::Sender<Snap>>,
+    state: Arc<Held>,
     watched: bool,
 }
 
@@ -243,7 +267,7 @@ async fn relay<R: cmd_wire::files::Call<Reply = cmd_wire::transfer::TransferOpen
     })?;
     // 一组里开了单的每一项各登记一个中继（没开成 · 跳过的那几项没有票）。
     for id in opened.items.iter().filter_map(|it| it.id.as_deref()) {
-        let (tx, _rx) = watch::channel::<Snap>(Snap::default());
+        let (tx, _rx) = watch::channel::<Option<Step>>(None);
         relays().insert(
             id.to_string(),
             Relay {
@@ -261,7 +285,7 @@ async fn relay<R: cmd_wire::files::Call<Reply = cmd_wire::transfer::TransferOpen
 /// 只摘**自己那一份**：本机后端重起之后票号从头数，同一个号可能已经是新开的那一趟（旧流的守卫晚一步才落）。
 struct WatchGuard {
     id: String,
-    state: Arc<watch::Sender<Snap>>,
+    state: Arc<Held>,
     owner: Weak<InboundClient>,
 }
 
@@ -275,7 +299,7 @@ impl Drop for WatchGuard {
                 g.remove(&self.id);
             }
         }
-        if self.state.borrow().end.is_some() {
+        if self.state.borrow().as_ref().is_some_and(is_last) {
             return;
         }
         let (Some(client), Ok(rt)) = (self.owner.upgrade(), tokio::runtime::Handle::try_current())
@@ -294,7 +318,7 @@ impl Drop for WatchGuard {
     }
 }
 
-/// **起跑并看**：`id` 那一趟的快照流（第一格是此刻，之后每变一次出一格，收场那一格是最后一格）。
+/// **起跑并看**：`id` 那一趟的快照流（第一格是后端推上来的第一帧或此刻手上那一帧，之后每变一次出一格，收场那一格是最后一格）。
 ///
 /// - 没有这张票 / 票不是这台机器的 ⇒ `Err(("no-such-transfer", …))`（宿主原位说出来）；
 /// - 已经有人在看（第二次订阅）⇒ `Err(("already-watched", …))` —— 一趟传输一个看的人，撤的语义才不含糊。
@@ -303,7 +327,7 @@ impl Drop for WatchGuard {
 pub fn watch_ticket(
     origin: &crate::origin::Origin,
     id: &str,
-) -> Result<futures::stream::BoxStream<'static, Snap>, (&'static str, String)> {
+) -> Result<futures::stream::BoxStream<'static, Step>, (&'static str, String)> {
     let (state, owner) = {
         let mut g = relays();
         let Some(r) = g.get_mut(id).filter(|r| r.origin == *origin) else {
@@ -329,16 +353,14 @@ pub fn watch_ticket(
         let id = id.to_string();
         tokio::spawn(async move {
             let Some(client) = owner.upgrade() else {
-                state
-                    .send_modify(|s| s.end = Some(failed(copy_text("reason.local.linkLost", &[]))));
+                end_here(&state, copy_text("reason.local.linkLost", &[]));
                 return;
             };
             if let Err(e) = client
                 .call(TRANSFER_START, serde_json::json!({ "id": id }), CALL_BUDGET)
                 .await
             {
-                let why = said(&e).1;
-                state.send_modify(|s| s.end = Some(failed(why)));
+                end_here(&state, said(&e).1);
             }
         });
     }
@@ -354,31 +376,35 @@ pub fn watch_ticket(
             if over {
                 return None;
             }
-            if !first && rx.changed().await.is_err() {
-                // 发送端在守卫里 ⇒ 这一支到不了；到了就当它收场了。
-                let snap = Snap {
-                    end: Some(failed(copy_text("rsSftpPool.watch.lost", &[]))),
-                    ..Snap::default()
-                };
-                return Some((snap, (rx, guard, false, true)));
+            // 第一格：手上有就是它；后端一帧还没推（`None`）⇒ 等第一帧。之后每变一次出一格。
+            let mut wait = !first;
+            loop {
+                if wait && rx.changed().await.is_err() {
+                    // 发送端在守卫里 ⇒ 这一支到不了；到了就当它收场了。
+                    let lost = Err(failed(copy_text("rsSftpPool.watch.lost", &[])));
+                    return Some((lost, (rx, guard, false, true)));
+                }
+                wait = true;
+                let held = rx.borrow_and_update().clone();
+                if let Some(step) = held {
+                    let over = is_last(&step);
+                    return Some((step, (rx, guard, false, over)));
+                }
             }
-            let snap = rx.borrow_and_update().clone();
-            let over = snap.end.is_some();
-            Some((snap, (rx, guard, false, over)))
         },
     )))
 }
 
-/// 本机那条流上来了一帧 `transfer`（吸收点调）。**从不阻塞**：只改那一格的快照（`watch` 合并）。
-/// 不在册的 id（早就停订了）⇒ 丢掉。
-pub(crate) fn deliver(id: &str, got: u64, total: u64, end: Option<End>) {
-    if let Some(r) = relays().get(id) {
-        r.state.send_modify(|s| {
-            s.got = got;
-            s.total = total;
-            if end.is_some() {
-                s.end = end;
+/// 本机那条流上来了一帧 `transfer`（吸收点调）。**从不阻塞**：那一帧原样成为那一格（`watch` 合并）；
+/// 已经收场的那一趟不再动。不在册的 id（早就停订了）⇒ 丢掉。
+pub(crate) fn deliver(t: cmd_wire::frame::Transfer) {
+    if let Some(r) = relays().get(&t.id) {
+        r.state.send_if_modified(|s| {
+            if s.as_ref().is_some_and(is_last) {
+                return false;
             }
+            *s = Some(Ok(t));
+            true
         });
     }
 }
@@ -389,11 +415,7 @@ pub(crate) fn fail_owned_by(client: &Arc<InboundClient>, why: &str) {
     for r in relays().values() {
         if r.owner.upgrade().is_some_and(|o| Arc::ptr_eq(&o, client)) || r.owner.strong_count() == 0
         {
-            r.state.send_modify(|s| {
-                if s.end.is_none() {
-                    s.end = Some(failed(why.to_string()));
-                }
-            });
+            end_here(&r.state, why.to_string());
         }
     }
 }

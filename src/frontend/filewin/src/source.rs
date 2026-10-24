@@ -1195,7 +1195,6 @@ pub async fn watch_coded(
     use comms_inward::chan::wire::{By, Comms, Item, Kind, Sub};
     use futures::StreamExt as _;
     let mut sub = line.subscribe(origin, &Kind(kind.to_string()), None, WATCH_CREDIT);
-    let json = |b: &[u8]| serde_json::from_slice::<serde_json::Value>(b).unwrap_or_default();
     loop {
         let next = tokio::select! {
             i = sub.next() => i,
@@ -1208,16 +1207,18 @@ pub async fn watch_coded(
             return Err(plain(copy_text("rsFilewinSource.watch.cutShort", &[])));
         };
         match item {
+            // 进度格是传输台那一帧原样（`cmd_wire::frame::Transfer`）：按类型解，缺一格 ⇒ 这一趟当场失败（不补 0）。
             Item::Frame { body, .. } => {
-                let v = json(&body.0);
-                on(
-                    v.get("got")
-                        .and_then(serde_json::Value::as_u64)
-                        .unwrap_or(0),
-                    v.get("total")
-                        .and_then(serde_json::Value::as_u64)
-                        .unwrap_or(0),
-                );
+                match serde_json::from_slice::<cmd_wire::frame::Transfer>(&body.0) {
+                    Ok(t) => on(t.got, t.total),
+                    Err(e) => {
+                        sub.stop();
+                        return Err(plain(copy_text(
+                            "rsFilewinSource.watch.localBreak",
+                            &[("why", &e.to_string())],
+                        )));
+                    }
+                }
                 sub.want(1);
             }
             Item::Gap { .. } | Item::Seen { .. } => sub.want(1),
@@ -1230,37 +1231,37 @@ pub async fn watch_coded(
                     &[("why", &format!("{:?}", why))],
                 )))
             }
+            // 收场那一格按 `cmd_wire::frame::TransferEnd` 解；解不出的是宿主原位说的拒绝（`{"code","message"}`）。
             Item::Closed { by: By::Peer(body) } => {
-                let v = json(&body.0);
-                let text = |k: &str| v.get(k).and_then(serde_json::Value::as_str).unwrap_or("");
-                return match text("state") {
-                    "done" => Ok(Watched {
-                        bytes: v
-                            .get("bytes")
-                            .and_then(serde_json::Value::as_u64)
-                            .unwrap_or(0),
-                        sha256: v.get("sha256").and_then(|s| s.as_str()).map(str::to_string),
-                    }),
-                    "failed" => {
-                        let said = text("why").to_string();
-                        let detail = text("detail");
-                        let mut f = if detail.trim().is_empty() {
-                            failed_here(said, origin, kind, None)
-                        } else {
-                            Failed {
+                use cmd_wire::frame::TransferEnd;
+                return match serde_json::from_slice::<TransferEnd>(&body.0) {
+                    Ok(TransferEnd::Done { bytes, sha256 }) => Ok(Watched { bytes, sha256 }),
+                    Ok(TransferEnd::Failed { why, code, detail }) => {
+                        let detail = detail.filter(|d| !d.trim().is_empty());
+                        let mut f = match detail {
+                            None => failed_here(why, origin, kind, None),
+                            Some(detail) => Failed {
                                 code: None,
-                                said,
-                                detail: detail.to_string(),
-                            }
+                                said: why,
+                                detail,
+                            },
                         };
-                        f.code = v.get("code").and_then(|c| c.as_str()).map(str::to_string);
+                        f.code = code;
                         Err(f)
                     }
-                    "cancelled" => Err(plain(super::transfer::CANCELLED.to_string())),
-                    _ => Err(plain(comms_inward::chan::said::refused(
-                        text("message"),
-                        origin,
-                    ))),
+                    Ok(TransferEnd::Cancelled) => {
+                        Err(plain(super::transfer::CANCELLED.to_string()))
+                    }
+                    Err(_) => {
+                        let v = serde_json::from_slice::<serde_json::Value>(&body.0)
+                            .unwrap_or_default();
+                        Err(plain(comms_inward::chan::said::refused(
+                            v.get("message")
+                                .and_then(serde_json::Value::as_str)
+                                .unwrap_or(""),
+                            origin,
+                        )))
+                    }
                 };
             }
         }

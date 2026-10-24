@@ -62,7 +62,7 @@ pub(crate) fn route(
         },
         Frame::LinkEnd(e) if local => crate::link_mux::deliver_end(&e.link, e.error),
         // 传输台住本机后端：进度 / 终局交中继（从不阻塞）。
-        Frame::Transfer(t) if local => crate::sftp_pool::deliver(&t.id, t.got, t.total, t.end),
+        Frame::Transfer(t) if local => crate::sftp_pool::deliver(t),
         // 测试连接在本机常驻后端里跑：那一格原样交中继（界面严格收）。
         Frame::Probe(p) if local => crate::probe_relay::deliver(&p.ticket, p.cell.to_string()),
         Frame::LinkData(_) | Frame::LinkEnd(_) | Frame::Transfer(_) | Frame::Probe(_) => {
