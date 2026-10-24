@@ -3424,12 +3424,6 @@
       "zh": "# {text}",
       "args": ["text"]
     },
-    "cards.queuedUser.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "用户 · 排队时发出",
-      "args": []
-    },
     "record.unread.unknownType": {
       "kind": "body",
       "role": "说明",

@@ -306,7 +306,6 @@
             "untilLine": 7
           }
         ],
-        "landed": [],
         "line": 0,
         "peers": 0,
         "phase": "idle",
@@ -355,7 +354,6 @@
             "untilLine": null
           }
         ],
-        "landed": [],
         "line": 8,
         "peers": 0,
         "phase": "idle",

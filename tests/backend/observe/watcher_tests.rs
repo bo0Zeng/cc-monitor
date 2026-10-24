@@ -4056,30 +4056,24 @@ fn main_and_sub_run_lines_carry_their_own_reply_key() {
     assert_eq!(got, vec!["line m1", "line m2"]);
 }
 
-/// 实时流：排队那一句的 `record.at` 是打字时刻（打字那一行早先在同一份记录里流过）；打字那一行自己不出成品；
-/// 没有自己身份的那一条 `id` 按行的起点偏移合成。打字时刻表按会话记录分：别的会话里同一句话配不上。
+/// 实时流：一轮中途人插的那一句只认 `attachment queued_command` 那一行 —— 它出一条人说的，id 是它自己的 uuid、
+/// 时刻是它自己的 timestamp；`queue-operation` 的 `enqueue` · `remove` 两行都不出成品（否则同一句上屏两次）。
 #[test]
-fn a_queued_line_on_the_live_stream_carries_the_moment_it_was_typed() {
+fn a_mid_turn_line_on_the_live_stream_is_said_once_with_its_own_id_and_moment() {
     let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(PathBuf::from("/p"));
     let enq = r#"{"type":"queue-operation","operation":"enqueue","timestamp":"2026-01-02T03:00:00.000Z","content":"also this"}"#;
+    let att = r#"{"type":"attachment","parentUuid":"a1","attachment":{"type":"queued_command","prompt":"also this","commandMode":"prompt","origin":{"kind":"human"}},"uuid":"q1","timestamp":"2026-01-02T03:00:05.000Z"}"#;
     let rem = r#"{"type":"queue-operation","operation":"remove","timestamp":"2026-01-02T03:02:00.000Z","content":"also this"}"#;
-    for (i, (path, raw, start)) in [
-        ("/p/a.jsonl", enq, 0),
-        ("/p/a.jsonl", rem, 300),
-        ("/p/b.jsonl", rem, 0),
-    ]
-    .into_iter()
-    .enumerate()
-    {
+    for (i, (raw, start)) in [(enq, 0), (att, 100), (rem, 300)].into_iter().enumerate() {
         let line = ReadLine {
             seq: i as u64,
             raw: raw.to_string(),
             byte_offset: 0,
             start,
         };
-        send_line("s", path, line, &mut state, &mut sink, false);
+        send_line("s", "/p/a.jsonl", line, &mut state, &mut sink, false);
     }
     let mut got = Vec::new();
     while let Ok(f) = rx.try_recv() {
@@ -4091,8 +4085,8 @@ fn a_queued_line_on_the_live_stream_carries_the_moment_it_was_typed() {
         got,
         vec![
             None,
-            Some(("@300".to_string(), "2026-01-02T03:00:00.000Z".to_string())),
-            Some(("@0".to_string(), "2026-01-02T03:02:00.000Z".to_string())),
+            Some(("q1".to_string(), "2026-01-02T03:00:05.000Z".to_string())),
+            None,
         ]
     );
 }
