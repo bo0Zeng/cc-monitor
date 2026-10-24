@@ -545,14 +545,18 @@ async fn an_absent_resident_is_ensured_then_attached() {
     let (r, cells) = cells_of(&args(), &fake).await;
     assert_eq!(
         fake.words(),
-        vec!["--resident-attach", "--resident-ensure", "--resident-attach"]
+        vec![
+            "--resident-attach",
+            "--resident-ensure",
+            "--resident-attach"
+        ]
     );
     assert_eq!(cells, vec![reached_ssh(), reached_hello()]);
     assert_eq!(r["said"], copy_text("beProbe.test.ok", &[]));
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_backend_without_ping_says_too_old() {
+async fn an_old_backend_without_commands_says_too_old() {
     let fake = Fake::new(vec![Open::Up(Peer::Serve {
         hello: hello("b0", &[], json!([])),
         ping: None,

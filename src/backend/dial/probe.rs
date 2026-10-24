@@ -13,13 +13,14 @@
 
 use copy_core::copy_text;
 use resident_client::client::CallError;
-use resident_client::feed::{self, Boxed, Config, Event, Exec, Feed, Problem, Progress, State, Transport};
+use resident_client::feed::{
+    self, Boxed, Config, Event, Exec, Feed, Problem, Progress, State, Transport,
+};
 use resident_client::watch::Desk;
 use serde_json::{json, Value};
 use ssh_dial::Captured;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::AsyncWriteExt;
 
 use crate::common::cells::{Tone, Words};
 use crate::platform::child::{bounded, Deadline, Until};
@@ -344,8 +345,10 @@ pub(crate) trait Dial: Send + Sync + 'static {
         stages: StageTx,
         progress: Progress,
     ) -> Boxed<'_, Result<Pipe, ssh_dial::DialFail>>;
-    fn capture(&self, req: crate::dial::DialRequest)
-        -> Boxed<'_, Result<Captured, ssh_dial::DialFail>>;
+    fn capture(
+        &self,
+        req: crate::dial::DialRequest,
+    ) -> Boxed<'_, Result<Captured, ssh_dial::DialFail>>;
 }
 
 /// 生产那一侧：拨号核心开一条（`ssh_dial::uses::open`），每过一步把攒下的阶段交出去、报一步进展；
@@ -361,9 +364,12 @@ impl Dial for Real {
     ) -> Boxed<'_, Result<Pipe, ssh_dial::DialFail>> {
         Box::pin(async move {
             let sink = crate::dial::StageSink::new(true);
+            // 收的那一头没了 ⇒ 这一趟已经收场，余下的不必再交。
             let pass = |sink: &crate::dial::StageSink| {
                 for st in sink.drain() {
-                    let _ = stages.send(st);
+                    if stages.send(st).is_err() {
+                        break;
+                    }
                 }
             };
             let opened = ssh_dial::uses::open(&req, &sink, |_| {
@@ -375,11 +381,11 @@ impl Dial for Real {
             let opened = opened?;
             let (up_w, up_r) = tokio::io::duplex(64 * 1024);
             let (mut down_w, down_r) = tokio::io::duplex(256 * 1024);
+            // 对拷完（任一头收了）这一侧的写端随任务一起丢 ⇒ 读的那一头读到 EOF。
             tokio::spawn(async move {
                 opened
                     .pump(up_r, &mut down_w, ssh_dial::uses::Control::none())
                     .await;
-                let _ = down_w.shutdown().await;
             });
             Ok(tokio::io::join(down_r, up_w))
         })
@@ -394,9 +400,11 @@ impl Dial for Real {
 }
 
 /// 握手每一行等多久（同手机：冷启要起常驻、读盘，给足）。比总期限长 ⇒ 卡在握手上的那一趟由总期限收，照最后一步说。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "不是本后端的定时器：交给连常驻那一层（客户端那一侧）当握手每一行的期限；比总期限长，实际由 PROBE_CAP 先收"
+)]
 const HANDSHAKE: Duration = Duration::from_secs(20);
-/// 一次性收全的上限（`--resident-ensure` 只回一行 JSON；上限只防对端吐无穷字节）。
-const CAPTURE_MAX: u64 = 1 << 20;
 
 /// 这一趟里发生的事，按发生的先后进一条通道：拨号核心报的阶段 · 常驻流交给宿主的事。
 enum Ev {
@@ -419,18 +427,21 @@ impl Transport for ProbeLink {
         let mut req = self.stream.clone();
         req.command = command;
         Box::pin(async move {
-            // 报来的阶段原样进同一条通道（先于开成之后的那几件事：开完先等它们交完）。
+            // 报来的阶段原样进同一条通道，先于开成之后的那几件事（开完把还没交的补完）。收的那一头没了 ⇒ 这一趟已经收场，不必再交。
             let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-            let events = self.events.clone();
-            let pass = tokio::spawn(async move {
-                while let Some(st) = rx.recv().await {
-                    if events.send(Ev::Stage(st)).is_err() {
-                        break;
-                    }
+            let opening = self.dial.open(req, tx, progress);
+            tokio::pin!(opening);
+            let mut heard = true;
+            let opened = loop {
+                tokio::select! {
+                    biased;
+                    Some(st) = rx.recv(), if heard => heard = self.events.send(Ev::Stage(st)).is_ok(),
+                    r = &mut opening => break r,
                 }
-            });
-            let opened = self.dial.open(req, tx, progress).await;
-            let _ = pass.await;
+            };
+            while let (true, Ok(st)) = (heard, rx.try_recv()) {
+                heard = self.events.send(Ev::Stage(st)).is_ok();
+            }
             opened.map_err(problem_of)
         })
     }
@@ -516,7 +527,11 @@ async fn run(
     let stream = pick.request("stream", json!({ "stages": true, "probe": true }))?;
     let capture = pick.request(
         "capture",
-        json!({ "probe": true, "capture": { "max_bytes": CAPTURE_MAX } }),
+        // 上限同别的远端一次性收全（`--resident-ensure` 只回一行）；老后端认不得它、掉进流模式 ⇒ 见到 hello 就收（判在连常驻那一层）。
+        json!({ "probe": true, "capture": {
+            "max_bytes": super::remote_ask::PULL_MAX_BYTES,
+            "abort_marker": cmd_wire::dial::OLD_BACKEND_MARKER,
+        } }),
     )?;
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let link = ProbeLink {
