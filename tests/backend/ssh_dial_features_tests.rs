@@ -18,6 +18,19 @@ struct Door {
     shells: Arc<Mutex<Vec<russh::ChannelId>>>,
     /// 有它 ⇒ 收到密码先等它放行再答（判据要停在「认证」那一步之前看进展行）。
     gate: Option<Arc<tokio::sync::Notify>>,
+    /// exec / shell 怎么答。
+    answer: Answer,
+}
+
+/// [`Door`] 怎么答 exec / shell。
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Answer {
+    /// 答应，之后才出字节（OpenSSH 那一形）。
+    Yes,
+    /// 登录照收、通道照开，exec 与 shell 一律回 CHANNEL_FAILURE（共用登录机进程数到上限那一形）。
+    No,
+    /// exec 的输出先到、答应在后（规矩不禁的那一形：答复之前的字节也得交）。
+    TalksFirst,
 }
 
 impl Door {
@@ -89,6 +102,9 @@ impl russh::server::Handler for Door {
         session: &mut russh::server::Session,
     ) -> Result<(), Self::Error> {
         self.note("shell".to_string());
+        if self.answer == Answer::No {
+            return session.channel_failure(channel);
+        }
         self.shells
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -136,8 +152,17 @@ impl russh::server::Handler for Door {
         session: &mut russh::server::Session,
     ) -> Result<(), Self::Error> {
         self.note(format!("exec {}", String::from_utf8_lossy(data)));
-        session.channel_success(channel)?;
-        session.data(channel, b"ran\n".to_vec())?;
+        match self.answer {
+            Answer::No => return session.channel_failure(channel),
+            Answer::TalksFirst => {
+                session.data(channel, b"ran\n".to_vec())?;
+                session.channel_success(channel)?;
+            }
+            Answer::Yes => {
+                session.channel_success(channel)?;
+                session.data(channel, b"ran\n".to_vec())?;
+            }
+        }
         session.exit_status_request(channel, 0)?;
         session.eof(channel)?;
         session.close(channel)
@@ -204,12 +229,19 @@ async fn door_keyed(
     Arc<Mutex<Vec<String>>>,
     Arc<Mutex<Vec<russh::server::Handle>>>,
 ) {
-    door_full(password, key, host_keys, None).await
+    door_full(password, key, host_keys, None, Answer::Yes).await
 }
 
 /// 收密码先等 `gate` 放行的那一台（只要口）。
 async fn door_gated(password: &str, gate: Arc<tokio::sync::Notify>) -> u16 {
-    door_full(Some(password), None, None, Some(gate)).await.0
+    door_full(Some(password), None, None, Some(gate), Answer::Yes)
+        .await
+        .0
+}
+
+/// 收密码、开通道，exec / shell 照 `answer` 答的那一台（只要口）。
+async fn door_answering(password: &str, answer: Answer) -> u16 {
+    door_full(Some(password), None, None, None, answer).await.0
 }
 
 #[allow(clippy::type_complexity)]
@@ -218,6 +250,7 @@ async fn door_full(
     key: Option<russh::keys::PublicKey>,
     host_keys: Option<Vec<russh::keys::PrivateKey>>,
     gate: Option<Arc<tokio::sync::Notify>>,
+    answer: Answer,
 ) -> (
     u16,
     Arc<Mutex<Vec<String>>>,
@@ -235,6 +268,7 @@ async fn door_full(
         log: Arc::clone(&log),
         shells: Arc::default(),
         gate,
+        answer,
     };
     let keys = host_keys.unwrap_or_else(|| {
         vec![russh::keys::PrivateKey::from(
@@ -617,6 +651,57 @@ async fn a_shell_gets_its_pty_and_follows_resizes() {
     assert!(log.contains(&"shell".to_string()), "{log:?}");
     assert!(log.contains(&"resize 120x40".to_string()), "{log:?}");
     assert!(crate::USES.contains(&"shell"));
+}
+
+/// ★ **登录过了、开会话被拒**（共用登录机进程数到上限：sshd 认证照过，exec / shell 回 CHANNEL_FAILURE）：
+/// stream · capture · shell 三种用法的 ack 都是 ok=false、那一句是「登录通过 · 拒绝执行命令」，不是离线、也不是密钥被拒；
+/// 复制详情里有被拒的原话。不挂在一条永远不来字节的通道上。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_login_that_passes_but_refuses_the_session_says_so() {
+    let port = door_answering("p", Answer::No).await;
+    register("refusing-pw", TestCred::Password("p".into()));
+    let refused = copy_core::copy_text("beUses.session.denied", &[]);
+    for use_ in ["stream", "capture", "shell"] {
+        let req = request(serde_json::json!({
+            "host": "127.0.0.1", "port": port, "user": "u", "key_path": "refusing-pw",
+            "use": use_, "command": "ccm", "capture": {"max_bytes": 1024}
+        }));
+        let (ack, ..) = open(req, crate::uses::Control::none()).await;
+        assert_eq!(ack["ok"], false, "{use_}：开会话被拒却回了 ok：{ack}");
+        assert_eq!(ack["error"], refused.as_str(), "{use_}：{ack}");
+        assert_ne!(ack["reason"], "auth", "{use_}：登录是过了的：{ack}");
+        assert!(
+            ack["detail"]
+                .as_str()
+                .is_some_and(|d| d.contains("CHANNEL_FAILURE")),
+            "{use_}：复制详情里要有被拒的原话：{ack}"
+        );
+    }
+}
+
+/// 等那台答应 exec 时，答复前后到的字节一个不丢（输出先到、答应在后那一形也算）：stream 的 ack 之后头一批就是它们，
+/// capture 的结果行里有它们。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_granted_exec_keeps_the_bytes_around_the_reply() {
+    register("granted-pw", TestCred::Password("p".into()));
+    for answer in [Answer::Yes, Answer::TalksFirst] {
+        let port = door_answering("p", answer).await;
+        let req = |use_: &str| {
+            request(serde_json::json!({
+                "host": "127.0.0.1", "port": port, "user": "u", "key_path": "granted-pw",
+                "use": use_, "command": "ccm", "capture": {"max_bytes": 1024}
+            }))
+        };
+        let (ack, mut rd, _up, _run) = open(req("stream"), crate::uses::Control::none()).await;
+        assert_eq!(ack["ok"], true, "{ack}");
+        assert_eq!(read_until(&mut rd, "ran\n").await, "ran\n");
+
+        let (ack, mut rd, _up, _run) = open(req("capture"), crate::uses::Control::none()).await;
+        assert_eq!(ack["ok"], true, "{ack}");
+        let got = line_of(&mut rd).await;
+        assert_eq!(got["stdout"], "ran\n", "{got}");
+        assert_eq!(got["exit_status"], 0, "{got}");
+    }
 }
 
 /// 写的规矩只认宿主装的那一种（[`crate::sftp::WriteRules`]）：没装 ⇒ 一个字节都不许写（缺省宁可写不成）。

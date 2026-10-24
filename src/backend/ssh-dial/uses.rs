@@ -46,6 +46,81 @@ fn exec_half(
     Box::pin(w.exec(true, cmd))
 }
 
+/// 读得出通道下一条消息的那一形（整条通道 · 读半边）；返回的盒子显式 `Send`，理由同 [`exec`]。
+trait Waits: Send {
+    fn next_msg(
+        &mut self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<russh::ChannelMsg>> + Send + '_>>;
+}
+
+impl Waits for russh::Channel<russh::client::Msg> {
+    fn next_msg(
+        &mut self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<russh::ChannelMsg>> + Send + '_>>
+    {
+        Box::pin(self.wait())
+    }
+}
+
+impl Waits for russh::ChannelReadHalf {
+    fn next_msg(
+        &mut self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<russh::ChannelMsg>> + Send + '_>>
+    {
+        Box::pin(self.wait())
+    }
+}
+
+/// **等那台答一条要回话的通道请求**（exec · pty · shell，都带 want_reply）。russh 发出请求就回、不等对面答，
+/// 不在这里等 ⇒ 那台登录过了、开会话被拒（CHANNEL_FAILURE：共用登录机进程数到上限那一形）时 ack 照回 ok，
+/// 之后长流一个字节都不来、capture 等不到 Close。
+///
+/// 答应 ⇒ 回答复之前先到的消息（照序；调用方补交）；回拒 ⇒「登录通过 · 拒绝执行命令」，原话说是哪一种请求；
+/// 没答就关了通道 ⇒ `closed` 那一句。
+async fn granted(
+    ch: &mut impl Waits,
+    request: &str,
+    closed: &str,
+) -> Result<Vec<russh::ChannelMsg>, Said> {
+    let mut early = Vec::new();
+    loop {
+        match ch.next_msg().await {
+            Some(russh::ChannelMsg::Success) => return Ok(early),
+            Some(russh::ChannelMsg::Failure) => {
+                tracing::warn!("dial: 登录过了，{request} 请求被那台回拒（CHANNEL_FAILURE）");
+                return Err(Said::with_raw(
+                    copy_text("beUses.session.denied", &[]),
+                    format!("{request} request: server replied SSH_MSG_CHANNEL_FAILURE"),
+                ));
+            }
+            Some(russh::ChannelMsg::Close) | None => {
+                return Err(Said::with_raw(
+                    copy_text(closed, &[]),
+                    format!("{request} request: channel closed before the server replied"),
+                ));
+            }
+            Some(other) => early.push(other),
+        }
+    }
+}
+
+/// 答复之前先到的那几条里的输出字节（stdout 那一路）写出去；回「那台已经收了这条通道」（之后不会再有字节）。
+async fn replay_early<W: AsyncWrite + Unpin + Send>(
+    out: &mut W,
+    early: Vec<russh::ChannelMsg>,
+) -> std::io::Result<bool> {
+    let mut ended = false;
+    for m in early {
+        match m {
+            russh::ChannelMsg::Data { data } => out.write_all(&data).await?,
+            russh::ChannelMsg::Eof | russh::ChannelMsg::Close => ended = true,
+            _ => {}
+        }
+    }
+    out.flush().await?;
+    Ok(ended)
+}
+
 /// 能被「关掉」的那一半（生产 = russh 的 `ChannelWriteHalf`；判据用记账替身）。
 pub trait Closable: Send + 'static {
     fn close_it(self) -> impl std::future::Future<Output = ()> + Send;
@@ -502,7 +577,7 @@ async fn serve<R, W>(
     match req.use_ {
         Use::Stream => {
             // `_permit`：这条长流占着这条连接的一格通道，直到本臂返回（`pool::Budget`）。
-            let (channel, _permit) =
+            let (mut channel, _permit) =
                 match moving(out, steps, lease.session_channel(req, stages)).await {
                     Ok(c) => c,
                     Err(e) => {
@@ -512,20 +587,29 @@ async fn serve<R, W>(
                     }
                 };
             let fail = |e: Said| DialAck::failed(e, lease.linked.fingerprint.clone());
-            // want_reply = true：等远端确认 exec 成功再回 ack。
-            let opened = exec(&channel, req.command.as_bytes().to_vec())
-                .await
-                .map_err(|e| Said::with_raw(copy_text("beUses.exec.failed", &[]), &e));
-            if let Err(e) = opened {
-                let _ = write_stages_then_ack(out, stages, &fail(e)).await;
-                return;
-            }
+            // want_reply = true：等远端答应 exec 再回 ack（[`granted`]）。
+            let opened = match exec(&channel, req.command.as_bytes().to_vec()).await {
+                Ok(()) => granted(&mut channel, "exec", "beUses.exec.failed").await,
+                Err(e) => Err(Said::with_raw(copy_text("beUses.exec.failed", &[]), &e)),
+            };
+            let early = match opened {
+                Ok(early) => early,
+                Err(e) => {
+                    let _ = write_stages_then_ack(out, stages, &fail(e)).await;
+                    return;
+                }
+            };
             if write_stages_then_ack(out, stages, &ok_ack(&lease.linked))
                 .await
                 .is_err()
             {
                 tracing::error!("dial: 写 ack 失败（界面已经走了？）");
                 return;
+            }
+            // 跟着答复一起到的字节先补交；那台已经收了这条通道 ⇒ 到此为止。
+            match replay_early(out, early).await {
+                Ok(false) => {}
+                Ok(true) | Err(_) => return,
             }
             // 两条方向对拷，哪一边先结束就收工：下行结束 = 远端那头走了；上行结束 = 界面走了（链路被关 / 句柄被丢）。
             // 不许把上行 EOF 读成「半关、接着等下行」：远端后端的长流不会因为 stdin EOF 退出，会挂在一条没人收的下行上。
@@ -561,15 +645,17 @@ async fn serve<R, W>(
             // 读半边收全，写半边被守着：本臂无论怎么收场（收全 · 提前收工 · 链路被关 ⇒ abort），远端那条通道都被关。
             let (mut rd, wr) = channel.split();
             let wr = CloseOnDrop::new(wr);
-            if let Err(e) = exec_half(wr.get(), req.command.as_bytes().to_vec()).await {
-                let _ = write_stages_then_ack(
-                    out,
-                    stages,
-                    &DialAck::failed(Said::with_raw(copy_text("beUses.exec.failed", &[]), &e), fp),
-                )
-                .await;
-                return;
-            }
+            let opened = match exec_half(wr.get(), req.command.as_bytes().to_vec()).await {
+                Ok(()) => granted(&mut rd, "exec", "beUses.exec.failed").await,
+                Err(e) => Err(Said::with_raw(copy_text("beUses.exec.failed", &[]), &e)),
+            };
+            let early = match opened {
+                Ok(early) => early,
+                Err(e) => {
+                    let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
+                    return;
+                }
+            };
             // 有载荷就写进远端进程的 stdin（不关 —— 收的一侧只读一行）。
             if let Some(input) = opts.stdin.clone() {
                 if let Err(e) = wr.get().data_bytes(input.into_bytes()).await {
@@ -591,7 +677,7 @@ async fn serve<R, W>(
             {
                 return;
             }
-            let got = collect(&mut rd, &opts).await;
+            let got = collect(&mut rd, &opts, early).await;
             let _ = write_line(out, &got).await;
         }
         Use::Forward => {
@@ -673,21 +759,33 @@ async fn serve<R, W>(
             // 读写两半分开：写半边被守着（无论怎么收场远端那条通道都被关），改窗口也走它。
             let (mut rd, wr) = channel.split();
             let wr = CloseOnDrop::new(wr);
+            // pty 与 shell 各等一次答复（[`granted`]）：两样都答应了才回 ack。
+            let failed =
+                |e: russh::Error| Said::with_raw(copy_text("beUses.shell.failed", &[]), &e);
             let opened = async {
-                pty_half(wr.get(), &pty).await?;
-                shell_half(wr.get()).await
+                pty_half(wr.get(), &pty).await.map_err(failed)?;
+                let mut early = granted(&mut rd, "pty-req", "beUses.shell.failed").await?;
+                shell_half(wr.get()).await.map_err(failed)?;
+                early.extend(granted(&mut rd, "shell", "beUses.shell.failed").await?);
+                Ok::<_, Said>(early)
             }
-            .await
-            .map_err(|e| Said::with_raw(copy_text("beUses.shell.failed", &[]), &e));
-            if let Err(e) = opened {
-                let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
-                return;
-            }
+            .await;
+            let early = match opened {
+                Ok(early) => early,
+                Err(e) => {
+                    let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
+                    return;
+                }
+            };
             if write_stages_then_ack(out, stages, &ok_ack(&lease.linked))
                 .await
                 .is_err()
             {
                 return;
+            }
+            match replay_early(out, early).await {
+                Ok(false) => {}
+                Ok(true) | Err(_) => return,
             }
             let mut up = wr.get().make_writer();
             let mut down = rd.make_reader();
@@ -756,30 +854,51 @@ fn window_half(
 
 /// 收全 stdout / stderr / 退出码。EOF 之后服务端才送 exit-status ⇒ **不能见 Eof 就收**，
 /// 收到 Close / 通道关闭才算完。`abort_marker` 一出现就提前收（老后端掉进流模式永不 EOF）。
-async fn collect(channel: &mut russh::ChannelReadHalf, opts: &CaptureOpts) -> Captured {
+/// `early` ＝ 等 exec 答复时先到的那几条（[`granted`]），照序先收。
+async fn collect(
+    channel: &mut russh::ChannelReadHalf,
+    opts: &CaptureOpts,
+    early: Vec<russh::ChannelMsg>,
+) -> Captured {
     let mut out: Vec<u8> = Vec::new();
     let mut err: Vec<u8> = Vec::new();
     let mut status: Option<u32> = None;
-    while let Some(msg) = channel.wait().await {
+    // 收一条；回「收全了」。
+    let mut take = |msg: russh::ChannelMsg| -> bool {
         match msg {
             russh::ChannelMsg::Data { data } => {
                 if out.len() < opts.max_bytes {
                     out.extend_from_slice(&data);
                 }
-                if let Some(marker) = opts.abort_marker.as_deref() {
-                    if String::from_utf8_lossy(&out).contains(marker) {
-                        break;
-                    }
-                }
+                opts.abort_marker
+                    .as_deref()
+                    .is_some_and(|marker| String::from_utf8_lossy(&out).contains(marker))
             }
             russh::ChannelMsg::ExtendedData { data, .. } => {
                 if err.len() < opts.max_bytes {
                     err.extend_from_slice(&data);
                 }
+                false
             }
-            russh::ChannelMsg::ExitStatus { exit_status } => status = Some(exit_status),
-            russh::ChannelMsg::Close => break,
-            _ => {}
+            russh::ChannelMsg::ExitStatus { exit_status } => {
+                status = Some(exit_status);
+                false
+            }
+            russh::ChannelMsg::Close => true,
+            _ => false,
+        }
+    };
+    let mut done = false;
+    for msg in early {
+        if take(msg) {
+            done = true;
+            break;
+        }
+    }
+    while !done {
+        match channel.wait().await {
+            Some(msg) => done = take(msg),
+            None => done = true,
         }
     }
     Captured {
