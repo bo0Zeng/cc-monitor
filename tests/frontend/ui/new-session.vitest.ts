@@ -50,8 +50,10 @@ vi.mock("../../../src/frontend/ui/account-reads", async () => {
       available: true,
       meta: { effectiveDefault: "work" },
       accounts: [
-        { name: "personal", email: "", configDir: "/h/.cc/personal", isDefault: false, mode: "isolated", exists: true, loggedIn: false, authKind: "subscription", authReady: false, selectable: false, unselectable: copyText("acct.tag.login"), login: true },
-        { name: "work", email: "", configDir: "/h/.cc/work", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true, selectable: true },
+        { name: "personal", email: "", configDir: "/h/.cc/personal", isDefault: false, mode: "isolated", exists: true, loggedIn: false, authKind: "subscription", authReady: false, selectable: false, unselectable: copyText("acct.tag.login"), login: true, newSession: true },
+        { name: "work", email: "", configDir: "/h/.cc/work", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true, selectable: true, newSession: true },
+        // 那台说不进选号表的号（有目录、隔离也不列）：列不列只照 `newSession`，界面不另判。
+        { name: "elsewhere", email: "", configDir: "/h/.cc/elsewhere", isDefault: false, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true, selectable: true, newSession: false },
       ],
     })),
   };

@@ -17,7 +17,7 @@ class UsageViewTest {
         name: String,
         plate: String,
         color: Int,
-    ) = AccountRow(name, name, color, plate, null, null, true, false, "/a/$name", "isolated", "subscription", Badge("已登录", false))
+    ) = AccountRow(name, name, color, plate, null, null, true, false, true, "subscription", Badge("已登录", false))
 
     /** 金样里出过数的那一号复制成 [names] 那几号（照给的先后），没出过数的照留。 */
     @Suppress("UNCHECKED_CAST")

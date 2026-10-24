@@ -24,16 +24,14 @@ object SessionOpenDir {
 
 /**
  * `accounts-list`：这台账号库里的号（跟着起哪一家问），按 `cmd-wire` 那一份解过。号牌字 · 5h 那一格 · 选不了的那一句都照那台写好的画。
- * 只列隔离的那几个（账号 0 不经选号，同桌面新建会话框）。
+ * 只列那台说进选号表的那几个（`newSession`，同桌面新建会话框）。
  */
 object AccountsList {
     const val COMMAND: String = "accounts-list"
 
     fun args(agent: String): Map<String, Any?> = mapOf("agent" to agent)
 
-    fun of(data: Any?): WireAccounts? = Wire.bind<WireAccounts>(data)?.let { l -> l.copy(accounts = l.accounts.filter { it.configDir != null && it.mode == ISOLATED }) }
-
-    private const val ISOLATED = "isolated"
+    fun of(data: Any?): WireAccounts? = Wire.bind<WireAccounts>(data)?.let { l -> l.copy(accounts = l.accounts.filter { it.newSession }) }
 }
 
 /** `accounts-set-default`：设这台的新会话默认号。 */

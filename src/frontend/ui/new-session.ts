@@ -95,7 +95,7 @@ interface AccountOpt {
   origin: Origin;
 }
 
-/** 那台的号（账号 0 之外、隔离的那几个）；那台没开多账号 / 读不出 ⇒ `null`（这一行不出）。 */
+/** 那台的号（那台说进选号表的那几个：`newSession`）；那台没开多账号 / 读不出 ⇒ `null`（这一行不出）。 */
 async function listAccounts(origin: Origin, agent: string): Promise<AccountOpt[] | null> {
   if (!agentHasAccounts(agent)) return null;
   let list: Account[];
@@ -104,7 +104,7 @@ async function listAccounts(origin: Origin, agent: string): Promise<AccountOpt[]
     const st = await fetchAccounts(origin);
     if (!st.available) return null;
     def = st.meta?.effectiveDefault ?? null;
-    list = st.accounts.filter((a) => a.configDir !== null && a.mode === "isolated");
+    list = st.accounts.filter((a) => a.newSession === true);
   } catch {
     return null;
   }

@@ -313,6 +313,11 @@ fn unselectable_of(a: &ScannedAccount, api_key: bool) -> Option<String> {
     })
 }
 
+/// ★ 进不进新建会话的选号表（唯一一处）：隔离、有配置目录。账号 0 不经选号；原地模式的号不拿来起会话。
+pub(crate) fn new_session_of(a: &ScannedAccount) -> bool {
+    a.config_dir.is_some() && a.mode == "isolated"
+}
+
 /// 选不了只差登录（四条里只有「需登录」那一条没过）。
 fn needs_login(a: &ScannedAccount) -> bool {
     !a.selectable
@@ -501,6 +506,7 @@ pub(crate) fn list_product_with(
                 quota: None,
                 unselectable: unselectable_of(&a, api_key).map(Words),
                 login: false,
+                new_session: new_session_of(&a),
                 scanned: a,
             }
         })

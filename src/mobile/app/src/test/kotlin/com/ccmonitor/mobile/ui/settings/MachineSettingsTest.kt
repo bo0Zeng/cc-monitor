@@ -30,8 +30,7 @@ class MachineSettingsTest {
     ) = mapOf(
         "name" to name,
         "label" to name,
-        "configDir" to "/a/$name",
-        "mode" to "isolated",
+        "newSession" to true,
         "selectable" to selectable,
         "color" to 0.0,
         "plate" to name.take(2),
