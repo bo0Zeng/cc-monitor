@@ -166,15 +166,12 @@ impl Default for Preview {
     }
 }
 
-/// 预览头「归属」那一块：左边一道状态色（做完绿 · 其余灰）；状态图标 ＋ 标题 ·［在计划里看］；
+/// 预览头「归属」那一块：左边一道状态色（做完绿 · 其余灰）；状态图标 ＋「编号 标题」·［在计划里看］；
 /// 一行「{片} · 块「…」· 签 …」；被两格声明 ⇒ 一行红字；对账「坏」⇒ 一行 pb 给的原因。回值 ＝ 点了［在计划里看］。
 fn owner_block(ui: &mut egui::Ui, slice: &str, o: &super::plan::Owner) -> bool {
     let p = super::theme::palette(ui.ctx());
     let m = super::theme::metrics(ui.ctx());
-    let tint = match o.status {
-        super::plan::Status::Done => p.success,
-        _ => p.text2,
-    };
+    let tint = super::plan::status_tint(o.status_code, p.success, p.text2);
     let mut clicked = false;
     let r = egui::Frame::new()
         .fill(p.card)
@@ -188,9 +185,9 @@ fn owner_block(ui: &mut egui::Ui, slice: &str, o: &super::plan::Owner) -> bool {
         .show(ui, |ui| {
             ui.set_min_width(ui.available_width());
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new(super::plan::status_icon(o.status)).color(tint));
+                ui.label(egui::RichText::new(super::plan::status_icon(o.status_code)).color(tint));
                 ui.add(
-                    egui::Label::new(egui::RichText::new(&o.title).color(p.text).strong())
+                    egui::Label::new(egui::RichText::new(&o.label).color(p.text).strong())
                         .truncate(),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -222,7 +219,7 @@ fn owner_block(ui: &mut egui::Ui, slice: &str, o: &super::plan::Owner) -> bool {
                     .small(),
                 );
             }
-            if let Some(why) = &o.broken {
+            if let Some(why) = super::plan::broken(o) {
                 ui.label(egui::RichText::new(why).color(p.warn).small());
             }
         });

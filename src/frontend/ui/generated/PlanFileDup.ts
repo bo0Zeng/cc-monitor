@@ -3,4 +3,8 @@
 /**
  * 也声明同一份文件的另一格。
  */
-export type PlanFileDup = { id: string, title: string | null, };
+export type PlanFileDup = { id: string, 
+/**
+ * 「编号 标题」，后端拼好。
+ */
+label: string, title: string | null, };

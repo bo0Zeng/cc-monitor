@@ -32,6 +32,8 @@ fn files_in_a_slice_repo_carry_their_cell_block_and_sign() {
     assert_eq!(names, ["read.txt", "shared.txt", "write.txt"]);
     assert_eq!(e[0]["id"], "A1-1");
     assert_eq!(e[0]["title"], "甲的读入");
+    // 「编号 标题」后端拼好（窗口照它画）。
+    assert_eq!(e[0]["label"], "A1-1 甲的读入");
     assert_eq!(e[0]["statusCode"], "done");
     assert_eq!(e[0]["block"], Value::Null, "住顶块");
     assert_eq!(e[0]["fileState"], "ok");
@@ -59,7 +61,7 @@ fn a_file_declared_by_two_cells_names_the_other_one() {
     assert_eq!(v["entries"][0]["id"], "A1-1");
     assert_eq!(
         v["entries"][0]["dup"],
-        json!([{"id": "A1-2", "title": "甲的写出"}])
+        json!([{"id": "A1-2", "label": "A1-2 甲的写出", "title": "甲的写出"}])
     );
 }
 

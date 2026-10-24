@@ -702,8 +702,8 @@ async fn copy_across_speaks_files_copy_with_a_common_root() {
 
 /// 一份 `plan-files` 回包（中性例子）：`x.txt` 归「读入模块」、状态与标题由用例给。
 fn plan_reply(title: &str, status: &str) -> serde_json::Value {
-    serde_json::json!({"workspace": "/srv", "slice": "alpha", "unreadable": null, "unowned": null, "entries": [
-        {"name": "x.txt", "id": "A1", "title": title, "statusCode": status, "block": null,
+    serde_json::json!({"workspace": "/srv", "slice": "alpha", "unreadable": null, "unowned": null, "unownedWhy": null, "entries": [
+        {"name": "x.txt", "id": "A1", "label": format!("A1 {title}"), "title": title, "statusCode": status, "status": null, "block": null,
          "signAtText": null, "fileState": "ok", "fileNote": null, "dup": []}
     ]})
 }
@@ -743,7 +743,7 @@ async fn a_plan_change_re_asks_the_owners_and_keeps_the_rows_and_the_pick() {
             .lock()
             .unwrap()
             .as_ref()
-            .and_then(|p| p.owner("x.txt").map(|o| (o.title.clone(), o.status)))
+            .and_then(|p| p.owner("x.txt").map(|o| (o.label.clone(), o.status_code)))
     };
     // 订上那条流（整扇窗一次）。
     for _ in guard_core::wall::rounds() {
@@ -772,7 +772,10 @@ async fn a_plan_change_re_asks_the_owners_and_keeps_the_rows_and_the_pick() {
     }
     assert_eq!(
         title(&ws),
-        Some(("读入与校验".to_string(), crate::plan::Status::Done)),
+        Some((
+            "A1 读入与校验".to_string(),
+            Some(cmd_wire::plan::PlanStatusCode::Done)
+        )),
         "「格」一列没跟着变"
     );
     assert_eq!(wired.count("plan-files"), 2, "两个标签页各问一次");
