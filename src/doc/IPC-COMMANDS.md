@@ -52,7 +52,6 @@ A new session file appeared。
 | `path` | string? | 该会话 jsonl 的远端绝对路径（同 sid 多文件时取 mtime 最新者）；宣告时还没写首行 ⇒ 缺 |
 | `face` | SessionFace | 宣告时这条会话的整份脸 |
 | `name_face` | NameFace | 叫这条会话什么（`NameFace`，平铺在帧上） |
-| `waiting_for` | string? | 宣告时在等什么（同 `session_status`） |
 | `hidden` | Hidden? | 隐藏那一格（不占标签页）；不隐藏 ⇒ 不上线 |
 | `container` | SessionContainer? | 这条会话住在什么容器里（见 `SessionContainer`） |
 | `pid` | number | 那个 claude 进程的 **pid**（恒在） |
@@ -10900,7 +10899,7 @@ host: "tmux",
  */
 tmux_name: string, 
 /**
- * 里面跑着会话、前台不是 shell 时是窗格标题；否则是前台程序名。
+ * 里面跑着会话、前台是 agent 时是窗格标题；否则是前台程序名。
  */
 title: string, 
 /**

@@ -199,7 +199,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("terminal-processes", "43bdabba"),
     ("terminal-ssh", "f9f9af87"),
     ("terminal-unfollow", "7ffb2c4f"),
-    ("terminals-list", "8b48f403"),
+    ("terminals-list", "4d501309"),
     ("transfer-copy", "a73665d0"),
     ("transfer-download", "80886da4"),
     ("transfer-start", "deec43c9"),
