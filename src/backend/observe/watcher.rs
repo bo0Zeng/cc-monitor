@@ -1748,12 +1748,12 @@ impl ReaderState {
         if !wants_beat(activity) {
             return activity;
         }
-        let mut busy = self
-            .sessions
-            .values()
-            .filter(|e| e.sid == sid && wants_beat(e.activity))
-            .peekable();
-        if busy.peek().is_some() && busy.all(|e| e.frozen) {
+        let busy = || {
+            self.sessions
+                .values()
+                .filter(|e| e.sid == sid && wants_beat(e.activity))
+        };
+        if busy().next().is_some() && busy().all(|e| e.frozen) {
             None
         } else {
             activity
