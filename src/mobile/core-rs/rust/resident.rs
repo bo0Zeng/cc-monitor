@@ -47,9 +47,8 @@ impl PhoneLink {
             }
             r.insert("stages".into(), false.into());
         }
-        serde_json::from_value(req).map_err(|e| {
-            Problem::new(copy_core::copy_text("reason.link.lost", &[]), e.to_string())
-        })
+        serde_json::from_value(req)
+            .map_err(|e| Problem::new(copy_core::copy_text("reason.link.lost", &[]), e.to_string()))
     }
 }
 
