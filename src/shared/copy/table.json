@@ -14535,12 +14535,6 @@
       "zh": "attach 与 --detach 不能同用 · attach 就是接进去",
       "args": []
     },
-    "bePlan.resolveAccount.defaultMissing": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "默认账号 '{name}' 目录不存在 · 用 --base 或 --account <名>",
-      "args": ["name"]
-    },
     "bePlan.resolveAccount.unavailable": {
       "kind": "error",
       "role": "命令行",
