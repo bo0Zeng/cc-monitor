@@ -17,6 +17,7 @@ fn what_the_relay_offers_reaches_the_connection_as_live_frames_for_its_list_only
         let hub = std::sync::Arc::new(TapHub::new(vec![crate::agents::StreamFamily {
             face: crate::agents::fake::runs::STREAM,
             owns: true,
+            side: None,
         }]));
         let mut t = attach_rx(hub.clone());
         t.watch_handle().watch(&["A".to_string()]);
@@ -24,6 +25,7 @@ fn what_the_relay_offers_reaches_the_connection_as_live_frames_for_its_list_only
             hub.offer(TapEvent {
                 stream: sid.into(),
                 owner: String::new(),
+                class: String::new(),
                 resp,
                 n: 0,
                 body: TapBody::Data(format!(r#"{{"ev":"open","rid":"r{resp}"}}"#)),
@@ -267,6 +269,7 @@ fn usage_in_the_stream_reaches_the_process_spend_book() {
         hub.offer(TapEvent {
             stream: sid.clone(),
             owner: String::new(),
+            class: String::new(),
             resp: 0,
             n: 0,
             body: TapBody::Data(format!(

@@ -1909,6 +1909,12 @@ pub(crate) struct DefaultUpstream {
     /// 请求本身就说出「我是哪个子运行」的那个头（值 ＝ 子运行的标识，与 [`RecordFace::run_of`] 同一个值域）。
     /// 声明了 ⇒ 带头的请求归那个子运行、不带头的就是主运行（当场定）；`None` ＝ 请求认不出运行 ⇒ 通用层按记录对账归位。
     pub(crate) owner_header: Option<&'static str>,
+    /// 请求自己说出「这一发是不是对话」的那个头 ＋ 哪几个值算旁路（预测下一句 · 起标题 · 压缩总结那一类：不进记录、不上活卡）。
+    /// `None` ＝ 这一家的请求说不出 ⇒ 每一发都当对话。
+    pub(crate) side_class: Option<SideClass>,
+    /// 走中转时随地址一起设的环境（名, 值）：凡是注中转地址的地方（起会话 exec 那一刻 · `--print` 那一行 · 设置文件的 `env` 块）都照这一份一起设。
+    /// 例：要这一家的请求带上 [`Self::side_class`] 那个头的开关。空 ＝ 没有。
+    pub(crate) relay_env: &'static [(&'static str, &'static str)],
     /// API key 凭据文件（界面给账号配第三方 key 时写的那一份）里的行挂在这一家名下。
     /// 那份文件没有 agent 这一维 ⇒ 至多一家为真；没有一家为真 ⇒ 上游选择起不来（fail-closed）。
     pub(crate) owns_credentials_file: bool,
@@ -1999,6 +2005,15 @@ pub(crate) fn inject_among(registry: &[Adapter], kind: &str) -> Option<Inject> {
         .find(|a| a.kind == kind)
         .and_then(|a| a.upstream.as_ref())
         .map(|u| u.inject)
+}
+
+/// `kind` 那一家走中转时随地址一起设的环境（[`DefaultUpstream::relay_env`]）；没登记 ⇒ 空。
+pub(crate) fn relay_env_among(registry: &[Adapter], kind: &str) -> &'static [(&'static str, &'static str)] {
+    registry
+        .iter()
+        .find(|a| a.kind == kind)
+        .and_then(|a| a.upstream.as_ref())
+        .map_or(&[], |u| u.relay_env)
 }
 
 /// [`inject_among`] 在生产注册表上。
@@ -2337,12 +2352,42 @@ pub(crate) fn owner_headers() -> Vec<&'static str> {
     v
 }
 
-/// 一家上游在流归位那里的样子：它的流协议面 ＋ 它的请求是否自报运行（声明了 [`DefaultUpstream::owner_header`]）。
+/// 一家的请求怎么说出「这一发是不是对话」（[`DefaultUpstream::side_class`]）：哪个头 · 那个头的哪几个值是旁路。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SideClass {
+    pub(crate) header: &'static str,
+    pub(crate) side: &'static [&'static str],
+}
+
+impl SideClass {
+    /// 这个值（请求里那个头的值）是不是旁路。
+    pub(crate) fn is_side(&self, class: &str) -> bool {
+        self.side.contains(&class)
+    }
+}
+
+/// 各家登记的分类头（注册序、去重）：中转按它给流打第三个标签。
+pub(crate) fn class_headers() -> Vec<&'static str> {
+    let mut v: Vec<&'static str> = Vec::new();
+    for h in REGISTRY
+        .iter()
+        .filter_map(|a| a.upstream.as_ref()?.side_class.map(|s| s.header))
+    {
+        if !v.contains(&h) {
+            v.push(h);
+        }
+    }
+    v
+}
+
+/// 一家上游在流归位那里的样子：它的流协议面 ＋ 它的请求是否自报运行（声明了 [`DefaultUpstream::owner_header`]）＋ 怎么认旁路。
 #[derive(Clone, Copy)]
 pub(crate) struct StreamFamily {
     pub(crate) face: StreamFace,
     /// 声明了自报运行的头 ⇒ 带头的归那个子运行、不带头的就是主运行（当场定，不挂起）。
     pub(crate) owns: bool,
+    /// 请求的分类头报的是旁路 ⇒ 那一段不上活卡（[`DefaultUpstream::side_class`]）。
+    pub(crate) side: Option<SideClass>,
 }
 
 /// 各家上游的流协议面（注册序）。一条应答用哪一个，由通用层按头一件事认（认得出「开始」的那一个）。
@@ -2354,6 +2399,7 @@ pub(crate) fn stream_families() -> Vec<StreamFamily> {
             Some(StreamFamily {
                 face: u.stream?,
                 owns: u.owner_header.is_some(),
+                side: u.side_class,
             })
         })
         .collect()

@@ -12,6 +12,7 @@ fn live() -> Live {
         vec![StreamFamily {
             face: crate::agents::fake::runs::STREAM,
             owns: true,
+            side: None,
         }],
     )
 }
@@ -45,6 +46,7 @@ impl Seg {
         l.tap(TapEvent {
             stream: self.sid.into(),
             owner: self.owner.into(),
+            class: String::new(),
             resp: self.resp,
             n: self.n,
             body: TapBody::Data(d.into()),
@@ -65,6 +67,7 @@ impl Seg {
         l.tap(TapEvent {
             stream: self.sid.into(),
             owner: self.owner.into(),
+            class: String::new(),
             resp: self.resp,
             n: self.n,
             body: TapBody::End { broken },

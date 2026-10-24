@@ -56,6 +56,31 @@ fn placeholders_join_the_chain_but_are_not_shown() {
     assert!(retry.shown);
 }
 
+/// 一轮中途人插的那一句（`attachment queued_command`）在链上是人说的、进界面；别人那几种照旧是占位。
+#[test]
+fn a_mid_turn_line_from_the_person_is_a_said_node() {
+    let l = node(
+        r#"{"type":"attachment","parentUuid":"a1","attachment":{"type":"queued_command","prompt":" later words ","commandMode":"prompt","origin":{"kind":"human"}},"uuid":"q1","timestamp":"t8"}"#,
+    );
+    assert_eq!(
+        l,
+        Link {
+            id: "q1".into(),
+            parent: Some("a1".into()),
+            at: "t8".into(),
+            said: true,
+            reply: false,
+            interrupt: false,
+            text: Some(Words::of("later words")),
+            shown: true,
+        }
+    );
+    let other = node(
+        r#"{"type":"attachment","parentUuid":"a1","attachment":{"type":"queued_command","prompt":"<task-notification>\n<task-id>t</task-id>\n</task-notification>","origin":{"kind":"task-notification"}},"uuid":"q2","timestamp":"t9"}"#,
+    );
+    assert!(!other.said && !other.shown && other.text.is_none());
+}
+
 #[test]
 fn queued_text_comes_from_enqueue_only() {
     assert_eq!(

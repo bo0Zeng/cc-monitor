@@ -961,6 +961,10 @@ fn exec_direct(d: &plan::Direct, own: &crate::platform::fs::Own) -> i32 {
         (None, plan::RelayVia::Env(var)) if d.clears_inherited_relay => std::env::remove_var(var),
         _ => {}
     }
+    // 随地址一起设的那几条（打印那一行同一份，`plan::render_direct`）。
+    for (k, v) in &d.relay_env {
+        std::env::set_var(k, v);
+    }
     if !d.cwd.is_empty() && std::env::set_current_dir(&d.cwd).is_err() {
         return die(&copy_text(
             "beCcm.execDirect.noCwd",

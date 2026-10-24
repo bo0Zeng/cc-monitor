@@ -2290,11 +2290,22 @@ fn the_relay_is_injected_the_way_that_family_declares() {
         vec!["fakeagent", "--resume", "s1"],
         "认环境变量那一家的 argv 里多了东西"
     );
+    // 随地址一起设的那几条（适配层 `relay_env`）：进计划、打印那一行照实印（真跑那一趟按同一份设）。
+    let rides: Vec<(String, String)> = crate::agents::claudecode::UPSTREAM
+        .relay_env
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+    assert!(!rides.is_empty());
+    assert_eq!(d.relay_env, rides);
     let line = render(&Plan::Direct(d));
     assert!(
         line.contains(&format!("export FAKE_URL_VAR={pass_word}; ")),
         "{line}"
     );
+    for (k, _) in &rides {
+        assert!(line.contains(&format!("export {k}=")), "{k} 没印出来：{line}");
+    }
     assert!(
         !line.contains(full_key),
         "`/t/` 那一行读了全权那一把：{line}"

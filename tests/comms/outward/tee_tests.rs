@@ -62,3 +62,30 @@ fn an_endless_sse_line_is_dropped_and_counted_instead_of_growing_forever() {
 // 这里原是 NDJSON 行落点那几条（meta 行 · 序号单调 · 上游载荷逃不出 `event` 那一格 · 队列满丢行且报账 · JSON 转义）：
 //   那个落点随独立 `--relay` 删了。tap 那一形的逐件语义（先占号再投递 · 超界 / 投不进号照占 · 收尾带总号数 · 非 SSE 不交）
 //   住 `host_tests`（真起中转、走生产接线）。
+
+/// 第三个标签（请求里分类头的值，[`super::super::Destinations::stream_class_headers`]）原样随每一件交给宿主：事件那一件与收尾那一件都带。
+/// 中转不解释它（旁路不上活卡是宿主那一侧按适配层的声明判的）。
+#[test]
+fn the_class_label_rides_every_tapped_event() {
+    #[derive(Default)]
+    struct Got(std::sync::Mutex<Vec<TapEvent>>);
+    impl TapPort for Got {
+        fn offer(&self, ev: TapEvent) -> bool {
+            self.0.lock().unwrap().push(ev);
+            true
+        }
+    }
+    let got = std::sync::Arc::new(Got::default());
+    let tee = TeeSink::to_port(got.clone());
+    let id = super::super::StreamId {
+        stream: "s-1",
+        owner: "",
+        class: "auxiliary",
+    };
+    let mut at = tee.open();
+    tee.event(id, &mut at, r#"{"type":"message_start"}"#);
+    tee.close(id, at, false);
+    let got = got.0.lock().unwrap();
+    assert_eq!(got.len(), 2);
+    assert!(got.iter().all(|e| e.class == "auxiliary"), "{got:?}");
+}

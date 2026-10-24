@@ -148,13 +148,43 @@ impl JsonlRecord {
                     origin: origin.as_ref().filter(|o| o.is_object()),
                 });
             }
-            Self::QueueOperation {
-                content, user_text, ..
-            } => *user_text = content.as_deref().map(super::text::queued_text),
+            Self::Attachment {
+                parent_uuid,
+                is_sidechain,
+                attachment: Some(a),
+                user_text,
+                ..
+            } => {
+                *user_text = super::text::mid_turn_text(
+                    &super::text::MidTurn {
+                        kind: a.kind.as_deref(),
+                        prompt: &a.prompt,
+                        is_meta: a.is_meta,
+                        origin: a.origin.as_ref(),
+                    },
+                    *is_sidechain,
+                    parent_uuid.as_deref().is_some_and(|p| !p.is_empty()),
+                );
+            }
             _ => {}
         }
         self
     }
+}
+
+/// `attachment` 记录里那一格（只收判「是不是一轮中途插进来的那一句」要的几样；别的种类只留 `type`）。
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct AttachmentHead {
+    #[serde(rename = "type", default)]
+    pub kind: Option<String>,
+    /// 插进来的那一句的原话（字符串，或带图时的块数组）；别的种类没有 ⇒ `null`。
+    #[serde(default)]
+    pub prompt: serde_json::Value,
+    #[serde(rename = "isMeta", default)]
+    pub is_meta: bool,
+    /// 谁说的（`kind` ∈ human · peer · task-notification …）；旧版没有。
+    #[serde(default)]
+    pub origin: Option<serde_json::Value>,
 }
 
 /// issue #12: jsonl 顶层 `forkedFrom` 字段 —— `/branch` 命令分叉出新 session 时
@@ -345,33 +375,23 @@ pub enum JsonlRecord {
     // issue #8: attachment 不渲染卡片，但有 uuid+parentUuid 并夹在 user→assistant
     // 之间（实测 5% 的 user/assistant 直接 parent 是 attachment）。如果主线检测不认它，
     // parent 链就断在 attachment 处 → 主线检测全部失败 → 整段消息被错误折叠到"已被 ESC 回退"。
-    // 所以本变体含完整字段、出链事实（`chain.rs`）；不出通用记录。
+    // 所以本变体含完整字段、出链事实（`chain.rs`）。
+    // 例外一种：一轮中途插进来的那一句（`attachment.type == queued_command`，人说的）出通用记录 `said`（`record_of`）。
     #[serde(rename = "attachment")]
     Attachment {
         uuid: String,
         timestamp: String,
         #[serde(rename = "parentUuid", default)]
         parent_uuid: Option<String>,
-    },
-    /// Batch10-F31 (issue #36)：CC 2.1.x 队列操作记录。enqueue 带 content —— 主线判定
-    /// 用它豁免"被消费的队列消息"（永久裸 user 叶，CC 的回复链挂在 interrupt 叶
-    /// 下而非队列消息下）不被 ESC 回退折叠；remove 那一条翻成通用记录的 `queued`。无 uuid/parentUuid。
-    #[serde(rename = "queue-operation")]
-    QueueOperation {
-        #[serde(default)]
-        operation: Option<String>,
-        #[serde(default)]
-        content: Option<String>,
-        /// P0c：**`remove` 那一支要建卡，卡上要有时间**。
-        ///
-        /// 原来这个变体只留 `operation` + `content`（issue #36 只需要 content 喂折叠豁免集合）。
-        /// 而 `remove` 是**用户打断时说的那句话在 jsonl 里唯一的存在** ——
-        /// 它没有 `user` 记录、没有 `uuid`、没有 `parentUuid`，
-        /// 时间戳是它**仅有的**可用于排序与展示的元数据，原文里一直有，只是我们没收。
-        #[serde(default)]
-        timestamp: Option<String>,
-        /// `content` 是谁说的（排队消息没有记录级字段，只认具名框与固定句）；没有 `content` ⇒ 缺。
-        /// 只有人说的那一支建卡（`remove`：插进正在跑的那一轮、没有 user 记录的那句话）。
+        // 这三格只喂翻译（谁说的 · 记录的 `cwd` · 正文），不上线（同 user 记录：界面只读成品 `userText`）。
+        #[serde(rename = "isSidechain", default, skip_serializing)]
+        is_sidechain: bool,
+        #[serde(default, skip_serializing)]
+        cwd: Option<String>,
+        /// 那一格里判「是不是插进来的那一句」要的几样（别的种类的 attachment 只留 `type`）。
+        #[serde(default, skip_serializing)]
+        attachment: Option<AttachmentHead>,
+        /// 插进来的那一句是谁说的（[`super::text::mid_turn_text`]）；不是那一形 / 不是说了话的那几种 ⇒ 缺。
         #[serde(
             rename = "userText",
             skip_deserializing,
@@ -379,6 +399,19 @@ pub enum JsonlRecord {
             skip_serializing_if = "Option::is_none"
         )]
         user_text: Option<UserText>,
+    },
+    /// Batch10-F31 (issue #36)：CC 2.1.x 队列操作记录。enqueue 带 content —— 主线判定
+    /// 用它豁免"被消费的队列消息"（永久裸 user 叶，CC 的回复链挂在 interrupt 叶
+    /// 下而非队列消息下）不被 ESC 回退折叠。无 uuid/parentUuid；不出通用记录
+    /// （一轮中途插进去的那一句由紧跟着的 `attachment queued_command` 那一行出，见 `record_of`）。
+    #[serde(rename = "queue-operation")]
+    QueueOperation {
+        #[serde(default)]
+        operation: Option<String>,
+        #[serde(default)]
+        content: Option<String>,
+        #[serde(default)]
+        timestamp: Option<String>,
     },
     #[serde(rename = "permission-mode")]
     PermissionMode {},

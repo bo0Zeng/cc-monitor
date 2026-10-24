@@ -58,6 +58,26 @@ pub(crate) fn chain_fact(line: &crate::agents::Line<'_>) -> Option<ChainFact> {
         return None;
     };
     let parent = p.parent.filter(|q| !q.is_empty());
+    // 一轮中途人插进来的那一句（`attachment queued_command`）：人说的、进界面，原文是它的 `prompt`（判定同「谁说的」那一份）。
+    if kind == "attachment" && raw.contains(MID_TURN_NEEDLE) {
+        let v = line.value()?;
+        if super::text::user_text_of_record(v).is_some() {
+            let prompt = v
+                .get("attachment")
+                .and_then(|a| a.get("prompt"))
+                .unwrap_or(&serde_json::Value::Null);
+            return Some(ChainFact::Node(Link {
+                id,
+                parent,
+                at,
+                said: true,
+                reply: false,
+                interrupt: false,
+                text: Some(Words::of(first_text(prompt))),
+                shown: true,
+            }));
+        }
+    }
     let (said, reply, shown) = match kind {
         "user" => (true, false, true),
         "assistant" => (false, true, true),
@@ -90,6 +110,9 @@ pub(crate) fn chain_fact(line: &crate::agents::Line<'_>) -> Option<ChainFact> {
         shown,
     }))
 }
+
+/// 一轮中途插进来的那一句那一行在原文里一定带这一截（便宜的预筛；认错了也对，只是白解了整行）。
+const MID_TURN_NEEDLE: &str = "queued_command";
 
 /// user 行在原文里一定带这两截之一（那一家写的是不带空格的 JSON；冒号后带一个空格的也认）。
 const USER_NEEDLES: [&str; 2] = [r#""type":"user""#, r#""type": "user""#];

@@ -14,6 +14,7 @@ fn router() -> RunRouter {
         vec![StreamFamily {
             face: crate::agents::fake::runs::STREAM,
             owns: true,
+            side: None,
         }],
     )
 }
@@ -22,6 +23,7 @@ fn data(stream: &str, resp: u64, n: u64, d: &str) -> TapEvent {
     TapEvent {
         stream: stream.into(),
         owner: String::new(),
+        class: String::new(),
         resp,
         n,
         body: TapBody::Data(d.into()),
@@ -32,6 +34,7 @@ fn end(resp: u64, n: u64) -> TapEvent {
     TapEvent {
         stream: SID.into(),
         owner: String::new(),
+        class: String::new(),
         resp,
         n,
         body: TapBody::End { broken: false },
@@ -138,5 +141,48 @@ fn an_owner_equal_to_the_stream_is_the_main_run() {
         run_of(r.on_tap(owned("child-7", 2))),
         vec![Some("child-7".to_string())],
         "不等的那一发没归它自报的子运行"
+    );
+}
+
+/// ★ 旁路请求（这一家声明的分类头报的是旁路的那几个值：预测下一句 · 标题 · 压缩……）不上活卡：一件都不放出去，照丢段那样数一次、说一行。
+/// 分类头报的是对话（`main`）⇒ 照常放；没带分类头（旧版客户端 · 环境变量没写上）⇒ 照今天当主运行放，并照实说一行「没带分类头」，不猜。
+#[test]
+fn a_side_request_never_reaches_a_card() {
+    const SIDE: crate::agents::SideClass = crate::agents::SideClass {
+        header: "x-class",
+        side: &["auxiliary", "compaction"],
+    };
+    let mut r = RunRouter::new(
+        Arc::new(RunBook::default()),
+        vec![StreamFamily {
+            face: crate::agents::fake::runs::STREAM,
+            owns: true,
+            side: Some(SIDE),
+        }],
+    );
+    let classed = |class: &str, resp: u64, n: u64, d: &str| TapEvent {
+        class: class.into(),
+        ..data(SID, resp, n, d)
+    };
+    let mut out = Vec::new();
+    let said = heard(|| {
+        for (n, d) in [OPEN, PART, SHUT].into_iter().enumerate() {
+            out.extend(r.on_tap(classed("auxiliary", 1, n as u64, d)));
+        }
+        out.extend(r.on_tap(TapEvent { class: "auxiliary".into(), ..end(1, 3) }));
+        assert!(out.is_empty(), "旁路的那一段放出去了：{out:?}");
+        out.extend(r.on_tap(classed("main", 2, 0, OPEN)));
+        assert_eq!(out.len(), 1, "对话那一发没放出去");
+        out.extend(r.on_tap(classed("", 3, 0, OPEN)));
+        assert_eq!(out.len(), 2, "没带分类头的那一发没照主运行放");
+    });
+    assert_eq!(r.lost.get(&Lost::Side), Some(&1));
+    assert!(
+        said.iter().any(|l| l.contains("Side")),
+        "旁路那一段没出声：{said:#?}"
+    );
+    assert!(
+        said.iter().any(|l| l.contains("没带分类头")),
+        "没带分类头那一发没照实说：{said:#?}"
     );
 }

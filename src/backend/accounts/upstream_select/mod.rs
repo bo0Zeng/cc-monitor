@@ -555,6 +555,10 @@ impl Destinations for Accounts {
         crate::agents::owner_headers()
     }
 
+    fn stream_class_headers(&self) -> Vec<&'static str> {
+        crate::agents::class_headers()
+    }
+
     fn request_marks(&self) -> Vec<(&'static str, &'static str)> {
         crate::agents::context_marks()
     }

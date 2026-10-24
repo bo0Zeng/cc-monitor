@@ -102,10 +102,18 @@ fn settings_base_url(raw: &str) -> super::super::SettingsBaseUrl {
     }
 }
 
-/// 那份设置文件现在的内容 ＋ 地址 ⇒ 合好的整份：`env.ANTHROPIC_BASE_URL` 就地设上，别的原样（JSON 就地改法住 `common::json_patch`，与足迹「待办」同一份）。
+/// 那份设置文件现在的内容 ＋ 地址 ⇒ 合好的整份：`env.ANTHROPIC_BASE_URL` 就地设上，随地址一起设的那几条（`DefaultUpstream.relay_env`，
+/// [`super::runs::RELAY_ENV`]）也设上，别的原样（JSON 就地改法住 `common::json_patch`，与足迹「待办」同一份）。
 fn settings_env_merge(now: &str, url: &str) -> Option<String> {
-    crate::common::json_patch::set_member(now, &["env", BASE_URL_ENV], &serde_json::json!(url))
-        .map(|p| p.whole)
+    let mut whole =
+        crate::common::json_patch::set_member(now, &["env", BASE_URL_ENV], &serde_json::json!(url))?
+            .whole;
+    for (k, v) in super::runs::RELAY_ENV {
+        whole =
+            crate::common::json_patch::set_member(&whole, &["env", k], &serde_json::json!(v))?
+                .whole;
+    }
+    Some(whole)
 }
 
 /// 默认配置根在 `$HOME` 下的名字。

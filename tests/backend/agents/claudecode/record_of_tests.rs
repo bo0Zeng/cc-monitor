@@ -59,8 +59,9 @@ const CASES: &[(&str, &str)] = &[
         r#"{"type":"custom-title","customTitle":"my name","sessionId":"s"}"#,
     ),
     (
+        // 一轮中途插的一句：它的正式位置是那一行 `attachment queued_command`（照 2.1.303 的键；原话是编的）。
         "queued",
-        r#"{"type":"queue-operation","operation":"remove","content":"also do this","timestamp":"2026-10-09T01:30:08.000Z"}"#,
+        r#"{"type":"attachment","parentUuid":"a-full","isSidechain":false,"attachment":{"type":"queued_command","prompt":"also do this","source_uuid":"c-1","delivery_id":"d-1","commandMode":"prompt","origin":{"kind":"human"},"timestamp":"2026-10-09T01:30:08.000Z","humanTurn":true},"rendered":[{"content":"x"}],"renderedRole":"system","uuid":"q-1","timestamp":"2026-10-09T01:30:08.000Z","sessionId":"s","cwd":"/w/proj","version":"2.1.303","userType":"external","entrypoint":"cli","gitBranch":"main"}"#,
     ),
     (
         "said-pasted",
@@ -144,7 +145,7 @@ const CASES: &[(&str, &str)] = &[
     ),
     (
         "queued-pasted",
-        r#"{"type":"queue-operation","operation":"remove","content":"see <pasted_content id=\"p2\">\nA\n</pasted_content id=\"p2\">","timestamp":"2026-10-09T01:31:29.000Z"}"#,
+        r#"{"type":"attachment","parentUuid":"a-note","isSidechain":false,"attachment":{"type":"queued_command","prompt":"see <pasted_content id=\"p2\">\nA\n</pasted_content id=\"p2\">","source_uuid":"c-2","delivery_id":"d-2","commandMode":"prompt","origin":{"kind":"human"},"timestamp":"2026-10-09T01:31:29.000Z","humanTurn":true},"uuid":"q-2","timestamp":"2026-10-09T01:31:29.000Z","sessionId":"s"}"#,
     ),
     (
         "unread-unknown",
@@ -241,7 +242,59 @@ fn the_cheap_class_agrees_with_the_record() {
         assert_eq!(class_of(&v), cheap, "{raw}");
         seen.insert(format!("{want:?}"));
     }
-    assert_eq!(seen.len(), 7, "六类 ＋ 不出记录都得见到：{seen:?}");
+    // 这一家不再出 `queued`（插话是那一行 attachment 出的 `said`）：五类 ＋ 不出记录。
+    assert_eq!(seen.len(), 6, "五类 ＋ 不出记录都得见到：{seen:?}");
+}
+
+/// 一轮中途插话那一行 `attachment queued_command`（2.1.273 起每一句人插的话都配着它）：人说的 ⇒ 一条 `said`，
+/// 身份 ＝ 它自己的 uuid、时刻 ＝ 它自己的（就是打字那一刻），谁说的按 `origin.kind` 认；没有 `origin` 的旧版按原话认。
+#[test]
+fn a_mid_turn_line_from_the_person_is_said_where_the_record_puts_it() {
+    let r = one(CASES.iter().find(|(n, _)| *n == "queued").unwrap().1).expect("人插的话要出一条");
+    assert_eq!(r.id, "q-1");
+    assert_eq!(r.at.as_deref(), Some("2026-10-09T01:30:08.000Z"));
+    let Body::Said { who, blocks, .. } = &r.body else {
+        panic!("{r:?}")
+    };
+    assert!(matches!(who.speaker, crate::agents::Speaker::Human), "{who:?}");
+    assert_eq!(who.text, "also do this");
+    assert_eq!(blocks, &vec![Block::Text { text: "also do this".into() }]);
+    // 旧版：没有 `origin`，原话不是哪种框 ⇒ 人说的。
+    let old = r#"{"type":"attachment","parentUuid":"a1","attachment":{"type":"queued_command","prompt":"later please","commandMode":"prompt"},"uuid":"q-3","timestamp":"2026-10-09T01:30:09.000Z"}"#;
+    assert!(matches!(one(old).map(|r| r.body), Some(Body::Said { .. })));
+}
+
+/// 思考块只有签名、`thinking` 是空串或只剩空白（近来的记录几乎都这样）⇒ 交出 `text: ""`：线上约定「空 ＝ 没写进记录」，
+/// 「有没有能看的」只在这里判一次，两端照它画、不各自去空白。有字的照原样。
+#[test]
+fn an_empty_thinking_block_says_it_was_not_recorded() {
+    let raw = r#"{"type":"assistant","uuid":"a-th","timestamp":"2026-10-09T01:30:02.000Z","message":{"role":"assistant","model":"model-x","content":[{"type":"thinking","thinking":"","signature":"sig-1"},{"type":"thinking","thinking":" \n\t ","signature":"sig-2"},{"type":"thinking","thinking":"  plan it ","signature":"sig-3"},{"type":"thinking","signature":"sig-4"}]}}"#;
+    let Body::Reply { blocks, .. } = one(raw).unwrap().body else {
+        panic!()
+    };
+    let texts: Vec<&str> = blocks
+        .iter()
+        .map(|b| match b {
+            Block::Thinking { text } => text.as_str(),
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    assert_eq!(texts, ["", "", "  plan it ", ""]);
+}
+
+/// 同一形的别人那几种（后台任务收场 · peer 交回）不出卡：它们照旧由自己那一形出（或不出），不当成人说的。
+/// `remove` 那一行不再出记录（同一句有 attachment 那一行，再出一条就上屏两次）。
+#[test]
+fn others_mid_turn_lines_and_the_remove_line_stay_off_screen() {
+    for raw in [
+        r#"{"type":"attachment","parentUuid":"a1","attachment":{"type":"queued_command","prompt":"<task-notification>\n<task-id>t1</task-id>\n<status>completed</status>\n</task-notification>","commandMode":"task-notification","origin":{"kind":"task-notification","producer":"x"},"runId":"r1"},"uuid":"q-4","timestamp":"t"}"#,
+        r#"{"type":"attachment","parentUuid":"a1","attachment":{"type":"queued_command","prompt":"<agent-message from=\"w1\">\nx\n</agent-message>","commandMode":"prompt","isMeta":true,"origin":{"kind":"peer","from":"w1","name":"w","body":"x","senderTaskId":"k"}},"uuid":"q-5","timestamp":"t"}"#,
+        r#"{"type":"attachment","parentUuid":"a1","attachment":{"type":"queued_command","prompt":"<task-notification>\n<task-id>t2</task-id>\n</task-notification>"},"uuid":"q-6","timestamp":"t"}"#,
+        r#"{"type":"queue-operation","operation":"remove","timestamp":"2026-10-09T01:30:10.000Z","sessionId":"s","content":"also do this","reason":"absorbed_mid_turn","commandUuid":"c-1","deliveryId":"d-1"}"#,
+        r#"{"type":"queue-operation","operation":"remove","timestamp":"2026-10-09T01:30:10.000Z","sessionId":"s","content":"also do this","reason":"absorbed_mid_turn"}"#,
+    ] {
+        assert!(one(raw).is_none(), "{raw}");
+    }
 }
 
 #[test]

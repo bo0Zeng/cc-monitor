@@ -6,7 +6,7 @@
 //! | `assistant` | `reply`；`isApiErrorMessage` ⇒ `error{reason, status}`；`message.model == "<synthetic>"`（且不是报错）⇒ `autoReply` |
 //! | `system` · `subtype == "api_error"` | `retry` |
 //! | `ai-title` / `custom-title` | `title{by: agent / user}` |
-//! | `queue-operation` · `remove` · 人说的 | `queued` |
+//! | `attachment` · `queued_command` · 人说的（一轮中途插进来的那一句） | `said`（身份 · 时刻是这一行自己的） |
 //! | 看不懂的（`Unrecognized`：没见过的类型 · 形状变了） | `unread`（写好的一句 ＋ 原文摘录）；没见过的类型又没有链上身份 ⇒ 无记录（[`quiet_unread_of`]，会话事实里记数） |
 //! | 其余（别的 `system` · `attachment` · 状态行 · 元数据） | 无记录（链上那一半由 [`super::chain`] 给） |
 
@@ -90,7 +90,7 @@ fn no_identity(uuid: Option<&str>, parent_uuid: Option<&str>) -> bool {
 }
 
 /// 一条已解析的记录（`Value`）⇒ [`record_of`] 会给它的类，不走整条翻译（骨架索引每行一问）。
-/// 只看判别字段与那几类的必填格（缺了 ⇒ 盘上形状认不出、不出记录）；排队那一条还要认出是人说的。
+/// 只看判别字段与那几类的必填格（缺了 ⇒ 盘上形状认不出、不出记录）；插进来的那一句还要认出是人说的。
 pub(crate) fn class_of(v: &Value) -> Option<RecordClass> {
     let s = |k: &str| v.get(k).and_then(Value::as_str);
     let message = || {
@@ -111,16 +111,12 @@ pub(crate) fn class_of(v: &Value) -> Option<RecordClass> {
         "custom-title" if s("customTitle").is_some() && s("sessionId").is_some() => {
             Some(RecordClass::Title)
         }
-        "queue-operation"
-            if s("operation") == Some("remove")
-                && s("content").is_some_and(|c| {
-                    matches!(
-                        super::text::queued_text(c).speaker,
-                        crate::agents::Speaker::Human
-                    )
-                }) =>
+        "attachment"
+            if s("uuid").is_some()
+                && s("timestamp").is_some()
+                && super::text::user_text_of_record(v).is_some() =>
         {
-            Some(RecordClass::Queued)
+            Some(RecordClass::Said)
         }
         _ => None,
     }
@@ -224,16 +220,24 @@ pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
                 by: TitleBy::User,
             },
         )),
-        JsonlRecord::QueueOperation {
-            operation,
+        // 一轮中途插进来的那一句：这一行就是它在记录里的位置（身份 · 打字那一刻都是它自己的），当人说的一句出。
+        JsonlRecord::Attachment {
+            uuid,
             timestamp,
+            cwd,
+            attachment: Some(a),
             user_text: Some(who),
             ..
-        } if operation.as_deref() == Some("remove")
-            && matches!(who.speaker, crate::agents::Speaker::Human) =>
-        {
-            Some(rec_of(String::new(), timestamp, Body::Queued { who }))
-        }
+        } => Some(rec_of(
+            uuid,
+            Some(timestamp),
+            Body::Said {
+                who,
+                blocks: blocks_of(&a.prompt),
+                results: Default::default(),
+                cwd,
+            },
+        )),
         // 认不出（没见过的类型 · 见过的类型形状变了）：每行一条 `unread`；相邻同类并成一条是出记录页那一遍的事。
         // 没见过的类型、又没有链上身份 ⇒ 簿记行，不成卡（[`quiet_unread_of`]）。
         JsonlRecord::Unrecognized {
@@ -281,8 +285,11 @@ fn block_of(b: &Value) -> Option<Block> {
     let s = |k: &str| b.get(k).and_then(Value::as_str).map(str::to_string);
     Some(match b.get("type").and_then(Value::as_str)? {
         "text" => Block::Text { text: s("text")? },
+        // 近来的思考块几乎都只有签名、`thinking` 是空的：空 / 只剩空白 ⇒ `""`（线上约定：空 ＝ 没写进记录，两端照它画、不各自判）。
         "thinking" => Block::Thinking {
-            text: s("thinking").unwrap_or_default(),
+            text: s("thinking")
+                .filter(|t| !t.trim().is_empty())
+                .unwrap_or_default(),
         },
         "tool_use" => Block::ToolUse {
             id: s("id")?,

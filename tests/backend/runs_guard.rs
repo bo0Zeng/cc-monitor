@@ -149,6 +149,7 @@ fn claude_code() -> Shape {
         stream: StreamFamily {
             face: crate::agents::sse_anthropic::FACE,
             owns: crate::agents::claudecode::UPSTREAM.owner_header.is_some(),
+            side: crate::agents::claudecode::UPSTREAM.side_class,
         },
         parent_of: |d, sid| d.join(format!("{sid}.jsonl")),
         child_of: |parent, run| {
@@ -258,6 +259,7 @@ fn fake() -> Shape {
         stream: StreamFamily {
             face: crate::agents::fake::runs::STREAM,
             owns: false,
+            side: None,
         },
         parent_of: |d, sid| d.join(format!("sess-{sid}.ndjson")),
         child_of: |parent, run| {
@@ -362,6 +364,7 @@ fn feed(router: &mut RunRouter, resp: u64, owner: &str, data: Vec<String>) -> Ve
         out.extend(router.on_tap(TapEvent {
             stream: SID.into(),
             owner: owner.into(),
+            class: String::new(),
             resp,
             n: i as u64,
             body: TapBody::Data(d),
@@ -370,6 +373,7 @@ fn feed(router: &mut RunRouter, resp: u64, owner: &str, data: Vec<String>) -> Ve
     out.extend(router.on_tap(TapEvent {
         stream: SID.into(),
         owner: owner.into(),
+        class: String::new(),
         resp,
         n,
         body: TapBody::End { broken: false },
@@ -615,6 +619,7 @@ fn an_adapter_that_declares_no_runs_keeps_everything_on_the_main_run() {
         vec![StreamFamily {
             face: crate::agents::fake::runs::STREAM,
             owns: false,
+            side: None,
         }],
     );
     let f = feed(&mut router, 0, "", (fake().sse)("r1", None));

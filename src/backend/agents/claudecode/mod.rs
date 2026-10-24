@@ -87,6 +87,8 @@ pub(crate) const UPSTREAM: super::DefaultUpstream = super::DefaultUpstream {
     session_header: Some("x-claude-code-session-id"),
     stream: Some(super::sse_anthropic::FACE),
     owner_header: Some(runs::OWNER_HEADER),
+    side_class: Some(runs::SIDE_CLASS),
+    relay_env: runs::RELAY_ENV,
     // 界面给这一家的账号配第三方 key 时写那份凭据文件 ⇒ 文件里的行都是这一家的。
     owns_credentials_file: true,
     // 直接敲的 claude 读 `~/.claude/settings.json` 的 `env` 块（各号的那一份都链回它）。

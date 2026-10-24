@@ -476,27 +476,49 @@ fn pasted_blocks_are_human_with_their_bounds() {
     );
 }
 
+/// 没有 `origin` 的旧版插话那一行：照原话认（同 user 记录那一份的具名框与固定句）；不是说了话的那几种 ⇒ 不答。
 #[test]
-fn queued_messages_use_the_same_named_frames() {
-    assert_eq!(queued_text("<task-notification>\n<task-id>f6</task-id>\n<status>completed</status>\n</task-notification>").speaker.kind(), "taskNotification");
-    assert_eq!(
-        queued_text("<agent-message from=\"g7\">\n甲\n</agent-message>").speaker,
-        Speaker::AgentMessage {
-            from: Some("g7".into()),
-            name: None,
-            handback: false,
-            body: Some("甲".into())
-        }
-    );
-    assert_eq!(
-        queued_text("Your claude.ai usage limit has reset. 甲").speaker,
-        Speaker::System {
-            body: Some("Your claude.ai usage limit has reset. 甲".into())
-        }
-    );
-    assert_eq!(queued_text("  往后排，先做乙  "), human("往后排，先做乙"));
-    let p = queued_text("<pasted_content id=\"h8\">甲</pasted_content id=\"h8\">");
+fn an_old_mid_turn_line_is_told_by_its_words() {
+    let old = |prompt: &str| {
+        mid_turn_text(
+            &MidTurn {
+                kind: Some("queued_command"),
+                prompt: &Value::String(prompt.into()),
+                is_meta: false,
+                origin: None,
+            },
+            false,
+            true,
+        )
+    };
+    assert_eq!(old("<task-notification>\n<task-id>f6</task-id>\n<status>completed</status>\n</task-notification>"), None);
+    assert_eq!(old("<agent-message from=\"g7\">\n甲\n</agent-message>"), None);
+    assert_eq!(old("Your claude.ai usage limit has reset. 甲"), None);
+    assert_eq!(old("  往后排，先做乙  "), Some(human("往后排，先做乙")));
+    let p = old("<pasted_content id=\"h8\">甲</pasted_content id=\"h8\">").unwrap();
     assert_eq!((p.speaker.kind(), p.pasted.len()), ("human", 1));
+}
+
+/// 一轮中途人插的那一句（`attachment queued_command`，`origin.kind: human`）在「谁说的」那一问里就是人说的 ⇒ 一拍里带着它，
+/// 轮次（按「你说的一句」分轮）· 大纲 · 搜索照普通的一句处理，不进那一段「过程」。别人那几种（后台通知 · peer）这一问不答。
+#[test]
+fn a_mid_turn_line_from_the_person_is_what_the_person_said() {
+    let att = |a: Value| -> Value {
+        json!({"type":"attachment","parentUuid":"a1","isSidechain":false,"attachment":a,"uuid":"q-1","timestamp":"2026-10-09T01:30:08.000Z","sessionId":"s"})
+    };
+    let mine = att(json!({"type":"queued_command","prompt":"往后排，先做乙","commandMode":"prompt","origin":{"kind":"human"},"humanTurn":true}));
+    assert_eq!(user_text_of_record(&mine), Some(human("往后排，先做乙")));
+    let beat = crate::agents::beat_of("claude", &mine).unwrap();
+    assert_eq!(beat.said().and_then(|s| s.speech()).as_deref(), Some("往后排，先做乙"));
+    let row = crate::observe::recognize::user_inputs::user_input_of("claude", &mine).expect("进大纲");
+    assert_eq!(row.uuid, "q-1");
+    for other in [
+        json!({"type":"queued_command","prompt":"<task-notification>\n<task-id>f6</task-id>\n</task-notification>","origin":{"kind":"task-notification"}}),
+        json!({"type":"queued_command","prompt":"<agent-message from=\"g7\">\n甲\n</agent-message>","isMeta":true,"origin":{"kind":"peer","from":"g7"}}),
+        json!({"type":"deferred_tools_delta"}),
+    ] {
+        assert_eq!(user_text_of_record(&att(other.clone())), None, "{other}");
+    }
 }
 
 #[test]
