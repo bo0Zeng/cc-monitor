@@ -12449,7 +12449,7 @@ removed: boolean, said: string, };
 入参 `MachineRoundReq` · 回包 `MachineState`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "other";
+type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "session_denied" | "other";
 type MachineBlocker = "not_unix" | "no_backend" | "old_backend";
 type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
 type MachineFixButton = { fix: MachineFix, label: string, };
@@ -12461,7 +12461,15 @@ type MachineRoundProblem = { text: string, detail: string, why: DialWhy | null, 
 expected_key: string | null, };
 type MachineRoundReq = { machine: string, round: MachineRound, version: string, };
 type MachineStage = "deploy" | "attach";
-type MachineState = { state: MachineStateKind, 
+type MachineState = { 
+/**
+ * 给人看的那台的名字（问题行那一句里说的就是它）。
+ */
+name: string, state: MachineStateKind, 
+/**
+ * 算不算离线（页头「N 台离线」数的就是这一格）：没连上 · 指纹不对 · 做不了 ⇒ 是；登录过了、只是拒开会话 ⇒ 不是。
+ */
+offline: boolean, 
 /**
  * 没连上的原因码（`down` · `host_key_changed` 才有）。
  */
@@ -12521,12 +12529,20 @@ type VersionRelation = "same" | "older" | "newer" | "incomparable";
 入参 `NoArgs` · 回包 `MachineRead`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "other";
+type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "session_denied" | "other";
 type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
 type MachineFixButton = { fix: MachineFix, label: string, };
 type MachineRead = { machines: { [key in string]: MachineState }, };
 type MachineStage = "deploy" | "attach";
-type MachineState = { state: MachineStateKind, 
+type MachineState = { 
+/**
+ * 给人看的那台的名字（问题行那一句里说的就是它）。
+ */
+name: string, state: MachineStateKind, 
+/**
+ * 算不算离线（页头「N 台离线」数的就是这一格）：没连上 · 指纹不对 · 做不了 ⇒ 是；登录过了、只是拒开会话 ⇒ 不是。
+ */
+offline: boolean, 
 /**
  * 没连上的原因码（`down` · `host_key_changed` 才有）。
  */
