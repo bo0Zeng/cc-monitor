@@ -965,7 +965,6 @@ dependencies = [
  "test-home",
  "tokio",
  "tracing",
- "ts-rs",
  "uuid",
 ]
 
