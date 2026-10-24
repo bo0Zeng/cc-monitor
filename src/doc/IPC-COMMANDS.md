@@ -2029,7 +2029,6 @@ windows?: Array<WindowShow>,
 usage: Usage, };
 type QuotaCandidate = { agent: AgentKind, account: string, kind: QuotaKind, };
 type QuotaCell = { text: Words, tone: Tone, };
-type QuotaEarliestReturn = { account: string, at: number, atText: Words, atRelText?: Words, };
 type QuotaKind = "sub" | "api";
 type QuotaNames = { accounts: { [key in string]: Words }, slots: { [key in string]: Words }, };
 type QuotaOverageShown = { status?: QuotaStatus, 
@@ -2075,17 +2074,9 @@ accounts: Array<QuotaAccount>,
  */
 unseen: Array<QuotaUnseen>, 
 /**
- * 此刻发得出去的号（路由第 2 段）：登录拿得到、不是被拒 / 超额在兜。
- */
-usableNow: Array<string>, 
-/**
  * 换号 · 加号那几处的候选：出过数的在前、没出过的在后，`_` 不在里面（`is_candidate`）。界面只照它画，不另拼、不另滤。
  */
 candidates: Array<QuotaCandidate>, 
-/**
- * 被拒 / 超额在兜的号里最早回来的那个；没有、或都说不出时刻 ⇒ `null`。
- */
-earliestReturn: QuotaEarliestReturn | null, 
 /**
  * 读不出 / 一个号都没有 ⇒ 那一句（`--text` 拼字时放最前）；否则 `null`（`quota_rows::head_text`）。
  */

@@ -152,7 +152,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("profiles-write", "ade56df7"),
     ("pubkey-push", "13c0856c"),
     ("quota-probe", "01aaf184"),
-    ("quota-read", "ab62cc5c"),
+    ("quota-read", "837155a7"),
     ("remote-probe", "fb8a269f"),
     ("remote-reach", "afc15ebc"),
     ("resolve", "a25c2648"),
