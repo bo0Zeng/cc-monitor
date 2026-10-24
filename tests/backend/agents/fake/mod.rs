@@ -480,7 +480,6 @@ pub(crate) const TRUST_CELLS: crate::agents::TrustCells = crate::agents::TrustCe
     dir_keys: |cwd| vec![cwd.to_string()],
 };
 
-
 /// 把假 agent 推过全流程，每一段都经通用层（见模块头注）。成功 = 走完的段名。
 pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static str>, Stop> {
     let mut done: Vec<&'static str> = Vec::new();
