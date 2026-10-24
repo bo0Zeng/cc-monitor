@@ -10,7 +10,7 @@
 //!
 //! ```text
 //! 上行  stream / shell 时是原样写进 SSH channel 的字节；capture · forward 时不读（读到 EOF ＝ 对面走了）
-//! 下行  ack 之前只有一种行 {"stage":{…}}（[`Stage`]，契约 `cmd_wire::dial`）：stages=true 时攒下的拨号阶段在 ack 之前一次写出；
+//! 下行  ack 之前只有一种行 {"stage":{…}}（[`StageLine`]，契约 `cmd_wire::dial`）：stages=true 时攒下的拨号阶段在 ack 之前一次写出；
 //!       progress=true 时每过一步当场一行 {"stage":{"kind":"step","step":"tcp|banner|hostkey|auth|tunnel|channel"}}（[`step`]；不攒）
 //!       然后恰好一行 ack（DialAck，`\n` 结尾）
 //!       其后按用法：stream / shell 原样字节 · capture 一行 Captured 后结束 ·
@@ -99,7 +99,7 @@ pub fn joined(said: String, raw: Option<String>) -> String {
 }
 
 /// 线上那几样（ack 的协议版本与用法表 · 地址 · 阶段 · ack · 没开成 · 收全的结果）住契约（`cmd_wire::dial`），读它的那一侧同一份。
-pub use cmd_wire::dial::{Captured, DialAck, DialFail, Endpoint, Stage, ACK_V, USES};
+pub use cmd_wire::dial::{Captured, DialAck, DialFail, Endpoint, Stage, StageLine, ACK_V, USES};
 
 /// 跳板那一台。它自己还要经别的跳板 ⇒ `jump` 再套一层（多跳，同 `ssh -J 外,内`；桌面的机器表今天只给一跳，手机给多跳）。
 #[derive(Debug, Clone, Deserialize)]
@@ -276,7 +276,7 @@ pub fn why_of_stage(stage: &str) -> Why {
     }
 }
 
-/// 拨号过了哪一步（[`Stage::Step`] 的 `step`）：每过一步报一次，经跳板时跳板那几台与目标那一台各走一遍。
+/// 拨号过了哪一步（[`StageLine::Step`] 的 `step`）：每过一步报一次，经跳板时跳板那几台与目标那一台各走一遍。
 /// 只报「过了」：没过的那一步由 ack 说。读它的那一侧只拿它重新计时，不按名字分支。
 pub mod step {
     /// 那个口的 TCP 连上了。
