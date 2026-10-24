@@ -24,7 +24,7 @@
 use super::door;
 use super::http1::{self, BodyView, RequestHead};
 use super::route;
-use super::tee::{RequestMark, SseSplitter, TeeSink};
+use super::tee::{SseSplitter, TeeSink};
 use super::upstream::{self, Base, Conn};
 use super::{Ask, AuthSwap, Destination, Destinations, Heard, StreamId};
 use std::io::{BufReader, Read, Write};
@@ -191,12 +191,8 @@ pub struct Relay {
     tee: TeeSink,
     /// 给流打标签的请求头名单（构造时向上游选择要一次，[`Destinations::stream_label_headers`]）。
     stream_headers: Vec<&'static str>,
-    /// 给流打第二个标签的请求头名单（[`Destinations::stream_owner_headers`]）。
-    owner_headers: Vec<&'static str>,
-    /// 给流打第三个标签的请求头名单（[`Destinations::stream_class_headers`]）。
-    class_headers: Vec<&'static str>,
-    /// 每发请求要记下「在不在」的那几项（[`Destinations::request_marks`]）。
-    marks: Vec<(&'static str, &'static str)>,
+    /// 中转要原样带回的请求头名单（[`Destinations::relay_headers`]）。
+    relay_headers: Vec<&'static str>,
     /// 下游那条 socket 的读写期限。**由后端交下来**（`C4`：值归后端 · 执行归本层）。
     ///
     /// ⚠ 它是**一个字段**而不是两处各写一次 —— [`apply_downstream_deadline`] 有两个
@@ -224,9 +220,7 @@ impl Relay {
     ) -> Self {
         Self {
             stream_headers: dest.stream_label_headers(),
-            owner_headers: dest.stream_owner_headers(),
-            class_headers: dest.stream_class_headers(),
-            marks: dest.request_marks(),
+            relay_headers: dest.relay_headers(),
             dest,
             door,
             tee,
@@ -649,12 +643,13 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     //    **最长那条在飞流**后面。⚠ 挂起时长**没实测**，这是读源码得出的形状。
     //    钉这一条的判据：`table_guard::the_upstream_selection_lock_does_not_outlive_the_streaming_pump`。
     let label = stream_label(&head, &relay.stream_headers);
-    let names: Vec<&str> = head.headers.iter().map(|(k, _)| k.as_str()).collect();
+    let owned = relay_heads(&head, &relay.relay_headers);
+    let heads: Vec<(&'static str, &str)> = owned.iter().map(|(k, v)| (*k, v.as_str())).collect();
     let ask = Ask {
         label,
         origin: r.origin.as_ref(),
         body: &body,
-        names: &names,
+        heads: &heads,
     };
     // 答的那个去处贴的标签（不透明，回包头到了原样交回 `observe`）。
     let mut tag = String::new();
@@ -770,16 +765,11 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     let mut view = BodyView::for_response(&headers);
     let mut splitter = SseSplitter::default();
     // ★ 路由键与流标签收成一个 `StreamId`—— 中转这一侧**没有业务名**；tee 只抄流标签（① 不问账号）。
-    // 流标签取自请求自己带的头（会话 id 归 agent），不是路径段。
+    // 流标签取自请求自己带的头（会话 id 归 agent），不是路径段；名单上的头随 0 号那一件交一次（与交给上游选择的同一份）。
     let id = StreamId {
         stream: label,
-        owner: stream_label(&head, &relay.owner_headers),
-        class: stream_label(&head, &relay.class_headers),
+        heads: &heads,
     };
-    // 这一发请求里名单上那几项在不在（只交布尔，头的值不出去）。
-    relay
-        .tee
-        .mark(id.stream, &request_marks(&head, &relay.marks));
     // `open` 发一个这一响应自己的游标（位置号 `n` 从 0 起），`event` / `note_dropped_bytes` / `close` 都拿它。
     let mut at = relay.tee.open();
     let outcome = pump(&mut up, &mut down_w, &mut |raw| {
@@ -879,23 +869,34 @@ fn read_final_head(
     }
 }
 
-/// 名单上每一项在这一发里在不在：那个头（可能出现几次）的逗号列表里有一项以它开头（大小写不论）。
-fn request_marks(head: &RequestHead, marks: &[(&'static str, &'static str)]) -> Vec<RequestMark> {
-    marks
+/// 名单上出现在这一发里、值过闸的那几个头：(名单上的名字, 值)。同一个头出现几次 ⇒ 按 HTTP 的规矩用逗号并成一个值。
+/// 中转不解释它们（谁是会话 · 谁是运行 · 哪一项是扩展上下文，都在宿主那一侧按名去拿）。
+fn relay_heads(head: &RequestHead, names: &[&'static str]) -> Vec<(&'static str, String)> {
+    names
         .iter()
-        .map(|&(name, item)| {
-            let want = item.to_ascii_lowercase();
-            let present = head
+        .filter_map(|&name| {
+            let mut vs = head
                 .headers
                 .iter()
                 .filter(|(k, _)| k.eq_ignore_ascii_case(name))
-                .any(|(_, v)| {
-                    v.split(',')
-                        .any(|t| t.trim().to_ascii_lowercase().starts_with(&want))
-                });
-            ((name, item), present)
+                .map(|(_, v)| v.as_str());
+            let first = vs.next()?;
+            let joined = vs.fold(first.to_string(), |mut a, v| {
+                a.push(',');
+                a.push_str(v);
+                a
+            });
+            value_is_safe(&joined).then_some((name, joined))
         })
         .collect()
+}
+
+/// 带回的头值的闸，对名单上每个头同一种形状：**逗号分隔的 token 列表**（单个值算只有一项的列表）——
+/// 每一项去掉两头的空格后过 [`route::segment_is_safe`]（每项至多 128 字节；整串由请求头的 `HEAD_CAP` 封顶）。
+/// 过闸是因为它要进 tap 那一件、交给宿主（同 `segment_is_safe` 那条理由：不给换行 / 控制字符开路）。
+fn value_is_safe(v: &str) -> bool {
+    v.split(',')
+        .all(|t| route::segment_is_safe(t.trim_matches(' ')))
 }
 
 /// 这条流的标签：名单里第一个出现在请求里、值过段闸的头的值；没有 ⇒ 空串（前端当匿名流）。

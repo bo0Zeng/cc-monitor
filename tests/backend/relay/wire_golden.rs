@@ -489,8 +489,6 @@ fn tee_line(ev: &crate::relay::TapEvent) -> String {
     struct TeeLine<'a> {
         kind: &'static str,
         stream: &'a str,
-        #[serde(skip_serializing_if = "str::is_empty")]
-        owner: &'a str,
         resp: u64,
         n: u64,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -508,7 +506,6 @@ fn tee_line(ev: &crate::relay::TapEvent) -> String {
     serde_json::to_string(&TeeLine {
         kind: "tap",
         stream: &ev.stream,
-        owner: &ev.owner,
         resp: ev.resp,
         n: ev.n,
         data,

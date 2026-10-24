@@ -7,13 +7,15 @@ use crate::agents::StreamFamily;
 use std::sync::{Arc, Mutex};
 
 const SID: &str = "s-1";
+/// 假的那一家自报运行的头（判据自己定的名字）。
+const RUN: &str = "x-run";
 
 fn router() -> RunRouter {
     RunRouter::new(
         Arc::new(RunBook::default()),
         vec![StreamFamily {
             face: crate::agents::fake::runs::STREAM,
-            owns: true,
+            run: Some(RUN),
             side: None,
         }],
     )
@@ -22,8 +24,7 @@ fn router() -> RunRouter {
 fn data(stream: &str, resp: u64, n: u64, d: &str) -> TapEvent {
     TapEvent {
         stream: stream.into(),
-        owner: String::new(),
-        class: String::new(),
+        heads: Vec::new(),
         resp,
         n,
         body: TapBody::Data(d.into()),
@@ -33,8 +34,7 @@ fn data(stream: &str, resp: u64, n: u64, d: &str) -> TapEvent {
 fn end(resp: u64, n: u64) -> TapEvent {
     TapEvent {
         stream: SID.into(),
-        owner: String::new(),
-        class: String::new(),
+        heads: Vec::new(),
         resp,
         n,
         body: TapBody::End { broken: false },
@@ -129,7 +129,7 @@ fn an_owner_equal_to_the_stream_is_the_main_run() {
         frames.into_iter().map(|f| f.run).collect()
     };
     let owned = |owner: &str, resp: u64| TapEvent {
-        owner: owner.into(),
+        heads: vec![(RUN, owner.into())],
         ..data(SID, resp, 0, OPEN)
     };
     assert_eq!(
@@ -156,12 +156,16 @@ fn a_side_request_never_reaches_a_card() {
         Arc::new(RunBook::default()),
         vec![StreamFamily {
             face: crate::agents::fake::runs::STREAM,
-            owns: true,
+            run: Some(RUN),
             side: Some(SIDE),
         }],
     );
     let classed = |class: &str, resp: u64, n: u64, d: &str| TapEvent {
-        class: class.into(),
+        heads: if class.is_empty() || n != 0 {
+            Vec::new()
+        } else {
+            vec![(SIDE.header, class.into())]
+        },
         ..data(SID, resp, n, d)
     };
     let mut out = Vec::new();
@@ -169,10 +173,7 @@ fn a_side_request_never_reaches_a_card() {
         for (n, d) in [OPEN, PART, SHUT].into_iter().enumerate() {
             out.extend(r.on_tap(classed("auxiliary", 1, n as u64, d)));
         }
-        out.extend(r.on_tap(TapEvent {
-            class: "auxiliary".into(),
-            ..end(1, 3)
-        }));
+        out.extend(r.on_tap(end(1, 3)));
         assert!(out.is_empty(), "旁路的那一段放出去了：{out:?}");
         out.extend(r.on_tap(classed("main", 2, 0, OPEN)));
         assert_eq!(out.len(), 1, "对话那一发没放出去");

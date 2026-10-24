@@ -202,10 +202,9 @@ pub struct RouteOrigin {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct StreamId<'a> {
     pub(crate) stream: &'a str,
-    /// 第二个标签：名单（[`Destinations::stream_owner_headers`]）里第一个出现在请求里、值过段闸的头的值；没有 ⇒ 空串。中转不解释它。
-    pub(crate) owner: &'a str,
-    /// 第三个标签：名单（[`Destinations::stream_class_headers`]）里第一个出现在请求里、值过段闸的头的值；没有 ⇒ 空串。中转不解释它。
-    pub(crate) class: &'a str,
+    /// 名单（[`Destinations::relay_headers`]）上出现在请求里、值过闸的那几个头：(名单上的名字, 值)。中转不解释它们，
+    /// 随 0 号那一件交一次（[`TapEvent::heads`]）。
+    pub(crate) heads: &'a [(&'static str, &'a str)],
 }
 
 /// 上游选择算好的**换头材料**。中转拿到只做两件事：**照丢 ＋ 照写**。
@@ -296,7 +295,7 @@ pub enum Destination<'a> {
     },
 }
 
-/// 这一发请求里中转交给上游选择看的那几样（只读）：流标签 ＋ 整份请求体 ＋ 请求头的名字。
+/// 这一发请求里中转交给上游选择看的那几样（只读）：流标签 ＋ 整份请求体 ＋ 名单上的请求头。
 #[derive(Debug, Clone, Copy)]
 pub struct Ask<'a> {
     /// 请求头里取出的流标签（[`Destinations::stream_label_headers`]）；没有 ⇒ 空串。
@@ -305,8 +304,9 @@ pub struct Ask<'a> {
     pub origin: Option<&'a RouteOrigin>,
     /// 下游送来的整份请求体（中转先收全了才问去处）。
     pub body: &'a [u8],
-    /// 这一发带的请求头的**名字**（原样大小写，只有名字、没有值）：同一家按带没带某个头选上游时看它。
-    pub names: &'a [&'a str],
+    /// 名单（[`Destinations::relay_headers`]）上出现在请求里、值过闸的那几个头：(名单上的名字, 值)。
+    /// 与随 0 号那一件交给 tap 口的是同一份。
+    pub heads: &'a [(&'static str, &'a str)],
 }
 
 /// 上游回包头读完那一刻中转手里的东西。
@@ -372,17 +372,10 @@ pub trait Destinations: Send + Sync {
     /// 只照这份名单取 —— 会话 id 归 agent 自己，启动器不往地址里塞（路由第 3 段随之退役）。
     fn stream_label_headers(&self) -> Vec<&'static str>;
 
-    /// 哪几个请求头给流打第二个标签（同上一条的取法；中转同样不知道它们是谁的什么头）。
-    fn stream_owner_headers(&self) -> Vec<&'static str>;
-
-    /// 哪几个请求头给流打第三个标签（同上一条的取法；中转同样不知道它们是谁的什么头）。缺省 ⇒ 不打。
-    fn stream_class_headers(&self) -> Vec<&'static str> {
-        Vec::new()
-    }
-
-    /// 每个请求要记下「在不在」的那几项：（头名, 逗号列表里某一项的前缀）。中转不知道它们是什么意思，
-    /// 只把「这条流的这一发带没带」交给 tap 口（[`tee::TapPort::note_marks`]），值本身不出去。缺省 ⇒ 不记。
-    fn request_marks(&self) -> Vec<(&'static str, &'static str)> {
+    /// 中转要原样带回的请求头名单（头名比对不分大小写）。中转不知道它们是谁的什么头：出现在请求里、值过闸
+    /// （`server.rs` 的 `value_is_safe`：逗号分隔的 token 列表）的，按 (名单上的名字, 值) 交给 [`Self::resolve`] 的 [`Ask::heads`]、
+    /// 并随 0 号那一件交给 tap 口（[`TapEvent::heads`]）。缺省 ⇒ 不带。
+    fn relay_headers(&self) -> Vec<&'static str> {
         Vec::new()
     }
 }

@@ -158,12 +158,18 @@ impl RunRouter {
             };
             let face = family.face;
             // 旁路请求（这一家的分类头报的是旁路）：不进记录 ⇒ 不上活卡。没带分类头 ⇒ 照今天当主运行放，照实说一行、不猜。
+            // 分类 · 自报的运行都是 0 号那一件带来的请求头，按这一家登记的头名去拿。
+            let head = |name: Option<&str>| {
+                name.and_then(|n| crate::agents::head_value(&ev.heads, n))
+                    .unwrap_or("")
+            };
             if let Some(side) = family.side {
-                if side.is_side(&ev.class) {
+                let class = head(Some(side.header));
+                if side.is_side(class) {
                     self.lose(resp, Lost::Side);
                     return Vec::new();
                 }
-                if ev.class.is_empty() {
+                if class.is_empty() {
                     self.unclassed += 1;
                     let n = self.unclassed;
                     if n.is_power_of_two() {
@@ -175,9 +181,10 @@ impl RunRouter {
                 }
             }
             // 自报的运行就是会话本身（有的家主运行也带那个头、值等于会话标识）⇒ 主运行。
-            let route = if !ev.owner.is_empty() && ev.owner != ev.stream {
-                Route::Run(Some(ev.owner.clone()))
-            } else if family.owns || self.book.running(&ev.stream) == 0 {
+            let owner = head(family.run);
+            let route = if !owner.is_empty() && owner != ev.stream {
+                Route::Run(Some(owner.to_string()))
+            } else if family.run.is_some() || self.book.running(&ev.stream) == 0 {
                 Route::Run(None)
             } else {
                 Route::Pending(Vec::new())

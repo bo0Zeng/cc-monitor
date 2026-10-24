@@ -822,9 +822,12 @@ fn history_facts_takes_the_context_window_from_what_the_relay_saw() {
         std::fs::write(&p, format!("{rec}\n")).unwrap();
         paths.push(p.to_string_lossy().to_string());
     }
-    let item = ("anthropic-beta", "context-1m");
-    crate::observe::relay_marks::note("rf-wide", &[(item, true)]);
-    crate::observe::relay_marks::note("rf-std", &[(item, false)]);
+    // 中转带回的请求头：一发带扩展上下文那一项，一发不带。
+    crate::observe::relay_marks::note(
+        "rf-wide",
+        &[("anthropic-beta", "a-1, context-1m-2025-08-07")],
+    );
+    crate::observe::relay_marks::note("rf-std", &[("anthropic-beta", "a-1")]);
     let ask = |p: &str| {
         answer_at(
             &home,

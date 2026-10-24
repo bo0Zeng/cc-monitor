@@ -44,14 +44,13 @@ impl TapHub {
 }
 
 impl TapPort for TapHub {
-    /// 中转看见的这一发请求里名单上那几项在不在 ⇒ 记进会话的请求标记（会话事实定上下文上限时读）。
-    fn note_marks(&self, stream: &str, marks: &[((&'static str, &'static str), bool)]) {
-        crate::observe::relay_marks::note(stream, marks);
-    }
-
-    /// 说出了这一发用量的那几件先记进每发用量的累计（额度账量「1% ≈ 多少」用）；再交给活卡（锁里只做内存里的事）。
+    /// 0 号那一件带来的请求头先记进会话的请求标记（会话事实定上下文上限时读）；
+    /// 说出了这一发用量的那几件记进每发用量的累计（额度账量「1% ≈ 多少」用）；再交给活卡（锁里只做内存里的事）。
     /// 恒收：号已由 tee 占掉，卡上的缺口由活卡判。
     fn offer(&self, ev: TapEvent) -> bool {
+        if ev.n == 0 {
+            crate::observe::relay_marks::note(&ev.stream, &ev.heads);
+        }
         if let crate::relay::TapBody::Data(d) = &ev.body {
             crate::accounts::quota::spend::book().heard(
                 &ev.stream,
