@@ -51,7 +51,7 @@ class NeedsSheetShotTest {
         compose.mainClock.autoAdvance = false
         compose.setContent { AppTheme { AskSheetView(sheet, now = { 0L }, act = act) } }
         settle()
-        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag(NeedsTags.SHEET).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WALL_CEILING_MS) { compose.onAllNodesWithTag(NeedsTags.SHEET).fetchSemanticsNodes().isNotEmpty() }
         settle()
     }
 
@@ -191,7 +191,9 @@ class NeedsSheetShotTest {
 
     private companion object {
         const val SETTLE_MS = 1_000L
-        const val WAIT_MS = 30_000L
+
+        /** 等抽屉出来的上限：只防挂死（同 SmokeTest，与 `guard_core::wall::CEILING_SECS` 同一个数）。 */
+        const val WALL_CEILING_MS = 300_000L
         const val COMMAND_LINES = 40
         const val PNG_QUALITY = 100
 
