@@ -63,7 +63,7 @@ pub(crate) struct AssetsSyncReq {
     /// 那台的拨号（只有路径，没有私钥本体）。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
-    pub(crate) dial: Option<crate::dial::pick::MachineDial>,
+    pub(crate) dial: Option<crate::dial::MachineDial>,
 }
 
 /// 一趟对一台的结局（`synced[]` 的一行）。

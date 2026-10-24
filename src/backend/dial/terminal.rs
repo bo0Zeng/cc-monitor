@@ -2,7 +2,7 @@
 //! （Windows：PowerShell 窗口载荷；别处：一行 POSIX shell），在本机常驻后端里渲。
 //!
 //! 界面交来的是那台机器的配置（`{machine, jump?, prefer?}`，monitor 从它自己的机器表与「上次赢的那条」给出，
-//! 同 `remote-probe` / `pubkey-push` 那几格）＋ 要在那台跑的命令 `command`。组请求走唯一那一份 [`super::machine::resolve`]
+//! 同 `remote-probe` / `pubkey-push` 那几格）＋ 要在那台跑的命令 `command`。组请求走唯一那一份 [`super::machine::request`]
 //! （地址排序 · 跳板查无 / 环都在那里），这里只把它渲成一行：
 //!
 //! - PowerShell：`& '<ssh 全路径>' -t[ -J <跳板用户>@<跳板>[:口]] -p <口>[ -i '<钥匙>'] -F '<cc-monitor 那份 ssh 配置>' <用户>@<地址> -- '<bash -lic ''…''>'`
@@ -23,7 +23,7 @@
 use copy_core::copy_text;
 use serde_json::Value;
 
-use super::pick::{MachineConfig, Pick, Prefer};
+use super::{Host, Prefer};
 use crate::platform::shell::dialect::ps_literal;
 use crate::platform::shell::posix;
 use crate::platform::ssh_client::SshClient;
@@ -223,11 +223,12 @@ pub(crate) fn command_for_cwd(cwd: &Value) -> Result<String, CmdErr> {
 #[serde(deny_unknown_fields)]
 pub(crate) struct TerminalSshReq {
     /// 那台的配置（可能还没保存）。
-    pub(crate) machine: MachineConfig,
+    #[serde(deserialize_with = "ssh_dial::machine::loose_field")]
+    pub(crate) machine: Host,
     /// 跳板那一台的配置（`machine.jump` 指它时必给）。
-    #[serde(default)]
+    #[serde(default, deserialize_with = "ssh_dial::machine::loose_opt")]
     #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) jump: Option<MachineConfig>,
+    pub(crate) jump: Option<Host>,
     /// 上次赢的那条地址（仍在这台的地址里 ⇒ 用它）。
     #[serde(default)]
     #[cfg_attr(test, ts(optional = nullable))]
@@ -298,12 +299,13 @@ pub(crate) fn answer_in(
             ))
         }
     };
-    let pick = Pick {
-        machine: &req.machine,
-        jump: req.jump.as_ref(),
-        prefer: req.prefer.as_ref(),
-    };
-    let dial = pick.request("stream", serde_json::json!({ "command": command }))?;
+    let dial = super::dial_of(
+        &req.machine,
+        req.jump.as_ref(),
+        req.prefer.as_ref(),
+        "stream",
+        serde_json::json!({ "command": command }),
+    )?;
     let ssh = match ssh {
         SshClient::At(p) => p,
         SshClient::Missing => {

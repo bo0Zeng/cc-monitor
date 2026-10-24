@@ -123,10 +123,11 @@ async fn it_asks_that_backend_when_it_is_up_and_execs_once_only_when_it_is_not()
     assert!(down.added.lock().unwrap().is_empty());
     let execs = down.execs.lock().unwrap();
     assert_eq!(execs.len(), 1, "只许一次 exec");
-    // 那台原样的配置按类型收过一遍（拨号读的几格；缺的不写出来，`resolve` 照缺读）。
+    // 那台原样的配置读成一台（`Host`，缺的几格补成缺省）交出去，`resolve` 照它读。
     assert_eq!(
         execs[0].0["machine"],
-        json!({ "host": "192.0.2.2", "label": "dev", "user": "u", "keyPath": "/k/id_ed25519", "addresses": [] })
+        json!({ "host": "192.0.2.2", "label": "dev", "port": 22, "user": "u", "keyPath": "/k/id_ed25519",
+                "addresses": [], "jump": "", "connect": true })
     );
     assert_eq!(execs[0].1, authorized_keys_cmd(KEY));
     assert_eq!(

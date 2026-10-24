@@ -351,7 +351,7 @@ async fn half_given_arguments_are_refused() {
     assert_eq!(e.0, "unreachable");
     assert!(fakes.seen.lock().unwrap().is_empty());
     // 正控：握手那一刻登记过（`remote-reach`）⇒ 只给 `origin` 就对那一台做一趟。
-    let d_x: crate::dial::pick::MachineDial = serde_json::from_value(dial("x")).unwrap();
+    let d_x: crate::dial::MachineDial = serde_json::from_value(dial("x")).unwrap();
     crate::dial::remote_ask::register(&table, &cmd_wire::Machine("o".into()), &d_x).unwrap();
     let ok = answer_with(&json!({"origin": "o"}), local.fold(), &fakes, &table)
         .await

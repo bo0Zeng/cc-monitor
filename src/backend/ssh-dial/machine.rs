@@ -1,115 +1,155 @@
-//! 一台机器的配置 → 一份拨号请求，在本机常驻后端里组。
+//! **一台机器**（[`Host`]）与它的规矩，只此一份：名字 · 地址 · 判准 · 组拨号请求 · 跳板。桌面本机后端与手机核心都链它。
 //!
-//! 界面交来的是它手里那台机器的配置（设置页表单里可能还没保存的那一份 · 跳板那一台），形状就是界面
-//! `remote-config.ts` 的那一格（camelCase：`host` · `label` · `port` · `user` · `keyPath` · `addresses` · `jump`）。
-//!
+//! - 名字：`label` 去首尾空白后非空取它，否则 `host` 去首尾空白（[`Host::name`]；与 monitor 的 origin 同一个串）。
 //! - 地址：`host` 排首，`addresses` 依次追加（`host` / `host:port` / `[v6]:port` / 裸 v6），按 `(host, port)` 去重保序；
-//! - 跳板：`jump` 指另一台的名字 ⇒ 那一台的配置由界面一并交来；指自己 ⇒ 环（拒）；交不来 ⇒ 拒（fail-closed，不回落直连）；单跳。
+//!   解析不了的那一行丢掉（配置笔误不静默成默认端口）。
+//! - 判准（[`Host::fault`] · [`check_table`]）：地址与用户非空 · 端口 1–65535 · 地址（含备用地址）与用户不以 `-` 打头 · 表里名字不重。
+//!   写表的口与拨号的口同一份。
+//! - 跳板：`jump` 指表里另一台的名字；那一台自己还有跳板 ⇒ 再套一层（多跳，同 `ssh -J 外,内`）。
+//!   成环 · 表里找不到 ⇒ `bad_jump`（fail-closed，不回落直连）。
 //!
 //! 只放路径，不放私钥本体。ssh-agent 套接字不交 ⇒ 用本进程自己的（`DialRequest::agent_sock` 缺席那一格）。
-//! 竞速顺序：交了 `prefer`（monitor 记的「上次赢的那条」，结构化的 `{host, port}`）且它仍在这台的地址里 ⇒ 排首，其余保序；
-//! 所有地址本来就同时起拨（`dial/mod.rs` 头注），顺序只决定同时完成时谁先被看到。
+//! 竞速顺序：交了 `prefer`（monitor 记的「上次赢的那条」）且它仍在这台的地址里 ⇒ 排首，其余保序；
+//! 所有地址本来就同时起拨，顺序只决定同时完成时谁先被看到。
 //!
-//! 线上交来的每一份拨号都经 [`resolve`] 进来（monitor 起流 / 一次性查询 / 隧道 · 可达表里存的那份 · 传输台的 `dial` · 测试连接 · 端口转发）：
-//! 界面只交那台原样的配置，地址解析与组请求只在这里。
+//! 线上交来的那一形（一台原样的配置，键可缺、可为 `null`、可多带）经 [`loose`] 读成 [`Host`]；
+//! 线上的一份拨号（`{machine, jump?, prefer?, use?, …}`）经 [`resolve`] 进来。
 
+use crate::Endpoint;
 use copy_core::copy_text;
 use serde_json::{json, Value};
 
-/// 一台机器的配置（界面那一格）里本模块读的几样。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Machine {
-    pub host: String,
+type Err = (&'static str, String);
+
+/// 一台（盘上那一形，也是线上那一形）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(
+        export,
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
+    )
+)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Host {
+    /// 这台的名字（origin）；空 ⇒ 用 `host`。
+    #[serde(default)]
     pub label: String,
-    pub port: u16,
+    /// 首选地址。
+    #[serde(default)]
+    pub host: String,
+    /// 端口（缺 ＝ 22）。
+    #[serde(default = "port_22")]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub port: u64,
+    #[serde(default)]
     pub user: String,
-    pub key_path: Option<String>,
+    /// 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
+    #[serde(default)]
+    pub key_path: String,
+    /// 备用地址（竞发）。
+    #[serde(default)]
     pub addresses: Vec<String>,
-    pub jump: Option<String>,
+    /// 跳板：另一台的名字（空 ＝ 直连）。
+    #[serde(default)]
+    pub jump: String,
+    /// 连不连这台。
+    #[serde(default = "yes")]
+    pub connect: bool,
 }
 
-/// 一台机器的配置里本模块读的那几格（原样，还没判空白）：[`Machine::of`] 的入参。
-#[derive(Debug, Clone, Default)]
-pub struct Fields<'a> {
-    pub host: Option<&'a str>,
-    pub user: Option<&'a str>,
-    pub label: Option<&'a str>,
-    pub port: Option<u16>,
-    pub key_path: Option<&'a str>,
-    pub addresses: Vec<String>,
-    pub jump: Option<&'a str>,
+fn port_22() -> u64 {
+    22
+}
+fn yes() -> bool {
+    true
 }
 
-impl Machine {
-    /// 读界面那一格。缺 `host` / `user` ⇒ `bad_args`（调用方是我们自己的界面：契约错）。
-    pub fn parse(v: &Value) -> Result<Machine, (&'static str, String)> {
-        let bad = |d: &str| ("bad_args", crate::malformed(d));
-        let port = match v.get("port") {
-            None | Some(Value::Null) => None,
-            Some(p) => Some(
-                p.as_u64()
-                    .and_then(|n| u16::try_from(n).ok())
-                    .ok_or_else(|| bad("`port` is not a port number"))?,
-            ),
-        };
-        let addresses = v
-            .get("addresses")
-            .and_then(Value::as_array)
-            .map(|a| {
-                a.iter()
-                    .filter_map(Value::as_str)
-                    .map(str::to_string)
-                    .collect()
-            })
-            .unwrap_or_default();
-        let s = |k: &str| v.get(k).and_then(Value::as_str);
-        Machine::of(Fields {
-            host: s("host"),
-            user: s("user"),
-            label: s("label"),
-            port,
-            key_path: s("keyPath"),
-            addresses,
-            jump: s("jump"),
-        })
+impl Default for Host {
+    fn default() -> Self {
+        Host {
+            label: String::new(),
+            host: String::new(),
+            port: port_22(),
+            user: String::new(),
+            key_path: String::new(),
+            addresses: Vec::new(),
+            jump: String::new(),
+            connect: yes(),
+        }
     }
+}
 
-    /// 已经按类型收下的那几格 ⇒ 一台机器（空白当没给；缺 `host` / `user` ⇒ `bad_args`；口缺 ⇒ 22）。
-    /// 线上那一份（[`Machine::parse`]）与按类型收的那一份（后端帧命令的入参）都经这里，判法只有这一处。
-    pub fn of(f: Fields<'_>) -> Result<Machine, (&'static str, String)> {
-        let bad = |d: &str| ("bad_args", crate::malformed(d));
-        let nonempty = |v: Option<&str>| {
-            v.map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string)
-        };
-        let host = nonempty(f.host).ok_or_else(|| bad("machine without `host`"))?;
-        let user = nonempty(f.user).ok_or_else(|| bad("machine without `user`"))?;
-        Ok(Machine {
-            label: nonempty(f.label).unwrap_or_default(),
-            port: f.port.unwrap_or(22),
-            user,
-            key_path: nonempty(f.key_path),
-            addresses: f.addresses,
-            jump: nonempty(f.jump),
-            host,
-        })
-    }
+// 机器表那一道没过的是哪一种（码与界面那一侧同一份；生成的 TS 不带说明）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(
+        export,
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
+    )
+)]
+#[serde(rename_all = "snake_case")]
+pub enum MachineFaultCode {
+    NoHost,
+    NoUser,
+    Port,
+    NameTaken,
+    LeadingDash,
+}
 
-    /// 这台机器的名字（`label`，空 ⇒ `host`）—— 与 monitor 的 origin 同一个串。
+impl Host {
+    /// 这台的名字：`label` 去首尾空白后非空取它，否则 `host`（去首尾空白）。名字的规矩只此一处。
     pub fn name(&self) -> &str {
-        if self.label.is_empty() {
-            &self.host
-        } else {
-            &self.label
+        match self.label.trim() {
+            "" => self.host.trim(),
+            l => l,
         }
     }
 
-    /// 全部拨号地址：`host` 排首、`addresses` 追加，去重保序；解析不了的那一行丢掉（配置笔误不静默成默认端口）。
-    pub fn endpoints(&self) -> Vec<(String, u16)> {
-        let mut out: Vec<(String, u16)> = vec![(self.host.clone(), self.port)];
+    /// 钥匙路径（空白 ⇒ 没给，走 ssh-agent）。
+    pub fn key(&self) -> Option<&str> {
+        Some(self.key_path.trim()).filter(|k| !k.is_empty())
+    }
+
+    /// 跳板那一台的名字（空白 ⇒ 直连）。
+    pub fn jump_name(&self) -> Option<&str> {
+        Some(self.jump.trim()).filter(|j| !j.is_empty())
+    }
+
+    /// 这一台自己成不成立（不看别的台）：地址与用户非空 · 端口 1–65535 · 地址（含备用地址）与用户不以 `-` 打头。
+    pub fn fault(&self) -> Option<MachineFaultCode> {
+        if self.host.trim().is_empty() {
+            return Some(MachineFaultCode::NoHost);
+        }
+        if self.user.trim().is_empty() {
+            return Some(MachineFaultCode::NoUser);
+        }
+        if !(1..=65535).contains(&self.port) {
+            return Some(MachineFaultCode::Port);
+        }
+        let dash = |s: &str| s.trim().starts_with('-');
+        if dash(&self.host) || dash(&self.user) || self.addresses.iter().any(|a| dash(a)) {
+            return Some(MachineFaultCode::LeadingDash);
+        }
+        None
+    }
+
+    /// 全部拨号地址：`host` 排首、`addresses` 追加，去重保序；解析不了的那一行丢掉。`host` 空 ⇒ 一条都没有。
+    pub fn endpoints(&self) -> Vec<Endpoint> {
+        let host = self.host.trim();
+        if host.is_empty() {
+            return Vec::new();
+        }
+        let port = u16::try_from(self.port).unwrap_or(22);
+        let mut out = vec![Endpoint {
+            host: host.to_string(),
+            port,
+        }];
         for line in &self.addresses {
-            if let Some(ep) = parse_address_line(line, self.port) {
+            if let Some(ep) = parse_address_line(line, port) {
                 if !out.contains(&ep) {
                     out.push(ep);
                 }
@@ -119,9 +159,28 @@ impl Machine {
     }
 }
 
-/// 一行地址 → `(host, port)`。四形态：`host` · `host:port` · `[v6]:port` · `[v6]` / 裸 v6（「>1 个冒号」判裸 v6）。
+/// 机器表成不成立：每一台过 [`Host::fault`]，名字（[`Host::name`]，大小写敏感）不重。
+/// 不成立 ⇒ 第一处（码 ＋ 那一台）；成立 ⇒ `None`。**纯函数**。
+pub fn check_table(hosts: &[Host]) -> Option<(MachineFaultCode, &Host)> {
+    let mut seen = std::collections::HashSet::new();
+    for h in hosts {
+        if let Some(code) = h.fault() {
+            return Some((code, h));
+        }
+        if !seen.insert(h.name()) {
+            return Some((MachineFaultCode::NameTaken, h));
+        }
+    }
+    None
+}
+
+/// 一行地址 → 一个拨号地址。四形态：`host` · `host:port` · `[v6]:port` · `[v6]` / 裸 v6（「>1 个冒号」判裸 v6）。
 /// 空白 ⇒ `None`；端口非法 ⇒ `None`（拒绝而非静默默认）。
-pub fn parse_address_line(line: &str, default_port: u16) -> Option<(String, u16)> {
+pub fn parse_address_line(line: &str, default_port: u16) -> Option<Endpoint> {
+    let ep = |host: &str, port| Endpoint {
+        host: host.to_string(),
+        port,
+    };
     let s = line.trim();
     if s.is_empty() {
         return None;
@@ -135,116 +194,171 @@ pub fn parse_address_line(line: &str, default_port: u16) -> Option<(String, u16)
             "" => default_port,
             p => p.strip_prefix(':')?.parse().ok()?,
         };
-        return Some((host.to_string(), port));
+        return Some(ep(host, port));
     }
     if s.matches(':').count() > 1 {
-        return Some((s.to_string(), default_port));
+        return Some(ep(s, default_port));
     }
     match s.split_once(':') {
-        Some((h, p)) if !h.is_empty() => Some((h.to_string(), p.parse().ok()?)),
+        Some((h, p)) if !h.is_empty() => Some(ep(h, p.parse().ok()?)),
         Some(_) => None,
-        None => Some((s.to_string(), default_port)),
+        None => Some(ep(s, default_port)),
     }
 }
 
-fn hop(m: &Machine) -> Value {
-    json!({
-        "host": m.host,
-        "port": m.port,
-        "user": m.user,
-        "key_path": m.key_path,
-        "label": m.name(),
+/// 线上那一形（一台原样的配置：键可缺、可为 `null`，多带的键不读）⇒ 一台。键的类型不对 ⇒ `bad_args`。
+/// 不判成不成立：那是组请求时 [`Host::fault`] 的事。
+pub fn loose(v: &Value) -> Result<Host, Err> {
+    let bad = |d: &str| ("bad_args", crate::malformed(d));
+    let obj = v
+        .as_object()
+        .ok_or_else(|| bad("machine is not an object"))?;
+    let text = |k: &str| -> Result<String, Err> {
+        match obj.get(k) {
+            None | Some(Value::Null) => Ok(String::new()),
+            Some(Value::String(s)) => Ok(s.clone()),
+            Some(_) => Err(bad(&format!("`{k}` is not a string"))),
+        }
+    };
+    let port = match obj.get("port") {
+        None | Some(Value::Null) => port_22(),
+        Some(p) => p
+            .as_u64()
+            .ok_or_else(|| bad("`port` is not a port number"))?,
+    };
+    let addresses = match obj.get("addresses") {
+        None | Some(Value::Null) => Vec::new(),
+        Some(Value::Array(a)) => a
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect(),
+        Some(_) => return Err(bad("`addresses` is not a list")),
+    };
+    Ok(Host {
+        label: text("label")?,
+        host: text("host")?,
+        port,
+        user: text("user")?,
+        key_path: text("keyPath")?,
+        addresses,
+        jump: text("jump")?,
+        connect: obj.get("connect").and_then(Value::as_bool).unwrap_or(true),
     })
 }
 
-/// 界面交来的那几样（`machine` 必有；`jump` = 跳板那一台）→ 拨号请求（蛇形键，`dial::DialRequest` 的形状）。
-/// `use_` 与 `extra` 由调用方补（`forward` 的规格 · 探针的命令与阶段行）。
+/// 按类型收的入参里那一格经 [`loose`] 读（`#[serde(deserialize_with = "ssh_dial::machine::loose_field")]`）。
+pub fn loose_field<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Host, D::Error> {
+    let v = <Value as serde::Deserialize>::deserialize(d)?;
+    loose(&v).map_err(|(_, m)| serde::de::Error::custom(m))
+}
+
+/// 同 [`loose_field`]，可缺 / `null` 的那一格。
+pub fn loose_opt<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Host>, D::Error> {
+    match <Value as serde::Deserialize>::deserialize(d)? {
+        Value::Null => Ok(None),
+        v => loose(&v)
+            .map(Some)
+            .map_err(|(_, m)| serde::de::Error::custom(m)),
+    }
+}
+
+/// 拨不了这一台（没地址 · 没用户 · 端口不在 1–65535）⇒ `bad_args`（调用方是我们自己：契约错）。
+/// 以 `-` 打头那一条不在这里拒：russh 拨号不经命令行；写表那一处照 [`Host::fault`] 拒，开终端那一行另按它的裸词白名单拒、说清是哪一格。
+fn usable(h: &Host) -> Result<&Host, Err> {
+    match h.fault() {
+        None | Some(MachineFaultCode::LeadingDash) => Ok(h),
+        Some(code) => Err((
+            "bad_args",
+            crate::malformed(&format!("machine `{}`: {code:?}", h.name())),
+        )),
+    }
+}
+
+/// 一跳（蛇形键）：`outer` = 它自己还要经的那一台。
+fn hop(h: &Host, outer: Option<Value>) -> Value {
+    let mut v = json!({
+        "host": h.host.trim(),
+        "port": h.port,
+        "user": h.user.trim(),
+        "key_path": h.key(),
+        "label": h.name(),
+    });
+    if let Some(o) = outer {
+        v["jump"] = o;
+    }
+    v
+}
+
+/// 表里叫 `name` 的那一台 ⇒ 拨号请求（蛇形键，`DialRequest` 的形状）。跳板一路照表找下去（多跳）：
+/// 成环 ⇒ `bad_jump`（`beMachine.jump.loop`）；找不到 ⇒ `bad_jump`（`beMachine.jump.notFound`）；
+/// 表里没有这一台 · 路上哪一台不成立 ⇒ `bad_args`。`use_` 与 `extra` 由调用方补（`forward` 的规格 · 探针的命令与阶段行）。
 pub fn request(
-    machine: &Machine,
-    jump: Option<&Machine>,
-    prefer: Option<&(String, u16)>,
+    table: &[Host],
+    name: &str,
+    prefer: Option<&Endpoint>,
     use_: &str,
     extra: Value,
-) -> Result<Value, (&'static str, String)> {
+) -> Result<Value, Err> {
+    let find = |n: &str| table.iter().find(|h| h.name() == n);
+    let machine = find(name).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::malformed(&format!("no machine named `{name}`")),
+        )
+    })?;
+    usable(machine)?;
+    // 跳板一路：从这一台往外走，走到直连的那一台为止。
+    let mut chain: Vec<&Host> = Vec::new();
+    let mut seen = vec![machine.name()];
+    let mut at = machine;
+    while let Some(j) = at.jump_name() {
+        if seen.contains(&j) {
+            return Err(("bad_jump", copy_text("beMachine.jump.loop", &[])));
+        }
+        let next = find(j).ok_or_else(|| {
+            (
+                "bad_jump",
+                copy_text("beMachine.jump.notFound", &[("jumpLabel", j)]),
+            )
+        })?;
+        usable(next)?;
+        seen.push(j);
+        chain.push(next);
+        at = next;
+    }
+    let jump = chain
+        .iter()
+        .rev()
+        .fold(None, |outer, h| Some(hop(h, outer)));
+
     let mut order = machine.endpoints();
     // 上次赢的那条排首（它仍在这台的地址里才算；配置改过就失效）。
     if let Some(i) = prefer.and_then(|p| order.iter().position(|e| e == p)) {
         let won = order.remove(i);
         order.insert(0, won);
     }
-    let endpoints: Vec<Value> = order
-        .into_iter()
-        .map(|(host, port)| json!({ "host": host, "port": port }))
-        .collect();
-    let mut req = json!({
-        "host": machine.host,
-        "port": machine.port,
-        "user": machine.user,
-        "key_path": machine.key_path,
-        "endpoints": endpoints,
-        "use": use_,
-    });
-    if let Some(jump_name) = machine.jump.as_deref() {
-        if jump_name == machine.name() {
-            return Err(("bad_jump", copy_text("beMachine.jump.loop", &[])));
-        }
-        let j = jump.filter(|j| j.name() == jump_name).ok_or_else(|| {
-            (
-                "bad_jump",
-                copy_text("beMachine.jump.notFound", &[("jumpLabel", jump_name)]),
-            )
-        })?;
-        // v1 单跳：跳板自身的 jump 忽略（防链式递归 / 环）。
-        req["jump"] = hop(j);
+    let mut req = hop(machine, jump);
+    if let Some(o) = req.as_object_mut() {
+        o.remove("label");
     }
+    req["endpoints"] = json!(order);
+    req["use"] = json!(use_);
     if let (Some(obj), Value::Object(more)) = (req.as_object_mut(), extra) {
         obj.extend(more);
     }
     Ok(req)
 }
 
-/// 线上交来的一份拨号 ⇒ 拨号请求：`{machine, jump?, prefer?: {host, port}, use?, …}`，其余格（`command` · `capture` ·
-/// `forward` · `stages` · `probe` · `agent_sock`）原样进请求。`use` 缺席 ⇒ `stream`。
-pub fn resolve(v: &Value) -> Result<crate::DialRequest, (&'static str, String)> {
-    let bad = |d: &str| ("bad_args", crate::malformed(d));
-    let obj = v.as_object().ok_or_else(|| bad("dial is not an object"))?;
-    let (machine, jump) = from_args(v)?;
-    let prefer = match obj.get("prefer") {
-        None | Some(Value::Null) => None,
-        Some(p) => Some((
-            p.get("host")
-                .and_then(Value::as_str)
-                .ok_or_else(|| bad("`prefer` without `host`"))?
-                .to_string(),
-            p.get("port")
-                .and_then(Value::as_u64)
-                .and_then(|n| u16::try_from(n).ok())
-                .ok_or_else(|| bad("`prefer` without a port number"))?,
-        )),
-    };
-    let use_ = obj.get("use").and_then(Value::as_str).unwrap_or("stream");
-    let mut extra = obj.clone();
-    for k in ["machine", "jump", "prefer", "use"] {
-        extra.remove(k);
-    }
-    dial_request(
-        &machine,
-        jump.as_ref(),
-        prefer.as_ref(),
-        use_,
-        Value::Object(extra),
-    )
-}
-
-/// 同 [`request`]，组好之后读成拨号请求（线上那一份 [`resolve`] 与按类型收的帧命令入参都经这里）。
+/// 同 [`request`]，组好之后读成拨号请求。
 pub fn dial_request(
-    machine: &Machine,
-    jump: Option<&Machine>,
-    prefer: Option<&(String, u16)>,
+    table: &[Host],
+    name: &str,
+    prefer: Option<&Endpoint>,
     use_: &str,
     extra: Value,
-) -> Result<crate::DialRequest, (&'static str, String)> {
-    let req = request(machine, jump, prefer, use_, extra)?;
+) -> Result<crate::DialRequest, Err> {
+    let req = request(table, name, prefer, use_, extra)?;
     <crate::DialRequest as serde::Deserialize>::deserialize(&req).map_err(|e| {
         (
             "bad_args",
@@ -253,18 +367,40 @@ pub fn dial_request(
     })
 }
 
-/// 帧命令入参里那两格（`machine` · `jump?`）一次读齐。
-pub fn from_args(args: &Value) -> Result<(Machine, Option<Machine>), (&'static str, String)> {
-    let m = args
-        .get("machine")
-        .ok_or_else(|| ("bad_args", crate::malformed("missing `machine`")))?;
-    let opt = |k: &str| -> Result<Option<Machine>, (&'static str, String)> {
-        match args.get(k) {
-            None | Some(Value::Null) => Ok(None),
-            Some(v) => Machine::parse(v).map(Some),
-        }
+/// 线上交来的一份拨号 ⇒ 拨号请求：`{machine, jump?, prefer?: {host, port}, use?, …}`（`machine` · `jump` 经 [`loose`] 读，
+/// 两台成一张表、拨 `machine` 那一台），其余格（`command` · `capture` · `forward` · `stages` · `probe` · `agent_sock`）原样进请求。
+/// `use` 缺席 ⇒ `stream`。
+pub fn resolve(v: &Value) -> Result<crate::DialRequest, Err> {
+    let bad = |d: &str| ("bad_args", crate::malformed(d));
+    let obj = v.as_object().ok_or_else(|| bad("dial is not an object"))?;
+    let machine = loose(obj.get("machine").ok_or_else(|| bad("missing `machine`"))?)?;
+    let mut table = vec![machine];
+    match obj.get("jump") {
+        None | Some(Value::Null) => {}
+        Some(j) => table.push(loose(j)?),
+    }
+    let prefer = match obj.get("prefer") {
+        None | Some(Value::Null) => None,
+        Some(p) => Some(Endpoint {
+            host: p
+                .get("host")
+                .and_then(Value::as_str)
+                .ok_or_else(|| bad("`prefer` without `host`"))?
+                .to_string(),
+            port: p
+                .get("port")
+                .and_then(Value::as_u64)
+                .and_then(|n| u16::try_from(n).ok())
+                .ok_or_else(|| bad("`prefer` without a port number"))?,
+        }),
     };
-    Ok((Machine::parse(m)?, opt("jump")?))
+    let use_ = obj.get("use").and_then(Value::as_str).unwrap_or("stream");
+    let mut extra = obj.clone();
+    for k in ["machine", "jump", "prefer", "use"] {
+        extra.remove(k);
+    }
+    let name = table[0].name().to_string();
+    dial_request(&table, &name, prefer.as_ref(), use_, Value::Object(extra))
 }
 
 #[cfg(test)]

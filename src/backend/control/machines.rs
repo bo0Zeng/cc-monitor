@@ -4,7 +4,8 @@
 //!
 //! - 谁写：只有本模块的 [`answer_set_in`]（帧面 `machines-set` ＋ 派生的 CLI 面）与第 7 批换形那一次（[`super::prefs_migration`]，下一版删）。
 //!   补丁全按键认元素（[`MachineEdit`]），锁内现读现判 ⇒ 设置页改一格、另一扇窗口同写都不会互相盖掉。
-//! - 判准只此一处（[`check_table`]）：名字不重 · 端口 1–65535 · 地址与用户非空、不以 `-` 打头。`machines-try` 与写口同一份。
+//! - 一台的那一形（[`Host`]）、名字、判准、组拨号请求都住拨号核心（`ssh_dial::machine`），手机核心链同一份；
+//!   这里只把判准没过的那一处说成界面那一句（[`check_table`]）。`machines-try` 与写口同一份。
 //! - 主机钥匙不在这张表里：在拨号核心那份库（`dial/known_hosts.rs`）。
 //! - 读不懂：照空表办，`machines-read` 照实报 `unreadable`；`machines-set` 拒（不拿空的盖掉原文）。
 //! - 每次写完响一下（[`changes`]），流连接推 `changed {machines}`，monitor 照它重问、对齐远端那几条流。
@@ -31,70 +32,8 @@ pub(crate) const DOC: crate::common::own_state::Doc<OnDisk> =
 /// 一张表至多几台。
 pub(crate) const HOSTS_MAX: usize = 256;
 
-/// 一台（盘上那一形，也是线上那一形）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct Host {
-    /// 这台的名字（origin）；空 ⇒ 用 `host`。
-    #[serde(default)]
-    pub(crate) label: String,
-    /// 首选地址。
-    #[serde(default)]
-    pub(crate) host: String,
-    /// 端口（缺 ＝ 22）。
-    #[serde(default = "port_22")]
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) port: u64,
-    #[serde(default)]
-    pub(crate) user: String,
-    /// 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
-    #[serde(default)]
-    pub(crate) key_path: String,
-    /// 备用地址（竞发）。
-    #[serde(default)]
-    pub(crate) addresses: Vec<String>,
-    /// 跳板：另一台的名字（空 ＝ 直连）。
-    #[serde(default)]
-    pub(crate) jump: String,
-    /// 连不连这台。
-    #[serde(default = "yes")]
-    pub(crate) connect: bool,
-}
-
-fn port_22() -> u64 {
-    22
-}
-fn yes() -> bool {
-    true
-}
-
-impl Host {
-    /// 这台的全部拨号地址（同拨号那一处的算法：`host` 排首、备用地址追加、去重）。
-    pub(crate) fn endpoints(&self) -> Vec<ssh_dial::Endpoint> {
-        ssh_dial::machine::Machine::of(ssh_dial::machine::Fields {
-            host: Some(&self.host),
-            user: Some("-"),
-            port: u16::try_from(self.port).ok(),
-            addresses: self.addresses.clone(),
-            ..Default::default()
-        })
-        .map(|m| m.endpoints())
-        .unwrap_or_default()
-        .into_iter()
-        .map(|(host, port)| ssh_dial::Endpoint { host, port })
-        .collect()
-    }
-
-    /// 这台的名字：`label` 去首尾空白后非空取它，否则 `host`。
-    pub(crate) fn name(&self) -> &str {
-        match self.label.trim() {
-            "" => self.host.trim(),
-            l => l,
-        }
-    }
-}
+/// 一台（盘上那一形，也是线上那一形）：住拨号核心。
+pub(crate) use ssh_dial::machine::{Host, MachineFaultCode};
 
 /// 盘上整份。
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -216,18 +155,6 @@ pub(crate) struct MachineFault {
     pub(crate) said: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum MachineFaultCode {
-    NoHost,
-    NoUser,
-    Port,
-    NameTaken,
-    LeadingDash,
-}
-
 impl MachineFault {
     /// 一处错（那一格下面的那一句照码写）。
     pub(crate) fn new(code: MachineFaultCode, name: String) -> Self {
@@ -256,31 +183,10 @@ impl MachineFault {
     }
 }
 
-/// 机器表成不成立：名字（`label` 非空取它、否则 `host`，去首尾空白、大小写敏感）不重 · 端口 1–65535 · 地址与用户非空、
-/// 地址（含备用地址）与用户不以 `-` 打头。
-/// 不成立 ⇒ 第一处；成立 ⇒ `None`。**纯函数**。
+/// 机器表成不成立（判准在 `ssh_dial::machine::check_table`）：不成立 ⇒ 第一处，说成界面那一句；成立 ⇒ `None`。**纯函数**。
 pub(crate) fn check_table(hosts: &[Host]) -> Option<MachineFault> {
-    let mut seen = std::collections::HashSet::new();
-    for h in hosts {
-        let fault = |code| Some(MachineFault::new(code, h.name().to_string()));
-        if h.host.trim().is_empty() {
-            return fault(MachineFaultCode::NoHost);
-        }
-        if h.user.trim().is_empty() {
-            return fault(MachineFaultCode::NoUser);
-        }
-        if !(1..=65535).contains(&h.port) {
-            return fault(MachineFaultCode::Port);
-        }
-        let dash = |s: &str| s.trim().starts_with('-');
-        if dash(&h.host) || dash(&h.user) || h.addresses.iter().any(|a| dash(a)) {
-            return fault(MachineFaultCode::LeadingDash);
-        }
-        if !seen.insert(h.name().to_string()) {
-            return fault(MachineFaultCode::NameTaken);
-        }
-    }
-    None
+    ssh_dial::machine::check_table(hosts)
+        .map(|(code, h)| MachineFault::new(code, h.name().to_string()))
 }
 
 // ───────────────────────────── 补丁 ─────────────────────────────
