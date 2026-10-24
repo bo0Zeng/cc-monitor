@@ -6,7 +6,7 @@
  * 号名是编的。时刻按此刻的钟现算。
  */
 import type { Scene } from "./index";
-import { putAccounts, putBrokenQuota, putLineage, putQuota, putRotation, putWarm, type QuotaSpec, type RotationSessionSpec } from "../disk";
+import { putAccounts, putBrokenQuota, putLineage, putQuota, putRotation, type QuotaSpec, type RotationSessionSpec } from "../disk";
 import type { World } from "../fake/types";
 import { defaultWorld, LOCAL } from "../fake/world";
 import {
@@ -48,9 +48,6 @@ interface AcctWorld {
   noBook?: boolean;
   /** 按 tab 序号（0 起）。 */
   sessions: Record<number, Sess>;
-  /** 时间轴：卡住（池里都被拒）· quota-warm 在跑。 */
-  /** quota-warm 在跑：号 → 下一次开窗（距此刻多少秒）。 */
-  warm?: { account: string; at: number }[];
 }
 
 const now = (): number => Math.floor(Date.now() / 1000);
@@ -141,7 +138,6 @@ function acctDisk(aw: AcctWorld, w: World): void {
   }
   if (!aw.noBook) putRotation(d, { sessions });
   if (Object.keys(parents).length > 0) putLineage(d, parents, t - 1800);
-  if (aw.warm) putWarm(d, aw.warm.map((x) => ({ account: x.account, at: t + x.at })));
 }
 
 function world(

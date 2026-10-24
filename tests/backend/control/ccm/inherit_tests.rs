@@ -587,3 +587,73 @@ fn no_rotation_presets_the_session_id_it_hands_the_agent() {
         assert!(plan_of(bad).is_err(), "{bad:?} 该拒");
     }
 }
+
+/// 额度预热的号单与起号只经后端：不给 `--accounts` ⇒ 号单照 `quota-read` 的 `candidates`（出过数的 ＋ 账号库里没出过数的，
+/// `_` 不在里面）—— 不自己去扫账号库目录；起号用 `--account <名>`，不自己拼账号目录。
+/// 隔离的家目录里只有一个假 `ccm`（答 `--quota-read`、把每一发的参数记下来），没有一份登录文件。
+#[cfg(unix)]
+#[test]
+fn quota_warm_takes_its_accounts_from_quota_read_and_names_them_to_ccm() {
+    use std::os::unix::fs::PermissionsExt;
+    let home = std::env::temp_dir().join(format!("quota-warm-{}", std::process::id()));
+    std::fs::remove_dir_all(&home).ok();
+    let bin = home.join(".cc-monitor/bin");
+    std::fs::create_dir_all(&bin).expect("造 bin");
+    let sent = home.join("sent.txt");
+    let read = serde_json::json!({
+        "accounts": [
+            {"account": "_", "seenAt": 0, "warm": {"act": "send", "text": "w"}},
+            {"account": "seen1", "seenAt": 0, "warm": {"act": "send", "text": "w"}},
+        ],
+        "unseen": [{"account": "fresh", "warm": {"act": "send", "text": "w"}}],
+        "candidates": [
+            {"agent": "claude", "account": "seen1", "kind": "sub"},
+            {"agent": "claude", "account": "fresh", "kind": "sub"},
+        ],
+    });
+    std::fs::write(home.join("read.json"), read.to_string()).expect("写回包");
+    let ccm = bin.join("ccm");
+    std::fs::write(
+        &ccm,
+        format!(
+            "#!/bin/sh\ncase \" $* \" in *' --quota-read '*) cat '{r}'; exit 0;; esac\n\
+             {{ printf '%s\\n' \"$@\"; echo '<end>'; }} >> '{s}'\necho '{{\"usage\":{{}}}}'\n",
+            r = home.join("read.json").display(),
+            s = sent.display()
+        ),
+    )
+    .expect("写假 ccm");
+    std::fs::set_permissions(&ccm, std::fs::Permissions::from_mode(0o755)).expect("可执行");
+    let script = guard_core::addr::repo_root().join("src/shared/quota-warm/scripts/quota-warm");
+    let out = std::process::Command::new("python3")
+        .arg(&script)
+        .arg("once")
+        .env_clear()
+        .env("HOME", &home)
+        .env("PATH", "/usr/bin:/bin")
+        .output()
+        .expect("跑得起预热脚本");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let sent = std::fs::read_to_string(&sent).unwrap_or_default();
+    let work = home.join(".cc-monitor/autostart").display().to_string();
+    std::fs::remove_dir_all(&home).ok();
+    // 每一发 ccm 自己那一段（最后一个 `--` 之后），逐个参数比。
+    let tails: Vec<Vec<&str>> = sent
+        .split("<end>\n")
+        .filter(|b| !b.is_empty())
+        .map(|b| {
+            let args: Vec<&str> = b.lines().collect();
+            let cut = args.iter().rposition(|a| *a == "--").expect("有 --");
+            args[cut + 1..].to_vec()
+        })
+        .collect();
+    let want: Vec<Vec<&str>> = ["seen1", "fresh"]
+        .iter()
+        .map(|n| vec!["--account", n, "--cwd", &work, "--no-rotation"])
+        .collect();
+    assert_eq!(tails, want, "号单该是 seen1 · fresh，起号用 --account <名>");
+}
