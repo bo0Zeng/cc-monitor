@@ -14,8 +14,8 @@ use crate::common::cells::{Tone, Words};
 use crate::common::time::TextClock;
 use crate::faces::quota_rows;
 pub(crate) use cmd_wire::quota::{
-    AccountHead, Candidate, OverageShown, QuotaAccount, QuotaRead, QuotaUnseen,
-    ReadingShown, ResetsAt, UnseenHead, UnseenUsage, Verdict, WindowReadShown, WindowSeenShown,
+    AccountHead, Candidate, OverageShown, QuotaAccount, QuotaRead, QuotaUnseen, ReadingShown,
+    ResetsAt, UnseenHead, UnseenUsage, Verdict, WindowReadShown, WindowSeenShown,
 };
 use std::collections::BTreeMap;
 
